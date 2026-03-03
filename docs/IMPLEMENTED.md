@@ -34,6 +34,7 @@ Snapshot of features currently working in this repo.
 - Config-driven startup defaults via `config.toml` with CLI override precedence
 - Basic combat foundation (pistol-style hitscan, ammo drain, monster HP/death handling)
 - Basic monster thinker loop (wake/chase/attack with cooldown and LOS checks)
+- Type-specific monster attack behavior (melee-only vs ranged, randomized attack chance/cooldown)
 
 ## Automap Features
 

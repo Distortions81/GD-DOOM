@@ -83,8 +83,22 @@ func TestMoveMonsterTowardDoesNotMovePlayer(t *testing.T) {
 		},
 	}
 	px0, py0 := g.p.x, g.p.y
-	g.moveMonsterToward(0, 0, 0, 128*fracUnit, 0)
+	g.moveMonsterToward(0, 0, 0, 128*fracUnit, 0, 8*fracUnit)
 	if g.p.x != px0 || g.p.y != py0 {
 		t.Fatalf("player moved by monster path probe: (%d,%d) -> (%d,%d)", px0, py0, g.p.x, g.p.y)
+	}
+}
+
+func TestMeleeOnlyMonsterDoesNotRangedAttack(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{Health: 100},
+	}
+	// Farther than melee range, demon should not perform ranged attacks.
+	if g.monsterAttack(0, 3002, 400*fracUnit) {
+		t.Fatal("demon should not perform ranged attack")
+	}
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want=100", g.stats.Health)
 	}
 }

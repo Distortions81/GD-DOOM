@@ -82,7 +82,7 @@ Config notes:
 - On death, press `Enter` to restart the current level in-session.
 - Damage/pickup screen flashes are active (red for damage, amber for pickups).
 - Basic combat foundation is active: pistol-like hitscan, ammo consumption, monster HP/death removal.
-- Monsters now have basic wake/chase/attack behavior with Doom-style random damage cadence.
+- Monsters now have more Doom-like wake/chase/attack behavior (type-specific melee/ranged styles, randomized cooldown/chance).
 - Collected pickups are removed from automap thing rendering.
 - Locked doors now check collected key inventory.
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).

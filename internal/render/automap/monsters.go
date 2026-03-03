@@ -10,7 +10,6 @@ const (
 	monsterWakeRange   = 1024 * fracUnit
 	monsterMeleeRange  = 64 * fracUnit
 	monsterAttackRange = 1024 * fracUnit
-	monsterStep        = 8 * fracUnit
 	monsterAttackTics  = 35
 )
 
@@ -45,19 +44,133 @@ func (g *game) tickMonsters() {
 		}
 
 		if g.thingCooldown[i] == 0 && dist <= monsterAttackRange && g.monsterHasLOS(tx, ty, px, py) {
-			if dist <= monsterMeleeRange {
-				damage := 3 * (1 + doomPRandomN(8))
-				g.damagePlayer(damage, "Monster hit you")
-			} else {
-				damage := 3 * (1 + doomPRandomN(5))
-				g.damagePlayer(damage, "Monster shot you")
+			didAttack := g.monsterAttack(i, th.Type, dist)
+			if didAttack {
+				g.thingCooldown[i] = monsterAttackCooldown(th.Type)
 			}
-			g.thingCooldown[i] = monsterAttackTics
 		}
 
 		if dist > monsterMeleeRange {
-			g.moveMonsterToward(i, tx, ty, px, py)
+			g.moveMonsterToward(i, tx, ty, px, py, monsterMoveStep(th.Type))
 		}
+	}
+}
+
+func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
+	meleeOnly := isMeleeOnlyMonster(typ)
+	if dist <= monsterMeleeRange {
+		damage := monsterMeleeDamage(typ)
+		if damage > 0 {
+			g.damagePlayer(damage, "Monster hit you")
+			return true
+		}
+	}
+	if meleeOnly {
+		return false
+	}
+	if !shouldAttemptRangedAttack(typ, dist) {
+		return false
+	}
+	damage := monsterRangedDamage(typ)
+	if damage <= 0 {
+		return false
+	}
+	g.damagePlayer(damage, "Monster shot you")
+	return true
+}
+
+func shouldAttemptRangedAttack(typ int16, dist int64) bool {
+	// Approximate Doom-style missile chance: closer enemies fire more often.
+	base := 80
+	switch typ {
+	case 3004: // zombieman
+		base = 100
+	case 9: // sergeant
+		base = 110
+	case 3001: // imp
+		base = 90
+	case 3005, 3003, 16: // caco/baron/cyber
+		base = 75
+	}
+	atten := int(dist / (256 * fracUnit))
+	chance := base - atten*8
+	if chance < 8 {
+		chance = 8
+	}
+	return doomPRandomN(256) < chance
+}
+
+func monsterMoveStep(typ int16) int64 {
+	switch typ {
+	case 3004, 9:
+		return 8 * fracUnit
+	case 3001:
+		return 8 * fracUnit
+	case 3002, 3006:
+		return 10 * fracUnit
+	case 3005, 3003:
+		return 8 * fracUnit
+	case 16, 7:
+		return 12 * fracUnit
+	default:
+		return 8 * fracUnit
+	}
+}
+
+func monsterAttackCooldown(typ int16) int {
+	switch typ {
+	case 9:
+		return 22 + doomPRandomN(10)
+	case 3004:
+		return 28 + doomPRandomN(12)
+	case 3002, 3006:
+		return 18 + doomPRandomN(8)
+	default:
+		return monsterAttackTics + doomPRandomN(10)
+	}
+}
+
+func isMeleeOnlyMonster(typ int16) bool {
+	switch typ {
+	case 3002, 3006:
+		return true
+	default:
+		return false
+	}
+}
+
+func monsterMeleeDamage(typ int16) int {
+	switch typ {
+	case 3002: // demon
+		return 4 * (1 + doomPRandomN(10))
+	case 3006: // lost soul
+		return 3 * (1 + doomPRandomN(8))
+	default:
+		return 3 * (1 + doomPRandomN(8))
+	}
+}
+
+func monsterRangedDamage(typ int16) int {
+	switch typ {
+	case 3004: // zombieman hitscan
+		return 3 * (1 + doomPRandomN(5))
+	case 9: // sergeant pellets
+		pellets := 3
+		dmg := 0
+		for p := 0; p < pellets; p++ {
+			dmg += 3 * (1 + doomPRandomN(5))
+		}
+		return dmg
+	case 3001: // imp fireball approx
+		return 3 * (1 + doomPRandomN(8))
+	case 3005: // caco ball approx
+		return 5 * (1 + doomPRandomN(8))
+	case 3003: // baron ball approx
+		return 8 * (1 + doomPRandomN(8))
+	case 16: // rocket-like
+		return 20 + doomPRandomN(60)
+	default:
+		return 3 * (1 + doomPRandomN(8))
 	}
 }
 
@@ -77,10 +190,10 @@ func (g *game) monsterHasLOS(ax, ay, bx, by int64) bool {
 	return true
 }
 
-func (g *game) moveMonsterToward(i int, x, y, tx, ty int64) {
+func (g *game) moveMonsterToward(i int, x, y, tx, ty, step int64) {
 	ang := math.Atan2(float64(ty-y), float64(tx-x))
-	dx := int64(math.Cos(ang) * float64(monsterStep))
-	dy := int64(math.Sin(ang) * float64(monsterStep))
+	dx := int64(math.Cos(ang) * float64(step))
+	dy := int64(math.Sin(ang) * float64(step))
 	nx := x + dx
 	ny := y + dy
 	if g.tryMoveProbe(nx, ny) {
