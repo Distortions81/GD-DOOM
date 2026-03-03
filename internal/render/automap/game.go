@@ -117,6 +117,8 @@ type game struct {
 
 	thingCollected []bool
 	thingHP        []int
+	thingAggro     []bool
+	thingCooldown  []int
 	inventory      playerInventory
 	stats          playerStats
 	worldTic       int
@@ -197,6 +199,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
+	g.thingAggro = make([]bool, len(m.Things))
+	g.thingCooldown = make([]int, len(m.Things))
 	g.initThingCombatState()
 	g.applySkillThingFiltering()
 	if !g.opts.StartInMapMode {

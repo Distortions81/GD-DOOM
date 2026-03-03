@@ -33,6 +33,7 @@ Snapshot of features currently working in this repo.
 - Screen flash feedback for damage and pickups
 - Config-driven startup defaults via `config.toml` with CLI override precedence
 - Basic combat foundation (pistol-style hitscan, ammo drain, monster HP/death handling)
+- Basic monster thinker loop (wake/chase/attack with cooldown and LOS checks)
 
 ## Automap Features
 

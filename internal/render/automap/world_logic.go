@@ -8,6 +8,7 @@ func (g *game) tickWorldLogic() {
 		g.inventory.RadSuitTics--
 	}
 	g.applySectorHazardDamage()
+	g.tickMonsters()
 }
 
 func (g *game) applySectorHazardDamage() {
