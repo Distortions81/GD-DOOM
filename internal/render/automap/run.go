@@ -11,6 +11,7 @@ import (
 
 func RunAutomap(m *mapdata.Map, opts Options) error {
 	g := newGame(m, opts)
+	ebiten.SetTPS(doomTicsPerSecond)
 	ebiten.SetWindowSize(g.opts.Width, g.opts.Height)
 	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
