@@ -31,6 +31,7 @@ var (
 	wallUnrevealed   = color.RGBA{R: 100, G: 100, B: 100, A: 255}
 	playerColor      = color.RGBA{R: 120, G: 240, B: 130, A: 255}
 	otherPlayerColor = color.RGBA{R: 90, G: 170, B: 255, A: 255}
+	useTargetColor   = color.RGBA{R: 255, G: 210, B: 70, A: 255}
 )
 
 var doomPlayerArrow = [][4]float64{
@@ -528,6 +529,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 		c, w := g.decisionStyle(d)
 		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(w), c, true)
 	}
+	if g.opts.SourcePortMode {
+		g.drawUseTargetHighlight(screen)
+	}
 
 	if shouldDrawThings(g.parity) {
 		g.drawThings(screen)
@@ -836,6 +840,21 @@ func (g *game) drawPeerPlayers(screen *ebiten.Image) {
 		ang := angleToRadians(ps.angle)
 		g.drawPlayerArrowWorld(screen, px, py, ang, otherPlayerColor)
 	}
+}
+
+func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
+	lineIdx, tr := g.peekUseTargetLine()
+	if tr != useTraceSpecial || lineIdx < 0 || lineIdx >= len(g.physForLine) {
+		return
+	}
+	pi := g.physForLine[lineIdx]
+	if pi < 0 || pi >= len(g.lines) {
+		return
+	}
+	pl := g.lines[pi]
+	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
+	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
+	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, true)
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {

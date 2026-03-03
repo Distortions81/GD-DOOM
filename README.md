@@ -62,6 +62,7 @@ Level progression:
 
 Source-port extras are enabled only with `-sourceport-mode`.
 In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.
+In sourceport mode, the current `use` target line is highlighted on automap.
 
 ## Runtime Gameplay State (Current)
 

@@ -751,6 +751,46 @@ func (g *game) handleUse() {
 }
 
 func (g *game) useLines() {
+	lineIdx, tr := g.peekUseTargetLine()
+	if tr == useTraceNone {
+		g.useText = "USE: no line"
+		g.useFlash = 35
+		g.emitSoundEvent(soundEventNoWay)
+		return
+	}
+	if tr == useTraceBlocked {
+		g.useText = "USE: no way"
+		g.useFlash = 35
+		g.emitSoundEvent(soundEventNoWay)
+		return
+	}
+	pi := -1
+	if lineIdx >= 0 && lineIdx < len(g.physForLine) {
+		pi = g.physForLine[lineIdx]
+	}
+	if pi < 0 || pi >= len(g.lines) {
+		g.useText = "USE: no line"
+		g.useFlash = 35
+		g.emitSoundEvent(soundEventNoWay)
+		return
+	}
+	ld := g.lines[pi]
+	side := 0
+	if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
+		side = 1
+	}
+	g.useSpecialLine(ld.idx, side)
+}
+
+type useTraceResult int
+
+const (
+	useTraceNone useTraceResult = iota
+	useTraceBlocked
+	useTraceSpecial
+)
+
+func (g *game) peekUseTargetLine() (int, useTraceResult) {
 	px := g.p.x
 	py := g.p.y
 	ang := angleToRadians(g.p.angle)
@@ -782,23 +822,13 @@ func (g *game) useLines() {
 		if special == 0 {
 			_, _, _, openrange := g.lineOpening(ld)
 			if openrange <= 0 {
-				g.useText = "USE: no way"
-				g.useFlash = 35
-				g.emitSoundEvent(soundEventNoWay)
-				return
+				return -1, useTraceBlocked
 			}
 			continue
 		}
-		side := 0
-		if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
-			side = 1
-		}
-		g.useSpecialLine(ld.idx, side)
-		return
+		return ld.idx, useTraceSpecial
 	}
-	g.useText = "USE: no line"
-	g.useFlash = 35
-	g.emitSoundEvent(soundEventNoWay)
+	return -1, useTraceNone
 }
 
 func sortUseIntercepts(intercepts []intercept, lineSpecial []uint16) {

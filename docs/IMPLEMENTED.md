@@ -50,6 +50,7 @@ Snapshot of features currently working in this repo.
 - In-app profile-aware HUD and help (`F1`)
 - Source-port-only extra toggles gated behind `-sourceport-mode`
 - Source-port default thing legend overlay with runtime toggle
+- Source-port use-target automap highlight (line currently hittable by `use`)
 - Doom-style turn acceleration behavior (`SLOWTURNTICS` style ramp)
 
 ## Tests
