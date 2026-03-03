@@ -144,6 +144,10 @@ type game struct {
 	floor2DPath   floor2DPathMode
 	floorVisDiag  floorVisDiagMode
 	floorFrame    floorFrameStats
+	floorClip     []int16
+	ceilingClip   []int16
+	floorPlanes   map[floorPlaneKey]*floorVisplane
+	floorSpans    []floorSpan
 }
 
 type savedMapView struct {
@@ -1889,7 +1893,8 @@ func (g *game) drawMapFloorTextures2DLegacy(screen *ebiten.Image) {
 }
 
 func (g *game) drawMapFloorTextures2DVisplane(screen *ebiten.Image) {
-	// Milestone 0 scaffolding: keep output stable while exposing a path toggle.
+	g.resetFloorVisplaneFrame()
+	// Milestone 1 scaffolding: keep output stable while visplane marking/raster lands.
 	g.drawMapFloorTextures2DLegacy(screen)
 }
 
