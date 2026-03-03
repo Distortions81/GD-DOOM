@@ -197,6 +197,10 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		SwitchOn:   sample("DSSWTCHN"),
 		SwitchOff:  sample("DSSWTCHX"),
 		NoWay:      firstSample(sample("DSNOWAY"), sample("DSOOF")),
+		ItemUp:     sample("DSITEMUP"),
+		WeaponUp:   sample("DSWPNUP"),
+		PowerUp:    sample("DSGETPOW"),
+		Oof:        sample("DSOOF"),
 	}
 }
 

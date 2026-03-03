@@ -1,0 +1,299 @@
+package automap
+
+import (
+	"fmt"
+
+	"gddoom/internal/mapdata"
+)
+
+type playerInventory struct {
+	BlueKey   bool
+	RedKey    bool
+	YellowKey bool
+	Backpack  bool
+	Weapons   map[int16]bool
+}
+
+type playerStats struct {
+	Health  int
+	Armor   int
+	Bullets int
+	Shells  int
+	Rockets int
+	Cells   int
+}
+
+func (g *game) initPlayerState() {
+	g.inventory = playerInventory{
+		Weapons: map[int16]bool{
+			2002: false, // chaingun
+			2001: false, // shotgun
+			2005: false, // chainsaw
+			2003: false, // rocket launcher
+			2004: false, // plasma gun
+			2006: false, // BFG9000
+		},
+	}
+	g.stats = playerStats{
+		Health:  100,
+		Armor:   0,
+		Bullets: 50,
+		Shells:  0,
+		Rockets: 0,
+		Cells:   0,
+	}
+}
+
+func (pi playerInventory) keys() mapdata.KeyRing {
+	return mapdata.KeyRing{
+		Blue:   pi.BlueKey,
+		Red:    pi.RedKey,
+		Yellow: pi.YellowKey,
+	}
+}
+
+func (pi playerInventory) keySummary() string {
+	chars := []byte{'-', '-', '-'}
+	if pi.BlueKey {
+		chars[0] = 'B'
+	}
+	if pi.RedKey {
+		chars[1] = 'R'
+	}
+	if pi.YellowKey {
+		chars[2] = 'Y'
+	}
+	return string(chars)
+}
+
+func (g *game) processThingPickups() {
+	if g.m == nil {
+		return
+	}
+	if len(g.m.Things) == 0 || len(g.thingCollected) != len(g.m.Things) {
+		return
+	}
+	const pickupRadius int64 = 20 * fracUnit
+	pr2 := pickupRadius * pickupRadius
+	for i, th := range g.m.Things {
+		if g.thingCollected[i] {
+			continue
+		}
+		if !isPickupType(th.Type) {
+			continue
+		}
+		dx := (int64(th.X) << fracBits) - g.p.x
+		dy := (int64(th.Y) << fracBits) - g.p.y
+		if dx*dx+dy*dy > pr2 {
+			continue
+		}
+		msg, ev, picked := g.applyPickup(th.Type)
+		if !picked {
+			continue
+		}
+		g.thingCollected[i] = true
+		g.setHUDMessage(msg, 45)
+		g.emitSoundEvent(ev)
+	}
+}
+
+func isPickupType(typ int16) bool {
+	switch typ {
+	case 5, 6, 13, 38, 39, 40: // keys
+		return true
+	case 2011, 2012, 2014: // health
+		return true
+	case 2015, 2018, 2019: // armor
+		return true
+	case 2007, 2048, 2008, 2049, 2010, 2046, 2047, 17, 8: // ammo + backpack
+		return true
+	case 2001, 2002, 2003, 2004, 2005, 2006: // weapons
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *game) applyPickup(typ int16) (string, soundEvent, bool) {
+	switch typ {
+	case 5, 40:
+		if g.inventory.BlueKey {
+			return "", 0, false
+		}
+		g.inventory.BlueKey = true
+		return "Picked up a blue key", soundEventPowerUp, true
+	case 13, 38:
+		if g.inventory.RedKey {
+			return "", 0, false
+		}
+		g.inventory.RedKey = true
+		return "Picked up a red key", soundEventPowerUp, true
+	case 6, 39:
+		if g.inventory.YellowKey {
+			return "", 0, false
+		}
+		g.inventory.YellowKey = true
+		return "Picked up a yellow key", soundEventPowerUp, true
+	case 2011:
+		return g.gainHealth(10, 100, "Picked up a stimpack")
+	case 2012:
+		return g.gainHealth(25, 100, "Picked up a medikit")
+	case 2014:
+		return g.gainHealth(1, 200, "Picked up a health bonus")
+	case 2015:
+		return g.gainArmor(1, 200, "Picked up an armor bonus")
+	case 2018:
+		if g.stats.Armor >= 100 {
+			return "", 0, false
+		}
+		g.stats.Armor = 100
+		return "Picked up green armor", soundEventPowerUp, true
+	case 2019:
+		if g.stats.Armor >= 200 {
+			return "", 0, false
+		}
+		g.stats.Armor = 200
+		return "Picked up blue armor", soundEventPowerUp, true
+	case 2007:
+		return g.gainAmmo("bullets", 10, "Picked up a clip")
+	case 2048:
+		return g.gainAmmo("bullets", 50, "Picked up a box of bullets")
+	case 2008:
+		return g.gainAmmo("shells", 4, "Picked up 4 shotgun shells")
+	case 2049:
+		return g.gainAmmo("shells", 20, "Picked up a box of shells")
+	case 2010:
+		return g.gainAmmo("rockets", 1, "Picked up a rocket")
+	case 2046:
+		return g.gainAmmo("rockets", 5, "Picked up a box of rockets")
+	case 2047:
+		return g.gainAmmo("cells", 20, "Picked up an energy cell")
+	case 17:
+		return g.gainAmmo("cells", 100, "Picked up an energy cell pack")
+	case 8:
+		if g.inventory.Backpack {
+			return g.gainAmmo("bullets", 10, "Picked up ammo from backpack")
+		}
+		g.inventory.Backpack = true
+		g.gainAmmoNoMsg("bullets", 10)
+		g.gainAmmoNoMsg("shells", 4)
+		g.gainAmmoNoMsg("rockets", 1)
+		g.gainAmmoNoMsg("cells", 20)
+		return "Picked up a backpack", soundEventItemUp, true
+	case 2001, 2002, 2003, 2004, 2005, 2006:
+		if g.inventory.Weapons[typ] {
+			// Treat duplicate weapons as ammo pickups where sensible.
+			switch typ {
+			case 2001:
+				return g.gainAmmo("shells", 4, "Picked up shells")
+			case 2002:
+				return g.gainAmmo("bullets", 20, "Picked up bullets")
+			case 2003:
+				return g.gainAmmo("rockets", 2, "Picked up rockets")
+			case 2004:
+				return g.gainAmmo("cells", 20, "Picked up cells")
+			case 2006:
+				return g.gainAmmo("cells", 40, "Picked up cells")
+			default:
+				return "", 0, false
+			}
+		}
+		g.inventory.Weapons[typ] = true
+		switch typ {
+		case 2001:
+			g.gainAmmoNoMsg("shells", 8)
+			return "Picked up a shotgun", soundEventWeaponUp, true
+		case 2002:
+			g.gainAmmoNoMsg("bullets", 20)
+			return "Picked up a chaingun", soundEventWeaponUp, true
+		case 2003:
+			g.gainAmmoNoMsg("rockets", 2)
+			return "Picked up a rocket launcher", soundEventWeaponUp, true
+		case 2004:
+			g.gainAmmoNoMsg("cells", 40)
+			return "Picked up a plasma rifle", soundEventWeaponUp, true
+		case 2005:
+			return "Picked up a chainsaw", soundEventWeaponUp, true
+		case 2006:
+			g.gainAmmoNoMsg("cells", 40)
+			return "Picked up a BFG9000", soundEventWeaponUp, true
+		}
+	}
+	return "", 0, false
+}
+
+func (g *game) gainHealth(amount, cap int, msg string) (string, soundEvent, bool) {
+	prev := g.stats.Health
+	g.stats.Health += amount
+	if g.stats.Health > cap {
+		g.stats.Health = cap
+	}
+	if g.stats.Health == prev {
+		return "", 0, false
+	}
+	return msg, soundEventItemUp, true
+}
+
+func (g *game) gainArmor(amount, cap int, msg string) (string, soundEvent, bool) {
+	prev := g.stats.Armor
+	g.stats.Armor += amount
+	if g.stats.Armor > cap {
+		g.stats.Armor = cap
+	}
+	if g.stats.Armor == prev {
+		return "", 0, false
+	}
+	return msg, soundEventItemUp, true
+}
+
+func (g *game) gainAmmo(kind string, amount int, msg string) (string, soundEvent, bool) {
+	if !g.gainAmmoNoMsg(kind, amount) {
+		return "", 0, false
+	}
+	return msg, soundEventItemUp, true
+}
+
+func (g *game) gainAmmoNoMsg(kind string, amount int) bool {
+	maxBullets := 200
+	maxShells := 50
+	maxRockets := 50
+	maxCells := 300
+	if g.inventory.Backpack {
+		maxBullets *= 2
+		maxShells *= 2
+		maxRockets *= 2
+		maxCells *= 2
+	}
+	switch kind {
+	case "bullets":
+		prev := g.stats.Bullets
+		g.stats.Bullets += amount
+		if g.stats.Bullets > maxBullets {
+			g.stats.Bullets = maxBullets
+		}
+		return g.stats.Bullets != prev
+	case "shells":
+		prev := g.stats.Shells
+		g.stats.Shells += amount
+		if g.stats.Shells > maxShells {
+			g.stats.Shells = maxShells
+		}
+		return g.stats.Shells != prev
+	case "rockets":
+		prev := g.stats.Rockets
+		g.stats.Rockets += amount
+		if g.stats.Rockets > maxRockets {
+			g.stats.Rockets = maxRockets
+		}
+		return g.stats.Rockets != prev
+	case "cells":
+		prev := g.stats.Cells
+		g.stats.Cells += amount
+		if g.stats.Cells > maxCells {
+			g.stats.Cells = maxCells
+		}
+		return g.stats.Cells != prev
+	default:
+		panic(fmt.Sprintf("unknown ammo kind %q", kind))
+	}
+}

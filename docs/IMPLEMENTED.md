@@ -22,6 +22,8 @@ Snapshot of features currently working in this repo.
 - Non-map placeholder screen (`no game render yet`)
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 - Level exit special handling with automatic next-map loading (normal + secret exits)
+- Item pickup runtime for keys/health/armor/ammo/backpack/weapons, with inventory + player stat tracking
+- Locked door activation now uses collected key inventory
 
 ## Automap Features
 
@@ -38,6 +40,7 @@ Snapshot of features currently working in this repo.
 - Runtime line discovery/mapping around player
 - `IDDT` level 2 thing rendering path
 - Typed thing glyph rendering (players/monsters/items/keys/misc)
+- Collected pickups are hidden from thing rendering
 
 ## Control and UX
 

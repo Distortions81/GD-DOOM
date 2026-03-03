@@ -29,4 +29,8 @@ type SoundBank struct {
 	SwitchOn   PCMSample
 	SwitchOff  PCMSample
 	NoWay      PCMSample
+	ItemUp     PCMSample
+	WeaponUp   PCMSample
+	PowerUp    PCMSample
+	Oof        PCMSample
 }

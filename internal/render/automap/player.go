@@ -246,6 +246,7 @@ func (g *game) updatePlayer(cmd moveCmd) {
 
 	g.xyMovement()
 	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
+	g.processThingPickups()
 }
 
 func (g *game) tickDoors() {
@@ -820,7 +821,7 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
-	if !info.Door.CanActivate(mapdata.KeyRing{}) {
+	if !info.Door.CanActivate(g.inventory.keys()) {
 		g.useText = "USE: locked"
 		g.useFlash = 35
 		g.emitSoundEvent(soundEventNoWay)

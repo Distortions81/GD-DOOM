@@ -14,6 +14,10 @@ const (
 	soundEventSwitchOn
 	soundEventSwitchOff
 	soundEventNoWay
+	soundEventItemUp
+	soundEventWeaponUp
+	soundEventPowerUp
+	soundEventOof
 )
 
 type soundSystem struct {
@@ -54,6 +58,18 @@ func firstSampleRate(bank SoundBank) int {
 	}
 	if bank.NoWay.SampleRate > 0 && len(bank.NoWay.Data) > 0 {
 		return bank.NoWay.SampleRate
+	}
+	if bank.ItemUp.SampleRate > 0 && len(bank.ItemUp.Data) > 0 {
+		return bank.ItemUp.SampleRate
+	}
+	if bank.WeaponUp.SampleRate > 0 && len(bank.WeaponUp.Data) > 0 {
+		return bank.WeaponUp.SampleRate
+	}
+	if bank.PowerUp.SampleRate > 0 && len(bank.PowerUp.Data) > 0 {
+		return bank.PowerUp.SampleRate
+	}
+	if bank.Oof.SampleRate > 0 && len(bank.Oof.Data) > 0 {
+		return bank.Oof.SampleRate
 	}
 	return 0
 }
@@ -108,6 +124,26 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.NoWay, true
 		}
 		return s.bank.SwitchOff, true
+	case soundEventItemUp:
+		if len(s.bank.ItemUp.Data) > 0 {
+			return s.bank.ItemUp, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventWeaponUp:
+		if len(s.bank.WeaponUp.Data) > 0 {
+			return s.bank.WeaponUp, true
+		}
+		return s.bank.ItemUp, true
+	case soundEventPowerUp:
+		if len(s.bank.PowerUp.Data) > 0 {
+			return s.bank.PowerUp, true
+		}
+		return s.bank.ItemUp, true
+	case soundEventOof:
+		if len(s.bank.Oof.Data) > 0 {
+			return s.bank.Oof, true
+		}
+		return s.bank.NoWay, true
 	default:
 		return PCMSample{}, false
 	}

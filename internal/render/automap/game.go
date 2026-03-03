@@ -107,6 +107,10 @@ type game struct {
 
 	levelExitRequested bool
 	secretLevelExit    bool
+
+	thingCollected []bool
+	inventory      playerInventory
+	stats          playerStats
 }
 
 type savedMapView struct {
@@ -170,6 +174,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		nextMarkID: 1,
 		p:          spawnPlayer(m),
 	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(m.Things))
 	if !g.opts.StartInMapMode {
 		g.mode = viewWalk
 	}
@@ -529,11 +535,21 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.opts.LineColorMode,
 		)
 		ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
+		stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s",
+			g.stats.Health,
+			g.stats.Armor,
+			g.stats.Bullets,
+			g.stats.Shells,
+			g.stats.Rockets,
+			g.stats.Cells,
+			g.inventory.keySummary(),
+		)
+		ebitenutil.DebugPrintAt(screen, stats, 12, 28)
 	}
 	if g.useFlash > 0 {
 		msgY := 12
 		if g.opts.SourcePortMode {
-			msgY = 28
+			msgY = 44
 		}
 		ebitenutil.DebugPrintAt(screen, g.useText, 12, msgY)
 	}
@@ -671,7 +687,10 @@ func (g *game) drawGrid(screen *ebiten.Image) {
 }
 
 func (g *game) drawThings(screen *ebiten.Image) {
-	for _, th := range g.m.Things {
+	for i, th := range g.m.Things {
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
 		x := float64(th.X)
 		y := float64(th.Y)
 		sx, sy := g.worldToScreen(x, y)

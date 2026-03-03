@@ -60,6 +60,13 @@ Level progression:
 
 Source-port extras are enabled only with `-sourceport-mode`.
 
+## Runtime Gameplay State (Current)
+
+- Item pickup is active for core Doom pickup classes (keys, health, armor, ammo, backpack, weapons).
+- Collected pickups are removed from automap thing rendering.
+- Locked doors now check collected key inventory.
+- Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).
+
 ## Project Docs
 
 - Implemented features: `docs/IMPLEMENTED.md`
