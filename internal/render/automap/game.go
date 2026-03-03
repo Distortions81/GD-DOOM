@@ -678,8 +678,31 @@ func (g *game) drawThingLegend(screen *ebiten.Image) {
 		{label: "keys", style: thingStyle{glyph: thingGlyphStar, clr: thingKeyBlue}},
 		{label: "misc", style: thingStyle{glyph: thingGlyphCross, clr: thingMiscColor}},
 	}
+	type lineLegendEntry struct {
+		label string
+		clr   color.Color
+	}
+	lineEntries := []lineLegendEntry{
+		{label: "one-sided wall", clr: wallOneSided},
+		{label: "floor delta", clr: wallFloorChange},
+		{label: "ceiling delta", clr: wallCeilChange},
+		{label: "teleporter", clr: wallTeleporter},
+		{label: "use switch/button", clr: wallUseSpecial},
+	}
+	if g.opts.LineColorMode == "parity" {
+		lineEntries = append(lineEntries, lineLegendEntry{label: "unrevealed (allmap)", clr: wallUnrevealed})
+	}
+
 	maxLen := len("THING LEGEND")
 	for _, e := range entries {
+		if len(e.label) > maxLen {
+			maxLen = len(e.label)
+		}
+	}
+	if len("LINE COLORS") > maxLen {
+		maxLen = len("LINE COLORS")
+	}
+	for _, e := range lineEntries {
 		if len(e.label) > maxLen {
 			maxLen = len(e.label)
 		}
@@ -693,6 +716,14 @@ func (g *game) drawThingLegend(screen *ebiten.Image) {
 	for i, e := range entries {
 		ly := y + 16 + i*14
 		drawThingGlyph(screen, e.style, float64(x+8), float64(ly+5), 0, 4.6)
+		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
+	}
+
+	ly0 := y + 16 + len(entries)*14 + 8
+	ebitenutil.DebugPrintAt(screen, "LINE COLORS", x, ly0)
+	for i, e := range lineEntries {
+		ly := ly0 + 16 + i*14
+		vector.StrokeLine(screen, float32(x+2), float32(ly+5), float32(x+14), float32(ly+5), 2.4, e.clr, true)
 		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
 	}
 }
