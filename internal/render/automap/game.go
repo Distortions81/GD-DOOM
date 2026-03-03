@@ -1777,7 +1777,11 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	}
 	logBudget := 24
 	for ss := range g.m.SubSectors {
-		worldVerts, cx, cy, ok := g.subSectorVerticesFromSegList(ss)
+		worldVerts, cx, cy, ok := g.subSectorWorldVertices(ss)
+		if !ok {
+			// Fallback for odd subsectors where loop reconstruction fails.
+			worldVerts, cx, cy, ok = g.subSectorVerticesFromSegList(ss)
+		}
 		if !ok {
 			if logBudget > 0 {
 				fmt.Printf("floor2d skip ss=%d reason=verts\n", ss)

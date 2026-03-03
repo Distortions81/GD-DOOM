@@ -64,6 +64,40 @@ func TestSubsectorVertexLoopFromSegOrder_ReorientsAndUsesAllEdges(t *testing.T) 
 	}
 }
 
+func TestSubsectorWorldVertices_FallbackBeatsStrictSegStartOrder(t *testing.T) {
+	m := &mapdata.Map{
+		Vertexes: []mapdata.Vertex{
+			{X: 0, Y: 0},   // 0
+			{X: 64, Y: 0},  // 1
+			{X: 64, Y: 64}, // 2
+			{X: 0, Y: 64},  // 3
+		},
+		// Valid square edges, but mixed directions produce a degenerate
+		// sequence if you only read StartVertex in seg order.
+		Segs: []mapdata.Seg{
+			{StartVertex: 0, EndVertex: 1},
+			{StartVertex: 2, EndVertex: 1},
+			{StartVertex: 2, EndVertex: 3},
+			{StartVertex: 0, EndVertex: 3},
+		},
+		SubSectors: []mapdata.SubSector{
+			{FirstSeg: 0, SegCount: 4},
+		},
+	}
+	g := &game{m: m}
+
+	if _, _, _, ok := g.subSectorVerticesFromSegList(0); ok {
+		t.Fatal("expected strict seg-start path to reject this mixed-direction loop")
+	}
+	verts, _, _, ok := g.subSectorWorldVertices(0)
+	if !ok {
+		t.Fatal("expected robust subsector world-vertex reconstruction to succeed")
+	}
+	if got, want := len(verts), 4; got != want {
+		t.Fatalf("vertex count=%d want=%d", got, want)
+	}
+}
+
 func TestTriangulateWorldPolygon_Concave(t *testing.T) {
 	// Simple concave "arrow" polygon, CCW.
 	verts := []worldPt{
