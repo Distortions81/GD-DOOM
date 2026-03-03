@@ -1657,6 +1657,11 @@ type worldPt struct {
 	y float64
 }
 
+type subsectorEdge struct {
+	a uint16
+	b uint16
+}
+
 func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool) {
 	if ss < 0 || ss >= len(g.m.SubSectors) {
 		return nil, 0, 0, false
@@ -1665,11 +1670,7 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	if sub.SegCount < 3 {
 		return nil, 0, 0, false
 	}
-	type edge struct {
-		a uint16
-		b uint16
-	}
-	edges := make([]edge, 0, sub.SegCount)
+	edges := make([]subsectorEdge, 0, sub.SegCount)
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
 		if si < 0 || si >= len(g.m.Segs) {
@@ -1679,20 +1680,49 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 		if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
 			continue
 		}
-		edges = append(edges, edge{a: sg.StartVertex, b: sg.EndVertex})
+		edges = append(edges, subsectorEdge{a: sg.StartVertex, b: sg.EndVertex})
 	}
 	if len(edges) < 3 {
 		return nil, 0, 0, false
 	}
+	chain, closed := chainSubsectorEdges(edges)
+	if !closed {
+		chain = rawSubsectorVertexOrder(g.m, sub)
+	}
+	verts := vertexChainToWorld(g.m, chain)
+	if len(verts) < 3 {
+		return nil, 0, 0, false
+	}
+	// If winding is clockwise, reverse to keep a consistent triangle fan.
+	area2 := polygonArea2(verts)
+	if math.Abs(area2) < 0.001 {
+		return nil, 0, 0, false
+	}
+	if area2 < 0 {
+		for i, j := 0, len(verts)-1; i < j; i, j = i+1, j-1 {
+			verts[i], verts[j] = verts[j], verts[i]
+		}
+	}
+	// Polygon centroid estimate (mean of vertices is enough for convex subsectors).
+	cx, cy := 0.0, 0.0
+	for _, v := range verts {
+		cx += v.x
+		cy += v.y
+	}
+	cx /= float64(len(verts))
+	cy /= float64(len(verts))
+	return verts, cx, cy, true
+}
 
+func chainSubsectorEdges(edges []subsectorEdge) ([]uint16, bool) {
+	if len(edges) == 0 {
+		return nil, false
+	}
 	used := make([]bool, len(edges))
 	chain := make([]uint16, 0, len(edges)+1)
 	chain = append(chain, edges[0].a, edges[0].b)
 	used[0] = true
-	for {
-		if len(chain) > len(edges)+1 {
-			break
-		}
+	for len(chain) <= len(edges)+1 {
 		last := chain[len(chain)-1]
 		progress := false
 		for i, e := range edges {
@@ -1716,52 +1746,77 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 			break
 		}
 		if len(chain) >= 3 && chain[len(chain)-1] == chain[0] {
+			allUsed := true
+			for _, u := range used {
+				if !u {
+					allUsed = false
+					break
+				}
+			}
+			if allUsed {
+				chain = chain[:len(chain)-1]
+				return chain, true
+			}
 			break
 		}
+	}
+	return nil, false
+}
+
+func rawSubsectorVertexOrder(m *mapdata.Map, sub mapdata.SubSector) []uint16 {
+	chain := make([]uint16, 0, sub.SegCount)
+	for i := 0; i < int(sub.SegCount); i++ {
+		si := int(sub.FirstSeg) + i
+		if si < 0 || si >= len(m.Segs) {
+			continue
+		}
+		sg := m.Segs[si]
+		if int(sg.StartVertex) >= len(m.Vertexes) {
+			continue
+		}
+		chain = append(chain, sg.StartVertex)
 	}
 	if len(chain) >= 2 && chain[len(chain)-1] == chain[0] {
 		chain = chain[:len(chain)-1]
 	}
-	if len(chain) < 3 {
-		return nil, 0, 0, false
-	}
+	return chain
+}
 
-	seen := make(map[uint16]struct{}, len(chain))
+func vertexChainToWorld(m *mapdata.Map, chain []uint16) []worldPt {
+	if len(chain) < 3 {
+		return nil
+	}
 	verts := make([]worldPt, 0, len(chain))
+	lastX, lastY := math.Inf(1), math.Inf(1)
 	for _, vi := range chain {
-		if _, ok := seen[vi]; ok {
+		if int(vi) >= len(m.Vertexes) {
 			continue
 		}
-		seen[vi] = struct{}{}
-		if int(vi) >= len(g.m.Vertexes) {
+		v := m.Vertexes[vi]
+		x, y := float64(v.X), float64(v.Y)
+		if x == lastX && y == lastY {
 			continue
 		}
-		v := g.m.Vertexes[vi]
-		verts = append(verts, worldPt{x: float64(v.X), y: float64(v.Y)})
+		verts = append(verts, worldPt{x: x, y: y})
+		lastX, lastY = x, y
 	}
-	if len(verts) < 3 {
-		return nil, 0, 0, false
+	if len(verts) >= 2 {
+		a := verts[0]
+		b := verts[len(verts)-1]
+		if a.x == b.x && a.y == b.y {
+			verts = verts[:len(verts)-1]
+		}
 	}
-	// If winding is clockwise, reverse to keep a consistent triangle fan.
+	return verts
+}
+
+func polygonArea2(verts []worldPt) float64 {
 	area2 := 0.0
 	for i := 0; i < len(verts); i++ {
 		j := (i + 1) % len(verts)
 		area2 += verts[i].x*verts[j].y - verts[j].x*verts[i].y
 	}
-	if area2 < 0 {
-		for i, j := 0, len(verts)-1; i < j; i, j = i+1, j-1 {
-			verts[i], verts[j] = verts[j], verts[i]
-		}
-	}
-	// Polygon centroid estimate (mean of vertices is enough for convex subsectors).
-	cx, cy := 0.0, 0.0
-	for _, v := range verts {
-		cx += v.x
-		cy += v.y
-	}
-	cx /= float64(len(verts))
-	cy /= float64(len(verts))
-	return verts, cx, cy, true
+	return area2
 }
 
 func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, []worldPt, float64, float64, polyBBox, bool) {
