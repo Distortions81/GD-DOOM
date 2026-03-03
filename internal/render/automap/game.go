@@ -331,7 +331,7 @@ func (g *game) updateMapMode() {
 	if ebiten.IsKeyPressed(ebiten.KeyE) {
 		cmd.turn -= 1
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.handleUse()
 	}
 	if g.opts.SourcePortMode {

@@ -47,7 +47,7 @@ Level progression:
 - `WASD`: move
 - `Q/E`: turn (map mode)
 - `Shift`: run
-- `Space`: use
+- `E` / `Space`: use
 - `Arrow keys`: pan map (follow off)
 - `F`: toggle follow
 - `G`: toggle grid
