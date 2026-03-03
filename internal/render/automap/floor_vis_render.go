@@ -17,11 +17,15 @@ func (g *game) markScreenPolygonColumns(pl *floorVisplane, poly []screenPt) {
 	maxX := 0
 	for _, p := range poly {
 		ix := int(math.Floor(p.x))
+		ax := int(math.Ceil(p.x)) - 1
 		if ix < minX {
 			minX = ix
 		}
 		if ix > maxX {
 			maxX = ix
+		}
+		if ax > maxX {
+			maxX = ax
 		}
 	}
 	if minX < 0 {
@@ -52,8 +56,10 @@ func (g *game) markScreenPolygonColumns(pl *floorVisplane, poly []screenPt) {
 		}
 		sort.Float64s(ys)
 		for i := 0; i+1 < len(ys); i += 2 {
-			top := int(math.Ceil(ys[i]))
-			bottom := int(math.Floor(ys[i+1]))
+			// Slight epsilon expansion avoids 1px cracks between adjacent polygons.
+			const eps = 1e-4
+			top := int(math.Ceil(ys[i] - eps))
+			bottom := int(math.Floor(ys[i+1] + eps))
 			if markFloorColumnRange(pl, x, top, bottom, g.floorClip, g.ceilingClip) {
 				g.floorFrame.markedCols++
 			} else {
@@ -68,6 +74,9 @@ func (g *game) buildFloorVisplaneMarks() {
 		worldVerts, cx, cy, ok := g.subSectorWorldVertices(ss)
 		if !ok {
 			worldVerts, cx, cy, ok = g.subSectorVerticesFromSegList(ss)
+		}
+		if !ok {
+			worldVerts, cx, cy, ok = g.subSectorConvexVertices(ss)
 		}
 		if !ok {
 			continue
