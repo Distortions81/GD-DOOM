@@ -1313,28 +1313,13 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 			if y >= stopY {
 				continue
 			}
-			wx, wy, depth, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseCeilZ)
+			wx, wy, depth, sec, ok := g.refinePlaneSampleAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseCeilZ, true)
 			if !ok {
 				continue
 			}
 			pi := y*g.viewW + x
 			if pi < 0 || pi >= len(depthPix) || depth >= depthPix[pi] {
 				continue
-			}
-			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
-			if sec >= 0 && sec < len(g.m.Sectors) {
-				refinedZ := float64(g.m.Sectors[sec].CeilingHeight)
-				if math.Abs(refinedZ-baseCeilZ) > 0.001 {
-					if rwx, rwy, rdepth, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
-						if rdepth >= depthPix[pi] {
-							continue
-						}
-						wx, wy = rwx, rwy
-						if rsec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit)); rsec >= 0 && rsec < len(g.m.Sectors) {
-							sec = rsec
-						}
-					}
-				}
 			}
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				name := g.m.Sectors[sec].CeilingPic
@@ -1401,28 +1386,13 @@ func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, cam
 			if y < startY {
 				continue
 			}
-			wx, wy, depth, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseFloorZ)
+			wx, wy, depth, sec, ok := g.refinePlaneSampleAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseFloorZ, false)
 			if !ok {
 				continue
 			}
 			pi := y*g.viewW + x
 			if pi < 0 || pi >= len(depthPix) || depth >= depthPix[pi] {
 				continue
-			}
-			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
-			if sec >= 0 && sec < len(g.m.Sectors) {
-				refinedZ := float64(g.m.Sectors[sec].FloorHeight)
-				if math.Abs(refinedZ-baseFloorZ) > 0.001 {
-					if rwx, rwy, rdepth, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
-						if rdepth >= depthPix[pi] {
-							continue
-						}
-						wx, wy = rwx, rwy
-						if rsec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit)); rsec >= 0 && rsec < len(g.m.Sectors) {
-							sec = rsec
-						}
-					}
-				}
 			}
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				if tex, ok := g.flatRGBA(g.m.Sectors[sec].FloorPic); ok {
@@ -1464,6 +1434,32 @@ func worldPointForPlaneAtPixel(x, y int, cx, cy, camX, camY, ca, sa, eyeZ, focal
 	wx = camX + depth*ca - s*sa
 	wy = camY + depth*sa + s*ca
 	return wx, wy, depth, true
+}
+
+func (g *game) refinePlaneSampleAtPixel(x, y int, cx, cy, camX, camY, ca, sa, eyeZ, focal, initialZ float64, ceiling bool) (wx, wy, depth float64, sec int, ok bool) {
+	planeZ := initialZ
+	lastSec := -1
+	for i := 0; i < 4; i++ {
+		rwx, rwy, rd, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, planeZ)
+		if !rok {
+			return 0, 0, 0, -1, false
+		}
+		rsec := g.sectorAt(int64(rwx*fracUnit), int64(rwy*fracUnit))
+		if rsec < 0 || rsec >= len(g.m.Sectors) {
+			return rwx, rwy, rd, rsec, true
+		}
+		nextZ := float64(g.m.Sectors[rsec].FloorHeight)
+		if ceiling {
+			nextZ = float64(g.m.Sectors[rsec].CeilingHeight)
+		}
+		wx, wy, depth, sec = rwx, rwy, rd, rsec
+		if rsec == lastSec || math.Abs(nextZ-planeZ) < 0.001 {
+			return wx, wy, depth, sec, true
+		}
+		lastSec = rsec
+		planeZ = nextZ
+	}
+	return wx, wy, depth, sec, sec >= 0
 }
 
 func isFinite(v float64) bool {
