@@ -1610,22 +1610,37 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		if !ok || len(flat) != 64*64*4 {
 			continue
 		}
-		for y := bbox.minY; y <= bbox.maxY; y++ {
-			for x := bbox.minX; x <= bbox.maxX; x++ {
-				if !pointInPolygon(float64(x)+0.5, float64(y)+0.5, poly) {
-					continue
+		if len(poly) < 3 {
+			continue
+		}
+		v0 := poly[0]
+		for i := 1; i+1 < len(poly); i++ {
+			v1 := poly[i]
+			v2 := poly[i+1]
+			tx0 := int(math.Max(float64(bbox.minX), math.Floor(min3(v0.x, v1.x, v2.x))))
+			ty0 := int(math.Max(float64(bbox.minY), math.Floor(min3(v0.y, v1.y, v2.y))))
+			tx1 := int(math.Min(float64(bbox.maxX), math.Ceil(max3(v0.x, v1.x, v2.x))))
+			ty1 := int(math.Min(float64(bbox.maxY), math.Ceil(max3(v0.y, v1.y, v2.y))))
+			if tx0 > tx1 || ty0 > ty1 {
+				continue
+			}
+			for y := ty0; y <= ty1; y++ {
+				for x := tx0; x <= tx1; x++ {
+					if !pointInTriangle(float64(x)+0.5, float64(y)+0.5, v0, v1, v2) {
+						continue
+					}
+					pi := y*g.viewW + x
+					insideMask[pi] = true
+					wx, wy := g.screenToWorld(float64(x)+0.5, float64(y)+0.5)
+					tx := (int(math.Floor(wx)) & 63)
+					ty := (int(math.Floor(wy)) & 63)
+					si := (ty*64 + tx) * 4
+					di := pi * 4
+					g.mapFloorPix[di+0] = flat[si+0]
+					g.mapFloorPix[di+1] = flat[si+1]
+					g.mapFloorPix[di+2] = flat[si+2]
+					g.mapFloorPix[di+3] = 255
 				}
-				pi := y*g.viewW + x
-				insideMask[pi] = true
-				wx, wy := g.screenToWorld(float64(x)+0.5, float64(y)+0.5)
-				tx := (int(math.Floor(wx)) & 63)
-				ty := (int(math.Floor(wy)) & 63)
-				si := (ty*64 + tx) * 4
-				di := pi * 4
-				g.mapFloorPix[di+0] = flat[si+0]
-				g.mapFloorPix[di+1] = flat[si+1]
-				g.mapFloorPix[di+2] = flat[si+2]
-				g.mapFloorPix[di+3] = 255
 			}
 		}
 	}
@@ -1811,19 +1826,34 @@ type screenPt struct {
 	y float64
 }
 
-func pointInPolygon(px, py float64, poly []screenPt) bool {
-	inside := false
-	j := len(poly) - 1
-	for i := 0; i < len(poly); i++ {
-		xi, yi := poly[i].x, poly[i].y
-		xj, yj := poly[j].x, poly[j].y
-		intersect := ((yi > py) != (yj > py)) && (px < (xj-xi)*(py-yi)/(yj-yi+1e-9)+xi)
-		if intersect {
-			inside = !inside
-		}
-		j = i
+func pointInTriangle(px, py float64, a, b, c screenPt) bool {
+	// Accept either winding direction.
+	ab := (px-b.x)*(a.y-b.y) - (a.x-b.x)*(py-b.y)
+	bc := (px-c.x)*(b.y-c.y) - (b.x-c.x)*(py-c.y)
+	ca := (px-a.x)*(c.y-a.y) - (c.x-a.x)*(py-a.y)
+	hasNeg := (ab < 0) || (bc < 0) || (ca < 0)
+	hasPos := (ab > 0) || (bc > 0) || (ca > 0)
+	return !(hasNeg && hasPos)
+}
+
+func min3(a, b, c float64) float64 {
+	if a > b {
+		a = b
 	}
-	return inside
+	if a > c {
+		return c
+	}
+	return a
+}
+
+func max3(a, b, c float64) float64 {
+	if a < b {
+		a = b
+	}
+	if a < c {
+		return c
+	}
+	return a
 }
 
 func (g *game) capturePrevState() {
