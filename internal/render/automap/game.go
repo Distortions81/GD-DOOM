@@ -1062,10 +1062,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceilClr)
 	ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floorClr)
 
-	depthBuf := make([]float64, g.viewW)
-	for i := range depthBuf {
-		depthBuf[i] = math.Inf(1)
-	}
 	depthPix := make([]float64, g.viewW*g.viewH)
 	for i := range depthPix {
 		depthPix[i] = math.Inf(1)
@@ -1128,21 +1124,21 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			continue
 		}
 		if back == nil {
-			g.drawBasicWallColumnRange(screen, depthBuf, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 			continue
 		}
 		openTop := math.Min(float64(front.CeilingHeight), float64(back.CeilingHeight))
 		openBottom := math.Max(float64(front.FloorHeight), float64(back.FloorHeight))
 		if float64(front.CeilingHeight) > openTop {
-			g.drawBasicWallColumnRange(screen, depthBuf, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
+			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
 		}
 		if float64(front.FloorHeight) < openBottom {
-			g.drawBasicWallColumnRange(screen, depthBuf, depthPix, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
 	}
 }
 
-func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthBuf []float64, depthPix []float64, sx1, sx2, f1, f2, zTop, zBot, eyeZ, focal float64, base color.RGBA) {
+func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthPix []float64, sx1, sx2, f1, f2, zTop, zBot, eyeZ, focal float64, base color.RGBA) {
 	if zTop <= zBot {
 		return
 	}
@@ -1171,7 +1167,7 @@ func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthBuf []float64
 			continue
 		}
 		f := 1.0 / invF
-		if f <= 0 || f >= depthBuf[x] {
+		if f <= 0 {
 			continue
 		}
 		yt := float64(g.viewH)/2 - ((zTop-eyeZ)/f)*focal
@@ -1201,7 +1197,6 @@ func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthBuf []float64
 		if runStart >= 0 {
 			ebitenutil.DrawRect(screen, float64(x), float64(runStart), 1, float64(y1-runStart+1), clr)
 		}
-		depthBuf[x] = f
 	}
 }
 
