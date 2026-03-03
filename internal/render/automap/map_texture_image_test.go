@@ -50,7 +50,33 @@ func TestTriangulateWorldPolygonWritesDebugImage(t *testing.T) {
 	if err := png.Encode(f, img); err != nil {
 		t.Fatalf("encode png: %v", err)
 	}
+	rawPath := filepath.Join("testdata", "triangulation_debug.rgb")
+	raw, err := os.Create(rawPath)
+	if err != nil {
+		t.Fatalf("create rgb: %v", err)
+	}
+	defer raw.Close()
+	if _, err := raw.Write(extractRGB(img)); err != nil {
+		t.Fatalf("write rgb: %v", err)
+	}
+	metaPath := filepath.Join("testdata", "triangulation_debug.rgb.txt")
+	meta := []byte("width=256\nheight=192\nformat=RGB24\nrow_major=true\n")
+	if err := os.WriteFile(metaPath, meta, 0o644); err != nil {
+		t.Fatalf("write rgb meta: %v", err)
+	}
 	t.Logf("wrote %s", outPath)
+}
+
+func extractRGB(img *image.RGBA) []byte {
+	b := make([]byte, 0, img.Bounds().Dx()*img.Bounds().Dy()*3)
+	r := img.Bounds()
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		for x := r.Min.X; x < r.Max.X; x++ {
+			c := img.RGBAAt(x, y)
+			b = append(b, c.R, c.G, c.B)
+		}
+	}
+	return b
 }
 
 func fillRect(img *image.RGBA, r image.Rectangle, clr color.RGBA) {
