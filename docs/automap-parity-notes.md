@@ -42,6 +42,7 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 - Current default runtime is walk/sim mode with automap rendering, not vanilla TAB-entered automap mode.
 - Allmap unrevealed-gray behavior is available via `line-color-mode=parity` (runtime toggle `L`).
 - Doom-style automap defaults/keybinds are mirrored: follow starts on, grid starts off, marks on `M`, clear on `C`, big-map on `0` (also `B` alias).
+- North-up map orientation is now default; heading-follow rotation is available as an opt-in toggle (`R`).
 
 ## Validation Plan
 

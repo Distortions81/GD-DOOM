@@ -127,7 +127,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		viewH:      opts.Height,
 		mode:       viewWalk,
 		followMode: true,
-		rotateView: true,
+		rotateView: false,
 		parity: automapParityState{
 			reveal: revealNormal,
 			iddt:   0,
