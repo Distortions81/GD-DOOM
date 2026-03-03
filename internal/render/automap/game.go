@@ -30,6 +30,7 @@ var (
 	wallNoHeightDiff = color.RGBA{R: 86, G: 86, B: 86, A: 255}
 	wallUnrevealed   = color.RGBA{R: 100, G: 100, B: 100, A: 255}
 	playerColor      = color.RGBA{R: 120, G: 240, B: 130, A: 255}
+	otherPlayerColor = color.RGBA{R: 90, G: 170, B: 255, A: 255}
 )
 
 var doomPlayerArrow = [][4]float64{
@@ -66,6 +67,8 @@ type game struct {
 	marks      []mapMark
 	nextMarkID int
 	p          player
+	localSlot  int
+	peerStarts []playerStart
 
 	lines       []physLine
 	lineValid   []int
@@ -157,6 +160,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		// Doom mode keeps strict parity color semantics.
 		opts.LineColorMode = "parity"
 	}
+	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
+		opts.PlayerSlot = 1
+	}
+	p, localSlot, starts := spawnPlayer(m, opts.PlayerSlot)
 	g := &game{
 		m:          m,
 		opts:       opts,
@@ -175,7 +182,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		bigMap:     false,
 		marks:      make([]mapMark, 0, 16),
 		nextMarkID: 1,
-		p:          spawnPlayer(m),
+		p:          p,
+		localSlot:  localSlot,
+		peerStarts: nonLocalStarts(starts, localSlot),
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -525,6 +534,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 	}
 	g.drawMarks(screen)
 	g.drawPlayer(screen)
+	g.drawPeerPlayers(screen)
 
 	modeText := "MAP"
 	if g.mode == viewWalk {
@@ -782,10 +792,10 @@ func (g *game) drawPlayer(screen *ebiten.Image) {
 		return
 	}
 	ang := angleToRadians(g.renderAngle)
-	g.drawPlayerArrowWorld(screen, px, py, ang)
+	g.drawPlayerArrowWorld(screen, px, py, ang, playerColor)
 }
 
-func (g *game) drawPlayerArrowWorld(screen *ebiten.Image, px, py, ang float64) {
+func (g *game) drawPlayerArrowWorld(screen *ebiten.Image, px, py, ang float64, clr color.Color) {
 	ca := math.Cos(ang)
 	sa := math.Sin(ang)
 	for _, seg := range doomPlayerArrow {
@@ -795,7 +805,7 @@ func (g *game) drawPlayerArrowWorld(screen *ebiten.Image, px, py, ang float64) {
 		by := seg[2]*sa + seg[3]*ca
 		x1, y1 := g.worldToScreen(px+ax, py+ay)
 		x2, y2 := g.worldToScreen(px+bx, py+by)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, playerColor, true)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, clr, true)
 	}
 }
 
@@ -813,6 +823,18 @@ func (g *game) drawPlayerArrowScreen(screen *ebiten.Image, sx, sy, ang float64) 
 		x2 := sx + bx*scale
 		y2 := sy - by*scale
 		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, playerColor, true)
+	}
+}
+
+func (g *game) drawPeerPlayers(screen *ebiten.Image) {
+	if len(g.peerStarts) == 0 {
+		return
+	}
+	for _, ps := range g.peerStarts {
+		px := float64(ps.x) / fracUnit
+		py := float64(ps.y) / fracUnit
+		ang := angleToRadians(ps.angle)
+		g.drawPlayerArrowWorld(screen, px, py, ang, otherPlayerColor)
 	}
 }
 

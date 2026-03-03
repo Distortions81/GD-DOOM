@@ -24,6 +24,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	width := fs.Int("width", 1280, "render window width")
 	height := fs.Int("height", 800, "render window height")
 	zoom := fs.Float64("zoom", 0, "starting zoom (>0 overrides Doom-style startup zoom)")
+	playerSlot := fs.Int("player", 1, "player start slot (1-4)")
 	lineColorMode := fs.String("line-color-mode", "parity", "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", false, "enable source-port style heading-follow rotation defaults")
 	allCheats := fs.Bool("all-cheats", false, "enable automap cheats at startup (allmap + iddt2)")
@@ -83,6 +84,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Width:          *width,
 			Height:         *height,
 			StartZoom:      *zoom,
+			PlayerSlot:     *playerSlot,
 			LineColorMode:  resolvedLineColorMode,
 			SourcePortMode: *sourcePortMode,
 			AllCheats:      *allCheats,

@@ -19,6 +19,7 @@ Snapshot of features currently working in this repo.
 - Doom profile default behavior (north-up orientation)
 - Source-port startup profile via `-sourceport-mode`
 - Walk/map mode toggle (`TAB`)
+- Local spawn slot selection (`-player 1..4`) with internal tracking of non-local player starts
 - Non-map placeholder screen (`no game render yet`)
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 - Level exit special handling with automatic next-map loading (normal + secret exits)
