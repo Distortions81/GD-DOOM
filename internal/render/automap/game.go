@@ -1693,7 +1693,7 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	rowStrideRGBA := g.viewW * 4
 	pi := y0*rowStridePix + x
 	rgbaI := pi * 4
-	txi := floorInt(texU)
+	txi := int(floorFixed(texU) >> fracBits)
 	tx := 0
 	if tex.Width > 0 && (tex.Width&(tex.Width-1)) == 0 {
 		tx = txi & (tex.Width - 1)
@@ -1703,14 +1703,14 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	rowScale := depth / focal
 	cy := float64(g.viewH) * 0.5
 	texV := texMid - ((cy - (float64(y0) + 0.5)) * rowScale)
-	texVFixed := floorInt(texV * 65536.0)
-	texVStepFixed := floorInt(rowScale * 65536.0)
+	texVFixed := floorFixed(texV)
+	texVStepFixed := floorFixed(rowScale)
 	pow2H := tex.Height > 0 && (tex.Height&(tex.Height-1)) == 0
 	hmask := tex.Height - 1
 	if shadeMul == 256 {
 		if pow2H {
 			for y := y0; y <= y1; y++ {
-				ty := (texVFixed >> 16) & hmask
+				ty := int((texVFixed >> fracBits) & int64(hmask))
 				ti := (ty*tex.Width + tx) * 4
 				g.wallPix[rgbaI+0] = tex.RGBA[ti+0]
 				g.wallPix[rgbaI+1] = tex.RGBA[ti+1]
@@ -1723,7 +1723,7 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 			return
 		}
 		for y := y0; y <= y1; y++ {
-			ty := wrapIndex(texVFixed>>16, tex.Height)
+			ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
 			ti := (ty*tex.Width + tx) * 4
 			g.wallPix[rgbaI+0] = tex.RGBA[ti+0]
 			g.wallPix[rgbaI+1] = tex.RGBA[ti+1]
@@ -1739,7 +1739,7 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	shade := &wallShadeLUT[shadeMul]
 	if pow2H {
 		for y := y0; y <= y1; y++ {
-			ty := (texVFixed >> 16) & hmask
+			ty := int((texVFixed >> fracBits) & int64(hmask))
 			ti := (ty*tex.Width + tx) * 4
 			g.wallPix[rgbaI+0] = shade[tex.RGBA[ti+0]]
 			g.wallPix[rgbaI+1] = shade[tex.RGBA[ti+1]]
@@ -1752,7 +1752,7 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		return
 	}
 	for y := y0; y <= y1; y++ {
-		ty := wrapIndex(texVFixed>>16, tex.Height)
+		ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
 		ti := (ty*tex.Width + tx) * 4
 		g.wallPix[rgbaI+0] = shade[tex.RGBA[ti+0]]
 		g.wallPix[rgbaI+1] = shade[tex.RGBA[ti+1]]
@@ -1772,9 +1772,10 @@ func initWallShadeLUT() {
 	}
 }
 
-func floorInt(v float64) int {
-	i := int(v)
-	if float64(i) > v {
+func floorFixed(v float64) int64 {
+	f := v * fracUnit
+	i := int64(f)
+	if float64(i) > f {
 		i--
 	}
 	return i
@@ -1888,16 +1889,20 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				}
 				continue
 			}
+			wxFixed := floorFixed(wxSpan)
+			wyFixed := floorFixed(wySpan)
+			stepWXFixed := floorFixed(stepWX)
+			stepWYFixed := floorFixed(stepWY)
 			for x := x1; x <= x2; x++ {
-				u := floorInt(wxSpan) & 63
-				v := floorInt(wySpan) & 63
+				u := int(wxFixed>>fracBits) & 63
+				v := int(wyFixed>>fracBits) & 63
 				ti := ((v << 6) + u) << 2
 				pix[i+0] = tex[ti+0]
 				pix[i+1] = tex[ti+1]
 				pix[i+2] = tex[ti+2]
 				pix[i+3] = 255
-				wxSpan += stepWX
-				wySpan += stepWY
+				wxFixed += stepWXFixed
+				wyFixed += stepWYFixed
 				i += 4
 			}
 		}
