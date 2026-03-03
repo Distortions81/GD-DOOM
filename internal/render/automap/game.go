@@ -1066,25 +1066,29 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	for i := range depthBuf {
 		depthBuf[i] = math.Inf(1)
 	}
-	for _, li := range g.visibleLineIndicesPseudo3D() {
+	for _, si := range g.visibleSegIndicesPseudo3D() {
+		if si < 0 || si >= len(g.m.Segs) {
+			continue
+		}
+		seg := g.m.Segs[si]
+		li := int(seg.Linedef)
 		if li < 0 || li >= len(g.m.Linedefs) {
 			continue
 		}
-		pi := g.physForLine[li]
-		if pi < 0 || pi >= len(g.lines) {
-			continue
-		}
 		ld := g.m.Linedefs[li]
-		pl := g.lines[pi]
 		d := g.linedefDecisionPseudo3D(ld)
 		if !d.visible {
 			continue
 		}
+		x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
+		if !ok {
+			continue
+		}
 
-		x1 := float64(pl.x1)/fracUnit - camX
-		y1 := float64(pl.y1)/fracUnit - camY
-		x2 := float64(pl.x2)/fracUnit - camX
-		y2 := float64(pl.y2)/fracUnit - camY
+		x1 := x1w - camX
+		y1 := y1w - camY
+		x2 := x2w - camX
+		y2 := y2w - camY
 		f1 := x1*ca + y1*sa
 		s1 := -x1*sa + y1*ca
 		f2 := x2*ca + y2*sa
@@ -1115,28 +1119,21 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 		base, _ := g.decisionStyle(d)
 		baseRGBA := color.RGBAModel.Convert(base).(color.RGBA)
-		front, back := g.lineSectors(ld)
-		thisSec, otherSec := front, back
-		if pointOnDivlineSide(g.p.x, g.p.y, divline{x: pl.x1, y: pl.y1, dx: pl.dx, dy: pl.dy}) == 1 {
-			thisSec, otherSec = back, front
-		}
-		if thisSec == nil {
-			thisSec = front
-		}
-		if thisSec == nil {
+		front, back := g.segSectors(si)
+		if front == nil {
 			continue
 		}
-		if otherSec == nil {
-			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, float64(thisSec.CeilingHeight), float64(thisSec.FloorHeight), eyeZ, focal, baseRGBA)
+		if back == nil {
+			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 			continue
 		}
-		openTop := math.Min(float64(thisSec.CeilingHeight), float64(otherSec.CeilingHeight))
-		openBottom := math.Max(float64(thisSec.FloorHeight), float64(otherSec.FloorHeight))
-		if float64(thisSec.CeilingHeight) > openTop {
-			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, float64(thisSec.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
+		openTop := math.Min(float64(front.CeilingHeight), float64(back.CeilingHeight))
+		openBottom := math.Max(float64(front.FloorHeight), float64(back.FloorHeight))
+		if float64(front.CeilingHeight) > openTop {
+			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, float64(front.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
 		}
-		if float64(thisSec.FloorHeight) < openBottom {
-			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, openBottom, float64(thisSec.FloorHeight), eyeZ, focal, baseRGBA)
+		if float64(front.FloorHeight) < openBottom {
+			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
 	}
 }
@@ -1224,7 +1221,12 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 	focal := float64(g.viewW) * 0.75
 	near := 2.0
 
-	for _, li := range g.visibleLineIndicesPseudo3D() {
+	for _, si := range g.visibleSegIndicesPseudo3D() {
+		if si < 0 || si >= len(g.m.Segs) {
+			continue
+		}
+		seg := g.m.Segs[si]
+		li := int(seg.Linedef)
 		if li < 0 || li >= len(g.m.Linedefs) {
 			continue
 		}
@@ -1233,16 +1235,15 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		if !d.visible {
 			continue
 		}
-		pi := g.physForLine[li]
-		if pi < 0 || pi >= len(g.lines) {
+		x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
+		if !ok {
 			continue
 		}
-		pl := g.lines[pi]
 
-		x1 := float64(pl.x1)/fracUnit - camX
-		y1 := float64(pl.y1)/fracUnit - camY
-		x2 := float64(pl.x2)/fracUnit - camX
-		y2 := float64(pl.y2)/fracUnit - camY
+		x1 := x1w - camX
+		y1 := y1w - camY
+		x2 := x2w - camX
+		y2 := y2w - camY
 
 		f1 := x1*ca + y1*sa
 		s1 := -x1*sa + y1*ca
@@ -1263,7 +1264,7 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 			}
 		}
 
-		fsec, bsec := g.lineSectors(ld)
+		fsec, bsec := g.segSectors(si)
 		if fsec == nil {
 			continue
 		}
@@ -2021,6 +2022,50 @@ func (g *game) lineSectors(ld mapdata.Linedef) (*mapdata.Sector, *mapdata.Sector
 		return front, nil
 	}
 	return front, &g.m.Sectors[s1]
+}
+
+func (g *game) segWorldEndpoints(segIdx int) (x1, y1, x2, y2 float64, ok bool) {
+	if segIdx < 0 || segIdx >= len(g.m.Segs) {
+		return 0, 0, 0, 0, false
+	}
+	sg := g.m.Segs[segIdx]
+	if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
+		return 0, 0, 0, 0, false
+	}
+	v1 := g.m.Vertexes[sg.StartVertex]
+	v2 := g.m.Vertexes[sg.EndVertex]
+	return float64(v1.X), float64(v1.Y), float64(v2.X), float64(v2.Y), true
+}
+
+func (g *game) segSectors(segIdx int) (*mapdata.Sector, *mapdata.Sector) {
+	if segIdx < 0 || segIdx >= len(g.m.Segs) {
+		return nil, nil
+	}
+	sg := g.m.Segs[segIdx]
+	li := int(sg.Linedef)
+	if li < 0 || li >= len(g.m.Linedefs) {
+		return nil, nil
+	}
+	ld := g.m.Linedefs[li]
+	frontSide := int(sg.Direction)
+	if frontSide < 0 || frontSide > 1 {
+		frontSide = 0
+	}
+	backSide := frontSide ^ 1
+	front := g.sectorFromSideNum(ld.SideNum[frontSide])
+	back := g.sectorFromSideNum(ld.SideNum[backSide])
+	return front, back
+}
+
+func (g *game) sectorFromSideNum(side int16) *mapdata.Sector {
+	if side < 0 || int(side) >= len(g.m.Sidedefs) {
+		return nil
+	}
+	sec := g.m.Sidedefs[int(side)].Sector
+	if int(sec) >= len(g.m.Sectors) {
+		return nil
+	}
+	return &g.m.Sectors[sec]
 }
 
 func (g *game) decisionStyle(d lineDecision) (color.Color, float64) {

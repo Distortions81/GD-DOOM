@@ -2,25 +2,22 @@ package automap
 
 import "gddoom/internal/mapdata"
 
-func (g *game) visibleLineIndicesPseudo3D() []int {
+func (g *game) visibleSegIndicesPseudo3D() []int {
 	if len(g.m.Nodes) == 0 {
-		return g.visibleLineIndices()
+		g.visibleBuf = g.visibleBuf[:0]
+		for i := range g.m.Segs {
+			g.visibleBuf = append(g.visibleBuf, i)
+		}
+		return g.visibleBuf
 	}
 	g.visibleBuf = g.visibleBuf[:0]
-	g.renderEpoch++
-	if g.renderEpoch == 0 {
-		for i := range g.renderSeen {
-			g.renderSeen[i] = 0
-		}
-		g.renderEpoch = 1
-	}
 
 	root := uint16(len(g.m.Nodes) - 1)
-	g.traverseBSPNode(root, g.p.x, g.p.y)
+	g.traverseBSPSegs(root, g.p.x, g.p.y)
 	return g.visibleBuf
 }
 
-func (g *game) traverseBSPNode(child uint16, px, py int64) {
+func (g *game) traverseBSPSegs(child uint16, px, py int64) {
 	if child&0x8000 != 0 {
 		ss := int(child & 0x7fff)
 		if ss < 0 || ss >= len(g.m.SubSectors) {
@@ -32,15 +29,7 @@ func (g *game) traverseBSPNode(child uint16, px, py int64) {
 			if si < 0 || si >= len(g.m.Segs) {
 				continue
 			}
-			li := int(g.m.Segs[si].Linedef)
-			if li < 0 || li >= len(g.m.Linedefs) {
-				continue
-			}
-			if g.renderSeen[li] == g.renderEpoch {
-				continue
-			}
-			g.renderSeen[li] = g.renderEpoch
-			g.visibleBuf = append(g.visibleBuf, li)
+			g.visibleBuf = append(g.visibleBuf, si)
 		}
 		return
 	}
@@ -58,8 +47,8 @@ func (g *game) traverseBSPNode(child uint16, px, py int64) {
 	side := pointOnDivlineSide(px, py, dl)
 	front := n.ChildID[side]
 	back := n.ChildID[side^1]
-	g.traverseBSPNode(front, px, py)
-	g.traverseBSPNode(back, px, py)
+	g.traverseBSPSegs(front, px, py)
+	g.traverseBSPSegs(back, px, py)
 }
 
 func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) lineDecision {
