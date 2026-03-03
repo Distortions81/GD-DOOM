@@ -14,8 +14,9 @@ import (
 )
 
 const (
-	lineOneSidedWidth = 1.8
-	lineTwoSidedWidth = 1.2
+	lineOneSidedWidth  = 1.8
+	lineTwoSidedWidth  = 1.2
+	doomInitialZoomMul = 1.0 / 0.7
 )
 
 var (
@@ -127,7 +128,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		viewH:      opts.Height,
 		mode:       viewWalk,
 		followMode: true,
-		rotateView: false,
+		rotateView: opts.SourcePortMode,
 		parity: automapParityState{
 			reveal: revealNormal,
 			iddt:   0,
@@ -167,7 +168,7 @@ func (g *game) resetView() {
 	zx := float64(max(g.viewW, 1)) * margin / worldW
 	zy := float64(max(g.viewH, 1)) * margin / worldH
 	g.fitZoom = math.Max(math.Min(zx, zy), 0.0001)
-	g.zoom = g.fitZoom
+	g.zoom = g.fitZoom * doomInitialZoomMul
 }
 
 func (g *game) Update() error {

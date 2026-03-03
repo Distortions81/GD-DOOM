@@ -22,8 +22,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	render := fs.Bool("render", true, "launch Ebiten automap renderer")
 	width := fs.Int("width", 1280, "render window width")
 	height := fs.Int("height", 800, "render window height")
-	zoom := fs.Float64("zoom", 1.0, "starting zoom (<=0 means auto-fit)")
+	zoom := fs.Float64("zoom", 0, "starting zoom (>0 overrides Doom-style startup zoom)")
 	lineColorMode := fs.String("line-color-mode", "parity", "line color mode for automap")
+	sourcePortMode := fs.Bool("sourceport-mode", false, "enable source-port style heading-follow rotation defaults")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -59,10 +60,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *render {
 		err = automap.RunAutomap(m, automap.Options{
-			Width:         *width,
-			Height:        *height,
-			StartZoom:     *zoom,
-			LineColorMode: *lineColorMode,
+			Width:          *width,
+			Height:         *height,
+			StartZoom:      *zoom,
+			LineColorMode:  *lineColorMode,
+			SourcePortMode: *sourcePortMode,
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "render map %s: %v\n", selected, err)

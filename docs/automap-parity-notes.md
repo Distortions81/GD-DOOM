@@ -43,6 +43,8 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 - Allmap unrevealed-gray behavior is available via `line-color-mode=parity` (runtime toggle `L`).
 - Doom-style automap defaults/keybinds are mirrored: follow starts on, grid starts off, marks on `M`, clear on `C`, big-map on `0` (also `B` alias).
 - North-up map orientation is now default; heading-follow rotation is available as an opt-in toggle (`R`).
+- Launch flag `-sourceport-mode` starts with heading-follow rotation enabled (source-port style), while default launch remains Doom-like north-up.
+- Startup zoom now uses Doom-style auto zoom (`fit / 0.7`) unless `-zoom` is explicitly provided (>0).
 
 ## Validation Plan
 

@@ -61,7 +61,7 @@ Rewrite this repo into a Go codebase with phased delivery:
 
 ### Renderer Contract
 - `func RunAutomap(m *mapdata.Map, opts automap.Options) error`
-- `type Options struct { Width int; Height int; StartZoom float64; LineColorMode string }`
+- `type Options struct { Width int; Height int; StartZoom float64; LineColorMode string; SourcePortMode bool }`
 
 ## Milestones
 - Milestone 1 details: `docs/m1-parser-spec.md`
