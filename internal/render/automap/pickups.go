@@ -7,11 +7,12 @@ import (
 )
 
 type playerInventory struct {
-	BlueKey   bool
-	RedKey    bool
-	YellowKey bool
-	Backpack  bool
-	Weapons   map[int16]bool
+	BlueKey     bool
+	RedKey      bool
+	YellowKey   bool
+	Backpack    bool
+	RadSuitTics int
+	Weapons     map[int16]bool
 }
 
 type playerStats struct {
@@ -136,6 +137,8 @@ func isPickupType(typ int16) bool {
 		return true
 	case 2015, 2018, 2019: // armor
 		return true
+	case 2025: // radiation suit
+		return true
 	case 2007, 2048, 2008, 2049, 2010, 2046, 2047, 17, 8: // ammo + backpack
 		return true
 	case 2001, 2002, 2003, 2004, 2005, 2006: // weapons
@@ -185,6 +188,12 @@ func (g *game) applyPickup(typ int16) (string, soundEvent, bool) {
 		}
 		g.stats.Armor = 200
 		return "Picked up blue armor", soundEventPowerUp, true
+	case 2025:
+		tics := 60 * doomTicsPerSecond
+		if g.inventory.RadSuitTics < tics {
+			g.inventory.RadSuitTics = tics
+		}
+		return "Picked up a radiation suit", soundEventPowerUp, true
 	case 2007:
 		return g.gainAmmo("bullets", 10, "Picked up a clip")
 	case 2048:

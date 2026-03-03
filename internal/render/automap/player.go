@@ -246,6 +246,7 @@ func (g *game) updatePlayer(cmd moveCmd) {
 
 	g.xyMovement()
 	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
+	g.tickWorldLogic()
 	g.processThingPickups()
 }
 

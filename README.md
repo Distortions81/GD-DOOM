@@ -64,6 +64,7 @@ In sourceport mode, thing legend overlay is enabled by default; press `V` to tog
 ## Runtime Gameplay State (Current)
 
 - Item pickup is active for core Doom pickup classes (keys, health, armor, ammo, backpack, weapons).
+- Hazardous floor sectors now apply periodic damage (Doom-style timed ticks); radiation suit pickup is supported.
 - Collected pickups are removed from automap thing rendering.
 - Locked doors now check collected key inventory.
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).

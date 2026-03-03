@@ -112,6 +112,7 @@ type game struct {
 	thingCollected []bool
 	inventory      playerInventory
 	stats          playerStats
+	worldTic       int
 }
 
 type savedMapView struct {

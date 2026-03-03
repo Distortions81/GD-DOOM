@@ -24,6 +24,7 @@ Snapshot of features currently working in this repo.
 - Level exit special handling with automatic next-map loading (normal + secret exits)
 - Item pickup runtime for keys/health/armor/ammo/backpack/weapons, with inventory + player stat tracking
 - Locked door activation now uses collected key inventory
+- Hazard sector damage (specials `4/5/7/16`) with Doom-style periodic ticks; radiation suit pickup support
 
 ## Automap Features
 
