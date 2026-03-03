@@ -12,6 +12,8 @@ type Options struct {
 	SourcePortMode bool
 	AllCheats      bool
 	StartInMapMode bool
+	MapFloorTex2D  bool
+	FlatBank       map[string][]byte
 	SoundBank      SoundBank
 }
 

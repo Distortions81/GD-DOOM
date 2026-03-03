@@ -58,22 +58,23 @@ type game struct {
 	zoom    float64
 	fitZoom float64
 
-	mode       viewMode
-	walkRender walkRendererMode
-	followMode bool
-	rotateView bool
-	showHelp   bool
-	pseudo3D   bool
-	parity     automapParityState
-	showGrid   bool
-	showLegend bool
-	bigMap     bool
-	savedView  savedMapView
-	marks      []mapMark
-	nextMarkID int
-	p          player
-	localSlot  int
-	peerStarts []playerStart
+	mode          viewMode
+	walkRender    walkRendererMode
+	followMode    bool
+	rotateView    bool
+	showHelp      bool
+	pseudo3D      bool
+	parity        automapParityState
+	showGrid      bool
+	showLegend    bool
+	showMapFloors bool
+	bigMap        bool
+	savedView     savedMapView
+	marks         []mapMark
+	nextMarkID    int
+	p             player
+	localSlot     int
+	peerStarts    []playerStart
 
 	lines       []physLine
 	lineValid   []int
@@ -131,6 +132,11 @@ type game struct {
 	isDead         bool
 	damageFlashTic int
 	bonusFlashTic  int
+
+	mapFloorLayer *ebiten.Image
+	mapFloorPix   []byte
+	mapFloorW     int
+	mapFloorH     int
 }
 
 type savedMapView struct {
@@ -202,14 +208,15 @@ func newGame(m *mapdata.Map, opts Options) *game {
 			reveal: revealNormal,
 			iddt:   0,
 		},
-		showGrid:   false,
-		showLegend: opts.SourcePortMode,
-		bigMap:     false,
-		marks:      make([]mapMark, 0, 16),
-		nextMarkID: 1,
-		p:          p,
-		localSlot:  localSlot,
-		peerStarts: nonLocalStarts(starts, localSlot),
+		showGrid:      false,
+		showLegend:    opts.SourcePortMode,
+		showMapFloors: opts.SourcePortMode && opts.MapFloorTex2D,
+		bigMap:        false,
+		marks:         make([]mapMark, 0, 16),
+		nextMarkID:    1,
+		p:             p,
+		localSlot:     localSlot,
+		peerStarts:    nonLocalStarts(starts, localSlot),
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -576,6 +583,14 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Thing Legend OFF", 70)
 			}
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
+			g.showMapFloors = !g.showMapFloors
+			if g.showMapFloors {
+				g.setHUDMessage("Map Floor Textures ON", 70)
+			} else {
+				g.setHUDMessage("Map Floor Textures OFF", 70)
+			}
+		}
 	}
 }
 
@@ -628,6 +643,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 		return
 	}
 	g.prepareRenderState()
+	if g.showMapFloors && len(g.opts.FlatBank) > 0 {
+		g.drawMapFloorTextures2D(screen)
+	}
 	if g.showGrid {
 		g.drawGrid(screen)
 	}
@@ -1540,6 +1558,199 @@ func (g *game) worldToScreen(x, y float64) (float64, float64) {
 	return sx, sy
 }
 
+func (g *game) screenToWorld(sx, sy float64) (float64, float64) {
+	dx := (sx - float64(g.viewW)/2) / g.zoom
+	dy := (float64(g.viewH)/2 - sy) / g.zoom
+	if g.rotateView {
+		rot := (math.Pi / 2) - angleToRadians(g.renderAngle)
+		cr := math.Cos(rot)
+		sr := math.Sin(rot)
+		// Inverse of worldToScreen's rotation.
+		wdx := dx*cr + dy*sr
+		wdy := -dx*sr + dy*cr
+		dx = wdx
+		dy = wdy
+	}
+	return g.renderCamX + dx, g.renderCamY + dy
+}
+
+func (g *game) ensureMapFloorLayer() {
+	need := g.viewW * g.viewH * 4
+	if g.mapFloorLayer == nil || g.mapFloorW != g.viewW || g.mapFloorH != g.viewH || len(g.mapFloorPix) != need {
+		g.mapFloorLayer = ebiten.NewImage(g.viewW, g.viewH)
+		g.mapFloorPix = make([]byte, need)
+		g.mapFloorW = g.viewW
+		g.mapFloorH = g.viewH
+	}
+}
+
+func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
+	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 || len(g.opts.FlatBank) == 0 {
+		return
+	}
+	g.ensureMapFloorLayer()
+	for i := range g.mapFloorPix {
+		g.mapFloorPix[i] = 0
+	}
+	for ss := range g.m.SubSectors {
+		secIdx, ok := g.subSectorSectorIndex(ss)
+		if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
+			continue
+		}
+		flatName := g.m.Sectors[secIdx].FloorPic
+		flat, ok := g.opts.FlatBank[flatName]
+		if !ok || len(flat) != 64*64*4 {
+			continue
+		}
+		poly, bbox, ok := g.subSectorScreenPolygon(ss)
+		if !ok {
+			continue
+		}
+		for y := bbox.minY; y <= bbox.maxY; y++ {
+			for x := bbox.minX; x <= bbox.maxX; x++ {
+				if !pointInPolygon(float64(x)+0.5, float64(y)+0.5, poly) {
+					continue
+				}
+				wx, wy := g.screenToWorld(float64(x)+0.5, float64(y)+0.5)
+				tx := (int(math.Floor(wx)) & 63)
+				ty := (int(math.Floor(wy)) & 63)
+				si := (ty*64 + tx) * 4
+				di := (y*g.viewW + x) * 4
+				g.mapFloorPix[di+0] = flat[si+0]
+				g.mapFloorPix[di+1] = flat[si+1]
+				g.mapFloorPix[di+2] = flat[si+2]
+				g.mapFloorPix[di+3] = 255
+			}
+		}
+	}
+	g.mapFloorLayer.WritePixels(g.mapFloorPix)
+	screen.DrawImage(g.mapFloorLayer, nil)
+}
+
+type polyBBox struct {
+	minX int
+	minY int
+	maxX int
+	maxY int
+}
+
+type screenPt struct {
+	x float64
+	y float64
+}
+
+func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, polyBBox, bool) {
+	if ss < 0 || ss >= len(g.m.SubSectors) {
+		return nil, polyBBox{}, false
+	}
+	sub := g.m.SubSectors[ss]
+	if sub.SegCount < 3 {
+		return nil, polyBBox{}, false
+	}
+	poly := make([]screenPt, 0, sub.SegCount)
+	minX, minY := g.viewW-1, g.viewH-1
+	maxX, maxY := 0, 0
+	for i := 0; i < int(sub.SegCount); i++ {
+		si := int(sub.FirstSeg) + i
+		if si < 0 || si >= len(g.m.Segs) {
+			continue
+		}
+		sg := g.m.Segs[si]
+		if int(sg.StartVertex) >= len(g.m.Vertexes) {
+			continue
+		}
+		v := g.m.Vertexes[sg.StartVertex]
+		sx, sy := g.worldToScreen(float64(v.X), float64(v.Y))
+		poly = append(poly, screenPt{x: sx, y: sy})
+		ix := int(math.Round(sx))
+		iy := int(math.Round(sy))
+		if ix < minX {
+			minX = ix
+		}
+		if ix > maxX {
+			maxX = ix
+		}
+		if iy < minY {
+			minY = iy
+		}
+		if iy > maxY {
+			maxY = iy
+		}
+	}
+	if len(poly) < 3 {
+		return nil, polyBBox{}, false
+	}
+	if maxX < 0 || maxY < 0 || minX >= g.viewW || minY >= g.viewH {
+		return nil, polyBBox{}, false
+	}
+	if minX < 0 {
+		minX = 0
+	}
+	if minY < 0 {
+		minY = 0
+	}
+	if maxX >= g.viewW {
+		maxX = g.viewW - 1
+	}
+	if maxY >= g.viewH {
+		maxY = g.viewH - 1
+	}
+	if minX > maxX || minY > maxY {
+		return nil, polyBBox{}, false
+	}
+	return poly, polyBBox{minX: minX, minY: minY, maxX: maxX, maxY: maxY}, true
+}
+
+func (g *game) subSectorSectorIndex(ss int) (int, bool) {
+	if ss < 0 || ss >= len(g.m.SubSectors) {
+		return 0, false
+	}
+	sub := g.m.SubSectors[ss]
+	if sub.SegCount == 0 {
+		return 0, false
+	}
+	si := int(sub.FirstSeg)
+	if si < 0 || si >= len(g.m.Segs) {
+		return 0, false
+	}
+	sg := g.m.Segs[si]
+	if int(sg.Linedef) >= len(g.m.Linedefs) {
+		return 0, false
+	}
+	ld := g.m.Linedefs[sg.Linedef]
+	side := ld.SideNum[0]
+	if sg.Direction != 0 {
+		side = ld.SideNum[1]
+	}
+	if side < 0 || int(side) >= len(g.m.Sidedefs) {
+		// Fallback to whatever side exists.
+		if ld.SideNum[0] >= 0 && int(ld.SideNum[0]) < len(g.m.Sidedefs) {
+			side = ld.SideNum[0]
+		} else if ld.SideNum[1] >= 0 && int(ld.SideNum[1]) < len(g.m.Sidedefs) {
+			side = ld.SideNum[1]
+		} else {
+			return 0, false
+		}
+	}
+	sec := int(g.m.Sidedefs[side].Sector)
+	return sec, sec >= 0 && sec < len(g.m.Sectors)
+}
+
+func pointInPolygon(px, py float64, poly []screenPt) bool {
+	inside := false
+	j := len(poly) - 1
+	for i := 0; i < len(poly); i++ {
+		xi, yi := poly[i].x, poly[i].y
+		xj, yj := poly[j].x, poly[j].y
+		intersect := ((yi > py) != (yj > py)) && (px < (xj-xi)*(py-yi)/(yj-yi+1e-9)+xi)
+		if intersect {
+			inside = !inside
+		}
+		j = i
+	}
+	return inside
+}
+
 func (g *game) capturePrevState() {
 	g.prevCamX = g.camX
 	g.prevCamY = g.camY
@@ -1785,6 +1996,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 			"I  CYCLE IDDT",
 			"L  TOGGLE COLOR MODE",
 			"V  TOGGLE THING LEGEND",
+			"J  TOGGLE 2D FLOOR FLATS",
 			"HOME  RESET VIEW",
 		)
 	} else {

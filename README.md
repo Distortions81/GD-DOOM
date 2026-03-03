@@ -42,6 +42,7 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-line-color-mode <parity|doom>`: automap line coloring mode
 - `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
 - `-import-textures`: parse `PLAYPAL`/`PNAMES`/`TEXTURE1/2` and build texture tables for Ebiten use
+- `-map-floor-tex-2d`: sourceport map mode: draw floor flat textures in 2D automap (defaults to `true` when `-sourceport-mode` is enabled)
 
 Level progression:
 - Exit linedefs now transition to the next map in-sequence.
@@ -76,6 +77,7 @@ In sourceport mode, the current `use` target line is highlighted on automap.
 In sourceport mode, use-trigger button/switch lines are drawn in a distinct overlay color.
 In sourceport mode, legend panel includes map line-color meanings.
 In sourceport mode, walk view defaults to `doom-basic` untextured wall rendering; press `P` to toggle pseudo-3D.
+In sourceport mode, map floor flats are drawn in 2D automap by default; press `J` to toggle at runtime.
 
 Config notes:
 - `config.toml` is auto-read by default when present.

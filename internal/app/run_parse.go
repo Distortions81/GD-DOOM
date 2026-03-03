@@ -39,6 +39,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
 	defaultImportTextures := false
+	defaultMapFloorTex2D := false
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -94,6 +95,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.ImportTextures != nil {
 			defaultImportTextures = *cfg.ImportTextures
 		}
+		if cfg.MapFloorTex2D != nil {
+			defaultMapFloorTex2D = *cfg.MapFloorTex2D
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -117,6 +121,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build Ebiten-ready texture set at startup")
+	mapFloorTex2D := fs.Bool("map-floor-tex-2d", defaultMapFloorTex2D, "sourceport map mode: draw floor flats in 2D automap")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -130,6 +135,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	allCheatsSet := false
 	cheatLevelSet := false
 	invulnSet := false
+	mapFloorTex2DSet := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "line-color-mode" {
 			lineColorModeSet = true
@@ -143,6 +149,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if f.Name == "invuln" {
 			invulnSet = true
 		}
+		if f.Name == "map-floor-tex-2d" {
+			mapFloorTex2DSet = true
+		}
 	})
 	resolvedCheatLevel := *cheatLevel
 	resolvedInvuln := *invuln
@@ -151,6 +160,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if !invulnSet {
 			resolvedInvuln = true
 		}
+	}
+	resolvedMapFloorTex2D := *mapFloorTex2D
+	if *sourcePortMode && !mapFloorTex2DSet {
+		resolvedMapFloorTex2D = true
 	}
 	if strings.TrimSpace(*wadPath) == "" {
 		fmt.Fprintln(stderr, "-wad is required")
@@ -178,6 +191,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "texture import failed: %v\n", terr)
 		} else {
 			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
+		}
+	}
+	flatBank := map[string][]byte(nil)
+	if resolvedMapFloorTex2D {
+		fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
+		if ferr != nil {
+			fmt.Fprintf(stderr, "flat import failed: %v\n", ferr)
+		} else {
+			flatBank = fb
+			fmt.Fprintf(stderr, "flat import: flats=%d\n", len(flatBank))
 		}
 	}
 
@@ -208,6 +231,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SourcePortMode: *sourcePortMode,
 			AllCheats:      *allCheats,
 			StartInMapMode: *startInMap,
+			MapFloorTex2D:  resolvedMapFloorTex2D,
+			FlatBank:       flatBank,
 			SoundBank:      soundBank,
 		}
 		m, lerr := mapdata.LoadMap(wf, selected)
