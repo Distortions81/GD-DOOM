@@ -1093,10 +1093,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		s1 := -x1*sa + y1*ca
 		f2 := x2*ca + y2*sa
 		s2 := -x2*sa + y2*ca
-		// Backface cull: keep only front-facing segs for this winding convention.
-		if f1*s2-s1*f2 >= 0 {
-			continue
-		}
 		if f1 <= near && f2 <= near {
 			continue
 		}
@@ -1112,6 +1108,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 		}
 		if f1 <= near || f2 <= near {
+			continue
+		}
+		// Backface cull after near clipping to avoid dropping partially-visible segs.
+		if f1*s2-s1*f2 >= 0 {
 			continue
 		}
 
@@ -1272,10 +1272,6 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		s1 := -x1*sa + y1*ca
 		f2 := x2*ca + y2*sa
 		s2 := -x2*sa + y2*ca
-		// Backface cull for wireframe pseudo-3D.
-		if f1*s2-s1*f2 >= 0 {
-			continue
-		}
 
 		if f1 <= near && f2 <= near {
 			continue
@@ -1289,6 +1285,10 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 				f2 = near
 				s2 = s1 + (s2-s1)*t
 			}
+		}
+		// Backface cull after near clipping for stable edge behavior.
+		if f1*s2-s1*f2 >= 0 {
+			continue
 		}
 
 		fsec, bsec := g.segSectors(si)
