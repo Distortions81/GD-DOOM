@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/automap"
 	"gddoom/internal/wad"
 )
 
@@ -15,9 +16,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
-	wadPath := fs.String("wad", "", "path to IWAD file")
-	mapName := fs.String("map", "", "map name (E#M# or MAP##)")
+	wadPath := fs.String("wad", "DOOM1.WAD", "path to IWAD file")
+	mapName := fs.String("map", "E1M1", "map name (E#M# or MAP##)")
 	details := fs.Bool("details", false, "print decoded gameplay-relevant map details")
+	render := fs.Bool("render", true, "launch Ebiten automap renderer")
+	width := fs.Int("width", 1280, "render window width")
+	height := fs.Int("height", 800, "render window height")
+	zoom := fs.Float64("zoom", 0, "starting zoom (<=0 means auto-fit)")
+	lineColorMode := fs.String("line-color-mode", "doom", "line color mode for automap")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -50,6 +56,19 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "load map %s: %v\n", selected, err)
 		return 1
+	}
+	if *render {
+		err = automap.RunAutomap(m, automap.Options{
+			Width:         *width,
+			Height:        *height,
+			StartZoom:     *zoom,
+			LineColorMode: *lineColorMode,
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "render map %s: %v\n", selected, err)
+			return 1
+		}
+		return 0
 	}
 
 	fmt.Fprintf(stdout, "map=%s things=%d linedefs=%d sidedefs=%d vertexes=%d segs=%d ssectors=%d nodes=%d sectors=%d reject_bytes=%d blockmap_words=%d\n",

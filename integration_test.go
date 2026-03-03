@@ -30,7 +30,7 @@ func TestDOOM1E1M1Parses(t *testing.T) {
 func TestCLIDefaultMapSelectsFirstLevel(t *testing.T) {
 	var out bytes.Buffer
 	var err bytes.Buffer
-	code := app.RunParse([]string{"-wad", "DOOM1.WAD"}, &out, &err)
+	code := app.RunParse([]string{"-wad", "DOOM1.WAD", "-render=false"}, &out, &err)
 	if code != 0 {
 		t.Fatalf("RunParse() code=%d stderr=%q", code, err.String())
 	}
@@ -43,7 +43,7 @@ func TestCLIDefaultMapSelectsFirstLevel(t *testing.T) {
 func TestCLIDetailsIncludesDoorAndSpatialData(t *testing.T) {
 	var out bytes.Buffer
 	var err bytes.Buffer
-	code := app.RunParse([]string{"-wad", "DOOM1.WAD", "-map", "E1M1", "-details"}, &out, &err)
+	code := app.RunParse([]string{"-wad", "DOOM1.WAD", "-map", "E1M1", "-details", "-render=false"}, &out, &err)
 	if code != 0 {
 		t.Fatalf("RunParse() code=%d stderr=%q", code, err.String())
 	}
