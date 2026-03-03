@@ -145,6 +145,8 @@ type game struct {
 	damageFlashTic int
 	bonusFlashTic  int
 	subSectorSec   []int
+	subSectorPoly  [][]worldPt
+	subSectorBBox  []worldBBox
 
 	mapFloorLayer *ebiten.Image
 	mapFloorPix   []byte
@@ -233,9 +235,13 @@ const (
 )
 
 type floorFrameStats struct {
-	markedCols   int
-	emittedSpans int
-	rejectedSpan int
+	markedCols       int
+	emittedSpans     int
+	rejectedSpan     int
+	rejectNoSector   int
+	rejectNoPoly     int
+	rejectDegenerate int
+	rejectSpanClip   int
 }
 
 type plane3DFrameStats struct {
@@ -280,17 +286,18 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		},
 		showGrid:      false,
 		showLegend:    opts.SourcePortMode,
-		showMapFloors: opts.MapFloorTex2D,
+		showMapFloors: opts.SourcePortMode || opts.MapFloorTex2D,
 		bigMap:        false,
 		marks:         make([]mapMark, 0, 16),
 		nextMarkID:    1,
 		p:             p,
 		localSlot:     localSlot,
 		peerStarts:    nonLocalStarts(starts, localSlot),
-		cullLogBudget: 600,
+		cullLogBudget: 0,
 		floorDbgMode:  floorDebugTextured,
-		floor2DPath:   floor2DPathVisplane,
-		floorVisDiag:  floorVisDiagOff,
+		// Keep sourceport map textures on the stable legacy path by default.
+		floor2DPath:  floor2DPathLegacy,
+		floorVisDiag: floorVisDiagOff,
 	}
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
@@ -341,6 +348,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.zoom = opts.StartZoom
 	}
 	g.syncRenderState()
+	if g.mode == viewWalk {
+		// Avoid startup cursor-capture deltas rotating the initial spawn heading.
+		g.mouseLookSet = false
+		g.mouseLookSuppressTicks = detailMouseSuppressTicks
+	}
 	return g
 }
 
@@ -409,6 +421,9 @@ func (g *game) Update() error {
 			g.setHUDMessage("Automap Opened", 35)
 		} else {
 			g.mode = viewWalk
+			// Reset mouse baseline when entering walk mode to avoid turn spikes.
+			g.mouseLookSet = false
+			g.mouseLookSuppressTicks = detailMouseSuppressTicks
 			g.setHUDMessage("Automap Closed", 35)
 		}
 	}
@@ -827,7 +842,16 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
 		if g.showMapFloors {
 			ebitenutil.DebugPrintAt(screen, "floor2d="+g.floorDebugLabel()+" path="+g.floorPathLabel()+" diag="+g.floorVisDiagLabel(), 12, 76)
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("floorstats cols=%d spans=%d reject=%d", g.floorFrame.markedCols, g.floorFrame.emittedSpans, g.floorFrame.rejectedSpan), 12, 92)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf(
+				"floorstats cols=%d spans=%d reject=%d (sec=%d poly=%d deg=%d clip=%d)",
+				g.floorFrame.markedCols,
+				g.floorFrame.emittedSpans,
+				g.floorFrame.rejectedSpan,
+				g.floorFrame.rejectNoSector,
+				g.floorFrame.rejectNoPoly,
+				g.floorFrame.rejectDegenerate,
+				g.floorFrame.rejectSpanClip,
+			), 12, 92)
 		}
 		stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s wp=%s",
 			g.stats.Health,
@@ -2813,6 +2837,12 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	switch g.floor2DPath {
 	case floor2DPathVisplane:
 		g.drawMapFloorTextures2DVisplane(screen)
+		// Safety net: if visplane pass produced no spans, fall back to legacy fill.
+		// This keeps sourceport map textures visible while visplane parity evolves.
+		if g.floorFrame.emittedSpans == 0 {
+			g.floorFrame = floorFrameStats{}
+			g.drawMapFloorTextures2DLegacy(screen)
+		}
 	default:
 		g.drawMapFloorTextures2DLegacy(screen)
 	}
@@ -2822,80 +2852,225 @@ func (g *game) drawMapFloorTextures2DLegacy(screen *ebiten.Image) {
 	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 || len(g.opts.FlatBank) == 0 {
 		return
 	}
-	if g.flatImgCache == nil {
-		g.flatImgCache = make(map[string]*ebiten.Image, len(g.opts.FlatBank))
+	g.ensureMapFloorLayer()
+	pix := g.mapFloorPix
+	for i := 0; i < len(pix); i += 4 {
+		pix[i+0] = 0
+		pix[i+1] = 0
+		pix[i+2] = 0
+		pix[i+3] = 0
 	}
-	triOpts := &ebiten.DrawTrianglesOptions{
-		Filter:  ebiten.FilterNearest,
-		Address: ebiten.AddressRepeat,
+	rowWX0 := make([]float64, g.viewH)
+	rowWY0 := make([]float64, g.viewH)
+	rowStepWX := make([]float64, g.viewH)
+	rowStepWY := make([]float64, g.viewH)
+	for y := 0; y < g.viewH; y++ {
+		wx0, wy0 := g.screenToWorld(0.5, float64(y)+0.5)
+		wx1, wy1 := g.screenToWorld(1.5, float64(y)+0.5)
+		rowWX0[y] = wx0
+		rowWY0[y] = wy0
+		rowStepWX[y] = wx1 - wx0
+		rowStepWY[y] = wy1 - wy0
 	}
-	if g.whitePixel == nil {
-		g.whitePixel = ebiten.NewImage(1, 1)
-		g.whitePixel.Fill(color.White)
+
+	const fallbackR = 90
+	const fallbackG = 125
+	const fallbackB = 160
+	secTex := make([][]byte, len(g.m.Sectors))
+	secTexLoaded := make([]bool, len(g.m.Sectors))
+	const edgeEps = 1e-4
+
+	type edge2D struct {
+		ax float64
+		ay float64
+		bx float64
+		by float64
 	}
-	logBudget := 24
+
 	for ss := range g.m.SubSectors {
-		worldVerts, cx, cy, ok := g.subSectorWorldVertices(ss)
-		if !ok {
-			// Fallback for odd subsectors where loop reconstruction fails.
-			worldVerts, cx, cy, ok = g.subSectorVerticesFromSegList(ss)
+		sub := g.m.SubSectors[ss]
+		sec := -1
+		if ss < len(g.subSectorSec) {
+			sec = g.subSectorSec[ss]
 		}
-		if !ok {
-			if logBudget > 0 {
-				fmt.Printf("floor2d skip ss=%d reason=verts\n", ss)
-				logBudget--
+		if sec < 0 || sec >= len(g.m.Sectors) {
+			if s, ok := g.subSectorSectorIndex(ss); ok && s >= 0 && s < len(g.m.Sectors) {
+				sec = s
 			}
+		}
+		if sec < 0 || sec >= len(g.m.Sectors) {
+			g.floorFrame.rejectedSpan++
+			g.floorFrame.rejectNoSector++
 			continue
 		}
-		poly := make([]screenPt, 0, len(worldVerts))
-		for _, v := range worldVerts {
-			sx, sy := g.worldToScreen(v.x, v.y)
-			poly = append(poly, screenPt{x: sx, y: sy})
+		if !secTexLoaded[sec] {
+			secTex[sec] = g.opts.FlatBank[normalizeFlatName(g.m.Sectors[sec].FloorPic)]
+			secTexLoaded[sec] = true
 		}
-		secIdx, ok := g.subSectorSectorIndex(ss)
-		if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
-			secIdx = g.sectorAt(int64(cx*fracUnit), int64(cy*fracUnit))
-			if secIdx < 0 || secIdx >= len(g.m.Sectors) {
-				if logBudget > 0 {
-					fmt.Printf("floor2d skip ss=%d reason=sector\n", ss)
-					logBudget--
+		tex := secTex[sec]
+
+		var verts []worldPt
+		if ss < len(g.subSectorPoly) && len(g.subSectorPoly[ss]) >= 3 {
+			verts = g.subSectorPoly[ss]
+		} else if v, ok := g.subSectorWorldPolyCached(ss); ok && len(v) >= 3 {
+			verts = v
+		} else {
+			g.floorFrame.rejectedSpan++
+			g.floorFrame.rejectNoPoly++
+			continue
+		}
+
+		edges := make([]edge2D, 0, len(verts))
+		minY := g.viewH - 1
+		maxY := 0
+		addEdge := func(ax, ay, bx, by float64) {
+			edges = append(edges, edge2D{ax: ax, ay: ay, bx: bx, by: by})
+			iyA := int(math.Floor(ay))
+			iyB := int(math.Floor(by))
+			if iyA < minY {
+				minY = iyA
+			}
+			if iyB < minY {
+				minY = iyB
+			}
+			if iyA > maxY {
+				maxY = iyA
+			}
+			if iyB > maxY {
+				maxY = iyB
+			}
+		}
+		if polygonSimple(verts) {
+			for i := 0; i < len(verts); i++ {
+				a := verts[i]
+				b := verts[(i+1)%len(verts)]
+				ax, ay := g.worldToScreen(a.x, a.y)
+				bx, by := g.worldToScreen(b.x, b.y)
+				addEdge(ax, ay, bx, by)
+			}
+		} else {
+			// Fallback: trust explicit seg edges when loop order is malformed.
+			for i := 0; i < int(sub.SegCount); i++ {
+				si := int(sub.FirstSeg) + i
+				if si < 0 || si >= len(g.m.Segs) {
+					continue
 				}
+				sg := g.m.Segs[si]
+				if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
+					continue
+				}
+				va := g.m.Vertexes[sg.StartVertex]
+				vb := g.m.Vertexes[sg.EndVertex]
+				ax, ay := g.worldToScreen(float64(va.X), float64(va.Y))
+				bx, by := g.worldToScreen(float64(vb.X), float64(vb.Y))
+				addEdge(ax, ay, bx, by)
+			}
+		}
+		if len(edges) < 2 {
+			g.floorFrame.rejectedSpan++
+			g.floorFrame.rejectDegenerate++
+			continue
+		}
+		if minY < 0 {
+			minY = 0
+		}
+		if maxY >= g.viewH {
+			maxY = g.viewH - 1
+		}
+		if minY > maxY {
+			continue
+		}
+
+		xInts := make([]float64, 0, len(edges))
+		for y := minY; y <= maxY; y++ {
+			sy := float64(y) + 0.5
+			xInts = xInts[:0]
+			for _, e := range edges {
+				if (e.ay <= sy && e.by > sy) || (e.by <= sy && e.ay > sy) {
+					t := (sy - e.ay) / (e.by - e.ay)
+					xInts = append(xInts, e.ax+(e.bx-e.ax)*t)
+				}
+			}
+			if len(xInts) < 2 {
 				continue
 			}
-		}
-		flatName := g.m.Sectors[secIdx].FloorPic
-		flatImg, ok := g.flatImage(flatName)
-		if !ok || flatImg == nil {
-			if logBudget > 0 {
-				fmt.Printf("floor2d skip ss=%d reason=flat name=%q sec=%d\n", ss, flatName, secIdx)
-				logBudget--
+			sort.Float64s(xInts)
+			// Collapse duplicate crossings around shared vertices.
+			w := 1
+			for i := 1; i < len(xInts); i++ {
+				if math.Abs(xInts[i]-xInts[w-1]) < 1e-6 {
+					continue
+				}
+				xInts[w] = xInts[i]
+				w++
 			}
-			continue
-		}
-		if len(poly) < 3 {
-			if logBudget > 0 {
-				fmt.Printf("floor2d skip ss=%d reason=poly len=%d\n", ss, len(poly))
-				logBudget--
-			}
-			continue
-		}
-		// Subsector polygons are convex pieces from BSP: fan triangulation is robust.
-		g.floorFrame.markedCols += len(poly)
-		for i := 1; i+1 < len(poly); i++ {
-			i0, i1, i2 := 0, i, i+1
-			if i2 >= len(poly) {
+			xInts = xInts[:w]
+			if len(xInts)%2 != 0 {
 				g.floorFrame.rejectedSpan++
-				continue
+				g.floorFrame.rejectDegenerate++
+				xInts = xInts[:len(xInts)-1]
 			}
-			verts := g.floorDebugTriVertices(worldVerts, poly, i0, i1, i2, flatImg.Bounds().Dx(), flatImg.Bounds().Dy())
-			src := flatImg
-			if g.floorDbgMode != floorDebugTextured {
-				src = g.whitePixel
+			for i := 0; i+1 < len(xInts); i += 2 {
+				x1 := int(math.Ceil(xInts[i] - edgeEps))
+				x2 := int(math.Floor(xInts[i+1] + edgeEps))
+				if x1 < 0 {
+					x1 = 0
+				}
+				if x2 >= g.viewW {
+					x2 = g.viewW - 1
+				}
+				if x1 > x2 {
+					g.floorFrame.rejectedSpan++
+					g.floorFrame.rejectSpanClip++
+					continue
+				}
+				g.floorFrame.emittedSpans++
+				g.floorFrame.markedCols += x2 - x1 + 1
+
+				row := y * g.viewW * 4
+				wx := rowWX0[y] + rowStepWX[y]*float64(x1)
+				wy := rowWY0[y] + rowStepWY[y]*float64(x1)
+				stepWX := rowStepWX[y]
+				stepWY := rowStepWY[y]
+				for x := x1; x <= x2; x++ {
+					idx := row + x*4
+					switch g.floorDbgMode {
+					case floorDebugSolid:
+						pix[idx+0] = 95
+						pix[idx+1] = 145
+						pix[idx+2] = 215
+						pix[idx+3] = 255
+					case floorDebugUV:
+						u := frac01(wx / 64.0)
+						v := frac01(wy / 64.0)
+						pix[idx+0] = uint8(u * 255)
+						pix[idx+1] = uint8(v * 255)
+						pix[idx+2] = 0
+						pix[idx+3] = 255
+					default:
+						if len(tex) == 64*64*4 {
+							u := int(math.Floor(wx)) & 63
+							v := int(math.Floor(wy)) & 63
+							ti := (v*64 + u) * 4
+							pix[idx+0] = tex[ti+0]
+							pix[idx+1] = tex[ti+1]
+							pix[idx+2] = tex[ti+2]
+							pix[idx+3] = 255
+						} else {
+							pix[idx+0] = fallbackR
+							pix[idx+1] = fallbackG
+							pix[idx+2] = fallbackB
+							pix[idx+3] = 255
+						}
+					}
+					wx += stepWX
+					wy += stepWY
+				}
 			}
-			screen.DrawTriangles(verts, []uint16{0, 1, 2}, src, triOpts)
-			g.floorFrame.emittedSpans++
 		}
 	}
+	g.mapFloorLayer.WritePixels(pix)
+	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
 func (g *game) drawMapFloorTextures2DVisplane(screen *ebiten.Image) {
@@ -3553,55 +3728,173 @@ func (g *game) subSectorSectorIndex(ss int) (int, bool) {
 	if sub.SegCount == 0 {
 		return 0, false
 	}
-	counts := make(map[int]int)
-	bestSec, bestN := -1, 0
-	for i := 0; i < int(sub.SegCount); i++ {
-		si := int(sub.FirstSeg) + i
-		if si < 0 || si >= len(g.m.Segs) {
-			continue
-		}
-		sg := g.m.Segs[si]
-		if int(sg.Linedef) >= len(g.m.Linedefs) {
-			continue
-		}
-		ld := g.m.Linedefs[sg.Linedef]
-		sides := []int16{ld.SideNum[0], ld.SideNum[1]}
-		if sg.Direction != 0 {
-			sides[0], sides[1] = sides[1], sides[0]
-		}
-		for _, side := range sides {
-			if side < 0 || int(side) >= len(g.m.Sidedefs) {
-				continue
-			}
-			sec := int(g.m.Sidedefs[side].Sector)
-			if sec < 0 || sec >= len(g.m.Sectors) {
-				continue
-			}
-			counts[sec]++
-			if counts[sec] > bestN {
-				bestN = counts[sec]
-				bestSec = sec
-			}
-			break
+	// Doom associates a subsector with the sector of its first seg.
+	firstSeg := int(sub.FirstSeg)
+	if sec, ok := g.subSectorSectorFromSeg(firstSeg); ok {
+		return sec, true
+	}
+	// Fallback for malformed node data.
+	for i := 1; i < int(sub.SegCount); i++ {
+		if sec, ok := g.subSectorSectorFromSeg(int(sub.FirstSeg) + i); ok {
+			return sec, true
 		}
 	}
-	return bestSec, bestSec >= 0
+	return 0, false
 }
 
 func (g *game) initSubSectorSectorCache() {
 	if g.m == nil || len(g.m.SubSectors) == 0 {
 		g.subSectorSec = nil
+		g.subSectorPoly = nil
+		g.subSectorBBox = nil
 		return
 	}
 	g.subSectorSec = make([]int, len(g.m.SubSectors))
+	g.subSectorPoly = make([][]worldPt, len(g.m.SubSectors))
+	g.subSectorBBox = make([]worldBBox, len(g.m.SubSectors))
 	for i := range g.subSectorSec {
 		g.subSectorSec[i] = -1
+		g.subSectorBBox[i] = worldBBox{
+			minX: math.Inf(1),
+			minY: math.Inf(1),
+			maxX: math.Inf(-1),
+			maxY: math.Inf(-1),
+		}
 	}
 	for ss := range g.m.SubSectors {
 		if sec, ok := g.subSectorSectorIndex(ss); ok {
 			g.subSectorSec[ss] = sec
 		}
 	}
+
+	// Preferred path: derive exact convex subsector polygons by clipping through
+	// the BSP tree. This includes implicit edges that are not explicitly stored
+	// as segs, avoiding classic wedge holes in map floor fills.
+	g.buildSubSectorPolysFromNodes()
+
+	for ss := range g.m.SubSectors {
+		if len(g.subSectorPoly[ss]) < 3 {
+			if verts, ok := g.subSectorWorldPolyCached(ss); ok {
+				g.subSectorPoly[ss] = verts
+			}
+		}
+		if len(g.subSectorPoly[ss]) >= 3 {
+			g.subSectorBBox[ss] = worldPolyBBox(g.subSectorPoly[ss])
+		}
+	}
+}
+
+func (g *game) subSectorWorldPolyCached(ss int) ([]worldPt, bool) {
+	verts, _, _, ok := g.subSectorWorldVertices(ss)
+	if !ok {
+		verts, _, _, ok = g.subSectorVerticesFromSegList(ss)
+	}
+	if !ok || len(verts) < 3 {
+		return nil, false
+	}
+	return verts, true
+}
+
+func (g *game) subSectorAtFixed(x, y int64) int {
+	if len(g.m.Nodes) == 0 {
+		if len(g.m.SubSectors) == 0 {
+			return -1
+		}
+		return 0
+	}
+	child := uint16(len(g.m.Nodes) - 1)
+	for {
+		if child&0x8000 != 0 {
+			ss := int(child & 0x7fff)
+			if ss < 0 || ss >= len(g.m.SubSectors) {
+				return -1
+			}
+			return ss
+		}
+		ni := int(child)
+		if ni < 0 || ni >= len(g.m.Nodes) {
+			return -1
+		}
+		n := g.m.Nodes[ni]
+		dl := divline{
+			x:  int64(n.X) << fracBits,
+			y:  int64(n.Y) << fracBits,
+			dx: int64(n.DX) << fracBits,
+			dy: int64(n.DY) << fracBits,
+		}
+		side := pointOnDivlineSide(x, y, dl)
+		child = n.ChildID[side]
+	}
+}
+
+func (g *game) sectorForSubSector(ss int) int {
+	if ss >= 0 && ss < len(g.subSectorSec) {
+		if sec := g.subSectorSec[ss]; sec >= 0 && sec < len(g.m.Sectors) {
+			return sec
+		}
+	}
+	if ss < 0 || ss >= len(g.m.SubSectors) {
+		return -1
+	}
+	s := g.m.SubSectors[ss]
+	if int(s.FirstSeg) >= len(g.m.Segs) {
+		return -1
+	}
+	seg := g.m.Segs[s.FirstSeg]
+	if int(seg.Linedef) >= len(g.m.Linedefs) {
+		return -1
+	}
+	ld := g.m.Linedefs[seg.Linedef]
+	side := int(seg.Direction)
+	if side < 0 || side > 1 {
+		side = 0
+	}
+	sideNum := ld.SideNum[side]
+	if sideNum < 0 || int(sideNum) >= len(g.m.Sidedefs) {
+		return -1
+	}
+	sec := int(g.m.Sidedefs[int(sideNum)].Sector)
+	if sec < 0 || sec >= len(g.m.Sectors) {
+		return -1
+	}
+	return sec
+}
+
+func pointOnWorldSegment(p, a, b worldPt) bool {
+	const eps = 1e-6
+	cross := orient2D(a, b, p)
+	if math.Abs(cross) > eps {
+		return false
+	}
+	minX := math.Min(a.x, b.x) - eps
+	maxX := math.Max(a.x, b.x) + eps
+	minY := math.Min(a.y, b.y) - eps
+	maxY := math.Max(a.y, b.y) + eps
+	return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY
+}
+
+func pointInWorldPoly(p worldPt, poly []worldPt) bool {
+	if len(poly) < 3 {
+		return false
+	}
+	inside := false
+	for i, j := 0, len(poly)-1; i < len(poly); j, i = i, i+1 {
+		a := poly[j]
+		b := poly[i]
+		if pointOnWorldSegment(p, a, b) {
+			return true
+		}
+		yiAbove := a.y > p.y
+		yjAbove := b.y > p.y
+		if yiAbove == yjAbove {
+			continue
+		}
+		xInt := (b.x-a.x)*(p.y-a.y)/(b.y-a.y) + a.x
+		if xInt > p.x {
+			inside = !inside
+		}
+	}
+	return inside
 }
 
 type polyBBox struct {
@@ -3609,6 +3902,155 @@ type polyBBox struct {
 	minY int
 	maxX int
 	maxY int
+}
+
+type worldBBox struct {
+	minX float64
+	minY float64
+	maxX float64
+	maxY float64
+}
+
+func worldPolyBBox(poly []worldPt) worldBBox {
+	b := worldBBox{
+		minX: math.Inf(1),
+		minY: math.Inf(1),
+		maxX: math.Inf(-1),
+		maxY: math.Inf(-1),
+	}
+	for _, v := range poly {
+		if v.x < b.minX {
+			b.minX = v.x
+		}
+		if v.y < b.minY {
+			b.minY = v.y
+		}
+		if v.x > b.maxX {
+			b.maxX = v.x
+		}
+		if v.y > b.maxY {
+			b.maxY = v.y
+		}
+	}
+	return b
+}
+
+func nearlyEqualWorldPt(a, b worldPt, eps float64) bool {
+	return math.Abs(a.x-b.x) <= eps && math.Abs(a.y-b.y) <= eps
+}
+
+func appendWorldPtUnique(dst []worldPt, p worldPt, eps float64) []worldPt {
+	if len(dst) > 0 && nearlyEqualWorldPt(dst[len(dst)-1], p, eps) {
+		return dst
+	}
+	return append(dst, p)
+}
+
+func clipWorldPolyByDivline(poly []worldPt, a, b worldPt, side int) []worldPt {
+	if len(poly) < 3 {
+		return nil
+	}
+	const eps = 1e-6
+	inside := func(p worldPt) bool {
+		o := orient2D(a, b, p)
+		if side == 0 {
+			return o <= eps
+		}
+		return o >= -eps
+	}
+	intersect := func(p1, p2 worldPt) (worldPt, bool) {
+		o1 := orient2D(a, b, p1)
+		o2 := orient2D(a, b, p2)
+		den := o1 - o2
+		if math.Abs(den) < 1e-12 {
+			return worldPt{}, false
+		}
+		t := o1 / den
+		return worldPt{
+			x: p1.x + (p2.x-p1.x)*t,
+			y: p1.y + (p2.y-p1.y)*t,
+		}, true
+	}
+
+	out := make([]worldPt, 0, len(poly)+2)
+	prev := poly[len(poly)-1]
+	prevIn := inside(prev)
+	for _, cur := range poly {
+		curIn := inside(cur)
+		if prevIn && curIn {
+			out = appendWorldPtUnique(out, cur, eps)
+		} else if prevIn && !curIn {
+			if ip, ok := intersect(prev, cur); ok {
+				out = appendWorldPtUnique(out, ip, eps)
+			}
+		} else if !prevIn && curIn {
+			if ip, ok := intersect(prev, cur); ok {
+				out = appendWorldPtUnique(out, ip, eps)
+			}
+			out = appendWorldPtUnique(out, cur, eps)
+		}
+		prev = cur
+		prevIn = curIn
+	}
+	if len(out) >= 2 && nearlyEqualWorldPt(out[0], out[len(out)-1], eps) {
+		out = out[:len(out)-1]
+	}
+	if len(out) < 3 {
+		return nil
+	}
+	if math.Abs(polygonArea2(out)) < 1e-6 {
+		return nil
+	}
+	return out
+}
+
+func (g *game) buildSubSectorPolysFromNodes() {
+	if g.m == nil || len(g.m.Nodes) == 0 || len(g.m.SubSectors) == 0 {
+		return
+	}
+
+	w := math.Max(g.bounds.maxX-g.bounds.minX, 1)
+	h := math.Max(g.bounds.maxY-g.bounds.minY, 1)
+	pad := math.Max(w, h)*2 + 1024
+	root := []worldPt{
+		{x: g.bounds.minX - pad, y: g.bounds.minY - pad},
+		{x: g.bounds.maxX + pad, y: g.bounds.minY - pad},
+		{x: g.bounds.maxX + pad, y: g.bounds.maxY + pad},
+		{x: g.bounds.minX - pad, y: g.bounds.maxY + pad},
+	}
+
+	var walk func(child uint16, poly []worldPt)
+	walk = func(child uint16, poly []worldPt) {
+		if len(poly) < 3 {
+			return
+		}
+		if child&0x8000 != 0 {
+			ss := int(child & 0x7fff)
+			if ss < 0 || ss >= len(g.m.SubSectors) {
+				return
+			}
+			g.subSectorPoly[ss] = poly
+			return
+		}
+		ni := int(child)
+		if ni < 0 || ni >= len(g.m.Nodes) {
+			return
+		}
+		n := g.m.Nodes[ni]
+		a := worldPt{x: float64(n.X), y: float64(n.Y)}
+		b := worldPt{x: float64(n.X) + float64(n.DX), y: float64(n.Y) + float64(n.DY)}
+
+		p0 := clipWorldPolyByDivline(poly, a, b, 0)
+		if len(p0) >= 3 {
+			walk(n.ChildID[0], p0)
+		}
+		p1 := clipWorldPolyByDivline(poly, a, b, 1)
+		if len(p1) >= 3 {
+			walk(n.ChildID[1], p1)
+		}
+	}
+
+	walk(uint16(len(g.m.Nodes)-1), root)
 }
 
 type screenPt struct {
@@ -3783,14 +4225,49 @@ func (g *game) segSectors(segIdx int) (*mapdata.Sector, *mapdata.Sector) {
 }
 
 func (g *game) sectorFromSideNum(side int16) *mapdata.Sector {
+	secIdx := g.sectorIndexFromSideNum(side)
+	if secIdx < 0 || secIdx >= len(g.m.Sectors) {
+		return nil
+	}
+	return &g.m.Sectors[secIdx]
+}
+
+func (g *game) subSectorSectorFromSeg(segIdx int) (int, bool) {
+	if segIdx < 0 || segIdx >= len(g.m.Segs) {
+		return 0, false
+	}
+	sg := g.m.Segs[segIdx]
+	if int(sg.Linedef) < 0 || int(sg.Linedef) >= len(g.m.Linedefs) {
+		return 0, false
+	}
+	ld := g.m.Linedefs[sg.Linedef]
+	frontSide := int(sg.Direction)
+	if frontSide < 0 || frontSide > 1 {
+		frontSide = 0
+	}
+	backSide := frontSide ^ 1
+	if sec := g.sectorIndexFromSideNum(ld.SideNum[frontSide]); sec >= 0 {
+		return sec, true
+	}
+	back := g.sectorIndexFromSideNum(ld.SideNum[backSide])
+	if back >= 0 && (ld.SideNum[0] < 0 || ld.SideNum[1] < 0) {
+		return back, true
+	}
+	if back >= 0 {
+		return back, true
+	}
+	return 0, false
+}
+
+func (g *game) sectorIndexFromSideNum(side int16) int {
 	if side < 0 || int(side) >= len(g.m.Sidedefs) {
-		return nil
+		return -1
 	}
-	sec := g.m.Sidedefs[int(side)].Sector
-	if int(sec) >= len(g.m.Sectors) {
-		return nil
+	sec := int(g.m.Sidedefs[int(side)].Sector)
+	if sec < 0 || sec >= len(g.m.Sectors) {
+		return -1
 	}
-	return &g.m.Sectors[sec]
+	return sec
 }
 
 func (g *game) decisionStyle(d lineDecision) (color.Color, float64) {

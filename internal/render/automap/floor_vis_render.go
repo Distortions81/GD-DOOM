@@ -102,12 +102,12 @@ func (g *game) markScreenPolygonColumns(pl *floorVisplane, poly []screenPt) {
 
 func (g *game) buildFloorVisplaneMarks() {
 	for ss := range g.m.SubSectors {
-		worldVerts, cx, cy, ok := g.subSectorWorldVertices(ss)
+		worldVerts, cx, cy, ok := g.subSectorConvexVertices(ss)
 		if !ok {
-			worldVerts, cx, cy, ok = g.subSectorVerticesFromSegList(ss)
+			worldVerts, cx, cy, ok = g.subSectorWorldVertices(ss)
 		}
 		if !ok {
-			worldVerts, cx, cy, ok = g.subSectorConvexVertices(ss)
+			worldVerts, cx, cy, ok = g.subSectorVerticesFromSegList(ss)
 		}
 		if !ok {
 			continue

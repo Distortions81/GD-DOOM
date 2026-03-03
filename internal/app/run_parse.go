@@ -206,7 +206,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	flatBank := map[string][]byte(nil)
-	if resolvedMapFloorTex2D {
+	loadFlats := resolvedMapFloorTex2D || *sourcePortMode
+	if loadFlats {
 		fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
 		if ferr != nil {
 			fmt.Fprintf(stderr, "flat import failed: %v\n", ferr)
