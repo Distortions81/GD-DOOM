@@ -1028,8 +1028,9 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 			botZ = math.Min(botZ, float64(bsec.FloorHeight))
 		}
 
-		sx1 := float64(g.viewW)/2 + (s1/f1)*focal
-		sx2 := float64(g.viewW)/2 + (s2/f2)*focal
+		// Use right-handed screen projection so turn/mouselook directions match controls.
+		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
+		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
 		yt1 := float64(g.viewH)/2 - ((topZ-eyeZ)/f1)*focal
 		yb1 := float64(g.viewH)/2 - ((botZ-eyeZ)/f1)*focal
 		yt2 := float64(g.viewH)/2 - ((topZ-eyeZ)/f2)*focal
