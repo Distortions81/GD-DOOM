@@ -138,6 +138,7 @@ type game struct {
 	mapFloorW     int
 	mapFloorH     int
 	flatImgCache  map[string]*ebiten.Image
+	cullLogBudget int
 }
 
 type savedMapView struct {
@@ -218,6 +219,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		p:             p,
 		localSlot:     localSlot,
 		peerStarts:    nonLocalStarts(starts, localSlot),
+		cullLogBudget: 600,
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -1094,12 +1096,26 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		s1 := -x1*sa + y1*ca
 		f2 := x2*ca + y2*sa
 		s2 := -x2*sa + y2*ca
+		origF1, origS1, origF2, origS2 := f1, s1, f2, s2
+		preSX1 := float64(g.viewW) / 2
+		preSX2 := float64(g.viewW) / 2
+		if math.Abs(origF1) > 1e-9 {
+			preSX1 -= (origS1 / origF1) * focal
+		}
+		if math.Abs(origF2) > 1e-9 {
+			preSX2 -= (origS2 / origF2) * focal
+		}
 		f1, s1, f2, s2, ok = clipSegmentToNear(f1, s1, f2, s2, near)
 		if !ok {
+			g.logWallCull(si, "BEHIND", origF1, origF2, preSX1, preSX2)
 			continue
 		}
 		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
 		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
+		if !isFinite(sx1) || !isFinite(sx2) {
+			g.logWallCull(si, "FLIPPED", f1, f2, sx1, sx2)
+			continue
+		}
 		minSX := int(math.Floor(math.Min(sx1, sx2)))
 		maxSX := int(math.Ceil(math.Max(sx1, sx2)))
 		if minSX < 0 {
@@ -1109,10 +1125,12 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			maxSX = g.viewW - 1
 		}
 		if minSX > maxSX {
+			g.logWallCull(si, "OFFSCREEN", f1, f2, sx1, sx2)
 			continue
 		}
 		// Doom-style solid column clipping: skip segs fully covered by prior solid walls.
 		if solidFullyCovered(solid, minSX, maxSX) {
+			g.logWallCull(si, "OCCLUDED", f1, f2, sx1, sx2)
 			continue
 		}
 
@@ -1141,6 +1159,18 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
 	}
+}
+
+func isFinite(v float64) bool {
+	return !math.IsNaN(v) && !math.IsInf(v, 0)
+}
+
+func (g *game) logWallCull(segIdx int, reason string, z1, z2, x1, x2 float64) {
+	if g.cullLogBudget <= 0 {
+		return
+	}
+	g.cullLogBudget--
+	fmt.Printf("wall-cull seg=%d reason=%s z1=%.4f z2=%.4f x1=%.2f x2=%.2f\n", segIdx, reason, z1, z2, x1, x2)
 }
 
 func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64, float64, bool) {
