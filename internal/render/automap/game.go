@@ -162,6 +162,8 @@ type game struct {
 	mapFloorWorldStep  float64
 	mapFloorWorldStats floorFrameStats
 	mapFloorWorldState string
+	mapFloorLoopSets   []sectorLoopSet
+	mapFloorLoopInit   bool
 	wallLayer          *ebiten.Image
 	wallPix            []byte
 	wallW              int
@@ -235,8 +237,9 @@ const (
 type floor2DPathMode int
 
 const (
-	floor2DPathLegacy floor2DPathMode = iota
-	floor2DPathVisplane
+	floor2DPathRasterized floor2DPathMode = iota
+	floor2DPathCached
+	floor2DPathSubsector
 )
 
 type floorVisDiagMode int
@@ -332,8 +335,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		peerStarts:    nonLocalStarts(starts, localSlot),
 		cullLogBudget: 0,
 		floorDbgMode:  floorDebugTextured,
-		// Keep sourceport map textures on the stable legacy path by default.
-		floor2DPath:  floor2DPathLegacy,
+		// Default to prebuilt rasterized map floor textures (fast path).
+		floor2DPath:  floor2DPathRasterized,
 		floorVisDiag: floorVisDiagOff,
 		mapTexDiag:   false,
 	}
@@ -352,9 +355,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.initPhysics()
 	g.initSubSectorSectorCache()
-	if g.opts.SourcePortMode && len(g.opts.FlatBank) > 0 {
-		g.ensureMapFloorWorldLayerBuilt()
-	}
 	g.snd = newSoundSystem(opts.SoundBank)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -757,6 +757,9 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Map Texture Diag OFF", 70)
 			}
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
+			g.toggleMapFloor2DPath()
+		}
 	}
 }
 
@@ -896,9 +899,11 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, stats, 12, 28)
 		cheat := fmt.Sprintf("cheat=%d invuln=%t", g.cheatLevel, g.invulnerable)
 		ebitenutil.DebugPrintAt(screen, cheat, 12, 60)
+		floor2D := fmt.Sprintf("floor2d=%s %s", g.floorPathLabel(), g.mapFloorWorldState)
+		ebitenutil.DebugPrintAt(screen, floor2D, 12, 76)
 		if g.mapTexDiag {
 			d := g.mapTexDiagStats
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("maptex diag ok=%d short=%d no_poly=%d non_simple=%d tri_fail=%d", d.ok, d.segShort, d.noPoly, d.nonSimple, d.triFail), 12, 76)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("maptex diag ok=%d short=%d no_poly=%d non_simple=%d tri_fail=%d", d.ok, d.segShort, d.noPoly, d.nonSimple, d.triFail), 12, 92)
 		}
 		if g.showLegend {
 			g.drawThingLegend(screen)
@@ -2866,15 +2871,127 @@ func shadeFactorByDistance(dist float64) float64 {
 
 func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	g.floorFrame = floorFrameStats{}
-	if g.ensureMapFloorWorldLayerBuilt() {
-		g.drawMapFloorWorldLayer(screen)
-		g.floorFrame = g.mapFloorWorldStats
-	} else {
-		// The map texture layer is precomputed at load time. If this build fails,
-		// keep map rendering deterministic by skipping textured fill this frame.
+	switch g.floor2DPath {
+	case floor2DPathCached:
+		if g.ensureMapFloorWorldLayerBuilt() {
+			g.drawMapFloorWorldLayer(screen)
+			g.floorFrame = g.mapFloorWorldStats
+		} else {
+			// The map texture layer is precomputed at load time. If this build fails,
+			// keep map rendering deterministic by skipping textured fill this frame.
+			g.floorFrame.rejectedSpan++
+			g.floorFrame.rejectNoPoly++
+		}
+	case floor2DPathSubsector:
+		g.drawMapFloorTextures2DGZDoom(screen)
+	default:
+		g.drawMapFloorTextures2DRasterized(screen)
+	}
+}
+
+func (g *game) ensureMapFloorLoopSetsBuilt() {
+	if g.mapFloorLoopInit {
+		return
+	}
+	g.mapFloorLoopSets = g.buildSectorLoopSets()
+	g.mapFloorLoopInit = true
+}
+
+func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
+	if g.m == nil || len(g.m.Sectors) == 0 || len(g.opts.FlatBank) == 0 {
+		return
+	}
+	g.ensureMapFloorLoopSetsBuilt()
+	if len(g.mapFloorLoopSets) == 0 {
 		g.floorFrame.rejectedSpan++
 		g.floorFrame.rejectNoPoly++
+		return
 	}
+	g.ensureMapFloorLayer()
+	clear(g.mapFloorPix)
+	w := g.viewW
+	h := g.viewH
+	pix := g.mapFloorPix
+	stats := floorFrameStats{}
+
+	for sec := range g.m.Sectors {
+		if sec < 0 || sec >= len(g.mapFloorLoopSets) {
+			continue
+		}
+		set := g.mapFloorLoopSets[sec]
+		if len(set.rings) == 0 {
+			continue
+		}
+
+		tex, texOK := g.flatRGBA(g.m.Sectors[sec].FloorPic)
+		minSX := math.Inf(1)
+		minSY := math.Inf(1)
+		maxSX := math.Inf(-1)
+		maxSY := math.Inf(-1)
+		for _, ring := range set.rings {
+			for _, p := range ring {
+				sx, sy := g.worldToScreen(p.x, p.y)
+				if sx < minSX {
+					minSX = sx
+				}
+				if sy < minSY {
+					minSY = sy
+				}
+				if sx > maxSX {
+					maxSX = sx
+				}
+				if sy > maxSY {
+					maxSY = sy
+				}
+			}
+		}
+		if !isFinite(minSX) || !isFinite(minSY) || !isFinite(maxSX) || !isFinite(maxSY) {
+			continue
+		}
+		x0 := max(0, int(math.Floor(minSX)))
+		y0 := max(0, int(math.Floor(minSY)))
+		x1 := min(w-1, int(math.Ceil(maxSX)))
+		y1 := min(h-1, int(math.Ceil(maxSY)))
+		if x0 > x1 || y0 > y1 {
+			continue
+		}
+
+		for py := y0; py <= y1; py++ {
+			row := py * w * 4
+			fy := float64(py) + 0.5
+			for px := x0; px <= x1; px++ {
+				fx := float64(px) + 0.5
+				wx, wy := g.screenToWorld(fx, fy)
+				if !pointInRingsEvenOdd(wx, wy, set.rings) {
+					continue
+				}
+				i := row + px*4
+				if texOK {
+					u := int(math.Floor(wx)) & 63
+					v := int(math.Floor(wy)) & 63
+					ti := (v*64 + u) * 4
+					pix[i+0] = tex[ti+0]
+					pix[i+1] = tex[ti+1]
+					pix[i+2] = tex[ti+2]
+					pix[i+3] = 255
+					stats.markedCols++
+				} else {
+					pix[i+0] = wallFloorChange.R
+					pix[i+1] = wallFloorChange.G
+					pix[i+2] = wallFloorChange.B
+					pix[i+3] = 255
+					stats.rejectedSpan++
+					stats.rejectNoSector++
+				}
+			}
+		}
+		stats.emittedSpans++
+	}
+
+	g.mapFloorLayer.WritePixels(pix)
+	screen.DrawImage(g.mapFloorLayer, nil)
+	g.mapFloorWorldState = "live-screen"
+	g.floorFrame = stats
 }
 
 func (g *game) ensureMapFloorWorldLayerBuilt() bool {
@@ -3358,11 +3475,26 @@ func (g *game) floorDebugLabel() string {
 
 func (g *game) floorPathLabel() string {
 	switch g.floor2DPath {
-	case floor2DPathVisplane:
-		return "visplane"
+	case floor2DPathCached:
+		return "cached"
+	case floor2DPathSubsector:
+		return "subsector"
 	default:
-		return "legacy"
+		return "rasterized"
 	}
+}
+
+func (g *game) toggleMapFloor2DPath() {
+	if g.floor2DPath == floor2DPathRasterized {
+		g.floor2DPath = floor2DPathCached
+		if !g.mapFloorWorldInit || g.mapFloorWorldLayer == nil {
+			g.ensureMapFloorWorldLayerBuilt()
+		}
+		g.setHUDMessage("Map Floor Path: CACHED", 70)
+		return
+	}
+	g.floor2DPath = floor2DPathRasterized
+	g.setHUDMessage("Map Floor Path: RASTERIZED", 70)
 }
 
 func (g *game) floorVisDiagLabel() string {
@@ -4535,7 +4667,8 @@ func (g *game) buildMapFloorWorldLayer() bool {
 
 	minX := g.bounds.minX
 	maxY := g.bounds.maxY
-	loops := g.buildSectorLoopSets()
+	g.ensureMapFloorLoopSetsBuilt()
+	loops := g.mapFloorLoopSets
 
 	stats := floorFrameStats{}
 	for sec := range g.m.Sectors {
@@ -5563,7 +5696,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 			"SOURCEPORT EXTRAS",
 			"R  TOGGLE HEADING-UP",
 			"P  TOGGLE WIREFRAME",
-			"J  TOGGLE 2D FLOOR FLATS",
+			"J  TOGGLE 2D FLOOR PATH (RASTER/CACHED)",
 			"B  BIG MAP (ALIAS)",
 			"HOME  RESET VIEW",
 			"O  TOGGLE NORMAL/ALLMAP",
