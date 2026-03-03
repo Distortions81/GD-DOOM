@@ -32,6 +32,7 @@ Snapshot of features currently working in this repo.
 - In-session death restart (`Enter`) with dead-state action lockout
 - Screen flash feedback for damage and pickups
 - Config-driven startup defaults via `config.toml` with CLI override precedence
+- Basic combat foundation (pistol-style hitscan, ammo drain, monster HP/death handling)
 
 ## Automap Features
 

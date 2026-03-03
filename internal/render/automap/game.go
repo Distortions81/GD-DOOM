@@ -116,6 +116,7 @@ type game struct {
 	levelRestartRequested bool
 
 	thingCollected []bool
+	thingHP        []int
 	inventory      playerInventory
 	stats          playerStats
 	worldTic       int
@@ -195,6 +196,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
+	g.thingHP = make([]int, len(m.Things))
+	g.initThingCombatState()
 	g.applySkillThingFiltering()
 	if !g.opts.StartInMapMode {
 		g.mode = viewWalk
@@ -366,6 +369,9 @@ func (g *game) updateMapMode() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.handleUse()
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyControlLeft) || inpututil.IsKeyJustPressed(ebiten.KeyControlRight) || inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		g.handleFire()
+	}
 	if g.opts.SourcePortMode {
 		mx, _ := ebiten.CursorPosition()
 		if g.mouseLookSet {
@@ -439,6 +445,9 @@ func (g *game) updateWalkMode() {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.handleUse()
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyControlLeft) || inpututil.IsKeyJustPressed(ebiten.KeyControlRight) || inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		g.handleFire()
 	}
 
 	mx, _ := ebiten.CursorPosition()

@@ -52,6 +52,7 @@ Level progression:
 - `Q/E`: turn (map mode)
 - `Shift`: run
 - `E` / `Space`: use
+- `Ctrl` / left mouse: fire (hitscan prototype)
 - `Arrow keys`: pan map (follow off)
 - `F`: toggle follow
 - `G`: toggle grid
@@ -79,6 +80,7 @@ Config notes:
 - Player death state is tracked (`YOU DIED` overlay) when health reaches `0`.
 - On death, press `Enter` to restart the current level in-session.
 - Damage/pickup screen flashes are active (red for damage, amber for pickups).
+- Basic combat foundation is active: pistol-like hitscan, ammo consumption, monster HP/death removal.
 - Collected pickups are removed from automap thing rendering.
 - Locked doors now check collected key inventory.
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).
