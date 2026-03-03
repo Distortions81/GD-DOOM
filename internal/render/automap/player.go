@@ -769,7 +769,7 @@ func (g *game) useLines() {
 		}
 		intercepts = append(intercepts, intercept{frac: frac, line: ld.idx})
 	}
-	sort.Slice(intercepts, func(i, j int) bool { return intercepts[i].frac < intercepts[j].frac })
+	sortUseIntercepts(intercepts, g.lineSpecial)
 
 	for _, in := range intercepts {
 		pi := -1
@@ -801,6 +801,28 @@ func (g *game) useLines() {
 	g.useText = "USE: no line"
 	g.useFlash = 35
 	g.emitSoundEvent(soundEventNoWay)
+}
+
+func sortUseIntercepts(intercepts []intercept, lineSpecial []uint16) {
+	const eps = 1e-6
+	sort.Slice(intercepts, func(i, j int) bool {
+		di := intercepts[i]
+		dj := intercepts[j]
+		if math.Abs(di.frac-dj.frac) <= eps {
+			si := uint16(0)
+			if di.line >= 0 && di.line < len(lineSpecial) {
+				si = lineSpecial[di.line]
+			}
+			sj := uint16(0)
+			if dj.line >= 0 && dj.line < len(lineSpecial) {
+				sj = lineSpecial[dj.line]
+			}
+			if (si != 0) != (sj != 0) {
+				return si != 0
+			}
+		}
+		return di.frac < dj.frac
+	})
 }
 
 func (g *game) useSpecialLine(lineIdx int, side int) {
