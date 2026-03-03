@@ -125,7 +125,12 @@ type game struct {
 	renderPY    float64
 	renderAngle uint32
 
-	lastUpdate time.Time
+	lastUpdate  time.Time
+	fpsFrames   int
+	fpsStamp    time.Time
+	fpsDisplay  float64
+	renderAccum time.Duration
+	renderMSAvg float64
 
 	lastMouseX             int
 	mouseLookSet           bool
@@ -172,6 +177,13 @@ type game struct {
 	wallPix            []byte
 	wallW              int
 	wallH              int
+	depthPix3D         []float64
+	wallTop3D          []int
+	wallBottom3D       []int
+	ceilingClip3D      []int
+	floorClip3D        []int
+	buffers3DW         int
+	buffers3DH         int
 	flatImgCache       map[string]*ebiten.Image
 	whitePixel         *ebiten.Image
 	cullLogBudget      int
@@ -197,6 +209,10 @@ type game struct {
 	skyRowViewH        int
 	skyRowTexH         int
 	skyRowIScale       float64
+	cpuCount           int
+	planeSpanSWG       sizedwaitgroup.SizedWaitGroup
+	segPrepassSWG      sizedwaitgroup.SizedWaitGroup
+	skyLookupSWG       sizedwaitgroup.SizedWaitGroup
 }
 
 type savedMapView struct {
@@ -342,6 +358,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		opts.PlayerSlot = 1
 	}
 	p, localSlot, starts := spawnPlayer(m, opts.PlayerSlot)
+	cpuCount := runtime.NumCPU()
+	if cpuCount < 1 {
+		cpuCount = 1
+	}
 	g := &game{
 		m:          m,
 		opts:       opts,
@@ -371,7 +391,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		floor2DPath:  floor2DPathRasterized,
 		floorVisDiag: floorVisDiagOff,
 		mapTexDiag:   false,
+		cpuCount:     cpuCount,
 	}
+	g.planeSpanSWG = sizedwaitgroup.New(cpuCount)
+	g.segPrepassSWG = sizedwaitgroup.New(cpuCount)
+	g.skyLookupSWG = sizedwaitgroup.New(cpuCount)
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -831,6 +855,8 @@ func (g *game) updateZoom() {
 }
 
 func (g *game) Draw(screen *ebiten.Image) {
+	drawStart := time.Now()
+	defer g.finishPerfCounter(drawStart)
 	screen.Fill(bgColor)
 	if g.mode != viewMap {
 		if g.walkRender == walkRendererPseudo {
@@ -870,6 +896,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		if g.paused {
 			g.drawPauseOverlay(screen)
 		}
+		g.drawPerfOverlay(screen)
 		return
 	}
 	g.prepareRenderState()
@@ -975,6 +1002,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.paused {
 		g.drawPauseOverlay(screen)
 	}
+	g.drawPerfOverlay(screen)
 }
 
 func (g *game) profileLabel() string {
@@ -1311,23 +1339,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		g.wallPix[i+3] = 0
 	}
 
-	depthPix := make([]float64, g.viewW*g.viewH)
-	for i := range depthPix {
-		depthPix[i] = math.Inf(1)
-	}
-	wallTop := make([]int, g.viewW)
-	wallBottom := make([]int, g.viewW)
-	for i := 0; i < g.viewW; i++ {
-		wallTop[i] = g.viewH
-		wallBottom[i] = -1
-	}
+	depthPix, wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
-	ceilingClip := make([]int, g.viewW)
-	floorClip := make([]int, g.viewW)
-	for i := 0; i < g.viewW; i++ {
-		ceilingClip[i] = -1
-		floorClip[i] = g.viewH
-	}
 	planeVis := make(map[plane3DKey][]*plane3DVisplane, 64)
 	planeOrder := make([]*plane3DVisplane, 0, 64)
 	solid := make([]solidSpan, 0, 16)
@@ -1650,7 +1663,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 		pix[i+2] = 0
 		pix[i+3] = 0
 	}
-	spansByPlane, active, inputSpans, hasSky := buildPlaneSpansParallel(planes, h)
+	spansByPlane, active, inputSpans, hasSky := g.buildPlaneSpansParallel(planes, h)
 	g.plane3DFrame.inputSpans += inputSpans
 	g.plane3DFrame.buckets = active
 	cx := float64(w) * 0.5
@@ -2871,6 +2884,39 @@ func (g *game) ensureWallLayer() {
 	}
 }
 
+func (g *game) ensure3DFrameBuffers() ([]float64, []int, []int, []int, []int) {
+	w := g.viewW
+	h := g.viewH
+	if w <= 0 {
+		w = 1
+	}
+	if h <= 0 {
+		h = 1
+	}
+	needPix := w * h
+	if g.buffers3DW != w || g.buffers3DH != h || len(g.depthPix3D) != needPix ||
+		len(g.wallTop3D) != w || len(g.wallBottom3D) != w ||
+		len(g.ceilingClip3D) != w || len(g.floorClip3D) != w {
+		g.depthPix3D = make([]float64, needPix)
+		g.wallTop3D = make([]int, w)
+		g.wallBottom3D = make([]int, w)
+		g.ceilingClip3D = make([]int, w)
+		g.floorClip3D = make([]int, w)
+		g.buffers3DW = w
+		g.buffers3DH = h
+	}
+	for i := 0; i < needPix; i++ {
+		g.depthPix3D[i] = math.Inf(1)
+	}
+	for i := 0; i < w; i++ {
+		g.wallTop3D[i] = h
+		g.wallBottom3D[i] = -1
+		g.ceilingClip3D[i] = -1
+		g.floorClip3D[i] = h
+	}
+	return g.depthPix3D, g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
+}
+
 func (g *game) wallTexture(name string) (WallTexture, bool) {
 	key := normalizeFlatName(name)
 	if key == "" || key == "-" {
@@ -3004,17 +3050,13 @@ func effectiveSkyTexHeight(tex WallTexture) int {
 	return 1
 }
 
-func buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([][]plane3DSpan, int, int, bool) {
+func (g *game) buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([][]plane3DSpan, int, int, bool) {
 	spansByPlane := make([][]plane3DSpan, len(planes))
 	if len(planes) == 0 {
 		return spansByPlane, 0, 0, false
 	}
-	limit := runtime.GOMAXPROCS(0)
-	if limit < 1 {
-		limit = 1
-	}
 	const chunk = 32
-	swg := sizedwaitgroup.New(limit)
+	swg := &g.planeSpanSWG
 	for start := 0; start < len(planes); start += chunk {
 		s := start
 		e := start + chunk
@@ -3051,12 +3093,8 @@ func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, fo
 	if len(visible) == 0 {
 		return out
 	}
-	limit := runtime.GOMAXPROCS(0)
-	if limit < 1 {
-		limit = 1
-	}
 	const chunk = 32
-	swg := sizedwaitgroup.New(limit)
+	swg := &g.segPrepassSWG
 	for start := 0; start < len(visible); start += chunk {
 		s := start
 		e := start + chunk
@@ -3190,12 +3228,8 @@ func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64,
 	row := g.ensureSkyRowLookup(viewW, viewH, texH)
 	uScale := float64(texW*4) / (2 * math.Pi)
 	col := make([]int, viewW)
-	limit := runtime.GOMAXPROCS(0)
-	if limit < 1 {
-		limit = 1
-	}
 	const chunk = 64
-	swg := sizedwaitgroup.New(limit)
+	swg := &g.skyLookupSWG
 	for start := 0; start < viewW; start += chunk {
 		s := start
 		e := start + chunk
@@ -6229,4 +6263,40 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 	help := "ESC resume  |  Shift+ESC quit"
 	ebitenutil.DebugPrintAt(screen, title, int(x+w*0.5)-len(title)*3, int(y)+28)
 	ebitenutil.DebugPrintAt(screen, help, int(x+w*0.5)-len(help)*3, int(y)+58)
+}
+
+func (g *game) finishPerfCounter(drawStart time.Time) {
+	now := time.Now()
+	if g.fpsStamp.IsZero() {
+		g.fpsStamp = now
+	}
+	g.fpsFrames++
+	g.renderAccum += now.Sub(drawStart)
+	elapsed := now.Sub(g.fpsStamp)
+	if elapsed >= time.Second {
+		g.fpsDisplay = float64(g.fpsFrames) / elapsed.Seconds()
+		if g.fpsFrames > 0 {
+			g.renderMSAvg = float64(g.renderAccum) / float64(time.Millisecond) / float64(g.fpsFrames)
+		} else {
+			g.renderMSAvg = 0
+		}
+		g.fpsFrames = 0
+		g.renderAccum = 0
+		g.fpsStamp = now
+	}
+}
+
+func (g *game) drawPerfOverlay(screen *ebiten.Image) {
+	line1 := fmt.Sprintf("FPS %.1f", g.fpsDisplay)
+	line2 := fmt.Sprintf("render %.2f ms", g.renderMSAvg)
+	w := len(line1)
+	if len(line2) > w {
+		w = len(line2)
+	}
+	x := g.viewW - w*7 - 10
+	if x < 4 {
+		x = 4
+	}
+	ebitenutil.DebugPrintAt(screen, line1, x, 10)
+	ebitenutil.DebugPrintAt(screen, line2, x, 24)
 }
