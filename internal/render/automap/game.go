@@ -623,9 +623,11 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.mode != viewMap {
 		if g.walkRender == walkRendererPseudo {
 			g.prepareRenderState()
-			g.drawPseudo3D(screen)
+			// Keep pseudo mode behavior-aligned with doom-basic until hidden-line
+			// and height handling are fully parity-correct.
+			g.drawDoomBasic3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
-			ebitenutil.DebugPrintAt(screen, "renderer=pseudo3d | P toggle | TAB automap", 12, 28)
+			ebitenutil.DebugPrintAt(screen, "renderer=pseudo3d(fallback) | P toggle | TAB automap", 12, 28)
 		} else {
 			g.prepareRenderState()
 			g.drawDoomBasic3D(screen)
