@@ -122,6 +122,8 @@ type game struct {
 	thingAggro     []bool
 	thingCooldown  []int
 	projectiles    []projectile
+	cheatLevel     int
+	invulnerable   bool
 	inventory      playerInventory
 	stats          playerStats
 	worldTic       int
@@ -207,6 +209,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingCooldown = make([]int, len(m.Things))
 	g.initThingCombatState()
 	g.applySkillThingFiltering()
+	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)
+	g.invulnerable = opts.Invulnerable
 	if !g.opts.StartInMapMode {
 		g.mode = viewWalk
 	}
@@ -219,8 +223,15 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.parity.reveal = revealAllMap
 	}
 	if g.opts.AllCheats {
-		g.parity.reveal = revealAllMap
-		g.parity.iddt = 2
+		// Backward compatible legacy switch.
+		if g.cheatLevel < 3 {
+			g.cheatLevel = 3
+		}
+		g.invulnerable = true
+	}
+	g.applyCheatLevel(g.cheatLevel, false)
+	if g.invulnerable {
+		g.setHUDMessage("IDDQD ON", 70)
 	}
 	g.physForLine = make([]int, len(g.m.Linedefs))
 	for i := range g.physForLine {
@@ -518,6 +529,17 @@ func (g *game) updateParityControls() {
 		}
 	}
 	if g.opts.SourcePortMode {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF10) {
+			g.applyCheatLevel((g.cheatLevel+1)%4, true)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
+			g.invulnerable = !g.invulnerable
+			if g.invulnerable {
+				g.setHUDMessage("IDDQD ON", 70)
+			} else {
+				g.setHUDMessage("IDDQD OFF", 70)
+			}
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyO) {
 			if g.parity.reveal == revealNormal {
 				g.parity.reveal = revealAllMap
@@ -662,6 +684,8 @@ func (g *game) Draw(screen *ebiten.Image) {
 			weaponName(g.inventory.ReadyWeapon),
 		)
 		ebitenutil.DebugPrintAt(screen, stats, 12, 28)
+		cheat := fmt.Sprintf("cheat=%d invuln=%t", g.cheatLevel, g.invulnerable)
+		ebitenutil.DebugPrintAt(screen, cheat, 12, 60)
 		if g.showLegend {
 			g.drawThingLegend(screen)
 		}

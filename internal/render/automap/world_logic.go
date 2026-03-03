@@ -59,6 +59,10 @@ func (g *game) damagePlayer(amount int, msg string) {
 	if amount <= 0 || g.stats.Health <= 0 {
 		return
 	}
+	if g.invulnerable {
+		g.setHUDMessage("God mode absorbed damage", 8)
+		return
+	}
 	g.stats.Health -= amount
 	g.damageFlashTic = max(g.damageFlashTic, 8)
 	if g.stats.Health < 0 {

@@ -95,3 +95,17 @@ func TestDamagePlayerSetsDeathStateAndFlash(t *testing.T) {
 		t.Fatalf("message=%q want=%q", g.useText, "You Died")
 	}
 }
+
+func TestDamagePlayerBlockedByInvulnerability(t *testing.T) {
+	g := &game{
+		stats:        playerStats{Health: 100},
+		invulnerable: true,
+	}
+	g.damagePlayer(25, "ouch")
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want=100", g.stats.Health)
+	}
+	if g.damageFlashTic != 0 {
+		t.Fatalf("damage flash=%d want=0", g.damageFlashTic)
+	}
+}

@@ -30,6 +30,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultZoom := 0.0
 	defaultPlayer := 1
 	defaultSkill := 3
+	defaultCheatLevel := 0
+	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
 	defaultAllCheats := false
@@ -65,6 +67,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.Skill != nil {
 			defaultSkill = *cfg.Skill
 		}
+		if cfg.CheatLevel != nil {
+			defaultCheatLevel = *cfg.CheatLevel
+		}
+		if cfg.Invulnerable != nil {
+			defaultInvuln = *cfg.Invulnerable
+		}
 		if cfg.LineColorMode != nil {
 			defaultLineColorMode = *cfg.LineColorMode
 			configLineColorSet = true
@@ -96,9 +104,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
+	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
+	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
-	allCheats := fs.Bool("all-cheats", defaultAllCheats, "enable automap cheats at startup (allmap + iddt2)")
+	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 
@@ -111,11 +121,31 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	_ = configFlag
 	lineColorModeSet := configLineColorSet
+	allCheatsSet := false
+	cheatLevelSet := false
+	invulnSet := false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "line-color-mode" {
 			lineColorModeSet = true
 		}
+		if f.Name == "all-cheats" {
+			allCheatsSet = true
+		}
+		if f.Name == "cheat-level" {
+			cheatLevelSet = true
+		}
+		if f.Name == "invuln" {
+			invulnSet = true
+		}
 	})
+	resolvedCheatLevel := *cheatLevel
+	resolvedInvuln := *invuln
+	if *allCheats && allCheatsSet && !cheatLevelSet {
+		resolvedCheatLevel = 3
+		if !invulnSet {
+			resolvedInvuln = true
+		}
+	}
 	if strings.TrimSpace(*wadPath) == "" {
 		fmt.Fprintln(stderr, "-wad is required")
 		return 2
@@ -158,6 +188,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			StartZoom:      *zoom,
 			PlayerSlot:     *playerSlot,
 			SkillLevel:     *skillLevel,
+			CheatLevel:     resolvedCheatLevel,
+			Invulnerable:   resolvedInvuln,
 			LineColorMode:  resolvedLineColorMode,
 			SourcePortMode: *sourcePortMode,
 			AllCheats:      *allCheats,

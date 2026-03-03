@@ -303,16 +303,7 @@ func (g *game) gainAmmo(kind string, amount int, msg string) (string, soundEvent
 }
 
 func (g *game) gainAmmoNoMsg(kind string, amount int) bool {
-	maxBullets := 200
-	maxShells := 50
-	maxRockets := 50
-	maxCells := 300
-	if g.inventory.Backpack {
-		maxBullets *= 2
-		maxShells *= 2
-		maxRockets *= 2
-		maxCells *= 2
-	}
+	maxBullets, maxShells, maxRockets, maxCells := ammoCaps(g.inventory.Backpack)
 	switch kind {
 	case "bullets":
 		prev := g.stats.Bullets
@@ -345,4 +336,18 @@ func (g *game) gainAmmoNoMsg(kind string, amount int) bool {
 	default:
 		panic(fmt.Sprintf("unknown ammo kind %q", kind))
 	}
+}
+
+func ammoCaps(backpack bool) (bullets int, shells int, rockets int, cells int) {
+	bullets = 200
+	shells = 50
+	rockets = 50
+	cells = 300
+	if backpack {
+		bullets *= 2
+		shells *= 2
+		rockets *= 2
+		cells *= 2
+	}
+	return bullets, shells, rockets, cells
 }

@@ -34,8 +34,10 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-zoom <float>`: startup zoom override (`>0`); default uses Doom-style auto zoom
 - `-player <1-4>`: choose local player start slot
 - `-skill <1-5>`: Doom skill level (`1=ITYTD`, `2=HNTR`, `3=HMP`, `4=UV`, `5=NM`)
+- `-cheat-level <0-3>`: startup cheats (`0=off`, `1=automap reveal`, `2=IDFA-like`, `3=IDKFA + invuln`)
+- `-invuln`: start with invulnerability (`IDDQD`-like)
 - `-sourceport-mode`: enable source-port style automap extras at startup
-- `-all-cheats`: start with automap cheats enabled (`allmap` + `IDDT2`)
+- `-all-cheats`: legacy alias for full cheats (`-cheat-level=3 -invuln=true`)
 - `-start-in-map`: start with automap open (default `false`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
 - `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
@@ -62,6 +64,10 @@ Level progression:
 - `+` / `-` / mouse wheel: zoom
 - `F1`: help overlay
 - `Esc`: quit
+
+Source-port cheat controls:
+- `F10`: cycle cheat level (`0 -> 1 -> 2 -> 3 -> 0`)
+- `F11`: toggle invulnerability (`IDDQD`-style)
 
 Source-port extras are enabled only with `-sourceport-mode`.
 In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.
