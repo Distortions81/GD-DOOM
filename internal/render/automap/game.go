@@ -61,6 +61,7 @@ type game struct {
 	followMode bool
 	rotateView bool
 	showHelp   bool
+	pseudo3D   bool
 	parity     automapParityState
 	showGrid   bool
 	showLegend bool
@@ -183,6 +184,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		mode:       viewMap,
 		followMode: true,
 		rotateView: opts.SourcePortMode,
+		pseudo3D:   opts.SourcePortMode,
 		parity: automapParityState{
 			reveal: revealNormal,
 			iddt:   0,
@@ -277,6 +279,14 @@ func (g *game) Update() error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
+	}
+	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		g.pseudo3D = !g.pseudo3D
+		if g.pseudo3D {
+			g.setHUDMessage("Pseudo3D ON", 70)
+		} else {
+			g.setHUDMessage("Pseudo3D OFF", 70)
+		}
 	}
 	if g.isDead && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
 		g.requestLevelRestart()
@@ -534,13 +544,24 @@ func (g *game) updateZoom() {
 func (g *game) Draw(screen *ebiten.Image) {
 	screen.Fill(bgColor)
 	if g.mode != viewMap {
-		ebitenutil.DebugPrintAt(screen, "no game render yet", 12, 12)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
-		ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
+		if g.opts.SourcePortMode && g.pseudo3D {
+			g.prepareRenderState()
+			g.drawPseudo3D(screen)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
+			ebitenutil.DebugPrintAt(screen, "pseudo3d walk mode | P toggle | TAB automap", 12, 28)
+		} else {
+			ebitenutil.DebugPrintAt(screen, "no game render yet", 12, 12)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
+			ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
+		}
 		if g.isDead {
 			g.drawDeathOverlay(screen)
 		}
 		g.drawFlashOverlay(screen)
+		if g.useFlash > 0 {
+			ebitenutil.DebugPrintAt(screen, g.useText, 12, 44)
+		}
+		g.drawHelpUI(screen)
 		return
 	}
 	g.prepareRenderState()
@@ -942,6 +963,86 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, true)
 }
 
+func (g *game) drawPseudo3D(screen *ebiten.Image) {
+	ceiling := color.RGBA{R: 20, G: 24, B: 36, A: 255}
+	floor := color.RGBA{R: 24, G: 18, B: 14, A: 255}
+	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceiling)
+	ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floor)
+
+	camX := g.renderPX
+	camY := g.renderPY
+	camAng := angleToRadians(g.renderAngle)
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	focal := float64(g.viewW) * 0.75
+	near := 2.0
+
+	for _, li := range g.visibleLineIndices() {
+		if li < 0 || li >= len(g.m.Linedefs) {
+			continue
+		}
+		ld := g.m.Linedefs[li]
+		d := g.linedefDecision(ld)
+		if !d.visible {
+			continue
+		}
+		pi := g.physForLine[li]
+		if pi < 0 || pi >= len(g.lines) {
+			continue
+		}
+		pl := g.lines[pi]
+
+		x1 := float64(pl.x1)/fracUnit - camX
+		y1 := float64(pl.y1)/fracUnit - camY
+		x2 := float64(pl.x2)/fracUnit - camX
+		y2 := float64(pl.y2)/fracUnit - camY
+
+		f1 := x1*ca + y1*sa
+		s1 := -x1*sa + y1*ca
+		f2 := x2*ca + y2*sa
+		s2 := -x2*sa + y2*ca
+
+		if f1 <= near && f2 <= near {
+			continue
+		}
+		if f1 <= near || f2 <= near {
+			t := (near - f1) / (f2 - f1)
+			if f1 < near {
+				f1 = near
+				s1 = s1 + (s2-s1)*t
+			} else {
+				f2 = near
+				s2 = s1 + (s2-s1)*t
+			}
+		}
+
+		fsec, bsec := g.lineSectors(ld)
+		if fsec == nil {
+			continue
+		}
+		topZ := float64(fsec.CeilingHeight)
+		botZ := float64(fsec.FloorHeight)
+		if bsec != nil {
+			topZ = math.Max(topZ, float64(bsec.CeilingHeight))
+			botZ = math.Min(botZ, float64(bsec.FloorHeight))
+		}
+
+		sx1 := float64(g.viewW)/2 + (s1/f1)*focal
+		sx2 := float64(g.viewW)/2 + (s2/f2)*focal
+		yt1 := float64(g.viewH)/2 - ((topZ-eyeZ)/f1)*focal
+		yb1 := float64(g.viewH)/2 - ((botZ-eyeZ)/f1)*focal
+		yt2 := float64(g.viewH)/2 - ((topZ-eyeZ)/f2)*focal
+		yb2 := float64(g.viewH)/2 - ((botZ-eyeZ)/f2)*focal
+
+		c, _ := g.decisionStyle(d)
+		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx2), float32(yt2), 1.4, c, true)
+		vector.StrokeLine(screen, float32(sx1), float32(yb1), float32(sx2), float32(yb2), 1.4, c, true)
+		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx1), float32(yb1), 1.2, c, true)
+		vector.StrokeLine(screen, float32(sx2), float32(yt2), float32(sx2), float32(yb2), 1.2, c, true)
+	}
+}
+
 func (g *game) drawUseSpecialLines(screen *ebiten.Image) {
 	for _, li := range g.visibleLineIndices() {
 		if li < 0 || li >= len(g.lineSpecial) || !buttonHighlightEligible(g.lineSpecial[li]) {
@@ -1255,6 +1356,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		lines = append(lines,
 			"SOURCEPORT EXTRAS",
 			"R  ROTATE/FOLLOW HEADING",
+			"P  TOGGLE PSEUDO3D WALK VIEW",
 			"B  BIG MAP (ALIAS)",
 			"O  TOGGLE NORMAL/ALLMAP",
 			"I  CYCLE IDDT",

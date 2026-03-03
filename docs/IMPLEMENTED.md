@@ -58,6 +58,7 @@ Snapshot of features currently working in this repo.
 - Source-port-only extra toggles gated behind `-sourceport-mode`
 - Source-port default thing legend overlay with runtime toggle
 - Source-port use-target automap highlight (line currently hittable by `use`)
+- Source-port pseudo-3D walk render mode (default ON, toggle with `P`)
 - Doom-style turn acceleration behavior (`SLOWTURNTICS` style ramp)
 
 ## Tests
