@@ -1202,7 +1202,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		ceilingClip[i] = -1
 		floorClip[i] = g.viewH
 	}
-	planeVis := make(map[plane3DKey]*plane3DVisplane, 64)
+	planeVis := make(map[plane3DKey][]*plane3DVisplane, 64)
 	solid := make([]solidSpan, 0, 16)
 	for _, si := range g.visibleSegIndicesPseudo3D() {
 		if si < 0 || si >= len(g.m.Segs) {
@@ -1321,8 +1321,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		var floorPlane *plane3DVisplane
 		var ceilPlane *plane3DVisplane
 		if planesEnabled {
-			floorPlane = plane3DVisplaneForKey(planeVis, g.plane3DKeyForSector(front, true), g.viewW)
-			ceilPlane = plane3DVisplaneForKey(planeVis, g.plane3DKeyForSector(front, false), g.viewW)
+			floorPlane = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, true), minSX, maxSX, g.viewW)
+			ceilPlane = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, false), minSX, maxSX, g.viewW)
 		}
 
 		for x := minSX; x <= maxSX; x++ {
@@ -1484,7 +1484,7 @@ func (g *game) drawBasicWallColumn(screen *ebiten.Image, depthPix []float64, wal
 	}
 }
 
-func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes map[plane3DKey]*plane3DVisplane) {
+func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes map[plane3DKey][]*plane3DVisplane) {
 	if len(planes) == 0 {
 		return
 	}
@@ -1503,14 +1503,21 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 	}
 	spanBuckets := make(map[plane3DKey][]plane3DSpan, len(planes))
 	keyOrder := make([]plane3DKey, 0, len(planes))
-	for key, pl := range planes {
-		spans := makePlane3DSpans(pl, h, nil)
-		if len(spans) == 0 {
-			continue
+	visCount := 0
+	for key, list := range planes {
+		for _, pl := range list {
+			spans := makePlane3DSpans(pl, h, nil)
+			if len(spans) == 0 {
+				continue
+			}
+			if _, ok := spanBuckets[key]; !ok {
+				keyOrder = append(keyOrder, key)
+				spanBuckets[key] = make([]plane3DSpan, 0, len(spans))
+			}
+			spanBuckets[key] = append(spanBuckets[key], spans...)
+			g.plane3DFrame.inputSpans += len(spans)
+			visCount++
 		}
-		spanBuckets[key] = spans
-		keyOrder = append(keyOrder, key)
-		g.plane3DFrame.inputSpans += len(spans)
 	}
 	sort.Slice(keyOrder, func(i, j int) bool {
 		if keyOrder[i].floor != keyOrder[j].floor {
@@ -1533,7 +1540,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 		}
 		return false
 	})
-	g.plane3DFrame.buckets = len(keyOrder)
+	g.plane3DFrame.buckets = visCount
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
 	flatCache := make(map[string][]byte, len(keyOrder))

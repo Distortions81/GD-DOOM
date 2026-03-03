@@ -10,14 +10,11 @@ type plane3DVisplane struct {
 	bottom []int16
 }
 
-func plane3DVisplaneForKey(planes map[plane3DKey]*plane3DVisplane, key plane3DKey, viewW int) *plane3DVisplane {
-	if pl, ok := planes[key]; ok {
-		return pl
-	}
+func newPlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane {
 	pl := &plane3DVisplane{
 		key:    key,
-		minX:   viewW,
-		maxX:   -1,
+		minX:   start,
+		maxX:   stop,
 		top:    make([]int16, viewW+2),
 		bottom: make([]int16, viewW+2),
 	}
@@ -25,7 +22,58 @@ func plane3DVisplaneForKey(planes map[plane3DKey]*plane3DVisplane, key plane3DKe
 		pl.top[i] = plane3DUnset
 		pl.bottom[i] = plane3DUnset
 	}
-	planes[key] = pl
+	return pl
+}
+
+// ensurePlane3DForRange emulates Doom's R_FindPlane + R_CheckPlane behavior.
+// If a same-key visplane has no set columns in the overlap range, we reuse it;
+// otherwise we allocate a new same-key visplane.
+func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3DKey, start, stop, viewW int) *plane3DVisplane {
+	if start > stop {
+		start, stop = stop, start
+	}
+	if start < 0 {
+		start = 0
+	}
+	if stop >= viewW {
+		stop = viewW - 1
+	}
+	if start > stop {
+		return nil
+	}
+	list := planes[key]
+	for _, pl := range list {
+		intrl := start
+		if pl.minX > intrl {
+			intrl = pl.minX
+		}
+		intrh := stop
+		if pl.maxX < intrh {
+			intrh = pl.maxX
+		}
+		conflict := false
+		if intrl <= intrh {
+			for x := intrl; x <= intrh; x++ {
+				ix := x + 1
+				if ix >= 0 && ix < len(pl.top) && pl.top[ix] != plane3DUnset {
+					conflict = true
+					break
+				}
+			}
+		}
+		if conflict {
+			continue
+		}
+		if start < pl.minX {
+			pl.minX = start
+		}
+		if stop > pl.maxX {
+			pl.maxX = stop
+		}
+		return pl
+	}
+	pl := newPlane3DVisplane(key, start, stop, viewW)
+	planes[key] = append(list, pl)
 	return pl
 }
 
@@ -50,12 +98,11 @@ func markPlane3DColumnRange(pl *plane3DVisplane, x, top, bottom int, ceilingclip
 	if t > b {
 		return false
 	}
-	if pl.top[ix] == plane3DUnset || t < int(pl.top[ix]) {
-		pl.top[ix] = int16(t)
+	if pl.top[ix] != plane3DUnset {
+		return false
 	}
-	if pl.bottom[ix] == plane3DUnset || b > int(pl.bottom[ix]) {
-		pl.bottom[ix] = int16(b)
-	}
+	pl.top[ix] = int16(t)
+	pl.bottom[ix] = int16(b)
 	if x < pl.minX {
 		pl.minX = x
 	}
