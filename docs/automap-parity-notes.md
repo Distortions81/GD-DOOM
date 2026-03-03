@@ -10,11 +10,11 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 - [ ] Support `IDDT` cheat levels:
 - [ ] Level 1: reveal map lines.
 - [ ] Level 2: reveal things.
-- [ ] Draw one-sided lines as solid walls.
+- [x] Draw one-sided lines as solid walls.
 - [ ] Draw secret doors (`ML_SECRET`) as normal walls unless cheat mode is active.
 - [ ] Draw teleporter lines (special 39) with teleporter color rule.
-- [ ] Draw floor-height delta two-sided lines with floor-change color.
-- [ ] Draw ceiling-height delta two-sided lines with ceiling-change color.
+- [x] Draw floor-height delta two-sided lines with floor-change color.
+- [x] Draw ceiling-height delta two-sided lines with ceiling-change color.
 - [ ] Draw two-sided lines with no height delta only in cheat mode.
 - [ ] Do not add a special "open door" visual style; doors are drawn by geometry/flags.
 
@@ -34,8 +34,13 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 
 ## Compatibility Notes
 
-- [ ] Keep current rotating heading/follow-heading mode behind a "modern" toggle.
+- [x] Keep current rotating heading/follow-heading mode behind a "modern" toggle.
 - [ ] Document that rotating map mode is source-port style, not vanilla Doom automap behavior.
+
+## Current Implementation Notes
+
+- Current default runtime is walk/sim mode with automap rendering, not vanilla TAB-entered automap mode.
+- Existing color semantics are geometric and partial; visibility/discovery/allmap/iddt logic remains to be added.
 
 ## Validation Plan
 
@@ -43,9 +48,9 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 - [ ] Add unit tests for line inclusion rules (`ML_MAPPED`, `LINE_NEVERSEE`, cheat/allmap gates).
 - [ ] Add screenshot-based regression checks for key map states.
 
-## Sound Decode Track (Project Root)
+## Sound Decode Track (Boot-Time In-Memory)
 
 - [ ] Inventory sound lumps (`DS*`, `DP*`, etc.) and output a report.
-- [ ] Decode DMX sound format to WAV in a root output folder.
-- [ ] Add CLI flags for decode mode and output directory.
+- [ ] Decode DMX sound format in-memory during boot/startup.
+- [ ] Print startup decode status message (count decoded, failures, skipped lumps).
 - [ ] Add parser/decoder tests for malformed and valid sample lumps.

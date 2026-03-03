@@ -6,6 +6,12 @@ Rewrite this repo into a Go codebase with phased delivery:
 1. Milestone 1 (parser-first): robust IWAD loader + map lump parsing + strict validation + CLI inspection output.
 2. Milestone 2 (immediate next): Ebiten desktop app to render map vectors (DOOM-style automap geometry).
 
+## Status Snapshot (2026-03-02)
+- Milestone 1: complete (WAD loader, map parsing, validation, CLI summary, integration coverage).
+- Milestone 2 baseline: complete (Ebiten app, bounds/fit, zoom, geometry render, overlay, controls).
+- Post-M2 parity work: in progress (vanilla automap visibility/color/control parity not complete).
+- Sound decode track: not started.
+
 ## Decisions Locked
 - Phased rewrite
 - Desktop target via Ebiten
@@ -64,9 +70,14 @@ Rewrite this repo into a Go codebase with phased delivery:
 ## Current Tracking Notes
 - Automap parity checklist: `docs/automap-parity-notes.md`
 - Includes vanilla automap visibility/color rules (`ML_MAPPED`, `LINE_NEVERSEE`, `pw_allmap`, `IDDT`) and control parity notes.
-- Also includes sound decode track notes for project-root output flow.
+- Also includes sound decode track notes for boot-time in-memory decode flow.
 
 ## Next Execution Order
-1. Implement automap line visibility/color parity from `docs/automap-parity-notes.md`.
-2. Add parity validation checks (E1M1 mode checks + focused logic tests).
-3. Implement sound lump inventory and DMX-to-WAV decode flow in CLI.
+1. Add explicit automap parity state model (normal/allmap/iddt levels) and wire controls for parity modes.
+2. Implement line inclusion + color parity rules (`ML_MAPPED`, `LINE_NEVERSEE`, secrets, teleporter, floor/ceiling deltas) and back them with focused unit tests.
+3. Add E1M1 parity acceptance checks for normal/allmap/iddt1/iddt2 states.
+4. Implement boot-time in-memory sound lump decode with startup status logging.
+
+## Known Gaps To Resolve
+- CLI map auto-selection should be driven by omitted `-map` value, not by a hardcoded default.
+- `LineColorMode` is parsed but parity semantics are not yet fully implemented against it.

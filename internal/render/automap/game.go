@@ -22,9 +22,11 @@ var (
 	bgColor          = color.RGBA{R: 5, G: 7, B: 9, A: 255}
 	wallOneSided     = color.RGBA{R: 220, G: 58, B: 48, A: 255}
 	wallSecret       = color.RGBA{R: 160, G: 100, B: 220, A: 255}
+	wallTeleporter   = color.RGBA{R: 40, G: 165, B: 220, A: 255}
 	wallFloorChange  = color.RGBA{R: 170, G: 120, B: 60, A: 255}
 	wallCeilChange   = color.RGBA{R: 220, G: 200, B: 70, A: 255}
 	wallNoHeightDiff = color.RGBA{R: 86, G: 86, B: 86, A: 255}
+	wallUnrevealed   = color.RGBA{R: 100, G: 100, B: 100, A: 255}
 	playerColor      = color.RGBA{R: 120, G: 240, B: 130, A: 255}
 )
 
@@ -54,6 +56,7 @@ type game struct {
 	followMode bool
 	rotateView bool
 	showHelp   bool
+	parity     automapParityState
 	p          player
 
 	lines       []physLine
@@ -78,6 +81,18 @@ type game struct {
 	mouseLookSet bool
 }
 
+type revealMode int
+
+const (
+	revealNormal revealMode = iota
+	revealAllMap
+)
+
+type automapParityState struct {
+	reveal revealMode
+	iddt   int
+}
+
 func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.Width <= 0 {
 		opts.Width = 1280
@@ -91,12 +106,15 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		bounds:     mapBounds(m),
 		viewW:      opts.Width,
 		viewH:      opts.Height,
-		mode:       viewMap,
+		mode:       viewWalk,
 		followMode: true,
 		rotateView: true,
-		p:          spawnPlayer(m),
+		parity: automapParityState{
+			reveal: revealAllMap,
+			iddt:   0,
+		},
+		p: spawnPlayer(m),
 	}
-	g.mode = viewWalk
 	g.initPhysics()
 	g.physForLine = make([]int, len(g.m.Linedefs))
 	for i := range g.physForLine {
@@ -132,15 +150,26 @@ func (g *game) Update() error {
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		if g.mode == viewWalk {
+			g.mode = viewMap
+		} else {
+			g.mode = viewWalk
+		}
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		g.rotateView = !g.rotateView
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
 	}
-	g.mode = viewWalk
-	ebiten.SetCursorMode(ebiten.CursorModeCaptured)
-	g.updateWalkMode()
+	if g.mode == viewMap {
+		ebiten.SetCursorMode(ebiten.CursorModeVisible)
+		g.updateMapMode()
+	} else {
+		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+		g.updateWalkMode()
+	}
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
@@ -148,6 +177,7 @@ func (g *game) Update() error {
 }
 
 func (g *game) updateMapMode() {
+	g.updateParityControls()
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		g.followMode = !g.followMode
 	}
@@ -178,6 +208,7 @@ func (g *game) updateMapMode() {
 }
 
 func (g *game) updateWalkMode() {
+	g.updateParityControls()
 	g.updateZoom()
 	cmd := moveCmd{}
 	speed := 0
@@ -230,6 +261,19 @@ func (g *game) updateWalkMode() {
 	g.camY = float64(g.p.y) / fracUnit
 }
 
+func (g *game) updateParityControls() {
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+		if g.parity.reveal == revealNormal {
+			g.parity.reveal = revealAllMap
+		} else {
+			g.parity.reveal = revealNormal
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyI) {
+		g.parity.iddt = (g.parity.iddt + 1) % 3
+	}
+}
+
 func (g *game) updateZoom() {
 	zoomStep := 1.03
 	if ebiten.IsKeyPressed(ebiten.KeyEqual) || ebiten.IsKeyPressed(ebiten.KeyKPAdd) {
@@ -268,7 +312,11 @@ func (g *game) Draw(screen *ebiten.Image) {
 		if x1 == x2 && y1 == y2 {
 			continue
 		}
-		c, w := g.linedefStyle(ld)
+		d := g.linedefDecision(ld)
+		if !d.visible {
+			continue
+		}
+		c, w := g.decisionStyle(d)
 		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(w), c, true)
 	}
 
@@ -278,10 +326,16 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.mode == viewWalk {
 		modeText = "WALK"
 	}
-	overlay := fmt.Sprintf("%s | mode %s | zoom %.2f | move WASD | mouse turn | arrows move/turn | Alt+arrows strafe | Shift run",
+	revealText := "normal"
+	if g.parity.reveal == revealAllMap {
+		revealText = "allmap"
+	}
+	overlay := fmt.Sprintf("%s | mode %s | zoom %.2f | reveal %s | iddt %d | move WASD | mouse turn | arrows move/turn | Alt+arrows strafe | Shift run",
 		g.m.Name,
 		modeText,
 		g.zoom,
+		revealText,
+		g.parity.iddt,
 	)
 	ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
 	if g.useFlash > 0 {
@@ -357,42 +411,49 @@ func (g *game) worldToScreen(x, y float64) (float64, float64) {
 	return sx, sy
 }
 
-func (g *game) linedefStyle(ld mapdata.Linedef) (color.Color, float64) {
-	const (
-		mlSecret = 0x20
-	)
+func (g *game) linedefDecision(ld mapdata.Linedef) lineDecision {
+	front, back := g.lineSectors(ld)
+	return parityLineDecision(ld, front, back, g.parity, g.opts.LineColorMode)
+}
 
-	if ld.SideNum[1] < 0 {
-		if ld.Flags&mlSecret != 0 {
-			return wallSecret, lineOneSidedWidth
-		}
-		return wallOneSided, lineOneSidedWidth
+func (g *game) lineSectors(ld mapdata.Linedef) (*mapdata.Sector, *mapdata.Sector) {
+	if ld.SideNum[0] < 0 || int(ld.SideNum[0]) >= len(g.m.Sidedefs) {
+		return nil, nil
 	}
-	if ld.SideNum[0] < 0 || ld.SideNum[1] < 0 {
-		return wallOneSided, lineOneSidedWidth
-	}
-	if int(ld.SideNum[0]) >= len(g.m.Sidedefs) || int(ld.SideNum[1]) >= len(g.m.Sidedefs) {
-		return wallOneSided, lineOneSidedWidth
-	}
-
 	s0 := g.m.Sidedefs[int(ld.SideNum[0])].Sector
+	if int(s0) >= len(g.m.Sectors) {
+		return nil, nil
+	}
+	front := &g.m.Sectors[s0]
+	if ld.SideNum[1] < 0 || int(ld.SideNum[1]) >= len(g.m.Sidedefs) {
+		return front, nil
+	}
 	s1 := g.m.Sidedefs[int(ld.SideNum[1])].Sector
-	if int(s0) >= len(g.m.Sectors) || int(s1) >= len(g.m.Sectors) {
-		return wallOneSided, lineOneSidedWidth
+	if int(s1) >= len(g.m.Sectors) {
+		return front, nil
 	}
+	return front, &g.m.Sectors[s1]
+}
 
-	sec0 := g.m.Sectors[s0]
-	sec1 := g.m.Sectors[s1]
-	if sec0.FloorHeight != sec1.FloorHeight {
-		return wallFloorChange, lineTwoSidedWidth
+func (g *game) decisionStyle(d lineDecision) (color.Color, float64) {
+	switch d.appearance {
+	case lineAppearanceOneSided:
+		return wallOneSided, d.width
+	case lineAppearanceSecret:
+		return wallSecret, d.width
+	case lineAppearanceTeleporter:
+		return wallTeleporter, d.width
+	case lineAppearanceFloorChange:
+		return wallFloorChange, d.width
+	case lineAppearanceCeilChange:
+		return wallCeilChange, d.width
+	case lineAppearanceNoHeightDiff:
+		return wallNoHeightDiff, d.width
+	case lineAppearanceUnrevealed:
+		return wallUnrevealed, d.width
+	default:
+		return wallNoHeightDiff, d.width
 	}
-	if sec0.CeilingHeight != sec1.CeilingHeight {
-		return wallCeilChange, lineTwoSidedWidth
-	}
-	if ld.Flags&mlSecret != 0 {
-		return wallSecret, lineTwoSidedWidth
-	}
-	return wallNoHeightDiff, 1
 }
 
 func (g *game) visibleLineIndices() []int {
@@ -514,7 +575,10 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 	lines := []string{
 		"AUTOMAP KEYS",
 		"F1  HELP TOGGLE",
+		"TAB  WALK/MAP MODE",
 		"R   FOLLOW HEADING",
+		"M   TOGGLE NORMAL/ALLMAP",
+		"I   CYCLE IDDT (0/1/2)",
 		"WASD  MOVE",
 		"MOUSE  TURN",
 		"ARROWS  MOVE/TURN",
