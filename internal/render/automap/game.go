@@ -1093,6 +1093,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		s1 := -x1*sa + y1*ca
 		f2 := x2*ca + y2*sa
 		s2 := -x2*sa + y2*ca
+		// Backface cull: in camera space, front-facing segs wind CCW around the eye.
+		if f1*s2-s1*f2 <= 0 {
+			continue
+		}
 		if f1 <= near && f2 <= near {
 			continue
 		}
@@ -1268,6 +1272,10 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		s1 := -x1*sa + y1*ca
 		f2 := x2*ca + y2*sa
 		s2 := -x2*sa + y2*ca
+		// Backface cull for wireframe pseudo-3D.
+		if f1*s2-s1*f2 <= 0 {
+			continue
+		}
 
 		if f1 <= near && f2 <= near {
 			continue
