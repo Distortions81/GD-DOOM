@@ -19,6 +19,7 @@ const (
 	stopSpeed    = 0x1000
 	friction     = 0xe800
 	stepHeight   = 24 * fracUnit
+	useRange     = 64 * fracUnit
 
 	mlBlocking = 0x0001
 	mlTwoSided = 0x0004
@@ -107,6 +108,16 @@ func (g *game) initPhysics() {
 		g.bmapOriginY = int64(g.m.BlockMap.OriginY) << fracBits
 		g.bmapWidth = int(g.m.BlockMap.Width)
 		g.bmapHeight = int(g.m.BlockMap.Height)
+	}
+	g.sectorFloor = make([]int64, len(g.m.Sectors))
+	g.sectorCeil = make([]int64, len(g.m.Sectors))
+	for i, s := range g.m.Sectors {
+		g.sectorFloor[i] = int64(s.FloorHeight) << fracBits
+		g.sectorCeil[i] = int64(s.CeilingHeight) << fracBits
+	}
+	g.lineSpecial = make([]uint16, len(g.m.Linedefs))
+	for i, ld := range g.m.Linedefs {
+		g.lineSpecial[i] = ld.Special
 	}
 	sec := g.sectorAt(g.p.x, g.p.y)
 	if sec >= 0 && sec < len(g.m.Sectors) {
@@ -249,6 +260,7 @@ func (g *game) tryMove(x, y int64) bool {
 	if !ok {
 		return false
 	}
+	onFloor := g.p.z == g.p.floorz
 	if tmceil-tmfloor < playerHeight {
 		return false
 	}
@@ -264,6 +276,11 @@ func (g *game) tryMove(x, y int64) bool {
 	g.p.ceilz = tmceil
 	g.p.x = x
 	g.p.y = y
+	if onFloor {
+		g.p.z = g.p.floorz
+	} else if g.p.z+playerHeight > g.p.ceilz {
+		g.p.z = g.p.ceilz - playerHeight
+	}
 	if g.p.z < g.p.floorz {
 		g.p.z = g.p.floorz
 	}
@@ -291,15 +308,15 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 	yl := int((tmboxBottom - g.bmapOriginY) >> (fracBits + 7))
 	yh := int((tmboxTop - g.bmapOriginY) >> (fracBits + 7))
 
-	iter := func(lineIdx int) bool {
-		if lineIdx < 0 || lineIdx >= len(g.lines) {
+	processPhysLine := func(physIdx int) bool {
+		if physIdx < 0 || physIdx >= len(g.lines) {
 			return true
 		}
-		if g.lineValid[lineIdx] == g.validCount {
+		if g.lineValid[physIdx] == g.validCount {
 			return true
 		}
-		g.lineValid[lineIdx] = g.validCount
-		ld := g.lines[lineIdx]
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
 		if tmboxRight <= ld.bbox[3] || tmboxLeft >= ld.bbox[2] || tmboxTop <= ld.bbox[1] || tmboxBottom >= ld.bbox[0] {
 			return true
 		}
@@ -330,6 +347,12 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 		}
 		return true
 	}
+	iter := func(lineIdx int) bool {
+		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+			return true
+		}
+		return processPhysLine(g.physForLine[lineIdx])
+	}
 
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
 		for bx := xl; bx <= xh; bx++ {
@@ -341,7 +364,7 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 		}
 	} else {
 		for i := range g.lines {
-			if !iter(i) {
+			if !processPhysLine(i) {
 				return 0, 0, 0, false
 			}
 		}
@@ -357,7 +380,13 @@ func (g *game) blockLinesIterator(x, y int, fn func(int) bool) bool {
 	if idx < 0 || idx >= len(g.m.BlockMap.Cells) {
 		return true
 	}
-	for _, lineWord := range g.m.BlockMap.Cells[idx] {
+	cell := g.m.BlockMap.Cells[idx]
+	start := 0
+	// Doom blocklists carry a leading 0 sentinel before linedef numbers.
+	if len(cell) > 0 && cell[0] == 0 {
+		start = 1
+	}
+	for _, lineWord := range cell[start:] {
 		if !fn(int(lineWord)) {
 			return false
 		}
@@ -374,12 +403,10 @@ func (g *game) lineOpening(ld physLine) (int64, int64, int64, int64) {
 	if int(fidx) >= len(g.m.Sectors) || int(bidx) >= len(g.m.Sectors) {
 		return 0, 0, 0, 0
 	}
-	front := g.m.Sectors[fidx]
-	back := g.m.Sectors[bidx]
-	frontCeil := int64(front.CeilingHeight) << fracBits
-	backCeil := int64(back.CeilingHeight) << fracBits
-	frontFloor := int64(front.FloorHeight) << fracBits
-	backFloor := int64(back.FloorHeight) << fracBits
+	frontCeil := g.sectorCeil[fidx]
+	backCeil := g.sectorCeil[bidx]
+	frontFloor := g.sectorFloor[fidx]
+	backFloor := g.sectorFloor[bidx]
 	opentop := min64(frontCeil, backCeil)
 	openbottom := max64(frontFloor, backFloor)
 	lowfloor := min64(frontFloor, backFloor)
@@ -626,6 +653,120 @@ func (g *game) sectorAt(x, y int64) int {
 		side := pointOnDivlineSide(x, y, dl)
 		child = n.ChildID[side]
 	}
+}
+
+func (g *game) handleUse() {
+	lineIdx, ok := g.firstUsableLineInFront()
+	if !ok {
+		g.useText = "USE: no linedef"
+		g.useFlash = 35
+		return
+	}
+	info := mapdata.LookupLineSpecial(g.lineSpecial[lineIdx])
+	if info.Door == nil {
+		g.useText = "USE: no door action"
+		g.useFlash = 35
+		return
+	}
+	targets, err := g.m.DoorTargetSectors(lineIdx)
+	if err != nil || len(targets) == 0 {
+		g.useText = "USE: no door target"
+		g.useFlash = 35
+		return
+	}
+	if !info.Door.CanActivate(mapdata.KeyRing{}) {
+		g.useText = "USE: locked"
+		g.useFlash = 35
+		return
+	}
+
+	opened := 0
+	for _, sec := range targets {
+		if sec < 0 || sec >= len(g.sectorCeil) {
+			continue
+		}
+		target := g.lowestSurroundingCeiling(sec) - 4*fracUnit
+		if target < g.sectorFloor[sec] {
+			target = g.sectorFloor[sec]
+		}
+		if target > g.sectorCeil[sec] {
+			g.sectorCeil[sec] = target
+			opened++
+		}
+	}
+	if opened > 0 {
+		if !info.Repeat {
+			g.lineSpecial[lineIdx] = 0
+		}
+		g.useText = "USE: door opened"
+	} else {
+		g.useText = "USE: no change"
+	}
+	g.useFlash = 35
+}
+
+func (g *game) firstUsableLineInFront() (int, bool) {
+	px := g.p.x
+	py := g.p.y
+	ang := angleToRadians(g.p.angle)
+	fx := int64(math.Cos(ang) * useRange)
+	fy := int64(math.Sin(ang) * useRange)
+	x2 := px + fx
+	y2 := py + fy
+
+	bestT := 2.0
+	best := -1
+	for _, ld := range g.lines {
+		sp := g.lineSpecial[ld.idx]
+		if sp == 0 {
+			continue
+		}
+		info := mapdata.LookupLineSpecial(sp)
+		if info.Door == nil {
+			continue
+		}
+		if info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse {
+			continue
+		}
+		t, ok := segmentIntersectFrac(px, py, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
+		if !ok {
+			continue
+		}
+		if t < bestT {
+			bestT = t
+			best = ld.idx
+		}
+	}
+	if best < 0 {
+		return 0, false
+	}
+	return best, true
+}
+
+func (g *game) lowestSurroundingCeiling(sector int) int64 {
+	lowest := int64(1<<62 - 1)
+	for _, ld := range g.lines {
+		if ld.sideNum0 < 0 || ld.sideNum1 < 0 {
+			continue
+		}
+		s0 := g.m.Sidedefs[int(ld.sideNum0)].Sector
+		s1 := g.m.Sidedefs[int(ld.sideNum1)].Sector
+		if int(s0) == sector {
+			c := g.sectorCeil[s1]
+			if c < lowest {
+				lowest = c
+			}
+		} else if int(s1) == sector {
+			c := g.sectorCeil[s0]
+			if c < lowest {
+				lowest = c
+			}
+		}
+	}
+	if lowest == int64(1<<62-1) {
+		return g.sectorCeil[sector]
+	}
+	return lowest
 }
 
 type divline struct {

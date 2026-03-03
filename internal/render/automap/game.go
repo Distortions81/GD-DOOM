@@ -41,6 +41,8 @@ type game struct {
 
 	mode       viewMode
 	followMode bool
+	rotateView bool
+	showHelp   bool
 	p          player
 
 	lines       []physLine
@@ -54,6 +56,11 @@ type game struct {
 	renderSeen  []int
 	renderEpoch int
 	visibleBuf  []int
+	sectorFloor []int64
+	sectorCeil  []int64
+	lineSpecial []uint16
+	useFlash    int
+	useText     string
 
 	lastMouseX   int
 	mouseLookSet bool
@@ -112,9 +119,18 @@ func (g *game) Update() error {
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		g.rotateView = !g.rotateView
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+		g.showHelp = !g.showHelp
+	}
 	g.mode = viewWalk
 	ebiten.SetCursorMode(ebiten.CursorModeCaptured)
 	g.updateWalkMode()
+	if g.useFlash > 0 {
+		g.useFlash--
+	}
 	return nil
 }
 
@@ -172,22 +188,25 @@ func (g *game) updateWalkMode() {
 		if strafeMod {
 			cmd.side -= sideMove[speed]
 		} else {
-			cmd.turn -= 1
+			cmd.turn += 1
 		}
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
 		if strafeMod {
 			cmd.side += sideMove[speed]
 		} else {
-			cmd.turn += 1
+			cmd.turn -= 1
 		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		g.handleUse()
 	}
 
 	mx, _ := ebiten.CursorPosition()
 	if g.mouseLookSet {
 		dx := mx - g.lastMouseX
 		// Keep vanilla-feeling turn quantization while using modern mouse-look default.
-		cmd.turnRaw += int64(dx) * (40 << 16)
+		cmd.turnRaw -= int64(dx) * (40 << 16)
 	}
 	g.lastMouseX = mx
 	g.mouseLookSet = true
@@ -252,6 +271,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 		g.zoom,
 	)
 	ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
+	if g.useFlash > 0 {
+		ebitenutil.DebugPrintAt(screen, g.useText, 12, 28)
+	}
+	g.drawHelpUI(screen)
 }
 
 func (g *game) drawPlayer(screen *ebiten.Image) {
@@ -278,8 +301,19 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *game) worldToScreen(x, y float64) (float64, float64) {
-	sx := (x-g.camX)*g.zoom + float64(g.viewW)/2
-	sy := float64(g.viewH)/2 - (y-g.camY)*g.zoom
+	dx := x - g.camX
+	dy := y - g.camY
+	if g.rotateView {
+		rot := (math.Pi / 2) - angleToRadians(g.p.angle)
+		cr := math.Cos(rot)
+		sr := math.Sin(rot)
+		rdx := dx*cr - dy*sr
+		rdy := dx*sr + dy*cr
+		dx = rdx
+		dy = rdy
+	}
+	sx := dx*g.zoom + float64(g.viewW)/2
+	sy := float64(g.viewH)/2 - dy*g.zoom
 	return sx, sy
 }
 
@@ -325,10 +359,22 @@ func (g *game) visibleLineIndices() []int {
 	margin := 2.0 / g.zoom
 	viewHalfW := float64(g.viewW) / (2 * g.zoom)
 	viewHalfH := float64(g.viewH) / (2 * g.zoom)
-	minX := floatToFixed(g.camX - viewHalfW - margin)
-	maxX := floatToFixed(g.camX + viewHalfW + margin)
-	minY := floatToFixed(g.camY - viewHalfH - margin)
-	maxY := floatToFixed(g.camY + viewHalfH + margin)
+	minXf := g.camX - viewHalfW - margin
+	maxXf := g.camX + viewHalfW + margin
+	minYf := g.camY - viewHalfH - margin
+	maxYf := g.camY + viewHalfH + margin
+	if g.rotateView {
+		// Conservative culling when rotating: circumscribed circle around the viewport.
+		r := math.Hypot(viewHalfW, viewHalfH) + margin
+		minXf = g.camX - r
+		maxXf = g.camX + r
+		minYf = g.camY - r
+		maxYf = g.camY + r
+	}
+	minX := floatToFixed(minXf)
+	maxX := floatToFixed(maxXf)
+	minY := floatToFixed(minYf)
+	maxY := floatToFixed(maxYf)
 
 	g.visibleBuf = g.visibleBuf[:0]
 	g.renderEpoch++
@@ -344,8 +390,9 @@ func (g *game) visibleLineIndices() []int {
 		bx1 := int((maxX - g.bmapOriginX) >> (fracBits + 7))
 		by0 := int((minY - g.bmapOriginY) >> (fracBits + 7))
 		by1 := int((maxY - g.bmapOriginY) >> (fracBits + 7))
-		for bx := bx0; bx <= bx1; bx++ {
-			for by := by0; by <= by1; by++ {
+		// Safety border to avoid dropping lines that barely cross cell edges.
+		for bx := bx0 - 1; bx <= bx1+1; bx++ {
+			for by := by0 - 1; by <= by1+1; by++ {
 				if bx < 0 || by < 0 || bx >= g.bmapWidth || by >= g.bmapHeight {
 					continue
 				}
@@ -353,7 +400,12 @@ func (g *game) visibleLineIndices() []int {
 				if cellIdx < 0 || cellIdx >= len(g.m.BlockMap.Cells) {
 					continue
 				}
-				for _, lw := range g.m.BlockMap.Cells[cellIdx] {
+				cell := g.m.BlockMap.Cells[cellIdx]
+				start := 0
+				if len(cell) > 0 && cell[0] == 0 {
+					start = 1
+				}
+				for _, lw := range cell[start:] {
 					li := int(lw)
 					if li < 0 || li >= len(g.m.Linedefs) {
 						continue
@@ -407,4 +459,42 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (g *game) drawHelpUI(screen *ebiten.Image) {
+	helpHint := "F1 HELP"
+	hintX := g.viewW - len(helpHint)*7 - 10
+	if hintX < 10 {
+		hintX = 10
+	}
+	ebitenutil.DebugPrintAt(screen, helpHint, hintX, 10)
+	if !g.showHelp {
+		return
+	}
+	lines := []string{
+		"AUTOMAP KEYS",
+		"F1  HELP TOGGLE",
+		"R   FOLLOW HEADING",
+		"WASD  MOVE",
+		"MOUSE  TURN",
+		"ARROWS  MOVE/TURN",
+		"ALT+ARROWS  STRAFE",
+		"SHIFT  RUN",
+		"+/- OR WHEEL  ZOOM",
+		"ESC  QUIT",
+	}
+	maxLen := 0
+	for _, l := range lines {
+		if len(l) > maxLen {
+			maxLen = len(l)
+		}
+	}
+	x := g.viewW - maxLen*7 - 14
+	if x < 10 {
+		x = 10
+	}
+	y := 28
+	for i, l := range lines {
+		ebitenutil.DebugPrintAt(screen, l, x, y+i*14)
+	}
 }
