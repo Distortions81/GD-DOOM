@@ -126,6 +126,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		}
 	}
 	g.renderSeen = make([]int, len(g.m.Linedefs))
+	g.discoverLinesAroundPlayer()
 	g.resetView()
 	if opts.StartZoom > 0 {
 		g.zoom = opts.StartZoom
@@ -257,6 +258,7 @@ func (g *game) updateWalkMode() {
 
 	cmd.run = speed == 1
 	g.updatePlayer(cmd)
+	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
 }
