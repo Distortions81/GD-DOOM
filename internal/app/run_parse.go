@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 
 	"gddoom/internal/mapdata"
@@ -44,6 +45,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
 	defaultImportTextures := true
+	defaultCPUProfile := ""
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -105,6 +107,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.ImportTextures != nil {
 			defaultImportTextures = *cfg.ImportTextures
 		}
+		if cfg.CPUProfile != nil {
+			defaultCPUProfile = *cfg.CPUProfile
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -130,6 +135,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
+	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -240,6 +246,26 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if *render {
+		stopCPUProfile := func() {}
+		if strings.TrimSpace(*cpuProfile) != "" {
+			f, perr := os.Create(strings.TrimSpace(*cpuProfile))
+			if perr != nil {
+				fmt.Fprintf(stderr, "open cpu profile: %v\n", perr)
+				return 1
+			}
+			if perr := pprof.StartCPUProfile(f); perr != nil {
+				_ = f.Close()
+				fmt.Fprintf(stderr, "start cpu profile: %v\n", perr)
+				return 1
+			}
+			fmt.Fprintf(stderr, "cpu profile recording to %s\n", strings.TrimSpace(*cpuProfile))
+			stopCPUProfile = func() {
+				pprof.StopCPUProfile()
+				_ = f.Close()
+			}
+		}
+		defer stopCPUProfile()
+
 		resolvedLineColorMode := *lineColorMode
 		// Source-port defaults unless user explicitly chose a color mode.
 		if *sourcePortMode && !lineColorModeSet {

@@ -28,6 +28,7 @@ type fileConfig struct {
 	StartInMap      *bool    `toml:"start_in_map"`
 	ImportPCSpeaker *bool    `toml:"import_pcspeaker"`
 	Details         *bool    `toml:"details"`
+	CPUProfile      *string  `toml:"cpu_profile"`
 }
 
 func resolveConfigPath(args []string) (path string, explicit bool) {

@@ -131,6 +131,8 @@ type game struct {
 	fpsDisplay  float64
 	renderAccum time.Duration
 	renderMSAvg float64
+	frameUpload time.Duration
+	perfInDraw  bool
 
 	lastMouseX             int
 	mouseLookSet           bool
@@ -215,6 +217,7 @@ type game struct {
 	planeSpanSWG       sizedwaitgroup.SizedWaitGroup
 	segPrepassSWG      sizedwaitgroup.SizedWaitGroup
 	skyLookupSWG       sizedwaitgroup.SizedWaitGroup
+	pixLoopSWG         sizedwaitgroup.SizedWaitGroup
 	plane3DVisBuckets  map[plane3DKey]plane3DVisBucket
 	plane3DVisGen      uint64
 	plane3DOrder       []*plane3DVisplane
@@ -411,6 +414,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.planeSpanSWG = sizedwaitgroup.New(cpuCount)
 	g.segPrepassSWG = sizedwaitgroup.New(cpuCount)
 	g.skyLookupSWG = sizedwaitgroup.New(cpuCount)
+	g.pixLoopSWG = sizedwaitgroup.New(cpuCount)
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
@@ -873,6 +877,9 @@ func (g *game) updateZoom() {
 
 func (g *game) Draw(screen *ebiten.Image) {
 	drawStart := time.Now()
+	g.frameUpload = 0
+	g.perfInDraw = true
+	defer func() { g.perfInDraw = false }()
 	defer g.finishPerfCounter(drawStart)
 	screen.Fill(bgColor)
 	if g.mode != viewMap {
@@ -1574,7 +1581,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		g.drawDoomBasicTexturedPlanesVisplanePass(camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 		g.compositePlaneLayer3D()
 	}
-	g.wallLayer.WritePixels(g.wallPix)
+	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
 }
 
@@ -1668,12 +1675,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(camX, camY, ca, sa, eyeZ,
 	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
 		return
 	}
-	for i := 0; i < len(pix); i += 4 {
-		pix[i+0] = 0
-		pix[i+1] = 0
-		pix[i+2] = 0
-		pix[i+3] = 0
-	}
+	g.clearRGBABuffer(pix)
 	spansByPlane, active, inputSpans, hasSky := g.buildPlaneSpansParallel(planes, h)
 	g.plane3DFrame.inputSpans += inputSpans
 	g.plane3DFrame.buckets = active
@@ -1802,34 +1804,51 @@ func (g *game) fill3DBackground(ceiling, floor color.RGBA) {
 		return
 	}
 	mid := h / 2
-	for y := 0; y < h; y++ {
-		row := y * w * 4
-		c := floor
-		if y < mid {
-			c = ceiling
-		}
-		for x := 0; x < w; x++ {
-			i := row + x*4
-			g.wallPix[i+0] = c.R
-			g.wallPix[i+1] = c.G
-			g.wallPix[i+2] = c.B
-			g.wallPix[i+3] = 255
+	fillRows := func(y0, y1 int) {
+		for y := y0; y < y1; y++ {
+			row := y * w * 4
+			c := floor
+			if y < mid {
+				c = ceiling
+			}
+			for x := 0; x < w; x++ {
+				i := row + x*4
+				g.wallPix[i+0] = c.R
+				g.wallPix[i+1] = c.G
+				g.wallPix[i+2] = c.B
+				g.wallPix[i+3] = 255
+			}
 		}
 	}
+	if g.canParallelizePixelLoops(h) {
+		g.parallelForChunks(h, 32, &g.pixLoopSWG, fillRows)
+		return
+	}
+	fillRows(0, h)
 }
 
 func (g *game) compositePlaneLayer3D() {
 	if len(g.wallPix) == 0 || len(g.mapFloorPix) == 0 || len(g.wallPix) != len(g.mapFloorPix) {
 		return
 	}
-	for i := 0; i < len(g.mapFloorPix); i += 4 {
-		if g.mapFloorPix[i+3] == 0 {
-			continue
+	copyChunk := func(start, end int) {
+		for i := start; i < end; i += 4 {
+			if g.mapFloorPix[i+3] == 0 {
+				continue
+			}
+			g.wallPix[i+0] = g.mapFloorPix[i+0]
+			g.wallPix[i+1] = g.mapFloorPix[i+1]
+			g.wallPix[i+2] = g.mapFloorPix[i+2]
 		}
-		g.wallPix[i+0] = g.mapFloorPix[i+0]
-		g.wallPix[i+1] = g.mapFloorPix[i+1]
-		g.wallPix[i+2] = g.mapFloorPix[i+2]
 	}
+	pix := len(g.mapFloorPix) / 4
+	if g.canParallelizePixelLoops(pix) {
+		g.parallelForChunks(pix, 16384, &g.pixLoopSWG, func(startPix, endPix int) {
+			copyChunk(startPix*4, endPix*4)
+		})
+		return
+	}
+	copyChunk(0, len(g.mapFloorPix))
 }
 
 func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback, floorFallback color.RGBA, wallTop, wallBottom []int) {
@@ -2067,8 +2086,56 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			}
 		}
 	}
-	g.mapFloorLayer.WritePixels(pix)
+	g.writePixelsTimed(g.mapFloorLayer, pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
+}
+
+func (g *game) clearRGBABuffer(pix []byte) {
+	if len(pix) == 0 {
+		return
+	}
+	clearChunk := func(start, end int) {
+		for i := start; i < end; i += 4 {
+			pix[i+0] = 0
+			pix[i+1] = 0
+			pix[i+2] = 0
+			pix[i+3] = 0
+		}
+	}
+	pixels := len(pix) / 4
+	if g.canParallelizePixelLoops(pixels) {
+		g.parallelForChunks(pixels, 16384, &g.pixLoopSWG, func(startPix, endPix int) {
+			clearChunk(startPix*4, endPix*4)
+		})
+		return
+	}
+	clearChunk(0, len(pix))
+}
+
+func (g *game) canParallelizePixelLoops(workItems int) bool {
+	return g.cpuCount > 1 && workItems >= 32768
+}
+
+func (g *game) parallelForChunks(total, chunk int, swg *sizedwaitgroup.SizedWaitGroup, fn func(start, end int)) {
+	if total <= 0 {
+		return
+	}
+	if chunk <= 0 {
+		chunk = total
+	}
+	for start := 0; start < total; start += chunk {
+		s := start
+		e := start + chunk
+		if e > total {
+			e = total
+		}
+		swg.Add()
+		go func() {
+			defer swg.Done()
+			fn(s, e)
+		}()
+	}
+	swg.Wait()
 }
 
 func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback color.RGBA, wallTop []int, depthPix []float64) {
@@ -2141,7 +2208,7 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 			}
 		}
 	}
-	g.mapFloorLayer.WritePixels(pix)
+	g.writePixelsTimed(g.mapFloorLayer, pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
@@ -2208,7 +2275,7 @@ func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, cam
 			}
 		}
 	}
-	g.mapFloorLayer.WritePixels(pix)
+	g.writePixelsTimed(g.mapFloorLayer, pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
@@ -3667,7 +3734,7 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 		}
 	}
 
-	g.mapFloorLayer.WritePixels(pix)
+	g.writePixelsTimed(g.mapFloorLayer, pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 	g.mapFloorWorldState = "live-screen"
 	g.floorFrame = stats
@@ -5425,7 +5492,7 @@ func (g *game) buildMapFloorWorldLayer() bool {
 		stats.emittedSpans++
 	}
 
-	layer.WritePixels(pix)
+	g.writePixelsTimed(layer, pix)
 	g.mapFloorWorldLayer = layer
 	g.mapFloorWorldMinX = minX
 	g.mapFloorWorldMaxY = maxY
@@ -6063,7 +6130,7 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 	img := ebiten.NewImageWithOptions(image.Rect(0, 0, 64, 64), &ebiten.NewImageOptions{
 		Unmanaged: true,
 	})
-	img.WritePixels(rgba)
+	g.writePixelsTimed(img, rgba)
 	g.flatImgCache[key] = img
 	return img, true
 }
@@ -6441,7 +6508,11 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 		g.fpsStamp = now
 	}
 	g.fpsFrames++
-	g.renderAccum += now.Sub(drawStart)
+	renderDur := now.Sub(drawStart) - g.frameUpload
+	if renderDur < 0 {
+		renderDur = 0
+	}
+	g.renderAccum += renderDur
 	elapsed := now.Sub(g.fpsStamp)
 	if elapsed >= time.Second {
 		g.fpsDisplay = float64(g.fpsFrames) / elapsed.Seconds()
@@ -6453,6 +6524,14 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 		g.fpsFrames = 0
 		g.renderAccum = 0
 		g.fpsStamp = now
+	}
+}
+
+func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
+	start := time.Now()
+	img.WritePixels(pix)
+	if g.perfInDraw {
+		g.frameUpload += time.Since(start)
 	}
 }
 
