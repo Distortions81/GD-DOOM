@@ -1110,11 +1110,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if f1 <= near || f2 <= near {
 			continue
 		}
-		// Backface cull after near clipping to avoid dropping partially-visible segs.
-		if f1*s2-s1*f2 >= 0 {
-			continue
-		}
-
 		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
 		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
 
@@ -1230,6 +1225,11 @@ func shadeByDistance(c color.RGBA, dist float64) color.RGBA {
 }
 
 func (g *game) drawPseudo3D(screen *ebiten.Image) {
+	// Pseudo-3D wireframe currently lacks robust hidden-line occlusion.
+	// Use the occluded Doom-basic pass so walls always block visibility.
+	g.drawDoomBasic3D(screen)
+	return
+
 	ceiling := color.RGBA{R: 20, G: 24, B: 36, A: 255}
 	floor := color.RGBA{R: 24, G: 18, B: 14, A: 255}
 	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceiling)
@@ -1286,11 +1286,6 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 				s2 = s1 + (s2-s1)*t
 			}
 		}
-		// Backface cull after near clipping for stable edge behavior.
-		if f1*s2-s1*f2 >= 0 {
-			continue
-		}
-
 		fsec, bsec := g.segSectors(si)
 		if fsec == nil {
 			continue
