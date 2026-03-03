@@ -1275,8 +1275,93 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	sec := g.sectorAt(g.p.x, g.p.y)
 	if g.showMapFloors && len(g.opts.FlatBank) > 0 && sec >= 0 && sec < len(g.m.Sectors) {
+		g.drawDoomBasicTexturedCeilingClipped(screen, camX, camY, ca, sa, eyeZ, focal, sec, ceilClr, wallTop)
 		g.drawDoomBasicTexturedFloorClipped(screen, camX, camY, ca, sa, eyeZ, focal, sec, floorClr, wallBottom)
 	}
+}
+
+func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback color.RGBA, wallTop []int) {
+	g.ensureMapFloorLayer()
+	pix := g.mapFloorPix
+	w := g.viewW
+	h := g.viewH
+	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
+		return
+	}
+	cx := float64(w) * 0.5
+	cy := float64(h) * 0.5
+	baseCeilZ := float64(g.m.Sectors[playerSec].CeilingHeight)
+	for i := 0; i < len(pix); i += 4 {
+		pix[i+0] = 0
+		pix[i+1] = 0
+		pix[i+2] = 0
+		pix[i+3] = 0
+	}
+
+	for y := 0; y < h; y++ {
+		if float64(y) >= cy {
+			break
+		}
+		den := cy - float64(y)
+		if math.Abs(den) < 1e-6 {
+			continue
+		}
+		f := ((baseCeilZ - eyeZ) / den) * focal
+		if f <= 0 {
+			continue
+		}
+		rowBase := y * w * 4
+		s := (cx - 0.0) * f / focal
+		wx := camX + f*ca - s*sa
+		wy := camY + f*sa + s*ca
+		stepWX := (f / focal) * sa
+		stepWY := -(f / focal) * ca
+
+		for x := 0; x < w; x++ {
+			i := rowBase + x*4
+			stopY := int(cy)
+			if x >= 0 && x < len(wallTop) && wallTop[x] < stopY {
+				stopY = wallTop[x]
+			}
+			if y >= stopY {
+				wx += stepWX
+				wy += stepWY
+				continue
+			}
+			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
+			if sec >= 0 && sec < len(g.m.Sectors) {
+				name := g.m.Sectors[sec].CeilingPic
+				if isSkyFlatName(name) {
+					pix[i+0] = ceilFallback.R
+					pix[i+1] = ceilFallback.G
+					pix[i+2] = ceilFallback.B
+					pix[i+3] = 255
+				} else if tex, ok := g.flatRGBA(name); ok {
+					u := int(math.Floor(wx)) & 63
+					v := int(math.Floor(wy)) & 63
+					ti := (v*64 + u) * 4
+					pix[i+0] = tex[ti+0]
+					pix[i+1] = tex[ti+1]
+					pix[i+2] = tex[ti+2]
+					pix[i+3] = 255
+				} else {
+					pix[i+0] = ceilFallback.R
+					pix[i+1] = ceilFallback.G
+					pix[i+2] = ceilFallback.B
+					pix[i+3] = 255
+				}
+			} else {
+				pix[i+0] = ceilFallback.R
+				pix[i+1] = ceilFallback.G
+				pix[i+2] = ceilFallback.B
+				pix[i+3] = 255
+			}
+			wx += stepWX
+			wy += stepWY
+		}
+	}
+	g.mapFloorLayer.WritePixels(pix)
+	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
 func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, floorFallback color.RGBA, wallBottom []int) {
