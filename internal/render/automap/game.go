@@ -1777,16 +1777,13 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	}
 	logBudget := 24
 	for ss := range g.m.SubSectors {
-		worldVerts, cx, cy, ok := g.subSectorConvexVertices(ss)
+		worldVerts, cx, cy, ok := g.subSectorVerticesFromSegList(ss)
 		if !ok {
-			worldVerts, cx, cy, ok = g.subSectorRawFanVertices(ss)
-			if !ok {
-				if logBudget > 0 {
-					fmt.Printf("floor2d skip ss=%d reason=verts\n", ss)
-					logBudget--
-				}
-				continue
+			if logBudget > 0 {
+				fmt.Printf("floor2d skip ss=%d reason=verts\n", ss)
+				logBudget--
 			}
+			continue
 		}
 		poly := make([]screenPt, 0, len(worldVerts))
 		for _, v := range worldVerts {
@@ -1836,7 +1833,7 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	}
 }
 
-func (g *game) subSectorRawFanVertices(ss int) ([]worldPt, float64, float64, bool) {
+func (g *game) subSectorVerticesFromSegList(ss int) ([]worldPt, float64, float64, bool) {
 	if ss < 0 || ss >= len(g.m.SubSectors) {
 		return nil, 0, 0, false
 	}
@@ -1851,6 +1848,7 @@ func (g *game) subSectorRawFanVertices(ss int) ([]worldPt, float64, float64, boo
 			continue
 		}
 		sg := g.m.Segs[si]
+		// Use subsector seg order directly (Doom BSP output).
 		vi := sg.StartVertex
 		if int(vi) >= len(g.m.Vertexes) {
 			continue
