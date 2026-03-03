@@ -631,27 +631,33 @@ func toggledLineColorMode(mode string) string {
 }
 
 func (g *game) drawThingLegend(screen *ebiten.Image) {
-	lines := []string{
-		"THING LEGEND",
-		"[] player starts",
-		"/\\ monsters",
-		"<> items/pickups",
-		"* keys",
-		"+ misc",
+	type legendEntry struct {
+		label string
+		style thingStyle
 	}
-	maxLen := 0
-	for _, l := range lines {
-		if len(l) > maxLen {
-			maxLen = len(l)
+	entries := []legendEntry{
+		{label: "player starts", style: thingStyle{glyph: thingGlyphSquare, clr: thingPlayerColor}},
+		{label: "monsters", style: thingStyle{glyph: thingGlyphTriangle, clr: thingMonsterColor}},
+		{label: "items/pickups", style: thingStyle{glyph: thingGlyphDiamond, clr: thingItemColor}},
+		{label: "keys", style: thingStyle{glyph: thingGlyphStar, clr: thingKeyBlue}},
+		{label: "misc", style: thingStyle{glyph: thingGlyphCross, clr: thingMiscColor}},
+	}
+	maxLen := len("THING LEGEND")
+	for _, e := range entries {
+		if len(e.label) > maxLen {
+			maxLen = len(e.label)
 		}
 	}
-	x := g.viewW - maxLen*7 - 12
+	x := g.viewW - maxLen*7 - 36
 	if x < 10 {
 		x = 10
 	}
 	y := 28
-	for i, l := range lines {
-		ebitenutil.DebugPrintAt(screen, l, x, y+i*14)
+	ebitenutil.DebugPrintAt(screen, "THING LEGEND", x, y)
+	for i, e := range entries {
+		ly := y + 16 + i*14
+		drawThingGlyph(screen, e.style, float64(x+8), float64(ly+5), 0, 4.6)
+		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
 	}
 }
 
