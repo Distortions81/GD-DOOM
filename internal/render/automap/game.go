@@ -1626,6 +1626,35 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 			}
 		}
 	}
+	// Fallback fill for any missed pixels (e.g. precision edges between subsectors):
+	// sample sector floor directly from world point to avoid visible black holes.
+	for y := 0; y < g.viewH; y++ {
+		for x := 0; x < g.viewW; x++ {
+			di := (y*g.viewW + x) * 4
+			if g.mapFloorPix[di+3] != 0 {
+				continue
+			}
+			wx, wy := g.screenToWorld(float64(x)+0.5, float64(y)+0.5)
+			if wx < g.bounds.minX || wx > g.bounds.maxX || wy < g.bounds.minY || wy > g.bounds.maxY {
+				continue
+			}
+			secIdx := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
+			if secIdx < 0 || secIdx >= len(g.m.Sectors) {
+				continue
+			}
+			flat, ok := g.opts.FlatBank[g.m.Sectors[secIdx].FloorPic]
+			if !ok || len(flat) != 64*64*4 {
+				continue
+			}
+			tx := (int(math.Floor(wx)) & 63)
+			ty := (int(math.Floor(wy)) & 63)
+			si := (ty*64 + tx) * 4
+			g.mapFloorPix[di+0] = flat[si+0]
+			g.mapFloorPix[di+1] = flat[si+1]
+			g.mapFloorPix[di+2] = flat[si+2]
+			g.mapFloorPix[di+3] = 255
+		}
+	}
 	g.mapFloorLayer.WritePixels(g.mapFloorPix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 }
