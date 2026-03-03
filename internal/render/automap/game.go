@@ -1052,10 +1052,12 @@ func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, fo
 		sx   float64
 		yt   float64
 		yb   float64
+		clr  color.RGBA
 	}
 	items := make([]projectedMonster, 0, 32)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
 
 	for i, th := range g.m.Things {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
@@ -1077,27 +1079,88 @@ func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, fo
 		}
 
 		sx := float64(g.viewW)/2 - (s/f)*focal
-		size := math.Max(6, math.Min(140, (56.0/f)*focal))
-		yt := float64(g.viewH)/2 - size*0.7
-		yb := float64(g.viewH)/2 + size*0.7
+		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
+		monsterH := monsterRenderHeight(th.Type)
+		yt := float64(g.viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
+		yb := float64(g.viewH)/2 - ((floorZ-eyeZ)/f)*focal
+		if yb <= yt {
+			continue
+		}
 		if sx < -32 || sx > float64(g.viewW)+32 {
 			continue
 		}
+		clr := shadedMonsterColor(f, near)
 		items = append(items, projectedMonster{
 			dist: f,
 			sx:   sx,
 			yt:   yt,
 			yb:   yb,
+			clr:  clr,
 		})
 	}
 
 	// Draw far-to-near.
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
-		w := float32(2.4)
-		vector.StrokeLine(screen, float32(it.sx), float32(it.yt), float32(it.sx), float32(it.yb), w, thingMonsterColor, true)
-		vector.StrokeLine(screen, float32(it.sx-6), float32(it.yt+4), float32(it.sx+6), float32(it.yt+4), 1.8, thingMonsterColor, true)
-		vector.StrokeLine(screen, float32(it.sx-4), float32(it.yb-4), float32(it.sx+4), float32(it.yb-4), 1.8, thingMonsterColor, true)
+		h := it.yb - it.yt
+		w := math.Max(6, math.Min(120, h*0.45))
+		lx := it.sx - w/2
+		ty := it.yt
+		// Body billboard.
+		ebitenutil.DrawRect(screen, lx, ty+h*0.22, w, h*0.78, it.clr)
+		// Head cap.
+		headClr := brighten(it.clr, 18)
+		ebitenutil.DrawRect(screen, lx+w*0.16, ty, w*0.68, h*0.26, headClr)
+		// Eye slit.
+		ebitenutil.DrawRect(screen, lx+w*0.26, ty+h*0.10, w*0.48, math.Max(1, h*0.03), color.RGBA{R: 20, G: 14, B: 14, A: 220})
+		// Foot shadow/ground cue.
+		ebitenutil.DrawRect(screen, lx-w*0.08, it.yb-math.Max(1, h*0.03), w*1.16, math.Max(1, h*0.03), color.RGBA{R: 30, G: 20, B: 20, A: 180})
+	}
+}
+
+func monsterRenderHeight(typ int16) float64 {
+	switch typ {
+	case 3002:
+		return 56
+	case 3006:
+		return 56
+	case 3005:
+		return 56
+	case 3003:
+		return 64
+	case 16:
+		return 110
+	case 7:
+		return 100
+	default:
+		return 56
+	}
+}
+
+func shadedMonsterColor(dist, near float64) color.RGBA {
+	// Distance fog-ish shading for pseudo-3D readability.
+	n := (dist - near) / 1200.0
+	if n < 0 {
+		n = 0
+	}
+	if n > 1 {
+		n = 1
+	}
+	f := 1.0 - 0.65*n
+	return color.RGBA{
+		R: uint8(float64(thingMonsterColor.R) * f),
+		G: uint8(float64(thingMonsterColor.G) * f),
+		B: uint8(float64(thingMonsterColor.B) * f),
+		A: 245,
+	}
+}
+
+func brighten(c color.RGBA, add uint8) color.RGBA {
+	return color.RGBA{
+		R: uint8(min(255, int(c.R)+int(add))),
+		G: uint8(min(255, int(c.G)+int(add))),
+		B: uint8(min(255, int(c.B)+int(add))),
+		A: c.A,
 	}
 }
 
