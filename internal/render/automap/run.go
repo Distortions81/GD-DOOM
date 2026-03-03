@@ -21,8 +21,8 @@ type sessionGame struct {
 
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	const (
-		logicalW = 320
-		logicalH = 200
+		logicalW = 640
+		logicalH = 400
 		windowW  = 1280
 		windowH  = 960
 	)

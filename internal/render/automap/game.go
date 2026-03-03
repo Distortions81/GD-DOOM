@@ -1164,17 +1164,18 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	near := 2.0
 
 	ceilClr, floorClr := g.basicPlaneColors()
-	sec := g.sectorAt(g.p.x, g.p.y)
-	if g.showMapFloors && len(g.opts.FlatBank) > 0 && sec >= 0 && sec < len(g.m.Sectors) {
-		g.drawDoomBasicTexturedPlanes(screen, camX, camY, ca, sa, eyeZ, focal, sec, ceilClr, floorClr)
-	} else {
-		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceilClr)
-		ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floorClr)
-	}
+	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceilClr)
+	ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floorClr)
 
 	depthPix := make([]float64, g.viewW*g.viewH)
 	for i := range depthPix {
 		depthPix[i] = math.Inf(1)
+	}
+	wallTop := make([]int, g.viewW)
+	wallBottom := make([]int, g.viewW)
+	for i := 0; i < g.viewW; i++ {
+		wallTop[i] = g.viewH
+		wallBottom[i] = -1
 	}
 	solid := make([]solidSpan, 0, 16)
 	for _, si := range g.visibleSegIndicesPseudo3D() {
@@ -1254,27 +1255,31 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			continue
 		}
 		if back == nil {
-			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 			solid = addSolidSpan(solid, minSX, maxSX)
 			continue
 		}
 		openTop := math.Min(float64(front.CeilingHeight), float64(back.CeilingHeight))
 		openBottom := math.Max(float64(front.FloorHeight), float64(back.FloorHeight))
 		if openBottom >= openTop {
-			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 			solid = addSolidSpan(solid, minSX, maxSX)
 			continue
 		}
 		if float64(front.CeilingHeight) > openTop {
-			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
+			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, float64(front.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
 		}
 		if float64(front.FloorHeight) < openBottom {
-			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
+	}
+	sec := g.sectorAt(g.p.x, g.p.y)
+	if g.showMapFloors && len(g.opts.FlatBank) > 0 && sec >= 0 && sec < len(g.m.Sectors) {
+		g.drawDoomBasicTexturedFloorClipped(screen, camX, camY, ca, sa, eyeZ, focal, sec, floorClr, wallBottom)
 	}
 }
 
-func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback, floorFallback color.RGBA) {
+func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, floorFallback color.RGBA, wallBottom []int) {
 	g.ensureMapFloorLayer()
 	pix := g.mapFloorPix
 	w := g.viewW
@@ -1285,39 +1290,24 @@ func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca,
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
 	baseFloorZ := float64(g.m.Sectors[playerSec].FloorHeight)
+	for i := 0; i < len(pix); i += 4 {
+		pix[i+0] = 0
+		pix[i+1] = 0
+		pix[i+2] = 0
+		pix[i+3] = 0
+	}
 
 	for y := 0; y < h; y++ {
 		den := cy - float64(y)
 		rowBase := y * w * 4
 		if float64(y) <= cy {
-			for x := 0; x < w; x++ {
-				i := rowBase + x*4
-				pix[i+0] = ceilFallback.R
-				pix[i+1] = ceilFallback.G
-				pix[i+2] = ceilFallback.B
-				pix[i+3] = 255
-			}
 			continue
 		}
 		if math.Abs(den) < 1e-6 {
-			for x := 0; x < w; x++ {
-				i := rowBase + x*4
-				pix[i+0] = floorFallback.R
-				pix[i+1] = floorFallback.G
-				pix[i+2] = floorFallback.B
-				pix[i+3] = 255
-			}
 			continue
 		}
 		f := ((baseFloorZ - eyeZ) / den) * focal
 		if f <= 0 {
-			for x := 0; x < w; x++ {
-				i := rowBase + x*4
-				pix[i+0] = floorFallback.R
-				pix[i+1] = floorFallback.G
-				pix[i+2] = floorFallback.B
-				pix[i+3] = 255
-			}
 			continue
 		}
 
@@ -1329,6 +1319,15 @@ func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca,
 
 		for x := 0; x < w; x++ {
 			i := rowBase + x*4
+			startY := int(cy)
+			if x >= 0 && x < len(wallBottom) && wallBottom[x]+1 > startY {
+				startY = wallBottom[x] + 1
+			}
+			if y < startY {
+				wx += stepWX
+				wy += stepWY
+				continue
+			}
 			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				if tex, ok := g.flatRGBA(g.m.Sectors[sec].FloorPic); ok {
@@ -1476,7 +1475,7 @@ func addSolidSpan(spans []solidSpan, l, r int) []solidSpan {
 	return out
 }
 
-func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthPix []float64, sx1, sx2, f1, f2, zTop, zBot, eyeZ, focal float64, base color.RGBA) {
+func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthPix []float64, wallTop, wallBottom []int, sx1, sx2, f1, f2, zTop, zBot, eyeZ, focal float64, base color.RGBA) {
 	if zTop <= zBot {
 		return
 	}
@@ -1524,6 +1523,14 @@ func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthPix []float64
 			pi := y*g.viewW + x
 			if f < depthPix[pi] {
 				depthPix[pi] = f
+				if x >= 0 && x < len(wallTop) {
+					if y < wallTop[x] {
+						wallTop[x] = y
+					}
+					if y > wallBottom[x] {
+						wallBottom[x] = y
+					}
+				}
 				if runStart < 0 {
 					runStart = y
 				}
