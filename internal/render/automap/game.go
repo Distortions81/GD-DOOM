@@ -1593,17 +1593,20 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		g.mapFloorPix[i] = 0
 	}
 	for ss := range g.m.SubSectors {
-		secIdx, ok := g.subSectorSectorIndex(ss)
-		if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
+		poly, cx, cy, bbox, ok := g.subSectorScreenPolygon(ss)
+		if !ok {
 			continue
+		}
+		secIdx := g.sectorAt(int64(cx*fracUnit), int64(cy*fracUnit))
+		if secIdx < 0 || secIdx >= len(g.m.Sectors) {
+			secIdx, ok = g.subSectorSectorIndex(ss)
+			if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
+				continue
+			}
 		}
 		flatName := g.m.Sectors[secIdx].FloorPic
 		flat, ok := g.opts.FlatBank[flatName]
 		if !ok || len(flat) != 64*64*4 {
-			continue
-		}
-		poly, bbox, ok := g.subSectorScreenPolygon(ss)
-		if !ok {
 			continue
 		}
 		for y := bbox.minY; y <= bbox.maxY; y++ {
@@ -1627,40 +1630,67 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
-type polyBBox struct {
-	minX int
-	minY int
-	maxX int
-	maxY int
-}
-
-type screenPt struct {
+type worldPt struct {
 	x float64
 	y float64
 }
 
-func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, polyBBox, bool) {
+func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool) {
 	if ss < 0 || ss >= len(g.m.SubSectors) {
-		return nil, polyBBox{}, false
+		return nil, 0, 0, false
 	}
 	sub := g.m.SubSectors[ss]
 	if sub.SegCount < 3 {
-		return nil, polyBBox{}, false
+		return nil, 0, 0, false
 	}
-	poly := make([]screenPt, 0, sub.SegCount)
-	minX, minY := g.viewW-1, g.viewH-1
-	maxX, maxY := 0, 0
+	seen := make(map[uint16]struct{}, sub.SegCount*2)
+	verts := make([]worldPt, 0, sub.SegCount)
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
 		if si < 0 || si >= len(g.m.Segs) {
 			continue
 		}
 		sg := g.m.Segs[si]
-		if int(sg.StartVertex) >= len(g.m.Vertexes) {
-			continue
+		for _, vi := range []uint16{sg.StartVertex, sg.EndVertex} {
+			if int(vi) >= len(g.m.Vertexes) {
+				continue
+			}
+			if _, ok := seen[vi]; ok {
+				continue
+			}
+			seen[vi] = struct{}{}
+			v := g.m.Vertexes[vi]
+			verts = append(verts, worldPt{x: float64(v.X), y: float64(v.Y)})
 		}
-		v := g.m.Vertexes[sg.StartVertex]
-		sx, sy := g.worldToScreen(float64(v.X), float64(v.Y))
+	}
+	if len(verts) < 3 {
+		return nil, 0, 0, false
+	}
+	cx, cy := 0.0, 0.0
+	for _, v := range verts {
+		cx += v.x
+		cy += v.y
+	}
+	cx /= float64(len(verts))
+	cy /= float64(len(verts))
+	sort.Slice(verts, func(i, j int) bool {
+		ai := math.Atan2(verts[i].y-cy, verts[i].x-cx)
+		aj := math.Atan2(verts[j].y-cy, verts[j].x-cx)
+		return ai < aj
+	})
+	return verts, cx, cy, true
+}
+
+func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, float64, float64, polyBBox, bool) {
+	verts, cx, cy, ok := g.subSectorWorldVertices(ss)
+	if !ok {
+		return nil, 0, 0, polyBBox{}, false
+	}
+	poly := make([]screenPt, 0, len(verts))
+	minX, minY := g.viewW-1, g.viewH-1
+	maxX, maxY := 0, 0
+	for _, v := range verts {
+		sx, sy := g.worldToScreen(v.x, v.y)
 		poly = append(poly, screenPt{x: sx, y: sy})
 		ix := int(math.Round(sx))
 		iy := int(math.Round(sy))
@@ -1677,11 +1707,8 @@ func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, polyBBox, bool) {
 			maxY = iy
 		}
 	}
-	if len(poly) < 3 {
-		return nil, polyBBox{}, false
-	}
 	if maxX < 0 || maxY < 0 || minX >= g.viewW || minY >= g.viewH {
-		return nil, polyBBox{}, false
+		return nil, 0, 0, polyBBox{}, false
 	}
 	if minX < 0 {
 		minX = 0
@@ -1696,9 +1723,9 @@ func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, polyBBox, bool) {
 		maxY = g.viewH - 1
 	}
 	if minX > maxX || minY > maxY {
-		return nil, polyBBox{}, false
+		return nil, 0, 0, polyBBox{}, false
 	}
-	return poly, polyBBox{minX: minX, minY: minY, maxX: maxX, maxY: maxY}, true
+	return poly, cx, cy, polyBBox{minX: minX, minY: minY, maxX: maxX, maxY: maxY}, true
 }
 
 func (g *game) subSectorSectorIndex(ss int) (int, bool) {
@@ -1734,6 +1761,18 @@ func (g *game) subSectorSectorIndex(ss int) (int, bool) {
 	}
 	sec := int(g.m.Sidedefs[side].Sector)
 	return sec, sec >= 0 && sec < len(g.m.Sectors)
+}
+
+type polyBBox struct {
+	minX int
+	minY int
+	maxX int
+	maxY int
+}
+
+type screenPt struct {
+	x float64
+	y float64
 }
 
 func pointInPolygon(px, py float64, poly []screenPt) bool {
