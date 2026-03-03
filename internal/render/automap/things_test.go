@@ -51,10 +51,22 @@ func TestRelativeThingAngle(t *testing.T) {
 		t.Fatalf("relativeThingAngle aligned = %d, want 0", got)
 	}
 
-	// Thing 90 deg to the right of view remains +90.
+	// With view north, thing west appears to the left.
 	got = relativeThingAngle(180, degToAngle(90))
-	if got != 90 {
-		t.Fatalf("relativeThingAngle offset = %d, want 90", got)
+	if got != -90 {
+		t.Fatalf("relativeThingAngle offset = %d, want -90", got)
+	}
+}
+
+func TestWorldThingAngle(t *testing.T) {
+	if got := worldThingAngle(90); got != 0 {
+		t.Fatalf("worldThingAngle(90)=%d want=0", got)
+	}
+	if got := worldThingAngle(0); got != 90 {
+		t.Fatalf("worldThingAngle(0)=%d want=90", got)
+	}
+	if got := worldThingAngle(180); got != -90 {
+		t.Fatalf("worldThingAngle(180)=%d want=-90", got)
 	}
 }
 
