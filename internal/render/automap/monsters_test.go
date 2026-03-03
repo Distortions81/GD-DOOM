@@ -83,7 +83,7 @@ func TestMoveMonsterTowardDoesNotMovePlayer(t *testing.T) {
 		},
 	}
 	px0, py0 := g.p.x, g.p.y
-	g.moveMonsterToward(0, 0, 0, 128*fracUnit, 0, 8*fracUnit)
+	g.moveMonsterToward(0, 3004, 0, 0, 128*fracUnit, 0, 8*fracUnit)
 	if g.p.x != px0 || g.p.y != py0 {
 		t.Fatalf("player moved by monster path probe: (%d,%d) -> (%d,%d)", px0, py0, g.p.x, g.p.y)
 	}

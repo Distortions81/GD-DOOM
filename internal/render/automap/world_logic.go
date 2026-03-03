@@ -4,6 +4,7 @@ import "gddoom/internal/doomrand"
 
 func (g *game) tickWorldLogic() {
 	g.worldTic++
+	g.tickProjectiles()
 	if g.inventory.RadSuitTics > 0 {
 		g.inventory.RadSuitTics--
 	}

@@ -47,11 +47,13 @@ func (g *game) tickMonsters() {
 			didAttack := g.monsterAttack(i, th.Type, dist)
 			if didAttack {
 				g.thingCooldown[i] = monsterAttackCooldown(th.Type)
+				// Attacking consumes this tic's action for more Doom-like cadence.
+				continue
 			}
 		}
 
 		if dist > monsterMeleeRange {
-			g.moveMonsterToward(i, tx, ty, px, py, monsterMoveStep(th.Type))
+			g.moveMonsterToward(i, th.Type, tx, ty, px, py, monsterMoveStep(th.Type))
 		}
 	}
 }
@@ -69,6 +71,12 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		return false
 	}
 	if !shouldAttemptRangedAttack(typ, dist) {
+		return false
+	}
+	if usesMonsterProjectile(typ) {
+		if g.spawnMonsterProjectile(i, typ) {
+			return true
+		}
 		return false
 	}
 	damage := monsterRangedDamage(typ)
@@ -190,8 +198,17 @@ func (g *game) monsterHasLOS(ax, ay, bx, by int64) bool {
 	return true
 }
 
-func (g *game) moveMonsterToward(i int, x, y, tx, ty, step int64) {
+func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	ang := math.Atan2(float64(ty-y), float64(tx-x))
+	if typ == 3001 {
+		// Imps in Doom don't steer perfectly every tic; add small random drift.
+		switch doomPRandomN(5) {
+		case 0:
+			ang += math.Pi / 8
+		case 1:
+			ang -= math.Pi / 8
+		}
+	}
 	dx := int64(math.Cos(ang) * float64(step))
 	dy := int64(math.Sin(ang) * float64(step))
 	nx := x + dx

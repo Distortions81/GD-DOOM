@@ -121,6 +121,7 @@ type game struct {
 	thingHP        []int
 	thingAggro     []bool
 	thingCooldown  []int
+	projectiles    []projectile
 	inventory      playerInventory
 	stats          playerStats
 	worldTic       int
@@ -1043,7 +1044,83 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx1), float32(yb1), 1.2, c, true)
 		vector.StrokeLine(screen, float32(sx2), float32(yt2), float32(sx2), float32(yb2), 1.2, c, true)
 	}
+	g.drawPseudo3DProjectiles(screen, camX, camY, camAng, focal, near)
 	g.drawPseudo3DMonsters(screen, camX, camY, camAng, focal, near)
+}
+
+func (g *game) drawPseudo3DProjectiles(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
+	type projectedProjectile struct {
+		dist  float64
+		sx    float64
+		sy    float64
+		r     float64
+		outer color.RGBA
+		inner color.RGBA
+	}
+	if len(g.projectiles) == 0 {
+		return
+	}
+	items := make([]projectedProjectile, 0, len(g.projectiles))
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
+
+	for _, p := range g.projectiles {
+		px := float64(p.x)/fracUnit - camX
+		py := float64(p.y)/fracUnit - camY
+		f := px*ca + py*sa
+		s := -px*sa + py*ca
+		if f <= near {
+			continue
+		}
+		// Coarse occlusion check against solid map geometry.
+		if !g.monsterHasLOS(g.p.x, g.p.y, p.x, p.y) {
+			continue
+		}
+		sx := float64(g.viewW)/2 - (s/f)*focal
+		centerZ := float64(p.z+p.height/2) / fracUnit
+		sy := float64(g.viewH)/2 - ((centerZ-eyeZ)/f)*focal
+		r := (projectileViewRadius(p) / f) * focal
+		if r < 1.2 {
+			r = 1.2
+		}
+		if sx < -32 || sx > float64(g.viewW)+32 || sy < -32 || sy > float64(g.viewH)+32 {
+			continue
+		}
+		cr := projectileColor(p.kind)
+		items = append(items, projectedProjectile{
+			dist:  f,
+			sx:    sx,
+			sy:    sy,
+			r:     math.Min(48, r),
+			outer: color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
+			inner: color.RGBA{R: 255, G: 236, B: 120, A: 232},
+		})
+	}
+
+	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
+	for _, it := range items {
+		drawCircleApprox(screen, it.sx, it.sy, it.r, it.outer)
+		drawCircleApprox(screen, it.sx, it.sy, it.r*0.52, it.inner)
+	}
+}
+
+func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
+	if r <= 1.2 {
+		ebitenutil.DrawRect(screen, cx-1, cy-1, 2, 2, clr)
+		return
+	}
+	const segs = 18
+	prevX := cx + r
+	prevY := cy
+	for i := 1; i <= segs; i++ {
+		a := (2 * math.Pi * float64(i)) / segs
+		x := cx + math.Cos(a)*r
+		y := cy + math.Sin(a)*r
+		vector.StrokeLine(screen, float32(prevX), float32(prevY), float32(x), float32(y), 1.2, clr, true)
+		prevX = x
+		prevY = y
+	}
 }
 
 func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
