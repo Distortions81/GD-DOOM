@@ -1241,11 +1241,20 @@ func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca,
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
 	baseFloorZ := float64(g.m.Sectors[playerSec].FloorHeight)
-	baseCeilZ := float64(g.m.Sectors[playerSec].CeilingHeight)
 
 	for y := 0; y < h; y++ {
 		den := cy - float64(y)
 		rowBase := y * w * 4
+		if float64(y) <= cy {
+			for x := 0; x < w; x++ {
+				i := rowBase + x*4
+				pix[i+0] = ceilFallback.R
+				pix[i+1] = ceilFallback.G
+				pix[i+2] = ceilFallback.B
+				pix[i+3] = 255
+			}
+			continue
+		}
 		if math.Abs(den) < 1e-6 {
 			for x := 0; x < w; x++ {
 				i := rowBase + x*4
@@ -1256,22 +1265,13 @@ func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca,
 			}
 			continue
 		}
-		isFloor := float64(y) > cy
-		planeZ := baseFloorZ
-		if !isFloor {
-			planeZ = baseCeilZ
-		}
-		f := ((planeZ - eyeZ) / den) * focal
+		f := ((baseFloorZ - eyeZ) / den) * focal
 		if f <= 0 {
-			fb := floorFallback
-			if !isFloor {
-				fb = ceilFallback
-			}
 			for x := 0; x < w; x++ {
 				i := rowBase + x*4
-				pix[i+0] = fb.R
-				pix[i+1] = fb.G
-				pix[i+2] = fb.B
+				pix[i+0] = floorFallback.R
+				pix[i+1] = floorFallback.G
+				pix[i+2] = floorFallback.B
 				pix[i+3] = 255
 			}
 			continue
@@ -1286,22 +1286,8 @@ func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca,
 		for x := 0; x < w; x++ {
 			i := rowBase + x*4
 			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
-			fb := floorFallback
-			if !isFloor {
-				fb = ceilFallback
-			}
 			if sec >= 0 && sec < len(g.m.Sectors) {
-				name := g.m.Sectors[sec].FloorPic
-				if !isFloor {
-					name = g.m.Sectors[sec].CeilingPic
-				}
-				// Keep sky ceilings untextured in doom-basic mode.
-				if !isFloor && isSkyFlatName(name) {
-					pix[i+0] = fb.R
-					pix[i+1] = fb.G
-					pix[i+2] = fb.B
-					pix[i+3] = 255
-				} else if tex, ok := g.flatRGBA(name); ok {
+				if tex, ok := g.flatRGBA(g.m.Sectors[sec].FloorPic); ok {
 					u := int(math.Floor(wx)) & 63
 					v := int(math.Floor(wy)) & 63
 					ti := (v*64 + u) * 4
@@ -1310,15 +1296,15 @@ func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca,
 					pix[i+2] = tex[ti+2]
 					pix[i+3] = 255
 				} else {
-					pix[i+0] = fb.R
-					pix[i+1] = fb.G
-					pix[i+2] = fb.B
+					pix[i+0] = floorFallback.R
+					pix[i+1] = floorFallback.G
+					pix[i+2] = floorFallback.B
 					pix[i+3] = 255
 				}
 			} else {
-				pix[i+0] = fb.R
-				pix[i+1] = fb.G
-				pix[i+2] = fb.B
+				pix[i+0] = floorFallback.R
+				pix[i+1] = floorFallback.G
+				pix[i+2] = floorFallback.B
 				pix[i+3] = 255
 			}
 			wx += stepWX
