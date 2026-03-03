@@ -24,6 +24,9 @@ const (
 	lineOneSidedWidth  = 1.8
 	lineTwoSidedWidth  = 1.2
 	doomInitialZoomMul = 1.0 / 0.7
+	// Avoid goroutine/scheduler overhead for small loop bodies.
+	parallelMinTotalItems = 32768
+	parallelMinJobsPerCPU = 2
 	// Give cursor capture/resizing a couple of frames to settle after detail changes.
 	detailMouseSuppressTicks = 3
 	mlDontPegTop             = 1 << 3
@@ -199,7 +202,6 @@ type game struct {
 	floorPlaneOrd      []*floorVisplane
 	floorSpans         []floorSpan
 	detailLevel        int
-	plane3DFrame       plane3DFrameStats
 	mapTexDiag         bool
 	subSectorPolySrc   []uint8
 	subSectorDiagCode  []uint8
@@ -295,16 +297,6 @@ type floorFrameStats struct {
 	rejectNoPoly     int
 	rejectDegenerate int
 	rejectSpanClip   int
-}
-
-type plane3DFrameStats struct {
-	buckets      int
-	inputSpans   int
-	outputSpans  int
-	clippedSpans int
-	skyPix       int
-	texturedPix  int
-	fallbackPix  int
 }
 
 type mapTexDiagStats struct {
@@ -896,9 +888,6 @@ func (g *game) Draw(screen *ebiten.Image) {
 				}
 				planes3DOn := len(g.opts.FlatBank) > 0
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
-				if planes3DOn {
-					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("plane3d buckets=%d in=%d out=%d clip=%d skypx=%d texpx=%d fbpx=%d", g.plane3DFrame.buckets, g.plane3DFrame.inputSpans, g.plane3DFrame.outputSpans, g.plane3DFrame.clippedSpans, g.plane3DFrame.skyPix, g.plane3DFrame.texturedPix, g.plane3DFrame.fallbackPix), 12, 76)
-				}
 			}
 		}
 		if g.isDead {
@@ -1334,7 +1323,6 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 }
 
 func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
-	g.plane3DFrame = plane3DFrameStats{}
 	camX := g.renderPX
 	camY := g.renderPY
 	camAng := angleToRadians(g.renderAngle)
@@ -1427,42 +1415,39 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		botTexMid := 0.0
 		if frontSideDef != nil {
 			rowOffset := float64(frontSideDef.RowOffset)
-			if solidWall {
-				midTex, hasMidTex = g.wallTexture(frontSideDef.Mid)
-				if hasMidTex {
-					if (ld.Flags & mlDontPegBottom) != 0 {
-						midTexMid = float64(front.FloorHeight) + float64(midTex.Height) - eyeZ
+			midTex, hasMidTex = g.wallTexture(frontSideDef.Mid)
+			if hasMidTex {
+				if (ld.Flags & mlDontPegBottom) != 0 {
+					midTexMid = float64(front.FloorHeight) + float64(midTex.Height) - eyeZ
+				} else {
+					midTexMid = float64(front.CeilingHeight) - eyeZ
+				}
+				midTexMid += rowOffset
+			}
+			if topWall {
+				topTex, hasTopTex = g.wallTexture(frontSideDef.Top)
+				if hasTopTex {
+					if (ld.Flags & mlDontPegTop) != 0 {
+						topTexMid = float64(front.CeilingHeight) - eyeZ
+					} else if back != nil {
+						topTexMid = float64(back.CeilingHeight) + float64(topTex.Height) - eyeZ
 					} else {
-						midTexMid = float64(front.CeilingHeight) - eyeZ
+						topTexMid = float64(front.CeilingHeight) - eyeZ
 					}
-					midTexMid += rowOffset
+					topTexMid += rowOffset
 				}
-			} else {
-				if topWall {
-					topTex, hasTopTex = g.wallTexture(frontSideDef.Top)
-					if hasTopTex {
-						if (ld.Flags & mlDontPegTop) != 0 {
-							topTexMid = float64(front.CeilingHeight) - eyeZ
-						} else if back != nil {
-							topTexMid = float64(back.CeilingHeight) + float64(topTex.Height) - eyeZ
-						} else {
-							topTexMid = float64(front.CeilingHeight) - eyeZ
-						}
-						topTexMid += rowOffset
+			}
+			if bottomWall {
+				botTex, hasBotTex = g.wallTexture(frontSideDef.Bottom)
+				if hasBotTex {
+					if (ld.Flags & mlDontPegBottom) != 0 {
+						botTexMid = float64(front.CeilingHeight) - eyeZ
+					} else if back != nil {
+						botTexMid = float64(back.FloorHeight) - eyeZ
+					} else {
+						botTexMid = float64(front.FloorHeight) - eyeZ
 					}
-				}
-				if bottomWall {
-					botTex, hasBotTex = g.wallTexture(frontSideDef.Bottom)
-					if hasBotTex {
-						if (ld.Flags & mlDontPegBottom) != 0 {
-							botTexMid = float64(front.CeilingHeight) - eyeZ
-						} else if back != nil {
-							botTexMid = float64(back.FloorHeight) - eyeZ
-						} else {
-							botTexMid = float64(front.FloorHeight) - eyeZ
-						}
-						botTexMid += rowOffset
-					}
+					botTexMid += rowOffset
 				}
 			}
 		}
@@ -1526,7 +1511,22 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 
 			if solidWall {
-				g.drawBasicWallColumn(depthPix, wallTop, wallBottom, x, yl, yh, f, baseRGBA, texU, midTexMid, focal, midTex, hasMidTex)
+				tex := midTex
+				texMid := midTexMid
+				useTex := hasMidTex
+				// Closed two-sided doors often have upper/lower textures but no middle texture.
+				if back != nil && !useTex {
+					if topWall && hasTopTex {
+						tex = topTex
+						texMid = topTexMid
+						useTex = true
+					} else if bottomWall && hasBotTex {
+						tex = botTex
+						texMid = botTexMid
+						useTex = true
+					}
+				}
+				g.drawBasicWallColumn(depthPix, wallTop, wallBottom, x, yl, yh, f, baseRGBA, texU, texMid, focal, tex, useTex)
 				ceilingClip[x] = g.viewH
 				floorClip[x] = -1
 				continue
@@ -1692,9 +1692,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
 		return
 	}
-	spansByPlane, active, inputSpans, hasSky := g.buildPlaneSpansParallel(planes, h)
-	g.plane3DFrame.inputSpans += inputSpans
-	g.plane3DFrame.buckets = active
+	spansByPlane, _, _, hasSky := g.buildPlaneSpansParallel(planes, h)
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
 	flatCache := make(map[string][]byte, len(planes))
@@ -1740,7 +1738,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				continue
 			}
 			row := sp.y * w * 4
-			g.plane3DFrame.outputSpans++
 			if key.sky {
 				v := 0
 				if sp.y >= 0 && sp.y < len(skyRowV) {
@@ -1748,7 +1745,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				}
 				for x := x1; x <= x2; x++ {
 					i := row + x*4
-					g.plane3DFrame.skyPix++
 					if skyTexOK && len(skyTex.RGBA) == skyTex.Width*skyTex.Height*4 {
 						u := 0
 						if x >= 0 && x < len(skyColU) {
@@ -1758,12 +1754,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						pix[i+0] = skyTex.RGBA[ti+0]
 						pix[i+1] = skyTex.RGBA[ti+1]
 						pix[i+2] = skyTex.RGBA[ti+2]
-						g.plane3DFrame.texturedPix++
 					} else {
 						pix[i+0] = fb.R
 						pix[i+1] = fb.G
 						pix[i+2] = fb.B
-						g.plane3DFrame.fallbackPix++
 					}
 					pix[i+3] = 255
 				}
@@ -1789,7 +1783,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					pix[i+1] = fb.G
 					pix[i+2] = fb.B
 					pix[i+3] = 255
-					g.plane3DFrame.fallbackPix++
 				} else if len(tex) == 64*64*4 {
 					u := int(math.Floor(wxSpan)) & 63
 					v := int(math.Floor(wySpan)) & 63
@@ -1798,13 +1791,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					pix[i+1] = tex[ti+1]
 					pix[i+2] = tex[ti+2]
 					pix[i+3] = 255
-					g.plane3DFrame.texturedPix++
 				} else {
 					pix[i+0] = fb.R
 					pix[i+1] = fb.G
 					pix[i+2] = fb.B
 					pix[i+3] = 255
-					g.plane3DFrame.fallbackPix++
 				}
 				wxSpan += stepWX
 				wySpan += stepWY
@@ -1981,7 +1972,6 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		}
 		return false
 	})
-	g.plane3DFrame.buckets = len(keyOrder)
 	skyTex, skyTexOK := skyTextureForMap(g.m.Name, g.opts.WallTexBank)
 	skyColU := make([]int, 0)
 	skyRowV := make([]int, 0)
@@ -2002,7 +1992,6 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			flatCache[key.flat] = tex
 		}
 		for _, sp := range spanBuckets[key] {
-			g.plane3DFrame.inputSpans++
 			if sp.y < 0 || sp.y >= h {
 				continue
 			}
@@ -2017,11 +2006,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			}
 			visible := clipRangeAgainstCovered(sp.x1, sp.x2, coveredByRow[sp.y])
 			if len(visible) == 0 {
-				g.plane3DFrame.clippedSpans++
 				continue
-			}
-			if len(visible) > 1 {
-				g.plane3DFrame.clippedSpans += len(visible) - 1
 			}
 			den := cy - (float64(sp.y) + 0.5)
 			if math.Abs(den) < 1e-6 {
@@ -2036,7 +2021,6 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			stepWX := (depth / focal) * sa
 			stepWY := -(depth / focal) * ca
 			for _, vr := range visible {
-				g.plane3DFrame.outputSpans++
 				wxSpan := camX + depth*ca - ((cx-(float64(vr.l)+0.5))*depth/focal)*sa
 				wySpan := camY + depth*sa + ((cx-(float64(vr.l)+0.5))*depth/focal)*ca
 				v := 0
@@ -2046,7 +2030,6 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 				for x := vr.l; x <= vr.r; x++ {
 					i := row + x*4
 					if key.sky {
-						g.plane3DFrame.skyPix++
 						if skyTexOK && len(skyTex.RGBA) == skyTex.Width*skyTex.Height*4 {
 							u := 0
 							if x >= 0 && x < len(skyColU) {
@@ -2057,20 +2040,17 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 							pix[i+1] = skyTex.RGBA[ti+1]
 							pix[i+2] = skyTex.RGBA[ti+2]
 							pix[i+3] = 255
-							g.plane3DFrame.texturedPix++
 						} else {
 							pix[i+0] = fb.R
 							pix[i+1] = fb.G
 							pix[i+2] = fb.B
 							pix[i+3] = 255
-							g.plane3DFrame.fallbackPix++
 						}
 					} else if key.fallback {
 						pix[i+0] = fb.R
 						pix[i+1] = fb.G
 						pix[i+2] = fb.B
 						pix[i+3] = 255
-						g.plane3DFrame.fallbackPix++
 					} else if len(tex) == 64*64*4 {
 						u := int(math.Floor(wxSpan)) & 63
 						v := int(math.Floor(wySpan)) & 63
@@ -2079,13 +2059,11 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 						pix[i+1] = tex[ti+1]
 						pix[i+2] = tex[ti+2]
 						pix[i+3] = 255
-						g.plane3DFrame.texturedPix++
 					} else {
 						pix[i+0] = fb.R
 						pix[i+1] = fb.G
 						pix[i+2] = fb.B
 						pix[i+3] = 255
-						g.plane3DFrame.fallbackPix++
 					}
 					wxSpan += stepWX
 					wySpan += stepWY
@@ -2124,7 +2102,7 @@ func (g *game) parallelForChunks(total, chunk int, fn func(start, end int)) {
 		chunk = total
 	}
 	jobs := (total + chunk - 1) / chunk
-	if g.cpuCount <= 1 || jobs <= 1 {
+	if g.cpuCount <= 1 || jobs <= 1 || total < parallelMinTotalItems || jobs < g.cpuCount*parallelMinJobsPerCPU {
 		for j := 0; j < jobs; j++ {
 			start := j * chunk
 			end := start + chunk
