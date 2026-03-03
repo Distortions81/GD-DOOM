@@ -1,10 +1,12 @@
 package app
 
 import (
+	"crypto/sha1"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"gddoom/internal/mapdata"
@@ -39,7 +41,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
 	defaultImportTextures := true
-	defaultMapFloorTex2D := true
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -95,9 +96,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.ImportTextures != nil {
 			defaultImportTextures = *cfg.ImportTextures
 		}
-		if cfg.MapFloorTex2D != nil {
-			defaultMapFloorTex2D = *cfg.MapFloorTex2D
-		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -121,7 +119,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
-	mapFloorTex2D := fs.Bool("map-floor-tex-2d", defaultMapFloorTex2D, "draw doom-basic 3D floor/ceiling flats (and 2D automap flats in sourceport mode)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -157,7 +154,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			resolvedInvuln = true
 		}
 	}
-	resolvedMapFloorTex2D := *mapFloorTex2D
 	if strings.TrimSpace(*wadPath) == "" {
 		fmt.Fprintln(stderr, "-wad is required")
 		return 2
@@ -168,6 +164,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "open wad: %v\n", err)
 		return 1
 	}
+	wadHash := hashFileSHA1(*wadPath)
 	soundBank := automap.SoundBank{}
 	if *importPCSpeaker {
 		dpr := sound.ImportPCSpeakerSounds(wf)
@@ -206,7 +203,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	flatBank := map[string][]byte(nil)
-	loadFlats := resolvedMapFloorTex2D || *sourcePortMode
+	loadFlats := true
 	if loadFlats {
 		fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
 		if ferr != nil {
@@ -236,6 +233,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Width:          *width,
 			Height:         *height,
 			StartZoom:      *zoom,
+			WADHash:        wadHash,
 			PlayerSlot:     *playerSlot,
 			SkillLevel:     *skillLevel,
 			CheatLevel:     resolvedCheatLevel,
@@ -244,7 +242,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SourcePortMode: *sourcePortMode,
 			AllCheats:      *allCheats,
 			StartInMapMode: *startInMap,
-			MapFloorTex2D:  resolvedMapFloorTex2D,
 			FlatBank:       flatBank,
 			WallTexBank:    wallTexBank,
 			SoundBank:      soundBank,
@@ -332,6 +329,19 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+func hashFileSHA1(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha1.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {

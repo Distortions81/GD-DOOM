@@ -20,7 +20,6 @@ type fileConfig struct {
 	CheatLevel      *int     `toml:"cheat_level"`
 	Invulnerable    *bool    `toml:"invulnerable"`
 	ImportTextures  *bool    `toml:"import_textures"`
-	MapFloorTex2D   *bool    `toml:"map_floor_tex_2d"`
 	LineColorMode   *string  `toml:"line_color_mode"`
 	SourcePortMode  *bool    `toml:"sourceport_mode"`
 	AllCheats       *bool    `toml:"all_cheats"`

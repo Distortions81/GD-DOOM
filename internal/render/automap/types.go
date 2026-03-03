@@ -4,6 +4,7 @@ type Options struct {
 	Width          int
 	Height         int
 	StartZoom      float64
+	WADHash        string
 	PlayerSlot     int
 	SkillLevel     int
 	CheatLevel     int
@@ -12,7 +13,6 @@ type Options struct {
 	SourcePortMode bool
 	AllCheats      bool
 	StartInMapMode bool
-	MapFloorTex2D  bool
 	FlatBank       map[string][]byte
 	WallTexBank    map[string]WallTexture
 	SoundBank      SoundBank
