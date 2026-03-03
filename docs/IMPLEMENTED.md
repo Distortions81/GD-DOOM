@@ -59,6 +59,7 @@ Snapshot of features currently working in this repo.
 - Source-port default thing legend overlay with runtime toggle
 - Source-port use-target automap highlight (line currently hittable by `use`)
 - Source-port pseudo-3D walk render mode (default ON, toggle with `P`)
+- Pseudo-3D visibility now uses BSP node traversal (not automap discovery state)
 - Doom-style turn acceleration behavior (`SLOWTURNTICS` style ramp)
 
 ## Tests

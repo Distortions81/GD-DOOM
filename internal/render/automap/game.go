@@ -978,12 +978,12 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 	focal := float64(g.viewW) * 0.75
 	near := 2.0
 
-	for _, li := range g.visibleLineIndices() {
+	for _, li := range g.visibleLineIndicesPseudo3D() {
 		if li < 0 || li >= len(g.m.Linedefs) {
 			continue
 		}
 		ld := g.m.Linedefs[li]
-		d := g.linedefDecision(ld)
+		d := g.linedefDecisionPseudo3D(ld)
 		if !d.visible {
 			continue
 		}
