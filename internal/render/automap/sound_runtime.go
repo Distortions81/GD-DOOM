@@ -11,6 +11,9 @@ const (
 	soundEventDoorClose
 	soundEventBlazeOpen
 	soundEventBlazeClose
+	soundEventSwitchOn
+	soundEventSwitchOff
+	soundEventNoWay
 )
 
 type soundSystem struct {
@@ -42,6 +45,15 @@ func firstSampleRate(bank SoundBank) int {
 	}
 	if bank.BlazeClose.SampleRate > 0 && len(bank.BlazeClose.Data) > 0 {
 		return bank.BlazeClose.SampleRate
+	}
+	if bank.SwitchOn.SampleRate > 0 && len(bank.SwitchOn.Data) > 0 {
+		return bank.SwitchOn.SampleRate
+	}
+	if bank.SwitchOff.SampleRate > 0 && len(bank.SwitchOff.Data) > 0 {
+		return bank.SwitchOff.SampleRate
+	}
+	if bank.NoWay.SampleRate > 0 && len(bank.NoWay.Data) > 0 {
+		return bank.NoWay.SampleRate
 	}
 	return 0
 }
@@ -81,6 +93,21 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.BlazeClose, true
 		}
 		return s.bank.DoorClose, true
+	case soundEventSwitchOn:
+		if len(s.bank.SwitchOn.Data) > 0 {
+			return s.bank.SwitchOn, true
+		}
+		return s.bank.DoorOpen, true
+	case soundEventSwitchOff:
+		if len(s.bank.SwitchOff.Data) > 0 {
+			return s.bank.SwitchOff, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventNoWay:
+		if len(s.bank.NoWay.Data) > 0 {
+			return s.bank.NoWay, true
+		}
+		return s.bank.SwitchOff, true
 	default:
 		return PCMSample{}, false
 	}

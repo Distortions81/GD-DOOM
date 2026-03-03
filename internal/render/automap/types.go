@@ -21,4 +21,7 @@ type SoundBank struct {
 	DoorClose  PCMSample
 	BlazeOpen  PCMSample
 	BlazeClose PCMSample
+	SwitchOn   PCMSample
+	SwitchOff  PCMSample
+	NoWay      PCMSample
 }

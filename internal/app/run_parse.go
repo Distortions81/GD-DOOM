@@ -171,6 +171,9 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		DoorClose:  firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
 		BlazeOpen:  sample("DSBDOPN"),
 		BlazeClose: sample("DSBDCLS"),
+		SwitchOn:   sample("DSSWTCHN"),
+		SwitchOff:  sample("DSSWTCHX"),
+		NoWay:      firstSample(sample("DSNOWAY"), sample("DSOOF")),
 	}
 }
 

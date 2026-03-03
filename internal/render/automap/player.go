@@ -781,6 +781,7 @@ func (g *game) useLines() {
 			if openrange <= 0 {
 				g.useText = "USE: no way"
 				g.useFlash = 35
+				g.emitSoundEvent(soundEventNoWay)
 				return
 			}
 			continue
@@ -794,6 +795,7 @@ func (g *game) useLines() {
 	}
 	g.useText = "USE: no line"
 	g.useFlash = 35
+	g.emitSoundEvent(soundEventNoWay)
 }
 
 func (g *game) useSpecialLine(lineIdx int, side int) {
@@ -801,24 +803,29 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 	if side == 1 && special != 124 {
 		g.useText = "USE: back side"
 		g.useFlash = 35
+		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
 	info := mapdata.LookupLineSpecial(special)
 	if info.Door == nil || (info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse) {
 		g.useText = "USE: unsupported special"
 		g.useFlash = 35
+		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
 	if !info.Door.CanActivate(mapdata.KeyRing{}) {
 		g.useText = "USE: locked"
 		g.useFlash = 35
+		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
 	activated := g.activateDoorLine(lineIdx, info)
 	if activated {
 		g.useText = "USE: door active"
+		g.emitSoundEvent(soundEventSwitchOn)
 	} else {
 		g.useText = "USE: no change"
+		g.emitSoundEvent(soundEventNoWay)
 	}
 	g.useFlash = 35
 }
