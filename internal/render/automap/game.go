@@ -156,6 +156,7 @@ type game struct {
 	floorPlanes   map[floorPlaneKey]*floorVisplane
 	floorSpans    []floorSpan
 	detailLevel   int
+	plane3DFrame  plane3DFrameStats
 }
 
 type savedMapView struct {
@@ -224,6 +225,13 @@ type floorFrameStats struct {
 	markedCols   int
 	emittedSpans int
 	rejectedSpan int
+}
+
+type plane3DFrameStats struct {
+	buckets      int
+	inputSpans   int
+	outputSpans  int
+	clippedSpans int
 }
 
 func newGame(m *mapdata.Map, opts Options) *game {
@@ -733,6 +741,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
 			ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
 			ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
+			if g.opts.SourcePortMode && g.showMapFloors {
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("plane3d buckets=%d in=%d out=%d clip=%d", g.plane3DFrame.buckets, g.plane3DFrame.inputSpans, g.plane3DFrame.outputSpans, g.plane3DFrame.clippedSpans), 12, 60)
+			}
 		}
 		if g.isDead {
 			g.drawDeathOverlay(screen)
@@ -1154,6 +1165,7 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 }
 
 func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
+	g.plane3DFrame = plane3DFrameStats{}
 	camX := g.renderPX
 	camY := g.renderPY
 	camAng := angleToRadians(g.renderAngle)
@@ -1401,6 +1413,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		}
 		return false
 	})
+	g.plane3DFrame.buckets = len(keyOrder)
 	coveredByRow := make([][]spanRange, h)
 	for _, key := range keyOrder {
 		fb := ceilFallback
@@ -1413,6 +1426,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			flatCache[key.flat] = tex
 		}
 		for _, sp := range spanBuckets[key] {
+			g.plane3DFrame.inputSpans++
 			if sp.y < 0 || sp.y >= h {
 				continue
 			}
@@ -1427,7 +1441,11 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			}
 			visible := clipRangeAgainstCovered(sp.x1, sp.x2, coveredByRow[sp.y])
 			if len(visible) == 0 {
+				g.plane3DFrame.clippedSpans++
 				continue
+			}
+			if len(visible) > 1 {
+				g.plane3DFrame.clippedSpans += len(visible) - 1
 			}
 			den := cy - (float64(sp.y) + 0.5)
 			if math.Abs(den) < 1e-6 {
@@ -1442,6 +1460,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			stepWX := (depth / focal) * sa
 			stepWY := -(depth / focal) * ca
 			for _, vr := range visible {
+				g.plane3DFrame.outputSpans++
 				wxSpan := camX + depth*ca - ((cx-(float64(vr.l)+0.5))*depth/focal)*sa
 				wySpan := camY + depth*sa + ((cx-(float64(vr.l)+0.5))*depth/focal)*ca
 				for x := vr.l; x <= vr.r; x++ {
