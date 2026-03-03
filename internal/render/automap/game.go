@@ -1158,7 +1158,15 @@ func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthBuf []float64
 		if t > 1 {
 			t = 1
 		}
-		f := f1 + (f2-f1)*t
+		// Perspective-correct depth interpolation across screen columns.
+		// In projected space, 1/z is linear with x (not z itself).
+		invF1 := 1.0 / f1
+		invF2 := 1.0 / f2
+		invF := invF1 + (invF2-invF1)*t
+		if invF <= 0 {
+			continue
+		}
+		f := 1.0 / invF
 		if f <= 0 || f >= depthBuf[x] {
 			continue
 		}
