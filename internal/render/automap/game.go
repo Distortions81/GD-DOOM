@@ -81,6 +81,7 @@ type game struct {
 	showGrid   bool
 	showLegend bool
 	bigMap     bool
+	paused     bool
 	savedView  savedMapView
 	marks      []mapMark
 	nextMarkID int
@@ -455,8 +456,20 @@ func (g *game) Update() error {
 	if g.levelExitRequested {
 		return ebiten.Termination
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
-		return ebiten.Termination
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
+			return ebiten.Termination
+		}
+		g.paused = !g.paused
+		if !g.paused && g.mode == viewWalk {
+			// Reset mouse baseline on resume to avoid turn spikes.
+			g.mouseLookSet = false
+			g.mouseLookSuppressTicks = detailMouseSuppressTicks
+		}
+	}
+	if g.paused {
+		ebiten.SetCursorMode(ebiten.CursorModeVisible)
+		return nil
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
 		if g.mode == viewWalk {
@@ -825,6 +838,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, g.useText, 12, 44)
 		}
 		g.drawHelpUI(screen)
+		if g.paused {
+			g.drawPauseOverlay(screen)
+		}
 		return
 	}
 	g.prepareRenderState()
@@ -927,6 +943,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 		g.drawDeathOverlay(screen)
 	}
 	g.drawFlashOverlay(screen)
+	if g.paused {
+		g.drawPauseOverlay(screen)
+	}
 }
 
 func (g *game) profileLabel() string {
@@ -1249,7 +1268,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := float64(g.p.z)/fracUnit + 41.0
-	focal := float64(g.viewW) * 0.75
+	focal := doomFocalLength(g.viewW)
 	near := 2.0
 
 	ceilClr, floorClr := g.basicPlaneColors()
@@ -2517,7 +2536,7 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := float64(g.p.z)/fracUnit + 41.0
-	focal := float64(g.viewW) * 0.75
+	focal := doomFocalLength(g.viewW)
 	near := 2.0
 
 	for _, si := range g.visibleSegIndicesPseudo3D() {
@@ -3054,6 +3073,15 @@ func shadeFactorByDistance(dist float64) float64 {
 		n = 1
 	}
 	return 1.0 - 0.72*n
+}
+
+func doomFocalLength(viewW int) float64 {
+	// Doom's classic horizontal FOV is approximately 90 degrees.
+	// In a pinhole camera model this corresponds to focal = viewW / 2.
+	if viewW <= 0 {
+		return 1
+	}
+	return float64(viewW) * 0.5
 }
 
 func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
@@ -5969,4 +5997,21 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 	for i, l := range lines {
 		ebitenutil.DebugPrintAt(screen, l, x, y+i*14)
 	}
+}
+
+func (g *game) drawPauseOverlay(screen *ebiten.Image) {
+	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 0, G: 0, B: 0, A: 120})
+	w, h := 220.0, 96.0
+	x := (float64(g.viewW) - w) * 0.5
+	y := (float64(g.viewH) - h) * 0.5
+	ebitenutil.DrawRect(screen, x, y, w, h, color.RGBA{R: 18, G: 20, B: 26, A: 230})
+	ebitenutil.DrawRect(screen, x, y, w, 2, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+	ebitenutil.DrawRect(screen, x, y+h-2, w, 2, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+	ebitenutil.DrawRect(screen, x, y, 2, h, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+	ebitenutil.DrawRect(screen, x+w-2, y, 2, h, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+
+	title := "PAUSED"
+	help := "ESC resume  |  Shift+ESC quit"
+	ebitenutil.DebugPrintAt(screen, title, int(x+w*0.5)-len(title)*3, int(y)+28)
+	ebitenutil.DebugPrintAt(screen, help, int(x+w*0.5)-len(help)*3, int(y)+58)
 }
