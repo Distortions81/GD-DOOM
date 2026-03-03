@@ -84,6 +84,8 @@ type game struct {
 	useFlash    int
 	useText     string
 	turnHeld    int
+	snd         *soundSystem
+	soundQueue  []soundEvent
 
 	prevCamX  float64
 	prevCamY  float64
@@ -163,6 +165,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.mode = viewWalk
 	}
 	g.initPhysics()
+	g.snd = newSoundSystem(opts.SoundBank)
+	g.soundQueue = make([]soundEvent, 0, 8)
 	if g.opts.SourcePortMode {
 		// Source-port defaults: reveal full map style and heading-follow at startup.
 		g.parity.reveal = revealAllMap
@@ -211,12 +215,19 @@ func (g *game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
 		if g.mode == viewWalk {
 			g.mode = viewMap
+			g.setHUDMessage("Automap Opened", 35)
 		} else {
 			g.mode = viewWalk
+			g.setHUDMessage("Automap Closed", 35)
 		}
 	}
 	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		g.rotateView = !g.rotateView
+		if g.rotateView {
+			g.setHUDMessage("Rotate Mode ON", 70)
+		} else {
+			g.setHUDMessage("Rotate Mode OFF", 70)
+		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
@@ -235,6 +246,7 @@ func (g *game) Update() error {
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
+	g.flushSoundEvents()
 	g.lastUpdate = time.Now()
 	return nil
 }
@@ -243,6 +255,11 @@ func (g *game) updateMapMode() {
 	g.updateParityControls()
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		g.followMode = !g.followMode
+		if g.followMode {
+			g.setHUDMessage("Follow ON", 70)
+		} else {
+			g.setHUDMessage("Follow OFF", 70)
+		}
 	}
 	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		g.toggleBigMap()
@@ -383,20 +400,29 @@ func (g *game) updateWalkMode() {
 func (g *game) updateParityControls() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
 		g.showGrid = !g.showGrid
+		if g.showGrid {
+			g.setHUDMessage("Grid ON", 70)
+		} else {
+			g.setHUDMessage("Grid OFF", 70)
+		}
 	}
 	if g.opts.SourcePortMode {
 		if inpututil.IsKeyJustPressed(ebiten.KeyO) {
 			if g.parity.reveal == revealNormal {
 				g.parity.reveal = revealAllMap
+				g.setHUDMessage("Allmap ON", 70)
 			} else {
 				g.parity.reveal = revealNormal
+				g.setHUDMessage("Allmap OFF", 70)
 			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyI) {
 			g.parity.iddt = (g.parity.iddt + 1) % 3
+			g.setHUDMessage(fmt.Sprintf("IDDT %d", g.parity.iddt), 70)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyL) {
 			g.opts.LineColorMode = toggledLineColorMode(g.opts.LineColorMode)
+			g.setHUDMessage(fmt.Sprintf("Line Colors: %s", g.opts.LineColorMode), 70)
 		}
 	}
 }
@@ -471,20 +497,25 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.parity.reveal == revealAllMap {
 		revealText = "allmap"
 	}
-	overlay := fmt.Sprintf("%s | %s | %s | z%.2f | %s | i%d | g:%t | m:%d | %s",
-		g.m.Name,
-		g.profileLabel(),
-		modeText,
-		g.zoom,
-		revealText,
-		g.parity.iddt,
-		g.showGrid,
-		len(g.marks),
-		g.opts.LineColorMode,
-	)
-	ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
+	if g.opts.SourcePortMode {
+		overlay := fmt.Sprintf("map=%s mode=%s zoom=%.2f reveal=%s iddt=%d grid=%t marks=%d colors=%s",
+			g.m.Name,
+			modeText,
+			g.zoom,
+			revealText,
+			g.parity.iddt,
+			g.showGrid,
+			len(g.marks),
+			g.opts.LineColorMode,
+		)
+		ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
+	}
 	if g.useFlash > 0 {
-		ebitenutil.DebugPrintAt(screen, g.useText, 12, 28)
+		msgY := 12
+		if g.opts.SourcePortMode {
+			msgY = 28
+		}
+		ebitenutil.DebugPrintAt(screen, g.useText, 12, msgY)
 	}
 	g.drawHelpUI(screen)
 }
@@ -494,6 +525,25 @@ func (g *game) profileLabel() string {
 		return "sourceport"
 	}
 	return "doom"
+}
+
+func (g *game) emitSoundEvent(ev soundEvent) {
+	g.soundQueue = append(g.soundQueue, ev)
+}
+
+func (g *game) setHUDMessage(msg string, tics int) {
+	g.useText = msg
+	g.useFlash = tics
+}
+
+func (g *game) flushSoundEvents() {
+	if g.snd != nil {
+		for _, ev := range g.soundQueue {
+			g.snd.playEvent(ev)
+		}
+		g.snd.tick()
+	}
+	g.soundQueue = g.soundQueue[:0]
 }
 
 func shouldDrawThings(st automapParityState) bool {
@@ -509,18 +559,22 @@ func toggledLineColorMode(mode string) string {
 
 func (g *game) addMark() {
 	if len(g.marks) >= 10 {
+		g.setHUDMessage("Marks Full", 70)
 		return
 	}
+	id := g.nextMarkID
 	g.marks = append(g.marks, mapMark{
 		id: g.nextMarkID,
 		x:  g.camX,
 		y:  g.camY,
 	})
 	g.nextMarkID++
+	g.setHUDMessage(fmt.Sprintf("Marked Spot %d", id), 70)
 }
 
 func (g *game) clearMarks() {
 	g.marks = g.marks[:0]
+	g.setHUDMessage("Marks Cleared", 70)
 }
 
 func (g *game) toggleBigMap() {
@@ -537,6 +591,7 @@ func (g *game) toggleBigMap() {
 		g.camX = (g.bounds.minX + g.bounds.maxX) / 2
 		g.camY = (g.bounds.minY + g.bounds.maxY) / 2
 		g.zoom = g.fitZoom
+		g.setHUDMessage("Big Map ON", 70)
 		return
 	}
 	g.bigMap = false
@@ -546,6 +601,7 @@ func (g *game) toggleBigMap() {
 		g.zoom = g.savedView.zoom
 		g.followMode = g.savedView.follow
 	}
+	g.setHUDMessage("Big Map OFF", 70)
 }
 
 func (g *game) drawGrid(screen *ebiten.Image) {

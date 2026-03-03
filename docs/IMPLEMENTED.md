@@ -10,7 +10,7 @@ Snapshot of features currently working in this repo.
   - `THINGS`, `LINEDEFS`, `SIDEDEFS`, `VERTEXES`, `SEGS`, `SSECTORS`, `NODES`, `SECTORS`, `REJECT`, `BLOCKMAP`
 - Strict map validation (index/reference bounds and structural checks)
 - CLI summary output and detailed parse output mode
-- Startup PC-speaker sound import from `DP*` lumps (in-memory parse + status report)
+- Startup sound import from `DP*` (PC speaker) and `DS*` (digital PCM) lumps (in-memory parse + status report)
 
 ## Renderer and Runtime
 
@@ -20,6 +20,7 @@ Snapshot of features currently working in this repo.
 - Source-port startup profile via `-sourceport-mode`
 - Walk/map mode toggle (`TAB`)
 - Non-map placeholder screen (`no game render yet`)
+- Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 
 ## Automap Features
 

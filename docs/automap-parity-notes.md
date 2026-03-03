@@ -59,7 +59,6 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 
 - [ ] Build E1M1 parity checks for: normal mode, allmap mode, iddt1, iddt2. (lower priority)
 - [x] Add unit tests for line inclusion rules (`ML_MAPPED`, `LINE_NEVERSEE`, cheat/allmap gates).
-- [ ] Add screenshot-based regression checks for key map states.
 
 ## Sound Decode Track (Boot-Time In-Memory)
 

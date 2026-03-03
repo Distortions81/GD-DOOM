@@ -46,7 +46,7 @@ func TestParsePCSpeakerLumpInvalidSize(t *testing.T) {
 func TestImportPCSpeakerSounds(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "sound.wad")
-	data := buildWAD(t, []lumpSpec{
+	data := buildWADForSoundTests(t, []lumpSpec{
 		{name: "DPGOOD", data: []byte{0, 0, 1, 0, 0x33}},
 		{name: "DPBAD", data: []byte{1, 0, 0, 0}},
 		{name: "NOTSND", data: []byte{0xff}},
@@ -63,40 +63,4 @@ func TestImportPCSpeakerSounds(t *testing.T) {
 	if r.Found != 2 || r.Decoded != 1 || r.Failed != 1 {
 		t.Fatalf("report=%+v", r)
 	}
-}
-
-type lumpSpec struct {
-	name string
-	data []byte
-}
-
-func buildWAD(t *testing.T, lumps []lumpSpec) []byte {
-	t.Helper()
-	const (
-		headerLen = 12
-		dirLen    = 16
-	)
-	fileDataLen := 0
-	for _, l := range lumps {
-		if len(l.name) > 8 {
-			t.Fatalf("lump name too long: %q", l.name)
-		}
-		fileDataLen += len(l.data)
-	}
-	dirPos := headerLen + fileDataLen
-	buf := make([]byte, headerLen+fileDataLen+len(lumps)*dirLen)
-	copy(buf[0:4], []byte("IWAD"))
-	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(lumps)))
-	binary.LittleEndian.PutUint32(buf[8:12], uint32(dirPos))
-
-	writePos := headerLen
-	for i, l := range lumps {
-		copy(buf[writePos:], l.data)
-		entry := buf[dirPos+i*dirLen : dirPos+(i+1)*dirLen]
-		binary.LittleEndian.PutUint32(entry[0:4], uint32(writePos))
-		binary.LittleEndian.PutUint32(entry[4:8], uint32(len(l.data)))
-		copy(entry[8:16], []byte(l.name))
-		writePos += len(l.data)
-	}
-	return buf
 }

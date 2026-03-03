@@ -79,7 +79,6 @@ Rewrite this repo into a Go codebase with phased delivery:
 3. Add E1M1 parity acceptance checks for normal/allmap/iddt1/iddt2 states (deferred/lower priority).
 
 ## Lower Priority Backlog
-- Add screenshot-based automap regression checks for key map states.
 - Add optional vanilla-compat mode that starts in map view (`TAB`-style flow), while keeping current walk-first default.
 - Add a lightweight startup/parity HUD panel that clarifies current reveal mode and IDDT level.
 

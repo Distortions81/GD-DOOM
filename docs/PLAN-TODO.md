@@ -11,16 +11,15 @@ Single source of truth for current priorities.
 
 ## Next Up (Priority Order)
 
-1. Extend startup sound import beyond `DP*` (PC-speaker) to additional Doom sound lump formats as needed
-2. Improve startup sound report detail (sample rates, per-lump error summary)
+1. Improve startup sound report detail (sample rates, per-lump error summary)
+2. Expand sound parsing support for additional Doom-compatible lump variants as needed
 3. Fix CLI map selection when `-map` is omitted (auto-select first valid map)
 
 ## Parity Polish (Lower Priority)
 
 1. E1M1 acceptance checks across normal/allmap/iddt1/iddt2
-2. Screenshot-based automap regression checks
-3. Multiplayer arrow/color parity
-4. Final review of any remaining non-Doom behavior in Doom profile
+2. Multiplayer arrow/color parity
+3. Final review of any remaining non-Doom behavior in Doom profile
 
 ## Notes
 

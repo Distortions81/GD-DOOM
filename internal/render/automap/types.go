@@ -8,4 +8,17 @@ type Options struct {
 	SourcePortMode bool
 	AllCheats      bool
 	StartInMapMode bool
+	SoundBank      SoundBank
+}
+
+type PCMSample struct {
+	SampleRate int
+	Data       []byte
+}
+
+type SoundBank struct {
+	DoorOpen   PCMSample
+	DoorClose  PCMSample
+	BlazeOpen  PCMSample
+	BlazeClose PCMSample
 }

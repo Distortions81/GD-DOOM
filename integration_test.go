@@ -40,6 +40,19 @@ func TestCLIDefaultMapSelectsFirstLevel(t *testing.T) {
 	}
 }
 
+func TestCLIEmptyMapSelectsFirstLevel(t *testing.T) {
+	var out bytes.Buffer
+	var err bytes.Buffer
+	code := app.RunParse([]string{"-wad", "DOOM1.WAD", "-map", "", "-render=false"}, &out, &err)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, err.String())
+	}
+	line := out.String()
+	if !strings.Contains(line, "map=E1M1 ") {
+		t.Fatalf("stdout %q does not contain map=E1M1", line)
+	}
+}
+
 func TestCLIDetailsIncludesDoorAndSpatialData(t *testing.T) {
 	var out bytes.Buffer
 	var err bytes.Buffer

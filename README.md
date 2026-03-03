@@ -35,6 +35,7 @@ This starts the app in walk mode. Press `TAB` to open automap.
 - `-all-cheats`: start with automap cheats enabled (`allmap` + `IDDT2`)
 - `-start-in-map`: start with automap open (default `true`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
+- `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
 
 ## Controls (Default Doom Profile)
 

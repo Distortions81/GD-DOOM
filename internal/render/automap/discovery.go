@@ -2,49 +2,117 @@ package automap
 
 import "gddoom/internal/mapdata"
 
-const automapDiscoverRadius = 1024.0
+const automapDiscoverPortalDepth = 3
 
 func (g *game) discoverLinesAroundPlayer() {
-	px := float64(g.p.x) / fracUnit
-	py := float64(g.p.y) / fracUnit
-	for i, ld := range g.m.Linedefs {
-		if shouldMarkMapped(ld, g.m.Vertexes, px, py, automapDiscoverRadius) {
+	sec := g.sectorAt(g.p.x, g.p.y)
+	mapped := discoverMappedLinesBySector(g.m, sec, automapDiscoverPortalDepth)
+	for i, ok := range mapped {
+		if ok {
 			g.m.Linedefs[i].Flags |= mlMapped
 		}
 	}
 }
 
-func shouldMarkMapped(ld mapdata.Linedef, vertexes []mapdata.Vertex, px, py, radius float64) bool {
-	if ld.Flags&lineNeverSee != 0 {
-		return false
+func discoverMappedLinesBySector(m *mapdata.Map, startSector, maxDepth int) []bool {
+	out := make([]bool, len(m.Linedefs))
+	if startSector < 0 || startSector >= len(m.Sectors) {
+		return out
 	}
-	if int(ld.V1) >= len(vertexes) || int(ld.V2) >= len(vertexes) {
-		return false
+	type qNode struct {
+		sec   int
+		depth int
 	}
-	v1 := vertexes[ld.V1]
-	v2 := vertexes[ld.V2]
-	x1 := float64(v1.X)
-	y1 := float64(v1.Y)
-	x2 := float64(v2.X)
-	y2 := float64(v2.Y)
-	return pointSegmentDistanceSquared(px, py, x1, y1, x2, y2) <= radius*radius
+	visited := make([]bool, len(m.Sectors))
+	queue := []qNode{{sec: startSector, depth: 0}}
+	visited[startSector] = true
+
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+
+		for li, ld := range m.Linedefs {
+			fsec, bsec, fok, bok := linedefSectorIndices(m, ld)
+			touches := (fok && fsec == n.sec) || (bok && bsec == n.sec)
+			if !touches {
+				continue
+			}
+			if ld.Flags&lineNeverSee != 0 {
+				continue
+			}
+			out[li] = true
+
+			if n.depth >= maxDepth {
+				continue
+			}
+			other, ok := oppositeSector(n.sec, fsec, bsec, fok, bok)
+			if !ok || other < 0 || other >= len(m.Sectors) || visited[other] {
+				continue
+			}
+			if !portalTraversable(m, ld, fsec, bsec, fok, bok) {
+				continue
+			}
+			visited[other] = true
+			queue = append(queue, qNode{sec: other, depth: n.depth + 1})
+		}
+	}
+
+	return out
 }
 
-func pointSegmentDistanceSquared(px, py, x1, y1, x2, y2 float64) float64 {
-	dx := x2 - x1
-	dy := y2 - y1
-	if dx == 0 && dy == 0 {
-		return sq(px-x1) + sq(py-y1)
+func linedefSectorIndices(m *mapdata.Map, ld mapdata.Linedef) (front, back int, frontOK, backOK bool) {
+	if ld.SideNum[0] >= 0 && int(ld.SideNum[0]) < len(m.Sidedefs) {
+		s := m.Sidedefs[int(ld.SideNum[0])].Sector
+		if int(s) < len(m.Sectors) {
+			front, frontOK = int(s), true
+		}
 	}
-	t := ((px-x1)*dx + (py-y1)*dy) / (dx*dx + dy*dy)
-	if t < 0 {
-		t = 0
-	} else if t > 1 {
-		t = 1
+	if ld.SideNum[1] >= 0 && int(ld.SideNum[1]) < len(m.Sidedefs) {
+		s := m.Sidedefs[int(ld.SideNum[1])].Sector
+		if int(s) < len(m.Sectors) {
+			back, backOK = int(s), true
+		}
 	}
-	cx := x1 + t*dx
-	cy := y1 + t*dy
-	return sq(px-cx) + sq(py-cy)
+	return front, back, frontOK, backOK
 }
 
-func sq(v float64) float64 { return v * v }
+func oppositeSector(curr, front, back int, frontOK, backOK bool) (int, bool) {
+	if frontOK && front == curr && backOK {
+		return back, true
+	}
+	if backOK && back == curr && frontOK {
+		return front, true
+	}
+	return 0, false
+}
+
+func portalTraversable(m *mapdata.Map, ld mapdata.Linedef, front, back int, frontOK, backOK bool) bool {
+	if !frontOK || !backOK {
+		return false
+	}
+	if ld.SideNum[1] < 0 {
+		return false
+	}
+	if ld.Flags&mlBlocking != 0 {
+		return false
+	}
+	f := m.Sectors[front]
+	b := m.Sectors[back]
+	openTop := minInt16(f.CeilingHeight, b.CeilingHeight)
+	openBottom := maxInt16(f.FloorHeight, b.FloorHeight)
+	return openTop > openBottom
+}
+
+func minInt16(a, b int16) int16 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt16(a, b int16) int16 {
+	if a > b {
+		return a
+	}
+	return b
+}

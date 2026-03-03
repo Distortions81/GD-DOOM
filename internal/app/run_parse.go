@@ -18,7 +18,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 
 	wadPath := fs.String("wad", "DOOM1.WAD", "path to IWAD file")
-	mapName := fs.String("map", "E1M1", "map name (E#M# or MAP##)")
+	mapName := fs.String("map", "", "map name (E#M# or MAP##); empty selects first valid map")
 	details := fs.Bool("details", false, "print decoded gameplay-relevant map details")
 	render := fs.Bool("render", true, "launch Ebiten automap renderer")
 	width := fs.Int("width", 1280, "render window width")
@@ -53,13 +53,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "open wad: %v\n", err)
 		return 1
 	}
+	soundBank := automap.SoundBank{}
 	if *importPCSpeaker {
-		r := sound.ImportPCSpeakerSounds(wf)
-		if r.Found == 0 {
-			fmt.Fprintln(stderr, "pcspeaker import: no DP* lumps found")
-		} else {
-			fmt.Fprintf(stderr, "pcspeaker import: found=%d decoded=%d failed=%d\n", r.Found, r.Decoded, r.Failed)
-		}
+		dpr := sound.ImportPCSpeakerSounds(wf)
+		dsr := sound.ImportDigitalSounds(wf)
+		fmt.Fprintf(stderr, "sound import: dp(found=%d decoded=%d failed=%d) ds(found=%d decoded=%d failed=%d)\n",
+			dpr.Found, dpr.Decoded, dpr.Failed,
+			dsr.Found, dsr.Decoded, dsr.Failed,
+		)
+		soundBank = buildAutomapSoundBank(dsr)
 	}
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
@@ -90,6 +92,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SourcePortMode: *sourcePortMode,
 			AllCheats:      *allCheats,
 			StartInMapMode: *startInMap,
+			SoundBank:      soundBank,
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "render map %s: %v\n", selected, err)
@@ -146,4 +149,34 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
+	byName := make(map[string]sound.DigitalSound, len(r.Sounds))
+	for _, s := range r.Sounds {
+		byName[s.Name] = s
+	}
+	sample := func(name string) automap.PCMSample {
+		s, ok := byName[name]
+		if !ok {
+			return automap.PCMSample{}
+		}
+		return automap.PCMSample{
+			SampleRate: int(s.SampleRate),
+			Data:       s.Samples,
+		}
+	}
+	return automap.SoundBank{
+		DoorOpen:   firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
+		DoorClose:  firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
+		BlazeOpen:  sample("DSBDOPN"),
+		BlazeClose: sample("DSBDCLS"),
+	}
+}
+
+func firstSample(a, b automap.PCMSample) automap.PCMSample {
+	if len(a.Data) > 0 {
+		return a
+	}
+	return b
 }
