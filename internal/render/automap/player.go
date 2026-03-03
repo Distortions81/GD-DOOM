@@ -1169,8 +1169,10 @@ func pointOnDivlineSide(x, y int64, line divline) int {
 	}
 	dx := x - line.x
 	dy := y - line.y
-	left := fixedMul(line.dy>>8, dx>>8)
-	right := fixedMul(dy>>8, line.dx>>8)
+	// Keep full fixed-point precision here. Losing bits near node planes can
+	// flip side classification and produce angle-dependent BSP ordering artifacts.
+	left := line.dy * dx
+	right := dy * line.dx
 	if right < left {
 		return 0
 	}

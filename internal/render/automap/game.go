@@ -1113,9 +1113,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
 		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
-		if (sx1 < 0 && sx2 < 0) || (sx1 >= float64(g.viewW) && sx2 >= float64(g.viewW)) {
-			continue
-		}
 
 		base, _ := g.decisionStyle(d)
 		baseRGBA := color.RGBAModel.Convert(base).(color.RGBA)
