@@ -20,8 +20,10 @@ const (
 	lineOneSidedWidth  = 1.8
 	lineTwoSidedWidth  = 1.2
 	doomInitialZoomMul = 1.0 / 0.7
-	mlDontPegTop       = 1 << 3
-	mlDontPegBottom    = 1 << 4
+	// Give cursor capture/resizing a couple of frames to settle after detail changes.
+	detailMouseSuppressTicks = 3
+	mlDontPegTop             = 1 << 3
+	mlDontPegBottom          = 1 << 4
 )
 
 var (
@@ -121,8 +123,9 @@ type game struct {
 
 	lastUpdate time.Time
 
-	lastMouseX   int
-	mouseLookSet bool
+	lastMouseX             int
+	mouseLookSet           bool
+	mouseLookSuppressTicks int
 
 	levelExitRequested    bool
 	secretLevelExit       bool
@@ -160,7 +163,8 @@ type game struct {
 	floorFrame    floorFrameStats
 	floorClip     []int16
 	ceilingClip   []int16
-	floorPlanes   map[floorPlaneKey]*floorVisplane
+	floorPlanes   map[floorPlaneKey][]*floorVisplane
+	floorPlaneOrd []*floorVisplane
 	floorSpans    []floorSpan
 	detailLevel   int
 	plane3DFrame  plane3DFrameStats
@@ -384,6 +388,11 @@ func (g *game) cycleDetailLevel() {
 		g.zoom = g.fitZoom * doomInitialZoomMul
 	}
 	g.setHUDMessage(fmt.Sprintf("Detail: %dx%d", g.viewW, g.viewH), 70)
+	// Avoid a large turn delta on the next walk-mode update after viewport size changes.
+	g.mouseLookSet = false
+	g.mouseLookSuppressTicks = detailMouseSuppressTicks
+	// Keep interpolation state aligned to current state to prevent one-frame render pops.
+	g.syncRenderState()
 }
 
 func (g *game) Update() error {
@@ -406,15 +415,15 @@ func (g *game) Update() error {
 	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		g.rotateView = !g.rotateView
 		if g.rotateView {
-			g.setHUDMessage("Rotate Mode ON", 70)
+			g.setHUDMessage("Heading-Up ON", 70)
 		} else {
-			g.setHUDMessage("Rotate Mode OFF", 70)
+			g.setHUDMessage("Heading-Up OFF", 70)
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+	if !g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyF5) {
 		g.cycleDetailLevel()
 	}
 	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyP) {
@@ -528,7 +537,9 @@ func (g *game) updateMapMode() {
 	}
 	if g.opts.SourcePortMode {
 		mx, _ := ebiten.CursorPosition()
-		if g.mouseLookSet {
+		if g.mouseLookSuppressTicks > 0 {
+			g.mouseLookSuppressTicks--
+		} else if g.mouseLookSet {
 			dx := mx - g.lastMouseX
 			cmd.turnRaw -= int64(dx) * (40 << 16)
 		}
@@ -606,7 +617,9 @@ func (g *game) updateWalkMode() {
 	}
 
 	mx, _ := ebiten.CursorPosition()
-	if g.mouseLookSet {
+	if g.mouseLookSuppressTicks > 0 {
+		g.mouseLookSuppressTicks--
+	} else if g.mouseLookSet {
 		dx := mx - g.lastMouseX
 		// Keep vanilla-feeling turn quantization while using modern mouse-look default.
 		cmd.turnRaw -= int64(dx) * (40 << 16)
@@ -658,32 +671,9 @@ func (g *game) updateParityControls() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
 			g.showMapFloors = !g.showMapFloors
 			if g.showMapFloors {
-				g.setHUDMessage("Plane Textures ON", 70)
+				g.setHUDMessage("2D Plane Textures ON", 70)
 			} else {
-				g.setHUDMessage("Plane Textures OFF", 70)
-			}
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyK) {
-			g.floorDbgMode = (g.floorDbgMode + 1) % 3
-			g.setHUDMessage("2D floor mode: "+g.floorDebugLabel(), 70)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyU) {
-			g.floor2DPath = (g.floor2DPath + 1) % 2
-			g.setHUDMessage("2D floor path: "+g.floorPathLabel(), 70)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyY) {
-			g.floorVisDiag = (g.floorVisDiag + 1) % 4
-			g.setHUDMessage("2D floor diag: "+g.floorVisDiagLabel(), 70)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF10) {
-			g.applyCheatLevel((g.cheatLevel+1)%4, true)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
-			g.invulnerable = !g.invulnerable
-			if g.invulnerable {
-				g.setHUDMessage("IDDQD ON", 70)
-			} else {
-				g.setHUDMessage("IDDQD OFF", 70)
+				g.setHUDMessage("2D Plane Textures OFF", 70)
 			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyO) {
@@ -751,14 +741,15 @@ func (g *game) Draw(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
 			if g.opts.SourcePortMode {
 				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
-				ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | F5 detail | F1 help", 12, 44)
+				ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | P wireframe | F1 help", 12, 44)
 			} else {
 				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | TAB automap", 12, 12)
 				ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | F1 help", 12, 44)
 			}
-			planesOn := g.showMapFloors && len(g.opts.FlatBank) > 0
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes=%t flats=%d detail=%dx%d", planesOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
-			if g.showMapFloors && len(g.opts.FlatBank) > 0 {
+			planes3DOn := len(g.opts.FlatBank) > 0
+			map2DOn := g.opts.SourcePortMode && g.showMapFloors && len(g.opts.FlatBank) > 0
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t map2d=%t flats=%d detail=%dx%d", planes3DOn, map2DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
+			if planes3DOn {
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("plane3d buckets=%d in=%d out=%d clip=%d texpx=%d fbpx=%d", g.plane3DFrame.buckets, g.plane3DFrame.inputSpans, g.plane3DFrame.outputSpans, g.plane3DFrame.clippedSpans, g.plane3DFrame.texturedPix, g.plane3DFrame.fallbackPix), 12, 76)
 			}
 		}
@@ -1213,7 +1204,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		wallTop[i] = g.viewH
 		wallBottom[i] = -1
 	}
-	planesEnabled := g.showMapFloors && len(g.opts.FlatBank) > 0
+	planesEnabled := len(g.opts.FlatBank) > 0
 	ceilingClip := make([]int, g.viewW)
 	floorClip := make([]int, g.viewW)
 	for i := 0; i < g.viewW; i++ {
@@ -1575,7 +1566,7 @@ func (g *game) drawBasicWallColumn(depthPix []float64, wallTop, wallBottom []int
 			i := pi * 4
 			if useTex {
 				// Doom wall columns use a view-relative texture mid and per-column scale.
-				zRel := (cy - (float64(y)+0.5)) * depth / focal
+				zRel := (cy - (float64(y) + 0.5)) * depth / focal
 				texV := texMid - zRel
 				tx := wrapIndex(int(math.Floor(texU)), tex.Width)
 				ty := wrapIndex(int(math.Floor(texV)), tex.Height)
@@ -2695,8 +2686,36 @@ func (g *game) drawFlashOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	g.viewW = max(g.viewW, 1)
-	g.viewH = max(g.viewH, 1)
+	if g.opts.SourcePortMode {
+		w := max(outsideWidth, 1)
+		h := max(outsideHeight, 1)
+		if w != g.viewW || h != g.viewH {
+			oldFit := g.fitZoom
+			g.viewW = w
+			g.viewH = h
+			worldW := math.Max(g.bounds.maxX-g.bounds.minX, 1)
+			worldH := math.Max(g.bounds.maxY-g.bounds.minY, 1)
+			margin := 0.9
+			zx := float64(g.viewW) * margin / worldW
+			zy := float64(g.viewH) * margin / worldH
+			g.fitZoom = math.Max(math.Min(zx, zy), 0.0001)
+			if oldFit > 0 {
+				g.zoom = (g.zoom / oldFit) * g.fitZoom
+			} else {
+				g.zoom = g.fitZoom * doomInitialZoomMul
+			}
+			g.mouseLookSet = false
+			g.mouseLookSuppressTicks = detailMouseSuppressTicks
+			g.syncRenderState()
+		}
+		return g.viewW, g.viewH
+	}
+	if g.viewW < 1 {
+		g.viewW = 1
+	}
+	if g.viewH < 1 {
+		g.viewH = 1
+	}
 	return g.viewW, g.viewH
 }
 
@@ -3886,7 +3905,6 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"ARROWS  PAN (FOLLOW OFF)",
 		"F  FOLLOW TOGGLE",
 		"0  BIG MAP",
-		"G  GRID TOGGLE",
 		"M  ADD MARK",
 		"C  CLEAR MARKS",
 		"+/- OR WHEEL  ZOOM",
@@ -3895,24 +3913,20 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 	if g.opts.SourcePortMode {
 		lines = append(lines,
 			"SOURCEPORT EXTRAS",
-			"R  ROTATE/FOLLOW HEADING",
+			"R  TOGGLE HEADING-UP",
 			"P  TOGGLE WIREFRAME",
-			"J  TOGGLE PLANE TEXTURES",
+			"J  TOGGLE 2D FLOOR FLATS",
 			"B  BIG MAP (ALIAS)",
+			"HOME  RESET VIEW",
 			"O  TOGGLE NORMAL/ALLMAP",
 			"I  CYCLE IDDT",
 			"L  TOGGLE COLOR MODE",
 			"V  TOGGLE THING LEGEND",
-			"J  TOGGLE 2D FLOOR FLATS",
-			"K  CYCLE FLOOR DEBUG VIEW",
-			"U  TOGGLE FLOOR PATH",
-			"Y  CYCLE FLOOR DIAGNOSTICS",
-			"HOME  RESET VIEW",
 		)
 	} else {
 		lines = append(lines,
 			"DOOM PARITY NOTES",
-			"R/B/O/I/L/HOME DISABLED",
+			"ONLY CORE CONTROLS ENABLED",
 			"USE -sourceport-mode FOR EXTRAS",
 		)
 	}

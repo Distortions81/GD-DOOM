@@ -21,13 +21,22 @@ type sessionGame struct {
 
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	const (
-		logicalW = 640
-		logicalH = 400
-		windowW  = 1280
-		windowH  = 960
+		doomLogicalW = 640
+		doomLogicalH = 400
+		doomWindowW  = 1280
+		doomWindowH  = 960
 	)
-	opts.Width = logicalW
-	opts.Height = logicalH
+	if opts.SourcePortMode {
+		if opts.Width <= 0 {
+			opts.Width = 1280
+		}
+		if opts.Height <= 0 {
+			opts.Height = 800
+		}
+	} else {
+		opts.Width = doomLogicalW
+		opts.Height = doomLogicalH
+	}
 	sg := &sessionGame{
 		g:       newGame(m, opts),
 		current: m.Name,
@@ -35,8 +44,13 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		nextMap: nextMap,
 	}
 	ebiten.SetTPS(doomTicsPerSecond)
-	ebiten.SetWindowSize(windowW, windowH)
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	if opts.SourcePortMode {
+		ebiten.SetWindowSize(opts.Width, opts.Height)
+		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	} else {
+		ebiten.SetWindowSize(doomWindowW, doomWindowH)
+		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
+	}
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
 	if err := ebiten.RunGame(sg); err != nil {
 		if errors.Is(err, ebiten.Termination) {

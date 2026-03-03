@@ -9,6 +9,37 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
+func floorPolygonXRange(poly []screenPt, viewW int) (int, int, bool) {
+	if len(poly) < 3 || viewW <= 0 {
+		return 0, 0, false
+	}
+	minX := viewW - 1
+	maxX := 0
+	for _, p := range poly {
+		ix := int(math.Floor(p.x))
+		ax := int(math.Ceil(p.x)) - 1
+		if ix < minX {
+			minX = ix
+		}
+		if ix > maxX {
+			maxX = ix
+		}
+		if ax > maxX {
+			maxX = ax
+		}
+	}
+	if minX < 0 {
+		minX = 0
+	}
+	if maxX >= viewW {
+		maxX = viewW - 1
+	}
+	if minX > maxX {
+		return 0, 0, false
+	}
+	return minX, maxX, true
+}
+
 func (g *game) markScreenPolygonColumns(pl *floorVisplane, poly []screenPt) {
 	if pl == nil || len(poly) < 3 {
 		return
@@ -99,7 +130,14 @@ func (g *game) buildFloorVisplaneMarks() {
 			floorH: sec.FloorHeight,
 			light:  sec.Light,
 		}
-		pl := g.floorVisplaneForKey(key)
+		minX, maxX, ok := floorPolygonXRange(screenPoly, g.viewW)
+		if !ok {
+			continue
+		}
+		pl, _ := g.ensureFloorVisplaneForRange(key, minX, maxX)
+		if pl == nil {
+			continue
+		}
 		// Triangulated marking is more robust than direct odd-even polygon fill
 		// when subsector vertex ordering is imperfect.
 		tris, triOK := triangulateWorldPolygon(worldVerts)
@@ -122,21 +160,7 @@ func (g *game) buildFloorVisplaneMarks() {
 
 func (g *game) buildFloorVisplaneSpans() {
 	g.floorSpans = g.floorSpans[:0]
-	keys := make([]floorPlaneKey, 0, len(g.floorPlanes))
-	for k := range g.floorPlanes {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].flat != keys[j].flat {
-			return keys[i].flat < keys[j].flat
-		}
-		if keys[i].floorH != keys[j].floorH {
-			return keys[i].floorH < keys[j].floorH
-		}
-		return keys[i].light < keys[j].light
-	})
-	for _, k := range keys {
-		pl := g.floorPlanes[k]
+	for _, pl := range g.floorPlaneOrd {
 		if pl.minX > pl.maxX {
 			continue
 		}
@@ -255,22 +279,24 @@ func (g *game) drawFloorVisplaneDiagnostics(screen *ebiten.Image) {
 	}
 	topClr := color.RGBA{R: 60, G: 255, B: 120, A: 255}
 	botClr := color.RGBA{R: 255, G: 180, B: 40, A: 255}
-	for _, pl := range g.floorPlanes {
-		if pl.minX > pl.maxX {
-			continue
-		}
-		for x := pl.minX; x <= pl.maxX; x++ {
-			ix := x + 1
-			if ix < 0 || ix >= len(pl.top) {
+	for _, list := range g.floorPlanes {
+		for _, pl := range list {
+			if pl.minX > pl.maxX {
 				continue
 			}
-			t := int(pl.top[ix])
-			b := int(pl.bottom[ix])
-			if t != int(floorUnset) && t >= 0 && t < g.viewH {
-				ebitenutil.DrawRect(screen, float64(x), float64(t), 1, 1, topClr)
-			}
-			if b != int(floorUnset) && b >= 0 && b < g.viewH {
-				ebitenutil.DrawRect(screen, float64(x), float64(b), 1, 1, botClr)
+			for x := pl.minX; x <= pl.maxX; x++ {
+				ix := x + 1
+				if ix < 0 || ix >= len(pl.top) {
+					continue
+				}
+				t := int(pl.top[ix])
+				b := int(pl.bottom[ix])
+				if t != int(floorUnset) && t >= 0 && t < g.viewH {
+					ebitenutil.DrawRect(screen, float64(x), float64(t), 1, 1, topClr)
+				}
+				if b != int(floorUnset) && b >= 0 && b < g.viewH {
+					ebitenutil.DrawRect(screen, float64(x), float64(b), 1, 1, botClr)
+				}
 			}
 		}
 	}
