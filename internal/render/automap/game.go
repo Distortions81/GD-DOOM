@@ -82,6 +82,7 @@ type game struct {
 	doors       map[int]*doorThinker
 	useFlash    int
 	useText     string
+	turnHeld    int
 
 	lastMouseX   int
 	mouseLookSet bool
@@ -119,6 +120,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	if opts.Height <= 0 {
 		opts.Height = 720
+	}
+	if !opts.SourcePortMode {
+		// Doom mode keeps strict parity color semantics.
+		opts.LineColorMode = "parity"
 	}
 	g := &game{
 		m:          m,
@@ -182,7 +187,7 @@ func (g *game) Update() error {
 			g.mode = viewWalk
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		g.rotateView = !g.rotateView
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
@@ -206,10 +211,7 @@ func (g *game) updateMapMode() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		g.followMode = !g.followMode
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
-		g.showGrid = !g.showGrid
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		g.toggleBigMap()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key0) || inpututil.IsKeyJustPressed(ebiten.KeyKP0) {
@@ -221,10 +223,42 @@ func (g *game) updateMapMode() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		g.clearMarks()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyHome) {
+	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyHome) {
 		g.resetView()
 	}
 	g.updateZoom()
+
+	// Keep gameplay simulation active while automap is open.
+	cmd := moveCmd{}
+	speed := 0
+	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
+		speed = 1
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyW) {
+		cmd.forward += forwardMove[speed]
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyS) {
+		cmd.forward -= forwardMove[speed]
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyA) {
+		cmd.side -= sideMove[speed]
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) {
+		cmd.side += sideMove[speed]
+	}
+	// Keep map panning on arrow keys; use Q/E turning in map mode.
+	if ebiten.IsKeyPressed(ebiten.KeyQ) {
+		cmd.turn += 1
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyE) {
+		cmd.turn -= 1
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		g.handleUse()
+	}
+	cmd.run = speed == 1
+	g.updatePlayer(cmd)
+	g.discoverLinesAroundPlayer()
 
 	if g.followMode {
 		g.camX = float64(g.p.x) / fracUnit
@@ -233,16 +267,16 @@ func (g *game) updateMapMode() {
 	}
 
 	panStep := 14.0 / g.zoom
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
 		g.camY += panStep
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
 		g.camY -= panStep
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
 		g.camX -= panStep
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
+	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
 		g.camX += panStep
 	}
 }
@@ -303,18 +337,23 @@ func (g *game) updateWalkMode() {
 }
 
 func (g *game) updateParityControls() {
-	if inpututil.IsKeyJustPressed(ebiten.KeyO) {
-		if g.parity.reveal == revealNormal {
-			g.parity.reveal = revealAllMap
-		} else {
-			g.parity.reveal = revealNormal
+	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
+		g.showGrid = !g.showGrid
+	}
+	if g.opts.SourcePortMode {
+		if inpututil.IsKeyJustPressed(ebiten.KeyO) {
+			if g.parity.reveal == revealNormal {
+				g.parity.reveal = revealAllMap
+			} else {
+				g.parity.reveal = revealNormal
+			}
 		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyI) {
-		g.parity.iddt = (g.parity.iddt + 1) % 3
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyL) {
-		g.opts.LineColorMode = toggledLineColorMode(g.opts.LineColorMode)
+		if inpututil.IsKeyJustPressed(ebiten.KeyI) {
+			g.parity.iddt = (g.parity.iddt + 1) % 3
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyL) {
+			g.opts.LineColorMode = toggledLineColorMode(g.opts.LineColorMode)
+		}
 	}
 }
 
@@ -343,6 +382,12 @@ func (g *game) updateZoom() {
 
 func (g *game) Draw(screen *ebiten.Image) {
 	screen.Fill(bgColor)
+	if g.mode != viewMap {
+		ebitenutil.DebugPrintAt(screen, "no game render yet", 12, 12)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
+		ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
+		return
+	}
 	if g.showGrid {
 		g.drawGrid(screen)
 	}
@@ -381,8 +426,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.parity.reveal == revealAllMap {
 		revealText = "allmap"
 	}
-	overlay := fmt.Sprintf("%s | mode %s | zoom %.2f | reveal %s | iddt %d | grid %t | marks %d | color %s | move WASD | mouse turn | arrows move/turn | Alt+arrows strafe | Shift run",
+	overlay := fmt.Sprintf("%s | profile %s | mode %s | zoom %.2f | reveal %s | iddt %d | grid %t | marks %d | color %s",
 		g.m.Name,
+		g.profileLabel(),
 		modeText,
 		g.zoom,
 		revealText,
@@ -396,6 +442,13 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, g.useText, 12, 28)
 	}
 	g.drawHelpUI(screen)
+}
+
+func (g *game) profileLabel() string {
+	if g.opts.SourcePortMode {
+		return "sourceport"
+	}
+	return "doom"
 }
 
 func shouldDrawThings(st automapParityState) bool {
@@ -473,14 +526,11 @@ func (g *game) drawGrid(screen *ebiten.Image) {
 }
 
 func (g *game) drawThings(screen *ebiten.Image) {
-	tc := color.RGBA{R: 255, G: 170, B: 80, A: 255}
 	for _, th := range g.m.Things {
 		x := float64(th.X)
 		y := float64(th.Y)
 		sx, sy := g.worldToScreen(x, y)
-		r := 2.5
-		vector.StrokeLine(screen, float32(sx-r), float32(sy), float32(sx+r), float32(sy), 1.5, tc, true)
-		vector.StrokeLine(screen, float32(sx), float32(sy-r), float32(sx), float32(sy+r), 1.5, tc, true)
+		drawThingGlyph(screen, styleForThing(th), sx, sy, th.Angle)
 	}
 }
 
@@ -725,25 +775,38 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 	}
 	lines := []string{
 		"AUTOMAP KEYS",
+		fmt.Sprintf("PROFILE  %s", g.profileLabel()),
 		"F1  HELP TOGGLE",
 		"TAB  WALK/MAP MODE",
-		"R   ROTATE/FOLLOW HEADING",
-		"F   FOLLOW PLAYER TOGGLE",
-		"G   GRID TOGGLE",
-		"0/B BIG MAP TOGGLE",
-		"M   ADD MARK",
-		"C   CLEAR MARKS",
-		"O   TOGGLE NORMAL/ALLMAP",
-		"I   CYCLE IDDT (0/1/2)",
-		"L   TOGGLE COLOR MODE (DOOM/PARITY)",
-		"HOME RESET VIEW",
 		"WASD  MOVE",
-		"MOUSE  TURN",
-		"ARROWS  MOVE/TURN",
-		"ALT+ARROWS  STRAFE",
+		"Q/E  TURN (MAP MODE)",
 		"SHIFT  RUN",
+		"SPACE  USE",
+		"ARROWS  PAN (FOLLOW OFF)",
+		"F  FOLLOW TOGGLE",
+		"0  BIG MAP",
+		"G  GRID TOGGLE",
+		"M  ADD MARK",
+		"C  CLEAR MARKS",
 		"+/- OR WHEEL  ZOOM",
 		"ESC  QUIT",
+	}
+	if g.opts.SourcePortMode {
+		lines = append(lines,
+			"SOURCEPORT EXTRAS",
+			"R  ROTATE/FOLLOW HEADING",
+			"B  BIG MAP (ALIAS)",
+			"O  TOGGLE NORMAL/ALLMAP",
+			"I  CYCLE IDDT",
+			"L  TOGGLE COLOR MODE",
+			"HOME  RESET VIEW",
+		)
+	} else {
+		lines = append(lines,
+			"DOOM PARITY NOTES",
+			"R/B/O/I/L/HOME DISABLED",
+			"USE -sourceport-mode FOR EXTRAS",
+		)
 	}
 	maxLen := 0
 	for _, l := range lines {

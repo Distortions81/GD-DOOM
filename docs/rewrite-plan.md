@@ -30,7 +30,7 @@ Rewrite this repo into a Go codebase with phased delivery:
 - `internal/mapdata/{types.go,loader.go,validate.go}`
 - `internal/render/automap/{camera.go,geom.go,scene.go,ebiten_game.go}`
 - `internal/app/{run_parse.go,run_render.go}`
-- `docs/{m1-parser-spec.md,m2-automap-spec.md}`
+- `docs/archive/{m1-parser-spec.md,m2-automap-spec.md}`
 - `testdata/` (synthetic malformed WAD fixtures)
 
 ## API Targets
@@ -64,8 +64,8 @@ Rewrite this repo into a Go codebase with phased delivery:
 - `type Options struct { Width int; Height int; StartZoom float64; LineColorMode string; SourcePortMode bool }`
 
 ## Milestones
-- Milestone 1 details: `docs/m1-parser-spec.md`
-- Milestone 2 details: `docs/m2-automap-spec.md`
+- Milestone 1 details: `docs/archive/m1-parser-spec.md`
+- Milestone 2 details: `docs/archive/m2-automap-spec.md`
 - Milestone 3+ (future): automap styling parity, multi-WAD overlays, gameplay systems.
 
 ## Current Tracking Notes

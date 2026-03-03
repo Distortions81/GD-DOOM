@@ -22,6 +22,7 @@ const (
 	useRange     = 64 * fracUnit
 	vDoorSpeed   = 2 * fracUnit
 	vDoorWaitTic = 150
+	slowTurnTics = 6
 
 	mlBlocking = 0x0001
 	mlTwoSided = 0x0004
@@ -30,7 +31,7 @@ const (
 var (
 	forwardMove = [2]int64{0x19, 0x32}
 	sideMove    = [2]int64{0x18, 0x28}
-	angleTurn   = [2]uint32{640 << 16, 1280 << 16}
+	angleTurn   = [3]uint32{640 << 16, 1280 << 16, 320 << 16}
 )
 
 type viewMode int
@@ -217,8 +218,11 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		g.p.angle += uint32(cmd.turnRaw)
 	}
 	if cmd.turn != 0 {
+		g.turnHeld++
 		turn := angleTurn[0]
-		if cmd.run {
+		if g.turnHeld < slowTurnTics {
+			turn = angleTurn[2]
+		} else if cmd.run {
 			turn = angleTurn[1]
 		}
 		if cmd.turn < 0 {
@@ -226,6 +230,8 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		} else {
 			g.p.angle += turn
 		}
+	} else {
+		g.turnHeld = 0
 	}
 
 	if cmd.forward != 0 {
