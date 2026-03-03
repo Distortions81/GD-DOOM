@@ -1,0 +1,4 @@
+width=256
+height=192
+format=RGB24
+row_major=true

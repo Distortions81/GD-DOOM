@@ -24,47 +24,30 @@ func TestTriangulateWorldPolygonWritesDebugImage(t *testing.T) {
 		t.Fatal("expected triangulation for debug polygon")
 	}
 
-	img := image.NewRGBA(image.Rect(0, 0, 256, 192))
-	fillRect(img, img.Bounds(), color.RGBA{R: 8, G: 8, B: 12, A: 255})
+	solid := image.NewRGBA(image.Rect(0, 0, 256, 192))
+	fillRect(solid, solid.Bounds(), color.RGBA{R: 8, G: 8, B: 12, A: 255})
+	textured := image.NewRGBA(image.Rect(0, 0, 256, 192))
+	fillRect(textured, textured.Bounds(), color.RGBA{R: 8, G: 8, B: 12, A: 255})
 
 	for _, tri := range tris {
 		a := verts[tri[0]]
 		b := verts[tri[1]]
 		c := verts[tri[2]]
-		fillTriangle(img, a, b, c, color.RGBA{R: 70, G: 140, B: 220, A: 255})
+		fillTriangleSolid(solid, a, b, c, color.RGBA{R: 70, G: 140, B: 220, A: 255})
+		fillTriangleTextured(textured, a, b, c)
 	}
 	for i := 0; i < len(verts); i++ {
 		j := (i + 1) % len(verts)
-		drawLine(img, verts[i], verts[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+		drawLine(solid, verts[i], verts[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+		drawLine(textured, verts[i], verts[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
 	}
 
-	outPath := filepath.Join("testdata", "triangulation_debug.png")
-	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
+	if err := os.MkdirAll("testdata", 0o755); err != nil {
 		t.Fatalf("mkdir testdata: %v", err)
 	}
-	f, err := os.Create(outPath)
-	if err != nil {
-		t.Fatalf("create png: %v", err)
-	}
-	defer f.Close()
-	if err := png.Encode(f, img); err != nil {
-		t.Fatalf("encode png: %v", err)
-	}
-	rawPath := filepath.Join("testdata", "triangulation_debug.rgb")
-	raw, err := os.Create(rawPath)
-	if err != nil {
-		t.Fatalf("create rgb: %v", err)
-	}
-	defer raw.Close()
-	if _, err := raw.Write(extractRGB(img)); err != nil {
-		t.Fatalf("write rgb: %v", err)
-	}
-	metaPath := filepath.Join("testdata", "triangulation_debug.rgb.txt")
-	meta := []byte("width=256\nheight=192\nformat=RGB24\nrow_major=true\n")
-	if err := os.WriteFile(metaPath, meta, 0o644); err != nil {
-		t.Fatalf("write rgb meta: %v", err)
-	}
-	t.Logf("wrote %s", outPath)
+	writeDebugImageSet(t, "triangulation_debug", solid)
+	writeDebugImageSet(t, "triangulation_textured_debug", textured)
+	t.Logf("wrote testdata/triangulation_debug.* and testdata/triangulation_textured_debug.*")
 }
 
 func extractRGB(img *image.RGBA) []byte {
@@ -87,7 +70,7 @@ func fillRect(img *image.RGBA, r image.Rectangle, clr color.RGBA) {
 	}
 }
 
-func fillTriangle(img *image.RGBA, a, b, c worldPt, clr color.RGBA) {
+func fillTriangleSolid(img *image.RGBA, a, b, c worldPt, clr color.RGBA) {
 	minX := int(math.Floor(min3(a.x, b.x, c.x)))
 	maxX := int(math.Ceil(max3(a.x, b.x, c.x)))
 	minY := int(math.Floor(min3(a.y, b.y, c.y)))
@@ -111,6 +94,80 @@ func fillTriangle(img *image.RGBA, a, b, c worldPt, clr color.RGBA) {
 				img.SetRGBA(x, y, clr)
 			}
 		}
+	}
+}
+
+func fillTriangleTextured(img *image.RGBA, a, b, c worldPt) {
+	minX := int(math.Floor(min3(a.x, b.x, c.x)))
+	maxX := int(math.Ceil(max3(a.x, b.x, c.x)))
+	minY := int(math.Floor(min3(a.y, b.y, c.y)))
+	maxY := int(math.Ceil(max3(a.y, b.y, c.y)))
+	if minX < img.Bounds().Min.X {
+		minX = img.Bounds().Min.X
+	}
+	if minY < img.Bounds().Min.Y {
+		minY = img.Bounds().Min.Y
+	}
+	if maxX >= img.Bounds().Max.X {
+		maxX = img.Bounds().Max.X - 1
+	}
+	if maxY >= img.Bounds().Max.Y {
+		maxY = img.Bounds().Max.Y - 1
+	}
+	den := orient2D(a, b, c)
+	if math.Abs(den) < 1e-9 {
+		return
+	}
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+			p := worldPt{x: float64(x) + 0.5, y: float64(y) + 0.5}
+			if !pointInTri(p, a, b, c) {
+				continue
+			}
+			w0 := orient2D(b, c, p) / den
+			w1 := orient2D(c, a, p) / den
+			w2 := orient2D(a, b, p) / den
+			u := w0*a.x + w1*b.x + w2*c.x
+			v := w0*a.y + w1*b.y + w2*c.y
+			img.SetRGBA(x, y, checker64(u, v))
+		}
+	}
+}
+
+func checker64(u, v float64) color.RGBA {
+	iu := int(math.Floor(u)) & 63
+	iv := int(math.Floor(v)) & 63
+	cell := ((iu >> 3) ^ (iv >> 3)) & 1
+	if cell == 0 {
+		return color.RGBA{R: 64, G: 170, B: 220, A: 255}
+	}
+	return color.RGBA{R: 215, G: 180, B: 72, A: 255}
+}
+
+func writeDebugImageSet(t *testing.T, base string, img *image.RGBA) {
+	t.Helper()
+	outPath := filepath.Join("testdata", base+".png")
+	f, err := os.Create(outPath)
+	if err != nil {
+		t.Fatalf("create png: %v", err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatalf("encode png: %v", err)
+	}
+	rawPath := filepath.Join("testdata", base+".rgb")
+	raw, err := os.Create(rawPath)
+	if err != nil {
+		t.Fatalf("create rgb: %v", err)
+	}
+	defer raw.Close()
+	if _, err := raw.Write(extractRGB(img)); err != nil {
+		t.Fatalf("write rgb: %v", err)
+	}
+	metaPath := filepath.Join("testdata", base+".rgb.txt")
+	meta := []byte("width=256\nheight=192\nformat=RGB24\nrow_major=true\n")
+	if err := os.WriteFile(metaPath, meta, 0o644); err != nil {
+		t.Fatalf("write rgb meta: %v", err)
 	}
 }
 
