@@ -15,6 +15,16 @@ func TestLookupLineSpecialDoor(t *testing.T) {
 	}
 }
 
+func TestLookupLineSpecialExit(t *testing.T) {
+	info := LookupLineSpecial(11)
+	if info.Exit != ExitNormal {
+		t.Fatalf("special 11 exit = %q, want %q", info.Exit, ExitNormal)
+	}
+	if info.Trigger != TriggerUse {
+		t.Fatalf("special 11 trigger = %q, want %q", info.Trigger, TriggerUse)
+	}
+}
+
 func TestRejectMatrixRejectsBounds(t *testing.T) {
 	r := &RejectMatrix{SectorCount: 2, Data: []byte{0x00}}
 	_, err := r.Rejects(2, 0)

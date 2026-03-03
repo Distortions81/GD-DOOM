@@ -11,6 +11,11 @@ type Options struct {
 	SoundBank      SoundBank
 }
 
+type RunResult struct {
+	LevelExited bool
+	SecretExit  bool
+}
+
 type PCMSample struct {
 	SampleRate int
 	Data       []byte

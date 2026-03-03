@@ -39,6 +39,7 @@ type LineSpecialInfo struct {
 	Trigger TriggerType
 	Repeat  bool
 	Door    *DoorInfo
+	Exit    ExitType
 }
 
 type DoorInfo struct {
@@ -67,6 +68,14 @@ type DoorStats struct {
 	TimedCloseIn30      int
 	TimedRaiseIn5Minute int
 }
+
+type ExitType string
+
+const (
+	ExitNone   ExitType = ""
+	ExitNormal ExitType = "normal"
+	ExitSecret ExitType = "secret"
+)
 
 var doorSpecials = map[uint16]LineSpecialInfo{
 	1:   {Special: 1, Name: "manual door raise", Trigger: TriggerManual, Repeat: true, Door: &DoorInfo{Action: DoorRaise, Key: KeyNone, UsesTag: false}},
@@ -114,8 +123,20 @@ var doorSpecials = map[uint16]LineSpecialInfo{
 	137: {Special: 137, Name: "switch blazing open yellow", Trigger: TriggerUse, Repeat: false, Door: &DoorInfo{Action: DoorBlazeOpen, Key: KeyYellow, UsesTag: true}},
 }
 
+var exitSpecials = map[uint16]LineSpecialInfo{
+	11:  {Special: 11, Name: "switch exit level", Trigger: TriggerUse, Repeat: false, Exit: ExitNormal},
+	51:  {Special: 51, Name: "switch secret exit", Trigger: TriggerUse, Repeat: false, Exit: ExitSecret},
+	52:  {Special: 52, Name: "walk exit level", Trigger: TriggerWalk, Repeat: false, Exit: ExitNormal},
+	124: {Special: 124, Name: "walk secret exit", Trigger: TriggerWalk, Repeat: false, Exit: ExitSecret},
+	197: {Special: 197, Name: "shoot exit level", Trigger: TriggerShoot, Repeat: false, Exit: ExitNormal},
+	198: {Special: 198, Name: "shoot secret exit", Trigger: TriggerShoot, Repeat: false, Exit: ExitSecret},
+}
+
 func LookupLineSpecial(special uint16) LineSpecialInfo {
 	if info, ok := doorSpecials[special]; ok {
+		return info
+	}
+	if info, ok := exitSpecials[special]; ok {
 		return info
 	}
 	return LineSpecialInfo{Special: special, Name: "", Trigger: TriggerUnknown}

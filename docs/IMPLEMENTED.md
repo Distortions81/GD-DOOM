@@ -21,6 +21,7 @@ Snapshot of features currently working in this repo.
 - Walk/map mode toggle (`TAB`)
 - Non-map placeholder screen (`no game render yet`)
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
+- Level exit special handling with automatic next-map loading (normal + secret exits)
 
 ## Automap Features
 

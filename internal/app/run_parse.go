@@ -73,18 +73,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 
-	m, err := mapdata.LoadMap(wf, selected)
-	if err != nil {
-		fmt.Fprintf(stderr, "load map %s: %v\n", selected, err)
-		return 1
-	}
 	if *render {
 		resolvedLineColorMode := *lineColorMode
 		// Source-port defaults unless user explicitly chose a color mode.
 		if *sourcePortMode && !lineColorModeSet {
 			resolvedLineColorMode = "doom"
 		}
-		err = automap.RunAutomap(m, automap.Options{
+		opts := automap.Options{
 			Width:          *width,
 			Height:         *height,
 			StartZoom:      *zoom,
@@ -93,12 +88,40 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			AllCheats:      *allCheats,
 			StartInMapMode: *startInMap,
 			SoundBank:      soundBank,
-		})
-		if err != nil {
-			fmt.Fprintf(stderr, "render map %s: %v\n", selected, err)
-			return 1
 		}
-		return 0
+		current := selected
+		for {
+			m, lerr := mapdata.LoadMap(wf, current)
+			if lerr != nil {
+				fmt.Fprintf(stderr, "load map %s: %v\n", current, lerr)
+				return 1
+			}
+			res, rerr := automap.RunAutomap(m, opts)
+			if rerr != nil {
+				fmt.Fprintf(stderr, "render map %s: %v\n", current, rerr)
+				return 1
+			}
+			if !res.LevelExited {
+				return 0
+			}
+			next, nerr := mapdata.NextMapName(wf, current, res.SecretExit)
+			if nerr != nil {
+				fmt.Fprintf(stderr, "resolve next map after %s: %v\n", current, nerr)
+				return 1
+			}
+			exitKind := "normal"
+			if res.SecretExit {
+				exitKind = "secret"
+			}
+			fmt.Fprintf(stderr, "level exit (%s): %s -> %s\n", exitKind, current, next)
+			current = next
+		}
+	}
+
+	m, err := mapdata.LoadMap(wf, selected)
+	if err != nil {
+		fmt.Fprintf(stderr, "load map %s: %v\n", selected, err)
+		return 1
 	}
 
 	fmt.Fprintf(stdout, "map=%s things=%d linedefs=%d sidedefs=%d vertexes=%d segs=%d ssectors=%d nodes=%d sectors=%d reject_bytes=%d blockmap_words=%d\n",

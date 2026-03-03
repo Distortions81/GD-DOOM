@@ -21,7 +21,7 @@ Run:
 go run ./cmd/gddoom -wad DOOM1.WAD
 ```
 
-This starts the app in walk mode. Press `TAB` to open automap.
+By default it starts in automap mode (`-start-in-map=true`), and `TAB` toggles walk/map.
 
 ## Key Flags
 
@@ -36,6 +36,10 @@ This starts the app in walk mode. Press `TAB` to open automap.
 - `-start-in-map`: start with automap open (default `true`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
 - `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
+
+Level progression:
+- Exit linedefs now transition to the next map in-sequence.
+- Secret exits follow Doom targets when present (with WAD-order fallback).
 
 ## Controls (Default Doom Profile)
 

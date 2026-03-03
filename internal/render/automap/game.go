@@ -104,6 +104,9 @@ type game struct {
 
 	lastMouseX   int
 	mouseLookSet bool
+
+	levelExitRequested bool
+	secretLevelExit    bool
 }
 
 type savedMapView struct {
@@ -216,6 +219,9 @@ func (g *game) resetView() {
 
 func (g *game) Update() error {
 	g.capturePrevState()
+	if g.levelExitRequested {
+		return ebiten.Termination
+	}
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
 	}
@@ -257,6 +263,12 @@ func (g *game) Update() error {
 	g.flushSoundEvents()
 	g.lastUpdate = time.Now()
 	return nil
+}
+
+func (g *game) requestLevelExit(secret bool, msg string) {
+	g.levelExitRequested = true
+	g.secretLevelExit = secret
+	g.setHUDMessage(msg, 35)
 }
 
 func (g *game) updateMapMode() {

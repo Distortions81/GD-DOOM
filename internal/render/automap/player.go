@@ -213,6 +213,8 @@ func buildPhysLines(m *mapdata.Map) []physLine {
 }
 
 func (g *game) updatePlayer(cmd moveCmd) {
+	prevX := g.p.x
+	prevY := g.p.y
 	g.tickDoors()
 
 	if cmd.turnRaw != 0 {
@@ -243,6 +245,7 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	}
 
 	g.xyMovement()
+	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
 }
 
 func (g *game) tickDoors() {
@@ -807,6 +810,9 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
+	if g.handleExitSpecial(lineIdx, special, mapdata.TriggerUse) {
+		return
+	}
 	info := mapdata.LookupLineSpecial(special)
 	if info.Door == nil || (info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse) {
 		g.useText = "USE: unsupported special"
@@ -834,6 +840,52 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		g.emitSoundEvent(soundEventNoWay)
 	}
 	g.useFlash = 35
+}
+
+func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
+	if prevX == curX && prevY == curY {
+		return
+	}
+	for _, ld := range g.lines {
+		if ld.idx < 0 || ld.idx >= len(g.lineSpecial) {
+			continue
+		}
+		special := g.lineSpecial[ld.idx]
+		if special == 0 {
+			continue
+		}
+		info := mapdata.LookupLineSpecial(special)
+		if info.Exit == mapdata.ExitNone || info.Trigger != mapdata.TriggerWalk {
+			continue
+		}
+		startSide := g.pointOnLineSide(prevX, prevY, ld)
+		endSide := g.pointOnLineSide(curX, curY, ld)
+		if !(startSide == 0 && endSide == 1) {
+			continue
+		}
+		if _, ok := segmentIntersectFrac(prevX, prevY, curX, curY, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
+			continue
+		}
+		g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk)
+		return
+	}
+}
+
+func (g *game) handleExitSpecial(lineIdx int, special uint16, trigger mapdata.TriggerType) bool {
+	info := mapdata.LookupLineSpecial(special)
+	if info.Exit == mapdata.ExitNone || info.Trigger != trigger {
+		return false
+	}
+	if !info.Repeat && lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
+		g.lineSpecial[lineIdx] = 0
+	}
+	switch info.Exit {
+	case mapdata.ExitSecret:
+		g.requestLevelExit(true, "Secret Exit")
+	default:
+		g.requestLevelExit(false, "Level Complete")
+	}
+	return true
 }
 
 func shouldPlaySwitchClick(info mapdata.LineSpecialInfo) bool {
