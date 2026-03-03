@@ -1275,12 +1275,12 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	sec := g.sectorAt(g.p.x, g.p.y)
 	if g.showMapFloors && len(g.opts.FlatBank) > 0 && sec >= 0 && sec < len(g.m.Sectors) {
-		g.drawDoomBasicTexturedCeilingClipped(screen, camX, camY, ca, sa, eyeZ, focal, sec, ceilClr, wallTop)
-		g.drawDoomBasicTexturedFloorClipped(screen, camX, camY, ca, sa, eyeZ, focal, sec, floorClr, wallBottom)
+		g.drawDoomBasicTexturedCeilingClipped(screen, camX, camY, ca, sa, eyeZ, focal, sec, ceilClr, wallTop, depthPix)
+		g.drawDoomBasicTexturedFloorClipped(screen, camX, camY, ca, sa, eyeZ, focal, sec, floorClr, wallBottom, depthPix)
 	}
 }
 
-func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback color.RGBA, wallTop []int) {
+func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback color.RGBA, wallTop []int, depthPix []float64) {
 	g.ensureMapFloorLayer()
 	pix := g.mapFloorPix
 	w := g.viewW
@@ -1313,15 +1313,22 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 			if y >= stopY {
 				continue
 			}
-			wx, wy, _, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseCeilZ)
+			wx, wy, depth, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseCeilZ)
 			if !ok {
+				continue
+			}
+			pi := y*g.viewW + x
+			if pi < 0 || pi >= len(depthPix) || depth >= depthPix[pi] {
 				continue
 			}
 			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				refinedZ := float64(g.m.Sectors[sec].CeilingHeight)
 				if math.Abs(refinedZ-baseCeilZ) > 0.001 {
-					if rwx, rwy, _, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
+					if rwx, rwy, rdepth, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
+						if rdepth >= depthPix[pi] {
+							continue
+						}
 						wx, wy = rwx, rwy
 						if rsec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit)); rsec >= 0 && rsec < len(g.m.Sectors) {
 							sec = rsec
@@ -1362,7 +1369,7 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
-func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, floorFallback color.RGBA, wallBottom []int) {
+func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, floorFallback color.RGBA, wallBottom []int, depthPix []float64) {
 	g.ensureMapFloorLayer()
 	pix := g.mapFloorPix
 	w := g.viewW
@@ -1394,15 +1401,22 @@ func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, cam
 			if y < startY {
 				continue
 			}
-			wx, wy, _, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseFloorZ)
+			wx, wy, depth, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseFloorZ)
 			if !ok {
+				continue
+			}
+			pi := y*g.viewW + x
+			if pi < 0 || pi >= len(depthPix) || depth >= depthPix[pi] {
 				continue
 			}
 			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				refinedZ := float64(g.m.Sectors[sec].FloorHeight)
 				if math.Abs(refinedZ-baseFloorZ) > 0.001 {
-					if rwx, rwy, _, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
+					if rwx, rwy, rdepth, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
+						if rdepth >= depthPix[pi] {
+							continue
+						}
 						wx, wy = rwx, rwy
 						if rsec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit)); rsec >= 0 && rsec < len(g.m.Sectors) {
 							sec = rsec
