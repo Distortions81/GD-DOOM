@@ -2869,9 +2869,12 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	if g.ensureMapFloorWorldLayerBuilt() {
 		g.drawMapFloorWorldLayer(screen)
 		g.floorFrame = g.mapFloorWorldStats
-		return
+	} else {
+		// The map texture layer is precomputed at load time. If this build fails,
+		// keep map rendering deterministic by skipping textured fill this frame.
+		g.floorFrame.rejectedSpan++
+		g.floorFrame.rejectNoPoly++
 	}
-	g.drawMapFloorTextures2DGZDoom(screen)
 }
 
 func (g *game) ensureMapFloorWorldLayerBuilt() bool {
