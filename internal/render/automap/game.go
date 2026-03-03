@@ -1354,7 +1354,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
-	g.fill3DBackground(ceilClr, floorClr)
 
 	depthPix, wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
@@ -1578,8 +1577,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	g.solid3DBuf = solid
 	if planesEnabled {
-		g.drawDoomBasicTexturedPlanesVisplanePass(camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
-		g.compositePlaneLayer3D()
+		g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
@@ -1664,18 +1662,15 @@ func (g *game) drawBasicWallColumn(depthPix []float64, wallTop, wallBottom []int
 	}
 }
 
-func (g *game) drawDoomBasicTexturedPlanesVisplanePass(camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) {
+func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) {
 	if len(planes) == 0 {
 		return
 	}
-	g.ensureMapFloorLayer()
-	pix := g.mapFloorPix
 	w := g.viewW
 	h := g.viewH
 	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
 		return
 	}
-	g.clearRGBABuffer(pix)
 	spansByPlane, active, inputSpans, hasSky := g.buildPlaneSpansParallel(planes, h)
 	g.plane3DFrame.inputSpans += inputSpans
 	g.plane3DFrame.buckets = active
