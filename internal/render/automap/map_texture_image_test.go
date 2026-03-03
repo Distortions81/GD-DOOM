@@ -119,6 +119,72 @@ func TestTriangulateWorldPolygonWritesComplexLevelImage(t *testing.T) {
 	t.Logf("wrote testdata/triangulation_complex_debug.* and testdata/triangulation_complex_textured_debug.*")
 }
 
+func TestTriangulateWorldPolygonWritesMultiTextureLevelImage(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 512, 320))
+	fillRect(img, img.Bounds(), color.RGBA{R: 8, G: 8, B: 12, A: 255})
+
+	type region struct {
+		poly []worldPt
+		tex  int
+	}
+	regions := []region{
+		{poly: rectPoly(20, 20, 260, 120), tex: 0},
+		{poly: rectPoly(260, 20, 492, 120), tex: 1},
+		{poly: rectPoly(20, 120, 180, 220), tex: 2},
+		{poly: rectPoly(180, 120, 340, 220), tex: 3},
+		{poly: rectPoly(340, 120, 492, 220), tex: 1},
+		{poly: rectPoly(20, 220, 250, 300), tex: 2},
+		{poly: rectPoly(250, 220, 492, 300), tex: 0},
+	}
+
+	for _, r := range regions {
+		tris, ok := triangulateWorldPolygon(r.poly)
+		if !ok {
+			t.Fatal("expected region triangulation")
+		}
+		for _, tri := range tris {
+			a := r.poly[tri[0]]
+			b := r.poly[tri[1]]
+			c := r.poly[tri[2]]
+			fillTriangleTexturedVariant(img, a, b, c, r.tex)
+		}
+		for i := 0; i < len(r.poly); i++ {
+			j := (i + 1) % len(r.poly)
+			drawLine(img, r.poly[i], r.poly[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+		}
+	}
+
+	// Pillar blockers (dark fill + red walls).
+	pillars := [][]worldPt{
+		rectPoly(210, 145, 240, 175),
+		rectPoly(285, 155, 315, 185),
+		rectPoly(110, 245, 145, 280),
+		rectPoly(400, 245, 435, 280),
+	}
+	for _, p := range pillars {
+		pr, ok := triangulateWorldPolygon(p)
+		if !ok {
+			t.Fatal("expected pillar triangulation")
+		}
+		for _, tri := range pr {
+			a := p[tri[0]]
+			b := p[tri[1]]
+			c := p[tri[2]]
+			fillTriangleSolid(img, a, b, c, color.RGBA{R: 6, G: 6, B: 8, A: 255})
+		}
+		for i := 0; i < len(p); i++ {
+			j := (i + 1) % len(p)
+			drawLine(img, p[i], p[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+		}
+	}
+
+	if err := os.MkdirAll("testdata", 0o755); err != nil {
+		t.Fatalf("mkdir testdata: %v", err)
+	}
+	writeDebugImageSet(t, "triangulation_multitex_debug", img)
+	t.Logf("wrote testdata/triangulation_multitex_debug.*")
+}
+
 func extractRGB(img *image.RGBA) []byte {
 	b := make([]byte, 0, img.Bounds().Dx()*img.Bounds().Dy()*3)
 	r := img.Bounds()
@@ -211,6 +277,75 @@ func checker64(u, v float64) color.RGBA {
 		return color.RGBA{R: 64, G: 170, B: 220, A: 255}
 	}
 	return color.RGBA{R: 215, G: 180, B: 72, A: 255}
+}
+
+func fillTriangleTexturedVariant(img *image.RGBA, a, b, c worldPt, texID int) {
+	minX := int(math.Floor(min3(a.x, b.x, c.x)))
+	maxX := int(math.Ceil(max3(a.x, b.x, c.x)))
+	minY := int(math.Floor(min3(a.y, b.y, c.y)))
+	maxY := int(math.Ceil(max3(a.y, b.y, c.y)))
+	if minX < img.Bounds().Min.X {
+		minX = img.Bounds().Min.X
+	}
+	if minY < img.Bounds().Min.Y {
+		minY = img.Bounds().Min.Y
+	}
+	if maxX >= img.Bounds().Max.X {
+		maxX = img.Bounds().Max.X - 1
+	}
+	if maxY >= img.Bounds().Max.Y {
+		maxY = img.Bounds().Max.Y - 1
+	}
+	den := orient2D(a, b, c)
+	if math.Abs(den) < 1e-9 {
+		return
+	}
+	for y := minY; y <= maxY; y++ {
+		for x := minX; x <= maxX; x++ {
+			p := worldPt{x: float64(x) + 0.5, y: float64(y) + 0.5}
+			if !pointInTri(p, a, b, c) {
+				continue
+			}
+			w0 := orient2D(b, c, p) / den
+			w1 := orient2D(c, a, p) / den
+			w2 := orient2D(a, b, p) / den
+			u := w0*a.x + w1*b.x + w2*c.x
+			v := w0*a.y + w1*b.y + w2*c.y
+			img.SetRGBA(x, y, samplePattern(texID, u, v))
+		}
+	}
+}
+
+func samplePattern(texID int, u, v float64) color.RGBA {
+	switch texID % 4 {
+	case 1:
+		iu := int(math.Floor(u)) & 63
+		iv := int(math.Floor(v)) & 63
+		cell := ((iu >> 2) ^ (iv >> 2)) & 1
+		if cell == 0 {
+			return color.RGBA{R: 96, G: 180, B: 96, A: 255}
+		}
+		return color.RGBA{R: 46, G: 86, B: 46, A: 255}
+	case 2:
+		iu := int(math.Floor(u))
+		iv := int(math.Floor(v))
+		band := (iu + iv) & 7
+		if band < 4 {
+			return color.RGBA{R: 170, G: 120, B: 72, A: 255}
+		}
+		return color.RGBA{R: 120, G: 80, B: 48, A: 255}
+	case 3:
+		du := frac01(u / 64)
+		dv := frac01(v / 64)
+		return color.RGBA{
+			R: uint8(40 + 120*du),
+			G: uint8(60 + 120*dv),
+			B: 180,
+			A: 255,
+		}
+	default:
+		return checker64(u, v)
+	}
 }
 
 func writeDebugImageSet(t *testing.T, base string, img *image.RGBA) {
