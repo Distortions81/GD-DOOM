@@ -37,3 +37,35 @@ func TestSubsectorVertexLoopFromSegOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestTriangulateWorldPolygon_Concave(t *testing.T) {
+	// Simple concave "arrow" polygon, CCW.
+	verts := []worldPt{
+		{x: 0, y: 0},
+		{x: 4, y: 0},
+		{x: 4, y: 1},
+		{x: 2, y: 0.4},
+		{x: 0, y: 1},
+	}
+	tris, ok := triangulateWorldPolygon(verts)
+	if !ok {
+		t.Fatal("expected concave polygon to triangulate")
+	}
+	if got, want := len(tris), len(verts)-2; got != want {
+		t.Fatalf("triangle count=%d want=%d", got, want)
+	}
+}
+
+func TestTriangulateWorldPolygon_SelfIntersectReject(t *testing.T) {
+	// Bowtie/self-intersecting polygon.
+	verts := []worldPt{
+		{x: 0, y: 0},
+		{x: 2, y: 2},
+		{x: 0, y: 2},
+		{x: 2, y: 0},
+	}
+	_, ok := triangulateWorldPolygon(verts)
+	if ok {
+		t.Fatal("expected self-intersecting polygon to be rejected")
+	}
+}

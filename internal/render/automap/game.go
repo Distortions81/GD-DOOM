@@ -1753,7 +1753,6 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		Filter:  ebiten.FilterNearest,
 		Address: ebiten.AddressRepeat,
 	}
-	triIdx := []uint16{0, 1, 2}
 	for ss := range g.m.SubSectors {
 		poly, worldVerts, cx, cy, _, ok := g.subSectorScreenPolygon(ss)
 		if !ok {
@@ -1774,37 +1773,39 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		if len(poly) < 3 {
 			continue
 		}
-		v0 := poly[0]
-		w0 := worldVerts[0]
-		for i := 1; i+1 < len(poly); i++ {
-			v1 := poly[i]
-			v2 := poly[i+1]
-			w1 := worldVerts[i]
-			w2 := worldVerts[i+1]
+		tris, ok := triangulateWorldPolygon(worldVerts)
+		if !ok || len(tris) == 0 {
+			continue
+		}
+		for _, tri := range tris {
+			i0, i1, i2 := tri[0], tri[1], tri[2]
+			if i0 < 0 || i1 < 0 || i2 < 0 || i0 >= len(poly) || i1 >= len(poly) || i2 >= len(poly) {
+				continue
+			}
 			verts := []ebiten.Vertex{
 				{
-					DstX:   float32(v0.x),
-					DstY:   float32(v0.y),
-					SrcX:   float32(w0.x),
-					SrcY:   float32(w0.y),
+					DstX:   float32(poly[i0].x),
+					DstY:   float32(poly[i0].y),
+					SrcX:   float32(worldVerts[i0].x),
+					SrcY:   float32(worldVerts[i0].y),
 					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
 				},
 				{
-					DstX:   float32(v1.x),
-					DstY:   float32(v1.y),
-					SrcX:   float32(w1.x),
-					SrcY:   float32(w1.y),
+					DstX:   float32(poly[i1].x),
+					DstY:   float32(poly[i1].y),
+					SrcX:   float32(worldVerts[i1].x),
+					SrcY:   float32(worldVerts[i1].y),
 					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
 				},
 				{
-					DstX:   float32(v2.x),
-					DstY:   float32(v2.y),
-					SrcX:   float32(w2.x),
-					SrcY:   float32(w2.y),
+					DstX:   float32(poly[i2].x),
+					DstY:   float32(poly[i2].y),
+					SrcX:   float32(worldVerts[i2].x),
+					SrcY:   float32(worldVerts[i2].y),
 					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
 				},
 			}
-			screen.DrawTriangles(verts, triIdx, flatImg, triOpts)
+			screen.DrawTriangles(verts, []uint16{0, 1, 2}, flatImg, triOpts)
 		}
 	}
 }
@@ -2023,6 +2024,119 @@ func polygonArea2(verts []worldPt) float64 {
 		area2 += verts[i].x*verts[j].y - verts[j].x*verts[i].y
 	}
 	return area2
+}
+
+func triangulateWorldPolygon(verts []worldPt) ([][3]int, bool) {
+	n := len(verts)
+	if n < 3 {
+		return nil, false
+	}
+	if !polygonSimple(verts) {
+		return nil, false
+	}
+	area2 := polygonArea2(verts)
+	if math.Abs(area2) < 1e-9 {
+		return nil, false
+	}
+	idx := make([]int, n)
+	if area2 > 0 {
+		for i := 0; i < n; i++ {
+			idx[i] = i
+		}
+	} else {
+		for i := 0; i < n; i++ {
+			idx[i] = n - 1 - i
+		}
+	}
+	out := make([][3]int, 0, n-2)
+	guard := 0
+	for len(idx) > 3 && guard < n*n {
+		guard++
+		earFound := false
+		for i := 0; i < len(idx); i++ {
+			pi := idx[(i-1+len(idx))%len(idx)]
+			ci := idx[i]
+			ni := idx[(i+1)%len(idx)]
+			if !isCCW(verts[pi], verts[ci], verts[ni]) {
+				continue
+			}
+			if containsAnyPointInTri(verts, idx, pi, ci, ni) {
+				continue
+			}
+			out = append(out, [3]int{pi, ci, ni})
+			idx = append(idx[:i], idx[i+1:]...)
+			earFound = true
+			break
+		}
+		if !earFound {
+			return nil, false
+		}
+	}
+	if len(idx) == 3 {
+		out = append(out, [3]int{idx[0], idx[1], idx[2]})
+	}
+	return out, len(out) > 0
+}
+
+func polygonSimple(verts []worldPt) bool {
+	n := len(verts)
+	if n < 3 {
+		return false
+	}
+	for i := 0; i < n; i++ {
+		a1 := verts[i]
+		a2 := verts[(i+1)%n]
+		for j := i + 1; j < n; j++ {
+			// Skip adjacent edges and the same closing edge pair.
+			if j == i || (j+1)%n == i || j == (i+1)%n {
+				continue
+			}
+			b1 := verts[j]
+			b2 := verts[(j+1)%n]
+			if segmentsIntersectStrict(a1, a2, b1, b2) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func segmentsIntersectStrict(a1, a2, b1, b2 worldPt) bool {
+	o1 := orient2D(a1, a2, b1)
+	o2 := orient2D(a1, a2, b2)
+	o3 := orient2D(b1, b2, a1)
+	o4 := orient2D(b1, b2, a2)
+	return (o1*o2 < 0) && (o3*o4 < 0)
+}
+
+func orient2D(a, b, c worldPt) float64 {
+	return (b.x-a.x)*(c.y-a.y) - (b.y-a.y)*(c.x-a.x)
+}
+
+func isCCW(a, b, c worldPt) bool {
+	return orient2D(a, b, c) > 1e-9
+}
+
+func containsAnyPointInTri(verts []worldPt, idx []int, ai, bi, ci int) bool {
+	a, b, c := verts[ai], verts[bi], verts[ci]
+	for _, vi := range idx {
+		if vi == ai || vi == bi || vi == ci {
+			continue
+		}
+		if pointInTri(verts[vi], a, b, c) {
+			return true
+		}
+	}
+	return false
+}
+
+func pointInTri(p, a, b, c worldPt) bool {
+	ab := orient2D(a, b, p)
+	bc := orient2D(b, c, p)
+	ca := orient2D(c, a, p)
+	const eps = 1e-9
+	// Accept edge points to avoid sliver ears.
+	return ab >= -eps && bc >= -eps && ca >= -eps
 }
 
 func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, []worldPt, float64, float64, polyBBox, bool) {
