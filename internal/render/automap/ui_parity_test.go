@@ -1,6 +1,10 @@
 package automap
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/mapdata"
+)
 
 func TestShouldDrawThings(t *testing.T) {
 	if shouldDrawThings(automapParityState{iddt: 1}) {
@@ -45,5 +49,12 @@ func TestToggleBigMapRoundTrip(t *testing.T) {
 	}
 	if g.camX != 100 || g.camY != 200 || g.zoom != 3 || !g.followMode {
 		t.Fatalf("restored view mismatch: cam=(%v,%v) zoom=%v follow=%t", g.camX, g.camY, g.zoom, g.followMode)
+	}
+}
+
+func TestSourcePortDefaultsEnableLegend(t *testing.T) {
+	g := newGame(&mapdata.Map{}, Options{SourcePortMode: true})
+	if !g.showLegend {
+		t.Fatal("sourceport default should enable legend")
 	}
 }

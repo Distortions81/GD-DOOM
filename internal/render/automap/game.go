@@ -60,6 +60,7 @@ type game struct {
 	showHelp   bool
 	parity     automapParityState
 	showGrid   bool
+	showLegend bool
 	bigMap     bool
 	savedView  savedMapView
 	marks      []mapMark
@@ -169,6 +170,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 			iddt:   0,
 		},
 		showGrid:   false,
+		showLegend: opts.SourcePortMode,
 		bigMap:     false,
 		marks:      make([]mapMark, 0, 16),
 		nextMarkID: 1,
@@ -450,6 +452,14 @@ func (g *game) updateParityControls() {
 			g.opts.LineColorMode = toggledLineColorMode(g.opts.LineColorMode)
 			g.setHUDMessage(fmt.Sprintf("Line Colors: %s", g.opts.LineColorMode), 70)
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyV) {
+			g.showLegend = !g.showLegend
+			if g.showLegend {
+				g.setHUDMessage("Thing Legend ON", 70)
+			} else {
+				g.setHUDMessage("Thing Legend OFF", 70)
+			}
+		}
 	}
 }
 
@@ -545,6 +555,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.inventory.keySummary(),
 		)
 		ebitenutil.DebugPrintAt(screen, stats, 12, 28)
+		if g.showLegend {
+			g.drawThingLegend(screen)
+		}
 	}
 	if g.useFlash > 0 {
 		msgY := 12
@@ -615,6 +628,31 @@ func toggledLineColorMode(mode string) string {
 		return "doom"
 	}
 	return "parity"
+}
+
+func (g *game) drawThingLegend(screen *ebiten.Image) {
+	lines := []string{
+		"THING LEGEND",
+		"[] player starts",
+		"/\\ monsters",
+		"<> items/pickups",
+		"* keys",
+		"+ misc",
+	}
+	maxLen := 0
+	for _, l := range lines {
+		if len(l) > maxLen {
+			maxLen = len(l)
+		}
+	}
+	x := g.viewW - maxLen*7 - 12
+	if x < 10 {
+		x = 10
+	}
+	y := 28
+	for i, l := range lines {
+		ebitenutil.DebugPrintAt(screen, l, x, y+i*14)
+	}
 }
 
 func (g *game) addMark() {
@@ -1037,6 +1075,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 			"O  TOGGLE NORMAL/ALLMAP",
 			"I  CYCLE IDDT",
 			"L  TOGGLE COLOR MODE",
+			"V  TOGGLE THING LEGEND",
 			"HOME  RESET VIEW",
 		)
 	} else {

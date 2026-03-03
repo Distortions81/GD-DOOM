@@ -59,6 +59,7 @@ Level progression:
 - `Esc`: quit
 
 Source-port extras are enabled only with `-sourceport-mode`.
+In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.
 
 ## Runtime Gameplay State (Current)
 
