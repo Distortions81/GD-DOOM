@@ -70,6 +70,7 @@ type game struct {
 	sectorFloor []int64
 	sectorCeil  []int64
 	lineSpecial []uint16
+	doors       map[int]*doorThinker
 	useFlash    int
 	useText     string
 

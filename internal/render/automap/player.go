@@ -20,6 +20,8 @@ const (
 	friction     = 0xe800
 	stepHeight   = 24 * fracUnit
 	useRange     = 64 * fracUnit
+	vDoorSpeed   = 2 * fracUnit
+	vDoorWaitTic = 150
 
 	mlBlocking = 0x0001
 	mlTwoSided = 0x0004
@@ -88,6 +90,29 @@ type intercept struct {
 	line int
 }
 
+type doorType int
+
+const (
+	doorNormal doorType = iota
+	doorClose
+	doorClose30ThenOpen
+	doorBlazeRaise
+	doorBlazeOpen
+	doorBlazeClose
+	doorOpen
+	doorRaiseIn5Mins
+)
+
+type doorThinker struct {
+	sector       int
+	typ          doorType
+	direction    int
+	topHeight    int64
+	topWait      int
+	topCountdown int
+	speed        int64
+}
+
 func spawnPlayer(m *mapdata.Map) player {
 	for _, t := range m.Things {
 		if t.Type == 1 {
@@ -119,6 +144,7 @@ func (g *game) initPhysics() {
 	for i, ld := range g.m.Linedefs {
 		g.lineSpecial[i] = ld.Special
 	}
+	g.doors = make(map[int]*doorThinker)
 	sec := g.sectorAt(g.p.x, g.p.y)
 	if sec >= 0 && sec < len(g.m.Sectors) {
 		g.p.floorz = int64(g.m.Sectors[sec].FloorHeight) << fracBits
@@ -185,6 +211,8 @@ func buildPhysLines(m *mapdata.Map) []physLine {
 }
 
 func (g *game) updatePlayer(cmd moveCmd) {
+	g.tickDoors()
+
 	if cmd.turnRaw != 0 {
 		g.p.angle += uint32(cmd.turnRaw)
 	}
@@ -208,6 +236,57 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	}
 
 	g.xyMovement()
+}
+
+func (g *game) tickDoors() {
+	for sec, d := range g.doors {
+		switch d.direction {
+		case 0:
+			d.topCountdown--
+			if d.topCountdown <= 0 {
+				switch d.typ {
+				case doorBlazeRaise, doorNormal:
+					d.direction = -1
+				case doorClose30ThenOpen:
+					d.direction = 1
+				}
+			}
+		case 2:
+			d.topCountdown--
+			if d.topCountdown <= 0 && d.typ == doorRaiseIn5Mins {
+				d.direction = 1
+				d.typ = doorNormal
+			}
+		case -1:
+			next := g.sectorCeil[sec] - d.speed
+			if next <= g.sectorFloor[sec] {
+				g.sectorCeil[sec] = g.sectorFloor[sec]
+				switch d.typ {
+				case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
+					delete(g.doors, sec)
+				case doorClose30ThenOpen:
+					d.direction = 0
+					d.topCountdown = 35 * 30
+				}
+			} else {
+				g.sectorCeil[sec] = next
+			}
+		case 1:
+			next := g.sectorCeil[sec] + d.speed
+			if next >= d.topHeight {
+				g.sectorCeil[sec] = d.topHeight
+				switch d.typ {
+				case doorBlazeRaise, doorNormal:
+					d.direction = 0
+					d.topCountdown = d.topWait
+				case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
+					delete(g.doors, sec)
+				}
+			} else {
+				g.sectorCeil[sec] = next
+			}
+		}
+	}
 }
 
 func (g *game) thrust(angle uint32, move int64) {
@@ -297,8 +376,8 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 	if sec < 0 || sec >= len(g.m.Sectors) {
 		return 0, 0, 0, false
 	}
-	tmfloor := int64(g.m.Sectors[sec].FloorHeight) << fracBits
-	tmceil := int64(g.m.Sectors[sec].CeilingHeight) << fracBits
+	tmfloor := g.sectorFloor[sec]
+	tmceil := g.sectorCeil[sec]
 	tmdrop := tmfloor
 
 	g.validCount++
@@ -726,44 +805,132 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		g.useFlash = 35
 		return
 	}
-	activated, moved := g.activateDoorLine(lineIdx, info)
+	activated := g.activateDoorLine(lineIdx, info)
 	if activated {
-		if !info.Repeat {
-			g.lineSpecial[lineIdx] = 0
-		}
-		if moved > 0 {
-			g.useText = "USE: door opened"
-		} else {
-			g.useText = "USE: door active"
-		}
+		g.useText = "USE: door active"
 	} else {
 		g.useText = "USE: no change"
 	}
 	g.useFlash = 35
 }
 
-func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) (bool, int) {
+func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) bool {
+	if info.Trigger == mapdata.TriggerManual {
+		return g.evVerticalDoor(lineIdx)
+	}
+	return g.evDoDoorTagged(lineIdx, info)
+}
+
+func (g *game) evVerticalDoor(lineIdx int) bool {
+	if lineIdx < 0 || lineIdx >= len(g.m.Linedefs) {
+		return false
+	}
+	ld := g.m.Linedefs[lineIdx]
 	targets, err := g.m.DoorTargetSectors(lineIdx)
 	if err != nil || len(targets) == 0 {
-		return false, 0
+		return false
 	}
-	opened := 0
+	sec := targets[0]
+	if sec < 0 || sec >= len(g.sectorCeil) {
+		return false
+	}
+
+	if d := g.doors[sec]; d != nil {
+		switch ld.Special {
+		case 1, 26, 27, 28, 117:
+			if d.direction == -1 {
+				d.direction = 1
+			} else {
+				d.direction = -1
+			}
+			return true
+		}
+	}
+
+	d := &doorThinker{
+		sector:    sec,
+		direction: 1,
+		speed:     vDoorSpeed,
+		topWait:   vDoorWaitTic,
+		topHeight: g.lowestSurroundingCeiling(sec) - 4*fracUnit,
+	}
+	if d.topHeight < g.sectorFloor[sec] {
+		d.topHeight = g.sectorFloor[sec]
+	}
+	switch ld.Special {
+	case 1, 26, 27, 28:
+		d.typ = doorNormal
+	case 31, 32, 33, 34:
+		d.typ = doorOpen
+		g.lineSpecial[lineIdx] = 0
+	case 117:
+		d.typ = doorBlazeRaise
+		d.speed = vDoorSpeed * 4
+	case 118:
+		d.typ = doorBlazeOpen
+		d.speed = vDoorSpeed * 4
+		g.lineSpecial[lineIdx] = 0
+	default:
+		return false
+	}
+	g.doors[sec] = d
+	return true
+}
+
+func (g *game) evDoDoorTagged(lineIdx int, info mapdata.LineSpecialInfo) bool {
+	targets, err := g.m.DoorTargetSectors(lineIdx)
+	if err != nil || len(targets) == 0 {
+		return false
+	}
 	activated := false
 	for _, sec := range targets {
 		if sec < 0 || sec >= len(g.sectorCeil) {
 			continue
 		}
+		if g.doors[sec] != nil {
+			continue
+		}
+		d := &doorThinker{
+			sector:    sec,
+			topWait:   vDoorWaitTic,
+			speed:     vDoorSpeed,
+			topHeight: g.lowestSurroundingCeiling(sec) - 4*fracUnit,
+		}
+		if d.topHeight < g.sectorFloor[sec] {
+			d.topHeight = g.sectorFloor[sec]
+		}
+		switch info.Door.Action {
+		case mapdata.DoorOpen:
+			d.typ = doorOpen
+			d.direction = 1
+		case mapdata.DoorClose:
+			d.typ = doorClose
+			d.direction = -1
+		case mapdata.DoorRaise:
+			d.typ = doorNormal
+			d.direction = 1
+		case mapdata.DoorClose30ThenOpen:
+			d.typ = doorClose30ThenOpen
+			d.direction = -1
+		case mapdata.DoorBlazeOpen:
+			d.typ = doorBlazeOpen
+			d.direction = 1
+			d.speed = vDoorSpeed * 4
+		case mapdata.DoorBlazeClose:
+			d.typ = doorBlazeClose
+			d.direction = -1
+			d.speed = vDoorSpeed * 4
+		case mapdata.DoorBlazeRaise:
+			d.typ = doorBlazeRaise
+			d.direction = 1
+			d.speed = vDoorSpeed * 4
+		default:
+			continue
+		}
+		g.doors[sec] = d
 		activated = true
-		target := g.lowestSurroundingCeiling(sec) - 4*fracUnit
-		if target < g.sectorFloor[sec] {
-			target = g.sectorFloor[sec]
-		}
-		if target > g.sectorCeil[sec] {
-			g.sectorCeil[sec] = target
-			opened++
-		}
 	}
-	return activated, opened
+	return activated
 }
 
 func (g *game) lowestSurroundingCeiling(sector int) int64 {
