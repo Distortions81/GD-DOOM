@@ -2,6 +2,13 @@
 
 Goal: move `doom-basic` 3D walls/floors/ceilings from approximate per-pixel plane sampling to a Doom-style wall-marked, visplane/span-driven pipeline.
 
+## Status Snapshot
+
+- Default (faithful Doom mode): `doom-basic` software 3D renderer is active.
+- Implemented: wall-driven clips, visplane split/reuse (`R_CheckPlane`-like), span raster for floors/ceilings.
+- Implemented: textured wall columns (mid/top/bottom).
+- Remaining: sky parity, masked mid textures, and final edge/pop cleanup.
+
 Reference implementation in this repo:
 - `doom-source/linuxdoom-1.10/r_bsp.c` (`R_Subsector`)
 - `doom-source/linuxdoom-1.10/r_segs.c` (`R_RenderSegLoop`)
@@ -9,10 +16,9 @@ Reference implementation in this repo:
 
 ## Current Gaps
 
-- No true 3D visplane buckets keyed by `(height, pic, light)`.
-- Wall pass does not yet author full Doom-equivalent `floorclip[]/ceilingclip[]`.
 - Plane raster still has approximation behavior at some angles/transitions.
 - Sky handling is simplified (not full Doom sky plane behavior).
+- Masked mid-texture behavior is not yet Doom-faithful.
 
 ## Milestone 0: Instrumentation and Safety
 

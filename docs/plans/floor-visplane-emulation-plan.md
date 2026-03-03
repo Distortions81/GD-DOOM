@@ -2,6 +2,12 @@
 
 Goal: replace subsector polygon triangulation fill with a Doom-style clip/span plane pass so floor coverage is robust and closer to vanilla behavior.
 
+## Status Snapshot
+
+- 2D automap floor visplane path exists and is integrated.
+- 2D textured automap floor rendering is intentionally sourceport-only.
+- Keep this plan for sourceport/debug parity polish and test hardening.
+
 Reference implementation in this repo:
 - `doom-source/linuxdoom-1.10/r_bsp.c` (`R_Subsector`)
 - `doom-source/linuxdoom-1.10/r_segs.c` (`R_RenderSegLoop`)
@@ -17,6 +23,7 @@ Reference implementation in this repo:
 - Full software-renderer lighting parity.
 - Sprite clipping parity reuse.
 - Replacing the existing pseudo-3D wall renderer.
+- Faithful Doom default runtime behavior (2D floor textures are non-vanilla and remain sourceport-only).
 
 ## Milestone 0: Contract and Instrumentation
 

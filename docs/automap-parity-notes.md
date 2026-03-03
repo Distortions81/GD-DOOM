@@ -45,12 +45,12 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 - North-up map orientation is now default; heading-follow rotation is available as an opt-in toggle (`R`).
 - Launch flag `-sourceport-mode` starts with heading-follow rotation enabled (source-port style), while default launch remains Doom-like north-up.
 - Startup zoom now uses Doom-style auto zoom (`fit / 0.7`) unless `-zoom` is explicitly provided (>0).
-- Non-Doom convenience controls are now gated behind `-sourceport-mode` (`R`, `B`, `O`, `I`, `L`, `HOME`).
+- Non-Doom convenience controls are now gated behind `-sourceport-mode` (`R`, `B`, `O`, `I`, `L`, `HOME`, `P`, `J`, `K`, `U`, `Y`).
 
 ## Controls and Visual UX
 
 - HUD now shows active profile (`doom` or `sourceport`) and current automap state (reveal, iddt, grid, marks, color mode).
-- Non-map mode intentionally shows placeholder text (`no game render yet`) and prompt to open automap (`TAB`).
+- Walk mode uses the Doom-emulation 3D software renderer by default (not placeholder text).
 - Help panel (`F1`) is profile-aware:
 - Doom profile: only parity-safe controls listed; source-port extras explicitly marked disabled.
 - Source-port profile: extra controls listed (`R`, `B`, `O`, `I`, `L`, `HOME`).

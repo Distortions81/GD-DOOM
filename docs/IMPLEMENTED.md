@@ -21,7 +21,10 @@ Snapshot of features currently working in this repo.
 - Walk/map mode toggle (`TAB`)
 - Local spawn slot selection (`-player 1..4`) with internal tracking of non-local player starts
 - Doom skill level selection (`-skill 1..5`) with THINGS skill-flag spawn filtering
-- Non-map placeholder screen (`no game render yet`)
+- Doom-emulation software 3D renderer (`doom-basic`) is default in walk mode
+- 3D wall-driven clip + visplane/span floor/ceiling path
+- 3D textured wall column rendering (mid/top/bottom wall textures)
+- 3D detail presets with cycle hotkey (`F5`): `320x200`, `640x400`, `960x600`
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 - Level exit special handling with automatic next-map loading (normal + secret exits)
 - In-session level transitions (single Ebiten/GLFW session across map changes)
@@ -59,9 +62,10 @@ Snapshot of features currently working in this repo.
 - Source-port-only extra toggles gated behind `-sourceport-mode`
 - Source-port default thing legend overlay with runtime toggle
 - Source-port use-target automap highlight (line currently hittable by `use`)
-- Source-port pseudo-3D walk render mode (default ON, toggle with `P`)
+- Source-port pseudo-3D wireframe mode (toggle with `P`)
 - Pseudo-3D visibility now uses BSP node traversal (not automap discovery state)
 - Doom-style turn acceleration behavior (`SLOWTURNTICS` style ramp)
+- 2D automap floor texture overlay is sourceport-only
 
 ## Tests
 
