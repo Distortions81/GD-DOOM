@@ -268,7 +268,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		peerStarts:    nonLocalStarts(starts, localSlot),
 		cullLogBudget: 600,
 		floorDbgMode:  floorDebugTextured,
-		floor2DPath:   floor2DPathLegacy,
+		floor2DPath:   floor2DPathVisplane,
 		floorVisDiag:  floorVisDiagOff,
 	}
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
