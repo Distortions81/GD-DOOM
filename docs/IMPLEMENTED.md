@@ -20,6 +20,7 @@ Snapshot of features currently working in this repo.
 - Source-port startup profile via `-sourceport-mode`
 - Walk/map mode toggle (`TAB`)
 - Local spawn slot selection (`-player 1..4`) with internal tracking of non-local player starts
+- Doom skill level selection (`-skill 1..5`) with THINGS skill-flag spawn filtering
 - Non-map placeholder screen (`no game render yet`)
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 - Level exit special handling with automatic next-map loading (normal + secret exits)

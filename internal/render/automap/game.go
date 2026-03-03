@@ -161,6 +161,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.Height <= 0 {
 		opts.Height = 720
 	}
+	opts.SkillLevel = normalizeSkillLevel(opts.SkillLevel)
 	if !opts.SourcePortMode {
 		// Doom mode keeps strict parity color semantics.
 		opts.LineColorMode = "parity"
@@ -193,6 +194,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
+	g.applySkillThingFiltering()
 	if !g.opts.StartInMapMode {
 		g.mode = viewWalk
 	}
@@ -566,9 +568,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 		revealText = "allmap"
 	}
 	if g.opts.SourcePortMode {
-		overlay := fmt.Sprintf("map=%s mode=%s zoom=%.2f reveal=%s iddt=%d grid=%t marks=%d colors=%s",
+		overlay := fmt.Sprintf("map=%s mode=%s skill=%d zoom=%.2f reveal=%s iddt=%d grid=%t marks=%d colors=%s",
 			g.m.Name,
 			modeText,
+			g.opts.SkillLevel,
 			g.zoom,
 			revealText,
 			g.parity.iddt,
@@ -643,6 +646,14 @@ func (g *game) tickDelayedSounds() {
 func (g *game) setHUDMessage(msg string, tics int) {
 	g.useText = msg
 	g.useFlash = tics
+}
+
+func (g *game) applySkillThingFiltering() {
+	for i, th := range g.m.Things {
+		if !thingSpawnsForSkill(th, g.opts.SkillLevel) {
+			g.thingCollected[i] = true
+		}
+	}
 }
 
 func (g *game) flushSoundEvents() {

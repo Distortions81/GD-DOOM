@@ -16,6 +16,7 @@ type fileConfig struct {
 	Height          *int     `toml:"height"`
 	Zoom            *float64 `toml:"zoom"`
 	Player          *int     `toml:"player"`
+	Skill           *int     `toml:"skill"`
 	LineColorMode   *string  `toml:"line_color_mode"`
 	SourcePortMode  *bool    `toml:"sourceport_mode"`
 	AllCheats       *bool    `toml:"all_cheats"`

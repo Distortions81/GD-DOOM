@@ -29,6 +29,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultHeight := 800
 	defaultZoom := 0.0
 	defaultPlayer := 1
+	defaultSkill := 3
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
 	defaultAllCheats := false
@@ -61,6 +62,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.Player != nil {
 			defaultPlayer = *cfg.Player
 		}
+		if cfg.Skill != nil {
+			defaultSkill = *cfg.Skill
+		}
 		if cfg.LineColorMode != nil {
 			defaultLineColorMode = *cfg.LineColorMode
 			configLineColorSet = true
@@ -91,6 +95,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	height := fs.Int("height", defaultHeight, "render window height")
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
+	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "enable automap cheats at startup (allmap + iddt2)")
@@ -152,6 +157,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Height:         *height,
 			StartZoom:      *zoom,
 			PlayerSlot:     *playerSlot,
+			SkillLevel:     *skillLevel,
 			LineColorMode:  resolvedLineColorMode,
 			SourcePortMode: *sourcePortMode,
 			AllCheats:      *allCheats,

@@ -33,6 +33,7 @@ By default it starts in automap mode (`-start-in-map=true`), and `TAB` toggles w
 - `-width <px>` / `-height <px>`: window size
 - `-zoom <float>`: startup zoom override (`>0`); default uses Doom-style auto zoom
 - `-player <1-4>`: choose local player start slot
+- `-skill <1-5>`: Doom skill level (`1=ITYTD`, `2=HNTR`, `3=HMP`, `4=UV`, `5=NM`)
 - `-sourceport-mode`: enable source-port style automap extras at startup
 - `-all-cheats`: start with automap cheats enabled (`allmap` + `IDDT2`)
 - `-start-in-map`: start with automap open (default `true`)

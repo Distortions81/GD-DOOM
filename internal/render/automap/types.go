@@ -5,6 +5,7 @@ type Options struct {
 	Height         int
 	StartZoom      float64
 	PlayerSlot     int
+	SkillLevel     int
 	LineColorMode  string
 	SourcePortMode bool
 	AllCheats      bool
