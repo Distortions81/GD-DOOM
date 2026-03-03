@@ -1665,7 +1665,8 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	if sub.SegCount < 3 {
 		return nil, 0, 0, false
 	}
-	seen := make(map[uint16]struct{}, sub.SegCount*2)
+	// Doom subsectors are convex and segs are ordered around the boundary.
+	// Preserve seg order instead of dedup/sort to avoid incorrect fan triangulation.
 	verts := make([]worldPt, 0, sub.SegCount)
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
@@ -1673,21 +1674,38 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 			continue
 		}
 		sg := g.m.Segs[si]
-		for _, vi := range []uint16{sg.StartVertex, sg.EndVertex} {
-			if int(vi) >= len(g.m.Vertexes) {
-				continue
-			}
-			if _, ok := seen[vi]; ok {
-				continue
-			}
-			seen[vi] = struct{}{}
-			v := g.m.Vertexes[vi]
-			verts = append(verts, worldPt{x: float64(v.X), y: float64(v.Y)})
+		if int(sg.StartVertex) >= len(g.m.Vertexes) {
+			continue
+		}
+		v := g.m.Vertexes[sg.StartVertex]
+		verts = append(verts, worldPt{x: float64(v.X), y: float64(v.Y)})
+	}
+	if len(verts) < 3 {
+		return nil, 0, 0, false
+	}
+	// Remove repeated closure vertex if present.
+	if len(verts) >= 2 {
+		a := verts[0]
+		b := verts[len(verts)-1]
+		if math.Abs(a.x-b.x) < 0.001 && math.Abs(a.y-b.y) < 0.001 {
+			verts = verts[:len(verts)-1]
 		}
 	}
 	if len(verts) < 3 {
 		return nil, 0, 0, false
 	}
+	// If winding is clockwise, reverse to keep a consistent triangle fan.
+	area2 := 0.0
+	for i := 0; i < len(verts); i++ {
+		j := (i + 1) % len(verts)
+		area2 += verts[i].x*verts[j].y - verts[j].x*verts[i].y
+	}
+	if area2 < 0 {
+		for i, j := 0, len(verts)-1; i < j; i, j = i+1, j-1 {
+			verts[i], verts[j] = verts[j], verts[i]
+		}
+	}
+	// Polygon centroid estimate (mean of vertices is enough for convex subsectors).
 	cx, cy := 0.0, 0.0
 	for _, v := range verts {
 		cx += v.x
@@ -1695,11 +1713,6 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	}
 	cx /= float64(len(verts))
 	cy /= float64(len(verts))
-	sort.Slice(verts, func(i, j int) bool {
-		ai := math.Atan2(verts[i].y-cy, verts[i].x-cx)
-		aj := math.Atan2(verts[j].y-cy, verts[j].x-cx)
-		return ai < aj
-	})
 	return verts, cx, cy, true
 }
 
