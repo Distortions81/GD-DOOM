@@ -1602,10 +1602,10 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		if !ok {
 			continue
 		}
-		secIdx := g.sectorAt(int64(cx*fracUnit), int64(cy*fracUnit))
-		if secIdx < 0 || secIdx >= len(g.m.Sectors) {
-			secIdx, ok = g.subSectorSectorIndex(ss)
-			if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
+		secIdx, ok := g.subSectorSectorIndex(ss)
+		if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
+			secIdx = g.sectorAt(int64(cx*fracUnit), int64(cy*fracUnit))
+			if secIdx < 0 || secIdx >= len(g.m.Sectors) {
 				continue
 			}
 		}
@@ -1665,31 +1665,79 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	if sub.SegCount < 3 {
 		return nil, 0, 0, false
 	}
-	// Doom subsectors are convex and segs are ordered around the boundary.
-	// Preserve seg order instead of dedup/sort to avoid incorrect fan triangulation.
-	verts := make([]worldPt, 0, sub.SegCount)
+	type edge struct {
+		a uint16
+		b uint16
+	}
+	edges := make([]edge, 0, sub.SegCount)
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
 		if si < 0 || si >= len(g.m.Segs) {
 			continue
 		}
 		sg := g.m.Segs[si]
-		if int(sg.StartVertex) >= len(g.m.Vertexes) {
+		if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
 			continue
 		}
-		v := g.m.Vertexes[sg.StartVertex]
-		verts = append(verts, worldPt{x: float64(v.X), y: float64(v.Y)})
+		edges = append(edges, edge{a: sg.StartVertex, b: sg.EndVertex})
 	}
-	if len(verts) < 3 {
+	if len(edges) < 3 {
 		return nil, 0, 0, false
 	}
-	// Remove repeated closure vertex if present.
-	if len(verts) >= 2 {
-		a := verts[0]
-		b := verts[len(verts)-1]
-		if math.Abs(a.x-b.x) < 0.001 && math.Abs(a.y-b.y) < 0.001 {
-			verts = verts[:len(verts)-1]
+
+	used := make([]bool, len(edges))
+	chain := make([]uint16, 0, len(edges)+1)
+	chain = append(chain, edges[0].a, edges[0].b)
+	used[0] = true
+	for {
+		if len(chain) > len(edges)+1 {
+			break
 		}
+		last := chain[len(chain)-1]
+		progress := false
+		for i, e := range edges {
+			if used[i] {
+				continue
+			}
+			if e.a == last {
+				chain = append(chain, e.b)
+				used[i] = true
+				progress = true
+				break
+			}
+			if e.b == last {
+				chain = append(chain, e.a)
+				used[i] = true
+				progress = true
+				break
+			}
+		}
+		if !progress {
+			break
+		}
+		if len(chain) >= 3 && chain[len(chain)-1] == chain[0] {
+			break
+		}
+	}
+	if len(chain) >= 2 && chain[len(chain)-1] == chain[0] {
+		chain = chain[:len(chain)-1]
+	}
+	if len(chain) < 3 {
+		return nil, 0, 0, false
+	}
+
+	seen := make(map[uint16]struct{}, len(chain))
+	verts := make([]worldPt, 0, len(chain))
+	for _, vi := range chain {
+		if _, ok := seen[vi]; ok {
+			continue
+		}
+		seen[vi] = struct{}{}
+		if int(vi) >= len(g.m.Vertexes) {
+			continue
+		}
+		v := g.m.Vertexes[vi]
+		verts = append(verts, worldPt{x: float64(v.X), y: float64(v.Y)})
 	}
 	if len(verts) < 3 {
 		return nil, 0, 0, false
