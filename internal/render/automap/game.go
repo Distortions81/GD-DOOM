@@ -57,6 +57,11 @@ type game struct {
 	rotateView bool
 	showHelp   bool
 	parity     automapParityState
+	showGrid   bool
+	bigMap     bool
+	savedView  savedMapView
+	marks      []mapMark
+	nextMarkID int
 	p          player
 
 	lines       []physLine
@@ -79,6 +84,20 @@ type game struct {
 
 	lastMouseX   int
 	mouseLookSet bool
+}
+
+type savedMapView struct {
+	camX   float64
+	camY   float64
+	zoom   float64
+	follow bool
+	valid  bool
+}
+
+type mapMark struct {
+	id int
+	x  float64
+	y  float64
 }
 
 type revealMode int
@@ -110,10 +129,14 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		followMode: true,
 		rotateView: true,
 		parity: automapParityState{
-			reveal: revealAllMap,
+			reveal: revealNormal,
 			iddt:   0,
 		},
-		p: spawnPlayer(m),
+		showGrid:   false,
+		bigMap:     false,
+		marks:      make([]mapMark, 0, 16),
+		nextMarkID: 1,
+		p:          spawnPlayer(m),
 	}
 	g.initPhysics()
 	g.physForLine = make([]int, len(g.m.Linedefs))
@@ -182,7 +205,22 @@ func (g *game) updateMapMode() {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		g.followMode = !g.followMode
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
+		g.showGrid = !g.showGrid
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyB) {
+		g.toggleBigMap()
+	}
 	if inpututil.IsKeyJustPressed(ebiten.Key0) || inpututil.IsKeyJustPressed(ebiten.KeyKP0) {
+		g.toggleBigMap()
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+		g.addMark()
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		g.clearMarks()
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyHome) {
 		g.resetView()
 	}
 	g.updateZoom()
@@ -264,7 +302,7 @@ func (g *game) updateWalkMode() {
 }
 
 func (g *game) updateParityControls() {
-	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyO) {
 		if g.parity.reveal == revealNormal {
 			g.parity.reveal = revealAllMap
 		} else {
@@ -273,6 +311,9 @@ func (g *game) updateParityControls() {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyI) {
 		g.parity.iddt = (g.parity.iddt + 1) % 3
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyL) {
+		g.opts.LineColorMode = toggledLineColorMode(g.opts.LineColorMode)
 	}
 }
 
@@ -301,6 +342,9 @@ func (g *game) updateZoom() {
 
 func (g *game) Draw(screen *ebiten.Image) {
 	screen.Fill(bgColor)
+	if g.showGrid {
+		g.drawGrid(screen)
+	}
 
 	for _, li := range g.visibleLineIndices() {
 		pi := g.physForLine[li]
@@ -322,6 +366,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(w), c, true)
 	}
 
+	if shouldDrawThings(g.parity) {
+		g.drawThings(screen)
+	}
+	g.drawMarks(screen)
 	g.drawPlayer(screen)
 
 	modeText := "MAP"
@@ -332,18 +380,118 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.parity.reveal == revealAllMap {
 		revealText = "allmap"
 	}
-	overlay := fmt.Sprintf("%s | mode %s | zoom %.2f | reveal %s | iddt %d | move WASD | mouse turn | arrows move/turn | Alt+arrows strafe | Shift run",
+	overlay := fmt.Sprintf("%s | mode %s | zoom %.2f | reveal %s | iddt %d | grid %t | marks %d | color %s | move WASD | mouse turn | arrows move/turn | Alt+arrows strafe | Shift run",
 		g.m.Name,
 		modeText,
 		g.zoom,
 		revealText,
 		g.parity.iddt,
+		g.showGrid,
+		len(g.marks),
+		g.opts.LineColorMode,
 	)
 	ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
 	if g.useFlash > 0 {
 		ebitenutil.DebugPrintAt(screen, g.useText, 12, 28)
 	}
 	g.drawHelpUI(screen)
+}
+
+func shouldDrawThings(st automapParityState) bool {
+	return st.iddt >= 2
+}
+
+func toggledLineColorMode(mode string) string {
+	if mode == "parity" {
+		return "doom"
+	}
+	return "parity"
+}
+
+func (g *game) addMark() {
+	if len(g.marks) >= 10 {
+		return
+	}
+	g.marks = append(g.marks, mapMark{
+		id: g.nextMarkID,
+		x:  g.camX,
+		y:  g.camY,
+	})
+	g.nextMarkID++
+}
+
+func (g *game) clearMarks() {
+	g.marks = g.marks[:0]
+}
+
+func (g *game) toggleBigMap() {
+	if !g.bigMap {
+		g.savedView = savedMapView{
+			camX:   g.camX,
+			camY:   g.camY,
+			zoom:   g.zoom,
+			follow: g.followMode,
+			valid:  true,
+		}
+		g.bigMap = true
+		g.followMode = false
+		g.camX = (g.bounds.minX + g.bounds.maxX) / 2
+		g.camY = (g.bounds.minY + g.bounds.maxY) / 2
+		g.zoom = g.fitZoom
+		return
+	}
+	g.bigMap = false
+	if g.savedView.valid {
+		g.camX = g.savedView.camX
+		g.camY = g.savedView.camY
+		g.zoom = g.savedView.zoom
+		g.followMode = g.savedView.follow
+	}
+}
+
+func (g *game) drawGrid(screen *ebiten.Image) {
+	const cell = 128.0
+	left := g.camX - float64(g.viewW)/(2*g.zoom)
+	right := g.camX + float64(g.viewW)/(2*g.zoom)
+	bottom := g.camY - float64(g.viewH)/(2*g.zoom)
+	top := g.camY + float64(g.viewH)/(2*g.zoom)
+	grid := color.RGBA{R: 40, G: 50, B: 60, A: 255}
+
+	startX := math.Floor(left/cell) * cell
+	for x := startX; x <= right; x += cell {
+		x1, y1 := g.worldToScreen(x, bottom)
+		x2, y2 := g.worldToScreen(x, top)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, true)
+	}
+	startY := math.Floor(bottom/cell) * cell
+	for y := startY; y <= top; y += cell {
+		x1, y1 := g.worldToScreen(left, y)
+		x2, y2 := g.worldToScreen(right, y)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, true)
+	}
+}
+
+func (g *game) drawThings(screen *ebiten.Image) {
+	tc := color.RGBA{R: 255, G: 170, B: 80, A: 255}
+	for _, th := range g.m.Things {
+		x := float64(th.X)
+		y := float64(th.Y)
+		sx, sy := g.worldToScreen(x, y)
+		r := 2.5
+		vector.StrokeLine(screen, float32(sx-r), float32(sy), float32(sx+r), float32(sy), 1.5, tc, true)
+		vector.StrokeLine(screen, float32(sx), float32(sy-r), float32(sx), float32(sy+r), 1.5, tc, true)
+	}
+}
+
+func (g *game) drawMarks(screen *ebiten.Image) {
+	mc := color.RGBA{R: 120, G: 210, B: 255, A: 255}
+	for _, mk := range g.marks {
+		sx, sy := g.worldToScreen(mk.x, mk.y)
+		r := 5.0
+		vector.StrokeLine(screen, float32(sx-r), float32(sy-r), float32(sx+r), float32(sy+r), 1.3, mc, true)
+		vector.StrokeLine(screen, float32(sx-r), float32(sy+r), float32(sx+r), float32(sy-r), 1.3, mc, true)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", mk.id), int(sx)+6, int(sy)-6)
+	}
 }
 
 func (g *game) drawPlayer(screen *ebiten.Image) {
@@ -578,9 +726,16 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"AUTOMAP KEYS",
 		"F1  HELP TOGGLE",
 		"TAB  WALK/MAP MODE",
-		"R   FOLLOW HEADING",
-		"M   TOGGLE NORMAL/ALLMAP",
+		"R   ROTATE/FOLLOW HEADING",
+		"F   FOLLOW PLAYER TOGGLE",
+		"G   GRID TOGGLE",
+		"0/B BIG MAP TOGGLE",
+		"M   ADD MARK",
+		"C   CLEAR MARKS",
+		"O   TOGGLE NORMAL/ALLMAP",
 		"I   CYCLE IDDT (0/1/2)",
+		"L   TOGGLE COLOR MODE (DOOM/PARITY)",
+		"HOME RESET VIEW",
 		"WASD  MOVE",
 		"MOUSE  TURN",
 		"ARROWS  MOVE/TURN",

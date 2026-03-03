@@ -23,7 +23,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	width := fs.Int("width", 1280, "render window width")
 	height := fs.Int("height", 800, "render window height")
 	zoom := fs.Float64("zoom", 1.0, "starting zoom (<=0 means auto-fit)")
-	lineColorMode := fs.String("line-color-mode", "doom", "line color mode for automap")
+	lineColorMode := fs.String("line-color-mode", "parity", "line color mode for automap")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

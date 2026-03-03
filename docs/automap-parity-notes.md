@@ -5,11 +5,11 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 ## Rendering and Visibility
 
 - [x] Respect per-line discovery (`ML_MAPPED`) in normal automap mode.
-- [ ] Implement Computer Area Map behavior (`pw_allmap`): show unrevealed lines in gray.
+- [x] Implement Computer Area Map behavior (`pw_allmap`): show unrevealed lines in gray.
 - [x] Keep `LINE_NEVERSEE` hidden in normal and allmap modes.
 - [x] Support `IDDT` cheat levels:
 - [x] Level 1: reveal map lines.
-- [ ] Level 2: reveal things.
+- [x] Level 2: reveal things.
 - [x] Draw one-sided lines as solid walls.
 - [x] Draw secret doors (`ML_SECRET`) as normal walls unless cheat mode is active.
 - [x] Draw teleporter lines (special 39) with teleporter color rule.
@@ -21,11 +21,11 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 ## Controls and UX Parity
 
 - [x] Support classic automap enter/exit flow (`TAB`) as optional compatibility mode.
-- [ ] Support follow toggle and non-follow pan semantics.
-- [ ] Support grid toggle.
-- [ ] Support mark and clear-mark controls.
-- [ ] Support big-map toggle behavior.
-- [ ] Show numbered marks similarly to vanilla.
+- [x] Support follow toggle and non-follow pan semantics.
+- [x] Support grid toggle.
+- [x] Support mark and clear-mark controls.
+- [x] Support big-map toggle behavior.
+- [x] Show numbered marks similarly to vanilla.
 
 ## Entities and Multiplayer
 
@@ -40,7 +40,8 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 ## Current Implementation Notes
 
 - Current default runtime is walk/sim mode with automap rendering, not vanilla TAB-entered automap mode.
-- Existing color semantics are geometric and partial; visibility/discovery/allmap/iddt logic remains to be added.
+- Allmap unrevealed-gray behavior is available via `line-color-mode=parity` (runtime toggle `L`).
+- Doom-style automap defaults/keybinds are mirrored: follow starts on, grid starts off, marks on `M`, clear on `C`, big-map on `0` (also `B` alias).
 
 ## Validation Plan
 
