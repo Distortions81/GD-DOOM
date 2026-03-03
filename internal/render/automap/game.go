@@ -1775,10 +1775,18 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		g.whitePixel = ebiten.NewImage(1, 1)
 		g.whitePixel.Fill(color.White)
 	}
+	logBudget := 24
 	for ss := range g.m.SubSectors {
 		worldVerts, cx, cy, ok := g.subSectorConvexVertices(ss)
 		if !ok {
-			continue
+			worldVerts, cx, cy, ok = g.subSectorRawFanVertices(ss)
+			if !ok {
+				if logBudget > 0 {
+					fmt.Printf("floor2d skip ss=%d reason=verts\n", ss)
+					logBudget--
+				}
+				continue
+			}
 		}
 		poly := make([]screenPt, 0, len(worldVerts))
 		for _, v := range worldVerts {
@@ -1789,15 +1797,27 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
 			secIdx = g.sectorAt(int64(cx*fracUnit), int64(cy*fracUnit))
 			if secIdx < 0 || secIdx >= len(g.m.Sectors) {
+				if logBudget > 0 {
+					fmt.Printf("floor2d skip ss=%d reason=sector\n", ss)
+					logBudget--
+				}
 				continue
 			}
 		}
 		flatName := g.m.Sectors[secIdx].FloorPic
 		flatImg, ok := g.flatImage(flatName)
 		if !ok || flatImg == nil {
+			if logBudget > 0 {
+				fmt.Printf("floor2d skip ss=%d reason=flat name=%q sec=%d\n", ss, flatName, secIdx)
+				logBudget--
+			}
 			continue
 		}
 		if len(poly) < 3 {
+			if logBudget > 0 {
+				fmt.Printf("floor2d skip ss=%d reason=poly len=%d\n", ss, len(poly))
+				logBudget--
+			}
 			continue
 		}
 		// Subsector polygons are convex pieces from BSP: fan triangulation is robust.
@@ -1816,6 +1836,64 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	}
 }
 
+func (g *game) subSectorRawFanVertices(ss int) ([]worldPt, float64, float64, bool) {
+	if ss < 0 || ss >= len(g.m.SubSectors) {
+		return nil, 0, 0, false
+	}
+	sub := g.m.SubSectors[ss]
+	if sub.SegCount < 3 {
+		return nil, 0, 0, false
+	}
+	verts := make([]worldPt, 0, sub.SegCount)
+	for i := 0; i < int(sub.SegCount); i++ {
+		si := int(sub.FirstSeg) + i
+		if si < 0 || si >= len(g.m.Segs) {
+			continue
+		}
+		sg := g.m.Segs[si]
+		vi := sg.StartVertex
+		if int(vi) >= len(g.m.Vertexes) {
+			continue
+		}
+		v := g.m.Vertexes[vi]
+		p := worldPt{x: float64(v.X), y: float64(v.Y)}
+		if len(verts) > 0 {
+			last := verts[len(verts)-1]
+			if last.x == p.x && last.y == p.y {
+				continue
+			}
+		}
+		verts = append(verts, p)
+	}
+	if len(verts) >= 2 {
+		a := verts[0]
+		b := verts[len(verts)-1]
+		if a.x == b.x && a.y == b.y {
+			verts = verts[:len(verts)-1]
+		}
+	}
+	if len(verts) < 3 {
+		return nil, 0, 0, false
+	}
+	area2 := polygonArea2(verts)
+	if math.Abs(area2) < 1e-6 {
+		return nil, 0, 0, false
+	}
+	if area2 < 0 {
+		for i, j := 0, len(verts)-1; i < j; i, j = i+1, j-1 {
+			verts[i], verts[j] = verts[j], verts[i]
+		}
+	}
+	cx, cy := 0.0, 0.0
+	for _, v := range verts {
+		cx += v.x
+		cy += v.y
+	}
+	cx /= float64(len(verts))
+	cy /= float64(len(verts))
+	return verts, cx, cy, true
+}
+
 func (g *game) subSectorConvexVertices(ss int) ([]worldPt, float64, float64, bool) {
 	if ss < 0 || ss >= len(g.m.SubSectors) {
 		return nil, 0, 0, false
@@ -1826,7 +1904,27 @@ func (g *game) subSectorConvexVertices(ss int) ([]worldPt, float64, float64, boo
 	}
 	chain, closed := subsectorVertexLoopFromSegOrder(g.m, sub)
 	if !closed {
-		return nil, 0, 0, false
+		// Some WAD subsectors reuse geometry/lines; fall back to unique vertices.
+		verts, ok := uniqueSubsectorVertices(g.m, sub)
+		if !ok || len(verts) < 3 {
+			return nil, 0, 0, false
+		}
+		cx, cy := 0.0, 0.0
+		for _, v := range verts {
+			cx += v.x
+			cy += v.y
+		}
+		cx /= float64(len(verts))
+		cy /= float64(len(verts))
+		sort.Slice(verts, func(i, j int) bool {
+			ai := math.Atan2(verts[i].y-cy, verts[i].x-cx)
+			aj := math.Atan2(verts[j].y-cy, verts[j].x-cx)
+			return ai < aj
+		})
+		if math.Abs(polygonArea2(verts)) < 1e-6 {
+			return nil, 0, 0, false
+		}
+		return verts, cx, cy, true
 	}
 	verts := vertexChainToWorld(g.m, chain)
 	if len(verts) < 3 {
@@ -2017,12 +2115,33 @@ func subsectorVertexLoopFromSegOrder(m *mapdata.Map, sub mapdata.SubSector) ([]u
 	if len(chain) < 3 {
 		return nil, false
 	}
-	for _, u := range used {
-		if !u {
-			return nil, false
+	// Do not require every seg edge to be consumed: some subsectors can contain
+	// repeated/redundant edges after node building.
+	return chain, true
+}
+
+func uniqueSubsectorVertices(m *mapdata.Map, sub mapdata.SubSector) ([]worldPt, bool) {
+	seen := make(map[uint16]struct{}, int(sub.SegCount)*2)
+	out := make([]worldPt, 0, int(sub.SegCount)*2)
+	for i := 0; i < int(sub.SegCount); i++ {
+		si := int(sub.FirstSeg) + i
+		if si < 0 || si >= len(m.Segs) {
+			continue
+		}
+		sg := m.Segs[si]
+		for _, vi := range []uint16{sg.StartVertex, sg.EndVertex} {
+			if _, ok := seen[vi]; ok {
+				continue
+			}
+			if int(vi) >= len(m.Vertexes) {
+				continue
+			}
+			v := m.Vertexes[vi]
+			out = append(out, worldPt{x: float64(v.X), y: float64(v.Y)})
+			seen[vi] = struct{}{}
 		}
 	}
-	return chain, true
+	return out, len(out) >= 3
 }
 
 func chainSubsectorEdges(edges []subsectorEdge) ([]uint16, bool) {
