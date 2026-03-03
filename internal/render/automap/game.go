@@ -2,6 +2,7 @@ package automap
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 	"sort"
@@ -144,6 +145,7 @@ type game struct {
 	damageFlashTic int
 	bonusFlashTic  int
 	subSectorSec   []int
+	sectorBBox     []worldBBox
 	subSectorPoly  [][]worldPt
 	subSectorTris  [][][3]int
 	subSectorBBox  []worldBBox
@@ -178,6 +180,10 @@ type game struct {
 	floorSpans         []floorSpan
 	detailLevel        int
 	plane3DFrame       plane3DFrameStats
+	mapTexDiag         bool
+	subSectorPolySrc   []uint8
+	subSectorDiagCode  []uint8
+	mapTexDiagStats    mapTexDiagStats
 }
 
 type savedMapView struct {
@@ -261,6 +267,30 @@ type plane3DFrameStats struct {
 	fallbackPix  int
 }
 
+type mapTexDiagStats struct {
+	ok        int
+	segShort  int
+	noPoly    int
+	nonSimple int
+	triFail   int
+}
+
+const (
+	subPolySrcNone uint8 = iota
+	subPolySrcWorld
+	subPolySrcConvex
+	subPolySrcSegList
+	subPolySrcNodes
+)
+
+const (
+	subDiagOK uint8 = iota
+	subDiagSegShort
+	subDiagNoPoly
+	subDiagNonSimple
+	subDiagTriFail
+)
+
 func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.Width <= 0 {
 		opts.Width = 1280
@@ -305,6 +335,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		// Keep sourceport map textures on the stable legacy path by default.
 		floor2DPath:  floor2DPathLegacy,
 		floorVisDiag: floorVisDiagOff,
+		mapTexDiag:   false,
 	}
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
@@ -321,6 +352,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.initPhysics()
 	g.initSubSectorSectorCache()
+	if g.opts.SourcePortMode && len(g.opts.FlatBank) > 0 {
+		g.ensureMapFloorWorldLayerBuilt()
+	}
 	g.snd = newSoundSystem(opts.SoundBank)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -715,6 +749,14 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Thing Legend OFF", 70)
 			}
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyK) {
+			g.mapTexDiag = !g.mapTexDiag
+			if g.mapTexDiag {
+				g.setHUDMessage("Map Texture Diag ON", 70)
+			} else {
+				g.setHUDMessage("Map Texture Diag OFF", 70)
+			}
+		}
 	}
 }
 
@@ -782,6 +824,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 	}
 	if g.showGrid {
 		g.drawGrid(screen)
+	}
+	if g.opts.SourcePortMode && g.mapTexDiag {
+		g.drawMapTextureDiagOverlay(screen)
 	}
 
 	for _, li := range g.visibleLineIndices() {
@@ -851,6 +896,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, stats, 12, 28)
 		cheat := fmt.Sprintf("cheat=%d invuln=%t", g.cheatLevel, g.invulnerable)
 		ebitenutil.DebugPrintAt(screen, cheat, 12, 60)
+		if g.mapTexDiag {
+			d := g.mapTexDiagStats
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("maptex diag ok=%d short=%d no_poly=%d non_simple=%d tri_fail=%d", d.ok, d.segShort, d.noPoly, d.nonSimple, d.triFail), 12, 76)
+		}
 		if g.showLegend {
 			g.drawThingLegend(screen)
 		}
@@ -2817,13 +2866,63 @@ func shadeFactorByDistance(dist float64) float64 {
 
 func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	g.floorFrame = floorFrameStats{}
+	if g.ensureMapFloorWorldLayerBuilt() {
+		g.drawMapFloorWorldLayer(screen)
+		g.floorFrame = g.mapFloorWorldStats
+		return
+	}
 	g.drawMapFloorTextures2DGZDoom(screen)
+}
+
+func (g *game) ensureMapFloorWorldLayerBuilt() bool {
+	if g.mapFloorWorldInit && g.mapFloorWorldLayer != nil {
+		return true
+	}
+	if g.m == nil || len(g.m.Sectors) == 0 || len(g.opts.FlatBank) == 0 {
+		return false
+	}
+	return g.buildMapFloorWorldLayer()
+}
+
+func (g *game) drawMapFloorWorldLayer(screen *ebiten.Image) {
+	if g.mapFloorWorldLayer == nil {
+		return
+	}
+	b := g.mapFloorWorldLayer.Bounds()
+	w := float64(b.Dx())
+	h := float64(b.Dy())
+	if w <= 0 || h <= 0 || g.mapFloorWorldStep <= 0 {
+		return
+	}
+
+	minX := g.mapFloorWorldMinX
+	maxY := g.mapFloorWorldMaxY
+	step := g.mapFloorWorldStep
+
+	x0, y0 := g.worldToScreen(minX, maxY)
+	x1, y1 := g.worldToScreen(minX+w*step, maxY)
+	x2, y2 := g.worldToScreen(minX, maxY-h*step)
+	x3, y3 := g.worldToScreen(minX+w*step, maxY-h*step)
+
+	vtx := []ebiten.Vertex{
+		{DstX: float32(x0), DstY: float32(y0), SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: float32(x1), DstY: float32(y1), SrcX: float32(w), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: float32(x2), DstY: float32(y2), SrcX: 0, SrcY: float32(h), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: float32(x3), DstY: float32(y3), SrcX: float32(w), SrcY: float32(h), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+	}
+	idx := []uint16{0, 1, 2, 1, 3, 2}
+	screen.DrawTriangles(vtx, idx, g.mapFloorWorldLayer, &ebiten.DrawTrianglesOptions{
+		Filter:    ebiten.FilterNearest,
+		Address:   ebiten.AddressClampToZero,
+		AntiAlias: false,
+	})
 }
 
 func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 || len(g.opts.FlatBank) == 0 {
 		return
 	}
+	g.updateMapTextureDiagCache()
 	secTex := make([]*ebiten.Image, len(g.m.Sectors))
 	secTexLoaded := make([]bool, len(g.m.Sectors))
 	if g.whitePixel == nil {
@@ -2847,30 +2946,18 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 			continue
 		}
 
-		verts, _, _, ok := g.subSectorWorldVertices(ss)
-		if !ok || len(verts) < 3 {
-			verts, _, _, ok = g.subSectorConvexVertices(ss)
-		}
-		if !ok || len(verts) < 3 {
-			verts, _, _, ok = g.subSectorVerticesFromSegList(ss)
-		}
-		if !ok || len(verts) < 3 {
+		if !g.ensureSubSectorPolyAndTris(ss) {
 			g.floorFrame.rejectedSpan++
 			g.floorFrame.rejectNoPoly++
 			continue
 		}
-		tris, ok := triangulateWorldPolygon(verts)
-		if !ok || len(tris) == 0 {
-			tris, ok = triangulateByAngleFan(verts)
-		}
-		if !ok || len(tris) == 0 {
-			g.floorFrame.rejectedSpan++
-			g.floorFrame.rejectDegenerate++
-			continue
-		}
+		verts := g.subSectorPoly[ss]
+		tris := g.subSectorTris[ss]
 
 		drawImg := g.whitePixel
 		addressMode := ebiten.AddressUnsafe
+		texScaleX := float32(1)
+		texScaleY := float32(1)
 		if g.floorDbgMode == floorDebugTextured {
 			if !secTexLoaded[sec] {
 				if img, ok := g.flatImage(g.m.Sectors[sec].FloorPic); ok {
@@ -2885,6 +2972,9 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 			}
 			drawImg = secTex[sec]
 			addressMode = ebiten.AddressRepeat
+			tb := drawImg.Bounds()
+			texScaleX = float32(float64(tb.Dx()) / 64.0)
+			texScaleY = float32(float64(tb.Dy()) / 64.0)
 		}
 
 		vtx := make([]ebiten.Vertex, len(verts))
@@ -2910,8 +3000,8 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 				vtx[i].ColorB = 0
 				vtx[i].ColorA = 1
 			default:
-				vtx[i].SrcX = float32(v.x)
-				vtx[i].SrcY = float32(v.y)
+				vtx[i].SrcX = float32(v.x) * texScaleX
+				vtx[i].SrcY = float32(v.y) * texScaleY
 				vtx[i].ColorR = 1
 				vtx[i].ColorG = 1
 				vtx[i].ColorB = 1
@@ -2940,6 +3030,170 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 		screen.DrawTriangles(vtx, idx, drawImg, op)
 		g.floorFrame.emittedSpans += len(tris)
 		g.floorFrame.markedCols += len(vtx)
+	}
+
+	for _, hp := range g.holeFillPolys {
+		sec := hp.sector
+		if sec < 0 || sec >= len(g.m.Sectors) || len(hp.verts) < 3 || len(hp.tris) == 0 {
+			continue
+		}
+
+		drawImg := g.whitePixel
+		addressMode := ebiten.AddressUnsafe
+		texScaleX := float32(1)
+		texScaleY := float32(1)
+		if g.floorDbgMode == floorDebugTextured {
+			if !secTexLoaded[sec] {
+				if img, ok := g.flatImage(g.m.Sectors[sec].FloorPic); ok {
+					secTex[sec] = img
+				}
+				secTexLoaded[sec] = true
+			}
+			if secTex[sec] == nil {
+				continue
+			}
+			drawImg = secTex[sec]
+			addressMode = ebiten.AddressRepeat
+			tb := drawImg.Bounds()
+			texScaleX = float32(float64(tb.Dx()) / 64.0)
+			texScaleY = float32(float64(tb.Dy()) / 64.0)
+		}
+
+		vtx := make([]ebiten.Vertex, len(hp.verts))
+		for i, v := range hp.verts {
+			sx, sy := g.worldToScreen(v.x, v.y)
+			vtx[i].DstX = float32(sx)
+			vtx[i].DstY = float32(sy)
+			switch g.floorDbgMode {
+			case floorDebugSolid:
+				vtx[i].SrcX = 0
+				vtx[i].SrcY = 0
+				vtx[i].ColorR = 0.55
+				vtx[i].ColorG = 0.70
+				vtx[i].ColorB = 0.95
+				vtx[i].ColorA = 1
+			case floorDebugUV:
+				vtx[i].SrcX = 0
+				vtx[i].SrcY = 0
+				u := frac01(v.x / 64.0)
+				w := frac01(v.y / 64.0)
+				vtx[i].ColorR = float32(u)
+				vtx[i].ColorG = float32(w)
+				vtx[i].ColorB = 0
+				vtx[i].ColorA = 1
+			default:
+				vtx[i].SrcX = float32(v.x) * texScaleX
+				vtx[i].SrcY = float32(v.y) * texScaleY
+				vtx[i].ColorR = 1
+				vtx[i].ColorG = 1
+				vtx[i].ColorB = 1
+				vtx[i].ColorA = 1
+			}
+		}
+
+		idx := make([]uint16, 0, len(hp.tris)*3)
+		for _, tri := range hp.tris {
+			if tri[0] < 0 || tri[1] < 0 || tri[2] < 0 || tri[0] >= len(vtx) || tri[1] >= len(vtx) || tri[2] >= len(vtx) {
+				continue
+			}
+			idx = append(idx, uint16(tri[0]), uint16(tri[1]), uint16(tri[2]))
+		}
+		if len(idx) == 0 {
+			continue
+		}
+		op := &ebiten.DrawTrianglesOptions{
+			Address:   addressMode,
+			Filter:    ebiten.FilterNearest,
+			AntiAlias: false,
+		}
+		screen.DrawTriangles(vtx, idx, drawImg, op)
+	}
+}
+
+func (g *game) updateMapTextureDiagCache() {
+	g.mapTexDiagStats = mapTexDiagStats{}
+	if g.m == nil || len(g.m.SubSectors) == 0 {
+		g.subSectorDiagCode = nil
+		return
+	}
+	if len(g.subSectorDiagCode) != len(g.m.SubSectors) {
+		g.subSectorDiagCode = make([]uint8, len(g.m.SubSectors))
+	}
+	for ss := range g.m.SubSectors {
+		sub := g.m.SubSectors[ss]
+		code := subDiagOK
+		switch {
+		case sub.SegCount < 3:
+			code = subDiagSegShort
+		case ss >= len(g.subSectorPoly) || len(g.subSectorPoly[ss]) < 3:
+			code = subDiagNoPoly
+		case !polygonSimple(g.subSectorPoly[ss]):
+			code = subDiagNonSimple
+		case ss >= len(g.subSectorTris) || len(g.subSectorTris[ss]) == 0:
+			code = subDiagTriFail
+		}
+		g.subSectorDiagCode[ss] = code
+		switch code {
+		case subDiagOK:
+			g.mapTexDiagStats.ok++
+		case subDiagSegShort:
+			g.mapTexDiagStats.segShort++
+		case subDiagNoPoly:
+			g.mapTexDiagStats.noPoly++
+		case subDiagNonSimple:
+			g.mapTexDiagStats.nonSimple++
+		case subDiagTriFail:
+			g.mapTexDiagStats.triFail++
+		}
+	}
+}
+
+func (g *game) drawMapTextureDiagOverlay(screen *ebiten.Image) {
+	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.subSectorDiagCode) != len(g.m.SubSectors) {
+		return
+	}
+	for ss := range g.m.SubSectors {
+		code := g.subSectorDiagCode[ss]
+		if code == subDiagOK {
+			continue
+		}
+		col := color.RGBA{255, 255, 255, 220}
+		switch code {
+		case subDiagSegShort:
+			col = color.RGBA{255, 80, 200, 220}
+		case subDiagNoPoly:
+			col = color.RGBA{255, 60, 60, 220}
+		case subDiagNonSimple:
+			col = color.RGBA{255, 170, 60, 220}
+		case subDiagTriFail:
+			col = color.RGBA{240, 240, 70, 220}
+		}
+		if ss < len(g.subSectorPoly) && len(g.subSectorPoly[ss]) >= 3 {
+			p := g.subSectorPoly[ss]
+			for i := 0; i < len(p); i++ {
+				j := (i + 1) % len(p)
+				x1, y1 := g.worldToScreen(p[i].x, p[i].y)
+				x2, y2 := g.worldToScreen(p[j].x, p[j].y)
+				vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, col, true)
+			}
+			continue
+		}
+		sub := g.m.SubSectors[ss]
+		for i := 0; i < int(sub.SegCount); i++ {
+			si := int(sub.FirstSeg) + i
+			if si < 0 || si >= len(g.m.Segs) {
+				continue
+			}
+			sg := g.m.Segs[si]
+			if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
+				continue
+			}
+			v1 := g.m.Vertexes[sg.StartVertex]
+			v2 := g.m.Vertexes[sg.EndVertex]
+			x1, y1 := g.worldToScreen(float64(v1.X), float64(v1.Y))
+			x2, y2 := g.worldToScreen(float64(v2.X), float64(v2.Y))
+			vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, col, true)
+		}
 	}
 }
 
@@ -3526,6 +3780,36 @@ func polygonSimple(verts []worldPt) bool {
 	return true
 }
 
+func polygonConvex(verts []worldPt) bool {
+	n := len(verts)
+	if n < 3 {
+		return false
+	}
+	sign := 0
+	const eps = 1e-9
+	for i := 0; i < n; i++ {
+		a := verts[i]
+		b := verts[(i+1)%n]
+		c := verts[(i+2)%n]
+		o := orient2D(a, b, c)
+		if math.Abs(o) <= eps {
+			continue
+		}
+		s := 1
+		if o < 0 {
+			s = -1
+		}
+		if sign == 0 {
+			sign = s
+			continue
+		}
+		if s != sign {
+			return false
+		}
+	}
+	return true
+}
+
 func segmentsIntersectStrict(a1, a2, b1, b2 worldPt) bool {
 	o1 := orient2D(a1, a2, b1)
 	o2 := orient2D(a1, a2, b2)
@@ -3636,16 +3920,24 @@ func (g *game) subSectorSectorIndex(ss int) (int, bool) {
 func (g *game) initSubSectorSectorCache() {
 	if g.m == nil || len(g.m.SubSectors) == 0 {
 		g.subSectorSec = nil
+		g.sectorBBox = nil
 		g.subSectorPoly = nil
 		g.subSectorTris = nil
 		g.subSectorBBox = nil
+		g.subSectorPolySrc = nil
+		g.subSectorDiagCode = nil
+		g.mapTexDiagStats = mapTexDiagStats{}
 		g.holeFillPolys = nil
 		return
 	}
 	g.subSectorSec = make([]int, len(g.m.SubSectors))
+	g.sectorBBox = buildSectorBBoxCache(g.m)
 	g.subSectorBBox = make([]worldBBox, len(g.m.SubSectors))
-	g.subSectorPoly = nil
-	g.subSectorTris = nil
+	g.subSectorPoly = make([][]worldPt, len(g.m.SubSectors))
+	g.subSectorTris = make([][][3]int, len(g.m.SubSectors))
+	g.subSectorPolySrc = make([]uint8, len(g.m.SubSectors))
+	g.subSectorDiagCode = make([]uint8, len(g.m.SubSectors))
+	g.mapTexDiagStats = mapTexDiagStats{}
 	g.holeFillPolys = nil
 	for i := range g.subSectorSec {
 		g.subSectorSec[i] = -1
@@ -3663,7 +3955,37 @@ func (g *game) initSubSectorSectorCache() {
 		if b, ok := g.subSectorSegBBox(ss); ok {
 			g.subSectorBBox[ss] = b
 		}
+		if verts, _, _, ok := g.subSectorWorldVertices(ss); ok && len(verts) >= 3 {
+			g.subSectorPoly[ss] = verts
+			g.subSectorPolySrc[ss] = subPolySrcWorld
+			continue
+		}
+		if verts, _, _, ok := g.subSectorConvexVertices(ss); ok && len(verts) >= 3 {
+			g.subSectorPoly[ss] = verts
+			g.subSectorPolySrc[ss] = subPolySrcConvex
+			continue
+		}
+		if verts, _, _, ok := g.subSectorVerticesFromSegList(ss); ok && len(verts) >= 3 {
+			g.subSectorPoly[ss] = verts
+			g.subSectorPolySrc[ss] = subPolySrcSegList
+		}
 	}
+	for ss := range g.m.SubSectors {
+		if len(g.subSectorPoly[ss]) < 3 {
+			continue
+		}
+		p := g.subSectorPoly[ss]
+		if math.Abs(polygonArea2(p)) < 1e-6 || !polygonSimple(p) || !polygonConvex(p) {
+			g.subSectorPoly[ss] = nil
+			g.subSectorPolySrc[ss] = subPolySrcNone
+		}
+	}
+	// Fill remaining gaps via BSP clipping fallback.
+	g.buildSubSectorPolysFromNodes()
+	g.constrainAmbiguousNodePolysToSectorBounds()
+	g.buildSubSectorTriCache()
+	g.holeFillPolys = nil
+	g.updateMapTextureDiagCache()
 }
 
 func (g *game) buildSubSectorPolysFromSegLoops() {
@@ -4093,6 +4415,369 @@ type worldBBox struct {
 	maxY float64
 }
 
+type sectorEdge struct {
+	a uint16
+	b uint16
+}
+
+type sectorLoopSet struct {
+	rings [][]worldPt
+	bbox  worldBBox
+}
+
+func expandWorldBBox(b worldBBox, pad float64) worldBBox {
+	return worldBBox{
+		minX: b.minX - pad,
+		minY: b.minY - pad,
+		maxX: b.maxX + pad,
+		maxY: b.maxY + pad,
+	}
+}
+
+func worldBBoxIntersection(a, b worldBBox) (worldBBox, bool) {
+	out := worldBBox{
+		minX: math.Max(a.minX, b.minX),
+		minY: math.Max(a.minY, b.minY),
+		maxX: math.Min(a.maxX, b.maxX),
+		maxY: math.Min(a.maxY, b.maxY),
+	}
+	if out.minX >= out.maxX || out.minY >= out.maxY {
+		return worldBBox{}, false
+	}
+	return out, true
+}
+
+func worldBBoxArea(b worldBBox) float64 {
+	if !isFinite(b.minX) || !isFinite(b.minY) || !isFinite(b.maxX) || !isFinite(b.maxY) {
+		return 0
+	}
+	if b.maxX <= b.minX || b.maxY <= b.minY {
+		return 0
+	}
+	return (b.maxX - b.minX) * (b.maxY - b.minY)
+}
+
+func buildSectorBBoxCache(m *mapdata.Map) []worldBBox {
+	if m == nil || len(m.Sectors) == 0 {
+		return nil
+	}
+	out := make([]worldBBox, len(m.Sectors))
+	for i := range out {
+		out[i] = worldBBox{
+			minX: math.Inf(1),
+			minY: math.Inf(1),
+			maxX: math.Inf(-1),
+			maxY: math.Inf(-1),
+		}
+	}
+	expand := func(sec int, x, y float64) {
+		if sec < 0 || sec >= len(out) {
+			return
+		}
+		if x < out[sec].minX {
+			out[sec].minX = x
+		}
+		if y < out[sec].minY {
+			out[sec].minY = y
+		}
+		if x > out[sec].maxX {
+			out[sec].maxX = x
+		}
+		if y > out[sec].maxY {
+			out[sec].maxY = y
+		}
+	}
+	for _, ld := range m.Linedefs {
+		if int(ld.V1) >= len(m.Vertexes) || int(ld.V2) >= len(m.Vertexes) {
+			continue
+		}
+		v1 := m.Vertexes[ld.V1]
+		v2 := m.Vertexes[ld.V2]
+		for _, sn := range ld.SideNum {
+			if sn < 0 || int(sn) >= len(m.Sidedefs) {
+				continue
+			}
+			sec := int(m.Sidedefs[int(sn)].Sector)
+			expand(sec, float64(v1.X), float64(v1.Y))
+			expand(sec, float64(v2.X), float64(v2.Y))
+		}
+	}
+	return out
+}
+
+func (g *game) buildMapFloorWorldLayer() bool {
+	worldW := math.Max(g.bounds.maxX-g.bounds.minX, 1)
+	worldH := math.Max(g.bounds.maxY-g.bounds.minY, 1)
+	maxDim := math.Max(worldW, worldH)
+	step := 1.0
+	if maxDim > 2048 {
+		step = math.Ceil(maxDim / 2048.0)
+	}
+	if step < 1 {
+		step = 1
+	}
+
+	w := int(math.Ceil(worldW/step)) + 2
+	h := int(math.Ceil(worldH/step)) + 2
+	if w < 1 || h < 1 {
+		return false
+	}
+	// Guard against pathological allocations on malformed bounds.
+	if w > 8192 || h > 8192 {
+		return false
+	}
+
+	layer := ebiten.NewImageWithOptions(image.Rect(0, 0, w, h), &ebiten.NewImageOptions{Unmanaged: true})
+	pix := make([]byte, w*h*4)
+
+	minX := g.bounds.minX
+	maxY := g.bounds.maxY
+	loops := g.buildSectorLoopSets()
+
+	stats := floorFrameStats{}
+	for sec := range g.m.Sectors {
+		if sec < 0 || sec >= len(loops) {
+			continue
+		}
+		set := loops[sec]
+		if len(set.rings) == 0 {
+			stats.rejectedSpan++
+			stats.rejectNoPoly++
+			continue
+		}
+
+		tex, texOK := g.flatRGBA(g.m.Sectors[sec].FloorPic)
+		minPX := int(math.Floor((set.bbox.minX - minX) / step))
+		maxPX := int(math.Ceil((set.bbox.maxX - minX) / step))
+		minPY := int(math.Floor((maxY - set.bbox.maxY) / step))
+		maxPY := int(math.Ceil((maxY - set.bbox.minY) / step))
+		if minPX < 0 {
+			minPX = 0
+		}
+		if minPY < 0 {
+			minPY = 0
+		}
+		if maxPX >= w {
+			maxPX = w - 1
+		}
+		if maxPY >= h {
+			maxPY = h - 1
+		}
+		if minPX > maxPX || minPY > maxPY {
+			continue
+		}
+
+		for py := minPY; py <= maxPY; py++ {
+			wy := maxY - (float64(py)+0.5)*step
+			row := py * w * 4
+			for px := minPX; px <= maxPX; px++ {
+				wx := minX + (float64(px)+0.5)*step
+				if !pointInRingsEvenOdd(wx, wy, set.rings) {
+					continue
+				}
+				i := row + px*4
+				if texOK {
+					u := int(math.Floor(wx)) & 63
+					v := int(math.Floor(wy)) & 63
+					ti := (v*64 + u) * 4
+					pix[i+0] = tex[ti+0]
+					pix[i+1] = tex[ti+1]
+					pix[i+2] = tex[ti+2]
+					pix[i+3] = 255
+					stats.markedCols++
+				} else {
+					pix[i+0] = wallFloorChange.R
+					pix[i+1] = wallFloorChange.G
+					pix[i+2] = wallFloorChange.B
+					pix[i+3] = 255
+					stats.rejectedSpan++
+					stats.rejectNoSector++
+				}
+			}
+		}
+		stats.emittedSpans++
+	}
+
+	layer.WritePixels(pix)
+	g.mapFloorWorldLayer = layer
+	g.mapFloorWorldMinX = minX
+	g.mapFloorWorldMaxY = maxY
+	g.mapFloorWorldStep = step
+	g.mapFloorWorldInit = true
+	g.mapFloorWorldStats = stats
+	g.mapFloorWorldState = fmt.Sprintf("ready %dx%d step=%.0f", w, h, step)
+	return true
+}
+
+func pointInRingsEvenOdd(x, y float64, rings [][]worldPt) bool {
+	p := worldPt{x: x, y: y}
+	inside := false
+	for _, ring := range rings {
+		if len(ring) < 3 {
+			continue
+		}
+		if pointInWorldPoly(p, ring) {
+			inside = !inside
+		}
+	}
+	return inside
+}
+
+func (g *game) buildSectorLoopSets() []sectorLoopSet {
+	if g.m == nil || len(g.m.Sectors) == 0 {
+		return nil
+	}
+	edgeBySector := make([][]sectorEdge, len(g.m.Sectors))
+	for _, ld := range g.m.Linedefs {
+		v1 := ld.V1
+		v2 := ld.V2
+		if int(v1) >= len(g.m.Vertexes) || int(v2) >= len(g.m.Vertexes) || v1 == v2 {
+			continue
+		}
+		if ld.SideNum[0] >= 0 && int(ld.SideNum[0]) < len(g.m.Sidedefs) {
+			sec := int(g.m.Sidedefs[int(ld.SideNum[0])].Sector)
+			if sec >= 0 && sec < len(edgeBySector) {
+				edgeBySector[sec] = append(edgeBySector[sec], sectorEdge{a: v1, b: v2})
+			}
+		}
+		if ld.SideNum[1] >= 0 && int(ld.SideNum[1]) < len(g.m.Sidedefs) {
+			sec := int(g.m.Sidedefs[int(ld.SideNum[1])].Sector)
+			if sec >= 0 && sec < len(edgeBySector) {
+				edgeBySector[sec] = append(edgeBySector[sec], sectorEdge{a: v2, b: v1})
+			}
+		}
+	}
+
+	out := make([]sectorLoopSet, len(g.m.Sectors))
+	for sec := range out {
+		rings := g.extractSectorRings(edgeBySector[sec])
+		if len(rings) == 0 {
+			continue
+		}
+		bbox := worldBBox{minX: math.Inf(1), minY: math.Inf(1), maxX: math.Inf(-1), maxY: math.Inf(-1)}
+		valid := make([][]worldPt, 0, len(rings))
+		for _, ring := range rings {
+			if len(ring) < 3 || math.Abs(polygonArea2(ring)) < 1e-6 || !polygonSimple(ring) {
+				continue
+			}
+			valid = append(valid, ring)
+			rb := worldPolyBBox(ring)
+			if rb.minX < bbox.minX {
+				bbox.minX = rb.minX
+			}
+			if rb.minY < bbox.minY {
+				bbox.minY = rb.minY
+			}
+			if rb.maxX > bbox.maxX {
+				bbox.maxX = rb.maxX
+			}
+			if rb.maxY > bbox.maxY {
+				bbox.maxY = rb.maxY
+			}
+		}
+		if len(valid) == 0 {
+			continue
+		}
+		out[sec] = sectorLoopSet{rings: valid, bbox: bbox}
+	}
+	return out
+}
+
+func (g *game) extractSectorRings(edges []sectorEdge) [][]worldPt {
+	if len(edges) == 0 {
+		return nil
+	}
+	outgoing := make(map[uint16][]int, len(edges))
+	for i, e := range edges {
+		outgoing[e.a] = append(outgoing[e.a], i)
+	}
+	used := make([]bool, len(edges))
+	rings := make([][]worldPt, 0, 4)
+
+	for i := range edges {
+		if used[i] {
+			continue
+		}
+		start := edges[i].a
+		prev := edges[i].a
+		curr := edges[i].b
+		used[i] = true
+		chain := make([]uint16, 0, 16)
+		chain = append(chain, start)
+
+		closed := false
+		for guard := 0; guard < len(edges)+8; guard++ {
+			if curr == start {
+				closed = true
+				break
+			}
+			chain = append(chain, curr)
+			next := g.chooseNextSectorEdge(prev, curr, edges, used, outgoing)
+			if next < 0 {
+				break
+			}
+			used[next] = true
+			prev = curr
+			curr = edges[next].b
+		}
+		if !closed || len(chain) < 3 {
+			continue
+		}
+		ring := make([]worldPt, 0, len(chain))
+		for _, vi := range chain {
+			if int(vi) >= len(g.m.Vertexes) {
+				continue
+			}
+			v := g.m.Vertexes[vi]
+			p := worldPt{x: float64(v.X), y: float64(v.Y)}
+			if len(ring) > 0 && nearlyEqualWorldPt(ring[len(ring)-1], p, 1e-6) {
+				continue
+			}
+			ring = append(ring, p)
+		}
+		if len(ring) >= 2 && nearlyEqualWorldPt(ring[0], ring[len(ring)-1], 1e-6) {
+			ring = ring[:len(ring)-1]
+		}
+		if len(ring) >= 3 {
+			rings = append(rings, ring)
+		}
+	}
+	return rings
+}
+
+func (g *game) chooseNextSectorEdge(prev, curr uint16, edges []sectorEdge, used []bool, outgoing map[uint16][]int) int {
+	cands := outgoing[curr]
+	if len(cands) == 0 {
+		return -1
+	}
+	prevPt := g.m.Vertexes[prev]
+	currPt := g.m.Vertexes[curr]
+	pvx := float64(currPt.X - prevPt.X)
+	pvy := float64(currPt.Y - prevPt.Y)
+	best := -1
+	bestScore := -1e100
+	for _, ci := range cands {
+		if ci < 0 || ci >= len(edges) || used[ci] {
+			continue
+		}
+		nv := edges[ci].b
+		if int(nv) >= len(g.m.Vertexes) {
+			continue
+		}
+		nextPt := g.m.Vertexes[nv]
+		cvx := float64(nextPt.X - currPt.X)
+		cvy := float64(nextPt.Y - currPt.Y)
+		dot := pvx*cvx + pvy*cvy
+		crs := pvx*cvy - pvy*cvx
+		ang := math.Atan2(crs, dot)
+		if ang > bestScore {
+			bestScore = ang
+			best = ci
+		}
+	}
+	return best
+}
+
 func worldPolyBBox(poly []worldPt) worldBBox {
 	b := worldBBox{
 		minX: math.Inf(1),
@@ -4447,7 +5132,23 @@ func (g *game) buildSubSectorPolysFromNodes() {
 			if ss < 0 || ss >= len(g.m.SubSectors) {
 				return
 			}
-			g.subSectorPoly[ss] = poly
+			if len(g.subSectorPoly[ss]) >= 3 {
+				return
+			}
+			area2 := polygonArea2(poly)
+			if len(poly) >= 3 && math.Abs(area2) > 1e-6 {
+				cp := make([]worldPt, len(poly))
+				copy(cp, poly)
+				if area2 < 0 {
+					for i, j := 0, len(cp)-1; i < j; i, j = i+1, j-1 {
+						cp[i], cp[j] = cp[j], cp[i]
+					}
+				}
+				g.subSectorPoly[ss] = cp
+				if ss < len(g.subSectorPolySrc) {
+					g.subSectorPolySrc[ss] = subPolySrcNodes
+				}
+			}
 			return
 		}
 		ni := int(child)
@@ -4460,33 +5161,58 @@ func (g *game) buildSubSectorPolysFromNodes() {
 
 		p0 := clipWorldPolyByDivline(poly, a, b, 0)
 		if len(p0) >= 3 {
-			if bb, ok := nodeBBoxToWorld(n.BBoxR); ok {
-				p0 = clipWorldPolyByBBox(p0, bb)
-			}
-		}
-		if len(p0) >= 3 {
 			walk(n.ChildID[0], p0)
 		}
 		p1 := clipWorldPolyByDivline(poly, a, b, 1)
-		if len(p1) >= 3 {
-			if bb, ok := nodeBBoxToWorld(n.BBoxL); ok {
-				p1 = clipWorldPolyByBBox(p1, bb)
-			}
-		}
 		if len(p1) >= 3 {
 			walk(n.ChildID[1], p1)
 		}
 	}
 
 	walk(uint16(len(g.m.Nodes)-1), root)
+}
 
-	for ss := range g.m.SubSectors {
-		if len(g.subSectorPoly[ss]) < 3 {
+func (g *game) constrainAmbiguousNodePolysToSectorBounds() {
+	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.sectorBBox) != len(g.m.Sectors) {
+		return
+	}
+	const bboxPad = 8.0
+	const minOverlapRatio = 0.15
+	for ss, sub := range g.m.SubSectors {
+		if ss >= len(g.subSectorPoly) || ss >= len(g.subSectorPolySrc) {
 			continue
 		}
-		if clipped := g.clipSubSectorPolyBySegBounds(ss, g.subSectorPoly[ss]); len(clipped) >= 3 {
-			g.subSectorPoly[ss] = clipped
+		if g.subSectorPolySrc[ss] != subPolySrcNodes || sub.SegCount >= 3 {
+			continue
 		}
+		poly := g.subSectorPoly[ss]
+		if len(poly) < 3 {
+			continue
+		}
+		sec := -1
+		if ss < len(g.subSectorSec) {
+			sec = g.subSectorSec[ss]
+		}
+		if sec < 0 || sec >= len(g.sectorBBox) {
+			continue
+		}
+		sb := g.sectorBBox[sec]
+		if !isFinite(sb.minX) || !isFinite(sb.minY) || !isFinite(sb.maxX) || !isFinite(sb.maxY) {
+			continue
+		}
+		sb = expandWorldBBox(sb, bboxPad)
+		pb := worldPolyBBox(poly)
+		if ib, ok := worldBBoxIntersection(pb, sb); !ok || worldBBoxArea(pb) <= 0 || worldBBoxArea(ib)/worldBBoxArea(pb) < minOverlapRatio {
+			g.subSectorPoly[ss] = nil
+			g.subSectorPolySrc[ss] = subPolySrcNone
+			continue
+		}
+		if clipped := clipWorldPolyByBBox(poly, sb); len(clipped) >= 3 {
+			g.subSectorPoly[ss] = clipped
+			continue
+		}
+		g.subSectorPoly[ss] = nil
+		g.subSectorPolySrc[ss] = subPolySrcNone
 	}
 }
 
@@ -4507,7 +5233,9 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 	if !ok || len(rgba) != 64*64*4 {
 		return nil, false
 	}
-	img := ebiten.NewImage(64, 64)
+	img := ebiten.NewImageWithOptions(image.Rect(0, 0, 64, 64), &ebiten.NewImageOptions{
+		Unmanaged: true,
+	})
 	img.WritePixels(rgba)
 	g.flatImgCache[key] = img
 	return img, true
