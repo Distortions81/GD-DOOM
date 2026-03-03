@@ -205,6 +205,8 @@ type game struct {
 	skyAngleOff        []float64
 	skyAngleViewW      int
 	skyAngleFocal      float64
+	skyColUCache       []int
+	skyColViewW        int
 	skyRowVCache       []int
 	skyRowViewH        int
 	skyRowTexH         int
@@ -213,6 +215,14 @@ type game struct {
 	planeSpanSWG       sizedwaitgroup.SizedWaitGroup
 	segPrepassSWG      sizedwaitgroup.SizedWaitGroup
 	skyLookupSWG       sizedwaitgroup.SizedWaitGroup
+	plane3DVisBuckets  map[plane3DKey]plane3DVisBucket
+	plane3DVisGen      uint64
+	plane3DOrder       []*plane3DVisplane
+	plane3DPool        []*plane3DVisplane
+	plane3DPoolUsed    int
+	plane3DPoolViewW   int
+	wallPrepassBuf     []wallSegPrepass
+	solid3DBuf         []solidSpan
 }
 
 type savedMapView struct {
@@ -326,6 +336,11 @@ type wallSegPrepass struct {
 	ok              bool
 }
 
+type plane3DVisBucket struct {
+	gen  uint64
+	list []*plane3DVisplane
+}
+
 const (
 	subPolySrcNone uint8 = iota
 	subPolySrcWorld
@@ -396,6 +411,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.planeSpanSWG = sizedwaitgroup.New(cpuCount)
 	g.segPrepassSWG = sizedwaitgroup.New(cpuCount)
 	g.skyLookupSWG = sizedwaitgroup.New(cpuCount)
+	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
+	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -1329,21 +1346,13 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	near := 2.0
 
 	ceilClr, floorClr := g.basicPlaneColors()
-	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceilClr)
-	ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floorClr)
 	g.ensureWallLayer()
-	for i := 0; i < len(g.wallPix); i += 4 {
-		g.wallPix[i+0] = 0
-		g.wallPix[i+1] = 0
-		g.wallPix[i+2] = 0
-		g.wallPix[i+3] = 0
-	}
+	g.fill3DBackground(ceilClr, floorClr)
 
 	depthPix, wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
-	planeVis := make(map[plane3DKey][]*plane3DVisplane, 64)
-	planeOrder := make([]*plane3DVisplane, 0, 64)
-	solid := make([]solidSpan, 0, 16)
+	planeOrder := g.beginPlane3DFrame(g.viewW)
+	solid := g.beginSolid3DFrame()
 	prepass := g.buildWallSegPrepassParallel(g.visibleSegIndicesPseudo3D(), camX, camY, ca, sa, focal, near)
 	for _, pp := range prepass {
 		si := pp.segIdx
@@ -1464,11 +1473,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		var ceilPlane *plane3DVisplane
 		if planesEnabled {
 			var created bool
-			floorPlane, created = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, true), pp.minSX, pp.maxSX, g.viewW)
+			floorPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, true), pp.minSX, pp.maxSX, g.viewW)
 			if created && floorPlane != nil {
 				planeOrder = append(planeOrder, floorPlane)
 			}
-			ceilPlane, created = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, false), pp.minSX, pp.maxSX, g.viewW)
+			ceilPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, false), pp.minSX, pp.maxSX, g.viewW)
 			if created && ceilPlane != nil {
 				planeOrder = append(planeOrder, ceilPlane)
 			}
@@ -1560,11 +1569,13 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			solid = addSolidSpan(solid, pp.minSX, pp.maxSX)
 		}
 	}
+	g.solid3DBuf = solid
+	if planesEnabled {
+		g.drawDoomBasicTexturedPlanesVisplanePass(camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
+		g.compositePlaneLayer3D()
+	}
 	g.wallLayer.WritePixels(g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
-	if planesEnabled {
-		g.drawDoomBasicTexturedPlanesVisplanePass(screen, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
-	}
 }
 
 func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
@@ -1646,7 +1657,7 @@ func (g *game) drawBasicWallColumn(depthPix []float64, wallTop, wallBottom []int
 	}
 }
 
-func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) {
+func (g *game) drawDoomBasicTexturedPlanesVisplanePass(camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) {
 	if len(planes) == 0 {
 		return
 	}
@@ -1782,8 +1793,43 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 			}
 		}
 	}
-	g.mapFloorLayer.WritePixels(pix)
-	screen.DrawImage(g.mapFloorLayer, nil)
+}
+
+func (g *game) fill3DBackground(ceiling, floor color.RGBA) {
+	w := g.viewW
+	h := g.viewH
+	if w <= 0 || h <= 0 || len(g.wallPix) != w*h*4 {
+		return
+	}
+	mid := h / 2
+	for y := 0; y < h; y++ {
+		row := y * w * 4
+		c := floor
+		if y < mid {
+			c = ceiling
+		}
+		for x := 0; x < w; x++ {
+			i := row + x*4
+			g.wallPix[i+0] = c.R
+			g.wallPix[i+1] = c.G
+			g.wallPix[i+2] = c.B
+			g.wallPix[i+3] = 255
+		}
+	}
+}
+
+func (g *game) compositePlaneLayer3D() {
+	if len(g.wallPix) == 0 || len(g.mapFloorPix) == 0 || len(g.wallPix) != len(g.mapFloorPix) {
+		return
+	}
+	for i := 0; i < len(g.mapFloorPix); i += 4 {
+		if g.mapFloorPix[i+3] == 0 {
+			continue
+		}
+		g.wallPix[i+0] = g.mapFloorPix[i+0]
+		g.wallPix[i+1] = g.mapFloorPix[i+1]
+		g.wallPix[i+2] = g.mapFloorPix[i+2]
+	}
 }
 
 func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback, floorFallback color.RGBA, wallTop, wallBottom []int) {
@@ -2917,6 +2963,106 @@ func (g *game) ensure3DFrameBuffers() ([]float64, []int, []int, []int, []int) {
 	return g.depthPix3D, g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
 }
 
+func (g *game) beginPlane3DFrame(viewW int) []*plane3DVisplane {
+	if g.plane3DPoolViewW != viewW {
+		g.plane3DPool = g.plane3DPool[:0]
+		g.plane3DPoolUsed = 0
+		g.plane3DPoolViewW = viewW
+	}
+	if g.plane3DVisGen == ^uint64(0) {
+		g.plane3DVisGen = 1
+	} else {
+		g.plane3DVisGen++
+	}
+	g.plane3DPoolUsed = 0
+	g.plane3DOrder = g.plane3DOrder[:0]
+	return g.plane3DOrder
+}
+
+func (g *game) beginSolid3DFrame() []solidSpan {
+	g.solid3DBuf = g.solid3DBuf[:0]
+	return g.solid3DBuf
+}
+
+func (g *game) acquirePlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane {
+	if g.plane3DPoolViewW != viewW {
+		g.plane3DPool = g.plane3DPool[:0]
+		g.plane3DPoolUsed = 0
+		g.plane3DPoolViewW = viewW
+	}
+	var pl *plane3DVisplane
+	if g.plane3DPoolUsed < len(g.plane3DPool) {
+		pl = g.plane3DPool[g.plane3DPoolUsed]
+	} else {
+		pl = newPlane3DVisplane(key, start, stop, viewW)
+		g.plane3DPool = append(g.plane3DPool, pl)
+	}
+	g.plane3DPoolUsed++
+	pl.key = key
+	pl.minX = start
+	pl.maxX = stop
+	for i := range pl.top {
+		pl.top[i] = plane3DUnset
+		pl.bottom[i] = plane3DUnset
+	}
+	return pl
+}
+
+func (g *game) ensurePlane3DForRangeCached(key plane3DKey, start, stop, viewW int) (*plane3DVisplane, bool) {
+	if start > stop {
+		start, stop = stop, start
+	}
+	if start < 0 {
+		start = 0
+	}
+	if stop >= viewW {
+		stop = viewW - 1
+	}
+	if start > stop {
+		return nil, false
+	}
+	b := g.plane3DVisBuckets[key]
+	if b.gen != g.plane3DVisGen {
+		b.gen = g.plane3DVisGen
+		b.list = b.list[:0]
+	}
+	for _, pl := range b.list {
+		intrl := start
+		if pl.minX > intrl {
+			intrl = pl.minX
+		}
+		intrh := stop
+		if pl.maxX < intrh {
+			intrh = pl.maxX
+		}
+		conflict := false
+		if intrl <= intrh {
+			for x := intrl; x <= intrh; x++ {
+				ix := x + 1
+				if ix >= 0 && ix < len(pl.top) && pl.top[ix] != plane3DUnset {
+					conflict = true
+					break
+				}
+			}
+		}
+		if conflict {
+			continue
+		}
+		if start < pl.minX {
+			pl.minX = start
+		}
+		if stop > pl.maxX {
+			pl.maxX = stop
+		}
+		g.plane3DVisBuckets[key] = b
+		return pl, false
+	}
+	pl := g.acquirePlane3DVisplane(key, start, stop, viewW)
+	b.list = append(b.list, pl)
+	g.plane3DVisBuckets[key] = b
+	return pl, true
+}
+
 func (g *game) wallTexture(name string) (WallTexture, bool) {
 	key := normalizeFlatName(name)
 	if key == "" || key == "-" {
@@ -3089,7 +3235,7 @@ func (g *game) buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([]
 }
 
 func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, focal, near float64) []wallSegPrepass {
-	out := make([]wallSegPrepass, len(visible))
+	out := g.ensureWallPrepassBuffer(len(visible))
 	if len(visible) == 0 {
 		return out
 	}
@@ -3220,6 +3366,19 @@ func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, fo
 	return out
 }
 
+func (g *game) ensureWallPrepassBuffer(n int) []wallSegPrepass {
+	if n <= 0 {
+		g.wallPrepassBuf = g.wallPrepassBuf[:0]
+		return g.wallPrepassBuf
+	}
+	if cap(g.wallPrepassBuf) < n {
+		g.wallPrepassBuf = make([]wallSegPrepass, n)
+	} else {
+		g.wallPrepassBuf = g.wallPrepassBuf[:n]
+	}
+	return g.wallPrepassBuf
+}
+
 func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64, texW, texH int) ([]int, []int) {
 	if viewW <= 0 || viewH <= 0 || texW <= 0 || texH <= 0 {
 		return nil, nil
@@ -3227,7 +3386,7 @@ func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64,
 	angleOff := g.ensureSkyAngleOffsets(viewW, focal)
 	row := g.ensureSkyRowLookup(viewW, viewH, texH)
 	uScale := float64(texW*4) / (2 * math.Pi)
-	col := make([]int, viewW)
+	col := g.ensureSkyColBuffer(viewW)
 	const chunk = 64
 	swg := &g.skyLookupSWG
 	for start := 0; start < viewW; start += chunk {
@@ -3247,6 +3406,17 @@ func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64,
 	}
 	swg.Wait()
 	return col, row
+}
+
+func (g *game) ensureSkyColBuffer(viewW int) []int {
+	if viewW <= 0 {
+		return nil
+	}
+	if len(g.skyColUCache) != viewW || g.skyColViewW != viewW {
+		g.skyColUCache = make([]int, viewW)
+		g.skyColViewW = viewW
+	}
+	return g.skyColUCache
 }
 
 func (g *game) ensureSkyAngleOffsets(viewW int, focal float64) []float64 {

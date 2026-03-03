@@ -10,6 +10,8 @@ type plane3DVisplane struct {
 	bottom []int16
 }
 
+type plane3DAllocator func(key plane3DKey, start, stop, viewW int) *plane3DVisplane
+
 func newPlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane {
 	pl := &plane3DVisplane{
 		key:    key,
@@ -29,6 +31,10 @@ func newPlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane
 // If a same-key visplane has no set columns in the overlap range, we reuse it;
 // otherwise we allocate a new same-key visplane.
 func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3DKey, start, stop, viewW int) (*plane3DVisplane, bool) {
+	return ensurePlane3DForRangeAlloc(planes, key, start, stop, viewW, newPlane3DVisplane)
+}
+
+func ensurePlane3DForRangeAlloc(planes map[plane3DKey][]*plane3DVisplane, key plane3DKey, start, stop, viewW int, alloc plane3DAllocator) (*plane3DVisplane, bool) {
 	if start > stop {
 		start, stop = stop, start
 	}
@@ -40,6 +46,9 @@ func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3D
 	}
 	if start > stop {
 		return nil, false
+	}
+	if alloc == nil {
+		alloc = newPlane3DVisplane
 	}
 	list := planes[key]
 	for _, pl := range list {
@@ -72,7 +81,7 @@ func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3D
 		}
 		return pl, false
 	}
-	pl := newPlane3DVisplane(key, start, stop, viewW)
+	pl := alloc(key, start, stop, viewW)
 	planes[key] = append(list, pl)
 	return pl, true
 }
