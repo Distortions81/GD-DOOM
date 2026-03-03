@@ -84,3 +84,29 @@ func TestBackpackDoublesAmmoCap(t *testing.T) {
 		t.Fatalf("bullets=%d want=210", g.stats.Bullets)
 	}
 }
+
+func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
+	px, py, pz := int64(0), int64(0), int64(0)
+	tx, ty, tz := int64(35*fracUnit), int64(0), int64(0)
+	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit, 16*fracUnit) {
+		t.Fatal("expected touch within blockdist")
+	}
+	tx = 37 * fracUnit
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit, 16*fracUnit) {
+		t.Fatal("expected no touch beyond blockdist")
+	}
+}
+
+func TestCanTouchPickup_ZOverlap(t *testing.T) {
+	px, py, pz := int64(0), int64(0), int64(0)
+	tx, ty := int64(0), int64(0)
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, 57*fracUnit, 20*fracUnit, 16*fracUnit) {
+		t.Fatal("thing above player height should not touch")
+	}
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -25*fracUnit, 20*fracUnit, 16*fracUnit) {
+		t.Fatal("thing too far below should not touch")
+	}
+	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -20*fracUnit, 20*fracUnit, 16*fracUnit) {
+		t.Fatal("thing in lower overlap range should touch")
+	}
+}

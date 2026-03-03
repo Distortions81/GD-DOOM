@@ -73,8 +73,6 @@ func (g *game) processThingPickups() {
 	if len(g.m.Things) == 0 || len(g.thingCollected) != len(g.m.Things) {
 		return
 	}
-	const pickupRadius int64 = 20 * fracUnit
-	pr2 := pickupRadius * pickupRadius
 	for i, th := range g.m.Things {
 		if g.thingCollected[i] {
 			continue
@@ -82,9 +80,11 @@ func (g *game) processThingPickups() {
 		if !isPickupType(th.Type) {
 			continue
 		}
-		dx := (int64(th.X) << fracBits) - g.p.x
-		dy := (int64(th.Y) << fracBits) - g.p.y
-		if dx*dx+dy*dy > pr2 {
+		tx := int64(th.X) << fracBits
+		ty := int64(th.Y) << fracBits
+		tz := g.thingFloorZ(tx, ty)
+		radius, height := pickupTouchBounds(th.Type)
+		if !canTouchPickup(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight, tx, ty, tz, radius, height) {
 			continue
 		}
 		msg, ev, picked := g.applyPickup(th.Type)
@@ -95,6 +95,37 @@ func (g *game) processThingPickups() {
 		g.setHUDMessage(msg, 45)
 		g.emitSoundEvent(ev)
 	}
+}
+
+func (g *game) thingFloorZ(x, y int64) int64 {
+	sec := g.sectorAt(x, y)
+	if sec < 0 || sec >= len(g.sectorFloor) {
+		return 0
+	}
+	return g.sectorFloor[sec]
+}
+
+func pickupTouchBounds(typ int16) (radius int64, height int64) {
+	// Doom treats most specials as radius=20, height=16 for touch.
+	switch typ {
+	default:
+		return 20 * fracUnit, 16 * fracUnit
+	}
+}
+
+func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius, theight int64) bool {
+	blockdist := pradius + tradius
+	if abs(px-tx) > blockdist || abs(py-ty) > blockdist {
+		return false
+	}
+	delta := tz - pz
+	if delta > pheight {
+		return false
+	}
+	if delta+theight < -8*fracUnit {
+		return false
+	}
+	return true
 }
 
 func isPickupType(typ int16) bool {
