@@ -1401,6 +1401,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		}
 		return false
 	})
+	coveredByRow := make([][]spanRange, h)
 	for _, key := range keyOrder {
 		fb := ceilFallback
 		if key.floor {
@@ -1412,6 +1413,22 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			flatCache[key.flat] = tex
 		}
 		for _, sp := range spanBuckets[key] {
+			if sp.y < 0 || sp.y >= h {
+				continue
+			}
+			if sp.x1 < 0 {
+				sp.x1 = 0
+			}
+			if sp.x2 >= w {
+				sp.x2 = w - 1
+			}
+			if sp.x2 < sp.x1 {
+				continue
+			}
+			visible := clipRangeAgainstCovered(sp.x1, sp.x2, coveredByRow[sp.y])
+			if len(visible) == 0 {
+				continue
+			}
 			den := cy - (float64(sp.y) + 0.5)
 			if math.Abs(den) < 1e-6 {
 				continue
@@ -1422,33 +1439,36 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 				continue
 			}
 			row := sp.y * w * 4
-			wxSpan := camX + depth*ca - ((cx-(float64(sp.x1)+0.5))*depth/focal)*sa
-			wySpan := camY + depth*sa + ((cx-(float64(sp.x1)+0.5))*depth/focal)*ca
 			stepWX := (depth / focal) * sa
 			stepWY := -(depth / focal) * ca
-			for x := sp.x1; x <= sp.x2; x++ {
-				i := row + x*4
-				if key.fallback {
-					pix[i+0] = fb.R
-					pix[i+1] = fb.G
-					pix[i+2] = fb.B
-					pix[i+3] = 255
-				} else if len(tex) == 64*64*4 {
-					u := int(math.Floor(wxSpan)) & 63
-					v := int(math.Floor(wySpan)) & 63
-					ti := (v*64 + u) * 4
-					pix[i+0] = tex[ti+0]
-					pix[i+1] = tex[ti+1]
-					pix[i+2] = tex[ti+2]
-					pix[i+3] = 255
-				} else {
-					pix[i+0] = fb.R
-					pix[i+1] = fb.G
-					pix[i+2] = fb.B
-					pix[i+3] = 255
+			for _, vr := range visible {
+				wxSpan := camX + depth*ca - ((cx-(float64(vr.l)+0.5))*depth/focal)*sa
+				wySpan := camY + depth*sa + ((cx-(float64(vr.l)+0.5))*depth/focal)*ca
+				for x := vr.l; x <= vr.r; x++ {
+					i := row + x*4
+					if key.fallback {
+						pix[i+0] = fb.R
+						pix[i+1] = fb.G
+						pix[i+2] = fb.B
+						pix[i+3] = 255
+					} else if len(tex) == 64*64*4 {
+						u := int(math.Floor(wxSpan)) & 63
+						v := int(math.Floor(wySpan)) & 63
+						ti := (v*64 + u) * 4
+						pix[i+0] = tex[ti+0]
+						pix[i+1] = tex[ti+1]
+						pix[i+2] = tex[ti+2]
+						pix[i+3] = 255
+					} else {
+						pix[i+0] = fb.R
+						pix[i+1] = fb.G
+						pix[i+2] = fb.B
+						pix[i+3] = 255
+					}
+					wxSpan += stepWX
+					wySpan += stepWY
 				}
-				wxSpan += stepWX
-				wySpan += stepWY
+				coveredByRow[sp.y] = addCoveredRange(coveredByRow[sp.y], vr.l, vr.r)
 			}
 		}
 	}
