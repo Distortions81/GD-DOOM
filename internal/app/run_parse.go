@@ -121,7 +121,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build Ebiten-ready texture set at startup")
-	mapFloorTex2D := fs.Bool("map-floor-tex-2d", defaultMapFloorTex2D, "draw floor/ceiling flats for automap and doom-basic 3D plane rendering")
+	mapFloorTex2D := fs.Bool("map-floor-tex-2d", defaultMapFloorTex2D, "draw doom-basic 3D floor/ceiling flats (and 2D automap flats in sourceport mode)")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {

@@ -411,7 +411,7 @@ func (g *game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
 		g.cycleDetailLevel()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
+	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.pseudo3D = !g.pseudo3D
 		if g.pseudo3D {
 			g.walkRender = walkRendererPseudo
@@ -648,27 +648,27 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Grid OFF", 70)
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
-		g.showMapFloors = !g.showMapFloors
-		if g.showMapFloors {
-			g.setHUDMessage("Map Floor Textures ON", 70)
-		} else {
-			g.setHUDMessage("Map Floor Textures OFF", 70)
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyK) {
-		g.floorDbgMode = (g.floorDbgMode + 1) % 3
-		g.setHUDMessage("2D floor mode: "+g.floorDebugLabel(), 70)
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyU) {
-		g.floor2DPath = (g.floor2DPath + 1) % 2
-		g.setHUDMessage("2D floor path: "+g.floorPathLabel(), 70)
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyY) {
-		g.floorVisDiag = (g.floorVisDiag + 1) % 4
-		g.setHUDMessage("2D floor diag: "+g.floorVisDiagLabel(), 70)
-	}
 	if g.opts.SourcePortMode {
+		if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
+			g.showMapFloors = !g.showMapFloors
+			if g.showMapFloors {
+				g.setHUDMessage("Plane Textures ON", 70)
+			} else {
+				g.setHUDMessage("Plane Textures OFF", 70)
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyK) {
+			g.floorDbgMode = (g.floorDbgMode + 1) % 3
+			g.setHUDMessage("2D floor mode: "+g.floorDebugLabel(), 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyU) {
+			g.floor2DPath = (g.floor2DPath + 1) % 2
+			g.setHUDMessage("2D floor path: "+g.floorPathLabel(), 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyY) {
+			g.floorVisDiag = (g.floorVisDiag + 1) % 4
+			g.setHUDMessage("2D floor diag: "+g.floorVisDiagLabel(), 70)
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF10) {
 			g.applyCheatLevel((g.cheatLevel+1)%4, true)
 		}
@@ -743,8 +743,13 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.prepareRenderState()
 			g.drawDoomBasic3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
-			ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
-			ebitenutil.DebugPrintAt(screen, "TAB open automap | J planes | F5 detail | F1 help", 12, 44)
+			if g.opts.SourcePortMode {
+				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
+				ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | F5 detail | F1 help", 12, 44)
+			} else {
+				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | TAB automap", 12, 12)
+				ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | F1 help", 12, 44)
+			}
 			planesOn := g.showMapFloors && len(g.opts.FlatBank) > 0
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes=%t flats=%d detail=%dx%d", planesOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
 			if g.showMapFloors && len(g.opts.FlatBank) > 0 {
@@ -762,7 +767,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		return
 	}
 	g.prepareRenderState()
-	if g.showMapFloors && len(g.opts.FlatBank) > 0 {
+	if g.opts.SourcePortMode && g.showMapFloors && len(g.opts.FlatBank) > 0 {
 		g.drawMapFloorTextures2D(screen)
 	}
 	if g.showGrid {
@@ -3702,8 +3707,6 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"WASD  MOVE",
 		"ARROWS  TURN/STRAFE(ALT)",
 		"CTRL/MOUSE1  FIRE",
-		"J  TOGGLE 3D PLANES",
-		"P  TOGGLE WIREFRAME",
 		"MAP MODE",
 		"Q/E  TURN (MAP MODE)",
 		"SHIFT  RUN",
@@ -3721,6 +3724,8 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		lines = append(lines,
 			"SOURCEPORT EXTRAS",
 			"R  ROTATE/FOLLOW HEADING",
+			"P  TOGGLE WIREFRAME",
+			"J  TOGGLE PLANE TEXTURES",
 			"B  BIG MAP (ALIAS)",
 			"O  TOGGLE NORMAL/ALLMAP",
 			"I  CYCLE IDDT",
