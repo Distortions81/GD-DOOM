@@ -29,6 +29,7 @@ var (
 	wallCeilChange   = color.RGBA{R: 220, G: 200, B: 70, A: 255}
 	wallNoHeightDiff = color.RGBA{R: 86, G: 86, B: 86, A: 255}
 	wallUnrevealed   = color.RGBA{R: 100, G: 100, B: 100, A: 255}
+	wallUseSpecial   = color.RGBA{R: 255, G: 80, B: 170, A: 255}
 	playerColor      = color.RGBA{R: 120, G: 240, B: 130, A: 255}
 	otherPlayerColor = color.RGBA{R: 90, G: 170, B: 255, A: 255}
 	useTargetColor   = color.RGBA{R: 255, G: 210, B: 70, A: 255}
@@ -543,6 +544,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(w), c, true)
 	}
 	if g.opts.SourcePortMode {
+		g.drawUseSpecialLines(screen)
+	}
+	if g.opts.SourcePortMode {
 		g.drawUseTargetHighlight(screen)
 	}
 
@@ -872,6 +876,35 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
 	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
 	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, true)
+}
+
+func (g *game) drawUseSpecialLines(screen *ebiten.Image) {
+	for _, li := range g.visibleLineIndices() {
+		if li < 0 || li >= len(g.lineSpecial) || !buttonHighlightEligible(g.lineSpecial[li]) {
+			continue
+		}
+		pi := g.physForLine[li]
+		if pi < 0 || pi >= len(g.lines) {
+			continue
+		}
+		ld := g.m.Linedefs[li]
+		d := g.linedefDecision(ld)
+		if !d.visible {
+			continue
+		}
+		pl := g.lines[pi]
+		x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
+		x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2.4, wallUseSpecial, true)
+	}
+}
+
+func buttonHighlightEligible(special uint16) bool {
+	if special == 0 {
+		return false
+	}
+	info := mapdata.LookupLineSpecial(special)
+	return info.Trigger == mapdata.TriggerUse
 }
 
 func (g *game) drawDeathOverlay(screen *ebiten.Image) {

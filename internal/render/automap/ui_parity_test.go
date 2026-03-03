@@ -58,3 +58,15 @@ func TestSourcePortDefaultsEnableLegend(t *testing.T) {
 		t.Fatal("sourceport default should enable legend")
 	}
 }
+
+func TestButtonHighlightEligible(t *testing.T) {
+	if buttonHighlightEligible(0) {
+		t.Fatal("special 0 should not highlight")
+	}
+	if !buttonHighlightEligible(11) {
+		t.Fatal("use-trigger exit should highlight")
+	}
+	if buttonHighlightEligible(1) {
+		t.Fatal("manual door should not highlight")
+	}
+}

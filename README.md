@@ -64,6 +64,7 @@ Level progression:
 Source-port extras are enabled only with `-sourceport-mode`.
 In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.
 In sourceport mode, the current `use` target line is highlighted on automap.
+In sourceport mode, use-trigger button/switch lines are drawn in a distinct overlay color.
 
 Config notes:
 - `config.toml` is auto-read by default when present.
