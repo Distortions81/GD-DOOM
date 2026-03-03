@@ -138,7 +138,9 @@ type game struct {
 	mapFloorW     int
 	mapFloorH     int
 	flatImgCache  map[string]*ebiten.Image
+	whitePixel    *ebiten.Image
 	cullLogBudget int
+	floorDbgMode  floorDebugMode
 }
 
 type savedMapView struct {
@@ -177,6 +179,14 @@ type walkRendererMode int
 const (
 	walkRendererDoomBasic walkRendererMode = iota
 	walkRendererPseudo
+)
+
+type floorDebugMode int
+
+const (
+	floorDebugTextured floorDebugMode = iota
+	floorDebugSolid
+	floorDebugUV
 )
 
 func newGame(m *mapdata.Map, opts Options) *game {
@@ -220,6 +230,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		localSlot:     localSlot,
 		peerStarts:    nonLocalStarts(starts, localSlot),
 		cullLogBudget: 600,
+		floorDbgMode:  floorDebugTextured,
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -594,6 +605,10 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Map Floor Textures OFF", 70)
 			}
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyK) {
+			g.floorDbgMode = (g.floorDbgMode + 1) % 3
+			g.setHUDMessage("2D floor mode: "+g.floorDebugLabel(), 70)
+		}
 	}
 }
 
@@ -707,6 +722,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.opts.LineColorMode,
 		)
 		ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
+		if g.showMapFloors {
+			ebitenutil.DebugPrintAt(screen, "floor2d="+g.floorDebugLabel(), 12, 76)
+		}
 		stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s wp=%s",
 			g.stats.Health,
 			g.stats.Armor,
@@ -1753,6 +1771,10 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		Filter:  ebiten.FilterNearest,
 		Address: ebiten.AddressRepeat,
 	}
+	if g.whitePixel == nil {
+		g.whitePixel = ebiten.NewImage(1, 1)
+		g.whitePixel.Fill(color.White)
+	}
 	for ss := range g.m.SubSectors {
 		poly, worldVerts, cx, cy, _, ok := g.subSectorScreenPolygon(ss)
 		if !ok {
@@ -1782,31 +1804,55 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 			if i0 < 0 || i1 < 0 || i2 < 0 || i0 >= len(poly) || i1 >= len(poly) || i2 >= len(poly) {
 				continue
 			}
-			verts := []ebiten.Vertex{
-				{
-					DstX:   float32(poly[i0].x),
-					DstY:   float32(poly[i0].y),
-					SrcX:   float32(worldVerts[i0].x),
-					SrcY:   float32(worldVerts[i0].y),
-					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
-				},
-				{
-					DstX:   float32(poly[i1].x),
-					DstY:   float32(poly[i1].y),
-					SrcX:   float32(worldVerts[i1].x),
-					SrcY:   float32(worldVerts[i1].y),
-					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
-				},
-				{
-					DstX:   float32(poly[i2].x),
-					DstY:   float32(poly[i2].y),
-					SrcX:   float32(worldVerts[i2].x),
-					SrcY:   float32(worldVerts[i2].y),
-					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
-				},
+			verts := g.floorDebugTriVertices(worldVerts, poly, i0, i1, i2, flatImg.Bounds().Dx(), flatImg.Bounds().Dy())
+			src := flatImg
+			if g.floorDbgMode != floorDebugTextured {
+				src = g.whitePixel
 			}
-			screen.DrawTriangles(verts, []uint16{0, 1, 2}, flatImg, triOpts)
+			screen.DrawTriangles(verts, []uint16{0, 1, 2}, src, triOpts)
 		}
+	}
+}
+
+func (g *game) floorDebugTriVertices(world []worldPt, poly []screenPt, i0, i1, i2, texW, texH int) []ebiten.Vertex {
+	mk := func(i int) ebiten.Vertex {
+		v := ebiten.Vertex{
+			DstX: float32(poly[i].x),
+			DstY: float32(poly[i].y),
+			SrcX: float32(world[i].x),
+			SrcY: float32(world[i].y),
+		}
+		switch g.floorDbgMode {
+		case floorDebugSolid:
+			v.SrcX = 0
+			v.SrcY = 0
+			v.ColorR, v.ColorG, v.ColorB, v.ColorA = 0.55, 0.7, 0.95, 1.0
+		case floorDebugUV:
+			u := frac01(world[i].x / float64(max(texW, 1)))
+			w := frac01(world[i].y / float64(max(texH, 1)))
+			v.SrcX = 0
+			v.SrcY = 0
+			v.ColorR, v.ColorG, v.ColorB, v.ColorA = float32(u), float32(w), 0.0, 1.0
+		default:
+			v.ColorR, v.ColorG, v.ColorB, v.ColorA = 1, 1, 1, 1
+		}
+		return v
+	}
+	return []ebiten.Vertex{mk(i0), mk(i1), mk(i2)}
+}
+
+func frac01(x float64) float64 {
+	return x - math.Floor(x)
+}
+
+func (g *game) floorDebugLabel() string {
+	switch g.floorDbgMode {
+	case floorDebugSolid:
+		return "solid"
+	case floorDebugUV:
+		return "uv"
+	default:
+		return "textured"
 	}
 }
 
