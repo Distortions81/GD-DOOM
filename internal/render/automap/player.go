@@ -656,21 +656,68 @@ func (g *game) sectorAt(x, y int64) int {
 }
 
 func (g *game) handleUse() {
-	lineIdx, ok := g.firstUsableLineInFront()
-	if !ok {
-		g.useText = "USE: no linedef"
+	g.useLines()
+}
+
+func (g *game) useLines() {
+	px := g.p.x
+	py := g.p.y
+	ang := angleToRadians(g.p.angle)
+	fx := int64(math.Cos(ang) * useRange)
+	fy := int64(math.Sin(ang) * useRange)
+	x2 := px + fx
+	y2 := py + fy
+
+	intercepts := make([]intercept, 0, 16)
+	for _, ld := range g.lines {
+		frac, ok := segmentIntersectFrac(px, py, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
+		if !ok {
+			continue
+		}
+		intercepts = append(intercepts, intercept{frac: frac, line: ld.idx})
+	}
+	sort.Slice(intercepts, func(i, j int) bool { return intercepts[i].frac < intercepts[j].frac })
+
+	for _, in := range intercepts {
+		pi := -1
+		if in.line >= 0 && in.line < len(g.physForLine) {
+			pi = g.physForLine[in.line]
+		}
+		if pi < 0 || pi >= len(g.lines) {
+			continue
+		}
+		ld := g.lines[pi]
+		special := g.lineSpecial[ld.idx]
+		if special == 0 {
+			_, _, _, openrange := g.lineOpening(ld)
+			if openrange <= 0 {
+				g.useText = "USE: no way"
+				g.useFlash = 35
+				return
+			}
+			continue
+		}
+		side := 0
+		if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
+			side = 1
+		}
+		g.useSpecialLine(ld.idx, side)
+		return
+	}
+	g.useText = "USE: no line"
+	g.useFlash = 35
+}
+
+func (g *game) useSpecialLine(lineIdx int, side int) {
+	special := g.lineSpecial[lineIdx]
+	if side == 1 && special != 124 {
+		g.useText = "USE: back side"
 		g.useFlash = 35
 		return
 	}
-	info := mapdata.LookupLineSpecial(g.lineSpecial[lineIdx])
-	if info.Door == nil {
-		g.useText = "USE: no door action"
-		g.useFlash = 35
-		return
-	}
-	targets, err := g.m.DoorTargetSectors(lineIdx)
-	if err != nil || len(targets) == 0 {
-		g.useText = "USE: no door target"
+	info := mapdata.LookupLineSpecial(special)
+	if info.Door == nil || (info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse) {
+		g.useText = "USE: unsupported special"
 		g.useFlash = 35
 		return
 	}
@@ -679,7 +726,23 @@ func (g *game) handleUse() {
 		g.useFlash = 35
 		return
 	}
+	opened := g.activateDoorLine(lineIdx, info)
+	if opened > 0 {
+		if !info.Repeat {
+			g.lineSpecial[lineIdx] = 0
+		}
+		g.useText = "USE: door opened"
+	} else {
+		g.useText = "USE: no change"
+	}
+	g.useFlash = 35
+}
 
+func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) int {
+	targets, err := g.m.DoorTargetSectors(lineIdx)
+	if err != nil || len(targets) == 0 {
+		return 0
+	}
 	opened := 0
 	for _, sec := range targets {
 		if sec < 0 || sec >= len(g.sectorCeil) {
@@ -694,53 +757,7 @@ func (g *game) handleUse() {
 			opened++
 		}
 	}
-	if opened > 0 {
-		if !info.Repeat {
-			g.lineSpecial[lineIdx] = 0
-		}
-		g.useText = "USE: door opened"
-	} else {
-		g.useText = "USE: no change"
-	}
-	g.useFlash = 35
-}
-
-func (g *game) firstUsableLineInFront() (int, bool) {
-	px := g.p.x
-	py := g.p.y
-	ang := angleToRadians(g.p.angle)
-	fx := int64(math.Cos(ang) * useRange)
-	fy := int64(math.Sin(ang) * useRange)
-	x2 := px + fx
-	y2 := py + fy
-
-	bestT := 2.0
-	best := -1
-	for _, ld := range g.lines {
-		sp := g.lineSpecial[ld.idx]
-		if sp == 0 {
-			continue
-		}
-		info := mapdata.LookupLineSpecial(sp)
-		if info.Door == nil {
-			continue
-		}
-		if info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse {
-			continue
-		}
-		t, ok := segmentIntersectFrac(px, py, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok {
-			continue
-		}
-		if t < bestT {
-			bestT = t
-			best = ld.idx
-		}
-	}
-	if best < 0 {
-		return 0, false
-	}
-	return best, true
+	return opened
 }
 
 func (g *game) lowestSurroundingCeiling(sector int) int64 {

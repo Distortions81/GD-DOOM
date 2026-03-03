@@ -28,6 +28,17 @@ var (
 	playerColor      = color.RGBA{R: 120, G: 240, B: 130, A: 255}
 )
 
+var doomPlayerArrow = [][4]float64{
+	// Rough port of Doom's AM player_arrow (points right in local space).
+	{-16, 0, 18.2857, 0},
+	{18.2857, 0, 9.14285, 4.5714},
+	{18.2857, 0, 9.14285, -4.5714},
+	{-16, 0, -20.5714, 4.5714},
+	{-16, 0, -20.5714, -4.5714},
+	{-10.2857, 0, -16, 4.5714},
+	{-10.2857, 0, -16, -4.5714},
+}
+
 type game struct {
 	m       *mapdata.Map
 	opts    Options
@@ -81,6 +92,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		viewH:      opts.Height,
 		mode:       viewMap,
 		followMode: true,
+		rotateView: true,
 		p:          spawnPlayer(m),
 	}
 	g.mode = viewWalk
@@ -281,17 +293,44 @@ func (g *game) drawPlayer(screen *ebiten.Image) {
 	px := float64(g.p.x) / fracUnit
 	py := float64(g.p.y) / fracUnit
 	sx, sy := g.worldToScreen(px, py)
+	if g.rotateView {
+		// Heading-follow: keep icon fixed-up in screen-space.
+		g.drawPlayerArrowScreen(screen, sx, sy, math.Pi/2)
+		return
+	}
 	ang := angleToRadians(g.p.angle)
-	forwardX := sx + math.Cos(ang)*12
-	forwardY := sy - math.Sin(ang)*12
-	leftX := sx + math.Cos(ang+2.6)*8
-	leftY := sy - math.Sin(ang+2.6)*8
-	rightX := sx + math.Cos(ang-2.6)*8
-	rightY := sy - math.Sin(ang-2.6)*8
-	vector.StrokeLine(screen, float32(sx), float32(sy), float32(forwardX), float32(forwardY), 2, playerColor, true)
-	vector.StrokeLine(screen, float32(leftX), float32(leftY), float32(forwardX), float32(forwardY), 2, playerColor, true)
-	vector.StrokeLine(screen, float32(rightX), float32(rightY), float32(forwardX), float32(forwardY), 2, playerColor, true)
-	vector.StrokeCircle(screen, float32(sx), float32(sy), float32((float64(playerRadius)/fracUnit)*g.zoom), 1, playerColor, false)
+	g.drawPlayerArrowWorld(screen, px, py, ang)
+}
+
+func (g *game) drawPlayerArrowWorld(screen *ebiten.Image, px, py, ang float64) {
+	ca := math.Cos(ang)
+	sa := math.Sin(ang)
+	for _, seg := range doomPlayerArrow {
+		ax := seg[0]*ca - seg[1]*sa
+		ay := seg[0]*sa + seg[1]*ca
+		bx := seg[2]*ca - seg[3]*sa
+		by := seg[2]*sa + seg[3]*ca
+		x1, y1 := g.worldToScreen(px+ax, py+ay)
+		x2, y2 := g.worldToScreen(px+bx, py+by)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, playerColor, true)
+	}
+}
+
+func (g *game) drawPlayerArrowScreen(screen *ebiten.Image, sx, sy, ang float64) {
+	ca := math.Cos(ang)
+	sa := math.Sin(ang)
+	scale := g.zoom
+	for _, seg := range doomPlayerArrow {
+		ax := seg[0]*ca - seg[1]*sa
+		ay := seg[0]*sa + seg[1]*ca
+		bx := seg[2]*ca - seg[3]*sa
+		by := seg[2]*sa + seg[3]*ca
+		x1 := sx + ax*scale
+		y1 := sy - ay*scale
+		x2 := sx + bx*scale
+		y2 := sy - by*scale
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, playerColor, true)
+	}
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
