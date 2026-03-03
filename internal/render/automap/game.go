@@ -316,10 +316,10 @@ func (g *game) Update() error {
 		g.pseudo3D = !g.pseudo3D
 		if g.pseudo3D {
 			g.walkRender = walkRendererPseudo
-			g.setHUDMessage("Pseudo3D ON", 70)
+			g.setHUDMessage("Wireframe Mode ON", 70)
 		} else {
 			g.walkRender = walkRendererDoomBasic
-			g.setHUDMessage("Pseudo3D OFF", 70)
+			g.setHUDMessage("Wireframe Mode OFF", 70)
 		}
 	}
 	if g.isDead && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
@@ -627,12 +627,12 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.prepareRenderState()
 			g.drawPseudo3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
-			ebitenutil.DebugPrintAt(screen, "renderer=pseudo3d | P toggle | TAB automap", 12, 28)
+			ebitenutil.DebugPrintAt(screen, "renderer=wireframe | P toggle | TAB automap", 12, 28)
 		} else {
 			g.prepareRenderState()
 			g.drawDoomBasic3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
-			ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P pseudo3d | TAB automap", 12, 12)
+			ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
 			ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
 		}
 		if g.isDead {
