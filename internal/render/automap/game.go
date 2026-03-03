@@ -1852,8 +1852,8 @@ func (g *game) drawFlashOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	g.viewW = max(outsideWidth, 1)
-	g.viewH = max(outsideHeight, 1)
+	g.viewW = max(g.viewW, 1)
+	g.viewH = max(g.viewH, 1)
 	return g.viewW, g.viewH
 }
 
