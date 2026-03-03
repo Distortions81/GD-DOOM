@@ -58,8 +58,13 @@ func (g *game) damagePlayer(amount int, msg string) {
 		return
 	}
 	g.stats.Health -= amount
+	g.damageFlashTic = max(g.damageFlashTic, 8)
 	if g.stats.Health < 0 {
 		g.stats.Health = 0
+	}
+	if g.stats.Health == 0 {
+		g.isDead = true
+		msg = "You Died"
 	}
 	g.setHUDMessage(msg, 20)
 	g.emitSoundEvent(soundEventOof)

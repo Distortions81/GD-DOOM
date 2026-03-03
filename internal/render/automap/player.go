@@ -213,6 +213,14 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	prevX := g.p.x
 	prevY := g.p.y
 	g.tickDoors()
+	g.tickWorldLogic()
+	g.processThingPickups()
+
+	if g.isDead {
+		g.p.momx = 0
+		g.p.momy = 0
+		return
+	}
 
 	if cmd.turnRaw != 0 {
 		g.p.angle += uint32(cmd.turnRaw)
@@ -243,8 +251,6 @@ func (g *game) updatePlayer(cmd moveCmd) {
 
 	g.xyMovement()
 	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
-	g.tickWorldLogic()
-	g.processThingPickups()
 }
 
 func (g *game) tickDoors() {
@@ -747,6 +753,10 @@ func (g *game) sectorAt(x, y int64) int {
 }
 
 func (g *game) handleUse() {
+	if g.isDead {
+		g.setHUDMessage("You are dead", 20)
+		return
+	}
 	g.useLines()
 }
 

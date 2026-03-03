@@ -117,6 +117,9 @@ type game struct {
 	inventory      playerInventory
 	stats          playerStats
 	worldTic       int
+	isDead         bool
+	damageFlashTic int
+	bonusFlashTic  int
 }
 
 type savedMapView struct {
@@ -277,6 +280,12 @@ func (g *game) Update() error {
 	}
 	if g.useFlash > 0 {
 		g.useFlash--
+	}
+	if g.damageFlashTic > 0 {
+		g.damageFlashTic--
+	}
+	if g.bonusFlashTic > 0 {
+		g.bonusFlashTic--
 	}
 	g.tickDelayedSounds()
 	g.flushSoundEvents()
@@ -503,6 +512,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, "no game render yet", 12, 12)
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
 		ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
+		if g.isDead {
+			g.drawDeathOverlay(screen)
+		}
+		g.drawFlashOverlay(screen)
 		return
 	}
 	g.prepareRenderState()
@@ -582,6 +595,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, g.useText, 12, msgY)
 	}
 	g.drawHelpUI(screen)
+	if g.isDead {
+		g.drawDeathOverlay(screen)
+	}
+	g.drawFlashOverlay(screen)
 }
 
 func (g *game) profileLabel() string {
@@ -855,6 +872,25 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
 	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
 	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, true)
+}
+
+func (g *game) drawDeathOverlay(screen *ebiten.Image) {
+	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 25, G: 0, B: 0, A: 130})
+	msg := "YOU DIED"
+	x := g.viewW/2 - len(msg)*7/2
+	y := g.viewH / 2
+	ebitenutil.DebugPrintAt(screen, msg, x, y)
+}
+
+func (g *game) drawFlashOverlay(screen *ebiten.Image) {
+	if g.damageFlashTic > 0 {
+		a := uint8(40 + min(120, g.damageFlashTic*8))
+		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 180, G: 20, B: 20, A: a})
+	}
+	if g.bonusFlashTic > 0 {
+		a := uint8(20 + min(80, g.bonusFlashTic*6))
+		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 210, G: 190, B: 80, A: a})
+	}
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {

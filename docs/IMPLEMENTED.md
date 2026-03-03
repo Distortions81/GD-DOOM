@@ -27,6 +27,9 @@ Snapshot of features currently working in this repo.
 - Item pickup runtime for keys/health/armor/ammo/backpack/weapons, with inventory + player stat tracking
 - Locked door activation now uses collected key inventory
 - Hazard sector damage (specials `4/5/7/16`) with Doom-style periodic ticks; radiation suit pickup support
+- Player death state tracking and death overlay when health reaches zero
+- Screen flash feedback for damage and pickups
+- Config-driven startup defaults via `config.toml` with CLI override precedence
 
 ## Automap Features
 

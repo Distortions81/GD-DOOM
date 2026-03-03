@@ -14,22 +14,88 @@ import (
 )
 
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
+	configPath, configExplicit := resolveConfigPath(args)
+	cfg, err := loadConfig(configPath, configExplicit)
+	if err != nil {
+		fmt.Fprintf(stderr, "config error: %v\n", err)
+		return 2
+	}
+
+	defaultWAD := "DOOM1.WAD"
+	defaultMap := ""
+	defaultDetails := false
+	defaultRender := true
+	defaultWidth := 1280
+	defaultHeight := 800
+	defaultZoom := 0.0
+	defaultPlayer := 1
+	defaultLineColorMode := "parity"
+	defaultSourcePortMode := false
+	defaultAllCheats := false
+	defaultStartInMap := true
+	defaultImportPCSpeaker := true
+	defaultConfigPath := configPath
+	configLineColorSet := false
+	if cfg != nil {
+		if cfg.Wad != nil {
+			defaultWAD = *cfg.Wad
+		}
+		if cfg.Map != nil {
+			defaultMap = *cfg.Map
+		}
+		if cfg.Details != nil {
+			defaultDetails = *cfg.Details
+		}
+		if cfg.Render != nil {
+			defaultRender = *cfg.Render
+		}
+		if cfg.Width != nil {
+			defaultWidth = *cfg.Width
+		}
+		if cfg.Height != nil {
+			defaultHeight = *cfg.Height
+		}
+		if cfg.Zoom != nil {
+			defaultZoom = *cfg.Zoom
+		}
+		if cfg.Player != nil {
+			defaultPlayer = *cfg.Player
+		}
+		if cfg.LineColorMode != nil {
+			defaultLineColorMode = *cfg.LineColorMode
+			configLineColorSet = true
+		}
+		if cfg.SourcePortMode != nil {
+			defaultSourcePortMode = *cfg.SourcePortMode
+		}
+		if cfg.AllCheats != nil {
+			defaultAllCheats = *cfg.AllCheats
+		}
+		if cfg.StartInMap != nil {
+			defaultStartInMap = *cfg.StartInMap
+		}
+		if cfg.ImportPCSpeaker != nil {
+			defaultImportPCSpeaker = *cfg.ImportPCSpeaker
+		}
+	}
+
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
-	wadPath := fs.String("wad", "DOOM1.WAD", "path to IWAD file")
-	mapName := fs.String("map", "", "map name (E#M# or MAP##); empty selects first valid map")
-	details := fs.Bool("details", false, "print decoded gameplay-relevant map details")
-	render := fs.Bool("render", true, "launch Ebiten automap renderer")
-	width := fs.Int("width", 1280, "render window width")
-	height := fs.Int("height", 800, "render window height")
-	zoom := fs.Float64("zoom", 0, "starting zoom (>0 overrides Doom-style startup zoom)")
-	playerSlot := fs.Int("player", 1, "player start slot (1-4)")
-	lineColorMode := fs.String("line-color-mode", "parity", "line color mode for automap")
-	sourcePortMode := fs.Bool("sourceport-mode", false, "enable source-port style heading-follow rotation defaults")
-	allCheats := fs.Bool("all-cheats", false, "enable automap cheats at startup (allmap + iddt2)")
-	startInMap := fs.Bool("start-in-map", true, "start with automap open")
-	importPCSpeaker := fs.Bool("import-pcspeaker", true, "import Doom PC speaker sounds (DP* lumps) at startup")
+	configFlag := fs.String("config", defaultConfigPath, "path to config toml file (default: config.toml)")
+	wadPath := fs.String("wad", defaultWAD, "path to IWAD file")
+	mapName := fs.String("map", defaultMap, "map name (E#M# or MAP##); empty selects first valid map")
+	details := fs.Bool("details", defaultDetails, "print decoded gameplay-relevant map details")
+	render := fs.Bool("render", defaultRender, "launch Ebiten automap renderer")
+	width := fs.Int("width", defaultWidth, "render window width")
+	height := fs.Int("height", defaultHeight, "render window height")
+	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
+	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
+	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
+	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	allCheats := fs.Bool("all-cheats", defaultAllCheats, "enable automap cheats at startup (allmap + iddt2)")
+	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
+	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -38,7 +104,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "flag error: %v\n", err)
 		return 2
 	}
-	lineColorModeSet := false
+	_ = configFlag
+	lineColorModeSet := configLineColorSet
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "line-color-mode" {
 			lineColorModeSet = true

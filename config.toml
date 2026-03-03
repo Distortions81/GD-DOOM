@@ -1,0 +1,18 @@
+# GD-DOOM runtime config
+# CLI flags override values set here.
+
+wad = "DOOM1.WAD"
+map = ""
+render = true
+details = false
+
+width = 1280
+height = 800
+zoom = 0.0
+player = 1
+
+line_color_mode = "parity"
+sourceport_mode = false
+all_cheats = false
+start_in_map = true
+import_pcspeaker = true

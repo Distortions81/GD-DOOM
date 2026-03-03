@@ -26,6 +26,7 @@ By default it starts in automap mode (`-start-in-map=true`), and `TAB` toggles w
 ## Key Flags
 
 - `-wad <path>`: IWAD path
+- `-config <path>`: TOML config file path (defaults to `config.toml` if present)
 - `-map <E#M#|MAP##>`: map to load
 - `-render=false`: parse/validate only (CLI summary output)
 - `-details`: include extra parsed details in CLI output
@@ -64,10 +65,16 @@ Source-port extras are enabled only with `-sourceport-mode`.
 In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.
 In sourceport mode, the current `use` target line is highlighted on automap.
 
+Config notes:
+- `config.toml` is auto-read by default when present.
+- CLI flags always override config values.
+
 ## Runtime Gameplay State (Current)
 
 - Item pickup is active for core Doom pickup classes (keys, health, armor, ammo, backpack, weapons).
 - Hazardous floor sectors now apply periodic damage (Doom-style timed ticks); radiation suit pickup is supported.
+- Player death state is tracked (`YOU DIED` overlay) when health reaches `0`.
+- Damage/pickup screen flashes are active (red for damage, amber for pickups).
 - Collected pickups are removed from automap thing rendering.
 - Locked doors now check collected key inventory.
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).

@@ -76,3 +76,22 @@ func TestPickupRadSuitSetsTimer(t *testing.T) {
 		t.Fatalf("radsuit tics=%d want=%d", g.inventory.RadSuitTics, 60*doomTicsPerSecond)
 	}
 }
+
+func TestDamagePlayerSetsDeathStateAndFlash(t *testing.T) {
+	g := &game{
+		stats: playerStats{Health: 5},
+	}
+	g.damagePlayer(10, "ouch")
+	if g.stats.Health != 0 {
+		t.Fatalf("health=%d want=0", g.stats.Health)
+	}
+	if !g.isDead {
+		t.Fatal("player should be dead at zero health")
+	}
+	if g.damageFlashTic == 0 {
+		t.Fatal("damage flash should be active")
+	}
+	if g.useText != "You Died" {
+		t.Fatalf("message=%q want=%q", g.useText, "You Died")
+	}
+}

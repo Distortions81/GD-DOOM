@@ -95,6 +95,7 @@ func (g *game) processThingPickups() {
 		g.thingCollected[i] = true
 		g.setHUDMessage(msg, 45)
 		g.emitSoundEvent(ev)
+		g.bonusFlashTic = max(g.bonusFlashTic, 6)
 	}
 }
 
