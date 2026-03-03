@@ -1119,8 +1119,13 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	near := 2.0
 
 	ceilClr, floorClr := g.basicPlaneColors()
-	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceilClr)
-	ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floorClr)
+	sec := g.sectorAt(g.p.x, g.p.y)
+	if g.showMapFloors && len(g.opts.FlatBank) > 0 && sec >= 0 && sec < len(g.m.Sectors) {
+		g.drawDoomBasicTexturedPlanes(screen, camX, camY, ca, sa, eyeZ, focal, sec, ceilClr, floorClr)
+	} else {
+		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceilClr)
+		ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floorClr)
+	}
 
 	depthPix := make([]float64, g.viewW*g.viewH)
 	for i := range depthPix {
@@ -1217,6 +1222,99 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
 	}
+}
+
+func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback, floorFallback color.RGBA) {
+	g.ensureMapFloorLayer()
+	pix := g.mapFloorPix
+	w := g.viewW
+	h := g.viewH
+	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
+		return
+	}
+	cx := float64(w) * 0.5
+	cy := float64(h) * 0.5
+	baseFloorZ := float64(g.m.Sectors[playerSec].FloorHeight)
+	baseCeilZ := float64(g.m.Sectors[playerSec].CeilingHeight)
+
+	for y := 0; y < h; y++ {
+		den := cy - float64(y)
+		rowBase := y * w * 4
+		if math.Abs(den) < 1e-6 {
+			for x := 0; x < w; x++ {
+				i := rowBase + x*4
+				pix[i+0] = floorFallback.R
+				pix[i+1] = floorFallback.G
+				pix[i+2] = floorFallback.B
+				pix[i+3] = 255
+			}
+			continue
+		}
+		isFloor := float64(y) > cy
+		planeZ := baseFloorZ
+		if !isFloor {
+			planeZ = baseCeilZ
+		}
+		f := ((planeZ - eyeZ) / den) * focal
+		if f <= 0 {
+			fb := floorFallback
+			if !isFloor {
+				fb = ceilFallback
+			}
+			for x := 0; x < w; x++ {
+				i := rowBase + x*4
+				pix[i+0] = fb.R
+				pix[i+1] = fb.G
+				pix[i+2] = fb.B
+				pix[i+3] = 255
+			}
+			continue
+		}
+
+		s := (cx - 0.0) * f / focal
+		wx := camX + f*ca - s*sa
+		wy := camY + f*sa + s*ca
+		stepWX := (f / focal) * sa
+		stepWY := -(f / focal) * ca
+
+		for x := 0; x < w; x++ {
+			i := rowBase + x*4
+			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
+			fb := floorFallback
+			if !isFloor {
+				fb = ceilFallback
+			}
+			if sec >= 0 && sec < len(g.m.Sectors) {
+				name := g.m.Sectors[sec].FloorPic
+				if !isFloor {
+					name = g.m.Sectors[sec].CeilingPic
+				}
+				if tex, ok := g.flatRGBA(name); ok {
+					u := int(math.Floor(wx)) & 63
+					v := int(math.Floor(wy)) & 63
+					ti := (v*64 + u) * 4
+					pix[i+0] = tex[ti+0]
+					pix[i+1] = tex[ti+1]
+					pix[i+2] = tex[ti+2]
+					pix[i+3] = 255
+				} else {
+					pix[i+0] = fb.R
+					pix[i+1] = fb.G
+					pix[i+2] = fb.B
+					pix[i+3] = 255
+				}
+			} else {
+				pix[i+0] = fb.R
+				pix[i+1] = fb.G
+				pix[i+2] = fb.B
+				pix[i+3] = 255
+			}
+			wx += stepWX
+			wy += stepWY
+		}
+	}
+	g.mapFloorLayer.WritePixels(pix)
+	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
 func isFinite(v float64) bool {
@@ -2603,6 +2701,15 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 	img.WritePixels(rgba)
 	g.flatImgCache[key] = img
 	return img, true
+}
+
+func (g *game) flatRGBA(name string) ([]byte, bool) {
+	key := normalizeFlatName(name)
+	rgba, ok := g.opts.FlatBank[key]
+	if !ok || len(rgba) != 64*64*4 {
+		return nil, false
+	}
+	return rgba, true
 }
 
 func normalizeFlatName(name string) string {
