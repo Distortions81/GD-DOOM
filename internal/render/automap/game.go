@@ -1302,20 +1302,7 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 		if float64(y) >= cy {
 			break
 		}
-		den := cy - float64(y)
-		if math.Abs(den) < 1e-6 {
-			continue
-		}
-		f := ((baseCeilZ - eyeZ) / den) * focal
-		if f <= 0 {
-			continue
-		}
 		rowBase := y * w * 4
-		s := (cx - 0.0) * f / focal
-		wx := camX + f*ca - s*sa
-		wy := camY + f*sa + s*ca
-		stepWX := (f / focal) * sa
-		stepWY := -(f / focal) * ca
 
 		for x := 0; x < w; x++ {
 			i := rowBase + x*4
@@ -1324,11 +1311,24 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 				stopY = wallTop[x]
 			}
 			if y >= stopY {
-				wx += stepWX
-				wy += stepWY
+				continue
+			}
+			wx, wy, _, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseCeilZ)
+			if !ok {
 				continue
 			}
 			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
+			if sec >= 0 && sec < len(g.m.Sectors) {
+				refinedZ := float64(g.m.Sectors[sec].CeilingHeight)
+				if math.Abs(refinedZ-baseCeilZ) > 0.001 {
+					if rwx, rwy, _, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
+						wx, wy = rwx, rwy
+						if rsec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit)); rsec >= 0 && rsec < len(g.m.Sectors) {
+							sec = rsec
+						}
+					}
+				}
+			}
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				name := g.m.Sectors[sec].CeilingPic
 				if isSkyFlatName(name) {
@@ -1356,8 +1356,6 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 				pix[i+2] = ceilFallback.B
 				pix[i+3] = 255
 			}
-			wx += stepWX
-			wy += stepWY
 		}
 	}
 	g.mapFloorLayer.WritePixels(pix)
@@ -1383,25 +1381,10 @@ func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, cam
 	}
 
 	for y := 0; y < h; y++ {
-		den := cy - float64(y)
 		rowBase := y * w * 4
 		if float64(y) <= cy {
 			continue
 		}
-		if math.Abs(den) < 1e-6 {
-			continue
-		}
-		f := ((baseFloorZ - eyeZ) / den) * focal
-		if f <= 0 {
-			continue
-		}
-
-		s := (cx - 0.0) * f / focal
-		wx := camX + f*ca - s*sa
-		wy := camY + f*sa + s*ca
-		stepWX := (f / focal) * sa
-		stepWY := -(f / focal) * ca
-
 		for x := 0; x < w; x++ {
 			i := rowBase + x*4
 			startY := int(cy)
@@ -1409,11 +1392,24 @@ func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, cam
 				startY = wallBottom[x] + 1
 			}
 			if y < startY {
-				wx += stepWX
-				wy += stepWY
+				continue
+			}
+			wx, wy, _, ok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, baseFloorZ)
+			if !ok {
 				continue
 			}
 			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
+			if sec >= 0 && sec < len(g.m.Sectors) {
+				refinedZ := float64(g.m.Sectors[sec].FloorHeight)
+				if math.Abs(refinedZ-baseFloorZ) > 0.001 {
+					if rwx, rwy, _, rok := worldPointForPlaneAtPixel(x, y, cx, cy, camX, camY, ca, sa, eyeZ, focal, refinedZ); rok {
+						wx, wy = rwx, rwy
+						if rsec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit)); rsec >= 0 && rsec < len(g.m.Sectors) {
+							sec = rsec
+						}
+					}
+				}
+			}
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				if tex, ok := g.flatRGBA(g.m.Sectors[sec].FloorPic); ok {
 					u := int(math.Floor(wx)) & 63
@@ -1435,12 +1431,25 @@ func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, cam
 				pix[i+2] = floorFallback.B
 				pix[i+3] = 255
 			}
-			wx += stepWX
-			wy += stepWY
 		}
 	}
 	g.mapFloorLayer.WritePixels(pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
+}
+
+func worldPointForPlaneAtPixel(x, y int, cx, cy, camX, camY, ca, sa, eyeZ, focal, planeZ float64) (wx, wy, depth float64, ok bool) {
+	den := cy - (float64(y) + 0.5)
+	if math.Abs(den) < 1e-6 {
+		return 0, 0, 0, false
+	}
+	depth = ((planeZ - eyeZ) / den) * focal
+	if depth <= 0 {
+		return 0, 0, 0, false
+	}
+	s := (cx - (float64(x) + 0.5)) * depth / focal
+	wx = camX + depth*ca - s*sa
+	wy = camY + depth*sa + s*ca
+	return wx, wy, depth, true
 }
 
 func isFinite(v float64) bool {
