@@ -44,6 +44,20 @@ func TestStyleForThing_MiscFallback(t *testing.T) {
 	}
 }
 
+func TestRelativeThingAngle(t *testing.T) {
+	// Thing and view aligned -> "up" in rotate mode.
+	got := relativeThingAngle(90, degToAngle(90))
+	if got != 0 {
+		t.Fatalf("relativeThingAngle aligned = %d, want 0", got)
+	}
+
+	// Thing 90 deg to the right of view remains +90.
+	got = relativeThingAngle(180, degToAngle(90))
+	if got != 90 {
+		t.Fatalf("relativeThingAngle offset = %d, want 90", got)
+	}
+}
+
 func testThing(typ int16) mapdata.Thing {
 	return mapdata.Thing{Type: typ}
 }

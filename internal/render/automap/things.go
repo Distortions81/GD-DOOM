@@ -143,3 +143,19 @@ func rotatePoint(x, y, angleRad float64) (float64, float64) {
 	s := math.Sin(angleRad)
 	return x*c - y*s, x*s + y*c
 }
+
+func relativeThingAngle(thingAngle int16, viewAngle uint32) int16 {
+	viewDeg := float64(viewAngle) * (360.0 / 4294967296.0)
+	delta := float64(thingAngle) - viewDeg
+	return int16(normalizeDegrees(delta))
+}
+
+func normalizeDegrees(deg float64) float64 {
+	for deg <= -180 {
+		deg += 360
+	}
+	for deg > 180 {
+		deg -= 360
+	}
+	return deg
+}

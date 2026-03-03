@@ -676,7 +676,11 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		y := float64(th.Y)
 		sx, sy := g.worldToScreen(x, y)
 		size := thingGlyphSize(g.zoom)
-		drawThingGlyph(screen, styleForThing(th), sx, sy, th.Angle, size)
+		angle := th.Angle
+		if g.rotateView {
+			angle = relativeThingAngle(th.Angle, g.renderAngle)
+		}
+		drawThingGlyph(screen, styleForThing(th), sx, sy, angle, size)
 	}
 }
 
