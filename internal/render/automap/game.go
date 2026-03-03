@@ -1094,21 +1094,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		s1 := -x1*sa + y1*ca
 		f2 := x2*ca + y2*sa
 		s2 := -x2*sa + y2*ca
-		if f1 <= near && f2 <= near {
-			continue
-		}
-
-		if f1 <= near || f2 <= near {
-			t := (near - f1) / (f2 - f1)
-			if f1 < near {
-				f1 = near
-				s1 = s1 + (s2-s1)*t
-			} else {
-				f2 = near
-				s2 = s1 + (s2-s1)*t
-			}
-		}
-		if f1 <= near || f2 <= near {
+		f1, s1, f2, s2, ok = clipSegmentToNear(f1, s1, f2, s2, near)
+		if !ok {
 			continue
 		}
 		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
@@ -1154,6 +1141,49 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
 	}
+}
+
+func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64, float64, bool) {
+	if f1 <= near && f2 <= near {
+		return 0, 0, 0, 0, false
+	}
+	// Work from originals so we never interpolate from already-mutated values.
+	of1, os1 := f1, s1
+	of2, os2 := f2, s2
+	if of1 < near {
+		den := of2 - of1
+		if math.Abs(den) < 1e-9 {
+			return 0, 0, 0, 0, false
+		}
+		t := (near - of1) / den
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		f1 = near
+		s1 = os1 + (os2-os1)*t
+	}
+	if of2 < near {
+		den := of1 - of2
+		if math.Abs(den) < 1e-9 {
+			return 0, 0, 0, 0, false
+		}
+		t := (near - of2) / den
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		f2 = near
+		s2 = os2 + (os1-os2)*t
+	}
+	if f1 <= near || f2 <= near {
+		return 0, 0, 0, 0, false
+	}
+	return f1, s1, f2, s2, true
 }
 
 type solidSpan struct {
