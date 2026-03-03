@@ -2911,6 +2911,7 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 	clear(g.mapFloorPix)
 	w := g.viewW
 	h := g.viewH
+	viewWB := g.screenWorldBBox()
 	pix := g.mapFloorPix
 	stats := floorFrameStats{}
 
@@ -2922,15 +2923,22 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 		if len(set.rings) == 0 {
 			continue
 		}
+		// Coarse world-space cull before any per-vertex projection.
+		if set.bbox.maxX < viewWB.minX || set.bbox.minX > viewWB.maxX || set.bbox.maxY < viewWB.minY || set.bbox.minY > viewWB.maxY {
+			continue
+		}
 
 		tex, texOK := g.flatRGBA(g.m.Sectors[sec].FloorPic)
+		screenRings := make([][]screenPt, 0, len(set.rings))
 		minSX := math.Inf(1)
 		minSY := math.Inf(1)
 		maxSX := math.Inf(-1)
 		maxSY := math.Inf(-1)
 		for _, ring := range set.rings {
+			sring := make([]screenPt, 0, len(ring))
 			for _, p := range ring {
 				sx, sy := g.worldToScreen(p.x, p.y)
+				sring = append(sring, screenPt{x: sx, y: sy})
 				if sx < minSX {
 					minSX = sx
 				}
@@ -2944,8 +2952,11 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 					maxSY = sy
 				}
 			}
+			if len(sring) >= 3 {
+				screenRings = append(screenRings, sring)
+			}
 		}
-		if !isFinite(minSX) || !isFinite(minSY) || !isFinite(maxSX) || !isFinite(maxSY) {
+		if len(screenRings) == 0 || !isFinite(minSX) || !isFinite(minSY) || !isFinite(maxSX) || !isFinite(maxSY) {
 			continue
 		}
 		x0 := max(0, int(math.Floor(minSX)))
@@ -2956,42 +2967,88 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 			continue
 		}
 
+		xHits := make([]float64, 0, 64)
 		for py := y0; py <= y1; py++ {
+			xHits = xHits[:0]
 			row := py * w * 4
 			fy := float64(py) + 0.5
-			for px := x0; px <= x1; px++ {
-				fx := float64(px) + 0.5
-				wx, wy := g.screenToWorld(fx, fy)
-				if !pointInRingsEvenOdd(wx, wy, set.rings) {
-					continue
-				}
-				i := row + px*4
-				if texOK {
-					u := int(math.Floor(wx)) & 63
-					v := int(math.Floor(wy)) & 63
-					ti := (v*64 + u) * 4
-					pix[i+0] = tex[ti+0]
-					pix[i+1] = tex[ti+1]
-					pix[i+2] = tex[ti+2]
-					pix[i+3] = 255
-					stats.markedCols++
-				} else {
-					pix[i+0] = wallFloorChange.R
-					pix[i+1] = wallFloorChange.G
-					pix[i+2] = wallFloorChange.B
-					pix[i+3] = 255
-					stats.rejectedSpan++
-					stats.rejectNoSector++
+			for _, ring := range screenRings {
+				for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
+					a := ring[j]
+					b := ring[i]
+					if (a.y > fy) == (b.y > fy) {
+						continue
+					}
+					x := a.x + (fy-a.y)*(b.x-a.x)/(b.y-a.y)
+					xHits = append(xHits, x)
 				}
 			}
+			if len(xHits) < 2 {
+				continue
+			}
+			sort.Float64s(xHits)
+			rowWX0, rowWY0 := g.screenToWorld(0.5, fy)
+			rowWX1, rowWY1 := g.screenToWorld(1.5, fy)
+			stepWX := rowWX1 - rowWX0
+			stepWY := rowWY1 - rowWY0
+			for i := 0; i+1 < len(xHits); i += 2 {
+				// Fill pixels whose centers lie in [xA, xB) for even-odd winding.
+				start := int(math.Ceil(xHits[i] - 0.5))
+				end := int(math.Ceil(xHits[i+1]-0.5) - 1)
+				if start < x0 {
+					start = x0
+				}
+				if end > x1 {
+					end = x1
+				}
+				if start > end {
+					continue
+				}
+				wx := rowWX0 + float64(start)*stepWX
+				wy := rowWY0 + float64(start)*stepWY
+				for px := start; px <= end; px++ {
+					iPix := row + px*4
+					if texOK {
+						u := int(math.Floor(wx)) & 63
+						v := int(math.Floor(wy)) & 63
+						ti := (v*64 + u) * 4
+						pix[iPix+0] = tex[ti+0]
+						pix[iPix+1] = tex[ti+1]
+						pix[iPix+2] = tex[ti+2]
+						pix[iPix+3] = 255
+						stats.markedCols++
+					} else {
+						pix[iPix+0] = wallFloorChange.R
+						pix[iPix+1] = wallFloorChange.G
+						pix[iPix+2] = wallFloorChange.B
+						pix[iPix+3] = 255
+						stats.rejectedSpan++
+						stats.rejectNoSector++
+					}
+					wx += stepWX
+					wy += stepWY
+				}
+				stats.emittedSpans++
+			}
 		}
-		stats.emittedSpans++
 	}
 
 	g.mapFloorLayer.WritePixels(pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 	g.mapFloorWorldState = "live-screen"
 	g.floorFrame = stats
+}
+
+func (g *game) screenWorldBBox() worldBBox {
+	x0, y0 := g.screenToWorld(0, 0)
+	x1, y1 := g.screenToWorld(float64(g.viewW), 0)
+	x2, y2 := g.screenToWorld(float64(g.viewW), float64(g.viewH))
+	x3, y3 := g.screenToWorld(0, float64(g.viewH))
+	minX := math.Min(math.Min(x0, x1), math.Min(x2, x3))
+	minY := math.Min(math.Min(y0, y1), math.Min(y2, y3))
+	maxX := math.Max(math.Max(x0, x1), math.Max(x2, x3))
+	maxY := math.Max(math.Max(y0, y1), math.Max(y2, y3))
+	return worldBBox{minX: minX, minY: minY, maxX: maxX, maxY: maxY}
 }
 
 func (g *game) ensureMapFloorWorldLayerBuilt() bool {

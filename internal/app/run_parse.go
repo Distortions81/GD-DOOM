@@ -28,8 +28,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMap := ""
 	defaultDetails := false
 	defaultRender := true
-	defaultWidth := 1280
-	defaultHeight := 800
+	defaultWidth := 2560
+	defaultHeight := 1440
 	defaultZoom := 0.0
 	defaultPlayer := 1
 	defaultSkill := 3
