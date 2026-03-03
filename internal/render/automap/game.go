@@ -59,6 +59,7 @@ type game struct {
 	fitZoom float64
 
 	mode       viewMode
+	walkRender walkRendererMode
 	followMode bool
 	rotateView bool
 	showHelp   bool
@@ -163,6 +164,13 @@ type automapParityState struct {
 	iddt   int
 }
 
+type walkRendererMode int
+
+const (
+	walkRendererDoomBasic walkRendererMode = iota
+	walkRendererPseudo
+)
+
 func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.Width <= 0 {
 		opts.Width = 1280
@@ -186,9 +194,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		viewW:      opts.Width,
 		viewH:      opts.Height,
 		mode:       viewMap,
+		walkRender: walkRendererDoomBasic,
 		followMode: true,
 		rotateView: opts.SourcePortMode,
-		pseudo3D:   opts.SourcePortMode,
+		pseudo3D:   false,
 		parity: automapParityState{
 			reveal: revealNormal,
 			iddt:   0,
@@ -296,8 +305,10 @@ func (g *game) Update() error {
 	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.pseudo3D = !g.pseudo3D
 		if g.pseudo3D {
+			g.walkRender = walkRendererPseudo
 			g.setHUDMessage("Pseudo3D ON", 70)
 		} else {
+			g.walkRender = walkRendererDoomBasic
 			g.setHUDMessage("Pseudo3D OFF", 70)
 		}
 	}
@@ -594,14 +605,16 @@ func (g *game) updateZoom() {
 func (g *game) Draw(screen *ebiten.Image) {
 	screen.Fill(bgColor)
 	if g.mode != viewMap {
-		if g.opts.SourcePortMode && g.pseudo3D {
+		if g.walkRender == walkRendererPseudo {
 			g.prepareRenderState()
 			g.drawPseudo3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
-			ebitenutil.DebugPrintAt(screen, "pseudo3d walk mode | P toggle | TAB automap", 12, 28)
+			ebitenutil.DebugPrintAt(screen, "renderer=pseudo3d | P toggle | TAB automap", 12, 28)
 		} else {
-			ebitenutil.DebugPrintAt(screen, "no game render yet", 12, 12)
+			g.prepareRenderState()
+			g.drawDoomBasic3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
+			ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P pseudo3d | TAB automap", 12, 12)
 			ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
 		}
 		if g.isDead {
@@ -1014,6 +1027,167 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
 	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
 	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, true)
+}
+
+func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
+	camX := g.renderPX
+	camY := g.renderPY
+	camAng := angleToRadians(g.renderAngle)
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	focal := float64(g.viewW) * 0.75
+	near := 2.0
+
+	ceilClr, floorClr := g.basicPlaneColors()
+	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceilClr)
+	ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floorClr)
+
+	depthBuf := make([]float64, g.viewW)
+	for i := range depthBuf {
+		depthBuf[i] = math.Inf(1)
+	}
+	for _, li := range g.visibleLineIndicesPseudo3D() {
+		if li < 0 || li >= len(g.m.Linedefs) {
+			continue
+		}
+		pi := g.physForLine[li]
+		if pi < 0 || pi >= len(g.lines) {
+			continue
+		}
+		ld := g.m.Linedefs[li]
+		pl := g.lines[pi]
+		d := g.linedefDecisionPseudo3D(ld)
+		if !d.visible {
+			continue
+		}
+
+		x1 := float64(pl.x1)/fracUnit - camX
+		y1 := float64(pl.y1)/fracUnit - camY
+		x2 := float64(pl.x2)/fracUnit - camX
+		y2 := float64(pl.y2)/fracUnit - camY
+		f1 := x1*ca + y1*sa
+		s1 := -x1*sa + y1*ca
+		f2 := x2*ca + y2*sa
+		s2 := -x2*sa + y2*ca
+		if f1 <= near && f2 <= near {
+			continue
+		}
+
+		if f1 <= near || f2 <= near {
+			t := (near - f1) / (f2 - f1)
+			if f1 < near {
+				f1 = near
+				s1 = s1 + (s2-s1)*t
+			} else {
+				f2 = near
+				s2 = s1 + (s2-s1)*t
+			}
+		}
+		if f1 <= near || f2 <= near {
+			continue
+		}
+
+		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
+		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
+		if (sx1 < 0 && sx2 < 0) || (sx1 >= float64(g.viewW) && sx2 >= float64(g.viewW)) {
+			continue
+		}
+
+		base, _ := g.decisionStyle(d)
+		baseRGBA := color.RGBAModel.Convert(base).(color.RGBA)
+		front, back := g.lineSectors(ld)
+		thisSec, otherSec := front, back
+		if pointOnDivlineSide(g.p.x, g.p.y, divline{x: pl.x1, y: pl.y1, dx: pl.dx, dy: pl.dy}) == 1 {
+			thisSec, otherSec = back, front
+		}
+		if thisSec == nil {
+			thisSec = front
+		}
+		if thisSec == nil {
+			continue
+		}
+		if otherSec == nil {
+			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, float64(thisSec.CeilingHeight), float64(thisSec.FloorHeight), eyeZ, focal, baseRGBA)
+			continue
+		}
+		openTop := math.Min(float64(thisSec.CeilingHeight), float64(otherSec.CeilingHeight))
+		openBottom := math.Max(float64(thisSec.FloorHeight), float64(otherSec.FloorHeight))
+		if float64(thisSec.CeilingHeight) > openTop {
+			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, float64(thisSec.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
+		}
+		if float64(thisSec.FloorHeight) < openBottom {
+			g.drawBasicWallColumnRange(screen, depthBuf, sx1, sx2, f1, f2, openBottom, float64(thisSec.FloorHeight), eyeZ, focal, baseRGBA)
+		}
+	}
+}
+
+func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthBuf []float64, sx1, sx2, f1, f2, zTop, zBot, eyeZ, focal float64, base color.RGBA) {
+	if zTop <= zBot {
+		return
+	}
+	if math.Abs(sx2-sx1) < 0.001 {
+		return
+	}
+	minX := int(math.Max(0, math.Floor(math.Min(sx1, sx2))))
+	maxX := int(math.Min(float64(g.viewW-1), math.Ceil(math.Max(sx1, sx2))))
+	if minX > maxX {
+		return
+	}
+	for x := minX; x <= maxX; x++ {
+		t := (float64(x) - sx1) / (sx2 - sx1)
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		f := f1 + (f2-f1)*t
+		if f <= 0 || f >= depthBuf[x] {
+			continue
+		}
+		yt := float64(g.viewH)/2 - ((zTop-eyeZ)/f)*focal
+		yb := float64(g.viewH)/2 - ((zBot-eyeZ)/f)*focal
+		if yb <= yt {
+			continue
+		}
+		y0 := int(math.Max(0, math.Ceil(yt)))
+		y1 := int(math.Min(float64(g.viewH-1), math.Floor(yb)))
+		if y0 > y1 {
+			continue
+		}
+		clr := shadeByDistance(base, f)
+		ebitenutil.DrawRect(screen, float64(x), float64(y0), 1, float64(y1-y0+1), clr)
+		depthBuf[x] = f
+	}
+}
+
+func (g *game) basicPlaneColors() (color.RGBA, color.RGBA) {
+	sec := g.sectorAt(g.p.x, g.p.y)
+	if sec < 0 || sec >= len(g.m.Sectors) {
+		return color.RGBA{R: 24, G: 24, B: 30, A: 255}, color.RGBA{R: 28, G: 22, B: 18, A: 255}
+	}
+	s := g.m.Sectors[sec]
+	ceilBase := uint8(36 + (int(s.CeilingHeight) & 31))
+	floorBase := uint8(28 + (int(s.FloorHeight) & 31))
+	return color.RGBA{R: ceilBase, G: ceilBase, B: ceilBase + 8, A: 255}, color.RGBA{R: floorBase + 10, G: floorBase + 4, B: floorBase, A: 255}
+}
+
+func shadeByDistance(c color.RGBA, dist float64) color.RGBA {
+	n := dist / 1200.0
+	if n < 0 {
+		n = 0
+	}
+	if n > 1 {
+		n = 1
+	}
+	f := 1.0 - 0.72*n
+	return color.RGBA{
+		R: uint8(float64(c.R) * f),
+		G: uint8(float64(c.G) * f),
+		B: uint8(float64(c.B) * f),
+		A: c.A,
+	}
 }
 
 func (g *game) drawPseudo3D(screen *ebiten.Image) {
@@ -1605,7 +1779,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		lines = append(lines,
 			"SOURCEPORT EXTRAS",
 			"R  ROTATE/FOLLOW HEADING",
-			"P  TOGGLE PSEUDO3D WALK VIEW",
+			"P  TOGGLE WALK RENDERER",
 			"B  BIG MAP (ALIAS)",
 			"O  TOGGLE NORMAL/ALLMAP",
 			"I  CYCLE IDDT",

@@ -75,7 +75,7 @@ In sourceport mode, thing legend overlay is enabled by default; press `V` to tog
 In sourceport mode, the current `use` target line is highlighted on automap.
 In sourceport mode, use-trigger button/switch lines are drawn in a distinct overlay color.
 In sourceport mode, legend panel includes map line-color meanings.
-In sourceport mode, walk view defaults to pseudo-3D wireframe; press `P` to toggle.
+In sourceport mode, walk view defaults to `doom-basic` untextured wall rendering; press `P` to toggle pseudo-3D.
 
 Config notes:
 - `config.toml` is auto-read by default when present.

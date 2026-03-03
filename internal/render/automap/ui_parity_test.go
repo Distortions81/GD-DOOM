@@ -57,8 +57,11 @@ func TestSourcePortDefaultsEnableLegend(t *testing.T) {
 	if !g.showLegend {
 		t.Fatal("sourceport default should enable legend")
 	}
-	if !g.pseudo3D {
-		t.Fatal("sourceport default should enable pseudo3d walk view")
+	if g.pseudo3D {
+		t.Fatal("sourceport default should keep pseudo3d off")
+	}
+	if g.walkRender != walkRendererDoomBasic {
+		t.Fatal("sourceport default should use doom-basic walk renderer")
 	}
 }
 
