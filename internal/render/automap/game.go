@@ -1592,6 +1592,7 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	for i := range g.mapFloorPix {
 		g.mapFloorPix[i] = 0
 	}
+	insideMask := make([]bool, g.viewW*g.viewH)
 	for ss := range g.m.SubSectors {
 		poly, cx, cy, bbox, ok := g.subSectorScreenPolygon(ss)
 		if !ok {
@@ -1614,11 +1615,13 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 				if !pointInPolygon(float64(x)+0.5, float64(y)+0.5, poly) {
 					continue
 				}
+				pi := y*g.viewW + x
+				insideMask[pi] = true
 				wx, wy := g.screenToWorld(float64(x)+0.5, float64(y)+0.5)
 				tx := (int(math.Floor(wx)) & 63)
 				ty := (int(math.Floor(wy)) & 63)
 				si := (ty*64 + tx) * 4
-				di := (y*g.viewW + x) * 4
+				di := pi * 4
 				g.mapFloorPix[di+0] = flat[si+0]
 				g.mapFloorPix[di+1] = flat[si+1]
 				g.mapFloorPix[di+2] = flat[si+2]
@@ -1630,7 +1633,11 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	// sample sector floor directly from world point to avoid visible black holes.
 	for y := 0; y < g.viewH; y++ {
 		for x := 0; x < g.viewW; x++ {
-			di := (y*g.viewW + x) * 4
+			pi := y*g.viewW + x
+			if !insideMask[pi] {
+				continue
+			}
+			di := pi * 4
 			if g.mapFloorPix[di+3] != 0 {
 				continue
 			}
