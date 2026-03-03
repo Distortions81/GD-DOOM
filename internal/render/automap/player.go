@@ -803,7 +803,7 @@ func (g *game) useLines() {
 
 func sortUseIntercepts(intercepts []intercept, lineSpecial []uint16) {
 	const eps = 1e-6
-	sort.Slice(intercepts, func(i, j int) bool {
+	sort.SliceStable(intercepts, func(i, j int) bool {
 		di := intercepts[i]
 		dj := intercepts[j]
 		if math.Abs(di.frac-dj.frac) <= eps {
@@ -818,6 +818,8 @@ func sortUseIntercepts(intercepts []intercept, lineSpecial []uint16) {
 			if (si != 0) != (sj != 0) {
 				return si != 0
 			}
+			// Keep tie behavior deterministic for equal-distance hits.
+			return di.line < dj.line
 		}
 		return di.frac < dj.frac
 	})
