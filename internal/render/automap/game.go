@@ -1797,7 +1797,10 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 		}
 		tris, ok := triangulateWorldPolygon(worldVerts)
 		if !ok || len(tris) == 0 {
-			continue
+			tris, ok = triangulateByAngleFan(worldVerts)
+			if !ok || len(tris) == 0 {
+				continue
+			}
 		}
 		for _, tri := range tris {
 			i0, i1, i2 := tri[0], tri[1], tri[2]
@@ -2122,6 +2125,47 @@ func triangulateWorldPolygon(verts []worldPt) ([][3]int, bool) {
 		out = append(out, [3]int{idx[0], idx[1], idx[2]})
 	}
 	return out, len(out) > 0
+}
+
+func triangulateByAngleFan(verts []worldPt) ([][3]int, bool) {
+	n := len(verts)
+	if n < 3 {
+		return nil, false
+	}
+	cx, cy := 0.0, 0.0
+	for _, v := range verts {
+		cx += v.x
+		cy += v.y
+	}
+	cx /= float64(n)
+	cy /= float64(n)
+
+	order := make([]int, n)
+	for i := range order {
+		order[i] = i
+	}
+	sort.Slice(order, func(i, j int) bool {
+		ai := math.Atan2(verts[order[i]].y-cy, verts[order[i]].x-cx)
+		aj := math.Atan2(verts[order[j]].y-cy, verts[order[j]].x-cx)
+		return ai < aj
+	})
+
+	// Reject clearly degenerate results.
+	area2 := 0.0
+	for i := 0; i < n; i++ {
+		a := verts[order[i]]
+		b := verts[order[(i+1)%n]]
+		area2 += a.x*b.y - b.x*a.y
+	}
+	if math.Abs(area2) < 1e-6 {
+		return nil, false
+	}
+
+	tris := make([][3]int, 0, n-2)
+	for i := 1; i+1 < n; i++ {
+		tris = append(tris, [3]int{order[0], order[i], order[i+1]})
+	}
+	return tris, len(tris) > 0
 }
 
 func polygonSimple(verts []worldPt) bool {
