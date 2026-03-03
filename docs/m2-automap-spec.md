@@ -44,3 +44,7 @@ Manual checks:
 - Add line semantics for wall styling (one-sided, secret, height changes).
 - Add PWAD overlay support.
 - Expand toward gameplay systems.
+
+## Follow-On Parity Doc
+- Detailed vanilla parity checklist now lives at `docs/automap-parity-notes.md`.
+- Use it as the implementation source for map discovery rules, cheat/allmap behavior, and control parity.

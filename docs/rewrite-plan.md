@@ -60,3 +60,13 @@ Rewrite this repo into a Go codebase with phased delivery:
 - Milestone 1 details: `docs/m1-parser-spec.md`
 - Milestone 2 details: `docs/m2-automap-spec.md`
 - Milestone 3+ (future): automap styling parity, multi-WAD overlays, gameplay systems.
+
+## Current Tracking Notes
+- Automap parity checklist: `docs/automap-parity-notes.md`
+- Includes vanilla automap visibility/color rules (`ML_MAPPED`, `LINE_NEVERSEE`, `pw_allmap`, `IDDT`) and control parity notes.
+- Also includes sound decode track notes for project-root output flow.
+
+## Next Execution Order
+1. Implement automap line visibility/color parity from `docs/automap-parity-notes.md`.
+2. Add parity validation checks (E1M1 mode checks + focused logic tests).
+3. Implement sound lump inventory and DMX-to-WAV decode flow in CLI.
