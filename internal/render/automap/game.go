@@ -2081,6 +2081,12 @@ func (g *game) segSectors(segIdx int) (*mapdata.Sector, *mapdata.Sector) {
 	backSide := frontSide ^ 1
 	front := g.sectorFromSideNum(ld.SideNum[frontSide])
 	back := g.sectorFromSideNum(ld.SideNum[backSide])
+	// WAD seg direction can point at the missing side on one-sided linedefs.
+	// Treat reversed one-sided segs as solid walls using the existing side.
+	if front == nil && back != nil && (ld.SideNum[0] < 0 || ld.SideNum[1] < 0) {
+		front = back
+		back = nil
+	}
 	return front, back
 }
 
