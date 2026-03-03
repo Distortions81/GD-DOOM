@@ -1,6 +1,7 @@
 package automap
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -48,6 +49,74 @@ func TestTriangulateWorldPolygonWritesDebugImage(t *testing.T) {
 	writeDebugImageSet(t, "triangulation_debug", solid)
 	writeDebugImageSet(t, "triangulation_textured_debug", textured)
 	t.Logf("wrote testdata/triangulation_debug.* and testdata/triangulation_textured_debug.*")
+}
+
+func TestTriangulateWorldPolygonWritesComplexLevelImage(t *testing.T) {
+	solid := image.NewRGBA(image.Rect(0, 0, 512, 320))
+	textured := image.NewRGBA(image.Rect(0, 0, 512, 320))
+	fillRect(solid, solid.Bounds(), color.RGBA{R: 8, G: 8, B: 12, A: 255})
+	fillRect(textured, textured.Bounds(), color.RGBA{R: 8, G: 8, B: 12, A: 255})
+
+	floorRegions := [][]worldPt{
+		rectPoly(20, 20, 492, 120),   // top strip
+		rectPoly(20, 120, 180, 180),  // mid-left
+		rectPoly(240, 120, 300, 180), // mid-center
+		rectPoly(360, 120, 492, 180), // mid-right
+		rectPoly(20, 180, 492, 300),  // bottom strip
+	}
+	for _, poly := range floorRegions {
+		tris, ok := triangulateWorldPolygon(poly)
+		if !ok {
+			t.Fatal("expected floor region triangulation")
+		}
+		for _, tri := range tris {
+			a := poly[tri[0]]
+			b := poly[tri[1]]
+			c := poly[tri[2]]
+			fillTriangleSolid(solid, a, b, c, color.RGBA{R: 70, G: 140, B: 220, A: 255})
+			fillTriangleTextured(textured, a, b, c)
+		}
+	}
+
+	outer := rectPoly(20, 20, 492, 300)
+	for i := 0; i < len(outer); i++ {
+		j := (i + 1) % len(outer)
+		drawLine(solid, outer[i], outer[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+		drawLine(textured, outer[i], outer[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+	}
+
+	pillars := [][]worldPt{
+		rectPoly(180, 120, 240, 180),
+		rectPoly(300, 120, 360, 180),
+		rectPoly(120, 220, 160, 260),
+		rectPoly(340, 220, 380, 260),
+	}
+	for _, p := range pillars {
+		// Pillars are blockers: dark interior + wall outline.
+		pr, ok := triangulateWorldPolygon(p)
+		if !ok {
+			t.Fatal("expected pillar triangulation")
+		}
+		for _, tri := range pr {
+			a := p[tri[0]]
+			b := p[tri[1]]
+			c := p[tri[2]]
+			fillTriangleSolid(solid, a, b, c, color.RGBA{R: 5, G: 5, B: 7, A: 255})
+			fillTriangleSolid(textured, a, b, c, color.RGBA{R: 5, G: 5, B: 7, A: 255})
+		}
+		for i := 0; i < len(p); i++ {
+			j := (i + 1) % len(p)
+			drawLine(solid, p[i], p[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+			drawLine(textured, p[i], p[j], color.RGBA{R: 255, G: 80, B: 80, A: 255})
+		}
+	}
+
+	if err := os.MkdirAll("testdata", 0o755); err != nil {
+		t.Fatalf("mkdir testdata: %v", err)
+	}
+	writeDebugImageSet(t, "triangulation_complex_debug", solid)
+	writeDebugImageSet(t, "triangulation_complex_textured_debug", textured)
+	t.Logf("wrote testdata/triangulation_complex_debug.* and testdata/triangulation_complex_textured_debug.*")
 }
 
 func extractRGB(img *image.RGBA) []byte {
@@ -165,10 +234,27 @@ func writeDebugImageSet(t *testing.T, base string, img *image.RGBA) {
 		t.Fatalf("write rgb: %v", err)
 	}
 	metaPath := filepath.Join("testdata", base+".rgb.txt")
-	meta := []byte("width=256\nheight=192\nformat=RGB24\nrow_major=true\n")
+	meta := []byte(
+		"width=" + itoa(img.Bounds().Dx()) + "\n" +
+			"height=" + itoa(img.Bounds().Dy()) + "\n" +
+			"format=RGB24\nrow_major=true\n",
+	)
 	if err := os.WriteFile(metaPath, meta, 0o644); err != nil {
 		t.Fatalf("write rgb meta: %v", err)
 	}
+}
+
+func rectPoly(x0, y0, x1, y1 float64) []worldPt {
+	return []worldPt{
+		{x: x0, y: y0},
+		{x: x1, y: y0},
+		{x: x1, y: y1},
+		{x: x0, y: y1},
+	}
+}
+
+func itoa(v int) string {
+	return fmt.Sprintf("%d", v)
 }
 
 func drawLine(img *image.RGBA, a, b worldPt, clr color.RGBA) {
