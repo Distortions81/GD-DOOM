@@ -1066,6 +1066,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	for i := range depthPix {
 		depthPix[i] = math.Inf(1)
 	}
+	solid := make([]solidSpan, 0, 16)
 	for _, si := range g.visibleSegIndicesPseudo3D() {
 		if si < 0 || si >= len(g.m.Segs) {
 			continue
@@ -1112,6 +1113,21 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
 		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
+		minSX := int(math.Floor(math.Min(sx1, sx2)))
+		maxSX := int(math.Ceil(math.Max(sx1, sx2)))
+		if minSX < 0 {
+			minSX = 0
+		}
+		if maxSX >= g.viewW {
+			maxSX = g.viewW - 1
+		}
+		if minSX > maxSX {
+			continue
+		}
+		// Doom-style solid column clipping: skip segs fully covered by prior solid walls.
+		if solidFullyCovered(solid, minSX, maxSX) {
+			continue
+		}
 
 		base, _ := g.decisionStyle(d)
 		baseRGBA := color.RGBAModel.Convert(base).(color.RGBA)
@@ -1121,10 +1137,16 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 		if back == nil {
 			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+			solid = addSolidSpan(solid, minSX, maxSX)
 			continue
 		}
 		openTop := math.Min(float64(front.CeilingHeight), float64(back.CeilingHeight))
 		openBottom := math.Max(float64(front.FloorHeight), float64(back.FloorHeight))
+		if openBottom >= openTop {
+			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+			solid = addSolidSpan(solid, minSX, maxSX)
+			continue
+		}
 		if float64(front.CeilingHeight) > openTop {
 			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, float64(front.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
 		}
@@ -1132,6 +1154,66 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.drawBasicWallColumnRange(screen, depthPix, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
 	}
+}
+
+type solidSpan struct {
+	l int
+	r int
+}
+
+func solidFullyCovered(spans []solidSpan, l, r int) bool {
+	if l > r {
+		return true
+	}
+	cur := l
+	for _, s := range spans {
+		if s.r < cur {
+			continue
+		}
+		if s.l > cur {
+			return false
+		}
+		if s.r+1 > cur {
+			cur = s.r + 1
+		}
+		if cur > r {
+			return true
+		}
+	}
+	return false
+}
+
+func addSolidSpan(spans []solidSpan, l, r int) []solidSpan {
+	if l > r {
+		return spans
+	}
+	ns := solidSpan{l: l, r: r}
+	out := make([]solidSpan, 0, len(spans)+1)
+	inserted := false
+	for _, s := range spans {
+		if s.r+1 < ns.l {
+			out = append(out, s)
+			continue
+		}
+		if ns.r+1 < s.l {
+			if !inserted {
+				out = append(out, ns)
+				inserted = true
+			}
+			out = append(out, s)
+			continue
+		}
+		if s.l < ns.l {
+			ns.l = s.l
+		}
+		if s.r > ns.r {
+			ns.r = s.r
+		}
+	}
+	if !inserted {
+		out = append(out, ns)
+	}
+	return out
 }
 
 func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthPix []float64, sx1, sx2, f1, f2, zTop, zBot, eyeZ, focal float64, base color.RGBA) {

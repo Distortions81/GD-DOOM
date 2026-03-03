@@ -47,9 +47,9 @@ func (g *game) traverseBSPSegs(child uint16, px, py int64) {
 	side := pointOnDivlineSide(px, py, dl)
 	front := n.ChildID[side]
 	back := n.ChildID[side^1]
-	// Painter order for pseudo-3D: draw farther subsectors first, then nearer ones.
-	g.traverseBSPSegs(back, px, py)
+	// Doom visibility order: traverse nearer BSP side first.
 	g.traverseBSPSegs(front, px, py)
+	g.traverseBSPSegs(back, px, py)
 }
 
 func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) lineDecision {
