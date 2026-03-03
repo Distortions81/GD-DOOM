@@ -12,6 +12,7 @@ type playerInventory struct {
 	YellowKey   bool
 	Backpack    bool
 	RadSuitTics int
+	ReadyWeapon weaponID
 	Weapons     map[int16]bool
 }
 
@@ -26,6 +27,7 @@ type playerStats struct {
 
 func (g *game) initPlayerState() {
 	g.inventory = playerInventory{
+		ReadyWeapon: weaponPistol,
 		Weapons: map[int16]bool{
 			2002: false, // chaingun
 			2001: false, // shotgun
@@ -243,20 +245,26 @@ func (g *game) applyPickup(typ int16) (string, soundEvent, bool) {
 		switch typ {
 		case 2001:
 			g.gainAmmoNoMsg("shells", 8)
+			g.inventory.ReadyWeapon = weaponShotgun
 			return "Picked up a shotgun", soundEventWeaponUp, true
 		case 2002:
 			g.gainAmmoNoMsg("bullets", 20)
+			g.inventory.ReadyWeapon = weaponChaingun
 			return "Picked up a chaingun", soundEventWeaponUp, true
 		case 2003:
 			g.gainAmmoNoMsg("rockets", 2)
+			g.inventory.ReadyWeapon = weaponRocketLauncher
 			return "Picked up a rocket launcher", soundEventWeaponUp, true
 		case 2004:
 			g.gainAmmoNoMsg("cells", 40)
+			g.inventory.ReadyWeapon = weaponPlasma
 			return "Picked up a plasma rifle", soundEventWeaponUp, true
 		case 2005:
+			g.inventory.ReadyWeapon = weaponChainsaw
 			return "Picked up a chainsaw", soundEventWeaponUp, true
 		case 2006:
 			g.gainAmmoNoMsg("cells", 40)
+			g.inventory.ReadyWeapon = weaponBFG
 			return "Picked up a BFG9000", soundEventWeaponUp, true
 		}
 	}

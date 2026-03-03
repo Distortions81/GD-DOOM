@@ -60,6 +60,11 @@ func (g *game) tickMonsters() {
 
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	meleeOnly := isMeleeOnlyMonster(typ)
+	var sx, sy int64
+	if i >= 0 && g.m != nil && i < len(g.m.Things) {
+		sx = int64(g.m.Things[i].X) << fracBits
+		sy = int64(g.m.Things[i].Y) << fracBits
+	}
 	if dist <= monsterMeleeRange {
 		damage := monsterMeleeDamage(typ)
 		if damage > 0 {
@@ -73,6 +78,16 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if !shouldAttemptRangedAttack(typ, dist) {
 		return false
 	}
+	if typ == 3004 {
+		// Zombieman: single bullet with Doom-style spread and chance to miss.
+		g.monsterHitscanAttack(sx, sy, 1)
+		return true
+	}
+	if typ == 9 {
+		// Sergeant: 3 pellets.
+		g.monsterHitscanAttack(sx, sy, 3)
+		return true
+	}
 	if usesMonsterProjectile(typ) {
 		if g.spawnMonsterProjectile(i, typ) {
 			return true
@@ -85,6 +100,39 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	}
 	g.damagePlayer(damage, "Monster shot you")
 	return true
+}
+
+func (g *game) monsterHitscanAttack(sx, sy int64, pellets int) {
+	if pellets <= 0 {
+		return
+	}
+	base := math.Atan2(float64(g.p.y-sy), float64(g.p.x-sx))
+	total := 0
+	for i := 0; i < pellets; i++ {
+		off := float64((doomPRandomN(256)-doomPRandomN(256))<<20) * (2 * math.Pi / 4294967296.0)
+		ang := base + off
+		if !g.monsterBulletCanHitPlayer(sx, sy, ang, monsterAttackRange) {
+			continue
+		}
+		total += 3 * (1 + doomPRandomN(5))
+	}
+	if total > 0 {
+		g.damagePlayer(total, "Monster shot you")
+	}
+}
+
+func (g *game) monsterBulletCanHitPlayer(sx, sy int64, ang float64, rng int64) bool {
+	if !g.monsterHasLOS(sx, sy, g.p.x, g.p.y) {
+		return false
+	}
+	dx := float64(g.p.x - sx)
+	dy := float64(g.p.y - sy)
+	fwd := dx*math.Cos(ang) + dy*math.Sin(ang)
+	if fwd <= 0 || fwd > float64(rng) {
+		return false
+	}
+	perp := math.Abs(dx*math.Sin(ang) - dy*math.Cos(ang))
+	return perp <= float64(playerRadius)
 }
 
 func shouldAttemptRangedAttack(typ int16, dist int64) bool {

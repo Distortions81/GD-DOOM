@@ -332,6 +332,7 @@ func (g *game) requestLevelRestart() {
 
 func (g *game) updateMapMode() {
 	g.updateParityControls()
+	g.updateWeaponHotkeys()
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		g.followMode = !g.followMode
 		if g.followMode {
@@ -426,6 +427,7 @@ func (g *game) updateMapMode() {
 
 func (g *game) updateWalkMode() {
 	g.updateParityControls()
+	g.updateWeaponHotkeys()
 	g.updateZoom()
 	cmd := moveCmd{}
 	speed := 0
@@ -480,6 +482,30 @@ func (g *game) updateWalkMode() {
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
+}
+
+func (g *game) updateWeaponHotkeys() {
+	if inpututil.IsKeyJustPressed(ebiten.Key1) {
+		g.selectWeaponSlot(1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key2) {
+		g.selectWeaponSlot(2)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key3) {
+		g.selectWeaponSlot(3)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key4) {
+		g.selectWeaponSlot(4)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key5) {
+		g.selectWeaponSlot(5)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key6) {
+		g.selectWeaponSlot(6)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key7) {
+		g.selectWeaponSlot(7)
+	}
 }
 
 func (g *game) updateParityControls() {
@@ -625,7 +651,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.opts.LineColorMode,
 		)
 		ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
-		stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s",
+		stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s wp=%s",
 			g.stats.Health,
 			g.stats.Armor,
 			g.stats.Bullets,
@@ -633,6 +659,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.stats.Rockets,
 			g.stats.Cells,
 			g.inventory.keySummary(),
+			weaponName(g.inventory.ReadyWeapon),
 		)
 		ebitenutil.DebugPrintAt(screen, stats, 12, 28)
 		if g.showLegend {
