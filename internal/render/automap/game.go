@@ -1369,13 +1369,77 @@ func shadeByDistance(c color.RGBA, dist float64) color.RGBA {
 }
 
 func (g *game) drawPseudo3D(screen *ebiten.Image) {
-	// Reuse the occluded wall/plane pass so pseudo mode cannot see through walls.
-	g.drawDoomBasic3D(screen)
+	ceiling := color.RGBA{R: 20, G: 24, B: 36, A: 255}
+	floor := color.RGBA{R: 24, G: 18, B: 14, A: 255}
+	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceiling)
+	ebitenutil.DrawRect(screen, 0, float64(g.viewH)/2, float64(g.viewW), float64(g.viewH)/2, floor)
+
 	camX := g.renderPX
 	camY := g.renderPY
 	camAng := angleToRadians(g.renderAngle)
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
 	focal := float64(g.viewW) * 0.75
 	near := 2.0
+
+	for _, si := range g.visibleSegIndicesPseudo3D() {
+		if si < 0 || si >= len(g.m.Segs) {
+			continue
+		}
+		seg := g.m.Segs[si]
+		li := int(seg.Linedef)
+		if li < 0 || li >= len(g.m.Linedefs) {
+			continue
+		}
+		ld := g.m.Linedefs[li]
+		d := g.linedefDecisionPseudo3D(ld)
+		if !d.visible {
+			continue
+		}
+		x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
+		if !ok {
+			continue
+		}
+
+		x1 := x1w - camX
+		y1 := y1w - camY
+		x2 := x2w - camX
+		y2 := y2w - camY
+
+		f1 := x1*ca + y1*sa
+		s1 := -x1*sa + y1*ca
+		f2 := x2*ca + y2*sa
+		s2 := -x2*sa + y2*ca
+		f1, s1, f2, s2, ok = clipSegmentToNear(f1, s1, f2, s2, near)
+		if !ok {
+			continue
+		}
+
+		fsec, bsec := g.segSectors(si)
+		if fsec == nil {
+			continue
+		}
+		topZ := float64(fsec.CeilingHeight)
+		botZ := float64(fsec.FloorHeight)
+		if bsec != nil {
+			topZ = math.Max(topZ, float64(bsec.CeilingHeight))
+			botZ = math.Min(botZ, float64(bsec.FloorHeight))
+		}
+
+		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
+		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
+		yt1 := float64(g.viewH)/2 - ((topZ-eyeZ)/f1)*focal
+		yb1 := float64(g.viewH)/2 - ((botZ-eyeZ)/f1)*focal
+		yt2 := float64(g.viewH)/2 - ((topZ-eyeZ)/f2)*focal
+		yb2 := float64(g.viewH)/2 - ((botZ-eyeZ)/f2)*focal
+
+		c, _ := g.decisionStyle(d)
+		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx2), float32(yt2), 1.4, c, true)
+		vector.StrokeLine(screen, float32(sx1), float32(yb1), float32(sx2), float32(yb2), 1.4, c, true)
+		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx1), float32(yb1), 1.2, c, true)
+		vector.StrokeLine(screen, float32(sx2), float32(yt2), float32(sx2), float32(yb2), 1.2, c, true)
+	}
 	g.drawPseudo3DProjectiles(screen, camX, camY, camAng, focal, near)
 	g.drawPseudo3DMonsters(screen, camX, camY, camAng, focal, near)
 }
