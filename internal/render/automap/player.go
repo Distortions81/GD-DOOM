@@ -822,12 +822,19 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 	activated := g.activateDoorLine(lineIdx, info)
 	if activated {
 		g.useText = "USE: door active"
-		g.emitSoundEvent(soundEventSwitchOn)
+		if shouldPlaySwitchClick(info) {
+			g.emitSoundEvent(soundEventSwitchOn)
+		}
 	} else {
 		g.useText = "USE: no change"
 		g.emitSoundEvent(soundEventNoWay)
 	}
 	g.useFlash = 35
+}
+
+func shouldPlaySwitchClick(info mapdata.LineSpecialInfo) bool {
+	// Doom-like: use-triggered switch/button specials click; manual doors do not.
+	return info.Trigger == mapdata.TriggerUse && info.Door != nil
 }
 
 func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) bool {
