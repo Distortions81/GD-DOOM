@@ -91,33 +91,33 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			StartInMapMode: *startInMap,
 			SoundBank:      soundBank,
 		}
-		current := selected
-		for {
-			m, lerr := mapdata.LoadMap(wf, current)
-			if lerr != nil {
-				fmt.Fprintf(stderr, "load map %s: %v\n", current, lerr)
-				return 1
-			}
-			res, rerr := automap.RunAutomap(m, opts)
-			if rerr != nil {
-				fmt.Fprintf(stderr, "render map %s: %v\n", current, rerr)
-				return 1
-			}
-			if !res.LevelExited {
-				return 0
-			}
-			next, nerr := mapdata.NextMapName(wf, current, res.SecretExit)
+		m, lerr := mapdata.LoadMap(wf, selected)
+		if lerr != nil {
+			fmt.Fprintf(stderr, "load map %s: %v\n", selected, lerr)
+			return 1
+		}
+		nextMap := func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error) {
+			next, nerr := mapdata.NextMapName(wf, current, secret)
 			if nerr != nil {
-				fmt.Fprintf(stderr, "resolve next map after %s: %v\n", current, nerr)
-				return 1
+				return nil, "", fmt.Errorf("resolve next map after %s: %w", current, nerr)
 			}
 			exitKind := "normal"
-			if res.SecretExit {
+			if secret {
 				exitKind = "secret"
 			}
 			fmt.Fprintf(stderr, "level exit (%s): %s -> %s\n", exitKind, current, next)
-			current = next
+			nm, lerr := mapdata.LoadMap(wf, next)
+			if lerr != nil {
+				return nil, "", fmt.Errorf("load map %s: %w", next, lerr)
+			}
+			return nm, next, nil
 		}
+		rerr := automap.RunAutomap(m, opts, nextMap)
+		if rerr != nil {
+			fmt.Fprintf(stderr, "render map %s: %v\n", selected, rerr)
+			return 1
+		}
+		return 0
 	}
 
 	m, err := mapdata.LoadMap(wf, selected)

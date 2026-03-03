@@ -23,6 +23,7 @@ Snapshot of features currently working in this repo.
 - Non-map placeholder screen (`no game render yet`)
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 - Level exit special handling with automatic next-map loading (normal + secret exits)
+- In-session level transitions (single Ebiten/GLFW session across map changes)
 - Item pickup runtime for keys/health/armor/ammo/backpack/weapons, with inventory + player stat tracking
 - Locked door activation now uses collected key inventory
 - Hazard sector damage (specials `4/5/7/16`) with Doom-style periodic ticks; radiation suit pickup support

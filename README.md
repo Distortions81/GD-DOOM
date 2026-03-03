@@ -41,6 +41,7 @@ By default it starts in automap mode (`-start-in-map=true`), and `TAB` toggles w
 Level progression:
 - Exit linedefs now transition to the next map in-sequence.
 - Secret exits follow Doom targets when present (with WAD-order fallback).
+- Level changes are handled in-session (no GLFW/Ebiten full reboot between maps).
 
 ## Controls (Default Doom Profile)
 
