@@ -28,3 +28,4 @@ Single source of truth for current priorities.
 - Source-port convenience behavior must stay behind `-sourceport-mode`.
 - Detailed parity checklist lives in `docs/automap-parity-notes.md`.
 - 2D floor visplane emulation checklist lives in `docs/floor-visplane-emulation-plan.md`.
+- 3D renderer visplane parity checklist lives in `docs/renderer-3d-visplane-plan.md`.

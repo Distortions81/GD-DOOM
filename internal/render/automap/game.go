@@ -1298,6 +1298,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 	baseFloorZ := float64(g.m.Sectors[playerSec].FloorHeight)
 	baseCeilZ := float64(g.m.Sectors[playerSec].CeilingHeight)
 	flatCache := make(map[string][]byte, 64)
+	spans := make([]plane3DSpan, 0, g.viewW*4)
 
 	for y := 0; y < h; y++ {
 		den := cy - (float64(y) + 0.5)
@@ -1321,44 +1322,79 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		stepWX := (depth / focal) * sa
 		stepWY := -(depth / focal) * ca
 		row := y * w * 4
+		runStart := -1
+		var runKey plane3DKey
+		flushRun := func(x int) {
+			if runStart >= 0 {
+				spans = appendPlane3DSpan(spans, y, runStart, x-1, runKey)
+				runStart = -1
+			}
+		}
 		for x := 0; x < w; x++ {
 			if isFloor {
 				if x >= 0 && x < len(wallBottom) && y <= wallBottom[x] {
+					flushRun(x)
 					wx += stepWX
 					wy += stepWY
 					continue
 				}
 			} else {
 				if x >= 0 && x < len(wallTop) && y >= wallTop[x] {
+					flushRun(x)
 					wx += stepWX
 					wy += stepWY
 					continue
 				}
 			}
-			i := row + x*4
+			pkey := plane3DKey{fallback: true, floor: isFloor}
 			sec := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				pic := g.m.Sectors[sec].CeilingPic
 				if isFloor {
 					pic = g.m.Sectors[sec].FloorPic
-				} else if isSkyFlatName(pic) {
+				}
+				k := normalizeFlatName(pic)
+				pkey.flat = k
+				pkey.fallback = len(g.opts.FlatBank[k]) != 64*64*4
+				if !isFloor && isSkyFlatName(pic) {
+					pkey.sky = true
+					pkey.fallback = true
+				}
+			}
+			if runStart < 0 {
+				runStart = x
+				runKey = pkey
+			} else if runKey != pkey {
+				flushRun(x)
+				runStart = x
+				runKey = pkey
+			}
+			wx += stepWX
+			wy += stepWY
+		}
+		flushRun(w)
+		// Render spans for this row.
+		for _, sp := range spans {
+			if sp.y != y {
+				continue
+			}
+			tex := flatCache[sp.key.flat]
+			if !sp.key.fallback && tex == nil {
+				tex = g.opts.FlatBank[sp.key.flat]
+				flatCache[sp.key.flat] = tex
+			}
+			wxSpan := camX + depth*ca - ((cx-(float64(sp.x1)+0.5))*depth/focal)*sa
+			wySpan := camY + depth*sa + ((cx-(float64(sp.x1)+0.5))*depth/focal)*ca
+			for x := sp.x1; x <= sp.x2; x++ {
+				i := row + x*4
+				if sp.key.fallback {
 					pix[i+0] = fallback.R
 					pix[i+1] = fallback.G
 					pix[i+2] = fallback.B
 					pix[i+3] = 255
-					wx += stepWX
-					wy += stepWY
-					continue
-				}
-				key := normalizeFlatName(pic)
-				tex := flatCache[key]
-				if tex == nil {
-					tex = g.opts.FlatBank[key]
-					flatCache[key] = tex
-				}
-				if len(tex) == 64*64*4 {
-					u := int(math.Floor(wx)) & 63
-					v := int(math.Floor(wy)) & 63
+				} else if len(tex) == 64*64*4 {
+					u := int(math.Floor(wxSpan)) & 63
+					v := int(math.Floor(wySpan)) & 63
 					ti := (v*64 + u) * 4
 					pix[i+0] = tex[ti+0]
 					pix[i+1] = tex[ti+1]
@@ -1370,15 +1406,12 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 					pix[i+2] = fallback.B
 					pix[i+3] = 255
 				}
-			} else {
-				pix[i+0] = fallback.R
-				pix[i+1] = fallback.G
-				pix[i+2] = fallback.B
-				pix[i+3] = 255
+				wxSpan += stepWX
+				wySpan += stepWY
 			}
-			wx += stepWX
-			wy += stepWY
 		}
+		// Reuse backing array while clearing per-row logical spans.
+		spans = spans[:0]
 	}
 	g.mapFloorLayer.WritePixels(pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
