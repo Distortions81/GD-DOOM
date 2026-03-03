@@ -26,15 +26,37 @@ type soundSystem struct {
 	players []*audio.Player
 }
 
+var (
+	sharedAudioCtx  *audio.Context
+	sharedAudioRate int
+)
+
 func newSoundSystem(bank SoundBank) *soundSystem {
 	rate := firstSampleRate(bank)
 	if rate <= 0 {
 		return nil
 	}
+	ctx := sharedOrNewAudioContext(rate)
+	if ctx == nil {
+		// Keep runtime safe if sample rates differ across maps; no panic, just no sound.
+		return nil
+	}
 	return &soundSystem{
-		ctx:  audio.NewContext(rate),
+		ctx:  ctx,
 		bank: bank,
 	}
+}
+
+func sharedOrNewAudioContext(rate int) *audio.Context {
+	if sharedAudioCtx != nil {
+		if sharedAudioRate == rate {
+			return sharedAudioCtx
+		}
+		return nil
+	}
+	sharedAudioCtx = audio.NewContext(rate)
+	sharedAudioRate = rate
+	return sharedAudioCtx
 }
 
 func firstSampleRate(bank SoundBank) int {
