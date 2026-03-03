@@ -1341,7 +1341,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
 
-	depthPix, wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
+	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
 	planeOrder := g.beginPlane3DFrame(g.viewW)
 	solid := g.beginSolid3DFrame()
@@ -1532,7 +1532,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						useTex = true
 					}
 				}
-				g.drawBasicWallColumn(depthPix, wallTop, wallBottom, x, yl, yh, f, baseRGBA, texU, texMid, focal, tex, useTex)
+				g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, baseRGBA, texU, texMid, focal, tex, useTex)
 				ceilingClip[x] = g.viewH
 				floorClip[x] = -1
 				continue
@@ -1544,7 +1544,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					mid = floorClip[x] - 1
 				}
 				if mid >= yl {
-					g.drawBasicWallColumn(depthPix, wallTop, wallBottom, x, yl, mid, f, baseRGBA, texU, topTexMid, focal, topTex, hasTopTex)
+					g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, baseRGBA, texU, topTexMid, focal, topTex, hasTopTex)
 					ceilingClip[x] = mid
 				} else {
 					ceilingClip[x] = yl - 1
@@ -1559,7 +1559,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					mid = ceilingClip[x] + 1
 				}
 				if mid <= yh {
-					g.drawBasicWallColumn(depthPix, wallTop, wallBottom, x, mid, yh, f, baseRGBA, texU, botTexMid, focal, botTex, hasBotTex)
+					g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, baseRGBA, texU, botTexMid, focal, botTex, hasBotTex)
 					floorClip[x] = mid
 				} else {
 					floorClip[x] = yh + 1
@@ -1633,7 +1633,7 @@ func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
 	return key
 }
 
-func (g *game) drawBasicWallColumn(depthPix []float64, wallTop, wallBottom []int, x, y0, y1 int, depth float64, base color.RGBA, texU, texMid, focal float64, tex WallTexture, useTex bool) {
+func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, depth float64, base color.RGBA, texU, texMid, focal float64, tex WallTexture, useTex bool) {
 	if x < 0 || x >= g.viewW || y0 > y1 {
 		return
 	}
@@ -1646,6 +1646,12 @@ func (g *game) drawBasicWallColumn(depthPix []float64, wallTop, wallBottom []int
 	if y0 > y1 {
 		return
 	}
+	if y0 < wallTop[x] {
+		wallTop[x] = y0
+	}
+	if y1 > wallBottom[x] {
+		wallBottom[x] = y1
+	}
 	sf := shadeFactorByDistance(depth)
 	shadeMul := int(sf * 256.0)
 	if shadeMul < 0 {
@@ -1655,7 +1661,7 @@ func (g *game) drawBasicWallColumn(depthPix []float64, wallTop, wallBottom []int
 		shadeMul = 256
 	}
 	if useTex {
-		g.drawBasicWallColumnTextured(depthPix, wallTop, wallBottom, x, y0, y1, depth, texU, texMid, focal, tex, shadeMul)
+		g.drawBasicWallColumnTextured(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul)
 		return
 	}
 	rowStridePix := g.viewW
@@ -1673,25 +1679,16 @@ func (g *game) drawBasicWallColumn(depthPix []float64, wallTop, wallBottom []int
 		baseB = shade[base.B]
 	}
 	for y := y0; y <= y1; y++ {
-		if depth < depthPix[pi] {
-			depthPix[pi] = depth
-			if y < wallTop[x] {
-				wallTop[x] = y
-			}
-			if y > wallBottom[x] {
-				wallBottom[x] = y
-			}
-			g.wallPix[rgbaI+0] = baseR
-			g.wallPix[rgbaI+1] = baseG
-			g.wallPix[rgbaI+2] = baseB
-			g.wallPix[rgbaI+3] = 255
-		}
+		g.wallPix[rgbaI+0] = baseR
+		g.wallPix[rgbaI+1] = baseG
+		g.wallPix[rgbaI+2] = baseB
+		g.wallPix[rgbaI+3] = 255
 		pi += rowStridePix
 		rgbaI += rowStrideRGBA
 	}
 }
 
-func (g *game) drawBasicWallColumnTextured(depthPix []float64, wallTop, wallBottom []int, x, y0, y1 int, depth, texU, texMid, focal float64, tex WallTexture, shadeMul int) {
+func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, focal float64, tex WallTexture, shadeMul int) {
 	rowStridePix := g.viewW
 	rowStrideRGBA := g.viewW * 4
 	pi := y0*rowStridePix + x
@@ -1713,21 +1710,12 @@ func (g *game) drawBasicWallColumnTextured(depthPix []float64, wallTop, wallBott
 	if shadeMul == 256 {
 		if pow2H {
 			for y := y0; y <= y1; y++ {
-				if depth < depthPix[pi] {
-					depthPix[pi] = depth
-					if y < wallTop[x] {
-						wallTop[x] = y
-					}
-					if y > wallBottom[x] {
-						wallBottom[x] = y
-					}
-					ty := (texVFixed >> 16) & hmask
-					ti := (ty*tex.Width + tx) * 4
-					g.wallPix[rgbaI+0] = tex.RGBA[ti+0]
-					g.wallPix[rgbaI+1] = tex.RGBA[ti+1]
-					g.wallPix[rgbaI+2] = tex.RGBA[ti+2]
-					g.wallPix[rgbaI+3] = 255
-				}
+				ty := (texVFixed >> 16) & hmask
+				ti := (ty*tex.Width + tx) * 4
+				g.wallPix[rgbaI+0] = tex.RGBA[ti+0]
+				g.wallPix[rgbaI+1] = tex.RGBA[ti+1]
+				g.wallPix[rgbaI+2] = tex.RGBA[ti+2]
+				g.wallPix[rgbaI+3] = 255
 				pi += rowStridePix
 				rgbaI += rowStrideRGBA
 				texVFixed += texVStepFixed
@@ -1735,21 +1723,12 @@ func (g *game) drawBasicWallColumnTextured(depthPix []float64, wallTop, wallBott
 			return
 		}
 		for y := y0; y <= y1; y++ {
-			if depth < depthPix[pi] {
-				depthPix[pi] = depth
-				if y < wallTop[x] {
-					wallTop[x] = y
-				}
-				if y > wallBottom[x] {
-					wallBottom[x] = y
-				}
-				ty := wrapIndex(texVFixed>>16, tex.Height)
-				ti := (ty*tex.Width + tx) * 4
-				g.wallPix[rgbaI+0] = tex.RGBA[ti+0]
-				g.wallPix[rgbaI+1] = tex.RGBA[ti+1]
-				g.wallPix[rgbaI+2] = tex.RGBA[ti+2]
-				g.wallPix[rgbaI+3] = 255
-			}
+			ty := wrapIndex(texVFixed>>16, tex.Height)
+			ti := (ty*tex.Width + tx) * 4
+			g.wallPix[rgbaI+0] = tex.RGBA[ti+0]
+			g.wallPix[rgbaI+1] = tex.RGBA[ti+1]
+			g.wallPix[rgbaI+2] = tex.RGBA[ti+2]
+			g.wallPix[rgbaI+3] = 255
 			pi += rowStridePix
 			rgbaI += rowStrideRGBA
 			texVFixed += texVStepFixed
@@ -1760,21 +1739,12 @@ func (g *game) drawBasicWallColumnTextured(depthPix []float64, wallTop, wallBott
 	shade := &wallShadeLUT[shadeMul]
 	if pow2H {
 		for y := y0; y <= y1; y++ {
-			if depth < depthPix[pi] {
-				depthPix[pi] = depth
-				if y < wallTop[x] {
-					wallTop[x] = y
-				}
-				if y > wallBottom[x] {
-					wallBottom[x] = y
-				}
-				ty := (texVFixed >> 16) & hmask
-				ti := (ty*tex.Width + tx) * 4
-				g.wallPix[rgbaI+0] = shade[tex.RGBA[ti+0]]
-				g.wallPix[rgbaI+1] = shade[tex.RGBA[ti+1]]
-				g.wallPix[rgbaI+2] = shade[tex.RGBA[ti+2]]
-				g.wallPix[rgbaI+3] = 255
-			}
+			ty := (texVFixed >> 16) & hmask
+			ti := (ty*tex.Width + tx) * 4
+			g.wallPix[rgbaI+0] = shade[tex.RGBA[ti+0]]
+			g.wallPix[rgbaI+1] = shade[tex.RGBA[ti+1]]
+			g.wallPix[rgbaI+2] = shade[tex.RGBA[ti+2]]
+			g.wallPix[rgbaI+3] = 255
 			pi += rowStridePix
 			rgbaI += rowStrideRGBA
 			texVFixed += texVStepFixed
@@ -1782,21 +1752,12 @@ func (g *game) drawBasicWallColumnTextured(depthPix []float64, wallTop, wallBott
 		return
 	}
 	for y := y0; y <= y1; y++ {
-		if depth < depthPix[pi] {
-			depthPix[pi] = depth
-			if y < wallTop[x] {
-				wallTop[x] = y
-			}
-			if y > wallBottom[x] {
-				wallBottom[x] = y
-			}
-			ty := wrapIndex(texVFixed>>16, tex.Height)
-			ti := (ty*tex.Width + tx) * 4
-			g.wallPix[rgbaI+0] = shade[tex.RGBA[ti+0]]
-			g.wallPix[rgbaI+1] = shade[tex.RGBA[ti+1]]
-			g.wallPix[rgbaI+2] = shade[tex.RGBA[ti+2]]
-			g.wallPix[rgbaI+3] = 255
-		}
+		ty := wrapIndex(texVFixed>>16, tex.Height)
+		ti := (ty*tex.Width + tx) * 4
+		g.wallPix[rgbaI+0] = shade[tex.RGBA[ti+0]]
+		g.wallPix[rgbaI+1] = shade[tex.RGBA[ti+1]]
+		g.wallPix[rgbaI+2] = shade[tex.RGBA[ti+2]]
+		g.wallPix[rgbaI+3] = 255
 		pi += rowStridePix
 		rgbaI += rowStrideRGBA
 		texVFixed += texVStepFixed
@@ -3134,7 +3095,7 @@ func (g *game) ensureWallLayer() {
 	}
 }
 
-func (g *game) ensure3DFrameBuffers() ([]float64, []int, []int, []int, []int) {
+func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 	w := g.viewW
 	h := g.viewH
 	if w <= 0 {
@@ -3143,11 +3104,9 @@ func (g *game) ensure3DFrameBuffers() ([]float64, []int, []int, []int, []int) {
 	if h <= 0 {
 		h = 1
 	}
-	needPix := w * h
-	if g.buffers3DW != w || g.buffers3DH != h || len(g.depthPix3D) != needPix ||
+	if g.buffers3DW != w || g.buffers3DH != h ||
 		len(g.wallTop3D) != w || len(g.wallBottom3D) != w ||
 		len(g.ceilingClip3D) != w || len(g.floorClip3D) != w {
-		g.depthPix3D = make([]float64, needPix)
 		g.wallTop3D = make([]int, w)
 		g.wallBottom3D = make([]int, w)
 		g.ceilingClip3D = make([]int, w)
@@ -3155,16 +3114,13 @@ func (g *game) ensure3DFrameBuffers() ([]float64, []int, []int, []int, []int) {
 		g.buffers3DW = w
 		g.buffers3DH = h
 	}
-	for i := 0; i < needPix; i++ {
-		g.depthPix3D[i] = math.Inf(1)
-	}
 	for i := 0; i < w; i++ {
 		g.wallTop3D[i] = h
 		g.wallBottom3D[i] = -1
 		g.ceilingClip3D[i] = -1
 		g.floorClip3D[i] = h
 	}
-	return g.depthPix3D, g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
+	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
 }
 
 func (g *game) beginPlane3DFrame(viewW int) []*plane3DVisplane {
