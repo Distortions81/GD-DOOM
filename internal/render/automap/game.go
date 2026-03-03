@@ -141,6 +141,9 @@ type game struct {
 	whitePixel    *ebiten.Image
 	cullLogBudget int
 	floorDbgMode  floorDebugMode
+	floor2DPath   floor2DPathMode
+	floorVisDiag  floorVisDiagMode
+	floorFrame    floorFrameStats
 }
 
 type savedMapView struct {
@@ -189,6 +192,28 @@ const (
 	floorDebugUV
 )
 
+type floor2DPathMode int
+
+const (
+	floor2DPathLegacy floor2DPathMode = iota
+	floor2DPathVisplane
+)
+
+type floorVisDiagMode int
+
+const (
+	floorVisDiagOff floorVisDiagMode = iota
+	floorVisDiagClip
+	floorVisDiagSpan
+	floorVisDiagBoth
+)
+
+type floorFrameStats struct {
+	markedCols   int
+	emittedSpans int
+	rejectedSpan int
+}
+
 func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.Width <= 0 {
 		opts.Width = 1280
@@ -231,6 +256,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		peerStarts:    nonLocalStarts(starts, localSlot),
 		cullLogBudget: 600,
 		floorDbgMode:  floorDebugTextured,
+		floor2DPath:   floor2DPathLegacy,
+		floorVisDiag:  floorVisDiagOff,
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -609,6 +636,14 @@ func (g *game) updateParityControls() {
 			g.floorDbgMode = (g.floorDbgMode + 1) % 3
 			g.setHUDMessage("2D floor mode: "+g.floorDebugLabel(), 70)
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyU) {
+			g.floor2DPath = (g.floor2DPath + 1) % 2
+			g.setHUDMessage("2D floor path: "+g.floorPathLabel(), 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyY) {
+			g.floorVisDiag = (g.floorVisDiag + 1) % 4
+			g.setHUDMessage("2D floor diag: "+g.floorVisDiagLabel(), 70)
+		}
 	}
 }
 
@@ -723,7 +758,8 @@ func (g *game) Draw(screen *ebiten.Image) {
 		)
 		ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
 		if g.showMapFloors {
-			ebitenutil.DebugPrintAt(screen, "floor2d="+g.floorDebugLabel(), 12, 76)
+			ebitenutil.DebugPrintAt(screen, "floor2d="+g.floorDebugLabel()+" path="+g.floorPathLabel()+" diag="+g.floorVisDiagLabel(), 12, 76)
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("floorstats cols=%d spans=%d reject=%d", g.floorFrame.markedCols, g.floorFrame.emittedSpans, g.floorFrame.rejectedSpan), 12, 92)
 		}
 		stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s wp=%s",
 			g.stats.Health,
@@ -1760,7 +1796,19 @@ func (g *game) ensureMapFloorLayer() {
 	}
 }
 
+// drawMapFloorTextures2D is intentionally split by path mode so we can
+// A/B legacy polygon fill vs. upcoming visplane/span emulation.
 func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
+	g.floorFrame = floorFrameStats{}
+	switch g.floor2DPath {
+	case floor2DPathVisplane:
+		g.drawMapFloorTextures2DVisplane(screen)
+	default:
+		g.drawMapFloorTextures2DLegacy(screen)
+	}
+}
+
+func (g *game) drawMapFloorTextures2DLegacy(screen *ebiten.Image) {
 	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 || len(g.opts.FlatBank) == 0 {
 		return
 	}
@@ -1822,9 +1870,11 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 			continue
 		}
 		// Subsector polygons are convex pieces from BSP: fan triangulation is robust.
+		g.floorFrame.markedCols += len(poly)
 		for i := 1; i+1 < len(poly); i++ {
 			i0, i1, i2 := 0, i, i+1
 			if i2 >= len(poly) {
+				g.floorFrame.rejectedSpan++
 				continue
 			}
 			verts := g.floorDebugTriVertices(worldVerts, poly, i0, i1, i2, flatImg.Bounds().Dx(), flatImg.Bounds().Dy())
@@ -1833,8 +1883,14 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 				src = g.whitePixel
 			}
 			screen.DrawTriangles(verts, []uint16{0, 1, 2}, src, triOpts)
+			g.floorFrame.emittedSpans++
 		}
 	}
+}
+
+func (g *game) drawMapFloorTextures2DVisplane(screen *ebiten.Image) {
+	// Milestone 0 scaffolding: keep output stable while exposing a path toggle.
+	g.drawMapFloorTextures2DLegacy(screen)
 }
 
 func (g *game) subSectorVerticesFromSegList(ss int) ([]worldPt, float64, float64, bool) {
@@ -1990,6 +2046,28 @@ func (g *game) floorDebugLabel() string {
 		return "uv"
 	default:
 		return "textured"
+	}
+}
+
+func (g *game) floorPathLabel() string {
+	switch g.floor2DPath {
+	case floor2DPathVisplane:
+		return "visplane"
+	default:
+		return "legacy"
+	}
+}
+
+func (g *game) floorVisDiagLabel() string {
+	switch g.floorVisDiag {
+	case floorVisDiagClip:
+		return "clip"
+	case floorVisDiagSpan:
+		return "span"
+	case floorVisDiagBoth:
+		return "both"
+	default:
+		return "off"
 	}
 }
 
@@ -2791,6 +2869,9 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 			"L  TOGGLE COLOR MODE",
 			"V  TOGGLE THING LEGEND",
 			"J  TOGGLE 2D FLOOR FLATS",
+			"K  CYCLE FLOOR DEBUG VIEW",
+			"U  TOGGLE FLOOR PATH",
+			"Y  CYCLE FLOOR DIAGNOSTICS",
 			"HOME  RESET VIEW",
 		)
 	} else {
