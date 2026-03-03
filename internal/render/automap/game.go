@@ -1174,6 +1174,8 @@ func (g *game) logWallCull(segIdx int, reason string, z1, z2, x1, x2 float64) {
 }
 
 func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64, float64, bool) {
+	const eps = 1e-6
+	clipNear := near + eps
 	if f1 <= near && f2 <= near {
 		return 0, 0, 0, 0, false
 	}
@@ -1185,14 +1187,14 @@ func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64,
 		if math.Abs(den) < 1e-9 {
 			return 0, 0, 0, 0, false
 		}
-		t := (near - of1) / den
+		t := (clipNear - of1) / den
 		if t < 0 {
 			t = 0
 		}
 		if t > 1 {
 			t = 1
 		}
-		f1 = near
+		f1 = clipNear
 		s1 = os1 + (os2-os1)*t
 	}
 	if of2 < near {
@@ -1200,17 +1202,17 @@ func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64,
 		if math.Abs(den) < 1e-9 {
 			return 0, 0, 0, 0, false
 		}
-		t := (near - of2) / den
+		t := (clipNear - of2) / den
 		if t < 0 {
 			t = 0
 		}
 		if t > 1 {
 			t = 1
 		}
-		f2 = near
+		f2 = clipNear
 		s2 = os2 + (os1-os2)*t
 	}
-	if f1 <= near || f2 <= near {
+	if f1 < near || f2 < near {
 		return 0, 0, 0, 0, false
 	}
 	return f1, s1, f2, s2, true
