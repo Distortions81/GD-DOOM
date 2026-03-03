@@ -27,3 +27,4 @@ Single source of truth for current priorities.
 - Doom profile is the default runtime behavior.
 - Source-port convenience behavior must stay behind `-sourceport-mode`.
 - Detailed parity checklist lives in `docs/automap-parity-notes.md`.
+- 2D floor visplane emulation checklist lives in `docs/floor-visplane-emulation-plan.md`.
