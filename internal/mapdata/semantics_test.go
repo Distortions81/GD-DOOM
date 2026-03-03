@@ -1,0 +1,53 @@
+package mapdata
+
+import "testing"
+
+func TestLookupLineSpecialDoor(t *testing.T) {
+	info := LookupLineSpecial(26)
+	if info.Door == nil {
+		t.Fatal("special 26 should decode as a door")
+	}
+	if info.Door.Key != KeyBlue {
+		t.Fatalf("special 26 key = %q, want %q", info.Door.Key, KeyBlue)
+	}
+	if info.Trigger != TriggerManual {
+		t.Fatalf("special 26 trigger = %q, want %q", info.Trigger, TriggerManual)
+	}
+}
+
+func TestRejectMatrixRejectsBounds(t *testing.T) {
+	r := &RejectMatrix{SectorCount: 2, Data: []byte{0x00}}
+	_, err := r.Rejects(2, 0)
+	if err == nil {
+		t.Fatal("Rejects should fail for out-of-range sectors")
+	}
+}
+
+func TestDoorStatsCountsSectorTimedDoors(t *testing.T) {
+	m := &Map{
+		Linedefs: []Linedef{{Special: 1}, {Special: 26}, {Special: 103}},
+		Sectors:  []Sector{{Special: 10}, {Special: 14}},
+	}
+	stats := m.DoorStats()
+	if stats.Total != 3 {
+		t.Fatalf("stats.Total = %d, want 3", stats.Total)
+	}
+	if stats.TimedCloseIn30 != 1 || stats.TimedRaiseIn5Minute != 1 {
+		t.Fatalf("timed stats mismatch: %+v", stats)
+	}
+}
+
+func TestDoorTargetSectorsManualDoorUsesBackSector(t *testing.T) {
+	m := &Map{
+		Linedefs: []Linedef{{Special: 1, SideNum: [2]int16{0, 1}}},
+		Sidedefs: []Sidedef{{Sector: 0}, {Sector: 2}},
+		Sectors:  []Sector{{}, {}, {}},
+	}
+	targets, err := m.DoorTargetSectors(0)
+	if err != nil {
+		t.Fatalf("DoorTargetSectors() error = %v", err)
+	}
+	if len(targets) != 1 || targets[0] != 2 {
+		t.Fatalf("DoorTargetSectors() = %v, want [2]", targets)
+	}
+}
