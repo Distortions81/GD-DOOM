@@ -2919,6 +2919,15 @@ func (g *game) drawMapFloorTextures2DLegacy(screen *ebiten.Image) {
 			g.floorFrame.rejectNoPoly++
 			continue
 		}
+		bbox := worldBBox{}
+		hasBBox := false
+		if ss < len(g.subSectorBBox) {
+			b := g.subSectorBBox[ss]
+			if isFinite(b.minX) && isFinite(b.minY) && isFinite(b.maxX) && isFinite(b.maxY) && b.minX <= b.maxX && b.minY <= b.maxY {
+				bbox = b
+				hasBBox = true
+			}
+		}
 
 		edges := make([]edge2D, 0, len(verts))
 		minY := g.viewH - 1
@@ -3033,6 +3042,11 @@ func (g *game) drawMapFloorTextures2DLegacy(screen *ebiten.Image) {
 				stepWX := rowStepWX[y]
 				stepWY := rowStepWY[y]
 				for x := x1; x <= x2; x++ {
+					if hasBBox && (wx < bbox.minX || wx > bbox.maxX || wy < bbox.minY || wy > bbox.maxY) {
+						wx += stepWX
+						wy += stepWY
+						continue
+					}
 					idx := row + x*4
 					switch g.floorDbgMode {
 					case floorDebugSolid:
@@ -3765,6 +3779,9 @@ func (g *game) initSubSectorSectorCache() {
 		if sec, ok := g.subSectorSectorIndex(ss); ok {
 			g.subSectorSec[ss] = sec
 		}
+		if b, ok := g.subSectorSegBBox(ss); ok {
+			g.subSectorBBox[ss] = b
+		}
 	}
 
 	// Preferred path: derive exact convex subsector polygons by clipping through
@@ -3777,9 +3794,6 @@ func (g *game) initSubSectorSectorCache() {
 			if verts, ok := g.subSectorWorldPolyCached(ss); ok {
 				g.subSectorPoly[ss] = verts
 			}
-		}
-		if len(g.subSectorPoly[ss]) >= 3 {
-			g.subSectorBBox[ss] = worldPolyBBox(g.subSectorPoly[ss])
 		}
 	}
 }
@@ -3935,6 +3949,150 @@ func worldPolyBBox(poly []worldPt) worldBBox {
 	return b
 }
 
+func nodeBBoxToWorld(bb [4]int16) (worldBBox, bool) {
+	// Doom node bbox order is top, bottom, left, right.
+	top := float64(bb[0])
+	bottom := float64(bb[1])
+	left := float64(bb[2])
+	right := float64(bb[3])
+	b := worldBBox{
+		minX: math.Min(left, right),
+		minY: math.Min(bottom, top),
+		maxX: math.Max(left, right),
+		maxY: math.Max(bottom, top),
+	}
+	if !isFinite(b.minX) || !isFinite(b.minY) || !isFinite(b.maxX) || !isFinite(b.maxY) {
+		return worldBBox{}, false
+	}
+	if b.minX > b.maxX || b.minY > b.maxY {
+		return worldBBox{}, false
+	}
+	return b, true
+}
+
+func clipWorldPolyByBBox(poly []worldPt, b worldBBox) []worldPt {
+	if len(poly) < 3 {
+		return nil
+	}
+	const eps = 1e-6
+	clip := func(in []worldPt, inside func(worldPt) bool, intersect func(worldPt, worldPt) worldPt) []worldPt {
+		if len(in) < 3 {
+			return nil
+		}
+		out := make([]worldPt, 0, len(in)+2)
+		prev := in[len(in)-1]
+		prevIn := inside(prev)
+		for _, cur := range in {
+			curIn := inside(cur)
+			if prevIn && curIn {
+				out = appendWorldPtUnique(out, cur, eps)
+			} else if prevIn && !curIn {
+				out = appendWorldPtUnique(out, intersect(prev, cur), eps)
+			} else if !prevIn && curIn {
+				out = appendWorldPtUnique(out, intersect(prev, cur), eps)
+				out = appendWorldPtUnique(out, cur, eps)
+			}
+			prev = cur
+			prevIn = curIn
+		}
+		if len(out) >= 2 && nearlyEqualWorldPt(out[0], out[len(out)-1], eps) {
+			out = out[:len(out)-1]
+		}
+		if len(out) < 3 {
+			return nil
+		}
+		return out
+	}
+
+	out := poly
+	out = clip(out, func(p worldPt) bool { return p.x >= b.minX-eps }, func(a, c worldPt) worldPt {
+		den := c.x - a.x
+		if math.Abs(den) < 1e-12 {
+			return worldPt{x: b.minX, y: a.y}
+		}
+		t := (b.minX - a.x) / den
+		return worldPt{x: b.minX, y: a.y + (c.y-a.y)*t}
+	})
+	out = clip(out, func(p worldPt) bool { return p.x <= b.maxX+eps }, func(a, c worldPt) worldPt {
+		den := c.x - a.x
+		if math.Abs(den) < 1e-12 {
+			return worldPt{x: b.maxX, y: a.y}
+		}
+		t := (b.maxX - a.x) / den
+		return worldPt{x: b.maxX, y: a.y + (c.y-a.y)*t}
+	})
+	out = clip(out, func(p worldPt) bool { return p.y >= b.minY-eps }, func(a, c worldPt) worldPt {
+		den := c.y - a.y
+		if math.Abs(den) < 1e-12 {
+			return worldPt{x: a.x, y: b.minY}
+		}
+		t := (b.minY - a.y) / den
+		return worldPt{x: a.x + (c.x-a.x)*t, y: b.minY}
+	})
+	out = clip(out, func(p worldPt) bool { return p.y <= b.maxY+eps }, func(a, c worldPt) worldPt {
+		den := c.y - a.y
+		if math.Abs(den) < 1e-12 {
+			return worldPt{x: a.x, y: b.maxY}
+		}
+		t := (b.maxY - a.y) / den
+		return worldPt{x: a.x + (c.x-a.x)*t, y: b.maxY}
+	})
+	if len(out) < 3 || math.Abs(polygonArea2(out)) < 1e-6 {
+		return nil
+	}
+	return out
+}
+
+func (g *game) subSectorSegBBox(ss int) (worldBBox, bool) {
+	if g.m == nil || ss < 0 || ss >= len(g.m.SubSectors) {
+		return worldBBox{}, false
+	}
+	sub := g.m.SubSectors[ss]
+	if sub.SegCount == 0 {
+		return worldBBox{}, false
+	}
+	b := worldBBox{
+		minX: math.Inf(1),
+		minY: math.Inf(1),
+		maxX: math.Inf(-1),
+		maxY: math.Inf(-1),
+	}
+	for i := 0; i < int(sub.SegCount); i++ {
+		si := int(sub.FirstSeg) + i
+		if si < 0 || si >= len(g.m.Segs) {
+			continue
+		}
+		sg := g.m.Segs[si]
+		for _, vi := range []uint16{sg.StartVertex, sg.EndVertex} {
+			if int(vi) >= len(g.m.Vertexes) {
+				continue
+			}
+			v := g.m.Vertexes[vi]
+			x := float64(v.X)
+			y := float64(v.Y)
+			if x < b.minX {
+				b.minX = x
+			}
+			if y < b.minY {
+				b.minY = y
+			}
+			if x > b.maxX {
+				b.maxX = x
+			}
+			if y > b.maxY {
+				b.maxY = y
+			}
+		}
+	}
+	if !isFinite(b.minX) || !isFinite(b.minY) || !isFinite(b.maxX) || !isFinite(b.maxY) {
+		return worldBBox{}, false
+	}
+	if b.minX > b.maxX || b.minY > b.maxY {
+		return worldBBox{}, false
+	}
+	return b, true
+}
+
 func nearlyEqualWorldPt(a, b worldPt, eps float64) bool {
 	return math.Abs(a.x-b.x) <= eps && math.Abs(a.y-b.y) <= eps
 }
@@ -4032,6 +4190,7 @@ func (g *game) clipSubSectorPolyBySegBounds(ss int, poly []worldPt) []worldPt {
 	}
 	sub := g.m.SubSectors[ss]
 	out := poly
+	const sideEps = 1e-7
 	for i := 0; i < int(sub.SegCount); i++ {
 		si := int(sub.FirstSeg) + i
 		if si < 0 || si >= len(g.m.Segs) {
@@ -4046,12 +4205,40 @@ func (g *game) clipSubSectorPolyBySegBounds(ss int, poly []worldPt) []worldPt {
 		a := worldPt{x: float64(va.X), y: float64(va.Y)}
 		b := worldPt{x: float64(vb.X), y: float64(vb.Y)}
 
+		seedSide := orient2D(a, b, seed)
+		if math.Abs(seedSide) <= sideEps {
+			// Ambiguous seed-on-edge case: choose the side that keeps the larger
+			// clipped polygon to avoid precision-driven half-plane flips.
+			c0 := clipWorldPolyByDivline(out, a, b, 0)
+			c1 := clipWorldPolyByDivline(out, a, b, 1)
+			a0 := 0.0
+			if len(c0) >= 3 {
+				a0 = math.Abs(polygonArea2(c0))
+			}
+			a1 := 0.0
+			if len(c1) >= 3 {
+				a1 = math.Abs(polygonArea2(c1))
+			}
+			switch {
+			case a0 == 0 && a1 == 0:
+				return nil
+			case a1 > a0:
+				out = c1
+			default:
+				out = c0
+			}
+			continue
+		}
 		side := 0
-		if orient2D(a, b, seed) > 0 {
+		if seedSide > 0 {
 			side = 1
 		}
 		clipped := clipWorldPolyByDivline(out, a, b, side)
-		if len(clipped) < 3 {
+		if len(clipped) >= 3 && pointInWorldPoly(seed, clipped) {
+			out = clipped
+			continue
+		}
+		if len(clipped) < 3 || !pointInWorldPoly(seed, clipped) {
 			alt := clipWorldPolyByDivline(out, a, b, side^1)
 			if len(alt) >= 3 {
 				clipped = alt
@@ -4105,9 +4292,19 @@ func (g *game) buildSubSectorPolysFromNodes() {
 
 		p0 := clipWorldPolyByDivline(poly, a, b, 0)
 		if len(p0) >= 3 {
+			if bb, ok := nodeBBoxToWorld(n.BBoxR); ok {
+				p0 = clipWorldPolyByBBox(p0, bb)
+			}
+		}
+		if len(p0) >= 3 {
 			walk(n.ChildID[0], p0)
 		}
 		p1 := clipWorldPolyByDivline(poly, a, b, 1)
+		if len(p1) >= 3 {
+			if bb, ok := nodeBBoxToWorld(n.BBoxL); ok {
+				p1 = clipWorldPolyByBBox(p1, bb)
+			}
+		}
 		if len(p1) >= 3 {
 			walk(n.ChildID[1], p1)
 		}

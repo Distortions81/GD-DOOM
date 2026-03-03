@@ -171,3 +171,48 @@ func TestClipSubSectorPolyBySegBounds_ClampsToSegEnvelope(t *testing.T) {
 		t.Fatalf("area=%.3f want near 4096", area)
 	}
 }
+
+func TestSubSectorSegBBox_FromSegVertices(t *testing.T) {
+	m := &mapdata.Map{
+		Vertexes: []mapdata.Vertex{
+			{X: 0, Y: 0},
+			{X: 64, Y: 0},
+			{X: 64, Y: 64},
+			{X: 0, Y: 64},
+		},
+		Segs: []mapdata.Seg{
+			{StartVertex: 0, EndVertex: 1},
+			{StartVertex: 1, EndVertex: 2},
+			{StartVertex: 2, EndVertex: 3},
+			{StartVertex: 3, EndVertex: 0},
+		},
+		SubSectors: []mapdata.SubSector{
+			{FirstSeg: 0, SegCount: 4},
+		},
+	}
+	g := &game{m: m}
+	b, ok := g.subSectorSegBBox(0)
+	if !ok {
+		t.Fatal("expected seg bbox")
+	}
+	if b.minX != 0 || b.minY != 0 || b.maxX != 64 || b.maxY != 64 {
+		t.Fatalf("bbox=(%.1f,%.1f)-(%.1f,%.1f) want (0,0)-(64,64)", b.minX, b.minY, b.maxX, b.maxY)
+	}
+}
+
+func TestClipWorldPolyByBBox(t *testing.T) {
+	in := []worldPt{
+		{x: -100, y: -100},
+		{x: 100, y: -100},
+		{x: 100, y: 100},
+		{x: -100, y: 100},
+	}
+	out := clipWorldPolyByBBox(in, worldBBox{minX: 0, minY: 0, maxX: 64, maxY: 64})
+	if len(out) < 3 {
+		t.Fatal("expected clipped polygon")
+	}
+	b := worldPolyBBox(out)
+	if b.minX < -0.01 || b.minY < -0.01 || b.maxX > 64.01 || b.maxY > 64.01 {
+		t.Fatalf("clipped bbox=(%.2f,%.2f)-(%.2f,%.2f) out of range", b.minX, b.minY, b.maxX, b.maxY)
+	}
+}
