@@ -260,6 +260,12 @@ func (g *game) updatePlayer(cmd moveCmd) {
 }
 
 func (g *game) tickDoors() {
+	setDoorCeiling := func(sec int, z int64) {
+		g.sectorCeil[sec] = z
+		if sec >= 0 && sec < len(g.m.Sectors) {
+			g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
+		}
+	}
 	for sec, d := range g.doors {
 		switch d.direction {
 		case 0:
@@ -284,7 +290,7 @@ func (g *game) tickDoors() {
 		case -1:
 			next := g.sectorCeil[sec] - d.speed
 			if next <= g.sectorFloor[sec] {
-				g.sectorCeil[sec] = g.sectorFloor[sec]
+				setDoorCeiling(sec, g.sectorFloor[sec])
 				switch d.typ {
 				case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
 					delete(g.doors, sec)
@@ -293,12 +299,12 @@ func (g *game) tickDoors() {
 					d.topCountdown = 35 * 30
 				}
 			} else {
-				g.sectorCeil[sec] = next
+				setDoorCeiling(sec, next)
 			}
 		case 1:
 			next := g.sectorCeil[sec] + d.speed
 			if next >= d.topHeight {
-				g.sectorCeil[sec] = d.topHeight
+				setDoorCeiling(sec, d.topHeight)
 				switch d.typ {
 				case doorBlazeRaise, doorNormal:
 					d.direction = 0
@@ -307,7 +313,7 @@ func (g *game) tickDoors() {
 					delete(g.doors, sec)
 				}
 			} else {
-				g.sectorCeil[sec] = next
+				setDoorCeiling(sec, next)
 			}
 		}
 	}
