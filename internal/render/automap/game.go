@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"sort"
 	"time"
 
 	"gddoom/internal/mapdata"
@@ -1041,6 +1042,62 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		vector.StrokeLine(screen, float32(sx1), float32(yb1), float32(sx2), float32(yb2), 1.4, c, true)
 		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx1), float32(yb1), 1.2, c, true)
 		vector.StrokeLine(screen, float32(sx2), float32(yt2), float32(sx2), float32(yb2), 1.2, c, true)
+	}
+	g.drawPseudo3DMonsters(screen, camX, camY, camAng, focal, near)
+}
+
+func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
+	type projectedMonster struct {
+		dist float64
+		sx   float64
+		yt   float64
+		yb   float64
+	}
+	items := make([]projectedMonster, 0, 32)
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+
+	for i, th := range g.m.Things {
+		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+			continue
+		}
+		if !isMonster(th.Type) {
+			continue
+		}
+		tx := float64(th.X) - camX
+		ty := float64(th.Y) - camY
+		f := tx*ca + ty*sa
+		s := -tx*sa + ty*ca
+		if f <= near {
+			continue
+		}
+		// Skip monsters hidden behind solid geometry.
+		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
+			continue
+		}
+
+		sx := float64(g.viewW)/2 - (s/f)*focal
+		size := math.Max(6, math.Min(140, (56.0/f)*focal))
+		yt := float64(g.viewH)/2 - size*0.7
+		yb := float64(g.viewH)/2 + size*0.7
+		if sx < -32 || sx > float64(g.viewW)+32 {
+			continue
+		}
+		items = append(items, projectedMonster{
+			dist: f,
+			sx:   sx,
+			yt:   yt,
+			yb:   yb,
+		})
+	}
+
+	// Draw far-to-near.
+	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
+	for _, it := range items {
+		w := float32(2.4)
+		vector.StrokeLine(screen, float32(it.sx), float32(it.yt), float32(it.sx), float32(it.yb), w, thingMonsterColor, true)
+		vector.StrokeLine(screen, float32(it.sx-6), float32(it.yt+4), float32(it.sx+6), float32(it.yt+4), 1.8, thingMonsterColor, true)
+		vector.StrokeLine(screen, float32(it.sx-4), float32(it.yb-4), float32(it.sx+4), float32(it.yb-4), 1.8, thingMonsterColor, true)
 	}
 }
 
