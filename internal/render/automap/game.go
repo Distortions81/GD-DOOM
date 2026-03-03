@@ -2007,9 +2007,13 @@ func (g *game) drawMapFloorTextures2DLegacy(screen *ebiten.Image) {
 }
 
 func (g *game) drawMapFloorTextures2DVisplane(screen *ebiten.Image) {
+	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 || len(g.opts.FlatBank) == 0 {
+		return
+	}
 	g.resetFloorVisplaneFrame()
-	// Milestone 1 scaffolding: keep output stable while visplane marking/raster lands.
-	g.drawMapFloorTextures2DLegacy(screen)
+	g.buildFloorVisplaneMarks()
+	g.buildFloorVisplaneSpans()
+	g.renderFloorVisplaneSpans(screen)
 }
 
 func (g *game) subSectorVerticesFromSegList(ss int) ([]worldPt, float64, float64, bool) {

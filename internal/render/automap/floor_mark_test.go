@@ -45,3 +45,27 @@ func TestMarkFloorColumnRange_RejectsInvalidTopBottom(t *testing.T) {
 		t.Fatalf("bottom should remain unset, got %d", got)
 	}
 }
+
+func TestMarkScreenPolygonColumns_Rectangle(t *testing.T) {
+	g := &game{viewW: 20, viewH: 20}
+	g.resetFloorVisplaneFrame()
+	key := floorPlaneKey{flat: "FLOOR0_1", floorH: 0, light: 160}
+	pl := g.floorVisplaneForKey(key)
+	poly := []screenPt{
+		{x: 4, y: 6},
+		{x: 10, y: 6},
+		{x: 10, y: 12},
+		{x: 4, y: 12},
+	}
+	g.markScreenPolygonColumns(pl, poly)
+	if pl.minX > pl.maxX {
+		t.Fatal("expected marked columns for rectangle")
+	}
+	if pl.minX > 4 || pl.maxX < 9 {
+		t.Fatalf("unexpected x coverage min=%d max=%d", pl.minX, pl.maxX)
+	}
+	mid := 7 + 1
+	if pl.top[mid] == floorUnset || pl.bottom[mid] == floorUnset {
+		t.Fatal("expected middle column to be marked")
+	}
+}
