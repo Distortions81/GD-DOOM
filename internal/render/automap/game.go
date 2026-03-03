@@ -1824,28 +1824,22 @@ func (g *game) subSectorConvexVertices(ss int) ([]worldPt, float64, float64, boo
 	if sub.SegCount < 3 {
 		return nil, 0, 0, false
 	}
-	seen := make(map[uint16]struct{}, int(sub.SegCount)*2)
-	verts := make([]worldPt, 0, int(sub.SegCount)*2)
-	for i := 0; i < int(sub.SegCount); i++ {
-		si := int(sub.FirstSeg) + i
-		if si < 0 || si >= len(g.m.Segs) {
-			continue
-		}
-		sg := g.m.Segs[si]
-		for _, vi := range []uint16{sg.StartVertex, sg.EndVertex} {
-			if _, ok := seen[vi]; ok {
-				continue
-			}
-			if int(vi) >= len(g.m.Vertexes) {
-				continue
-			}
-			v := g.m.Vertexes[vi]
-			verts = append(verts, worldPt{x: float64(v.X), y: float64(v.Y)})
-			seen[vi] = struct{}{}
-		}
+	chain, closed := subsectorVertexLoopFromSegOrder(g.m, sub)
+	if !closed {
+		return nil, 0, 0, false
 	}
+	verts := vertexChainToWorld(g.m, chain)
 	if len(verts) < 3 {
 		return nil, 0, 0, false
+	}
+	area2 := polygonArea2(verts)
+	if math.Abs(area2) < 1e-6 {
+		return nil, 0, 0, false
+	}
+	if area2 < 0 {
+		for i, j := 0, len(verts)-1; i < j; i, j = i+1, j-1 {
+			verts[i], verts[j] = verts[j], verts[i]
+		}
 	}
 	cx, cy := 0.0, 0.0
 	for _, v := range verts {
@@ -1854,14 +1848,6 @@ func (g *game) subSectorConvexVertices(ss int) ([]worldPt, float64, float64, boo
 	}
 	cx /= float64(len(verts))
 	cy /= float64(len(verts))
-	sort.Slice(verts, func(i, j int) bool {
-		ai := math.Atan2(verts[i].y-cy, verts[i].x-cx)
-		aj := math.Atan2(verts[j].y-cy, verts[j].x-cx)
-		return ai < aj
-	})
-	if math.Abs(polygonArea2(verts)) < 1e-6 {
-		return nil, 0, 0, false
-	}
 	return verts, cx, cy, true
 }
 
@@ -1995,18 +1981,34 @@ func subsectorVertexLoopFromSegOrder(m *mapdata.Map, sub mapdata.SubSector) ([]u
 	if len(edges) < 3 {
 		return nil, false
 	}
+	used := make([]bool, len(edges))
 	chain := make([]uint16, 0, len(edges)+1)
 	chain = append(chain, edges[0].a, edges[0].b)
-	for i := 1; i < len(edges); i++ {
+	used[0] = true
+	for len(chain) < len(edges)+1 {
 		last := chain[len(chain)-1]
-		e := edges[i]
-		switch {
-		case e.a == last:
-			chain = append(chain, e.b)
-		case e.b == last:
-			chain = append(chain, e.a)
-		default:
-			return nil, false
+		found := false
+		for i := 1; i < len(edges); i++ {
+			if used[i] {
+				continue
+			}
+			e := edges[i]
+			switch {
+			case e.a == last:
+				chain = append(chain, e.b)
+				used[i] = true
+				found = true
+			case e.b == last:
+				chain = append(chain, e.a)
+				used[i] = true
+				found = true
+			}
+			if found {
+				break
+			}
+		}
+		if !found {
+			break
 		}
 	}
 	if len(chain) >= 2 && chain[len(chain)-1] == chain[0] {
@@ -2014,6 +2016,11 @@ func subsectorVertexLoopFromSegOrder(m *mapdata.Map, sub mapdata.SubSector) ([]u
 	}
 	if len(chain) < 3 {
 		return nil, false
+	}
+	for _, u := range used {
+		if !u {
+			return nil, false
+		}
 	}
 	return chain, true
 }

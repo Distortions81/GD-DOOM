@@ -38,6 +38,32 @@ func TestSubsectorVertexLoopFromSegOrder(t *testing.T) {
 	}
 }
 
+func TestSubsectorVertexLoopFromSegOrder_ReorientsAndUsesAllEdges(t *testing.T) {
+	m := &mapdata.Map{
+		Vertexes: []mapdata.Vertex{
+			{X: 0, Y: 0},   // 0
+			{X: 64, Y: 0},  // 1
+			{X: 64, Y: 64}, // 2
+			{X: 0, Y: 64},  // 3
+		},
+		// Same square, but with mixed direction/order after the first edge.
+		Segs: []mapdata.Seg{
+			{StartVertex: 0, EndVertex: 1},
+			{StartVertex: 2, EndVertex: 1}, // reversed
+			{StartVertex: 3, EndVertex: 2}, // reversed
+			{StartVertex: 0, EndVertex: 3}, // reversed
+		},
+	}
+	sub := mapdata.SubSector{FirstSeg: 0, SegCount: 4}
+	chain, ok := subsectorVertexLoopFromSegOrder(m, sub)
+	if !ok {
+		t.Fatal("expected loop reconstruction from mixed edge directions")
+	}
+	if got, want := len(chain), 4; got != want {
+		t.Fatalf("chain len=%d want=%d", got, want)
+	}
+}
+
 func TestTriangulateWorldPolygon_Concave(t *testing.T) {
 	// Simple concave "arrow" polygon, CCW.
 	verts := []worldPt{
