@@ -137,6 +137,7 @@ type game struct {
 	mapFloorPix   []byte
 	mapFloorW     int
 	mapFloorH     int
+	flatImgCache  map[string]*ebiten.Image
 }
 
 type savedMapView struct {
@@ -1588,13 +1589,16 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	if g.m == nil || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 || len(g.opts.FlatBank) == 0 {
 		return
 	}
-	g.ensureMapFloorLayer()
-	for i := range g.mapFloorPix {
-		g.mapFloorPix[i] = 0
+	if g.flatImgCache == nil {
+		g.flatImgCache = make(map[string]*ebiten.Image, len(g.opts.FlatBank))
 	}
-	insideMask := make([]bool, g.viewW*g.viewH)
+	triOpts := &ebiten.DrawTrianglesOptions{
+		Filter:  ebiten.FilterNearest,
+		Address: ebiten.AddressRepeat,
+	}
+	triIdx := []uint16{0, 1, 2}
 	for ss := range g.m.SubSectors {
-		poly, cx, cy, bbox, ok := g.subSectorScreenPolygon(ss)
+		poly, worldVerts, cx, cy, _, ok := g.subSectorScreenPolygon(ss)
 		if !ok {
 			continue
 		}
@@ -1606,79 +1610,46 @@ func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 			}
 		}
 		flatName := g.m.Sectors[secIdx].FloorPic
-		flat, ok := g.opts.FlatBank[flatName]
-		if !ok || len(flat) != 64*64*4 {
+		flatImg, ok := g.flatImage(flatName)
+		if !ok || flatImg == nil {
 			continue
 		}
 		if len(poly) < 3 {
 			continue
 		}
 		v0 := poly[0]
+		w0 := worldVerts[0]
 		for i := 1; i+1 < len(poly); i++ {
 			v1 := poly[i]
 			v2 := poly[i+1]
-			tx0 := int(math.Max(float64(bbox.minX), math.Floor(min3(v0.x, v1.x, v2.x))))
-			ty0 := int(math.Max(float64(bbox.minY), math.Floor(min3(v0.y, v1.y, v2.y))))
-			tx1 := int(math.Min(float64(bbox.maxX), math.Ceil(max3(v0.x, v1.x, v2.x))))
-			ty1 := int(math.Min(float64(bbox.maxY), math.Ceil(max3(v0.y, v1.y, v2.y))))
-			if tx0 > tx1 || ty0 > ty1 {
-				continue
+			w1 := worldVerts[i]
+			w2 := worldVerts[i+1]
+			verts := []ebiten.Vertex{
+				{
+					DstX:   float32(v0.x),
+					DstY:   float32(v0.y),
+					SrcX:   float32(w0.x),
+					SrcY:   float32(w0.y),
+					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+				},
+				{
+					DstX:   float32(v1.x),
+					DstY:   float32(v1.y),
+					SrcX:   float32(w1.x),
+					SrcY:   float32(w1.y),
+					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+				},
+				{
+					DstX:   float32(v2.x),
+					DstY:   float32(v2.y),
+					SrcX:   float32(w2.x),
+					SrcY:   float32(w2.y),
+					ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1,
+				},
 			}
-			for y := ty0; y <= ty1; y++ {
-				for x := tx0; x <= tx1; x++ {
-					if !pointInTriangle(float64(x)+0.5, float64(y)+0.5, v0, v1, v2) {
-						continue
-					}
-					pi := y*g.viewW + x
-					insideMask[pi] = true
-					wx, wy := g.screenToWorld(float64(x)+0.5, float64(y)+0.5)
-					tx := (int(math.Floor(wx)) & 63)
-					ty := (int(math.Floor(wy)) & 63)
-					si := (ty*64 + tx) * 4
-					di := pi * 4
-					g.mapFloorPix[di+0] = flat[si+0]
-					g.mapFloorPix[di+1] = flat[si+1]
-					g.mapFloorPix[di+2] = flat[si+2]
-					g.mapFloorPix[di+3] = 255
-				}
-			}
+			screen.DrawTriangles(verts, triIdx, flatImg, triOpts)
 		}
 	}
-	// Fallback fill for any missed pixels (e.g. precision edges between subsectors):
-	// sample sector floor directly from world point to avoid visible black holes.
-	for y := 0; y < g.viewH; y++ {
-		for x := 0; x < g.viewW; x++ {
-			pi := y*g.viewW + x
-			if !insideMask[pi] {
-				continue
-			}
-			di := pi * 4
-			if g.mapFloorPix[di+3] != 0 {
-				continue
-			}
-			wx, wy := g.screenToWorld(float64(x)+0.5, float64(y)+0.5)
-			if wx < g.bounds.minX || wx > g.bounds.maxX || wy < g.bounds.minY || wy > g.bounds.maxY {
-				continue
-			}
-			secIdx := g.sectorAt(int64(wx*fracUnit), int64(wy*fracUnit))
-			if secIdx < 0 || secIdx >= len(g.m.Sectors) {
-				continue
-			}
-			flat, ok := g.opts.FlatBank[g.m.Sectors[secIdx].FloorPic]
-			if !ok || len(flat) != 64*64*4 {
-				continue
-			}
-			tx := (int(math.Floor(wx)) & 63)
-			ty := (int(math.Floor(wy)) & 63)
-			si := (ty*64 + tx) * 4
-			g.mapFloorPix[di+0] = flat[si+0]
-			g.mapFloorPix[di+1] = flat[si+1]
-			g.mapFloorPix[di+2] = flat[si+2]
-			g.mapFloorPix[di+3] = 255
-		}
-	}
-	g.mapFloorLayer.WritePixels(g.mapFloorPix)
-	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
 type worldPt struct {
@@ -1732,10 +1703,10 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	return verts, cx, cy, true
 }
 
-func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, float64, float64, polyBBox, bool) {
+func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, []worldPt, float64, float64, polyBBox, bool) {
 	verts, cx, cy, ok := g.subSectorWorldVertices(ss)
 	if !ok {
-		return nil, 0, 0, polyBBox{}, false
+		return nil, nil, 0, 0, polyBBox{}, false
 	}
 	poly := make([]screenPt, 0, len(verts))
 	minX, minY := g.viewW-1, g.viewH-1
@@ -1759,7 +1730,7 @@ func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, float64, float64, pol
 		}
 	}
 	if maxX < 0 || maxY < 0 || minX >= g.viewW || minY >= g.viewH {
-		return nil, 0, 0, polyBBox{}, false
+		return nil, nil, 0, 0, polyBBox{}, false
 	}
 	if minX < 0 {
 		minX = 0
@@ -1774,9 +1745,9 @@ func (g *game) subSectorScreenPolygon(ss int) ([]screenPt, float64, float64, pol
 		maxY = g.viewH - 1
 	}
 	if minX > maxX || minY > maxY {
-		return nil, 0, 0, polyBBox{}, false
+		return nil, nil, 0, 0, polyBBox{}, false
 	}
-	return poly, cx, cy, polyBBox{minX: minX, minY: minY, maxX: maxX, maxY: maxY}, true
+	return poly, verts, cx, cy, polyBBox{minX: minX, minY: minY, maxX: maxX, maxY: maxY}, true
 }
 
 func (g *game) subSectorSectorIndex(ss int) (int, bool) {
@@ -1826,34 +1797,34 @@ type screenPt struct {
 	y float64
 }
 
-func pointInTriangle(px, py float64, a, b, c screenPt) bool {
-	// Accept either winding direction.
-	ab := (px-b.x)*(a.y-b.y) - (a.x-b.x)*(py-b.y)
-	bc := (px-c.x)*(b.y-c.y) - (b.x-c.x)*(py-c.y)
-	ca := (px-a.x)*(c.y-a.y) - (c.x-a.x)*(py-a.y)
-	hasNeg := (ab < 0) || (bc < 0) || (ca < 0)
-	hasPos := (ab > 0) || (bc > 0) || (ca > 0)
-	return !(hasNeg && hasPos)
+func (g *game) flatImage(name string) (*ebiten.Image, bool) {
+	key := normalizeFlatName(name)
+	if img, ok := g.flatImgCache[key]; ok {
+		return img, true
+	}
+	rgba, ok := g.opts.FlatBank[key]
+	if !ok || len(rgba) != 64*64*4 {
+		return nil, false
+	}
+	img := ebiten.NewImage(64, 64)
+	img.WritePixels(rgba)
+	g.flatImgCache[key] = img
+	return img, true
 }
 
-func min3(a, b, c float64) float64 {
-	if a > b {
-		a = b
+func normalizeFlatName(name string) string {
+	out := make([]byte, 0, 8)
+	for i := 0; i < len(name) && len(out) < 8; i++ {
+		c := name[i]
+		if c == 0 {
+			break
+		}
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		out = append(out, c)
 	}
-	if a > c {
-		return c
-	}
-	return a
-}
-
-func max3(a, b, c float64) float64 {
-	if a < b {
-		a = b
-	}
-	if a < c {
-		return c
-	}
-	return a
+	return string(out)
 }
 
 func (g *game) capturePrevState() {
