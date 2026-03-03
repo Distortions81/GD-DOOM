@@ -48,6 +48,12 @@ var doomPlayerArrow = [][4]float64{
 	{-10.2857, 0, -16, -4.5714},
 }
 
+var detailPresets = [][2]int{
+	{320, 200},
+	{640, 400},
+	{960, 600},
+}
+
 type game struct {
 	m       *mapdata.Map
 	opts    Options
@@ -149,6 +155,7 @@ type game struct {
 	ceilingClip   []int16
 	floorPlanes   map[floorPlaneKey]*floorVisplane
 	floorSpans    []floorSpan
+	detailLevel   int
 }
 
 type savedMapView struct {
@@ -264,6 +271,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		floor2DPath:   floor2DPathLegacy,
 		floorVisDiag:  floorVisDiagOff,
 	}
+	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
@@ -327,6 +335,39 @@ func (g *game) resetView() {
 	g.zoom = g.fitZoom * doomInitialZoomMul
 }
 
+func detailPresetIndex(w, h int) int {
+	for i, p := range detailPresets {
+		if p[0] == w && p[1] == h {
+			return i
+		}
+	}
+	return 0
+}
+
+func (g *game) cycleDetailLevel() {
+	if len(detailPresets) == 0 {
+		return
+	}
+	g.detailLevel = (g.detailLevel + 1) % len(detailPresets)
+	p := detailPresets[g.detailLevel]
+	oldFit := g.fitZoom
+	g.viewW = p[0]
+	g.viewH = p[1]
+
+	worldW := math.Max(g.bounds.maxX-g.bounds.minX, 1)
+	worldH := math.Max(g.bounds.maxY-g.bounds.minY, 1)
+	margin := 0.9
+	zx := float64(max(g.viewW, 1)) * margin / worldW
+	zy := float64(max(g.viewH, 1)) * margin / worldH
+	g.fitZoom = math.Max(math.Min(zx, zy), 0.0001)
+	if oldFit > 0 {
+		g.zoom = (g.zoom / oldFit) * g.fitZoom
+	} else {
+		g.zoom = g.fitZoom * doomInitialZoomMul
+	}
+	g.setHUDMessage(fmt.Sprintf("Detail: %dx%d", g.viewW, g.viewH), 70)
+}
+
 func (g *game) Update() error {
 	g.capturePrevState()
 	if g.levelExitRequested {
@@ -354,6 +395,9 @@ func (g *game) Update() error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+		g.cycleDetailLevel()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.pseudo3D = !g.pseudo3D
@@ -2970,6 +3014,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"AUTOMAP KEYS",
 		fmt.Sprintf("PROFILE  %s", g.profileLabel()),
 		"F1  HELP TOGGLE",
+		"F5  DETAIL CYCLE",
 		"TAB  WALK/MAP MODE",
 		"WASD  MOVE",
 		"Q/E  TURN (MAP MODE)",
