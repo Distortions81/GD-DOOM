@@ -13,16 +13,17 @@ const (
 	fracBits = 16
 	fracUnit = 1 << fracBits
 
-	playerRadius = 16 * fracUnit
-	playerHeight = 56 * fracUnit
-	maxMove      = 30 * fracUnit
-	stopSpeed    = 0x1000
-	friction     = 0xe800
-	stepHeight   = 24 * fracUnit
-	useRange     = 64 * fracUnit
-	vDoorSpeed   = 2 * fracUnit
-	vDoorWaitTic = 150
-	slowTurnTics = 6
+	playerRadius    = 16 * fracUnit
+	playerHeight    = 56 * fracUnit
+	maxMove         = 30 * fracUnit
+	stopSpeed       = 0x1000
+	friction        = 0xe800
+	stepHeight      = 24 * fracUnit
+	useRange        = 64 * fracUnit
+	vDoorSpeed      = 2 * fracUnit
+	vDoorWaitTic    = 150
+	slowTurnTics    = 6
+	switchResetTics = 35
 
 	mlBlocking = 0x0001
 	mlTwoSided = 0x0004
@@ -824,6 +825,9 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		g.useText = "USE: door active"
 		if shouldPlaySwitchClick(info) {
 			g.emitSoundEvent(soundEventSwitchOn)
+			if info.Repeat {
+				g.emitSoundEventDelayed(soundEventSwitchOff, switchResetTics)
+			}
 		}
 	} else {
 		g.useText = "USE: no change"

@@ -86,6 +86,7 @@ type game struct {
 	turnHeld    int
 	snd         *soundSystem
 	soundQueue  []soundEvent
+	delayedSfx  []delayedSoundEvent
 
 	prevCamX  float64
 	prevCamY  float64
@@ -117,6 +118,11 @@ type mapMark struct {
 	id int
 	x  float64
 	y  float64
+}
+
+type delayedSoundEvent struct {
+	ev   soundEvent
+	tics int
 }
 
 type revealMode int
@@ -167,6 +173,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.initPhysics()
 	g.snd = newSoundSystem(opts.SoundBank)
 	g.soundQueue = make([]soundEvent, 0, 8)
+	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
 	if g.opts.SourcePortMode {
 		// Source-port defaults: reveal full map style and heading-follow at startup.
 		g.parity.reveal = revealAllMap
@@ -246,6 +253,7 @@ func (g *game) Update() error {
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
+	g.tickDelayedSounds()
 	g.flushSoundEvents()
 	g.lastUpdate = time.Now()
 	return nil
@@ -529,6 +537,30 @@ func (g *game) profileLabel() string {
 
 func (g *game) emitSoundEvent(ev soundEvent) {
 	g.soundQueue = append(g.soundQueue, ev)
+}
+
+func (g *game) emitSoundEventDelayed(ev soundEvent, tics int) {
+	if tics <= 0 {
+		g.emitSoundEvent(ev)
+		return
+	}
+	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{ev: ev, tics: tics})
+}
+
+func (g *game) tickDelayedSounds() {
+	if len(g.delayedSfx) == 0 {
+		return
+	}
+	keep := g.delayedSfx[:0]
+	for _, d := range g.delayedSfx {
+		d.tics--
+		if d.tics <= 0 {
+			g.emitSoundEvent(d.ev)
+			continue
+		}
+		keep = append(keep, d)
+	}
+	g.delayedSfx = keep
 }
 
 func (g *game) setHUDMessage(msg string, tics int) {
