@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"gddoom/internal/mapdata"
@@ -1173,6 +1174,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.logWallCull(si, "BEHIND", origF1, origF2, preSX1, preSX2)
 			continue
 		}
+		// Backface cull after near clipping for stable edge behavior.
+		if f1*s2-s1*f2 >= 0 {
+			g.logWallCull(si, "BACKFACE", f1, f2, s1, s2)
+			continue
+		}
 		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
 		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
 		if !isFinite(sx1) || !isFinite(sx2) {
@@ -1289,7 +1295,13 @@ func (g *game) drawDoomBasicTexturedPlanes(screen *ebiten.Image, camX, camY, ca,
 				if !isFloor {
 					name = g.m.Sectors[sec].CeilingPic
 				}
-				if tex, ok := g.flatRGBA(name); ok {
+				// Keep sky ceilings untextured in doom-basic mode.
+				if !isFloor && isSkyFlatName(name) {
+					pix[i+0] = fb.R
+					pix[i+1] = fb.G
+					pix[i+2] = fb.B
+					pix[i+3] = 255
+				} else if tex, ok := g.flatRGBA(name); ok {
 					u := int(math.Floor(wx)) & 63
 					v := int(math.Floor(wy)) & 63
 					ti := (v*64 + u) * 4
@@ -1569,6 +1581,10 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		s2 := -x2*sa + y2*ca
 		f1, s1, f2, s2, ok = clipSegmentToNear(f1, s1, f2, s2, near)
 		if !ok {
+			continue
+		}
+		// Backface cull after near clipping for stable edge behavior.
+		if f1*s2-s1*f2 >= 0 {
 			continue
 		}
 
@@ -2725,6 +2741,14 @@ func normalizeFlatName(name string) string {
 		out = append(out, c)
 	}
 	return string(out)
+}
+
+func isSkyFlatName(name string) bool {
+	n := normalizeFlatName(name)
+	if n == "" {
+		return false
+	}
+	return strings.Contains(n, "SKY")
 }
 
 func (g *game) capturePrevState() {
