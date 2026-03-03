@@ -4004,6 +4004,69 @@ func clipWorldPolyByDivline(poly []worldPt, a, b worldPt, side int) []worldPt {
 	return out
 }
 
+func (g *game) subSectorSeedPoint(ss int, fallback []worldPt) (worldPt, bool) {
+	if _, cx, cy, ok := g.subSectorVerticesFromSegList(ss); ok {
+		return worldPt{x: cx, y: cy}, true
+	}
+	if _, cx, cy, ok := g.subSectorWorldVertices(ss); ok {
+		return worldPt{x: cx, y: cy}, true
+	}
+	if len(fallback) >= 3 {
+		cx, cy := 0.0, 0.0
+		for _, p := range fallback {
+			cx += p.x
+			cy += p.y
+		}
+		return worldPt{x: cx / float64(len(fallback)), y: cy / float64(len(fallback))}, true
+	}
+	return worldPt{}, false
+}
+
+func (g *game) clipSubSectorPolyBySegBounds(ss int, poly []worldPt) []worldPt {
+	if ss < 0 || ss >= len(g.m.SubSectors) || len(poly) < 3 {
+		return nil
+	}
+	seed, ok := g.subSectorSeedPoint(ss, poly)
+	if !ok {
+		return poly
+	}
+	sub := g.m.SubSectors[ss]
+	out := poly
+	for i := 0; i < int(sub.SegCount); i++ {
+		si := int(sub.FirstSeg) + i
+		if si < 0 || si >= len(g.m.Segs) {
+			continue
+		}
+		sg := g.m.Segs[si]
+		if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
+			continue
+		}
+		va := g.m.Vertexes[sg.StartVertex]
+		vb := g.m.Vertexes[sg.EndVertex]
+		a := worldPt{x: float64(va.X), y: float64(va.Y)}
+		b := worldPt{x: float64(vb.X), y: float64(vb.Y)}
+
+		side := 0
+		if orient2D(a, b, seed) > 0 {
+			side = 1
+		}
+		clipped := clipWorldPolyByDivline(out, a, b, side)
+		if len(clipped) < 3 {
+			alt := clipWorldPolyByDivline(out, a, b, side^1)
+			if len(alt) >= 3 {
+				clipped = alt
+			} else {
+				return nil
+			}
+		}
+		out = clipped
+	}
+	if len(out) < 3 || math.Abs(polygonArea2(out)) < 1e-6 {
+		return nil
+	}
+	return out
+}
+
 func (g *game) buildSubSectorPolysFromNodes() {
 	if g.m == nil || len(g.m.Nodes) == 0 || len(g.m.SubSectors) == 0 {
 		return
@@ -4051,6 +4114,15 @@ func (g *game) buildSubSectorPolysFromNodes() {
 	}
 
 	walk(uint16(len(g.m.Nodes)-1), root)
+
+	for ss := range g.m.SubSectors {
+		if len(g.subSectorPoly[ss]) < 3 {
+			continue
+		}
+		if clipped := g.clipSubSectorPolyBySegBounds(ss, g.subSectorPoly[ss]); len(clipped) >= 3 {
+			g.subSectorPoly[ss] = clipped
+		}
+	}
 }
 
 type screenPt struct {

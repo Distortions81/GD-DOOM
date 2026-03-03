@@ -1,6 +1,7 @@
 package automap
 
 import (
+	"math"
 	"testing"
 
 	"gddoom/internal/mapdata"
@@ -127,5 +128,46 @@ func TestTriangulateWorldPolygon_SelfIntersectReject(t *testing.T) {
 	_, ok := triangulateWorldPolygon(verts)
 	if ok {
 		t.Fatal("expected self-intersecting polygon to be rejected")
+	}
+}
+
+func TestClipSubSectorPolyBySegBounds_ClampsToSegEnvelope(t *testing.T) {
+	m := &mapdata.Map{
+		Vertexes: []mapdata.Vertex{
+			{X: 0, Y: 0},
+			{X: 64, Y: 0},
+			{X: 64, Y: 64},
+			{X: 0, Y: 64},
+		},
+		Segs: []mapdata.Seg{
+			{StartVertex: 0, EndVertex: 1},
+			{StartVertex: 1, EndVertex: 2},
+			{StartVertex: 2, EndVertex: 3},
+			{StartVertex: 3, EndVertex: 0},
+		},
+		SubSectors: []mapdata.SubSector{
+			{FirstSeg: 0, SegCount: 4},
+		},
+	}
+	g := &game{m: m}
+	in := []worldPt{
+		{x: -256, y: -256},
+		{x: 256, y: -256},
+		{x: 256, y: 256},
+		{x: -256, y: 256},
+	}
+
+	out := g.clipSubSectorPolyBySegBounds(0, in)
+	if len(out) < 3 {
+		t.Fatal("expected clipped subsector polygon")
+	}
+	b := worldPolyBBox(out)
+	const eps = 0.05
+	if b.minX < -eps || b.minY < -eps || b.maxX > 64+eps || b.maxY > 64+eps {
+		t.Fatalf("bbox=(%.3f,%.3f)-(%.3f,%.3f) outside expected 0..64", b.minX, b.minY, b.maxX, b.maxY)
+	}
+	area := math.Abs(polygonArea2(out)) * 0.5
+	if area < 4000 || area > 4200 {
+		t.Fatalf("area=%.3f want near 4096", area)
 	}
 }
