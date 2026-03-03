@@ -5,6 +5,7 @@ go 1.24.0
 require (
 	github.com/BurntSushi/toml v1.4.0
 	github.com/hajimehoshi/ebiten/v2 v2.9.8
+	github.com/remeh/sizedwaitgroup v1.0.0
 )
 
 require (

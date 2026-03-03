@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/remeh/sizedwaitgroup"
 )
 
 const (
@@ -188,6 +190,13 @@ type game struct {
 	subSectorPolySrc   []uint8
 	subSectorDiagCode  []uint8
 	mapTexDiagStats    mapTexDiagStats
+	skyAngleOff        []float64
+	skyAngleViewW      int
+	skyAngleFocal      float64
+	skyRowVCache       []int
+	skyRowViewH        int
+	skyRowTexH         int
+	skyRowIScale       float64
 }
 
 type savedMapView struct {
@@ -279,6 +288,26 @@ type mapTexDiagStats struct {
 	noPoly    int
 	nonSimple int
 	triFail   int
+}
+
+type wallSegPrepass struct {
+	segIdx          int
+	ld              mapdata.Linedef
+	frontSideDefIdx int
+	sx1             float64
+	sx2             float64
+	minSX           int
+	maxSX           int
+	invF1           float64
+	invF2           float64
+	uOverF1         float64
+	uOverF2         float64
+	logReason       string
+	logZ1           float64
+	logZ2           float64
+	logX1           float64
+	logX2           float64
+	ok              bool
 }
 
 const (
@@ -1302,95 +1331,30 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	planeVis := make(map[plane3DKey][]*plane3DVisplane, 64)
 	planeOrder := make([]*plane3DVisplane, 0, 64)
 	solid := make([]solidSpan, 0, 16)
-	for _, si := range g.visibleSegIndicesPseudo3D() {
+	prepass := g.buildWallSegPrepassParallel(g.visibleSegIndicesPseudo3D(), camX, camY, ca, sa, focal, near)
+	for _, pp := range prepass {
+		si := pp.segIdx
 		if si < 0 || si >= len(g.m.Segs) {
 			continue
 		}
-		seg := g.m.Segs[si]
-		li := int(seg.Linedef)
-		if li < 0 || li >= len(g.m.Linedefs) {
+		if !pp.ok {
+			if pp.logReason != "" {
+				g.logWallCull(si, pp.logReason, pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+			}
 			continue
 		}
-		ld := g.m.Linedefs[li]
-		d := g.linedefDecisionPseudo3D(ld)
-		if !d.visible {
+		if solidFullyCovered(solid, pp.minSX, pp.maxSX) {
+			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 			continue
 		}
-		x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
-		if !ok {
-			continue
-		}
-		frontSide := int(seg.Direction)
-		if frontSide < 0 || frontSide > 1 {
-			frontSide = 0
-		}
-		var frontSideDef *mapdata.Sidedef
-		if sn := ld.SideNum[frontSide]; sn >= 0 && int(sn) < len(g.m.Sidedefs) {
-			frontSideDef = &g.m.Sidedefs[int(sn)]
-		}
-		segLen := math.Hypot(x2w-x1w, y2w-y1w)
-		u1 := float64(seg.Offset)
-		if frontSideDef != nil {
-			u1 += float64(frontSideDef.TextureOffset)
-		}
-		u2 := u1 + segLen
-		if frontSide == 1 {
-			u2 = u1 - segLen
-		}
-
-		x1 := x1w - camX
-		y1 := y1w - camY
-		x2 := x2w - camX
-		y2 := y2w - camY
-		f1 := x1*ca + y1*sa
-		s1 := -x1*sa + y1*ca
-		f2 := x2*ca + y2*sa
-		s2 := -x2*sa + y2*ca
-		origF1, origS1, origF2, origS2 := f1, s1, f2, s2
-		preSX1 := float64(g.viewW) / 2
-		preSX2 := float64(g.viewW) / 2
-		if math.Abs(origF1) > 1e-9 {
-			preSX1 -= (origS1 / origF1) * focal
-		}
-		if math.Abs(origF2) > 1e-9 {
-			preSX2 -= (origS2 / origF2) * focal
-		}
-		f1, s1, u1, f2, s2, u2, ok = clipSegmentToNearWithAttr(f1, s1, u1, f2, s2, u2, near)
-		if !ok {
-			g.logWallCull(si, "BEHIND", origF1, origF2, preSX1, preSX2)
-			continue
-		}
-		// Backface cull after near clipping for stable edge behavior.
-		if f1*s2-s1*f2 >= 0 {
-			g.logWallCull(si, "BACKFACE", f1, f2, s1, s2)
-			continue
-		}
-		sx1 := float64(g.viewW)/2 - (s1/f1)*focal
-		sx2 := float64(g.viewW)/2 - (s2/f2)*focal
-		if !isFinite(sx1) || !isFinite(sx2) {
-			g.logWallCull(si, "FLIPPED", f1, f2, sx1, sx2)
-			continue
-		}
-		minSX := int(math.Floor(math.Min(sx1, sx2)))
-		maxSX := int(math.Ceil(math.Max(sx1, sx2)))
-		if minSX < 0 {
-			minSX = 0
-		}
-		if maxSX >= g.viewW {
-			maxSX = g.viewW - 1
-		}
-		if minSX > maxSX {
-			g.logWallCull(si, "OFFSCREEN", f1, f2, sx1, sx2)
-			continue
-		}
-		// Doom-style solid column clipping: skip segs fully covered by prior solid walls.
-		if solidFullyCovered(solid, minSX, maxSX) {
-			g.logWallCull(si, "OCCLUDED", f1, f2, sx1, sx2)
-			continue
-		}
-
+		d := g.linedefDecisionPseudo3D(pp.ld)
 		base, _ := g.decisionStyle(d)
 		baseRGBA := color.RGBAModel.Convert(base).(color.RGBA)
+		ld := pp.ld
+		var frontSideDef *mapdata.Sidedef
+		if pp.frontSideDefIdx >= 0 && pp.frontSideDefIdx < len(g.m.Sidedefs) {
+			frontSideDef = &g.m.Sidedefs[pp.frontSideDefIdx]
+		}
 		front, back := g.segSectors(si)
 		if front == nil {
 			continue
@@ -1432,10 +1396,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if float64(front.CeilingHeight) <= eyeZ && !isSkyFlatName(front.CeilingPic) {
 			markCeiling = false
 		}
-		invF1 := 1.0 / f1
-		invF2 := 1.0 / f2
-		uOverF1 := u1 * invF1
-		uOverF2 := u2 * invF2
 		var midTex WallTexture
 		var topTex WallTexture
 		var botTex WallTexture
@@ -1491,25 +1451,25 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		var ceilPlane *plane3DVisplane
 		if planesEnabled {
 			var created bool
-			floorPlane, created = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, true), minSX, maxSX, g.viewW)
+			floorPlane, created = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, true), pp.minSX, pp.maxSX, g.viewW)
 			if created && floorPlane != nil {
 				planeOrder = append(planeOrder, floorPlane)
 			}
-			ceilPlane, created = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, false), minSX, maxSX, g.viewW)
+			ceilPlane, created = ensurePlane3DForRange(planeVis, g.plane3DKeyForSector(front, false), pp.minSX, pp.maxSX, g.viewW)
 			if created && ceilPlane != nil {
 				planeOrder = append(planeOrder, ceilPlane)
 			}
 		}
 
-		for x := minSX; x <= maxSX; x++ {
-			t := (float64(x) - sx1) / (sx2 - sx1)
+		for x := pp.minSX; x <= pp.maxSX; x++ {
+			t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
 			if t < 0 {
 				t = 0
 			}
 			if t > 1 {
 				t = 1
 			}
-			invF := invF1 + (invF2-invF1)*t
+			invF := pp.invF1 + (pp.invF2-pp.invF1)*t
 			if invF <= 0 {
 				continue
 			}
@@ -1517,7 +1477,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			if f <= 0 {
 				continue
 			}
-			texU := (uOverF1 + (uOverF2-uOverF1)*t) * f
+			texU := (pp.uOverF1 + (pp.uOverF2-pp.uOverF1)*t) * f
 
 			yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focal))
 			if yl < ceilingClip[x]+1 {
@@ -1584,7 +1544,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 
 		if solidWall {
-			solid = addSolidSpan(solid, minSX, maxSX)
+			solid = addSolidSpan(solid, pp.minSX, pp.maxSX)
 		}
 	}
 	g.wallLayer.WritePixels(g.wallPix)
@@ -1690,21 +1650,8 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 		pix[i+2] = 0
 		pix[i+3] = 0
 	}
-	spansByPlane := make([][]plane3DSpan, len(planes))
-	active := 0
-	hasSky := false
-	for i, pl := range planes {
-		spans := makePlane3DSpans(pl, h, nil)
-		if len(spans) == 0 {
-			continue
-		}
-		spansByPlane[i] = spans
-		g.plane3DFrame.inputSpans += len(spans)
-		active++
-		if pl.key.sky {
-			hasSky = true
-		}
-	}
+	spansByPlane, active, inputSpans, hasSky := buildPlaneSpansParallel(planes, h)
+	g.plane3DFrame.inputSpans += inputSpans
 	g.plane3DFrame.buckets = active
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
@@ -1715,17 +1662,9 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 	if hasSky {
 		skyTex, skyTexOK = skyTextureForMap(g.m.Name, g.opts.WallTexBank)
 		if skyTexOK {
-			skyColU = make([]int, w)
 			camAng := math.Atan2(sa, ca)
-			for x := 0; x < w; x++ {
-				u, _ := skySampleUV(x, 0, w, h, focal, camAng, skyTex.Width, skyTex.Height)
-				skyColU[x] = u
-			}
-			skyRowV = make([]int, h)
-			for y := 0; y < h; y++ {
-				_, v := skySampleUV(0, y, w, h, focal, camAng, skyTex.Width, skyTex.Height)
-				skyRowV[y] = v
-			}
+			skyTexH := effectiveSkyTexHeight(skyTex)
+			skyColU, skyRowV = g.buildSkyLookupParallel(w, h, focal, camAng, skyTex.Width, skyTexH)
 		}
 	}
 	for i, pl := range planes {
@@ -1961,17 +1900,9 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 	skyColU := make([]int, 0)
 	skyRowV := make([]int, 0)
 	if skyTexOK {
-		skyColU = make([]int, w)
 		camAng := math.Atan2(sa, ca)
-		for x := 0; x < w; x++ {
-			u, _ := skySampleUV(x, 0, w, h, focal, camAng, skyTex.Width, skyTex.Height)
-			skyColU[x] = u
-		}
-		skyRowV = make([]int, h)
-		for y := 0; y < h; y++ {
-			_, v := skySampleUV(0, y, w, h, focal, camAng, skyTex.Width, skyTex.Height)
-			skyRowV[y] = v
-		}
+		skyTexH := effectiveSkyTexHeight(skyTex)
+		skyColU, skyRowV = g.buildSkyLookupParallel(w, h, focal, camAng, skyTex.Width, skyTexH)
 	}
 	coveredByRow := make([][]spanRange, h)
 	for _, key := range keyOrder {
@@ -3051,6 +2982,290 @@ func skySampleAngle(screenX, viewW int, focal, camAngle float64) float64 {
 	// Match wall projection sign convention: screen x = cx - tan(rel)*focal,
 	// so rel = atan((cx-x)/focal). Using this keeps sky panning direction aligned.
 	return camAngle + math.Atan((cx-sampleX)/focal)
+}
+
+func effectiveSkyTexHeight(tex WallTexture) int {
+	if tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
+		return 1
+	}
+	for y := tex.Height - 1; y >= 0; y-- {
+		rowStart := y * tex.Width * 4
+		opaque := false
+		for x := 0; x < tex.Width; x++ {
+			if tex.RGBA[rowStart+x*4+3] != 0 {
+				opaque = true
+				break
+			}
+		}
+		if opaque {
+			return y + 1
+		}
+	}
+	return 1
+}
+
+func buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([][]plane3DSpan, int, int, bool) {
+	spansByPlane := make([][]plane3DSpan, len(planes))
+	if len(planes) == 0 {
+		return spansByPlane, 0, 0, false
+	}
+	limit := runtime.GOMAXPROCS(0)
+	if limit < 1 {
+		limit = 1
+	}
+	const chunk = 32
+	swg := sizedwaitgroup.New(limit)
+	for start := 0; start < len(planes); start += chunk {
+		s := start
+		e := start + chunk
+		if e > len(planes) {
+			e = len(planes)
+		}
+		swg.Add()
+		go func() {
+			defer swg.Done()
+			for i := s; i < e; i++ {
+				spansByPlane[i] = makePlane3DSpans(planes[i], viewH, nil)
+			}
+		}()
+	}
+	swg.Wait()
+	active := 0
+	input := 0
+	hasSky := false
+	for i, spans := range spansByPlane {
+		if len(spans) == 0 {
+			continue
+		}
+		active++
+		input += len(spans)
+		if planes[i].key.sky {
+			hasSky = true
+		}
+	}
+	return spansByPlane, active, input, hasSky
+}
+
+func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, focal, near float64) []wallSegPrepass {
+	out := make([]wallSegPrepass, len(visible))
+	if len(visible) == 0 {
+		return out
+	}
+	limit := runtime.GOMAXPROCS(0)
+	if limit < 1 {
+		limit = 1
+	}
+	const chunk = 32
+	swg := sizedwaitgroup.New(limit)
+	for start := 0; start < len(visible); start += chunk {
+		s := start
+		e := start + chunk
+		if e > len(visible) {
+			e = len(visible)
+		}
+		swg.Add()
+		go func() {
+			defer swg.Done()
+			for i := s; i < e; i++ {
+				si := visible[i]
+				pp := wallSegPrepass{
+					segIdx:          si,
+					frontSideDefIdx: -1,
+				}
+				if si < 0 || si >= len(g.m.Segs) {
+					out[i] = pp
+					continue
+				}
+				seg := g.m.Segs[si]
+				li := int(seg.Linedef)
+				if li < 0 || li >= len(g.m.Linedefs) {
+					out[i] = pp
+					continue
+				}
+				ld := g.m.Linedefs[li]
+				pp.ld = ld
+				d := g.linedefDecisionPseudo3D(ld)
+				if !d.visible {
+					out[i] = pp
+					continue
+				}
+				x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
+				if !ok {
+					out[i] = pp
+					continue
+				}
+				frontSide := int(seg.Direction)
+				if frontSide < 0 || frontSide > 1 {
+					frontSide = 0
+				}
+				if sn := ld.SideNum[frontSide]; sn >= 0 && int(sn) < len(g.m.Sidedefs) {
+					pp.frontSideDefIdx = int(sn)
+				}
+				segLen := math.Hypot(x2w-x1w, y2w-y1w)
+				u1 := float64(seg.Offset)
+				if pp.frontSideDefIdx >= 0 {
+					u1 += float64(g.m.Sidedefs[pp.frontSideDefIdx].TextureOffset)
+				}
+				u2 := u1 + segLen
+				if frontSide == 1 {
+					u2 = u1 - segLen
+				}
+				x1 := x1w - camX
+				y1 := y1w - camY
+				x2 := x2w - camX
+				y2 := y2w - camY
+				f1 := x1*ca + y1*sa
+				s1 := -x1*sa + y1*ca
+				f2 := x2*ca + y2*sa
+				s2 := -x2*sa + y2*ca
+				origF1, origS1, origF2, origS2 := f1, s1, f2, s2
+				preSX1 := float64(g.viewW) / 2
+				preSX2 := float64(g.viewW) / 2
+				if math.Abs(origF1) > 1e-9 {
+					preSX1 -= (origS1 / origF1) * focal
+				}
+				if math.Abs(origF2) > 1e-9 {
+					preSX2 -= (origS2 / origF2) * focal
+				}
+				f1, s1, u1, f2, s2, u2, ok = clipSegmentToNearWithAttr(f1, s1, u1, f2, s2, u2, near)
+				if !ok {
+					pp.logReason = "BEHIND"
+					pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = origF1, origF2, preSX1, preSX2
+					out[i] = pp
+					continue
+				}
+				if f1*s2-s1*f2 >= 0 {
+					pp.logReason = "BACKFACE"
+					pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, s1, s2
+					out[i] = pp
+					continue
+				}
+				sx1 := float64(g.viewW)/2 - (s1/f1)*focal
+				sx2 := float64(g.viewW)/2 - (s2/f2)*focal
+				if !isFinite(sx1) || !isFinite(sx2) {
+					pp.logReason = "FLIPPED"
+					pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
+					out[i] = pp
+					continue
+				}
+				minSX := int(math.Floor(math.Min(sx1, sx2)))
+				maxSX := int(math.Ceil(math.Max(sx1, sx2)))
+				if minSX < 0 {
+					minSX = 0
+				}
+				if maxSX >= g.viewW {
+					maxSX = g.viewW - 1
+				}
+				if minSX > maxSX {
+					pp.logReason = "OFFSCREEN"
+					pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
+					out[i] = pp
+					continue
+				}
+				invF1 := 1.0 / f1
+				invF2 := 1.0 / f2
+				pp.sx1 = sx1
+				pp.sx2 = sx2
+				pp.minSX = minSX
+				pp.maxSX = maxSX
+				pp.invF1 = invF1
+				pp.invF2 = invF2
+				pp.uOverF1 = u1 * invF1
+				pp.uOverF2 = u2 * invF2
+				pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
+				pp.ok = true
+				out[i] = pp
+			}
+		}()
+	}
+	swg.Wait()
+	return out
+}
+
+func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64, texW, texH int) ([]int, []int) {
+	if viewW <= 0 || viewH <= 0 || texW <= 0 || texH <= 0 {
+		return nil, nil
+	}
+	angleOff := g.ensureSkyAngleOffsets(viewW, focal)
+	row := g.ensureSkyRowLookup(viewW, viewH, texH)
+	uScale := float64(texW*4) / (2 * math.Pi)
+	col := make([]int, viewW)
+	limit := runtime.GOMAXPROCS(0)
+	if limit < 1 {
+		limit = 1
+	}
+	const chunk = 64
+	swg := sizedwaitgroup.New(limit)
+	for start := 0; start < viewW; start += chunk {
+		s := start
+		e := start + chunk
+		if e > viewW {
+			e = viewW
+		}
+		swg.Add()
+		go func() {
+			defer swg.Done()
+			for x := s; x < e; x++ {
+				angle := camAngle + angleOff[x]
+				col[x] = wrapIndex(int(math.Floor(angle*uScale)), texW)
+			}
+		}()
+	}
+	swg.Wait()
+	return col, row
+}
+
+func (g *game) ensureSkyAngleOffsets(viewW int, focal float64) []float64 {
+	if viewW <= 0 {
+		return nil
+	}
+	if focal <= 1e-6 {
+		focal = 1
+	}
+	if len(g.skyAngleOff) == viewW && g.skyAngleViewW == viewW && math.Abs(g.skyAngleFocal-focal) < 1e-9 {
+		return g.skyAngleOff
+	}
+	off := make([]float64, viewW)
+	cx := float64(viewW) * 0.5
+	for x := 0; x < viewW; x++ {
+		sampleX := float64(x) + 0.5
+		off[x] = math.Atan((cx - sampleX) / focal)
+	}
+	g.skyAngleOff = off
+	g.skyAngleViewW = viewW
+	g.skyAngleFocal = focal
+	return g.skyAngleOff
+}
+
+func (g *game) ensureSkyRowLookup(viewW, viewH, texH int) []int {
+	if viewW <= 0 || viewH <= 0 || texH <= 0 {
+		return nil
+	}
+	iscale := doomSkyIScale(viewW)
+	if len(g.skyRowVCache) == viewH && g.skyRowViewH == viewH && g.skyRowTexH == texH && math.Abs(g.skyRowIScale-iscale) < 1e-9 {
+		return g.skyRowVCache
+	}
+	row := make([]int, viewH)
+	cy := float64(viewH) * 0.5
+	textureMid := 100.0
+	for y := 0; y < viewH; y++ {
+		frac := textureMid + ((float64(y) - cy) * iscale)
+		row[y] = wrapIndex(int(math.Floor(frac)), texH)
+	}
+	g.skyRowVCache = row
+	g.skyRowViewH = viewH
+	g.skyRowTexH = texH
+	g.skyRowIScale = iscale
+	return g.skyRowVCache
+}
+
+func doomSkyIScale(viewW int) float64 {
+	if viewW <= 0 {
+		return 1
+	}
+	// Doom sky columns use dc_iscale = pspriteiscale>>detailshift.
+	// In standard detail this is roughly SCREENWIDTH/viewwidth (320/viewwidth).
+	return 320.0 / float64(viewW)
 }
 
 func wrapIndex(x, size int) int {

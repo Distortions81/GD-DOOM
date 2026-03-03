@@ -88,3 +88,18 @@ func TestSkySampleUV_HorizontalDirectionMatchesProjectionSign(t *testing.T) {
 		t.Fatalf("expected left sample angle > right sample angle; left=%f right=%f", aLeft, aRight)
 	}
 }
+
+func TestEffectiveSkyTexHeight_ClipsTransparentBottomRows(t *testing.T) {
+	w, h := 8, 8
+	rgba := make([]byte, w*h*4)
+	for y := 0; y < h-2; y++ {
+		for x := 0; x < w; x++ {
+			i := (y*w + x) * 4
+			rgba[i+3] = 255
+		}
+	}
+	got := effectiveSkyTexHeight(WallTexture{RGBA: rgba, Width: w, Height: h})
+	if got != h-2 {
+		t.Fatalf("effective sky height=%d want %d", got, h-2)
+	}
+}

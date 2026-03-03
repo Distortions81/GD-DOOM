@@ -13,6 +13,7 @@ type fileConfig struct {
 	Map             *string  `toml:"map"`
 	Render          *bool    `toml:"render"`
 	Debug           *bool    `toml:"debug"`
+	MultiCore       *bool    `toml:"multi_core"`
 	Width           *int     `toml:"width"`
 	Height          *int     `toml:"height"`
 	Zoom            *float64 `toml:"zoom"`

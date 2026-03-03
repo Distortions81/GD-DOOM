@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"gddoom/internal/mapdata"
@@ -29,6 +30,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDetails := false
 	defaultRender := true
 	defaultDebug := false
+	defaultMultiCore := true
 	defaultWidth := 2560
 	defaultHeight := 1440
 	defaultZoom := 0.0
@@ -59,6 +61,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.Debug != nil {
 			defaultDebug = *cfg.Debug
+		}
+		if cfg.MultiCore != nil {
+			defaultMultiCore = *cfg.MultiCore
 		}
 		if cfg.Width != nil {
 			defaultWidth = *cfg.Width
@@ -111,6 +116,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	details := fs.Bool("details", defaultDetails, "print decoded gameplay-relevant map details")
 	render := fs.Bool("render", defaultRender, "launch Ebiten automap renderer")
 	debug := fs.Bool("debug", defaultDebug, "enable renderer debug HUD text/stats and debug logging")
+	multiCore := fs.Bool("multi-core", defaultMultiCore, "use multiple CPU cores (GOMAXPROCS=NumCPU when true, 1 when false)")
 	width := fs.Int("width", defaultWidth, "render window width")
 	height := fs.Int("height", defaultHeight, "render window height")
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
@@ -162,6 +168,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if strings.TrimSpace(*wadPath) == "" {
 		fmt.Fprintln(stderr, "-wad is required")
 		return 2
+	}
+	if *multiCore {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	} else {
+		runtime.GOMAXPROCS(1)
 	}
 
 	wf, err := wad.Open(*wadPath)

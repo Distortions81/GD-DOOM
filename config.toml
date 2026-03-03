@@ -5,6 +5,7 @@ wad = "DOOM1.WAD"
 map = ""
 render = true
 debug = false
+multi_core = true
 details = false
 
 width = 2560
