@@ -623,11 +623,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.mode != viewMap {
 		if g.walkRender == walkRendererPseudo {
 			g.prepareRenderState()
-			// Keep pseudo mode behavior-aligned with doom-basic until hidden-line
-			// and height handling are fully parity-correct.
-			g.drawDoomBasic3D(screen)
+			g.drawPseudo3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
-			ebitenutil.DebugPrintAt(screen, "renderer=pseudo3d(fallback) | P toggle | TAB automap", 12, 28)
+			ebitenutil.DebugPrintAt(screen, "renderer=pseudo3d | P toggle | TAB automap", 12, 28)
 		} else {
 			g.prepareRenderState()
 			g.drawDoomBasic3D(screen)
@@ -1227,11 +1225,6 @@ func shadeByDistance(c color.RGBA, dist float64) color.RGBA {
 }
 
 func (g *game) drawPseudo3D(screen *ebiten.Image) {
-	// Pseudo-3D wireframe currently lacks robust hidden-line occlusion.
-	// Use the occluded Doom-basic pass so walls always block visibility.
-	g.drawDoomBasic3D(screen)
-	return
-
 	ceiling := color.RGBA{R: 20, G: 24, B: 36, A: 255}
 	floor := color.RGBA{R: 24, G: 18, B: 14, A: 255}
 	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH)/2, ceiling)
