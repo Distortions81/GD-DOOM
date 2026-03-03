@@ -11,6 +11,7 @@ Rewrite this repo into a Go codebase with phased delivery:
 - Milestone 2 baseline: complete (Ebiten app, bounds/fit, zoom, geometry render, overlay, controls).
 - Post-M2 parity work: in progress (vanilla automap visibility/color/control parity not complete).
 - Sound decode track: not started.
+- Parity acceptance checks: deferred to lower priority for now.
 
 ## Decisions Locked
 - Phased rewrite
@@ -73,10 +74,14 @@ Rewrite this repo into a Go codebase with phased delivery:
 - Also includes sound decode track notes for boot-time in-memory decode flow.
 
 ## Next Execution Order
-1. Add explicit automap parity state model (normal/allmap/iddt levels) and wire controls for parity modes.
-2. Implement line inclusion + color parity rules (`ML_MAPPED`, `LINE_NEVERSEE`, secrets, teleporter, floor/ceiling deltas) and back them with focused unit tests.
-3. Add E1M1 parity acceptance checks for normal/allmap/iddt1/iddt2 states.
-4. Implement boot-time in-memory sound lump decode with startup status logging.
+1. Implement boot-time in-memory sound lump decode with startup status logging.
+2. Fix CLI map selection so omitted `-map` auto-selects first valid map (no hardcoded default map).
+3. Add E1M1 parity acceptance checks for normal/allmap/iddt1/iddt2 states (deferred/lower priority).
+
+## Lower Priority Backlog
+- Add screenshot-based automap regression checks for key map states.
+- Add optional vanilla-compat mode that starts in map view (`TAB`-style flow), while keeping current walk-first default.
+- Add a lightweight startup/parity HUD panel that clarifies current reveal mode and IDDT level.
 
 ## Known Gaps To Resolve
 - CLI map auto-selection should be driven by omitted `-map` value, not by a hardcoded default.
