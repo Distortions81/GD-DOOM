@@ -22,20 +22,20 @@ Reference implementation in this repo:
 
 ## Milestone 1: Wall-Driven Clip Arrays
 
-- [ ] Introduce 3D `floorclip[]` and `ceilingclip[]` buffers for each column.
-- [ ] Update wall render loop to mark these buffers per-column like Doom `R_RenderSegLoop`.
-- [ ] Keep existing wall depth buffer for safety while migrating.
+- [x] Introduce 3D `floorclip[]` and `ceilingclip[]` buffers for each column.
+- [x] Update wall render loop to mark these buffers per-column like Doom `R_RenderSegLoop`.
+- [x] Keep existing wall depth buffer for safety while migrating.
 
 ## Milestone 2: Plane Buckets and Span Build
 
-- [ ] Define 3D plane key: `height`, `flat`, `light` (+ sky special marker).
-- [ ] Build plane buckets from wall-marked clip ranges.
-- [ ] Add `R_MakeSpans`-equivalent scanline transition logic for 3D planes.
-- [ ] Ensure deterministic ordering and stable sentinel handling.
+- [x] Define 3D plane key: `height`, `flat`, `light` (+ sky special marker).
+- [x] Build plane buckets from wall-marked clip ranges.
+- [x] Add `R_MakeSpans`-equivalent scanline transition logic for 3D planes.
+- [x] Ensure deterministic ordering and stable sentinel handling.
 
 ## Milestone 3: Span Raster (R_MapPlane-like)
 
-- [ ] Render plane spans with per-row origin + x-step mapping (not per-pixel reprojection loops).
+- [x] Render plane spans with per-row origin + x-step mapping (not per-pixel reprojection loops).
 - [ ] Keep nearest + repeat texture sampling.
 - [ ] Integrate light level lookup model (initially coarse, then Doom-like).
 - [ ] Keep sky path separate (angle-based fetch semantics can be approximated first).

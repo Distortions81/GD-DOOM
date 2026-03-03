@@ -38,7 +38,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultAllCheats := false
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
-	defaultImportTextures := false
+	defaultImportTextures := true
 	defaultMapFloorTex2D := true
 	defaultConfigPath := configPath
 	configLineColorSet := false
@@ -120,7 +120,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
-	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build Ebiten-ready texture set at startup")
+	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	mapFloorTex2D := fs.Bool("map-floor-tex-2d", defaultMapFloorTex2D, "draw doom-basic 3D floor/ceiling flats (and 2D automap flats in sourceport mode)")
 
 	if err := fs.Parse(args); err != nil {
@@ -178,12 +178,31 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		)
 		soundBank = buildAutomapSoundBank(dsr)
 	}
+	wallTexBank := map[string]automap.WallTexture(nil)
 	if *importTextures {
 		ts, terr := doomtex.LoadFromWAD(wf)
 		if terr != nil {
 			fmt.Fprintf(stderr, "texture import failed: %v\n", terr)
 		} else {
 			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
+			names := ts.TextureNames()
+			wallTexBank = make(map[string]automap.WallTexture, len(names))
+			built := 0
+			failed := 0
+			for _, name := range names {
+				rgba, w, h, berr := ts.BuildTextureRGBA(name, 0)
+				if berr != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+					failed++
+					continue
+				}
+				wallTexBank[name] = automap.WallTexture{
+					RGBA:   rgba,
+					Width:  w,
+					Height: h,
+				}
+				built++
+			}
+			fmt.Fprintf(stderr, "wall texture build: built=%d failed=%d\n", built, failed)
 		}
 	}
 	flatBank := map[string][]byte(nil)
@@ -226,6 +245,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			StartInMapMode: *startInMap,
 			MapFloorTex2D:  resolvedMapFloorTex2D,
 			FlatBank:       flatBank,
+			WallTexBank:    wallTexBank,
 			SoundBank:      soundBank,
 		}
 		m, lerr := mapdata.LoadMap(wf, selected)

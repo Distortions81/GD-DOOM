@@ -28,7 +28,7 @@ func newPlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane
 // ensurePlane3DForRange emulates Doom's R_FindPlane + R_CheckPlane behavior.
 // If a same-key visplane has no set columns in the overlap range, we reuse it;
 // otherwise we allocate a new same-key visplane.
-func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3DKey, start, stop, viewW int) *plane3DVisplane {
+func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3DKey, start, stop, viewW int) (*plane3DVisplane, bool) {
 	if start > stop {
 		start, stop = stop, start
 	}
@@ -39,7 +39,7 @@ func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3D
 		stop = viewW - 1
 	}
 	if start > stop {
-		return nil
+		return nil, false
 	}
 	list := planes[key]
 	for _, pl := range list {
@@ -70,11 +70,11 @@ func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3D
 		if stop > pl.maxX {
 			pl.maxX = stop
 		}
-		return pl
+		return pl, false
 	}
 	pl := newPlane3DVisplane(key, start, stop, viewW)
 	planes[key] = append(list, pl)
-	return pl
+	return pl, true
 }
 
 func markPlane3DColumnRange(pl *plane3DVisplane, x, top, bottom int, ceilingclip, floorclip []int) bool {

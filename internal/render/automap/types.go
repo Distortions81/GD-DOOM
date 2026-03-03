@@ -14,7 +14,14 @@ type Options struct {
 	StartInMapMode bool
 	MapFloorTex2D  bool
 	FlatBank       map[string][]byte
+	WallTexBank    map[string]WallTexture
 	SoundBank      SoundBank
+}
+
+type WallTexture struct {
+	RGBA   []byte
+	Width  int
+	Height int
 }
 
 type RunResult struct {

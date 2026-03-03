@@ -5,13 +5,19 @@ import "testing"
 func TestEnsurePlane3DForRange_ReusesWhenNoOverlapConflict(t *testing.T) {
 	planes := make(map[plane3DKey][]*plane3DVisplane)
 	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
-	pl1 := ensurePlane3DForRange(planes, key, 2, 5, 32)
+	pl1, created := ensurePlane3DForRange(planes, key, 2, 5, 32)
 	if pl1 == nil {
 		t.Fatal("expected visplane allocation")
 	}
-	got := ensurePlane3DForRange(planes, key, 6, 9, 32)
+	if !created {
+		t.Fatal("expected first allocation to report created=true")
+	}
+	got, created := ensurePlane3DForRange(planes, key, 6, 9, 32)
 	if got != pl1 {
 		t.Fatal("expected existing visplane reuse")
+	}
+	if created {
+		t.Fatal("expected reuse to report created=false")
 	}
 	if len(planes[key]) != 1 {
 		t.Fatalf("visplane count=%d want=1", len(planes[key]))
@@ -24,9 +30,12 @@ func TestEnsurePlane3DForRange_ReusesWhenNoOverlapConflict(t *testing.T) {
 func TestEnsurePlane3DForRange_SplitsOnOverlapConflict(t *testing.T) {
 	planes := make(map[plane3DKey][]*plane3DVisplane)
 	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
-	pl1 := ensurePlane3DForRange(planes, key, 2, 6, 32)
+	pl1, created := ensurePlane3DForRange(planes, key, 2, 6, 32)
 	if pl1 == nil {
 		t.Fatal("expected visplane allocation")
+	}
+	if !created {
+		t.Fatal("expected first allocation to report created=true")
 	}
 	ceilingClip := make([]int, 32)
 	floorClip := make([]int, 32)
@@ -37,9 +46,12 @@ func TestEnsurePlane3DForRange_SplitsOnOverlapConflict(t *testing.T) {
 	if ok := markPlane3DColumnRange(pl1, 4, 6, 10, ceilingClip, floorClip); !ok {
 		t.Fatal("expected column mark")
 	}
-	pl2 := ensurePlane3DForRange(planes, key, 4, 8, 32)
+	pl2, created := ensurePlane3DForRange(planes, key, 4, 8, 32)
 	if pl2 == nil {
 		t.Fatal("expected second visplane allocation")
+	}
+	if !created {
+		t.Fatal("expected overlap split to report created=true")
 	}
 	if pl2 == pl1 {
 		t.Fatal("expected split visplane, got reuse")
@@ -48,4 +60,3 @@ func TestEnsurePlane3DForRange_SplitsOnOverlapConflict(t *testing.T) {
 		t.Fatalf("visplane count=%d want=2", len(planes[key]))
 	}
 }
-
