@@ -719,6 +719,11 @@ func (g *game) sectorAt(x, y int64) int {
 			if ss < 0 || ss >= len(g.m.SubSectors) {
 				return -1
 			}
+			if ss < len(g.subSectorSec) {
+				if sec := g.subSectorSec[ss]; sec >= 0 && sec < len(g.m.Sectors) {
+					return sec
+				}
+			}
 			s := g.m.SubSectors[ss]
 			if int(s.FirstSeg) >= len(g.m.Segs) {
 				return -1

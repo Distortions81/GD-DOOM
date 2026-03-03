@@ -139,6 +139,7 @@ type game struct {
 	isDead         bool
 	damageFlashTic int
 	bonusFlashTic  int
+	subSectorSec   []int
 
 	mapFloorLayer *ebiten.Image
 	mapFloorPix   []byte
@@ -232,6 +233,8 @@ type plane3DFrameStats struct {
 	inputSpans   int
 	outputSpans  int
 	clippedSpans int
+	texturedPix  int
+	fallbackPix  int
 }
 
 func newGame(m *mapdata.Map, opts Options) *game {
@@ -267,7 +270,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		},
 		showGrid:      false,
 		showLegend:    opts.SourcePortMode,
-		showMapFloors: opts.SourcePortMode && opts.MapFloorTex2D,
+		showMapFloors: opts.MapFloorTex2D,
 		bigMap:        false,
 		marks:         make([]mapMark, 0, 16),
 		nextMarkID:    1,
@@ -293,6 +296,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.mode = viewWalk
 	}
 	g.initPhysics()
+	g.initSubSectorSectorCache()
 	g.snd = newSoundSystem(opts.SoundBank)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -644,6 +648,26 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Grid OFF", 70)
 		}
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
+		g.showMapFloors = !g.showMapFloors
+		if g.showMapFloors {
+			g.setHUDMessage("Map Floor Textures ON", 70)
+		} else {
+			g.setHUDMessage("Map Floor Textures OFF", 70)
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyK) {
+		g.floorDbgMode = (g.floorDbgMode + 1) % 3
+		g.setHUDMessage("2D floor mode: "+g.floorDebugLabel(), 70)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyU) {
+		g.floor2DPath = (g.floor2DPath + 1) % 2
+		g.setHUDMessage("2D floor path: "+g.floorPathLabel(), 70)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyY) {
+		g.floorVisDiag = (g.floorVisDiag + 1) % 4
+		g.setHUDMessage("2D floor diag: "+g.floorVisDiagLabel(), 70)
+	}
 	if g.opts.SourcePortMode {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF10) {
 			g.applyCheatLevel((g.cheatLevel+1)%4, true)
@@ -680,26 +704,6 @@ func (g *game) updateParityControls() {
 			} else {
 				g.setHUDMessage("Thing Legend OFF", 70)
 			}
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
-			g.showMapFloors = !g.showMapFloors
-			if g.showMapFloors {
-				g.setHUDMessage("Map Floor Textures ON", 70)
-			} else {
-				g.setHUDMessage("Map Floor Textures OFF", 70)
-			}
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyK) {
-			g.floorDbgMode = (g.floorDbgMode + 1) % 3
-			g.setHUDMessage("2D floor mode: "+g.floorDebugLabel(), 70)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyU) {
-			g.floor2DPath = (g.floor2DPath + 1) % 2
-			g.setHUDMessage("2D floor path: "+g.floorPathLabel(), 70)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyY) {
-			g.floorVisDiag = (g.floorVisDiag + 1) % 4
-			g.setHUDMessage("2D floor diag: "+g.floorVisDiagLabel(), 70)
 		}
 	}
 }
@@ -740,9 +744,11 @@ func (g *game) Draw(screen *ebiten.Image) {
 			g.drawDoomBasic3D(screen)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
 			ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
-			ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
-			if g.opts.SourcePortMode && g.showMapFloors {
-				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("plane3d buckets=%d in=%d out=%d clip=%d", g.plane3DFrame.buckets, g.plane3DFrame.inputSpans, g.plane3DFrame.outputSpans, g.plane3DFrame.clippedSpans), 12, 60)
+			ebitenutil.DebugPrintAt(screen, "TAB open automap | J planes | F5 detail | F1 help", 12, 44)
+			planesOn := g.showMapFloors && len(g.opts.FlatBank) > 0
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes=%t flats=%d detail=%dx%d", planesOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
+			if g.showMapFloors && len(g.opts.FlatBank) > 0 {
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("plane3d buckets=%d in=%d out=%d clip=%d texpx=%d fbpx=%d", g.plane3DFrame.buckets, g.plane3DFrame.inputSpans, g.plane3DFrame.outputSpans, g.plane3DFrame.clippedSpans, g.plane3DFrame.texturedPix, g.plane3DFrame.fallbackPix), 12, 76)
 			}
 		}
 		if g.isDead {
@@ -1189,6 +1195,14 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		wallTop[i] = g.viewH
 		wallBottom[i] = -1
 	}
+	planesEnabled := g.showMapFloors && len(g.opts.FlatBank) > 0
+	ceilingClip := make([]int, g.viewW)
+	floorClip := make([]int, g.viewW)
+	for i := 0; i < g.viewW; i++ {
+		ceilingClip[i] = -1
+		floorClip[i] = g.viewH
+	}
+	planeVis := make(map[plane3DKey]*plane3DVisplane, 64)
 	solid := make([]solidSpan, 0, 16)
 	for _, si := range g.visibleSegIndicesPseudo3D() {
 		if si < 0 || si >= len(g.m.Segs) {
@@ -1266,29 +1280,345 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if front == nil {
 			continue
 		}
-		if back == nil {
-			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
+		worldTop := float64(front.CeilingHeight) - eyeZ
+		worldBottom := float64(front.FloorHeight) - eyeZ
+		worldHigh := worldTop
+		worldLow := worldBottom
+		topWall := false
+		bottomWall := false
+		markCeiling := true
+		markFloor := true
+		solidWall := back == nil
+
+		if back != nil {
+			worldHigh = float64(back.CeilingHeight) - eyeZ
+			worldLow = float64(back.FloorHeight) - eyeZ
+			if isSkyFlatName(front.CeilingPic) && isSkyFlatName(back.CeilingPic) {
+				// Doom sky hack: keep upper portal open when both sides are sky.
+				worldTop = worldHigh
+			}
+			markFloor = worldLow != worldBottom ||
+				normalizeFlatName(back.FloorPic) != normalizeFlatName(front.FloorPic) ||
+				back.Light != front.Light
+			markCeiling = worldHigh != worldTop ||
+				normalizeFlatName(back.CeilingPic) != normalizeFlatName(front.CeilingPic) ||
+				back.Light != front.Light
+			if back.CeilingHeight <= front.FloorHeight || back.FloorHeight >= front.CeilingHeight {
+				markFloor = true
+				markCeiling = true
+				solidWall = true
+			}
+			topWall = worldHigh < worldTop
+			bottomWall = worldLow > worldBottom
+		}
+		if float64(front.FloorHeight) >= eyeZ {
+			markFloor = false
+		}
+		if float64(front.CeilingHeight) <= eyeZ && !isSkyFlatName(front.CeilingPic) {
+			markCeiling = false
+		}
+
+		var floorPlane *plane3DVisplane
+		var ceilPlane *plane3DVisplane
+		if planesEnabled {
+			floorPlane = plane3DVisplaneForKey(planeVis, g.plane3DKeyForSector(front, true), g.viewW)
+			ceilPlane = plane3DVisplaneForKey(planeVis, g.plane3DKeyForSector(front, false), g.viewW)
+		}
+
+		for x := minSX; x <= maxSX; x++ {
+			t := (float64(x) - sx1) / (sx2 - sx1)
+			if t < 0 {
+				t = 0
+			}
+			if t > 1 {
+				t = 1
+			}
+			invF1 := 1.0 / f1
+			invF2 := 1.0 / f2
+			invF := invF1 + (invF2-invF1)*t
+			if invF <= 0 {
+				continue
+			}
+			f := 1.0 / invF
+			if f <= 0 {
+				continue
+			}
+
+			yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focal))
+			if yl < ceilingClip[x]+1 {
+				yl = ceilingClip[x] + 1
+			}
+			if markCeiling && planesEnabled && ceilPlane != nil {
+				top := ceilingClip[x] + 1
+				bottom := yl - 1
+				if bottom >= floorClip[x] {
+					bottom = floorClip[x] - 1
+				}
+				markPlane3DColumnRange(ceilPlane, x, top, bottom, ceilingClip, floorClip)
+			}
+
+			yh := int(math.Floor(float64(g.viewH)/2 - (worldBottom/f)*focal))
+			if yh >= floorClip[x] {
+				yh = floorClip[x] - 1
+			}
+			if markFloor && planesEnabled && floorPlane != nil {
+				top := yh + 1
+				bottom := floorClip[x] - 1
+				if top <= ceilingClip[x] {
+					top = ceilingClip[x] + 1
+				}
+				markPlane3DColumnRange(floorPlane, x, top, bottom, ceilingClip, floorClip)
+			}
+
+			if solidWall {
+				g.drawBasicWallColumn(screen, depthPix, wallTop, wallBottom, x, yl, yh, f, baseRGBA)
+				ceilingClip[x] = g.viewH
+				floorClip[x] = -1
+				continue
+			}
+
+			if topWall {
+				mid := int(math.Floor(float64(g.viewH)/2 - (worldHigh/f)*focal))
+				if mid >= floorClip[x] {
+					mid = floorClip[x] - 1
+				}
+				if mid >= yl {
+					g.drawBasicWallColumn(screen, depthPix, wallTop, wallBottom, x, yl, mid, f, baseRGBA)
+					ceilingClip[x] = mid
+				} else {
+					ceilingClip[x] = yl - 1
+				}
+			} else if markCeiling {
+				ceilingClip[x] = yl - 1
+			}
+
+			if bottomWall {
+				mid := int(math.Ceil(float64(g.viewH)/2 - (worldLow/f)*focal))
+				if mid <= ceilingClip[x] {
+					mid = ceilingClip[x] + 1
+				}
+				if mid <= yh {
+					g.drawBasicWallColumn(screen, depthPix, wallTop, wallBottom, x, mid, yh, f, baseRGBA)
+					floorClip[x] = mid
+				} else {
+					floorClip[x] = yh + 1
+				}
+			} else if markFloor {
+				floorClip[x] = yh + 1
+			}
+		}
+
+		if solidWall {
 			solid = addSolidSpan(solid, minSX, maxSX)
-			continue
-		}
-		openTop := math.Min(float64(front.CeilingHeight), float64(back.CeilingHeight))
-		openBottom := math.Max(float64(front.FloorHeight), float64(back.FloorHeight))
-		if openBottom >= openTop {
-			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, float64(front.CeilingHeight), float64(front.FloorHeight), eyeZ, focal, baseRGBA)
-			solid = addSolidSpan(solid, minSX, maxSX)
-			continue
-		}
-		if float64(front.CeilingHeight) > openTop {
-			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, float64(front.CeilingHeight), openTop, eyeZ, focal, baseRGBA)
-		}
-		if float64(front.FloorHeight) < openBottom {
-			g.drawBasicWallColumnRange(screen, depthPix, wallTop, wallBottom, sx1, sx2, f1, f2, openBottom, float64(front.FloorHeight), eyeZ, focal, baseRGBA)
 		}
 	}
-	sec := g.sectorAt(g.p.x, g.p.y)
-	if g.showMapFloors && len(g.opts.FlatBank) > 0 && sec >= 0 && sec < len(g.m.Sectors) {
-		g.drawDoomBasicTexturedPlanesSpanPass(screen, camX, camY, ca, sa, eyeZ, focal, sec, ceilClr, floorClr, wallTop, wallBottom)
+	if planesEnabled {
+		g.drawDoomBasicTexturedPlanesVisplanePass(screen, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeVis)
 	}
+}
+
+func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
+	key := plane3DKey{
+		light:    160,
+		fallback: true,
+		floor:    floor,
+	}
+	if sec == nil {
+		return key
+	}
+	key.light = sec.Light
+	pic := sec.CeilingPic
+	key.height = sec.CeilingHeight
+	if floor {
+		pic = sec.FloorPic
+		key.height = sec.FloorHeight
+	}
+	if !floor && isSkyFlatName(pic) {
+		key.sky = true
+		key.height = 0
+		key.light = 0
+		key.flat = "SKY"
+		key.fallback = true
+		return key
+	}
+	key.flat = normalizeFlatName(pic)
+	key.fallback = len(g.opts.FlatBank[key.flat]) != 64*64*4
+	return key
+}
+
+func (g *game) drawBasicWallColumn(screen *ebiten.Image, depthPix []float64, wallTop, wallBottom []int, x, y0, y1 int, depth float64, base color.RGBA) {
+	if x < 0 || x >= g.viewW || y0 > y1 {
+		return
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if y1 >= g.viewH {
+		y1 = g.viewH - 1
+	}
+	if y0 > y1 {
+		return
+	}
+	clr := shadeByDistance(base, depth)
+	runStart := -1
+	for y := y0; y <= y1; y++ {
+		pi := y*g.viewW + x
+		if depth < depthPix[pi] {
+			depthPix[pi] = depth
+			if y < wallTop[x] {
+				wallTop[x] = y
+			}
+			if y > wallBottom[x] {
+				wallBottom[x] = y
+			}
+			if runStart < 0 {
+				runStart = y
+			}
+		} else if runStart >= 0 {
+			ebitenutil.DrawRect(screen, float64(x), float64(runStart), 1, float64(y-runStart), clr)
+			runStart = -1
+		}
+	}
+	if runStart >= 0 {
+		ebitenutil.DrawRect(screen, float64(x), float64(runStart), 1, float64(y1-runStart+1), clr)
+	}
+}
+
+func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes map[plane3DKey]*plane3DVisplane) {
+	if len(planes) == 0 {
+		return
+	}
+	g.ensureMapFloorLayer()
+	pix := g.mapFloorPix
+	w := g.viewW
+	h := g.viewH
+	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
+		return
+	}
+	for i := 0; i < len(pix); i += 4 {
+		pix[i+0] = 0
+		pix[i+1] = 0
+		pix[i+2] = 0
+		pix[i+3] = 0
+	}
+	spanBuckets := make(map[plane3DKey][]plane3DSpan, len(planes))
+	keyOrder := make([]plane3DKey, 0, len(planes))
+	for key, pl := range planes {
+		spans := makePlane3DSpans(pl, h, nil)
+		if len(spans) == 0 {
+			continue
+		}
+		spanBuckets[key] = spans
+		keyOrder = append(keyOrder, key)
+		g.plane3DFrame.inputSpans += len(spans)
+	}
+	sort.Slice(keyOrder, func(i, j int) bool {
+		if keyOrder[i].floor != keyOrder[j].floor {
+			return !keyOrder[i].floor
+		}
+		if keyOrder[i].sky != keyOrder[j].sky {
+			return !keyOrder[i].sky
+		}
+		if keyOrder[i].height != keyOrder[j].height {
+			return keyOrder[i].height < keyOrder[j].height
+		}
+		if keyOrder[i].light != keyOrder[j].light {
+			return keyOrder[i].light < keyOrder[j].light
+		}
+		if keyOrder[i].flat != keyOrder[j].flat {
+			return keyOrder[i].flat < keyOrder[j].flat
+		}
+		if keyOrder[i].fallback != keyOrder[j].fallback {
+			return keyOrder[j].fallback
+		}
+		return false
+	})
+	g.plane3DFrame.buckets = len(keyOrder)
+	cx := float64(w) * 0.5
+	cy := float64(h) * 0.5
+	flatCache := make(map[string][]byte, len(keyOrder))
+	for _, key := range keyOrder {
+		fb := ceilFallback
+		if key.floor {
+			fb = floorFallback
+		}
+		tex := flatCache[key.flat]
+		if !key.fallback && tex == nil {
+			tex = g.opts.FlatBank[key.flat]
+			flatCache[key.flat] = tex
+		}
+		for _, sp := range spanBuckets[key] {
+			if sp.y < 0 || sp.y >= h {
+				continue
+			}
+			x1 := sp.x1
+			x2 := sp.x2
+			if x1 < 0 {
+				x1 = 0
+			}
+			if x2 >= w {
+				x2 = w - 1
+			}
+			if x2 < x1 {
+				continue
+			}
+			row := sp.y * w * 4
+			g.plane3DFrame.outputSpans++
+			if key.sky {
+				for x := x1; x <= x2; x++ {
+					i := row + x*4
+					pix[i+0] = fb.R
+					pix[i+1] = fb.G
+					pix[i+2] = fb.B
+					pix[i+3] = 255
+					g.plane3DFrame.fallbackPix++
+				}
+				continue
+			}
+			den := cy - (float64(sp.y) + 0.5)
+			if math.Abs(den) < 1e-6 {
+				continue
+			}
+			planeZ := float64(key.height)
+			depth := ((planeZ - eyeZ) / den) * focal
+			if depth <= 0 {
+				continue
+			}
+			wxSpan := camX + depth*ca - ((cx-(float64(x1)+0.5))*depth/focal)*sa
+			wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
+			stepWX := (depth / focal) * sa
+			stepWY := -(depth / focal) * ca
+			for x := x1; x <= x2; x++ {
+				i := row + x*4
+				if key.fallback {
+					pix[i+0] = fb.R
+					pix[i+1] = fb.G
+					pix[i+2] = fb.B
+					pix[i+3] = 255
+					g.plane3DFrame.fallbackPix++
+				} else if len(tex) == 64*64*4 {
+					u := int(math.Floor(wxSpan)) & 63
+					v := int(math.Floor(wySpan)) & 63
+					ti := (v*64 + u) * 4
+					pix[i+0] = tex[ti+0]
+					pix[i+1] = tex[ti+1]
+					pix[i+2] = tex[ti+2]
+					pix[i+3] = 255
+					g.plane3DFrame.texturedPix++
+				} else {
+					pix[i+0] = fb.R
+					pix[i+1] = fb.G
+					pix[i+2] = fb.B
+					pix[i+3] = 255
+					g.plane3DFrame.fallbackPix++
+				}
+				wxSpan += stepWX
+				wySpan += stepWY
+			}
+		}
+	}
+	g.mapFloorLayer.WritePixels(pix)
+	screen.DrawImage(g.mapFloorLayer, nil)
 }
 
 func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback, floorFallback color.RGBA, wallTop, wallBottom []int) {
@@ -1470,6 +1800,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 						pix[i+1] = fb.G
 						pix[i+2] = fb.B
 						pix[i+3] = 255
+						g.plane3DFrame.fallbackPix++
 					} else if len(tex) == 64*64*4 {
 						u := int(math.Floor(wxSpan)) & 63
 						v := int(math.Floor(wySpan)) & 63
@@ -1478,11 +1809,13 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 						pix[i+1] = tex[ti+1]
 						pix[i+2] = tex[ti+2]
 						pix[i+3] = 255
+						g.plane3DFrame.texturedPix++
 					} else {
 						pix[i+0] = fb.R
 						pix[i+1] = fb.G
 						pix[i+2] = fb.B
 						pix[i+3] = 255
+						g.plane3DFrame.fallbackPix++
 					}
 					wxSpan += stepWX
 					wySpan += stepWY
@@ -3052,6 +3385,22 @@ func (g *game) subSectorSectorIndex(ss int) (int, bool) {
 	return bestSec, bestSec >= 0
 }
 
+func (g *game) initSubSectorSectorCache() {
+	if g.m == nil || len(g.m.SubSectors) == 0 {
+		g.subSectorSec = nil
+		return
+	}
+	g.subSectorSec = make([]int, len(g.m.SubSectors))
+	for i := range g.subSectorSec {
+		g.subSectorSec[i] = -1
+	}
+	for ss := range g.m.SubSectors {
+		if sec, ok := g.subSectorSectorIndex(ss); ok {
+			g.subSectorSec[ss] = sec
+		}
+	}
+}
+
 type polyBBox struct {
 	minX int
 	minY int
@@ -3342,7 +3691,13 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"F1  HELP TOGGLE",
 		"F5  DETAIL CYCLE",
 		"TAB  WALK/MAP MODE",
+		"WALK MODE",
 		"WASD  MOVE",
+		"ARROWS  TURN/STRAFE(ALT)",
+		"CTRL/MOUSE1  FIRE",
+		"J  TOGGLE 3D PLANES",
+		"P  TOGGLE WIREFRAME",
+		"MAP MODE",
 		"Q/E  TURN (MAP MODE)",
 		"SHIFT  RUN",
 		"SPACE  USE",
@@ -3359,7 +3714,6 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		lines = append(lines,
 			"SOURCEPORT EXTRAS",
 			"R  ROTATE/FOLLOW HEADING",
-			"P  TOGGLE WALK RENDERER",
 			"B  BIG MAP (ALIAS)",
 			"O  TOGGLE NORMAL/ALLMAP",
 			"I  CYCLE IDDT",
