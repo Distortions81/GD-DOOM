@@ -5,6 +5,7 @@ type Options struct {
 	Height         int
 	StartZoom      float64
 	WADHash        string
+	Debug          bool
 	PlayerSlot     int
 	SkillLevel     int
 	CheatLevel     int

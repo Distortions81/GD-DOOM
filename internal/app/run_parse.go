@@ -28,6 +28,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMap := ""
 	defaultDetails := false
 	defaultRender := true
+	defaultDebug := false
 	defaultWidth := 2560
 	defaultHeight := 1440
 	defaultZoom := 0.0
@@ -55,6 +56,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.Render != nil {
 			defaultRender = *cfg.Render
+		}
+		if cfg.Debug != nil {
+			defaultDebug = *cfg.Debug
 		}
 		if cfg.Width != nil {
 			defaultWidth = *cfg.Width
@@ -106,6 +110,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	mapName := fs.String("map", defaultMap, "map name (E#M# or MAP##); empty selects first valid map")
 	details := fs.Bool("details", defaultDetails, "print decoded gameplay-relevant map details")
 	render := fs.Bool("render", defaultRender, "launch Ebiten automap renderer")
+	debug := fs.Bool("debug", defaultDebug, "enable renderer debug HUD text/stats and debug logging")
 	width := fs.Int("width", defaultWidth, "render window width")
 	height := fs.Int("height", defaultHeight, "render window height")
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
@@ -234,6 +239,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Height:         *height,
 			StartZoom:      *zoom,
 			WADHash:        wadHash,
+			Debug:          *debug,
 			PlayerSlot:     *playerSlot,
 			SkillLevel:     *skillLevel,
 			CheatLevel:     resolvedCheatLevel,

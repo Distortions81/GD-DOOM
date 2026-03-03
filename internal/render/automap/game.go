@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -266,6 +267,7 @@ type plane3DFrameStats struct {
 	inputSpans   int
 	outputSpans  int
 	clippedSpans int
+	skyPix       int
 	texturedPix  int
 	fallbackPix  int
 }
@@ -792,23 +794,27 @@ func (g *game) Draw(screen *ebiten.Image) {
 		if g.walkRender == walkRendererPseudo {
 			g.prepareRenderState()
 			g.drawPseudo3D(screen)
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
-			ebitenutil.DebugPrintAt(screen, "renderer=wireframe | P toggle | TAB automap", 12, 28)
+			if g.opts.Debug {
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
+				ebitenutil.DebugPrintAt(screen, "renderer=wireframe | P toggle | TAB automap", 12, 28)
+			}
 		} else {
 			g.prepareRenderState()
 			g.drawDoomBasic3D(screen)
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
-			if g.opts.SourcePortMode {
-				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
-				ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | P wireframe | F1 help", 12, 44)
-			} else {
-				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | TAB automap", 12, 12)
-				ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | F1 help", 12, 44)
-			}
-			planes3DOn := len(g.opts.FlatBank) > 0
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
-			if planes3DOn {
-				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("plane3d buckets=%d in=%d out=%d clip=%d texpx=%d fbpx=%d", g.plane3DFrame.buckets, g.plane3DFrame.inputSpans, g.plane3DFrame.outputSpans, g.plane3DFrame.clippedSpans, g.plane3DFrame.texturedPix, g.plane3DFrame.fallbackPix), 12, 76)
+			if g.opts.Debug {
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
+				if g.opts.SourcePortMode {
+					ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
+					ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | P wireframe | F1 help", 12, 44)
+				} else {
+					ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | TAB automap", 12, 12)
+					ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | F1 help", 12, 44)
+				}
+				planes3DOn := len(g.opts.FlatBank) > 0
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
+				if planes3DOn {
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("plane3d buckets=%d in=%d out=%d clip=%d skypx=%d texpx=%d fbpx=%d", g.plane3DFrame.buckets, g.plane3DFrame.inputSpans, g.plane3DFrame.outputSpans, g.plane3DFrame.clippedSpans, g.plane3DFrame.skyPix, g.plane3DFrame.texturedPix, g.plane3DFrame.fallbackPix), 12, 76)
+				}
 			}
 		}
 		if g.isDead {
@@ -1667,6 +1673,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 	}
 	spansByPlane := make([][]plane3DSpan, len(planes))
 	active := 0
+	hasSky := false
 	for i, pl := range planes {
 		spans := makePlane3DSpans(pl, h, nil)
 		if len(spans) == 0 {
@@ -1675,11 +1682,33 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 		spansByPlane[i] = spans
 		g.plane3DFrame.inputSpans += len(spans)
 		active++
+		if pl.key.sky {
+			hasSky = true
+		}
 	}
 	g.plane3DFrame.buckets = active
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
 	flatCache := make(map[string][]byte, len(planes))
+	skyTex, skyTexOK := WallTexture{}, false
+	skyColU := make([]int, 0)
+	skyRowV := make([]int, 0)
+	if hasSky {
+		skyTex, skyTexOK = skyTextureForMap(g.m.Name, g.opts.WallTexBank)
+		if skyTexOK {
+			skyColU = make([]int, w)
+			camAng := math.Atan2(sa, ca)
+			for x := 0; x < w; x++ {
+				u, _ := skySampleUV(x, 0, w, h, focal, camAng, skyTex.Width, skyTex.Height)
+				skyColU[x] = u
+			}
+			skyRowV = make([]int, h)
+			for y := 0; y < h; y++ {
+				_, v := skySampleUV(0, y, w, h, focal, camAng, skyTex.Width, skyTex.Height)
+				skyRowV[y] = v
+			}
+		}
+	}
 	for i, pl := range planes {
 		spans := spansByPlane[i]
 		if len(spans) == 0 {
@@ -1713,13 +1742,30 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(screen *ebiten.Image, cam
 			row := sp.y * w * 4
 			g.plane3DFrame.outputSpans++
 			if key.sky {
+				v := 0
+				if sp.y >= 0 && sp.y < len(skyRowV) {
+					v = skyRowV[sp.y]
+				}
 				for x := x1; x <= x2; x++ {
 					i := row + x*4
-					pix[i+0] = fb.R
-					pix[i+1] = fb.G
-					pix[i+2] = fb.B
+					g.plane3DFrame.skyPix++
+					if skyTexOK && len(skyTex.RGBA) == skyTex.Width*skyTex.Height*4 {
+						u := 0
+						if x >= 0 && x < len(skyColU) {
+							u = skyColU[x]
+						}
+						ti := (v*skyTex.Width + u) * 4
+						pix[i+0] = skyTex.RGBA[ti+0]
+						pix[i+1] = skyTex.RGBA[ti+1]
+						pix[i+2] = skyTex.RGBA[ti+2]
+						g.plane3DFrame.texturedPix++
+					} else {
+						pix[i+0] = fb.R
+						pix[i+1] = fb.G
+						pix[i+2] = fb.B
+						g.plane3DFrame.fallbackPix++
+					}
 					pix[i+3] = 255
-					g.plane3DFrame.fallbackPix++
 				}
 				continue
 			}
@@ -1892,6 +1938,22 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		return false
 	})
 	g.plane3DFrame.buckets = len(keyOrder)
+	skyTex, skyTexOK := skyTextureForMap(g.m.Name, g.opts.WallTexBank)
+	skyColU := make([]int, 0)
+	skyRowV := make([]int, 0)
+	if skyTexOK {
+		skyColU = make([]int, w)
+		camAng := math.Atan2(sa, ca)
+		for x := 0; x < w; x++ {
+			u, _ := skySampleUV(x, 0, w, h, focal, camAng, skyTex.Width, skyTex.Height)
+			skyColU[x] = u
+		}
+		skyRowV = make([]int, h)
+		for y := 0; y < h; y++ {
+			_, v := skySampleUV(0, y, w, h, focal, camAng, skyTex.Width, skyTex.Height)
+			skyRowV[y] = v
+		}
+	}
 	coveredByRow := make([][]spanRange, h)
 	for _, key := range keyOrder {
 		fb := ceilFallback
@@ -1941,9 +2003,33 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 				g.plane3DFrame.outputSpans++
 				wxSpan := camX + depth*ca - ((cx-(float64(vr.l)+0.5))*depth/focal)*sa
 				wySpan := camY + depth*sa + ((cx-(float64(vr.l)+0.5))*depth/focal)*ca
+				v := 0
+				if sp.y >= 0 && sp.y < len(skyRowV) {
+					v = skyRowV[sp.y]
+				}
 				for x := vr.l; x <= vr.r; x++ {
 					i := row + x*4
-					if key.fallback {
+					if key.sky {
+						g.plane3DFrame.skyPix++
+						if skyTexOK && len(skyTex.RGBA) == skyTex.Width*skyTex.Height*4 {
+							u := 0
+							if x >= 0 && x < len(skyColU) {
+								u = skyColU[x]
+							}
+							ti := (v*skyTex.Width + u) * 4
+							pix[i+0] = skyTex.RGBA[ti+0]
+							pix[i+1] = skyTex.RGBA[ti+1]
+							pix[i+2] = skyTex.RGBA[ti+2]
+							pix[i+3] = 255
+							g.plane3DFrame.texturedPix++
+						} else {
+							pix[i+0] = fb.R
+							pix[i+1] = fb.G
+							pix[i+2] = fb.B
+							pix[i+3] = 255
+							g.plane3DFrame.fallbackPix++
+						}
+					} else if key.fallback {
 						pix[i+0] = fb.R
 						pix[i+1] = fb.G
 						pix[i+2] = fb.B
@@ -2163,7 +2249,7 @@ func isFinite(v float64) bool {
 }
 
 func (g *game) logWallCull(segIdx int, reason string, z1, z2, x1, x2 float64) {
-	if g.cullLogBudget <= 0 {
+	if !g.opts.Debug || g.cullLogBudget <= 0 {
 		return
 	}
 	g.cullLogBudget--
@@ -2845,6 +2931,107 @@ func (g *game) wallTexture(name string) (WallTexture, bool) {
 		return WallTexture{}, false
 	}
 	return tex, true
+}
+
+func skyTextureForMap(mapName mapdata.MapName, wallTexBank map[string]WallTexture) (WallTexture, bool) {
+	for _, name := range skyTextureCandidates(mapName) {
+		key := normalizeFlatName(name)
+		tex, ok := wallTexBank[key]
+		if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
+			continue
+		}
+		return tex, true
+	}
+	return WallTexture{}, false
+}
+
+func skyTextureCandidates(mapName mapdata.MapName) []string {
+	name := strings.ToUpper(strings.TrimSpace(string(mapName)))
+	out := make([]string, 0, 5)
+	add := func(c string) {
+		c = normalizeFlatName(c)
+		if c == "" {
+			return
+		}
+		for _, ex := range out {
+			if ex == c {
+				return
+			}
+		}
+		out = append(out, c)
+	}
+	if len(name) == 4 && name[0] == 'E' && name[2] == 'M' && name[1] >= '0' && name[1] <= '9' {
+		switch int(name[1] - '0') {
+		case 1:
+			add("SKY1")
+		case 2:
+			add("SKY2")
+		case 3:
+			add("SKY3")
+		case 4:
+			add("SKY4")
+		}
+	}
+	if strings.HasPrefix(name, "MAP") && len(name) >= 5 {
+		if n, err := strconv.Atoi(name[3:]); err == nil {
+			switch {
+			case n >= 1 && n <= 11:
+				add("SKY1")
+			case n >= 12 && n <= 20:
+				add("SKY2")
+			case n >= 21:
+				add("SKY3")
+			}
+		}
+	}
+	add("SKY1")
+	add("SKY2")
+	add("SKY3")
+	add("SKY4")
+	return out
+}
+
+func skySampleUV(screenX, screenY, viewW, viewH int, focal, camAngle float64, texW, texH int) (u, v int) {
+	if texW <= 0 || texH <= 0 {
+		return 0, 0
+	}
+	if focal <= 1e-6 {
+		focal = 1
+	}
+	angle := skySampleAngle(screenX, viewW, focal, camAngle)
+	uScale := float64(texW*4) / (2 * math.Pi)
+	u = wrapIndex(int(math.Floor(angle*uScale)), texW)
+
+	cy := float64(viewH) * 0.5
+	if cy <= 1e-6 {
+		return u, 0
+	}
+	yn := (float64(screenY) + 0.5) / cy
+	if yn < 0 {
+		yn = 0
+	}
+	if yn > 1 {
+		yn = 1
+	}
+	v = int(math.Floor(yn * float64(texH-1)))
+	if v < 0 {
+		v = 0
+	}
+	if v >= texH {
+		v = texH - 1
+	}
+	return u, v
+}
+
+func skySampleAngle(screenX, viewW int, focal, camAngle float64) float64 {
+	if focal <= 1e-6 {
+		focal = 1
+	}
+	cx := float64(viewW) * 0.5
+	sampleX := float64(screenX) + 0.5
+	// Match wall projection sign convention: screen x = cx - tan(rel)*focal,
+	// so rel = atan((cx-x)/focal). Using this keeps sky panning direction aligned.
+	return camAngle + math.Atan((cx-sampleX)/focal)
 }
 
 func wrapIndex(x, size int) int {

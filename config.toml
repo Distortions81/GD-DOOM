@@ -4,10 +4,11 @@
 wad = "DOOM1.WAD"
 map = ""
 render = true
+debug = false
 details = false
 
-width = 1280
-height = 800
+width = 2560
+height = 1440
 zoom = 0.0
 player = 1
 skill = 3

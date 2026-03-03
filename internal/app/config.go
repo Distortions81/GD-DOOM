@@ -12,6 +12,7 @@ type fileConfig struct {
 	Wad             *string  `toml:"wad"`
 	Map             *string  `toml:"map"`
 	Render          *bool    `toml:"render"`
+	Debug           *bool    `toml:"debug"`
 	Width           *int     `toml:"width"`
 	Height          *int     `toml:"height"`
 	Zoom            *float64 `toml:"zoom"`
