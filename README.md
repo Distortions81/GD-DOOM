@@ -41,6 +41,7 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-start-in-map`: start with automap open (default `false`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
 - `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
+- `-import-textures`: parse `PLAYPAL`/`PNAMES`/`TEXTURE1/2` and build texture tables for Ebiten use
 
 Level progression:
 - Exit linedefs now transition to the next map in-sequence.

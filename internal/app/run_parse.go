@@ -9,6 +9,7 @@ import (
 
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/automap"
+	"gddoom/internal/render/doomtex"
 	"gddoom/internal/sound"
 	"gddoom/internal/wad"
 )
@@ -37,6 +38,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultAllCheats := false
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
+	defaultImportTextures := false
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -89,6 +91,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.ImportPCSpeaker != nil {
 			defaultImportPCSpeaker = *cfg.ImportPCSpeaker
 		}
+		if cfg.ImportTextures != nil {
+			defaultImportTextures = *cfg.ImportTextures
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -111,6 +116,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
+	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build Ebiten-ready texture set at startup")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -165,6 +171,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			dsr.Found, dsr.Decoded, dsr.Failed,
 		)
 		soundBank = buildAutomapSoundBank(dsr)
+	}
+	if *importTextures {
+		ts, terr := doomtex.LoadFromWAD(wf)
+		if terr != nil {
+			fmt.Fprintf(stderr, "texture import failed: %v\n", terr)
+		} else {
+			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
+		}
 	}
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))

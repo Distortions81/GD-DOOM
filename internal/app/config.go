@@ -19,6 +19,7 @@ type fileConfig struct {
 	Skill           *int     `toml:"skill"`
 	CheatLevel      *int     `toml:"cheat_level"`
 	Invulnerable    *bool    `toml:"invulnerable"`
+	ImportTextures  *bool    `toml:"import_textures"`
 	LineColorMode   *string  `toml:"line_color_mode"`
 	SourcePortMode  *bool    `toml:"sourceport_mode"`
 	AllCheats       *bool    `toml:"all_cheats"`
