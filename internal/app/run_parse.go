@@ -33,7 +33,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
 	defaultAllCheats := false
-	defaultStartInMap := true
+	defaultStartInMap := false
 	defaultImportPCSpeaker := true
 	defaultConfigPath := configPath
 	configLineColorSet := false

@@ -21,7 +21,7 @@ Run:
 go run ./cmd/gddoom -wad DOOM1.WAD
 ```
 
-By default it starts in automap mode (`-start-in-map=true`), and `TAB` toggles walk/map.
+By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles walk/map.
 
 ## Key Flags
 
@@ -36,7 +36,7 @@ By default it starts in automap mode (`-start-in-map=true`), and `TAB` toggles w
 - `-skill <1-5>`: Doom skill level (`1=ITYTD`, `2=HNTR`, `3=HMP`, `4=UV`, `5=NM`)
 - `-sourceport-mode`: enable source-port style automap extras at startup
 - `-all-cheats`: start with automap cheats enabled (`allmap` + `IDDT2`)
-- `-start-in-map`: start with automap open (default `true`)
+- `-start-in-map`: start with automap open (default `false`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
 - `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
 

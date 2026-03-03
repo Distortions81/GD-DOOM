@@ -15,5 +15,5 @@ skill = 3
 line_color_mode = "parity"
 sourceport_mode = false
 all_cheats = false
-start_in_map = true
+start_in_map = false
 import_pcspeaker = true
