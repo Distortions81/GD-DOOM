@@ -20,7 +20,7 @@ func collectPlayerStarts(m *mapdata.Map) []playerStart {
 			slot:  slot,
 			x:     int64(t.X) << fracBits,
 			y:     int64(t.Y) << fracBits,
-			angle: degToAngle(t.Angle),
+			angle: thingDegToWorldAngle(t.Angle),
 		})
 	}
 	return starts

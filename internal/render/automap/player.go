@@ -1212,6 +1212,19 @@ func degToAngle(deg int16) uint32 {
 	return uint32((float64(deg) / 360.0) * 4294967296.0)
 }
 
+func thingDegToWorldAngle(deg int16) uint32 {
+	// Doom THINGS angles use 0=north, 90=east.
+	// Internal movement/projection uses 0=east, +CCW.
+	world := 90.0 - float64(deg)
+	for world < 0 {
+		world += 360
+	}
+	for world >= 360 {
+		world -= 360
+	}
+	return uint32((world / 360.0) * 4294967296.0)
+}
+
 func clamp(v, lo, hi int64) int64 {
 	if v < lo {
 		return lo

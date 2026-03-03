@@ -18,6 +18,12 @@ func TestCollectPlayerStarts(t *testing.T) {
 	if len(starts) != 2 {
 		t.Fatalf("starts len=%d want=2", len(starts))
 	}
+	if got, want := starts[0].angle, degToAngle(0); got != want {
+		t.Fatalf("slot3 angle=%08x want=%08x", got, want)
+	}
+	if got, want := starts[1].angle, degToAngle(90); got != want {
+		t.Fatalf("slot1 angle=%08x want=%08x", got, want)
+	}
 }
 
 func TestChooseSpawnStartRequestedSlot(t *testing.T) {
