@@ -2144,52 +2144,8 @@ func (g *game) visibleLineIndices() []int {
 	maxY := floatToFixed(maxYf)
 
 	g.visibleBuf = g.visibleBuf[:0]
-	g.renderEpoch++
-	if g.renderEpoch == 0 {
-		for i := range g.renderSeen {
-			g.renderSeen[i] = 0
-		}
-		g.renderEpoch = 1
-	}
-
-	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
-		bx0 := int((minX - g.bmapOriginX) >> (fracBits + 7))
-		bx1 := int((maxX - g.bmapOriginX) >> (fracBits + 7))
-		by0 := int((minY - g.bmapOriginY) >> (fracBits + 7))
-		by1 := int((maxY - g.bmapOriginY) >> (fracBits + 7))
-		// Safety border to avoid dropping lines that barely cross cell edges.
-		for bx := bx0 - 1; bx <= bx1+1; bx++ {
-			for by := by0 - 1; by <= by1+1; by++ {
-				if bx < 0 || by < 0 || bx >= g.bmapWidth || by >= g.bmapHeight {
-					continue
-				}
-				cellIdx := by*g.bmapWidth + bx
-				if cellIdx < 0 || cellIdx >= len(g.m.BlockMap.Cells) {
-					continue
-				}
-				cell := g.m.BlockMap.Cells[cellIdx]
-				start := 0
-				if len(cell) > 0 && cell[0] == 0 {
-					start = 1
-				}
-				for _, lw := range cell[start:] {
-					li := int(lw)
-					if li < 0 || li >= len(g.m.Linedefs) {
-						continue
-					}
-					if g.renderSeen[li] == g.renderEpoch {
-						continue
-					}
-					g.renderSeen[li] = g.renderEpoch
-					if g.lineVisibleInBox(li, minX, minY, maxX, maxY) {
-						g.visibleBuf = append(g.visibleBuf, li)
-					}
-				}
-			}
-		}
-		return g.visibleBuf
-	}
-
+	// Robust automap visibility: trust line bboxes directly.
+	// Some BLOCKMAP data can omit candidates and cause line pop/disappear at seams.
 	for _, pl := range g.lines {
 		if !bboxIntersects(pl.bbox, minX, minY, maxX, maxY) {
 			continue
