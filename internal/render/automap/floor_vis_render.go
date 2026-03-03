@@ -81,10 +81,10 @@ func (g *game) buildFloorVisplaneMarks() {
 		if !ok {
 			continue
 		}
-		poly := make([]screenPt, 0, len(worldVerts))
+		screenPoly := make([]screenPt, 0, len(worldVerts))
 		for _, v := range worldVerts {
 			sx, sy := g.worldToScreen(v.x, v.y)
-			poly = append(poly, screenPt{x: sx, y: sy})
+			screenPoly = append(screenPoly, screenPt{x: sx, y: sy})
 		}
 		secIdx, ok := g.subSectorSectorIndex(ss)
 		if !ok || secIdx < 0 || secIdx >= len(g.m.Sectors) {
@@ -100,7 +100,23 @@ func (g *game) buildFloorVisplaneMarks() {
 			light:  sec.Light,
 		}
 		pl := g.floorVisplaneForKey(key)
-		g.markScreenPolygonColumns(pl, poly)
+		// Triangulated marking is more robust than direct odd-even polygon fill
+		// when subsector vertex ordering is imperfect.
+		tris, triOK := triangulateWorldPolygon(worldVerts)
+		if !triOK || len(tris) == 0 {
+			tris, triOK = triangulateByAngleFan(worldVerts)
+		}
+		if triOK && len(tris) > 0 {
+			for _, tri := range tris {
+				i0, i1, i2 := tri[0], tri[1], tri[2]
+				if i0 < 0 || i1 < 0 || i2 < 0 || i0 >= len(screenPoly) || i1 >= len(screenPoly) || i2 >= len(screenPoly) {
+					continue
+				}
+				g.markScreenPolygonColumns(pl, []screenPt{screenPoly[i0], screenPoly[i1], screenPoly[i2]})
+			}
+			continue
+		}
+		g.markScreenPolygonColumns(pl, screenPoly)
 	}
 }
 
