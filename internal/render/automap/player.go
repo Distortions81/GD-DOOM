@@ -726,28 +726,34 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		g.useFlash = 35
 		return
 	}
-	opened := g.activateDoorLine(lineIdx, info)
-	if opened > 0 {
+	activated, moved := g.activateDoorLine(lineIdx, info)
+	if activated {
 		if !info.Repeat {
 			g.lineSpecial[lineIdx] = 0
 		}
-		g.useText = "USE: door opened"
+		if moved > 0 {
+			g.useText = "USE: door opened"
+		} else {
+			g.useText = "USE: door active"
+		}
 	} else {
 		g.useText = "USE: no change"
 	}
 	g.useFlash = 35
 }
 
-func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) int {
+func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) (bool, int) {
 	targets, err := g.m.DoorTargetSectors(lineIdx)
 	if err != nil || len(targets) == 0 {
-		return 0
+		return false, 0
 	}
 	opened := 0
+	activated := false
 	for _, sec := range targets {
 		if sec < 0 || sec >= len(g.sectorCeil) {
 			continue
 		}
+		activated = true
 		target := g.lowestSurroundingCeiling(sec) - 4*fracUnit
 		if target < g.sectorFloor[sec] {
 			target = g.sectorFloor[sec]
@@ -757,7 +763,7 @@ func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) int {
 			opened++
 		}
 	}
-	return opened
+	return activated, opened
 }
 
 func (g *game) lowestSurroundingCeiling(sector int) int64 {
@@ -820,12 +826,6 @@ func pointOnDivlineSide(x, y int64, line divline) int {
 	}
 	dx := x - line.x
 	dy := y - line.y
-	if ((line.dy ^ line.dx ^ dx ^ dy) & 0x80000000) != 0 {
-		if ((line.dy ^ dx) & 0x80000000) != 0 {
-			return 1
-		}
-		return 0
-	}
 	left := fixedMul(line.dy>>8, dx>>8)
 	right := fixedMul(dy>>8, line.dx>>8)
 	if right < left {
