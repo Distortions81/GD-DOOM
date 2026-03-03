@@ -916,10 +916,10 @@ func (g *game) toggleBigMap() {
 
 func (g *game) drawGrid(screen *ebiten.Image) {
 	const cell = 128.0
-	left := g.camX - float64(g.viewW)/(2*g.zoom)
-	right := g.camX + float64(g.viewW)/(2*g.zoom)
-	bottom := g.camY - float64(g.viewH)/(2*g.zoom)
-	top := g.camY + float64(g.viewH)/(2*g.zoom)
+	left := g.renderCamX - float64(g.viewW)/(2*g.zoom)
+	right := g.renderCamX + float64(g.viewW)/(2*g.zoom)
+	bottom := g.renderCamY - float64(g.viewH)/(2*g.zoom)
+	top := g.renderCamY + float64(g.viewH)/(2*g.zoom)
 	grid := color.RGBA{R: 40, G: 50, B: 60, A: 255}
 
 	startX := math.Floor(left/cell) * cell
@@ -2124,19 +2124,21 @@ func (g *game) decisionStyle(d lineDecision) (color.Color, float64) {
 
 func (g *game) visibleLineIndices() []int {
 	margin := 2.0 / g.zoom
+	camX := g.renderCamX
+	camY := g.renderCamY
 	viewHalfW := float64(g.viewW) / (2 * g.zoom)
 	viewHalfH := float64(g.viewH) / (2 * g.zoom)
-	minXf := g.camX - viewHalfW - margin
-	maxXf := g.camX + viewHalfW + margin
-	minYf := g.camY - viewHalfH - margin
-	maxYf := g.camY + viewHalfH + margin
+	minXf := camX - viewHalfW - margin
+	maxXf := camX + viewHalfW + margin
+	minYf := camY - viewHalfH - margin
+	maxYf := camY + viewHalfH + margin
 	if g.rotateView {
 		// Conservative culling when rotating: circumscribed circle around the viewport.
 		r := math.Hypot(viewHalfW, viewHalfH) + margin
-		minXf = g.camX - r
-		maxXf = g.camX + r
-		minYf = g.camY - r
-		maxYf = g.camY + r
+		minXf = camX - r
+		maxXf = camX + r
+		minYf = camY - r
+		maxYf = camY + r
 	}
 	minX := floatToFixed(minXf)
 	maxX := floatToFixed(maxXf)
