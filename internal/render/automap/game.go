@@ -1351,7 +1351,9 @@ func (g *game) drawPseudo3DProjectiles(screen *ebiten.Image, camX, camY, camAng,
 		if r < 1.2 {
 			r = 1.2
 		}
-		if sx < -32 || sx > float64(g.viewW)+32 || sy < -32 || sy > float64(g.viewH)+32 {
+		xPad := r + 8
+		yPad := r + 8
+		if sx+xPad < 0 || sx-xPad > float64(g.viewW) || sy+yPad < 0 || sy-yPad > float64(g.viewH) {
 			continue
 		}
 		cr := projectileColor(p.kind)
@@ -1430,7 +1432,10 @@ func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, fo
 		if yb <= yt {
 			continue
 		}
-		if sx < -32 || sx > float64(g.viewW)+32 {
+		h := yb - yt
+		w := math.Max(6, math.Min(120, h*0.45))
+		xPad := w/2 + 8
+		if sx+xPad < 0 || sx-xPad > float64(g.viewW) {
 			continue
 		}
 		clr := shadedMonsterColor(f, near)
