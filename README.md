@@ -77,6 +77,7 @@ Config notes:
 - Item pickup is active for core Doom pickup classes (keys, health, armor, ammo, backpack, weapons).
 - Hazardous floor sectors now apply periodic damage (Doom-style timed ticks); radiation suit pickup is supported.
 - Player death state is tracked (`YOU DIED` overlay) when health reaches `0`.
+- On death, press `Enter` to restart the current level in-session.
 - Damage/pickup screen flashes are active (red for damage, amber for pickups).
 - Collected pickups are removed from automap thing rendering.
 - Locked doors now check collected key inventory.

@@ -213,9 +213,15 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	prevX := g.p.x
 	prevY := g.p.y
 	g.tickDoors()
+
+	if g.isDead {
+		g.p.momx = 0
+		g.p.momy = 0
+		return
+	}
+
 	g.tickWorldLogic()
 	g.processThingPickups()
-
 	if g.isDead {
 		g.p.momx = 0
 		g.p.momy = 0
@@ -866,6 +872,11 @@ func sortUseIntercepts(intercepts []intercept, lineSpecial []uint16) {
 }
 
 func (g *game) useSpecialLine(lineIdx int, side int) {
+	if g.isDead {
+		g.useText = "You are dead"
+		g.useFlash = 20
+		return
+	}
 	special := g.lineSpecial[lineIdx]
 	if side == 1 && special != 124 {
 		g.useText = "USE: back side"
@@ -935,6 +946,9 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 }
 
 func (g *game) handleExitSpecial(lineIdx int, special uint16, trigger mapdata.TriggerType) bool {
+	if g.isDead {
+		return false
+	}
 	info := mapdata.LookupLineSpecial(special)
 	if info.Exit == mapdata.ExitNone || info.Trigger != trigger {
 		return false

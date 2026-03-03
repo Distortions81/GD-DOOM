@@ -85,6 +85,25 @@ func TestBackpackDoublesAmmoCap(t *testing.T) {
 	}
 }
 
+func TestDeadPlayerDoesNotPickup(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2011}},
+		},
+		isDead: true,
+	}
+	g.initPlayerState()
+	g.stats.Health = 50
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.updatePlayer(moveCmd{})
+	if g.stats.Health != 50 {
+		t.Fatalf("dead player health changed to %d", g.stats.Health)
+	}
+	if g.thingCollected[0] {
+		t.Fatal("dead player should not collect pickups")
+	}
+}
+
 func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
 	px, py, pz := int64(0), int64(0), int64(0)
 	tx, ty, tz := int64(35*fracUnit), int64(0), int64(0)

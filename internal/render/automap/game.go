@@ -111,8 +111,9 @@ type game struct {
 	lastMouseX   int
 	mouseLookSet bool
 
-	levelExitRequested bool
-	secretLevelExit    bool
+	levelExitRequested    bool
+	secretLevelExit       bool
+	levelRestartRequested bool
 
 	thingCollected []bool
 	inventory      playerInventory
@@ -270,6 +271,9 @@ func (g *game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
 	}
+	if g.isDead && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+		g.requestLevelRestart()
+	}
 	if g.mode == viewMap {
 		if g.opts.SourcePortMode {
 			ebiten.SetCursorMode(ebiten.CursorModeCaptured)
@@ -300,6 +304,11 @@ func (g *game) requestLevelExit(secret bool, msg string) {
 	g.levelExitRequested = true
 	g.secretLevelExit = secret
 	g.setHUDMessage(msg, 35)
+}
+
+func (g *game) requestLevelRestart() {
+	g.levelRestartRequested = true
+	g.setHUDMessage("Restarting level...", 20)
 }
 
 func (g *game) updateMapMode() {
@@ -951,10 +960,13 @@ func buttonHighlightEligible(special uint16) bool {
 
 func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 25, G: 0, B: 0, A: 130})
-	msg := "YOU DIED"
-	x := g.viewW/2 - len(msg)*7/2
+	msg1 := "YOU DIED"
+	msg2 := "PRESS ENTER TO RESTART"
+	x1 := g.viewW/2 - len(msg1)*7/2
+	x2 := g.viewW/2 - len(msg2)*7/2
 	y := g.viewH / 2
-	ebitenutil.DebugPrintAt(screen, msg, x, y)
+	ebitenutil.DebugPrintAt(screen, msg1, x1, y)
+	ebitenutil.DebugPrintAt(screen, msg2, x2, y+16)
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {

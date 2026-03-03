@@ -45,6 +45,10 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 func (sg *sessionGame) Update() error {
 	err := sg.g.Update()
 	if err == nil {
+		if sg.g.levelRestartRequested {
+			sg.g = newGame(sg.g.m, sg.opts)
+			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
+		}
 		return nil
 	}
 	if !errors.Is(err, ebiten.Termination) {

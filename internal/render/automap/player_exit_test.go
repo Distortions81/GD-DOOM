@@ -43,3 +43,17 @@ func TestCheckWalkSpecialLinesTriggersExitOnCrossing(t *testing.T) {
 		t.Fatal("walk exit should trigger on line crossing")
 	}
 }
+
+func TestHandleExitSpecialBlockedWhenDead(t *testing.T) {
+	g := &game{
+		isDead:      true,
+		lineSpecial: []uint16{11},
+	}
+	ok := g.handleExitSpecial(0, 11, mapdata.TriggerUse)
+	if ok {
+		t.Fatal("dead player should not activate level exit")
+	}
+	if g.levelExitRequested {
+		t.Fatal("dead player should not request level exit")
+	}
+}
