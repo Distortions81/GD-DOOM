@@ -1827,24 +1827,27 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	if sub.SegCount < 3 {
 		return nil, 0, 0, false
 	}
-	edges := make([]subsectorEdge, 0, sub.SegCount)
-	for i := 0; i < int(sub.SegCount); i++ {
-		si := int(sub.FirstSeg) + i
-		if si < 0 || si >= len(g.m.Segs) {
-			continue
-		}
-		sg := g.m.Segs[si]
-		if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
-			continue
-		}
-		edges = append(edges, subsectorEdge{a: sg.StartVertex, b: sg.EndVertex})
-	}
-	if len(edges) < 3 {
-		return nil, 0, 0, false
-	}
-	chain, closed := chainSubsectorEdges(edges)
+	chain, closed := subsectorVertexLoopFromSegOrder(g.m, sub)
 	if !closed {
-		chain = rawSubsectorVertexOrder(g.m, sub)
+		edges := make([]subsectorEdge, 0, sub.SegCount)
+		for i := 0; i < int(sub.SegCount); i++ {
+			si := int(sub.FirstSeg) + i
+			if si < 0 || si >= len(g.m.Segs) {
+				continue
+			}
+			sg := g.m.Segs[si]
+			if int(sg.StartVertex) >= len(g.m.Vertexes) || int(sg.EndVertex) >= len(g.m.Vertexes) {
+				continue
+			}
+			edges = append(edges, subsectorEdge{a: sg.StartVertex, b: sg.EndVertex})
+		}
+		if len(edges) < 3 {
+			return nil, 0, 0, false
+		}
+		chain, closed = chainSubsectorEdges(edges)
+		if !closed {
+			chain = rawSubsectorVertexOrder(g.m, sub)
+		}
 	}
 	verts := vertexChainToWorld(g.m, chain)
 	if len(verts) < 3 {
@@ -1869,6 +1872,52 @@ func (g *game) subSectorWorldVertices(ss int) ([]worldPt, float64, float64, bool
 	cx /= float64(len(verts))
 	cy /= float64(len(verts))
 	return verts, cx, cy, true
+}
+
+func subsectorVertexLoopFromSegOrder(m *mapdata.Map, sub mapdata.SubSector) ([]uint16, bool) {
+	if sub.SegCount < 3 {
+		return nil, false
+	}
+	type edge struct {
+		a uint16
+		b uint16
+	}
+	edges := make([]edge, 0, sub.SegCount)
+	for i := 0; i < int(sub.SegCount); i++ {
+		si := int(sub.FirstSeg) + i
+		if si < 0 || si >= len(m.Segs) {
+			return nil, false
+		}
+		sg := m.Segs[si]
+		if int(sg.StartVertex) >= len(m.Vertexes) || int(sg.EndVertex) >= len(m.Vertexes) {
+			return nil, false
+		}
+		edges = append(edges, edge{a: sg.StartVertex, b: sg.EndVertex})
+	}
+	if len(edges) < 3 {
+		return nil, false
+	}
+	chain := make([]uint16, 0, len(edges)+1)
+	chain = append(chain, edges[0].a, edges[0].b)
+	for i := 1; i < len(edges); i++ {
+		last := chain[len(chain)-1]
+		e := edges[i]
+		switch {
+		case e.a == last:
+			chain = append(chain, e.b)
+		case e.b == last:
+			chain = append(chain, e.a)
+		default:
+			return nil, false
+		}
+	}
+	if len(chain) >= 2 && chain[len(chain)-1] == chain[0] {
+		chain = chain[:len(chain)-1]
+	}
+	if len(chain) < 3 {
+		return nil, false
+	}
+	return chain, true
 }
 
 func chainSubsectorEdges(edges []subsectorEdge) ([]uint16, bool) {
