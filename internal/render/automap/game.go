@@ -514,6 +514,9 @@ func (g *game) Update() error {
 	if g.levelExitRequested {
 		return ebiten.Termination
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+		return ebiten.Termination
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
 			return ebiten.Termination
@@ -6470,7 +6473,7 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 	ebitenutil.DrawRect(screen, x+w-2, y, 2, h, color.RGBA{R: 180, G: 180, B: 180, A: 255})
 
 	title := "PAUSED"
-	help := "ESC resume  |  Shift+ESC quit"
+	help := "ESC resume  |  F4/Shift+ESC quit"
 	ebitenutil.DebugPrintAt(screen, title, int(x+w*0.5)-len(title)*3, int(y)+28)
 	ebitenutil.DebugPrintAt(screen, help, int(x+w*0.5)-len(help)*3, int(y)+58)
 }
