@@ -24,6 +24,8 @@ Snapshot of features currently working in this repo.
 - Doom-emulation software 3D renderer (`doom-basic`) is default in walk mode
 - 3D wall-driven clip + visplane/span floor/ceiling path
 - 3D textured wall column rendering (mid/top/bottom wall textures)
+- Closed two-sided door panels now render textured in 3D (upper/lower texture fallback when mid texture is absent)
+- Door sectors now animate in 3D walk view (door ceilings visibly slide open/closed)
 - 3D detail presets with cycle hotkey (`F5`): `320x200`, `640x400`, `960x600`
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 - Level exit special handling with automatic next-map loading (normal + secret exits)

@@ -94,6 +94,7 @@ Config notes:
 - Monsters now have more Doom-like wake/chase/attack behavior (type-specific melee/ranged styles, randomized cooldown/chance).
 - Collected pickups are removed from automap thing rendering.
 - Locked doors now check collected key inventory.
+- Doors now visibly slide open/closed in walk view (rendered door-ceiling motion tracks gameplay state).
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).
 
 ## Project Docs
