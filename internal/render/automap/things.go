@@ -88,18 +88,18 @@ func isItemOrPickup(typ int16) bool {
 	}
 }
 
-func drawThingGlyph(screen *ebiten.Image, style thingStyle, sx, sy float64, angleDeg int16) {
+func drawThingGlyph(screen *ebiten.Image, style thingStyle, sx, sy float64, angleDeg int16, size float64) {
 	switch style.glyph {
 	case thingGlyphSquare:
-		drawSquareGlyph(screen, sx, sy, 3.6, style.clr)
+		drawSquareGlyph(screen, sx, sy, size*0.90, style.clr)
 	case thingGlyphDiamond:
-		drawDiamondGlyph(screen, sx, sy, 4.0, style.clr)
+		drawDiamondGlyph(screen, sx, sy, size, style.clr)
 	case thingGlyphTriangle:
-		drawTriangleGlyph(screen, sx, sy, 4.6, angleDeg, style.clr)
+		drawTriangleGlyph(screen, sx, sy, size*1.15, angleDeg, style.clr)
 	case thingGlyphStar:
-		drawStarGlyph(screen, sx, sy, 4.5, style.clr)
+		drawStarGlyph(screen, sx, sy, size*1.10, style.clr)
 	default:
-		drawCrossGlyph(screen, sx, sy, 3.2, style.clr)
+		drawCrossGlyph(screen, sx, sy, size*0.80, style.clr)
 	}
 }
 

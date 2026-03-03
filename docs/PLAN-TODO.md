@@ -11,8 +11,8 @@ Single source of truth for current priorities.
 
 ## Next Up (Priority Order)
 
-1. Boot-time in-memory sound lump decode
-2. Startup sound decode status output (decoded/failed/skipped)
+1. Extend startup sound import beyond `DP*` (PC-speaker) to additional Doom sound lump formats as needed
+2. Improve startup sound report detail (sample rates, per-lump error summary)
 3. Fix CLI map selection when `-map` is omitted (auto-select first valid map)
 
 ## Parity Polish (Lower Priority)

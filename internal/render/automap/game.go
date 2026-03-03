@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"math"
+	"time"
 
 	"gddoom/internal/mapdata"
 
@@ -84,6 +85,20 @@ type game struct {
 	useText     string
 	turnHeld    int
 
+	prevCamX  float64
+	prevCamY  float64
+	prevPX    int64
+	prevPY    int64
+	prevAngle uint32
+
+	renderCamX  float64
+	renderCamY  float64
+	renderPX    float64
+	renderPY    float64
+	renderAngle uint32
+
+	lastUpdate time.Time
+
 	lastMouseX   int
 	mouseLookSet bool
 }
@@ -131,7 +146,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		bounds:     mapBounds(m),
 		viewW:      opts.Width,
 		viewH:      opts.Height,
-		mode:       viewWalk,
+		mode:       viewMap,
 		followMode: true,
 		rotateView: opts.SourcePortMode,
 		parity: automapParityState{
@@ -144,7 +159,18 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		nextMarkID: 1,
 		p:          spawnPlayer(m),
 	}
+	if !g.opts.StartInMapMode {
+		g.mode = viewWalk
+	}
 	g.initPhysics()
+	if g.opts.SourcePortMode {
+		// Source-port defaults: reveal full map style and heading-follow at startup.
+		g.parity.reveal = revealAllMap
+	}
+	if g.opts.AllCheats {
+		g.parity.reveal = revealAllMap
+		g.parity.iddt = 2
+	}
 	g.physForLine = make([]int, len(g.m.Linedefs))
 	for i := range g.physForLine {
 		g.physForLine[i] = -1
@@ -160,6 +186,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.StartZoom > 0 {
 		g.zoom = opts.StartZoom
 	}
+	g.syncRenderState()
 	return g
 }
 
@@ -177,6 +204,7 @@ func (g *game) resetView() {
 }
 
 func (g *game) Update() error {
+	g.capturePrevState()
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
 	}
@@ -194,7 +222,11 @@ func (g *game) Update() error {
 		g.showHelp = !g.showHelp
 	}
 	if g.mode == viewMap {
-		ebiten.SetCursorMode(ebiten.CursorModeVisible)
+		if g.opts.SourcePortMode {
+			ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+		} else {
+			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+		}
 		g.updateMapMode()
 	} else {
 		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
@@ -203,6 +235,7 @@ func (g *game) Update() error {
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
+	g.lastUpdate = time.Now()
 	return nil
 }
 
@@ -255,6 +288,17 @@ func (g *game) updateMapMode() {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		g.handleUse()
+	}
+	if g.opts.SourcePortMode {
+		mx, _ := ebiten.CursorPosition()
+		if g.mouseLookSet {
+			dx := mx - g.lastMouseX
+			cmd.turnRaw -= int64(dx) * (40 << 16)
+		}
+		g.lastMouseX = mx
+		g.mouseLookSet = true
+	} else {
+		g.mouseLookSet = false
 	}
 	cmd.run = speed == 1
 	g.updatePlayer(cmd)
@@ -388,6 +432,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, "TAB open automap | F1 help", 12, 44)
 		return
 	}
+	g.prepareRenderState()
 	if g.showGrid {
 		g.drawGrid(screen)
 	}
@@ -426,7 +471,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.parity.reveal == revealAllMap {
 		revealText = "allmap"
 	}
-	overlay := fmt.Sprintf("%s | profile %s | mode %s | zoom %.2f | reveal %s | iddt %d | grid %t | marks %d | color %s",
+	overlay := fmt.Sprintf("%s | %s | %s | z%.2f | %s | i%d | g:%t | m:%d | %s",
 		g.m.Name,
 		g.profileLabel(),
 		modeText,
@@ -530,8 +575,22 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		x := float64(th.X)
 		y := float64(th.Y)
 		sx, sy := g.worldToScreen(x, y)
-		drawThingGlyph(screen, styleForThing(th), sx, sy, th.Angle)
+		size := thingGlyphSize(g.zoom)
+		drawThingGlyph(screen, styleForThing(th), sx, sy, th.Angle, size)
 	}
+}
+
+func thingGlyphSize(zoom float64) float64 {
+	// Doom-like behavior: thing markers scale with map zoom (map-space vectors).
+	const worldHalfUnits = 16.0
+	s := worldHalfUnits * zoom
+	if s < 1.5 {
+		return 1.5
+	}
+	if s > 40 {
+		return 40
+	}
+	return s
 }
 
 func (g *game) drawMarks(screen *ebiten.Image) {
@@ -546,15 +605,15 @@ func (g *game) drawMarks(screen *ebiten.Image) {
 }
 
 func (g *game) drawPlayer(screen *ebiten.Image) {
-	px := float64(g.p.x) / fracUnit
-	py := float64(g.p.y) / fracUnit
+	px := g.renderPX
+	py := g.renderPY
 	sx, sy := g.worldToScreen(px, py)
 	if g.rotateView {
 		// Heading-follow: keep icon fixed-up in screen-space.
 		g.drawPlayerArrowScreen(screen, sx, sy, math.Pi/2)
 		return
 	}
-	ang := angleToRadians(g.p.angle)
+	ang := angleToRadians(g.renderAngle)
 	g.drawPlayerArrowWorld(screen, px, py, ang)
 }
 
@@ -596,10 +655,10 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *game) worldToScreen(x, y float64) (float64, float64) {
-	dx := x - g.camX
-	dy := y - g.camY
+	dx := x - g.renderCamX
+	dy := y - g.renderCamY
 	if g.rotateView {
-		rot := (math.Pi / 2) - angleToRadians(g.p.angle)
+		rot := (math.Pi / 2) - angleToRadians(g.renderAngle)
 		cr := math.Cos(rot)
 		sr := math.Sin(rot)
 		rdx := dx*cr - dy*sr
@@ -610,6 +669,62 @@ func (g *game) worldToScreen(x, y float64) (float64, float64) {
 	sx := dx*g.zoom + float64(g.viewW)/2
 	sy := float64(g.viewH)/2 - dy*g.zoom
 	return sx, sy
+}
+
+func (g *game) capturePrevState() {
+	g.prevCamX = g.camX
+	g.prevCamY = g.camY
+	g.prevPX = g.p.x
+	g.prevPY = g.p.y
+	g.prevAngle = g.p.angle
+}
+
+func (g *game) syncRenderState() {
+	g.capturePrevState()
+	g.renderCamX = g.camX
+	g.renderCamY = g.camY
+	g.renderPX = float64(g.p.x) / fracUnit
+	g.renderPY = float64(g.p.y) / fracUnit
+	g.renderAngle = g.p.angle
+	g.lastUpdate = time.Now()
+}
+
+func (g *game) prepareRenderState() {
+	alpha := g.interpAlpha()
+	if !g.opts.SourcePortMode {
+		alpha = 1
+	}
+	g.renderCamX = lerp(g.prevCamX, g.camX, alpha)
+	g.renderCamY = lerp(g.prevCamY, g.camY, alpha)
+	g.renderPX = lerp(float64(g.prevPX)/fracUnit, float64(g.p.x)/fracUnit, alpha)
+	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
+	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
+}
+
+func (g *game) interpAlpha() float64 {
+	if g.lastUpdate.IsZero() {
+		return 1
+	}
+	dt := time.Since(g.lastUpdate).Seconds()
+	step := 1.0 / doomTicsPerSecond
+	a := dt / step
+	if a < 0 {
+		return 0
+	}
+	if a > 1 {
+		return 1
+	}
+	return a
+}
+
+func lerp(a, b, t float64) float64 {
+	return a + (b-a)*t
+}
+
+func lerpAngle(a, b uint32, t float64) uint32 {
+	d := int64(int32(b - a))
+	v := float64(int64(a)) + float64(d)*t
+	return uint32(int64(v))
 }
 
 func (g *game) linedefDecision(ld mapdata.Linedef) lineDecision {

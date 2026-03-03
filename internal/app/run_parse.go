@@ -9,6 +9,7 @@ import (
 
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/automap"
+	"gddoom/internal/sound"
 	"gddoom/internal/wad"
 )
 
@@ -25,6 +26,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	zoom := fs.Float64("zoom", 0, "starting zoom (>0 overrides Doom-style startup zoom)")
 	lineColorMode := fs.String("line-color-mode", "parity", "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", false, "enable source-port style heading-follow rotation defaults")
+	allCheats := fs.Bool("all-cheats", false, "enable automap cheats at startup (allmap + iddt2)")
+	startInMap := fs.Bool("start-in-map", true, "start with automap open")
+	importPCSpeaker := fs.Bool("import-pcspeaker", true, "import Doom PC speaker sounds (DP* lumps) at startup")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -33,6 +37,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "flag error: %v\n", err)
 		return 2
 	}
+	lineColorModeSet := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "line-color-mode" {
+			lineColorModeSet = true
+		}
+	})
 	if strings.TrimSpace(*wadPath) == "" {
 		fmt.Fprintln(stderr, "-wad is required")
 		return 2
@@ -42,6 +52,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "open wad: %v\n", err)
 		return 1
+	}
+	if *importPCSpeaker {
+		r := sound.ImportPCSpeakerSounds(wf)
+		if r.Found == 0 {
+			fmt.Fprintln(stderr, "pcspeaker import: no DP* lumps found")
+		} else {
+			fmt.Fprintf(stderr, "pcspeaker import: found=%d decoded=%d failed=%d\n", r.Found, r.Decoded, r.Failed)
+		}
 	}
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
@@ -59,12 +77,19 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	if *render {
+		resolvedLineColorMode := *lineColorMode
+		// Source-port defaults unless user explicitly chose a color mode.
+		if *sourcePortMode && !lineColorModeSet {
+			resolvedLineColorMode = "doom"
+		}
 		err = automap.RunAutomap(m, automap.Options{
 			Width:          *width,
 			Height:         *height,
 			StartZoom:      *zoom,
-			LineColorMode:  *lineColorMode,
+			LineColorMode:  resolvedLineColorMode,
 			SourcePortMode: *sourcePortMode,
+			AllCheats:      *allCheats,
+			StartInMapMode: *startInMap,
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "render map %s: %v\n", selected, err)

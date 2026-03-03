@@ -32,6 +32,8 @@ This starts the app in walk mode. Press `TAB` to open automap.
 - `-width <px>` / `-height <px>`: window size
 - `-zoom <float>`: startup zoom override (`>0`); default uses Doom-style auto zoom
 - `-sourceport-mode`: enable source-port style automap extras at startup
+- `-all-cheats`: start with automap cheats enabled (`allmap` + `IDDT2`)
+- `-start-in-map`: start with automap open (default `true`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
 
 ## Controls (Default Doom Profile)

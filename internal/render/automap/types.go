@@ -6,4 +6,6 @@ type Options struct {
 	StartZoom      float64
 	LineColorMode  string
 	SourcePortMode bool
+	AllCheats      bool
+	StartInMapMode bool
 }
