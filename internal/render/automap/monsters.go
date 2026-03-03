@@ -83,18 +83,28 @@ func (g *game) moveMonsterToward(i int, x, y, tx, ty int64) {
 	dy := int64(math.Sin(ang) * float64(monsterStep))
 	nx := x + dx
 	ny := y + dy
-	if g.tryMove(nx, ny) {
+	if g.tryMoveProbe(nx, ny) {
 		g.m.Things[i].X = int16(nx >> fracBits)
 		g.m.Things[i].Y = int16(ny >> fracBits)
 		return
 	}
-	if g.tryMove(x+dx, y) {
+	if g.tryMoveProbe(x+dx, y) {
 		g.m.Things[i].X = int16((x + dx) >> fracBits)
 		return
 	}
-	if g.tryMove(x, y+dy) {
+	if g.tryMoveProbe(x, y+dy) {
 		g.m.Things[i].Y = int16((y + dy) >> fracBits)
 	}
+}
+
+func (g *game) tryMoveProbe(x, y int64) bool {
+	if g.m == nil || len(g.m.Sectors) == 0 {
+		return false
+	}
+	saved := g.p
+	ok := g.tryMove(x, y)
+	g.p = saved
+	return ok
 }
 
 func hypotFixed(dx, dy int64) int64 {

@@ -71,3 +71,20 @@ func TestTickMonstersNoActionWhenPlayerDead(t *testing.T) {
 		t.Fatalf("dead player health changed to %d", g.stats.Health)
 	}
 }
+
+func TestMoveMonsterTowardDoesNotMovePlayer(t *testing.T) {
+	g := &game{
+		p: player{
+			x:      100 * fracUnit,
+			y:      200 * fracUnit,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+	px0, py0 := g.p.x, g.p.y
+	g.moveMonsterToward(0, 0, 0, 128*fracUnit, 0)
+	if g.p.x != px0 || g.p.y != py0 {
+		t.Fatalf("player moved by monster path probe: (%d,%d) -> (%d,%d)", px0, py0, g.p.x, g.p.y)
+	}
+}
