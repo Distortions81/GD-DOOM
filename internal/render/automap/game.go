@@ -212,6 +212,7 @@ type game struct {
 	wallW              int
 	wallH              int
 	depthPix3D         []float64
+	depthPlanePix3D    []float64
 	wallTop3D          []int
 	wallBottom3D       []int
 	ceilingClip3D      []int
@@ -1880,6 +1881,22 @@ func (g *game) writeDepthColumn(x, y0, y1 int, depth float64) {
 	}
 }
 
+func (g *game) spriteOccludedAt(depth float64, idx int, planeBias float64) bool {
+	if idx < 0 || idx >= len(g.depthPix3D) {
+		return true
+	}
+	// Walls and already-drawn sprites occlude strictly.
+	if depth > g.depthPix3D[idx] {
+		return true
+	}
+	// Floor/ceiling depth is used with bias because billboard depth is constant
+	// across Y while plane depth varies by scanline.
+	if idx < len(g.depthPlanePix3D) && depth > g.depthPlanePix3D[idx]+planeBias {
+		return true
+	}
+	return false
+}
+
 func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, focal float64, tex WallTexture, shadeMul int) {
 	rowStridePix := g.viewW
 	pixI := y0*rowStridePix + x
@@ -2228,18 +2245,18 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					for ; x+1 <= x2; x += 2 {
 						pix32[pixI] = fbPacked
 						pix32[pixI+1] = fbPacked
-						if depth < g.depthPix3D[pixI] {
-							g.depthPix3D[pixI] = depth
+						if depth < g.depthPlanePix3D[pixI] {
+							g.depthPlanePix3D[pixI] = depth
 						}
-						if depth < g.depthPix3D[pixI+1] {
-							g.depthPix3D[pixI+1] = depth
+						if depth < g.depthPlanePix3D[pixI+1] {
+							g.depthPlanePix3D[pixI+1] = depth
 						}
 						pixI += 2
 					}
 					if x <= x2 {
 						pix32[pixI] = fbPacked
-						if depth < g.depthPix3D[pixI] {
-							g.depthPix3D[pixI] = depth
+						if depth < g.depthPlanePix3D[pixI] {
+							g.depthPlanePix3D[pixI] = depth
 						}
 					}
 					continue
@@ -2260,11 +2277,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					p1 := tex32[(v1<<6)+u1]
 					pix32[pixI] = p0
 					pix32[pixI+1] = p1
-					if depth < g.depthPix3D[pixI] {
-						g.depthPix3D[pixI] = depth
+					if depth < g.depthPlanePix3D[pixI] {
+						g.depthPlanePix3D[pixI] = depth
 					}
-					if depth < g.depthPix3D[pixI+1] {
-						g.depthPix3D[pixI+1] = depth
+					if depth < g.depthPlanePix3D[pixI+1] {
+						g.depthPlanePix3D[pixI+1] = depth
 					}
 					wxFixed += stepWXFixed
 					wyFixed += stepWYFixed
@@ -2274,8 +2291,8 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					u := int(wxFixed>>fracBits) & 63
 					v := int(wyFixed>>fracBits) & 63
 					pix32[pixI] = tex32[(v<<6)+u]
-					if depth < g.depthPix3D[pixI] {
-						g.depthPix3D[pixI] = depth
+					if depth < g.depthPlanePix3D[pixI] {
+						g.depthPlanePix3D[pixI] = depth
 					}
 				}
 			}
@@ -3271,6 +3288,7 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 }
 
 func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near float64) {
+	const planeDepthBias = 24.0
 	type projectedProjectile struct {
 		dist float64
 		sx   float64
@@ -3346,7 +3364,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 					continue
 				}
 				i := row + x
-				if it.dist > g.depthPix3D[i] {
+				if g.spriteOccludedAt(it.dist, i, planeDepthBias) {
 					continue
 				}
 				g.wallPix32[i] = packRGBA(r, gc, b)
@@ -3357,7 +3375,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 }
 
 func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near float64) {
-	const spriteDepthBias = 2.0
+	const planeDepthBias = 32.0
 	if len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
 		return
 	}
@@ -3433,12 +3451,6 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		dstY := it.yb - float64(it.tex.OffsetY)*scale
 		dstW := float64(tw) * scale
 		dstH := float64(th) * scale
-		// Keep world things from sinking below their floor plane while still
-		// honoring offsets that intentionally float sprites above the floor.
-		floorAlignedY := it.yb - dstH
-		if dstY > floorAlignedY {
-			dstY = floorAlignedY
-		}
 		x0 := int(math.Floor(dstX))
 		y0 := int(math.Floor(dstY))
 		x1 := int(math.Ceil(dstX+dstW)) - 1
@@ -3471,7 +3483,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			}
 			row := y * g.viewW
 			for x := x0; x <= x1; x++ {
-				if it.dist > g.depthPix3D[row+x]+spriteDepthBias {
+				if g.spriteOccludedAt(it.dist, row+x, planeDepthBias) {
 					continue
 				}
 				sx := int(float64(x+1) - dstX)
@@ -3501,7 +3513,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 }
 
 func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near float64) {
-	const spriteDepthBias = 2.0
+	const planeDepthBias = 64.0
 	if len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
 		return
 	}
@@ -3606,7 +3618,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			}
 			row := y * g.viewW
 			for x := x0; x <= x1; x++ {
-				if it.dist > g.depthPix3D[row+x]+spriteDepthBias {
+				if g.spriteOccludedAt(it.dist, row+x, planeDepthBias) {
 					continue
 				}
 				sx := int(float64(x+1) - dstX)
@@ -4122,6 +4134,12 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 	}
 	for i := range g.depthPix3D {
 		g.depthPix3D[i] = math.Inf(1)
+	}
+	if len(g.depthPlanePix3D) != needDepth {
+		g.depthPlanePix3D = make([]float64, needDepth)
+	}
+	for i := range g.depthPlanePix3D {
+		g.depthPlanePix3D[i] = math.Inf(1)
 	}
 	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
 }
