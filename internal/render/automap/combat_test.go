@@ -226,3 +226,36 @@ func TestCycleWeaponWrapsBackward(t *testing.T) {
 		t.Fatalf("weapon=%v want=%v", g.inventory.ReadyWeapon, weaponBFG)
 	}
 }
+
+func TestFireGunShotSpawnsHitscanPuffOnHit(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 64, Y: 0}},
+		},
+		thingCollected: make([]bool, 1),
+		thingHP:        []int{20},
+		p:              player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+	}
+	slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+	if !g.fireGunShot(g.p.angle, pistolRange, slope, true) {
+		t.Fatal("expected hitscan hit")
+	}
+	if len(g.hitscanPuffs) == 0 {
+		t.Fatal("expected hitscan puff to spawn")
+	}
+}
+
+func TestHitscanPuffsExpire(t *testing.T) {
+	g := &game{}
+	g.spawnHitscanPuff(0, 0, 0)
+	if len(g.hitscanPuffs) != 1 {
+		t.Fatalf("puffs=%d want=1", len(g.hitscanPuffs))
+	}
+	for i := 0; i < 16; i++ {
+		g.tickHitscanPuffs()
+	}
+	if len(g.hitscanPuffs) != 0 {
+		t.Fatalf("puffs=%d want=0 after expiry", len(g.hitscanPuffs))
+	}
+}

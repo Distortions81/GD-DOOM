@@ -191,10 +191,11 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope float64, accurate 
 	if !accurate {
 		angle = addDoomAngleSpread(baseAngle, doomGunSpreadShift)
 	}
-	idx, ok := g.pickHitscanMonsterTargetAtAngleWithSlope(angle, rng, bulletTargetRadius, slope, true)
+	idx, dist, ok := g.pickHitscanMonsterTargetAtAngleWithSlopeDist(angle, rng, bulletTargetRadius, slope, true)
 	if !ok {
 		return false
 	}
+	g.spawnHitscanPuffAtDistance(angle, slope, dist)
 	g.damageMonster(idx, damage)
 	return true
 }
@@ -297,8 +298,13 @@ func (g *game) pickHitscanMonsterTargetAtAngle(angle uint32, rng int64, radius i
 }
 
 func (g *game) pickHitscanMonsterTargetAtAngleWithSlope(angle uint32, rng int64, radius int64, slope float64, useSlope bool) (int, bool) {
+	idx, _, ok := g.pickHitscanMonsterTargetAtAngleWithSlopeDist(angle, rng, radius, slope, useSlope)
+	return idx, ok
+}
+
+func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng int64, radius int64, slope float64, useSlope bool) (int, float64, bool) {
 	if g.m == nil {
-		return -1, false
+		return -1, 0, false
 	}
 	ang := angleToRadians(angle)
 	dirX := math.Cos(ang)
@@ -346,9 +352,27 @@ func (g *game) pickHitscanMonsterTargetAtAngleWithSlope(angle uint32, rng int64,
 		}
 	}
 	if bestIdx < 0 {
-		return -1, false
+		return -1, 0, false
 	}
-	return bestIdx, true
+	return bestIdx, bestDist, true
+}
+
+func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {
+	if dist <= 0 {
+		return
+	}
+	px := float64(g.p.x)
+	py := float64(g.p.y)
+	ang := angleToRadians(angle)
+	x := px + math.Cos(ang)*dist
+	y := py + math.Sin(ang)*dist
+	z := g.playerShootZ() + slope*dist
+	// Doom nudges puff slightly before exact hit point.
+	const backoff = 10.0
+	x -= math.Cos(ang) * backoff
+	y -= math.Sin(ang) * backoff
+	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
+	g.spawnHitscanPuff(int64(x), int64(y), int64(z))
 }
 
 func monsterHitHeight(typ int16) int64 {

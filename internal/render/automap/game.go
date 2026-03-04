@@ -169,6 +169,20 @@ type projectedThingItem struct {
 	fullBright bool
 }
 
+type projectedPuffItem struct {
+	dist float64
+	sx   float64
+	sy   float64
+	r    float64
+}
+
+type hitscanPuff struct {
+	x    int64
+	y    int64
+	z    int64
+	tics int
+}
+
 type maskedMidSeg struct {
 	dist      float64
 	x0        int
@@ -318,6 +332,7 @@ type game struct {
 	thingAttackTics    []int
 	thingThinkWait     []int
 	projectiles        []projectile
+	hitscanPuffs       []hitscanPuff
 	cheatLevel         int
 	invulnerable       bool
 	inventory          playerInventory
@@ -374,6 +389,7 @@ type game struct {
 	projectileItemsScratch     []projectedProjectileItem
 	monsterItemsScratch        []projectedMonsterItem
 	thingItemsScratch          []projectedThingItem
+	puffItemsScratch           []projectedPuffItem
 	maskedMidSegsScratch       []maskedMidSeg
 	spriteTXScratch            []int
 	spriteTYScratch            []int
@@ -869,6 +885,7 @@ func (g *game) Update() error {
 	if g.bonusFlashTic > 0 {
 		g.bonusFlashTic--
 	}
+	g.tickHitscanPuffs()
 	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
 	g.flushSoundEvents()
@@ -941,6 +958,7 @@ func (g *game) updateDemoMode() error {
 	if g.bonusFlashTic > 0 {
 		g.bonusFlashTic--
 	}
+	g.tickHitscanPuffs()
 	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
 	g.flushSoundEvents()
@@ -2126,6 +2144,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 	if g.opts.DepthBufferView {
 		g.drawDepthBufferView()
 	}
@@ -2920,6 +2939,17 @@ func (g *game) ensureThingItemsScratch(n int) []projectedThingItem {
 	}
 	g.thingItemsScratch = g.thingItemsScratch[:0]
 	return g.thingItemsScratch
+}
+
+func (g *game) ensurePuffItemsScratch(n int) []projectedPuffItem {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.puffItemsScratch) < n {
+		g.puffItemsScratch = make([]projectedPuffItem, 0, n)
+	}
+	g.puffItemsScratch = g.puffItemsScratch[:0]
+	return g.puffItemsScratch
 }
 
 func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
@@ -4592,6 +4622,114 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 			return name
 		}
 		return pickPrefixFrame("BAL2", []byte{'A', 'B'}, frame2)
+	}
+}
+
+func (g *game) spawnHitscanPuff(x, y, z int64) {
+	const maxPuffs = 64
+	if len(g.hitscanPuffs) >= maxPuffs {
+		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
+		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
+	}
+	tics := 4 + (doomrand.PRandom() & 3)
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{x: x, y: y, z: z, tics: tics})
+}
+
+func (g *game) tickHitscanPuffs() {
+	if len(g.hitscanPuffs) == 0 {
+		return
+	}
+	keep := g.hitscanPuffs[:0]
+	for _, p := range g.hitscanPuffs {
+		p.tics--
+		if p.tics <= 0 {
+			continue
+		}
+		keep = append(keep, p)
+	}
+	g.hitscanPuffs = keep
+}
+
+func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64) {
+	const planeDepthBias = 16.0
+	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
+	depthPix := g.depthPix3D
+	depthPlanePix := g.depthPlanePix3D
+	wallPix := g.wallPix32
+	viewW := g.viewW
+	viewH := g.viewH
+	stamp := g.depthFrameStamp
+	if len(g.hitscanPuffs) == 0 || len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
+		return
+	}
+	items := g.ensurePuffItemsScratch(len(g.hitscanPuffs))
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	for _, p := range g.hitscanPuffs {
+		px := float64(p.x)/fracUnit - camX
+		py := float64(p.y)/fracUnit - camY
+		f := px*ca + py*sa
+		s := -px*sa + py*ca
+		if f <= near {
+			continue
+		}
+		sx := float64(viewW)/2 - (s/f)*focal
+		pz := float64(p.z) / fracUnit
+		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focal
+		r := (6.0 / f) * focal
+		if r < 1.0 {
+			r = 1.0
+		}
+		if r > 8.0 {
+			r = 8.0
+		}
+		xPad := r + 2
+		yPad := r + 2
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
+			continue
+		}
+		items = append(items, projectedPuffItem{dist: f, sx: sx, sy: sy, r: r})
+	}
+	g.puffItemsScratch = items
+	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
+	for _, it := range items {
+		depthQ := encodeDepthQ(it.dist)
+		r2 := it.r * it.r
+		x0 := int(math.Floor(it.sx - it.r))
+		x1 := int(math.Ceil(it.sx + it.r))
+		y0 := int(math.Floor(it.sy - it.r))
+		y1 := int(math.Ceil(it.sy + it.r))
+		if x0 < 0 {
+			x0 = 0
+		}
+		if y0 < 0 {
+			y0 = 0
+		}
+		if x1 >= viewW {
+			x1 = viewW - 1
+		}
+		if y1 >= viewH {
+			y1 = viewH - 1
+		}
+		for y := y0; y <= y1; y++ {
+			dy := (float64(y) + 0.5) - it.sy
+			row := y * viewW
+			if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+				continue
+			}
+			for x := x0; x <= x1; x++ {
+				dx := (float64(x) + 0.5) - it.sx
+				if dx*dx+dy*dy > r2 {
+					continue
+				}
+				i := row + x
+				if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+					continue
+				}
+				wallPix[i] = packRGBA(236, 236, 236)
+			}
+		}
 	}
 }
 
