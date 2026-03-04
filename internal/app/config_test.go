@@ -45,3 +45,21 @@ func TestRunParseCLIOverridesConfig(t *testing.T) {
 		t.Fatalf("stdout %q does not contain map=E1M1", out.String())
 	}
 }
+
+func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{
+		"-wad", wadPath,
+		"-render=false",
+		"-demo", "bench.demo",
+		"-record-demo", "out.demo",
+	}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "mutually exclusive") {
+		t.Fatalf("stderr %q does not mention mutual exclusion", errb.String())
+	}
+}

@@ -29,6 +29,8 @@ type fileConfig struct {
 	ImportPCSpeaker *bool    `toml:"import_pcspeaker"`
 	Details         *bool    `toml:"details"`
 	CPUProfile      *string  `toml:"cpu_profile"`
+	Demo            *string  `toml:"demo"`
+	RecordDemo      *string  `toml:"record_demo"`
 }
 
 func resolveConfigPath(args []string) (path string, explicit bool) {

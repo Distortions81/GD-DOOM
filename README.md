@@ -43,6 +43,25 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
 - `-import-textures`: parse `PLAYPAL`/`PNAMES`/`TEXTURE1/2` and build texture tables for Ebiten use
 - `-map-floor-tex-2d`: sourceport map mode: draw floor flat textures in 2D automap (defaults to `true` when `-sourceport-mode` is enabled)
+- `-demo <path>`: run a scripted `gddoom-demo-v1` input stream for benchmarking and exit when done
+- `-record-demo <path>`: record live input each game tic to `gddoom-demo-v1` and write on exit
+
+Demo format (`gddoom-demo-v1`):
+
+```text
+gddoom-demo-v1
+# forward side turn turn_raw run use fire
+25 0 0 0 0 0 0
+25 0 -1 0 0 0 0
+0 0 0 0 0 1 0
+0 0 0 0 0 0 1
+```
+
+- One tic per line after the header.
+- `run/use/fire` are bits (`0` or `1`).
+- At completion, the app prints `demo-bench ...` timing stats and exits.
+  It includes `wad` (WAD SHA-1 hash), `map`, and `rng_start` (`M_Random`/`P_Random` indices at demo start).
+- `-demo` and `-record-demo` are mutually exclusive.
 
 Level progression:
 - Exit linedefs now transition to the next map in-sequence.

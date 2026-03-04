@@ -12,6 +12,7 @@ import (
 	"time"
 	"unsafe"
 
+	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -230,6 +231,15 @@ type game struct {
 	wallPrepassBuf     []wallSegPrepass
 	solid3DBuf         []solidSpan
 	solidClipScratch   []solidSpan
+	demoTick           int
+	demoDoneReported   bool
+	demoBenchStarted   bool
+	demoBenchStart     time.Time
+	demoBenchDraws     int
+	demoStartRnd       int
+	demoStartPRnd      int
+	demoRNGCaptured    bool
+	demoRecord         []DemoTic
 }
 
 type savedMapView struct {
@@ -415,6 +425,15 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if !g.opts.StartInMapMode {
 		g.mode = viewWalk
 	}
+	if g.opts.DemoScript != nil {
+		// Demo benchmark mode is intentionally isolated from interactive controls.
+		g.mode = viewWalk
+		g.followMode = true
+		g.rotateView = false
+	}
+	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
+		g.demoRecord = make([]DemoTic, 0, 4096)
+	}
 	g.initPhysics()
 	g.initSubSectorSectorCache()
 	g.snd = newSoundSystem(opts.SoundBank)
@@ -515,6 +534,9 @@ func (g *game) Update() error {
 	if g.levelExitRequested {
 		return ebiten.Termination
 	}
+	if g.opts.DemoScript != nil {
+		return g.updateDemoMode()
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
 		return ebiten.Termination
 	}
@@ -598,6 +620,77 @@ func (g *game) Update() error {
 	return nil
 }
 
+func (g *game) updateDemoMode() error {
+	script := g.opts.DemoScript
+	if script == nil {
+		return nil
+	}
+	if !g.demoBenchStarted {
+		g.demoBenchStarted = true
+		g.demoBenchStart = time.Now()
+	}
+	if !g.demoRNGCaptured {
+		g.demoStartRnd, g.demoStartPRnd = doomrand.State()
+		g.demoRNGCaptured = true
+	}
+	if g.demoTick >= len(script.Tics) {
+		if !g.demoDoneReported {
+			g.demoDoneReported = true
+			elapsed := time.Since(g.demoBenchStart)
+			tics := g.demoTick
+			sec := elapsed.Seconds()
+			tps := 0.0
+			fps := 0.0
+			msPerTic := 0.0
+			if sec > 0 {
+				tps = float64(tics) / sec
+				fps = float64(g.demoBenchDraws) / sec
+			}
+			if tics > 0 {
+				msPerTic = elapsed.Seconds() * 1000 / float64(tics)
+			}
+			label := "demo"
+			if strings.TrimSpace(script.Path) != "" {
+				label = script.Path
+			}
+			fmt.Printf("demo-bench path=%s wad=%s map=%s rng_start=%d/%d tics=%d draws=%d elapsed=%s tps=%.2f fps=%.2f ms_per_tic=%.3f\n",
+				label, g.opts.WADHash, g.m.Name, g.demoStartRnd, g.demoStartPRnd, tics, g.demoBenchDraws, elapsed.Round(time.Millisecond), tps, fps, msPerTic)
+		}
+		return ebiten.Termination
+	}
+	tc := script.Tics[g.demoTick]
+	g.demoTick++
+	if tc.Use {
+		g.handleUse()
+	}
+	if tc.Fire {
+		g.handleFire()
+	}
+	g.updatePlayer(moveCmd{
+		forward: tc.Forward,
+		side:    tc.Side,
+		turn:    tc.Turn,
+		turnRaw: tc.TurnRaw,
+		run:     tc.Run,
+	})
+	g.discoverLinesAroundPlayer()
+	g.camX = float64(g.p.x) / fracUnit
+	g.camY = float64(g.p.y) / fracUnit
+	if g.useFlash > 0 {
+		g.useFlash--
+	}
+	if g.damageFlashTic > 0 {
+		g.damageFlashTic--
+	}
+	if g.bonusFlashTic > 0 {
+		g.bonusFlashTic--
+	}
+	g.tickDelayedSounds()
+	g.flushSoundEvents()
+	g.lastUpdate = time.Now()
+	return nil
+}
+
 func (g *game) requestLevelExit(secret bool, msg string) {
 	g.levelExitRequested = true
 	g.secretLevelExit = secret
@@ -639,6 +732,8 @@ func (g *game) updateMapMode() {
 
 	// Keep gameplay simulation active while automap is open.
 	cmd := moveCmd{}
+	usePressed := false
+	firePressed := false
 	speed := 0
 	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
 		speed = 1
@@ -663,9 +758,11 @@ func (g *game) updateMapMode() {
 		cmd.turn -= 1
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		usePressed = true
 		g.handleUse()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyControlLeft) || inpututil.IsKeyJustPressed(ebiten.KeyControlRight) || inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		firePressed = true
 		g.handleFire()
 	}
 	if g.opts.SourcePortMode {
@@ -683,6 +780,7 @@ func (g *game) updateMapMode() {
 	}
 	cmd.run = speed == 1
 	g.updatePlayer(cmd)
+	g.recordDemoTic(cmd, usePressed, firePressed)
 	g.discoverLinesAroundPlayer()
 
 	if g.followMode {
@@ -711,6 +809,8 @@ func (g *game) updateWalkMode() {
 	g.updateWeaponHotkeys()
 	g.updateZoom()
 	cmd := moveCmd{}
+	usePressed := false
+	firePressed := false
 	speed := 0
 	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
 		speed = 1
@@ -743,9 +843,11 @@ func (g *game) updateWalkMode() {
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		usePressed = true
 		g.handleUse()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyControlLeft) || inpututil.IsKeyJustPressed(ebiten.KeyControlRight) || inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		firePressed = true
 		g.handleFire()
 	}
 
@@ -762,9 +864,25 @@ func (g *game) updateWalkMode() {
 
 	cmd.run = speed == 1
 	g.updatePlayer(cmd)
+	g.recordDemoTic(cmd, usePressed, firePressed)
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
+}
+
+func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
+	if g.opts.DemoScript != nil || strings.TrimSpace(g.opts.RecordDemoPath) == "" {
+		return
+	}
+	g.demoRecord = append(g.demoRecord, DemoTic{
+		Forward: cmd.forward,
+		Side:    cmd.side,
+		Turn:    cmd.turn,
+		TurnRaw: cmd.turnRaw,
+		Run:     cmd.run,
+		Use:     usePressed,
+		Fire:    firePressed,
+	})
 }
 
 func (g *game) updateWeaponHotkeys() {
@@ -865,6 +983,9 @@ func (g *game) updateZoom() {
 
 func (g *game) Draw(screen *ebiten.Image) {
 	drawStart := time.Now()
+	if g.opts.DemoScript != nil {
+		g.demoBenchDraws++
+	}
 	g.frameUpload = 0
 	g.perfInDraw = true
 	defer func() { g.perfInDraw = false }()

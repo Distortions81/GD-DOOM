@@ -17,6 +17,8 @@ type Options struct {
 	FlatBank       map[string][]byte
 	WallTexBank    map[string]WallTexture
 	SoundBank      SoundBank
+	DemoScript     *DemoScript
+	RecordDemoPath string
 }
 
 type WallTexture struct {
@@ -49,4 +51,19 @@ type SoundBank struct {
 	WeaponUp   PCMSample
 	PowerUp    PCMSample
 	Oof        PCMSample
+}
+
+type DemoTic struct {
+	Forward int64
+	Side    int64
+	Turn    int
+	TurnRaw int64
+	Run     bool
+	Use     bool
+	Fire    bool
+}
+
+type DemoScript struct {
+	Path string
+	Tics []DemoTic
 }

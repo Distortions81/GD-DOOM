@@ -55,12 +55,24 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	ebiten.SetScreenClearedEveryFrame(false)
 	if err := ebiten.RunGame(sg); err != nil {
 		if errors.Is(err, ebiten.Termination) {
+			if p := sg.opts.RecordDemoPath; p != "" {
+				if werr := SaveDemoScript(p, sg.g.demoRecord); werr != nil {
+					return fmt.Errorf("write demo recording: %w", werr)
+				}
+				fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(sg.g.demoRecord))
+			}
 			if sg.err != nil {
 				return sg.err
 			}
 			return nil
 		}
 		return fmt.Errorf("run ebiten automap: %w", err)
+	}
+	if p := sg.opts.RecordDemoPath; p != "" {
+		if werr := SaveDemoScript(p, sg.g.demoRecord); werr != nil {
+			return fmt.Errorf("write demo recording: %w", werr)
+		}
+		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(sg.g.demoRecord))
 	}
 	return sg.err
 }

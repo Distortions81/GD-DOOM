@@ -47,6 +47,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultImportPCSpeaker := true
 	defaultImportTextures := true
 	defaultCPUProfile := ""
+	defaultDemo := ""
+	defaultRecordDemo := ""
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -111,6 +113,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.CPUProfile != nil {
 			defaultCPUProfile = *cfg.CPUProfile
 		}
+		if cfg.Demo != nil {
+			defaultDemo = *cfg.Demo
+		}
+		if cfg.RecordDemo != nil {
+			defaultRecordDemo = *cfg.RecordDemo
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -137,6 +145,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
+	demoPath := fs.String("demo", defaultDemo, "path to gddoom-demo-v1 script; runs scripted benchmark and exits when demo ends")
+	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write gddoom-demo-v1 script recorded from live input")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -171,6 +181,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if !invulnSet {
 			resolvedInvuln = true
 		}
+	}
+	resolvedDemoPath := strings.TrimSpace(*demoPath)
+	resolvedRecordDemoPath := strings.TrimSpace(*recordDemoPath)
+	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
+		fmt.Fprintln(stderr, "-demo and -record-demo are mutually exclusive")
+		return 2
 	}
 	if strings.TrimSpace(*wadPath) == "" {
 		fmt.Fprintln(stderr, "-wad is required")
@@ -305,6 +321,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			FlatBank:       flatBank,
 			WallTexBank:    wallTexBank,
 			SoundBank:      soundBank,
+			RecordDemoPath: resolvedRecordDemoPath,
+		}
+		if p := resolvedDemoPath; p != "" {
+			demo, derr := automap.LoadDemoScript(p)
+			if derr != nil {
+				fmt.Fprintf(stderr, "load demo: %v\n", derr)
+				return 1
+			}
+			opts.DemoScript = demo
+			fmt.Fprintf(stderr, "demo loaded: %s tics=%d\n", p, len(demo.Tics))
 		}
 		m, lerr := mapdata.LoadMap(wf, selected)
 		if lerr != nil {
