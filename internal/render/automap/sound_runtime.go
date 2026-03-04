@@ -18,6 +18,9 @@ const (
 	soundEventWeaponUp
 	soundEventPowerUp
 	soundEventOof
+	soundEventPain
+	soundEventShootPistol
+	soundEventShootShotgun
 	soundEventIntermissionTick
 	soundEventIntermissionDone
 )
@@ -94,6 +97,15 @@ func firstSampleRate(bank SoundBank) int {
 	}
 	if bank.Oof.SampleRate > 0 && len(bank.Oof.Data) > 0 {
 		return bank.Oof.SampleRate
+	}
+	if bank.Pain.SampleRate > 0 && len(bank.Pain.Data) > 0 {
+		return bank.Pain.SampleRate
+	}
+	if bank.ShootPistol.SampleRate > 0 && len(bank.ShootPistol.Data) > 0 {
+		return bank.ShootPistol.SampleRate
+	}
+	if bank.ShootShotgun.SampleRate > 0 && len(bank.ShootShotgun.Data) > 0 {
+		return bank.ShootShotgun.SampleRate
 	}
 	if bank.InterTick.SampleRate > 0 && len(bank.InterTick.Data) > 0 {
 		return bank.InterTick.SampleRate
@@ -174,6 +186,27 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.Oof, true
 		}
 		return s.bank.NoWay, true
+	case soundEventPain:
+		if len(s.bank.Pain.Data) > 0 {
+			return s.bank.Pain, true
+		}
+		if len(s.bank.Oof.Data) > 0 {
+			return s.bank.Oof, true
+		}
+		return s.bank.NoWay, true
+	case soundEventShootPistol:
+		if len(s.bank.ShootPistol.Data) > 0 {
+			return s.bank.ShootPistol, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventShootShotgun:
+		if len(s.bank.ShootShotgun.Data) > 0 {
+			return s.bank.ShootShotgun, true
+		}
+		if len(s.bank.ShootPistol.Data) > 0 {
+			return s.bank.ShootPistol, true
+		}
+		return s.bank.SwitchOn, true
 	case soundEventIntermissionTick:
 		if len(s.bank.InterTick.Data) > 0 {
 			return s.bank.InterTick, true

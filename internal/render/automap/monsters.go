@@ -487,16 +487,19 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	}
 	if typ == 3004 {
 		// Zombieman: single bullet with Doom-style spread and chance to miss.
+		g.emitSoundEvent(soundEventShootPistol)
 		g.monsterHitscanAttack(sx, sy, 1)
 		return true
 	}
 	if typ == 9 {
 		// Sergeant: 3 pellets.
+		g.emitSoundEvent(soundEventShootShotgun)
 		g.monsterHitscanAttack(sx, sy, 3)
 		return true
 	}
 	if usesMonsterProjectile(typ) {
 		if g.spawnMonsterProjectile(i, typ) {
+			g.emitSoundEvent(soundEventShootPistol)
 			return true
 		}
 		return false
@@ -505,6 +508,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if damage <= 0 {
 		return false
 	}
+	g.emitSoundEvent(soundEventShootPistol)
 	g.damagePlayerFrom(damage, "Monster shot you", sx, sy, true)
 	return true
 }

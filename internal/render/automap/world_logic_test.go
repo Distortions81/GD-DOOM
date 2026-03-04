@@ -79,7 +79,9 @@ func TestPickupRadSuitSetsTimer(t *testing.T) {
 
 func TestDamagePlayerSetsDeathStateAndFlash(t *testing.T) {
 	g := &game{
-		stats: playerStats{Health: 5},
+		stats:              playerStats{Health: 5},
+		soundQueue:         make([]soundEvent, 0, 2),
+		hudMessagesEnabled: true,
 	}
 	g.damagePlayer(10, "ouch")
 	if g.stats.Health != 0 {
@@ -93,6 +95,12 @@ func TestDamagePlayerSetsDeathStateAndFlash(t *testing.T) {
 	}
 	if g.useText != "You Died" {
 		t.Fatalf("message=%q want=%q", g.useText, "You Died")
+	}
+	if got := len(g.soundQueue); got != 1 {
+		t.Fatalf("soundQueue len=%d want=1", got)
+	}
+	if got := g.soundQueue[0]; got != soundEventPain {
+		t.Fatalf("sound event=%v want=%v", got, soundEventPain)
 	}
 }
 

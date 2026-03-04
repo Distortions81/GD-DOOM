@@ -103,5 +103,5 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		msg = "You Died"
 	}
 	g.setHUDMessage(msg, 20)
-	g.emitSoundEvent(soundEventOof)
+	g.emitSoundEvent(soundEventPain)
 }

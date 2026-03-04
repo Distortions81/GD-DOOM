@@ -128,14 +128,17 @@ func (g *game) fireSelectedWeapon() bool {
 	case weaponPistol:
 		g.stats.Bullets--
 		slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+		g.emitSoundEvent(soundEventShootPistol)
 		return g.fireGunShot(g.p.angle, pistolRange, slope, !g.weaponRefire)
 	case weaponChaingun:
 		g.stats.Bullets--
 		slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+		g.emitSoundEvent(soundEventShootPistol)
 		return g.fireGunShot(g.p.angle, pistolRange, slope, !g.weaponRefire)
 	case weaponShotgun:
 		g.stats.Shells--
 		slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
+		g.emitSoundEvent(soundEventShootShotgun)
 		hit := false
 		for i := 0; i < 7; i++ {
 			if g.fireGunShot(g.p.angle, shotgunRange, slope, false) {
@@ -415,8 +418,8 @@ func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {
 	x := px + math.Cos(ang)*dist
 	y := py + math.Sin(ang)*dist
 	z := g.playerShootZ() + slope*dist
-	// Doom nudges puff slightly before exact hit point.
-	const backoff = 10.0
+	// Doom line hits use 4-unit backoff before spawning a puff.
+	const backoff = float64(4 * fracUnit)
 	x -= math.Cos(ang) * backoff
 	y -= math.Sin(ang) * backoff
 	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
@@ -433,8 +436,8 @@ func (g *game) spawnHitscanBloodAtDistance(angle uint32, slope, dist float64) {
 	x := px + math.Cos(ang)*dist
 	y := py + math.Sin(ang)*dist
 	z := g.playerShootZ() + slope*dist
-	// Doom nudges blood slightly before exact hit point.
-	const backoff = 10.0
+	// Doom thing hits use 10-unit backoff before spawning blood.
+	const backoff = float64(10 * fracUnit)
 	x -= math.Cos(ang) * backoff
 	y -= math.Sin(ang) * backoff
 	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
@@ -476,6 +479,7 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 			chance := monsterPainChance(g.m.Things[thingIdx].Type)
 			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
 				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(g.m.Things[thingIdx].Type))
+				g.emitSoundEvent(soundEventPain)
 			}
 		}
 		g.setHUDMessage("Hit", 8)

@@ -638,19 +638,22 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		}
 	}
 	return automap.SoundBank{
-		DoorOpen:   firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
-		DoorClose:  firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
-		BlazeOpen:  sample("DSBDOPN"),
-		BlazeClose: sample("DSBDCLS"),
-		SwitchOn:   sample("DSSWTCHN"),
-		SwitchOff:  sample("DSSWTCHX"),
-		NoWay:      firstSample(sample("DSNOWAY"), sample("DSOOF")),
-		ItemUp:     sample("DSITEMUP"),
-		WeaponUp:   sample("DSWPNUP"),
-		PowerUp:    sample("DSGETPOW"),
-		Oof:        sample("DSOOF"),
-		InterTick:  firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
-		InterDone:  firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
+		DoorOpen:     firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
+		DoorClose:    firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
+		BlazeOpen:    sample("DSBDOPN"),
+		BlazeClose:   sample("DSBDCLS"),
+		SwitchOn:     sample("DSSWTCHN"),
+		SwitchOff:    sample("DSSWTCHX"),
+		NoWay:        firstSample(sample("DSNOWAY"), sample("DSOOF")),
+		ItemUp:       sample("DSITEMUP"),
+		WeaponUp:     sample("DSWPNUP"),
+		PowerUp:      sample("DSGETPOW"),
+		Oof:          sample("DSOOF"),
+		Pain:         firstSample(sample("DSPLPAIN"), sample("DSOOF")),
+		ShootPistol:  sample("DSPISTOL"),
+		ShootShotgun: firstSample(sample("DSSHOTGN"), sample("DSPISTOL")),
+		InterTick:    firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
+		InterDone:    firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
 }
 

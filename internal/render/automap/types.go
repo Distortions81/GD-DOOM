@@ -77,19 +77,22 @@ type PCMSample struct {
 }
 
 type SoundBank struct {
-	DoorOpen   PCMSample
-	DoorClose  PCMSample
-	BlazeOpen  PCMSample
-	BlazeClose PCMSample
-	SwitchOn   PCMSample
-	SwitchOff  PCMSample
-	NoWay      PCMSample
-	ItemUp     PCMSample
-	WeaponUp   PCMSample
-	PowerUp    PCMSample
-	Oof        PCMSample
-	InterTick  PCMSample
-	InterDone  PCMSample
+	DoorOpen     PCMSample
+	DoorClose    PCMSample
+	BlazeOpen    PCMSample
+	BlazeClose   PCMSample
+	SwitchOn     PCMSample
+	SwitchOff    PCMSample
+	NoWay        PCMSample
+	ItemUp       PCMSample
+	WeaponUp     PCMSample
+	PowerUp      PCMSample
+	Oof          PCMSample
+	Pain         PCMSample
+	ShootPistol  PCMSample
+	ShootShotgun PCMSample
+	InterTick    PCMSample
+	InterDone    PCMSample
 }
 
 type DemoTic struct {

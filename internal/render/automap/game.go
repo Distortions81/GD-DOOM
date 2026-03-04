@@ -200,6 +200,12 @@ const (
 	hitscanFxBlood
 )
 
+const (
+	// Fallback circle size when sprite patches are unavailable.
+	hitscanPuffWorldHeight  = 16.0
+	hitscanBloodWorldHeight = 16.0
+)
+
 type maskedMidSeg struct {
 	dist      float64
 	x0        int
@@ -4855,19 +4861,34 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 		sx := float64(viewW)/2 - (s/f)*focal
 		pz := float64(p.z) / fracUnit
 		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focal
-		r := (6.0 / f) * focal
-		if r < 1.0 {
-			r = 1.0
-		}
-		if r > 8.0 {
-			r = 8.0
-		}
-		xPad := r + 2
-		yPad := r + 2
-		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
-			continue
-		}
 		spriteTex, hasSprite := g.hitscanEffectSprite(p)
+		r := 0.0
+		if hasSprite && spriteTex.Width > 0 && spriteTex.Height > 0 {
+			scale := focal / f
+			if scale <= 0 {
+				continue
+			}
+			dstX := sx - float64(spriteTex.OffsetX)*scale
+			dstY := sy - float64(spriteTex.OffsetY)*scale
+			dstW := float64(spriteTex.Width) * scale
+			dstH := float64(spriteTex.Height) * scale
+			if dstX+dstW < 0 || dstX > float64(viewW) || dstY+dstH < 0 || dstY > float64(viewH) {
+				continue
+			}
+			r = dstH * 0.5
+		} else {
+			worldH := hitscanPuffWorldHeight
+			if p.kind == hitscanFxBlood {
+				worldH = hitscanBloodWorldHeight
+			}
+			spriteH := (worldH / f) * focal
+			r = spriteH * 0.5
+			xPad := r + 2
+			yPad := r + 2
+			if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
+				continue
+			}
+		}
 		items = append(items, projectedPuffItem{
 			dist:      f,
 			sx:        sx,
@@ -4888,14 +4909,14 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 			if th > 0 && tw > 0 {
 				src32, ok32 := spritePixels32(it.spriteTex)
 				if ok32 {
-					scale := (2.0 * it.r) / math.Max(float64(tw), float64(th))
-					if scale < 0.25 {
-						scale = 0.25
+					scale := focal / it.dist
+					if scale <= 0 {
+						continue
 					}
 					dstW := float64(tw) * scale
 					dstH := float64(th) * scale
-					dstX := it.sx - dstW*0.5
-					dstY := it.sy - dstH*0.5
+					dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
+					dstY := it.sy - float64(it.spriteTex.OffsetY)*scale
 					x0 := int(math.Floor(dstX))
 					y0 := int(math.Floor(dstY))
 					x1 := int(math.Ceil(dstX+dstW)) - 1

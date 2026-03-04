@@ -47,6 +47,9 @@ func TestHandleFireConsumesAmmoAndDamages(t *testing.T) {
 	if g.thingHP[0] >= 20 {
 		t.Fatalf("monster hp=%d want < 20", g.thingHP[0])
 	}
+	if !hasSoundEvent(g.soundQueue, soundEventShootPistol) {
+		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventShootPistol)
+	}
 }
 
 func TestHandleFireNoAmmoFallsBackToFist(t *testing.T) {
@@ -287,4 +290,13 @@ func TestHitscanPuffsExpire(t *testing.T) {
 	if len(g.hitscanPuffs) != 0 {
 		t.Fatalf("puffs=%d want=0 after expiry", len(g.hitscanPuffs))
 	}
+}
+
+func hasSoundEvent(queue []soundEvent, want soundEvent) bool {
+	for _, ev := range queue {
+		if ev == want {
+			return true
+		}
+	}
+	return false
 }
