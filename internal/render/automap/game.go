@@ -356,6 +356,7 @@ type game struct {
 	thingPainTics      []int
 	thingThinkWait     []int
 	projectiles        []projectile
+	projectileImpacts  []projectileImpact
 	hitscanPuffs       []hitscanPuff
 	cheatLevel         int
 	invulnerable       bool
@@ -4526,10 +4527,10 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 	viewW := g.viewW
 	viewH := g.viewH
 	stamp := g.depthFrameStamp
-	if len(g.projectiles) == 0 || len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
+	if (len(g.projectiles) == 0 && len(g.projectileImpacts) == 0) || len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
 		return
 	}
-	items := g.ensureProjectileItemsScratch(len(g.projectiles))
+	items := g.ensureProjectileItemsScratch(len(g.projectiles) + len(g.projectileImpacts))
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := float64(g.p.z)/fracUnit + 41.0
@@ -4556,6 +4557,45 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		cr := projectileColor(p.kind)
 		spriteTex, hasSprite := g.projectileSpriteTexture(p.kind, g.worldTic)
 		sec := g.sectorAt(p.x, p.y)
+		lightMul := uint32(256)
+		if sec >= 0 && sec < len(g.m.Sectors) {
+			lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+		}
+		items = append(items, projectedProjectileItem{
+			dist:       f,
+			sx:         sx,
+			sy:         sy,
+			r:          r,
+			clr:        color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
+			lightMul:   lightMul,
+			fullBright: true,
+			spriteTex:  spriteTex,
+			hasSprite:  hasSprite,
+		})
+	}
+	for _, fx := range g.projectileImpacts {
+		px := float64(fx.x)/fracUnit - camX
+		py := float64(fx.y)/fracUnit - camY
+		f := px*ca + py*sa
+		s := -px*sa + py*ca
+		if f <= near {
+			continue
+		}
+		sx := float64(viewW)/2 - (s/f)*focal
+		centerZ := float64(fx.z) / fracUnit
+		sy := float64(viewH)/2 - ((centerZ-eyeZ)/f)*focal
+		r := (8.0 / f) * focal
+		if r < 1.6 {
+			r = 1.6
+		}
+		xPad := r + 4
+		yPad := r + 4
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
+			continue
+		}
+		cr := projectileColor(fx.kind)
+		spriteTex, hasSprite := g.projectileImpactSpriteTexture(fx.kind, fx.tics)
+		sec := g.sectorAt(fx.x, fx.y)
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
 			lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
@@ -4749,6 +4789,39 @@ func (g *game) projectileSpriteTexture(kind projectileKind, tic int) (WallTextur
 		return WallTexture{}, false
 	}
 	return g.monsterSpriteTexture(name)
+}
+
+func (g *game) projectileImpactSpriteTexture(kind projectileKind, tics int) (WallTexture, bool) {
+	name := g.projectileImpactSpriteName(kind, tics)
+	if name == "" {
+		return WallTexture{}, false
+	}
+	return g.monsterSpriteTexture(name)
+}
+
+func (g *game) projectileImpactSpriteName(kind projectileKind, tics int) string {
+	frame := 'D'
+	if tics >= 4 {
+		frame = 'C'
+	}
+	prefix := "BAL1"
+	switch kind {
+	case projectileRocket:
+		prefix = "MISL"
+	case projectileBaronBall:
+		prefix = "BAL7"
+	case projectilePlasmaBall:
+		prefix = "PLSS"
+	}
+	name0 := spriteFrameName(prefix, byte(frame), '0')
+	if _, ok := g.opts.SpritePatchBank[name0]; ok {
+		return name0
+	}
+	if name, _, ok := g.monsterSpriteRotFrame(prefix, byte(frame), 1); ok {
+		return name
+	}
+	// Fallback to flight sprite if impact frame is unavailable in the bank.
+	return g.projectileSpriteName(kind, g.worldTic)
 }
 
 func (g *game) projectileSpriteName(kind projectileKind, tic int) string {

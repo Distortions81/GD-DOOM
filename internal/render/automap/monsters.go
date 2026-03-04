@@ -499,7 +499,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	}
 	if usesMonsterProjectile(typ) {
 		if g.spawnMonsterProjectile(i, typ) {
-			g.emitSoundEvent(soundEventShootPistol)
+			g.emitSoundEvent(projectileLaunchSoundEvent(typ))
 			return true
 		}
 		return false

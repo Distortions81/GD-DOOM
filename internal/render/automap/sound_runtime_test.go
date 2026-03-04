@@ -55,10 +55,20 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	if got, ok := s.sampleForEvent(soundEventShootShotgun); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
 		t.Fatalf("shotgun sample=%v ok=%v want switch fallback", got, ok)
 	}
+	if got, ok := s.sampleForEvent(soundEventShootFireball); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
+		t.Fatalf("fireball sample=%v ok=%v want switch fallback", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventImpactRocket); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
+		t.Fatalf("impact-rocket sample=%v ok=%v want switch fallback", got, ok)
+	}
 
 	s.bank.Pain = PCMSample{SampleRate: 11025, Data: []byte{3}}
 	s.bank.ShootPistol = PCMSample{SampleRate: 11025, Data: []byte{4}}
 	s.bank.ShootShotgun = PCMSample{SampleRate: 11025, Data: []byte{5}}
+	s.bank.ShootFireball = PCMSample{SampleRate: 11025, Data: []byte{6}}
+	s.bank.ShootRocket = PCMSample{SampleRate: 11025, Data: []byte{7}}
+	s.bank.ImpactFire = PCMSample{SampleRate: 11025, Data: []byte{8}}
+	s.bank.ImpactRocket = PCMSample{SampleRate: 11025, Data: []byte{9}}
 	if got, ok := s.sampleForEvent(soundEventPain); !ok || got.Data[0] != 3 {
 		t.Fatalf("pain sample=%v ok=%v want explicit pain", got, ok)
 	}
@@ -67,5 +77,17 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	}
 	if got, ok := s.sampleForEvent(soundEventShootShotgun); !ok || got.Data[0] != 5 {
 		t.Fatalf("shotgun sample=%v ok=%v want explicit shotgun", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventShootFireball); !ok || got.Data[0] != 6 {
+		t.Fatalf("fireball sample=%v ok=%v want explicit fireball", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventShootRocket); !ok || got.Data[0] != 7 {
+		t.Fatalf("rocket sample=%v ok=%v want explicit rocket", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventImpactFire); !ok || got.Data[0] != 8 {
+		t.Fatalf("impact-fire sample=%v ok=%v want explicit impact-fire", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventImpactRocket); !ok || got.Data[0] != 9 {
+		t.Fatalf("impact-rocket sample=%v ok=%v want explicit impact-rocket", got, ok)
 	}
 }

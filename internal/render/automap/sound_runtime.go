@@ -21,6 +21,10 @@ const (
 	soundEventPain
 	soundEventShootPistol
 	soundEventShootShotgun
+	soundEventShootFireball
+	soundEventShootRocket
+	soundEventImpactFire
+	soundEventImpactRocket
 	soundEventIntermissionTick
 	soundEventIntermissionDone
 )
@@ -106,6 +110,18 @@ func firstSampleRate(bank SoundBank) int {
 	}
 	if bank.ShootShotgun.SampleRate > 0 && len(bank.ShootShotgun.Data) > 0 {
 		return bank.ShootShotgun.SampleRate
+	}
+	if bank.ShootFireball.SampleRate > 0 && len(bank.ShootFireball.Data) > 0 {
+		return bank.ShootFireball.SampleRate
+	}
+	if bank.ShootRocket.SampleRate > 0 && len(bank.ShootRocket.Data) > 0 {
+		return bank.ShootRocket.SampleRate
+	}
+	if bank.ImpactFire.SampleRate > 0 && len(bank.ImpactFire.Data) > 0 {
+		return bank.ImpactFire.SampleRate
+	}
+	if bank.ImpactRocket.SampleRate > 0 && len(bank.ImpactRocket.Data) > 0 {
+		return bank.ImpactRocket.SampleRate
 	}
 	if bank.InterTick.SampleRate > 0 && len(bank.InterTick.Data) > 0 {
 		return bank.InterTick.SampleRate
@@ -205,6 +221,38 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 		}
 		if len(s.bank.ShootPistol.Data) > 0 {
 			return s.bank.ShootPistol, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventShootFireball:
+		if len(s.bank.ShootFireball.Data) > 0 {
+			return s.bank.ShootFireball, true
+		}
+		if len(s.bank.ShootPistol.Data) > 0 {
+			return s.bank.ShootPistol, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventShootRocket:
+		if len(s.bank.ShootRocket.Data) > 0 {
+			return s.bank.ShootRocket, true
+		}
+		if len(s.bank.ShootShotgun.Data) > 0 {
+			return s.bank.ShootShotgun, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventImpactFire:
+		if len(s.bank.ImpactFire.Data) > 0 {
+			return s.bank.ImpactFire, true
+		}
+		if len(s.bank.ShootFireball.Data) > 0 {
+			return s.bank.ShootFireball, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventImpactRocket:
+		if len(s.bank.ImpactRocket.Data) > 0 {
+			return s.bank.ImpactRocket, true
+		}
+		if len(s.bank.ImpactFire.Data) > 0 {
+			return s.bank.ImpactFire, true
 		}
 		return s.bank.SwitchOn, true
 	case soundEventIntermissionTick:

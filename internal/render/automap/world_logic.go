@@ -6,6 +6,7 @@ func (g *game) tickWorldLogic() {
 	g.worldTic++
 	g.trackSecrets()
 	g.tickProjectiles()
+	g.tickProjectileImpacts()
 	if g.inventory.RadSuitTics > 0 {
 		g.inventory.RadSuitTics--
 	}
