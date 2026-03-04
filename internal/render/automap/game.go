@@ -220,7 +220,6 @@ type game struct {
 	flatImgCache       map[string]*ebiten.Image
 	statusPatchImg     map[string]*ebiten.Image
 	messageFontImg     map[rune]*ebiten.Image
-	monsterSpriteImg   map[string]*ebiten.Image
 	whitePixel         *ebiten.Image
 	cullLogBudget      int
 	floorDbgMode       floorDebugMode
@@ -1748,11 +1747,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	if planesEnabled && hasMarkedPlane3DData(planeOrder) {
 		g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
+	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
 	// Keep sprite billboards visible in doom-basic mode as a pragmatic first pass.
 	g.drawBillboardProjectiles(screen, camX, camY, camAng, focal, near)
-	g.drawBillboardMonsters(screen, camX, camY, camAng, focal, near)
 }
 
 func hasMarkedPlane3DData(planes []*plane3DVisplane) bool {
@@ -1836,6 +1835,7 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	}
 	if useTex {
 		g.drawBasicWallColumnTextured(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul)
+		g.writeDepthColumn(x, y0, y1, depth)
 		return
 	}
 	rowStridePix := g.viewW
@@ -1855,6 +1855,27 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	for y := y0; y <= y1; y++ {
 		pix32[pixI] = basePacked
 		pixI += rowStridePix
+	}
+	g.writeDepthColumn(x, y0, y1, depth)
+}
+
+func (g *game) writeDepthColumn(x, y0, y1 int, depth float64) {
+	if x < 0 || x >= g.viewW || y0 > y1 || len(g.depthPix3D) != g.viewW*g.viewH {
+		return
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if y1 >= g.viewH {
+		y1 = g.viewH - 1
+	}
+	if y0 > y1 {
+		return
+	}
+	pixI := y0*g.viewW + x
+	for y := y0; y <= y1; y++ {
+		g.depthPix3D[pixI] = depth
+		pixI += g.viewW
 	}
 }
 
@@ -3232,13 +3253,16 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 	}
 }
 
-func (g *game) drawBillboardMonsters(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
+func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near float64) {
+	if len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
+		return
+	}
 	type projectedMonster struct {
-		dist   float64
-		sx     float64
-		yt     float64
-		yb     float64
-		sprite string
+		dist float64
+		sx   float64
+		yb   float64
+		h    float64
+		tex  WallTexture
 	}
 	items := make([]projectedMonster, 0, 32)
 	ca := math.Cos(camAng)
@@ -3279,34 +3303,90 @@ func (g *game) drawBillboardMonsters(screen *ebiten.Image, camX, camY, camAng, f
 			continue
 		}
 		sprite := g.monsterSpriteName(th.Type, g.worldTic)
+		tex, ok := g.monsterSpriteTexture(sprite)
+		if !ok || tex.Height <= 0 || tex.Width <= 0 {
+			continue
+		}
 		items = append(items, projectedMonster{
-			dist:   f,
-			sx:     sx,
-			yt:     yt,
-			yb:     yb,
-			sprite: sprite,
+			dist: f,
+			sx:   sx,
+			yb:   yb,
+			h:    h,
+			tex:  tex,
 		})
 	}
 
 	// Draw far-to-near.
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
-		h := it.yb - it.yt
-		img, tw, th, ox, oy, ok := g.monsterSpritePatch(it.sprite)
-		if !ok || th <= 0 {
+		th := it.tex.Height
+		tw := it.tex.Width
+		if th <= 0 || tw <= 0 || len(it.tex.RGBA) != tw*th*4 {
 			continue
 		}
-		scale := h / float64(th)
-		w := float64(tw) * scale
-		op := &ebiten.DrawImageOptions{}
-		op.Filter = ebiten.FilterNearest
-		op.GeoM.Scale(scale, scale)
-		op.GeoM.Translate(it.sx-float64(ox)*scale, it.yb-float64(oy)*scale)
-		s := monsterShadeFactor(it.dist, near)
-		op.ColorScale.Scale(s, s, s, 1.0)
-		screen.DrawImage(img, op)
-		// Ground cue to keep contact readable.
-		ebitenutil.DrawRect(screen, it.sx-w*0.54, it.yb-math.Max(1, h*0.03), w*1.08, math.Max(1, h*0.03), color.RGBA{R: 28, G: 20, B: 20, A: 150})
+		scale := it.h / float64(th)
+		if scale <= 0 {
+			continue
+		}
+		dstX := it.sx - float64(it.tex.OffsetX)*scale
+		dstY := it.yb - float64(it.tex.OffsetY)*scale
+		dstW := float64(tw) * scale
+		dstH := float64(th) * scale
+		x0 := int(math.Floor(dstX))
+		y0 := int(math.Floor(dstY))
+		x1 := int(math.Ceil(dstX+dstW)) - 1
+		y1 := int(math.Ceil(dstY+dstH)) - 1
+		if x1 < 0 || y1 < 0 || x0 >= g.viewW || y0 >= g.viewH {
+			continue
+		}
+		if x0 < 0 {
+			x0 = 0
+		}
+		if y0 < 0 {
+			y0 = 0
+		}
+		if x1 >= g.viewW {
+			x1 = g.viewW - 1
+		}
+		if y1 >= g.viewH {
+			y1 = g.viewH - 1
+		}
+		sf := float64(monsterShadeFactor(it.dist, near))
+		src := it.tex.RGBA
+		for y := y0; y <= y1; y++ {
+			sy := int(float64(y+1) - dstY) // center-ish nearest
+			ty := int(float64(sy) / scale)
+			if ty < 0 {
+				ty = 0
+			}
+			if ty >= th {
+				ty = th - 1
+			}
+			row := y * g.viewW
+			for x := x0; x <= x1; x++ {
+				if it.dist > g.depthPix3D[row+x] {
+					continue
+				}
+				sx := int(float64(x+1) - dstX)
+				tx := int(float64(sx) / scale)
+				if tx < 0 {
+					tx = 0
+				}
+				if tx >= tw {
+					tx = tw - 1
+				}
+				si := (ty*tw + tx) * 4
+				a := src[si+3]
+				if a == 0 {
+					continue
+				}
+				r := uint8(float64(src[si+0]) * sf)
+				gc := uint8(float64(src[si+1]) * sf)
+				b := uint8(float64(src[si+2]) * sf)
+				g.wallPix32[row+x] = packRGBA(r, gc, b)
+				g.depthPix3D[row+x] = it.dist
+			}
+		}
 	}
 }
 
@@ -3321,25 +3401,16 @@ func monsterShadeFactor(dist, near float64) float32 {
 	return float32(1.0 - 0.55*n)
 }
 
-func (g *game) monsterSpritePatch(name string) (*ebiten.Image, int, int, int, int, bool) {
+func (g *game) monsterSpriteTexture(name string) (WallTexture, bool) {
 	key := strings.ToUpper(strings.TrimSpace(name))
 	if key == "" {
-		return nil, 0, 0, 0, 0, false
+		return WallTexture{}, false
 	}
 	p, ok := g.opts.SpritePatchBank[key]
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
-		return nil, 0, 0, 0, 0, false
+		return WallTexture{}, false
 	}
-	if g.monsterSpriteImg == nil {
-		g.monsterSpriteImg = make(map[string]*ebiten.Image, 64)
-	}
-	if img, ok := g.monsterSpriteImg[key]; ok {
-		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
-	}
-	img := ebiten.NewImage(p.Width, p.Height)
-	img.WritePixels(p.RGBA)
-	g.monsterSpriteImg[key] = img
-	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+	return p, true
 }
 
 func (g *game) monsterSpriteName(typ int16, tic int) string {
@@ -3564,6 +3635,13 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 		g.wallBottom3D[i] = -1
 		g.ceilingClip3D[i] = -1
 		g.floorClip3D[i] = h
+	}
+	needDepth := w * h
+	if len(g.depthPix3D) != needDepth {
+		g.depthPix3D = make([]float64, needDepth)
+	}
+	for i := range g.depthPix3D {
+		g.depthPix3D[i] = math.Inf(1)
 	}
 	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
 }
