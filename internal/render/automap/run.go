@@ -17,6 +17,8 @@ type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapda
 const (
 	bootSplashHoldTics = 3 * doomTicsPerSecond
 	meltVirtualH       = 200
+	quantizeLUTW       = 256
+	quantizeLUTH       = 16
 	// Sourceport melt uses Doom-like 2-pixel column pairs over a 320-wide
 	// virtual layout, i.e. 160 moving slices.
 	sourcePortMeltInitCols = 160
@@ -34,20 +36,20 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 	if c.a <= 0.0 {
 		return vec4(0.0, 0.0, 0.0, 1.0)
 	}
-	// Convert from ~2.2 encoded source to ~2.4 encoded domain before quantization.
-	pre := vec3(pow(c.r, GammaRatio), pow(c.g, GammaRatio), pow(c.b, GammaRatio))
-	best := vec4(pre, 1.0)
+	outRGB := c.rgb
 	if EnableQuantize >= 0.5 {
 		// 16x16x16 RGB cube LUT flattened into a 256x16 block at source1 top-left.
-		ri := int(clamp(pre.r*15.0+0.5, 0.0, 15.0))
-		gi := int(clamp(pre.g*15.0+0.5, 0.0, 15.0))
-		bi := int(clamp(pre.b*15.0+0.5, 0.0, 15.0))
+		ri := int(clamp(c.r*15.0+0.5, 0.0, 15.0))
+		gi := int(clamp(c.g*15.0+0.5, 0.0, 15.0))
+		bi := int(clamp(c.b*15.0+0.5, 0.0, 15.0))
 		idx := ri + gi*16 + bi*256
 		lx := float(idx%256) + 0.5
 		ly := float(idx/256) + 0.5
-		best = imageSrc1At(vec2(lx, ly))
+		outRGB = imageSrc1At(vec2(lx, ly) + imageSrc0Origin()).rgb
 	}
-	return vec4(best.rgb, 1.0)
+	// Apply display gamma after optional quantization.
+	post := vec3(pow(outRGB.r, GammaRatio), pow(outRGB.g, GammaRatio), pow(outRGB.b, GammaRatio))
+	return vec4(post, 1.0)
 }
 `)
 
@@ -208,6 +210,9 @@ func (sg *sessionGame) Update() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
 			(ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)) {
 			return ebiten.Termination
+		}
+		if sg.transition.kind == transitionBoot && sg.transition.holdTics > 0 && anyIntermissionSkipInput() {
+			sg.transition.holdTics = 0
 		}
 		sg.tickTransition()
 		return nil
@@ -836,7 +841,7 @@ func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image
 	op.Images[0] = src
 	op.Images[1] = sg.faithfulLUT
 	enableQuant := float32(0)
-	if sg.g != nil && sg.g.paletteLUTEnabled {
+	if sg.g != nil && sg.g.paletteLUTEnabled && w >= quantizeLUTW && h >= quantizeLUTH {
 		enableQuant = 1
 	}
 	op.Uniforms = map[string]any{
@@ -848,14 +853,27 @@ func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image
 }
 
 func gammaRatioForLevel(level int) float32 {
-	if level <= 0 {
-		return 1.0
+	targetGamma := gammaTargetForLevel(level)
+	return float32(targetGamma / 2.2)
+}
+
+var gammaTargets = [...]float64{3.8, 3.5, 3.3, 3.0, 2.8, 2.5, 2.2, 1.8, 1.5}
+
+func gammaTargetForLevel(level int) float64 {
+	if level < 0 {
+		level = 0
 	}
-	return float32(2.2 / 2.4)
+	if level >= len(gammaTargets) {
+		level = len(gammaTargets) - 1
+	}
+	return gammaTargets[level]
 }
 
 func (sg *sessionGame) ensureFaithfulLUTSurface(w, h int) {
-	if w <= 0 || h <= 0 || len(sg.opts.DoomPaletteRGBA) != 256*4 {
+	if w <= 0 || h <= 0 {
+		return
+	}
+	if len(sg.opts.DoomPaletteRGBA) != 256*4 {
 		return
 	}
 	if sg.faithfulLUT == nil || sg.faithfulLUTW != w || sg.faithfulLUTH != h {
@@ -872,8 +890,8 @@ func buildQuantizeLUT16x16x16(dst []byte, w, h int, pal []byte) {
 	if len(dst) < w*h*4 || len(pal) < 256*4 {
 		return
 	}
-	const lutW = 256
-	const lutH = 16
+	const lutW = quantizeLUTW
+	const lutH = quantizeLUTH
 	if w < lutW || h < lutH {
 		return
 	}

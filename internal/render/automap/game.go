@@ -435,7 +435,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		opts:              opts,
 		bounds:            mapBounds(m),
 		paletteLUTEnabled: !opts.SourcePortMode,
-		gammaLevel:        0,
+		gammaLevel:        4,
 		viewW:             opts.Width,
 		viewH:             opts.Height,
 		mode:              viewMap,
@@ -1036,8 +1036,8 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Gamma unavailable", 70)
 			return
 		}
-		g.gammaLevel = (g.gammaLevel + 1) % 5
-		g.setHUDMessage(fmt.Sprintf("Gamma %d", g.gammaLevel), 70)
+		g.gammaLevel = (g.gammaLevel + 1) % len(gammaTargets)
+		g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
 	}
 }
 
