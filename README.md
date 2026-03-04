@@ -34,6 +34,8 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-zoom <float>`: startup zoom override (`>0`); default uses Doom-style auto zoom
 - `-player <1-4>`: choose local player start slot
 - `-skill <1-5>`: Doom skill level (`1=ITYTD`, `2=HNTR`, `3=HMP`, `4=UV`, `5=NM`)
+- `-always-run`: start with always-run enabled (holding `Shift` temporarily inverts it)
+- `-auto-weapon-switch`: auto-switch to newly picked weapons (default `true`)
 - `-cheat-level <0-3>`: startup cheats (`0=off`, `1=automap reveal`, `2=IDFA-like`, `3=IDKFA + invuln`)
 - `-invuln`: start with invulnerability (`IDDQD`-like)
 - `-sourceport-mode`: enable source-port style automap extras at startup
@@ -81,8 +83,13 @@ Level progression:
 - `WASD`: move
 - `Q/E`: turn (map mode)
 - `Shift`: run
+- `CapsLock`: toggle always-run
 - `E` / `Space`: use
 - `Ctrl` / left mouse: fire (hitscan prototype)
+- `1..7`: weapon slot select
+- `[` / `]` or `PgUp` / `PgDn`: previous/next weapon (walk mode)
+- mouse wheel (walk mode): cycle weapons
+- `F9`: toggle auto weapon-switch
 - `Arrow keys`: pan map (follow off)
 - `F`: toggle follow
 - `G`: toggle grid

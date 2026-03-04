@@ -3,6 +3,7 @@ package automap
 import (
 	"math"
 	"sort"
+	"strings"
 
 	"gddoom/internal/mapdata"
 )
@@ -134,6 +135,8 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		return
 	}
 	if g.handleExitSpecial(lineIdx, special, mapdata.TriggerUse) {
+		g.animateSwitchTexture(lineIdx, side, false)
+		g.emitSoundEvent(soundEventSwitchOn)
 		return
 	}
 	info := mapdata.LookupLineSpecial(special)
@@ -153,6 +156,7 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 	if activated {
 		g.useText = "USE: door active"
 		if shouldPlaySwitchClick(info) {
+			g.animateSwitchTexture(lineIdx, side, info.Repeat)
 			g.emitSoundEvent(soundEventSwitchOn)
 			if info.Repeat {
 				g.emitSoundEventDelayed(soundEventSwitchOff, switchResetTics)
@@ -382,4 +386,68 @@ func (g *game) lowestSurroundingCeiling(sector int) int64 {
 		return g.sectorCeil[sector]
 	}
 	return lowest
+}
+
+func toggleSwitchTexture(name string) (string, bool) {
+	base := strings.TrimSpace(name)
+	if len(base) < 4 {
+		return name, false
+	}
+	upper := strings.ToUpper(base)
+	if strings.HasPrefix(upper, "SW1") {
+		return "SW2" + base[3:], true
+	}
+	if strings.HasPrefix(upper, "SW2") {
+		return "SW1" + base[3:], true
+	}
+	return name, false
+}
+
+func (g *game) animateSwitchTexture(lineIdx, side int, repeat bool) {
+	if lineIdx < 0 || lineIdx >= len(g.m.Linedefs) {
+		return
+	}
+	ld := g.m.Linedefs[lineIdx]
+	sideDefIdx := int(ld.SideNum[0])
+	if side == 1 {
+		sideDefIdx = int(ld.SideNum[1])
+	}
+	if sideDefIdx < 0 || sideDefIdx >= len(g.m.Sidedefs) {
+		return
+	}
+	sd := &g.m.Sidedefs[sideDefIdx]
+	origTop, origBottom, origMid := sd.Top, sd.Bottom, sd.Mid
+	changed := false
+	if next, ok := toggleSwitchTexture(sd.Top); ok {
+		sd.Top = next
+		changed = true
+	}
+	if next, ok := toggleSwitchTexture(sd.Bottom); ok {
+		sd.Bottom = next
+		changed = true
+	}
+	if next, ok := toggleSwitchTexture(sd.Mid); ok {
+		sd.Mid = next
+		changed = true
+	}
+	if !changed || !repeat {
+		return
+	}
+	for i := range g.delayedSwitchReverts {
+		if g.delayedSwitchReverts[i].sidedef != sideDefIdx {
+			continue
+		}
+		g.delayedSwitchReverts[i].top = origTop
+		g.delayedSwitchReverts[i].bottom = origBottom
+		g.delayedSwitchReverts[i].mid = origMid
+		g.delayedSwitchReverts[i].tics = switchResetTics
+		return
+	}
+	g.delayedSwitchReverts = append(g.delayedSwitchReverts, delayedSwitchTexture{
+		sidedef: sideDefIdx,
+		top:     origTop,
+		bottom:  origBottom,
+		mid:     origMid,
+		tics:    switchResetTics,
+	})
 }

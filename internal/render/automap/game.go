@@ -275,6 +275,7 @@ type game struct {
 	snd                  *soundSystem
 	soundQueue           []soundEvent
 	delayedSfx           []delayedSoundEvent
+	delayedSwitchReverts []delayedSwitchTexture
 
 	prevCamX  float64
 	prevCamY  float64
@@ -319,6 +320,8 @@ type game struct {
 	cheatLevel         int
 	invulnerable       bool
 	inventory          playerInventory
+	alwaysRun          bool
+	autoWeaponSwitch   bool
 	weaponRefire       bool
 	weaponFireCooldown int
 	stats              playerStats
@@ -465,6 +468,14 @@ type mapMark struct {
 type delayedSoundEvent struct {
 	ev   soundEvent
 	tics int
+}
+
+type delayedSwitchTexture struct {
+	sidedef int
+	top     string
+	bottom  string
+	mid     string
+	tics    int
 }
 
 type revealMode int
@@ -615,9 +626,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		cullLogBudget: 0,
 		floorDbgMode:  floorDebugTextured,
 		// Default to prebuilt rasterized map floor textures (fast path).
-		floor2DPath:  floor2DPathRasterized,
-		floorVisDiag: floorVisDiagOff,
-		mapTexDiag:   false,
+		floor2DPath:      floor2DPathRasterized,
+		floorVisDiag:     floorVisDiagOff,
+		mapTexDiag:       false,
+		alwaysRun:        opts.AlwaysRun,
+		autoWeaponSwitch: opts.AutoWeaponSwitch,
 	}
 	initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows)
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
@@ -659,6 +672,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.snd = newSoundSystem(opts.SoundBank)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
+	g.delayedSwitchReverts = make([]delayedSwitchTexture, 0, 4)
 	if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
 		g.skyLayerShader = sh
 	}
@@ -854,6 +868,7 @@ func (g *game) Update() error {
 		g.bonusFlashTic--
 	}
 	g.tickDelayedSounds()
+	g.tickDelayedSwitchReverts()
 	g.flushSoundEvents()
 	g.lastUpdate = time.Now()
 	return nil
@@ -925,6 +940,7 @@ func (g *game) updateDemoMode() error {
 		g.bonusFlashTic--
 	}
 	g.tickDelayedSounds()
+	g.tickDelayedSwitchReverts()
 	g.flushSoundEvents()
 	g.lastUpdate = time.Now()
 	return nil
@@ -943,7 +959,7 @@ func (g *game) requestLevelRestart() {
 
 func (g *game) updateMapMode() {
 	g.updateParityControls()
-	g.updateWeaponHotkeys()
+	g.updateWeaponHotkeys(false)
 	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		g.followMode = !g.followMode
 		if g.followMode {
@@ -973,10 +989,7 @@ func (g *game) updateMapMode() {
 	cmd := moveCmd{}
 	usePressed := false
 	firePressed := false
-	speed := 0
-	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
-		speed = 1
-	}
+	speed := g.currentRunSpeed()
 	if ebiten.IsKeyPressed(ebiten.KeyW) {
 		cmd.forward += forwardMove[speed]
 	}
@@ -1045,15 +1058,12 @@ func (g *game) updateMapMode() {
 
 func (g *game) updateWalkMode() {
 	g.updateParityControls()
-	g.updateWeaponHotkeys()
+	g.updateWeaponHotkeys(true)
 	g.updateZoom()
 	cmd := moveCmd{}
 	usePressed := false
 	firePressed := false
-	speed := 0
-	if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
-		speed = 1
-	}
+	speed := g.currentRunSpeed()
 	strafeMod := ebiten.IsKeyPressed(ebiten.KeyAltLeft) || ebiten.IsKeyPressed(ebiten.KeyAltRight)
 	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
 		cmd.forward += forwardMove[speed]
@@ -1109,6 +1119,18 @@ func (g *game) updateWalkMode() {
 	g.camY = float64(g.p.y) / fracUnit
 }
 
+func (g *game) currentRunSpeed() int {
+	runHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+	runActive := g.alwaysRun
+	if runHeld {
+		runActive = !runActive
+	}
+	if runActive {
+		return 1
+	}
+	return 0
+}
+
 func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
 	if g.opts.DemoScript != nil || strings.TrimSpace(g.opts.RecordDemoPath) == "" {
 		return
@@ -1124,7 +1146,7 @@ func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
 	})
 }
 
-func (g *game) updateWeaponHotkeys() {
+func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
 		g.selectWeaponSlot(1)
 	}
@@ -1146,9 +1168,45 @@ func (g *game) updateWeaponHotkeys() {
 	if inpututil.IsKeyJustPressed(ebiten.Key7) {
 		g.selectWeaponSlot(7)
 	}
+	if !allowCycleInput {
+		return
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) ||
+		inpututil.IsKeyJustPressed(ebiten.KeyPageDown) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4) {
+		g.cycleWeapon(1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) ||
+		inpututil.IsKeyJustPressed(ebiten.KeyPageUp) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3) {
+		g.cycleWeapon(-1)
+	}
+	_, wheelY := ebiten.Wheel()
+	if wheelY < 0 {
+		g.cycleWeapon(1)
+	}
+	if wheelY > 0 {
+		g.cycleWeapon(-1)
+	}
 }
 
 func (g *game) updateParityControls() {
+	if inpututil.IsKeyJustPressed(ebiten.KeyCapsLock) {
+		g.alwaysRun = !g.alwaysRun
+		if g.alwaysRun {
+			g.setHUDMessage("Always Run ON", 70)
+		} else {
+			g.setHUDMessage("Always Run OFF", 70)
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF9) {
+		g.autoWeaponSwitch = !g.autoWeaponSwitch
+		if g.autoWeaponSwitch {
+			g.setHUDMessage("Auto Weapon Switch ON", 70)
+		} else {
+			g.setHUDMessage("Auto Weapon Switch OFF", 70)
+		}
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
 		g.showGrid = !g.showGrid
 		if g.showGrid {
@@ -1433,6 +1491,26 @@ func (g *game) tickDelayedSounds() {
 		keep = append(keep, d)
 	}
 	g.delayedSfx = keep
+}
+
+func (g *game) tickDelayedSwitchReverts() {
+	if len(g.delayedSwitchReverts) == 0 {
+		return
+	}
+	keep := g.delayedSwitchReverts[:0]
+	for _, s := range g.delayedSwitchReverts {
+		s.tics--
+		if s.tics <= 0 {
+			if s.sidedef >= 0 && s.sidedef < len(g.m.Sidedefs) {
+				g.m.Sidedefs[s.sidedef].Top = s.top
+				g.m.Sidedefs[s.sidedef].Bottom = s.bottom
+				g.m.Sidedefs[s.sidedef].Mid = s.mid
+			}
+			continue
+		}
+		keep = append(keep, s)
+	}
+	g.delayedSwitchReverts = keep
 }
 
 func (g *game) setHUDMessage(msg string, tics int) {

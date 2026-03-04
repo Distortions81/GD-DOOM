@@ -489,6 +489,79 @@ func (g *game) selectWeaponSlot(slot int) {
 	}
 }
 
+func (g *game) weaponOwned(id weaponID) bool {
+	switch id {
+	case weaponFist:
+		return true
+	case weaponPistol:
+		return true
+	case weaponShotgun:
+		return g.inventory.Weapons[2001]
+	case weaponChaingun:
+		return g.inventory.Weapons[2002]
+	case weaponRocketLauncher:
+		return g.inventory.Weapons[2003]
+	case weaponPlasma:
+		return g.inventory.Weapons[2004]
+	case weaponBFG:
+		return g.inventory.Weapons[2006]
+	case weaponChainsaw:
+		return g.inventory.Weapons[2005]
+	default:
+		return false
+	}
+}
+
+func weaponCycleOrder() []weaponID {
+	return []weaponID{
+		weaponFist,
+		weaponChainsaw,
+		weaponPistol,
+		weaponShotgun,
+		weaponChaingun,
+		weaponRocketLauncher,
+		weaponPlasma,
+		weaponBFG,
+	}
+}
+
+func (g *game) cycleWeapon(step int) {
+	if step == 0 {
+		return
+	}
+	g.ensureWeaponDefaults()
+	order := weaponCycleOrder()
+	cur := g.inventory.ReadyWeapon
+	start := -1
+	for i, w := range order {
+		if w == cur {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		start = 0
+	}
+	n := len(order)
+	for i := 1; i <= n; i++ {
+		idx := (start + i*step) % n
+		if idx < 0 {
+			idx += n
+		}
+		next := order[idx]
+		if !g.weaponOwned(next) {
+			continue
+		}
+		if next == cur {
+			continue
+		}
+		g.inventory.ReadyWeapon = next
+		g.weaponRefire = false
+		g.weaponFireCooldown = 0
+		return
+	}
+}
+
 func weaponName(id weaponID) string {
 	switch id {
 	case weaponFist:

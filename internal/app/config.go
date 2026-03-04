@@ -20,6 +20,8 @@ type fileConfig struct {
 	Player                     *int     `toml:"player"`
 	Skill                      *int     `toml:"skill"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
+	AlwaysRun                  *bool    `toml:"always_run"`
+	AutoWeaponSwitch           *bool    `toml:"auto_weapon_switch"`
 	CheatLevel                 *int     `toml:"cheat_level"`
 	Invulnerable               *bool    `toml:"invulnerable"`
 	ImportTextures             *bool    `toml:"import_textures"`

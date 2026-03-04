@@ -9,6 +9,8 @@ type Options struct {
 	PlayerSlot                 int
 	SkillLevel                 int
 	FastMonsters               bool
+	AlwaysRun                  bool
+	AutoWeaponSwitch           bool
 	CheatLevel                 int
 	Invulnerable               bool
 	LineColorMode              string

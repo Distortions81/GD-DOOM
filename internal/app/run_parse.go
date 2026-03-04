@@ -39,6 +39,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultPlayer := 1
 	defaultSkill := 3
 	defaultFastMonsters := false
+	defaultAlwaysRun := false
+	defaultAutoWeaponSwitch := true
 	defaultCheatLevel := 0
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
@@ -94,6 +96,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.FastMonsters != nil {
 			defaultFastMonsters = *cfg.FastMonsters
+		}
+		if cfg.AlwaysRun != nil {
+			defaultAlwaysRun = *cfg.AlwaysRun
+		}
+		if cfg.AutoWeaponSwitch != nil {
+			defaultAutoWeaponSwitch = *cfg.AutoWeaponSwitch
 		}
 		if cfg.CheatLevel != nil {
 			defaultCheatLevel = *cfg.CheatLevel
@@ -165,6 +173,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
+	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
+	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
@@ -387,6 +397,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			PlayerSlot:                 *playerSlot,
 			SkillLevel:                 *skillLevel,
 			FastMonsters:               *fastMonsters,
+			AlwaysRun:                  *alwaysRun,
+			AutoWeaponSwitch:           *autoWeaponSwitch,
 			CheatLevel:                 resolvedCheatLevel,
 			Invulnerable:               resolvedInvuln,
 			LineColorMode:              resolvedLineColorMode,

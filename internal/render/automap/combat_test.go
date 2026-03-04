@@ -200,3 +200,29 @@ func TestPistolAutoaimSlopeHitsLowerTarget(t *testing.T) {
 		t.Fatalf("monster hp=%d want < 20 (autoaim slope should hit lower target)", g.thingHP[0])
 	}
 }
+
+func TestCycleWeaponSkipsUnowned(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon: weaponPistol,
+			Weapons:     map[int16]bool{2002: true},
+		},
+	}
+	g.cycleWeapon(1)
+	if g.inventory.ReadyWeapon != weaponChaingun {
+		t.Fatalf("weapon=%v want=%v", g.inventory.ReadyWeapon, weaponChaingun)
+	}
+}
+
+func TestCycleWeaponWrapsBackward(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon: weaponFist,
+			Weapons:     map[int16]bool{2006: true},
+		},
+	}
+	g.cycleWeapon(-1)
+	if g.inventory.ReadyWeapon != weaponBFG {
+		t.Fatalf("weapon=%v want=%v", g.inventory.ReadyWeapon, weaponBFG)
+	}
+}

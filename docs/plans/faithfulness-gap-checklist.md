@@ -30,13 +30,17 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 
 - [ ] Add save/load system parity including quicksave/quickload flow.
 - [ ] Audit monster animation-state parity in all attack/death edge cases.
+- [ ] Add monster collision parity (blocking/push behavior against player/world/actors).
+- [ ] Add explosive barrel gameplay parity (collision, damage, and explosion chain behavior).
 - [ ] Validate door/special timing parity in additional maps beyond current smoke tests.
 - [ ] Expand projectile behavior parity checks (spawn cadence, collision, and impact timing).
 - [ ] Implement missing specials (including lift behaviors).
 - [ ] Implement teleporter special parity (activation, destination handling, and timing).
-- [ ] Animate switches after activation.
+- [x] Animate switches after activation.
 - [ ] Implement sector light effects parity (flash/pulse/strobe/flicker behavior).
 - [ ] Complete hitscan parity with Doom (damage/spread/tracing behavior).
+- [ ] Add projectile/hitscan knock-back parity.
+- [ ] Add bullet impact "puff/poof" effects for hitscan impacts.
 - [ ] Verify key/lock interaction parity across all key-required specials.
 - [ ] Complete monster AI sensory parity (including sound/hearing-driven wake/alert behavior).
 - [ ] Validate full difficulty parity including Nightmare semantics.
@@ -45,10 +49,10 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 
 ## Controls and Weapon Handling Parity
 
-- [ ] Add number-key weapon hotkeys with vanilla slot semantics.
-- [ ] Add next/previous weapon cycling (mouse wheel and/or dedicated buttons).
-- [ ] Add auto weapon-switch toggle behavior parity.
-- [ ] Add run toggle option parity.
+- [x] Add number-key weapon hotkeys with vanilla slot semantics.
+- [x] Add next/previous weapon cycling (mouse wheel and/or dedicated buttons).
+- [x] Add auto weapon-switch toggle behavior parity.
+- [x] Add run toggle option parity.
 
 ## Audio and Music Parity
 
