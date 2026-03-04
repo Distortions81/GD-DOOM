@@ -1685,7 +1685,7 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 		baseG = shade[base.G]
 		baseB = shade[base.B]
 	}
-	basePacked := pixelOpaqueA | (uint32(baseR) << pixelRShift) | (uint32(baseG) << pixelGShift) | (uint32(baseB) << pixelBShift)
+	basePacked := packRGBA(baseR, baseG, baseB)
 	for y := y0; y <= y1; y++ {
 		pix32[pixI] = basePacked
 		pixI += rowStridePix
@@ -1696,6 +1696,15 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	rowStridePix := g.viewW
 	pixI := y0*rowStridePix + x
 	pix32 := g.wallPix32
+	tex32 := tex.RGBA32
+	if len(tex32) != tex.Width*tex.Height {
+		if len(tex.RGBA) != tex.Width*tex.Height*4 || len(tex.RGBA) < 4 {
+			return
+		}
+		tex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex.RGBA))), len(tex.RGBA)/4)
+	}
+	texCol := tex.ColMajor
+	useColMajor := len(texCol) == tex.Width*tex.Height
 	txi := int(floorFixed(texU) >> fracBits)
 	tx := 0
 	if tex.Width > 0 && (tex.Width&(tex.Width-1)) == 0 {
@@ -1710,15 +1719,42 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	texVStepFixed := floorFixed(rowScale)
 	pow2H := tex.Height > 0 && (tex.Height&(tex.Height-1)) == 0
 	hmask := tex.Height - 1
+	colBase := tx * tex.Height
+	fracMask := int64(fracUnit - 1)
+	fracUnit64 := int64(fracUnit)
 	if shadeMul == 256 {
+		if useColMajor {
+			if pow2H {
+				col := texCol[colBase : colBase+tex.Height]
+				tyRaw := int(texVFixed >> fracBits)
+				fracAcc := texVFixed & fracMask
+				stepInt := int(texVStepFixed >> fracBits)
+				stepFrac := texVStepFixed & fracMask
+				for y := y0; y <= y1; y++ {
+					pix32[pixI] = col[tyRaw&hmask] | pixelOpaqueA
+					pixI += rowStridePix
+					tyRaw += stepInt
+					fracAcc += stepFrac
+					if fracAcc >= fracUnit64 {
+						fracAcc -= fracUnit64
+						tyRaw++
+					}
+				}
+				return
+			}
+			for y := y0; y <= y1; y++ {
+				ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
+				pix32[pixI] = texCol[colBase+ty] | pixelOpaqueA
+				pixI += rowStridePix
+				texVFixed += texVStepFixed
+			}
+			return
+		}
 		if pow2H {
 			for y := y0; y <= y1; y++ {
 				ty := int((texVFixed >> fracBits) & int64(hmask))
-				ti := (ty*tex.Width + tx) * 4
-				pix32[pixI] = pixelOpaqueA |
-					(uint32(tex.RGBA[ti+0]) << pixelRShift) |
-					(uint32(tex.RGBA[ti+1]) << pixelGShift) |
-					(uint32(tex.RGBA[ti+2]) << pixelBShift)
+				ti := ty*tex.Width + tx
+				pix32[pixI] = tex32[ti] | pixelOpaqueA
 				pixI += rowStridePix
 				texVFixed += texVStepFixed
 			}
@@ -1726,26 +1762,96 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		}
 		for y := y0; y <= y1; y++ {
 			ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
-			ti := (ty*tex.Width + tx) * 4
-			pix32[pixI] = pixelOpaqueA |
-				(uint32(tex.RGBA[ti+0]) << pixelRShift) |
-				(uint32(tex.RGBA[ti+1]) << pixelGShift) |
-				(uint32(tex.RGBA[ti+2]) << pixelBShift)
+			ti := ty*tex.Width + tx
+			pix32[pixI] = tex32[ti] | pixelOpaqueA
 			pixI += rowStridePix
 			texVFixed += texVStepFixed
 		}
 		return
 	}
-	wallShadeLUTOnce.Do(initWallShadeLUT)
-	shade := &wallShadeLUT[shadeMul]
+	shadeMulU := uint32(shadeMul)
+	if pixelLittleEndian {
+		if useColMajor {
+			if pow2H {
+				col := texCol[colBase : colBase+tex.Height]
+				tyRaw := int(texVFixed >> fracBits)
+				fracAcc := texVFixed & fracMask
+				stepInt := int(texVStepFixed >> fracBits)
+				stepFrac := texVStepFixed & fracMask
+				for y := y0; y <= y1; y++ {
+					src := col[tyRaw&hmask]
+					rb := ((src & 0x00FF00FF) * shadeMulU) >> 8
+					gg := ((src & 0x0000FF00) * shadeMulU) >> 8
+					pix32[pixI] = pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
+					pixI += rowStridePix
+					tyRaw += stepInt
+					fracAcc += stepFrac
+					if fracAcc >= fracUnit64 {
+						fracAcc -= fracUnit64
+						tyRaw++
+					}
+				}
+				return
+			}
+			for y := y0; y <= y1; y++ {
+				ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
+				src := texCol[colBase+ty]
+				rb := ((src & 0x00FF00FF) * shadeMulU) >> 8
+				gg := ((src & 0x0000FF00) * shadeMulU) >> 8
+				pix32[pixI] = pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
+				pixI += rowStridePix
+				texVFixed += texVStepFixed
+			}
+			return
+		}
+		if pow2H {
+			for y := y0; y <= y1; y++ {
+				ty := int((texVFixed >> fracBits) & int64(hmask))
+				ti := ty*tex.Width + tx
+				src := tex32[ti]
+				rb := ((src & 0x00FF00FF) * shadeMulU) >> 8
+				gg := ((src & 0x0000FF00) * shadeMulU) >> 8
+				pix32[pixI] = pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
+				pixI += rowStridePix
+				texVFixed += texVStepFixed
+			}
+			return
+		}
+		for y := y0; y <= y1; y++ {
+			ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
+			ti := ty*tex.Width + tx
+			src := tex32[ti]
+			rb := ((src & 0x00FF00FF) * shadeMulU) >> 8
+			gg := ((src & 0x0000FF00) * shadeMulU) >> 8
+			pix32[pixI] = pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
+			pixI += rowStridePix
+			texVFixed += texVStepFixed
+		}
+		return
+	}
+	if useColMajor {
+		if pow2H {
+			for y := y0; y <= y1; y++ {
+				ty := int((texVFixed >> fracBits) & int64(hmask))
+				pix32[pixI] = shadePackedRGBABig(texCol[colBase+ty], shadeMulU)
+				pixI += rowStridePix
+				texVFixed += texVStepFixed
+			}
+			return
+		}
+		for y := y0; y <= y1; y++ {
+			ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
+			pix32[pixI] = shadePackedRGBABig(texCol[colBase+ty], shadeMulU)
+			pixI += rowStridePix
+			texVFixed += texVStepFixed
+		}
+		return
+	}
 	if pow2H {
 		for y := y0; y <= y1; y++ {
 			ty := int((texVFixed >> fracBits) & int64(hmask))
-			ti := (ty*tex.Width + tx) * 4
-			pix32[pixI] = pixelOpaqueA |
-				(uint32(shade[tex.RGBA[ti+0]]) << pixelRShift) |
-				(uint32(shade[tex.RGBA[ti+1]]) << pixelGShift) |
-				(uint32(shade[tex.RGBA[ti+2]]) << pixelBShift)
+			ti := ty*tex.Width + tx
+			pix32[pixI] = shadePackedRGBABig(tex32[ti], shadeMulU)
 			pixI += rowStridePix
 			texVFixed += texVStepFixed
 		}
@@ -1753,11 +1859,8 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	}
 	for y := y0; y <= y1; y++ {
 		ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
-		ti := (ty*tex.Width + tx) * 4
-		pix32[pixI] = pixelOpaqueA |
-			(uint32(shade[tex.RGBA[ti+0]]) << pixelRShift) |
-			(uint32(shade[tex.RGBA[ti+1]]) << pixelGShift) |
-			(uint32(shade[tex.RGBA[ti+2]]) << pixelBShift)
+		ti := ty*tex.Width + tx
+		pix32[pixI] = shadePackedRGBABig(tex32[ti], shadeMulU)
 		pixI += rowStridePix
 		texVFixed += texVStepFixed
 	}
@@ -1780,18 +1883,11 @@ func packRGBA(r, g, b uint8) uint32 {
 		(uint32(b) << pixelBShift)
 }
 
-func put1RGBA(pix []byte, i int, p uint32) {
-	_ = pix[i+3]
-	*(*uint32)(unsafe.Pointer(&pix[i])) = p
-}
-
-func put2RGBA(pix []byte, i int, p0, p1 uint32) {
-	_ = pix[i+7]
-	v := uint64(p0) | (uint64(p1) << 32)
-	if !pixelLittleEndian {
-		v = (uint64(p0) << 32) | uint64(p1)
-	}
-	*(*uint64)(unsafe.Pointer(&pix[i])) = v
+func shadePackedRGBABig(src, mul uint32) uint32 {
+	r := ((src >> pixelRShift) & 0xFF) * mul >> 8
+	g := ((src >> pixelGShift) & 0xFF) * mul >> 8
+	b := ((src >> pixelBShift) & 0xFF) * mul >> 8
+	return pixelOpaqueA | (r << pixelRShift) | (g << pixelGShift) | (b << pixelBShift)
 }
 
 func initWallShadeLUT() {
@@ -1820,6 +1916,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
 		return
 	}
+	pix32 := g.wallPix32
+	if len(pix32) != w*h {
+		return
+	}
 	spansByPlane, _, _, hasSky := g.buildPlaneSpansParallel(planes, h)
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
@@ -1838,11 +1938,17 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		}
 	}
 	skyTexReady := skyTexOK &&
-		len(skyTex.RGBA) == skyTex.Width*skyTex.Height*4 &&
 		len(skyColU) == w &&
 		len(skyRowV) == h
 	if skyTexReady {
-		skyTex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(skyTex.RGBA))), len(skyTex.RGBA)/4)
+		skyTex32 = skyTex.RGBA32
+		if len(skyTex32) != skyTex.Width*skyTex.Height {
+			if len(skyTex.RGBA) != skyTex.Width*skyTex.Height*4 || len(skyTex.RGBA) < 4 {
+				skyTexReady = false
+			} else {
+				skyTex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(skyTex.RGBA))), len(skyTex.RGBA)/4)
+			}
+		}
 	}
 	for planeIdx, pl := range planes {
 		spans := spansByPlane[planeIdx]
@@ -1881,9 +1987,9 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			if x2 < x1 {
 				continue
 			}
-			row := sp.y * w * 4
+			rowPix := sp.y * w
 			if key.sky {
-				i := row + x1*4
+				pixI := rowPix + x1
 				if skyTexReady {
 					v := skyRowV[sp.y]
 					x := x1
@@ -1892,22 +1998,24 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						u1 := skyColU[x+1]
 						ti0 := v*skyTex.Width + u0
 						ti1 := v*skyTex.Width + u1
-						put2RGBA(pix, i, skyTex32[ti0], skyTex32[ti1])
-						i += 8
+						pix32[pixI] = skyTex32[ti0]
+						pix32[pixI+1] = skyTex32[ti1]
+						pixI += 2
 					}
 					if x <= x2 {
 						u := skyColU[x]
 						ti := v*skyTex.Width + u
-						put1RGBA(pix, i, skyTex32[ti])
+						pix32[pixI] = skyTex32[ti]
 					}
 				} else {
 					x := x1
 					for ; x+1 <= x2; x += 2 {
-						put2RGBA(pix, i, fbPacked, fbPacked)
-						i += 8
+						pix32[pixI] = fbPacked
+						pix32[pixI+1] = fbPacked
+						pixI += 2
 					}
 					if x <= x2 {
-						put1RGBA(pix, i, fbPacked)
+						pix32[pixI] = fbPacked
 					}
 				}
 				continue
@@ -1925,15 +2033,16 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
 			stepWX := (depth / focal) * sa
 			stepWY := -(depth / focal) * ca
-			i := row + x1*4
+			pixI := rowPix + x1
 			if !flatTexReady {
 				x := x1
 				for ; x+1 <= x2; x += 2 {
-					put2RGBA(pix, i, fbPacked, fbPacked)
-					i += 8
+					pix32[pixI] = fbPacked
+					pix32[pixI+1] = fbPacked
+					pixI += 2
 				}
 				if x <= x2 {
-					put1RGBA(pix, i, fbPacked)
+					pix32[pixI] = fbPacked
 				}
 				continue
 			}
@@ -1951,15 +2060,16 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				u1 := int(wxFixed>>fracBits) & 63
 				v1 := int(wyFixed>>fracBits) & 63
 				p1 := tex32[(v1<<6)+u1]
-				put2RGBA(pix, i, p0, p1)
+				pix32[pixI] = p0
+				pix32[pixI+1] = p1
 				wxFixed += stepWXFixed
 				wyFixed += stepWYFixed
-				i += 8
+				pixI += 2
 			}
 			if x <= x2 {
 				u := int(wxFixed>>fracBits) & 63
 				v := int(wyFixed>>fracBits) & 63
-				put1RGBA(pix, i, tex32[(v<<6)+u])
+				pix32[pixI] = tex32[(v<<6)+u]
 			}
 		}
 	}

@@ -20,9 +20,11 @@ type Options struct {
 }
 
 type WallTexture struct {
-	RGBA   []byte
-	Width  int
-	Height int
+	RGBA     []byte
+	RGBA32   []uint32
+	ColMajor []uint32
+	Width    int
+	Height   int
 }
 
 type RunResult struct {

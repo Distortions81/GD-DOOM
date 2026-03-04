@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
+	"unsafe"
 
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/automap"
@@ -214,10 +215,26 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 					failed++
 					continue
 				}
+				rgba32 := []uint32(nil)
+				if len(rgba) >= 4 {
+					rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+				}
+				colMajor := []uint32(nil)
+				if len(rgba32) == w*h {
+					colMajor = make([]uint32, len(rgba32))
+					for tx := 0; tx < w; tx++ {
+						colBase := tx * h
+						for ty := 0; ty < h; ty++ {
+							colMajor[colBase+ty] = rgba32[ty*w+tx]
+						}
+					}
+				}
 				wallTexBank[name] = automap.WallTexture{
-					RGBA:   rgba,
-					Width:  w,
-					Height: h,
+					RGBA:     rgba,
+					RGBA32:   rgba32,
+					ColMajor: colMajor,
+					Width:    w,
+					Height:   h,
 				}
 				built++
 			}
