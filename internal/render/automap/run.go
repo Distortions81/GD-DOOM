@@ -3,6 +3,7 @@ package automap
 import (
 	"errors"
 	"fmt"
+	"image/color"
 
 	"gddoom/internal/mapdata"
 
@@ -12,11 +13,12 @@ import (
 type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error)
 
 type sessionGame struct {
-	g       *game
-	current mapdata.MapName
-	opts    Options
-	nextMap NextMapFunc
-	err     error
+	g               *game
+	current         mapdata.MapName
+	opts            Options
+	nextMap         NextMapFunc
+	err             error
+	faithfulSurface *ebiten.Image
 }
 
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
@@ -49,7 +51,9 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	} else {
 		ebiten.SetWindowSize(doomWindowW, doomWindowH)
-		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
+		// Keep faithful mode's internal framebuffer fixed and let Ebiten scale it
+		// to the current window size for CRT-style aspect correction.
+		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	}
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
 	ebiten.SetScreenClearedEveryFrame(false)
@@ -108,9 +112,46 @@ func (sg *sessionGame) Update() error {
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
+	if !sg.opts.SourcePortMode {
+		vw := max(sg.g.viewW, 1)
+		vh := max(sg.g.viewH, 1)
+		if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
+			sg.faithfulSurface = ebiten.NewImage(vw, vh)
+		}
+		sg.g.Draw(sg.faithfulSurface)
+
+		sw := screen.Bounds().Dx()
+		sh := screen.Bounds().Dy()
+		dstW := sw
+		dstH := (dstW * 3) / 4 // 8:5 render shown as 4:3 display -> 20% taller
+		if dstH > sh {
+			dstH = sh
+			dstW = (dstH * 4) / 3
+		}
+		if dstW < 1 {
+			dstW = 1
+		}
+		if dstH < 1 {
+			dstH = 1
+		}
+		offX := (sw - dstW) / 2
+		offY := (sh - dstH) / 2
+
+		screen.Fill(color.Black)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(dstW)/float64(vw), float64(dstH)/float64(vh))
+		op.GeoM.Translate(float64(offX), float64(offY))
+		screen.DrawImage(sg.faithfulSurface, op)
+		return
+	}
 	sg.g.Draw(screen)
 }
 
 func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
+	if !sg.opts.SourcePortMode {
+		// Faithful mode keeps internal render size fixed and handles display
+		// aspect correction in Draw via a 4:3 presentation transform.
+		return max(outsideWidth, 1), max(outsideHeight, 1)
+	}
 	return sg.g.Layout(outsideWidth, outsideHeight)
 }
