@@ -77,6 +77,9 @@ func (g *game) tickMonsters() {
 	px := g.p.x
 	py := g.p.y
 	for i, th := range g.m.Things {
+		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+			g.thingAttackTics[i]--
+		}
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
 		}
@@ -113,6 +116,7 @@ func (g *game) tickMonsters() {
 		if g.monsterCanMelee(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
 			if g.monsterAttack(i, th.Type, dist) {
+				g.startMonsterAttackAnim(i, th.Type)
 				g.thingCooldown[i] = monsterAttackCooldown(th.Type, g.fastMonstersActive())
 				continue
 			}
@@ -121,6 +125,7 @@ func (g *game) tickMonsters() {
 		if g.thingCooldown[i] == 0 && g.monsterCheckMissileRange(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
 			if g.monsterAttack(i, th.Type, dist) {
+				g.startMonsterAttackAnim(i, th.Type)
 				g.thingCooldown[i] = monsterAttackCooldown(th.Type, g.fastMonstersActive())
 				g.thingJustAtk[i] = true
 				continue
@@ -157,11 +162,28 @@ func (g *game) ensureMonsterAIState() {
 		g.thingJustAtk = make([]bool, n)
 		copy(g.thingJustAtk, old)
 	}
+	if len(g.thingAttackTics) != n {
+		old := g.thingAttackTics
+		g.thingAttackTics = make([]int, n)
+		copy(g.thingAttackTics, old)
+	}
 	if len(g.thingThinkWait) != n {
 		old := g.thingThinkWait
 		g.thingThinkWait = make([]int, n)
 		copy(g.thingThinkWait, old)
 	}
+}
+
+func (g *game) startMonsterAttackAnim(i int, typ int16) {
+	if i < 0 || i >= len(g.thingAttackTics) {
+		return
+	}
+	total := monsterAttackAnimTotalTics(typ)
+	if total <= 0 {
+		g.thingAttackTics[i] = 0
+		return
+	}
+	g.thingAttackTics[i] = total
 }
 
 func (g *game) monsterChaseReady(i int, typ int16) bool {

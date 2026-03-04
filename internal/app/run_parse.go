@@ -674,7 +674,10 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	spritePrefixes := []string{
 		"POSS", "SPOS", "TROO", "SARG", "SKUL", "HEAD", "BOSS", "CYBR", "SPID",
 	}
-	frames := []byte{'A', 'B', 'C', 'D'}
+	frames := make([]byte, 0, 26)
+	for fr := byte('A'); fr <= byte('Z'); fr++ {
+		frames = append(frames, fr)
+	}
 	names := make([]string, 0, len(spritePrefixes)*len(frames)*8)
 	add := func(name string) {
 		for _, ex := range names {

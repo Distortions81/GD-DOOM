@@ -184,6 +184,7 @@ type game struct {
 	thingMoveDir       []monsterMoveDir
 	thingMoveCount     []int
 	thingJustAtk       []bool
+	thingAttackTics    []int
 	thingThinkWait     []int
 	projectiles        []projectile
 	cheatLevel         int
@@ -482,6 +483,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingMoveDir = make([]monsterMoveDir, len(m.Things))
 	g.thingMoveCount = make([]int, len(m.Things))
 	g.thingJustAtk = make([]bool, len(m.Things))
+	g.thingAttackTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.initThingCombatState()
@@ -3614,7 +3616,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if sx+xPad < 0 || sx-xPad > float64(g.viewW) {
 			continue
 		}
-		sprite, flip := g.monsterSpriteNameForView(th, g.worldTic, camX, camY)
+		sprite, flip := g.monsterSpriteNameForView(i, th, g.worldTic, camX, camY)
 		tex, ok := g.monsterSpriteTexture(sprite)
 		if !ok || tex.Height <= 0 || tex.Width <= 0 {
 			continue
@@ -4202,12 +4204,87 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 	}
 }
 
-func (g *game) monsterSpriteNameForView(th mapdata.Thing, tic int, viewX, viewY float64) (string, bool) {
+func monsterAttackFrameSeq(typ int16) []byte {
+	switch typ {
+	case 3004, 9, 3001, 3002, 3006, 3005, 3003:
+		return []byte{'E', 'F'}
+	case 16:
+		return []byte{'E', 'F', 'G'}
+	case 7:
+		return []byte{'E', 'F'}
+	default:
+		return nil
+	}
+}
+
+func monsterAttackFrameTics(typ int16) []int {
+	switch typ {
+	case 3004: // zombieman
+		return []int{10, 8}
+	case 9: // shotgun guy
+		return []int{10, 8}
+	case 3001: // imp
+		return []int{8, 8}
+	case 3002: // demon
+		return []int{8, 8}
+	case 3006: // lost soul
+		return []int{6, 6}
+	case 3005: // cacodemon
+		return []int{8, 8}
+	case 3003: // baron
+		return []int{8, 8}
+	case 16: // cyberdemon
+		return []int{8, 8, 8}
+	case 7: // spider mastermind
+		return []int{8, 8}
+	default:
+		return nil
+	}
+}
+
+func monsterAttackAnimTotalTics(typ int16) int {
+	tics := monsterAttackFrameTics(typ)
+	total := 0
+	for _, t := range tics {
+		if t > 0 {
+			total += t
+		}
+	}
+	return total
+}
+
+func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
+	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+		seq := monsterAttackFrameSeq(th.Type)
+		frameTics := monsterAttackFrameTics(th.Type)
+		if len(seq) > 0 && len(seq) == len(frameTics) {
+			total := monsterAttackAnimTotalTics(th.Type)
+			elapsed := total - g.thingAttackTics[i]
+			if elapsed < 0 {
+				elapsed = 0
+			}
+			acc := 0
+			for fi, ft := range frameTics {
+				if ft <= 0 {
+					continue
+				}
+				acc += ft
+				if elapsed < acc {
+					return seq[fi]
+				}
+			}
+			return seq[len(seq)-1]
+		}
+	}
+	return byte('A' + ((tic / 8) & 3))
+}
+
+func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX, viewY float64) (string, bool) {
 	prefix, ok := monsterSpritePrefix(th.Type)
 	if !ok {
 		return g.monsterSpriteName(th.Type, tic), false
 	}
-	frameLetter := byte('A' + ((tic / 8) & 3))
+	frameLetter := g.monsterFrameLetter(i, th, tic)
 	rot := monsterSpriteRotationIndex(th, viewX, viewY)
 	if name, flip, ok := g.monsterSpriteRotFrame(prefix, frameLetter, rot); ok {
 		return name, flip

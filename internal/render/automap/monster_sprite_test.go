@@ -45,12 +45,33 @@ func TestMonsterSpriteNameForViewUsesRotation(t *testing.T) {
 		"TROOA5":   {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 	}}}
 	th := mapdata.Thing{Type: 3001, X: 0, Y: 0, Angle: 0}
-	name, flip := g.monsterSpriteNameForView(th, 0, 100, 0)
+	name, flip := g.monsterSpriteNameForView(0, th, 0, 100, 0)
 	if name != "TROOA1" || flip {
 		t.Fatalf("front got name=%q flip=%t", name, flip)
 	}
-	name, flip = g.monsterSpriteNameForView(th, 0, -100, 0)
+	name, flip = g.monsterSpriteNameForView(0, th, 0, -100, 0)
 	if name != "TROOA5" || flip {
 		t.Fatalf("back got name=%q flip=%t", name, flip)
+	}
+}
+
+func TestMonsterSpriteNameForViewUsesAttackFrames(t *testing.T) {
+	g := &game{
+		opts: Options{SpritePatchBank: map[string]WallTexture{
+			"TROOE1": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			"TROOF1": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+		}},
+		thingAttackTics: []int{16},
+	}
+	th := mapdata.Thing{Type: 3001, X: 0, Y: 0, Angle: 0}
+
+	name, _ := g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "TROOE1" {
+		t.Fatalf("attack start got=%q want=TROOE1", name)
+	}
+	g.thingAttackTics[0] = 6
+	name, _ = g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "TROOF1" {
+		t.Fatalf("attack late got=%q want=TROOF1", name)
 	}
 }
