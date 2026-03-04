@@ -117,11 +117,11 @@ func TestMonsterCheckMissileRangeUsesDoomDistanceChance(t *testing.T) {
 	dist := int64(300 * fracUnit)
 
 	// First random byte is 8, which is below the computed threshold here.
-	if g.monsterCheckMissileRange(3004, dist, tx, ty, px, py) {
+	if g.monsterCheckMissileRange(0, 3004, dist, tx, ty, px, py) {
 		t.Fatal("first far-range missile check should fail by random chance")
 	}
 	// Second random byte is 109, which passes the same threshold.
-	if !g.monsterCheckMissileRange(3004, dist, tx, ty, px, py) {
+	if !g.monsterCheckMissileRange(0, 3004, dist, tx, ty, px, py) {
 		t.Fatal("second far-range missile check should pass by random chance")
 	}
 }
@@ -331,5 +331,29 @@ func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
 	g.tickMonsters()
 	if got := len(g.projectiles); got != 1 {
 		t.Fatalf("projectiles=%d want=1 after windup", got)
+	}
+}
+
+func TestMonsterCanTryMissileNow_BlocksNegativeMoveCount(t *testing.T) {
+	g := &game{
+		thingMoveCount: []int{-1},
+	}
+	if g.monsterCanTryMissileNow(0) {
+		t.Fatal("missile attempt should be blocked when movecount is negative")
+	}
+}
+
+func TestMonsterCheckMissileRange_RespectsReactionTime(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		thingReactionTics: []int{2},
+	}
+	tx := int64(300 * fracUnit)
+	ty := int64(0)
+	px := int64(0)
+	py := int64(0)
+	dist := int64(300 * fracUnit)
+	if g.monsterCheckMissileRange(0, 3001, dist, tx, ty, px, py) {
+		t.Fatal("missile check should fail while reactiontime > 0")
 	}
 }

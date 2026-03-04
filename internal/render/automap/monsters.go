@@ -80,6 +80,9 @@ func (g *game) tickMonsters() {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
 		}
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+			g.thingDeathTics[i]--
+		}
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 			continue
 		}
@@ -125,6 +128,9 @@ func (g *game) tickMonsters() {
 		if !g.monsterChaseReady(i, th.Type) {
 			continue
 		}
+		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+			g.thingReactionTics[i]--
+		}
 
 		// Doom A_Chase: prevent consecutive missile attacks.
 		if g.thingJustAtk[i] {
@@ -140,7 +146,7 @@ func (g *game) tickMonsters() {
 			}
 		}
 
-		if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(th.Type, dist, tx, ty, px, py) {
+		if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
 			if g.startMonsterAttackState(i, th.Type, true) {
 				continue
@@ -176,6 +182,26 @@ func (g *game) ensureMonsterAIState() {
 		old := g.thingJustAtk
 		g.thingJustAtk = make([]bool, n)
 		copy(g.thingJustAtk, old)
+	}
+	if len(g.thingJustHit) != n {
+		old := g.thingJustHit
+		g.thingJustHit = make([]bool, n)
+		copy(g.thingJustHit, old)
+	}
+	if len(g.thingReactionTics) != n {
+		old := g.thingReactionTics
+		g.thingReactionTics = make([]int, n)
+		copy(g.thingReactionTics, old)
+	}
+	if len(g.thingDead) != n {
+		old := g.thingDead
+		g.thingDead = make([]bool, n)
+		copy(g.thingDead, old)
+	}
+	if len(g.thingDeathTics) != n {
+		old := g.thingDeathTics
+		g.thingDeathTics = make([]int, n)
+		copy(g.thingDeathTics, old)
 	}
 	if len(g.thingAttackTics) != n {
 		old := g.thingAttackTics
@@ -292,7 +318,9 @@ func (g *game) monsterCanTryMissileNow(i int) bool {
 	if i < 0 || i >= len(g.thingMoveCount) {
 		return true
 	}
-	return g.thingMoveCount[i] <= 0
+	// Match Doom's `if (actor->movecount) goto nomissile;`
+	// Any non-zero value (including negative) blocks missile attacks.
+	return g.thingMoveCount[i] == 0
 }
 
 func monsterAttackFireDelayTics(typ int16) int {
@@ -380,6 +408,15 @@ func monsterThinkInterval(typ int16, fast bool) int {
 	}
 }
 
+func monsterReactionTimeTics(typ int16) int {
+	switch typ {
+	case 3004, 9, 3001, 3002, 3006, 3005, 3003, 16, 7, 58, 64, 65, 66, 67, 68, 69, 71, 84:
+		return 8
+	default:
+		return 0
+	}
+}
+
 func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
 	if !monsterHasMeleeAttack(typ) {
 		return false
@@ -390,11 +427,18 @@ func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
 	return g.monsterHasLOS(tx, ty, px, py)
 }
 
-func (g *game) monsterCheckMissileRange(typ int16, dist, tx, ty, px, py int64) bool {
+func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py int64) bool {
 	if isMeleeOnlyMonster(typ) {
 		return false
 	}
 	if !g.monsterHasLOS(tx, ty, px, py) {
+		return false
+	}
+	if i >= 0 && i < len(g.thingJustHit) && g.thingJustHit[i] {
+		g.thingJustHit[i] = false
+		return true
+	}
+	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 		return false
 	}
 

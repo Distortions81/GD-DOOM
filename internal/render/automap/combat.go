@@ -38,6 +38,9 @@ func (g *game) initThingCombatState() {
 		if i >= 0 && i < len(g.thingMoveDir) {
 			g.thingMoveDir[i] = monsterDirNoDir
 		}
+		if i >= 0 && i < len(g.thingReactionTics) {
+			g.thingReactionTics[i] = monsterReactionTimeTics(th.Type)
+		}
 	}
 }
 
@@ -462,27 +465,80 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 	if g.thingHP[thingIdx] <= 0 {
 		return
 	}
+	thingType := g.m.Things[thingIdx].Type
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
 	}
+	if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
+		// Doom P_CheckMissileRange: recently-hit monsters retaliate immediately.
+		g.thingJustHit[thingIdx] = true
+	}
 	if g.thingHP[thingIdx] <= 0 {
 		g.thingHP[thingIdx] = 0
-		g.thingCollected[thingIdx] = true
+		if thingIdx >= 0 && thingIdx < len(g.thingDead) {
+			g.thingDead[thingIdx] = true
+		}
+		if thingIdx >= 0 && thingIdx < len(g.thingDeathTics) {
+			g.thingDeathTics[thingIdx] = monsterDeathAnimTotalTics(thingType)
+		}
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			g.thingPainTics[thingIdx] = 0
 		}
+		if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
+			g.thingAttackTics[thingIdx] = 0
+		}
+		if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
+			g.thingAttackFireTics[thingIdx] = -1
+		}
+		g.emitSoundEvent(monsterDeathSoundEvent(thingType))
 		g.setHUDMessage("Monster killed", 15)
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
 	} else {
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
-			chance := monsterPainChance(g.m.Things[thingIdx].Type)
+			chance := monsterPainChance(thingType)
 			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
-				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(g.m.Things[thingIdx].Type))
-				g.emitSoundEvent(soundEventPain)
+				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(thingType))
+				g.emitSoundEvent(monsterPainSoundEvent(thingType))
 			}
 		}
 		g.setHUDMessage("Hit", 8)
+	}
+}
+
+func monsterPainSoundEvent(typ int16) soundEvent {
+	switch typ {
+	case 3002, 3005, 3003, 16, 7, 3006: // demon-family pain sound in Doom
+		return soundEventMonsterPainDemon
+	case 3004, 9, 3001: // former-human family + imp pain sound in Doom
+		return soundEventMonsterPainHumanoid
+	default:
+		return soundEventMonsterPainHumanoid
+	}
+}
+
+func monsterDeathSoundEvent(typ int16) soundEvent {
+	switch typ {
+	case 3004:
+		return soundEventDeathZombie
+	case 9:
+		return soundEventDeathShotgunGuy
+	case 3001:
+		return soundEventDeathImp
+	case 3002:
+		return soundEventDeathDemon
+	case 3005:
+		return soundEventDeathCaco
+	case 3003:
+		return soundEventDeathBaron
+	case 16:
+		return soundEventDeathCyber
+	case 7:
+		return soundEventDeathSpider
+	case 3006:
+		return soundEventDeathLostSoul
+	default:
+		return soundEventMonsterDeath
 	}
 }
 

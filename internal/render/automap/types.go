@@ -95,6 +95,19 @@ type SoundBank struct {
 	ShootRocket   PCMSample
 	ImpactFire    PCMSample
 	ImpactRocket  PCMSample
+	MonsterPainHumanoid PCMSample
+	MonsterPainDemon    PCMSample
+	DeathZombie         PCMSample
+	DeathShotgunGuy     PCMSample
+	DeathImp            PCMSample
+	DeathDemon          PCMSample
+	DeathCaco           PCMSample
+	DeathBaron          PCMSample
+	DeathCyber          PCMSample
+	DeathSpider         PCMSample
+	DeathLostSoul       PCMSample
+	MonsterDeath        PCMSample
+	PlayerDeath   PCMSample
 	InterTick     PCMSample
 	InterDone     PCMSample
 }

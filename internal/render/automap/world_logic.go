@@ -4,6 +4,7 @@ import "gddoom/internal/doomrand"
 
 func (g *game) tickWorldLogic() {
 	g.worldTic++
+	g.tickPlayerViewHeight()
 	g.trackSecrets()
 	g.tickProjectiles()
 	g.tickProjectileImpacts()
@@ -12,6 +13,26 @@ func (g *game) tickWorldLogic() {
 	}
 	g.applySectorHazardDamage()
 	g.tickMonsters()
+}
+
+func (g *game) tickPlayerViewHeight() {
+	aliveEye := g.p.z + 41*fracUnit
+	if g.playerViewZ == 0 {
+		g.playerViewZ = aliveEye
+	}
+	if !g.isDead {
+		g.playerViewZ = aliveEye
+		return
+	}
+	target := g.p.floorz + 6*fracUnit
+	if g.playerViewZ > target {
+		g.playerViewZ -= fracUnit
+		if g.playerViewZ < target {
+			g.playerViewZ = target
+		}
+		return
+	}
+	g.playerViewZ = target
 }
 
 func (g *game) trackSecrets() {
@@ -102,7 +123,9 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 	if g.stats.Health == 0 {
 		g.isDead = true
 		msg = "You Died"
+		g.emitSoundEvent(soundEventPlayerDeath)
+	} else {
+		g.emitSoundEvent(soundEventPain)
 	}
 	g.setHUDMessage(msg, 20)
-	g.emitSoundEvent(soundEventPain)
 }

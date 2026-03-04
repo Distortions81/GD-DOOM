@@ -292,6 +292,37 @@ func TestHitscanPuffsExpire(t *testing.T) {
 	}
 }
 
+func TestMonsterPainSoundEventMapping(t *testing.T) {
+	if got := monsterPainSoundEvent(3006); got != soundEventMonsterPainDemon {
+		t.Fatalf("lost soul pain event=%v want=%v", got, soundEventMonsterPainDemon)
+	}
+	if got := monsterPainSoundEvent(3001); got != soundEventMonsterPainHumanoid {
+		t.Fatalf("imp pain event=%v want=%v", got, soundEventMonsterPainHumanoid)
+	}
+}
+
+func TestMonsterDeathSoundEventMapping(t *testing.T) {
+	tests := []struct {
+		typ  int16
+		want soundEvent
+	}{
+		{typ: 3004, want: soundEventDeathZombie},
+		{typ: 9, want: soundEventDeathShotgunGuy},
+		{typ: 3001, want: soundEventDeathImp},
+		{typ: 3002, want: soundEventDeathDemon},
+		{typ: 3005, want: soundEventDeathCaco},
+		{typ: 3003, want: soundEventDeathBaron},
+		{typ: 16, want: soundEventDeathCyber},
+		{typ: 7, want: soundEventDeathSpider},
+		{typ: 3006, want: soundEventDeathLostSoul},
+	}
+	for _, tc := range tests {
+		if got := monsterDeathSoundEvent(tc.typ); got != tc.want {
+			t.Fatalf("type=%d death event=%v want=%v", tc.typ, got, tc.want)
+		}
+	}
+}
+
 func hasSoundEvent(queue []soundEvent, want soundEvent) bool {
 	for _, ev := range queue {
 		if ev == want {

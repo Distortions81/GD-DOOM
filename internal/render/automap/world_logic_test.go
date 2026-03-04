@@ -99,8 +99,8 @@ func TestDamagePlayerSetsDeathStateAndFlash(t *testing.T) {
 	if got := len(g.soundQueue); got != 1 {
 		t.Fatalf("soundQueue len=%d want=1", got)
 	}
-	if got := g.soundQueue[0]; got != soundEventPain {
-		t.Fatalf("sound event=%v want=%v", got, soundEventPain)
+	if got := g.soundQueue[0]; got != soundEventPlayerDeath {
+		t.Fatalf("sound event=%v want=%v", got, soundEventPlayerDeath)
 	}
 }
 
@@ -115,5 +115,26 @@ func TestDamagePlayerBlockedByInvulnerability(t *testing.T) {
 	}
 	if g.damageFlashTic != 0 {
 		t.Fatalf("damage flash=%d want=0", g.damageFlashTic)
+	}
+}
+
+func TestPlayerDeathViewFallsTowardFloor(t *testing.T) {
+	g := &game{
+		p: player{
+			z:      0,
+			floorz: 0,
+		},
+		playerViewZ: 41 * fracUnit,
+		isDead:      true,
+	}
+	g.tickPlayerViewHeight()
+	if got := g.playerViewZ; got != 40*fracUnit {
+		t.Fatalf("view z=%d want=%d after one tic", got, 40*fracUnit)
+	}
+	for i := 0; i < 80; i++ {
+		g.tickPlayerViewHeight()
+	}
+	if got := g.playerViewZ; got != 6*fracUnit {
+		t.Fatalf("view z=%d want=%d at death floor target", got, 6*fracUnit)
 	}
 }

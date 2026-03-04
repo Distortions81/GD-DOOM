@@ -25,6 +25,19 @@ const (
 	soundEventShootRocket
 	soundEventImpactFire
 	soundEventImpactRocket
+	soundEventMonsterPainHumanoid
+	soundEventMonsterPainDemon
+	soundEventDeathZombie
+	soundEventDeathShotgunGuy
+	soundEventDeathImp
+	soundEventDeathDemon
+	soundEventDeathCaco
+	soundEventDeathBaron
+	soundEventDeathCyber
+	soundEventDeathSpider
+	soundEventDeathLostSoul
+	soundEventMonsterDeath
+	soundEventPlayerDeath
 	soundEventIntermissionTick
 	soundEventIntermissionDone
 )
@@ -122,6 +135,45 @@ func firstSampleRate(bank SoundBank) int {
 	}
 	if bank.ImpactRocket.SampleRate > 0 && len(bank.ImpactRocket.Data) > 0 {
 		return bank.ImpactRocket.SampleRate
+	}
+	if bank.MonsterPainHumanoid.SampleRate > 0 && len(bank.MonsterPainHumanoid.Data) > 0 {
+		return bank.MonsterPainHumanoid.SampleRate
+	}
+	if bank.MonsterPainDemon.SampleRate > 0 && len(bank.MonsterPainDemon.Data) > 0 {
+		return bank.MonsterPainDemon.SampleRate
+	}
+	if bank.DeathZombie.SampleRate > 0 && len(bank.DeathZombie.Data) > 0 {
+		return bank.DeathZombie.SampleRate
+	}
+	if bank.DeathShotgunGuy.SampleRate > 0 && len(bank.DeathShotgunGuy.Data) > 0 {
+		return bank.DeathShotgunGuy.SampleRate
+	}
+	if bank.DeathImp.SampleRate > 0 && len(bank.DeathImp.Data) > 0 {
+		return bank.DeathImp.SampleRate
+	}
+	if bank.DeathDemon.SampleRate > 0 && len(bank.DeathDemon.Data) > 0 {
+		return bank.DeathDemon.SampleRate
+	}
+	if bank.DeathCaco.SampleRate > 0 && len(bank.DeathCaco.Data) > 0 {
+		return bank.DeathCaco.SampleRate
+	}
+	if bank.DeathBaron.SampleRate > 0 && len(bank.DeathBaron.Data) > 0 {
+		return bank.DeathBaron.SampleRate
+	}
+	if bank.DeathCyber.SampleRate > 0 && len(bank.DeathCyber.Data) > 0 {
+		return bank.DeathCyber.SampleRate
+	}
+	if bank.DeathSpider.SampleRate > 0 && len(bank.DeathSpider.Data) > 0 {
+		return bank.DeathSpider.SampleRate
+	}
+	if bank.DeathLostSoul.SampleRate > 0 && len(bank.DeathLostSoul.Data) > 0 {
+		return bank.DeathLostSoul.SampleRate
+	}
+	if bank.MonsterDeath.SampleRate > 0 && len(bank.MonsterDeath.Data) > 0 {
+		return bank.MonsterDeath.SampleRate
+	}
+	if bank.PlayerDeath.SampleRate > 0 && len(bank.PlayerDeath.Data) > 0 {
+		return bank.PlayerDeath.SampleRate
 	}
 	if bank.InterTick.SampleRate > 0 && len(bank.InterTick.Data) > 0 {
 		return bank.InterTick.SampleRate
@@ -255,6 +307,92 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.ImpactFire, true
 		}
 		return s.bank.SwitchOn, true
+	case soundEventMonsterPainHumanoid:
+		if len(s.bank.MonsterPainHumanoid.Data) > 0 {
+			return s.bank.MonsterPainHumanoid, true
+		}
+		if len(s.bank.Pain.Data) > 0 {
+			return s.bank.Pain, true
+		}
+		if len(s.bank.Oof.Data) > 0 {
+			return s.bank.Oof, true
+		}
+		return s.bank.NoWay, true
+	case soundEventMonsterPainDemon:
+		if len(s.bank.MonsterPainDemon.Data) > 0 {
+			return s.bank.MonsterPainDemon, true
+		}
+		if len(s.bank.MonsterPainHumanoid.Data) > 0 {
+			return s.bank.MonsterPainHumanoid, true
+		}
+		if len(s.bank.Pain.Data) > 0 {
+			return s.bank.Pain, true
+		}
+		if len(s.bank.Oof.Data) > 0 {
+			return s.bank.Oof, true
+		}
+		return s.bank.NoWay, true
+	case soundEventDeathZombie:
+		if len(s.bank.DeathZombie.Data) > 0 {
+			return s.bank.DeathZombie, true
+		}
+		return s.sampleForEvent(soundEventMonsterDeath)
+	case soundEventDeathShotgunGuy:
+		if len(s.bank.DeathShotgunGuy.Data) > 0 {
+			return s.bank.DeathShotgunGuy, true
+		}
+		return s.sampleForEvent(soundEventDeathZombie)
+	case soundEventDeathImp:
+		if len(s.bank.DeathImp.Data) > 0 {
+			return s.bank.DeathImp, true
+		}
+		return s.sampleForEvent(soundEventMonsterDeath)
+	case soundEventDeathDemon:
+		if len(s.bank.DeathDemon.Data) > 0 {
+			return s.bank.DeathDemon, true
+		}
+		return s.sampleForEvent(soundEventDeathImp)
+	case soundEventDeathCaco:
+		if len(s.bank.DeathCaco.Data) > 0 {
+			return s.bank.DeathCaco, true
+		}
+		return s.sampleForEvent(soundEventDeathDemon)
+	case soundEventDeathBaron:
+		if len(s.bank.DeathBaron.Data) > 0 {
+			return s.bank.DeathBaron, true
+		}
+		return s.sampleForEvent(soundEventDeathDemon)
+	case soundEventDeathCyber:
+		if len(s.bank.DeathCyber.Data) > 0 {
+			return s.bank.DeathCyber, true
+		}
+		return s.sampleForEvent(soundEventDeathBaron)
+	case soundEventDeathSpider:
+		if len(s.bank.DeathSpider.Data) > 0 {
+			return s.bank.DeathSpider, true
+		}
+		return s.sampleForEvent(soundEventDeathBaron)
+	case soundEventDeathLostSoul:
+		if len(s.bank.DeathLostSoul.Data) > 0 {
+			return s.bank.DeathLostSoul, true
+		}
+		return s.sampleForEvent(soundEventImpactFire)
+	case soundEventMonsterDeath:
+		if len(s.bank.MonsterDeath.Data) > 0 {
+			return s.bank.MonsterDeath, true
+		}
+		if len(s.bank.ImpactFire.Data) > 0 {
+			return s.bank.ImpactFire, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventPlayerDeath:
+		if len(s.bank.PlayerDeath.Data) > 0 {
+			return s.bank.PlayerDeath, true
+		}
+		if len(s.bank.Pain.Data) > 0 {
+			return s.bank.Pain, true
+		}
+		return s.bank.NoWay, true
 	case soundEventIntermissionTick:
 		if len(s.bank.InterTick.Data) > 0 {
 			return s.bank.InterTick, true

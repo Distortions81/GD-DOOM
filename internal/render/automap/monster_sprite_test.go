@@ -89,3 +89,24 @@ func TestMonsterSpriteNameForViewUsesPainFrame(t *testing.T) {
 		t.Fatalf("pain got=%q want=TROOG1", name)
 	}
 }
+
+func TestMonsterSpriteNameForViewUsesDeathFrame(t *testing.T) {
+	g := &game{
+		opts: Options{SpritePatchBank: map[string]WallTexture{
+			"TROOI0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			"TROOM0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+		}},
+		thingDead:      []bool{true},
+		thingDeathTics: []int{monsterDeathAnimTotalTics(3001)},
+	}
+	th := mapdata.Thing{Type: 3001, X: 0, Y: 0, Angle: 0}
+	name, _ := g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "TROOI0" {
+		t.Fatalf("death start got=%q want=TROOI0", name)
+	}
+	g.thingDeathTics[0] = 0
+	name, _ = g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "TROOM0" {
+		t.Fatalf("death end got=%q want=TROOM0", name)
+	}
+}

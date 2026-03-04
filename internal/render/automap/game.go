@@ -161,6 +161,7 @@ type projectedMonsterItem struct {
 	sx         float64
 	yb         float64
 	h          float64
+	w          float64
 	tex        WallTexture
 	flip       bool
 	lightMul   uint32
@@ -352,6 +353,10 @@ type game struct {
 	thingMoveDir        []monsterMoveDir
 	thingMoveCount      []int
 	thingJustAtk        []bool
+	thingJustHit        []bool
+	thingReactionTics   []int
+	thingDead           []bool
+	thingDeathTics      []int
 	thingAttackTics     []int
 	thingAttackFireTics []int
 	thingPainTics       []int
@@ -368,6 +373,7 @@ type game struct {
 	weaponFireCooldown  int
 	stats               playerStats
 	worldTic            int
+	playerViewZ         int64
 	secretFound         []bool
 	secretsFound        int
 	isDead              bool
@@ -704,6 +710,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingMoveDir = make([]monsterMoveDir, len(m.Things))
 	g.thingMoveCount = make([]int, len(m.Things))
 	g.thingJustAtk = make([]bool, len(m.Things))
+	g.thingJustHit = make([]bool, len(m.Things))
+	g.thingReactionTics = make([]int, len(m.Things))
+	g.thingDead = make([]bool, len(m.Things))
+	g.thingDeathTics = make([]int, len(m.Things))
 	g.thingAttackTics = make([]int, len(m.Things))
 	g.thingAttackFireTics = make([]int, len(m.Things))
 	for i := range g.thingAttackFireTics {
@@ -711,6 +721,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
+	g.playerViewZ = g.p.z + 41*fracUnit
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.initThingCombatState()
 	g.applyThingSpawnFiltering()
@@ -2008,7 +2019,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	camAng := angleToRadians(g.renderAngle)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 	focal := doomFocalLength(g.viewW)
 	near := 2.0
 	g.beginSkyLayerFrame()
@@ -4307,7 +4318,7 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 	camAng := angleToRadians(g.renderAngle)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 	focal := doomFocalLength(g.viewW)
 	near := 2.0
 
@@ -4388,7 +4399,7 @@ func (g *game) drawWireframeMonsters(screen *ebiten.Image, camX, camY, camAng, f
 	items := make([]projectedMonster, 0, 32)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 	for i, th := range g.m.Things {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
@@ -4464,7 +4475,7 @@ func (g *game) drawBillboardProjectiles(screen *ebiten.Image, camX, camY, camAng
 	items := make([]projectedProjectile, 0, len(g.projectiles))
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 
 	for _, p := range g.projectiles {
 		px := float64(p.x)/fracUnit - camX
@@ -4538,7 +4549,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 	items := g.ensureProjectileItemsScratch(len(g.projectiles) + len(g.projectileImpacts))
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 	for _, p := range g.projectiles {
 		px := float64(p.x)/fracUnit - camX
 		py := float64(p.y)/fracUnit - camY
@@ -5001,7 +5012,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 	items := g.ensurePuffItemsScratch(len(g.hitscanPuffs))
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 	for _, p := range g.hitscanPuffs {
 		px := float64(p.x)/fracUnit - camX
 		py := float64(p.y)/fracUnit - camY
@@ -5186,7 +5197,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 	items := g.ensureMonsterItemsScratch(32)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 
 	for i, th := range g.m.Things {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
@@ -5204,21 +5215,36 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
-		monsterH := monsterRenderHeight(th.Type)
-		yt := float64(viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
 		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
-		if yb <= yt {
-			continue
-		}
-		h := yb - yt
-		w := math.Max(6, math.Min(120, h*0.45))
-		xPad := w/2 + 8
-		if sx+xPad < 0 || sx-xPad > float64(viewW) {
-			continue
-		}
 		sprite, flip := g.monsterSpriteNameForView(i, th, g.worldTic, camX, camY)
 		tex, ok := g.monsterSpriteTexture(sprite)
 		if !ok || tex.Height <= 0 || tex.Width <= 0 {
+			continue
+		}
+		h := 0.0
+		w := 0.0
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			// Doom-like corpse projection: use sprite-native scale instead of standing actor height.
+			scale := focal / f
+			if scale <= 0 {
+				continue
+			}
+			h = float64(tex.Height) * scale
+			w = float64(tex.Width) * scale
+		} else {
+			monsterH := monsterRenderHeight(th.Type)
+			yt := float64(viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
+			if yb <= yt {
+				continue
+			}
+			h = yb - yt
+			w = math.Max(6, math.Min(120, h*0.45))
+		}
+		if h <= 0 || w <= 0 {
+			continue
+		}
+		xPad := w/2 + 8
+		if sx+xPad < 0 || sx-xPad > float64(viewW) {
 			continue
 		}
 		sec := g.thingSectorCached(i, th)
@@ -5231,6 +5257,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			sx:         sx,
 			yb:         yb,
 			h:          h,
+			w:          w,
 			tex:        tex,
 			flip:       flip,
 			lightMul:   lightMul,
@@ -5392,7 +5419,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 	items := g.ensureThingItemsScratch(64)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
-	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	eyeZ := g.playerEyeZ()
 	for i, th := range g.m.Things {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
@@ -6041,7 +6068,93 @@ func monsterPainAnimTotalTics(typ int16) int {
 	return total
 }
 
+func monsterDeathFrameSeq(typ int16) []byte {
+	switch typ {
+	case 3004:
+		return []byte{'H', 'I', 'J', 'K', 'L'}
+	case 9:
+		return []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N'}
+	case 3001:
+		return []byte{'I', 'J', 'K', 'L', 'M'}
+	case 3002:
+		return []byte{'I', 'J', 'K', 'L', 'M', 'N'}
+	case 3006:
+		return []byte{'H', 'I', 'J', 'K', 'L', 'M'}
+	case 3005:
+		return []byte{'G', 'H', 'I', 'J', 'K', 'L'}
+	case 3003:
+		return []byte{'I', 'J', 'K', 'L', 'M', 'N', 'O'}
+	case 16:
+		return []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+	case 7:
+		return []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'}
+	default:
+		return nil
+	}
+}
+
+func monsterDeathFrameTics(typ int16) []int {
+	switch typ {
+	case 3004:
+		return []int{5, 5, 5, 5, 5}
+	case 9:
+		return []int{5, 5, 5, 5, 5, 5, 5}
+	case 3001:
+		return []int{8, 8, 6, 6, 6}
+	case 3002:
+		return []int{8, 8, 4, 4, 4, 4}
+	case 3006:
+		return []int{6, 6, 6, 6, 6, 6}
+	case 3005:
+		return []int{8, 8, 8, 8, 8, 8}
+	case 3003:
+		return []int{8, 8, 8, 8, 8, 8, 8}
+	case 16:
+		return []int{10, 10, 10, 10, 10, 10, 10, 10, 30}
+	case 7:
+		return []int{20, 10, 10, 10, 10, 10, 10, 10, 10, 30}
+	default:
+		return nil
+	}
+}
+
+func monsterDeathAnimTotalTics(typ int16) int {
+	tics := monsterDeathFrameTics(typ)
+	total := 0
+	for _, t := range tics {
+		if t > 0 {
+			total += t
+		}
+	}
+	return total
+}
+
 func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
+	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		seq := monsterDeathFrameSeq(th.Type)
+		frameTics := monsterDeathFrameTics(th.Type)
+		if len(seq) > 0 && len(seq) == len(frameTics) {
+			total := monsterDeathAnimTotalTics(th.Type)
+			elapsed := total
+			if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+				elapsed = total - g.thingDeathTics[i]
+			}
+			if elapsed < 0 {
+				elapsed = 0
+			}
+			acc := 0
+			for fi, ft := range frameTics {
+				if ft <= 0 {
+					continue
+				}
+				acc += ft
+				if elapsed < acc {
+					return seq[fi]
+				}
+			}
+			return seq[len(seq)-1]
+		}
+	}
 	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 		seq := monsterPainFrameSeq(th.Type)
 		frameTics := monsterPainFrameTics(th.Type)
@@ -6095,6 +6208,12 @@ func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX,
 		return g.monsterSpriteName(th.Type, tic), false
 	}
 	frameLetter := g.monsterFrameLetter(i, th, tic)
+	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		name0 := spriteFrameName(prefix, frameLetter, '0')
+		if _, ok := g.opts.SpritePatchBank[name0]; ok {
+			return name0, false
+		}
+	}
 	rot := monsterSpriteRotationIndex(th, viewX, viewY)
 	if name, flip, ok := g.monsterSpriteRotFrame(prefix, frameLetter, rot); ok {
 		return name, flip
@@ -6204,6 +6323,13 @@ func normalizeDeg360(deg float64) float64 {
 		deg -= 360
 	}
 	return deg
+}
+
+func (g *game) playerEyeZ() float64 {
+	if g.playerViewZ == 0 {
+		return float64(g.p.z)/fracUnit + 41.0
+	}
+	return float64(g.playerViewZ) / fracUnit
 }
 
 func monsterSpriteFullBright(name string) bool {

@@ -61,6 +61,15 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	if got, ok := s.sampleForEvent(soundEventImpactRocket); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
 		t.Fatalf("impact-rocket sample=%v ok=%v want switch fallback", got, ok)
 	}
+	if got, ok := s.sampleForEvent(soundEventMonsterPainHumanoid); !ok || len(got.Data) == 0 || got.Data[0] != 2 {
+		t.Fatalf("monster pain humanoid sample=%v ok=%v want oof fallback", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventMonsterPainDemon); !ok || len(got.Data) == 0 || got.Data[0] != 2 {
+		t.Fatalf("monster pain demon sample=%v ok=%v want oof fallback", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventDeathImp); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
+		t.Fatalf("death imp sample=%v ok=%v want switch fallback", got, ok)
+	}
 
 	s.bank.Pain = PCMSample{SampleRate: 11025, Data: []byte{3}}
 	s.bank.ShootPistol = PCMSample{SampleRate: 11025, Data: []byte{4}}
@@ -69,6 +78,11 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	s.bank.ShootRocket = PCMSample{SampleRate: 11025, Data: []byte{7}}
 	s.bank.ImpactFire = PCMSample{SampleRate: 11025, Data: []byte{8}}
 	s.bank.ImpactRocket = PCMSample{SampleRate: 11025, Data: []byte{9}}
+	s.bank.MonsterPainHumanoid = PCMSample{SampleRate: 11025, Data: []byte{10}}
+	s.bank.MonsterPainDemon = PCMSample{SampleRate: 11025, Data: []byte{11}}
+	s.bank.DeathImp = PCMSample{SampleRate: 11025, Data: []byte{12}}
+	s.bank.DeathDemon = PCMSample{SampleRate: 11025, Data: []byte{13}}
+	s.bank.DeathZombie = PCMSample{SampleRate: 11025, Data: []byte{14}}
 	if got, ok := s.sampleForEvent(soundEventPain); !ok || got.Data[0] != 3 {
 		t.Fatalf("pain sample=%v ok=%v want explicit pain", got, ok)
 	}
@@ -89,5 +103,20 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	}
 	if got, ok := s.sampleForEvent(soundEventImpactRocket); !ok || got.Data[0] != 9 {
 		t.Fatalf("impact-rocket sample=%v ok=%v want explicit impact-rocket", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventMonsterPainHumanoid); !ok || got.Data[0] != 10 {
+		t.Fatalf("monster pain humanoid sample=%v ok=%v want explicit humanoid", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventMonsterPainDemon); !ok || got.Data[0] != 11 {
+		t.Fatalf("monster pain demon sample=%v ok=%v want explicit demon", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventDeathImp); !ok || got.Data[0] != 12 {
+		t.Fatalf("death imp sample=%v ok=%v want explicit imp death", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventDeathDemon); !ok || got.Data[0] != 13 {
+		t.Fatalf("death demon sample=%v ok=%v want explicit demon death", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventDeathShotgunGuy); !ok || got.Data[0] != 14 {
+		t.Fatalf("death shotgun sample=%v ok=%v want zombie fallback", got, ok)
 	}
 }
