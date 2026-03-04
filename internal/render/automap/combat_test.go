@@ -227,22 +227,26 @@ func TestCycleWeaponWrapsBackward(t *testing.T) {
 	}
 }
 
-func TestFireGunShotSpawnsHitscanPuffOnHit(t *testing.T) {
+func TestFireGunShotSpawnsHitscanPuffOnWallImpact(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
-		m: &mapdata.Map{
-			Things: []mapdata.Thing{{Type: 3004, X: 64, Y: 0}},
+		lines: []physLine{
+			{
+				x1:       64 * fracUnit,
+				y1:       -32 * fracUnit,
+				x2:       64 * fracUnit,
+				y2:       32 * fracUnit,
+				flags:    0, // one-sided blocker
+				sideNum1: -1,
+			},
 		},
-		thingCollected: make([]bool, 1),
-		thingHP:        []int{20},
-		p:              player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+		p: player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
 	}
-	slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
-	if !g.fireGunShot(g.p.angle, pistolRange, slope, true) {
-		t.Fatal("expected hitscan hit")
+	if g.fireGunShot(g.p.angle, pistolRange, 0, true) {
+		t.Fatal("expected no monster hit")
 	}
 	if len(g.hitscanPuffs) == 0 {
-		t.Fatal("expected hitscan puff to spawn")
+		t.Fatal("expected wall-impact hitscan puff to spawn")
 	}
 }
 

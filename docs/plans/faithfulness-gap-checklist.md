@@ -29,7 +29,9 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 ## Gameplay/Simulation Gaps
 
 - [ ] Add save/load system parity including quicksave/quickload flow.
+- [ ] Implement thinker-system parity (tick order, scheduling, and per-thinker behavior consistency).
 - [ ] Audit monster animation-state parity in all attack/death edge cases.
+- [x] Implement correct monster pain-state behavior (state selection, timing/tics, and interruption rules).
 - [ ] Add monster collision parity (blocking/push behavior against player/world/actors).
 - [ ] Add explosive barrel gameplay parity (collision, damage, and explosion chain behavior).
 - [ ] Validate door/special timing parity in additional maps beyond current smoke tests.
@@ -41,6 +43,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 - [ ] Complete hitscan parity with Doom (damage/spread/tracing behavior).
 - [ ] Add projectile/hitscan knock-back parity.
 - [x] Add bullet impact "puff/poof" effects for hitscan impacts.
+- [ ] Use sprite-based visuals for bullet puffs and blood effects (instead of temporary placeholders).
 - [ ] Verify key/lock interaction parity across all key-required specials.
 - [ ] Complete monster AI sensory parity (including sound/hearing-driven wake/alert behavior).
 - [ ] Validate full difficulty parity including Nightmare semantics.

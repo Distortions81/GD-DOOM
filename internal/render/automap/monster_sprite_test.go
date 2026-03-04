@@ -75,3 +75,17 @@ func TestMonsterSpriteNameForViewUsesAttackFrames(t *testing.T) {
 		t.Fatalf("attack late got=%q want=TROOF1", name)
 	}
 }
+
+func TestMonsterSpriteNameForViewUsesPainFrame(t *testing.T) {
+	g := &game{
+		opts: Options{SpritePatchBank: map[string]WallTexture{
+			"TROOG1": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+		}},
+		thingPainTics: []int{6},
+	}
+	th := mapdata.Thing{Type: 3001, X: 0, Y: 0, Angle: 0}
+	name, _ := g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "TROOG1" {
+		t.Fatalf("pain got=%q want=TROOG1", name)
+	}
+}

@@ -80,10 +80,16 @@ func (g *game) tickMonsters() {
 		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 			g.thingAttackTics[i]--
 		}
+		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+			g.thingPainTics[i]--
+		}
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
 		}
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
+			continue
+		}
+		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 			continue
 		}
 		if g.thingCooldown[i] > 0 {
@@ -167,10 +173,51 @@ func (g *game) ensureMonsterAIState() {
 		g.thingAttackTics = make([]int, n)
 		copy(g.thingAttackTics, old)
 	}
+	if len(g.thingPainTics) != n {
+		old := g.thingPainTics
+		g.thingPainTics = make([]int, n)
+		copy(g.thingPainTics, old)
+	}
 	if len(g.thingThinkWait) != n {
 		old := g.thingThinkWait
 		g.thingThinkWait = make([]int, n)
 		copy(g.thingThinkWait, old)
+	}
+}
+
+func monsterPainChance(typ int16) int {
+	switch typ {
+	case 3004: // zombieman
+		return 200
+	case 9: // shotgun guy
+		return 170
+	case 3001: // imp
+		return 200
+	case 3002: // demon
+		return 180
+	case 3006: // lost soul
+		return 256
+	case 3005: // cacodemon
+		return 128
+	case 3003: // baron
+		return 50
+	case 16: // cyberdemon
+		return 20
+	case 7: // spider mastermind
+		return 40
+	default:
+		return 100
+	}
+}
+
+func monsterPainDurationTics(typ int16) int {
+	switch typ {
+	case 16:
+		return 10
+	case 7:
+		return 8
+	default:
+		return 6
 	}
 }
 

@@ -234,3 +234,63 @@ func TestZombiemanChaseCadenceMatchesRunTics(t *testing.T) {
 		t.Fatalf("expected move again on 4th tic, x=%d start=%d", g.m.Things[0].X, x1)
 	}
 }
+
+func TestDamageMonsterTriggersPainStateForAlwaysPainMonster(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3006, X: 0, Y: 0}, // lost soul (pain chance 256)
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{100},
+		thingAggro:     []bool{false},
+		thingPainTics:  []int{0},
+	}
+	g.damageMonster(0, 1)
+	if g.thingHP[0] != 99 {
+		t.Fatalf("hp=%d want=99", g.thingHP[0])
+	}
+	if g.thingPainTics[0] <= 0 {
+		t.Fatalf("pain tics=%d want > 0", g.thingPainTics[0])
+	}
+}
+
+func TestTickMonstersPainStatePausesThinker(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingAggro:     []bool{true},
+		thingCooldown:  []int{0},
+		thingMoveDir:   []monsterMoveDir{monsterDirEast},
+		thingMoveCount: []int{0},
+		thingPainTics:  []int{3},
+		sectorFloor:    []int64{0},
+		sectorCeil:     []int64{128 * fracUnit},
+		p: player{
+			x: 256 * fracUnit,
+			y: 0,
+		},
+		stats: playerStats{Health: 100},
+	}
+	x0 := g.m.Things[0].X
+	g.tickMonsters()
+	if g.thingPainTics[0] != 2 {
+		t.Fatalf("pain tics=%d want=2", g.thingPainTics[0])
+	}
+	if g.m.Things[0].X != x0 {
+		t.Fatalf("monster moved during pain state: x=%d start=%d", g.m.Things[0].X, x0)
+	}
+	if g.stats.Health != 100 {
+		t.Fatalf("monster attacked during pain state: health=%d", g.stats.Health)
+	}
+}

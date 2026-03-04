@@ -330,6 +330,7 @@ type game struct {
 	thingMoveCount     []int
 	thingJustAtk       []bool
 	thingAttackTics    []int
+	thingPainTics      []int
 	thingThinkWait     []int
 	projectiles        []projectile
 	hitscanPuffs       []hitscanPuff
@@ -667,6 +668,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingMoveCount = make([]int, len(m.Things))
 	g.thingJustAtk = make([]bool, len(m.Things))
 	g.thingAttackTics = make([]int, len(m.Things))
+	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.initThingCombatState()
@@ -5570,7 +5572,62 @@ func monsterAttackAnimTotalTics(typ int16) int {
 	return total
 }
 
+func monsterPainFrameSeq(typ int16) []byte {
+	switch typ {
+	case 3004, 9, 3001, 3002, 3006, 3005, 3003, 16, 7:
+		return []byte{'G'}
+	default:
+		return nil
+	}
+}
+
+func monsterPainFrameTics(typ int16) []int {
+	switch typ {
+	case 16:
+		return []int{10}
+	case 7:
+		return []int{8}
+	case 3004, 9, 3001, 3002, 3006, 3005, 3003:
+		return []int{6}
+	default:
+		return nil
+	}
+}
+
+func monsterPainAnimTotalTics(typ int16) int {
+	tics := monsterPainFrameTics(typ)
+	total := 0
+	for _, t := range tics {
+		if t > 0 {
+			total += t
+		}
+	}
+	return total
+}
+
 func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
+	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+		seq := monsterPainFrameSeq(th.Type)
+		frameTics := monsterPainFrameTics(th.Type)
+		if len(seq) > 0 && len(seq) == len(frameTics) {
+			total := monsterPainAnimTotalTics(th.Type)
+			elapsed := total - g.thingPainTics[i]
+			if elapsed < 0 {
+				elapsed = 0
+			}
+			acc := 0
+			for fi, ft := range frameTics {
+				if ft <= 0 {
+					continue
+				}
+				acc += ft
+				if elapsed < acc {
+					return seq[fi]
+				}
+			}
+			return seq[len(seq)-1]
+		}
+	}
 	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 		seq := monsterAttackFrameSeq(th.Type)
 		frameTics := monsterAttackFrameTics(th.Type)

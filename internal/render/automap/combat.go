@@ -79,9 +79,7 @@ func (g *game) handleFire() {
 	}
 	hit := g.fireSelectedWeapon()
 	g.weaponRefire = true
-	if !hit {
-		g.setHUDMessage("Miss", 10)
-	}
+	_ = hit
 }
 
 func (g *game) setAttackHeld(held bool) {
@@ -193,9 +191,12 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope float64, accurate 
 	}
 	idx, dist, ok := g.pickHitscanMonsterTargetAtAngleWithSlopeDist(angle, rng, bulletTargetRadius, slope, true)
 	if !ok {
+		if wallDist, wallHit := g.hitscanWallImpactDistance(angle, rng, slope); wallHit {
+			g.spawnHitscanPuffAtDistance(angle, slope, wallDist)
+		}
 		return false
 	}
-	g.spawnHitscanPuffAtDistance(angle, slope, dist)
+	_ = dist
 	g.damageMonster(idx, damage)
 	return true
 }
@@ -357,6 +358,53 @@ func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng in
 	return bestIdx, bestDist, true
 }
 
+func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64) (float64, bool) {
+	if len(g.lines) == 0 {
+		return 0, false
+	}
+	px := g.p.x
+	py := g.p.y
+	ang := angleToRadians(angle)
+	x2 := px + int64(math.Cos(ang)*float64(rng))
+	y2 := py + int64(math.Sin(ang)*float64(rng))
+	shootZ := g.playerShootZ()
+	bestDist := math.Inf(1)
+	found := false
+	for _, ld := range g.lines {
+		frac, ok := segmentIntersectFrac(px, py, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
+		if !ok || frac <= 0 {
+			continue
+		}
+		dist := frac * float64(rng)
+		if dist <= 0 || dist >= bestDist {
+			continue
+		}
+		hitsWall := false
+		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
+			hitsWall = true
+		} else if g.m != nil && len(g.m.Sidedefs) > 0 && len(g.m.Sectors) > 0 {
+			opentop, openbottom, _, openrange := g.lineOpening(ld)
+			if openrange <= 0 {
+				hitsWall = true
+			} else {
+				zAtDist := shootZ + slope*dist
+				if zAtDist > float64(opentop) || zAtDist < float64(openbottom) {
+					hitsWall = true
+				}
+			}
+		}
+		if !hitsWall {
+			continue
+		}
+		bestDist = dist
+		found = true
+	}
+	if !found {
+		return 0, false
+	}
+	return bestDist, true
+}
+
 func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {
 	if dist <= 0 {
 		return
@@ -387,6 +435,9 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 	if thingIdx < 0 || thingIdx >= len(g.thingHP) || damage <= 0 {
 		return
 	}
+	if g.m == nil || thingIdx >= len(g.m.Things) {
+		return
+	}
 	if g.thingHP[thingIdx] <= 0 {
 		return
 	}
@@ -397,9 +448,18 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 	if g.thingHP[thingIdx] <= 0 {
 		g.thingHP[thingIdx] = 0
 		g.thingCollected[thingIdx] = true
+		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
+			g.thingPainTics[thingIdx] = 0
+		}
 		g.setHUDMessage("Monster killed", 15)
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
 	} else {
+		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
+			chance := monsterPainChance(g.m.Things[thingIdx].Type)
+			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
+				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(g.m.Things[thingIdx].Type))
+			}
+		}
 		g.setHUDMessage("Hit", 8)
 	}
 }
