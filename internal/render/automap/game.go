@@ -96,6 +96,33 @@ var detailPresets = [][2]int{
 	{doomLogicalW, doomLogicalH}, // low detail (column-doubled)
 }
 
+type projectedProjectileItem struct {
+	dist      float64
+	sx        float64
+	sy        float64
+	r         float64
+	clr       color.RGBA
+	spriteTex WallTexture
+	hasSprite bool
+}
+
+type projectedMonsterItem struct {
+	dist float64
+	sx   float64
+	yb   float64
+	h    float64
+	tex  WallTexture
+	flip bool
+}
+
+type projectedThingItem struct {
+	dist float64
+	sx   float64
+	yb   float64
+	h    float64
+	tex  WallTexture
+}
+
 type game struct {
 	m                 *mapdata.Map
 	opts              Options
@@ -162,14 +189,15 @@ type game struct {
 	renderPY    float64
 	renderAngle uint32
 
-	lastUpdate  time.Time
-	fpsFrames   int
-	fpsStamp    time.Time
-	fpsDisplay  float64
-	renderAccum time.Duration
-	renderMSAvg float64
-	frameUpload time.Duration
-	perfInDraw  bool
+	lastUpdate    time.Time
+	fpsFrames     int
+	fpsStamp      time.Time
+	fpsDisplay    float64
+	renderAccum   time.Duration
+	renderMSAvg   float64
+	frameUpload   time.Duration
+	perfInDraw    bool
+	interpAutoOff bool
 
 	lastMouseX             int
 	mouseLookSet           bool
@@ -227,6 +255,13 @@ type game struct {
 	wallAnimBlendTex           map[string]WallTexture
 	spriteAnimBlendTex         map[string]WallTexture
 	thingSpriteExpandCache     map[string][]string
+	planeFlatCache32Scratch    map[string][]uint32
+	planeFBPackedScratch       []uint32
+	planeFlatTex32Scratch      [][]uint32
+	planeFlatReadyScratch      []bool
+	projectileItemsScratch     []projectedProjectileItem
+	monsterItemsScratch        []projectedMonsterItem
+	thingItemsScratch          []projectedThingItem
 	spriteTXScratch            []int
 	spriteTYScratch            []int
 	wallLayer                  *ebiten.Image
@@ -2144,6 +2179,24 @@ func (g *game) rowFullyOccludedDepthQ(depthQ, planeBiasQ uint16, rowBase, x0, x1
 	return true
 }
 
+func (g *game) rowFullyOccludedByWallsDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
+	if x1 < x0 || rowBase < 0 {
+		return false
+	}
+	stamp := g.depthFrameStamp
+	for x := x0; x <= x1; x++ {
+		idx := rowBase + x
+		if idx < 0 || idx >= len(g.depthPix3D) {
+			return false
+		}
+		cur := g.depthPix3D[idx]
+		if unpackDepthStamp(cur) != stamp || depthQ <= unpackDepthQ(cur) {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *game) spriteOccludedAt(depth float64, idx int, planeBias float64) bool {
 	return spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, g.depthFrameStamp, encodeDepthQ(depth), encodeDepthBiasQ(planeBias), idx)
 }
@@ -2434,6 +2487,62 @@ func (g *game) ensureSpriteTYScratch(n int) []int {
 	return g.spriteTYScratch
 }
 
+func (g *game) ensurePlaneRenderScratch(n int) ([]uint32, [][]uint32, []bool) {
+	if n <= 0 {
+		return nil, nil, nil
+	}
+	if cap(g.planeFBPackedScratch) < n {
+		g.planeFBPackedScratch = make([]uint32, n)
+	} else {
+		g.planeFBPackedScratch = g.planeFBPackedScratch[:n]
+	}
+	if cap(g.planeFlatTex32Scratch) < n {
+		g.planeFlatTex32Scratch = make([][]uint32, n)
+	} else {
+		g.planeFlatTex32Scratch = g.planeFlatTex32Scratch[:n]
+	}
+	if cap(g.planeFlatReadyScratch) < n {
+		g.planeFlatReadyScratch = make([]bool, n)
+	} else {
+		g.planeFlatReadyScratch = g.planeFlatReadyScratch[:n]
+		clear(g.planeFlatReadyScratch)
+	}
+	return g.planeFBPackedScratch, g.planeFlatTex32Scratch, g.planeFlatReadyScratch
+}
+
+func (g *game) ensureProjectileItemsScratch(n int) []projectedProjectileItem {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.projectileItemsScratch) < n {
+		g.projectileItemsScratch = make([]projectedProjectileItem, 0, n)
+	}
+	g.projectileItemsScratch = g.projectileItemsScratch[:0]
+	return g.projectileItemsScratch
+}
+
+func (g *game) ensureMonsterItemsScratch(n int) []projectedMonsterItem {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.monsterItemsScratch) < n {
+		g.monsterItemsScratch = make([]projectedMonsterItem, 0, n)
+	}
+	g.monsterItemsScratch = g.monsterItemsScratch[:0]
+	return g.monsterItemsScratch
+}
+
+func (g *game) ensureThingItemsScratch(n int) []projectedThingItem {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.thingItemsScratch) < n {
+		g.thingItemsScratch = make([]projectedThingItem, 0, n)
+	}
+	g.thingItemsScratch = g.thingItemsScratch[:0]
+	return g.thingItemsScratch
+}
+
 func drawWallColumnTexturedLEColPow2(pix32 []uint32, pixI, rowStridePix int, col []uint32, texVFixed, texVStepFixed int64, hmask, count, shadeMul int) {
 	if shadeMul == 256 {
 		for ; count > 0; count-- {
@@ -2489,10 +2598,13 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	spansByPlane, _, _, hasSky := g.buildPlaneSpansParallel(planes, h)
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
-	flatCache32 := make(map[string][]uint32, len(planes))
-	planeFBPacked := make([]uint32, len(planes))
-	planeFlatTex32 := make([][]uint32, len(planes))
-	planeFlatReady := make([]bool, len(planes))
+	if g.planeFlatCache32Scratch == nil {
+		g.planeFlatCache32Scratch = make(map[string][]uint32, max(len(planes), 64))
+	} else {
+		clear(g.planeFlatCache32Scratch)
+	}
+	flatCache32 := g.planeFlatCache32Scratch
+	planeFBPacked, planeFlatTex32, planeFlatReady := g.ensurePlaneRenderScratch(len(planes))
 	skyTex, skyTexOK := WallTexture{}, false
 	skyTex32 := []uint32(nil)
 	skyColU := make([]int, 0)
@@ -2612,6 +2724,9 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				stamp := g.depthFrameStamp
 				depthQ := encodeDepthQ(depth)
 				depthPacked := packDepthStamped(depthQ, stamp)
+				if g.rowFullyOccludedByWallsDepthQ(depthQ, rowPix, x1, x2) {
+					continue
+				}
 				wxSpan := camX + depth*ca - ((cx-(float64(x1)+0.5))*depth/focal)*sa
 				wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
 				stepWX := (depth / focal) * sa
@@ -3659,19 +3774,10 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 	viewW := g.viewW
 	viewH := g.viewH
 	stamp := g.depthFrameStamp
-	type projectedProjectile struct {
-		dist      float64
-		sx        float64
-		sy        float64
-		r         float64
-		clr       color.RGBA
-		spriteTex WallTexture
-		hasSprite bool
-	}
 	if len(g.projectiles) == 0 || len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
 		return
 	}
-	items := make([]projectedProjectile, 0, len(g.projectiles))
+	items := g.ensureProjectileItemsScratch(len(g.projectiles))
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := float64(g.p.z)/fracUnit + 41.0
@@ -3697,7 +3803,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		}
 		cr := projectileColor(p.kind)
 		spriteTex, hasSprite := g.projectileSpriteTexture(p.kind, g.worldTic)
-		items = append(items, projectedProjectile{
+		items = append(items, projectedProjectileItem{
 			dist:      f,
 			sx:        sx,
 			sy:        sy,
@@ -3707,6 +3813,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			hasSprite: hasSprite,
 		})
 	}
+	g.projectileItemsScratch = items
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
@@ -3934,15 +4041,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 	if len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
 		return
 	}
-	type projectedMonster struct {
-		dist float64
-		sx   float64
-		yb   float64
-		h    float64
-		tex  WallTexture
-		flip bool
-	}
-	items := make([]projectedMonster, 0, 32)
+	items := g.ensureMonsterItemsScratch(32)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := float64(g.p.z)/fracUnit + 41.0
@@ -3980,7 +4079,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if !ok || tex.Height <= 0 || tex.Width <= 0 {
 			continue
 		}
-		items = append(items, projectedMonster{
+		items = append(items, projectedMonsterItem{
 			dist: f,
 			sx:   sx,
 			yb:   yb,
@@ -3989,6 +4088,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			flip: flip,
 		})
 	}
+	g.monsterItemsScratch = items
 
 	// Draw far-to-near.
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
@@ -4140,14 +4240,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 	if len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
 		return
 	}
-	type projectedThing struct {
-		dist float64
-		sx   float64
-		yb   float64
-		h    float64
-		tex  WallTexture
-	}
-	items := make([]projectedThing, 0, 64)
+	items := g.ensureThingItemsScratch(64)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := float64(g.p.z)/fracUnit + 41.0
@@ -4186,7 +4279,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if sx+xPad < 0 || sx-xPad > float64(viewW) {
 			continue
 		}
-		items = append(items, projectedThing{
+		items = append(items, projectedThingItem{
 			dist: f,
 			sx:   sx,
 			yb:   yb,
@@ -4194,6 +4287,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			tex:  tex,
 		})
 	}
+	g.thingItemsScratch = items
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
@@ -5038,7 +5132,9 @@ func (g *game) screenToWorld(sx, sy float64) (float64, float64) {
 func (g *game) ensureMapFloorLayer() {
 	need := g.viewW * g.viewH * 4
 	if g.mapFloorLayer == nil || g.mapFloorW != g.viewW || g.mapFloorH != g.viewH || len(g.mapFloorPix) != need {
-		g.mapFloorLayer = ebiten.NewImage(g.viewW, g.viewH)
+		g.mapFloorLayer = ebiten.NewImageWithOptions(image.Rect(0, 0, g.viewW, g.viewH), &ebiten.NewImageOptions{
+			Unmanaged: true,
+		})
 		g.mapFloorPix = make([]byte, need)
 		g.mapFloorW = g.viewW
 		g.mapFloorH = g.viewH
@@ -5048,7 +5144,9 @@ func (g *game) ensureMapFloorLayer() {
 func (g *game) ensureWallLayer() {
 	need := g.viewW * g.viewH * 4
 	if g.wallLayer == nil || g.wallW != g.viewW || g.wallH != g.viewH || len(g.wallPix) != need {
-		g.wallLayer = ebiten.NewImage(g.viewW, g.viewH)
+		g.wallLayer = ebiten.NewImageWithOptions(image.Rect(0, 0, g.viewW, g.viewH), &ebiten.NewImageOptions{
+			Unmanaged: true,
+		})
 		g.wallPix = make([]byte, need)
 		g.wallW = g.viewW
 		g.wallH = g.viewH
@@ -7462,7 +7560,7 @@ func (g *game) buildMapFloorWorldLayer() bool {
 		return false
 	}
 
-	layer := ebiten.NewImageWithOptions(image.Rect(0, 0, w, h), &ebiten.NewImageOptions{Unmanaged: true})
+	layer := ebiten.NewImage(w, h)
 	pix := make([]byte, w*h*4)
 
 	minX := g.bounds.minX
@@ -8170,9 +8268,7 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 	if !ok || len(rgba) != 64*64*4 {
 		return nil, false
 	}
-	img := ebiten.NewImageWithOptions(image.Rect(0, 0, 64, 64), &ebiten.NewImageOptions{
-		Unmanaged: true,
-	})
+	img := ebiten.NewImage(64, 64)
 	g.writePixelsTimed(img, rgba)
 	g.flatImgCache[key] = img
 	return img, true
@@ -8560,7 +8656,7 @@ func (g *game) syncRenderState() {
 
 func (g *game) prepareRenderState() {
 	alpha := g.interpAlpha()
-	if !g.opts.SourcePortMode {
+	if !g.opts.SourcePortMode || g.interpAutoOff {
 		alpha = 1
 	}
 	g.renderCamX = lerp(g.prevCamX, g.camX, alpha)
@@ -8885,7 +8981,9 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 	g.renderAccum += renderDur
 	elapsed := now.Sub(g.fpsStamp)
 	if elapsed >= time.Second {
-		g.fpsDisplay = float64(g.fpsFrames) / elapsed.Seconds()
+		fps := float64(g.fpsFrames) / elapsed.Seconds()
+		g.fpsDisplay = fps
+		g.updateInterpolationPerfState(fps)
 		if g.fpsFrames > 0 {
 			g.renderMSAvg = float64(g.renderAccum) / float64(time.Millisecond) / float64(g.fpsFrames)
 		} else {
@@ -8894,6 +8992,28 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 		g.fpsFrames = 0
 		g.renderAccum = 0
 		g.fpsStamp = now
+	}
+}
+
+func (g *game) updateInterpolationPerfState(fps float64) {
+	if !g.opts.SourcePortMode {
+		g.interpAutoOff = false
+		return
+	}
+	const disableAtFPS = float64(doomTicsPerSecond)
+	const reenableAtFPS = disableAtFPS + 5.0
+	if g.interpAutoOff {
+		if fps > reenableAtFPS {
+			g.interpAutoOff = false
+			// Snap interpolation state when re-enabling to avoid one-frame pops.
+			g.syncRenderState()
+		}
+		return
+	}
+	if fps <= disableAtFPS {
+		g.interpAutoOff = true
+		// Snap interpolation state when disabling to avoid one-frame pops.
+		g.syncRenderState()
 	}
 }
 
