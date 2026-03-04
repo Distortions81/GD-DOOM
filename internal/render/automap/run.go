@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/music"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -191,6 +192,8 @@ type sessionGame struct {
 	settings        sessionPersistentSettings
 	nextMap         NextMapFunc
 	err             error
+	musicDriver     *music.Driver
+	musicPlayer     *music.ChunkPlayer
 	faithfulSurface *ebiten.Image
 	faithfulPost    *ebiten.Image
 	faithfulLUT     *ebiten.Image
@@ -413,6 +416,52 @@ func (sg *sessionGame) restartMapForRespawn() *mapdata.Map {
 	return cloneMapForRestart(sg.currentTemplate)
 }
 
+func (sg *sessionGame) initMusicPlayback() {
+	if sg == nil || sg.opts.MapMusicLoader == nil {
+		return
+	}
+	p, err := music.NewChunkPlayer()
+	if err != nil {
+		return
+	}
+	sg.musicPlayer = p
+	sg.musicDriver = music.NewDriver(p.SampleRate(), sg.opts.MusicPatchBank)
+}
+
+func (sg *sessionGame) closeMusicPlayback() {
+	if sg == nil || sg.musicPlayer == nil {
+		return
+	}
+	_ = sg.musicPlayer.Close()
+	sg.musicPlayer = nil
+}
+
+func (sg *sessionGame) stopAndClearMusic() {
+	if sg == nil || sg.musicPlayer == nil {
+		return
+	}
+	_ = sg.musicPlayer.Stop()
+	_ = sg.musicPlayer.ClearBuffer()
+}
+
+func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
+	if sg == nil || sg.musicPlayer == nil || sg.musicDriver == nil || sg.opts.MapMusicLoader == nil {
+		return
+	}
+	sg.stopAndClearMusic()
+	data, err := sg.opts.MapMusicLoader(string(name))
+	if err != nil || len(data) == 0 {
+		return
+	}
+	sg.musicDriver.Reset()
+	chunk, err := sg.musicDriver.RenderMUSS16LE(data)
+	if err != nil || len(chunk) == 0 {
+		return
+	}
+	_ = sg.musicPlayer.EnqueueBytesS16LE(chunk)
+	_ = sg.musicPlayer.Start()
+}
+
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	opts, windowW, windowH := normalizeRunDimensions(opts)
 	sg := &sessionGame{
@@ -422,6 +471,9 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		opts:            opts,
 		nextMap:         nextMap,
 	}
+	sg.initMusicPlayback()
+	defer sg.closeMusicPlayback()
+	sg.playMusicForMap(m.Name)
 	sg.capturePersistentSettings()
 	if sg.shouldShowBootSplash() {
 		sg.queueTransition(transitionBoot, bootSplashHoldTics)
@@ -495,7 +547,9 @@ func (sg *sessionGame) Update() error {
 	err := sg.g.Update()
 	if err == nil {
 		if sg.g.levelRestartRequested {
+			sg.stopAndClearMusic()
 			sg.rebuildGameWithPersistentSettings(sg.restartMapForRespawn())
+			sg.playMusicForMap(sg.g.m.Name)
 			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
 			sg.queueTransition(transitionLevel, 0)
 		}
@@ -894,6 +948,7 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 }
 
 func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.MapName) {
+	sg.stopAndClearMusic()
 	stats := collectIntermissionStats(sg.g, sg.current, nextName)
 	sg.intermission = sessionIntermission{
 		active:            true,
@@ -1029,6 +1084,7 @@ func (sg *sessionGame) finishIntermission() {
 	sg.current = im.target.nextMapName
 	sg.currentTemplate = cloneMapForRestart(im.nextMap)
 	sg.rebuildGameWithPersistentSettings(im.nextMap)
+	sg.playMusicForMap(im.nextMap.Name)
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", im.nextMap.Name))
 	sg.intermission = sessionIntermission{}
 	sg.queueTransition(transitionLevel, 0)

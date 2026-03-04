@@ -55,6 +55,18 @@ type PatchBank interface {
 	Patch(program uint8, percussion bool, note uint8) Patch
 }
 
+type NotePatch struct {
+	Patch          Patch
+	Fixed          bool
+	FixedNote      uint8
+	BaseNoteOffset int16
+	FineTune       int16 // DMX-style 1/32 semitone units
+}
+
+type VoicePatchBank interface {
+	PatchVoices(program uint8, percussion bool, note uint8) []NotePatch
+}
+
 type DefaultPatchBank struct{}
 
 func (DefaultPatchBank) Patch(program uint8, percussion bool, note uint8) Patch {
@@ -71,19 +83,21 @@ type channelState struct {
 	volume     uint8
 	expression uint8
 	pan        uint8
-	pitchBend  int16 // -8192..8191
+	pitchBend  int16 // DMX-style -64..63 in 1/32 semitone units
 }
 
 type voiceState struct {
-	active bool
-	ch     uint8
-	note   uint8
-	id     uint64
-	oplCh  int
+	active   bool
+	ch       uint8
+	note     uint8
+	playNote uint8
+	fineTune int16
+	id       uint64
+	oplCh    int
 }
 
 type Driver struct {
-	opl        *sound.BasicOPL3
+	opl        sound.OPL3
 	sampleRate int
 	ticRate    int
 	bank       PatchBank
@@ -100,7 +114,7 @@ func NewDriver(sampleRate int, bank PatchBank) *Driver {
 		bank = DefaultPatchBank{}
 	}
 	d := &Driver{
-		opl:        sound.NewBasicOPL3(sampleRate),
+		opl:        sound.NewOPL3(sampleRate),
 		sampleRate: sampleRate,
 		ticRate:    defaultTicRate,
 		bank:       bank,
@@ -215,9 +229,8 @@ func (d *Driver) applyEvent(ev Event) {
 			d.ch[ch].pan = ev.B
 		}
 	case EventPitchBend:
-		// MIDI-style 14-bit: lsb=A, msb=B.
-		v := int16((int(ev.B)<<7 | int(ev.A)) - 8192)
-		d.ch[ch].pitchBend = v
+		// DMX/Chocolate OPL path only uses MIDI pitch bend MSB.
+		d.ch[ch].pitchBend = int16(ev.B) - 64
 		d.refreshChannelPitch(uint8(ch))
 	case EventNoteOn:
 		if ev.B == 0 {
@@ -231,29 +244,43 @@ func (d *Driver) applyEvent(ev Event) {
 }
 
 func (d *Driver) noteOn(ch, note, velocity uint8) {
-	vx := d.allocateVoice(ch, note)
-	v := &d.voices[vx]
-	v.active = true
-	v.ch = ch
-	v.note = note
-	d.nextVoice++
-	v.id = d.nextVoice
 	prog := d.ch[ch&0x0F].program
-	patch := d.bank.Patch(prog, ch == 15, note)
-	d.writePatch(v.oplCh, patch)
-	d.writeVolume(v.oplCh, ch, velocity, patch.Car40)
-	d.writePan(v.oplCh, ch, patch.C0)
-	d.writeNote(v.oplCh, note, d.ch[ch&0x0F].pitchBend, true)
+	percussion := isPercussionChannel(ch)
+	patches := d.voicePatches(prog, percussion, note)
+	for _, np := range patches {
+		vx := d.allocateVoice(ch, note)
+		v := &d.voices[vx]
+		v.active = true
+		v.ch = ch
+		v.note = note
+		v.playNote = resolveVoiceNote(note, percussion, np)
+		v.fineTune = np.FineTune
+		d.nextVoice++
+		v.id = d.nextVoice
+		d.writePatch(v.oplCh, np.Patch)
+		d.writeVolume(v.oplCh, ch, velocity, np.Patch)
+		d.writePan(v.oplCh, ch, np.Patch.C0)
+		d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
+	}
+}
+
+func isPercussionChannel(ch uint8) bool {
+	// MUS parser maps percussion to MIDI channel 9.
+	return (ch & 0x0F) == 9
 }
 
 func (d *Driver) noteOff(ch, note uint8) {
+	found := false
 	for i := range d.voices {
 		v := &d.voices[i]
 		if !v.active || v.ch != ch || v.note != note {
 			continue
 		}
-		d.writeNote(v.oplCh, v.note, 0, false)
+		d.writeNote(v.oplCh, v.playNote, 0, false)
 		v.active = false
+		found = true
+	}
+	if found {
 		return
 	}
 }
@@ -264,7 +291,7 @@ func (d *Driver) refreshChannelPitch(ch uint8) {
 		if !v.active || v.ch != ch {
 			continue
 		}
-		d.writeNote(v.oplCh, v.note, d.ch[ch&0x0F].pitchBend, true)
+		d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
 	}
 }
 
@@ -280,11 +307,41 @@ func (d *Driver) allocateVoice(ch, note uint8) int {
 			oldest = i
 		}
 	}
-	d.writeNote(d.voices[oldest].oplCh, d.voices[oldest].note, 0, false)
+	d.writeNote(d.voices[oldest].oplCh, d.voices[oldest].playNote, 0, false)
 	d.voices[oldest].active = false
 	d.voices[oldest].ch = ch
 	d.voices[oldest].note = note
 	return oldest
+}
+
+func (d *Driver) voicePatches(program uint8, percussion bool, note uint8) []NotePatch {
+	if vb, ok := d.bank.(VoicePatchBank); ok {
+		voices := vb.PatchVoices(program, percussion, note)
+		if len(voices) > 0 {
+			return voices
+		}
+	}
+	return []NotePatch{{Patch: d.bank.Patch(program, percussion, note)}}
+}
+
+func resolveVoiceNote(inputNote uint8, percussion bool, p NotePatch) uint8 {
+	n := int(inputNote)
+	switch {
+	case p.Fixed:
+		n = int(p.FixedNote)
+	case percussion:
+		n = 60
+	default:
+		n += int(p.BaseNoteOffset)
+	}
+	// DMX/Chocolate path wraps to a 0..95 note range.
+	for n < 0 {
+		n += 12
+	}
+	for n > 95 {
+		n -= 12
+	}
+	return uint8(n)
 }
 
 func (d *Driver) writePatch(oplCh int, p Patch) {
@@ -302,29 +359,30 @@ func (d *Driver) writePatch(oplCh int, p Patch) {
 	d.opl.WriteReg(uint16(base+0xE0+carSlot), p.CarE0)
 }
 
-func (d *Driver) writeVolume(oplCh int, ch, velocity, patchCar40 uint8) {
+func (d *Driver) writeVolume(oplCh int, ch, velocity uint8, patch Patch) {
 	base, ci := oplAddrBase(oplCh)
-	_, carSlot := oplSlots(ci)
-	cv := int(d.ch[ch&0x0F].volume)
-	expr := int(d.ch[ch&0x0F].expression)
-	vel := int(velocity)
-	level := (cv * expr * vel) / (127 * 127)
-	if level < 0 {
-		level = 0
+	modSlot, carSlot := oplSlots(ci)
+	cv := clampMIDI7(int(d.ch[ch&0x0F].volume))
+	vel := clampMIDI7(int(velocity))
+	midiVolume := 2 * (volumeMappingTable[cv] + 1)
+	fullVolume := (volumeMappingTable[vel] * midiVolume) >> 9
+	carTL := 0x3f - fullVolume
+	if carTL < 0 {
+		carTL = 0
 	}
-	if level > 127 {
-		level = 127
+	if carTL > 0x3f {
+		carTL = 0x3f
 	}
-	// OPL TL: 0 loud .. 63 quiet.
-	tl := 63 - (level*63)/127
-	if tl < 0 {
-		tl = 0
+	d.opl.WriteReg(uint16(base+0x40+carSlot), (patch.Car40&0xC0)|uint8(carTL))
+
+	// DMX behavior: in non-modulated feedback mode, modulator volume follows carrier.
+	if (patch.C0&0x01) != 0 && (patch.Mod40&0x3f) != 0x3f {
+		modTL := int(patch.Mod40 & 0x3f)
+		if modTL < carTL {
+			modTL = carTL
+		}
+		d.opl.WriteReg(uint16(base+0x40+modSlot), (patch.Mod40&0xC0)|uint8(modTL))
 	}
-	if tl > 63 {
-		tl = 63
-	}
-	v := (patchCar40 & 0xC0) | uint8(tl)
-	d.opl.WriteReg(uint16(base+0x40+carSlot), v)
 }
 
 func (d *Driver) writePan(oplCh int, ch, c0 uint8) {
@@ -332,9 +390,9 @@ func (d *Driver) writePan(oplCh int, ch, c0 uint8) {
 	pan := d.ch[ch&0x0F].pan
 	var lr uint8 = 0x30
 	switch {
-	case pan < 42:
+	case pan >= 96:
 		lr = 0x10
-	case pan > 85:
+	case pan <= 48:
 		lr = 0x20
 	}
 	d.opl.WriteReg(uint16(base+0xC0+ci), (c0&0x0F)|lr)
@@ -353,7 +411,7 @@ func (d *Driver) writeNote(oplCh int, note uint8, bend int16, keyOn bool) {
 }
 
 func noteToFnumBlock(note int, bend int16) (int, int) {
-	semi := float64(note-69) + (float64(bend)/8192.0)*2.0
+	semi := float64(note-69) + float64(bend)/32.0
 	freq := 440.0 * math.Pow(2, semi/12.0)
 	bestF := 0
 	bestB := 0
@@ -379,6 +437,36 @@ func noteToFnumBlock(note int, bend int16) (int, int) {
 		return 1023, 7
 	}
 	return bestF, bestB
+}
+
+func clampMIDI7(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > 127 {
+		return 127
+	}
+	return v
+}
+
+// From Chocolate Doom i_oplmusic.c volume_mapping_table.
+var volumeMappingTable = [128]int{
+	0, 1, 3, 5, 6, 8, 10, 11,
+	13, 14, 16, 17, 19, 20, 22, 23,
+	25, 26, 27, 29, 30, 32, 33, 34,
+	36, 37, 39, 41, 43, 45, 47, 49,
+	50, 52, 54, 55, 57, 59, 60, 61,
+	63, 64, 66, 67, 68, 69, 71, 72,
+	73, 74, 75, 76, 77, 79, 80, 81,
+	82, 83, 84, 84, 85, 86, 87, 88,
+	89, 90, 91, 92, 92, 93, 94, 95,
+	96, 96, 97, 98, 99, 99, 100, 101,
+	101, 102, 103, 103, 104, 105, 105, 106,
+	107, 107, 108, 109, 109, 110, 110, 111,
+	112, 112, 113, 113, 114, 114, 115, 115,
+	116, 117, 117, 118, 118, 119, 119, 120,
+	120, 121, 121, 122, 122, 123, 123, 123,
+	124, 124, 125, 125, 126, 126, 127, 127,
 }
 
 func oplAddrBase(oplCh int) (base int, ch int) {

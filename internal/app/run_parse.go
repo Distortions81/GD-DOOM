@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/music"
 	"gddoom/internal/render/automap"
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/sound"
@@ -302,6 +303,22 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wadHash := hashFileSHA1(resolvedWADPath)
 	soundBank := automap.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
+	var musicPatchBank music.PatchBank
+	if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
+		if genmidiData, gerr := wf.LumpData(genmidiLump); gerr != nil {
+			fmt.Fprintf(stderr, "music patch import warning: read GENMIDI: %v\n", gerr)
+		} else if bank, gerr := music.ParseGENMIDIOP2PatchBank(genmidiData); gerr != nil {
+			fmt.Fprintf(stderr, "music patch import warning: parse GENMIDI: %v\n", gerr)
+		} else {
+			musicPatchBank = bank
+			fmt.Fprintf(stderr, "music patch import: source=GENMIDI instruments=%d\n", 128+47)
+		}
+	} else if genmidiData, gerr := os.ReadFile("GENMIDI.op2"); gerr == nil {
+		if bank, perr := music.ParseGENMIDIOP2PatchBank(genmidiData); perr == nil {
+			musicPatchBank = bank
+			fmt.Fprintf(stderr, "music patch import: source=GENMIDI.op2 instruments=%d\n", 128+47)
+		}
+	}
 	if *importPCSpeaker {
 		dpr := sound.ImportPCSpeakerSounds(wf)
 		fmt.Fprintf(stderr, "sound import: dp(found=%d decoded=%d failed=%d) ds(found=%d decoded=%d failed=%d)\n",
@@ -485,7 +502,27 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SpritePatchBank:            spritePatchBank,
 			IntermissionPatchBank:      intermissionPatchBank,
 			SoundBank:                  soundBank,
+			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
+		}
+		opts.MapMusicLoader = func(mapName string) ([]byte, error) {
+			lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
+			if !ok {
+				return nil, nil
+			}
+			l, ok := wf.LumpByName(lump)
+			if !ok {
+				return nil, nil
+			}
+			data, err := wf.LumpData(l)
+			if err != nil {
+				return nil, err
+			}
+			// Validate once at load time so runtime playback can assume decodable MUS.
+			if _, err := music.ParseMUS(data); err != nil {
+				return nil, err
+			}
+			return data, nil
 		}
 		if strings.TrimSpace(configPath) != "" {
 			path := configPath
@@ -600,6 +637,84 @@ func hashFileSHA1(path string) string {
 		return ""
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+func mapMusicLumpName(name mapdata.MapName) (string, bool) {
+	s := strings.ToUpper(strings.TrimSpace(string(name)))
+	if len(s) == 4 && s[0] == 'E' && s[2] == 'M' &&
+		s[1] >= '1' && s[1] <= '9' && s[3] >= '1' && s[3] <= '9' {
+		return "D_" + s, true
+	}
+	if strings.HasPrefix(s, "MAP") && len(s) == 5 && s[3] >= '0' && s[3] <= '9' && s[4] >= '0' && s[4] <= '9' {
+		n := int(s[3]-'0')*10 + int(s[4]-'0')
+		switch n {
+		case 1:
+			return "D_RUNNIN", true
+		case 2:
+			return "D_STALKS", true
+		case 3:
+			return "D_COUNTD", true
+		case 4:
+			return "D_BETWEE", true
+		case 5:
+			return "D_DOOM", true
+		case 6:
+			return "D_THE_DA", true
+		case 7:
+			return "D_SHAWN", true
+		case 8:
+			return "D_DDTBLU", true
+		case 9:
+			return "D_IN_CIT", true
+		case 10:
+			return "D_DEAD", true
+		case 11:
+			return "D_STLKS2", true
+		case 12:
+			return "D_THE_DA2", true
+		case 13:
+			return "D_DOOM2", true
+		case 14:
+			return "D_DDTBL2", true
+		case 15:
+			return "D_RUNNI2", true
+		case 16:
+			return "D_DEAD2", true
+		case 17:
+			return "D_STLKS3", true
+		case 18:
+			return "D_ROMERO", true
+		case 19:
+			return "D_SHAWN2", true
+		case 20:
+			return "D_MESSAG", true
+		case 21:
+			return "D_COUNT2", true
+		case 22:
+			return "D_DDTBL3", true
+		case 23:
+			return "D_AMPIE", true
+		case 24:
+			return "D_THEDA3", true
+		case 25:
+			return "D_ADRIAN", true
+		case 26:
+			return "D_MESSG2", true
+		case 27:
+			return "D_ROMER2", true
+		case 28:
+			return "D_TENSE", true
+		case 29:
+			return "D_SHAWN3", true
+		case 30:
+			return "D_OPENIN", true
+		case 31:
+			return "D_EVIL", true
+		case 32:
+			return "D_ULTIMA", true
+		}
+	}
+	return "", false
 }
 
 func resolveIWADAliasPath(path string) string {

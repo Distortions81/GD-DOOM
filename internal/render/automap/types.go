@@ -1,5 +1,7 @@
 package automap
 
+import "gddoom/internal/music"
+
 type RuntimeSettings struct {
 	DetailLevel      int
 	GammaLevel       int
@@ -54,6 +56,7 @@ type Options struct {
 	DemoScript                 *DemoScript
 	RecordDemoPath             string
 	MapMusicLoader             func(mapName string) ([]byte, error)
+	MusicPatchBank             music.PatchBank
 	OnRuntimeSettingsChanged   func(RuntimeSettings)
 }
 
@@ -78,24 +81,24 @@ type PCMSample struct {
 }
 
 type SoundBank struct {
-	DoorOpen      PCMSample
-	DoorClose     PCMSample
-	BlazeOpen     PCMSample
-	BlazeClose    PCMSample
-	SwitchOn      PCMSample
-	SwitchOff     PCMSample
-	NoWay         PCMSample
-	ItemUp        PCMSample
-	WeaponUp      PCMSample
-	PowerUp       PCMSample
-	Oof           PCMSample
-	Pain          PCMSample
-	ShootPistol   PCMSample
-	ShootShotgun  PCMSample
-	ShootFireball PCMSample
-	ShootRocket   PCMSample
-	ImpactFire    PCMSample
-	ImpactRocket  PCMSample
+	DoorOpen            PCMSample
+	DoorClose           PCMSample
+	BlazeOpen           PCMSample
+	BlazeClose          PCMSample
+	SwitchOn            PCMSample
+	SwitchOff           PCMSample
+	NoWay               PCMSample
+	ItemUp              PCMSample
+	WeaponUp            PCMSample
+	PowerUp             PCMSample
+	Oof                 PCMSample
+	Pain                PCMSample
+	ShootPistol         PCMSample
+	ShootShotgun        PCMSample
+	ShootFireball       PCMSample
+	ShootRocket         PCMSample
+	ImpactFire          PCMSample
+	ImpactRocket        PCMSample
 	MonsterPainHumanoid PCMSample
 	MonsterPainDemon    PCMSample
 	DeathZombie         PCMSample
@@ -108,9 +111,9 @@ type SoundBank struct {
 	DeathSpider         PCMSample
 	DeathLostSoul       PCMSample
 	MonsterDeath        PCMSample
-	PlayerDeath   PCMSample
-	InterTick     PCMSample
-	InterDone     PCMSample
+	PlayerDeath         PCMSample
+	InterTick           PCMSample
+	InterDone           PCMSample
 }
 
 type DemoTic struct {

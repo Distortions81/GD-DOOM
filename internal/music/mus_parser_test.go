@@ -74,6 +74,26 @@ func TestParseMUSControllerAndProgram(t *testing.T) {
 	}
 }
 
+func TestParseMUSPitchWheelUsesRawByte(t *testing.T) {
+	score := []byte{
+		0x20, 0x80, // pitch wheel ch0 raw 0x80
+		0x60,
+	}
+	evs, err := ParseMUS(buildMUSTestLump(score))
+	if err != nil {
+		t.Fatalf("ParseMUS() error: %v", err)
+	}
+	if len(evs) < 1 {
+		t.Fatal("expected pitch event")
+	}
+	if evs[0].Type != EventPitchBend {
+		t.Fatalf("event0=%+v", evs[0])
+	}
+	if evs[0].A != 0x00 || evs[0].B != 0x40 {
+		t.Fatalf("pitch bytes A=%d B=%d want 0 64", evs[0].A, evs[0].B)
+	}
+}
+
 func buildMUSTestLump(score []byte) []byte {
 	var b bytes.Buffer
 	b.WriteString("MUS\x1a")

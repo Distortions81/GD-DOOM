@@ -106,3 +106,100 @@ func TestDriverRenderMUSS16LE(t *testing.T) {
 		t.Fatalf("pcm byte len=%d should be even", len(pcm))
 	}
 }
+
+type capturePercussionPatchBank struct {
+	percussionFlags []bool
+}
+
+func (b *capturePercussionPatchBank) Patch(program uint8, percussion bool, note uint8) Patch {
+	b.percussionFlags = append(b.percussionFlags, percussion)
+	return DefaultPatchBank{}.Patch(program, percussion, note)
+}
+
+func TestDriverPercussionChannelUsesPercussionPatch(t *testing.T) {
+	bank := &capturePercussionPatchBank{}
+	d := NewOutputDriver(bank)
+	d.Reset()
+	_ = d.Render([]Event{
+		{Type: EventNoteOn, Channel: 9, A: 35, B: 100},
+		{Type: EventEnd},
+	})
+	if len(bank.percussionFlags) == 0 {
+		t.Fatal("expected at least one patch lookup")
+	}
+	if !bank.percussionFlags[0] {
+		t.Fatalf("percussion flag=%v want=true", bank.percussionFlags[0])
+	}
+}
+
+type doubleVoiceBank struct{}
+
+func (doubleVoiceBank) Patch(program uint8, percussion bool, note uint8) Patch {
+	return DefaultPatchBank{}.Patch(program, percussion, note)
+}
+
+func (doubleVoiceBank) PatchVoices(program uint8, percussion bool, note uint8) []NotePatch {
+	return []NotePatch{
+		{Patch: DefaultPatchBank{}.Patch(program, percussion, note)},
+		{Patch: DefaultPatchBank{}.Patch(program, percussion, note), BaseNoteOffset: 12},
+	}
+}
+
+func TestDriverNoteOffStopsAllVoicesForNote(t *testing.T) {
+	d := NewDriver(49716, doubleVoiceBank{})
+	d.Reset()
+	_ = d.Render([]Event{
+		{Type: EventNoteOn, Channel: 0, A: 60, B: 100},
+		{Type: EventNoteOff, Channel: 0, A: 60},
+		{Type: EventEnd},
+	})
+	for i, v := range d.voices {
+		if v.active {
+			t.Fatalf("voice %d still active after note off", i)
+		}
+	}
+}
+
+func TestResolveVoiceNote(t *testing.T) {
+	if got := resolveVoiceNote(64, false, NotePatch{BaseNoteOffset: -12}); got != 52 {
+		t.Fatalf("offset note=%d want=52", got)
+	}
+	if got := resolveVoiceNote(64, true, NotePatch{}); got != 60 {
+		t.Fatalf("percussion note=%d want=60", got)
+	}
+	if got := resolveVoiceNote(64, false, NotePatch{Fixed: true, FixedNote: 40}); got != 40 {
+		t.Fatalf("fixed note=%d want=40", got)
+	}
+	if got := resolveVoiceNote(120, false, NotePatch{}); got != 84 {
+		t.Fatalf("wrapped note=%d want=84", got)
+	}
+}
+
+func TestDriverPitchBendUsesMSB(t *testing.T) {
+	d := NewDriver(49716, nil)
+	d.Reset()
+	// LSB differs; MSB same => same bend in DMX semantics.
+	d.applyEvent(Event{Type: EventPitchBend, Channel: 0, A: 0x00, B: 0x40})
+	b0 := d.ch[0].pitchBend
+	d.applyEvent(Event{Type: EventPitchBend, Channel: 0, A: 0x7F, B: 0x40})
+	b1 := d.ch[0].pitchBend
+	if b0 != 0 || b1 != 0 {
+		t.Fatalf("center bend b0=%d b1=%d want=0", b0, b1)
+	}
+	d.applyEvent(Event{Type: EventPitchBend, Channel: 0, A: 0x00, B: 0x41})
+	if got := d.ch[0].pitchBend; got != 1 {
+		t.Fatalf("bend=%d want=1", got)
+	}
+}
+
+func TestClampMIDI7(t *testing.T) {
+	if got := clampMIDI7(-5); got != 0 {
+		t.Fatalf("clamp -5=%d want=0", got)
+	}
+	if got := clampMIDI7(200); got != 127 {
+		t.Fatalf("clamp 200=%d want=127", got)
+	}
+	if got := clampMIDI7(64); got != 64 {
+		t.Fatalf("clamp 64=%d want=64", got)
+	}
+}

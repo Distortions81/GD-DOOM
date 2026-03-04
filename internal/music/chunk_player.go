@@ -35,7 +35,10 @@ type ChunkPlayer struct {
 }
 
 func NewChunkPlayer() (*ChunkPlayer, error) {
-	ctx := audio.NewContext(OutputSampleRate)
+	ctx := audio.CurrentContext()
+	if ctx == nil {
+		ctx = audio.NewContext(OutputSampleRate)
+	}
 	src := newPCMChunkBuffer()
 	p, err := audio.NewPlayer(ctx, src)
 	if err != nil {
@@ -50,6 +53,13 @@ func NewChunkPlayer() (*ChunkPlayer, error) {
 	}
 	go cp.run()
 	return cp, nil
+}
+
+func (cp *ChunkPlayer) SampleRate() int {
+	if cp == nil || cp.ctx == nil {
+		return OutputSampleRate
+	}
+	return cp.ctx.SampleRate()
 }
 
 func (cp *ChunkPlayer) Start() error {

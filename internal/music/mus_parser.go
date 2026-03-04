@@ -99,7 +99,9 @@ func ParseMUS(data []byte) ([]Event, error) {
 			if pos >= len(data) {
 				return nil, fmt.Errorf("mus: truncated pitch bend")
 			}
-			b := data[pos] & 0x7F
+			// MUS pitch wheel is an 8-bit value. Chocolate Doom's mus2mid
+			// converts this to MIDI wheel by multiplying by 64.
+			b := data[pos]
 			pos++
 			p := uint16(b) << 6 // 0..8064 (MUS style)
 			ev.Type = EventPitchBend
