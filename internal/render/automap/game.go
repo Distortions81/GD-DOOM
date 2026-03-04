@@ -8246,16 +8246,21 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 	line1 := fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg)))
 	line2 := "F1 Help"
+	sx, sy, ox, _ := g.hudTransform()
 	w := g.huTextWidth(line1)
 	if w2 := g.huTextWidth(line2); w2 > w {
 		w = w2
 	}
-	x := g.viewW - w - 10
+	maxX := float64(g.viewW)
+	if g.opts.SourcePortMode {
+		maxX = ox + statusBaseW*sx
+	}
+	x := int(maxX - float64(w)*sx - 10*sx)
 	if x < 4 {
 		x = 4
 	}
-	g.drawHUTextAt(screen, line1, float64(x), 10)
-	g.drawHUTextAt(screen, line2, float64(x), 24)
+	g.drawHUTextAt(screen, line1, float64(x), 10*sy, sx, sy)
+	g.drawHUTextAt(screen, line2, float64(x), 24*sy, sx, sy)
 }
 
 func (g *game) huTextWidth(text string) int {
@@ -8282,7 +8287,7 @@ func (g *game) huTextWidth(text string) int {
 	return w
 }
 
-func (g *game) drawHUTextAt(screen *ebiten.Image, text string, x, y float64) {
+func (g *game) drawHUTextAt(screen *ebiten.Image, text string, x, y, sx, sy float64) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
@@ -8298,17 +8303,18 @@ func (g *game) drawHUTextAt(screen *ebiten.Image, text string, x, y float64) {
 			uc -= 'a' - 'A'
 		}
 		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
-			px += 4
+			px += 4 * sx
 			continue
 		}
 		img, w, _, ox, oy, ok := g.messageFontGlyph(uc)
 		if !ok {
-			px += 4
+			px += 4 * sx
 			continue
 		}
 		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(px-float64(ox), py-float64(oy))
+		op.GeoM.Scale(sx, sy)
+		op.GeoM.Translate(px-float64(ox)*sx, py-float64(oy)*sy)
 		screen.DrawImage(img, op)
-		px += float64(w)
+		px += float64(w) * sx
 	}
 }

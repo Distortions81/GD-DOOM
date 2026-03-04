@@ -88,14 +88,16 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 	if size.x <= 0.0 || size.y <= 0.0 {
 		return vec4(0.0, 0.0, 0.0, 1.0)
 	}
-	uv := texCoord / size
+	origin := imageSrc0Origin()
+	local := texCoord - origin
+	uv := local / size
 	p := uv*2.0 - vec2(1.0, 1.0)
 	p *= 1.0 + 0.04*dot(p, p)
 	uv = (p + vec2(1.0, 1.0)) * 0.5
 	if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
 		return vec4(0.0, 0.0, 0.0, 1.0)
 	}
-	srcPos := uv*size + imageSrc0Origin()
+	srcPos := uv*size + origin
 	c := imageSrc0At(srcPos)
 	scan := 0.90 + 0.10*sin((uv.y*size.y+Time*2.0)*3.14159265)
 	maskPhase := floor(mod(uv.x*size.x, 3.0))
