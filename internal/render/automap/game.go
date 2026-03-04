@@ -176,6 +176,10 @@ type game struct {
 	thingHP        []int
 	thingAggro     []bool
 	thingCooldown  []int
+	thingMoveDir   []monsterMoveDir
+	thingMoveCount []int
+	thingJustAtk   []bool
+	thingThinkWait []int
 	projectiles    []projectile
 	cheatLevel     int
 	invulnerable   bool
@@ -457,6 +461,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
 	g.thingCooldown = make([]int, len(m.Things))
+	g.thingMoveDir = make([]monsterMoveDir, len(m.Things))
+	g.thingMoveCount = make([]int, len(m.Things))
+	g.thingJustAtk = make([]bool, len(m.Things))
+	g.thingThinkWait = make([]int, len(m.Things))
 	g.initThingCombatState()
 	g.applySkillThingFiltering()
 	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)

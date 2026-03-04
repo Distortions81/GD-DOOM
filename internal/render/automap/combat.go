@@ -30,6 +30,9 @@ func (g *game) initThingCombatState() {
 			continue
 		}
 		g.thingHP[i] = monsterSpawnHealth(th.Type)
+		if i >= 0 && i < len(g.thingMoveDir) {
+			g.thingMoveDir[i] = monsterDirNoDir
+		}
 	}
 }
 
@@ -197,6 +200,9 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 		return
 	}
 	g.thingHP[thingIdx] -= damage
+	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
+		g.thingAggro[thingIdx] = true
+	}
 	if g.thingHP[thingIdx] <= 0 {
 		g.thingHP[thingIdx] = 0
 		g.thingCollected[thingIdx] = true

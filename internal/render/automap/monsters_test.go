@@ -12,11 +12,11 @@ func TestTickMonstersDamagesPlayer(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{Type: 3004, X: 32, Y: 0},
+				{Type: 3002, X: 32, Y: 0},
 			},
 		},
 		thingCollected: []bool{false},
-		thingHP:        []int{20},
+		thingHP:        []int{150},
 		thingAggro:     []bool{true},
 		thingCooldown:  []int{0},
 		stats:          playerStats{Health: 100},
@@ -100,5 +100,137 @@ func TestMeleeOnlyMonsterDoesNotRangedAttack(t *testing.T) {
 	}
 	if g.stats.Health != 100 {
 		t.Fatalf("health=%d want=100", g.stats.Health)
+	}
+}
+
+func TestMonsterCheckMissileRangeUsesDoomDistanceChance(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+	tx := int64(300 * fracUnit)
+	ty := int64(0)
+	px := int64(0)
+	py := int64(0)
+	dist := int64(300 * fracUnit)
+
+	// First random byte is 8, which is below the computed threshold here.
+	if g.monsterCheckMissileRange(3004, dist, tx, ty, px, py) {
+		t.Fatal("first far-range missile check should fail by random chance")
+	}
+	// Second random byte is 109, which passes the same threshold.
+	if !g.monsterCheckMissileRange(3004, dist, tx, ty, px, py) {
+		t.Fatal("second far-range missile check should pass by random chance")
+	}
+}
+
+func TestMonsterPickNewChaseDirMovesTowardTarget(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingMoveDir:   []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount: []int{0},
+		sectorFloor:    []int64{0},
+		sectorCeil:     []int64{128 * fracUnit},
+		p: player{
+			x:      128 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.monsterPickNewChaseDir(0, 3004, g.p.x, g.p.y)
+	if g.thingMoveDir[0] != monsterDirEast {
+		t.Fatalf("movedir=%v want east", g.thingMoveDir[0])
+	}
+	if g.m.Things[0].X <= 0 {
+		t.Fatalf("monster did not move east, x=%d", g.m.Things[0].X)
+	}
+	if g.thingMoveCount[0] < 0 || g.thingMoveCount[0] > 15 {
+		t.Fatalf("movecount=%d want [0,15]", g.thingMoveCount[0])
+	}
+}
+
+func TestTickMonstersJustAttackedSkipsAttackTic(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 64, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingAggro:     []bool{true},
+		thingCooldown:  []int{0},
+		thingMoveDir:   []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount: []int{0},
+		thingJustAtk:   []bool{true},
+		stats:          playerStats{Health: 100},
+		p:              player{x: 0, y: 0},
+	}
+	g.tickMonsters()
+	if g.thingJustAtk[0] {
+		t.Fatal("just-attacked flag should clear after skip tic")
+	}
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want=100 on post-attack skip tic", g.stats.Health)
+	}
+}
+
+func TestZombiemanChaseCadenceMatchesRunTics(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingAggro:     []bool{true},
+		thingCooldown:  []int{200},
+		thingMoveDir:   []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount: []int{0},
+		thingJustAtk:   []bool{false},
+		thingThinkWait: []int{0},
+		sectorFloor:    []int64{0},
+		sectorCeil:     []int64{128 * fracUnit},
+		p: player{
+			x:      256 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		stats: playerStats{Health: 100},
+	}
+
+	g.tickMonsters()
+	x1 := g.m.Things[0].X
+	if x1 <= 0 {
+		t.Fatalf("expected first chase tic to move, x=%d", x1)
+	}
+
+	for i := 0; i < 3; i++ {
+		g.tickMonsters()
+		if g.m.Things[0].X != x1 {
+			t.Fatalf("zombieman moved during wait tic %d: got x=%d want %d", i+1, g.m.Things[0].X, x1)
+		}
+	}
+
+	g.tickMonsters()
+	if g.m.Things[0].X <= x1 {
+		t.Fatalf("expected move again on 4th tic, x=%d start=%d", g.m.Things[0].X, x1)
 	}
 }

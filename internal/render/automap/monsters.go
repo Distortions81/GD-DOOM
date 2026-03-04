@@ -11,12 +11,69 @@ const (
 	monsterMeleeRange  = 64 * fracUnit
 	monsterAttackRange = 1024 * fracUnit
 	monsterAttackTics  = 35
+
+	monsterDiagFrac = 47000
+)
+
+type monsterMoveDir uint8
+
+const (
+	monsterDirEast monsterMoveDir = iota
+	monsterDirNorthEast
+	monsterDirNorth
+	monsterDirNorthWest
+	monsterDirWest
+	monsterDirSouthWest
+	monsterDirSouth
+	monsterDirSouthEast
+	monsterDirNoDir
+)
+
+var (
+	monsterOpposite = [9]monsterMoveDir{
+		monsterDirWest,
+		monsterDirSouthWest,
+		monsterDirSouth,
+		monsterDirSouthEast,
+		monsterDirEast,
+		monsterDirNorthEast,
+		monsterDirNorth,
+		monsterDirNorthWest,
+		monsterDirNoDir,
+	}
+	monsterDiags = [4]monsterMoveDir{
+		monsterDirNorthWest,
+		monsterDirNorthEast,
+		monsterDirSouthWest,
+		monsterDirSouthEast,
+	}
+	monsterXSpeed = [8]int64{
+		fracUnit,
+		monsterDiagFrac,
+		0,
+		-monsterDiagFrac,
+		-fracUnit,
+		-monsterDiagFrac,
+		0,
+		monsterDiagFrac,
+	}
+	monsterYSpeed = [8]int64{
+		0,
+		monsterDiagFrac,
+		fracUnit,
+		monsterDiagFrac,
+		0,
+		-monsterDiagFrac,
+		-fracUnit,
+		-monsterDiagFrac,
+	}
 )
 
 func (g *game) tickMonsters() {
 	if g.m == nil || g.isDead {
 		return
 	}
+	g.ensureMonsterAIState()
 	px := g.p.x
 	py := g.p.y
 	for i, th := range g.m.Things {
@@ -42,20 +99,300 @@ func (g *game) tickMonsters() {
 				continue
 			}
 		}
+		if !g.monsterChaseReady(i, th.Type) {
+			continue
+		}
 
-		if g.thingCooldown[i] == 0 && dist <= monsterAttackRange && g.monsterHasLOS(tx, ty, px, py) {
+		// Doom A_Chase: prevent consecutive missile attacks.
+		if g.thingJustAtk[i] {
+			g.thingJustAtk[i] = false
+			g.monsterPickNewChaseDir(i, th.Type, px, py)
+			continue
+		}
+
+		if g.monsterCanMelee(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
-			didAttack := g.monsterAttack(i, th.Type, dist)
-			if didAttack {
+			if g.monsterAttack(i, th.Type, dist) {
 				g.thingCooldown[i] = monsterAttackCooldown(th.Type)
-				// Attacking consumes this tic's action for more Doom-like cadence.
 				continue
 			}
 		}
 
-		if dist > monsterMeleeRange {
-			g.moveMonsterToward(i, th.Type, tx, ty, px, py, monsterMoveStep(th.Type))
+		if g.thingCooldown[i] == 0 && g.monsterCheckMissileRange(th.Type, dist, tx, ty, px, py) {
+			g.faceMonsterToward(i, tx, ty, px, py)
+			if g.monsterAttack(i, th.Type, dist) {
+				g.thingCooldown[i] = monsterAttackCooldown(th.Type)
+				g.thingJustAtk[i] = true
+				continue
+			}
 		}
+
+		g.thingMoveCount[i]--
+		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
+			g.monsterPickNewChaseDir(i, th.Type, px, py)
+		}
+	}
+}
+
+func (g *game) ensureMonsterAIState() {
+	if g.m == nil {
+		return
+	}
+	n := len(g.m.Things)
+	if len(g.thingMoveDir) != n {
+		old := g.thingMoveDir
+		g.thingMoveDir = make([]monsterMoveDir, n)
+		for i := range g.thingMoveDir {
+			g.thingMoveDir[i] = monsterDirNoDir
+		}
+		copy(g.thingMoveDir, old)
+	}
+	if len(g.thingMoveCount) != n {
+		old := g.thingMoveCount
+		g.thingMoveCount = make([]int, n)
+		copy(g.thingMoveCount, old)
+	}
+	if len(g.thingJustAtk) != n {
+		old := g.thingJustAtk
+		g.thingJustAtk = make([]bool, n)
+		copy(g.thingJustAtk, old)
+	}
+	if len(g.thingThinkWait) != n {
+		old := g.thingThinkWait
+		g.thingThinkWait = make([]int, n)
+		copy(g.thingThinkWait, old)
+	}
+}
+
+func (g *game) monsterChaseReady(i int, typ int16) bool {
+	if i < 0 || i >= len(g.thingThinkWait) {
+		return true
+	}
+	if g.thingThinkWait[i] > 0 {
+		g.thingThinkWait[i]--
+		return false
+	}
+	wait := monsterThinkInterval(typ)
+	if wait < 1 {
+		wait = 1
+	}
+	g.thingThinkWait[i] = wait - 1
+	return true
+}
+
+func monsterThinkInterval(typ int16) int {
+	// Matches Doom run-state tics for common monsters (A_Chase cadence).
+	switch typ {
+	case 3004, 84, 67:
+		return 4
+	case 9, 3002, 58, 64, 66:
+		return 2
+	case 3006:
+		return 6
+	case 65, 3001, 3003, 3005, 7, 16, 68, 69, 71:
+		return 3
+	default:
+		return 3
+	}
+}
+
+func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
+	if !monsterHasMeleeAttack(typ) {
+		return false
+	}
+	if dist >= monsterMeleeRange-20*fracUnit+playerRadius {
+		return false
+	}
+	return g.monsterHasLOS(tx, ty, px, py)
+}
+
+func (g *game) monsterCheckMissileRange(typ int16, dist, tx, ty, px, py int64) bool {
+	if isMeleeOnlyMonster(typ) {
+		return false
+	}
+	if !g.monsterHasLOS(tx, ty, px, py) {
+		return false
+	}
+
+	d := int((dist - 64*fracUnit) >> fracBits)
+	if !monsterHasMeleeAttack(typ) {
+		d -= 128
+	}
+
+	switch typ {
+	case 64: // archvile
+		if d > 14*64 {
+			return false
+		}
+	case 66: // revenant
+		if d < 196 {
+			return false
+		}
+		d >>= 1
+	}
+
+	if typ == 16 || typ == 7 || typ == 3006 {
+		d >>= 1
+	}
+	if d < 0 {
+		d = 0
+	}
+	if d > 200 {
+		d = 200
+	}
+	if typ == 16 && d > 160 {
+		d = 160
+	}
+	return doomrand.PRandom() >= d
+}
+
+func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) {
+	if g.m == nil || i < 0 || i >= len(g.m.Things) || i >= len(g.thingMoveDir) {
+		return
+	}
+	tx := int64(g.m.Things[i].X) << fracBits
+	ty := int64(g.m.Things[i].Y) << fracBits
+	olddir := g.thingMoveDir[i]
+	if olddir > monsterDirNoDir {
+		olddir = monsterDirNoDir
+	}
+	turnaround := monsterOpposite[olddir]
+
+	deltax := targetX - tx
+	deltay := targetY - ty
+
+	d1 := monsterDirNoDir
+	d2 := monsterDirNoDir
+	if deltax > 10*fracUnit {
+		d1 = monsterDirEast
+	} else if deltax < -10*fracUnit {
+		d1 = monsterDirWest
+	}
+	if deltay < -10*fracUnit {
+		d2 = monsterDirSouth
+	} else if deltay > 10*fracUnit {
+		d2 = monsterDirNorth
+	}
+
+	if d1 != monsterDirNoDir && d2 != monsterDirNoDir {
+		diag := monsterDiags[(b2i(deltay < 0)<<1)+b2i(deltax > 0)]
+		if diag != turnaround && g.monsterTryWalk(i, typ, diag) {
+			return
+		}
+	}
+
+	if doomrand.PRandom() > 200 || abs(deltay) > abs(deltax) {
+		d1, d2 = d2, d1
+	}
+
+	if d1 == turnaround {
+		d1 = monsterDirNoDir
+	}
+	if d2 == turnaround {
+		d2 = monsterDirNoDir
+	}
+
+	if d1 != monsterDirNoDir && g.monsterTryWalk(i, typ, d1) {
+		return
+	}
+	if d2 != monsterDirNoDir && g.monsterTryWalk(i, typ, d2) {
+		return
+	}
+
+	if olddir != monsterDirNoDir && g.monsterTryWalk(i, typ, olddir) {
+		return
+	}
+
+	if (doomrand.PRandom() & 1) != 0 {
+		for dir := int(monsterDirEast); dir <= int(monsterDirSouthEast); dir++ {
+			d := monsterMoveDir(dir)
+			if d != turnaround && g.monsterTryWalk(i, typ, d) {
+				return
+			}
+		}
+	} else {
+		for dir := int(monsterDirSouthEast); dir >= int(monsterDirEast); dir-- {
+			d := monsterMoveDir(dir)
+			if d != turnaround && g.monsterTryWalk(i, typ, d) {
+				return
+			}
+		}
+	}
+
+	if turnaround != monsterDirNoDir && g.monsterTryWalk(i, typ, turnaround) {
+		return
+	}
+	g.thingMoveDir[i] = monsterDirNoDir
+}
+
+func (g *game) monsterTryWalk(i int, typ int16, dir monsterMoveDir) bool {
+	if i < 0 || i >= len(g.thingMoveDir) {
+		return false
+	}
+	g.thingMoveDir[i] = dir
+	if !g.monsterMoveInDir(i, typ, dir) {
+		return false
+	}
+	if i >= 0 && i < len(g.thingMoveCount) {
+		g.thingMoveCount[i] = doomrand.PRandom() & 15
+	}
+	return true
+}
+
+func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
+	if g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if dir >= monsterDirNoDir {
+		return false
+	}
+	step := monsterMoveStep(typ)
+	dx := fixedMul(step, monsterXSpeed[dir])
+	dy := fixedMul(step, monsterYSpeed[dir])
+	if dx == 0 && dy == 0 {
+		return false
+	}
+
+	x := int64(g.m.Things[i].X) << fracBits
+	y := int64(g.m.Things[i].Y) << fracBits
+	nx := x + dx
+	ny := y + dy
+	if !g.tryMoveProbe(nx, ny) {
+		return false
+	}
+	g.m.Things[i].X = int16(nx >> fracBits)
+	g.m.Things[i].Y = int16(ny >> fracBits)
+	g.faceMonsterMoveDir(i, dir)
+	return true
+}
+
+func (g *game) faceMonsterMoveDir(i int, dir monsterMoveDir) {
+	if g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return
+	}
+	g.m.Things[i].Angle = monsterDirAngle(dir)
+}
+
+func monsterDirAngle(dir monsterMoveDir) int16 {
+	switch dir {
+	case monsterDirEast:
+		return 0
+	case monsterDirNorthEast:
+		return 45
+	case monsterDirNorth:
+		return 90
+	case monsterDirNorthWest:
+		return 135
+	case monsterDirWest:
+		return 180
+	case monsterDirSouthWest:
+		return 225
+	case monsterDirSouth:
+		return 270
+	case monsterDirSouthEast:
+		return 315
+	default:
+		return 0
 	}
 }
 
@@ -66,7 +403,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		sx = int64(g.m.Things[i].X) << fracBits
 		sy = int64(g.m.Things[i].Y) << fracBits
 	}
-	if dist <= monsterMeleeRange {
+	if dist <= monsterMeleeRange && monsterHasMeleeAttack(typ) {
 		damage := monsterMeleeDamage(typ)
 		if damage > 0 {
 			g.damagePlayerFrom(damage, "Monster hit you", sx, sy, true)
@@ -74,9 +411,6 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		}
 	}
 	if meleeOnly {
-		return false
-	}
-	if !shouldAttemptRangedAttack(typ, dist) {
 		return false
 	}
 	if typ == 3004 {
@@ -136,39 +470,20 @@ func (g *game) monsterBulletCanHitPlayer(sx, sy int64, ang float64, rng int64) b
 	return perp <= float64(playerRadius)
 }
 
-func shouldAttemptRangedAttack(typ int16, dist int64) bool {
-	// Approximate Doom-style missile chance: closer enemies fire more often.
-	base := 80
-	switch typ {
-	case 3004: // zombieman
-		base = 100
-	case 9: // sergeant
-		base = 110
-	case 3001: // imp
-		base = 90
-	case 3005, 3003, 16: // caco/baron/cyber
-		base = 75
-	}
-	atten := int(dist / (256 * fracUnit))
-	chance := base - atten*8
-	if chance < 8 {
-		chance = 8
-	}
-	return doomPRandomN(256) < chance
-}
-
 func monsterMoveStep(typ int16) int64 {
 	switch typ {
-	case 3004, 9:
+	case 3004, 9, 3001, 84, 65:
 		return 8 * fracUnit
-	case 3001:
-		return 8 * fracUnit
-	case 3002, 3006:
+	case 3002, 58:
 		return 10 * fracUnit
-	case 3005, 3003:
+	case 3005, 3003, 69, 66:
 		return 8 * fracUnit
-	case 16, 7:
+	case 16:
+		return 16 * fracUnit
+	case 7, 68, 67, 64, 71:
 		return 12 * fracUnit
+	case 3006:
+		return 8 * fracUnit
 	default:
 		return 8 * fracUnit
 	}
@@ -178,9 +493,9 @@ func monsterAttackCooldown(typ int16) int {
 	switch typ {
 	case 9:
 		return 22 + doomPRandomN(10)
-	case 3004:
+	case 3004, 65, 84:
 		return 28 + doomPRandomN(12)
-	case 3002, 3006:
+	case 3002, 3006, 58:
 		return 18 + doomPRandomN(8)
 	default:
 		return monsterAttackTics + doomPRandomN(10)
@@ -189,7 +504,16 @@ func monsterAttackCooldown(typ int16) int {
 
 func isMeleeOnlyMonster(typ int16) bool {
 	switch typ {
-	case 3002, 3006:
+	case 3002, 3006, 58:
+		return true
+	default:
+		return false
+	}
+}
+
+func monsterHasMeleeAttack(typ int16) bool {
+	switch typ {
+	case 3001, 3002, 3003, 3006, 58, 66, 69:
 		return true
 	default:
 		return false
@@ -198,10 +522,16 @@ func isMeleeOnlyMonster(typ int16) bool {
 
 func monsterMeleeDamage(typ int16) int {
 	switch typ {
-	case 3002: // demon
+	case 3002, 58: // demon/spectre
 		return 4 * (1 + doomPRandomN(10))
 	case 3006: // lost soul
 		return 3 * (1 + doomPRandomN(8))
+	case 3001: // imp
+		return 3 * (1 + doomPRandomN(8))
+	case 3003, 69: // baron/hell knight
+		return 10 * (1 + doomPRandomN(8))
+	case 66: // revenant
+		return 6 * (1 + doomPRandomN(10))
 	default:
 		return 3 * (1 + doomPRandomN(8))
 	}
@@ -209,7 +539,9 @@ func monsterMeleeDamage(typ int16) int {
 
 func monsterRangedDamage(typ int16) int {
 	switch typ {
-	case 3004: // zombieman hitscan
+	case 3004, 84: // zombieman/wolfenstein-ss hitscan-like
+		return 3 * (1 + doomPRandomN(5))
+	case 65: // chaingunner (single burst approximation)
 		return 3 * (1 + doomPRandomN(5))
 	case 9: // sergeant pellets
 		pellets := 3
@@ -218,14 +550,26 @@ func monsterRangedDamage(typ int16) int {
 			dmg += 3 * (1 + doomPRandomN(5))
 		}
 		return dmg
-	case 3001: // imp fireball approx
+	case 3001: // imp fireball
 		return 3 * (1 + doomPRandomN(8))
-	case 3005: // caco ball approx
+	case 3005: // caco ball
 		return 5 * (1 + doomPRandomN(8))
-	case 3003: // baron ball approx
+	case 3003, 69: // baron/hell knight ball
 		return 8 * (1 + doomPRandomN(8))
 	case 16: // rocket-like
 		return 20 + doomPRandomN(60)
+	case 66: // revenant tracer-like
+		return 10 * (1 + doomPRandomN(8))
+	case 67, 68: // mancubus/arachnotron approximation
+		return 5 * (1 + doomPRandomN(8))
+	case 64: // archvile flame approximation
+		return 20 + doomPRandomN(20)
+	case 7: // spider mastermind chaingun-like burst approximation
+		dmg := 0
+		for i := 0; i < 3; i++ {
+			dmg += 3 * (1 + doomPRandomN(5))
+		}
+		return dmg
 	default:
 		return 3 * (1 + doomPRandomN(8))
 	}
