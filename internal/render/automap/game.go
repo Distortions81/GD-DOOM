@@ -58,20 +58,26 @@ const (
 )
 
 var (
-	bgColor          = color.RGBA{R: 5, G: 7, B: 9, A: 255}
-	wallOneSided     = color.RGBA{R: 220, G: 58, B: 48, A: 255}
-	wallSecret       = color.RGBA{R: 160, G: 100, B: 220, A: 255}
-	wallTeleporter   = color.RGBA{R: 40, G: 165, B: 220, A: 255}
-	wallFloorChange  = color.RGBA{R: 170, G: 120, B: 60, A: 255}
-	wallCeilChange   = color.RGBA{R: 220, G: 200, B: 70, A: 255}
-	wallNoHeightDiff = color.RGBA{R: 86, G: 86, B: 86, A: 255}
-	wallUnrevealed   = color.RGBA{R: 100, G: 100, B: 100, A: 255}
-	wallUseSpecial   = color.RGBA{R: 255, G: 80, B: 170, A: 255}
-	playerColor      = color.RGBA{R: 120, G: 240, B: 130, A: 255}
-	otherPlayerColor = color.RGBA{R: 90, G: 170, B: 255, A: 255}
-	useTargetColor   = color.RGBA{R: 255, G: 210, B: 70, A: 255}
-	wallShadeLUTOnce sync.Once
-	wallShadeLUT     [257][256]uint8
+	bgColor             = color.RGBA{R: 5, G: 7, B: 9, A: 255}
+	wallOneSided        = color.RGBA{R: 220, G: 58, B: 48, A: 255}
+	wallSecret          = color.RGBA{R: 160, G: 100, B: 220, A: 255}
+	wallTeleporter      = color.RGBA{R: 40, G: 165, B: 220, A: 255}
+	wallFloorChange     = color.RGBA{R: 170, G: 120, B: 60, A: 255}
+	wallCeilChange      = color.RGBA{R: 220, G: 200, B: 70, A: 255}
+	wallNoHeightDiff    = color.RGBA{R: 86, G: 86, B: 86, A: 255}
+	wallUnrevealed      = color.RGBA{R: 100, G: 100, B: 100, A: 255}
+	wallUseSpecial      = color.RGBA{R: 255, G: 80, B: 170, A: 255}
+	playerColor         = color.RGBA{R: 120, G: 240, B: 130, A: 255}
+	otherPlayerColor    = color.RGBA{R: 90, G: 170, B: 255, A: 255}
+	useTargetColor      = color.RGBA{R: 255, G: 210, B: 70, A: 255}
+	wallShadeLUTOnce    sync.Once
+	wallShadeLUT        [257][256]uint8
+	sectorLightLUTOnce  sync.Once
+	sectorLightMulLUT   [256]uint8
+	doomColormapEnabled bool
+	doomColormapRows    int
+	doomColormapRGBA    []uint32
+	doomPalIndexLUT32   []uint8
 )
 
 var (
@@ -131,30 +137,36 @@ var detailPresets = [][2]int{
 }
 
 type projectedProjectileItem struct {
-	dist      float64
-	sx        float64
-	sy        float64
-	r         float64
-	clr       color.RGBA
-	spriteTex WallTexture
-	hasSprite bool
+	dist       float64
+	sx         float64
+	sy         float64
+	r          float64
+	clr        color.RGBA
+	lightMul   uint32
+	fullBright bool
+	spriteTex  WallTexture
+	hasSprite  bool
 }
 
 type projectedMonsterItem struct {
-	dist float64
-	sx   float64
-	yb   float64
-	h    float64
-	tex  WallTexture
-	flip bool
+	dist       float64
+	sx         float64
+	yb         float64
+	h          float64
+	tex        WallTexture
+	flip       bool
+	lightMul   uint32
+	fullBright bool
 }
 
 type projectedThingItem struct {
-	dist float64
-	sx   float64
-	yb   float64
-	h    float64
-	tex  WallTexture
+	dist       float64
+	sx         float64
+	yb         float64
+	h          float64
+	tex        WallTexture
+	lightMul   uint32
+	fullBright bool
 }
 
 type mapLineDraw struct {
@@ -212,18 +224,18 @@ type game struct {
 	localSlot  int
 	peerStarts []playerStart
 
-	lines       []physLine
-	lineValid   []int
-	validCount  int
-	bmapOriginX int64
-	bmapOriginY int64
-	bmapWidth   int
-	bmapHeight  int
-	physForLine []int
-	renderSeen  []int
-	renderEpoch int
-	visibleBuf  []int
-	bspOccBuf   []solidSpan
+	lines                []physLine
+	lineValid            []int
+	validCount           int
+	bmapOriginX          int64
+	bmapOriginY          int64
+	bmapWidth            int
+	bmapHeight           int
+	physForLine          []int
+	renderSeen           []int
+	renderEpoch          int
+	visibleBuf           []int
+	bspOccBuf            []solidSpan
 	visibleSectorSeen    []int
 	visibleSubSectorSeen []int
 	visibleEpoch         int
@@ -232,20 +244,20 @@ type game struct {
 	nodeChildRangeR      []int
 	nodeChildRangeOK     []uint8
 	thingSectorCache     []int
-	mapLineBuf  []mapLineDraw
-	mapLineKey  mapLineCacheKey
-	mapLineRev  uint32
-	mapLineInit bool
-	sectorFloor []int64
-	sectorCeil  []int64
-	lineSpecial []uint16
-	doors       map[int]*doorThinker
-	useFlash    int
-	useText     string
-	turnHeld    int
-	snd         *soundSystem
-	soundQueue  []soundEvent
-	delayedSfx  []delayedSoundEvent
+	mapLineBuf           []mapLineDraw
+	mapLineKey           mapLineCacheKey
+	mapLineRev           uint32
+	mapLineInit          bool
+	sectorFloor          []int64
+	sectorCeil           []int64
+	lineSpecial          []uint16
+	doors                map[int]*doorThinker
+	useFlash             int
+	useText              string
+	turnHeld             int
+	snd                  *soundSystem
+	soundQueue           []soundEvent
+	delayedSfx           []delayedSoundEvent
 
 	prevCamX  float64
 	prevCamY  float64
@@ -589,6 +601,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		floorVisDiag: floorVisDiagOff,
 		mapTexDiag:   false,
 	}
+	initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows)
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.textureAnimCrossfadeFrames = normalizeTextureAnimCrossfadeFrames(opts.TextureAnimCrossfadeFrames, opts.SourcePortMode)
@@ -1897,10 +1910,14 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 							useTex = true
 						}
 					}
-					g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, baseRGBA, texU, texMid, focal, tex, useTex)
+					g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, front.Light, baseRGBA, texU, texMid, focal, tex, useTex)
 					ceilingClip[x] = g.viewH
 					floorClip[x] = -1
 					continue
+				}
+				if hasMidTex {
+					shadeMul := combineShadeMul(shadeMulByDistance(f), sectorLightMul(front.Light))
+					g.drawBasicWallColumnTexturedMasked(x, yl, yh, f, texU, midTexMid, focal, midTex, shadeMul)
 				}
 
 				if topWall {
@@ -1909,7 +1926,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						mid = floorClip[x] - 1
 					}
 					if mid >= yl {
-						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, baseRGBA, texU, topTexMid, focal, topTex, hasTopTex)
+						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, front.Light, baseRGBA, texU, topTexMid, focal, topTex, hasTopTex)
 						ceilingClip[x] = mid
 					} else {
 						ceilingClip[x] = yl - 1
@@ -1924,7 +1941,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						mid = ceilingClip[x] + 1
 					}
 					if mid <= yh {
-						g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, baseRGBA, texU, botTexMid, focal, botTex, hasBotTex)
+						g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, front.Light, baseRGBA, texU, botTexMid, focal, botTex, hasBotTex)
 						floorClip[x] = mid
 					} else {
 						floorClip[x] = yh + 1
@@ -2069,7 +2086,7 @@ func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
 	return key
 }
 
-func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, depth float64, base color.RGBA, texU, texMid, focal float64, tex WallTexture, useTex bool) {
+func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, depth float64, sectorLight int16, base color.RGBA, texU, texMid, focal float64, tex WallTexture, useTex bool) {
 	if x < 0 || x >= g.viewW || y0 > y1 {
 		return
 	}
@@ -2088,14 +2105,8 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	if y1 > wallBottom[x] {
 		wallBottom[x] = y1
 	}
-	sf := shadeFactorByDistance(depth)
-	shadeMul := int(sf * 256.0)
-	if shadeMul < 0 {
-		shadeMul = 0
-	}
-	if shadeMul > 256 {
-		shadeMul = 256
-	}
+	distMul := shadeMulByDistance(depth)
+	shadeMul := combineShadeMul(distMul, sectorLightMul(sectorLight))
 	if useTex {
 		g.drawBasicWallColumnTextured(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul)
 		g.writeDepthColumn(x, y0, y1, depth)
@@ -2348,6 +2359,36 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		drawWallColumnTexturedLEColPow2(pix32, pixI, rowStridePix, col, texVFixed, texVStepFixed, hmask, y1-y0+1, shadeMul)
 		return
 	}
+	if doomColormapEnabled && shadeMul != 256 {
+		shadeMulU := uint32(shadeMul)
+		if useColMajor {
+			for y := y0; y <= y1; y++ {
+				ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
+				pix32[pixI] = shadePackedDOOMColormap(texCol[colBase+ty], shadeMulU)
+				pixI += rowStridePix
+				texVFixed += texVStepFixed
+			}
+			return
+		}
+		if pow2H {
+			for y := y0; y <= y1; y++ {
+				ty := int((texVFixed >> fracBits) & int64(hmask))
+				ti := ty*tex.Width + tx
+				pix32[pixI] = shadePackedDOOMColormap(tex32[ti], shadeMulU)
+				pixI += rowStridePix
+				texVFixed += texVStepFixed
+			}
+			return
+		}
+		for y := y0; y <= y1; y++ {
+			ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
+			ti := ty*tex.Width + tx
+			pix32[pixI] = shadePackedDOOMColormap(tex32[ti], shadeMulU)
+			pixI += rowStridePix
+			texVFixed += texVStepFixed
+		}
+		return
+	}
 	if shadeMul == 256 {
 		if useColMajor {
 			for y := y0; y <= y1; y++ {
@@ -2453,6 +2494,56 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	}
 }
 
+func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, texMid, focal float64, tex WallTexture, shadeMul int) {
+	if x < 0 || x >= g.viewW || y0 > y1 {
+		return
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if y1 >= g.viewH {
+		y1 = g.viewH - 1
+	}
+	if y0 > y1 || tex.Width <= 0 || tex.Height <= 0 {
+		return
+	}
+	rowStridePix := g.viewW
+	pixI := y0*rowStridePix + x
+	pix32 := g.wallPix32
+	tex32 := tex.RGBA32
+	if len(tex32) != tex.Width*tex.Height {
+		if len(tex.RGBA) != tex.Width*tex.Height*4 || len(tex.RGBA) < 4 {
+			return
+		}
+		tex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex.RGBA))), len(tex.RGBA)/4)
+	}
+	txi := int(floorFixed(texU) >> fracBits)
+	tx := 0
+	if tex.Width > 0 && (tex.Width&(tex.Width-1)) == 0 {
+		tx = txi & (tex.Width - 1)
+	} else {
+		tx = wrapIndex(txi, tex.Width)
+	}
+	rowScale := depth / focal
+	cy := float64(g.viewH) * 0.5
+	texV := texMid - ((cy - (float64(y0) + 0.5)) * rowScale)
+	texVFixed := floorFixed(texV)
+	texVStepFixed := floorFixed(rowScale)
+	stamp := g.depthFrameStamp
+	depthPacked := packDepthStamped(encodeDepthQ(depth), stamp)
+	shadeMulU := uint32(shadeMul)
+	for y := y0; y <= y1; y++ {
+		ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
+		src := tex32[ty*tex.Width+tx]
+		if ((src >> pixelAShift) & 0xFF) != 0 {
+			pix32[pixI] = shadePackedRGBA(src, shadeMulU)
+			g.setDepthPixelEncoded(pixI, depthPacked)
+		}
+		pixI += rowStridePix
+		texVFixed += texVStepFixed
+	}
+}
+
 func packedPixelShifts() (r, g, b, a uint) {
 	var probe uint16 = 1
 	if *(*byte)(unsafe.Pointer(&probe)) == 1 {
@@ -2523,6 +2614,9 @@ func unpackDepthQ(v uint32) uint16 {
 }
 
 func shadePackedRGBABig(src, mul uint32) uint32 {
+	if doomColormapEnabled {
+		return shadePackedDOOMColormap(src, mul)
+	}
 	r := ((src >> pixelRShift) & 0xFF) * mul >> 8
 	g := ((src >> pixelGShift) & 0xFF) * mul >> 8
 	b := ((src >> pixelBShift) & 0xFF) * mul >> 8
@@ -2530,6 +2624,9 @@ func shadePackedRGBABig(src, mul uint32) uint32 {
 }
 
 func shadePackedRGBA(src, mul uint32) uint32 {
+	if doomColormapEnabled {
+		return shadePackedDOOMColormap(src, mul)
+	}
 	if mul >= 256 {
 		return src | pixelOpaqueA
 	}
@@ -2539,6 +2636,26 @@ func shadePackedRGBA(src, mul uint32) uint32 {
 		return pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
 	}
 	return shadePackedRGBABig(src, mul)
+}
+
+func shadePackedDOOMColormap(src, mul uint32) uint32 {
+	if doomColormapRows <= 0 || len(doomColormapRGBA) < doomColormapRows*256 || len(doomPalIndexLUT32) != 32*32*32 {
+		return src | pixelOpaqueA
+	}
+	m := int(mul)
+	if m < 0 {
+		m = 0
+	}
+	if m > 256 {
+		m = 256
+	}
+	row := ((256 - m) * (doomColormapRows - 1)) / 256
+	r := uint8((src >> pixelRShift) & 0xFF)
+	g := uint8((src >> pixelGShift) & 0xFF)
+	b := uint8((src >> pixelBShift) & 0xFF)
+	qi := (int(r>>3) << 10) | (int(g>>3) << 5) | int(b>>3)
+	palIdx := int(doomPalIndexLUT32[qi])
+	return doomColormapRGBA[row*256+palIdx]
 }
 
 func spritePixels32(tex WallTexture) ([]uint32, bool) {
@@ -2636,6 +2753,16 @@ func (g *game) ensureThingItemsScratch(n int) []projectedThingItem {
 }
 
 func drawWallColumnTexturedLEColPow2(pix32 []uint32, pixI, rowStridePix int, col []uint32, texVFixed, texVStepFixed int64, hmask, count, shadeMul int) {
+	if doomColormapEnabled {
+		shadeMulU := uint32(shadeMul)
+		for ; count > 0; count-- {
+			ty := int((texVFixed >> fracBits) & int64(hmask))
+			pix32[pixI] = shadePackedDOOMColormap(col[ty], shadeMulU)
+			pixI += rowStridePix
+			texVFixed += texVStepFixed
+		}
+		return
+	}
 	if shadeMul == 256 {
 		for ; count > 0; count-- {
 			ty := int((texVFixed >> fracBits) & int64(hmask))
@@ -2663,6 +2790,76 @@ func initWallShadeLUT() {
 			wallShadeLUT[mul][c] = uint8((c * mul) >> 8)
 		}
 	}
+}
+
+func initSectorLightMulLUT() {
+	const minMul = 72 // keep very dark sectors visible, but clearly dim.
+	for i := 0; i < len(sectorLightMulLUT); i++ {
+		sectorLightMulLUT[i] = uint8(minMul + (i*(256-minMul)+127)/255)
+	}
+}
+
+func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int) {
+	doomColormapEnabled = false
+	doomColormapRows = 0
+	doomColormapRGBA = nil
+	doomPalIndexLUT32 = nil
+	if len(paletteRGBA) < 256*4 || len(colorMap) < 256 || rows <= 0 {
+		return
+	}
+	maxRows := len(colorMap) / 256
+	if rows > maxRows {
+		rows = maxRows
+	}
+	if rows <= 0 {
+		return
+	}
+	doomColormapRGBA = make([]uint32, rows*256)
+	for r := 0; r < rows; r++ {
+		rowBase := r * 256
+		for i := 0; i < 256; i++ {
+			pi := int(colorMap[rowBase+i]) * 4
+			if pi+3 >= len(paletteRGBA) {
+				doomColormapRGBA[rowBase+i] = packRGBA(0, 0, 0)
+				continue
+			}
+			doomColormapRGBA[rowBase+i] = packRGBA(paletteRGBA[pi], paletteRGBA[pi+1], paletteRGBA[pi+2])
+		}
+	}
+	doomPalIndexLUT32 = buildPaletteIndexLUT32(paletteRGBA)
+	doomColormapRows = rows
+	doomColormapEnabled = len(doomPalIndexLUT32) == 32*32*32
+}
+
+func buildPaletteIndexLUT32(paletteRGBA []byte) []uint8 {
+	if len(paletteRGBA) < 256*4 {
+		return nil
+	}
+	lut := make([]uint8, 32*32*32)
+	for r5 := 0; r5 < 32; r5++ {
+		rv := r5*8 + 4
+		for g5 := 0; g5 < 32; g5++ {
+			gv := g5*8 + 4
+			for b5 := 0; b5 < 32; b5++ {
+				bv := b5*8 + 4
+				bestIdx := 0
+				bestDist := int(^uint(0) >> 1)
+				for i := 0; i < 256; i++ {
+					pi := i * 4
+					dr := int(paletteRGBA[pi+0]) - rv
+					dg := int(paletteRGBA[pi+1]) - gv
+					db := int(paletteRGBA[pi+2]) - bv
+					d := dr*dr + dg*dg + db*db
+					if d < bestDist {
+						bestDist = d
+						bestIdx = i
+					}
+				}
+				lut[(r5<<10)|(g5<<5)|b5] = uint8(bestIdx)
+			}
+		}
+	}
+	return lut
 }
 
 func floorFixed(v float64) int64 {
@@ -2832,6 +3029,14 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				if depth <= 0 {
 					continue
 				}
+				spanLightMul := sectorLightMul(key.light)
+				midX := (x1 + x2) >> 1
+				wxMid := camX + depth*ca - ((cx-(float64(midX)+0.5))*depth/focal)*sa
+				wyMid := camY + depth*sa + ((cx-(float64(midX)+0.5))*depth/focal)*ca
+				if sec := g.sectorAt(int64(wxMid*fracUnit), int64(wyMid*fracUnit)); sec >= 0 && sec < len(g.m.Sectors) {
+					spanLightMul = sectorLightMul(g.m.Sectors[sec].Light)
+				}
+				shadeMul := combineShadeMul(shadeMulByDistance(depth), spanLightMul)
 				stamp := g.depthFrameStamp
 				depthQ := encodeDepthQ(depth)
 				depthPacked := packDepthStamped(depthQ, stamp)
@@ -2844,15 +3049,19 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				stepWY := -(depth / focal) * ca
 				pixI := rowPix + x1
 				if !flatTexReady {
+					fbShadePacked := fbPacked
+					if shadeMul != 256 {
+						fbShadePacked = shadePackedRGBABig(fbPacked, uint32(shadeMul))
+					}
 					x := x1
 					for ; x+1 <= x2; x += 2 {
-						pix32[pixI] = fbPacked
-						pix32[pixI+1] = fbPacked
+						pix32[pixI] = fbShadePacked
+						pix32[pixI+1] = fbShadePacked
 						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 						pixI += 2
 					}
 					if x <= x2 {
-						pix32[pixI] = fbPacked
+						pix32[pixI] = fbShadePacked
 						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
@@ -2871,8 +3080,14 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					u1 := int(wxFixed>>fracBits) & 63
 					v1 := int(wyFixed>>fracBits) & 63
 					p1 := tex32[(v1<<6)+u1]
-					pix32[pixI] = p0
-					pix32[pixI+1] = p1
+					if shadeMul == 256 {
+						pix32[pixI] = p0
+						pix32[pixI+1] = p1
+					} else {
+						sm := uint32(shadeMul)
+						pix32[pixI] = shadePackedRGBABig(p0, sm)
+						pix32[pixI+1] = shadePackedRGBABig(p1, sm)
+					}
 					g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 					wxFixed += stepWXFixed
 					wyFixed += stepWYFixed
@@ -2881,7 +3096,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				if x <= x2 {
 					u := int(wxFixed>>fracBits) & 63
 					v := int(wyFixed>>fracBits) & 63
-					pix32[pixI] = tex32[(v<<6)+u]
+					if shadeMul == 256 {
+						pix32[pixI] = tex32[(v<<6)+u]
+					} else {
+						pix32[pixI] = shadePackedRGBABig(tex32[(v<<6)+u], uint32(shadeMul))
+					}
 					g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 				}
 			}
@@ -3850,7 +4069,7 @@ func (g *game) drawBillboardProjectiles(screen *ebiten.Image, camX, camY, camAng
 			dist:  f,
 			sx:    sx,
 			sy:    sy,
-			r:     math.Min(48, r),
+			r:     r,
 			outer: color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
 			inner: color.RGBA{R: 255, G: 236, B: 120, A: 232},
 		})
@@ -3919,14 +4138,21 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		}
 		cr := projectileColor(p.kind)
 		spriteTex, hasSprite := g.projectileSpriteTexture(p.kind, g.worldTic)
+		sec := g.sectorAt(p.x, p.y)
+		lightMul := uint32(256)
+		if sec >= 0 && sec < len(g.m.Sectors) {
+			lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+		}
 		items = append(items, projectedProjectileItem{
-			dist:      f,
-			sx:        sx,
-			sy:        sy,
-			r:         math.Min(48, r),
-			clr:       color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
-			spriteTex: spriteTex,
-			hasSprite: hasSprite,
+			dist:       f,
+			sx:         sx,
+			sy:         sy,
+			r:          r,
+			clr:        color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
+			lightMul:   lightMul,
+			fullBright: true,
+			spriteTex:  spriteTex,
+			hasSprite:  hasSprite,
 		})
 	}
 	g.projectileItemsScratch = items
@@ -3934,9 +4160,9 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
 		depthPacked := packDepthStamped(depthQ, stamp)
-		shadeMul := uint32(monsterShadeFactor(it.dist, near) * 256.0)
-		if shadeMul > 256 {
-			shadeMul = 256
+		shadeMul := uint32(256)
+		if !it.fullBright {
+			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
 		if it.hasSprite {
 			th := it.spriteTex.Height
@@ -4195,13 +4421,20 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if !ok || tex.Height <= 0 || tex.Width <= 0 {
 			continue
 		}
+		sec := g.thingSectorCached(i, th)
+		lightMul := uint32(256)
+		if sec >= 0 && sec < len(g.m.Sectors) {
+			lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+		}
 		items = append(items, projectedMonsterItem{
-			dist: f,
-			sx:   sx,
-			yb:   yb,
-			h:    h,
-			tex:  tex,
-			flip: flip,
+			dist:       f,
+			sx:         sx,
+			yb:         yb,
+			h:          h,
+			tex:        tex,
+			flip:       flip,
+			lightMul:   lightMul,
+			fullBright: monsterSpriteFullBright(sprite),
 		})
 	}
 	g.monsterItemsScratch = items
@@ -4247,9 +4480,9 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if y1 >= viewH {
 			y1 = viewH - 1
 		}
-		shadeMul := uint32(monsterShadeFactor(it.dist, near) * 256.0)
-		if shadeMul > 256 {
-			shadeMul = 256
+		shadeMul := uint32(256)
+		if !it.fullBright {
+			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
 		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
 		for x := x0; x <= x1; x++ {
@@ -4367,7 +4600,8 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if isMonster(th.Type) || isPlayerStart(th.Type) {
 			continue
 		}
-		if !g.sectorVisibleNow(g.thingSectorCached(i, th)) {
+		sec := g.thingSectorCached(i, th)
+		if !g.sectorVisibleNow(sec) {
 			continue
 		}
 		sprite := g.worldThingSpriteName(th.Type, g.worldTic)
@@ -4398,12 +4632,18 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if sx+xPad < 0 || sx-xPad > float64(viewW) {
 			continue
 		}
+		lightMul := uint32(256)
+		if sec >= 0 && sec < len(g.m.Sectors) {
+			lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+		}
 		items = append(items, projectedThingItem{
-			dist: f,
-			sx:   sx,
-			yb:   yb,
-			h:    h,
-			tex:  tex,
+			dist:       f,
+			sx:         sx,
+			yb:         yb,
+			h:          h,
+			tex:        tex,
+			lightMul:   lightMul,
+			fullBright: worldThingSpriteFullBright(sprite),
 		})
 	}
 	g.thingItemsScratch = items
@@ -4447,9 +4687,9 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if y1 >= viewH {
 			y1 = viewH - 1
 		}
-		shadeMul := uint32(monsterShadeFactor(it.dist, near) * 256.0)
-		if shadeMul > 256 {
-			shadeMul = 256
+		shadeMul := uint32(256)
+		if !it.fullBright {
+			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
 		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
 		for x := x0; x <= x1; x++ {
@@ -5109,6 +5349,36 @@ func normalizeDeg360(deg float64) float64 {
 		deg -= 360
 	}
 	return deg
+}
+
+func monsterSpriteFullBright(name string) bool {
+	if len(name) < 5 {
+		return false
+	}
+	prefix := strings.ToUpper(name[:4])
+	frame := name[4]
+	switch prefix {
+	case "POSS", "SPOS":
+		return frame == 'E'
+	case "TROO", "HEAD", "BOSS", "SPID":
+		return frame == 'F'
+	case "CYBR":
+		return frame == 'F' || frame == 'G'
+	default:
+		return false
+	}
+}
+
+func worldThingSpriteFullBright(name string) bool {
+	if len(name) < 4 {
+		return false
+	}
+	switch strings.ToUpper(name[:4]) {
+	case "BON1", "BON2", "SOUL", "PINV", "PSTR", "MEGA", "COLU", "TBLU", "TGRN", "TRED", "SMBT", "SMGT", "SMRT", "FCAN", "CAND", "CBRA", "TRE1", "TRE2":
+		return true
+	default:
+		return false
+	}
 }
 
 func monsterRenderHeight(typ int16) float64 {
@@ -5877,6 +6147,46 @@ func shadeFactorByDistance(dist float64) float64 {
 		n = 1
 	}
 	return 1.0 - 0.72*n
+}
+
+func shadeMulByDistance(dist float64) int {
+	sf := shadeFactorByDistance(dist)
+	m := int(sf * 256.0)
+	if m < 0 {
+		return 0
+	}
+	if m > 256 {
+		return 256
+	}
+	return m
+}
+
+func combineShadeMul(a, b int) int {
+	// Keep sector lighting visible without crushing into black.
+	// Weight distance more than sector light to preserve depth readability.
+	m := (a*3 + b) >> 2
+	if m < 32 {
+		m = 32
+	}
+	if m < 0 {
+		return 0
+	}
+	if m > 256 {
+		return 256
+	}
+	return m
+}
+
+func sectorLightMul(light int16) int {
+	sectorLightLUTOnce.Do(initSectorLightMulLUT)
+	i := int(light)
+	if i < 0 {
+		i = 0
+	}
+	if i > 255 {
+		i = 255
+	}
+	return int(sectorLightMulLUT[i])
 }
 
 func doomFocalLength(viewW int) float64 {

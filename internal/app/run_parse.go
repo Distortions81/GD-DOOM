@@ -256,6 +256,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wallTexBank := map[string]automap.WallTexture(nil)
 	bootSplash := automap.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
+	doomColorMap := []byte(nil)
+	doomColorMapRows := 0
 	statusPatchBank := map[string]automap.WallTexture(nil)
 	messageFontBank := map[rune]automap.WallTexture(nil)
 	spritePatchBank := map[string]automap.WallTexture(nil)
@@ -264,6 +266,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "palette import failed: %v\n", perr)
 	} else {
 		doomPaletteRGBA = pal
+	}
+	if cmLump, ok := wf.LumpByName("COLORMAP"); ok {
+		if cmData, err := wf.LumpData(cmLump); err == nil && len(cmData) >= 256 {
+			doomColorMapRows = len(cmData) / 256
+			doomColorMap = cmData[:doomColorMapRows*256]
+		}
 	}
 	if *importTextures {
 		ts, terr := doomtex.LoadFromWAD(wf)
@@ -395,6 +403,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			WallTexBank:                wallTexBank,
 			BootSplash:                 bootSplash,
 			DoomPaletteRGBA:            doomPaletteRGBA,
+			DoomColorMap:               doomColorMap,
+			DoomColorMapRows:           doomColorMapRows,
 			StatusPatchBank:            statusPatchBank,
 			MessageFontBank:            messageFontBank,
 			SpritePatchBank:            spritePatchBank,
