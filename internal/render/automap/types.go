@@ -19,6 +19,7 @@ type Options struct {
 	WallTexBank     map[string]WallTexture
 	StatusPatchBank map[string]WallTexture
 	MessageFontBank map[rune]WallTexture
+	SpritePatchBank map[string]WallTexture
 	SoundBank       SoundBank
 	DemoScript      *DemoScript
 	RecordDemoPath  string

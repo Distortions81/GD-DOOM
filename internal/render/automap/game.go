@@ -220,6 +220,7 @@ type game struct {
 	flatImgCache       map[string]*ebiten.Image
 	statusPatchImg     map[string]*ebiten.Image
 	messageFontImg     map[rune]*ebiten.Image
+	monsterSpriteImg   map[string]*ebiten.Image
 	whitePixel         *ebiten.Image
 	cullLogBudget      int
 	floorDbgMode       floorDebugMode
@@ -1749,6 +1750,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
+	// Keep sprite billboards visible in doom-basic mode as a pragmatic first pass.
+	g.drawBillboardProjectiles(screen, camX, camY, camAng, focal, near)
+	g.drawBillboardMonsters(screen, camX, camY, camAng, focal, near)
 }
 
 func hasMarkedPlane3DData(planes []*plane3DVisplane) bool {
@@ -3079,11 +3083,79 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx1), float32(yb1), 1.2, c, true)
 		vector.StrokeLine(screen, float32(sx2), float32(yt2), float32(sx2), float32(yb2), 1.2, c, true)
 	}
-	g.drawPseudo3DProjectiles(screen, camX, camY, camAng, focal, near)
-	g.drawPseudo3DMonsters(screen, camX, camY, camAng, focal, near)
+	g.drawWireframeMonsters(screen, camX, camY, camAng, focal, near)
 }
 
-func (g *game) drawPseudo3DProjectiles(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
+func (g *game) drawWireframeMonsters(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
+	type projectedMonster struct {
+		dist float64
+		lx   float64
+		rx   float64
+		yt   float64
+		yb   float64
+		clr  color.RGBA
+	}
+	items := make([]projectedMonster, 0, 32)
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	for i, th := range g.m.Things {
+		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+			continue
+		}
+		if !isMonster(th.Type) {
+			continue
+		}
+		tx := float64(th.X) - camX
+		ty := float64(th.Y) - camY
+		f := tx*ca + ty*sa
+		s := -tx*sa + ty*ca
+		if f <= near {
+			continue
+		}
+		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
+			continue
+		}
+		sx := float64(g.viewW)/2 - (s/f)*focal
+		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
+		monsterH := monsterRenderHeight(th.Type)
+		yt := float64(g.viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
+		yb := float64(g.viewH)/2 - ((floorZ-eyeZ)/f)*focal
+		if yb <= yt {
+			continue
+		}
+		h := yb - yt
+		w := math.Max(6, math.Min(120, h*0.45))
+		lx := sx - w/2
+		rx := sx + w/2
+		if rx < 0 || lx > float64(g.viewW) {
+			continue
+		}
+		sf := float64(monsterShadeFactor(f, near))
+		items = append(items, projectedMonster{
+			dist: f,
+			lx:   lx,
+			rx:   rx,
+			yt:   yt,
+			yb:   yb,
+			clr: color.RGBA{
+				R: uint8(float64(thingMonsterColor.R) * sf),
+				G: uint8(float64(thingMonsterColor.G) * sf),
+				B: uint8(float64(thingMonsterColor.B) * sf),
+				A: 255,
+			},
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
+	for _, it := range items {
+		vector.StrokeLine(screen, float32(it.lx), float32(it.yt), float32(it.rx), float32(it.yt), 1.2, it.clr, true)
+		vector.StrokeLine(screen, float32(it.lx), float32(it.yb), float32(it.rx), float32(it.yb), 1.2, it.clr, true)
+		vector.StrokeLine(screen, float32(it.lx), float32(it.yt), float32(it.lx), float32(it.yb), 1.1, it.clr, true)
+		vector.StrokeLine(screen, float32(it.rx), float32(it.yt), float32(it.rx), float32(it.yb), 1.1, it.clr, true)
+	}
+}
+
+func (g *game) drawBillboardProjectiles(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
 	type projectedProjectile struct {
 		dist  float64
 		sx    float64
@@ -3160,13 +3232,13 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 	}
 }
 
-func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
+func (g *game) drawBillboardMonsters(screen *ebiten.Image, camX, camY, camAng, focal, near float64) {
 	type projectedMonster struct {
-		dist float64
-		sx   float64
-		yt   float64
-		yb   float64
-		clr  color.RGBA
+		dist   float64
+		sx     float64
+		yt     float64
+		yb     float64
+		sprite string
 	}
 	items := make([]projectedMonster, 0, 32)
 	ca := math.Cos(camAng)
@@ -3206,13 +3278,13 @@ func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, fo
 		if sx+xPad < 0 || sx-xPad > float64(g.viewW) {
 			continue
 		}
-		clr := shadedMonsterColor(f, near)
+		sprite := g.monsterSpriteName(th.Type, g.worldTic)
 		items = append(items, projectedMonster{
-			dist: f,
-			sx:   sx,
-			yt:   yt,
-			yb:   yb,
-			clr:  clr,
+			dist:   f,
+			sx:     sx,
+			yt:     yt,
+			yb:     yb,
+			sprite: sprite,
 		})
 	}
 
@@ -3220,18 +3292,89 @@ func (g *game) drawPseudo3DMonsters(screen *ebiten.Image, camX, camY, camAng, fo
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		h := it.yb - it.yt
-		w := math.Max(6, math.Min(120, h*0.45))
-		lx := it.sx - w/2
-		ty := it.yt
-		// Body billboard.
-		ebitenutil.DrawRect(screen, lx, ty+h*0.22, w, h*0.78, it.clr)
-		// Head cap.
-		headClr := brighten(it.clr, 18)
-		ebitenutil.DrawRect(screen, lx+w*0.16, ty, w*0.68, h*0.26, headClr)
-		// Eye slit.
-		ebitenutil.DrawRect(screen, lx+w*0.26, ty+h*0.10, w*0.48, math.Max(1, h*0.03), color.RGBA{R: 20, G: 14, B: 14, A: 220})
-		// Foot shadow/ground cue.
-		ebitenutil.DrawRect(screen, lx-w*0.08, it.yb-math.Max(1, h*0.03), w*1.16, math.Max(1, h*0.03), color.RGBA{R: 30, G: 20, B: 20, A: 180})
+		img, tw, th, ox, oy, ok := g.monsterSpritePatch(it.sprite)
+		if !ok || th <= 0 {
+			continue
+		}
+		scale := h / float64(th)
+		w := float64(tw) * scale
+		op := &ebiten.DrawImageOptions{}
+		op.Filter = ebiten.FilterNearest
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(it.sx-float64(ox)*scale, it.yb-float64(oy)*scale)
+		s := monsterShadeFactor(it.dist, near)
+		op.ColorScale.Scale(s, s, s, 1.0)
+		screen.DrawImage(img, op)
+		// Ground cue to keep contact readable.
+		ebitenutil.DrawRect(screen, it.sx-w*0.54, it.yb-math.Max(1, h*0.03), w*1.08, math.Max(1, h*0.03), color.RGBA{R: 28, G: 20, B: 20, A: 150})
+	}
+}
+
+func monsterShadeFactor(dist, near float64) float32 {
+	n := (dist - near) / 1200.0
+	if n < 0 {
+		n = 0
+	}
+	if n > 1 {
+		n = 1
+	}
+	return float32(1.0 - 0.55*n)
+}
+
+func (g *game) monsterSpritePatch(name string) (*ebiten.Image, int, int, int, int, bool) {
+	key := strings.ToUpper(strings.TrimSpace(name))
+	if key == "" {
+		return nil, 0, 0, 0, 0, false
+	}
+	p, ok := g.opts.SpritePatchBank[key]
+	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+		return nil, 0, 0, 0, 0, false
+	}
+	if g.monsterSpriteImg == nil {
+		g.monsterSpriteImg = make(map[string]*ebiten.Image, 64)
+	}
+	if img, ok := g.monsterSpriteImg[key]; ok {
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+	}
+	img := ebiten.NewImage(p.Width, p.Height)
+	img.WritePixels(p.RGBA)
+	g.monsterSpriteImg[key] = img
+	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+}
+
+func (g *game) monsterSpriteName(typ int16, tic int) string {
+	frame := (tic / 8) & 3
+	pick := func(a, b, c, d string) string {
+		seq := [4]string{a, b, c, d}
+		for i := 0; i < 4; i++ {
+			name := seq[(frame+i)&3]
+			if _, ok := g.opts.SpritePatchBank[name]; ok {
+				return name
+			}
+		}
+		return ""
+	}
+	switch typ {
+	case 3004:
+		return pick("POSSA1", "POSSB1", "POSSC1", "POSSD1")
+	case 9:
+		return pick("SPOSA1", "SPOSB1", "SPOSC1", "SPOSD1")
+	case 3001:
+		return pick("TROOA1", "TROOB1", "TROOC1", "TROOD1")
+	case 3002:
+		return pick("SARGA1", "SARGB1", "SARGC1", "SARGD1")
+	case 3006:
+		return pick("SKULA1", "SKULB1", "SKULC1", "SKULD1")
+	case 3005:
+		return pick("HEADA1", "HEADB1", "HEADC1", "HEADD1")
+	case 3003:
+		return pick("BOSSA1", "BOSSB1", "BOSSC1", "BOSSD1")
+	case 16:
+		return pick("CYBRA1", "CYBRB1", "CYBRC1", "CYBRD1")
+	case 7:
+		return pick("SPIDA1", "SPIDB1", "SPIDC1", "SPIDD1")
+	default:
+		return ""
 	}
 }
 
@@ -3251,33 +3394,6 @@ func monsterRenderHeight(typ int16) float64 {
 		return 100
 	default:
 		return 56
-	}
-}
-
-func shadedMonsterColor(dist, near float64) color.RGBA {
-	// Distance fog-ish shading for pseudo-3D readability.
-	n := (dist - near) / 1200.0
-	if n < 0 {
-		n = 0
-	}
-	if n > 1 {
-		n = 1
-	}
-	f := 1.0 - 0.65*n
-	return color.RGBA{
-		R: uint8(float64(thingMonsterColor.R) * f),
-		G: uint8(float64(thingMonsterColor.G) * f),
-		B: uint8(float64(thingMonsterColor.B) * f),
-		A: 245,
-	}
-}
-
-func brighten(c color.RGBA, add uint8) color.RGBA {
-	return color.RGBA{
-		R: uint8(min(255, int(c.R)+int(add))),
-		G: uint8(min(255, int(c.G)+int(add))),
-		B: uint8(min(255, int(c.B)+int(add))),
-		A: c.A,
 	}
 }
 

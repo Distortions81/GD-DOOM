@@ -222,6 +222,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wallTexBank := map[string]automap.WallTexture(nil)
 	statusPatchBank := map[string]automap.WallTexture(nil)
 	messageFontBank := map[rune]automap.WallTexture(nil)
+	spritePatchBank := map[string]automap.WallTexture(nil)
 	var texSet *doomtex.Set
 	if *importTextures {
 		ts, terr := doomtex.LoadFromWAD(wf)
@@ -274,6 +275,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		messageFontBank = buildMessageFontBank(texSet)
 		if len(messageFontBank) > 0 {
 			fmt.Fprintf(stderr, "message font import: glyphs=%d\n", len(messageFontBank))
+		}
+		spritePatchBank = buildMonsterSpriteBank(texSet)
+		if len(spritePatchBank) > 0 {
+			fmt.Fprintf(stderr, "monster sprite import: patches=%d\n", len(spritePatchBank))
 		}
 	}
 	flatBank := map[string][]byte(nil)
@@ -342,6 +347,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			WallTexBank:     wallTexBank,
 			StatusPatchBank: statusPatchBank,
 			MessageFontBank: messageFontBank,
+			SpritePatchBank: spritePatchBank,
 			SoundBank:       soundBank,
 			RecordDemoPath:  resolvedRecordDemoPath,
 		}
@@ -573,6 +579,53 @@ func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
 		out[rune(c)] = automap.WallTexture{
+			RGBA:    rgba,
+			RGBA32:  rgba32,
+			Width:   w,
+			Height:  h,
+			OffsetX: ox,
+			OffsetY: oy,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
+	if ts == nil {
+		return nil
+	}
+	names := []string{
+		// Zombieman / shotgun guy.
+		"POSSA1", "POSSB1", "POSSC1", "POSSD1",
+		"SPOSA1", "SPOSB1", "SPOSC1", "SPOSD1",
+		// Imp / demon.
+		"TROOA1", "TROOB1", "TROOC1", "TROOD1",
+		"SARGA1", "SARGB1", "SARGC1", "SARGD1",
+		// Lost soul / caco.
+		"SKULA1", "SKULB1", "SKULC1", "SKULD1",
+		"HEADA1", "HEADB1", "HEADC1", "HEADD1",
+		// Baron / cyber / spider.
+		"BOSSA1", "BOSSB1", "BOSSC1", "BOSSD1",
+		"CYBRA1", "CYBRB1", "CYBRC1", "CYBRD1",
+		"SPIDA1", "SPIDB1", "SPIDC1", "SPIDD1",
+	}
+	out := make(map[string]automap.WallTexture, len(names))
+	for _, name := range names {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
+		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+			continue
+		}
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		out[name] = automap.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
