@@ -37,6 +37,10 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-cheat-level <0-3>`: startup cheats (`0=off`, `1=automap reveal`, `2=IDFA-like`, `3=IDKFA + invuln`)
 - `-invuln`: start with invulnerability (`IDDQD`-like)
 - `-sourceport-mode`: enable source-port style automap extras at startup
+- `-kage-shader`: enable postprocess shader chain (LUT/gamma/CRT)
+- `-crt-effect`: enable CRT pass (applied last in shader chain)
+- `-depth-buffer-view`: show grayscale depth view instead of 3D scene
+- `-texture-anim-crossfade-frames`: sourceport animation blend frames (`0` disables, max effective `7` at Doom's 8-tic cadence)
 - `-all-cheats`: legacy alias for full cheats (`-cheat-level=3 -invuln=true`)
 - `-start-in-map`: start with automap open (default `false`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
@@ -45,6 +49,9 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-map-floor-tex-2d`: sourceport map mode: draw floor flat textures in 2D automap (defaults to `true` when `-sourceport-mode` is enabled)
 - `-demo <path>`: run a scripted `gddoom-demo-v1` input stream for benchmarking and exit when done
 - `-record-demo <path>`: record live input each game tic to `gddoom-demo-v1` and write on exit
+- `-cpuprofile <path>`: write Go CPU profile
+- `-no-vsync`: disable vsync and uncap draw FPS
+- `-nofps`: hide FPS/MS overlay
 
 Demo format (`gddoom-demo-v1`):
 
@@ -115,6 +122,9 @@ Config notes:
 - Locked doors now check collected key inventory.
 - Doors now visibly slide open/closed in walk view (rendered door-ceiling motion tracks gameplay state).
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).
+- 3D lighting now uses Doom `COLORMAP` behavior with fullbright sprite support.
+- Two-sided masked mid textures render in a deferred masked pass (portal/grate style walls).
+- Kage postprocess is opt-in (`-kage-shader`); default faithful startup path runs without post shaders.
 
 ## Project Docs
 

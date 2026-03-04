@@ -7,7 +7,9 @@ Goal: move `doom-basic` 3D walls/floors/ceilings from approximate per-pixel plan
 - Default (faithful Doom mode): `doom-basic` software 3D renderer is active.
 - Implemented: wall-driven clips, visplane split/reuse (`R_CheckPlane`-like), span raster for floors/ceilings.
 - Implemented: textured wall columns (mid/top/bottom).
-- Remaining: sky parity, masked mid textures, and final edge/pop cleanup.
+- Implemented: deferred masked mid-texture pass.
+- Implemented: Doom `COLORMAP`-based lighting + fullbright sprite handling.
+- Remaining: final edge/pop cleanup and targeted parity verification.
 
 Reference implementation in this repo:
 - `doom-source/linuxdoom-1.10/r_bsp.c` (`R_Subsector`)
@@ -17,8 +19,7 @@ Reference implementation in this repo:
 ## Current Gaps
 
 - Plane raster still has approximation behavior at some angles/transitions.
-- Sky handling is simplified (not full Doom sky plane behavior).
-- Masked mid-texture behavior is not yet Doom-faithful.
+- Validate sky and masked behavior through parity captures to prevent regressions.
 
 ## Milestone 0: Instrumentation and Safety
 
@@ -42,15 +43,16 @@ Reference implementation in this repo:
 ## Milestone 3: Span Raster (R_MapPlane-like)
 
 - [x] Render plane spans with per-row origin + x-step mapping (not per-pixel reprojection loops).
-- [ ] Keep nearest + repeat texture sampling.
-- [ ] Integrate light level lookup model (initially coarse, then Doom-like).
+- [x] Keep nearest + repeat texture sampling.
+- [x] Integrate light level lookup model (Doom `COLORMAP`-driven baseline).
 - [ ] Keep sky path separate (angle-based fetch semantics can be approximated first).
 
 ## Milestone 4: Sky and Edge Parity
 
-- [ ] Implement dedicated sky plane draw path.
+- [x] Sky horizontal panning direction parity verified in current build.
 - [ ] Validate clipping at portals, doors, and height changes.
 - [ ] Remove angle-dependent floor/ceiling pop artifacts.
+- [x] Masked/alpha wall parity issues currently verified fixed.
 
 ## Milestone 5: Cleanup
 
@@ -74,5 +76,6 @@ Reference implementation in this repo:
 
 - [ ] No angle-dependent floor/ceiling pop in current problematic areas.
 - [ ] Floor/ceiling visibility stable across sector height transitions.
-- [ ] Sky behavior no longer produces incorrect flat artifacts.
+- [x] Sky behavior regression not currently reproducible.
+- [x] Masked/alpha wall regressions not currently reproducible.
 - [ ] `go test ./...` remains green.
