@@ -229,6 +229,7 @@ type game struct {
 	plane3DPoolViewW   int
 	wallPrepassBuf     []wallSegPrepass
 	solid3DBuf         []solidSpan
+	solidClipScratch   []solidSpan
 }
 
 type savedMapView struct {
@@ -1469,100 +1470,108 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 		}
 
-		for x := pp.minSX; x <= pp.maxSX; x++ {
-			t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
-			if t < 0 {
-				t = 0
-			}
-			if t > 1 {
-				t = 1
-			}
-			invF := pp.invF1 + (pp.invF2-pp.invF1)*t
-			if invF <= 0 {
-				continue
-			}
-			f := 1.0 / invF
-			if f <= 0 {
-				continue
-			}
-			texU := (pp.uOverF1 + (pp.uOverF2-pp.uOverF1)*t) * f
-
-			yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focal))
-			if yl < ceilingClip[x]+1 {
-				yl = ceilingClip[x] + 1
-			}
-			if markCeiling && planesEnabled && ceilPlane != nil {
-				top := ceilingClip[x] + 1
-				bottom := yl - 1
-				if bottom >= floorClip[x] {
-					bottom = floorClip[x] - 1
+		visibleRanges := clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, solid, g.solidClipScratch[:0])
+		g.solidClipScratch = visibleRanges
+		if len(visibleRanges) == 0 {
+			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+			continue
+		}
+		for _, vis := range visibleRanges {
+			for x := vis.l; x <= vis.r; x++ {
+				t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+				if t < 0 {
+					t = 0
 				}
-				markPlane3DColumnRange(ceilPlane, x, top, bottom, ceilingClip, floorClip)
-			}
-
-			yh := int(math.Floor(float64(g.viewH)/2 - (worldBottom/f)*focal))
-			if yh >= floorClip[x] {
-				yh = floorClip[x] - 1
-			}
-			if markFloor && planesEnabled && floorPlane != nil {
-				top := yh + 1
-				bottom := floorClip[x] - 1
-				if top <= ceilingClip[x] {
-					top = ceilingClip[x] + 1
+				if t > 1 {
+					t = 1
 				}
-				markPlane3DColumnRange(floorPlane, x, top, bottom, ceilingClip, floorClip)
-			}
+				invF := pp.invF1 + (pp.invF2-pp.invF1)*t
+				if invF <= 0 {
+					continue
+				}
+				f := 1.0 / invF
+				if f <= 0 {
+					continue
+				}
+				texU := (pp.uOverF1 + (pp.uOverF2-pp.uOverF1)*t) * f
 
-			if solidWall {
-				tex := midTex
-				texMid := midTexMid
-				useTex := hasMidTex
-				// Closed two-sided doors often have upper/lower textures but no middle texture.
-				if back != nil && !useTex {
-					if topWall && hasTopTex {
-						tex = topTex
-						texMid = topTexMid
-						useTex = true
-					} else if bottomWall && hasBotTex {
-						tex = botTex
-						texMid = botTexMid
-						useTex = true
+				yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focal))
+				if yl < ceilingClip[x]+1 {
+					yl = ceilingClip[x] + 1
+				}
+				if markCeiling && planesEnabled && ceilPlane != nil {
+					top := ceilingClip[x] + 1
+					bottom := yl - 1
+					if bottom >= floorClip[x] {
+						bottom = floorClip[x] - 1
 					}
+					markPlane3DColumnRange(ceilPlane, x, top, bottom, ceilingClip, floorClip)
 				}
-				g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, baseRGBA, texU, texMid, focal, tex, useTex)
-				ceilingClip[x] = g.viewH
-				floorClip[x] = -1
-				continue
-			}
 
-			if topWall {
-				mid := int(math.Floor(float64(g.viewH)/2 - (worldHigh/f)*focal))
-				if mid >= floorClip[x] {
-					mid = floorClip[x] - 1
+				yh := int(math.Floor(float64(g.viewH)/2 - (worldBottom/f)*focal))
+				if yh >= floorClip[x] {
+					yh = floorClip[x] - 1
 				}
-				if mid >= yl {
-					g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, baseRGBA, texU, topTexMid, focal, topTex, hasTopTex)
-					ceilingClip[x] = mid
-				} else {
+				if markFloor && planesEnabled && floorPlane != nil {
+					top := yh + 1
+					bottom := floorClip[x] - 1
+					if top <= ceilingClip[x] {
+						top = ceilingClip[x] + 1
+					}
+					markPlane3DColumnRange(floorPlane, x, top, bottom, ceilingClip, floorClip)
+				}
+
+				if solidWall {
+					tex := midTex
+					texMid := midTexMid
+					useTex := hasMidTex
+					// Closed two-sided doors often have upper/lower textures but no middle texture.
+					if back != nil && !useTex {
+						if topWall && hasTopTex {
+							tex = topTex
+							texMid = topTexMid
+							useTex = true
+						} else if bottomWall && hasBotTex {
+							tex = botTex
+							texMid = botTexMid
+							useTex = true
+						}
+					}
+					g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, baseRGBA, texU, texMid, focal, tex, useTex)
+					ceilingClip[x] = g.viewH
+					floorClip[x] = -1
+					continue
+				}
+
+				if topWall {
+					mid := int(math.Floor(float64(g.viewH)/2 - (worldHigh/f)*focal))
+					if mid >= floorClip[x] {
+						mid = floorClip[x] - 1
+					}
+					if mid >= yl {
+						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, baseRGBA, texU, topTexMid, focal, topTex, hasTopTex)
+						ceilingClip[x] = mid
+					} else {
+						ceilingClip[x] = yl - 1
+					}
+				} else if markCeiling {
 					ceilingClip[x] = yl - 1
 				}
-			} else if markCeiling {
-				ceilingClip[x] = yl - 1
-			}
 
-			if bottomWall {
-				mid := int(math.Ceil(float64(g.viewH)/2 - (worldLow/f)*focal))
-				if mid <= ceilingClip[x] {
-					mid = ceilingClip[x] + 1
-				}
-				if mid <= yh {
-					g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, baseRGBA, texU, botTexMid, focal, botTex, hasBotTex)
-					floorClip[x] = mid
-				} else {
+				if bottomWall {
+					mid := int(math.Ceil(float64(g.viewH)/2 - (worldLow/f)*focal))
+					if mid <= ceilingClip[x] {
+						mid = ceilingClip[x] + 1
+					}
+					if mid <= yh {
+						g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, baseRGBA, texU, botTexMid, focal, botTex, hasBotTex)
+						floorClip[x] = mid
+					} else {
+						floorClip[x] = yh + 1
+					}
+				} else if markFloor {
 					floorClip[x] = yh + 1
 				}
-			} else if markFloor {
-				floorClip[x] = yh + 1
 			}
 		}
 
@@ -2693,6 +2702,41 @@ func addSolidSpan(spans []solidSpan, l, r int) []solidSpan {
 	}
 	if !inserted {
 		out = append(out, ns)
+	}
+	return out
+}
+
+func clipRangeAgainstSolidSpans(l, r int, covered []solidSpan, out []solidSpan) []solidSpan {
+	out = out[:0]
+	if r < l {
+		return out
+	}
+	if len(covered) == 0 {
+		return append(out, solidSpan{l: l, r: r})
+	}
+	cur := l
+	for _, s := range covered {
+		if s.r < cur {
+			continue
+		}
+		if s.l > r {
+			break
+		}
+		if s.l > cur {
+			right := min(r, s.l-1)
+			if right >= cur {
+				out = append(out, solidSpan{l: cur, r: right})
+			}
+		}
+		if s.r+1 > cur {
+			cur = s.r + 1
+		}
+		if cur > r {
+			break
+		}
+	}
+	if cur <= r {
+		out = append(out, solidSpan{l: cur, r: r})
 	}
 	return out
 }
