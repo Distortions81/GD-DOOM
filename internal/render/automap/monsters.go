@@ -77,29 +77,43 @@ func (g *game) tickMonsters() {
 	px := g.p.x
 	py := g.p.y
 	for i, th := range g.m.Things {
-		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
-			g.thingAttackTics[i]--
-		}
-		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
-			g.thingPainTics[i]--
-		}
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
 		}
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 			continue
 		}
-		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
-			continue
-		}
-		if g.thingCooldown[i] > 0 {
-			g.thingCooldown[i]--
-		}
 		tx := int64(th.X) << fracBits
 		ty := int64(th.Y) << fracBits
 		dx := px - tx
 		dy := py - ty
 		dist := hypotFixed(dx, dy)
+
+		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+			g.thingAttackTics[i]--
+		}
+		if i >= 0 && i < len(g.thingAttackFireTics) && g.thingAttackFireTics[i] >= 0 {
+			if g.thingAttackFireTics[i] > 0 {
+				g.thingAttackFireTics[i]--
+			}
+			if g.thingAttackFireTics[i] == 0 {
+				g.faceMonsterToward(i, tx, ty, px, py)
+				_ = g.monsterAttack(i, th.Type, dist)
+				g.thingAttackFireTics[i] = -1
+			}
+		}
+		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+			g.thingPainTics[i]--
+		}
+		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+			if i >= 0 && i < len(g.thingAttackFireTics) {
+				g.thingAttackFireTics[i] = -1
+			}
+			continue
+		}
+		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+			continue
+		}
 
 		if !g.thingAggro[i] {
 			if dist <= monsterWakeRange && g.monsterHasLOS(tx, ty, px, py) {
@@ -121,19 +135,14 @@ func (g *game) tickMonsters() {
 
 		if g.monsterCanMelee(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
-			if g.monsterAttack(i, th.Type, dist) {
-				g.startMonsterAttackAnim(i, th.Type)
-				g.thingCooldown[i] = monsterAttackCooldown(th.Type, g.fastMonstersActive())
+			if g.startMonsterAttackState(i, th.Type, false) {
 				continue
 			}
 		}
 
-		if g.thingCooldown[i] == 0 && g.monsterCheckMissileRange(th.Type, dist, tx, ty, px, py) {
+		if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
-			if g.monsterAttack(i, th.Type, dist) {
-				g.startMonsterAttackAnim(i, th.Type)
-				g.thingCooldown[i] = monsterAttackCooldown(th.Type, g.fastMonstersActive())
-				g.thingJustAtk[i] = true
+			if g.startMonsterAttackState(i, th.Type, true) {
 				continue
 			}
 		}
@@ -172,6 +181,14 @@ func (g *game) ensureMonsterAIState() {
 		old := g.thingAttackTics
 		g.thingAttackTics = make([]int, n)
 		copy(g.thingAttackTics, old)
+	}
+	if len(g.thingAttackFireTics) != n {
+		old := g.thingAttackFireTics
+		g.thingAttackFireTics = make([]int, n)
+		for i := range g.thingAttackFireTics {
+			g.thingAttackFireTics[i] = -1
+		}
+		copy(g.thingAttackFireTics, old)
 	}
 	if len(g.thingPainTics) != n {
 		old := g.thingPainTics
@@ -225,12 +242,107 @@ func (g *game) startMonsterAttackAnim(i int, typ int16) {
 	if i < 0 || i >= len(g.thingAttackTics) {
 		return
 	}
-	total := monsterAttackAnimTotalTics(typ)
+	total := monsterAttackStateTotalTics(typ)
+	if total <= 0 {
+		total = monsterAttackAnimTotalTics(typ)
+	}
 	if total <= 0 {
 		g.thingAttackTics[i] = 0
 		return
 	}
 	g.thingAttackTics[i] = total
+}
+
+func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
+	if i < 0 || g.m == nil || i >= len(g.m.Things) {
+		return false
+	}
+	g.startMonsterAttackAnim(i, typ)
+	if i < 0 || i >= len(g.thingAttackFireTics) {
+		// Fallback for malformed state in tests.
+		tx := int64(g.m.Things[i].X) << fracBits
+		ty := int64(g.m.Things[i].Y) << fracBits
+		dist := hypotFixed(g.p.x-tx, g.p.y-ty)
+		return g.monsterAttack(i, typ, dist)
+	}
+	delay := monsterAttackFireDelayTics(typ)
+	g.thingAttackFireTics[i] = delay
+	if delay <= 0 {
+		tx := int64(g.m.Things[i].X) << fracBits
+		ty := int64(g.m.Things[i].Y) << fracBits
+		dist := hypotFixed(g.p.x-tx, g.p.y-ty)
+		if !g.monsterAttack(i, typ, dist) {
+			g.thingAttackTics[i] = 0
+			g.thingAttackFireTics[i] = -1
+			return false
+		}
+		g.thingAttackFireTics[i] = -1
+	}
+	if missile && i >= 0 && i < len(g.thingJustAtk) {
+		g.thingJustAtk[i] = true
+	}
+	return true
+}
+
+func (g *game) monsterCanTryMissileNow(i int) bool {
+	// Doom A_Chase gate: in non-fast modes, missile attacks only when movecount is 0.
+	if g.fastMonstersActive() {
+		return true
+	}
+	if i < 0 || i >= len(g.thingMoveCount) {
+		return true
+	}
+	return g.thingMoveCount[i] <= 0
+}
+
+func monsterAttackFireDelayTics(typ int16) int {
+	switch typ {
+	case 3004: // zombieman
+		return 10
+	case 9: // sergeant
+		return 16
+	case 3001: // imp
+		return 16
+	case 3002, 58: // demon/spectre
+		return 16
+	case 3005: // cacodemon
+		return 10
+	case 3003, 69: // baron/knight
+		return 16
+	case 16: // cyberdemon
+		return 6
+	case 7: // spider mastermind
+		return 20
+	case 3006: // lost soul
+		return 0
+	default:
+		return 0
+	}
+}
+
+func monsterAttackStateTotalTics(typ int16) int {
+	switch typ {
+	case 3004: // zombieman
+		return 26
+	case 9: // sergeant
+		return 24
+	case 3001: // imp
+		return 22
+	case 3002, 58: // demon/spectre
+		return 24
+	case 3005: // cacodemon
+		return 15
+	case 3003, 69: // baron/knight
+		return 24
+	case 16: // cyberdemon
+		return 66
+	case 7: // spider mastermind (single volley cycle)
+		return 29
+	case 3006: // lost soul
+		return 10
+	default:
+		return 0
+	}
 }
 
 func (g *game) monsterChaseReady(i int, typ int16) bool {

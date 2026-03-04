@@ -31,11 +31,12 @@ type projectile struct {
 }
 
 type projectileImpact struct {
-	x    int64
-	y    int64
-	z    int64
-	kind projectileKind
-	tics int
+	x         int64
+	y         int64
+	z         int64
+	kind      projectileKind
+	tics      int
+	totalTics int
 }
 
 func usesMonsterProjectile(typ int16) bool {
@@ -50,6 +51,7 @@ func usesMonsterProjectile(typ int16) bool {
 func monsterProjectileKind(typ int16) projectileKind {
 	switch typ {
 	case 3005:
+		// Cacodemon shot uses BAL2 in vanilla Doom.
 		return projectilePlasmaBall
 	case 3003:
 		return projectileBaronBall
@@ -224,16 +226,17 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64) {
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
 		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
 	}
-	tics := 6
-	if kind == projectileRocket {
-		tics = 8
-	}
+	// Doom timings:
+	// - Fireball families (BAL1/BAL2/BAL7): C/D/E at 6 tics each.
+	// - Rocket (MISL): B/C/D at 8/6/4 tics.
+	tics := 18
 	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
-		x:    x,
-		y:    y,
-		z:    z,
-		kind: kind,
-		tics: tics,
+		x:         x,
+		y:         y,
+		z:         z,
+		kind:      kind,
+		tics:      tics,
+		totalTics: tics,
 	})
 }
 
@@ -299,7 +302,7 @@ func projectileHitMessage(kind projectileKind) string {
 	case projectileBaronBall:
 		return "Baron ball hit"
 	case projectilePlasmaBall:
-		return "Plasma ball hit"
+		return "Cacodemon ball hit"
 	default:
 		return "Fireball hit"
 	}

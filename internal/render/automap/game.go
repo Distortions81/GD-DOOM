@@ -147,8 +147,8 @@ var sourcePortDetailDivisors = []int{1, 2, 3, 4}
 type projectedProjectileItem struct {
 	dist       float64
 	sx         float64
-	sy         float64
-	r          float64
+	yb         float64
+	h          float64
 	clr        color.RGBA
 	lightMul   uint32
 	fullBright bool
@@ -345,39 +345,40 @@ type game struct {
 	secretLevelExit       bool
 	levelRestartRequested bool
 
-	thingCollected     []bool
-	thingHP            []int
-	thingAggro         []bool
-	thingCooldown      []int
-	thingMoveDir       []monsterMoveDir
-	thingMoveCount     []int
-	thingJustAtk       []bool
-	thingAttackTics    []int
-	thingPainTics      []int
-	thingThinkWait     []int
-	projectiles        []projectile
-	projectileImpacts  []projectileImpact
-	hitscanPuffs       []hitscanPuff
-	cheatLevel         int
-	invulnerable       bool
-	inventory          playerInventory
-	alwaysRun          bool
-	autoWeaponSwitch   bool
-	weaponRefire       bool
-	weaponFireCooldown int
-	stats              playerStats
-	worldTic           int
-	secretFound        []bool
-	secretsFound       int
-	isDead             bool
-	damageFlashTic     int
-	bonusFlashTic      int
-	subSectorSec       []int
-	sectorBBox         []worldBBox
-	subSectorPoly      [][]worldPt
-	subSectorTris      [][][3]int
-	subSectorBBox      []worldBBox
-	holeFillPolys      []holeFillPoly
+	thingCollected      []bool
+	thingHP             []int
+	thingAggro          []bool
+	thingCooldown       []int
+	thingMoveDir        []monsterMoveDir
+	thingMoveCount      []int
+	thingJustAtk        []bool
+	thingAttackTics     []int
+	thingAttackFireTics []int
+	thingPainTics       []int
+	thingThinkWait      []int
+	projectiles         []projectile
+	projectileImpacts   []projectileImpact
+	hitscanPuffs        []hitscanPuff
+	cheatLevel          int
+	invulnerable        bool
+	inventory           playerInventory
+	alwaysRun           bool
+	autoWeaponSwitch    bool
+	weaponRefire        bool
+	weaponFireCooldown  int
+	stats               playerStats
+	worldTic            int
+	secretFound         []bool
+	secretsFound        int
+	isDead              bool
+	damageFlashTic      int
+	bonusFlashTic       int
+	subSectorSec        []int
+	sectorBBox          []worldBBox
+	subSectorPoly       [][]worldPt
+	subSectorTris       [][][3]int
+	subSectorBBox       []worldBBox
+	holeFillPolys       []holeFillPoly
 
 	mapFloorLayer              *ebiten.Image
 	mapFloorPix                []byte
@@ -704,6 +705,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingMoveCount = make([]int, len(m.Things))
 	g.thingJustAtk = make([]bool, len(m.Things))
 	g.thingAttackTics = make([]int, len(m.Things))
+	g.thingAttackFireTics = make([]int, len(m.Things))
+	for i := range g.thingAttackFireTics {
+		g.thingAttackFireTics[i] = -1
+	}
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
@@ -4542,20 +4547,35 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if f <= near {
 			continue
 		}
-		sx := float64(viewW)/2 - (s/f)*focal
-		centerZ := float64(p.z+p.height/2) / fracUnit
-		sy := float64(viewH)/2 - ((centerZ-eyeZ)/f)*focal
-		r := (projectileViewRadius(p) / f) * focal
-		if r < 1.2 {
-			r = 1.2
-		}
-		xPad := r + 3
-		yPad := r + 3
-		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
+		scale := focal / f
+		if scale <= 0 {
 			continue
 		}
+		sx := float64(viewW)/2 - (s/f)*focal
+		yb := float64(viewH)/2 - ((float64(p.z)/fracUnit-eyeZ)/f)*focal
 		cr := projectileColor(p.kind)
 		spriteTex, hasSprite := g.projectileSpriteTexture(p.kind, g.worldTic)
+		h := 0.0
+		w := 0.0
+		if hasSprite && spriteTex.Height > 0 && spriteTex.Width > 0 {
+			h = float64(spriteTex.Height) * scale
+			w = float64(spriteTex.Width) * scale
+		} else {
+			r := (projectileViewRadius(p) / f) * focal
+			if r < 1.2 {
+				r = 1.2
+			}
+			w = r * 2
+			h = r * 2
+		}
+		if h <= 0 || w <= 0 {
+			continue
+		}
+		xPad := w*0.5 + 4
+		yPad := h + 4
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || yb+yPad < 0 || yb-yPad > float64(viewH) {
+			continue
+		}
 		sec := g.sectorAt(p.x, p.y)
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
@@ -4564,8 +4584,8 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		items = append(items, projectedProjectileItem{
 			dist:       f,
 			sx:         sx,
-			sy:         sy,
-			r:          r,
+			yb:         yb,
+			h:          h,
 			clr:        color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
 			lightMul:   lightMul,
 			fullBright: true,
@@ -4581,20 +4601,29 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if f <= near {
 			continue
 		}
-		sx := float64(viewW)/2 - (s/f)*focal
-		centerZ := float64(fx.z) / fracUnit
-		sy := float64(viewH)/2 - ((centerZ-eyeZ)/f)*focal
-		r := (8.0 / f) * focal
-		if r < 1.6 {
-			r = 1.6
-		}
-		xPad := r + 4
-		yPad := r + 4
-		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
+		scale := focal / f
+		if scale <= 0 {
 			continue
 		}
+		sx := float64(viewW)/2 - (s/f)*focal
+		yb := float64(viewH)/2 - ((float64(fx.z)/fracUnit-eyeZ)/f)*focal
 		cr := projectileColor(fx.kind)
-		spriteTex, hasSprite := g.projectileImpactSpriteTexture(fx.kind, fx.tics)
+		spriteTex, hasSprite := g.projectileImpactSpriteTexture(fx.kind, fx.totalTics-fx.tics)
+		h := 0.0
+		w := 0.0
+		if hasSprite && spriteTex.Height > 0 && spriteTex.Width > 0 {
+			h = float64(spriteTex.Height) * scale
+			w = float64(spriteTex.Width) * scale
+		}
+		if h <= 0 || w <= 0 {
+			// Sprite fallback only; impacts should always use a sprite.
+			continue
+		}
+		xPad := w*0.5 + 4
+		yPad := h + 4
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || yb+yPad < 0 || yb-yPad > float64(viewH) {
+			continue
+		}
 		sec := g.sectorAt(fx.x, fx.y)
 		lightMul := uint32(256)
 		if sec >= 0 && sec < len(g.m.Sectors) {
@@ -4603,8 +4632,8 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		items = append(items, projectedProjectileItem{
 			dist:       f,
 			sx:         sx,
-			sy:         sy,
-			r:          r,
+			yb:         yb,
+			h:          h,
 			clr:        color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
 			lightMul:   lightMul,
 			fullBright: true,
@@ -4629,14 +4658,14 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				if !ok32 {
 					continue
 				}
-				scale := (2.0 * it.r) / math.Max(float64(tw), float64(th))
-				if scale < 0.25 {
-					scale = 0.25
+				scale := it.h / float64(th)
+				if scale <= 0 {
+					continue
 				}
 				dstW := float64(tw) * scale
 				dstH := float64(th) * scale
-				dstX := it.sx - dstW*0.5
-				dstY := it.sy - dstH*0.5
+				dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
+				dstY := it.yb - float64(it.spriteTex.OffsetY)*scale
 				x0 := int(math.Floor(dstX))
 				y0 := int(math.Floor(dstY))
 				x1 := int(math.Ceil(dstX+dstW)) - 1
@@ -4741,11 +4770,13 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				continue
 			}
 		}
-		r2 := it.r * it.r
-		x0 := int(math.Floor(it.sx - it.r))
-		x1 := int(math.Ceil(it.sx + it.r))
-		y0 := int(math.Floor(it.sy - it.r))
-		y1 := int(math.Ceil(it.sy + it.r))
+		rad := it.h * 0.5
+		r2 := rad * rad
+		cy := it.yb - rad
+		x0 := int(math.Floor(it.sx - rad))
+		x1 := int(math.Ceil(it.sx + rad))
+		y0 := int(math.Floor(cy - rad))
+		y1 := int(math.Ceil(cy + rad))
 		if x0 < 0 {
 			x0 = 0
 		}
@@ -4758,11 +4789,11 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if y1 >= viewH {
 			y1 = viewH - 1
 		}
-		r := uint8((uint32(it.clr.R) * shadeMul) >> 8)
+		rc := uint8((uint32(it.clr.R) * shadeMul) >> 8)
 		gc := uint8((uint32(it.clr.G) * shadeMul) >> 8)
 		b := uint8((uint32(it.clr.B) * shadeMul) >> 8)
 		for y := y0; y <= y1; y++ {
-			dy := (float64(y) + 0.5) - it.sy
+			dy := (float64(y) + 0.5) - cy
 			row := y * viewW
 			if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
 				continue
@@ -4776,7 +4807,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					continue
 				}
-				wallPix[i] = packRGBA(r, gc, b)
+				wallPix[i] = packRGBA(rc, gc, b)
 				g.setDepthPixelEncoded(i, depthPacked)
 			}
 		}
@@ -4791,27 +4822,60 @@ func (g *game) projectileSpriteTexture(kind projectileKind, tic int) (WallTextur
 	return g.monsterSpriteTexture(name)
 }
 
-func (g *game) projectileImpactSpriteTexture(kind projectileKind, tics int) (WallTexture, bool) {
-	name := g.projectileImpactSpriteName(kind, tics)
+func (g *game) projectileImpactSpriteTexture(kind projectileKind, elapsed int) (WallTexture, bool) {
+	name := g.projectileImpactSpriteName(kind, elapsed)
 	if name == "" {
 		return WallTexture{}, false
 	}
 	return g.monsterSpriteTexture(name)
 }
 
-func (g *game) projectileImpactSpriteName(kind projectileKind, tics int) string {
-	frame := 'D'
-	if tics >= 4 {
-		frame = 'C'
+func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) string {
+	if elapsed < 0 {
+		elapsed = 0
 	}
 	prefix := "BAL1"
+	frame := byte('C')
 	switch kind {
 	case projectileRocket:
 		prefix = "MISL"
+		switch {
+		case elapsed < 8:
+			frame = 'B'
+		case elapsed < 14:
+			frame = 'C'
+		default:
+			frame = 'D'
+		}
 	case projectileBaronBall:
 		prefix = "BAL7"
+		switch {
+		case elapsed < 6:
+			frame = 'C'
+		case elapsed < 12:
+			frame = 'D'
+		default:
+			frame = 'E'
+		}
 	case projectilePlasmaBall:
-		prefix = "PLSS"
+		prefix = "BAL2"
+		switch {
+		case elapsed < 6:
+			frame = 'C'
+		case elapsed < 12:
+			frame = 'D'
+		default:
+			frame = 'E'
+		}
+	default:
+		switch {
+		case elapsed < 6:
+			frame = 'C'
+		case elapsed < 12:
+			frame = 'D'
+		default:
+			frame = 'E'
+		}
 	}
 	name0 := spriteFrameName(prefix, byte(frame), '0')
 	if _, ok := g.opts.SpritePatchBank[name0]; ok {
@@ -4843,21 +4907,16 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 		}
 		return ""
 	}
-	frame2 := (tic / 6) & 1
-	frame4 := (tic / 4) & 3
+	frame2 := (tic / 4) & 1
 	switch kind {
 	case projectileRocket:
-		return pickPrefixFrame("MISL", []byte{'A', 'B', 'C', 'D'}, frame4)
+		return pickPrefixFrame("MISL", []byte{'A'}, 0)
 	case projectileBaronBall:
 		return pickPrefixFrame("BAL7", []byte{'A', 'B'}, frame2)
 	case projectilePlasmaBall:
-		return pickPrefixFrame("PLSS", []byte{'A', 'B'}, frame2)
-	default:
-		// Imp/cacodemon family fireball.
-		if name := pickPrefixFrame("BAL1", []byte{'A', 'B'}, frame2); name != "" {
-			return name
-		}
 		return pickPrefixFrame("BAL2", []byte{'A', 'B'}, frame2)
+	default:
+		return pickPrefixFrame("BAL1", []byte{'A', 'B'}, frame2)
 	}
 }
 

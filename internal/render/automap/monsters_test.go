@@ -23,12 +23,16 @@ func TestTickMonstersDamagesPlayer(t *testing.T) {
 		p:              player{x: 0, y: 0},
 	}
 	g.tickMonsters()
-	if g.stats.Health >= 100 {
-		t.Fatalf("health=%d want < 100", g.stats.Health)
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want=100 before melee windup resolves", g.stats.Health)
 	}
-	if g.thingCooldown[0] == 0 {
-		t.Fatal("monster attack should set cooldown")
+	for i := 0; i < 20; i++ {
+		g.tickMonsters()
+		if g.stats.Health < 100 {
+			return
+		}
 	}
+	t.Fatalf("health=%d want < 100 after melee windup", g.stats.Health)
 }
 
 func TestTickMonstersWakesByRangeAndLOS(t *testing.T) {
@@ -292,5 +296,40 @@ func TestTickMonstersPainStatePausesThinker(t *testing.T) {
 	}
 	if g.stats.Health != 100 {
 		t.Fatalf("monster attacked during pain state: health=%d", g.stats.Health)
+	}
+}
+
+func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 72, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{60},
+		thingAggro:     []bool{true},
+		thingMoveDir:   []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount: []int{0},
+		thingJustAtk:   []bool{false},
+		projectiles:    make([]projectile, 0, 2),
+		stats:          playerStats{Health: 100},
+		p:              player{x: 0, y: 0, z: 0},
+	}
+
+	g.tickMonsters()
+	if got := len(g.projectiles); got != 0 {
+		t.Fatalf("projectiles=%d want=0 before imp windup resolves", got)
+	}
+	for i := 0; i < 15; i++ {
+		g.tickMonsters()
+	}
+	if got := len(g.projectiles); got != 0 {
+		t.Fatalf("projectiles=%d want=0 before fire tic", got)
+	}
+	g.tickMonsters()
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectiles=%d want=1 after windup", got)
 	}
 }
