@@ -203,6 +203,7 @@ type game struct {
 	mapFloorWorldStep  float64
 	mapFloorWorldStats floorFrameStats
 	mapFloorWorldState string
+	mapFloorWorldAnim  int
 	mapFloorLoopSets   []sectorLoopSet
 	mapFloorLoopInit   bool
 	wallLayer          *ebiten.Image
@@ -1747,11 +1748,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	if planesEnabled && hasMarkedPlane3DData(planeOrder) {
 		g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
+	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
-	// Keep sprite billboards visible in doom-basic mode as a pragmatic first pass.
-	g.drawBillboardProjectiles(screen, camX, camY, camAng, focal, near)
 }
 
 func hasMarkedPlane3DData(planes []*plane3DVisplane) bool {
@@ -1801,7 +1801,7 @@ func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
 		key.fallback = true
 		return key
 	}
-	key.flat = normalizeFlatName(pic)
+	key.flat = g.resolveAnimatedFlatName(pic)
 	key.fallback = len(g.opts.FlatBank[key.flat]) != 64*64*4
 	return key
 }
@@ -2389,7 +2389,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 					pic = g.m.Sectors[sec].FloorPic
 					pkey.height = g.m.Sectors[sec].FloorHeight
 				}
-				k := normalizeFlatName(pic)
+				k := g.resolveAnimatedFlatName(pic)
 				pkey.flat = k
 				pkey.fallback = len(g.opts.FlatBank[k]) != 64*64*4
 				if !isFloor && isSkyFlatName(pic) {
@@ -3104,6 +3104,7 @@ func (g *game) drawPseudo3D(screen *ebiten.Image) {
 		vector.StrokeLine(screen, float32(sx1), float32(yt1), float32(sx1), float32(yb1), 1.2, c, true)
 		vector.StrokeLine(screen, float32(sx2), float32(yt2), float32(sx2), float32(yb2), 1.2, c, true)
 	}
+	g.drawBillboardProjectiles(screen, camX, camY, camAng, focal, near)
 	g.drawWireframeMonsters(screen, camX, camY, camAng, focal, near)
 }
 
@@ -3250,6 +3251,95 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 		vector.StrokeLine(screen, float32(prevX), float32(prevY), float32(x), float32(y), 1.2, clr, true)
 		prevX = x
 		prevY = y
+	}
+}
+
+func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near float64) {
+	type projectedProjectile struct {
+		dist float64
+		sx   float64
+		sy   float64
+		r    float64
+		clr  color.RGBA
+	}
+	if len(g.projectiles) == 0 || len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
+		return
+	}
+	items := make([]projectedProjectile, 0, len(g.projectiles))
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	for _, p := range g.projectiles {
+		px := float64(p.x)/fracUnit - camX
+		py := float64(p.y)/fracUnit - camY
+		f := px*ca + py*sa
+		s := -px*sa + py*ca
+		if f <= near {
+			continue
+		}
+		if !g.monsterHasLOS(g.p.x, g.p.y, p.x, p.y) {
+			continue
+		}
+		sx := float64(g.viewW)/2 - (s/f)*focal
+		centerZ := float64(p.z+p.height/2) / fracUnit
+		sy := float64(g.viewH)/2 - ((centerZ-eyeZ)/f)*focal
+		r := (projectileViewRadius(p) / f) * focal
+		if r < 1.2 {
+			r = 1.2
+		}
+		xPad := r + 3
+		yPad := r + 3
+		if sx+xPad < 0 || sx-xPad > float64(g.viewW) || sy+yPad < 0 || sy-yPad > float64(g.viewH) {
+			continue
+		}
+		cr := projectileColor(p.kind)
+		items = append(items, projectedProjectile{
+			dist: f,
+			sx:   sx,
+			sy:   sy,
+			r:    math.Min(48, r),
+			clr:  color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
+	for _, it := range items {
+		r2 := it.r * it.r
+		x0 := int(math.Floor(it.sx - it.r))
+		x1 := int(math.Ceil(it.sx + it.r))
+		y0 := int(math.Floor(it.sy - it.r))
+		y1 := int(math.Ceil(it.sy + it.r))
+		if x0 < 0 {
+			x0 = 0
+		}
+		if y0 < 0 {
+			y0 = 0
+		}
+		if x1 >= g.viewW {
+			x1 = g.viewW - 1
+		}
+		if y1 >= g.viewH {
+			y1 = g.viewH - 1
+		}
+		sf := float64(monsterShadeFactor(it.dist, near))
+		r := uint8(float64(it.clr.R) * sf)
+		gc := uint8(float64(it.clr.G) * sf)
+		b := uint8(float64(it.clr.B) * sf)
+		for y := y0; y <= y1; y++ {
+			dy := (float64(y) + 0.5) - it.sy
+			row := y * g.viewW
+			for x := x0; x <= x1; x++ {
+				dx := (float64(x) + 0.5) - it.sx
+				if dx*dx+dy*dy > r2 {
+					continue
+				}
+				i := row + x
+				if it.dist > g.depthPix3D[i] {
+					continue
+				}
+				g.wallPix32[i] = packRGBA(r, gc, b)
+				g.depthPix3D[i] = it.dist
+			}
+		}
 	}
 }
 
@@ -3747,7 +3837,7 @@ func (g *game) ensurePlane3DForRangeCached(key plane3DKey, start, stop, viewW in
 }
 
 func (g *game) wallTexture(name string) (WallTexture, bool) {
-	key := normalizeFlatName(name)
+	key := g.resolveAnimatedWallName(name)
 	if key == "" || key == "-" {
 		return WallTexture{}, false
 	}
@@ -4332,7 +4422,8 @@ func (g *game) screenWorldBBox() worldBBox {
 }
 
 func (g *game) ensureMapFloorWorldLayerBuilt() bool {
-	if g.mapFloorWorldInit && g.mapFloorWorldLayer != nil {
+	animTick := g.textureAnimTick()
+	if g.mapFloorWorldInit && g.mapFloorWorldLayer != nil && g.mapFloorWorldAnim == animTick {
 		return true
 	}
 	if g.m == nil || len(g.m.Sectors) == 0 || len(g.opts.FlatBank) == 0 {
@@ -6078,6 +6169,7 @@ func (g *game) buildMapFloorWorldLayer() bool {
 	g.mapFloorWorldStep = step
 	g.mapFloorWorldInit = true
 	g.mapFloorWorldStats = stats
+	g.mapFloorWorldAnim = g.textureAnimTick()
 	g.mapFloorWorldState = fmt.Sprintf("ready %dx%d step=%.0f", w, h, step)
 	return true
 }
@@ -6698,7 +6790,7 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 	if g.flatImgCache == nil {
 		g.flatImgCache = make(map[string]*ebiten.Image)
 	}
-	key := normalizeFlatName(name)
+	key := g.resolveAnimatedFlatName(name)
 	if img, ok := g.flatImgCache[key]; ok {
 		return img, true
 	}
@@ -6715,12 +6807,94 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 }
 
 func (g *game) flatRGBA(name string) ([]byte, bool) {
-	key := normalizeFlatName(name)
+	key := g.resolveAnimatedFlatName(name)
 	rgba, ok := g.opts.FlatBank[key]
 	if !ok || len(rgba) != 64*64*4 {
 		return nil, false
 	}
 	return rgba, true
+}
+
+const textureAnimTics = 8
+
+type textureAnimRef struct {
+	frames []string
+	index  int
+}
+
+var wallTextureAnimRefs = buildTextureAnimRefs([][]string{
+	{"BLODGR1", "BLODGR2", "BLODGR3", "BLODGR4"},
+	{"SLADRIP1", "SLADRIP2", "SLADRIP3"},
+	{"BLODRIP1", "BLODRIP2", "BLODRIP3", "BLODRIP4"},
+	{"FIREWALA", "FIREWALB", "FIREWALC", "FIREWALD", "FIREWALE", "FIREWALF", "FIREWALG", "FIREWALH", "FIREWALI", "FIREWALJ", "FIREWALK", "FIREWALL"},
+	{"GSTFONT1", "GSTFONT2", "GSTFONT3"},
+	{"FIREBLU1", "FIREBLU2"},
+	{"ROCKRED1", "ROCKRED2", "ROCKRED3"},
+})
+
+var flatTextureAnimRefs = buildTextureAnimRefs([][]string{
+	{"NUKAGE1", "NUKAGE2", "NUKAGE3"},
+	{"FWATER1", "FWATER2", "FWATER3", "FWATER4"},
+	{"SWATER1", "SWATER2", "SWATER3", "SWATER4"},
+	{"LAVA1", "LAVA2", "LAVA3", "LAVA4"},
+	{"BLOOD1", "BLOOD2", "BLOOD3"},
+	{"RROCK05", "RROCK06", "RROCK07", "RROCK08"},
+	{"SLIME01", "SLIME02", "SLIME03", "SLIME04"},
+	{"SLIME05", "SLIME06", "SLIME07", "SLIME08"},
+	{"SLIME09", "SLIME10", "SLIME11", "SLIME12"},
+})
+
+func buildTextureAnimRefs(seqs [][]string) map[string]textureAnimRef {
+	refs := make(map[string]textureAnimRef, 64)
+	for _, seq := range seqs {
+		frames := make([]string, 0, len(seq))
+		for _, raw := range seq {
+			name := normalizeFlatName(raw)
+			if name == "" {
+				continue
+			}
+			frames = append(frames, name)
+		}
+		if len(frames) < 2 {
+			continue
+		}
+		for i, frame := range frames {
+			refs[frame] = textureAnimRef{
+				frames: frames,
+				index:  i,
+			}
+		}
+	}
+	return refs
+}
+
+func (g *game) resolveAnimatedWallName(name string) string {
+	return resolveAnimatedTextureName(name, g.worldTic, wallTextureAnimRefs)
+}
+
+func (g *game) resolveAnimatedFlatName(name string) string {
+	return resolveAnimatedTextureName(name, g.worldTic, flatTextureAnimRefs)
+}
+
+func resolveAnimatedTextureName(name string, worldTic int, refs map[string]textureAnimRef) string {
+	key := normalizeFlatName(name)
+	if key == "" {
+		return ""
+	}
+	ref, ok := refs[key]
+	if !ok || len(ref.frames) < 2 {
+		return key
+	}
+	ticks := worldTic / textureAnimTics
+	idx := (ref.index + ticks) % len(ref.frames)
+	if idx < 0 {
+		idx += len(ref.frames)
+	}
+	return ref.frames[idx]
+}
+
+func (g *game) textureAnimTick() int {
+	return g.worldTic / textureAnimTics
 }
 
 func normalizeFlatName(name string) string {

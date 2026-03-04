@@ -126,7 +126,7 @@ func (g *game) buildFloorVisplaneMarks() {
 		}
 		sec := g.m.Sectors[secIdx]
 		key := floorPlaneKey{
-			flat:   normalizeFlatName(sec.FloorPic),
+			flat:   g.resolveAnimatedFlatName(sec.FloorPic),
 			floorH: sec.FloorHeight,
 			light:  sec.Light,
 		}
