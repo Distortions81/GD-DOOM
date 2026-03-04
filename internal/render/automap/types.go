@@ -16,6 +16,7 @@ type Options struct {
 	CRTEffect                  bool
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
+	NoFPS                      bool
 	AllCheats                  bool
 	StartInMapMode             bool
 	FlatBank                   map[string][]byte

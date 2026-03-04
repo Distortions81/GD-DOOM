@@ -53,6 +53,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDemo := ""
 	defaultRecordDemo := ""
 	defaultNoVsync := false
+	defaultNoFPS := false
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -135,6 +136,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.NoVsync != nil {
 			defaultNoVsync = *cfg.NoVsync
 		}
+		if cfg.NoFPS != nil {
+			defaultNoFPS = *cfg.NoFPS
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -167,6 +171,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoPath := fs.String("demo", defaultDemo, "path to gddoom-demo-v1 script; runs scripted benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write gddoom-demo-v1 script recorded from live input")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
+	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -371,6 +376,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			CRTEffect:                  *crtEffect,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
+			NoFPS:                      *noFPS,
 			AllCheats:                  *allCheats,
 			StartInMapMode:             *startInMap,
 			FlatBank:                   flatBank,

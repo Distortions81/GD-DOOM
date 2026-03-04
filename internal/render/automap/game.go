@@ -1126,7 +1126,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 		if g.paused {
 			g.drawPauseOverlay(screen)
 		}
-		g.drawPerfOverlay(screen)
+		if !g.opts.NoFPS {
+			g.drawPerfOverlay(screen)
+		}
 		return
 	}
 	g.prepareRenderState()
@@ -1228,7 +1230,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.paused {
 		g.drawPauseOverlay(screen)
 	}
-	g.drawPerfOverlay(screen)
+	if !g.opts.NoFPS {
+		g.drawPerfOverlay(screen)
+	}
 }
 
 func (g *game) profileLabel() string {
