@@ -52,6 +52,7 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 	}
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
+	ebiten.SetScreenClearedEveryFrame(false)
 	if err := ebiten.RunGame(sg); err != nil {
 		if errors.Is(err, ebiten.Termination) {
 			if sg.err != nil {

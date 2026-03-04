@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,10 +24,6 @@ const (
 	lineOneSidedWidth  = 1.8
 	lineTwoSidedWidth  = 1.2
 	doomInitialZoomMul = 1.0 / 0.7
-	// Avoid goroutine/scheduler overhead for small loop bodies.
-	parallelMinTotalItems = 262144
-	parallelMinJobsPerCPU = 4
-	parallelMaxWorkers    = 4
 	// Give cursor capture/resizing a couple of frames to settle after detail changes.
 	detailMouseSuppressTicks = 3
 	mlDontPegTop             = 1 << 3
@@ -226,7 +221,6 @@ type game struct {
 	skyRowViewH        int
 	skyRowTexH         int
 	skyRowIScale       float64
-	cpuCount           int
 	plane3DVisBuckets  map[plane3DKey]plane3DVisBucket
 	plane3DVisGen      uint64
 	plane3DOrder       []*plane3DVisplane
@@ -375,10 +369,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		opts.PlayerSlot = 1
 	}
 	p, localSlot, starts := spawnPlayer(m, opts.PlayerSlot)
-	cpuCount := runtime.NumCPU()
-	if cpuCount < 1 {
-		cpuCount = 1
-	}
 	g := &game{
 		m:          m,
 		opts:       opts,
@@ -408,7 +398,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		floor2DPath:  floor2DPathRasterized,
 		floorVisDiag: floorVisDiagOff,
 		mapTexDiag:   false,
-		cpuCount:     cpuCount,
 	}
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
@@ -1720,25 +1709,15 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	pow2H := tex.Height > 0 && (tex.Height&(tex.Height-1)) == 0
 	hmask := tex.Height - 1
 	colBase := tx * tex.Height
-	fracMask := int64(fracUnit - 1)
-	fracUnit64 := int64(fracUnit)
 	if shadeMul == 256 {
 		if useColMajor {
 			if pow2H {
 				col := texCol[colBase : colBase+tex.Height]
-				tyRaw := int(texVFixed >> fracBits)
-				fracAcc := texVFixed & fracMask
-				stepInt := int(texVStepFixed >> fracBits)
-				stepFrac := texVStepFixed & fracMask
 				for y := y0; y <= y1; y++ {
-					pix32[pixI] = col[tyRaw&hmask] | pixelOpaqueA
+					ty := int((texVFixed >> fracBits) & int64(hmask))
+					pix32[pixI] = col[ty] | pixelOpaqueA
 					pixI += rowStridePix
-					tyRaw += stepInt
-					fracAcc += stepFrac
-					if fracAcc >= fracUnit64 {
-						fracAcc -= fracUnit64
-						tyRaw++
-					}
+					texVFixed += texVStepFixed
 				}
 				return
 			}
@@ -1774,22 +1753,14 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		if useColMajor {
 			if pow2H {
 				col := texCol[colBase : colBase+tex.Height]
-				tyRaw := int(texVFixed >> fracBits)
-				fracAcc := texVFixed & fracMask
-				stepInt := int(texVStepFixed >> fracBits)
-				stepFrac := texVStepFixed & fracMask
 				for y := y0; y <= y1; y++ {
-					src := col[tyRaw&hmask]
+					ty := int((texVFixed >> fracBits) & int64(hmask))
+					src := col[ty]
 					rb := ((src & 0x00FF00FF) * shadeMulU) >> 8
 					gg := ((src & 0x0000FF00) * shadeMulU) >> 8
 					pix32[pixI] = pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
 					pixI += rowStridePix
-					tyRaw += stepInt
-					fracAcc += stepFrac
-					if fracAcc >= fracUnit64 {
-						fracAcc -= fracUnit64
-						tyRaw++
-					}
+					texVFixed += texVStepFixed
 				}
 				return
 			}
@@ -1923,8 +1894,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	spansByPlane, _, _, hasSky := g.buildPlaneSpansParallel(planes, h)
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
-	flatCache := make(map[string][]byte, len(planes))
 	flatCache32 := make(map[string][]uint32, len(planes))
+	planeFBPacked := make([]uint32, len(planes))
+	planeFlatTex32 := make([][]uint32, len(planes))
+	planeFlatReady := make([]bool, len(planes))
 	skyTex, skyTexOK := WallTexture{}, false
 	skyTex32 := []uint32(nil)
 	skyColU := make([]int, 0)
@@ -1951,63 +1924,102 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		}
 	}
 	for planeIdx, pl := range planes {
-		spans := spansByPlane[planeIdx]
-		if len(spans) == 0 {
-			continue
-		}
 		key := pl.key
 		fb := ceilFallback
 		if key.floor {
 			fb = floorFallback
 		}
-		fbPacked := packRGBA(fb.R, fb.G, fb.B)
-		tex := flatCache[key.flat]
-		if !key.fallback && tex == nil {
-			tex = g.opts.FlatBank[key.flat]
-			flatCache[key.flat] = tex
+		planeFBPacked[planeIdx] = packRGBA(fb.R, fb.G, fb.B)
+		if key.sky || key.fallback {
+			continue
 		}
-		tex32 := flatCache32[key.flat]
-		if !key.fallback && tex32 == nil && len(tex) == 64*64*4 {
-			tex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex))), len(tex)/4)
+		tex32, ok := flatCache32[key.flat]
+		if !ok {
+			tex := g.opts.FlatBank[key.flat]
+			if len(tex) == 64*64*4 {
+				tex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex))), len(tex)/4)
+			}
 			flatCache32[key.flat] = tex32
 		}
-		flatTexReady := !key.fallback && len(tex32) == 64*64
-		for _, sp := range spans {
-			if sp.y < 0 || sp.y >= h {
+		if len(tex32) == 64*64 {
+			planeFlatTex32[planeIdx] = tex32
+			planeFlatReady[planeIdx] = true
+		}
+	}
+
+	renderRows := func(yStart, yEnd int) {
+		for planeIdx, pl := range planes {
+			spans := spansByPlane[planeIdx]
+			if len(spans) == 0 {
 				continue
 			}
-			x1 := sp.x1
-			x2 := sp.x2
-			if x1 < 0 {
-				x1 = 0
-			}
-			if x2 >= w {
-				x2 = w - 1
-			}
-			if x2 < x1 {
-				continue
-			}
-			rowPix := sp.y * w
-			if key.sky {
+			key := pl.key
+			fbPacked := planeFBPacked[planeIdx]
+			tex32 := planeFlatTex32[planeIdx]
+			flatTexReady := planeFlatReady[planeIdx]
+			for _, sp := range spans {
+				if sp.y < yStart || sp.y >= yEnd || sp.y < 0 || sp.y >= h {
+					continue
+				}
+				x1 := sp.x1
+				x2 := sp.x2
+				if x1 < 0 {
+					x1 = 0
+				}
+				if x2 >= w {
+					x2 = w - 1
+				}
+				if x2 < x1 {
+					continue
+				}
+				rowPix := sp.y * w
+				if key.sky {
+					pixI := rowPix + x1
+					if skyTexReady {
+						v := skyRowV[sp.y]
+						x := x1
+						for ; x+1 <= x2; x += 2 {
+							u0 := skyColU[x]
+							u1 := skyColU[x+1]
+							ti0 := v*skyTex.Width + u0
+							ti1 := v*skyTex.Width + u1
+							pix32[pixI] = skyTex32[ti0]
+							pix32[pixI+1] = skyTex32[ti1]
+							pixI += 2
+						}
+						if x <= x2 {
+							u := skyColU[x]
+							ti := v*skyTex.Width + u
+							pix32[pixI] = skyTex32[ti]
+						}
+					} else {
+						x := x1
+						for ; x+1 <= x2; x += 2 {
+							pix32[pixI] = fbPacked
+							pix32[pixI+1] = fbPacked
+							pixI += 2
+						}
+						if x <= x2 {
+							pix32[pixI] = fbPacked
+						}
+					}
+					continue
+				}
+				den := cy - (float64(sp.y) + 0.5)
+				if math.Abs(den) < 1e-6 {
+					continue
+				}
+				planeZ := float64(key.height)
+				depth := ((planeZ - eyeZ) / den) * focal
+				if depth <= 0 {
+					continue
+				}
+				wxSpan := camX + depth*ca - ((cx-(float64(x1)+0.5))*depth/focal)*sa
+				wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
+				stepWX := (depth / focal) * sa
+				stepWY := -(depth / focal) * ca
 				pixI := rowPix + x1
-				if skyTexReady {
-					v := skyRowV[sp.y]
-					x := x1
-					for ; x+1 <= x2; x += 2 {
-						u0 := skyColU[x]
-						u1 := skyColU[x+1]
-						ti0 := v*skyTex.Width + u0
-						ti1 := v*skyTex.Width + u1
-						pix32[pixI] = skyTex32[ti0]
-						pix32[pixI+1] = skyTex32[ti1]
-						pixI += 2
-					}
-					if x <= x2 {
-						u := skyColU[x]
-						ti := v*skyTex.Width + u
-						pix32[pixI] = skyTex32[ti]
-					}
-				} else {
+				if !flatTexReady {
 					x := x1
 					for ; x+1 <= x2; x += 2 {
 						pix32[pixI] = fbPacked
@@ -2017,62 +2029,38 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					if x <= x2 {
 						pix32[pixI] = fbPacked
 					}
+					continue
 				}
-				continue
-			}
-			den := cy - (float64(sp.y) + 0.5)
-			if math.Abs(den) < 1e-6 {
-				continue
-			}
-			planeZ := float64(key.height)
-			depth := ((planeZ - eyeZ) / den) * focal
-			if depth <= 0 {
-				continue
-			}
-			wxSpan := camX + depth*ca - ((cx-(float64(x1)+0.5))*depth/focal)*sa
-			wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
-			stepWX := (depth / focal) * sa
-			stepWY := -(depth / focal) * ca
-			pixI := rowPix + x1
-			if !flatTexReady {
+				wxFixed := floorFixed(wxSpan)
+				wyFixed := floorFixed(wySpan)
+				stepWXFixed := floorFixed(stepWX)
+				stepWYFixed := floorFixed(stepWY)
 				x := x1
 				for ; x+1 <= x2; x += 2 {
-					pix32[pixI] = fbPacked
-					pix32[pixI+1] = fbPacked
+					u0 := int(wxFixed>>fracBits) & 63
+					v0 := int(wyFixed>>fracBits) & 63
+					p0 := tex32[(v0<<6)+u0]
+					wxFixed += stepWXFixed
+					wyFixed += stepWYFixed
+					u1 := int(wxFixed>>fracBits) & 63
+					v1 := int(wyFixed>>fracBits) & 63
+					p1 := tex32[(v1<<6)+u1]
+					pix32[pixI] = p0
+					pix32[pixI+1] = p1
+					wxFixed += stepWXFixed
+					wyFixed += stepWYFixed
 					pixI += 2
 				}
 				if x <= x2 {
-					pix32[pixI] = fbPacked
+					u := int(wxFixed>>fracBits) & 63
+					v := int(wyFixed>>fracBits) & 63
+					pix32[pixI] = tex32[(v<<6)+u]
 				}
-				continue
-			}
-			wxFixed := floorFixed(wxSpan)
-			wyFixed := floorFixed(wySpan)
-			stepWXFixed := floorFixed(stepWX)
-			stepWYFixed := floorFixed(stepWY)
-			x := x1
-			for ; x+1 <= x2; x += 2 {
-				u0 := int(wxFixed>>fracBits) & 63
-				v0 := int(wyFixed>>fracBits) & 63
-				p0 := tex32[(v0<<6)+u0]
-				wxFixed += stepWXFixed
-				wyFixed += stepWYFixed
-				u1 := int(wxFixed>>fracBits) & 63
-				v1 := int(wyFixed>>fracBits) & 63
-				p1 := tex32[(v1<<6)+u1]
-				pix32[pixI] = p0
-				pix32[pixI+1] = p1
-				wxFixed += stepWXFixed
-				wyFixed += stepWYFixed
-				pixI += 2
-			}
-			if x <= x2 {
-				u := int(wxFixed>>fracBits) & 63
-				v := int(wyFixed>>fracBits) & 63
-				pix32[pixI] = tex32[(v<<6)+u]
 			}
 		}
 	}
+
+	renderRows(0, h)
 }
 
 func (g *game) fill3DBackground(ceiling, floor color.RGBA) {
@@ -2098,7 +2086,7 @@ func (g *game) fill3DBackground(ceiling, floor color.RGBA) {
 			}
 		}
 	}
-	g.parallelForChunks(h, 32, fillRows)
+	fillRows(0, h)
 }
 
 func (g *game) compositePlaneLayer3D() {
@@ -2115,10 +2103,7 @@ func (g *game) compositePlaneLayer3D() {
 			g.wallPix[i+2] = g.mapFloorPix[i+2]
 		}
 	}
-	pix := len(g.mapFloorPix) / 4
-	g.parallelForChunks(pix, 16384, func(startPix, endPix int) {
-		copyChunk(startPix*4, endPix*4)
-	})
+	copyChunk(0, len(g.mapFloorPix))
 }
 
 func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback, floorFallback color.RGBA, wallTop, wallBottom []int) {
@@ -2359,55 +2344,7 @@ func (g *game) clearRGBABuffer(pix []byte) {
 			pix[i+3] = 0
 		}
 	}
-	pixels := len(pix) / 4
-	g.parallelForChunks(pixels, 16384, func(startPix, endPix int) {
-		clearChunk(startPix*4, endPix*4)
-	})
-}
-
-func (g *game) parallelForChunks(total, chunk int, fn func(start, end int)) {
-	if total <= 0 {
-		return
-	}
-	if chunk <= 0 {
-		chunk = total
-	}
-	jobs := (total + chunk - 1) / chunk
-	workers := g.cpuCount
-	if workers > parallelMaxWorkers {
-		workers = parallelMaxWorkers
-	}
-	if workers <= 1 || jobs <= 1 || total < parallelMinTotalItems || jobs < workers*parallelMinJobsPerCPU {
-		for j := 0; j < jobs; j++ {
-			start := j * chunk
-			end := start + chunk
-			if end > total {
-				end = total
-			}
-			fn(start, end)
-		}
-		return
-	}
-	if workers > jobs {
-		workers = jobs
-	}
-	var wg sync.WaitGroup
-	wg.Add(workers)
-	for w := 0; w < workers; w++ {
-		worker := w
-		go func() {
-			defer wg.Done()
-			for j := worker; j < jobs; j += workers {
-				start := j * chunk
-				end := start + chunk
-				if end > total {
-					end = total
-				}
-				fn(start, end)
-			}
-		}()
-	}
-	wg.Wait()
+	clearChunk(0, len(pix))
 }
 
 func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, camY, ca, sa, eyeZ, focal float64, playerSec int, ceilFallback color.RGBA, wallTop []int, depthPix []float64) {
@@ -3540,16 +3477,8 @@ func (g *game) buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([]
 	if len(planes) == 0 {
 		return spansByPlane, 0, 0, false
 	}
-	if g.cpuCount > 1 && len(planes) >= 128 {
-		g.parallelForChunks(len(planes), 32, func(start, end int) {
-			for i := start; i < end; i++ {
-				spansByPlane[i] = makePlane3DSpans(planes[i], viewH, nil)
-			}
-		})
-	} else {
-		for i := range planes {
-			spansByPlane[i] = makePlane3DSpans(planes[i], viewH, nil)
-		}
+	for i := range planes {
+		spansByPlane[i] = makePlane3DSpans(planes[i], viewH, nil)
 	}
 	active := 0
 	input := 0
@@ -3684,11 +3613,7 @@ func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, fo
 			out[i] = pp
 		}
 	}
-	if g.cpuCount > 1 && len(visible) >= 1024 {
-		g.parallelForChunks(len(visible), 32, run)
-	} else {
-		run(0, len(visible))
-	}
+	run(0, len(visible))
 	return out
 }
 
