@@ -1,24 +1,25 @@
 package automap
 
 type Options struct {
-	Width          int
-	Height         int
-	StartZoom      float64
-	WADHash        string
-	Debug          bool
-	PlayerSlot     int
-	SkillLevel     int
-	CheatLevel     int
-	Invulnerable   bool
-	LineColorMode  string
-	SourcePortMode bool
-	AllCheats      bool
-	StartInMapMode bool
-	FlatBank       map[string][]byte
-	WallTexBank    map[string]WallTexture
-	SoundBank      SoundBank
-	DemoScript     *DemoScript
-	RecordDemoPath string
+	Width           int
+	Height          int
+	StartZoom       float64
+	WADHash         string
+	Debug           bool
+	PlayerSlot      int
+	SkillLevel      int
+	CheatLevel      int
+	Invulnerable    bool
+	LineColorMode   string
+	SourcePortMode  bool
+	AllCheats       bool
+	StartInMapMode  bool
+	FlatBank        map[string][]byte
+	WallTexBank     map[string]WallTexture
+	StatusPatchBank map[string]WallTexture
+	SoundBank       SoundBank
+	DemoScript      *DemoScript
+	RecordDemoPath  string
 }
 
 type WallTexture struct {

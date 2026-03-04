@@ -46,6 +46,38 @@ func (s *Set) BuildTextureRGBA(name string, palette int) ([]byte, int, int, erro
 	return rgba, t.Width, t.Height, nil
 }
 
+// BuildPatchRGBA decodes a raw Doom patch lump (e.g. STBAR, STTNUM0) to RGBA.
+func (s *Set) BuildPatchRGBA(name string, palette int) ([]byte, int, int, error) {
+	if s == nil {
+		return nil, 0, 0, parseErrorf("nil texture set")
+	}
+	if palette < 0 || palette >= len(s.palettes) {
+		return nil, 0, 0, parseErrorf("palette out of range: %d", palette)
+	}
+	p, err := s.loadPatch(name)
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	pal := s.palettes[palette]
+	rgba := make([]byte, p.width*p.height*4)
+	for i := 0; i < len(p.index); i++ {
+		o := i * 4
+		if !p.opaque[i] {
+			rgba[o+0] = 0
+			rgba[o+1] = 0
+			rgba[o+2] = 0
+			rgba[o+3] = 0
+			continue
+		}
+		idx := p.index[i]
+		rgba[o+0] = pal[idx][0]
+		rgba[o+1] = pal[idx][1]
+		rgba[o+2] = pal[idx][2]
+		rgba[o+3] = 0xFF
+	}
+	return rgba, p.width, p.height, nil
+}
+
 func (s *Set) loadPatch(name string) (*decodedPatch, error) {
 	key := normalizeName(name)
 	if p, ok := s.patchCache[key]; ok {

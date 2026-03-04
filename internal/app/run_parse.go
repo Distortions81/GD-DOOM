@@ -215,11 +215,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		soundBank = buildAutomapSoundBank(dsr)
 	}
 	wallTexBank := map[string]automap.WallTexture(nil)
+	statusPatchBank := map[string]automap.WallTexture(nil)
+	var texSet *doomtex.Set
 	if *importTextures {
 		ts, terr := doomtex.LoadFromWAD(wf)
 		if terr != nil {
 			fmt.Fprintf(stderr, "texture import failed: %v\n", terr)
 		} else {
+			texSet = ts
 			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
 			names := ts.TextureNames()
 			wallTexBank = make(map[string]automap.WallTexture, len(names))
@@ -255,6 +258,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				built++
 			}
 			fmt.Fprintf(stderr, "wall texture build: built=%d failed=%d\n", built, failed)
+		}
+	}
+	if texSet != nil {
+		statusPatchBank = buildStatusPatchBank(texSet)
+		if len(statusPatchBank) > 0 {
+			fmt.Fprintf(stderr, "status patch import: patches=%d\n", len(statusPatchBank))
 		}
 	}
 	flatBank := map[string][]byte(nil)
@@ -305,23 +314,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			resolvedLineColorMode = "doom"
 		}
 		opts := automap.Options{
-			Width:          *width,
-			Height:         *height,
-			StartZoom:      *zoom,
-			WADHash:        wadHash,
-			Debug:          *debug,
-			PlayerSlot:     *playerSlot,
-			SkillLevel:     *skillLevel,
-			CheatLevel:     resolvedCheatLevel,
-			Invulnerable:   resolvedInvuln,
-			LineColorMode:  resolvedLineColorMode,
-			SourcePortMode: *sourcePortMode,
-			AllCheats:      *allCheats,
-			StartInMapMode: *startInMap,
-			FlatBank:       flatBank,
-			WallTexBank:    wallTexBank,
-			SoundBank:      soundBank,
-			RecordDemoPath: resolvedRecordDemoPath,
+			Width:           *width,
+			Height:          *height,
+			StartZoom:       *zoom,
+			WADHash:         wadHash,
+			Debug:           *debug,
+			PlayerSlot:      *playerSlot,
+			SkillLevel:      *skillLevel,
+			CheatLevel:      resolvedCheatLevel,
+			Invulnerable:    resolvedInvuln,
+			LineColorMode:   resolvedLineColorMode,
+			SourcePortMode:  *sourcePortMode,
+			AllCheats:       *allCheats,
+			StartInMapMode:  *startInMap,
+			FlatBank:        flatBank,
+			WallTexBank:     wallTexBank,
+			StatusPatchBank: statusPatchBank,
+			SoundBank:       soundBank,
+			RecordDemoPath:  resolvedRecordDemoPath,
 		}
 		if p := resolvedDemoPath; p != "" {
 			demo, derr := automap.LoadDemoScript(p)
@@ -465,4 +475,66 @@ func firstSample(a, b automap.PCMSample) automap.PCMSample {
 		return a
 	}
 	return b
+}
+
+func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+	if ts == nil {
+		return nil
+	}
+	names := make([]string, 0, 128)
+	add := func(n string) {
+		n = strings.ToUpper(strings.TrimSpace(n))
+		if n == "" {
+			return
+		}
+		names = append(names, n)
+	}
+	add("STBAR")
+	add("STARMS")
+	add("STTPRCNT")
+	add("STFB0")
+	add("STFGOD0")
+	add("STFDEAD0")
+	for i := 0; i < 10; i++ {
+		add(fmt.Sprintf("STTNUM%d", i))
+		add(fmt.Sprintf("STYSNUM%d", i))
+	}
+	for i := 0; i < 6; i++ {
+		add(fmt.Sprintf("STKEYS%d", i))
+		add(fmt.Sprintf("STGNUM%d", i+2))
+	}
+	for pain := 0; pain < 5; pain++ {
+		for straight := 0; straight < 3; straight++ {
+			add(fmt.Sprintf("STFST%d%d", pain, straight))
+		}
+		add(fmt.Sprintf("STFTR%d0", pain))
+		add(fmt.Sprintf("STFTL%d0", pain))
+		add(fmt.Sprintf("STFOUCH%d", pain))
+		add(fmt.Sprintf("STFEVL%d", pain))
+		add(fmt.Sprintf("STFKILL%d", pain))
+	}
+	out := make(map[string]automap.WallTexture, len(names))
+	for _, name := range names {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		rgba, w, h, err := ts.BuildPatchRGBA(name, 0)
+		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+			continue
+		}
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		out[name] = automap.WallTexture{
+			RGBA:   rgba,
+			RGBA32: rgba32,
+			Width:  w,
+			Height: h,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

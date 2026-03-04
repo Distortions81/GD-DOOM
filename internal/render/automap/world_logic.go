@@ -56,6 +56,10 @@ func hazardDamage(special int16, hasSuit bool) int {
 }
 
 func (g *game) damagePlayer(amount int, msg string) {
+	g.damagePlayerFrom(amount, msg, 0, 0, false)
+}
+
+func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int64, hasAttacker bool) {
 	if amount <= 0 || g.stats.Health <= 0 {
 		return
 	}
@@ -65,6 +69,11 @@ func (g *game) damagePlayer(amount int, msg string) {
 	}
 	g.stats.Health -= amount
 	g.damageFlashTic = max(g.damageFlashTic, 8)
+	g.statusHasAttacker = hasAttacker
+	if hasAttacker {
+		g.statusAttackerX = attackerX
+		g.statusAttackerY = attackerY
+	}
 	if g.stats.Health < 0 {
 		g.stats.Health = 0
 	}

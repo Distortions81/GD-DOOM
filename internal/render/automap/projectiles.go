@@ -21,6 +21,8 @@ type projectile struct {
 	radius     int64
 	height     int64
 	ttl        int
+	sourceX    int64
+	sourceY    int64
 	sourceType int16
 	kind       projectileKind
 }
@@ -137,6 +139,8 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		radius:     monsterProjectileRadius(typ),
 		height:     monsterProjectileHeight(typ),
 		ttl:        monsterProjectileTTL(typ),
+		sourceX:    sx,
+		sourceY:    sy,
 		sourceType: typ,
 		kind:       monsterProjectileKind(typ),
 	})
@@ -169,7 +173,7 @@ func (g *game) tickProjectiles() {
 		if g.projectileHitsPlayer(p) {
 			dmg := monsterRangedDamage(p.sourceType)
 			if dmg > 0 {
-				g.damagePlayer(dmg, projectileHitMessage(p.kind))
+				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
 			}
 			continue
 		}

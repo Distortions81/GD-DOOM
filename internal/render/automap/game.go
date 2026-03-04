@@ -26,9 +26,29 @@ const (
 	lineTwoSidedWidth  = 1.2
 	doomInitialZoomMul = 1.0 / 0.7
 	// Give cursor capture/resizing a couple of frames to settle after detail changes.
-	detailMouseSuppressTicks = 3
-	mlDontPegTop             = 1 << 3
-	mlDontPegBottom          = 1 << 4
+	detailMouseSuppressTicks        = 3
+	mlDontPegTop                    = 1 << 3
+	mlDontPegBottom                 = 1 << 4
+	statusBaseW                     = 320.0
+	statusBaseH                     = 200.0
+	statusBarY                      = 168.0
+	statusNumPainFaces              = 5
+	statusNumStraightFaces          = 3
+	statusNumTurnFaces              = 2
+	statusFaceStride                = statusNumStraightFaces + statusNumTurnFaces + 3
+	statusTurnOffset                = statusNumStraightFaces
+	statusOuchOffset                = statusTurnOffset + statusNumTurnFaces
+	statusEvilGrinOffset            = statusOuchOffset + 1
+	statusRampageOffset             = statusEvilGrinOffset + 1
+	statusGodFace                   = statusNumPainFaces * statusFaceStride
+	statusDeadFace                  = statusGodFace + 1
+	statusEvilGrinCount             = 2 * doomTicsPerSecond
+	statusStraightFaceCount         = doomTicsPerSecond / 2
+	statusTurnCount                 = doomTicsPerSecond
+	statusRampageDelay              = 2 * doomTicsPerSecond
+	statusMuchPain                  = 20
+	statusAng45              uint32 = 0x20000000
+	statusAng180             uint32 = 0x80000000
 )
 
 var (
@@ -197,6 +217,7 @@ type game struct {
 	buffers3DW         int
 	buffers3DH         int
 	flatImgCache       map[string]*ebiten.Image
+	statusPatchImg     map[string]*ebiten.Image
 	whitePixel         *ebiten.Image
 	cullLogBudget      int
 	floorDbgMode       floorDebugMode
@@ -234,6 +255,17 @@ type game struct {
 	demoTick           int
 	demoDoneReported   bool
 	demoBenchStarted   bool
+	statusFaceIndex    int
+	statusFaceCount    int
+	statusFacePriority int
+	statusOldHealth    int
+	statusRandom       int
+	statusLastAttack   int
+	statusAttackDown   bool
+	statusAttackerX    int64
+	statusAttackerY    int64
+	statusHasAttacker  bool
+	statusOldWeapons   [8]bool
 	demoBenchStart     time.Time
 	demoBenchDraws     int
 	demoStartRnd       int
@@ -414,6 +446,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
+	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
@@ -605,6 +638,7 @@ func (g *game) Update() error {
 		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
 		g.updateWalkMode()
 	}
+	g.tickStatusWidgets()
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
@@ -660,6 +694,7 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
+	g.statusAttackDown = tc.Fire
 	if tc.Use {
 		g.handleUse()
 	}
@@ -676,6 +711,7 @@ func (g *game) updateDemoMode() error {
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
+	g.tickStatusWidgets()
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
@@ -765,6 +801,7 @@ func (g *game) updateMapMode() {
 		firePressed = true
 		g.handleFire()
 	}
+	g.statusAttackDown = ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 	if g.opts.SourcePortMode {
 		mx, _ := ebiten.CursorPosition()
 		if g.mouseLookSuppressTicks > 0 {
@@ -850,6 +887,7 @@ func (g *game) updateWalkMode() {
 		firePressed = true
 		g.handleFire()
 	}
+	g.statusAttackDown = ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 
 	mx, _ := ebiten.CursorPosition()
 	if g.mouseLookSuppressTicks > 0 {
@@ -1015,6 +1053,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
 			}
 		}
+		g.drawDoomStatusBar(screen)
 		if g.isDead {
 			g.drawDeathOverlay(screen)
 		}

@@ -68,7 +68,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if dist <= monsterMeleeRange {
 		damage := monsterMeleeDamage(typ)
 		if damage > 0 {
-			g.damagePlayer(damage, "Monster hit you")
+			g.damagePlayerFrom(damage, "Monster hit you", sx, sy, true)
 			return true
 		}
 	}
@@ -98,7 +98,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if damage <= 0 {
 		return false
 	}
-	g.damagePlayer(damage, "Monster shot you")
+	g.damagePlayerFrom(damage, "Monster shot you", sx, sy, true)
 	return true
 }
 
@@ -117,7 +117,7 @@ func (g *game) monsterHitscanAttack(sx, sy int64, pellets int) {
 		total += 3 * (1 + doomPRandomN(5))
 	}
 	if total > 0 {
-		g.damagePlayer(total, "Monster shot you")
+		g.damagePlayerFrom(total, "Monster shot you", sx, sy, true)
 	}
 }
 
