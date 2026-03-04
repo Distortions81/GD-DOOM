@@ -100,6 +100,7 @@ type game struct {
 	bounds            bounds
 	paletteLUTEnabled bool
 	gammaLevel        int
+	crtEnabled        bool
 	viewW             int
 	viewH             int
 	camX              float64
@@ -221,6 +222,7 @@ type game struct {
 	textureAnimCrossfadeFrames int
 	flatAnimBlendRGBA          map[string][]byte
 	wallAnimBlendTex           map[string]WallTexture
+	spriteAnimBlendTex         map[string]WallTexture
 	wallLayer                  *ebiten.Image
 	wallPix                    []byte
 	wallPix32                  []uint32
@@ -439,6 +441,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		bounds:            mapBounds(m),
 		paletteLUTEnabled: !opts.SourcePortMode,
 		gammaLevel:        2,
+		crtEnabled:        opts.CRTEffect,
 		viewW:             opts.Width,
 		viewH:             opts.Height,
 		mode:              viewMap,
@@ -1043,6 +1046,14 @@ func (g *game) updateParityControls() {
 		}
 		g.gammaLevel = (g.gammaLevel + 1) % len(gammaTargets)
 		g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+		g.crtEnabled = !g.crtEnabled
+		if g.crtEnabled {
+			g.setHUDMessage("CRT ON", 70)
+		} else {
+			g.setHUDMessage("CRT OFF", 70)
+		}
 	}
 }
 
@@ -3824,15 +3835,8 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 }
 
 func (g *game) worldThingSpriteName(typ int16, tic int) string {
-	frame := (tic / 8) & 3
 	pick := func(seq ...string) string {
-		for i := 0; i < len(seq); i++ {
-			name := seq[(frame+i)%len(seq)]
-			if _, ok := g.opts.SpritePatchBank[name]; ok {
-				return name
-			}
-		}
-		return ""
+		return g.pickAnimatedThingSpriteName(tic, 8, seq...)
 	}
 	switch typ {
 	case 15:
@@ -3976,6 +3980,162 @@ func (g *game) worldThingSpriteName(typ int16, tic int) string {
 	}
 }
 
+func (g *game) pickAnimatedThingSpriteName(tic, frameTics int, seq ...string) string {
+	if frameTics <= 0 || len(seq) == 0 {
+		return ""
+	}
+	explicit := make([]string, 0, len(seq))
+	seenExplicit := make(map[string]struct{}, len(seq))
+	for _, raw := range seq {
+		name := strings.ToUpper(strings.TrimSpace(raw))
+		if name == "" {
+			continue
+		}
+		if _, ok := g.opts.SpritePatchBank[name]; ok {
+			if _, dup := seenExplicit[name]; !dup {
+				seenExplicit[name] = struct{}{}
+				explicit = append(explicit, name)
+			}
+		}
+	}
+	available := explicit
+	if len(explicit) <= 1 {
+		// For single-seed mappings (e.g. BON1A0), auto-expand to A..Z variants.
+		available = make([]string, 0, len(seq)*4)
+		seen := make(map[string]struct{}, len(seq)*8)
+		for _, raw := range seq {
+			name := strings.ToUpper(strings.TrimSpace(raw))
+			if name == "" {
+				continue
+			}
+			if _, ok := g.opts.SpritePatchBank[name]; ok {
+				if _, dup := seen[name]; !dup {
+					seen[name] = struct{}{}
+					available = append(available, name)
+				}
+			}
+			for _, ex := range g.expandThingSpriteFrames(name) {
+				if _, dup := seen[ex]; dup {
+					continue
+				}
+				seen[ex] = struct{}{}
+				available = append(available, ex)
+			}
+		}
+	}
+	if len(available) == 0 {
+		return ""
+	}
+	if len(available) == 1 {
+		return available[0]
+	}
+	cf := g.textureAnimCrossfadeFrames
+	if cf > frameTics-1 {
+		cf = frameTics - 1
+	}
+	if cf <= 0 {
+		return available[(tic/frameTics)%len(available)]
+	}
+	states := cf + 1
+	stateTick := (tic * states) / frameTics
+	frameAdvance := stateTick / states
+	blendStep := stateTick % states
+	cur := available[frameAdvance%len(available)]
+	if blendStep <= 0 {
+		return cur
+	}
+	next := available[(frameAdvance+1)%len(available)]
+	token := textureAnimBlendToken(cur, next, blendStep, cf)
+	g.ensureSpriteBlendToken(token, cur, next, blendStep, cf)
+	if _, ok := g.spriteAnimBlendTex[token]; ok {
+		return token
+	}
+	return cur
+}
+
+func (g *game) expandThingSpriteFrames(seed string) []string {
+	name := strings.ToUpper(strings.TrimSpace(seed))
+	if len(name) < 6 {
+		return nil
+	}
+	// Only auto-expand conventional thing animations that start from A-frame seeds.
+	// This avoids animating static corpse/decoration sprites like PLAYN0.
+	if name[4] != 'A' {
+		return nil
+	}
+	rot := name[5]
+	if rot < '0' || rot > '9' {
+		return nil
+	}
+	prefix := name[:4]
+	out := make([]string, 0, 8)
+	seen := make(map[string]struct{}, 52)
+	addFrames := func(r byte) {
+		for frame := byte('A'); frame <= byte('Z'); frame++ {
+			key := fmt.Sprintf("%s%c%c", prefix, frame, r)
+			if _, dup := seen[key]; dup {
+				continue
+			}
+			if _, ok := g.opts.SpritePatchBank[key]; ok {
+				seen[key] = struct{}{}
+				out = append(out, key)
+			}
+		}
+	}
+	// Prefer non-rotating thing-style frames, then include rotation-1 variants.
+	addFrames('0')
+	addFrames('1')
+	// If seed itself uses a different rotation digit, include that series too.
+	if rot != '0' && rot != '1' {
+		addFrames(rot)
+	}
+	for frame := byte('A'); frame <= byte('Z'); frame++ {
+		key := fmt.Sprintf("%s%c%c", prefix, frame, rot)
+		if _, ok := g.opts.SpritePatchBank[key]; ok {
+			if _, dup := seen[key]; !dup {
+				seen[key] = struct{}{}
+				out = append(out, key)
+			}
+		}
+	}
+	if len(out) <= 1 {
+		return nil
+	}
+	return out
+}
+
+func (g *game) ensureSpriteBlendToken(token, cur, next string, step, total int) {
+	if token == "" || total <= 0 || step <= 0 {
+		return
+	}
+	if g.spriteAnimBlendTex == nil {
+		g.spriteAnimBlendTex = make(map[string]WallTexture, 128)
+	}
+	if _, ok := g.spriteAnimBlendTex[token]; ok {
+		return
+	}
+	a, okA := g.opts.SpritePatchBank[cur]
+	b, okB := g.opts.SpritePatchBank[next]
+	if !okA || !okB || a.Width <= 0 || a.Height <= 0 || a.Width != b.Width || a.Height != b.Height {
+		return
+	}
+	if len(a.RGBA) != a.Width*a.Height*4 || len(b.RGBA) != b.Width*b.Height*4 {
+		return
+	}
+	alpha := float64(step) / float64(total+1)
+	rgba := blendRGBA(a.RGBA, b.RGBA, alpha)
+	if len(rgba) != a.Width*a.Height*4 {
+		return
+	}
+	g.spriteAnimBlendTex[token] = WallTexture{
+		RGBA:    rgba,
+		Width:   a.Width,
+		Height:  a.Height,
+		OffsetX: a.OffsetX,
+		OffsetY: a.OffsetY,
+	}
+}
+
 func monsterShadeFactor(dist, near float64) float32 {
 	n := (dist - near) / 1200.0
 	if n < 0 {
@@ -3991,6 +4151,9 @@ func (g *game) monsterSpriteTexture(name string) (WallTexture, bool) {
 	key := strings.ToUpper(strings.TrimSpace(name))
 	if key == "" {
 		return WallTexture{}, false
+	}
+	if tex, ok := g.spriteAnimBlendTex[key]; ok && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+		return tex, true
 	}
 	p, ok := g.opts.SpritePatchBank[key]
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
@@ -7574,14 +7737,24 @@ func blendRGBA(a, b []byte, alpha float64) []byte {
 	inv := 1.0 - alpha
 	out := make([]byte, len(a))
 	for i := 0; i < len(a); i += 4 {
-		out[i+0] = uint8(math.Round(float64(a[i+0])*inv + float64(b[i+0])*alpha))
-		out[i+1] = uint8(math.Round(float64(a[i+1])*inv + float64(b[i+1])*alpha))
-		out[i+2] = uint8(math.Round(float64(a[i+2])*inv + float64(b[i+2])*alpha))
-		aa := uint8(math.Round(float64(a[i+3])*inv + float64(b[i+3])*alpha))
-		if aa == 0 {
-			aa = 255
+		aA := float64(a[i+3]) / 255.0
+		bA := float64(b[i+3]) / 255.0
+		outA := aA*inv + bA*alpha
+		if outA <= 1e-9 {
+			out[i+0] = 0
+			out[i+1] = 0
+			out[i+2] = 0
+			out[i+3] = 0
+			continue
 		}
-		out[i+3] = aa
+		// Blend in premultiplied space to avoid fringe/halo artifacts on translucent edges.
+		rPremul := (float64(a[i+0])*aA)*inv + (float64(b[i+0])*bA)*alpha
+		gPremul := (float64(a[i+1])*aA)*inv + (float64(b[i+1])*bA)*alpha
+		bPremul := (float64(a[i+2])*aA)*inv + (float64(b[i+2])*bA)*alpha
+		out[i+0] = uint8(math.Round(rPremul / outA))
+		out[i+1] = uint8(math.Round(gPremul / outA))
+		out[i+2] = uint8(math.Round(bPremul / outA))
+		out[i+3] = uint8(math.Round(outA * 255.0))
 	}
 	return out
 }
@@ -7980,6 +8153,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"C  CLEAR MARKS",
 		"+/- OR WHEEL  ZOOM",
 		"F7  GAMMA CYCLE",
+		"F8  CRT TOGGLE",
 		"ESC  QUIT",
 	}
 	if g.opts.SourcePortMode {

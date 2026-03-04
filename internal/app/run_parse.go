@@ -43,6 +43,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultCRTEffect := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
 	defaultAllCheats := false
 	defaultStartInMap := false
@@ -104,6 +105,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
+		if cfg.CRTEffect != nil {
+			defaultCRTEffect = *cfg.CRTEffect
+		}
 		if cfg.TextureAnimCrossfadeFrames != nil {
 			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
 		}
@@ -153,6 +157,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
@@ -363,6 +368,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:               resolvedInvuln,
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
+			CRTEffect:                  *crtEffect,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			AllCheats:                  *allCheats,
@@ -672,6 +678,16 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		}
 		names = append(names, name)
 	}
+	addExpandedSeed := func(seed string) {
+		if len(seed) < 6 {
+			return
+		}
+		pfx := seed[:4]
+		for fr := byte('A'); fr <= byte('Z'); fr++ {
+			add(fmt.Sprintf("%s%c0", pfx, fr))
+			add(fmt.Sprintf("%s%c1", pfx, fr))
+		}
+	}
 	for _, pfx := range spritePrefixes {
 		for _, fr := range frames {
 			add(fmt.Sprintf("%s%c1", pfx, fr))
@@ -682,6 +698,13 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 			add(fmt.Sprintf("%s%c4%c6", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c6%c4", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c5", pfx, fr))
+		}
+	}
+	// Projectile prefixes (flight frames are usually A/B or A-D in Doom).
+	for _, pfx := range []string{"MISL", "BAL1", "BAL2", "BAL7", "PLSS"} {
+		for fr := byte('A'); fr <= byte('D'); fr++ {
+			add(fmt.Sprintf("%s%c0", pfx, fr))
+			add(fmt.Sprintf("%s%c1", pfx, fr))
 		}
 	}
 	// Common pickups, weapons, and decorations (A0 single-frame or animated 0-suffixed sets).
@@ -709,6 +732,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		"TLMPA0", "TLP2A0",
 	} {
 		add(name)
+		addExpandedSeed(name)
 	}
 	out := make(map[string]automap.WallTexture, len(names))
 	for _, name := range names {

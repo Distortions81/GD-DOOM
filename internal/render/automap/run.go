@@ -78,6 +78,42 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 }
 `)
 
+var crtPostShaderSrc = []byte(`//kage:unit pixels
+package main
+
+var Time float
+
+func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+	size := imageSrc0Size()
+	if size.x <= 0.0 || size.y <= 0.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+	uv := texCoord / size
+	p := uv*2.0 - vec2(1.0, 1.0)
+	p *= 1.0 + 0.04*dot(p, p)
+	uv = (p + vec2(1.0, 1.0)) * 0.5
+	if uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+	srcPos := uv*size + imageSrc0Origin()
+	c := imageSrc0At(srcPos)
+	scan := 0.90 + 0.10*sin((uv.y*size.y+Time*2.0)*3.14159265)
+	maskPhase := floor(mod(uv.x*size.x, 3.0))
+	mask := vec3(0.90, 0.90, 0.90)
+	if maskPhase < 1.0 {
+		mask = vec3(1.00, 0.88, 0.88)
+	} else if maskPhase < 2.0 {
+		mask = vec3(0.88, 1.00, 0.88)
+	} else {
+		mask = vec3(0.88, 0.88, 1.00)
+	}
+	v := uv*(1.0-uv)
+	vig := clamp(pow(v.x*v.y*20.0, 0.35), 0.0, 1.0)
+	outRGB := c.rgb * scan * mask * (0.65 + 0.35*vig)
+	return vec4(outRGB, 1.0)
+}
+`)
+
 type transitionKind int
 
 const (
@@ -141,6 +177,8 @@ type sessionGame struct {
 	faithfulLUTH    int
 	faithfulShader  *ebiten.Shader
 	noGammaShader   *ebiten.Shader
+	crtShader       *ebiten.Shader
+	crtPost         *ebiten.Image
 	presentSurface  *ebiten.Image
 	lastFrame       *ebiten.Image
 	bootSplashImage *ebiten.Image
@@ -848,22 +886,28 @@ func (sg *sessionGame) initFaithfulPalettePost() {
 		fmt.Printf("warning: no-gamma palette shader disabled: %v\n", err)
 		return
 	}
+	crtSh, err := ebiten.NewShader(crtPostShaderSrc)
+	if err != nil {
+		fmt.Printf("warning: crt shader disabled: %v\n", err)
+		return
+	}
 	sg.faithfulShader = sh
 	sg.noGammaShader = noGammaSh
+	sg.crtShader = crtSh
 }
 
 func (sg *sessionGame) palettePostEnabled() bool {
 	if sg.g == nil {
 		return false
 	}
-	if sg.faithfulShader == nil || sg.noGammaShader == nil {
+	if sg.faithfulShader == nil || sg.noGammaShader == nil || sg.crtShader == nil {
 		return false
 	}
-	return sg.g.paletteLUTEnabled || !isNeutralGammaLevel(sg.g.gammaLevel)
+	return sg.g.paletteLUTEnabled || !isNeutralGammaLevel(sg.g.gammaLevel) || sg.g.crtEnabled
 }
 
 func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image {
-	if src == nil || sg.faithfulShader == nil || sg.noGammaShader == nil {
+	if src == nil || sg.faithfulShader == nil || sg.noGammaShader == nil || sg.crtShader == nil {
 		return src
 	}
 	w := src.Bounds().Dx()
@@ -871,37 +915,58 @@ func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image
 	if w <= 0 || h <= 0 {
 		return src
 	}
-	if sg.faithfulPost == nil || sg.faithfulPost.Bounds().Dx() != w || sg.faithfulPost.Bounds().Dy() != h {
-		sg.faithfulPost = ebiten.NewImage(w, h)
-	}
-	sg.ensureFaithfulLUTSurface(w, h)
-	if sg.faithfulLUT == nil {
+	needsPaletteGamma := sg.g != nil && (sg.g.paletteLUTEnabled || !isNeutralGammaLevel(sg.g.gammaLevel))
+	needsCRT := sg.g != nil && sg.g.crtEnabled
+	if !needsPaletteGamma && !needsCRT {
 		return src
 	}
-	op := &ebiten.DrawRectShaderOptions{}
-	op.Images[0] = src
-	op.Images[1] = sg.faithfulLUT
-	enableQuant := float32(0)
-	if sg.g != nil && sg.g.paletteLUTEnabled && w >= quantizeLUTW && h >= quantizeLUTH {
-		enableQuant = 1
-	}
-	useGamma := true
-	if sg.g != nil && isNeutralGammaLevel(sg.g.gammaLevel) {
-		useGamma = false
-	}
-	if useGamma {
-		op.Uniforms = map[string]any{
-			"GammaRatio":     gammaRatioForLevel(sg.g.gammaLevel),
-			"EnableQuantize": enableQuant,
+	stage := src
+	if needsPaletteGamma {
+		if sg.faithfulPost == nil || sg.faithfulPost.Bounds().Dx() != w || sg.faithfulPost.Bounds().Dy() != h {
+			sg.faithfulPost = ebiten.NewImage(w, h)
 		}
-		sg.faithfulPost.DrawRectShader(w, h, sg.faithfulShader, op)
-		return sg.faithfulPost
+		sg.ensureFaithfulLUTSurface(w, h)
+		if sg.faithfulLUT == nil {
+			return src
+		}
+		op := &ebiten.DrawRectShaderOptions{}
+		op.Images[0] = src
+		op.Images[1] = sg.faithfulLUT
+		enableQuant := float32(0)
+		if sg.g != nil && sg.g.paletteLUTEnabled && w >= quantizeLUTW && h >= quantizeLUTH {
+			enableQuant = 1
+		}
+		useGamma := true
+		if sg.g != nil && isNeutralGammaLevel(sg.g.gammaLevel) {
+			useGamma = false
+		}
+		if useGamma {
+			op.Uniforms = map[string]any{
+				"GammaRatio":     gammaRatioForLevel(sg.g.gammaLevel),
+				"EnableQuantize": enableQuant,
+			}
+			sg.faithfulPost.DrawRectShader(w, h, sg.faithfulShader, op)
+		} else {
+			op.Uniforms = map[string]any{
+				"EnableQuantize": enableQuant,
+			}
+			sg.faithfulPost.DrawRectShader(w, h, sg.noGammaShader, op)
+		}
+		stage = sg.faithfulPost
 	}
+	if !needsCRT {
+		return stage
+	}
+	if sg.crtPost == nil || sg.crtPost.Bounds().Dx() != w || sg.crtPost.Bounds().Dy() != h {
+		sg.crtPost = ebiten.NewImage(w, h)
+	}
+	op := &ebiten.DrawRectShaderOptions{}
+	op.Images[0] = stage
 	op.Uniforms = map[string]any{
-		"EnableQuantize": enableQuant,
+		"Time": float32(sg.g.worldTic) / float32(doomTicsPerSecond),
 	}
-	sg.faithfulPost.DrawRectShader(w, h, sg.noGammaShader, op)
-	return sg.faithfulPost
+	sg.crtPost.DrawRectShader(w, h, sg.crtShader, op)
+	return sg.crtPost
 }
 
 func gammaRatioForLevel(level int) float32 {

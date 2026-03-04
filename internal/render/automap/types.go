@@ -13,6 +13,7 @@ type Options struct {
 	Invulnerable               bool
 	LineColorMode              string
 	SourcePortMode             bool
+	CRTEffect                  bool
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
 	AllCheats                  bool
