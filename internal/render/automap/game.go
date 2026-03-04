@@ -1709,18 +1709,14 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	pow2H := tex.Height > 0 && (tex.Height&(tex.Height-1)) == 0
 	hmask := tex.Height - 1
 	colBase := tx * tex.Height
+	// Dominant hot path: little-endian packed output + pretransposed column-major texture + pow2 height.
+	if pixelLittleEndian && useColMajor && pow2H {
+		col := texCol[colBase : colBase+tex.Height]
+		drawWallColumnTexturedLEColPow2(pix32, pixI, rowStridePix, col, texVFixed, texVStepFixed, hmask, y1-y0+1, shadeMul)
+		return
+	}
 	if shadeMul == 256 {
 		if useColMajor {
-			if pow2H {
-				col := texCol[colBase : colBase+tex.Height]
-				for y := y0; y <= y1; y++ {
-					ty := int((texVFixed >> fracBits) & int64(hmask))
-					pix32[pixI] = col[ty] | pixelOpaqueA
-					pixI += rowStridePix
-					texVFixed += texVStepFixed
-				}
-				return
-			}
 			for y := y0; y <= y1; y++ {
 				ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
 				pix32[pixI] = texCol[colBase+ty] | pixelOpaqueA
@@ -1751,19 +1747,6 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	shadeMulU := uint32(shadeMul)
 	if pixelLittleEndian {
 		if useColMajor {
-			if pow2H {
-				col := texCol[colBase : colBase+tex.Height]
-				for y := y0; y <= y1; y++ {
-					ty := int((texVFixed >> fracBits) & int64(hmask))
-					src := col[ty]
-					rb := ((src & 0x00FF00FF) * shadeMulU) >> 8
-					gg := ((src & 0x0000FF00) * shadeMulU) >> 8
-					pix32[pixI] = pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
-					pixI += rowStridePix
-					texVFixed += texVStepFixed
-				}
-				return
-			}
 			for y := y0; y <= y1; y++ {
 				ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
 				src := texCol[colBase+ty]
@@ -1859,6 +1842,28 @@ func shadePackedRGBABig(src, mul uint32) uint32 {
 	g := ((src >> pixelGShift) & 0xFF) * mul >> 8
 	b := ((src >> pixelBShift) & 0xFF) * mul >> 8
 	return pixelOpaqueA | (r << pixelRShift) | (g << pixelGShift) | (b << pixelBShift)
+}
+
+func drawWallColumnTexturedLEColPow2(pix32 []uint32, pixI, rowStridePix int, col []uint32, texVFixed, texVStepFixed int64, hmask, count, shadeMul int) {
+	if shadeMul == 256 {
+		for ; count > 0; count-- {
+			ty := int((texVFixed >> fracBits) & int64(hmask))
+			pix32[pixI] = col[ty] | pixelOpaqueA
+			pixI += rowStridePix
+			texVFixed += texVStepFixed
+		}
+		return
+	}
+	shadeMulU := uint32(shadeMul)
+	for ; count > 0; count-- {
+		ty := int((texVFixed >> fracBits) & int64(hmask))
+		src := col[ty]
+		rb := ((src & 0x00FF00FF) * shadeMulU) >> 8
+		gg := ((src & 0x0000FF00) * shadeMulU) >> 8
+		pix32[pixI] = pixelOpaqueA | (rb & 0x00FF00FF) | (gg & 0x0000FF00)
+		pixI += rowStridePix
+		texVFixed += texVStepFixed
+	}
 }
 
 func initWallShadeLUT() {
