@@ -9,30 +9,31 @@ import (
 )
 
 type fileConfig struct {
-	Wad             *string  `toml:"wad"`
-	Map             *string  `toml:"map"`
-	Render          *bool    `toml:"render"`
-	Debug           *bool    `toml:"debug"`
-	MultiCore       *bool    `toml:"multi_core"`
-	Width           *int     `toml:"width"`
-	Height          *int     `toml:"height"`
-	Zoom            *float64 `toml:"zoom"`
-	Player          *int     `toml:"player"`
-	Skill           *int     `toml:"skill"`
-	FastMonsters    *bool    `toml:"fast_monsters"`
-	CheatLevel      *int     `toml:"cheat_level"`
-	Invulnerable    *bool    `toml:"invulnerable"`
-	ImportTextures  *bool    `toml:"import_textures"`
-	LineColorMode   *string  `toml:"line_color_mode"`
-	SourcePortMode  *bool    `toml:"sourceport_mode"`
-	AllCheats       *bool    `toml:"all_cheats"`
-	StartInMap      *bool    `toml:"start_in_map"`
-	ImportPCSpeaker *bool    `toml:"import_pcspeaker"`
-	Details         *bool    `toml:"details"`
-	CPUProfile      *string  `toml:"cpu_profile"`
-	Demo            *string  `toml:"demo"`
-	RecordDemo      *string  `toml:"record_demo"`
-	NoVsync         *bool    `toml:"no_vsync"`
+	Wad                        *string  `toml:"wad"`
+	Map                        *string  `toml:"map"`
+	Render                     *bool    `toml:"render"`
+	Debug                      *bool    `toml:"debug"`
+	MultiCore                  *bool    `toml:"multi_core"`
+	Width                      *int     `toml:"width"`
+	Height                     *int     `toml:"height"`
+	Zoom                       *float64 `toml:"zoom"`
+	Player                     *int     `toml:"player"`
+	Skill                      *int     `toml:"skill"`
+	FastMonsters               *bool    `toml:"fast_monsters"`
+	CheatLevel                 *int     `toml:"cheat_level"`
+	Invulnerable               *bool    `toml:"invulnerable"`
+	ImportTextures             *bool    `toml:"import_textures"`
+	LineColorMode              *string  `toml:"line_color_mode"`
+	SourcePortMode             *bool    `toml:"sourceport_mode"`
+	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
+	AllCheats                  *bool    `toml:"all_cheats"`
+	StartInMap                 *bool    `toml:"start_in_map"`
+	ImportPCSpeaker            *bool    `toml:"import_pcspeaker"`
+	Details                    *bool    `toml:"details"`
+	CPUProfile                 *string  `toml:"cpu_profile"`
+	Demo                       *string  `toml:"demo"`
+	RecordDemo                 *string  `toml:"record_demo"`
+	NoVsync                    *bool    `toml:"no_vsync"`
 }
 
 func resolveConfigPath(args []string) (path string, explicit bool) {

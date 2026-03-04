@@ -204,92 +204,95 @@ type game struct {
 	subSectorBBox      []worldBBox
 	holeFillPolys      []holeFillPoly
 
-	mapFloorLayer      *ebiten.Image
-	mapFloorPix        []byte
-	mapFloorW          int
-	mapFloorH          int
-	mapFloorWorldLayer *ebiten.Image
-	mapFloorWorldInit  bool
-	mapFloorWorldMinX  float64
-	mapFloorWorldMaxY  float64
-	mapFloorWorldStep  float64
-	mapFloorWorldStats floorFrameStats
-	mapFloorWorldState string
-	mapFloorWorldAnim  int
-	mapFloorLoopSets   []sectorLoopSet
-	mapFloorLoopInit   bool
-	wallLayer          *ebiten.Image
-	wallPix            []byte
-	wallPix32          []uint32
-	wallW              int
-	wallH              int
-	depthPix3D         []float64
-	depthPlanePix3D    []float64
-	wallTop3D          []int
-	wallBottom3D       []int
-	ceilingClip3D      []int
-	floorClip3D        []int
-	buffers3DW         int
-	buffers3DH         int
-	flatImgCache       map[string]*ebiten.Image
-	statusPatchImg     map[string]*ebiten.Image
-	messageFontImg     map[rune]*ebiten.Image
-	whitePixel         *ebiten.Image
-	cullLogBudget      int
-	floorDbgMode       floorDebugMode
-	floor2DPath        floor2DPathMode
-	floorVisDiag       floorVisDiagMode
-	floorFrame         floorFrameStats
-	floorClip          []int16
-	ceilingClip        []int16
-	floorPlanes        map[floorPlaneKey][]*floorVisplane
-	floorPlaneOrd      []*floorVisplane
-	floorSpans         []floorSpan
-	detailLevel        int
-	mapTexDiag         bool
-	subSectorPolySrc   []uint8
-	subSectorDiagCode  []uint8
-	mapTexDiagStats    mapTexDiagStats
-	skyAngleOff        []float64
-	skyAngleViewW      int
-	skyAngleFocal      float64
-	skyColUCache       []int
-	skyColViewW        int
-	skyRowVCache       []int
-	skyRowViewH        int
-	skyRowTexH         int
-	skyRowIScale       float64
-	plane3DVisBuckets  map[plane3DKey]plane3DVisBucket
-	plane3DVisGen      uint64
-	plane3DOrder       []*plane3DVisplane
-	plane3DPool        []*plane3DVisplane
-	plane3DPoolUsed    int
-	plane3DPoolViewW   int
-	wallPrepassBuf     []wallSegPrepass
-	solid3DBuf         []solidSpan
-	solidClipScratch   []solidSpan
-	demoTick           int
-	demoDoneReported   bool
-	demoBenchStarted   bool
-	statusFaceIndex    int
-	statusFaceCount    int
-	statusFacePriority int
-	statusOldHealth    int
-	statusRandom       int
-	statusLastAttack   int
-	statusAttackDown   bool
-	statusAttackerX    int64
-	statusAttackerY    int64
-	statusHasAttacker  bool
-	statusOldWeapons   [8]bool
-	statusDamageCount  int
-	statusBonusCount   int
-	demoBenchStart     time.Time
-	demoBenchDraws     int
-	demoStartRnd       int
-	demoStartPRnd      int
-	demoRNGCaptured    bool
-	demoRecord         []DemoTic
+	mapFloorLayer              *ebiten.Image
+	mapFloorPix                []byte
+	mapFloorW                  int
+	mapFloorH                  int
+	mapFloorWorldLayer         *ebiten.Image
+	mapFloorWorldInit          bool
+	mapFloorWorldMinX          float64
+	mapFloorWorldMaxY          float64
+	mapFloorWorldStep          float64
+	mapFloorWorldStats         floorFrameStats
+	mapFloorWorldState         string
+	mapFloorWorldAnim          int
+	mapFloorLoopSets           []sectorLoopSet
+	mapFloorLoopInit           bool
+	textureAnimCrossfadeFrames int
+	flatAnimBlendRGBA          map[string][]byte
+	wallAnimBlendTex           map[string]WallTexture
+	wallLayer                  *ebiten.Image
+	wallPix                    []byte
+	wallPix32                  []uint32
+	wallW                      int
+	wallH                      int
+	depthPix3D                 []float64
+	depthPlanePix3D            []float64
+	wallTop3D                  []int
+	wallBottom3D               []int
+	ceilingClip3D              []int
+	floorClip3D                []int
+	buffers3DW                 int
+	buffers3DH                 int
+	flatImgCache               map[string]*ebiten.Image
+	statusPatchImg             map[string]*ebiten.Image
+	messageFontImg             map[rune]*ebiten.Image
+	whitePixel                 *ebiten.Image
+	cullLogBudget              int
+	floorDbgMode               floorDebugMode
+	floor2DPath                floor2DPathMode
+	floorVisDiag               floorVisDiagMode
+	floorFrame                 floorFrameStats
+	floorClip                  []int16
+	ceilingClip                []int16
+	floorPlanes                map[floorPlaneKey][]*floorVisplane
+	floorPlaneOrd              []*floorVisplane
+	floorSpans                 []floorSpan
+	detailLevel                int
+	mapTexDiag                 bool
+	subSectorPolySrc           []uint8
+	subSectorDiagCode          []uint8
+	mapTexDiagStats            mapTexDiagStats
+	skyAngleOff                []float64
+	skyAngleViewW              int
+	skyAngleFocal              float64
+	skyColUCache               []int
+	skyColViewW                int
+	skyRowVCache               []int
+	skyRowViewH                int
+	skyRowTexH                 int
+	skyRowIScale               float64
+	plane3DVisBuckets          map[plane3DKey]plane3DVisBucket
+	plane3DVisGen              uint64
+	plane3DOrder               []*plane3DVisplane
+	plane3DPool                []*plane3DVisplane
+	plane3DPoolUsed            int
+	plane3DPoolViewW           int
+	wallPrepassBuf             []wallSegPrepass
+	solid3DBuf                 []solidSpan
+	solidClipScratch           []solidSpan
+	demoTick                   int
+	demoDoneReported           bool
+	demoBenchStarted           bool
+	statusFaceIndex            int
+	statusFaceCount            int
+	statusFacePriority         int
+	statusOldHealth            int
+	statusRandom               int
+	statusLastAttack           int
+	statusAttackDown           bool
+	statusAttackerX            int64
+	statusAttackerY            int64
+	statusHasAttacker          bool
+	statusOldWeapons           [8]bool
+	statusDamageCount          int
+	statusBonusCount           int
+	demoBenchStart             time.Time
+	demoBenchDraws             int
+	demoStartRnd               int
+	demoStartPRnd              int
+	demoRNGCaptured            bool
+	demoRecord                 []DemoTic
 }
 
 type savedMapView struct {
@@ -464,6 +467,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
+	g.textureAnimCrossfadeFrames = normalizeTextureAnimCrossfadeFrames(opts.TextureAnimCrossfadeFrames, opts.SourcePortMode)
+	g.precomputeTextureAnimCrossfades()
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
 	g.initStatusFaceState()
@@ -1862,7 +1867,8 @@ func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
 		return key
 	}
 	key.flat = g.resolveAnimatedFlatName(pic)
-	key.fallback = len(g.opts.FlatBank[key.flat]) != 64*64*4
+	tex, ok := g.flatRGBAResolvedKey(key.flat)
+	key.fallback = !ok || len(tex) != 64*64*4
 	return key
 }
 
@@ -2214,7 +2220,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		}
 		tex32, ok := flatCache32[key.flat]
 		if !ok {
-			tex := g.opts.FlatBank[key.flat]
+			tex, _ := g.flatRGBAResolvedKey(key.flat)
 			if len(tex) == 64*64*4 {
 				tex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex))), len(tex)/4)
 			}
@@ -2541,7 +2547,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		}
 		tex := flatCache[key.flat]
 		if !key.fallback && tex == nil {
-			tex = g.opts.FlatBank[key.flat]
+			tex, _ = g.flatRGBAResolvedKey(key.flat)
 			flatCache[key.flat] = tex
 		}
 		for _, sp := range spanBuckets[key] {
@@ -3348,11 +3354,13 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 24.0
 	type projectedProjectile struct {
-		dist float64
-		sx   float64
-		sy   float64
-		r    float64
-		clr  color.RGBA
+		dist      float64
+		sx        float64
+		sy        float64
+		r         float64
+		clr       color.RGBA
+		spriteTex WallTexture
+		hasSprite bool
 	}
 	if len(g.projectiles) == 0 || len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
 		return
@@ -3382,16 +3390,85 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			continue
 		}
 		cr := projectileColor(p.kind)
+		spriteTex, hasSprite := g.projectileSpriteTexture(p.kind, g.worldTic)
 		items = append(items, projectedProjectile{
-			dist: f,
-			sx:   sx,
-			sy:   sy,
-			r:    math.Min(48, r),
-			clr:  color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
+			dist:      f,
+			sx:        sx,
+			sy:        sy,
+			r:         math.Min(48, r),
+			clr:       color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
+			spriteTex: spriteTex,
+			hasSprite: hasSprite,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
+		sf := float64(monsterShadeFactor(it.dist, near))
+		if it.hasSprite {
+			th := it.spriteTex.Height
+			tw := it.spriteTex.Width
+			if th > 0 && tw > 0 && len(it.spriteTex.RGBA) == tw*th*4 {
+				scale := (2.0 * it.r) / math.Max(float64(tw), float64(th))
+				if scale < 0.25 {
+					scale = 0.25
+				}
+				dstW := float64(tw) * scale
+				dstH := float64(th) * scale
+				dstX := it.sx - dstW*0.5
+				dstY := it.sy - dstH*0.5
+				x0 := int(math.Floor(dstX))
+				y0 := int(math.Floor(dstY))
+				x1 := int(math.Ceil(dstX+dstW)) - 1
+				y1 := int(math.Ceil(dstY+dstH)) - 1
+				if x0 < 0 {
+					x0 = 0
+				}
+				if y0 < 0 {
+					y0 = 0
+				}
+				if x1 >= g.viewW {
+					x1 = g.viewW - 1
+				}
+				if y1 >= g.viewH {
+					y1 = g.viewH - 1
+				}
+				src := it.spriteTex.RGBA
+				for y := y0; y <= y1; y++ {
+					ty := int((float64(y) + 0.5 - dstY) / scale)
+					if ty < 0 {
+						ty = 0
+					}
+					if ty >= th {
+						ty = th - 1
+					}
+					row := y * g.viewW
+					for x := x0; x <= x1; x++ {
+						i := row + x
+						if g.spriteOccludedAt(it.dist, i, planeDepthBias) {
+							continue
+						}
+						tx := int((float64(x) + 0.5 - dstX) / scale)
+						if tx < 0 {
+							tx = 0
+						}
+						if tx >= tw {
+							tx = tw - 1
+						}
+						si := (ty*tw + tx) * 4
+						a := src[si+3]
+						if a == 0 {
+							continue
+						}
+						r := uint8(float64(src[si+0]) * sf)
+						gc := uint8(float64(src[si+1]) * sf)
+						b := uint8(float64(src[si+2]) * sf)
+						g.wallPix32[i] = packRGBA(r, gc, b)
+						g.depthPix3D[i] = it.dist
+					}
+				}
+				continue
+			}
+		}
 		r2 := it.r * it.r
 		x0 := int(math.Floor(it.sx - it.r))
 		x1 := int(math.Ceil(it.sx + it.r))
@@ -3409,7 +3486,6 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if y1 >= g.viewH {
 			y1 = g.viewH - 1
 		}
-		sf := float64(monsterShadeFactor(it.dist, near))
 		r := uint8(float64(it.clr.R) * sf)
 		gc := uint8(float64(it.clr.G) * sf)
 		b := uint8(float64(it.clr.B) * sf)
@@ -3429,6 +3505,51 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				g.depthPix3D[i] = it.dist
 			}
 		}
+	}
+}
+
+func (g *game) projectileSpriteTexture(kind projectileKind, tic int) (WallTexture, bool) {
+	name := g.projectileSpriteName(kind, tic)
+	if name == "" {
+		return WallTexture{}, false
+	}
+	return g.monsterSpriteTexture(name)
+}
+
+func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
+	pickPrefixFrame := func(prefix string, frameLetters []byte, frame int) string {
+		if len(frameLetters) == 0 {
+			return ""
+		}
+		for i := 0; i < len(frameLetters); i++ {
+			fl := frameLetters[(frame+i)%len(frameLetters)]
+			// Some assets use non-rotating frame notation (e.g. BAL1A0).
+			name0 := fmt.Sprintf("%s%c0", prefix, fl)
+			if _, ok := g.opts.SpritePatchBank[name0]; ok {
+				return name0
+			}
+			// Standard Doom rotating/projectile frames (e.g. BAL1A1, paired lumps, etc).
+			if name, _, ok := g.monsterSpriteRotFrame(prefix, fl, 1); ok {
+				return name
+			}
+		}
+		return ""
+	}
+	frame2 := (tic / 6) & 1
+	frame4 := (tic / 4) & 3
+	switch kind {
+	case projectileRocket:
+		return pickPrefixFrame("MISL", []byte{'A', 'B', 'C', 'D'}, frame4)
+	case projectileBaronBall:
+		return pickPrefixFrame("BAL7", []byte{'A', 'B'}, frame2)
+	case projectilePlasmaBall:
+		return pickPrefixFrame("PLSS", []byte{'A', 'B'}, frame2)
+	default:
+		// Imp/cacodemon family fireball.
+		if name := pickPrefixFrame("BAL1", []byte{'A', 'B'}, frame2); name != "" {
+			return name
+		}
+		return pickPrefixFrame("BAL2", []byte{'A', 'B'}, frame2)
 	}
 }
 
@@ -4303,9 +4424,16 @@ func (g *game) ensurePlane3DForRangeCached(key plane3DKey, start, stop, viewW in
 }
 
 func (g *game) wallTexture(name string) (WallTexture, bool) {
-	key := g.resolveAnimatedWallName(name)
+	key, blended := g.resolveAnimatedWallSample(name)
 	if key == "" || key == "-" {
 		return WallTexture{}, false
+	}
+	if blended {
+		tex, ok := g.wallAnimBlendTex[key]
+		if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
+			return WallTexture{}, false
+		}
+		return tex, true
 	}
 	tex, ok := g.opts.WallTexBank[key]
 	if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
@@ -7256,11 +7384,11 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 	if g.flatImgCache == nil {
 		g.flatImgCache = make(map[string]*ebiten.Image)
 	}
-	key := g.resolveAnimatedFlatName(name)
+	key, _ := g.resolveAnimatedFlatSample(name)
 	if img, ok := g.flatImgCache[key]; ok {
 		return img, true
 	}
-	rgba, ok := g.opts.FlatBank[key]
+	rgba, ok := g.flatRGBAResolvedKey(key)
 	if !ok || len(rgba) != 64*64*4 {
 		return nil, false
 	}
@@ -7273,7 +7401,14 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 }
 
 func (g *game) flatRGBA(name string) ([]byte, bool) {
-	key := g.resolveAnimatedFlatName(name)
+	key, _ := g.resolveAnimatedFlatSample(name)
+	return g.flatRGBAResolvedKey(key)
+}
+
+func (g *game) flatRGBAResolvedKey(key string) ([]byte, bool) {
+	if rgba, ok := g.flatAnimBlendRGBA[key]; ok && len(rgba) == 64*64*4 {
+		return rgba, true
+	}
 	rgba, ok := g.opts.FlatBank[key]
 	if !ok || len(rgba) != 64*64*4 {
 		return nil, false
@@ -7335,11 +7470,21 @@ func buildTextureAnimRefs(seqs [][]string) map[string]textureAnimRef {
 }
 
 func (g *game) resolveAnimatedWallName(name string) string {
-	return resolveAnimatedTextureName(name, g.worldTic, wallTextureAnimRefs)
+	key, _ := g.resolveAnimatedWallSample(name)
+	return key
 }
 
 func (g *game) resolveAnimatedFlatName(name string) string {
-	return resolveAnimatedTextureName(name, g.worldTic, flatTextureAnimRefs)
+	key, _ := g.resolveAnimatedFlatSample(name)
+	return key
+}
+
+func (g *game) resolveAnimatedWallSample(name string) (string, bool) {
+	return g.resolveAnimatedTextureSample(name, g.worldTic, wallTextureAnimRefs)
+}
+
+func (g *game) resolveAnimatedFlatSample(name string) (string, bool) {
+	return g.resolveAnimatedTextureSample(name, g.worldTic, flatTextureAnimRefs)
 }
 
 func resolveAnimatedTextureName(name string, worldTic int, refs map[string]textureAnimRef) string {
@@ -7359,8 +7504,182 @@ func resolveAnimatedTextureName(name string, worldTic int, refs map[string]textu
 	return ref.frames[idx]
 }
 
+func (g *game) resolveAnimatedTextureSample(name string, worldTic int, refs map[string]textureAnimRef) (string, bool) {
+	key := normalizeFlatName(name)
+	if key == "" {
+		return "", false
+	}
+	ref, ok := refs[key]
+	if !ok || len(ref.frames) < 2 {
+		return key, false
+	}
+	cf := g.textureAnimCrossfadeFrames
+	if cf <= 0 {
+		ticks := worldTic / textureAnimTics
+		idx := (ref.index + ticks) % len(ref.frames)
+		if idx < 0 {
+			idx += len(ref.frames)
+		}
+		return ref.frames[idx], false
+	}
+	states := cf + 1
+	stateTick := (worldTic * states) / textureAnimTics
+	frameAdvance := stateTick / states
+	blendStep := stateTick % states // 0 => base frame, 1..cf => precomputed blend step
+	idx := (ref.index + frameAdvance) % len(ref.frames)
+	if idx < 0 {
+		idx += len(ref.frames)
+	}
+	cur := ref.frames[idx]
+	if blendStep <= 0 {
+		return cur, false
+	}
+	nextIdx := (idx + 1) % len(ref.frames)
+	next := ref.frames[nextIdx]
+	token := textureAnimBlendToken(cur, next, blendStep, cf)
+	return token, true
+}
+
+func normalizeTextureAnimCrossfadeFrames(n int, sourcePort bool) int {
+	if !sourcePort {
+		return 0
+	}
+	if n < 0 {
+		n = 0
+	}
+	if n >= textureAnimTics {
+		n = textureAnimTics - 1
+	}
+	return n
+}
+
+func textureAnimBlendToken(cur, next string, step, total int) string {
+	return cur + ">" + next + "#" + strconv.Itoa(step) + "/" + strconv.Itoa(total)
+}
+
+func blendRGBA(a, b []byte, alpha float64) []byte {
+	if len(a) == 0 || len(b) == 0 || len(a) != len(b) {
+		return nil
+	}
+	if alpha <= 0 {
+		out := make([]byte, len(a))
+		copy(out, a)
+		return out
+	}
+	if alpha >= 1 {
+		out := make([]byte, len(b))
+		copy(out, b)
+		return out
+	}
+	inv := 1.0 - alpha
+	out := make([]byte, len(a))
+	for i := 0; i < len(a); i += 4 {
+		out[i+0] = uint8(math.Round(float64(a[i+0])*inv + float64(b[i+0])*alpha))
+		out[i+1] = uint8(math.Round(float64(a[i+1])*inv + float64(b[i+1])*alpha))
+		out[i+2] = uint8(math.Round(float64(a[i+2])*inv + float64(b[i+2])*alpha))
+		aa := uint8(math.Round(float64(a[i+3])*inv + float64(b[i+3])*alpha))
+		if aa == 0 {
+			aa = 255
+		}
+		out[i+3] = aa
+	}
+	return out
+}
+
+func (g *game) precomputeTextureAnimCrossfades() {
+	cf := g.textureAnimCrossfadeFrames
+	if cf <= 0 {
+		return
+	}
+	seenFlatSeq := make(map[string]struct{}, len(flatTextureAnimRefs))
+	g.flatAnimBlendRGBA = make(map[string][]byte, len(flatTextureAnimRefs)*cf)
+	for _, ref := range flatTextureAnimRefs {
+		if len(ref.frames) < 2 {
+			continue
+		}
+		seqKey := strings.Join(ref.frames, ",")
+		if _, ok := seenFlatSeq[seqKey]; ok {
+			continue
+		}
+		seenFlatSeq[seqKey] = struct{}{}
+		for i := 0; i < len(ref.frames); i++ {
+			cur := ref.frames[i]
+			next := ref.frames[(i+1)%len(ref.frames)]
+			a, okA := g.opts.FlatBank[cur]
+			b, okB := g.opts.FlatBank[next]
+			if !okA || !okB || len(a) != 64*64*4 || len(b) != 64*64*4 {
+				continue
+			}
+			for step := 1; step <= cf; step++ {
+				alpha := float64(step) / float64(cf+1)
+				token := textureAnimBlendToken(cur, next, step, cf)
+				g.flatAnimBlendRGBA[token] = blendRGBA(a, b, alpha)
+			}
+		}
+	}
+
+	seenWallSeq := make(map[string]struct{}, len(wallTextureAnimRefs))
+	g.wallAnimBlendTex = make(map[string]WallTexture, len(wallTextureAnimRefs)*cf)
+	for _, ref := range wallTextureAnimRefs {
+		if len(ref.frames) < 2 {
+			continue
+		}
+		seqKey := strings.Join(ref.frames, ",")
+		if _, ok := seenWallSeq[seqKey]; ok {
+			continue
+		}
+		seenWallSeq[seqKey] = struct{}{}
+		for i := 0; i < len(ref.frames); i++ {
+			cur := ref.frames[i]
+			next := ref.frames[(i+1)%len(ref.frames)]
+			a, okA := g.opts.WallTexBank[cur]
+			b, okB := g.opts.WallTexBank[next]
+			if !okA || !okB || a.Width <= 0 || a.Height <= 0 || a.Width != b.Width || a.Height != b.Height {
+				continue
+			}
+			if len(a.RGBA) != a.Width*a.Height*4 || len(b.RGBA) != b.Width*b.Height*4 {
+				continue
+			}
+			for step := 1; step <= cf; step++ {
+				alpha := float64(step) / float64(cf+1)
+				token := textureAnimBlendToken(cur, next, step, cf)
+				rgba := blendRGBA(a.RGBA, b.RGBA, alpha)
+				if len(rgba) != a.Width*a.Height*4 {
+					continue
+				}
+				rgba32 := make([]uint32, a.Width*a.Height)
+				colMajor := make([]uint32, a.Width*a.Height)
+				for y := 0; y < a.Height; y++ {
+					row := y * a.Width
+					for x := 0; x < a.Width; x++ {
+						iPix := (row + x) * 4
+						p := packRGBA(rgba[iPix+0], rgba[iPix+1], rgba[iPix+2])
+						rgba32[row+x] = p
+						colMajor[x*a.Height+y] = p
+					}
+				}
+				g.wallAnimBlendTex[token] = WallTexture{
+					RGBA:     rgba,
+					RGBA32:   rgba32,
+					ColMajor: colMajor,
+					Width:    a.Width,
+					Height:   a.Height,
+					OffsetX:  a.OffsetX,
+					OffsetY:  a.OffsetY,
+				}
+			}
+		}
+	}
+}
+
 func (g *game) textureAnimTick() int {
-	return g.worldTic / textureAnimTics
+	cf := g.textureAnimCrossfadeFrames
+	if cf <= 0 {
+		return g.worldTic / textureAnimTics
+	}
+	// Scale animation state progression by added crossfade states so total cycle
+	// duration remains consistent with vanilla timing.
+	return (g.worldTic * (cf + 1)) / textureAnimTics
 }
 
 func normalizeFlatName(name string) string {
@@ -7637,12 +7956,6 @@ func max(a, b int) int {
 }
 
 func (g *game) drawHelpUI(screen *ebiten.Image) {
-	helpHint := "F1 HELP"
-	hintX := g.viewW - len(helpHint)*7 - 10
-	if hintX < 10 {
-		hintX = 10
-	}
-	ebitenutil.DebugPrintAt(screen, helpHint, hintX, 10)
 	if !g.showHelp {
 		return
 	}
@@ -7757,16 +8070,71 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 }
 
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
-	line1 := fmt.Sprintf("FPS %.1f", g.fpsDisplay)
-	line2 := fmt.Sprintf("render %.2f ms", g.renderMSAvg)
-	w := len(line1)
-	if len(line2) > w {
-		w = len(line2)
+	line1 := fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg)))
+	line2 := "F1 Help"
+	w := g.huTextWidth(line1)
+	if w2 := g.huTextWidth(line2); w2 > w {
+		w = w2
 	}
-	x := g.viewW - w*7 - 10
+	x := g.viewW - w - 10
 	if x < 4 {
 		x = 4
 	}
-	ebitenutil.DebugPrintAt(screen, line1, x, 10)
-	ebitenutil.DebugPrintAt(screen, line2, x, 24)
+	g.drawHUTextAt(screen, line1, float64(x), 10)
+	g.drawHUTextAt(screen, line2, float64(x), 24)
+}
+
+func (g *game) huTextWidth(text string) int {
+	if len(g.opts.MessageFontBank) == 0 {
+		return len(text) * 7
+	}
+	w := 0
+	for _, ch := range text {
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
+			w += 4
+			continue
+		}
+		_, gw, _, _, _, ok := g.messageFontGlyph(uc)
+		if !ok {
+			w += 4
+			continue
+		}
+		w += gw
+	}
+	return w
+}
+
+func (g *game) drawHUTextAt(screen *ebiten.Image, text string, x, y float64) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if len(g.opts.MessageFontBank) == 0 {
+		ebitenutil.DebugPrintAt(screen, text, int(x), int(y))
+		return
+	}
+	px := x
+	py := y
+	for _, ch := range text {
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
+			px += 4
+			continue
+		}
+		img, w, _, ox, oy, ok := g.messageFontGlyph(uc)
+		if !ok {
+			px += 4
+			continue
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Translate(px-float64(ox), py-float64(oy))
+		screen.DrawImage(img, op)
+		px += float64(w)
+	}
 }

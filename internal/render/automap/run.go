@@ -15,7 +15,7 @@ import (
 type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error)
 
 const (
-	bootSplashHoldTics = 3 * doomTicsPerSecond
+	bootSplashHoldTics = 2 * doomTicsPerSecond
 	meltVirtualH       = 200
 	quantizeLUTW       = 256
 	quantizeLUTH       = 16

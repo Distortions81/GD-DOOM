@@ -43,6 +43,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultTextureAnimCrossfadeFrames := 4
 	defaultAllCheats := false
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
@@ -103,6 +104,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
+		if cfg.TextureAnimCrossfadeFrames != nil {
+			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
+		}
 		if cfg.AllCheats != nil {
 			defaultAllCheats = *cfg.AllCheats
 		}
@@ -149,6 +153,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
@@ -346,30 +351,31 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			resolvedLineColorMode = "doom"
 		}
 		opts := automap.Options{
-			Width:           *width,
-			Height:          *height,
-			StartZoom:       *zoom,
-			WADHash:         wadHash,
-			Debug:           *debug,
-			PlayerSlot:      *playerSlot,
-			SkillLevel:      *skillLevel,
-			FastMonsters:    *fastMonsters,
-			CheatLevel:      resolvedCheatLevel,
-			Invulnerable:    resolvedInvuln,
-			LineColorMode:   resolvedLineColorMode,
-			SourcePortMode:  *sourcePortMode,
-			NoVsync:         *noVsync,
-			AllCheats:       *allCheats,
-			StartInMapMode:  *startInMap,
-			FlatBank:        flatBank,
-			WallTexBank:     wallTexBank,
-			BootSplash:      bootSplash,
-			DoomPaletteRGBA: doomPaletteRGBA,
-			StatusPatchBank: statusPatchBank,
-			MessageFontBank: messageFontBank,
-			SpritePatchBank: spritePatchBank,
-			SoundBank:       soundBank,
-			RecordDemoPath:  resolvedRecordDemoPath,
+			Width:                      *width,
+			Height:                     *height,
+			StartZoom:                  *zoom,
+			WADHash:                    wadHash,
+			Debug:                      *debug,
+			PlayerSlot:                 *playerSlot,
+			SkillLevel:                 *skillLevel,
+			FastMonsters:               *fastMonsters,
+			CheatLevel:                 resolvedCheatLevel,
+			Invulnerable:               resolvedInvuln,
+			LineColorMode:              resolvedLineColorMode,
+			SourcePortMode:             *sourcePortMode,
+			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
+			NoVsync:                    *noVsync,
+			AllCheats:                  *allCheats,
+			StartInMapMode:             *startInMap,
+			FlatBank:                   flatBank,
+			WallTexBank:                wallTexBank,
+			BootSplash:                 bootSplash,
+			DoomPaletteRGBA:            doomPaletteRGBA,
+			StatusPatchBank:            statusPatchBank,
+			MessageFontBank:            messageFontBank,
+			SpritePatchBank:            spritePatchBank,
+			SoundBank:                  soundBank,
+			RecordDemoPath:             resolvedRecordDemoPath,
 		}
 		if p := resolvedDemoPath; p != "" {
 			demo, derr := automap.LoadDemoScript(p)
