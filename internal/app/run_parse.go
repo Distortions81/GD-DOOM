@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strings"
@@ -243,12 +244,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		runtime.GOMAXPROCS(1)
 	}
 
-	wf, err := wad.Open(*wadPath)
+	resolvedWADPath := resolveIWADAliasPath(*wadPath)
+	wf, err := wad.Open(resolvedWADPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "open wad: %v\n", err)
 		return 1
 	}
-	wadHash := hashFileSHA1(*wadPath)
+	wadHash := hashFileSHA1(resolvedWADPath)
 	soundBank := automap.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
 	if *importPCSpeaker {
@@ -528,6 +530,26 @@ func hashFileSHA1(path string) string {
 		return ""
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+func resolveIWADAliasPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if trimmed == "" {
+		return path
+	}
+	base := strings.ToUpper(filepath.Base(trimmed))
+	if base != "DOOM1.WAD" {
+		return path
+	}
+	if _, err := os.Stat(trimmed); err == nil {
+		return path
+	}
+	dir := filepath.Dir(trimmed)
+	alias := filepath.Join(dir, "DOOM.WAD")
+	if _, err := os.Stat(alias); err == nil {
+		return alias
+	}
+	return path
 }
 
 func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
