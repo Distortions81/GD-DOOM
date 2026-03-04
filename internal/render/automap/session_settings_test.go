@@ -217,3 +217,51 @@ func TestRebuildGameWithPersistentSettings_PersistsSourcePortDetailAndGamma(t *t
 		t.Fatalf("sourceport gamma level=%d want 6", sg.g.gammaLevel)
 	}
 }
+
+func TestRestartMapForRespawnSingleUsesPristineTemplate(t *testing.T) {
+	template := &mapdata.Map{
+		Name:    "E1M1",
+		Sectors: []mapdata.Sector{{Light: 160}},
+	}
+	mutated := cloneMapForRestart(template)
+	mutated.Sectors[0].Light = 32
+	sg := &sessionGame{
+		opts: Options{
+			GameMode: gameModeSingle,
+		},
+		g: &game{
+			m: mutated,
+		},
+		currentTemplate: template,
+	}
+	got := sg.restartMapForRespawn()
+	if got == nil {
+		t.Fatal("restart map should not be nil")
+	}
+	if got == mutated {
+		t.Fatal("single-player restart should not reuse mutated map pointer")
+	}
+	if got.Sectors[0].Light != 160 {
+		t.Fatalf("restart map light=%d want=160", got.Sectors[0].Light)
+	}
+}
+
+func TestRestartMapForRespawnMultiplayerKeepsCurrentMapState(t *testing.T) {
+	cur := &mapdata.Map{
+		Name:    "E1M1",
+		Sectors: []mapdata.Sector{{Light: 32}},
+	}
+	sg := &sessionGame{
+		opts: Options{
+			GameMode: gameModeCoop,
+		},
+		g: &game{
+			m: cur,
+		},
+		currentTemplate: &mapdata.Map{Name: "E1M1", Sectors: []mapdata.Sector{{Light: 160}}},
+	}
+	got := sg.restartMapForRespawn()
+	if got != cur {
+		t.Fatal("non-single respawn should keep current map state")
+	}
+}

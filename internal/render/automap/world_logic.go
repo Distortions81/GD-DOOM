@@ -2,6 +2,8 @@ package automap
 
 import "gddoom/internal/doomrand"
 
+const playerDeathViewFallSpeed = fracUnit
+
 func (g *game) tickWorldLogic() {
 	g.worldTic++
 	g.tickPlayerViewHeight()
@@ -17,16 +19,16 @@ func (g *game) tickWorldLogic() {
 
 func (g *game) tickPlayerViewHeight() {
 	aliveEye := g.p.z + 41*fracUnit
-	if g.playerViewZ == 0 {
+	if g.playerViewZ == 0 && !g.isDead {
 		g.playerViewZ = aliveEye
 	}
 	if !g.isDead {
 		g.playerViewZ = aliveEye
 		return
 	}
-	target := g.p.floorz + 6*fracUnit
+	target := g.p.floorz
 	if g.playerViewZ > target {
-		g.playerViewZ -= fracUnit
+		g.playerViewZ -= playerDeathViewFallSpeed
 		if g.playerViewZ < target {
 			g.playerViewZ = target
 		}
@@ -99,7 +101,7 @@ func (g *game) damagePlayer(amount int, msg string) {
 }
 
 func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int64, hasAttacker bool) {
-	if amount <= 0 || g.stats.Health <= 0 {
+	if amount <= 0 || g.stats.Health <= 0 || g.isDead {
 		return
 	}
 	if g.invulnerable {

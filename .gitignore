@@ -12,3 +12,6 @@ dist/
 *.test
 *.out
 config.toml
+_research/Nuked-OPL3/
+_research/musparser/
+_research/DMXOPL/

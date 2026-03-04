@@ -134,7 +134,25 @@ func TestPlayerDeathViewFallsTowardFloor(t *testing.T) {
 	for i := 0; i < 80; i++ {
 		g.tickPlayerViewHeight()
 	}
-	if got := g.playerViewZ; got != 6*fracUnit {
-		t.Fatalf("view z=%d want=%d at death floor target", got, 6*fracUnit)
+	if got := g.playerViewZ; got != 0 {
+		t.Fatalf("view z=%d want=%d at death floor target", got, 0)
+	}
+}
+
+func TestUpdatePlayerDeadStillTicksWorldLogic(t *testing.T) {
+	g := &game{
+		m:      &mapdata.Map{},
+		isDead: true,
+		p: player{
+			momx: 3 * fracUnit,
+			momy: -2 * fracUnit,
+		},
+	}
+	g.updatePlayer(moveCmd{})
+	if got := g.worldTic; got != 1 {
+		t.Fatalf("worldTic=%d want=1", got)
+	}
+	if g.p.momx != 0 || g.p.momy != 0 {
+		t.Fatalf("dead player momentum should clear, got momx=%d momy=%d", g.p.momx, g.p.momy)
 	}
 }

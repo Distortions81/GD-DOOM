@@ -9,6 +9,7 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	prevX := g.p.x
 	prevY := g.p.y
 	g.tickDoors()
+	g.tickWorldLogic()
 
 	if g.isDead {
 		g.p.momx = 0
@@ -16,7 +17,6 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		return
 	}
 
-	g.tickWorldLogic()
 	g.processThingPickups()
 	if g.isDead {
 		g.p.momx = 0

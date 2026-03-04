@@ -70,7 +70,7 @@ var (
 )
 
 func (g *game) tickMonsters() {
-	if g.m == nil || g.isDead {
+	if g.m == nil {
 		return
 	}
 	g.ensureMonsterAIState()

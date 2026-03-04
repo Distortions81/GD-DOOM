@@ -1770,6 +1770,11 @@ func toggledLineColorMode(mode string) string {
 	return "parity"
 }
 
+func (g *game) mapVectorAntiAlias() bool {
+	// Faithful mode targets Doom-like crisp map vectors.
+	return g.opts.SourcePortMode
+}
+
 func (g *game) drawThingLegend(screen *ebiten.Image) {
 	type legendEntry struct {
 		label string
@@ -1816,10 +1821,11 @@ func (g *game) drawThingLegend(screen *ebiten.Image) {
 		x = 10
 	}
 	y := 28
+	aa := g.mapVectorAntiAlias()
 	ebitenutil.DebugPrintAt(screen, "THING LEGEND", x, y)
 	for i, e := range entries {
 		ly := y + 16 + i*14
-		drawThingGlyph(screen, e.style, float64(x+8), float64(ly+5), 0, 4.6)
+		drawThingGlyph(screen, e.style, float64(x+8), float64(ly+5), 0, 4.6, aa)
 		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
 	}
 
@@ -1827,7 +1833,7 @@ func (g *game) drawThingLegend(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, "LINE COLORS", x, ly0)
 	for i, e := range lineEntries {
 		ly := ly0 + 16 + i*14
-		vector.StrokeLine(screen, float32(x+2), float32(ly+5), float32(x+14), float32(ly+5), 2.4, e.clr, true)
+		vector.StrokeLine(screen, float32(x+2), float32(ly+5), float32(x+14), float32(ly+5), 2.4, e.clr, aa)
 		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
 	}
 }
@@ -1886,22 +1892,24 @@ func (g *game) drawGrid(screen *ebiten.Image) {
 	bottom := g.renderCamY - float64(g.viewH)/(2*g.zoom)
 	top := g.renderCamY + float64(g.viewH)/(2*g.zoom)
 	grid := color.RGBA{R: 40, G: 50, B: 60, A: 255}
+	aa := g.mapVectorAntiAlias()
 
 	startX := math.Floor(left/cell) * cell
 	for x := startX; x <= right; x += cell {
 		x1, y1 := g.worldToScreen(x, bottom)
 		x2, y2 := g.worldToScreen(x, top)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, true)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, aa)
 	}
 	startY := math.Floor(bottom/cell) * cell
 	for y := startY; y <= top; y += cell {
 		x1, y1 := g.worldToScreen(left, y)
 		x2, y2 := g.worldToScreen(right, y)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, true)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, aa)
 	}
 }
 
 func (g *game) drawThings(screen *ebiten.Image) {
+	aa := g.mapVectorAntiAlias()
 	for i, th := range g.m.Things {
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
 			continue
@@ -1914,7 +1922,7 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		if g.rotateView {
 			angle = relativeThingAngle(th.Angle, g.renderAngle)
 		}
-		drawThingGlyph(screen, styleForThing(th), sx, sy, angle, size)
+		drawThingGlyph(screen, styleForThing(th), sx, sy, angle, size, aa)
 	}
 }
 
@@ -1933,11 +1941,12 @@ func thingGlyphSize(zoom float64) float64 {
 
 func (g *game) drawMarks(screen *ebiten.Image) {
 	mc := color.RGBA{R: 120, G: 210, B: 255, A: 255}
+	aa := g.mapVectorAntiAlias()
 	for _, mk := range g.marks {
 		sx, sy := g.worldToScreen(mk.x, mk.y)
 		r := 5.0
-		vector.StrokeLine(screen, float32(sx-r), float32(sy-r), float32(sx+r), float32(sy+r), 1.3, mc, true)
-		vector.StrokeLine(screen, float32(sx-r), float32(sy+r), float32(sx+r), float32(sy-r), 1.3, mc, true)
+		vector.StrokeLine(screen, float32(sx-r), float32(sy-r), float32(sx+r), float32(sy+r), 1.3, mc, aa)
+		vector.StrokeLine(screen, float32(sx-r), float32(sy+r), float32(sx+r), float32(sy-r), 1.3, mc, aa)
 		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", mk.id), int(sx)+6, int(sy)-6)
 	}
 }
@@ -1965,7 +1974,7 @@ func (g *game) drawPlayerArrowWorld(screen *ebiten.Image, px, py, ang float64, c
 		by := seg[2]*sa + seg[3]*ca
 		x1, y1 := g.worldToScreen(px+ax, py+ay)
 		x2, y2 := g.worldToScreen(px+bx, py+by)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, clr, true)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, clr, g.mapVectorAntiAlias())
 	}
 }
 
@@ -1982,7 +1991,7 @@ func (g *game) drawPlayerArrowScreen(screen *ebiten.Image, sx, sy, ang float64) 
 		y1 := sy - ay*scale
 		x2 := sx + bx*scale
 		y2 := sy - by*scale
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, playerColor, true)
+		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, playerColor, g.mapVectorAntiAlias())
 	}
 }
 
@@ -2010,7 +2019,7 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 	pl := g.lines[pi]
 	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
 	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
-	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, true)
+	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, g.mapVectorAntiAlias())
 }
 
 func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
@@ -10511,8 +10520,9 @@ func (g *game) drawMapLines(screen *ebiten.Image) {
 		g.mapLineKey = key
 		g.mapLineInit = true
 	}
+	aa := g.mapVectorAntiAlias()
 	for _, ln := range g.mapLineBuf {
-		vector.StrokeLine(screen, ln.x1, ln.y1, ln.x2, ln.y2, ln.w, ln.clr, true)
+		vector.StrokeLine(screen, ln.x1, ln.y1, ln.x2, ln.y2, ln.w, ln.clr, aa)
 	}
 }
 

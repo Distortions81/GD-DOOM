@@ -186,6 +186,7 @@ const (
 type sessionGame struct {
 	g               *game
 	current         mapdata.MapName
+	currentTemplate *mapdata.Map
 	opts            Options
 	settings        sessionPersistentSettings
 	nextMap         NextMapFunc
@@ -206,6 +207,38 @@ type sessionGame struct {
 	interPatchCache map[string]*ebiten.Image
 	transition      sessionTransition
 	intermission    sessionIntermission
+}
+
+func cloneMapForRestart(src *mapdata.Map) *mapdata.Map {
+	if src == nil {
+		return nil
+	}
+	dup := *src
+	dup.Things = append([]mapdata.Thing(nil), src.Things...)
+	dup.Vertexes = append([]mapdata.Vertex(nil), src.Vertexes...)
+	dup.Linedefs = append([]mapdata.Linedef(nil), src.Linedefs...)
+	dup.Sidedefs = append([]mapdata.Sidedef(nil), src.Sidedefs...)
+	dup.Sectors = append([]mapdata.Sector(nil), src.Sectors...)
+	dup.Segs = append([]mapdata.Seg(nil), src.Segs...)
+	dup.SubSectors = append([]mapdata.SubSector(nil), src.SubSectors...)
+	dup.Nodes = append([]mapdata.Node(nil), src.Nodes...)
+	dup.Reject = append([]byte(nil), src.Reject...)
+	dup.Blockmap = append([]int16(nil), src.Blockmap...)
+	if src.RejectMatrix != nil {
+		rm := *src.RejectMatrix
+		rm.Data = append([]byte(nil), src.RejectMatrix.Data...)
+		dup.RejectMatrix = &rm
+	}
+	if src.BlockMap != nil {
+		bm := *src.BlockMap
+		bm.Offsets = append([]uint16(nil), src.BlockMap.Offsets...)
+		bm.Cells = make([][]int16, len(src.BlockMap.Cells))
+		for i, cell := range src.BlockMap.Cells {
+			bm.Cells[i] = append([]int16(nil), cell...)
+		}
+		dup.BlockMap = &bm
+	}
+	return &dup
 }
 
 type sessionPersistentSettings struct {
@@ -370,13 +403,24 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 	sg.g = ng
 }
 
+func (sg *sessionGame) restartMapForRespawn() *mapdata.Map {
+	if sg == nil || sg.g == nil {
+		return nil
+	}
+	if normalizeGameMode(sg.opts.GameMode) != gameModeSingle {
+		return sg.g.m
+	}
+	return cloneMapForRestart(sg.currentTemplate)
+}
+
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	opts, windowW, windowH := normalizeRunDimensions(opts)
 	sg := &sessionGame{
-		g:       newGame(m, opts),
-		current: m.Name,
-		opts:    opts,
-		nextMap: nextMap,
+		g:               newGame(m, opts),
+		current:         m.Name,
+		currentTemplate: cloneMapForRestart(m),
+		opts:            opts,
+		nextMap:         nextMap,
 	}
 	sg.capturePersistentSettings()
 	if sg.shouldShowBootSplash() {
@@ -451,7 +495,7 @@ func (sg *sessionGame) Update() error {
 	err := sg.g.Update()
 	if err == nil {
 		if sg.g.levelRestartRequested {
-			sg.rebuildGameWithPersistentSettings(sg.g.m)
+			sg.rebuildGameWithPersistentSettings(sg.restartMapForRespawn())
 			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
 			sg.queueTransition(transitionLevel, 0)
 		}
@@ -983,6 +1027,7 @@ func (sg *sessionGame) finishIntermission() {
 		return
 	}
 	sg.current = im.target.nextMapName
+	sg.currentTemplate = cloneMapForRestart(im.nextMap)
 	sg.rebuildGameWithPersistentSettings(im.nextMap)
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", im.nextMap.Name))
 	sg.intermission = sessionIntermission{}
