@@ -95,15 +95,17 @@ var detailPresets = [][2]int{
 }
 
 type game struct {
-	m       *mapdata.Map
-	opts    Options
-	bounds  bounds
-	viewW   int
-	viewH   int
-	camX    float64
-	camY    float64
-	zoom    float64
-	fitZoom float64
+	m                 *mapdata.Map
+	opts              Options
+	bounds            bounds
+	paletteLUTEnabled bool
+	gammaLevel        int
+	viewW             int
+	viewH             int
+	camX              float64
+	camY              float64
+	zoom              float64
+	fitZoom           float64
 
 	mode       viewMode
 	walkRender walkRendererMode
@@ -429,16 +431,18 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	p, localSlot, starts := spawnPlayer(m, opts.PlayerSlot)
 	g := &game{
-		m:          m,
-		opts:       opts,
-		bounds:     mapBounds(m),
-		viewW:      opts.Width,
-		viewH:      opts.Height,
-		mode:       viewMap,
-		walkRender: walkRendererDoomBasic,
-		followMode: true,
-		rotateView: opts.SourcePortMode,
-		pseudo3D:   false,
+		m:                 m,
+		opts:              opts,
+		bounds:            mapBounds(m),
+		paletteLUTEnabled: !opts.SourcePortMode,
+		gammaLevel:        0,
+		viewW:             opts.Width,
+		viewH:             opts.Height,
+		mode:              viewMap,
+		walkRender:        walkRendererDoomBasic,
+		followMode:        true,
+		rotateView:        opts.SourcePortMode,
+		pseudo3D:          false,
 		parity: automapParityState{
 			reveal: revealNormal,
 			iddt:   0,
@@ -1014,6 +1018,26 @@ func (g *game) updateParityControls() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyJ) {
 			g.toggleMapFloor2DPath()
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+			if len(g.opts.DoomPaletteRGBA) != 256*4 {
+				g.setHUDMessage("Palette LUT unavailable", 70)
+				return
+			}
+			g.paletteLUTEnabled = !g.paletteLUTEnabled
+			if g.paletteLUTEnabled {
+				g.setHUDMessage("Palette LUT ON", 70)
+			} else {
+				g.setHUDMessage("Palette LUT OFF", 70)
+			}
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+		if len(g.opts.DoomPaletteRGBA) != 256*4 {
+			g.setHUDMessage("Gamma unavailable", 70)
+			return
+		}
+		g.gammaLevel = (g.gammaLevel + 1) % 5
+		g.setHUDMessage(fmt.Sprintf("Gamma %d", g.gammaLevel), 70)
 	}
 }
 
@@ -7642,6 +7666,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"M  ADD MARK",
 		"C  CLEAR MARKS",
 		"+/- OR WHEEL  ZOOM",
+		"F7  GAMMA CYCLE",
 		"ESC  QUIT",
 	}
 	if g.opts.SourcePortMode {
@@ -7656,6 +7681,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 			"I  CYCLE IDDT",
 			"L  TOGGLE COLOR MODE",
 			"V  TOGGLE THING LEGEND",
+			"F6 TOGGLE PALETTE LUT",
 		)
 	} else {
 		lines = append(lines,

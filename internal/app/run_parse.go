@@ -230,10 +230,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	soundBank = buildAutomapSoundBank(dsr)
 	wallTexBank := map[string]automap.WallTexture(nil)
 	bootSplash := automap.WallTexture{}
+	doomPaletteRGBA := []byte(nil)
 	statusPatchBank := map[string]automap.WallTexture(nil)
 	messageFontBank := map[rune]automap.WallTexture(nil)
 	spritePatchBank := map[string]automap.WallTexture(nil)
 	var texSet *doomtex.Set
+	if pal, perr := doomtex.LoadPaletteRGBA(wf, 0); perr != nil {
+		fmt.Fprintf(stderr, "palette import failed: %v\n", perr)
+	} else {
+		doomPaletteRGBA = pal
+	}
 	if *importTextures {
 		ts, terr := doomtex.LoadFromWAD(wf)
 		if terr != nil {
@@ -358,6 +364,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			FlatBank:        flatBank,
 			WallTexBank:     wallTexBank,
 			BootSplash:      bootSplash,
+			DoomPaletteRGBA: doomPaletteRGBA,
 			StatusPatchBank: statusPatchBank,
 			MessageFontBank: messageFontBank,
 			SpritePatchBank: spritePatchBank,

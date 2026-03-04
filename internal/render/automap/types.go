@@ -19,6 +19,7 @@ type Options struct {
 	FlatBank        map[string][]byte
 	WallTexBank     map[string]WallTexture
 	BootSplash      WallTexture
+	DoomPaletteRGBA []byte
 	StatusPatchBank map[string]WallTexture
 	MessageFontBank map[rune]WallTexture
 	SpritePatchBank map[string]WallTexture

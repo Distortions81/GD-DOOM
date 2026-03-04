@@ -23,6 +23,34 @@ const (
 	sourcePortMeltMoveCols = sourcePortMeltInitCols
 )
 
+var faithfulPaletteShaderSrc = []byte(`//kage:unit pixels
+package main
+
+var GammaRatio float
+var EnableQuantize float
+
+func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+	c := imageSrc0At(texCoord)
+	if c.a <= 0.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+	// Convert from ~2.2 encoded source to ~2.4 encoded domain before quantization.
+	pre := vec3(pow(c.r, GammaRatio), pow(c.g, GammaRatio), pow(c.b, GammaRatio))
+	best := vec4(pre, 1.0)
+	if EnableQuantize >= 0.5 {
+		// 16x16x16 RGB cube LUT flattened into a 256x16 block at source1 top-left.
+		ri := int(clamp(pre.r*15.0+0.5, 0.0, 15.0))
+		gi := int(clamp(pre.g*15.0+0.5, 0.0, 15.0))
+		bi := int(clamp(pre.b*15.0+0.5, 0.0, 15.0))
+		idx := ri + gi*16 + bi*256
+		lx := float(idx%256) + 0.5
+		ly := float(idx/256) + 0.5
+		best = imageSrc1At(vec2(lx, ly))
+	}
+	return vec4(best.rgb, 1.0)
+}
+`)
+
 type transitionKind int
 
 const (
@@ -79,6 +107,12 @@ type sessionGame struct {
 	nextMap         NextMapFunc
 	err             error
 	faithfulSurface *ebiten.Image
+	faithfulPost    *ebiten.Image
+	faithfulLUT     *ebiten.Image
+	faithfulLUTPix  []byte
+	faithfulLUTW    int
+	faithfulLUTH    int
+	faithfulShader  *ebiten.Shader
 	presentSurface  *ebiten.Image
 	lastFrame       *ebiten.Image
 	bootSplashImage *ebiten.Image
@@ -129,6 +163,7 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	if sg.shouldShowBootSplash() {
 		sg.queueTransition(transitionBoot, bootSplashHoldTics)
 	}
+	sg.initFaithfulPalettePost()
 	ebiten.SetTPS(doomTicsPerSecond)
 	ebiten.SetVsyncEnabled(!opts.NoVsync)
 	if opts.SourcePortMode {
@@ -245,8 +280,18 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		return
 	}
 	if sg.opts.SourcePortMode {
-		// Render directly to the actual screen target to avoid any
-		// intermediate-resolution mismatch.
+		if sg.palettePostEnabled() {
+			if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
+				sg.presentSurface = ebiten.NewImage(sw, sh)
+			}
+			sg.g.Layout(sw, sh)
+			sg.g.Draw(sg.presentSurface)
+			src := sg.applyFaithfulPalettePost(sg.presentSurface)
+			screen.DrawImage(src, nil)
+			sg.captureLastFrame(src)
+			return
+		}
+		// Render directly to the actual screen target when no postprocess is active.
 		sg.g.Layout(sw, sh)
 		sg.g.Draw(screen)
 		sg.captureLastFrame(screen)
@@ -270,12 +315,17 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 			sg.faithfulSurface = ebiten.NewImage(vw, vh)
 		}
 		g.Draw(sg.faithfulSurface)
-		sg.drawFaithfulPresented(dst, sg.faithfulSurface)
-		sg.captureLastFrame(sg.faithfulSurface)
+		src := sg.applyFaithfulPalettePost(sg.faithfulSurface)
+		sg.drawFaithfulPresented(dst, src)
+		sg.captureLastFrame(src)
 		return
 	}
 	g.Layout(max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
 	g.Draw(dst)
+	if sg.palettePostEnabled() {
+		dst.Clear()
+		dst.DrawImage(sg.applyFaithfulPalettePost(dst), nil)
+	}
 }
 
 func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
@@ -340,6 +390,11 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 	if sg.opts.SourcePortMode {
 		g.Layout(max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
 		g.Draw(dst)
+		if sg.palettePostEnabled() {
+			src := sg.applyFaithfulPalettePost(dst)
+			dst.Clear()
+			dst.DrawImage(src, nil)
+		}
 		return
 	}
 	vw := max(g.viewW, 1)
@@ -348,13 +403,14 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 		sg.faithfulSurface = ebiten.NewImage(vw, vh)
 	}
 	g.Draw(sg.faithfulSurface)
+	src := sg.applyFaithfulPalettePost(sg.faithfulSurface)
 	dw := max(dst.Bounds().Dx(), 1)
 	dh := max(dst.Bounds().Dy(), 1)
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
 	op.GeoM.Scale(float64(dw)/float64(vw), float64(dh)/float64(vh))
 	dst.Fill(color.Black)
-	dst.DrawImage(sg.faithfulSurface, op)
+	dst.DrawImage(src, op)
 }
 
 func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
@@ -739,6 +795,119 @@ func (sg *sessionGame) clearTransition() {
 	sg.transition.initialized = false
 	sg.transition.holdTics = 0
 	sg.transition.y = nil
+}
+
+func (sg *sessionGame) initFaithfulPalettePost() {
+	if len(sg.opts.DoomPaletteRGBA) != 256*4 {
+		return
+	}
+	sh, err := ebiten.NewShader(faithfulPaletteShaderSrc)
+	if err != nil {
+		fmt.Printf("warning: palette shader disabled: %v\n", err)
+		return
+	}
+	sg.faithfulShader = sh
+}
+
+func (sg *sessionGame) palettePostEnabled() bool {
+	if sg.faithfulShader == nil || sg.g == nil {
+		return false
+	}
+	return sg.g.paletteLUTEnabled || sg.g.gammaLevel > 0
+}
+
+func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image {
+	if src == nil || sg.faithfulShader == nil {
+		return src
+	}
+	w := src.Bounds().Dx()
+	h := src.Bounds().Dy()
+	if w <= 0 || h <= 0 {
+		return src
+	}
+	if sg.faithfulPost == nil || sg.faithfulPost.Bounds().Dx() != w || sg.faithfulPost.Bounds().Dy() != h {
+		sg.faithfulPost = ebiten.NewImage(w, h)
+	}
+	sg.ensureFaithfulLUTSurface(w, h)
+	if sg.faithfulLUT == nil {
+		return src
+	}
+	op := &ebiten.DrawRectShaderOptions{}
+	op.Images[0] = src
+	op.Images[1] = sg.faithfulLUT
+	enableQuant := float32(0)
+	if sg.g != nil && sg.g.paletteLUTEnabled {
+		enableQuant = 1
+	}
+	op.Uniforms = map[string]any{
+		"GammaRatio":     gammaRatioForLevel(sg.g.gammaLevel),
+		"EnableQuantize": enableQuant,
+	}
+	sg.faithfulPost.DrawRectShader(w, h, sg.faithfulShader, op)
+	return sg.faithfulPost
+}
+
+func gammaRatioForLevel(level int) float32 {
+	if level <= 0 {
+		return 1.0
+	}
+	return float32(2.2 / 2.4)
+}
+
+func (sg *sessionGame) ensureFaithfulLUTSurface(w, h int) {
+	if w <= 0 || h <= 0 || len(sg.opts.DoomPaletteRGBA) != 256*4 {
+		return
+	}
+	if sg.faithfulLUT == nil || sg.faithfulLUTW != w || sg.faithfulLUTH != h {
+		sg.faithfulLUT = ebiten.NewImage(w, h)
+		sg.faithfulLUTW = w
+		sg.faithfulLUTH = h
+		sg.faithfulLUTPix = make([]byte, w*h*4)
+		buildQuantizeLUT16x16x16(sg.faithfulLUTPix, w, h, sg.opts.DoomPaletteRGBA)
+		sg.faithfulLUT.WritePixels(sg.faithfulLUTPix)
+	}
+}
+
+func buildQuantizeLUT16x16x16(dst []byte, w, h int, pal []byte) {
+	if len(dst) < w*h*4 || len(pal) < 256*4 {
+		return
+	}
+	const lutW = 256
+	const lutH = 16
+	if w < lutW || h < lutH {
+		return
+	}
+	for b := 0; b < 16; b++ {
+		bv := uint8(b * 17)
+		for g := 0; g < 16; g++ {
+			gv := uint8(g * 17)
+			for r := 0; r < 16; r++ {
+				rv := uint8(r * 17)
+				best := 0
+				bestDist := int(^uint(0) >> 1)
+				for i := 0; i < 256; i++ {
+					pi := i * 4
+					dr := int(rv) - int(pal[pi+0])
+					dg := int(gv) - int(pal[pi+1])
+					db := int(bv) - int(pal[pi+2])
+					d := dr*dr + dg*dg + db*db
+					if d < bestDist {
+						bestDist = d
+						best = i
+					}
+				}
+				idx := r + g*16 + b*256
+				x := idx % lutW
+				y := idx / lutW
+				di := (y*w + x) * 4
+				si := best * 4
+				dst[di+0] = pal[si+0]
+				dst[di+1] = pal[si+1]
+				dst[di+2] = pal[si+2]
+				dst[di+3] = 0xFF
+			}
+		}
+	}
 }
 
 func collectIntermissionStats(g *game, mapName, nextName mapdata.MapName) intermissionStats {
