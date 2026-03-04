@@ -7,10 +7,17 @@ const automapDiscoverPortalDepth = 3
 func (g *game) discoverLinesAroundPlayer() {
 	sec := g.sectorAt(g.p.x, g.p.y)
 	mapped := discoverMappedLinesBySector(g.m, sec, automapDiscoverPortalDepth)
+	changed := false
 	for i, ok := range mapped {
 		if ok {
+			if g.m.Linedefs[i].Flags&mlMapped == 0 {
+				changed = true
+			}
 			g.m.Linedefs[i].Flags |= mlMapped
 		}
+	}
+	if changed {
+		g.mapLineRev++
 	}
 }
 

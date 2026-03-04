@@ -114,23 +114,6 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 }
 `)
 
-var flashOverlayShaderSrc = []byte(`//kage:unit pixels
-package main
-
-var DamageA float
-var BonusA float
-
-func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
-	// Premultiplied source-over composition:
-	// out = bonus OVER damage OVER scene
-	damageRGB := vec3(180.0/255.0, 20.0/255.0, 20.0/255.0) * DamageA
-	bonusRGB := vec3(210.0/255.0, 190.0/255.0, 80.0/255.0) * BonusA
-	outA := BonusA + DamageA*(1.0-BonusA)
-	outRGB := bonusRGB + damageRGB*(1.0-BonusA)
-	return vec4(outRGB, outA)
-}
-`)
-
 var doomPlayerArrow = [][4]float64{
 	// Rough port of Doom's AM player_arrow (points right in local space).
 	{-16, 0, 18.2857, 0},
@@ -172,6 +155,29 @@ type projectedThingItem struct {
 	yb   float64
 	h    float64
 	tex  WallTexture
+}
+
+type mapLineDraw struct {
+	x1  float32
+	y1  float32
+	x2  float32
+	y2  float32
+	w   float32
+	clr color.RGBA
+}
+
+type mapLineCacheKey struct {
+	camX          float64
+	camY          float64
+	zoom          float64
+	angle         uint32
+	rotateView    bool
+	viewW         int
+	viewH         int
+	reveal        revealMode
+	iddt          int
+	lineColorMode string
+	mappedRev     uint32
 }
 
 type game struct {
@@ -217,6 +223,19 @@ type game struct {
 	renderSeen  []int
 	renderEpoch int
 	visibleBuf  []int
+	bspOccBuf   []solidSpan
+	visibleSectorSeen    []int
+	visibleSubSectorSeen []int
+	visibleEpoch         int
+	nodeChildRangeEpoch  []int
+	nodeChildRangeL      []int
+	nodeChildRangeR      []int
+	nodeChildRangeOK     []uint8
+	thingSectorCache     []int
+	mapLineBuf  []mapLineDraw
+	mapLineKey  mapLineCacheKey
+	mapLineRev  uint32
+	mapLineInit bool
 	sectorFloor []int64
 	sectorCeil  []int64
 	lineSpecial []uint16
@@ -292,7 +311,6 @@ type game struct {
 	mapFloorW                  int
 	mapFloorH                  int
 	skyLayerShader             *ebiten.Shader
-	flashOverlayShader         *ebiten.Shader
 	skyLayerTex                *ebiten.Image
 	skyLayerTexKey             string
 	skyLayerTexW               int
@@ -613,9 +631,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
 		g.skyLayerShader = sh
 	}
-	if sh, err := ebiten.NewShader(flashOverlayShaderSrc); err == nil {
-		g.flashOverlayShader = sh
-	}
 	if g.opts.SourcePortMode {
 		// Source-port defaults: reveal full map style and heading-follow at startup.
 		g.parity.reveal = revealAllMap
@@ -641,6 +656,17 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		}
 	}
 	g.renderSeen = make([]int, len(g.m.Linedefs))
+	g.visibleSectorSeen = make([]int, len(g.m.Sectors))
+	g.visibleSubSectorSeen = make([]int, len(g.m.SubSectors))
+	g.nodeChildRangeEpoch = make([]int, len(g.m.Nodes)*2)
+	g.nodeChildRangeL = make([]int, len(g.m.Nodes)*2)
+	g.nodeChildRangeR = make([]int, len(g.m.Nodes)*2)
+	g.nodeChildRangeOK = make([]uint8, len(g.m.Nodes)*2)
+	g.thingSectorCache = make([]int, len(g.m.Things))
+	for i := range g.thingSectorCache {
+		th := g.m.Things[i]
+		g.thingSectorCache[i] = g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+	}
 	g.discoverLinesAroundPlayer()
 	g.resetView()
 	if opts.StartZoom > 0 {
@@ -1268,25 +1294,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		g.drawMapTextureDiagOverlay(screen)
 	}
 
-	for _, li := range g.visibleLineIndices() {
-		pi := g.physForLine[li]
-		if pi < 0 || pi >= len(g.lines) {
-			continue
-		}
-		ld := g.m.Linedefs[li]
-		pl := g.lines[pi]
-		x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
-		x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
-		if x1 == x2 && y1 == y2 {
-			continue
-		}
-		d := g.linedefDecision(ld)
-		if !d.visible {
-			continue
-		}
-		c, w := g.decisionStyle(d)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), float32(w), c, true)
-	}
+	g.drawMapLines(screen)
 	if g.opts.SourcePortMode {
 		g.drawUseSpecialLines(screen)
 	}
@@ -3746,6 +3754,10 @@ func (g *game) drawWireframeMonsters(screen *ebiten.Image, camX, camY, camAng, f
 		if !isMonster(th.Type) {
 			continue
 		}
+		sec := g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+		if !g.sectorVisibleNow(sec) {
+			continue
+		}
 		tx := float64(th.X) - camX
 		ty := float64(th.Y) - camY
 		f := tx*ca + ty*sa
@@ -4353,6 +4365,9 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			continue
 		}
 		if isMonster(th.Type) || isPlayerStart(th.Type) {
+			continue
+		}
+		if !g.sectorVisibleNow(g.thingSectorCached(i, th)) {
 			continue
 		}
 		sprite := g.worldThingSpriteName(th.Type, g.worldTic)
@@ -5156,34 +5171,14 @@ func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {
-	damageA := float32(0)
-	bonusA := float32(0)
 	if g.damageFlashTic > 0 {
-		damageA = float32(40+min(120, g.damageFlashTic*8)) / 255.0
+		a := uint8(40 + min(120, g.damageFlashTic*8))
+		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 180, G: 20, B: 20, A: a})
 	}
 	if g.bonusFlashTic > 0 {
-		bonusA = float32(20+min(80, g.bonusFlashTic*6)) / 255.0
+		a := uint8(20 + min(80, g.bonusFlashTic*6))
+		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 210, G: 190, B: 80, A: a})
 	}
-	if damageA <= 0 && bonusA <= 0 {
-		return
-	}
-	if g.flashOverlayShader == nil {
-		if damageA > 0 {
-			a := uint8(damageA * 255.0)
-			ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 180, G: 20, B: 20, A: a})
-		}
-		if bonusA > 0 {
-			a := uint8(bonusA * 255.0)
-			ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 210, G: 190, B: 80, A: a})
-		}
-		return
-	}
-	op := &ebiten.DrawRectShaderOptions{}
-	op.Uniforms = map[string]any{
-		"DamageA": damageA,
-		"BonusA":  bonusA,
-	}
-	screen.DrawRectShader(g.viewW, g.viewH, g.flashOverlayShader, op)
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -9006,6 +9001,66 @@ func (g *game) decisionStyle(d lineDecision) (color.Color, float64) {
 	}
 }
 
+func (g *game) mapLineStateKey() mapLineCacheKey {
+	return mapLineCacheKey{
+		camX:          g.renderCamX,
+		camY:          g.renderCamY,
+		zoom:          g.zoom,
+		angle:         g.renderAngle,
+		rotateView:    g.rotateView,
+		viewW:         g.viewW,
+		viewH:         g.viewH,
+		reveal:        g.parity.reveal,
+		iddt:          g.parity.iddt,
+		lineColorMode: g.opts.LineColorMode,
+		mappedRev:     g.mapLineRev,
+	}
+}
+
+func (g *game) rebuildMapLineCache() {
+	out := g.mapLineBuf[:0]
+	for _, li := range g.visibleLineIndices() {
+		pi := g.physForLine[li]
+		if pi < 0 || pi >= len(g.lines) {
+			continue
+		}
+		ld := g.m.Linedefs[li]
+		d := g.linedefDecision(ld)
+		if !d.visible {
+			continue
+		}
+		pl := g.lines[pi]
+		x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
+		x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
+		if x1 == x2 && y1 == y2 {
+			continue
+		}
+		c, w := g.decisionStyle(d)
+		crgba := color.RGBAModel.Convert(c).(color.RGBA)
+		out = append(out, mapLineDraw{
+			x1:  float32(x1),
+			y1:  float32(y1),
+			x2:  float32(x2),
+			y2:  float32(y2),
+			w:   float32(w),
+			clr: crgba,
+		})
+	}
+	g.mapLineBuf = out
+}
+
+func (g *game) drawMapLines(screen *ebiten.Image) {
+	key := g.mapLineStateKey()
+	if !g.mapLineInit || key != g.mapLineKey {
+		g.rebuildMapLineCache()
+		g.mapLineKey = key
+		g.mapLineInit = true
+	}
+	for _, ln := range g.mapLineBuf {
+		vector.StrokeLine(screen, ln.x1, ln.y1, ln.x2, ln.y2, ln.w, ln.clr, true)
+	}
+}
+
 func (g *game) visibleLineIndices() []int {
 	margin := 2.0 / g.zoom
 	camX := g.renderCamX
@@ -9039,6 +9094,26 @@ func (g *game) visibleLineIndices() []int {
 		g.visibleBuf = append(g.visibleBuf, pl.idx)
 	}
 	return g.visibleBuf
+}
+
+func (g *game) sectorVisibleNow(sec int) bool {
+	if len(g.m.Nodes) == 0 {
+		return true
+	}
+	if sec < 0 || sec >= len(g.visibleSectorSeen) || g.visibleEpoch == 0 {
+		return false
+	}
+	return g.visibleSectorSeen[sec] == g.visibleEpoch
+}
+
+func (g *game) thingSectorCached(i int, th mapdata.Thing) int {
+	if i >= 0 && i < len(g.thingSectorCache) {
+		sec := g.thingSectorCache[i]
+		if sec >= 0 && sec < len(g.m.Sectors) {
+			return sec
+		}
+	}
+	return g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
 }
 
 func (g *game) lineVisibleInBox(lineIdx int, minX, minY, maxX, maxY int64) bool {
