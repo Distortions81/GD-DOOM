@@ -53,3 +53,56 @@ func TestVoiceStealKeepsRendering(t *testing.T) {
 		t.Fatal("expected PCM after voice stealing")
 	}
 }
+
+func TestDriverRenderMUS(t *testing.T) {
+	d := NewDriver(49716, nil)
+	d.Reset()
+	score := []byte{
+		0x40, 0, 0, // program 0 on channel 0
+		0x90,      // note on, last
+		0xBC, 110, // note 60 with velocity 110
+		0x14,       // delta 20 tics
+		0x00, 0x3C, // note off
+		0x60, // end
+	}
+	mus := buildMUSTestLump(score)
+	pcm, err := d.RenderMUS(mus)
+	if err != nil {
+		t.Fatalf("RenderMUS() error: %v", err)
+	}
+	if len(pcm) == 0 {
+		t.Fatal("expected non-empty PCM")
+	}
+	nonZero := false
+	for _, s := range pcm {
+		if s != 0 {
+			nonZero = true
+			break
+		}
+	}
+	if !nonZero {
+		t.Fatal("expected non-zero PCM from MUS render")
+	}
+}
+
+func TestDriverRenderMUSS16LE(t *testing.T) {
+	d := NewOutputDriver(nil)
+	d.Reset()
+	score := []byte{
+		0x10, 60, // note on ch0 default velocity
+		0x80, 60, // note off ch0 with delay flag
+		0x08, // delay 8 tics
+		0x60, // end
+	}
+	mus := buildMUSTestLump(score)
+	pcm, err := d.RenderMUSS16LE(mus)
+	if err != nil {
+		t.Fatalf("RenderMUSS16LE() error: %v", err)
+	}
+	if len(pcm) == 0 {
+		t.Fatal("expected non-empty byte PCM")
+	}
+	if len(pcm)%2 != 0 {
+		t.Fatalf("pcm byte len=%d should be even", len(pcm))
+	}
+}

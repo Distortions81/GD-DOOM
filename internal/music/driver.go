@@ -7,14 +7,15 @@ import (
 )
 
 const (
-	defaultTicRate  = 140
-	defaultVoices   = 18
-	controllerPan   = 10
-	controllerVol   = 7
-	controllerExpr  = 11
-	defaultChanVol  = 127
-	defaultChanExpr = 127
-	defaultChanPan  = 64
+	OutputSampleRate = 44100
+	defaultTicRate   = 140
+	defaultVoices    = 18
+	controllerPan    = 10
+	controllerVol    = 7
+	controllerExpr   = 11
+	defaultChanVol   = 127
+	defaultChanExpr  = 127
+	defaultChanPan   = 64
 )
 
 type EventType uint8
@@ -93,7 +94,7 @@ type Driver struct {
 
 func NewDriver(sampleRate int, bank PatchBank) *Driver {
 	if sampleRate <= 0 {
-		sampleRate = 49716
+		sampleRate = OutputSampleRate
 	}
 	if bank == nil {
 		bank = DefaultPatchBank{}
@@ -113,6 +114,10 @@ func NewDriver(sampleRate int, bank PatchBank) *Driver {
 		}
 	}
 	return d
+}
+
+func NewOutputDriver(bank PatchBank) *Driver {
+	return NewDriver(OutputSampleRate, bank)
 }
 
 func (d *Driver) Reset() {
@@ -161,6 +166,38 @@ func (d *Driver) Render(events []Event) []int16 {
 		}
 	}
 	return pcm
+}
+
+// RenderMUS parses a MUS stream and renders it to signed 16-bit stereo PCM.
+func (d *Driver) RenderMUS(musData []byte) ([]int16, error) {
+	events, err := ParseMUS(musData)
+	if err != nil {
+		return nil, err
+	}
+	return d.Render(events), nil
+}
+
+// RenderMUSS16LE parses MUS and returns little-endian signed 16-bit stereo PCM bytes.
+func (d *Driver) RenderMUSS16LE(musData []byte) ([]byte, error) {
+	s, err := d.RenderMUS(musData)
+	if err != nil {
+		return nil, err
+	}
+	return PCMInt16ToBytesLE(s), nil
+}
+
+func PCMInt16ToBytesLE(samples []int16) []byte {
+	if len(samples) == 0 {
+		return nil
+	}
+	out := make([]byte, len(samples)*2)
+	oi := 0
+	for _, s := range samples {
+		out[oi] = byte(s)
+		out[oi+1] = byte(s >> 8)
+		oi += 2
+	}
+	return out
 }
 
 func (d *Driver) applyEvent(ev Event) {

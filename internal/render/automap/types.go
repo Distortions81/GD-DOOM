@@ -53,6 +53,7 @@ type Options struct {
 	SoundBank                  SoundBank
 	DemoScript                 *DemoScript
 	RecordDemoPath             string
+	MapMusicLoader             func(mapName string) ([]byte, error)
 	OnRuntimeSettingsChanged   func(RuntimeSettings)
 }
 
