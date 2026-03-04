@@ -14,6 +14,7 @@ type Options struct {
 	LineColorMode              string
 	SourcePortMode             bool
 	CRTEffect                  bool
+	DepthBufferView            bool
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
 	NoFPS                      bool

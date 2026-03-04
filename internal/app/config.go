@@ -26,6 +26,7 @@ type fileConfig struct {
 	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
 	CRTEffect                  *bool    `toml:"crt_effect"`
+	DepthBufferView            *bool    `toml:"depth_buffer_view"`
 	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
 	AllCheats                  *bool    `toml:"all_cheats"`
 	StartInMap                 *bool    `toml:"start_in_map"`

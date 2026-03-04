@@ -44,6 +44,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
 	defaultCRTEffect := false
+	defaultDepthBufferView := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
 	defaultAllCheats := false
 	defaultStartInMap := false
@@ -106,12 +107,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
-		if cfg.CRTEffect != nil {
-			defaultCRTEffect = *cfg.CRTEffect
-		}
-		if cfg.TextureAnimCrossfadeFrames != nil {
-			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
-		}
+			if cfg.CRTEffect != nil {
+				defaultCRTEffect = *cfg.CRTEffect
+			}
+			if cfg.DepthBufferView != nil {
+				defaultDepthBufferView = *cfg.DepthBufferView
+			}
+			if cfg.TextureAnimCrossfadeFrames != nil {
+				defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
+			}
 		if cfg.AllCheats != nil {
 			defaultAllCheats = *cfg.AllCheats
 		}
@@ -162,6 +166,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
+	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
@@ -374,6 +379,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
 			CRTEffect:                  *crtEffect,
+			DepthBufferView:            *depthBufferView,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,

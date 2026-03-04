@@ -53,6 +53,7 @@ const (
 	huMsgTimeout                    = 4 * doomTicsPerSecond
 	statusAng45              uint32 = 0x20000000
 	statusAng180             uint32 = 0x80000000
+	depthQuantScale                = 16.0
 )
 
 var (
@@ -224,13 +225,15 @@ type game struct {
 	flatAnimBlendRGBA          map[string][]byte
 	wallAnimBlendTex           map[string]WallTexture
 	spriteAnimBlendTex         map[string]WallTexture
+	thingSpriteExpandCache     map[string][]string
 	wallLayer                  *ebiten.Image
 	wallPix                    []byte
 	wallPix32                  []uint32
 	wallW                      int
 	wallH                      int
-	depthPix3D                 []float64
-	depthPlanePix3D            []float64
+	depthPix3D                 []uint32
+	depthPlanePix3D            []uint32
+	depthFrameStamp            uint16
 	wallTop3D                  []int
 	wallBottom3D               []int
 	ceilingClip3D              []int
@@ -473,6 +476,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.textureAnimCrossfadeFrames = normalizeTextureAnimCrossfadeFrames(opts.TextureAnimCrossfadeFrames, opts.SourcePortMode)
 	g.precomputeTextureAnimCrossfades()
+	g.thingSpriteExpandCache = make(map[string][]string, 256)
 	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
 	g.initPlayerState()
 	g.initStatusFaceState()
@@ -1103,19 +1107,22 @@ func (g *game) Draw(screen *ebiten.Image) {
 		} else {
 			g.prepareRenderState()
 			g.drawDoomBasic3D(screen)
-			if g.opts.Debug {
-				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
-				if g.opts.SourcePortMode {
-					ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
-					ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | P wireframe | F1 help", 12, 44)
+				if g.opts.Debug {
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
+					if g.opts.SourcePortMode {
+						ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | P wireframe | TAB automap", 12, 12)
+						ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | P wireframe | F1 help", 12, 44)
 				} else {
 					ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | TAB automap", 12, 12)
 					ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | F1 help", 12, 44)
+					}
+					planes3DOn := len(g.opts.FlatBank) > 0
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
+					if g.opts.DepthBufferView {
+						ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 76)
+					}
 				}
-				planes3DOn := len(g.opts.FlatBank) > 0
-				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
 			}
-		}
 		g.drawDoomStatusBar(screen)
 		if g.isDead {
 			g.drawDeathOverlay(screen)
@@ -1813,6 +1820,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+	if g.opts.DepthBufferView {
+		g.drawDepthBufferView()
+	}
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
 	}
@@ -1833,6 +1843,46 @@ func (g *game) duplicateLowDetailColumns() {
 		for x := 1; x < g.viewW; x += 2 {
 			g.wallPix32[row+x] = g.wallPix32[row+x-1]
 		}
+	}
+}
+
+func (g *game) drawDepthBufferView() {
+	n := g.viewW * g.viewH
+	if n <= 0 || len(g.wallPix32) != n {
+		return
+	}
+	stamp := g.depthFrameStamp
+	var maxQ uint16
+	for i := 0; i < n; i++ {
+		d, ok := g.depthQAtStamped(i, stamp)
+		if !ok {
+			continue
+		}
+		if d > maxQ {
+			maxQ = d
+		}
+	}
+	if maxQ == 0 {
+		clear(g.wallPix32)
+		return
+	}
+	invMax := 1.0 / float64(maxQ)
+	for i := 0; i < n; i++ {
+		d, ok := g.depthQAtStamped(i, stamp)
+		if !ok {
+			g.wallPix32[i] = packRGBA(0, 0, 0)
+			continue
+		}
+		norm := float64(d) * invMax
+		if norm < 0 {
+			norm = 0
+		}
+		if norm > 1 {
+			norm = 1
+		}
+		// Near is bright, far is dark.
+		v := uint8((1.0 - norm) * 255.0)
+		g.wallPix32[i] = packRGBA(v, v, v)
 	}
 }
 
@@ -1956,24 +2006,116 @@ func (g *game) writeDepthColumn(x, y0, y1 int, depth float64) {
 		return
 	}
 	pixI := y0*g.viewW + x
+	stamp := g.depthFrameStamp
+	d := encodeDepthQ(depth)
+	packed := packDepthStamped(d, stamp)
 	for y := y0; y <= y1; y++ {
-		g.depthPix3D[pixI] = depth
+		g.depthPix3D[pixI] = packed
 		pixI += g.viewW
 	}
+}
+
+func (g *game) setDepthPixel(idx int, depth float64) {
+	if idx < 0 || idx >= len(g.depthPix3D) {
+		return
+	}
+	g.depthPix3D[idx] = packDepthStamped(encodeDepthQ(depth), g.depthFrameStamp)
+}
+
+func (g *game) setPlaneDepthMin(idx int, depth float64) {
+	if idx < 0 || idx >= len(g.depthPlanePix3D) {
+		return
+	}
+	stamp := g.depthFrameStamp
+	d := encodeDepthQ(depth)
+	g.setPlaneDepthMinEncoded(idx, stamp, d, packDepthStamped(d, stamp))
+}
+
+func (g *game) setPlaneDepthMinEncoded(idx int, stamp, d uint16, packed uint32) {
+	if idx < 0 || idx >= len(g.depthPlanePix3D) {
+		return
+	}
+	cur := g.depthPlanePix3D[idx]
+	if unpackDepthStamp(cur) != stamp || d < unpackDepthQ(cur) {
+		g.depthPlanePix3D[idx] = packed
+	}
+}
+
+func (g *game) setPlaneDepthMinPairEncoded(idx int, stamp, d uint16, packed uint32) {
+	if idx < 0 || idx+1 >= len(g.depthPlanePix3D) {
+		return
+	}
+	cur0 := g.depthPlanePix3D[idx]
+	cur1 := g.depthPlanePix3D[idx+1]
+	update0 := unpackDepthStamp(cur0) != stamp || d < unpackDepthQ(cur0)
+	update1 := unpackDepthStamp(cur1) != stamp || d < unpackDepthQ(cur1)
+	if !update0 && !update1 {
+		return
+	}
+	if update0 && update1 {
+		ptr := unsafe.Pointer(&g.depthPlanePix3D[idx])
+		if uintptr(ptr)%unsafe.Alignof(uint64(0)) == 0 {
+			pair := (uint64(packed) << 32) | uint64(packed)
+			*(*uint64)(ptr) = pair
+			return
+		}
+	}
+	if update0 {
+		g.depthPlanePix3D[idx] = packed
+	}
+	if update1 {
+		g.depthPlanePix3D[idx+1] = packed
+	}
+}
+
+func (g *game) depthQAtStamped(idx int, stamp uint16) (uint16, bool) {
+	if idx < 0 || idx >= len(g.depthPix3D) {
+		return 0, false
+	}
+	var (
+		best uint16
+		ok   bool
+	)
+	if cur := g.depthPix3D[idx]; unpackDepthStamp(cur) == stamp {
+		best = unpackDepthQ(cur)
+		ok = true
+	}
+	if idx < len(g.depthPlanePix3D) {
+		cur := g.depthPlanePix3D[idx]
+		if unpackDepthStamp(cur) != stamp {
+			return best, ok
+		}
+		pd := unpackDepthQ(cur)
+		if !ok || pd < best {
+			best = pd
+			ok = true
+		}
+	}
+	return best, ok
 }
 
 func (g *game) spriteOccludedAt(depth float64, idx int, planeBias float64) bool {
 	if idx < 0 || idx >= len(g.depthPix3D) {
 		return true
 	}
+	stamp := g.depthFrameStamp
+	dq := encodeDepthQ(depth)
 	// Walls and already-drawn sprites occlude strictly.
-	if depth > g.depthPix3D[idx] {
-		return true
+	if cur := g.depthPix3D[idx]; unpackDepthStamp(cur) == stamp {
+		if dq > unpackDepthQ(cur) {
+			return true
+		}
 	}
 	// Floor/ceiling depth is used with bias because billboard depth is constant
 	// across Y while plane depth varies by scanline.
-	if idx < len(g.depthPlanePix3D) && depth > g.depthPlanePix3D[idx]+planeBias {
-		return true
+	if idx < len(g.depthPlanePix3D) {
+		cur := g.depthPlanePix3D[idx]
+		if unpackDepthStamp(cur) == stamp {
+			threshold := addDepthQ(unpackDepthQ(cur), encodeDepthBiasQ(planeBias))
+			if dq > threshold {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -2132,6 +2274,58 @@ func packRGBA(r, g, b uint8) uint32 {
 		(uint32(r) << pixelRShift) |
 		(uint32(g) << pixelGShift) |
 		(uint32(b) << pixelBShift)
+}
+
+func encodeDepthQ(depth float64) uint16 {
+	if depth <= 0 {
+		return 0
+	}
+	q := int(depth*depthQuantScale + 0.5)
+	if q <= 0 {
+		return 0
+	}
+	if q >= 0xFFFF {
+		return 0xFFFF
+	}
+	return uint16(q)
+}
+
+func encodeDepthBiasQ(bias float64) uint16 {
+	if bias <= 0 {
+		return 0
+	}
+	scaled := bias * depthQuantScale
+	q := int(scaled)
+	if float64(q) < scaled {
+		q++
+	}
+	if q <= 0 {
+		return 0
+	}
+	if q >= 0xFFFF {
+		return 0xFFFF
+	}
+	return uint16(q)
+}
+
+func addDepthQ(a, b uint16) uint16 {
+	sum := uint32(a) + uint32(b)
+	if sum >= 0xFFFF {
+		return 0xFFFF
+	}
+	return uint16(sum)
+}
+
+func packDepthStamped(depth, stamp uint16) uint32 {
+	return (uint32(stamp) << 16) | uint32(depth)
+}
+
+func unpackDepthStamp(v uint32) uint16 {
+	return uint16(v >> 16)
+}
+
+func unpackDepthQ(v uint32) uint16 {
+	return uint16(v & 0xFFFF)
 }
 
 func shadePackedRGBABig(src, mul uint32) uint32 {
@@ -2313,35 +2507,31 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				}
 				planeZ := float64(key.height)
 				depth := ((planeZ - eyeZ) / den) * focal
-				if depth <= 0 {
-					continue
-				}
-				wxSpan := camX + depth*ca - ((cx-(float64(x1)+0.5))*depth/focal)*sa
-				wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
-				stepWX := (depth / focal) * sa
-				stepWY := -(depth / focal) * ca
+					if depth <= 0 {
+						continue
+					}
+					stamp := g.depthFrameStamp
+					depthQ := encodeDepthQ(depth)
+					depthPacked := packDepthStamped(depthQ, stamp)
+					wxSpan := camX + depth*ca - ((cx-(float64(x1)+0.5))*depth/focal)*sa
+					wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
+					stepWX := (depth / focal) * sa
+					stepWY := -(depth / focal) * ca
 				pixI := rowPix + x1
-				if !flatTexReady {
-					x := x1
-					for ; x+1 <= x2; x += 2 {
-						pix32[pixI] = fbPacked
-						pix32[pixI+1] = fbPacked
-						if depth < g.depthPlanePix3D[pixI] {
-							g.depthPlanePix3D[pixI] = depth
+					if !flatTexReady {
+						x := x1
+						for ; x+1 <= x2; x += 2 {
+							pix32[pixI] = fbPacked
+							pix32[pixI+1] = fbPacked
+							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
+							pixI += 2
 						}
-						if depth < g.depthPlanePix3D[pixI+1] {
-							g.depthPlanePix3D[pixI+1] = depth
+						if x <= x2 {
+							pix32[pixI] = fbPacked
+							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 						}
-						pixI += 2
+						continue
 					}
-					if x <= x2 {
-						pix32[pixI] = fbPacked
-						if depth < g.depthPlanePix3D[pixI] {
-							g.depthPlanePix3D[pixI] = depth
-						}
-					}
-					continue
-				}
 				wxFixed := floorFixed(wxSpan)
 				wyFixed := floorFixed(wySpan)
 				stepWXFixed := floorFixed(stepWX)
@@ -2355,27 +2545,20 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					wyFixed += stepWYFixed
 					u1 := int(wxFixed>>fracBits) & 63
 					v1 := int(wyFixed>>fracBits) & 63
-					p1 := tex32[(v1<<6)+u1]
-					pix32[pixI] = p0
-					pix32[pixI+1] = p1
-					if depth < g.depthPlanePix3D[pixI] {
-						g.depthPlanePix3D[pixI] = depth
+						p1 := tex32[(v1<<6)+u1]
+						pix32[pixI] = p0
+						pix32[pixI+1] = p1
+						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
+						wxFixed += stepWXFixed
+						wyFixed += stepWYFixed
+						pixI += 2
 					}
-					if depth < g.depthPlanePix3D[pixI+1] {
-						g.depthPlanePix3D[pixI+1] = depth
-					}
-					wxFixed += stepWXFixed
-					wyFixed += stepWYFixed
-					pixI += 2
-				}
 				if x <= x2 {
-					u := int(wxFixed>>fracBits) & 63
-					v := int(wyFixed>>fracBits) & 63
-					pix32[pixI] = tex32[(v<<6)+u]
-					if depth < g.depthPlanePix3D[pixI] {
-						g.depthPlanePix3D[pixI] = depth
+						u := int(wxFixed>>fracBits) & 63
+						v := int(wyFixed>>fracBits) & 63
+						pix32[pixI] = tex32[(v<<6)+u]
+						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
-				}
 			}
 		}
 	}
@@ -3480,7 +3663,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 						gc := uint8(float64(src[si+1]) * sf)
 						b := uint8(float64(src[si+2]) * sf)
 						g.wallPix32[i] = packRGBA(r, gc, b)
-						g.depthPix3D[i] = it.dist
+							g.setDepthPixel(i, it.dist)
 					}
 				}
 				continue
@@ -3519,7 +3702,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 					continue
 				}
 				g.wallPix32[i] = packRGBA(r, gc, b)
-				g.depthPix3D[i] = it.dist
+					g.setDepthPixel(i, it.dist)
 			}
 		}
 	}
@@ -3541,7 +3724,7 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 		for i := 0; i < len(frameLetters); i++ {
 			fl := frameLetters[(frame+i)%len(frameLetters)]
 			// Some assets use non-rotating frame notation (e.g. BAL1A0).
-			name0 := fmt.Sprintf("%s%c0", prefix, fl)
+			name0 := spriteFrameName(prefix, fl, '0')
 			if _, ok := g.opts.SpritePatchBank[name0]; ok {
 				return name0
 			}
@@ -3702,7 +3885,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				gc := uint8(float64(src[si+1]) * sf)
 				b := uint8(float64(src[si+2]) * sf)
 				g.wallPix32[row+x] = packRGBA(r, gc, b)
-				g.depthPix3D[row+x] = it.dist
+				g.setDepthPixel(row+x, it.dist)
 			}
 		}
 	}
@@ -3834,7 +4017,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				gc := uint8(float64(src[si+1]) * sf)
 				b := uint8(float64(src[si+2]) * sf)
 				g.wallPix32[row+x] = packRGBA(r, gc, b)
-				g.depthPix3D[row+x] = it.dist
+				g.setDepthPixel(row+x, it.dist)
 			}
 		}
 	}
@@ -4064,21 +4247,33 @@ func (g *game) expandThingSpriteFrames(seed string) []string {
 	if len(name) < 6 {
 		return nil
 	}
+	if g.thingSpriteExpandCache == nil {
+		g.thingSpriteExpandCache = make(map[string][]string, 256)
+	}
+	if out, ok := g.thingSpriteExpandCache[name]; ok {
+		return out
+	}
 	// Only auto-expand conventional thing animations that start from A-frame seeds.
 	// This avoids animating static corpse/decoration sprites like PLAYN0.
 	if name[4] != 'A' {
+		g.thingSpriteExpandCache[name] = nil
 		return nil
 	}
 	rot := name[5]
 	if rot < '0' || rot > '9' {
+		g.thingSpriteExpandCache[name] = nil
 		return nil
 	}
 	prefix := name[:4]
+	if len(prefix) != 4 {
+		g.thingSpriteExpandCache[name] = nil
+		return nil
+	}
 	out := make([]string, 0, 8)
 	seen := make(map[string]struct{}, 52)
 	addFrames := func(r byte) {
 		for frame := byte('A'); frame <= byte('Z'); frame++ {
-			key := fmt.Sprintf("%s%c%c", prefix, frame, r)
+			key := spriteFrameName(prefix, frame, r)
 			if _, dup := seen[key]; dup {
 				continue
 			}
@@ -4096,7 +4291,7 @@ func (g *game) expandThingSpriteFrames(seed string) []string {
 		addFrames(rot)
 	}
 	for frame := byte('A'); frame <= byte('Z'); frame++ {
-		key := fmt.Sprintf("%s%c%c", prefix, frame, rot)
+		key := spriteFrameName(prefix, frame, rot)
 		if _, ok := g.opts.SpritePatchBank[key]; ok {
 			if _, dup := seen[key]; !dup {
 				seen[key] = struct{}{}
@@ -4105,8 +4300,10 @@ func (g *game) expandThingSpriteFrames(seed string) []string {
 		}
 	}
 	if len(out) <= 1 {
+		g.thingSpriteExpandCache[name] = nil
 		return nil
 	}
+	g.thingSpriteExpandCache[name] = out
 	return out
 }
 
@@ -4332,8 +4529,9 @@ func (g *game) monsterSpriteRotFrame(prefix string, frame byte, rot int) (string
 	if rot < 1 || rot > 8 {
 		return "", false, false
 	}
+	rotDigit := byte('0' + rot)
 	// Prefer exact per-rotation patch if present.
-	name := fmt.Sprintf("%s%c%d", prefix, frame, rot)
+	name := spriteFrameName(prefix, frame, rotDigit)
 	if _, ok := g.opts.SpritePatchBank[name]; ok {
 		return name, false, true
 	}
@@ -4341,17 +4539,48 @@ func (g *game) monsterSpriteRotFrame(prefix string, frame byte, rot int) (string
 		return "", false, false
 	}
 	opp := 10 - rot
+	oppDigit := byte('0' + opp)
 	// Doom paired-rotation patch, e.g. TROOA2A8.
-	pairA := fmt.Sprintf("%s%c%d%c%d", prefix, frame, rot, frame, opp)
+	pairA := spriteFramePairName(prefix, frame, rotDigit, oppDigit)
 	if _, ok := g.opts.SpritePatchBank[pairA]; ok {
 		return pairA, false, true
 	}
 	// Reverse order pair (some content uses the opposite declaration order).
-	pairB := fmt.Sprintf("%s%c%d%c%d", prefix, frame, opp, frame, rot)
+	pairB := spriteFramePairName(prefix, frame, oppDigit, rotDigit)
 	if _, ok := g.opts.SpritePatchBank[pairB]; ok {
 		return pairB, true, true
 	}
 	return "", false, false
+}
+
+func spriteFrameName(prefix string, frame, rot byte) string {
+	if len(prefix) != 4 {
+		return ""
+	}
+	var name [6]byte
+	name[0] = prefix[0]
+	name[1] = prefix[1]
+	name[2] = prefix[2]
+	name[3] = prefix[3]
+	name[4] = frame
+	name[5] = rot
+	return string(name[:])
+}
+
+func spriteFramePairName(prefix string, frame, rotA, rotB byte) string {
+	if len(prefix) != 4 {
+		return ""
+	}
+	var name [8]byte
+	name[0] = prefix[0]
+	name[1] = prefix[1]
+	name[2] = prefix[2]
+	name[3] = prefix[3]
+	name[4] = frame
+	name[5] = rotA
+	name[6] = frame
+	name[7] = rotB
+	return string(name[:])
 }
 
 func normalizeDeg360(deg float64) float64 {
@@ -4553,16 +4782,16 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 	}
 	needDepth := w * h
 	if len(g.depthPix3D) != needDepth {
-		g.depthPix3D = make([]float64, needDepth)
-	}
-	for i := range g.depthPix3D {
-		g.depthPix3D[i] = math.Inf(1)
+		g.depthPix3D = make([]uint32, needDepth)
 	}
 	if len(g.depthPlanePix3D) != needDepth {
-		g.depthPlanePix3D = make([]float64, needDepth)
+		g.depthPlanePix3D = make([]uint32, needDepth)
 	}
-	for i := range g.depthPlanePix3D {
-		g.depthPlanePix3D[i] = math.Inf(1)
+	g.depthFrameStamp++
+	if g.depthFrameStamp == 0 {
+		clear(g.depthPix3D)
+		clear(g.depthPlanePix3D)
+		g.depthFrameStamp = 1
 	}
 	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
 }
@@ -7801,6 +8030,53 @@ func textureAnimBlendToken(cur, next string, step, total int) string {
 	return cur + ">" + next + "#" + strconv.Itoa(step) + "/" + strconv.Itoa(total)
 }
 
+const flatRGBABytes = 64 * 64 * 4
+
+func blendFlatRGBA64Opaque(a, b []byte, alpha float64) []byte {
+	if len(a) != flatRGBABytes || len(b) != flatRGBABytes {
+		return nil
+	}
+	if alpha <= 0 {
+		out := make([]byte, len(a))
+		copy(out, a)
+		return out
+	}
+	if alpha >= 1 {
+		out := make([]byte, len(b))
+		copy(out, b)
+		return out
+	}
+	wb := int(math.Round(alpha * 256.0))
+	if wb < 0 {
+		wb = 0
+	}
+	if wb > 256 {
+		wb = 256
+	}
+	wa := 256 - wb
+	out := make([]byte, flatRGBABytes)
+	// Flats are fixed 64x64 RGBA and opaque; unroll to process 4 pixels/chunk.
+	for i := 0; i < flatRGBABytes; i += 16 {
+		out[i+0] = uint8((int(a[i+0])*wa + int(b[i+0])*wb + 128) >> 8)
+		out[i+1] = uint8((int(a[i+1])*wa + int(b[i+1])*wb + 128) >> 8)
+		out[i+2] = uint8((int(a[i+2])*wa + int(b[i+2])*wb + 128) >> 8)
+		out[i+3] = 0xFF
+		out[i+4] = uint8((int(a[i+4])*wa + int(b[i+4])*wb + 128) >> 8)
+		out[i+5] = uint8((int(a[i+5])*wa + int(b[i+5])*wb + 128) >> 8)
+		out[i+6] = uint8((int(a[i+6])*wa + int(b[i+6])*wb + 128) >> 8)
+		out[i+7] = 0xFF
+		out[i+8] = uint8((int(a[i+8])*wa + int(b[i+8])*wb + 128) >> 8)
+		out[i+9] = uint8((int(a[i+9])*wa + int(b[i+9])*wb + 128) >> 8)
+		out[i+10] = uint8((int(a[i+10])*wa + int(b[i+10])*wb + 128) >> 8)
+		out[i+11] = 0xFF
+		out[i+12] = uint8((int(a[i+12])*wa + int(b[i+12])*wb + 128) >> 8)
+		out[i+13] = uint8((int(a[i+13])*wa + int(b[i+13])*wb + 128) >> 8)
+		out[i+14] = uint8((int(a[i+14])*wa + int(b[i+14])*wb + 128) >> 8)
+		out[i+15] = 0xFF
+	}
+	return out
+}
+
 func blendRGBA(a, b []byte, alpha float64) []byte {
 	if len(a) == 0 || len(b) == 0 || len(a) != len(b) {
 		return nil
@@ -7867,7 +8143,7 @@ func (g *game) precomputeTextureAnimCrossfades() {
 			for step := 1; step <= cf; step++ {
 				alpha := float64(step) / float64(cf+1)
 				token := textureAnimBlendToken(cur, next, step, cf)
-				g.flatAnimBlendRGBA[token] = blendRGBA(a, b, alpha)
+				g.flatAnimBlendRGBA[token] = blendFlatRGBA64Opaque(a, b, alpha)
 			}
 		}
 	}
