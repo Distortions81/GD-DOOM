@@ -89,7 +89,7 @@ Level progression:
 - `1..7`: weapon slot select
 - `[` / `]` or `PgUp` / `PgDn`: previous/next weapon (walk mode)
 - mouse wheel (walk mode): cycle weapons
-- `F9`: toggle auto weapon-switch
+- `F12`: toggle auto weapon-switch
 - `Arrow keys`: pan map (follow off)
 - `F`: toggle follow
 - `G`: toggle grid
@@ -98,11 +98,18 @@ Level progression:
 - `C`: clear marks
 - `+` / `-` / mouse wheel: zoom
 - `F1`: help overlay
+- `F2`: save (menu WIP)
+- `F3`: load (menu WIP)
+- `F5`: cycle detail level (faithful mode)
+- `F6`: quicksave (WIP)
+- `F7`: end game flow (WIP)
+- `F8`: toggle HUD messages
+- `F9`: quickload (WIP)
+- `F10`: quit
+- `F11`: gamma (faithful mode; requires `-kage-shader`)
 - `Esc`: quit
 
-Source-port cheat controls:
-- `F10`: cycle cheat level (`0 -> 1 -> 2 -> 3 -> 0`)
-- `F11`: toggle invulnerability (`IDDQD`-style)
+Cheat controls are currently startup-config driven (`-cheat-level`, `-invuln`, `-all-cheats`).
 
 Source-port extras are enabled only with `-sourceport-mode`.
 In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.

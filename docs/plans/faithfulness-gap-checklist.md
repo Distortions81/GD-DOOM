@@ -49,6 +49,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 
 ## Controls and Weapon Handling Parity
 
+- [x] Implement baseline Doom-style F-key bindings (help/detail/messages/quit + placeholders for save/load/quicksave/quickload/end game).
 - [x] Add number-key weapon hotkeys with vanilla slot semantics.
 - [x] Add next/previous weapon cycling (mouse wheel and/or dedicated buttons).
 - [x] Add auto weapon-switch toggle behavior parity.

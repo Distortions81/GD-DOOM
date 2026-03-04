@@ -271,6 +271,7 @@ type game struct {
 	doors                map[int]*doorThinker
 	useFlash             int
 	useText              string
+	hudMessagesEnabled   bool
 	turnHeld             int
 	snd                  *soundSystem
 	soundQueue           []soundEvent
@@ -615,16 +616,17 @@ func newGame(m *mapdata.Map, opts Options) *game {
 			reveal: revealNormal,
 			iddt:   0,
 		},
-		showGrid:      false,
-		showLegend:    opts.SourcePortMode,
-		bigMap:        false,
-		marks:         make([]mapMark, 0, 16),
-		nextMarkID:    1,
-		p:             p,
-		localSlot:     localSlot,
-		peerStarts:    nonLocalStarts(starts, localSlot),
-		cullLogBudget: 0,
-		floorDbgMode:  floorDebugTextured,
+		showGrid:           false,
+		showLegend:         opts.SourcePortMode,
+		bigMap:             false,
+		hudMessagesEnabled: true,
+		marks:              make([]mapMark, 0, 16),
+		nextMarkID:         1,
+		p:                  p,
+		localSlot:          localSlot,
+		peerStarts:         nonLocalStarts(starts, localSlot),
+		cullLogBudget:      0,
+		floorDbgMode:       floorDebugTextured,
 		// Default to prebuilt rasterized map floor textures (fast path).
 		floor2DPath:      floor2DPathRasterized,
 		floorVisDiag:     floorVisDiagOff,
@@ -789,7 +791,7 @@ func (g *game) Update() error {
 	if g.opts.DemoScript != nil {
 		return g.updateDemoMode()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
 		return ebiten.Termination
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
@@ -1199,7 +1201,7 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Always Run OFF", 70)
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF9) {
+	if inpututil.IsKeyJustPressed(ebiten.KeyF12) {
 		g.autoWeaponSwitch = !g.autoWeaponSwitch
 		if g.autoWeaponSwitch {
 			g.setHUDMessage("Auto Weapon Switch ON", 70)
@@ -1213,6 +1215,42 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Grid ON", 70)
 		} else {
 			g.setHUDMessage("Grid OFF", 70)
+		}
+	}
+	if !g.opts.SourcePortMode {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF2) {
+			g.setHUDMessage("Save menu not wired yet", 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF3) {
+			g.setHUDMessage("Load menu not wired yet", 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+			g.setHUDMessage("Quicksave not wired yet", 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+			g.setHUDMessage("End game flow not wired yet", 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+			g.hudMessagesEnabled = !g.hudMessagesEnabled
+			if g.hudMessagesEnabled {
+				g.setHUDMessage("Messages ON", 70)
+			} else {
+				g.useText = "Messages OFF"
+				g.useFlash = 70
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF9) {
+			g.setHUDMessage("Quickload not wired yet", 70)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
+			if !g.opts.KageShader {
+				g.setHUDMessage("Gamma unavailable (-kage-shader off)", 70)
+			} else if len(g.opts.DoomPaletteRGBA) != 256*4 {
+				g.setHUDMessage("Gamma unavailable", 70)
+			} else {
+				g.gammaLevel = (g.gammaLevel + 1) % len(gammaTargets)
+				g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
+			}
 		}
 	}
 	if g.opts.SourcePortMode {
@@ -1268,29 +1306,29 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Palette LUT OFF", 70)
 			}
 		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
-		if !g.opts.KageShader {
-			g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
-			return
+		if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+			if !g.opts.KageShader {
+				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
+				return
+			}
+			if len(g.opts.DoomPaletteRGBA) != 256*4 {
+				g.setHUDMessage("Gamma unavailable", 70)
+				return
+			}
+			g.gammaLevel = (g.gammaLevel + 1) % len(gammaTargets)
+			g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
 		}
-		if len(g.opts.DoomPaletteRGBA) != 256*4 {
-			g.setHUDMessage("Gamma unavailable", 70)
-			return
-		}
-		g.gammaLevel = (g.gammaLevel + 1) % len(gammaTargets)
-		g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
-		if !g.opts.KageShader {
-			g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
-			return
-		}
-		g.crtEnabled = !g.crtEnabled
-		if g.crtEnabled {
-			g.setHUDMessage("CRT ON", 70)
-		} else {
-			g.setHUDMessage("CRT OFF", 70)
+		if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+			if !g.opts.KageShader {
+				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
+				return
+			}
+			g.crtEnabled = !g.crtEnabled
+			if g.crtEnabled {
+				g.setHUDMessage("CRT ON", 70)
+			} else {
+				g.setHUDMessage("CRT OFF", 70)
+			}
 		}
 	}
 }
@@ -1514,6 +1552,9 @@ func (g *game) tickDelayedSwitchReverts() {
 }
 
 func (g *game) setHUDMessage(msg string, tics int) {
+	if !g.hudMessagesEnabled {
+		return
+	}
 	g.useText = msg
 	if !g.opts.SourcePortMode {
 		// Doom HU messages use a fixed timeout (HU_MSGTIMEOUT).

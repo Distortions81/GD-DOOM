@@ -270,7 +270,7 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 
 func (sg *sessionGame) Update() error {
 	if sg.transitionActive() {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
 			return ebiten.Termination
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
@@ -284,7 +284,7 @@ func (sg *sessionGame) Update() error {
 		return nil
 	}
 	if sg.intermission.active {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
 			return ebiten.Termination
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
