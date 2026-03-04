@@ -210,15 +210,19 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	wadHash := hashFileSHA1(*wadPath)
 	soundBank := automap.SoundBank{}
+	dsr := sound.ImportDigitalSounds(wf)
 	if *importPCSpeaker {
 		dpr := sound.ImportPCSpeakerSounds(wf)
-		dsr := sound.ImportDigitalSounds(wf)
 		fmt.Fprintf(stderr, "sound import: dp(found=%d decoded=%d failed=%d) ds(found=%d decoded=%d failed=%d)\n",
 			dpr.Found, dpr.Decoded, dpr.Failed,
 			dsr.Found, dsr.Decoded, dsr.Failed,
 		)
-		soundBank = buildAutomapSoundBank(dsr)
+	} else {
+		fmt.Fprintf(stderr, "sound import: ds(found=%d decoded=%d failed=%d)\n",
+			dsr.Found, dsr.Decoded, dsr.Failed,
+		)
 	}
+	soundBank = buildAutomapSoundBank(dsr)
 	wallTexBank := map[string]automap.WallTexture(nil)
 	statusPatchBank := map[string]automap.WallTexture(nil)
 	messageFontBank := map[rune]automap.WallTexture(nil)
@@ -282,15 +286,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	flatBank := map[string][]byte(nil)
-	loadFlats := true
-	if loadFlats {
-		fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
-		if ferr != nil {
-			fmt.Fprintf(stderr, "flat import failed: %v\n", ferr)
-		} else {
-			flatBank = fb
-			fmt.Fprintf(stderr, "flat import: flats=%d\n", len(flatBank))
-		}
+	fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
+	if ferr != nil {
+		fmt.Fprintf(stderr, "flat import failed: %v\n", ferr)
+	} else {
+		flatBank = fb
+		fmt.Fprintf(stderr, "flat import: flats=%d\n", len(flatBank))
 	}
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
@@ -510,15 +511,16 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	add("STBAR")
 	add("STARMS")
 	add("STTPRCNT")
-	add("STFB0")
 	add("STFGOD0")
 	add("STFDEAD0")
 	for i := 0; i < 10; i++ {
 		add(fmt.Sprintf("STTNUM%d", i))
 		add(fmt.Sprintf("STYSNUM%d", i))
 	}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 3; i++ {
 		add(fmt.Sprintf("STKEYS%d", i))
+	}
+	for i := 0; i < 6; i++ {
 		add(fmt.Sprintf("STGNUM%d", i+2))
 	}
 	for pain := 0; pain < 5; pain++ {
