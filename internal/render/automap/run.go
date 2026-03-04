@@ -53,6 +53,31 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 }
 `)
 
+var faithfulPaletteNoGammaShaderSrc = []byte(`//kage:unit pixels
+package main
+
+var EnableQuantize float
+
+func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+	c := imageSrc0At(texCoord)
+	if c.a <= 0.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+	outRGB := c.rgb
+	if EnableQuantize >= 0.5 {
+		// 16x16x16 RGB cube LUT flattened into a 256x16 block at source1 top-left.
+		ri := int(clamp(c.r*15.0+0.5, 0.0, 15.0))
+		gi := int(clamp(c.g*15.0+0.5, 0.0, 15.0))
+		bi := int(clamp(c.b*15.0+0.5, 0.0, 15.0))
+		idx := ri + gi*16 + bi*256
+		lx := float(idx%256) + 0.5
+		ly := float(idx/256) + 0.5
+		outRGB = imageSrc1At(vec2(lx, ly) + imageSrc0Origin()).rgb
+	}
+	return vec4(outRGB, 1.0)
+}
+`)
+
 type transitionKind int
 
 const (
@@ -115,6 +140,7 @@ type sessionGame struct {
 	faithfulLUTW    int
 	faithfulLUTH    int
 	faithfulShader  *ebiten.Shader
+	noGammaShader   *ebiten.Shader
 	presentSurface  *ebiten.Image
 	lastFrame       *ebiten.Image
 	bootSplashImage *ebiten.Image
@@ -320,7 +346,10 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 			sg.faithfulSurface = ebiten.NewImage(vw, vh)
 		}
 		g.Draw(sg.faithfulSurface)
-		src := sg.applyFaithfulPalettePost(sg.faithfulSurface)
+		src := sg.faithfulSurface
+		if sg.palettePostEnabled() {
+			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
+		}
 		sg.drawFaithfulPresented(dst, src)
 		sg.captureLastFrame(src)
 		return
@@ -408,7 +437,10 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 		sg.faithfulSurface = ebiten.NewImage(vw, vh)
 	}
 	g.Draw(sg.faithfulSurface)
-	src := sg.applyFaithfulPalettePost(sg.faithfulSurface)
+	src := sg.faithfulSurface
+	if sg.palettePostEnabled() {
+		src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
+	}
 	dw := max(dst.Bounds().Dx(), 1)
 	dh := max(dst.Bounds().Dy(), 1)
 	op := &ebiten.DrawImageOptions{}
@@ -811,18 +843,27 @@ func (sg *sessionGame) initFaithfulPalettePost() {
 		fmt.Printf("warning: palette shader disabled: %v\n", err)
 		return
 	}
+	noGammaSh, err := ebiten.NewShader(faithfulPaletteNoGammaShaderSrc)
+	if err != nil {
+		fmt.Printf("warning: no-gamma palette shader disabled: %v\n", err)
+		return
+	}
 	sg.faithfulShader = sh
+	sg.noGammaShader = noGammaSh
 }
 
 func (sg *sessionGame) palettePostEnabled() bool {
-	if sg.faithfulShader == nil || sg.g == nil {
+	if sg.g == nil {
 		return false
 	}
-	return sg.g.paletteLUTEnabled || sg.g.gammaLevel > 0
+	if sg.faithfulShader == nil || sg.noGammaShader == nil {
+		return false
+	}
+	return sg.g.paletteLUTEnabled || !isNeutralGammaLevel(sg.g.gammaLevel)
 }
 
 func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image {
-	if src == nil || sg.faithfulShader == nil {
+	if src == nil || sg.faithfulShader == nil || sg.noGammaShader == nil {
 		return src
 	}
 	w := src.Bounds().Dx()
@@ -844,11 +885,22 @@ func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image
 	if sg.g != nil && sg.g.paletteLUTEnabled && w >= quantizeLUTW && h >= quantizeLUTH {
 		enableQuant = 1
 	}
+	useGamma := true
+	if sg.g != nil && isNeutralGammaLevel(sg.g.gammaLevel) {
+		useGamma = false
+	}
+	if useGamma {
+		op.Uniforms = map[string]any{
+			"GammaRatio":     gammaRatioForLevel(sg.g.gammaLevel),
+			"EnableQuantize": enableQuant,
+		}
+		sg.faithfulPost.DrawRectShader(w, h, sg.faithfulShader, op)
+		return sg.faithfulPost
+	}
 	op.Uniforms = map[string]any{
-		"GammaRatio":     gammaRatioForLevel(sg.g.gammaLevel),
 		"EnableQuantize": enableQuant,
 	}
-	sg.faithfulPost.DrawRectShader(w, h, sg.faithfulShader, op)
+	sg.faithfulPost.DrawRectShader(w, h, sg.noGammaShader, op)
 	return sg.faithfulPost
 }
 
@@ -857,7 +909,7 @@ func gammaRatioForLevel(level int) float32 {
 	return float32(targetGamma / 2.2)
 }
 
-var gammaTargets = [...]float64{3.8, 3.5, 3.3, 3.0, 2.8, 2.5, 2.2, 1.8, 1.5}
+var gammaTargets = [...]float64{3.2, 2.8, 2.4, 2.2, 1.8, 1.5, 1.4}
 
 func gammaTargetForLevel(level int) float64 {
 	if level < 0 {
@@ -867,6 +919,10 @@ func gammaTargetForLevel(level int) float64 {
 		level = len(gammaTargets) - 1
 	}
 	return gammaTargets[level]
+}
+
+func isNeutralGammaLevel(level int) bool {
+	return gammaTargetForLevel(level) == 2.2
 }
 
 func (sg *sessionGame) ensureFaithfulLUTSurface(w, h int) {

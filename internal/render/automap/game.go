@@ -435,7 +435,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		opts:              opts,
 		bounds:            mapBounds(m),
 		paletteLUTEnabled: !opts.SourcePortMode,
-		gammaLevel:        4,
+		gammaLevel:        2,
 		viewW:             opts.Width,
 		viewH:             opts.Height,
 		mode:              viewMap,
