@@ -29,31 +29,32 @@ const (
 	lineTwoSidedWidth  = 1.2
 	doomInitialZoomMul = 1.0 / 0.7
 	// Give cursor capture/resizing a couple of frames to settle after detail changes.
-	detailMouseSuppressTicks        = 3
-	mlDontPegTop                    = 1 << 3
-	mlDontPegBottom                 = 1 << 4
-	statusBaseW                     = 320.0
-	statusBaseH                     = 200.0
-	statusBarY                      = 168.0
-	statusNumPainFaces              = 5
-	statusNumStraightFaces          = 3
-	statusNumTurnFaces              = 2
-	statusFaceStride                = statusNumStraightFaces + statusNumTurnFaces + 3
-	statusTurnOffset                = statusNumStraightFaces
-	statusOuchOffset                = statusTurnOffset + statusNumTurnFaces
-	statusEvilGrinOffset            = statusOuchOffset + 1
-	statusRampageOffset             = statusEvilGrinOffset + 1
-	statusGodFace                   = statusNumPainFaces * statusFaceStride
-	statusDeadFace                  = statusGodFace + 1
-	statusEvilGrinCount             = 2 * doomTicsPerSecond
-	statusStraightFaceCount         = doomTicsPerSecond / 2
-	statusTurnCount                 = doomTicsPerSecond
-	statusRampageDelay              = 2 * doomTicsPerSecond
-	statusMuchPain                  = 20
-	huMsgTimeout                    = 4 * doomTicsPerSecond
-	statusAng45              uint32 = 0x20000000
-	statusAng180             uint32 = 0x80000000
-	depthQuantScale                 = 16.0
+	detailMouseSuppressTicks         = 3
+	mlDontPegTop                     = 1 << 3
+	mlDontPegBottom                  = 1 << 4
+	statusBaseW                      = 320.0
+	statusBaseH                      = 200.0
+	statusBarY                       = 168.0
+	statusNumPainFaces               = 5
+	statusNumStraightFaces           = 3
+	statusNumTurnFaces               = 2
+	statusFaceStride                 = statusNumStraightFaces + statusNumTurnFaces + 3
+	statusTurnOffset                 = statusNumStraightFaces
+	statusOuchOffset                 = statusTurnOffset + statusNumTurnFaces
+	statusEvilGrinOffset             = statusOuchOffset + 1
+	statusRampageOffset              = statusEvilGrinOffset + 1
+	statusGodFace                    = statusNumPainFaces * statusFaceStride
+	statusDeadFace                   = statusGodFace + 1
+	statusEvilGrinCount              = 2 * doomTicsPerSecond
+	statusStraightFaceCount          = doomTicsPerSecond / 2
+	statusTurnCount                  = doomTicsPerSecond
+	statusRampageDelay               = 2 * doomTicsPerSecond
+	statusMuchPain                   = 20
+	huMsgTimeout                     = 4 * doomTicsPerSecond
+	statusAng45               uint32 = 0x20000000
+	statusAng180              uint32 = 0x80000000
+	depthQuantScale                  = 16.0
+	spriteRowOcclusionMinSpan        = 24
 )
 
 var (
@@ -2144,24 +2145,23 @@ func (g *game) rowFullyOccludedDepthQ(depthQ, planeBiasQ uint16, rowBase, x0, x1
 }
 
 func (g *game) spriteOccludedAt(depth float64, idx int, planeBias float64) bool {
-	if idx < 0 || idx >= len(g.depthPix3D) {
+	return spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, g.depthFrameStamp, encodeDepthQ(depth), encodeDepthBiasQ(planeBias), idx)
+}
+
+func spriteOccludedDepthQAt(depthPix, depthPlanePix []uint32, stamp, depthQ, planeBiasQ uint16, idx int) bool {
+	if idx < 0 || idx >= len(depthPix) {
 		return true
 	}
-	stamp := g.depthFrameStamp
-	dq := encodeDepthQ(depth)
 	// Walls and already-drawn sprites occlude strictly.
-	if cur := g.depthPix3D[idx]; unpackDepthStamp(cur) == stamp {
-		if dq > unpackDepthQ(cur) {
-			return true
-		}
+	if cur := depthPix[idx]; unpackDepthStamp(cur) == stamp && depthQ > unpackDepthQ(cur) {
+		return true
 	}
 	// Floor/ceiling depth is used with bias because billboard depth is constant
 	// across Y while plane depth varies by scanline.
-	if idx < len(g.depthPlanePix3D) {
-		cur := g.depthPlanePix3D[idx]
-		if unpackDepthStamp(cur) == stamp {
-			threshold := addDepthQ(unpackDepthQ(cur), encodeDepthBiasQ(planeBias))
-			if dq > threshold {
+	if idx < len(depthPlanePix) {
+		if cur := depthPlanePix[idx]; unpackDepthStamp(cur) == stamp {
+			threshold := addDepthQ(unpackDepthQ(cur), planeBiasQ)
+			if depthQ > threshold {
 				return true
 			}
 		}
@@ -3653,6 +3653,12 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 24.0
 	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
+	depthPix := g.depthPix3D
+	depthPlanePix := g.depthPlanePix3D
+	wallPix := g.wallPix32
+	viewW := g.viewW
+	viewH := g.viewH
+	stamp := g.depthFrameStamp
 	type projectedProjectile struct {
 		dist      float64
 		sx        float64
@@ -3662,7 +3668,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		spriteTex WallTexture
 		hasSprite bool
 	}
-	if len(g.projectiles) == 0 || len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
+	if len(g.projectiles) == 0 || len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
 		return
 	}
 	items := make([]projectedProjectile, 0, len(g.projectiles))
@@ -3677,16 +3683,16 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if f <= near {
 			continue
 		}
-		sx := float64(g.viewW)/2 - (s/f)*focal
+		sx := float64(viewW)/2 - (s/f)*focal
 		centerZ := float64(p.z+p.height/2) / fracUnit
-		sy := float64(g.viewH)/2 - ((centerZ-eyeZ)/f)*focal
+		sy := float64(viewH)/2 - ((centerZ-eyeZ)/f)*focal
 		r := (projectileViewRadius(p) / f) * focal
 		if r < 1.2 {
 			r = 1.2
 		}
 		xPad := r + 3
 		yPad := r + 3
-		if sx+xPad < 0 || sx-xPad > float64(g.viewW) || sy+yPad < 0 || sy-yPad > float64(g.viewH) {
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
 			continue
 		}
 		cr := projectileColor(p.kind)
@@ -3704,7 +3710,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
-		depthPacked := packDepthStamped(depthQ, g.depthFrameStamp)
+		depthPacked := packDepthStamped(depthQ, stamp)
 		shadeMul := uint32(monsterShadeFactor(it.dist, near) * 256.0)
 		if shadeMul > 256 {
 			shadeMul = 256
@@ -3735,11 +3741,11 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				if y0 < 0 {
 					y0 = 0
 				}
-				if x1 >= g.viewW {
-					x1 = g.viewW - 1
+				if x1 >= viewW {
+					x1 = viewW - 1
 				}
-				if y1 >= g.viewH {
-					y1 = g.viewH - 1
+				if y1 >= viewH {
+					y1 = viewH - 1
 				}
 				txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
 				for x := x0; x <= x1; x++ {
@@ -3765,34 +3771,34 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				}
 				for y := y0; y <= y1; y++ {
 					ty := tyLUT[y-y0]
-					row := y * g.viewW
-					if x1-x0 >= 24 && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+					row := y * viewW
+					if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
 						continue
 					}
 					for x := x0; x <= x1; {
 						if x+1 <= x1 {
 							i0 := row + x
 							i1 := i0 + 1
-							occ0 := g.spriteOccludedAt(it.dist, i0, planeDepthBias)
-							occ1 := g.spriteOccludedAt(it.dist, i1, planeDepthBias)
+							occ0 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
+							occ1 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
 							if !occ0 && !occ1 {
 								p0 := src32[ty*tw+txLUT[x-x0]]
 								p1 := src32[ty*tw+txLUT[x+1-x0]]
 								a0 := ((p0 >> pixelAShift) & 0xFF) != 0
 								a1 := ((p1 >> pixelAShift) & 0xFF) != 0
 								if a0 && a1 {
-									g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
-									g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+									wallPix[i0] = shadePackedRGBA(p0, shadeMul)
+									wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 									g.setDepthPixelPairEncoded(i0, depthPacked)
 									x += 2
 									continue
 								}
 								if a0 {
-									g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
+									wallPix[i0] = shadePackedRGBA(p0, shadeMul)
 									g.setDepthPixelEncoded(i0, depthPacked)
 								}
 								if a1 {
-									g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+									wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 									g.setDepthPixelEncoded(i1, depthPacked)
 								}
 								x += 2
@@ -3801,14 +3807,14 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 							if !occ0 {
 								p0 := src32[ty*tw+txLUT[x-x0]]
 								if ((p0 >> pixelAShift) & 0xFF) != 0 {
-									g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
+									wallPix[i0] = shadePackedRGBA(p0, shadeMul)
 									g.setDepthPixelEncoded(i0, depthPacked)
 								}
 							}
 							if !occ1 {
 								p1 := src32[ty*tw+txLUT[x+1-x0]]
 								if ((p1 >> pixelAShift) & 0xFF) != 0 {
-									g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+									wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 									g.setDepthPixelEncoded(i1, depthPacked)
 								}
 							}
@@ -3816,10 +3822,10 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 							continue
 						}
 						i := row + x
-						if !g.spriteOccludedAt(it.dist, i, planeDepthBias) {
+						if !spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 							p := src32[ty*tw+txLUT[x-x0]]
 							if ((p >> pixelAShift) & 0xFF) != 0 {
-								g.wallPix32[i] = shadePackedRGBA(p, shadeMul)
+								wallPix[i] = shadePackedRGBA(p, shadeMul)
 								g.setDepthPixelEncoded(i, depthPacked)
 							}
 						}
@@ -3840,19 +3846,19 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if y0 < 0 {
 			y0 = 0
 		}
-		if x1 >= g.viewW {
-			x1 = g.viewW - 1
+		if x1 >= viewW {
+			x1 = viewW - 1
 		}
-		if y1 >= g.viewH {
-			y1 = g.viewH - 1
+		if y1 >= viewH {
+			y1 = viewH - 1
 		}
 		r := uint8((uint32(it.clr.R) * shadeMul) >> 8)
 		gc := uint8((uint32(it.clr.G) * shadeMul) >> 8)
 		b := uint8((uint32(it.clr.B) * shadeMul) >> 8)
 		for y := y0; y <= y1; y++ {
 			dy := (float64(y) + 0.5) - it.sy
-			row := y * g.viewW
-			if x1-x0 >= 24 && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+			row := y * viewW
+			if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
 				continue
 			}
 			for x := x0; x <= x1; x++ {
@@ -3861,10 +3867,10 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 					continue
 				}
 				i := row + x
-				if g.spriteOccludedAt(it.dist, i, planeDepthBias) {
+				if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					continue
 				}
-				g.wallPix32[i] = packRGBA(r, gc, b)
+				wallPix[i] = packRGBA(r, gc, b)
 				g.setDepthPixelEncoded(i, depthPacked)
 			}
 		}
@@ -3919,7 +3925,13 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 32.0
 	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
-	if len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
+	depthPix := g.depthPix3D
+	depthPlanePix := g.depthPlanePix3D
+	wallPix := g.wallPix32
+	viewW := g.viewW
+	viewH := g.viewH
+	stamp := g.depthFrameStamp
+	if len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
 		return
 	}
 	type projectedMonster struct {
@@ -3949,18 +3961,18 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if f <= near {
 			continue
 		}
-		sx := float64(g.viewW)/2 - (s/f)*focal
+		sx := float64(viewW)/2 - (s/f)*focal
 		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
 		monsterH := monsterRenderHeight(th.Type)
-		yt := float64(g.viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
-		yb := float64(g.viewH)/2 - ((floorZ-eyeZ)/f)*focal
+		yt := float64(viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
+		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
 		if yb <= yt {
 			continue
 		}
 		h := yb - yt
 		w := math.Max(6, math.Min(120, h*0.45))
 		xPad := w/2 + 8
-		if sx+xPad < 0 || sx-xPad > float64(g.viewW) {
+		if sx+xPad < 0 || sx-xPad > float64(viewW) {
 			continue
 		}
 		sprite, flip := g.monsterSpriteNameForView(i, th, g.worldTic, camX, camY)
@@ -3982,7 +3994,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
-		depthPacked := packDepthStamped(depthQ, g.depthFrameStamp)
+		depthPacked := packDepthStamped(depthQ, stamp)
 		th := it.tex.Height
 		tw := it.tex.Width
 		if th <= 0 || tw <= 0 {
@@ -4004,7 +4016,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		y0 := int(math.Floor(dstY))
 		x1 := int(math.Ceil(dstX+dstW)) - 1
 		y1 := int(math.Ceil(dstY+dstH)) - 1
-		if x1 < 0 || y1 < 0 || x0 >= g.viewW || y0 >= g.viewH {
+		if x1 < 0 || y1 < 0 || x0 >= viewW || y0 >= viewH {
 			continue
 		}
 		if x0 < 0 {
@@ -4013,11 +4025,11 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if y0 < 0 {
 			y0 = 0
 		}
-		if x1 >= g.viewW {
-			x1 = g.viewW - 1
+		if x1 >= viewW {
+			x1 = viewW - 1
 		}
-		if y1 >= g.viewH {
-			y1 = g.viewH - 1
+		if y1 >= viewH {
+			y1 = viewH - 1
 		}
 		shadeMul := uint32(monsterShadeFactor(it.dist, near) * 256.0)
 		if shadeMul > 256 {
@@ -4052,34 +4064,34 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		}
 		for y := y0; y <= y1; y++ {
 			ty := tyLUT[y-y0]
-			row := y * g.viewW
-			if x1-x0 >= 24 && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+			row := y * viewW
+			if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
 				continue
 			}
 			for x := x0; x <= x1; {
 				if x+1 <= x1 {
 					i0 := row + x
 					i1 := i0 + 1
-					occ0 := g.spriteOccludedAt(it.dist, i0, planeDepthBias)
-					occ1 := g.spriteOccludedAt(it.dist, i1, planeDepthBias)
+					occ0 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
+					occ1 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
 					if !occ0 && !occ1 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
 						a0 := ((p0 >> pixelAShift) & 0xFF) != 0
 						a1 := ((p1 >> pixelAShift) & 0xFF) != 0
 						if a0 && a1 {
-							g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
-							g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+							wallPix[i0] = shadePackedRGBA(p0, shadeMul)
+							wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 							g.setDepthPixelPairEncoded(i0, depthPacked)
 							x += 2
 							continue
 						}
 						if a0 {
-							g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
+							wallPix[i0] = shadePackedRGBA(p0, shadeMul)
 							g.setDepthPixelEncoded(i0, depthPacked)
 						}
 						if a1 {
-							g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+							wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 							g.setDepthPixelEncoded(i1, depthPacked)
 						}
 						x += 2
@@ -4088,14 +4100,14 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 					if !occ0 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						if ((p0 >> pixelAShift) & 0xFF) != 0 {
-							g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
+							wallPix[i0] = shadePackedRGBA(p0, shadeMul)
 							g.setDepthPixelEncoded(i0, depthPacked)
 						}
 					}
 					if !occ1 {
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
 						if ((p1 >> pixelAShift) & 0xFF) != 0 {
-							g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+							wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 							g.setDepthPixelEncoded(i1, depthPacked)
 						}
 					}
@@ -4103,10 +4115,10 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 					continue
 				}
 				i := row + x
-				if !g.spriteOccludedAt(it.dist, i, planeDepthBias) {
+				if !spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					p := src32[ty*tw+txLUT[x-x0]]
 					if ((p >> pixelAShift) & 0xFF) != 0 {
-						g.wallPix32[i] = shadePackedRGBA(p, shadeMul)
+						wallPix[i] = shadePackedRGBA(p, shadeMul)
 						g.setDepthPixelEncoded(i, depthPacked)
 					}
 				}
@@ -4119,7 +4131,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 64.0
 	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
-	if len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
+	depthPix := g.depthPix3D
+	depthPlanePix := g.depthPlanePix3D
+	wallPix := g.wallPix32
+	viewW := g.viewW
+	viewH := g.viewH
+	stamp := g.depthFrameStamp
+	if len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
 		return
 	}
 	type projectedThing struct {
@@ -4157,15 +4175,15 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			continue
 		}
 		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
-		yb := float64(g.viewH)/2 - ((floorZ-eyeZ)/f)*focal
+		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
 		h := float64(tex.Height) * scale
 		if h <= 0 {
 			continue
 		}
-		sx := float64(g.viewW)/2 - (s/f)*focal
+		sx := float64(viewW)/2 - (s/f)*focal
 		w := float64(tex.Width) * scale
 		xPad := w/2 + 4
-		if sx+xPad < 0 || sx-xPad > float64(g.viewW) {
+		if sx+xPad < 0 || sx-xPad > float64(viewW) {
 			continue
 		}
 		items = append(items, projectedThing{
@@ -4179,7 +4197,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
-		depthPacked := packDepthStamped(depthQ, g.depthFrameStamp)
+		depthPacked := packDepthStamped(depthQ, stamp)
 		th := it.tex.Height
 		tw := it.tex.Width
 		if th <= 0 || tw <= 0 {
@@ -4201,7 +4219,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		y0 := int(math.Floor(dstY))
 		x1 := int(math.Ceil(dstX+dstW)) - 1
 		y1 := int(math.Ceil(dstY+dstH)) - 1
-		if x1 < 0 || y1 < 0 || x0 >= g.viewW || y0 >= g.viewH {
+		if x1 < 0 || y1 < 0 || x0 >= viewW || y0 >= viewH {
 			continue
 		}
 		if x0 < 0 {
@@ -4210,11 +4228,11 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if y0 < 0 {
 			y0 = 0
 		}
-		if x1 >= g.viewW {
-			x1 = g.viewW - 1
+		if x1 >= viewW {
+			x1 = viewW - 1
 		}
-		if y1 >= g.viewH {
-			y1 = g.viewH - 1
+		if y1 >= viewH {
+			y1 = viewH - 1
 		}
 		shadeMul := uint32(monsterShadeFactor(it.dist, near) * 256.0)
 		if shadeMul > 256 {
@@ -4246,34 +4264,34 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		}
 		for y := y0; y <= y1; y++ {
 			ty := tyLUT[y-y0]
-			row := y * g.viewW
-			if x1-x0 >= 24 && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+			row := y * viewW
+			if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
 				continue
 			}
 			for x := x0; x <= x1; {
 				if x+1 <= x1 {
 					i0 := row + x
 					i1 := i0 + 1
-					occ0 := g.spriteOccludedAt(it.dist, i0, planeDepthBias)
-					occ1 := g.spriteOccludedAt(it.dist, i1, planeDepthBias)
+					occ0 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
+					occ1 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
 					if !occ0 && !occ1 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
 						a0 := ((p0 >> pixelAShift) & 0xFF) != 0
 						a1 := ((p1 >> pixelAShift) & 0xFF) != 0
 						if a0 && a1 {
-							g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
-							g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+							wallPix[i0] = shadePackedRGBA(p0, shadeMul)
+							wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 							g.setDepthPixelPairEncoded(i0, depthPacked)
 							x += 2
 							continue
 						}
 						if a0 {
-							g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
+							wallPix[i0] = shadePackedRGBA(p0, shadeMul)
 							g.setDepthPixelEncoded(i0, depthPacked)
 						}
 						if a1 {
-							g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+							wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 							g.setDepthPixelEncoded(i1, depthPacked)
 						}
 						x += 2
@@ -4282,14 +4300,14 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 					if !occ0 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						if ((p0 >> pixelAShift) & 0xFF) != 0 {
-							g.wallPix32[i0] = shadePackedRGBA(p0, shadeMul)
+							wallPix[i0] = shadePackedRGBA(p0, shadeMul)
 							g.setDepthPixelEncoded(i0, depthPacked)
 						}
 					}
 					if !occ1 {
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
 						if ((p1 >> pixelAShift) & 0xFF) != 0 {
-							g.wallPix32[i1] = shadePackedRGBA(p1, shadeMul)
+							wallPix[i1] = shadePackedRGBA(p1, shadeMul)
 							g.setDepthPixelEncoded(i1, depthPacked)
 						}
 					}
@@ -4297,10 +4315,10 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 					continue
 				}
 				i := row + x
-				if !g.spriteOccludedAt(it.dist, i, planeDepthBias) {
+				if !spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					p := src32[ty*tw+txLUT[x-x0]]
 					if ((p >> pixelAShift) & 0xFF) != 0 {
-						g.wallPix32[i] = shadePackedRGBA(p, shadeMul)
+						wallPix[i] = shadePackedRGBA(p, shadeMul)
 						g.setDepthPixelEncoded(i, depthPacked)
 					}
 				}
