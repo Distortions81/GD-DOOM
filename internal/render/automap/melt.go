@@ -172,9 +172,9 @@ func stepMeltSlices(y []int, width, height int, fromPix, toPix, workPix []byte, 
 	return false
 }
 
-// stepMeltSlicesVirtual advances melt state in a virtual-height space and maps
-// results to real pixels. This keeps melt motion profile stable across output
-// resolutions while still applying wipe columns across the full real image.
+// stepMeltSlicesVirtual advances melt state in a virtual-height space and then
+// applies a per-slice vertical shift on full-resolution source/target buffers.
+// This preserves crisp native pixels while keeping Doom-like melt progression.
 func stepMeltSlicesVirtual(y []int, virtualH int, width, height int, fromPix, toPix, workPix []byte, ticks int, slices int) bool {
 	if ticks <= 0 {
 		return false
@@ -242,18 +242,15 @@ func composeMeltSlicesVirtual(y []int, virtualH, width, height int, fromPix, toP
 		}
 		for row := 0; row < height; row++ {
 			dstOff := (row*width + x0) * 4
-			vRow := (row * virtualH) / height
 			if row < cutReal {
-				srcRow := (vRow * height) / virtualH
-				srcOff := (srcRow*width + x0) * 4
+				srcOff := (row*width + x0) * 4
 				copy(workPix[dstOff:dstOff+colBytes], toPix[srcOff:srcOff+colBytes])
 				continue
 			}
-			srcV := vRow - cut
-			if srcV < 0 {
-				srcV = 0
+			srcRow := row - cutReal
+			if srcRow < 0 {
+				srcRow = 0
 			}
-			srcRow := (srcV * height) / virtualH
 			srcOff := (srcRow*width + x0) * 4
 			copy(workPix[dstOff:dstOff+colBytes], fromPix[srcOff:srcOff+colBytes])
 		}

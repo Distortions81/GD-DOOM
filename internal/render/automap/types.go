@@ -13,7 +13,6 @@ type Options struct {
 	Invulnerable    bool
 	LineColorMode   string
 	SourcePortMode  bool
-	VerticalStretch bool
 	NoVsync         bool
 	AllCheats       bool
 	StartInMapMode  bool

@@ -14,10 +14,12 @@ import (
 type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error)
 
 const (
-	bootSplashHoldTics     = 3 * doomTicsPerSecond
-	meltVirtualH           = 200
-	sourcePortMeltInitCols = 320
-	sourcePortMeltMoveCols = sourcePortMeltInitCols / 2
+	bootSplashHoldTics = 3 * doomTicsPerSecond
+	meltVirtualH       = 200
+	// Sourceport melt uses Doom-like 2-pixel column pairs over a 320-wide
+	// virtual layout, i.e. 160 moving slices.
+	sourcePortMeltInitCols = 160
+	sourcePortMeltMoveCols = sourcePortMeltInitCols
 )
 
 type transitionKind int
@@ -60,10 +62,10 @@ type sessionGame struct {
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	const (
 		doomLogicalW = 320
-		doomLogicalH = 240
-		doomWindowW  = 1280
-		doomWindowH  = 960
+		doomLogicalH = 200
 	)
+	windowW := opts.Width
+	windowH := opts.Height
 	if opts.SourcePortMode {
 		if opts.Width <= 0 {
 			opts.Width = 1280
@@ -72,8 +74,28 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 			opts.Height = 800
 		}
 	} else {
+		// Faithful mode: keep internal render fixed at 320x240.
 		opts.Width = doomLogicalW
 		opts.Height = doomLogicalH
+		// Window size honors requested width/height but is snapped to integer
+		// multiples of 320x240 to preserve aspect and pixel-perfect scaling.
+		if windowW <= 0 {
+			windowW = 1280
+		}
+		if windowH <= 0 {
+			windowH = 960
+		}
+		scaleX := windowW / doomLogicalW
+		scaleY := windowH / doomLogicalH
+		scale := scaleX
+		if scaleY < scale {
+			scale = scaleY
+		}
+		if scale < 1 {
+			scale = 1
+		}
+		windowW = doomLogicalW * scale
+		windowH = doomLogicalH * scale
 	}
 	sg := &sessionGame{
 		g:       newGame(m, opts),
@@ -90,10 +112,9 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		ebiten.SetWindowSize(opts.Width, opts.Height)
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	} else {
-		ebiten.SetWindowSize(doomWindowW, doomWindowH)
-		// Keep faithful mode's internal framebuffer fixed and let Ebiten scale it
-		// to the current window size for CRT-style aspect correction.
-		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+		ebiten.SetWindowSize(windowW, windowH)
+		// Faithful mode uses fixed integer scaling and aspect, so keep a fixed window.
+		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 	}
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
 	ebiten.SetScreenClearedEveryFrame(false)
@@ -168,22 +189,36 @@ func (sg *sessionGame) Update() error {
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
+	tw := sw
+	th := sh
 	if sg.transitionActive() {
-		sg.ensureTransitionReady(sw, sh)
+		if sg.opts.SourcePortMode && sg.transition.initialized &&
+			(sg.transition.width != tw || sg.transition.height != th) {
+			// View size changed while transitioning; rebuild transition buffers.
+			sg.transition.initialized = false
+			sg.transition.pending = true
+			sg.transition.y = nil
+		}
+		sg.ensureTransitionReady(tw, th)
 		if sg.transition.initialized {
 			sg.drawTransitionFrame(screen, sw, sh)
 			return
 		}
 		sg.clearTransition()
 	}
+	if sg.opts.SourcePortMode {
+		// Render directly to the actual screen target to avoid any
+		// intermediate-resolution mismatch.
+		sg.g.Layout(sw, sh)
+		sg.g.Draw(screen)
+		sg.captureLastFrame(screen)
+		return
+	}
 	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
 		sg.presentSurface = ebiten.NewImage(sw, sh)
 	}
 	sg.drawGamePresented(sg.presentSurface, sg.g)
 	screen.DrawImage(sg.presentSurface, nil)
-	if sg.opts.SourcePortMode {
-		sg.captureLastFrame(sg.presentSurface)
-	}
 }
 
 func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
@@ -201,6 +236,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		sg.captureLastFrame(sg.faithfulSurface)
 		return
 	}
+	g.Layout(max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
 	g.Draw(dst)
 }
 
@@ -212,30 +248,23 @@ func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
 	sh := max(dst.Bounds().Dy(), 1)
 	vw := max(src.Bounds().Dx(), 1)
 	vh := max(src.Bounds().Dy(), 1)
-	if !sg.opts.VerticalStretch {
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Scale(float64(sw)/float64(vw), float64(sh)/float64(vh))
-		dst.DrawImage(src, op)
-		return
-	}
-	dstW := sw
-	dstH := (dstW * 3) / 4 // Present faithful mode inside a 4:3 display area.
-	if dstH > sh {
-		dstH = sh
-		dstW = (dstH * 4) / 3
-	}
-	if dstW < 1 {
-		dstW = 1
-	}
-	if dstH < 1 {
-		dstH = 1
-	}
-	offX := (sw - dstW) / 2
-	offY := (sh - dstH) / 2
 	dst.Fill(color.Black)
+	ix := sw / vw
+	iy := sh / vh
+	n := ix
+	if iy < n {
+		n = iy
+	}
+	if n < 1 {
+		n = 1
+	}
+	scaleX := float64(n)
+	scaleY := float64(n)
+	offX := (float64(sw) - float64(vw)*scaleX) * 0.5
+	offY := (float64(sh) - float64(vh)*scaleY) * 0.5
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(float64(dstW)/float64(vw), float64(dstH)/float64(vh))
-	op.GeoM.Translate(float64(offX), float64(offY))
+	op.GeoM.Scale(scaleX, scaleY)
+	op.GeoM.Translate(offX, offY)
 	dst.DrawImage(src, op)
 }
 
@@ -271,6 +300,7 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 		return
 	}
 	if sg.opts.SourcePortMode {
+		g.Layout(max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
 		g.Draw(dst)
 		return
 	}
@@ -348,10 +378,6 @@ func (sg *sessionGame) ensureTransitionReady(width, height int) {
 	}
 	tw := width
 	th := height
-	if !sg.opts.SourcePortMode {
-		tw = max(sg.g.viewW, 1)
-		th = max(sg.g.viewH, 1)
-	}
 	if tw <= 0 || th <= 0 {
 		return
 	}
@@ -435,14 +461,8 @@ func (sg *sessionGame) tickTransition() {
 			t.y = initMeltColumns(t.width)
 		}
 	}
+	// Advance wipe by Doom tics (one melt step per game tic) in both modes.
 	meltTicks := 1
-	if sg.opts.SourcePortMode {
-		// Source-port path keeps existing resolution-scaled melt pacing.
-		meltTicks = (t.height + 199) / 200
-		if meltTicks < 1 {
-			meltTicks = 1
-		}
-	}
 	done := false
 	if sg.opts.SourcePortMode {
 		done = stepMeltSlicesVirtual(t.y, meltVirtualH, t.width, t.height, t.fromPix, t.toPix, t.workPix, meltTicks, sourcePortMeltMoveColumns())
@@ -478,10 +498,6 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 	t := &sg.transition
 	if t.work == nil {
 		screen.Fill(color.Black)
-		return
-	}
-	if !sg.opts.SourcePortMode {
-		sg.drawFaithfulPresented(screen, t.work)
 		return
 	}
 	tw := max(t.width, 1)
@@ -521,10 +537,13 @@ func (sg *sessionGame) clearTransition() {
 }
 
 func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
-	if !sg.opts.SourcePortMode {
-		// Faithful mode keeps internal render size fixed and handles display
-		// aspect correction in Draw via a 4:3 presentation transform.
-		return max(outsideWidth, 1), max(outsideHeight, 1)
+	if sg.opts.SourcePortMode {
+		w := max(outsideWidth, 1)
+		h := max(outsideHeight, 1)
+		// Keep game internals synced, but always expose native output size
+		// in sourceport mode so transition and steady-state render targets match.
+		sg.g.Layout(w, h)
+		return w, h
 	}
 	return sg.g.Layout(outsideWidth, outsideHeight)
 }

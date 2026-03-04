@@ -72,10 +72,11 @@ func (g *game) hudTransform() (sx, sy, ox, oy float64) {
 	if !g.opts.SourcePortMode {
 		return sx, sy, 0, 0
 	}
-	// Keep Doom HUD proportions on widescreen by using uniform scale and centering.
-	sy = float64(max(g.viewH, 1)) / statusBaseH
+	// Keep Doom HUD proportions on widescreen by using uniform scale, centered
+	// horizontally and anchored to screen bottom.
 	sx = sy
 	ox = (float64(g.viewW) - statusBaseW*sx) * 0.5
+	oy = float64(g.viewH) - statusBaseH*sy
 	if ox < 0 {
 		ox = 0
 		sx = float64(max(g.viewW, 1)) / statusBaseW
@@ -191,13 +192,12 @@ func (g *game) drawHUDMessage(screen *ebiten.Image, msg string, x, y float64) {
 	if strings.TrimSpace(msg) == "" {
 		return
 	}
-	sx, sy, ox, oy := g.hudTransform()
+	sx, sy, ox, _ := g.hudTransform()
 	px := (float64(huMsgX) + x) * sx
 	py := (float64(huMsgY) + y) * sy
 	maxX := float64(g.viewW)
 	if g.opts.SourcePortMode {
 		px += ox
-		py += oy
 		maxX = ox + statusBaseW*sx
 	}
 	if len(g.opts.MessageFontBank) == 0 {

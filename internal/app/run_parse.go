@@ -33,8 +33,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultRender := true
 	defaultDebug := false
 	defaultMultiCore := true
-	defaultWidth := 2560
-	defaultHeight := 1440
+	defaultWidth := 1280
+	defaultHeight := 800
 	defaultZoom := 0.0
 	defaultPlayer := 1
 	defaultSkill := 3
@@ -43,7 +43,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
-	defaultVerticalStretch := false
 	defaultAllCheats := false
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
@@ -104,9 +103,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
-		if cfg.VerticalStretch != nil {
-			defaultVerticalStretch = *cfg.VerticalStretch
-		}
 		if cfg.AllCheats != nil {
 			defaultAllCheats = *cfg.AllCheats
 		}
@@ -153,7 +149,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
-	verticalStretch := fs.Bool("vertical-stretch", defaultVerticalStretch, "faithful mode: apply 4:3 vertical-stretch presentation")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
@@ -357,7 +352,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:    resolvedInvuln,
 			LineColorMode:   resolvedLineColorMode,
 			SourcePortMode:  *sourcePortMode,
-			VerticalStretch: *verticalStretch,
 			NoVsync:         *noVsync,
 			AllCheats:       *allCheats,
 			StartInMapMode:  *startInMap,

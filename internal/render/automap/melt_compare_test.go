@@ -18,7 +18,7 @@ import (
 func TestMeltCompareRender(t *testing.T) {
 	const (
 		w = 320
-		h = 240
+		h = 200
 	)
 
 	fromPix, toPix := buildMeltCompareBuffers(t, w, h)
@@ -200,7 +200,7 @@ func simulateSourceportMeltFrames(w, h int, fromPix, toPix []byte) [][]byte {
 	work := append([]byte(nil), fromPix...)
 	mult := sourcePortMeltRNGScale(h)
 	y := initMeltColumnsScaled(sourcePortMeltInitColumns(), mult)
-	meltTicks := sourcePortMeltRNGScale(h)
+	meltTicks := 1
 	frames := make([][]byte, 0, 128)
 	frames = append(frames, append([]byte(nil), work...))
 	for i := 0; i < 4096; i++ {

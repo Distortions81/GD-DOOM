@@ -25,7 +25,6 @@ type fileConfig struct {
 	ImportTextures  *bool    `toml:"import_textures"`
 	LineColorMode   *string  `toml:"line_color_mode"`
 	SourcePortMode  *bool    `toml:"sourceport_mode"`
-	VerticalStretch *bool    `toml:"vertical_stretch"`
 	AllCheats       *bool    `toml:"all_cheats"`
 	StartInMap      *bool    `toml:"start_in_map"`
 	ImportPCSpeaker *bool    `toml:"import_pcspeaker"`
