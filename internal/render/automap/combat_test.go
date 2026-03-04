@@ -96,3 +96,107 @@ func TestNoAmmoAutoSwitchesToFist(t *testing.T) {
 		t.Fatalf("weapon=%v want=%v", g.inventory.ReadyWeapon, weaponFist)
 	}
 }
+
+func TestPistolFirstShotConsumesSingleDamageRoll(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:     playerStats{Bullets: 1},
+		inventory: playerInventory{ReadyWeapon: weaponPistol, Weapons: map[int16]bool{}},
+	}
+	_, p0 := doomrand.State()
+	g.handleFire()
+	_, p1 := doomrand.State()
+	if d := prandDelta(p0, p1); d != 1 {
+		t.Fatalf("p-random calls=%d want=1 for accurate first pistol shot", d)
+	}
+}
+
+func TestPistolRefireConsumesSpreadAndDamageRolls(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:        playerStats{Bullets: 1},
+		inventory:    playerInventory{ReadyWeapon: weaponPistol, Weapons: map[int16]bool{}},
+		weaponRefire: true,
+	}
+	_, p0 := doomrand.State()
+	g.handleFire()
+	_, p1 := doomrand.State()
+	if d := prandDelta(p0, p1); d != 3 {
+		t.Fatalf("p-random calls=%d want=3 for refire pistol shot", d)
+	}
+}
+
+func TestShotgunConsumesSevenPelletRandomRolls(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{Shells: 1},
+		inventory: playerInventory{
+			ReadyWeapon: weaponShotgun,
+			Weapons:     map[int16]bool{2001: true},
+		},
+	}
+	_, p0 := doomrand.State()
+	g.handleFire()
+	_, p1 := doomrand.State()
+	if d := prandDelta(p0, p1); d != 21 {
+		t.Fatalf("p-random calls=%d want=21 for 7-pellet shotgun shot", d)
+	}
+}
+
+func prandDelta(before, after int) int {
+	d := after - before
+	if d < 0 {
+		d += 256
+	}
+	return d
+}
+
+func TestTickWeaponFirePistolCadence(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:     playerStats{Bullets: 3},
+		inventory: playerInventory{ReadyWeapon: weaponPistol, Weapons: map[int16]bool{}},
+	}
+	g.setAttackHeld(true)
+	g.tickWeaponFire()
+	if g.stats.Bullets != 2 {
+		t.Fatalf("bullets=%d want=2 after first shot", g.stats.Bullets)
+	}
+	for i := 0; i < 13; i++ {
+		g.tickWeaponFire()
+		if g.stats.Bullets != 2 {
+			t.Fatalf("shot fired too early at tic %d: bullets=%d", i+1, g.stats.Bullets)
+		}
+	}
+	g.tickWeaponFire()
+	if g.stats.Bullets != 1 {
+		t.Fatalf("bullets=%d want=1 at tic 14 refire cadence", g.stats.Bullets)
+	}
+}
+
+func TestPistolAutoaimSlopeHitsLowerTarget(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 64, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      44 * fracUnit,
+			floorz: 44 * fracUnit,
+			ceilz:  128 * fracUnit,
+			angle:  degToAngle(0),
+		},
+		stats:     playerStats{Bullets: 1},
+		inventory: playerInventory{ReadyWeapon: weaponPistol, Weapons: map[int16]bool{}},
+	}
+	g.handleFire()
+	if g.thingHP[0] >= 20 {
+		t.Fatalf("monster hp=%d want < 20 (autoaim slope should hit lower target)", g.thingHP[0])
+	}
+}

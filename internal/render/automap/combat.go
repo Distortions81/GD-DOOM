@@ -7,8 +7,13 @@ import (
 )
 
 const (
-	pistolRange  = 2048 * fracUnit
-	shotgunRange = 2048 * fracUnit
+	pistolRange        = 2048 * fracUnit
+	shotgunRange       = 2048 * fracUnit
+	bulletTargetRadius = 20 * fracUnit
+	doomGunSpreadShift = 18
+	doomAimTopSlope    = 100.0 / 160.0
+	doomAimBottomSlope = -100.0 / 160.0
+	doomAimFallbackAng = uint32(1 << 26)
 )
 
 type weaponID int
@@ -73,29 +78,69 @@ func (g *game) handleFire() {
 		return
 	}
 	hit := g.fireSelectedWeapon()
+	g.weaponRefire = true
 	if !hit {
 		g.setHUDMessage("Miss", 10)
+	}
+}
+
+func (g *game) setAttackHeld(held bool) {
+	g.statusAttackDown = held
+	if !held {
+		g.weaponRefire = false
+	}
+}
+
+func (g *game) tickWeaponFire() {
+	if g.weaponFireCooldown > 0 {
+		g.weaponFireCooldown--
+	}
+	if !g.statusAttackDown || g.isDead || g.weaponFireCooldown > 0 {
+		return
+	}
+	g.handleFire()
+	g.weaponFireCooldown = weaponRefireDelay(g.inventory.ReadyWeapon)
+}
+
+func weaponRefireDelay(id weaponID) int {
+	// Approximate Doom p_pspr fire cadence while preserving immediate first-shot.
+	// Delay N means next allowed shot is after N+1 tics in tickWeaponFire.
+	switch id {
+	case weaponPistol:
+		return 14
+	case weaponChaingun:
+		return 4
+	case weaponShotgun:
+		return 37
+	case weaponFist:
+		return 17
+	case weaponChainsaw:
+		return 4
+	default:
+		return 0
 	}
 }
 
 func (g *game) fireSelectedWeapon() bool {
 	switch g.inventory.ReadyWeapon {
 	case weaponFist:
-		return g.fireMelee(64*fracUnit, 2*(1+doomrand.PRandom()%10))
+		return g.fireFist()
 	case weaponChainsaw:
-		// Doom chainsaw damage per puff.
-		return g.fireMelee(64*fracUnit, 2*(1+doomrand.PRandom()%10))
+		return g.fireChainsaw()
 	case weaponPistol:
 		g.stats.Bullets--
-		return g.fireBullet(g.p.angle, pistolRange)
+		slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+		return g.fireGunShot(g.p.angle, pistolRange, slope, !g.weaponRefire)
 	case weaponChaingun:
 		g.stats.Bullets--
-		return g.fireBullet(g.p.angle, pistolRange)
+		slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+		return g.fireGunShot(g.p.angle, pistolRange, slope, !g.weaponRefire)
 	case weaponShotgun:
 		g.stats.Shells--
+		slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
 		hit := false
 		for i := 0; i < 7; i++ {
-			if g.fireBullet(g.p.angle, shotgunRange) {
+			if g.fireGunShot(g.p.angle, shotgunRange, slope, false) {
 				hit = true
 			}
 		}
@@ -117,8 +162,36 @@ func (g *game) fireSelectedWeapon() bool {
 	}
 }
 
-func (g *game) fireMelee(rng int64, damage int) bool {
-	idx, ok := g.pickHitscanMonsterTargetAtAngle(g.p.angle, rng, 20*fracUnit)
+func (g *game) fireFist() bool {
+	damage := 2 * (1 + (doomrand.PRandom() % 10))
+	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift)
+	return g.fireMeleeAtAngle(angle, 64*fracUnit, damage)
+}
+
+func (g *game) fireChainsaw() bool {
+	damage := 2 * (1 + (doomrand.PRandom() % 10))
+	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift)
+	// Doom uses MELEERANGE+1 to avoid clipping through nearby targets.
+	return g.fireMeleeAtAngle(angle, 64*fracUnit+fracUnit, damage)
+}
+
+func (g *game) fireMeleeAtAngle(angle uint32, rng int64, damage int) bool {
+	slope := g.bulletSlopeForAim(angle, rng)
+	idx, ok := g.pickHitscanMonsterTargetAtAngleWithSlope(angle, rng, bulletTargetRadius, slope, true)
+	if !ok || damage <= 0 {
+		return false
+	}
+	g.damageMonster(idx, damage)
+	return true
+}
+
+func (g *game) fireGunShot(baseAngle uint32, rng int64, slope float64, accurate bool) bool {
+	damage := doomGunShotDamage()
+	angle := baseAngle
+	if !accurate {
+		angle = addDoomAngleSpread(baseAngle, doomGunSpreadShift)
+	}
+	idx, ok := g.pickHitscanMonsterTargetAtAngleWithSlope(angle, rng, bulletTargetRadius, slope, true)
 	if !ok {
 		return false
 	}
@@ -126,28 +199,104 @@ func (g *game) fireMelee(rng int64, damage int) bool {
 	return true
 }
 
-func (g *game) fireBullet(baseAngle uint32, rng int64) bool {
-	ang := addDoomBulletSpread(baseAngle)
-	idx, ok := g.pickHitscanMonsterTargetAtAngle(ang, rng, 20*fracUnit)
-	if !ok {
-		return false
-	}
-	damage := 5 * (1 + (doomrand.PRandom() % 3))
-	g.damageMonster(idx, damage)
-	return true
+func (g *game) playerShootZ() float64 {
+	return float64(g.p.z + (playerHeight >> 1) + 8*fracUnit)
 }
 
-func addDoomBulletSpread(base uint32) uint32 {
-	// Doom's hitscan horizontal spread: (P_Random - P_Random) << 18.
-	delta := (doomrand.PRandom() - doomrand.PRandom()) << 18
+func (g *game) bulletSlopeForAim(baseAngle uint32, rng int64) float64 {
+	if slope, ok := g.aimSlopeAtAngle(baseAngle, rng); ok {
+		return slope
+	}
+	if slope, ok := g.aimSlopeAtAngle(baseAngle+doomAimFallbackAng, rng); ok {
+		return slope
+	}
+	if slope, ok := g.aimSlopeAtAngle(baseAngle-doomAimFallbackAng, rng); ok {
+		return slope
+	}
+	return 0
+}
+
+func (g *game) aimSlopeAtAngle(angle uint32, rng int64) (float64, bool) {
+	if g.m == nil {
+		return 0, false
+	}
+	ang := angleToRadians(angle)
+	dirX := math.Cos(ang)
+	dirY := math.Sin(ang)
+	px := float64(g.p.x)
+	py := float64(g.p.y)
+	shootZ := g.playerShootZ()
+	bestDist := math.Inf(1)
+	bestSlope := 0.0
+	found := false
+
+	for i, th := range g.m.Things {
+		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+			continue
+		}
+		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
+			continue
+		}
+		tx := float64(int64(th.X) << fracBits)
+		ty := float64(int64(th.Y) << fracBits)
+		rx := tx - px
+		ry := ty - py
+		dist := rx*dirX + ry*dirY
+		if dist <= 0 || dist > float64(rng) {
+			continue
+		}
+		perp := math.Abs(rx*dirY - ry*dirX)
+		if perp > float64(bulletTargetRadius) {
+			continue
+		}
+		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
+			continue
+		}
+
+		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits))
+		topZ := floorZ + float64(monsterHitHeight(th.Type))
+		topSlope := (topZ - shootZ) / dist
+		bottomSlope := (floorZ - shootZ) / dist
+		if topSlope < doomAimBottomSlope || bottomSlope > doomAimTopSlope {
+			continue
+		}
+		if topSlope > doomAimTopSlope {
+			topSlope = doomAimTopSlope
+		}
+		if bottomSlope < doomAimBottomSlope {
+			bottomSlope = doomAimBottomSlope
+		}
+		if dist < bestDist {
+			bestDist = dist
+			bestSlope = (topSlope + bottomSlope) * 0.5
+			found = true
+		}
+	}
+	if !found {
+		return 0, false
+	}
+	return bestSlope, true
+}
+
+func doomGunShotDamage() int {
+	return 5 * (1 + (doomrand.PRandom() % 3))
+}
+
+func addDoomAngleSpread(base uint32, shift uint) uint32 {
+	// Doom-style spread: (P_Random - P_Random) << shift.
+	delta := (doomrand.PRandom() - doomrand.PRandom()) << shift
 	return base + uint32(int32(delta))
 }
 
 func (g *game) pickHitscanMonsterTarget() (int, bool) {
-	return g.pickHitscanMonsterTargetAtAngle(g.p.angle, pistolRange, 20*fracUnit)
+	return g.pickHitscanMonsterTargetAtAngle(g.p.angle, pistolRange, bulletTargetRadius)
 }
 
 func (g *game) pickHitscanMonsterTargetAtAngle(angle uint32, rng int64, radius int64) (int, bool) {
+	return g.pickHitscanMonsterTargetAtAngleWithSlope(angle, rng, radius, 0, false)
+}
+
+func (g *game) pickHitscanMonsterTargetAtAngleWithSlope(angle uint32, rng int64, radius int64, slope float64, useSlope bool) (int, bool) {
 	if g.m == nil {
 		return -1, false
 	}
@@ -156,6 +305,7 @@ func (g *game) pickHitscanMonsterTargetAtAngle(angle uint32, rng int64, radius i
 	dirY := math.Sin(ang)
 	px := float64(g.p.x)
 	py := float64(g.p.y)
+	shootZ := g.playerShootZ()
 	bestDist := math.Inf(1)
 	bestIdx := -1
 
@@ -181,6 +331,15 @@ func (g *game) pickHitscanMonsterTargetAtAngle(angle uint32, rng int64, radius i
 		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
 			continue
 		}
+		if useSlope {
+			floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits))
+			topZ := floorZ + float64(monsterHitHeight(th.Type))
+			topSlope := (topZ - shootZ) / t
+			bottomSlope := (floorZ - shootZ) / t
+			if slope < bottomSlope || slope > topSlope {
+				continue
+			}
+		}
 		if t < bestDist {
 			bestDist = t
 			bestIdx = i
@@ -190,6 +349,14 @@ func (g *game) pickHitscanMonsterTargetAtAngle(angle uint32, rng int64, radius i
 		return -1, false
 	}
 	return bestIdx, true
+}
+
+func monsterHitHeight(typ int16) int64 {
+	h := int64(monsterRenderHeight(typ) * fracUnit)
+	if h <= 0 {
+		return 56 * fracUnit
+	}
+	return h
 }
 
 func (g *game) damageMonster(thingIdx int, damage int) {
@@ -226,35 +393,42 @@ func (g *game) ensureWeaponHasAmmo() {
 	if g.canFireSelectedWeapon() {
 		return
 	}
+	switchTo := func(id weaponID) {
+		if g.inventory.ReadyWeapon != id {
+			g.weaponRefire = false
+			g.weaponFireCooldown = 0
+		}
+		g.inventory.ReadyWeapon = id
+	}
 	if g.stats.Shells > 0 && g.inventory.Weapons[2001] {
-		g.inventory.ReadyWeapon = weaponShotgun
+		switchTo(weaponShotgun)
 		return
 	}
 	if g.stats.Bullets > 0 && g.inventory.Weapons[2002] {
-		g.inventory.ReadyWeapon = weaponChaingun
+		switchTo(weaponChaingun)
 		return
 	}
 	if g.stats.Bullets > 0 {
-		g.inventory.ReadyWeapon = weaponPistol
+		switchTo(weaponPistol)
 		return
 	}
 	if g.stats.Cells >= 40 && g.inventory.Weapons[2006] {
-		g.inventory.ReadyWeapon = weaponBFG
+		switchTo(weaponBFG)
 		return
 	}
 	if g.stats.Cells > 0 && g.inventory.Weapons[2004] {
-		g.inventory.ReadyWeapon = weaponPlasma
+		switchTo(weaponPlasma)
 		return
 	}
 	if g.stats.Rockets > 0 && g.inventory.Weapons[2003] {
-		g.inventory.ReadyWeapon = weaponRocketLauncher
+		switchTo(weaponRocketLauncher)
 		return
 	}
 	if g.inventory.Weapons[2005] {
-		g.inventory.ReadyWeapon = weaponChainsaw
+		switchTo(weaponChainsaw)
 		return
 	}
-	g.inventory.ReadyWeapon = weaponFist
+	switchTo(weaponFist)
 }
 
 func (g *game) canFireSelectedWeapon() bool {
@@ -278,6 +452,7 @@ func (g *game) canFireSelectedWeapon() bool {
 
 func (g *game) selectWeaponSlot(slot int) {
 	g.ensureWeaponDefaults()
+	prev := g.inventory.ReadyWeapon
 	switch slot {
 	case 1:
 		if g.inventory.Weapons[2005] {
@@ -307,6 +482,10 @@ func (g *game) selectWeaponSlot(slot int) {
 		if g.inventory.Weapons[2006] {
 			g.inventory.ReadyWeapon = weaponBFG
 		}
+	}
+	if g.inventory.ReadyWeapon != prev {
+		g.weaponRefire = false
+		g.weaponFireCooldown = 0
 	}
 }
 

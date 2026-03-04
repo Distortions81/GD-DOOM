@@ -172,29 +172,31 @@ type game struct {
 	secretLevelExit       bool
 	levelRestartRequested bool
 
-	thingCollected []bool
-	thingHP        []int
-	thingAggro     []bool
-	thingCooldown  []int
-	thingMoveDir   []monsterMoveDir
-	thingMoveCount []int
-	thingJustAtk   []bool
-	thingThinkWait []int
-	projectiles    []projectile
-	cheatLevel     int
-	invulnerable   bool
-	inventory      playerInventory
-	stats          playerStats
-	worldTic       int
-	isDead         bool
-	damageFlashTic int
-	bonusFlashTic  int
-	subSectorSec   []int
-	sectorBBox     []worldBBox
-	subSectorPoly  [][]worldPt
-	subSectorTris  [][][3]int
-	subSectorBBox  []worldBBox
-	holeFillPolys  []holeFillPoly
+	thingCollected     []bool
+	thingHP            []int
+	thingAggro         []bool
+	thingCooldown      []int
+	thingMoveDir       []monsterMoveDir
+	thingMoveCount     []int
+	thingJustAtk       []bool
+	thingThinkWait     []int
+	projectiles        []projectile
+	cheatLevel         int
+	invulnerable       bool
+	inventory          playerInventory
+	weaponRefire       bool
+	weaponFireCooldown int
+	stats              playerStats
+	worldTic           int
+	isDead             bool
+	damageFlashTic     int
+	bonusFlashTic      int
+	subSectorSec       []int
+	sectorBBox         []worldBBox
+	subSectorPoly      [][]worldPt
+	subSectorTris      [][][3]int
+	subSectorBBox      []worldBBox
+	holeFillPolys      []holeFillPoly
 
 	mapFloorLayer      *ebiten.Image
 	mapFloorPix        []byte
@@ -708,13 +710,11 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	g.statusAttackDown = tc.Fire
+	g.setAttackHeld(tc.Fire)
 	if tc.Use {
 		g.handleUse()
 	}
-	if tc.Fire {
-		g.handleFire()
-	}
+	g.tickWeaponFire()
 	g.updatePlayer(moveCmd{
 		forward: tc.Forward,
 		side:    tc.Side,
@@ -811,11 +811,10 @@ func (g *game) updateMapMode() {
 		usePressed = true
 		g.handleUse()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyControlLeft) || inpututil.IsKeyJustPressed(ebiten.KeyControlRight) || inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		firePressed = true
-		g.handleFire()
-	}
-	g.statusAttackDown = ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	fireHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	firePressed = fireHeld
+	g.setAttackHeld(fireHeld)
+	g.tickWeaponFire()
 	if g.opts.SourcePortMode {
 		mx, _ := ebiten.CursorPosition()
 		if g.mouseLookSuppressTicks > 0 {
@@ -897,11 +896,10 @@ func (g *game) updateWalkMode() {
 		usePressed = true
 		g.handleUse()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyControlLeft) || inpututil.IsKeyJustPressed(ebiten.KeyControlRight) || inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		firePressed = true
-		g.handleFire()
-	}
-	g.statusAttackDown = ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	fireHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	firePressed = fireHeld
+	g.setAttackHeld(fireHeld)
+	g.tickWeaponFire()
 
 	mx, _ := ebiten.CursorPosition()
 	if g.mouseLookSuppressTicks > 0 {
