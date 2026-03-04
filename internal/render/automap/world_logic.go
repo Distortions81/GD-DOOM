@@ -4,12 +4,29 @@ import "gddoom/internal/doomrand"
 
 func (g *game) tickWorldLogic() {
 	g.worldTic++
+	g.trackSecrets()
 	g.tickProjectiles()
 	if g.inventory.RadSuitTics > 0 {
 		g.inventory.RadSuitTics--
 	}
 	g.applySectorHazardDamage()
 	g.tickMonsters()
+}
+
+func (g *game) trackSecrets() {
+	if g.m == nil || len(g.m.Sectors) == 0 || len(g.secretFound) != len(g.m.Sectors) {
+		return
+	}
+	sec := g.sectorAt(g.p.x, g.p.y)
+	if sec < 0 || sec >= len(g.m.Sectors) {
+		return
+	}
+	if g.m.Sectors[sec].Special != 9 || g.secretFound[sec] {
+		return
+	}
+	g.secretFound[sec] = true
+	g.secretsFound++
+	g.setHUDMessage("A secret is revealed!", 35)
 }
 
 func (g *game) applySectorHazardDamage() {

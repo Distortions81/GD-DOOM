@@ -8,6 +8,7 @@ import (
 	"gddoom/internal/mapdata"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
@@ -46,6 +47,31 @@ type sessionTransition struct {
 	work        *ebiten.Image
 }
 
+type intermissionStats struct {
+	mapName      mapdata.MapName
+	nextMapName  mapdata.MapName
+	killsPct     int
+	itemsPct     int
+	secretsPct   int
+	timeSec      int
+	killsFound   int
+	killsTotal   int
+	itemsFound   int
+	itemsTotal   int
+	secretsFound int
+	secretsTotal int
+}
+
+type sessionIntermission struct {
+	active  bool
+	phase   int
+	waitTic int
+	tic     int
+	show    intermissionStats
+	target  intermissionStats
+	nextMap *mapdata.Map
+}
+
 type sessionGame struct {
 	g               *game
 	current         mapdata.MapName
@@ -57,13 +83,10 @@ type sessionGame struct {
 	lastFrame       *ebiten.Image
 	bootSplashImage *ebiten.Image
 	transition      sessionTransition
+	intermission    sessionIntermission
 }
 
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
-	const (
-		doomLogicalW = 320
-		doomLogicalH = 200
-	)
 	windowW := opts.Width
 	windowH := opts.Height
 	if opts.SourcePortMode {
@@ -74,11 +97,11 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 			opts.Height = 800
 		}
 	} else {
-		// Faithful mode: keep internal render fixed at 320x240.
+		// Faithful mode: keep internal render fixed at Doom logical resolution.
 		opts.Width = doomLogicalW
 		opts.Height = doomLogicalH
 		// Window size honors requested width/height but is snapped to integer
-		// multiples of 320x240 to preserve aspect and pixel-perfect scaling.
+		// multiples of the logical resolution to preserve aspect and pixel-perfect scaling.
 		if windowW <= 0 {
 			windowW = 1280
 		}
@@ -154,6 +177,19 @@ func (sg *sessionGame) Update() error {
 		sg.tickTransition()
 		return nil
 	}
+	if sg.intermission.active {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+			return ebiten.Termination
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
+			(ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)) {
+			return ebiten.Termination
+		}
+		if sg.tickIntermission() {
+			sg.finishIntermission()
+		}
+		return nil
+	}
 
 	err := sg.g.Update()
 	if err == nil {
@@ -179,10 +215,7 @@ func (sg *sessionGame) Update() error {
 		sg.err = nerr
 		return ebiten.Termination
 	}
-	sg.current = nextName
-	sg.g = newGame(next, sg.opts)
-	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", next.Name))
-	sg.queueTransition(transitionLevel, 0)
+	sg.startIntermission(next, nextName)
 	return nil
 }
 
@@ -205,6 +238,11 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 			return
 		}
 		sg.clearTransition()
+	}
+	if sg.intermission.active {
+		sg.drawIntermission(screen)
+		sg.captureLastFrame(screen)
+		return
 	}
 	if sg.opts.SourcePortMode {
 		// Render directly to the actual screen target to avoid any
@@ -512,6 +550,173 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 	screen.DrawImage(t.work, op)
 }
 
+func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.MapName) {
+	stats := collectIntermissionStats(sg.g, sg.current, nextName)
+	sg.intermission = sessionIntermission{
+		active:  true,
+		phase:   0,
+		waitTic: 0,
+		tic:     0,
+		show: intermissionStats{
+			mapName:      stats.mapName,
+			nextMapName:  stats.nextMapName,
+			killsFound:   stats.killsFound,
+			killsTotal:   stats.killsTotal,
+			itemsFound:   stats.itemsFound,
+			itemsTotal:   stats.itemsTotal,
+			secretsFound: stats.secretsFound,
+			secretsTotal: stats.secretsTotal,
+		},
+		target:  stats,
+		nextMap: next,
+	}
+}
+
+func (sg *sessionGame) tickIntermission() bool {
+	if !sg.intermission.active {
+		return false
+	}
+	im := &sg.intermission
+	im.tic++
+	if anyIntermissionSkipInput() {
+		im.show.killsPct = im.target.killsPct
+		im.show.itemsPct = im.target.itemsPct
+		im.show.secretsPct = im.target.secretsPct
+		im.show.timeSec = im.target.timeSec
+		return true
+	}
+	if im.waitTic > 0 {
+		im.waitTic--
+		return false
+	}
+	switch im.phase {
+	case 0:
+		im.show.killsPct = intermissionStepCounter(im.show.killsPct, im.target.killsPct, 2)
+		if im.show.killsPct >= im.target.killsPct {
+			im.phase = 1
+			im.waitTic = 8
+		}
+	case 1:
+		im.show.itemsPct = intermissionStepCounter(im.show.itemsPct, im.target.itemsPct, 2)
+		if im.show.itemsPct >= im.target.itemsPct {
+			im.phase = 2
+			im.waitTic = 8
+		}
+	case 2:
+		im.show.secretsPct = intermissionStepCounter(im.show.secretsPct, im.target.secretsPct, 2)
+		if im.show.secretsPct >= im.target.secretsPct {
+			im.phase = 3
+			im.waitTic = 8
+		}
+	case 3:
+		im.show.timeSec = intermissionStepCounter(im.show.timeSec, im.target.timeSec, 3)
+		if im.show.timeSec >= im.target.timeSec {
+			im.phase = 4
+			im.waitTic = doomTicsPerSecond * 2
+		}
+	default:
+		if im.waitTic <= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (sg *sessionGame) finishIntermission() {
+	im := &sg.intermission
+	if !im.active || im.nextMap == nil {
+		return
+	}
+	sg.current = im.target.nextMapName
+	sg.g = newGame(im.nextMap, sg.opts)
+	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", im.nextMap.Name))
+	sg.intermission = sessionIntermission{}
+	sg.queueTransition(transitionLevel, 0)
+}
+
+func (sg *sessionGame) drawIntermission(screen *ebiten.Image) {
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	scale := float64(sw) / 320.0
+	scaleY := float64(sh) / 200.0
+	if scaleY < scale {
+		scale = scaleY
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	ox := (float64(sw) - 320.0*scale) * 0.5
+	oy := (float64(sh) - 200.0*scale) * 0.5
+	im := &sg.intermission
+
+	screen.Fill(color.Black)
+	sg.drawIntermissionText(screen, fmt.Sprintf("FINISHED %s", im.target.mapName), 160, 24, scale, ox, oy, true)
+	sg.drawIntermissionText(screen, fmt.Sprintf("KILLS   %3d%%", im.show.killsPct), 80, 70, scale, ox, oy, false)
+	sg.drawIntermissionText(screen, fmt.Sprintf("ITEMS   %3d%%", im.show.itemsPct), 80, 90, scale, ox, oy, false)
+	sg.drawIntermissionText(screen, fmt.Sprintf("SECRETS %3d%%", im.show.secretsPct), 80, 110, scale, ox, oy, false)
+	sg.drawIntermissionText(screen, fmt.Sprintf("TIME %s", formatIntermissionTime(im.show.timeSec)), 80, 138, scale, ox, oy, false)
+	sg.drawIntermissionText(screen, fmt.Sprintf("ENTERING %s", im.target.nextMapName), 160, 168, scale, ox, oy, true)
+	if (im.tic/16)&1 == 0 {
+		sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO SKIP", 160, 186, scale, ox, oy, true)
+	}
+}
+
+func (sg *sessionGame) drawIntermissionText(screen *ebiten.Image, text string, x, y int, scale, ox, oy float64, centered bool) {
+	px := ox + float64(x)*scale
+	py := oy + float64(y)*scale
+	if centered {
+		px -= float64(sg.intermissionTextWidth(text)) * scale * 0.5
+	}
+	if len(sg.g.opts.MessageFontBank) == 0 {
+		ebitenutil.DebugPrintAt(screen, text, int(px), int(py))
+		return
+	}
+	for _, ch := range text {
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
+			px += 4 * scale
+			continue
+		}
+		img, w, _, gx, gy, ok := sg.g.messageFontGlyph(uc)
+		if !ok {
+			px += 4 * scale
+			continue
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(px-float64(gx)*scale, py-float64(gy)*scale)
+		screen.DrawImage(img, op)
+		px += float64(w) * scale
+	}
+}
+
+func (sg *sessionGame) intermissionTextWidth(text string) int {
+	if len(sg.g.opts.MessageFontBank) == 0 {
+		return len(text) * 7
+	}
+	w := 0
+	for _, ch := range text {
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
+			w += 4
+			continue
+		}
+		_, gw, _, _, _, ok := sg.g.messageFontGlyph(uc)
+		if !ok {
+			w += 4
+			continue
+		}
+		w += gw
+	}
+	return w
+}
+
 func (sg *sessionGame) captureLastFrame(src *ebiten.Image) {
 	if src == nil {
 		return
@@ -534,6 +739,90 @@ func (sg *sessionGame) clearTransition() {
 	sg.transition.initialized = false
 	sg.transition.holdTics = 0
 	sg.transition.y = nil
+}
+
+func collectIntermissionStats(g *game, mapName, nextName mapdata.MapName) intermissionStats {
+	out := intermissionStats{
+		mapName:     mapName,
+		nextMapName: nextName,
+	}
+	if g == nil || g.m == nil {
+		return out
+	}
+	for i, th := range g.m.Things {
+		if !thingSpawnsForSkill(th, g.opts.SkillLevel) {
+			continue
+		}
+		if isMonster(th.Type) {
+			out.killsTotal++
+			if i >= 0 && i < len(g.thingHP) && g.thingHP[i] <= 0 {
+				out.killsFound++
+			}
+			continue
+		}
+		if isPickupType(th.Type) {
+			out.itemsTotal++
+			if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+				out.itemsFound++
+			}
+		}
+	}
+	for _, sec := range g.m.Sectors {
+		if sec.Special == 9 {
+			out.secretsTotal++
+		}
+	}
+	out.secretsFound = g.secretsFound
+	if out.secretsFound > out.secretsTotal {
+		out.secretsFound = out.secretsTotal
+	}
+	out.killsPct = intermissionPercent(out.killsFound, out.killsTotal)
+	out.itemsPct = intermissionPercent(out.itemsFound, out.itemsTotal)
+	out.secretsPct = intermissionPercent(out.secretsFound, out.secretsTotal)
+	out.timeSec = g.worldTic / doomTicsPerSecond
+	return out
+}
+
+func intermissionPercent(n, d int) int {
+	if d <= 0 || n <= 0 {
+		return 0
+	}
+	if n >= d {
+		return 100
+	}
+	return (n * 100) / d
+}
+
+func intermissionStepCounter(cur, target, step int) int {
+	if step < 1 {
+		step = 1
+	}
+	if cur >= target {
+		return target
+	}
+	cur += step
+	if cur > target {
+		cur = target
+	}
+	return cur
+}
+
+func formatIntermissionTime(sec int) string {
+	if sec < 0 {
+		sec = 0
+	}
+	return fmt.Sprintf("%02d:%02d", sec/60, sec%60)
+}
+
+func anyIntermissionSkipInput() bool {
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) {
+		return true
+	}
+	var keys []ebiten.Key
+	keys = inpututil.AppendJustPressedKeys(keys)
+	return len(keys) > 0
 }
 
 func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {

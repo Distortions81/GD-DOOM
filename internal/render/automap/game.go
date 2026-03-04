@@ -22,6 +22,9 @@ import (
 )
 
 const (
+	doomLogicalW = 320
+	doomLogicalH = 200
+
 	lineOneSidedWidth  = 1.8
 	lineTwoSidedWidth  = 1.2
 	doomInitialZoomMul = 1.0 / 0.7
@@ -87,8 +90,8 @@ var doomPlayerArrow = [][4]float64{
 }
 
 var detailPresets = [][2]int{
-	{320, 240}, // high detail
-	{320, 240}, // low detail (column-doubled)
+	{doomLogicalW, doomLogicalH}, // high detail
+	{doomLogicalW, doomLogicalH}, // low detail (column-doubled)
 }
 
 type game struct {
@@ -187,6 +190,8 @@ type game struct {
 	weaponFireCooldown int
 	stats              playerStats
 	worldTic           int
+	secretFound        []bool
+	secretsFound       int
 	isDead             bool
 	damageFlashTic     int
 	bonusFlashTic      int
@@ -466,6 +471,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingMoveCount = make([]int, len(m.Things))
 	g.thingJustAtk = make([]bool, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
+	g.secretFound = make([]bool, len(m.Sectors))
 	g.initThingCombatState()
 	g.applySkillThingFiltering()
 	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)
