@@ -13,8 +13,10 @@ Single source of truth for current priorities.
 ## Next Up (Priority Order)
 
 1. 3D renderer parity correctness:
-2. projectile scale parity near camera (remaining edge-case tuning)
-3. capture regression scenes and convert to repeatable visual checks
+2. replace temporary per-pixel plane sector-light lookup with Doom-style visplane/lighting behavior
+3. replace plane depth-buffer workaround with Doom-style visplane clipping/ordering semantics
+4. projectile scale parity near camera (remaining edge-case tuning)
+5. capture regression scenes and convert to repeatable visual checks
 4. BSP-aware thing visibility/culling pass:
 5. tighten thing/monster/item submission against BSP visibility windows (not just screen clip)
 6. optional perf-only: evaluate blockmap-assisted broad-phase culling for dense scenes

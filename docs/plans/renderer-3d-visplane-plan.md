@@ -19,6 +19,8 @@ Reference implementation in this repo:
 ## Current Gaps
 
 - Plane raster still has approximation behavior at some angles/transitions.
+- Temporary per-pixel plane sector-light lookup exists as a seam workaround; replace with Doom-style visplane-consistent light behavior.
+- Plane depth-buffer fallback is still used for sprite/plane occlusion safety; replace with visplane-consistent clipping/order behavior.
 - Validate sky and masked behavior through parity captures to prevent regressions.
 
 ## Milestone 0: Instrumentation and Safety
@@ -45,6 +47,7 @@ Reference implementation in this repo:
 - [x] Render plane spans with per-row origin + x-step mapping (not per-pixel reprojection loops).
 - [x] Keep nearest + repeat texture sampling.
 - [x] Integrate light level lookup model (Doom `COLORMAP`-driven baseline).
+- [ ] Remove temporary per-pixel sector lighting in plane spans; rely on Doom-style visplane light semantics.
 - [ ] Keep sky path separate (angle-based fetch semantics can be approximated first).
 
 ## Milestone 4: Sky and Edge Parity
@@ -56,6 +59,7 @@ Reference implementation in this repo:
 
 ## Milestone 5: Cleanup
 
+- [ ] Remove plane depth-buffer safety fallback after visplane occlusion/order parity is proven.
 - [ ] Remove legacy approximation path after confidence.
 - [ ] Keep debug overlays behind source-port/debug profile toggles.
 - [ ] Update docs/implemented notes.
