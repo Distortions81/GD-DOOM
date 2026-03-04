@@ -91,8 +91,11 @@ package main
 
 var CamAngle float
 var Focal float
-var ViewW float
-var ViewH float
+var DrawW float
+var DrawH float
+var SampleW float
+var SampleH float
+var SkyTexW float
 var SkyTexH float
 
 func wrap(v, n float) float {
@@ -100,20 +103,23 @@ func wrap(v, n float) float {
 }
 
 func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
-	size := imageSrc0Size()
-	if size.x <= 0.0 || size.y <= 0.0 || Focal <= 0.0 || ViewW <= 0.0 || ViewH <= 0.0 || SkyTexH <= 0.0 {
+	if Focal <= 0.0 || DrawW <= 0.0 || DrawH <= 0.0 || SampleW <= 0.0 || SampleH <= 0.0 || SkyTexW <= 0.0 || SkyTexH <= 0.0 {
 		return vec4(0.0, 0.0, 0.0, 1.0)
 	}
 	pi := 3.141592653589793
 	x := position.x + 0.5
 	y := position.y + 0.5
-	cx := ViewW * 0.5
-	cy := ViewH * 0.5
-	ang := CamAngle + atan((cx-x)/Focal)
-	uScale := (size.x * 4.0) / (2.0 * pi)
-	u := wrap(floor(ang*uScale), size.x)
-	iscale := 320.0 / ViewW
-	v := wrap(floor(100.0+((y-cy)*iscale)), SkyTexH)
+	// Map internal render coordinates onto presentation-space sample coordinates.
+	// This keeps sky angular scale stable when sourceport detail changes internal resolution.
+	sx := x * (SampleW / DrawW)
+	sy := y * (SampleH / DrawH)
+	cx := SampleW * 0.5
+	cy := SampleH * 0.5
+	ang := CamAngle + atan((cx-sx)/Focal)
+	uScale := (SkyTexW * 4.0) / (2.0 * pi)
+	u := wrap(floor(ang*uScale), SkyTexW)
+	iscale := 320.0 / SampleW
+	v := wrap(floor(100.0+((sy-cy)*iscale)), SkyTexH)
 	src := vec2(u+0.5, v+0.5) + imageSrc0Origin()
 	c := imageSrc0At(src)
 	return vec4(c.rgb, 1.0)
@@ -135,6 +141,8 @@ var detailPresets = [][2]int{
 	{doomLogicalW, doomLogicalH}, // high detail
 	{doomLogicalW, doomLogicalH}, // low detail (column-doubled)
 }
+
+var sourcePortDetailDivisors = []int{1, 2, 3, 4}
 
 type projectedProjectileItem struct {
 	dist       float64
@@ -377,6 +385,8 @@ type game struct {
 	skyLayerFrameCamAng        float64
 	skyLayerFrameFocal         float64
 	skyLayerFrameTexH          float64
+	skyOutputW                 int
+	skyOutputH                 int
 	mapFloorWorldLayer         *ebiten.Image
 	mapFloorWorldInit          bool
 	mapFloorWorldMinX          float64
@@ -445,6 +455,8 @@ type game struct {
 	skyRowViewH                int
 	skyRowTexH                 int
 	skyRowIScale               float64
+	skyRowDrawCache            []int
+	skyRowDrawH                int
 	plane3DVisBuckets          map[plane3DKey]plane3DVisBucket
 	plane3DVisGen              uint64
 	plane3DOrder               []*plane3DVisplane
@@ -609,13 +621,11 @@ const (
 )
 
 func newGame(m *mapdata.Map, opts Options) *game {
-	if opts.Width <= 0 {
-		opts.Width = 1280
-	}
-	if opts.Height <= 0 {
-		opts.Height = 720
-	}
+	ensurePositiveRenderSize(&opts)
 	opts.SkillLevel = normalizeSkillLevel(opts.SkillLevel)
+	opts.GameMode = normalizeGameMode(opts.GameMode)
+	opts.MouseLookSpeed = normalizeMouseLookSpeed(opts.MouseLookSpeed)
+	opts.KeyboardTurnSpeed = normalizeKeyboardTurnSpeed(opts.KeyboardTurnSpeed)
 	if !opts.SourcePortMode {
 		// Doom mode keeps strict parity color semantics.
 		opts.LineColorMode = "parity"
@@ -633,6 +643,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		crtEnabled:        opts.CRTEffect,
 		viewW:             opts.Width,
 		viewH:             opts.Height,
+		skyOutputW:        max(opts.Width, 1),
+		skyOutputH:        max(opts.Height, 1),
 		mode:              viewMap,
 		walkRender:        walkRendererDoomBasic,
 		followMode:        true,
@@ -681,7 +693,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingThinkWait = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.initThingCombatState()
-	g.applySkillThingFiltering()
+	g.applyThingSpawnFiltering()
 	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)
 	g.invulnerable = opts.Invulnerable
 	if !g.opts.StartInMapMode {
@@ -702,8 +714,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
 	g.delayedSwitchReverts = make([]delayedSwitchTexture, 0, 4)
-	if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
-		g.skyLayerShader = sh
+	if opts.GPUSky && opts.SourcePortMode {
+		if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
+			g.skyLayerShader = sh
+		}
 	}
 	if g.opts.SourcePortMode {
 		// Source-port defaults: reveal full map style and heading-follow at startup.
@@ -810,6 +824,56 @@ func (g *game) cycleDetailLevel() {
 	g.syncRenderState()
 }
 
+func (g *game) sourcePortDetailDivisor() int {
+	if len(sourcePortDetailDivisors) == 0 {
+		return 1
+	}
+	i := g.detailLevel
+	if i < 0 || i >= len(sourcePortDetailDivisors) {
+		i = 0
+	}
+	d := sourcePortDetailDivisors[i]
+	if d < 1 {
+		return 1
+	}
+	return d
+}
+
+func (g *game) cycleSourcePortDetailLevel() {
+	if len(sourcePortDetailDivisors) == 0 {
+		return
+	}
+	g.detailLevel = (g.detailLevel + 1) % len(sourcePortDetailDivisors)
+	div := g.sourcePortDetailDivisor()
+	if div <= 1 {
+		g.setHUDMessage("Detail: 1x", 70)
+	} else {
+		g.setHUDMessage(fmt.Sprintf("Detail: 1/%dx", div), 70)
+	}
+	// Detail ratio changes rewire sourceport internal resolution, so force a
+	// clean sky shader/image state before the next frame.
+	g.resetSkyLayerPipeline(true)
+	g.mouseLookSet = false
+	g.mouseLookSuppressTicks = detailMouseSuppressTicks
+}
+
+func (g *game) mouseLookTurnRaw(dx int) int64 {
+	if dx == 0 {
+		return 0
+	}
+	base := float64(40 << 16)
+	raw := int64(math.Round(float64(dx) * base * g.opts.MouseLookSpeed))
+	if raw == 0 {
+		if dx > 0 {
+			raw = 1
+		} else {
+			raw = -1
+		}
+	}
+	// Positive mouse delta should turn right (decrease world angle).
+	return -raw
+}
+
 func (g *game) Update() error {
 	g.capturePrevState()
 	if g.levelExitRequested {
@@ -856,11 +920,26 @@ func (g *game) Update() error {
 			g.setHUDMessage("Heading-Up OFF", 70)
 		}
 	}
+	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyBackslash) {
+		g.opts.MouseLook = !g.opts.MouseLook
+		if g.opts.MouseLook {
+			g.setHUDMessage("Mouse Look ON", 70)
+			g.mouseLookSet = false
+			g.mouseLookSuppressTicks = detailMouseSuppressTicks
+		} else {
+			g.setHUDMessage("Mouse Look OFF", 70)
+			g.mouseLookSet = false
+		}
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
 	}
-	if !g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyF5) {
-		g.cycleDetailLevel()
+	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+		if g.opts.SourcePortMode {
+			g.cycleSourcePortDetailLevel()
+		} else {
+			g.cycleDetailLevel()
+		}
 	}
 	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.pseudo3D = !g.pseudo3D
@@ -1048,13 +1127,13 @@ func (g *game) updateMapMode() {
 	firePressed = fireHeld
 	g.setAttackHeld(fireHeld)
 	g.tickWeaponFire()
-	if g.opts.SourcePortMode {
+	if g.opts.SourcePortMode && g.opts.MouseLook {
 		mx, _ := ebiten.CursorPosition()
 		if g.mouseLookSuppressTicks > 0 {
 			g.mouseLookSuppressTicks--
 		} else if g.mouseLookSet {
 			dx := mx - g.lastMouseX
-			cmd.turnRaw -= int64(dx) * (40 << 16)
+			cmd.turnRaw += g.mouseLookTurnRaw(dx)
 		}
 		g.lastMouseX = mx
 		g.mouseLookSet = true
@@ -1131,16 +1210,20 @@ func (g *game) updateWalkMode() {
 	g.setAttackHeld(fireHeld)
 	g.tickWeaponFire()
 
-	mx, _ := ebiten.CursorPosition()
-	if g.mouseLookSuppressTicks > 0 {
-		g.mouseLookSuppressTicks--
-	} else if g.mouseLookSet {
-		dx := mx - g.lastMouseX
-		// Keep vanilla-feeling turn quantization while using modern mouse-look default.
-		cmd.turnRaw -= int64(dx) * (40 << 16)
+	if g.opts.MouseLook {
+		mx, _ := ebiten.CursorPosition()
+		if g.mouseLookSuppressTicks > 0 {
+			g.mouseLookSuppressTicks--
+		} else if g.mouseLookSet {
+			dx := mx - g.lastMouseX
+			// Keep vanilla-feeling turn quantization while using modern mouse-look default.
+			cmd.turnRaw += g.mouseLookTurnRaw(dx)
+		}
+		g.lastMouseX = mx
+		g.mouseLookSet = true
+	} else {
+		g.mouseLookSet = false
 	}
-	g.lastMouseX = mx
-	g.mouseLookSet = true
 
 	cmd.run = speed == 1
 	g.updatePlayer(cmd)
@@ -1592,9 +1675,9 @@ func (g *game) setHUDMessage(msg string, tics int) {
 	g.useFlash = tics
 }
 
-func (g *game) applySkillThingFiltering() {
+func (g *game) applyThingSpawnFiltering() {
 	for i, th := range g.m.Things {
-		if !thingSpawnsForSkill(th, g.opts.SkillLevel) {
+		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode) {
 			g.thingCollected[i] = true
 		}
 	}
@@ -6007,6 +6090,17 @@ func (g *game) drawFlashOverlay(screen *ebiten.Image) {
 	}
 }
 
+func (g *game) setSkyOutputSize(w, h int) {
+	if w < 1 {
+		w = 1
+	}
+	if h < 1 {
+		h = 1
+	}
+	g.skyOutputW = w
+	g.skyOutputH = h
+}
+
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if g.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
@@ -6026,6 +6120,9 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 			} else {
 				g.zoom = g.fitZoom * doomInitialZoomMul
 			}
+			// Resolution changes can invalidate shader-side projection assumptions.
+			// Rebuild full sky GPU pipeline (shader + textures + caches).
+			g.resetSkyLayerPipeline(true)
 			g.mouseLookSet = false
 			g.mouseLookSuppressTicks = detailMouseSuppressTicks
 			g.syncRenderState()
@@ -6393,6 +6490,35 @@ func (g *game) beginSkyLayerFrame() {
 	g.skyLayerFrameActive = false
 }
 
+func (g *game) resetSkyLayerPipeline(rebuildShader bool) {
+	g.skyLayerFrameActive = false
+	g.skyLayerTex = nil
+	g.skyLayerTexKey = ""
+	g.skyLayerTexW = 0
+	g.skyLayerTexH = 0
+
+	// Clear sky lookup caches so the next frame recomputes against current
+	// resolution/focal/texture parameters.
+	g.skyColUCache = nil
+	g.skyColViewW = 0
+	g.skyAngleOff = nil
+	g.skyAngleViewW = 0
+	g.skyAngleFocal = 0
+	g.skyRowVCache = nil
+	g.skyRowViewH = 0
+	g.skyRowTexH = 0
+	g.skyRowIScale = 0
+	g.skyRowDrawCache = nil
+	g.skyRowDrawH = 0
+
+	if rebuildShader && g.opts.GPUSky && g.opts.SourcePortMode {
+		g.skyLayerShader = nil
+		if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
+			g.skyLayerShader = sh
+		}
+	}
+}
+
 func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex WallTexture, texH int) bool {
 	if g.skyLayerShader == nil || !g.opts.SourcePortMode {
 		return false
@@ -6410,7 +6536,12 @@ func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex Wal
 	}
 	g.skyLayerFrameActive = true
 	g.skyLayerFrameCamAng = camAng
-	g.skyLayerFrameFocal = focal
+	_, _, sampleW, _ := g.skyProjectionSize()
+	if g.opts.SourcePortMode {
+		g.skyLayerFrameFocal = doomFocalLength(sampleW)
+	} else {
+		g.skyLayerFrameFocal = focal
+	}
 	g.skyLayerFrameTexH = float64(max(texH, 1))
 	return true
 }
@@ -6424,20 +6555,29 @@ func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
 	if w <= 0 || h <= 0 {
 		return false
 	}
+	texW := g.skyLayerTexW
+	texH := g.skyLayerTexH
+	if texW <= 0 || texH <= 0 {
+		return false
+	}
 	v := []ebiten.Vertex{
 		{DstX: 0, DstY: 0, SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		{DstX: float32(w), DstY: 0, SrcX: float32(w), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		{DstX: 0, DstY: float32(h), SrcX: 0, SrcY: float32(h), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		{DstX: float32(w), DstY: float32(h), SrcX: float32(w), SrcY: float32(h), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: float32(w), DstY: 0, SrcX: float32(texW), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: 0, DstY: float32(h), SrcX: 0, SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: float32(w), DstY: float32(h), SrcX: float32(texW), SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
 	}
 	idx := []uint16{0, 1, 2, 1, 2, 3}
 	op := &ebiten.DrawTrianglesShaderOptions{}
 	op.Images[0] = g.skyLayerTex
+	_, _, sampleW, sampleH := g.skyProjectionSize()
 	op.Uniforms = map[string]any{
 		"CamAngle": g.skyLayerFrameCamAng,
 		"Focal":    g.skyLayerFrameFocal,
-		"ViewW":    float64(w),
-		"ViewH":    float64(h),
+		"DrawW":    float64(w),
+		"DrawH":    float64(h),
+		"SampleW":  float64(sampleW),
+		"SampleH":  float64(sampleH),
+		"SkyTexW":  float64(texW),
 		"SkyTexH":  g.skyLayerFrameTexH,
 	}
 	screen.DrawTrianglesShader(v, idx, g.skyLayerShader, op)
@@ -6641,15 +6781,39 @@ func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64,
 	if viewW <= 0 || viewH <= 0 || texW <= 0 || texH <= 0 {
 		return nil, nil
 	}
-	angleOff := g.ensureSkyAngleOffsets(viewW, focal)
-	row := g.ensureSkyRowLookup(viewW, viewH, texH)
+	_, _, sampleW, sampleH := g.skyProjectionSize()
+	if sampleW <= 0 || sampleH <= 0 {
+		return nil, nil
+	}
+	projFocal := focal
+	if g.opts.SourcePortMode {
+		projFocal = doomFocalLength(sampleW)
+	}
+	angleOff := g.ensureSkyAngleOffsets(sampleW, projFocal)
+	sampleRow := g.ensureSkyRowLookup(sampleW, sampleH, texH)
+	row := g.ensureSkyDrawRowBuffer(viewH)
 	uScale := float64(texW*4) / (2 * math.Pi)
 	col := g.ensureSkyColBuffer(viewW)
 	// Sky column lookup is lightweight and fully cached by size/fov.
 	// Keep this serial to avoid worker/scheduling overhead.
 	for x := 0; x < viewW; x++ {
-		angle := camAngle + angleOff[x]
+		sampleX := int((float64(x) + 0.5) * float64(sampleW) / float64(viewW))
+		if sampleX < 0 {
+			sampleX = 0
+		} else if sampleX >= sampleW {
+			sampleX = sampleW - 1
+		}
+		angle := camAngle + angleOff[sampleX]
 		col[x] = wrapIndex(int(math.Floor(angle*uScale)), texW)
+	}
+	for y := 0; y < viewH; y++ {
+		sampleY := int((float64(y) + 0.5) * float64(sampleH) / float64(viewH))
+		if sampleY < 0 {
+			sampleY = 0
+		} else if sampleY >= sampleH {
+			sampleY = sampleH - 1
+		}
+		row[y] = sampleRow[sampleY]
 	}
 	return col, row
 }
@@ -6707,6 +6871,39 @@ func (g *game) ensureSkyRowLookup(viewW, viewH, texH int) []int {
 	g.skyRowTexH = texH
 	g.skyRowIScale = iscale
 	return g.skyRowVCache
+}
+
+func (g *game) ensureSkyDrawRowBuffer(drawH int) []int {
+	if drawH <= 0 {
+		return nil
+	}
+	if len(g.skyRowDrawCache) != drawH || g.skyRowDrawH != drawH {
+		g.skyRowDrawCache = make([]int, drawH)
+		g.skyRowDrawH = drawH
+	}
+	return g.skyRowDrawCache
+}
+
+func (g *game) skyProjectionSize() (drawW, drawH, sampleW, sampleH int) {
+	drawW = max(g.viewW, 1)
+	drawH = max(g.viewH, 1)
+	sampleW = drawW
+	sampleH = drawH
+	if g.opts.SourcePortMode {
+		if g.skyOutputW > 0 {
+			sampleW = g.skyOutputW
+		}
+		if g.skyOutputH > 0 {
+			sampleH = g.skyOutputH
+		}
+		if sampleW < 1 {
+			sampleW = 1
+		}
+		if sampleH < 1 {
+			sampleH = 1
+		}
+	}
+	return drawW, drawH, sampleW, sampleH
 }
 
 func doomSkyIScale(viewW int) float64 {
@@ -10078,6 +10275,8 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		lines = append(lines,
 			"SOURCEPORT EXTRAS",
 			"R  TOGGLE HEADING-UP",
+			"F5  CYCLE DETAIL RATIO",
+			"\\  TOGGLE MOUSE LOOK",
 			"P  TOGGLE WIREFRAME",
 			"J  TOGGLE 2D FLOOR PATH (RASTER/CACHED)",
 			"B  BIG MAP (ALIAS)",

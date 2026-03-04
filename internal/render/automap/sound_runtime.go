@@ -18,6 +18,8 @@ const (
 	soundEventWeaponUp
 	soundEventPowerUp
 	soundEventOof
+	soundEventIntermissionTick
+	soundEventIntermissionDone
 )
 
 type soundSystem struct {
@@ -93,6 +95,12 @@ func firstSampleRate(bank SoundBank) int {
 	if bank.Oof.SampleRate > 0 && len(bank.Oof.Data) > 0 {
 		return bank.Oof.SampleRate
 	}
+	if bank.InterTick.SampleRate > 0 && len(bank.InterTick.Data) > 0 {
+		return bank.InterTick.SampleRate
+	}
+	if bank.InterDone.SampleRate > 0 && len(bank.InterDone.Data) > 0 {
+		return bank.InterDone.SampleRate
+	}
 	return 0
 }
 
@@ -166,6 +174,16 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.Oof, true
 		}
 		return s.bank.NoWay, true
+	case soundEventIntermissionTick:
+		if len(s.bank.InterTick.Data) > 0 {
+			return s.bank.InterTick, true
+		}
+		return s.bank.SwitchOn, true
+	case soundEventIntermissionDone:
+		if len(s.bank.InterDone.Data) > 0 {
+			return s.bank.InterDone, true
+		}
+		return s.bank.PowerUp, true
 	default:
 		return PCMSample{}, false
 	}

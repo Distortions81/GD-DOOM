@@ -35,6 +35,10 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		} else if cmd.run {
 			turn = angleTurn[1]
 		}
+		turn = uint32(float64(turn) * g.opts.KeyboardTurnSpeed)
+		if turn == 0 {
+			turn = 1
+		}
 		if cmd.turn < 0 {
 			g.p.angle -= turn
 		} else {

@@ -34,11 +34,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultRender := true
 	defaultDebug := false
 	defaultMultiCore := true
-	defaultWidth := 1280
-	defaultHeight := 800
+	defaultWidth, defaultHeight := automap.DefaultCLIWindowSize()
 	defaultZoom := 0.0
 	defaultPlayer := 1
 	defaultSkill := 3
+	defaultGameMode := "single"
+	defaultMouseLook := true
+	defaultMouseLookSpeed := 1.0
+	defaultKeyboardTurnSpeed := 1.0
 	defaultFastMonsters := false
 	defaultAlwaysRun := false
 	defaultAutoWeaponSwitch := true
@@ -47,6 +50,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
 	defaultKageShader := false
+	defaultGPUSky := false
 	defaultCRTEffect := false
 	defaultDepthBufferView := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
@@ -95,6 +99,18 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.Skill != nil {
 			defaultSkill = *cfg.Skill
 		}
+		if cfg.GameMode != nil {
+			defaultGameMode = *cfg.GameMode
+		}
+		if cfg.MouseLook != nil {
+			defaultMouseLook = *cfg.MouseLook
+		}
+		if cfg.MouseLookSpeed != nil {
+			defaultMouseLookSpeed = *cfg.MouseLookSpeed
+		}
+		if cfg.KeyboardTurnSpeed != nil {
+			defaultKeyboardTurnSpeed = *cfg.KeyboardTurnSpeed
+		}
 		if cfg.FastMonsters != nil {
 			defaultFastMonsters = *cfg.FastMonsters
 		}
@@ -119,6 +135,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.KageShader != nil {
 			defaultKageShader = *cfg.KageShader
+		}
+		if cfg.GPUSky != nil {
+			defaultGPUSky = *cfg.GPUSky
 		}
 		if cfg.CRTEffect != nil {
 			defaultCRTEffect = *cfg.CRTEffect
@@ -173,6 +192,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
+	gameMode := fs.String("game-mode", defaultGameMode, "thing spawn game mode (single|coop|deathmatch)")
+	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
+	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
+	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
@@ -181,6 +204,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
+	gpuSky := fs.Bool("gpu-sky", defaultGPUSky, "enable experimental GPU sky path in sourceport mode (default off)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
@@ -222,6 +246,21 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	})
 	resolvedCheatLevel := *cheatLevel
 	resolvedInvuln := *invuln
+	resolvedGameMode := strings.ToLower(strings.TrimSpace(*gameMode))
+	switch resolvedGameMode {
+	case "single", "coop", "deathmatch":
+	default:
+		fmt.Fprintf(stderr, "invalid -game-mode %q (want single|coop|deathmatch)\n", *gameMode)
+		return 2
+	}
+	if *keyboardTurnSpeed <= 0 {
+		fmt.Fprintf(stderr, "invalid -keyboard-turn-speed %.3f (must be > 0)\n", *keyboardTurnSpeed)
+		return 2
+	}
+	if *mouseLookSpeed <= 0 {
+		fmt.Fprintf(stderr, "invalid -mouselook-speed %.3f (must be > 0)\n", *mouseLookSpeed)
+		return 2
+	}
 	if *allCheats && allCheatsSet && !cheatLevelSet {
 		resolvedCheatLevel = 3
 		if !invulnSet {
@@ -273,6 +312,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	statusPatchBank := map[string]automap.WallTexture(nil)
 	messageFontBank := map[rune]automap.WallTexture(nil)
 	spritePatchBank := map[string]automap.WallTexture(nil)
+	intermissionPatchBank := map[string]automap.WallTexture(nil)
 	var texSet *doomtex.Set
 	if pal, perr := doomtex.LoadPaletteRGBA(wf, 0); perr != nil {
 		fmt.Fprintf(stderr, "palette import failed: %v\n", perr)
@@ -345,6 +385,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if len(spritePatchBank) > 0 {
 			fmt.Fprintf(stderr, "monster sprite import: patches=%d\n", len(spritePatchBank))
 		}
+		intermissionPatchBank = buildIntermissionPatchBank(texSet)
+		if len(intermissionPatchBank) > 0 {
+			fmt.Fprintf(stderr, "intermission patch import: patches=%d\n", len(intermissionPatchBank))
+		}
 	}
 	flatBank := map[string][]byte(nil)
 	fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
@@ -398,6 +442,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Debug:                      *debug,
 			PlayerSlot:                 *playerSlot,
 			SkillLevel:                 *skillLevel,
+			GameMode:                   resolvedGameMode,
+			MouseLook:                  *mouseLook,
+			MouseLookSpeed:             *mouseLookSpeed,
+			KeyboardTurnSpeed:          *keyboardTurnSpeed,
 			FastMonsters:               *fastMonsters,
 			AlwaysRun:                  *alwaysRun,
 			AutoWeaponSwitch:           *autoWeaponSwitch,
@@ -406,6 +454,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
 			KageShader:                 *kageShader,
+			GPUSky:                     *gpuSky,
 			CRTEffect:                  *crtEffect,
 			DepthBufferView:            *depthBufferView,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
@@ -422,6 +471,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			StatusPatchBank:            statusPatchBank,
 			MessageFontBank:            messageFontBank,
 			SpritePatchBank:            spritePatchBank,
+			IntermissionPatchBank:      intermissionPatchBank,
 			SoundBank:                  soundBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
 		}
@@ -579,6 +629,8 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		WeaponUp:   sample("DSWPNUP"),
 		PowerUp:    sample("DSGETPOW"),
 		Oof:        sample("DSOOF"),
+		InterTick:  firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
+		InterDone:  firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
 }
 
@@ -800,6 +852,59 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	} {
 		add(name)
 		addExpandedSeed(name)
+	}
+	out := make(map[string]automap.WallTexture, len(names))
+	for _, name := range names {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
+		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+			continue
+		}
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		out[name] = automap.WallTexture{
+			RGBA:    rgba,
+			RGBA32:  rgba32,
+			Width:   w,
+			Height:  h,
+			OffsetX: ox,
+			OffsetY: oy,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+	if ts == nil {
+		return nil
+	}
+	names := make([]string, 0, 96)
+	add := func(n string) {
+		n = strings.ToUpper(strings.TrimSpace(n))
+		if n == "" {
+			return
+		}
+		names = append(names, n)
+	}
+	for i := 0; i < 32; i++ {
+		add(fmt.Sprintf("CWILV%02d", i))
+	}
+	for i := 0; i < 3; i++ {
+		add(fmt.Sprintf("WIMAP%d", i))
+	}
+	for _, n := range []string{
+		"WIF", "WIENTER", "WISPLAT", "WIURH0", "WIURH1",
+		"WIOSTK", "WIOSTI", "WIOSTS", "WITIME", "WIPAR", "WIPCNT",
+		"INTERPIC",
+	} {
+		add(n)
 	}
 	out := make(map[string]automap.WallTexture, len(names))
 	for _, name := range names {

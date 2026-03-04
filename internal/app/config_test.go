@@ -82,3 +82,58 @@ func TestRunParseLoadsNoVsyncFromConfig(t *testing.T) {
 		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
 	}
 }
+
+func TestRunParseLoadsGPUSkyFromConfig(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("map = \"E1M2\"\nrender = false\ngpu_sky = true\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{"-wad", wadPath, "-config", cfgPath}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=E1M2 ") {
+		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
+	}
+}
+
+func TestRunParseRejectsInvalidGameMode(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-game-mode", "bad-mode", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "invalid -game-mode") {
+		t.Fatalf("stderr %q does not mention invalid game mode", errb.String())
+	}
+}
+
+func TestRunParseRejectsInvalidKeyboardTurnSpeed(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-keyboard-turn-speed", "0", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "invalid -keyboard-turn-speed") {
+		t.Fatalf("stderr %q does not mention invalid keyboard turn speed", errb.String())
+	}
+}
+
+func TestRunParseRejectsInvalidMouseLookSpeed(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-mouselook-speed", "0", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "invalid -mouselook-speed") {
+		t.Fatalf("stderr %q does not mention invalid mouselook speed", errb.String())
+	}
+}

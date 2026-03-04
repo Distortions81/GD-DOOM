@@ -8,6 +8,10 @@ type Options struct {
 	Debug                      bool
 	PlayerSlot                 int
 	SkillLevel                 int
+	GameMode                   string
+	MouseLook                  bool
+	MouseLookSpeed             float64
+	KeyboardTurnSpeed          float64
 	FastMonsters               bool
 	AlwaysRun                  bool
 	AutoWeaponSwitch           bool
@@ -16,6 +20,7 @@ type Options struct {
 	LineColorMode              string
 	SourcePortMode             bool
 	KageShader                 bool
+	GPUSky                     bool
 	CRTEffect                  bool
 	DepthBufferView            bool
 	TextureAnimCrossfadeFrames int
@@ -32,6 +37,7 @@ type Options struct {
 	StatusPatchBank            map[string]WallTexture
 	MessageFontBank            map[rune]WallTexture
 	SpritePatchBank            map[string]WallTexture
+	IntermissionPatchBank      map[string]WallTexture
 	SoundBank                  SoundBank
 	DemoScript                 *DemoScript
 	RecordDemoPath             string
@@ -69,6 +75,8 @@ type SoundBank struct {
 	WeaponUp   PCMSample
 	PowerUp    PCMSample
 	Oof        PCMSample
+	InterTick  PCMSample
+	InterDone  PCMSample
 }
 
 type DemoTic struct {

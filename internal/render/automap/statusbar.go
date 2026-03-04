@@ -67,21 +67,21 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 }
 
 func (g *game) hudTransform() (sx, sy, ox, oy float64) {
-	sx = float64(max(g.viewW, 1)) / statusBaseW
-	sy = float64(max(g.viewH, 1)) / statusBaseH
+	sx = float64(max(g.viewW, 1)) / doomLogicalW
+	sy = float64(max(g.viewH, 1)) / doomLogicalH
 	if !g.opts.SourcePortMode {
 		return sx, sy, 0, 0
 	}
 	// Keep Doom HUD proportions on widescreen by using uniform scale, centered
 	// horizontally and anchored to screen bottom.
 	sx = sy
-	ox = (float64(g.viewW) - statusBaseW*sx) * 0.5
-	oy = float64(g.viewH) - statusBaseH*sy
+	ox = (float64(g.viewW) - doomLogicalW*sx) * 0.5
+	oy = float64(g.viewH) - doomLogicalH*sy
 	if ox < 0 {
 		ox = 0
-		sx = float64(max(g.viewW, 1)) / statusBaseW
+		sx = float64(max(g.viewW, 1)) / doomLogicalW
 		sy = sx
-		oy = (float64(g.viewH) - statusBaseH*sy) * 0.5
+		oy = (float64(g.viewH) - doomLogicalH*sy) * 0.5
 		if oy < 0 {
 			oy = 0
 		}
@@ -198,7 +198,7 @@ func (g *game) drawHUDMessage(screen *ebiten.Image, msg string, x, y float64) {
 	maxX := float64(g.viewW)
 	if g.opts.SourcePortMode {
 		px += ox
-		maxX = ox + statusBaseW*sx
+		maxX = ox + doomLogicalW*sx
 	}
 	if len(g.opts.MessageFontBank) == 0 {
 		ebitenutil.DebugPrintAt(screen, msg, int(px), int(py))

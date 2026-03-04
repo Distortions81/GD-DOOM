@@ -1,0 +1,157 @@
+package automap
+
+import "testing"
+
+func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
+	pal := make([]byte, 256*4)
+	sg := &sessionGame{
+		g: &game{
+			opts: Options{
+				SourcePortMode:  true,
+				MouseLook:       false,
+				LineColorMode:   "doom",
+				KageShader:      true,
+				DoomPaletteRGBA: pal,
+			},
+			detailLevel:       3,
+			rotateView:        false,
+			walkRender:        walkRendererPseudo,
+			pseudo3D:          true,
+			alwaysRun:         true,
+			autoWeaponSwitch:  false,
+			showLegend:        false,
+			mapTexDiag:        true,
+			floor2DPath:       floor2DPathSubsector,
+			paletteLUTEnabled: false,
+			gammaLevel:        5,
+			crtEnabled:        true,
+			parity: automapParityState{
+				reveal: revealNormal,
+				iddt:   2,
+			},
+		},
+		opts: Options{
+			SourcePortMode:   true,
+			MouseLook:        true,
+			AlwaysRun:        false,
+			AutoWeaponSwitch: true,
+			LineColorMode:    "parity",
+			KageShader:       true,
+			DoomPaletteRGBA:  pal,
+		},
+	}
+
+	sg.capturePersistentSettings()
+	sg.applyPersistentSettingsToOptions()
+
+	if sg.opts.MouseLook {
+		t.Fatal("options mouselook should be persisted as OFF")
+	}
+	if !sg.opts.AlwaysRun {
+		t.Fatal("options always-run should be persisted as ON")
+	}
+	if sg.opts.AutoWeaponSwitch {
+		t.Fatal("options auto-weapon-switch should be persisted as OFF")
+	}
+	if sg.opts.LineColorMode != "doom" {
+		t.Fatalf("options line color mode=%q want doom", sg.opts.LineColorMode)
+	}
+
+	dst := &game{
+		opts: Options{
+			SourcePortMode:  true,
+			KageShader:      true,
+			DoomPaletteRGBA: pal,
+		},
+		parity: automapParityState{
+			reveal: revealAllMap,
+		},
+	}
+	sg.applyPersistentSettingsToGame(dst)
+
+	if dst.detailLevel != 3 {
+		t.Fatalf("detailLevel=%d want 3", dst.detailLevel)
+	}
+	if dst.rotateView {
+		t.Fatal("rotateView should be persisted as OFF")
+	}
+	if dst.walkRender != walkRendererPseudo || !dst.pseudo3D {
+		t.Fatal("walk renderer should persist pseudo mode")
+	}
+	if !dst.alwaysRun || dst.autoWeaponSwitch {
+		t.Fatal("always-run/auto-weapon-switch persistence mismatch")
+	}
+	if dst.opts.LineColorMode != "doom" {
+		t.Fatalf("lineColorMode=%q want doom", dst.opts.LineColorMode)
+	}
+	if dst.showLegend {
+		t.Fatal("showLegend should be persisted as OFF")
+	}
+	if !dst.mapTexDiag {
+		t.Fatal("mapTexDiag should be persisted as ON")
+	}
+	if dst.floor2DPath != floor2DPathSubsector {
+		t.Fatalf("floor2DPath=%d want %d", dst.floor2DPath, floor2DPathSubsector)
+	}
+	if dst.paletteLUTEnabled {
+		t.Fatal("paletteLUT should be persisted as OFF")
+	}
+	if dst.gammaLevel != 5 {
+		t.Fatalf("gammaLevel=%d want 5", dst.gammaLevel)
+	}
+	if !dst.crtEnabled {
+		t.Fatal("crt should be persisted as ON")
+	}
+	if dst.parity.reveal != revealNormal || dst.parity.iddt != 2 {
+		t.Fatalf("parity persisted as reveal=%d iddt=%d", dst.parity.reveal, dst.parity.iddt)
+	}
+}
+
+func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
+	pal := make([]byte, 256*4)
+	sg := &sessionGame{
+		settings: sessionPersistentSettings{
+			detailLevel: 99,
+			walkRender:  walkRendererPseudo,
+			floor2DPath: floor2DPathMode(99),
+			gammaLevel:  99,
+			reveal:      revealMode(99),
+			iddt:        99,
+			paletteLUT:  true,
+			crtEnabled:  true,
+		},
+	}
+	dst := &game{
+		opts: Options{
+			SourcePortMode:  true,
+			KageShader:      false,
+			DoomPaletteRGBA: pal,
+		},
+		parity: automapParityState{
+			reveal: revealNormal,
+		},
+	}
+	sg.applyPersistentSettingsToGame(dst)
+
+	if dst.detailLevel != len(sourcePortDetailDivisors)-1 {
+		t.Fatalf("detailLevel clamp failed: got %d want %d", dst.detailLevel, len(sourcePortDetailDivisors)-1)
+	}
+	if dst.floor2DPath != floor2DPathRasterized {
+		t.Fatalf("floor2DPath clamp failed: got %d want %d", dst.floor2DPath, floor2DPathRasterized)
+	}
+	if dst.gammaLevel != len(gammaTargets)-1 {
+		t.Fatalf("gamma clamp failed: got %d want %d", dst.gammaLevel, len(gammaTargets)-1)
+	}
+	if dst.parity.reveal != revealAllMap {
+		t.Fatalf("reveal default for sourceport should be allmap, got %d", dst.parity.reveal)
+	}
+	if dst.parity.iddt != 2 {
+		t.Fatalf("iddt clamp failed: got %d want 2", dst.parity.iddt)
+	}
+	if dst.paletteLUTEnabled {
+		t.Fatal("palette LUT should be disabled when kage/palette support is unavailable")
+	}
+	if dst.crtEnabled {
+		t.Fatal("crt should be disabled when kage is unavailable")
+	}
+}

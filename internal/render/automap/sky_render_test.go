@@ -103,3 +103,73 @@ func TestEffectiveSkyTexHeight_ClipsTransparentBottomRows(t *testing.T) {
 		t.Fatalf("effective sky height=%d want %d", got, h-2)
 	}
 }
+
+func TestBuildSkyLookupParallel_SourcePortDetailDoesNotWarpSkyProjection(t *testing.T) {
+	g := &game{opts: Options{SourcePortMode: true}}
+	camAng := 0.37
+	const (
+		w    = 640
+		h    = 400
+		texW = 256
+		texH = 128
+	)
+	g.viewW, g.viewH = w, h
+	g.detailLevel = 0
+	baseCol, baseRow := g.buildSkyLookupParallel(w, h, doomFocalLength(w), camAng, texW, texH)
+	g.detailLevel = 1
+	detailCol, detailRow := g.buildSkyLookupParallel(w, h, doomFocalLength(w), camAng, texW, texH)
+	if len(baseCol) != w || len(baseRow) != h || len(detailCol) != w || len(detailRow) != h {
+		t.Fatalf("lookup size mismatch: base=%dx%d detail=%dx%d", len(baseCol), len(baseRow), len(detailCol), len(detailRow))
+	}
+	for x := 0; x < w; x++ {
+		if baseCol[x] != detailCol[x] {
+			t.Fatalf("column lookup changed with detail at x=%d: base=%d detail=%d", x, baseCol[x], detailCol[x])
+		}
+	}
+	for y := 0; y < h; y++ {
+		if baseRow[y] != detailRow[y] {
+			t.Fatalf("row lookup changed with detail at y=%d: base=%d detail=%d", y, baseRow[y], detailRow[y])
+		}
+	}
+}
+
+func TestBuildSkyLookupParallel_SourcePortUsesOutputProjectionScale(t *testing.T) {
+	g := &game{opts: Options{SourcePortMode: true}}
+	camAng := 0.37
+	const (
+		outW = 1280
+		outH = 800
+		texW = 256
+		texH = 128
+	)
+
+	// Baseline: full-resolution render at output size.
+	g.viewW, g.viewH = outW, outH
+	g.setSkyOutputSize(outW, outH)
+	hiCol, hiRow := g.buildSkyLookupParallel(outW, outH, doomFocalLength(outW), camAng, texW, texH)
+
+	// Detail: render at half resolution but keep presentation size identical.
+	loW := outW / 2
+	loH := outH / 2
+	g.viewW, g.viewH = loW, loH
+	g.setSkyOutputSize(outW, outH)
+	loCol, loRow := g.buildSkyLookupParallel(loW, loH, doomFocalLength(loW), camAng, texW, texH)
+
+	if len(hiCol) != outW || len(hiRow) != outH {
+		t.Fatalf("high-detail lookup has wrong size: col=%d row=%d", len(hiCol), len(hiRow))
+	}
+	if len(loCol) != loW || len(loRow) != loH {
+		t.Fatalf("low-detail lookup has wrong size: col=%d row=%d", len(loCol), len(loRow))
+	}
+	// With 2x nearest upscaling, low-res samples should match odd output centers.
+	for x := 0; x < loW; x++ {
+		if got, want := hiCol[x*2+1], loCol[x]; got != want {
+			t.Fatalf("column lookup mismatch at x=%d: hi=%d low=%d", x, got, want)
+		}
+	}
+	for y := 0; y < loH; y++ {
+		if got, want := hiRow[y*2+1], loRow[y]; got != want {
+			t.Fatalf("row lookup mismatch at y=%d: hi=%d low=%d", y, got, want)
+		}
+	}
+}

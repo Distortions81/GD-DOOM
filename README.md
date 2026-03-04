@@ -34,12 +34,16 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-zoom <float>`: startup zoom override (`>0`); default uses Doom-style auto zoom
 - `-player <1-4>`: choose local player start slot
 - `-skill <1-5>`: Doom skill level (`1=ITYTD`, `2=HNTR`, `3=HMP`, `4=UV`, `5=NM`)
+- `-mouselook`: enable mouse-based turning in walk mode (default `true`)
+- `-mouselook-speed <float>`: mouse turn speed multiplier (`>0`, default `1.0`)
+- `-keyboard-turn-speed <float>`: keyboard turn speed multiplier (`>0`, default `1.0`)
 - `-always-run`: start with always-run enabled (holding `Shift` temporarily inverts it)
 - `-auto-weapon-switch`: auto-switch to newly picked weapons (default `true`)
 - `-cheat-level <0-3>`: startup cheats (`0=off`, `1=automap reveal`, `2=IDFA-like`, `3=IDKFA + invuln`)
 - `-invuln`: start with invulnerability (`IDDQD`-like)
 - `-sourceport-mode`: enable source-port style automap extras at startup
 - `-kage-shader`: enable postprocess shader chain (LUT/gamma/CRT)
+- `-gpu-sky`: enable experimental GPU sky path in sourceport mode (default `false`; CPU sky is default)
 - `-crt-effect`: enable CRT pass (applied last in shader chain)
 - `-depth-buffer-view`: show grayscale depth view instead of 3D scene
 - `-texture-anim-crossfade-frames`: sourceport animation blend frames (`0` disables, max effective `7` at Doom's 8-tic cadence)
@@ -100,7 +104,7 @@ Level progression:
 - `F1`: help overlay
 - `F2`: save (menu WIP)
 - `F3`: load (menu WIP)
-- `F5`: cycle detail level (faithful mode)
+- `F5`: cycle detail level (faithful) / clean upscale ratio (sourceport)
 - `F6`: quicksave (WIP)
 - `F7`: end game flow (WIP)
 - `F8`: toggle HUD messages
@@ -112,6 +116,7 @@ Level progression:
 Cheat controls are currently startup-config driven (`-cheat-level`, `-invuln`, `-all-cheats`).
 
 Source-port extras are enabled only with `-sourceport-mode`.
+In sourceport mode, press `\` to toggle mouselook at runtime.
 In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.
 In sourceport mode, the current `use` target line is highlighted on automap.
 In sourceport mode, use-trigger button/switch lines are drawn in a distinct overlay color.
@@ -139,6 +144,7 @@ Config notes:
 - 3D lighting now uses Doom `COLORMAP` behavior with fullbright sprite support.
 - Two-sided masked mid textures render in a deferred masked pass (portal/grate style walls).
 - Kage postprocess is opt-in (`-kage-shader`); default faithful startup path runs without post shaders.
+- Sourceport GPU sky is currently experimental and opt-in (`-gpu-sky`); default path uses CPU sky rendering.
 
 ## Project Docs
 

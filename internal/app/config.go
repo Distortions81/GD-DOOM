@@ -19,6 +19,10 @@ type fileConfig struct {
 	Zoom                       *float64 `toml:"zoom"`
 	Player                     *int     `toml:"player"`
 	Skill                      *int     `toml:"skill"`
+	GameMode                   *string  `toml:"game_mode"`
+	MouseLook                  *bool    `toml:"mouselook"`
+	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
+	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
 	AlwaysRun                  *bool    `toml:"always_run"`
 	AutoWeaponSwitch           *bool    `toml:"auto_weapon_switch"`
@@ -28,6 +32,7 @@ type fileConfig struct {
 	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
 	KageShader                 *bool    `toml:"kage_shader"`
+	GPUSky                     *bool    `toml:"gpu_sky"`
 	CRTEffect                  *bool    `toml:"crt_effect"`
 	DepthBufferView            *bool    `toml:"depth_buffer_view"`
 	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`

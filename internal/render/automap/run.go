@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"strings"
 
 	"gddoom/internal/mapdata"
 
@@ -23,6 +24,13 @@ const (
 	// virtual layout, i.e. 160 moving slices.
 	sourcePortMeltInitCols = 160
 	sourcePortMeltMoveCols = sourcePortMeltInitCols
+
+	intermissionPhaseWaitTics      = 8
+	intermissionEnteringWaitTics   = doomTicsPerSecond
+	intermissionYouAreHereWaitTics = doomTicsPerSecond * 2
+	intermissionSkipInputDelayTics = doomTicsPerSecond / 3
+	intermissionSkipExitHoldTics   = 12
+	intermissionCounterSoundPeriod = 6
 )
 
 var faithfulPaletteShaderSrc = []byte(`//kage:unit pixels
@@ -156,19 +164,30 @@ type intermissionStats struct {
 }
 
 type sessionIntermission struct {
-	active  bool
-	phase   int
-	waitTic int
-	tic     int
-	show    intermissionStats
-	target  intermissionStats
-	nextMap *mapdata.Map
+	active            bool
+	phase             int
+	waitTic           int
+	tic               int
+	stageSoundCounter int
+	show              intermissionStats
+	target            intermissionStats
+	nextMap           *mapdata.Map
 }
+
+const (
+	intermissionPhaseKills = iota
+	intermissionPhaseItems
+	intermissionPhaseSecrets
+	intermissionPhaseTime
+	intermissionPhaseEntering
+	intermissionPhaseYouAreHere
+)
 
 type sessionGame struct {
 	g               *game
 	current         mapdata.MapName
 	opts            Options
+	settings        sessionPersistentSettings
 	nextMap         NextMapFunc
 	err             error
 	faithfulSurface *ebiten.Image
@@ -184,50 +203,180 @@ type sessionGame struct {
 	presentSurface  *ebiten.Image
 	lastFrame       *ebiten.Image
 	bootSplashImage *ebiten.Image
+	interPatchCache map[string]*ebiten.Image
 	transition      sessionTransition
 	intermission    sessionIntermission
 }
 
-func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
-	windowW := opts.Width
-	windowH := opts.Height
-	if opts.SourcePortMode {
-		if opts.Width <= 0 {
-			opts.Width = 1280
+type sessionPersistentSettings struct {
+	detailLevel      int
+	rotateView       bool
+	mouseLook        bool
+	walkRender       walkRendererMode
+	alwaysRun        bool
+	autoWeaponSwitch bool
+	lineColorMode    string
+	showLegend       bool
+	mapTexDiag       bool
+	floor2DPath      floor2DPathMode
+	paletteLUT       bool
+	gammaLevel       int
+	crtEnabled       bool
+	reveal           revealMode
+	iddt             int
+}
+
+func clampDetailLevelForMode(level int, sourcePort bool) int {
+	if sourcePort {
+		if len(sourcePortDetailDivisors) == 0 {
+			return 0
 		}
-		if opts.Height <= 0 {
-			opts.Height = 800
+		if level < 0 {
+			return 0
 		}
-	} else {
-		// Faithful mode: keep internal render fixed at Doom logical resolution.
-		opts.Width = doomLogicalW
-		opts.Height = doomLogicalH
-		// Window size honors requested width/height but is snapped to integer
-		// multiples of the logical resolution to preserve aspect and pixel-perfect scaling.
-		if windowW <= 0 {
-			windowW = 1280
+		maxLevel := len(sourcePortDetailDivisors) - 1
+		if level > maxLevel {
+			return maxLevel
 		}
-		if windowH <= 0 {
-			windowH = 960
-		}
-		scaleX := windowW / doomLogicalW
-		scaleY := windowH / doomLogicalH
-		scale := scaleX
-		if scaleY < scale {
-			scale = scaleY
-		}
-		if scale < 1 {
-			scale = 1
-		}
-		windowW = doomLogicalW * scale
-		windowH = doomLogicalH * scale
+		return level
 	}
+	if len(detailPresets) == 0 {
+		return 0
+	}
+	if level < 0 {
+		return 0
+	}
+	maxLevel := len(detailPresets) - 1
+	if level > maxLevel {
+		return maxLevel
+	}
+	return level
+}
+
+func normalizeFloor2DPath(path floor2DPathMode) floor2DPathMode {
+	switch path {
+	case floor2DPathRasterized, floor2DPathCached, floor2DPathSubsector:
+		return path
+	default:
+		return floor2DPathRasterized
+	}
+}
+
+func normalizeRevealForMode(mode revealMode, sourcePort bool) revealMode {
+	switch mode {
+	case revealNormal, revealAllMap:
+		return mode
+	default:
+		if sourcePort {
+			return revealAllMap
+		}
+		return revealNormal
+	}
+}
+
+func clampIDDT(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v > 2 {
+		return 2
+	}
+	return v
+}
+
+func clampGamma(level int) int {
+	if level < 0 {
+		return 0
+	}
+	maxLevel := len(gammaTargets) - 1
+	if maxLevel < 0 {
+		return 0
+	}
+	if level > maxLevel {
+		return maxLevel
+	}
+	return level
+}
+
+func (sg *sessionGame) capturePersistentSettings() {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	g := sg.g
+	sg.settings = sessionPersistentSettings{
+		detailLevel:      g.detailLevel,
+		rotateView:       g.rotateView,
+		mouseLook:        g.opts.MouseLook,
+		walkRender:       g.walkRender,
+		alwaysRun:        g.alwaysRun,
+		autoWeaponSwitch: g.autoWeaponSwitch,
+		lineColorMode:    g.opts.LineColorMode,
+		showLegend:       g.showLegend,
+		mapTexDiag:       g.mapTexDiag,
+		floor2DPath:      g.floor2DPath,
+		paletteLUT:       g.paletteLUTEnabled,
+		gammaLevel:       g.gammaLevel,
+		crtEnabled:       g.crtEnabled,
+		reveal:           g.parity.reveal,
+		iddt:             g.parity.iddt,
+	}
+}
+
+func (sg *sessionGame) applyPersistentSettingsToOptions() {
+	sg.opts.MouseLook = sg.settings.mouseLook
+	sg.opts.AlwaysRun = sg.settings.alwaysRun
+	sg.opts.AutoWeaponSwitch = sg.settings.autoWeaponSwitch
+	sg.opts.LineColorMode = sg.settings.lineColorMode
+}
+
+func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
+	if sg == nil || g == nil {
+		return
+	}
+	s := sg.settings
+	g.detailLevel = clampDetailLevelForMode(s.detailLevel, g.opts.SourcePortMode)
+	g.rotateView = s.rotateView
+	g.opts.MouseLook = s.mouseLook
+	g.alwaysRun = s.alwaysRun
+	g.autoWeaponSwitch = s.autoWeaponSwitch
+	g.opts.LineColorMode = s.lineColorMode
+	g.showLegend = s.showLegend
+	g.mapTexDiag = s.mapTexDiag
+	g.floor2DPath = normalizeFloor2DPath(s.floor2DPath)
+	g.paletteLUTEnabled = s.paletteLUT && g.opts.KageShader && len(g.opts.DoomPaletteRGBA) == 256*4
+	g.gammaLevel = clampGamma(s.gammaLevel)
+	g.crtEnabled = s.crtEnabled && g.opts.KageShader
+	g.parity.reveal = normalizeRevealForMode(s.reveal, g.opts.SourcePortMode)
+	g.parity.iddt = clampIDDT(s.iddt)
+	if g.opts.SourcePortMode && s.walkRender == walkRendererPseudo {
+		g.walkRender = walkRendererPseudo
+		g.pseudo3D = true
+	} else {
+		g.walkRender = walkRendererDoomBasic
+		g.pseudo3D = false
+	}
+}
+
+func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
+	if sg == nil || next == nil {
+		return
+	}
+	sg.capturePersistentSettings()
+	sg.applyPersistentSettingsToOptions()
+	ng := newGame(next, sg.opts)
+	sg.applyPersistentSettingsToGame(ng)
+	sg.g = ng
+}
+
+func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
+	opts, windowW, windowH := normalizeRunDimensions(opts)
 	sg := &sessionGame{
 		g:       newGame(m, opts),
 		current: m.Name,
 		opts:    opts,
 		nextMap: nextMap,
 	}
+	sg.capturePersistentSettings()
 	if sg.shouldShowBootSplash() {
 		sg.queueTransition(transitionBoot, bootSplashHoldTics)
 	}
@@ -300,7 +449,7 @@ func (sg *sessionGame) Update() error {
 	err := sg.g.Update()
 	if err == nil {
 		if sg.g.levelRestartRequested {
-			sg.g = newGame(sg.g.m, sg.opts)
+			sg.rebuildGameWithPersistentSettings(sg.g.m)
 			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
 			sg.queueTransition(transitionLevel, 0)
 		}
@@ -351,21 +500,16 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		return
 	}
 	if sg.opts.SourcePortMode {
-		if sg.palettePostEnabled() {
-			if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
-				sg.presentSurface = ebiten.NewImage(sw, sh)
-			}
-			sg.g.Layout(sw, sh)
-			sg.g.Draw(sg.presentSurface)
-			src := sg.applyFaithfulPalettePost(sg.presentSurface)
-			screen.DrawImage(src, nil)
-			sg.captureLastFrame(src)
-			return
+		if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sg.g.viewW || sg.presentSurface.Bounds().Dy() != sg.g.viewH {
+			sg.presentSurface = ebiten.NewImage(max(sg.g.viewW, 1), max(sg.g.viewH, 1))
 		}
-		// Render directly to the actual screen target when no postprocess is active.
-		sg.g.Layout(sw, sh)
-		sg.g.Draw(screen)
-		sg.captureLastFrame(screen)
+		sg.g.Draw(sg.presentSurface)
+		src := sg.presentSurface
+		if sg.palettePostEnabled() {
+			src = sg.applyFaithfulPalettePost(sg.presentSurface)
+		}
+		sg.drawSourcePortPresented(screen, src, sw, sh)
+		sg.captureLastFrame(src)
 		return
 	}
 	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
@@ -394,12 +538,27 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		sg.captureLastFrame(src)
 		return
 	}
-	g.Layout(max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
-	g.Draw(dst)
-	if sg.palettePostEnabled() {
-		dst.Clear()
-		dst.DrawImage(sg.applyFaithfulPalettePost(dst), nil)
+	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
+		sg.presentSurface = ebiten.NewImage(max(g.viewW, 1), max(g.viewH, 1))
 	}
+	g.Draw(sg.presentSurface)
+	src := sg.presentSurface
+	if sg.palettePostEnabled() {
+		src = sg.applyFaithfulPalettePost(sg.presentSurface)
+	}
+	sg.drawSourcePortPresented(dst, src, max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
+}
+
+func (sg *sessionGame) drawSourcePortPresented(dst, src *ebiten.Image, sw, sh int) {
+	if dst == nil || src == nil {
+		return
+	}
+	vw := max(src.Bounds().Dx(), 1)
+	vh := max(src.Bounds().Dy(), 1)
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(sw)/float64(vw), float64(sh)/float64(vh))
+	dst.DrawImage(src, op)
 }
 
 func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
@@ -462,13 +621,18 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 		return
 	}
 	if sg.opts.SourcePortMode {
-		g.Layout(max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
-		g.Draw(dst)
-		if sg.palettePostEnabled() {
-			src := sg.applyFaithfulPalettePost(dst)
-			dst.Clear()
-			dst.DrawImage(src, nil)
+		if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
+			sg.presentSurface = ebiten.NewImage(max(g.viewW, 1), max(g.viewH, 1))
 		}
+		g.Draw(sg.presentSurface)
+		src := sg.presentSurface
+		if sg.palettePostEnabled() {
+			src = sg.applyFaithfulPalettePost(sg.presentSurface)
+		}
+		dw := max(dst.Bounds().Dx(), 1)
+		dh := max(dst.Bounds().Dy(), 1)
+		dst.Fill(color.Black)
+		sg.drawSourcePortPresented(dst, src, dw, dh)
 		return
 	}
 	vw := max(g.viewW, 1)
@@ -686,10 +850,11 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.MapName) {
 	stats := collectIntermissionStats(sg.g, sg.current, nextName)
 	sg.intermission = sessionIntermission{
-		active:  true,
-		phase:   0,
-		waitTic: 0,
-		tic:     0,
+		active:            true,
+		phase:             intermissionPhaseKills,
+		waitTic:           0,
+		tic:               0,
+		stageSoundCounter: 0,
 		show: intermissionStats{
 			mapName:      stats.mapName,
 			nextMapName:  stats.nextMapName,
@@ -703,6 +868,7 @@ func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.Map
 		target:  stats,
 		nextMap: next,
 	}
+	sg.playIntermissionSound(soundEventIntermissionTick)
 }
 
 func (sg *sessionGame) tickIntermission() bool {
@@ -711,48 +877,102 @@ func (sg *sessionGame) tickIntermission() bool {
 	}
 	im := &sg.intermission
 	im.tic++
-	if anyIntermissionSkipInput() {
+	skipPressed := anyIntermissionSkipInput()
+	if skipPressed && im.tic <= intermissionSkipInputDelayTics {
+		skipPressed = false
+	}
+	if skipPressed {
 		im.show.killsPct = im.target.killsPct
 		im.show.itemsPct = im.target.itemsPct
 		im.show.secretsPct = im.target.secretsPct
 		im.show.timeSec = im.target.timeSec
-		return true
+		im.phase = intermissionPhaseYouAreHere
+		im.waitTic = intermissionSkipExitHoldTics
+		sg.playIntermissionSound(soundEventIntermissionDone)
+		return false
 	}
+	sg.tickIntermissionSoundSystem()
 	if im.waitTic > 0 {
 		im.waitTic--
 		return false
 	}
 	switch im.phase {
-	case 0:
+	case intermissionPhaseKills:
 		im.show.killsPct = intermissionStepCounter(im.show.killsPct, im.target.killsPct, 2)
+		sg.tickIntermissionCounterSound(im.show.killsPct, im.target.killsPct)
 		if im.show.killsPct >= im.target.killsPct {
-			im.phase = 1
-			im.waitTic = 8
+			im.phase = intermissionPhaseItems
+			im.waitTic = intermissionPhaseWaitTics
+			im.stageSoundCounter = 0
+			sg.playIntermissionSound(soundEventIntermissionTick)
 		}
-	case 1:
+	case intermissionPhaseItems:
 		im.show.itemsPct = intermissionStepCounter(im.show.itemsPct, im.target.itemsPct, 2)
+		sg.tickIntermissionCounterSound(im.show.itemsPct, im.target.itemsPct)
 		if im.show.itemsPct >= im.target.itemsPct {
-			im.phase = 2
-			im.waitTic = 8
+			im.phase = intermissionPhaseSecrets
+			im.waitTic = intermissionPhaseWaitTics
+			im.stageSoundCounter = 0
+			sg.playIntermissionSound(soundEventIntermissionTick)
 		}
-	case 2:
+	case intermissionPhaseSecrets:
 		im.show.secretsPct = intermissionStepCounter(im.show.secretsPct, im.target.secretsPct, 2)
+		sg.tickIntermissionCounterSound(im.show.secretsPct, im.target.secretsPct)
 		if im.show.secretsPct >= im.target.secretsPct {
-			im.phase = 3
-			im.waitTic = 8
+			im.phase = intermissionPhaseTime
+			im.waitTic = intermissionPhaseWaitTics
+			im.stageSoundCounter = 0
+			sg.playIntermissionSound(soundEventIntermissionTick)
 		}
-	case 3:
+	case intermissionPhaseTime:
 		im.show.timeSec = intermissionStepCounter(im.show.timeSec, im.target.timeSec, 3)
+		sg.tickIntermissionCounterSound(im.show.timeSec, im.target.timeSec)
 		if im.show.timeSec >= im.target.timeSec {
-			im.phase = 4
-			im.waitTic = doomTicsPerSecond * 2
+			im.phase = intermissionPhaseEntering
+			im.waitTic = intermissionEnteringWaitTics
+			im.stageSoundCounter = 0
+			sg.playIntermissionSound(soundEventIntermissionDone)
+		}
+	case intermissionPhaseEntering:
+		if shouldShowYouAreHere(im.target.mapName, im.target.nextMapName) {
+			im.phase = intermissionPhaseYouAreHere
+			im.waitTic = intermissionYouAreHereWaitTics
+			sg.playIntermissionSound(soundEventIntermissionTick)
+		} else {
+			im.phase = intermissionPhaseYouAreHere
+			im.waitTic = 1
 		}
 	default:
 		if im.waitTic <= 0 {
+			sg.playIntermissionSound(soundEventIntermissionDone)
 			return true
 		}
 	}
 	return false
+}
+
+func (sg *sessionGame) playIntermissionSound(ev soundEvent) {
+	if sg == nil || sg.g == nil || sg.g.snd == nil {
+		return
+	}
+	sg.g.snd.playEvent(ev)
+}
+
+func (sg *sessionGame) tickIntermissionSoundSystem() {
+	if sg == nil || sg.g == nil || sg.g.snd == nil {
+		return
+	}
+	sg.g.snd.tick()
+}
+
+func (sg *sessionGame) tickIntermissionCounterSound(cur, target int) {
+	if cur >= target {
+		return
+	}
+	sg.intermission.stageSoundCounter++
+	if sg.intermission.stageSoundCounter%intermissionCounterSoundPeriod == 0 {
+		sg.playIntermissionSound(soundEventIntermissionTick)
+	}
 }
 
 func (sg *sessionGame) finishIntermission() {
@@ -761,7 +981,7 @@ func (sg *sessionGame) finishIntermission() {
 		return
 	}
 	sg.current = im.target.nextMapName
-	sg.g = newGame(im.nextMap, sg.opts)
+	sg.rebuildGameWithPersistentSettings(im.nextMap)
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", im.nextMap.Name))
 	sg.intermission = sessionIntermission{}
 	sg.queueTransition(transitionLevel, 0)
@@ -783,15 +1003,130 @@ func (sg *sessionGame) drawIntermission(screen *ebiten.Image) {
 	im := &sg.intermission
 
 	screen.Fill(color.Black)
+	sg.drawIntermissionBackdrop(screen, scale, ox, oy, im.target.mapName)
 	sg.drawIntermissionText(screen, fmt.Sprintf("FINISHED %s", im.target.mapName), 160, 24, scale, ox, oy, true)
 	sg.drawIntermissionText(screen, fmt.Sprintf("KILLS   %3d%%", im.show.killsPct), 80, 70, scale, ox, oy, false)
 	sg.drawIntermissionText(screen, fmt.Sprintf("ITEMS   %3d%%", im.show.itemsPct), 80, 90, scale, ox, oy, false)
 	sg.drawIntermissionText(screen, fmt.Sprintf("SECRETS %3d%%", im.show.secretsPct), 80, 110, scale, ox, oy, false)
 	sg.drawIntermissionText(screen, fmt.Sprintf("TIME %s", formatIntermissionTime(im.show.timeSec)), 80, 138, scale, ox, oy, false)
-	sg.drawIntermissionText(screen, fmt.Sprintf("ENTERING %s", im.target.nextMapName), 160, 168, scale, ox, oy, true)
+	if im.phase >= intermissionPhaseEntering {
+		sg.drawIntermissionText(screen, fmt.Sprintf("ENTERING %s", im.target.nextMapName), 160, 168, scale, ox, oy, true)
+	}
+	if im.phase == intermissionPhaseYouAreHere && shouldShowYouAreHere(im.target.mapName, im.target.nextMapName) {
+		sg.drawYouAreHerePanel(screen, scale, ox, oy, im.target.mapName, im.target.nextMapName)
+	}
 	if (im.tic/16)&1 == 0 {
 		sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO SKIP", 160, 186, scale, ox, oy, true)
 	}
+}
+
+func (sg *sessionGame) drawIntermissionBackdrop(screen *ebiten.Image, scale, ox, oy float64, current mapdata.MapName) {
+	if bg, ok := sg.intermissionBackgroundName(current); ok {
+		_ = sg.drawIntermissionPatch(screen, bg, 0, 0, scale, ox, oy, false)
+		return
+	}
+	_ = sg.drawIntermissionPatch(screen, "INTERPIC", 0, 0, scale, ox, oy, false)
+}
+
+func (sg *sessionGame) drawYouAreHerePanel(screen *ebiten.Image, scale, ox, oy float64, current, next mapdata.MapName) {
+	if !sg.drawIntermissionPatch(screen, "WIURH0", 208, 38, scale, ox, oy, false) {
+		sg.drawIntermissionText(screen, "YOU ARE HERE", 240, 46, scale, ox, oy, true)
+	}
+	epCur, mapCur, okCur := episodeMapSlot(current)
+	epNext, mapNext, okNext := episodeMapSlot(next)
+	if !okCur || !okNext || epCur != epNext {
+		return
+	}
+	nodes := intermissionEpisodeNodePos(epCur)
+	if len(nodes) != 9 {
+		return
+	}
+	if mapCur >= 1 && mapCur <= 9 {
+		pt := nodes[mapCur-1]
+		if !sg.drawIntermissionPatch(screen, "WISPLAT", pt.x, pt.y, scale, ox, oy, true) {
+			sg.drawIntermissionText(screen, "X", pt.x, pt.y, scale, ox, oy, true)
+		}
+	}
+	if mapNext >= 1 && mapNext <= 9 && (sg.intermission.tic/8)&1 == 0 {
+		pt := nodes[mapNext-1]
+		if !sg.drawIntermissionPatch(screen, "WIURH0", pt.x, pt.y, scale, ox, oy, true) {
+			sg.drawIntermissionText(screen, ">", pt.x, pt.y, scale, ox, oy, true)
+		}
+	}
+}
+
+type interNodePos struct {
+	x int
+	y int
+}
+
+func intermissionEpisodeNodePos(ep int) []interNodePos {
+	switch ep {
+	case 1:
+		return []interNodePos{{185, 164}, {148, 143}, {69, 122}, {209, 102}, {116, 89}, {166, 55}, {71, 56}, {135, 29}, {71, 24}}
+	case 2:
+		return []interNodePos{{254, 25}, {97, 50}, {188, 64}, {128, 78}, {214, 92}, {133, 130}, {208, 136}, {148, 140}, {235, 158}}
+	case 3:
+		return []interNodePos{{156, 168}, {48, 154}, {174, 95}, {265, 75}, {130, 48}, {279, 23}, {198, 48}, {140, 25}, {281, 136}}
+	default:
+		return nil
+	}
+}
+
+func (sg *sessionGame) intermissionBackgroundName(current mapdata.MapName) (string, bool) {
+	ep, _, ok := episodeMapSlot(current)
+	if !ok {
+		return "", false
+	}
+	switch ep {
+	case 1:
+		return "WIMAP0", true
+	case 2:
+		return "WIMAP1", true
+	case 3:
+		return "WIMAP2", true
+	default:
+		return "", false
+	}
+}
+
+func (sg *sessionGame) drawIntermissionPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64, centered bool) bool {
+	img, p, ok := sg.intermissionPatch(name)
+	if !ok || img == nil || p.Width <= 0 || p.Height <= 0 {
+		return false
+	}
+	px := ox + float64(x)*scale
+	py := oy + float64(y)*scale
+	if centered {
+		px -= float64(p.Width) * scale * 0.5
+		py -= float64(p.Height) * scale * 0.5
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(px-float64(p.OffsetX)*scale, py-float64(p.OffsetY)*scale)
+	screen.DrawImage(img, op)
+	return true
+}
+
+func (sg *sessionGame) intermissionPatch(name string) (*ebiten.Image, WallTexture, bool) {
+	if sg == nil || sg.g == nil {
+		return nil, WallTexture{}, false
+	}
+	key := strings.ToUpper(strings.TrimSpace(name))
+	p, ok := sg.g.opts.IntermissionPatchBank[key]
+	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+		return nil, WallTexture{}, false
+	}
+	if sg.interPatchCache == nil {
+		sg.interPatchCache = make(map[string]*ebiten.Image, 64)
+	}
+	if img, ok := sg.interPatchCache[key]; ok {
+		return img, p, true
+	}
+	img := ebiten.NewImage(p.Width, p.Height)
+	img.WritePixels(p.RGBA)
+	sg.interPatchCache[key] = img
+	return img, p, true
 }
 
 func (sg *sessionGame) drawIntermissionText(screen *ebiten.Image, text string, x, y int, scale, ox, oy float64, centered bool) {
@@ -848,6 +1183,28 @@ func (sg *sessionGame) intermissionTextWidth(text string) int {
 		w += gw
 	}
 	return w
+}
+
+func shouldShowYouAreHere(current, next mapdata.MapName) bool {
+	epCur, _, okCur := episodeMapSlot(current)
+	epNext, _, okNext := episodeMapSlot(next)
+	if !okCur || !okNext {
+		return false
+	}
+	return epCur == epNext
+}
+
+func episodeMapSlot(name mapdata.MapName) (episode int, slot int, ok bool) {
+	s := string(name)
+	if len(s) != 4 || s[0] != 'E' || s[2] != 'M' {
+		return 0, 0, false
+	}
+	e := int(s[1] - '0')
+	m := int(s[3] - '0')
+	if e < 1 || e > 9 || m < 1 || m > 9 {
+		return 0, 0, false
+	}
+	return e, m, true
 }
 
 func (sg *sessionGame) captureLastFrame(src *ebiten.Image) {
@@ -1069,7 +1426,7 @@ func collectIntermissionStats(g *game, mapName, nextName mapdata.MapName) interm
 		return out
 	}
 	for i, th := range g.m.Things {
-		if !thingSpawnsForSkill(th, g.opts.SkillLevel) {
+		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode) {
 			continue
 		}
 		if isMonster(th.Type) {
@@ -1148,9 +1505,16 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
-		// Keep game internals synced, but always expose native output size
-		// in sourceport mode so transition and steady-state render targets match.
-		sg.g.Layout(w, h)
+		sg.g.setSkyOutputSize(w, h)
+		// Sourceport mode keeps a native-sized output while rendering game internals
+		// at clean integer divisors for detail levels, then nearest-upscaling.
+		div := sg.g.sourcePortDetailDivisor()
+		if div < 1 {
+			div = 1
+		}
+		rw := max(w/div, 1)
+		rh := max(h/div, 1)
+		sg.g.Layout(rw, rh)
 		return w, h
 	}
 	return sg.g.Layout(outsideWidth, outsideHeight)
