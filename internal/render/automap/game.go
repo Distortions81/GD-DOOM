@@ -6073,13 +6073,13 @@ func monsterDeathFrameSeq(typ int16) []byte {
 	case 3004:
 		return []byte{'H', 'I', 'J', 'K', 'L'}
 	case 9:
-		return []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N'}
+		return []byte{'H', 'I', 'J', 'K', 'L'}
 	case 3001:
 		return []byte{'I', 'J', 'K', 'L', 'M'}
 	case 3002:
 		return []byte{'I', 'J', 'K', 'L', 'M', 'N'}
 	case 3006:
-		return []byte{'H', 'I', 'J', 'K', 'L', 'M'}
+		return []byte{'F', 'G', 'H', 'I', 'J', 'K'}
 	case 3005:
 		return []byte{'G', 'H', 'I', 'J', 'K', 'L'}
 	case 3003:
@@ -6098,7 +6098,7 @@ func monsterDeathFrameTics(typ int16) []int {
 	case 3004:
 		return []int{5, 5, 5, 5, 5}
 	case 9:
-		return []int{5, 5, 5, 5, 5, 5, 5}
+		return []int{5, 5, 5, 5, 5}
 	case 3001:
 		return []int{8, 8, 6, 6, 6}
 	case 3002:
@@ -6115,6 +6115,25 @@ func monsterDeathFrameTics(typ int16) []int {
 		return []int{20, 10, 10, 10, 10, 10, 10, 10, 10, 30}
 	default:
 		return nil
+	}
+}
+
+func monsterDeathSoundDelayTics(typ int16) int {
+	// Doom plays death sounds on A_Scream, which is usually the 2nd death frame.
+	switch typ {
+	case 3004, 9:
+		return 5
+	case 3001, 3002, 3003, 3005:
+		return 8
+	case 3006:
+		return 6
+	case 16:
+		return 10
+	case 7:
+		// Spider mastermind screams on the first death frame.
+		return 0
+	default:
+		return 0
 	}
 }
 

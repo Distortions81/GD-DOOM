@@ -491,7 +491,13 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 		if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
 			g.thingAttackFireTics[thingIdx] = -1
 		}
-		g.emitSoundEvent(monsterDeathSoundEvent(thingType))
+		deathEv := monsterDeathSoundEvent(thingType)
+		deathDelay := monsterDeathSoundDelayTics(thingType)
+		if deathDelay > 0 {
+			g.emitSoundEventDelayed(deathEv, deathDelay)
+		} else {
+			g.emitSoundEvent(deathEv)
+		}
 		g.setHUDMessage("Monster killed", 15)
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
 	} else {

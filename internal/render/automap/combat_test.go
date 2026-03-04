@@ -323,6 +323,39 @@ func TestMonsterDeathSoundEventMapping(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterDelaysShotgunDeathSoundToScreamFrame(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{1},
+		thingDead:      []bool{false},
+		thingDeathTics: []int{0},
+		soundQueue:     make([]soundEvent, 0, 2),
+		delayedSfx:     make([]delayedSoundEvent, 0, 2),
+	}
+	g.damageMonster(0, 1)
+	if hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
+		t.Fatalf("death sound should be delayed; queue=%v", g.soundQueue)
+	}
+	if got := len(g.delayedSfx); got != 1 {
+		t.Fatalf("delayedSfx len=%d want=1", got)
+	}
+	for i := 0; i < 4; i++ {
+		g.tickDelayedSounds()
+		if hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
+			t.Fatalf("death sound fired early at tick %d", i+1)
+		}
+	}
+	g.tickDelayedSounds()
+	if !hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
+		t.Fatalf("queue=%v missing delayed shotgun death sound", g.soundQueue)
+	}
+}
+
 func hasSoundEvent(queue []soundEvent, want soundEvent) bool {
 	for _, ev := range queue {
 		if ev == want {

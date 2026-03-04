@@ -110,3 +110,15 @@ func TestMonsterSpriteNameForViewUsesDeathFrame(t *testing.T) {
 		t.Fatalf("death end got=%q want=TROOM0", name)
 	}
 }
+
+func TestMonsterDeathFrameSeqMatchesDoomForShotgunGuyAndLostSoul(t *testing.T) {
+	if got, want := string(monsterDeathFrameSeq(9)), "HIJKL"; got != want {
+		t.Fatalf("shotgun death seq=%q want=%q", got, want)
+	}
+	if got, want := string(monsterDeathFrameSeq(3006)), "FGHIJK"; got != want {
+		t.Fatalf("lost soul death seq=%q want=%q", got, want)
+	}
+	if got, want := len(monsterDeathFrameTics(9)), 5; got != want {
+		t.Fatalf("shotgun death tics len=%d want=%d", got, want)
+	}
+}
