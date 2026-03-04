@@ -1750,6 +1750,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
 }
@@ -2227,10 +2228,19 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					for ; x+1 <= x2; x += 2 {
 						pix32[pixI] = fbPacked
 						pix32[pixI+1] = fbPacked
+						if depth < g.depthPix3D[pixI] {
+							g.depthPix3D[pixI] = depth
+						}
+						if depth < g.depthPix3D[pixI+1] {
+							g.depthPix3D[pixI+1] = depth
+						}
 						pixI += 2
 					}
 					if x <= x2 {
 						pix32[pixI] = fbPacked
+						if depth < g.depthPix3D[pixI] {
+							g.depthPix3D[pixI] = depth
+						}
 					}
 					continue
 				}
@@ -2250,6 +2260,12 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					p1 := tex32[(v1<<6)+u1]
 					pix32[pixI] = p0
 					pix32[pixI+1] = p1
+					if depth < g.depthPix3D[pixI] {
+						g.depthPix3D[pixI] = depth
+					}
+					if depth < g.depthPix3D[pixI+1] {
+						g.depthPix3D[pixI+1] = depth
+					}
 					wxFixed += stepWXFixed
 					wyFixed += stepWYFixed
 					pixI += 2
@@ -2258,6 +2274,9 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					u := int(wxFixed>>fracBits) & 63
 					v := int(wyFixed>>fracBits) & 63
 					pix32[pixI] = tex32[(v<<6)+u]
+					if depth < g.depthPix3D[pixI] {
+						g.depthPix3D[pixI] = depth
+					}
 				}
 			}
 		}
@@ -3203,9 +3222,6 @@ func (g *game) drawBillboardProjectiles(screen *ebiten.Image, camX, camY, camAng
 			continue
 		}
 		// Coarse occlusion check against solid map geometry.
-		if !g.monsterHasLOS(g.p.x, g.p.y, p.x, p.y) {
-			continue
-		}
 		sx := float64(g.viewW)/2 - (s/f)*focal
 		centerZ := float64(p.z+p.height/2) / fracUnit
 		sy := float64(g.viewH)/2 - ((centerZ-eyeZ)/f)*focal
@@ -3277,9 +3293,6 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if f <= near {
 			continue
 		}
-		if !g.monsterHasLOS(g.p.x, g.p.y, p.x, p.y) {
-			continue
-		}
 		sx := float64(g.viewW)/2 - (s/f)*focal
 		centerZ := float64(p.z+p.height/2) / fracUnit
 		sy := float64(g.viewH)/2 - ((centerZ-eyeZ)/f)*focal
@@ -3344,6 +3357,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 }
 
 func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near float64) {
+	const spriteDepthBias = 2.0
 	if len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
 		return
 	}
@@ -3353,6 +3367,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		yb   float64
 		h    float64
 		tex  WallTexture
+		flip bool
 	}
 	items := make([]projectedMonster, 0, 32)
 	ca := math.Cos(camAng)
@@ -3373,11 +3388,6 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if f <= near {
 			continue
 		}
-		// Skip monsters hidden behind solid geometry.
-		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
-			continue
-		}
-
 		sx := float64(g.viewW)/2 - (s/f)*focal
 		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
 		monsterH := monsterRenderHeight(th.Type)
@@ -3392,7 +3402,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if sx+xPad < 0 || sx-xPad > float64(g.viewW) {
 			continue
 		}
-		sprite := g.monsterSpriteName(th.Type, g.worldTic)
+		sprite, flip := g.monsterSpriteNameForView(th, g.worldTic, camX, camY)
 		tex, ok := g.monsterSpriteTexture(sprite)
 		if !ok || tex.Height <= 0 || tex.Width <= 0 {
 			continue
@@ -3403,10 +3413,152 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			yb:   yb,
 			h:    h,
 			tex:  tex,
+			flip: flip,
 		})
 	}
 
 	// Draw far-to-near.
+	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
+	for _, it := range items {
+		th := it.tex.Height
+		tw := it.tex.Width
+		if th <= 0 || tw <= 0 || len(it.tex.RGBA) != tw*th*4 {
+			continue
+		}
+		scale := it.h / float64(th)
+		if scale <= 0 {
+			continue
+		}
+		dstX := it.sx - float64(it.tex.OffsetX)*scale
+		dstY := it.yb - float64(it.tex.OffsetY)*scale
+		dstW := float64(tw) * scale
+		dstH := float64(th) * scale
+		// Keep world things from sinking below their floor plane while still
+		// honoring offsets that intentionally float sprites above the floor.
+		floorAlignedY := it.yb - dstH
+		if dstY > floorAlignedY {
+			dstY = floorAlignedY
+		}
+		x0 := int(math.Floor(dstX))
+		y0 := int(math.Floor(dstY))
+		x1 := int(math.Ceil(dstX+dstW)) - 1
+		y1 := int(math.Ceil(dstY+dstH)) - 1
+		if x1 < 0 || y1 < 0 || x0 >= g.viewW || y0 >= g.viewH {
+			continue
+		}
+		if x0 < 0 {
+			x0 = 0
+		}
+		if y0 < 0 {
+			y0 = 0
+		}
+		if x1 >= g.viewW {
+			x1 = g.viewW - 1
+		}
+		if y1 >= g.viewH {
+			y1 = g.viewH - 1
+		}
+		sf := float64(monsterShadeFactor(it.dist, near))
+		src := it.tex.RGBA
+		for y := y0; y <= y1; y++ {
+			sy := int(float64(y+1) - dstY) // center-ish nearest
+			ty := int(float64(sy) / scale)
+			if ty < 0 {
+				ty = 0
+			}
+			if ty >= th {
+				ty = th - 1
+			}
+			row := y * g.viewW
+			for x := x0; x <= x1; x++ {
+				if it.dist > g.depthPix3D[row+x]+spriteDepthBias {
+					continue
+				}
+				sx := int(float64(x+1) - dstX)
+				tx := int(float64(sx) / scale)
+				if tx < 0 {
+					tx = 0
+				}
+				if tx >= tw {
+					tx = tw - 1
+				}
+				if it.flip {
+					tx = tw - 1 - tx
+				}
+				si := (ty*tw + tx) * 4
+				a := src[si+3]
+				if a == 0 {
+					continue
+				}
+				r := uint8(float64(src[si+0]) * sf)
+				gc := uint8(float64(src[si+1]) * sf)
+				b := uint8(float64(src[si+2]) * sf)
+				g.wallPix32[row+x] = packRGBA(r, gc, b)
+				g.depthPix3D[row+x] = it.dist
+			}
+		}
+	}
+}
+
+func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near float64) {
+	const spriteDepthBias = 2.0
+	if len(g.depthPix3D) != g.viewW*g.viewH || len(g.wallPix32) != g.viewW*g.viewH {
+		return
+	}
+	type projectedThing struct {
+		dist float64
+		sx   float64
+		yb   float64
+		h    float64
+		tex  WallTexture
+	}
+	items := make([]projectedThing, 0, 64)
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := float64(g.p.z)/fracUnit + 41.0
+	for i, th := range g.m.Things {
+		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+			continue
+		}
+		if isMonster(th.Type) || isPlayerStart(th.Type) {
+			continue
+		}
+		sprite := g.worldThingSpriteName(th.Type, g.worldTic)
+		tex, ok := g.monsterSpriteTexture(sprite)
+		if !ok || tex.Height <= 0 || tex.Width <= 0 {
+			continue
+		}
+		tx := float64(th.X) - camX
+		ty := float64(th.Y) - camY
+		f := tx*ca + ty*sa
+		s := -tx*sa + ty*ca
+		if f <= near {
+			continue
+		}
+		scale := focal / f
+		if scale <= 0 {
+			continue
+		}
+		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
+		yb := float64(g.viewH)/2 - ((floorZ-eyeZ)/f)*focal
+		h := float64(tex.Height) * scale
+		if h <= 0 {
+			continue
+		}
+		sx := float64(g.viewW)/2 - (s/f)*focal
+		w := float64(tex.Width) * scale
+		xPad := w/2 + 4
+		if sx+xPad < 0 || sx-xPad > float64(g.viewW) {
+			continue
+		}
+		items = append(items, projectedThing{
+			dist: f,
+			sx:   sx,
+			yb:   yb,
+			h:    h,
+			tex:  tex,
+		})
+	}
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		th := it.tex.Height
@@ -3444,7 +3596,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		sf := float64(monsterShadeFactor(it.dist, near))
 		src := it.tex.RGBA
 		for y := y0; y <= y1; y++ {
-			sy := int(float64(y+1) - dstY) // center-ish nearest
+			sy := int(float64(y+1) - dstY)
 			ty := int(float64(sy) / scale)
 			if ty < 0 {
 				ty = 0
@@ -3454,7 +3606,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			}
 			row := y * g.viewW
 			for x := x0; x <= x1; x++ {
-				if it.dist > g.depthPix3D[row+x] {
+				if it.dist > g.depthPix3D[row+x]+spriteDepthBias {
 					continue
 				}
 				sx := int(float64(x+1) - dstX)
@@ -3477,6 +3629,159 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				g.depthPix3D[row+x] = it.dist
 			}
 		}
+	}
+}
+
+func (g *game) worldThingSpriteName(typ int16, tic int) string {
+	frame := (tic / 8) & 3
+	pick := func(seq ...string) string {
+		for i := 0; i < len(seq); i++ {
+			name := seq[(frame+i)%len(seq)]
+			if _, ok := g.opts.SpritePatchBank[name]; ok {
+				return name
+			}
+		}
+		return ""
+	}
+	switch typ {
+	case 15:
+		return pick("PLAYN0")
+	case 18:
+		return pick("POSSL0")
+	case 19:
+		return pick("SPOSL0")
+	case 20:
+		return pick("TROOL0")
+	case 21:
+		return pick("SARGN0")
+	case 22:
+		return pick("HEADL0")
+	case 23:
+		return pick("SKULL0")
+	case 24:
+		return pick("POL5A0")
+	case 25:
+		return pick("POL1A0")
+	case 26:
+		return pick("POL6A0")
+	case 27:
+		return pick("POL4A0")
+	case 28:
+		return pick("POL2A0")
+	case 29:
+		return pick("POL3A0")
+	case 30:
+		return pick("COL1A0")
+	case 31:
+		return pick("COL2A0")
+	case 32:
+		return pick("COL3A0")
+	case 33:
+		return pick("COL4A0")
+	case 34:
+		return pick("CANDA0")
+	case 35:
+		return pick("CBRAA0")
+	case 36:
+		return pick("COL5A0")
+	case 41:
+		return pick("EYEA0")
+	case 42:
+		return pick("FSKUA0")
+	case 43:
+		return pick("FCANA0")
+	case 47:
+		return pick("SMITA0", "SMITB0", "SMITC0", "SMITD0")
+	case 48:
+		return pick("GOR1A0")
+	case 49:
+		return pick("GOR2A0")
+	case 50:
+		return pick("GOR3A0")
+	case 51:
+		return pick("GOR4A0")
+	case 52:
+		return pick("GOR5A0")
+	case 54:
+		return pick("TRE1A0")
+	case 72:
+		return pick("KEENA0", "KEENB0", "KEENC0", "KEEND0")
+	case 5:
+		return pick("BKEYA0")
+	case 6:
+		return pick("YKEYA0")
+	case 13:
+		return pick("RKEYA0")
+	case 38:
+		return pick("RSKUA0")
+	case 39:
+		return pick("YSKUA0")
+	case 40:
+		return pick("BSKUA0")
+	case 2011:
+		return pick("STIMA0")
+	case 2012:
+		return pick("MEDIA0")
+	case 2014:
+		return pick("BON1A0")
+	case 2015:
+		return pick("BON2A0")
+	case 2018:
+		return pick("ARM1A0")
+	case 2019:
+		return pick("ARM2A0")
+	case 2025:
+		return pick("SUITA0")
+	case 2007:
+		return pick("CLIPA0")
+	case 2048:
+		return pick("AMMOA0")
+	case 2008:
+		return pick("SHELA0")
+	case 2049:
+		return pick("SBOXA0")
+	case 2010:
+		return pick("ROCKA0")
+	case 2046:
+		return pick("BROKA0")
+	case 2047:
+		return pick("CELLA0")
+	case 17:
+		return pick("CELPA0")
+	case 8:
+		return pick("BPAKA0")
+	case 2001:
+		return pick("SHOTA0")
+	case 2002:
+		return pick("MGUNA0")
+	case 2003:
+		return pick("LAUNA0")
+	case 2004:
+		return pick("PLASA0")
+	case 2005:
+		return pick("CSAWA0")
+	case 2006:
+		return pick("BFUGA0")
+	case 2035:
+		return pick("BAR1A0", "BAR1B0", "BAR1C0")
+	case 44:
+		return pick("TBLUA0", "TBLUB0", "TBLUC0", "TBLUD0")
+	case 45:
+		return pick("TGRNA0", "TGRNB0", "TGRNC0", "TGRND0")
+	case 46:
+		return pick("TREDA0", "TREDB0", "TREDC0", "TREDD0")
+	case 55:
+		return pick("SMRTA0", "SMRTB0", "SMRTC0", "SMRTD0")
+	case 56:
+		return pick("SMGTA0", "SMGTB0", "SMGTC0", "SMGTD0")
+	case 57:
+		return pick("SMBTA0", "SMBTB0", "SMBTC0", "SMBTD0")
+	case 85:
+		return pick("TLMPA0")
+	case 86:
+		return pick("TLP2A0")
+	default:
+		return ""
 	}
 }
 
@@ -3537,6 +3842,91 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 	default:
 		return ""
 	}
+}
+
+func (g *game) monsterSpriteNameForView(th mapdata.Thing, tic int, viewX, viewY float64) (string, bool) {
+	prefix, ok := monsterSpritePrefix(th.Type)
+	if !ok {
+		return g.monsterSpriteName(th.Type, tic), false
+	}
+	frameLetter := byte('A' + ((tic / 8) & 3))
+	rot := monsterSpriteRotationIndex(th, viewX, viewY)
+	if name, flip, ok := g.monsterSpriteRotFrame(prefix, frameLetter, rot); ok {
+		return name, flip
+	}
+	if name, flip, ok := g.monsterSpriteRotFrame(prefix, frameLetter, 1); ok {
+		return name, flip
+	}
+	return g.monsterSpriteName(th.Type, tic), false
+}
+
+func monsterSpritePrefix(typ int16) (string, bool) {
+	switch typ {
+	case 3004:
+		return "POSS", true
+	case 9:
+		return "SPOS", true
+	case 3001:
+		return "TROO", true
+	case 3002:
+		return "SARG", true
+	case 3006:
+		return "SKUL", true
+	case 3005:
+		return "HEAD", true
+	case 3003:
+		return "BOSS", true
+	case 16:
+		return "CYBR", true
+	case 7:
+		return "SPID", true
+	default:
+		return "", false
+	}
+}
+
+func monsterSpriteRotationIndex(th mapdata.Thing, viewX, viewY float64) int {
+	facing := normalizeDeg360(float64(th.Angle))
+	angToView := math.Atan2(viewY-float64(th.Y), viewX-float64(th.X)) * (180.0 / math.Pi)
+	angToView = normalizeDeg360(angToView)
+	delta := normalizeDeg360(angToView - facing)
+	return int(math.Floor((delta+22.5)/45.0))%8 + 1
+}
+
+func (g *game) monsterSpriteRotFrame(prefix string, frame byte, rot int) (string, bool, bool) {
+	if rot < 1 || rot > 8 {
+		return "", false, false
+	}
+	// Prefer exact per-rotation patch if present.
+	name := fmt.Sprintf("%s%c%d", prefix, frame, rot)
+	if _, ok := g.opts.SpritePatchBank[name]; ok {
+		return name, false, true
+	}
+	if rot == 1 {
+		return "", false, false
+	}
+	opp := 10 - rot
+	// Doom paired-rotation patch, e.g. TROOA2A8.
+	pairA := fmt.Sprintf("%s%c%d%c%d", prefix, frame, rot, frame, opp)
+	if _, ok := g.opts.SpritePatchBank[pairA]; ok {
+		return pairA, false, true
+	}
+	// Reverse order pair (some content uses the opposite declaration order).
+	pairB := fmt.Sprintf("%s%c%d%c%d", prefix, frame, opp, frame, rot)
+	if _, ok := g.opts.SpritePatchBank[pairB]; ok {
+		return pairB, true, true
+	}
+	return "", false, false
+}
+
+func normalizeDeg360(deg float64) float64 {
+	for deg < 0 {
+		deg += 360
+	}
+	for deg >= 360 {
+		deg -= 360
+	}
+	return deg
 }
 
 func monsterRenderHeight(typ int16) float64 {

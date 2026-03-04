@@ -599,20 +599,56 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	if ts == nil {
 		return nil
 	}
-	names := []string{
-		// Zombieman / shotgun guy.
-		"POSSA1", "POSSB1", "POSSC1", "POSSD1",
-		"SPOSA1", "SPOSB1", "SPOSC1", "SPOSD1",
-		// Imp / demon.
-		"TROOA1", "TROOB1", "TROOC1", "TROOD1",
-		"SARGA1", "SARGB1", "SARGC1", "SARGD1",
-		// Lost soul / caco.
-		"SKULA1", "SKULB1", "SKULC1", "SKULD1",
-		"HEADA1", "HEADB1", "HEADC1", "HEADD1",
-		// Baron / cyber / spider.
-		"BOSSA1", "BOSSB1", "BOSSC1", "BOSSD1",
-		"CYBRA1", "CYBRB1", "CYBRC1", "CYBRD1",
-		"SPIDA1", "SPIDB1", "SPIDC1", "SPIDD1",
+	spritePrefixes := []string{
+		"POSS", "SPOS", "TROO", "SARG", "SKUL", "HEAD", "BOSS", "CYBR", "SPID",
+	}
+	frames := []byte{'A', 'B', 'C', 'D'}
+	names := make([]string, 0, len(spritePrefixes)*len(frames)*8)
+	add := func(name string) {
+		for _, ex := range names {
+			if ex == name {
+				return
+			}
+		}
+		names = append(names, name)
+	}
+	for _, pfx := range spritePrefixes {
+		for _, fr := range frames {
+			add(fmt.Sprintf("%s%c1", pfx, fr))
+			add(fmt.Sprintf("%s%c2%c8", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c8%c2", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c3%c7", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c7%c3", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c4%c6", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c6%c4", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c5", pfx, fr))
+		}
+	}
+	// Common pickups, weapons, and decorations (A0 single-frame or animated 0-suffixed sets).
+	for _, name := range []string{
+		"PLAYN0", "POSSL0", "SPOSL0", "TROOL0", "SARGN0", "HEADL0", "SKULL0",
+		"POL1A0", "POL2A0", "POL3A0", "POL4A0", "POL5A0", "POL6A0",
+		"COL1A0", "COL2A0", "COL3A0", "COL4A0", "COL5A0", "TRE1A0",
+		"CANDA0", "CBRAA0", "EYEA0", "FSKUA0", "FCANA0",
+		"GOR1A0", "GOR2A0", "GOR3A0", "GOR4A0", "GOR5A0",
+		"SMITA0", "SMITB0", "SMITC0", "SMITD0",
+		"KEENA0", "KEENB0", "KEENC0", "KEEND0",
+		"BKEYA0", "YKEYA0", "RKEYA0",
+		"BSKUA0", "YSKUA0", "RSKUA0",
+		"STIMA0", "MEDIA0", "BON1A0", "BON2A0",
+		"ARM1A0", "ARM2A0", "SUITA0",
+		"CLIPA0", "AMMOA0", "SHELA0", "SBOXA0", "ROCKA0", "BROKA0", "CELLA0", "CELPA0", "BPAKA0",
+		"SHOTA0", "MGUNA0", "LAUNA0", "PLASA0", "CSAWA0", "BFUGA0",
+		"BAR1A0", "BAR1B0", "BAR1C0",
+		"TBLUA0", "TBLUB0", "TBLUC0", "TBLUD0",
+		"TGRNA0", "TGRNB0", "TGRNC0", "TGRND0",
+		"TREDA0", "TREDB0", "TREDC0", "TREDD0",
+		"SMRTA0", "SMRTB0", "SMRTC0", "SMRTD0",
+		"SMGTA0", "SMGTB0", "SMGTC0", "SMGTD0",
+		"SMBTA0", "SMBTB0", "SMBTC0", "SMBTD0",
+		"TLMPA0", "TLP2A0",
+	} {
+		add(name)
 	}
 	out := make(map[string]automap.WallTexture, len(names))
 	for _, name := range names {

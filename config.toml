@@ -8,8 +8,8 @@ debug = false
 multi_core = true
 details = false
 
-width = 1920
-height = 1080
+width = 1280
+height = 960
 zoom = 0.0
 player = 1
 skill = 3

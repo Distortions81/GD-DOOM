@@ -44,6 +44,7 @@ func (g *game) tickMonsters() {
 		}
 
 		if g.thingCooldown[i] == 0 && dist <= monsterAttackRange && g.monsterHasLOS(tx, ty, px, py) {
+			g.faceMonsterToward(i, tx, ty, px, py)
 			didAttack := g.monsterAttack(i, th.Type, dist)
 			if didAttack {
 				g.thingCooldown[i] = monsterAttackCooldown(th.Type)
@@ -248,6 +249,7 @@ func (g *game) monsterHasLOS(ax, ay, bx, by int64) bool {
 
 func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	ang := math.Atan2(float64(ty-y), float64(tx-x))
+	g.faceMonsterToward(i, x, y, tx, ty)
 	if typ == 3001 {
 		// Imps in Doom don't steer perfectly every tic; add small random drift.
 		switch doomPRandomN(5) {
@@ -273,6 +275,22 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	if g.tryMoveProbe(x, y+dy) {
 		g.m.Things[i].Y = int16((y + dy) >> fracBits)
 	}
+}
+
+func (g *game) faceMonsterToward(i int, fromX, fromY, toX, toY int64) {
+	if g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return
+	}
+	dx := float64(toX - fromX)
+	dy := float64(toY - fromY)
+	if math.Abs(dx) < 1e-6 && math.Abs(dy) < 1e-6 {
+		return
+	}
+	deg := math.Atan2(dy, dx) * (180.0 / math.Pi)
+	if deg < 0 {
+		deg += 360
+	}
+	g.m.Things[i].Angle = int16(math.Round(deg)) % 360
 }
 
 func (g *game) tryMoveProbe(x, y int64) bool {
