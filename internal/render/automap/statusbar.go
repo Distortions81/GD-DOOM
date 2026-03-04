@@ -23,21 +23,20 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 	if len(g.opts.StatusPatchBank) == 0 {
 		return
 	}
-	sx := float64(g.viewW) / statusBaseW
-	sy := float64(g.viewH) / statusBaseH
-	g.drawStatusPatch(screen, "STBAR", 0, statusBarY*sy, sx, sy)
-	g.drawStatusPatch(screen, "STARMS", 104*sx, 168*sy, sx, sy)
+	sx, sy, ox, oy := g.hudTransform()
+	g.drawStatusPatch(screen, "STBAR", ox, oy+statusBarY*sy, sx, sy)
+	g.drawStatusPatch(screen, "STARMS", ox+104*sx, oy+168*sy, sx, sy)
 
 	if ammo, ok := g.statusReadyAmmo(); ok {
-		g.drawStatusTallNum(screen, ammo, 3, 44*sx, 171*sy, sx, sy)
+		g.drawStatusTallNum(screen, ammo, 3, ox+44*sx, oy+171*sy, sx, sy)
 	}
-	g.drawStatusPercent(screen, g.stats.Health, 90*sx, 171*sy, sx, sy)
-	g.drawStatusPercent(screen, g.stats.Armor, 221*sx, 171*sy, sx, sy)
+	g.drawStatusPercent(screen, g.stats.Health, ox+90*sx, oy+171*sy, sx, sy)
+	g.drawStatusPercent(screen, g.stats.Armor, ox+221*sx, oy+171*sy, sx, sy)
 
 	for i := 0; i < 6; i++ {
 		slot := i + 2
-		x := float64(110+(i%3)*12) * sx
-		y := float64(172+(i/3)*10) * sy
+		x := ox + float64(110+(i%3)*12)*sx
+		y := oy + float64(172+(i/3)*10)*sy
 		name := fmt.Sprintf("STGNUM%d", slot)
 		if g.statusWeaponOwned(slot) {
 			name = fmt.Sprintf("STYSNUM%d", slot)
@@ -50,7 +49,7 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 	keyY := [3]float64{171, 181, 191}
 	for i := 0; i < 3; i++ {
 		if keyOn[i] {
-			g.drawStatusPatch(screen, keyNames[i], 239*sx, keyY[i]*sy, sx, sy)
+			g.drawStatusPatch(screen, keyNames[i], ox+239*sx, oy+keyY[i]*sy, sx, sy)
 		}
 	}
 
@@ -60,11 +59,33 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 	curPos := [4][2]float64{{288, 173}, {288, 179}, {288, 191}, {288, 185}}
 	maxPos := [4][2]float64{{314, 173}, {314, 179}, {314, 191}, {314, 185}}
 	for i := 0; i < 4; i++ {
-		g.drawStatusShortNum(screen, cur[i], 3, curPos[i][0]*sx, curPos[i][1]*sy, sx, sy)
-		g.drawStatusShortNum(screen, maxv[i], 3, maxPos[i][0]*sx, maxPos[i][1]*sy, sx, sy)
+		g.drawStatusShortNum(screen, cur[i], 3, ox+curPos[i][0]*sx, oy+curPos[i][1]*sy, sx, sy)
+		g.drawStatusShortNum(screen, maxv[i], 3, ox+maxPos[i][0]*sx, oy+maxPos[i][1]*sy, sx, sy)
 	}
 
-	g.drawStatusPatch(screen, g.statusFacePatchName(), 143*sx, 168*sy, sx, sy)
+	g.drawStatusPatch(screen, g.statusFacePatchName(), ox+143*sx, oy+168*sy, sx, sy)
+}
+
+func (g *game) hudTransform() (sx, sy, ox, oy float64) {
+	sx = float64(max(g.viewW, 1)) / statusBaseW
+	sy = float64(max(g.viewH, 1)) / statusBaseH
+	if !g.opts.SourcePortMode {
+		return sx, sy, 0, 0
+	}
+	// Keep Doom HUD proportions on widescreen by using uniform scale and centering.
+	sy = float64(max(g.viewH, 1)) / statusBaseH
+	sx = sy
+	ox = (float64(g.viewW) - statusBaseW*sx) * 0.5
+	if ox < 0 {
+		ox = 0
+		sx = float64(max(g.viewW, 1)) / statusBaseW
+		sy = sx
+		oy = (float64(g.viewH) - statusBaseH*sy) * 0.5
+		if oy < 0 {
+			oy = 0
+		}
+	}
+	return sx, sy, ox, oy
 }
 
 func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool) {
@@ -170,14 +191,19 @@ func (g *game) drawHUDMessage(screen *ebiten.Image, msg string, x, y float64) {
 	if strings.TrimSpace(msg) == "" {
 		return
 	}
+	sx, sy, ox, oy := g.hudTransform()
+	px := (float64(huMsgX) + x) * sx
+	py := (float64(huMsgY) + y) * sy
+	maxX := float64(g.viewW)
+	if g.opts.SourcePortMode {
+		px += ox
+		py += oy
+		maxX = ox + statusBaseW*sx
+	}
 	if len(g.opts.MessageFontBank) == 0 {
-		ebitenutil.DebugPrintAt(screen, msg, int(huMsgX+x), int(huMsgY+y))
+		ebitenutil.DebugPrintAt(screen, msg, int(px), int(py))
 		return
 	}
-	sx := float64(g.viewW) / statusBaseW
-	sy := float64(g.viewH) / statusBaseH
-	px := float64(huMsgX+x) * sx
-	py := float64(huMsgY+y) * sy
 	for _, ch := range msg {
 		uc := ch
 		if uc >= 'a' && uc <= 'z' {
@@ -192,7 +218,7 @@ func (g *game) drawHUDMessage(screen *ebiten.Image, msg string, x, y float64) {
 			px += 4 * sx
 			continue
 		}
-		if px+float64(w)*sx > float64(g.viewW) {
+		if px+float64(w)*sx > maxX {
 			break
 		}
 		op := &ebiten.DrawImageOptions{}

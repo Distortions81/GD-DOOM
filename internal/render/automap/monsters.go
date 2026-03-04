@@ -113,7 +113,7 @@ func (g *game) tickMonsters() {
 		if g.monsterCanMelee(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
 			if g.monsterAttack(i, th.Type, dist) {
-				g.thingCooldown[i] = monsterAttackCooldown(th.Type)
+				g.thingCooldown[i] = monsterAttackCooldown(th.Type, g.fastMonstersActive())
 				continue
 			}
 		}
@@ -121,7 +121,7 @@ func (g *game) tickMonsters() {
 		if g.thingCooldown[i] == 0 && g.monsterCheckMissileRange(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
 			if g.monsterAttack(i, th.Type, dist) {
-				g.thingCooldown[i] = monsterAttackCooldown(th.Type)
+				g.thingCooldown[i] = monsterAttackCooldown(th.Type, g.fastMonstersActive())
 				g.thingJustAtk[i] = true
 				continue
 			}
@@ -172,7 +172,7 @@ func (g *game) monsterChaseReady(i int, typ int16) bool {
 		g.thingThinkWait[i]--
 		return false
 	}
-	wait := monsterThinkInterval(typ)
+	wait := monsterThinkInterval(typ, g.fastMonstersActive())
 	if wait < 1 {
 		wait = 1
 	}
@@ -180,12 +180,15 @@ func (g *game) monsterChaseReady(i int, typ int16) bool {
 	return true
 }
 
-func monsterThinkInterval(typ int16) int {
+func monsterThinkInterval(typ int16, fast bool) int {
 	// Matches Doom run-state tics for common monsters (A_Chase cadence).
 	switch typ {
-	case 3004, 84, 67:
+	case 3004, 9, 84, 67:
+		if fast {
+			return 2
+		}
 		return 4
-	case 9, 3002, 58, 64, 66:
+	case 3002, 58, 64, 66:
 		return 2
 	case 3006:
 		return 6
@@ -346,7 +349,7 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	if dir >= monsterDirNoDir {
 		return false
 	}
-	step := monsterMoveStep(typ)
+	step := monsterMoveStep(typ, g.fastMonstersActive())
 	dx := fixedMul(step, monsterXSpeed[dir])
 	dy := fixedMul(step, monsterYSpeed[dir])
 	if dx == 0 && dy == 0 {
@@ -470,36 +473,64 @@ func (g *game) monsterBulletCanHitPlayer(sx, sy int64, ang float64, rng int64) b
 	return perp <= float64(playerRadius)
 }
 
-func monsterMoveStep(typ int16) int64 {
+func monsterMoveStep(typ int16, fast bool) int64 {
+	scale := int64(1)
+	if fast {
+		scale = 2
+	}
 	switch typ {
 	case 3004, 9, 3001, 84, 65:
-		return 8 * fracUnit
+		return 8 * fracUnit * scale
 	case 3002, 58:
-		return 10 * fracUnit
+		return 10 * fracUnit * scale
 	case 3005, 3003, 69, 66:
-		return 8 * fracUnit
+		return 8 * fracUnit * scale
 	case 16:
-		return 16 * fracUnit
+		return 16 * fracUnit * scale
 	case 7, 68, 67, 64, 71:
-		return 12 * fracUnit
+		return 12 * fracUnit * scale
 	case 3006:
-		return 8 * fracUnit
+		return 8 * fracUnit * scale
 	default:
-		return 8 * fracUnit
+		return 8 * fracUnit * scale
 	}
 }
 
-func monsterAttackCooldown(typ int16) int {
+func monsterAttackCooldown(typ int16, fast bool) int {
+	scale := 1
+	if fast {
+		scale = 2
+	}
 	switch typ {
 	case 9:
-		return 22 + doomPRandomN(10)
+		base := 22 + doomPRandomN(10)
+		if scale == 1 {
+			return base
+		}
+		return max(base/scale, 1)
 	case 3004, 65, 84:
-		return 28 + doomPRandomN(12)
+		base := 28 + doomPRandomN(12)
+		if scale == 1 {
+			return base
+		}
+		return max(base/scale, 1)
 	case 3002, 3006, 58:
-		return 18 + doomPRandomN(8)
+		base := 18 + doomPRandomN(8)
+		if scale == 1 {
+			return base
+		}
+		return max(base/scale, 1)
 	default:
-		return monsterAttackTics + doomPRandomN(10)
+		base := monsterAttackTics + doomPRandomN(10)
+		if scale == 1 {
+			return base
+		}
+		return max(base/scale, 1)
 	}
+}
+
+func (g *game) fastMonstersActive() bool {
+	return g.opts.FastMonsters || g.opts.SkillLevel == 5
 }
 
 func isMeleeOnlyMonster(typ int16) bool {

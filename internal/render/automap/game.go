@@ -87,9 +87,8 @@ var doomPlayerArrow = [][4]float64{
 }
 
 var detailPresets = [][2]int{
-	{320, 200},
-	{640, 400},
-	{960, 600},
+	{320, 240}, // high detail
+	{320, 240}, // low detail (column-doubled)
 }
 
 type game struct {
@@ -570,7 +569,11 @@ func (g *game) cycleDetailLevel() {
 	} else {
 		g.zoom = g.fitZoom * doomInitialZoomMul
 	}
-	g.setHUDMessage(fmt.Sprintf("Detail: %dx%d", g.viewW, g.viewH), 70)
+	label := "HIGH"
+	if g.lowDetailMode() {
+		label = "LOW"
+	}
+	g.setHUDMessage(fmt.Sprintf("Detail: %s", label), 70)
 	// Avoid a large turn delta on the next walk-mode update after viewport size changes.
 	g.mouseLookSet = false
 	g.mouseLookSuppressTicks = detailMouseSuppressTicks
@@ -1758,8 +1761,27 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+	if g.lowDetailMode() {
+		g.duplicateLowDetailColumns()
+	}
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
+}
+
+func (g *game) lowDetailMode() bool {
+	return !g.opts.SourcePortMode && g.detailLevel == 1
+}
+
+func (g *game) duplicateLowDetailColumns() {
+	if g.viewW <= 1 || g.viewH <= 0 || len(g.wallPix32) != g.viewW*g.viewH {
+		return
+	}
+	for y := 0; y < g.viewH; y++ {
+		row := y * g.viewW
+		for x := 1; x < g.viewW; x += 2 {
+			g.wallPix32[row+x] = g.wallPix32[row+x-1]
+		}
+	}
 }
 
 func hasMarkedPlane3DData(planes []*plane3DVisplane) bool {

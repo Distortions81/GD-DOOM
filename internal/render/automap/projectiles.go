@@ -49,14 +49,18 @@ func monsterProjectileKind(typ int16) projectileKind {
 	}
 }
 
-func monsterProjectileSpeed(typ int16) int64 {
+func monsterProjectileSpeed(typ int16, fast bool) int64 {
+	scale := int64(1)
+	if fast {
+		scale = 2
+	}
 	switch typ {
 	case 3003:
-		return 15 * fracUnit
+		return 15 * fracUnit * scale
 	case 16:
-		return 20 * fracUnit
+		return 20 * fracUnit * scale
 	default:
-		return 10 * fracUnit
+		return 10 * fracUnit * scale
 	}
 }
 
@@ -121,7 +125,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		return false
 	}
 
-	speed := monsterProjectileSpeed(typ)
+	speed := monsterProjectileSpeed(typ, g.fastMonstersActive())
 	vx := int64((float64(dx) / float64(dxy)) * float64(speed))
 	vy := int64((float64(dy) / float64(dxy)) * float64(speed))
 	vz := int64((float64(dz) / float64(dxy)) * float64(speed))

@@ -8,15 +8,18 @@ type Options struct {
 	Debug           bool
 	PlayerSlot      int
 	SkillLevel      int
+	FastMonsters    bool
 	CheatLevel      int
 	Invulnerable    bool
 	LineColorMode   string
 	SourcePortMode  bool
+	VerticalStretch bool
 	NoVsync         bool
 	AllCheats       bool
 	StartInMapMode  bool
 	FlatBank        map[string][]byte
 	WallTexBank     map[string]WallTexture
+	BootSplash      WallTexture
 	StatusPatchBank map[string]WallTexture
 	MessageFontBank map[rune]WallTexture
 	SpritePatchBank map[string]WallTexture

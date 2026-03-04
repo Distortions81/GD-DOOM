@@ -19,11 +19,13 @@ type fileConfig struct {
 	Zoom            *float64 `toml:"zoom"`
 	Player          *int     `toml:"player"`
 	Skill           *int     `toml:"skill"`
+	FastMonsters    *bool    `toml:"fast_monsters"`
 	CheatLevel      *int     `toml:"cheat_level"`
 	Invulnerable    *bool    `toml:"invulnerable"`
 	ImportTextures  *bool    `toml:"import_textures"`
 	LineColorMode   *string  `toml:"line_color_mode"`
 	SourcePortMode  *bool    `toml:"sourceport_mode"`
+	VerticalStretch *bool    `toml:"vertical_stretch"`
 	AllCheats       *bool    `toml:"all_cheats"`
 	StartInMap      *bool    `toml:"start_in_map"`
 	ImportPCSpeaker *bool    `toml:"import_pcspeaker"`

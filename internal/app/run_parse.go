@@ -38,10 +38,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultZoom := 0.0
 	defaultPlayer := 1
 	defaultSkill := 3
+	defaultFastMonsters := false
 	defaultCheatLevel := 0
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultVerticalStretch := false
 	defaultAllCheats := false
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
@@ -86,6 +88,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.Skill != nil {
 			defaultSkill = *cfg.Skill
 		}
+		if cfg.FastMonsters != nil {
+			defaultFastMonsters = *cfg.FastMonsters
+		}
 		if cfg.CheatLevel != nil {
 			defaultCheatLevel = *cfg.CheatLevel
 		}
@@ -98,6 +103,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
+		}
+		if cfg.VerticalStretch != nil {
+			defaultVerticalStretch = *cfg.VerticalStretch
 		}
 		if cfg.AllCheats != nil {
 			defaultAllCheats = *cfg.AllCheats
@@ -140,10 +148,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
+	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	verticalStretch := fs.Bool("vertical-stretch", defaultVerticalStretch, "faithful mode: apply 4:3 vertical-stretch presentation")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
@@ -224,6 +234,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	soundBank = buildAutomapSoundBank(dsr)
 	wallTexBank := map[string]automap.WallTexture(nil)
+	bootSplash := automap.WallTexture{}
 	statusPatchBank := map[string]automap.WallTexture(nil)
 	messageFontBank := map[rune]automap.WallTexture(nil)
 	spritePatchBank := map[string]automap.WallTexture(nil)
@@ -272,6 +283,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	if texSet != nil {
+		bootSplash = buildBootSplashTexture(texSet)
+		if bootSplash.Width > 0 && bootSplash.Height > 0 && len(bootSplash.RGBA) == bootSplash.Width*bootSplash.Height*4 {
+			fmt.Fprintf(stderr, "boot splash import: %dx%d\n", bootSplash.Width, bootSplash.Height)
+		}
 		statusPatchBank = buildStatusPatchBank(texSet)
 		if len(statusPatchBank) > 0 {
 			fmt.Fprintf(stderr, "status patch import: patches=%d\n", len(statusPatchBank))
@@ -337,15 +352,18 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Debug:           *debug,
 			PlayerSlot:      *playerSlot,
 			SkillLevel:      *skillLevel,
+			FastMonsters:    *fastMonsters,
 			CheatLevel:      resolvedCheatLevel,
 			Invulnerable:    resolvedInvuln,
 			LineColorMode:   resolvedLineColorMode,
 			SourcePortMode:  *sourcePortMode,
+			VerticalStretch: *verticalStretch,
 			NoVsync:         *noVsync,
 			AllCheats:       *allCheats,
 			StartInMapMode:  *startInMap,
 			FlatBank:        flatBank,
 			WallTexBank:     wallTexBank,
+			BootSplash:      bootSplash,
 			StatusPatchBank: statusPatchBank,
 			MessageFontBank: messageFontBank,
 			SpritePatchBank: spritePatchBank,
@@ -494,6 +512,41 @@ func firstSample(a, b automap.PCMSample) automap.PCMSample {
 		return a
 	}
 	return b
+}
+
+func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
+	if ts == nil {
+		return automap.WallTexture{}
+	}
+	// TITLEPIC is a raw 320x200 indexed image in stock Doom IWADs.
+	if rgba, w, h, err := ts.BuildRawPicRGBA("TITLEPIC", 0, 320, 200); err == nil && len(rgba) == w*h*4 {
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		return automap.WallTexture{
+			RGBA:   rgba,
+			RGBA32: rgba32,
+			Width:  w,
+			Height: h,
+		}
+	}
+	// Fallback if a WAD stores TITLEPIC as a patch lump.
+	if rgba, w, h, ox, oy, err := ts.BuildPatchRGBA("TITLEPIC", 0); err == nil && len(rgba) == w*h*4 {
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		return automap.WallTexture{
+			RGBA:    rgba,
+			RGBA32:  rgba32,
+			Width:   w,
+			Height:  h,
+			OffsetX: ox,
+			OffsetY: oy,
+		}
+	}
+	return automap.WallTexture{}
 }
 
 func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {

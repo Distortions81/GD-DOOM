@@ -8,9 +8,41 @@ import (
 	"gddoom/internal/mapdata"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error)
+
+const (
+	bootSplashHoldTics     = 3 * doomTicsPerSecond
+	meltVirtualH           = 200
+	sourcePortMeltInitCols = 320
+	sourcePortMeltMoveCols = sourcePortMeltInitCols / 2
+)
+
+type transitionKind int
+
+const (
+	transitionNone transitionKind = iota
+	transitionBoot
+	transitionLevel
+)
+
+type sessionTransition struct {
+	kind        transitionKind
+	pending     bool
+	initialized bool
+	holdTics    int
+	width       int
+	height      int
+	y           []int
+	fromPix     []byte
+	toPix       []byte
+	workPix     []byte
+	from        *ebiten.Image
+	to          *ebiten.Image
+	work        *ebiten.Image
+}
 
 type sessionGame struct {
 	g               *game
@@ -19,12 +51,16 @@ type sessionGame struct {
 	nextMap         NextMapFunc
 	err             error
 	faithfulSurface *ebiten.Image
+	presentSurface  *ebiten.Image
+	lastFrame       *ebiten.Image
+	bootSplashImage *ebiten.Image
+	transition      sessionTransition
 }
 
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	const (
-		doomLogicalW = 640
-		doomLogicalH = 400
+		doomLogicalW = 320
+		doomLogicalH = 240
 		doomWindowW  = 1280
 		doomWindowH  = 960
 	)
@@ -44,6 +80,9 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		current: m.Name,
 		opts:    opts,
 		nextMap: nextMap,
+	}
+	if sg.shouldShowBootSplash() {
+		sg.queueTransition(transitionBoot, bootSplashHoldTics)
 	}
 	ebiten.SetTPS(doomTicsPerSecond)
 	ebiten.SetVsyncEnabled(!opts.NoVsync)
@@ -83,11 +122,24 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 }
 
 func (sg *sessionGame) Update() error {
+	if sg.transitionActive() {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF4) {
+			return ebiten.Termination
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
+			(ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)) {
+			return ebiten.Termination
+		}
+		sg.tickTransition()
+		return nil
+	}
+
 	err := sg.g.Update()
 	if err == nil {
 		if sg.g.levelRestartRequested {
 			sg.g = newGame(sg.g.m, sg.opts)
 			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
+			sg.queueTransition(transitionLevel, 0)
 		}
 		return nil
 	}
@@ -109,43 +161,363 @@ func (sg *sessionGame) Update() error {
 	sg.current = nextName
 	sg.g = newGame(next, sg.opts)
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", next.Name))
+	sg.queueTransition(transitionLevel, 0)
 	return nil
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	if sg.transitionActive() {
+		sg.ensureTransitionReady(sw, sh)
+		if sg.transition.initialized {
+			sg.drawTransitionFrame(screen, sw, sh)
+			return
+		}
+		sg.clearTransition()
+	}
+	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
+		sg.presentSurface = ebiten.NewImage(sw, sh)
+	}
+	sg.drawGamePresented(sg.presentSurface, sg.g)
+	screen.DrawImage(sg.presentSurface, nil)
+	if sg.opts.SourcePortMode {
+		sg.captureLastFrame(sg.presentSurface)
+	}
+}
+
+func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
+	if dst == nil || g == nil {
+		return
+	}
 	if !sg.opts.SourcePortMode {
-		vw := max(sg.g.viewW, 1)
-		vh := max(sg.g.viewH, 1)
+		vw := max(g.viewW, 1)
+		vh := max(g.viewH, 1)
 		if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
 			sg.faithfulSurface = ebiten.NewImage(vw, vh)
 		}
-		sg.g.Draw(sg.faithfulSurface)
-
-		sw := screen.Bounds().Dx()
-		sh := screen.Bounds().Dy()
-		dstW := sw
-		dstH := (dstW * 3) / 4 // 8:5 render shown as 4:3 display -> 20% taller
-		if dstH > sh {
-			dstH = sh
-			dstW = (dstH * 4) / 3
-		}
-		if dstW < 1 {
-			dstW = 1
-		}
-		if dstH < 1 {
-			dstH = 1
-		}
-		offX := (sw - dstW) / 2
-		offY := (sh - dstH) / 2
-
-		screen.Fill(color.Black)
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Scale(float64(dstW)/float64(vw), float64(dstH)/float64(vh))
-		op.GeoM.Translate(float64(offX), float64(offY))
-		screen.DrawImage(sg.faithfulSurface, op)
+		g.Draw(sg.faithfulSurface)
+		sg.drawFaithfulPresented(dst, sg.faithfulSurface)
+		sg.captureLastFrame(sg.faithfulSurface)
 		return
 	}
-	sg.g.Draw(screen)
+	g.Draw(dst)
+}
+
+func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
+	if dst == nil || src == nil {
+		return
+	}
+	sw := max(dst.Bounds().Dx(), 1)
+	sh := max(dst.Bounds().Dy(), 1)
+	vw := max(src.Bounds().Dx(), 1)
+	vh := max(src.Bounds().Dy(), 1)
+	if !sg.opts.VerticalStretch {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(sw)/float64(vw), float64(sh)/float64(vh))
+		dst.DrawImage(src, op)
+		return
+	}
+	dstW := sw
+	dstH := (dstW * 3) / 4 // Present faithful mode inside a 4:3 display area.
+	if dstH > sh {
+		dstH = sh
+		dstW = (dstH * 4) / 3
+	}
+	if dstW < 1 {
+		dstW = 1
+	}
+	if dstH < 1 {
+		dstH = 1
+	}
+	offX := (sw - dstW) / 2
+	offY := (sh - dstH) / 2
+	dst.Fill(color.Black)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(dstW)/float64(vw), float64(dstH)/float64(vh))
+	op.GeoM.Translate(float64(offX), float64(offY))
+	dst.DrawImage(src, op)
+}
+
+func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {
+	if dst == nil {
+		return
+	}
+	if sg.bootSplashImage == nil && sg.opts.BootSplash.Width > 0 && sg.opts.BootSplash.Height > 0 &&
+		len(sg.opts.BootSplash.RGBA) == sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
+		sg.bootSplashImage = ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
+		sg.bootSplashImage.WritePixels(sg.opts.BootSplash.RGBA)
+	}
+	if sg.bootSplashImage == nil {
+		dst.Fill(color.Black)
+		return
+	}
+	if !sg.opts.SourcePortMode {
+		sg.drawFaithfulPresented(dst, sg.bootSplashImage)
+		return
+	}
+	sw := max(dst.Bounds().Dx(), 1)
+	sh := max(dst.Bounds().Dy(), 1)
+	bw := max(sg.bootSplashImage.Bounds().Dx(), 1)
+	bh := max(sg.bootSplashImage.Bounds().Dy(), 1)
+	dst.Fill(color.Black)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(sw)/float64(bw), float64(sh)/float64(bh))
+	dst.DrawImage(sg.bootSplashImage, op)
+}
+
+func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
+	if dst == nil || g == nil {
+		return
+	}
+	if sg.opts.SourcePortMode {
+		g.Draw(dst)
+		return
+	}
+	vw := max(g.viewW, 1)
+	vh := max(g.viewH, 1)
+	if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
+		sg.faithfulSurface = ebiten.NewImage(vw, vh)
+	}
+	g.Draw(sg.faithfulSurface)
+	dw := max(dst.Bounds().Dx(), 1)
+	dh := max(dst.Bounds().Dy(), 1)
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(dw)/float64(vw), float64(dh)/float64(vh))
+	dst.Fill(color.Black)
+	dst.DrawImage(sg.faithfulSurface, op)
+}
+
+func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
+	if dst == nil {
+		return
+	}
+	if sg.bootSplashImage == nil && sg.opts.BootSplash.Width > 0 && sg.opts.BootSplash.Height > 0 &&
+		len(sg.opts.BootSplash.RGBA) == sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
+		sg.bootSplashImage = ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
+		sg.bootSplashImage.WritePixels(sg.opts.BootSplash.RGBA)
+	}
+	if sg.bootSplashImage == nil {
+		dst.Fill(color.Black)
+		return
+	}
+	dw := max(dst.Bounds().Dx(), 1)
+	dh := max(dst.Bounds().Dy(), 1)
+	bw := max(sg.bootSplashImage.Bounds().Dx(), 1)
+	bh := max(sg.bootSplashImage.Bounds().Dy(), 1)
+	dst.Fill(color.Black)
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(dw)/float64(bw), float64(dh)/float64(bh))
+	dst.DrawImage(sg.bootSplashImage, op)
+}
+
+func (sg *sessionGame) queueTransition(kind transitionKind, holdTics int) {
+	if kind == transitionNone {
+		sg.clearTransition()
+		return
+	}
+	sg.transition.kind = kind
+	sg.transition.pending = true
+	sg.transition.initialized = false
+	if holdTics < 0 {
+		holdTics = 0
+	}
+	sg.transition.holdTics = holdTics
+	sg.transition.y = nil
+}
+
+func (sg *sessionGame) shouldShowBootSplash() bool {
+	if sg.opts.DemoScript != nil {
+		return false
+	}
+	return sg.opts.BootSplash.Width > 0 &&
+		sg.opts.BootSplash.Height > 0 &&
+		len(sg.opts.BootSplash.RGBA) == sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4
+}
+
+func (sg *sessionGame) transitionActive() bool {
+	return sg.transition.kind != transitionNone
+}
+
+func (sg *sessionGame) ensureTransitionReady(width, height int) {
+	t := &sg.transition
+	if t.kind == transitionNone || t.initialized || !t.pending {
+		return
+	}
+	tw := width
+	th := height
+	if !sg.opts.SourcePortMode {
+		tw = max(sg.g.viewW, 1)
+		th = max(sg.g.viewH, 1)
+	}
+	if tw <= 0 || th <= 0 {
+		return
+	}
+	if t.from == nil || t.from.Bounds().Dx() != tw || t.from.Bounds().Dy() != th {
+		t.from = ebiten.NewImage(tw, th)
+	}
+	if t.to == nil || t.to.Bounds().Dx() != tw || t.to.Bounds().Dy() != th {
+		t.to = ebiten.NewImage(tw, th)
+	}
+	if t.work == nil || t.work.Bounds().Dx() != tw || t.work.Bounds().Dy() != th {
+		t.work = ebiten.NewImage(tw, th)
+	}
+	switch t.kind {
+	case transitionBoot:
+		sg.drawBootSplashTransitionSurface(t.from)
+		sg.drawGameTransitionSurface(t.to, sg.g)
+	case transitionLevel:
+		if sg.lastFrame != nil {
+			t.from.Clear()
+			op := &ebiten.DrawImageOptions{}
+			lw := max(sg.lastFrame.Bounds().Dx(), 1)
+			lh := max(sg.lastFrame.Bounds().Dy(), 1)
+			op.Filter = ebiten.FilterNearest
+			op.GeoM.Scale(float64(tw)/float64(lw), float64(th)/float64(lh))
+			t.from.DrawImage(sg.lastFrame, op)
+		} else {
+			sg.drawGameTransitionSurface(t.from, sg.g)
+		}
+		sg.drawGameTransitionSurface(t.to, sg.g)
+	default:
+		sg.clearTransition()
+		return
+	}
+	need := tw * th * 4
+	if len(t.fromPix) != need {
+		t.fromPix = make([]byte, need)
+	}
+	if len(t.toPix) != need {
+		t.toPix = make([]byte, need)
+	}
+	if len(t.workPix) != need {
+		t.workPix = make([]byte, need)
+	}
+	t.from.ReadPixels(t.fromPix)
+	t.to.ReadPixels(t.toPix)
+	copy(t.workPix, t.fromPix)
+	t.work.WritePixels(t.workPix)
+	t.width = tw
+	t.height = th
+	t.initialized = true
+	t.pending = false
+	if t.holdTics <= 0 {
+		if sg.opts.SourcePortMode {
+			t.y = initMeltColumnsScaled(sourcePortMeltInitColumns(), sourcePortMeltRNGScale(t.height))
+		} else {
+			t.y = initMeltColumns(tw)
+		}
+	}
+}
+
+func (sg *sessionGame) tickTransition() {
+	t := &sg.transition
+	if t.kind == transitionNone || !t.initialized {
+		return
+	}
+	if t.holdTics > 0 {
+		t.holdTics--
+		if t.holdTics == 0 {
+			if sg.opts.SourcePortMode {
+				t.y = initMeltColumnsScaled(sourcePortMeltInitColumns(), sourcePortMeltRNGScale(t.height))
+			} else {
+				t.y = initMeltColumns(t.width)
+			}
+		}
+		return
+	}
+	if len(t.y) == 0 {
+		if sg.opts.SourcePortMode {
+			t.y = initMeltColumnsScaled(sourcePortMeltInitColumns(), sourcePortMeltRNGScale(t.height))
+		} else {
+			t.y = initMeltColumns(t.width)
+		}
+	}
+	meltTicks := 1
+	if sg.opts.SourcePortMode {
+		// Source-port path keeps existing resolution-scaled melt pacing.
+		meltTicks = (t.height + 199) / 200
+		if meltTicks < 1 {
+			meltTicks = 1
+		}
+	}
+	done := false
+	if sg.opts.SourcePortMode {
+		done = stepMeltSlicesVirtual(t.y, meltVirtualH, t.width, t.height, t.fromPix, t.toPix, t.workPix, meltTicks, sourcePortMeltMoveColumns())
+	} else {
+		done = stepMeltColumns(t.y, t.width, t.height, t.fromPix, t.toPix, t.workPix, meltTicks)
+	}
+	if done {
+		t.work.WritePixels(t.toPix)
+		sg.captureLastFrame(t.to)
+		sg.clearTransition()
+		return
+	}
+	t.work.WritePixels(t.workPix)
+}
+
+func sourcePortMeltRNGScale(height int) int {
+	scale := height / meltVirtualH
+	if scale < 1 {
+		return 1
+	}
+	return scale
+}
+
+func sourcePortMeltInitColumns() int {
+	return sourcePortMeltInitCols
+}
+
+func sourcePortMeltMoveColumns() int {
+	return sourcePortMeltMoveCols
+}
+
+func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
+	t := &sg.transition
+	if t.work == nil {
+		screen.Fill(color.Black)
+		return
+	}
+	if !sg.opts.SourcePortMode {
+		sg.drawFaithfulPresented(screen, t.work)
+		return
+	}
+	tw := max(t.width, 1)
+	th := max(t.height, 1)
+	if tw == sw && th == sh {
+		screen.DrawImage(t.work, nil)
+		return
+	}
+	screen.Fill(color.Black)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(sw)/float64(tw), float64(sh)/float64(th))
+	screen.DrawImage(t.work, op)
+}
+
+func (sg *sessionGame) captureLastFrame(src *ebiten.Image) {
+	if src == nil {
+		return
+	}
+	w := src.Bounds().Dx()
+	h := src.Bounds().Dy()
+	if w <= 0 || h <= 0 {
+		return
+	}
+	if sg.lastFrame == nil || sg.lastFrame.Bounds().Dx() != w || sg.lastFrame.Bounds().Dy() != h {
+		sg.lastFrame = ebiten.NewImage(w, h)
+	}
+	sg.lastFrame.Clear()
+	sg.lastFrame.DrawImage(src, nil)
+}
+
+func (sg *sessionGame) clearTransition() {
+	sg.transition.kind = transitionNone
+	sg.transition.pending = false
+	sg.transition.initialized = false
+	sg.transition.holdTics = 0
+	sg.transition.y = nil
 }
 
 func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
