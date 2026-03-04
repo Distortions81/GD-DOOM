@@ -49,6 +49,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultCPUProfile := ""
 	defaultDemo := ""
 	defaultRecordDemo := ""
+	defaultNoVsync := false
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -119,6 +120,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.RecordDemo != nil {
 			defaultRecordDemo = *cfg.RecordDemo
 		}
+		if cfg.NoVsync != nil {
+			defaultNoVsync = *cfg.NoVsync
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -147,6 +151,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
 	demoPath := fs.String("demo", defaultDemo, "path to gddoom-demo-v1 script; runs scripted benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write gddoom-demo-v1 script recorded from live input")
+	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -216,6 +221,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	wallTexBank := map[string]automap.WallTexture(nil)
 	statusPatchBank := map[string]automap.WallTexture(nil)
+	messageFontBank := map[rune]automap.WallTexture(nil)
 	var texSet *doomtex.Set
 	if *importTextures {
 		ts, terr := doomtex.LoadFromWAD(wf)
@@ -264,6 +270,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		statusPatchBank = buildStatusPatchBank(texSet)
 		if len(statusPatchBank) > 0 {
 			fmt.Fprintf(stderr, "status patch import: patches=%d\n", len(statusPatchBank))
+		}
+		messageFontBank = buildMessageFontBank(texSet)
+		if len(messageFontBank) > 0 {
+			fmt.Fprintf(stderr, "message font import: glyphs=%d\n", len(messageFontBank))
 		}
 	}
 	flatBank := map[string][]byte(nil)
@@ -325,11 +335,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:    resolvedInvuln,
 			LineColorMode:   resolvedLineColorMode,
 			SourcePortMode:  *sourcePortMode,
+			NoVsync:         *noVsync,
 			AllCheats:       *allCheats,
 			StartInMapMode:  *startInMap,
 			FlatBank:        flatBank,
 			WallTexBank:     wallTexBank,
 			StatusPatchBank: statusPatchBank,
+			MessageFontBank: messageFontBank,
 			SoundBank:       soundBank,
 			RecordDemoPath:  resolvedRecordDemoPath,
 		}
@@ -527,6 +539,40 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
 		out[name] = automap.WallTexture{
+			RGBA:    rgba,
+			RGBA32:  rgba32,
+			Width:   w,
+			Height:  h,
+			OffsetX: ox,
+			OffsetY: oy,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
+	if ts == nil {
+		return nil
+	}
+	const (
+		fontStart = 33 // '!'
+		fontEnd   = 95 // '_'
+	)
+	out := make(map[rune]automap.WallTexture, fontEnd-fontStart+1)
+	for c := fontStart; c <= fontEnd; c++ {
+		name := fmt.Sprintf("STCFN%03d", c)
+		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
+		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+			continue
+		}
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		out[rune(c)] = automap.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,

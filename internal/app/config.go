@@ -31,6 +31,7 @@ type fileConfig struct {
 	CPUProfile      *string  `toml:"cpu_profile"`
 	Demo            *string  `toml:"demo"`
 	RecordDemo      *string  `toml:"record_demo"`
+	NoVsync         *bool    `toml:"no_vsync"`
 }
 
 func resolveConfigPath(args []string) (path string, explicit bool) {

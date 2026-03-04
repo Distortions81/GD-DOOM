@@ -12,11 +12,13 @@ type Options struct {
 	Invulnerable    bool
 	LineColorMode   string
 	SourcePortMode  bool
+	NoVsync         bool
 	AllCheats       bool
 	StartInMapMode  bool
 	FlatBank        map[string][]byte
 	WallTexBank     map[string]WallTexture
 	StatusPatchBank map[string]WallTexture
+	MessageFontBank map[rune]WallTexture
 	SoundBank       SoundBank
 	DemoScript      *DemoScript
 	RecordDemoPath  string

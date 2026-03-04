@@ -47,6 +47,7 @@ const (
 	statusTurnCount                 = doomTicsPerSecond
 	statusRampageDelay              = 2 * doomTicsPerSecond
 	statusMuchPain                  = 20
+	huMsgTimeout                    = 4 * doomTicsPerSecond
 	statusAng45              uint32 = 0x20000000
 	statusAng180             uint32 = 0x80000000
 )
@@ -218,6 +219,7 @@ type game struct {
 	buffers3DH         int
 	flatImgCache       map[string]*ebiten.Image
 	statusPatchImg     map[string]*ebiten.Image
+	messageFontImg     map[rune]*ebiten.Image
 	whitePixel         *ebiten.Image
 	cullLogBudget      int
 	floorDbgMode       floorDebugMode
@@ -1061,7 +1063,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		}
 		g.drawFlashOverlay(screen)
 		if g.useFlash > 0 {
-			ebitenutil.DebugPrintAt(screen, g.useText, 12, 44)
+			g.drawHUDMessage(screen, g.useText, 0, 0)
 		}
 		g.drawHelpUI(screen)
 		if g.paused {
@@ -1159,11 +1161,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		}
 	}
 	if g.useFlash > 0 {
-		msgY := 12
-		if g.opts.SourcePortMode {
-			msgY = 44
-		}
-		ebitenutil.DebugPrintAt(screen, g.useText, 12, msgY)
+		g.drawHUDMessage(screen, g.useText, 0, 0)
 	}
 	g.drawHelpUI(screen)
 	if g.isDead {
@@ -1213,6 +1211,10 @@ func (g *game) tickDelayedSounds() {
 
 func (g *game) setHUDMessage(msg string, tics int) {
 	g.useText = msg
+	if !g.opts.SourcePortMode {
+		// Doom HU messages use a fixed timeout (HU_MSGTIMEOUT).
+		tics = huMsgTimeout
+	}
 	g.useFlash = tics
 }
 

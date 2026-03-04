@@ -9,6 +9,14 @@ import (
 	"gddoom/internal/doomrand"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+)
+
+const (
+	huFontStart = '!' // HU_FONTSTART
+	huFontEnd   = '_' // HU_FONTEND
+	huMsgX      = 0   // HU_MSGX
+	huMsgY      = 0   // HU_MSGY
 )
 
 func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
@@ -136,6 +144,63 @@ func (g *game) drawStatusPercent(screen *ebiten.Image, value int, x, y, sx, sy f
 		return
 	}
 	g.drawStatusTallNum(screen, value, 3, x, y, sx, sy)
+}
+
+func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, bool) {
+	if ch >= 'a' && ch <= 'z' {
+		ch -= 'a' - 'A'
+	}
+	p, ok := g.opts.MessageFontBank[ch]
+	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+		return nil, 0, 0, 0, 0, false
+	}
+	if g.messageFontImg == nil {
+		g.messageFontImg = make(map[rune]*ebiten.Image, 96)
+	}
+	if img, ok := g.messageFontImg[ch]; ok {
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+	}
+	img := ebiten.NewImage(p.Width, p.Height)
+	img.WritePixels(p.RGBA)
+	g.messageFontImg[ch] = img
+	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+}
+
+func (g *game) drawHUDMessage(screen *ebiten.Image, msg string, x, y float64) {
+	if strings.TrimSpace(msg) == "" {
+		return
+	}
+	if len(g.opts.MessageFontBank) == 0 {
+		ebitenutil.DebugPrintAt(screen, msg, int(huMsgX+x), int(huMsgY+y))
+		return
+	}
+	sx := float64(g.viewW) / statusBaseW
+	sy := float64(g.viewH) / statusBaseH
+	px := float64(huMsgX+x) * sx
+	py := float64(huMsgY+y) * sy
+	for _, ch := range msg {
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
+			px += 4 * sx
+			continue
+		}
+		img, w, _, ox, oy, ok := g.messageFontGlyph(uc)
+		if !ok {
+			px += 4 * sx
+			continue
+		}
+		if px+float64(w)*sx > float64(g.viewW) {
+			break
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(sx, sy)
+		op.GeoM.Translate(px-float64(ox)*sx, py-float64(oy)*sy)
+		screen.DrawImage(img, op)
+		px += float64(w) * sx
+	}
 }
 
 func (g *game) statusWeaponOwned(slot int) bool {

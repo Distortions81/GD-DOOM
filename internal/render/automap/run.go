@@ -46,6 +46,7 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		nextMap: nextMap,
 	}
 	ebiten.SetTPS(doomTicsPerSecond)
+	ebiten.SetVsyncEnabled(!opts.NoVsync)
 	if opts.SourcePortMode {
 		ebiten.SetWindowSize(opts.Width, opts.Height)
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
