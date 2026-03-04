@@ -2429,8 +2429,7 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	if y1 > wallBottom[x] {
 		wallBottom[x] = y1
 	}
-	distMul := shadeMulByDistance(depth)
-	shadeMul := combineShadeMul(distMul, sectorLightMul(sectorLight))
+	shadeMul := sectorLightMul(sectorLight)
 	if useTex {
 		g.drawBasicWallColumnTextured(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul)
 		g.writeDepthColumn(x, y0, y1, depth)
@@ -3143,7 +3142,7 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 			if y0 > y1 {
 				continue
 			}
-			shadeMul := combineShadeMul(shadeMulByDistance(f), sectorLightMul(ms.light))
+			shadeMul := sectorLightMul(ms.light)
 			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.texMid, focal, ms.tex, shadeMul)
 		}
 	}
@@ -3190,9 +3189,8 @@ func initWallShadeLUT() {
 }
 
 func initSectorLightMulLUT() {
-	const minMul = 72 // keep very dark sectors visible, but clearly dim.
 	for i := 0; i < len(sectorLightMulLUT); i++ {
-		sectorLightMulLUT[i] = uint8(minMul + (i*(256-minMul)+127)/255)
+		sectorLightMulLUT[i] = uint8(i)
 	}
 }
 
@@ -3426,64 +3424,85 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				if depth <= 0 {
 					continue
 				}
-				spanLightMul := sectorLightMul(key.light)
-				midX := (x1 + x2) >> 1
-				wxMid := camX + depth*ca - ((cx-(float64(midX)+0.5))*depth/focal)*sa
-				wyMid := camY + depth*sa + ((cx-(float64(midX)+0.5))*depth/focal)*ca
-				if sec := g.sectorAt(int64(wxMid*fracUnit), int64(wyMid*fracUnit)); sec >= 0 && sec < len(g.m.Sectors) {
-					spanLightMul = sectorLightMul(g.m.Sectors[sec].Light)
-				}
-				shadeMul := combineShadeMul(shadeMulByDistance(depth), spanLightMul)
 				stamp := g.depthFrameStamp
 				depthQ := encodeDepthQ(depth)
 				depthPacked := packDepthStamped(depthQ, stamp)
 				if g.rowFullyOccludedByWallsDepthQ(depthQ, rowPix, x1, x2) {
 					continue
 				}
-				wxSpan := camX + depth*ca - ((cx-(float64(x1)+0.5))*depth/focal)*sa
-				wySpan := camY + depth*sa + ((cx-(float64(x1)+0.5))*depth/focal)*ca
 				stepWX := (depth / focal) * sa
 				stepWY := -(depth / focal) * ca
+				rowBaseWX := camX + depth*ca - ((cx-0.5)*depth/focal)*sa
+				rowBaseWY := camY + depth*sa + ((cx-0.5)*depth/focal)*ca
+				rowBaseWXFixed := floorFixed(rowBaseWX)
+				rowBaseWYFixed := floorFixed(rowBaseWY)
+				stepWXFixed := floorFixed(stepWX)
+				stepWYFixed := floorFixed(stepWY)
+				xOff := int64(x1)
+				wxFixed := rowBaseWXFixed + xOff*stepWXFixed
+				wyFixed := rowBaseWYFixed + xOff*stepWYFixed
+				defaultShade := uint32(sectorLightMul(key.light))
+				shadeAt := func(wx, wy int64) uint32 {
+					if sec := g.sectorAt(wx, wy); sec >= 0 && sec < len(g.m.Sectors) {
+						return uint32(sectorLightMul(g.m.Sectors[sec].Light))
+					}
+					return defaultShade
+				}
 				pixI := rowPix + x1
 				if !flatTexReady {
-					fbShadePacked := fbPacked
-					if shadeMul != 256 {
-						fbShadePacked = shadePackedRGBABig(fbPacked, uint32(shadeMul))
-					}
 					x := x1
 					for ; x+1 <= x2; x += 2 {
-						pix32[pixI] = fbShadePacked
-						pix32[pixI+1] = fbShadePacked
+						shade0 := shadeAt(wxFixed, wyFixed)
+						wxFixed += stepWXFixed
+						wyFixed += stepWYFixed
+						shade1 := shadeAt(wxFixed, wyFixed)
+						wxFixed += stepWXFixed
+						wyFixed += stepWYFixed
+						if shade0 == 256 {
+							pix32[pixI] = fbPacked
+						} else {
+							pix32[pixI] = shadePackedRGBABig(fbPacked, shade0)
+						}
+						if shade1 == 256 {
+							pix32[pixI+1] = fbPacked
+						} else {
+							pix32[pixI+1] = shadePackedRGBABig(fbPacked, shade1)
+						}
 						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 						pixI += 2
 					}
 					if x <= x2 {
-						pix32[pixI] = fbShadePacked
+						shade := shadeAt(wxFixed, wyFixed)
+						if shade == 256 {
+							pix32[pixI] = fbPacked
+						} else {
+							pix32[pixI] = shadePackedRGBABig(fbPacked, shade)
+						}
 						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
 				}
-				wxFixed := floorFixed(wxSpan)
-				wyFixed := floorFixed(wySpan)
-				stepWXFixed := floorFixed(stepWX)
-				stepWYFixed := floorFixed(stepWY)
 				x := x1
 				for ; x+1 <= x2; x += 2 {
 					u0 := int(wxFixed>>fracBits) & 63
 					v0 := int(wyFixed>>fracBits) & 63
 					p0 := tex32[(v0<<6)+u0]
+					shade0 := shadeAt(wxFixed, wyFixed)
 					wxFixed += stepWXFixed
 					wyFixed += stepWYFixed
 					u1 := int(wxFixed>>fracBits) & 63
 					v1 := int(wyFixed>>fracBits) & 63
 					p1 := tex32[(v1<<6)+u1]
-					if shadeMul == 256 {
+					shade1 := shadeAt(wxFixed, wyFixed)
+					if shade0 == 256 {
 						pix32[pixI] = p0
+					} else {
+						pix32[pixI] = shadePackedRGBABig(p0, shade0)
+					}
+					if shade1 == 256 {
 						pix32[pixI+1] = p1
 					} else {
-						sm := uint32(shadeMul)
-						pix32[pixI] = shadePackedRGBABig(p0, sm)
-						pix32[pixI+1] = shadePackedRGBABig(p1, sm)
+						pix32[pixI+1] = shadePackedRGBABig(p1, shade1)
 					}
 					g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 					wxFixed += stepWXFixed
@@ -3493,10 +3512,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				if x <= x2 {
 					u := int(wxFixed>>fracBits) & 63
 					v := int(wyFixed>>fracBits) & 63
-					if shadeMul == 256 {
+					shade := shadeAt(wxFixed, wyFixed)
+					if shade == 256 {
 						pix32[pixI] = tex32[(v<<6)+u]
 					} else {
-						pix32[pixI] = shadePackedRGBABig(tex32[(v<<6)+u], uint32(shadeMul))
+						pix32[pixI] = shadePackedRGBABig(tex32[(v<<6)+u], shade)
 					}
 					g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 				}
@@ -7014,12 +7034,8 @@ func shadeMulByDistance(dist float64) int {
 }
 
 func combineShadeMul(a, b int) int {
-	// Keep sector lighting visible without crushing into black.
-	// Weight distance more than sector light to preserve depth readability.
-	m := (a*3 + b) >> 2
-	if m < 32 {
-		m = 32
-	}
+	// Combine distance and sector lighting multiplicatively.
+	m := (a * b) >> 8
 	if m < 0 {
 		return 0
 	}
