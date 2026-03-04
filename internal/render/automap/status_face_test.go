@@ -19,11 +19,11 @@ func TestStatusFaceInvulnerableUsesGodFace(t *testing.T) {
 
 func TestStatusFaceWeaponPickupTriggersEvilGrin(t *testing.T) {
 	g := &game{
-		stats:         playerStats{Health: 100},
-		bonusFlashTic: 6,
+		stats: playerStats{Health: 100},
 	}
 	g.initPlayerState()
 	g.initStatusFaceState()
+	g.statusBonusCount = 6
 	g.inventory.Weapons[2001] = true
 
 	g.statusUpdateFaceWidget()
@@ -36,16 +36,12 @@ func TestStatusFaceWeaponPickupTriggersEvilGrin(t *testing.T) {
 
 func TestStatusFaceAttackerHeadOnUsesRampageFace(t *testing.T) {
 	g := &game{
-		stats:             playerStats{Health: 100},
-		damageFlashTic:    8,
-		p:                 player{x: 0, y: 0, angle: 0},
-		statusOldHealth:   100,
-		statusHasAttacker: true,
-		statusAttackerX:   128 * fracUnit,
-		statusAttackerY:   0,
+		stats: playerStats{Health: 100},
+		p:     player{x: 0, y: 0, angle: 0},
 	}
 	g.initPlayerState()
 	g.initStatusFaceState()
+	g.statusDamageCount = 8
 	g.statusOldHealth = 100
 	g.statusHasAttacker = true
 	g.statusAttackerX = 128 * fracUnit

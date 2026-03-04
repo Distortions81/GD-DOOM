@@ -266,6 +266,8 @@ type game struct {
 	statusAttackerY    int64
 	statusHasAttacker  bool
 	statusOldWeapons   [8]bool
+	statusDamageCount  int
+	statusBonusCount   int
 	demoBenchStart     time.Time
 	demoBenchDraws     int
 	demoStartRnd       int

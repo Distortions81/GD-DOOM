@@ -28,6 +28,8 @@ type WallTexture struct {
 	ColMajor []uint32
 	Width    int
 	Height   int
+	OffsetX  int
+	OffsetY  int
 }
 
 type RunResult struct {

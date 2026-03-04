@@ -98,6 +98,10 @@ func (g *game) processThingPickups() {
 		g.setHUDMessage(msg, 45)
 		g.emitSoundEvent(ev)
 		g.bonusFlashTic = max(g.bonusFlashTic, 6)
+		g.statusBonusCount += 6
+		if g.statusBonusCount > 100 {
+			g.statusBonusCount = 100
+		}
 	}
 }
 

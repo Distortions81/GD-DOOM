@@ -47,16 +47,17 @@ func (s *Set) BuildTextureRGBA(name string, palette int) ([]byte, int, int, erro
 }
 
 // BuildPatchRGBA decodes a raw Doom patch lump (e.g. STBAR, STTNUM0) to RGBA.
-func (s *Set) BuildPatchRGBA(name string, palette int) ([]byte, int, int, error) {
+// Returned offsets are Doom patch left/top offsets from the lump header.
+func (s *Set) BuildPatchRGBA(name string, palette int) ([]byte, int, int, int, int, error) {
 	if s == nil {
-		return nil, 0, 0, parseErrorf("nil texture set")
+		return nil, 0, 0, 0, 0, parseErrorf("nil texture set")
 	}
 	if palette < 0 || palette >= len(s.palettes) {
-		return nil, 0, 0, parseErrorf("palette out of range: %d", palette)
+		return nil, 0, 0, 0, 0, parseErrorf("palette out of range: %d", palette)
 	}
 	p, err := s.loadPatch(name)
 	if err != nil {
-		return nil, 0, 0, err
+		return nil, 0, 0, 0, 0, err
 	}
 	pal := s.palettes[palette]
 	rgba := make([]byte, p.width*p.height*4)
@@ -75,7 +76,7 @@ func (s *Set) BuildPatchRGBA(name string, palette int) ([]byte, int, int, error)
 		rgba[o+2] = pal[idx][2]
 		rgba[o+3] = 0xFF
 	}
-	return rgba, p.width, p.height, nil
+	return rgba, p.width, p.height, p.leftOffset, p.topOffset, nil
 }
 
 func (s *Set) loadPatch(name string) (*decodedPatch, error) {
@@ -105,6 +106,8 @@ func decodePatch(data []byte) (*decodedPatch, error) {
 	}
 	w := int(int16(binary.LittleEndian.Uint16(data[0:2])))
 	h := int(int16(binary.LittleEndian.Uint16(data[2:4])))
+	leftOffset := int(int16(binary.LittleEndian.Uint16(data[4:6])))
+	topOffset := int(int16(binary.LittleEndian.Uint16(data[6:8])))
 	if w <= 0 || h <= 0 {
 		return nil, parseErrorf("patch invalid size %dx%d", w, h)
 	}
@@ -113,10 +116,12 @@ func decodePatch(data []byte) (*decodedPatch, error) {
 		return nil, parseErrorf("patch column table truncated")
 	}
 	p := &decodedPatch{
-		width:  w,
-		height: h,
-		index:  make([]uint8, w*h),
-		opaque: make([]bool, w*h),
+		width:      w,
+		height:     h,
+		leftOffset: leftOffset,
+		topOffset:  topOffset,
+		index:      make([]uint8, w*h),
+		opaque:     make([]bool, w*h),
 	}
 	for x := 0; x < w; x++ {
 		co := int(binary.LittleEndian.Uint32(data[8+x*4 : 12+x*4]))

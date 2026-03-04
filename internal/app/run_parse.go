@@ -518,7 +518,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		if _, ok := out[name]; ok {
 			continue
 		}
-		rgba, w, h, err := ts.BuildPatchRGBA(name, 0)
+		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
 		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
 			continue
 		}
@@ -527,10 +527,12 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
 		out[name] = automap.WallTexture{
-			RGBA:   rgba,
-			RGBA32: rgba32,
-			Width:  w,
-			Height: h,
+			RGBA:    rgba,
+			RGBA32:  rgba32,
+			Width:   w,
+			Height:  h,
+			OffsetX: ox,
+			OffsetY: oy,
 		}
 	}
 	if len(out) == 0 {

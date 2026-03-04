@@ -29,10 +29,12 @@ type Set struct {
 }
 
 type decodedPatch struct {
-	width  int
-	height int
-	index  []uint8
-	opaque []bool
+	width      int
+	height     int
+	leftOffset int
+	topOffset  int
+	index      []uint8
+	opaque     []bool
 }
 
 func (s *Set) TextureNames() []string {

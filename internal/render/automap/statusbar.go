@@ -59,32 +59,32 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 	g.drawStatusPatch(screen, g.statusFacePatchName(), 143*sx, 168*sy, sx, sy)
 }
 
-func (g *game) statusPatch(name string) (*ebiten.Image, int, int, bool) {
+func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool) {
 	key := strings.ToUpper(strings.TrimSpace(name))
 	p, ok := g.opts.StatusPatchBank[key]
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
-		return nil, 0, 0, false
+		return nil, 0, 0, 0, 0, false
 	}
 	if g.statusPatchImg == nil {
 		g.statusPatchImg = make(map[string]*ebiten.Image, 96)
 	}
 	if img, ok := g.statusPatchImg[key]; ok {
-		return img, p.Width, p.Height, true
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
 	img := ebiten.NewImage(p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.statusPatchImg[key] = img
-	return img, p.Width, p.Height, true
+	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 }
 
 func (g *game) drawStatusPatch(screen *ebiten.Image, name string, x, y, sx, sy float64) {
-	img, _, _, ok := g.statusPatch(name)
+	img, _, _, ox, oy, ok := g.statusPatch(name)
 	if !ok {
 		return
 	}
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(sx, sy)
-	op.GeoM.Translate(x, y)
+	op.GeoM.Translate(x-float64(ox)*sx, y-float64(oy)*sy)
 	screen.DrawImage(img, op)
 }
 
@@ -99,7 +99,7 @@ func (g *game) drawStatusTallNum(screen *ebiten.Image, value, digits int, rightX
 	x := rightX
 	for i := len(s) - 1; i >= 0; i-- {
 		name := "STTNUM" + string(s[i])
-		_, w, _, ok := g.statusPatch(name)
+		_, w, _, _, _, ok := g.statusPatch(name)
 		if !ok {
 			continue
 		}
@@ -119,7 +119,7 @@ func (g *game) drawStatusShortNum(screen *ebiten.Image, value, digits int, right
 	x := rightX
 	for i := len(s) - 1; i >= 0; i-- {
 		name := "STYSNUM" + string(s[i])
-		_, w, _, ok := g.statusPatch(name)
+		_, w, _, _, _, ok := g.statusPatch(name)
 		if !ok {
 			continue
 		}
@@ -129,10 +129,10 @@ func (g *game) drawStatusShortNum(screen *ebiten.Image, value, digits int, right
 }
 
 func (g *game) drawStatusPercent(screen *ebiten.Image, value int, x, y, sx, sy float64) {
-	_, w, _, ok := g.statusPatch("STTPRCNT")
+	_, _, _, _, _, ok := g.statusPatch("STTPRCNT")
 	if ok {
 		g.drawStatusPatch(screen, "STTPRCNT", x, y, sx, sy)
-		g.drawStatusTallNum(screen, value, 3, x-float64(w)*sx, y, sx, sy)
+		g.drawStatusTallNum(screen, value, 3, x, y, sx, sy)
 		return
 	}
 	g.drawStatusTallNum(screen, value, 3, x, y, sx, sy)
@@ -180,6 +180,8 @@ func (g *game) initStatusFaceState() {
 	g.statusLastAttack = -1
 	g.statusAttackDown = false
 	g.statusHasAttacker = false
+	g.statusDamageCount = 0
+	g.statusBonusCount = 0
 	g.statusOldWeapons = g.statusOwnedWeapons()
 }
 
@@ -200,7 +202,13 @@ func (g *game) tickStatusWidgets() {
 	g.statusRandom = doomrand.MRandom()
 	g.statusUpdateFaceWidget()
 	g.statusOldHealth = g.stats.Health
-	if g.damageFlashTic <= 0 {
+	if g.statusDamageCount > 0 {
+		g.statusDamageCount--
+	}
+	if g.statusBonusCount > 0 {
+		g.statusBonusCount--
+	}
+	if g.statusDamageCount <= 0 {
 		g.statusHasAttacker = false
 	}
 }
@@ -228,7 +236,7 @@ func (g *game) statusUpdateFaceWidget() {
 	}
 
 	if priority < 9 {
-		if g.bonusFlashTic > 0 {
+		if g.statusBonusCount > 0 {
 			doEvilGrin := false
 			owned := g.statusOwnedWeapons()
 			for i := range owned {
@@ -246,7 +254,7 @@ func (g *game) statusUpdateFaceWidget() {
 	}
 
 	if priority < 8 {
-		if g.damageFlashTic > 0 && g.statusHasAttacker {
+		if g.statusDamageCount > 0 && g.statusHasAttacker {
 			priority = 7
 			if g.stats.Health-g.statusOldHealth > statusMuchPain {
 				g.statusFaceCount = statusTurnCount
@@ -282,7 +290,7 @@ func (g *game) statusUpdateFaceWidget() {
 	}
 
 	if priority < 7 {
-		if g.damageFlashTic > 0 {
+		if g.statusDamageCount > 0 {
 			if g.stats.Health-g.statusOldHealth > statusMuchPain {
 				priority = 7
 				g.statusFaceCount = statusTurnCount
