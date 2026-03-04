@@ -80,6 +80,57 @@ var (
 	pixelLittleEndian                                  = pixelRShift == 0
 )
 
+var skyBackdropShaderSrc = []byte(`//kage:unit pixels
+package main
+
+var CamAngle float
+var Focal float
+var ViewW float
+var ViewH float
+var SkyTexH float
+
+func wrap(v, n float) float {
+	return v - floor(v/n)*n
+}
+
+func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+	size := imageSrc0Size()
+	if size.x <= 0.0 || size.y <= 0.0 || Focal <= 0.0 || ViewW <= 0.0 || ViewH <= 0.0 || SkyTexH <= 0.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+	pi := 3.141592653589793
+	x := position.x + 0.5
+	y := position.y + 0.5
+	cx := ViewW * 0.5
+	cy := ViewH * 0.5
+	ang := CamAngle + atan((cx-x)/Focal)
+	uScale := (size.x * 4.0) / (2.0 * pi)
+	u := wrap(floor(ang*uScale), size.x)
+	iscale := 320.0 / ViewW
+	v := wrap(floor(100.0+((y-cy)*iscale)), SkyTexH)
+	src := vec2(u+0.5, v+0.5) + imageSrc0Origin()
+	c := imageSrc0At(src)
+	return vec4(c.rgb, 1.0)
+}
+`)
+
+var flashOverlayShaderSrc = []byte(`//kage:unit pixels
+package main
+
+var DamageA float
+var BonusA float
+
+func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+	// Premultiplied source-over composition:
+	// out = bonus OVER damage OVER scene
+	damageRGB := vec3(180.0/255.0, 20.0/255.0, 20.0/255.0) * DamageA
+	bonusRGB := vec3(210.0/255.0, 190.0/255.0, 80.0/255.0) * BonusA
+	outA := BonusA + DamageA*(1.0-BonusA)
+	outRGB := bonusRGB + damageRGB*(1.0-BonusA)
+	return vec4(outRGB, outA)
+}
+`)
+
 var doomPlayerArrow = [][4]float64{
 	// Rough port of Doom's AM player_arrow (points right in local space).
 	{-16, 0, 18.2857, 0},
@@ -240,6 +291,16 @@ type game struct {
 	mapFloorPix                []byte
 	mapFloorW                  int
 	mapFloorH                  int
+	skyLayerShader             *ebiten.Shader
+	flashOverlayShader         *ebiten.Shader
+	skyLayerTex                *ebiten.Image
+	skyLayerTexKey             string
+	skyLayerTexW               int
+	skyLayerTexH               int
+	skyLayerFrameActive        bool
+	skyLayerFrameCamAng        float64
+	skyLayerFrameFocal         float64
+	skyLayerFrameTexH          float64
 	mapFloorWorldLayer         *ebiten.Image
 	mapFloorWorldInit          bool
 	mapFloorWorldMinX          float64
@@ -549,6 +610,12 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.snd = newSoundSystem(opts.SoundBank)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
+	if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
+		g.skyLayerShader = sh
+	}
+	if sh, err := ebiten.NewShader(flashOverlayShaderSrc); err == nil {
+		g.flashOverlayShader = sh
+	}
 	if g.opts.SourcePortMode {
 		// Source-port defaults: reveal full map style and heading-follow at startup.
 		g.parity.reveal = revealAllMap
@@ -1071,6 +1138,10 @@ func (g *game) updateParityControls() {
 			g.toggleMapFloor2DPath()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+			if !g.opts.KageShader {
+				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
+				return
+			}
 			if len(g.opts.DoomPaletteRGBA) != 256*4 {
 				g.setHUDMessage("Palette LUT unavailable", 70)
 				return
@@ -1084,6 +1155,10 @@ func (g *game) updateParityControls() {
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+		if !g.opts.KageShader {
+			g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
+			return
+		}
 		if len(g.opts.DoomPaletteRGBA) != 256*4 {
 			g.setHUDMessage("Gamma unavailable", 70)
 			return
@@ -1092,6 +1167,10 @@ func (g *game) updateParityControls() {
 		g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+		if !g.opts.KageShader {
+			g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
+			return
+		}
 		g.crtEnabled = !g.crtEnabled
 		if g.crtEnabled {
 			g.setHUDMessage("CRT ON", 70)
@@ -1607,6 +1686,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	eyeZ := float64(g.p.z)/fracUnit + 41.0
 	focal := doomFocalLength(g.viewW)
 	near := 2.0
+	g.beginSkyLayerFrame()
 
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
@@ -1852,8 +1932,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 	}
 	g.solid3DBuf = solid
+	usedSkyLayer := false
 	if planesEnabled && hasMarkedPlane3DData(planeOrder) {
-		g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
+		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
@@ -1863,6 +1944,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
+	}
+	if usedSkyLayer {
+		g.drawSkyLayerFrame(screen)
 	}
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
@@ -2582,18 +2666,18 @@ func floorFixed(v float64) int64 {
 	return i
 }
 
-func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) {
+func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) bool {
 	if len(planes) == 0 {
-		return
+		return false
 	}
 	w := g.viewW
 	h := g.viewH
 	if w <= 0 || h <= 0 || len(pix) != w*h*4 {
-		return
+		return false
 	}
 	pix32 := g.wallPix32
 	if len(pix32) != w*h {
-		return
+		return false
 	}
 	spansByPlane, _, _, hasSky := g.buildPlaneSpansParallel(planes, h)
 	cx := float64(w) * 0.5
@@ -2605,12 +2689,13 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	}
 	flatCache32 := g.planeFlatCache32Scratch
 	planeFBPacked, planeFlatTex32, planeFlatReady := g.ensurePlaneRenderScratch(len(planes))
+	skyTexKey := ""
 	skyTex, skyTexOK := WallTexture{}, false
 	skyTex32 := []uint32(nil)
 	skyColU := make([]int, 0)
 	skyRowV := make([]int, 0)
 	if hasSky {
-		skyTex, skyTexOK = skyTextureForMap(g.m.Name, g.opts.WallTexBank)
+		skyTexKey, skyTex, skyTexOK = skyTextureEntryForMap(g.m.Name, g.opts.WallTexBank)
 		if skyTexOK {
 			camAng := math.Atan2(sa, ca)
 			skyTexH := effectiveSkyTexHeight(skyTex)
@@ -2629,6 +2714,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				skyTex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(skyTex.RGBA))), len(skyTex.RGBA)/4)
 			}
 		}
+	}
+	skyLayerEnabled := false
+	if skyTexReady {
+		camAng := math.Atan2(sa, ca)
+		skyLayerEnabled = g.enableSkyLayerFrame(camAng, focal, skyTexKey, skyTex, effectiveSkyTexHeight(skyTex))
 	}
 	for planeIdx, pl := range planes {
 		key := pl.key
@@ -2681,6 +2771,19 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				}
 				rowPix := sp.y * w
 				if key.sky {
+					if skyLayerEnabled {
+						pixI := rowPix + x1
+						x := x1
+						for ; x+1 <= x2; x += 2 {
+							pix32[pixI] = 0
+							pix32[pixI+1] = 0
+							pixI += 2
+						}
+						if x <= x2 {
+							pix32[pixI] = 0
+						}
+						continue
+					}
 					pixI := rowPix + x1
 					if skyTexReady {
 						v := skyRowV[sp.y]
@@ -2778,6 +2881,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	}
 
 	renderRows(0, h)
+	return skyLayerEnabled
 }
 
 func (g *game) fill3DBackground(ceiling, floor color.RGBA) {
@@ -5052,14 +5156,34 @@ func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {
+	damageA := float32(0)
+	bonusA := float32(0)
 	if g.damageFlashTic > 0 {
-		a := uint8(40 + min(120, g.damageFlashTic*8))
-		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 180, G: 20, B: 20, A: a})
+		damageA = float32(40+min(120, g.damageFlashTic*8)) / 255.0
 	}
 	if g.bonusFlashTic > 0 {
-		a := uint8(20 + min(80, g.bonusFlashTic*6))
-		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 210, G: 190, B: 80, A: a})
+		bonusA = float32(20+min(80, g.bonusFlashTic*6)) / 255.0
 	}
+	if damageA <= 0 && bonusA <= 0 {
+		return
+	}
+	if g.flashOverlayShader == nil {
+		if damageA > 0 {
+			a := uint8(damageA * 255.0)
+			ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 180, G: 20, B: 20, A: a})
+		}
+		if bonusA > 0 {
+			a := uint8(bonusA * 255.0)
+			ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 210, G: 190, B: 80, A: a})
+		}
+		return
+	}
+	op := &ebiten.DrawRectShaderOptions{}
+	op.Uniforms = map[string]any{
+		"DamageA": damageA,
+		"BonusA":  bonusA,
+	}
+	screen.DrawRectShader(g.viewW, g.viewH, g.flashOverlayShader, op)
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -5319,15 +5443,20 @@ func (g *game) wallTexture(name string) (WallTexture, bool) {
 }
 
 func skyTextureForMap(mapName mapdata.MapName, wallTexBank map[string]WallTexture) (WallTexture, bool) {
+	_, tex, ok := skyTextureEntryForMap(mapName, wallTexBank)
+	return tex, ok
+}
+
+func skyTextureEntryForMap(mapName mapdata.MapName, wallTexBank map[string]WallTexture) (string, WallTexture, bool) {
 	for _, name := range skyTextureCandidates(mapName) {
 		key := normalizeFlatName(name)
 		tex, ok := wallTexBank[key]
 		if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 			continue
 		}
-		return tex, true
+		return key, tex, true
 	}
-	return WallTexture{}, false
+	return "", WallTexture{}, false
 }
 
 func skyTextureCandidates(mapName mapdata.MapName) []string {
@@ -5437,6 +5566,61 @@ func effectiveSkyTexHeight(tex WallTexture) int {
 		}
 	}
 	return 1
+}
+
+func (g *game) beginSkyLayerFrame() {
+	g.skyLayerFrameActive = false
+}
+
+func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex WallTexture, texH int) bool {
+	if g.skyLayerShader == nil || !g.opts.SourcePortMode {
+		return false
+	}
+	if texKey == "" || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
+		return false
+	}
+	if g.skyLayerTex == nil || g.skyLayerTexKey != texKey || g.skyLayerTexW != tex.Width || g.skyLayerTexH != tex.Height {
+		img := ebiten.NewImage(tex.Width, tex.Height)
+		img.WritePixels(tex.RGBA)
+		g.skyLayerTex = img
+		g.skyLayerTexKey = texKey
+		g.skyLayerTexW = tex.Width
+		g.skyLayerTexH = tex.Height
+	}
+	g.skyLayerFrameActive = true
+	g.skyLayerFrameCamAng = camAng
+	g.skyLayerFrameFocal = focal
+	g.skyLayerFrameTexH = float64(max(texH, 1))
+	return true
+}
+
+func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
+	if !g.skyLayerFrameActive || g.skyLayerShader == nil || g.skyLayerTex == nil || screen == nil {
+		return false
+	}
+	w := g.viewW
+	h := g.viewH
+	if w <= 0 || h <= 0 {
+		return false
+	}
+	v := []ebiten.Vertex{
+		{DstX: 0, DstY: 0, SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: float32(w), DstY: 0, SrcX: float32(w), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: 0, DstY: float32(h), SrcX: 0, SrcY: float32(h), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: float32(w), DstY: float32(h), SrcX: float32(w), SrcY: float32(h), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+	}
+	idx := []uint16{0, 1, 2, 1, 2, 3}
+	op := &ebiten.DrawTrianglesShaderOptions{}
+	op.Images[0] = g.skyLayerTex
+	op.Uniforms = map[string]any{
+		"CamAngle": g.skyLayerFrameCamAng,
+		"Focal":    g.skyLayerFrameFocal,
+		"ViewW":    float64(w),
+		"ViewH":    float64(h),
+		"SkyTexH":  g.skyLayerFrameTexH,
+	}
+	screen.DrawTrianglesShader(v, idx, g.skyLayerShader, op)
+	return true
 }
 
 func (g *game) buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([][]plane3DSpan, int, int, bool) {

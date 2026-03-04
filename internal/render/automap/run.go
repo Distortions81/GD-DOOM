@@ -875,6 +875,9 @@ func (sg *sessionGame) clearTransition() {
 }
 
 func (sg *sessionGame) initFaithfulPalettePost() {
+	if !sg.opts.KageShader {
+		return
+	}
 	if len(sg.opts.DoomPaletteRGBA) != 256*4 {
 		return
 	}
@@ -902,6 +905,9 @@ func (sg *sessionGame) palettePostEnabled() bool {
 	if sg.g == nil {
 		return false
 	}
+	if !sg.opts.KageShader {
+		return false
+	}
 	if sg.faithfulShader == nil || sg.noGammaShader == nil || sg.crtShader == nil {
 		return false
 	}
@@ -909,6 +915,9 @@ func (sg *sessionGame) palettePostEnabled() bool {
 }
 
 func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image {
+	if !sg.opts.KageShader {
+		return src
+	}
 	if src == nil || sg.faithfulShader == nil || sg.noGammaShader == nil || sg.crtShader == nil {
 		return src
 	}

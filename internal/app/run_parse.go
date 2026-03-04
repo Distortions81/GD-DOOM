@@ -43,6 +43,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultKageShader := false
 	defaultCRTEffect := false
 	defaultDepthBufferView := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
@@ -107,15 +108,18 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
-			if cfg.CRTEffect != nil {
-				defaultCRTEffect = *cfg.CRTEffect
-			}
-			if cfg.DepthBufferView != nil {
-				defaultDepthBufferView = *cfg.DepthBufferView
-			}
-			if cfg.TextureAnimCrossfadeFrames != nil {
-				defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
-			}
+		if cfg.KageShader != nil {
+			defaultKageShader = *cfg.KageShader
+		}
+		if cfg.CRTEffect != nil {
+			defaultCRTEffect = *cfg.CRTEffect
+		}
+		if cfg.DepthBufferView != nil {
+			defaultDepthBufferView = *cfg.DepthBufferView
+		}
+		if cfg.TextureAnimCrossfadeFrames != nil {
+			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
+		}
 		if cfg.AllCheats != nil {
 			defaultAllCheats = *cfg.AllCheats
 		}
@@ -165,6 +169,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
@@ -378,6 +383,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:               resolvedInvuln,
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
+			KageShader:                 *kageShader,
 			CRTEffect:                  *crtEffect,
 			DepthBufferView:            *depthBufferView,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,

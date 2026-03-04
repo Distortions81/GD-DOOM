@@ -13,6 +13,7 @@ type Options struct {
 	Invulnerable               bool
 	LineColorMode              string
 	SourcePortMode             bool
+	KageShader                 bool
 	CRTEffect                  bool
 	DepthBufferView            bool
 	TextureAnimCrossfadeFrames int
