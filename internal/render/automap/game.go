@@ -169,6 +169,23 @@ type projectedThingItem struct {
 	fullBright bool
 }
 
+type maskedMidSeg struct {
+	dist      float64
+	x0        int
+	x1        int
+	sx1       float64
+	sx2       float64
+	invF1     float64
+	invF2     float64
+	uOverF1   float64
+	uOverF2   float64
+	worldHigh float64
+	worldLow  float64
+	texMid    float64
+	tex       WallTexture
+	light     int16
+}
+
 type mapLineDraw struct {
 	x1  float32
 	y1  float32
@@ -353,6 +370,7 @@ type game struct {
 	projectileItemsScratch     []projectedProjectileItem
 	monsterItemsScratch        []projectedMonsterItem
 	thingItemsScratch          []projectedThingItem
+	maskedMidSegsScratch       []maskedMidSeg
 	spriteTXScratch            []int
 	spriteTYScratch            []int
 	wallLayer                  *ebiten.Image
@@ -1717,6 +1735,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	planeOrder := g.beginPlane3DFrame(g.viewW)
 	solid := g.beginSolid3DFrame()
 	prepass := g.buildWallSegPrepassParallel(g.visibleSegIndicesPseudo3D(), camX, camY, ca, sa, focal, near)
+	maskedMids := g.ensureMaskedMidSegScratch(len(prepass))
 	for _, pp := range prepass {
 		si := pp.segIdx
 		if si < 0 || si >= len(g.m.Segs) {
@@ -1915,11 +1934,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					floorClip[x] = -1
 					continue
 				}
-				if hasMidTex {
-					shadeMul := combineShadeMul(shadeMulByDistance(f), sectorLightMul(front.Light))
-					g.drawBasicWallColumnTexturedMasked(x, yl, yh, f, texU, midTexMid, focal, midTex, shadeMul)
-				}
-
 				if topWall {
 					mid := int(math.Floor(float64(g.viewH)/2 - (worldHigh/f)*focal))
 					if mid >= floorClip[x] {
@@ -1951,16 +1965,45 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				}
 			}
 		}
+		if back != nil && hasMidTex {
+			for _, vis := range visibleRanges {
+				if vis.l > vis.r {
+					continue
+				}
+				dist := 0.0
+				if pp.invF1+pp.invF2 > 0 {
+					dist = 2.0 / (pp.invF1 + pp.invF2)
+				}
+				maskedMids = append(maskedMids, maskedMidSeg{
+					dist:      dist,
+					x0:        vis.l,
+					x1:        vis.r,
+					sx1:       pp.sx1,
+					sx2:       pp.sx2,
+					invF1:     pp.invF1,
+					invF2:     pp.invF2,
+					uOverF1:   pp.uOverF1,
+					uOverF2:   pp.uOverF2,
+					worldHigh: worldHigh,
+					worldLow:  worldLow,
+					texMid:    midTexMid,
+					tex:       midTex,
+					light:     front.Light,
+				})
+			}
+		}
 
 		if solidWall {
 			solid = addSolidSpan(solid, pp.minSX, pp.maxSX)
 		}
 	}
+	g.maskedMidSegsScratch = maskedMids
 	g.solid3DBuf = solid
 	usedSkyLayer := false
 	if planesEnabled && hasMarkedPlane3DData(planeOrder) {
 		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
+	g.drawMaskedMidSegs(focal)
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
@@ -2510,6 +2553,8 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	rowStridePix := g.viewW
 	pixI := y0*rowStridePix + x
 	pix32 := g.wallPix32
+	texRGBA := tex.RGBA
+	hasRGBA := len(texRGBA) == tex.Width*tex.Height*4
 	tex32 := tex.RGBA32
 	if len(tex32) != tex.Width*tex.Height {
 		if len(tex.RGBA) != tex.Width*tex.Height*4 || len(tex.RGBA) < 4 {
@@ -2530,12 +2575,18 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	texVFixed := floorFixed(texV)
 	texVStepFixed := floorFixed(rowScale)
 	stamp := g.depthFrameStamp
-	depthPacked := packDepthStamped(encodeDepthQ(depth), stamp)
+	depthQ := encodeDepthQ(depth)
+	depthPacked := packDepthStamped(depthQ, stamp)
 	shadeMulU := uint32(shadeMul)
 	for y := y0; y <= y1; y++ {
 		ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
-		src := tex32[ty*tex.Width+tx]
-		if ((src >> pixelAShift) & 0xFF) != 0 {
+		ti := ty*tex.Width + tx
+		src := tex32[ti]
+		opaque := ((src >> pixelAShift) & 0xFF) != 0
+		if hasRGBA {
+			opaque = texRGBA[ti*4+3] != 0
+		}
+		if opaque && !spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, stamp, depthQ, 0, pixI) {
 			pix32[pixI] = shadePackedRGBA(src, shadeMulU)
 			g.setDepthPixelEncoded(pixI, depthPacked)
 		}
@@ -2750,6 +2801,60 @@ func (g *game) ensureThingItemsScratch(n int) []projectedThingItem {
 	}
 	g.thingItemsScratch = g.thingItemsScratch[:0]
 	return g.thingItemsScratch
+}
+
+func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.maskedMidSegsScratch) < n {
+		g.maskedMidSegsScratch = make([]maskedMidSeg, 0, n)
+	}
+	g.maskedMidSegsScratch = g.maskedMidSegsScratch[:0]
+	return g.maskedMidSegsScratch
+}
+
+func (g *game) drawMaskedMidSegs(focal float64) {
+	if len(g.maskedMidSegsScratch) == 0 || len(g.depthPix3D) != g.viewW*g.viewH {
+		return
+	}
+	sort.Slice(g.maskedMidSegsScratch, func(i, j int) bool {
+		return g.maskedMidSegsScratch[i].dist > g.maskedMidSegsScratch[j].dist
+	})
+	halfH := float64(g.viewH) * 0.5
+	for _, ms := range g.maskedMidSegsScratch {
+		if ms.tex.Width <= 0 || ms.tex.Height <= 0 {
+			continue
+		}
+		for x := ms.x0; x <= ms.x1; x++ {
+			t := 0.0
+			if math.Abs(ms.sx2-ms.sx1) > 1e-9 {
+				t = (float64(x) - ms.sx1) / (ms.sx2 - ms.sx1)
+			}
+			if t < 0 {
+				t = 0
+			}
+			if t > 1 {
+				t = 1
+			}
+			invF := ms.invF1 + (ms.invF2-ms.invF1)*t
+			if invF <= 0 {
+				continue
+			}
+			f := 1.0 / invF
+			if f <= 0 {
+				continue
+			}
+			texU := (ms.uOverF1 + (ms.uOverF2-ms.uOverF1)*t) * f
+			y0 := int(math.Ceil(halfH - (ms.worldHigh/f)*focal))
+			y1 := int(math.Floor(halfH - (ms.worldLow/f)*focal))
+			if y0 > y1 {
+				continue
+			}
+			shadeMul := combineShadeMul(shadeMulByDistance(f), sectorLightMul(ms.light))
+			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.texMid, focal, ms.tex, shadeMul)
+		}
+	}
 }
 
 func drawWallColumnTexturedLEColPow2(pix32 []uint32, pixI, rowStridePix int, col []uint32, texVFixed, texVStepFixed int64, hmask, count, shadeMul int) {
@@ -5937,7 +6042,7 @@ func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, fo
 			ld := g.m.Linedefs[li]
 			pp.ld = ld
 			d := g.linedefDecisionPseudo3D(ld)
-			if !d.visible {
+			if !d.visible && !g.segHasTwoSidedMidTexture(si) {
 				out[i] = pp
 				continue
 			}
@@ -6031,6 +6136,41 @@ func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, fo
 	}
 	run(0, len(visible))
 	return out
+}
+
+func (g *game) segHasTwoSidedMidTexture(segIdx int) bool {
+	if segIdx < 0 || segIdx >= len(g.m.Segs) {
+		return false
+	}
+	sg := g.m.Segs[segIdx]
+	li := int(sg.Linedef)
+	if li < 0 || li >= len(g.m.Linedefs) {
+		return false
+	}
+	ld := g.m.Linedefs[li]
+	frontSide := int(sg.Direction)
+	if frontSide < 0 || frontSide > 1 {
+		frontSide = 0
+	}
+	backSide := frontSide ^ 1
+	if ld.SideNum[frontSide] < 0 || ld.SideNum[backSide] < 0 {
+		return false
+	}
+	fs := int(ld.SideNum[frontSide])
+	bs := int(ld.SideNum[backSide])
+	if fs < 0 || fs >= len(g.m.Sidedefs) || bs < 0 || bs >= len(g.m.Sidedefs) {
+		return false
+	}
+	frontSec := g.sectorIndexFromSideNum(ld.SideNum[frontSide])
+	backSec := g.sectorIndexFromSideNum(ld.SideNum[backSide])
+	if frontSec < 0 || backSec < 0 {
+		return false
+	}
+	mid := normalizeFlatName(g.m.Sidedefs[fs].Mid)
+	if mid == "" || mid == "-" {
+		return false
+	}
+	return true
 }
 
 func (g *game) ensureWallPrepassBuffer(n int) []wallSegPrepass {

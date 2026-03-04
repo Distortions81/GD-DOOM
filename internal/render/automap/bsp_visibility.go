@@ -71,6 +71,14 @@ func (g *game) traverseBSPSegs(child uint16, px, py int64, ca, sa, near, focal, 
 			if si < 0 || si >= len(g.m.Segs) {
 				continue
 			}
+			sg := g.m.Segs[si]
+			li := int(sg.Linedef)
+			if li < 0 || li >= len(g.m.Linedefs) {
+				continue
+			}
+			if !g.linedefDecisionPseudo3D(g.m.Linedefs[li]).visible && !g.segHasTwoSidedMidTexture(si) {
+				continue
+			}
 			g.visibleBuf = append(g.visibleBuf, si)
 			if !g.segCoarseOpaque(si) {
 				continue
