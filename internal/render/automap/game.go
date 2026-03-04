@@ -443,6 +443,8 @@ type game struct {
 	floorSpans                 []floorSpan
 	detailLevel                int
 	mapTexDiag                 bool
+	runtimeSettingsSeen        bool
+	runtimeSettingsLast        RuntimeSettings
 	subSectorPolySrc           []uint8
 	subSectorDiagCode          []uint8
 	mapTexDiagStats            mapTexDiagStats
@@ -678,7 +680,13 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.textureAnimCrossfadeFrames = normalizeTextureAnimCrossfadeFrames(opts.TextureAnimCrossfadeFrames, opts.SourcePortMode)
 	g.precomputeTextureAnimCrossfades()
 	g.thingSpriteExpandCache = make(map[string][]string, 256)
-	g.detailLevel = detailPresetIndex(g.viewW, g.viewH)
+	g.detailLevel = defaultDetailLevelForMode(g.viewW, g.viewH, opts.SourcePortMode)
+	if opts.InitialDetailLevel >= 0 {
+		g.detailLevel = clampDetailLevelForMode(opts.InitialDetailLevel, opts.SourcePortMode)
+	}
+	if opts.InitialGammaLevel >= 0 {
+		g.gammaLevel = clampGamma(opts.InitialGammaLevel)
+	}
 	g.initPlayerState()
 	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -766,7 +774,16 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.mouseLookSet = false
 		g.mouseLookSuppressTicks = detailMouseSuppressTicks
 	}
+	g.runtimeSettingsSeen = true
+	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
 	return g
+}
+
+func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
+	if sourcePort {
+		return 0
+	}
+	return detailPresetIndex(viewW, viewH)
 }
 
 func (g *game) resetView() {
@@ -874,6 +891,31 @@ func (g *game) mouseLookTurnRaw(dx int) int64 {
 	return -raw
 }
 
+func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
+	return RuntimeSettings{
+		DetailLevel:      g.detailLevel,
+		GammaLevel:       g.gammaLevel,
+		MouseLook:        g.opts.MouseLook,
+		AlwaysRun:        g.alwaysRun,
+		AutoWeaponSwitch: g.autoWeaponSwitch,
+		LineColorMode:    g.opts.LineColorMode,
+		CRTEffect:        g.crtEnabled,
+	}
+}
+
+func (g *game) publishRuntimeSettingsIfChanged() {
+	if g == nil || g.opts.OnRuntimeSettingsChanged == nil {
+		return
+	}
+	cur := g.runtimeSettingsSnapshot()
+	if g.runtimeSettingsSeen && cur == g.runtimeSettingsLast {
+		return
+	}
+	g.runtimeSettingsSeen = true
+	g.runtimeSettingsLast = cur
+	g.opts.OnRuntimeSettingsChanged(cur)
+}
+
 func (g *game) Update() error {
 	g.capturePrevState()
 	if g.levelExitRequested {
@@ -979,6 +1021,7 @@ func (g *game) Update() error {
 	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
 	g.flushSoundEvents()
+	g.publishRuntimeSettingsIfChanged()
 	g.lastUpdate = time.Now()
 	return nil
 }

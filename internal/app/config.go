@@ -1,9 +1,12 @@
 package app
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
+
+	"gddoom/internal/render/automap"
 
 	"github.com/BurntSushi/toml"
 )
@@ -16,6 +19,8 @@ type fileConfig struct {
 	MultiCore                  *bool    `toml:"multi_core"`
 	Width                      *int     `toml:"width"`
 	Height                     *int     `toml:"height"`
+	DetailLevel                *int     `toml:"detail_level"`
+	GammaLevel                 *int     `toml:"gamma_level"`
 	Zoom                       *float64 `toml:"zoom"`
 	Player                     *int     `toml:"player"`
 	Skill                      *int     `toml:"skill"`
@@ -81,3 +86,34 @@ func loadConfig(path string, explicit bool) (*fileConfig, error) {
 	}
 	return cfg, nil
 }
+
+func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	cfg := &fileConfig{}
+	if loaded, err := loadConfig(path, false); err == nil && loaded != nil {
+		cfg = loaded
+	} else if err != nil {
+		return err
+	}
+	cfg.DetailLevel = intPtr(s.DetailLevel)
+	cfg.GammaLevel = intPtr(s.GammaLevel)
+	cfg.MouseLook = boolPtr(s.MouseLook)
+	cfg.AlwaysRun = boolPtr(s.AlwaysRun)
+	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
+	cfg.LineColorMode = strPtr(s.LineColorMode)
+	cfg.CRTEffect = boolPtr(s.CRTEffect)
+	var b bytes.Buffer
+	if err := toml.NewEncoder(&b).Encode(cfg); err != nil {
+		return fmt.Errorf("encode config %s: %w", path, err)
+	}
+	if err := os.WriteFile(path, b.Bytes(), 0o644); err != nil {
+		return fmt.Errorf("write config %s: %w", path, err)
+	}
+	return nil
+}
+
+func intPtr(v int) *int       { return &v }
+func boolPtr(v bool) *bool    { return &v }
+func strPtr(v string) *string { return &v }

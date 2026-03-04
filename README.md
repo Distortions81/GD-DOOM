@@ -32,6 +32,8 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-details`: include extra parsed details in CLI output
 - `-width <px>` / `-height <px>`: window size
 - `-zoom <float>`: startup zoom override (`>0`); default uses Doom-style auto zoom
+- `-detail-level <int>`: startup detail level (`-1` keeps mode default)
+- `-gamma-level <int>`: startup gamma level (`-1` keeps mode default)
 - `-player <1-4>`: choose local player start slot
 - `-skill <1-5>`: Doom skill level (`1=ITYTD`, `2=HNTR`, `3=HMP`, `4=UV`, `5=NM`)
 - `-mouselook`: enable mouse-based turning in walk mode (default `true`)
@@ -127,6 +129,7 @@ In sourceport mode, map floor flats are drawn in 2D automap by default; press `J
 Config notes:
 - `config.toml` is auto-read by default when present.
 - CLI flags always override config values.
+- Runtime setting changes are auto-saved to the active config path (`-config`, default `config.toml`) for persisted keys like detail/gamma and key gameplay toggles.
 
 ## Runtime Gameplay State (Current)
 

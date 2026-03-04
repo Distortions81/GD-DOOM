@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gddoom/internal/render/automap"
 )
 
 func TestRunParseLoadsConfigDefaults(t *testing.T) {
@@ -135,5 +137,46 @@ func TestRunParseRejectsInvalidMouseLookSpeed(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "invalid -mouselook-speed") {
 		t.Fatalf("stderr %q does not mention invalid mouselook speed", errb.String())
+	}
+}
+
+func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "config.toml")
+	if err := saveRuntimeSettings(cfgPath, automap.RuntimeSettings{
+		DetailLevel:      2,
+		GammaLevel:       5,
+		MouseLook:        false,
+		AlwaysRun:        true,
+		AutoWeaponSwitch: false,
+		LineColorMode:    "doom",
+		CRTEffect:        true,
+	}); err != nil {
+		t.Fatalf("saveRuntimeSettings() error: %v", err)
+	}
+	cfg, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if cfg.DetailLevel == nil || *cfg.DetailLevel != 2 {
+		t.Fatalf("detail_level=%v want 2", cfg.DetailLevel)
+	}
+	if cfg.GammaLevel == nil || *cfg.GammaLevel != 5 {
+		t.Fatalf("gamma_level=%v want 5", cfg.GammaLevel)
+	}
+	if cfg.MouseLook == nil || *cfg.MouseLook {
+		t.Fatalf("mouselook=%v want false", cfg.MouseLook)
+	}
+	if cfg.AlwaysRun == nil || !*cfg.AlwaysRun {
+		t.Fatalf("always_run=%v want true", cfg.AlwaysRun)
+	}
+	if cfg.AutoWeaponSwitch == nil || *cfg.AutoWeaponSwitch {
+		t.Fatalf("auto_weapon_switch=%v want false", cfg.AutoWeaponSwitch)
+	}
+	if cfg.LineColorMode == nil || *cfg.LineColorMode != "doom" {
+		t.Fatalf("line_color_mode=%v want doom", cfg.LineColorMode)
+	}
+	if cfg.CRTEffect == nil || !*cfg.CRTEffect {
+		t.Fatalf("crt_effect=%v want true", cfg.CRTEffect)
 	}
 }

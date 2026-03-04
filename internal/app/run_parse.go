@@ -36,6 +36,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMultiCore := true
 	defaultWidth, defaultHeight := automap.DefaultCLIWindowSize()
 	defaultZoom := 0.0
+	defaultDetailLevel := -1
+	defaultGammaLevel := -1
 	defaultPlayer := 1
 	defaultSkill := 3
 	defaultGameMode := "single"
@@ -92,6 +94,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.Zoom != nil {
 			defaultZoom = *cfg.Zoom
+		}
+		if cfg.DetailLevel != nil {
+			defaultDetailLevel = *cfg.DetailLevel
+		}
+		if cfg.GammaLevel != nil {
+			defaultGammaLevel = *cfg.GammaLevel
 		}
 		if cfg.Player != nil {
 			defaultPlayer = *cfg.Player
@@ -190,6 +198,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	width := fs.Int("width", defaultWidth, "render window width")
 	height := fs.Int("height", defaultHeight, "render window height")
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
+	detailLevel := fs.Int("detail-level", defaultDetailLevel, "startup detail level (-1 keeps mode default)")
+	gammaLevel := fs.Int("gamma-level", defaultGammaLevel, "startup gamma level (-1 keeps mode default)")
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
 	gameMode := fs.String("game-mode", defaultGameMode, "thing spawn game mode (single|coop|deathmatch)")
@@ -438,6 +448,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Width:                      *width,
 			Height:                     *height,
 			StartZoom:                  *zoom,
+			InitialDetailLevel:         *detailLevel,
+			InitialGammaLevel:          *gammaLevel,
 			WADHash:                    wadHash,
 			Debug:                      *debug,
 			PlayerSlot:                 *playerSlot,
@@ -474,6 +486,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			IntermissionPatchBank:      intermissionPatchBank,
 			SoundBank:                  soundBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
+		}
+		if strings.TrimSpace(configPath) != "" {
+			path := configPath
+			opts.OnRuntimeSettingsChanged = func(s automap.RuntimeSettings) {
+				if err := saveRuntimeSettings(path, s); err != nil {
+					fmt.Fprintf(stderr, "config save warning: %v\n", err)
+				}
+			}
 		}
 		if p := resolvedDemoPath; p != "" {
 			demo, derr := automap.LoadDemoScript(p)

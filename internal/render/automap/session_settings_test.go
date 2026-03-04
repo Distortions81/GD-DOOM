@@ -1,6 +1,10 @@
 package automap
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/mapdata"
+)
 
 func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	pal := make([]byte, 256*4)
@@ -153,5 +157,63 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 	}
 	if dst.crtEnabled {
 		t.Fatal("crt should be disabled when kage is unavailable")
+	}
+}
+
+func TestRebuildGameWithPersistentSettings_PersistsFaithfulDetailAndGamma(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{
+			SourcePortMode: false,
+			Width:          doomLogicalW,
+			Height:         doomLogicalH,
+		},
+		g: &game{
+			opts: Options{
+				SourcePortMode: false,
+				Width:          doomLogicalW,
+				Height:         doomLogicalH,
+			},
+			detailLevel: 1,
+			gammaLevel:  4,
+		},
+	}
+	sg.rebuildGameWithPersistentSettings(&mapdata.Map{})
+	if sg.g == nil {
+		t.Fatal("rebuild should create a new game")
+	}
+	if sg.g.detailLevel != 1 {
+		t.Fatalf("faithful detail level=%d want 1", sg.g.detailLevel)
+	}
+	if sg.g.gammaLevel != 4 {
+		t.Fatalf("faithful gamma level=%d want 4", sg.g.gammaLevel)
+	}
+}
+
+func TestRebuildGameWithPersistentSettings_PersistsSourcePortDetailAndGamma(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{
+			SourcePortMode: true,
+			Width:          1280,
+			Height:         800,
+		},
+		g: &game{
+			opts: Options{
+				SourcePortMode: true,
+				Width:          1280,
+				Height:         800,
+			},
+			detailLevel: 2,
+			gammaLevel:  6,
+		},
+	}
+	sg.rebuildGameWithPersistentSettings(&mapdata.Map{})
+	if sg.g == nil {
+		t.Fatal("rebuild should create a new game")
+	}
+	if sg.g.detailLevel != 2 {
+		t.Fatalf("sourceport detail level=%d want 2", sg.g.detailLevel)
+	}
+	if sg.g.gammaLevel != 6 {
+		t.Fatalf("sourceport gamma level=%d want 6", sg.g.gammaLevel)
 	}
 }

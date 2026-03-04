@@ -1,9 +1,21 @@
 package automap
 
+type RuntimeSettings struct {
+	DetailLevel      int
+	GammaLevel       int
+	MouseLook        bool
+	AlwaysRun        bool
+	AutoWeaponSwitch bool
+	LineColorMode    string
+	CRTEffect        bool
+}
+
 type Options struct {
 	Width                      int
 	Height                     int
 	StartZoom                  float64
+	InitialDetailLevel         int
+	InitialGammaLevel          int
 	WADHash                    string
 	Debug                      bool
 	PlayerSlot                 int
@@ -41,6 +53,7 @@ type Options struct {
 	SoundBank                  SoundBank
 	DemoScript                 *DemoScript
 	RecordDemoPath             string
+	OnRuntimeSettingsChanged   func(RuntimeSettings)
 }
 
 type WallTexture struct {

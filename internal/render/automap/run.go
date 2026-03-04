@@ -355,6 +355,8 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 		g.walkRender = walkRendererDoomBasic
 		g.pseudo3D = false
 	}
+	g.runtimeSettingsSeen = true
+	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
 }
 
 func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
