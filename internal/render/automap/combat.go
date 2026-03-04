@@ -196,7 +196,7 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope float64, accurate 
 		}
 		return false
 	}
-	_ = dist
+	g.spawnHitscanBloodAtDistance(angle, slope, dist)
 	g.damageMonster(idx, damage)
 	return true
 }
@@ -421,6 +421,24 @@ func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {
 	y -= math.Sin(ang) * backoff
 	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	g.spawnHitscanPuff(int64(x), int64(y), int64(z))
+}
+
+func (g *game) spawnHitscanBloodAtDistance(angle uint32, slope, dist float64) {
+	if dist <= 0 {
+		return
+	}
+	px := float64(g.p.x)
+	py := float64(g.p.y)
+	ang := angleToRadians(angle)
+	x := px + math.Cos(ang)*dist
+	y := py + math.Sin(ang)*dist
+	z := g.playerShootZ() + slope*dist
+	// Doom nudges blood slightly before exact hit point.
+	const backoff = 10.0
+	x -= math.Cos(ang) * backoff
+	y -= math.Sin(ang) * backoff
+	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
+	g.spawnHitscanBlood(int64(x), int64(y), int64(z))
 }
 
 func monsterHitHeight(typ int16) int64 {

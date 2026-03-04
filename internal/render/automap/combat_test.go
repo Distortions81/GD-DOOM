@@ -248,6 +248,31 @@ func TestFireGunShotSpawnsHitscanPuffOnWallImpact(t *testing.T) {
 	if len(g.hitscanPuffs) == 0 {
 		t.Fatal("expected wall-impact hitscan puff to spawn")
 	}
+	if g.hitscanPuffs[0].kind != hitscanFxPuff {
+		t.Fatalf("effect kind=%d want puff", g.hitscanPuffs[0].kind)
+	}
+}
+
+func TestFireGunShotSpawnsHitscanBloodOnMonsterHit(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 64, Y: 0}},
+		},
+		thingCollected: make([]bool, 1),
+		thingHP:        []int{20},
+		p:              player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+	}
+	slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+	if !g.fireGunShot(g.p.angle, pistolRange, slope, true) {
+		t.Fatal("expected monster hit")
+	}
+	if len(g.hitscanPuffs) == 0 {
+		t.Fatal("expected blood effect to spawn")
+	}
+	if g.hitscanPuffs[0].kind != hitscanFxBlood {
+		t.Fatalf("effect kind=%d want blood", g.hitscanPuffs[0].kind)
+	}
 }
 
 func TestHitscanPuffsExpire(t *testing.T) {

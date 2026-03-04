@@ -773,6 +773,8 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		"SMGTA0", "SMGTB0", "SMGTC0", "SMGTD0",
 		"SMBTA0", "SMBTB0", "SMBTC0", "SMBTD0",
 		"TLMPA0", "TLP2A0",
+		"PUFFA0", "PUFFB0", "PUFFC0", "PUFFD0",
+		"BLUDA0", "BLUDB0", "BLUDC0",
 	} {
 		add(name)
 		addExpandedSeed(name)

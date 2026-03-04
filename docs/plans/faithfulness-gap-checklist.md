@@ -43,7 +43,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 - [ ] Complete hitscan parity with Doom (damage/spread/tracing behavior).
 - [ ] Add projectile/hitscan knock-back parity.
 - [x] Add bullet impact "puff/poof" effects for hitscan impacts.
-- [ ] Use sprite-based visuals for bullet puffs and blood effects (instead of temporary placeholders).
+- [x] Use sprite-based visuals for bullet puffs and blood effects (instead of temporary placeholders).
 - [ ] Verify key/lock interaction parity across all key-required specials.
 - [ ] Complete monster AI sensory parity (including sound/hearing-driven wake/alert behavior).
 - [ ] Validate full difficulty parity including Nightmare semantics.

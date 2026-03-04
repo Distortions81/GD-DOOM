@@ -170,10 +170,13 @@ type projectedThingItem struct {
 }
 
 type projectedPuffItem struct {
-	dist float64
-	sx   float64
-	sy   float64
-	r    float64
+	dist      float64
+	sx        float64
+	sy        float64
+	r         float64
+	kind      uint8
+	spriteTex WallTexture
+	hasSprite bool
 }
 
 type hitscanPuff struct {
@@ -181,7 +184,13 @@ type hitscanPuff struct {
 	y    int64
 	z    int64
 	tics int
+	kind uint8
 }
+
+const (
+	hitscanFxPuff uint8 = iota
+	hitscanFxBlood
+)
 
 type maskedMidSeg struct {
 	dist      float64
@@ -4634,7 +4643,48 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
 	tics := 4 + (doomrand.PRandom() & 3)
-	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{x: x, y: y, z: z, tics: tics})
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{x: x, y: y, z: z, tics: tics, kind: hitscanFxPuff})
+}
+
+func (g *game) spawnHitscanBlood(x, y, z int64) {
+	const maxPuffs = 64
+	if len(g.hitscanPuffs) >= maxPuffs {
+		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
+		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
+	}
+	tics := 6 + (doomrand.PRandom() & 3)
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{x: x, y: y, z: z, tics: tics, kind: hitscanFxBlood})
+}
+
+func (g *game) hitscanEffectSprite(p hitscanPuff) (WallTexture, bool) {
+	find := func(names ...string) (WallTexture, bool) {
+		for _, name := range names {
+			if tex, ok := g.monsterSpriteTexture(name); ok {
+				return tex, true
+			}
+		}
+		return WallTexture{}, false
+	}
+	if p.kind == hitscanFxBlood {
+		switch {
+		case p.tics >= 7:
+			return find("BLUDA0", "BLUDA1")
+		case p.tics >= 5:
+			return find("BLUDB0", "BLUDB1")
+		default:
+			return find("BLUDC0", "BLUDC1")
+		}
+	}
+	switch {
+	case p.tics >= 6:
+		return find("PUFFA0", "PUFFA1")
+	case p.tics >= 4:
+		return find("PUFFB0", "PUFFB1")
+	case p.tics >= 2:
+		return find("PUFFC0", "PUFFC1")
+	default:
+		return find("PUFFD0", "PUFFD1")
+	}
 }
 
 func (g *game) tickHitscanPuffs() {
@@ -4691,12 +4741,95 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
 			continue
 		}
-		items = append(items, projectedPuffItem{dist: f, sx: sx, sy: sy, r: r})
+		spriteTex, hasSprite := g.hitscanEffectSprite(p)
+		items = append(items, projectedPuffItem{
+			dist:      f,
+			sx:        sx,
+			sy:        sy,
+			r:         r,
+			kind:      p.kind,
+			spriteTex: spriteTex,
+			hasSprite: hasSprite,
+		})
 	}
 	g.puffItemsScratch = items
 	sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
+		if it.hasSprite {
+			th := it.spriteTex.Height
+			tw := it.spriteTex.Width
+			if th > 0 && tw > 0 {
+				src32, ok32 := spritePixels32(it.spriteTex)
+				if ok32 {
+					scale := (2.0 * it.r) / math.Max(float64(tw), float64(th))
+					if scale < 0.25 {
+						scale = 0.25
+					}
+					dstW := float64(tw) * scale
+					dstH := float64(th) * scale
+					dstX := it.sx - dstW*0.5
+					dstY := it.sy - dstH*0.5
+					x0 := int(math.Floor(dstX))
+					y0 := int(math.Floor(dstY))
+					x1 := int(math.Ceil(dstX+dstW)) - 1
+					y1 := int(math.Ceil(dstY+dstH)) - 1
+					if x0 < 0 {
+						x0 = 0
+					}
+					if y0 < 0 {
+						y0 = 0
+					}
+					if x1 >= viewW {
+						x1 = viewW - 1
+					}
+					if y1 >= viewH {
+						y1 = viewH - 1
+					}
+					txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
+					for x := x0; x <= x1; x++ {
+						tx := int((float64(x) + 0.5 - dstX) / scale)
+						if tx < 0 {
+							tx = 0
+						}
+						if tx >= tw {
+							tx = tw - 1
+						}
+						txLUT[x-x0] = tx
+					}
+					tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
+					for y := y0; y <= y1; y++ {
+						ty := int((float64(y) + 0.5 - dstY) / scale)
+						if ty < 0 {
+							ty = 0
+						}
+						if ty >= th {
+							ty = th - 1
+						}
+						tyLUT[y-y0] = ty
+					}
+					for y := y0; y <= y1; y++ {
+						ty := tyLUT[y-y0]
+						row := y * viewW
+						if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+							continue
+						}
+						for x := x0; x <= x1; x++ {
+							i := row + x
+							if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+								continue
+							}
+							pix := src32[ty*tw+txLUT[x-x0]]
+							if ((pix >> pixelAShift) & 0xFF) == 0 {
+								continue
+							}
+							wallPix[i] = pix
+						}
+					}
+					continue
+				}
+			}
+		}
 		r2 := it.r * it.r
 		x0 := int(math.Floor(it.sx - it.r))
 		x1 := int(math.Ceil(it.sx + it.r))
@@ -4729,7 +4862,11 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 				if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					continue
 				}
-				wallPix[i] = packRGBA(236, 236, 236)
+				if it.kind == hitscanFxBlood {
+					wallPix[i] = packRGBA(164, 30, 30)
+				} else {
+					wallPix[i] = packRGBA(236, 236, 236)
+				}
 			}
 		}
 	}
