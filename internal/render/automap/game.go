@@ -731,7 +731,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
-	g.playerViewZ = g.p.z + 41*fracUnit
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.initThingCombatState()
 	g.applyThingSpawnFiltering()
@@ -750,6 +749,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.demoRecord = make([]DemoTic, 0, 4096)
 	}
 	g.initPhysics()
+	// Initialize eye height after physics snaps player Z/floor/ceiling.
+	// This avoids one-frame low-camera artifacts (e.g. during level melt)
+	// before the first tickWorldLogic() view-height update runs.
+	g.playerViewZ = g.p.z + 41*fracUnit
 	g.initSubSectorSectorCache()
 	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume)
 	g.soundQueue = make([]soundEvent, 0, 8)
