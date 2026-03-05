@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unsafe"
 
 	"gddoom/internal/doomrand"
@@ -380,6 +381,7 @@ type game struct {
 	isDead              bool
 	damageFlashTic      int
 	bonusFlashTic       int
+	sectorLightFx       []sectorLightEffect
 	subSectorSec        []int
 	sectorBBox          []worldBBox
 	subSectorPoly       [][]worldPt
@@ -732,6 +734,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
+	g.initSectorLightEffects()
 	g.initThingCombatState()
 	g.applyThingSpawnFiltering()
 	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)
@@ -917,11 +920,20 @@ func (g *game) cycleSourcePortDetailLevel() {
 }
 
 func (g *game) mouseLookTurnRaw(dx int) int64 {
+	winW, _ := ebiten.WindowSize()
+	if winW <= 0 {
+		winW = g.viewW
+	}
+	return mouseLookTurnRawWithWidth(dx, g.opts.MouseLookSpeed, winW)
+}
+
+func mouseLookTurnRawWithWidth(dx int, speed float64, windowW int) int64 {
 	if dx == 0 {
 		return 0
 	}
 	base := float64(40 << 16)
-	raw := int64(math.Round(float64(dx) * base * g.opts.MouseLookSpeed))
+	scale := mouseLookResolutionScale(windowW)
+	raw := int64(math.Round(float64(dx) * scale * base * speed))
 	if raw == 0 {
 		if dx > 0 {
 			raw = 1
@@ -931,6 +943,16 @@ func (g *game) mouseLookTurnRaw(dx int) int64 {
 	}
 	// Positive mouse delta should turn right (decrease world angle).
 	return -raw
+}
+
+func mouseLookResolutionScale(windowW int) float64 {
+	if windowW <= 0 {
+		windowW = sourcePortDefaultWindowW
+	}
+	if windowW < 1 {
+		windowW = 1
+	}
+	return float64(sourcePortDefaultWindowW) / float64(windowW)
 }
 
 func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
@@ -5356,14 +5378,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if !it.fullBright {
 			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
-		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
-		for x := x0; x <= x1; x++ {
-			sx := int(float64(x+1) - dstX)
-			tx := int(float64(sx) / scale)
-			if tx < 0 {
-				tx = 0
-			}
-			if tx >= tw {
+			txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
+			for x := x0; x <= x1; x++ {
+				tx := int((float64(x) + 0.5 - dstX) / scale)
+				if tx < 0 {
+					tx = 0
+				}
+				if tx >= tw {
 				tx = tw - 1
 			}
 			if it.flip {
@@ -5371,14 +5392,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			}
 			txLUT[x-x0] = tx
 		}
-		tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
-		for y := y0; y <= y1; y++ {
-			sy := int(float64(y+1) - dstY) // center-ish nearest
-			ty := int(float64(sy) / scale)
-			if ty < 0 {
-				ty = 0
-			}
-			if ty >= th {
+			tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
+			for y := y0; y <= y1; y++ {
+				ty := int((float64(y) + 0.5 - dstY) / scale)
+				if ty < 0 {
+					ty = 0
+				}
+				if ty >= th {
 				ty = th - 1
 			}
 			tyLUT[y-y0] = ty
@@ -5563,26 +5583,24 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if !it.fullBright {
 			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
-		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
-		for x := x0; x <= x1; x++ {
-			sx := int(float64(x+1) - dstX)
-			tx := int(float64(sx) / scale)
-			if tx < 0 {
-				tx = 0
-			}
-			if tx >= tw {
+			txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
+			for x := x0; x <= x1; x++ {
+				tx := int((float64(x) + 0.5 - dstX) / scale)
+				if tx < 0 {
+					tx = 0
+				}
+				if tx >= tw {
 				tx = tw - 1
 			}
 			txLUT[x-x0] = tx
 		}
-		tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
-		for y := y0; y <= y1; y++ {
-			sy := int(float64(y+1) - dstY)
-			ty := int(float64(sy) / scale)
-			if ty < 0 {
-				ty = 0
-			}
-			if ty >= th {
+			tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
+			for y := y0; y <= y1; y++ {
+				ty := int((float64(y) + 0.5 - dstY) / scale)
+				if ty < 0 {
+					ty = 0
+				}
+				if ty >= th {
 				ty = th - 1
 			}
 			tyLUT[y-y0] = ty
@@ -5657,6 +5675,9 @@ func (g *game) worldThingSpriteName(typ int16, tic int) string {
 	pick := func(seq ...string) string {
 		return g.pickAnimatedThingSpriteName(tic, 8, seq...)
 	}
+	pickState := func(states ...thingAnimState) string {
+		return g.pickThingStateSpriteName(tic, states...)
+	}
 	switch typ {
 	case 15:
 		return pick("PLAYN0")
@@ -5677,13 +5698,19 @@ func (g *game) worldThingSpriteName(typ int16, tic int) string {
 	case 25:
 		return pick("POL1A0")
 	case 26:
-		return pick("POL6A0")
+		return pickState(
+			thingAnimState{name: "POL6A0", tics: 6},
+			thingAnimState{name: "POL6B0", tics: 8},
+		)
 	case 27:
 		return pick("POL4A0")
 	case 28:
 		return pick("POL2A0")
 	case 29:
-		return pick("POL3A0")
+		return pickState(
+			thingAnimState{name: "POL3A0", tics: 6},
+			thingAnimState{name: "POL3B0", tics: 6},
+		)
 	case 30:
 		return pick("COL1A0")
 	case 31:
@@ -5697,55 +5724,164 @@ func (g *game) worldThingSpriteName(typ int16, tic int) string {
 	case 35:
 		return pick("CBRAA0")
 	case 36:
-		return pick("COL5A0")
+		return pickState(
+			thingAnimState{name: "COL5A0", tics: 14},
+			thingAnimState{name: "COL5B0", tics: 14},
+		)
 	case 41:
-		return pick("EYEA0")
+		return pickState(
+			thingAnimState{name: "CEYEA0", tics: 6},
+			thingAnimState{name: "CEYEB0", tics: 6},
+			thingAnimState{name: "CEYEC0", tics: 6},
+			thingAnimState{name: "CEYEB0", tics: 6},
+		)
 	case 42:
-		return pick("FSKUA0")
+		return pickState(
+			thingAnimState{name: "FSKUA0", tics: 6},
+			thingAnimState{name: "FSKUB0", tics: 6},
+			thingAnimState{name: "FSKUC0", tics: 6},
+		)
 	case 43:
-		return pick("FCANA0")
+		return pick("TRE1A0")
 	case 47:
-		return pick("SMITA0", "SMITB0", "SMITC0", "SMITD0")
+		return pick("SMITA0")
 	case 48:
-		return pick("GOR1A0")
+		return pick("ELECA0")
 	case 49:
-		return pick("GOR2A0")
+		return pickState(
+			thingAnimState{name: "GOR1A0", tics: 10},
+			thingAnimState{name: "GOR1B0", tics: 15},
+			thingAnimState{name: "GOR1C0", tics: 8},
+			thingAnimState{name: "GOR1B0", tics: 6},
+		)
 	case 50:
-		return pick("GOR3A0")
+		return pick("GOR2A0")
 	case 51:
-		return pick("GOR4A0")
+		return pick("GOR3A0")
 	case 52:
+		return pick("GOR4A0")
+	case 53:
 		return pick("GOR5A0")
 	case 54:
-		return pick("TRE1A0")
+		return pick("TRE2A0")
+	case 70:
+		return pickState(
+			thingAnimState{name: "FCANA0", tics: 4},
+			thingAnimState{name: "FCANB0", tics: 4},
+			thingAnimState{name: "FCANC0", tics: 4},
+		)
 	case 72:
-		return pick("KEENA0", "KEENB0", "KEENC0", "KEEND0")
+		return pickState(thingAnimState{name: "KEENA0", tics: -1})
 	case 5:
-		return pick("BKEYA0")
+		return pickState(
+			thingAnimState{name: "BKEYA0", tics: 10},
+			thingAnimState{name: "BKEYB0", tics: 10},
+		)
 	case 6:
-		return pick("YKEYA0")
+		return pickState(
+			thingAnimState{name: "YKEYA0", tics: 10},
+			thingAnimState{name: "YKEYB0", tics: 10},
+		)
 	case 13:
-		return pick("RKEYA0")
+		return pickState(
+			thingAnimState{name: "RKEYA0", tics: 10},
+			thingAnimState{name: "RKEYB0", tics: 10},
+		)
 	case 38:
-		return pick("RSKUA0")
+		return pickState(
+			thingAnimState{name: "RSKUA0", tics: 10},
+			thingAnimState{name: "RSKUB0", tics: 10},
+		)
 	case 39:
-		return pick("YSKUA0")
+		return pickState(
+			thingAnimState{name: "YSKUA0", tics: 10},
+			thingAnimState{name: "YSKUB0", tics: 10},
+		)
 	case 40:
-		return pick("BSKUA0")
+		return pickState(
+			thingAnimState{name: "BSKUA0", tics: 10},
+			thingAnimState{name: "BSKUB0", tics: 10},
+		)
 	case 2011:
 		return pick("STIMA0")
 	case 2012:
 		return pick("MEDIA0")
+	case 2013:
+		return pickState(
+			thingAnimState{name: "SOULA0", tics: 6},
+			thingAnimState{name: "SOULB0", tics: 6},
+			thingAnimState{name: "SOULC0", tics: 6},
+			thingAnimState{name: "SOULD0", tics: 6},
+			thingAnimState{name: "SOULC0", tics: 6},
+			thingAnimState{name: "SOULB0", tics: 6},
+		)
 	case 2014:
-		return pick("BON1A0")
+		return pickState(
+			thingAnimState{name: "BON1A0", tics: 6},
+			thingAnimState{name: "BON1B0", tics: 6},
+			thingAnimState{name: "BON1C0", tics: 6},
+			thingAnimState{name: "BON1D0", tics: 6},
+			thingAnimState{name: "BON1C0", tics: 6},
+			thingAnimState{name: "BON1B0", tics: 6},
+		)
 	case 2015:
-		return pick("BON2A0")
+		return pickState(
+			thingAnimState{name: "BON2A0", tics: 6},
+			thingAnimState{name: "BON2B0", tics: 6},
+			thingAnimState{name: "BON2C0", tics: 6},
+			thingAnimState{name: "BON2D0", tics: 6},
+			thingAnimState{name: "BON2C0", tics: 6},
+			thingAnimState{name: "BON2B0", tics: 6},
+		)
 	case 2018:
-		return pick("ARM1A0")
+		return pickState(
+			thingAnimState{name: "ARM1A0", tics: 6},
+			thingAnimState{name: "ARM1B0", tics: 7},
+		)
 	case 2019:
-		return pick("ARM2A0")
+		return pickState(
+			thingAnimState{name: "ARM2A0", tics: 6},
+			thingAnimState{name: "ARM2B0", tics: 6},
+		)
+	case 2022:
+		return pickState(
+			thingAnimState{name: "PINVA0", tics: 6},
+			thingAnimState{name: "PINVB0", tics: 6},
+			thingAnimState{name: "PINVC0", tics: 6},
+			thingAnimState{name: "PINVD0", tics: 6},
+		)
+	case 2023:
+		return pickState(thingAnimState{name: "PSTRA0", tics: -1})
+	case 2024:
+		return pickState(
+			thingAnimState{name: "PINSA0", tics: 6},
+			thingAnimState{name: "PINSB0", tics: 6},
+			thingAnimState{name: "PINSC0", tics: 6},
+			thingAnimState{name: "PINSD0", tics: 6},
+		)
 	case 2025:
-		return pick("SUITA0")
+		return pickState(thingAnimState{name: "SUITA0", tics: -1})
+	case 2026:
+		return pickState(
+			thingAnimState{name: "PMAPA0", tics: 6},
+			thingAnimState{name: "PMAPB0", tics: 6},
+			thingAnimState{name: "PMAPC0", tics: 6},
+			thingAnimState{name: "PMAPD0", tics: 6},
+			thingAnimState{name: "PMAPC0", tics: 6},
+			thingAnimState{name: "PMAPB0", tics: 6},
+		)
+	case 2045:
+		return pickState(
+			thingAnimState{name: "PVISA0", tics: 6},
+			thingAnimState{name: "PVISB0", tics: 6},
+		)
+	case 83:
+		return pickState(
+			thingAnimState{name: "MEGAA0", tics: 6},
+			thingAnimState{name: "MEGAB0", tics: 6},
+			thingAnimState{name: "MEGAC0", tics: 6},
+			thingAnimState{name: "MEGAD0", tics: 6},
+		)
 	case 2007:
 		return pick("CLIPA0")
 	case 2048:
@@ -5777,26 +5913,145 @@ func (g *game) worldThingSpriteName(typ int16, tic int) string {
 	case 2006:
 		return pick("BFUGA0")
 	case 2035:
-		return pick("BAR1A0", "BAR1B0", "BAR1C0")
+		return pickState(
+			thingAnimState{name: "BAR1A0", tics: 6},
+			thingAnimState{name: "BAR1B0", tics: 6},
+		)
 	case 44:
-		return pick("TBLUA0", "TBLUB0", "TBLUC0", "TBLUD0")
+		return pickState(
+			thingAnimState{name: "TBLUA0", tics: 4},
+			thingAnimState{name: "TBLUB0", tics: 4},
+			thingAnimState{name: "TBLUC0", tics: 4},
+			thingAnimState{name: "TBLUD0", tics: 4},
+		)
 	case 45:
-		return pick("TGRNA0", "TGRNB0", "TGRNC0", "TGRND0")
+		return pickState(
+			thingAnimState{name: "TGRNA0", tics: 4},
+			thingAnimState{name: "TGRNB0", tics: 4},
+			thingAnimState{name: "TGRNC0", tics: 4},
+			thingAnimState{name: "TGRND0", tics: 4},
+		)
 	case 46:
-		return pick("TREDA0", "TREDB0", "TREDC0", "TREDD0")
+		return pickState(
+			thingAnimState{name: "TREDA0", tics: 4},
+			thingAnimState{name: "TREDB0", tics: 4},
+			thingAnimState{name: "TREDC0", tics: 4},
+			thingAnimState{name: "TREDD0", tics: 4},
+		)
 	case 55:
-		return pick("SMRTA0", "SMRTB0", "SMRTC0", "SMRTD0")
+		return pickState(
+			thingAnimState{name: "SMRTA0", tics: 4},
+			thingAnimState{name: "SMRTB0", tics: 4},
+			thingAnimState{name: "SMRTC0", tics: 4},
+			thingAnimState{name: "SMRTD0", tics: 4},
+		)
 	case 56:
-		return pick("SMGTA0", "SMGTB0", "SMGTC0", "SMGTD0")
+		return pickState(
+			thingAnimState{name: "SMGTA0", tics: 4},
+			thingAnimState{name: "SMGTB0", tics: 4},
+			thingAnimState{name: "SMGTC0", tics: 4},
+			thingAnimState{name: "SMGTD0", tics: 4},
+		)
 	case 57:
-		return pick("SMBTA0", "SMBTB0", "SMBTC0", "SMBTD0")
+		return pickState(
+			thingAnimState{name: "SMBTA0", tics: 4},
+			thingAnimState{name: "SMBTB0", tics: 4},
+			thingAnimState{name: "SMBTC0", tics: 4},
+			thingAnimState{name: "SMBTD0", tics: 4},
+		)
 	case 85:
-		return pick("TLMPA0")
+		return pickState(
+			thingAnimState{name: "TLMPA0", tics: 4},
+			thingAnimState{name: "TLMPB0", tics: 4},
+			thingAnimState{name: "TLMPC0", tics: 4},
+			thingAnimState{name: "TLMPD0", tics: 4},
+		)
 	case 86:
-		return pick("TLP2A0")
+		return pickState(
+			thingAnimState{name: "TLP2A0", tics: 4},
+			thingAnimState{name: "TLP2B0", tics: 4},
+			thingAnimState{name: "TLP2C0", tics: 4},
+			thingAnimState{name: "TLP2D0", tics: 4},
+		)
 	default:
 		return ""
 	}
+}
+
+type thingAnimState struct {
+	name string
+	tics int
+}
+
+func (g *game) pickThingStateSpriteName(tic int, states ...thingAnimState) string {
+	if len(states) == 0 {
+		return ""
+	}
+	available := make([]thingAnimState, 0, len(states))
+	for _, st := range states {
+		name := strings.ToUpper(strings.TrimSpace(st.name))
+		if name == "" {
+			continue
+		}
+		if _, ok := g.opts.SpritePatchBank[name]; !ok {
+			continue
+		}
+		available = append(available, thingAnimState{name: name, tics: st.tics})
+	}
+	if len(available) == 0 {
+		return ""
+	}
+	if len(available) == 1 || available[0].tics <= 0 {
+		return available[0].name
+	}
+	cf := g.textureAnimCrossfadeFrames
+	total := 0
+	for _, st := range available {
+		if st.tics > 0 {
+			total += st.tics
+		}
+	}
+	if total <= 0 {
+		return available[0].name
+	}
+	t := tic % total
+	if t < 0 {
+		t += total
+	}
+	acc := 0
+	for i, st := range available {
+		step := st.tics
+		if step <= 0 {
+			return st.name
+		}
+		start := acc
+		acc += step
+		if t < acc {
+			if cf > 0 && step > 1 {
+				blendStart := step - cf
+				if blendStart < 1 {
+					blendStart = 1
+				}
+				offset := t - start
+				if offset >= blendStart {
+					blendStep := (offset - blendStart) + 1
+					if blendStep > cf {
+						blendStep = cf
+					}
+					next := available[(i+1)%len(available)].name
+					if next != "" && next != st.name {
+						token := textureAnimBlendToken(st.name, next, blendStep, cf)
+						g.ensureSpriteBlendToken(token, st.name, next, blendStep, cf)
+						if _, ok := g.spriteAnimBlendTex[token]; ok {
+							return token
+						}
+					}
+				}
+			}
+			return st.name
+		}
+	}
+	return available[len(available)-1].name
 }
 
 func (g *game) pickAnimatedThingSpriteName(tic, frameTics int, seq ...string) string {
@@ -5970,8 +6225,10 @@ func blendSpriteTextures(a, b WallTexture, alpha float64) (WallTexture, bool) {
 	if len(a.RGBA) != a.Width*a.Height*4 || len(b.RGBA) != b.Width*b.Height*4 {
 		return WallTexture{}, false
 	}
-	anchorX := int(math.Round(lerp(float64(a.OffsetX), float64(b.OffsetX), alpha)))
-	anchorY := int(math.Round(lerp(float64(a.OffsetY), float64(b.OffsetY), alpha)))
+	// Keep blend anchor fixed to the current frame to avoid visible bobbing
+	// while stepping through crossfade blends.
+	anchorX := a.OffsetX
+	anchorY := a.OffsetY
 	ax := anchorX - a.OffsetX
 	ay := anchorY - a.OffsetY
 	bx := anchorX - b.OffsetX
@@ -6474,12 +6731,18 @@ func monsterSpriteFullBright(name string) bool {
 }
 
 func worldThingSpriteFullBright(name string) bool {
-	if len(name) < 4 {
+	if len(name) < 5 {
 		return false
 	}
-	switch strings.ToUpper(name[:4]) {
-	case "BON1", "BON2", "SOUL", "PINV", "PSTR", "MEGA", "COLU", "TBLU", "TGRN", "TRED", "SMBT", "SMGT", "SMRT", "FCAN", "CAND", "CBRA", "TRE1", "TRE2":
+	prefix := strings.ToUpper(name[:4])
+	frame := byte(unicode.ToUpper(rune(name[4])))
+	switch prefix {
+	case "SOUL", "PINV", "PSTR", "PINS", "MEGA", "SUIT", "PMAP", "COLU", "TBLU", "TGRN", "TRED", "SMBT", "SMGT", "SMRT", "CAND", "CBRA", "CEYE", "FSKU", "TLMP", "TLP2", "POL3", "FCAN":
 		return true
+	case "ARM1", "ARM2", "BKEY", "RKEY", "YKEY", "BSKU", "RSKU", "YSKU":
+		return frame == 'B'
+	case "PVIS":
+		return frame == 'A'
 	default:
 		return false
 	}
@@ -10041,8 +10304,14 @@ var wallTextureAnimRefs = buildTextureAnimRefs([][]string{
 	{"BLODRIP1", "BLODRIP2", "BLODRIP3", "BLODRIP4"},
 	{"FIREWALA", "FIREWALB", "FIREWALC", "FIREWALD", "FIREWALE", "FIREWALF", "FIREWALG", "FIREWALH", "FIREWALI", "FIREWALJ", "FIREWALK", "FIREWALL"},
 	{"GSTFONT1", "GSTFONT2", "GSTFONT3"},
+	{"FIRELAV3", "FIRELAVA"},
+	{"FIREMAG1", "FIREMAG2", "FIREMAG3"},
 	{"FIREBLU1", "FIREBLU2"},
 	{"ROCKRED1", "ROCKRED2", "ROCKRED3"},
+	{"BFALL1", "BFALL2", "BFALL3", "BFALL4"},
+	{"SFALL1", "SFALL2", "SFALL3", "SFALL4"},
+	{"WFALL1", "WFALL2", "WFALL3", "WFALL4"},
+	{"DBRAIN1", "DBRAIN2", "DBRAIN3", "DBRAIN4"},
 })
 
 var flatTextureAnimRefs = buildTextureAnimRefs([][]string{

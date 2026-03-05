@@ -156,3 +156,76 @@ func TestUpdatePlayerDeadStillTicksWorldLogic(t *testing.T) {
 		t.Fatalf("dead player momentum should clear, got momx=%d momy=%d", g.p.momx, g.p.momy)
 	}
 }
+
+func TestInitSectorLightEffects_ResetsSpecialsLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{Light: 160, Special: 1},
+				{Light: 160, Special: 2},
+				{Light: 160, Special: 3},
+				{Light: 160, Special: 4},
+				{Light: 160, Special: 8},
+				{Light: 160, Special: 12},
+				{Light: 160, Special: 13},
+				{Light: 160, Special: 17},
+			},
+		},
+	}
+	g.initSectorLightEffects()
+	if got := len(g.sectorLightFx); got != len(g.m.Sectors) {
+		t.Fatalf("sectorLightFx len=%d want=%d", got, len(g.m.Sectors))
+	}
+	for i, s := range g.m.Sectors {
+		want := int16(0)
+		if i == 3 {
+			want = 4
+		}
+		if s.Special != want {
+			t.Fatalf("sector %d special=%d want=%d", i, s.Special, want)
+		}
+	}
+}
+
+func TestSectorLightGlow_TicksBetweenMinAndMax(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{Light: 160, Special: 8},
+				{Light: 96},
+			},
+			Linedefs: []mapdata.Linedef{{SideNum: [2]int16{0, 1}}},
+			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
+		},
+	}
+	g.initSectorLightEffects()
+	g.tickSectorLightEffects()
+	if got := g.m.Sectors[0].Light; got != 152 {
+		t.Fatalf("glow first tick light=%d want=152", got)
+	}
+	for i := 0; i < 7; i++ {
+		g.tickSectorLightEffects()
+	}
+	if got := g.m.Sectors[0].Light; got != 104 {
+		t.Fatalf("glow lower bound bounce light=%d want=104", got)
+	}
+	if got := g.sectorLightFx[0].direction; got != 1 {
+		t.Fatalf("glow direction=%d want=1 after lower-bound bounce", got)
+	}
+}
+
+func TestSectorLightStrobeSync_StartsImmediately(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{Light: 160, Special: 12},
+			},
+		},
+	}
+	g.initSectorLightEffects()
+	g.tickSectorLightEffects()
+	if got := g.m.Sectors[0].Light; got != 0 {
+		t.Fatalf("sync strobe first tick light=%d want=0", got)
+	}
+}

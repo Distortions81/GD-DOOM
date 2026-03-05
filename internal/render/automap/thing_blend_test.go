@@ -56,7 +56,7 @@ func TestPickAnimatedThingSpriteNameBlendsDifferentSpriteSizes(t *testing.T) {
 	}
 }
 
-func TestBlendSpriteTexturesInterpolatesAnchor(t *testing.T) {
+func TestBlendSpriteTexturesKeepsStableAnchorAcrossBlendSteps(t *testing.T) {
 	a := WallTexture{
 		RGBA:    []byte{255, 0, 0, 255},
 		Width:   1,
@@ -76,27 +76,34 @@ func TestBlendSpriteTexturesInterpolatesAnchor(t *testing.T) {
 		OffsetX: 2,
 		OffsetY: 14,
 	}
-	tex, ok := blendSpriteTextures(a, b, 0.5)
+	texA, ok := blendSpriteTextures(a, b, 0.25)
 	if !ok {
-		t.Fatal("blendSpriteTextures returned not ok")
+		t.Fatal("blendSpriteTextures(0.25) returned not ok")
 	}
-	if tex.OffsetY < 0 || tex.OffsetX < 0 {
-		t.Fatalf("offsets=(%d,%d) should be non-negative", tex.OffsetX, tex.OffsetY)
+	texB, ok := blendSpriteTextures(a, b, 0.75)
+	if !ok {
+		t.Fatal("blendSpriteTextures(0.75) returned not ok")
 	}
-	if len(tex.RGBA) != tex.Width*tex.Height*4 {
-		t.Fatalf("rgba len=%d does not match %dx%d", len(tex.RGBA), tex.Width, tex.Height)
+	if texA.OffsetY != texB.OffsetY || texA.OffsetX != texB.OffsetX {
+		t.Fatalf("blend anchor drifted: offsetsA=(%d,%d) offsetsB=(%d,%d)", texA.OffsetX, texA.OffsetY, texB.OffsetX, texB.OffsetY)
+	}
+	if texA.OffsetY < 0 || texA.OffsetX < 0 {
+		t.Fatalf("offsets=(%d,%d) should be non-negative", texA.OffsetX, texA.OffsetY)
+	}
+	if len(texA.RGBA) != texA.Width*texA.Height*4 {
+		t.Fatalf("rgba len=%d does not match %dx%d", len(texA.RGBA), texA.Width, texA.Height)
 	}
 	// Mid-blend should preserve contributions from both source sprites.
 	hasRed := false
 	hasGreen := false
-	for i := 0; i+3 < len(tex.RGBA); i += 4 {
-		if tex.RGBA[i+3] == 0 {
+	for i := 0; i+3 < len(texA.RGBA); i += 4 {
+		if texA.RGBA[i+3] == 0 {
 			continue
 		}
-		if tex.RGBA[i+0] > 0 {
+		if texA.RGBA[i+0] > 0 {
 			hasRed = true
 		}
-		if tex.RGBA[i+1] > 0 {
+		if texA.RGBA[i+1] > 0 {
 			hasGreen = true
 		}
 	}

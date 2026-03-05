@@ -81,7 +81,7 @@ func keyColorForType(typ int16) (color.RGBA, bool) {
 
 func isItemOrPickup(typ int16) bool {
 	switch typ {
-	case 8, 17, 2011, 2012, 2013, 2014, 2015, 2018, 2019, 2022, 2023, 2024, 2025, 2026, 2045, 2046, 2047, 2048:
+	case 8, 17, 83, 2011, 2012, 2013, 2014, 2015, 2018, 2019, 2022, 2023, 2024, 2025, 2026, 2045, 2046, 2047, 2048:
 		return true
 	default:
 		return false

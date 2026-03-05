@@ -37,6 +37,13 @@ func TestStyleForThing_Item(t *testing.T) {
 	}
 }
 
+func TestStyleForThing_MegasphereItem(t *testing.T) {
+	s := styleForThing(testThing(83))
+	if s.glyph != thingGlyphDiamond {
+		t.Fatalf("glyph=%v want %v", s.glyph, thingGlyphDiamond)
+	}
+}
+
 func TestStyleForThing_MiscFallback(t *testing.T) {
 	s := styleForThing(testThing(9999))
 	if s.glyph != thingGlyphCross {
