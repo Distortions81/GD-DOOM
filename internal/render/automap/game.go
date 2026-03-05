@@ -618,6 +618,18 @@ type wallSegPrepass struct {
 	ok              bool
 }
 
+type wallPortalState struct {
+	worldTop    float64
+	worldBottom float64
+	worldHigh   float64
+	worldLow    float64
+	topWall     bool
+	bottomWall  bool
+	markCeiling bool
+	markFloor   bool
+	solidWall   bool
+}
+
 type plane3DVisBucket struct {
 	gen  uint64
 	list []*plane3DVisplane
@@ -630,6 +642,8 @@ const (
 	subPolySrcSegList
 	subPolySrcNodes
 )
+
+const sourcePortThingAnimSubsteps = 5
 
 const (
 	subDiagOK uint8 = iota
@@ -2114,43 +2128,16 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if front == nil {
 			continue
 		}
-		worldTop := float64(front.CeilingHeight) - eyeZ
-		worldBottom := float64(front.FloorHeight) - eyeZ
-		worldHigh := worldTop
-		worldLow := worldBottom
-		topWall := false
-		bottomWall := false
-		markCeiling := true
-		markFloor := true
-		solidWall := back == nil
-
-		if back != nil {
-			worldHigh = float64(back.CeilingHeight) - eyeZ
-			worldLow = float64(back.FloorHeight) - eyeZ
-			if isSkyFlatName(front.CeilingPic) && isSkyFlatName(back.CeilingPic) {
-				// Doom sky hack: keep upper portal open when both sides are sky.
-				worldTop = worldHigh
-			}
-			markFloor = worldLow != worldBottom ||
-				normalizeFlatName(back.FloorPic) != normalizeFlatName(front.FloorPic) ||
-				back.Light != front.Light
-			markCeiling = worldHigh != worldTop ||
-				normalizeFlatName(back.CeilingPic) != normalizeFlatName(front.CeilingPic) ||
-				back.Light != front.Light
-			if back.CeilingHeight <= front.FloorHeight || back.FloorHeight >= front.CeilingHeight {
-				markFloor = true
-				markCeiling = true
-				solidWall = true
-			}
-			topWall = worldHigh < worldTop
-			bottomWall = worldLow > worldBottom
-		}
-		if float64(front.FloorHeight) >= eyeZ {
-			markFloor = false
-		}
-		if float64(front.CeilingHeight) <= eyeZ && !isSkyFlatName(front.CeilingPic) {
-			markCeiling = false
-		}
+		ws := classifyWallPortal(front, back, eyeZ)
+		worldTop := ws.worldTop
+		worldBottom := ws.worldBottom
+		worldHigh := ws.worldHigh
+		worldLow := ws.worldLow
+		topWall := ws.topWall
+		bottomWall := ws.bottomWall
+		markCeiling := ws.markCeiling
+		markFloor := ws.markFloor
+		solidWall := ws.solidWall
 		var midTex WallTexture
 		var topTex WallTexture
 		var botTex WallTexture
@@ -2374,6 +2361,56 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
+}
+
+func classifyWallPortal(front, back *mapdata.Sector, eyeZ float64) wallPortalState {
+	if front == nil {
+		return wallPortalState{}
+	}
+	s := wallPortalState{
+		worldTop:    float64(front.CeilingHeight) - eyeZ,
+		worldBottom: float64(front.FloorHeight) - eyeZ,
+		markCeiling: true,
+		markFloor:   true,
+		solidWall:   back == nil,
+	}
+	s.worldHigh = s.worldTop
+	s.worldLow = s.worldBottom
+
+	if back != nil {
+		s.worldHigh = float64(back.CeilingHeight) - eyeZ
+		s.worldLow = float64(back.FloorHeight) - eyeZ
+		skyPortal := isSkyFlatName(front.CeilingPic) && isSkyFlatName(back.CeilingPic)
+		if skyPortal {
+			// Doom sky hack: keep upper portal open when both sides are sky.
+			s.worldTop = s.worldHigh
+		}
+		s.markFloor = s.worldLow != s.worldBottom ||
+			normalizeFlatName(back.FloorPic) != normalizeFlatName(front.FloorPic) ||
+			back.Light != front.Light
+		s.markCeiling = s.worldHigh != s.worldTop ||
+			normalizeFlatName(back.CeilingPic) != normalizeFlatName(front.CeilingPic) ||
+			back.Light != front.Light
+		if skyPortal && back.CeilingHeight != front.CeilingHeight {
+			// Keep sky-marking active so the portal reliably masks farther geometry.
+			s.markCeiling = true
+		}
+		if back.CeilingHeight <= front.FloorHeight || back.FloorHeight >= front.CeilingHeight {
+			s.markFloor = true
+			s.markCeiling = true
+			s.solidWall = true
+		}
+		s.topWall = s.worldHigh < s.worldTop
+		s.bottomWall = s.worldLow > s.worldBottom
+	}
+
+	if float64(front.FloorHeight) >= eyeZ {
+		s.markFloor = false
+	}
+	if float64(front.CeilingHeight) <= eyeZ && !isSkyFlatName(front.CeilingPic) {
+		s.markCeiling = false
+	}
+	return s
 }
 
 func (g *game) lowDetailMode() bool {
@@ -5378,13 +5415,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if !it.fullBright {
 			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
-			txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
-			for x := x0; x <= x1; x++ {
-				tx := int((float64(x) + 0.5 - dstX) / scale)
-				if tx < 0 {
-					tx = 0
-				}
-				if tx >= tw {
+		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
+		for x := x0; x <= x1; x++ {
+			tx := int((float64(x) + 0.5 - dstX) / scale)
+			if tx < 0 {
+				tx = 0
+			}
+			if tx >= tw {
 				tx = tw - 1
 			}
 			if it.flip {
@@ -5392,13 +5429,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			}
 			txLUT[x-x0] = tx
 		}
-			tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
-			for y := y0; y <= y1; y++ {
-				ty := int((float64(y) + 0.5 - dstY) / scale)
-				if ty < 0 {
-					ty = 0
-				}
-				if ty >= th {
+		tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
+		for y := y0; y <= y1; y++ {
+			ty := int((float64(y) + 0.5 - dstY) / scale)
+			if ty < 0 {
+				ty = 0
+			}
+			if ty >= th {
 				ty = th - 1
 			}
 			tyLUT[y-y0] = ty
@@ -5485,6 +5522,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
+	animTickUnits, animUnitsPerTic := g.worldThingAnimTickUnits()
 	for i, th := range g.m.Things {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
@@ -5496,7 +5534,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if !g.sectorVisibleNow(sec) {
 			continue
 		}
-		sprite := g.worldThingSpriteName(th.Type, g.worldTic)
+		sprite := g.worldThingSpriteNameScaled(th.Type, animTickUnits, animUnitsPerTic)
 		tex, ok := g.monsterSpriteTexture(sprite)
 		if !ok || tex.Height <= 0 || tex.Width <= 0 {
 			continue
@@ -5583,24 +5621,24 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if !it.fullBright {
 			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
-			txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
-			for x := x0; x <= x1; x++ {
-				tx := int((float64(x) + 0.5 - dstX) / scale)
-				if tx < 0 {
-					tx = 0
-				}
-				if tx >= tw {
+		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
+		for x := x0; x <= x1; x++ {
+			tx := int((float64(x) + 0.5 - dstX) / scale)
+			if tx < 0 {
+				tx = 0
+			}
+			if tx >= tw {
 				tx = tw - 1
 			}
 			txLUT[x-x0] = tx
 		}
-			tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
-			for y := y0; y <= y1; y++ {
-				ty := int((float64(y) + 0.5 - dstY) / scale)
-				if ty < 0 {
-					ty = 0
-				}
-				if ty >= th {
+		tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
+		for y := y0; y <= y1; y++ {
+			ty := int((float64(y) + 0.5 - dstY) / scale)
+			if ty < 0 {
+				ty = 0
+			}
+			if ty >= th {
 				ty = th - 1
 			}
 			tyLUT[y-y0] = ty
@@ -5671,12 +5709,35 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 	}
 }
 
+func (g *game) worldThingAnimTickUnits() (tickUnits int, unitsPerTic int) {
+	unitsPerTic = 1
+	tickUnits = g.worldTic
+	if g == nil || !g.opts.SourcePortMode || sourcePortThingAnimSubsteps <= 1 {
+		return tickUnits, unitsPerTic
+	}
+	unitsPerTic = sourcePortThingAnimSubsteps
+	alpha := g.interpAlpha()
+	sub := int(alpha * float64(unitsPerTic))
+	if sub < 0 {
+		sub = 0
+	}
+	if sub >= unitsPerTic {
+		sub = unitsPerTic - 1
+	}
+	tickUnits = g.worldTic*unitsPerTic + sub
+	return tickUnits, unitsPerTic
+}
+
 func (g *game) worldThingSpriteName(typ int16, tic int) string {
+	return g.worldThingSpriteNameScaled(typ, tic, 1)
+}
+
+func (g *game) worldThingSpriteNameScaled(typ int16, tickUnits, unitsPerTic int) string {
 	pick := func(seq ...string) string {
-		return g.pickAnimatedThingSpriteName(tic, 8, seq...)
+		return g.pickAnimatedThingSpriteNameScaled(tickUnits, 8, unitsPerTic, seq...)
 	}
 	pickState := func(states ...thingAnimState) string {
-		return g.pickThingStateSpriteName(tic, states...)
+		return g.pickThingStateSpriteNameScaled(tickUnits, unitsPerTic, states...)
 	}
 	switch typ {
 	case 15:
@@ -5916,6 +5977,7 @@ func (g *game) worldThingSpriteName(typ int16, tic int) string {
 		return pickState(
 			thingAnimState{name: "BAR1A0", tics: 6},
 			thingAnimState{name: "BAR1B0", tics: 6},
+			thingAnimState{name: "BEXPA0", tics: 6},
 		)
 	case 44:
 		return pickState(
@@ -5984,6 +6046,13 @@ type thingAnimState struct {
 }
 
 func (g *game) pickThingStateSpriteName(tic int, states ...thingAnimState) string {
+	return g.pickThingStateSpriteNameScaled(tic, 1, states...)
+}
+
+func (g *game) pickThingStateSpriteNameScaled(tickUnits, unitsPerTic int, states ...thingAnimState) string {
+	if unitsPerTic <= 0 {
+		unitsPerTic = 1
+	}
 	if len(states) == 0 {
 		return ""
 	}
@@ -6005,43 +6074,47 @@ func (g *game) pickThingStateSpriteName(tic int, states ...thingAnimState) strin
 		return available[0].name
 	}
 	cf := g.textureAnimCrossfadeFrames
+	cfUnits := cf * unitsPerTic
 	total := 0
 	for _, st := range available {
 		if st.tics > 0 {
-			total += st.tics
+			total += st.tics * unitsPerTic
 		}
 	}
 	if total <= 0 {
 		return available[0].name
 	}
-	t := tic % total
+	t := tickUnits % total
 	if t < 0 {
 		t += total
 	}
 	acc := 0
 	for i, st := range available {
-		step := st.tics
-		if step <= 0 {
+		stepUnits := st.tics * unitsPerTic
+		if stepUnits <= 0 {
 			return st.name
 		}
 		start := acc
-		acc += step
+		acc += stepUnits
 		if t < acc {
-			if cf > 0 && step > 1 {
-				blendStart := step - cf
+			if cfUnits > 0 && stepUnits > 1 {
+				if cfUnits > stepUnits-1 {
+					cfUnits = stepUnits - 1
+				}
+				blendStart := stepUnits - cfUnits
 				if blendStart < 1 {
 					blendStart = 1
 				}
 				offset := t - start
 				if offset >= blendStart {
 					blendStep := (offset - blendStart) + 1
-					if blendStep > cf {
-						blendStep = cf
+					if blendStep > cfUnits {
+						blendStep = cfUnits
 					}
 					next := available[(i+1)%len(available)].name
 					if next != "" && next != st.name {
-						token := textureAnimBlendToken(st.name, next, blendStep, cf)
-						g.ensureSpriteBlendToken(token, st.name, next, blendStep, cf)
+						token := textureAnimBlendToken(st.name, next, blendStep, cfUnits)
+						g.ensureSpriteBlendToken(token, st.name, next, blendStep, cfUnits)
 						if _, ok := g.spriteAnimBlendTex[token]; ok {
 							return token
 						}
@@ -6055,6 +6128,13 @@ func (g *game) pickThingStateSpriteName(tic int, states ...thingAnimState) strin
 }
 
 func (g *game) pickAnimatedThingSpriteName(tic, frameTics int, seq ...string) string {
+	return g.pickAnimatedThingSpriteNameScaled(tic, frameTics, 1, seq...)
+}
+
+func (g *game) pickAnimatedThingSpriteNameScaled(tickUnits, frameTics, unitsPerTic int, seq ...string) string {
+	if unitsPerTic <= 0 {
+		unitsPerTic = 1
+	}
 	if frameTics <= 0 || len(seq) == 0 {
 		return ""
 	}
@@ -6104,14 +6184,19 @@ func (g *game) pickAnimatedThingSpriteName(tic, frameTics int, seq ...string) st
 		return available[0]
 	}
 	cf := g.textureAnimCrossfadeFrames
-	if cf > frameTics-1 {
-		cf = frameTics - 1
+	frameUnits := frameTics * unitsPerTic
+	if frameUnits <= 0 {
+		frameUnits = frameTics
 	}
-	if cf <= 0 {
-		return available[(tic/frameTics)%len(available)]
+	cfUnits := cf * unitsPerTic
+	if cfUnits > frameUnits-1 {
+		cfUnits = frameUnits - 1
 	}
-	states := cf + 1
-	stateTick := (tic * states) / frameTics
+	if cfUnits <= 0 {
+		return available[(tickUnits/frameUnits)%len(available)]
+	}
+	states := cfUnits + 1
+	stateTick := (tickUnits * states) / frameUnits
 	frameAdvance := stateTick / states
 	blendStep := stateTick % states
 	cur := available[frameAdvance%len(available)]
@@ -6119,8 +6204,8 @@ func (g *game) pickAnimatedThingSpriteName(tic, frameTics int, seq ...string) st
 		return cur
 	}
 	next := available[(frameAdvance+1)%len(available)]
-	token := textureAnimBlendToken(cur, next, blendStep, cf)
-	g.ensureSpriteBlendToken(token, cur, next, blendStep, cf)
+	token := textureAnimBlendToken(cur, next, blendStep, cfUnits)
+	g.ensureSpriteBlendToken(token, cur, next, blendStep, cfUnits)
 	if _, ok := g.spriteAnimBlendTex[token]; ok {
 		return token
 	}
@@ -6210,7 +6295,14 @@ func (g *game) ensureSpriteBlendToken(token, cur, next string, step, total int) 
 	if len(a.RGBA) != a.Width*a.Height*4 || len(b.RGBA) != b.Width*b.Height*4 {
 		return
 	}
-	alpha := float64(step) / float64(total+1)
+	// Use an inclusive blend range so the last blend step reaches the next frame.
+	alpha := float64(step) / float64(total)
+	if alpha < 0 {
+		alpha = 0
+	}
+	if alpha > 1 {
+		alpha = 1
+	}
 	blended, ok := blendSpriteTextures(a, b, alpha)
 	if !ok || blended.Width <= 0 || blended.Height <= 0 || len(blended.RGBA) != blended.Width*blended.Height*4 {
 		return

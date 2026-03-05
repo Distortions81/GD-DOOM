@@ -140,6 +140,7 @@ func TestWorldThingSpriteName_DoomTimingParity(t *testing.T) {
 			SpritePatchBank: map[string]WallTexture{
 				"BAR1A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"BAR1B0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"BEXPA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"BKEYA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"BKEYB0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"BON1A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
@@ -169,8 +170,11 @@ func TestWorldThingSpriteName_DoomTimingParity(t *testing.T) {
 	if got := g.worldThingSpriteName(2035, 6); got != "BAR1B0" {
 		t.Fatalf("barrel tic6=%q want BAR1B0", got)
 	}
-	if got := g.worldThingSpriteName(2035, 12); got != "BAR1A0" {
-		t.Fatalf("barrel tic12=%q want BAR1A0", got)
+	if got := g.worldThingSpriteName(2035, 12); got != "BEXPA0" {
+		t.Fatalf("barrel tic12=%q want BEXPA0", got)
+	}
+	if got := g.worldThingSpriteName(2035, 18); got != "BAR1A0" {
+		t.Fatalf("barrel tic18=%q want BAR1A0", got)
 	}
 
 	if got := g.worldThingSpriteName(5, 0); got != "BKEYA0" {
@@ -210,5 +214,78 @@ func TestWorldThingSpriteName_DoomTimingParity(t *testing.T) {
 	}
 	if got := g.worldThingSpriteName(49, 10); got != "GOR1B0" {
 		t.Fatalf("bloody twitch tic10=%q want GOR1B0", got)
+	}
+}
+
+func TestWorldThingSpriteName_SmallGreenTorchBlendingTiming(t *testing.T) {
+	g := &game{
+		textureAnimCrossfadeFrames: 2,
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"SMGTA0": {Width: 1, Height: 1, RGBA: []byte{255, 0, 0, 255}},
+				"SMGTB0": {Width: 1, Height: 1, RGBA: []byte{0, 255, 0, 255}},
+				"SMGTC0": {Width: 1, Height: 1, RGBA: []byte{0, 0, 255, 255}},
+				"SMGTD0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 0, 255}},
+			},
+		},
+	}
+
+	want := map[int]string{
+		0:  "SMGTA0",
+		1:  "SMGTA0",
+		2:  "SMGTA0>SMGTB0#1/2",
+		3:  "SMGTA0>SMGTB0#2/2",
+		4:  "SMGTB0",
+		5:  "SMGTB0",
+		6:  "SMGTB0>SMGTC0#1/2",
+		7:  "SMGTB0>SMGTC0#2/2",
+		8:  "SMGTC0",
+		9:  "SMGTC0",
+		10: "SMGTC0>SMGTD0#1/2",
+		11: "SMGTC0>SMGTD0#2/2",
+		12: "SMGTD0",
+		13: "SMGTD0",
+		14: "SMGTD0>SMGTA0#1/2",
+		15: "SMGTD0>SMGTA0#2/2",
+		16: "SMGTA0",
+	}
+
+	for tic, expected := range want {
+		if got := g.worldThingSpriteName(56, tic); got != expected {
+			t.Fatalf("thing 56 tic%d=%q want %q", tic, got, expected)
+		}
+	}
+}
+
+func TestWorldThingSpriteNameScaled_SmallGreenTorchUsesSubTicBlending(t *testing.T) {
+	g := &game{
+		textureAnimCrossfadeFrames: 2,
+		opts: Options{
+			SourcePortMode: true,
+			SpritePatchBank: map[string]WallTexture{
+				"SMGTA0": {Width: 1, Height: 1, RGBA: []byte{255, 0, 0, 255}},
+				"SMGTB0": {Width: 1, Height: 1, RGBA: []byte{0, 255, 0, 255}},
+				"SMGTC0": {Width: 1, Height: 1, RGBA: []byte{0, 0, 255, 255}},
+				"SMGTD0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 0, 255}},
+			},
+		},
+	}
+
+	// Frame length is 4 tics; with 5 substeps/tic this is 20 units.
+	// cf=2 tics => 10 substeps of blending at the tail of each frame.
+	if got := g.worldThingSpriteNameScaled(56, 9, 5); got != "SMGTA0" {
+		t.Fatalf("thing 56 unit9=%q want SMGTA0", got)
+	}
+	if got := g.worldThingSpriteNameScaled(56, 10, 5); got != "SMGTA0>SMGTB0#1/10" {
+		t.Fatalf("thing 56 unit10=%q want SMGTA0>SMGTB0#1/10", got)
+	}
+	if got := g.worldThingSpriteNameScaled(56, 11, 5); got != "SMGTA0>SMGTB0#2/10" {
+		t.Fatalf("thing 56 unit11=%q want SMGTA0>SMGTB0#2/10", got)
+	}
+	if got := g.worldThingSpriteNameScaled(56, 19, 5); got != "SMGTA0>SMGTB0#10/10" {
+		t.Fatalf("thing 56 unit19=%q want SMGTA0>SMGTB0#10/10", got)
+	}
+	if got := g.worldThingSpriteNameScaled(56, 20, 5); got != "SMGTB0" {
+		t.Fatalf("thing 56 unit20=%q want SMGTB0", got)
 	}
 }

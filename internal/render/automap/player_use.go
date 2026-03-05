@@ -182,7 +182,10 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 			continue
 		}
 		info := mapdata.LookupLineSpecial(special)
-		if info.Exit == mapdata.ExitNone || info.Trigger != mapdata.TriggerWalk {
+		if info.Trigger != mapdata.TriggerWalk {
+			continue
+		}
+		if info.Exit == mapdata.ExitNone && info.Door == nil {
 			continue
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
@@ -193,7 +196,19 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 		if _, ok := segmentIntersectFrac(prevX, prevY, curX, curY, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
 			continue
 		}
-		g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk)
+		if info.Exit != mapdata.ExitNone && g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk) {
+			return
+		}
+		if info.Door != nil && info.Door.CanActivate(g.inventory.keys()) {
+			if g.activateDoorLine(ld.idx, info) {
+				if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
+					g.lineSpecial[ld.idx] = 0
+				}
+				return
+			}
+		}
+		// Crossing a special line can consume movement intent for this tic
+		// even when no action is taken.
 		return
 	}
 }

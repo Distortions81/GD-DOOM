@@ -5,11 +5,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"sort"
 	"strings"
 	"unsafe"
 
@@ -70,6 +73,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultRecordDemo := ""
 	defaultNoVsync := false
 	defaultNoFPS := false
+	defaultAniDump := ""
+	defaultAniDumpDir := "anidump"
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -248,6 +253,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write gddoom-demo-v1 script recorded from live input")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
+	aniDump := fs.String("anidump", defaultAniDump, "dump animation sprite series for seed (example: SMGTA0)")
+	aniDumpDir := fs.String("anidump-dir", defaultAniDumpDir, "output directory for -anidump PNG dumps")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -447,6 +454,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		spritePatchBank = buildMonsterSpriteBank(texSet)
 		if len(spritePatchBank) > 0 {
 			fmt.Fprintf(stderr, "monster sprite import: patches=%d\n", len(spritePatchBank))
+		}
+		if strings.TrimSpace(*aniDump) != "" {
+			if derr := dumpSpriteAnimationSeries(*aniDumpDir, *aniDump, spritePatchBank); derr != nil {
+				fmt.Fprintf(stderr, "anidump error: %v\n", derr)
+				return 1
+			}
+			fmt.Fprintf(stderr, "anidump: seed=%s dir=%s\n", strings.ToUpper(strings.TrimSpace(*aniDump)), strings.TrimSpace(*aniDumpDir))
 		}
 		intermissionPatchBank = buildIntermissionPatchBank(texSet)
 		if len(intermissionPatchBank) > 0 {
@@ -777,6 +791,86 @@ func resolveIWADAliasPath(path string) string {
 	return path
 }
 
+func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]automap.WallTexture) error {
+	seed = strings.ToUpper(strings.TrimSpace(seed))
+	outDir = strings.TrimSpace(outDir)
+	if seed == "" {
+		return fmt.Errorf("empty seed")
+	}
+	if outDir == "" {
+		outDir = "anidump"
+	}
+	if len(bank) == 0 {
+		return fmt.Errorf("sprite patch bank is empty")
+	}
+	series := spriteSeriesFromSeed(seed, bank)
+	if len(series) == 0 {
+		return fmt.Errorf("no frames found for seed %s", seed)
+	}
+	targetDir := filepath.Join(outDir, seed)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir %s: %w", targetDir, err)
+	}
+	for i, name := range series {
+		tex := bank[name]
+		if tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
+			continue
+		}
+		img := image.NewNRGBA(image.Rect(0, 0, tex.Width, tex.Height))
+		copy(img.Pix, tex.RGBA)
+		p := filepath.Join(targetDir, fmt.Sprintf("%03d_%s.png", i, name))
+		f, err := os.Create(p)
+		if err != nil {
+			return fmt.Errorf("create %s: %w", p, err)
+		}
+		err = png.Encode(f, img)
+		cerr := f.Close()
+		if err != nil {
+			return fmt.Errorf("encode %s: %w", p, err)
+		}
+		if cerr != nil {
+			return fmt.Errorf("close %s: %w", p, cerr)
+		}
+	}
+	return nil
+}
+
+func spriteSeriesFromSeed(seed string, bank map[string]automap.WallTexture) []string {
+	if len(seed) < 6 {
+		return nil
+	}
+	prefix := seed[:4]
+	rot := seed[5]
+	addRot := func(names *[]string, seen map[string]struct{}, r byte) {
+		for fr := byte('A'); fr <= byte('Z'); fr++ {
+			name := fmt.Sprintf("%s%c%c", prefix, fr, r)
+			if _, ok := bank[name]; !ok {
+				continue
+			}
+			if _, dup := seen[name]; dup {
+				continue
+			}
+			seen[name] = struct{}{}
+			*names = append(*names, name)
+		}
+	}
+	series := make([]string, 0, 32)
+	seen := make(map[string]struct{}, 32)
+	addRot(&series, seen, '0')
+	addRot(&series, seen, '1')
+	if rot != '0' && rot != '1' {
+		addRot(&series, seen, rot)
+	}
+	if len(series) == 0 {
+		if _, ok := bank[seed]; ok {
+			return []string{seed}
+		}
+		return nil
+	}
+	sort.Strings(series)
+	return series
+}
+
 func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 	byName := make(map[string]sound.DigitalSound, len(r.Sounds))
 	for _, s := range r.Sounds {
@@ -1020,21 +1114,21 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		}
 	}
 	// Common pickups, weapons, and decorations (A0 single-frame or animated 0-suffixed sets).
-		for _, name := range []string{
-			"PLAYN0", "POSSL0", "SPOSL0", "TROOL0", "SARGN0", "HEADL0", "SKULL0",
-			"POL1A0", "POL2A0", "POL3A0", "POL4A0", "POL5A0", "POL6A0",
-			"COL1A0", "COL2A0", "COL3A0", "COL4A0", "COL5A0", "TRE1A0", "TRE2A0",
-			"CANDA0", "CBRAA0", "CEYEA0", "FSKUA0", "FCANA0", "ELECA0",
-			"GOR1A0", "GOR2A0", "GOR3A0", "GOR4A0", "GOR5A0",
-			"SMITA0", "SMITB0", "SMITC0", "SMITD0",
-			"KEENA0", "KEENB0", "KEENC0", "KEEND0",
+	for _, name := range []string{
+		"PLAYN0", "POSSL0", "SPOSL0", "TROOL0", "SARGN0", "HEADL0", "SKULL0",
+		"POL1A0", "POL2A0", "POL3A0", "POL4A0", "POL5A0", "POL6A0",
+		"COL1A0", "COL2A0", "COL3A0", "COL4A0", "COL5A0", "TRE1A0", "TRE2A0",
+		"CANDA0", "CBRAA0", "CEYEA0", "FSKUA0", "FCANA0", "ELECA0",
+		"GOR1A0", "GOR2A0", "GOR3A0", "GOR4A0", "GOR5A0",
+		"SMITA0", "SMITB0", "SMITC0", "SMITD0",
+		"KEENA0", "KEENB0", "KEENC0", "KEEND0",
 		"BKEYA0", "YKEYA0", "RKEYA0",
 		"BSKUA0", "YSKUA0", "RSKUA0",
 		"STIMA0", "MEDIA0", "BON1A0", "BON2A0",
 		"ARM1A0", "ARM2A0", "SUITA0",
 		"CLIPA0", "AMMOA0", "SHELA0", "SBOXA0", "ROCKA0", "BROKA0", "CELLA0", "CELPA0", "BPAKA0",
 		"SHOTA0", "MGUNA0", "LAUNA0", "PLASA0", "CSAWA0", "BFUGA0",
-		"BAR1A0", "BAR1B0", "BAR1C0",
+		"BAR1A0", "BAR1B0", "BAR1C0", "BEXPA0",
 		"TBLUA0", "TBLUB0", "TBLUC0", "TBLUD0",
 		"TGRNA0", "TGRNB0", "TGRNC0", "TGRND0",
 		"TREDA0", "TREDB0", "TREDC0", "TREDD0",
