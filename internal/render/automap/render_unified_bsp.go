@@ -186,7 +186,7 @@ func (g *game) traverseUnifiedBSP(child uint16, ctx *unifiedGatherContext) {
 	if !g.nodeChildBBoxMaybeVisible(n, side^1, ctx.px, ctx.py, ctx.ca, ctx.sa, ctx.near, ctx.tanHalfFOV) {
 		return
 	}
-	if l, r, ok := g.nodeChildScreenRangeCached(ni, n, side^1, ctx.px, ctx.py, ctx.ca, ctx.sa, ctx.near, ctx.focal); ok && solidFullyCovered(ctx.solid, l, r) {
+	if l, r, ok := g.nodeChildScreenRangeCached(ni, n, side^1, ctx.px, ctx.py, ctx.ca, ctx.sa, ctx.near, ctx.focal); ok && solidFullyCoveredFast(ctx.solid, l, r) {
 		return
 	}
 	g.traverseUnifiedBSP(back, ctx)
@@ -227,7 +227,7 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 		}
 		return
 	}
-	if solidFullyCovered(ctx.solid, pp.minSX, pp.maxSX) {
+	if solidFullyCoveredFast(ctx.solid, pp.minSX, pp.maxSX) {
 		g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 		return
 	}

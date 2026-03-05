@@ -2212,7 +2212,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 			continue
 		}
-		if solidFullyCovered(solid, pp.minSX, pp.maxSX) {
+		if solidFullyCoveredFast(solid, pp.minSX, pp.maxSX) {
 			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 			continue
 		}
@@ -2591,12 +2591,49 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 	if g == nil || screen == nil || g.viewW <= 0 || g.viewH <= 0 {
 		return
 	}
-	if len(g.maskedClipCols) == 0 {
-		return
-	}
 	w := g.viewW
 	if len(g.maskedClipCols) < w {
 		w = len(g.maskedClipCols)
+	}
+	// Solid coverage (BSP wall spans) as a top strip.
+	for _, sp := range g.solid3DBuf {
+		l := sp.l
+		r := sp.r
+		if l < 0 {
+			l = 0
+		}
+		if r >= g.viewW {
+			r = g.viewW - 1
+		}
+		if l > r {
+			continue
+		}
+		ebitenutil.DrawRect(screen, float64(l), 0, float64(r-l+1), 4, color.RGBA{R: 70, G: 220, B: 255, A: 120})
+	}
+	// Wall occlusion columns.
+	maxWall := min(g.viewW, len(g.wallDepthQCol))
+	for x := 0; x < maxWall; x++ {
+		if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
+			ebitenutil.DrawRect(screen, float64(x), 0, 1, float64(g.viewH), color.RGBA{R: 64, G: 132, B: 255, A: 18})
+			continue
+		}
+		if x >= len(g.wallDepthTopCol) || x >= len(g.wallDepthBottomCol) {
+			continue
+		}
+		top := g.wallDepthTopCol[x]
+		bottom := g.wallDepthBottomCol[x]
+		if top < 0 {
+			top = 0
+		}
+		if bottom >= g.viewH {
+			bottom = g.viewH - 1
+		}
+		if top <= bottom {
+			ebitenutil.DrawRect(screen, float64(x), float64(top), 1, float64(bottom-top+1), color.RGBA{R: 64, G: 132, B: 255, A: 12})
+		}
+	}
+	if len(g.maskedClipCols) == 0 {
+		return
 	}
 	for x := 0; x < w; x++ {
 		for _, sp := range g.maskedClipCols[x] {
@@ -3054,6 +3091,68 @@ func (g *game) rowFullyOccludedByWallsDepthQ(depthQ uint16, rowBase, x0, x1 int)
 	return true
 }
 
+func solidSpanContainsX(spans []solidSpan, x int) bool {
+	for _, s := range spans {
+		if x < s.l {
+			return false
+		}
+		if x <= s.r {
+			return true
+		}
+	}
+	return false
+}
+
+func solidFullyCoveredFast(spans []solidSpan, l, r int) bool {
+	if l > r {
+		return true
+	}
+	// Two-triangle style fast reject on the 1D projection: left, right, center.
+	mid := (l + r) >> 1
+	if !solidSpanContainsX(spans, l) || !solidSpanContainsX(spans, r) || !solidSpanContainsX(spans, mid) {
+		return false
+	}
+	return solidFullyCovered(spans, l, r)
+}
+
+func (g *game) rowPointOccludedByWallsDepthQ(depthQ uint16, rowBase, x int) bool {
+	if g == nil || g.viewW <= 0 || g.viewH <= 0 || x < 0 || x >= g.viewW || rowBase < 0 {
+		return true
+	}
+	if g.depthOcclusionEnabled() {
+		idx := rowBase + x
+		if idx < 0 || idx >= len(g.depthPix3D) {
+			return true
+		}
+		cur := g.depthPix3D[idx]
+		return unpackDepthStamp(cur) == g.depthFrameStamp && depthQ > unpackDepthQ(cur)
+	}
+	y := rowBase / g.viewW
+	return g.spriteWallClipOccludedAtXYDepth(x, y, depthQ)
+}
+
+func (g *game) rowFullyOccludedByWallsFastDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
+	if x1 < x0 || rowBase < 0 {
+		return false
+	}
+	mid := (x0 + x1) >> 1
+	if !g.rowPointOccludedByWallsDepthQ(depthQ, rowBase, x0) ||
+		!g.rowPointOccludedByWallsDepthQ(depthQ, rowBase, x1) ||
+		!g.rowPointOccludedByWallsDepthQ(depthQ, rowBase, mid) {
+		return false
+	}
+	if g.depthOcclusionEnabled() {
+		return g.rowFullyOccludedByWallsDepthQ(depthQ, rowBase, x0, x1)
+	}
+	y := rowBase / g.viewW
+	for x := x0; x <= x1; x++ {
+		if !g.spriteWallClipOccludedAtXYDepth(x, y, depthQ) {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *game) spriteOccludedAt(depth float64, idx int, planeBias float64) bool {
 	if !g.depthOcclusionEnabled() {
 		return g.spriteWallClipOccludedAtIndexDepth(idx, encodeDepthQ(depth))
@@ -3195,6 +3294,66 @@ func (g *game) spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1 int, depthQ uint16
 		}
 	}
 	return true
+}
+
+func (g *game) spriteWallClipPointOccluded(x, y int, depthQ uint16) bool {
+	if g == nil || g.viewW <= 0 || g.viewH <= 0 {
+		return true
+	}
+	if x < 0 || x >= g.viewW || y < 0 || y >= g.viewH {
+		return true
+	}
+	return g.spriteWallClipColumnOccludedBBox(x, y, y, depthQ)
+}
+
+func (g *game) spriteWallClipQuadTriMaybeVisible(x0, x1, y0, y1 int, depthQ uint16) bool {
+	// Split quad into two triangles:
+	// T0: (x0,y0), (x1,y0), (x1,y1)
+	// T1: (x0,y0), (x1,y1), (x0,y1)
+	if !g.spriteWallClipPointOccluded(x0, y0, depthQ) {
+		return true
+	}
+	if !g.spriteWallClipPointOccluded(x1, y0, depthQ) {
+		return true
+	}
+	if !g.spriteWallClipPointOccluded(x1, y1, depthQ) {
+		return true
+	}
+	if !g.spriteWallClipPointOccluded(x0, y1, depthQ) {
+		return true
+	}
+	// Catch center openings before falling back to full-column coverage.
+	cx := (x0 + x1) >> 1
+	cy := (y0 + y1) >> 1
+	if !g.spriteWallClipPointOccluded(cx, cy, depthQ) {
+		return true
+	}
+	return false
+}
+
+func (g *game) spriteWallClipQuadFullyOccluded(x0, x1, y0, y1 int, depthQ uint16) bool {
+	if g == nil || g.viewW <= 0 || x0 > x1 || y0 > y1 {
+		return true
+	}
+	if x0 < 0 {
+		x0 = 0
+	}
+	if x1 >= g.viewW {
+		x1 = g.viewW - 1
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if y1 >= g.viewH {
+		y1 = g.viewH - 1
+	}
+	if x0 > x1 || y0 > y1 {
+		return true
+	}
+	if g.spriteWallClipQuadTriMaybeVisible(x0, x1, y0, y1, depthQ) {
+		return false
+	}
+	return g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ)
 }
 
 func projectileItemScreenBounds(it projectedProjectileItem, viewW, viewH int) (int, int, int, int, bool) {
@@ -4390,7 +4549,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				stamp := g.depthFrameStamp
 				depthQ := encodeDepthQ(depth)
 				depthPacked := packDepthStamped(depthQ, stamp)
-				if g.rowFullyOccludedByWallsDepthQ(depthQ, rowPix, x1, x2) {
+				if g.rowFullyOccludedByWallsFastDepthQ(depthQ, rowPix, x1, x2) {
 					continue
 				}
 				stepWX := (depth / focal) * sa
@@ -5814,7 +5973,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			for i := range items {
 				if !useDepth {
 					x0, x1, y0, y1, ok := projectileItemScreenBounds(items[i], viewW, viewH)
-					if ok && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
+					if ok && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
 						continue
 					}
 				}
@@ -5875,7 +6034,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				if y0 > y1 {
 					continue
 				}
-				if !useDepth && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
+				if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 					continue
 				}
 				txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
@@ -6004,7 +6163,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
+		if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		rc := uint8((uint32(it.clr.R) * shadeMul) >> 8)
@@ -6308,7 +6467,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 			for i := range items {
 				if !useDepth {
 					x0, x1, y0, y1, ok := puffItemScreenBounds(items[i], focal, viewW, viewH)
-					if ok && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
+					if ok && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
 						continue
 					}
 				}
@@ -6362,7 +6521,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 					if y0 > y1 {
 						continue
 					}
-					if !useDepth && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
+					if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 						continue
 					}
 					txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
@@ -6438,7 +6597,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
+		if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		for y := y0; y <= y1; y++ {
@@ -6589,7 +6748,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			for i := range items {
 				if !useDepth {
 					x0, x1, y0, y1, ok := monsterItemScreenBounds(items[i], viewW, viewH)
-					if ok && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
+					if ok && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
 						continue
 					}
 				}
@@ -6650,7 +6809,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
+		if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		shadeMul := uint32(256)
@@ -6862,7 +7021,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			for i := range items {
 				if !useDepth {
 					x0, x1, y0, y1, ok := thingItemScreenBounds(items[i], viewW, viewH)
-					if ok && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
+					if ok && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
 						continue
 					}
 				}
@@ -6923,7 +7082,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
+		if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		shadeMul := uint32(256)
