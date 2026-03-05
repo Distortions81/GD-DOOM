@@ -514,39 +514,61 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 		segIdx:          si,
 		frontSideDefIdx: -1,
 	}
-	if si < 0 || si >= len(g.m.Segs) {
-		return pp
+	cacheOK := si >= 0 && si < len(g.wallSegStaticCache) && g.wallSegStaticCache[si].valid
+	var (
+		ld                 mapdata.Linedef
+		x1w, y1w, x2w, y2w float64
+		u1, u2             float64
+		hasTwoSidedMid     bool
+	)
+	if cacheOK {
+		c := g.wallSegStaticCache[si]
+		ld = c.ld
+		x1w, y1w, x2w, y2w = c.x1w, c.y1w, c.x2w, c.y2w
+		pp.frontSideDefIdx = c.frontSideDefIdx
+		u1 = c.uBase
+		u2 = u1 + c.segLen
+		if c.frontSide == 1 {
+			u2 = u1 - c.segLen
+		}
+		hasTwoSidedMid = c.hasTwoSidedMidTex
+	} else {
+		if si < 0 || si >= len(g.m.Segs) {
+			return pp
+		}
+		seg := g.m.Segs[si]
+		li := int(seg.Linedef)
+		if li < 0 || li >= len(g.m.Linedefs) {
+			return pp
+		}
+		ld = g.m.Linedefs[li]
+		var ok bool
+		x1w, y1w, x2w, y2w, ok = g.segWorldEndpoints(si)
+		if !ok {
+			return pp
+		}
+		frontSide := int(seg.Direction)
+		if frontSide < 0 || frontSide > 1 {
+			frontSide = 0
+		}
+		if sn := ld.SideNum[frontSide]; sn >= 0 && int(sn) < len(g.m.Sidedefs) {
+			pp.frontSideDefIdx = int(sn)
+		}
+		segLen := math.Hypot(x2w-x1w, y2w-y1w)
+		u1 = float64(seg.Offset)
+		if pp.frontSideDefIdx >= 0 {
+			u1 += float64(g.m.Sidedefs[pp.frontSideDefIdx].TextureOffset)
+		}
+		u2 = u1 + segLen
+		if frontSide == 1 {
+			u2 = u1 - segLen
+		}
+		hasTwoSidedMid = g.segHasTwoSidedMidTexture(si)
 	}
-	seg := g.m.Segs[si]
-	li := int(seg.Linedef)
-	if li < 0 || li >= len(g.m.Linedefs) {
-		return pp
-	}
-	ld := g.m.Linedefs[li]
 	pp.ld = ld
 	d := g.linedefDecisionPseudo3D(ld)
-	if !d.visible && !g.segHasTwoSidedMidTexture(si) {
+	if !d.visible && !hasTwoSidedMid {
 		return pp
-	}
-	x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
-	if !ok {
-		return pp
-	}
-	frontSide := int(seg.Direction)
-	if frontSide < 0 || frontSide > 1 {
-		frontSide = 0
-	}
-	if sn := ld.SideNum[frontSide]; sn >= 0 && int(sn) < len(g.m.Sidedefs) {
-		pp.frontSideDefIdx = int(sn)
-	}
-	segLen := math.Hypot(x2w-x1w, y2w-y1w)
-	u1 := float64(seg.Offset)
-	if pp.frontSideDefIdx >= 0 {
-		u1 += float64(g.m.Sidedefs[pp.frontSideDefIdx].TextureOffset)
-	}
-	u2 := u1 + segLen
-	if frontSide == 1 {
-		u2 = u1 - segLen
 	}
 	x1 := x1w - camX
 	y1 := y1w - camY
@@ -565,6 +587,7 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 	if math.Abs(origF2) > 1e-9 {
 		preSX2 -= (origS2 / origF2) * focal
 	}
+	var ok bool
 	f1, s1, u1, f2, s2, u2, ok = clipSegmentToNearWithAttr(f1, s1, u1, f2, s2, u2, near)
 	if !ok {
 		pp.logReason = "BEHIND"
