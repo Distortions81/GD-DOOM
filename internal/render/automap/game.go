@@ -2666,6 +2666,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		strokeDiag(float64(x0), float64(y0), float64(x1), float64(y1), clr)
 	}
 	occludedClr := color.RGBA{R: 255, G: 56, B: 56, A: 255}
+	maybeClr := color.RGBA{R: 255, G: 170, B: 64, A: 255}
 	wallClr := color.RGBA{R: 240, G: 240, B: 240, A: 255}
 	markOccluded := !g.spriteClipDiagOnly
 
@@ -2700,7 +2701,6 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			if math.Abs(yt1-yb1) < 0.5 && math.Abs(yt2-yb2) < 0.5 {
 				return
 			}
-			clr := wallClr
 			depthQ := encodeDepthQ((f1 + f2) * 0.5)
 			ax := int(math.Round(pp.sx1))
 			ay := int(math.Round(yt1))
@@ -2710,16 +2710,32 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			cy := int(math.Round(yb2))
 			dx := int(math.Round(pp.sx1))
 			dy := int(math.Round(yb1))
-			triAOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy, depthQ)
-			triBOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, cx, cy, dx, dy, depthQ)
-			if markOccluded && triAOcc && triBOcc {
-				clr = occludedClr
+			triAState := g.spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy, depthQ)
+			triBState := g.spriteWallClipTriangleOcclusionState(ax, ay, cx, cy, dx, dy, depthQ)
+			triAClr := wallClr
+			triBClr := wallClr
+			if markOccluded {
+				if triAState == 2 {
+					triAClr = occludedClr
+				} else if triAState == 1 {
+					triAClr = maybeClr
+				}
 			}
-			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yt2), 1.0, clr, true)
-			vector.StrokeLine(screen, float32(pp.sx2), float32(yt2), float32(pp.sx2), float32(yb2), 1.0, clr, true)
-			vector.StrokeLine(screen, float32(pp.sx2), float32(yb2), float32(pp.sx1), float32(yb1), 1.0, clr, true)
-			vector.StrokeLine(screen, float32(pp.sx1), float32(yb1), float32(pp.sx1), float32(yt1), 1.0, clr, true)
-			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yb2), 1.0, clr, true)
+			if markOccluded {
+				if triBState == 2 {
+					triBClr = occludedClr
+				} else if triBState == 1 {
+					triBClr = maybeClr
+				}
+			}
+			// Triangle A: A(top-left), B(top-right), C(bottom-right)
+			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yt2), 1.0, triAClr, true)
+			vector.StrokeLine(screen, float32(pp.sx2), float32(yt2), float32(pp.sx2), float32(yb2), 1.0, triAClr, true)
+			vector.StrokeLine(screen, float32(pp.sx2), float32(yb2), float32(pp.sx1), float32(yt1), 1.0, triAClr, true)
+			// Triangle B: A(top-left), C(bottom-right), D(bottom-left)
+			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yb2), 1.0, triBClr, true)
+			vector.StrokeLine(screen, float32(pp.sx2), float32(yb2), float32(pp.sx1), float32(yb1), 1.0, triBClr, true)
+			vector.StrokeLine(screen, float32(pp.sx1), float32(yb1), float32(pp.sx1), float32(yt1), 1.0, triBClr, true)
 		}
 		if ws.solidWall {
 			drawWallSlice(ws.worldTop, ws.worldBottom)
@@ -3373,6 +3389,77 @@ func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bo
 	return false
 }
 
+func (g *game) wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1 int, depthQ uint16) bool {
+	if g == nil || x < 0 || x >= g.viewW || y0 > y1 {
+		return true
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if y1 >= g.viewH {
+		y1 = g.viewH - 1
+	}
+	if y0 > y1 {
+		return true
+	}
+	if x >= len(g.wallDepthQCol) {
+		return false
+	}
+	wq := g.wallDepthQCol[x]
+	if wq != 0xFFFF && depthQ > wq {
+		if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
+			return true
+		}
+		if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) {
+			top := g.wallDepthTopCol[x]
+			bottom := g.wallDepthBottomCol[x]
+			if y0 >= top && y1 <= bottom {
+				return true
+			}
+		} else {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *game) wallClipPointOccludedByWallsOnly(x, y int, depthQ uint16) bool {
+	if g == nil || g.viewW <= 0 || g.viewH <= 0 {
+		return true
+	}
+	if x < 0 || x >= g.viewW || y < 0 || y >= g.viewH {
+		return true
+	}
+	return g.wallClipColumnOccludedBBoxByWallsOnly(x, y, y, depthQ)
+}
+
+func (g *game) wallClipBBoxFullyOccludedByWallsOnly(x0, x1, y0, y1 int, depthQ uint16) bool {
+	if g == nil || g.viewW <= 0 || x0 > x1 || y0 > y1 {
+		return true
+	}
+	if x0 < 0 {
+		x0 = 0
+	}
+	if x1 >= g.viewW {
+		x1 = g.viewW - 1
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if y1 >= g.viewH {
+		y1 = g.viewH - 1
+	}
+	if x0 > x1 || y0 > y1 {
+		return true
+	}
+	for x := x0; x <= x1; x++ {
+		if !g.wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1, depthQ) {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *game) spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1 int, depthQ uint16) bool {
 	if g == nil || g.viewW <= 0 || x0 > x1 || y0 > y1 {
 		return true
@@ -3430,8 +3517,16 @@ func (g *game) spriteWallClipQuadTriMaybeVisible(x0, x1, y0, y1 int, depthQ uint
 }
 
 func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy int, depthQ uint16) bool {
+	return g.spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy, depthQ) == 2
+}
+
+// Returns:
+// 0 = visible
+// 1 = maybe occluded (fast tests say maybe, exact confirms not fully occluded)
+// 2 = fully occluded
+func (g *game) spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy int, depthQ uint16) int {
 	if g == nil || g.viewW <= 0 || g.viewH <= 0 {
-		return true
+		return 2
 	}
 	edgeMaybeVisible := func(x0, y0, x1, y1 int) bool {
 		dx := x1 - x0
@@ -3464,22 +3559,22 @@ func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy in
 		return false
 	}
 	if !g.spriteWallClipPointOccluded(ax, ay, depthQ) {
-		return false
+		return 0
 	}
 	if !g.spriteWallClipPointOccluded(bx, by, depthQ) {
-		return false
+		return 0
 	}
 	if !g.spriteWallClipPointOccluded(cx, cy, depthQ) {
-		return false
+		return 0
 	}
 	mx := (ax + bx + cx) / 3
 	my := (ay + by + cy) / 3
 	if !g.spriteWallClipPointOccluded(mx, my, depthQ) {
-		return false
+		return 0
 	}
 	// If any triangle edge has a visible sample, don't cull yet.
 	if edgeMaybeVisible(ax, ay, bx, by) || edgeMaybeVisible(bx, by, cx, cy) || edgeMaybeVisible(cx, cy, ax, ay) {
-		return false
+		return 0
 	}
 	// Point sampling can miss small visible slivers inside the triangle.
 	// Require an exact per-column occlusion confirmation over the triangle AABB
@@ -3512,7 +3607,10 @@ func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy in
 	if cy > y1 {
 		y1 = cy
 	}
-	return g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ)
+	if g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
+		return 2
+	}
+	return 1
 }
 
 func (g *game) wallSliceYDepthAtX(pp wallSegPrepass, x int, z, focal float64) (float64, float64, bool) {
@@ -3574,11 +3672,87 @@ func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r
 	if ay < 0 || ay >= g.viewH || by < 0 || by >= g.viewH || cy < 0 || cy >= g.viewH || dy < 0 || dy >= g.viewH {
 		return false
 	}
-	triAOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy, depthQ)
+	triOccState := func(ax, ay, bx, by, cx, cy int) int {
+		edgeMaybeVisible := func(x0, y0, x1, y1 int) bool {
+			dx := x1 - x0
+			if dx < 0 {
+				dx = -dx
+			}
+			dy := y1 - y0
+			if dy < 0 {
+				dy = -dy
+			}
+			steps := dx
+			if dy > steps {
+				steps = dy
+			}
+			if steps < 1 {
+				steps = 1
+			}
+			if steps > 32 {
+				steps = 32
+			}
+			for i := 0; i <= steps; i++ {
+				t := float64(i) / float64(steps)
+				x := int(math.Round(float64(x0) + float64(x1-x0)*t))
+				y := int(math.Round(float64(y0) + float64(y1-y0)*t))
+				if !g.wallClipPointOccludedByWallsOnly(x, y, depthQ) {
+					return true
+				}
+			}
+			return false
+		}
+		if !g.wallClipPointOccludedByWallsOnly(ax, ay, depthQ) ||
+			!g.wallClipPointOccludedByWallsOnly(bx, by, depthQ) ||
+			!g.wallClipPointOccludedByWallsOnly(cx, cy, depthQ) {
+			return 0
+		}
+		mx := (ax + bx + cx) / 3
+		my := (ay + by + cy) / 3
+		if !g.wallClipPointOccludedByWallsOnly(mx, my, depthQ) {
+			return 0
+		}
+		if edgeMaybeVisible(ax, ay, bx, by) || edgeMaybeVisible(bx, by, cx, cy) || edgeMaybeVisible(cx, cy, ax, ay) {
+			return 0
+		}
+		x0 := ax
+		if bx < x0 {
+			x0 = bx
+		}
+		if cx < x0 {
+			x0 = cx
+		}
+		x1 := ax
+		if bx > x1 {
+			x1 = bx
+		}
+		if cx > x1 {
+			x1 = cx
+		}
+		y0 := ay
+		if by < y0 {
+			y0 = by
+		}
+		if cy < y0 {
+			y0 = cy
+		}
+		y1 := ay
+		if by > y1 {
+			y1 = by
+		}
+		if cy > y1 {
+			y1 = cy
+		}
+		if g.wallClipBBoxFullyOccludedByWallsOnly(x0, x1, y0, y1, depthQ) {
+			return 2
+		}
+		return 1
+	}
+	triAOcc := triOccState(ax, ay, bx, by, cx, cy) == 2
 	if !triAOcc {
 		return false
 	}
-	triBOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, cx, cy, dx, dy, depthQ)
+	triBOcc := triOccState(ax, ay, cx, cy, dx, dy) == 2
 	return triBOcc
 }
 
