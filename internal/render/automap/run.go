@@ -483,7 +483,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 			g.walkRender = walkRendererUnifiedBSP
 			g.pseudo3D = false
 		default:
-			g.walkRender = walkRendererDoomBasic
+			g.walkRender = walkRendererUnifiedBSP
 			g.pseudo3D = false
 		}
 	}

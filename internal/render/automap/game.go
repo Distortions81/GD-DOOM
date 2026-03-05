@@ -739,7 +739,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		skyOutputW:        max(opts.Width, 1),
 		skyOutputH:        max(opts.Height, 1),
 		mode:              viewMap,
-		walkRender:        walkRendererDoomBasic,
+		walkRender:        walkRendererUnifiedBSP,
 		followMode:        true,
 		rotateView:        opts.SourcePortMode,
 		pseudo3D:          false,
@@ -2646,29 +2646,214 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 	if g == nil || screen == nil || g.viewW <= 0 || g.viewH <= 0 {
 		return
 	}
-	strokeRect := func(x0, y0, x1, y1 float64, clr color.Color) {
-		if x1 < x0 || y1 < y0 {
-			return
+	visibleClr := color.RGBA{R: 72, G: 245, B: 96, A: 255}
+	occludedClr := color.RGBA{R: 255, G: 64, B: 64, A: 255}
+	type edge2 struct {
+		x0 float64
+		y0 float64
+		x1 float64
+		y1 float64
+		// owner is the wall triangle index that produced this edge.
+		owner int
+	}
+	triEdges := make([]edge2, 0, 2048)
+	inViewF := func(x, y float64) bool {
+		return x >= 0 && x < float64(g.viewW) && y >= 0 && y < float64(g.viewH)
+	}
+	wallOccAtFloat := func(x, y float64, depthQ uint16) bool {
+		if !inViewF(x, y) {
+			return false
 		}
-		vector.StrokeLine(screen, float32(x0), float32(y0), float32(x1), float32(y0), 1.2, clr, true)
-		vector.StrokeLine(screen, float32(x0), float32(y1), float32(x1), float32(y1), 1.2, clr, true)
-		vector.StrokeLine(screen, float32(x0), float32(y0), float32(x0), float32(y1), 1.2, clr, true)
-		vector.StrokeLine(screen, float32(x1), float32(y0), float32(x1), float32(y1), 1.2, clr, true)
-	}
-	strokeDiag := func(x0, y0, x1, y1 float64, clr color.Color) {
-		if x1 < x0 || y1 < y0 {
-			return
+		x0 := int(math.Floor(x))
+		y0 := int(math.Floor(y))
+		x1 := x0 + 1
+		y1 := y0 + 1
+		occ := func(px, py int) bool {
+			if px < 0 || px >= g.viewW || py < 0 || py >= g.viewH {
+				return false
+			}
+			return g.wallClipPointOccludedByWallsOnly(px, py, depthQ)
 		}
-		vector.StrokeLine(screen, float32(x0), float32(y0), float32(x1), float32(y1), 1.1, clr, true)
+		// Majority subpixel test to avoid requiring perfect coverage.
+		n := 0
+		if occ(x0, y0) {
+			n++
+		}
+		if occ(x1, y0) {
+			n++
+		}
+		if occ(x0, y1) {
+			n++
+		}
+		if occ(x1, y1) {
+			n++
+		}
+		return n >= 3
 	}
-	drawBox := func(x0, x1, y0, y1 int, clr color.RGBA) {
-		strokeRect(float64(x0), float64(y0), float64(x1), float64(y1), clr)
-		strokeDiag(float64(x0), float64(y0), float64(x1), float64(y1), clr)
+	spriteOccAtFloat := func(x, y float64, depthQ uint16) bool {
+		if !inViewF(x, y) {
+			return false
+		}
+		x0 := int(math.Floor(x))
+		y0 := int(math.Floor(y))
+		x1 := x0 + 1
+		y1 := y0 + 1
+		occ := func(px, py int) bool {
+			if px < 0 || px >= g.viewW || py < 0 || py >= g.viewH {
+				return false
+			}
+			return g.spriteWallClipPointOccluded(px, py, depthQ)
+		}
+		n := 0
+		if occ(x0, y0) {
+			n++
+		}
+		if occ(x1, y0) {
+			n++
+		}
+		if occ(x0, y1) {
+			n++
+		}
+		if occ(x1, y1) {
+			n++
+		}
+		return n >= 3
 	}
-	occludedClr := color.RGBA{R: 255, G: 56, B: 56, A: 255}
-	maybeClr := color.RGBA{R: 255, G: 170, B: 64, A: 255}
-	wallClr := color.RGBA{R: 240, G: 240, B: 240, A: 255}
-	markOccluded := !g.spriteClipDiagOnly
+	lineIntersectT := func(ax, ay, bx, by, cx, cy, dx, dy float64) (float64, bool) {
+		rx := bx - ax
+		ry := by - ay
+		sx := dx - cx
+		sy := dy - cy
+		den := rx*sy - ry*sx
+		if math.Abs(den) < 1e-9 {
+			return 0, false
+		}
+		qpx := cx - ax
+		qpy := cy - ay
+		t := (qpx*sy - qpy*sx) / den
+		u := (qpx*ry - qpy*rx) / den
+		if t <= 0 || t >= 1 || u <= 0 || u >= 1 {
+			return 0, false
+		}
+		return t, true
+	}
+	drawVisibleLine := func(x0, y0, x1, y1 float64, edgeOwner int, isOccluded func(float64, float64, float64) bool) {
+		clipParamRangeToView := func(ta, tb float64) (float64, float64, bool) {
+			if tb < ta {
+				ta, tb = tb, ta
+			}
+			xa := x0 + (x1-x0)*ta
+			ya := y0 + (y1-y0)*ta
+			xb := x0 + (x1-x0)*tb
+			yb := y0 + (y1-y0)*tb
+			dx := xb - xa
+			dy := yb - ya
+			u0 := 0.0
+			u1 := 1.0
+			clip := func(p, q float64) bool {
+				if math.Abs(p) < 1e-12 {
+					return q >= 0
+				}
+				r := q / p
+				if p < 0 {
+					if r > u1 {
+						return false
+					}
+					if r > u0 {
+						u0 = r
+					}
+				} else {
+					if r < u0 {
+						return false
+					}
+					if r < u1 {
+						u1 = r
+					}
+				}
+				return true
+			}
+			maxX := float64(g.viewW) - 1.0
+			maxY := float64(g.viewH) - 1.0
+			if !clip(-dx, xa) || !clip(dx, maxX-xa) || !clip(-dy, ya) || !clip(dy, maxY-ya) {
+				return 0, 0, false
+			}
+			if u1 < u0 {
+				return 0, 0, false
+			}
+			t0 := ta + (tb-ta)*u0
+			t1 := ta + (tb-ta)*u1
+			if t1 <= t0 {
+				return 0, 0, false
+			}
+			return t0, t1, true
+		}
+		ts := make([]float64, 0, 16)
+		ts = append(ts, 0.0, 1.0)
+		for _, e := range triEdges {
+			// Avoid self-intersection cuts from the same triangle, and from the
+			// paired triangle that came from the same wall quad split.
+			if edgeOwner >= 0 && (e.owner == edgeOwner || e.owner == (edgeOwner^1)) {
+				continue
+			}
+			if t, ok := lineIntersectT(x0, y0, x1, y1, e.x0, e.y0, e.x1, e.y1); ok {
+				// Pure geometry split: intersections define cut candidates.
+				ts = append(ts, t)
+			}
+		}
+		sort.Float64s(ts)
+		uniq := ts[:0]
+		const eps = 1e-5
+		for _, t := range ts {
+			if len(uniq) == 0 || math.Abs(t-uniq[len(uniq)-1]) > eps {
+				uniq = append(uniq, t)
+			}
+		}
+		ts = uniq
+		for i := 0; i+1 < len(ts); i++ {
+			ta := ts[i]
+			tb := ts[i+1]
+			if tb-ta < eps {
+				continue
+			}
+			t0, t1, ok := clipParamRangeToView(ta, tb)
+			if !ok {
+				continue
+			}
+			tm := (t0 + t1) * 0.5
+			mx := x0 + (x1-x0)*tm
+			my := y0 + (y1-y0)*tm
+			if !inViewF(mx, my) {
+				continue
+			}
+			clr := visibleClr
+			if isOccluded(mx, my, tm) {
+				clr = occludedClr
+			}
+			ax := x0 + (x1-x0)*t0
+			ay := y0 + (y1-y0)*t0
+			bx := x0 + (x1-x0)*t1
+			by := y0 + (y1-y0)*t1
+			vector.StrokeLine(screen, float32(ax), float32(ay), float32(bx), float32(by), 1.2, clr, true)
+		}
+	}
+	drawVisibleBox := func(x0, x1, y0, y1 int, isOccluded func(float64, float64, float64) bool) {
+		drawVisibleLine(float64(x0), float64(y0), float64(x1), float64(y0), -1, isOccluded)
+		drawVisibleLine(float64(x1), float64(y0), float64(x1), float64(y1), -1, isOccluded)
+		drawVisibleLine(float64(x1), float64(y1), float64(x0), float64(y1), -1, isOccluded)
+		drawVisibleLine(float64(x0), float64(y1), float64(x0), float64(y0), -1, isOccluded)
+		drawVisibleLine(float64(x0), float64(y0), float64(x1), float64(y1), -1, isOccluded)
+	}
+	type wallTri struct {
+		ax, ay float64
+		bx, by float64
+		cx, cy float64
+		az     float64
+		bz     float64
+		cz     float64
+		depthQ uint16
+		state  int
+	}
+	wallTris := make([]wallTri, 0, max(64, len(g.visibleBuf)*2))
 
 	focal := doomFocalLength(g.viewW)
 	camX := g.renderPX
@@ -2702,40 +2887,34 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 				return
 			}
 			depthQ := encodeDepthQ((f1 + f2) * 0.5)
-			ax := int(math.Round(pp.sx1))
-			ay := int(math.Round(yt1))
-			bx := int(math.Round(pp.sx2))
-			by := int(math.Round(yt2))
-			cx := int(math.Round(pp.sx2))
-			cy := int(math.Round(yb2))
-			dx := int(math.Round(pp.sx1))
-			dy := int(math.Round(yb1))
+			ax := int(math.Floor(pp.sx1))
+			ay := int(math.Floor(yt1))
+			bx := int(math.Floor(pp.sx2))
+			by := int(math.Floor(yt2))
+			cx := int(math.Floor(pp.sx2))
+			cy := int(math.Floor(yb2))
+			dx := int(math.Floor(pp.sx1))
+			dy := int(math.Floor(yb1))
 			triAState := g.spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy, depthQ)
 			triBState := g.spriteWallClipTriangleOcclusionState(ax, ay, cx, cy, dx, dy, depthQ)
-			triAClr := wallClr
-			triBClr := wallClr
-			if markOccluded {
-				if triAState == 2 {
-					triAClr = occludedClr
-				} else if triAState == 1 {
-					triAClr = maybeClr
-				}
-			}
-			if markOccluded {
-				if triBState == 2 {
-					triBClr = occludedClr
-				} else if triBState == 1 {
-					triBClr = maybeClr
-				}
-			}
-			// Triangle A: A(top-left), B(top-right), C(bottom-right)
-			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yt2), 1.0, triAClr, true)
-			vector.StrokeLine(screen, float32(pp.sx2), float32(yt2), float32(pp.sx2), float32(yb2), 1.0, triAClr, true)
-			vector.StrokeLine(screen, float32(pp.sx2), float32(yb2), float32(pp.sx1), float32(yt1), 1.0, triAClr, true)
-			// Triangle B: A(top-left), C(bottom-right), D(bottom-left)
-			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yb2), 1.0, triBClr, true)
-			vector.StrokeLine(screen, float32(pp.sx2), float32(yb2), float32(pp.sx1), float32(yb1), 1.0, triBClr, true)
-			vector.StrokeLine(screen, float32(pp.sx1), float32(yb1), float32(pp.sx1), float32(yt1), 1.0, triBClr, true)
+			wallTris = append(wallTris,
+				wallTri{
+					ax: pp.sx1, ay: yt1,
+					bx: pp.sx2, by: yt2,
+					cx: pp.sx2, cy: yb2,
+					az: f1, bz: f2, cz: f2,
+					depthQ: depthQ,
+					state:  triAState,
+				},
+				wallTri{
+					ax: pp.sx1, ay: yt1,
+					bx: pp.sx2, by: yb2,
+					cx: pp.sx1, cy: yb1,
+					az: f1, bz: f2, cz: f1,
+					depthQ: depthQ,
+					state:  triBState,
+				},
+			)
 		}
 		if ws.solidWall {
 			drawWallSlice(ws.worldTop, ws.worldBottom)
@@ -2748,44 +2927,117 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			drawWallSlice(ws.worldLow, ws.worldBottom)
 		}
 	}
+	// Pass 1: build cut edges from non-culled wall triangles, but only on
+	// true outer bounds (exclude internal split diagonal).
+	for i, tr := range wallTris {
+		// 2 = fully occluded; 0/1 can still contribute visible fragments.
+		if tr.state == 2 {
+			continue
+		}
+		if i%2 == 0 {
+			// Triangle A (A-B-C): keep A-B and B-C; drop C-A diagonal.
+			triEdges = append(triEdges,
+				edge2{x0: tr.ax, y0: tr.ay, x1: tr.bx, y1: tr.by, owner: i},
+				edge2{x0: tr.bx, y0: tr.by, x1: tr.cx, y1: tr.cy, owner: i},
+			)
+		} else {
+			// Triangle B (A-C-D): keep C-D and D-A; drop A-C diagonal.
+			triEdges = append(triEdges,
+				edge2{x0: tr.bx, y0: tr.by, x1: tr.cx, y1: tr.cy, owner: i},
+				edge2{x0: tr.cx, y0: tr.cy, x1: tr.ax, y1: tr.ay, owner: i},
+			)
+		}
+	}
+	// Pass 2: draw non-culled wall-triangle edges, cut against all cut edges.
+	for i, tr := range wallTris {
+		if tr.state == 2 {
+			continue
+		}
+		// Wall vectors use depth-aware per-point occlusion so only nearer BSP
+		// surfaces cut the edge at that sample point.
+		drawWallEdge := func(x0, y0, z0, x1, y1, z1 float64) {
+			invZ0 := 0.0
+			invZ1 := 0.0
+			if z0 > 0 {
+				invZ0 = 1.0 / z0
+			}
+			if z1 > 0 {
+				invZ1 = 1.0 / z1
+			}
+			wallOcc := func(x, y int, t float64) bool {
+				if t < 0 {
+					t = 0
+				} else if t > 1 {
+					t = 1
+				}
+				// Perspective-correct depth interpolation along the edge.
+				invZ := invZ0 + (invZ1-invZ0)*t
+				if invZ <= 0 {
+					return true
+				}
+				z := 1.0 / invZ
+				if z <= 0 {
+					return true
+				}
+				dq := encodeDepthQ(z)
+				px := float64(x)
+				py := float64(y)
+				n := 0
+				if wallOccAtFloat(px, py, dq) {
+					n++
+				}
+				if wallOccAtFloat(px-0.5, py, dq) {
+					n++
+				}
+				if wallOccAtFloat(px+0.5, py, dq) {
+					n++
+				}
+				if wallOccAtFloat(px, py-0.5, dq) {
+					n++
+				}
+				if wallOccAtFloat(px, py+0.5, dq) {
+					n++
+				}
+				return n >= 3
+			}
+			drawVisibleLine(x0, y0, x1, y1, i, func(x, y, t float64) bool {
+				return wallOcc(int(math.Floor(x)), int(math.Floor(y)), t)
+			})
+		}
+		drawWallEdge(tr.ax, tr.ay, tr.az, tr.bx, tr.by, tr.bz)
+		drawWallEdge(tr.bx, tr.by, tr.bz, tr.cx, tr.cy, tr.cz)
+		drawWallEdge(tr.cx, tr.cy, tr.cz, tr.ax, tr.ay, tr.az)
+	}
 	for _, it := range g.projectileItemsScratch {
 		x0, x1, y0, y1, ok := projectileItemScreenBounds(it, g.viewW, g.viewH)
 		if ok {
-			clr := color.RGBA{R: 255, G: 186, B: 64, A: 255}
-			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
-				clr = occludedClr
-			}
-			drawBox(x0, x1, y0, y1, clr)
+			dq := encodeDepthQ(it.dist)
+			occ := func(x, y, _ float64) bool { return spriteOccAtFloat(x, y, dq) }
+			drawVisibleBox(x0, x1, y0, y1, occ)
 		}
 	}
 	for _, it := range g.monsterItemsScratch {
 		x0, x1, y0, y1, ok := monsterItemScreenBounds(it, g.viewW, g.viewH)
 		if ok {
-			clr := color.RGBA{R: 90, G: 220, B: 120, A: 255}
-			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
-				clr = occludedClr
-			}
-			drawBox(x0, x1, y0, y1, clr)
+			dq := encodeDepthQ(it.dist)
+			occ := func(x, y, _ float64) bool { return spriteOccAtFloat(x, y, dq) }
+			drawVisibleBox(x0, x1, y0, y1, occ)
 		}
 	}
 	for _, it := range g.thingItemsScratch {
 		x0, x1, y0, y1, ok := thingItemScreenBounds(it, g.viewW, g.viewH)
 		if ok {
-			clr := color.RGBA{R: 90, G: 200, B: 255, A: 255}
-			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
-				clr = occludedClr
-			}
-			drawBox(x0, x1, y0, y1, clr)
+			dq := encodeDepthQ(it.dist)
+			occ := func(x, y, _ float64) bool { return spriteOccAtFloat(x, y, dq) }
+			drawVisibleBox(x0, x1, y0, y1, occ)
 		}
 	}
 	for _, it := range g.puffItemsScratch {
 		x0, x1, y0, y1, ok := puffItemScreenBounds(it, focal, g.viewW, g.viewH)
 		if ok {
-			clr := color.RGBA{R: 255, G: 90, B: 90, A: 255}
-			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
-				clr = occludedClr
-			}
-			drawBox(x0, x1, y0, y1, clr)
+			dq := encodeDepthQ(it.dist)
+			occ := func(x, y, _ float64) bool { return spriteOccAtFloat(x, y, dq) }
+			drawVisibleBox(x0, x1, y0, y1, occ)
 		}
 	}
 }
@@ -3550,8 +3802,8 @@ func (g *game) spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy int, 
 		}
 		for i := 0; i <= steps; i++ {
 			t := float64(i) / float64(steps)
-			x := int(math.Round(float64(x0) + float64(x1-x0)*t))
-			y := int(math.Round(float64(y0) + float64(y1-y0)*t))
+			x := int(math.Floor(float64(x0) + float64(x1-x0)*t))
+			y := int(math.Floor(float64(y0) + float64(y1-y0)*t))
 			if !g.spriteWallClipPointOccluded(x, y, depthQ) {
 				return true
 			}
@@ -3656,23 +3908,31 @@ func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r
 	if !(okL && okR && okBL && okBR) {
 		return false
 	}
-	// Near-contact and off-screen slices are numerically unstable for triangle
-	// sample culling; keep them for raster pass to avoid leaks at contact.
-	if fL < 4.0 || fR < 4.0 {
-		return false
-	}
-	depthQ := encodeDepthQ((fL + fR) * 0.5)
-	ax, ay := l, int(math.Round(ytL))
-	bx, by := r, int(math.Round(ytR))
-	cx, cy := r, int(math.Round(ybR))
-	dx, dy := l, int(math.Round(ybL))
-	if ax < 0 || ax >= g.viewW || bx < 0 || bx >= g.viewW || cx < 0 || cx >= g.viewW || dx < 0 || dx >= g.viewW {
-		return false
-	}
-	if ay < 0 || ay >= g.viewH || by < 0 || by >= g.viewH || cy < 0 || cy >= g.viewH || dy < 0 || dy >= g.viewH {
-		return false
+	ax, ay := l, int(math.Floor(ytL))
+	bx, by := r, int(math.Floor(ytR))
+	cx, cy := r, int(math.Floor(ybR))
+	dx, dy := l, int(math.Floor(ybL))
+	depthQAtX := func(x int) uint16 {
+		if pp.sx2 == pp.sx1 {
+			return encodeDepthQ((fL + fR) * 0.5)
+		}
+		t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		invF := pp.invF1 + (pp.invF2-pp.invF1)*t
+		if invF <= 0 {
+			return encodeDepthQ((fL + fR) * 0.5)
+		}
+		return encodeDepthQ(1.0 / invF)
 	}
 	triOccState := func(ax, ay, bx, by, cx, cy int) int {
+		inView := func(x, y int) bool {
+			return x >= 0 && x < g.viewW && y >= 0 && y < g.viewH
+		}
 		edgeMaybeVisible := func(x0, y0, x1, y1 int) bool {
 			dx := x1 - x0
 			if dx < 0 {
@@ -3692,24 +3952,45 @@ func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r
 			if steps > 32 {
 				steps = 32
 			}
+			tested := false
 			for i := 0; i <= steps; i++ {
 				t := float64(i) / float64(steps)
-				x := int(math.Round(float64(x0) + float64(x1-x0)*t))
-				y := int(math.Round(float64(y0) + float64(y1-y0)*t))
-				if !g.wallClipPointOccludedByWallsOnly(x, y, depthQ) {
+				x := int(math.Floor(float64(x0) + float64(x1-x0)*t))
+				y := int(math.Floor(float64(y0) + float64(y1-y0)*t))
+				if !inView(x, y) {
+					continue
+				}
+				tested = true
+				if !g.wallClipPointOccludedByWallsOnly(x, y, depthQAtX(x)) {
 					return true
 				}
 			}
+			// No in-view sample means this edge can't prove full cull.
+			if !tested {
+				return true
+			}
 			return false
 		}
-		if !g.wallClipPointOccludedByWallsOnly(ax, ay, depthQ) ||
-			!g.wallClipPointOccludedByWallsOnly(bx, by, depthQ) ||
-			!g.wallClipPointOccludedByWallsOnly(cx, cy, depthQ) {
+		tested := false
+		testPointOccluded := func(x, y int) bool {
+			if !inView(x, y) {
+				return true
+			}
+			tested = true
+			return g.wallClipPointOccludedByWallsOnly(x, y, depthQAtX(x))
+		}
+		if !testPointOccluded(ax, ay) ||
+			!testPointOccluded(bx, by) ||
+			!testPointOccluded(cx, cy) {
 			return 0
 		}
 		mx := (ax + bx + cx) / 3
 		my := (ay + by + cy) / 3
-		if !g.wallClipPointOccludedByWallsOnly(mx, my, depthQ) {
+		if !testPointOccluded(mx, my) {
+			return 0
+		}
+		// If no point landed on-screen, keep for raster; don't cull.
+		if !tested {
 			return 0
 		}
 		if edgeMaybeVisible(ax, ay, bx, by) || edgeMaybeVisible(bx, by, cx, cy) || edgeMaybeVisible(cx, cy, ax, ay) {
@@ -3743,7 +4024,29 @@ func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r
 		if cy > y1 {
 			y1 = cy
 		}
-		if g.wallClipBBoxFullyOccludedByWallsOnly(x0, x1, y0, y1, depthQ) {
+		if x0 < 0 {
+			x0 = 0
+		}
+		if x1 >= g.viewW {
+			x1 = g.viewW - 1
+		}
+		if y0 < 0 {
+			y0 = 0
+		}
+		if y1 >= g.viewH {
+			y1 = g.viewH - 1
+		}
+		if x0 > x1 || y0 > y1 {
+			return 0
+		}
+		allColsOcc := true
+		for x := x0; x <= x1; x++ {
+			if !g.wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1, depthQAtX(x)) {
+				allColsOcc = false
+				break
+			}
+		}
+		if allColsOcc {
 			return 2
 		}
 		return 1
