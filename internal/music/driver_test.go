@@ -27,14 +27,16 @@ func TestDriverRenderSimpleNote(t *testing.T) {
 	}
 }
 
-func TestNoteToFnumBlockRange(t *testing.T) {
+func TestDMXFrequencyWordRange(t *testing.T) {
 	for note := 0; note <= 127; note++ {
-		f, b := noteToFnumBlock(note, 0)
-		if f < 1 || f > 1023 {
-			t.Fatalf("note=%d fnum=%d out of range", note, f)
+		freq := dmxFrequencyWord(note, 0)
+		fnum := int(freq & 0x03FF)
+		block := int((freq >> 10) & 0x07)
+		if fnum < 1 || fnum > 1023 {
+			t.Fatalf("note=%d fnum=%d out of range", note, fnum)
 		}
-		if b < 0 || b > 7 {
-			t.Fatalf("note=%d block=%d out of range", note, b)
+		if block < 0 || block > 7 {
+			t.Fatalf("note=%d block=%d out of range", note, block)
 		}
 	}
 }

@@ -1,8 +1,6 @@
 package music
 
 import (
-	"math"
-
 	"gddoom/internal/sound"
 )
 
@@ -92,6 +90,7 @@ type voiceState struct {
 	note     uint8
 	playNote uint8
 	fineTune int16
+	freqWord uint16
 	id       uint64
 	oplCh    int
 }
@@ -260,7 +259,7 @@ func (d *Driver) noteOn(ch, note, velocity uint8) {
 		d.writePatch(v.oplCh, np.Patch)
 		d.writeVolume(v.oplCh, ch, velocity, np.Patch)
 		d.writePan(v.oplCh, ch, np.Patch.C0)
-		d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
+		v.freqWord = d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
 	}
 }
 
@@ -276,7 +275,7 @@ func (d *Driver) noteOff(ch, note uint8) {
 		if !v.active || v.ch != ch || v.note != note {
 			continue
 		}
-		d.writeNote(v.oplCh, v.playNote, 0, false)
+		d.writeFreqWord(v.oplCh, v.freqWord, false)
 		v.active = false
 		found = true
 	}
@@ -291,7 +290,7 @@ func (d *Driver) refreshChannelPitch(ch uint8) {
 		if !v.active || v.ch != ch {
 			continue
 		}
-		d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
+		v.freqWord = d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
 	}
 }
 
@@ -307,7 +306,7 @@ func (d *Driver) allocateVoice(ch, note uint8) int {
 			oldest = i
 		}
 	}
-	d.writeNote(d.voices[oldest].oplCh, d.voices[oldest].playNote, 0, false)
+	d.writeFreqWord(d.voices[oldest].oplCh, d.voices[oldest].freqWord, false)
 	d.voices[oldest].active = false
 	d.voices[oldest].ch = ch
 	d.voices[oldest].note = note
@@ -398,11 +397,16 @@ func (d *Driver) writePan(oplCh int, ch, c0 uint8) {
 	d.opl.WriteReg(uint16(base+0xC0+ci), (c0&0x0F)|lr)
 }
 
-func (d *Driver) writeNote(oplCh int, note uint8, bend int16, keyOn bool) {
+func (d *Driver) writeNote(oplCh int, note uint8, bend int16, keyOn bool) uint16 {
+	freqWord := dmxFrequencyWord(int(note), bend)
+	d.writeFreqWord(oplCh, freqWord, keyOn)
+	return freqWord
+}
+
+func (d *Driver) writeFreqWord(oplCh int, freqWord uint16, keyOn bool) {
 	base, ci := oplAddrBase(oplCh)
-	fnum, block := noteToFnumBlock(int(note), bend)
-	a := uint8(fnum & 0xFF)
-	b := uint8((fnum>>8)&0x03) | uint8((block&0x07)<<2)
+	a := uint8(freqWord & 0x00FF)
+	b := uint8((freqWord >> 8) & 0x1F)
 	if keyOn {
 		b |= 0x20
 	}
@@ -410,33 +414,20 @@ func (d *Driver) writeNote(oplCh int, note uint8, bend int16, keyOn bool) {
 	d.opl.WriteReg(uint16(base+0xB0+ci), b)
 }
 
-func noteToFnumBlock(note int, bend int16) (int, int) {
-	semi := float64(note-69) + float64(bend)/32.0
-	freq := 440.0 * math.Pow(2, semi/12.0)
-	bestF := 0
-	bestB := 0
-	bestErr := math.MaxFloat64
-	for block := 0; block < 8; block++ {
-		scale := math.Ldexp(1.0, 20-block)
-		f := int(math.Round(freq * scale / 49716.0))
-		if f < 1 || f > 1023 {
-			continue
-		}
-		est := float64(f) * 49716.0 / scale
-		err := math.Abs(est - freq)
-		if err < bestErr {
-			bestErr = err
-			bestF = f
-			bestB = block
-		}
+func dmxFrequencyWord(note int, bend int16) uint16 {
+	freqIndex := 64 + 32*note + int(bend)
+	if freqIndex < 0 {
+		freqIndex = 0
 	}
-	if bestF == 0 {
-		if freq < 1 {
-			return 1, 0
-		}
-		return 1023, 7
+	if freqIndex < 284 {
+		return dmxFrequencyCurve[freqIndex]
 	}
-	return bestF, bestB
+	subIndex := (freqIndex - 284) % (12 * 32)
+	octave := (freqIndex - 284) / (12 * 32)
+	if octave >= 7 {
+		octave = 7
+	}
+	return dmxFrequencyCurve[subIndex+284] | uint16(octave<<10)
 }
 
 func clampMIDI7(v int) int {
