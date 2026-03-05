@@ -515,6 +515,7 @@ type game struct {
 	detailLevel                int
 	mapTexDiag                 bool
 	spriteClipDiag             bool
+	spriteClipDiagOnly         bool
 	runtimeSettingsSeen        bool
 	runtimeSettingsLast        RuntimeSettings
 	subSectorPolySrc           []uint8
@@ -1598,10 +1599,16 @@ func (g *game) updateParityControls() {
 			g.toggleMapFloor2DPath()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyY) {
-			g.spriteClipDiag = !g.spriteClipDiag
-			if g.spriteClipDiag {
+			if !g.spriteClipDiag {
+				g.spriteClipDiag = true
+				g.spriteClipDiagOnly = false
 				g.setHUDMessage("Sprite Clip Diag ON", 70)
+			} else if !g.spriteClipDiagOnly {
+				g.spriteClipDiagOnly = true
+				g.setHUDMessage("Sprite Clip Diag DEBUG-ONLY", 70)
 			} else {
+				g.spriteClipDiag = false
+				g.spriteClipDiagOnly = false
 				g.setHUDMessage("Sprite Clip Diag OFF", 70)
 			}
 		}
@@ -1702,7 +1709,11 @@ func (g *game) Draw(screen *ebiten.Image) {
 					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 76)
 				}
 				if g.spriteClipDiag {
-					ebitenutil.DebugPrintAt(screen, "sprite-clip-diag=ON (Y)", 12, 92)
+					mode := "ON"
+					if g.spriteClipDiagOnly {
+						mode = "DEBUG-ONLY"
+					}
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 92)
 				}
 			}
 		} else {
@@ -1723,9 +1734,21 @@ func (g *game) Draw(screen *ebiten.Image) {
 					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 76)
 				}
 				if g.spriteClipDiag {
-					ebitenutil.DebugPrintAt(screen, "sprite-clip-diag=ON (Y)", 12, 92)
+					mode := "ON"
+					if g.spriteClipDiagOnly {
+						mode = "DEBUG-ONLY"
+					}
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 92)
 				}
 			}
+		}
+		if g.opts.SourcePortMode && g.walkRender == walkRendererUnifiedBSP && g.spriteClipDiagOnly {
+			screen.Fill(bgColor)
+			g.drawSpriteClipDiagOverlay(screen)
+			if !g.opts.NoFPS {
+				g.drawPerfOverlay(screen)
+			}
+			return
 		}
 		if g.opts.SourcePortMode && g.walkRender == walkRendererUnifiedBSP && g.spriteClipDiag {
 			g.drawSpriteClipDiagOverlay(screen)
@@ -2611,13 +2634,77 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		strokeDiag(float64(x0), float64(y0), float64(x1), float64(y1), clr)
 	}
 	occludedClr := color.RGBA{R: 255, G: 56, B: 56, A: 255}
+	wallClr := color.RGBA{R: 240, G: 240, B: 240, A: 255}
+	markOccluded := !g.spriteClipDiagOnly
 
 	focal := doomFocalLength(g.viewW)
+	camX := g.renderPX
+	camY := g.renderPY
+	camAng := angleToRadians(g.renderAngle)
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	near := 2.0
+	eyeZ := g.playerEyeZ()
+	for _, si := range g.visibleBuf {
+		pp := g.buildWallSegPrepassSingle(si, camX, camY, ca, sa, focal, near)
+		if !pp.ok || pp.invF1 <= 0 || pp.invF2 <= 0 {
+			continue
+		}
+		front, back := g.segSectors(si)
+		if front == nil {
+			continue
+		}
+		ws := classifyWallPortal(front, back, eyeZ)
+		f1 := 1.0 / pp.invF1
+		f2 := 1.0 / pp.invF2
+		if f1 <= 0 || f2 <= 0 {
+			continue
+		}
+		drawWallSlice := func(zTop, zBottom float64) {
+			yt1 := float64(g.viewH)/2 - (zTop/f1)*focal
+			yt2 := float64(g.viewH)/2 - (zTop/f2)*focal
+			yb1 := float64(g.viewH)/2 - (zBottom/f1)*focal
+			yb2 := float64(g.viewH)/2 - (zBottom/f2)*focal
+			if math.Abs(yt1-yb1) < 0.5 && math.Abs(yt2-yb2) < 0.5 {
+				return
+			}
+			clr := wallClr
+			depthQ := encodeDepthQ((f1 + f2) * 0.5)
+			ax := int(math.Round(pp.sx1))
+			ay := int(math.Round(yt1))
+			bx := int(math.Round(pp.sx2))
+			by := int(math.Round(yt2))
+			cx := int(math.Round(pp.sx2))
+			cy := int(math.Round(yb2))
+			dx := int(math.Round(pp.sx1))
+			dy := int(math.Round(yb1))
+			triAOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy, depthQ)
+			triBOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, cx, cy, dx, dy, depthQ)
+			if markOccluded && triAOcc && triBOcc {
+				clr = occludedClr
+			}
+			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yt2), 1.0, clr, true)
+			vector.StrokeLine(screen, float32(pp.sx2), float32(yt2), float32(pp.sx2), float32(yb2), 1.0, clr, true)
+			vector.StrokeLine(screen, float32(pp.sx2), float32(yb2), float32(pp.sx1), float32(yb1), 1.0, clr, true)
+			vector.StrokeLine(screen, float32(pp.sx1), float32(yb1), float32(pp.sx1), float32(yt1), 1.0, clr, true)
+			vector.StrokeLine(screen, float32(pp.sx1), float32(yt1), float32(pp.sx2), float32(yb2), 1.0, clr, true)
+		}
+		if ws.solidWall {
+			drawWallSlice(ws.worldTop, ws.worldBottom)
+			continue
+		}
+		if ws.topWall {
+			drawWallSlice(ws.worldTop, ws.worldHigh)
+		}
+		if ws.bottomWall {
+			drawWallSlice(ws.worldLow, ws.worldBottom)
+		}
+	}
 	for _, it := range g.projectileItemsScratch {
 		x0, x1, y0, y1, ok := projectileItemScreenBounds(it, g.viewW, g.viewH)
 		if ok {
 			clr := color.RGBA{R: 255, G: 186, B: 64, A: 255}
-			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
 				clr = occludedClr
 			}
 			drawBox(x0, x1, y0, y1, clr)
@@ -2627,7 +2714,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		x0, x1, y0, y1, ok := monsterItemScreenBounds(it, g.viewW, g.viewH)
 		if ok {
 			clr := color.RGBA{R: 90, G: 220, B: 120, A: 255}
-			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
 				clr = occludedClr
 			}
 			drawBox(x0, x1, y0, y1, clr)
@@ -2637,7 +2724,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		x0, x1, y0, y1, ok := thingItemScreenBounds(it, g.viewW, g.viewH)
 		if ok {
 			clr := color.RGBA{R: 90, G: 200, B: 255, A: 255}
-			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
 				clr = occludedClr
 			}
 			drawBox(x0, x1, y0, y1, clr)
@@ -2647,7 +2734,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		x0, x1, y0, y1, ok := puffItemScreenBounds(it, focal, g.viewW, g.viewH)
 		if ok {
 			clr := color.RGBA{R: 255, G: 90, B: 90, A: 255}
-			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+			if markOccluded && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
 				clr = occludedClr
 			}
 			drawBox(x0, x1, y0, y1, clr)
@@ -3308,6 +3395,27 @@ func (g *game) spriteWallClipQuadTriMaybeVisible(x0, x1, y0, y1 int, depthQ uint
 		return true
 	}
 	return false
+}
+
+func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy int, depthQ uint16) bool {
+	if g == nil || g.viewW <= 0 || g.viewH <= 0 {
+		return true
+	}
+	if !g.spriteWallClipPointOccluded(ax, ay, depthQ) {
+		return false
+	}
+	if !g.spriteWallClipPointOccluded(bx, by, depthQ) {
+		return false
+	}
+	if !g.spriteWallClipPointOccluded(cx, cy, depthQ) {
+		return false
+	}
+	mx := (ax + bx + cx) / 3
+	my := (ay + by + cy) / 3
+	if !g.spriteWallClipPointOccluded(mx, my, depthQ) {
+		return false
+	}
+	return true
 }
 
 func (g *game) spriteWallClipQuadFullyOccluded(x0, x1, y0, y1 int, depthQ uint16) bool {

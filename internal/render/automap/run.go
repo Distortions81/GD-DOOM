@@ -279,25 +279,26 @@ func cloneMapForRestart(src *mapdata.Map) *mapdata.Map {
 }
 
 type sessionPersistentSettings struct {
-	detailLevel      int
-	rotateView       bool
-	mouseLook        bool
-	musicVolume      float64
-	oplVolume        float64
-	sfxVolume        float64
-	walkRender       walkRendererMode
-	alwaysRun        bool
-	autoWeaponSwitch bool
-	lineColorMode    string
-	showLegend       bool
-	mapTexDiag       bool
-	spriteClipDiag   bool
-	floor2DPath      floor2DPathMode
-	paletteLUT       bool
-	gammaLevel       int
-	crtEnabled       bool
-	reveal           revealMode
-	iddt             int
+	detailLevel        int
+	rotateView         bool
+	mouseLook          bool
+	musicVolume        float64
+	oplVolume          float64
+	sfxVolume          float64
+	walkRender         walkRendererMode
+	alwaysRun          bool
+	autoWeaponSwitch   bool
+	lineColorMode      string
+	showLegend         bool
+	mapTexDiag         bool
+	spriteClipDiag     bool
+	spriteClipDiagOnly bool
+	floor2DPath        floor2DPathMode
+	paletteLUT         bool
+	gammaLevel         int
+	crtEnabled         bool
+	reveal             revealMode
+	iddt               int
 }
 
 func clampDetailLevelForMode(level int, sourcePort bool) int {
@@ -404,25 +405,26 @@ func (sg *sessionGame) capturePersistentSettings() {
 	}
 	g := sg.g
 	sg.settings = sessionPersistentSettings{
-		detailLevel:      g.detailLevel,
-		rotateView:       g.rotateView,
-		mouseLook:        g.opts.MouseLook,
-		musicVolume:      g.opts.MusicVolume,
-		oplVolume:        g.opts.OPLVolume,
-		sfxVolume:        g.opts.SFXVolume,
-		walkRender:       g.walkRender,
-		alwaysRun:        g.alwaysRun,
-		autoWeaponSwitch: g.autoWeaponSwitch,
-		lineColorMode:    g.opts.LineColorMode,
-		showLegend:       g.showLegend,
-		mapTexDiag:       g.mapTexDiag,
-		spriteClipDiag:   g.spriteClipDiag,
-		floor2DPath:      g.floor2DPath,
-		paletteLUT:       g.paletteLUTEnabled,
-		gammaLevel:       g.gammaLevel,
-		crtEnabled:       g.crtEnabled,
-		reveal:           g.parity.reveal,
-		iddt:             g.parity.iddt,
+		detailLevel:        g.detailLevel,
+		rotateView:         g.rotateView,
+		mouseLook:          g.opts.MouseLook,
+		musicVolume:        g.opts.MusicVolume,
+		oplVolume:          g.opts.OPLVolume,
+		sfxVolume:          g.opts.SFXVolume,
+		walkRender:         g.walkRender,
+		alwaysRun:          g.alwaysRun,
+		autoWeaponSwitch:   g.autoWeaponSwitch,
+		lineColorMode:      g.opts.LineColorMode,
+		showLegend:         g.showLegend,
+		mapTexDiag:         g.mapTexDiag,
+		spriteClipDiag:     g.spriteClipDiag,
+		spriteClipDiagOnly: g.spriteClipDiagOnly,
+		floor2DPath:        g.floor2DPath,
+		paletteLUT:         g.paletteLUTEnabled,
+		gammaLevel:         g.gammaLevel,
+		crtEnabled:         g.crtEnabled,
+		reveal:             g.parity.reveal,
+		iddt:               g.parity.iddt,
 	}
 }
 
@@ -462,6 +464,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.showLegend = s.showLegend
 	g.mapTexDiag = s.mapTexDiag
 	g.spriteClipDiag = s.spriteClipDiag
+	g.spriteClipDiagOnly = s.spriteClipDiagOnly && s.spriteClipDiag
 	g.floor2DPath = normalizeFloor2DPath(s.floor2DPath)
 	g.paletteLUTEnabled = s.paletteLUT && g.opts.KageShader && len(g.opts.DoomPaletteRGBA) == 256*4
 	g.gammaLevel = clampGamma(s.gammaLevel)
