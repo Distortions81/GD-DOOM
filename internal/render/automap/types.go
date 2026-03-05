@@ -41,10 +41,12 @@ type Options struct {
 	Invulnerable               bool
 	LineColorMode              string
 	SourcePortMode             bool
+	DisableDoomLighting        bool
 	KageShader                 bool
 	GPUSky                     bool
 	CRTEffect                  bool
 	DepthBufferView            bool
+	DisableDepthOcclusion      bool
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
 	NoFPS                      bool

@@ -40,10 +40,12 @@ type fileConfig struct {
 	ImportTextures             *bool    `toml:"import_textures"`
 	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
+	DoomLighting               *bool    `toml:"doom_lighting"`
 	KageShader                 *bool    `toml:"kage_shader"`
 	GPUSky                     *bool    `toml:"gpu_sky"`
 	CRTEffect                  *bool    `toml:"crt_effect"`
 	DepthBufferView            *bool    `toml:"depth_buffer_view"`
+	DepthOcclusion             *bool    `toml:"depth_occlusion"`
 	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
 	AllCheats                  *bool    `toml:"all_cheats"`
 	StartInMap                 *bool    `toml:"start_in_map"`

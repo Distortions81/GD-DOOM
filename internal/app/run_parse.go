@@ -59,10 +59,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultDoomLighting := true
 	defaultKageShader := false
 	defaultGPUSky := false
 	defaultCRTEffect := false
 	defaultDepthBufferView := false
+	defaultDepthOcclusion := true
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
 	defaultAllCheats := false
 	defaultStartInMap := false
@@ -164,6 +166,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
+		if cfg.DoomLighting != nil {
+			defaultDoomLighting = *cfg.DoomLighting
+		}
 		if cfg.KageShader != nil {
 			defaultKageShader = *cfg.KageShader
 		}
@@ -175,6 +180,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.DepthBufferView != nil {
 			defaultDepthBufferView = *cfg.DepthBufferView
+		}
+		if cfg.DepthOcclusion != nil {
+			defaultDepthOcclusion = *cfg.DepthOcclusion
 		}
 		if cfg.TextureAnimCrossfadeFrames != nil {
 			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
@@ -243,10 +251,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
 	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
 	gpuSky := fs.Bool("gpu-sky", defaultGPUSky, "enable experimental GPU sky path in sourceport mode (default off)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
+	depthOcclusion := fs.Bool("depth-occlusion", defaultDepthOcclusion, "enable software depth occlusion buffer for sprites/planes")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
@@ -541,10 +551,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:               resolvedInvuln,
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
+			DisableDoomLighting:        !*doomLighting,
 			KageShader:                 *kageShader,
 			GPUSky:                     *gpuSky,
 			CRTEffect:                  *crtEffect,
 			DepthBufferView:            *depthBufferView,
+			DisableDepthOcclusion:      !*depthOcclusion,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,

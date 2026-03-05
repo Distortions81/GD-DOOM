@@ -59,28 +59,29 @@ const (
 )
 
 var (
-	bgColor             = color.RGBA{R: 5, G: 7, B: 9, A: 255}
-	wallOneSided        = color.RGBA{R: 220, G: 58, B: 48, A: 255}
-	wallSecret          = color.RGBA{R: 160, G: 100, B: 220, A: 255}
-	wallTeleporter      = color.RGBA{R: 40, G: 165, B: 220, A: 255}
-	wallFloorChange     = color.RGBA{R: 170, G: 120, B: 60, A: 255}
-	wallCeilChange      = color.RGBA{R: 220, G: 200, B: 70, A: 255}
-	wallNoHeightDiff    = color.RGBA{R: 86, G: 86, B: 86, A: 255}
-	wallUnrevealed      = color.RGBA{R: 100, G: 100, B: 100, A: 255}
-	wallUseSpecial      = color.RGBA{R: 255, G: 80, B: 170, A: 255}
-	playerColor         = color.RGBA{R: 120, G: 240, B: 130, A: 255}
-	otherPlayerColor    = color.RGBA{R: 90, G: 170, B: 255, A: 255}
-	useTargetColor      = color.RGBA{R: 255, G: 210, B: 70, A: 255}
-	wallShadeLUTOnce    sync.Once
-	wallShadeLUT        [257][256]uint8
-	sectorLightLUTOnce  sync.Once
-	sectorLightMulLUT   [256]uint8
-	doomLightingEnabled bool
-	doomColormapEnabled bool
-	doomColormapRows    int
-	doomRowShadeMulLUT  []uint16
-	doomColormapRGBA    []uint32
-	doomPalIndexLUT32   []uint8
+	bgColor              = color.RGBA{R: 5, G: 7, B: 9, A: 255}
+	wallOneSided         = color.RGBA{R: 220, G: 58, B: 48, A: 255}
+	wallSecret           = color.RGBA{R: 160, G: 100, B: 220, A: 255}
+	wallTeleporter       = color.RGBA{R: 40, G: 165, B: 220, A: 255}
+	wallFloorChange      = color.RGBA{R: 170, G: 120, B: 60, A: 255}
+	wallCeilChange       = color.RGBA{R: 220, G: 200, B: 70, A: 255}
+	wallNoHeightDiff     = color.RGBA{R: 86, G: 86, B: 86, A: 255}
+	wallUnrevealed       = color.RGBA{R: 100, G: 100, B: 100, A: 255}
+	wallUseSpecial       = color.RGBA{R: 255, G: 80, B: 170, A: 255}
+	playerColor          = color.RGBA{R: 120, G: 240, B: 130, A: 255}
+	otherPlayerColor     = color.RGBA{R: 90, G: 170, B: 255, A: 255}
+	useTargetColor       = color.RGBA{R: 255, G: 210, B: 70, A: 255}
+	wallShadeLUTOnce     sync.Once
+	wallShadeLUT         [257][256]uint8
+	sectorLightLUTOnce   sync.Once
+	sectorLightMulLUT    [256]uint8
+	fullbrightNoLighting bool
+	doomLightingEnabled  bool
+	doomColormapEnabled  bool
+	doomColormapRows     int
+	doomRowShadeMulLUT   []uint16
+	doomColormapRGBA     []uint32
+	doomPalIndexLUT32    []uint8
 )
 
 var (
@@ -229,6 +230,12 @@ type maskedMidSeg struct {
 	lightBias int
 }
 
+type maskedClipSpan struct {
+	y0     int16
+	y1     int16
+	depthQ uint16
+}
+
 type mapLineDraw struct {
 	x1  float32
 	y1  float32
@@ -342,6 +349,7 @@ type game struct {
 	frameUpload   time.Duration
 	perfInDraw    bool
 	interpAutoOff bool
+	depthOccl     bool
 
 	lastMouseX             int
 	mouseLookSet           bool
@@ -441,6 +449,8 @@ type game struct {
 	depthPix3D                 []uint32
 	depthPlanePix3D            []uint32
 	depthFrameStamp            uint16
+	wallDepthQCol              []uint16
+	maskedClipCols             [][]maskedClipSpan
 	wallTop3D                  []int
 	wallBottom3D               []int
 	ceilingClip3D              []int
@@ -710,10 +720,14 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		mapTexDiag:       false,
 		alwaysRun:        opts.AlwaysRun,
 		autoWeaponSwitch: opts.AutoWeaponSwitch,
+		depthOccl:        !opts.DisableDepthOcclusion,
 	}
 	// Sourceport mode keeps faithful Doom light math but without palette
 	// quantization/decimation. Faithful mode applies full Doom colormap remap.
 	initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows, !opts.SourcePortMode)
+	if opts.DisableDoomLighting {
+		disableDoomLighting()
+	}
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.textureAnimCrossfadeFrames = normalizeTextureAnimCrossfadeFrames(opts.TextureAnimCrossfadeFrames, opts.SourcePortMode)
@@ -2347,6 +2361,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
 	g.drawMaskedMidSegs(focal)
+	if !g.depthOcclusionEnabled() {
+		g.buildMaskedMidClipColumns(focal)
+	}
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
@@ -2542,6 +2559,7 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	if y1 > wallBottom[x] {
 		wallBottom[x] = y1
 	}
+	g.setWallDepthColumnMinQ(x, encodeDepthQ(depth))
 	shadeMul := sectorDistanceShadeMul(sectorLight, depth, doomLightingEnabled)
 	doomRow := 0
 	if doomLightingEnabled {
@@ -2585,7 +2603,23 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	g.writeDepthColumn(x, y0, y1, depth)
 }
 
+func (g *game) setWallDepthColumnMinQ(x int, depthQ uint16) {
+	if g == nil || x < 0 || x >= len(g.wallDepthQCol) {
+		return
+	}
+	if depthQ < g.wallDepthQCol[x] {
+		g.wallDepthQCol[x] = depthQ
+	}
+}
+
+func (g *game) depthOcclusionEnabled() bool {
+	return g != nil && g.depthOccl
+}
+
 func (g *game) writeDepthColumn(x, y0, y1 int, depth float64) {
+	if !g.depthOcclusionEnabled() {
+		return
+	}
 	if x < 0 || x >= g.viewW || y0 > y1 || len(g.depthPix3D) != g.viewW*g.viewH {
 		return
 	}
@@ -2609,10 +2643,16 @@ func (g *game) writeDepthColumn(x, y0, y1 int, depth float64) {
 }
 
 func (g *game) setDepthPixel(idx int, depth float64) {
+	if !g.depthOcclusionEnabled() {
+		return
+	}
 	g.setDepthPixelEncoded(idx, packDepthStamped(encodeDepthQ(depth), g.depthFrameStamp))
 }
 
 func (g *game) setDepthPixelEncoded(idx int, packed uint32) {
+	if !g.depthOcclusionEnabled() {
+		return
+	}
 	if idx < 0 || idx >= len(g.depthPix3D) {
 		return
 	}
@@ -2620,6 +2660,9 @@ func (g *game) setDepthPixelEncoded(idx int, packed uint32) {
 }
 
 func (g *game) setDepthPixelPairEncoded(idx int, packed uint32) {
+	if !g.depthOcclusionEnabled() {
+		return
+	}
 	if idx < 0 || idx+1 >= len(g.depthPix3D) {
 		return
 	}
@@ -2634,6 +2677,9 @@ func (g *game) setDepthPixelPairEncoded(idx int, packed uint32) {
 }
 
 func (g *game) setPlaneDepthMin(idx int, depth float64) {
+	if !g.depthOcclusionEnabled() {
+		return
+	}
 	if idx < 0 || idx >= len(g.depthPlanePix3D) {
 		return
 	}
@@ -2643,6 +2689,9 @@ func (g *game) setPlaneDepthMin(idx int, depth float64) {
 }
 
 func (g *game) setPlaneDepthMinEncoded(idx int, stamp, d uint16, packed uint32) {
+	if !g.depthOcclusionEnabled() {
+		return
+	}
 	if idx < 0 || idx >= len(g.depthPlanePix3D) {
 		return
 	}
@@ -2653,6 +2702,9 @@ func (g *game) setPlaneDepthMinEncoded(idx int, stamp, d uint16, packed uint32) 
 }
 
 func (g *game) setPlaneDepthMinPairEncoded(idx int, stamp, d uint16, packed uint32) {
+	if !g.depthOcclusionEnabled() {
+		return
+	}
 	if idx < 0 || idx+1 >= len(g.depthPlanePix3D) {
 		return
 	}
@@ -2680,6 +2732,9 @@ func (g *game) setPlaneDepthMinPairEncoded(idx int, stamp, d uint16, packed uint
 }
 
 func (g *game) depthQAtStamped(idx int, stamp uint16) (uint16, bool) {
+	if !g.depthOcclusionEnabled() {
+		return 0, false
+	}
 	if idx < 0 || idx >= len(g.depthPix3D) {
 		return 0, false
 	}
@@ -2706,6 +2761,18 @@ func (g *game) depthQAtStamped(idx int, stamp uint16) (uint16, bool) {
 }
 
 func (g *game) rowFullyOccludedDepthQ(depthQ, planeBiasQ uint16, rowBase, x0, x1 int) bool {
+	if !g.depthOcclusionEnabled() {
+		if g == nil || g.viewW <= 0 {
+			return false
+		}
+		y := rowBase / g.viewW
+		for x := x0; x <= x1; x++ {
+			if !g.spriteWallClipOccludedAtXYDepth(x, y, depthQ) {
+				return false
+			}
+		}
+		return true
+	}
 	if x1 < x0 || rowBase < 0 {
 		return false
 	}
@@ -2735,6 +2802,9 @@ func (g *game) rowFullyOccludedDepthQ(depthQ, planeBiasQ uint16, rowBase, x0, x1
 }
 
 func (g *game) rowFullyOccludedByWallsDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
+	if !g.depthOcclusionEnabled() {
+		return false
+	}
 	if x1 < x0 || rowBase < 0 {
 		return false
 	}
@@ -2753,10 +2823,67 @@ func (g *game) rowFullyOccludedByWallsDepthQ(depthQ uint16, rowBase, x0, x1 int)
 }
 
 func (g *game) spriteOccludedAt(depth float64, idx int, planeBias float64) bool {
-	return spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, g.depthFrameStamp, encodeDepthQ(depth), encodeDepthBiasQ(planeBias), idx)
+	if !g.depthOcclusionEnabled() {
+		return g.spriteWallClipOccludedAtIndexDepth(idx, encodeDepthQ(depth))
+	}
+	return g.spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, g.depthFrameStamp, encodeDepthQ(depth), encodeDepthBiasQ(planeBias), idx)
 }
 
-func spriteOccludedDepthQAt(depthPix, depthPlanePix []uint32, stamp, depthQ, planeBiasQ uint16, idx int) bool {
+func (g *game) spriteOccludedDepthQAt(depthPix, depthPlanePix []uint32, stamp, depthQ, planeBiasQ uint16, idx int) bool {
+	if !g.depthOcclusionEnabled() {
+		return g.spriteWallClipOccludedAtIndexDepth(idx, depthQ)
+	}
+	return spriteOccludedDepthQAtCore(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, idx)
+}
+
+func (g *game) spriteWallClipOccludedAtIndexDepth(idx int, depthQ uint16) bool {
+	if g == nil || g.viewW <= 0 || idx < 0 {
+		return true
+	}
+	x := idx % g.viewW
+	y := idx / g.viewW
+	return g.spriteWallClipOccludedAtXYDepth(x, y, depthQ)
+}
+
+func (g *game) spriteWallClipOccludedAtXYDepth(x, y int, depthQ uint16) bool {
+	if g == nil || x < 0 || y < 0 || y >= g.viewH {
+		return true
+	}
+	if x >= len(g.ceilingClip3D) || x >= len(g.floorClip3D) {
+		return false
+	}
+	top := g.ceilingClip3D[x] + 1
+	bottom := g.floorClip3D[x] - 1
+	wq := uint16(0xFFFF)
+	if x < len(g.wallDepthQCol) {
+		wq = g.wallDepthQCol[x]
+	}
+	behindNearestWall := wq != 0xFFFF && depthQ > wq
+	if top > bottom {
+		// Fully closed column (solid wall at this screen x).
+		if behindNearestWall {
+			return true
+		}
+	} else if y < top || y > bottom {
+		// Outside current wall opening: occlude only when behind nearest wall.
+		if behindNearestWall {
+			return true
+		}
+	}
+	if x < len(g.maskedClipCols) {
+		for _, sp := range g.maskedClipCols[x] {
+			if y >= int(sp.y0) && y <= int(sp.y1) && depthQ > sp.depthQ {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func spriteOccludedDepthQAtCore(depthPix, depthPlanePix []uint32, stamp, depthQ, planeBiasQ uint16, idx int) bool {
+	if len(depthPix) == 0 {
+		return false
+	}
 	if idx < 0 || idx >= len(depthPix) {
 		return true
 	}
@@ -2994,7 +3121,7 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 		if hasRGBA {
 			opaque = texRGBA[ti*4+3] != 0
 		}
-		if opaque && !spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, stamp, depthQ, 0, pixI) {
+		if opaque && !g.spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, stamp, depthQ, 0, pixI) {
 			if doomColormapEnabled {
 				pix32[pixI] = shadePackedDOOMColormapRow(src, doomRow)
 			} else {
@@ -3315,7 +3442,7 @@ func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
 }
 
 func (g *game) drawMaskedMidSegs(focal float64) {
-	if len(g.maskedMidSegsScratch) == 0 || len(g.depthPix3D) != g.viewW*g.viewH {
+	if len(g.maskedMidSegsScratch) == 0 {
 		return
 	}
 	sort.Slice(g.maskedMidSegsScratch, func(i, j int) bool {
@@ -3361,6 +3488,59 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 				}
 			}
 			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.texMid, focal, ms.tex, shadeMul, doomRow)
+		}
+	}
+}
+
+func (g *game) buildMaskedMidClipColumns(focal float64) {
+	if g == nil || focal <= 0 || len(g.maskedMidSegsScratch) == 0 || len(g.maskedClipCols) != g.viewW {
+		return
+	}
+	halfH := float64(g.viewH) * 0.5
+	for _, ms := range g.maskedMidSegsScratch {
+		if ms.x0 > ms.x1 || math.Abs(ms.sx2-ms.sx1) < 1e-9 {
+			continue
+		}
+		x0 := ms.x0
+		x1 := ms.x1
+		if x0 < 0 {
+			x0 = 0
+		}
+		if x1 >= g.viewW {
+			x1 = g.viewW - 1
+		}
+		for x := x0; x <= x1; x++ {
+			t := (float64(x) - ms.sx1) / (ms.sx2 - ms.sx1)
+			if t < 0 {
+				t = 0
+			}
+			if t > 1 {
+				t = 1
+			}
+			invF := ms.invF1 + (ms.invF2-ms.invF1)*t
+			if invF <= 0 {
+				continue
+			}
+			f := 1.0 / invF
+			if f <= 0 {
+				continue
+			}
+			y0 := int(math.Ceil(halfH - (ms.worldHigh/f)*focal))
+			y1 := int(math.Floor(halfH - (ms.worldLow/f)*focal))
+			if y0 < 0 {
+				y0 = 0
+			}
+			if y1 >= g.viewH {
+				y1 = g.viewH - 1
+			}
+			if y1 < y0 {
+				continue
+			}
+			g.maskedClipCols[x] = append(g.maskedClipCols[x], maskedClipSpan{
+				y0:     int16(y0),
+				y1:     int16(y1),
+				depthQ: encodeDepthQ(f),
+			})
 		}
 	}
 }
@@ -3419,6 +3599,7 @@ func initSectorLightMulLUT() {
 }
 
 func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int, enableColormapRemap bool) {
+	fullbrightNoLighting = false
 	doomLightingEnabled = false
 	doomColormapEnabled = false
 	doomColormapRows = 0
@@ -3455,6 +3636,16 @@ func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int, enableColor
 	}
 	doomPalIndexLUT32 = buildPaletteIndexLUT32(paletteRGBA)
 	doomColormapEnabled = len(doomPalIndexLUT32) == 32*32*32
+}
+
+func disableDoomLighting() {
+	fullbrightNoLighting = true
+	doomLightingEnabled = false
+	doomColormapEnabled = false
+	doomColormapRows = 0
+	doomRowShadeMulLUT = nil
+	doomColormapRGBA = nil
+	doomPalIndexLUT32 = nil
 }
 
 func buildDoomRowShadeMulLUT(paletteRGBA, colorMap []byte, rows int) []uint16 {
@@ -3742,6 +3933,24 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						}
 						continue
 					}
+					if fullbrightNoLighting {
+						x := x1
+						for ; x+1 <= x2; x += 2 {
+							wxFixed += stepWXFixed
+							wyFixed += stepWYFixed
+							wxFixed += stepWXFixed
+							wyFixed += stepWYFixed
+							pix32[pixI] = fbPacked
+							pix32[pixI+1] = fbPacked
+							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
+							pixI += 2
+						}
+						if x <= x2 {
+							pix32[pixI] = fbPacked
+							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
+						}
+						continue
+					}
 					if doomLightingEnabled {
 						x := x1
 						for ; x+1 <= x2; x += 2 {
@@ -3831,6 +4040,32 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						u := int(wxFixed>>fracBits) & 63
 						v := int(wyFixed>>fracBits) & 63
 						pix32[pixI] = shadePackedDOOMColormapRow(tex32[(v<<6)+u], defaultRow)
+						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
+					}
+					continue
+				}
+				if fullbrightNoLighting {
+					x := x1
+					for ; x+1 <= x2; x += 2 {
+						u0 := int(wxFixed>>fracBits) & 63
+						v0 := int(wyFixed>>fracBits) & 63
+						p0 := tex32[(v0<<6)+u0]
+						wxFixed += stepWXFixed
+						wyFixed += stepWYFixed
+						u1 := int(wxFixed>>fracBits) & 63
+						v1 := int(wyFixed>>fracBits) & 63
+						p1 := tex32[(v1<<6)+u1]
+						pix32[pixI] = p0
+						pix32[pixI+1] = p1
+						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
+						wxFixed += stepWXFixed
+						wyFixed += stepWYFixed
+						pixI += 2
+					}
+					if x <= x2 {
+						u := int(wxFixed>>fracBits) & 63
+						v := int(wyFixed>>fracBits) & 63
+						pix32[pixI] = tex32[(v<<6)+u]
 						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
@@ -4914,13 +5149,17 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 24.0
 	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
+	useDepth := g.depthOcclusionEnabled()
 	depthPix := g.depthPix3D
 	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
 	stamp := g.depthFrameStamp
-	if (len(g.projectiles) == 0 && len(g.projectileImpacts) == 0) || len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
+	if (len(g.projectiles) == 0 && len(g.projectileImpacts) == 0) || len(wallPix) != viewW*viewH {
+		return
+	}
+	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	items := g.ensureProjectileItemsScratch(len(g.projectiles) + len(g.projectileImpacts))
@@ -5102,8 +5341,8 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 						if x+1 <= x1 {
 							i0 := row + x
 							i1 := i0 + 1
-							occ0 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
-							occ1 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
+							occ0 := g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
+							occ1 := g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
 							if !occ0 && !occ1 {
 								p0 := src32[ty*tw+txLUT[x-x0]]
 								p1 := src32[ty*tw+txLUT[x+1-x0]]
@@ -5145,7 +5384,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 							continue
 						}
 						i := row + x
-						if !spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+						if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 							p := src32[ty*tw+txLUT[x-x0]]
 							if ((p >> pixelAShift) & 0xFF) != 0 {
 								wallPix[i] = shadePackedRGBA(p, shadeMul)
@@ -5192,7 +5431,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 					continue
 				}
 				i := row + x
-				if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+				if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					continue
 				}
 				wallPix[i] = packRGBA(rc, gc, b)
@@ -5377,13 +5616,17 @@ func (g *game) tickHitscanPuffs() {
 func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 16.0
 	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
+	useDepth := g.depthOcclusionEnabled()
 	depthPix := g.depthPix3D
 	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
 	stamp := g.depthFrameStamp
-	if len(g.hitscanPuffs) == 0 || len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
+	if len(g.hitscanPuffs) == 0 || len(wallPix) != viewW*viewH {
+		return
+	}
+	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	items := g.ensurePuffItemsScratch(len(g.hitscanPuffs))
@@ -5503,7 +5746,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 						}
 						for x := x0; x <= x1; x++ {
 							i := row + x
-							if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+							if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 								continue
 							}
 							pix := src32[ty*tw+txLUT[x-x0]]
@@ -5546,7 +5789,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 					continue
 				}
 				i := row + x
-				if spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+				if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					continue
 				}
 				if it.kind == hitscanFxBlood {
@@ -5562,13 +5805,17 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 32.0
 	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
+	useDepth := g.depthOcclusionEnabled()
 	depthPix := g.depthPix3D
 	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
 	stamp := g.depthFrameStamp
-	if len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
+	if len(wallPix) != viewW*viewH {
+		return
+	}
+	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	items := g.ensureMonsterItemsScratch(32)
@@ -5723,8 +5970,8 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				if x+1 <= x1 {
 					i0 := row + x
 					i1 := i0 + 1
-					occ0 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
-					occ1 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
+					occ0 := g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
+					occ1 := g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
 					if !occ0 && !occ1 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
@@ -5766,7 +6013,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 					continue
 				}
 				i := row + x
-				if !spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+				if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					p := src32[ty*tw+txLUT[x-x0]]
 					if ((p >> pixelAShift) & 0xFF) != 0 {
 						wallPix[i] = shadePackedRGBA(p, shadeMul)
@@ -5782,13 +6029,17 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near float64) {
 	const planeDepthBias = 64.0
 	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
+	useDepth := g.depthOcclusionEnabled()
 	depthPix := g.depthPix3D
 	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
 	stamp := g.depthFrameStamp
-	if len(depthPix) != viewW*viewH || len(wallPix) != viewW*viewH {
+	if len(wallPix) != viewW*viewH {
+		return
+	}
+	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	items := g.ensureThingItemsScratch(64)
@@ -5926,8 +6177,8 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				if x+1 <= x1 {
 					i0 := row + x
 					i1 := i0 + 1
-					occ0 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
-					occ1 := spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
+					occ0 := g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
+					occ1 := g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
 					if !occ0 && !occ1 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
@@ -5969,7 +6220,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 					continue
 				}
 				i := row + x
-				if !spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+				if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					p := src32[ty*tw+txLUT[x-x0]]
 					if ((p >> pixelAShift) & 0xFF) != 0 {
 						wallPix[i] = shadePackedRGBA(p, shadeMul)
@@ -7312,23 +7563,39 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 		g.buffers3DW = w
 		g.buffers3DH = h
 	}
+	if len(g.wallDepthQCol) != w {
+		g.wallDepthQCol = make([]uint16, w)
+	}
+	if len(g.maskedClipCols) != w {
+		g.maskedClipCols = make([][]maskedClipSpan, w)
+	}
 	for i := 0; i < w; i++ {
 		g.wallTop3D[i] = h
 		g.wallBottom3D[i] = -1
 		g.ceilingClip3D[i] = -1
 		g.floorClip3D[i] = h
+		g.wallDepthQCol[i] = 0xFFFF
+		if len(g.maskedClipCols[i]) != 0 {
+			g.maskedClipCols[i] = g.maskedClipCols[i][:0]
+		}
 	}
 	needDepth := w * h
-	if len(g.depthPix3D) != needDepth {
-		g.depthPix3D = make([]uint32, needDepth)
-	}
-	if len(g.depthPlanePix3D) != needDepth {
-		g.depthPlanePix3D = make([]uint32, needDepth)
-	}
-	g.depthFrameStamp++
-	if g.depthFrameStamp == 0 {
-		clear(g.depthPix3D)
-		clear(g.depthPlanePix3D)
+	if g.depthOcclusionEnabled() {
+		if len(g.depthPix3D) != needDepth {
+			g.depthPix3D = make([]uint32, needDepth)
+		}
+		if len(g.depthPlanePix3D) != needDepth {
+			g.depthPlanePix3D = make([]uint32, needDepth)
+		}
+		g.depthFrameStamp++
+		if g.depthFrameStamp == 0 {
+			clear(g.depthPix3D)
+			clear(g.depthPlanePix3D)
+			g.depthFrameStamp = 1
+		}
+	} else {
+		g.depthPix3D = g.depthPix3D[:0]
+		g.depthPlanePix3D = g.depthPlanePix3D[:0]
 		g.depthFrameStamp = 1
 	}
 	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
@@ -8183,6 +8450,9 @@ func combineShadeMul(a, b int) int {
 }
 
 func sectorDistanceShadeMul(light int16, dist float64, distanceEnabled bool) int {
+	if fullbrightNoLighting {
+		return 256
+	}
 	mul := sectorLightMul(light)
 	if !distanceEnabled {
 		return mul
@@ -8191,6 +8461,9 @@ func sectorDistanceShadeMul(light int16, dist float64, distanceEnabled bool) int
 }
 
 func sectorLightMul(light int16) int {
+	if fullbrightNoLighting {
+		return 256
+	}
 	sectorLightLUTOnce.Do(initSectorLightMulLUT)
 	i := int(light)
 	if i < 0 {
