@@ -24,9 +24,14 @@ Snapshot of features currently working in this repo.
 - Doom-emulation software 3D renderer (`doom-basic`) is default in walk mode
 - 3D wall-driven clip + visplane/span floor/ceiling path
 - 3D textured wall column rendering (mid/top/bottom wall textures)
+- Deferred masked mid-texture pass for two-sided lines (depth-tested, back-to-front draw)
 - Closed two-sided door panels now render textured in 3D (upper/lower texture fallback when mid texture is absent)
 - Door sectors now animate in 3D walk view (door ceilings visibly slide open/closed)
+- Doom `COLORMAP`-driven sector lighting in 3D path
+- Fullbright sprite handling in 3D path
 - 3D detail presets with cycle hotkey (`F5`): `320x200`, `640x400`, `960x600`
+- Optional depth-buffer debug view (`-depth-buffer-view`)
+- Optional Kage postprocess chain (`-kage-shader`) with CRT pass toggle (`-crt-effect`)
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
 - Level exit special handling with automatic next-map loading (normal + secret exits)
 - In-session level transitions (single Ebiten/GLFW session across map changes)
@@ -68,6 +73,7 @@ Snapshot of features currently working in this repo.
 - Pseudo-3D visibility now uses BSP node traversal (not automap discovery state)
 - Doom-style turn acceleration behavior (`SLOWTURNTICS` style ramp)
 - 2D automap floor texture overlay is sourceport-only
+- Sourceport texture animation crossfade generation (`-texture-anim-crossfade-frames`)
 
 ## Tests
 
@@ -75,3 +81,4 @@ Snapshot of features currently working in this repo.
 - Automap parity rule tests
 - Discovery logic tests
 - Turn acceleration tests
+- Projectile sprite mapping regression tests

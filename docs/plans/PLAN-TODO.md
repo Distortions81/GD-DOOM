@@ -6,24 +6,42 @@ Single source of truth for current priorities.
 
 - Parser + validation milestone: done
 - Automap baseline milestone: done
-- Doom-emulation 3D renderer: in progress (visplane + textured walls + animated doors landed, parity polish remains)
+- Doom-emulation 3D renderer: in progress (visplane path + textured walls + colormap lighting + masked mids landed, parity polish remains)
 - Automap parity: mostly done, polish remaining
-- Sound decode track: not started
+- Sound decode track: partial (startup decode/report is in, deeper compatibility pass pending)
 
 ## Next Up (Priority Order)
 
-1. 3D Doom renderer parity polish:
-2. sky path parity (dedicated sky draw behavior)
-3. masked mid-texture rendering on two-sided lines (remaining major portal/door visual parity gap)
-4. remaining angle/pop edge cases with regression captures
-5. Improve startup sound report detail (sample rates, per-lump error summary)
-6. Expand sound parsing support for additional Doom-compatible lump variants as needed
+1. 3D renderer parity correctness:
+2. replace temporary per-pixel plane sector-light lookup with Doom-style visplane/lighting behavior
+3. replace plane depth-buffer workaround with Doom-style visplane clipping/ordering semantics
+4. projectile scale parity near camera (remaining edge-case tuning)
+5. capture regression scenes and convert to repeatable visual checks
+4. BSP-aware thing visibility/culling pass:
+5. tighten thing/monster/item submission against BSP visibility windows (not just screen clip)
+6. optional perf-only: evaluate blockmap-assisted broad-phase culling for dense scenes
+7. performance track (high resolution):
+8. profile 4K (`3840x2160`) in sourceport and faithful modes, keep profiles under `profiles/`
+9. continue wall/visplane hot-loop reductions (especially column depth writes + span paths)
+10. reduce per-frame allocations in hot draw paths via scratch reuse/prealloc
+11. content parity + presentation polish:
+12. verify animation timing parity after crossfade generation (no cadence drift)
+13. keep startup spawn position/facing and sky-pan direction as mandatory regression checks after render edits
+14. sound decode follow-up (lower priority):
+15. enrich startup sound report detail (rates/formats/errors)
+16. expand decode support for additional Doom-compatible variants if encountered
 
 ## Parity Polish (Lower Priority)
 
 1. E1M1 acceptance checks across normal/allmap/iddt1/iddt2
 2. Multiplayer arrow/color parity
 3. Final review of any remaining non-Doom behavior in Doom profile
+
+## Verification Gate (After Render Changes)
+
+1. Launch `E1M1` and verify startup player location/facing is unchanged.
+2. In walk view, rotate left/right and verify sky panning direction is not reversed.
+3. Run demo benchmark pass and compare with recent profile baseline.
 
 ## Notes
 
@@ -32,5 +50,6 @@ Single source of truth for current priorities.
 - Doom profile is the default runtime behavior.
 - Source-port convenience behavior must stay behind `-sourceport-mode`.
 - Detailed parity checklist lives in `docs/automap-parity-notes.md`.
+- Focused faithfulness/missing-feature checklist lives in `docs/plans/faithfulness-gap-checklist.md`.
 - 2D floor visplane emulation checklist lives in `docs/plans/floor-visplane-emulation-plan.md`.
 - 3D renderer visplane parity checklist lives in `docs/plans/renderer-3d-visplane-plan.md`.

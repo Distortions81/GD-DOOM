@@ -126,7 +126,7 @@ func (g *game) buildFloorVisplaneMarks() {
 		}
 		sec := g.m.Sectors[secIdx]
 		key := floorPlaneKey{
-			flat:   normalizeFlatName(sec.FloorPic),
+			flat:   g.resolveAnimatedFlatName(sec.FloorPic),
 			floorH: sec.FloorHeight,
 			light:  sec.Light,
 		}
@@ -219,7 +219,7 @@ func (g *game) renderFloorVisplaneSpans(screen *ebiten.Image) {
 		stepWY := rowStepWY[sp.y]
 		tex := flatCache[sp.key.flat]
 		if tex == nil {
-			tex = g.opts.FlatBank[sp.key.flat]
+			tex, _ = g.flatRGBAResolvedKey(sp.key.flat)
 			flatCache[sp.key.flat] = tex
 		}
 		for x := sp.x1; x <= sp.x2; x++ {

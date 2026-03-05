@@ -46,10 +46,27 @@ func (r *RNG) MRandom() int {
 	return int(table[r.rndIndex])
 }
 
+// PRandomOffset returns a play-random value at the given offset without advancing state.
+// offset=0 is the value that a direct call to PRandom would return next.
+func (r *RNG) PRandomOffset(offset int) int {
+	return int(table[(r.prndIndex+1+offset)&0xff])
+}
+
+// MRandomOffset returns a menu-random value at the given offset without advancing state.
+// offset=0 is the value that a direct call to MRandom would return next.
+func (r *RNG) MRandomOffset(offset int) int {
+	return int(table[(r.rndIndex+1+offset)&0xff])
+}
+
 // Clear resets both indices to Doom's original zero state.
 func (r *RNG) Clear() {
 	r.rndIndex = 0
 	r.prndIndex = 0
+}
+
+// State returns current menu and play random indices.
+func (r *RNG) State() (rndIndex, prndIndex int) {
+	return r.rndIndex, r.prndIndex
 }
 
 var global = New()
@@ -64,7 +81,22 @@ func MRandom() int {
 	return global.MRandom()
 }
 
+// PRandomOffset returns a package-level play-random value at offset without advancing state.
+func PRandomOffset(offset int) int {
+	return global.PRandomOffset(offset)
+}
+
+// MRandomOffset returns a package-level menu-random value at offset without advancing state.
+func MRandomOffset(offset int) int {
+	return global.MRandomOffset(offset)
+}
+
 // Clear resets package-level RNG indices (M_ClearRandom behavior).
 func Clear() {
 	global.Clear()
+}
+
+// State returns package-level RNG indices.
+func State() (rndIndex, prndIndex int) {
+	return global.State()
 }

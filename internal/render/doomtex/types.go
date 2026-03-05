@@ -29,10 +29,12 @@ type Set struct {
 }
 
 type decodedPatch struct {
-	width  int
-	height int
-	index  []uint8
-	opaque []bool
+	width      int
+	height     int
+	leftOffset int
+	topOffset  int
+	index      []uint8
+	opaque     []bool
 }
 
 func (s *Set) TextureNames() []string {
@@ -47,6 +49,22 @@ func (s *Set) TextureNames() []string {
 func (s *Set) TextureCount() int { return len(s.textures) }
 
 func (s *Set) PaletteCount() int { return len(s.palettes) }
+
+func (s *Set) PaletteRGBA(palette int) ([]byte, error) {
+	if palette < 0 || palette >= len(s.palettes) {
+		return nil, parseErrorf("palette out of range: %d", palette)
+	}
+	out := make([]byte, 256*4)
+	pal := s.palettes[palette]
+	for i := 0; i < 256; i++ {
+		j := i * 4
+		out[j+0] = pal[i][0]
+		out[j+1] = pal[i][1]
+		out[j+2] = pal[i][2]
+		out[j+3] = 0xFF
+	}
+	return out, nil
+}
 
 func (s *Set) Texture(name string) (TextureDef, bool) {
 	t, ok := s.textures[normalizeName(name)]

@@ -129,3 +129,45 @@ func TestCanTouchPickup_ZOverlap(t *testing.T) {
 		t.Fatal("thing in lower overlap range should touch")
 	}
 }
+
+func TestWeaponPickupRespectsAutoSwitchToggle(t *testing.T) {
+	baseMap := &mapdata.Map{
+		Things: []mapdata.Thing{
+			{X: 0, Y: 0, Type: 2001}, // shotgun
+		},
+	}
+	g := &game{
+		m:                baseMap,
+		autoWeaponSwitch: false,
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.inventory.ReadyWeapon = weaponPistol
+
+	g.processThingPickups()
+	if !g.inventory.Weapons[2001] {
+		t.Fatal("shotgun should be owned")
+	}
+	if g.inventory.ReadyWeapon != weaponPistol {
+		t.Fatalf("weapon=%v want=%v when auto switch disabled", g.inventory.ReadyWeapon, weaponPistol)
+	}
+}
+
+func TestWeaponPickupAutoSwitchesWhenEnabled(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 0, Y: 0, Type: 2001}, // shotgun
+			},
+		},
+		autoWeaponSwitch: true,
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.inventory.ReadyWeapon = weaponPistol
+
+	g.processThingPickups()
+	if g.inventory.ReadyWeapon != weaponShotgun {
+		t.Fatalf("weapon=%v want=%v when auto switch enabled", g.inventory.ReadyWeapon, weaponShotgun)
+	}
+}

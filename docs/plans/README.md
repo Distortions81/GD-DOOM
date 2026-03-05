@@ -3,6 +3,7 @@
 This directory contains active execution plans.
 
 - [PLAN-TODO.md](/home/dist/github/GD-DOOM/docs/plans/PLAN-TODO.md): top-level priority queue
+- [faithfulness-gap-checklist.md](/home/dist/github/GD-DOOM/docs/plans/faithfulness-gap-checklist.md): focused parity/missing-feature checklist
 - [renderer-3d-visplane-plan.md](/home/dist/github/GD-DOOM/docs/plans/renderer-3d-visplane-plan.md): faithful Doom 3D renderer parity plan
 - [floor-visplane-emulation-plan.md](/home/dist/github/GD-DOOM/docs/plans/floor-visplane-emulation-plan.md): 2D automap floor visplane plan (sourceport-only behavior)
 

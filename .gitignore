@@ -1,1 +1,17 @@
 doom-source/
+.VSCodeCounter/
+profiles/
+.tmp/
+gddoom
+automap.test
+*.log
+*.prof
+bin/
+dist/
+*.exe
+*.test
+*.out
+config.toml
+dump
+dump2
+anidump

@@ -1,6 +1,9 @@
 package automap
 
-import "math"
+import (
+	"math"
+	"sort"
+)
 
 type projectileKind int
 
@@ -21,8 +24,19 @@ type projectile struct {
 	radius     int64
 	height     int64
 	ttl        int
+	sourceX    int64
+	sourceY    int64
 	sourceType int16
 	kind       projectileKind
+}
+
+type projectileImpact struct {
+	x         int64
+	y         int64
+	z         int64
+	kind      projectileKind
+	tics      int
+	totalTics int
 }
 
 func usesMonsterProjectile(typ int16) bool {
@@ -37,6 +51,7 @@ func usesMonsterProjectile(typ int16) bool {
 func monsterProjectileKind(typ int16) projectileKind {
 	switch typ {
 	case 3005:
+		// Cacodemon shot uses BAL2 in vanilla Doom.
 		return projectilePlasmaBall
 	case 3003:
 		return projectileBaronBall
@@ -47,14 +62,18 @@ func monsterProjectileKind(typ int16) projectileKind {
 	}
 }
 
-func monsterProjectileSpeed(typ int16) int64 {
+func monsterProjectileSpeed(typ int16, fast bool) int64 {
+	scale := int64(1)
+	if fast {
+		scale = 2
+	}
 	switch typ {
 	case 3003:
-		return 15 * fracUnit
+		return 15 * fracUnit * scale
 	case 16:
-		return 20 * fracUnit
+		return 20 * fracUnit * scale
 	default:
-		return 10 * fracUnit
+		return 10 * fracUnit * scale
 	}
 }
 
@@ -119,7 +138,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		return false
 	}
 
-	speed := monsterProjectileSpeed(typ)
+	speed := monsterProjectileSpeed(typ, g.fastMonstersActive())
 	vx := int64((float64(dx) / float64(dxy)) * float64(speed))
 	vy := int64((float64(dy) / float64(dxy)) * float64(speed))
 	vz := int64((float64(dz) / float64(dxy)) * float64(speed))
@@ -137,6 +156,8 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		radius:     monsterProjectileRadius(typ),
 		height:     monsterProjectileHeight(typ),
 		ttl:        monsterProjectileTTL(typ),
+		sourceX:    sx,
+		sourceY:    sy,
 		sourceType: typ,
 		kind:       monsterProjectileKind(typ),
 	})
@@ -156,7 +177,9 @@ func (g *game) tickProjectiles() {
 		nx := ox + p.vx
 		ny := oy + p.vy
 		nz := oz + p.vz
-		if !g.projectileCanOccupy(p, ox, oy, nx, ny, nz) {
+		if blocked, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz); blocked {
+			g.spawnProjectileImpact(p.kind, hx, hy, hz)
+			g.emitSoundEvent(projectileImpactSoundEvent(p.kind))
 			continue
 		}
 		p.x = nx
@@ -164,12 +187,16 @@ func (g *game) tickProjectiles() {
 		p.z = nz
 		p.ttl--
 		if p.ttl <= 0 {
+			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
+			g.emitSoundEvent(projectileImpactSoundEvent(p.kind))
 			continue
 		}
 		if g.projectileHitsPlayer(p) {
+			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
+			g.emitSoundEvent(projectileImpactSoundEvent(p.kind))
 			dmg := monsterRangedDamage(p.sourceType)
 			if dmg > 0 {
-				g.damagePlayer(dmg, projectileHitMessage(p.kind))
+				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
 			}
 			continue
 		}
@@ -178,33 +205,79 @@ func (g *game) tickProjectiles() {
 	g.projectiles = kept
 }
 
-func (g *game) projectileCanOccupy(p projectile, ox, oy, nx, ny, nz int64) bool {
+func (g *game) tickProjectileImpacts() {
+	if len(g.projectileImpacts) == 0 {
+		return
+	}
+	keep := g.projectileImpacts[:0]
+	for _, fx := range g.projectileImpacts {
+		fx.tics--
+		if fx.tics <= 0 {
+			continue
+		}
+		keep = append(keep, fx)
+	}
+	g.projectileImpacts = keep
+}
+
+func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64) {
+	const maxImpacts = 64
+	if len(g.projectileImpacts) >= maxImpacts {
+		copy(g.projectileImpacts, g.projectileImpacts[1:])
+		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
+	}
+	// Doom timings:
+	// - Fireball families (BAL1/BAL2/BAL7): C/D/E at 6 tics each.
+	// - Rocket (MISL): B/C/D at 8/6/4 tics.
+	tics := 18
+	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
+		x:         x,
+		y:         y,
+		z:         z,
+		kind:      kind,
+		tics:      tics,
+		totalTics: tics,
+	})
+}
+
+func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, int64, int64, int64) {
 	if g.m == nil {
-		return true
+		return false, nx, ny, nz
 	}
 	sec := g.sectorAt(nx, ny)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
-		return false
+		return true, nx, ny, nz
 	}
 	if nz < g.sectorFloor[sec] || nz+p.height > g.sectorCeil[sec] {
-		return false
+		return true, nx, ny, nz
 	}
-	for _, ld := range g.lines {
-		if _, ok := segmentIntersectFrac(ox, oy, nx, ny, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
+	intercepts := make([]intercept, 0, 8)
+	for i, ld := range g.lines {
+		frac, ok := segmentIntersectFrac(ox, oy, nx, ny, ld.x1, ld.y1, ld.x2, ld.y2)
+		if !ok {
 			continue
 		}
+		intercepts = append(intercepts, intercept{frac: frac, line: i})
+	}
+	sort.Slice(intercepts, func(i, j int) bool { return intercepts[i].frac < intercepts[j].frac })
+
+	for _, it := range intercepts {
+		ld := g.lines[it.line]
+		hx := ox + int64(float64(nx-ox)*it.frac)
+		hy := oy + int64(float64(ny-oy)*it.frac)
+		hz := oz + int64(float64(nz-oz)*it.frac)
 		if ld.sideNum1 < 0 || (ld.flags&mlBlocking) != 0 {
-			return false
+			return true, hx, hy, hz
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
 		if openrange <= 0 {
-			return false
+			return true, hx, hy, hz
 		}
-		if nz < openbottom || nz+p.height > opentop {
-			return false
+		if hz < openbottom || hz+p.height > opentop {
+			return true, hx, hy, hz
 		}
 	}
-	return true
+	return false, nx, ny, nz
 }
 
 func (g *game) projectileHitsPlayer(p projectile) bool {
@@ -229,7 +302,7 @@ func projectileHitMessage(kind projectileKind) string {
 	case projectileBaronBall:
 		return "Baron ball hit"
 	case projectilePlasmaBall:
-		return "Plasma ball hit"
+		return "Cacodemon ball hit"
 	default:
 		return "Fireball hit"
 	}
@@ -250,4 +323,22 @@ func projectileColor(kind projectileKind) [2]uint8 {
 
 func projectileViewRadius(p projectile) float64 {
 	return math.Max(3, float64(p.radius)/fracUnit)
+}
+
+func projectileLaunchSoundEvent(typ int16) soundEvent {
+	switch typ {
+	case 16:
+		return soundEventShootRocket
+	case 3001, 3003, 3005:
+		return soundEventShootFireball
+	default:
+		return soundEventShootPistol
+	}
+}
+
+func projectileImpactSoundEvent(kind projectileKind) soundEvent {
+	if kind == projectileRocket {
+		return soundEventImpactRocket
+	}
+	return soundEventImpactFire
 }

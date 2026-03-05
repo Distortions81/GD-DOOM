@@ -14,6 +14,12 @@ func TestDetailPresetIndex(t *testing.T) {
 	}
 }
 
+func TestDefaultDetailLevelForModeSourcePortHalfDetail(t *testing.T) {
+	if got := defaultDetailLevelForMode(1280, 800, true); got != 1 {
+		t.Fatalf("defaultDetailLevelForMode(sourceport)=%d want=1", got)
+	}
+}
+
 func TestCycleDetailLevelChangesViewSize(t *testing.T) {
 	g := &game{
 		viewW:       320,
