@@ -197,7 +197,7 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		MusicVolume:      1.0,
 		MUSPanMax:        0.8,
 		OPLVolume:        2.0,
-		SFXVolume:        0.66,
+		SFXVolume:        0.5,
 		MouseLook:        false,
 		AlwaysRun:        true,
 		AutoWeaponSwitch: false,

@@ -692,7 +692,13 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		alwaysRun:        opts.AlwaysRun,
 		autoWeaponSwitch: opts.AutoWeaponSwitch,
 	}
-	initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows)
+	// Sourceport mode keeps full-color shading (same brightness math, no
+	// palette/colormap remap decimation). Faithful mode keeps Doom colormap.
+	if opts.SourcePortMode {
+		initDoomColormapShading(nil, nil, 0)
+	} else {
+		initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows)
+	}
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.textureAnimCrossfadeFrames = normalizeTextureAnimCrossfadeFrames(opts.TextureAnimCrossfadeFrames, opts.SourcePortMode)
