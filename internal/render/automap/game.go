@@ -5949,23 +5949,82 @@ func (g *game) ensureSpriteBlendToken(token, cur, next string, step, total int) 
 	}
 	a, okA := g.opts.SpritePatchBank[cur]
 	b, okB := g.opts.SpritePatchBank[next]
-	if !okA || !okB || a.Width <= 0 || a.Height <= 0 || a.Width != b.Width || a.Height != b.Height {
+	if !okA || !okB || a.Width <= 0 || a.Height <= 0 || b.Width <= 0 || b.Height <= 0 {
 		return
 	}
 	if len(a.RGBA) != a.Width*a.Height*4 || len(b.RGBA) != b.Width*b.Height*4 {
 		return
 	}
 	alpha := float64(step) / float64(total+1)
-	rgba := blendRGBA(a.RGBA, b.RGBA, alpha)
-	if len(rgba) != a.Width*a.Height*4 {
+	blended, ok := blendSpriteTextures(a, b, alpha)
+	if !ok || blended.Width <= 0 || blended.Height <= 0 || len(blended.RGBA) != blended.Width*blended.Height*4 {
 		return
 	}
-	g.spriteAnimBlendTex[token] = WallTexture{
+	g.spriteAnimBlendTex[token] = blended
+}
+
+func blendSpriteTextures(a, b WallTexture, alpha float64) (WallTexture, bool) {
+	if a.Width <= 0 || a.Height <= 0 || b.Width <= 0 || b.Height <= 0 {
+		return WallTexture{}, false
+	}
+	if len(a.RGBA) != a.Width*a.Height*4 || len(b.RGBA) != b.Width*b.Height*4 {
+		return WallTexture{}, false
+	}
+	anchorX := int(math.Round(lerp(float64(a.OffsetX), float64(b.OffsetX), alpha)))
+	anchorY := int(math.Round(lerp(float64(a.OffsetY), float64(b.OffsetY), alpha)))
+	ax := anchorX - a.OffsetX
+	ay := anchorY - a.OffsetY
+	bx := anchorX - b.OffsetX
+	by := anchorY - b.OffsetY
+	minX := min(ax, bx)
+	minY := min(ay, by)
+	maxX := max(ax+a.Width, bx+b.Width)
+	maxY := max(ay+a.Height, by+b.Height)
+	w := maxX - minX
+	h := maxY - minY
+	if w <= 0 || h <= 0 {
+		return WallTexture{}, false
+	}
+	canvasA := make([]byte, w*h*4)
+	canvasB := make([]byte, w*h*4)
+	blitSpriteRGBA(canvasA, w, h, a.RGBA, a.Width, a.Height, ax-minX, ay-minY)
+	blitSpriteRGBA(canvasB, w, h, b.RGBA, b.Width, b.Height, bx-minX, by-minY)
+	rgba := blendRGBA(canvasA, canvasB, alpha)
+	if len(rgba) != w*h*4 {
+		return WallTexture{}, false
+	}
+	return WallTexture{
 		RGBA:    rgba,
-		Width:   a.Width,
-		Height:  a.Height,
-		OffsetX: a.OffsetX,
-		OffsetY: a.OffsetY,
+		Width:   w,
+		Height:  h,
+		OffsetX: anchorX - minX,
+		OffsetY: anchorY - minY,
+	}, true
+}
+
+func blitSpriteRGBA(dst []byte, dstW, dstH int, src []byte, srcW, srcH int, dstX, dstY int) {
+	if dstW <= 0 || dstH <= 0 || srcW <= 0 || srcH <= 0 {
+		return
+	}
+	for y := 0; y < srcH; y++ {
+		ty := dstY + y
+		if ty < 0 || ty >= dstH {
+			continue
+		}
+		rowSrc := y * srcW * 4
+		rowDst := ty * dstW * 4
+		for x := 0; x < srcW; x++ {
+			tx := dstX + x
+			if tx < 0 || tx >= dstW {
+				continue
+			}
+			si := rowSrc + x*4
+			di := rowDst + tx*4
+			dst[di+0] = src[si+0]
+			dst[di+1] = src[si+1]
+			dst[di+2] = src[si+2]
+			dst[di+3] = src[si+3]
+		}
 	}
 }
 
