@@ -28,6 +28,36 @@ func TestShouldShowYouAreHere(t *testing.T) {
 	}
 }
 
+func TestShouldShowEnteringScreen(t *testing.T) {
+	if !shouldShowEnteringScreen("E1M1", "E1M2") {
+		t.Fatal("episode progression should show ENTERING screen")
+	}
+	if shouldShowEnteringScreen("MAP01", "MAP02") {
+		t.Fatal("commercial maps should not use episode ENTERING screen")
+	}
+	if shouldShowEnteringScreen("E1M1", "MAP02") {
+		t.Fatal("mixed map formats should not use episode ENTERING screen")
+	}
+}
+
+func TestEpisodeFinaleScreen(t *testing.T) {
+	if got, ok := episodeFinaleScreen("E1M8", false); !ok || got != "CREDIT" {
+		t.Fatalf("episodeFinaleScreen(E1M8,false)=(%q,%t) want=(CREDIT,true)", got, ok)
+	}
+	if got, ok := episodeFinaleScreen("E2M8", false); !ok || got != "VICTORY2" {
+		t.Fatalf("episodeFinaleScreen(E2M8,false)=(%q,%t) want=(VICTORY2,true)", got, ok)
+	}
+	if got, ok := episodeFinaleScreen("E3M8", false); !ok || got != "ENDPIC" {
+		t.Fatalf("episodeFinaleScreen(E3M8,false)=(%q,%t) want=(ENDPIC,true)", got, ok)
+	}
+	if _, ok := episodeFinaleScreen("E1M8", true); ok {
+		t.Fatal("secret exits should not trigger episode finale screen")
+	}
+	if _, ok := episodeFinaleScreen("E1M7", false); ok {
+		t.Fatal("non-episode-end map should not trigger episode finale screen")
+	}
+}
+
 func TestTickIntermissionProgressesToCompletion(t *testing.T) {
 	sg := &sessionGame{
 		intermission: sessionIntermission{
@@ -63,5 +93,47 @@ func TestTickIntermissionProgressesToCompletion(t *testing.T) {
 	}
 	if !done {
 		t.Fatal("intermission did not complete in expected ticks")
+	}
+}
+
+func TestTickIntermissionCommercialSkipsEnteringPhases(t *testing.T) {
+	sg := &sessionGame{
+		intermission: sessionIntermission{
+			active:         true,
+			phase:          intermissionPhaseKills,
+			showEntering:   false,
+			showYouAreHere: false,
+			enteringWait:   0,
+			youAreHereWait: 1,
+			show: intermissionStats{
+				mapName:     mapdata.MapName("MAP01"),
+				nextMapName: mapdata.MapName("MAP02"),
+			},
+			target: intermissionStats{
+				mapName:     mapdata.MapName("MAP01"),
+				nextMapName: mapdata.MapName("MAP02"),
+				killsPct:    2,
+				itemsPct:    2,
+				secretsPct:  2,
+				timeSec:     3,
+			},
+		},
+	}
+	done := false
+	sawEntering := false
+	for i := 0; i < 300; i++ {
+		done = sg.tickIntermission()
+		if sg.intermission.phase == intermissionPhaseEntering {
+			sawEntering = true
+		}
+		if done {
+			break
+		}
+	}
+	if sawEntering {
+		t.Fatal("commercial intermission should not enter episode map phase")
+	}
+	if !done {
+		t.Fatal("commercial intermission did not complete in expected ticks")
 	}
 }

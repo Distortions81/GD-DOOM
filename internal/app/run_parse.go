@@ -1208,7 +1208,7 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture 
 	for _, n := range []string{
 		"WIF", "WIENTER", "WISPLAT", "WIURH0", "WIURH1",
 		"WIOSTK", "WIOSTI", "WIOSTS", "WITIME", "WIPAR", "WIPCNT",
-		"INTERPIC",
+		"INTERPIC", "CREDIT", "VICTORY2", "ENDPIC", "HELP1", "HELP2",
 	} {
 		add(n)
 	}

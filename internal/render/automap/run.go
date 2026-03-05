@@ -30,11 +30,12 @@ const (
 	sourcePortMeltMoveCols = sourcePortMeltInitCols
 
 	intermissionPhaseWaitTics      = 8
-	intermissionEnteringWaitTics   = doomTicsPerSecond
-	intermissionYouAreHereWaitTics = doomTicsPerSecond * 2
+	intermissionEnteringWaitTics   = doomTicsPerSecond * 2
+	intermissionYouAreHereWaitTics = doomTicsPerSecond * 3
 	intermissionSkipInputDelayTics = doomTicsPerSecond / 3
 	intermissionSkipExitHoldTics   = 12
 	intermissionCounterSoundPeriod = 6
+	finaleHoldTics                 = doomTicsPerSecond * 7
 )
 
 var faithfulPaletteShaderSrc = []byte(`//kage:unit pixels
@@ -173,9 +174,21 @@ type sessionIntermission struct {
 	waitTic           int
 	tic               int
 	stageSoundCounter int
+	showEntering      bool
+	showYouAreHere    bool
+	enteringWait      int
+	youAreHereWait    int
 	show              intermissionStats
 	target            intermissionStats
 	nextMap           *mapdata.Map
+}
+
+type sessionFinale struct {
+	active  bool
+	tic     int
+	waitTic int
+	mapName mapdata.MapName
+	screen  string
 }
 
 type bootAsyncState struct {
@@ -221,6 +234,7 @@ type sessionGame struct {
 	interPatchCache map[string]*ebiten.Image
 	transition      sessionTransition
 	intermission    sessionIntermission
+	finale          sessionFinale
 	bootInitPending bool
 	bootFrameDrawn  bool
 	bootStarted     bool
@@ -773,6 +787,19 @@ func (sg *sessionGame) Update() error {
 		sg.tickTransition()
 		return nil
 	}
+	if sg.finale.active {
+		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
+			return ebiten.Termination
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
+			(ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)) {
+			return ebiten.Termination
+		}
+		if sg.tickFinale() {
+			return ebiten.Termination
+		}
+		return nil
+	}
 	if sg.intermission.active {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
 			return ebiten.Termination
@@ -804,6 +831,9 @@ func (sg *sessionGame) Update() error {
 	}
 	if !sg.g.levelExitRequested {
 		return ebiten.Termination
+	}
+	if sg.startEpisodeFinale(sg.current, sg.g.secretLevelExit) {
+		return nil
 	}
 	if sg.nextMap == nil {
 		return ebiten.Termination
@@ -846,8 +876,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		}
 		return
 	}
-	tw := sw
-	th := sh
+	tw, th := sg.transitionSurfaceSize(sw, sh)
 	if sg.transitionActive() {
 		if sg.opts.SourcePortMode && sg.transition.initialized &&
 			(sg.transition.width != tw || sg.transition.height != th) {
@@ -865,6 +894,11 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	}
 	if sg.intermission.active {
 		sg.drawIntermission(screen)
+		sg.captureLastFrame(screen)
+		return
+	}
+	if sg.finale.active {
+		sg.drawFinale(screen)
 		sg.captureLastFrame(screen)
 		return
 	}
@@ -1075,6 +1109,23 @@ func (sg *sessionGame) transitionActive() bool {
 	return sg.transition.kind != transitionNone
 }
 
+func (sg *sessionGame) transitionSurfaceSize(screenW, screenH int) (int, int) {
+	if sg.opts.SourcePortMode {
+		return max(screenW, 1), max(screenH, 1)
+	}
+	// Faithful mode keeps Doom-paced melt timing by transitioning at the
+	// logical render size rather than the window size.
+	w := sg.opts.Width
+	h := sg.opts.Height
+	if w <= 0 {
+		w = doomLogicalW
+	}
+	if h <= 0 {
+		h = doomLogicalH
+	}
+	return w, h
+}
+
 func (sg *sessionGame) ensureTransitionReady(width, height int) {
 	t := &sg.transition
 	if t.kind == transitionNone || t.initialized || !t.pending {
@@ -1219,12 +1270,26 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.MapName) {
 	sg.stopAndClearMusic()
 	stats := collectIntermissionStats(sg.g, sg.current, nextName)
+	showEntering := shouldShowEnteringScreen(stats.mapName, stats.nextMapName)
+	showYouAreHere := showEntering && shouldShowYouAreHere(stats.mapName, stats.nextMapName)
+	enteringWait := intermissionEnteringWaitTics
+	youAreHereWait := intermissionYouAreHereWaitTics
+	if !showEntering {
+		enteringWait = 0
+		youAreHereWait = 1
+	} else if !showYouAreHere {
+		youAreHereWait = 1
+	}
 	sg.intermission = sessionIntermission{
 		active:            true,
 		phase:             intermissionPhaseKills,
 		waitTic:           0,
 		tic:               0,
 		stageSoundCounter: 0,
+		showEntering:      showEntering,
+		showYouAreHere:    showYouAreHere,
+		enteringWait:      enteringWait,
+		youAreHereWait:    youAreHereWait,
 		show: intermissionStats{
 			mapName:      stats.mapName,
 			nextMapName:  stats.nextMapName,
@@ -1298,19 +1363,24 @@ func (sg *sessionGame) tickIntermission() bool {
 		im.show.timeSec = intermissionStepCounter(im.show.timeSec, im.target.timeSec, 3)
 		sg.tickIntermissionCounterSound(im.show.timeSec, im.target.timeSec)
 		if im.show.timeSec >= im.target.timeSec {
-			im.phase = intermissionPhaseEntering
-			im.waitTic = intermissionEnteringWaitTics
-			im.stageSoundCounter = 0
-			sg.playIntermissionSound(soundEventIntermissionDone)
+			if im.showEntering {
+				im.phase = intermissionPhaseEntering
+				im.waitTic = im.enteringWait
+				im.stageSoundCounter = 0
+				sg.playIntermissionSound(soundEventIntermissionDone)
+			} else {
+				im.phase = intermissionPhaseYouAreHere
+				im.waitTic = im.youAreHereWait
+			}
 		}
 	case intermissionPhaseEntering:
-		if shouldShowYouAreHere(im.target.mapName, im.target.nextMapName) {
+		if im.showYouAreHere {
 			im.phase = intermissionPhaseYouAreHere
-			im.waitTic = intermissionYouAreHereWaitTics
+			im.waitTic = im.youAreHereWait
 			sg.playIntermissionSound(soundEventIntermissionTick)
 		} else {
 			im.phase = intermissionPhaseYouAreHere
-			im.waitTic = 1
+			im.waitTic = im.youAreHereWait
 		}
 	default:
 		if im.waitTic <= 0 {
@@ -1319,6 +1389,43 @@ func (sg *sessionGame) tickIntermission() bool {
 		}
 	}
 	return false
+}
+
+func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) bool {
+	screen, ok := episodeFinaleScreen(current, secret)
+	if !ok {
+		return false
+	}
+	sg.stopAndClearMusic()
+	sg.finale = sessionFinale{
+		active:  true,
+		tic:     0,
+		waitTic: finaleHoldTics,
+		mapName: current,
+		screen:  screen,
+	}
+	return true
+}
+
+func (sg *sessionGame) tickFinale() bool {
+	if !sg.finale.active {
+		return false
+	}
+	f := &sg.finale
+	f.tic++
+	skipPressed := anyIntermissionSkipInput()
+	if skipPressed && f.tic <= intermissionSkipInputDelayTics {
+		skipPressed = false
+	}
+	if skipPressed {
+		f.waitTic = intermissionSkipExitHoldTics
+	}
+	if f.waitTic > 0 {
+		f.waitTic--
+		return false
+	}
+	sg.finale = sessionFinale{}
+	return true
 }
 
 func (sg *sessionGame) playIntermissionSound(ev soundEvent) {
@@ -1374,6 +1481,11 @@ func (sg *sessionGame) drawIntermission(screen *ebiten.Image) {
 	oy := (float64(sh) - 200.0*scale) * 0.5
 	im := &sg.intermission
 
+	if im.phase >= intermissionPhaseEntering && im.showEntering {
+		sg.drawIntermissionMapScreen(screen, scale, ox, oy, im)
+		return
+	}
+
 	screen.Fill(color.Black)
 	sg.drawIntermissionBackdrop(screen, scale, ox, oy, im.target.mapName)
 	sg.drawIntermissionText(screen, fmt.Sprintf("FINISHED %s", im.target.mapName), 160, 24, scale, ox, oy, true)
@@ -1381,14 +1493,47 @@ func (sg *sessionGame) drawIntermission(screen *ebiten.Image) {
 	sg.drawIntermissionText(screen, fmt.Sprintf("ITEMS   %3d%%", im.show.itemsPct), 80, 90, scale, ox, oy, false)
 	sg.drawIntermissionText(screen, fmt.Sprintf("SECRETS %3d%%", im.show.secretsPct), 80, 110, scale, ox, oy, false)
 	sg.drawIntermissionText(screen, fmt.Sprintf("TIME %s", formatIntermissionTime(im.show.timeSec)), 80, 138, scale, ox, oy, false)
-	if im.phase >= intermissionPhaseEntering {
-		sg.drawIntermissionText(screen, fmt.Sprintf("ENTERING %s", im.target.nextMapName), 160, 168, scale, ox, oy, true)
+	if (im.tic/16)&1 == 0 {
+		sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO SKIP", 160, 186, scale, ox, oy, true)
 	}
-	if im.phase == intermissionPhaseYouAreHere && shouldShowYouAreHere(im.target.mapName, im.target.nextMapName) {
+}
+
+func (sg *sessionGame) drawIntermissionMapScreen(screen *ebiten.Image, scale, ox, oy float64, im *sessionIntermission) {
+	screen.Fill(color.Black)
+	sg.drawIntermissionBackdrop(screen, scale, ox, oy, im.target.mapName)
+	sg.drawIntermissionText(screen, fmt.Sprintf("ENTERING %s", im.target.nextMapName), 160, 24, scale, ox, oy, true)
+	if im.phase == intermissionPhaseYouAreHere && im.showYouAreHere {
 		sg.drawYouAreHerePanel(screen, scale, ox, oy, im.target.mapName, im.target.nextMapName)
+	} else {
+		sg.drawCurrentIntermissionNode(screen, scale, ox, oy, im.target.mapName)
 	}
 	if (im.tic/16)&1 == 0 {
 		sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO SKIP", 160, 186, scale, ox, oy, true)
+	}
+}
+
+func (sg *sessionGame) drawFinale(screen *ebiten.Image) {
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	scale := float64(sw) / 320.0
+	scaleY := float64(sh) / 200.0
+	if scaleY < scale {
+		scale = scaleY
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	ox := (float64(sw) - 320.0*scale) * 0.5
+	oy := (float64(sh) - 200.0*scale) * 0.5
+	f := &sg.finale
+
+	screen.Fill(color.Black)
+	if strings.TrimSpace(f.screen) != "" {
+		_ = sg.drawIntermissionPatch(screen, f.screen, 0, 0, scale, ox, oy, false)
+	}
+	sg.drawIntermissionText(screen, fmt.Sprintf("EPISODE COMPLETE: %s", f.mapName), 160, 186, scale, ox, oy, true)
+	if (f.tic/16)&1 == 0 {
+		sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO CONTINUE", 160, 174, scale, ox, oy, true)
 	}
 }
 
@@ -1413,17 +1558,34 @@ func (sg *sessionGame) drawYouAreHerePanel(screen *ebiten.Image, scale, ox, oy f
 	if len(nodes) != 9 {
 		return
 	}
-	if mapCur >= 1 && mapCur <= 9 {
-		pt := nodes[mapCur-1]
-		if !sg.drawIntermissionPatch(screen, "WISPLAT", pt.x, pt.y, scale, ox, oy, true) {
-			sg.drawIntermissionText(screen, "X", pt.x, pt.y, scale, ox, oy, true)
-		}
-	}
+	sg.drawIntermissionNodeSplat(screen, scale, ox, oy, nodes, mapCur)
 	if mapNext >= 1 && mapNext <= 9 && (sg.intermission.tic/8)&1 == 0 {
 		pt := nodes[mapNext-1]
 		if !sg.drawIntermissionPatch(screen, "WIURH0", pt.x, pt.y, scale, ox, oy, true) {
 			sg.drawIntermissionText(screen, ">", pt.x, pt.y, scale, ox, oy, true)
 		}
+	}
+}
+
+func (sg *sessionGame) drawCurrentIntermissionNode(screen *ebiten.Image, scale, ox, oy float64, current mapdata.MapName) {
+	ep, slot, ok := episodeMapSlot(current)
+	if !ok {
+		return
+	}
+	nodes := intermissionEpisodeNodePos(ep)
+	if len(nodes) != 9 {
+		return
+	}
+	sg.drawIntermissionNodeSplat(screen, scale, ox, oy, nodes, slot)
+}
+
+func (sg *sessionGame) drawIntermissionNodeSplat(screen *ebiten.Image, scale, ox, oy float64, nodes []interNodePos, slot int) {
+	if slot < 1 || slot > len(nodes) {
+		return
+	}
+	pt := nodes[slot-1]
+	if !sg.drawIntermissionPatch(screen, "WISPLAT", pt.x, pt.y, scale, ox, oy, true) {
+		sg.drawIntermissionText(screen, "X", pt.x, pt.y, scale, ox, oy, true)
 	}
 }
 
@@ -1564,6 +1726,35 @@ func shouldShowYouAreHere(current, next mapdata.MapName) bool {
 		return false
 	}
 	return epCur == epNext
+}
+
+func shouldShowEnteringScreen(current, next mapdata.MapName) bool {
+	_, _, okCur := episodeMapSlot(current)
+	if !okCur {
+		return false
+	}
+	_, _, okNext := episodeMapSlot(next)
+	return okNext
+}
+
+func episodeFinaleScreen(current mapdata.MapName, secret bool) (string, bool) {
+	if secret {
+		return "", false
+	}
+	ep, slot, ok := episodeMapSlot(current)
+	if !ok || slot != 8 {
+		return "", false
+	}
+	switch ep {
+	case 1:
+		return "CREDIT", true
+	case 2:
+		return "VICTORY2", true
+	case 3, 4:
+		return "ENDPIC", true
+	default:
+		return "", false
+	}
 }
 
 func episodeMapSlot(name mapdata.MapName) (episode int, slot int, ok bool) {
