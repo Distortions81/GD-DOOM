@@ -8111,6 +8111,9 @@ func doomWallLightRowF(light int16, lightBias int, depth, focal float64) float64
 	}
 	// Doom wall index ~= (rw_scale >> LIGHTSCALESHIFT), with rw_scale in 16.16.
 	lightScale := (focal / depth) * 16.0
+	// Normalize to Doom's 320-wide light-table basis so wall shading stays
+	// consistent across internal render resolutions.
+	lightScale *= float64(doomLogicalW) / (2.0 * focal)
 	if lightScale < 0 {
 		lightScale = 0
 	}
