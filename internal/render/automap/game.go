@@ -645,6 +645,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	opts.KeyboardTurnSpeed = normalizeKeyboardTurnSpeed(opts.KeyboardTurnSpeed)
 	opts.MusicVolume = clampVolume(opts.MusicVolume)
 	opts.SFXVolume = clampVolume(opts.SFXVolume)
+	opts.OPLVolume = clampOPLVolume(opts.OPLVolume)
 	if !opts.SourcePortMode {
 		// Doom mode keeps strict parity color semantics.
 		opts.LineColorMode = "parity"
@@ -929,6 +930,7 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		GammaLevel:       g.gammaLevel,
 		MusicVolume:      g.opts.MusicVolume,
 		MUSPanMax:        g.opts.MUSPanMax,
+		OPLVolume:        g.opts.OPLVolume,
 		SFXVolume:        g.opts.SFXVolume,
 		MouseLook:        g.opts.MouseLook,
 		AlwaysRun:        g.alwaysRun,

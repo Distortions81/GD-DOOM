@@ -6,9 +6,13 @@ import (
 )
 
 const (
-	OutputSampleRate       = 44100
-	defaultTicRate         = 140
-	defaultVoices          = 18
+	OutputSampleRate = 44100
+	defaultTicRate   = 140
+	// Doom DMX OPL path uses 9 simultaneous 2-op channels.
+	defaultVoices          = 9
+	DefaultOutputGain      = 2.5
+	MaxOutputGain          = 5.0
+	outputSoftKneeStart    = 0.85
 	controllerPan          = 10
 	controllerVol          = 7
 	controllerExpr         = 11
@@ -109,6 +113,7 @@ type Driver struct {
 	sampleRate int
 	ticRate    int
 	musPanMax  float64
+	outputGain float64
 	bank       PatchBank
 	ch         [16]channelState
 	voices     []voiceState
@@ -128,6 +133,7 @@ func NewDriver(sampleRate int, bank PatchBank) *Driver {
 		sampleRate: sampleRate,
 		ticRate:    defaultTicRate,
 		musPanMax:  defaultMUSPanMax,
+		outputGain: DefaultOutputGain,
 		bank:       bank,
 		voices:     make([]voiceState, defaultVoices),
 		freeList:   make([]int, 0, defaultVoices),
@@ -158,6 +164,15 @@ func (d *Driver) SetMUSPanMax(max float64) {
 		return
 	}
 	d.musPanMax = clampUnit(max)
+}
+
+// SetOutputGain sets final PCM output gain.
+// Value is clamped to [0, MaxOutputGain].
+func (d *Driver) SetOutputGain(gain float64) {
+	if d == nil {
+		return
+	}
+	d.outputGain = clampOutputGain(gain)
 }
 
 func (d *Driver) Reset() {
@@ -209,7 +224,7 @@ func (d *Driver) Render(events []Event) []int16 {
 		if ev.DeltaTics > 0 {
 			frames := int((uint64(ev.DeltaTics) * uint64(d.sampleRate)) / uint64(d.ticRate))
 			if frames > 0 {
-				pcm = append(pcm, d.opl.GenerateStereoS16(frames)...)
+				pcm = append(pcm, d.generateStereoS16(frames)...)
 			}
 		}
 		d.applyEvent(ev)
@@ -592,6 +607,79 @@ func scaleMUSPan(pan uint8, max float64) uint8 {
 	}
 	scaled := int(math.Round(64 + (float64(int(pan)-64) * m)))
 	return uint8(clampMIDI7(scaled))
+}
+
+func (d *Driver) generateStereoS16(frames int) []int16 {
+	if d == nil || d.opl == nil || frames <= 0 {
+		return nil
+	}
+	out := d.opl.GenerateStereoS16(frames)
+	if len(out) == 0 {
+		return out
+	}
+	applyOutputGainSoftKnee(out, d.outputGain)
+	return out
+}
+
+func clampOutputGain(v float64) float64 {
+	if math.IsNaN(v) {
+		return 0
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > MaxOutputGain {
+		return MaxOutputGain
+	}
+	return v
+}
+
+func applyOutputGainSoftKnee(samples []int16, gain float64) {
+	if len(samples) == 0 {
+		return
+	}
+	g := clampOutputGain(gain)
+	if g == 1 {
+		return
+	}
+	const fullScale = 32767.0
+	const negFullScale = 32768.0
+	kneeStart := outputSoftKneeStart
+	if kneeStart <= 0 || kneeStart >= 1 {
+		kneeStart = 0.85
+	}
+	for i := range samples {
+		x := float64(samples[i]) / fullScale
+		if x > 1 {
+			x = 1
+		}
+		if x < -1 {
+			x = -1
+		}
+		y := x * g
+		ay := math.Abs(y)
+		if ay > kneeStart {
+			// Soft-knee saturation above threshold with asymptotic limit at +/-1.
+			over := (ay - kneeStart) / (1 - kneeStart)
+			soft := kneeStart + (1-kneeStart)*(over/(1+over))
+			if y < 0 {
+				y = -soft
+			} else {
+				y = soft
+			}
+		}
+		if y > 1 {
+			y = 1
+		}
+		if y < -1 {
+			y = -1
+		}
+		if y < 0 {
+			samples[i] = int16(math.Round(y * negFullScale))
+		} else {
+			samples[i] = int16(math.Round(y * fullScale))
+		}
+	}
 }
 
 // From Chocolate Doom i_oplmusic.c volume_mapping_table.

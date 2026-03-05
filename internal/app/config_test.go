@@ -176,6 +176,18 @@ func TestRunParseRejectsInvalidMUSPanMax(t *testing.T) {
 	}
 }
 
+func TestRunParseRejectsInvalidOPLVolume(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-opl-volume", "4.1", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "invalid -opl-volume") {
+		t.Fatalf("stderr %q does not mention invalid opl volume", errb.String())
+	}
+}
+
 func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "config.toml")
@@ -184,6 +196,7 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		GammaLevel:       5,
 		MusicVolume:      1.0,
 		MUSPanMax:        0.8,
+		OPLVolume:        2.0,
 		SFXVolume:        0.66,
 		MouseLook:        false,
 		AlwaysRun:        true,
@@ -208,6 +221,9 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.MUSPanMax == nil || *cfg.MUSPanMax != 0.8 {
 		t.Fatalf("mus_pan_max=%v want 0.8", cfg.MUSPanMax)
+	}
+	if cfg.OPLVolume == nil || *cfg.OPLVolume != 2.0 {
+		t.Fatalf("opl_volume=%v want 2.0", cfg.OPLVolume)
 	}
 	if cfg.SFXVolume == nil || *cfg.SFXVolume != 0.66 {
 		t.Fatalf("sfx_volume=%v want 0.66", cfg.SFXVolume)

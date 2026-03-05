@@ -47,7 +47,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 1.0
 	defaultMUSPanMax := 0.8
-	defaultSFXVolume := 0.66
+	defaultOPLVolume := music.DefaultOutputGain
+	defaultSFXVolume := 1.0
 	defaultFastMonsters := false
 	defaultAlwaysRun := false
 	defaultAutoWeaponSwitch := true
@@ -128,6 +129,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.MUSPanMax != nil {
 			defaultMUSPanMax = *cfg.MUSPanMax
+		}
+		if cfg.OPLVolume != nil {
+			defaultOPLVolume = *cfg.OPLVolume
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
@@ -221,6 +225,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
 	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
+	oplVolume := fs.Float64("opl-volume", defaultOPLVolume, "OPL synth output gain (0..4; default 2.0)")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
@@ -293,6 +298,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *musPanMax < 0 || *musPanMax > 1 {
 		fmt.Fprintf(stderr, "invalid -mus-pan-max %.3f (must be between 0 and 1)\n", *musPanMax)
+		return 2
+	}
+	if *oplVolume < 0 || *oplVolume > music.MaxOutputGain {
+		fmt.Fprintf(stderr, "invalid -opl-volume %.3f (must be between 0 and %.1f)\n", *oplVolume, music.MaxOutputGain)
 		return 2
 	}
 	if *sfxVolume < 0 || *sfxVolume > 1 {
@@ -504,6 +513,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
 			MusicVolume:                *musicVolume,
 			MUSPanMax:                  *musPanMax,
+			OPLVolume:                  *oplVolume,
 			SFXVolume:                  *sfxVolume,
 			FastMonsters:               *fastMonsters,
 			AlwaysRun:                  *alwaysRun,

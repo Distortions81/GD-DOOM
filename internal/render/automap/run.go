@@ -268,6 +268,7 @@ type sessionPersistentSettings struct {
 	rotateView       bool
 	mouseLook        bool
 	musicVolume      float64
+	oplVolume        float64
 	sfxVolume        float64
 	walkRender       walkRendererMode
 	alwaysRun        bool
@@ -368,6 +369,19 @@ func clampVolume(v float64) float64 {
 	return v
 }
 
+func clampOPLVolume(v float64) float64 {
+	if v != v {
+		return 0
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > music.MaxOutputGain {
+		return music.MaxOutputGain
+	}
+	return v
+}
+
 func (sg *sessionGame) capturePersistentSettings() {
 	if sg == nil || sg.g == nil {
 		return
@@ -378,6 +392,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 		rotateView:       g.rotateView,
 		mouseLook:        g.opts.MouseLook,
 		musicVolume:      g.opts.MusicVolume,
+		oplVolume:        g.opts.OPLVolume,
 		sfxVolume:        g.opts.SFXVolume,
 		walkRender:       g.walkRender,
 		alwaysRun:        g.alwaysRun,
@@ -397,6 +412,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 func (sg *sessionGame) applyPersistentSettingsToOptions() {
 	sg.opts.MouseLook = sg.settings.mouseLook
 	sg.opts.MusicVolume = clampVolume(sg.settings.musicVolume)
+	sg.opts.OPLVolume = clampOPLVolume(sg.settings.oplVolume)
 	sg.opts.SFXVolume = clampVolume(sg.settings.sfxVolume)
 	sg.opts.AlwaysRun = sg.settings.alwaysRun
 	sg.opts.AutoWeaponSwitch = sg.settings.autoWeaponSwitch
@@ -412,12 +428,16 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.rotateView = s.rotateView
 	g.opts.MouseLook = s.mouseLook
 	g.opts.MusicVolume = clampVolume(s.musicVolume)
+	g.opts.OPLVolume = clampOPLVolume(s.oplVolume)
 	g.opts.SFXVolume = clampVolume(s.sfxVolume)
 	if g.snd != nil {
 		g.snd.setSFXVolume(g.opts.SFXVolume)
 	}
 	if sg.musicPlayer != nil {
 		_ = sg.musicPlayer.SetVolume(g.opts.MusicVolume)
+	}
+	if sg.musicDriver != nil {
+		sg.musicDriver.SetOutputGain(g.opts.OPLVolume)
 	}
 	g.alwaysRun = s.alwaysRun
 	g.autoWeaponSwitch = s.autoWeaponSwitch
@@ -474,6 +494,7 @@ func (sg *sessionGame) initMusicPlayback() {
 	_ = sg.musicPlayer.SetVolume(clampVolume(sg.opts.MusicVolume))
 	sg.musicDriver = music.NewDriver(p.SampleRate(), sg.opts.MusicPatchBank)
 	sg.musicDriver.SetMUSPanMax(sg.opts.MUSPanMax)
+	sg.musicDriver.SetOutputGain(sg.opts.OPLVolume)
 }
 
 func (sg *sessionGame) closeMusicPlayback() {
@@ -657,6 +678,7 @@ func (sg *sessionGame) startBootAsync() {
 				_ = state.musicPlayer.SetVolume(clampVolume(sg.opts.MusicVolume))
 				d := music.NewDriver(state.musicPlayer.SampleRate(), sg.opts.MusicPatchBank)
 				d.SetMUSPanMax(sg.opts.MUSPanMax)
+				d.SetOutputGain(sg.opts.OPLVolume)
 				state.musicDriver = d
 			}
 		}

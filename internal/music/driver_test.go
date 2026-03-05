@@ -1,6 +1,9 @@
 package music
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestDriverRenderSimpleNote(t *testing.T) {
 	d := NewDriver(49716, nil)
@@ -213,6 +216,7 @@ type oplRegWrite struct {
 
 type captureOPL struct {
 	writes []oplRegWrite
+	pcm    []int16
 }
 
 func (o *captureOPL) Reset() {}
@@ -221,7 +225,19 @@ func (o *captureOPL) WriteReg(addr uint16, value uint8) {
 	o.writes = append(o.writes, oplRegWrite{addr: addr, val: value})
 }
 
-func (o *captureOPL) GenerateStereoS16(frames int) []int16 { return nil }
+func (o *captureOPL) GenerateStereoS16(frames int) []int16 {
+	if frames <= 0 {
+		return nil
+	}
+	if len(o.pcm) == 0 {
+		return make([]int16, frames*2)
+	}
+	out := make([]int16, frames*2)
+	for i := range out {
+		out[i] = o.pcm[i%len(o.pcm)]
+	}
+	return out
+}
 
 func (o *captureOPL) GenerateMonoU8(frames int) []byte { return nil }
 
@@ -347,5 +363,45 @@ func TestDriverPanScalingAffectsOPLPanBucket(t *testing.T) {
 	}
 	if got := val & 0x30; got != 0x10 {
 		t.Fatalf("full pan lr bits=0x%02X want=0x10 (right)", got)
+	}
+}
+
+func TestSetOutputGainClampsRange(t *testing.T) {
+	d := NewOutputDriver(nil)
+	d.SetOutputGain(-1)
+	if d.outputGain != 0 {
+		t.Fatalf("outputGain=%v want 0", d.outputGain)
+	}
+	d.SetOutputGain(math.NaN())
+	if d.outputGain != 0 {
+		t.Fatalf("outputGain after NaN=%v want 0", d.outputGain)
+	}
+	d.SetOutputGain(99)
+	if d.outputGain != MaxOutputGain {
+		t.Fatalf("outputGain=%v want %v", d.outputGain, MaxOutputGain)
+	}
+}
+
+func TestGenerateStereoS16AppliesOutputGainSoftKnee(t *testing.T) {
+	d := NewOutputDriver(nil)
+	d.opl = &captureOPL{pcm: []int16{10000, -10000}}
+	d.SetOutputGain(2.0)
+	out := d.generateStereoS16(1)
+	if len(out) != 2 {
+		t.Fatalf("len(out)=%d want 2", len(out))
+	}
+	if out[0] <= 10000 {
+		t.Fatalf("left sample=%d want >10000", out[0])
+	}
+	if out[1] >= -10000 {
+		t.Fatalf("right sample=%d want <-10000", out[1])
+	}
+}
+
+func TestApplyOutputGainSoftKneeLimitsClipping(t *testing.T) {
+	samples := []int16{30000, -30000}
+	applyOutputGainSoftKnee(samples, 4.0)
+	if samples[0] >= 32767 || samples[1] <= -32768 {
+		t.Fatalf("expected soft-knee headroom before hard clip, got %v", samples)
 	}
 }

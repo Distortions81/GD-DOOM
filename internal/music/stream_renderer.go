@@ -58,7 +58,7 @@ func (sr *StreamRenderer) NextChunkS16LE(maxFrames int) (chunk []byte, done bool
 				n = need
 			}
 			if n > 0 {
-				out = append(out, sr.driver.opl.GenerateStereoS16(n)...)
+				out = append(out, sr.driver.generateStereoS16(n)...)
 				sr.wait -= n
 			}
 			if sr.wait > 0 {
