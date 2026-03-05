@@ -934,6 +934,13 @@ func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebi
 		screen.DrawImage(offscreen, op)
 		return
 	}
+	if sg.opts.SourcePortMode {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM = geoM
+		op.Filter = ebiten.FilterNearest
+		screen.DrawImage(offscreen, op)
+		return
+	}
 
 	aspectH := faithfulAspectLogicalH
 	if sg.opts.DisableAspectCorrection {
@@ -2135,10 +2142,9 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
-		w, h, _, _ = fitRect(w, h, doomLogicalW, aspectH)
 		sg.g.setSkyOutputSize(w, h)
-		// Sourceport mode keeps detail divisors for internal rendering, then
-		// presents through the same auto-integer display aspect path.
+		// Sourceport mode renders/presents natively to the current window size,
+		// with detail level controlling internal divisor only.
 		div := sg.g.sourcePortDetailDivisor()
 		if div < 1 {
 			div = 1
