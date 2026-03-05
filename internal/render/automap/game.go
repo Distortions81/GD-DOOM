@@ -75,8 +75,10 @@ var (
 	wallShadeLUT        [257][256]uint8
 	sectorLightLUTOnce  sync.Once
 	sectorLightMulLUT   [256]uint8
+	doomLightingEnabled bool
 	doomColormapEnabled bool
 	doomColormapRows    int
+	doomRowShadeMulLUT  []uint16
 	doomColormapRGBA    []uint32
 	doomPalIndexLUT32   []uint8
 )
@@ -709,13 +711,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		alwaysRun:        opts.AlwaysRun,
 		autoWeaponSwitch: opts.AutoWeaponSwitch,
 	}
-	// Sourceport mode keeps full-color shading (same brightness math, no
-	// palette/colormap remap decimation). Faithful mode keeps Doom colormap.
-	if opts.SourcePortMode {
-		initDoomColormapShading(nil, nil, 0)
-	} else {
-		initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows)
-	}
+	// Sourceport mode keeps faithful Doom light math but without palette
+	// quantization/decimation. Faithful mode applies full Doom colormap remap.
+	initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows, !opts.SourcePortMode)
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.textureAnimCrossfadeFrames = normalizeTextureAnimCrossfadeFrames(opts.TextureAnimCrossfadeFrames, opts.SourcePortMode)
@@ -2544,10 +2542,13 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	if y1 > wallBottom[x] {
 		wallBottom[x] = y1
 	}
-	shadeMul := sectorDistanceShadeMul(sectorLight, depth, doomColormapEnabled)
+	shadeMul := sectorDistanceShadeMul(sectorLight, depth, doomLightingEnabled)
 	doomRow := 0
-	if doomColormapEnabled {
+	if doomLightingEnabled {
 		doomRow = doomWallLightRow(sectorLight, lightBias, depth, focal)
+		if !doomColormapEnabled {
+			shadeMul = doomShadeMulFromRowF(doomWallLightRowF(sectorLight, lightBias, depth, focal))
+		}
 	}
 	if useTex {
 		g.drawBasicWallColumnTextured(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul, doomRow)
@@ -3146,6 +3147,57 @@ func shadePackedDOOMColormap(src, mul uint32) uint32 {
 	return shadePackedDOOMColormapRow(src, row)
 }
 
+func doomShadeMulFromRow(row int) int {
+	rows := doomShadeRows()
+	if rows <= 1 {
+		return 256
+	}
+	if row < 0 {
+		row = 0
+	}
+	if row >= rows {
+		row = rows - 1
+	}
+	if len(doomRowShadeMulLUT) == rows {
+		return int(doomRowShadeMulLUT[row])
+	}
+	m := 256 - ((row * 256) / (rows - 1))
+	if m < 0 {
+		return 0
+	}
+	if m > 256 {
+		return 256
+	}
+	return m
+}
+
+func doomShadeMulFromRowF(row float64) int {
+	rows := doomShadeRows()
+	if rows <= 1 {
+		return 256
+	}
+	if row <= 0 {
+		return doomShadeMulFromRow(0)
+	}
+	maxRow := float64(rows - 1)
+	if row >= maxRow {
+		return doomShadeMulFromRow(rows - 1)
+	}
+	r0 := int(row)
+	r1 := r0 + 1
+	f := row - float64(r0)
+	m0 := doomShadeMulFromRow(r0)
+	m1 := doomShadeMulFromRow(r1)
+	m := int(float64(m0)*(1.0-f) + float64(m1)*f + 0.5)
+	if m < 0 {
+		return 0
+	}
+	if m > 256 {
+		return 256
+	}
+	return m
+}
+
 func spritePixels32(tex WallTexture) ([]uint32, bool) {
 	if tex.Width <= 0 || tex.Height <= 0 {
 		return nil, false
@@ -3300,10 +3352,13 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 			if y0 > y1 {
 				continue
 			}
-			shadeMul := sectorDistanceShadeMul(ms.light, ms.dist, doomColormapEnabled)
+			shadeMul := sectorDistanceShadeMul(ms.light, ms.dist, doomLightingEnabled)
 			doomRow := 0
-			if doomColormapEnabled {
+			if doomLightingEnabled {
 				doomRow = doomWallLightRow(ms.light, ms.lightBias, f, focal)
+				if !doomColormapEnabled {
+					shadeMul = doomShadeMulFromRowF(doomWallLightRowF(ms.light, ms.lightBias, f, focal))
+				}
 			}
 			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.texMid, focal, ms.tex, shadeMul, doomRow)
 		}
@@ -3363,12 +3418,14 @@ func initSectorLightMulLUT() {
 	}
 }
 
-func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int) {
+func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int, enableColormapRemap bool) {
+	doomLightingEnabled = false
 	doomColormapEnabled = false
 	doomColormapRows = 0
+	doomRowShadeMulLUT = nil
 	doomColormapRGBA = nil
 	doomPalIndexLUT32 = nil
-	if len(paletteRGBA) < 256*4 || len(colorMap) < 256 || rows <= 0 {
+	if len(colorMap) < 256 || rows <= 0 {
 		return
 	}
 	maxRows := len(colorMap) / 256
@@ -3376,6 +3433,12 @@ func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int) {
 		rows = maxRows
 	}
 	if rows <= 0 {
+		return
+	}
+	doomColormapRows = rows
+	doomLightingEnabled = true
+	doomRowShadeMulLUT = buildDoomRowShadeMulLUT(paletteRGBA, colorMap, rows)
+	if !enableColormapRemap || len(paletteRGBA) < 256*4 {
 		return
 	}
 	doomColormapRGBA = make([]uint32, rows*256)
@@ -3391,8 +3454,47 @@ func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int) {
 		}
 	}
 	doomPalIndexLUT32 = buildPaletteIndexLUT32(paletteRGBA)
-	doomColormapRows = rows
 	doomColormapEnabled = len(doomPalIndexLUT32) == 32*32*32
+}
+
+func buildDoomRowShadeMulLUT(paletteRGBA, colorMap []byte, rows int) []uint16 {
+	if rows <= 0 || len(paletteRGBA) < 256*4 || len(colorMap) < rows*256 {
+		return nil
+	}
+	rowLuma := make([]int64, rows)
+	for r := 0; r < rows; r++ {
+		base := r * 256
+		var sum int64
+		for i := 0; i < 256; i++ {
+			pi := int(colorMap[base+i]) * 4
+			if pi+2 >= len(paletteRGBA) {
+				continue
+			}
+			rr := int64(paletteRGBA[pi+0])
+			gg := int64(paletteRGBA[pi+1])
+			bb := int64(paletteRGBA[pi+2])
+			// Integer luma approximation (weights sum to 256).
+			sum += rr*54 + gg*183 + bb*19
+		}
+		rowLuma[r] = sum
+	}
+	ref := rowLuma[0]
+	if ref <= 0 {
+		return nil
+	}
+	mul := make([]uint16, rows)
+	for r := 0; r < rows; r++ {
+		m := int((rowLuma[r]*256 + ref/2) / ref)
+		if m < 0 {
+			m = 0
+		}
+		if m > 256 {
+			m = 256
+		}
+		mul[r] = uint16(m)
+	}
+	mul[0] = 256
+	return mul
 }
 
 func buildPaletteIndexLUT32(paletteRGBA []byte) []uint8 {
@@ -3612,8 +3714,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				wyFixed := rowBaseWYFixed + xOff*stepWYFixed
 				defaultShade := uint32(sectorLightMul(key.light))
 				defaultRow := 0
-				if doomColormapEnabled {
+				if doomLightingEnabled {
 					defaultRow = doomPlaneLightRow(key.light, depth)
+					if !doomColormapEnabled {
+						defaultShade = uint32(doomShadeMulFromRowF(doomPlaneLightRowF(key.light, depth)))
+					}
 				}
 				pixI := rowPix + x1
 				if !flatTexReady {
@@ -3633,6 +3738,33 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						}
 						if x <= x2 {
 							pix32[pixI] = shadePackedDOOMColormapRow(fbPacked, defaultRow)
+							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
+						}
+						continue
+					}
+					if doomLightingEnabled {
+						x := x1
+						for ; x+1 <= x2; x += 2 {
+							wxFixed += stepWXFixed
+							wyFixed += stepWYFixed
+							wxFixed += stepWXFixed
+							wyFixed += stepWYFixed
+							if defaultShade == 256 {
+								pix32[pixI] = fbPacked
+								pix32[pixI+1] = fbPacked
+							} else {
+								pix32[pixI] = shadePackedRGBABig(fbPacked, defaultShade)
+								pix32[pixI+1] = shadePackedRGBABig(fbPacked, defaultShade)
+							}
+							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
+							pixI += 2
+						}
+						if x <= x2 {
+							if defaultShade == 256 {
+								pix32[pixI] = fbPacked
+							} else {
+								pix32[pixI] = shadePackedRGBABig(fbPacked, defaultShade)
+							}
 							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 						}
 						continue
@@ -3699,6 +3831,41 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						u := int(wxFixed>>fracBits) & 63
 						v := int(wyFixed>>fracBits) & 63
 						pix32[pixI] = shadePackedDOOMColormapRow(tex32[(v<<6)+u], defaultRow)
+						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
+					}
+					continue
+				}
+				if doomLightingEnabled {
+					x := x1
+					for ; x+1 <= x2; x += 2 {
+						u0 := int(wxFixed>>fracBits) & 63
+						v0 := int(wyFixed>>fracBits) & 63
+						p0 := tex32[(v0<<6)+u0]
+						wxFixed += stepWXFixed
+						wyFixed += stepWYFixed
+						u1 := int(wxFixed>>fracBits) & 63
+						v1 := int(wyFixed>>fracBits) & 63
+						p1 := tex32[(v1<<6)+u1]
+						if defaultShade == 256 {
+							pix32[pixI] = p0
+							pix32[pixI+1] = p1
+						} else {
+							pix32[pixI] = shadePackedRGBABig(p0, defaultShade)
+							pix32[pixI+1] = shadePackedRGBABig(p1, defaultShade)
+						}
+						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
+						wxFixed += stepWXFixed
+						wyFixed += stepWYFixed
+						pixI += 2
+					}
+					if x <= x2 {
+						u := int(wxFixed>>fracBits) & 63
+						v := int(wyFixed>>fracBits) & 63
+						if defaultShade == 256 {
+							pix32[pixI] = tex32[(v<<6)+u]
+						} else {
+							pix32[pixI] = shadePackedRGBABig(tex32[(v<<6)+u], defaultShade)
+						}
 						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
@@ -7933,41 +8100,71 @@ func doomClampColorMapRow(row int) int {
 }
 
 func doomWallLightRow(light int16, lightBias int, depth, focal float64) int {
+	return doomClampColorMapRow(int(doomWallLightRowF(light, lightBias, depth, focal)))
+}
+
+func doomWallLightRowF(light int16, lightBias int, depth, focal float64) float64 {
 	lightNum := doomClampLightNum((int(light) >> doomLightSegShift) + lightBias)
 	startMap := doomStartMap(lightNum)
 	if depth <= 0 || focal <= 0 {
-		return doomClampColorMapRow(startMap)
+		return float64(doomClampColorMapRow(startMap))
 	}
 	// Doom wall index ~= (rw_scale >> LIGHTSCALESHIFT), with rw_scale in 16.16.
-	lightScale := int((focal / depth) * 16.0)
+	lightScale := (focal / depth) * 16.0
 	if lightScale < 0 {
 		lightScale = 0
 	}
-	if lightScale >= doomMaxLightScale {
-		lightScale = doomMaxLightScale - 1
+	if lightScale >= float64(doomMaxLightScale) {
+		lightScale = float64(doomMaxLightScale - 1)
 	}
-	row := startMap - (lightScale / doomDistMap)
-	return doomClampColorMapRow(row)
+	row := float64(startMap) - (lightScale / float64(doomDistMap))
+	if row < 0 {
+		return 0
+	}
+	rows := doomShadeRows()
+	if rows <= 0 {
+		return 0
+	}
+	maxRow := float64(rows - 1)
+	if row > maxRow {
+		return maxRow
+	}
+	return row
 }
 
 func doomPlaneLightRow(light int16, depth float64) int {
+	return doomClampColorMapRow(int(doomPlaneLightRowF(light, depth)))
+}
+
+func doomPlaneLightRowF(light int16, depth float64) float64 {
 	lightNum := doomClampLightNum(int(light) >> doomLightSegShift)
 	startMap := doomStartMap(lightNum)
 	if depth <= 0 {
-		return doomClampColorMapRow(startMap)
+		return float64(doomClampColorMapRow(startMap))
 	}
 	// Doom plane index ~= distance >> LIGHTZSHIFT with 16.16 fixed distance.
-	lightZ := int(depth / 16.0)
+	lightZ := depth / 16.0
 	if lightZ < 0 {
 		lightZ = 0
 	}
-	if lightZ >= doomMaxLightZ {
-		lightZ = doomMaxLightZ - 1
+	if lightZ >= float64(doomMaxLightZ) {
+		lightZ = float64(doomMaxLightZ - 1)
 	}
 	// Doom zlight uses an inverse-distance scale term before DISTMAP quantization.
-	scale := (doomLogicalW / 2) / (lightZ + 1)
-	row := startMap - (scale / doomDistMap)
-	return doomClampColorMapRow(row)
+	scale := (float64(doomLogicalW) / 2.0) / (lightZ + 1.0)
+	row := float64(startMap) - (scale / float64(doomDistMap))
+	if row < 0 {
+		return 0
+	}
+	rows := doomShadeRows()
+	if rows <= 0 {
+		return 0
+	}
+	maxRow := float64(rows - 1)
+	if row > maxRow {
+		return maxRow
+	}
+	return row
 }
 
 func combineShadeMul(a, b int) int {

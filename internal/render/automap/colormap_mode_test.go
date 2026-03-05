@@ -6,7 +6,7 @@ import (
 	"gddoom/internal/mapdata"
 )
 
-func TestSourcePortModeDisablesDoomColormapDecimation(t *testing.T) {
+func TestSourcePortModeKeepsDoomLightMathWithoutColormapDecimation(t *testing.T) {
 	palette := make([]byte, 256*4)
 	for i := 0; i < 256; i++ {
 		base := i * 4
@@ -20,13 +20,16 @@ func TestSourcePortModeDisablesDoomColormapDecimation(t *testing.T) {
 		colormap[i] = byte(i)
 	}
 
-	// Sourceport mode should force full-color shading path.
+	// Sourceport mode should use Doom light-row math, but keep full-color shading.
 	_ = newGame(&mapdata.Map{}, Options{
 		SourcePortMode:   true,
 		DoomPaletteRGBA:  palette,
 		DoomColorMap:     colormap,
 		DoomColorMapRows: 1,
 	})
+	if !doomLightingEnabled {
+		t.Fatal("doom lighting math should be enabled in sourceport mode with valid colormap rows")
+	}
 	if doomColormapEnabled {
 		t.Fatal("doom colormap should be disabled in sourceport mode")
 	}
@@ -38,6 +41,9 @@ func TestSourcePortModeDisablesDoomColormapDecimation(t *testing.T) {
 		DoomColorMap:     colormap,
 		DoomColorMapRows: 1,
 	})
+	if !doomLightingEnabled {
+		t.Fatal("doom lighting math should be enabled in faithful mode with valid data")
+	}
 	if !doomColormapEnabled {
 		t.Fatal("doom colormap should be enabled in faithful mode with valid data")
 	}

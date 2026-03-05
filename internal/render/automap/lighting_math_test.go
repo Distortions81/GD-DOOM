@@ -111,3 +111,47 @@ func TestDoomPlaneLightRowDarkensWithDistance(t *testing.T) {
 		t.Fatalf("plane row should darken with distance: near=%d far=%d", near, far)
 	}
 }
+
+func TestDoomShadeMulFromRowDarkensAsRowIncreases(t *testing.T) {
+	prev := doomColormapRows
+	prevLUT := doomRowShadeMulLUT
+	defer func() {
+		doomColormapRows = prev
+		doomRowShadeMulLUT = prevLUT
+	}()
+	doomColormapRows = 32
+	doomRowShadeMulLUT = nil
+
+	near := doomShadeMulFromRow(0)
+	far := doomShadeMulFromRow(31)
+	if near <= far {
+		t.Fatalf("expected row 0 to be brighter than row 31: near=%d far=%d", near, far)
+	}
+	if near != 256 {
+		t.Fatalf("row 0 mul=%d want=256", near)
+	}
+	if far < 0 || far > 255 {
+		t.Fatalf("row 31 mul=%d out of range [0,255]", far)
+	}
+}
+
+func TestDoomShadeMulFromRowFInterpolatesBetweenRows(t *testing.T) {
+	prev := doomColormapRows
+	prevLUT := doomRowShadeMulLUT
+	defer func() {
+		doomColormapRows = prev
+		doomRowShadeMulLUT = prevLUT
+	}()
+	doomColormapRows = 32
+	doomRowShadeMulLUT = nil
+
+	m0 := doomShadeMulFromRow(10)
+	m1 := doomShadeMulFromRow(11)
+	mf := doomShadeMulFromRowF(10.5)
+	if mf == m0 || mf == m1 {
+		t.Fatalf("expected interpolated mul between rows, got m0=%d mf=%d m1=%d", m0, mf, m1)
+	}
+	if !(m0 > mf && mf > m1) {
+		t.Fatalf("expected monotonic interpolation, got m0=%d mf=%d m1=%d", m0, mf, m1)
+	}
+}
