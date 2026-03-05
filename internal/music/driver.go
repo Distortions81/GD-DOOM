@@ -10,7 +10,7 @@ const (
 	defaultTicRate   = 140
 	// Doom DMX OPL path uses 9 simultaneous 2-op channels.
 	defaultVoices          = 9
-	DefaultOutputGain      = 2.5
+	DefaultOutputGain      = 1.0
 	MaxOutputGain          = 5.0
 	outputSoftKneeStart    = 0.85
 	controllerPan          = 10
