@@ -2591,87 +2591,66 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 	if g == nil || screen == nil || g.viewW <= 0 || g.viewH <= 0 {
 		return
 	}
-	w := g.viewW
-	if len(g.maskedClipCols) < w {
-		w = len(g.maskedClipCols)
+	strokeRect := func(x0, y0, x1, y1 float64, clr color.Color) {
+		if x1 < x0 || y1 < y0 {
+			return
+		}
+		vector.StrokeLine(screen, float32(x0), float32(y0), float32(x1), float32(y0), 1.2, clr, true)
+		vector.StrokeLine(screen, float32(x0), float32(y1), float32(x1), float32(y1), 1.2, clr, true)
+		vector.StrokeLine(screen, float32(x0), float32(y0), float32(x0), float32(y1), 1.2, clr, true)
+		vector.StrokeLine(screen, float32(x1), float32(y0), float32(x1), float32(y1), 1.2, clr, true)
 	}
-	// Solid coverage (BSP wall spans) as a top strip.
-	for _, sp := range g.solid3DBuf {
-		l := sp.l
-		r := sp.r
-		if l < 0 {
-			l = 0
+	strokeDiag := func(x0, y0, x1, y1 float64, clr color.Color) {
+		if x1 < x0 || y1 < y0 {
+			return
 		}
-		if r >= g.viewW {
-			r = g.viewW - 1
-		}
-		if l > r {
-			continue
-		}
-		ebitenutil.DrawRect(screen, float64(l), 0, float64(r-l+1), 4, color.RGBA{R: 70, G: 220, B: 255, A: 120})
+		vector.StrokeLine(screen, float32(x0), float32(y0), float32(x1), float32(y1), 1.1, clr, true)
 	}
-	// Wall occlusion columns.
-	maxWall := min(g.viewW, len(g.wallDepthQCol))
-	for x := 0; x < maxWall; x++ {
-		if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
-			ebitenutil.DrawRect(screen, float64(x), 0, 1, float64(g.viewH), color.RGBA{R: 64, G: 132, B: 255, A: 18})
-			continue
-		}
-		if x >= len(g.wallDepthTopCol) || x >= len(g.wallDepthBottomCol) {
-			continue
-		}
-		top := g.wallDepthTopCol[x]
-		bottom := g.wallDepthBottomCol[x]
-		if top < 0 {
-			top = 0
-		}
-		if bottom >= g.viewH {
-			bottom = g.viewH - 1
-		}
-		if top <= bottom {
-			ebitenutil.DrawRect(screen, float64(x), float64(top), 1, float64(bottom-top+1), color.RGBA{R: 64, G: 132, B: 255, A: 12})
+	drawBox := func(x0, x1, y0, y1 int, clr color.RGBA) {
+		strokeRect(float64(x0), float64(y0), float64(x1), float64(y1), clr)
+		strokeDiag(float64(x0), float64(y0), float64(x1), float64(y1), clr)
+	}
+	occludedClr := color.RGBA{R: 255, G: 56, B: 56, A: 255}
+
+	focal := doomFocalLength(g.viewW)
+	for _, it := range g.projectileItemsScratch {
+		x0, x1, y0, y1, ok := projectileItemScreenBounds(it, g.viewW, g.viewH)
+		if ok {
+			clr := color.RGBA{R: 255, G: 186, B: 64, A: 255}
+			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+				clr = occludedClr
+			}
+			drawBox(x0, x1, y0, y1, clr)
 		}
 	}
-	if len(g.maskedClipCols) == 0 {
-		return
+	for _, it := range g.monsterItemsScratch {
+		x0, x1, y0, y1, ok := monsterItemScreenBounds(it, g.viewW, g.viewH)
+		if ok {
+			clr := color.RGBA{R: 90, G: 220, B: 120, A: 255}
+			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+				clr = occludedClr
+			}
+			drawBox(x0, x1, y0, y1, clr)
+		}
 	}
-	for x := 0; x < w; x++ {
-		for _, sp := range g.maskedClipCols[x] {
-			if sp.closed {
-				ebitenutil.DrawRect(screen, float64(x), 0, 1, float64(g.viewH), color.RGBA{R: 255, G: 56, B: 56, A: 28})
-				continue
+	for _, it := range g.thingItemsScratch {
+		x0, x1, y0, y1, ok := thingItemScreenBounds(it, g.viewW, g.viewH)
+		if ok {
+			clr := color.RGBA{R: 90, G: 200, B: 255, A: 255}
+			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+				clr = occludedClr
 			}
-			if sp.hasOpen {
-				openTop := int(sp.openY0)
-				openBottom := int(sp.openY1)
-				if openTop < 0 {
-					openTop = 0
-				}
-				if openBottom >= g.viewH {
-					openBottom = g.viewH - 1
-				}
-				if openTop > 0 {
-					ebitenutil.DrawRect(screen, float64(x), 0, 1, float64(openTop), color.RGBA{R: 220, G: 44, B: 44, A: 20})
-				}
-				if openBottom < g.viewH-1 {
-					ebitenutil.DrawRect(screen, float64(x), float64(openBottom+1), 1, float64(g.viewH-(openBottom+1)), color.RGBA{R: 220, G: 44, B: 44, A: 20})
-				}
-				if openTop <= openBottom {
-					ebitenutil.DrawRect(screen, float64(x), float64(openTop), 1, float64(openBottom-openTop+1), color.RGBA{R: 44, G: 220, B: 70, A: 40})
-				}
-				continue
+			drawBox(x0, x1, y0, y1, clr)
+		}
+	}
+	for _, it := range g.puffItemsScratch {
+		x0, x1, y0, y1, ok := puffItemScreenBounds(it, focal, g.viewW, g.viewH)
+		if ok {
+			clr := color.RGBA{R: 255, G: 90, B: 90, A: 255}
+			if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(it.dist)) {
+				clr = occludedClr
 			}
-			y0 := int(sp.y0)
-			y1 := int(sp.y1)
-			if y0 < 0 {
-				y0 = 0
-			}
-			if y1 >= g.viewH {
-				y1 = g.viewH - 1
-			}
-			if y0 <= y1 {
-				ebitenutil.DrawRect(screen, float64(x), float64(y0), 1, float64(y1-y0+1), color.RGBA{R: 44, G: 140, B: 255, A: 34})
-			}
+			drawBox(x0, x1, y0, y1, clr)
 		}
 	}
 }
