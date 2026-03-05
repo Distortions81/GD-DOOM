@@ -934,19 +934,15 @@ func (g *game) cycleSourcePortDetailLevel() {
 }
 
 func (g *game) mouseLookTurnRaw(dx int) int64 {
-	winW, _ := ebiten.WindowSize()
-	if winW <= 0 {
-		winW = g.viewW
-	}
-	return mouseLookTurnRawWithWidth(dx, g.opts.MouseLookSpeed, winW)
+	return mouseLookTurnRawWithWidth(dx, g.opts.MouseLookSpeed, g.viewW)
 }
 
-func mouseLookTurnRawWithWidth(dx int, speed float64, windowW int) int64 {
+func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
 	if dx == 0 {
 		return 0
 	}
 	base := float64(40 << 16)
-	scale := mouseLookResolutionScale(windowW)
+	scale := mouseLookResolutionScale(renderW)
 	raw := int64(math.Round(float64(dx) * scale * base * speed))
 	if raw == 0 {
 		if dx > 0 {
@@ -959,14 +955,15 @@ func mouseLookTurnRawWithWidth(dx int, speed float64, windowW int) int64 {
 	return -raw
 }
 
-func mouseLookResolutionScale(windowW int) float64 {
-	if windowW <= 0 {
-		windowW = sourcePortDefaultWindowW
+func mouseLookResolutionScale(renderW int) float64 {
+	refW := doomLogicalW
+	if renderW <= 0 {
+		renderW = refW
 	}
-	if windowW < 1 {
-		windowW = 1
+	if renderW < 1 {
+		renderW = 1
 	}
-	return float64(sourcePortDefaultWindowW) / float64(windowW)
+	return float64(refW) / float64(renderW)
 }
 
 func (g *game) runtimeSettingsSnapshot() RuntimeSettings {

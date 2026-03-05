@@ -46,7 +46,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultSkill := 3
 	defaultGameMode := "single"
 	defaultMouseLook := true
-	defaultMouseLookSpeed := 1.0
+	defaultMouseLookSpeed := 2.0
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 1.0
 	defaultMUSPanMax := 0.8
@@ -776,19 +776,36 @@ func resolveIWADAliasPath(path string) string {
 	if trimmed == "" {
 		return path
 	}
+	if resolved, ok := resolvePathCaseInsensitive(trimmed); ok {
+		return resolved
+	}
 	base := strings.ToUpper(filepath.Base(trimmed))
 	if base != "DOOM1.WAD" {
 		return path
 	}
-	if _, err := os.Stat(trimmed); err == nil {
-		return path
-	}
 	dir := filepath.Dir(trimmed)
-	alias := filepath.Join(dir, "DOOM.WAD")
-	if _, err := os.Stat(alias); err == nil {
+	if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, "DOOM.WAD")); ok {
 		return alias
 	}
 	return path
+}
+
+func resolvePathCaseInsensitive(path string) (string, bool) {
+	if _, err := os.Stat(path); err == nil {
+		return path, true
+	}
+	dir := filepath.Dir(path)
+	name := filepath.Base(path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", false
+	}
+	for _, entry := range entries {
+		if strings.EqualFold(entry.Name(), name) {
+			return filepath.Join(dir, entry.Name()), true
+		}
+	}
+	return "", false
 }
 
 func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]automap.WallTexture) error {
