@@ -12,3 +12,6 @@ dist/
 *.test
 *.out
 config.toml
+dump
+dump2
+
