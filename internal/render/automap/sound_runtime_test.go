@@ -120,3 +120,21 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 		t.Fatalf("death shotgun sample=%v ok=%v want zombie fallback", got, ok)
 	}
 }
+
+func TestPCMMonoU8ToStereoS16LEResampledLength(t *testing.T) {
+	src := []byte{0, 64, 128, 255}
+	got := pcmMonoU8ToStereoS16LEResampled(src, 11025, 44100)
+	// 4x upsample: 4 input frames -> 16 output frames, 4 bytes per frame.
+	if len(got) != 16*4 {
+		t.Fatalf("len=%d want=%d", len(got), 16*4)
+	}
+}
+
+func TestPCMMonoU8ToStereoS16LEResampledEmpty(t *testing.T) {
+	if got := pcmMonoU8ToStereoS16LEResampled(nil, 11025, 44100); len(got) != 0 {
+		t.Fatalf("len=%d want=0", len(got))
+	}
+	if got := pcmMonoU8ToStereoS16LEResampled([]byte{1}, 0, 44100); len(got) != 0 {
+		t.Fatalf("len=%d want=0", len(got))
+	}
+}

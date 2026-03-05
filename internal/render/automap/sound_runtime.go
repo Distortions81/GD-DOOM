@@ -1,6 +1,8 @@
 package automap
 
 import (
+	"gddoom/internal/music"
+
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
 
@@ -54,7 +56,7 @@ var (
 )
 
 func newSoundSystem(bank SoundBank) *soundSystem {
-	rate := firstSampleRate(bank)
+	rate := music.OutputSampleRate
 	if rate <= 0 {
 		return nil
 	}
@@ -192,11 +194,13 @@ func (s *soundSystem) playEvent(ev soundEvent) {
 	if !ok || sample.SampleRate <= 0 || len(sample.Data) == 0 {
 		return
 	}
+	pcm := pcmMonoU8ToStereoS16LE(sample.Data)
 	if sample.SampleRate != s.ctx.SampleRate() {
-		// Keep runtime simple for now: single-rate context.
+		pcm = pcmMonoU8ToStereoS16LEResampled(sample.Data, sample.SampleRate, s.ctx.SampleRate())
+	}
+	if len(pcm) == 0 {
 		return
 	}
-	pcm := pcmMonoU8ToStereoS16LE(sample.Data)
 	p := audio.NewPlayerFromBytes(s.ctx, pcm)
 	p.SetVolume(0.65)
 	p.Play()
@@ -437,6 +441,36 @@ func pcmMonoU8ToStereoS16LE(src []byte) []byte {
 		out[oi+2] = lo
 		out[oi+3] = hi
 		oi += 4
+	}
+	return out
+}
+
+func pcmMonoU8ToStereoS16LEResampled(src []byte, srcRate, dstRate int) []byte {
+	if len(src) == 0 || srcRate <= 0 || dstRate <= 0 {
+		return nil
+	}
+	if srcRate == dstRate {
+		return pcmMonoU8ToStereoS16LE(src)
+	}
+	// Keep runtime cheap; nearest-neighbor is sufficient for short SFX.
+	dstLen := len(src) * dstRate / srcRate
+	if dstLen <= 0 {
+		dstLen = 1
+	}
+	out := make([]byte, dstLen*4)
+	for i := 0; i < dstLen; i++ {
+		si := i * srcRate / dstRate
+		if si >= len(src) {
+			si = len(src) - 1
+		}
+		v := int16(int(src[si])-128) << 8
+		oi := i * 4
+		lo := byte(v)
+		hi := byte(v >> 8)
+		out[oi] = lo
+		out[oi+1] = hi
+		out[oi+2] = lo
+		out[oi+3] = hi
 	}
 	return out
 }
