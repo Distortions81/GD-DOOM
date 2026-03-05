@@ -8,19 +8,11 @@ import (
 	"gddoom/internal/wad"
 )
 
-func TestRenderE1M1MusicPeakWithinLimit(t *testing.T) {
+func TestRenderEpisode1MusicPeaksWithinLimitAtDefaultGain(t *testing.T) {
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
 	if err != nil {
 		t.Fatalf("open wad %s: %v", wadPath, err)
-	}
-	musLump, ok := wf.LumpByName("D_E1M1")
-	if !ok {
-		t.Fatal("missing D_E1M1 lump")
-	}
-	musData, err := wf.LumpData(musLump)
-	if err != nil {
-		t.Fatalf("read D_E1M1: %v", err)
 	}
 
 	var bank PatchBank
@@ -32,35 +24,53 @@ func TestRenderE1M1MusicPeakWithinLimit(t *testing.T) {
 		}
 	}
 
-	d := NewOutputDriver(bank)
-	d.Reset()
-	pcm, err := d.RenderMUS(musData)
-	if err != nil {
-		t.Fatalf("RenderMUS(D_E1M1) error: %v", err)
-	}
-	if len(pcm) == 0 {
-		t.Fatal("expected non-empty PCM for D_E1M1")
-	}
+	for _, lumpName := range []string{"D_E1M1", "D_E1M2", "D_E1M3", "D_E1M4", "D_E1M5"} {
+		lumpName := lumpName
+		t.Run(lumpName, func(t *testing.T) {
+			musLump, ok := wf.LumpByName(lumpName)
+			if !ok {
+				t.Fatalf("missing %s lump", lumpName)
+			}
+			musData, err := wf.LumpData(musLump)
+			if err != nil {
+				t.Fatalf("read %s: %v", lumpName, err)
+			}
 
-	maxAbs := 0
-	saturated := 0
-	for _, s := range pcm {
-		if s == 32767 || s == -32768 {
-			saturated++
-		}
-		v := int(s)
-		if v < 0 {
-			v = -v
-		}
-		if v > maxAbs {
-			maxAbs = v
-		}
-	}
-	if maxAbs < 256 {
-		t.Fatalf("unexpectedly low peak amplitude: %d", maxAbs)
-	}
-	if saturated > 0 {
-		t.Fatalf("detected clipped/saturated samples in E1M1 render: %d (peak=%d)", saturated, maxAbs)
+			d := NewOutputDriver(bank)
+			if d.outputGain != DefaultOutputGain {
+				t.Fatalf("default output gain=%.2f want %.2f", d.outputGain, DefaultOutputGain)
+			}
+			d.Reset()
+			pcm, err := d.RenderMUS(musData)
+			if err != nil {
+				t.Fatalf("RenderMUS(%s) error: %v", lumpName, err)
+			}
+			if len(pcm) == 0 {
+				t.Fatalf("expected non-empty PCM for %s", lumpName)
+			}
+
+			maxAbs := 0
+			saturated := 0
+			for _, s := range pcm {
+				if s == 32767 || s == -32768 {
+					saturated++
+				}
+				v := int(s)
+				if v < 0 {
+					v = -v
+				}
+				if v > maxAbs {
+					maxAbs = v
+				}
+			}
+			if maxAbs < 256 {
+				t.Fatalf("unexpectedly low peak amplitude for %s: %d", lumpName, maxAbs)
+			}
+			if saturated > 0 {
+				t.Fatalf("detected clipped/saturated samples in %s render: %d (peak=%d)", lumpName, saturated, maxAbs)
+			}
+			t.Logf("%s peak=%d (%.2f%%FS) saturated=%d", lumpName, maxAbs, float64(maxAbs)/32767.0*100.0, saturated)
+		})
 	}
 }
 

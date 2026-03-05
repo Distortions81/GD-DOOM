@@ -47,7 +47,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 1.0
 	defaultMUSPanMax := 0.8
-	defaultOPLVolume := 3.0
+	defaultOPLVolume := 2.5
 	defaultSFXVolume := 1.0
 	defaultFastMonsters := false
 	defaultAlwaysRun := false
