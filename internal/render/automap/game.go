@@ -431,6 +431,8 @@ type game struct {
 	subSectorPoly       [][]worldPt
 	subSectorTris       [][][3]int
 	subSectorBBox       []worldBBox
+	dynamicSectorMask   []bool
+	staticSubSectorMask []bool
 	holeFillPolys       []holeFillPoly
 
 	mapFloorLayer              *ebiten.Image
@@ -516,6 +518,7 @@ type game struct {
 	mapTexDiag                 bool
 	spriteClipDiag             bool
 	spriteClipDiagOnly         bool
+	spriteClipDiagGreenOnly    bool
 	runtimeSettingsSeen        bool
 	runtimeSettingsLast        RuntimeSettings
 	subSectorPolySrc           []uint8
@@ -1602,13 +1605,20 @@ func (g *game) updateParityControls() {
 			if !g.spriteClipDiag {
 				g.spriteClipDiag = true
 				g.spriteClipDiagOnly = false
+				g.spriteClipDiagGreenOnly = false
 				g.setHUDMessage("Sprite Clip Diag ON", 70)
 			} else if !g.spriteClipDiagOnly {
 				g.spriteClipDiagOnly = true
+				g.spriteClipDiagGreenOnly = false
 				g.setHUDMessage("Sprite Clip Diag DEBUG-ONLY", 70)
+			} else if !g.spriteClipDiagGreenOnly {
+				g.spriteClipDiagOnly = true
+				g.spriteClipDiagGreenOnly = true
+				g.setHUDMessage("Sprite Clip Diag GREEN-ONLY", 70)
 			} else {
 				g.spriteClipDiag = false
 				g.spriteClipDiagOnly = false
+				g.spriteClipDiagGreenOnly = false
 				g.setHUDMessage("Sprite Clip Diag OFF", 70)
 			}
 		}
@@ -1713,6 +1723,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 					if g.spriteClipDiagOnly {
 						mode = "DEBUG-ONLY"
 					}
+					if g.spriteClipDiagGreenOnly {
+						mode = "GREEN-ONLY"
+					}
 					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 92)
 				}
 			}
@@ -1737,6 +1750,9 @@ func (g *game) Draw(screen *ebiten.Image) {
 					mode := "ON"
 					if g.spriteClipDiagOnly {
 						mode = "DEBUG-ONLY"
+					}
+					if g.spriteClipDiagGreenOnly {
+						mode = "GREEN-ONLY"
 					}
 					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 92)
 				}
@@ -2655,40 +2671,11 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		y1 float64
 		// owner is the wall triangle index that produced this edge.
 		owner int
+		pair  int
 	}
 	triEdges := make([]edge2, 0, 2048)
 	inViewF := func(x, y float64) bool {
 		return x >= 0 && x < float64(g.viewW) && y >= 0 && y < float64(g.viewH)
-	}
-	wallOccAtFloat := func(x, y float64, depthQ uint16) bool {
-		if !inViewF(x, y) {
-			return false
-		}
-		x0 := int(math.Floor(x))
-		y0 := int(math.Floor(y))
-		x1 := x0 + 1
-		y1 := y0 + 1
-		occ := func(px, py int) bool {
-			if px < 0 || px >= g.viewW || py < 0 || py >= g.viewH {
-				return false
-			}
-			return g.wallClipPointOccludedByWallsOnly(px, py, depthQ)
-		}
-		// Majority subpixel test to avoid requiring perfect coverage.
-		n := 0
-		if occ(x0, y0) {
-			n++
-		}
-		if occ(x1, y0) {
-			n++
-		}
-		if occ(x0, y1) {
-			n++
-		}
-		if occ(x1, y1) {
-			n++
-		}
-		return n >= 3
 	}
 	spriteOccAtFloat := func(x, y float64, depthQ uint16) bool {
 		if !inViewF(x, y) {
@@ -2792,7 +2779,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		for _, e := range triEdges {
 			// Avoid self-intersection cuts from the same triangle, and from the
 			// paired triangle that came from the same wall quad split.
-			if edgeOwner >= 0 && (e.owner == edgeOwner || e.owner == (edgeOwner^1)) {
+			if edgeOwner >= 0 && (e.owner == edgeOwner || e.pair == edgeOwner) {
 				continue
 			}
 			if t, ok := lineIntersectT(x0, y0, x1, y1, e.x0, e.y0, e.x1, e.y1); ok {
@@ -2827,6 +2814,9 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			}
 			clr := visibleClr
 			if isOccluded(mx, my, tm) {
+				if g.spriteClipDiagGreenOnly {
+					continue
+				}
 				clr = occludedClr
 			}
 			ax := x0 + (x1-x0)*t0
@@ -2852,8 +2842,10 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		cz     float64
 		depthQ uint16
 		state  int
+		pair   int
+		isWall bool
 	}
-	wallTris := make([]wallTri, 0, max(64, len(g.visibleBuf)*2))
+	wallTris := make([]wallTri, 0, max(128, len(g.visibleBuf)*4))
 
 	focal := doomFocalLength(g.viewW)
 	camX := g.renderPX
@@ -2897,6 +2889,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			dy := int(math.Floor(yb1))
 			triAState := g.spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy, depthQ)
 			triBState := g.spriteWallClipTriangleOcclusionState(ax, ay, cx, cy, dx, dy, depthQ)
+			i0 := len(wallTris)
 			wallTris = append(wallTris,
 				wallTri{
 					ax: pp.sx1, ay: yt1,
@@ -2905,6 +2898,8 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 					az: f1, bz: f2, cz: f2,
 					depthQ: depthQ,
 					state:  triAState,
+					pair:   i0 + 1,
+					isWall: true,
 				},
 				wallTri{
 					ax: pp.sx1, ay: yt1,
@@ -2913,6 +2908,8 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 					az: f1, bz: f2, cz: f1,
 					depthQ: depthQ,
 					state:  triBState,
+					pair:   i0,
+					isWall: true,
 				},
 			)
 		}
@@ -2927,6 +2924,165 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			drawWallSlice(ws.worldLow, ws.worldBottom)
 		}
 	}
+	// Add floor/ceiling triangles from currently visible subsectors.
+	type camPt struct {
+		f float64
+		s float64
+	}
+	clipCamPolyToNear := func(in []camPt, near float64) []camPt {
+		if len(in) < 3 {
+			return nil
+		}
+		out := make([]camPt, 0, len(in)+2)
+		prev := in[len(in)-1]
+		prevIn := prev.f >= near
+		for _, cur := range in {
+			curIn := cur.f >= near
+			if prevIn && curIn {
+				out = append(out, cur)
+			} else if prevIn && !curIn {
+				df := cur.f - prev.f
+				if math.Abs(df) > 1e-9 {
+					t := (near - prev.f) / df
+					out = append(out, camPt{
+						f: near,
+						s: prev.s + (cur.s-prev.s)*t,
+					})
+				}
+			} else if !prevIn && curIn {
+				df := cur.f - prev.f
+				if math.Abs(df) > 1e-9 {
+					t := (near - prev.f) / df
+					out = append(out, camPt{
+						f: near,
+						s: prev.s + (cur.s-prev.s)*t,
+					})
+				}
+				out = append(out, cur)
+			}
+			prev = cur
+			prevIn = curIn
+		}
+		if len(out) < 3 {
+			return nil
+		}
+		return out
+	}
+	halfW := float64(g.viewW) * 0.5
+	halfH := float64(g.viewH) * 0.5
+	appendPlaneTri := func(ax, ay, az, bx, by, bz, cx, cy, cz float64) {
+		depthQ := encodeDepthQ((az + bz + cz) / 3.0)
+		// Keep floor/ceiling tris in the unified test set so plane-vs-plane
+		// occlusion can happen between sectors.
+		state := 0
+		wallTris = append(wallTris, wallTri{
+			ax: ax, ay: ay,
+			bx: bx, by: by,
+			cx: cx, cy: cy,
+			az: az, bz: bz, cz: cz,
+			depthQ: depthQ,
+			state:  state,
+			pair:   -1,
+			isWall: false,
+		})
+	}
+	for ss := 0; ss < len(g.m.SubSectors) && ss < len(g.visibleSubSectorSeen); ss++ {
+		if g.visibleSubSectorSeen[ss] != g.visibleEpoch {
+			continue
+		}
+		if ss >= len(g.subSectorPoly) || len(g.subSectorPoly[ss]) < 3 {
+			continue
+		}
+		sec := g.sectorForSubSector(ss)
+		if sec < 0 || sec >= len(g.m.Sectors) {
+			continue
+		}
+		secRef := g.m.Sectors[sec]
+		world := g.subSectorPoly[ss]
+		camPoly := make([]camPt, 0, len(world))
+		for _, p := range world {
+			dx := p.x - camX
+			dy := p.y - camY
+			f := dx*ca + dy*sa
+			s := -dx*sa + dy*ca
+			camPoly = append(camPoly, camPt{f: f, s: s})
+		}
+		emitCachedTris := func(zWorld float64) bool {
+			if ss >= len(g.subSectorTris) || len(g.subSectorTris[ss]) == 0 {
+				return false
+			}
+			for _, tri := range g.subSectorTris[ss] {
+				i0, i1, i2 := tri[0], tri[1], tri[2]
+				if i0 < 0 || i0 >= len(camPoly) || i1 < 0 || i1 >= len(camPoly) || i2 < 0 || i2 >= len(camPoly) {
+					continue
+				}
+				clipped := clipCamPolyToNear([]camPt{camPoly[i0], camPoly[i1], camPoly[i2]}, near)
+				if len(clipped) < 3 {
+					continue
+				}
+				screenX := make([]float64, len(clipped))
+				screenY := make([]float64, len(clipped))
+				depth := make([]float64, len(clipped))
+				skip := false
+				for i := range clipped {
+					fv := clipped[i].f
+					if fv <= 0 {
+						skip = true
+						break
+					}
+					screenX[i] = halfW - (clipped[i].s/fv)*focal
+					screenY[i] = halfH - (zWorld/fv)*focal
+					depth[i] = fv
+				}
+				if skip {
+					continue
+				}
+				for i := 1; i+1 < len(clipped); i++ {
+					appendPlaneTri(
+						screenX[0], screenY[0], depth[0],
+						screenX[i], screenY[i], depth[i],
+						screenX[i+1], screenY[i+1], depth[i+1],
+					)
+				}
+			}
+			return true
+		}
+		emitClippedFan := func(zWorld float64) {
+			clipped := clipCamPolyToNear(camPoly, near)
+			if len(clipped) < 3 {
+				return
+			}
+			screenX := make([]float64, len(clipped))
+			screenY := make([]float64, len(clipped))
+			depth := make([]float64, len(clipped))
+			for i := range clipped {
+				fv := clipped[i].f
+				if fv <= 0 {
+					return
+				}
+				screenX[i] = halfW - (clipped[i].s/fv)*focal
+				screenY[i] = halfH - (zWorld/fv)*focal
+				depth[i] = fv
+			}
+			for i := 1; i+1 < len(clipped); i++ {
+				appendPlaneTri(
+					screenX[0], screenY[0], depth[0],
+					screenX[i], screenY[i], depth[i],
+					screenX[i+1], screenY[i+1], depth[i+1],
+				)
+			}
+		}
+		floorZ := float64(secRef.FloorHeight) - eyeZ
+		if !emitCachedTris(floorZ) {
+			emitClippedFan(floorZ)
+		}
+		if !isSkyFlatName(secRef.CeilingPic) {
+			ceilZ := float64(secRef.CeilingHeight) - eyeZ
+			if !emitCachedTris(ceilZ) {
+				emitClippedFan(ceilZ)
+			}
+		}
+	}
 	// Pass 1: build cut edges from non-culled wall triangles, but only on
 	// true outer bounds (exclude internal split diagonal).
 	for i, tr := range wallTris {
@@ -2934,21 +3090,87 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		if tr.state == 2 {
 			continue
 		}
-		if i%2 == 0 {
+		if tr.isWall && tr.pair >= 0 && i%2 == 0 {
 			// Triangle A (A-B-C): keep A-B and B-C; drop C-A diagonal.
 			triEdges = append(triEdges,
-				edge2{x0: tr.ax, y0: tr.ay, x1: tr.bx, y1: tr.by, owner: i},
-				edge2{x0: tr.bx, y0: tr.by, x1: tr.cx, y1: tr.cy, owner: i},
+				edge2{x0: tr.ax, y0: tr.ay, x1: tr.bx, y1: tr.by, owner: i, pair: tr.pair},
+				edge2{x0: tr.bx, y0: tr.by, x1: tr.cx, y1: tr.cy, owner: i, pair: tr.pair},
 			)
-		} else {
+		} else if tr.isWall && tr.pair >= 0 {
 			// Triangle B (A-C-D): keep C-D and D-A; drop A-C diagonal.
 			triEdges = append(triEdges,
-				edge2{x0: tr.bx, y0: tr.by, x1: tr.cx, y1: tr.cy, owner: i},
-				edge2{x0: tr.cx, y0: tr.cy, x1: tr.ax, y1: tr.ay, owner: i},
+				edge2{x0: tr.bx, y0: tr.by, x1: tr.cx, y1: tr.cy, owner: i, pair: tr.pair},
+				edge2{x0: tr.cx, y0: tr.cy, x1: tr.ax, y1: tr.ay, owner: i, pair: tr.pair},
+			)
+		} else {
+			triEdges = append(triEdges,
+				edge2{x0: tr.ax, y0: tr.ay, x1: tr.bx, y1: tr.by, owner: i, pair: tr.pair},
+				edge2{x0: tr.bx, y0: tr.by, x1: tr.cx, y1: tr.cy, owner: i, pair: tr.pair},
+				edge2{x0: tr.cx, y0: tr.cy, x1: tr.ax, y1: tr.ay, owner: i, pair: tr.pair},
 			)
 		}
 	}
 	// Pass 2: draw non-culled wall-triangle edges, cut against all cut edges.
+	pointInTri2D := func(px, py float64, tr wallTri) bool {
+		den := (tr.by-tr.cy)*(tr.ax-tr.cx) + (tr.cx-tr.bx)*(tr.ay-tr.cy)
+		if math.Abs(den) < 1e-9 {
+			return false
+		}
+		a := ((tr.by-tr.cy)*(px-tr.cx) + (tr.cx-tr.bx)*(py-tr.cy)) / den
+		b := ((tr.cy-tr.ay)*(px-tr.cx) + (tr.ax-tr.cx)*(py-tr.cy)) / den
+		c := 1.0 - a - b
+		const eps = 1e-6
+		return a >= -eps && b >= -eps && c >= -eps
+	}
+	triDepthAt := func(px, py float64, tr wallTri) (float64, bool) {
+		den := (tr.by-tr.cy)*(tr.ax-tr.cx) + (tr.cx-tr.bx)*(tr.ay-tr.cy)
+		if math.Abs(den) < 1e-9 {
+			return 0, false
+		}
+		a := ((tr.by-tr.cy)*(px-tr.cx) + (tr.cx-tr.bx)*(py-tr.cy)) / den
+		b := ((tr.cy-tr.ay)*(px-tr.cx) + (tr.ax-tr.cx)*(py-tr.cy)) / den
+		c := 1.0 - a - b
+		const eps = 1e-6
+		if a < -eps || b < -eps || c < -eps {
+			return 0, false
+		}
+		if tr.az <= 0 || tr.bz <= 0 || tr.cz <= 0 {
+			return 0, false
+		}
+		// Perspective-correct depth interpolation in screen space.
+		invZ := a*(1.0/tr.az) + b*(1.0/tr.bz) + c*(1.0/tr.cz)
+		if invZ <= 0 {
+			return 0, false
+		}
+		z := 1.0 / invZ
+		if z <= 0 {
+			return 0, false
+		}
+		return z, true
+	}
+	triOccludedAt := func(px, py, z float64, owner, pair int) bool {
+		// Unified geometry occlusion: any nearer triangle can occlude this sample.
+		for j, ot := range wallTris {
+			if j == owner || j == pair {
+				continue
+			}
+			if ot.state == 2 {
+				continue
+			}
+			if !pointInTri2D(px, py, ot) {
+				continue
+			}
+			oz, ok := triDepthAt(px, py, ot)
+			if !ok {
+				continue
+			}
+			// Smaller z is nearer camera.
+			if oz+0.05 < z {
+				return true
+			}
+		}
+		return false
+	}
 	for i, tr := range wallTris {
 		if tr.state == 2 {
 			continue
@@ -2964,7 +3186,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			if z1 > 0 {
 				invZ1 = 1.0 / z1
 			}
-			wallOcc := func(x, y int, t float64) bool {
+			wallOcc := func(x, y, t float64) bool {
 				if t < 0 {
 					t = 0
 				} else if t > 1 {
@@ -2979,30 +3201,27 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 				if z <= 0 {
 					return true
 				}
-				dq := encodeDepthQ(z)
-				px := float64(x)
-				py := float64(y)
+				px := x
+				py := y
 				n := 0
-				if wallOccAtFloat(px, py, dq) {
+				if triOccludedAt(px, py, z, i, tr.pair) {
 					n++
 				}
-				if wallOccAtFloat(px-0.5, py, dq) {
+				if triOccludedAt(px-0.5, py, z, i, tr.pair) {
 					n++
 				}
-				if wallOccAtFloat(px+0.5, py, dq) {
+				if triOccludedAt(px+0.5, py, z, i, tr.pair) {
 					n++
 				}
-				if wallOccAtFloat(px, py-0.5, dq) {
+				if triOccludedAt(px, py-0.5, z, i, tr.pair) {
 					n++
 				}
-				if wallOccAtFloat(px, py+0.5, dq) {
+				if triOccludedAt(px, py+0.5, z, i, tr.pair) {
 					n++
 				}
 				return n >= 3
 			}
-			drawVisibleLine(x0, y0, x1, y1, i, func(x, y, t float64) bool {
-				return wallOcc(int(math.Floor(x)), int(math.Floor(y)), t)
-			})
+			drawVisibleLine(x0, y0, x1, y1, i, wallOcc)
 		}
 		drawWallEdge(tr.ax, tr.ay, tr.az, tr.bx, tr.by, tr.bz)
 		drawWallEdge(tr.bx, tr.by, tr.bz, tr.cx, tr.cy, tr.cz)
@@ -3618,26 +3837,7 @@ func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bo
 			return true
 		}
 	}
-	if x >= len(g.maskedClipCols) {
-		return false
-	}
-	for _, sp := range g.maskedClipCols[x] {
-		if depthQ <= sp.depthQ {
-			continue
-		}
-		if sp.closed {
-			return true
-		}
-		if sp.hasOpen {
-			if y1 < int(sp.openY0) || y0 > int(sp.openY1) {
-				return true
-			}
-			continue
-		}
-		if y0 >= int(sp.y0) && y1 <= int(sp.y1) {
-			return true
-		}
-	}
+	// Transparent/masked mid textures should not act as hard occluders.
 	return false
 }
 
@@ -11309,6 +11509,47 @@ func (g *game) subSectorSectorIndex(ss int) (int, bool) {
 	return 0, false
 }
 
+func (g *game) buildDynamicSectorMask() []bool {
+	if g == nil || g.m == nil || len(g.m.Sectors) == 0 {
+		return nil
+	}
+	dyn := make([]bool, len(g.m.Sectors))
+	byTag := make(map[uint16][]int, 64)
+	for si, sec := range g.m.Sectors {
+		if sec.Tag >= 0 {
+			byTag[uint16(sec.Tag)] = append(byTag[uint16(sec.Tag)], si)
+		}
+		// Timed door sector specials mutate ceiling at runtime.
+		if sec.Special == 10 || sec.Special == 14 {
+			dyn[si] = true
+		}
+	}
+	for _, ld := range g.m.Linedefs {
+		info := mapdata.LookupLineSpecial(ld.Special)
+		if info.Door == nil {
+			continue
+		}
+		if info.Door.UsesTag {
+			for _, sec := range byTag[ld.Tag] {
+				if sec >= 0 && sec < len(dyn) {
+					dyn[sec] = true
+				}
+			}
+			continue
+		}
+		// Manual/un-tagged door specials target the back sidedef sector.
+		if ld.SideNum[1] < 0 || int(ld.SideNum[1]) >= len(g.m.Sidedefs) {
+			continue
+		}
+		sec := int(g.m.Sidedefs[int(ld.SideNum[1])].Sector)
+		if sec < 0 || sec >= len(dyn) {
+			continue
+		}
+		dyn[sec] = true
+	}
+	return dyn
+}
+
 func (g *game) initSubSectorSectorCache() {
 	if g.m == nil || len(g.m.SubSectors) == 0 {
 		g.subSectorSec = nil
@@ -11316,6 +11557,8 @@ func (g *game) initSubSectorSectorCache() {
 		g.subSectorPoly = nil
 		g.subSectorTris = nil
 		g.subSectorBBox = nil
+		g.dynamicSectorMask = nil
+		g.staticSubSectorMask = nil
 		g.subSectorPolySrc = nil
 		g.subSectorDiagCode = nil
 		g.mapTexDiagStats = mapTexDiagStats{}
@@ -11327,6 +11570,8 @@ func (g *game) initSubSectorSectorCache() {
 	g.subSectorBBox = make([]worldBBox, len(g.m.SubSectors))
 	g.subSectorPoly = make([][]worldPt, len(g.m.SubSectors))
 	g.subSectorTris = make([][][3]int, len(g.m.SubSectors))
+	g.dynamicSectorMask = g.buildDynamicSectorMask()
+	g.staticSubSectorMask = make([]bool, len(g.m.SubSectors))
 	g.subSectorPolySrc = make([]uint8, len(g.m.SubSectors))
 	g.subSectorDiagCode = make([]uint8, len(g.m.SubSectors))
 	g.mapTexDiagStats = mapTexDiagStats{}
@@ -11343,6 +11588,9 @@ func (g *game) initSubSectorSectorCache() {
 	for ss := range g.m.SubSectors {
 		if sec, ok := g.subSectorSectorIndex(ss); ok {
 			g.subSectorSec[ss] = sec
+			if sec >= 0 && sec < len(g.dynamicSectorMask) {
+				g.staticSubSectorMask[ss] = !g.dynamicSectorMask[sec]
+			}
 		}
 		if b, ok := g.subSectorSegBBox(ss); ok {
 			g.subSectorBBox[ss] = b
