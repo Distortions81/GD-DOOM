@@ -2332,6 +2332,38 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 			continue
 		}
+		if !g.depthOcclusionEnabled() {
+			allOcc := true
+			for _, vis := range visibleRanges {
+				visOcc := false
+				if solidWall {
+					visOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, focal)
+				} else {
+					topOcc := true
+					botOcc := true
+					hasSlice := false
+					if topWall {
+						hasSlice = true
+						topOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldHigh, focal)
+					}
+					if bottomWall {
+						hasSlice = true
+						botOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldLow, worldBottom, focal)
+					}
+					if hasSlice {
+						visOcc = topOcc && botOcc
+					}
+				}
+				if !visOcc {
+					allOcc = false
+					break
+				}
+			}
+			if allOcc {
+				g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+				continue
+			}
+		}
 		for _, vis := range visibleRanges {
 			for x := vis.l; x <= vis.r; x++ {
 				t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
@@ -3401,6 +3433,36 @@ func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy in
 	if g == nil || g.viewW <= 0 || g.viewH <= 0 {
 		return true
 	}
+	edgeMaybeVisible := func(x0, y0, x1, y1 int) bool {
+		dx := x1 - x0
+		if dx < 0 {
+			dx = -dx
+		}
+		dy := y1 - y0
+		if dy < 0 {
+			dy = -dy
+		}
+		steps := dx
+		if dy > steps {
+			steps = dy
+		}
+		if steps < 1 {
+			steps = 1
+		}
+		// Limit per-edge sampling cost while still catching sliver visibility.
+		if steps > 32 {
+			steps = 32
+		}
+		for i := 0; i <= steps; i++ {
+			t := float64(i) / float64(steps)
+			x := int(math.Round(float64(x0) + float64(x1-x0)*t))
+			y := int(math.Round(float64(y0) + float64(y1-y0)*t))
+			if !g.spriteWallClipPointOccluded(x, y, depthQ) {
+				return true
+			}
+		}
+		return false
+	}
 	if !g.spriteWallClipPointOccluded(ax, ay, depthQ) {
 		return false
 	}
@@ -3415,7 +3477,109 @@ func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy in
 	if !g.spriteWallClipPointOccluded(mx, my, depthQ) {
 		return false
 	}
-	return true
+	// If any triangle edge has a visible sample, don't cull yet.
+	if edgeMaybeVisible(ax, ay, bx, by) || edgeMaybeVisible(bx, by, cx, cy) || edgeMaybeVisible(cx, cy, ax, ay) {
+		return false
+	}
+	// Point sampling can miss small visible slivers inside the triangle.
+	// Require an exact per-column occlusion confirmation over the triangle AABB
+	// before declaring full occlusion.
+	x0 := ax
+	if bx < x0 {
+		x0 = bx
+	}
+	if cx < x0 {
+		x0 = cx
+	}
+	x1 := ax
+	if bx > x1 {
+		x1 = bx
+	}
+	if cx > x1 {
+		x1 = cx
+	}
+	y0 := ay
+	if by < y0 {
+		y0 = by
+	}
+	if cy < y0 {
+		y0 = cy
+	}
+	y1 := ay
+	if by > y1 {
+		y1 = by
+	}
+	if cy > y1 {
+		y1 = cy
+	}
+	return g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ)
+}
+
+func (g *game) wallSliceYDepthAtX(pp wallSegPrepass, x int, z, focal float64) (float64, float64, bool) {
+	if pp.sx2 == pp.sx1 {
+		return 0, 0, false
+	}
+	t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	invF := pp.invF1 + (pp.invF2-pp.invF1)*t
+	if invF <= 0 {
+		return 0, 0, false
+	}
+	f := 1.0 / invF
+	if f <= 0 {
+		return 0, 0, false
+	}
+	y := float64(g.viewH)/2 - (z/f)*focal
+	return y, f, true
+}
+
+func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r int, zTop, zBottom, focal float64) bool {
+	if g == nil || l > r || g.viewW <= 0 || g.viewH <= 0 {
+		return true
+	}
+	if l < 0 {
+		l = 0
+	}
+	if r >= g.viewW {
+		r = g.viewW - 1
+	}
+	if l > r {
+		return true
+	}
+	ytL, fL, okL := g.wallSliceYDepthAtX(pp, l, zTop, focal)
+	ytR, fR, okR := g.wallSliceYDepthAtX(pp, r, zTop, focal)
+	ybL, _, okBL := g.wallSliceYDepthAtX(pp, l, zBottom, focal)
+	ybR, _, okBR := g.wallSliceYDepthAtX(pp, r, zBottom, focal)
+	if !(okL && okR && okBL && okBR) {
+		return false
+	}
+	// Near-contact and off-screen slices are numerically unstable for triangle
+	// sample culling; keep them for raster pass to avoid leaks at contact.
+	if fL < 4.0 || fR < 4.0 {
+		return false
+	}
+	depthQ := encodeDepthQ((fL + fR) * 0.5)
+	ax, ay := l, int(math.Round(ytL))
+	bx, by := r, int(math.Round(ytR))
+	cx, cy := r, int(math.Round(ybR))
+	dx, dy := l, int(math.Round(ybL))
+	if ax < 0 || ax >= g.viewW || bx < 0 || bx >= g.viewW || cx < 0 || cx >= g.viewW || dx < 0 || dx >= g.viewW {
+		return false
+	}
+	if ay < 0 || ay >= g.viewH || by < 0 || by >= g.viewH || cy < 0 || cy >= g.viewH || dy < 0 || dy >= g.viewH {
+		return false
+	}
+	triAOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy, depthQ)
+	if !triAOcc {
+		return false
+	}
+	triBOcc := g.spriteWallClipTriangleFullyOccludedFast(ax, ay, cx, cy, dx, dy, depthQ)
+	return triBOcc
 }
 
 func (g *game) spriteWallClipQuadFullyOccluded(x0, x1, y0, y1 int, depthQ uint16) bool {
@@ -5383,7 +5547,7 @@ func (g *game) logWallCull(segIdx int, reason string, z1, z2, x1, x2 float64) {
 }
 
 func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64, float64, bool) {
-	const eps = 1e-6
+	const eps = 0.125
 	clipNear := near + eps
 	if f1 <= near && f2 <= near {
 		return 0, 0, 0, 0, false
@@ -5428,7 +5592,7 @@ func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64,
 }
 
 func clipSegmentToNearWithAttr(f1, s1, a1, f2, s2, a2, near float64) (float64, float64, float64, float64, float64, float64, bool) {
-	const eps = 1e-6
+	const eps = 0.125
 	clipNear := near + eps
 	if f1 <= near && f2 <= near {
 		return 0, 0, 0, 0, 0, 0, false

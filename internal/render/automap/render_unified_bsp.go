@@ -324,6 +324,38 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 		g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 		return
 	}
+	if !g.depthOcclusionEnabled() {
+		allOcc := true
+		for _, vis := range visibleRanges {
+			visOcc := false
+			if solidWall {
+				visOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, ctx.focal)
+			} else {
+				topOcc := true
+				botOcc := true
+				hasSlice := false
+				if topWall {
+					hasSlice = true
+					topOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldHigh, ctx.focal)
+				}
+				if bottomWall {
+					hasSlice = true
+					botOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldLow, worldBottom, ctx.focal)
+				}
+				if hasSlice {
+					visOcc = topOcc && botOcc
+				}
+			}
+			if !visOcc {
+				allOcc = false
+				break
+			}
+		}
+		if allOcc {
+			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+			return
+		}
+	}
 	g.markUnifiedSubsectorVisibleSpans(ss, visibleRanges)
 
 	for _, vis := range visibleRanges {
