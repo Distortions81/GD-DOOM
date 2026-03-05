@@ -205,3 +205,90 @@ func TestClampMIDI7(t *testing.T) {
 		t.Fatalf("clamp 64=%d want=64", got)
 	}
 }
+
+type oplRegWrite struct {
+	addr uint16
+	val  uint8
+}
+
+type captureOPL struct {
+	writes []oplRegWrite
+}
+
+func (o *captureOPL) Reset() {}
+
+func (o *captureOPL) WriteReg(addr uint16, value uint8) {
+	o.writes = append(o.writes, oplRegWrite{addr: addr, val: value})
+}
+
+func (o *captureOPL) GenerateStereoS16(frames int) []int16 { return nil }
+
+func (o *captureOPL) GenerateMonoU8(frames int) []byte { return nil }
+
+func (o *captureOPL) wroteAddr(addr uint16) bool {
+	for _, w := range o.writes {
+		if w.addr == addr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestDriverControlChangeRefreshesActiveVoiceRegisters(t *testing.T) {
+	d := NewOutputDriver(nil)
+	opl := &captureOPL{}
+	d.opl = opl
+	d.Reset()
+	d.applyEvent(Event{Type: EventNoteOn, Channel: 0, A: 60, B: 100})
+	if !d.voices[0].active {
+		t.Fatal("expected voice 0 active after note-on")
+	}
+
+	opl.writes = nil
+	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerVol, B: 90})
+	if !opl.wroteAddr(0x43) {
+		t.Fatal("expected carrier volume register write on controller volume change")
+	}
+
+	opl.writes = nil
+	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerPan, B: 127})
+	if !opl.wroteAddr(0xC0) {
+		t.Fatal("expected pan/feedback register write on controller pan change")
+	}
+}
+
+func TestDriverPitchBendReordersUpdatedVoicesToEnd(t *testing.T) {
+	d := NewOutputDriver(nil)
+	d.opl = &captureOPL{}
+	d.Reset()
+	d.allocList = []int{0, 1, 2}
+	d.freeList = d.freeList[:0]
+	d.voices[0] = voiceState{active: true, ch: 0, playNote: 60, oplCh: 0}
+	d.voices[1] = voiceState{active: true, ch: 1, playNote: 62, oplCh: 1}
+	d.voices[2] = voiceState{active: true, ch: 0, playNote: 64, oplCh: 2}
+
+	d.refreshChannelPitch(0)
+	got := d.allocList
+	want := []int{1, 0, 2}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("allocList=%v want=%v", got, want)
+		}
+	}
+}
+
+func TestDriverPercussionOutOfRangeIgnored(t *testing.T) {
+	bank := &capturePercussionPatchBank{}
+	d := NewOutputDriver(bank)
+	d.Reset()
+	d.applyEvent(Event{Type: EventNoteOn, Channel: 9, A: 34, B: 100})
+	d.applyEvent(Event{Type: EventNoteOn, Channel: 9, A: 82, B: 100})
+	if len(bank.percussionFlags) != 0 {
+		t.Fatalf("unexpected patch lookups for out-of-range percussion notes: %d", len(bank.percussionFlags))
+	}
+	for i, v := range d.voices {
+		if v.active {
+			t.Fatalf("voice %d active for ignored percussion note", i)
+		}
+	}
+}

@@ -5,15 +5,20 @@ import (
 )
 
 const (
-	OutputSampleRate = 44100
-	defaultTicRate   = 140
-	defaultVoices    = 18
-	controllerPan    = 10
-	controllerVol    = 7
-	controllerExpr   = 11
-	defaultChanVol   = 127
-	defaultChanExpr  = 127
-	defaultChanPan   = 64
+	OutputSampleRate       = 44100
+	defaultTicRate         = 140
+	defaultVoices          = 18
+	controllerPan          = 10
+	controllerVol          = 7
+	controllerExpr         = 11
+	controllerResetAll     = 121
+	controllerAllSoundsOff = 120
+	controllerAllNotesOff  = 123
+	defaultChanVol         = 127
+	defaultChanExpr        = 127
+	defaultChanPan         = 64
+	percussionNoteMin      = 35
+	percussionNoteMax      = 81
 )
 
 type EventType uint8
@@ -85,14 +90,16 @@ type channelState struct {
 }
 
 type voiceState struct {
-	active   bool
-	ch       uint8
-	note     uint8
-	playNote uint8
-	fineTune int16
-	freqWord uint16
-	id       uint64
-	oplCh    int
+	active     bool
+	ch         uint8
+	note       uint8
+	velocity   uint8
+	playNote   uint8
+	fineTune   int16
+	freqWord   uint16
+	instrVoice uint8
+	patch      Patch
+	oplCh      int
 }
 
 type Driver struct {
@@ -102,7 +109,8 @@ type Driver struct {
 	bank       PatchBank
 	ch         [16]channelState
 	voices     []voiceState
-	nextVoice  uint64
+	freeList   []int
+	allocList  []int
 }
 
 func NewDriver(sampleRate int, bank PatchBank) *Driver {
@@ -118,6 +126,12 @@ func NewDriver(sampleRate int, bank PatchBank) *Driver {
 		ticRate:    defaultTicRate,
 		bank:       bank,
 		voices:     make([]voiceState, defaultVoices),
+		freeList:   make([]int, 0, defaultVoices),
+		allocList:  make([]int, 0, defaultVoices),
+	}
+	for i := range d.voices {
+		d.voices[i].oplCh = i
+		d.freeList = append(d.freeList, i)
 	}
 	for i := range d.ch {
 		d.ch[i] = channelState{
@@ -138,10 +152,21 @@ func (d *Driver) Reset() {
 		return
 	}
 	d.opl.Reset()
+	// Mirror Chocolate Doom OPL init low-register setup.
+	d.opl.WriteReg(0x04, 0x60) // reset timers
+	d.opl.WriteReg(0x04, 0x80) // enable interrupts
+	d.opl.WriteReg(0x01, 0x20) // waveform control enable
+	// Use OPL3 NEW mode so upper-bank channel registers (0x1xx) are active.
+	d.opl.WriteReg(0x105, 0x01)
+	d.opl.WriteReg(0x08, 0x40) // FM mode / keyboard split
 	for i := range d.voices {
 		d.voices[i] = voiceState{oplCh: i}
 	}
-	d.nextVoice = 0
+	d.freeList = d.freeList[:0]
+	d.allocList = d.allocList[:0]
+	for i := range d.voices {
+		d.freeList = append(d.freeList, i)
+	}
 	for i := range d.ch {
 		d.ch[i] = channelState{
 			volume:     defaultChanVol,
@@ -165,6 +190,7 @@ func (d *Driver) Render(events []Event) []int16 {
 			d.voices[i].oplCh = i
 		}
 	}
+	d.ensureVoiceLists()
 	var pcm []int16
 	for _, ev := range events {
 		if ev.DeltaTics > 0 {
@@ -222,10 +248,22 @@ func (d *Driver) applyEvent(ev Event) {
 		switch ev.A {
 		case controllerVol:
 			d.ch[ch].volume = ev.B
+			d.refreshChannelVolume(uint8(ch))
 		case controllerExpr:
 			d.ch[ch].expression = ev.B
 		case controllerPan:
 			d.ch[ch].pan = ev.B
+			d.refreshChannelPan(uint8(ch))
+		case controllerResetAll:
+			d.ch[ch].volume = defaultChanVol
+			d.ch[ch].expression = defaultChanExpr
+			d.ch[ch].pan = defaultChanPan
+			d.ch[ch].pitchBend = 0
+			d.refreshChannelVolume(uint8(ch))
+			d.refreshChannelPan(uint8(ch))
+			d.refreshChannelPitch(uint8(ch))
+		case controllerAllSoundsOff, controllerAllNotesOff:
+			d.allNotesOff(ev.Channel)
 		}
 	case EventPitchBend:
 		// DMX/Chocolate OPL path only uses MIDI pitch bend MSB.
@@ -245,17 +283,21 @@ func (d *Driver) applyEvent(ev Event) {
 func (d *Driver) noteOn(ch, note, velocity uint8) {
 	prog := d.ch[ch&0x0F].program
 	percussion := isPercussionChannel(ch)
+	if percussion && (note < percussionNoteMin || note > percussionNoteMax) {
+		return
+	}
 	patches := d.voicePatches(prog, percussion, note)
-	for _, np := range patches {
-		vx := d.allocateVoice(ch, note)
+	for i, np := range patches {
+		vx := d.allocateVoice()
 		v := &d.voices[vx]
 		v.active = true
 		v.ch = ch
 		v.note = note
+		v.velocity = velocity
 		v.playNote = resolveVoiceNote(note, percussion, np)
 		v.fineTune = np.FineTune
-		d.nextVoice++
-		v.id = d.nextVoice
+		v.instrVoice = uint8(i)
+		v.patch = np.Patch
 		d.writePatch(v.oplCh, np.Patch)
 		d.writeVolume(v.oplCh, ch, velocity, np.Patch)
 		d.writePan(v.oplCh, ch, np.Patch.C0)
@@ -269,48 +311,125 @@ func isPercussionChannel(ch uint8) bool {
 }
 
 func (d *Driver) noteOff(ch, note uint8) {
-	found := false
-	for i := range d.voices {
-		v := &d.voices[i]
+	for i := 0; i < len(d.allocList); i++ {
+		vi := d.allocList[i]
+		v := &d.voices[vi]
 		if !v.active || v.ch != ch || v.note != note {
 			continue
 		}
-		d.writeFreqWord(v.oplCh, v.freqWord, false)
-		v.active = false
-		found = true
-	}
-	if found {
-		return
+		d.releaseVoiceAt(i)
+		i--
 	}
 }
 
 func (d *Driver) refreshChannelPitch(ch uint8) {
-	for i := range d.voices {
-		v := &d.voices[i]
+	updated := make([]int, 0, len(d.allocList))
+	unchanged := make([]int, 0, len(d.allocList))
+	for _, vi := range d.allocList {
+		v := &d.voices[vi]
 		if !v.active || v.ch != ch {
+			unchanged = append(unchanged, vi)
 			continue
 		}
 		v.freqWord = d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
+		updated = append(updated, vi)
+	}
+	d.allocList = append(unchanged, updated...)
+}
+
+func (d *Driver) refreshChannelVolume(ch uint8) {
+	for _, vi := range d.allocList {
+		v := &d.voices[vi]
+		if !v.active || v.ch != ch {
+			continue
+		}
+		d.writeVolume(v.oplCh, ch, v.velocity, v.patch)
 	}
 }
 
-func (d *Driver) allocateVoice(ch, note uint8) int {
+func (d *Driver) refreshChannelPan(ch uint8) {
+	for _, vi := range d.allocList {
+		v := &d.voices[vi]
+		if !v.active || v.ch != ch {
+			continue
+		}
+		d.writePan(v.oplCh, ch, v.patch.C0)
+	}
+}
+
+func (d *Driver) allocateVoice() int {
+	if len(d.freeList) == 0 {
+		d.replaceExistingVoice()
+	}
+	if len(d.freeList) == 0 {
+		return 0
+	}
+	vi := d.freeList[0]
+	d.freeList = d.freeList[1:]
+	d.allocList = append(d.allocList, vi)
+	return vi
+}
+
+func (d *Driver) allNotesOff(ch uint8) {
+	for i := 0; i < len(d.allocList); i++ {
+		vi := d.allocList[i]
+		v := &d.voices[vi]
+		if !v.active || v.ch != ch {
+			continue
+		}
+		d.releaseVoiceAt(i)
+		i--
+	}
+}
+
+// Doom 1.9 DMX-style replacement:
+// prefer stealing 2nd voice of a double-voice instrument, else the
+// latest eligible same-or-higher channel entry in allocation order.
+func (d *Driver) replaceExistingVoice() {
+	if len(d.allocList) == 0 {
+		return
+	}
+	result := 0
+	for i := 0; i < len(d.allocList); i++ {
+		vi := d.allocList[i]
+		rv := d.allocList[result]
+		if d.voices[vi].instrVoice != 0 || d.voices[vi].ch >= d.voices[rv].ch {
+			result = i
+		}
+	}
+	d.releaseVoiceAt(result)
+}
+
+func (d *Driver) releaseVoiceAt(allocIdx int) {
+	if allocIdx < 0 || allocIdx >= len(d.allocList) {
+		return
+	}
+	vi := d.allocList[allocIdx]
+	v := &d.voices[vi]
+	d.writeFreqWord(v.oplCh, v.freqWord, false)
+	oplCh := v.oplCh
+	*v = voiceState{oplCh: oplCh}
+	copy(d.allocList[allocIdx:], d.allocList[allocIdx+1:])
+	d.allocList = d.allocList[:len(d.allocList)-1]
+	d.freeList = append(d.freeList, vi)
+}
+
+func (d *Driver) ensureVoiceLists() {
+	if d == nil {
+		return
+	}
+	if len(d.freeList)+len(d.allocList) == len(d.voices) {
+		return
+	}
+	d.freeList = d.freeList[:0]
+	d.allocList = d.allocList[:0]
 	for i := range d.voices {
-		if !d.voices[i].active {
-			return i
+		if d.voices[i].active {
+			d.allocList = append(d.allocList, i)
+		} else {
+			d.freeList = append(d.freeList, i)
 		}
 	}
-	oldest := 0
-	for i := 1; i < len(d.voices); i++ {
-		if d.voices[i].id < d.voices[oldest].id {
-			oldest = i
-		}
-	}
-	d.writeFreqWord(d.voices[oldest].oplCh, d.voices[oldest].freqWord, false)
-	d.voices[oldest].active = false
-	d.voices[oldest].ch = ch
-	d.voices[oldest].note = note
-	return oldest
 }
 
 func (d *Driver) voicePatches(program uint8, percussion bool, note uint8) []NotePatch {

@@ -13,6 +13,8 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 			opts: Options{
 				SourcePortMode:  true,
 				MouseLook:       false,
+				MusicVolume:     1.0,
+				SFXVolume:       0.5,
 				LineColorMode:   "doom",
 				KageShader:      true,
 				DoomPaletteRGBA: pal,
@@ -37,6 +39,8 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 		opts: Options{
 			SourcePortMode:   true,
 			MouseLook:        true,
+			MusicVolume:      1.0,
+			SFXVolume:        0.66,
 			AlwaysRun:        false,
 			AutoWeaponSwitch: true,
 			LineColorMode:    "parity",
@@ -50,6 +54,12 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 
 	if sg.opts.MouseLook {
 		t.Fatal("options mouselook should be persisted as OFF")
+	}
+	if sg.opts.MusicVolume != 0.9 {
+		t.Fatalf("options music volume=%.2f want 0.9", sg.opts.MusicVolume)
+	}
+	if sg.opts.SFXVolume != 0.5 {
+		t.Fatalf("options sfx volume=%.2f want 0.5", sg.opts.SFXVolume)
 	}
 	if !sg.opts.AlwaysRun {
 		t.Fatal("options always-run should be persisted as ON")
@@ -88,6 +98,12 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	if dst.opts.LineColorMode != "doom" {
 		t.Fatalf("lineColorMode=%q want doom", dst.opts.LineColorMode)
 	}
+	if dst.opts.MusicVolume != 0.9 {
+		t.Fatalf("musicVolume=%.2f want 0.9", dst.opts.MusicVolume)
+	}
+	if dst.opts.SFXVolume != 0.5 {
+		t.Fatalf("sfxVolume=%.2f want 0.5", dst.opts.SFXVolume)
+	}
 	if dst.showLegend {
 		t.Fatal("showLegend should be persisted as OFF")
 	}
@@ -119,6 +135,8 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 			walkRender:  walkRendererPseudo,
 			floor2DPath: floor2DPathMode(99),
 			gammaLevel:  99,
+			musicVolume: -1,
+			sfxVolume:   2,
 			reveal:      revealMode(99),
 			iddt:        99,
 			paletteLUT:  true,
@@ -145,6 +163,12 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 	}
 	if dst.gammaLevel != len(gammaTargets)-1 {
 		t.Fatalf("gamma clamp failed: got %d want %d", dst.gammaLevel, len(gammaTargets)-1)
+	}
+	if dst.opts.MusicVolume != 0 {
+		t.Fatalf("music volume clamp failed: got %.2f want 0", dst.opts.MusicVolume)
+	}
+	if dst.opts.SFXVolume != 1 {
+		t.Fatalf("sfx volume clamp failed: got %.2f want 1", dst.opts.SFXVolume)
 	}
 	if dst.parity.reveal != revealAllMap {
 		t.Fatalf("reveal default for sourceport should be allmap, got %d", dst.parity.reveal)

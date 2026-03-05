@@ -45,6 +45,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMouseLook := true
 	defaultMouseLookSpeed := 1.0
 	defaultKeyboardTurnSpeed := 1.0
+	defaultMusicVolume := 1.0
+	defaultSFXVolume := 0.66
 	defaultFastMonsters := false
 	defaultAlwaysRun := false
 	defaultAutoWeaponSwitch := true
@@ -119,6 +121,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.KeyboardTurnSpeed != nil {
 			defaultKeyboardTurnSpeed = *cfg.KeyboardTurnSpeed
+		}
+		if cfg.MusicVolume != nil {
+			defaultMusicVolume = *cfg.MusicVolume
+		}
+		if cfg.SFXVolume != nil {
+			defaultSFXVolume = *cfg.SFXVolume
 		}
 		if cfg.FastMonsters != nil {
 			defaultFastMonsters = *cfg.FastMonsters
@@ -207,6 +215,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
 	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
+	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
+	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
@@ -270,6 +280,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *mouseLookSpeed <= 0 {
 		fmt.Fprintf(stderr, "invalid -mouselook-speed %.3f (must be > 0)\n", *mouseLookSpeed)
+		return 2
+	}
+	if *musicVolume < 0 || *musicVolume > 1 {
+		fmt.Fprintf(stderr, "invalid -music-volume %.3f (must be between 0 and 1)\n", *musicVolume)
+		return 2
+	}
+	if *sfxVolume < 0 || *sfxVolume > 1 {
+		fmt.Fprintf(stderr, "invalid -sfx-volume %.3f (must be between 0 and 1)\n", *sfxVolume)
 		return 2
 	}
 	if *allCheats && allCheatsSet && !cheatLevelSet {
@@ -475,6 +493,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MouseLook:                  *mouseLook,
 			MouseLookSpeed:             *mouseLookSpeed,
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
+			MusicVolume:                *musicVolume,
+			SFXVolume:                  *sfxVolume,
 			FastMonsters:               *fastMonsters,
 			AlwaysRun:                  *alwaysRun,
 			AutoWeaponSwitch:           *autoWeaponSwitch,

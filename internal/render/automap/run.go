@@ -248,6 +248,8 @@ type sessionPersistentSettings struct {
 	detailLevel      int
 	rotateView       bool
 	mouseLook        bool
+	musicVolume      float64
+	sfxVolume        float64
 	walkRender       walkRendererMode
 	alwaysRun        bool
 	autoWeaponSwitch bool
@@ -334,6 +336,19 @@ func clampGamma(level int) int {
 	return level
 }
 
+func clampVolume(v float64) float64 {
+	if v != v {
+		return 0
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
 func (sg *sessionGame) capturePersistentSettings() {
 	if sg == nil || sg.g == nil {
 		return
@@ -343,6 +358,8 @@ func (sg *sessionGame) capturePersistentSettings() {
 		detailLevel:      g.detailLevel,
 		rotateView:       g.rotateView,
 		mouseLook:        g.opts.MouseLook,
+		musicVolume:      g.opts.MusicVolume,
+		sfxVolume:        g.opts.SFXVolume,
 		walkRender:       g.walkRender,
 		alwaysRun:        g.alwaysRun,
 		autoWeaponSwitch: g.autoWeaponSwitch,
@@ -360,6 +377,8 @@ func (sg *sessionGame) capturePersistentSettings() {
 
 func (sg *sessionGame) applyPersistentSettingsToOptions() {
 	sg.opts.MouseLook = sg.settings.mouseLook
+	sg.opts.MusicVolume = clampVolume(sg.settings.musicVolume)
+	sg.opts.SFXVolume = clampVolume(sg.settings.sfxVolume)
 	sg.opts.AlwaysRun = sg.settings.alwaysRun
 	sg.opts.AutoWeaponSwitch = sg.settings.autoWeaponSwitch
 	sg.opts.LineColorMode = sg.settings.lineColorMode
@@ -373,6 +392,14 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.detailLevel = clampDetailLevelForMode(s.detailLevel, g.opts.SourcePortMode)
 	g.rotateView = s.rotateView
 	g.opts.MouseLook = s.mouseLook
+	g.opts.MusicVolume = clampVolume(s.musicVolume)
+	g.opts.SFXVolume = clampVolume(s.sfxVolume)
+	if g.snd != nil {
+		g.snd.setSFXVolume(g.opts.SFXVolume)
+	}
+	if sg.musicPlayer != nil {
+		_ = sg.musicPlayer.SetVolume(g.opts.MusicVolume)
+	}
 	g.alwaysRun = s.alwaysRun
 	g.autoWeaponSwitch = s.autoWeaponSwitch
 	g.opts.LineColorMode = s.lineColorMode
@@ -425,6 +452,7 @@ func (sg *sessionGame) initMusicPlayback() {
 		return
 	}
 	sg.musicPlayer = p
+	_ = sg.musicPlayer.SetVolume(clampVolume(sg.opts.MusicVolume))
 	sg.musicDriver = music.NewDriver(p.SampleRate(), sg.opts.MusicPatchBank)
 }
 

@@ -47,6 +47,7 @@ const (
 type soundSystem struct {
 	ctx     *audio.Context
 	bank    SoundBank
+	volume  float64
 	players []*audio.Player
 }
 
@@ -55,7 +56,7 @@ var (
 	sharedAudioRate int
 )
 
-func newSoundSystem(bank SoundBank) *soundSystem {
+func newSoundSystem(bank SoundBank, sfxVolume float64) *soundSystem {
 	rate := music.OutputSampleRate
 	if rate <= 0 {
 		return nil
@@ -66,9 +67,17 @@ func newSoundSystem(bank SoundBank) *soundSystem {
 		return nil
 	}
 	return &soundSystem{
-		ctx:  ctx,
-		bank: bank,
+		ctx:    ctx,
+		bank:   bank,
+		volume: clampVolume(sfxVolume),
 	}
+}
+
+func (s *soundSystem) setSFXVolume(v float64) {
+	if s == nil {
+		return
+	}
+	s.volume = clampVolume(v)
 }
 
 func sharedOrNewAudioContext(rate int) *audio.Context {
@@ -202,7 +211,7 @@ func (s *soundSystem) playEvent(ev soundEvent) {
 		return
 	}
 	p := audio.NewPlayerFromBytes(s.ctx, pcm)
-	p.SetVolume(0.65)
+	p.SetVolume(s.volume)
 	p.Play()
 	s.players = append(s.players, p)
 }

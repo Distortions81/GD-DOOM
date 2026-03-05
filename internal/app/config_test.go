@@ -140,12 +140,38 @@ func TestRunParseRejectsInvalidMouseLookSpeed(t *testing.T) {
 	}
 }
 
+func TestRunParseRejectsInvalidMusicVolume(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-music-volume", "1.1", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "invalid -music-volume") {
+		t.Fatalf("stderr %q does not mention invalid music volume", errb.String())
+	}
+}
+
+func TestRunParseRejectsInvalidSFXVolume(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-sfx-volume", "-0.1", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "invalid -sfx-volume") {
+		t.Fatalf("stderr %q does not mention invalid sfx volume", errb.String())
+	}
+}
+
 func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "config.toml")
 	if err := saveRuntimeSettings(cfgPath, automap.RuntimeSettings{
 		DetailLevel:      2,
 		GammaLevel:       5,
+		MusicVolume:      1.0,
+		SFXVolume:        0.66,
 		MouseLook:        false,
 		AlwaysRun:        true,
 		AutoWeaponSwitch: false,
@@ -163,6 +189,12 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.GammaLevel == nil || *cfg.GammaLevel != 5 {
 		t.Fatalf("gamma_level=%v want 5", cfg.GammaLevel)
+	}
+	if cfg.MusicVolume == nil || *cfg.MusicVolume != 1.0 {
+		t.Fatalf("music_volume=%v want 1.0", cfg.MusicVolume)
+	}
+	if cfg.SFXVolume == nil || *cfg.SFXVolume != 0.66 {
+		t.Fatalf("sfx_volume=%v want 0.66", cfg.SFXVolume)
 	}
 	if cfg.MouseLook == nil || *cfg.MouseLook {
 		t.Fatalf("mouselook=%v want false", cfg.MouseLook)

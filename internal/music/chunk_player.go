@@ -15,12 +15,14 @@ const (
 	cmdStop
 	cmdClear
 	cmdEnqueue
+	cmdSetVolume
 	cmdClose
 )
 
 type playerCmd struct {
 	typ  playerCmdType
 	data []byte
+	vol  float64
 }
 
 // ChunkPlayer plays queued 44.1kHz s16 stereo chunks on a dedicated goroutine.
@@ -72,6 +74,19 @@ func (cp *ChunkPlayer) Stop() error {
 
 func (cp *ChunkPlayer) ClearBuffer() error {
 	return cp.send(playerCmd{typ: cmdClear})
+}
+
+func (cp *ChunkPlayer) SetVolume(v float64) error {
+	if v != v {
+		v = 0
+	}
+	if v < 0 {
+		v = 0
+	}
+	if v > 1 {
+		v = 1
+	}
+	return cp.send(playerCmd{typ: cmdSetVolume, vol: v})
 }
 
 // EnqueueS16 sends interleaved stereo samples (s16) as a music chunk.
@@ -132,6 +147,8 @@ func (cp *ChunkPlayer) run() {
 			cp.src.Clear()
 		case cmdEnqueue:
 			cp.src.Enqueue(cmd.data)
+		case cmdSetVolume:
+			cp.player.SetVolume(cmd.vol)
 		case cmdClose:
 			cp.player.Pause()
 			cp.src.Close()

@@ -39,6 +39,8 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-mouselook`: enable mouse-based turning in walk mode (default `true`)
 - `-mouselook-speed <float>`: mouse turn speed multiplier (`>0`, default `1.0`)
 - `-keyboard-turn-speed <float>`: keyboard turn speed multiplier (`>0`, default `1.0`)
+- `-music-volume <float>`: music output volume (`0..1`, default `1.0`)
+- `-sfx-volume <float>`: sound-effect output volume (`0..1`, default `0.66`)
 - `-always-run`: start with always-run enabled (holding `Shift` temporarily inverts it)
 - `-auto-weapon-switch`: auto-switch to newly picked weapons (default `true`)
 - `-cheat-level <0-3>`: startup cheats (`0=off`, `1=automap reveal`, `2=IDFA-like`, `3=IDKFA + invuln`)
@@ -129,7 +131,7 @@ In sourceport mode, map floor flats are drawn in 2D automap by default; press `J
 Config notes:
 - `config.toml` is auto-read by default when present.
 - CLI flags always override config values.
-- Runtime setting changes are auto-saved to the active config path (`-config`, default `config.toml`) for persisted keys like detail/gamma and key gameplay toggles.
+- Runtime setting changes are auto-saved to the active config path (`-config`, default `config.toml`) for persisted keys like detail/gamma, gameplay toggles, and audio volumes.
 
 ## Runtime Gameplay State (Current)
 

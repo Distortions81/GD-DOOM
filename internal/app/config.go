@@ -28,6 +28,8 @@ type fileConfig struct {
 	MouseLook                  *bool    `toml:"mouselook"`
 	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
 	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
+	MusicVolume                *float64 `toml:"music_volume"`
+	SFXVolume                  *float64 `toml:"sfx_volume"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
 	AlwaysRun                  *bool    `toml:"always_run"`
 	AutoWeaponSwitch           *bool    `toml:"auto_weapon_switch"`
@@ -99,6 +101,8 @@ func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
 	}
 	cfg.DetailLevel = intPtr(s.DetailLevel)
 	cfg.GammaLevel = intPtr(s.GammaLevel)
+	cfg.MusicVolume = floatPtr(s.MusicVolume)
+	cfg.SFXVolume = floatPtr(s.SFXVolume)
 	cfg.MouseLook = boolPtr(s.MouseLook)
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)
 	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
@@ -117,3 +121,6 @@ func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
 func intPtr(v int) *int       { return &v }
 func boolPtr(v bool) *bool    { return &v }
 func strPtr(v string) *string { return &v }
+func floatPtr(v float64) *float64 {
+	return &v
+}

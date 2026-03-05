@@ -50,7 +50,9 @@ func (o *NukedOPL3) WriteReg(addr uint16, value uint8) {
 	if o == nil || o.chip == nil {
 		return
 	}
-	C.OPL3_WriteReg(o.chip, C.uint16_t(addr), C.uint8_t(value))
+	// Match Chocolate Doom's Nuked path: queue register writes through
+	// the buffered entry point to preserve chip write timing behavior.
+	C.OPL3_WriteRegBuffered(o.chip, C.uint16_t(addr), C.uint8_t(value))
 }
 
 // GenerateStereoS16 produces interleaved stereo signed-16 PCM.

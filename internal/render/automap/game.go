@@ -642,6 +642,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	opts.GameMode = normalizeGameMode(opts.GameMode)
 	opts.MouseLookSpeed = normalizeMouseLookSpeed(opts.MouseLookSpeed)
 	opts.KeyboardTurnSpeed = normalizeKeyboardTurnSpeed(opts.KeyboardTurnSpeed)
+	opts.MusicVolume = clampVolume(opts.MusicVolume)
+	opts.SFXVolume = clampVolume(opts.SFXVolume)
 	if !opts.SourcePortMode {
 		// Doom mode keeps strict parity color semantics.
 		opts.LineColorMode = "parity"
@@ -741,7 +743,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.initPhysics()
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank)
+	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
 	g.delayedSwitchReverts = make([]delayedSwitchTexture, 0, 4)
@@ -918,6 +920,8 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 	return RuntimeSettings{
 		DetailLevel:      g.detailLevel,
 		GammaLevel:       g.gammaLevel,
+		MusicVolume:      g.opts.MusicVolume,
+		SFXVolume:        g.opts.SFXVolume,
 		MouseLook:        g.opts.MouseLook,
 		AlwaysRun:        g.alwaysRun,
 		AutoWeaponSwitch: g.autoWeaponSwitch,
