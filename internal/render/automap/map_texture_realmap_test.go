@@ -189,8 +189,8 @@ func mustLoadE1M1GameForMapTextureTests(t *testing.T) *game {
 	}
 
 	g := newGame(m, Options{
-		Width:          1280,
-		Height:         800,
+		Width:          1067,
+		Height:         960,
 		SourcePortMode: true,
 		StartInMapMode: true,
 		FlatBank:       flats,

@@ -48,6 +48,7 @@ type Options struct {
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
 	NoFPS                      bool
+	DisableAspectCorrection    bool
 	AllCheats                  bool
 	StartInMapMode             bool
 	FlatBank                   map[string][]byte

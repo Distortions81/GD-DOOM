@@ -20,14 +20,14 @@ func TestNormalizeRunDimensionsSourcePortDefaults(t *testing.T) {
 	}
 }
 
-func TestNormalizeRunDimensionsFaithfulSnapsToIntegerScale(t *testing.T) {
+func TestNormalizeRunDimensionsFaithfulFitsToDisplayAspect(t *testing.T) {
 	opts := Options{SourcePortMode: false, Width: 1000, Height: 700}
 	got, ww, wh := normalizeRunDimensions(opts)
 	if got.Width != doomLogicalW || got.Height != doomLogicalH {
 		t.Fatalf("faithful normalized render=%dx%d want %dx%d", got.Width, got.Height, doomLogicalW, doomLogicalH)
 	}
-	if ww != 960 || wh != 600 {
-		t.Fatalf("faithful window=%dx%d want 960x600", ww, wh)
+	if ww != 933 || wh != 700 {
+		t.Fatalf("faithful window=%dx%d want 933x700", ww, wh)
 	}
 }
 

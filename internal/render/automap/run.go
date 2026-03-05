@@ -219,6 +219,7 @@ type sessionGame struct {
 	musicStreamStop chan struct{}
 	musicPlayer     *music.ChunkPlayer
 	faithfulSurface *ebiten.Image
+	faithfulNearest *ebiten.Image
 	faithfulPost    *ebiten.Image
 	faithfulLUT     *ebiten.Image
 	faithfulLUTPix  []byte
@@ -721,7 +722,7 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	} else {
 		ebiten.SetWindowSize(windowW, windowH)
-		// Faithful mode uses fixed integer scaling and aspect, so keep a fixed window.
+		// Faithful mode keeps a fixed 4:3 presentation window.
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
 	}
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
@@ -922,6 +923,49 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	screen.DrawImage(sg.presentSurface, nil)
 }
 
+func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
+	if screen == nil || offscreen == nil {
+		return
+	}
+	if sg == nil || sg.opts.SourcePortMode {
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM = geoM
+		op.Filter = ebiten.FilterNearest
+		screen.DrawImage(offscreen, op)
+		return
+	}
+
+	// Faithful mode: emulate Chocolate Doom's final pass by linearly scaling
+	// the integer-upscaled 320x200 surface into a 4:3 presentation rect.
+	b := screen.Bounds()
+	sw := max(b.Dx(), 1)
+	sh := max(b.Dy(), 1)
+	rw := sw
+	rh := sh
+	if rw*faithfulAspectLogicalH <= rh*doomLogicalW {
+		rh = (rw * faithfulAspectLogicalH) / doomLogicalW
+	} else {
+		rw = (rh * doomLogicalW) / faithfulAspectLogicalH
+	}
+	if rw < 1 {
+		rw = 1
+	}
+	if rh < 1 {
+		rh = 1
+	}
+	ox := (sw - rw) / 2
+	oy := (sh - rh) / 2
+	ow := max(offscreen.Bounds().Dx(), 1)
+	oh := max(offscreen.Bounds().Dy(), 1)
+
+	screen.Fill(color.Black)
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterLinear
+	op.GeoM.Scale(float64(rw)/float64(ow), float64(rh)/float64(oh))
+	op.GeoM.Translate(float64(ox), float64(oy))
+	screen.DrawImage(offscreen, op)
+}
+
 func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	if dst == nil || g == nil {
 		return
@@ -972,24 +1016,30 @@ func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
 	sh := max(dst.Bounds().Dy(), 1)
 	vw := max(src.Bounds().Dx(), 1)
 	vh := max(src.Bounds().Dy(), 1)
-	dst.Fill(color.Black)
-	ix := sw / vw
-	iy := sh / vh
-	n := ix
-	if iy < n {
-		n = iy
+	scale := sw / doomLogicalW
+	scaleY := sh / faithfulAspectLogicalH
+	if scaleY < scale {
+		scale = scaleY
 	}
-	if n < 1 {
-		n = 1
+	if scale < 1 {
+		scale = 1
 	}
-	scaleX := float64(n)
-	scaleY := float64(n)
-	offX := (float64(sw) - float64(vw)*scaleX) * 0.5
-	offY := (float64(sh) - float64(vh)*scaleY) * 0.5
+	nearestW := doomLogicalW * scale
+	nearestH := doomLogicalH * scale
+	if sg.faithfulNearest == nil || sg.faithfulNearest.Bounds().Dx() != nearestW || sg.faithfulNearest.Bounds().Dy() != nearestH {
+		sg.faithfulNearest = ebiten.NewImage(nearestW, nearestH)
+	}
+	sg.faithfulNearest.Clear()
+	nearestOp := &ebiten.DrawImageOptions{}
+	nearestOp.Filter = ebiten.FilterNearest
+	nearestOp.GeoM.Scale(float64(nearestW)/float64(vw), float64(nearestH)/float64(vh))
+	sg.faithfulNearest.DrawImage(src, nearestOp)
+
+	dst.Clear()
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(scaleX, scaleY)
-	op.GeoM.Translate(offX, offY)
-	dst.DrawImage(src, op)
+	op.Filter = ebiten.FilterLinear
+	op.GeoM.Scale(float64(sw)/float64(nearestW), float64(sh)/float64(nearestH))
+	dst.DrawImage(sg.faithfulNearest, op)
 }
 
 func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {
@@ -2083,5 +2133,18 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		sg.g.Layout(rw, rh)
 		return w, h
 	}
-	return sg.g.Layout(outsideWidth, outsideHeight)
+	// Faithful mode renders game internals at 320x200 and presents at an
+	// auto integer-scaled 4:3 layout (320*n x 240*n).
+	sg.g.Layout(doomLogicalW, doomLogicalH)
+	w := max(outsideWidth, 1)
+	h := max(outsideHeight, 1)
+	scale := w / doomLogicalW
+	scaleY := h / faithfulAspectLogicalH
+	if scaleY < scale {
+		scale = scaleY
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	return doomLogicalW * scale, faithfulAspectLogicalH * scale
 }

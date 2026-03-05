@@ -8,6 +8,7 @@ const (
 
 	faithfulDefaultWindowW = 1280
 	faithfulDefaultWindowH = 960
+	faithfulAspectLogicalH = 240
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.
@@ -55,16 +56,18 @@ func normalizeRunDimensions(opts Options) (Options, int, int) {
 		windowH = faithfulDefaultWindowH
 	}
 
-	scaleX := windowW / doomLogicalW
-	scaleY := windowH / doomLogicalH
-	scale := scaleX
-	if scaleY < scale {
-		scale = scaleY
+	// Present faithful mode at Doom's 4:3 display aspect (320x240 logical),
+	// while keeping internal rendering at 320x200.
+	if windowW*faithfulAspectLogicalH <= windowH*doomLogicalW {
+		windowH = (windowW*faithfulAspectLogicalH + doomLogicalW - 1) / doomLogicalW
+	} else {
+		windowW = (windowH * doomLogicalW) / faithfulAspectLogicalH
 	}
-	if scale < 1 {
-		scale = 1
+	if windowW < doomLogicalW {
+		windowW = doomLogicalW
 	}
-	windowW = doomLogicalW * scale
-	windowH = doomLogicalH * scale
+	if windowH < faithfulAspectLogicalH {
+		windowH = faithfulAspectLogicalH
+	}
 	return opts, windowW, windowH
 }
