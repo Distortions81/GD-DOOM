@@ -6,6 +6,7 @@ type RuntimeSettings struct {
 	DetailLevel      int
 	GammaLevel       int
 	MusicVolume      float64
+	MUSPanMax        float64
 	SFXVolume        float64
 	MouseLook        bool
 	AlwaysRun        bool
@@ -29,6 +30,7 @@ type Options struct {
 	MouseLookSpeed             float64
 	KeyboardTurnSpeed          float64
 	MusicVolume                float64
+	MUSPanMax                  float64
 	SFXVolume                  float64
 	FastMonsters               bool
 	AlwaysRun                  bool

@@ -219,6 +219,7 @@ type maskedMidSeg struct {
 	uOverF2   float64
 	worldHigh float64
 	worldLow  float64
+	texUOff   float64
 	texMid    float64
 	tex       WallTexture
 	light     int16
@@ -747,11 +748,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
 	g.delayedSwitchReverts = make([]delayedSwitchTexture, 0, 4)
-	if opts.GPUSky && opts.SourcePortMode {
-		if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
-			g.skyLayerShader = sh
-		}
-	}
 	if g.opts.SourcePortMode {
 		// Source-port defaults: reveal full map style and heading-follow at startup.
 		g.parity.reveal = revealAllMap
@@ -802,6 +798,17 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
 	return g
+}
+
+func (g *game) initSkyLayerShader() {
+	if g == nil || g.skyLayerShader != nil {
+		return
+	}
+	if g.opts.GPUSky && g.opts.SourcePortMode {
+		if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
+			g.skyLayerShader = sh
+		}
+	}
 }
 
 func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
@@ -921,6 +928,7 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		DetailLevel:      g.detailLevel,
 		GammaLevel:       g.gammaLevel,
 		MusicVolume:      g.opts.MusicVolume,
+		MUSPanMax:        g.opts.MUSPanMax,
 		SFXVolume:        g.opts.SFXVolume,
 		MouseLook:        g.opts.MouseLook,
 		AlwaysRun:        g.alwaysRun,
@@ -2119,7 +2127,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		midTexMid := 0.0
 		topTexMid := 0.0
 		botTexMid := 0.0
+		texUOffset := wallSpecialScrollXOffset(ld.Special, g.worldTic)
 		if frontSideDef != nil {
+			texUOffset += float64(frontSideDef.TextureOffset)
 			rowOffset := float64(frontSideDef.RowOffset)
 			midTex, hasMidTex = g.wallTexture(frontSideDef.Mid)
 			if hasMidTex {
@@ -2196,6 +2206,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					continue
 				}
 				texU := (pp.uOverF1 + (pp.uOverF2-pp.uOverF1)*t) * f
+				texU += texUOffset
 
 				yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focal))
 				if yl < ceilingClip[x]+1 {
@@ -2296,6 +2307,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					uOverF2:   pp.uOverF2,
 					worldHigh: worldHigh,
 					worldLow:  worldLow,
+					texUOff:   texUOffset,
 					texMid:    midTexMid,
 					tex:       midTex,
 					light:     front.Light,
@@ -3167,6 +3179,7 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 				continue
 			}
 			texU := (ms.uOverF1 + (ms.uOverF2-ms.uOverF1)*t) * f
+			texU += ms.texUOff
 			y0 := int(math.Ceil(halfH - (ms.worldHigh/f)*focal))
 			y1 := int(math.Floor(halfH - (ms.worldLow/f)*focal))
 			if y0 > y1 {
@@ -3176,6 +3189,14 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.texMid, focal, ms.tex, shadeMul)
 		}
 	}
+}
+
+func wallSpecialScrollXOffset(special uint16, worldTic int) float64 {
+	// Doom linedef special 48: first-column wall scroll.
+	if special == 48 {
+		return float64(worldTic)
+	}
+	return 0
 }
 
 func drawWallColumnTexturedLEColPow2(pix32 []uint32, pixI, rowStridePix int, col []uint32, texVFixed, texVStepFixed int64, hmask, count, shadeMul int) {

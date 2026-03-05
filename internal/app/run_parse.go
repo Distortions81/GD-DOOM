@@ -46,6 +46,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMouseLookSpeed := 1.0
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 1.0
+	defaultMUSPanMax := 0.8
 	defaultSFXVolume := 0.66
 	defaultFastMonsters := false
 	defaultAlwaysRun := false
@@ -124,6 +125,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.MusicVolume != nil {
 			defaultMusicVolume = *cfg.MusicVolume
+		}
+		if cfg.MUSPanMax != nil {
+			defaultMUSPanMax = *cfg.MUSPanMax
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
@@ -216,6 +220,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
 	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
+	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
@@ -284,6 +289,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *musicVolume < 0 || *musicVolume > 1 {
 		fmt.Fprintf(stderr, "invalid -music-volume %.3f (must be between 0 and 1)\n", *musicVolume)
+		return 2
+	}
+	if *musPanMax < 0 || *musPanMax > 1 {
+		fmt.Fprintf(stderr, "invalid -mus-pan-max %.3f (must be between 0 and 1)\n", *musPanMax)
 		return 2
 	}
 	if *sfxVolume < 0 || *sfxVolume > 1 {
@@ -494,6 +503,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MouseLookSpeed:             *mouseLookSpeed,
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
 			MusicVolume:                *musicVolume,
+			MUSPanMax:                  *musPanMax,
 			SFXVolume:                  *sfxVolume,
 			FastMonsters:               *fastMonsters,
 			AlwaysRun:                  *alwaysRun,

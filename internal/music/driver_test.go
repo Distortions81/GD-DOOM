@@ -234,6 +234,15 @@ func (o *captureOPL) wroteAddr(addr uint16) bool {
 	return false
 }
 
+func (o *captureOPL) lastWrite(addr uint16) (uint8, bool) {
+	for i := len(o.writes) - 1; i >= 0; i-- {
+		if o.writes[i].addr == addr {
+			return o.writes[i].val, true
+		}
+	}
+	return 0, false
+}
+
 func TestDriverControlChangeRefreshesActiveVoiceRegisters(t *testing.T) {
 	d := NewOutputDriver(nil)
 	opl := &captureOPL{}
@@ -290,5 +299,53 @@ func TestDriverPercussionOutOfRangeIgnored(t *testing.T) {
 		if v.active {
 			t.Fatalf("voice %d active for ignored percussion note", i)
 		}
+	}
+}
+
+func TestScaleMUSPan(t *testing.T) {
+	if got := scaleMUSPan(0, 0.8); got != 13 {
+		t.Fatalf("scaleMUSPan(0, 0.8)=%d want=13", got)
+	}
+	if got := scaleMUSPan(127, 0.8); got != 114 {
+		t.Fatalf("scaleMUSPan(127, 0.8)=%d want=114", got)
+	}
+	if got := scaleMUSPan(100, 0.8); got != 93 {
+		t.Fatalf("scaleMUSPan(100, 0.8)=%d want=93", got)
+	}
+	if got := scaleMUSPan(100, 2.0); got != 100 {
+		t.Fatalf("scaleMUSPan(100, 2.0)=%d want=100", got)
+	}
+}
+
+func TestDriverPanScalingAffectsOPLPanBucket(t *testing.T) {
+	d := NewOutputDriver(nil)
+	opl := &captureOPL{}
+	d.opl = opl
+	d.Reset()
+	d.applyEvent(Event{Type: EventNoteOn, Channel: 0, A: 60, B: 100})
+	if !d.voices[0].active {
+		t.Fatal("expected active voice after note-on")
+	}
+	opl.writes = nil
+
+	d.SetMUSPanMax(0.8)
+	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerPan, B: 100})
+	val, ok := opl.lastWrite(0xC0)
+	if !ok {
+		t.Fatal("expected C0 pan register write")
+	}
+	if got := val & 0x30; got != 0x30 {
+		t.Fatalf("scaled pan lr bits=0x%02X want=0x30 (center)", got)
+	}
+
+	opl.writes = nil
+	d.SetMUSPanMax(1.0)
+	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerPan, B: 100})
+	val, ok = opl.lastWrite(0xC0)
+	if !ok {
+		t.Fatal("expected C0 pan register write")
+	}
+	if got := val & 0x30; got != 0x10 {
+		t.Fatalf("full pan lr bits=0x%02X want=0x10 (right)", got)
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
@@ -18,6 +20,7 @@ type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapda
 
 const (
 	bootSplashHoldTics = 2 * doomTicsPerSecond
+	bootTotalSteps     = 9
 	meltVirtualH       = 200
 	quantizeLUTW       = 256
 	quantizeLUTH       = 16
@@ -175,6 +178,12 @@ type sessionIntermission struct {
 	nextMap           *mapdata.Map
 }
 
+type bootAsyncState struct {
+	g           *game
+	musicPlayer *music.ChunkPlayer
+	musicDriver *music.Driver
+}
+
 const (
 	intermissionPhaseKills = iota
 	intermissionPhaseItems
@@ -186,6 +195,7 @@ const (
 
 type sessionGame struct {
 	g               *game
+	bootMap         *mapdata.Map
 	current         mapdata.MapName
 	currentTemplate *mapdata.Map
 	opts            Options
@@ -193,6 +203,7 @@ type sessionGame struct {
 	nextMap         NextMapFunc
 	err             error
 	musicDriver     *music.Driver
+	musicStreamStop chan struct{}
 	musicPlayer     *music.ChunkPlayer
 	faithfulSurface *ebiten.Image
 	faithfulPost    *ebiten.Image
@@ -210,6 +221,14 @@ type sessionGame struct {
 	interPatchCache map[string]*ebiten.Image
 	transition      sessionTransition
 	intermission    sessionIntermission
+	bootInitPending bool
+	bootFrameDrawn  bool
+	bootStarted     bool
+	bootDone        atomic.Bool
+	bootStatus      atomic.Value // string
+	bootStep        atomic.Int32
+	bootErr         atomic.Value // string
+	bootState       atomic.Pointer[bootAsyncState]
 }
 
 func cloneMapForRestart(src *mapdata.Map) *mapdata.Map {
@@ -454,9 +473,11 @@ func (sg *sessionGame) initMusicPlayback() {
 	sg.musicPlayer = p
 	_ = sg.musicPlayer.SetVolume(clampVolume(sg.opts.MusicVolume))
 	sg.musicDriver = music.NewDriver(p.SampleRate(), sg.opts.MusicPatchBank)
+	sg.musicDriver.SetMUSPanMax(sg.opts.MUSPanMax)
 }
 
 func (sg *sessionGame) closeMusicPlayback() {
+	sg.stopMusicStream()
 	if sg == nil || sg.musicPlayer == nil {
 		return
 	}
@@ -465,11 +486,20 @@ func (sg *sessionGame) closeMusicPlayback() {
 }
 
 func (sg *sessionGame) stopAndClearMusic() {
+	sg.stopMusicStream()
 	if sg == nil || sg.musicPlayer == nil {
 		return
 	}
 	_ = sg.musicPlayer.Stop()
 	_ = sg.musicPlayer.ClearBuffer()
+}
+
+func (sg *sessionGame) stopMusicStream() {
+	if sg == nil || sg.musicStreamStop == nil {
+		return
+	}
+	close(sg.musicStreamStop)
+	sg.musicStreamStop = nil
 }
 
 func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
@@ -481,32 +511,173 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 	if err != nil || len(data) == 0 {
 		return
 	}
-	sg.musicDriver.Reset()
-	chunk, err := sg.musicDriver.RenderMUSS16LE(data)
+	stream, err := music.NewMUSStreamRenderer(sg.musicDriver, data)
+	if err != nil {
+		return
+	}
+	chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames)
 	if err != nil || len(chunk) == 0 {
 		return
 	}
 	_ = sg.musicPlayer.EnqueueBytesS16LE(chunk)
 	_ = sg.musicPlayer.Start()
+	if done {
+		return
+	}
+	stop := make(chan struct{})
+	sg.musicStreamStop = stop
+	go sg.streamMapMusic(stop, stream)
 }
 
-func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
-	opts, windowW, windowH := normalizeRunDimensions(opts)
-	sg := &sessionGame{
-		g:               newGame(m, opts),
-		current:         m.Name,
-		currentTemplate: cloneMapForRestart(m),
-		opts:            opts,
-		nextMap:         nextMap,
+func (sg *sessionGame) streamMapMusic(stop <-chan struct{}, stream *music.StreamRenderer) {
+	if sg == nil || sg.musicPlayer == nil || stream == nil {
+		return
 	}
-	sg.initMusicPlayback()
-	defer sg.closeMusicPlayback()
-	sg.playMusicForMap(m.Name)
+	const bytesPerFrame = 4 // s16 stereo
+	const checkPeriod = 12 * time.Millisecond
+	lookaheadBytes := music.DefaultStreamLookahead * bytesPerFrame
+	ticker := time.NewTicker(checkPeriod)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		default:
+		}
+		for sg.musicPlayer.BufferedBytes() >= lookaheadBytes {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+			}
+		}
+		chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames)
+		if err != nil {
+			return
+		}
+		if len(chunk) > 0 {
+			_ = sg.musicPlayer.EnqueueBytesS16LE(chunk)
+		}
+		if done {
+			return
+		}
+	}
+}
+
+func (sg *sessionGame) finishBootInit() {
+	if sg == nil || !sg.bootInitPending {
+		return
+	}
+	sg.setBootProgress(6, "attaching game state")
+	state := sg.bootState.Load()
+	if state != nil {
+		if sg.g == nil {
+			sg.g = state.g
+		}
+		if sg.musicPlayer == nil {
+			sg.musicPlayer = state.musicPlayer
+		}
+		if sg.musicDriver == nil {
+			sg.musicDriver = state.musicDriver
+		}
+	}
+	sg.bootInitPending = false
+	if sg.g == nil {
+		sg.g = newGame(sg.bootMap, sg.opts)
+	}
+	sg.setBootProgress(7, "initializing graphics")
+	sg.g.initSkyLayerShader()
+	if sg.musicPlayer == nil || sg.musicDriver == nil {
+		sg.initMusicPlayback()
+	}
+	sg.setBootProgress(8, "starting music stream")
+	sg.playMusicForMap(sg.current)
+	sg.setBootProgress(9, "applying startup settings")
 	sg.capturePersistentSettings()
 	if sg.shouldShowBootSplash() {
 		sg.queueTransition(transitionBoot, bootSplashHoldTics)
 	}
 	sg.initFaithfulPalettePost()
+}
+
+func (sg *sessionGame) setBootStatus(status string) {
+	if sg == nil {
+		return
+	}
+	sg.bootStatus.Store(status)
+}
+
+func (sg *sessionGame) setBootProgress(step int32, status string) {
+	if sg == nil {
+		return
+	}
+	if step < 0 {
+		step = 0
+	}
+	if step > bootTotalSteps {
+		step = bootTotalSteps
+	}
+	sg.bootStep.Store(step)
+	sg.setBootStatus(fmt.Sprintf("[%d/%d] %s", step, bootTotalSteps, status))
+}
+
+func (sg *sessionGame) bootStatusText() string {
+	if sg == nil {
+		return ""
+	}
+	v := sg.bootStatus.Load()
+	s, _ := v.(string)
+	return s
+}
+
+func (sg *sessionGame) startBootAsync() {
+	if sg == nil || sg.bootStarted {
+		return
+	}
+	sg.bootStarted = true
+	sg.setBootProgress(2, "starting async worker")
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				sg.bootErr.Store(fmt.Sprintf("panic: %v", r))
+			}
+			if strings.TrimSpace(sg.bootStatusText()) == "" {
+				sg.setBootProgress(7, "async phase complete")
+			}
+			sg.bootDone.Store(true)
+		}()
+		sg.setBootProgress(3, "building game state")
+		state := &bootAsyncState{
+			g: newGame(sg.bootMap, sg.opts),
+		}
+		sg.setBootProgress(4, "initializing music backend")
+		if sg.opts.MapMusicLoader != nil {
+			if p, err := music.NewChunkPlayer(); err == nil {
+				state.musicPlayer = p
+				_ = state.musicPlayer.SetVolume(clampVolume(sg.opts.MusicVolume))
+				d := music.NewDriver(state.musicPlayer.SampleRate(), sg.opts.MusicPatchBank)
+				d.SetMUSPanMax(sg.opts.MUSPanMax)
+				state.musicDriver = d
+			}
+		}
+		sg.bootState.Store(state)
+		sg.setBootProgress(5, "async phase complete")
+	}()
+}
+
+func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
+	opts, windowW, windowH := normalizeRunDimensions(opts)
+	sg := &sessionGame{
+		bootMap:         m,
+		current:         m.Name,
+		currentTemplate: cloneMapForRestart(m),
+		opts:            opts,
+		nextMap:         nextMap,
+		bootInitPending: true,
+	}
+	sg.setBootProgress(1, "waiting for first frame")
+	sg.bootErr.Store("")
+	defer sg.closeMusicPlayback()
 	ebiten.SetTPS(doomTicsPerSecond)
 	ebiten.SetVsyncEnabled(!opts.NoVsync)
 	if opts.SourcePortMode {
@@ -522,10 +693,14 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	if err := ebiten.RunGame(sg); err != nil {
 		if errors.Is(err, ebiten.Termination) {
 			if p := sg.opts.RecordDemoPath; p != "" {
-				if werr := SaveDemoScript(p, sg.g.demoRecord); werr != nil {
+				rec := []DemoTic(nil)
+				if sg.g != nil {
+					rec = sg.g.demoRecord
+				}
+				if werr := SaveDemoScript(p, rec); werr != nil {
 					return fmt.Errorf("write demo recording: %w", werr)
 				}
-				fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(sg.g.demoRecord))
+				fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
 			}
 			if sg.err != nil {
 				return sg.err
@@ -535,15 +710,33 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		return fmt.Errorf("run ebiten automap: %w", err)
 	}
 	if p := sg.opts.RecordDemoPath; p != "" {
-		if werr := SaveDemoScript(p, sg.g.demoRecord); werr != nil {
+		rec := []DemoTic(nil)
+		if sg.g != nil {
+			rec = sg.g.demoRecord
+		}
+		if werr := SaveDemoScript(p, rec); werr != nil {
 			return fmt.Errorf("write demo recording: %w", werr)
 		}
-		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(sg.g.demoRecord))
+		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
 	}
 	return sg.err
 }
 
 func (sg *sessionGame) Update() error {
+	if sg.bootInitPending {
+		if !sg.bootStarted || !sg.bootDone.Load() {
+			return nil
+		}
+		if msg, _ := sg.bootErr.Load().(string); strings.TrimSpace(msg) != "" {
+			sg.err = fmt.Errorf("boot init failed: %s", msg)
+			return ebiten.Termination
+		}
+		sg.finishBootInit()
+		if sg.g == nil {
+			sg.err = fmt.Errorf("boot init failed: no game instance")
+			return ebiten.Termination
+		}
+	}
 	if sg.transitionActive() {
 		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
 			return ebiten.Termination
@@ -605,6 +798,32 @@ func (sg *sessionGame) Update() error {
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
+	if sg.bootInitPending {
+		screen.Fill(color.Black)
+		msg := "loading..."
+		if st := strings.TrimSpace(sg.bootStatusText()); st != "" {
+			msg += " " + st
+		}
+		const scale = 3.0
+		const glyphW = 7
+		const glyphH = 13
+		msgW := len(msg) * glyphW
+		msgH := glyphH
+		label := ebiten.NewImage(max(msgW, 1), max(msgH, 1))
+		ebitenutil.DebugPrintAt(label, msg, 0, 0)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(scale, scale)
+		x := (float64(sw) - float64(msgW)*scale) * 0.5
+		y := (float64(sh) - float64(msgH)*scale) * 0.5
+		op.GeoM.Translate(x, y)
+		screen.DrawImage(label, op)
+		sg.bootFrameDrawn = true
+		if !sg.bootStarted {
+			sg.setBootProgress(2, "starting async worker")
+			sg.startBootAsync()
+		}
+		return
+	}
 	tw := sw
 	th := sh
 	if sg.transitionActive() {
@@ -1633,6 +1852,9 @@ func anyIntermissionSkipInput() bool {
 }
 
 func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
+	if sg == nil || sg.g == nil {
+		return max(outsideWidth, 1), max(outsideHeight, 1)
+	}
 	if sg.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)

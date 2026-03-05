@@ -113,6 +113,14 @@ func (cp *ChunkPlayer) Close() error {
 	return err
 }
 
+// BufferedBytes reports queued PCM bytes not yet consumed by audio reads.
+func (cp *ChunkPlayer) BufferedBytes() int {
+	if cp == nil || cp.src == nil {
+		return 0
+	}
+	return cp.src.BufferedBytes()
+}
+
 func (cp *ChunkPlayer) send(cmd playerCmd) error {
 	if cp == nil {
 		return errors.New("music: nil chunk player")
@@ -164,6 +172,7 @@ type pcmChunkBuffer struct {
 	chunks [][]byte
 	off    int
 	closed bool
+	bytes  int
 }
 
 func newPCMChunkBuffer() *pcmChunkBuffer {
@@ -179,6 +188,7 @@ func (b *pcmChunkBuffer) Enqueue(chunk []byte) {
 	b.mu.Lock()
 	if !b.closed {
 		b.chunks = append(b.chunks, chunk)
+		b.bytes += len(chunk)
 		b.cond.Signal()
 	}
 	b.mu.Unlock()
@@ -188,6 +198,7 @@ func (b *pcmChunkBuffer) Clear() {
 	b.mu.Lock()
 	b.chunks = b.chunks[:0]
 	b.off = 0
+	b.bytes = 0
 	b.mu.Unlock()
 }
 
@@ -215,9 +226,20 @@ func (b *pcmChunkBuffer) Read(p []byte) (int, error) {
 	}
 	n := copy(p, cur[b.off:])
 	b.off += n
+	b.bytes -= n
+	if b.bytes < 0 {
+		b.bytes = 0
+	}
 	if b.off >= len(cur) {
 		b.chunks = b.chunks[1:]
 		b.off = 0
 	}
 	return n, nil
+}
+
+func (b *pcmChunkBuffer) BufferedBytes() int {
+	b.mu.Lock()
+	n := b.bytes
+	b.mu.Unlock()
+	return n
 }

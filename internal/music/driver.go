@@ -2,6 +2,7 @@ package music
 
 import (
 	"gddoom/internal/sound"
+	"math"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	defaultChanVol         = 127
 	defaultChanExpr        = 127
 	defaultChanPan         = 64
+	defaultMUSPanMax       = 1.0
 	percussionNoteMin      = 35
 	percussionNoteMax      = 81
 )
@@ -106,6 +108,7 @@ type Driver struct {
 	opl        sound.OPL3
 	sampleRate int
 	ticRate    int
+	musPanMax  float64
 	bank       PatchBank
 	ch         [16]channelState
 	voices     []voiceState
@@ -124,6 +127,7 @@ func NewDriver(sampleRate int, bank PatchBank) *Driver {
 		opl:        sound.NewOPL3(sampleRate),
 		sampleRate: sampleRate,
 		ticRate:    defaultTicRate,
+		musPanMax:  defaultMUSPanMax,
 		bank:       bank,
 		voices:     make([]voiceState, defaultVoices),
 		freeList:   make([]int, 0, defaultVoices),
@@ -145,6 +149,15 @@ func NewDriver(sampleRate int, bank PatchBank) *Driver {
 
 func NewOutputDriver(bank PatchBank) *Driver {
 	return NewDriver(OutputSampleRate, bank)
+}
+
+// SetMUSPanMax sets the MUS pan scaling factor in the 0..1 range.
+// 1.0 preserves full MUS pan range; lower values pull pan toward center.
+func (d *Driver) SetMUSPanMax(max float64) {
+	if d == nil {
+		return
+	}
+	d.musPanMax = clampUnit(max)
 }
 
 func (d *Driver) Reset() {
@@ -505,7 +518,7 @@ func (d *Driver) writeVolume(oplCh int, ch, velocity uint8, patch Patch) {
 
 func (d *Driver) writePan(oplCh int, ch, c0 uint8) {
 	base, ci := oplAddrBase(oplCh)
-	pan := d.ch[ch&0x0F].pan
+	pan := scaleMUSPan(d.ch[ch&0x0F].pan, d.musPanMax)
 	var lr uint8 = 0x30
 	switch {
 	case pan >= 96:
@@ -557,6 +570,28 @@ func clampMIDI7(v int) int {
 		return 127
 	}
 	return v
+}
+
+func clampUnit(v float64) float64 {
+	if math.IsNaN(v) {
+		return 0
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func scaleMUSPan(pan uint8, max float64) uint8 {
+	m := clampUnit(max)
+	if m >= 1 {
+		return pan
+	}
+	scaled := int(math.Round(64 + (float64(int(pan)-64) * m)))
+	return uint8(clampMIDI7(scaled))
 }
 
 // From Chocolate Doom i_oplmusic.c volume_mapping_table.

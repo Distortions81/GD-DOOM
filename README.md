@@ -40,6 +40,7 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-mouselook-speed <float>`: mouse turn speed multiplier (`>0`, default `1.0`)
 - `-keyboard-turn-speed <float>`: keyboard turn speed multiplier (`>0`, default `1.0`)
 - `-music-volume <float>`: music output volume (`0..1`, default `1.0`)
+- `-mus-pan-max <float>`: maximum MUS pan amount (`0..1`, default `0.8`; lower pulls pan toward center)
 - `-sfx-volume <float>`: sound-effect output volume (`0..1`, default `0.66`)
 - `-always-run`: start with always-run enabled (holding `Shift` temporarily inverts it)
 - `-auto-weapon-switch`: auto-switch to newly picked weapons (default `true`)

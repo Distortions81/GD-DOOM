@@ -29,6 +29,7 @@ type fileConfig struct {
 	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
 	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
 	MusicVolume                *float64 `toml:"music_volume"`
+	MUSPanMax                  *float64 `toml:"mus_pan_max"`
 	SFXVolume                  *float64 `toml:"sfx_volume"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
 	AlwaysRun                  *bool    `toml:"always_run"`
@@ -102,6 +103,7 @@ func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
 	cfg.DetailLevel = intPtr(s.DetailLevel)
 	cfg.GammaLevel = intPtr(s.GammaLevel)
 	cfg.MusicVolume = floatPtr(s.MusicVolume)
+	cfg.MUSPanMax = floatPtr(s.MUSPanMax)
 	cfg.SFXVolume = floatPtr(s.SFXVolume)
 	cfg.MouseLook = boolPtr(s.MouseLook)
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)

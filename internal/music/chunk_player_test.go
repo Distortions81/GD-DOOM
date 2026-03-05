@@ -30,3 +30,26 @@ func TestPCMChunkBufferReadClear(t *testing.T) {
 		t.Fatalf("read2 n=%d err=%v p=%v", n, err, p)
 	}
 }
+
+func TestPCMChunkBufferBufferedBytes(t *testing.T) {
+	b := newPCMChunkBuffer()
+	b.Enqueue([]byte{1, 2, 3, 4, 5, 6})
+	if got := b.BufferedBytes(); got != 6 {
+		t.Fatalf("BufferedBytes()=%d want=6", got)
+	}
+	p := make([]byte, 4)
+	n, err := b.Read(p)
+	if err != nil {
+		t.Fatalf("Read() error: %v", err)
+	}
+	if n != 4 {
+		t.Fatalf("Read n=%d want=4", n)
+	}
+	if got := b.BufferedBytes(); got != 2 {
+		t.Fatalf("BufferedBytes() after read=%d want=2", got)
+	}
+	b.Clear()
+	if got := b.BufferedBytes(); got != 0 {
+		t.Fatalf("BufferedBytes() after clear=%d want=0", got)
+	}
+}
