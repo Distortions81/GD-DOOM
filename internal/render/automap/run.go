@@ -291,6 +291,7 @@ type sessionPersistentSettings struct {
 	lineColorMode    string
 	showLegend       bool
 	mapTexDiag       bool
+	spriteClipDiag   bool
 	floor2DPath      floor2DPathMode
 	paletteLUT       bool
 	gammaLevel       int
@@ -415,6 +416,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 		lineColorMode:    g.opts.LineColorMode,
 		showLegend:       g.showLegend,
 		mapTexDiag:       g.mapTexDiag,
+		spriteClipDiag:   g.spriteClipDiag,
 		floor2DPath:      g.floor2DPath,
 		paletteLUT:       g.paletteLUTEnabled,
 		gammaLevel:       g.gammaLevel,
@@ -459,18 +461,28 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.opts.LineColorMode = s.lineColorMode
 	g.showLegend = s.showLegend
 	g.mapTexDiag = s.mapTexDiag
+	g.spriteClipDiag = s.spriteClipDiag
 	g.floor2DPath = normalizeFloor2DPath(s.floor2DPath)
 	g.paletteLUTEnabled = s.paletteLUT && g.opts.KageShader && len(g.opts.DoomPaletteRGBA) == 256*4
 	g.gammaLevel = clampGamma(s.gammaLevel)
 	g.crtEnabled = s.crtEnabled && g.opts.KageShader
 	g.parity.reveal = normalizeRevealForMode(s.reveal, g.opts.SourcePortMode)
 	g.parity.iddt = clampIDDT(s.iddt)
-	if g.opts.SourcePortMode && s.walkRender == walkRendererPseudo {
-		g.walkRender = walkRendererPseudo
-		g.pseudo3D = true
-	} else {
+	if !g.opts.SourcePortMode {
 		g.walkRender = walkRendererDoomBasic
 		g.pseudo3D = false
+	} else {
+		switch s.walkRender {
+		case walkRendererPseudo:
+			g.walkRender = walkRendererPseudo
+			g.pseudo3D = true
+		case walkRendererUnifiedBSP:
+			g.walkRender = walkRendererUnifiedBSP
+			g.pseudo3D = false
+		default:
+			g.walkRender = walkRendererDoomBasic
+			g.pseudo3D = false
+		}
 	}
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()

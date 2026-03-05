@@ -224,8 +224,12 @@ func (g *game) nodeChildScreenRange(n mapdata.Node, childSide int, px, py int64,
 	if !any {
 		return 0, 0, false
 	}
-	l := int(math.Floor(minSX))
-	r := int(math.Ceil(maxSX))
+	// Conservative screen bounds for BSP child culling.
+	// BBox-corner projection can slightly underestimate the true covered span
+	// while turning near partition planes; pad a little to avoid false culls.
+	const childCullPad = 1
+	l := int(math.Floor(minSX)) - childCullPad
+	r := int(math.Ceil(maxSX)) + childCullPad
 	if l < 0 {
 		l = 0
 	}
