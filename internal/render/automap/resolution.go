@@ -40,6 +40,10 @@ func ensurePositiveRenderSize(opts *Options) {
 func normalizeRunDimensions(opts Options) (Options, int, int) {
 	windowW := opts.Width
 	windowH := opts.Height
+	aspectH := faithfulAspectLogicalH
+	if opts.DisableAspectCorrection {
+		aspectH = doomLogicalH
+	}
 	if opts.SourcePortMode {
 		ensurePositiveRenderSize(&opts)
 		return opts, opts.Width, opts.Height
@@ -56,18 +60,18 @@ func normalizeRunDimensions(opts Options) (Options, int, int) {
 		windowH = faithfulDefaultWindowH
 	}
 
-	// Present faithful mode at Doom's 4:3 display aspect (320x240 logical),
-	// while keeping internal rendering at 320x200.
-	if windowW*faithfulAspectLogicalH <= windowH*doomLogicalW {
-		windowH = (windowW*faithfulAspectLogicalH + doomLogicalW - 1) / doomLogicalW
+	// Present faithful mode at Doom's display aspect by default (320x240),
+	// or at raw 320x200 when aspect correction is disabled.
+	if windowW*aspectH <= windowH*doomLogicalW {
+		windowH = (windowW*aspectH + doomLogicalW - 1) / doomLogicalW
 	} else {
-		windowW = (windowH * doomLogicalW) / faithfulAspectLogicalH
+		windowW = (windowH * doomLogicalW) / aspectH
 	}
 	if windowW < doomLogicalW {
 		windowW = doomLogicalW
 	}
-	if windowH < faithfulAspectLogicalH {
-		windowH = faithfulAspectLogicalH
+	if windowH < aspectH {
+		windowH = aspectH
 	}
 	return opts, windowW, windowH
 }

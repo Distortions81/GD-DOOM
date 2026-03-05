@@ -722,8 +722,8 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	} else {
 		ebiten.SetWindowSize(windowW, windowH)
-		// Faithful mode keeps a fixed 4:3 presentation window.
-		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeDisabled)
+		// Faithful mode keeps corrected presentation while allowing live resize.
+		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	}
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
 	ebiten.SetScreenClearedEveryFrame(false)
@@ -927,38 +927,25 @@ func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebi
 	if screen == nil || offscreen == nil {
 		return
 	}
-	if sg == nil || sg.opts.SourcePortMode {
+	if sg == nil {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM = geoM
-		op.Filter = ebiten.FilterNearest
+		op.Filter = ebiten.FilterLinear
 		screen.DrawImage(offscreen, op)
 		return
 	}
 
-	// Faithful mode: emulate Chocolate Doom's final pass by linearly scaling
-	// the integer-upscaled 320x200 surface into a 4:3 presentation rect.
-	b := screen.Bounds()
-	sw := max(b.Dx(), 1)
-	sh := max(b.Dy(), 1)
-	rw := sw
-	rh := sh
-	if rw*faithfulAspectLogicalH <= rh*doomLogicalW {
-		rh = (rw * faithfulAspectLogicalH) / doomLogicalW
-	} else {
-		rw = (rh * doomLogicalW) / faithfulAspectLogicalH
+	aspectH := faithfulAspectLogicalH
+	if sg.opts.DisableAspectCorrection {
+		aspectH = doomLogicalH
 	}
-	if rw < 1 {
-		rw = 1
-	}
-	if rh < 1 {
-		rh = 1
-	}
-	ox := (sw - rw) / 2
-	oy := (sh - rh) / 2
-	ow := max(offscreen.Bounds().Dx(), 1)
-	oh := max(offscreen.Bounds().Dy(), 1)
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	rw, rh, ox, oy := fitRect(sw, sh, doomLogicalW, aspectH)
 
 	screen.Fill(color.Black)
+	ow := max(offscreen.Bounds().Dx(), 1)
+	oh := max(offscreen.Bounds().Dy(), 1)
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterLinear
 	op.GeoM.Scale(float64(rw)/float64(ow), float64(rh)/float64(oh))
@@ -1016,8 +1003,12 @@ func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
 	sh := max(dst.Bounds().Dy(), 1)
 	vw := max(src.Bounds().Dx(), 1)
 	vh := max(src.Bounds().Dy(), 1)
+	targetH := faithfulAspectLogicalH
+	if sg.opts.DisableAspectCorrection {
+		targetH = doomLogicalH
+	}
 	scale := sw / doomLogicalW
-	scaleY := sh / faithfulAspectLogicalH
+	scaleY := sh / targetH
 	if scaleY < scale {
 		scale = scaleY
 	}
@@ -2114,16 +2105,40 @@ func anyIntermissionSkipInput() bool {
 	return len(keys) > 0
 }
 
+func fitRect(w, h, baseW, baseH int) (rw, rh, ox, oy int) {
+	w = max(w, 1)
+	h = max(h, 1)
+	baseW = max(baseW, 1)
+	baseH = max(baseH, 1)
+	rw = w
+	rh = h
+	if rw*baseH <= rh*baseW {
+		rh = (rw * baseH) / baseW
+	} else {
+		rw = (rh * baseW) / baseH
+	}
+	rw = max(rw, 1)
+	rh = max(rh, 1)
+	ox = (w - rw) / 2
+	oy = (h - rh) / 2
+	return rw, rh, ox, oy
+}
+
 func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg == nil || sg.g == nil {
 		return max(outsideWidth, 1), max(outsideHeight, 1)
 	}
+	aspectH := faithfulAspectLogicalH
+	if sg.opts.DisableAspectCorrection {
+		aspectH = doomLogicalH
+	}
 	if sg.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
+		w, h, _, _ = fitRect(w, h, doomLogicalW, aspectH)
 		sg.g.setSkyOutputSize(w, h)
-		// Sourceport mode keeps a native-sized output while rendering game internals
-		// at clean integer divisors for detail levels, then nearest-upscaling.
+		// Sourceport mode keeps detail divisors for internal rendering, then
+		// presents through the same auto-integer display aspect path.
 		div := sg.g.sourcePortDetailDivisor()
 		if div < 1 {
 			div = 1
@@ -2134,17 +2149,18 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		return w, h
 	}
 	// Faithful mode renders game internals at 320x200 and presents at an
-	// auto integer-scaled 4:3 layout (320*n x 240*n).
+	// auto integer-scaled corrected layout (320*n x aspect*n).
 	sg.g.Layout(doomLogicalW, doomLogicalH)
 	w := max(outsideWidth, 1)
 	h := max(outsideHeight, 1)
+	w, h, _, _ = fitRect(w, h, doomLogicalW, aspectH)
 	scale := w / doomLogicalW
-	scaleY := h / faithfulAspectLogicalH
+	scaleY := h / aspectH
 	if scaleY < scale {
 		scale = scaleY
 	}
 	if scale < 1 {
 		scale = 1
 	}
-	return doomLogicalW * scale, faithfulAspectLogicalH * scale
+	return doomLogicalW * scale, aspectH * scale
 }

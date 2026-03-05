@@ -73,6 +73,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultRecordDemo := ""
 	defaultNoVsync := false
 	defaultNoFPS := false
+	defaultNoAspectCorrection := false
 	defaultAniDump := ""
 	defaultAniDumpDir := "anidump"
 	defaultConfigPath := configPath
@@ -205,6 +206,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.NoFPS != nil {
 			defaultNoFPS = *cfg.NoFPS
 		}
+		if cfg.NoAspectCorrection != nil {
+			defaultNoAspectCorrection = *cfg.NoAspectCorrection
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -253,6 +257,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write gddoom-demo-v1 script recorded from live input")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
+	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
 	aniDump := fs.String("anidump", defaultAniDump, "dump animation sprite series for seed (example: SMGTA0)")
 	aniDumpDir := fs.String("anidump-dir", defaultAniDumpDir, "output directory for -anidump PNG dumps")
 
@@ -543,6 +548,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,
+			DisableAspectCorrection:    *noAspectCorrection,
 			AllCheats:                  *allCheats,
 			StartInMapMode:             *startInMap,
 			FlatBank:                   flatBank,

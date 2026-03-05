@@ -31,6 +31,22 @@ func TestNormalizeRunDimensionsFaithfulFitsToDisplayAspect(t *testing.T) {
 	}
 }
 
+func TestNormalizeRunDimensionsFaithfulNoAspectCorrection(t *testing.T) {
+	opts := Options{
+		SourcePortMode:          false,
+		DisableAspectCorrection: true,
+		Width:                   1000,
+		Height:                  700,
+	}
+	got, ww, wh := normalizeRunDimensions(opts)
+	if got.Width != doomLogicalW || got.Height != doomLogicalH {
+		t.Fatalf("faithful normalized render=%dx%d want %dx%d", got.Width, got.Height, doomLogicalW, doomLogicalH)
+	}
+	if ww != 1000 || wh != 625 {
+		t.Fatalf("faithful window=%dx%d want 1000x625", ww, wh)
+	}
+}
+
 func TestEnsurePositiveRenderSize(t *testing.T) {
 	opts := Options{SourcePortMode: false}
 	ensurePositiveRenderSize(&opts)

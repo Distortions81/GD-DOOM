@@ -841,6 +841,9 @@ func (g *game) initSkyLayerShader() {
 
 func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
 	if sourcePort {
+		if len(sourcePortDetailDivisors) > 1 {
+			return 1
+		}
 		return 0
 	}
 	return detailPresetIndex(viewW, viewH)
@@ -7912,7 +7915,7 @@ func doomStartMap(lightNum int) int {
 	if rows <= 0 {
 		rows = doomNumColorMaps
 	}
-	return ((doomLightLevels-1-lightNum)*2*rows)/doomLightLevels
+	return ((doomLightLevels - 1 - lightNum) * 2 * rows) / doomLightLevels
 }
 
 func doomClampColorMapRow(row int) int {

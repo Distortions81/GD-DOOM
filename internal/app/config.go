@@ -54,6 +54,7 @@ type fileConfig struct {
 	RecordDemo                 *string  `toml:"record_demo"`
 	NoVsync                    *bool    `toml:"no_vsync"`
 	NoFPS                      *bool    `toml:"no_fps"`
+	NoAspectCorrection         *bool    `toml:"no_aspect_correction"`
 }
 
 func resolveConfigPath(args []string) (path string, explicit bool) {
