@@ -76,7 +76,9 @@ func (g *game) traverseBSPSegs(child uint16, px, py int64, ca, sa, near, focal, 
 			if li < 0 || li >= len(g.m.Linedefs) {
 				continue
 			}
-			if !g.linedefDecisionPseudo3D(g.m.Linedefs[li]).visible && !g.segHasTwoSidedMidTexture(si) {
+			if !g.linedefDecisionPseudo3D(g.m.Linedefs[li]).visible &&
+				!g.segHasTwoSidedMidTexture(si) &&
+				!g.segPortalSplitPseudo3D(si) {
 				continue
 			}
 			g.visibleBuf = append(g.visibleBuf, si)
@@ -361,4 +363,37 @@ func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) lineDecision {
 	// Pseudo-3D should not depend on automap exploration/mapped status.
 	st.reveal = revealAllMap
 	return parityLineDecision(ld, front, back, st, "doom")
+}
+
+func (g *game) segPortalSplitPseudo3D(segIdx int) bool {
+	if segIdx < 0 || segIdx >= len(g.m.Segs) {
+		return false
+	}
+	sg := g.m.Segs[segIdx]
+	li := int(sg.Linedef)
+	if li < 0 || li >= len(g.m.Linedefs) {
+		return false
+	}
+	ld := g.m.Linedefs[li]
+	frontSide := int(sg.Direction)
+	if frontSide < 0 || frontSide > 1 {
+		frontSide = 0
+	}
+	backSide := frontSide ^ 1
+	if ld.SideNum[frontSide] < 0 || ld.SideNum[backSide] < 0 {
+		return false
+	}
+	frontSectorIdx := g.sectorIndexFromSideNum(ld.SideNum[frontSide])
+	backSectorIdx := g.sectorIndexFromSideNum(ld.SideNum[backSide])
+	if frontSectorIdx < 0 || backSectorIdx < 0 ||
+		frontSectorIdx >= len(g.m.Sectors) || backSectorIdx >= len(g.m.Sectors) {
+		return false
+	}
+	front := &g.m.Sectors[frontSectorIdx]
+	back := &g.m.Sectors[backSectorIdx]
+	return front.FloorHeight != back.FloorHeight ||
+		front.CeilingHeight != back.CeilingHeight ||
+		normalizeFlatName(front.FloorPic) != normalizeFlatName(back.FloorPic) ||
+		normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
+		(front.Light != back.Light && doomSectorLighting)
 }
