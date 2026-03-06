@@ -36,6 +36,7 @@ const (
 func (g *game) tickWorldLogic() {
 	g.worldTic++
 	g.tickSectorLightEffects()
+	g.refreshSectorPlaneCacheLighting()
 	g.tickPlayerViewHeight()
 	g.trackSecrets()
 	g.tickProjectiles()

@@ -61,7 +61,14 @@ func (g *game) updatePlayer(cmd moveCmd) {
 
 func (g *game) tickDoors() {
 	setDoorCeiling := func(sec int, z int64) {
+		if sec < 0 || sec >= len(g.sectorCeil) {
+			return
+		}
+		if g.sectorCeil[sec] == z {
+			return
+		}
 		g.sectorCeil[sec] = z
+		g.markDynamicSectorPlaneCacheDirty(sec)
 		if sec >= 0 && sec < len(g.m.Sectors) {
 			g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
 		}

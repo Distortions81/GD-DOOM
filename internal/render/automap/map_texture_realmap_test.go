@@ -210,11 +210,22 @@ func findDOOM1WAD(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
+	// Prefer full IWADs first. DOOM1.WAD can be the shareware/demo IWAD.
+	candidates := []string{
+		"DOOM.WAD",
+		"doom.wad",
+		"DOOM2.WAD",
+		"doom2.wad",
+		"DOOM1.WAD",
+		"doom1.wad",
+	}
 	dir := wd
 	for i := 0; i < 8; i++ {
-		cand := filepath.Join(dir, "DOOM1.WAD")
-		if st, err := os.Stat(cand); err == nil && !st.IsDir() {
-			return cand
+		for _, name := range candidates {
+			cand := filepath.Join(dir, name)
+			if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+				return cand
+			}
 		}
 		next := filepath.Dir(dir)
 		if next == dir {
@@ -222,7 +233,7 @@ func findDOOM1WAD(t *testing.T) string {
 		}
 		dir = next
 	}
-	t.Fatalf("DOOM1.WAD not found from %s", wd)
+	t.Fatalf("DOOM.WAD/DOOM2.WAD/DOOM1.WAD not found from %s", wd)
 	return ""
 }
 

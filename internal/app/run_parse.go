@@ -805,6 +805,9 @@ func resolveIWADAliasPath(path string) string {
 	if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, "DOOM.WAD")); ok {
 		return alias
 	}
+	if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, "DOOM2.WAD")); ok {
+		return alias
+	}
 	return path
 }
 

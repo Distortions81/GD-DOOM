@@ -435,8 +435,11 @@ type game struct {
 	subSectorBBox       []worldBBox
 	dynamicSectorMask   []bool
 	staticSubSectorMask []bool
+	subSectorPlaneID    []int
+	sectorSubSectors    [][]int
 	holeFillPolys       []holeFillPoly
 	sectorPlaneTris     [][]worldTri
+	sectorPlaneCache    []sectorPlaneCacheEntry
 	orphanSubSector     []bool
 	orphanRepairQueue   []orphanRepairCandidate
 
@@ -738,6 +741,21 @@ type worldTri struct {
 	c worldPt
 }
 
+type sectorPlaneCacheEntry struct {
+	tris      []worldTri
+	dynamic   bool
+	lastFloor int64
+	lastCeil  int64
+	dirty     bool
+	lightKind sectorLightEffectKind
+	light     int16
+	lightMul  uint8
+	texID     string
+	tex       *ebiten.Image
+	flatRGBA  []byte
+	texTick   int
+}
+
 type orphanRepairCandidate struct {
 	ss    int
 	sec   int
@@ -849,7 +867,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		// Default to prebuilt rasterized map floor textures (fast path).
 		floor2DPath:      floor2DPathRasterized,
 		floorVisDiag:     floorVisDiagOff,
-		mapTexDiag:       false,
+		mapTexDiag:       opts.SourcePortMode && len(opts.FlatBank) > 0,
 		alwaysRun:        opts.AlwaysRun,
 		autoWeaponSwitch: opts.AutoWeaponSwitch,
 		depthOccl:        !opts.DisableDepthOcclusion,
@@ -1878,7 +1896,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.showGrid {
 		g.drawGrid(screen)
 	}
-	if g.opts.SourcePortMode && g.mapTexDiag {
+	if g.mapTextureDiagActive() {
 		g.drawMapTextureDiagOverlay(screen)
 	}
 
@@ -3071,9 +3089,7 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 			isWall: false,
 		})
 	}
-	if len(g.sectorPlaneTris) != len(g.m.Sectors) {
-		g.buildSectorPlaneTriCache()
-	}
+	g.ensureSectorPlaneLevelCacheFresh()
 	emitSectorTri := func(zWorld float64, tri worldTri) {
 		toCam := func(p worldPt) camPt {
 			dx := p.x - camX
@@ -3112,7 +3128,13 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		if g.visibleSubSectorSeen[ss] != g.visibleEpoch {
 			continue
 		}
-		sec := g.sectorForSubSector(ss)
+		sec := -1
+		if ss < len(g.subSectorPlaneID) {
+			sec = g.subSectorPlaneID[ss]
+		}
+		if sec < 0 {
+			sec = g.sectorForSubSector(ss)
+		}
 		if sec >= 0 && sec < len(sectorVisible) {
 			sectorVisible[sec] = true
 		}
@@ -3121,17 +3143,18 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		if !sectorVisible[sec] {
 			continue
 		}
-		if sec >= len(g.sectorPlaneTris) || len(g.sectorPlaneTris[sec]) == 0 {
+		tris := g.sectorPlaneTrisCached(sec)
+		if len(tris) == 0 {
 			continue
 		}
 		secRef := g.m.Sectors[sec]
 		floorZ := float64(secRef.FloorHeight) - eyeZ
-		for _, tri := range g.sectorPlaneTris[sec] {
+		for _, tri := range tris {
 			emitSectorTri(floorZ, tri)
 		}
 		if !isSkyFlatName(secRef.CeilingPic) {
 			ceilZ := float64(secRef.CeilingHeight) - eyeZ
-			for _, tri := range g.sectorPlaneTris[sec] {
+			for _, tri := range tris {
 				emitSectorTri(ceilZ, tri)
 			}
 		}
@@ -5789,7 +5812,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					}
 					shadeAt := func(wx, wy int64) uint32 {
 						if sec := g.sectorAt(wx, wy); sec >= 0 && sec < len(g.m.Sectors) {
-							return uint32(sectorLightMul(g.m.Sectors[sec].Light))
+							return g.sectorLightMulCached(sec)
 						}
 						return defaultShade
 					}
@@ -5916,7 +5939,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				}
 				shadeAt := func(wx, wy int64) uint32 {
 					if sec := g.sectorAt(wx, wy); sec >= 0 && sec < len(g.m.Sectors) {
-						return uint32(sectorLightMul(g.m.Sectors[sec].Light))
+						return g.sectorLightMulCached(sec)
 					}
 					return defaultShade
 				}
@@ -6084,7 +6107,7 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				pic := g.m.Sectors[sec].CeilingPic
 				pkey.height = g.m.Sectors[sec].CeilingHeight
-				pkey.light = g.m.Sectors[sec].Light
+				pkey.light = g.sectorLightLevelCached(sec)
 				if isFloor {
 					pic = g.m.Sectors[sec].FloorPic
 					pkey.height = g.m.Sectors[sec].FloorHeight
@@ -7040,7 +7063,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			}
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
-				lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+				lightMul = g.sectorLightMulCached(sec)
 			}
 			items = append(items, projectedProjectileItem{
 				dist:       f,
@@ -7098,7 +7121,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			}
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
-				lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+				lightMul = g.sectorLightMulCached(sec)
 			}
 			items = append(items, projectedProjectileItem{
 				dist:       f,
@@ -7872,7 +7895,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			sec := g.thingSectorCached(i, th)
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
-				lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+				lightMul = g.sectorLightMulCached(sec)
 			}
 			items = append(items, projectedMonsterItem{
 				dist:       f,
@@ -8148,7 +8171,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			}
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
-				lightMul = uint32(sectorLightMul(g.m.Sectors[sec].Light))
+				lightMul = g.sectorLightMulCached(sec)
 			}
 			items = append(items, projectedThingItem{
 				dist:       f,
@@ -10515,6 +10538,8 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 	if g.m == nil || len(g.m.Sectors) == 0 || len(g.opts.FlatBank) == 0 {
 		return
 	}
+	g.ensureSectorPlaneLevelCacheFresh()
+	g.refreshSectorPlaneCacheTextureRefs()
 	g.ensureMapFloorLoopSetsBuilt()
 	if len(g.mapFloorLoopSets) == 0 {
 		g.floorFrame.rejectedSpan++
@@ -10542,7 +10567,12 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 			continue
 		}
 
-		tex, texOK := g.flatRGBA(g.m.Sectors[sec].FloorPic)
+		tex := []byte(nil)
+		texOK := false
+		if sec >= 0 && sec < len(g.sectorPlaneCache) && len(g.sectorPlaneCache[sec].flatRGBA) == 64*64*4 {
+			tex = g.sectorPlaneCache[sec].flatRGBA
+			texOK = true
+		}
 		screenRings := make([][]screenPt, 0, len(set.rings))
 		minSX := math.Inf(1)
 		minSY := math.Inf(1)
@@ -10715,21 +10745,20 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 		return
 	}
 	g.updateMapTextureDiagCache()
-	secTex := make([]*ebiten.Image, len(g.m.Sectors))
-	secTexLoaded := make([]bool, len(g.m.Sectors))
 	if g.whitePixel == nil {
 		g.whitePixel = ebiten.NewImage(1, 1)
 		g.whitePixel.Fill(color.White)
 	}
-	if len(g.sectorPlaneTris) != len(g.m.Sectors) {
-		g.buildSectorPlaneTriCache()
+	g.ensureSectorPlaneLevelCacheFresh()
+	if g.floorDbgMode == floorDebugTextured {
+		g.refreshSectorPlaneCacheTextureRefs()
 	}
 	// Experimental path: draw from cached per-sector plane triangles directly.
 	// This bypasses subsector-poly triangulation at draw time so geometry holes
 	// can be attributed to cache construction, not per-frame reconstruction.
-	if len(g.sectorPlaneTris) == len(g.m.Sectors) {
+	if len(g.sectorPlaneCache) == len(g.m.Sectors) {
 		for sec := range g.m.Sectors {
-			tris := g.sectorPlaneTris[sec]
+			tris := g.sectorPlaneCache[sec].tris
 			if len(tris) == 0 {
 				continue
 			}
@@ -10738,16 +10767,11 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 			texScaleX := float32(1)
 			texScaleY := float32(1)
 			if g.floorDbgMode == floorDebugTextured {
-				if !secTexLoaded[sec] {
-					if img, ok := g.flatImage(g.m.Sectors[sec].FloorPic); ok {
-						secTex[sec] = img
-					}
-					secTexLoaded[sec] = true
-				}
-				if secTex[sec] == nil {
+				entry := &g.sectorPlaneCache[sec]
+				if entry.tex == nil {
 					continue
 				}
-				drawImg = secTex[sec]
+				drawImg = entry.tex
 				addressMode = ebiten.AddressRepeat
 				tb := drawImg.Bounds()
 				texScaleX = float32(float64(tb.Dx()) / 64.0)
@@ -10835,18 +10859,13 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 		texScaleX := float32(1)
 		texScaleY := float32(1)
 		if g.floorDbgMode == floorDebugTextured {
-			if !secTexLoaded[sec] {
-				if img, ok := g.flatImage(g.m.Sectors[sec].FloorPic); ok {
-					secTex[sec] = img
-				}
-				secTexLoaded[sec] = true
-			}
-			if secTex[sec] == nil {
+			entry := &g.sectorPlaneCache[sec]
+			if entry.tex == nil {
 				g.floorFrame.rejectedSpan++
 				g.floorFrame.rejectNoPoly++
 				continue
 			}
-			drawImg = secTex[sec]
+			drawImg = entry.tex
 			addressMode = ebiten.AddressRepeat
 			tb := drawImg.Bounds()
 			texScaleX = float32(float64(tb.Dx()) / 64.0)
@@ -10919,16 +10938,11 @@ func (g *game) drawMapFloorTextures2DGZDoom(screen *ebiten.Image) {
 		texScaleX := float32(1)
 		texScaleY := float32(1)
 		if g.floorDbgMode == floorDebugTextured {
-			if !secTexLoaded[sec] {
-				if img, ok := g.flatImage(g.m.Sectors[sec].FloorPic); ok {
-					secTex[sec] = img
-				}
-				secTexLoaded[sec] = true
-			}
-			if secTex[sec] == nil {
+			entry := &g.sectorPlaneCache[sec]
+			if entry.tex == nil {
 				continue
 			}
-			drawImg = secTex[sec]
+			drawImg = entry.tex
 			addressMode = ebiten.AddressRepeat
 			tb := drawImg.Bounds()
 			texScaleX = float32(float64(tb.Dx()) / 64.0)
@@ -11135,31 +11149,9 @@ func (g *game) drawMapTextureDiagOverlay(screen *ebiten.Image) {
 		if code == subDiagOK {
 			continue
 		}
-		col := color.RGBA{255, 255, 255, 220}
-		switch code {
-		case subDiagSegShort:
-			col = color.RGBA{255, 80, 200, 220}
-		case subDiagNoPoly:
-			col = color.RGBA{255, 60, 60, 220}
-		case subDiagNonSimple:
-			col = color.RGBA{255, 170, 60, 220}
-		case subDiagTriFail:
-			col = color.RGBA{240, 240, 70, 220}
-		case subDiagLoopMultiNext:
-			col = color.RGBA{255, 0, 255, 220}
-		case subDiagLoopDeadEnd:
-			col = color.RGBA{255, 120, 0, 220}
-		case subDiagLoopEarlyClose:
-			col = color.RGBA{255, 0, 120, 220}
-		case subDiagLoopNoClose:
-			col = color.RGBA{255, 0, 0, 220}
-		case subDiagNonConvex:
-			col = color.RGBA{120, 255, 120, 220}
-		case subDiagDegenerateArea:
-			col = color.RGBA{0, 180, 255, 220}
-		case subDiagTriAreaMismatch:
-			col = color.RGBA{255, 255, 0, 220}
-		}
+		_ = code
+		// Render all problematic map-texture geometry with a strong red marker.
+		col := color.RGBA{255, 0, 0, 255}
 		if ss < len(g.subSectorPoly) && len(g.subSectorPoly[ss]) >= 3 {
 			p := g.subSectorPoly[ss]
 			for i := 0; i < len(p); i++ {
@@ -11187,6 +11179,16 @@ func (g *game) drawMapTextureDiagOverlay(screen *ebiten.Image) {
 			vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2, col, true)
 		}
 	}
+}
+
+func (g *game) mapTextureDiagActive() bool {
+	if g == nil || !g.mapTexDiag || !g.opts.SourcePortMode {
+		return false
+	}
+	if len(g.opts.FlatBank) == 0 {
+		return false
+	}
+	return g.floorDbgMode == floorDebugTextured
 }
 
 func (g *game) subSectorVerticesFromSegList(ss int) ([]worldPt, float64, float64, bool) {
@@ -12205,6 +12207,18 @@ func triangulateWorldPolygon(verts []worldPt) ([][3]int, bool) {
 			idx[i], idx[j] = idx[j], idx[i]
 		}
 	}
+	// Use constrained triangulation when available.
+	if cdtTris, ok := triangulateWorldPolygonCDT(indexedWorldPts(verts, idx)); ok && len(cdtTris) > 0 {
+		out := make([][3]int, 0, len(cdtTris))
+		for _, tri := range cdtTris {
+			out = append(out, [3]int{idx[tri[0]], idx[tri[1]], idx[tri[2]]})
+		}
+		return out, true
+	}
+	// In CDT-enabled builds, do not fall back to the legacy ear-clipping path.
+	if cdtTriangulationAvailable() {
+		return nil, false
+	}
 	out := make([][3]int, 0, len(idx)-2)
 	guard := 0
 	for len(idx) > 3 && guard < len(idx)*len(idx)+n*n {
@@ -12233,6 +12247,16 @@ func triangulateWorldPolygon(verts []worldPt) ([][3]int, bool) {
 		out = append(out, [3]int{idx[0], idx[1], idx[2]})
 	}
 	return out, len(out) > 0
+}
+
+func indexedWorldPts(verts []worldPt, idx []int) []worldPt {
+	out := make([]worldPt, 0, len(idx))
+	for _, i := range idx {
+		if i >= 0 && i < len(verts) {
+			out = append(out, verts[i])
+		}
+	}
+	return out
 }
 
 func triangulateWorldPolygonQuadFirst(verts []worldPt) ([][3]int, bool) {
@@ -12518,6 +12542,21 @@ func (g *game) assignSubSectorSectorsFromPolys() {
 			g.subSectorSec[ss] = found
 		}
 	}
+	if len(g.subSectorPlaneID) != len(g.subSectorSec) {
+		g.subSectorPlaneID = make([]int, len(g.subSectorSec))
+	}
+	if len(g.sectorSubSectors) != len(g.m.Sectors) {
+		g.sectorSubSectors = make([][]int, len(g.m.Sectors))
+	}
+	for sec := range g.sectorSubSectors {
+		g.sectorSubSectors[sec] = g.sectorSubSectors[sec][:0]
+	}
+	for ss, sec := range g.subSectorSec {
+		g.subSectorPlaneID[ss] = sec
+		if sec >= 0 && sec < len(g.sectorSubSectors) {
+			g.sectorSubSectors[sec] = append(g.sectorSubSectors[sec], ss)
+		}
+	}
 	if len(g.staticSubSectorMask) != len(g.m.SubSectors) {
 		g.staticSubSectorMask = make([]bool, len(g.m.SubSectors))
 	}
@@ -12681,16 +12720,19 @@ func (g *game) initSubSectorSectorCache() {
 		g.subSectorBBox = nil
 		g.dynamicSectorMask = nil
 		g.staticSubSectorMask = nil
+		g.subSectorPlaneID = nil
+		g.sectorSubSectors = nil
 		g.subSectorPolySrc = nil
 		g.subSectorDiagCode = nil
 		g.mapTexDiagStats = mapTexDiagStats{}
-			g.holeFillPolys = nil
-			g.sectorPlaneTris = nil
-			g.orphanSubSector = nil
-			g.orphanRepairQueue = nil
-			g.wallSegStaticCache = nil
-			return
-		}
+		g.holeFillPolys = nil
+		g.sectorPlaneTris = nil
+		g.sectorPlaneCache = nil
+		g.orphanSubSector = nil
+		g.orphanRepairQueue = nil
+		g.wallSegStaticCache = nil
+		return
+	}
 	g.subSectorSec = make([]int, len(g.m.SubSectors))
 	g.sectorBBox = buildSectorBBoxCache(g.m)
 	g.subSectorLoopVerts = make([][]uint16, len(g.m.SubSectors))
@@ -12700,6 +12742,8 @@ func (g *game) initSubSectorSectorCache() {
 	g.subSectorTris = make([][][3]int, len(g.m.SubSectors))
 	g.dynamicSectorMask = g.buildDynamicSectorMask()
 	g.staticSubSectorMask = make([]bool, len(g.m.SubSectors))
+	g.subSectorPlaneID = make([]int, len(g.m.SubSectors))
+	g.sectorSubSectors = make([][]int, len(g.m.Sectors))
 	g.subSectorPolySrc = make([]uint8, len(g.m.SubSectors))
 	g.subSectorDiagCode = make([]uint8, len(g.m.SubSectors))
 	g.mapTexDiagStats = mapTexDiagStats{}
@@ -12714,10 +12758,15 @@ func (g *game) initSubSectorSectorCache() {
 			maxX: math.Inf(-1),
 			maxY: math.Inf(-1),
 		}
+		g.subSectorPlaneID[i] = -1
 	}
 	for ss := range g.m.SubSectors {
 		if sec, ok := g.subSectorSectorIndex(ss); ok {
 			g.subSectorSec[ss] = sec
+			g.subSectorPlaneID[ss] = sec
+			if sec >= 0 && sec < len(g.sectorSubSectors) {
+				g.sectorSubSectors[sec] = append(g.sectorSubSectors[sec], ss)
+			}
 			if sec >= 0 && sec < len(g.dynamicSectorMask) {
 				g.staticSubSectorMask[ss] = !g.dynamicSectorMask[sec]
 			}
@@ -12789,6 +12838,7 @@ func (g *game) initSubSectorSectorCache() {
 		g.buildSectorPlaneTriCache()
 	}
 	g.orphanSubSector = g.detectOrphanSubSectorsByBSPCoverage()
+	g.initSectorPlaneLevelCache()
 	g.updateMapTextureDiagCache()
 	g.buildWallSegStaticCache()
 }
@@ -12945,20 +12995,46 @@ func (g *game) buildSubSectorTriCache() {
 func (g *game) buildSectorPlaneTriCache() {
 	if g == nil || g.m == nil || len(g.m.Sectors) == 0 {
 		g.sectorPlaneTris = nil
+		g.sectorPlaneCache = nil
 		return
 	}
 	g.sectorPlaneTris = make([][]worldTri, len(g.m.Sectors))
-	for ss := range g.m.SubSectors {
-		sec := -1
-		if ss < len(g.subSectorSec) {
-			sec = g.subSectorSec[ss]
+	loopSets := g.buildSectorLoopSets()
+	for sec := range g.m.Sectors {
+		g.sectorPlaneTris[sec] = g.buildSectorPlaneTrisForSector(sec, loopSets)
+	}
+}
+
+func (g *game) buildSectorPlaneTrisForSector(sec int, loopSets []sectorLoopSet) []worldTri {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) {
+		return nil
+	}
+	if loopSets != nil && sec >= 0 && sec < len(loopSets) {
+		if tris, ok := triangulateSectorLoopsCDT(loopSets[sec]); ok && len(tris) > 0 {
+			return tris
 		}
-		if sec < 0 || sec >= len(g.m.Sectors) {
+	}
+	out := make([]worldTri, 0, 16)
+	ssList := []int(nil)
+	if sec >= 0 && sec < len(g.sectorSubSectors) && len(g.sectorSubSectors[sec]) > 0 {
+		ssList = g.sectorSubSectors[sec]
+	} else {
+		ssList = make([]int, 0, len(g.m.SubSectors))
+		for ss := range g.m.SubSectors {
+			ssList = append(ssList, ss)
+		}
+	}
+	for _, ss := range ssList {
+		ssec := -1
+		if ss < len(g.subSectorSec) {
+			ssec = g.subSectorSec[ss]
+		}
+		if ssec < 0 || ssec >= len(g.m.Sectors) {
 			if s, ok := g.subSectorSectorIndex(ss); ok {
-				sec = s
+				ssec = s
 			}
 		}
-		if sec < 0 || sec >= len(g.m.Sectors) {
+		if ssec != sec {
 			continue
 		}
 		// Consume cached subsector mesh only; do not rebuild direct world fans here.
@@ -12975,15 +13051,13 @@ func (g *game) buildSectorPlaneTriCache() {
 			if i0 < 0 || i1 < 0 || i2 < 0 || i0 >= len(verts) || i1 >= len(verts) || i2 >= len(verts) {
 				continue
 			}
-			wt := worldTri{a: verts[i0], b: verts[i1], c: verts[i2]}
-			g.sectorPlaneTris[sec] = append(g.sectorPlaneTris[sec], wt)
+			out = append(out, worldTri{a: verts[i0], b: verts[i1], c: verts[i2]})
 		}
 	}
 	// Merge hole-fill patches into the main per-sector triangle cache so the
 	// primary draw path includes them and we don't depend on a secondary pass.
 	for _, hp := range g.holeFillPolys {
-		sec := hp.sector
-		if sec < 0 || sec >= len(g.sectorPlaneTris) || len(hp.verts) < 3 || len(hp.tris) == 0 {
+		if hp.sector != sec || len(hp.verts) < 3 || len(hp.tris) == 0 {
 			continue
 		}
 		for _, tri := range hp.tris {
@@ -12991,13 +13065,187 @@ func (g *game) buildSectorPlaneTriCache() {
 			if i0 < 0 || i1 < 0 || i2 < 0 || i0 >= len(hp.verts) || i1 >= len(hp.verts) || i2 >= len(hp.verts) {
 				continue
 			}
-			g.sectorPlaneTris[sec] = append(g.sectorPlaneTris[sec], worldTri{
+			out = append(out, worldTri{
 				a: hp.verts[i0],
 				b: hp.verts[i1],
 				c: hp.verts[i2],
 			})
 		}
 	}
+	return out
+}
+
+func (g *game) sectorHeightSnapshot(sec int) (int64, int64, bool) {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) {
+		return 0, 0, false
+	}
+	if sec < len(g.sectorFloor) && sec < len(g.sectorCeil) {
+		return g.sectorFloor[sec], g.sectorCeil[sec], true
+	}
+	return int64(g.m.Sectors[sec].FloorHeight) << fracBits, int64(g.m.Sectors[sec].CeilingHeight) << fracBits, true
+}
+
+func (g *game) sectorLightingSnapshot(sec int) (int16, uint8, sectorLightEffectKind, bool) {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) {
+		return 0, 0, sectorLightEffectNone, false
+	}
+	light := g.m.Sectors[sec].Light
+	kind := sectorLightEffectKind(sectorLightEffectNone)
+	if sec < len(g.sectorLightFx) {
+		kind = g.sectorLightFx[sec].kind
+	}
+	return light, uint8(sectorLightMul(light)), kind, true
+}
+
+func (g *game) initSectorPlaneLevelCache() {
+	if g == nil || g.m == nil || len(g.m.Sectors) == 0 {
+		g.sectorPlaneCache = nil
+		return
+	}
+	if len(g.sectorPlaneTris) != len(g.m.Sectors) {
+		g.buildSectorPlaneTriCache()
+	}
+	g.sectorPlaneCache = make([]sectorPlaneCacheEntry, len(g.m.Sectors))
+	for sec := range g.m.Sectors {
+		floor, ceil, _ := g.sectorHeightSnapshot(sec)
+		light, lightMul, lightKind, _ := g.sectorLightingSnapshot(sec)
+		dyn := sec < len(g.dynamicSectorMask) && g.dynamicSectorMask[sec]
+		g.sectorPlaneCache[sec] = sectorPlaneCacheEntry{
+			tris:      append([]worldTri(nil), g.sectorPlaneTris[sec]...),
+			dynamic:   dyn,
+			lastFloor: floor,
+			lastCeil:  ceil,
+			dirty:     false,
+			light:     light,
+			lightMul:  lightMul,
+			lightKind: lightKind,
+			texTick:   -1,
+		}
+	}
+}
+
+func (g *game) markDynamicSectorPlaneCacheDirty(sec int) {
+	if g == nil || sec < 0 || sec >= len(g.sectorPlaneCache) {
+		return
+	}
+	if !g.sectorPlaneCache[sec].dynamic {
+		return
+	}
+	g.sectorPlaneCache[sec].dirty = true
+}
+
+func (g *game) refreshDynamicSectorPlaneCache() {
+	if g == nil || g.m == nil || len(g.m.Sectors) == 0 {
+		return
+	}
+	for sec := range g.sectorPlaneCache {
+		entry := &g.sectorPlaneCache[sec]
+		if !entry.dynamic {
+			continue
+		}
+		floor, ceil, ok := g.sectorHeightSnapshot(sec)
+		if !ok {
+			continue
+		}
+		if floor != entry.lastFloor || ceil != entry.lastCeil {
+			entry.lastFloor = floor
+			entry.lastCeil = ceil
+			entry.dirty = true
+		}
+		if !entry.dirty {
+			continue
+		}
+		entry.tris = g.buildSectorPlaneTrisForSector(sec, nil)
+		g.sectorPlaneTris[sec] = append(g.sectorPlaneTris[sec][:0], entry.tris...)
+		entry.dirty = false
+	}
+}
+
+func (g *game) refreshSectorPlaneCacheLighting() {
+	if g == nil || g.m == nil || len(g.sectorPlaneCache) != len(g.m.Sectors) {
+		return
+	}
+	for sec := range g.sectorPlaneCache {
+		light, lightMul, lightKind, ok := g.sectorLightingSnapshot(sec)
+		if !ok {
+			continue
+		}
+		g.sectorPlaneCache[sec].light = light
+		g.sectorPlaneCache[sec].lightMul = lightMul
+		g.sectorPlaneCache[sec].lightKind = lightKind
+	}
+}
+
+func (g *game) ensureSectorPlaneLevelCacheFresh() {
+	if g == nil || g.m == nil || len(g.m.Sectors) == 0 {
+		return
+	}
+	if len(g.sectorPlaneTris) != len(g.m.Sectors) {
+		g.buildSectorPlaneTriCache()
+	}
+	if len(g.sectorPlaneCache) != len(g.m.Sectors) {
+		g.initSectorPlaneLevelCache()
+	}
+	g.refreshSectorPlaneCacheLighting()
+	g.refreshDynamicSectorPlaneCache()
+}
+
+func (g *game) refreshSectorPlaneCacheTextureRefs() {
+	if g == nil || g.m == nil || len(g.sectorPlaneCache) != len(g.m.Sectors) {
+		return
+	}
+	animTick := g.textureAnimTick()
+	for sec := range g.sectorPlaneCache {
+		entry := &g.sectorPlaneCache[sec]
+		texID := normalizeFlatName(g.m.Sectors[sec].FloorPic)
+		if entry.tex != nil && entry.texID == texID && entry.texTick == animTick {
+			continue
+		}
+		entry.texID = texID
+		entry.texTick = animTick
+		entry.tex = nil
+		entry.flatRGBA = nil
+		if rgba, ok := g.flatRGBA(g.m.Sectors[sec].FloorPic); ok {
+			entry.flatRGBA = rgba
+		}
+		if img, ok := g.flatImage(g.m.Sectors[sec].FloorPic); ok {
+			entry.tex = img
+		}
+	}
+}
+
+func (g *game) sectorPlaneTrisCached(sec int) []worldTri {
+	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
+		return g.sectorPlaneCache[sec].tris
+	}
+	if g != nil && sec >= 0 && sec < len(g.sectorPlaneTris) {
+		return g.sectorPlaneTris[sec]
+	}
+	return nil
+}
+
+func (g *game) sectorLightLevelCached(sec int) int16 {
+	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
+		return g.sectorPlaneCache[sec].light
+	}
+	if g != nil && g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
+		return g.m.Sectors[sec].Light
+	}
+	return 160
+}
+
+func (g *game) sectorLightMulCached(sec int) uint32 {
+	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
+		return uint32(g.sectorPlaneCache[sec].lightMul)
+	}
+	return uint32(sectorLightMul(g.sectorLightLevelCached(sec)))
+}
+
+func (g *game) sectorLightKindCached(sec int) sectorLightEffectKind {
+	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
+		return g.sectorPlaneCache[sec].lightKind
+	}
+	return sectorLightEffectNone
 }
 
 func triangleInsideSectorLoops(t worldTri, sec int, loopSets []sectorLoopSet) bool {
