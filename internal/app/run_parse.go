@@ -65,7 +65,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultGPUSky := false
 	defaultCRTEffect := false
 	defaultDepthBufferView := false
-	defaultDepthOcclusion := true
+	defaultDepthOcclusion := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
 	defaultAllCheats := false
 	defaultStartInMap := false

@@ -107,11 +107,12 @@ func markPlane3DColumnRange(pl *plane3DVisplane, x, top, bottom int, ceilingclip
 	if t > b {
 		return false
 	}
-	if pl.top[ix] != plane3DUnset {
-		return false
+	if pl.top[ix] == plane3DUnset || t < int(pl.top[ix]) {
+		pl.top[ix] = int16(t)
 	}
-	pl.top[ix] = int16(t)
-	pl.bottom[ix] = int16(b)
+	if pl.bottom[ix] == plane3DUnset || b > int(pl.bottom[ix]) {
+		pl.bottom[ix] = int16(b)
+	}
 	if x < pl.minX {
 		pl.minX = x
 	}

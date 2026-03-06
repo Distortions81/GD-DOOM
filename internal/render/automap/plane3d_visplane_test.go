@@ -60,3 +60,68 @@ func TestEnsurePlane3DForRange_SplitsOnOverlapConflict(t *testing.T) {
 		t.Fatalf("visplane count=%d want=2", len(planes[key]))
 	}
 }
+
+func TestMarkPlane3DColumnRange_MergesRepeatedColumnMarks(t *testing.T) {
+	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
+	pl := newPlane3DVisplane(key, 2, 6, 32)
+	ceilingClip := make([]int, 32)
+	floorClip := make([]int, 32)
+	for i := range floorClip {
+		ceilingClip[i] = -1
+		floorClip[i] = 20
+	}
+
+	if ok := markPlane3DColumnRange(pl, 4, 6, 10, ceilingClip, floorClip); !ok {
+		t.Fatal("expected first column mark")
+	}
+	if ok := markPlane3DColumnRange(pl, 4, 8, 12, ceilingClip, floorClip); !ok {
+		t.Fatal("expected repeated column mark to merge")
+	}
+
+	ix := 5
+	if got := int(pl.top[ix]); got != 6 {
+		t.Fatalf("top=%d want=6", got)
+	}
+	if got := int(pl.bottom[ix]); got != 12 {
+		t.Fatalf("bottom=%d want=12", got)
+	}
+}
+
+func TestMakePlane3DSpans_PartialCoverageSurvivesInteriorGap(t *testing.T) {
+	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
+	pl := newPlane3DVisplane(key, 2, 6, 16)
+	ceilingClip := make([]int, 16)
+	floorClip := make([]int, 16)
+	for i := range floorClip {
+		ceilingClip[i] = -1
+		floorClip[i] = 20
+	}
+
+	// Simulate a floor visible on both sides of a narrow door obstruction.
+	for _, x := range []int{2, 3, 5, 6} {
+		if ok := markPlane3DColumnRange(pl, x, 10, 14, ceilingClip, floorClip); !ok {
+			t.Fatalf("expected column mark at x=%d", x)
+		}
+	}
+
+	spans := makePlane3DSpans(pl, 20, nil)
+	if len(spans) == 0 {
+		t.Fatal("expected spans for partially covered floor")
+	}
+
+	var leftOK, rightOK bool
+	for _, sp := range spans {
+		if sp.y < 10 || sp.y > 14 {
+			continue
+		}
+		if sp.x1 == 2 && sp.x2 == 3 {
+			leftOK = true
+		}
+		if sp.x1 == 5 && sp.x2 == 6 {
+			rightOK = true
+		}
+	}
+	if !leftOK || !rightOK {
+		t.Fatalf("expected spans on both sides of the gap, got %+v", spans)
+	}
+}

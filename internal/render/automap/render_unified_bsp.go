@@ -48,6 +48,7 @@ func (g *game) drawDoomUnifiedBSP3D(screen *ebiten.Image) {
 
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
+	g.fill3DBackground(ceilClr, floorClr)
 	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
 	planeOrder := g.beginPlane3DFrame(g.viewW)
@@ -227,10 +228,6 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 		}
 		return
 	}
-	if solidFullyCoveredFast(ctx.solid, pp.minSX, pp.maxSX) {
-		g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
-		return
-	}
 	d := g.linedefDecisionPseudo3D(pp.ld)
 	base, _ := g.decisionStyle(d)
 	baseRGBA := color.RGBAModel.Convert(base).(color.RGBA)
@@ -271,6 +268,10 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 	markCeiling := ws.markCeiling
 	markFloor := ws.markFloor
 	solidWall := ws.solidWall
+	if solidWall && solidFullyCoveredFast(ctx.solid, pp.minSX, pp.maxSX) {
+		g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+		return
+	}
 	var midTex WallTexture
 	var topTex WallTexture
 	var botTex WallTexture
@@ -335,34 +336,21 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 		}
 	}
 
-	visibleRanges := clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, ctx.solid, g.solidClipScratch[:0])
+	visibleRanges := g.solidClipScratch[:0]
+	if solidWall {
+		visibleRanges = clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, ctx.solid, visibleRanges)
+	} else {
+		visibleRanges = append(visibleRanges, solidSpan{l: pp.minSX, r: pp.maxSX})
+	}
 	g.solidClipScratch = visibleRanges
 	if len(visibleRanges) == 0 {
 		g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 		return
 	}
-	if !g.depthOcclusionEnabled() {
+	if solidWall && !g.depthOcclusionEnabled() {
 		allOcc := true
 		for _, vis := range visibleRanges {
-			visOcc := false
-			if solidWall {
-				visOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, ctx.focal)
-			} else {
-				topOcc := true
-				botOcc := true
-				hasSlice := false
-				if topWall {
-					hasSlice = true
-					topOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldHigh, ctx.focal)
-				}
-				if bottomWall {
-					hasSlice = true
-					botOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldLow, worldBottom, ctx.focal)
-				}
-				if hasSlice {
-					visOcc = topOcc && botOcc
-				}
-			}
+			visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, ctx.focal)
 			if !visOcc {
 				allOcc = false
 				break

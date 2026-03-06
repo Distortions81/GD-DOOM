@@ -374,6 +374,7 @@ type game struct {
 	renderPY    float64
 	renderAngle uint32
 	renderAlpha float64
+	debugAimSS  int
 
 	lastUpdate    time.Time
 	fpsFrames     int
@@ -616,6 +617,8 @@ const (
 	revealNormal revealMode = iota
 	revealAllMap
 )
+
+const debugFixedSubsector = 28
 
 type automapParityState struct {
 	reveal revealMode
@@ -1867,12 +1870,21 @@ func (g *game) Draw(screen *ebiten.Image) {
 	defer g.finishPerfCounter(drawStart)
 	screen.Fill(bgColor)
 	if g.mode != viewMap {
+		debugPos := fmt.Sprintf(
+			"pos=(%.2f, %.2f) ang=%.1f",
+			float64(g.p.x)/fracUnit,
+			float64(g.p.y)/fracUnit,
+			normalizeDeg360(float64(g.p.angle)*360.0/4294967296.0),
+		)
+		aimSS := g.debugAimSS
 		if g.walkRender == walkRendererPseudo {
 			g.prepareRenderState()
 			g.drawPseudo3D(screen)
 			if g.opts.Debug {
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 12)
 				ebitenutil.DebugPrintAt(screen, "renderer=wireframe | P toggle | TAB automap", 12, 28)
+				ebitenutil.DebugPrintAt(screen, debugPos, 12, 44)
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("ss=%d", aimSS), 12, 60)
 			}
 		} else if g.walkRender == walkRendererUnifiedBSP {
 			g.prepareRenderState()
@@ -1883,8 +1895,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 				ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | U unified-bsp | P wireframe | Y clipdiag | F1 help", 12, 44)
 				planes3DOn := len(g.opts.FlatBank) > 0
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
+				ebitenutil.DebugPrintAt(screen, debugPos, 12, 76)
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("ss=%d", aimSS), 12, 92)
 				if g.opts.DepthBufferView && g.depthOcclusionEnabled() {
-					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 76)
+					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 108)
 				}
 				if g.spriteClipDiag {
 					mode := "ON"
@@ -1894,7 +1908,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 					if g.spriteClipDiagGreenOnly {
 						mode = "GREEN-ONLY"
 					}
-					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 92)
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 124)
 				}
 			}
 		} else {
@@ -1911,8 +1925,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 				}
 				planes3DOn := len(g.opts.FlatBank) > 0
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
+				ebitenutil.DebugPrintAt(screen, debugPos, 12, 76)
+				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("ss=%d", aimSS), 12, 92)
 				if g.opts.DepthBufferView {
-					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 76)
+					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 108)
 				}
 				if g.spriteClipDiag {
 					mode := "ON"
@@ -1922,7 +1938,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 					if g.spriteClipDiagGreenOnly {
 						mode = "GREEN-ONLY"
 					}
-					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 92)
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 124)
 				}
 			}
 		}
@@ -2401,6 +2417,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
+	g.fill3DBackground(ceilClr, floorClr)
 
 	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
@@ -2417,10 +2434,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			if pp.logReason != "" {
 				g.logWallCull(si, pp.logReason, pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 			}
-			continue
-		}
-		if solidFullyCoveredFast(solid, pp.minSX, pp.maxSX) {
-			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 			continue
 		}
 		d := g.linedefDecisionPseudo3D(pp.ld)
@@ -2463,6 +2476,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		markCeiling := ws.markCeiling
 		markFloor := ws.markFloor
 		solidWall := ws.solidWall
+		if solidWall && solidFullyCoveredFast(solid, pp.minSX, pp.maxSX) {
+			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+			continue
+		}
 		var midTex WallTexture
 		var topTex WallTexture
 		var botTex WallTexture
@@ -2527,34 +2544,21 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 		}
 
-		visibleRanges := clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, solid, g.solidClipScratch[:0])
+		visibleRanges := g.solidClipScratch[:0]
+		if solidWall {
+			visibleRanges = clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, solid, visibleRanges)
+		} else {
+			visibleRanges = append(visibleRanges, solidSpan{l: pp.minSX, r: pp.maxSX})
+		}
 		g.solidClipScratch = visibleRanges
 		if len(visibleRanges) == 0 {
 			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 			continue
 		}
-		if !g.depthOcclusionEnabled() {
+		if solidWall && !g.depthOcclusionEnabled() {
 			allOcc := true
 			for _, vis := range visibleRanges {
-				visOcc := false
-				if solidWall {
-					visOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, focal)
-				} else {
-					topOcc := true
-					botOcc := true
-					hasSlice := false
-					if topWall {
-						hasSlice = true
-						topOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldHigh, focal)
-					}
-					if bottomWall {
-						hasSlice = true
-						botOcc = g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldLow, worldBottom, focal)
-					}
-					if hasSlice {
-						visOcc = topOcc && botOcc
-					}
-				}
+				visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, focal)
 				if !visOcc {
 					allOcc = false
 					break
@@ -2770,7 +2774,11 @@ func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil
 			// Keep sky-marking active so the portal reliably masks farther geometry.
 			s.markCeiling = true
 		}
-		if backCeil <= frontFloor || backFloor >= frontCeil {
+		// Portal solidity should follow the current tic state, not the render
+		// look-ahead height, or doors can close floor visibility a fraction of a
+		// tic early and wipe the whole floor behind them.
+		if float64(back.CeilingHeight) <= float64(front.FloorHeight) ||
+			float64(back.FloorHeight) >= float64(front.CeilingHeight) {
 			s.markFloor = true
 			s.markCeiling = true
 			s.solidWall = true
@@ -6088,7 +6096,71 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	}
 
 	renderRows(0, h)
+	if g.opts.Debug && g.debugAimSS >= 0 {
+		g.overlayDebugAimFloorOnPlanes(pix32, spansByPlane, planes, camX, camY, ca, sa, eyeZ, focal)
+	}
 	return skyLayerEnabled
+}
+
+func (g *game) overlayDebugAimFloorOnPlanes(pix32 []uint32, spansByPlane [][]plane3DSpan, planes []*plane3DVisplane, camX, camY, ca, sa, eyeZ, focal float64) {
+	if g == nil || len(pix32) != g.viewW*g.viewH || g.debugAimSS < 0 {
+		return
+	}
+	w := g.viewW
+	h := g.viewH
+	cx := float64(w) * 0.5
+	cy := float64(h) * 0.5
+	red := packRGBA(255, 0, 0)
+	for planeIdx, pl := range planes {
+		if pl == nil || !pl.key.floor {
+			continue
+		}
+		for _, sp := range spansByPlane[planeIdx] {
+			if sp.y < 0 || sp.y >= h {
+				continue
+			}
+			x1 := sp.x1
+			x2 := sp.x2
+			if x1 < 0 {
+				x1 = 0
+			}
+			if x2 >= w {
+				x2 = w - 1
+			}
+			if x2 < x1 {
+				continue
+			}
+			den := cy - (float64(sp.y) + 0.5)
+			if math.Abs(den) < 1e-6 {
+				continue
+			}
+			planeZ := float64(pl.key.height)
+			depth := ((planeZ - eyeZ) / den) * focal
+			if depth <= 0 {
+				continue
+			}
+			stepWX := (depth / focal) * sa
+			stepWY := -(depth / focal) * ca
+			rowBaseWX := camX + depth*ca - ((cx-0.5)*depth/focal)*sa
+			rowBaseWY := camY + depth*sa + ((cx-0.5)*depth/focal)*ca
+			rowBaseWXFixed := floorFixed(rowBaseWX)
+			rowBaseWYFixed := floorFixed(rowBaseWY)
+			stepWXFixed := floorFixed(stepWX)
+			stepWYFixed := floorFixed(stepWY)
+			xOff := int64(x1)
+			wxFixed := rowBaseWXFixed + xOff*stepWXFixed
+			wyFixed := rowBaseWYFixed + xOff*stepWYFixed
+			pixI := sp.y*w + x1
+			for x := x1; x <= x2; x++ {
+				if ss := g.subSectorAtFixed(wxFixed, wyFixed); ss == g.debugAimSS {
+					pix32[pixI] = red
+				}
+				wxFixed += stepWXFixed
+				wyFixed += stepWYFixed
+				pixI++
+			}
+		}
+	}
 }
 
 func (g *game) fill3DBackground(ceiling, floor color.RGBA) {
@@ -15716,6 +15788,7 @@ func (g *game) syncRenderState() {
 	g.renderPY = float64(g.p.y) / fracUnit
 	g.renderAngle = g.p.angle
 	g.renderAlpha = 1
+	g.debugAimSS = debugFixedSubsector
 	g.lastUpdate = time.Now()
 }
 
@@ -15735,6 +15808,7 @@ func (g *game) prepareRenderState() {
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
 	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
 	g.renderAlpha = alpha
+	g.debugAimSS = debugFixedSubsector
 }
 
 func (g *game) interpAlpha() float64 {
