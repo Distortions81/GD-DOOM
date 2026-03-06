@@ -6,7 +6,7 @@ import (
 	"gddoom/internal/mapdata"
 )
 
-func TestSourcePortModeKeepsDoomLightMathWithoutColormapDecimation(t *testing.T) {
+func TestSourcePortModeCanToggleSectorLightingWithoutColormapDecimation(t *testing.T) {
 	palette := make([]byte, 256*4)
 	for i := 0; i < 256; i++ {
 		base := i * 4
@@ -20,18 +20,36 @@ func TestSourcePortModeKeepsDoomLightMathWithoutColormapDecimation(t *testing.T)
 		colormap[i] = byte(i)
 	}
 
-	// Sourceport mode should use Doom light-row math, but keep full-color shading.
+	// Sourceport mode keeps Doom light-row math, but sector contribution is optional.
 	_ = newGame(&mapdata.Map{}, Options{
-		SourcePortMode:   true,
-		DoomPaletteRGBA:  palette,
-		DoomColorMap:     colormap,
-		DoomColorMapRows: 1,
+		SourcePortMode:           true,
+		SourcePortSectorLighting: false,
+		DoomPaletteRGBA:          palette,
+		DoomColorMap:             colormap,
+		DoomColorMapRows:         1,
 	})
 	if !doomLightingEnabled {
 		t.Fatal("doom lighting math should be enabled in sourceport mode with valid colormap rows")
 	}
+	if doomSectorLighting {
+		t.Fatal("sector lighting should be disabled in sourceport mode when option is off")
+	}
 	if doomColormapEnabled {
 		t.Fatal("doom colormap should be disabled in sourceport mode")
+	}
+	if got := sectorLightMul(32); got != 256 {
+		t.Fatalf("sectorLightMul=%d want=256 when sourceport sector lighting is off", got)
+	}
+
+	_ = newGame(&mapdata.Map{}, Options{
+		SourcePortMode:           true,
+		SourcePortSectorLighting: true,
+		DoomPaletteRGBA:          palette,
+		DoomColorMap:             colormap,
+		DoomColorMapRows:         1,
+	})
+	if !doomSectorLighting {
+		t.Fatal("sector lighting should be enabled in sourceport mode when option is on")
 	}
 
 	// Faithful mode should allow Doom colormap shading path.
@@ -43,6 +61,9 @@ func TestSourcePortModeKeepsDoomLightMathWithoutColormapDecimation(t *testing.T)
 	})
 	if !doomLightingEnabled {
 		t.Fatal("doom lighting math should be enabled in faithful mode with valid data")
+	}
+	if !doomSectorLighting {
+		t.Fatal("sector lighting should remain enabled in faithful mode")
 	}
 	if !doomColormapEnabled {
 		t.Fatal("doom colormap should be enabled in faithful mode with valid data")
@@ -71,6 +92,9 @@ func TestDisableDoomLightingOptionForcesLightingOff(t *testing.T) {
 	})
 	if doomLightingEnabled {
 		t.Fatal("doom lighting should be disabled when DisableDoomLighting=true")
+	}
+	if doomSectorLighting {
+		t.Fatal("sector lighting should be disabled when DisableDoomLighting=true")
 	}
 	if doomColormapEnabled {
 		t.Fatal("doom colormap should be disabled when DisableDoomLighting=true")

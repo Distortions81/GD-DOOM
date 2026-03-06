@@ -142,6 +142,25 @@ func TestRunParseLoadsDepthOcclusionFromConfig(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesSourcePortSectorLighting(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("sourceport_mode = true\nsourceport_sector_lighting = true\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.SourcePortMode == nil || !*loaded.SourcePortMode {
+		t.Fatalf("sourceport_mode=%v want true", loaded.SourcePortMode)
+	}
+	if loaded.SourcePortSectorLighting == nil || !*loaded.SourcePortSectorLighting {
+		t.Fatalf("sourceport_sector_lighting=%v want true", loaded.SourcePortSectorLighting)
+	}
+}
+
 func TestRunParseRejectsInvalidGameMode(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer

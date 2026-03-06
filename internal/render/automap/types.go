@@ -41,6 +41,7 @@ type Options struct {
 	Invulnerable               bool
 	LineColorMode              string
 	SourcePortMode             bool
+	SourcePortSectorLighting   bool
 	DisableDoomLighting        bool
 	KageShader                 bool
 	GPUSky                     bool

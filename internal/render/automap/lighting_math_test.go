@@ -7,7 +7,20 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func resetLightingMathState(t *testing.T) {
+	t.Helper()
+	prevFullbright := fullbrightNoLighting
+	prevSectorLighting := doomSectorLighting
+	t.Cleanup(func() {
+		fullbrightNoLighting = prevFullbright
+		doomSectorLighting = prevSectorLighting
+	})
+	fullbrightNoLighting = false
+	doomSectorLighting = true
+}
+
 func TestSectorLightMulCoversFullRange(t *testing.T) {
+	resetLightingMathState(t)
 	sectorLightLUTOnce = sync.Once{}
 	if got := sectorLightMul(0); got != 0 {
 		t.Fatalf("sectorLightMul(0)=%d want=0", got)
@@ -36,12 +49,14 @@ func TestCombineShadeMulIsMultiplicative(t *testing.T) {
 }
 
 func TestSectorDistanceShadeMul_DisabledUsesSectorOnly(t *testing.T) {
+	resetLightingMathState(t)
 	if got := sectorDistanceShadeMul(160, 2000, false); got != 160 {
 		t.Fatalf("sectorDistanceShadeMul disabled=%d want=160", got)
 	}
 }
 
 func TestSectorDistanceShadeMul_EnabledDimsWithDistance(t *testing.T) {
+	resetLightingMathState(t)
 	near := sectorDistanceShadeMul(160, 64, true)
 	far := sectorDistanceShadeMul(160, 2000, true)
 	if near <= far {
@@ -83,6 +98,7 @@ func TestDoomWallLightBiasMatchesVanillaAxisRules(t *testing.T) {
 }
 
 func TestDoomWallLightRowOrdersByDistanceAndBias(t *testing.T) {
+	resetLightingMathState(t)
 	prev := doomColormapRows
 	defer func() { doomColormapRows = prev }()
 	doomColormapRows = 32
@@ -101,6 +117,7 @@ func TestDoomWallLightRowOrdersByDistanceAndBias(t *testing.T) {
 }
 
 func TestDoomPlaneLightRowDarkensWithDistance(t *testing.T) {
+	resetLightingMathState(t)
 	prev := doomColormapRows
 	defer func() { doomColormapRows = prev }()
 	doomColormapRows = 32

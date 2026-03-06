@@ -48,6 +48,7 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-cheat-level <0-3>`: startup cheats (`0=off`, `1=automap reveal`, `2=IDFA-like`, `3=IDKFA + invuln`)
 - `-invuln`: start with invulnerability (`IDDQD`-like)
 - `-sourceport-mode`: enable source-port style automap extras at startup
+- `-sourceport-sector-lighting`: in sourceport mode, apply classic sector-based light contribution (default `false`)
 - `-kage-shader`: enable postprocess shader chain (LUT/gamma/CRT)
 - `-gpu-sky`: enable experimental GPU sky path in sourceport mode (default `false`; CPU sky is default)
 - `-crt-effect`: enable CRT pass (applied last in shader chain)

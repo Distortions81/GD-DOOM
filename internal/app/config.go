@@ -41,6 +41,7 @@ type fileConfig struct {
 	ImportTextures             *bool    `toml:"import_textures"`
 	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
+	SourcePortSectorLighting   *bool    `toml:"sourceport_sector_lighting"`
 	DoomLighting               *bool    `toml:"doom_lighting"`
 	KageShader                 *bool    `toml:"kage_shader"`
 	GPUSky                     *bool    `toml:"gpu_sky"`

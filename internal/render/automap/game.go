@@ -77,6 +77,7 @@ var (
 	sectorLightMulLUT    [256]uint8
 	fullbrightNoLighting bool
 	doomLightingEnabled  bool
+	doomSectorLighting   = true
 	doomColormapEnabled  bool
 	doomColormapRows     int
 	doomRowShadeMulLUT   []uint16
@@ -872,9 +873,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		autoWeaponSwitch: opts.AutoWeaponSwitch,
 		depthOccl:        !opts.DisableDepthOcclusion,
 	}
-	// Sourceport mode keeps faithful Doom light math but without palette
-	// quantization/decimation. Faithful mode applies full Doom colormap remap.
+	// Sourceport mode keeps Doom distance-light math without colormap remap.
+	// Sector-light contribution can be toggled separately for sourceport mode.
 	initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows, !opts.SourcePortMode)
+	doomSectorLighting = !opts.SourcePortMode || opts.SourcePortSectorLighting
 	if opts.DisableDoomLighting {
 		disableDoomLighting()
 	}
@@ -2677,12 +2679,13 @@ func classifyWallPortal(front, back *mapdata.Sector, eyeZ float64) wallPortalSta
 			// Doom sky hack: keep upper portal open when both sides are sky.
 			s.worldTop = s.worldHigh
 		}
+		lightDiff := back.Light != front.Light && doomSectorLighting
 		s.markFloor = s.worldLow != s.worldBottom ||
 			normalizeFlatName(back.FloorPic) != normalizeFlatName(front.FloorPic) ||
-			back.Light != front.Light
+			lightDiff
 		s.markCeiling = s.worldHigh != s.worldTop ||
 			normalizeFlatName(back.CeilingPic) != normalizeFlatName(front.CeilingPic) ||
-			back.Light != front.Light
+			lightDiff
 		if skyPortal && back.CeilingHeight != front.CeilingHeight {
 			// Keep sky-marking active so the portal reliably masks farther geometry.
 			s.markCeiling = true
@@ -5433,6 +5436,7 @@ func initSectorLightMulLUT() {
 func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int, enableColormapRemap bool) {
 	fullbrightNoLighting = false
 	doomLightingEnabled = false
+	doomSectorLighting = true
 	doomColormapEnabled = false
 	doomColormapRows = 0
 	doomRowShadeMulLUT = nil
@@ -5473,6 +5477,7 @@ func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int, enableColor
 func disableDoomLighting() {
 	fullbrightNoLighting = true
 	doomLightingEnabled = false
+	doomSectorLighting = false
 	doomColormapEnabled = false
 	doomColormapRows = 0
 	doomRowShadeMulLUT = nil
@@ -10399,6 +10404,9 @@ func doomWallLightRow(light int16, lightBias int, depth, focal float64) int {
 }
 
 func doomWallLightRowF(light int16, lightBias int, depth, focal float64) float64 {
+	if !doomSectorLighting {
+		light = 255
+	}
 	lightNum := doomClampLightNum((int(light) >> doomLightSegShift) + lightBias)
 	startMap := doomStartMap(lightNum)
 	if depth <= 0 || focal <= 0 {
@@ -10435,6 +10443,9 @@ func doomPlaneLightRow(light int16, depth float64) int {
 }
 
 func doomPlaneLightRowF(light int16, depth float64) float64 {
+	if !doomSectorLighting {
+		light = 255
+	}
 	lightNum := doomClampLightNum(int(light) >> doomLightSegShift)
 	startMap := doomStartMap(lightNum)
 	if depth <= 0 {
@@ -10492,6 +10503,9 @@ func sectorLightMul(light int16) int {
 	if fullbrightNoLighting {
 		return 256
 	}
+	if !doomSectorLighting {
+		return 256
+	}
 	sectorLightLUTOnce.Do(initSectorLightMulLUT)
 	i := int(light)
 	if i < 0 {
@@ -10510,6 +10524,13 @@ func doomFocalLength(viewW int) float64 {
 		return 1
 	}
 	return float64(viewW) * 0.5
+}
+
+func shadeRGBByMul(r, g, b byte, mul uint32) (byte, byte, byte) {
+	if mul >= 256 {
+		return r, g, b
+	}
+	return byte((uint32(r) * mul) >> 8), byte((uint32(g) * mul) >> 8), byte((uint32(b) * mul) >> 8)
 }
 
 func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
@@ -10573,6 +10594,7 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 			tex = g.sectorPlaneCache[sec].flatRGBA
 			texOK = true
 		}
+		shadeMul := uint32(g.sectorLightMulCached(sec))
 		screenRings := make([][]screenPt, 0, len(set.rings))
 		minSX := math.Inf(1)
 		minSY := math.Inf(1)
@@ -10656,15 +10678,17 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 						u := int(math.Floor(wx)) & 63
 						v := int(math.Floor(wy)) & 63
 						ti := (v*64 + u) * 4
-						pix[iPix+0] = tex[ti+0]
-						pix[iPix+1] = tex[ti+1]
-						pix[iPix+2] = tex[ti+2]
+						r, gch, b := shadeRGBByMul(tex[ti+0], tex[ti+1], tex[ti+2], shadeMul)
+						pix[iPix+0] = r
+						pix[iPix+1] = gch
+						pix[iPix+2] = b
 						pix[iPix+3] = 255
 						stats.markedCols++
 					} else {
-						pix[iPix+0] = wallFloorChange.R
-						pix[iPix+1] = wallFloorChange.G
-						pix[iPix+2] = wallFloorChange.B
+						r, gch, b := shadeRGBByMul(wallFloorChange.R, wallFloorChange.G, wallFloorChange.B, shadeMul)
+						pix[iPix+0] = r
+						pix[iPix+1] = gch
+						pix[iPix+2] = b
 						pix[iPix+3] = 255
 						stats.rejectedSpan++
 						stats.rejectNoSector++
