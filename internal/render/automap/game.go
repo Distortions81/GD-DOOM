@@ -636,6 +636,31 @@ const (
 	walkRendererPseudo
 )
 
+func normalizeInitialWalkRenderer(v string, sourcePort bool) walkRendererMode {
+	switch strings.TrimSpace(strings.ToLower(v)) {
+	case "doom-basic", "doom_basic", "basic", "":
+		if sourcePort {
+			return walkRendererDoomBasic
+		}
+		return walkRendererDoomBasic
+	case "unified-bsp", "unified_bsp", "unified":
+		if sourcePort {
+			return walkRendererUnifiedBSP
+		}
+		return walkRendererDoomBasic
+	case "wireframe", "pseudo":
+		if sourcePort {
+			return walkRendererPseudo
+		}
+		return walkRendererDoomBasic
+	default:
+		if sourcePort {
+			return walkRendererDoomBasic
+		}
+		return walkRendererDoomBasic
+	}
+}
+
 type floorDebugMode int
 
 const (
@@ -857,7 +882,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		skyOutputW:        max(opts.Width, 1),
 		skyOutputH:        max(opts.Height, 1),
 		mode:              viewMap,
-		walkRender:        walkRendererUnifiedBSP,
+		walkRender:        normalizeInitialWalkRenderer(opts.InitialWalkRenderer, opts.SourcePortMode),
 		followMode:        true,
 		rotateView:        opts.SourcePortMode,
 		pseudo3D:          false,
@@ -885,6 +910,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		depthOccl:        !opts.DisableDepthOcclusion,
 		simTickScale:     1.0,
 	}
+	g.pseudo3D = g.walkRender == walkRendererPseudo
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
 	initDoomColormapShading(opts.DoomPaletteRGBA, opts.DoomColorMap, opts.DoomColorMapRows, !opts.SourcePortMode)

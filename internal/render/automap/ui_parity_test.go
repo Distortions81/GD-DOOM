@@ -65,6 +65,30 @@ func TestSourcePortDefaultsEnableLegend(t *testing.T) {
 	}
 }
 
+func TestSourcePortHonorsInitialWalkRenderer(t *testing.T) {
+	g := newGame(&mapdata.Map{}, Options{
+		SourcePortMode:      true,
+		InitialWalkRenderer: "unified-bsp",
+	})
+	if g.walkRender != walkRendererUnifiedBSP {
+		t.Fatalf("walkRender=%v want unified-bsp", g.walkRender)
+	}
+	if g.pseudo3D {
+		t.Fatal("unified-bsp should not enable pseudo3d")
+	}
+
+	g = newGame(&mapdata.Map{}, Options{
+		SourcePortMode:      true,
+		InitialWalkRenderer: "wireframe",
+	})
+	if g.walkRender != walkRendererPseudo {
+		t.Fatalf("walkRender=%v want wireframe", g.walkRender)
+	}
+	if !g.pseudo3D {
+		t.Fatal("wireframe should enable pseudo3d")
+	}
+}
+
 func TestButtonHighlightEligible(t *testing.T) {
 	if buttonHighlightEligible(0) {
 		t.Fatal("special 0 should not highlight")

@@ -59,6 +59,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultWalkRenderer := ""
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
@@ -68,8 +69,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDepthOcclusion := false
 	defaultWallOcclusion := true
 	defaultWallSpanReject := true
-	defaultWallSpanClip := true
-	defaultWallSliceOcclusion := true
+	defaultWallSpanClip := false
+	defaultWallSliceOcclusion := false
 	defaultBillboardClipping := true
 	defaultOverdrawDebug := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
@@ -172,6 +173,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
+		}
+		if cfg.WalkRenderer != nil {
+			defaultWalkRenderer = *cfg.WalkRenderer
 		}
 		if cfg.SourcePortSectorLighting != nil {
 			defaultSourcePortSectorLighting = *cfg.SourcePortSectorLighting
@@ -279,6 +283,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	walkRenderer := fs.String("walk-renderer", defaultWalkRenderer, "startup walk renderer (doom-basic|unified-bsp|wireframe)")
 	sourcePortSectorLighting := fs.Bool("sourceport-sector-lighting", defaultSourcePortSectorLighting, "show classic sector lighting while in sourceport mode")
 	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
 	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
@@ -356,6 +361,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *musPanMax < 0 || *musPanMax > 1 {
 		fmt.Fprintf(stderr, "invalid -mus-pan-max %.3f (must be between 0 and 1)\n", *musPanMax)
+		return 2
+	}
+	switch strings.ToLower(strings.TrimSpace(*walkRenderer)) {
+	case "", "doom-basic", "doom_basic", "basic", "unified-bsp", "unified_bsp", "unified", "wireframe", "pseudo":
+	default:
+		fmt.Fprintf(stderr, "invalid -walk-renderer %q (want doom-basic|unified-bsp|wireframe)\n", *walkRenderer)
 		return 2
 	}
 	if *oplVolume < 0 || *oplVolume > music.MaxOutputGain {
@@ -595,6 +606,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:               resolvedInvuln,
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
+			InitialWalkRenderer:        *walkRenderer,
 			SourcePortSectorLighting:   *sourcePortSectorLighting,
 			DisableDoomLighting:        !*doomLighting,
 			KageShader:                 *kageShader,
