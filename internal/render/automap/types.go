@@ -48,6 +48,12 @@ type Options struct {
 	CRTEffect                  bool
 	DepthBufferView            bool
 	DisableDepthOcclusion      bool
+	DisableWallOcclusion       bool
+	DisableWallSpanReject      bool
+	DisableWallSpanClip        bool
+	DisableWallSliceOcclusion  bool
+	DisableBillboardClipping   bool
+	OverdrawDebug              bool
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
 	NoFPS                      bool

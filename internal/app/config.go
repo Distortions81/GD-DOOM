@@ -48,6 +48,12 @@ type fileConfig struct {
 	CRTEffect                  *bool    `toml:"crt_effect"`
 	DepthBufferView            *bool    `toml:"depth_buffer_view"`
 	DepthOcclusion             *bool    `toml:"depth_occlusion"`
+	WallOcclusion              *bool    `toml:"wall_occlusion"`
+	WallSpanReject             *bool    `toml:"wall_span_reject"`
+	WallSpanClip               *bool    `toml:"wall_span_clip"`
+	WallSliceOcclusion         *bool    `toml:"wall_slice_occlusion"`
+	BillboardClipping          *bool    `toml:"billboard_clipping"`
+	OverdrawDebug              *bool    `toml:"overdraw_debug"`
 	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
 	AllCheats                  *bool    `toml:"all_cheats"`
 	StartInMap                 *bool    `toml:"start_in_map"`

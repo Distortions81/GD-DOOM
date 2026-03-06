@@ -66,6 +66,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultCRTEffect := false
 	defaultDepthBufferView := false
 	defaultDepthOcclusion := false
+	defaultWallOcclusion := true
+	defaultWallSpanReject := true
+	defaultWallSpanClip := true
+	defaultWallSliceOcclusion := true
+	defaultBillboardClipping := true
+	defaultOverdrawDebug := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
 	defaultAllCheats := false
 	defaultStartInMap := false
@@ -188,6 +194,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.DepthOcclusion != nil {
 			defaultDepthOcclusion = *cfg.DepthOcclusion
 		}
+		if cfg.WallOcclusion != nil {
+			defaultWallOcclusion = *cfg.WallOcclusion
+		}
+		if cfg.WallSpanReject != nil {
+			defaultWallSpanReject = *cfg.WallSpanReject
+		}
+		if cfg.WallSpanClip != nil {
+			defaultWallSpanClip = *cfg.WallSpanClip
+		}
+		if cfg.WallSliceOcclusion != nil {
+			defaultWallSliceOcclusion = *cfg.WallSliceOcclusion
+		}
+		if cfg.BillboardClipping != nil {
+			defaultBillboardClipping = *cfg.BillboardClipping
+		}
+		if cfg.OverdrawDebug != nil {
+			defaultOverdrawDebug = *cfg.OverdrawDebug
+		}
 		if cfg.TextureAnimCrossfadeFrames != nil {
 			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
 		}
@@ -262,6 +286,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
 	depthOcclusion := fs.Bool("depth-occlusion", defaultDepthOcclusion, "enable software depth occlusion buffer for sprites/planes")
+	wallOcclusion := fs.Bool("wall-occlusion", defaultWallOcclusion, "enable coarse wall-span occlusion for wall traversal")
+	wallSpanReject := fs.Bool("wall-span-reject", defaultWallSpanReject, "enable early solid-span wall rejection")
+	wallSpanClip := fs.Bool("wall-span-clip", defaultWallSpanClip, "clip solid wall x-ranges against coarse wall spans")
+	wallSliceOcclusion := fs.Bool("wall-slice-occlusion", defaultWallSliceOcclusion, "enable wall-slice triangle/bbox occlusion checks")
+	billboardClipping := fs.Bool("billboard-clipping", defaultBillboardClipping, "enable sprite/thing/projectile/puff clipping and occlusion")
+	noCullClipping := fs.Bool("no-cull-clipping", false, "disable wall occlusion, depth occlusion, and billboard clipping together")
+	overdrawDebug := fs.Bool("overdraw-debug", defaultOverdrawDebug, "debug: paint repeated 3D software-buffer writes red")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
@@ -531,6 +562,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if *sourcePortMode && !lineColorModeSet {
 			resolvedLineColorMode = "doom"
 		}
+		if *noCullClipping {
+			*depthOcclusion = false
+			*wallOcclusion = false
+			*wallSpanReject = false
+			*wallSpanClip = false
+			*wallSliceOcclusion = false
+			*billboardClipping = false
+		}
 		opts := automap.Options{
 			Width:                      *width,
 			Height:                     *height,
@@ -563,6 +602,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			CRTEffect:                  *crtEffect,
 			DepthBufferView:            *depthBufferView,
 			DisableDepthOcclusion:      !*depthOcclusion,
+			DisableWallOcclusion:       !*wallOcclusion,
+			DisableWallSpanReject:      !*wallSpanReject,
+			DisableWallSpanClip:        !*wallSpanClip,
+			DisableWallSliceOcclusion:  !*wallSliceOcclusion,
+			DisableBillboardClipping:   !*billboardClipping,
+			OverdrawDebug:              *overdrawDebug,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,

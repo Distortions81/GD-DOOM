@@ -48,6 +48,9 @@ func (g *game) drawDoomUnifiedBSP3D(screen *ebiten.Image) {
 
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
+	if g.opts.OverdrawDebug {
+		g.ensureOverdrawBuffer()
+	}
 	g.fill3DBackground(ceilClr, floorClr)
 	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
@@ -156,6 +159,7 @@ func (g *game) drawDoomUnifiedBSP3D(screen *ebiten.Image) {
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
 	}
+	g.applyOverdrawOverlay()
 	if usedSkyLayer {
 		g.drawSkyLayerFrame(screen)
 	}
@@ -187,9 +191,9 @@ func (g *game) traverseUnifiedBSP(child uint16, ctx *unifiedGatherContext) {
 	if !g.nodeChildBBoxMaybeVisible(n, side^1, ctx.px, ctx.py, ctx.ca, ctx.sa, ctx.near, ctx.tanHalfFOV) {
 		return
 	}
-	if l, r, ok := g.nodeChildScreenRangeCached(ni, n, side^1, ctx.px, ctx.py, ctx.ca, ctx.sa, ctx.near, ctx.focal); ok && solidFullyCoveredFast(ctx.solid, l, r) {
-		return
-	}
+	// Node-range early occlusion is too aggressive around partially open portals
+	// and can hide an entire child subtree before its non-solid segs are visited.
+	// Keep traversing the back child and let per-seg occlusion decide instead.
 	g.traverseUnifiedBSP(back, ctx)
 }
 
@@ -268,7 +272,7 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 	markCeiling := ws.markCeiling
 	markFloor := ws.markFloor
 	solidWall := ws.solidWall
-	if solidWall && solidFullyCoveredFast(ctx.solid, pp.minSX, pp.maxSX) {
+	if solidWall && g.wallSpanRejectEnabled() && solidFullyCoveredFast(ctx.solid, pp.minSX, pp.maxSX) {
 		g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 		return
 	}
@@ -337,7 +341,7 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 	}
 
 	visibleRanges := g.solidClipScratch[:0]
-	if solidWall {
+	if solidWall && g.wallSpanClipEnabled() {
 		visibleRanges = clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, ctx.solid, visibleRanges)
 	} else {
 		visibleRanges = append(visibleRanges, solidSpan{l: pp.minSX, r: pp.maxSX})
@@ -347,7 +351,7 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 		g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
 		return
 	}
-	if solidWall && !g.depthOcclusionEnabled() {
+	if solidWall && g.wallSliceOcclusionEnabled() && !g.depthOcclusionEnabled() {
 		allOcc := true
 		for _, vis := range visibleRanges {
 			visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, ctx.focal)
