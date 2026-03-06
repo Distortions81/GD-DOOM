@@ -244,7 +244,24 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 	if front == nil {
 		return
 	}
-	ws := classifyWallPortal(front, back, ctx.eyeZ)
+	frontIdx, backIdx := g.segSectorIndices(si)
+	frontFloor := float64(front.FloorHeight)
+	frontCeil := float64(front.CeilingHeight)
+	if fz, cz, ok := g.sectorHeightRenderSnapshot(frontIdx); ok {
+		frontFloor = float64(fz) / fracUnit
+		frontCeil = float64(cz) / fracUnit
+	}
+	backFloor := 0.0
+	backCeil := 0.0
+	if back != nil {
+		backFloor = float64(back.FloorHeight)
+		backCeil = float64(back.CeilingHeight)
+		if fz, cz, ok := g.sectorHeightRenderSnapshot(backIdx); ok {
+			backFloor = float64(fz) / fracUnit
+			backCeil = float64(cz) / fracUnit
+		}
+	}
+	ws := classifyWallPortal(front, back, ctx.eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 	worldTop := ws.worldTop
 	worldBottom := ws.worldBottom
 	worldHigh := ws.worldHigh
@@ -270,9 +287,9 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 		midTex, hasMidTex = g.wallTexture(frontSideDef.Mid)
 		if hasMidTex {
 			if (ld.Flags & mlDontPegBottom) != 0 {
-				midTexMid = float64(front.FloorHeight) + float64(midTex.Height) - ctx.eyeZ
+				midTexMid = frontFloor + float64(midTex.Height) - ctx.eyeZ
 			} else {
-				midTexMid = float64(front.CeilingHeight) - ctx.eyeZ
+				midTexMid = frontCeil - ctx.eyeZ
 			}
 			midTexMid += rowOffset
 		}
@@ -280,11 +297,11 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 			topTex, hasTopTex = g.wallTexture(frontSideDef.Top)
 			if hasTopTex {
 				if (ld.Flags & mlDontPegTop) != 0 {
-					topTexMid = float64(front.CeilingHeight) - ctx.eyeZ
+					topTexMid = frontCeil - ctx.eyeZ
 				} else if back != nil {
-					topTexMid = float64(back.CeilingHeight) + float64(topTex.Height) - ctx.eyeZ
+					topTexMid = backCeil + float64(topTex.Height) - ctx.eyeZ
 				} else {
-					topTexMid = float64(front.CeilingHeight) - ctx.eyeZ
+					topTexMid = frontCeil - ctx.eyeZ
 				}
 				topTexMid += rowOffset
 			}
@@ -293,11 +310,11 @@ func (g *game) gatherUnifiedBSPSeg(ss, si int, ctx *unifiedGatherContext, subSol
 			botTex, hasBotTex = g.wallTexture(frontSideDef.Bottom)
 			if hasBotTex {
 				if (ld.Flags & mlDontPegBottom) != 0 {
-					botTexMid = float64(front.CeilingHeight) - ctx.eyeZ
+					botTexMid = frontCeil - ctx.eyeZ
 				} else if back != nil {
-					botTexMid = float64(back.FloorHeight) - ctx.eyeZ
+					botTexMid = backFloor - ctx.eyeZ
 				} else {
-					botTexMid = float64(front.FloorHeight) - ctx.eyeZ
+					botTexMid = frontFloor - ctx.eyeZ
 				}
 				botTexMid += rowOffset
 			}

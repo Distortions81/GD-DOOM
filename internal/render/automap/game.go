@@ -373,6 +373,7 @@ type game struct {
 	renderPX    float64
 	renderPY    float64
 	renderAngle uint32
+	renderAlpha float64
 
 	lastUpdate    time.Time
 	fpsFrames     int
@@ -384,6 +385,10 @@ type game struct {
 	perfInDraw    bool
 	interpAutoOff bool
 	depthOccl     bool
+	simTickScale  float64
+	simTickAccum  float64
+	edgeInputPass bool
+	pendingUse    bool
 
 	lastMouseX             int
 	mouseLookSet           bool
@@ -872,6 +877,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		alwaysRun:        opts.AlwaysRun,
 		autoWeaponSwitch: opts.AutoWeaponSwitch,
 		depthOccl:        !opts.DisableDepthOcclusion,
+		simTickScale:     1.0,
 	}
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
@@ -1166,7 +1172,6 @@ func (g *game) publishRuntimeSettingsIfChanged() {
 }
 
 func (g *game) Update() error {
-	g.capturePrevState()
 	if g.levelExitRequested {
 		return ebiten.Termination
 	}
@@ -1225,6 +1230,18 @@ func (g *game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.showHelp = !g.showHelp
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyComma) {
+		g.setSimTickScale(g.simTickScale - 0.1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
+		g.setSimTickScale(g.simTickScale + 0.1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeySlash) {
+		g.setSimTickScale(1.0)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		g.pendingUse = true
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
 		if g.opts.SourcePortMode {
 			g.cycleSourcePortDetailLevel()
@@ -1257,34 +1274,71 @@ func (g *game) Update() error {
 	if g.isDead && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
 		g.requestLevelRestart()
 	}
-	if g.mode == viewMap {
-		if g.opts.SourcePortMode {
-			ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+	ticks := g.consumeSimTicks()
+	for i := 0; i < ticks; i++ {
+		g.edgeInputPass = i == 0
+		g.capturePrevState()
+		if g.mode == viewMap {
+			if g.opts.SourcePortMode {
+				ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+			} else {
+				ebiten.SetCursorMode(ebiten.CursorModeVisible)
+			}
+			g.updateMapMode()
 		} else {
-			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+			ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+			g.updateWalkMode()
 		}
-		g.updateMapMode()
-	} else {
-		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
-		g.updateWalkMode()
+		g.tickStatusWidgets()
+		if g.useFlash > 0 {
+			g.useFlash--
+		}
+		if g.damageFlashTic > 0 {
+			g.damageFlashTic--
+		}
+		if g.bonusFlashTic > 0 {
+			g.bonusFlashTic--
+		}
+		g.tickHitscanPuffs()
+		g.tickDelayedSounds()
+		g.tickDelayedSwitchReverts()
+		g.flushSoundEvents()
+		g.lastUpdate = time.Now()
 	}
-	g.tickStatusWidgets()
-	if g.useFlash > 0 {
-		g.useFlash--
-	}
-	if g.damageFlashTic > 0 {
-		g.damageFlashTic--
-	}
-	if g.bonusFlashTic > 0 {
-		g.bonusFlashTic--
-	}
-	g.tickHitscanPuffs()
-	g.tickDelayedSounds()
-	g.tickDelayedSwitchReverts()
-	g.flushSoundEvents()
+	g.edgeInputPass = false
 	g.publishRuntimeSettingsIfChanged()
-	g.lastUpdate = time.Now()
 	return nil
+}
+
+func (g *game) consumeSimTicks() int {
+	if g.simTickScale <= 0 {
+		g.simTickScale = 1
+	}
+	g.simTickAccum += g.simTickScale
+	ticks := int(g.simTickAccum)
+	if ticks <= 0 {
+		return 0
+	}
+	const maxTicksPerFrame = 8
+	if ticks > maxTicksPerFrame {
+		ticks = maxTicksPerFrame
+	}
+	g.simTickAccum -= float64(ticks)
+	if g.simTickAccum > float64(maxTicksPerFrame) {
+		g.simTickAccum = float64(maxTicksPerFrame)
+	}
+	return ticks
+}
+
+func (g *game) setSimTickScale(v float64) {
+	if v < 0.1 {
+		v = 0.1
+	}
+	if v > 8.0 {
+		v = 8.0
+	}
+	g.simTickScale = v
+	g.setHUDMessage(fmt.Sprintf("Game Speed: %.2fx", g.simTickScale), 70)
 }
 
 func (g *game) updateDemoMode() error {
@@ -1292,6 +1346,7 @@ func (g *game) updateDemoMode() error {
 	if script == nil {
 		return nil
 	}
+	g.capturePrevState()
 	if !g.demoBenchStarted {
 		g.demoBenchStarted = true
 		g.demoBenchStart = time.Now()
@@ -1374,7 +1429,7 @@ func (g *game) requestLevelRestart() {
 func (g *game) updateMapMode() {
 	g.updateParityControls()
 	g.updateWeaponHotkeys(false)
-	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+	if g.edgeInputPass && inpututil.IsKeyJustPressed(ebiten.KeyF) {
 		g.followMode = !g.followMode
 		if g.followMode {
 			g.setHUDMessage("Follow ON", 70)
@@ -1382,19 +1437,19 @@ func (g *game) updateMapMode() {
 			g.setHUDMessage("Follow OFF", 70)
 		}
 	}
-	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyB) {
+	if g.edgeInputPass && g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyB) {
 		g.toggleBigMap()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key0) || inpututil.IsKeyJustPressed(ebiten.KeyKP0) {
+	if g.edgeInputPass && (inpututil.IsKeyJustPressed(ebiten.Key0) || inpututil.IsKeyJustPressed(ebiten.KeyKP0)) {
 		g.toggleBigMap()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyM) {
+	if g.edgeInputPass && inpututil.IsKeyJustPressed(ebiten.KeyM) {
 		g.addMark()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+	if g.edgeInputPass && inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		g.clearMarks()
 	}
-	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyHome) {
+	if g.edgeInputPass && g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyHome) {
 		g.resetView()
 	}
 	g.updateZoom()
@@ -1423,8 +1478,9 @@ func (g *game) updateMapMode() {
 	if ebiten.IsKeyPressed(ebiten.KeyE) {
 		cmd.turn -= 1
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.edgeInputPass && g.pendingUse {
 		usePressed = true
+		g.pendingUse = false
 		g.handleUse()
 	}
 	fireHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
@@ -1505,8 +1561,9 @@ func (g *game) updateWalkMode() {
 			cmd.turn -= 1
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.edgeInputPass && g.pendingUse {
 		usePressed = true
+		g.pendingUse = false
 		g.handleUse()
 	}
 	fireHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
@@ -1565,6 +1622,9 @@ func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
 }
 
 func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
+	if !g.edgeInputPass {
+		return
+	}
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
 		g.selectWeaponSlot(1)
 	}
@@ -1609,6 +1669,9 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 }
 
 func (g *game) updateParityControls() {
+	if !g.edgeInputPass {
+		return
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyCapsLock) {
 		g.alwaysRun = !g.alwaysRun
 		if g.alwaysRun {
@@ -2373,7 +2436,24 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if front == nil {
 			continue
 		}
-		ws := classifyWallPortal(front, back, eyeZ)
+		frontIdx, backIdx := g.segSectorIndices(si)
+		frontFloor := float64(front.FloorHeight)
+		frontCeil := float64(front.CeilingHeight)
+		if fz, cz, ok := g.sectorHeightRenderSnapshot(frontIdx); ok {
+			frontFloor = float64(fz) / fracUnit
+			frontCeil = float64(cz) / fracUnit
+		}
+		backFloor := 0.0
+		backCeil := 0.0
+		if back != nil {
+			backFloor = float64(back.FloorHeight)
+			backCeil = float64(back.CeilingHeight)
+			if fz, cz, ok := g.sectorHeightRenderSnapshot(backIdx); ok {
+				backFloor = float64(fz) / fracUnit
+				backCeil = float64(cz) / fracUnit
+			}
+		}
+		ws := classifyWallPortal(front, back, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 		worldTop := ws.worldTop
 		worldBottom := ws.worldBottom
 		worldHigh := ws.worldHigh
@@ -2399,9 +2479,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			midTex, hasMidTex = g.wallTexture(frontSideDef.Mid)
 			if hasMidTex {
 				if (ld.Flags & mlDontPegBottom) != 0 {
-					midTexMid = float64(front.FloorHeight) + float64(midTex.Height) - eyeZ
+					midTexMid = frontFloor + float64(midTex.Height) - eyeZ
 				} else {
-					midTexMid = float64(front.CeilingHeight) - eyeZ
+					midTexMid = frontCeil - eyeZ
 				}
 				midTexMid += rowOffset
 			}
@@ -2409,11 +2489,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				topTex, hasTopTex = g.wallTexture(frontSideDef.Top)
 				if hasTopTex {
 					if (ld.Flags & mlDontPegTop) != 0 {
-						topTexMid = float64(front.CeilingHeight) - eyeZ
+						topTexMid = frontCeil - eyeZ
 					} else if back != nil {
-						topTexMid = float64(back.CeilingHeight) + float64(topTex.Height) - eyeZ
+						topTexMid = backCeil + float64(topTex.Height) - eyeZ
 					} else {
-						topTexMid = float64(front.CeilingHeight) - eyeZ
+						topTexMid = frontCeil - eyeZ
 					}
 					topTexMid += rowOffset
 				}
@@ -2422,11 +2502,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				botTex, hasBotTex = g.wallTexture(frontSideDef.Bottom)
 				if hasBotTex {
 					if (ld.Flags & mlDontPegBottom) != 0 {
-						botTexMid = float64(front.CeilingHeight) - eyeZ
+						botTexMid = frontCeil - eyeZ
 					} else if back != nil {
-						botTexMid = float64(back.FloorHeight) - eyeZ
+						botTexMid = backFloor - eyeZ
 					} else {
-						botTexMid = float64(front.FloorHeight) - eyeZ
+						botTexMid = frontFloor - eyeZ
 					}
 					botTexMid += rowOffset
 				}
@@ -2657,13 +2737,13 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	screen.DrawImage(g.wallLayer, nil)
 }
 
-func classifyWallPortal(front, back *mapdata.Sector, eyeZ float64) wallPortalState {
+func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil, backFloor, backCeil float64) wallPortalState {
 	if front == nil {
 		return wallPortalState{}
 	}
 	s := wallPortalState{
-		worldTop:    float64(front.CeilingHeight) - eyeZ,
-		worldBottom: float64(front.FloorHeight) - eyeZ,
+		worldTop:    frontCeil - eyeZ,
+		worldBottom: frontFloor - eyeZ,
 		markCeiling: true,
 		markFloor:   true,
 		solidWall:   back == nil,
@@ -2672,8 +2752,8 @@ func classifyWallPortal(front, back *mapdata.Sector, eyeZ float64) wallPortalSta
 	s.worldLow = s.worldBottom
 
 	if back != nil {
-		s.worldHigh = float64(back.CeilingHeight) - eyeZ
-		s.worldLow = float64(back.FloorHeight) - eyeZ
+		s.worldHigh = backCeil - eyeZ
+		s.worldLow = backFloor - eyeZ
 		skyPortal := isSkyFlatName(front.CeilingPic) && isSkyFlatName(back.CeilingPic)
 		if skyPortal {
 			// Doom sky hack: keep upper portal open when both sides are sky.
@@ -2686,11 +2766,11 @@ func classifyWallPortal(front, back *mapdata.Sector, eyeZ float64) wallPortalSta
 		s.markCeiling = s.worldHigh != s.worldTop ||
 			normalizeFlatName(back.CeilingPic) != normalizeFlatName(front.CeilingPic) ||
 			lightDiff
-		if skyPortal && back.CeilingHeight != front.CeilingHeight {
+		if skyPortal && backCeil != frontCeil {
 			// Keep sky-marking active so the portal reliably masks farther geometry.
 			s.markCeiling = true
 		}
-		if back.CeilingHeight <= front.FloorHeight || back.FloorHeight >= front.CeilingHeight {
+		if backCeil <= frontFloor || backFloor >= frontCeil {
 			s.markFloor = true
 			s.markCeiling = true
 			s.solidWall = true
@@ -2699,10 +2779,10 @@ func classifyWallPortal(front, back *mapdata.Sector, eyeZ float64) wallPortalSta
 		s.bottomWall = s.worldLow > s.worldBottom
 	}
 
-	if float64(front.FloorHeight) >= eyeZ {
+	if frontFloor >= eyeZ {
 		s.markFloor = false
 	}
-	if float64(front.CeilingHeight) <= eyeZ && !isSkyFlatName(front.CeilingPic) {
+	if frontCeil <= eyeZ && !isSkyFlatName(front.CeilingPic) {
 		s.markCeiling = false
 	}
 	return s
@@ -2970,7 +3050,24 @@ func (g *game) drawSpriteClipDiagOverlay(screen *ebiten.Image) {
 		if front == nil {
 			continue
 		}
-		ws := classifyWallPortal(front, back, eyeZ)
+		frontIdx, backIdx := g.segSectorIndices(si)
+		frontFloor := float64(front.FloorHeight)
+		frontCeil := float64(front.CeilingHeight)
+		if fz, cz, ok := g.sectorHeightRenderSnapshot(frontIdx); ok {
+			frontFloor = float64(fz) / fracUnit
+			frontCeil = float64(cz) / fracUnit
+		}
+		backFloor := 0.0
+		backCeil := 0.0
+		if back != nil {
+			backFloor = float64(back.FloorHeight)
+			backCeil = float64(back.CeilingHeight)
+			if fz, cz, ok := g.sectorHeightRenderSnapshot(backIdx); ok {
+				backFloor = float64(fz) / fracUnit
+				backCeil = float64(cz) / fracUnit
+			}
+		}
+		ws := classifyWallPortal(front, back, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 		f1 := 1.0 / pp.invF1
 		f2 := 1.0 / pp.invF2
 		if f1 <= 0 || f2 <= 0 {
@@ -13091,6 +13188,43 @@ func (g *game) sectorHeightSnapshot(sec int) (int64, int64, bool) {
 	return int64(g.m.Sectors[sec].FloorHeight) << fracBits, int64(g.m.Sectors[sec].CeilingHeight) << fracBits, true
 }
 
+func (g *game) sectorHeightRenderSnapshot(sec int) (int64, int64, bool) {
+	floor, ceil, ok := g.sectorHeightSnapshot(sec)
+	if !ok || g == nil {
+		return floor, ceil, ok
+	}
+	if sec < 0 || sec >= len(g.sectorCeil) {
+		return floor, ceil, true
+	}
+	d, moving := g.doors[sec]
+	if !moving || d == nil || (d.direction != -1 && d.direction != 1) {
+		return floor, ceil, true
+	}
+	alpha := g.renderAlpha
+	if alpha <= 0 {
+		return floor, ceil, true
+	}
+	step := int64(math.Round(float64(d.speed) * alpha))
+	if step <= 0 {
+		return floor, ceil, true
+	}
+	if d.direction < 0 {
+		ceil -= step
+		if ceil < floor {
+			ceil = floor
+		}
+	} else {
+		ceil += step
+		if ceil > d.topHeight {
+			ceil = d.topHeight
+		}
+	}
+	if ceil < floor {
+		ceil = floor
+	}
+	return floor, ceil, true
+}
+
 func (g *game) sectorLightingSnapshot(sec int) (int16, uint8, sectorLightEffectKind, bool) {
 	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) {
 		return 0, 0, sectorLightEffectNone, false
@@ -15581,6 +15715,7 @@ func (g *game) syncRenderState() {
 	g.renderPX = float64(g.p.x) / fracUnit
 	g.renderPY = float64(g.p.y) / fracUnit
 	g.renderAngle = g.p.angle
+	g.renderAlpha = 1
 	g.lastUpdate = time.Now()
 }
 
@@ -15589,11 +15724,17 @@ func (g *game) prepareRenderState() {
 	if !g.opts.SourcePortMode || g.interpAutoOff {
 		alpha = 1
 	}
+	if g.simTickScale > 1.0 {
+		// Multiple sim ticks per frame already advance world state aggressively.
+		// Interpolating from prev can make render state lag behind simulation.
+		alpha = 1
+	}
 	g.renderCamX = lerp(g.prevCamX, g.camX, alpha)
 	g.renderCamY = lerp(g.prevCamY, g.camY, alpha)
 	g.renderPX = lerp(float64(g.prevPX)/fracUnit, float64(g.p.x)/fracUnit, alpha)
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
 	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
+	g.renderAlpha = alpha
 }
 
 func (g *game) interpAlpha() float64 {
@@ -15601,7 +15742,14 @@ func (g *game) interpAlpha() float64 {
 		return 1
 	}
 	dt := time.Since(g.lastUpdate).Seconds()
-	step := 1.0 / doomTicsPerSecond
+	ticRate := float64(doomTicsPerSecond)
+	if g.simTickScale > 0 {
+		ticRate *= g.simTickScale
+	}
+	if ticRate < 1e-6 {
+		ticRate = doomTicsPerSecond
+	}
+	step := 1.0 / ticRate
 	a := dt / step
 	if a < 0 {
 		return 0
@@ -15681,6 +15829,31 @@ func (g *game) segSectors(segIdx int) (*mapdata.Sector, *mapdata.Sector) {
 	if front == nil && back != nil && (ld.SideNum[0] < 0 || ld.SideNum[1] < 0) {
 		front = back
 		back = nil
+	}
+	return front, back
+}
+
+func (g *game) segSectorIndices(segIdx int) (int, int) {
+	if segIdx < 0 || segIdx >= len(g.m.Segs) {
+		return -1, -1
+	}
+	sg := g.m.Segs[segIdx]
+	li := int(sg.Linedef)
+	if li < 0 || li >= len(g.m.Linedefs) {
+		return -1, -1
+	}
+	ld := g.m.Linedefs[li]
+	frontSide := int(sg.Direction)
+	if frontSide < 0 || frontSide > 1 {
+		frontSide = 0
+	}
+	backSide := frontSide ^ 1
+	front := g.sectorIndexFromSideNum(ld.SideNum[frontSide])
+	back := g.sectorIndexFromSideNum(ld.SideNum[backSide])
+	// WAD seg direction can point at the missing side on one-sided linedefs.
+	if front < 0 && back >= 0 && (ld.SideNum[0] < 0 || ld.SideNum[1] < 0) {
+		front = back
+		back = -1
 	}
 	return front, back
 }
@@ -16109,6 +16282,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 		"SPACE  USE",
 		"ARROWS  PAN (FOLLOW OFF)",
 		"F  FOLLOW TOGGLE",
+		",/.  GAME SPEED -/+ RESET",
 		"0  BIG MAP",
 		"M  ADD MARK",
 		"C  CLEAR MARKS",

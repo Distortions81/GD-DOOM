@@ -20,7 +20,7 @@ func TestClassifyWallPortal_SkyHeightDeltaMarksCeiling(t *testing.T) {
 		Light:         160,
 	}
 
-	got := classifyWallPortal(front, back, 41)
+	got := classifyWallPortal(front, back, 41, 0, 128, 0, 64)
 	if got.topWall {
 		t.Fatal("sky portal should suppress upper wall")
 	}
@@ -46,7 +46,7 @@ func TestClassifyWallPortal_IdenticalNonSkyCanSkipCeilingMark(t *testing.T) {
 		Light:         160,
 	}
 
-	got := classifyWallPortal(front, back, 41)
+	got := classifyWallPortal(front, back, 41, 0, 128, 0, 128)
 	if got.markCeiling {
 		t.Fatal("identical non-sky ceiling portal should not force ceiling mark")
 	}
