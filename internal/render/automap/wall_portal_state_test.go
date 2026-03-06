@@ -51,3 +51,39 @@ func TestClassifyWallPortal_IdenticalNonSkyCanSkipCeilingMark(t *testing.T) {
 		t.Fatal("identical non-sky ceiling portal should not force ceiling mark")
 	}
 }
+
+func TestWallSegPrepass_KeepsLightOnlyPortalSplitter(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, FloorPic: "FLOOR0_1", CeilingPic: "CEIL1_1", Light: 96},
+				{FloorHeight: 0, CeilingHeight: 128, FloorPic: "FLOOR0_1", CeilingPic: "CEIL1_1", Light: 192},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, SideNum: [2]int16{0, 1}},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: -32, Y: 16},
+				{X: 32, Y: 16},
+			},
+			Segs: []mapdata.Seg{
+				{StartVertex: 0, EndVertex: 1, Linedef: 0, Direction: 0},
+			},
+		},
+		viewW: 320,
+		viewH: 200,
+	}
+
+	prev := doomSectorLighting
+	doomSectorLighting = true
+	t.Cleanup(func() { doomSectorLighting = prev })
+
+	pp := g.buildWallSegPrepassSingle(0, 0, 0, 1, 0, doomFocalLength(g.viewW), 2)
+	if !pp.ok {
+		t.Fatalf("light-only two-sided portal splitter should survive prepass culling, got reason=%q", pp.logReason)
+	}
+}

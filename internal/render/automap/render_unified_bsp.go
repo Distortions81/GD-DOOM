@@ -520,6 +520,8 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 		x1w, y1w, x2w, y2w float64
 		u1, u2             float64
 		hasTwoSidedMid     bool
+		frontSectorIdx     = -1
+		backSectorIdx      = -1
 	)
 	if cacheOK {
 		c := g.wallSegStaticCache[si]
@@ -532,6 +534,8 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 			u2 = u1 - c.segLen
 		}
 		hasTwoSidedMid = c.hasTwoSidedMidTex
+		frontSectorIdx = c.frontSectorIdx
+		backSectorIdx = c.backSectorIdx
 	} else {
 		if si < 0 || si >= len(g.m.Segs) {
 			return pp
@@ -551,6 +555,7 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 		if frontSide < 0 || frontSide > 1 {
 			frontSide = 0
 		}
+		backSide := frontSide ^ 1
 		if sn := ld.SideNum[frontSide]; sn >= 0 && int(sn) < len(g.m.Sidedefs) {
 			pp.frontSideDefIdx = int(sn)
 		}
@@ -564,10 +569,23 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 			u2 = u1 - segLen
 		}
 		hasTwoSidedMid = g.segHasTwoSidedMidTexture(si)
+		frontSectorIdx = g.sectorIndexFromSideNum(ld.SideNum[frontSide])
+		backSectorIdx = g.sectorIndexFromSideNum(ld.SideNum[backSide])
 	}
 	pp.ld = ld
 	d := g.linedefDecisionPseudo3D(ld)
-	if !d.visible && !hasTwoSidedMid {
+	portalSplit := false
+	if frontSectorIdx >= 0 && backSectorIdx >= 0 &&
+		frontSectorIdx < len(g.m.Sectors) && backSectorIdx < len(g.m.Sectors) {
+		front := &g.m.Sectors[frontSectorIdx]
+		back := &g.m.Sectors[backSectorIdx]
+		portalSplit = front.FloorHeight != back.FloorHeight ||
+			front.CeilingHeight != back.CeilingHeight ||
+			normalizeFlatName(front.FloorPic) != normalizeFlatName(back.FloorPic) ||
+			normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
+			(front.Light != back.Light && doomSectorLighting)
+	}
+	if !d.visible && !hasTwoSidedMid && !portalSplit {
 		return pp
 	}
 	x1 := x1w - camX
