@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gddoom/internal/render/automap"
@@ -91,6 +92,9 @@ func loadConfig(path string, explicit bool) (*fileConfig, error) {
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	if err := writeConfigAtomic(path, cfg); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
@@ -115,12 +119,37 @@ func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
 	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
 	cfg.LineColorMode = strPtr(s.LineColorMode)
 	cfg.CRTEffect = boolPtr(s.CRTEffect)
+	return writeConfigAtomic(path, cfg)
+}
+
+func writeConfigAtomic(path string, cfg *fileConfig) error {
 	var b bytes.Buffer
 	if err := toml.NewEncoder(&b).Encode(cfg); err != nil {
 		return fmt.Errorf("encode config %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, b.Bytes(), 0o644); err != nil {
+	if err := writeBytesAtomic(path, b.Bytes()); err != nil {
 		return fmt.Errorf("write config %s: %w", path, err)
+	}
+	return nil
+}
+
+func writeBytesAtomic(path string, data []byte) error {
+	perm := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil {
+		perm = fi.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
 	}
 	return nil
 }

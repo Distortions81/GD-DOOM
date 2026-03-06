@@ -229,7 +229,7 @@ func TestRunParseRejectsInvalidOPLVolume(t *testing.T) {
 func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "config.toml")
-	if err := saveRuntimeSettings(cfgPath, automap.RuntimeSettings{
+	in := automap.RuntimeSettings{
 		DetailLevel:      2,
 		GammaLevel:       5,
 		MusicVolume:      1.0,
@@ -241,44 +241,79 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		AutoWeaponSwitch: false,
 		LineColorMode:    "doom",
 		CRTEffect:        true,
-	}); err != nil {
+	}
+	if err := saveRuntimeSettings(cfgPath, in); err != nil {
 		t.Fatalf("saveRuntimeSettings() error: %v", err)
 	}
 	cfg, err := loadConfig(cfgPath, true)
 	if err != nil {
 		t.Fatalf("loadConfig() error: %v", err)
 	}
-	if cfg.DetailLevel == nil || *cfg.DetailLevel != 2 {
-		t.Fatalf("detail_level=%v want 2", cfg.DetailLevel)
+	if cfg.DetailLevel == nil || *cfg.DetailLevel != in.DetailLevel {
+		t.Fatalf("detail_level=%v want %d", cfg.DetailLevel, in.DetailLevel)
 	}
-	if cfg.GammaLevel == nil || *cfg.GammaLevel != 5 {
-		t.Fatalf("gamma_level=%v want 5", cfg.GammaLevel)
+	if cfg.GammaLevel == nil || *cfg.GammaLevel != in.GammaLevel {
+		t.Fatalf("gamma_level=%v want %d", cfg.GammaLevel, in.GammaLevel)
 	}
-	if cfg.MusicVolume == nil || *cfg.MusicVolume != 1.0 {
-		t.Fatalf("music_volume=%v want 1.0", cfg.MusicVolume)
+	if cfg.MusicVolume == nil || *cfg.MusicVolume != in.MusicVolume {
+		t.Fatalf("music_volume=%v want %v", cfg.MusicVolume, in.MusicVolume)
 	}
-	if cfg.MUSPanMax == nil || *cfg.MUSPanMax != 0.8 {
-		t.Fatalf("mus_pan_max=%v want 0.8", cfg.MUSPanMax)
+	if cfg.MUSPanMax == nil || *cfg.MUSPanMax != in.MUSPanMax {
+		t.Fatalf("mus_pan_max=%v want %v", cfg.MUSPanMax, in.MUSPanMax)
 	}
-	if cfg.OPLVolume == nil || *cfg.OPLVolume != 2.0 {
-		t.Fatalf("opl_volume=%v want 2.0", cfg.OPLVolume)
+	if cfg.OPLVolume == nil || *cfg.OPLVolume != in.OPLVolume {
+		t.Fatalf("opl_volume=%v want %v", cfg.OPLVolume, in.OPLVolume)
 	}
-	if cfg.SFXVolume == nil || *cfg.SFXVolume != 0.66 {
-		t.Fatalf("sfx_volume=%v want 0.66", cfg.SFXVolume)
+	if cfg.SFXVolume == nil || *cfg.SFXVolume != in.SFXVolume {
+		t.Fatalf("sfx_volume=%v want %v", cfg.SFXVolume, in.SFXVolume)
 	}
-	if cfg.MouseLook == nil || *cfg.MouseLook {
-		t.Fatalf("mouselook=%v want false", cfg.MouseLook)
+	if cfg.MouseLook == nil || *cfg.MouseLook != in.MouseLook {
+		t.Fatalf("mouselook=%v want %v", cfg.MouseLook, in.MouseLook)
 	}
-	if cfg.AlwaysRun == nil || !*cfg.AlwaysRun {
-		t.Fatalf("always_run=%v want true", cfg.AlwaysRun)
+	if cfg.AlwaysRun == nil || *cfg.AlwaysRun != in.AlwaysRun {
+		t.Fatalf("always_run=%v want %v", cfg.AlwaysRun, in.AlwaysRun)
 	}
-	if cfg.AutoWeaponSwitch == nil || *cfg.AutoWeaponSwitch {
-		t.Fatalf("auto_weapon_switch=%v want false", cfg.AutoWeaponSwitch)
+	if cfg.AutoWeaponSwitch == nil || *cfg.AutoWeaponSwitch != in.AutoWeaponSwitch {
+		t.Fatalf("auto_weapon_switch=%v want %v", cfg.AutoWeaponSwitch, in.AutoWeaponSwitch)
 	}
-	if cfg.LineColorMode == nil || *cfg.LineColorMode != "doom" {
-		t.Fatalf("line_color_mode=%v want doom", cfg.LineColorMode)
+	if cfg.LineColorMode == nil || *cfg.LineColorMode != in.LineColorMode {
+		t.Fatalf("line_color_mode=%v want %v", cfg.LineColorMode, in.LineColorMode)
 	}
-	if cfg.CRTEffect == nil || !*cfg.CRTEffect {
-		t.Fatalf("crt_effect=%v want true", cfg.CRTEffect)
+	if cfg.CRTEffect == nil || *cfg.CRTEffect != in.CRTEffect {
+		t.Fatalf("crt_effect=%v want %v", cfg.CRTEffect, in.CRTEffect)
+	}
+	if _, err := os.Stat(cfgPath + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("expected no leftover tmp file, stat err=%v", err)
+	}
+}
+
+func TestLoadConfigRewritesFileAtomically(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	original := "render=true\nmap=\"E1M2\"\n"
+	if err := os.WriteFile(cfgPath, []byte(original), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if cfg.Map == nil || *cfg.Map != "E1M2" {
+		t.Fatalf("map=%v want E1M2", cfg.Map)
+	}
+	if cfg.Render == nil || !*cfg.Render {
+		t.Fatalf("render=%v want true", cfg.Render)
+	}
+
+	rewritten, err := os.ReadFile(cfgPath)
+	if err != nil {
+		t.Fatalf("read rewritten config: %v", err)
+	}
+	if string(rewritten) == original {
+		t.Fatalf("expected config to be rewritten, content unchanged: %q", rewritten)
+	}
+	if _, err := os.Stat(cfgPath + ".tmp"); !os.IsNotExist(err) {
+		t.Fatalf("expected no leftover tmp file, stat err=%v", err)
 	}
 }
