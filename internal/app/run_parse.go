@@ -53,13 +53,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultOPLVolume := 2.5
 	defaultSFXVolume := 1.0
 	defaultFastMonsters := false
-	defaultAlwaysRun := false
+	defaultAlwaysRun := true
 	defaultAutoWeaponSwitch := true
 	defaultCheatLevel := 0
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
-	defaultSourcePortSectorLighting := false
+	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
 	defaultGPUSky := false
