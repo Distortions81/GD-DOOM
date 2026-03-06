@@ -7886,17 +7886,8 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			if sx+xPad < 0 || sx-xPad > float64(viewW) {
 				continue
 			}
-			clipRadius := projectedScreenWidthToWorldRadiusFixed(w, f, focal)
-			if clipRadius <= 0 {
-				clipRadius = 8 * fracUnit
-			}
 			clipTop := 0
 			clipBottom := viewH - 1
-			var clipOK bool
-			clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(int64(th.X)<<fracBits, int64(th.Y)<<fracBits, clipRadius, viewH, eyeZ, f, focal)
-			if !clipOK {
-				continue
-			}
 			sec := g.thingSectorCached(i, th)
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
@@ -8163,17 +8154,8 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			if sx+xPad < 0 || sx-xPad > float64(viewW) {
 				continue
 			}
-			clipRadius := projectedScreenWidthToWorldRadiusFixed(w, f, focal)
-			if clipRadius <= 0 {
-				clipRadius = 8 * fracUnit
-			}
 			clipTop := 0
 			clipBottom := viewH - 1
-			var clipOK bool
-			clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(int64(th.X)<<fracBits, int64(th.Y)<<fracBits, clipRadius, viewH, eyeZ, f, focal)
-			if !clipOK {
-				continue
-			}
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				lightMul = g.sectorLightMulCached(sec)
