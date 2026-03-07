@@ -91,62 +91,6 @@ var (
 	pixelLittleEndian                                  = pixelRShift == 0
 )
 
-var skyBackdropShaderSrc = []byte(`//kage:unit pixels
-package main
-
-var CamAngle float
-var Focal float
-var DrawW float
-var DrawH float
-var SampleW float
-var SampleH float
-var SkyTexW float
-var SkyTexH float
-
-func wrap(v, n float) float {
-	return v - floor(v/n)*n
-}
-
-func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
-	if Focal <= 0.0 || DrawW <= 0.0 || DrawH <= 0.0 || SampleW <= 0.0 || SampleH <= 0.0 || SkyTexW <= 0.0 || SkyTexH <= 0.0 {
-		return vec4(0.0, 0.0, 0.0, 1.0)
-	}
-	pi := 3.141592653589793
-	// Carry draw-space coordinates explicitly through custom varyings rather than
-	// depending on source texture interpolation semantics.
-	x := custom.x + 0.5
-	y := custom.y + 0.5
-	// Quantize through the same internal sample grid used by the CPU sky lookup,
-	// so detail-level and presentation-size changes stay bit-consistent.
-	sampleXi := floor(x * (SampleW / DrawW))
-	if sampleXi < 0.0 {
-		sampleXi = 0.0
-	} else if sampleXi > SampleW-1.0 {
-		sampleXi = SampleW - 1.0
-	}
-	sampleYi := floor(y * (SampleH / DrawH))
-	if sampleYi < 0.0 {
-		sampleYi = 0.0
-	} else if sampleYi > SampleH-1.0 {
-		sampleYi = SampleH - 1.0
-	}
-	sx := sampleXi + 0.5
-	sy := sampleYi
-	cx := SampleW * 0.5
-	cy := SampleH * 0.5
-	ang := CamAngle + atan((cx-sx)/Focal)
-	uScale := (SkyTexW * 4.0) / (2.0 * pi)
-	u := wrap(floor(ang*uScale), SkyTexW)
-	iscale := 320.0 / SampleW
-	v := wrap(floor(100.0+((sy-cy)*iscale)), SkyTexH)
-	_ = dstPos
-	_ = srcPos
-	src := vec2(u+0.5, v+0.5) + imageSrc0Origin()
-	c := imageSrc0At(src)
-	return vec4(c.rgb, 1.0)
-}
-`)
-
 var doomPlayerArrow = [][4]float64{
 	// Rough port of Doom's AM player_arrow (points right in local space).
 	{-16, 0, 18.2857, 0},
@@ -742,6 +686,22 @@ func normalizeSourcePortThingRenderMode(v string, sourcePort bool) string {
 	}
 }
 
+func normalizeSkyUpscaleMode(v string, sourcePort bool) string {
+	if !sourcePort {
+		return "nearest"
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "":
+		return "sharp"
+	case "nearest":
+		return "nearest"
+	case "sharp", "bicubic":
+		return "sharp"
+	default:
+		return "sharp"
+	}
+}
+
 func cycleSourcePortThingRenderMode(v string) string {
 	switch sourcePortThingRenderMode(normalizeSourcePortThingRenderMode(v, true)) {
 	case sourcePortThingRenderGlyphs:
@@ -971,6 +931,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		opts.LineColorMode = "parity"
 	}
 	opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(opts.SourcePortThingRenderMode, opts.SourcePortMode)
+	opts.SkyUpscaleMode = normalizeSkyUpscaleMode(opts.SkyUpscaleMode, opts.SourcePortMode)
 	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
 		opts.PlayerSlot = 1
 	}
@@ -11090,6 +11051,12 @@ func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
 		"SampleH":  float64(sampleH),
 		"SkyTexW":  float64(texW),
 		"SkyTexH":  g.skyLayerFrameTexH,
+		"SharpUpscale": func() float64 {
+			if g.opts.SkyUpscaleMode == "sharp" {
+				return 1
+			}
+			return 0
+		}(),
 	}
 	screen.DrawTrianglesShader(v, idx, g.skyLayerShader, op)
 	return true

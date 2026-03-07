@@ -24,6 +24,18 @@ import (
 	"gddoom/internal/wad"
 )
 
+func flagProvided(args []string, name string) bool {
+	long := "-" + name
+	prefix := long + "="
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == long || strings.HasPrefix(a, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	configPath, configExplicit := resolveConfigPath(args)
 	cfg, err := loadConfig(configPath, configExplicit)
@@ -68,6 +80,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDoomLighting := true
 	defaultKageShader := false
 	defaultGPUSky := false
+	defaultSkyUpscaleMode := "nearest"
 	defaultCRTEffect := false
 	defaultDepthBufferView := false
 	defaultDepthOcclusion := false
@@ -212,6 +225,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.GPUSky != nil {
 			defaultGPUSky = *cfg.GPUSky
 		}
+		if cfg.SkyUpscaleMode != nil {
+			defaultSkyUpscaleMode = *cfg.SkyUpscaleMode
+		}
 		if cfg.CRTEffect != nil {
 			defaultCRTEffect = *cfg.CRTEffect
 		}
@@ -273,6 +289,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			defaultNoAspectCorrection = *cfg.NoAspectCorrection
 		}
 	}
+	if defaultSourcePortMode {
+		if cfg == nil || cfg.GPUSky == nil {
+			defaultGPUSky = true
+		}
+		if cfg == nil || cfg.SkyUpscaleMode == nil {
+			defaultSkyUpscaleMode = "sharp"
+		}
+	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -315,6 +339,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
 	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
 	gpuSky := fs.Bool("gpu-sky", defaultGPUSky, "enable experimental GPU sky path in sourceport mode (default off)")
+	skyUpscale := fs.String("sky-upscale", defaultSkyUpscaleMode, "GPU sky upscale mode (nearest|sharp)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
 	depthOcclusion := fs.Bool("depth-occlusion", defaultDepthOcclusion, "enable software depth occlusion buffer for sprites/planes")
@@ -345,6 +370,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stderr, "flag error: %v\n", err)
 		return 2
+	}
+	gpuSkyFlagSet := flagProvided(args, "gpu-sky")
+	skyUpscaleFlagSet := flagProvided(args, "sky-upscale")
+	if *sourcePortMode {
+		if !gpuSkyFlagSet && (cfg == nil || cfg.GPUSky == nil) {
+			*gpuSky = true
+		}
+		if !skyUpscaleFlagSet && (cfg == nil || cfg.SkyUpscaleMode == nil) {
+			*skyUpscale = "sharp"
+		}
 	}
 	_ = configFlag
 	lineColorModeSet := configLineColorSet
@@ -642,6 +677,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DisableDoomLighting:        !*doomLighting,
 			KageShader:                 *kageShader,
 			GPUSky:                     *gpuSky,
+			SkyUpscaleMode:             *skyUpscale,
 			CRTEffect:                  *crtEffect,
 			DepthBufferView:            *depthBufferView,
 			DisableDepthOcclusion:      !*depthOcclusion,

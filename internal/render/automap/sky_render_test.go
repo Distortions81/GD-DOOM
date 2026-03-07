@@ -242,3 +242,21 @@ func TestSetSkyOutputSize_ResetsGPUSkyPipelineOnResize(t *testing.T) {
 		t.Fatal("sky lookup caches should be cleared on resize")
 	}
 }
+
+func TestNormalizeSkyUpscaleMode(t *testing.T) {
+	if got := normalizeSkyUpscaleMode("", true); got != "sharp" {
+		t.Fatalf("normalizeSkyUpscaleMode('', true)=%q want sharp", got)
+	}
+	if got := normalizeSkyUpscaleMode("sharp", true); got != "sharp" {
+		t.Fatalf("normalizeSkyUpscaleMode('sharp', true)=%q want sharp", got)
+	}
+	if got := normalizeSkyUpscaleMode("bicubic", true); got != "sharp" {
+		t.Fatalf("normalizeSkyUpscaleMode('bicubic', true)=%q want sharp", got)
+	}
+	if got := normalizeSkyUpscaleMode("bogus", true); got != "sharp" {
+		t.Fatalf("normalizeSkyUpscaleMode('bogus', true)=%q want sharp", got)
+	}
+	if got := normalizeSkyUpscaleMode("sharp", false); got != "nearest" {
+		t.Fatalf("normalizeSkyUpscaleMode('sharp', false)=%q want nearest", got)
+	}
+}

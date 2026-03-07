@@ -51,6 +51,7 @@ type fileConfig struct {
 	DoomLighting               *bool    `toml:"doom_lighting"`
 	KageShader                 *bool    `toml:"kage_shader"`
 	GPUSky                     *bool    `toml:"gpu_sky"`
+	SkyUpscaleMode             *string  `toml:"sky_upscale"`
 	CRTEffect                  *bool    `toml:"crt_effect"`
 	DepthBufferView            *bool    `toml:"depth_buffer_view"`
 	DepthOcclusion             *bool    `toml:"depth_occlusion"`

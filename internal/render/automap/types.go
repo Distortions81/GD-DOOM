@@ -51,6 +51,7 @@ type Options struct {
 	DisableDoomLighting        bool
 	KageShader                 bool
 	GPUSky                     bool
+	SkyUpscaleMode             string
 	CRTEffect                  bool
 	DepthBufferView            bool
 	DisableDepthOcclusion      bool
