@@ -198,7 +198,13 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope float64, accurate 
 	}
 	idx, dist, ok := g.pickHitscanMonsterTargetAtAngleWithSlopeDist(angle, rng, bulletTargetRadius, slope, true)
 	if !ok {
-		if wallDist, wallHit := g.hitscanWallImpactDistance(angle, rng, slope); wallHit {
+		if wallDist, lineIdx, wallHit := g.hitscanWallImpactDistance(angle, rng, slope); wallHit {
+			if lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
+				info := mapdata.LookupLineSpecial(g.lineSpecial[lineIdx])
+				if g.activateShootLineSpecial(lineIdx, info) && !info.Repeat {
+					g.lineSpecial[lineIdx] = 0
+				}
+			}
 			g.spawnHitscanPuffAtDistance(angle, slope, wallDist)
 		}
 		return false
@@ -367,9 +373,9 @@ func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng in
 	return bestIdx, bestDist, true
 }
 
-func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64) (float64, bool) {
+func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64) (float64, int, bool) {
 	if len(g.lines) == 0 {
-		return 0, false
+		return 0, -1, false
 	}
 	px := g.p.x
 	py := g.p.y
@@ -378,6 +384,7 @@ func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64)
 	y2 := py + int64(math.Sin(ang)*float64(rng))
 	shootZ := g.playerShootZ()
 	bestDist := math.Inf(1)
+	bestLine := -1
 	found := false
 	for _, ld := range g.lines {
 		frac, ok := segmentIntersectFrac(px, py, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
@@ -406,12 +413,13 @@ func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64)
 			continue
 		}
 		bestDist = dist
+		bestLine = ld.idx
 		found = true
 	}
 	if !found {
-		return 0, false
+		return 0, -1, false
 	}
-	return bestDist, true
+	return bestDist, bestLine, true
 }
 
 func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {

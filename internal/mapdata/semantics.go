@@ -46,6 +46,7 @@ type LineSpecialInfo struct {
 	Light    *LightInfo
 	Teleport *TeleportInfo
 	Ceiling  *CeilingInfo
+	Combo    ComboAction
 	Donut    bool
 }
 
@@ -58,14 +59,18 @@ type DoorInfo struct {
 type FloorAction string
 
 const (
-	FloorRaise          FloorAction = "raise"
-	FloorRaiseToNearest FloorAction = "raise_to_nearest"
-	FloorLower          FloorAction = "lower"
-	FloorLowerToLowest  FloorAction = "lower_to_lowest"
-	FloorRaiseCrush     FloorAction = "raise_crush"
-	FloorTurboLower     FloorAction = "turbo_lower"
-	FloorRaiseTurbo     FloorAction = "raise_turbo"
-	FloorRaise512       FloorAction = "raise_512"
+	FloorRaise            FloorAction = "raise"
+	FloorRaiseToNearest   FloorAction = "raise_to_nearest"
+	FloorLower            FloorAction = "lower"
+	FloorLowerToLowest    FloorAction = "lower_to_lowest"
+	FloorLowerAndChange   FloorAction = "lower_and_change"
+	FloorRaiseCrush       FloorAction = "raise_crush"
+	FloorRaise24          FloorAction = "raise_24"
+	FloorRaise24AndChange FloorAction = "raise_24_and_change"
+	FloorRaiseToTexture   FloorAction = "raise_to_texture"
+	FloorTurboLower       FloorAction = "turbo_lower"
+	FloorRaiseTurbo       FloorAction = "raise_turbo"
+	FloorRaise512         FloorAction = "raise_512"
 )
 
 type FloorInfo struct {
@@ -81,6 +86,8 @@ const (
 	PlatRaiseAndChange24        PlatAction = "raise_and_change_24"
 	PlatRaiseAndChange32        PlatAction = "raise_and_change_32"
 	PlatBlazeDownWaitUpStay     PlatAction = "blaze_down_wait_up_stay"
+	PlatPerpetualRaise          PlatAction = "perpetual_raise"
+	PlatStop                    PlatAction = "stop"
 )
 
 type PlatInfo struct {
@@ -123,14 +130,25 @@ type TeleportInfo struct {
 type CeilingAction string
 
 const (
-	CeilingLowerToFloor CeilingAction = "lower_to_floor"
-	CeilingCrushRaise   CeilingAction = "crush_and_raise"
+	CeilingLowerToFloor     CeilingAction = "lower_to_floor"
+	CeilingCrushRaise       CeilingAction = "crush_and_raise"
+	CeilingLowerAndCrush    CeilingAction = "lower_and_crush"
+	CeilingFastCrushRaise   CeilingAction = "fast_crush_and_raise"
+	CeilingRaiseToHighest   CeilingAction = "raise_to_highest"
+	CeilingSilentCrushRaise CeilingAction = "silent_crush_and_raise"
+	CeilingCrushStop        CeilingAction = "crush_stop"
 )
 
 type CeilingInfo struct {
 	Action  CeilingAction
 	UsesTag bool
 }
+
+type ComboAction string
+
+const (
+	ComboRaiseCeilingLowerFloor ComboAction = "raise_ceiling_lower_floor"
+)
 
 type KeyRing struct {
 	Blue   bool
@@ -219,20 +237,37 @@ var exitSpecials = map[uint16]LineSpecialInfo{
 var floorSpecials = map[uint16]LineSpecialInfo{
 	5:   {Special: 5, Name: "walk raise floor", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaise, UsesTag: true}},
 	18:  {Special: 18, Name: "switch raise floor to nearest", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseToNearest, UsesTag: true}},
+	19:  {Special: 19, Name: "walk lower floor", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorLower, UsesTag: true}},
 	23:  {Special: 23, Name: "switch lower floor to lowest", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorLowerToLowest, UsesTag: true}},
+	24:  {Special: 24, Name: "shoot raise floor", Trigger: TriggerShoot, Repeat: false, Floor: &FloorInfo{Action: FloorRaise, UsesTag: true}},
+	30:  {Special: 30, Name: "walk raise to texture", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseToTexture, UsesTag: true}},
 	45:  {Special: 45, Name: "button lower floor", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorLower, UsesTag: true}},
 	55:  {Special: 55, Name: "switch raise floor crush", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseCrush, UsesTag: true}},
+	56:  {Special: 56, Name: "walk raise floor crush", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseCrush, UsesTag: true}},
+	58:  {Special: 58, Name: "walk raise floor 24", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaise24, UsesTag: true}},
+	59:  {Special: 59, Name: "walk raise floor 24 and change", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaise24AndChange, UsesTag: true}},
+	60:  {Special: 60, Name: "button lower floor to lowest", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorLowerToLowest, UsesTag: true}},
 	64:  {Special: 64, Name: "button raise floor", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorRaise, UsesTag: true}},
 	65:  {Special: 65, Name: "button raise floor crush", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseCrush, UsesTag: true}},
 	69:  {Special: 69, Name: "button raise floor to nearest", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseToNearest, UsesTag: true}},
 	36:  {Special: 36, Name: "walk turbo lower floor", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorTurboLower, UsesTag: true}},
 	70:  {Special: 70, Name: "button turbo lower floor", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorTurboLower, UsesTag: true}},
 	71:  {Special: 71, Name: "switch turbo lower floor", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorTurboLower, UsesTag: true}},
+	37:  {Special: 37, Name: "walk lower and change", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorLowerAndChange, UsesTag: true}},
+	38:  {Special: 38, Name: "walk lower floor to lowest", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorLowerToLowest, UsesTag: true}},
+	83:  {Special: 83, Name: "walk lower floor", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorLower, UsesTag: true}},
 	82:  {Special: 82, Name: "walk lower floor to lowest", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorLowerToLowest, UsesTag: true}},
 	91:  {Special: 91, Name: "walk raise floor", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaise, UsesTag: true}},
+	92:  {Special: 92, Name: "walk raise floor 24", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaise24, UsesTag: true}},
+	93:  {Special: 93, Name: "walk raise floor 24 and change", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaise24AndChange, UsesTag: true}},
+	94:  {Special: 94, Name: "walk raise floor crush", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseCrush, UsesTag: true}},
+	96:  {Special: 96, Name: "walk raise to texture", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseToTexture, UsesTag: true}},
 	98:  {Special: 98, Name: "walk turbo lower floor", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorTurboLower, UsesTag: true}},
 	101: {Special: 101, Name: "switch raise floor", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorRaise, UsesTag: true}},
 	102: {Special: 102, Name: "switch lower floor", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorLower, UsesTag: true}},
+	119: {Special: 119, Name: "walk raise floor to nearest", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseToNearest, UsesTag: true}},
+	128: {Special: 128, Name: "walk raise floor to nearest", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseToNearest, UsesTag: true}},
+	130: {Special: 130, Name: "walk raise floor turbo", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseTurbo, UsesTag: true}},
 	131: {Special: 131, Name: "switch raise floor turbo", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseTurbo, UsesTag: true}},
 	132: {Special: 132, Name: "button raise floor turbo", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorRaiseTurbo, UsesTag: true}},
 	140: {Special: 140, Name: "switch raise floor 512", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorRaise512, UsesTag: true}},
@@ -244,11 +279,19 @@ var platSpecials = map[uint16]LineSpecialInfo{
 	20:  {Special: 20, Name: "switch plat raise to nearest and change", Trigger: TriggerUse, Repeat: false, Plat: &PlatInfo{Action: PlatRaiseToNearestAndChange, UsesTag: true}},
 	21:  {Special: 21, Name: "switch plat down wait up stay", Trigger: TriggerUse, Repeat: false, Plat: &PlatInfo{Action: PlatDownWaitUpStay, UsesTag: true}},
 	22:  {Special: 22, Name: "walk plat raise to nearest and change", Trigger: TriggerWalk, Repeat: false, Plat: &PlatInfo{Action: PlatRaiseToNearestAndChange, UsesTag: true}},
+	47:  {Special: 47, Name: "shoot plat raise to nearest and change", Trigger: TriggerShoot, Repeat: false, Plat: &PlatInfo{Action: PlatRaiseToNearestAndChange, UsesTag: true}},
+	10:  {Special: 10, Name: "walk plat down wait up stay", Trigger: TriggerWalk, Repeat: false, Plat: &PlatInfo{Action: PlatDownWaitUpStay, UsesTag: true}},
 	62:  {Special: 62, Name: "button plat down wait up stay", Trigger: TriggerUse, Repeat: true, Plat: &PlatInfo{Action: PlatDownWaitUpStay, UsesTag: true}},
 	66:  {Special: 66, Name: "button raise and change 24", Trigger: TriggerUse, Repeat: true, Plat: &PlatInfo{Action: PlatRaiseAndChange24, UsesTag: true}},
 	67:  {Special: 67, Name: "button raise and change 32", Trigger: TriggerUse, Repeat: true, Plat: &PlatInfo{Action: PlatRaiseAndChange32, UsesTag: true}},
 	68:  {Special: 68, Name: "button plat raise to nearest and change", Trigger: TriggerUse, Repeat: true, Plat: &PlatInfo{Action: PlatRaiseToNearestAndChange, UsesTag: true}},
+	53:  {Special: 53, Name: "walk perpetual raise", Trigger: TriggerWalk, Repeat: false, Plat: &PlatInfo{Action: PlatPerpetualRaise, UsesTag: true}},
+	54:  {Special: 54, Name: "walk plat stop", Trigger: TriggerWalk, Repeat: false, Plat: &PlatInfo{Action: PlatStop, UsesTag: true}},
+	87:  {Special: 87, Name: "walk perpetual raise", Trigger: TriggerWalk, Repeat: true, Plat: &PlatInfo{Action: PlatPerpetualRaise, UsesTag: true}},
+	89:  {Special: 89, Name: "walk plat stop", Trigger: TriggerWalk, Repeat: true, Plat: &PlatInfo{Action: PlatStop, UsesTag: true}},
 	88:  {Special: 88, Name: "walk plat down wait up stay", Trigger: TriggerWalk, Repeat: true, Plat: &PlatInfo{Action: PlatDownWaitUpStay, UsesTag: true}},
+	120: {Special: 120, Name: "walk blazing plat down wait up stay", Trigger: TriggerWalk, Repeat: true, Plat: &PlatInfo{Action: PlatBlazeDownWaitUpStay, UsesTag: true}},
+	121: {Special: 121, Name: "walk blazing plat down wait up stay", Trigger: TriggerWalk, Repeat: false, Plat: &PlatInfo{Action: PlatBlazeDownWaitUpStay, UsesTag: true}},
 	122: {Special: 122, Name: "switch blazing plat down wait up stay", Trigger: TriggerUse, Repeat: false, Plat: &PlatInfo{Action: PlatBlazeDownWaitUpStay, UsesTag: true}},
 	123: {Special: 123, Name: "button blazing plat down wait up stay", Trigger: TriggerUse, Repeat: true, Plat: &PlatInfo{Action: PlatBlazeDownWaitUpStay, UsesTag: true}},
 }
@@ -256,24 +299,47 @@ var platSpecials = map[uint16]LineSpecialInfo{
 var stairSpecials = map[uint16]LineSpecialInfo{
 	7:   {Special: 7, Name: "switch build stairs", Trigger: TriggerUse, Repeat: false, Stairs: &StairsInfo{Action: StairsBuild8, UsesTag: true}},
 	8:   {Special: 8, Name: "walk build stairs", Trigger: TriggerWalk, Repeat: false, Stairs: &StairsInfo{Action: StairsBuild8, UsesTag: true}},
+	100: {Special: 100, Name: "walk build stairs turbo", Trigger: TriggerWalk, Repeat: false, Stairs: &StairsInfo{Action: StairsTurbo16, UsesTag: true}},
 	127: {Special: 127, Name: "switch build stairs turbo", Trigger: TriggerUse, Repeat: false, Stairs: &StairsInfo{Action: StairsTurbo16, UsesTag: true}},
 }
 
 var lightSpecials = map[uint16]LineSpecialInfo{
+	12:  {Special: 12, Name: "walk lights brightest nearby", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightBrightestNeighbor, UsesTag: true}},
+	13:  {Special: 13, Name: "walk light full bright", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightFullBright, UsesTag: true}},
+	17:  {Special: 17, Name: "walk start light strobing", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightStartStrobing, UsesTag: true}},
 	35:  {Special: 35, Name: "walk lights very dark", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightVeryDark, UsesTag: true}},
+	79:  {Special: 79, Name: "walk lights very dark", Trigger: TriggerWalk, Repeat: true, Light: &LightInfo{Action: LightVeryDark, UsesTag: true}},
+	80:  {Special: 80, Name: "walk lights brightest nearby", Trigger: TriggerWalk, Repeat: true, Light: &LightInfo{Action: LightBrightestNeighbor, UsesTag: true}},
+	81:  {Special: 81, Name: "walk light full bright", Trigger: TriggerWalk, Repeat: true, Light: &LightInfo{Action: LightFullBright, UsesTag: true}},
 	104: {Special: 104, Name: "walk turn tag lights off", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightTurnTagOff, UsesTag: true}},
 	138: {Special: 138, Name: "button light turn on brightest nearby", Trigger: TriggerUse, Repeat: true, Light: &LightInfo{Action: LightBrightestNeighbor, UsesTag: true}},
 	139: {Special: 139, Name: "button light turn off", Trigger: TriggerUse, Repeat: true, Light: &LightInfo{Action: LightVeryDark, UsesTag: true}},
 }
 
 var teleportSpecials = map[uint16]LineSpecialInfo{
-	97: {Special: 97, Name: "walk teleport", Trigger: TriggerWalk, Repeat: true, Teleport: &TeleportInfo{UsesTag: true}},
+	39:  {Special: 39, Name: "walk teleport", Trigger: TriggerWalk, Repeat: false, Teleport: &TeleportInfo{UsesTag: true}},
+	97:  {Special: 97, Name: "walk teleport", Trigger: TriggerWalk, Repeat: true, Teleport: &TeleportInfo{UsesTag: true}},
+	125: {Special: 125, Name: "walk monster-only teleport", Trigger: TriggerWalk, Repeat: false, Teleport: &TeleportInfo{UsesTag: true, MonsterOnly: true}},
+	126: {Special: 126, Name: "walk monster-only teleport", Trigger: TriggerWalk, Repeat: true, Teleport: &TeleportInfo{UsesTag: true, MonsterOnly: true}},
 }
 
 var ceilingSpecials = map[uint16]LineSpecialInfo{
-	41: {Special: 41, Name: "switch lower ceiling to floor", Trigger: TriggerUse, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingLowerToFloor, UsesTag: true}},
-	43: {Special: 43, Name: "button lower ceiling to floor", Trigger: TriggerUse, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingLowerToFloor, UsesTag: true}},
-	49: {Special: 49, Name: "switch ceiling crush and raise", Trigger: TriggerUse, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingCrushRaise, UsesTag: true}},
+	6:   {Special: 6, Name: "walk fast ceiling crush and raise", Trigger: TriggerWalk, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingFastCrushRaise, UsesTag: true}},
+	25:  {Special: 25, Name: "walk ceiling crush and raise", Trigger: TriggerWalk, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingCrushRaise, UsesTag: true}},
+	41:  {Special: 41, Name: "switch lower ceiling to floor", Trigger: TriggerUse, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingLowerToFloor, UsesTag: true}},
+	43:  {Special: 43, Name: "button lower ceiling to floor", Trigger: TriggerUse, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingLowerToFloor, UsesTag: true}},
+	44:  {Special: 44, Name: "walk lower and crush", Trigger: TriggerWalk, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingLowerAndCrush, UsesTag: true}},
+	49:  {Special: 49, Name: "switch ceiling crush and raise", Trigger: TriggerUse, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingCrushRaise, UsesTag: true}},
+	57:  {Special: 57, Name: "walk crush stop", Trigger: TriggerWalk, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingCrushStop, UsesTag: true}},
+	72:  {Special: 72, Name: "walk lower and crush", Trigger: TriggerWalk, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingLowerAndCrush, UsesTag: true}},
+	73:  {Special: 73, Name: "walk ceiling crush and raise", Trigger: TriggerWalk, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingCrushRaise, UsesTag: true}},
+	74:  {Special: 74, Name: "walk crush stop", Trigger: TriggerWalk, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingCrushStop, UsesTag: true}},
+	77:  {Special: 77, Name: "walk fast ceiling crush and raise", Trigger: TriggerWalk, Repeat: true, Ceiling: &CeilingInfo{Action: CeilingFastCrushRaise, UsesTag: true}},
+	141: {Special: 141, Name: "walk silent ceiling crush and raise", Trigger: TriggerWalk, Repeat: false, Ceiling: &CeilingInfo{Action: CeilingSilentCrushRaise, UsesTag: true}},
+}
+
+var comboSpecials = map[uint16]LineSpecialInfo{
+	40: {Special: 40, Name: "walk raise ceiling lower floor", Trigger: TriggerWalk, Repeat: false, Combo: ComboRaiseCeilingLowerFloor},
 }
 
 var donutSpecials = map[uint16]LineSpecialInfo{
@@ -303,6 +369,9 @@ func LookupLineSpecial(special uint16) LineSpecialInfo {
 		return info
 	}
 	if info, ok := ceilingSpecials[special]; ok {
+		return info
+	}
+	if info, ok := comboSpecials[special]; ok {
 		return info
 	}
 	if info, ok := donutSpecials[special]; ok {
