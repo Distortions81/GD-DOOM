@@ -172,6 +172,21 @@ func TestSourcePortHonorsInitialWalkRenderer(t *testing.T) {
 	}
 }
 
+func TestMapRotationActive_DisabledWhenFollowIsOff(t *testing.T) {
+	g := &game{
+		mode:       viewMap,
+		rotateView: true,
+		followMode: true,
+	}
+	if !g.mapRotationActive() {
+		t.Fatal("follow-on map rotation should be active")
+	}
+	g.followMode = false
+	if g.mapRotationActive() {
+		t.Fatal("follow-off map rotation should be disabled")
+	}
+}
+
 func TestButtonHighlightEligible(t *testing.T) {
 	if buttonHighlightEligible(0) {
 		t.Fatal("special 0 should not highlight")

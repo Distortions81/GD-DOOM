@@ -1619,7 +1619,7 @@ func (g *game) updateMapMode() {
 		return
 	}
 
-	panStep := 14.0 / g.zoom
+	panStep := 32.0 / g.zoom
 	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
 		g.camY += panStep
 	}
@@ -1700,6 +1700,16 @@ func (g *game) updateWalkMode() {
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
+}
+
+func (g *game) mapRotationActive() bool {
+	if g == nil || !g.rotateView {
+		return false
+	}
+	if g.mode == viewMap && !g.followMode {
+		return false
+	}
+	return true
 }
 
 func (g *game) currentRunSpeed() int {
@@ -2440,7 +2450,7 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		}
 		size := thingGlyphSize(g.zoom)
 		angle := worldThingAngle(th.Angle)
-		if g.rotateView {
+		if g.mapRotationActive() {
 			angle = relativeThingAngle(th.Angle, g.renderAngle)
 		}
 		drawThingGlyph(screen, styleForThing(th), sx, sy, angle, size, aa)
@@ -2546,7 +2556,7 @@ func (g *game) drawPlayer(screen *ebiten.Image) {
 	px := g.renderPX
 	py := g.renderPY
 	sx, sy := g.worldToScreen(px, py)
-	if g.rotateView {
+	if g.mapRotationActive() {
 		// Heading-follow: keep icon fixed-up in screen-space.
 		g.drawPlayerArrowScreen(screen, sx, sy, math.Pi/2)
 		return
@@ -10137,7 +10147,7 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 func (g *game) worldToScreen(x, y float64) (float64, float64) {
 	dx := x - g.renderCamX
 	dy := y - g.renderCamY
-	if g.rotateView {
+	if g.mapRotationActive() {
 		rot := (math.Pi / 2) - angleToRadians(g.renderAngle)
 		cr := math.Cos(rot)
 		sr := math.Sin(rot)
@@ -10154,7 +10164,7 @@ func (g *game) worldToScreen(x, y float64) (float64, float64) {
 func (g *game) screenToWorld(sx, sy float64) (float64, float64) {
 	dx := (sx - float64(g.viewW)/2) / g.zoom
 	dy := (float64(g.viewH)/2 - sy) / g.zoom
-	if g.rotateView {
+	if g.mapRotationActive() {
 		rot := (math.Pi / 2) - angleToRadians(g.renderAngle)
 		cr := math.Cos(rot)
 		sr := math.Sin(rot)
