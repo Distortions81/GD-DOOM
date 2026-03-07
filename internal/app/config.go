@@ -53,8 +53,6 @@ type fileConfig struct {
 	GPUSky                     *bool    `toml:"gpu_sky"`
 	SkyUpscaleMode             *string  `toml:"sky_upscale"`
 	CRTEffect                  *bool    `toml:"crt_effect"`
-	DepthBufferView            *bool    `toml:"depth_buffer_view"`
-	DepthOcclusion             *bool    `toml:"depth_occlusion"`
 	WallOcclusion              *bool    `toml:"wall_occlusion"`
 	WallSpanReject             *bool    `toml:"wall_span_reject"`
 	WallSpanClip               *bool    `toml:"wall_span_clip"`

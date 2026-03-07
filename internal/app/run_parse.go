@@ -82,8 +82,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultGPUSky := false
 	defaultSkyUpscaleMode := "nearest"
 	defaultCRTEffect := false
-	defaultDepthBufferView := false
-	defaultDepthOcclusion := false
 	defaultWallOcclusion := false
 	defaultWallSpanReject := true
 	defaultWallSpanClip := false
@@ -231,12 +229,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.CRTEffect != nil {
 			defaultCRTEffect = *cfg.CRTEffect
 		}
-		if cfg.DepthBufferView != nil {
-			defaultDepthBufferView = *cfg.DepthBufferView
-		}
-		if cfg.DepthOcclusion != nil {
-			defaultDepthOcclusion = *cfg.DepthOcclusion
-		}
 		if cfg.WallOcclusion != nil {
 			defaultWallOcclusion = *cfg.WallOcclusion
 		}
@@ -341,14 +333,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	gpuSky := fs.Bool("gpu-sky", defaultGPUSky, "enable experimental GPU sky path in sourceport mode (default off)")
 	skyUpscale := fs.String("sky-upscale", defaultSkyUpscaleMode, "GPU sky upscale mode (nearest|sharp)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
-	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
-	depthOcclusion := fs.Bool("depth-occlusion", defaultDepthOcclusion, "enable software depth occlusion buffer for sprites/planes")
 	wallOcclusion := fs.Bool("wall-occlusion", defaultWallOcclusion, "enable coarse wall-span occlusion for wall traversal")
 	wallSpanReject := fs.Bool("wall-span-reject", defaultWallSpanReject, "enable early solid-span wall rejection")
 	wallSpanClip := fs.Bool("wall-span-clip", defaultWallSpanClip, "clip solid wall x-ranges against coarse wall spans")
 	wallSliceOcclusion := fs.Bool("wall-slice-occlusion", defaultWallSliceOcclusion, "enable wall-slice triangle/bbox occlusion checks")
 	billboardClipping := fs.Bool("billboard-clipping", defaultBillboardClipping, "enable sprite/thing/projectile/puff clipping and occlusion")
-	noCullClipping := fs.Bool("no-cull-clipping", false, "disable wall occlusion, depth occlusion, and billboard clipping together")
+	noCullClipping := fs.Bool("no-cull-clipping", false, "disable wall occlusion and billboard clipping together")
 	overdrawDebug := fs.Bool("overdraw-debug", defaultOverdrawDebug, "debug: paint repeated 3D software-buffer writes red")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
@@ -636,7 +626,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			resolvedLineColorMode = "doom"
 		}
 		if *noCullClipping {
-			*depthOcclusion = false
 			*wallOcclusion = false
 			*wallSpanReject = false
 			*wallSpanClip = false
@@ -679,8 +668,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			GPUSky:                     *gpuSky,
 			SkyUpscaleMode:             *skyUpscale,
 			CRTEffect:                  *crtEffect,
-			DepthBufferView:            *depthBufferView,
-			DisableDepthOcclusion:      !*depthOcclusion,
 			DisableWallOcclusion:       !*wallOcclusion,
 			DisableWallSpanReject:      !*wallSpanReject,
 			DisableWallSpanClip:        !*wallSpanClip,

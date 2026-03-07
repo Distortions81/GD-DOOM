@@ -117,44 +117,34 @@ func (g *game) drawDoomUnifiedBSP3D(screen *ebiten.Image) {
 		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, ctx.planeOrder)
 	}
 	g.drawMaskedMidSegs(focal)
-	if !g.depthOcclusionEnabled() {
-		g.buildMaskedMidClipColumns(focal)
-		g.billboardQueueCollect = true
-		g.billboardQueueScratch = g.billboardQueueScratch[:0]
-		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
-		g.billboardQueueCollect = false
-		sort.Slice(g.billboardQueueScratch, func(i, j int) bool {
-			return g.billboardQueueScratch[i].dist > g.billboardQueueScratch[j].dist
-		})
-		for _, qi := range g.billboardQueueScratch {
-			g.billboardReplayActive = true
-			g.billboardReplayKind = qi.kind
-			g.billboardReplayIndex = qi.idx
-			switch qi.kind {
-			case billboardQueueProjectiles:
-				g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-			case billboardQueueMonsters:
-				g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-			case billboardQueueWorldThings:
-				g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-			case billboardQueuePuffs:
-				g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
-			}
+	g.buildMaskedMidClipColumns(focal)
+	g.billboardQueueCollect = true
+	g.billboardQueueScratch = g.billboardQueueScratch[:0]
+	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+	g.billboardQueueCollect = false
+	sort.Slice(g.billboardQueueScratch, func(i, j int) bool {
+		return g.billboardQueueScratch[i].dist > g.billboardQueueScratch[j].dist
+	})
+	for _, qi := range g.billboardQueueScratch {
+		g.billboardReplayActive = true
+		g.billboardReplayKind = qi.kind
+		g.billboardReplayIndex = qi.idx
+		switch qi.kind {
+		case billboardQueueProjectiles:
+			g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+		case billboardQueueMonsters:
+			g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+		case billboardQueueWorldThings:
+			g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+		case billboardQueuePuffs:
+			g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 		}
-		g.billboardReplayActive = false
-		g.billboardQueueScratch = g.billboardQueueScratch[:0]
-	} else {
-		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 	}
-	if g.opts.DepthBufferView && g.depthOcclusionEnabled() {
-		g.drawDepthBufferView()
-	}
+	g.billboardReplayActive = false
+	g.billboardQueueScratch = g.billboardQueueScratch[:0]
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
 	}

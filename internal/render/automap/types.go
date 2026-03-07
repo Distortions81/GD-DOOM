@@ -53,8 +53,6 @@ type Options struct {
 	GPUSky                     bool
 	SkyUpscaleMode             string
 	CRTEffect                  bool
-	DepthBufferView            bool
-	DisableDepthOcclusion      bool
 	DisableWallOcclusion       bool
 	DisableWallSpanReject      bool
 	DisableWallSpanClip        bool

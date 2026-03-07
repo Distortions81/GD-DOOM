@@ -120,6 +120,9 @@ type projectedProjectileItem struct {
 	clr        color.RGBA
 	lightMul   uint32
 	fullBright bool
+	spriteKey  string
+	opaque     spriteOpaqueBounds
+	hasOpaque  bool
 	spriteTex  WallTexture
 	hasSprite  bool
 }
@@ -137,6 +140,9 @@ type projectedMonsterItem struct {
 	flip       bool
 	lightMul   uint32
 	fullBright bool
+	spriteKey  string
+	opaque     spriteOpaqueBounds
+	hasOpaque  bool
 	shadow     bool
 }
 
@@ -161,6 +167,9 @@ type projectedThingItem struct {
 	tex        WallTexture
 	lightMul   uint32
 	fullBright bool
+	spriteKey  string
+	opaque     spriteOpaqueBounds
+	hasOpaque  bool
 }
 
 type projectedPuffItem struct {
@@ -174,6 +183,13 @@ type projectedPuffItem struct {
 	kind       uint8
 	spriteTex  WallTexture
 	hasSprite  bool
+}
+
+type spriteOpaqueBounds struct {
+	minX int
+	maxX int
+	minY int
+	maxY int
 }
 
 type billboardQueueKind uint8
@@ -360,7 +376,6 @@ type game struct {
 	frameUpload   time.Duration
 	perfInDraw    bool
 	interpAutoOff bool
-	depthOccl     bool
 	simTickScale  float64
 	simTickAccum  float64
 	edgeInputPass bool
@@ -473,6 +488,7 @@ type game struct {
 	flatAnimBlendRGBA          map[string][]byte
 	wallAnimBlendTex           map[string]WallTexture
 	spriteAnimBlendTex         map[string]WallTexture
+	spriteOpaqueBoundsCache    map[string]spriteOpaqueBounds
 	thingSpriteExpandCache     map[string][]string
 	planeFlatCache32Scratch    map[string][]uint32
 	planeFBPackedScratch       []uint32
@@ -973,7 +989,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		mapTexDiag:       opts.SourcePortMode && len(opts.FlatBank) > 0,
 		alwaysRun:        opts.AlwaysRun,
 		autoWeaponSwitch: opts.AutoWeaponSwitch,
-		depthOccl:        !opts.DisableDepthOcclusion,
 		simTickScale:     1.0,
 	}
 	g.pseudo3D = g.walkRender == walkRendererPseudo
@@ -2016,11 +2031,8 @@ func (g *game) Draw(screen *ebiten.Image) {
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
 				ebitenutil.DebugPrintAt(screen, debugPos, 12, 76)
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("ss=%d", aimSS), 12, 92)
-				if g.opts.DepthBufferView && g.depthOcclusionEnabled() {
-					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 108)
-				}
 				if g.opts.OverdrawDebug {
-					ebitenutil.DebugPrintAt(screen, "overdraw-debug=ON", 12, 124)
+					ebitenutil.DebugPrintAt(screen, "overdraw-debug=ON", 12, 108)
 				}
 				if g.spriteClipDiag {
 					mode := "ON"
@@ -2030,7 +2042,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 					if g.spriteClipDiagGreenOnly {
 						mode = "GREEN-ONLY"
 					}
-					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 140)
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 124)
 				}
 			}
 		} else {
@@ -2049,11 +2061,8 @@ func (g *game) Draw(screen *ebiten.Image) {
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
 				ebitenutil.DebugPrintAt(screen, debugPos, 12, 76)
 				ebitenutil.DebugPrintAt(screen, fmt.Sprintf("ss=%d", aimSS), 12, 92)
-				if g.opts.DepthBufferView {
-					ebitenutil.DebugPrintAt(screen, "depth-buffer-view=ON", 12, 108)
-				}
 				if g.opts.OverdrawDebug {
-					ebitenutil.DebugPrintAt(screen, "overdraw-debug=ON", 12, 124)
+					ebitenutil.DebugPrintAt(screen, "overdraw-debug=ON", 12, 108)
 				}
 				if g.spriteClipDiag {
 					mode := "ON"
@@ -2063,7 +2072,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 					if g.spriteClipDiagGreenOnly {
 						mode = "GREEN-ONLY"
 					}
-					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 140)
+					ebitenutil.DebugPrintAt(screen, fmt.Sprintf("sprite-clip-diag=%s (Y cycle)", mode), 12, 124)
 				}
 			}
 		}
@@ -3032,9 +3041,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
 		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
-	}
-	if g.opts.DepthBufferView {
-		g.drawDepthBufferView()
 	}
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
@@ -4122,11 +4128,7 @@ func (g *game) appendSpritePortalColumnGap(x, openY0, openY1 int, depthQ uint16)
 }
 
 func (g *game) depthOcclusionEnabled() bool {
-	if g == nil || !g.depthOccl {
-		return false
-	}
-	// Unified BSP experiment intentionally runs without the depth buffer.
-	return g.walkRender != walkRendererUnifiedBSP
+	return false
 }
 
 func (g *game) wallOcclusionEnabled() bool {
@@ -5832,6 +5834,68 @@ func spritePixels32(tex WallTexture) ([]uint32, bool) {
 		return nil, false
 	}
 	return unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex.RGBA))), len(tex.RGBA)/4), true
+}
+
+func trimScreenRangeToOpaqueLUT(x0, x1 int, lut []int, minTex, maxTex int) (int, int, []int) {
+	for x0 <= x1 && len(lut) > 0 {
+		tx := lut[0]
+		if tx >= minTex && tx <= maxTex {
+			break
+		}
+		x0++
+		lut = lut[1:]
+	}
+	for x0 <= x1 && len(lut) > 0 {
+		tx := lut[len(lut)-1]
+		if tx >= minTex && tx <= maxTex {
+			break
+		}
+		x1--
+		lut = lut[:len(lut)-1]
+	}
+	return x0, x1, lut
+}
+
+func (g *game) spriteOpaqueBoundsForKey(key string, tex WallTexture) (spriteOpaqueBounds, bool) {
+	if key == "" {
+		return spriteOpaqueBounds{}, false
+	}
+	if g.spriteOpaqueBoundsCache == nil {
+		g.spriteOpaqueBoundsCache = make(map[string]spriteOpaqueBounds, 128)
+	}
+	if bounds, ok := g.spriteOpaqueBoundsCache[key]; ok {
+		return bounds, true
+	}
+	pix32, ok := spritePixels32(tex)
+	if !ok {
+		return spriteOpaqueBounds{}, false
+	}
+	bounds := spriteOpaqueBounds{minX: tex.Width, minY: tex.Height, maxX: -1, maxY: -1}
+	for y := 0; y < tex.Height; y++ {
+		row := y * tex.Width
+		for x := 0; x < tex.Width; x++ {
+			if ((pix32[row+x] >> pixelAShift) & 0xFF) == 0 {
+				continue
+			}
+			if x < bounds.minX {
+				bounds.minX = x
+			}
+			if x > bounds.maxX {
+				bounds.maxX = x
+			}
+			if y < bounds.minY {
+				bounds.minY = y
+			}
+			if y > bounds.maxY {
+				bounds.maxY = y
+			}
+		}
+	}
+	if bounds.maxX < bounds.minX || bounds.maxY < bounds.minY {
+		return spriteOpaqueBounds{}, false
+	}
+	g.spriteOpaqueBoundsCache[key] = bounds
+	return bounds, true
 }
 
 func (g *game) ensureSpriteTXScratch(n int) []int {
@@ -7771,7 +7835,8 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			sx := float64(viewW)/2 - (s/f)*focal
 			yb := float64(viewH)/2 - ((float64(p.z)/fracUnit-eyeZ)/f)*focal
 			cr := projectileColor(p.kind)
-			spriteTex, hasSprite := g.projectileSpriteTexture(p.kind, g.worldTic)
+			spriteKey := g.projectileSpriteName(p.kind, g.worldTic)
+			spriteTex, hasSprite := g.monsterSpriteTexture(spriteKey)
 			h := 0.0
 			w := 0.0
 			if hasSprite && spriteTex.Height > 0 && spriteTex.Width > 0 {
@@ -7797,6 +7862,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				lightMul = g.sectorLightMulCached(sec)
 			}
+			opaque, hasOpaque := g.spriteOpaqueBoundsForKey(spriteKey, spriteTex)
 			items = append(items, projectedProjectileItem{
 				dist:       f,
 				sx:         sx,
@@ -7807,6 +7873,9 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				clr:        color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
 				lightMul:   lightMul,
 				fullBright: true,
+				spriteKey:  spriteKey,
+				opaque:     opaque,
+				hasOpaque:  hasOpaque,
 				spriteTex:  spriteTex,
 				hasSprite:  hasSprite,
 			})
@@ -7835,7 +7904,8 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			sx := float64(viewW)/2 - (s/f)*focal
 			yb := float64(viewH)/2 - ((float64(fx.z)/fracUnit-eyeZ)/f)*focal
 			cr := projectileColor(fx.kind)
-			spriteTex, hasSprite := g.projectileImpactSpriteTexture(fx.kind, fx.totalTics-fx.tics)
+			spriteKey := g.projectileImpactSpriteName(fx.kind, fx.totalTics-fx.tics)
+			spriteTex, hasSprite := g.monsterSpriteTexture(spriteKey)
 			h := 0.0
 			w := 0.0
 			if hasSprite && spriteTex.Height > 0 && spriteTex.Width > 0 {
@@ -7855,6 +7925,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				lightMul = g.sectorLightMulCached(sec)
 			}
+			opaque, hasOpaque := g.spriteOpaqueBoundsForKey(spriteKey, spriteTex)
 			items = append(items, projectedProjectileItem{
 				dist:       f,
 				sx:         sx,
@@ -7865,6 +7936,9 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				clr:        color.RGBA{R: cr[0], G: cr[1], B: 24, A: 255},
 				lightMul:   lightMul,
 				fullBright: true,
+				spriteKey:  spriteKey,
+				opaque:     opaque,
+				hasOpaque:  hasOpaque,
 				spriteTex:  spriteTex,
 				hasSprite:  hasSprite,
 			})
@@ -7963,10 +8037,56 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 					}
 					tyLUT[y-y0] = ty
 				}
+				if it.hasOpaque {
+					x0, x1, txLUT = trimScreenRangeToOpaqueLUT(x0, x1, txLUT, it.opaque.minX, it.opaque.maxX)
+					y0, y1, tyLUT = trimScreenRangeToOpaqueLUT(y0, y1, tyLUT, it.opaque.minY, it.opaque.maxY)
+					if x0 > x1 || y0 > y1 {
+						continue
+					}
+				}
 				for y := y0; y <= y1; y++ {
 					ty := tyLUT[y-y0]
 					row := y * viewW
 					if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+						continue
+					}
+					if !useDepth {
+						rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
+						g.solidClipScratch = rowSpans
+						if len(rowSpans) == 0 {
+							continue
+						}
+						for _, sp := range rowSpans {
+							for x := sp.l; x <= sp.r; {
+								if x+1 <= sp.r {
+									i0 := row + x
+									i1 := i0 + 1
+									p0 := src32[ty*tw+txLUT[x-x0]]
+									p1 := src32[ty*tw+txLUT[x+1-x0]]
+									a0 := ((p0 >> pixelAShift) & 0xFF) != 0
+									a1 := ((p1 >> pixelAShift) & 0xFF) != 0
+									if a0 && a1 {
+										g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
+										x += 2
+										continue
+									}
+									if a0 {
+										g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+									}
+									if a1 {
+										g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+									}
+									x += 2
+									continue
+								}
+								i := row + x
+								p := src32[ty*tw+txLUT[x-x0]]
+								if ((p >> pixelAShift) & 0xFF) != 0 {
+									g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
+								}
+								x++
+							}
+						}
 						continue
 					}
 					for x := x0; x <= x1; {
@@ -8613,13 +8733,17 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			if sx+xPad < 0 || sx-xPad > float64(viewW) {
 				continue
 			}
-			clipTop := 0
-			clipBottom := viewH - 1
+			clipRadius := projectedScreenWidthToWorldRadiusFixed(w, f, focal)
+			clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focal)
+			if !clipOK {
+				continue
+			}
 			sec := g.thingSectorCached(i, th)
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				lightMul = g.sectorLightMulCached(sec)
 			}
+			opaque, hasOpaque := g.spriteOpaqueBoundsForKey(sprite, tex)
 			items = append(items, projectedMonsterItem{
 				dist:       f,
 				sx:         sx,
@@ -8632,6 +8756,9 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				flip:       flip,
 				lightMul:   lightMul,
 				fullBright: monsterSpriteFullBright(sprite),
+				spriteKey:  sprite,
+				opaque:     opaque,
+				hasOpaque:  hasOpaque,
 				shadow:     monsterUsesShadow(th.Type),
 			})
 		}
@@ -8737,6 +8864,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			}
 			tyLUT[y-y0] = ty
 		}
+		if it.hasOpaque {
+			x0, x1, txLUT = trimScreenRangeToOpaqueLUT(x0, x1, txLUT, it.opaque.minX, it.opaque.maxX)
+			y0, y1, tyLUT = trimScreenRangeToOpaqueLUT(y0, y1, tyLUT, it.opaque.minY, it.opaque.maxY)
+			if x0 > x1 || y0 > y1 {
+				continue
+			}
+		}
 		if it.shadow && g.opts.SourcePortMode {
 			g.drawShadowMonsterSourcePort(
 				it,
@@ -8758,24 +8892,19 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			continue
 		}
 		if it.shadow {
-			for x := x0; x <= x1; x++ {
-				if !xInSolidSpans(x, it.clipSpans) {
-					continue
-				}
-				tx := txLUT[x-x0]
-				for y := y0; y <= y1; y++ {
-					row := y * viewW
-					i := row + x
-					if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
-						continue
+			for y := y0; y <= y1; y++ {
+				row := y * viewW
+				rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
+				g.solidClipScratch = rowSpans
+				for _, sp := range rowSpans {
+					for x := sp.l; x <= sp.r; x++ {
+						i := row + x
+						p := src32[tyLUT[y-y0]*tw+txLUT[x-x0]]
+						if ((p >> pixelAShift) & 0xFF) == 0 {
+							continue
+						}
+						g.writeFuzzPixel(x, y, i)
 					}
-					ty := tyLUT[y-y0]
-					p := src32[ty*tw+tx]
-					if ((p >> pixelAShift) & 0xFF) == 0 {
-						continue
-					}
-					g.writeFuzzPixel(x, y, i)
-					g.setDepthPixelEncoded(i, depthPacked)
 				}
 			}
 			continue
@@ -8784,6 +8913,45 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			ty := tyLUT[y-y0]
 			row := y * viewW
 			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+				continue
+			}
+			if !useDepth {
+				rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
+				g.solidClipScratch = rowSpans
+				if len(rowSpans) == 0 {
+					continue
+				}
+				for _, sp := range rowSpans {
+					for x := sp.l; x <= sp.r; {
+						if x+1 <= sp.r {
+							i0 := row + x
+							i1 := i0 + 1
+							p0 := src32[ty*tw+txLUT[x-x0]]
+							p1 := src32[ty*tw+txLUT[x+1-x0]]
+							a0 := ((p0 >> pixelAShift) & 0xFF) != 0
+							a1 := ((p1 >> pixelAShift) & 0xFF) != 0
+							if a0 && a1 {
+								g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
+								x += 2
+								continue
+							}
+							if a0 {
+								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							}
+							if a1 {
+								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							}
+							x += 2
+							continue
+						}
+						i := row + x
+						p := src32[ty*tw+txLUT[x-x0]]
+						if ((p >> pixelAShift) & 0xFF) != 0 {
+							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
+						}
+						x++
+					}
+				}
 				continue
 			}
 			for x := x0; x <= x1; {
@@ -9068,12 +9236,16 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			if sx+xPad < 0 || sx-xPad > float64(viewW) {
 				continue
 			}
-			clipTop := 0
-			clipBottom := viewH - 1
+			clipRadius := projectedScreenWidthToWorldRadiusFixed(w, f, focal)
+			clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focal)
+			if !clipOK {
+				continue
+			}
 			lightMul := uint32(256)
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				lightMul = g.sectorLightMulCached(sec)
 			}
+			opaque, hasOpaque := g.spriteOpaqueBoundsForKey(sprite, tex)
 			items = append(items, projectedThingItem{
 				dist:       f,
 				sx:         sx,
@@ -9084,6 +9256,9 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				tex:        tex,
 				lightMul:   lightMul,
 				fullBright: worldThingSpriteFullBright(sprite),
+				spriteKey:  sprite,
+				opaque:     opaque,
+				hasOpaque:  hasOpaque,
 			})
 		}
 	}
@@ -9184,10 +9359,56 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			}
 			tyLUT[y-y0] = ty
 		}
+		if it.hasOpaque {
+			x0, x1, txLUT = trimScreenRangeToOpaqueLUT(x0, x1, txLUT, it.opaque.minX, it.opaque.maxX)
+			y0, y1, tyLUT = trimScreenRangeToOpaqueLUT(y0, y1, tyLUT, it.opaque.minY, it.opaque.maxY)
+			if x0 > x1 || y0 > y1 {
+				continue
+			}
+		}
 		for y := y0; y <= y1; y++ {
 			ty := tyLUT[y-y0]
 			row := y * viewW
 			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+				continue
+			}
+			if !useDepth {
+				rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
+				g.solidClipScratch = rowSpans
+				if len(rowSpans) == 0 {
+					continue
+				}
+				for _, sp := range rowSpans {
+					for x := sp.l; x <= sp.r; {
+						if x+1 <= sp.r {
+							i0 := row + x
+							i1 := i0 + 1
+							p0 := src32[ty*tw+txLUT[x-x0]]
+							p1 := src32[ty*tw+txLUT[x+1-x0]]
+							a0 := ((p0 >> pixelAShift) & 0xFF) != 0
+							a1 := ((p1 >> pixelAShift) & 0xFF) != 0
+							if a0 && a1 {
+								g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
+								x += 2
+								continue
+							}
+							if a0 {
+								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							}
+							if a1 {
+								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							}
+							x += 2
+							continue
+						}
+						i := row + x
+						p := src32[ty*tw+txLUT[x-x0]]
+						if ((p >> pixelAShift) & 0xFF) != 0 {
+							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
+						}
+						x++
+					}
+				}
 				continue
 			}
 			for x := x0; x <= x1; {
@@ -10647,25 +10868,6 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 		if len(g.maskedClipCols[i]) != 0 {
 			g.maskedClipCols[i] = g.maskedClipCols[i][:0]
 		}
-	}
-	needDepth := w * h
-	if g.depthOcclusionEnabled() {
-		if len(g.depthPix3D) != needDepth {
-			g.depthPix3D = make([]uint32, needDepth)
-		}
-		if len(g.depthPlanePix3D) != needDepth {
-			g.depthPlanePix3D = make([]uint32, needDepth)
-		}
-		g.depthFrameStamp++
-		if g.depthFrameStamp == 0 {
-			clear(g.depthPix3D)
-			clear(g.depthPlanePix3D)
-			g.depthFrameStamp = 1
-		}
-	} else {
-		g.depthPix3D = g.depthPix3D[:0]
-		g.depthPlanePix3D = g.depthPlanePix3D[:0]
-		g.depthFrameStamp = 1
 	}
 	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
 }
@@ -16997,6 +17199,89 @@ func xInSolidSpans(x int, spans []solidSpan) bool {
 		}
 	}
 	return false
+}
+
+func appendClippedSolidSpan(out []solidSpan, l, r, minX, maxX int) []solidSpan {
+	if l < minX {
+		l = minX
+	}
+	if r > maxX {
+		r = maxX
+	}
+	if l > r {
+		return out
+	}
+	return append(out, solidSpan{l: l, r: r})
+}
+
+func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpans, out []solidSpan) []solidSpan {
+	out = out[:0]
+	if x1 < x0 || g == nil || y < 0 || y >= g.viewH {
+		return out
+	}
+	if !g.billboardClippingEnabled() {
+		if len(clipSpans) == 0 {
+			return append(out, solidSpan{l: x0, r: x1})
+		}
+		for _, sp := range clipSpans {
+			out = appendClippedSolidSpan(out, sp.l, sp.r, x0, x1)
+		}
+		return out
+	}
+
+	appendVisible := func(l, r int) {
+		if l > r {
+			return
+		}
+		runStart := -1
+		for x := l; x <= r; x++ {
+			occluded := false
+			if x < len(g.wallDepthQCol) {
+				wq := g.wallDepthQCol[x]
+				if wq != 0xFFFF && depthQ > wq {
+					if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
+						occluded = true
+					} else if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) {
+						top := g.wallDepthTopCol[x]
+						bottom := g.wallDepthBottomCol[x]
+						occluded = y >= top && y <= bottom
+					} else {
+						occluded = true
+					}
+				}
+			}
+			if occluded {
+				if runStart >= 0 {
+					out = append(out, solidSpan{l: runStart, r: x - 1})
+					runStart = -1
+				}
+				continue
+			}
+			if runStart < 0 {
+				runStart = x
+			}
+		}
+		if runStart >= 0 {
+			out = append(out, solidSpan{l: runStart, r: r})
+		}
+	}
+
+	if len(clipSpans) == 0 {
+		appendVisible(x0, x1)
+		return out
+	}
+	for _, sp := range clipSpans {
+		l := sp.l
+		r := sp.r
+		if l < x0 {
+			l = x0
+		}
+		if r > x1 {
+			r = x1
+		}
+		appendVisible(l, r)
+	}
+	return out
 }
 
 func (g *game) thingSectorCached(i int, th mapdata.Thing) int {
