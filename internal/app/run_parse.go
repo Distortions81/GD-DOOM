@@ -1015,7 +1015,9 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		}
 		return automap.PCMSample{
 			SampleRate: int(s.SampleRate),
-			Data:       s.Samples,
+			// Doom pads digital sound payloads to the mixer block size with 128s
+			// before playback. Preserve that behavior so tails do not end abruptly.
+			Data: padDoomSoundSamples(s.Samples),
 		}
 	}
 	return automap.SoundBank{
@@ -1104,6 +1106,25 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		InterTick:           firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
+}
+
+func padDoomSoundSamples(src []byte) []byte {
+	const doomSoundMixBlock = 512
+	if len(src) == 0 {
+		return nil
+	}
+	paddedLen := ((len(src) + (doomSoundMixBlock - 1)) / doomSoundMixBlock) * doomSoundMixBlock
+	if paddedLen == len(src) {
+		out := make([]byte, len(src))
+		copy(out, src)
+		return out
+	}
+	out := make([]byte, paddedLen)
+	copy(out, src)
+	for i := len(src); i < len(out); i++ {
+		out[i] = 128
+	}
+	return out
 }
 
 func firstSample(a, b automap.PCMSample) automap.PCMSample {
