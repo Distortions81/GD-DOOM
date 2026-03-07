@@ -119,6 +119,9 @@ func FormatDemoScript(tics []DemoTic) string {
 }
 
 func SaveDemoScript(path string, tics []DemoTic) error {
+	if len(tics) == 0 {
+		return fmt.Errorf("demo has no tics")
+	}
 	data := FormatDemoScript(tics)
 	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 		return fmt.Errorf("write demo %s: %w", path, err)

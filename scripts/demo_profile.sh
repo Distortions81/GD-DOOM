@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_PATH="${ROOT_DIR}/bench.prof"
 WAD_PATH="${ROOT_DIR}/doom.wad"
 DEMO_PATH="${ROOT_DIR}/newdemo.demo"
-MAP_NAME="E1M1"
+MAP_NAME="E1M4"
 OUT_DIR="${ROOT_DIR}/profiles"
 
 usage() {
@@ -93,14 +93,16 @@ RUN_LOG="${OUT_DIR}/demo-${MAP_NAME}-${STAMP}.log"
 
 CMD=(
   "${BIN_PATH}"
-  -render
   -wad "${WAD_PATH}"
   -map "${MAP_NAME}"
   -demo "${DEMO_PATH}"
   -width 3840
   -height 2160
   -cpuprofile "${CPU_PROFILE}"
-   -no-vsync
+  -skill 5
+  -sourceport-mode
+  -cheat-level 2
+  -invuln
 )
 if [[ ${#EXTRA_FLAGS[@]} -gt 0 ]]; then
   CMD+=("${EXTRA_FLAGS[@]}")

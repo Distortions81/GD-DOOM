@@ -2,8 +2,11 @@ package automap
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
+
+	"gddoom/internal/mapdata"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -104,5 +107,37 @@ func TestDemoUpdateModeTerminatesAtEnd(t *testing.T) {
 	err := g.Update()
 	if !errors.Is(err, ebiten.Termination) {
 		t.Fatalf("expected ebiten.Termination after demo end, got %v", err)
+	}
+}
+
+func TestSessionGameRebuildPreservesRecordedDemoTics(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{RecordDemoPath: "out.demo"},
+		g: &game{
+			opts:       Options{RecordDemoPath: "out.demo"},
+			demoRecord: []DemoTic{{Forward: 10}, {Forward: 20}},
+		},
+	}
+	sg.rebuildGameWithPersistentSettings(&mapdata.Map{})
+	if got := len(sg.demoRecord); got != 2 {
+		t.Fatalf("collected demo tics=%d want=2", got)
+	}
+	if sg.g == nil {
+		t.Fatal("expected rebuilt game")
+	}
+	sg.g.demoRecord = append(sg.g.demoRecord, DemoTic{Forward: 30})
+	if got := len(sg.effectiveDemoRecord()); got != 3 {
+		t.Fatalf("effective demo tics=%d want=3", got)
+	}
+}
+
+func TestSaveDemoScriptRejectsNoTics(t *testing.T) {
+	path := t.TempDir() + "/empty.demo"
+	err := SaveDemoScript(path, nil)
+	if err == nil || !strings.Contains(err.Error(), "no tics") {
+		t.Fatalf("expected no tics error, got %v", err)
+	}
+	if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("empty demo file should not be written, stat err=%v", statErr)
 	}
 }

@@ -121,6 +121,7 @@ type sessionGame struct {
 	current         mapdata.MapName
 	currentTemplate *mapdata.Map
 	opts            Options
+	demoRecord      []DemoTic
 	settings        sessionPersistentSettings
 	nextMap         NextMapFunc
 	err             error
@@ -378,6 +379,7 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 	if sg == nil || next == nil {
 		return
 	}
+	sg.collectDemoRecord()
 	if sg.g != nil {
 		sg.g.clearSpritePatchCache()
 	}
@@ -386,6 +388,22 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 	ng := newGame(next, sg.opts)
 	sg.applyPersistentSettingsToGame(ng)
 	sg.g = ng
+}
+
+func (sg *sessionGame) collectDemoRecord() {
+	if sg == nil || sg.g == nil || len(sg.g.demoRecord) == 0 {
+		return
+	}
+	sg.demoRecord = append(sg.demoRecord, sg.g.demoRecord...)
+	sg.g.demoRecord = sg.g.demoRecord[:0]
+}
+
+func (sg *sessionGame) effectiveDemoRecord() []DemoTic {
+	if sg == nil {
+		return nil
+	}
+	sg.collectDemoRecord()
+	return sg.demoRecord
 }
 
 func (sg *sessionGame) restartMapForRespawn() *mapdata.Map {
@@ -631,10 +649,7 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	if err := ebiten.RunGame(sg); err != nil {
 		if errors.Is(err, ebiten.Termination) {
 			if p := sg.opts.RecordDemoPath; p != "" {
-				rec := []DemoTic(nil)
-				if sg.g != nil {
-					rec = sg.g.demoRecord
-				}
+				rec := sg.effectiveDemoRecord()
 				if werr := SaveDemoScript(p, rec); werr != nil {
 					return fmt.Errorf("write demo recording: %w", werr)
 				}
@@ -648,10 +663,7 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		return fmt.Errorf("run ebiten automap: %w", err)
 	}
 	if p := sg.opts.RecordDemoPath; p != "" {
-		rec := []DemoTic(nil)
-		if sg.g != nil {
-			rec = sg.g.demoRecord
-		}
+		rec := sg.effectiveDemoRecord()
 		if werr := SaveDemoScript(p, rec); werr != nil {
 			return fmt.Errorf("write demo recording: %w", werr)
 		}
