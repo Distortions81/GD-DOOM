@@ -429,3 +429,40 @@ func hasSoundEvent(queue []soundEvent, want soundEvent) bool {
 	}
 	return false
 }
+
+func countSoundEvent(queue []soundEvent, want soundEvent) int {
+	n := 0
+	for _, ev := range queue {
+		if ev == want {
+			n++
+		}
+	}
+	return n
+}
+
+func TestDamageMonsterPainSoundOnlyOnPainEntry(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3006, X: 0, Y: 0},
+			},
+		},
+		thingHP:             []int{100},
+		thingAggro:          []bool{false},
+		thingJustHit:        []bool{false},
+		thingPainTics:       []int{0},
+		thingDead:           []bool{false},
+		thingDeathTics:      []int{0},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{0},
+		soundQueue:          make([]soundEvent, 0, 8),
+	}
+	g.damageMonster(0, 1)
+	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 1 {
+		t.Fatalf("demon pain count after first pain=%d want=1 queue=%v", got, g.soundQueue)
+	}
+	g.damageMonster(0, 1)
+	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 1 {
+		t.Fatalf("demon pain count while already in pain=%d want=1 queue=%v", got, g.soundQueue)
+	}
+}

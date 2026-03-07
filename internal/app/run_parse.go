@@ -1226,6 +1226,12 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 			add(fmt.Sprintf("%s%c1", pfx, fr))
 		}
 	}
+	// First-person weapon psprites use rotation 0 only.
+	for _, pfx := range []string{"PUNG", "PISG", "PISF", "SHTG", "SHTF", "CHGG", "CHGF", "MISG", "MISF", "SAWG", "PLSG", "PLSF", "BFGG", "BFGF"} {
+		for fr := byte('A'); fr <= byte('Z'); fr++ {
+			add(fmt.Sprintf("%s%c0", pfx, fr))
+		}
+	}
 	// Common pickups, weapons, and decorations (A0 single-frame or animated 0-suffixed sets).
 	for _, name := range []string{
 		"PLAYN0", "POSSL0", "SPOSL0", "TROOL0", "SARGN0", "HEADL0", "SKULL0",

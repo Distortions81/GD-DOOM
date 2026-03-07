@@ -20,6 +20,7 @@ For practical end-user launch flags, see `docs/launch-params.md`.
 - Doom-style startup zoom behavior (`fit / 0.7`) with `-zoom` override
 - Doom profile default behavior (north-up orientation)
 - Source-port startup profile via `-sourceport-mode`
+- MUS music playback through the OPL3 path, with runtime volume and panning controls
 - Walk/map mode toggle (`TAB`)
 - Local spawn slot selection (`-player 1..4`) with internal tracking of non-local player starts
 - Doom skill level selection (`-skill 1..5`) with THINGS skill-flag spawn filtering

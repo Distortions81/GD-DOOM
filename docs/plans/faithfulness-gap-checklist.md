@@ -64,7 +64,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 
 - [ ] Enrich startup sound import report detail (rates, formats, per-lump errors).
 - [ ] Expand decode support for additional Doom-compatible sound variants if encountered.
-- [ ] Decode and play MUS music format.
+- [x] Decode and play MUS music format via the OPL3 music path.
 - [ ] Add weapon firing sounds and bullet impact sounds.
 - [ ] Add monster pain sounds.
 - [ ] Add projectile travel/launch sounds.

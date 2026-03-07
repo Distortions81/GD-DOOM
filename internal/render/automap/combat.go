@@ -83,6 +83,7 @@ func (g *game) handleFire() {
 	}
 	g.propagateNoiseAlertFrom(g.p.x, g.p.y)
 	hit := g.fireSelectedWeapon()
+	g.startWeaponOverlayFire(g.inventory.ReadyWeapon)
 	g.weaponRefire = true
 	_ = hit
 }
@@ -95,6 +96,7 @@ func (g *game) setAttackHeld(held bool) {
 }
 
 func (g *game) tickWeaponFire() {
+	g.tickWeaponOverlay()
 	if g.weaponFireCooldown > 0 {
 		g.weaponFireCooldown--
 	}
@@ -517,8 +519,11 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
+				wasInPain := g.thingPainTics[thingIdx] > 0
 				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(thingType))
-				g.emitSoundEvent(monsterPainSoundEvent(thingType))
+				if !wasInPain {
+					g.emitSoundEvent(monsterPainSoundEvent(thingType))
+				}
 			}
 		}
 		g.setHUDMessage("Hit", 8)
@@ -640,6 +645,7 @@ func (g *game) ensureWeaponHasAmmo() {
 		if g.inventory.ReadyWeapon != id {
 			g.weaponRefire = false
 			g.weaponFireCooldown = 0
+			g.clearWeaponOverlay()
 		}
 		g.inventory.ReadyWeapon = id
 	}
@@ -729,6 +735,7 @@ func (g *game) selectWeaponSlot(slot int) {
 	if g.inventory.ReadyWeapon != prev {
 		g.weaponRefire = false
 		g.weaponFireCooldown = 0
+		g.clearWeaponOverlay()
 	}
 }
 
@@ -801,6 +808,7 @@ func (g *game) cycleWeapon(step int) {
 		g.inventory.ReadyWeapon = next
 		g.weaponRefire = false
 		g.weaponFireCooldown = 0
+		g.clearWeaponOverlay()
 		return
 	}
 }

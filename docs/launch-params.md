@@ -96,7 +96,7 @@ go run ./cmd/gddoom -wad DOOM1.WAD -sourceport-mode -walk-renderer unified-bsp
 - `-crt-effect`
   - Enable CRT post-processing.
 - `-gpu-sky`
-  - Enable the experimental GPU sky path (broken)
+  - Enable the experimental GPU sky path.
 - `-no-aspect-correction`
   - Disable DOS aspect ratio correction.
 - `-no-vsync`

@@ -402,61 +402,65 @@ type game struct {
 	secretLevelExit       bool
 	levelRestartRequested bool
 
-	thingCollected      []bool
-	thingDropped        []bool
-	thingX              []int64
-	thingY              []int64
-	thingHP             []int
-	thingAggro          []bool
-	thingCooldown       []int
-	thingMoveDir        []monsterMoveDir
-	thingMoveCount      []int
-	thingJustAtk        []bool
-	thingJustHit        []bool
-	thingReactionTics   []int
-	thingDead           []bool
-	thingDeathTics      []int
-	thingAttackTics     []int
-	thingAttackFireTics []int
-	thingPainTics       []int
-	thingThinkWait      []int
-	projectiles         []projectile
-	projectileImpacts   []projectileImpact
-	hitscanPuffs        []hitscanPuff
-	cheatLevel          int
-	invulnerable        bool
-	inventory           playerInventory
-	alwaysRun           bool
-	autoWeaponSwitch    bool
-	weaponRefire        bool
-	weaponFireCooldown  int
-	stats               playerStats
-	worldTic            int
-	playerViewZ         int64
-	secretFound         []bool
-	secretsFound        int
-	secretsTotal        int
-	sectorSoundTarget   []bool
-	isDead              bool
-	damageFlashTic      int
-	bonusFlashTic       int
-	sectorLightFx       []sectorLightEffect
-	subSectorSec        []int
-	sectorBBox          []worldBBox
-	subSectorLoopVerts  [][]uint16
-	subSectorLoopDiag   []loopBuildDiag
-	subSectorPoly       [][]worldPt
-	subSectorTris       [][][3]int
-	subSectorBBox       []worldBBox
-	dynamicSectorMask   []bool
-	staticSubSectorMask []bool
-	subSectorPlaneID    []int
-	sectorSubSectors    [][]int
-	holeFillPolys       []holeFillPoly
-	sectorPlaneTris     [][]worldTri
-	sectorPlaneCache    []sectorPlaneCacheEntry
-	orphanSubSector     []bool
-	orphanRepairQueue   []orphanRepairCandidate
+	thingCollected       []bool
+	thingDropped         []bool
+	thingX               []int64
+	thingY               []int64
+	thingHP              []int
+	thingAggro           []bool
+	thingCooldown        []int
+	thingMoveDir         []monsterMoveDir
+	thingMoveCount       []int
+	thingJustAtk         []bool
+	thingJustHit         []bool
+	thingReactionTics    []int
+	thingDead            []bool
+	thingDeathTics       []int
+	thingAttackTics      []int
+	thingAttackFireTics  []int
+	thingPainTics        []int
+	thingThinkWait       []int
+	projectiles          []projectile
+	projectileImpacts    []projectileImpact
+	hitscanPuffs         []hitscanPuff
+	cheatLevel           int
+	invulnerable         bool
+	inventory            playerInventory
+	alwaysRun            bool
+	autoWeaponSwitch     bool
+	weaponRefire         bool
+	weaponFireCooldown   int
+	weaponAnimTics       int
+	weaponAnimTotalTics  int
+	weaponFlashTics      int
+	weaponFlashTotalTics int
+	stats                playerStats
+	worldTic             int
+	playerViewZ          int64
+	secretFound          []bool
+	secretsFound         int
+	secretsTotal         int
+	sectorSoundTarget    []bool
+	isDead               bool
+	damageFlashTic       int
+	bonusFlashTic        int
+	sectorLightFx        []sectorLightEffect
+	subSectorSec         []int
+	sectorBBox           []worldBBox
+	subSectorLoopVerts   [][]uint16
+	subSectorLoopDiag    []loopBuildDiag
+	subSectorPoly        [][]worldPt
+	subSectorTris        [][][3]int
+	subSectorBBox        []worldBBox
+	dynamicSectorMask    []bool
+	staticSubSectorMask  []bool
+	subSectorPlaneID     []int
+	sectorSubSectors     [][]int
+	holeFillPolys        []holeFillPoly
+	sectorPlaneTris      [][]worldTri
+	sectorPlaneCache     []sectorPlaneCacheEntry
+	orphanSubSector      []bool
+	orphanRepairQueue    []orphanRepairCandidate
 
 	mapFloorLayer              *ebiten.Image
 	mapFloorPix                []byte
@@ -528,6 +532,7 @@ type game struct {
 	buffers3DH                 int
 	flatImgCache               map[string]*ebiten.Image
 	statusPatchImg             map[string]*ebiten.Image
+	spritePatchImg             map[string]*ebiten.Image
 	messageFontImg             map[rune]*ebiten.Image
 	whitePixel                 *ebiten.Image
 	cullLogBudget              int
@@ -2007,6 +2012,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		if g.opts.SourcePortMode && g.walkRender == walkRendererUnifiedBSP && g.spriteClipDiag {
 			g.drawSpriteClipDiagOverlay(screen)
 		}
+		g.drawWeaponOverlay(screen)
 		g.drawDoomStatusBar(screen)
 		if g.isDead {
 			g.drawDeathOverlay(screen)
