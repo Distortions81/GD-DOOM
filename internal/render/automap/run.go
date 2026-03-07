@@ -502,6 +502,9 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 	if sg == nil || next == nil {
 		return
 	}
+	if sg.g != nil {
+		sg.g.clearSpritePatchCache()
+	}
 	sg.capturePersistentSettings()
 	sg.applyPersistentSettingsToOptions()
 	ng := newGame(next, sg.opts)
@@ -1342,6 +1345,7 @@ func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.Map
 	sg.stopAndClearMusic()
 	if sg.g != nil {
 		sg.g.clearPendingSoundState()
+		sg.g.clearSpritePatchCache()
 	}
 	stats := collectIntermissionStats(sg.g, sg.current, nextName)
 	showEntering := shouldShowEnteringScreen(stats.mapName, stats.nextMapName)

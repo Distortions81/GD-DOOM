@@ -1,7 +1,9 @@
 package automap
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"gddoom/internal/mapdata"
 )
@@ -117,6 +119,32 @@ func TestMapThingSpriteName_PlayerStartUsesPlayerSprite(t *testing.T) {
 	g := &game{}
 	if got := g.mapThingSpriteName(0, mapdata.Thing{Type: 1}); got != "PLAYN0" {
 		t.Fatalf("player start map sprite=%q want PLAYN0", got)
+	}
+}
+
+func TestMapThingSpriteName_WorldThingBlendFramesCanBeDisabled(t *testing.T) {
+	g := &game{
+		worldTic:                   2,
+		textureAnimCrossfadeFrames: 2,
+		opts: Options{
+			SourcePortMode:             true,
+			SourcePortThingBlendFrames: false,
+			SpritePatchBank: map[string]WallTexture{
+				"SMGTA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"SMGTB0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"SMGTC0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"SMGTD0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			},
+		},
+	}
+	if got := g.mapThingSpriteName(0, mapdata.Thing{Type: 56}); got != "SMGTA0" {
+		t.Fatalf("blend disabled map sprite=%q want SMGTA0", got)
+	}
+	g.opts.SourcePortThingBlendFrames = true
+	g.simTickScale = 1.0
+	g.lastUpdate = time.Now().Add(-time.Second / (2 * doomTicsPerSecond))
+	if got := g.mapThingSpriteName(0, mapdata.Thing{Type: 56}); !strings.Contains(got, ">") {
+		t.Fatalf("blend enabled map sprite=%q want blend token", got)
 	}
 }
 

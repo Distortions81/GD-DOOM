@@ -44,6 +44,7 @@ type fileConfig struct {
 	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
 	SourcePortThingRenderMode  *string  `toml:"sourceport_thing_render_mode"`
+	SourcePortThingBlendFrames *bool    `toml:"sourceport_thing_blend_frames"`
 	SourcePortItemSprites      *bool    `toml:"sourceport_item_sprites"`
 	WalkRenderer               *string  `toml:"walk_renderer"`
 	SourcePortSectorLighting   *bool    `toml:"sourceport_sector_lighting"`

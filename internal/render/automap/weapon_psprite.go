@@ -2,6 +2,7 @@ package automap
 
 import (
 	"math"
+	"strconv"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -229,6 +230,9 @@ func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool
 	key := strings.ToUpper(strings.TrimSpace(name))
 	p, ok := g.opts.SpritePatchBank[key]
 	if (!ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4) && g != nil {
+		if cur, next, step, total, okToken := parseSpriteBlendToken(key); okToken {
+			g.ensureSpriteBlendToken(key, cur, next, step, total)
+		}
 		if tex, okBlend := g.spriteAnimBlendTex[key]; okBlend && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
 			p = tex
 			ok = true
@@ -269,6 +273,33 @@ func fallbackSpritePatchKey(key string) string {
 		return ""
 	}
 	return base
+}
+
+func parseSpriteBlendToken(key string) (cur, next string, step, total int, ok bool) {
+	if key == "" {
+		return "", "", 0, 0, false
+	}
+	gt := strings.IndexByte(key, '>')
+	hash := strings.IndexByte(key, '#')
+	slash := strings.IndexByte(key, '/')
+	if gt <= 0 || hash <= gt+1 || slash <= hash+1 || slash >= len(key)-1 {
+		return "", "", 0, 0, false
+	}
+	cur = strings.TrimSpace(key[:gt])
+	next = strings.TrimSpace(key[gt+1 : hash])
+	if cur == "" || next == "" {
+		return "", "", 0, 0, false
+	}
+	var err error
+	step, err = strconv.Atoi(strings.TrimSpace(key[hash+1 : slash]))
+	if err != nil || step <= 0 {
+		return "", "", 0, 0, false
+	}
+	total, err = strconv.Atoi(strings.TrimSpace(key[slash+1:]))
+	if err != nil || total <= 0 {
+		return "", "", 0, 0, false
+	}
+	return cur, next, step, total, true
 }
 
 func (g *game) drawSpritePatch(screen *ebiten.Image, name string, x, y, sx, sy float64) bool {

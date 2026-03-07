@@ -97,14 +97,18 @@ func TestSpritePatch_FallsBackToBasePatchForMissingBlendToken(t *testing.T) {
 		opts: Options{
 			SpritePatchBank: map[string]WallTexture{
 				"BON1A0": {Width: 1, Height: 1, OffsetX: 2, OffsetY: 3, RGBA: []byte{1, 2, 3, 4}},
+				"BON1B0": {Width: 1, Height: 1, OffsetX: 5, OffsetY: 7, RGBA: []byte{9, 8, 7, 6}},
 			},
 		},
 	}
-	_, w, h, ox, oy, ok := g.spritePatch("BON1A0>BON1B0#1/10")
+	_, w, h, _, _, ok := g.spritePatch("BON1A0>BON1B0#1/10")
 	if !ok {
-		t.Fatal("spritePatch should fall back to base patch for missing blend token")
+		t.Fatal("spritePatch should lazily materialize or fall back for blend token")
 	}
-	if w != 1 || h != 1 || ox != 2 || oy != 3 {
-		t.Fatalf("got w=%d h=%d ox=%d oy=%d want 1,1,2,3", w, h, ox, oy)
+	if w <= 0 || h <= 0 {
+		t.Fatalf("got w=%d h=%d want positive blended size", w, h)
+	}
+	if len(g.spriteAnimBlendTex) != 1 {
+		t.Fatalf("spriteAnimBlendTex len=%d want 1", len(g.spriteAnimBlendTex))
 	}
 }

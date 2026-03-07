@@ -1100,6 +1100,13 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	return g
 }
 
+func (g *game) clearSpritePatchCache() {
+	if g == nil {
+		return
+	}
+	g.spritePatchImg = nil
+}
+
 func (g *game) initSkyLayerShader() {
 	if g == nil || g.skyLayerShader != nil {
 		return
@@ -2497,6 +2504,13 @@ func (g *game) mapThingSpriteName(thingIdx int, th mapdata.Thing) string {
 			float64(g.p.x)/fracUnit,
 			float64(g.p.y)/fracUnit,
 		)
+		return name
+	}
+	if !g.opts.SourcePortThingBlendFrames {
+		cf := g.textureAnimCrossfadeFrames
+		g.textureAnimCrossfadeFrames = 0
+		name := g.worldThingSpriteName(th.Type, g.worldTic)
+		g.textureAnimCrossfadeFrames = cf
 		return name
 	}
 	animTickUnits, animUnitsPerTic := g.worldThingAnimTickUnits()

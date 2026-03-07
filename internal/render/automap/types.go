@@ -45,6 +45,7 @@ type Options struct {
 	LineColorMode              string
 	SourcePortMode             bool
 	SourcePortThingRenderMode  string
+	SourcePortThingBlendFrames bool
 	InitialWalkRenderer        string
 	SourcePortSectorLighting   bool
 	DisableDoomLighting        bool

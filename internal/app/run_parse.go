@@ -61,7 +61,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
-	defaultSourcePortThingRenderMode := "items"
+	defaultSourcePortThingRenderMode := "sprites"
+	defaultSourcePortThingBlendFrames := false
 	defaultWalkRenderer := "doom-basic"
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
@@ -186,6 +187,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortThingRenderMode != nil {
 			defaultSourcePortThingRenderMode = *cfg.SourcePortThingRenderMode
 		}
+		if cfg.SourcePortThingBlendFrames != nil {
+			defaultSourcePortThingBlendFrames = *cfg.SourcePortThingBlendFrames
+		}
 		if cfg.SourcePortItemSprites != nil {
 			if *cfg.SourcePortItemSprites {
 				defaultSourcePortThingRenderMode = "items"
@@ -305,6 +309,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	sourcePortThingRenderMode := fs.String("sourceport-thing-render-mode", defaultSourcePortThingRenderMode, "sourceport automap thing rendering (glyphs|items|sprites)")
+	sourcePortThingBlendFrames := fs.Bool("sourceport-thing-blend-frames", defaultSourcePortThingBlendFrames, "allow blended sub-tic thing sprite frames on the automap")
 	walkRenderer := fs.String("walk-renderer", defaultWalkRenderer, "startup walk renderer (doom-basic|unified-bsp|wireframe)")
 	sourcePortSectorLighting := fs.Bool("sourceport-sector-lighting", defaultSourcePortSectorLighting, "show classic sector lighting while in sourceport mode")
 	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
@@ -631,6 +636,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
 			SourcePortThingRenderMode:  *sourcePortThingRenderMode,
+			SourcePortThingBlendFrames: *sourcePortThingBlendFrames,
 			InitialWalkRenderer:        *walkRenderer,
 			SourcePortSectorLighting:   *sourcePortSectorLighting,
 			DisableDoomLighting:        !*doomLighting,
