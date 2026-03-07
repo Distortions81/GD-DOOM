@@ -62,6 +62,41 @@ func TestHazardDamageSpecial16WithoutSuit(t *testing.T) {
 	}
 }
 
+func TestTrackSecrets_RequiresPlayerOnFloorAndClearsSectorSpecial(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: 9}}},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      fracUnit,
+			floorz: 0,
+		},
+		secretFound:        make([]bool, 1),
+		hudMessagesEnabled: true,
+	}
+	g.trackSecrets()
+	if g.secretsFound != 0 {
+		t.Fatalf("secretsFound=%d want=0 while above floor", g.secretsFound)
+	}
+	if g.m.Sectors[0].Special != 9 {
+		t.Fatalf("sector special=%d want=9 before touching floor", g.m.Sectors[0].Special)
+	}
+	g.p.z = 0
+	g.trackSecrets()
+	if g.secretsFound != 1 {
+		t.Fatalf("secretsFound=%d want=1 after touching floor", g.secretsFound)
+	}
+	if !g.secretFound[0] {
+		t.Fatal("secret sector should be marked found")
+	}
+	if g.m.Sectors[0].Special != 0 {
+		t.Fatalf("sector special=%d want=0 after finding secret", g.m.Sectors[0].Special)
+	}
+	if got := g.useText; got != "A secret is revealed!" {
+		t.Fatalf("message=%q want=%q", got, "A secret is revealed!")
+	}
+}
+
 func TestPickupRadSuitSetsTimer(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()

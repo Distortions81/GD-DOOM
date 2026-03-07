@@ -137,3 +137,26 @@ func TestTickIntermissionCommercialSkipsEnteringPhases(t *testing.T) {
 		t.Fatal("commercial intermission did not complete in expected ticks")
 	}
 }
+
+func TestCollectIntermissionStats_UsesInitialSecretTotalAfterDiscovery(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{Special: 0},
+				{Special: 0},
+			},
+		},
+		secretsTotal: 2,
+		secretsFound: 1,
+	}
+	got := collectIntermissionStats(g, "E1M1", "E1M2")
+	if got.secretsTotal != 2 {
+		t.Fatalf("secretsTotal=%d want=2", got.secretsTotal)
+	}
+	if got.secretsFound != 1 {
+		t.Fatalf("secretsFound=%d want=1", got.secretsFound)
+	}
+	if got.secretsPct != 50 {
+		t.Fatalf("secretsPct=%d want=50", got.secretsPct)
+	}
+}

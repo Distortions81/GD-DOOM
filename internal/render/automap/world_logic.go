@@ -276,6 +276,9 @@ func (g *game) trackSecrets() {
 	if g.m == nil || len(g.m.Sectors) == 0 || len(g.secretFound) != len(g.m.Sectors) {
 		return
 	}
+	if g.p.z != g.p.floorz {
+		return
+	}
 	sec := g.sectorAt(g.p.x, g.p.y)
 	if sec < 0 || sec >= len(g.m.Sectors) {
 		return
@@ -285,6 +288,7 @@ func (g *game) trackSecrets() {
 	}
 	g.secretFound[sec] = true
 	g.secretsFound++
+	g.m.Sectors[sec].Special = 0
 	g.setHUDMessage("A secret is revealed!", 35)
 }
 

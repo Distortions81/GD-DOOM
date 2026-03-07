@@ -435,6 +435,7 @@ type game struct {
 	playerViewZ         int64
 	secretFound         []bool
 	secretsFound        int
+	secretsTotal        int
 	isDead              bool
 	damageFlashTic      int
 	bonusFlashTic       int
@@ -960,6 +961,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
+	for _, sec := range m.Sectors {
+		if sec.Special == 9 {
+			g.secretsTotal++
+		}
+	}
 	g.initSectorLightEffects()
 	g.initThingCombatState()
 	g.applyThingSpawnFiltering()

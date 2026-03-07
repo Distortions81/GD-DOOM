@@ -2072,11 +2072,7 @@ func collectIntermissionStats(g *game, mapName, nextName mapdata.MapName) interm
 			}
 		}
 	}
-	for _, sec := range g.m.Sectors {
-		if sec.Special == 9 {
-			out.secretsTotal++
-		}
-	}
+	out.secretsTotal = g.secretsTotal
 	out.secretsFound = g.secretsFound
 	if out.secretsFound > out.secretsTotal {
 		out.secretsFound = out.secretsTotal
