@@ -20,8 +20,9 @@ const (
 	slowTurnTics    = 6
 	switchResetTics = 35
 
-	mlBlocking = 0x0001
-	mlTwoSided = 0x0004
+	mlBlocking      = 0x0001
+	mlBlockMonsters = 0x0002
+	mlTwoSided      = 0x0004
 )
 
 var (

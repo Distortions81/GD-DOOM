@@ -119,7 +119,10 @@ func (g *game) tickMonsters() {
 		}
 
 		if !g.thingAggro[i] {
-			if dist <= monsterWakeRange && g.monsterHasLOS(tx, ty, px, py) {
+			heardPlayer := g.monsterHeardPlayer(i, tx, ty)
+			if heardPlayer {
+				g.thingAggro[i] = true
+			} else if dist <= monsterWakeRange && g.monsterHasLOS(tx, ty, px, py) {
 				g.thingAggro[i] = true
 			} else {
 				continue
@@ -869,6 +872,93 @@ func (g *game) monsterHasLOS(ax, ay, bx, by int64) bool {
 	return true
 }
 
+func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	sec := g.sectorAt(tx, ty)
+	if sec < 0 || sec >= len(g.sectorSoundTarget) || !g.sectorSoundTarget[sec] {
+		return false
+	}
+	if int(g.m.Things[i].Flags)&thingFlagAmbush != 0 {
+		return g.monsterHasLOS(tx, ty, g.p.x, g.p.y)
+	}
+	return true
+}
+
+func (g *game) propagateNoiseAlertFrom(x, y int64) {
+	if g == nil || g.m == nil || len(g.m.Sectors) == 0 {
+		return
+	}
+	sec := g.sectorAt(x, y)
+	if sec < 0 || sec >= len(g.m.Sectors) {
+		return
+	}
+	best := make([]int, len(g.m.Sectors))
+	for i := range best {
+		best[i] = -1
+	}
+	g.propagateSectorNoise(sec, 0, best)
+}
+
+func (g *game) propagateSectorNoise(sec int, soundBlocks int, best []int) {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) {
+		return
+	}
+	traversed := soundBlocks + 1
+	if sec < len(best) && best[sec] != -1 && best[sec] <= traversed {
+		return
+	}
+	if sec < len(best) {
+		best[sec] = traversed
+	}
+	if sec < len(g.sectorSoundTarget) {
+		g.sectorSoundTarget[sec] = true
+	}
+	for _, ld := range g.lines {
+		front, back := g.physLineSectors(ld)
+		if front != sec && back != sec {
+			continue
+		}
+		if back < 0 {
+			continue
+		}
+		_, _, _, openrange := g.lineOpening(ld)
+		if openrange <= 0 {
+			continue
+		}
+		other := front
+		if other == sec {
+			other = back
+		}
+		if other < 0 || other >= len(g.m.Sectors) {
+			continue
+		}
+		if (ld.flags & lineSoundBlock) != 0 {
+			if soundBlocks == 0 {
+				g.propagateSectorNoise(other, 1, best)
+			}
+			continue
+		}
+		g.propagateSectorNoise(other, soundBlocks, best)
+	}
+}
+
+func (g *game) physLineSectors(ld physLine) (int, int) {
+	if g == nil || g.m == nil {
+		return -1, -1
+	}
+	front := -1
+	back := -1
+	if ld.sideNum0 >= 0 && int(ld.sideNum0) < len(g.m.Sidedefs) {
+		front = int(g.m.Sidedefs[int(ld.sideNum0)].Sector)
+	}
+	if ld.sideNum1 >= 0 && int(ld.sideNum1) < len(g.m.Sidedefs) {
+		back = int(g.m.Sidedefs[int(ld.sideNum1)].Sector)
+	}
+	return front, back
+}
+
 func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	ang := math.Atan2(float64(ty-y), float64(tx-x))
 	g.faceMonsterToward(i, x, y, tx, ty)
@@ -918,9 +1008,7 @@ func (g *game) tryMoveProbe(x, y int64) bool {
 	if g.m == nil || len(g.m.Sectors) == 0 {
 		return false
 	}
-	saved := g.p
-	ok := g.tryMove(x, y)
-	g.p = saved
+	_, _, _, ok := g.checkPositionFor(x, y, true)
 	return ok
 }
 

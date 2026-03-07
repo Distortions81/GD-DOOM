@@ -81,6 +81,7 @@ func (g *game) handleFire() {
 		g.useFlash = max(g.useFlash, 20)
 		return
 	}
+	g.propagateNoiseAlertFrom(g.p.x, g.p.y)
 	hit := g.fireSelectedWeapon()
 	g.weaponRefire = true
 	_ = hit

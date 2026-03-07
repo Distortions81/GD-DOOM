@@ -55,6 +55,111 @@ func TestTickMonstersWakesByRangeAndLOS(t *testing.T) {
 	}
 }
 
+func TestTickMonstersWakesByNoiseWithoutLOSForNonAmbush(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 2048, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 1024, Y: -64},
+				{X: 1024, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingAggro:        []bool{false},
+		thingCooldown:     []int{0},
+		sectorSoundTarget: []bool{true},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	g.tickMonsters()
+	if !g.thingAggro[0] {
+		t.Fatal("non-ambush monster should wake from sector sound target without direct LOS")
+	}
+}
+
+func TestTickMonstersAmbushDoesNotWakeFromNoiseWithoutLOS(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 2048, Y: 0, Flags: thingFlagAmbush},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 1024, Y: -64},
+				{X: 1024, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingAggro:        []bool{false},
+		thingCooldown:     []int{0},
+		sectorSoundTarget: []bool{true},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	g.tickMonsters()
+	if g.thingAggro[0] {
+		t.Fatal("ambush monster should not wake from noise without direct LOS")
+	}
+}
+
+func TestPropagateSectorNoise_StopsAfterSecondSoundBlock(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+				{X: 128, Y: -64},
+				{X: 128, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlTwoSided | lineSoundBlock, SideNum: [2]int16{0, 1}},
+				{V1: 2, V2: 3, Flags: mlTwoSided | lineSoundBlock, SideNum: [2]int16{2, 3}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0}, {Sector: 1}, {Sector: 1}, {Sector: 2},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorSoundTarget: make([]bool, 3),
+	}
+	g.initPhysics()
+	best := []int{-1, -1, -1}
+	g.propagateSectorNoise(0, 0, best)
+	if !g.sectorSoundTarget[0] || !g.sectorSoundTarget[1] {
+		t.Fatal("noise should cross the first sound-block line")
+	}
+	if g.sectorSoundTarget[2] {
+		t.Fatal("noise should not cross a second sound-block line")
+	}
+}
+
 func TestTickMonstersNoActionWhenPlayerDead(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -90,6 +195,35 @@ func TestMoveMonsterTowardDoesNotMovePlayer(t *testing.T) {
 	g.moveMonsterToward(0, 3004, 0, 0, 128*fracUnit, 0, 8*fracUnit)
 	if g.p.x != px0 || g.p.y != py0 {
 		t.Fatalf("player moved by monster path probe: (%d,%d) -> (%d,%d)", px0, py0, g.p.x, g.p.y)
+	}
+}
+
+func TestMonsterTryMoveProbe_RespectsBlockMonstersFlag(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlTwoSided | mlBlockMonsters, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		p: player{x: -32 * fracUnit, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+	}
+	g.initPhysics()
+	if !g.tryMove(-8*fracUnit, 0) {
+		t.Fatal("player should not be blocked by block-monsters line")
+	}
+	if g.tryMoveProbe(8*fracUnit, 0) {
+		t.Fatal("monster probe should be blocked by block-monsters line")
 	}
 }
 

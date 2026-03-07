@@ -219,7 +219,7 @@ func (g *game) xyMovement() {
 }
 
 func (g *game) tryMove(x, y int64) bool {
-	tmfloor, tmceil, tmdrop, ok := g.checkPosition(x, y)
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
 	if !ok {
 		return false
 	}
@@ -251,6 +251,10 @@ func (g *game) tryMove(x, y int64) bool {
 }
 
 func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
+	return g.checkPositionFor(x, y, false)
+}
+
+func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int64, int64, bool) {
 	tmboxTop := y + playerRadius
 	tmboxBottom := y - playerRadius
 	tmboxRight := x + playerRadius
@@ -292,6 +296,9 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 			return false
 		}
 		if (ld.flags & mlBlocking) != 0 {
+			return false
+		}
+		if blockMonsterLines && (ld.flags&mlBlockMonsters) != 0 {
 			return false
 		}
 

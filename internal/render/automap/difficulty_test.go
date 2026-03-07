@@ -10,7 +10,7 @@ func TestThingSpawnsForSkillBuckets(t *testing.T) {
 	easyOnly := mapdata.Thing{Type: 2011, Flags: skillEasyBits}
 	medOnly := mapdata.Thing{Type: 2011, Flags: skillMediumBits}
 	hardOnly := mapdata.Thing{Type: 2011, Flags: skillHardBits}
-	all := mapdata.Thing{Type: 2011, Flags: 0}
+	noSkillBits := mapdata.Thing{Type: 2011, Flags: 0}
 
 	if !thingSpawnsForSkill(easyOnly, 1) || !thingSpawnsForSkill(easyOnly, 2) {
 		t.Fatal("easy-only thing should spawn on skills 1/2")
@@ -24,8 +24,8 @@ func TestThingSpawnsForSkillBuckets(t *testing.T) {
 	if !thingSpawnsForSkill(hardOnly, 4) || !thingSpawnsForSkill(hardOnly, 5) {
 		t.Fatal("hard-only thing should spawn on skills 4/5")
 	}
-	if !thingSpawnsForSkill(all, 1) || !thingSpawnsForSkill(all, 5) {
-		t.Fatal("thing with no skill bits should spawn on all skills")
+	if thingSpawnsForSkill(noSkillBits, 1) || thingSpawnsForSkill(noSkillBits, 5) {
+		t.Fatal("thing with no skill bits should not spawn in vanilla Doom")
 	}
 }
 

@@ -436,6 +436,7 @@ type game struct {
 	secretFound         []bool
 	secretsFound        int
 	secretsTotal        int
+	sectorSoundTarget   []bool
 	isDead              bool
 	damageFlashTic      int
 	bonusFlashTic       int
@@ -961,6 +962,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
+	g.sectorSoundTarget = make([]bool, len(m.Sectors))
 	for _, sec := range m.Sectors {
 		if sec.Special == 9 {
 			g.secretsTotal++

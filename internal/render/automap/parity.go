@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	mlSecret     = 0x0020
-	lineNeverSee = 0x0080
-	mlMapped     = 0x0100
+	mlSecret       = 0x0020
+	lineSoundBlock = 0x0040
+	lineNeverSee   = 0x0080
+	mlMapped       = 0x0100
 )
 
 type lineAppearance int

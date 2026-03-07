@@ -7,6 +7,7 @@ const (
 	skillMediumBits    = 0x0002
 	skillHardBits      = 0x0004
 	skillMask          = skillEasyBits | skillMediumBits | skillHardBits
+	thingFlagAmbush    = 0x0008
 	thingFlagNotSingle = 0x0010
 	thingFlagNotDM     = 0x0020
 	thingFlagNotCoop   = 0x0040
@@ -63,8 +64,8 @@ func thingSpawnsForSkill(t mapdata.Thing, skill int) bool {
 	}
 	bits := int(t.Flags) & skillMask
 	if bits == 0 {
-		// Vanilla-compatible default: no skill bits means available in all skills.
-		return true
+		// Vanilla Doom: non-player things with no skill bits do not spawn.
+		return false
 	}
 	switch normalizeSkillLevel(skill) {
 	case 1, 2:
