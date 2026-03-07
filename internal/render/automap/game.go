@@ -177,6 +177,17 @@ type projectedMonsterItem struct {
 	flip       bool
 	lightMul   uint32
 	fullBright bool
+	shadow     bool
+}
+
+var doomFuzzOffsets = [...]int{
+	1, -1, 1, -1, 1, 1, -1,
+	1, 1, -1, 1, 1, 1, -1,
+	1, 1, 1, -1, -1, -1, -1,
+	1, -1, -1, 1, 1, 1, 1, -1,
+	1, -1, 1, 1, -1, -1, 1,
+	1, -1, -1, -1, -1, 1, 1,
+	1, 1, -1, 1, 1, -1, 1,
 }
 
 type projectedThingItem struct {
@@ -437,6 +448,12 @@ type game struct {
 	weaponFlashTotalTics int
 	stats                playerStats
 	worldTic             int
+	spectreFuzzPos       int
+	spectreFuzzAccum     float64
+	spectreFuzzStamp     time.Time
+	spectreFuzzCoarseX   int
+	spectreFuzzCoarseY   int
+	spectreFuzzCoarseSet bool
 	playerViewZ          int64
 	secretFound          []bool
 	secretsFound         int
@@ -5638,6 +5655,133 @@ func shadePackedDOOMColormapRow(src uint32, row int) uint32 {
 	return doomColormapRGBA[row*256+palIdx]
 }
 
+func shadePackedDOOMRowOrLUT(src uint32, row int) uint32 {
+	if doomColormapEnabled {
+		return shadePackedDOOMColormapRow(src, row)
+	}
+	if !doomLightingEnabled {
+		return src | pixelOpaqueA
+	}
+	return shadePackedRGBA(src, uint32(doomShadeMulFromRow(row)))
+}
+
+func (g *game) shadePackedSpectreFuzz(src uint32) uint32 {
+	if g == nil || !g.opts.SourcePortMode {
+		return shadePackedDOOMRowOrLUT(src, 6)
+	}
+	if doomColormapEnabled {
+		return shadePackedDOOMColormapRow(src, 6)
+	}
+	if !doomLightingEnabled {
+		return src | pixelOpaqueA
+	}
+	mul := doomShadeMulFromRow(6) + 18
+	if mul > 256 {
+		mul = 256
+	}
+	return shadePackedRGBA(src, uint32(mul))
+}
+
+func (g *game) writeFuzzPixel(x, y, i int) {
+	if g == nil || i < 0 || i >= len(g.wallPix32) {
+		return
+	}
+	if !g.opts.SourcePortMode {
+		if y <= 0 || y >= g.viewH-1 {
+			return
+		}
+		delta := doomFuzzOffsets[g.spectreFuzzPos%len(doomFuzzOffsets)]
+		g.spectreFuzzPos++
+		srcY := y + delta
+		if srcY < 1 {
+			srcY = 1
+		}
+		if srcY >= g.viewH-1 {
+			srcY = g.viewH - 2
+		}
+		srcI := srcY*g.viewW + x
+		if srcI < 0 || srcI >= len(g.wallPix32) {
+			srcI = i
+		}
+		src := g.wallPix32[srcI]
+		if src == 0 {
+			src = packRGBA(0, 0, 0)
+		}
+		g.writeWallPixel(i, g.shadePackedSpectreFuzz(src))
+		return
+	}
+	coarseW := max(1, doomLogicalW)
+	coarseH := max(1, doomLogicalH)
+	cx := x * coarseW / max(1, g.viewW)
+	cy := y * coarseH / max(1, g.viewH)
+	if !g.spectreFuzzCoarseSet || g.spectreFuzzCoarseX != cx || g.spectreFuzzCoarseY != cy {
+		g.spectreFuzzCoarseSet = true
+		g.spectreFuzzCoarseX = cx
+		g.spectreFuzzCoarseY = cy
+	}
+	delta := g.nextSourcePortFuzzOffset()
+	srcCY := cy + delta
+	if srcCY < 1 {
+		srcCY = 1
+	}
+	if srcCY >= coarseH-1 {
+		srcCY = coarseH - 2
+	}
+	srcX := (cx*g.viewW + g.viewW/2) / coarseW
+	srcY := (srcCY*g.viewH + g.viewH/2) / coarseH
+	if srcX < 0 {
+		srcX = 0
+	}
+	if srcX >= g.viewW {
+		srcX = g.viewW - 1
+	}
+	if srcY < 0 {
+		srcY = 0
+	}
+	if srcY >= g.viewH {
+		srcY = g.viewH - 1
+	}
+	srcI := srcY*g.viewW + srcX
+	if srcI < 0 || srcI >= len(g.wallPix32) {
+		srcI = i
+	}
+	src := g.wallPix32[srcI]
+	if src == 0 {
+		src = packRGBA(0, 0, 0)
+	}
+	g.writeWallPixel(i, g.shadePackedSpectreFuzz(src))
+}
+
+func (g *game) beginSourcePortSpectreFuzzFrame(now time.Time) {
+	if g == nil || !g.opts.SourcePortMode || len(doomFuzzOffsets) == 0 {
+		return
+	}
+	if g.spectreFuzzStamp.IsZero() {
+		g.spectreFuzzStamp = now
+	}
+	dt := now.Sub(g.spectreFuzzStamp).Seconds()
+	g.spectreFuzzStamp = now
+	g.spectreFuzzAccum += dt * float64(doomTicsPerSecond)
+	steps := int(g.spectreFuzzAccum)
+	if steps > 0 {
+		g.spectreFuzzAccum -= float64(steps)
+		g.spectreFuzzPos = (g.spectreFuzzPos + steps) % len(doomFuzzOffsets)
+	}
+	g.spectreFuzzCoarseSet = false
+}
+
+func (g *game) nextSourcePortFuzzOffset() int {
+	if len(doomFuzzOffsets) == 0 {
+		return 0
+	}
+	delta := doomFuzzOffsets[g.spectreFuzzPos%len(doomFuzzOffsets)]
+	g.spectreFuzzPos++
+	if g.spectreFuzzPos >= len(doomFuzzOffsets) {
+		g.spectreFuzzPos = 0
+	}
+	return delta
+}
+
 func shadePackedDOOMColormap(src, mul uint32) uint32 {
 	rows := doomShadeRows()
 	if rows <= 0 || len(doomColormapRGBA) < rows*256 || len(doomPalIndexLUT32) != 32*32*32 {
@@ -8517,6 +8661,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				flip:       flip,
 				lightMul:   lightMul,
 				fullBright: monsterSpriteFullBright(sprite),
+				shadow:     monsterUsesShadow(th.Type),
 			})
 		}
 	}
@@ -8621,6 +8766,49 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			}
 			tyLUT[y-y0] = ty
 		}
+		if it.shadow && g.opts.SourcePortMode {
+			g.drawShadowMonsterSourcePort(
+				it,
+				src32,
+				tw,
+				txLUT,
+				tyLUT,
+				x0,
+				x1,
+				y0,
+				y1,
+				depthQ,
+				depthPacked,
+				stamp,
+				planeBiasQ,
+				depthPix,
+				depthPlanePix,
+			)
+			continue
+		}
+		if it.shadow {
+			for x := x0; x <= x1; x++ {
+				if !xInSolidSpans(x, it.clipSpans) {
+					continue
+				}
+				tx := txLUT[x-x0]
+				for y := y0; y <= y1; y++ {
+					row := y * viewW
+					i := row + x
+					if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+						continue
+					}
+					ty := tyLUT[y-y0]
+					p := src32[ty*tw+tx]
+					if ((p >> pixelAShift) & 0xFF) == 0 {
+						continue
+					}
+					g.writeFuzzPixel(x, y, i)
+					g.setDepthPixelEncoded(i, depthPacked)
+				}
+			}
+			continue
+		}
 		for y := y0; y <= y1; y++ {
 			ty := tyLUT[y-y0]
 			row := y * viewW
@@ -8645,17 +8833,30 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 						a0 := ((p0 >> pixelAShift) & 0xFF) != 0
 						a1 := ((p1 >> pixelAShift) & 0xFF) != 0
 						if a0 && a1 {
-							g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
+							if it.shadow {
+								g.writeFuzzPixel(x, y, i0)
+								g.writeFuzzPixel(x+1, y, i1)
+							} else {
+								g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
+							}
 							g.setDepthPixelPairEncoded(i0, depthPacked)
 							x += 2
 							continue
 						}
 						if a0 {
-							g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							if it.shadow {
+								g.writeFuzzPixel(x, y, i0)
+							} else {
+								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							}
 							g.setDepthPixelEncoded(i0, depthPacked)
 						}
 						if a1 {
-							g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							if it.shadow {
+								g.writeFuzzPixel(x+1, y, i1)
+							} else {
+								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							}
 							g.setDepthPixelEncoded(i1, depthPacked)
 						}
 						x += 2
@@ -8664,14 +8865,22 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 					if !occ0 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						if ((p0 >> pixelAShift) & 0xFF) != 0 {
-							g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							if it.shadow {
+								g.writeFuzzPixel(x, y, i0)
+							} else {
+								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							}
 							g.setDepthPixelEncoded(i0, depthPacked)
 						}
 					}
 					if !occ1 {
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
 						if ((p1 >> pixelAShift) & 0xFF) != 0 {
-							g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							if it.shadow {
+								g.writeFuzzPixel(x+1, y, i1)
+							} else {
+								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							}
 							g.setDepthPixelEncoded(i1, depthPacked)
 						}
 					}
@@ -8686,11 +8895,133 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					p := src32[ty*tw+txLUT[x-x0]]
 					if ((p >> pixelAShift) & 0xFF) != 0 {
-						g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
+						if it.shadow {
+							g.writeFuzzPixel(x, y, i)
+						} else {
+							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
+						}
 						g.setDepthPixelEncoded(i, depthPacked)
 					}
 				}
 				x++
+			}
+		}
+	}
+}
+
+func (g *game) drawShadowMonsterSourcePort(
+	it projectedMonsterItem,
+	src32 []uint32,
+	tw int,
+	txLUT, tyLUT []int,
+	x0, x1, y0, y1 int,
+	depthQ uint16,
+	depthPacked uint32,
+	stamp uint16,
+	planeBiasQ uint16,
+	depthPix, depthPlanePix []uint32,
+) {
+	if g == nil || g.viewW <= 0 || g.viewH <= 0 || x0 > x1 || y0 > y1 {
+		return
+	}
+	coarseW := max(1, doomLogicalW)
+	coarseH := max(1, doomLogicalH)
+	cx0 := x0 * coarseW / g.viewW
+	cx1 := x1 * coarseW / g.viewW
+	cy0 := y0 * coarseH / g.viewH
+	cy1 := y1 * coarseH / g.viewH
+	for cx := cx0; cx <= cx1; cx++ {
+		hx0 := cx * g.viewW / coarseW
+		hx1 := ((cx+1)*g.viewW + coarseW - 1) / coarseW
+		hx1--
+		if hx0 < x0 {
+			hx0 = x0
+		}
+		if hx1 > x1 {
+			hx1 = x1
+		}
+		if hx0 > hx1 {
+			continue
+		}
+		repX := (hx0 + hx1) / 2
+		if repX < x0 {
+			repX = x0
+		}
+		if repX > x1 {
+			repX = x1
+		}
+		tx := txLUT[repX-x0]
+		for cy := cy0; cy <= cy1; cy++ {
+			hy0 := cy * g.viewH / coarseH
+			hy1 := ((cy+1)*g.viewH + coarseH - 1) / coarseH
+			hy1--
+			if hy0 < y0 {
+				hy0 = y0
+			}
+			if hy1 > y1 {
+				hy1 = y1
+			}
+			if hy0 > hy1 {
+				continue
+			}
+			repY := (hy0 + hy1) / 2
+			if repY < y0 {
+				repY = y0
+			}
+			if repY > y1 {
+				repY = y1
+			}
+			ty := tyLUT[repY-y0]
+			p := src32[ty*tw+tx]
+			if ((p >> pixelAShift) & 0xFF) == 0 {
+				continue
+			}
+
+			delta := g.nextSourcePortFuzzOffset()
+			srcCY := cy + delta
+			if srcCY < 1 {
+				srcCY = 1
+			}
+			if srcCY >= coarseH-1 {
+				srcCY = coarseH - 2
+			}
+			srcHX := (cx*g.viewW + g.viewW/2) / coarseW
+			srcHY := (srcCY*g.viewH + g.viewH/2) / coarseH
+			if srcHX < 0 {
+				srcHX = 0
+			}
+			if srcHX >= g.viewW {
+				srcHX = g.viewW - 1
+			}
+			if srcHY < 0 {
+				srcHY = 0
+			}
+			if srcHY >= g.viewH {
+				srcHY = g.viewH - 1
+			}
+			srcI := srcHY*g.viewW + srcHX
+			if srcI < 0 || srcI >= len(g.wallPix32) {
+				srcI = repY*g.viewW + repX
+			}
+			fuzzPix := g.wallPix32[srcI]
+			if fuzzPix == 0 {
+				fuzzPix = packRGBA(0, 0, 0)
+			}
+			fuzzPix = g.shadePackedSpectreFuzz(fuzzPix)
+
+			for y := hy0; y <= hy1; y++ {
+				row := y * g.viewW
+				for x := hx0; x <= hx1; x++ {
+					if !xInSolidSpans(x, it.clipSpans) {
+						continue
+					}
+					i := row + x
+					if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+						continue
+					}
+					g.writeWallPixel(i, fuzzPix)
+					g.setDepthPixelEncoded(i, depthPacked)
+				}
 			}
 		}
 	}
@@ -9949,6 +10280,15 @@ func monsterSpriteRotationIndex(th mapdata.Thing, viewX, viewY float64) int {
 	return monsterSpriteRotationIndexAt(th, float64(th.X), float64(th.Y), viewX, viewY)
 }
 
+func monsterUsesShadow(typ int16) bool {
+	switch typ {
+	case 58: // spectre
+		return true
+	default:
+		return false
+	}
+}
+
 func monsterSpritePrefix(typ int16) (string, bool) {
 	switch typ {
 	case 3004:
@@ -9957,7 +10297,7 @@ func monsterSpritePrefix(typ int16) (string, bool) {
 		return "SPOS", true
 	case 3001:
 		return "TROO", true
-	case 3002:
+	case 3002, 58:
 		return "SARG", true
 	case 3006:
 		return "SKUL", true
@@ -16248,6 +16588,7 @@ func (g *game) syncRenderState() {
 }
 
 func (g *game) prepareRenderState() {
+	g.beginSourcePortSpectreFuzzFrame(time.Now())
 	alpha := g.interpAlpha()
 	if !g.opts.SourcePortMode || g.interpAutoOff {
 		alpha = 1
