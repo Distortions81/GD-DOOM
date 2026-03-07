@@ -140,10 +140,15 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		return
 	}
 	info := mapdata.LookupLineSpecial(special)
-	if !lineSpecialSupported(info) || (info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse) {
+	if !lineSpecialSupported(info) {
 		g.useText = "USE: unsupported special"
 		g.useFlash = 35
 		g.emitSoundEvent(soundEventNoWay)
+		return
+	}
+	if info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse {
+		g.useText = "USE: no change"
+		g.useFlash = 35
 		return
 	}
 	if info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {

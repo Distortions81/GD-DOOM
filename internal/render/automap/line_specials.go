@@ -7,6 +7,7 @@ const (
 	floorTurboSpeed   = 4 * fracUnit
 	platWaitTics      = 3 * doomTicsPerSecond
 	platMoveSpeed     = fracUnit
+	ceilingMoveSpeed  = fracUnit
 	stairBuild8Speed  = fracUnit / 4
 	stairTurbo16Speed = 4 * fracUnit
 	teleportThingType = 14
@@ -57,6 +58,16 @@ type platThinker struct {
 	finishSpecial int16
 }
 
+type ceilingThinker struct {
+	sector       int
+	action       mapdata.CeilingAction
+	direction    int
+	speed        int64
+	topHeight    int64
+	bottomHeight int64
+	crush        bool
+}
+
 func lineSpecialSupported(info mapdata.LineSpecialInfo) bool {
 	return info.Exit != mapdata.ExitNone ||
 		info.Door != nil ||
@@ -65,6 +76,7 @@ func lineSpecialSupported(info mapdata.LineSpecialInfo) bool {
 		info.Stairs != nil ||
 		info.Light != nil ||
 		info.Teleport != nil ||
+		info.Ceiling != nil ||
 		info.Donut
 }
 
@@ -80,6 +92,8 @@ func (g *game) activateNonDoorLineSpecial(lineIdx int, side int, info mapdata.Li
 		return g.activateLightLine(lineIdx, *info.Light)
 	case info.Teleport != nil:
 		return g.activateTeleportLine(lineIdx, side, *info.Teleport)
+	case info.Ceiling != nil:
+		return g.activateCeilingLine(lineIdx, *info.Ceiling)
 	case info.Donut:
 		return g.activateDonutLine(lineIdx)
 	default:
@@ -125,7 +139,8 @@ func (g *game) sectorHasActiveMover(sec int) bool {
 	}
 	return (g.doors != nil && g.doors[sec] != nil) ||
 		(g.floors != nil && g.floors[sec] != nil) ||
-		(g.plats != nil && g.plats[sec] != nil)
+		(g.plats != nil && g.plats[sec] != nil) ||
+		(g.ceilings != nil && g.ceilings[sec] != nil)
 }
 
 func (g *game) playerTouchesSector(sec int) bool {
@@ -179,6 +194,29 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	}
 }
 
+func (g *game) setSectorCeilingHeight(sec int, z int64) {
+	if g == nil || sec < 0 || sec >= len(g.sectorCeil) {
+		return
+	}
+	if g.sectorCeil[sec] == z {
+		return
+	}
+	g.sectorCeil[sec] = z
+	g.markDynamicSectorPlaneCacheDirty(sec)
+	if sec < len(g.m.Sectors) {
+		g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
+	}
+	if g.playerTouchesSector(sec) {
+		g.p.ceilz = z
+		if g.p.z+playerHeight > z {
+			g.p.z = z - playerHeight
+			if g.p.z < g.p.floorz {
+				g.p.z = g.p.floorz
+			}
+		}
+	}
+}
+
 func (g *game) findLowestFloorSurrounding(sec int) int64 {
 	lowest := g.sectorFloor[sec]
 	found := false
@@ -224,6 +262,31 @@ func (g *game) findHighestFloorSurrounding(sec int) int64 {
 		return g.sectorFloor[sec]
 	}
 	return highest
+}
+
+func (g *game) findLowestCeilingSurrounding(sec int) int64 {
+	lowest := int64(1<<62 - 1)
+	found := false
+	for _, ld := range g.m.Linedefs {
+		s0, ok0 := g.sectorIndexFromSidedef(ld.SideNum[0])
+		s1, ok1 := g.sectorIndexFromSidedef(ld.SideNum[1])
+		switch {
+		case ok0 && ok1 && s0 == sec:
+			if !found || g.sectorCeil[s1] < lowest {
+				lowest = g.sectorCeil[s1]
+			}
+			found = true
+		case ok0 && ok1 && s1 == sec:
+			if !found || g.sectorCeil[s0] < lowest {
+				lowest = g.sectorCeil[s0]
+			}
+			found = true
+		}
+	}
+	if !found {
+		return g.sectorCeil[sec]
+	}
+	return lowest
 }
 
 func (g *game) findNextHighestFloor(sec int, current int64) int64 {
@@ -318,6 +381,14 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findNextHighestFloor(sec, g.sectorFloor[sec])
+		case mapdata.FloorLower:
+			ft.direction = -1
+			ft.speed = floorMoveSpeed
+			ft.destHeight = g.findHighestFloorSurrounding(sec)
+		case mapdata.FloorRaiseCrush:
+			ft.direction = 1
+			ft.speed = floorMoveSpeed
+			ft.destHeight = g.findLowestCeilingSurrounding(sec) - 8*fracUnit
 		case mapdata.FloorLowerToLowest:
 			ft.direction = -1
 			ft.speed = floorMoveSpeed
@@ -329,6 +400,14 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 			if ft.destHeight != g.sectorFloor[sec] {
 				ft.destHeight += 8 * fracUnit
 			}
+		case mapdata.FloorRaiseTurbo:
+			ft.direction = 1
+			ft.speed = floorTurboSpeed
+			ft.destHeight = g.findNextHighestFloor(sec, g.sectorFloor[sec])
+		case mapdata.FloorRaise512:
+			ft.direction = 1
+			ft.speed = floorMoveSpeed
+			ft.destHeight = g.sectorFloor[sec] + 512*fracUnit
 		default:
 			continue
 		}
@@ -367,10 +446,39 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
 				pt.finishSpecial = 0
 			}
+		case mapdata.PlatRaiseAndChange24:
+			pt.typ = platTypeRaiseToNearestAndChange
+			pt.status = platStatusUp
+			pt.speed = platMoveSpeed / 2
+			pt.high = g.sectorFloor[sec] + 24*fracUnit
+			if frontSec >= 0 {
+				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
+				pt.finishSpecial = 0
+			}
+		case mapdata.PlatRaiseAndChange32:
+			pt.typ = platTypeRaiseToNearestAndChange
+			pt.status = platStatusUp
+			pt.speed = platMoveSpeed / 2
+			pt.high = g.sectorFloor[sec] + 32*fracUnit
+			if frontSec >= 0 {
+				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
+				pt.finishSpecial = 0
+			}
 		case mapdata.PlatDownWaitUpStay:
 			pt.typ = platTypeDownWaitUpStay
 			pt.status = platStatusDown
 			pt.speed = 4 * platMoveSpeed
+			pt.low = g.findLowestFloorSurrounding(sec)
+			if pt.low > g.sectorFloor[sec] {
+				pt.low = g.sectorFloor[sec]
+			}
+			pt.high = g.sectorFloor[sec]
+			pt.wait = platWaitTics
+			pt.count = pt.wait
+		case mapdata.PlatBlazeDownWaitUpStay:
+			pt.typ = platTypeDownWaitUpStay
+			pt.status = platStatusDown
+			pt.speed = 8 * platMoveSpeed
 			pt.low = g.findLowestFloorSurrounding(sec)
 			if pt.low > g.sectorFloor[sec] {
 				pt.low = g.sectorFloor[sec]
@@ -533,6 +641,38 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 	return false
 }
 
+func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
+	targets := g.taggedSectorsForLine(lineIdx)
+	if len(targets) == 0 {
+		return false
+	}
+	if g.ceilings == nil {
+		g.ceilings = make(map[int]*ceilingThinker)
+	}
+	activated := false
+	for _, sec := range targets {
+		if g.sectorHasActiveMover(sec) {
+			continue
+		}
+		ct := &ceilingThinker{sector: sec, action: info.Action, speed: ceilingMoveSpeed}
+		switch info.Action {
+		case mapdata.CeilingLowerToFloor:
+			ct.direction = -1
+			ct.bottomHeight = g.sectorFloor[sec]
+		case mapdata.CeilingCrushRaise:
+			ct.direction = -1
+			ct.crush = true
+			ct.topHeight = g.sectorCeil[sec]
+			ct.bottomHeight = g.sectorFloor[sec] + 8*fracUnit
+		default:
+			continue
+		}
+		g.ceilings[sec] = ct
+		activated = true
+	}
+	return activated
+}
+
 func (g *game) activateDonutLine(lineIdx int) bool {
 	targets := g.taggedSectorsForLine(lineIdx)
 	if len(targets) == 0 {
@@ -674,6 +814,36 @@ func (g *game) tickPlats() {
 			} else {
 				pt.status = platStatusDown
 			}
+		}
+	}
+}
+
+func (g *game) tickCeilings() {
+	for sec, ct := range g.ceilings {
+		cur := g.sectorCeil[sec]
+		switch ct.direction {
+		case -1:
+			next := cur - ct.speed
+			if next <= ct.bottomHeight {
+				next = ct.bottomHeight
+				g.setSectorCeilingHeight(sec, next)
+				if ct.action == mapdata.CeilingCrushRaise {
+					ct.direction = 1
+				} else {
+					delete(g.ceilings, sec)
+				}
+				continue
+			}
+			g.setSectorCeilingHeight(sec, next)
+		case 1:
+			next := cur + ct.speed
+			if next >= ct.topHeight {
+				next = ct.topHeight
+				g.setSectorCeilingHeight(sec, next)
+				delete(g.ceilings, sec)
+				continue
+			}
+			g.setSectorCeilingHeight(sec, next)
 		}
 	}
 }

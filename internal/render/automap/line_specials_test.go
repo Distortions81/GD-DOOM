@@ -95,3 +95,34 @@ func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 		t.Fatalf("repeat teleporter special should not be consumed, got %d", g.lineSpecial[0])
 	}
 }
+
+func TestUseSpecialLine_WalkOnlySpecialDoesNotReportUnsupported(t *testing.T) {
+	g := &game{
+		lineSpecial: []uint16{97},
+	}
+	g.useSpecialLine(0, 0)
+	if g.useText != "USE: no change" {
+		t.Fatalf("useText=%q want %q", g.useText, "USE: no change")
+	}
+}
+
+func TestUseSpecialLine_ActivatesCeilingSpecial(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 41, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{Tag: 7, FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		lineSpecial: []uint16{41},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
+	g.useSpecialLine(0, 0)
+	if g.ceilings == nil || len(g.ceilings) != 1 {
+		t.Fatalf("expected ceiling thinker, got %d", len(g.ceilings))
+	}
+	if g.lineSpecial[0] != 0 {
+		t.Fatalf("one-shot ceiling special should be consumed, got %d", g.lineSpecial[0])
+	}
+}

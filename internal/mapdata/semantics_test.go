@@ -51,6 +51,19 @@ func TestLookupLineSpecialTeleport(t *testing.T) {
 	}
 }
 
+func TestLookupLineSpecialCeiling(t *testing.T) {
+	info := LookupLineSpecial(41)
+	if info.Ceiling == nil {
+		t.Fatal("special 41 should decode as a ceiling special")
+	}
+	if info.Ceiling.Action != CeilingLowerToFloor {
+		t.Fatalf("special 41 ceiling action = %q, want %q", info.Ceiling.Action, CeilingLowerToFloor)
+	}
+	if info.Trigger != TriggerUse {
+		t.Fatalf("special 41 trigger = %q, want %q", info.Trigger, TriggerUse)
+	}
+}
+
 func TestRejectMatrixRejectsBounds(t *testing.T) {
 	r := &RejectMatrix{SectorCount: 2, Data: []byte{0x00}}
 	_, err := r.Rejects(2, 0)

@@ -10,6 +10,7 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	prevY := g.p.y
 	g.tickFloors()
 	g.tickPlats()
+	g.tickCeilings()
 	g.tickDoors()
 	g.tickWorldLogic()
 

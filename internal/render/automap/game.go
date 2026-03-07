@@ -355,6 +355,7 @@ type game struct {
 	doors                map[int]*doorThinker
 	floors               map[int]*floorThinker
 	plats                map[int]*platThinker
+	ceilings             map[int]*ceilingThinker
 	useFlash             int
 	useText              string
 	hudMessagesEnabled   bool
