@@ -75,7 +75,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultSourcePortMode := false
 	defaultSourcePortThingRenderMode := "sprites"
 	defaultSourcePortThingBlendFrames := false
-	defaultWalkRenderer := "doom-basic"
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
@@ -87,7 +86,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultWallSpanClip := false
 	defaultWallSliceOcclusion := true
 	defaultBillboardClipping := true
-	defaultOverdrawDebug := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
 	defaultAllCheats := false
 	defaultStartInMap := false
@@ -208,9 +206,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				defaultSourcePortThingRenderMode = "glyphs"
 			}
 		}
-		if cfg.WalkRenderer != nil {
-			defaultWalkRenderer = *cfg.WalkRenderer
-		}
 		if cfg.SourcePortSectorLighting != nil {
 			defaultSourcePortSectorLighting = *cfg.SourcePortSectorLighting
 		}
@@ -243,9 +238,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.BillboardClipping != nil {
 			defaultBillboardClipping = *cfg.BillboardClipping
-		}
-		if cfg.OverdrawDebug != nil {
-			defaultOverdrawDebug = *cfg.OverdrawDebug
 		}
 		if cfg.TextureAnimCrossfadeFrames != nil {
 			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
@@ -326,7 +318,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	sourcePortThingRenderMode := fs.String("sourceport-thing-render-mode", defaultSourcePortThingRenderMode, "sourceport automap thing rendering (glyphs|items|sprites)")
 	sourcePortThingBlendFrames := fs.Bool("sourceport-thing-blend-frames", defaultSourcePortThingBlendFrames, "allow blended sub-tic thing sprite frames on the automap")
-	walkRenderer := fs.String("walk-renderer", defaultWalkRenderer, "startup walk renderer (doom-basic|unified-bsp|wireframe)")
 	sourcePortSectorLighting := fs.Bool("sourceport-sector-lighting", defaultSourcePortSectorLighting, "show classic sector lighting while in sourceport mode")
 	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
 	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
@@ -339,7 +330,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wallSliceOcclusion := fs.Bool("wall-slice-occlusion", defaultWallSliceOcclusion, "enable wall-slice triangle/bbox occlusion checks")
 	billboardClipping := fs.Bool("billboard-clipping", defaultBillboardClipping, "enable sprite/thing/projectile/puff clipping and occlusion")
 	noCullClipping := fs.Bool("no-cull-clipping", false, "disable wall occlusion and billboard clipping together")
-	overdrawDebug := fs.Bool("overdraw-debug", defaultOverdrawDebug, "debug: paint repeated 3D software-buffer writes red")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
@@ -413,12 +403,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *musPanMax < 0 || *musPanMax > 1 {
 		fmt.Fprintf(stderr, "invalid -mus-pan-max %.3f (must be between 0 and 1)\n", *musPanMax)
-		return 2
-	}
-	switch strings.ToLower(strings.TrimSpace(*walkRenderer)) {
-	case "", "doom-basic", "doom_basic", "basic", "unified-bsp", "unified_bsp", "unified", "wireframe", "pseudo":
-	default:
-		fmt.Fprintf(stderr, "invalid -walk-renderer %q (want doom-basic|unified-bsp|wireframe)\n", *walkRenderer)
 		return 2
 	}
 	if *oplVolume < 0 || *oplVolume > music.MaxOutputGain {
@@ -521,6 +505,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			built := 0
 			failed := 0
 			for _, name := range names {
+				indexed, iw, ih, ierr := ts.BuildTextureIndexed(name)
 				rgba, w, h, berr := ts.BuildTextureRGBA(name, 0)
 				if berr != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
 					failed++
@@ -540,12 +525,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 						}
 					}
 				}
+				indexedColMajor := []byte(nil)
+				if ierr == nil && iw == w && ih == h && len(indexed) == w*h {
+					indexedColMajor = make([]byte, len(indexed))
+					for tx := 0; tx < w; tx++ {
+						colBase := tx * h
+						for ty := 0; ty < h; ty++ {
+							indexedColMajor[colBase+ty] = indexed[ty*w+tx]
+						}
+					}
+				}
 				wallTexBank[name] = automap.WallTexture{
-					RGBA:     rgba,
-					RGBA32:   rgba32,
-					ColMajor: colMajor,
-					Width:    w,
-					Height:   h,
+					RGBA:            rgba,
+					RGBA32:          rgba32,
+					ColMajor:        colMajor,
+					Indexed:         indexed,
+					IndexedColMajor: indexedColMajor,
+					Width:           w,
+					Height:          h,
 				}
 				built++
 			}
@@ -582,12 +579,17 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	flatBank := map[string][]byte(nil)
+	flatBankIndexed := map[string][]byte(nil)
 	fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
 	if ferr != nil {
 		fmt.Fprintf(stderr, "flat import failed: %v\n", ferr)
 	} else {
 		flatBank = fb
 		fmt.Fprintf(stderr, "flat import: flats=%d\n", len(flatBank))
+	}
+	fbi, ferr := doomtex.LoadFlatsIndexed(wf)
+	if ferr == nil {
+		flatBankIndexed = fbi
 	}
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
@@ -661,7 +663,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SourcePortMode:             *sourcePortMode,
 			SourcePortThingRenderMode:  *sourcePortThingRenderMode,
 			SourcePortThingBlendFrames: *sourcePortThingBlendFrames,
-			InitialWalkRenderer:        *walkRenderer,
 			SourcePortSectorLighting:   *sourcePortSectorLighting,
 			DisableDoomLighting:        !*doomLighting,
 			KageShader:                 *kageShader,
@@ -673,7 +674,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DisableWallSpanClip:        !*wallSpanClip,
 			DisableWallSliceOcclusion:  !*wallSliceOcclusion,
 			DisableBillboardClipping:   !*billboardClipping,
-			OverdrawDebug:              *overdrawDebug,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,
@@ -681,6 +681,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			AllCheats:                  *allCheats,
 			StartInMapMode:             *startInMap,
 			FlatBank:                   flatBank,
+			FlatBankIndexed:            flatBankIndexed,
 			WallTexBank:                wallTexBank,
 			BootSplash:                 bootSplash,
 			DoomPaletteRGBA:            doomPaletteRGBA,
@@ -1242,6 +1243,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		if _, ok := out[name]; ok {
 			continue
 		}
+		indexed, opaque, iw, ih, _, _, ierr := ts.BuildPatchIndexed(name)
 		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
 		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
 			continue
@@ -1250,13 +1252,24 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
+		mask := []byte(nil)
+		if ierr == nil && iw == w && ih == h && len(indexed) == w*h && len(opaque) == w*h {
+			mask = make([]byte, len(opaque))
+			for i := range opaque {
+				if opaque[i] {
+					mask[i] = 1
+				}
+			}
+		}
 		out[name] = automap.WallTexture{
-			RGBA:    rgba,
-			RGBA32:  rgba32,
-			Width:   w,
-			Height:  h,
-			OffsetX: ox,
-			OffsetY: oy,
+			RGBA:       rgba,
+			RGBA32:     rgba32,
+			Indexed:    indexed,
+			OpaqueMask: mask,
+			Width:      w,
+			Height:     h,
+			OffsetX:    ox,
+			OffsetY:    oy,
 		}
 	}
 	if len(out) == 0 {

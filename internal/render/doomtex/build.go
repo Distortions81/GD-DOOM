@@ -5,6 +5,26 @@ import (
 	"fmt"
 )
 
+func (s *Set) BuildTextureIndexed(name string) ([]byte, int, int, error) {
+	if s == nil {
+		return nil, 0, 0, parseErrorf("nil texture set")
+	}
+	t, ok := s.textures[normalizeName(name)]
+	if !ok {
+		return nil, 0, 0, parseErrorf("texture not found: %s", name)
+	}
+	pix := make([]byte, t.Width*t.Height)
+	alpha := make([]bool, t.Width*t.Height)
+	for _, ref := range t.Patches {
+		p, err := s.loadPatch(ref.PatchName)
+		if err != nil {
+			continue
+		}
+		blitPatch(pix, alpha, t.Width, t.Height, p, ref.OriginX, ref.OriginY)
+	}
+	return pix, t.Width, t.Height, nil
+}
+
 func (s *Set) BuildTextureRGBA(name string, palette int) ([]byte, int, int, error) {
 	if s == nil {
 		return nil, 0, 0, parseErrorf("nil texture set")
@@ -114,6 +134,21 @@ func (s *Set) BuildPatchRGBA(name string, palette int) ([]byte, int, int, int, i
 		rgba[o+3] = 0xFF
 	}
 	return rgba, p.width, p.height, p.leftOffset, p.topOffset, nil
+}
+
+func (s *Set) BuildPatchIndexed(name string) ([]byte, []bool, int, int, int, int, error) {
+	if s == nil {
+		return nil, nil, 0, 0, 0, 0, parseErrorf("nil texture set")
+	}
+	p, err := s.loadPatch(name)
+	if err != nil {
+		return nil, nil, 0, 0, 0, 0, err
+	}
+	index := make([]byte, len(p.index))
+	copy(index, p.index)
+	opaque := make([]bool, len(p.opaque))
+	copy(opaque, p.opaque)
+	return index, opaque, p.width, p.height, p.leftOffset, p.topOffset, nil
 }
 
 func (s *Set) loadPatch(name string) (*decodedPatch, error) {

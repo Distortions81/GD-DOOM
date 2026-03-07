@@ -217,7 +217,7 @@ func TestWorldThingSpriteName_DoomTimingParity(t *testing.T) {
 	}
 }
 
-func TestWorldThingSpriteName_SmallGreenTorchBlendingTiming(t *testing.T) {
+func TestWorldThingSpriteName_SmallGreenTorchDiscreteTiming(t *testing.T) {
 	g := &game{
 		textureAnimCrossfadeFrames: 2,
 		opts: Options{
@@ -233,20 +233,20 @@ func TestWorldThingSpriteName_SmallGreenTorchBlendingTiming(t *testing.T) {
 	want := map[int]string{
 		0:  "SMGTA0",
 		1:  "SMGTA0",
-		2:  "SMGTA0>SMGTB0#1/2",
-		3:  "SMGTA0>SMGTB0#2/2",
+		2:  "SMGTA0",
+		3:  "SMGTA0",
 		4:  "SMGTB0",
 		5:  "SMGTB0",
-		6:  "SMGTB0>SMGTC0#1/2",
-		7:  "SMGTB0>SMGTC0#2/2",
+		6:  "SMGTB0",
+		7:  "SMGTB0",
 		8:  "SMGTC0",
 		9:  "SMGTC0",
-		10: "SMGTC0>SMGTD0#1/2",
-		11: "SMGTC0>SMGTD0#2/2",
+		10: "SMGTC0",
+		11: "SMGTC0",
 		12: "SMGTD0",
 		13: "SMGTD0",
-		14: "SMGTD0>SMGTA0#1/2",
-		15: "SMGTD0>SMGTA0#2/2",
+		14: "SMGTD0",
+		15: "SMGTD0",
 		16: "SMGTA0",
 	}
 
@@ -257,7 +257,7 @@ func TestWorldThingSpriteName_SmallGreenTorchBlendingTiming(t *testing.T) {
 	}
 }
 
-func TestWorldThingSpriteNameScaled_SmallGreenTorchUsesSubTicBlending(t *testing.T) {
+func TestWorldThingSpriteNameScaled_SmallGreenTorchUsesDiscreteFrames(t *testing.T) {
 	g := &game{
 		textureAnimCrossfadeFrames: 2,
 		opts: Options{
@@ -271,19 +271,14 @@ func TestWorldThingSpriteNameScaled_SmallGreenTorchUsesSubTicBlending(t *testing
 		},
 	}
 
-	// Frame length is 4 tics; with 5 substeps/tic this is 20 units.
-	// cf=2 tics => 10 substeps of blending at the tail of each frame.
 	if got := g.worldThingSpriteNameScaled(56, 9, 5); got != "SMGTA0" {
 		t.Fatalf("thing 56 unit9=%q want SMGTA0", got)
 	}
-	if got := g.worldThingSpriteNameScaled(56, 10, 5); got != "SMGTA0>SMGTB0#1/10" {
-		t.Fatalf("thing 56 unit10=%q want SMGTA0>SMGTB0#1/10", got)
+	if got := g.worldThingSpriteNameScaled(56, 10, 5); got != "SMGTA0" {
+		t.Fatalf("thing 56 unit10=%q want SMGTA0", got)
 	}
-	if got := g.worldThingSpriteNameScaled(56, 11, 5); got != "SMGTA0>SMGTB0#2/10" {
-		t.Fatalf("thing 56 unit11=%q want SMGTA0>SMGTB0#2/10", got)
-	}
-	if got := g.worldThingSpriteNameScaled(56, 19, 5); got != "SMGTA0>SMGTB0#10/10" {
-		t.Fatalf("thing 56 unit19=%q want SMGTA0>SMGTB0#10/10", got)
+	if got := g.worldThingSpriteNameScaled(56, 19, 5); got != "SMGTA0" {
+		t.Fatalf("thing 56 unit19=%q want SMGTA0", got)
 	}
 	if got := g.worldThingSpriteNameScaled(56, 20, 5); got != "SMGTB0" {
 		t.Fatalf("thing 56 unit20=%q want SMGTB0", got)

@@ -59,12 +59,6 @@ func TestSourcePortDefaultsEnableLegend(t *testing.T) {
 	if !g.showLegend {
 		t.Fatal("sourceport default should enable legend")
 	}
-	if g.pseudo3D {
-		t.Fatal("sourceport default should keep pseudo3d off")
-	}
-	if g.walkRender != walkRendererDoomBasic {
-		t.Fatal("sourceport default should use doom-basic walk renderer")
-	}
 	if g.opts.SourcePortThingRenderMode != "items" {
 		t.Fatalf("sourceport default thing render mode=%q want items", g.opts.SourcePortThingRenderMode)
 	}
@@ -148,30 +142,6 @@ func TestMapThingSpriteName_WorldThingBlendFramesCanBeDisabled(t *testing.T) {
 	}
 }
 
-func TestSourcePortHonorsInitialWalkRenderer(t *testing.T) {
-	g := newGame(&mapdata.Map{}, Options{
-		SourcePortMode:      true,
-		InitialWalkRenderer: "unified-bsp",
-	})
-	if g.walkRender != walkRendererUnifiedBSP {
-		t.Fatalf("walkRender=%v want unified-bsp", g.walkRender)
-	}
-	if g.pseudo3D {
-		t.Fatal("unified-bsp should not enable pseudo3d")
-	}
-
-	g = newGame(&mapdata.Map{}, Options{
-		SourcePortMode:      true,
-		InitialWalkRenderer: "wireframe",
-	})
-	if g.walkRender != walkRendererPseudo {
-		t.Fatalf("walkRender=%v want wireframe", g.walkRender)
-	}
-	if !g.pseudo3D {
-		t.Fatal("wireframe should enable pseudo3d")
-	}
-}
-
 func TestMapRotationActive_DisabledWhenFollowIsOff(t *testing.T) {
 	g := &game{
 		mode:       viewMap,
@@ -184,18 +154,6 @@ func TestMapRotationActive_DisabledWhenFollowIsOff(t *testing.T) {
 	g.followMode = false
 	if g.mapRotationActive() {
 		t.Fatal("follow-off map rotation should be disabled")
-	}
-}
-
-func TestToggleMapFloor2DPath_IsOnOff(t *testing.T) {
-	g := &game{floor2DPath: floor2DPathRasterized}
-	g.toggleMapFloor2DPath()
-	if g.floor2DPath != floor2DPathOff {
-		t.Fatalf("floor2DPath=%d want off", g.floor2DPath)
-	}
-	g.toggleMapFloor2DPath()
-	if g.floor2DPath != floor2DPathRasterized {
-		t.Fatalf("floor2DPath=%d want rasterized", g.floor2DPath)
 	}
 }
 

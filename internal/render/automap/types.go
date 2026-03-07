@@ -46,7 +46,6 @@ type Options struct {
 	SourcePortMode             bool
 	SourcePortThingRenderMode  string
 	SourcePortThingBlendFrames bool
-	InitialWalkRenderer        string
 	SourcePortSectorLighting   bool
 	DisableDoomLighting        bool
 	KageShader                 bool
@@ -58,7 +57,6 @@ type Options struct {
 	DisableWallSpanClip        bool
 	DisableWallSliceOcclusion  bool
 	DisableBillboardClipping   bool
-	OverdrawDebug              bool
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
 	NoFPS                      bool
@@ -66,6 +64,7 @@ type Options struct {
 	AllCheats                  bool
 	StartInMapMode             bool
 	FlatBank                   map[string][]byte
+	FlatBankIndexed            map[string][]byte
 	WallTexBank                map[string]WallTexture
 	BootSplash                 WallTexture
 	DoomPaletteRGBA            []byte
@@ -84,13 +83,16 @@ type Options struct {
 }
 
 type WallTexture struct {
-	RGBA     []byte
-	RGBA32   []uint32
-	ColMajor []uint32
-	Width    int
-	Height   int
-	OffsetX  int
-	OffsetY  int
+	RGBA            []byte
+	RGBA32          []uint32
+	ColMajor        []uint32
+	Indexed         []byte
+	IndexedColMajor []byte
+	OpaqueMask      []byte
+	Width           int
+	Height          int
+	OffsetX         int
+	OffsetY         int
 }
 
 type RunResult struct {

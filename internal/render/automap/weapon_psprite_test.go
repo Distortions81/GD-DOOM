@@ -115,7 +115,4 @@ func TestSpritePatch_FallsBackToBasePatchForMissingBlendToken(t *testing.T) {
 	if w <= 0 || h <= 0 {
 		t.Fatalf("got w=%d h=%d want positive blended size", w, h)
 	}
-	if len(g.spriteAnimBlendTex) != 1 {
-		t.Fatalf("spriteAnimBlendTex len=%d want 1", len(g.spriteAnimBlendTex))
-	}
 }

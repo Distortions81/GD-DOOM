@@ -194,17 +194,14 @@ type sessionPersistentSettings struct {
 	musicVolume             float64
 	oplVolume               float64
 	sfxVolume               float64
-	walkRender              walkRendererMode
 	alwaysRun               bool
 	autoWeaponSwitch        bool
 	lineColorMode           string
 	thingRenderMode         string
 	showLegend              bool
-	mapTexDiag              bool
 	spriteClipDiag          bool
 	spriteClipDiagOnly      bool
 	spriteClipDiagGreenOnly bool
-	floor2DPath             floor2DPathMode
 	paletteLUT              bool
 	gammaLevel              int
 	crtEnabled              bool
@@ -237,15 +234,6 @@ func clampDetailLevelForMode(level int, sourcePort bool) int {
 		return maxLevel
 	}
 	return level
-}
-
-func normalizeFloor2DPath(path floor2DPathMode) floor2DPathMode {
-	switch path {
-	case floor2DPathRasterized, floor2DPathCached, floor2DPathSubsector, floor2DPathOff:
-		return path
-	default:
-		return floor2DPathRasterized
-	}
 }
 
 func normalizeRevealForMode(mode revealMode, sourcePort bool) revealMode {
@@ -322,17 +310,14 @@ func (sg *sessionGame) capturePersistentSettings() {
 		musicVolume:             g.opts.MusicVolume,
 		oplVolume:               g.opts.OPLVolume,
 		sfxVolume:               g.opts.SFXVolume,
-		walkRender:              g.walkRender,
 		alwaysRun:               g.alwaysRun,
 		autoWeaponSwitch:        g.autoWeaponSwitch,
 		lineColorMode:           g.opts.LineColorMode,
 		thingRenderMode:         g.opts.SourcePortThingRenderMode,
 		showLegend:              g.showLegend,
-		mapTexDiag:              g.mapTexDiag,
 		spriteClipDiag:          g.spriteClipDiag,
 		spriteClipDiagOnly:      g.spriteClipDiagOnly,
 		spriteClipDiagGreenOnly: g.spriteClipDiagGreenOnly,
-		floor2DPath:             g.floor2DPath,
 		paletteLUT:              g.paletteLUTEnabled,
 		gammaLevel:              g.gammaLevel,
 		crtEnabled:              g.crtEnabled,
@@ -377,32 +362,14 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.opts.LineColorMode = s.lineColorMode
 	g.opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(s.thingRenderMode, g.opts.SourcePortMode)
 	g.showLegend = s.showLegend
-	g.mapTexDiag = s.mapTexDiag
 	g.spriteClipDiag = s.spriteClipDiag
 	g.spriteClipDiagOnly = s.spriteClipDiagOnly && s.spriteClipDiag
 	g.spriteClipDiagGreenOnly = s.spriteClipDiagGreenOnly && g.spriteClipDiagOnly
-	g.floor2DPath = normalizeFloor2DPath(s.floor2DPath)
 	g.paletteLUTEnabled = s.paletteLUT && g.opts.KageShader && len(g.opts.DoomPaletteRGBA) == 256*4
 	g.gammaLevel = clampGamma(s.gammaLevel)
 	g.crtEnabled = s.crtEnabled && g.opts.KageShader
 	g.parity.reveal = normalizeRevealForMode(s.reveal, g.opts.SourcePortMode)
 	g.parity.iddt = clampIDDT(s.iddt)
-	if !g.opts.SourcePortMode {
-		g.walkRender = walkRendererDoomBasic
-		g.pseudo3D = false
-	} else {
-		switch s.walkRender {
-		case walkRendererPseudo:
-			g.walkRender = walkRendererPseudo
-			g.pseudo3D = true
-		case walkRendererUnifiedBSP:
-			g.walkRender = walkRendererUnifiedBSP
-			g.pseudo3D = false
-		default:
-			g.walkRender = walkRendererUnifiedBSP
-			g.pseudo3D = false
-		}
-	}
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
 }

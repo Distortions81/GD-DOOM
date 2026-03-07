@@ -46,7 +46,6 @@ type fileConfig struct {
 	SourcePortThingRenderMode  *string  `toml:"sourceport_thing_render_mode"`
 	SourcePortThingBlendFrames *bool    `toml:"sourceport_thing_blend_frames"`
 	SourcePortItemSprites      *bool    `toml:"sourceport_item_sprites"`
-	WalkRenderer               *string  `toml:"walk_renderer"`
 	SourcePortSectorLighting   *bool    `toml:"sourceport_sector_lighting"`
 	DoomLighting               *bool    `toml:"doom_lighting"`
 	KageShader                 *bool    `toml:"kage_shader"`
@@ -58,7 +57,6 @@ type fileConfig struct {
 	WallSpanClip               *bool    `toml:"wall_span_clip"`
 	WallSliceOcclusion         *bool    `toml:"wall_slice_occlusion"`
 	BillboardClipping          *bool    `toml:"billboard_clipping"`
-	OverdrawDebug              *bool    `toml:"overdraw_debug"`
 	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
 	AllCheats                  *bool    `toml:"all_cheats"`
 	StartInMap                 *bool    `toml:"start_in_map"`

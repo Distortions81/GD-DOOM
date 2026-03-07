@@ -69,7 +69,7 @@ These only affect pickup items. They do not force monsters to spawn.
 Example:
 
 ```bash
-go run ./cmd/gddoom -wad DOOM1.WAD -sourceport-mode -walk-renderer unified-bsp
+go run ./cmd/gddoom -wad DOOM1.WAD -sourceport-mode
 ```
 
 ## Audio

@@ -78,3 +78,31 @@ func TestBuildTextureRGBA_CompositesPatches(t *testing.T) {
 		t.Fatalf("first pixel=%v", rgba[:4])
 	}
 }
+
+func TestBuildTextureIndexed_CompositesPatches(t *testing.T) {
+	p := &decodedPatch{
+		width:  2,
+		height: 2,
+		index:  []uint8{1, 2, 3, 4},
+		opaque: []bool{true, true, true, true},
+	}
+	s := &Set{
+		textures:    map[string]TextureDef{"TEST": {Name: "TEST", Width: 2, Height: 2, Patches: []PatchRef{{PatchName: "P1"}}}},
+		patchCache:  map[string]*decodedPatch{"P1": p},
+		patchByName: map[string]wad.Lump{},
+	}
+
+	indexed, w, h, err := s.BuildTextureIndexed("test")
+	if err != nil {
+		t.Fatalf("BuildTextureIndexed: %v", err)
+	}
+	if w != 2 || h != 2 {
+		t.Fatalf("size=%dx%d", w, h)
+	}
+	want := []byte{1, 2, 3, 4}
+	for i := range want {
+		if indexed[i] != want[i] {
+			t.Fatalf("indexed[%d]=%d want=%d", i, indexed[i], want[i])
+		}
+	}
+}

@@ -209,22 +209,6 @@ func TestLoadConfigParsesSourcePortSectorLighting(t *testing.T) {
 	}
 }
 
-func TestLoadConfigParsesWalkRenderer(t *testing.T) {
-	td := t.TempDir()
-	cfgPath := filepath.Join(td, "cfg.toml")
-	cfg := []byte("sourceport_mode = true\nwalk_renderer = \"unified-bsp\"\n")
-	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	loaded, err := loadConfig(cfgPath, true)
-	if err != nil {
-		t.Fatalf("loadConfig() error: %v", err)
-	}
-	if loaded.WalkRenderer == nil || *loaded.WalkRenderer != "unified-bsp" {
-		t.Fatalf("walk_renderer=%v want unified-bsp", loaded.WalkRenderer)
-	}
-}
-
 func TestLoadConfigParsesSourcePortThingRenderMode(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")

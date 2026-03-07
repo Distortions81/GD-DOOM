@@ -74,7 +74,6 @@ For practical end-user launch flags, see `docs/launch-params.md`.
 - Source-port-only extra toggles gated behind `-sourceport-mode`
 - Source-port default thing legend overlay with runtime toggle
 - Source-port use-target automap highlight (line currently hittable by `use`)
-- Source-port pseudo-3D wireframe mode (toggle with `P`)
 - Pseudo-3D visibility now uses BSP node traversal (not automap discovery state)
 - Doom-style turn acceleration behavior (`SLOWTURNTICS` style ramp)
 - 2D automap floor texture overlay is sourceport-only

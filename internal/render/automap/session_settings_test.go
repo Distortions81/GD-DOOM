@@ -22,13 +22,9 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 			},
 			detailLevel:       3,
 			rotateView:        false,
-			walkRender:        walkRendererPseudo,
-			pseudo3D:          true,
 			alwaysRun:         true,
 			autoWeaponSwitch:  false,
 			showLegend:        false,
-			mapTexDiag:        true,
-			floor2DPath:       floor2DPathSubsector,
 			paletteLUTEnabled: false,
 			gammaLevel:        5,
 			crtEnabled:        true,
@@ -95,9 +91,6 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	if dst.rotateView {
 		t.Fatal("rotateView should be persisted as OFF")
 	}
-	if dst.walkRender != walkRendererPseudo || !dst.pseudo3D {
-		t.Fatal("walk renderer should persist pseudo mode")
-	}
 	if !dst.alwaysRun || dst.autoWeaponSwitch {
 		t.Fatal("always-run/auto-weapon-switch persistence mismatch")
 	}
@@ -115,12 +108,6 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	}
 	if dst.showLegend {
 		t.Fatal("showLegend should be persisted as OFF")
-	}
-	if !dst.mapTexDiag {
-		t.Fatal("mapTexDiag should be persisted as ON")
-	}
-	if dst.floor2DPath != floor2DPathSubsector {
-		t.Fatalf("floor2DPath=%d want %d", dst.floor2DPath, floor2DPathSubsector)
 	}
 	if dst.paletteLUTEnabled {
 		t.Fatal("paletteLUT should be persisted as OFF")
@@ -141,8 +128,6 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 	sg := &sessionGame{
 		settings: sessionPersistentSettings{
 			detailLevel: 99,
-			walkRender:  walkRendererPseudo,
-			floor2DPath: floor2DPathMode(99),
 			gammaLevel:  99,
 			musicVolume: -1,
 			sfxVolume:   2,
@@ -166,9 +151,6 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 
 	if dst.detailLevel != len(sourcePortDetailDivisors)-1 {
 		t.Fatalf("detailLevel clamp failed: got %d want %d", dst.detailLevel, len(sourcePortDetailDivisors)-1)
-	}
-	if dst.floor2DPath != floor2DPathRasterized {
-		t.Fatalf("floor2DPath clamp failed: got %d want %d", dst.floor2DPath, floor2DPathRasterized)
 	}
 	if dst.gammaLevel != len(gammaTargets)-1 {
 		t.Fatalf("gamma clamp failed: got %d want %d", dst.gammaLevel, len(gammaTargets)-1)
