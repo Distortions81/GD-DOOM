@@ -27,6 +27,8 @@ type Options struct {
 	PlayerSlot                 int
 	SkillLevel                 int
 	GameMode                   string
+	ShowNoSkillItems           bool
+	ShowAllItems               bool
 	MouseLook                  bool
 	MouseLookSpeed             float64
 	KeyboardTurnSpeed          float64

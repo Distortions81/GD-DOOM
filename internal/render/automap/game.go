@@ -2179,7 +2179,7 @@ func (g *game) setHUDMessage(msg string, tics int) {
 
 func (g *game) applyThingSpawnFiltering() {
 	for i, th := range g.m.Things {
-		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode) {
+		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems) {
 			g.thingCollected[i] = true
 		}
 	}

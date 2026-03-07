@@ -26,6 +26,8 @@ type fileConfig struct {
 	Player                     *int     `toml:"player"`
 	Skill                      *int     `toml:"skill"`
 	GameMode                   *string  `toml:"game_mode"`
+	ShowNoSkillItems           *bool    `toml:"show_no_skill_items"`
+	ShowAllItems               *bool    `toml:"show_all_items"`
 	MouseLook                  *bool    `toml:"mouselook"`
 	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
 	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`

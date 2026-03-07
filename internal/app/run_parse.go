@@ -45,6 +45,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultPlayer := 1
 	defaultSkill := 3
 	defaultGameMode := "single"
+	defaultShowNoSkillItems := false
+	defaultShowAllItems := false
 	defaultMouseLook := true
 	defaultMouseLookSpeed := 2.0
 	defaultKeyboardTurnSpeed := 1.0
@@ -130,6 +132,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.GameMode != nil {
 			defaultGameMode = *cfg.GameMode
+		}
+		if cfg.ShowNoSkillItems != nil {
+			defaultShowNoSkillItems = *cfg.ShowNoSkillItems
+		}
+		if cfg.ShowAllItems != nil {
+			defaultShowAllItems = *cfg.ShowAllItems
 		}
 		if cfg.MouseLook != nil {
 			defaultMouseLook = *cfg.MouseLook
@@ -269,6 +277,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
 	gameMode := fs.String("game-mode", defaultGameMode, "thing spawn game mode (single|coop|deathmatch)")
+	showNoSkillItems := fs.Bool("show-no-skill-items", defaultShowNoSkillItems, "show pickup items that have no skill bits set")
+	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
 	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
@@ -592,6 +602,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			PlayerSlot:                 *playerSlot,
 			SkillLevel:                 *skillLevel,
 			GameMode:                   resolvedGameMode,
+			ShowNoSkillItems:           *showNoSkillItems,
+			ShowAllItems:               *showAllItems,
 			MouseLook:                  *mouseLook,
 			MouseLookSpeed:             *mouseLookSpeed,
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,

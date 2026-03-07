@@ -58,12 +58,15 @@ func normalizeMouseLookSpeed(v float64) float64 {
 	return v
 }
 
-func thingSpawnsForSkill(t mapdata.Thing, skill int) bool {
+func thingSpawnsForSkill(t mapdata.Thing, skill int, showNoSkillItems bool) bool {
 	if isPlayerStart(t.Type) {
 		return true
 	}
 	bits := int(t.Flags) & skillMask
 	if bits == 0 {
+		if showNoSkillItems && isPickupType(t.Type) {
+			return true
+		}
 		// Vanilla Doom: non-player things with no skill bits do not spawn.
 		return false
 	}
@@ -92,6 +95,9 @@ func thingSpawnsForGameMode(t mapdata.Thing, mode string) bool {
 	}
 }
 
-func thingSpawnsInSession(t mapdata.Thing, skill int, mode string) bool {
-	return thingSpawnsForSkill(t, skill) && thingSpawnsForGameMode(t, mode)
+func thingSpawnsInSession(t mapdata.Thing, skill int, mode string, showNoSkillItems bool, showAllItems bool) bool {
+	if isPickupType(t.Type) && showAllItems {
+		return true
+	}
+	return thingSpawnsForSkill(t, skill, showNoSkillItems) && thingSpawnsForGameMode(t, mode)
 }

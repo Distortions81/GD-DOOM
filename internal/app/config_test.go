@@ -196,6 +196,25 @@ func TestLoadConfigParsesWalkRenderer(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesItemSpawnOverrides(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("show_no_skill_items = true\nshow_all_items = true\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.ShowNoSkillItems == nil || !*loaded.ShowNoSkillItems {
+		t.Fatalf("show_no_skill_items=%v want true", loaded.ShowNoSkillItems)
+	}
+	if loaded.ShowAllItems == nil || !*loaded.ShowAllItems {
+		t.Fatalf("show_all_items=%v want true", loaded.ShowAllItems)
+	}
+}
+
 func TestRunParseRejectsInvalidGameMode(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer

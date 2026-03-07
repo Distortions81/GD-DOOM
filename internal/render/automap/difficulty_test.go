@@ -12,20 +12,24 @@ func TestThingSpawnsForSkillBuckets(t *testing.T) {
 	hardOnly := mapdata.Thing{Type: 2011, Flags: skillHardBits}
 	noSkillBits := mapdata.Thing{Type: 2011, Flags: 0}
 
-	if !thingSpawnsForSkill(easyOnly, 1) || !thingSpawnsForSkill(easyOnly, 2) {
+	if !thingSpawnsForSkill(easyOnly, 1, false) || !thingSpawnsForSkill(easyOnly, 2, false) {
 		t.Fatal("easy-only thing should spawn on skills 1/2")
 	}
-	if thingSpawnsForSkill(easyOnly, 3) || thingSpawnsForSkill(easyOnly, 4) {
+	if thingSpawnsForSkill(easyOnly, 3, false) || thingSpawnsForSkill(easyOnly, 4, false) {
 		t.Fatal("easy-only thing should not spawn on skills 3/4")
 	}
-	if !thingSpawnsForSkill(medOnly, 3) {
+	if !thingSpawnsForSkill(medOnly, 3, false) {
 		t.Fatal("medium-only thing should spawn on skill 3")
 	}
-	if !thingSpawnsForSkill(hardOnly, 4) || !thingSpawnsForSkill(hardOnly, 5) {
+	if !thingSpawnsForSkill(hardOnly, 4, false) || !thingSpawnsForSkill(hardOnly, 5, false) {
 		t.Fatal("hard-only thing should spawn on skills 4/5")
 	}
-	if thingSpawnsForSkill(noSkillBits, 1) || thingSpawnsForSkill(noSkillBits, 5) {
+	if thingSpawnsForSkill(noSkillBits, 1, false) || thingSpawnsForSkill(noSkillBits, 5, false) {
 		t.Fatal("thing with no skill bits should not spawn in vanilla Doom")
+	}
+	noSkillPickup := mapdata.Thing{Type: 2008, Flags: 0}
+	if !thingSpawnsForSkill(noSkillPickup, 3, true) {
+		t.Fatal("no-skill pickup should spawn when show-no-skill-items is enabled")
 	}
 }
 
@@ -52,6 +56,17 @@ func TestThingSpawnsForGameMode(t *testing.T) {
 	}
 }
 
+func TestThingSpawnsInSession_ShowAllItemsOverridesFiltersForPickupsOnly(t *testing.T) {
+	pickup := mapdata.Thing{Type: 2008, Flags: thingFlagNotSingle}
+	monster := mapdata.Thing{Type: 3004, Flags: thingFlagNotSingle}
+	if !thingSpawnsInSession(pickup, 3, gameModeSingle, false, true) {
+		t.Fatal("pickup should spawn when show-all-items is enabled")
+	}
+	if thingSpawnsInSession(monster, 3, gameModeSingle, false, true) {
+		t.Fatal("monster should not bypass normal spawn filters when show-all-items is enabled")
+	}
+}
+
 func TestApplyThingSpawnFilteringMarksUnavailableThings(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -73,6 +88,26 @@ func TestApplyThingSpawnFilteringMarksUnavailableThings(t *testing.T) {
 	}
 	if g.thingCollected[2] {
 		t.Fatal("player start should not be filtered")
+	}
+}
+
+func TestApplyThingSpawnFiltering_ShowNoSkillItemsPreservesPickups(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 2008, Flags: 0},
+				{Type: 3004, Flags: 0},
+			},
+		},
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: true},
+	}
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.applyThingSpawnFiltering()
+	if g.thingCollected[0] {
+		t.Fatal("no-skill pickup should remain visible when ShowNoSkillItems is enabled")
+	}
+	if !g.thingCollected[1] {
+		t.Fatal("no-skill monster should still be filtered")
 	}
 }
 
