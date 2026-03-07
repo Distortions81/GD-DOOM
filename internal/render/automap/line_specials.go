@@ -687,6 +687,9 @@ func (g *game) activateLightLine(lineIdx int, info mapdata.LightInfo) bool {
 		case mapdata.LightTurnTagOff:
 			g.m.Sectors[sec].Light = g.findMinSurroundingLight(sec, g.m.Sectors[sec].Light)
 		case mapdata.LightStartStrobing:
+			if sec >= 0 && sec < len(g.sectorLightFx) && g.sectorLightFx[sec].kind != sectorLightEffectNone {
+				continue
+			}
 			g.spawnSectorStrobeFlash(sec, sectorLightSlowDark, false)
 		default:
 			continue

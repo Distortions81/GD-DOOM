@@ -64,6 +64,22 @@ func TestLookupLineSpecialCeiling(t *testing.T) {
 	}
 }
 
+func TestLookupLineSpecialButtonLightTurnOff(t *testing.T) {
+	info := LookupLineSpecial(139)
+	if info.Light == nil {
+		t.Fatal("special 139 should decode as a light special")
+	}
+	if info.Light.Action != LightTurnTagOff {
+		t.Fatalf("special 139 light action = %q, want %q", info.Light.Action, LightTurnTagOff)
+	}
+	if info.Trigger != TriggerUse {
+		t.Fatalf("special 139 trigger = %q, want %q", info.Trigger, TriggerUse)
+	}
+	if !info.Repeat {
+		t.Fatal("special 139 should be repeatable")
+	}
+}
+
 func TestRejectMatrixRejectsBounds(t *testing.T) {
 	r := &RejectMatrix{SectorCount: 2, Data: []byte{0x00}}
 	_, err := r.Rejects(2, 0)

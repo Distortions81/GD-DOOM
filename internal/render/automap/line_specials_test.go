@@ -126,3 +126,46 @@ func TestUseSpecialLine_ActivatesCeilingSpecial(t *testing.T) {
 		t.Fatalf("one-shot ceiling special should be consumed, got %d", g.lineSpecial[0])
 	}
 }
+
+func TestUseSpecialLine_ButtonLightTurnOffUsesMinNeighbor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 139, Tag: 7, SideNum: [2]int16{0, 1}}, {SideNum: [2]int16{2, 3}}},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0}, {Sector: 1},
+				{Sector: 0}, {Sector: 2},
+			},
+			Sectors: []mapdata.Sector{
+				{Tag: 7, Light: 160},
+				{Light: 64},
+				{Light: 96},
+			},
+		},
+		lineSpecial:   []uint16{139, 0},
+		sectorLightFx: make([]sectorLightEffect, 3),
+	}
+	g.useSpecialLine(0, 0)
+	if got := g.m.Sectors[0].Light; got != 64 {
+		t.Fatalf("light=%d want=64", got)
+	}
+	if g.lineSpecial[0] != 139 {
+		t.Fatalf("repeat light special should not be consumed, got %d", g.lineSpecial[0])
+	}
+}
+
+func TestActivateLightLine_StartStrobingSkipsActiveLightThinker(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 17, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{Tag: 7, Light: 160},
+			},
+		},
+		lineSpecial:   []uint16{17},
+		sectorLightFx: []sectorLightEffect{{kind: sectorLightEffectGlow, minLight: 64, maxLight: 160, direction: -1}},
+	}
+	g.useSpecialLine(0, 0)
+	if got := g.sectorLightFx[0].kind; got != sectorLightEffectGlow {
+		t.Fatalf("light thinker kind=%d want=%d", got, sectorLightEffectGlow)
+	}
+}
