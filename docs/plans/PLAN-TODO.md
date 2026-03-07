@@ -34,9 +34,11 @@ Single source of truth for current priorities.
 17. add remaining monster movement/state sounds (`hoof`, `metal`, similar action-triggered sounds)
 18. verify per-event sound routing/timing parity (doors, switches, shots, impacts, monsters)
 19. enrich startup sound report detail (rates/formats/errors)
-20. implement the sound worker/channel refactor for request-driven playback and future sourceport travel-delay support
+20. implement a Doom-style block/channel software mixer for faithful mode
     See [sound-system-worker-plan.md](/home/dist/github/GD-DOOM/docs/plans/sound-system-worker-plan.md)
-20. expand decode support for additional Doom-compatible variants if encountered
+21. add a later higher-quality 16-bit worker/channel mixer for sourceport mode with travel-delay support
+    See [sound-system-worker-plan.md](/home/dist/github/GD-DOOM/docs/plans/sound-system-worker-plan.md)
+22. expand decode support for additional Doom-compatible variants if encountered
 
 ## Parity Polish (Lower Priority)
 

@@ -2707,7 +2707,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	if g.opts.OverdrawDebug {
 		g.ensureOverdrawBuffer()
 	}
-	g.fill3DBackground(ceilClr, floorClr)
 
 	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0

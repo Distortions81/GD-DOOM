@@ -2,13 +2,12 @@
 
 ## Goal
 
-Replace the current mostly immediate, fire-and-forget sound playback path with a worker-owned request and channel system that can support:
+Split the sound follow-up into two tracks:
 
-- more realistic spatial mixing
-- delayed playback for sourceport-style sound travel time
-- live pan/volume updates while a sound is still playing
-- channel limits, priorities, and voice stealing
-- cleaner transition handling and less gameplay/audio coupling
+1. faithful mode: a Doom-style block/channel software mixer
+2. sourceport mode: a later higher-quality worker/channel mixer
+
+That gives faithful mode a closer match to Doom's sound architecture without forcing the sourceport path to inherit the same limits.
 
 ## Why Change It
 
@@ -20,7 +19,10 @@ The current model is simple, but it has hard limits:
 - spatialization is mostly decided at start time
 - richer mixing features would require more one-off paths
 
-This is good enough for basic Doom playback, but it is the wrong shape for more realistic or more controllable audio mixing.
+This is good enough for basic playback, but it is the wrong shape for either:
+
+- faithful Doom-style channel mixing
+- higher-quality sourceport-style spatial playback
 
 ## Current Shape
 
@@ -35,6 +37,30 @@ Today the system looks like this:
 That means there is not really a separate sound worker yet. There is only a queue on the game side and immediate playback on the sound side.
 
 ## Target Shape
+
+### Faithful Mode
+
+Faithful mode should move to a Doom-style software mixer:
+
+- fixed-size mix blocks
+- small fixed channel pool
+- per-channel volume and stereo separation
+- block-based summing into one mixed stream
+- Doom-like channel replacement policy
+
+This should be the parity-first path.
+
+### Sourceport Mode
+
+Sourceport mode should later move to a more flexible worker/channel system:
+
+- request-driven playback
+- optional travel delay
+- live spatial updates
+- higher-quality 16-bit mixing
+- easier future extension
+
+This should be the quality/flexibility path.
 
 ### 1. Play Requests
 
@@ -101,6 +127,15 @@ It is also a better base for sourceport-only sound travel delay.
 
 ## Rollout Plan
 
+### Phase 0: Faithful Mixer
+
+- add a Doom-style block mixer for faithful mode
+- keep sourceport mode on the current path initially
+- route faithful playback through one mixed stream instead of many `audio.Player`s
+- preserve current sample import and sound-event mapping
+
+This is the highest-value parity step.
+
 ### Phase 1: Internal Refactor With No Behavior Change
 
 - introduce a `playRequest` type
@@ -133,6 +168,7 @@ Add features that should not affect strict Doom parity by default:
 - sound travel delay
 - stronger distance models
 - more advanced channel limiting
+- higher-quality 16-bit sourceport mixer
 - future occlusion/reverb experiments if desired
 
 These should be optional and default-safe.
@@ -156,8 +192,9 @@ For strict Doom behavior:
 - immediate playback remains the default
 - no sound travel delay by default
 - Doom-style attenuation and stereo rules remain the baseline
+- faithful mode should prefer the Doom-style block/channel mixer once implemented
 
-The worker/channel design is about architecture first. It should not force sourceport behavior into the default path.
+The worker/channel design should not force sourceport behavior into the default path.
 
 ## Risks
 
@@ -172,11 +209,12 @@ The first implementation should favor correctness and inspectability over clever
 
 When this work starts, validate in stages:
 
-1. no audible regressions in current Doom-like playback
+1. faithful mode matches current Doom-like playback or improves parity
 2. level transitions do not replay or leak old sounds
 3. positioned world sounds still pan and attenuate correctly
 4. monster death/alert/attack sounds still trigger at the right moments
 5. optional sourceport travel delay only affects sourceport mode
+6. sourceport mode can later adopt a higher-quality 16-bit mixer without changing faithful mode
 
 ## Follow-Up
 

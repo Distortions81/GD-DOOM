@@ -64,7 +64,9 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 
 - [ ] Enrich startup sound import report detail (rates, formats, per-lump errors).
 - [ ] Expand decode support for additional Doom-compatible sound variants if encountered.
-- [ ] Refactor SFX playback around a worker/channel model so active sounds can be scheduled and updated cleanly without changing Doom-faithful defaults.
+- [ ] Add a Doom-style block/channel software SFX mixer for faithful mode.
+  See [sound-system-worker-plan.md](/home/dist/github/GD-DOOM/docs/plans/sound-system-worker-plan.md).
+- [ ] Add a later higher-quality 16-bit sourceport mixer/worker path without changing faithful-mode defaults.
   See [sound-system-worker-plan.md](/home/dist/github/GD-DOOM/docs/plans/sound-system-worker-plan.md).
 - [x] Decode and play MUS music format via the OPL3 music path.
 - [x] Add weapon firing sounds and bullet impact sounds.
