@@ -9,6 +9,7 @@ Single source of truth for current priorities.
 - Doom-emulation 3D renderer: in progress (visplane path + textured walls + colormap lighting + masked mids landed, parity polish remains)
 - Automap parity: mostly done, polish remaining
 - Sound decode track: partial (startup decode/report is in, deeper compatibility pass pending)
+- IWAD map audit: in place; no current actionable engine parity gaps from scanned Doom/Doom II map data
 
 ## Next Up (Priority Order)
 
@@ -28,9 +29,10 @@ Single source of truth for current priorities.
 12. verify animation timing parity after crossfade generation (no cadence drift)
 13. replace mirrored map `Thing` runtime state with Doom-style live actor/runtime-object state (`x/y/z`, momentum, flags, thinker-owned state) to improve parity and demo determinism
 14. keep startup spawn position/facing and sky-pan direction as mandatory regression checks after render edits
-15. sound decode follow-up (lower priority):
-16. enrich startup sound report detail (rates/formats/errors)
-17. expand decode support for additional Doom-compatible variants if encountered
+15. finish remaining monster sensory parity (monster-generated noise alerts / target wake handoff)
+16. sound decode follow-up (lower priority):
+17. enrich startup sound report detail (rates/formats/errors)
+18. expand decode support for additional Doom-compatible variants if encountered
 
 ## Parity Polish (Lower Priority)
 

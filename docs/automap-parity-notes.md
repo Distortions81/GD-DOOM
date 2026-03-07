@@ -46,6 +46,7 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 - Launch flag `-sourceport-mode` starts with heading-follow rotation enabled (source-port style), while default launch remains Doom-like north-up.
 - Startup zoom now uses Doom-style auto zoom (`fit / 0.7`) unless `-zoom` is explicitly provided (>0).
 - Non-Doom convenience controls are now gated behind `-sourceport-mode` (`R`, `B`, `O`, `I`, `L`, `HOME`, `P`, `J`, `K`, `U`, `Y`).
+- `docs/map-audit.md` currently reports no actionable engine parity gaps from IWAD map data for automap/render trigger handling; the remaining entries are malformed data or expected Doom behavior.
 
 ## Controls and Visual UX
 

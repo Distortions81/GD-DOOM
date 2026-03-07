@@ -37,8 +37,9 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 - [ ] Add explosive barrel gameplay parity (collision, damage, and explosion chain behavior).
 - [ ] Validate door/special timing parity in additional maps beyond current smoke tests.
 - [ ] Expand projectile behavior parity checks (spawn cadence, collision, and impact timing).
-- [ ] Implement missing specials (including lift behaviors).
-- [ ] Implement teleporter special parity (activation, destination handling, and timing).
+- [x] Cover Doom/Doom II linedef trigger semantics for normal IWAD gameplay specials.
+- [ ] Validate exact mover behavior parity for floors/plats/ceilings/stairs/donut edge cases.
+- [ ] Finish monster-only teleport activation parity and validate teleporter timing/destination details.
 - [x] Animate switches after activation.
 - [ ] Implement sector light effects parity (flash/pulse/strobe/flicker behavior).
 - [ ] Complete hitscan parity with Doom (damage/spread/tracing behavior).
@@ -46,7 +47,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 - [x] Add bullet impact "puff/poof" effects for hitscan impacts.
 - [x] Use sprite-based visuals for bullet puffs and blood effects (instead of temporary placeholders).
 - [ ] Verify key/lock interaction parity across all key-required specials.
-- [ ] Complete monster AI sensory parity (including sound/hearing-driven wake/alert behavior).
+- [ ] Complete remaining monster AI sensory parity (monster-generated noise alerts, target handoff, and any remaining hearing edge cases).
 - [ ] Validate full difficulty parity including Nightmare semantics.
 - [ ] Validate and expose fast-monsters mode parity behavior.
 - [ ] Add optional turbo mode for faster player movement.
@@ -82,6 +83,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 
 - [ ] Add repeatable visual parity captures for known problematic scenes (sky, masked walls, door transitions).
 - [ ] Add E1M1 acceptance checks for normal/allmap/iddt1/iddt2 automap states.
+- [x] Add IWAD map audit for malformed specials / risky parity data (`docs/map-audit.md`).
 - [x] Startup spawn position/facing regression currently not reproducible.
 - [ ] Keep sky panning direction as a required regression check after render changes.
 - [ ] Maintain demo benchmark baselines for faithful and sourceport modes.
