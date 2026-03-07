@@ -196,6 +196,22 @@ func TestLoadConfigParsesWalkRenderer(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesSourcePortThingRenderMode(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("sourceport_mode = true\nsourceport_thing_render_mode = \"sprites\"\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.SourcePortThingRenderMode == nil || *loaded.SourcePortThingRenderMode != "sprites" {
+		t.Fatalf("sourceport_thing_render_mode=%v want sprites", loaded.SourcePortThingRenderMode)
+	}
+}
+
 func TestLoadConfigParsesItemSpawnOverrides(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")

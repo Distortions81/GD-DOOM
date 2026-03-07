@@ -11,13 +11,14 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	sg := &sessionGame{
 		g: &game{
 			opts: Options{
-				SourcePortMode:  true,
-				MouseLook:       false,
-				MusicVolume:     1.0,
-				SFXVolume:       0.5,
-				LineColorMode:   "doom",
-				KageShader:      true,
-				DoomPaletteRGBA: pal,
+				SourcePortMode:            true,
+				MouseLook:                 false,
+				MusicVolume:               0.9,
+				SFXVolume:                 0.5,
+				LineColorMode:             "doom",
+				SourcePortThingRenderMode: "sprites",
+				KageShader:                true,
+				DoomPaletteRGBA:           pal,
 			},
 			detailLevel:       3,
 			rotateView:        false,
@@ -37,15 +38,16 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 			},
 		},
 		opts: Options{
-			SourcePortMode:   true,
-			MouseLook:        true,
-			MusicVolume:      1.0,
-			SFXVolume:        0.66,
-			AlwaysRun:        false,
-			AutoWeaponSwitch: true,
-			LineColorMode:    "parity",
-			KageShader:       true,
-			DoomPaletteRGBA:  pal,
+			SourcePortMode:            true,
+			MouseLook:                 true,
+			MusicVolume:               0.9,
+			SFXVolume:                 0.66,
+			AlwaysRun:                 false,
+			AutoWeaponSwitch:          true,
+			LineColorMode:             "parity",
+			SourcePortThingRenderMode: "glyphs",
+			KageShader:                true,
+			DoomPaletteRGBA:           pal,
 		},
 	}
 
@@ -70,12 +72,16 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	if sg.opts.LineColorMode != "doom" {
 		t.Fatalf("options line color mode=%q want doom", sg.opts.LineColorMode)
 	}
+	if sg.opts.SourcePortThingRenderMode != "sprites" {
+		t.Fatalf("options thing render mode=%q want sprites", sg.opts.SourcePortThingRenderMode)
+	}
 
 	dst := &game{
 		opts: Options{
-			SourcePortMode:  true,
-			KageShader:      true,
-			DoomPaletteRGBA: pal,
+			SourcePortMode:            true,
+			SourcePortThingRenderMode: "glyphs",
+			KageShader:                true,
+			DoomPaletteRGBA:           pal,
 		},
 		parity: automapParityState{
 			reveal: revealAllMap,
@@ -97,6 +103,9 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	}
 	if dst.opts.LineColorMode != "doom" {
 		t.Fatalf("lineColorMode=%q want doom", dst.opts.LineColorMode)
+	}
+	if dst.opts.SourcePortThingRenderMode != "sprites" {
+		t.Fatalf("thingRenderMode=%q want sprites", dst.opts.SourcePortThingRenderMode)
 	}
 	if dst.opts.MusicVolume != 0.9 {
 		t.Fatalf("musicVolume=%.2f want 0.9", dst.opts.MusicVolume)

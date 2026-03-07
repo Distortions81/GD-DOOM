@@ -13,6 +13,7 @@ type RuntimeSettings struct {
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
 	LineColorMode    string
+	ThingRenderMode  string
 	CRTEffect        bool
 }
 
@@ -43,6 +44,7 @@ type Options struct {
 	Invulnerable               bool
 	LineColorMode              string
 	SourcePortMode             bool
+	SourcePortThingRenderMode  string
 	InitialWalkRenderer        string
 	SourcePortSectorLighting   bool
 	DisableDoomLighting        bool

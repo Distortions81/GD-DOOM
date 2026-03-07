@@ -436,6 +436,20 @@ func (s *soundSystem) tick() {
 	s.players = keep
 }
 
+func (s *soundSystem) stopAll() {
+	if s == nil || len(s.players) == 0 {
+		return
+	}
+	for _, p := range s.players {
+		if p == nil {
+			continue
+		}
+		p.Pause()
+		_ = p.Close()
+	}
+	s.players = s.players[:0]
+}
+
 func pcmMonoU8ToStereoS16LE(src []byte) []byte {
 	out := make([]byte, len(src)*4)
 	oi := 0

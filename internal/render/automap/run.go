@@ -289,6 +289,7 @@ type sessionPersistentSettings struct {
 	alwaysRun               bool
 	autoWeaponSwitch        bool
 	lineColorMode           string
+	thingRenderMode         string
 	showLegend              bool
 	mapTexDiag              bool
 	spriteClipDiag          bool
@@ -416,6 +417,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 		alwaysRun:               g.alwaysRun,
 		autoWeaponSwitch:        g.autoWeaponSwitch,
 		lineColorMode:           g.opts.LineColorMode,
+		thingRenderMode:         g.opts.SourcePortThingRenderMode,
 		showLegend:              g.showLegend,
 		mapTexDiag:              g.mapTexDiag,
 		spriteClipDiag:          g.spriteClipDiag,
@@ -438,6 +440,7 @@ func (sg *sessionGame) applyPersistentSettingsToOptions() {
 	sg.opts.AlwaysRun = sg.settings.alwaysRun
 	sg.opts.AutoWeaponSwitch = sg.settings.autoWeaponSwitch
 	sg.opts.LineColorMode = sg.settings.lineColorMode
+	sg.opts.SourcePortThingRenderMode = sg.settings.thingRenderMode
 }
 
 func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
@@ -463,6 +466,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.alwaysRun = s.alwaysRun
 	g.autoWeaponSwitch = s.autoWeaponSwitch
 	g.opts.LineColorMode = s.lineColorMode
+	g.opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(s.thingRenderMode, g.opts.SourcePortMode)
 	g.showLegend = s.showLegend
 	g.mapTexDiag = s.mapTexDiag
 	g.spriteClipDiag = s.spriteClipDiag
@@ -837,6 +841,7 @@ func (sg *sessionGame) Update() error {
 	if err == nil {
 		if sg.g.levelRestartRequested {
 			sg.stopAndClearMusic()
+			sg.g.clearPendingSoundState()
 			sg.rebuildGameWithPersistentSettings(sg.restartMapForRespawn())
 			sg.playMusicForMap(sg.g.m.Name)
 			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
@@ -1335,6 +1340,9 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 
 func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.MapName) {
 	sg.stopAndClearMusic()
+	if sg.g != nil {
+		sg.g.clearPendingSoundState()
+	}
 	stats := collectIntermissionStats(sg.g, sg.current, nextName)
 	showEntering := shouldShowEnteringScreen(stats.mapName, stats.nextMapName)
 	showYouAreHere := showEntering && shouldShowYouAreHere(stats.mapName, stats.nextMapName)
@@ -1373,16 +1381,19 @@ func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.Map
 }
 
 func (sg *sessionGame) tickIntermission() bool {
+	return sg.tickIntermissionAdvance(anyIntermissionSkipInput())
+}
+
+func (sg *sessionGame) tickIntermissionAdvance(skipPressed bool) bool {
 	if !sg.intermission.active {
 		return false
 	}
 	im := &sg.intermission
 	im.tic++
-	skipPressed := anyIntermissionSkipInput()
 	if skipPressed && im.tic <= intermissionSkipInputDelayTics {
 		skipPressed = false
 	}
-	if skipPressed {
+	if skipPressed && im.phase != intermissionPhaseYouAreHere {
 		im.show.killsPct = im.target.killsPct
 		im.show.itemsPct = im.target.itemsPct
 		im.show.secretsPct = im.target.secretsPct
@@ -1463,6 +1474,9 @@ func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) 
 		return false
 	}
 	sg.stopAndClearMusic()
+	if sg.g != nil {
+		sg.g.clearPendingSoundState()
+	}
 	sg.finale = sessionFinale{
 		active:  true,
 		tic:     0,
@@ -1474,16 +1488,19 @@ func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) 
 }
 
 func (sg *sessionGame) tickFinale() bool {
+	return sg.tickFinaleAdvance(anyIntermissionSkipInput())
+}
+
+func (sg *sessionGame) tickFinaleAdvance(skipPressed bool) bool {
 	if !sg.finale.active {
 		return false
 	}
 	f := &sg.finale
 	f.tic++
-	skipPressed := anyIntermissionSkipInput()
 	if skipPressed && f.tic <= intermissionSkipInputDelayTics {
 		skipPressed = false
 	}
-	if skipPressed {
+	if skipPressed && f.waitTic > intermissionSkipExitHoldTics {
 		f.waitTic = intermissionSkipExitHoldTics
 	}
 	if f.waitTic > 0 {
@@ -1522,6 +1539,9 @@ func (sg *sessionGame) finishIntermission() {
 	im := &sg.intermission
 	if !im.active || im.nextMap == nil {
 		return
+	}
+	if sg.g != nil {
+		sg.g.clearPendingSoundState()
 	}
 	sg.current = im.target.nextMapName
 	sg.currentTemplate = cloneMapForRestart(im.nextMap)

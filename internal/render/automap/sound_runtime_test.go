@@ -39,6 +39,20 @@ func TestDelayedSoundEventQueue(t *testing.T) {
 	}
 }
 
+func TestClearPendingSoundStateClearsQueues(t *testing.T) {
+	g := &game{
+		soundQueue: []soundEvent{soundEventDoorOpen, soundEventSwitchOn},
+		delayedSfx: []delayedSoundEvent{{ev: soundEventSwitchOff, tics: 3}},
+	}
+	g.clearPendingSoundState()
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue len=%d want=0", got)
+	}
+	if got := len(g.delayedSfx); got != 0 {
+		t.Fatalf("delayedSfx len=%d want=0", got)
+	}
+}
+
 func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	s := &soundSystem{
 		bank: SoundBank{

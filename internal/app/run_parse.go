@@ -61,6 +61,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultSourcePortThingRenderMode := "items"
 	defaultWalkRenderer := "doom-basic"
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
@@ -182,6 +183,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
+		if cfg.SourcePortThingRenderMode != nil {
+			defaultSourcePortThingRenderMode = *cfg.SourcePortThingRenderMode
+		}
+		if cfg.SourcePortItemSprites != nil {
+			if *cfg.SourcePortItemSprites {
+				defaultSourcePortThingRenderMode = "items"
+			} else {
+				defaultSourcePortThingRenderMode = "glyphs"
+			}
+		}
 		if cfg.WalkRenderer != nil {
 			defaultWalkRenderer = *cfg.WalkRenderer
 		}
@@ -293,6 +304,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	sourcePortThingRenderMode := fs.String("sourceport-thing-render-mode", defaultSourcePortThingRenderMode, "sourceport automap thing rendering (glyphs|items|sprites)")
 	walkRenderer := fs.String("walk-renderer", defaultWalkRenderer, "startup walk renderer (doom-basic|unified-bsp|wireframe)")
 	sourcePortSectorLighting := fs.Bool("sourceport-sector-lighting", defaultSourcePortSectorLighting, "show classic sector lighting while in sourceport mode")
 	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
@@ -618,6 +630,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:               resolvedInvuln,
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
+			SourcePortThingRenderMode:  *sourcePortThingRenderMode,
 			InitialWalkRenderer:        *walkRenderer,
 			SourcePortSectorLighting:   *sourcePortSectorLighting,
 			DisableDoomLighting:        !*doomLighting,

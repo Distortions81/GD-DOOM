@@ -91,3 +91,20 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 		t.Fatalf("weapon overlay timers not cleared on switch: anim=%d flash=%d", g.weaponAnimTics, g.weaponFlashTics)
 	}
 }
+
+func TestSpritePatch_FallsBackToBasePatchForMissingBlendToken(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"BON1A0": {Width: 1, Height: 1, OffsetX: 2, OffsetY: 3, RGBA: []byte{1, 2, 3, 4}},
+			},
+		},
+	}
+	_, w, h, ox, oy, ok := g.spritePatch("BON1A0>BON1B0#1/10")
+	if !ok {
+		t.Fatal("spritePatch should fall back to base patch for missing blend token")
+	}
+	if w != 1 || h != 1 || ox != 2 || oy != 3 {
+		t.Fatalf("got w=%d h=%d ox=%d oy=%d want 1,1,2,3", w, h, ox, oy)
+	}
+}

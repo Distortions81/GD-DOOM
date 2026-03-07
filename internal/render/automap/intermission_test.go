@@ -138,6 +138,31 @@ func TestTickIntermissionCommercialSkipsEnteringPhases(t *testing.T) {
 	}
 }
 
+func TestTickIntermissionSkipDoesNotResetFinalHold(t *testing.T) {
+	sg := &sessionGame{
+		intermission: sessionIntermission{
+			active:  true,
+			phase:   intermissionPhaseYouAreHere,
+			tic:     intermissionSkipInputDelayTics + 1,
+			waitTic: 5,
+			show: intermissionStats{
+				mapName:     mapdata.MapName("E1M1"),
+				nextMapName: mapdata.MapName("E1M2"),
+			},
+			target: intermissionStats{
+				mapName:     mapdata.MapName("E1M1"),
+				nextMapName: mapdata.MapName("E1M2"),
+			},
+		},
+	}
+	if done := sg.tickIntermissionAdvance(true); done {
+		t.Fatal("final intermission hold should not complete immediately")
+	}
+	if got := sg.intermission.waitTic; got != 4 {
+		t.Fatalf("waitTic=%d want=4", got)
+	}
+}
+
 func TestCollectIntermissionStats_UsesInitialSecretTotalAfterDiscovery(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

@@ -228,6 +228,18 @@ func (g *game) weaponBob() (float64, float64) {
 func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool) {
 	key := strings.ToUpper(strings.TrimSpace(name))
 	p, ok := g.opts.SpritePatchBank[key]
+	if (!ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4) && g != nil {
+		if tex, okBlend := g.spriteAnimBlendTex[key]; okBlend && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+			p = tex
+			ok = true
+		} else if base := fallbackSpritePatchKey(key); base != "" {
+			if tex, okBase := g.opts.SpritePatchBank[base]; okBase && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+				key = base
+				p = tex
+				ok = true
+			}
+		}
+	}
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 		return nil, 0, 0, 0, 0, false
 	}
@@ -241,6 +253,22 @@ func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool
 	img.WritePixels(p.RGBA)
 	g.spritePatchImg[key] = img
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+}
+
+func fallbackSpritePatchKey(key string) string {
+	if key == "" {
+		return ""
+	}
+	gt := strings.IndexByte(key, '>')
+	hash := strings.IndexByte(key, '#')
+	if gt <= 0 || hash <= gt+1 {
+		return ""
+	}
+	base := strings.TrimSpace(key[:gt])
+	if base == "" {
+		return ""
+	}
+	return base
 }
 
 func (g *game) drawSpritePatch(screen *ebiten.Image, name string, x, y, sx, sy float64) bool {

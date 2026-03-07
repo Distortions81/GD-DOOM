@@ -63,6 +63,61 @@ func TestSourcePortDefaultsEnableLegend(t *testing.T) {
 	if g.walkRender != walkRendererDoomBasic {
 		t.Fatal("sourceport default should use doom-basic walk renderer")
 	}
+	if g.opts.SourcePortThingRenderMode != "items" {
+		t.Fatalf("sourceport default thing render mode=%q want items", g.opts.SourcePortThingRenderMode)
+	}
+}
+
+func TestSourcePortThingRenderModeCycle(t *testing.T) {
+	if got := cycleSourcePortThingRenderMode("glyphs"); got != "items" {
+		t.Fatalf("cycle glyphs=%q want items", got)
+	}
+	if got := cycleSourcePortThingRenderMode("items"); got != "sprites" {
+		t.Fatalf("cycle items=%q want sprites", got)
+	}
+	if got := cycleSourcePortThingRenderMode("sprites"); got != "glyphs" {
+		t.Fatalf("cycle sprites=%q want glyphs", got)
+	}
+}
+
+func TestShouldDrawMapThingSpriteHonorsMode(t *testing.T) {
+	g := &game{opts: Options{SourcePortMode: true, SourcePortThingRenderMode: "glyphs"}}
+	if g.shouldDrawMapThingSprite(mapdata.Thing{Type: 2011}) {
+		t.Fatal("glyph mode should not draw item sprites")
+	}
+	g.opts.SourcePortThingRenderMode = "items"
+	if !g.shouldDrawMapThingSprite(mapdata.Thing{Type: 2011}) {
+		t.Fatal("items mode should draw pickup sprites")
+	}
+	if g.shouldDrawMapThingSprite(mapdata.Thing{Type: 3004}) {
+		t.Fatal("items mode should not draw monster sprites")
+	}
+	g.opts.SourcePortThingRenderMode = "sprites"
+	if !g.shouldDrawMapThingSprite(mapdata.Thing{Type: 3004}) {
+		t.Fatal("sprites mode should draw monster sprites")
+	}
+}
+
+func TestMapThingSpriteName_UsesMonsterSpritePath(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"TROOA1": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			},
+		},
+	}
+	g.p.x = -100 * fracUnit
+	g.p.y = 0
+	if got := g.mapThingSpriteName(0, mapdata.Thing{Type: 3001, X: 0, Y: 0, Angle: 0}); got != "TROOA1" {
+		t.Fatalf("monster map sprite=%q want TROOA1", got)
+	}
+}
+
+func TestMapThingSpriteName_PlayerStartUsesPlayerSprite(t *testing.T) {
+	g := &game{}
+	if got := g.mapThingSpriteName(0, mapdata.Thing{Type: 1}); got != "PLAYN0" {
+		t.Fatalf("player start map sprite=%q want PLAYN0", got)
+	}
 }
 
 func TestSourcePortHonorsInitialWalkRenderer(t *testing.T) {

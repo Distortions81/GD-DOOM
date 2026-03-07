@@ -43,6 +43,8 @@ type fileConfig struct {
 	ImportTextures             *bool    `toml:"import_textures"`
 	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
+	SourcePortThingRenderMode  *string  `toml:"sourceport_thing_render_mode"`
+	SourcePortItemSprites      *bool    `toml:"sourceport_item_sprites"`
 	WalkRenderer               *string  `toml:"walk_renderer"`
 	SourcePortSectorLighting   *bool    `toml:"sourceport_sector_lighting"`
 	DoomLighting               *bool    `toml:"doom_lighting"`

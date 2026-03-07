@@ -649,6 +649,14 @@ const (
 	walkRendererPseudo
 )
 
+type sourcePortThingRenderMode string
+
+const (
+	sourcePortThingRenderGlyphs  sourcePortThingRenderMode = "glyphs"
+	sourcePortThingRenderItems   sourcePortThingRenderMode = "items"
+	sourcePortThingRenderSprites sourcePortThingRenderMode = "sprites"
+)
+
 func normalizeInitialWalkRenderer(v string, sourcePort bool) walkRendererMode {
 	switch strings.TrimSpace(strings.ToLower(v)) {
 	case "doom-basic", "doom_basic", "basic", "":
@@ -671,6 +679,41 @@ func normalizeInitialWalkRenderer(v string, sourcePort bool) walkRendererMode {
 			return walkRendererDoomBasic
 		}
 		return walkRendererDoomBasic
+	}
+}
+
+func normalizeSourcePortThingRenderMode(v string, sourcePort bool) string {
+	mode := sourcePortThingRenderMode(strings.ToLower(strings.TrimSpace(v)))
+	switch mode {
+	case sourcePortThingRenderGlyphs, sourcePortThingRenderItems, sourcePortThingRenderSprites:
+		return string(mode)
+	default:
+		if sourcePort {
+			return string(sourcePortThingRenderItems)
+		}
+		return string(sourcePortThingRenderGlyphs)
+	}
+}
+
+func cycleSourcePortThingRenderMode(v string) string {
+	switch sourcePortThingRenderMode(normalizeSourcePortThingRenderMode(v, true)) {
+	case sourcePortThingRenderGlyphs:
+		return string(sourcePortThingRenderItems)
+	case sourcePortThingRenderItems:
+		return string(sourcePortThingRenderSprites)
+	default:
+		return string(sourcePortThingRenderGlyphs)
+	}
+}
+
+func sourcePortThingRenderModeLabel(v string) string {
+	switch sourcePortThingRenderMode(normalizeSourcePortThingRenderMode(v, true)) {
+	case sourcePortThingRenderItems:
+		return "ITEM SPRITES"
+	case sourcePortThingRenderSprites:
+		return "ALL SPRITES"
+	default:
+		return "GLYPHS"
 	}
 }
 
@@ -879,6 +922,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		// Doom mode keeps strict parity color semantics.
 		opts.LineColorMode = "parity"
 	}
+	opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(opts.SourcePortThingRenderMode, opts.SourcePortMode)
 	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
 		opts.PlayerSlot = 1
 	}
@@ -1210,6 +1254,7 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		AlwaysRun:        g.alwaysRun,
 		AutoWeaponSwitch: g.autoWeaponSwitch,
 		LineColorMode:    g.opts.LineColorMode,
+		ThingRenderMode:  g.opts.SourcePortThingRenderMode,
 		CRTEffect:        g.crtEnabled,
 	}
 }
@@ -1814,6 +1859,10 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Thing Legend OFF", 70)
 			}
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyT) {
+			g.opts.SourcePortThingRenderMode = cycleSourcePortThingRenderMode(g.opts.SourcePortThingRenderMode)
+			g.setHUDMessage(fmt.Sprintf("Thing Render: %s", sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode)), 70)
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyK) {
 			g.mapTexDiag = !g.mapTexDiag
 			if g.mapTexDiag {
@@ -2092,6 +2141,8 @@ func (g *game) Draw(screen *ebiten.Image) {
 		ebitenutil.DebugPrintAt(screen, cheat, 12, 60)
 		floor2D := fmt.Sprintf("floor2d=%s %s", g.floorPathLabel(), g.mapFloorWorldState)
 		ebitenutil.DebugPrintAt(screen, floor2D, 12, 76)
+		thingRender := fmt.Sprintf("things=%s", strings.ToLower(sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode)))
+		ebitenutil.DebugPrintAt(screen, thingRender, 12, 92)
 		if g.mapTexDiag {
 			d := g.mapTexDiagStats
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("maptex diag ok=%d short=%d no_poly=%d non_simple=%d tri_fail=%d multi=%d dead=%d early=%d noclose=%d nonconvex=%d deg=%d area_mis=%d", d.ok, d.segShort, d.noPoly, d.nonSimple, d.triFail, d.loopMultiNext, d.loopDeadEnd, d.loopEarlyClose, d.loopNoClose, d.nonConvex, d.degenerateArea, d.triAreaMismatch), 12, 92)
@@ -2133,6 +2184,17 @@ func (g *game) emitSoundEventDelayed(ev soundEvent, tics int) {
 		return
 	}
 	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{ev: ev, tics: tics})
+}
+
+func (g *game) clearPendingSoundState() {
+	if g == nil {
+		return
+	}
+	g.soundQueue = g.soundQueue[:0]
+	g.delayedSfx = g.delayedSfx[:0]
+	if g.snd != nil {
+		g.snd.stopAll()
+	}
 }
 
 func (g *game) tickDelayedSounds() {
@@ -2228,6 +2290,12 @@ func (g *game) drawThingLegend(screen *ebiten.Image) {
 		{label: "items/pickups", style: thingStyle{glyph: thingGlyphDiamond, clr: thingItemColor}},
 		{label: "keys", style: thingStyle{glyph: thingGlyphStar, clr: thingKeyBlue}},
 		{label: "misc", style: thingStyle{glyph: thingGlyphCross, clr: thingMiscColor}},
+	}
+	if g.opts.SourcePortMode {
+		entries = append(entries, legendEntry{
+			label: fmt.Sprintf("render: %s", strings.ToLower(sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode))),
+			style: thingStyle{glyph: thingGlyphCross, clr: thingMiscColor},
+		})
 	}
 	type lineLegendEntry struct {
 		label string
@@ -2360,6 +2428,9 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		x := float64(fx) / fracUnit
 		y := float64(fy) / fracUnit
 		sx, sy := g.worldToScreen(x, y)
+		if g.drawMapThingSprite(screen, i, th, sx, sy) {
+			continue
+		}
 		size := thingGlyphSize(g.zoom)
 		angle := worldThingAngle(th.Angle)
 		if g.rotateView {
@@ -2367,6 +2438,69 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		}
 		drawThingGlyph(screen, styleForThing(th), sx, sy, angle, size, aa)
 	}
+}
+
+func (g *game) shouldDrawMapThingSprite(th mapdata.Thing) bool {
+	if g == nil || !g.opts.SourcePortMode {
+		return false
+	}
+	switch sourcePortThingRenderMode(normalizeSourcePortThingRenderMode(g.opts.SourcePortThingRenderMode, g.opts.SourcePortMode)) {
+	case sourcePortThingRenderItems:
+		return isItemOrPickup(th.Type)
+	case sourcePortThingRenderSprites:
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *game) drawMapThingSprite(screen *ebiten.Image, thingIdx int, th mapdata.Thing, sx, sy float64) bool {
+	if !g.shouldDrawMapThingSprite(th) {
+		return false
+	}
+	name := g.mapThingSpriteName(thingIdx, th)
+	if name == "" {
+		return false
+	}
+	img, w, h, _, _, ok := g.spritePatch(name)
+	if !ok || w <= 0 || h <= 0 {
+		return false
+	}
+	target := thingGlyphSize(g.zoom) * 2.4
+	if target < 6 {
+		target = 6
+	}
+	scale := math.Min(target/float64(w), target/float64(h))
+	if scale <= 0 {
+		return false
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(sx-float64(w)*scale*0.5, sy-float64(h)*scale*0.5)
+	screen.DrawImage(img, op)
+	return true
+}
+
+func (g *game) mapThingSpriteName(thingIdx int, th mapdata.Thing) string {
+	if g == nil {
+		return ""
+	}
+	if isPlayerStart(th.Type) {
+		return "PLAYN0"
+	}
+	if isMonster(th.Type) {
+		name, _ := g.monsterSpriteNameForView(
+			thingIdx,
+			th,
+			g.worldTic,
+			float64(g.p.x)/fracUnit,
+			float64(g.p.y)/fracUnit,
+		)
+		return name
+	}
+	animTickUnits, animUnitsPerTic := g.worldThingAnimTickUnits()
+	return g.worldThingSpriteNameScaled(th.Type, animTickUnits, animUnitsPerTic)
 }
 
 func thingGlyphSize(zoom float64) float64 {
@@ -16637,6 +16771,7 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 			"\\  TOGGLE MOUSE LOOK",
 			"U  TOGGLE UNIFIED BSP",
 			"P  TOGGLE WIREFRAME",
+			"T  CYCLE THING RENDER",
 			"J  TOGGLE 2D FLOOR PATH (RASTER/CACHED)",
 			"Y  TOGGLE SPRITE CLIP DIAG",
 			"B  BIG MAP (ALIAS)",
