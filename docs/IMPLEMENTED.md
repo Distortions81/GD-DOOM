@@ -2,6 +2,8 @@
 
 Snapshot of features currently working in this repo.
 
+For practical end-user launch flags, see `docs/launch-params.md`.
+
 ## Parser and Data
 
 - IWAD header/directory parsing (`IWAD` validation)

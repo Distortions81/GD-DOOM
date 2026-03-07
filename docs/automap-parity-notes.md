@@ -2,6 +2,8 @@
 
 This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`) more closely.
 
+For practical end-user launch flags, see `docs/launch-params.md`.
+
 ## Rendering and Visibility
 
 - [x] Respect per-line discovery (`ML_MAPPED`) in normal automap mode.
@@ -60,10 +62,3 @@ This checklist tracks behavior needed to match vanilla Doom automap (`am_map.c`)
 
 - [ ] Build E1M1 parity checks for: normal mode, allmap mode, iddt1, iddt2. (lower priority)
 - [x] Add unit tests for line inclusion rules (`ML_MAPPED`, `LINE_NEVERSEE`, cheat/allmap gates).
-
-## Sound Decode Track (Boot-Time In-Memory)
-
-- [ ] Inventory sound lumps (`DS*`, `DP*`, etc.) and output a report.
-- [ ] Decode DMX sound format in-memory during boot/startup.
-- [ ] Print startup decode status message (count decoded, failures, skipped lumps).
-- [ ] Add parser/decoder tests for malformed and valid sample lumps.
