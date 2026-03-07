@@ -87,14 +87,13 @@ type soundSystem struct {
 }
 
 const (
-	doomSoundMaxVolume     = 127
-	doomSoundClippingDist  = int64(1200 * fracUnit)
-	doomSoundCloseDist     = int64(160 * fracUnit)
-	doomSoundStereoSwing   = int64(96 * fracUnit)
-	doomSoundAttenuator    = (doomSoundClippingDist - doomSoundCloseDist) / fracUnit
-	doomSoundNormalSep     = 128
-	doomSoundSepRange      = 256
-	sourcePortSFXPadFrames = 2048
+	doomSoundMaxVolume    = 127
+	doomSoundClippingDist = int64(1200 * fracUnit)
+	doomSoundCloseDist    = int64(160 * fracUnit)
+	doomSoundStereoSwing  = int64(96 * fracUnit)
+	doomSoundAttenuator   = (doomSoundClippingDist - doomSoundCloseDist) / fracUnit
+	doomSoundNormalSep    = 128
+	doomSoundSepRange     = 256
 )
 
 var (
@@ -145,24 +144,8 @@ func prepareSampleForSourcePort(sample *PCMSample, dstRate int) {
 		mono = resampleMonoS16Polyphase(mono, sample.SampleRate, dstRate)
 	}
 	mono = applySourcePortPresenceBoost(mono)
-	mono = padSourcePortMonoS16(mono)
 	sample.PreparedRate = dstRate
 	sample.PreparedMono = mono
-}
-
-func padSourcePortMonoS16(src []int16) []int16 {
-	if len(src) == 0 {
-		return nil
-	}
-	paddedLen := ((len(src) + (sourcePortSFXPadFrames - 1)) / sourcePortSFXPadFrames) * sourcePortSFXPadFrames
-	if paddedLen == len(src) {
-		out := make([]int16, len(src))
-		copy(out, src)
-		return out
-	}
-	out := make([]int16, paddedLen)
-	copy(out, src)
-	return out
 }
 
 func applySourcePortPresenceBoost(src []int16) []int16 {

@@ -8,17 +8,20 @@ const (
 	fracBits = 16
 	fracUnit = 1 << fracBits
 
-	playerRadius    = 16 * fracUnit
-	playerHeight    = 56 * fracUnit
-	maxMove         = 30 * fracUnit
-	stopSpeed       = 0x1000
-	friction        = 0xe800
-	stepHeight      = 24 * fracUnit
-	useRange        = 64 * fracUnit
-	vDoorSpeed      = 2 * fracUnit
-	vDoorWaitTic    = 150
-	slowTurnTics    = 6
-	switchResetTics = 35
+	playerRadius        = 16 * fracUnit
+	playerHeight        = 56 * fracUnit
+	playerViewHeight    = 41 * fracUnit
+	playerViewHeightMin = playerViewHeight / 2
+	playerGravity       = fracUnit
+	maxMove             = 30 * fracUnit
+	stopSpeed           = 0x1000
+	friction            = 0xe800
+	stepHeight          = 24 * fracUnit
+	useRange            = 64 * fracUnit
+	vDoorSpeed          = 2 * fracUnit
+	vDoorWaitTic        = 150
+	slowTurnTics        = 6
+	switchResetTics     = 35
 
 	mlBlocking      = 0x0001
 	mlBlockMonsters = 0x0002
@@ -39,14 +42,17 @@ const (
 )
 
 type player struct {
-	x      int64
-	y      int64
-	z      int64
-	floorz int64
-	ceilz  int64
-	angle  uint32
-	momx   int64
-	momy   int64
+	x               int64
+	y               int64
+	z               int64
+	floorz          int64
+	ceilz           int64
+	angle           uint32
+	momx            int64
+	momy            int64
+	momz            int64
+	viewHeight      int64
+	deltaViewHeight int64
 }
 
 type moveCmd struct {
@@ -114,10 +120,10 @@ type doorThinker struct {
 func spawnPlayer(m *mapdata.Map, requestedSlot int) (player, int, []playerStart) {
 	starts := collectPlayerStarts(m)
 	if s, ok := chooseSpawnStart(starts, requestedSlot); ok {
-		return player{x: s.x, y: s.y, z: 0, floorz: 0, ceilz: 128 * fracUnit, angle: s.angle}, s.slot, starts
+		return player{x: s.x, y: s.y, z: 0, floorz: 0, ceilz: 128 * fracUnit, angle: s.angle, viewHeight: playerViewHeight}, s.slot, starts
 	}
 	b := mapBounds(m)
-	return player{x: int64(((b.minX + b.maxX) / 2) * fracUnit), y: int64(((b.minY + b.maxY) / 2) * fracUnit), ceilz: 128 * fracUnit}, 1, starts
+	return player{x: int64(((b.minX + b.maxX) / 2) * fracUnit), y: int64(((b.minY + b.maxY) / 2) * fracUnit), ceilz: 128 * fracUnit, viewHeight: playerViewHeight}, 1, starts
 }
 
 func (g *game) initPhysics() {
@@ -145,6 +151,9 @@ func (g *game) initPhysics() {
 		g.p.floorz = int64(g.m.Sectors[sec].FloorHeight) << fracBits
 		g.p.ceilz = int64(g.m.Sectors[sec].CeilingHeight) << fracBits
 		g.p.z = g.p.floorz
+	}
+	if g.p.viewHeight == 0 {
+		g.p.viewHeight = playerViewHeight
 	}
 }
 

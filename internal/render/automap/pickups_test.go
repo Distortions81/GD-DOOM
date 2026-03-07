@@ -95,7 +95,7 @@ func TestDeadPlayerDoesNotPickup(t *testing.T) {
 	g.initPlayerState()
 	g.stats.Health = 50
 	g.thingCollected = make([]bool, len(g.m.Things))
-	g.updatePlayer(moveCmd{})
+	g.runGameplayTic(moveCmd{}, false, false)
 	if g.stats.Health != 50 {
 		t.Fatalf("dead player health changed to %d", g.stats.Health)
 	}

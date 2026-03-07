@@ -734,7 +734,10 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		g.p.floorz = floorZ
 		g.p.ceilz = ceilZ
 		g.p.z = floorZ
-		g.playerViewZ = g.p.z + 41*fracUnit
+		g.p.momz = 0
+		g.p.viewHeight = playerViewHeight
+		g.p.deltaViewHeight = 0
+		g.playerViewZ = g.p.z + g.p.viewHeight
 		g.p.momx = 0
 		g.p.momy = 0
 		g.p.angle = thingDegToWorldAngle(th.Angle)

@@ -200,31 +200,12 @@ func TestPrepareSoundBankForSourcePort_Precomputes44kMono(t *testing.T) {
 	if s.PreparedRate != 44100 {
 		t.Fatalf("prepared rate=%d want=44100", s.PreparedRate)
 	}
-	if len(s.PreparedMono) != sourcePortSFXPadFrames {
-		t.Fatalf("prepared len=%d want=%d", len(s.PreparedMono), sourcePortSFXPadFrames)
+	const resampledLen = 16
+	if len(s.PreparedMono) != resampledLen {
+		t.Fatalf("prepared len=%d want=%d", len(s.PreparedMono), resampledLen)
 	}
 	if s.PreparedMono[0] >= s.PreparedMono[15] {
 		t.Fatalf("prepared mono should preserve rising shape: first=%d sample15=%d", s.PreparedMono[0], s.PreparedMono[15])
-	}
-	for i := 16; i < len(s.PreparedMono); i++ {
-		if s.PreparedMono[i] != 0 {
-			t.Fatalf("prepared tail sample[%d]=%d want=0", i, s.PreparedMono[i])
-		}
-	}
-}
-
-func TestPadSourcePortMonoS16_PadsWithZeroSilence(t *testing.T) {
-	got := padSourcePortMonoS16([]int16{1, 2, 3})
-	if len(got) != sourcePortSFXPadFrames {
-		t.Fatalf("len=%d want=%d", len(got), sourcePortSFXPadFrames)
-	}
-	if got[0] != 1 || got[1] != 2 || got[2] != 3 {
-		t.Fatalf("prefix=%v want original prefix", got[:3])
-	}
-	for i := 3; i < len(got); i++ {
-		if got[i] != 0 {
-			t.Fatalf("tail sample at %d = %d want 0", i, got[i])
-		}
 	}
 }
 

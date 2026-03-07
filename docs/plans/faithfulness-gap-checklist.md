@@ -59,6 +59,21 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 - [x] Add next/previous weapon cycling (mouse wheel and/or dedicated buttons).
 - [x] Add auto weapon-switch toggle behavior parity.
 - [x] Add run toggle option parity.
+- [ ] Finish Doom-style psprite weapon parity:
+- [ ] Add weapon raise/lower state handling and pending-weapon transitions (`A_Lower` / `A_Raise` style flow).
+- [ ] Replace remaining simplified fire logic with full per-weapon psprite/action parity for the whole arsenal.
+- [ ] Add Doom II super shotgun support with correct sloting, ammo use, sounds, reload states, and sprite timing.
+- [ ] Finish rocket/plasma/BFG projectile weapon parity, including real projectile/BFG behavior and muzzle-flash timing.
+- [ ] Match weapon attack/refire edge cases exactly (`A_WeaponReady`, `A_ReFire`, attack-hold semantics, no-autofire cases).
+- [ ] Match ammo check / forced weapon switch parity (`P_CheckAmmo`) across all supported weapons.
+- [ ] Keep weapon sprite, flash sprite, and bob timing aligned with Doom psprite state progression.
+
+## Demo / Timedemo Parity Prep
+
+- [ ] Keep gameplay tick ordering aligned with Doom player-think / thinker / specials structure as weapon work lands.
+- [ ] Add regression tests for deterministic replay of custom demo scripts across weapon, movement, and RNG-heavy combat cases.
+- [ ] Prepare for Doom `timedemo`-style playback by avoiding new non-vanilla simulation shortcuts in player/weapon/actor logic.
+- [ ] Audit remaining player-think counters/state updates against Doom ordering (weapon, powerups, damage/bonus counters, attack state).
 
 ## Audio and Music Parity
 

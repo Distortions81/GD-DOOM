@@ -441,11 +441,11 @@ type game struct {
 	alwaysRun            bool
 	autoWeaponSwitch     bool
 	weaponRefire         bool
-	weaponFireCooldown   int
-	weaponAnimTics       int
-	weaponAnimTotalTics  int
+	weaponAttackDown     bool
+	weaponState          weaponPspriteState
+	weaponStateTics      int
+	weaponFlashState     weaponPspriteState
 	weaponFlashTics      int
-	weaponFlashTotalTics int
 	stats                playerStats
 	worldTic             int
 	spectreFuzzPos       int
@@ -1066,7 +1066,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	// Initialize eye height after physics snaps player Z/floor/ceiling.
 	// This avoids one-frame low-camera artifacts (e.g. during level melt)
 	// before the first tickWorldLogic() view-height update runs.
-	g.playerViewZ = g.p.z + 41*fracUnit
+	g.playerViewZ = g.p.z + g.p.viewHeight
 	g.initSubSectorSectorCache()
 	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume, opts.SourcePortMode)
 	g.soundQueue = make([]soundEvent, 0, 8)
@@ -1519,18 +1519,14 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	g.setAttackHeld(tc.Fire)
-	if tc.Use {
-		g.handleUse()
-	}
-	g.tickWeaponFire()
-	g.updatePlayer(moveCmd{
+	cmd := moveCmd{
 		forward: tc.Forward,
 		side:    tc.Side,
 		turn:    tc.Turn,
 		turnRaw: tc.TurnRaw,
 		run:     tc.Run,
-	})
+	}
+	g.runGameplayTic(cmd, tc.Use, tc.Fire)
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
@@ -1618,12 +1614,9 @@ func (g *game) updateMapMode() {
 	if g.edgeInputPass && g.pendingUse {
 		usePressed = true
 		g.pendingUse = false
-		g.handleUse()
 	}
 	fireHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 	firePressed = fireHeld
-	g.setAttackHeld(fireHeld)
-	g.tickWeaponFire()
 	if g.opts.SourcePortMode && g.opts.MouseLook {
 		mx, _ := ebiten.CursorPosition()
 		if g.mouseLookSuppressTicks > 0 {
@@ -1638,7 +1631,7 @@ func (g *game) updateMapMode() {
 		g.mouseLookSet = false
 	}
 	cmd.run = speed == 1
-	g.updatePlayer(cmd)
+	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.recordDemoTic(cmd, usePressed, firePressed)
 	g.discoverLinesAroundPlayer()
 
@@ -1701,12 +1694,9 @@ func (g *game) updateWalkMode() {
 	if g.edgeInputPass && g.pendingUse {
 		usePressed = true
 		g.pendingUse = false
-		g.handleUse()
 	}
 	fireHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 	firePressed = fireHeld
-	g.setAttackHeld(fireHeld)
-	g.tickWeaponFire()
 
 	if g.opts.MouseLook {
 		mx, _ := ebiten.CursorPosition()
@@ -1724,7 +1714,7 @@ func (g *game) updateWalkMode() {
 	}
 
 	cmd.run = speed == 1
-	g.updatePlayer(cmd)
+	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.recordDemoTic(cmd, usePressed, firePressed)
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit

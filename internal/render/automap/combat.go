@@ -83,8 +83,6 @@ func (g *game) handleFire() {
 	}
 	g.propagateNoiseAlertFrom(g.p.x, g.p.y)
 	hit := g.fireSelectedWeapon()
-	g.startWeaponOverlayFire(g.inventory.ReadyWeapon)
-	g.weaponRefire = true
 	_ = hit
 }
 
@@ -92,38 +90,100 @@ func (g *game) setAttackHeld(held bool) {
 	g.statusAttackDown = held
 	if !held {
 		g.weaponRefire = false
+		g.weaponAttackDown = false
 	}
 }
 
 func (g *game) tickWeaponFire() {
 	g.tickWeaponOverlay()
-	if g.weaponFireCooldown > 0 {
-		g.weaponFireCooldown--
-	}
-	if !g.statusAttackDown || g.isDead || g.weaponFireCooldown > 0 {
-		return
-	}
-	g.handleFire()
-	g.weaponFireCooldown = weaponRefireDelay(g.inventory.ReadyWeapon)
 }
 
-func weaponRefireDelay(id weaponID) int {
-	// Approximate Doom p_pspr fire cadence while preserving immediate first-shot.
-	// Delay N means next allowed shot is after N+1 tics in tickWeaponFire.
-	switch id {
-	case weaponPistol:
-		return 14
-	case weaponChaingun:
-		return 4
-	case weaponShotgun:
-		return 37
-	case weaponFist:
-		return 17
-	case weaponChainsaw:
-		return 4
-	default:
-		return 0
+func (g *game) weaponActionReady(_ weaponPspriteState) {
+	if g == nil || g.isDead {
+		return
 	}
+	if g.statusAttackDown {
+		if !g.weaponAttackDown || (g.inventory.ReadyWeapon != weaponRocketLauncher && g.inventory.ReadyWeapon != weaponBFG) {
+			g.weaponAttackDown = true
+			g.fireWeaponStateSequence()
+			return
+		}
+	} else {
+		g.weaponAttackDown = false
+		g.weaponRefire = false
+	}
+}
+
+func (g *game) weaponActionRefire(_ weaponPspriteState) {
+	if g == nil {
+		return
+	}
+	if g.statusAttackDown && !g.isDead {
+		g.weaponRefire = true
+		g.weaponAttackDown = true
+		g.fireWeaponStateSequence()
+		return
+	}
+	g.weaponRefire = false
+	g.weaponAttackDown = false
+	g.ensureWeaponHasAmmo()
+}
+
+func (g *game) weaponActionFire(state weaponPspriteState) {
+	if g == nil || g.isDead {
+		return
+	}
+	g.handleFireFromState(state)
+}
+
+func (g *game) weaponActionGunFlash(_ weaponPspriteState) {
+	if g == nil {
+		return
+	}
+	g.startWeaponFlashState(flashStartState(g.inventory.ReadyWeapon))
+}
+
+func (g *game) weaponActionBFGSound(_ weaponPspriteState) {
+	if g == nil {
+		return
+	}
+	g.emitSoundEvent(soundEventShootRocket)
+}
+
+func (g *game) fireWeaponStateSequence() {
+	g.ensureWeaponDefaults()
+	if !g.canFireSelectedWeapon() {
+		g.ensureWeaponHasAmmo()
+		if !g.canFireSelectedWeapon() {
+			g.setHUDMessage("No ammo", 20)
+			g.useFlash = max(g.useFlash, 20)
+			return
+		}
+	}
+	g.setWeaponPSpriteState(weaponStateForAttack(g.inventory.ReadyWeapon), false)
+}
+
+func (g *game) handleFireFromState(state weaponPspriteState) {
+	g.propagateNoiseAlertFrom(g.p.x, g.p.y)
+	switch g.inventory.ReadyWeapon {
+	case weaponPistol:
+		g.startWeaponFlashState(weaponStatePistolFlash)
+	case weaponShotgun:
+		g.startWeaponFlashState(weaponStateShotgunFlash1)
+	case weaponChaingun:
+		flash := weaponStateChaingunFlash1
+		if state == weaponStateChaingunAtk2 {
+			flash = weaponStateChaingunFlash2
+		}
+		g.startWeaponFlashState(flash)
+	case weaponPlasma:
+		flash := weaponStatePlasmaFlash1
+		if doomrand.PRandom()&1 != 0 {
+			flash = weaponStatePlasmaFlash2
+		}
+		g.startWeaponFlashState(flash)
+	}
+	g.handleFire()
 }
 
 func (g *game) fireSelectedWeapon() bool {
@@ -658,10 +718,11 @@ func (g *game) ensureWeaponHasAmmo() {
 	switchTo := func(id weaponID) {
 		if g.inventory.ReadyWeapon != id {
 			g.weaponRefire = false
-			g.weaponFireCooldown = 0
+			g.weaponAttackDown = false
 			g.clearWeaponOverlay()
 		}
 		g.inventory.ReadyWeapon = id
+		g.setWeaponPSpriteState(weaponStateForReady(id), false)
 	}
 	if g.stats.Shells > 0 && g.inventory.Weapons[2001] {
 		switchTo(weaponShotgun)
@@ -748,8 +809,9 @@ func (g *game) selectWeaponSlot(slot int) {
 	}
 	if g.inventory.ReadyWeapon != prev {
 		g.weaponRefire = false
-		g.weaponFireCooldown = 0
+		g.weaponAttackDown = false
 		g.clearWeaponOverlay()
+		g.setWeaponPSpriteState(weaponStateForReady(g.inventory.ReadyWeapon), false)
 	}
 }
 
@@ -821,8 +883,9 @@ func (g *game) cycleWeapon(step int) {
 		}
 		g.inventory.ReadyWeapon = next
 		g.weaponRefire = false
-		g.weaponFireCooldown = 0
+		g.weaponAttackDown = false
 		g.clearWeaponOverlay()
+		g.setWeaponPSpriteState(weaponStateForReady(next), false)
 		return
 	}
 }

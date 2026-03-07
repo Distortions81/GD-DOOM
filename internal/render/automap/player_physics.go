@@ -6,24 +6,7 @@ import (
 )
 
 func (g *game) updatePlayer(cmd moveCmd) {
-	prevX := g.p.x
-	prevY := g.p.y
-	g.tickFloors()
-	g.tickPlats()
-	g.tickCeilings()
-	g.tickDoors()
-	g.tickWorldLogic()
-
 	if g.isDead {
-		g.p.momx = 0
-		g.p.momy = 0
-		return
-	}
-
-	g.processThingPickups()
-	if g.isDead {
-		g.p.momx = 0
-		g.p.momy = 0
 		return
 	}
 
@@ -38,7 +21,11 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		} else if cmd.run {
 			turn = angleTurn[1]
 		}
-		turn = uint32(float64(turn) * g.opts.KeyboardTurnSpeed)
+		turnSpeed := g.opts.KeyboardTurnSpeed
+		if turnSpeed == 0 {
+			turnSpeed = 1
+		}
+		turn = uint32(float64(turn) * turnSpeed)
 		if turn == 0 {
 			turn = 1
 		}
@@ -51,15 +38,76 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		g.turnHeld = 0
 	}
 
-	if cmd.forward != 0 {
+	onground := g.p.z <= g.p.floorz
+	if cmd.forward != 0 && onground {
 		g.thrust(g.p.angle, cmd.forward*2048)
 	}
-	if cmd.side != 0 {
+	if cmd.side != 0 && onground {
 		g.thrust(g.p.angle-0x40000000, cmd.side*2048)
 	}
+}
 
+func (g *game) tickPlayerBody() {
+	prevX := g.p.x
+	prevY := g.p.y
+	if g.isDead {
+		g.p.momx = 0
+		g.p.momy = 0
+		g.p.momz = 0
+		return
+	}
 	g.xyMovement()
+	g.zMovement()
 	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
+}
+
+func (g *game) tickGameplayWorld() {
+	g.tickThinkers()
+	g.tickWorldLogic()
+}
+
+func (g *game) tickThinkers() {
+	g.tickPlayerBody()
+	g.tickFloors()
+	g.tickPlats()
+	g.tickCeilings()
+	g.tickDoors()
+	if !g.isDead {
+		g.processThingPickups()
+	}
+	g.tickProjectiles()
+	g.tickProjectileImpacts()
+	g.tickMonsters()
+}
+
+func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
+	g.setAttackHeld(fireHeld)
+	g.updatePlayer(cmd)
+	g.tickPlayerViewHeight()
+	g.tickPlayerSpecialSector()
+	if usePressed {
+		g.handleUse()
+	}
+	g.tickWeaponFire()
+	g.tickPlayerCounters()
+	g.tickGameplayWorld()
+}
+
+func (g *game) tickPlayerSpecialSector() {
+	if g == nil {
+		return
+	}
+	g.trackSecrets()
+	g.applySectorHazardDamage()
+}
+
+func (g *game) tickPlayerCounters() {
+	if g == nil {
+		return
+	}
+	if g.inventory.RadSuitTics > 0 {
+		g.inventory.RadSuitTics--
+	}
 }
 
 func (g *game) tickDoors() {
@@ -223,7 +271,8 @@ func (g *game) tryMove(x, y int64) bool {
 	if !ok {
 		return false
 	}
-	onFloor := g.p.z == g.p.floorz
+	prevFloor := g.p.floorz
+	onFloor := g.p.z <= prevFloor
 	if tmceil-tmfloor < playerHeight {
 		return false
 	}
@@ -240,7 +289,9 @@ func (g *game) tryMove(x, y int64) bool {
 	g.p.x = x
 	g.p.y = y
 	if onFloor {
-		g.p.z = g.p.floorz
+		if tmfloor > prevFloor {
+			g.p.z = g.p.floorz
+		}
 	} else if g.p.z+playerHeight > g.p.ceilz {
 		g.p.z = g.p.ceilz - playerHeight
 	}
@@ -248,6 +299,49 @@ func (g *game) tryMove(x, y int64) bool {
 		g.p.z = g.p.floorz
 	}
 	return true
+}
+
+func (g *game) zMovement() {
+	if g == nil {
+		return
+	}
+	if g.p.viewHeight == 0 {
+		g.p.viewHeight = playerViewHeight
+	}
+
+	if g.p.z < g.p.floorz {
+		g.p.viewHeight -= g.p.floorz - g.p.z
+		g.p.deltaViewHeight = (playerViewHeight - g.p.viewHeight) >> 3
+	}
+
+	g.p.z += g.p.momz
+
+	if g.p.z <= g.p.floorz {
+		if g.p.momz < 0 {
+			if g.p.momz < -playerGravity*8 {
+				g.p.deltaViewHeight = g.p.momz >> 3
+				g.emitSoundEvent(soundEventOof)
+			}
+			g.p.momz = 0
+		}
+		g.p.z = g.p.floorz
+	} else {
+		if g.p.momz == 0 {
+			g.p.momz = -playerGravity * 2
+		} else {
+			g.p.momz -= playerGravity
+		}
+	}
+
+	if g.p.z+playerHeight > g.p.ceilz {
+		if g.p.momz > 0 {
+			g.p.momz = 0
+		}
+		g.p.z = g.p.ceilz - playerHeight
+		if g.p.z < g.p.floorz {
+			g.p.z = g.p.floorz
+		}
+	}
 }
 
 func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {

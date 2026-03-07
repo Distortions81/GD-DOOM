@@ -37,15 +37,6 @@ func (g *game) tickWorldLogic() {
 	g.worldTic++
 	g.tickSectorLightEffects()
 	g.refreshSectorPlaneCacheLighting()
-	g.tickPlayerViewHeight()
-	g.trackSecrets()
-	g.tickProjectiles()
-	g.tickProjectileImpacts()
-	if g.inventory.RadSuitTics > 0 {
-		g.inventory.RadSuitTics--
-	}
-	g.applySectorHazardDamage()
-	g.tickMonsters()
 }
 
 func (g *game) initSectorLightEffects() {
@@ -253,11 +244,37 @@ func (g *game) findMinSurroundingSectorLight(sec int, maxLight int16) int16 {
 }
 
 func (g *game) tickPlayerViewHeight() {
-	aliveEye := g.p.z + 41*fracUnit
+	if g.p.viewHeight == 0 {
+		g.p.viewHeight = playerViewHeight
+	}
+	aliveEye := g.p.z + g.p.viewHeight
 	if g.playerViewZ == 0 && !g.isDead {
 		g.playerViewZ = aliveEye
 	}
 	if !g.isDead {
+		if g.p.z <= g.p.floorz {
+			g.p.viewHeight += g.p.deltaViewHeight
+			if g.p.viewHeight > playerViewHeight {
+				g.p.viewHeight = playerViewHeight
+				g.p.deltaViewHeight = 0
+			}
+			if g.p.viewHeight < playerViewHeightMin {
+				g.p.viewHeight = playerViewHeightMin
+				if g.p.deltaViewHeight <= 0 {
+					g.p.deltaViewHeight = 1
+				}
+			}
+			if g.p.deltaViewHeight != 0 {
+				g.p.deltaViewHeight += fracUnit / 4
+				if g.p.deltaViewHeight == 0 {
+					g.p.deltaViewHeight = 1
+				}
+			}
+		}
+		aliveEye = g.p.z + g.p.viewHeight
+		if aliveEye > g.p.ceilz-4*fracUnit {
+			aliveEye = g.p.ceilz - 4*fracUnit
+		}
 		g.playerViewZ = aliveEye
 		return
 	}

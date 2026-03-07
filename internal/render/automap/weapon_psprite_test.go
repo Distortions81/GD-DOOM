@@ -23,6 +23,9 @@ func TestWeaponReadySpriteName(t *testing.T) {
 func TestWeaponSpriteName_PrefersFireAnimationThenReady(t *testing.T) {
 	g := &game{
 		worldTic: 0,
+		stats: playerStats{
+			Bullets: 10,
+		},
 		inventory: playerInventory{
 			ReadyWeapon: weaponPistol,
 		},
@@ -40,14 +43,17 @@ func TestWeaponSpriteName_PrefersFireAnimationThenReady(t *testing.T) {
 	if got := g.weaponSpriteName(); got != "PISGA0" {
 		t.Fatalf("initial fire sprite=%q want PISGA0", got)
 	}
-	if got := g.weaponFlashSpriteName(); got != "PISFA0" {
-		t.Fatalf("initial flash sprite=%q want PISFA0", got)
+	if got := g.weaponFlashSpriteName(); got != "" {
+		t.Fatalf("initial flash sprite=%q want empty before fire state action", got)
 	}
 	for i := 0; i < 4; i++ {
 		g.tickWeaponOverlay()
 	}
 	if got := g.weaponSpriteName(); got != "PISGB0" {
 		t.Fatalf("mid fire sprite=%q want PISGB0", got)
+	}
+	if got := g.weaponFlashSpriteName(); got != "PISFA0" {
+		t.Fatalf("flash sprite after fire action=%q want PISFA0", got)
 	}
 	for i := 0; i < 32; i++ {
 		g.tickWeaponOverlay()
@@ -82,13 +88,14 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	}
 
 	g.tickWeaponFire()
-	if g.weaponAnimTics <= 0 || g.weaponFlashTics <= 0 {
-		t.Fatalf("weapon overlay timers not started: anim=%d flash=%d", g.weaponAnimTics, g.weaponFlashTics)
+	if g.weaponState != weaponStatePistolAtk1 || g.weaponStateTics <= 0 || g.weaponFlashState != weaponStateNone {
+		t.Fatalf("weapon state not started: state=%v tics=%d flash=%v", g.weaponState, g.weaponStateTics, g.weaponFlashState)
 	}
 	g.inventory.Weapons[2001] = true
+	g.statusAttackDown = false
 	g.selectWeaponSlot(3)
-	if g.weaponAnimTics != 0 || g.weaponFlashTics != 0 {
-		t.Fatalf("weapon overlay timers not cleared on switch: anim=%d flash=%d", g.weaponAnimTics, g.weaponFlashTics)
+	if g.weaponState != weaponStateShotgunReady || g.weaponFlashState != weaponStateNone {
+		t.Fatalf("weapon psprites not reset on switch: state=%v flash=%v", g.weaponState, g.weaponFlashState)
 	}
 }
 
