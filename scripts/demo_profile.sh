@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN_PATH="${ROOT_DIR}/.tmp/gddoom-profile"
-WAD_PATH="${ROOT_DIR}/DOOM1.WAD"
-DEMO_PATH="${ROOT_DIR}/e1m1.demo"
+BIN_PATH="${ROOT_DIR}/bench.prof"
+WAD_PATH="${ROOT_DIR}/doom.wad"
+DEMO_PATH="${ROOT_DIR}/newdemo.demo"
 MAP_NAME="E1M1"
 OUT_DIR="${ROOT_DIR}/profiles"
 
@@ -97,9 +97,10 @@ CMD=(
   -wad "${WAD_PATH}"
   -map "${MAP_NAME}"
   -demo "${DEMO_PATH}"
+  -width 3840
+  -height 2160
   -cpuprofile "${CPU_PROFILE}"
-  -nofps
-  -no-vsync
+   -no-vsync
 )
 if [[ ${#EXTRA_FLAGS[@]} -gt 0 ]]; then
   CMD+=("${EXTRA_FLAGS[@]}")
