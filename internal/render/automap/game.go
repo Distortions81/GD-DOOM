@@ -10069,7 +10069,7 @@ func monsterAttackAnimTotalTics(typ int16) int {
 
 func monsterPainFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3002, 3006, 3005, 3003, 16, 7:
+	case 3004, 9, 3001, 3002, 58, 3006, 3005, 3003, 16, 7:
 		return []byte{'G'}
 	default:
 		return nil
@@ -10082,7 +10082,7 @@ func monsterPainFrameTics(typ int16) []int {
 		return []int{10}
 	case 7:
 		return []int{8}
-	case 3004, 9, 3001, 3002, 3006, 3005, 3003:
+	case 3004, 9, 3001, 3002, 58, 3006, 3005, 3003:
 		return []int{6}
 	default:
 		return nil
@@ -10108,7 +10108,7 @@ func monsterDeathFrameSeq(typ int16) []byte {
 		return []byte{'H', 'I', 'J', 'K', 'L'}
 	case 3001:
 		return []byte{'I', 'J', 'K', 'L', 'M'}
-	case 3002:
+	case 3002, 58:
 		return []byte{'I', 'J', 'K', 'L', 'M', 'N'}
 	case 3006:
 		return []byte{'F', 'G', 'H', 'I', 'J', 'K'}
@@ -10133,7 +10133,7 @@ func monsterDeathFrameTics(typ int16) []int {
 		return []int{5, 5, 5, 5, 5}
 	case 3001:
 		return []int{8, 8, 6, 6, 6}
-	case 3002:
+	case 3002, 58:
 		return []int{8, 8, 4, 4, 4, 4}
 	case 3006:
 		return []int{6, 6, 6, 6, 6, 6}
@@ -10155,7 +10155,7 @@ func monsterDeathSoundDelayTics(typ int16) int {
 	switch typ {
 	case 3004, 9:
 		return 5
-	case 3001, 3002, 3003, 3005:
+	case 3001, 3002, 58, 3003, 3005:
 		return 8
 	case 3006:
 		return 6

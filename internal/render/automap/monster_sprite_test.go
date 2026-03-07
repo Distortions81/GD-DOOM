@@ -122,3 +122,36 @@ func TestMonsterDeathFrameSeqMatchesDoomForShotgunGuyAndLostSoul(t *testing.T) {
 		t.Fatalf("shotgun death tics len=%d want=%d", got, want)
 	}
 }
+
+func TestMonsterDeathFrameSeq_SpectreMatchesDemon(t *testing.T) {
+	if got, want := string(monsterDeathFrameSeq(58)), string(monsterDeathFrameSeq(3002)); got != want {
+		t.Fatalf("spectre death seq=%q want demon %q", got, want)
+	}
+	if got, want := len(monsterDeathFrameTics(58)), len(monsterDeathFrameTics(3002)); got != want {
+		t.Fatalf("spectre death tics len=%d want demon %d", got, want)
+	}
+	if got, want := monsterDeathAnimTotalTics(58), monsterDeathAnimTotalTics(3002); got != want {
+		t.Fatalf("spectre death total=%d want demon %d", got, want)
+	}
+}
+
+func TestMonsterSpriteNameForView_SpectreUsesDeathFrame(t *testing.T) {
+	g := &game{
+		opts: Options{SpritePatchBank: map[string]WallTexture{
+			"SARGI0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			"SARGN0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+		}},
+		thingDead:      []bool{true},
+		thingDeathTics: []int{monsterDeathAnimTotalTics(58)},
+	}
+	th := mapdata.Thing{Type: 58, X: 0, Y: 0, Angle: 0}
+	name, _ := g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "SARGI0" {
+		t.Fatalf("spectre death start got=%q want=SARGI0", name)
+	}
+	g.thingDeathTics[0] = 0
+	name, _ = g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "SARGN0" {
+		t.Fatalf("spectre death end got=%q want=SARGN0", name)
+	}
+}
