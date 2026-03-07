@@ -36,6 +36,8 @@ For practical end-user launch flags, see `docs/launch-params.md`.
 - Optional depth-buffer debug view (`-depth-buffer-view`)
 - Optional Kage postprocess chain (`-kage-shader`) with CRT pass toggle (`-crt-effect`)
 - Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
+- Doom-style world sound spatialization (distance falloff + stereo panning)
+- Monster sound coverage for alert/wake, idle-active chase, pain, death, and core attack sounds
 - Level exit special handling with automatic next-map loading (normal + secret exits)
 - In-session level transitions (single Ebiten/GLFW session across map changes)
 - Item pickup runtime for keys/health/armor/ammo/backpack/weapons, with inventory + player stat tracking

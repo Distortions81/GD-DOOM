@@ -86,8 +86,7 @@ func (g *game) tickMonsters() {
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 			continue
 		}
-		tx := int64(th.X) << fracBits
-		ty := int64(th.Y) << fracBits
+		tx, ty := g.thingPosFixed(i, th)
 		dx := px - tx
 		dy := py - ty
 		dist := hypotFixed(dx, dy)
@@ -122,8 +121,10 @@ func (g *game) tickMonsters() {
 			heardPlayer := g.monsterHeardPlayer(i, tx, ty)
 			if heardPlayer {
 				g.thingAggro[i] = true
+				g.emitMonsterSeeSound(i, th.Type, tx, ty)
 			} else if dist <= monsterWakeRange && g.monsterHasLOS(tx, ty, px, py) {
 				g.thingAggro[i] = true
+				g.emitMonsterSeeSound(i, th.Type, tx, ty)
 			} else {
 				continue
 			}
@@ -160,6 +161,86 @@ func (g *game) tickMonsters() {
 		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
 			g.monsterPickNewChaseDir(i, th.Type, px, py)
 		}
+		g.emitMonsterActiveSound(i, th.Type, tx, ty)
+	}
+}
+
+func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
+	ev, fullVolume := monsterSeeSoundEvent(typ)
+	if ev < 0 {
+		return
+	}
+	if fullVolume {
+		g.emitSoundEvent(ev)
+		return
+	}
+	g.emitSoundEventAt(ev, x, y)
+}
+
+func (g *game) emitMonsterActiveSound(i int, typ int16, x, y int64) {
+	ev := monsterActiveSoundEvent(typ)
+	if ev < 0 {
+		return
+	}
+	if !shouldEmitMonsterActiveSound(doomrand.PRandom()) {
+		return
+	}
+	g.emitSoundEventAt(ev, x, y)
+}
+
+func shouldEmitMonsterActiveSound(r int) bool {
+	return r >= 0 && r < 3
+}
+
+func monsterSeeSoundEvent(typ int16) (soundEvent, bool) {
+	switch typ {
+	case 3004, 9, 65:
+		return soundEventMonsterSeePosit, false
+	case 3001:
+		return soundEventMonsterSeeImp, false
+	case 3002, 58:
+		return soundEventMonsterSeeDemon, false
+	case 3005:
+		return soundEventMonsterSeeCaco, false
+	case 3003:
+		return soundEventMonsterSeeBaron, false
+	case 69:
+		return soundEventMonsterSeeKnight, false
+	case 7:
+		return soundEventMonsterSeeSpider, true
+	case 68:
+		return soundEventMonsterSeeArachnotron, false
+	case 16:
+		return soundEventMonsterSeeCyber, true
+	case 71:
+		return soundEventMonsterSeePainElemental, false
+	case 84:
+		return soundEventMonsterSeeWolfSS, false
+	case 64:
+		return soundEventMonsterSeeArchvile, false
+	case 66:
+		return soundEventMonsterSeeRevenant, false
+	default:
+		return -1, false
+	}
+}
+
+func monsterActiveSoundEvent(typ int16) soundEvent {
+	switch typ {
+	case 3004, 9, 65, 84:
+		return soundEventMonsterActivePosit
+	case 3001:
+		return soundEventMonsterActiveImp
+	case 3002, 58, 3005, 3003, 69, 3006, 7, 16, 71, 67:
+		return soundEventMonsterActiveDemon
+	case 68:
+		return soundEventMonsterActiveArachnotron
+	case 64:
+		return soundEventMonsterActiveArchvile
+	case 66:
+		return soundEventMonsterActiveRevenant
+	default:
+		return -1
 	}
 }
 
@@ -655,6 +736,9 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if dist <= monsterMeleeRange && monsterHasMeleeAttack(typ) {
 		damage := monsterMeleeDamage(typ)
 		if damage > 0 {
+			if ev := monsterMeleeAttackSoundEvent(typ); ev >= 0 {
+				g.emitSoundEventAt(ev, sx, sy)
+			}
 			g.damagePlayerFrom(damage, "Monster hit you", sx, sy, true)
 			return true
 		}
@@ -664,19 +748,19 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	}
 	if typ == 3004 {
 		// Zombieman: single bullet with Doom-style spread and chance to miss.
-		g.emitSoundEvent(soundEventShootPistol)
+		g.emitSoundEventAt(soundEventShootPistol, sx, sy)
 		g.monsterHitscanAttack(sx, sy, 1)
 		return true
 	}
 	if typ == 9 {
 		// Sergeant: 3 pellets.
-		g.emitSoundEvent(soundEventShootShotgun)
+		g.emitSoundEventAt(soundEventShootShotgun, sx, sy)
 		g.monsterHitscanAttack(sx, sy, 3)
 		return true
 	}
 	if usesMonsterProjectile(typ) {
 		if g.spawnMonsterProjectile(i, typ) {
-			g.emitSoundEvent(projectileLaunchSoundEvent(typ))
+			g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
 			return true
 		}
 		return false
@@ -685,9 +769,22 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if damage <= 0 {
 		return false
 	}
-	g.emitSoundEvent(soundEventShootPistol)
+	g.emitSoundEventAt(soundEventShootPistol, sx, sy)
 	g.damagePlayerFrom(damage, "Monster shot you", sx, sy, true)
 	return true
+}
+
+func monsterMeleeAttackSoundEvent(typ int16) soundEvent {
+	switch typ {
+	case 3001, 3003, 69:
+		return soundEventMonsterAttackClaw
+	case 3002, 58:
+		return soundEventMonsterAttackSgt
+	case 3006:
+		return soundEventMonsterAttackSkull
+	default:
+		return -1
+	}
 }
 
 func (g *game) monsterHitscanAttack(sx, sy int64, pellets int) {

@@ -507,10 +507,11 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 		}
 		deathEv := monsterDeathSoundEvent(thingType)
 		deathDelay := monsterDeathSoundDelayTics(thingType)
+		tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
 		if deathDelay > 0 {
-			g.emitSoundEventDelayed(deathEv, deathDelay)
+			g.emitSoundEventDelayedAt(deathEv, deathDelay, tx, ty, true)
 		} else {
-			g.emitSoundEvent(deathEv)
+			g.emitSoundEventAt(deathEv, tx, ty)
 		}
 		g.setHUDMessage("Monster killed", 15)
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
@@ -522,7 +523,8 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 				wasInPain := g.thingPainTics[thingIdx] > 0
 				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(thingType))
 				if !wasInPain {
-					g.emitSoundEvent(monsterPainSoundEvent(thingType))
+					tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+					g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
 				}
 			}
 		}
@@ -609,20 +611,36 @@ func monsterDeathSoundEvent(typ int16) soundEvent {
 		return soundEventDeathZombie
 	case 9:
 		return soundEventDeathShotgunGuy
+	case 65:
+		return soundEventDeathChaingunner
 	case 3001:
 		return soundEventDeathImp
-	case 3002:
+	case 3002, 58:
 		return soundEventDeathDemon
 	case 3005:
 		return soundEventDeathCaco
 	case 3003:
 		return soundEventDeathBaron
+	case 69:
+		return soundEventDeathKnight
 	case 16:
 		return soundEventDeathCyber
 	case 7:
 		return soundEventDeathSpider
+	case 68:
+		return soundEventDeathArachnotron
 	case 3006:
 		return soundEventDeathLostSoul
+	case 67:
+		return soundEventDeathMancubus
+	case 66:
+		return soundEventDeathRevenant
+	case 71:
+		return soundEventDeathPainElemental
+	case 84:
+		return soundEventDeathWolfSS
+	case 64:
+		return soundEventDeathArchvile
 	default:
 		return soundEventMonsterDeath
 	}

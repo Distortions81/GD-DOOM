@@ -373,13 +373,22 @@ func TestMonsterDeathSoundEventMapping(t *testing.T) {
 	}{
 		{typ: 3004, want: soundEventDeathZombie},
 		{typ: 9, want: soundEventDeathShotgunGuy},
+		{typ: 65, want: soundEventDeathChaingunner},
 		{typ: 3001, want: soundEventDeathImp},
 		{typ: 3002, want: soundEventDeathDemon},
+		{typ: 58, want: soundEventDeathDemon},
 		{typ: 3005, want: soundEventDeathCaco},
 		{typ: 3003, want: soundEventDeathBaron},
+		{typ: 69, want: soundEventDeathKnight},
 		{typ: 16, want: soundEventDeathCyber},
 		{typ: 7, want: soundEventDeathSpider},
+		{typ: 68, want: soundEventDeathArachnotron},
 		{typ: 3006, want: soundEventDeathLostSoul},
+		{typ: 67, want: soundEventDeathMancubus},
+		{typ: 66, want: soundEventDeathRevenant},
+		{typ: 71, want: soundEventDeathPainElemental},
+		{typ: 84, want: soundEventDeathWolfSS},
+		{typ: 64, want: soundEventDeathArchvile},
 	}
 	for _, tc := range tests {
 		if got := monsterDeathSoundEvent(tc.typ); got != tc.want {

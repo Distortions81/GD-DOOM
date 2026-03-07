@@ -47,7 +47,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 - [x] Add bullet impact "puff/poof" effects for hitscan impacts.
 - [x] Use sprite-based visuals for bullet puffs and blood effects (instead of temporary placeholders).
 - [ ] Verify key/lock interaction parity across all key-required specials.
-- [ ] Complete remaining monster AI sensory parity (monster-generated noise alerts, target handoff, and any remaining hearing edge cases).
+- [ ] Complete remaining monster AI sensory parity (target handoff and any remaining hearing edge cases).
 - [ ] Validate full difficulty parity including Nightmare semantics.
 - [ ] Validate and expose fast-monsters mode parity behavior.
 - [ ] Add optional turbo mode for faster player movement.
@@ -65,10 +65,11 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 - [ ] Enrich startup sound import report detail (rates, formats, per-lump errors).
 - [ ] Expand decode support for additional Doom-compatible sound variants if encountered.
 - [x] Decode and play MUS music format via the OPL3 music path.
-- [ ] Add weapon firing sounds and bullet impact sounds.
-- [ ] Add monster pain sounds.
-- [ ] Add projectile travel/launch sounds.
-- [ ] Add monster wake and idle/active sounds.
+- [x] Add weapon firing sounds and bullet impact sounds.
+- [x] Add monster pain sounds.
+- [x] Add projectile travel/launch sounds.
+- [x] Add monster wake and idle/active sounds.
+- [ ] Add remaining monster movement/state sounds where Doom uses them (`hoof`, `metal`, and similar action-triggered sounds).
 - [ ] Verify per-event sound routing/timing parity (doors, switches, shots, impacts, monsters).
 
 ## Intermission and Progression Presentation

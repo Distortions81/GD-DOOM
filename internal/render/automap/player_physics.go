@@ -117,10 +117,10 @@ func (g *game) tickDoors() {
 				switch d.typ {
 				case doorBlazeRaise, doorNormal:
 					d.direction = -1
-					g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 				case doorClose30ThenOpen:
 					d.direction = 1
-					g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 				}
 			}
 		case 2:
@@ -128,7 +128,7 @@ func (g *game) tickDoors() {
 			if d.topCountdown <= 0 && d.typ == doorRaiseIn5Mins {
 				d.direction = 1
 				d.typ = doorNormal
-				g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 			}
 		case -1:
 			next := g.sectorCeil[sec] - d.speed
@@ -139,7 +139,7 @@ func (g *game) tickDoors() {
 					// advance through blocking actors.
 				default:
 					d.direction = 1
-					g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 				}
 				continue
 			}

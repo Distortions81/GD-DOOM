@@ -121,19 +121,70 @@ type SoundBank struct {
 	ShootShotgun        PCMSample
 	ShootFireball       PCMSample
 	ShootRocket         PCMSample
+	AttackClaw          PCMSample
+	AttackSgt           PCMSample
+	AttackSkull         PCMSample
 	ImpactFire          PCMSample
 	ImpactRocket        PCMSample
+	SeePosit1           PCMSample
+	SeePosit2           PCMSample
+	SeePosit3           PCMSample
+	SeeBGSit1           PCMSample
+	SeeBGSit2           PCMSample
+	SeeSgtSit           PCMSample
+	SeeCacoSit          PCMSample
+	SeeBruiserSit       PCMSample
+	SeeKnightSit        PCMSample
+	SeeSpiderSit        PCMSample
+	SeeBabySit          PCMSample
+	SeeCyberSit         PCMSample
+	SeePainSit          PCMSample
+	SeeSSSit            PCMSample
+	SeeVileSit          PCMSample
+	SeeSkeSit           PCMSample
+	ActivePosAct        PCMSample
+	ActiveBGAct         PCMSample
+	ActiveDMAct         PCMSample
+	ActiveBSPAct        PCMSample
+	ActiveVilAct        PCMSample
+	ActiveSkeAct        PCMSample
 	MonsterPainHumanoid PCMSample
 	MonsterPainDemon    PCMSample
+	DeathPodth1         PCMSample
+	DeathPodth2         PCMSample
+	DeathPodth3         PCMSample
+	DeathBgdth1         PCMSample
+	DeathBgdth2         PCMSample
+	DeathSgtDth         PCMSample
+	DeathCacoRaw        PCMSample
+	DeathBaronRaw       PCMSample
+	DeathKnightRaw      PCMSample
+	DeathCyberRaw       PCMSample
+	DeathSpiderRaw      PCMSample
+	DeathArachRaw       PCMSample
+	DeathLostSoulRaw    PCMSample
+	DeathMancubusRaw    PCMSample
+	DeathRevenantRaw    PCMSample
+	DeathPainElemRaw    PCMSample
+	DeathWolfSSRaw      PCMSample
+	DeathArchvileRaw    PCMSample
 	DeathZombie         PCMSample
 	DeathShotgunGuy     PCMSample
+	DeathChaingunner    PCMSample
 	DeathImp            PCMSample
 	DeathDemon          PCMSample
 	DeathCaco           PCMSample
 	DeathBaron          PCMSample
+	DeathKnight         PCMSample
 	DeathCyber          PCMSample
 	DeathSpider         PCMSample
+	DeathArachnotron    PCMSample
 	DeathLostSoul       PCMSample
+	DeathMancubus       PCMSample
+	DeathRevenant       PCMSample
+	DeathPainElemental  PCMSample
+	DeathWolfSS         PCMSample
+	DeathArchvile       PCMSample
 	MonsterDeath        PCMSample
 	PlayerDeath         PCMSample
 	InterTick           PCMSample

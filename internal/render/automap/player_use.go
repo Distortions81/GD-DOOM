@@ -290,7 +290,7 @@ func (g *game) evVerticalDoor(lineIdx int) bool {
 			} else {
 				d.direction = -1
 			}
-			g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 			return true
 		}
 	}
@@ -322,7 +322,7 @@ func (g *game) evVerticalDoor(lineIdx int) bool {
 		return false
 	}
 	g.doors[sec] = d
-	g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+	g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 	return true
 }
 
@@ -377,7 +377,7 @@ func (g *game) evDoDoorTagged(lineIdx int, info mapdata.LineSpecialInfo) bool {
 			continue
 		}
 		g.doors[sec] = d
-		g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+		g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 		activated = true
 	}
 	return activated

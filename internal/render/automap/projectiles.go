@@ -179,7 +179,7 @@ func (g *game) tickProjectiles() {
 		nz := oz + p.vz
 		if blocked, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz); blocked {
 			g.spawnProjectileImpact(p.kind, hx, hy, hz)
-			g.emitSoundEvent(projectileImpactSoundEvent(p.kind))
+			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
 			continue
 		}
 		p.x = nx
@@ -188,12 +188,12 @@ func (g *game) tickProjectiles() {
 		p.ttl--
 		if p.ttl <= 0 {
 			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
-			g.emitSoundEvent(projectileImpactSoundEvent(p.kind))
+			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
 			continue
 		}
 		if g.projectileHitsPlayer(p) {
 			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
-			g.emitSoundEvent(projectileImpactSoundEvent(p.kind))
+			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
 			dmg := monsterRangedDamage(p.sourceType)
 			if dmg > 0 {
 				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)

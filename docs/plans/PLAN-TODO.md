@@ -29,10 +29,12 @@ Single source of truth for current priorities.
 12. verify animation timing parity after crossfade generation (no cadence drift)
 13. replace mirrored map `Thing` runtime state with Doom-style live actor/runtime-object state (`x/y/z`, momentum, flags, thinker-owned state) to improve parity and demo determinism
 14. keep startup spawn position/facing and sky-pan direction as mandatory regression checks after render edits
-15. finish remaining monster sensory parity (monster-generated noise alerts / target wake handoff)
-16. sound decode follow-up (lower priority):
-17. enrich startup sound report detail (rates/formats/errors)
-18. expand decode support for additional Doom-compatible variants if encountered
+15. finish remaining monster sensory parity (target wake handoff / remaining hearing edge cases)
+16. audio parity follow-up:
+17. add remaining monster movement/state sounds (`hoof`, `metal`, similar action-triggered sounds)
+18. verify per-event sound routing/timing parity (doors, switches, shots, impacts, monsters)
+19. enrich startup sound report detail (rates/formats/errors)
+20. expand decode support for additional Doom-compatible variants if encountered
 
 ## Parity Polish (Lower Priority)
 

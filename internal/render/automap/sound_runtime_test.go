@@ -1,6 +1,10 @@
 package automap
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/doomrand"
+)
 
 func TestDoorMoveEvent(t *testing.T) {
 	if got := doorMoveEvent(doorNormal, 1); got != soundEventDoorOpen {
@@ -90,6 +94,9 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	s.bank.ShootShotgun = PCMSample{SampleRate: 11025, Data: []byte{5}}
 	s.bank.ShootFireball = PCMSample{SampleRate: 11025, Data: []byte{6}}
 	s.bank.ShootRocket = PCMSample{SampleRate: 11025, Data: []byte{7}}
+	s.bank.AttackClaw = PCMSample{SampleRate: 11025, Data: []byte{15}}
+	s.bank.AttackSgt = PCMSample{SampleRate: 11025, Data: []byte{16}}
+	s.bank.AttackSkull = PCMSample{SampleRate: 11025, Data: []byte{17}}
 	s.bank.ImpactFire = PCMSample{SampleRate: 11025, Data: []byte{8}}
 	s.bank.ImpactRocket = PCMSample{SampleRate: 11025, Data: []byte{9}}
 	s.bank.MonsterPainHumanoid = PCMSample{SampleRate: 11025, Data: []byte{10}}
@@ -112,6 +119,15 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	if got, ok := s.sampleForEvent(soundEventShootRocket); !ok || got.Data[0] != 7 {
 		t.Fatalf("rocket sample=%v ok=%v want explicit rocket", got, ok)
 	}
+	if got, ok := s.sampleForEvent(soundEventMonsterAttackClaw); !ok || got.Data[0] != 15 {
+		t.Fatalf("claw sample=%v ok=%v want explicit claw", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventMonsterAttackSgt); !ok || got.Data[0] != 16 {
+		t.Fatalf("sgt attack sample=%v ok=%v want explicit sgt", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventMonsterAttackSkull); !ok || got.Data[0] != 17 {
+		t.Fatalf("skull attack sample=%v ok=%v want explicit skull", got, ok)
+	}
 	if got, ok := s.sampleForEvent(soundEventImpactFire); !ok || got.Data[0] != 8 {
 		t.Fatalf("impact-fire sample=%v ok=%v want explicit impact-fire", got, ok)
 	}
@@ -130,8 +146,18 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	if got, ok := s.sampleForEvent(soundEventDeathDemon); !ok || got.Data[0] != 13 {
 		t.Fatalf("death demon sample=%v ok=%v want explicit demon death", got, ok)
 	}
-	if got, ok := s.sampleForEvent(soundEventDeathShotgunGuy); !ok || got.Data[0] != 14 {
-		t.Fatalf("death shotgun sample=%v ok=%v want zombie fallback", got, ok)
+	s.bank.DeathPodth1 = PCMSample{SampleRate: 11025, Data: []byte{21}}
+	s.bank.DeathPodth2 = PCMSample{SampleRate: 11025, Data: []byte{22}}
+	s.bank.DeathPodth3 = PCMSample{SampleRate: 11025, Data: []byte{23}}
+	doomrand.Clear()
+	if got, ok := s.sampleForEvent(soundEventDeathShotgunGuy); !ok || len(got.Data) == 0 || got.Data[0] < 21 || got.Data[0] > 23 {
+		t.Fatalf("death shotgun sample=%v ok=%v want podth family", got, ok)
+	}
+	s.bank.DeathBgdth1 = PCMSample{SampleRate: 11025, Data: []byte{31}}
+	s.bank.DeathBgdth2 = PCMSample{SampleRate: 11025, Data: []byte{32}}
+	doomrand.Clear()
+	if got, ok := s.sampleForEvent(soundEventDeathImp); !ok || len(got.Data) == 0 || got.Data[0] < 31 || got.Data[0] > 32 {
+		t.Fatalf("death imp sample=%v ok=%v want bgdth family", got, ok)
 	}
 }
 
@@ -150,5 +176,36 @@ func TestPCMMonoU8ToStereoS16LEResampledEmpty(t *testing.T) {
 	}
 	if got := pcmMonoU8ToStereoS16LEResampled([]byte{1}, 0, 44100); len(got) != 0 {
 		t.Fatalf("len=%d want=0", len(got))
+	}
+}
+
+func TestDoomAdjustSoundParams_CenteredNearSound(t *testing.T) {
+	vol, sep, ok := doomAdjustSoundParams(0, 0, 0, 64*fracUnit, 0, doomSoundMaxVolume, false)
+	if !ok {
+		t.Fatal("near sound should be audible")
+	}
+	if vol != doomSoundMaxVolume {
+		t.Fatalf("vol=%d want=%d", vol, doomSoundMaxVolume)
+	}
+	if sep != doomSoundNormalSep {
+		t.Fatalf("sep=%d want=%d", sep, doomSoundNormalSep)
+	}
+}
+
+func TestDoomAdjustSoundParams_ClipsFarSound(t *testing.T) {
+	_, _, ok := doomAdjustSoundParams(0, 0, 0, (doomSoundClippingDist + fracUnit), 0, doomSoundMaxVolume, false)
+	if ok {
+		t.Fatal("far sound should be clipped")
+	}
+}
+
+func TestDoomSeparationVolumes_BiasesChannels(t *testing.T) {
+	left, right := doomSeparationVolumes(doomSoundMaxVolume, 0)
+	if right >= left {
+		t.Fatalf("sep=0 should bias left: left=%d right=%d", left, right)
+	}
+	left, right = doomSeparationVolumes(doomSoundMaxVolume, 255)
+	if left >= right {
+		t.Fatalf("sep=255 should bias right: left=%d right=%d", left, right)
 	}
 }

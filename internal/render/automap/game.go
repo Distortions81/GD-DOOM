@@ -362,6 +362,7 @@ type game struct {
 	turnHeld             int
 	snd                  *soundSystem
 	soundQueue           []soundEvent
+	soundQueueOrigin     []queuedSoundOrigin
 	delayedSfx           []delayedSoundEvent
 	delayedSwitchReverts []delayedSwitchTexture
 
@@ -615,8 +616,17 @@ type mapMark struct {
 }
 
 type delayedSoundEvent struct {
-	ev   soundEvent
-	tics int
+	ev         soundEvent
+	tics       int
+	x          int64
+	y          int64
+	positioned bool
+}
+
+type queuedSoundOrigin struct {
+	x          int64
+	y          int64
+	positioned bool
 }
 
 type delayedSwitchTexture struct {
@@ -1043,6 +1053,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.initSubSectorSectorCache()
 	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume)
 	g.soundQueue = make([]soundEvent, 0, 8)
+	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
 	g.delayedSwitchReverts = make([]delayedSwitchTexture, 0, 4)
 	if g.opts.SourcePortMode {
@@ -2194,14 +2205,60 @@ func (g *game) profileLabel() string {
 
 func (g *game) emitSoundEvent(ev soundEvent) {
 	g.soundQueue = append(g.soundQueue, ev)
+	g.soundQueueOrigin = append(g.soundQueueOrigin, queuedSoundOrigin{})
+}
+
+func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
+	g.soundQueue = append(g.soundQueue, ev)
+	g.soundQueueOrigin = append(g.soundQueueOrigin, queuedSoundOrigin{x: x, y: y, positioned: true})
 }
 
 func (g *game) emitSoundEventDelayed(ev soundEvent, tics int) {
+	g.emitSoundEventDelayedAt(ev, tics, 0, 0, false)
+}
+
+func (g *game) emitSoundEventDelayedAt(ev soundEvent, tics int, x, y int64, positioned bool) {
 	if tics <= 0 {
-		g.emitSoundEvent(ev)
+		if positioned {
+			g.emitSoundEventAt(ev, x, y)
+		} else {
+			g.emitSoundEvent(ev)
+		}
 		return
 	}
-	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{ev: ev, tics: tics})
+	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{ev: ev, tics: tics, x: x, y: y, positioned: positioned})
+}
+
+func (g *game) emitDoorSectorSound(sec int, ev soundEvent) {
+	if x, y, ok := g.sectorSoundOrigin(sec); ok {
+		g.emitSoundEventAt(ev, x, y)
+		return
+	}
+	g.emitSoundEvent(ev)
+}
+
+func (g *game) sectorSoundOrigin(sec int) (int64, int64, bool) {
+	if g == nil || sec < 0 || sec >= len(g.sectorBBox) {
+		return 0, 0, false
+	}
+	sb := g.sectorBBox[sec]
+	if sb.maxX <= sb.minX || sb.maxY <= sb.minY {
+		return 0, 0, false
+	}
+	x := (sb.minX + sb.maxX) * 0.5
+	y := (sb.minY + sb.maxY) * 0.5
+	return int64(math.Round(x * fracUnit)), int64(math.Round(y * fracUnit)), true
+}
+
+func soundMapUsesFullClip(name mapdata.MapName) bool {
+	s := strings.ToUpper(strings.TrimSpace(string(name)))
+	if len(s) >= 4 && s[0] == 'E' && s[2] == 'M' {
+		return s[3] == '8'
+	}
+	if len(s) == 5 && strings.HasPrefix(s, "MAP") {
+		return s[3:] == "08"
+	}
+	return false
 }
 
 func (g *game) clearPendingSoundState() {
@@ -2209,6 +2266,7 @@ func (g *game) clearPendingSoundState() {
 		return
 	}
 	g.soundQueue = g.soundQueue[:0]
+	g.soundQueueOrigin = g.soundQueueOrigin[:0]
 	g.delayedSfx = g.delayedSfx[:0]
 	if g.snd != nil {
 		g.snd.stopAll()
@@ -2223,7 +2281,11 @@ func (g *game) tickDelayedSounds() {
 	for _, d := range g.delayedSfx {
 		d.tics--
 		if d.tics <= 0 {
-			g.emitSoundEvent(d.ev)
+			if d.positioned {
+				g.emitSoundEventAt(d.ev, d.x, d.y)
+			} else {
+				g.emitSoundEvent(d.ev)
+			}
 			continue
 		}
 		keep = append(keep, d)
@@ -2273,12 +2335,17 @@ func (g *game) applyThingSpawnFiltering() {
 
 func (g *game) flushSoundEvents() {
 	if g.snd != nil {
-		for _, ev := range g.soundQueue {
-			g.snd.playEvent(ev)
+		for i, ev := range g.soundQueue {
+			origin := queuedSoundOrigin{}
+			if i >= 0 && i < len(g.soundQueueOrigin) {
+				origin = g.soundQueueOrigin[i]
+			}
+			g.snd.playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
 		}
 		g.snd.tick()
 	}
 	g.soundQueue = g.soundQueue[:0]
+	g.soundQueueOrigin = g.soundQueueOrigin[:0]
 }
 
 func shouldDrawThings(st automapParityState) bool {

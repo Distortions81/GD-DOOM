@@ -36,6 +36,7 @@ func TestTickMonstersDamagesPlayer(t *testing.T) {
 }
 
 func TestTickMonstersWakesByRangeAndLOS(t *testing.T) {
+	doomrand.Clear()
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -46,12 +47,16 @@ func TestTickMonstersWakesByRangeAndLOS(t *testing.T) {
 		thingHP:        []int{20},
 		thingAggro:     []bool{false},
 		thingCooldown:  []int{0},
+		soundQueue:     make([]soundEvent, 0, 4),
 		stats:          playerStats{Health: 100},
 		p:              player{x: 0, y: 0},
 	}
 	g.tickMonsters()
 	if !g.thingAggro[0] {
 		t.Fatal("monster should wake when player is in range and visible")
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit) {
+		t.Fatalf("wake should emit seesound, queue=%v", g.soundQueue)
 	}
 }
 
@@ -122,6 +127,40 @@ func TestTickMonstersAmbushDoesNotWakeFromNoiseWithoutLOS(t *testing.T) {
 	g.tickMonsters()
 	if g.thingAggro[0] {
 		t.Fatal("ambush monster should not wake from noise without direct LOS")
+	}
+}
+
+func TestShouldEmitMonsterActiveSound_DoomChance(t *testing.T) {
+	if !shouldEmitMonsterActiveSound(0) {
+		t.Fatal("0 should emit")
+	}
+	if !shouldEmitMonsterActiveSound(2) {
+		t.Fatal("2 should emit")
+	}
+	if shouldEmitMonsterActiveSound(3) {
+		t.Fatal("3 should not emit")
+	}
+}
+
+func TestMonsterMeleeAttackSoundEvent(t *testing.T) {
+	tests := []struct {
+		typ  int16
+		want soundEvent
+	}{
+		{3001, soundEventMonsterAttackClaw},
+		{3003, soundEventMonsterAttackClaw},
+		{69, soundEventMonsterAttackClaw},
+		{3002, soundEventMonsterAttackSgt},
+		{58, soundEventMonsterAttackSgt},
+		{3006, soundEventMonsterAttackSkull},
+	}
+	for _, tc := range tests {
+		if got := monsterMeleeAttackSoundEvent(tc.typ); got != tc.want {
+			t.Fatalf("type=%d melee sound=%v want=%v", tc.typ, got, tc.want)
+		}
+	}
+	if got := monsterMeleeAttackSoundEvent(66); got != -1 {
+		t.Fatalf("revenant melee sound=%v want none", got)
 	}
 }
 
