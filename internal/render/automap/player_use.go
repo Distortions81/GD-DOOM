@@ -140,21 +140,33 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		return
 	}
 	info := mapdata.LookupLineSpecial(special)
-	if info.Door == nil || (info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse) {
+	if !lineSpecialSupported(info) || (info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse) {
 		g.useText = "USE: unsupported special"
 		g.useFlash = 35
 		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
-	if !info.Door.CanActivate(g.inventory.keys()) {
+	if info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {
 		g.useText = "USE: locked"
 		g.useFlash = 35
 		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
-	activated := g.activateDoorLine(lineIdx, info)
+	activated := false
+	if info.Door != nil {
+		activated = g.activateDoorLine(lineIdx, info)
+	} else {
+		activated = g.activateNonDoorLineSpecial(lineIdx, side, info)
+		if activated && !info.Repeat && lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
+			g.lineSpecial[lineIdx] = 0
+		}
+	}
 	if activated {
-		g.useText = "USE: door active"
+		if info.Door != nil {
+			g.useText = "USE: door active"
+		} else {
+			g.useText = "USE: special active"
+		}
 		if shouldPlaySwitchClick(info) {
 			g.animateSwitchTexture(lineIdx, side, info.Repeat)
 			g.emitSoundEvent(soundEventSwitchOn)
@@ -185,7 +197,7 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 		if info.Trigger != mapdata.TriggerWalk {
 			continue
 		}
-		if info.Exit == mapdata.ExitNone && info.Door == nil {
+		if !lineSpecialSupported(info) {
 			continue
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
@@ -206,6 +218,12 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 				}
 				return
 			}
+		}
+		if info.Door == nil && g.activateNonDoorLineSpecial(ld.idx, 0, info) {
+			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
+				g.lineSpecial[ld.idx] = 0
+			}
+			return
 		}
 		// Crossing a special line can consume movement intent for this tic
 		// even when no action is taken.
@@ -235,7 +253,7 @@ func (g *game) handleExitSpecial(lineIdx int, special uint16, trigger mapdata.Tr
 
 func shouldPlaySwitchClick(info mapdata.LineSpecialInfo) bool {
 	// Doom-like: use-triggered switch/button specials click; manual doors do not.
-	return info.Trigger == mapdata.TriggerUse && info.Door != nil
+	return info.Trigger == mapdata.TriggerUse && lineSpecialSupported(info)
 }
 
 func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) bool {

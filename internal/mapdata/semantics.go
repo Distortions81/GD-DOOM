@@ -34,18 +34,82 @@ const (
 )
 
 type LineSpecialInfo struct {
-	Special uint16
-	Name    string
-	Trigger TriggerType
-	Repeat  bool
-	Door    *DoorInfo
-	Exit    ExitType
+	Special  uint16
+	Name     string
+	Trigger  TriggerType
+	Repeat   bool
+	Door     *DoorInfo
+	Exit     ExitType
+	Floor    *FloorInfo
+	Plat     *PlatInfo
+	Stairs   *StairsInfo
+	Light    *LightInfo
+	Teleport *TeleportInfo
+	Donut    bool
 }
 
 type DoorInfo struct {
 	Action  DoorAction
 	Key     KeyType
 	UsesTag bool
+}
+
+type FloorAction string
+
+const (
+	FloorRaise          FloorAction = "raise"
+	FloorRaiseToNearest FloorAction = "raise_to_nearest"
+	FloorLowerToLowest  FloorAction = "lower_to_lowest"
+	FloorTurboLower     FloorAction = "turbo_lower"
+)
+
+type FloorInfo struct {
+	Action  FloorAction
+	UsesTag bool
+}
+
+type PlatAction string
+
+const (
+	PlatRaiseToNearestAndChange PlatAction = "raise_to_nearest_and_change"
+	PlatDownWaitUpStay          PlatAction = "down_wait_up_stay"
+)
+
+type PlatInfo struct {
+	Action  PlatAction
+	UsesTag bool
+}
+
+type StairsAction string
+
+const (
+	StairsBuild8  StairsAction = "build_8"
+	StairsTurbo16 StairsAction = "build_16"
+)
+
+type StairsInfo struct {
+	Action  StairsAction
+	UsesTag bool
+}
+
+type LightAction string
+
+const (
+	LightVeryDark          LightAction = "very_dark"
+	LightBrightestNeighbor LightAction = "brightest_neighbor"
+	LightFullBright        LightAction = "full_bright"
+	LightTurnTagOff        LightAction = "turn_tag_off"
+	LightStartStrobing     LightAction = "start_strobing"
+)
+
+type LightInfo struct {
+	Action  LightAction
+	UsesTag bool
+}
+
+type TeleportInfo struct {
+	UsesTag     bool
+	MonsterOnly bool
 }
 
 type KeyRing struct {
@@ -132,11 +196,67 @@ var exitSpecials = map[uint16]LineSpecialInfo{
 	198: {Special: 198, Name: "shoot secret exit", Trigger: TriggerShoot, Repeat: false, Exit: ExitSecret},
 }
 
+var floorSpecials = map[uint16]LineSpecialInfo{
+	5:  {Special: 5, Name: "walk raise floor", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorRaise, UsesTag: true}},
+	18: {Special: 18, Name: "switch raise floor to nearest", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorRaiseToNearest, UsesTag: true}},
+	23: {Special: 23, Name: "switch lower floor to lowest", Trigger: TriggerUse, Repeat: false, Floor: &FloorInfo{Action: FloorLowerToLowest, UsesTag: true}},
+	36: {Special: 36, Name: "walk turbo lower floor", Trigger: TriggerWalk, Repeat: false, Floor: &FloorInfo{Action: FloorTurboLower, UsesTag: true}},
+	70: {Special: 70, Name: "button turbo lower floor", Trigger: TriggerUse, Repeat: true, Floor: &FloorInfo{Action: FloorTurboLower, UsesTag: true}},
+	82: {Special: 82, Name: "walk lower floor to lowest", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorLowerToLowest, UsesTag: true}},
+	91: {Special: 91, Name: "walk raise floor", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorRaise, UsesTag: true}},
+	98: {Special: 98, Name: "walk turbo lower floor", Trigger: TriggerWalk, Repeat: true, Floor: &FloorInfo{Action: FloorTurboLower, UsesTag: true}},
+}
+
+var platSpecials = map[uint16]LineSpecialInfo{
+	20: {Special: 20, Name: "switch plat raise to nearest and change", Trigger: TriggerUse, Repeat: false, Plat: &PlatInfo{Action: PlatRaiseToNearestAndChange, UsesTag: true}},
+	22: {Special: 22, Name: "walk plat raise to nearest and change", Trigger: TriggerWalk, Repeat: false, Plat: &PlatInfo{Action: PlatRaiseToNearestAndChange, UsesTag: true}},
+	62: {Special: 62, Name: "button plat down wait up stay", Trigger: TriggerUse, Repeat: true, Plat: &PlatInfo{Action: PlatDownWaitUpStay, UsesTag: true}},
+	88: {Special: 88, Name: "walk plat down wait up stay", Trigger: TriggerWalk, Repeat: true, Plat: &PlatInfo{Action: PlatDownWaitUpStay, UsesTag: true}},
+}
+
+var stairSpecials = map[uint16]LineSpecialInfo{
+	7: {Special: 7, Name: "switch build stairs", Trigger: TriggerUse, Repeat: false, Stairs: &StairsInfo{Action: StairsBuild8, UsesTag: true}},
+	8: {Special: 8, Name: "walk build stairs", Trigger: TriggerWalk, Repeat: false, Stairs: &StairsInfo{Action: StairsBuild8, UsesTag: true}},
+}
+
+var lightSpecials = map[uint16]LineSpecialInfo{
+	35:  {Special: 35, Name: "walk lights very dark", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightVeryDark, UsesTag: true}},
+	104: {Special: 104, Name: "walk turn tag lights off", Trigger: TriggerWalk, Repeat: false, Light: &LightInfo{Action: LightTurnTagOff, UsesTag: true}},
+	138: {Special: 138, Name: "button light turn on brightest nearby", Trigger: TriggerUse, Repeat: true, Light: &LightInfo{Action: LightBrightestNeighbor, UsesTag: true}},
+	139: {Special: 139, Name: "button light turn off", Trigger: TriggerUse, Repeat: true, Light: &LightInfo{Action: LightVeryDark, UsesTag: true}},
+}
+
+var teleportSpecials = map[uint16]LineSpecialInfo{
+	97: {Special: 97, Name: "walk teleport", Trigger: TriggerWalk, Repeat: true, Teleport: &TeleportInfo{UsesTag: true}},
+}
+
+var donutSpecials = map[uint16]LineSpecialInfo{
+	9: {Special: 9, Name: "switch donut", Trigger: TriggerUse, Repeat: false, Donut: true},
+}
+
 func LookupLineSpecial(special uint16) LineSpecialInfo {
 	if info, ok := doorSpecials[special]; ok {
 		return info
 	}
 	if info, ok := exitSpecials[special]; ok {
+		return info
+	}
+	if info, ok := floorSpecials[special]; ok {
+		return info
+	}
+	if info, ok := platSpecials[special]; ok {
+		return info
+	}
+	if info, ok := stairSpecials[special]; ok {
+		return info
+	}
+	if info, ok := lightSpecials[special]; ok {
+		return info
+	}
+	if info, ok := teleportSpecials[special]; ok {
+		return info
+	}
+	if info, ok := donutSpecials[special]; ok {
 		return info
 	}
 	return LineSpecialInfo{Special: special, Name: "", Trigger: TriggerUnknown}

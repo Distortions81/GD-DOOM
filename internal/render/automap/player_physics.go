@@ -8,6 +8,8 @@ import (
 func (g *game) updatePlayer(cmd moveCmd) {
 	prevX := g.p.x
 	prevY := g.p.y
+	g.tickFloors()
+	g.tickPlats()
 	g.tickDoors()
 	g.tickWorldLogic()
 

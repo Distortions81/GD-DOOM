@@ -353,6 +353,8 @@ type game struct {
 	sectorCeil           []int64
 	lineSpecial          []uint16
 	doors                map[int]*doorThinker
+	floors               map[int]*floorThinker
+	plats                map[int]*platThinker
 	useFlash             int
 	useText              string
 	hudMessagesEnabled   bool
