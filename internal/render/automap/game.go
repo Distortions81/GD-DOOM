@@ -731,6 +731,7 @@ const (
 	floor2DPathRasterized floor2DPathMode = iota
 	floor2DPathCached
 	floor2DPathSubsector
+	floor2DPathOff
 )
 
 type floorVisDiagMode int
@@ -11078,6 +11079,8 @@ func shadeRGBByMul(r, g, b byte, mul uint32) (byte, byte, byte) {
 func (g *game) drawMapFloorTextures2D(screen *ebiten.Image) {
 	g.floorFrame = floorFrameStats{}
 	switch g.floor2DPath {
+	case floor2DPathOff:
+		return
 	case floor2DPathCached:
 		// Experimental: use direct cached geometry triangles instead of the
 		// low-res prebuilt world layer so holes are attributable to geometry.
@@ -11931,26 +11934,21 @@ func (g *game) floorDebugLabel() string {
 
 func (g *game) floorPathLabel() string {
 	switch g.floor2DPath {
-	case floor2DPathCached:
-		return "cached"
-	case floor2DPathSubsector:
-		return "subsector"
+	case floor2DPathOff:
+		return "off"
 	default:
-		return "rasterized"
+		return "textured"
 	}
 }
 
 func (g *game) toggleMapFloor2DPath() {
-	if g.floor2DPath == floor2DPathRasterized {
-		g.floor2DPath = floor2DPathCached
-		if !g.mapFloorWorldInit || g.mapFloorWorldLayer == nil {
-			g.ensureMapFloorWorldLayerBuilt()
-		}
-		g.setHUDMessage("Map Floor Path: CACHED", 70)
+	if g.floor2DPath == floor2DPathOff {
+		g.floor2DPath = floor2DPathRasterized
+		g.setHUDMessage("Map Textures: ON", 70)
 		return
 	}
-	g.floor2DPath = floor2DPathRasterized
-	g.setHUDMessage("Map Floor Path: RASTERIZED", 70)
+	g.floor2DPath = floor2DPathOff
+	g.setHUDMessage("Map Textures: OFF", 70)
 }
 
 func (g *game) floorVisDiagLabel() string {

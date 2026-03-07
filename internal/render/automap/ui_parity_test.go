@@ -187,6 +187,18 @@ func TestMapRotationActive_DisabledWhenFollowIsOff(t *testing.T) {
 	}
 }
 
+func TestToggleMapFloor2DPath_IsOnOff(t *testing.T) {
+	g := &game{floor2DPath: floor2DPathRasterized}
+	g.toggleMapFloor2DPath()
+	if g.floor2DPath != floor2DPathOff {
+		t.Fatalf("floor2DPath=%d want off", g.floor2DPath)
+	}
+	g.toggleMapFloor2DPath()
+	if g.floor2DPath != floor2DPathRasterized {
+		t.Fatalf("floor2DPath=%d want rasterized", g.floor2DPath)
+	}
+}
+
 func TestButtonHighlightEligible(t *testing.T) {
 	if buttonHighlightEligible(0) {
 		t.Fatal("special 0 should not highlight")

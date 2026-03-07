@@ -332,7 +332,7 @@ func clampDetailLevelForMode(level int, sourcePort bool) int {
 
 func normalizeFloor2DPath(path floor2DPathMode) floor2DPathMode {
 	switch path {
-	case floor2DPathRasterized, floor2DPathCached, floor2DPathSubsector:
+	case floor2DPathRasterized, floor2DPathCached, floor2DPathSubsector, floor2DPathOff:
 		return path
 	default:
 		return floor2DPathRasterized
