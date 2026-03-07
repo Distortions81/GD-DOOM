@@ -9,7 +9,7 @@ MAP_NAME="E1M1"
 OUT_DIR="${ROOT_DIR}/profiles"
 WIDTH=3840
 HEIGHT=2160
-DETAIL_LEVEL=0
+DETAIL_LEVEL=2
 SOURCEPORT_MODE=1
 REPEATS=3
 
@@ -127,7 +127,7 @@ echo "Building benchmark binary: ${BIN_PATH}"
   go build -o "${BIN_PATH}" ./cmd/gddoom
 )
 
-echo "label,renderer,wall_occlusion,wall_span_reject,wall_span_clip,wall_slice_occlusion,depth_occlusion,runs,avg_fps,avg_elapsed_s,best_fps,worst_fps,log_dir" > "${CSV_PATH}"
+echo "label,renderer,wall_occlusion,wall_span_reject,wall_span_clip,wall_slice_occlusion,depth_occlusion,runs,avg_draws,best_draws,worst_draws,avg_fps,avg_elapsed_s,best_fps,worst_fps,log_dir" > "${CSV_PATH}"
 
 run_case() {
   local renderer="$1"
@@ -143,8 +143,11 @@ run_case() {
 
   local sum_fps=0
   local sum_elapsed=0
+  local sum_draws=0
   local best_fps=0
   local worst_fps=1000000
+  local best_draws=0
+  local worst_draws=1000000000
   local ok_runs=0
 
   for ((run=1; run<=REPEATS; run++)); do
@@ -155,11 +158,10 @@ run_case() {
       -wad "${WAD_PATH}"
       -map "${MAP_NAME}"
       -demo "${DEMO_PATH}"
-      -width "${WIDTH}"
-      -height "${HEIGHT}"
+#      -width "${WIDTH}"
+#      -height "${HEIGHT}"
       -detail-level "${DETAIL_LEVEL}"
       -no-vsync
-      -nofps
       "-wall-occlusion=${wall_occ}"
       "-wall-span-reject=${span_reject}"
       "-wall-span-clip=${span_clip}"
@@ -184,29 +186,34 @@ run_case() {
       continue
     fi
 
-    local fps elapsed
+    local fps elapsed draws
     fps="$(sed -n 's/.* fps=\([0-9.]*\) .*/\1/p' <<<"${bench}")"
     elapsed="$(sed -n 's/.* elapsed=\([^ ]*\) tps=.*/\1/p' <<<"${bench}")"
+    draws="$(sed -n 's/.* draws=\([0-9]*\) elapsed=.*/\1/p' <<<"${bench}")"
     elapsed="${elapsed%s}"
 
+    sum_draws="$(awk -v a="${sum_draws}" -v b="${draws}" 'BEGIN { printf "%.0f", a + b }')"
     sum_fps="$(awk -v a="${sum_fps}" -v b="${fps}" 'BEGIN { printf "%.6f", a + b }')"
     sum_elapsed="$(awk -v a="${sum_elapsed}" -v b="${elapsed}" 'BEGIN { printf "%.6f", a + b }')"
+    best_draws="$(awk -v a="${best_draws}" -v b="${draws}" 'BEGIN { if (b > a) printf "%.0f", b; else printf "%.0f", a }')"
+    worst_draws="$(awk -v a="${worst_draws}" -v b="${draws}" 'BEGIN { if (b < a) printf "%.0f", b; else printf "%.0f", a }')"
     best_fps="$(awk -v a="${best_fps}" -v b="${fps}" 'BEGIN { if (b > a) printf "%.6f", b; else printf "%.6f", a }')"
     worst_fps="$(awk -v a="${worst_fps}" -v b="${fps}" 'BEGIN { if (b < a) printf "%.6f", b; else printf "%.6f", a }')"
     ok_runs=$((ok_runs + 1))
   done
 
   if [[ "${ok_runs}" -eq 0 ]]; then
-    echo "${label},${renderer},${wall_occ},${span_reject},${span_clip},${slice_occ},${depth_occ},0,ERROR,ERROR,ERROR,ERROR,${case_dir}" >> "${CSV_PATH}"
+    echo "${label},${renderer},${wall_occ},${span_reject},${span_clip},${slice_occ},${depth_occ},0,ERROR,ERROR,ERROR,ERROR,ERROR,ERROR,ERROR,${case_dir}" >> "${CSV_PATH}"
     return
   fi
 
-  local avg_fps avg_elapsed
+  local avg_draws avg_fps avg_elapsed
+  avg_draws="$(awk -v s="${sum_draws}" -v n="${ok_runs}" 'BEGIN { printf "%.1f", s / n }')"
   avg_fps="$(awk -v s="${sum_fps}" -v n="${ok_runs}" 'BEGIN { printf "%.3f", s / n }')"
   avg_elapsed="$(awk -v s="${sum_elapsed}" -v n="${ok_runs}" 'BEGIN { printf "%.3f", s / n }')"
   best_fps="$(awk -v a="${best_fps}" 'BEGIN { printf "%.3f", a }')"
   worst_fps="$(awk -v a="${worst_fps}" 'BEGIN { printf "%.3f", a }')"
-  echo "${label},${renderer},${wall_occ},${span_reject},${span_clip},${slice_occ},${depth_occ},${ok_runs},${avg_fps},${avg_elapsed},${best_fps},${worst_fps},${case_dir}" >> "${CSV_PATH}"
+  echo "${label},${renderer},${wall_occ},${span_reject},${span_clip},${slice_occ},${depth_occ},${ok_runs},${avg_draws},${best_draws},${worst_draws},${avg_fps},${avg_elapsed},${best_fps},${worst_fps},${case_dir}" >> "${CSV_PATH}"
 }
 
 for renderer in doom-basic unified-bsp; do

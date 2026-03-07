@@ -65,7 +65,7 @@ func TestHazardDamageSpecial16WithoutSuit(t *testing.T) {
 func TestPickupRadSuitSetsTimer(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()
-	msg, _, ok := g.applyPickup(2025)
+	msg, _, ok := g.applyPickup(2025, false)
 	if !ok {
 		t.Fatal("radsuit pickup should succeed")
 	}

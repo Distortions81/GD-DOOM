@@ -400,6 +400,7 @@ type game struct {
 	levelRestartRequested bool
 
 	thingCollected      []bool
+	thingDropped        []bool
 	thingHP             []int
 	thingAggro          []bool
 	thingCooldown       []int
@@ -933,6 +934,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.initPlayerState()
 	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
+	g.thingDropped = make([]bool, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
 	g.thingCooldown = make([]int, len(m.Things))
@@ -2761,11 +2763,39 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.drawMaskedMidSegs(focal)
 	if !g.depthOcclusionEnabled() {
 		g.buildMaskedMidClipColumns(focal)
+		g.billboardQueueCollect = true
+		g.billboardQueueScratch = g.billboardQueueScratch[:0]
+		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+		g.billboardQueueCollect = false
+		sort.Slice(g.billboardQueueScratch, func(i, j int) bool {
+			return g.billboardQueueScratch[i].dist > g.billboardQueueScratch[j].dist
+		})
+		for _, qi := range g.billboardQueueScratch {
+			g.billboardReplayActive = true
+			g.billboardReplayKind = qi.kind
+			g.billboardReplayIndex = qi.idx
+			switch qi.kind {
+			case billboardQueueProjectiles:
+				g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+			case billboardQueueMonsters:
+				g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+			case billboardQueueWorldThings:
+				g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+			case billboardQueuePuffs:
+				g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+			}
+		}
+		g.billboardReplayActive = false
+		g.billboardQueueScratch = g.billboardQueueScratch[:0]
+	} else {
+		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 	}
-	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 	if g.opts.DepthBufferView {
 		g.drawDepthBufferView()
 	}

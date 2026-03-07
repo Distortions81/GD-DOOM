@@ -90,7 +90,8 @@ func (g *game) processThingPickups() {
 		if !canTouchPickup(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight, tx, ty, tz, radius, height) {
 			continue
 		}
-		msg, ev, picked := g.applyPickup(th.Type)
+		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
+		msg, ev, picked := g.applyPickup(th.Type, dropped)
 		if !picked {
 			continue
 		}
@@ -155,7 +156,7 @@ func isPickupType(typ int16) bool {
 	}
 }
 
-func (g *game) applyPickup(typ int16) (string, soundEvent, bool) {
+func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	switch typ {
 	case 5, 40:
 		if g.inventory.BlueKey {
@@ -202,7 +203,11 @@ func (g *game) applyPickup(typ int16) (string, soundEvent, bool) {
 		}
 		return "Picked up a radiation suit", soundEventPowerUp, true
 	case 2007:
-		return g.gainAmmo("bullets", 10, "Picked up a clip")
+		amount := 10
+		if dropped {
+			amount = 5
+		}
+		return g.gainAmmo("bullets", amount, "Picked up a clip")
 	case 2048:
 		return g.gainAmmo("bullets", 50, "Picked up a box of bullets")
 	case 2008:
@@ -232,9 +237,17 @@ func (g *game) applyPickup(typ int16) (string, soundEvent, bool) {
 			// Treat duplicate weapons as ammo pickups where sensible.
 			switch typ {
 			case 2001:
-				return g.gainAmmo("shells", 4, "Picked up shells")
+				amount := 8
+				if dropped {
+					amount = 4
+				}
+				return g.gainAmmo("shells", amount, "Picked up shells")
 			case 2002:
-				return g.gainAmmo("bullets", 20, "Picked up bullets")
+				amount := 20
+				if dropped {
+					amount = 10
+				}
+				return g.gainAmmo("bullets", amount, "Picked up bullets")
 			case 2003:
 				return g.gainAmmo("rockets", 2, "Picked up rockets")
 			case 2004:
@@ -254,11 +267,19 @@ func (g *game) applyPickup(typ int16) (string, soundEvent, bool) {
 		}
 		switch typ {
 		case 2001:
-			g.gainAmmoNoMsg("shells", 8)
+			if dropped {
+				g.gainAmmoNoMsg("shells", 4)
+			} else {
+				g.gainAmmoNoMsg("shells", 8)
+			}
 			setReadyWeapon(weaponShotgun)
 			return "Picked up a shotgun", soundEventWeaponUp, true
 		case 2002:
-			g.gainAmmoNoMsg("bullets", 20)
+			if dropped {
+				g.gainAmmoNoMsg("bullets", 10)
+			} else {
+				g.gainAmmoNoMsg("bullets", 20)
+			}
 			setReadyWeapon(weaponChaingun)
 			return "Picked up a chaingun", soundEventWeaponUp, true
 		case 2003:

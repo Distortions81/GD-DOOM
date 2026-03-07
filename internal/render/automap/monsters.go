@@ -198,6 +198,11 @@ func (g *game) ensureMonsterAIState() {
 		g.thingDead = make([]bool, n)
 		copy(g.thingDead, old)
 	}
+	if len(g.thingDropped) != n {
+		old := g.thingDropped
+		g.thingDropped = make([]bool, n)
+		copy(g.thingDropped, old)
+	}
 	if len(g.thingDeathTics) != n {
 		old := g.thingDeathTics
 		g.thingDeathTics = make([]int, n)

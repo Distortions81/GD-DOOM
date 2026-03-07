@@ -73,6 +73,39 @@ func (g *game) tickDoors() {
 			g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
 		}
 	}
+	playerTouchesSector := func(sec int) bool {
+		if g == nil || sec < 0 {
+			return false
+		}
+		samples := [][2]int64{
+			{0, 0},
+			{playerRadius, 0},
+			{-playerRadius, 0},
+			{0, playerRadius},
+			{0, -playerRadius},
+			{playerRadius, playerRadius},
+			{playerRadius, -playerRadius},
+			{-playerRadius, playerRadius},
+			{-playerRadius, -playerRadius},
+		}
+		for _, s := range samples {
+			if g.sectorAt(g.p.x+s[0], g.p.y+s[1]) == sec {
+				return true
+			}
+		}
+		return false
+	}
+	doorWouldCrushPlayer := func(sec int, nextCeil int64) bool {
+		if g == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+			return false
+		}
+		if !playerTouchesSector(sec) {
+			return false
+		}
+		playerTop := g.p.z + playerHeight
+		floorZ := g.sectorFloor[sec]
+		return nextCeil-floorZ < playerHeight || nextCeil < playerTop
+	}
 	for sec, d := range g.doors {
 		switch d.direction {
 		case 0:
@@ -96,6 +129,17 @@ func (g *game) tickDoors() {
 			}
 		case -1:
 			next := g.sectorCeil[sec] - d.speed
+			if doorWouldCrushPlayer(sec, next) {
+				switch d.typ {
+				case doorBlazeClose, doorClose:
+					// Vanilla close-only doors keep trying to close, but do not
+					// advance through blocking actors.
+				default:
+					d.direction = 1
+					g.emitSoundEvent(doorMoveEvent(d.typ, d.direction))
+				}
+				continue
+			}
 			if next <= g.sectorFloor[sec] {
 				setDoorCeiling(sec, g.sectorFloor[sec])
 				switch d.typ {

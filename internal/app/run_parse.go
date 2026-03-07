@@ -59,7 +59,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
-	defaultWalkRenderer := ""
+	defaultWalkRenderer := "doom-basic"
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
@@ -67,10 +67,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultCRTEffect := false
 	defaultDepthBufferView := false
 	defaultDepthOcclusion := false
-	defaultWallOcclusion := true
+	defaultWallOcclusion := false
 	defaultWallSpanReject := true
 	defaultWallSpanClip := false
-	defaultWallSliceOcclusion := false
+	defaultWallSliceOcclusion := true
 	defaultBillboardClipping := true
 	defaultOverdrawDebug := false
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).

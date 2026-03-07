@@ -171,3 +171,42 @@ func TestWeaponPickupAutoSwitchesWhenEnabled(t *testing.T) {
 		t.Fatalf("weapon=%v want=%v when auto switch enabled", g.inventory.ReadyWeapon, weaponShotgun)
 	}
 }
+
+func TestDroppedClipGivesHalfClip(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2007}},
+		},
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingDropped = []bool{true}
+	g.stats.Bullets = 0
+
+	g.processThingPickups()
+
+	if g.stats.Bullets != 5 {
+		t.Fatalf("bullets=%d want=5 for dropped clip", g.stats.Bullets)
+	}
+}
+
+func TestDroppedShotgunUsesDroppedAmmoAmount(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2001}},
+		},
+		autoWeaponSwitch: true,
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingDropped = []bool{true}
+
+	g.processThingPickups()
+
+	if !g.inventory.Weapons[2001] {
+		t.Fatal("shotgun should be owned")
+	}
+	if g.stats.Shells != 4 {
+		t.Fatalf("shells=%d want=4 for dropped shotgun", g.stats.Shells)
+	}
+}

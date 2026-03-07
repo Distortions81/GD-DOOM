@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"gddoom/internal/doomrand"
+	"gddoom/internal/mapdata"
 )
 
 const (
@@ -500,6 +501,7 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 		}
 		g.setHUDMessage("Monster killed", 15)
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
+		g.spawnMonsterDrop(thingIdx, thingType)
 	} else {
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
@@ -510,6 +512,64 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 		}
 		g.setHUDMessage("Hit", 8)
 	}
+}
+
+func monsterDropPickupType(typ int16) (int16, bool) {
+	switch typ {
+	case 84, 3004: // wolfenstein-ss, zombieman
+		return 2007, true // clip
+	case 9: // shotgun guy
+		return 2001, true // shotgun
+	case 65: // chaingunner
+		return 2002, true // chaingun
+	default:
+		return 0, false
+	}
+}
+
+func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
+	if g == nil || g.m == nil {
+		return -1
+	}
+	g.m.Things = append(g.m.Things, th)
+	g.thingCollected = append(g.thingCollected, false)
+	g.thingDropped = append(g.thingDropped, dropped)
+	g.thingHP = append(g.thingHP, 0)
+	g.thingAggro = append(g.thingAggro, false)
+	g.thingCooldown = append(g.thingCooldown, 0)
+	g.thingMoveDir = append(g.thingMoveDir, monsterDirNoDir)
+	g.thingMoveCount = append(g.thingMoveCount, 0)
+	g.thingJustAtk = append(g.thingJustAtk, false)
+	g.thingJustHit = append(g.thingJustHit, false)
+	g.thingReactionTics = append(g.thingReactionTics, 0)
+	g.thingDead = append(g.thingDead, false)
+	g.thingDeathTics = append(g.thingDeathTics, 0)
+	g.thingAttackTics = append(g.thingAttackTics, 0)
+	g.thingAttackFireTics = append(g.thingAttackFireTics, -1)
+	g.thingPainTics = append(g.thingPainTics, 0)
+	g.thingThinkWait = append(g.thingThinkWait, 0)
+	sec := -1
+	if len(g.thingSectorCache) > 0 || len(g.m.Things) == 1 {
+		sec = g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+	}
+	g.thingSectorCache = append(g.thingSectorCache, sec)
+	return len(g.m.Things) - 1
+}
+
+func (g *game) spawnMonsterDrop(thingIdx int, thingType int16) {
+	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) {
+		return
+	}
+	dropType, ok := monsterDropPickupType(thingType)
+	if !ok {
+		return
+	}
+	src := g.m.Things[thingIdx]
+	g.appendRuntimeThing(mapdata.Thing{
+		X:    src.X,
+		Y:    src.Y,
+		Type: dropType,
+	}, true)
 }
 
 func monsterPainSoundEvent(typ int16) soundEvent {

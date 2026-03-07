@@ -7,6 +7,41 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestMonsterDeathsSpawnVanillaDrops(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},   // zombieman
+				{Type: 9, X: 64, Y: 0},     // shotgun guy
+				{Type: 65, X: 128, Y: 0},   // chaingunner
+				{Type: 3001, X: 192, Y: 0}, // imp
+			},
+		},
+		thingCollected: make([]bool, 4),
+		thingDropped:   make([]bool, 4),
+		thingHP:        []int{1, 1, 1, 1},
+		thingDead:      make([]bool, 4),
+		thingDeathTics: make([]int, 4),
+	}
+	g.damageMonster(0, 1)
+	g.damageMonster(1, 1)
+	g.damageMonster(2, 1)
+	g.damageMonster(3, 1)
+
+	if got, want := len(g.m.Things), 7; got != want {
+		t.Fatalf("thing count=%d want=%d", got, want)
+	}
+	drops := g.m.Things[4:]
+	if drops[0].Type != 2007 || drops[1].Type != 2001 || drops[2].Type != 2002 {
+		t.Fatalf("drop types=%v want [2007 2001 2002]", []int16{drops[0].Type, drops[1].Type, drops[2].Type})
+	}
+	for i := 4; i < 7; i++ {
+		if !g.thingDropped[i] {
+			t.Fatalf("drop %d should be marked dropped", i)
+		}
+	}
+}
+
 func TestPickHitscanMonsterTarget(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
