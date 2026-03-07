@@ -120,6 +120,123 @@ func TestRunGameplayTic_NoAirControlWhileFalling(t *testing.T) {
 	}
 }
 
+func TestTryMove_PlayerStepUpDefersZChangeToZMovement(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 1},
+				{Sector: 0},
+			},
+			Segs: []mapdata.Seg{
+				{StartVertex: 0, EndVertex: 1, Linedef: 0, Direction: 0},
+				{StartVertex: 0, EndVertex: 1, Linedef: 0, Direction: 1},
+			},
+			SubSectors: []mapdata.SubSector{
+				{SegCount: 1, FirstSeg: 0},
+				{SegCount: 1, FirstSeg: 1},
+			},
+			Nodes: []mapdata.Node{
+				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint16{0x8000, 0x8001}},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 24, CeilingHeight: 128},
+			},
+		},
+		p: player{
+			x:          -32 * fracUnit,
+			y:          0,
+			z:          0,
+			floorz:     0,
+			ceilz:      128 * fracUnit,
+			viewHeight: playerViewHeight,
+		},
+	}
+	g.initPhysics()
+
+	if !g.tryMove(48*fracUnit, 0) {
+		t.Fatal("tryMove should cross onto 24-unit step")
+	}
+	if got := g.p.floorz; got != 24*fracUnit {
+		t.Fatalf("floorz=%d want=%d after crossing step", got, 24*fracUnit)
+	}
+	if got := g.p.z; got != 0 {
+		t.Fatalf("z=%d want=0 before zMovement resolves step-up", got)
+	}
+
+	g.zMovement()
+
+	if got := g.p.z; got != 24*fracUnit {
+		t.Fatalf("z=%d want=%d after zMovement step-up", got, 24*fracUnit)
+	}
+	if g.p.viewHeight >= playerViewHeight {
+		t.Fatalf("viewHeight=%d want less than %d after smooth step-up", g.p.viewHeight, playerViewHeight)
+	}
+}
+
+func TestXYMovement_StepOffLedgePreservesMomentumWhileAirborne(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 1},
+				{Sector: 0},
+			},
+			Segs: []mapdata.Seg{
+				{StartVertex: 0, EndVertex: 1, Linedef: 0, Direction: 0},
+				{StartVertex: 0, EndVertex: 1, Linedef: 0, Direction: 1},
+			},
+			SubSectors: []mapdata.SubSector{
+				{SegCount: 1, FirstSeg: 0},
+				{SegCount: 1, FirstSeg: 1},
+			},
+			Nodes: []mapdata.Node{
+				{X: 0, Y: -64, DX: 0, DY: 128, ChildID: [2]uint16{0x8000, 0x8001}},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: -64, CeilingHeight: 128},
+			},
+		},
+		p: player{
+			x:      -32 * fracUnit,
+			y:      0,
+			z:      0,
+			viewHeight: playerViewHeight,
+		},
+	}
+	g.initPhysics()
+	if !g.tryMove(48*fracUnit, 0) {
+		t.Fatal("tryMove should cross into lower adjacent sector")
+	}
+	g.p.momx = 24 * fracUnit
+
+	g.xyMovement()
+
+	if got := g.p.floorz; got != -64*fracUnit {
+		t.Fatalf("floorz=%d want=%d after ledge crossing", got, -64*fracUnit)
+	}
+	if got := g.p.z; got != 0 {
+		t.Fatalf("z=%d want=0 immediately after ledge crossing", got)
+	}
+	if got := g.p.momx; got != 24*fracUnit {
+		t.Fatalf("momx=%d want=%d with no airborne friction", got, 24*fracUnit)
+	}
+}
+
 func TestPlayerHardLanding_UsesOofAndViewSquatWithoutDamage(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

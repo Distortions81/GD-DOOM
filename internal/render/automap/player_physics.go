@@ -257,6 +257,10 @@ func (g *game) xyMovement() {
 		}
 	}
 
+	if g.p.z > g.p.floorz {
+		return
+	}
+
 	if g.p.momx > -stopSpeed && g.p.momx < stopSpeed && g.p.momy > -stopSpeed && g.p.momy < stopSpeed {
 		g.p.momx = 0
 		g.p.momy = 0
@@ -271,8 +275,6 @@ func (g *game) tryMove(x, y int64) bool {
 	if !ok {
 		return false
 	}
-	prevFloor := g.p.floorz
-	onFloor := g.p.z <= prevFloor
 	if tmceil-tmfloor < playerHeight {
 		return false
 	}
@@ -288,16 +290,6 @@ func (g *game) tryMove(x, y int64) bool {
 	g.p.ceilz = tmceil
 	g.p.x = x
 	g.p.y = y
-	if onFloor {
-		if tmfloor > prevFloor {
-			g.p.z = g.p.floorz
-		}
-	} else if g.p.z+playerHeight > g.p.ceilz {
-		g.p.z = g.p.ceilz - playerHeight
-	}
-	if g.p.z < g.p.floorz {
-		g.p.z = g.p.floorz
-	}
 	return true
 }
 

@@ -194,6 +194,7 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 		return
 	}
 	old := g.sectorFloor[sec]
+	oldPlayerFloor := g.p.floorz
 	if old == z {
 		return
 	}
@@ -203,17 +204,7 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 		g.m.Sectors[sec].FloorHeight = int16(z >> fracBits)
 	}
 	if g.playerTouchesSector(sec) {
-		onFloor := g.p.z == old
-		if onFloor || g.p.floorz == old {
-			g.p.floorz = z
-			if onFloor || g.p.z < z {
-				g.p.z = z
-			}
-		}
-		if g.p.z < z {
-			g.p.z = z
-		}
-		g.p.floorz = z
+		g.heightClipPlayer(oldPlayerFloor)
 	}
 }
 
@@ -221,6 +212,7 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	if g == nil || sec < 0 || sec >= len(g.sectorCeil) {
 		return
 	}
+	oldPlayerFloor := g.p.floorz
 	if g.sectorCeil[sec] == z {
 		return
 	}
@@ -230,14 +222,30 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 		g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
 	}
 	if g.playerTouchesSector(sec) {
-		g.p.ceilz = z
-		if g.p.z+playerHeight > z {
-			g.p.z = z - playerHeight
-			if g.p.z < g.p.floorz {
-				g.p.z = g.p.floorz
-			}
-		}
+		g.heightClipPlayer(oldPlayerFloor)
 	}
+}
+
+func (g *game) heightClipPlayer(oldFloorz int64) bool {
+	if g == nil {
+		return false
+	}
+	onFloor := g.p.z == oldFloorz
+	tmfloor, tmceil, _, ok := g.checkPositionFor(g.p.x, g.p.y, false)
+	if !ok {
+		return false
+	}
+	g.p.floorz = tmfloor
+	g.p.ceilz = tmceil
+	if onFloor {
+		g.p.z = g.p.floorz
+	} else if g.p.z+playerHeight > g.p.ceilz {
+		g.p.z = g.p.ceilz - playerHeight
+	}
+	if g.p.ceilz-g.p.floorz < playerHeight {
+		return false
+	}
+	return true
 }
 
 func (g *game) findLowestFloorSurrounding(sec int) int64 {

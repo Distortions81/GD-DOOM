@@ -169,3 +169,59 @@ func TestActivateLightLine_StartStrobingSkipsActiveLightThinker(t *testing.T) {
 		t.Fatalf("light thinker kind=%d want=%d", got, sectorLightEffectGlow)
 	}
 }
+
+func TestSetSectorFloorHeight_PlayerOnFloorMovesWithLoweringFloor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.setSectorFloorHeight(0, -16*fracUnit)
+
+	if got := g.p.floorz; got != -16*fracUnit {
+		t.Fatalf("floorz=%d want=%d", got, -16*fracUnit)
+	}
+	if got := g.p.z; got != -16*fracUnit {
+		t.Fatalf("z=%d want=%d", got, -16*fracUnit)
+	}
+}
+
+func TestSetSectorCeilingHeight_AirbornePlayerClipsToNewCeiling(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      80 * fracUnit,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.setSectorCeilingHeight(0, 96*fracUnit)
+
+	if got := g.p.ceilz; got != 96*fracUnit {
+		t.Fatalf("ceilz=%d want=%d", got, 96*fracUnit)
+	}
+	if got := g.p.z; got != 40*fracUnit {
+		t.Fatalf("z=%d want=%d after ceiling clip", got, 40*fracUnit)
+	}
+}
