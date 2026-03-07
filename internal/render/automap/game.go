@@ -107,17 +107,31 @@ func wrap(v, n float) float {
 	return v - floor(v/n)*n
 }
 
-func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	if Focal <= 0.0 || DrawW <= 0.0 || DrawH <= 0.0 || SampleW <= 0.0 || SampleH <= 0.0 || SkyTexW <= 0.0 || SkyTexH <= 0.0 {
 		return vec4(0.0, 0.0, 0.0, 1.0)
 	}
 	pi := 3.141592653589793
-	x := position.x + 0.5
-	y := position.y + 0.5
-	// Map internal render coordinates onto presentation-space sample coordinates.
-	// This keeps sky angular scale stable when sourceport detail changes internal resolution.
-	sx := x * (SampleW / DrawW)
-	sy := y * (SampleH / DrawH)
+	// Carry draw-space coordinates explicitly through custom varyings rather than
+	// depending on source texture interpolation semantics.
+	x := custom.x + 0.5
+	y := custom.y + 0.5
+	// Quantize through the same internal sample grid used by the CPU sky lookup,
+	// so detail-level and presentation-size changes stay bit-consistent.
+	sampleXi := floor(x * (SampleW / DrawW))
+	if sampleXi < 0.0 {
+		sampleXi = 0.0
+	} else if sampleXi > SampleW-1.0 {
+		sampleXi = SampleW - 1.0
+	}
+	sampleYi := floor(y * (SampleH / DrawH))
+	if sampleYi < 0.0 {
+		sampleYi = 0.0
+	} else if sampleYi > SampleH-1.0 {
+		sampleYi = SampleH - 1.0
+	}
+	sx := sampleXi + 0.5
+	sy := sampleYi
 	cx := SampleW * 0.5
 	cy := SampleH * 0.5
 	ang := CamAngle + atan((cx-sx)/Focal)
@@ -125,6 +139,8 @@ func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
 	u := wrap(floor(ang*uScale), SkyTexW)
 	iscale := 320.0 / SampleW
 	v := wrap(floor(100.0+((sy-cy)*iscale)), SkyTexH)
+	_ = dstPos
+	_ = srcPos
 	src := vec2(u+0.5, v+0.5) + imageSrc0Origin()
 	c := imageSrc0At(src)
 	return vec4(c.rgb, 1.0)
@@ -493,6 +509,10 @@ type game struct {
 	skyLayerFrameCamAng        float64
 	skyLayerFrameFocal         float64
 	skyLayerFrameTexH          float64
+	skyLayerProjDrawW          int
+	skyLayerProjDrawH          int
+	skyLayerProjSampleW        int
+	skyLayerProjSampleH        int
 	skyOutputW                 int
 	skyOutputH                 int
 	mapFloorWorldLayer         *ebiten.Image
@@ -10500,8 +10520,14 @@ func (g *game) setSkyOutputSize(w, h int) {
 	if h < 1 {
 		h = 1
 	}
+	if g.skyOutputW == w && g.skyOutputH == h {
+		return
+	}
 	g.skyOutputW = w
 	g.skyOutputH = h
+	if g.opts.GPUSky && g.opts.SourcePortMode {
+		g.resetSkyLayerPipeline(true)
+	}
 }
 
 func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -10897,6 +10923,35 @@ func skySampleUV(screenX, screenY, viewW, viewH int, focal, camAngle float64, te
 	return u, v
 }
 
+func skyProjectedSampleIndex(drawCoord, drawSize, sampleSize int) int {
+	if drawSize <= 0 || sampleSize <= 0 {
+		return 0
+	}
+	sample := int((float64(drawCoord) + 0.5) * float64(sampleSize) / float64(drawSize))
+	if sample < 0 {
+		return 0
+	}
+	if sample >= sampleSize {
+		return sampleSize - 1
+	}
+	return sample
+}
+
+func skyProjectedSampleUV(drawX, drawY, drawW, drawH, sampleW, sampleH int, focal, camAngle float64, texW, texH int) (u, v int) {
+	if drawW <= 0 || drawH <= 0 || sampleW <= 0 || sampleH <= 0 || texW <= 0 || texH <= 0 {
+		return 0, 0
+	}
+	sampleX := skyProjectedSampleIndex(drawX, drawW, sampleW)
+	sampleY := skyProjectedSampleIndex(drawY, drawH, sampleH)
+	angle := skySampleAngle(sampleX, sampleW, focal, camAngle)
+	uScale := float64(texW*4) / (2 * math.Pi)
+	u = wrapIndex(int(math.Floor(angle*uScale)), texW)
+	iscale := doomSkyIScale(sampleW)
+	frac := 100.0 + ((float64(sampleY) - float64(sampleH)*0.5) * iscale)
+	v = wrapIndex(int(math.Floor(frac)), texH)
+	return u, v
+}
+
 func skySampleAngle(screenX, viewW int, focal, camAngle float64) float64 {
 	if focal <= 1e-6 {
 		focal = 1
@@ -10952,6 +11007,10 @@ func (g *game) resetSkyLayerPipeline(rebuildShader bool) {
 	g.skyRowIScale = 0
 	g.skyRowDrawCache = nil
 	g.skyRowDrawH = 0
+	g.skyLayerProjDrawW = 0
+	g.skyLayerProjDrawH = 0
+	g.skyLayerProjSampleW = 0
+	g.skyLayerProjSampleH = 0
 
 	if rebuildShader && g.opts.GPUSky && g.opts.SourcePortMode {
 		g.skyLayerShader = nil
@@ -10968,6 +11027,17 @@ func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex Wal
 	if texKey == "" || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 		return false
 	}
+	drawW, drawH, sampleW, sampleH := g.skyProjectionSize()
+	if g.skyLayerProjDrawW != drawW || g.skyLayerProjDrawH != drawH || g.skyLayerProjSampleW != sampleW || g.skyLayerProjSampleH != sampleH {
+		g.skyLayerTex = nil
+		g.skyLayerTexKey = ""
+		g.skyLayerTexW = 0
+		g.skyLayerTexH = 0
+		g.skyLayerProjDrawW = drawW
+		g.skyLayerProjDrawH = drawH
+		g.skyLayerProjSampleW = sampleW
+		g.skyLayerProjSampleH = sampleH
+	}
 	if g.skyLayerTex == nil || g.skyLayerTexKey != texKey || g.skyLayerTexW != tex.Width || g.skyLayerTexH != tex.Height {
 		img := ebiten.NewImage(tex.Width, tex.Height)
 		img.WritePixels(tex.RGBA)
@@ -10978,7 +11048,6 @@ func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex Wal
 	}
 	g.skyLayerFrameActive = true
 	g.skyLayerFrameCamAng = camAng
-	_, _, sampleW, _ := g.skyProjectionSize()
 	if g.opts.SourcePortMode {
 		g.skyLayerFrameFocal = doomFocalLength(sampleW)
 	} else {
@@ -11003,10 +11072,10 @@ func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
 		return false
 	}
 	v := []ebiten.Vertex{
-		{DstX: 0, DstY: 0, SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		{DstX: float32(w), DstY: 0, SrcX: float32(texW), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		{DstX: 0, DstY: float32(h), SrcX: 0, SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
-		{DstX: float32(w), DstY: float32(h), SrcX: float32(texW), SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1},
+		{DstX: 0, DstY: 0, SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: 0, Custom1: 0},
+		{DstX: float32(w), DstY: 0, SrcX: float32(texW), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: float32(w), Custom1: 0},
+		{DstX: 0, DstY: float32(h), SrcX: 0, SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: 0, Custom1: float32(h)},
+		{DstX: float32(w), DstY: float32(h), SrcX: float32(texW), SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: float32(w), Custom1: float32(h)},
 	}
 	idx := []uint16{0, 1, 2, 1, 2, 3}
 	op := &ebiten.DrawTrianglesShaderOptions{}
@@ -11129,22 +11198,12 @@ func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64,
 	// Sky column lookup is lightweight and fully cached by size/fov.
 	// Keep this serial to avoid worker/scheduling overhead.
 	for x := 0; x < viewW; x++ {
-		sampleX := int((float64(x) + 0.5) * float64(sampleW) / float64(viewW))
-		if sampleX < 0 {
-			sampleX = 0
-		} else if sampleX >= sampleW {
-			sampleX = sampleW - 1
-		}
+		sampleX := skyProjectedSampleIndex(x, viewW, sampleW)
 		angle := camAngle + angleOff[sampleX]
 		col[x] = wrapIndex(int(math.Floor(angle*uScale)), texW)
 	}
 	for y := 0; y < viewH; y++ {
-		sampleY := int((float64(y) + 0.5) * float64(sampleH) / float64(viewH))
-		if sampleY < 0 {
-			sampleY = 0
-		} else if sampleY >= sampleH {
-			sampleY = sampleH - 1
-		}
+		sampleY := skyProjectedSampleIndex(y, viewH, sampleH)
 		row[y] = sampleRow[sampleY]
 	}
 	return col, row

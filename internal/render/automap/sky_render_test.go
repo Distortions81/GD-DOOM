@@ -173,3 +173,72 @@ func TestBuildSkyLookupParallel_SourcePortUsesOutputProjectionScale(t *testing.T
 		}
 	}
 }
+
+func TestSkyProjectedSampleUV_MatchesLookupParallel(t *testing.T) {
+	g := &game{opts: Options{SourcePortMode: true}}
+	const (
+		drawW = 640
+		drawH = 400
+		outW  = 1280
+		outH  = 800
+		texW  = 256
+		texH  = 128
+	)
+	camAng := 0.37
+	g.viewW, g.viewH = drawW, drawH
+	g.setSkyOutputSize(outW, outH)
+	col, row := g.buildSkyLookupParallel(drawW, drawH, doomFocalLength(drawW), camAng, texW, texH)
+	if len(col) != drawW || len(row) != drawH {
+		t.Fatalf("lookup size mismatch: col=%d row=%d", len(col), len(row))
+	}
+	for _, pt := range [][2]int{
+		{0, 0},
+		{1, 1},
+		{drawW / 2, drawH / 2},
+		{drawW - 2, drawH - 2},
+		{137, 91},
+	} {
+		u, v := skyProjectedSampleUV(pt[0], pt[1], drawW, drawH, outW, outH, doomFocalLength(outW), camAng, texW, texH)
+		if u != col[pt[0]] {
+			t.Fatalf("u mismatch at %v: projected=%d lookup=%d", pt, u, col[pt[0]])
+		}
+		if v != row[pt[1]] {
+			t.Fatalf("v mismatch at %v: projected=%d lookup=%d", pt, v, row[pt[1]])
+		}
+	}
+}
+
+func TestSetSkyOutputSize_ResetsGPUSkyPipelineOnResize(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SourcePortMode: true,
+			GPUSky:         true,
+		},
+		skyOutputW:          640,
+		skyOutputH:          400,
+		skyLayerTexKey:      "SKY1",
+		skyLayerTexW:        256,
+		skyLayerTexH:        128,
+		skyLayerProjDrawW:   640,
+		skyLayerProjDrawH:   400,
+		skyLayerProjSampleW: 640,
+		skyLayerProjSampleH: 400,
+		skyColUCache:        []int{1, 2, 3},
+		skyRowVCache:        []int{4, 5, 6},
+	}
+
+	g.setSkyOutputSize(1280, 800)
+
+	if g.skyOutputW != 1280 || g.skyOutputH != 800 {
+		t.Fatalf("sky output size=%dx%d want 1280x800", g.skyOutputW, g.skyOutputH)
+	}
+	if g.skyLayerTexKey != "" || g.skyLayerTexW != 0 || g.skyLayerTexH != 0 {
+		t.Fatalf("sky texture state not reset: key=%q size=%dx%d", g.skyLayerTexKey, g.skyLayerTexW, g.skyLayerTexH)
+	}
+	if g.skyLayerProjDrawW != 0 || g.skyLayerProjDrawH != 0 || g.skyLayerProjSampleW != 0 || g.skyLayerProjSampleH != 0 {
+		t.Fatalf("sky projection state not reset: draw=%dx%d sample=%dx%d", g.skyLayerProjDrawW, g.skyLayerProjDrawH, g.skyLayerProjSampleW, g.skyLayerProjSampleH)
+	}
+	if g.skyColUCache != nil || g.skyRowVCache != nil {
+		t.Fatal("sky lookup caches should be cleared on resize")
+	}
+}
