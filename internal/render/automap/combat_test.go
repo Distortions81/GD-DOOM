@@ -42,6 +42,36 @@ func TestMonsterDeathsSpawnVanillaDrops(t *testing.T) {
 	}
 }
 
+func TestMonsterDropPreservesRuntimeFixedPosition(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+			},
+		},
+		thingCollected: make([]bool, 1),
+		thingDropped:   make([]bool, 1),
+		thingX:         []int64{(10 << fracBits) + fracUnit/2},
+		thingY:         []int64{(20 << fracBits) + fracUnit/4},
+		thingHP:        []int{1},
+		thingDead:      make([]bool, 1),
+		thingDeathTics: make([]int, 1),
+		thingSectorCache: []int{
+			0,
+		},
+	}
+	g.damageMonster(0, 1)
+	if len(g.m.Things) != 2 {
+		t.Fatalf("thing count=%d want=2", len(g.m.Things))
+	}
+	if len(g.thingX) != 2 || len(g.thingY) != 2 {
+		t.Fatalf("runtime position slices not extended: lenX=%d lenY=%d", len(g.thingX), len(g.thingY))
+	}
+	if g.thingX[1] != g.thingX[0] || g.thingY[1] != g.thingY[0] {
+		t.Fatalf("drop runtime pos=(%d,%d) want (%d,%d)", g.thingX[1], g.thingY[1], g.thingX[0], g.thingY[0])
+	}
+}
+
 func TestPickHitscanMonsterTarget(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

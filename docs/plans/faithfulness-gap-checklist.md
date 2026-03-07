@@ -30,6 +30,7 @@ Focused list of work still needed to match vanilla Doom behavior, plus clearly m
 
 - [ ] Add save/load system parity including quicksave/quickload flow.
 - [ ] Implement thinker-system parity (tick order, scheduling, and per-thinker behavior consistency).
+- [ ] Replace mirrored map `Thing` runtime state with Doom-style live actor/runtime-object state so movement, drops, AI, and demo sync all use the same fixed-point source of truth.
 - [ ] Audit monster animation-state parity in all attack/death edge cases.
 - [x] Implement correct monster pain-state behavior (state selection, timing/tics, and interruption rules).
 - [ ] Add monster collision parity (blocking/push behavior against player/world/actors).

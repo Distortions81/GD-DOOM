@@ -401,6 +401,8 @@ type game struct {
 
 	thingCollected      []bool
 	thingDropped        []bool
+	thingX              []int64
+	thingY              []int64
 	thingHP             []int
 	thingAggro          []bool
 	thingCooldown       []int
@@ -935,6 +937,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingDropped = make([]bool, len(m.Things))
+	g.thingX = make([]int64, len(m.Things))
+	g.thingY = make([]int64, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
 	g.thingCooldown = make([]int, len(m.Things))
@@ -1016,7 +1020,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingSectorCache = make([]int, len(g.m.Things))
 	for i := range g.thingSectorCache {
 		th := g.m.Things[i]
-		g.thingSectorCache[i] = g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+		g.thingX[i] = int64(th.X) << fracBits
+		g.thingY[i] = int64(th.Y) << fracBits
+		g.thingSectorCache[i] = g.sectorAt(g.thingX[i], g.thingY[i])
 	}
 	g.discoverLinesAroundPlayer()
 	g.resetView()
@@ -2333,8 +2339,9 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
 			continue
 		}
-		x := float64(th.X)
-		y := float64(th.Y)
+		fx, fy := g.thingPosFixed(i, th)
+		x := float64(fx) / fracUnit
+		y := float64(fy) / fracUnit
 		sx, sy := g.worldToScreen(x, y)
 		size := thingGlyphSize(g.zoom)
 		angle := worldThingAngle(th.Angle)
@@ -7218,22 +7225,23 @@ func (g *game) drawWireframeMonsters(screen *ebiten.Image, camX, camY, camAng, f
 		if !isMonster(th.Type) {
 			continue
 		}
-		sec := g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+		txFixed, tyFixed := g.thingPosFixed(i, th)
+		sec := g.sectorAt(txFixed, tyFixed)
 		if !g.sectorVisibleNow(sec) {
 			continue
 		}
-		tx := float64(th.X) - camX
-		ty := float64(th.Y) - camY
+		tx := float64(txFixed)/fracUnit - camX
+		ty := float64(tyFixed)/fracUnit - camY
 		f := tx*ca + ty*sa
 		s := -tx*sa + ty*ca
 		if f <= near {
 			continue
 		}
-		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
+		if !g.monsterHasLOS(g.p.x, g.p.y, txFixed, tyFixed) {
 			continue
 		}
 		sx := float64(g.viewW)/2 - (s/f)*focal
-		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits) / fracUnit)
+		floorZ := float64(g.thingFloorZ(txFixed, tyFixed) / fracUnit)
 		monsterH := monsterRenderHeight(th.Type)
 		yt := float64(g.viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
 		yb := float64(g.viewH)/2 - ((floorZ-eyeZ)/f)*focal
@@ -8205,15 +8213,16 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			if !isMonster(th.Type) {
 				continue
 			}
-			tx := float64(th.X) - camX
-			ty := float64(th.Y) - camY
+			txFixed, tyFixed := g.thingPosFixed(i, th)
+			tx := float64(txFixed)/fracUnit - camX
+			ty := float64(tyFixed)/fracUnit - camY
 			f := tx*ca + ty*sa
 			s := -tx*sa + ty*ca
 			if f <= near {
 				continue
 			}
 			sx := float64(viewW)/2 - (s/f)*focal
-			floorZFixed := g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+			floorZFixed := g.thingFloorZ(txFixed, tyFixed)
 			floorZ := float64(floorZFixed) / fracUnit
 			yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
 			sprite, flip := g.monsterSpriteNameForView(i, th, g.worldTic, camX, camY)
@@ -8490,8 +8499,9 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			if !ok || tex.Height <= 0 || tex.Width <= 0 {
 				continue
 			}
-			tx := float64(th.X) - camX
-			ty := float64(th.Y) - camY
+			txFixed, tyFixed := g.thingPosFixed(i, th)
+			tx := float64(txFixed)/fracUnit - camX
+			ty := float64(tyFixed)/fracUnit - camY
 			f := tx*ca + ty*sa
 			s := -tx*sa + ty*ca
 			if f <= near {
@@ -8501,7 +8511,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			if scale <= 0 {
 				continue
 			}
-			floorZFixed := g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+			floorZFixed := g.thingFloorZ(txFixed, tyFixed)
 			floorZ := float64(floorZFixed) / fracUnit
 			yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
 			h := float64(tex.Height) * scale
@@ -9682,7 +9692,8 @@ func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX,
 			return name0, false
 		}
 	}
-	rot := monsterSpriteRotationIndex(th, viewX, viewY)
+	fx, fy := g.thingPosFixed(i, th)
+	rot := monsterSpriteRotationIndexAt(th, float64(fx)/fracUnit, float64(fy)/fracUnit, viewX, viewY)
 	if name, flip, ok := g.monsterSpriteRotFrame(prefix, frameLetter, rot); ok {
 		return name, flip
 	}
@@ -9690,6 +9701,10 @@ func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX,
 		return name, flip
 	}
 	return g.monsterSpriteName(th.Type, tic), false
+}
+
+func monsterSpriteRotationIndex(th mapdata.Thing, viewX, viewY float64) int {
+	return monsterSpriteRotationIndexAt(th, float64(th.X), float64(th.Y), viewX, viewY)
 }
 
 func monsterSpritePrefix(typ int16) (string, bool) {
@@ -9717,9 +9732,9 @@ func monsterSpritePrefix(typ int16) (string, bool) {
 	}
 }
 
-func monsterSpriteRotationIndex(th mapdata.Thing, viewX, viewY float64) int {
+func monsterSpriteRotationIndexAt(th mapdata.Thing, thingX, thingY, viewX, viewY float64) int {
 	facing := normalizeDeg360(float64(th.Angle))
-	angToView := math.Atan2(viewY-float64(th.Y), viewX-float64(th.X)) * (180.0 / math.Pi)
+	angToView := math.Atan2(viewY-thingY, viewX-thingX) * (180.0 / math.Pi)
 	angToView = normalizeDeg360(angToView)
 	delta := normalizeDeg360(angToView - facing)
 	return int(math.Floor((delta+22.5)/45.0))%8 + 1
@@ -16395,7 +16410,35 @@ func (g *game) thingSectorCached(i int, th mapdata.Thing) int {
 			return sec
 		}
 	}
-	return g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
+	x, y := g.thingPosFixed(i, th)
+	return g.sectorAt(x, y)
+}
+
+func (g *game) thingPosFixed(i int, th mapdata.Thing) (int64, int64) {
+	if i >= 0 && i < len(g.thingX) && i < len(g.thingY) {
+		return g.thingX[i], g.thingY[i]
+	}
+	return int64(th.X) << fracBits, int64(th.Y) << fracBits
+}
+
+func (g *game) setThingPosFixed(i int, x, y int64) {
+	if g == nil || i < 0 || g.m == nil || i >= len(g.m.Things) {
+		return
+	}
+	if i >= len(g.thingX) {
+		g.thingX = append(g.thingX, make([]int64, i-len(g.thingX)+1)...)
+	}
+	if i >= len(g.thingY) {
+		g.thingY = append(g.thingY, make([]int64, i-len(g.thingY)+1)...)
+	}
+	g.thingX[i] = x
+	g.thingY[i] = y
+	g.m.Things[i].X = int16(x >> fracBits)
+	g.m.Things[i].Y = int16(y >> fracBits)
+	if i >= len(g.thingSectorCache) {
+		g.thingSectorCache = append(g.thingSectorCache, make([]int, i-len(g.thingSectorCache)+1)...)
+	}
+	g.thingSectorCache[i] = g.sectorAt(x, y)
 }
 
 func (g *game) subsectorFloorCeilAt(x, y int64) (int64, int64, bool) {

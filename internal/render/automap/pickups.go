@@ -83,8 +83,7 @@ func (g *game) processThingPickups() {
 		if !isPickupType(th.Type) {
 			continue
 		}
-		tx := int64(th.X) << fracBits
-		ty := int64(th.Y) << fracBits
+		tx, ty := g.thingPosFixed(i, th)
 		tz := g.thingFloorZ(tx, ty)
 		radius, height := pickupTouchBounds(th.Type)
 		if !canTouchPickup(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight, tx, ty, tz, radius, height) {

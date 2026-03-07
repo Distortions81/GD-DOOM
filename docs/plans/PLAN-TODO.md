@@ -26,10 +26,11 @@ Single source of truth for current priorities.
 10. reduce per-frame allocations in hot draw paths via scratch reuse/prealloc
 11. content parity + presentation polish:
 12. verify animation timing parity after crossfade generation (no cadence drift)
-13. keep startup spawn position/facing and sky-pan direction as mandatory regression checks after render edits
-14. sound decode follow-up (lower priority):
-15. enrich startup sound report detail (rates/formats/errors)
-16. expand decode support for additional Doom-compatible variants if encountered
+13. replace mirrored map `Thing` runtime state with Doom-style live actor/runtime-object state (`x/y/z`, momentum, flags, thinker-owned state) to improve parity and demo determinism
+14. keep startup spawn position/facing and sky-pan direction as mandatory regression checks after render edits
+15. sound decode follow-up (lower priority):
+16. enrich startup sound report detail (rates/formats/errors)
+17. expand decode support for additional Doom-compatible variants if encountered
 
 ## Parity Polish (Lower Priority)
 

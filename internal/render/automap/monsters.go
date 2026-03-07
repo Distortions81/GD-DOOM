@@ -203,6 +203,22 @@ func (g *game) ensureMonsterAIState() {
 		g.thingDropped = make([]bool, n)
 		copy(g.thingDropped, old)
 	}
+	if len(g.thingX) != n {
+		old := g.thingX
+		g.thingX = make([]int64, n)
+		copy(g.thingX, old)
+		for i := len(old); i < n; i++ {
+			g.thingX[i] = int64(g.m.Things[i].X) << fracBits
+		}
+	}
+	if len(g.thingY) != n {
+		old := g.thingY
+		g.thingY = make([]int64, n)
+		copy(g.thingY, old)
+		for i := len(old); i < n; i++ {
+			g.thingY[i] = int64(g.m.Things[i].Y) << fracBits
+		}
+	}
 	if len(g.thingDeathTics) != n {
 		old := g.thingDeathTics
 		g.thingDeathTics = make([]int, n)
@@ -586,15 +602,13 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 		return false
 	}
 
-	x := int64(g.m.Things[i].X) << fracBits
-	y := int64(g.m.Things[i].Y) << fracBits
+	x, y := g.thingPosFixed(i, g.m.Things[i])
 	nx := x + dx
 	ny := y + dy
 	if !g.tryMoveProbe(nx, ny) {
 		return false
 	}
-	g.m.Things[i].X = int16(nx >> fracBits)
-	g.m.Things[i].Y = int16(ny >> fracBits)
+	g.setThingPosFixed(i, nx, ny)
 	g.faceMonsterMoveDir(i, dir)
 	return true
 }
@@ -633,8 +647,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	meleeOnly := isMeleeOnlyMonster(typ)
 	var sx, sy int64
 	if i >= 0 && g.m != nil && i < len(g.m.Things) {
-		sx = int64(g.m.Things[i].X) << fracBits
-		sy = int64(g.m.Things[i].Y) << fracBits
+		sx, sy = g.thingPosFixed(i, g.m.Things[i])
 	}
 	if dist <= monsterMeleeRange && monsterHasMeleeAttack(typ) {
 		damage := monsterMeleeDamage(typ)
@@ -873,16 +886,15 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	nx := x + dx
 	ny := y + dy
 	if g.tryMoveProbe(nx, ny) {
-		g.m.Things[i].X = int16(nx >> fracBits)
-		g.m.Things[i].Y = int16(ny >> fracBits)
+		g.setThingPosFixed(i, nx, ny)
 		return
 	}
 	if g.tryMoveProbe(x+dx, y) {
-		g.m.Things[i].X = int16((x + dx) >> fracBits)
+		g.setThingPosFixed(i, x+dx, y)
 		return
 	}
 	if g.tryMoveProbe(x, y+dy) {
-		g.m.Things[i].Y = int16((y + dy) >> fracBits)
+		g.setThingPosFixed(i, x, y+dy)
 	}
 }
 

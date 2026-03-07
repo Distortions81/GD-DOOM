@@ -258,11 +258,12 @@ func (g *game) aimSlopeAtAngle(angle uint32, rng int64) (float64, bool) {
 		if perp > float64(bulletTargetRadius) {
 			continue
 		}
-		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
+		txFixed, tyFixed := g.thingPosFixed(i, th)
+		if !g.monsterHasLOS(g.p.x, g.p.y, txFixed, tyFixed) {
 			continue
 		}
 
-		floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits))
+		floorZ := float64(g.thingFloorZ(txFixed, tyFixed))
 		topZ := floorZ + float64(monsterHitHeight(th.Type))
 		topSlope := (topZ - shootZ) / dist
 		bottomSlope := (floorZ - shootZ) / dist
@@ -342,11 +343,12 @@ func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng in
 		if perp > float64(radius) {
 			continue
 		}
-		if !g.monsterHasLOS(g.p.x, g.p.y, int64(th.X)<<fracBits, int64(th.Y)<<fracBits) {
+		txFixed, tyFixed := g.thingPosFixed(i, th)
+		if !g.monsterHasLOS(g.p.x, g.p.y, txFixed, tyFixed) {
 			continue
 		}
 		if useSlope {
-			floorZ := float64(g.thingFloorZ(int64(th.X)<<fracBits, int64(th.Y)<<fracBits))
+			floorZ := float64(g.thingFloorZ(txFixed, tyFixed))
 			topZ := floorZ + float64(monsterHitHeight(th.Type))
 			topSlope := (topZ - shootZ) / t
 			bottomSlope := (floorZ - shootZ) / t
@@ -531,9 +533,13 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	if g == nil || g.m == nil {
 		return -1
 	}
+	x := int64(th.X) << fracBits
+	y := int64(th.Y) << fracBits
 	g.m.Things = append(g.m.Things, th)
 	g.thingCollected = append(g.thingCollected, false)
 	g.thingDropped = append(g.thingDropped, dropped)
+	g.thingX = append(g.thingX, x)
+	g.thingY = append(g.thingY, y)
 	g.thingHP = append(g.thingHP, 0)
 	g.thingAggro = append(g.thingAggro, false)
 	g.thingCooldown = append(g.thingCooldown, 0)
@@ -549,9 +555,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingPainTics = append(g.thingPainTics, 0)
 	g.thingThinkWait = append(g.thingThinkWait, 0)
 	sec := -1
-	if len(g.thingSectorCache) > 0 || len(g.m.Things) == 1 {
-		sec = g.sectorAt(int64(th.X)<<fracBits, int64(th.Y)<<fracBits)
-	}
+	sec = g.sectorAt(x, y)
 	g.thingSectorCache = append(g.thingSectorCache, sec)
 	return len(g.m.Things) - 1
 }
@@ -565,11 +569,13 @@ func (g *game) spawnMonsterDrop(thingIdx int, thingType int16) {
 		return
 	}
 	src := g.m.Things[thingIdx]
+	srcX, srcY := g.thingPosFixed(thingIdx, src)
 	g.appendRuntimeThing(mapdata.Thing{
-		X:    src.X,
-		Y:    src.Y,
+		X:    int16(srcX >> fracBits),
+		Y:    int16(srcY >> fracBits),
 		Type: dropType,
 	}, true)
+	g.setThingPosFixed(len(g.m.Things)-1, srcX, srcY)
 }
 
 func monsterPainSoundEvent(typ int16) soundEvent {
