@@ -462,7 +462,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			dsr.Found, dsr.Decoded, dsr.Failed,
 		)
 	}
-	soundBank = buildAutomapSoundBank(dsr)
+	soundBank = buildAutomapSoundBank(dsr, *sourcePortMode)
 	wallTexBank := map[string]automap.WallTexture(nil)
 	bootSplash := automap.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
@@ -1003,7 +1003,7 @@ func spriteSeriesFromSeed(seed string, bank map[string]automap.WallTexture) []st
 	return series
 }
 
-func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
+func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) automap.SoundBank {
 	byName := make(map[string]sound.DigitalSound, len(r.Sounds))
 	for _, s := range r.Sounds {
 		byName[s.Name] = s
@@ -1013,14 +1013,18 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		if !ok {
 			return automap.PCMSample{}
 		}
+		data := s.Samples
+		if !sourcePortMode {
+			// Doom pads digital sound payloads to the mixer block size with 128s
+			// before playback. Preserve that behavior for the faithful path.
+			data = padDoomSoundSamples(data)
+		}
 		return automap.PCMSample{
 			SampleRate: int(s.SampleRate),
-			// Doom pads digital sound payloads to the mixer block size with 128s
-			// before playback. Preserve that behavior so tails do not end abruptly.
-			Data: padDoomSoundSamples(s.Samples),
+			Data:       data,
 		}
 	}
-	return automap.SoundBank{
+	bank := automap.SoundBank{
 		DoorOpen:            firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
 		DoorClose:           firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
 		BlazeOpen:           sample("DSBDOPN"),
@@ -1106,6 +1110,10 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		InterTick:           firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
+	if sourcePortMode {
+		bank = automap.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
+	}
+	return bank
 }
 
 func padDoomSoundSamples(src []byte) []byte {

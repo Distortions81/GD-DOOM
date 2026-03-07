@@ -100,8 +100,10 @@ type RunResult struct {
 }
 
 type PCMSample struct {
-	SampleRate int
-	Data       []byte
+	SampleRate   int
+	Data         []byte
+	PreparedRate int
+	PreparedMono []int16
 }
 
 type SoundBank struct {

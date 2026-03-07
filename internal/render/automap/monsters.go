@@ -2,8 +2,10 @@ package automap
 
 import (
 	"math"
+	"sort"
 
 	"gddoom/internal/doomrand"
+	"gddoom/internal/mapdata"
 )
 
 const (
@@ -122,7 +124,7 @@ func (g *game) tickMonsters() {
 			if heardPlayer {
 				g.thingAggro[i] = true
 				g.emitMonsterSeeSound(i, th.Type, tx, ty)
-			} else if dist <= monsterWakeRange && g.monsterHasLOS(tx, ty, px, py) {
+			} else if dist <= monsterWakeRange && g.monsterHasLOSPlayer(th.Type, tx, ty) {
 				g.thingAggro[i] = true
 				g.emitMonsterSeeSound(i, th.Type, tx, ty)
 			} else {
@@ -341,7 +343,7 @@ func monsterPainChance(typ int16) int {
 		return 170
 	case 3001: // imp
 		return 200
-	case 3002: // demon
+	case 3002, 58: // demon/spectre
 		return 180
 	case 3006: // lost soul
 		return 256
@@ -529,14 +531,14 @@ func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
 	if dist >= monsterMeleeRange-20*fracUnit+playerRadius {
 		return false
 	}
-	return g.monsterHasLOS(tx, ty, px, py)
+	return g.monsterHasLOSPlayer(typ, tx, ty)
 }
 
 func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py int64) bool {
 	if isMeleeOnlyMonster(typ) {
 		return false
 	}
-	if !g.monsterHasLOS(tx, ty, px, py) {
+	if !g.monsterHasLOSPlayer(typ, tx, ty) {
 		return false
 	}
 	if i >= 0 && i < len(g.thingJustHit) && g.thingJustHit[i] {
@@ -689,7 +691,7 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	x, y := g.thingPosFixed(i, g.m.Things[i])
 	nx := x + dx
 	ny := y + dy
-	if !g.tryMoveProbe(nx, ny) {
+	if !g.tryMoveProbeMonster(i, typ, nx, ny) {
 		return false
 	}
 	g.setThingPosFixed(i, nx, ny)
@@ -807,7 +809,7 @@ func (g *game) monsterHitscanAttack(sx, sy int64, pellets int) {
 }
 
 func (g *game) monsterBulletCanHitPlayer(sx, sy int64, ang float64, rng int64) bool {
-	if !g.monsterHasLOS(sx, sy, g.p.x, g.p.y) {
+	if !g.monsterHasLOSPlayer(0, sx, sy) {
 		return false
 	}
 	dx := float64(g.p.x - sx)
@@ -953,20 +955,91 @@ func monsterRangedDamage(typ int16) int {
 	}
 }
 
-func (g *game) monsterHasLOS(ax, ay, bx, by int64) bool {
-	for _, ld := range g.lines {
-		if _, ok := segmentIntersectFrac(ax, ay, bx, by, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
+func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool {
+	if g == nil {
+		return false
+	}
+	dx := bx - ax
+	dy := by - ay
+	totalDist := math.Hypot(float64(dx), float64(dy))
+	if totalDist <= 0 {
+		return true
+	}
+
+	sightZStart := az + aheight - (aheight >> 2)
+	topSlope := float64((bz+bheight)-sightZStart) / totalDist
+	bottomSlope := float64(bz-sightZStart) / totalDist
+
+	intercepts := make([]intercept, 0, 8)
+	for i, ld := range g.lines {
+		frac, ok := segmentIntersectFrac(ax, ay, bx, by, ld.x1, ld.y1, ld.x2, ld.y2)
+		if !ok || frac <= 0 || frac >= 1 {
 			continue
 		}
+		intercepts = append(intercepts, intercept{frac: frac, line: i})
+	}
+	if len(intercepts) == 0 {
+		return true
+	}
+	sort.Slice(intercepts, func(i, j int) bool { return intercepts[i].frac < intercepts[j].frac })
+
+	for _, it := range intercepts {
+		ld := g.lines[it.line]
 		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
 			return false
 		}
-		_, _, _, openrange := g.lineOpening(ld)
+		front, back := g.physLineSectors(ld)
+		if front < 0 || back < 0 || front >= len(g.sectorFloor) || back >= len(g.sectorFloor) || front >= len(g.sectorCeil) || back >= len(g.sectorCeil) {
+			return false
+		}
+		if g.sectorFloor[front] == g.sectorFloor[back] && g.sectorCeil[front] == g.sectorCeil[back] {
+			continue
+		}
+		opentop, openbottom, _, openrange := g.lineOpening(ld)
 		if openrange <= 0 {
+			return false
+		}
+		dist := totalDist * it.frac
+		if dist <= 0 {
+			continue
+		}
+		if g.sectorFloor[front] != g.sectorFloor[back] {
+			slope := float64(openbottom-sightZStart) / dist
+			if slope > bottomSlope {
+				bottomSlope = slope
+			}
+		}
+		if g.sectorCeil[front] != g.sectorCeil[back] {
+			slope := float64(opentop-sightZStart) / dist
+			if slope < topSlope {
+				topSlope = slope
+			}
+		}
+		if topSlope <= bottomSlope {
 			return false
 		}
 	}
 	return true
+}
+
+func (g *game) playerHasLOSMonster(i int, th mapdata.Thing) bool {
+	if g == nil || g.m == nil || len(g.sectorFloor) == 0 {
+		return true
+	}
+	tx, ty := g.thingPosFixed(i, th)
+	tz := g.thingFloorZ(tx, ty)
+	return g.actorHasLOS(g.p.x, g.p.y, g.p.z, playerHeight, tx, ty, tz, monsterHeight(th.Type))
+}
+
+func (g *game) monsterHasLOSPlayer(typ int16, x, y int64) bool {
+	if g == nil || g.m == nil || len(g.sectorFloor) == 0 {
+		return true
+	}
+	if typ == 0 {
+		typ = 3004
+	}
+	z := g.thingFloorZ(x, y)
+	return g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
 }
 
 func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
@@ -978,7 +1051,7 @@ func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
 		return false
 	}
 	if int(g.m.Things[i].Flags)&thingFlagAmbush != 0 {
-		return g.monsterHasLOS(tx, ty, g.p.x, g.p.y)
+		return g.monsterHasLOSPlayer(g.m.Things[i].Type, tx, ty)
 	}
 	return true
 }
@@ -1072,15 +1145,15 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	dy := int64(math.Sin(ang) * float64(step))
 	nx := x + dx
 	ny := y + dy
-	if g.tryMoveProbe(nx, ny) {
+	if g.tryMoveProbeMonster(i, typ, nx, ny) {
 		g.setThingPosFixed(i, nx, ny)
 		return
 	}
-	if g.tryMoveProbe(x+dx, y) {
+	if g.tryMoveProbeMonster(i, typ, x+dx, y) {
 		g.setThingPosFixed(i, x+dx, y)
 		return
 	}
-	if g.tryMoveProbe(x, y+dy) {
+	if g.tryMoveProbeMonster(i, typ, x, y+dy) {
 		g.setThingPosFixed(i, x, y+dy)
 	}
 }
@@ -1105,8 +1178,90 @@ func (g *game) tryMoveProbe(x, y int64) bool {
 	if g.m == nil || len(g.m.Sectors) == 0 {
 		return false
 	}
-	_, _, _, ok := g.checkPositionFor(x, y, true)
+	_, _, _, ok := g.checkPositionForActor(x, y, 20*fracUnit, true, -1, true)
 	return ok
+}
+
+func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) bool {
+	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(typ), true, i, true)
+	if !ok {
+		return false
+	}
+	height := monsterHeight(typ)
+	cx, cy := g.thingPosFixed(i, g.m.Things[i])
+	z := g.thingFloorZ(cx, cy)
+	if tmceil-tmfloor < height {
+		return false
+	}
+	if tmceil-z < height {
+		return false
+	}
+	if tmfloor-z > stepHeight {
+		return false
+	}
+	if !monsterCanDropOff(typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
+		return false
+	}
+	return true
+}
+
+func monsterCanFloat(typ int16) bool {
+	switch typ {
+	case 3005, 3006, 71:
+		return true
+	default:
+		return false
+	}
+}
+
+func monsterCanDropOff(typ int16) bool {
+	switch typ {
+	case 3005, 3006, 71:
+		return true
+	default:
+		return false
+	}
+}
+
+func monsterRadius(typ int16) int64 {
+	switch typ {
+	case 3004, 9, 65, 84, 3001, 64, 66:
+		return 20 * fracUnit
+	case 3002, 58:
+		return 30 * fracUnit
+	case 3005, 71:
+		return 31 * fracUnit
+	case 3003, 69:
+		return 24 * fracUnit
+	case 3006:
+		return 16 * fracUnit
+	case 7:
+		return 128 * fracUnit
+	case 68:
+		return 64 * fracUnit
+	case 16:
+		return 40 * fracUnit
+	case 67:
+		return 48 * fracUnit
+	default:
+		return 20 * fracUnit
+	}
+}
+
+func monsterHeight(typ int16) int64 {
+	switch typ {
+	case 3003, 69, 67, 68:
+		return 64 * fracUnit
+	case 16:
+		return 110 * fracUnit
+	case 7:
+		return 100 * fracUnit
+	default:
+		return 56 * fracUnit
+	}
 }
 
 func hypotFixed(dx, dy int64) int64 {

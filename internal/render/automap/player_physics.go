@@ -255,10 +255,14 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 }
 
 func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int64, int64, bool) {
-	tmboxTop := y + playerRadius
-	tmboxBottom := y - playerRadius
-	tmboxRight := x + playerRadius
-	tmboxLeft := x - playerRadius
+	return g.checkPositionForActor(x, y, playerRadius, blockMonsterLines, -1, false)
+}
+
+func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool) (int64, int64, int64, bool) {
+	tmboxTop := y + radius
+	tmboxBottom := y - radius
+	tmboxRight := x + radius
+	tmboxLeft := x - radius
 
 	sec := g.sectorAt(x, y)
 	if sec < 0 || sec >= len(g.m.Sectors) {
@@ -267,6 +271,10 @@ func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int6
 	tmfloor := g.sectorFloor[sec]
 	tmceil := g.sectorCeil[sec]
 	tmdrop := tmfloor
+
+	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
+		return 0, 0, 0, false
+	}
 
 	g.validCount++
 
@@ -340,6 +348,42 @@ func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int6
 		}
 	}
 	return tmfloor, tmceil, tmdrop, true
+}
+
+func actorsOverlapXY(ax, ay, aradius, bx, by, bradius int64) bool {
+	blockdist := aradius + bradius
+	return abs(ax-bx) < blockdist && abs(ay-by) < blockdist
+}
+
+func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, moverIsMonster bool) bool {
+	if g == nil || g.m == nil {
+		return false
+	}
+	if moverIsMonster && !g.isDead && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
+		return true
+	}
+	for i, th := range g.m.Things {
+		if i == moverThingIdx {
+			continue
+		}
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		if !isMonster(th.Type) {
+			continue
+		}
+		if i < 0 || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
+			continue
+		}
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			continue
+		}
+		tx, ty := g.thingPosFixed(i, th)
+		if actorsOverlapXY(x, y, radius, tx, ty, monsterRadius(th.Type)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *game) blockLinesIterator(x, y int, fn func(int) bool) bool {

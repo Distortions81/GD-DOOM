@@ -1068,7 +1068,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	// before the first tickWorldLogic() view-height update runs.
 	g.playerViewZ = g.p.z + 41*fracUnit
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume)
+	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume, opts.SourcePortMode)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -7623,7 +7623,7 @@ func (g *game) drawWireframeMonsters(screen *ebiten.Image, camX, camY, camAng, f
 		if f <= near {
 			continue
 		}
-		if !g.monsterHasLOS(g.p.x, g.p.y, txFixed, tyFixed) {
+		if !g.playerHasLOSMonster(i, th) {
 			continue
 		}
 		sx := float64(g.viewW)/2 - (s/f)*focal

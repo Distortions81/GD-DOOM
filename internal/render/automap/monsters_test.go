@@ -266,6 +266,111 @@ func TestMonsterTryMoveProbe_RespectsBlockMonstersFlag(t *testing.T) {
 	}
 }
 
+func TestTryMove_PlayerBlockedByMonster(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 32, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{150},
+		thingDead:      []bool{false},
+		p:              player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	if g.tryMove(16*fracUnit, 0) {
+		t.Fatal("player move should be blocked by solid monster")
+	}
+}
+
+func TestTryMoveProbeMonster_BlockedByOtherMonster(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+				{Type: 3004, X: 32, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false, false},
+		thingHP:        []int{20, 20},
+		thingDead:      []bool{false, false},
+	}
+	g.initPhysics()
+	if g.tryMoveProbeMonster(0, 3004, 16*fracUnit, 0) {
+		t.Fatal("monster move should be blocked by another solid monster")
+	}
+}
+
+func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -32, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 32, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+	}
+	g.initPhysics()
+	if g.tryMoveProbeMonster(0, 3004, 8*fracUnit, 0) {
+		t.Fatal("monster move should be blocked by a step higher than 24 units")
+	}
+}
+
+func TestActorHasLOS_BlockedByHighWindow(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 96, CeilingHeight: 128},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+		},
+		lines: []physLine{
+			{
+				x1:       0,
+				y1:       -64 * fracUnit,
+				x2:       0,
+				y2:       64 * fracUnit,
+				flags:    mlTwoSided,
+				sideNum0: 0,
+				sideNum1: 1,
+			},
+		},
+		sectorFloor: []int64{0, 96 * fracUnit},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+	}
+	if g.actorHasLOS(-64*fracUnit, 0, 0, 56*fracUnit, 64*fracUnit, 0, 0, 56*fracUnit) {
+		t.Fatal("LOS should be blocked when only a high window is open above both actors")
+	}
+}
+
 func TestMeleeOnlyMonsterDoesNotRangedAttack(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

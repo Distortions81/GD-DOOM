@@ -268,7 +268,7 @@ func (g *game) aimSlopeAtAngle(angle uint32, rng int64) (float64, bool) {
 			continue
 		}
 		txFixed, tyFixed := g.thingPosFixed(i, th)
-		if !g.monsterHasLOS(g.p.x, g.p.y, txFixed, tyFixed) {
+		if !g.playerHasLOSMonster(i, th) {
 			continue
 		}
 
@@ -353,7 +353,7 @@ func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng in
 			continue
 		}
 		txFixed, tyFixed := g.thingPosFixed(i, th)
-		if !g.monsterHasLOS(g.p.x, g.p.y, txFixed, tyFixed) {
+		if !g.playerHasLOSMonster(i, th) {
 			continue
 		}
 		if useSlope {
@@ -462,11 +462,7 @@ func (g *game) spawnHitscanBloodAtDistance(angle uint32, slope, dist float64) {
 }
 
 func monsterHitHeight(typ int16) int64 {
-	h := int64(monsterRenderHeight(typ) * fracUnit)
-	if h <= 0 {
-		return 56 * fracUnit
-	}
-	return h
+	return monsterHeight(typ)
 }
 
 func (g *game) damageMonster(thingIdx int, damage int) {
