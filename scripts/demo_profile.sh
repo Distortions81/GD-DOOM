@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BIN_PATH="${ROOT_DIR}/bench.prof"
+BIN_PATH="${ROOT_DIR}/.tmp/gddoom-profile"
 WAD_PATH="${ROOT_DIR}/doom.wad"
 DEMO_PATH="${ROOT_DIR}/newdemo.demo"
 MAP_NAME="E1M4"
@@ -102,6 +102,7 @@ CMD=(
   -skill 5
   -sourceport-mode
   -cheat-level 2
+  -no-vsync
   -invuln
 )
 if [[ ${#EXTRA_FLAGS[@]} -gt 0 ]]; then
