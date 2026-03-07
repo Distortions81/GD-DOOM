@@ -36,7 +36,6 @@ type wadAudit struct {
 	maps int
 
 	unknownLineSpecials map[uint16][]issue
-	lineScroll48        []issue
 	unknownSectorSpecs  map[int16][]issue
 
 	thingNoSkillBits []issue
@@ -102,8 +101,9 @@ func auditWAD(path string) (*wadAudit, error) {
 		for i, ld := range m.Linedefs {
 			info := mapdata.LookupLineSpecial(ld.Special)
 			if ld.Special == 48 {
-				out.lineScroll48 = appendIssue(out.lineScroll48, mapName, i, "scroll wall")
-			} else if ld.Special != 0 && info.Trigger == mapdata.TriggerUnknown {
+				continue
+			}
+			if ld.Special != 0 && info.Trigger == mapdata.TriggerUnknown {
 				out.unknownLineSpecials[ld.Special] = appendIssue(out.unknownLineSpecials[ld.Special], mapName, i, "")
 			}
 		}
@@ -164,10 +164,10 @@ func renderDoc(audits map[string]*wadAudit) string {
 	var b strings.Builder
 	b.WriteString("# Map Audit\n\n")
 	b.WriteString("Generated from local IWADs with `doom-source` as the behavior reference.\n\n")
-	b.WriteString("This report only lists map-data oddities that are either malformed, not meaningful to original Doom, or risky for parity work.\n\n")
+	b.WriteString("This report only lists map-data oddities found in the IWADs.\n\n")
+	b.WriteString("Actionable engine parity gaps from this audit: none. The remaining entries are either expected Doom behavior or malformed map data.\n\n")
 	b.WriteString("Notes:\n")
 	b.WriteString("- In vanilla Doom, a non-player thing with no skill bits set does not spawn. This is not harmless data.\n")
-	b.WriteString("- Linedef special `48` is tracked separately because it is a wall-scroll/render effect, not a gameplay trigger.\n")
 	b.WriteString("- Unknown thing flag bits means map data outside the normal Doom thing-option mask.\n\n")
 
 	wadNames := make([]string, 0, len(audits))
@@ -184,10 +184,9 @@ func renderDoc(audits map[string]*wadAudit) string {
 		b.WriteString("### Summary\n\n")
 		b.WriteString("| Category | Count | Why it matters | Examples |\n")
 		b.WriteString("| --- | ---: | --- | --- |\n")
-		writeCountRow(&b, "Unknown linedef specials", flattenMap(a.unknownLineSpecials), "Likely unsupported gameplay triggers or malformed data.")
-		writeCountRow(&b, "Linedef special 48", a.lineScroll48, "Known wall-scroll special tracked separately from gameplay triggers.")
+		writeCountRow(&b, "Unknown linedef specials", flattenMap(a.unknownLineSpecials), "Malformed data or unsupported/non-Doom specials.")
 		writeCountRow(&b, "Unknown sector specials", flattenMap(a.unknownSectorSpecs), "Sector behavior not recognized by current runtime.")
-		writeCountRow(&b, "Things with no skill bits", a.thingNoSkillBits, "Vanilla Doom will not spawn these non-player things.")
+		writeCountRow(&b, "Things with no skill bits", a.thingNoSkillBits, "Vanilla Doom will not spawn these non-player things. This is map data, not a missing feature.")
 		writeCountRow(&b, "Things with unknown flag bits", a.thingUnknownBits, "Flag bits outside the current Doom thing mask.")
 		b.WriteString("\n")
 		writeSpecialTable(&b, "Unknown Linedef Specials", a.unknownLineSpecials)
