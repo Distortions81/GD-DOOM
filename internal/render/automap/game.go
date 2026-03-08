@@ -444,6 +444,7 @@ type game struct {
 	thingDead            []bool
 	thingDeathTics       []int
 	thingAttackTics      []int
+	thingAttackPhase     []int
 	thingAttackFireTics  []int
 	thingPainTics        []int
 	thingThinkWait       []int
@@ -1014,6 +1015,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingDead = make([]bool, len(m.Things))
 	g.thingDeathTics = make([]int, len(m.Things))
 	g.thingAttackTics = make([]int, len(m.Things))
+	g.thingAttackPhase = make([]int, len(m.Things))
 	g.thingAttackFireTics = make([]int, len(m.Things))
 	for i := range g.thingAttackFireTics {
 		g.thingAttackFireTics[i] = -1
@@ -11200,8 +11202,12 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 
 func monsterAttackFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3002, 3006, 3005, 3003:
+	case 3004, 9, 3001, 3005:
 		return []byte{'E', 'F'}
+	case 3002, 58: // demon/spectre
+		return []byte{'E', 'F', 'G'}
+	case 3003, 69: // baron/knight
+		return []byte{'E', 'F', 'G'}
 	case 16:
 		return []byte{'E', 'F', 'G'}
 	case 7:
@@ -11219,14 +11225,14 @@ func monsterAttackFrameTics(typ int16) []int {
 		return []int{10, 8}
 	case 3001: // imp
 		return []int{8, 8}
-	case 3002: // demon
-		return []int{8, 8}
+	case 3002, 58: // demon/spectre
+		return []int{8, 8, 8}
 	case 3006: // lost soul
 		return []int{6, 6}
 	case 3005: // cacodemon
 		return []int{8, 8}
-	case 3003: // baron
-		return []int{8, 8}
+	case 3003, 69: // baron/knight
+		return []int{8, 8, 8}
 	case 16: // cyberdemon
 		return []int{8, 8, 8}
 	case 7: // spider mastermind

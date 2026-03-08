@@ -106,21 +106,9 @@ func (g *game) tickMonsters() {
 		dist := doomApproxDistance(dx, dy)
 
 		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
-			if i >= 0 && i < len(g.thingAttackFireTics) && g.thingAttackFireTics[i] >= 0 {
-				if g.thingAttackFireTics[i] > 0 {
-					g.thingAttackFireTics[i]--
-				}
-				if g.thingAttackFireTics[i] == 0 {
-					g.faceMonsterToward(i, tx, ty, px, py)
-					_ = g.monsterAttack(i, th.Type, dist)
-					g.thingAttackFireTics[i] = -1
-				}
+			if g.tickMonsterAttackState(i, th.Type, tx, ty, px, py, dist) {
+				continue
 			}
-			g.thingAttackTics[i]--
-			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateAttack {
-				g.thingStateTics[i] = g.thingAttackTics[i]
-			}
-			continue
 		}
 		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 			g.thingPainTics[i]--
@@ -400,6 +388,11 @@ func (g *game) ensureMonsterAIState() {
 		g.thingAttackTics = make([]int, n)
 		copy(g.thingAttackTics, old)
 	}
+	if len(g.thingAttackPhase) != n {
+		old := g.thingAttackPhase
+		g.thingAttackPhase = make([]int, n)
+		copy(g.thingAttackPhase, old)
+	}
 	if len(g.thingAttackFireTics) != n {
 		old := g.thingAttackFireTics
 		g.thingAttackFireTics = make([]int, n)
@@ -488,9 +481,16 @@ func (g *game) startMonsterAttackAnim(i int, typ int16) {
 		return
 	}
 	g.thingAttackTics[i] = total
+	if i >= 0 && i < len(g.thingAttackPhase) {
+		g.thingAttackPhase[i] = 0
+	}
 	if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
 		g.thingState[i] = monsterStateAttack
-		g.thingStateTics[i] = total
+		if monsterUsesExplicitAttackFrames(typ) {
+			g.thingStateTics[i] = monsterAttackFrameDuration(typ, 0)
+		} else {
+			g.thingStateTics[i] = total
+		}
 	}
 }
 
@@ -499,6 +499,18 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 		return false
 	}
 	g.startMonsterAttackAnim(i, typ)
+	if monsterUsesExplicitAttackFrames(typ) {
+		if i >= 0 && i < len(g.thingAttackFireTics) {
+			g.thingAttackFireTics[i] = -1
+		}
+		tx, ty := g.thingPosFixed(i, g.m.Things[i])
+		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+		g.runMonsterAttackPhaseEntry(i, typ, 0, tx, ty, g.p.x, g.p.y, dist)
+		if missile && i >= 0 && i < len(g.thingJustAtk) {
+			g.thingJustAtk[i] = true
+		}
+		return true
+	}
 	if i < 0 || i >= len(g.thingAttackFireTics) {
 		// Fallback for malformed state in tests.
 		tx := int64(g.m.Things[i].X) << fracBits
@@ -586,6 +598,97 @@ func monsterAttackStateTotalTics(typ int16) int {
 	default:
 		return 0
 	}
+}
+
+func monsterUsesExplicitAttackFrames(typ int16) bool {
+	switch typ {
+	case 3002, 58, 3003, 69: // demon/spectre, baron/hell knight
+		return true
+	default:
+		return false
+	}
+}
+
+func monsterAttackFrameDuration(typ int16, phase int) int {
+	frameTics := monsterAttackFrameTics(typ)
+	if phase < 0 || phase >= len(frameTics) {
+		return 0
+	}
+	return frameTics[phase]
+}
+
+func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, px, py, dist int64) {
+	switch typ {
+	case 3002, 58: // demon/spectre
+		switch phase {
+		case 0, 1:
+			g.faceMonsterToward(i, tx, ty, px, py)
+		case 2:
+			_ = g.monsterAttack(i, typ, dist)
+		}
+	case 3003, 69: // baron/hell knight
+		switch phase {
+		case 0, 1:
+			g.faceMonsterToward(i, tx, ty, px, py)
+		case 2:
+			_ = g.monsterAttack(i, typ, dist)
+		}
+	}
+}
+
+func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int64) bool {
+	if i < 0 || i >= len(g.thingAttackTics) {
+		return false
+	}
+	if monsterUsesExplicitAttackFrames(typ) {
+		g.thingAttackTics[i]--
+		if i >= 0 && i < len(g.thingStateTics) {
+			g.thingStateTics[i]--
+			if g.thingStateTics[i] <= 0 {
+				nextPhase := g.thingAttackPhase[i] + 1
+				if nextPhase >= len(monsterAttackFrameTics(typ)) {
+					g.thingAttackTics[i] = 0
+					if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+						g.thingState[i] = g.monsterIdleOrChaseState(i)
+						g.thingStateTics[i] = g.monsterIdleOrChaseTics(i, typ)
+					}
+					return true
+				}
+				g.thingAttackPhase[i] = nextPhase
+				g.thingStateTics[i] = monsterAttackFrameDuration(typ, nextPhase)
+				g.runMonsterAttackPhaseEntry(i, typ, nextPhase, tx, ty, px, py, dist)
+			}
+		}
+		return true
+	}
+
+	nextAttackTics := g.thingAttackTics[i] - 1
+	g.debugMonsterAttack(i, "attack-tick", nextAttackTics)
+	if i >= 0 && i < len(g.thingAttackFireTics) && g.thingAttackFireTics[i] >= 0 {
+		if g.thingAttackFireTics[i] > 0 {
+			g.thingAttackFireTics[i]--
+		}
+		if g.thingAttackFireTics[i] == 0 {
+			g.faceMonsterToward(i, tx, ty, px, py)
+			_ = g.monsterAttack(i, typ, dist)
+			g.thingAttackFireTics[i] = -1
+		}
+	}
+	g.thingAttackTics[i]--
+	if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateAttack {
+		g.thingStateTics[i] = g.thingAttackTics[i]
+	}
+	return true
+}
+
+func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
+	switch typ {
+	case 3002, 58:
+		if phase >= 0 && phase <= 2 {
+			return 485 + phase, true
+		}
+	}
+	return 0, false
 }
 
 func monsterLookInterval(typ int16) int {
@@ -1429,6 +1532,28 @@ func (g *game) debugMonsterAngle(i int, src string, angle uint32) {
 	}
 	fmt.Printf("monster-angle-debug tic=%d world=%d idx=%d type=%d src=%s angle=%d deg=%d pos=(%d,%d) movedir=%d movecount=%d target=(%d,%d)\n",
 		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, src, angle, worldAngleToThingDeg(angle), tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.p.x, g.p.y)
+}
+
+func (g *game) debugMonsterAttack(i int, src string, nextAttackTics int) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_ATTACK") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_ATTACK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if wantIdx >= 0 && i != wantIdx {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	tx, ty := int64(0), int64(0)
+	if g.m != nil && i >= 0 && i < len(g.m.Things) {
+		tx, ty = g.thingPosFixed(i, g.m.Things[i])
+	}
+	fmt.Printf("monster-attack-debug tic=%d world=%d idx=%d type=%d src=%s next_attack_tics=%d attack_tics=%d fire_tics=%d pos=(%d,%d) target=(%d,%d)\n",
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, src, nextAttackTics, g.thingAttackTics[i], g.thingAttackFireTics[i], tx, ty, g.p.x, g.p.y)
 }
 
 func (g *game) tryMoveProbe(x, y int64) bool {

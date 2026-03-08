@@ -468,6 +468,11 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		case monsterStatePain:
 			return 2
 		case monsterStateAttack:
+			if i >= 0 && i < len(g.thingAttackPhase) {
+				if state, ok := demoTraceMonsterAttackState(typ, g.thingAttackPhase[i]); ok {
+					return state
+				}
+			}
 			return 1
 		case monsterStateSpawn:
 			return 4

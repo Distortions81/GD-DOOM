@@ -717,6 +717,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingDead = append(g.thingDead, false)
 	g.thingDeathTics = append(g.thingDeathTics, 0)
 	g.thingAttackTics = append(g.thingAttackTics, 0)
+	g.thingAttackPhase = append(g.thingAttackPhase, 0)
 	g.thingAttackFireTics = append(g.thingAttackFireTics, -1)
 	g.thingPainTics = append(g.thingPainTics, 0)
 	g.thingThinkWait = append(g.thingThinkWait, 0)

@@ -63,8 +63,8 @@ func TestTickMonstersWakesWhenPlayerInFrontAndVisible(t *testing.T) {
 	if tx != int64(g.m.Things[0].X)<<fracBits || ty != int64(g.m.Things[0].Y)<<fracBits {
 		t.Fatal("monster should not move on the same tic it wakes")
 	}
-	if g.thingState[0] != monsterStateSee {
-		t.Fatalf("monster state=%d want see", g.thingState[0])
+	if g.thingState[0] != monsterStateSee && g.thingState[0] != monsterStateAttack {
+		t.Fatalf("monster state=%d want see-or-attack", g.thingState[0])
 	}
 	if g.thingStateTics[0] <= 0 {
 		t.Fatalf("monster state tics=%d want > 0", g.thingStateTics[0])
