@@ -35,12 +35,12 @@ func TestTickMonstersDamagesPlayer(t *testing.T) {
 	t.Fatalf("health=%d want < 100 after melee windup", g.stats.Health)
 }
 
-func TestTickMonstersWakesByRangeAndLOS(t *testing.T) {
+func TestTickMonstersWakesWhenPlayerInFrontAndVisible(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{Type: 3004, X: 256, Y: 0},
+				{Type: 3004, X: 256, Y: 0, Angle: 180},
 			},
 		},
 		thingCollected: []bool{false},
@@ -57,6 +57,57 @@ func TestTickMonstersWakesByRangeAndLOS(t *testing.T) {
 	}
 	if !hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit) {
 		t.Fatalf("wake should emit seesound, queue=%v", g.soundQueue)
+	}
+	tx, ty := g.thingPosFixed(0, g.m.Things[0])
+	if tx != int64(g.m.Things[0].X)<<fracBits || ty != int64(g.m.Things[0].Y)<<fracBits {
+		t.Fatal("monster should not move on the same tic it wakes")
+	}
+}
+
+func TestTickMonstersDoesNotWakeWhenPlayerBehindAndFar(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 256, Y: 0, Angle: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingAggro:     []bool{false},
+		thingCooldown:  []int{0},
+		soundQueue:     make([]soundEvent, 0, 4),
+		stats:          playerStats{Health: 100},
+		p:              player{x: -256 * fracUnit, y: 0},
+	}
+	g.tickMonsters()
+	if g.thingAggro[0] {
+		t.Fatal("monster should not wake when player is behind and outside melee range")
+	}
+	if len(g.soundQueue) != 0 {
+		t.Fatalf("behind wake should not emit seesound, queue=%v", g.soundQueue)
+	}
+}
+
+func TestTickMonstersWakesWhenPlayerBehindButClose(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 32, Y: 0, Angle: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingAggro:     []bool{false},
+		thingCooldown:  []int{0},
+		soundQueue:     make([]soundEvent, 0, 4),
+		stats:          playerStats{Health: 100},
+		p:              player{x: -16 * fracUnit, y: 0},
+	}
+	g.tickMonsters()
+	if !g.thingAggro[0] {
+		t.Fatal("monster should wake when player is behind but within melee range")
 	}
 }
 

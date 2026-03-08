@@ -291,7 +291,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Subsector:    boolToInt(sec >= 0),
 			Sector:       sec,
 			Player:       0,
-			Target:       boolToInt(i >= 0 && i < len(g.thingAggro) && g.thingAggro[i]),
+			Target:       0,
 			TargetType:   0,
 			Tracer:       0,
 			Kind:         demoTraceThingKind(th.Type),
@@ -491,9 +491,6 @@ func demoTraceThingReaction(g *game, i int) int {
 }
 
 func demoTraceThingThreshold(g *game, i int) int {
-	if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
-		return 100
-	}
 	return 0
 }
 

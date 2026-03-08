@@ -430,6 +430,7 @@ type game struct {
 	thingJustAtk         []bool
 	thingJustHit         []bool
 	thingReactionTics    []int
+	thingWakeTics        []int
 	thingLastLook        []int
 	thingDead            []bool
 	thingDeathTics       []int
@@ -989,6 +990,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingJustAtk = make([]bool, len(m.Things))
 	g.thingJustHit = make([]bool, len(m.Things))
 	g.thingReactionTics = make([]int, len(m.Things))
+	g.thingWakeTics = make([]int, len(m.Things))
 	g.thingLastLook = make([]int, len(m.Things))
 	g.thingDead = make([]bool, len(m.Things))
 	g.thingDeathTics = make([]int, len(m.Things))

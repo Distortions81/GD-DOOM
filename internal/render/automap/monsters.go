@@ -120,16 +120,20 @@ func (g *game) tickMonsters() {
 		}
 
 		if !g.thingAggro[i] {
-			heardPlayer := g.monsterHeardPlayer(i, tx, ty)
-			if heardPlayer {
+			if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
 				g.thingAggro[i] = true
+				if i >= 0 && i < len(g.thingWakeTics) {
+					g.thingWakeTics[i] = max(monsterWakeDelayTics(th.Type)-1, 0)
+				}
 				g.emitMonsterSeeSound(i, th.Type, tx, ty)
-			} else if dist <= monsterWakeRange && g.monsterHasLOSPlayer(th.Type, tx, ty) {
-				g.thingAggro[i] = true
-				g.emitMonsterSeeSound(i, th.Type, tx, ty)
+				continue
 			} else {
 				continue
 			}
+		}
+		if i >= 0 && i < len(g.thingWakeTics) && g.thingWakeTics[i] > 0 {
+			g.thingWakeTics[i]--
+			continue
 		}
 		if !g.monsterChaseReady(i, th.Type) {
 			continue
@@ -144,6 +148,7 @@ func (g *game) tickMonsters() {
 			g.monsterPickNewChaseDir(i, th.Type, px, py)
 			continue
 		}
+		g.monsterTurnTowardMoveDir(i)
 
 		if g.monsterCanMelee(th.Type, dist, tx, ty, px, py) {
 			g.faceMonsterToward(i, tx, ty, px, py)
@@ -275,6 +280,11 @@ func (g *game) ensureMonsterAIState() {
 		old := g.thingReactionTics
 		g.thingReactionTics = make([]int, n)
 		copy(g.thingReactionTics, old)
+	}
+	if len(g.thingWakeTics) != n {
+		old := g.thingWakeTics
+		g.thingWakeTics = make([]int, n)
+		copy(g.thingWakeTics, old)
 	}
 	if len(g.thingLastLook) != n {
 		old := g.thingLastLook
@@ -526,6 +536,17 @@ func monsterReactionTimeTics(typ int16) int {
 	}
 }
 
+func monsterWakeDelayTics(typ int16) int {
+	switch typ {
+	case 3004, 9, 65, 84, 7, 16:
+		return 4
+	case 3006:
+		return 6
+	default:
+		return 3
+	}
+}
+
 func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
 	if !monsterHasMeleeAttack(typ) {
 		return false
@@ -699,38 +720,25 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	prevX, prevY := x, y
 	g.setThingPosFixed(i, nx, ny)
 	g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, false)
-	g.faceMonsterMoveDir(i, dir)
 	return true
 }
 
-func (g *game) faceMonsterMoveDir(i int, dir monsterMoveDir) {
+func (g *game) monsterTurnTowardMoveDir(i int) {
 	if g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return
 	}
-	g.m.Things[i].Angle = monsterDirAngle(dir)
-}
-
-func monsterDirAngle(dir monsterMoveDir) int16 {
-	switch dir {
-	case monsterDirEast:
-		return 0
-	case monsterDirNorthEast:
-		return 45
-	case monsterDirNorth:
-		return 90
-	case monsterDirNorthWest:
-		return 135
-	case monsterDirWest:
-		return 180
-	case monsterDirSouthWest:
-		return 225
-	case monsterDirSouth:
-		return 270
-	case monsterDirSouthEast:
-		return 315
-	default:
-		return 0
+	dir := g.thingMoveDir[i]
+	if dir >= monsterDirNoDir {
+		return
 	}
+	angle := thingDegToWorldAngle(g.m.Things[i].Angle) & (7 << 29)
+	delta := int32(angle - (uint32(dir) << 29))
+	if delta > 0 {
+		angle -= statusAng45
+	} else if delta < 0 {
+		angle += statusAng45
+	}
+	g.m.Things[i].Angle = worldAngleToThingDeg(angle)
 }
 
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
@@ -1056,6 +1064,51 @@ func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
 	}
 	if int(g.m.Things[i].Flags)&thingFlagAmbush != 0 {
 		return g.monsterHasLOSPlayer(g.m.Things[i].Type, tx, ty)
+	}
+	return true
+}
+
+func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) || g.isDead {
+		return false
+	}
+	if !g.monsterHasLOSPlayer(g.m.Things[i].Type, tx, ty) {
+		return false
+	}
+	look := 0
+	if i >= 0 && i < len(g.thingLastLook) {
+		look = g.thingLastLook[i] & 3
+	}
+	// Single-player only for now, but preserve Doom's lastlook cycling state.
+	if i >= 0 && i < len(g.thingLastLook) {
+		g.thingLastLook[i] = (look + 1) & 3
+	}
+	if allAround {
+		return true
+	}
+	angleToPlayer := math.Atan2(float64(g.p.y-ty), float64(g.p.x-tx)) * (180.0 / math.Pi)
+	if angleToPlayer < 0 {
+		angleToPlayer += 360
+	}
+	actorAngle := float64(g.m.Things[i].Angle)
+	for actorAngle < 0 {
+		actorAngle += 360
+	}
+	for actorAngle >= 360 {
+		actorAngle -= 360
+	}
+	delta := angleToPlayer - actorAngle
+	for delta < 0 {
+		delta += 360
+	}
+	for delta >= 360 {
+		delta -= 360
+	}
+	if delta > 90 && delta < 270 {
+		dist := hypotFixed(g.p.x-tx, g.p.y-ty)
+		if dist > monsterMeleeRange {
+			return false
+		}
 	}
 	return true
 }

@@ -92,6 +92,17 @@ func thingDegToWorldAngle(deg int16) uint32 {
 	return degToAngle(int16(world))
 }
 
+func worldAngleToThingDeg(angle uint32) int16 {
+	deg := float64(angle) * (360.0 / 4294967296.0)
+	for deg < 0 {
+		deg += 360
+	}
+	for deg >= 360 {
+		deg -= 360
+	}
+	return int16(math.Round(deg)) % 360
+}
+
 func clamp(v, lo, hi int64) int64 {
 	if v < lo {
 		return lo
