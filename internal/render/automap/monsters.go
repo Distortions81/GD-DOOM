@@ -19,6 +19,8 @@ const (
 
 type monsterMoveDir uint8
 
+type monsterThinkState uint8
+
 const (
 	monsterDirEast monsterMoveDir = iota
 	monsterDirNorthEast
@@ -29,6 +31,14 @@ const (
 	monsterDirSouth
 	monsterDirSouthEast
 	monsterDirNoDir
+)
+
+const (
+	monsterStateSpawn monsterThinkState = iota
+	monsterStateSee
+	monsterStatePain
+	monsterStateAttack
+	monsterStateDeath
 )
 
 var (
@@ -95,6 +105,10 @@ func (g *game) tickMonsters() {
 
 		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 			g.thingAttackTics[i]--
+			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateAttack {
+				g.thingStateTics[i] = g.thingAttackTics[i]
+			}
+			continue
 		}
 		if i >= 0 && i < len(g.thingAttackFireTics) && g.thingAttackFireTics[i] >= 0 {
 			if g.thingAttackFireTics[i] > 0 {
@@ -108,27 +122,20 @@ func (g *game) tickMonsters() {
 		}
 		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 			g.thingPainTics[i]--
-		}
-		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain {
+				g.thingStateTics[i] = g.thingPainTics[i]
+			}
 			if i >= 0 && i < len(g.thingAttackFireTics) {
 				g.thingAttackFireTics[i] = -1
 			}
 			continue
 		}
-		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
-			continue
+		if i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
+			g.setMonsterThinkState(i, th.Type, g.monsterIdleOrChaseState(i), g.monsterIdleOrChaseTics(i, th.Type))
 		}
 
-		if !g.thingAggro[i] {
-			if !g.monsterLookReady(i, th.Type) {
-				continue
-			}
-			if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
-				g.thingAggro[i] = true
-				g.emitMonsterSeeSound(i, th.Type, tx, ty)
-			} else {
-				continue
-			}
+		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, px, py, dist) {
+			continue
 		}
 		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 			g.thingReactionTics[i]--
@@ -160,24 +167,70 @@ func (g *game) tickMonsters() {
 		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
 			g.monsterPickNewChaseDir(i, th.Type, px, py)
 		}
+		g.setMonsterThinkState(i, th.Type, monsterStateSee, monsterSeeStateTics(th.Type, g.fastMonstersActive()))
 		g.emitMonsterActiveSound(i, th.Type, tx, ty)
 	}
 }
 
-func (g *game) monsterLookReady(i int, typ int16) bool {
-	if i < 0 || i >= len(g.thingThinkWait) {
+func (g *game) setMonsterThinkState(i int, typ int16, state monsterThinkState, tics int) {
+	if i < 0 || i >= len(g.thingState) || i >= len(g.thingStateTics) {
+		return
+	}
+	if tics < 0 {
+		tics = 0
+	}
+	g.thingState[i] = state
+	g.thingStateTics[i] = tics
+}
+
+func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist int64) bool {
+	if i < 0 || i >= len(g.thingState) || i >= len(g.thingStateTics) {
 		return true
 	}
-	if g.thingThinkWait[i] > 0 {
-		g.thingThinkWait[i]--
+	if g.thingStateTics[i] > 0 {
+		g.thingStateTics[i]--
+		if g.thingStateTics[i] > 0 {
+			return false
+		}
+	}
+	switch g.thingState[i] {
+	case monsterStateSpawn:
+		if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
+			g.thingAggro[i] = true
+			g.emitMonsterSeeSound(i, typ, tx, ty)
+			g.setMonsterThinkState(i, typ, monsterStateSee, monsterSeeStateTics(typ, g.fastMonstersActive()))
+			if i >= 0 && i < len(g.thingStatePhase) {
+				g.thingStatePhase[i] = 0
+			}
+			return true
+		}
+		if i >= 0 && i < len(g.thingStatePhase) {
+			g.thingStatePhase[i] ^= 1
+		}
+		g.setMonsterThinkState(i, typ, monsterStateSpawn, monsterSpawnStateTics(typ))
 		return false
+	case monsterStateSee:
+		if i >= 0 && i < len(g.thingStatePhase) {
+			g.thingStatePhase[i] ^= 1
+		}
+		return true
+	default:
+		return true
 	}
-	wait := monsterLookInterval(typ)
-	if wait < 1 {
-		wait = 1
+}
+
+func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
+	if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
+		return monsterStateSee
 	}
-	g.thingThinkWait[i] = wait - 1
-	return true
+	return monsterStateSpawn
+}
+
+func (g *game) monsterIdleOrChaseTics(i int, typ int16) int {
+	if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
+		return monsterSeeStateTics(typ, g.fastMonstersActive())
+	}
+	return monsterSpawnStateTics(typ)
 }
 
 func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
@@ -353,6 +406,21 @@ func (g *game) ensureMonsterAIState() {
 		g.thingThinkWait = make([]int, n)
 		copy(g.thingThinkWait, old)
 	}
+	if len(g.thingState) != n {
+		old := g.thingState
+		g.thingState = make([]monsterThinkState, n)
+		copy(g.thingState, old)
+	}
+	if len(g.thingStateTics) != n {
+		old := g.thingStateTics
+		g.thingStateTics = make([]int, n)
+		copy(g.thingStateTics, old)
+	}
+	if len(g.thingStatePhase) != n {
+		old := g.thingStatePhase
+		g.thingStatePhase = make([]int, n)
+		copy(g.thingStatePhase, old)
+	}
 }
 
 func monsterPainChance(typ int16) int {
@@ -401,9 +469,17 @@ func (g *game) startMonsterAttackAnim(i int, typ int16) {
 	}
 	if total <= 0 {
 		g.thingAttackTics[i] = 0
+		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+			g.thingState[i] = g.monsterIdleOrChaseState(i)
+			g.thingStateTics[i] = g.monsterIdleOrChaseTics(i, typ)
+		}
 		return
 	}
 	g.thingAttackTics[i] = total
+	if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+		g.thingState[i] = monsterStateAttack
+		g.thingStateTics[i] = total
+	}
 }
 
 func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
@@ -505,6 +581,32 @@ func monsterLookInterval(typ int16) int {
 		return info.spawnTics
 	}
 	return 1
+}
+
+func monsterSpawnStateTics(typ int16) int {
+	wait := monsterLookInterval(typ)
+	if wait < 1 {
+		wait = 1
+	}
+	return wait
+}
+
+func monsterSeeStateTics(typ int16, fast bool) int {
+	switch typ {
+	case 3004, 9, 84, 67:
+		if fast {
+			return 2
+		}
+		return 4
+	case 3002, 58, 64, 66:
+		return 2
+	case 3006:
+		return 6
+	case 65, 3001, 3003, 3005, 7, 16, 68, 69, 71:
+		return 3
+	default:
+		return 3
+	}
 }
 
 func monsterReactionTimeTics(typ int16) int {

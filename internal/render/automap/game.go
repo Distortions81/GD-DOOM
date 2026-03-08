@@ -439,6 +439,9 @@ type game struct {
 	thingAttackFireTics  []int
 	thingPainTics        []int
 	thingThinkWait       []int
+	thingState           []monsterThinkState
+	thingStateTics       []int
+	thingStatePhase      []int
 	projectiles          []projectile
 	projectileImpacts    []projectileImpact
 	hitscanPuffs         []hitscanPuff
@@ -1002,6 +1005,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
+	g.thingState = make([]monsterThinkState, len(m.Things))
+	g.thingStateTics = make([]int, len(m.Things))
+	g.thingStatePhase = make([]int, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.sectorSoundTarget = make([]bool, len(m.Sectors))
 	for _, sec := range m.Sectors {

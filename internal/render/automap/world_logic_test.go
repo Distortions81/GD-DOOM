@@ -176,6 +176,23 @@ func TestDamagePlayerBlockedByInvulnerability(t *testing.T) {
 	}
 }
 
+func TestDamagePlayerFromAppliesThrustFromAttacker(t *testing.T) {
+	g := &game{
+		stats: playerStats{Health: 100},
+		p: player{
+			x: 0,
+			y: 0,
+		},
+	}
+	g.damagePlayerFrom(8, "ouch", -64*fracUnit, 0, true)
+	if g.p.momx <= 0 {
+		t.Fatalf("momx=%d want > 0 after left-side hit", g.p.momx)
+	}
+	if abs(g.p.momy) > fracUnit/256 {
+		t.Fatalf("momy=%d want near 0 for horizontal hit", g.p.momy)
+	}
+}
+
 func TestPlayerDeathViewFallsTowardFloor(t *testing.T) {
 	g := &game{
 		p: player{

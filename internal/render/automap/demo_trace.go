@@ -439,6 +439,9 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 	if i < 0 {
 		return 0
 	}
+	if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
+		return g.thingStateTics[i]
+	}
 	if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 		return g.thingDeathTics[i]
 	}
@@ -455,6 +458,20 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 }
 
 func demoTraceThingState(g *game, i int, typ int16) int {
+	if i >= 0 && i < len(g.thingState) {
+		switch g.thingState[i] {
+		case monsterStateDeath:
+			return 3
+		case monsterStatePain:
+			return 2
+		case monsterStateAttack:
+			return 1
+		case monsterStateSpawn:
+			return 4
+		case monsterStateSee:
+			return 5
+		}
+	}
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 		return 3
 	}

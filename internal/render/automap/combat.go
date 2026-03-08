@@ -55,6 +55,13 @@ func (g *game) initThingCombatState() {
 				if i >= 0 && i < len(g.thingThinkWait) {
 					g.thingThinkWait[i] = max(spawnTics-1, 0)
 				}
+				if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+					g.thingState[i] = monsterStateSpawn
+					g.thingStateTics[i] = spawnTics
+				}
+				if i >= 0 && i < len(g.thingStatePhase) {
+					g.thingStatePhase[i] = 0
+				}
 			}
 		} else {
 			if i >= 0 && i < len(g.thingLastLook) {
@@ -68,6 +75,15 @@ func (g *game) initThingCombatState() {
 			continue
 		}
 		g.thingHP[i] = monsterSpawnHealth(th.Type)
+		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+			g.thingState[i] = monsterStateSpawn
+			if g.thingStateTics[i] == 0 {
+				g.thingStateTics[i] = monsterSpawnStateTics(th.Type)
+			}
+		}
+		if i >= 0 && i < len(g.thingStatePhase) {
+			g.thingStatePhase[i] = 0
+		}
 	}
 }
 
@@ -616,6 +632,13 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 		if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
 			g.thingAttackFireTics[thingIdx] = -1
 		}
+		if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
+			g.thingState[thingIdx] = monsterStateDeath
+			g.thingStateTics[thingIdx] = g.thingDeathTics[thingIdx]
+		}
+		if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
+			g.thingStatePhase[thingIdx] = 0
+		}
 		deathEv := monsterDeathSoundEvent(thingType)
 		deathDelay := monsterDeathSoundDelayTics(thingType)
 		tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
@@ -636,6 +659,13 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 				if !wasInPain {
 					tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
 					g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
+				}
+				if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
+					g.thingState[thingIdx] = monsterStatePain
+					g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+				}
+				if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
+					g.thingStatePhase[thingIdx] = 0
 				}
 			}
 		}
@@ -683,6 +713,9 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingAttackFireTics = append(g.thingAttackFireTics, -1)
 	g.thingPainTics = append(g.thingPainTics, 0)
 	g.thingThinkWait = append(g.thingThinkWait, 0)
+	g.thingState = append(g.thingState, monsterStateSpawn)
+	g.thingStateTics = append(g.thingStateTics, 0)
+	g.thingStatePhase = append(g.thingStatePhase, 0)
 	sec := -1
 	sec = g.sectorAt(x, y)
 	g.thingSectorCache = append(g.thingSectorCache, sec)

@@ -1,5 +1,7 @@
 package automap
 
+import "math"
+
 import "gddoom/internal/doomrand"
 
 const playerDeathViewFallSpeed = fracUnit
@@ -360,6 +362,9 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 	if amount <= 0 || g.stats.Health <= 0 || g.isDead {
 		return
 	}
+	if hasAttacker {
+		g.applyPlayerDamageThrust(amount, attackerX, attackerY)
+	}
 	if g.invulnerable {
 		g.setHUDMessage("God mode absorbed damage", 8)
 		return
@@ -386,4 +391,18 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		g.emitSoundEvent(soundEventPain)
 	}
 	g.setHUDMessage(msg, 20)
+}
+
+func (g *game) applyPlayerDamageThrust(amount int, attackerX, attackerY int64) {
+	if g == nil || amount <= 0 {
+		return
+	}
+	ang := math.Atan2(float64(g.p.y-attackerY), float64(g.p.x-attackerX))
+	if ang < 0 {
+		ang += 2 * math.Pi
+	}
+	worldAng := uint32((ang / (2 * math.Pi)) * 4294967296.0)
+	thrust := int64(amount) * (fracUnit >> 3)
+	g.p.momx += fixedMul(thrust, doomFineCosine(worldAng))
+	g.p.momy += fixedMul(thrust, doomFineSineAtAngle(worldAng))
 }
