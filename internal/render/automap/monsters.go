@@ -252,7 +252,7 @@ func consumeMonsterSeeSoundRandom(typ int16) {
 	switch typ {
 	case 3004, 9, 65:
 		_ = doomrand.PRandom() % 3
-	case 3003, 69:
+	case 3001, 3003, 69:
 		_ = doomrand.PRandom() % 2
 	}
 }
