@@ -145,14 +145,24 @@ func rotatePoint(x, y, angleRad float64) (float64, float64) {
 }
 
 func relativeThingAngle(thingAngle int16, viewAngle uint32) int16 {
-	viewDeg := float64(viewAngle) * (360.0 / 4294967296.0)
-	delta := viewDeg - float64(thingAngle)
-	return int16(normalizeDegrees(delta))
+	return relativeWorldAngle(thingDegToWorldAngle(thingAngle), viewAngle)
 }
 
 func worldThingAngle(thingAngle int16) int16 {
+	return worldAngleToGlyphAngle(thingDegToWorldAngle(thingAngle))
+}
+
+func relativeWorldAngle(worldAngle, viewAngle uint32) int16 {
+	viewDeg := float64(viewAngle) * (360.0 / 4294967296.0)
+	thingDeg := float64(worldAngle) * (360.0 / 4294967296.0)
+	delta := viewDeg - thingDeg
+	return int16(normalizeDegrees(delta))
+}
+
+func worldAngleToGlyphAngle(worldAngle uint32) int16 {
 	// Doom things use 0=east, 90=north; glyphs use 0=up, +90=right.
-	delta := 90.0 - float64(thingAngle)
+	deg := float64(worldAngle) * (360.0 / 4294967296.0)
+	delta := 90.0 - deg
 	return int16(normalizeDegrees(delta))
 }
 

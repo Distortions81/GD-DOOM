@@ -260,10 +260,11 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		x, y := g.thingPosFixed(i, th)
 		sec := g.thingSectorCached(i, th)
-		floorZ := g.thingFloorZCached(i, th)
+		z := g.thingFloorZCached(i, th)
+		floorZ := z
 		ceilZ := int64(0)
 		if isMonster(th.Type) {
-			floorZ, ceilZ, _ = g.monsterSupportHeights(i, th)
+			z, floorZ, ceilZ = g.monsterSupportHeights(i, th)
 		} else if sec >= 0 && sec < len(g.sectorCeil) {
 			ceilZ = g.sectorCeil[sec]
 		}
@@ -278,8 +279,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Type:         demoTraceThingType(th.Type),
 			X:            x,
 			Y:            y,
-			Z:            floorZ,
-			Angle:        thingDegToWorldAngle(th.Angle),
+			Z:            z,
+			Angle:        g.thingWorldAngle(i, th),
 			MomX:         0,
 			MomY:         0,
 			MomZ:         0,

@@ -12,15 +12,6 @@ const (
 	doomAng270     = 0xc0000000
 )
 
-var doomTanToAngle = func() [doomSlopeRange + 1]uint32 {
-	var table [doomSlopeRange + 1]uint32
-	for i := 0; i <= doomSlopeRange; i++ {
-		f := math.Atan(float64(i)/doomSlopeRange) / (2 * math.Pi)
-		table[i] = uint32(float64(^uint32(0)) * f)
-	}
-	return table
-}()
-
 type divline struct {
 	x  int64
 	y  int64

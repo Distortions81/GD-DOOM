@@ -423,9 +423,11 @@ type game struct {
 	thingDropped         []bool
 	thingX               []int64
 	thingY               []int64
+	thingAngleState      []uint32
 	thingZState          []int64
 	thingFloorState      []int64
 	thingCeilState       []int64
+	thingSupportValid    []bool
 	thingBlockCell       []int
 	thingBlockNext       []int
 	thingBlockLinks      []int
@@ -992,9 +994,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingDropped = make([]bool, len(m.Things))
 	g.thingX = make([]int64, len(m.Things))
 	g.thingY = make([]int64, len(m.Things))
+	g.thingAngleState = make([]uint32, len(m.Things))
 	g.thingZState = make([]int64, len(m.Things))
 	g.thingFloorState = make([]int64, len(m.Things))
 	g.thingCeilState = make([]int64, len(m.Things))
+	g.thingSupportValid = make([]bool, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
 	g.thingBlockNext = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
@@ -1091,6 +1095,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		th := g.m.Things[i]
 		g.thingX[i] = int64(th.X) << fracBits
 		g.thingY[i] = int64(th.Y) << fracBits
+		g.thingAngleState[i] = thingDegToWorldAngle(th.Angle)
 		g.thingSectorCache[i] = g.sectorAt(g.thingX[i], g.thingY[i])
 		sec := g.thingSectorCache[i]
 		if sec >= 0 && sec < len(g.sectorFloor) {
@@ -1099,6 +1104,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		}
 		if sec >= 0 && sec < len(g.sectorCeil) {
 			g.thingCeilState[i] = g.sectorCeil[sec]
+		}
+		if sec >= 0 {
+			g.thingSupportValid[i] = true
 		}
 	}
 	if g.bmapWidth > 0 && g.bmapHeight > 0 {
@@ -2786,9 +2794,9 @@ func (g *game) drawThings(screen *ebiten.Image) {
 			continue
 		}
 		size := thingGlyphSize(g.zoom)
-		angle := worldThingAngle(th.Angle)
+		angle := worldAngleToGlyphAngle(g.thingWorldAngle(i, th))
 		if g.mapRotationActive() {
-			angle = relativeThingAngle(th.Angle, g.renderAngle)
+			angle = relativeWorldAngle(g.thingWorldAngle(i, th), g.renderAngle)
 		}
 		drawThingGlyph(screen, styleForThing(th), sx, sy, angle, size, aa)
 	}
@@ -11438,7 +11446,7 @@ func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX,
 		}
 	}
 	fx, fy := g.thingPosFixed(i, th)
-	rot := monsterSpriteRotationIndexAt(th, float64(fx)/fracUnit, float64(fy)/fracUnit, viewX, viewY)
+	rot := monsterSpriteRotationIndexAt(g.thingWorldAngle(i, th), float64(fx)/fracUnit, float64(fy)/fracUnit, viewX, viewY)
 	if name, flip, ok := g.monsterSpriteRotFrame(prefix, frameLetter, rot); ok {
 		return name, flip
 	}
@@ -11449,7 +11457,7 @@ func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX,
 }
 
 func monsterSpriteRotationIndex(th mapdata.Thing, viewX, viewY float64) int {
-	return monsterSpriteRotationIndexAt(th, float64(th.X), float64(th.Y), viewX, viewY)
+	return monsterSpriteRotationIndexAt(thingDegToWorldAngle(th.Angle), float64(th.X), float64(th.Y), viewX, viewY)
 }
 
 func monsterUsesShadow(typ int16) bool {
@@ -11486,8 +11494,8 @@ func monsterSpritePrefix(typ int16) (string, bool) {
 	}
 }
 
-func monsterSpriteRotationIndexAt(th mapdata.Thing, thingX, thingY, viewX, viewY float64) int {
-	facing := normalizeDeg360(float64(th.Angle))
+func monsterSpriteRotationIndexAt(worldAngle uint32, thingX, thingY, viewX, viewY float64) int {
+	facing := normalizeDeg360(float64(worldAngle) * (360.0 / 4294967296.0))
 	angToView := math.Atan2(viewY-thingY, viewX-thingX) * (180.0 / math.Pi)
 	angToView = normalizeDeg360(angToView)
 	delta := normalizeDeg360(angToView - facing)
@@ -17707,8 +17715,16 @@ func (g *game) thingPosFixed(i int, th mapdata.Thing) (int64, int64) {
 	return int64(th.X) << fracBits, int64(th.Y) << fracBits
 }
 
+func (g *game) thingWorldAngle(i int, th mapdata.Thing) uint32 {
+	if i >= 0 && i < len(g.thingAngleState) {
+		return g.thingAngleState[i]
+	}
+	return thingDegToWorldAngle(th.Angle)
+}
+
 func (g *game) thingSupportState(i int, th mapdata.Thing) (z, floorZ, ceilZ int64) {
 	if i >= 0 && i < len(g.thingFloorState) && i < len(g.thingCeilState) {
+		valid := i < len(g.thingSupportValid) && g.thingSupportValid[i]
 		floorZ = g.thingFloorState[i]
 		ceilZ = g.thingCeilState[i]
 		if i < len(g.thingZState) {
@@ -17716,7 +17732,7 @@ func (g *game) thingSupportState(i int, th mapdata.Thing) (z, floorZ, ceilZ int6
 		} else {
 			z = floorZ
 		}
-		if floorZ != 0 || ceilZ != 0 || z != 0 {
+		if valid {
 			return z, floorZ, ceilZ
 		}
 	}
@@ -17743,9 +17759,13 @@ func (g *game) setThingSupportState(i int, z, floorZ, ceilZ int64) {
 	if i >= len(g.thingCeilState) {
 		g.thingCeilState = append(g.thingCeilState, make([]int64, i-len(g.thingCeilState)+1)...)
 	}
+	if i >= len(g.thingSupportValid) {
+		g.thingSupportValid = append(g.thingSupportValid, make([]bool, i-len(g.thingSupportValid)+1)...)
+	}
 	g.thingZState[i] = z
 	g.thingFloorState[i] = floorZ
 	g.thingCeilState[i] = ceilZ
+	g.thingSupportValid[i] = true
 }
 
 func (g *game) setThingPosFixed(i int, x, y int64) {
@@ -17811,6 +17831,16 @@ func (g *game) rebuildThingBlockmap() {
 		g.thingBlockNext[i] = g.thingBlockLinks[cell]
 		g.thingBlockLinks[cell] = i
 	}
+}
+
+func (g *game) setThingWorldAngle(i int, angle uint32) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i >= len(g.thingAngleState) {
+		g.thingAngleState = append(g.thingAngleState, make([]uint32, i-len(g.thingAngleState)+1)...)
+	}
+	g.thingAngleState[i] = angle
 }
 
 func (g *game) updateThingBlockmapIndex(i int) {

@@ -815,7 +815,7 @@ func (g *game) debugMonsterChase(i int, msg string) {
 		tx, ty = g.thingPosFixed(i, g.m.Things[i])
 	}
 	fmt.Printf("monster-chase-debug tic=%d world=%d idx=%d type=%d msg=%s pos=(%d,%d) movedir=%d movecount=%d angle=%d target=(%d,%d)\n",
-		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, msg, tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.m.Things[i].Angle, g.p.x, g.p.y)
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, msg, tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.thingWorldAngle(i, g.m.Things[i]), g.p.x, g.p.y)
 }
 
 func (g *game) debugMonsterMove(i int, msg string) {
@@ -837,7 +837,7 @@ func (g *game) debugMonsterMove(i int, msg string) {
 		tx, ty = g.thingPosFixed(i, g.m.Things[i])
 	}
 	fmt.Printf("monster-move-debug tic=%d world=%d idx=%d type=%d msg=%s pos=(%d,%d) movedir=%d movecount=%d angle=%d\n",
-		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, msg, tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.m.Things[i].Angle)
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, msg, tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.thingWorldAngle(i, g.m.Things[i]))
 }
 
 func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
@@ -879,7 +879,7 @@ func (g *game) monsterTurnTowardMoveDir(i int) {
 	if dir >= monsterDirNoDir {
 		return
 	}
-	angle := thingDegToWorldAngle(g.m.Things[i].Angle) & (7 << 29)
+	angle := g.thingWorldAngle(i, g.m.Things[i]) & (7 << 29)
 	delta := int32(angle - (uint32(dir) << 29))
 	if delta > 0 {
 		angle -= statusAng45
@@ -887,7 +887,7 @@ func (g *game) monsterTurnTowardMoveDir(i int) {
 		angle += statusAng45
 	}
 	g.debugMonsterAngle(i, "turn-movedir", angle)
-	g.m.Things[i].Angle = worldAngleToThingDeg(angle)
+	g.setThingWorldAngle(i, angle)
 }
 
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
@@ -1256,13 +1256,7 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 				if angleToPlayer < 0 {
 					angleToPlayer += 360
 				}
-				actorAngle := float64(g.m.Things[i].Angle)
-				for actorAngle < 0 {
-					actorAngle += 360
-				}
-				for actorAngle >= 360 {
-					actorAngle -= 360
-				}
+				actorAngle := float64(g.thingWorldAngle(i, g.m.Things[i])) * (360.0 / 4294967296.0)
 				delta := angleToPlayer - actorAngle
 				for delta < 0 {
 					delta += 360
@@ -1407,17 +1401,12 @@ func (g *game) faceMonsterToward(i int, fromX, fromY, toX, toY int64) {
 	if g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return
 	}
-	dx := float64(toX - fromX)
-	dy := float64(toY - fromY)
-	if math.Abs(dx) < 1e-6 && math.Abs(dy) < 1e-6 {
+	if fromX == toX && fromY == toY {
 		return
 	}
-	deg := math.Atan2(dy, dx) * (180.0 / math.Pi)
-	if deg < 0 {
-		deg += 360
-	}
-	g.debugMonsterAngle(i, "face-target", thingDegToWorldAngle(int16(math.Round(deg))%360))
-	g.m.Things[i].Angle = int16(math.Round(deg)) % 360
+	angle := doomPointToAngle2(fromX, fromY, toX, toY)
+	g.debugMonsterAngle(i, "face-target", angle)
+	g.setThingWorldAngle(i, angle)
 }
 
 func (g *game) debugMonsterAngle(i int, src string, angle uint32) {

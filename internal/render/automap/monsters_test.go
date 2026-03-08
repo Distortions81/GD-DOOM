@@ -392,7 +392,7 @@ func TestTryMoveProbeMonster_BlockedByOtherMonster(t *testing.T) {
 		thingDead:      []bool{false, false},
 	}
 	g.initPhysics()
-	if g.tryMoveProbeMonster(0, 3004, 16*fracUnit, 0) {
+	if _, _, ok := g.tryMoveProbeMonster(0, 3004, 16*fracUnit, 0); ok {
 		t.Fatal("monster move should be blocked by another solid monster")
 	}
 }
@@ -450,7 +450,7 @@ func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
 		p:              player{x: -128 * fracUnit, y: 0},
 	}
 	g.initPhysics()
-	if g.tryMoveProbeMonster(0, 3004, 8*fracUnit, 0) {
+	if _, _, ok := g.tryMoveProbeMonster(0, 3004, 8*fracUnit, 0); ok {
 		t.Fatal("monster move should be blocked by a step higher than 24 units")
 	}
 }
@@ -473,7 +473,7 @@ func TestDoomSolidMapThingTypes_MonsterBlocked(t *testing.T) {
 				thingDead:      []bool{false, false},
 			}
 			g.initPhysics()
-			if g.tryMoveProbeMonster(0, 3002, -93*fracUnit, 227*fracUnit) {
+			if _, _, ok := g.tryMoveProbeMonster(0, 3002, -93*fracUnit, 227*fracUnit); ok {
 				t.Fatalf("monster move should be blocked by solid thing type %d", typ)
 			}
 		})
