@@ -173,6 +173,8 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 
 func shouldIgnorePath(path string) bool {
 	ignoredSuffixes := []string{
+		".rndindex",
+		".prndindex",
 		".flags",
 		".state",
 		".tics",

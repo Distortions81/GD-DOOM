@@ -16,6 +16,8 @@ type demoTraceWriter struct {
 	closed bool
 }
 
+const demoTraceWeaponNoChange = 10
+
 type demoTracePlayer struct {
 	PlayerState   int    `json:"playerstate"`
 	Health        int    `json:"health"`
@@ -178,8 +180,8 @@ func (g *game) writeDemoTraceTic() {
 		Health:        g.stats.Health,
 		ArmorPoints:   g.stats.Armor,
 		ArmorType:     demoTraceArmorType(g.stats.Armor),
-		ReadyWeapon:   int(g.inventory.ReadyWeapon),
-		PendingWeapon: int(g.inventory.ReadyWeapon),
+		ReadyWeapon:   demoTraceWeaponID(g.inventory.ReadyWeapon),
+		PendingWeapon: demoTraceWeaponNoChange,
 		MO:            1,
 		X:             g.p.x,
 		Y:             g.p.y,
