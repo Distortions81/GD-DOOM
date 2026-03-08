@@ -157,9 +157,9 @@ Config notes:
 ## Project Docs
 
 - Implemented features: `docs/IMPLEMENTED.md`
-- Active plan/todo: `docs/plans/PLAN-TODO.md`
+- Action list: `docs/ACTIONS.md`
 - Render mode policy: `docs/render-modes.md`
-- Automap parity checklist: `docs/automap-parity-notes.md`
+- IWAD map-data audit: `docs/map-audit.md`
 - Historical milestone specs (archive):
   - `docs/archive/m1-parser-spec.md`
   - `docs/archive/m2-automap-spec.md`
