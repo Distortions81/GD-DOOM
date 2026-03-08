@@ -41,6 +41,10 @@ func flagProvided(args []string, name string) bool {
 	return false
 }
 
+func explicitMapStartInMap(startInMap bool, mapExplicit bool) bool {
+	return startInMap || mapExplicit
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	configPath, configExplicit := resolveConfigPath(args)
 	cfg, err := loadConfig(configPath, configExplicit)
@@ -355,6 +359,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "flag error: %v\n", err)
 		return 2
 	}
+	mapExplicit := flagProvided(args, "map") && strings.TrimSpace(*mapName) != ""
 	gpuSkyFlagSet := flagProvided(args, "gpu-sky")
 	skyUpscaleFlagSet := flagProvided(args, "sky-upscale")
 	wadFlagSet := flagProvided(args, "wad")
@@ -462,6 +467,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		buildCfg := renderBuildConfig{
 			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
+			mapExplicit:                mapExplicit,
 			width:                      *width,
 			height:                     *height,
 			zoom:                       *zoom,
@@ -809,7 +815,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			NoFPS:                      *noFPS,
 			DisableAspectCorrection:    *noAspectCorrection,
 			AllCheats:                  *allCheats,
-			StartInMapMode:             *startInMap,
+			StartInMapMode:             explicitMapStartInMap(*startInMap, mapExplicit),
 			FlatBank:                   flatBank,
 			FlatBankIndexed:            flatBankIndexed,
 			WallTexBank:                wallTexBank,
@@ -1173,6 +1179,7 @@ func detectAvailableIWADChoices(dir string) []iwadChoice {
 
 type renderBuildConfig struct {
 	selectedMap                string
+	mapExplicit                bool
 	width                      int
 	height                     int
 	zoom                       float64
@@ -1410,7 +1417,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		NoFPS:                      cfg.noFPS,
 		DisableAspectCorrection:    cfg.noAspectCorrection,
 		AllCheats:                  cfg.allCheats,
-		StartInMapMode:             cfg.startInMap,
+		StartInMapMode:             explicitMapStartInMap(cfg.startInMap, cfg.mapExplicit),
 		FlatBank:                   flatBank,
 		FlatBankIndexed:            flatBankIndexed,
 		WallTexBank:                wallTexBank,

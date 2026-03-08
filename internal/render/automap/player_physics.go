@@ -512,12 +512,12 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
 			return false
 		}
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			return false
+		}
 		tx, ty := g.thingPosFixed(i, th)
 		if isMonster(th.Type) {
 			if i < 0 || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
-				return false
-			}
-			if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 				return false
 			}
 			if actorsOverlapXY(x, y, radius, tx, ty, monsterRadius(th.Type)) {

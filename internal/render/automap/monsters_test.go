@@ -645,6 +645,27 @@ func TestDoomSolidMapThingTypes_PlayerBlocked(t *testing.T) {
 	}
 }
 
+func TestTryMove_PlayerNotBlockedByDeadBarrel(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: barrelThingType, X: 32, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{0},
+		thingDead:      []bool{true},
+		p:              player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	if !g.tryMove(16*fracUnit, 0) {
+		t.Fatal("player move should pass through dead barrel")
+	}
+}
+
 func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -1098,19 +1119,19 @@ func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
 				{Type: 3001, X: 72, Y: 0},
 			},
 		},
-		thingCollected: []bool{false},
-		thingHP:        []int{60},
-		thingAggro:     []bool{true},
-		thingMoveDir:   []monsterMoveDir{monsterDirNoDir},
-		thingMoveCount: []int{0},
-		thingJustAtk:   []bool{false},
-		thingAttackTics: []int{0},
+		thingCollected:      []bool{false},
+		thingHP:             []int{60},
+		thingAggro:          []bool{true},
+		thingMoveDir:        []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount:      []int{0},
+		thingJustAtk:        []bool{false},
+		thingAttackTics:     []int{0},
 		thingAttackFireTics: []int{-1},
-		thingState: []monsterThinkState{monsterStateSee},
-		thingStateTics: []int{0},
-		projectiles:    make([]projectile, 0, 2),
-		stats:          playerStats{Health: 100},
-		p:              player{x: 0, y: 0, z: 0},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		projectiles:         make([]projectile, 0, 2),
+		stats:               playerStats{Health: 100},
+		p:                   player{x: 0, y: 0, z: 0},
 	}
 
 	if !g.startMonsterAttackState(0, 3001, true) {

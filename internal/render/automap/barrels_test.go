@@ -97,6 +97,43 @@ func TestBarrelExplosionChainsToNearbyBarrel(t *testing.T) {
 	}
 }
 
+func TestBarrelExplosionLongChain(t *testing.T) {
+	doomrand.Clear()
+	things := make([]mapdata.Thing, 6)
+	hp := make([]int, 6)
+	dead := make([]bool, 6)
+	state := make([]monsterThinkState, 6)
+	stateTics := make([]int, 6)
+	phase := make([]int, 6)
+	deathTics := make([]int, 6)
+	for i := range things {
+		things[i] = mapdata.Thing{Type: barrelThingType, X: int16(i * 32), Y: 0}
+		hp[i] = 20
+		state[i] = monsterStateSpawn
+		stateTics[i] = 6
+	}
+	g := &game{
+		m:               &mapdata.Map{Things: things},
+		thingCollected:  make([]bool, len(things)),
+		thingHP:         hp,
+		thingDead:       dead,
+		thingState:      state,
+		thingStateTics:  stateTics,
+		thingStatePhase: phase,
+		thingDeathTics:  deathTics,
+	}
+
+	g.damageBarrel(0, 20)
+	for tic := 0; tic < 200; tic++ {
+		g.tickMonsters()
+	}
+	for i := range things {
+		if !g.thingDead[i] {
+			t.Fatalf("barrel %d alive hp=%d", i, g.thingHP[i])
+		}
+	}
+}
+
 func TestProjectileHitsBarrel(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

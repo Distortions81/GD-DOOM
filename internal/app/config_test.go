@@ -48,6 +48,18 @@ func TestRunParseCLIOverridesConfig(t *testing.T) {
 	}
 }
 
+func TestExplicitMapStartInMap(t *testing.T) {
+	if !explicitMapStartInMap(false, true) {
+		t.Fatal("explicit CLI map should force start-in-map")
+	}
+	if !explicitMapStartInMap(true, false) {
+		t.Fatal("explicit start-in-map flag should still start in map")
+	}
+	if explicitMapStartInMap(false, false) {
+		t.Fatal("neither flag should not force start-in-map")
+	}
+}
+
 func TestRunParseUsesPositionalWADArgument(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer
