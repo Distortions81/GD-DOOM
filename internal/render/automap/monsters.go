@@ -120,6 +120,9 @@ func (g *game) tickMonsters() {
 		}
 
 		if !g.thingAggro[i] {
+			if !g.monsterLookReady(i, th.Type) {
+				continue
+			}
 			if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
 				g.thingAggro[i] = true
 				if i >= 0 && i < len(g.thingWakeTics) {
@@ -170,6 +173,22 @@ func (g *game) tickMonsters() {
 		}
 		g.emitMonsterActiveSound(i, th.Type, tx, ty)
 	}
+}
+
+func (g *game) monsterLookReady(i int, typ int16) bool {
+	if i < 0 || i >= len(g.thingThinkWait) {
+		return true
+	}
+	if g.thingThinkWait[i] > 0 {
+		g.thingThinkWait[i]--
+		return false
+	}
+	wait := monsterLookInterval(typ)
+	if wait < 1 {
+		wait = 1
+	}
+	g.thingThinkWait[i] = wait - 1
+	return true
 }
 
 func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
@@ -506,6 +525,13 @@ func (g *game) monsterChaseReady(i int, typ int16) bool {
 	}
 	g.thingThinkWait[i] = wait - 1
 	return true
+}
+
+func monsterLookInterval(typ int16) int {
+	if info, ok := demoTraceThingInfoForType(typ); ok && info.spawnTics > 0 {
+		return info.spawnTics
+	}
+	return 1
 }
 
 func monsterThinkInterval(typ int16, fast bool) int {
@@ -1072,45 +1098,71 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) || g.isDead {
 		return false
 	}
-	if !g.monsterHasLOSPlayer(g.m.Things[i].Type, tx, ty) {
-		return false
-	}
 	look := 0
 	if i >= 0 && i < len(g.thingLastLook) {
 		look = g.thingLastLook[i] & 3
 	}
-	// Single-player only for now, but preserve Doom's lastlook cycling state.
-	if i >= 0 && i < len(g.thingLastLook) {
-		g.thingLastLook[i] = (look + 1) & 3
-	}
-	if allAround {
-		return true
-	}
-	angleToPlayer := math.Atan2(float64(g.p.y-ty), float64(g.p.x-tx)) * (180.0 / math.Pi)
-	if angleToPlayer < 0 {
-		angleToPlayer += 360
-	}
-	actorAngle := float64(g.m.Things[i].Angle)
-	for actorAngle < 0 {
-		actorAngle += 360
-	}
-	for actorAngle >= 360 {
-		actorAngle -= 360
-	}
-	delta := angleToPlayer - actorAngle
-	for delta < 0 {
-		delta += 360
-	}
-	for delta >= 360 {
-		delta -= 360
-	}
-	if delta > 90 && delta < 270 {
-		dist := hypotFixed(g.p.x-tx, g.p.y-ty)
-		if dist > monsterMeleeRange {
-			return false
+
+	stop := (look - 1) & 3
+	count := 0
+	for {
+		if g.monsterPlayerSlotActive(look) {
+			count++
+			if count > 2 || look == stop {
+				if i >= 0 && i < len(g.thingLastLook) {
+					g.thingLastLook[i] = look
+				}
+				return false
+			}
+			if !g.monsterHasLOSPlayer(g.m.Things[i].Type, tx, ty) {
+				look = (look + 1) & 3
+				continue
+			}
+			if !allAround {
+				angleToPlayer := math.Atan2(float64(g.p.y-ty), float64(g.p.x-tx)) * (180.0 / math.Pi)
+				if angleToPlayer < 0 {
+					angleToPlayer += 360
+				}
+				actorAngle := float64(g.m.Things[i].Angle)
+				for actorAngle < 0 {
+					actorAngle += 360
+				}
+				for actorAngle >= 360 {
+					actorAngle -= 360
+				}
+				delta := angleToPlayer - actorAngle
+				for delta < 0 {
+					delta += 360
+				}
+				for delta >= 360 {
+					delta -= 360
+				}
+				if delta > 90 && delta < 270 {
+					dist := hypotFixed(g.p.x-tx, g.p.y-ty)
+					if dist > monsterMeleeRange {
+						look = (look + 1) & 3
+						continue
+					}
+				}
+			}
+			if i >= 0 && i < len(g.thingLastLook) {
+				g.thingLastLook[i] = look
+			}
+			return true
 		}
+		look = (look + 1) & 3
 	}
-	return true
+}
+
+func (g *game) monsterPlayerSlotActive(slot int) bool {
+	if g == nil {
+		return false
+	}
+	activeSlot := g.localSlot - 1
+	if activeSlot < 0 || activeSlot >= 4 {
+		activeSlot = 0
+	}
+	return slot >= 0 && slot < 4 && slot == activeSlot
 }
 
 func (g *game) propagateNoiseAlertFrom(x, y int64) {

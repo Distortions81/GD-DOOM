@@ -266,6 +266,12 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			ceilZ = g.sectorCeil[sec]
 		}
 		radius, height := demoTraceThingBounds(th.Type)
+		target := 0
+		targetType := 0
+		if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
+			target = 1
+			targetType = 0
+		}
 		out = append(out, demoTraceMobj{
 			Type:         demoTraceThingType(th.Type),
 			X:            x,
@@ -291,8 +297,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Subsector:    boolToInt(sec >= 0),
 			Sector:       sec,
 			Player:       0,
-			Target:       0,
-			TargetType:   0,
+			Target:       target,
+			TargetType:   targetType,
 			Tracer:       0,
 			Kind:         demoTraceThingKind(th.Type),
 			Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),

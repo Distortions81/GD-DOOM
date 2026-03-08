@@ -32,14 +32,37 @@ const (
 
 func (g *game) initThingCombatState() {
 	for i, th := range g.m.Things {
-		if playerSlotFromThingType(th.Type) != 0 {
+		if slot := playerSlotFromThingType(th.Type); slot != 0 {
+			// Doom spawns the active player inline during map thing iteration,
+			// and P_SpawnMobj consumes one P_Random() for its lastlook field.
+			if slot == g.localSlot {
+				_ = doomrand.PRandom() & 3
+			}
 			continue
 		}
-		if i >= 0 && i < len(g.thingLastLook) {
-			g.thingLastLook[i] = doomrand.PRandom() & 3
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
 		}
-		if i >= 0 && i < len(g.thingReactionTics) {
-			g.thingReactionTics[i] = demoTraceSpawnReactionTime(th.Type)
+		if info, ok := demoTraceThingInfoForType(th.Type); ok {
+			if i >= 0 && i < len(g.thingReactionTics) {
+				g.thingReactionTics[i] = info.reaction
+			}
+			if i >= 0 && i < len(g.thingLastLook) {
+				g.thingLastLook[i] = doomrand.PRandom() & 3
+			}
+			if info.spawnTics > 0 {
+				spawnTics := 1 + (doomrand.PRandom() % info.spawnTics)
+				if i >= 0 && i < len(g.thingThinkWait) {
+					g.thingThinkWait[i] = max(spawnTics-1, 0)
+				}
+			}
+		} else {
+			if i >= 0 && i < len(g.thingLastLook) {
+				g.thingLastLook[i] = doomrand.PRandom() & 3
+			}
+			if i >= 0 && i < len(g.thingReactionTics) {
+				g.thingReactionTics[i] = demoTraceSpawnReactionTime(th.Type)
+			}
 		}
 		if !isMonster(th.Type) {
 			continue

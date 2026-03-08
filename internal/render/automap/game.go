@@ -1008,9 +1008,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 			g.secretsTotal++
 		}
 	}
-	g.initSectorLightEffects()
-	g.initThingCombatState()
 	g.applyThingSpawnFiltering()
+	g.initThingCombatState()
+	g.initSectorLightEffects()
 	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)
 	g.invulnerable = opts.Invulnerable
 	if !g.opts.StartInMapMode {
