@@ -15,6 +15,6 @@ deutex_doom1_images/
 oversat/Oversat.wad
 doom-source/linuxdoom-1.10/*.o
 doom-source/linuxdoom-1.10/linux/*.o
-
+linuxdoom-1.10/linux/linuxxdoom
 doom-source/linuxdoom-1.10/linux/linuxxdoom
-tmp/linuxdoom-demo1-trace.jsonl
+tmp/*
