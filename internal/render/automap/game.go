@@ -423,6 +423,9 @@ type game struct {
 	thingDropped         []bool
 	thingX               []int64
 	thingY               []int64
+	thingZState          []int64
+	thingFloorState      []int64
+	thingCeilState       []int64
 	thingBlockCell       []int
 	thingBlockNext       []int
 	thingBlockLinks      []int
@@ -989,6 +992,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingDropped = make([]bool, len(m.Things))
 	g.thingX = make([]int64, len(m.Things))
 	g.thingY = make([]int64, len(m.Things))
+	g.thingZState = make([]int64, len(m.Things))
+	g.thingFloorState = make([]int64, len(m.Things))
+	g.thingCeilState = make([]int64, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
 	g.thingBlockNext = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
@@ -1086,6 +1092,14 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.thingX[i] = int64(th.X) << fracBits
 		g.thingY[i] = int64(th.Y) << fracBits
 		g.thingSectorCache[i] = g.sectorAt(g.thingX[i], g.thingY[i])
+		sec := g.thingSectorCache[i]
+		if sec >= 0 && sec < len(g.sectorFloor) {
+			g.thingFloorState[i] = g.sectorFloor[sec]
+			g.thingZState[i] = g.thingFloorState[i]
+		}
+		if sec >= 0 && sec < len(g.sectorCeil) {
+			g.thingCeilState[i] = g.sectorCeil[sec]
+		}
 	}
 	if g.bmapWidth > 0 && g.bmapHeight > 0 {
 		g.thingBlockLinks = make([]int, g.bmapWidth*g.bmapHeight)
@@ -17691,6 +17705,47 @@ func (g *game) thingPosFixed(i int, th mapdata.Thing) (int64, int64) {
 		return g.thingX[i], g.thingY[i]
 	}
 	return int64(th.X) << fracBits, int64(th.Y) << fracBits
+}
+
+func (g *game) thingSupportState(i int, th mapdata.Thing) (z, floorZ, ceilZ int64) {
+	if i >= 0 && i < len(g.thingFloorState) && i < len(g.thingCeilState) {
+		floorZ = g.thingFloorState[i]
+		ceilZ = g.thingCeilState[i]
+		if i < len(g.thingZState) {
+			z = g.thingZState[i]
+		} else {
+			z = floorZ
+		}
+		if floorZ != 0 || ceilZ != 0 || z != 0 {
+			return z, floorZ, ceilZ
+		}
+	}
+	x, y := g.thingPosFixed(i, th)
+	sec := g.thingSectorCached(i, th)
+	floorZ = g.thingFloorZ(x, y)
+	z = floorZ
+	if sec >= 0 && sec < len(g.sectorCeil) {
+		ceilZ = g.sectorCeil[sec]
+	}
+	return z, floorZ, ceilZ
+}
+
+func (g *game) setThingSupportState(i int, z, floorZ, ceilZ int64) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i >= len(g.thingZState) {
+		g.thingZState = append(g.thingZState, make([]int64, i-len(g.thingZState)+1)...)
+	}
+	if i >= len(g.thingFloorState) {
+		g.thingFloorState = append(g.thingFloorState, make([]int64, i-len(g.thingFloorState)+1)...)
+	}
+	if i >= len(g.thingCeilState) {
+		g.thingCeilState = append(g.thingCeilState, make([]int64, i-len(g.thingCeilState)+1)...)
+	}
+	g.thingZState[i] = z
+	g.thingFloorState[i] = floorZ
+	g.thingCeilState[i] = ceilZ
 }
 
 func (g *game) setThingPosFixed(i int, x, y int64) {

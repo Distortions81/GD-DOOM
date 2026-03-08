@@ -858,12 +858,14 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	nx := x + dx
 	ny := y + dy
 	g.debugMonsterMove(i, fmt.Sprintf("move dir=%d from=(%d,%d) to=(%d,%d)", dir, x, y, nx, ny))
-	if !g.tryMoveProbeMonster(i, typ, nx, ny) {
+	tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
+	if !ok {
 		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
 		return g.monsterUseBlockingSpecialLines(i, nx, ny)
 	}
 	prevX, prevY := x, y
 	g.setThingPosFixed(i, nx, ny)
+	g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, false)
 	g.debugMonsterMove(i, fmt.Sprintf("move success dir=%d", dir))
 	return true
@@ -1208,18 +1210,7 @@ func (g *game) monsterHasLOSPlayer(typ int16, x, y int64) bool {
 }
 
 func (g *game) monsterSupportHeights(i int, th mapdata.Thing) (int64, int64, int64) {
-	x, y := g.thingPosFixed(i, th)
-	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(th.Type), true, i, true)
-	if ok {
-		return tmfloor, tmceil, tmdrop
-	}
-	floor := g.thingFloorZCached(i, th)
-	ceil := floor
-	sec := g.thingSectorCached(i, th)
-	if sec >= 0 && sec < len(g.sectorCeil) {
-		ceil = g.sectorCeil[sec]
-	}
-	return floor, ceil, floor
+	return g.thingSupportState(i, th)
 }
 
 func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
@@ -1396,16 +1387,19 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	dy := int64(math.Sin(ang) * float64(step))
 	nx := x + dx
 	ny := y + dy
-	if g.tryMoveProbeMonster(i, typ, nx, ny) {
+	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
 		g.setThingPosFixed(i, nx, ny)
+		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		return
 	}
-	if g.tryMoveProbeMonster(i, typ, x+dx, y) {
+	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
 		g.setThingPosFixed(i, x+dx, y)
+		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		return
 	}
-	if g.tryMoveProbeMonster(i, typ, x, y+dy) {
+	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
 		g.setThingPosFixed(i, x, y+dy)
+		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	}
 }
 
@@ -1456,30 +1450,30 @@ func (g *game) tryMoveProbe(x, y int64) bool {
 	return ok
 }
 
-func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) bool {
+func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, bool) {
 	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
-		return false
+		return 0, 0, false
 	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(typ), true, i, true)
 	g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) ok=%v floor=%d ceil=%d drop=%d", x, y, ok, tmfloor, tmceil, tmdrop))
 	if !ok {
-		return false
+		return 0, 0, false
 	}
 	height := monsterHeight(typ)
-	z := g.thingFloorZCached(i, g.m.Things[i])
+	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	if tmceil-tmfloor < height {
-		return false
+		return 0, 0, false
 	}
 	if tmceil-z < height {
-		return false
+		return 0, 0, false
 	}
 	if tmfloor-z > stepHeight {
-		return false
+		return 0, 0, false
 	}
 	if !monsterCanDropOff(typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
-		return false
+		return 0, 0, false
 	}
-	return true
+	return tmfloor, tmceil, true
 }
 
 func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {

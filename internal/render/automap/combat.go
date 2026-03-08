@@ -697,6 +697,9 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingDropped = append(g.thingDropped, dropped)
 	g.thingX = append(g.thingX, x)
 	g.thingY = append(g.thingY, y)
+	g.thingZState = append(g.thingZState, 0)
+	g.thingFloorState = append(g.thingFloorState, 0)
+	g.thingCeilState = append(g.thingCeilState, 0)
 	g.thingBlockCell = append(g.thingBlockCell, -1)
 	g.thingBlockNext = append(g.thingBlockNext, -1)
 	g.thingHP = append(g.thingHP, 0)
@@ -721,6 +724,13 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	sec := -1
 	sec = g.sectorAt(x, y)
 	g.thingSectorCache = append(g.thingSectorCache, sec)
+	if sec >= 0 && sec < len(g.sectorFloor) {
+		g.thingFloorState[len(g.m.Things)-1] = g.sectorFloor[sec]
+		g.thingZState[len(g.m.Things)-1] = g.thingFloorState[len(g.m.Things)-1]
+	}
+	if sec >= 0 && sec < len(g.sectorCeil) {
+		g.thingCeilState[len(g.m.Things)-1] = g.sectorCeil[sec]
+	}
 	g.updateThingBlockmapIndex(len(g.m.Things) - 1)
 	return len(g.m.Things) - 1
 }
