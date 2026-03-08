@@ -104,6 +104,9 @@ func (g *game) tickMonsters() {
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 			continue
 		}
+		if !g.monsterTargetAlive() {
+			g.clearMonsterTargetState(i)
+		}
 		tx, ty := g.thingPosFixed(i, th)
 		dx := px - tx
 		dy := py - ty
@@ -226,6 +229,25 @@ func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
 		return monsterStateSee
 	}
 	return monsterStateSpawn
+}
+
+func (g *game) monsterTargetAlive() bool {
+	return g != nil && !g.isDead && g.stats.Health > 0
+}
+
+func (g *game) clearMonsterTargetState(i int) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i < len(g.thingAggro) {
+		g.thingAggro[i] = false
+	}
+	if i < len(g.thingJustAtk) {
+		g.thingJustAtk[i] = false
+	}
+	if i < len(g.thingJustHit) {
+		g.thingJustHit[i] = false
+	}
 }
 
 func (g *game) monsterIdleOrChaseTics(i int, typ int16) int {
@@ -855,6 +877,9 @@ func monsterReactionTimeTics(typ int16) int {
 }
 
 func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
+	if !g.monsterTargetAlive() {
+		return false
+	}
 	if !monsterHasMeleeAttack(typ) {
 		return false
 	}
@@ -865,6 +890,9 @@ func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
 }
 
 func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py int64) bool {
+	if !g.monsterTargetAlive() {
+		return false
+	}
 	if isMeleeOnlyMonster(typ) {
 		return false
 	}
@@ -1110,6 +1138,9 @@ func (g *game) monsterTurnTowardMoveDir(i int) {
 }
 
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
+	if !g.monsterTargetAlive() {
+		return false
+	}
 	meleeOnly := isMeleeOnlyMonster(typ)
 	var sx, sy int64
 	if i >= 0 && g.m != nil && i < len(g.m.Things) {

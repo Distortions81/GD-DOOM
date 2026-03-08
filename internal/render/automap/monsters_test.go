@@ -530,6 +530,70 @@ func TestTickMonstersNoActionWhenPlayerDead(t *testing.T) {
 	if g.stats.Health != 100 {
 		t.Fatalf("dead player health changed to %d", g.stats.Health)
 	}
+	if g.thingAggro[0] {
+		t.Fatal("monster aggro should clear when player is dead")
+	}
+}
+
+func TestMonsterAttackReturnsFalseWhenPlayerDead(t *testing.T) {
+	g := &game{
+		stats:  playerStats{Health: 100},
+		p:      player{x: 0, y: 0},
+		isDead: true,
+	}
+	if g.monsterAttack(0, 3004, 64*fracUnit) {
+		t.Fatal("monster attack should fail when player is dead")
+	}
+}
+
+func TestMonsterCheckMissileRangeReturnsFalseWhenPlayerDead(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0},
+		isDead:            true,
+		thingJustHit:      []bool{true},
+		thingReactionTics: []int{0},
+	}
+	if g.monsterCheckMissileRange(0, 3004, 128*fracUnit, 128*fracUnit, 0, 0, 0) {
+		t.Fatal("missile range should fail when player is dead")
+	}
+	if !g.thingJustHit[0] {
+		t.Fatal("dead-target early return should not consume just-hit state")
+	}
+}
+
+func TestMonsterCanMeleeReturnsFalseWhenPlayerDead(t *testing.T) {
+	g := &game{
+		stats:  playerStats{Health: 100},
+		p:      player{x: 0, y: 0},
+		isDead: true,
+	}
+	if g.monsterCanMelee(3002, 32*fracUnit, 32*fracUnit, 0, 0, 0) {
+		t.Fatal("melee check should fail when player is dead")
+	}
+}
+
+func TestTickMonstersClearsStaleTargetFlagsWhenPlayerDead(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 32, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingAggro:     []bool{true},
+		thingJustAtk:   []bool{true},
+		thingJustHit:   []bool{true},
+		stats:          playerStats{Health: 100},
+		p:              player{x: 0, y: 0},
+		isDead:         true,
+	}
+	g.tickMonsters()
+	if g.thingAggro[0] || g.thingJustAtk[0] || g.thingJustHit[0] {
+		t.Fatalf("stale target flags not cleared: aggro=%v justAtk=%v justHit=%v", g.thingAggro[0], g.thingJustAtk[0], g.thingJustHit[0])
+	}
 }
 
 func TestMoveMonsterTowardDoesNotMovePlayer(t *testing.T) {
