@@ -2098,6 +2098,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) aut
 		AttackSkull:         firstSample(sample("DSSKLATK"), sample("DSFIRSHT")),
 		ImpactFire:          firstSample(sample("DSFIRXPL"), sample("DSBAREXP")),
 		ImpactRocket:        firstSample(firstSample(sample("DSRXPLOD"), sample("DSRXPLO")), sample("DSBAREXP")),
+		BarrelExplode:       firstSample(sample("DSBAREXP"), sample("DSRXPLOD")),
 		SeePosit1:           sample("DSPOSIT1"),
 		SeePosit2:           sample("DSPOSIT2"),
 		SeePosit3:           sample("DSPOSIT3"),

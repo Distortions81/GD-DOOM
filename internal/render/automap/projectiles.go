@@ -177,7 +177,17 @@ func (g *game) tickProjectiles() {
 		nx := ox + p.vx
 		ny := oy + p.vy
 		nz := oz + p.vz
-		if blocked, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz); blocked {
+		thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
+		blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
+		if hitThing && (!blocked || thingHit.frac <= blockFrac) {
+			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z)
+			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
+			if dmg := monsterRangedDamage(p.sourceType); dmg > 0 {
+				g.damageShootableThing(thingHit.idx, dmg)
+			}
+			continue
+		}
+		if blocked {
 			g.spawnProjectileImpact(p.kind, hx, hy, hz)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
 			continue
@@ -240,16 +250,16 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64) {
 	})
 }
 
-func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, int64, int64, int64) {
+func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64) {
 	if g.m == nil {
-		return false, nx, ny, nz
+		return false, 1, nx, ny, nz
 	}
 	sec := g.sectorAt(nx, ny)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
-		return true, nx, ny, nz
+		return true, 1, nx, ny, nz
 	}
 	if nz < g.sectorFloor[sec] || nz+p.height > g.sectorCeil[sec] {
-		return true, nx, ny, nz
+		return true, 1, nx, ny, nz
 	}
 	intercepts := make([]intercept, 0, 8)
 	for i, ld := range g.lines {
@@ -267,17 +277,71 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 		hy := oy + int64(float64(ny-oy)*it.frac)
 		hz := oz + int64(float64(nz-oz)*it.frac)
 		if ld.sideNum1 < 0 || (ld.flags&mlBlocking) != 0 {
-			return true, hx, hy, hz
+			return true, it.frac, hx, hy, hz
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
 		if openrange <= 0 {
-			return true, hx, hy, hz
+			return true, it.frac, hx, hy, hz
 		}
 		if hz < openbottom || hz+p.height > opentop {
-			return true, hx, hy, hz
+			return true, it.frac, hx, hy, hz
 		}
 	}
-	return false, nx, ny, nz
+	return false, 1, nx, ny, nz
+}
+
+type projectileThingHit struct {
+	idx  int
+	frac float64
+	x    int64
+	y    int64
+	z    int64
+}
+
+func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, nx, ny, nz int64) (projectileThingHit, bool) {
+	if g == nil || g.m == nil {
+		return projectileThingHit{}, false
+	}
+	trace := divline{x: ox, y: oy, dx: nx - ox, dy: ny - oy}
+	bestFrac := int64(fracUnit + 1)
+	best := projectileThingHit{}
+	for i, th := range g.m.Things {
+		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+			continue
+		}
+		if !thingTypeIsShootable(th.Type) || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
+			continue
+		}
+		tx, ty := g.thingPosFixed(i, th)
+		radius := thingTypeRadius(th.Type) + p.radius
+		frac, ok := lineAttackThingFrac(trace, tx, ty, radius)
+		if !ok || frac <= 0 || frac > fracUnit {
+			if !actorsOverlapXY(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+				continue
+			}
+			frac = fracUnit
+		}
+		if frac >= bestFrac {
+			continue
+		}
+		hx := ox + fixedMul(nx-ox, frac)
+		hy := oy + fixedMul(ny-oy, frac)
+		hz := oz + fixedMul(nz-oz, frac)
+		tz, _, _ := g.thingSupportState(i, th)
+		height := g.thingCurrentHeight(i, th)
+		if hz > tz+height || hz+p.height < tz {
+			continue
+		}
+		bestFrac = frac
+		best = projectileThingHit{
+			idx:  i,
+			frac: float64(frac) / float64(fracUnit),
+			x:    hx,
+			y:    hy,
+			z:    hz,
+		}
+	}
+	return best, bestFrac <= fracUnit
 }
 
 func (g *game) projectileHitsPlayer(p projectile) bool {

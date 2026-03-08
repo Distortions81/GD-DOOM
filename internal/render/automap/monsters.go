@@ -97,6 +97,10 @@ func (g *game) tickMonsters() {
 		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 			g.thingDeathTics[i]--
 		}
+		if isBarrelThingType(th.Type) {
+			g.tickBarrel(i, th)
+			continue
+		}
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 			continue
 		}
@@ -1186,54 +1190,17 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 		return
 	}
 	baseAngle := g.thingWorldAngle(i, g.m.Things[i])
-	slope, ok := g.monsterAimPlayerSlope(i, typ, baseAngle, monsterAttackRange)
+	actor := g.monsterLineAttackActor(i, typ)
+	slope, ok := g.aimLineAttack(actor, baseAngle, monsterAttackRange)
 	if !ok {
 		slope = 0
 	}
-	shootZ := g.monsterShootZ(i, typ)
 	for pellet := 0; pellet < pellets; pellet++ {
 		angle := addDoomAngleSpread(baseAngle, doomGunSpreadShift)
 		damage := 3 * (1 + doomrand.PRandom()%5)
-		if dist, hit := g.monsterLineAttackPlayerDist(typ, sx, sy, shootZ, angle, monsterAttackRange, slope); hit {
-			g.spawnHitscanBloodFromSource(sx, sy, shootZ, angle, slope, dist, damage)
-			g.damagePlayerFrom(damage, "Monster shot you", sx, sy, true)
-			continue
-		}
-		if wallDist, _, wallHit := g.hitscanWallImpactDistanceFrom(sx, sy, shootZ, angle, monsterAttackRange, slope); wallHit {
-			g.spawnHitscanPuffFromSource(sx, sy, shootZ, angle, slope, wallDist)
-		}
+		outcome := g.lineAttackTrace(actor, angle, monsterAttackRange, slope, true)
+		g.applyLineAttackOutcome(actor, outcome, damage)
 	}
-}
-
-func (g *game) monsterLineAttackPlayerDist(typ int16, sx, sy int64, shootZ float64, angle uint32, rng int64, slope float64) (float64, bool) {
-	if !g.monsterHasLOSPlayer(typ, sx, sy) {
-		return 0, false
-	}
-	ang := angleToRadians(angle)
-	dirX := math.Cos(ang)
-	dirY := math.Sin(ang)
-	dx := float64(g.p.x - sx)
-	dy := float64(g.p.y - sy)
-	dist := dx*dirX + dy*dirY
-	if dist <= 0 || dist > float64(rng) {
-		return 0, false
-	}
-	perp := math.Abs(dx*dirY - dy*dirX)
-	if perp > float64(playerRadius) {
-		return 0, false
-	}
-	topSlope := (float64(g.p.z+playerHeight) - shootZ) / dist
-	if topSlope < slope {
-		return 0, false
-	}
-	bottomSlope := (float64(g.p.z) - shootZ) / dist
-	if bottomSlope > slope {
-		return 0, false
-	}
-	if wallDist, _, wallHit := g.hitscanWallImpactDistanceFrom(sx, sy, shootZ, angle, rng, slope); wallHit && wallDist <= dist {
-		return 0, false
-	}
-	return dist, true
 }
 
 func monsterMoveStep(typ int16, fast bool) int64 {

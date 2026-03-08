@@ -141,6 +141,7 @@ type SoundBank struct {
 	AttackSkull         PCMSample
 	ImpactFire          PCMSample
 	ImpactRocket        PCMSample
+	BarrelExplode       PCMSample
 	SeePosit1           PCMSample
 	SeePosit2           PCMSample
 	SeePosit3           PCMSample

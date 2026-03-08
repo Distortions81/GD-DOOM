@@ -110,7 +110,7 @@ func TestProjectilePassesThroughTwoSidedWindow(t *testing.T) {
 		vz:     0,
 		height: 8 * fracUnit,
 	}
-	blocked, _, _, _ := g.projectileBlockedAt(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	blocked, _, _, _, _ := g.projectileBlockedAt(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
 	if blocked {
 		t.Fatal("projectile should pass through open two-sided line/window")
 	}

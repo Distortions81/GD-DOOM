@@ -1,7 +1,7 @@
 package automap
 
 import (
-	"math"
+	"sort"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -12,10 +12,58 @@ const (
 	shotgunRange       = 2048 * fracUnit
 	bulletTargetRadius = 20 * fracUnit
 	doomGunSpreadShift = 18
-	doomAimTopSlope    = 100.0 / 160.0
-	doomAimBottomSlope = -100.0 / 160.0
 	doomAimFallbackAng = uint32(1 << 26)
+	doomAimTopSlope    = (100 * fracUnit) / 160
+	doomAimBottomSlope = -((100 * fracUnit) / 160)
 )
+
+type lineAttackTargetMask uint8
+
+const (
+	lineAttackMaskPlayer lineAttackTargetMask = 1 << iota
+	lineAttackMaskShootables
+)
+
+type lineAttackTargetKind uint8
+
+const (
+	lineAttackTargetNone lineAttackTargetKind = iota
+	lineAttackTargetPlayer
+	lineAttackTargetThing
+)
+
+type lineAttackActor struct {
+	isPlayer   bool
+	thingIdx   int
+	x          int64
+	y          int64
+	shootZ     int64
+	targetMask lineAttackTargetMask
+}
+
+type lineAttackTarget struct {
+	kind lineAttackTargetKind
+	idx  int
+}
+
+type lineAttackIntercept struct {
+	frac   int64
+	order  int
+	isLine bool
+	line   int
+	target lineAttackTarget
+}
+
+type lineAttackOutcome struct {
+	target     lineAttackTarget
+	lineIdx    int
+	dist       int64
+	impactX    int64
+	impactY    int64
+	impactZ    int64
+	spawnPuff  bool
+	spawnBlood bool
+}
 
 type weaponID int
 
@@ -71,14 +119,18 @@ func (g *game) initThingCombatState() {
 				g.thingReactionTics[i] = demoTraceSpawnReactionTime(th.Type)
 			}
 		}
-		if !isMonster(th.Type) {
+		if !thingTypeIsShootable(th.Type) {
 			continue
 		}
-		g.thingHP[i] = monsterSpawnHealth(th.Type)
+		g.thingHP[i] = shootableThingSpawnHealth(th.Type)
 		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
 			g.thingState[i] = monsterStateSpawn
 			if g.thingStateTics[i] == 0 {
-				g.thingStateTics[i] = monsterSpawnStateTics(th.Type)
+				if isMonster(th.Type) {
+					g.thingStateTics[i] = monsterSpawnStateTics(th.Type)
+				} else if isBarrelThingType(th.Type) {
+					g.thingStateTics[i] = barrelSpawnStateTics[0]
+				}
 			}
 		}
 		if i >= 0 && i < len(g.thingStatePhase) {
@@ -316,157 +368,534 @@ func (g *game) fireChainsaw() bool {
 
 func (g *game) fireMeleeAtAngle(angle uint32, rng int64, damage int) bool {
 	slope := g.bulletSlopeForAim(angle, rng)
-	idx, ok := g.pickHitscanMonsterTargetAtAngleWithSlope(angle, rng, bulletTargetRadius, slope, true)
-	if !ok || damage <= 0 {
+	if damage <= 0 {
 		return false
 	}
-	g.damageMonster(idx, damage)
-	return true
+	outcome := g.lineAttackTrace(g.playerLineAttackActor(), angle, rng, slope, false)
+	return g.applyLineAttackOutcome(g.playerLineAttackActor(), outcome, damage)
 }
 
-func (g *game) fireGunShot(baseAngle uint32, rng int64, slope float64, accurate bool) bool {
+func (g *game) fireGunShot(baseAngle uint32, rng int64, slope int64, accurate bool) bool {
 	damage := doomGunShotDamage()
 	angle := baseAngle
 	if !accurate {
 		angle = addDoomAngleSpread(baseAngle, doomGunSpreadShift)
 	}
-	idx, dist, ok := g.pickHitscanMonsterTargetAtAngleWithSlopeDist(angle, rng, bulletTargetRadius, slope, true)
-	if !ok {
-		if wallDist, lineIdx, wallHit := g.hitscanWallImpactDistance(angle, rng, slope); wallHit {
-			if lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
-				info := mapdata.LookupLineSpecial(g.lineSpecial[lineIdx])
-				if g.activateShootLineSpecial(lineIdx, info) && !info.Repeat {
-					g.lineSpecial[lineIdx] = 0
-				}
-			}
-			g.spawnHitscanPuffAtDistance(angle, slope, wallDist)
-		}
-		return false
-	}
-	g.spawnHitscanBloodAtDistance(angle, slope, dist, damage)
-	g.damageMonster(idx, damage)
-	return true
+	actor := g.playerLineAttackActor()
+	outcome := g.lineAttackTrace(actor, angle, rng, slope, true)
+	return g.applyLineAttackOutcome(actor, outcome, damage)
 }
 
-func (g *game) playerShootZ() float64 {
-	return float64(g.p.z + (playerHeight >> 1) + 8*fracUnit)
+func (g *game) playerShootZ() int64 {
+	return g.p.z + (playerHeight >> 1) + 8*fracUnit
 }
 
-func (g *game) monsterShootZ(i int, typ int16) float64 {
+func (g *game) monsterShootZ(i int, typ int16) int64 {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
-		return float64(8 * fracUnit)
+		return 8 * fracUnit
 	}
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
-	return float64(z + (monsterHeight(typ) >> 1) + 8*fracUnit)
+	return z + (monsterHeight(typ) >> 1) + 8*fracUnit
 }
 
-func (g *game) monsterAimPlayerSlope(i int, typ int16, angle uint32, rng int64) (float64, bool) {
-	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
-		return 0, false
+func (g *game) playerLineAttackActor() lineAttackActor {
+	return lineAttackActor{
+		isPlayer:   true,
+		thingIdx:   -1,
+		x:          g.p.x,
+		y:          g.p.y,
+		shootZ:     g.playerShootZ(),
+		targetMask: lineAttackMaskShootables,
 	}
+}
+
+func (g *game) monsterLineAttackActor(i int, typ int16) lineAttackActor {
 	sx, sy := g.thingPosFixed(i, g.m.Things[i])
-	shootZ := g.monsterShootZ(i, typ)
-	ang := angleToRadians(angle)
-	dirX := math.Cos(ang)
-	dirY := math.Sin(ang)
-	dx := float64(g.p.x - sx)
-	dy := float64(g.p.y - sy)
-	dist := dx*dirX + dy*dirY
-	if dist <= 0 || dist > float64(rng) {
-		return 0, false
+	return lineAttackActor{
+		isPlayer:   false,
+		thingIdx:   i,
+		x:          sx,
+		y:          sy,
+		shootZ:     g.monsterShootZ(i, typ),
+		targetMask: lineAttackMaskPlayer | lineAttackMaskShootables,
 	}
-	perp := math.Abs(dx*dirY - dy*dirX)
-	if perp > float64(playerRadius) {
-		return 0, false
-	}
-	topSlope := (float64(g.p.z+playerHeight) - shootZ) / dist
-	bottomSlope := (float64(g.p.z) - shootZ) / dist
-	if topSlope < doomAimBottomSlope || bottomSlope > doomAimTopSlope {
-		return 0, false
-	}
-	if topSlope > doomAimTopSlope {
-		topSlope = doomAimTopSlope
-	}
-	if bottomSlope < doomAimBottomSlope {
-		bottomSlope = doomAimBottomSlope
-	}
-	return (topSlope + bottomSlope) * 0.5, true
 }
 
-func (g *game) bulletSlopeForAim(baseAngle uint32, rng int64) float64 {
-	if slope, ok := g.aimSlopeAtAngle(baseAngle, rng); ok {
+func (g *game) lineAttackEnd(actor lineAttackActor, angle uint32, distance int64) (int64, int64) {
+	return actor.x + fixedMul(distance, doomFineCosine(angle)), actor.y + fixedMul(distance, doomFineSineAtAngle(angle))
+}
+
+func lineAttackThingFrac(trace divline, x, y, radius int64) (int64, bool) {
+	tracePositive := (trace.dx ^ trace.dy) > 0
+	x1, y1 := x-radius, y-radius
+	x2, y2 := x+radius, y+radius
+	if tracePositive {
+		y1 = y + radius
+		y2 = y - radius
+	}
+	if doomPointOnDivlineSide(x1, y1, trace) == doomPointOnDivlineSide(x2, y2, trace) {
+		return 0, false
+	}
+	dl := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
+	frac := interceptVector(trace, dl)
+	if frac < 0 {
+		return 0, false
+	}
+	return frac, true
+}
+
+func (g *game) lineAttackThingTargetable(i int, mask lineAttackTargetMask, excludeThing int) (lineAttackTarget, bool) {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) || i == excludeThing {
+		return lineAttackTarget{}, false
+	}
+	if i < len(g.thingCollected) && g.thingCollected[i] {
+		return lineAttackTarget{}, false
+	}
+	th := g.m.Things[i]
+	if mask&lineAttackMaskShootables != 0 && thingTypeIsShootable(th.Type) && i < len(g.thingHP) && g.thingHP[i] > 0 {
+		if i < len(g.thingDead) && g.thingDead[i] {
+			return lineAttackTarget{}, false
+		}
+		return lineAttackTarget{kind: lineAttackTargetThing, idx: i}, true
+	}
+	return lineAttackTarget{}, false
+}
+
+func (g *game) lineAttackTargetState(target lineAttackTarget) (x, y, z, height, radius int64, noBlood bool, ok bool) {
+	switch target.kind {
+	case lineAttackTargetPlayer:
+		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, false, !g.isDead
+	case lineAttackTargetThing:
+		if g == nil || g.m == nil || target.idx < 0 || target.idx >= len(g.m.Things) {
+			return 0, 0, 0, 0, 0, false, false
+		}
+		th := g.m.Things[target.idx]
+		x, y = g.thingPosFixed(target.idx, th)
+		z, _, _ = g.thingSupportState(target.idx, th)
+		height = g.thingCurrentHeight(target.idx, th)
+		radius = thingTypeRadius(th.Type)
+		noBlood = thingTypeNoBlood(th.Type)
+		return x, y, z, height, radius, noBlood, true
+	default:
+		return 0, 0, 0, 0, 0, false, false
+	}
+}
+
+func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, distance int64) []lineAttackIntercept {
+	if g == nil {
+		return nil
+	}
+	if len(g.lineValid) < len(g.lines) {
+		g.lineValid = append(g.lineValid, make([]int, len(g.lines)-len(g.lineValid))...)
+	}
+	x1 := actor.x
+	y1 := actor.y
+	x2, y2 := g.lineAttackEnd(actor, angle, distance)
+	trace := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
+	intercepts := make([]lineAttackIntercept, 0, 32)
+	order := 0
+
+	appendLine := func(physIdx int) {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return
+		}
+		if g.lineValid[physIdx] == g.validCount {
+			return
+		}
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		var s1, s2 int
+		if trace.dx > 16*fracUnit || trace.dy > 16*fracUnit || trace.dx < -16*fracUnit || trace.dy < -16*fracUnit {
+			s1 = doomPointOnDivlineSide(ld.x1, ld.y1, trace)
+			s2 = doomPointOnDivlineSide(ld.x2, ld.y2, trace)
+		} else {
+			s1 = g.pointOnLineSide(trace.x, trace.y, ld)
+			s2 = g.pointOnLineSide(trace.x+trace.dx, trace.y+trace.dy, ld)
+		}
+		if s1 == s2 {
+			return
+		}
+		frac := interceptVector(trace, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy})
+		if frac < 0 {
+			return
+		}
+		intercepts = append(intercepts, lineAttackIntercept{
+			frac:   frac,
+			order:  order,
+			isLine: true,
+			line:   physIdx,
+		})
+		order++
+	}
+
+	var thingSeen []bool
+	if g.m != nil {
+		thingSeen = make([]bool, len(g.m.Things))
+	}
+	appendThing := func(i int) {
+		if thingSeen == nil || i < 0 || i >= len(thingSeen) || thingSeen[i] {
+			return
+		}
+		thingSeen[i] = true
+		target, ok := g.lineAttackThingTargetable(i, actor.targetMask, actor.thingIdx)
+		if !ok {
+			return
+		}
+		tx, ty, _, _, radius, _, ok := g.lineAttackTargetState(target)
+		if !ok {
+			return
+		}
+		frac, hit := lineAttackThingFrac(trace, tx, ty, radius)
+		if !hit {
+			return
+		}
+		intercepts = append(intercepts, lineAttackIntercept{
+			frac:   frac,
+			order:  order,
+			isLine: false,
+			target: target,
+		})
+		order++
+	}
+
+	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		const (
+			mapBlockShift = fracBits + 7
+			mapBToFrac    = 7
+		)
+		sx := x1
+		sy := y1
+		ex := x2
+		ey := y2
+		if ((sx - g.bmapOriginX) & ((1 << mapBlockShift) - 1)) == 0 {
+			sx += fracUnit
+		}
+		if ((sy - g.bmapOriginY) & ((1 << mapBlockShift) - 1)) == 0 {
+			sy += fracUnit
+		}
+
+		rx1 := sx - g.bmapOriginX
+		ry1 := sy - g.bmapOriginY
+		rx2 := ex - g.bmapOriginX
+		ry2 := ey - g.bmapOriginY
+
+		xt1 := int(rx1 >> mapBlockShift)
+		yt1 := int(ry1 >> mapBlockShift)
+		xt2 := int(rx2 >> mapBlockShift)
+		yt2 := int(ry2 >> mapBlockShift)
+
+		mapxstep, mapystep := 0, 0
+		xstep, ystep := int64(256*fracUnit), int64(256*fracUnit)
+		partial := int64(fracUnit)
+
+		if xt2 > xt1 {
+			mapxstep = 1
+			partial = fracUnit - ((rx1 >> mapBToFrac) & (fracUnit - 1))
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		} else if xt2 < xt1 {
+			mapxstep = -1
+			partial = (rx1 >> mapBToFrac) & (fracUnit - 1)
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		}
+		yintercept := (ry1 >> mapBToFrac) + fixedMul(partial, ystep)
+
+		if yt2 > yt1 {
+			mapystep = 1
+			partial = fracUnit - ((ry1 >> mapBToFrac) & (fracUnit - 1))
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		} else if yt2 < yt1 {
+			mapystep = -1
+			partial = (ry1 >> mapBToFrac) & (fracUnit - 1)
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		}
+		xintercept := (rx1 >> mapBToFrac) + fixedMul(partial, xstep)
+
+		mapx, mapy := xt1, yt1
+		g.validCount++
+		for count := 0; count < 64; count++ {
+			_ = g.blockLinesIterator(mapx, mapy, func(lineIdx int) bool {
+				if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+					return true
+				}
+				appendLine(g.physForLine[lineIdx])
+				return true
+			})
+			if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
+				g.rebuildThingBlockmap()
+			}
+			if mapx >= 0 && mapy >= 0 && mapx < g.bmapWidth && mapy < g.bmapHeight {
+				cell := mapy*g.bmapWidth + mapx
+				for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
+					appendThing(i)
+				}
+			}
+			if mapx == xt2 && mapy == yt2 {
+				break
+			}
+			if (yintercept >> fracBits) == int64(mapy) {
+				yintercept += ystep
+				mapx += mapxstep
+			} else if (xintercept >> fracBits) == int64(mapx) {
+				xintercept += xstep
+				mapy += mapystep
+			}
+		}
+	} else {
+		g.validCount++
+		for physIdx := range g.lines {
+			appendLine(physIdx)
+		}
+		if g.m != nil {
+			for i := range g.m.Things {
+				appendThing(i)
+			}
+		}
+	}
+
+	if actor.targetMask&lineAttackMaskPlayer != 0 && !actor.isPlayer && !g.isDead {
+		if frac, ok := lineAttackThingFrac(trace, g.p.x, g.p.y, playerRadius); ok {
+			intercepts = append(intercepts, lineAttackIntercept{
+				frac:   frac,
+				order:  order,
+				isLine: false,
+				target: lineAttackTarget{kind: lineAttackTargetPlayer, idx: -1},
+			})
+		}
+	}
+
+	sort.SliceStable(intercepts, func(i, j int) bool {
+		if intercepts[i].frac == intercepts[j].frac {
+			return intercepts[i].order < intercepts[j].order
+		}
+		return intercepts[i].frac < intercepts[j].frac
+	})
+	return intercepts
+}
+
+func (g *game) aimLineAttack(actor lineAttackActor, angle uint32, distance int64) (int64, bool) {
+	intercepts := g.collectLineAttackIntercepts(actor, angle, distance)
+	topSlope := int64(doomAimTopSlope)
+	bottomSlope := int64(doomAimBottomSlope)
+	for _, in := range intercepts {
+		if in.frac > fracUnit {
+			break
+		}
+		if in.isLine {
+			ld := g.lines[in.line]
+			if (ld.flags & mlTwoSided) == 0 {
+				return 0, false
+			}
+			opentop, openbottom, _, _ := g.lineOpening(ld)
+			if openbottom >= opentop {
+				return 0, false
+			}
+			dist := fixedMul(distance, in.frac)
+			if dist <= 0 {
+				continue
+			}
+			front, back := g.physLineSectors(ld)
+			if front >= 0 && back >= 0 && g.sectorFloor[front] != g.sectorFloor[back] {
+				slope := fixedDiv(openbottom-actor.shootZ, dist)
+				if slope > bottomSlope {
+					bottomSlope = slope
+				}
+			}
+			if front >= 0 && back >= 0 && g.sectorCeil[front] != g.sectorCeil[back] {
+				slope := fixedDiv(opentop-actor.shootZ, dist)
+				if slope < topSlope {
+					topSlope = slope
+				}
+			}
+			if topSlope <= bottomSlope {
+				return 0, false
+			}
+			continue
+		}
+
+		_, _, z, height, _, _, ok := g.lineAttackTargetState(in.target)
+		if !ok {
+			continue
+		}
+		dist := fixedMul(distance, in.frac)
+		if dist <= 0 {
+			continue
+		}
+		thingTopSlope := fixedDiv(z+height-actor.shootZ, dist)
+		if thingTopSlope < bottomSlope {
+			continue
+		}
+		bottomSlopeThing := fixedDiv(z-actor.shootZ, dist)
+		if bottomSlopeThing > topSlope {
+			continue
+		}
+		thingTop := thingTopSlope
+		if thingTop > topSlope {
+			thingTop = topSlope
+		}
+		thingBottom := bottomSlopeThing
+		if thingBottom < bottomSlope {
+			thingBottom = bottomSlope
+		}
+		return (thingTop + thingBottom) / 2, true
+	}
+	return 0, false
+}
+
+func (g *game) shootSpecialLine(lineIdx int, shooterIsPlayer bool) {
+	if g == nil || lineIdx < 0 || lineIdx >= len(g.lineSpecial) {
+		return
+	}
+	info := mapdata.LookupLineSpecial(g.lineSpecial[lineIdx])
+	if !shooterIsPlayer && info.Special != 46 {
+		return
+	}
+	if g.activateShootLineSpecial(lineIdx, info) && !info.Repeat {
+		g.lineSpecial[lineIdx] = 0
+	}
+}
+
+func (g *game) lineAttackTrace(actor lineAttackActor, angle uint32, distance, slope int64, activateSpecials bool) lineAttackOutcome {
+	intercepts := g.collectLineAttackIntercepts(actor, angle, distance)
+	trace := divline{x: actor.x, y: actor.y}
+	trace.dx = fixedMul(distance, doomFineCosine(angle))
+	trace.dy = fixedMul(distance, doomFineSineAtAngle(angle))
+
+	for _, in := range intercepts {
+		if in.frac > fracUnit {
+			break
+		}
+		if in.isLine {
+			ld := g.lines[in.line]
+			if activateSpecials && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+				g.shootSpecialLine(ld.idx, actor.isPlayer)
+			}
+			hitLine := (ld.flags & mlTwoSided) == 0
+			if !hitLine {
+				opentop, openbottom, _, openrange := g.lineOpening(ld)
+				if openrange <= 0 {
+					hitLine = true
+				} else {
+					dist := fixedMul(distance, in.frac)
+					if dist <= 0 {
+						continue
+					}
+					front, back := g.physLineSectors(ld)
+					if front >= 0 && back >= 0 && g.sectorFloor[front] != g.sectorFloor[back] {
+						openSlope := fixedDiv(openbottom-actor.shootZ, dist)
+						if openSlope > slope {
+							hitLine = true
+						}
+					}
+					if !hitLine && front >= 0 && back >= 0 && g.sectorCeil[front] != g.sectorCeil[back] {
+						openSlope := fixedDiv(opentop-actor.shootZ, dist)
+						if openSlope < slope {
+							hitLine = true
+						}
+					}
+				}
+			}
+			if !hitLine {
+				continue
+			}
+			frac := in.frac - fixedDiv(4*fracUnit, distance)
+			x := trace.x + fixedMul(trace.dx, frac)
+			y := trace.y + fixedMul(trace.dy, frac)
+			z := actor.shootZ + fixedMul(slope, fixedMul(frac, distance))
+			front, back := g.physLineSectors(ld)
+			if g.m != nil && front >= 0 && front < len(g.m.Sectors) && isSkyFlatName(g.m.Sectors[front].CeilingPic) {
+				if z > g.sectorCeil[front] {
+					return lineAttackOutcome{}
+				}
+				if back >= 0 && back < len(g.m.Sectors) && isSkyFlatName(g.m.Sectors[back].CeilingPic) {
+					return lineAttackOutcome{}
+				}
+			}
+			return lineAttackOutcome{
+				lineIdx:   ld.idx,
+				dist:      fixedMul(distance, in.frac),
+				impactX:   x,
+				impactY:   y,
+				impactZ:   z,
+				spawnPuff: true,
+			}
+		}
+
+		_, _, z, height, _, noBlood, ok := g.lineAttackTargetState(in.target)
+		if !ok {
+			continue
+		}
+		dist := fixedMul(distance, in.frac)
+		if dist <= 0 {
+			continue
+		}
+		topSlope := fixedDiv(z+height-actor.shootZ, dist)
+		if topSlope < slope {
+			continue
+		}
+		bottomSlope := fixedDiv(z-actor.shootZ, dist)
+		if bottomSlope > slope {
+			continue
+		}
+		frac := in.frac - fixedDiv(10*fracUnit, distance)
+		x := trace.x + fixedMul(trace.dx, frac)
+		y := trace.y + fixedMul(trace.dy, frac)
+		iz := actor.shootZ + fixedMul(slope, fixedMul(frac, distance))
+		return lineAttackOutcome{
+			target:     in.target,
+			dist:       dist,
+			impactX:    x,
+			impactY:    y,
+			impactZ:    iz,
+			spawnPuff:  noBlood,
+			spawnBlood: !noBlood,
+		}
+	}
+	return lineAttackOutcome{}
+}
+
+func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackOutcome, damage int) bool {
+	if outcome.spawnPuff {
+		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
+	}
+	if outcome.spawnBlood {
+		g.spawnHitscanBlood(outcome.impactX, outcome.impactY, outcome.impactZ, damage)
+	}
+	switch outcome.target.kind {
+	case lineAttackTargetThing:
+		if damage > 0 {
+			g.damageShootableThing(outcome.target.idx, damage)
+		}
+		return true
+	case lineAttackTargetPlayer:
+		if damage > 0 {
+			g.damagePlayerFrom(damage, "Monster shot you", actor.x, actor.y, true)
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *game) bulletSlopeForAim(baseAngle uint32, rng int64) int64 {
+	actor := g.playerLineAttackActor()
+	if slope, ok := g.aimLineAttack(actor, baseAngle, rng); ok {
 		return slope
 	}
-	if slope, ok := g.aimSlopeAtAngle(baseAngle+doomAimFallbackAng, rng); ok {
+	if slope, ok := g.aimLineAttack(actor, baseAngle+doomAimFallbackAng, rng); ok {
 		return slope
 	}
-	if slope, ok := g.aimSlopeAtAngle(baseAngle-doomAimFallbackAng, rng); ok {
+	if slope, ok := g.aimLineAttack(actor, baseAngle-doomAimFallbackAng, rng); ok {
 		return slope
 	}
 	return 0
 }
 
 func (g *game) aimSlopeAtAngle(angle uint32, rng int64) (float64, bool) {
-	if g.m == nil {
+	slope, ok := g.aimLineAttack(g.playerLineAttackActor(), angle, rng)
+	if !ok {
 		return 0, false
 	}
-	ang := angleToRadians(angle)
-	dirX := math.Cos(ang)
-	dirY := math.Sin(ang)
-	px := float64(g.p.x)
-	py := float64(g.p.y)
-	shootZ := g.playerShootZ()
-	bestDist := math.Inf(1)
-	bestSlope := 0.0
-	found := false
-
-	for i, th := range g.m.Things {
-		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
-			continue
-		}
-		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
-			continue
-		}
-		tx := float64(int64(th.X) << fracBits)
-		ty := float64(int64(th.Y) << fracBits)
-		rx := tx - px
-		ry := ty - py
-		dist := rx*dirX + ry*dirY
-		if dist <= 0 || dist > float64(rng) {
-			continue
-		}
-		perp := math.Abs(rx*dirY - ry*dirX)
-		if perp > float64(bulletTargetRadius) {
-			continue
-		}
-		txFixed, tyFixed := g.thingPosFixed(i, th)
-		if !g.playerHasLOSMonster(i, th) {
-			continue
-		}
-
-		floorZ := float64(g.thingFloorZ(txFixed, tyFixed))
-		topZ := floorZ + float64(monsterHitHeight(th.Type))
-		topSlope := (topZ - shootZ) / dist
-		bottomSlope := (floorZ - shootZ) / dist
-		if topSlope < doomAimBottomSlope || bottomSlope > doomAimTopSlope {
-			continue
-		}
-		if topSlope > doomAimTopSlope {
-			topSlope = doomAimTopSlope
-		}
-		if bottomSlope < doomAimBottomSlope {
-			bottomSlope = doomAimBottomSlope
-		}
-		if dist < bestDist {
-			bestDist = dist
-			bestSlope = (topSlope + bottomSlope) * 0.5
-			found = true
-		}
-	}
-	if !found {
-		return 0, false
-	}
-	return bestSlope, true
+	return float64(slope) / float64(fracUnit), true
 }
 
 func doomGunShotDamage() int {
@@ -487,159 +916,82 @@ func (g *game) pickHitscanMonsterTargetAtAngle(angle uint32, rng int64, radius i
 	return g.pickHitscanMonsterTargetAtAngleWithSlope(angle, rng, radius, 0, false)
 }
 
-func (g *game) pickHitscanMonsterTargetAtAngleWithSlope(angle uint32, rng int64, radius int64, slope float64, useSlope bool) (int, bool) {
+func (g *game) pickHitscanMonsterTargetAtAngleWithSlope(angle uint32, rng int64, radius int64, slope int64, useSlope bool) (int, bool) {
 	idx, _, ok := g.pickHitscanMonsterTargetAtAngleWithSlopeDist(angle, rng, radius, slope, useSlope)
 	return idx, ok
 }
 
-func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng int64, radius int64, slope float64, useSlope bool) (int, float64, bool) {
-	if g.m == nil {
+func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng int64, radius int64, slope int64, useSlope bool) (int, float64, bool) {
+	_ = radius
+	traceSlope := slope
+	if !useSlope {
+		var ok bool
+		traceSlope, ok = g.aimLineAttack(g.playerLineAttackActor(), angle, rng)
+		if !ok {
+			return -1, 0, false
+		}
+	}
+	outcome := g.lineAttackTrace(g.playerLineAttackActor(), angle, rng, traceSlope, false)
+	if outcome.target.kind != lineAttackTargetThing {
 		return -1, 0, false
 	}
-	ang := angleToRadians(angle)
-	dirX := math.Cos(ang)
-	dirY := math.Sin(ang)
-	px := float64(g.p.x)
-	py := float64(g.p.y)
-	shootZ := g.playerShootZ()
-	bestDist := math.Inf(1)
-	bestIdx := -1
-
-	for i, th := range g.m.Things {
-		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
-			continue
-		}
-		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
-			continue
-		}
-		tx := float64(int64(th.X) << fracBits)
-		ty := float64(int64(th.Y) << fracBits)
-		rx := tx - px
-		ry := ty - py
-		t := rx*dirX + ry*dirY
-		if t <= 0 || t > float64(rng) {
-			continue
-		}
-		perp := math.Abs(rx*dirY - ry*dirX)
-		if perp > float64(radius) {
-			continue
-		}
-		txFixed, tyFixed := g.thingPosFixed(i, th)
-		if !g.playerHasLOSMonster(i, th) {
-			continue
-		}
-		if useSlope {
-			floorZ := float64(g.thingFloorZ(txFixed, tyFixed))
-			topZ := floorZ + float64(monsterHitHeight(th.Type))
-			topSlope := (topZ - shootZ) / t
-			bottomSlope := (floorZ - shootZ) / t
-			if slope < bottomSlope || slope > topSlope {
-				continue
-			}
-		}
-		if t < bestDist {
-			bestDist = t
-			bestIdx = i
-		}
-	}
-	if bestIdx < 0 {
-		return -1, 0, false
-	}
-	return bestIdx, bestDist, true
+	return outcome.target.idx, float64(outcome.dist), true
 }
 
-func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64) (float64, int, bool) {
+func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope int64) (float64, int, bool) {
 	return g.hitscanWallImpactDistanceFrom(g.p.x, g.p.y, g.playerShootZ(), angle, rng, slope)
 }
 
-func (g *game) hitscanWallImpactDistanceFrom(sx, sy int64, shootZ float64, angle uint32, rng int64, slope float64) (float64, int, bool) {
-	if len(g.lines) == 0 {
+func (g *game) hitscanWallImpactDistanceFrom(sx, sy, shootZ int64, angle uint32, rng int64, slope int64) (float64, int, bool) {
+	actor := lineAttackActor{
+		isPlayer:   false,
+		thingIdx:   -1,
+		x:          sx,
+		y:          sy,
+		shootZ:     shootZ,
+		targetMask: 0,
+	}
+	outcome := g.lineAttackTrace(actor, angle, rng, slope, false)
+	if outcome.lineIdx < 0 {
 		return 0, -1, false
 	}
-	ang := angleToRadians(angle)
-	x2 := sx + int64(math.Cos(ang)*float64(rng))
-	y2 := sy + int64(math.Sin(ang)*float64(rng))
-	bestDist := math.Inf(1)
-	bestLine := -1
-	found := false
-	for _, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(sx, sy, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok || frac <= 0 {
-			continue
-		}
-		dist := frac * float64(rng)
-		if dist <= 0 || dist >= bestDist {
-			continue
-		}
-		hitsWall := false
-		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
-			hitsWall = true
-		} else if g.m != nil && len(g.m.Sidedefs) > 0 && len(g.m.Sectors) > 0 {
-			opentop, openbottom, _, openrange := g.lineOpening(ld)
-			if openrange <= 0 {
-				hitsWall = true
-			} else {
-				zAtDist := shootZ + slope*dist
-				if zAtDist > float64(opentop) || zAtDist < float64(openbottom) {
-					hitsWall = true
-				}
-			}
-		}
-		if !hitsWall {
-			continue
-		}
-		bestDist = dist
-		bestLine = ld.idx
-		found = true
-	}
-	if !found {
-		return 0, -1, false
-	}
-	return bestDist, bestLine, true
+	return float64(outcome.dist), outcome.lineIdx, true
 }
 
-func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {
+func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist int64) {
 	g.spawnHitscanPuffFromSource(g.p.x, g.p.y, g.playerShootZ(), angle, slope, dist)
 }
 
-func (g *game) spawnHitscanPuffFromSource(sx, sy int64, shootZ float64, angle uint32, slope, dist float64) {
+func (g *game) spawnHitscanPuffFromSource(sx, sy, shootZ int64, angle uint32, slope, dist int64) {
 	if dist <= 0 {
 		return
 	}
-	px := float64(sx)
-	py := float64(sy)
-	ang := angleToRadians(angle)
-	x := px + math.Cos(ang)*dist
-	y := py + math.Sin(ang)*dist
-	z := shootZ + slope*dist
+	x := sx + fixedMul(dist, doomFineCosine(angle))
+	y := sy + fixedMul(dist, doomFineSineAtAngle(angle))
+	z := shootZ + fixedMul(slope, dist)
 	// Doom line hits use 4-unit backoff before spawning a puff.
-	const backoff = float64(4 * fracUnit)
-	x -= math.Cos(ang) * backoff
-	y -= math.Sin(ang) * backoff
-	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
-	g.spawnHitscanPuff(int64(x), int64(y), int64(z))
+	x -= fixedMul(4*fracUnit, doomFineCosine(angle))
+	y -= fixedMul(4*fracUnit, doomFineSineAtAngle(angle))
+	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
+	g.spawnHitscanPuff(x, y, z)
 }
 
-func (g *game) spawnHitscanBloodAtDistance(angle uint32, slope, dist float64, damage int) {
+func (g *game) spawnHitscanBloodAtDistance(angle uint32, slope, dist int64, damage int) {
 	g.spawnHitscanBloodFromSource(g.p.x, g.p.y, g.playerShootZ(), angle, slope, dist, damage)
 }
 
-func (g *game) spawnHitscanBloodFromSource(sx, sy int64, shootZ float64, angle uint32, slope, dist float64, damage int) {
+func (g *game) spawnHitscanBloodFromSource(sx, sy, shootZ int64, angle uint32, slope, dist int64, damage int) {
 	if dist <= 0 {
 		return
 	}
-	px := float64(sx)
-	py := float64(sy)
-	ang := angleToRadians(angle)
-	x := px + math.Cos(ang)*dist
-	y := py + math.Sin(ang)*dist
-	z := shootZ + slope*dist
+	x := sx + fixedMul(dist, doomFineCosine(angle))
+	y := sy + fixedMul(dist, doomFineSineAtAngle(angle))
+	z := shootZ + fixedMul(slope, dist)
 	// Doom thing hits use 10-unit backoff before spawning blood.
-	const backoff = float64(10 * fracUnit)
-	x -= math.Cos(ang) * backoff
-	y -= math.Sin(ang) * backoff
-	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
-	g.spawnHitscanBlood(int64(x), int64(y), int64(z), damage)
+	x -= fixedMul(10*fracUnit, doomFineCosine(angle))
+	y -= fixedMul(10*fracUnit, doomFineSineAtAngle(angle))
+	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
+	g.spawnHitscanBlood(x, y, z, damage)
 }
 
 func monsterHitHeight(typ int16) int64 {

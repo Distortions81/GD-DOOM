@@ -2864,12 +2864,12 @@ func (g *game) mapThingSpriteName(thingIdx int, th mapdata.Thing) string {
 	if !g.opts.SourcePortThingBlendFrames {
 		cf := g.textureAnimCrossfadeFrames
 		g.textureAnimCrossfadeFrames = 0
-		name := g.worldThingSpriteName(th.Type, g.worldTic)
+		name := g.runtimeWorldThingSpriteNameScaled(thingIdx, th, g.worldTic, 1)
 		g.textureAnimCrossfadeFrames = cf
 		return name
 	}
 	animTickUnits, animUnitsPerTic := g.worldThingAnimTickUnits()
-	return g.worldThingSpriteNameScaled(th.Type, animTickUnits, animUnitsPerTic)
+	return g.runtimeWorldThingSpriteNameScaled(thingIdx, th, animTickUnits, animUnitsPerTic)
 }
 
 func thingGlyphSize(zoom float64) float64 {
@@ -10360,7 +10360,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				continue
 			}
 			sec := g.thingSectorCached(i, th)
-			sprite := g.worldThingSpriteNameScaled(th.Type, animTickUnits, animUnitsPerTic)
+			sprite := g.runtimeWorldThingSpriteNameScaled(i, th, animTickUnits, animUnitsPerTic)
 			tex, ok := g.monsterSpriteTexture(sprite)
 			if !ok || tex.Height <= 0 || tex.Width <= 0 {
 				continue

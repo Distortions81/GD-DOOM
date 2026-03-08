@@ -387,6 +387,19 @@ func TestMonsterHitscanAttackSpawnsBloodAndDamagesPlayer(t *testing.T) {
 	}
 }
 
+func TestThingInterceptDistMatchesThingCrossSection(t *testing.T) {
+	trace := divline{x: 0, y: 0, dx: 128 * fracUnit, dy: 0}
+	frac, ok := lineAttackThingFrac(trace, 64*fracUnit, 0, playerRadius)
+	if !ok {
+		t.Fatal("expected trace to hit thing cross-section")
+	}
+	dist := fixedMul(frac, 128*fracUnit)
+	want := int64(64 * fracUnit)
+	if dist != want {
+		t.Fatalf("dist=%v want=%v", dist, want)
+	}
+}
+
 func TestMonsterHitscanAttackSpawnsPuffOnWallImpact(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

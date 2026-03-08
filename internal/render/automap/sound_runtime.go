@@ -35,6 +35,7 @@ const (
 	soundEventMonsterAttackSkull
 	soundEventImpactFire
 	soundEventImpactRocket
+	soundEventBarrelExplode
 	soundEventMonsterSeePosit
 	soundEventMonsterSeeImp
 	soundEventMonsterSeeDemon
@@ -608,6 +609,11 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.ImpactFire, true
 		}
 		return s.bank.SwitchOn, true
+	case soundEventBarrelExplode:
+		if len(s.bank.BarrelExplode.Data) > 0 {
+			return s.bank.BarrelExplode, true
+		}
+		return s.sampleForEvent(soundEventImpactRocket)
 	case soundEventMonsterSeePosit:
 		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
 			s.bank.SeePosit1,
