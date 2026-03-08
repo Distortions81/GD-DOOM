@@ -1192,7 +1192,7 @@ func (g *game) playerHasLOSMonster(i int, th mapdata.Thing) bool {
 		return true
 	}
 	tx, ty := g.thingPosFixed(i, th)
-	tz := g.thingFloorZCached(i, th)
+	tz, _, _ := g.monsterSupportHeights(i, th)
 	return g.actorHasLOS(g.p.x, g.p.y, g.p.z, playerHeight, tx, ty, tz, monsterHeight(th.Type))
 }
 
@@ -1203,8 +1203,23 @@ func (g *game) monsterHasLOSPlayer(typ int16, x, y int64) bool {
 	if typ == 0 {
 		typ = 3004
 	}
-	z := g.thingFloorZ(x, y)
+	z, _, _, _ := g.checkPositionForActor(x, y, monsterRadius(typ), true, -1, true)
 	return g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
+}
+
+func (g *game) monsterSupportHeights(i int, th mapdata.Thing) (int64, int64, int64) {
+	x, y := g.thingPosFixed(i, th)
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(th.Type), true, i, true)
+	if ok {
+		return tmfloor, tmceil, tmdrop
+	}
+	floor := g.thingFloorZCached(i, th)
+	ceil := floor
+	sec := g.thingSectorCached(i, th)
+	if sec >= 0 && sec < len(g.sectorCeil) {
+		ceil = g.sectorCeil[sec]
+	}
+	return floor, ceil, floor
 }
 
 func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
