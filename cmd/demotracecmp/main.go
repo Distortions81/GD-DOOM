@@ -115,7 +115,11 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 			lp, lok := l[k]
 			rp, rok := r[k]
 			if !lok || !rok {
-				return path+"."+k, lp, rp, true
+				childPath := path + "." + k
+				if shouldIgnorePath(childPath) {
+					continue
+				}
+				return childPath, lp, rp, true
 			}
 			if p, lv, rv, ok := firstDiff(path+"."+k, lp, rp); ok {
 				return p, lv, rv, true
@@ -173,6 +177,9 @@ func shouldIgnorePath(path string) bool {
 		".state",
 		".tics",
 		".kind",
+		".lastlook",
+		".radius",
+		".height",
 		".texture",
 		".action",
 	}

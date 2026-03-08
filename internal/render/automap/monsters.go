@@ -254,9 +254,6 @@ func (g *game) ensureMonsterAIState() {
 	if len(g.thingMoveDir) != n {
 		old := g.thingMoveDir
 		g.thingMoveDir = make([]monsterMoveDir, n)
-		for i := range g.thingMoveDir {
-			g.thingMoveDir[i] = monsterDirNoDir
-		}
 		copy(g.thingMoveDir, old)
 	}
 	if len(g.thingMoveCount) != n {
@@ -278,6 +275,11 @@ func (g *game) ensureMonsterAIState() {
 		old := g.thingReactionTics
 		g.thingReactionTics = make([]int, n)
 		copy(g.thingReactionTics, old)
+	}
+	if len(g.thingLastLook) != n {
+		old := g.thingLastLook
+		g.thingLastLook = make([]int, n)
+		copy(g.thingLastLook, old)
 	}
 	if len(g.thingDead) != n {
 		old := g.thingDead

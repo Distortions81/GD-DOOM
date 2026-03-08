@@ -17,21 +17,21 @@ type demoTraceWriter struct {
 }
 
 type demoTracePlayer struct {
-	PlayerState   int   `json:"playerstate"`
-	Health        int   `json:"health"`
-	ArmorPoints   int   `json:"armorpoints"`
-	ArmorType     int   `json:"armortype"`
-	ReadyWeapon   int   `json:"readyweapon"`
-	PendingWeapon int   `json:"pendingweapon"`
-	MO            int   `json:"mo"`
-	X             int64 `json:"x,omitempty"`
-	Y             int64 `json:"y,omitempty"`
-	Z             int64 `json:"z,omitempty"`
-	Angle         uint32 `json:"angle,omitempty"`
-	MomX          int64 `json:"momx,omitempty"`
-	MomY          int64 `json:"momy,omitempty"`
-	MomZ          int64 `json:"momz,omitempty"`
-	MOHealth      int   `json:"mo_health,omitempty"`
+	PlayerState   int    `json:"playerstate"`
+	Health        int    `json:"health"`
+	ArmorPoints   int    `json:"armorpoints"`
+	ArmorType     int    `json:"armortype"`
+	ReadyWeapon   int    `json:"readyweapon"`
+	PendingWeapon int    `json:"pendingweapon"`
+	MO            int    `json:"mo"`
+	X             int64  `json:"x"`
+	Y             int64  `json:"y"`
+	Z             int64  `json:"z"`
+	Angle         uint32 `json:"angle"`
+	MomX          int64  `json:"momx"`
+	MomY          int64  `json:"momy"`
+	MomZ          int64  `json:"momz"`
+	MOHealth      int    `json:"mo_health"`
 }
 
 type demoTraceMobj struct {
@@ -57,7 +57,7 @@ type demoTraceMobj struct {
 	Threshold    int    `json:"threshold"`
 	LastLook     int    `json:"lastlook"`
 	Subsector    int    `json:"subsector"`
-	Sector       int    `json:"sector,omitempty"`
+	Sector       int    `json:"sector"`
 	Player       int    `json:"player"`
 	Target       int    `json:"target"`
 	TargetType   int    `json:"target_type,omitempty"`
@@ -194,25 +194,25 @@ func (g *game) writeDemoTraceTic() {
 	mobjs := g.demoTraceMobjs()
 	specials := g.demoTraceSpecials()
 	g.demoTrace.write(map[string]any{
-		"kind":           "tic",
-		"gametic":        g.demoTick - 1,
-		"rndindex":       rndIndex,
-		"prndindex":      prndIndex,
-		"gamestate":      0,
-		"gamestate_name": "GS_LEVEL",
-		"gameaction":     0,
+		"kind":            "tic",
+		"gametic":         g.demoTick - 1,
+		"rndindex":        rndIndex,
+		"prndindex":       prndIndex,
+		"gamestate":       0,
+		"gamestate_name":  "GS_LEVEL",
+		"gameaction":      0,
 		"gameaction_name": "ga_nothing",
-		"leveltime":      g.worldTic,
-		"consoleplayer":  max(g.localSlot-1, 0),
-		"displayplayer":  max(g.localSlot-1, 0),
+		"leveltime":       g.worldTic,
+		"consoleplayer":   max(g.localSlot-1, 0),
+		"displayplayer":   max(g.localSlot-1, 0),
 		"playeringame": []int{
 			1, 0, 0, 0,
 		},
-		"player":         player,
-		"mobjs":          mobjs,
-		"specials":       specials,
-		"mobj_count":     len(mobjs),
-		"special_count":  len(specials),
+		"player":        player,
+		"mobjs":         mobjs,
+		"specials":      specials,
+		"mobj_count":    len(mobjs),
+		"special_count": len(specials),
 	})
 }
 
@@ -265,7 +265,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		radius, height := demoTraceThingBounds(th.Type)
 		out = append(out, demoTraceMobj{
-			Type:         int(th.Type),
+			Type:         demoTraceThingType(th.Type),
 			X:            x,
 			Y:            y,
 			Z:            floorZ,
@@ -285,7 +285,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Movecount:    demoTraceThingMoveCount(g, i),
 			ReactionTime: demoTraceThingReaction(g, i),
 			Threshold:    demoTraceThingThreshold(g, i),
-			LastLook:     0,
+			LastLook:     demoTraceThingLastLook(g, i),
 			Subsector:    boolToInt(sec >= 0),
 			Sector:       sec,
 			Player:       0,
@@ -408,11 +408,11 @@ func (g *game) demoTraceSpecials() []demoTraceSpecial {
 }
 
 func demoTraceThingBounds(typ int16) (int64, int64) {
+	if info, ok := demoTraceThingInfoForType(typ); ok {
+		return info.radius, info.height
+	}
 	if isMonster(typ) {
 		return monsterRadius(typ), monsterHeight(typ)
-	}
-	if isPickupType(typ) {
-		return pickupTouchBounds(typ)
 	}
 	return 20 * fracUnit, 16 * fracUnit
 }
@@ -420,6 +420,9 @@ func demoTraceThingBounds(typ int16) (int64, int64) {
 func demoTraceThingHealth(g *game, i int, typ int16) int {
 	if isMonster(typ) && i >= 0 && i < len(g.thingHP) {
 		return g.thingHP[i]
+	}
+	if info, ok := demoTraceThingInfoForType(typ); ok {
+		return info.health
 	}
 	return 1000
 }
@@ -474,8 +477,13 @@ func demoTraceThingMoveCount(g *game, i int) int {
 }
 
 func demoTraceThingReaction(g *game, i int) int {
-	if i >= 0 && i < len(g.thingReactionTics) {
+	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 		return g.thingReactionTics[i]
+	}
+	if g != nil && g.m != nil && i >= 0 && i < len(g.m.Things) {
+		if info, ok := demoTraceThingInfoForType(g.m.Things[i].Type); ok {
+			return info.reaction
+		}
 	}
 	return 0
 }
@@ -483,6 +491,13 @@ func demoTraceThingReaction(g *game, i int) int {
 func demoTraceThingThreshold(g *game, i int) int {
 	if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
 		return 100
+	}
+	return 0
+}
+
+func demoTraceThingLastLook(g *game, i int) int {
+	if i >= 0 && i < len(g.thingLastLook) {
+		return g.thingLastLook[i]
 	}
 	return 0
 }

@@ -32,16 +32,30 @@ const (
 
 func (g *game) initThingCombatState() {
 	for i, th := range g.m.Things {
+		if playerSlotFromThingType(th.Type) != 0 {
+			continue
+		}
+		if i >= 0 && i < len(g.thingLastLook) {
+			g.thingLastLook[i] = doomrand.PRandom() & 3
+		}
+		if i >= 0 && i < len(g.thingReactionTics) {
+			g.thingReactionTics[i] = demoTraceSpawnReactionTime(th.Type)
+		}
 		if !isMonster(th.Type) {
 			continue
 		}
 		g.thingHP[i] = monsterSpawnHealth(th.Type)
-		if i >= 0 && i < len(g.thingMoveDir) {
-			g.thingMoveDir[i] = monsterDirNoDir
-		}
-		if i >= 0 && i < len(g.thingReactionTics) {
-			g.thingReactionTics[i] = monsterReactionTimeTics(th.Type)
-		}
+	}
+}
+
+func demoTraceSpawnReactionTime(typ int16) int {
+	switch {
+	case isMonster(typ):
+		return monsterReactionTimeTics(typ)
+	case playerSlotFromThingType(typ) != 0:
+		return 0
+	default:
+		return 8
 	}
 }
 
@@ -55,16 +69,34 @@ func monsterSpawnHealth(typ int16) int {
 		return 60
 	case 3002: // demon
 		return 150
+	case 58: // spectre
+		return 150
 	case 3006: // lost soul
 		return 100
 	case 3005: // cacodemon
 		return 400
 	case 3003: // baron
 		return 1000
+	case 69: // hell knight
+		return 500
 	case 16: // cyberdemon
 		return 4000
 	case 7: // spider mastermind
 		return 3000
+	case 64: // arch-vile
+		return 700
+	case 65: // chaingunner
+		return 70
+	case 66: // revenant
+		return 300
+	case 67: // mancubus
+		return 600
+	case 68: // arachnotron
+		return 500
+	case 71: // pain elemental
+		return 400
+	case 84: // wolfenstein ss
+		return 50
 	default:
 		return 100
 	}
@@ -615,11 +647,12 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingHP = append(g.thingHP, 0)
 	g.thingAggro = append(g.thingAggro, false)
 	g.thingCooldown = append(g.thingCooldown, 0)
-	g.thingMoveDir = append(g.thingMoveDir, monsterDirNoDir)
+	g.thingMoveDir = append(g.thingMoveDir, 0)
 	g.thingMoveCount = append(g.thingMoveCount, 0)
 	g.thingJustAtk = append(g.thingJustAtk, false)
 	g.thingJustHit = append(g.thingJustHit, false)
 	g.thingReactionTics = append(g.thingReactionTics, 0)
+	g.thingLastLook = append(g.thingLastLook, 0)
 	g.thingDead = append(g.thingDead, false)
 	g.thingDeathTics = append(g.thingDeathTics, 0)
 	g.thingAttackTics = append(g.thingAttackTics, 0)
