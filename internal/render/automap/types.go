@@ -83,6 +83,7 @@ type Options struct {
 	AttractDemos               []*DemoScript
 	DemoQuitOnComplete         bool
 	RecordDemoPath             string
+	DemoTracePath              string
 	TitleMusicLoader           func() ([]byte, error)
 	MapMusicLoader             func(mapName string) ([]byte, error)
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)

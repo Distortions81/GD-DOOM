@@ -622,6 +622,7 @@ type game struct {
 	demoStartRnd                 int
 	demoStartPRnd                int
 	demoRNGCaptured              bool
+	demoTrace                    *demoTraceWriter
 	demoRecord                   []DemoTic
 }
 
@@ -1025,6 +1026,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	// This avoids one-frame low-camera artifacts (e.g. during level melt)
 	// before the first tickWorldLogic() view-height update runs.
 	g.playerViewZ = g.p.z + g.p.viewHeight
+	g.demoTrace = newDemoTraceWriter(opts, string(m.Name))
 	g.initSubSectorSectorCache()
 	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume, opts.SourcePortMode)
 	g.soundQueue = make([]soundEvent, 0, 8)
@@ -1427,6 +1429,10 @@ func (g *game) updateDemoMode() error {
 		g.demoRNGCaptured = true
 	}
 	if g.demoTick >= len(script.Tics) {
+		if g.demoTrace != nil {
+			g.demoTrace.Close()
+			g.demoTrace = nil
+		}
 		if !g.demoDoneReported && g.opts.DemoQuitOnComplete {
 			g.demoDoneReported = true
 			elapsed := time.Since(g.demoBenchStart)
@@ -1464,6 +1470,7 @@ func (g *game) updateDemoMode() error {
 	usePressed := tc.Buttons&demoButtonUse != 0
 	fireHeld := tc.Buttons&demoButtonAttack != 0
 	g.runGameplayTic(cmd, usePressed, fireHeld)
+	g.writeDemoTraceTic()
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit

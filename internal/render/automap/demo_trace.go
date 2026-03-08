@@ -1,0 +1,525 @@
+package automap
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"gddoom/internal/doomrand"
+)
+
+type demoTraceWriter struct {
+	path   string
+	file   *os.File
+	closed bool
+}
+
+type demoTracePlayer struct {
+	PlayerState   int   `json:"playerstate"`
+	Health        int   `json:"health"`
+	ArmorPoints   int   `json:"armorpoints"`
+	ArmorType     int   `json:"armortype"`
+	ReadyWeapon   int   `json:"readyweapon"`
+	PendingWeapon int   `json:"pendingweapon"`
+	MO            int   `json:"mo"`
+	X             int64 `json:"x,omitempty"`
+	Y             int64 `json:"y,omitempty"`
+	Z             int64 `json:"z,omitempty"`
+	Angle         uint32 `json:"angle,omitempty"`
+	MomX          int64 `json:"momx,omitempty"`
+	MomY          int64 `json:"momy,omitempty"`
+	MomZ          int64 `json:"momz,omitempty"`
+	MOHealth      int   `json:"mo_health,omitempty"`
+}
+
+type demoTraceMobj struct {
+	Type         int    `json:"type"`
+	X            int64  `json:"x"`
+	Y            int64  `json:"y"`
+	Z            int64  `json:"z"`
+	Angle        uint32 `json:"angle"`
+	MomX         int64  `json:"momx"`
+	MomY         int64  `json:"momy"`
+	MomZ         int64  `json:"momz"`
+	FloorZ       int64  `json:"floorz"`
+	CeilingZ     int64  `json:"ceilingz"`
+	Radius       int64  `json:"radius"`
+	Height       int64  `json:"height"`
+	Tics         int    `json:"tics"`
+	State        int    `json:"state"`
+	Flags        int    `json:"flags"`
+	Health       int    `json:"health"`
+	Movedir      int    `json:"movedir"`
+	Movecount    int    `json:"movecount"`
+	ReactionTime int    `json:"reactiontime"`
+	Threshold    int    `json:"threshold"`
+	LastLook     int    `json:"lastlook"`
+	Subsector    int    `json:"subsector"`
+	Sector       int    `json:"sector,omitempty"`
+	Player       int    `json:"player"`
+	Target       int    `json:"target"`
+	TargetType   int    `json:"target_type,omitempty"`
+	Tracer       int    `json:"tracer"`
+	TracerType   int    `json:"tracer_type,omitempty"`
+	Kind         string `json:"kind,omitempty"`
+	Dropped      int    `json:"dropped,omitempty"`
+}
+
+type demoTraceSpecial struct {
+	Kind          string `json:"kind"`
+	Sector        int    `json:"sector"`
+	Type          int    `json:"type,omitempty"`
+	Action        string `json:"action,omitempty"`
+	TopHeight     int64  `json:"topheight,omitempty"`
+	Speed         int64  `json:"speed,omitempty"`
+	Direction     int    `json:"direction,omitempty"`
+	TopWait       int    `json:"topwait,omitempty"`
+	TopCountdown  int    `json:"topcountdown,omitempty"`
+	Crush         int    `json:"crush,omitempty"`
+	NewSpecial    int16  `json:"newspecial,omitempty"`
+	Texture       string `json:"texture,omitempty"`
+	FloorDest     int64  `json:"floordestheight,omitempty"`
+	Low           int64  `json:"low,omitempty"`
+	High          int64  `json:"high,omitempty"`
+	Wait          int    `json:"wait,omitempty"`
+	Count         int    `json:"count,omitempty"`
+	Status        int    `json:"status,omitempty"`
+	OldStatus     int    `json:"oldstatus,omitempty"`
+	Tag           int    `json:"tag,omitempty"`
+	BottomHeight  int64  `json:"bottomheight,omitempty"`
+	OldDirection  int    `json:"olddirection,omitempty"`
+	FinishSpecial int16  `json:"finishspecial,omitempty"`
+}
+
+func newDemoTraceWriter(opts Options, mapName string) *demoTraceWriter {
+	path := strings.TrimSpace(opts.DemoTracePath)
+	if path == "" || opts.DemoScript == nil {
+		return nil
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Printf("demo-trace-error path=%s err=%v\n", path, err)
+		return nil
+	}
+	tw := &demoTraceWriter{path: path, file: f}
+	tw.write(map[string]any{
+		"kind":       "meta",
+		"trace_path": path,
+		"iwad":       opts.WADHash,
+		"demo":       demoTraceLabel(opts.DemoScript),
+		"gamemode":   opts.GameMode,
+		"map":        mapName,
+	})
+	tw.write(map[string]any{
+		"kind":          "demo",
+		"demo":          demoTraceLabel(opts.DemoScript),
+		"version":       opts.DemoScript.Header.Version,
+		"skill":         opts.DemoScript.Header.Skill,
+		"episode":       opts.DemoScript.Header.Episode,
+		"map":           opts.DemoScript.Header.Map,
+		"deathmatch":    boolToInt(opts.GameMode == "deathmatch"),
+		"respawn":       boolToInt(opts.FastMonsters),
+		"fast":          boolToInt(opts.FastMonsters),
+		"nomonsters":    0,
+		"consoleplayer": max(opts.PlayerSlot-1, 0),
+		"playeringame": []int{
+			boolToInt(opts.DemoScript.Header.PlayerInGame[0]),
+			boolToInt(opts.DemoScript.Header.PlayerInGame[1]),
+			boolToInt(opts.DemoScript.Header.PlayerInGame[2]),
+			boolToInt(opts.DemoScript.Header.PlayerInGame[3]),
+		},
+	})
+	return tw
+}
+
+func demoTraceLabel(script *DemoScript) string {
+	if script == nil {
+		return ""
+	}
+	if p := strings.TrimSpace(script.Path); p != "" {
+		return p
+	}
+	return "demo"
+}
+
+func (tw *demoTraceWriter) write(v any) {
+	if tw == nil || tw.file == nil || tw.closed {
+		return
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		fmt.Printf("demo-trace-error path=%s err=%v\n", tw.path, err)
+		return
+	}
+	_, _ = tw.file.Write(append(data, '\n'))
+	_ = tw.file.Sync()
+}
+
+func (tw *demoTraceWriter) Close() {
+	if tw == nil || tw.file == nil || tw.closed {
+		return
+	}
+	tw.closed = true
+	_ = tw.file.Close()
+	tw.file = nil
+}
+
+func (g *game) writeDemoTraceTic() {
+	if g == nil || g.demoTrace == nil {
+		return
+	}
+
+	rndIndex, prndIndex := doomrand.State()
+	player := demoTracePlayer{
+		PlayerState:   boolToInt(g.isDead),
+		Health:        g.stats.Health,
+		ArmorPoints:   g.stats.Armor,
+		ArmorType:     demoTraceArmorType(g.stats.Armor),
+		ReadyWeapon:   int(g.inventory.ReadyWeapon),
+		PendingWeapon: int(g.inventory.ReadyWeapon),
+		MO:            1,
+		X:             g.p.x,
+		Y:             g.p.y,
+		Z:             g.p.z,
+		Angle:         g.p.angle,
+		MomX:          g.p.momx,
+		MomY:          g.p.momy,
+		MomZ:          g.p.momz,
+		MOHealth:      g.stats.Health,
+	}
+
+	mobjs := g.demoTraceMobjs()
+	specials := g.demoTraceSpecials()
+	g.demoTrace.write(map[string]any{
+		"kind":           "tic",
+		"gametic":        g.demoTick - 1,
+		"rndindex":       rndIndex,
+		"prndindex":      prndIndex,
+		"gamestate":      0,
+		"gamestate_name": "GS_LEVEL",
+		"gameaction":     0,
+		"gameaction_name": "ga_nothing",
+		"leveltime":      g.worldTic,
+		"consoleplayer":  max(g.localSlot-1, 0),
+		"displayplayer":  max(g.localSlot-1, 0),
+		"playeringame": []int{
+			1, 0, 0, 0,
+		},
+		"player":         player,
+		"mobjs":          mobjs,
+		"specials":       specials,
+		"mobj_count":     len(mobjs),
+		"special_count":  len(specials),
+	})
+}
+
+func (g *game) demoTraceMobjs() []demoTraceMobj {
+	if g == nil {
+		return nil
+	}
+	out := make([]demoTraceMobj, 0, 1+len(g.m.Things)+len(g.projectiles))
+	out = append(out, demoTraceMobj{
+		Type:         0,
+		X:            g.p.x,
+		Y:            g.p.y,
+		Z:            g.p.z,
+		Angle:        g.p.angle,
+		MomX:         g.p.momx,
+		MomY:         g.p.momy,
+		MomZ:         g.p.momz,
+		FloorZ:       g.p.floorz,
+		CeilingZ:     g.p.ceilz,
+		Radius:       playerRadius,
+		Height:       playerHeight,
+		Tics:         0,
+		State:        0,
+		Flags:        0,
+		Health:       g.stats.Health,
+		Movedir:      0,
+		Movecount:    0,
+		ReactionTime: 0,
+		Threshold:    0,
+		LastLook:     0,
+		Subsector:    boolToInt(g.sectorAt(g.p.x, g.p.y) >= 0),
+		Sector:       g.sectorAt(g.p.x, g.p.y),
+		Player:       1,
+		Target:       0,
+		Tracer:       0,
+	})
+	for i, th := range g.m.Things {
+		if playerSlotFromThingType(th.Type) != 0 {
+			continue
+		}
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		x, y := g.thingPosFixed(i, th)
+		sec := g.thingSectorCached(i, th)
+		floorZ := g.thingFloorZ(x, y)
+		ceilZ := int64(0)
+		if sec >= 0 && sec < len(g.sectorCeil) {
+			ceilZ = g.sectorCeil[sec]
+		}
+		radius, height := demoTraceThingBounds(th.Type)
+		out = append(out, demoTraceMobj{
+			Type:         int(th.Type),
+			X:            x,
+			Y:            y,
+			Z:            floorZ,
+			Angle:        thingDegToWorldAngle(th.Angle),
+			MomX:         0,
+			MomY:         0,
+			MomZ:         0,
+			FloorZ:       floorZ,
+			CeilingZ:     ceilZ,
+			Radius:       radius,
+			Height:       height,
+			Tics:         demoTraceThingTics(g, i, th.Type),
+			State:        demoTraceThingState(g, i, th.Type),
+			Flags:        0,
+			Health:       demoTraceThingHealth(g, i, th.Type),
+			Movedir:      demoTraceThingMoveDir(g, i),
+			Movecount:    demoTraceThingMoveCount(g, i),
+			ReactionTime: demoTraceThingReaction(g, i),
+			Threshold:    demoTraceThingThreshold(g, i),
+			LastLook:     0,
+			Subsector:    boolToInt(sec >= 0),
+			Sector:       sec,
+			Player:       0,
+			Target:       boolToInt(i >= 0 && i < len(g.thingAggro) && g.thingAggro[i]),
+			TargetType:   0,
+			Tracer:       0,
+			Kind:         demoTraceThingKind(th.Type),
+			Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),
+		})
+	}
+	for _, p := range g.projectiles {
+		sec := g.sectorAt(p.x, p.y)
+		floorZ := g.thingFloorZ(p.x, p.y)
+		ceilZ := int64(0)
+		if sec >= 0 && sec < len(g.sectorCeil) {
+			ceilZ = g.sectorCeil[sec]
+		}
+		out = append(out, demoTraceMobj{
+			Type:         1000 + int(p.kind),
+			X:            p.x,
+			Y:            p.y,
+			Z:            p.z,
+			Angle:        0,
+			MomX:         p.vx,
+			MomY:         p.vy,
+			MomZ:         p.vz,
+			FloorZ:       floorZ,
+			CeilingZ:     ceilZ,
+			Radius:       p.radius,
+			Height:       p.height,
+			Tics:         p.ttl,
+			State:        -1,
+			Flags:        0,
+			Health:       1000,
+			Movedir:      0,
+			Movecount:    0,
+			ReactionTime: 0,
+			Threshold:    0,
+			LastLook:     0,
+			Subsector:    boolToInt(sec >= 0),
+			Sector:       sec,
+			Player:       0,
+			Target:       1,
+			TargetType:   int(p.sourceType),
+			Tracer:       0,
+			Kind:         "projectile",
+		})
+	}
+	return out
+}
+
+func (g *game) demoTraceSpecials() []demoTraceSpecial {
+	if g == nil {
+		return nil
+	}
+	out := make([]demoTraceSpecial, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
+
+	doorKeys := sortedIntKeys(g.doors)
+	for _, sec := range doorKeys {
+		d := g.doors[sec]
+		out = append(out, demoTraceSpecial{
+			Kind:         "door",
+			Sector:       sec,
+			Type:         int(d.typ),
+			TopHeight:    d.topHeight,
+			Speed:        d.speed,
+			Direction:    d.direction,
+			TopWait:      d.topWait,
+			TopCountdown: d.topCountdown,
+		})
+	}
+	floorKeys := sortedIntKeys(g.floors)
+	for _, sec := range floorKeys {
+		f := g.floors[sec]
+		out = append(out, demoTraceSpecial{
+			Kind:          "floor",
+			Sector:        sec,
+			Type:          f.direction,
+			Speed:         f.speed,
+			Direction:     f.direction,
+			FloorDest:     f.destHeight,
+			Texture:       f.finishFlat,
+			FinishSpecial: int16(f.finishSpecial),
+		})
+	}
+	platKeys := sortedIntKeys(g.plats)
+	for _, sec := range platKeys {
+		p := g.plats[sec]
+		out = append(out, demoTraceSpecial{
+			Kind:          "plat",
+			Sector:        sec,
+			Type:          int(p.typ),
+			Speed:         p.speed,
+			Low:           p.low,
+			High:          p.high,
+			Wait:          p.wait,
+			Count:         p.count,
+			Status:        int(p.status),
+			OldStatus:     int(p.oldStatus),
+			FinishSpecial: int16(p.finishSpecial),
+			Texture:       p.finishFlat,
+		})
+	}
+	ceilingKeys := sortedIntKeys(g.ceilings)
+	for _, sec := range ceilingKeys {
+		c := g.ceilings[sec]
+		out = append(out, demoTraceSpecial{
+			Kind:         "ceiling",
+			Sector:       sec,
+			Action:       string(c.action),
+			Speed:        c.speed,
+			Direction:    c.direction,
+			TopHeight:    c.topHeight,
+			BottomHeight: c.bottomHeight,
+			Crush:        boolToInt(c.crush),
+			OldDirection: c.oldDirection,
+		})
+	}
+	return out
+}
+
+func demoTraceThingBounds(typ int16) (int64, int64) {
+	if isMonster(typ) {
+		return monsterRadius(typ), monsterHeight(typ)
+	}
+	if isPickupType(typ) {
+		return pickupTouchBounds(typ)
+	}
+	return 20 * fracUnit, 16 * fracUnit
+}
+
+func demoTraceThingHealth(g *game, i int, typ int16) int {
+	if isMonster(typ) && i >= 0 && i < len(g.thingHP) {
+		return g.thingHP[i]
+	}
+	return 1000
+}
+
+func demoTraceThingTics(g *game, i int, typ int16) int {
+	if i < 0 {
+		return 0
+	}
+	if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+		return g.thingDeathTics[i]
+	}
+	if i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+		return g.thingPainTics[i]
+	}
+	if i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+		return g.thingAttackTics[i]
+	}
+	if i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+		return g.thingReactionTics[i]
+	}
+	return 0
+}
+
+func demoTraceThingState(g *game, i int, typ int16) int {
+	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		return 3
+	}
+	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+		return 2
+	}
+	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+		return 1
+	}
+	if isMonster(typ) {
+		return 0
+	}
+	return -1
+}
+
+func demoTraceThingMoveDir(g *game, i int) int {
+	if i >= 0 && i < len(g.thingMoveDir) {
+		return int(g.thingMoveDir[i])
+	}
+	return 0
+}
+
+func demoTraceThingMoveCount(g *game, i int) int {
+	if i >= 0 && i < len(g.thingMoveCount) {
+		return g.thingMoveCount[i]
+	}
+	return 0
+}
+
+func demoTraceThingReaction(g *game, i int) int {
+	if i >= 0 && i < len(g.thingReactionTics) {
+		return g.thingReactionTics[i]
+	}
+	return 0
+}
+
+func demoTraceThingThreshold(g *game, i int) int {
+	if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
+		return 100
+	}
+	return 0
+}
+
+func demoTraceThingKind(typ int16) string {
+	switch {
+	case isMonster(typ):
+		return "monster"
+	case isPickupType(typ):
+		return "pickup"
+	default:
+		return "thing"
+	}
+}
+
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}
+
+func demoTraceArmorType(armor int) int {
+	if armor >= 100 {
+		return 2
+	}
+	if armor > 0 {
+		return 1
+	}
+	return 0
+}
+
+func sortedIntKeys[T any](m map[int]T) []int {
+	keys := make([]int, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	return keys
+}

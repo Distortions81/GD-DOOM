@@ -341,6 +341,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
 	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
+	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -436,8 +437,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	resolvedDemoPath := strings.TrimSpace(*demoPath)
 	resolvedRecordDemoPath := strings.TrimSpace(*recordDemoPath)
+	resolvedDemoTracePath := strings.TrimSpace(*demoTracePath)
 	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
 		fmt.Fprintln(stderr, "-demo and -record-demo are mutually exclusive")
+		return 2
+	}
+	if resolvedDemoTracePath != "" && resolvedDemoPath == "" {
+		fmt.Fprintln(stderr, "-trace-demo-state requires -demo")
 		return 2
 	}
 	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
@@ -819,6 +825,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SoundBank:                  soundBank,
 			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
+			DemoTracePath:              resolvedDemoTracePath,
 			AttractDemos:               loadBuiltInDemos(wf),
 		}
 		opts.TitleMusicLoader = func() ([]byte, error) {
