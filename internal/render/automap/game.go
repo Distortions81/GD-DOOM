@@ -1040,9 +1040,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.initSectorLightEffects()
 	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)
 	g.invulnerable = opts.Invulnerable
-	if !g.opts.StartInMapMode {
-		g.mode = viewWalk
-	}
+	g.mode = viewWalk
 	if g.opts.DemoScript != nil {
 		// Demo benchmark mode is intentionally isolated from interactive controls.
 		g.mode = viewWalk
@@ -11229,6 +11227,8 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 		return pick("POSSA1", "POSSB1", "POSSC1", "POSSD1")
 	case 9:
 		return pick("SPOSA1", "SPOSB1", "SPOSC1", "SPOSD1")
+	case 84:
+		return pick("SSWVA1", "SSWVB1", "SSWVC1", "SSWVD1")
 	case 3001:
 		return pick("TROOA1", "TROOB1", "TROOC1", "TROOD1")
 	case 3002:
@@ -11239,10 +11239,24 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 		return pick("HEADA1", "HEADB1", "HEADC1", "HEADD1")
 	case 3003:
 		return pick("BOSSA1", "BOSSB1", "BOSSC1", "BOSSD1")
+	case 69:
+		return pick("BOS2A1", "BOS2B1", "BOS2C1", "BOS2D1")
+	case 64:
+		return pick("VILEA1", "VILEB1", "VILEC1", "VILED1")
+	case 65:
+		return pick("CPOSA1", "CPOSB1", "CPOSC1", "CPOSD1")
+	case 66:
+		return pick("SKELA1", "SKELB1", "SKELC1", "SKELD1")
+	case 67:
+		return pick("FATTA1", "FATTB1", "FATTC1", "FATTD1")
+	case 68:
+		return pick("BSPIA1", "BSPIB1", "BSPIC1", "BSPID1")
 	case 16:
 		return pick("CYBRA1", "CYBRB1", "CYBRC1", "CYBRD1")
 	case 7:
 		return pick("SPIDA1", "SPIDB1", "SPIDC1", "SPIDD1")
+	case 71:
+		return pick("PAINA1", "PAINB1", "PAINC1", "PAIND1")
 	default:
 		return ""
 	}
@@ -11650,10 +11664,26 @@ func monsterSpritePrefix(typ int16) (string, bool) {
 		return "HEAD", true
 	case 3003:
 		return "BOSS", true
+	case 69:
+		return "BOS2", true
+	case 64:
+		return "VILE", true
+	case 65:
+		return "CPOS", true
+	case 66:
+		return "SKEL", true
+	case 67:
+		return "FATT", true
+	case 68:
+		return "BSPI", true
 	case 16:
 		return "CYBR", true
 	case 7:
 		return "SPID", true
+	case 71:
+		return "PAIN", true
+	case 84:
+		return "SSWV", true
 	default:
 		return "", false
 	}

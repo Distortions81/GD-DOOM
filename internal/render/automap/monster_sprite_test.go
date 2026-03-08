@@ -135,6 +135,14 @@ func TestMonsterDeathFrameSeq_SpectreMatchesDemon(t *testing.T) {
 	}
 }
 
+func TestMonsterSpritePrefixCoversAllMonsterTypes(t *testing.T) {
+	for _, typ := range []int16{3004, 9, 84, 3001, 3002, 58, 3006, 3005, 3003, 69, 64, 65, 66, 67, 68, 16, 7, 71} {
+		if prefix, ok := monsterSpritePrefix(typ); !ok || prefix == "" {
+			t.Fatalf("monster type %d missing sprite prefix", typ)
+		}
+	}
+}
+
 func TestMonsterSpriteNameForView_SpectreUsesDeathFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{
