@@ -237,6 +237,35 @@ func TestXYMovement_StepOffLedgePreservesMomentumWhileAirborne(t *testing.T) {
 	}
 }
 
+func TestXYMovement_KeepsLowMomentumWhileMoveInputHeld(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:          0,
+			y:          0,
+			z:          0,
+			floorz:     0,
+			ceilz:      128 * fracUnit,
+			momx:       618,
+			momy:       2067,
+			viewHeight: playerViewHeight,
+		},
+		currentMoveCmd: moveCmd{forward: 1},
+	}
+
+	g.xyMovement()
+
+	if g.p.momx == 0 || g.p.momy == 0 {
+		t.Fatalf("momentum was zeroed with move input held: momx=%d momy=%d", g.p.momx, g.p.momy)
+	}
+}
+
 func TestPlayerHardLanding_UsesOofAndViewSquatWithoutDamage(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

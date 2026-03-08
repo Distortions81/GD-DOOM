@@ -125,21 +125,10 @@ func (g *game) tickMonsters() {
 			}
 			if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
 				g.thingAggro[i] = true
-				if i >= 0 && i < len(g.thingWakeTics) {
-					g.thingWakeTics[i] = max(monsterWakeDelayTics(th.Type)-1, 0)
-				}
 				g.emitMonsterSeeSound(i, th.Type, tx, ty)
-				continue
 			} else {
 				continue
 			}
-		}
-		if i >= 0 && i < len(g.thingWakeTics) && g.thingWakeTics[i] > 0 {
-			g.thingWakeTics[i]--
-			continue
-		}
-		if !g.monsterChaseReady(i, th.Type) {
-			continue
 		}
 		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 			g.thingReactionTics[i]--
@@ -511,46 +500,11 @@ func monsterAttackStateTotalTics(typ int16) int {
 	}
 }
 
-func (g *game) monsterChaseReady(i int, typ int16) bool {
-	if i < 0 || i >= len(g.thingThinkWait) {
-		return true
-	}
-	if g.thingThinkWait[i] > 0 {
-		g.thingThinkWait[i]--
-		return false
-	}
-	wait := monsterThinkInterval(typ, g.fastMonstersActive())
-	if wait < 1 {
-		wait = 1
-	}
-	g.thingThinkWait[i] = wait - 1
-	return true
-}
-
 func monsterLookInterval(typ int16) int {
 	if info, ok := demoTraceThingInfoForType(typ); ok && info.spawnTics > 0 {
 		return info.spawnTics
 	}
 	return 1
-}
-
-func monsterThinkInterval(typ int16, fast bool) int {
-	// Matches Doom run-state tics for common monsters (A_Chase cadence).
-	switch typ {
-	case 3004, 9, 84, 67:
-		if fast {
-			return 2
-		}
-		return 4
-	case 3002, 58, 64, 66:
-		return 2
-	case 3006:
-		return 6
-	case 65, 3001, 3003, 3005, 7, 16, 68, 69, 71:
-		return 3
-	default:
-		return 3
-	}
 }
 
 func monsterReactionTimeTics(typ int16) int {
@@ -559,17 +513,6 @@ func monsterReactionTimeTics(typ int16) int {
 		return 8
 	default:
 		return 0
-	}
-}
-
-func monsterWakeDelayTics(typ int16) int {
-	switch typ {
-	case 3004, 9, 65, 84, 7, 16:
-		return 4
-	case 3006:
-		return 6
-	default:
-		return 3
 	}
 }
 

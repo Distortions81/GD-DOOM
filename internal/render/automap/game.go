@@ -338,6 +338,7 @@ type game struct {
 	marks                     []mapMark
 	nextMarkID                int
 	p                         player
+	currentMoveCmd            moveCmd
 	localSlot                 int
 	peerStarts                []playerStart
 

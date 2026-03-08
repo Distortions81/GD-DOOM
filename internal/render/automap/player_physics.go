@@ -81,6 +81,7 @@ func (g *game) tickThinkers() {
 }
 
 func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
+	g.currentMoveCmd = cmd
 	g.setAttackHeld(fireHeld)
 	g.updatePlayer(cmd)
 	g.tickPlayerViewHeight()
@@ -238,10 +239,10 @@ func (g *game) xyMovement() {
 	for {
 		var ptryx, ptryy int64
 		if abs(xmove) > maxMove/2 || abs(ymove) > maxMove/2 {
-			ptryx = g.p.x + (xmove >> 1)
-			ptryy = g.p.y + (ymove >> 1)
-			xmove >>= 1
-			ymove >>= 1
+			ptryx = g.p.x + (xmove / 2)
+			ptryy = g.p.y + (ymove / 2)
+			xmove /= 2
+			ymove /= 2
 		} else {
 			ptryx = g.p.x + xmove
 			ptryy = g.p.y + ymove
@@ -260,7 +261,9 @@ func (g *game) xyMovement() {
 		return
 	}
 
-	if g.p.momx > -stopSpeed && g.p.momx < stopSpeed && g.p.momy > -stopSpeed && g.p.momy < stopSpeed {
+	if g.p.momx > -stopSpeed && g.p.momx < stopSpeed &&
+		g.p.momy > -stopSpeed && g.p.momy < stopSpeed &&
+		g.currentMoveCmd.forward == 0 && g.currentMoveCmd.side == 0 {
 		g.p.momx = 0
 		g.p.momy = 0
 	} else {
