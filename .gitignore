@@ -17,3 +17,4 @@ doom-source/linuxdoom-1.10/*.o
 doom-source/linuxdoom-1.10/linux/*.o
 
 doom-source/linuxdoom-1.10/linux/linuxxdoom
+tmp/linuxdoom-demo1-trace.jsonl
