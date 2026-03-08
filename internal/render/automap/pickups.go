@@ -115,6 +115,15 @@ func (g *game) thingFloorZ(x, y int64) int64 {
 	return g.sectorFloor[sec]
 }
 
+func (g *game) thingFloorZCached(i int, th mapdata.Thing) int64 {
+	sec := g.thingSectorCached(i, th)
+	if sec < 0 || sec >= len(g.sectorFloor) {
+		x, y := g.thingPosFixed(i, th)
+		return g.thingFloorZ(x, y)
+	}
+	return g.sectorFloor[sec]
+}
+
 func pickupTouchBounds(typ int16) (radius int64, height int64) {
 	// Doom treats most specials as radius=20, height=16 for touch.
 	switch typ {

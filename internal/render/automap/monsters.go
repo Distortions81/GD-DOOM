@@ -1192,7 +1192,7 @@ func (g *game) playerHasLOSMonster(i int, th mapdata.Thing) bool {
 		return true
 	}
 	tx, ty := g.thingPosFixed(i, th)
-	tz := g.thingFloorZ(tx, ty)
+	tz := g.thingFloorZCached(i, th)
 	return g.actorHasLOS(g.p.x, g.p.y, g.p.z, playerHeight, tx, ty, tz, monsterHeight(th.Type))
 }
 
@@ -1451,8 +1451,7 @@ func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) bool {
 		return false
 	}
 	height := monsterHeight(typ)
-	cx, cy := g.thingPosFixed(i, g.m.Things[i])
-	z := g.thingFloorZ(cx, cy)
+	z := g.thingFloorZCached(i, g.m.Things[i])
 	if tmceil-tmfloor < height {
 		return false
 	}

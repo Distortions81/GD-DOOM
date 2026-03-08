@@ -260,7 +260,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		x, y := g.thingPosFixed(i, th)
 		sec := g.thingSectorCached(i, th)
-		floorZ := g.thingFloorZ(x, y)
+		floorZ := g.thingFloorZCached(i, th)
 		ceilZ := int64(0)
 		if sec >= 0 && sec < len(g.sectorCeil) {
 			ceilZ = g.sectorCeil[sec]
