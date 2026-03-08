@@ -62,9 +62,9 @@ type demoTraceMobj struct {
 	Sector       int    `json:"sector"`
 	Player       int    `json:"player"`
 	Target       int    `json:"target"`
-	TargetType   int    `json:"target_type,omitempty"`
+	TargetType   int    `json:"target_type"`
 	Tracer       int    `json:"tracer"`
-	TracerType   int    `json:"tracer_type,omitempty"`
+	TracerType   int    `json:"tracer_type"`
 	Kind         string `json:"kind,omitempty"`
 	Dropped      int    `json:"dropped,omitempty"`
 }

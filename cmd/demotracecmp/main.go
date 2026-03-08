@@ -132,7 +132,7 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 			return path, left, right, true
 		}
 		if len(l) != len(r) {
-			return path+".len", len(l), len(r), true
+			return path + ".len", len(l), len(r), true
 		}
 		for i := range l {
 			if p, lv, rv, ok := firstDiff(fmt.Sprintf("%s[%d]", path, i), l[i], r[i]); ok {
@@ -182,6 +182,8 @@ func shouldIgnorePath(path string) bool {
 		".lastlook",
 		".radius",
 		".height",
+		".target_type",
+		".tracer_type",
 		".texture",
 		".action",
 	}

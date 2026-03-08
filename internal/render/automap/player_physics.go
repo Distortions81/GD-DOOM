@@ -6,6 +6,11 @@ import (
 	"sort"
 )
 
+type slideIntercept struct {
+	frac int64
+	line int
+}
+
 func (g *game) updatePlayer(cmd moveCmd) {
 	if g.isDead {
 		return
@@ -612,7 +617,7 @@ func (g *game) slideMove() {
 			traily = g.p.y + playerRadius
 		}
 
-		bestFrac := 2.0
+		bestFrac := int64(fracUnit + 1)
 		bestLine := -1
 		for _, tc := range [][4]int64{{leadx, leady, leadx + g.p.momx, leady + g.p.momy}, {trailx, leady, trailx + g.p.momx, leady + g.p.momy}, {leadx, traily, leadx + g.p.momx, traily + g.p.momy}} {
 			f, li, ok := g.firstBlockingIntercept(tc[0], tc[1], tc[2], tc[3])
@@ -629,9 +634,9 @@ func (g *game) slideMove() {
 			}
 			return
 		}
-		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d bestFrac=%.6f", bestLine, bestFrac), g.p.x, g.p.y)
+		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d bestFrac=%d", bestLine, bestFrac), g.p.x, g.p.y)
 
-		bestFracFixed := int64(bestFrac*fracUnit + 0.5)
+		bestFracFixed := bestFrac
 		bestFracFixed -= 0x800
 		if bestFracFixed > 0 {
 			newx := fixedMul(g.p.momx, bestFracFixed)
@@ -677,14 +682,22 @@ func (g *game) debugPlayerMove(msg string, x, y int64) {
 		g.demoTick-1, g.worldTic, msg, g.p.x, g.p.y, x, y, g.p.angle, g.p.momx, g.p.momy)
 }
 
-func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (float64, int, bool) {
-	intercepts := make([]intercept, 0, 16)
+func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
+	intercepts := make([]slideIntercept, 0, 16)
+	trace := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
 	for i, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(x1, y1, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok {
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		if doomPointOnDivlineSide(ld.x1, ld.y1, trace) == doomPointOnDivlineSide(ld.x2, ld.y2, trace) {
 			continue
 		}
-		intercepts = append(intercepts, intercept{frac: frac, line: i})
+		if doomPointOnDivlineSide(x1, y1, lineDL) == doomPointOnDivlineSide(x2, y2, lineDL) {
+			continue
+		}
+		frac := interceptVector(trace, lineDL)
+		if frac < 0 || frac > fracUnit {
+			continue
+		}
+		intercepts = append(intercepts, slideIntercept{frac: frac, line: i})
 	}
 	sort.Slice(intercepts, func(i, j int) bool { return intercepts[i].frac < intercepts[j].frac })
 
