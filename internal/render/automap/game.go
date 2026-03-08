@@ -510,6 +510,9 @@ type game struct {
 	maskedMidSegsScratch         []maskedMidSeg
 	spriteTXScratch              []int
 	spriteTYScratch              []int
+	spriteSourceColumnScratch    []uint32
+	spriteColumnScratch          []uint32
+	billboardColumnRunsScratch   []billboardColumnRun
 	wallLayer                    *ebiten.Image
 	wallPix                      []byte
 	wallPix32                    []uint32
@@ -595,6 +598,12 @@ type game struct {
 	demoStartPRnd                int
 	demoRNGCaptured              bool
 	demoRecord                   []DemoTic
+}
+
+type billboardColumnRun struct {
+	x0 int
+	x1 int
+	tx int
 }
 
 type savedMapView struct {
@@ -5808,6 +5817,36 @@ func spriteIndexedPixels(tex WallTexture) ([]byte, []byte, bool) {
 	return tex.Indexed, tex.OpaqueMask, true
 }
 
+func synthesizeIndexedSpriteTexture(tex WallTexture) (WallTexture, bool) {
+	if tex.Width <= 0 || tex.Height <= 0 {
+		return tex, false
+	}
+	n := tex.Width * tex.Height
+	if len(tex.Indexed) == n && len(tex.OpaqueMask) == n {
+		return tex, true
+	}
+	src32, ok := spritePixels32(tex)
+	if !ok || len(src32) != n {
+		return tex, false
+	}
+	indexed := make([]byte, n)
+	mask := make([]byte, n)
+	for i, p := range src32 {
+		if ((p >> pixelAShift) & 0xFF) == 0 {
+			continue
+		}
+		mask[i] = 1
+		idx, ok := packedColorPaletteIndex(p)
+		if !ok {
+			idx = 0
+		}
+		indexed[i] = idx
+	}
+	tex.Indexed = indexed
+	tex.OpaqueMask = mask
+	return tex, true
+}
+
 func trimScreenRangeToOpaqueLUT(x0, x1 int, lut []int, minTex, maxTex int) (int, int, []int) {
 	for x0 <= x1 && len(lut) > 0 {
 		tx := lut[0]
@@ -5940,6 +5979,44 @@ func (g *game) ensureSpriteTYScratch(n int) []int {
 	return g.spriteTYScratch
 }
 
+func (g *game) ensureSpriteColumnScratch(n int) []uint32 {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.spriteColumnScratch) < n {
+		g.spriteColumnScratch = make([]uint32, n)
+	} else {
+		g.spriteColumnScratch = g.spriteColumnScratch[:n]
+		clear(g.spriteColumnScratch)
+	}
+	return g.spriteColumnScratch
+}
+
+func (g *game) ensureSpriteSourceColumnScratch(n int) []uint32 {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.spriteSourceColumnScratch) < n {
+		g.spriteSourceColumnScratch = make([]uint32, n)
+	} else {
+		g.spriteSourceColumnScratch = g.spriteSourceColumnScratch[:n]
+		clear(g.spriteSourceColumnScratch)
+	}
+	return g.spriteSourceColumnScratch
+}
+
+func (g *game) ensureBillboardColumnRunsScratch(n int) []billboardColumnRun {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.billboardColumnRunsScratch) < n {
+		g.billboardColumnRunsScratch = make([]billboardColumnRun, n)
+	} else {
+		g.billboardColumnRunsScratch = g.billboardColumnRunsScratch[:n]
+	}
+	return g.billboardColumnRunsScratch
+}
+
 func (g *game) ensurePlaneRenderScratch(n int) ([]uint32, [][]uint32, [][]byte, []bool) {
 	if n <= 0 {
 		return nil, nil, nil, nil
@@ -6019,6 +6096,7 @@ func (g *game) drawBillboardSpriteRowsDirect(src32 []uint32, srcIndexed, srcMask
 	useIndexed := len(srcIndexed) == len(srcMask) && len(srcIndexed) >= tw
 	viewW := g.viewW
 	pix32 := g.wallPix32
+	fullbright := shadeMul >= 256
 	var shadeRow []uint32
 	if useIndexed && wallShadePackedOK {
 		if shadeMul > 256 {
@@ -6026,86 +6104,179 @@ func (g *game) drawBillboardSpriteRowsDirect(src32 []uint32, srcIndexed, srcMask
 		}
 		shadeRow = wallShadePackedLUT[shadeMul][:]
 	}
-	for y := y0; y <= y1; y++ {
-		ty := tyLUT[y-y0]
-		base := ty * tw
-		row := y * viewW
-		for x := x0; x <= x1; {
-			if x+1 <= x1 {
-				i0 := row + x
-				i1 := i0 + 1
-				s0 := base + txLUT[x-x0]
-				s1 := base + txLUT[x+1-x0]
-				if useIndexed {
+	useShadeRow := len(shadeRow) == 256
+	height := y1 - y0 + 1
+	th := 0
+	if useIndexed && tw > 0 && len(srcIndexed) >= tw {
+		th = len(srcIndexed) / tw
+	} else if len(src32) >= tw && tw > 0 {
+		th = len(src32) / tw
+	}
+	if th <= 0 {
+		return
+	}
+	sourceColumnScratch := g.ensureSpriteSourceColumnScratch(th)
+	columnScratch := g.ensureSpriteColumnScratch(height)
+	runs := g.ensureBillboardColumnRunsScratch(len(txLUT))
+	runCount := 0
+	for x := x0; x <= x1; {
+		tx := txLUT[x-x0]
+		runEnd := x
+		for runEnd+1 <= x1 && txLUT[runEnd+1-x0] == tx {
+			runEnd++
+		}
+		runs[runCount] = billboardColumnRun{x0: x, x1: runEnd, tx: tx}
+		runCount++
+		x = runEnd + 1
+	}
+	for i := 0; i < runCount; i++ {
+		run := runs[i]
+		runLen := run.x1 - run.x0 + 1
+		clear(sourceColumnScratch)
+		for ty := 0; ty < th; ty++ {
+			s := ty*tw + run.tx
+			if useIndexed {
+				if srcMask[s] == 0 {
+					continue
+				}
+				if useShadeRow {
+					sourceColumnScratch[ty] = shadeRow[srcIndexed[s]]
+				} else {
+					sourceColumnScratch[ty] = shadePaletteIndexPacked(srcIndexed[s], shadeMul)
+				}
+				continue
+			}
+			p := src32[s]
+			if ((p >> pixelAShift) & 0xFF) == 0 {
+				continue
+			}
+			if fullbright {
+				sourceColumnScratch[ty] = p | pixelOpaqueA
+			} else {
+				sourceColumnScratch[ty] = shadePackedRGBA(p, shadeMul)
+			}
+		}
+		if runLen == 1 {
+			for y := y0; y <= y1; y++ {
+				if p := sourceColumnScratch[tyLUT[y-y0]]; p != 0 {
+					pix32[y*viewW+run.x0] = p
+				}
+			}
+			continue
+		}
+		clear(columnScratch)
+		for y := y0; y <= y1; y++ {
+			if p := sourceColumnScratch[tyLUT[y-y0]]; p != 0 {
+				columnScratch[y-y0] = p
+			}
+		}
+		for dx := run.x0; dx <= run.x1; dx++ {
+			pixI := y0*viewW + dx
+			for i := 0; i < height; i++ {
+				if p := columnScratch[i]; p != 0 {
+					pix32[pixI] = p
+				}
+				pixI += viewW
+			}
+		}
+	}
+}
+
+func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []solidSpan, src32 []uint32, srcIndexed, srcMask []byte, shadeMul uint32, shadeRow []uint32) {
+	useIndexed := len(srcIndexed) == len(srcMask) && len(srcIndexed) == tw*max(ty+1, 1)
+	useShadeRow := len(shadeRow) == 256
+	fullbright := shadeMul >= 256
+	base := ty * tw
+	for _, sp := range spans {
+		if useIndexed {
+			for x := sp.l; x <= sp.r; {
+				if x+1 <= sp.r {
+					i0 := row + x
+					i1 := i0 + 1
+					s0 := base + txLUT[x-x0]
+					s1 := base + txLUT[x+1-x0]
 					a0 := srcMask[s0] != 0
 					a1 := srcMask[s1] != 0
 					if a0 && a1 {
-						p0 := shadePaletteIndexPacked(srcIndexed[s0], shadeMul)
-						p1 := shadePaletteIndexPacked(srcIndexed[s1], shadeMul)
-						if len(shadeRow) == 256 {
-							p0 = shadeRow[srcIndexed[s0]]
-							p1 = shadeRow[srcIndexed[s1]]
+						if useShadeRow {
+							g.writeWallPixelPair(i0, shadeRow[srcIndexed[s0]], shadeRow[srcIndexed[s1]])
+						} else {
+							g.writeWallPixelPair(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul), shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
 						}
-						pix32[i0] = p0
-						pix32[i1] = p1
 						x += 2
 						continue
 					}
 					if a0 {
-						p0 := shadePaletteIndexPacked(srcIndexed[s0], shadeMul)
-						if len(shadeRow) == 256 {
-							p0 = shadeRow[srcIndexed[s0]]
+						if useShadeRow {
+							g.writeWallPixel(i0, shadeRow[srcIndexed[s0]])
+						} else {
+							g.writeWallPixel(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul))
 						}
-						pix32[i0] = p0
 					}
 					if a1 {
-						p1 := shadePaletteIndexPacked(srcIndexed[s1], shadeMul)
-						if len(shadeRow) == 256 {
-							p1 = shadeRow[srcIndexed[s1]]
+						if useShadeRow {
+							g.writeWallPixel(i1, shadeRow[srcIndexed[s1]])
+						} else {
+							g.writeWallPixel(i1, shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
 						}
-						pix32[i1] = p1
 					}
 					x += 2
 					continue
 				}
-				p0 := src32[s0]
-				p1 := src32[s1]
+				i := row + x
+				s := base + txLUT[x-x0]
+				if srcMask[s] != 0 {
+					if useShadeRow {
+						g.writeWallPixel(i, shadeRow[srcIndexed[s]])
+					} else {
+						g.writeWallPixel(i, shadePaletteIndexPacked(srcIndexed[s], shadeMul))
+					}
+				}
+				x++
+			}
+			continue
+		}
+		for x := sp.l; x <= sp.r; {
+			if x+1 <= sp.r {
+				i0 := row + x
+				i1 := i0 + 1
+				p0 := src32[base+txLUT[x-x0]]
+				p1 := src32[base+txLUT[x+1-x0]]
 				a0 := ((p0 >> pixelAShift) & 0xFF) != 0
 				a1 := ((p1 >> pixelAShift) & 0xFF) != 0
 				if a0 && a1 {
-					p0s := shadePackedRGBA(p0, shadeMul)
-					p1s := shadePackedRGBA(p1, shadeMul)
-					pix32[i0] = p0s
-					pix32[i1] = p1s
+					if fullbright {
+						g.writeWallPixelPair(i0, p0|pixelOpaqueA, p1|pixelOpaqueA)
+					} else {
+						g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
+					}
 					x += 2
 					continue
 				}
 				if a0 {
-					p0s := shadePackedRGBA(p0, shadeMul)
-					pix32[i0] = p0s
+					if fullbright {
+						g.writeWallPixel(i0, p0|pixelOpaqueA)
+					} else {
+						g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+					}
 				}
 				if a1 {
-					p1s := shadePackedRGBA(p1, shadeMul)
-					pix32[i1] = p1s
+					if fullbright {
+						g.writeWallPixel(i1, p1|pixelOpaqueA)
+					} else {
+						g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+					}
 				}
 				x += 2
 				continue
 			}
 			i := row + x
-			s := base + txLUT[x-x0]
-			if useIndexed {
-				if srcMask[s] != 0 {
-					p := shadePaletteIndexPacked(srcIndexed[s], shadeMul)
-					if len(shadeRow) == 256 {
-						p = shadeRow[srcIndexed[s]]
-					}
-					pix32[i] = p
-				}
-			} else {
-				p := src32[s]
-				if ((p >> pixelAShift) & 0xFF) != 0 {
-					ps := shadePackedRGBA(p, shadeMul)
-					pix32[i] = ps
+			p := src32[base+txLUT[x-x0]]
+			if ((p >> pixelAShift) & 0xFF) != 0 {
+				if fullbright {
+					g.writeWallPixel(i, p|pixelOpaqueA)
+				} else {
+					g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
 				}
 			}
 			x++
@@ -6273,6 +6444,27 @@ func drawWallColumnTexturedIndexedLEColPow2Row(pix32 []uint32, pixI, rowStridePi
 	frac := int(texVFixed & fracMask)
 	stepInt := int(texVStepFixed >> fracBits)
 	stepFrac := int(texVStepFixed & fracMask)
+	if texVStepFixed > -fracUnit && texVStepFixed < fracUnit {
+		for count > 0 {
+			ty0 := ty & hmask
+			p := row[col[ty0]]
+			for {
+				pix32[pixI] = p
+				pixI += rowStridePix
+				count--
+				if count <= 0 {
+					return
+				}
+				frac += stepFrac
+				ty += stepInt + (frac >> fracBits)
+				frac &= fracMask
+				if (ty & hmask) != ty0 {
+					break
+				}
+			}
+		}
+		return
+	}
 	for ; count >= 2; count -= 2 {
 		ty0 := ty & hmask
 		frac += stepFrac
@@ -6670,6 +6862,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					}
 					packedShadeRow = wallShadePackedLUT[defaultShade][:]
 				}
+				var fullbrightPackedRow []uint32
+				if wallShadePackedOK {
+					fullbrightPackedRow = wallShadePackedLUT[256][:]
+				}
 				pixI := rowPix + x1
 				if !flatTexReady {
 					if doomColormapEnabled {
@@ -6767,28 +6963,73 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					continue
 				}
 				if doomColormapEnabled && flatIndexedReady {
+					const fracMask = fracUnit - 1
+					uInt := int(wxFixed >> fracBits)
+					vInt := int(wyFixed >> fracBits)
+					uFrac := int(wxFixed & fracMask)
+					vFrac := int(wyFixed & fracMask)
+					stepUInt := int(stepWXFixed >> fracBits)
+					stepVInt := int(stepWYFixed >> fracBits)
+					stepUFrac := int(stepWXFixed & fracMask)
+					stepVFrac := int(stepWYFixed & fracMask)
+					canRepeatFill := stepWXFixed > -fracUnit && stepWXFixed < fracUnit && stepWYFixed > -fracUnit && stepWYFixed < fracUnit
+					if canRepeatFill {
+						x := x1
+						for x <= x2 {
+							texIdx := ((vInt & 63) << 6) + (uInt & 63)
+							packed := shadePaletteIndexDOOMRow(texIndexed[texIdx], defaultRow)
+							for {
+								g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
+								pix32[pixI] = packed
+								x++
+								pixI++
+								if x > x2 {
+									break
+								}
+								uFrac += stepUFrac
+								vFrac += stepVFrac
+								uInt += stepUInt + (uFrac >> fracBits)
+								vInt += stepVInt + (vFrac >> fracBits)
+								uFrac &= fracMask
+								vFrac &= fracMask
+								nextTexIdx := ((vInt & 63) << 6) + (uInt & 63)
+								if nextTexIdx != texIdx {
+									break
+								}
+							}
+						}
+						continue
+					}
 					x := x1
 					for ; x+1 <= x2; x += 2 {
-						u0 := int(wxFixed>>fracBits) & 63
-						v0 := int(wyFixed>>fracBits) & 63
+						u0 := uInt & 63
+						v0 := vInt & 63
 						p0 := texIndexed[(v0<<6)+u0]
 						row0 := defaultRow
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						u1 := int(wxFixed>>fracBits) & 63
-						v1 := int(wyFixed>>fracBits) & 63
+						uFrac += stepUFrac
+						vFrac += stepVFrac
+						uInt += stepUInt + (uFrac >> fracBits)
+						vInt += stepVInt + (vFrac >> fracBits)
+						uFrac &= fracMask
+						vFrac &= fracMask
+						u1 := uInt & 63
+						v1 := vInt & 63
 						p1 := texIndexed[(v1<<6)+u1]
 						row1 := defaultRow
 						pix32[pixI] = shadePaletteIndexDOOMRow(p0, row0)
 						pix32[pixI+1] = shadePaletteIndexDOOMRow(p1, row1)
 						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
+						uFrac += stepUFrac
+						vFrac += stepVFrac
+						uInt += stepUInt + (uFrac >> fracBits)
+						vInt += stepVInt + (vFrac >> fracBits)
+						uFrac &= fracMask
+						vFrac &= fracMask
 						pixI += 2
 					}
 					if x <= x2 {
-						u := int(wxFixed>>fracBits) & 63
-						v := int(wyFixed>>fracBits) & 63
+						u := uInt & 63
+						v := vInt & 63
 						pix32[pixI] = shadePaletteIndexDOOMRow(texIndexed[(v<<6)+u], defaultRow)
 						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
@@ -6823,34 +7064,96 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					continue
 				}
 				if fullbrightNoLighting {
+					const fracMask = fracUnit - 1
+					uInt := int(wxFixed >> fracBits)
+					vInt := int(wyFixed >> fracBits)
+					uFrac := int(wxFixed & fracMask)
+					vFrac := int(wyFixed & fracMask)
+					stepUInt := int(stepWXFixed >> fracBits)
+					stepVInt := int(stepWYFixed >> fracBits)
+					stepUFrac := int(stepWXFixed & fracMask)
+					stepVFrac := int(stepWYFixed & fracMask)
+					canRepeatFill := stepWXFixed > -fracUnit && stepWXFixed < fracUnit && stepWYFixed > -fracUnit && stepWYFixed < fracUnit
+					if flatIndexedReady && canRepeatFill {
+						x := x1
+						for x <= x2 {
+							texIdx := ((vInt & 63) << 6) + (uInt & 63)
+							var packed uint32
+							if len(fullbrightPackedRow) == 256 {
+								packed = fullbrightPackedRow[texIndexed[texIdx]]
+							} else {
+								packed = shadePaletteIndexPacked(texIndexed[texIdx], 256)
+							}
+							for {
+								g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
+								pix32[pixI] = packed
+								x++
+								pixI++
+								if x > x2 {
+									break
+								}
+								uFrac += stepUFrac
+								vFrac += stepVFrac
+								uInt += stepUInt + (uFrac >> fracBits)
+								vInt += stepVInt + (vFrac >> fracBits)
+								uFrac &= fracMask
+								vFrac &= fracMask
+								nextTexIdx := ((vInt & 63) << 6) + (uInt & 63)
+								if nextTexIdx != texIdx {
+									break
+								}
+							}
+						}
+						continue
+					}
 					x := x1
 					for ; x+1 <= x2; x += 2 {
-						u0 := int(wxFixed>>fracBits) & 63
-						v0 := int(wyFixed>>fracBits) & 63
+						u0 := uInt & 63
+						v0 := vInt & 63
 						if flatIndexedReady {
-							pix32[pixI] = shadePaletteIndexPacked(texIndexed[(v0<<6)+u0], 256)
+							if len(fullbrightPackedRow) == 256 {
+								pix32[pixI] = fullbrightPackedRow[texIndexed[(v0<<6)+u0]]
+							} else {
+								pix32[pixI] = shadePaletteIndexPacked(texIndexed[(v0<<6)+u0], 256)
+							}
 						} else {
 							pix32[pixI] = tex32[(v0<<6)+u0]
 						}
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						u1 := int(wxFixed>>fracBits) & 63
-						v1 := int(wyFixed>>fracBits) & 63
+						uFrac += stepUFrac
+						vFrac += stepVFrac
+						uInt += stepUInt + (uFrac >> fracBits)
+						vInt += stepVInt + (vFrac >> fracBits)
+						uFrac &= fracMask
+						vFrac &= fracMask
+						u1 := uInt & 63
+						v1 := vInt & 63
 						if flatIndexedReady {
-							pix32[pixI+1] = shadePaletteIndexPacked(texIndexed[(v1<<6)+u1], 256)
+							if len(fullbrightPackedRow) == 256 {
+								pix32[pixI+1] = fullbrightPackedRow[texIndexed[(v1<<6)+u1]]
+							} else {
+								pix32[pixI+1] = shadePaletteIndexPacked(texIndexed[(v1<<6)+u1], 256)
+							}
 						} else {
 							pix32[pixI+1] = tex32[(v1<<6)+u1]
 						}
 						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
+						uFrac += stepUFrac
+						vFrac += stepVFrac
+						uInt += stepUInt + (uFrac >> fracBits)
+						vInt += stepVInt + (vFrac >> fracBits)
+						uFrac &= fracMask
+						vFrac &= fracMask
 						pixI += 2
 					}
 					if x <= x2 {
-						u := int(wxFixed>>fracBits) & 63
-						v := int(wyFixed>>fracBits) & 63
+						u := uInt & 63
+						v := vInt & 63
 						if flatIndexedReady {
-							pix32[pixI] = shadePaletteIndexPacked(texIndexed[(v<<6)+u], 256)
+							if len(fullbrightPackedRow) == 256 {
+								pix32[pixI] = fullbrightPackedRow[texIndexed[(v<<6)+u]]
+							} else {
+								pix32[pixI] = shadePaletteIndexPacked(texIndexed[(v<<6)+u], 256)
+							}
 						} else {
 							pix32[pixI] = tex32[(v<<6)+u]
 						}
@@ -6860,26 +7163,116 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				}
 				if flatIndexedReady {
 					if len(packedShadeRow) == 256 {
+						const fracMask = fracUnit - 1
+						uInt := int(wxFixed >> fracBits)
+						vInt := int(wyFixed >> fracBits)
+						uFrac := int(wxFixed & fracMask)
+						vFrac := int(wyFixed & fracMask)
+						stepUInt := int(stepWXFixed >> fracBits)
+						stepVInt := int(stepWYFixed >> fracBits)
+						stepUFrac := int(stepWXFixed & fracMask)
+						stepVFrac := int(stepWYFixed & fracMask)
+						canRepeatFill := stepWXFixed > -fracUnit && stepWXFixed < fracUnit && stepWYFixed > -fracUnit && stepWYFixed < fracUnit
+						if canRepeatFill {
+							x := x1
+							for x <= x2 {
+								texIdx := ((vInt & 63) << 6) + (uInt & 63)
+								packed := packedShadeRow[texIndexed[texIdx]]
+								for {
+									g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
+									pix32[pixI] = packed
+									x++
+									pixI++
+									if x > x2 {
+										break
+									}
+									uFrac += stepUFrac
+									vFrac += stepVFrac
+									uInt += stepUInt + (uFrac >> fracBits)
+									vInt += stepVInt + (vFrac >> fracBits)
+									uFrac &= fracMask
+									vFrac &= fracMask
+									nextTexIdx := ((vInt & 63) << 6) + (uInt & 63)
+									if nextTexIdx != texIdx {
+										break
+									}
+								}
+							}
+							continue
+						}
 						x := x1
-						for ; x+1 <= x2; x += 2 {
-							u0 := int(wxFixed>>fracBits) & 63
-							v0 := int(wyFixed>>fracBits) & 63
+						for ; x+3 <= x2; x += 4 {
+							u0 := uInt & 63
+							v0 := vInt & 63
 							p0 := texIndexed[(v0<<6)+u0]
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
-							u1 := int(wxFixed>>fracBits) & 63
-							v1 := int(wyFixed>>fracBits) & 63
+							uFrac += stepUFrac
+							vFrac += stepVFrac
+							uInt += stepUInt + (uFrac >> fracBits)
+							vInt += stepVInt + (vFrac >> fracBits)
+							uFrac &= fracMask
+							vFrac &= fracMask
+							u1 := uInt & 63
+							v1 := vInt & 63
+							p1 := texIndexed[(v1<<6)+u1]
+							uFrac += stepUFrac
+							vFrac += stepVFrac
+							uInt += stepUInt + (uFrac >> fracBits)
+							vInt += stepVInt + (vFrac >> fracBits)
+							uFrac &= fracMask
+							vFrac &= fracMask
+							u2 := uInt & 63
+							v2 := vInt & 63
+							p2 := texIndexed[(v2<<6)+u2]
+							uFrac += stepUFrac
+							vFrac += stepVFrac
+							uInt += stepUInt + (uFrac >> fracBits)
+							vInt += stepVInt + (vFrac >> fracBits)
+							uFrac &= fracMask
+							vFrac &= fracMask
+							u3 := uInt & 63
+							v3 := vInt & 63
+							p3 := texIndexed[(v3<<6)+u3]
+							pix32[pixI] = packedShadeRow[p0]
+							pix32[pixI+1] = packedShadeRow[p1]
+							pix32[pixI+2] = packedShadeRow[p2]
+							pix32[pixI+3] = packedShadeRow[p3]
+							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
+							g.setPlaneDepthMinPairEncoded(pixI+2, stamp, depthQ, depthPacked)
+							uFrac += stepUFrac
+							vFrac += stepVFrac
+							uInt += stepUInt + (uFrac >> fracBits)
+							vInt += stepVInt + (vFrac >> fracBits)
+							uFrac &= fracMask
+							vFrac &= fracMask
+							pixI += 4
+						}
+						for ; x+1 <= x2; x += 2 {
+							u0 := uInt & 63
+							v0 := vInt & 63
+							p0 := texIndexed[(v0<<6)+u0]
+							uFrac += stepUFrac
+							vFrac += stepVFrac
+							uInt += stepUInt + (uFrac >> fracBits)
+							vInt += stepVInt + (vFrac >> fracBits)
+							uFrac &= fracMask
+							vFrac &= fracMask
+							u1 := uInt & 63
+							v1 := vInt & 63
 							p1 := texIndexed[(v1<<6)+u1]
 							pix32[pixI] = packedShadeRow[p0]
 							pix32[pixI+1] = packedShadeRow[p1]
 							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
+							uFrac += stepUFrac
+							vFrac += stepVFrac
+							uInt += stepUInt + (uFrac >> fracBits)
+							vInt += stepVInt + (vFrac >> fracBits)
+							uFrac &= fracMask
+							vFrac &= fracMask
 							pixI += 2
 						}
 						if x <= x2 {
-							u := int(wxFixed>>fracBits) & 63
-							v := int(wyFixed>>fracBits) & 63
+							u := uInt & 63
+							v := vInt & 63
 							pix32[pixI] = packedShadeRow[texIndexed[(v<<6)+u]]
 							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 						}
@@ -8068,6 +8461,13 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				src32, ok32 := spritePixels32(it.spriteTex)
 				srcIndexed, srcMask, _ := spriteIndexedPixels(it.spriteTex)
 				useIndexed := len(srcIndexed) == len(srcMask) && len(srcIndexed) == tw*th
+				var shadeRow []uint32
+				if useIndexed && wallShadePackedOK {
+					if shadeMul > 256 {
+						shadeMul = 256
+					}
+					shadeRow = wallShadePackedLUT[shadeMul][:]
+				}
 				if !ok32 && !useIndexed {
 					continue
 				}
@@ -8171,70 +8571,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 								continue
 							}
 						}
-						for _, sp := range rowSpans {
-							if useIndexed {
-								base := ty * tw
-								for x := sp.l; x <= sp.r; {
-									if x+1 <= sp.r {
-										i0 := row + x
-										i1 := i0 + 1
-										s0 := base + txLUT[x-x0]
-										s1 := base + txLUT[x+1-x0]
-										a0 := srcMask[s0] != 0
-										a1 := srcMask[s1] != 0
-										if a0 && a1 {
-											g.writeWallPixelPair(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul), shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
-											x += 2
-											continue
-										}
-										if a0 {
-											g.writeWallPixel(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul))
-										}
-										if a1 {
-											g.writeWallPixel(i1, shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
-										}
-										x += 2
-										continue
-									}
-									i := row + x
-									s := base + txLUT[x-x0]
-									if srcMask[s] != 0 {
-										g.writeWallPixel(i, shadePaletteIndexPacked(srcIndexed[s], shadeMul))
-									}
-									x++
-								}
-								continue
-							}
-							for x := sp.l; x <= sp.r; {
-								if x+1 <= sp.r {
-									i0 := row + x
-									i1 := i0 + 1
-									p0 := src32[ty*tw+txLUT[x-x0]]
-									p1 := src32[ty*tw+txLUT[x+1-x0]]
-									a0 := ((p0 >> pixelAShift) & 0xFF) != 0
-									a1 := ((p1 >> pixelAShift) & 0xFF) != 0
-									if a0 && a1 {
-										g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
-										x += 2
-										continue
-									}
-									if a0 {
-										g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-									}
-									if a1 {
-										g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-									}
-									x += 2
-									continue
-								}
-								i := row + x
-								p := src32[ty*tw+txLUT[x-x0]]
-								if ((p >> pixelAShift) & 0xFF) != 0 {
-									g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
-								}
-								x++
-							}
-						}
+						g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
 						continue
 					}
 					for x := x0; x <= x1; {
@@ -8249,24 +8586,36 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 							i1 := i0 + 1
 							occ0 := !in0 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
 							occ1 := !in1 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
-							if !occ0 && !occ1 {
-								p0 := src32[ty*tw+txLUT[x-x0]]
-								p1 := src32[ty*tw+txLUT[x+1-x0]]
+						if !occ0 && !occ1 {
+							p0 := src32[ty*tw+txLUT[x-x0]]
+							p1 := src32[ty*tw+txLUT[x+1-x0]]
 								a0 := ((p0 >> pixelAShift) & 0xFF) != 0
 								a1 := ((p1 >> pixelAShift) & 0xFF) != 0
-								if a0 && a1 {
+							if a0 && a1 {
+								if shadeMul >= 256 {
+									g.writeWallPixelPair(i0, p0|pixelOpaqueA, p1|pixelOpaqueA)
+								} else {
 									g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
-									g.setDepthPixelPairEncoded(i0, depthPacked)
+								}
+								g.setDepthPixelPairEncoded(i0, depthPacked)
 									x += 2
 									continue
 								}
-								if a0 {
+							if a0 {
+								if shadeMul >= 256 {
+									g.writeWallPixel(i0, p0|pixelOpaqueA)
+								} else {
 									g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-									g.setDepthPixelEncoded(i0, depthPacked)
 								}
-								if a1 {
+								g.setDepthPixelEncoded(i0, depthPacked)
+							}
+							if a1 {
+								if shadeMul >= 256 {
+									g.writeWallPixel(i1, p1|pixelOpaqueA)
+								} else {
 									g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-									g.setDepthPixelEncoded(i1, depthPacked)
+								}
+								g.setDepthPixelEncoded(i1, depthPacked)
 								}
 								x += 2
 								continue
@@ -8989,6 +9338,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if !it.fullBright {
 			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
+		var shadeRow []uint32
+		if useIndexed && wallShadePackedOK {
+			if shadeMul > 256 {
+				shadeMul = 256
+			}
+			shadeRow = wallShadePackedLUT[shadeMul][:]
+		}
 		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
 		for x := x0; x <= x1; x++ {
 			tx := int((float64(x) + 0.5 - dstX) / scale)
@@ -9094,70 +9450,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 						continue
 					}
 				}
-				for _, sp := range rowSpans {
-					if useIndexed {
-						base := ty * tw
-						for x := sp.l; x <= sp.r; {
-							if x+1 <= sp.r {
-								i0 := row + x
-								i1 := i0 + 1
-								s0 := base + txLUT[x-x0]
-								s1 := base + txLUT[x+1-x0]
-								a0 := srcMask[s0] != 0
-								a1 := srcMask[s1] != 0
-								if a0 && a1 {
-									g.writeWallPixelPair(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul), shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
-									x += 2
-									continue
-								}
-								if a0 {
-									g.writeWallPixel(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul))
-								}
-								if a1 {
-									g.writeWallPixel(i1, shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
-								}
-								x += 2
-								continue
-							}
-							i := row + x
-							s := base + txLUT[x-x0]
-							if srcMask[s] != 0 {
-								g.writeWallPixel(i, shadePaletteIndexPacked(srcIndexed[s], shadeMul))
-							}
-							x++
-						}
-						continue
-					}
-					for x := sp.l; x <= sp.r; {
-						if x+1 <= sp.r {
-							i0 := row + x
-							i1 := i0 + 1
-							p0 := src32[ty*tw+txLUT[x-x0]]
-							p1 := src32[ty*tw+txLUT[x+1-x0]]
-							a0 := ((p0 >> pixelAShift) & 0xFF) != 0
-							a1 := ((p1 >> pixelAShift) & 0xFF) != 0
-							if a0 && a1 {
-								g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
-								x += 2
-								continue
-							}
-							if a0 {
-								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-							}
-							if a1 {
-								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-							}
-							x += 2
-							continue
-						}
-						i := row + x
-						p := src32[ty*tw+txLUT[x-x0]]
-						if ((p >> pixelAShift) & 0xFF) != 0 {
-							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
-						}
-						x++
-					}
-				}
+				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
 				continue
 			}
 			for x := x0; x <= x1; {
@@ -9545,6 +9838,13 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if !it.fullBright {
 			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
 		}
+		var shadeRow []uint32
+		if useIndexed && wallShadePackedOK {
+			if shadeMul > 256 {
+				shadeMul = 256
+			}
+			shadeRow = wallShadePackedLUT[shadeMul][:]
+		}
 		txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
 		for x := x0; x <= x1; x++ {
 			tx := int((float64(x) + 0.5 - dstX) / scale)
@@ -9609,70 +9909,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 						continue
 					}
 				}
-				for _, sp := range rowSpans {
-					if useIndexed {
-						base := ty * tw
-						for x := sp.l; x <= sp.r; {
-							if x+1 <= sp.r {
-								i0 := row + x
-								i1 := i0 + 1
-								s0 := base + txLUT[x-x0]
-								s1 := base + txLUT[x+1-x0]
-								a0 := srcMask[s0] != 0
-								a1 := srcMask[s1] != 0
-								if a0 && a1 {
-									g.writeWallPixelPair(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul), shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
-									x += 2
-									continue
-								}
-								if a0 {
-									g.writeWallPixel(i0, shadePaletteIndexPacked(srcIndexed[s0], shadeMul))
-								}
-								if a1 {
-									g.writeWallPixel(i1, shadePaletteIndexPacked(srcIndexed[s1], shadeMul))
-								}
-								x += 2
-								continue
-							}
-							i := row + x
-							s := base + txLUT[x-x0]
-							if srcMask[s] != 0 {
-								g.writeWallPixel(i, shadePaletteIndexPacked(srcIndexed[s], shadeMul))
-							}
-							x++
-						}
-						continue
-					}
-					for x := sp.l; x <= sp.r; {
-						if x+1 <= sp.r {
-							i0 := row + x
-							i1 := i0 + 1
-							p0 := src32[ty*tw+txLUT[x-x0]]
-							p1 := src32[ty*tw+txLUT[x+1-x0]]
-							a0 := ((p0 >> pixelAShift) & 0xFF) != 0
-							a1 := ((p1 >> pixelAShift) & 0xFF) != 0
-							if a0 && a1 {
-								g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
-								x += 2
-								continue
-							}
-							if a0 {
-								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-							}
-							if a1 {
-								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-							}
-							x += 2
-							continue
-						}
-						i := row + x
-						p := src32[ty*tw+txLUT[x-x0]]
-						if ((p >> pixelAShift) & 0xFF) != 0 {
-							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
-						}
-						x++
-					}
-				}
+				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
 				continue
 			}
 			for x := x0; x <= x1; {
@@ -9712,14 +9949,22 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 					if !occ0 {
 						p0 := src32[ty*tw+txLUT[x-x0]]
 						if ((p0 >> pixelAShift) & 0xFF) != 0 {
-							g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							if shadeMul >= 256 {
+								g.writeWallPixel(i0, p0|pixelOpaqueA)
+							} else {
+								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
+							}
 							g.setDepthPixelEncoded(i0, depthPacked)
 						}
 					}
 					if !occ1 {
 						p1 := src32[ty*tw+txLUT[x+1-x0]]
 						if ((p1 >> pixelAShift) & 0xFF) != 0 {
-							g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							if shadeMul >= 256 {
+								g.writeWallPixel(i1, p1|pixelOpaqueA)
+							} else {
+								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
+							}
 							g.setDepthPixelEncoded(i1, depthPacked)
 						}
 					}
@@ -9734,7 +9979,11 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
 					p := src32[ty*tw+txLUT[x-x0]]
 					if ((p >> pixelAShift) & 0xFF) != 0 {
-						g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
+						if shadeMul >= 256 {
+							g.writeWallPixel(i, p|pixelOpaqueA)
+						} else {
+							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
+						}
 						g.setDepthPixelEncoded(i, depthPacked)
 					}
 				}
@@ -10280,8 +10529,18 @@ func (g *game) monsterSpriteTexture(name string) (WallTexture, bool) {
 		return WallTexture{}, false
 	}
 	p, ok := g.opts.SpritePatchBank[key]
-	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+	if !ok || p.Width <= 0 || p.Height <= 0 {
 		return WallTexture{}, false
+	}
+	n := p.Width * p.Height
+	if len(p.RGBA) != n*4 && (len(p.Indexed) != n || len(p.OpaqueMask) != n) {
+		return WallTexture{}, false
+	}
+	if tex, built := synthesizeIndexedSpriteTexture(p); built {
+		p = tex
+		if g.opts.SpritePatchBank != nil {
+			g.opts.SpritePatchBank[key] = p
+		}
 	}
 	return p, true
 }
