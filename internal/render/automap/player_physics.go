@@ -222,9 +222,8 @@ func (g *game) tickDoors() {
 }
 
 func (g *game) thrust(angle uint32, move int64) {
-	rad := angleToRadians(angle)
-	g.p.momx += fixedMul(move, floatToFixed(math.Cos(rad)))
-	g.p.momy += fixedMul(move, floatToFixed(math.Sin(rad)))
+	g.p.momx += fixedMul(move, doomFineCosine(angle))
+	g.p.momy += fixedMul(move, doomFineSineAtAngle(angle))
 }
 
 func (g *game) xyMovement() {

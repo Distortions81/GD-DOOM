@@ -171,6 +171,7 @@ func shouldIgnorePath(path string) bool {
 	ignoredSuffixes := []string{
 		".flags",
 		".state",
+		".tics",
 		".kind",
 		".texture",
 		".action",

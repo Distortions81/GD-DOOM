@@ -1471,6 +1471,11 @@ func (g *game) updateDemoMode() error {
 	fireHeld := tc.Buttons&demoButtonAttack != 0
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.writeDemoTraceTic()
+	if g.isDead && g.demoTrace != nil {
+		g.demoTrace.Close()
+		g.demoTrace = nil
+		return ebiten.Termination
+	}
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
