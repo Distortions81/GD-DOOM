@@ -6976,16 +6976,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				rowPix := sp.y * w
 				if key.sky {
 					if skyLayerEnabled {
-						pixI := rowPix + x1
-						x := x1
-						for ; x+1 <= x2; x += 2 {
-							pix32[pixI] = 0
-							pix32[pixI+1] = 0
-							pixI += 2
-						}
-						if x <= x2 {
-							pix32[pixI] = 0
-						}
+						clear(pix32[rowPix+x1 : rowPix+x2+1])
 						continue
 					}
 					pixI := rowPix + x1
@@ -7028,9 +7019,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				if depth <= 0 {
 					continue
 				}
-				stamp := g.depthFrameStamp
 				depthQ := encodeDepthQ(depth)
-				depthPacked := packDepthStamped(depthQ, stamp)
 				if g.rowFullyOccludedByWallsFastDepthQ(depthQ, rowPix, x1, x2) {
 					continue
 				}
@@ -7077,12 +7066,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							wyFixed += stepWYFixed
 							pix32[pixI] = shadePackedDOOMColormapRow(fbPacked, row0)
 							pix32[pixI+1] = shadePackedDOOMColormapRow(fbPacked, row1)
-							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 							pixI += 2
 						}
 						if x <= x2 {
 							pix32[pixI] = shadePackedDOOMColormapRow(fbPacked, defaultRow)
-							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 						}
 						continue
 					}
@@ -7095,12 +7082,10 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							wyFixed += stepWYFixed
 							pix32[pixI] = fbPacked
 							pix32[pixI+1] = fbPacked
-							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 							pixI += 2
 						}
 						if x <= x2 {
 							pix32[pixI] = fbPacked
-							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 						}
 						continue
 					}
@@ -7118,7 +7103,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 								pix32[pixI] = shadePackedRGBA(fbPacked, defaultShade)
 								pix32[pixI+1] = shadePackedRGBA(fbPacked, defaultShade)
 							}
-							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 							pixI += 2
 						}
 						if x <= x2 {
@@ -7127,7 +7111,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							} else {
 								pix32[pixI] = shadePackedRGBA(fbPacked, defaultShade)
 							}
-							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 						}
 						continue
 					}
@@ -7147,7 +7130,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						} else {
 							pix32[pixI+1] = shadePackedRGBA(fbPacked, defaultShade)
 						}
-						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 						pixI += 2
 					}
 					if x <= x2 {
@@ -7156,7 +7138,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						} else {
 							pix32[pixI] = shadePackedRGBA(fbPacked, defaultShade)
 						}
-						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
 				}
@@ -7177,7 +7158,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							texIdx := ((vInt & 63) << 6) + (uInt & 63)
 							packed := shadePaletteIndexDOOMRow(texIndexed[texIdx], defaultRow)
 							for {
-								g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 								pix32[pixI] = packed
 								x++
 								pixI++
@@ -7216,7 +7196,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						row1 := defaultRow
 						pix32[pixI] = shadePaletteIndexDOOMRow(p0, row0)
 						pix32[pixI+1] = shadePaletteIndexDOOMRow(p1, row1)
-						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 						uFrac += stepUFrac
 						vFrac += stepVFrac
 						uInt += stepUInt + (uFrac >> fracBits)
@@ -7229,7 +7208,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						u := uInt & 63
 						v := vInt & 63
 						pix32[pixI] = shadePaletteIndexDOOMRow(texIndexed[(v<<6)+u], defaultRow)
-						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
 				}
@@ -7248,7 +7226,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						row1 := defaultRow
 						pix32[pixI] = shadePackedDOOMColormapRow(p0, row0)
 						pix32[pixI+1] = shadePackedDOOMColormapRow(p1, row1)
-						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 						wxFixed += stepWXFixed
 						wyFixed += stepWYFixed
 						pixI += 2
@@ -7257,7 +7234,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						u := int(wxFixed>>fracBits) & 63
 						v := int(wyFixed>>fracBits) & 63
 						pix32[pixI] = shadePackedDOOMColormapRow(tex32[(v<<6)+u], defaultRow)
-						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
 				}
@@ -7283,7 +7259,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 								packed = shadePaletteIndexPacked(texIndexed[texIdx], 256)
 							}
 							for {
-								g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 								pix32[pixI] = packed
 								x++
 								pixI++
@@ -7334,7 +7309,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						} else {
 							pix32[pixI+1] = tex32[(v1<<6)+u1]
 						}
-						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 						uFrac += stepUFrac
 						vFrac += stepVFrac
 						uInt += stepUInt + (uFrac >> fracBits)
@@ -7355,7 +7329,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						} else {
 							pix32[pixI] = tex32[(v<<6)+u]
 						}
-						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
 				}
@@ -7377,7 +7350,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 								texIdx := ((vInt & 63) << 6) + (uInt & 63)
 								packed := packedShadeRow[texIndexed[texIdx]]
 								for {
-									g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 									pix32[pixI] = packed
 									x++
 									pixI++
@@ -7434,8 +7406,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							pix32[pixI+1] = packedShadeRow[p1]
 							pix32[pixI+2] = packedShadeRow[p2]
 							pix32[pixI+3] = packedShadeRow[p3]
-							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
-							g.setPlaneDepthMinPairEncoded(pixI+2, stamp, depthQ, depthPacked)
 							uFrac += stepUFrac
 							vFrac += stepVFrac
 							uInt += stepUInt + (uFrac >> fracBits)
@@ -7459,7 +7429,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							p1 := texIndexed[(v1<<6)+u1]
 							pix32[pixI] = packedShadeRow[p0]
 							pix32[pixI+1] = packedShadeRow[p1]
-							g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 							uFrac += stepUFrac
 							vFrac += stepVFrac
 							uInt += stepUInt + (uFrac >> fracBits)
@@ -7472,7 +7441,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							u := uInt & 63
 							v := vInt & 63
 							pix32[pixI] = packedShadeRow[texIndexed[(v<<6)+u]]
-							g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 						}
 						continue
 					}
@@ -7495,7 +7463,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 							pix32[pixI] = shadePackedRGBA(p0, defaultShade)
 							pix32[pixI+1] = shadePackedRGBA(p1, defaultShade)
 						}
-						g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 						wxFixed += stepWXFixed
 						wyFixed += stepWYFixed
 						pixI += 2
@@ -7508,7 +7475,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						} else {
 							pix32[pixI] = shadePackedRGBA(tex32[(v<<6)+u], defaultShade)
 						}
-						g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 					}
 					continue
 				}
@@ -7532,7 +7498,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					} else {
 						pix32[pixI+1] = shadePackedRGBA(p1, defaultShade)
 					}
-					g.setPlaneDepthMinPairEncoded(pixI, stamp, depthQ, depthPacked)
 					wxFixed += stepWXFixed
 					wyFixed += stepWYFixed
 					pixI += 2
@@ -7545,7 +7510,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 					} else {
 						pix32[pixI] = shadePackedRGBA(tex32[(v<<6)+u], defaultShade)
 					}
-					g.setPlaneDepthMinEncoded(pixI, stamp, depthQ, depthPacked)
 				}
 			}
 		}
