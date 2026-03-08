@@ -609,7 +609,7 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 		}
 		return s.bank.SwitchOn, true
 	case soundEventMonsterSeePosit:
-		if sample, ok := pickFirstAvailable(doomrand.PRandom()%3,
+		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
 			s.bank.SeePosit1,
 			s.bank.SeePosit2,
 			s.bank.SeePosit3,
@@ -618,7 +618,7 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 		}
 		return s.sampleForEvent(soundEventMonsterActivePosit)
 	case soundEventMonsterSeeImp:
-		if sample, ok := pickFirstAvailable(doomrand.PRandom()%2,
+		if sample, ok := pickFirstAvailable(soundVariantIndex(2),
 			s.bank.SeeBGSit1,
 			s.bank.SeeBGSit2,
 		); ok {
@@ -736,7 +736,7 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 		}
 		return s.bank.NoWay, true
 	case soundEventDeathZombie:
-		if sample, ok := pickFirstAvailable(doomrand.PRandom()%3,
+		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
 			s.bank.DeathPodth1,
 			s.bank.DeathPodth2,
 			s.bank.DeathPodth3,
@@ -748,7 +748,7 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 		}
 		return s.sampleForEvent(soundEventMonsterDeath)
 	case soundEventDeathShotgunGuy:
-		if sample, ok := pickFirstAvailable(doomrand.PRandom()%3,
+		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
 			s.bank.DeathPodth1,
 			s.bank.DeathPodth2,
 			s.bank.DeathPodth3,
@@ -760,7 +760,7 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 		}
 		return s.sampleForEvent(soundEventDeathZombie)
 	case soundEventDeathChaingunner:
-		if sample, ok := pickFirstAvailable(doomrand.PRandom()%3,
+		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
 			s.bank.DeathPodth1,
 			s.bank.DeathPodth2,
 			s.bank.DeathPodth3,
@@ -772,7 +772,7 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 		}
 		return s.sampleForEvent(soundEventDeathZombie)
 	case soundEventDeathImp:
-		if sample, ok := pickFirstAvailable(doomrand.PRandom()%2,
+		if sample, ok := pickFirstAvailable(soundVariantIndex(2),
 			s.bank.DeathBgdth1,
 			s.bank.DeathBgdth2,
 		); ok {
@@ -915,6 +915,13 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 	default:
 		return PCMSample{}, false
 	}
+}
+
+func soundVariantIndex(n int) int {
+	if n <= 1 {
+		return 0
+	}
+	return doomrand.MRandom() % n
 }
 
 func pickFirstAvailable(start int, samples ...PCMSample) (PCMSample, bool) {

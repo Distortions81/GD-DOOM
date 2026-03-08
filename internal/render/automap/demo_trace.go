@@ -179,7 +179,7 @@ func (g *game) writeDemoTraceTic() {
 		PlayerState:   boolToInt(g.isDead),
 		Health:        g.stats.Health,
 		ArmorPoints:   g.stats.Armor,
-		ArmorType:     demoTraceArmorType(g.stats.Armor),
+		ArmorType:     g.stats.ArmorType,
 		ReadyWeapon:   demoTraceWeaponID(g.inventory.ReadyWeapon),
 		PendingWeapon: demoTraceWeaponNoChange,
 		MO:            1,
@@ -532,16 +532,6 @@ func demoTraceThingKind(typ int16) string {
 
 func boolToInt(v bool) int {
 	if v {
-		return 1
-	}
-	return 0
-}
-
-func demoTraceArmorType(armor int) int {
-	if armor >= 100 {
-		return 2
-	}
-	if armor > 0 {
 		return 1
 	}
 	return 0

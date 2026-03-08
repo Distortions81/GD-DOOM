@@ -1,5 +1,11 @@
 package doomrand
 
+import (
+	"fmt"
+	"os"
+	"runtime"
+)
+
 // Table is Doom's original 256-byte pseudo-random lookup table.
 var table = [256]uint8{
 	0, 8, 109, 220, 222, 241, 149, 107, 75, 248, 254, 140, 16, 66,
@@ -37,13 +43,17 @@ func New() *RNG {
 // PRandom returns the next deterministic play-simulation random byte [0,255].
 func (r *RNG) PRandom() int {
 	r.prndIndex = (r.prndIndex + 1) & 0xff
-	return int(table[r.prndIndex])
+	v := int(table[r.prndIndex])
+	debugLogCaller("PRandom", r.rndIndex, r.prndIndex, v)
+	return v
 }
 
 // MRandom returns the next menu/misc random byte [0,255].
 func (r *RNG) MRandom() int {
 	r.rndIndex = (r.rndIndex + 1) & 0xff
-	return int(table[r.rndIndex])
+	v := int(table[r.rndIndex])
+	debugLogCaller("MRandom", r.rndIndex, r.prndIndex, v)
+	return v
 }
 
 // PRandomOffset returns a play-random value at the given offset without advancing state.
@@ -99,4 +109,29 @@ func Clear() {
 // State returns package-level RNG indices.
 func State() (rndIndex, prndIndex int) {
 	return global.State()
+}
+
+func debugLogCaller(kind string, rndIndex, prndIndex, value int) {
+	if os.Getenv("GD_DEBUG_RNG_CALLERS") == "" {
+		return
+	}
+	for skip := 2; skip < 16; skip++ {
+		pc, file, line, ok := runtime.Caller(skip)
+		if !ok {
+			break
+		}
+		name := "<unknown>"
+		if fn := runtime.FuncForPC(pc); fn != nil {
+			name = fn.Name()
+		}
+		if name == "" || name == "<unknown>" {
+			continue
+		}
+		if len(name) >= len("gddoom/internal/doomrand.") && name[:len("gddoom/internal/doomrand.")] == "gddoom/internal/doomrand." {
+			continue
+		}
+		fmt.Printf("doomrand-debug kind=%s rnd=%d prnd=%d value=%d caller=%s file=%s:%d\n", kind, rndIndex, prndIndex, value, name, file, line)
+		return
+	}
+	fmt.Printf("doomrand-debug kind=%s rnd=%d prnd=%d value=%d caller=<unknown>\n", kind, rndIndex, prndIndex, value)
 }

@@ -19,6 +19,7 @@ type playerInventory struct {
 type playerStats struct {
 	Health  int
 	Armor   int
+	ArmorType int
 	Bullets int
 	Shells  int
 	Rockets int
@@ -38,12 +39,13 @@ func (g *game) initPlayerState() {
 		},
 	}
 	g.stats = playerStats{
-		Health:  100,
-		Armor:   0,
-		Bullets: 50,
-		Shells:  0,
-		Rockets: 0,
-		Cells:   0,
+		Health:    100,
+		Armor:     0,
+		ArmorType: 0,
+		Bullets:   50,
+		Shells:    0,
+		Rockets:   0,
+		Cells:     0,
 	}
 }
 
@@ -188,12 +190,14 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			return "", 0, false
 		}
 		g.stats.Armor = 100
+		g.stats.ArmorType = 1
 		return "Picked up green armor", soundEventPowerUp, true
 	case 2019:
 		if g.stats.Armor >= 200 {
 			return "", 0, false
 		}
 		g.stats.Armor = 200
+		g.stats.ArmorType = 2
 		return "Picked up blue armor", soundEventPowerUp, true
 	case 2025:
 		tics := 60 * doomTicsPerSecond
@@ -318,6 +322,9 @@ func (g *game) gainArmor(amount, cap int, msg string) (string, soundEvent, bool)
 	g.stats.Armor += amount
 	if g.stats.Armor > cap {
 		g.stats.Armor = cap
+	}
+	if g.stats.Armor > 0 && g.stats.ArmorType == 0 {
+		g.stats.ArmorType = 1
 	}
 	if g.stats.Armor == prev {
 		return "", 0, false

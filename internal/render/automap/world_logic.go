@@ -369,6 +369,20 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		g.setHUDMessage("God mode absorbed damage", 8)
 		return
 	}
+	if g.stats.ArmorType != 0 && g.stats.Armor > 0 {
+		saved := 0
+		if g.stats.ArmorType == 1 {
+			saved = amount / 3
+		} else {
+			saved = amount / 2
+		}
+		if g.stats.Armor <= saved {
+			saved = g.stats.Armor
+			g.stats.ArmorType = 0
+		}
+		g.stats.Armor -= saved
+		amount -= saved
+	}
 	g.stats.Health -= amount
 	g.damageFlashTic = max(g.damageFlashTic, 8)
 	g.statusDamageCount += amount

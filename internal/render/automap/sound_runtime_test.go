@@ -179,6 +179,39 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	}
 }
 
+func TestSampleForEventVariantSelectionDoesNotAdvancePRandom(t *testing.T) {
+	s := &soundSystem{
+		bank: SoundBank{
+			SeePosit1:  PCMSample{SampleRate: 11025, Data: []byte{1}},
+			SeePosit2:  PCMSample{SampleRate: 11025, Data: []byte{2}},
+			SeePosit3:  PCMSample{SampleRate: 11025, Data: []byte{3}},
+			DeathPodth1: PCMSample{SampleRate: 11025, Data: []byte{4}},
+			DeathPodth2: PCMSample{SampleRate: 11025, Data: []byte{5}},
+			DeathPodth3: PCMSample{SampleRate: 11025, Data: []byte{6}},
+		},
+	}
+
+	doomrand.Clear()
+	wantPRandom := doomrand.PRandom()
+	doomrand.Clear()
+	if _, ok := s.sampleForEvent(soundEventMonsterSeePosit); !ok {
+		t.Fatalf("see posit sample missing")
+	}
+	if got := doomrand.PRandom(); got != wantPRandom {
+		t.Fatalf("PRandom advanced after see-posit sample selection: got=%d want=%d", got, wantPRandom)
+	}
+
+	doomrand.Clear()
+	wantPRandom = doomrand.PRandom()
+	doomrand.Clear()
+	if _, ok := s.sampleForEvent(soundEventDeathShotgunGuy); !ok {
+		t.Fatalf("death shotgun sample missing")
+	}
+	if got := doomrand.PRandom(); got != wantPRandom {
+		t.Fatalf("PRandom advanced after death-shotgun sample selection: got=%d want=%d", got, wantPRandom)
+	}
+}
+
 func TestPCMMonoU8ToStereoS16LEResampledLength(t *testing.T) {
 	src := []byte{0, 64, 128, 255}
 	got := pcmMonoU8ToStereoS16LEResampled(src, 11025, 44100)

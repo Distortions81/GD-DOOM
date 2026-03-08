@@ -103,7 +103,7 @@ func (g *game) tickMonsters() {
 		tx, ty := g.thingPosFixed(i, th)
 		dx := px - tx
 		dy := py - ty
-		dist := hypotFixed(dx, dy)
+		dist := doomApproxDistance(dx, dy)
 
 		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 			if i >= 0 && i < len(g.thingAttackFireTics) && g.thingAttackFireTics[i] >= 0 {
@@ -240,11 +240,21 @@ func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
 	if ev < 0 {
 		return
 	}
+	consumeMonsterSeeSoundRandom(typ)
 	if fullVolume {
 		g.emitSoundEvent(ev)
 		return
 	}
 	g.emitSoundEventAt(ev, x, y)
+}
+
+func consumeMonsterSeeSoundRandom(typ int16) {
+	switch typ {
+	case 3004, 9, 65:
+		_ = doomrand.PRandom() % 3
+	case 3003, 69:
+		_ = doomrand.PRandom() % 2
+	}
 }
 
 func (g *game) emitMonsterActiveSound(i int, typ int16, x, y int64) {
@@ -493,7 +503,7 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 		// Fallback for malformed state in tests.
 		tx := int64(g.m.Things[i].X) << fracBits
 		ty := int64(g.m.Things[i].Y) << fracBits
-		dist := hypotFixed(g.p.x-tx, g.p.y-ty)
+		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
 		return g.monsterAttack(i, typ, dist)
 	}
 	delay := monsterAttackFireDelayTics(typ)
@@ -501,7 +511,7 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 	if delay <= 0 {
 		tx := int64(g.m.Things[i].X) << fracBits
 		ty := int64(g.m.Things[i].Y) << fracBits
-		dist := hypotFixed(g.p.x-tx, g.p.y-ty)
+		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
 		if !g.monsterAttack(i, typ, dist) {
 			g.thingAttackTics[i] = 0
 			g.thingAttackFireTics[i] = -1
@@ -595,11 +605,16 @@ func monsterSpawnStateTics(typ int16) int {
 
 func monsterSeeStateTics(typ int16, fast bool) int {
 	switch typ {
-	case 3004, 9, 84, 67:
+	case 3004, 84, 67:
 		if fast {
 			return 2
 		}
 		return 4
+	case 9:
+		if fast {
+			return 2
+		}
+		return 3
 	case 3002, 58, 64, 66:
 		return 2
 	case 3006:
@@ -1591,6 +1606,15 @@ func monsterHeight(typ int16) int64 {
 
 func hypotFixed(dx, dy int64) int64 {
 	return int64(math.Hypot(float64(dx), float64(dy)))
+}
+
+func doomApproxDistance(dx, dy int64) int64 {
+	dx = abs(dx)
+	dy = abs(dy)
+	if dx < dy {
+		dx, dy = dy, dx
+	}
+	return dx + dy/2
 }
 
 func doomPRandomN(n int) int {
