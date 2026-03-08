@@ -18,6 +18,9 @@ func TestToggleSwitchTexture(t *testing.T) {
 	if got, ok = toggleSwitchTexture("STARTAN3"); ok || got != "STARTAN3" {
 		t.Fatalf("non-switch texture changed: got=%q ok=%t", got, ok)
 	}
+	if got, ok = toggleSwitchTexture("SW1FAKE"); ok || got != "SW1FAKE" {
+		t.Fatalf("unknown switch texture changed: got=%q ok=%t", got, ok)
+	}
 }
 
 func TestAnimateSwitchTextureRepeatReverts(t *testing.T) {
@@ -47,5 +50,52 @@ func TestAnimateSwitchTextureRepeatReverts(t *testing.T) {
 	}
 	if len(g.delayedSwitchReverts) != 0 {
 		t.Fatalf("delayed switch reverts=%d want=0", len(g.delayedSwitchReverts))
+	}
+}
+
+func TestAnimateSwitchTexture_UsesFrontSidedefOnly(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Mid: "SW1BRCOM"},
+				{Mid: "SW1LION"},
+			},
+		},
+	}
+	g.animateSwitchTexture(0, 1, false)
+	if got := g.m.Sidedefs[0].Mid; got != "SW2BRCOM" {
+		t.Fatalf("front mid=%q want=SW2BRCOM", got)
+	}
+	if got := g.m.Sidedefs[1].Mid; got != "SW1LION" {
+		t.Fatalf("back mid=%q want unchanged SW1LION", got)
+	}
+}
+
+func TestAnimateSwitchTextureRepeatRefreshesSameLineEntry(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Mid: "SW1BRCOM"},
+			},
+		},
+		delayedSwitchReverts: []delayedSwitchTexture{{
+			line:    0,
+			sidedef: 0,
+			mid:     "SW1BRCOM",
+			tics:    3,
+		}},
+	}
+	g.animateSwitchTexture(0, 0, true)
+	if len(g.delayedSwitchReverts) != 1 {
+		t.Fatalf("delayed switch reverts=%d want=1", len(g.delayedSwitchReverts))
+	}
+	if got := g.delayedSwitchReverts[0].tics; got != switchResetTics {
+		t.Fatalf("revert timer=%d want=%d", got, switchResetTics)
 	}
 }

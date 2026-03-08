@@ -43,6 +43,24 @@ func TestDelayedSoundEventQueue(t *testing.T) {
 	}
 }
 
+func TestSampleForEventSwitchSounds(t *testing.T) {
+	s := &soundSystem{
+		bank: SoundBank{
+			SwitchOn:  PCMSample{SampleRate: 11025, Data: []byte{1}},
+			SwitchOff: PCMSample{SampleRate: 11025, Data: []byte{2}},
+		},
+	}
+	if got, ok := s.sampleForEvent(soundEventSwitchOn); !ok || got.Data[0] != 1 {
+		t.Fatalf("switch on sample=%v ok=%v want switch on", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventSwitchExit); !ok || got.Data[0] != 2 {
+		t.Fatalf("switch exit sample=%v ok=%v want switch exit", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventSwitchOff); !ok || got.Data[0] != 1 {
+		t.Fatalf("switch off sample=%v ok=%v want switch on reset sound", got, ok)
+	}
+}
+
 func TestClearPendingSoundStateClearsQueues(t *testing.T) {
 	g := &game{
 		soundQueue: []soundEvent{soundEventDoorOpen, soundEventSwitchOn},

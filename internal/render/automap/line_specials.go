@@ -626,6 +626,7 @@ func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
 		texture := g.m.Sectors[start].FloorPic
 		sec := start
 		height := g.sectorFloor[sec] + stepSize
+		visited := map[int]struct{}{start: {}}
 		for {
 			if !g.sectorHasActiveMover(sec) {
 				g.floors[sec] = &floorThinker{
@@ -636,10 +637,11 @@ func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
 				}
 				activated = true
 			}
-			next, ok := g.nextStairSector(sec, texture)
+			next, ok := g.nextStairSector(sec, texture, visited)
 			if !ok {
 				break
 			}
+			visited[next] = struct{}{}
 			sec = next
 			height += stepSize
 		}
@@ -647,19 +649,23 @@ func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
 	return activated
 }
 
-func (g *game) nextStairSector(sec int, texture string) (int, bool) {
+func (g *game) nextStairSector(sec int, texture string, visited map[int]struct{}) (int, bool) {
 	for _, ld := range g.m.Linedefs {
 		s0, ok0 := g.sectorIndexFromSidedef(ld.SideNum[0])
 		s1, ok1 := g.sectorIndexFromSidedef(ld.SideNum[1])
 		if !ok0 || !ok1 {
 			continue
 		}
-		if s0 == sec && g.m.Sectors[s1].FloorPic == texture {
-			return s1, true
+		if s0 != sec {
+			continue
 		}
-		if s1 == sec && g.m.Sectors[s0].FloorPic == texture {
-			return s0, true
+		if g.m.Sectors[s1].FloorPic != texture {
+			continue
 		}
+		if _, seen := visited[s1]; seen {
+			continue
+		}
+		return s1, true
 	}
 	return -1, false
 }

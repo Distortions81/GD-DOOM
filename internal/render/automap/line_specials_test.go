@@ -170,6 +170,75 @@ func TestActivateLightLine_StartStrobingSkipsActiveLightThinker(t *testing.T) {
 	}
 }
 
+func TestActivateStairsLine_DoesNotLoopBetweenAdjacentSectors(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 8, Tag: 7, SideNum: [2]int16{0, -1}},
+				{SideNum: [2]int16{1, 2}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{Tag: 7, FloorPic: "STEP1"},
+				{FloorPic: "STEP1"},
+			},
+		},
+		lineSpecial: []uint16{8, 0},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+	}
+
+	if !g.activateStairsLine(0, mapdata.StairsInfo{Action: mapdata.StairsBuild8, UsesTag: true}) {
+		t.Fatal("expected stair special to activate")
+	}
+	if len(g.floors) != 2 {
+		t.Fatalf("stairs created %d floor thinkers want 2", len(g.floors))
+	}
+	if got := g.floors[0].destHeight; got != 8*fracUnit {
+		t.Fatalf("sector 0 dest=%d want=%d", got, 8*fracUnit)
+	}
+	if got := g.floors[1].destHeight; got != 16*fracUnit {
+		t.Fatalf("sector 1 dest=%d want=%d", got, 16*fracUnit)
+	}
+}
+
+func TestActivateStairsLine_OnlyTraversesFrontToBack(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 8, Tag: 7, SideNum: [2]int16{0, -1}},
+				{SideNum: [2]int16{1, 2}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{Tag: 7, FloorPic: "STEP1"},
+				{FloorPic: "STEP1"},
+			},
+		},
+		lineSpecial: []uint16{8, 0},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+	}
+
+	if !g.activateStairsLine(0, mapdata.StairsInfo{Action: mapdata.StairsBuild8, UsesTag: true}) {
+		t.Fatal("expected stair special to activate")
+	}
+	if len(g.floors) != 1 {
+		t.Fatalf("stairs created %d floor thinkers want 1", len(g.floors))
+	}
+	if _, ok := g.floors[1]; ok {
+		t.Fatal("back-to-front neighbor should not be added to stair chain")
+	}
+}
+
 func TestSetSectorFloorHeight_PlayerOnFloorMovesWithLoweringFloor(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

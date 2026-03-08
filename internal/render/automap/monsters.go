@@ -692,9 +692,11 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	nx := x + dx
 	ny := y + dy
 	if !g.tryMoveProbeMonster(i, typ, nx, ny) {
-		return false
+		return g.monsterUseBlockingSpecialLines(i, nx, ny)
 	}
+	prevX, prevY := x, y
 	g.setThingPosFixed(i, nx, ny)
+	g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, false)
 	g.faceMonsterMoveDir(i, dir)
 	return true
 }
@@ -1206,6 +1208,86 @@ func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) bool {
 		return false
 	}
 	return true
+}
+
+func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return nil
+	}
+	radius := monsterRadius(g.m.Things[i].Type)
+	tmboxTop := y + radius
+	tmboxBottom := y - radius
+	tmboxRight := x + radius
+	tmboxLeft := x - radius
+	lines := make([]int, 0, 4)
+
+	g.validCount++
+	processPhysLine := func(physIdx int) {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return
+		}
+		if g.lineValid[physIdx] == g.validCount {
+			return
+		}
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		if tmboxRight <= ld.bbox[3] || tmboxLeft >= ld.bbox[2] || tmboxTop <= ld.bbox[1] || tmboxBottom >= ld.bbox[0] {
+			return
+		}
+		box := [4]int64{tmboxTop, tmboxBottom, tmboxRight, tmboxLeft}
+		if g.boxOnLineSide(box, ld) != -1 {
+			return
+		}
+		blocked := false
+		switch {
+		case ld.sideNum1 < 0:
+			blocked = true
+		case (ld.flags & mlBlocking) != 0:
+			blocked = true
+		case (ld.flags & mlBlockMonsters) != 0:
+			blocked = true
+		default:
+			_, _, _, openrange := g.lineOpening(ld)
+			blocked = openrange <= 0
+		}
+		if blocked && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+			lines = append(lines, ld.idx)
+		}
+	}
+
+	iter := func(lineIdx int) bool {
+		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+			return true
+		}
+		processPhysLine(g.physForLine[lineIdx])
+		return true
+	}
+
+	xl := int((tmboxLeft - g.bmapOriginX) >> (fracBits + 7))
+	xh := int((tmboxRight - g.bmapOriginX) >> (fracBits + 7))
+	yl := int((tmboxBottom - g.bmapOriginY) >> (fracBits + 7))
+	yh := int((tmboxTop - g.bmapOriginY) >> (fracBits + 7))
+	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		for bx := xl; bx <= xh; bx++ {
+			for by := yl; by <= yh; by++ {
+				_ = g.blockLinesIterator(bx, by, iter)
+			}
+		}
+	} else {
+		for physIdx := range g.lines {
+			processPhysLine(physIdx)
+		}
+	}
+	return lines
+}
+
+func (g *game) monsterUseBlockingSpecialLines(i int, x, y int64) bool {
+	for _, lineIdx := range g.blockedSpecialLinesForMonsterMove(i, x, y) {
+		if g.useSpecialLineForActor(lineIdx, 0, false) {
+			return true
+		}
+	}
+	return false
 }
 
 func monsterCanFloat(typ int16) bool {

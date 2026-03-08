@@ -18,6 +18,7 @@ const (
 	soundEventBlazeOpen
 	soundEventBlazeClose
 	soundEventSwitchOn
+	soundEventSwitchExit
 	soundEventSwitchOff
 	soundEventNoWay
 	soundEventItemUp
@@ -507,10 +508,12 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.SwitchOn, true
 		}
 		return s.bank.DoorOpen, true
-	case soundEventSwitchOff:
+	case soundEventSwitchExit:
 		if len(s.bank.SwitchOff.Data) > 0 {
 			return s.bank.SwitchOff, true
 		}
+		return s.bank.SwitchOn, true
+	case soundEventSwitchOff:
 		return s.bank.SwitchOn, true
 	case soundEventNoWay:
 		if len(s.bank.NoWay.Data) > 0 {

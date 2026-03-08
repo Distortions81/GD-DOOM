@@ -122,40 +122,69 @@ func sortUseIntercepts(intercepts []intercept, lineSpecial []uint16) {
 }
 
 func (g *game) useSpecialLine(lineIdx int, side int) {
+	_ = g.useSpecialLineForActor(lineIdx, side, true)
+}
+
+func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool {
 	if g.isDead {
-		g.useText = "You are dead"
-		g.useFlash = 20
-		return
+		if isPlayer {
+			g.useText = "You are dead"
+			g.useFlash = 20
+		}
+		return false
 	}
 	special := g.lineSpecial[lineIdx]
 	if side == 1 && special != 124 {
-		g.useText = "USE: back side"
-		g.useFlash = 35
-		g.emitSoundEvent(soundEventNoWay)
-		return
+		if isPlayer {
+			g.useText = "USE: back side"
+			g.useFlash = 35
+			g.emitSoundEvent(soundEventNoWay)
+		}
+		return false
+	}
+	if !isPlayer {
+		if lineIdx < 0 || lineIdx >= len(g.m.Linedefs) {
+			return false
+		}
+		if g.m.Linedefs[lineIdx].Flags&mlSecret != 0 {
+			return false
+		}
+		switch special {
+		case 1, 32, 33, 34:
+		default:
+			return false
+		}
 	}
 	if g.handleExitSpecial(lineIdx, special, mapdata.TriggerUse) {
-		g.animateSwitchTexture(lineIdx, side, false)
-		g.emitSoundEvent(soundEventSwitchOn)
-		return
+		if isPlayer {
+			g.animateSwitchTexture(lineIdx, side, false)
+			g.emitSoundEvent(soundEventSwitchExit)
+		}
+		return true
 	}
 	info := mapdata.LookupLineSpecial(special)
 	if !lineSpecialSupported(info) {
-		g.useText = "USE: unsupported special"
-		g.useFlash = 35
-		g.emitSoundEvent(soundEventNoWay)
-		return
+		if isPlayer {
+			g.useText = "USE: unsupported special"
+			g.useFlash = 35
+			g.emitSoundEvent(soundEventNoWay)
+		}
+		return false
 	}
 	if info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse {
-		g.useText = "USE: no change"
-		g.useFlash = 35
-		return
+		if isPlayer {
+			g.useText = "USE: no change"
+			g.useFlash = 35
+		}
+		return false
 	}
 	if info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {
-		g.useText = "USE: locked"
-		g.useFlash = 35
-		g.emitSoundEvent(soundEventNoWay)
-		return
+		if isPlayer {
+			g.useText = "USE: locked"
+			g.useFlash = 35
+			g.emitSoundEvent(soundEventNoWay)
+		}
+		return false
 	}
 	activated := false
 	if info.Door != nil {
@@ -167,26 +196,44 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 		}
 	}
 	if activated {
-		if info.Door != nil {
-			g.useText = "USE: door active"
-		} else {
-			g.useText = "USE: special active"
+		if isPlayer {
+			if info.Door != nil {
+				g.useText = "USE: door active"
+			} else {
+				g.useText = "USE: special active"
+			}
 		}
-		if shouldPlaySwitchClick(info) {
+		if isPlayer && shouldPlaySwitchClick(info) {
 			g.animateSwitchTexture(lineIdx, side, info.Repeat)
 			g.emitSoundEvent(soundEventSwitchOn)
 			if info.Repeat {
 				g.emitSoundEventDelayed(soundEventSwitchOff, switchResetTics)
 			}
 		}
-	} else {
+	} else if isPlayer {
 		g.useText = "USE: no change"
 		g.emitSoundEvent(soundEventNoWay)
 	}
-	g.useFlash = 35
+	if isPlayer {
+		g.useFlash = 35
+	}
+	return activated
+}
+
+func walkSpecialAllowedForNonPlayer(special uint16) bool {
+	switch special {
+	case 4, 39, 88, 97, 125, 126:
+		return true
+	default:
+		return false
+	}
 }
 
 func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
+	g.checkWalkSpecialLinesForActor(prevX, prevY, curX, curY, true)
+}
+
+func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, isPlayer bool) {
 	if prevX == curX && prevY == curY {
 		return
 	}
@@ -205,6 +252,9 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 		if !lineSpecialSupported(info) {
 			continue
 		}
+		if !isPlayer && !walkSpecialAllowedForNonPlayer(special) {
+			continue
+		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
 		endSide := g.pointOnLineSide(curX, curY, ld)
 		if !(startSide == 0 && endSide == 1) {
@@ -213,26 +263,33 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 		if _, ok := segmentIntersectFrac(prevX, prevY, curX, curY, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
 			continue
 		}
-		if info.Exit != mapdata.ExitNone && g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk) {
-			return
+		if info.Exit != mapdata.ExitNone {
+			if isPlayer && g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk) {
+				return
+			}
+			continue
 		}
-		if info.Door != nil && info.Door.CanActivate(g.inventory.keys()) {
+		if info.Door != nil {
+			if !isPlayer && !info.Door.CanActivate(mapdata.KeyRing{}) {
+				continue
+			}
+			if isPlayer && !info.Door.CanActivate(g.inventory.keys()) {
+				continue
+			}
 			if g.activateDoorLine(ld.idx, info) {
 				if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 					g.lineSpecial[ld.idx] = 0
 				}
 				return
 			}
+			continue
 		}
-		if info.Door == nil && g.activateNonDoorLineSpecial(ld.idx, 0, info) {
+		if g.activateNonDoorLineSpecial(ld.idx, 0, info) {
 			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 				g.lineSpecial[ld.idx] = 0
 			}
 			return
 		}
-		// Crossing a special line can consume movement intent for this tic
-		// even when no action is taken.
-		return
 	}
 }
 
@@ -426,17 +483,96 @@ func (g *game) lowestSurroundingCeiling(sector int) int64 {
 	return lowest
 }
 
+var doomSwitchTexturePairs = map[string]string{
+	"SW1BRCOM": "SW2BRCOM",
+	"SW2BRCOM": "SW1BRCOM",
+	"SW1BRN1":  "SW2BRN1",
+	"SW2BRN1":  "SW1BRN1",
+	"SW1BRN2":  "SW2BRN2",
+	"SW2BRN2":  "SW1BRN2",
+	"SW1BRNGN": "SW2BRNGN",
+	"SW2BRNGN": "SW1BRNGN",
+	"SW1BROWN": "SW2BROWN",
+	"SW2BROWN": "SW1BROWN",
+	"SW1COMM":  "SW2COMM",
+	"SW2COMM":  "SW1COMM",
+	"SW1COMP":  "SW2COMP",
+	"SW2COMP":  "SW1COMP",
+	"SW1DIRT":  "SW2DIRT",
+	"SW2DIRT":  "SW1DIRT",
+	"SW1EXIT":  "SW2EXIT",
+	"SW2EXIT":  "SW1EXIT",
+	"SW1GRAY":  "SW2GRAY",
+	"SW2GRAY":  "SW1GRAY",
+	"SW1GRAY1": "SW2GRAY1",
+	"SW2GRAY1": "SW1GRAY1",
+	"SW1METAL": "SW2METAL",
+	"SW2METAL": "SW1METAL",
+	"SW1PIPE":  "SW2PIPE",
+	"SW2PIPE":  "SW1PIPE",
+	"SW1SLAD":  "SW2SLAD",
+	"SW2SLAD":  "SW1SLAD",
+	"SW1STARG": "SW2STARG",
+	"SW2STARG": "SW1STARG",
+	"SW1STON1": "SW2STON1",
+	"SW2STON1": "SW1STON1",
+	"SW1STON2": "SW2STON2",
+	"SW2STON2": "SW1STON2",
+	"SW1STONE": "SW2STONE",
+	"SW2STONE": "SW1STONE",
+	"SW1STRTN": "SW2STRTN",
+	"SW2STRTN": "SW1STRTN",
+	"SW1BLUE":  "SW2BLUE",
+	"SW2BLUE":  "SW1BLUE",
+	"SW1CMT":   "SW2CMT",
+	"SW2CMT":   "SW1CMT",
+	"SW1GARG":  "SW2GARG",
+	"SW2GARG":  "SW1GARG",
+	"SW1GSTON": "SW2GSTON",
+	"SW2GSTON": "SW1GSTON",
+	"SW1HOT":   "SW2HOT",
+	"SW2HOT":   "SW1HOT",
+	"SW1LION":  "SW2LION",
+	"SW2LION":  "SW1LION",
+	"SW1SATYR": "SW2SATYR",
+	"SW2SATYR": "SW1SATYR",
+	"SW1SKIN":  "SW2SKIN",
+	"SW2SKIN":  "SW1SKIN",
+	"SW1VINE":  "SW2VINE",
+	"SW2VINE":  "SW1VINE",
+	"SW1WOOD":  "SW2WOOD",
+	"SW2WOOD":  "SW1WOOD",
+	"SW1PANEL": "SW2PANEL",
+	"SW2PANEL": "SW1PANEL",
+	"SW1ROCK":  "SW2ROCK",
+	"SW2ROCK":  "SW1ROCK",
+	"SW1MET2":  "SW2MET2",
+	"SW2MET2":  "SW1MET2",
+	"SW1WDMET": "SW2WDMET",
+	"SW2WDMET": "SW1WDMET",
+	"SW1BRIK":  "SW2BRIK",
+	"SW2BRIK":  "SW1BRIK",
+	"SW1MOD1":  "SW2MOD1",
+	"SW2MOD1":  "SW1MOD1",
+	"SW1ZIM":   "SW2ZIM",
+	"SW2ZIM":   "SW1ZIM",
+	"SW1STON6": "SW2STON6",
+	"SW2STON6": "SW1STON6",
+	"SW1TEK":   "SW2TEK",
+	"SW2TEK":   "SW1TEK",
+	"SW1MARB":  "SW2MARB",
+	"SW2MARB":  "SW1MARB",
+	"SW1SKULL": "SW2SKULL",
+	"SW2SKULL": "SW1SKULL",
+}
+
 func toggleSwitchTexture(name string) (string, bool) {
 	base := strings.TrimSpace(name)
-	if len(base) < 4 {
+	if base == "" {
 		return name, false
 	}
-	upper := strings.ToUpper(base)
-	if strings.HasPrefix(upper, "SW1") {
-		return "SW2" + base[3:], true
-	}
-	if strings.HasPrefix(upper, "SW2") {
-		return "SW1" + base[3:], true
+	if next, ok := doomSwitchTexturePairs[strings.ToUpper(base)]; ok {
+		return next, true
 	}
 	return name, false
 }
@@ -447,9 +583,6 @@ func (g *game) animateSwitchTexture(lineIdx, side int, repeat bool) {
 	}
 	ld := g.m.Linedefs[lineIdx]
 	sideDefIdx := int(ld.SideNum[0])
-	if side == 1 {
-		sideDefIdx = int(ld.SideNum[1])
-	}
 	if sideDefIdx < 0 || sideDefIdx >= len(g.m.Sidedefs) {
 		return
 	}
@@ -472,9 +605,10 @@ func (g *game) animateSwitchTexture(lineIdx, side int, repeat bool) {
 		return
 	}
 	for i := range g.delayedSwitchReverts {
-		if g.delayedSwitchReverts[i].sidedef != sideDefIdx {
+		if g.delayedSwitchReverts[i].line != lineIdx {
 			continue
 		}
+		g.delayedSwitchReverts[i].sidedef = sideDefIdx
 		g.delayedSwitchReverts[i].top = origTop
 		g.delayedSwitchReverts[i].bottom = origBottom
 		g.delayedSwitchReverts[i].mid = origMid
@@ -482,6 +616,7 @@ func (g *game) animateSwitchTexture(lineIdx, side int, repeat bool) {
 		return
 	}
 	g.delayedSwitchReverts = append(g.delayedSwitchReverts, delayedSwitchTexture{
+		line:    lineIdx,
 		sidedef: sideDefIdx,
 		top:     origTop,
 		bottom:  origBottom,

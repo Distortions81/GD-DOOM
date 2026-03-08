@@ -660,6 +660,7 @@ type queuedSoundOrigin struct {
 }
 
 type delayedSwitchTexture struct {
+	line    int
 	sidedef int
 	top     string
 	bottom  string

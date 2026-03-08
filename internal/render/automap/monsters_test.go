@@ -241,8 +241,8 @@ func TestMonsterTryMoveProbe_RespectsBlockMonstersFlag(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Vertexes: []mapdata.Vertex{
-				{X: 0, Y: -64},
 				{X: 0, Y: 64},
+				{X: 0, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
 				{V1: 0, V2: 1, Flags: mlTwoSided | mlBlockMonsters, SideNum: [2]int16{0, 1}},
@@ -312,11 +312,11 @@ func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{Type: 3004, X: -32, Y: 0},
+				{Type: 3004, X: -24, Y: 0},
 			},
 			Vertexes: []mapdata.Vertex{
-				{X: 0, Y: -64},
 				{X: 0, Y: 64},
+				{X: 0, Y: -64},
 			},
 			Linedefs: []mapdata.Linedef{
 				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
@@ -333,10 +333,161 @@ func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
 		thingCollected: []bool{false},
 		thingHP:        []int{20},
 		thingDead:      []bool{false},
+		p:              player{x: -128 * fracUnit, y: 0},
 	}
 	g.initPhysics()
 	if g.tryMoveProbeMonster(0, 3004, 8*fracUnit, 0) {
 		t.Fatal("monster move should be blocked by a step higher than 24 units")
+	}
+}
+
+func TestMonsterMoveInDir_UsesManualDoor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -24, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+		p:              player{x: -128 * fracUnit, y: 0},
+	}
+	g.initPhysics()
+	if !g.monsterMoveInDir(0, 3004, monsterDirEast) {
+		t.Fatal("monster move should succeed by opening manual door")
+	}
+	if len(g.doors) == 0 {
+		t.Fatal("manual door should have been activated")
+	}
+}
+
+func TestMonsterMoveInDir_DoesNotUseSecretDoor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -32, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided | mlSecret, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+	}
+	g.initPhysics()
+	if g.monsterMoveInDir(0, 3004, monsterDirEast) {
+		t.Fatal("monster move should not use secret manual door")
+	}
+	if len(g.doors) != 0 {
+		t.Fatal("secret door should not have been activated")
+	}
+}
+
+func TestMonsterMoveInDir_TriggersWalkDoorRaise(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -4, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: 64},
+				{X: 0, Y: -64},
+				{X: 128, Y: 64},
+				{X: 128, Y: -64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 4, Flags: mlTwoSided, Tag: 7, SideNum: [2]int16{0, 1}},
+				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int16{2, 3}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+				{Sector: 2},
+				{Sector: 3},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 0, Tag: 7},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+		p:              player{x: -128 * fracUnit, y: 0},
+	}
+	g.initPhysics()
+	if !g.monsterMoveInDir(0, 3004, monsterDirEast) {
+		t.Fatal("monster should move across walk door line")
+	}
+	if len(g.doors) == 0 {
+		t.Fatal("walk door raise should have activated")
+	}
+}
+
+func TestMonsterMoveInDir_DoesNotTriggerWalkStairs(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -4, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: 64},
+				{X: 0, Y: -64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 8, Flags: mlTwoSided, Tag: 7, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7, FloorPic: "STEP1"},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+		p:              player{x: -128 * fracUnit, y: 0},
+	}
+	g.initPhysics()
+	if !g.monsterMoveInDir(0, 3004, monsterDirEast) {
+		t.Fatal("monster should move across non-blocking walk line")
+	}
+	if len(g.floors) != 0 {
+		t.Fatal("monster should not trigger walk stairs special")
 	}
 }
 
