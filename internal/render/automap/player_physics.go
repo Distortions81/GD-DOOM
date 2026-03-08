@@ -11,6 +11,8 @@ type slideIntercept struct {
 	line int
 }
 
+const doomMaxThingRadius = 32 * fracUnit
+
 func (g *game) updatePlayer(cmd moveCmd) {
 	if g.isDead {
 		return
@@ -368,13 +370,16 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 
 	sec := g.sectorAt(x, y)
 	if sec < 0 || sec >= len(g.m.Sectors) {
+		g.debugPlayerProbe(fmt.Sprintf("sector invalid sec=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
 		return 0, 0, 0, false
 	}
 	tmfloor := g.sectorFloor[sec]
 	tmceil := g.sectorCeil[sec]
 	tmdrop := tmfloor
+	g.debugPlayerProbe(fmt.Sprintf("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
 
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
+		g.debugPlayerProbe("blocked by thing", x, y)
 		return 0, 0, 0, false
 	}
 
@@ -401,6 +406,15 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if g.boxOnLineSide(box, ld) != -1 {
 			return true
 		}
+		frontSec := -1
+		backSec := -1
+		if ld.sideNum0 >= 0 && int(ld.sideNum0) < len(g.m.Sidedefs) {
+			frontSec = int(g.m.Sidedefs[int(ld.sideNum0)].Sector)
+		}
+		if ld.sideNum1 >= 0 && int(ld.sideNum1) < len(g.m.Sidedefs) {
+			backSec = int(g.m.Sidedefs[int(ld.sideNum1)].Sector)
+		}
+		g.debugPlayerProbe(fmt.Sprintf("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3]), x, y)
 
 		if ld.sideNum1 < 0 {
 			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
@@ -420,6 +434,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=openrange floor=%d ceil=%d drop=%d openbottom=%d opentop=%d", ld.idx, tmfloor, tmceil, tmdrop, openbottom, opentop), x, y)
 			return false
 		}
+		g.debugPlayerProbe(fmt.Sprintf("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor), x, y)
 		if opentop < tmceil {
 			tmceil = opentop
 		}
@@ -441,6 +456,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
 		for bx := xl; bx <= xh; bx++ {
 			for by := yl; by <= yh; by++ {
+				g.debugPlayerProbe(fmt.Sprintf("scan block bx=%d by=%d", bx, by), x, y)
 				if !g.blockLinesIterator(bx, by, iter) {
 					return 0, 0, 0, false
 				}
@@ -453,6 +469,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 			}
 		}
 	}
+	g.debugPlayerProbe(fmt.Sprintf("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop), x, y)
 	return tmfloor, tmceil, tmdrop, true
 }
 
@@ -481,41 +498,70 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		return false
 	}
 	if moverIsMonster && !g.isDead && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
+		g.debugPlayerProbe(fmt.Sprintf("block thing=player type=player pos=(%d,%d) radius=%d", g.p.x, g.p.y, playerRadius), x, y)
 		return true
 	}
-	for i, th := range g.m.Things {
+	visitThing := func(i int) bool {
+		if i < 0 || i >= len(g.m.Things) {
+			return false
+		}
+		th := g.m.Things[i]
 		if i == moverThingIdx {
-			continue
+			return false
 		}
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
-			continue
-		}
-		if !isMonster(th.Type) {
-			continue
-		}
-		if i < 0 || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
-			continue
-		}
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-			continue
+			return false
 		}
 		tx, ty := g.thingPosFixed(i, th)
-		if actorsOverlapXY(x, y, radius, tx, ty, monsterRadius(th.Type)) {
-			return true
-		}
-	}
-	for i, th := range g.m.Things {
-		if i == moverThingIdx {
-			continue
-		}
-		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
-			continue
+		if isMonster(th.Type) {
+			if i < 0 || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
+				return false
+			}
+			if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+				return false
+			}
+			if actorsOverlapXY(x, y, radius, tx, ty, monsterRadius(th.Type)) {
+				g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, monsterRadius(th.Type)), x, y)
+				return true
+			}
 		}
 		if !thingTypeBlocksActorMovement(th.Type, moverIsMonster) {
-			continue
+			return false
 		}
-		tx, ty := g.thingPosFixed(i, th)
+		tx, ty = g.thingPosFixed(i, th)
 		if actorsOverlapXY(x, y, radius, tx, ty, thingTypeRadius(th.Type)) {
+			g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=solid", i, th.Type, tx, ty, thingTypeRadius(th.Type)), x, y)
+			return true
+		}
+		return false
+	}
+
+	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		left := int((x - radius - g.bmapOriginX - doomMaxThingRadius) >> (fracBits + 7))
+		right := int((x + radius - g.bmapOriginX + doomMaxThingRadius) >> (fracBits + 7))
+		bottom := int((y - radius - g.bmapOriginY - doomMaxThingRadius) >> (fracBits + 7))
+		top := int((y + radius - g.bmapOriginY + doomMaxThingRadius) >> (fracBits + 7))
+		if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
+			g.rebuildThingBlockmap()
+		}
+		for by := bottom; by <= top; by++ {
+			for bx := left; bx <= right; bx++ {
+				if bx < 0 || by < 0 || bx >= g.bmapWidth || by >= g.bmapHeight {
+					continue
+				}
+				cell := by*g.bmapWidth + bx
+				for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
+					if visitThing(i) {
+						return true
+					}
+				}
+			}
+		}
+		return false
+	}
+
+	for i := range g.m.Things {
+		if visitThing(i) {
 			return true
 		}
 	}

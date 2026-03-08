@@ -881,12 +881,18 @@ func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
 		thingMoveDir:   []monsterMoveDir{monsterDirNoDir},
 		thingMoveCount: []int{0},
 		thingJustAtk:   []bool{false},
+		thingAttackTics: []int{0},
+		thingAttackFireTics: []int{-1},
+		thingState: []monsterThinkState{monsterStateSee},
+		thingStateTics: []int{0},
 		projectiles:    make([]projectile, 0, 2),
 		stats:          playerStats{Health: 100},
 		p:              player{x: 0, y: 0, z: 0},
 	}
 
-	g.tickMonsters()
+	if !g.startMonsterAttackState(0, 3001, true) {
+		t.Fatal("expected attack state to start")
+	}
 	if got := len(g.projectiles); got != 0 {
 		t.Fatalf("projectiles=%d want=0 before imp windup resolves", got)
 	}

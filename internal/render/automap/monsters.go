@@ -106,21 +106,21 @@ func (g *game) tickMonsters() {
 		dist := hypotFixed(dx, dy)
 
 		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+			if i >= 0 && i < len(g.thingAttackFireTics) && g.thingAttackFireTics[i] >= 0 {
+				if g.thingAttackFireTics[i] > 0 {
+					g.thingAttackFireTics[i]--
+				}
+				if g.thingAttackFireTics[i] == 0 {
+					g.faceMonsterToward(i, tx, ty, px, py)
+					_ = g.monsterAttack(i, th.Type, dist)
+					g.thingAttackFireTics[i] = -1
+				}
+			}
 			g.thingAttackTics[i]--
 			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateAttack {
 				g.thingStateTics[i] = g.thingAttackTics[i]
 			}
 			continue
-		}
-		if i >= 0 && i < len(g.thingAttackFireTics) && g.thingAttackFireTics[i] >= 0 {
-			if g.thingAttackFireTics[i] > 0 {
-				g.thingAttackFireTics[i]--
-			}
-			if g.thingAttackFireTics[i] == 0 {
-				g.faceMonsterToward(i, tx, ty, px, py)
-				_ = g.monsterAttack(i, th.Type, dist)
-				g.thingAttackFireTics[i] = -1
-			}
 		}
 		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 			g.thingPainTics[i]--
@@ -681,8 +681,7 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 	if g.m == nil || i < 0 || i >= len(g.m.Things) || i >= len(g.thingMoveDir) {
 		return
 	}
-	tx := int64(g.m.Things[i].X) << fracBits
-	ty := int64(g.m.Things[i].Y) << fracBits
+	tx, ty := g.thingPosFixed(i, g.m.Things[i])
 	olddir := g.thingMoveDir[i]
 	if olddir > monsterDirNoDir {
 		olddir = monsterDirNoDir
@@ -870,6 +869,7 @@ func (g *game) monsterTurnTowardMoveDir(i int) {
 	} else if delta < 0 {
 		angle += statusAng45
 	}
+	g.debugMonsterAngle(i, "turn-movedir", angle)
 	g.m.Things[i].Angle = worldAngleToThingDeg(angle)
 }
 
@@ -1392,7 +1392,30 @@ func (g *game) faceMonsterToward(i int, fromX, fromY, toX, toY int64) {
 	if deg < 0 {
 		deg += 360
 	}
+	g.debugMonsterAngle(i, "face-target", thingDegToWorldAngle(int16(math.Round(deg))%360))
 	g.m.Things[i].Angle = int16(math.Round(deg)) % 360
+}
+
+func (g *game) debugMonsterAngle(i int, src string, angle uint32) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_ANGLE") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_ANGLE"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if wantIdx >= 0 && i != wantIdx {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	tx, ty := int64(0), int64(0)
+	if g.m != nil && i >= 0 && i < len(g.m.Things) {
+		tx, ty = g.thingPosFixed(i, g.m.Things[i])
+	}
+	fmt.Printf("monster-angle-debug tic=%d world=%d idx=%d type=%d src=%s angle=%d deg=%d pos=(%d,%d) movedir=%d movecount=%d target=(%d,%d)\n",
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, src, angle, worldAngleToThingDeg(angle), tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.p.x, g.p.y)
 }
 
 func (g *game) tryMoveProbe(x, y int64) bool {

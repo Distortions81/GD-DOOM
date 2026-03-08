@@ -423,6 +423,9 @@ type game struct {
 	thingDropped         []bool
 	thingX               []int64
 	thingY               []int64
+	thingBlockCell       []int
+	thingBlockNext       []int
+	thingBlockLinks      []int
 	thingHP              []int
 	thingAggro           []bool
 	thingCooldown        []int
@@ -986,6 +989,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingDropped = make([]bool, len(m.Things))
 	g.thingX = make([]int64, len(m.Things))
 	g.thingY = make([]int64, len(m.Things))
+	g.thingBlockCell = make([]int, len(m.Things))
+	g.thingBlockNext = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
 	g.thingCooldown = make([]int, len(m.Things))
@@ -1081,6 +1086,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.thingX[i] = int64(th.X) << fracBits
 		g.thingY[i] = int64(th.Y) << fracBits
 		g.thingSectorCache[i] = g.sectorAt(g.thingX[i], g.thingY[i])
+	}
+	if g.bmapWidth > 0 && g.bmapHeight > 0 {
+		g.thingBlockLinks = make([]int, g.bmapWidth*g.bmapHeight)
+		g.rebuildThingBlockmap()
 	}
 	g.discoverLinesAroundPlayer()
 	g.resetView()
@@ -17702,6 +17711,67 @@ func (g *game) setThingPosFixed(i int, x, y int64) {
 		g.thingSectorCache = append(g.thingSectorCache, make([]int, i-len(g.thingSectorCache)+1)...)
 	}
 	g.thingSectorCache[i] = g.sectorAt(x, y)
+	g.updateThingBlockmapIndex(i)
+}
+
+func (g *game) thingBlockmapCellFor(x, y int64) int {
+	if g == nil || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
+		return -1
+	}
+	bx := int((x - g.bmapOriginX) >> (fracBits + 7))
+	by := int((y - g.bmapOriginY) >> (fracBits + 7))
+	if bx < 0 || by < 0 || bx >= g.bmapWidth || by >= g.bmapHeight {
+		return -1
+	}
+	return by*g.bmapWidth + bx
+}
+
+func (g *game) rebuildThingBlockmap() {
+	if g == nil || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
+		return
+	}
+	if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
+		g.thingBlockLinks = make([]int, g.bmapWidth*g.bmapHeight)
+	}
+	for i := range g.thingBlockLinks {
+		g.thingBlockLinks[i] = -1
+	}
+	if len(g.thingBlockCell) < len(g.m.Things) {
+		g.thingBlockCell = append(g.thingBlockCell, make([]int, len(g.m.Things)-len(g.thingBlockCell))...)
+	}
+	if len(g.thingBlockNext) < len(g.m.Things) {
+		g.thingBlockNext = append(g.thingBlockNext, make([]int, len(g.m.Things)-len(g.thingBlockNext))...)
+	}
+	for i := range g.m.Things {
+		g.thingBlockCell[i] = -1
+		g.thingBlockNext[i] = -1
+	}
+	for i, th := range g.m.Things {
+		x, y := g.thingPosFixed(i, th)
+		cell := g.thingBlockmapCellFor(x, y)
+		g.thingBlockCell[i] = cell
+		if cell < 0 {
+			continue
+		}
+		g.thingBlockNext[i] = g.thingBlockLinks[cell]
+		g.thingBlockLinks[cell] = i
+	}
+}
+
+func (g *game) updateThingBlockmapIndex(i int) {
+	if g == nil || i < 0 || g.m == nil || i >= len(g.m.Things) || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
+		return
+	}
+	if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight || len(g.thingBlockCell) <= i || len(g.thingBlockNext) <= i {
+		g.rebuildThingBlockmap()
+		return
+	}
+	x, y := g.thingPosFixed(i, g.m.Things[i])
+	newCell := g.thingBlockmapCellFor(x, y)
+	if g.thingBlockCell[i] == newCell {
+		return
+	}
+	g.rebuildThingBlockmap()
 }
 
 func (g *game) subsectorFloorCeilAt(x, y int64) (int64, int64, bool) {
@@ -18037,8 +18107,12 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 	line1 := fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg)))
+	line2 := fmt.Sprintf("tic %d", g.worldTic)
 	sx, sy, ox, _ := g.hudTransform()
 	w := g.huTextWidth(line1)
+	if w2 := g.huTextWidth(line2); w2 > w {
+		w = w2
+	}
 	maxX := float64(g.viewW)
 	if g.opts.SourcePortMode {
 		maxX = ox + statusBaseW*sx
@@ -18048,6 +18122,7 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 		x = 4
 	}
 	g.drawHUTextAt(screen, line1, float64(x), 10*sy, sx, sy)
+	g.drawHUTextAt(screen, line2, float64(x), 20*sy, sx, sy)
 }
 
 func (g *game) huTextWidth(text string) int {
