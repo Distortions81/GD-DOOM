@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"gddoom/internal/mapdata"
-	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
@@ -58,7 +57,7 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 	}
 }
 
-func TestDemoTraceStopsWhenPlayerDies(t *testing.T) {
+func TestDemoTraceContinuesWhenPlayerDies(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	tracePath := t.TempDir() + "/demo-trace.jsonl"
 	g := newGame(base.m, Options{
@@ -81,8 +80,8 @@ func TestDemoTraceStopsWhenPlayerDies(t *testing.T) {
 	g.isDead = true
 
 	err := g.Update()
-	if err != ebiten.Termination {
-		t.Fatalf("Update() err=%v want %v", err, ebiten.Termination)
+	if err != nil {
+		t.Fatalf("Update() err=%v want nil", err)
 	}
 
 	data, readErr := os.ReadFile(tracePath)

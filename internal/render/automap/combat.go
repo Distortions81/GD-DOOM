@@ -343,13 +343,54 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope float64, accurate 
 		}
 		return false
 	}
-	g.spawnHitscanBloodAtDistance(angle, slope, dist)
+	g.spawnHitscanBloodAtDistance(angle, slope, dist, damage)
 	g.damageMonster(idx, damage)
 	return true
 }
 
 func (g *game) playerShootZ() float64 {
 	return float64(g.p.z + (playerHeight >> 1) + 8*fracUnit)
+}
+
+func (g *game) monsterShootZ(i int, typ int16) float64 {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return float64(8 * fracUnit)
+	}
+	z, _, _ := g.thingSupportState(i, g.m.Things[i])
+	return float64(z + (monsterHeight(typ) >> 1) + 8*fracUnit)
+}
+
+func (g *game) monsterAimPlayerSlope(i int, typ int16, angle uint32, rng int64) (float64, bool) {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return 0, false
+	}
+	sx, sy := g.thingPosFixed(i, g.m.Things[i])
+	shootZ := g.monsterShootZ(i, typ)
+	ang := angleToRadians(angle)
+	dirX := math.Cos(ang)
+	dirY := math.Sin(ang)
+	dx := float64(g.p.x - sx)
+	dy := float64(g.p.y - sy)
+	dist := dx*dirX + dy*dirY
+	if dist <= 0 || dist > float64(rng) {
+		return 0, false
+	}
+	perp := math.Abs(dx*dirY - dy*dirX)
+	if perp > float64(playerRadius) {
+		return 0, false
+	}
+	topSlope := (float64(g.p.z+playerHeight) - shootZ) / dist
+	bottomSlope := (float64(g.p.z) - shootZ) / dist
+	if topSlope < doomAimBottomSlope || bottomSlope > doomAimTopSlope {
+		return 0, false
+	}
+	if topSlope > doomAimTopSlope {
+		topSlope = doomAimTopSlope
+	}
+	if bottomSlope < doomAimBottomSlope {
+		bottomSlope = doomAimBottomSlope
+	}
+	return (topSlope + bottomSlope) * 0.5, true
 }
 
 func (g *game) bulletSlopeForAim(baseAngle uint32, rng int64) float64 {
@@ -508,20 +549,21 @@ func (g *game) pickHitscanMonsterTargetAtAngleWithSlopeDist(angle uint32, rng in
 }
 
 func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64) (float64, int, bool) {
+	return g.hitscanWallImpactDistanceFrom(g.p.x, g.p.y, g.playerShootZ(), angle, rng, slope)
+}
+
+func (g *game) hitscanWallImpactDistanceFrom(sx, sy int64, shootZ float64, angle uint32, rng int64, slope float64) (float64, int, bool) {
 	if len(g.lines) == 0 {
 		return 0, -1, false
 	}
-	px := g.p.x
-	py := g.p.y
 	ang := angleToRadians(angle)
-	x2 := px + int64(math.Cos(ang)*float64(rng))
-	y2 := py + int64(math.Sin(ang)*float64(rng))
-	shootZ := g.playerShootZ()
+	x2 := sx + int64(math.Cos(ang)*float64(rng))
+	y2 := sy + int64(math.Sin(ang)*float64(rng))
 	bestDist := math.Inf(1)
 	bestLine := -1
 	found := false
 	for _, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(px, py, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
+		frac, ok := segmentIntersectFrac(sx, sy, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
 		if !ok || frac <= 0 {
 			continue
 		}
@@ -557,15 +599,19 @@ func (g *game) hitscanWallImpactDistance(angle uint32, rng int64, slope float64)
 }
 
 func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {
+	g.spawnHitscanPuffFromSource(g.p.x, g.p.y, g.playerShootZ(), angle, slope, dist)
+}
+
+func (g *game) spawnHitscanPuffFromSource(sx, sy int64, shootZ float64, angle uint32, slope, dist float64) {
 	if dist <= 0 {
 		return
 	}
-	px := float64(g.p.x)
-	py := float64(g.p.y)
+	px := float64(sx)
+	py := float64(sy)
 	ang := angleToRadians(angle)
 	x := px + math.Cos(ang)*dist
 	y := py + math.Sin(ang)*dist
-	z := g.playerShootZ() + slope*dist
+	z := shootZ + slope*dist
 	// Doom line hits use 4-unit backoff before spawning a puff.
 	const backoff = float64(4 * fracUnit)
 	x -= math.Cos(ang) * backoff
@@ -574,22 +620,26 @@ func (g *game) spawnHitscanPuffAtDistance(angle uint32, slope, dist float64) {
 	g.spawnHitscanPuff(int64(x), int64(y), int64(z))
 }
 
-func (g *game) spawnHitscanBloodAtDistance(angle uint32, slope, dist float64) {
+func (g *game) spawnHitscanBloodAtDistance(angle uint32, slope, dist float64, damage int) {
+	g.spawnHitscanBloodFromSource(g.p.x, g.p.y, g.playerShootZ(), angle, slope, dist, damage)
+}
+
+func (g *game) spawnHitscanBloodFromSource(sx, sy int64, shootZ float64, angle uint32, slope, dist float64, damage int) {
 	if dist <= 0 {
 		return
 	}
-	px := float64(g.p.x)
-	py := float64(g.p.y)
+	px := float64(sx)
+	py := float64(sy)
 	ang := angleToRadians(angle)
 	x := px + math.Cos(ang)*dist
 	y := py + math.Sin(ang)*dist
-	z := g.playerShootZ() + slope*dist
+	z := shootZ + slope*dist
 	// Doom thing hits use 10-unit backoff before spawning blood.
 	const backoff = float64(10 * fracUnit)
 	x -= math.Cos(ang) * backoff
 	y -= math.Sin(ang) * backoff
 	z += float64((doomrand.PRandom() - doomrand.PRandom()) << 10)
-	g.spawnHitscanBlood(int64(x), int64(y), int64(z))
+	g.spawnHitscanBlood(int64(x), int64(y), int64(z), damage)
 }
 
 func monsterHitHeight(typ int16) int64 {

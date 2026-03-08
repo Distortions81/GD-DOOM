@@ -357,6 +357,76 @@ func TestHitscanPuffsExpire(t *testing.T) {
 	}
 }
 
+func TestMonsterHitscanAttackSpawnsBloodAndDamagesPlayer(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9, X: 64, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{30},
+		thingAngleState:   []uint32{degToAngle(180)},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		p:                 player{x: 0, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+		stats:             playerStats{Health: 100},
+	}
+
+	g.monsterHitscanAttack(0, 9, 64*fracUnit, 0, 3)
+
+	if g.stats.Health >= 100 {
+		t.Fatalf("health=%d want < 100 after shotgun guy hit", g.stats.Health)
+	}
+	if len(g.hitscanPuffs) == 0 {
+		t.Fatal("expected blood effect from monster hitscan hit")
+	}
+	if g.hitscanPuffs[0].kind != hitscanFxBlood {
+		t.Fatalf("effect kind=%d want blood", g.hitscanPuffs[0].kind)
+	}
+}
+
+func TestMonsterHitscanAttackSpawnsPuffOnWallImpact(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 0, Y: 0}},
+		},
+		lines: []physLine{
+			{
+				x1:       32 * fracUnit,
+				y1:       -32 * fracUnit,
+				x2:       32 * fracUnit,
+				y2:       32 * fracUnit,
+				flags:    0,
+				sideNum1: -1,
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingAngleState:   []uint32{degToAngle(0)},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		p:                 player{x: 128 * fracUnit, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+		stats:             playerStats{Health: 100},
+	}
+
+	g.monsterHitscanAttack(0, 3004, 0, 0, 1)
+
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want 100 when wall blocks shot", g.stats.Health)
+	}
+	if len(g.hitscanPuffs) == 0 {
+		t.Fatal("expected puff effect from blocked monster hitscan shot")
+	}
+	if g.hitscanPuffs[0].kind != hitscanFxPuff {
+		t.Fatalf("effect kind=%d want puff", g.hitscanPuffs[0].kind)
+	}
+}
+
 func TestMonsterPainSoundEventMapping(t *testing.T) {
 	if got := monsterPainSoundEvent(3006); got != soundEventMonsterPainDemon {
 		t.Fatalf("lost soul pain event=%v want=%v", got, soundEventMonsterPainDemon)

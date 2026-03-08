@@ -225,11 +225,14 @@ type billboardQueueItem struct {
 }
 
 type hitscanPuff struct {
-	x    int64
-	y    int64
-	z    int64
-	tics int
-	kind uint8
+	x        int64
+	y        int64
+	z        int64
+	momz     int64
+	tics     int
+	state    int
+	totalTic int
+	kind     uint8
 }
 
 const (
@@ -1515,11 +1518,6 @@ func (g *game) updateDemoMode() error {
 	fireHeld := tc.Buttons&demoButtonAttack != 0
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.writeDemoTraceTic()
-	if g.isDead && g.demoTrace != nil {
-		g.demoTrace.Close()
-		g.demoTrace = nil
-		return ebiten.Termination
-	}
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
@@ -9421,18 +9419,50 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
-	tics := 4 + (doomrand.PRandom() & 3)
-	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{x: x, y: y, z: z, tics: tics, kind: hitscanFxPuff})
+	tics := 4 - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		tics = 1
+	}
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
+		x:        x,
+		y:        y,
+		z:        z,
+		momz:     fracUnit,
+		tics:     tics,
+		totalTic: tics,
+		state:    93,
+		kind:     hitscanFxPuff,
+	})
 }
 
-func (g *game) spawnHitscanBlood(x, y, z int64) {
+func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 	const maxPuffs = 64
 	if len(g.hitscanPuffs) >= maxPuffs {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
-	tics := 6 + (doomrand.PRandom() & 3)
-	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{x: x, y: y, z: z, tics: tics, kind: hitscanFxBlood})
+	state := 91
+	tics := 8 - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		tics = 1
+	}
+	if damage <= 12 && damage >= 9 {
+		state = 92
+		tics = 8
+	} else if damage < 9 {
+		state = 93
+		tics = 8
+	}
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
+		x:        x,
+		y:        y,
+		z:        z,
+		momz:     2 * fracUnit,
+		tics:     tics,
+		totalTic: tics,
+		state:    state,
+		kind:     hitscanFxBlood,
+	})
 }
 
 func (g *game) hitscanEffectSprite(p hitscanPuff) (WallTexture, bool) {
@@ -9472,7 +9502,25 @@ func (g *game) tickHitscanPuffs() {
 	}
 	keep := g.hitscanPuffs[:0]
 	for _, p := range g.hitscanPuffs {
+		p.z += p.momz
 		p.tics--
+		if p.kind == hitscanFxPuff && p.tics <= 0 {
+			switch p.state {
+			case 93:
+				p.state, p.tics = 94, 4
+			case 94:
+				p.state, p.tics = 95, 4
+			case 95:
+				p.state, p.tics = 96, 4
+			}
+		} else if p.kind == hitscanFxBlood && p.tics <= 0 {
+			switch p.state {
+			case 91:
+				p.state, p.tics = 92, 8
+			case 92:
+				p.state, p.tics = 93, 8
+			}
+		}
 		if p.tics <= 0 {
 			continue
 		}
@@ -11202,10 +11250,14 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 
 func monsterAttackFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3005:
-		return []byte{'E', 'F'}
+	case 3004, 9:
+		return []byte{'E', 'F', 'E'}
+	case 3001:
+		return []byte{'E', 'F', 'G'}
 	case 3002, 58: // demon/spectre
 		return []byte{'E', 'F', 'G'}
+	case 3005:
+		return []byte{'B', 'C', 'D'}
 	case 3003, 69: // baron/knight
 		return []byte{'E', 'F', 'G'}
 	case 16:
@@ -11217,26 +11269,84 @@ func monsterAttackFrameSeq(typ int16) []byte {
 	}
 }
 
+func monsterSpawnFrameSeq(typ int16) []byte {
+	switch typ {
+	case 3004, 9, 3001, 3002, 58, 3003, 69:
+		return []byte{'A', 'B'}
+	case 3005:
+		return []byte{'A'}
+	default:
+		return nil
+	}
+}
+
+func monsterSpawnFrameTics(typ int16) []int {
+	switch typ {
+	case 3004, 9, 3001, 3002, 58, 3003, 69:
+		return []int{10, 10}
+	case 3005:
+		return []int{10}
+	default:
+		return nil
+	}
+}
+
+func monsterSeeFrameSeq(typ int16) []byte {
+	switch typ {
+	case 3004, 9, 3001, 3002, 58, 3003, 69:
+		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
+	case 3005:
+		return []byte{'A'}
+	default:
+		return nil
+	}
+}
+
 func monsterAttackFrameTics(typ int16) []int {
 	switch typ {
 	case 3004: // zombieman
-		return []int{10, 8}
+		return []int{10, 8, 8}
 	case 9: // shotgun guy
-		return []int{10, 8}
+		return []int{10, 10, 10}
 	case 3001: // imp
-		return []int{8, 8}
+		return []int{8, 8, 6}
 	case 3002, 58: // demon/spectre
 		return []int{8, 8, 8}
 	case 3006: // lost soul
 		return []int{6, 6}
 	case 3005: // cacodemon
-		return []int{8, 8}
+		return []int{5, 5, 5}
 	case 3003, 69: // baron/knight
 		return []int{8, 8, 8}
 	case 16: // cyberdemon
 		return []int{8, 8, 8}
 	case 7: // spider mastermind
 		return []int{8, 8}
+	default:
+		return nil
+	}
+}
+
+func monsterSeeFrameTics(typ int16, fast bool) []int {
+	switch typ {
+	case 3004:
+		tic := 4
+		if fast {
+			tic = 2
+		}
+		return []int{tic, tic, tic, tic, tic, tic, tic, tic}
+	case 9:
+		tic := 3
+		if fast {
+			tic = 2
+		}
+		return []int{tic, tic, tic, tic, tic, tic, tic, tic}
+	case 3001, 3003, 69:
+		return []int{3, 3, 3, 3, 3, 3, 3, 3}
+	case 3002, 58:
+		return []int{2, 2, 2, 2, 2, 2, 2, 2}
+	case 3005:
+		return []int{3}
 	default:
 		return nil
 	}
@@ -11255,8 +11365,24 @@ func monsterAttackAnimTotalTics(typ int16) int {
 
 func monsterPainFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3006, 3005, 3003, 16, 7:
+	case 3004:
+		return []byte{'G', 'G'}
+	case 9:
+		return []byte{'G', 'G'}
+	case 3001:
+		return []byte{'H', 'H'}
+	case 3002, 58:
+		return []byte{'H', 'H'}
+	case 3006:
+		return []byte{'E', 'E'}
+	case 3005:
+		return []byte{'E', 'E', 'F'}
+	case 3003, 69:
+		return []byte{'H', 'H'}
+	case 16:
 		return []byte{'G'}
+	case 7:
+		return []byte{'I', 'I'}
 	default:
 		return nil
 	}
@@ -11264,12 +11390,24 @@ func monsterPainFrameSeq(typ int16) []byte {
 
 func monsterPainFrameTics(typ int16) []int {
 	switch typ {
+	case 3004:
+		return []int{3, 3}
+	case 9:
+		return []int{2, 2}
+	case 3001:
+		return []int{2, 2}
+	case 3002, 58:
+		return []int{2, 2}
+	case 3006:
+		return []int{3, 3}
+	case 3005:
+		return []int{3, 3, 6}
+	case 3003, 69:
+		return []int{2, 2}
 	case 16:
 		return []int{10}
 	case 7:
-		return []int{8}
-	case 3004, 9, 3001, 3002, 58, 3006, 3005, 3003:
-		return []int{6}
+		return []int{3, 3}
 	default:
 		return nil
 	}
@@ -11434,6 +11572,27 @@ func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 				}
 			}
 			return seq[len(seq)-1]
+		}
+	}
+	if i >= 0 && i < len(g.thingState) && i < len(g.thingStatePhase) {
+		phase := g.thingStatePhase[i]
+		switch g.thingState[i] {
+		case monsterStateSpawn:
+			seq := monsterSpawnFrameSeq(th.Type)
+			if len(seq) > 0 {
+				if phase < 0 || phase >= len(seq) {
+					phase = 0
+				}
+				return seq[phase]
+			}
+		case monsterStateSee:
+			seq := monsterSeeFrameSeq(th.Type)
+			if len(seq) > 0 {
+				if phase < 0 || phase >= len(seq) {
+					phase = 0
+				}
+				return seq[phase]
+			}
 		}
 	}
 	return byte('A' + ((tic / 8) & 3))

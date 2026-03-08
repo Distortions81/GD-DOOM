@@ -2,6 +2,7 @@ package automap
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 
 	"gddoom/internal/doomrand"
@@ -180,6 +181,228 @@ func TestMonsterMoveStepMatchesDoomSpeedTable(t *testing.T) {
 	for _, tt := range tests {
 		if got := monsterMoveStep(tt.typ, false); got != tt.want {
 			t.Fatalf("type %d speed=%d want=%d", tt.typ, got, tt.want)
+		}
+	}
+}
+
+func TestMonsterAttackFrameTablesMatchDoomStateTables(t *testing.T) {
+	tests := []struct {
+		typ      int16
+		wantSeq  []byte
+		wantTics []int
+	}{
+		{3004, []byte{'E', 'F', 'E'}, []int{10, 8, 8}},
+		{9, []byte{'E', 'F', 'E'}, []int{10, 10, 10}},
+		{3001, []byte{'E', 'F', 'G'}, []int{8, 8, 6}},
+		{3002, []byte{'E', 'F', 'G'}, []int{8, 8, 8}},
+		{58, []byte{'E', 'F', 'G'}, []int{8, 8, 8}},
+		{3005, []byte{'B', 'C', 'D'}, []int{5, 5, 5}},
+		{3003, []byte{'E', 'F', 'G'}, []int{8, 8, 8}},
+		{69, []byte{'E', 'F', 'G'}, []int{8, 8, 8}},
+	}
+	for _, tt := range tests {
+		if got := monsterAttackFrameSeq(tt.typ); !reflect.DeepEqual(got, tt.wantSeq) {
+			t.Fatalf("type %d attack seq=%v want=%v", tt.typ, got, tt.wantSeq)
+		}
+		if got := monsterAttackFrameTics(tt.typ); !reflect.DeepEqual(got, tt.wantTics) {
+			t.Fatalf("type %d attack tics=%v want=%v", tt.typ, got, tt.wantTics)
+		}
+	}
+}
+
+func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
+	spawnTests := []struct {
+		typ      int16
+		wantSeq  []byte
+		wantTics []int
+	}{
+		{3004, []byte{'A', 'B'}, []int{10, 10}},
+		{9, []byte{'A', 'B'}, []int{10, 10}},
+		{3001, []byte{'A', 'B'}, []int{10, 10}},
+		{3002, []byte{'A', 'B'}, []int{10, 10}},
+		{58, []byte{'A', 'B'}, []int{10, 10}},
+		{3005, []byte{'A'}, []int{10}},
+		{3003, []byte{'A', 'B'}, []int{10, 10}},
+		{69, []byte{'A', 'B'}, []int{10, 10}},
+	}
+	for _, tt := range spawnTests {
+		if got := monsterSpawnFrameSeq(tt.typ); !reflect.DeepEqual(got, tt.wantSeq) {
+			t.Fatalf("type %d spawn seq=%v want=%v", tt.typ, got, tt.wantSeq)
+		}
+		if got := monsterSpawnFrameTics(tt.typ); !reflect.DeepEqual(got, tt.wantTics) {
+			t.Fatalf("type %d spawn tics=%v want=%v", tt.typ, got, tt.wantTics)
+		}
+	}
+
+	seeTests := []struct {
+		typ      int16
+		fast     bool
+		wantSeq  []byte
+		wantTics []int
+	}{
+		{3004, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{4, 4, 4, 4, 4, 4, 4, 4}},
+		{3004, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{9, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
+		{9, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{3001, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
+		{3002, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{58, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{3005, false, []byte{'A'}, []int{3}},
+		{3003, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
+		{69, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
+	}
+	for _, tt := range seeTests {
+		if got := monsterSeeFrameSeq(tt.typ); !reflect.DeepEqual(got, tt.wantSeq) {
+			t.Fatalf("type %d see seq=%v want=%v", tt.typ, got, tt.wantSeq)
+		}
+		if got := monsterSeeFrameTics(tt.typ, tt.fast); !reflect.DeepEqual(got, tt.wantTics) {
+			t.Fatalf("type %d fast=%t see tics=%v want=%v", tt.typ, tt.fast, got, tt.wantTics)
+		}
+	}
+}
+
+func TestMonsterPainFrameTablesMatchDoomStateTables(t *testing.T) {
+	tests := []struct {
+		typ       int16
+		wantSeq   []byte
+		wantTics  []int
+		wantTotal int
+	}{
+		{3004, []byte{'G', 'G'}, []int{3, 3}, 6},
+		{9, []byte{'G', 'G'}, []int{2, 2}, 4},
+		{3001, []byte{'H', 'H'}, []int{2, 2}, 4},
+		{3002, []byte{'H', 'H'}, []int{2, 2}, 4},
+		{58, []byte{'H', 'H'}, []int{2, 2}, 4},
+		{3006, []byte{'E', 'E'}, []int{3, 3}, 6},
+		{3005, []byte{'E', 'E', 'F'}, []int{3, 3, 6}, 12},
+		{3003, []byte{'H', 'H'}, []int{2, 2}, 4},
+		{69, []byte{'H', 'H'}, []int{2, 2}, 4},
+		{16, []byte{'G'}, []int{10}, 10},
+		{7, []byte{'I', 'I'}, []int{3, 3}, 6},
+	}
+	for _, tt := range tests {
+		if got := monsterPainFrameSeq(tt.typ); !reflect.DeepEqual(got, tt.wantSeq) {
+			t.Fatalf("type %d pain seq=%v want=%v", tt.typ, got, tt.wantSeq)
+		}
+		if got := monsterPainFrameTics(tt.typ); !reflect.DeepEqual(got, tt.wantTics) {
+			t.Fatalf("type %d pain tics=%v want=%v", tt.typ, got, tt.wantTics)
+		}
+		if got := monsterPainDurationTics(tt.typ); got != tt.wantTotal {
+			t.Fatalf("type %d pain total=%d want=%d", tt.typ, got, tt.wantTotal)
+		}
+	}
+}
+
+func TestDemoTraceMonsterAttackStateMatchesDoomStateNumbers(t *testing.T) {
+	tests := []struct {
+		typ  int16
+		base int
+	}{
+		{3004, 184},
+		{9, 217},
+		{3001, 452},
+		{3002, 485},
+		{58, 485},
+		{3005, 504},
+		{3003, 537},
+		{69, 566},
+	}
+	for _, tt := range tests {
+		for phase := 0; phase < 3; phase++ {
+			got, ok := demoTraceMonsterAttackState(tt.typ, phase)
+			if !ok {
+				t.Fatalf("type %d phase %d returned no state", tt.typ, phase)
+			}
+			if want := tt.base + phase; got != want {
+				t.Fatalf("type %d phase %d state=%d want=%d", tt.typ, phase, got, want)
+			}
+		}
+	}
+}
+
+func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
+	spawnTests := []struct {
+		typ  int16
+		base int
+		len  int
+	}{
+		{3004, 174, 2},
+		{9, 207, 2},
+		{3001, 442, 2},
+		{3002, 475, 2},
+		{58, 475, 2},
+		{3005, 502, 1},
+		{3003, 527, 2},
+		{69, 556, 2},
+	}
+	for _, tt := range spawnTests {
+		for phase := 0; phase < tt.len; phase++ {
+			got, ok := demoTraceMonsterSpawnState(tt.typ, phase)
+			if !ok {
+				t.Fatalf("type %d spawn phase %d returned no state", tt.typ, phase)
+			}
+			if want := tt.base + phase; got != want {
+				t.Fatalf("type %d spawn phase %d state=%d want=%d", tt.typ, phase, got, want)
+			}
+		}
+	}
+
+	seeTests := []struct {
+		typ  int16
+		base int
+		len  int
+	}{
+		{3004, 176, 8},
+		{9, 209, 8},
+		{3001, 444, 8},
+		{3002, 477, 8},
+		{58, 477, 8},
+		{3005, 503, 1},
+		{3003, 529, 8},
+		{69, 558, 8},
+	}
+	for _, tt := range seeTests {
+		for phase := 0; phase < tt.len; phase++ {
+			got, ok := demoTraceMonsterSeeState(tt.typ, phase)
+			if !ok {
+				t.Fatalf("type %d see phase %d returned no state", tt.typ, phase)
+			}
+			if want := tt.base + phase; got != want {
+				t.Fatalf("type %d see phase %d state=%d want=%d", tt.typ, phase, got, want)
+			}
+		}
+	}
+}
+
+func TestDemoTraceMonsterPainStateMatchesDoomStateNumbers(t *testing.T) {
+	tests := []struct {
+		typ       int16
+		remaining int
+		want      int
+	}{
+		{3004, 6, 187},
+		{3004, 3, 188},
+		{9, 4, 220},
+		{9, 2, 221},
+		{3001, 4, 455},
+		{3001, 2, 456},
+		{3002, 4, 488},
+		{3005, 12, 507},
+		{3005, 9, 508},
+		{3005, 6, 509},
+		{3003, 4, 540},
+		{69, 4, 569},
+		{3006, 6, 593},
+		{7, 6, 619},
+		{16, 10, 690},
+	}
+	for _, tt := range tests {
+		got, ok := demoTraceMonsterPainState(tt.typ, tt.remaining)
+		if !ok {
+			t.Fatalf("type %d remaining %d returned no state", tt.typ, tt.remaining)
+		}
+		if got != tt.want {
+			t.Fatalf("type %d remaining %d state=%d want=%d", tt.typ, tt.remaining, got, tt.want)
 		}
 	}
 }

@@ -121,7 +121,7 @@ func (g *game) tickMonsters() {
 			continue
 		}
 		if i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
-			g.setMonsterThinkState(i, th.Type, g.monsterIdleOrChaseState(i), g.monsterIdleOrChaseTics(i, th.Type))
+			g.resetMonsterIdleOrChaseState(i, th.Type)
 		}
 
 		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, px, py, dist) {
@@ -157,7 +157,7 @@ func (g *game) tickMonsters() {
 		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
 			g.monsterPickNewChaseDir(i, th.Type, px, py)
 		}
-		g.setMonsterThinkState(i, th.Type, monsterStateSee, monsterSeeStateTics(th.Type, g.fastMonstersActive()))
+		g.setMonsterThinkState(i, th.Type, monsterStateSee, g.monsterSeeStateTicsForPhase(i, th.Type))
 		g.emitMonsterActiveSound(i, th.Type, tx, ty)
 	}
 }
@@ -188,20 +188,28 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 		if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
 			g.thingAggro[i] = true
 			g.emitMonsterSeeSound(i, typ, tx, ty)
-			g.setMonsterThinkState(i, typ, monsterStateSee, monsterSeeStateTics(typ, g.fastMonstersActive()))
 			if i >= 0 && i < len(g.thingStatePhase) {
 				g.thingStatePhase[i] = 0
 			}
+			g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
 			return true
 		}
 		if i >= 0 && i < len(g.thingStatePhase) {
-			g.thingStatePhase[i] ^= 1
+			count := len(monsterSpawnFrameTics(typ))
+			if count < 1 {
+				count = 1
+			}
+			g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
 		}
-		g.setMonsterThinkState(i, typ, monsterStateSpawn, monsterSpawnStateTics(typ))
+		g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 		return false
 	case monsterStateSee:
 		if i >= 0 && i < len(g.thingStatePhase) {
-			g.thingStatePhase[i] ^= 1
+			count := len(monsterSeeFrameTics(typ, g.fastMonstersActive()))
+			if count < 1 {
+				count = 1
+			}
+			g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
 		}
 		return true
 	default:
@@ -218,9 +226,32 @@ func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
 
 func (g *game) monsterIdleOrChaseTics(i int, typ int16) int {
 	if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
-		return monsterSeeStateTics(typ, g.fastMonstersActive())
+		return g.monsterSeeStateTicsForPhase(i, typ)
 	}
-	return monsterSpawnStateTics(typ)
+	return g.monsterSpawnStateTicsForPhase(i, typ)
+}
+
+func (g *game) monsterSpawnStateTicsForPhase(i int, typ int16) int {
+	phase := 0
+	if i >= 0 && i < len(g.thingStatePhase) {
+		phase = g.thingStatePhase[i]
+	}
+	return monsterSpawnStateTicsAtPhase(typ, phase)
+}
+
+func (g *game) monsterSeeStateTicsForPhase(i int, typ int16) int {
+	phase := 0
+	if i >= 0 && i < len(g.thingStatePhase) {
+		phase = g.thingStatePhase[i]
+	}
+	return monsterSeeStateTicsAtPhase(typ, phase, g.fastMonstersActive())
+}
+
+func (g *game) resetMonsterIdleOrChaseState(i int, typ int16) {
+	if i >= 0 && i < len(g.thingStatePhase) {
+		g.thingStatePhase[i] = 0
+	}
+	g.setMonsterThinkState(i, typ, g.monsterIdleOrChaseState(i), g.monsterIdleOrChaseTics(i, typ))
 }
 
 func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
@@ -454,6 +485,9 @@ func monsterPainChance(typ int16) int {
 }
 
 func monsterPainDurationTics(typ int16) int {
+	if total := monsterPainAnimTotalTics(typ); total > 0 {
+		return total
+	}
 	switch typ {
 	case 16:
 		return 10
@@ -475,8 +509,7 @@ func (g *game) startMonsterAttackAnim(i int, typ int16) {
 	if total <= 0 {
 		g.thingAttackTics[i] = 0
 		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
-			g.thingState[i] = g.monsterIdleOrChaseState(i)
-			g.thingStateTics[i] = g.monsterIdleOrChaseTics(i, typ)
+			g.resetMonsterIdleOrChaseState(i, typ)
 		}
 		return
 	}
@@ -602,7 +635,7 @@ func monsterAttackStateTotalTics(typ int16) int {
 
 func monsterUsesExplicitAttackFrames(typ int16) bool {
 	switch typ {
-	case 3002, 58, 3003, 69: // demon/spectre, baron/hell knight
+	case 3004, 9, 3001, 3002, 58, 3005, 3003, 69: // humans, imp, demon/spectre, caco, baron/hell knight
 		return true
 	default:
 		return false
@@ -619,7 +652,35 @@ func monsterAttackFrameDuration(typ int16, phase int) int {
 
 func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, px, py, dist int64) {
 	switch typ {
+	case 3004: // zombieman
+		switch phase {
+		case 0:
+			g.faceMonsterToward(i, tx, ty, px, py)
+		case 1:
+			_ = g.monsterAttack(i, typ, dist)
+		}
+	case 9: // shotgun guy
+		switch phase {
+		case 0:
+			g.faceMonsterToward(i, tx, ty, px, py)
+		case 1:
+			_ = g.monsterAttack(i, typ, dist)
+		}
+	case 3001: // imp
+		switch phase {
+		case 0, 1:
+			g.faceMonsterToward(i, tx, ty, px, py)
+		case 2:
+			_ = g.monsterAttack(i, typ, dist)
+		}
 	case 3002, 58: // demon/spectre
+		switch phase {
+		case 0, 1:
+			g.faceMonsterToward(i, tx, ty, px, py)
+		case 2:
+			_ = g.monsterAttack(i, typ, dist)
+		}
+	case 3005: // cacodemon
 		switch phase {
 		case 0, 1:
 			g.faceMonsterToward(i, tx, ty, px, py)
@@ -649,8 +710,7 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 				if nextPhase >= len(monsterAttackFrameTics(typ)) {
 					g.thingAttackTics[i] = 0
 					if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
-						g.thingState[i] = g.monsterIdleOrChaseState(i)
-						g.thingStateTics[i] = g.monsterIdleOrChaseTics(i, typ)
+						g.resetMonsterIdleOrChaseState(i, typ)
 					}
 					return true
 				}
@@ -683,9 +743,33 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 
 func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 	switch typ {
+	case 3004:
+		if phase >= 0 && phase <= 2 {
+			return 184 + phase, true
+		}
+	case 9:
+		if phase >= 0 && phase <= 2 {
+			return 217 + phase, true
+		}
+	case 3001:
+		if phase >= 0 && phase <= 2 {
+			return 452 + phase, true
+		}
 	case 3002, 58:
 		if phase >= 0 && phase <= 2 {
 			return 485 + phase, true
+		}
+	case 3005:
+		if phase >= 0 && phase <= 2 {
+			return 504 + phase, true
+		}
+	case 3003:
+		if phase >= 0 && phase <= 2 {
+			return 537 + phase, true
+		}
+	case 69:
+		if phase >= 0 && phase <= 2 {
+			return 566 + phase, true
 		}
 	}
 	return 0, false
@@ -698,35 +782,63 @@ func monsterLookInterval(typ int16) int {
 	return 1
 }
 
-func monsterSpawnStateTics(typ int16) int {
-	wait := monsterLookInterval(typ)
-	if wait < 1 {
-		wait = 1
+func monsterSpawnStateTicsAtPhase(typ int16, phase int) int {
+	tics := monsterSpawnFrameTics(typ)
+	if len(tics) == 0 {
+		wait := monsterLookInterval(typ)
+		if wait < 1 {
+			wait = 1
+		}
+		return wait
 	}
-	return wait
+	if phase < 0 || phase >= len(tics) {
+		phase = 0
+	}
+	if tics[phase] < 1 {
+		return 1
+	}
+	return tics[phase]
+}
+
+func monsterSpawnStateTics(typ int16) int {
+	return monsterSpawnStateTicsAtPhase(typ, 0)
+}
+
+func monsterSeeStateTicsAtPhase(typ int16, phase int, fast bool) int {
+	tics := monsterSeeFrameTics(typ, fast)
+	if len(tics) == 0 {
+		switch typ {
+		case 3004, 84, 67:
+			if fast {
+				return 2
+			}
+			return 4
+		case 9:
+			if fast {
+				return 2
+			}
+			return 3
+		case 3002, 58, 64, 66:
+			return 2
+		case 3006:
+			return 6
+		case 65, 3001, 3003, 3005, 7, 16, 68, 69, 71:
+			return 3
+		default:
+			return 3
+		}
+	}
+	if phase < 0 || phase >= len(tics) {
+		phase = 0
+	}
+	if tics[phase] < 1 {
+		return 1
+	}
+	return tics[phase]
 }
 
 func monsterSeeStateTics(typ int16, fast bool) int {
-	switch typ {
-	case 3004, 84, 67:
-		if fast {
-			return 2
-		}
-		return 4
-	case 9:
-		if fast {
-			return 2
-		}
-		return 3
-	case 3002, 58, 64, 66:
-		return 2
-	case 3006:
-		return 6
-	case 65, 3001, 3003, 3005, 7, 16, 68, 69, 71:
-		return 3
-	default:
-		return 3
-	}
+	return monsterSeeStateTicsAtPhase(typ, 0, fast)
 }
 
 func monsterReactionTimeTics(typ int16) int {
@@ -999,6 +1111,9 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if i >= 0 && g.m != nil && i < len(g.m.Things) {
 		sx, sy = g.thingPosFixed(i, g.m.Things[i])
 	}
+	if monsterAttackCallsFaceTarget(typ) {
+		g.faceMonsterToward(i, sx, sy, g.p.x, g.p.y)
+	}
 	if dist <= monsterMeleeRange && monsterHasMeleeAttack(typ) {
 		damage := monsterMeleeDamage(typ)
 		if damage > 0 {
@@ -1015,13 +1130,13 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if typ == 3004 {
 		// Zombieman: single bullet with Doom-style spread and chance to miss.
 		g.emitSoundEventAt(soundEventShootPistol, sx, sy)
-		g.monsterHitscanAttack(sx, sy, 1)
+		g.monsterHitscanAttack(i, typ, sx, sy, 1)
 		return true
 	}
 	if typ == 9 {
 		// Sergeant: 3 pellets.
 		g.emitSoundEventAt(soundEventShootShotgun, sx, sy)
-		g.monsterHitscanAttack(sx, sy, 3)
+		g.monsterHitscanAttack(i, typ, sx, sy, 3)
 		return true
 	}
 	if usesMonsterProjectile(typ) {
@@ -1040,6 +1155,19 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	return true
 }
 
+func monsterAttackCallsFaceTarget(typ int16) bool {
+	switch typ {
+	case 3004, 9, 84, 65: // zombieman, sergeant, ss, chaingunner
+		return true
+	case 3001, 3002, 58, 3005, 3006: // imp, demon/spectre, caco, lost soul
+		return true
+	case 16: // cyberdemon
+		return true
+	default:
+		return false
+	}
+}
+
 func monsterMeleeAttackSoundEvent(typ int16) soundEvent {
 	switch typ {
 	case 3001, 3003, 69:
@@ -1053,37 +1181,59 @@ func monsterMeleeAttackSoundEvent(typ int16) soundEvent {
 	}
 }
 
-func (g *game) monsterHitscanAttack(sx, sy int64, pellets int) {
+func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int) {
 	if pellets <= 0 {
 		return
 	}
-	base := math.Atan2(float64(g.p.y-sy), float64(g.p.x-sx))
-	total := 0
-	for i := 0; i < pellets; i++ {
-		off := float64((doomPRandomN(256)-doomPRandomN(256))<<20) * (2 * math.Pi / 4294967296.0)
-		ang := base + off
-		if !g.monsterBulletCanHitPlayer(sx, sy, ang, monsterAttackRange) {
+	baseAngle := g.thingWorldAngle(i, g.m.Things[i])
+	slope, ok := g.monsterAimPlayerSlope(i, typ, baseAngle, monsterAttackRange)
+	if !ok {
+		slope = 0
+	}
+	shootZ := g.monsterShootZ(i, typ)
+	for pellet := 0; pellet < pellets; pellet++ {
+		angle := addDoomAngleSpread(baseAngle, doomGunSpreadShift)
+		damage := 3 * (1 + doomrand.PRandom()%5)
+		if dist, hit := g.monsterLineAttackPlayerDist(typ, sx, sy, shootZ, angle, monsterAttackRange, slope); hit {
+			g.spawnHitscanBloodFromSource(sx, sy, shootZ, angle, slope, dist, damage)
+			g.damagePlayerFrom(damage, "Monster shot you", sx, sy, true)
 			continue
 		}
-		total += 3 * (1 + doomPRandomN(5))
-	}
-	if total > 0 {
-		g.damagePlayerFrom(total, "Monster shot you", sx, sy, true)
+		if wallDist, _, wallHit := g.hitscanWallImpactDistanceFrom(sx, sy, shootZ, angle, monsterAttackRange, slope); wallHit {
+			g.spawnHitscanPuffFromSource(sx, sy, shootZ, angle, slope, wallDist)
+		}
 	}
 }
 
-func (g *game) monsterBulletCanHitPlayer(sx, sy int64, ang float64, rng int64) bool {
-	if !g.monsterHasLOSPlayer(0, sx, sy) {
-		return false
+func (g *game) monsterLineAttackPlayerDist(typ int16, sx, sy int64, shootZ float64, angle uint32, rng int64, slope float64) (float64, bool) {
+	if !g.monsterHasLOSPlayer(typ, sx, sy) {
+		return 0, false
 	}
+	ang := angleToRadians(angle)
+	dirX := math.Cos(ang)
+	dirY := math.Sin(ang)
 	dx := float64(g.p.x - sx)
 	dy := float64(g.p.y - sy)
-	fwd := dx*math.Cos(ang) + dy*math.Sin(ang)
-	if fwd <= 0 || fwd > float64(rng) {
-		return false
+	dist := dx*dirX + dy*dirY
+	if dist <= 0 || dist > float64(rng) {
+		return 0, false
 	}
-	perp := math.Abs(dx*math.Sin(ang) - dy*math.Cos(ang))
-	return perp <= float64(playerRadius)
+	perp := math.Abs(dx*dirY - dy*dirX)
+	if perp > float64(playerRadius) {
+		return 0, false
+	}
+	topSlope := (float64(g.p.z+playerHeight) - shootZ) / dist
+	if topSlope < slope {
+		return 0, false
+	}
+	bottomSlope := (float64(g.p.z) - shootZ) / dist
+	if bottomSlope > slope {
+		return 0, false
+	}
+	if wallDist, _, wallHit := g.hitscanWallImpactDistanceFrom(sx, sy, shootZ, angle, rng, slope); wallHit && wallDist <= dist {
+		return 0, false
+	}
+	return dist, true
 }
 
 func monsterMoveStep(typ int16, fast bool) int64 {

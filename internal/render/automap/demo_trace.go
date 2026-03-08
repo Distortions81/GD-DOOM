@@ -345,6 +345,50 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Kind:         "projectile",
 		})
 	}
+	for _, p := range g.hitscanPuffs {
+		sec := g.sectorAt(p.x, p.y)
+		floorZ := g.thingFloorZ(p.x, p.y)
+		ceilZ := int64(0)
+		if sec >= 0 && sec < len(g.sectorCeil) {
+			ceilZ = g.sectorCeil[sec]
+		}
+		mobjType := 37
+		flags := 528
+		if p.kind == hitscanFxBlood {
+			mobjType = 38
+			flags = 16
+		}
+		out = append(out, demoTraceMobj{
+			Type:         mobjType,
+			X:            p.x,
+			Y:            p.y,
+			Z:            p.z,
+			Angle:        0,
+			MomX:         0,
+			MomY:         0,
+			MomZ:         p.momz,
+			FloorZ:       floorZ,
+			CeilingZ:     ceilZ,
+			Radius:       20 * fracUnit,
+			Height:       16 * fracUnit,
+			Tics:         p.tics,
+			State:        p.state,
+			Flags:        flags,
+			Health:       1000,
+			Movedir:      0,
+			Movecount:    0,
+			ReactionTime: 8,
+			Threshold:    0,
+			LastLook:     0,
+			Subsector:    boolToInt(sec >= 0),
+			Sector:       sec,
+			Player:       0,
+			Target:       0,
+			TargetType:   0,
+			Tracer:       0,
+			TracerType:   0,
+		})
+	}
 	return out
 }
 
@@ -466,6 +510,11 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		case monsterStateDeath:
 			return 3
 		case monsterStatePain:
+			if i >= 0 && i < len(g.thingPainTics) {
+				if state, ok := demoTraceMonsterPainState(typ, g.thingPainTics[i]); ok {
+					return state
+				}
+			}
 			return 2
 		case monsterStateAttack:
 			if i >= 0 && i < len(g.thingAttackPhase) {
@@ -475,8 +524,18 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 			}
 			return 1
 		case monsterStateSpawn:
+			if i >= 0 && i < len(g.thingStatePhase) {
+				if state, ok := demoTraceMonsterSpawnState(typ, g.thingStatePhase[i]); ok {
+					return state
+				}
+			}
 			return 4
 		case monsterStateSee:
+			if i >= 0 && i < len(g.thingStatePhase) {
+				if state, ok := demoTraceMonsterSeeState(typ, g.thingStatePhase[i]); ok {
+					return state
+				}
+			}
 			return 5
 		}
 	}
@@ -493,6 +552,113 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		return 0
 	}
 	return -1
+}
+
+func demoTraceMonsterSpawnState(typ int16, phase int) (int, bool) {
+	base := 0
+	count := 0
+	switch typ {
+	case 3004:
+		base, count = 174, 2
+	case 9:
+		base, count = 207, 2
+	case 3001:
+		base, count = 442, 2
+	case 3002, 58:
+		base, count = 475, 2
+	case 3005:
+		base, count = 502, 1
+	case 3003:
+		base, count = 527, 2
+	case 69:
+		base, count = 556, 2
+	default:
+		return 0, false
+	}
+	if phase < 0 || phase >= count {
+		return 0, false
+	}
+	return base + phase, true
+}
+
+func demoTraceMonsterSeeState(typ int16, phase int) (int, bool) {
+	base := 0
+	count := 0
+	switch typ {
+	case 3004:
+		base, count = 176, 8
+	case 9:
+		base, count = 209, 8
+	case 3001:
+		base, count = 444, 8
+	case 3002, 58:
+		base, count = 477, 8
+	case 3005:
+		base, count = 503, 1
+	case 3003:
+		base, count = 529, 8
+	case 69:
+		base, count = 558, 8
+	default:
+		return 0, false
+	}
+	if phase < 0 || phase >= count {
+		return 0, false
+	}
+	return base + phase, true
+}
+
+func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
+	base := 0
+	switch typ {
+	case 3004:
+		base = 187
+	case 9:
+		base = 220
+	case 3001:
+		base = 455
+	case 3002, 58:
+		base = 488
+	case 3005:
+		base = 507
+	case 3003:
+		base = 540
+	case 69:
+		base = 569
+	case 3006:
+		base = 593
+	case 7:
+		base = 619
+	case 16:
+		base = 690
+	default:
+		return 0, false
+	}
+	frameTics := monsterPainFrameTics(typ)
+	if len(frameTics) == 0 || remaining <= 0 {
+		return 0, false
+	}
+	total := 0
+	for _, t := range frameTics {
+		if t > 0 {
+			total += t
+		}
+	}
+	elapsed := total - remaining
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	acc := 0
+	for idx, t := range frameTics {
+		if t <= 0 {
+			continue
+		}
+		acc += t
+		if elapsed < acc {
+			return base + idx, true
+		}
+	}
+	return base + len(frameTics) - 1, true
 }
 
 func demoTraceThingMoveDir(g *game, i int) int {
