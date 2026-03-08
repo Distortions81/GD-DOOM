@@ -1427,7 +1427,7 @@ func (g *game) updateDemoMode() error {
 		g.demoRNGCaptured = true
 	}
 	if g.demoTick >= len(script.Tics) {
-		if !g.demoDoneReported {
+		if !g.demoDoneReported && g.opts.DemoQuitOnComplete {
 			g.demoDoneReported = true
 			elapsed := time.Since(g.demoBenchStart)
 			tics := g.demoTick
@@ -1449,18 +1449,21 @@ func (g *game) updateDemoMode() error {
 			fmt.Printf("demo-bench path=%s wad=%s map=%s rng_start=%d/%d tics=%d draws=%d elapsed=%s tps=%.2f fps=%.2f ms_per_tic=%.3f\n",
 				label, g.opts.WADHash, g.m.Name, g.demoStartRnd, g.demoStartPRnd, tics, g.demoBenchDraws, elapsed.Round(time.Millisecond), tps, fps, msPerTic)
 		}
-		return ebiten.Termination
+		if g.opts.DemoQuitOnComplete {
+			return ebiten.Termination
+		}
+		return nil
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
 	cmd := moveCmd{
-		forward: tc.Forward,
-		side:    tc.Side,
-		turn:    tc.Turn,
-		turnRaw: tc.TurnRaw,
-		run:     tc.Run,
+		forward: int64(tc.Forward),
+		side:    int64(tc.Side),
+		turnRaw: int64(tc.AngleTurn) << 16,
 	}
-	g.runGameplayTic(cmd, tc.Use, tc.Fire)
+	usePressed := tc.Buttons&demoButtonUse != 0
+	fireHeld := tc.Buttons&demoButtonAttack != 0
+	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
 	g.camX = float64(g.p.x) / fracUnit
 	g.camY = float64(g.p.y) / fracUnit
@@ -1681,15 +1684,56 @@ func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
 	if g.opts.DemoScript != nil || strings.TrimSpace(g.opts.RecordDemoPath) == "" {
 		return
 	}
+	buttons := byte(0)
+	if usePressed {
+		buttons |= demoButtonUse
+	}
+	if firePressed {
+		buttons |= demoButtonAttack
+	}
 	g.demoRecord = append(g.demoRecord, DemoTic{
-		Forward: cmd.forward,
-		Side:    cmd.side,
-		Turn:    cmd.turn,
-		TurnRaw: cmd.turnRaw,
-		Run:     cmd.run,
-		Use:     usePressed,
-		Fire:    firePressed,
+		Forward:   clampDemoMove(cmd.forward),
+		Side:      clampDemoMove(cmd.side),
+		AngleTurn: g.demoAngleTurn(cmd),
+		Buttons:   buttons,
 	})
+}
+
+func (g *game) demoAngleTurn(cmd moveCmd) int16 {
+	turnRaw := cmd.turnRaw
+	if cmd.turn != 0 {
+		held := g.turnHeld + 1
+		turn := angleTurn[0]
+		if held < slowTurnTics {
+			turn = angleTurn[2]
+		} else if cmd.run {
+			turn = angleTurn[1]
+		}
+		turnSpeed := g.opts.KeyboardTurnSpeed
+		if turnSpeed == 0 {
+			turnSpeed = 1
+		}
+		turn = uint32(float64(turn) * turnSpeed)
+		if turn == 0 {
+			turn = 1
+		}
+		if cmd.turn < 0 {
+			turnRaw -= int64(turn)
+		} else {
+			turnRaw += int64(turn)
+		}
+	}
+	return int16(turnRaw / fracUnit)
+}
+
+func clampDemoMove(v int64) int8 {
+	if v < -128 {
+		return -128
+	}
+	if v > 127 {
+		return 127
+	}
+	return int8(v)
 }
 
 func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
@@ -11567,11 +11611,15 @@ func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 25, G: 0, B: 0, A: 130})
 	msg1 := "YOU DIED"
 	msg2 := "PRESS ENTER TO RESTART"
-	x1 := g.viewW/2 - len(msg1)*7/2
-	x2 := g.viewW/2 - len(msg2)*7/2
-	y := g.viewH / 2
-	ebitenutil.DebugPrintAt(screen, msg1, x1, y)
-	ebitenutil.DebugPrintAt(screen, msg2, x2, y+16)
+	sx := 2.0
+	sy := 2.0
+	w1 := float64(g.huTextWidth(msg1)) * sx
+	w2 := float64(g.huTextWidth(msg2)) * sx
+	y := float64(g.viewH / 2)
+	x1 := (float64(g.viewW) - w1) * 0.5
+	x2 := (float64(g.viewW) - w2) * 0.5
+	g.drawHUTextAt(screen, msg1, x1, y, sx, sy)
+	g.drawHUTextAt(screen, msg2, x2, y+22*sy, sx, sy)
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {

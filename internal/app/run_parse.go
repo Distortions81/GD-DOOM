@@ -134,9 +134,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.Zoom != nil {
 			defaultZoom = *cfg.Zoom
 		}
-		if cfg.DetailLevel != nil {
-			defaultDetailLevel = *cfg.DetailLevel
-		}
 		if cfg.GammaLevel != nil {
 			defaultGammaLevel = *cfg.GammaLevel
 		}
@@ -277,6 +274,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.NoAspectCorrection != nil {
 			defaultNoAspectCorrection = *cfg.NoAspectCorrection
 		}
+		defaultDetailLevel = configuredDetailLevelForMode(cfg, defaultSourcePortMode)
 	}
 	if defaultSourcePortMode {
 		if cfg == nil || cfg.GPUSky == nil {
@@ -341,8 +339,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
-	demoPath := fs.String("demo", defaultDemo, "path to gddoom-demo-v1 script; runs scripted benchmark and exits when demo ends")
-	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write gddoom-demo-v1 script recorded from live input")
+	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
+	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -393,6 +391,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			invulnSet = true
 		}
 	})
+	detailLevelSet := flagProvided(args, "detail-level")
+	if !detailLevelSet {
+		*detailLevel = configuredDetailLevelForMode(cfg, *sourcePortMode)
+	}
 	resolvedCheatLevel := *cheatLevel
 	resolvedInvuln := *invuln
 	resolvedGameMode := strings.ToLower(strings.TrimSpace(*gameMode))
@@ -458,6 +460,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			height:                     *height,
 			zoom:                       *zoom,
 			detailLevel:                *detailLevel,
+			detailLevelExplicit:        detailLevelSet,
+			detailLevelFaithful:        configuredDetailLevelForMode(cfg, false),
+			detailLevelSourcePort:      configuredDetailLevelForMode(cfg, true),
 			gammaLevel:                 *gammaLevel,
 			debug:                      *debug,
 			playerSlot:                 *playerSlot,
@@ -526,7 +531,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if p := picker.Session().Options().RecordDemoPath; p != "" {
 			rec := picker.Session().EffectiveDemoRecord()
-			if werr := automap.SaveDemoScript(p, rec); werr != nil {
+			demo, derr := automap.BuildRecordedDemo(picker.Session().StartMapName(), picker.Session().Options(), rec)
+			if derr != nil {
+				fmt.Fprintf(stderr, "build demo recording: %v\n", derr)
+				return 1
+			}
+			if werr := automap.SaveDemoScript(p, demo); werr != nil {
 				fmt.Fprintf(stderr, "write demo recording: %v\n", werr)
 				return 1
 			}
@@ -714,13 +724,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
-	if selected == "" {
-		selected, err = mapdata.FirstMapName(wf)
-		if err != nil {
-			fmt.Fprintf(stderr, "resolve first map: %v\n", err)
-			return 1
-		}
-	}
 
 	if *render {
 		stopCPUProfile := func() {}
@@ -816,6 +819,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SoundBank:                  soundBank,
 			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
+			AttractDemos:               loadBuiltInDemos(wf),
 		}
 		opts.TitleMusicLoader = func() ([]byte, error) {
 			for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
@@ -856,11 +860,18 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 			return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
 		}
+		opts.DemoMapLoader = func(demo *automap.DemoScript) (*mapdata.Map, error) {
+			name, err := resolveDemoStartMap(wf, demo, "")
+			if err != nil {
+				return nil, err
+			}
+			return mapdata.LoadMap(wf, name)
+		}
 		opts.Episodes = availableEpisodes(wf)
 		if strings.TrimSpace(configPath) != "" {
 			path := configPath
 			opts.OnRuntimeSettingsChanged = func(s automap.RuntimeSettings) {
-				if err := saveRuntimeSettings(path, s); err != nil {
+				if err := saveRuntimeSettings(path, s, opts.SourcePortMode); err != nil {
 					fmt.Fprintf(stderr, "config save warning: %v\n", err)
 				}
 			}
@@ -872,7 +883,23 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				return 1
 			}
 			opts.DemoScript = demo
+			opts.DemoQuitOnComplete = true
+			selected, err = resolveDemoStartMap(wf, demo, selected)
+			if err != nil {
+				fmt.Fprintf(stderr, "resolve demo map: %v\n", err)
+				return 1
+			}
+			opts.SkillLevel = int(demo.Header.Skill) + 1
+			opts.FastMonsters = demo.Header.Fast
+			opts.GameMode = demoGameMode(demo)
 			fmt.Fprintf(stderr, "demo loaded: %s tics=%d\n", p, len(demo.Tics))
+		}
+		if selected == "" {
+			selected, err = mapdata.FirstMapName(wf)
+			if err != nil {
+				fmt.Fprintf(stderr, "resolve first map: %v\n", err)
+				return 1
+			}
 		}
 		m, lerr := mapdata.LoadMap(wf, selected)
 		if lerr != nil {
@@ -903,6 +930,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	}
 
+	if p := resolvedDemoPath; p != "" && !*render {
+		demo, derr := automap.LoadDemoScript(p)
+		if derr != nil {
+			fmt.Fprintf(stderr, "load demo: %v\n", derr)
+			return 1
+		}
+		selected, err = resolveDemoStartMap(wf, demo, selected)
+		if err != nil {
+			fmt.Fprintf(stderr, "resolve demo map: %v\n", err)
+			return 1
+		}
+	}
+	if selected == "" {
+		selected, err = mapdata.FirstMapName(wf)
+		if err != nil {
+			fmt.Fprintf(stderr, "resolve first map: %v\n", err)
+			return 1
+		}
+	}
 	m, err := mapdata.LoadMap(wf, selected)
 	if err != nil {
 		fmt.Fprintf(stderr, "load map %s: %v\n", selected, err)
@@ -1124,6 +1170,9 @@ type renderBuildConfig struct {
 	height                     int
 	zoom                       float64
 	detailLevel                int
+	detailLevelExplicit        bool
+	detailLevelFaithful        int
+	detailLevelSourcePort      int
 	gammaLevel                 int
 	debug                      bool
 	playerSlot                 int
@@ -1309,12 +1358,6 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		flatBankIndexed = fbi
 	}
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(cfg.selectedMap)))
-	if selected == "" {
-		selected, err = mapdata.FirstMapName(wf)
-		if err != nil {
-			return nil, fmt.Errorf("resolve first map: %w", err)
-		}
-	}
 	opts := automap.Options{
 		Width:                      cfg.width,
 		Height:                     cfg.height,
@@ -1376,6 +1419,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		SoundBank:                  soundBank,
 		MusicPatchBank:             musicPatchBank,
 		RecordDemoPath:             cfg.recordDemoPath,
+		AttractDemos:               loadBuiltInDemos(wf),
 	}
 	opts.TitleMusicLoader = func() ([]byte, error) {
 		for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
@@ -1413,11 +1457,18 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 		return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
 	}
+	opts.DemoMapLoader = func(demo *automap.DemoScript) (*mapdata.Map, error) {
+		name, err := resolveDemoStartMap(wf, demo, "")
+		if err != nil {
+			return nil, err
+		}
+		return mapdata.LoadMap(wf, name)
+	}
 	opts.Episodes = availableEpisodes(wf)
 	if strings.TrimSpace(cfg.configPath) != "" {
 		path := cfg.configPath
 		opts.OnRuntimeSettingsChanged = func(s automap.RuntimeSettings) {
-			_ = saveRuntimeSettings(path, s)
+			_ = saveRuntimeSettings(path, s, opts.SourcePortMode)
 		}
 	}
 	if p := cfg.demoPath; p != "" {
@@ -1426,6 +1477,20 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 			return nil, fmt.Errorf("load demo: %w", derr)
 		}
 		opts.DemoScript = demo
+		opts.DemoQuitOnComplete = true
+		selected, err = resolveDemoStartMap(wf, demo, selected)
+		if err != nil {
+			return nil, fmt.Errorf("resolve demo map: %w", err)
+		}
+		opts.SkillLevel = int(demo.Header.Skill) + 1
+		opts.FastMonsters = demo.Header.Fast
+		opts.GameMode = demoGameMode(demo)
+	}
+	if selected == "" {
+		selected, err = mapdata.FirstMapName(wf)
+		if err != nil {
+			return nil, fmt.Errorf("resolve first map: %w", err)
+		}
 	}
 	m, lerr := mapdata.LoadMap(wf, selected)
 	if lerr != nil {
@@ -1449,11 +1514,17 @@ func applyPickerProfile(cfg renderBuildConfig, profile pickerProfile) renderBuil
 	switch profile {
 	case pickerProfileSourcePort:
 		cfg.sourcePortMode = true
+		if !cfg.detailLevelExplicit {
+			cfg.detailLevel = cfg.detailLevelSourcePort
+		}
 		if strings.TrimSpace(cfg.lineColorMode) == "" || strings.EqualFold(cfg.lineColorMode, "default") {
 			cfg.lineColorMode = "doom"
 		}
 	case pickerProfileFaithful:
 		cfg.sourcePortMode = false
+		if !cfg.detailLevelExplicit {
+			cfg.detailLevel = cfg.detailLevelFaithful
+		}
 	}
 	return cfg
 }
@@ -2490,4 +2561,60 @@ func availableEpisodes(wf *wad.File) []int {
 	}
 	sort.Ints(out)
 	return out
+}
+
+func resolveDemoStartMap(wf *wad.File, demo *automap.DemoScript, fallback mapdata.MapName) (mapdata.MapName, error) {
+	if wf == nil || demo == nil {
+		return "", fmt.Errorf("missing demo")
+	}
+	candidates := make([]mapdata.MapName, 0, 2)
+	if demo.Header.Map > 0 {
+		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("MAP%02d", demo.Header.Map)))
+	}
+	if demo.Header.Episode > 0 && demo.Header.Map > 0 && demo.Header.Map <= 9 {
+		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("E%dM%d", demo.Header.Episode, demo.Header.Map)))
+	}
+	for _, candidate := range candidates {
+		if _, err := mapdata.LoadMap(wf, candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	if fallback != "" {
+		return "", fmt.Errorf("demo map episode=%d map=%d not present in wad (requested map %s ignored)", demo.Header.Episode, demo.Header.Map, fallback)
+	}
+	return "", fmt.Errorf("demo map episode=%d map=%d not present in wad", demo.Header.Episode, demo.Header.Map)
+}
+
+func loadBuiltInDemos(wf *wad.File) []*automap.DemoScript {
+	if wf == nil {
+		return nil
+	}
+	out := make([]*automap.DemoScript, 0, 4)
+	for _, name := range []string{"DEMO1", "DEMO2", "DEMO3", "DEMO4"} {
+		lump, ok := wf.LumpByName(name)
+		if !ok {
+			continue
+		}
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			continue
+		}
+		demo, err := automap.ParseDemoScript(data)
+		if err != nil {
+			continue
+		}
+		demo.Path = name
+		out = append(out, demo)
+	}
+	return out
+}
+
+func demoGameMode(demo *automap.DemoScript) string {
+	if demo == nil {
+		return "single"
+	}
+	if demo.Header.Deathmatch {
+		return "deathmatch"
+	}
+	return "single"
 }

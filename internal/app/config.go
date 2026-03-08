@@ -20,7 +20,8 @@ type fileConfig struct {
 	MultiCore                  *bool    `toml:"multi_core"`
 	Width                      *int     `toml:"width"`
 	Height                     *int     `toml:"height"`
-	DetailLevel                *int     `toml:"detail_level"`
+	DetailLevelFaithful        *int     `toml:"detail_level_faithful"`
+	DetailLevelSourcePort      *int     `toml:"detail_level_sourceport"`
 	GammaLevel                 *int     `toml:"gamma_level"`
 	Zoom                       *float64 `toml:"zoom"`
 	Player                     *int     `toml:"player"`
@@ -108,7 +109,23 @@ func loadConfig(path string, explicit bool) (*fileConfig, error) {
 	return cfg, nil
 }
 
-func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
+func configuredDetailLevelForMode(cfg *fileConfig, sourcePortMode bool) int {
+	if cfg == nil {
+		return -1
+	}
+	if sourcePortMode {
+		if cfg.DetailLevelSourcePort != nil {
+			return *cfg.DetailLevelSourcePort
+		}
+	} else {
+		if cfg.DetailLevelFaithful != nil {
+			return *cfg.DetailLevelFaithful
+		}
+	}
+	return -1
+}
+
+func saveRuntimeSettings(path string, s automap.RuntimeSettings, sourcePortMode bool) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
@@ -118,7 +135,11 @@ func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
 	} else if err != nil {
 		return err
 	}
-	cfg.DetailLevel = intPtr(s.DetailLevel)
+	if sourcePortMode {
+		cfg.DetailLevelSourcePort = intPtr(s.DetailLevel)
+	} else {
+		cfg.DetailLevelFaithful = intPtr(s.DetailLevel)
+	}
 	cfg.GammaLevel = intPtr(s.GammaLevel)
 	cfg.MusicVolume = floatPtr(s.MusicVolume)
 	cfg.MUSPanMax = floatPtr(s.MUSPanMax)

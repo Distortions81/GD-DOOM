@@ -64,7 +64,7 @@ func TestRunParseUsesPositionalWADArgument(t *testing.T) {
 func TestRunParseTreatsPositionalWADAsExplicitAndSkipsPicker(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer
-	code := RunParse([]string{"missing-from-cli.wad", "-render=true"}, &out, &errb)
+	code := RunParse([]string{"missing-from-cli.wad", "-render=false"}, &out, &errb)
 	if code != 1 {
 		t.Fatalf("RunParse() code=%d want=1 stderr=%q", code, errb.String())
 	}
@@ -88,6 +88,37 @@ func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "mutually exclusive") {
 		t.Fatalf("stderr %q does not mention mutual exclusion", errb.String())
+	}
+}
+
+func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
+	td := t.TempDir()
+	demoPath := filepath.Join(td, "demo.lmp")
+	data, err := automap.FormatDemoScript(&automap.DemoScript{
+		Header: automap.DemoHeader{
+			Version:      110,
+			Skill:        2,
+			Episode:      1,
+			Map:          2,
+			PlayerInGame: [4]bool{true},
+		},
+		Tics: []automap.DemoTic{{Forward: 25}},
+	})
+	if err != nil {
+		t.Fatalf("FormatDemoScript() error = %v", err)
+	}
+	if err := os.WriteFile(demoPath, data, 0o644); err != nil {
+		t.Fatalf("write demo: %v", err)
+	}
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{"-wad", wadPath, "-render=false", "-map", "E1M1", "-demo", demoPath}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=E1M2 ") {
+		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
 	}
 }
 
@@ -385,15 +416,15 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		LineColorMode:    "doom",
 		CRTEffect:        true,
 	}
-	if err := saveRuntimeSettings(cfgPath, in); err != nil {
+	if err := saveRuntimeSettings(cfgPath, in, true); err != nil {
 		t.Fatalf("saveRuntimeSettings() error: %v", err)
 	}
 	cfg, err := loadConfig(cfgPath, true)
 	if err != nil {
 		t.Fatalf("loadConfig() error: %v", err)
 	}
-	if cfg.DetailLevel == nil || *cfg.DetailLevel != in.DetailLevel {
-		t.Fatalf("detail_level=%v want %d", cfg.DetailLevel, in.DetailLevel)
+	if cfg.DetailLevelSourcePort == nil || *cfg.DetailLevelSourcePort != in.DetailLevel {
+		t.Fatalf("detail_level_sourceport=%v want %d", cfg.DetailLevelSourcePort, in.DetailLevel)
 	}
 	if cfg.GammaLevel == nil || *cfg.GammaLevel != in.GammaLevel {
 		t.Fatalf("gamma_level=%v want %d", cfg.GammaLevel, in.GammaLevel)
@@ -427,6 +458,48 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if _, err := os.Stat(cfgPath + ".tmp"); !os.IsNotExist(err) {
 		t.Fatalf("expected no leftover tmp file, stat err=%v", err)
+	}
+}
+
+func TestSaveRuntimeSettingsWritesFaithfulDetailSeparately(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "config.toml")
+	if err := saveRuntimeSettings(cfgPath, automap.RuntimeSettings{DetailLevel: 1}, false); err != nil {
+		t.Fatalf("saveRuntimeSettings() faithful error: %v", err)
+	}
+	if err := saveRuntimeSettings(cfgPath, automap.RuntimeSettings{DetailLevel: 3}, true); err != nil {
+		t.Fatalf("saveRuntimeSettings() sourceport error: %v", err)
+	}
+	cfg, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if cfg.DetailLevelFaithful == nil || *cfg.DetailLevelFaithful != 1 {
+		t.Fatalf("detail_level_faithful=%v want 1", cfg.DetailLevelFaithful)
+	}
+	if cfg.DetailLevelSourcePort == nil || *cfg.DetailLevelSourcePort != 3 {
+		t.Fatalf("detail_level_sourceport=%v want 3", cfg.DetailLevelSourcePort)
+	}
+}
+
+func TestConfiguredDetailLevelForModeUsesModeSpecificOnly(t *testing.T) {
+	cfg := &fileConfig{
+		DetailLevelFaithful:   intPtr(1),
+		DetailLevelSourcePort: intPtr(3),
+	}
+	if got := configuredDetailLevelForMode(cfg, false); got != 1 {
+		t.Fatalf("configuredDetailLevelForMode(faithful)=%d want 1", got)
+	}
+	if got := configuredDetailLevelForMode(cfg, true); got != 3 {
+		t.Fatalf("configuredDetailLevelForMode(sourceport)=%d want 3", got)
+	}
+	cfg.DetailLevelFaithful = nil
+	cfg.DetailLevelSourcePort = nil
+	if got := configuredDetailLevelForMode(cfg, false); got != -1 {
+		t.Fatalf("configuredDetailLevelForMode(fallback faithful)=%d want -1", got)
+	}
+	if got := configuredDetailLevelForMode(cfg, true); got != -1 {
+		t.Fatalf("configuredDetailLevelForMode(fallback sourceport)=%d want -1", got)
 	}
 }
 

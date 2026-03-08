@@ -129,6 +129,9 @@ type frontendState struct {
 	tic              int
 	status           string
 	statusTic        int
+	attractSeq       int
+	attractPage      string
+	attractPageTic   int
 }
 
 type quitPromptState struct {
@@ -185,6 +188,12 @@ type sessionGame struct {
 }
 
 const quitPromptExitDelayTics = 53
+
+const (
+	attractPageTitleNonCommercial = 170
+	attractPageTitleCommercial    = 35 * 11
+	attractPageInfo               = 200
+)
 
 var doomQuitMessages = []string{
 	"please don't leave, there's more\ndemons to toast!",
@@ -702,10 +711,132 @@ func (sg *sessionGame) startFrontend() {
 	sg.frontend = frontendState{
 		active:     true,
 		mode:       frontendModeTitle,
-		menuActive: true,
+		menuActive: false,
+		attractSeq: -1,
 	}
-	sg.stopAndClearMusic()
-	sg.playTitleMusic()
+	if !sg.advanceFrontendAttract() {
+		sg.stopAndClearMusic()
+		sg.playTitleMusic()
+	}
+}
+
+func (sg *sessionGame) startAttractDemoByName(name string) bool {
+	if sg == nil || len(sg.opts.AttractDemos) == 0 || sg.opts.DemoMapLoader == nil {
+		if sg != nil {
+			fmt.Printf("attract-error step=%s reason=no-demo-loader-or-demos\n", strings.ToUpper(strings.TrimSpace(name)))
+		}
+		return false
+	}
+	want := strings.ToUpper(strings.TrimSpace(name))
+	found := false
+	for _, demo := range sg.opts.AttractDemos {
+		if demo == nil || !strings.EqualFold(strings.TrimSpace(demo.Path), want) {
+			continue
+		}
+		found = true
+		m, err := sg.opts.DemoMapLoader(demo)
+		if err != nil {
+			fmt.Printf("attract-error step=%s reason=demo-map-load err=%v\n", want, err)
+			continue
+		}
+		if m == nil {
+			fmt.Printf("attract-error step=%s reason=demo-map-load returned nil map\n", want)
+			continue
+		}
+		sg.capturePersistentSettings()
+		sg.applyPersistentSettingsToOptions()
+		demoOpts := sg.opts
+		demoOpts.DemoScript = demo
+		demoOpts.DemoQuitOnComplete = false
+		demoOpts.RecordDemoPath = ""
+		ng := newGame(cloneMapForRestart(m), demoOpts)
+		sg.applyPersistentSettingsToGame(ng)
+		sg.g = ng
+		sg.stopAndClearMusic()
+		sg.playMusicForMap(m.Name)
+		return true
+	}
+	if !found {
+		fmt.Printf("attract-error step=%s reason=missing-demo-lump\n", want)
+	}
+	return false
+}
+
+func (sg *sessionGame) frontendAttractSequence() []string {
+	if sg == nil {
+		return nil
+	}
+	commercial := strings.HasPrefix(strings.ToUpper(strings.TrimSpace(string(sg.bootMap.Name))), "MAP")
+	retail := false
+	for _, ep := range sg.opts.Episodes {
+		if ep == 4 {
+			retail = true
+			break
+		}
+	}
+	if commercial {
+		return []string{"TITLEPIC", "DEMO1", "CREDIT", "DEMO2", "TITLEPIC", "DEMO3"}
+	}
+	secondPage := "HELP2"
+	if retail {
+		secondPage = "CREDIT"
+	}
+	seq := []string{"TITLEPIC", "DEMO1", "CREDIT", "DEMO2", secondPage, "DEMO3"}
+	if sg.hasAttractDemo("DEMO4") {
+		seq = append(seq, "DEMO4")
+	}
+	return seq
+}
+
+func (sg *sessionGame) hasAttractDemo(name string) bool {
+	if sg == nil {
+		return false
+	}
+	for _, demo := range sg.opts.AttractDemos {
+		if demo != nil && strings.EqualFold(strings.TrimSpace(demo.Path), strings.TrimSpace(name)) {
+			return true
+		}
+	}
+	return false
+}
+
+func (sg *sessionGame) advanceFrontendAttract() bool {
+	if sg == nil || !sg.frontend.active {
+		return false
+	}
+	seq := sg.frontendAttractSequence()
+	if len(seq) == 0 {
+		fmt.Printf("attract-error reason=empty-sequence\n")
+		return false
+	}
+	for i := 0; i < len(seq); i++ {
+		sg.frontend.attractSeq = (sg.frontend.attractSeq + 1) % len(seq)
+		step := seq[sg.frontend.attractSeq]
+		sg.frontend.attractPage = ""
+		sg.frontend.attractPageTic = 0
+		if strings.HasPrefix(step, "DEMO") {
+			if sg.startAttractDemoByName(step) {
+				return true
+			}
+			continue
+		}
+		if step == "TITLEPIC" {
+			sg.frontend.attractPageTic = attractPageTitleNonCommercial
+			if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(string(sg.bootMap.Name))), "MAP") {
+				sg.frontend.attractPageTic = attractPageTitleCommercial
+			}
+			sg.playTitleMusic()
+		} else {
+			sg.frontend.attractPageTic = attractPageInfo
+		}
+		sg.frontend.attractPage = step
+		if sg.g != nil {
+			sg.g.opts.DemoScript = nil
+		}
+		return true
+	}
+	fmt.Printf("attract-error reason=no-playable-attract-step sequence=%v\n", seq)
+	return false
 }
 
 func (sg *sessionGame) playTitleMusic() {
@@ -858,8 +989,13 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	}
 	sg.frontend = frontendState{}
 	sg.stopAndClearMusic()
-	sg.g.opts.SkillLevel = normalizeSkillLevel(skill)
-	sg.g = newGame(cloneMapForRestart(sg.bootMap), sg.g.opts)
+	sg.applyPersistentSettingsToOptions()
+	gameOpts := sg.opts
+	gameOpts.DemoScript = nil
+	gameOpts.DemoQuitOnComplete = false
+	gameOpts.RecordDemoPath = ""
+	gameOpts.SkillLevel = normalizeSkillLevel(skill)
+	sg.g = newGame(cloneMapForRestart(sg.bootMap), gameOpts)
 	sg.applyPersistentSettingsToGame(sg.g)
 	sg.current = sg.g.m.Name
 	sg.currentTemplate = cloneMapForRestart(sg.g.m)
@@ -1163,6 +1299,12 @@ func (sg *sessionGame) tickFrontend() error {
 			f.status = ""
 		}
 	}
+	if f.attractPageTic > 0 {
+		f.attractPageTic--
+		if f.attractPageTic == 0 {
+			_ = sg.advanceFrontendAttract()
+		}
+	}
 	switch f.mode {
 	case frontendModeReadThis:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
@@ -1365,7 +1507,11 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 		if errors.Is(err, ebiten.Termination) {
 			if p := sess.Options().RecordDemoPath; p != "" {
 				rec := sess.EffectiveDemoRecord()
-				if werr := SaveDemoScript(p, rec); werr != nil {
+				demo, derr := BuildRecordedDemo(sess.sg.bootMap.Name, sess.Options(), rec)
+				if derr != nil {
+					return fmt.Errorf("build demo recording: %w", derr)
+				}
+				if werr := SaveDemoScript(p, demo); werr != nil {
 					return fmt.Errorf("write demo recording: %w", werr)
 				}
 				fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
@@ -1379,7 +1525,11 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	}
 	if p := sess.Options().RecordDemoPath; p != "" {
 		rec := sess.EffectiveDemoRecord()
-		if werr := SaveDemoScript(p, rec); werr != nil {
+		demo, derr := BuildRecordedDemo(sess.sg.bootMap.Name, sess.Options(), rec)
+		if derr != nil {
+			return fmt.Errorf("build demo recording: %w", derr)
+		}
+		if werr := SaveDemoScript(p, demo); werr != nil {
 			return fmt.Errorf("write demo recording: %w", werr)
 		}
 		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
@@ -1484,6 +1634,13 @@ func (s *Session) Options() Options {
 	return s.sg.opts
 }
 
+func (s *Session) StartMapName() mapdata.MapName {
+	if s == nil || s.sg == nil || s.sg.bootMap == nil {
+		return ""
+	}
+	return s.sg.bootMap.Name
+}
+
 func (sg *sessionGame) Update() error {
 	if sg.quitPrompt.active {
 		return sg.handleQuitPromptInput()
@@ -1506,6 +1663,17 @@ func (sg *sessionGame) Update() error {
 		return nil
 	}
 	if sg.frontend.active {
+		if sg.g != nil && sg.g.opts.DemoScript != nil {
+			err := sg.g.Update()
+			switch {
+			case err == nil:
+			case errors.Is(err, ebiten.Termination):
+				_ = sg.advanceFrontendAttract()
+			default:
+				sg.err = err
+				return ebiten.Termination
+			}
+		}
 		return sg.tickFrontend()
 	}
 	if sg.intermission.active {
@@ -1878,6 +2046,9 @@ func (sg *sessionGame) shouldShowBootSplash() bool {
 	if sg.opts.DemoScript != nil {
 		return false
 	}
+	if sg.shouldStartInFrontend() {
+		return false
+	}
 	return sg.opts.BootSplash.Width > 0 &&
 		sg.opts.BootSplash.Height > 0 &&
 		len(sg.opts.BootSplash.RGBA) == sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4
@@ -2092,10 +2263,10 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 
 	switch sg.frontend.mode {
 	case frontendModeReadThis:
-		screen.Fill(color.Black)
+		sg.drawFrontendAttractBackground(screen)
 		name := sg.readThisPageName(sg.frontend.readThisPage)
-		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) {
-			sg.drawBootSplashPresented(screen)
+		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC") {
+			screen.Fill(color.Black)
 		}
 		if (sg.frontend.tic/16)&1 == 0 {
 			prompt := "PRESS ANY KEY TO RETURN"
@@ -2157,8 +2328,6 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 				_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
 			}
 			sg.drawMenuSkull(screen, 65, 64+sg.frontend.itemOn*16, scale, ox, oy)
-		} else if (sg.frontend.tic/16)&1 == 0 {
-			sg.drawIntermissionText(screen, "PRESS ANY KEY", 160, 186, scale, ox, oy, true)
 		}
 		if msg := strings.TrimSpace(sg.frontend.status); msg != "" {
 			sg.drawIntermissionText(screen, msg, 160, 178, scale, ox, oy, true)
@@ -2170,15 +2339,53 @@ func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool)
 	if sg == nil || screen == nil {
 		return
 	}
-	screen.Fill(color.Black)
-	backdropTint := color.RGBA{R: 8, G: 8, B: 8, A: 191}
-	img, _, ok := sg.menuPatch("M_DOOM")
-	if !showLogo || !ok || img == nil {
-		ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), backdropTint)
+	sg.drawFrontendAttractBackground(screen)
+	if showLogo && sg.frontend.mode == frontendModeTitle && sg.frontend.menuActive {
+		// Title menu draws the Doom logo over the attract background, like vanilla.
 		return
 	}
-	drawCenteredIntegerScaledLogo(screen, img)
-	ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), backdropTint)
+}
+
+func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image) {
+	if sg == nil || screen == nil {
+		return
+	}
+	if sg.g != nil && sg.g.opts.DemoScript != nil {
+		sg.drawGamePresented(screen, sg.g)
+		return
+	}
+	if sg.drawFrontendPage(screen, sg.frontend.attractPage) {
+		return
+	}
+	screen.Fill(color.Black)
+}
+
+func (sg *sessionGame) drawFrontendPage(screen *ebiten.Image, name string) bool {
+	if sg == nil || screen == nil {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(name)) {
+	case "TITLEPIC":
+		sg.drawBootSplashPresented(screen)
+		return true
+	case "CREDIT", "HELP1", "HELP2":
+		sw := max(screen.Bounds().Dx(), 1)
+		sh := max(screen.Bounds().Dy(), 1)
+		scale := float64(sw) / 320.0
+		scaleY := float64(sh) / 200.0
+		if scaleY < scale {
+			scale = scaleY
+		}
+		if scale < 1 {
+			scale = 1
+		}
+		ox := (float64(sw) - 320.0*scale) * 0.5
+		oy := (float64(sh) - 200.0*scale) * 0.5
+		screen.Fill(color.Black)
+		return sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false)
+	default:
+		return false
+	}
 }
 
 func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, oy float64) {

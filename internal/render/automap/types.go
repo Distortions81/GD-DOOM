@@ -80,10 +80,13 @@ type Options struct {
 	IntermissionPatchBank      map[string]WallTexture
 	SoundBank                  SoundBank
 	DemoScript                 *DemoScript
+	AttractDemos               []*DemoScript
+	DemoQuitOnComplete         bool
 	RecordDemoPath             string
 	TitleMusicLoader           func() ([]byte, error)
 	MapMusicLoader             func(mapName string) ([]byte, error)
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)
+	DemoMapLoader              func(demo *DemoScript) (*mapdata.Map, error)
 	Episodes                   []int
 	MusicPatchBank             music.PatchBank
 	OnRuntimeSettingsChanged   func(RuntimeSettings)
@@ -203,16 +206,27 @@ type SoundBank struct {
 }
 
 type DemoTic struct {
-	Forward int64
-	Side    int64
-	Turn    int
-	TurnRaw int64
-	Run     bool
-	Use     bool
-	Fire    bool
+	Forward   int8
+	Side      int8
+	AngleTurn int16
+	Buttons   byte
+}
+
+type DemoHeader struct {
+	Version       byte
+	Skill         byte
+	Episode       byte
+	Map           byte
+	Deathmatch    bool
+	Respawn       bool
+	Fast          bool
+	NoMonsters    bool
+	ConsolePlayer byte
+	PlayerInGame  [4]bool
 }
 
 type DemoScript struct {
-	Path string
-	Tics []DemoTic
+	Path   string
+	Header DemoHeader
+	Tics   []DemoTic
 }
