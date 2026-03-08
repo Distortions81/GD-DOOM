@@ -239,19 +239,22 @@ func (g *game) xyMovement() {
 	}
 	g.p.momx = clamp(g.p.momx, -maxMove, maxMove)
 	g.p.momy = clamp(g.p.momy, -maxMove, maxMove)
+	g.debugPlayerMove(fmt.Sprintf("xy start mom=(%d,%d)", g.p.momx, g.p.momy), g.p.x, g.p.y)
 
 	xmove := g.p.momx
 	ymove := g.p.momy
 	for {
 		var ptryx, ptryy int64
 		if xmove > maxMove/2 || ymove > maxMove/2 {
-			ptryx = g.p.x + (xmove >> 1)
-			ptryy = g.p.y + (ymove >> 1)
+			ptryx = g.p.x + (xmove / 2)
+			ptryy = g.p.y + (ymove / 2)
+			g.debugPlayerMove(fmt.Sprintf("xy split step=(%d,%d) remain_before=(%d,%d)", ptryx, ptryy, xmove, ymove), ptryx, ptryy)
 			xmove >>= 1
 			ymove >>= 1
 		} else {
 			ptryx = g.p.x + xmove
 			ptryy = g.p.y + ymove
+			g.debugPlayerMove(fmt.Sprintf("xy final step=(%d,%d) remain=(%d,%d)", ptryx, ptryy, xmove, ymove), ptryx, ptryy)
 			xmove = 0
 			ymove = 0
 		}
@@ -276,6 +279,7 @@ func (g *game) xyMovement() {
 		g.p.momx = fixedMul(g.p.momx, friction)
 		g.p.momy = fixedMul(g.p.momy, friction)
 	}
+	g.debugPlayerMove(fmt.Sprintf("xy end pos=(%d,%d) mom=(%d,%d)", g.p.x, g.p.y, g.p.momx, g.p.momy), g.p.x, g.p.y)
 }
 
 func (g *game) tryMove(x, y int64) bool {
@@ -399,17 +403,21 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 
 		if ld.sideNum1 < 0 {
+			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
 			return false
 		}
 		if (ld.flags & mlBlocking) != 0 {
+			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blocking floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
 			return false
 		}
 		if blockMonsterLines && (ld.flags&mlBlockMonsters) != 0 {
+			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blockmonsters floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
 			return false
 		}
 
 		opentop, openbottom, lowfloor, openrange := g.lineOpening(ld)
 		if openrange <= 0 {
+			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=openrange floor=%d ceil=%d drop=%d openbottom=%d opentop=%d", ld.idx, tmfloor, tmceil, tmdrop, openbottom, opentop), x, y)
 			return false
 		}
 		if opentop < tmceil {
@@ -446,6 +454,21 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 	}
 	return tmfloor, tmceil, tmdrop, true
+}
+
+func (g *game) debugPlayerProbe(msg string, x, y int64) {
+	if g == nil || os.Getenv("GD_DEBUG_PLAYER_PROBE_TIC") == "" {
+		return
+	}
+	var want int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PLAYER_PROBE_TIC"), "%d", &want); err != nil {
+		return
+	}
+	if g.demoTick-1 != want && g.worldTic != want {
+		return
+	}
+	fmt.Printf("player-probe-debug tic=%d world=%d msg=%s pos=(%d,%d) player=(%d,%d) mom=(%d,%d)\n",
+		g.demoTick-1, g.worldTic, msg, x, y, g.p.x, g.p.y, g.p.momx, g.p.momy)
 }
 
 func actorsOverlapXY(ax, ay, aradius, bx, by, bradius int64) bool {

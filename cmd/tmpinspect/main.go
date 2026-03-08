@@ -14,6 +14,35 @@ func secForSide(m *mapdata.Map, side int16) int {
 func main(){
   wf,_:=wad.Open("/home/dist/github/GD-DOOM/doom.wad")
   m,_:=mapdata.LoadMap(wf,"E1M5")
+  px2, py2 := int16(-323), int16(-184)
+  fmt.Printf("near tic200 from approx=(%d,%d)\n", px2, py2)
+  for i, ld := range m.Linedefs {
+    a:=m.Vertexes[ld.V1]
+    b:=m.Vertexes[ld.V2]
+    minx,maxx:=a.X,a.X
+    miny,maxy:=a.Y,a.Y
+    if b.X<minx { minx=b.X }; if b.X>maxx { maxx=b.X }
+    if b.Y<miny { miny=b.Y }; if b.Y>maxy { maxy=b.Y }
+    if px2 >= minx-96 && px2 <= maxx+96 && py2 >= miny-96 && py2 <= maxy+96 {
+      fmt.Printf("near200 line=%d a=(%d,%d) b=(%d,%d) flags=0x%04x special=%d front=%d back=%d\n",
+        i, a.X, a.Y, b.X, b.Y, uint16(ld.Flags), ld.Special, secForSide(m, ld.SideNum[0]), secForSide(m, ld.SideNum[1]))
+    }
+  }
+  tx2, ty2 := int16(-323), int16(-184)
+  fmt.Printf("near tic200 things around=(%d,%d)\n", tx2, ty2)
+  for i, th := range m.Things {
+    dx := int(th.X - tx2)
+    if dx < 0 { dx = -dx }
+    dy := int(th.Y - ty2)
+    if dy < 0 { dy = -dy }
+    if dx <= 128 && dy <= 128 {
+      fmt.Printf("near200 thing idx=%d type=%d pos=(%d,%d) angle=%d flags=0x%04x\n", i, th.Type, th.X, th.Y, th.Angle, uint16(th.Flags))
+    }
+  }
+  for _, sec := range []int{59, 63} {
+    s := m.Sectors[sec]
+    fmt.Printf("sector %d floor=%d ceil=%d light=%d special=%d tag=%d\n", sec, s.FloorHeight, s.CeilingHeight, s.Light, s.Special, s.Tag)
+  }
   mx, my := int16(-93), int16(227)
   fmt.Printf("near move target approx=(%d,%d)\n", mx, my)
   for i, th := range m.Things {
