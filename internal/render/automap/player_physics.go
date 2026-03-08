@@ -244,11 +244,11 @@ func (g *game) xyMovement() {
 	ymove := g.p.momy
 	for {
 		var ptryx, ptryy int64
-		if abs(xmove) > maxMove/2 || abs(ymove) > maxMove/2 {
-			ptryx = g.p.x + (xmove / 2)
-			ptryy = g.p.y + (ymove / 2)
-			xmove /= 2
-			ymove /= 2
+		if xmove > maxMove/2 || ymove > maxMove/2 {
+			ptryx = g.p.x + (xmove >> 1)
+			ptryy = g.p.y + (ymove >> 1)
+			xmove >>= 1
+			ymove >>= 1
 		} else {
 			ptryx = g.p.x + xmove
 			ptryy = g.p.y + ymove
