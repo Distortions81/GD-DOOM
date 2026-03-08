@@ -25,6 +25,7 @@ OBJS=				\
 		$(O)/tables.o			\
 		$(O)/f_finale.o		\
 		$(O)/f_wipe.o 		\
+		$(O)/d_trace.o		\
 		$(O)/d_main.o			\
 		$(O)/d_net.o			\
 		$(O)/d_items.o		\

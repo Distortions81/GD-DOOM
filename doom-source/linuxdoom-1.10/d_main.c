@@ -59,6 +59,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 #include "m_argv.h"
 #include "m_misc.h"
+#include "d_trace.h"
 
 static char*
 FindWadInDir
@@ -421,12 +422,14 @@ void D_DoomLoop (void)
 	debugfile = fopen (filename,"w");
     }
 	
-    I_InitGraphics ();
+    if (!Trace_Headless())
+	I_InitGraphics ();
 
     while (1)
     {
 	// frame syncronous IO operations
-	I_StartFrame ();                
+	if (!Trace_Headless())
+	    I_StartFrame ();                
 	
 	// process one or more tics
 	if (singletics)
@@ -438,6 +441,7 @@ void D_DoomLoop (void)
 		D_DoAdvanceDemo ();
 	    M_Ticker ();
 	    G_Ticker ();
+	    Trace_WriteTic ();
 	    gametic++;
 	    maketic++;
 	}
@@ -446,19 +450,23 @@ void D_DoomLoop (void)
 	    TryRunTics (); // will run at least one tic
 	}
 		
-	S_UpdateSounds (players[consoleplayer].mo);// move positional sounds
+	if (!Trace_Headless())
+	    S_UpdateSounds (players[consoleplayer].mo);// move positional sounds
 
 	// Update display, next frame, with current state.
-	D_Display ();
+	if (!Trace_Headless())
+	    D_Display ();
 
 #ifndef SNDSERV
 	// Sound mixing for the buffer is snychronous.
-	I_UpdateSound();
+	if (!Trace_Headless())
+	    I_UpdateSound();
 #endif	
 	// Synchronous sound output is explicitly called.
 #ifndef SNDINTR
 	// Update sound output.
-	I_SubmitSound();
+	if (!Trace_Headless())
+	    I_SubmitSound();
 #endif
     }
 }
@@ -833,6 +841,8 @@ void D_DoomMain (void)
 {
     int             p;
     char                    file[256];
+    char*                   tracedemoname;
+    char*                   tracefilename;
 
     FindResponseFile ();
 	
@@ -845,6 +855,8 @@ void D_DoomMain (void)
     respawnparm = M_CheckParm ("-respawn");
     fastparm = M_CheckParm ("-fast");
     devparm = M_CheckParm ("-devparm");
+    tracedemoname = NULL;
+    tracefilename = "doom-trace.jsonl";
     if (M_CheckParm ("-altdeath"))
 	deathmatch = 2;
     else if (M_CheckParm ("-deathmatch"))
@@ -1042,6 +1054,17 @@ void D_DoomMain (void)
 	}
 	autostart = true;
     }
+
+    p = M_CheckParm ("-tracedemo");
+    if (p && p < myargc-1)
+    {
+	tracedemoname = myargv[p+1];
+	p = M_CheckParm ("-tracefile");
+	if (p && p < myargc-1)
+	    tracefilename = myargv[p+1];
+	Trace_Open(tracefilename);
+	Trace_SetPendingDemo(tracedemoname);
+    }
     
     // init subsystems
     printf ("V_Init: allocate screens.\n");
@@ -1056,6 +1079,7 @@ void D_DoomMain (void)
     printf ("W_Init: Init WADfiles.\n");
     W_InitMultipleFiles (wadfiles);
     PrintSelectedIWADInfo();
+    Trace_WriteStartupMetadata();
     
 
     // Check for -file in shareware
@@ -1174,6 +1198,14 @@ void D_DoomMain (void)
     {
 	singledemo = true;              // quit after one demo
 	G_DeferedPlayDemo (myargv[p+1]);
+	D_DoomLoop ();  // never returns
+    }
+
+    if (tracedemoname)
+    {
+	singledemo = true;
+	singletics = true;
+	G_DeferedPlayDemo (tracedemoname);
 	D_DoomLoop ();  // never returns
     }
 	

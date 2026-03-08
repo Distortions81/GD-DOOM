@@ -36,6 +36,7 @@ rcsid[] = "$Id: g_game.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #include "m_misc.h"
 #include "m_menu.h"
 #include "m_random.h"
+#include "d_trace.h"
 #include "i_system.h"
 
 #include "p_setup.h"
@@ -1582,12 +1583,12 @@ void G_DeferedPlayDemo (char* name)
 void G_DoPlayDemo (void) 
 { 
     skill_t skill; 
-    int             i, episode, map; 
+    int             i, episode, map, demoversion; 
 	 
     gameaction = ga_nothing; 
     demobuffer = demo_p = W_CacheLumpName (defdemoname, PU_STATIC); 
-    i = *demo_p++;
-    if (i != VERSION && i != 109)
+    demoversion = *demo_p++;
+    if (demoversion != VERSION && demoversion != 109)
     {
       fprintf( stderr, "Demo is from a different game version!\n");
       gameaction = ga_nothing;
@@ -1605,6 +1606,19 @@ void G_DoPlayDemo (void)
 	
     for (i=0 ; i<MAXPLAYERS ; i++) 
 	playeringame[i] = *demo_p++; 
+
+    Trace_WriteDemoMetadata(defdemoname,
+			    demoversion,
+			    skill,
+			    episode,
+			    map,
+			    deathmatch,
+			    respawnparm,
+			    fastparm,
+			    nomonsters,
+			    consoleplayer,
+			    playeringame);
+
     if (playeringame[1]) 
     { 
 	netgame = true; 
