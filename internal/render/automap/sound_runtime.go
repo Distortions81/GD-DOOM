@@ -86,6 +86,17 @@ type soundSystem struct {
 	sourcePort bool
 }
 
+type MenuSoundPlayer struct {
+	ctx     *audio.Context
+	volume  float64
+	move    PCMSample
+	confirm PCMSample
+	back    PCMSample
+	quit1   []PCMSample
+	quit2   []PCMSample
+	players []*audio.Player
+}
+
 const (
 	doomSoundMaxVolume    = 127
 	doomSoundClippingDist = int64(1200 * fracUnit)
@@ -100,6 +111,126 @@ var (
 	sharedAudioCtx  *audio.Context
 	sharedAudioRate int
 )
+
+func EnsureSharedAudioContext() *audio.Context {
+	rate := music.OutputSampleRate
+	if rate <= 0 {
+		return nil
+	}
+	return sharedOrNewAudioContext(rate)
+}
+
+func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
+	ctx := EnsureSharedAudioContext()
+	if ctx == nil {
+		return nil
+	}
+	return &MenuSoundPlayer{
+		ctx:     ctx,
+		volume:  clampVolume(volume),
+		move:    firstMenuSample(bank.MenuCursor, bank.SwitchOn),
+		confirm: firstMenuSample(bank.ShootPistol, bank.SwitchOn),
+		back:    firstMenuSample(bank.SwitchOff, bank.NoWay),
+		quit1: []PCMSample{
+			firstMenuSample(bank.PlayerDeath, bank.MonsterDeath),
+			firstMenuSample(bank.MonsterPainDemon, bank.MonsterPainHumanoid),
+			firstMenuSample(bank.MonsterPainHumanoid, bank.Pain),
+			firstMenuSample(bank.ImpactRocket, bank.Oof),
+			firstMenuSample(bank.PowerUp, bank.SwitchOn),
+			firstMenuSample(bank.SeePosit1, bank.SeePosit2),
+			firstMenuSample(bank.SeePosit3, bank.SeePosit1),
+			firstMenuSample(bank.AttackSgt, bank.ShootShotgun),
+		},
+		quit2: []PCMSample{
+			firstMenuSample(bank.ActiveVilAct, bank.SeeVileSit),
+			firstMenuSample(bank.PowerUp, bank.ItemUp),
+			firstMenuSample(bank.SeeCyberSit, bank.SeeBruiserSit),
+			firstMenuSample(bank.ImpactRocket, bank.Oof),
+			firstMenuSample(bank.AttackClaw, bank.AttackSkull),
+			firstMenuSample(bank.DeathKnight, bank.DeathBaron),
+			firstMenuSample(bank.ActiveBSPAct, bank.ActiveDMAct),
+			firstMenuSample(bank.AttackSgt, bank.ShootShotgun),
+		},
+		players: make([]*audio.Player, 0, 8),
+	}
+}
+
+func firstMenuSample(samples ...PCMSample) PCMSample {
+	for _, sample := range samples {
+		if sample.SampleRate > 0 && len(sample.Data) > 0 {
+			return sample
+		}
+	}
+	return PCMSample{}
+}
+
+func (p *MenuSoundPlayer) PlayMove() {
+	if p != nil {
+		p.playSample(p.move)
+	}
+}
+
+func (p *MenuSoundPlayer) PlayConfirm() {
+	if p != nil {
+		p.playSample(p.confirm)
+	}
+}
+
+func (p *MenuSoundPlayer) PlayBack() {
+	if p != nil {
+		p.playSample(p.back)
+	}
+}
+
+func (p *MenuSoundPlayer) PlayQuit(commercial bool, seq int) {
+	if p == nil {
+		return
+	}
+	set := p.quit1
+	if commercial {
+		set = p.quit2
+	}
+	if len(set) == 0 {
+		return
+	}
+	if seq < 0 {
+		seq = 0
+	}
+	p.playSample(set[seq%len(set)])
+}
+
+func (p *MenuSoundPlayer) StopAll() {
+	if p == nil {
+		return
+	}
+	for _, player := range p.players {
+		if player == nil {
+			continue
+		}
+		player.Pause()
+		_ = player.Close()
+	}
+	p.players = p.players[:0]
+}
+
+func (p *MenuSoundPlayer) playSample(sample PCMSample) {
+	if p == nil || p.ctx == nil || sample.SampleRate <= 0 || len(sample.Data) == 0 {
+		return
+	}
+	var pcm []byte
+	if sample.SampleRate == p.ctx.SampleRate() {
+		pcm = pcmMonoU8ToStereoS16LE(sample.Data)
+	} else {
+		pcm = pcmMonoU8ToStereoS16LEResampled(sample.Data, sample.SampleRate, p.ctx.SampleRate())
+	}
+	if len(pcm) == 0 {
+		return
+	}
+	player := audio.NewPlayerFromBytes(p.ctx, pcm)
+	player.SetVolume(p.volume)
+	player.Play()
+	p.players = append(p.players, player)
+}
 
 func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool) *soundSystem {
 	rate := music.OutputSampleRate

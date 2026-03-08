@@ -128,7 +128,9 @@ type frontendState struct {
 }
 
 type quitPromptState struct {
-	active bool
+	active       bool
+	lines        []string
+	exitDelayTic int
 }
 
 type bootAsyncState struct {
@@ -175,11 +177,13 @@ type sessionGame struct {
 	bootSplashImage *ebiten.Image
 	menuPatchCache  map[string]*ebiten.Image
 	interPatchCache map[string]*ebiten.Image
+	menuSfx         *MenuSoundPlayer
 	transition      sessionTransition
 	intermission    sessionIntermission
 	finale          sessionFinale
 	frontend        frontendState
 	quitPrompt      quitPromptState
+	quitMessageSeq  int
 	bootInitPending bool
 	bootFrameDrawn  bool
 	bootStarted     bool
@@ -188,6 +192,32 @@ type sessionGame struct {
 	bootStep        atomic.Int32
 	bootErr         atomic.Value // string
 	bootState       atomic.Pointer[bootAsyncState]
+}
+
+const quitPromptExitDelayTics = 53
+
+var doomQuitMessages = []string{
+	"please don't leave, there's more\ndemons to toast!",
+	"let's beat it -- this is turning\ninto a bloodbath!",
+	"i wouldn't leave if i were you.\ndos is much worse.",
+	"you're trying to say you like dos\nbetter than me, right?",
+	"don't leave yet -- there's a\ndemon around that corner!",
+	"ya know, next time you come in here\ni'm gonna toast ya.",
+	"go ahead and leave. see if i care.",
+	"you want to quit?\nthen, thou hast lost an eighth!",
+	"don't go now, there's a \ndimensional shambler waiting\nat the dos prompt!",
+	"get outta here and go back\nto your boring programs.",
+	"if i were your boss, i'd \n deathmatch ya in a minute!",
+	"look, bud. you leave now\nand you forfeit your body count!",
+	"just leave. when you come\nback, i'll be waiting with a bat.",
+	"you're lucky i don't smack\nyou for thinking about leaving.",
+	"fuck you, pussy!\nget the fuck out!",
+	"you quit and i'll jizz\nin your cystholes!",
+	"if you leave, i'll make\nthe lord drink my jizz.",
+	"hey, ron! can we say\n'fuck' in the game?",
+	"i'd leave: this is just\nmore monsters and levels.\nwhat a load.",
+	"suck it down, asshole!\nyou're a fucking wimp!",
+	"don't quit now! we're \nstill spending your money!",
 }
 
 func cloneMapForRestart(src *mapdata.Map) *mapdata.Map {
@@ -741,11 +771,31 @@ func (sg *sessionGame) frontendStatus(msg string, tics int) {
 	sg.frontend.statusTic = tics
 }
 
+func (sg *sessionGame) playMenuMoveSound() {
+	if sg != nil && sg.menuSfx != nil {
+		sg.menuSfx.PlayMove()
+	}
+}
+
+func (sg *sessionGame) playMenuConfirmSound() {
+	if sg != nil && sg.menuSfx != nil {
+		sg.menuSfx.PlayConfirm()
+	}
+}
+
+func (sg *sessionGame) playMenuBackSound() {
+	if sg != nil && sg.menuSfx != nil {
+		sg.menuSfx.PlayBack()
+	}
+}
+
 func (sg *sessionGame) requestQuitPrompt() {
 	if sg == nil {
 		return
 	}
 	sg.quitPrompt.active = true
+	sg.quitPrompt.exitDelayTic = 0
+	sg.quitPrompt.lines = sg.nextQuitPromptLines()
 }
 
 func (sg *sessionGame) clearQuitPrompt() {
@@ -759,12 +809,22 @@ func (sg *sessionGame) handleQuitPromptInput() error {
 	if sg == nil || !sg.quitPrompt.active {
 		return nil
 	}
+	if sg.quitPrompt.exitDelayTic > 0 {
+		sg.quitPrompt.exitDelayTic--
+		if sg.quitPrompt.exitDelayTic == 0 {
+			return ebiten.Termination
+		}
+		return nil
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyY) {
-		return ebiten.Termination
+		sg.playQuitPromptSound()
+		sg.quitPrompt.exitDelayTic = quitPromptExitDelayTics
+		return nil
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyN) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyEscape) ||
 		inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		sg.playMenuBackSound()
 		sg.clearQuitPrompt()
 	}
 	return nil
@@ -775,6 +835,27 @@ func (sg *sessionGame) anyQuitPromptTrigger() bool {
 		return false
 	}
 	return inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10)
+}
+
+func (sg *sessionGame) nextQuitPromptLines() []string {
+	if sg == nil {
+		return []string{"ARE YOU SURE YOU WANT TO", "QUIT THIS GREAT GAME?", "(PRESS Y TO QUIT)"}
+	}
+	sg.quitMessageSeq++
+	msg := "are you sure you want to\nquit this great game?"
+	if len(doomQuitMessages) > 0 {
+		msg = doomQuitMessages[(sg.quitMessageSeq-1)%len(doomQuitMessages)]
+	}
+	lines := strings.Split(strings.ToUpper(msg), "\n")
+	lines = append(lines, "(PRESS Y TO QUIT)")
+	return lines
+}
+
+func (sg *sessionGame) playQuitPromptSound() {
+	if sg == nil || sg.menuSfx == nil {
+		return
+	}
+	sg.menuSfx.PlayQuit(len(sg.opts.Episodes) == 0, sg.quitMessageSeq-1)
 }
 
 func (sg *sessionGame) startGameFromFrontend(skill int) {
@@ -843,12 +924,14 @@ func (sg *sessionGame) tickFrontend() error {
 		if anyIntermissionSkipInput() || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			f.mode = frontendModeTitle
 			f.menuActive = true
+			sg.playMenuBackSound()
 		}
 		return nil
 	case frontendModeEpisode:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			f.mode = frontendModeTitle
 			f.menuActive = true
+			sg.playMenuBackSound()
 			return nil
 		}
 		episodes := sg.availableFrontendEpisodeChoices()
@@ -858,9 +941,11 @@ func (sg *sessionGame) tickFrontend() error {
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 			f.episodeOn = (f.episodeOn + len(episodes) - 1) % len(episodes)
+			sg.playMenuMoveSound()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 			f.episodeOn = (f.episodeOn + 1) % len(episodes)
+			sg.playMenuMoveSound()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
 			if f.episodeOn < 0 || f.episodeOn >= len(episodes) {
@@ -868,6 +953,7 @@ func (sg *sessionGame) tickFrontend() error {
 			}
 			f.selectedEpisode = episodes[f.episodeOn]
 			f.mode = frontendModeSkill
+			sg.playMenuConfirmSound()
 		}
 		return nil
 	case frontendModeSkill:
@@ -878,35 +964,48 @@ func (sg *sessionGame) tickFrontend() error {
 				f.mode = frontendModeTitle
 				f.menuActive = true
 			}
+			sg.playMenuBackSound()
 			return nil
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 			f.skillOn = (f.skillOn + len(frontendSkillMenuNames) - 1) % len(frontendSkillMenuNames)
+			sg.playMenuMoveSound()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 			f.skillOn = (f.skillOn + 1) % len(frontendSkillMenuNames)
+			sg.playMenuMoveSound()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			sg.playMenuConfirmSound()
 			sg.startGameFromFrontend(f.skillOn + 1)
 		}
 		return nil
 	default:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			f.menuActive = !f.menuActive
+			if f.menuActive {
+				sg.playMenuMoveSound()
+			} else {
+				sg.playMenuBackSound()
+			}
 		}
 		if !f.menuActive {
 			if anyIntermissionSkipInput() {
 				f.menuActive = true
+				sg.playMenuMoveSound()
 			}
 			return nil
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
 			f.itemOn = (f.itemOn + len(frontendMainMenuNames) - 1) % len(frontendMainMenuNames)
+			sg.playMenuMoveSound()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
 			f.itemOn = (f.itemOn + 1) % len(frontendMainMenuNames)
+			sg.playMenuMoveSound()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			sg.playMenuConfirmSound()
 			switch f.itemOn {
 			case 0:
 				if episodes := sg.availableFrontendEpisodeChoices(); len(episodes) > 1 {
@@ -972,6 +1071,7 @@ func NewSession(m *mapdata.Map, opts Options, nextMap NextMapFunc) *Session {
 		nextMap:         nextMap,
 		bootInitPending: true,
 	}
+	sg.menuSfx = NewMenuSoundPlayer(opts.SoundBank, opts.SFXVolume)
 	sg.setBootProgress(1, "waiting for first frame")
 	sg.bootErr.Store("")
 	ebiten.SetTPS(doomTicsPerSecond)
@@ -1020,6 +1120,9 @@ func (s *Session) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.I
 func (s *Session) Close() {
 	if s == nil || s.sg == nil {
 		return
+	}
+	if s.sg.menuSfx != nil {
+		s.sg.menuSfx.StopAll()
 	}
 	s.sg.closeMusicPlayback()
 }
@@ -1774,9 +1877,14 @@ func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {
 	ox := (float64(sw) - 320.0*scale) * 0.5
 	oy := (float64(sh) - 200.0*scale) * 0.5
 	ebitenutil.DrawRect(screen, ox, oy, 320.0*scale, 200.0*scale, color.RGBA{R: 8, G: 8, B: 8, A: 128})
-	sg.drawIntermissionText(screen, "ARE YOU SURE YOU WANT TO", 160, 84, scale, ox, oy, true)
-	sg.drawIntermissionText(screen, "QUIT THIS GREAT GAME?", 160, 98, scale, ox, oy, true)
-	sg.drawIntermissionText(screen, "(PRESS Y TO QUIT)", 160, 126, scale, ox, oy, true)
+	lines := sg.quitPrompt.lines
+	if len(lines) == 0 {
+		lines = []string{"ARE YOU SURE YOU WANT TO", "QUIT THIS GREAT GAME?", "(PRESS Y TO QUIT)"}
+	}
+	startY := 84 - ((len(lines) - 2) * 7)
+	for i, line := range lines {
+		sg.drawIntermissionText(screen, line, 160, startY+i*14, scale, ox, oy, true)
+	}
 }
 
 func drawCenteredIntegerScaledLogo(screen, img *ebiten.Image) {

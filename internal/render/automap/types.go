@@ -115,6 +115,7 @@ type PCMSample struct {
 }
 
 type SoundBank struct {
+	MenuCursor          PCMSample
 	DoorOpen            PCMSample
 	DoorClose           PCMSample
 	BlazeOpen           PCMSample

@@ -1463,6 +1463,7 @@ type iwadPickerGame struct {
 	menuImg  map[string]*ebiten.Image
 	fontBank map[rune]automap.WallTexture
 	fontImg  map[rune]*ebiten.Image
+	sfx      *automap.MenuSoundPlayer
 	load     func(string, pickerProfile) (*renderBundle, error)
 	session  *automap.Session
 	err      error
@@ -1470,8 +1471,10 @@ type iwadPickerGame struct {
 
 func newIWADPickerGame(choices []iwadChoice, load func(string, pickerProfile) (*renderBundle, error)) (*iwadPickerGame, error) {
 	game := &iwadPickerGame{choices: choices, load: load}
+	_ = automap.EnsureSharedAudioContext()
 	if assetPath, ok := resolvePathCaseInsensitive("DOOM1.WAD"); ok {
 		if wf, err := wad.Open(assetPath); err == nil {
+			game.sfx = automap.NewMenuSoundPlayer(buildAutomapSoundBank(sound.ImportDigitalSounds(wf), false), 0.5)
 			if ts, err := doomtex.LoadFromWAD(wf); err == nil {
 				if rgba, w, h, err := ts.BuildTextureRGBA("WALL24_1", 0); err == nil && w > 0 && h > 0 && len(rgba) == w*h*4 {
 					img := ebiten.NewImage(w, h)
@@ -1531,6 +1534,7 @@ func (g *iwadPickerGame) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if g.stage == pickerStageProfile {
 			g.stage = pickerStageIWAD
+			g.playPickerBackSound()
 		} else {
 			g.err = fmt.Errorf("iwad selection cancelled")
 			return ebiten.Termination
@@ -1539,17 +1543,25 @@ func (g *iwadPickerGame) Update() error {
 	switch g.stage {
 	case pickerStageProfile:
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			prev := g.profile
 			if g.profile == pickerProfileFaithful {
 				g.profile = pickerProfileSourcePort
 			} else {
 				g.profile--
 			}
+			if g.profile != prev {
+				g.playPickerMoveSound()
+			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			prev := g.profile
 			if g.profile == pickerProfileSourcePort {
 				g.profile = pickerProfileFaithful
 			} else {
 				g.profile++
+			}
+			if g.profile != prev {
+				g.playPickerMoveSound()
 			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
@@ -1557,6 +1569,7 @@ func (g *iwadPickerGame) Update() error {
 				g.err = fmt.Errorf("iwad loader unavailable")
 				return ebiten.Termination
 			}
+			g.playPickerConfirmSound()
 			bundle, err := g.load(g.choices[g.selected].Path, g.profile)
 			if err != nil {
 				g.status = err.Error()
@@ -1567,12 +1580,21 @@ func (g *iwadPickerGame) Update() error {
 		}
 	default:
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			prev := g.selected
 			g.selected = (g.selected + len(g.choices) - 1) % len(g.choices)
+			if g.selected != prev {
+				g.playPickerMoveSound()
+			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			prev := g.selected
 			g.selected = (g.selected + 1) % len(g.choices)
+			if g.selected != prev {
+				g.playPickerMoveSound()
+			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			g.playPickerConfirmSound()
 			g.stage = pickerStageProfile
 			return nil
 		}
@@ -1684,6 +1706,9 @@ func (g *iwadPickerGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *e
 }
 
 func (g *iwadPickerGame) Close() {
+	if g.sfx != nil {
+		g.sfx.StopAll()
+	}
 	if g.session != nil {
 		g.session.Close()
 	}
@@ -1854,6 +1879,24 @@ func (g *iwadPickerGame) drawPickerSkull(screen *ebiten.Image, textX, textY int)
 	screen.DrawImage(img, op)
 }
 
+func (g *iwadPickerGame) playPickerMoveSound() {
+	if g != nil && g.sfx != nil {
+		g.sfx.PlayMove()
+	}
+}
+
+func (g *iwadPickerGame) playPickerConfirmSound() {
+	if g != nil && g.sfx != nil {
+		g.sfx.PlayConfirm()
+	}
+}
+
+func (g *iwadPickerGame) playPickerBackSound() {
+	if g != nil && g.sfx != nil {
+		g.sfx.PlayBack()
+	}
+}
+
 func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]automap.WallTexture) error {
 	seed = strings.ToUpper(strings.TrimSpace(seed))
 	outDir = strings.TrimSpace(outDir)
@@ -1956,6 +1999,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) aut
 		}
 	}
 	bank := automap.SoundBank{
+		MenuCursor:          firstSample(sample("DSPSTOP"), firstSample(sample("DSSTNMOV"), sample("DSSWTCHN"))),
 		DoorOpen:            firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
 		DoorClose:           firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
 		BlazeOpen:           sample("DSBDOPN"),
