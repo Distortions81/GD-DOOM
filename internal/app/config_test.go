@@ -48,6 +48,31 @@ func TestRunParseCLIOverridesConfig(t *testing.T) {
 	}
 }
 
+func TestRunParseUsesPositionalWADArgument(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{wadPath, "-render=false"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if strings.Contains(errb.String(), "open wad:") {
+		t.Fatalf("stderr %q unexpectedly contains wad open error", errb.String())
+	}
+}
+
+func TestRunParseTreatsPositionalWADAsExplicitAndSkipsPicker(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"missing-from-cli.wad", "-render=true"}, &out, &errb)
+	if code != 1 {
+		t.Fatalf("RunParse() code=%d want=1 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "open wad:") {
+		t.Fatalf("stderr %q does not contain open wad error", errb.String())
+	}
+}
+
 func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer

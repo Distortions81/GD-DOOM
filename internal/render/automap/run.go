@@ -120,6 +120,7 @@ type frontendState struct {
 	selectedEpisode  int
 	skillOn          int
 	readThisPage     int
+	readThisFromGame bool
 	skullAnimCounter int
 	whichSkull       int
 	tic              int
@@ -839,7 +840,7 @@ func (sg *sessionGame) anyQuitPromptTrigger() bool {
 
 func (sg *sessionGame) nextQuitPromptLines() []string {
 	if sg == nil {
-		return []string{"ARE YOU SURE YOU WANT TO", "QUIT THIS GREAT GAME?", "(PRESS Y TO QUIT)"}
+		return defaultQuitPromptLines()
 	}
 	sg.quitMessageSeq++
 	msg := "are you sure you want to\nquit this great game?"
@@ -849,6 +850,10 @@ func (sg *sessionGame) nextQuitPromptLines() []string {
 	lines := strings.Split(strings.ToUpper(msg), "\n")
 	lines = append(lines, "(PRESS Y TO QUIT)")
 	return lines
+}
+
+func defaultQuitPromptLines() []string {
+	return []string{"ARE YOU SURE YOU WANT TO", "QUIT THIS GREAT GAME?", "(PRESS Y TO QUIT)"}
 }
 
 func (sg *sessionGame) playQuitPromptSound() {
@@ -902,6 +907,63 @@ func (sg *sessionGame) availableFrontendEpisodeChoices() []int {
 	return out
 }
 
+func (sg *sessionGame) openReadThis(fromGame bool) {
+	if sg == nil {
+		return
+	}
+	sg.frontend.active = true
+	sg.frontend.mode = frontendModeReadThis
+	sg.frontend.menuActive = false
+	sg.frontend.readThisPage = 0
+	sg.frontend.readThisFromGame = fromGame
+}
+
+func (sg *sessionGame) closeReadThis() {
+	if sg == nil {
+		return
+	}
+	if sg.frontend.readThisFromGame {
+		sg.frontend = frontendState{}
+		return
+	}
+	sg.frontend.mode = frontendModeTitle
+	sg.frontend.menuActive = true
+	sg.frontend.readThisPage = 0
+	sg.frontend.readThisFromGame = false
+}
+
+func (sg *sessionGame) readThisPageNames() []string {
+	if sg == nil {
+		return []string{"HELP2", "HELP1"}
+	}
+	pages := make([]string, 0, 2)
+	if _, _, ok := sg.intermissionPatch("HELP2"); ok {
+		pages = append(pages, "HELP2")
+	}
+	if _, _, ok := sg.intermissionPatch("HELP1"); ok {
+		pages = append(pages, "HELP1")
+	}
+	if len(pages) == 0 {
+		if _, _, ok := sg.intermissionPatch("HELP"); ok {
+			pages = append(pages, "HELP")
+		} else if _, _, ok := sg.intermissionPatch("CREDIT"); ok {
+			pages = append(pages, "CREDIT")
+		}
+	}
+	if len(pages) == 0 {
+		return []string{"HELP2", "HELP1"}
+	}
+	return pages
+}
+
+func (sg *sessionGame) readThisPageName(page int) string {
+	pages := sg.readThisPageNames()
+	if page < 0 || page >= len(pages) {
+		return pages[0]
+	}
+	return pages[page]
+}
+
 func (sg *sessionGame) tickFrontend() error {
 	if sg == nil || !sg.frontend.active {
 		return nil
@@ -921,10 +983,19 @@ func (sg *sessionGame) tickFrontend() error {
 	}
 	switch f.mode {
 	case frontendModeReadThis:
-		if anyIntermissionSkipInput() || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-			f.mode = frontendModeTitle
-			f.menuActive = true
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			sg.closeReadThis()
 			sg.playMenuBackSound()
+			return nil
+		}
+		if anyIntermissionSkipInput() {
+			if f.readThisPage+1 < len(sg.readThisPageNames()) {
+				f.readThisPage++
+				sg.playMenuConfirmSound()
+			} else {
+				sg.closeReadThis()
+				sg.playMenuBackSound()
+			}
 		}
 		return nil
 	case frontendModeEpisode:
@@ -1018,8 +1089,7 @@ func (sg *sessionGame) tickFrontend() error {
 			case 1, 2, 3:
 				sg.frontendStatus("MENU ITEM NOT WIRED YET", doomTicsPerSecond*2)
 			case 4:
-				f.mode = frontendModeReadThis
-				f.readThisPage = 0
+				sg.openReadThis(false)
 			case 5:
 				sg.requestQuitPrompt()
 			}
@@ -1213,6 +1283,11 @@ func (sg *sessionGame) Update() error {
 		if sg.g.quitPromptRequested {
 			sg.g.quitPromptRequested = false
 			sg.requestQuitPrompt()
+			return nil
+		}
+		if sg.g.readThisRequested {
+			sg.g.readThisRequested = false
+			sg.openReadThis(true)
 			return nil
 		}
 		if sg.g.levelRestartRequested {
@@ -1788,15 +1863,16 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 	switch sg.frontend.mode {
 	case frontendModeReadThis:
 		screen.Fill(color.Black)
-		name := "HELP1"
-		if sg.frontend.readThisPage != 0 {
-			name = "CREDIT"
-		}
+		name := sg.readThisPageName(sg.frontend.readThisPage)
 		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) {
 			sg.drawBootSplashPresented(screen)
 		}
 		if (sg.frontend.tic/16)&1 == 0 {
-			sg.drawIntermissionText(screen, "PRESS ANY KEY TO RETURN", 160, 186, scale, ox, oy, true)
+			prompt := "PRESS ANY KEY TO RETURN"
+			if sg.frontend.readThisPage+1 < len(sg.readThisPageNames()) {
+				prompt = "PRESS ANY KEY TO CONTINUE"
+			}
+			sg.drawIntermissionText(screen, prompt, 160, 186, scale, ox, oy, true)
 		}
 		return
 	case frontendModeEpisode:
@@ -1866,25 +1942,63 @@ func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {
 	}
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
+	scale := quitPromptScaleForSize(sw, sh)
+	ox := (float64(sw) - 320.0*scale) * 0.5
+	oy := (float64(sh) - 200.0*scale) * 0.5
+	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	lines := sg.quitPromptLinesForRenderSize(sw, sh)
+	startY := 84 - ((len(lines) - 2) * 7)
+	for i, line := range lines {
+		sg.drawIntermissionText(screen, line, 160, startY+i*14, scale, ox, oy, true)
+	}
+}
+
+func quitPromptScaleForSize(sw, sh int) float64 {
+	sw = max(sw, 1)
+	sh = max(sh, 1)
 	scale := float64(sw) / 320.0
 	scaleY := float64(sh) / 200.0
 	if scaleY < scale {
 		scale = scaleY
 	}
-	if scale < 1 {
-		scale = 1
+	if scale <= 0 {
+		return 1
 	}
-	ox := (float64(sw) - 320.0*scale) * 0.5
-	oy := (float64(sh) - 200.0*scale) * 0.5
-	ebitenutil.DrawRect(screen, ox, oy, 320.0*scale, 200.0*scale, color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	return scale
+}
+
+func (sg *sessionGame) quitPromptLinesForRenderSize(sw, sh int) []string {
 	lines := sg.quitPrompt.lines
 	if len(lines) == 0 {
-		lines = []string{"ARE YOU SURE YOU WANT TO", "QUIT THIS GREAT GAME?", "(PRESS Y TO QUIT)"}
+		lines = defaultQuitPromptLines()
 	}
+	if sg.quitPromptFitsRenderSize(lines, sw, sh) {
+		return lines
+	}
+	fallback := defaultQuitPromptLines()
+	if sg.quitPromptFitsRenderSize(fallback, sw, sh) {
+		return fallback
+	}
+	return lines
+}
+
+func (sg *sessionGame) quitPromptFitsRenderSize(lines []string, sw, sh int) bool {
+	if len(lines) == 0 {
+		lines = defaultQuitPromptLines()
+	}
+	scale := quitPromptScaleForSize(sw, sh)
 	startY := 84 - ((len(lines) - 2) * 7)
-	for i, line := range lines {
-		sg.drawIntermissionText(screen, line, 160, startY+i*14, scale, ox, oy, true)
+	endY := startY + (len(lines)-1)*14 + sg.intermissionTextLineHeight()
+	if startY < 0 || endY > 200 {
+		return false
 	}
+	maxWidth := 0
+	for _, line := range lines {
+		if w := sg.intermissionTextWidth(line); w > maxWidth {
+			maxWidth = w
+		}
+	}
+	return float64(maxWidth)*scale <= 320.0*scale
 }
 
 func drawCenteredIntegerScaledLogo(screen, img *ebiten.Image) {
@@ -2403,6 +2517,9 @@ func (sg *sessionGame) drawIntermissionText(screen *ebiten.Image, text string, x
 }
 
 func (sg *sessionGame) intermissionTextWidth(text string) int {
+	if sg == nil || sg.g == nil {
+		return len(text) * 7
+	}
 	if len(sg.g.opts.MessageFontBank) == 0 {
 		return len(text) * 7
 	}
@@ -2424,6 +2541,23 @@ func (sg *sessionGame) intermissionTextWidth(text string) int {
 		w += gw
 	}
 	return w
+}
+
+func (sg *sessionGame) intermissionTextLineHeight() int {
+	if sg == nil || sg.g == nil || len(sg.g.opts.MessageFontBank) == 0 {
+		return 8
+	}
+	lineHeight := 0
+	for ch := huFontStart; ch <= huFontEnd; ch++ {
+		_, _, gh, _, _, ok := sg.g.messageFontGlyph(ch)
+		if ok && gh > lineHeight {
+			lineHeight = gh
+		}
+	}
+	if lineHeight <= 0 {
+		return 8
+	}
+	return lineHeight
 }
 
 func shouldShowYouAreHere(current, next mapdata.MapName) bool {

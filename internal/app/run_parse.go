@@ -359,6 +359,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	gpuSkyFlagSet := flagProvided(args, "gpu-sky")
 	skyUpscaleFlagSet := flagProvided(args, "sky-upscale")
 	wadFlagSet := flagProvided(args, "wad")
+	positionalWADSet := false
+	if !wadFlagSet && fs.NArg() > 0 {
+		if path := strings.TrimSpace(fs.Arg(0)); path != "" {
+			*wadPath = path
+			positionalWADSet = true
+		}
+	}
 	if *sourcePortMode {
 		if !gpuSkyFlagSet && (cfg == nil || cfg.GPUSky == nil) {
 			*gpuSky = true
@@ -431,7 +438,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "-demo and -record-demo are mutually exclusive")
 		return 2
 	}
-	noExplicitWAD := !wadFlagSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
+	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
 	choices := detectAvailableIWADChoices(".")
 	if noExplicitWAD && *render && len(choices) > 1 {
 		resolvedLineColorMode := *lineColorMode
@@ -1093,11 +1100,11 @@ func detectAvailableIWADChoices(dir string) []iwadChoice {
 		Name  string
 		Label string
 	}{
-		{Name: "DOOM1.WAD", Label: "DOOM Shareware"},
 		{Name: "DOOM.WAD", Label: "The Ultimate DOOM"},
 		{Name: "DOOM2.WAD", Label: "DOOM II: Hell on Earth"},
 		{Name: "TNT.WAD", Label: "Final DOOM: TNT"},
 		{Name: "PLUTONIA.WAD", Label: "Final DOOM: Plutonia"},
+		{Name: "DOOM1.WAD", Label: "DOOM Shareware"},
 	}
 	out := make([]iwadChoice, 0, len(known))
 	for _, k := range known {
@@ -1167,8 +1174,8 @@ type renderBuildConfig struct {
 type pickerProfile int
 
 const (
-	pickerProfileFaithful pickerProfile = iota
-	pickerProfileSourcePort
+	pickerProfileSourcePort pickerProfile = iota
+	pickerProfileFaithful
 )
 
 type pickerProfileOption struct {
@@ -1178,8 +1185,8 @@ type pickerProfileOption struct {
 }
 
 var pickerProfiles = [...]pickerProfileOption{
+	{label: "MODERN", description: "BETTER GRAPHICS", sourcePortMode: true},
 	{label: "FAITHFUL", description: "CLASSIC DOOM - PIXELATED / RETRO", sourcePortMode: false},
-	{label: "SOURCEPORT", description: "HIGH-RES, BETTER COLOR", sourcePortMode: true},
 }
 
 type pickerStage int
@@ -1544,22 +1551,14 @@ func (g *iwadPickerGame) Update() error {
 	case pickerStageProfile:
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
 			prev := g.profile
-			if g.profile == pickerProfileFaithful {
-				g.profile = pickerProfileSourcePort
-			} else {
-				g.profile--
-			}
+			g.profile = (g.profile + pickerProfile(len(pickerProfiles)) - 1) % pickerProfile(len(pickerProfiles))
 			if g.profile != prev {
 				g.playPickerMoveSound()
 			}
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 			prev := g.profile
-			if g.profile == pickerProfileSourcePort {
-				g.profile = pickerProfileFaithful
-			} else {
-				g.profile++
-			}
+			g.profile = (g.profile + 1) % pickerProfile(len(pickerProfiles))
 			if g.profile != prev {
 				g.playPickerMoveSound()
 			}

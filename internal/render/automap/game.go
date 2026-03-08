@@ -312,7 +312,6 @@ type game struct {
 	mode                      viewMode
 	followMode                bool
 	rotateView                bool
-	showHelp                  bool
 	parity                    automapParityState
 	showGrid                  bool
 	showLegend                bool
@@ -329,6 +328,7 @@ type game struct {
 	pauseMenuStatus           string
 	pauseMenuStatusTics       int
 	quitPromptRequested       bool
+	readThisRequested         bool
 	quitPromptActive          bool
 	newGameRequestedMap       *mapdata.Map
 	newGameRequestedSkill     int
@@ -1318,7 +1318,7 @@ func (g *game) Update() error {
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
-		g.showHelp = !g.showHelp
+		g.readThisRequested = true
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyComma) {
 		g.setSimTickScale(g.simTickScale - 0.1)
@@ -1981,7 +1981,6 @@ func (g *game) Draw(screen *ebiten.Image) {
 		if g.useFlash > 0 {
 			g.drawHUDMessage(screen, g.useText, 0, 0)
 		}
-		g.drawHelpUI(screen)
 		if g.paused {
 			g.drawPauseOverlay(screen)
 		}
@@ -2058,7 +2057,6 @@ func (g *game) Draw(screen *ebiten.Image) {
 	if g.useFlash > 0 {
 		g.drawHUDMessage(screen, g.useText, 0, 0)
 	}
-	g.drawHelpUI(screen)
 	if g.isDead {
 		g.drawDeathOverlay(screen)
 	}
@@ -2205,8 +2203,12 @@ func (g *game) activatePauseMenuItem() {
 		g.pauseMenuStatus = "MENU ITEM NOT WIRED YET"
 		g.pauseMenuStatusTics = doomTicsPerSecond * 2
 	case 4:
-		g.pauseMenuStatus = "READ THIS NOT WIRED YET"
-		g.pauseMenuStatusTics = doomTicsPerSecond * 2
+		g.pauseMenuActive = false
+		g.paused = false
+		g.pauseMenuMode = pauseMenuModeRoot
+		g.pauseMenuStatus = ""
+		g.pauseMenuStatusTics = 0
+		g.readThisRequested = true
 	case 5:
 		g.quitPromptRequested = true
 	}
@@ -17654,77 +17656,6 @@ func max(a, b int) int {
 	return b
 }
 
-func (g *game) drawHelpUI(screen *ebiten.Image) {
-	if !g.showHelp {
-		return
-	}
-	lines := []string{
-		"AUTOMAP KEYS",
-		fmt.Sprintf("PROFILE  %s", g.profileLabel()),
-		"F1  HELP TOGGLE",
-		"F5  DETAIL CYCLE",
-		"TAB  WALK/MAP MODE",
-		"WALK MODE",
-		"WASD  MOVE",
-		"ARROWS  TURN/STRAFE(ALT)",
-		"CTRL/MOUSE1  FIRE",
-		"MAP MODE",
-		"Q/E  TURN (MAP MODE)",
-		"SHIFT  RUN",
-		"SPACE  USE",
-		"ARROWS  PAN (FOLLOW OFF)",
-		"F  FOLLOW TOGGLE",
-		",/.  GAME SPEED -/+ RESET",
-		"0  BIG MAP",
-		"M  ADD MARK",
-		"C  CLEAR MARKS",
-		"+/- OR WHEEL  ZOOM",
-		"F7  GAMMA CYCLE",
-		"F8  CRT TOGGLE",
-		"ESC  QUIT",
-	}
-	if g.opts.SourcePortMode {
-		lines = append(lines,
-			"SOURCEPORT EXTRAS",
-			"R  TOGGLE HEADING-UP",
-			"F5  CYCLE DETAIL RATIO",
-			"\\  TOGGLE MOUSE LOOK",
-			"U  TOGGLE UNIFIED BSP",
-			"P  TOGGLE WIREFRAME",
-			"T  CYCLE THING RENDER",
-			"J  TOGGLE 2D FLOOR PATH (RASTER/CACHED)",
-			"Y  TOGGLE SPRITE CLIP DIAG",
-			"B  BIG MAP (ALIAS)",
-			"HOME  RESET VIEW",
-			"O  TOGGLE NORMAL/ALLMAP",
-			"I  CYCLE IDDT",
-			"L  TOGGLE COLOR MODE",
-			"V  TOGGLE THING LEGEND",
-			"F6 TOGGLE PALETTE LUT",
-		)
-	} else {
-		lines = append(lines,
-			"DOOM PARITY NOTES",
-			"ONLY CORE CONTROLS ENABLED",
-			"USE -sourceport-mode FOR EXTRAS",
-		)
-	}
-	maxLen := 0
-	for _, l := range lines {
-		if len(l) > maxLen {
-			maxLen = len(l)
-		}
-	}
-	x := g.viewW - maxLen*7 - 14
-	if x < 10 {
-		x = 10
-	}
-	y := 28
-	for i, l := range lines {
-		ebitenutil.DebugPrintAt(screen, l, x, y+i*14)
-	}
-}
-
 func (g *game) menuPatch(name string) (*ebiten.Image, int, int, int, int, bool) {
 	key := strings.ToUpper(strings.TrimSpace(name))
 	p, ok := g.opts.MenuPatchBank[key]
@@ -17864,7 +17795,7 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 	line1 := fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg)))
-	line2 := "F1 Help"
+	line2 := "F1 Read This"
 	sx, sy, ox, _ := g.hudTransform()
 	w := g.huTextWidth(line1)
 	if w2 := g.huTextWidth(line2); w2 > w {
