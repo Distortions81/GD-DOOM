@@ -13,3 +13,7 @@ config.toml
 internal/render/automap/testdata/
 deutex_doom1_images/
 oversat/Oversat.wad
+doom-source/linuxdoom-1.10/*.o
+doom-source/linuxdoom-1.10/linux/*.o
+
+doom-source/linuxdoom-1.10/linux/linuxxdoom
