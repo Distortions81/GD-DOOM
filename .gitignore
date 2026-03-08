@@ -13,3 +13,4 @@ dist/
 config.toml
 internal/render/automap/testdata/
 deutex_doom1_images/
+oversat/Oversat.wad
