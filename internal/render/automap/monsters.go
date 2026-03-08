@@ -813,12 +813,18 @@ func monsterMoveStep(typ int16, fast bool) int64 {
 		return 8 * fracUnit * scale
 	case 3002, 58:
 		return 10 * fracUnit * scale
-	case 3005, 3003, 69, 66:
+	case 3005, 3003, 69:
 		return 8 * fracUnit * scale
+	case 66:
+		return 10 * fracUnit * scale
 	case 16:
 		return 16 * fracUnit * scale
-	case 7, 68, 67, 64, 71:
+	case 7, 68:
 		return 12 * fracUnit * scale
+	case 67, 71:
+		return 8 * fracUnit * scale
+	case 64:
+		return 15 * fracUnit * scale
 	case 3006:
 		return 8 * fracUnit * scale
 	default:

@@ -146,6 +146,37 @@ func TestTickMonstersWakesByNoiseWithoutLOSForNonAmbush(t *testing.T) {
 	}
 }
 
+func TestMonsterMoveStepMatchesDoomSpeedTable(t *testing.T) {
+	tests := []struct {
+		typ  int16
+		want int64
+	}{
+		{3004, 8 * fracUnit},
+		{9, 8 * fracUnit},
+		{3001, 8 * fracUnit},
+		{3002, 10 * fracUnit},
+		{58, 10 * fracUnit},
+		{3005, 8 * fracUnit},
+		{3003, 8 * fracUnit},
+		{69, 8 * fracUnit},
+		{66, 10 * fracUnit},
+		{16, 16 * fracUnit},
+		{7, 12 * fracUnit},
+		{68, 12 * fracUnit},
+		{67, 8 * fracUnit},
+		{64, 15 * fracUnit},
+		{71, 8 * fracUnit},
+		{3006, 8 * fracUnit},
+		{84, 8 * fracUnit},
+		{65, 8 * fracUnit},
+	}
+	for _, tt := range tests {
+		if got := monsterMoveStep(tt.typ, false); got != tt.want {
+			t.Fatalf("type %d speed=%d want=%d", tt.typ, got, tt.want)
+		}
+	}
+}
+
 func TestTickMonstersAmbushDoesNotWakeFromNoiseWithoutLOS(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
