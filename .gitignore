@@ -15,3 +15,4 @@ config.toml
 dump
 dump2
 anidump
+internal/render/automap/testdata/
