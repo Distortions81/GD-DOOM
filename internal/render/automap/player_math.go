@@ -120,6 +120,26 @@ func abs(v int64) int64 {
 	return v
 }
 
+func approxDistance(dx, dy int64) int64 {
+	dx = abs(dx)
+	dy = abs(dy)
+	if dx < dy {
+		return dx + dy - (dx >> 1)
+	}
+	return dx + dy - (dy >> 1)
+}
+
+func vectorToAngle(dx, dy int64) uint32 {
+	if dx == 0 && dy == 0 {
+		return 0
+	}
+	ang := math.Atan2(float64(dy), float64(dx))
+	if ang < 0 {
+		ang += 2 * math.Pi
+	}
+	return uint32((ang / (2 * math.Pi)) * 4294967296.0)
+}
+
 func b2i(b bool) int {
 	if b {
 		return 1

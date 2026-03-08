@@ -1,7 +1,8 @@
 package automap
 
 import (
-	"math"
+	"fmt"
+	"os"
 	"sort"
 )
 
@@ -275,15 +276,19 @@ func (g *game) xyMovement() {
 func (g *game) tryMove(x, y int64) bool {
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
 	if !ok {
+		g.debugPlayerMove("tryMove blocked", x, y)
 		return false
 	}
 	if tmceil-tmfloor < playerHeight {
+		g.debugPlayerMove("tryMove low ceiling", x, y)
 		return false
 	}
 	if tmceil-g.p.z < playerHeight {
+		g.debugPlayerMove("tryMove ceiling clip", x, y)
 		return false
 	}
 	if tmfloor-g.p.z > stepHeight {
+		g.debugPlayerMove("tryMove high step", x, y)
 		return false
 	}
 	_ = tmdrop
@@ -618,16 +623,19 @@ func (g *game) slideMove() {
 		}
 
 		if bestLine < 0 {
+			g.debugPlayerMove("slideMove no best line", g.p.x+g.p.momx, g.p.y+g.p.momy)
 			if !g.tryMove(g.p.x, g.p.y+g.p.momy) {
 				_ = g.tryMove(g.p.x+g.p.momx, g.p.y)
 			}
 			return
 		}
+		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d bestFrac=%.6f", bestLine, bestFrac), g.p.x, g.p.y)
 
-		bestFrac -= float64(0x800) / float64(fracUnit)
-		if bestFrac > 0 {
-			newx := fixedMul(g.p.momx, int64(bestFrac*fracUnit))
-			newy := fixedMul(g.p.momy, int64(bestFrac*fracUnit))
+		bestFracFixed := int64(bestFrac*fracUnit + 0.5)
+		bestFracFixed -= 0x800
+		if bestFracFixed > 0 {
+			newx := fixedMul(g.p.momx, bestFracFixed)
+			newy := fixedMul(g.p.momy, bestFracFixed)
 			if !g.tryMove(g.p.x+newx, g.p.y+newy) {
 				if !g.tryMove(g.p.x, g.p.y+g.p.momy) {
 					_ = g.tryMove(g.p.x+g.p.momx, g.p.y)
@@ -636,15 +644,15 @@ func (g *game) slideMove() {
 			}
 		}
 
-		rest := 1.0 - (bestFrac + float64(0x800)/float64(fracUnit))
-		if rest <= 0 {
+		restFixed := fracUnit - (bestFracFixed + 0x800)
+		if restFixed <= 0 {
 			return
 		}
-		if rest > 1 {
-			rest = 1
+		if restFixed > fracUnit {
+			restFixed = fracUnit
 		}
-		tmxmove := fixedMul(g.p.momx, int64(rest*fracUnit))
-		tmymove := fixedMul(g.p.momy, int64(rest*fracUnit))
+		tmxmove := fixedMul(g.p.momx, restFixed)
+		tmymove := fixedMul(g.p.momy, restFixed)
 		tmxmove, tmymove = g.hitSlideLine(g.lines[bestLine], tmxmove, tmymove)
 		g.p.momx = tmxmove
 		g.p.momy = tmymove
@@ -652,6 +660,21 @@ func (g *game) slideMove() {
 			return
 		}
 	}
+}
+
+func (g *game) debugPlayerMove(msg string, x, y int64) {
+	if g == nil || os.Getenv("GD_DEBUG_PLAYER_MOVE_TIC") == "" {
+		return
+	}
+	var want int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PLAYER_MOVE_TIC"), "%d", &want); err != nil {
+		return
+	}
+	if g.demoTick-1 != want {
+		return
+	}
+	fmt.Printf("player-move-debug tic=%d world=%d msg=%s from=(%d,%d) to=(%d,%d) angle=%d mom=(%d,%d)\n",
+		g.demoTick-1, g.worldTic, msg, g.p.x, g.p.y, x, y, g.p.angle, g.p.momx, g.p.momy)
 }
 
 func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (float64, int, bool) {
@@ -694,14 +717,21 @@ func (g *game) hitSlideLine(ld physLine, tmxmove, tmymove int64) (int64, int64) 
 	if ld.slope == slopeVertical {
 		return 0, tmymove
 	}
-	ll := math.Hypot(float64(ld.dx), float64(ld.dy))
-	if ll == 0 {
+	if ld.dx == 0 && ld.dy == 0 {
 		return 0, 0
 	}
-	dx := float64(ld.dx) / ll
-	dy := float64(ld.dy) / ll
-	dot := float64(tmxmove)*dx + float64(tmymove)*dy
-	return int64(dot * dx), int64(dot * dy)
+	lineAngle := vectorToAngle(ld.dx, ld.dy)
+	if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
+		lineAngle += statusAng180
+	}
+	moveAngle := vectorToAngle(tmxmove, tmymove)
+	deltaAngle := moveAngle - lineAngle
+	if deltaAngle > statusAng180 {
+		deltaAngle += statusAng180
+	}
+	moveLen := approxDistance(tmxmove, tmymove)
+	newLen := fixedMul(moveLen, doomFineCosine(deltaAngle))
+	return fixedMul(newLen, doomFineCosine(lineAngle)), fixedMul(newLen, doomFineSineAtAngle(lineAngle))
 }
 
 func (g *game) sectorAt(x, y int64) int {

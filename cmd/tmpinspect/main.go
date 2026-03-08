@@ -21,4 +21,24 @@ func main(){
       fmt.Printf("thing idx=%d type=%d angle=%d flags=0x%04x\n", i, th.Type, th.Angle, uint16(th.Flags))
     }
   }
+  idx:=692
+  ld:=m.Linedefs[idx]
+  a:=m.Vertexes[ld.V1]
+  b:=m.Vertexes[ld.V2]
+  fmt.Printf("line idx=%d a=(%d,%d) b=(%d,%d) flags=0x%04x special=%d tag=%d front=%d back=%d\n",
+    idx, a.X, a.Y, b.X, b.Y, uint16(ld.Flags), ld.Special, ld.Tag, secForSide(m, ld.SideNum[0]), secForSide(m, ld.SideNum[1]))
+  px, py := int16(-22), int16(-586)
+  fmt.Printf("near player approx=(%d,%d)\n", px, py)
+  for i, ld := range m.Linedefs {
+    a:=m.Vertexes[ld.V1]
+    b:=m.Vertexes[ld.V2]
+    minx,maxx:=a.X,a.X
+    miny,maxy:=a.Y,a.Y
+    if b.X<minx { minx=b.X }; if b.X>maxx { maxx=b.X }
+    if b.Y<miny { miny=b.Y }; if b.Y>maxy { maxy=b.Y }
+    if px >= minx-64 && px <= maxx+64 && py >= miny-64 && py <= maxy+64 {
+      fmt.Printf("near line=%d a=(%d,%d) b=(%d,%d) flags=0x%04x special=%d front=%d back=%d\n",
+        i, a.X, a.Y, b.X, b.Y, uint16(ld.Flags), ld.Special, secForSide(m, ld.SideNum[0]), secForSide(m, ld.SideNum[1]))
+    }
+  }
 }
