@@ -319,12 +319,19 @@ type game struct {
 	bigMap                    bool
 	paused                    bool
 	pauseMenuActive           bool
+	pauseMenuMode             int
 	pauseMenuItemOn           int
+	pauseMenuEpisodeOn        int
+	pauseMenuSelectedEpisode  int
+	pauseMenuSkillOn          int
 	pauseMenuSkullAnimCounter int
 	pauseMenuWhichSkull       int
 	pauseMenuStatus           string
 	pauseMenuStatusTics       int
 	quitPromptRequested       bool
+	quitPromptActive          bool
+	newGameRequestedMap       *mapdata.Map
+	newGameRequestedSkill     int
 	savedView                 savedMapView
 	marks                     []mapMark
 	nextMarkID                int
@@ -1267,6 +1274,10 @@ func (g *game) Update() error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		g.togglePauseMenu()
+		if g.pauseMenuActive {
+			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+			return nil
+		}
 	}
 	if g.pauseMenuActive {
 		g.tickPauseMenu()
@@ -2069,12 +2080,33 @@ var inGamePauseMenuNames = [...]string{
 	"M_QUITG",
 }
 
+const (
+	pauseMenuModeRoot = iota
+	pauseMenuModeEpisode
+	pauseMenuModeSkill
+)
+
+var inGameEpisodeMenuNames = map[int]string{
+	1: "M_EPI1",
+	2: "M_EPI2",
+	3: "M_EPI3",
+	4: "M_EPI4",
+}
+
 func (g *game) togglePauseMenu() {
 	if g == nil {
 		return
 	}
 	g.pauseMenuActive = !g.pauseMenuActive
 	g.paused = g.pauseMenuActive
+	if g.pauseMenuActive {
+		g.pauseMenuMode = pauseMenuModeRoot
+		g.pauseMenuItemOn = 0
+		g.pauseMenuEpisodeOn = 0
+		g.pauseMenuSkillOn = max(0, normalizeSkillLevel(g.opts.SkillLevel)-1)
+	} else {
+		g.pauseMenuMode = pauseMenuModeRoot
+	}
 	if !g.pauseMenuActive {
 		g.pauseMenuStatus = ""
 		g.pauseMenuStatusTics = 0
@@ -2101,11 +2133,38 @@ func (g *game) tickPauseMenu() {
 			g.pauseMenuStatus = ""
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
-		g.pauseMenuItemOn = (g.pauseMenuItemOn + len(inGamePauseMenuNames) - 1) % len(inGamePauseMenuNames)
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.pauseMenuMode != pauseMenuModeRoot {
+			g.pauseMenuMode = pauseMenuModeRoot
+			return
+		}
+		g.togglePauseMenu()
+		return
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-		g.pauseMenuItemOn = (g.pauseMenuItemOn + 1) % len(inGamePauseMenuNames)
+	switch g.pauseMenuMode {
+	case pauseMenuModeEpisode:
+		if n := len(g.availableEpisodeChoices()); n > 0 {
+			if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+				g.pauseMenuEpisodeOn = (g.pauseMenuEpisodeOn + n - 1) % n
+			}
+			if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+				g.pauseMenuEpisodeOn = (g.pauseMenuEpisodeOn + 1) % n
+			}
+		}
+	case pauseMenuModeSkill:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			g.pauseMenuSkillOn = (g.pauseMenuSkillOn + len(frontendSkillMenuNames) - 1) % len(frontendSkillMenuNames)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			g.pauseMenuSkillOn = (g.pauseMenuSkillOn + 1) % len(frontendSkillMenuNames)
+		}
+	default:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			g.pauseMenuItemOn = (g.pauseMenuItemOn + len(inGamePauseMenuNames) - 1) % len(inGamePauseMenuNames)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			g.pauseMenuItemOn = (g.pauseMenuItemOn + 1) % len(inGamePauseMenuNames)
+		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
 		g.activatePauseMenuItem()
@@ -2116,11 +2175,32 @@ func (g *game) activatePauseMenuItem() {
 	if g == nil {
 		return
 	}
+	switch g.pauseMenuMode {
+	case pauseMenuModeEpisode:
+		episodes := g.availableEpisodeChoices()
+		if len(episodes) == 0 {
+			return
+		}
+		if g.pauseMenuEpisodeOn < 0 || g.pauseMenuEpisodeOn >= len(episodes) {
+			g.pauseMenuEpisodeOn = 0
+		}
+		g.pauseMenuSelectedEpisode = episodes[g.pauseMenuEpisodeOn]
+		g.pauseMenuMode = pauseMenuModeSkill
+		return
+	case pauseMenuModeSkill:
+		g.beginNewGameFromPauseMenu()
+		return
+	}
 	switch g.pauseMenuItemOn {
 	case 0:
-		g.levelRestartRequested = true
-		g.pauseMenuActive = false
-		g.paused = false
+		episodes := g.availableEpisodeChoices()
+		if len(episodes) > 1 {
+			g.pauseMenuEpisodeOn = 0
+			g.pauseMenuSelectedEpisode = episodes[0]
+			g.pauseMenuMode = pauseMenuModeEpisode
+		} else {
+			g.pauseMenuMode = pauseMenuModeSkill
+		}
 	case 1, 2, 3:
 		g.pauseMenuStatus = "MENU ITEM NOT WIRED YET"
 		g.pauseMenuStatusTics = doomTicsPerSecond * 2
@@ -2130,6 +2210,48 @@ func (g *game) activatePauseMenuItem() {
 	case 5:
 		g.quitPromptRequested = true
 	}
+}
+
+func (g *game) availableEpisodeChoices() []int {
+	if g == nil || len(g.opts.Episodes) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(g.opts.Episodes))
+	for _, ep := range g.opts.Episodes {
+		if ep >= 1 && ep <= 4 {
+			out = append(out, ep)
+		}
+	}
+	return out
+}
+
+func (g *game) beginNewGameFromPauseMenu() {
+	if g == nil || g.opts.NewGameLoader == nil {
+		g.pauseMenuStatus = "NEW GAME NOT AVAILABLE"
+		g.pauseMenuStatusTics = doomTicsPerSecond * 2
+		g.pauseMenuMode = pauseMenuModeRoot
+		return
+	}
+	startMap := "MAP01"
+	if episodes := g.availableEpisodeChoices(); len(episodes) > 1 {
+		ep := g.pauseMenuSelectedEpisode
+		if ep == 0 {
+			ep = episodes[0]
+		}
+		startMap = fmt.Sprintf("E%dM1", ep)
+	}
+	m, err := g.opts.NewGameLoader(startMap)
+	if err != nil || m == nil {
+		g.pauseMenuStatus = "NEW GAME LOAD FAILED"
+		g.pauseMenuStatusTics = doomTicsPerSecond * 2
+		g.pauseMenuMode = pauseMenuModeRoot
+		return
+	}
+	g.newGameRequestedMap = m
+	g.newGameRequestedSkill = g.pauseMenuSkillOn + 1
+	g.pauseMenuActive = false
+	g.paused = false
+	g.pauseMenuMode = pauseMenuModeRoot
 }
 
 func (g *game) profileLabel() string {
@@ -17635,26 +17757,49 @@ func (g *game) drawMenuPatch(screen *ebiten.Image, name string, x, y, sx, sy flo
 }
 
 func (g *game) drawPauseOverlay(screen *ebiten.Image) {
-	if !g.pauseMenuActive {
+	if !g.pauseMenuActive || g.quitPromptActive {
 		return
 	}
 	sx := float64(g.viewW) / 320.0
 	sy := float64(g.viewH) / 200.0
-	px := float64((320 - 68) / 2)
-	py := 4.0
-	if g.mode == viewMap {
-		py = 4.0
-	}
-	_ = g.drawMenuPatch(screen, "M_PAUSE", px*sx, py*sy, sx, sy)
-	_ = g.drawMenuPatch(screen, "M_DOOM", 94*sx, 2*sy, sx, sy)
-	for i, name := range inGamePauseMenuNames {
-		_ = g.drawMenuPatch(screen, name, 97*sx, float64(64+i*16)*sy, sx, sy)
+	ebitenutil.DrawRect(screen, 0, 0, 320.0*sx, 200.0*sy, color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	switch g.pauseMenuMode {
+	case pauseMenuModeEpisode:
+		_ = g.drawMenuPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
+		_ = g.drawMenuPatch(screen, "M_EPISOD", 54*sx, 38*sy, sx, sy)
+		episodes := g.availableEpisodeChoices()
+		for i, ep := range episodes {
+			if name, ok := inGameEpisodeMenuNames[ep]; ok {
+				_ = g.drawMenuPatch(screen, name, 48*sx, float64(63+i*16)*sy, sx, sy)
+			}
+		}
+	case pauseMenuModeSkill:
+		_ = g.drawMenuPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
+		_ = g.drawMenuPatch(screen, "M_SKILL", 54*sx, 38*sy, sx, sy)
+		for i, name := range frontendSkillMenuNames {
+			_ = g.drawMenuPatch(screen, name, 48*sx, float64(63+i*16)*sy, sx, sy)
+		}
+	default:
+		px := float64((320 - 68) / 2)
+		py := 4.0
+		_ = g.drawMenuPatch(screen, "M_PAUSE", px*sx, py*sy, sx, sy)
+		_ = g.drawMenuPatch(screen, "M_DOOM", 94*sx, 2*sy, sx, sy)
+		for i, name := range inGamePauseMenuNames {
+			_ = g.drawMenuPatch(screen, name, 97*sx, float64(64+i*16)*sy, sx, sy)
+		}
 	}
 	skull := "M_SKULL1"
 	if g.pauseMenuWhichSkull != 0 {
 		skull = "M_SKULL2"
 	}
-	_ = g.drawMenuPatch(screen, skull, 65*sx, float64(64+g.pauseMenuItemOn*16)*sy, sx, sy)
+	switch g.pauseMenuMode {
+	case pauseMenuModeEpisode:
+		_ = g.drawMenuPatch(screen, skull, 16*sx, float64(63+g.pauseMenuEpisodeOn*16)*sy, sx, sy)
+	case pauseMenuModeSkill:
+		_ = g.drawMenuPatch(screen, skull, 16*sx, float64(63+g.pauseMenuSkillOn*16)*sy, sx, sy)
+	default:
+		_ = g.drawMenuPatch(screen, skull, 65*sx, float64(64+g.pauseMenuItemOn*16)*sy, sx, sy)
+	}
 	if msg := strings.TrimSpace(g.pauseMenuStatus); msg != "" {
 		ebitenutil.DebugPrintAt(screen, msg, g.viewW/2-len(msg)*3, int(182*sy))
 	}

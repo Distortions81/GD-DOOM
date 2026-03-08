@@ -107,6 +107,7 @@ const (
 	frontendModeNone frontendMode = iota
 	frontendModeTitle
 	frontendModeReadThis
+	frontendModeEpisode
 	frontendModeSkill
 )
 
@@ -115,6 +116,8 @@ type frontendState struct {
 	active           bool
 	menuActive       bool
 	itemOn           int
+	episodeOn        int
+	selectedEpisode  int
 	skillOn          int
 	readThisPage     int
 	skullAnimCounter int
@@ -673,6 +676,13 @@ var frontendSkillMenuNames = [...]string{
 	"M_NMARE",
 }
 
+var frontendEpisodeMenuNames = map[int]string{
+	1: "M_EPI1",
+	2: "M_EPI2",
+	3: "M_EPI3",
+	4: "M_EPI4",
+}
+
 func (sg *sessionGame) shouldStartInFrontend() bool {
 	if sg == nil {
 		return false
@@ -771,6 +781,20 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	if sg == nil || sg.g == nil {
 		return
 	}
+	startMap := string(sg.bootMap.Name)
+	if sg.opts.NewGameLoader != nil {
+		startMap = "MAP01"
+		if episodes := sg.availableFrontendEpisodeChoices(); len(episodes) > 1 {
+			ep := sg.frontend.selectedEpisode
+			if ep == 0 {
+				ep = episodes[0]
+			}
+			startMap = fmt.Sprintf("E%dM1", ep)
+		}
+		if m, err := sg.opts.NewGameLoader(startMap); err == nil && m != nil {
+			sg.bootMap = m
+		}
+	}
 	sg.frontend = frontendState{}
 	sg.stopAndClearMusic()
 	sg.g.opts.SkillLevel = normalizeSkillLevel(skill)
@@ -782,6 +806,19 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.playMusicForMap(sg.current)
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
 	sg.queueTransition(transitionLevel, 0)
+}
+
+func (sg *sessionGame) availableFrontendEpisodeChoices() []int {
+	if sg == nil || len(sg.opts.Episodes) == 0 {
+		return nil
+	}
+	out := make([]int, 0, len(sg.opts.Episodes))
+	for _, ep := range sg.opts.Episodes {
+		if ep >= 1 && ep <= 4 {
+			out = append(out, ep)
+		}
+	}
+	return out
 }
 
 func (sg *sessionGame) tickFrontend() error {
@@ -808,10 +845,39 @@ func (sg *sessionGame) tickFrontend() error {
 			f.menuActive = true
 		}
 		return nil
-	case frontendModeSkill:
+	case frontendModeEpisode:
 		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 			f.mode = frontendModeTitle
 			f.menuActive = true
+			return nil
+		}
+		episodes := sg.availableFrontendEpisodeChoices()
+		if len(episodes) <= 1 {
+			f.mode = frontendModeSkill
+			return nil
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			f.episodeOn = (f.episodeOn + len(episodes) - 1) % len(episodes)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			f.episodeOn = (f.episodeOn + 1) % len(episodes)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			if f.episodeOn < 0 || f.episodeOn >= len(episodes) {
+				f.episodeOn = 0
+			}
+			f.selectedEpisode = episodes[f.episodeOn]
+			f.mode = frontendModeSkill
+		}
+		return nil
+	case frontendModeSkill:
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			if len(sg.availableFrontendEpisodeChoices()) > 1 {
+				f.mode = frontendModeEpisode
+			} else {
+				f.mode = frontendModeTitle
+				f.menuActive = true
+			}
 			return nil
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
@@ -843,7 +909,13 @@ func (sg *sessionGame) tickFrontend() error {
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
 			switch f.itemOn {
 			case 0:
-				f.mode = frontendModeSkill
+				if episodes := sg.availableFrontendEpisodeChoices(); len(episodes) > 1 {
+					f.episodeOn = 0
+					f.selectedEpisode = episodes[0]
+					f.mode = frontendModeEpisode
+				} else {
+					f.mode = frontendModeSkill
+				}
 			case 1, 2, 3:
 				sg.frontendStatus("MENU ITEM NOT WIRED YET", doomTicsPerSecond*2)
 			case 4:
@@ -858,6 +930,39 @@ func (sg *sessionGame) tickFrontend() error {
 }
 
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
+	sess := NewSession(m, opts, nextMap)
+	defer sess.Close()
+	if err := ebiten.RunGame(sess); err != nil {
+		if errors.Is(err, ebiten.Termination) {
+			if p := sess.Options().RecordDemoPath; p != "" {
+				rec := sess.EffectiveDemoRecord()
+				if werr := SaveDemoScript(p, rec); werr != nil {
+					return fmt.Errorf("write demo recording: %w", werr)
+				}
+				fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
+			}
+			if sess.Err() != nil {
+				return sess.Err()
+			}
+			return nil
+		}
+		return fmt.Errorf("run ebiten automap: %w", err)
+	}
+	if p := sess.Options().RecordDemoPath; p != "" {
+		rec := sess.EffectiveDemoRecord()
+		if werr := SaveDemoScript(p, rec); werr != nil {
+			return fmt.Errorf("write demo recording: %w", werr)
+		}
+		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
+	}
+	return sess.Err()
+}
+
+type Session struct {
+	sg *sessionGame
+}
+
+func NewSession(m *mapdata.Map, opts Options, nextMap NextMapFunc) *Session {
 	opts, windowW, windowH := normalizeRunDimensions(opts)
 	sg := &sessionGame{
 		bootMap:         m,
@@ -869,7 +974,6 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	}
 	sg.setBootProgress(1, "waiting for first frame")
 	sg.bootErr.Store("")
-	defer sg.closeMusicPlayback()
 	ebiten.SetTPS(doomTicsPerSecond)
 	ebiten.SetVsyncEnabled(!opts.NoVsync)
 	if opts.SourcePortMode {
@@ -882,30 +986,63 @@ func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	}
 	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
 	ebiten.SetScreenClearedEveryFrame(false)
-	if err := ebiten.RunGame(sg); err != nil {
-		if errors.Is(err, ebiten.Termination) {
-			if p := sg.opts.RecordDemoPath; p != "" {
-				rec := sg.effectiveDemoRecord()
-				if werr := SaveDemoScript(p, rec); werr != nil {
-					return fmt.Errorf("write demo recording: %w", werr)
-				}
-				fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
-			}
-			if sg.err != nil {
-				return sg.err
-			}
-			return nil
-		}
-		return fmt.Errorf("run ebiten automap: %w", err)
+	return &Session{sg: sg}
+}
+
+func (s *Session) Update() error {
+	if s == nil || s.sg == nil {
+		return ebiten.Termination
 	}
-	if p := sg.opts.RecordDemoPath; p != "" {
-		rec := sg.effectiveDemoRecord()
-		if werr := SaveDemoScript(p, rec); werr != nil {
-			return fmt.Errorf("write demo recording: %w", werr)
-		}
-		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
+	return s.sg.Update()
+}
+
+func (s *Session) Draw(screen *ebiten.Image) {
+	if s == nil || s.sg == nil {
+		return
 	}
-	return sg.err
+	s.sg.Draw(screen)
+}
+
+func (s *Session) Layout(outsideWidth, outsideHeight int) (int, int) {
+	if s == nil || s.sg == nil {
+		return max(outsideWidth, 1), max(outsideHeight, 1)
+	}
+	return s.sg.Layout(outsideWidth, outsideHeight)
+}
+
+func (s *Session) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
+	if s == nil || s.sg == nil {
+		return
+	}
+	s.sg.DrawFinalScreen(screen, offscreen, geoM)
+}
+
+func (s *Session) Close() {
+	if s == nil || s.sg == nil {
+		return
+	}
+	s.sg.closeMusicPlayback()
+}
+
+func (s *Session) Err() error {
+	if s == nil || s.sg == nil {
+		return nil
+	}
+	return s.sg.err
+}
+
+func (s *Session) EffectiveDemoRecord() []DemoTic {
+	if s == nil || s.sg == nil {
+		return nil
+	}
+	return s.sg.effectiveDemoRecord()
+}
+
+func (s *Session) Options() Options {
+	if s == nil || s.sg == nil {
+		return Options{}
+	}
+	return s.sg.opts
 }
 
 func (sg *sessionGame) Update() error {
@@ -955,6 +1092,21 @@ func (sg *sessionGame) Update() error {
 
 	err := sg.g.Update()
 	if err == nil {
+		if sg.g.newGameRequestedMap != nil {
+			sg.stopAndClearMusic()
+			sg.g.clearPendingSoundState()
+			sg.capturePersistentSettings()
+			sg.opts.SkillLevel = normalizeSkillLevel(sg.g.newGameRequestedSkill)
+			sg.rebuildGameWithPersistentSettings(sg.g.newGameRequestedMap)
+			sg.current = sg.g.m.Name
+			sg.currentTemplate = cloneMapForRestart(sg.g.m)
+			sg.playMusicForMap(sg.current)
+			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
+			sg.queueTransition(transitionLevel, 0)
+			sg.g.newGameRequestedMap = nil
+			sg.g.newGameRequestedSkill = 0
+			return nil
+		}
 		if sg.g.quitPromptRequested {
 			sg.g.quitPromptRequested = false
 			sg.requestQuitPrompt()
@@ -995,6 +1147,9 @@ func (sg *sessionGame) Update() error {
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
+	if sg.g != nil {
+		sg.g.quitPromptActive = sg.quitPrompt.active
+	}
 	if sg.bootInitPending {
 		screen.Fill(color.Black)
 		msg := "loading..."
@@ -1541,8 +1696,26 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			sg.drawIntermissionText(screen, "PRESS ANY KEY TO RETURN", 160, 186, scale, ox, oy, true)
 		}
 		return
+	case frontendModeEpisode:
+		sg.drawFrontendBackdrop(screen, scale, ox, oy)
+		if sg.quitPrompt.active {
+			return
+		}
+		_ = sg.drawMenuPatch(screen, "M_NEWG", 96, 14, scale, ox, oy, false)
+		_ = sg.drawMenuPatch(screen, "M_EPISOD", 54, 38, scale, ox, oy, false)
+		episodes := sg.availableFrontendEpisodeChoices()
+		for i, ep := range episodes {
+			if name, ok := frontendEpisodeMenuNames[ep]; ok {
+				_ = sg.drawMenuPatch(screen, name, 48, 63+i*16, scale, ox, oy, false)
+			}
+		}
+		sg.drawMenuSkull(screen, 16, 63+sg.frontend.episodeOn*16, scale, ox, oy)
+		return
 	case frontendModeSkill:
-		sg.drawBootSplashPresented(screen)
+		sg.drawFrontendBackdrop(screen, scale, ox, oy)
+		if sg.quitPrompt.active {
+			return
+		}
 		_ = sg.drawMenuPatch(screen, "M_NEWG", 96, 14, scale, ox, oy, false)
 		_ = sg.drawMenuPatch(screen, "M_SKILL", 54, 38, scale, ox, oy, false)
 		for i, name := range frontendSkillMenuNames {
@@ -1551,7 +1724,10 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.skillOn*16, scale, ox, oy)
 		return
 	default:
-		sg.drawBootSplashPresented(screen)
+		sg.drawFrontendBackdrop(screen, scale, ox, oy)
+		if sg.quitPrompt.active {
+			return
+		}
 		if sg.frontend.menuActive {
 			_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
 			for i, name := range frontendMainMenuNames {
@@ -1565,6 +1741,20 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			sg.drawIntermissionText(screen, msg, 160, 178, scale, ox, oy, true)
 		}
 	}
+}
+
+func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, scale, ox, oy float64) {
+	if sg == nil || screen == nil {
+		return
+	}
+	screen.Fill(color.Black)
+	img, _, ok := sg.menuPatch("M_DOOM")
+	if !ok || img == nil {
+		ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+		return
+	}
+	drawCenteredIntegerScaledLogo(screen, img)
+	ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), color.RGBA{R: 8, G: 8, B: 8, A: 128})
 }
 
 func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {
@@ -1583,9 +1773,33 @@ func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {
 	}
 	ox := (float64(sw) - 320.0*scale) * 0.5
 	oy := (float64(sh) - 200.0*scale) * 0.5
+	ebitenutil.DrawRect(screen, ox, oy, 320.0*scale, 200.0*scale, color.RGBA{R: 8, G: 8, B: 8, A: 128})
 	sg.drawIntermissionText(screen, "ARE YOU SURE YOU WANT TO", 160, 84, scale, ox, oy, true)
 	sg.drawIntermissionText(screen, "QUIT THIS GREAT GAME?", 160, 98, scale, ox, oy, true)
 	sg.drawIntermissionText(screen, "(PRESS Y TO QUIT)", 160, 126, scale, ox, oy, true)
+}
+
+func drawCenteredIntegerScaledLogo(screen, img *ebiten.Image) {
+	if screen == nil || img == nil {
+		return
+	}
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	lw := max(img.Bounds().Dx(), 1)
+	lh := max(img.Bounds().Dy(), 1)
+	scaleW := int(0.7 * float64(sw) / float64(lw))
+	scaleH := int(0.6 * float64(sh) / float64(lh))
+	scale := min(max(scaleW, 1), max(scaleH, 1))
+	if scale < 1 {
+		scale = 1
+	}
+	dw := lw * scale
+	dh := lh * scale
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(scale), float64(scale))
+	op.GeoM.Translate(float64((sw-dw)/2), float64((sh-dh)/2))
+	screen.DrawImage(img, op)
 }
 
 func (sg *sessionGame) drawMenuSkull(screen *ebiten.Image, x, y int, scale, ox, oy float64) {

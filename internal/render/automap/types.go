@@ -1,6 +1,9 @@
 package automap
 
-import "gddoom/internal/music"
+import (
+	"gddoom/internal/mapdata"
+	"gddoom/internal/music"
+)
 
 type RuntimeSettings struct {
 	DetailLevel      int
@@ -80,6 +83,8 @@ type Options struct {
 	RecordDemoPath             string
 	TitleMusicLoader           func() ([]byte, error)
 	MapMusicLoader             func(mapName string) ([]byte, error)
+	NewGameLoader              func(mapName string) (*mapdata.Map, error)
+	Episodes                   []int
 	MusicPatchBank             music.PatchBank
 	OnRuntimeSettingsChanged   func(RuntimeSettings)
 }

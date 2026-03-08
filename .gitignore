@@ -3,7 +3,6 @@ doom-source/
 profiles/
 .tmp/
 gddoom
-automap.test
 *.log
 *.prof
 bin/
@@ -12,7 +11,5 @@ dist/
 *.test
 *.out
 config.toml
-dump
-dump2
-anidump
 internal/render/automap/testdata/
+deutex_doom1_images/
