@@ -70,6 +70,7 @@ type Options struct {
 	DoomPaletteRGBA            []byte
 	DoomColorMap               []byte
 	DoomColorMapRows           int
+	MenuPatchBank              map[string]WallTexture
 	StatusPatchBank            map[string]WallTexture
 	MessageFontBank            map[rune]WallTexture
 	SpritePatchBank            map[string]WallTexture
@@ -77,6 +78,7 @@ type Options struct {
 	SoundBank                  SoundBank
 	DemoScript                 *DemoScript
 	RecordDemoPath             string
+	TitleMusicLoader           func() ([]byte, error)
 	MapMusicLoader             func(mapName string) ([]byte, error)
 	MusicPatchBank             music.PatchBank
 	OnRuntimeSettingsChanged   func(RuntimeSettings)

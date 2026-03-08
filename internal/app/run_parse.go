@@ -477,6 +477,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	doomPaletteRGBA := []byte(nil)
 	doomColorMap := []byte(nil)
 	doomColorMapRows := 0
+	menuPatchBank := map[string]automap.WallTexture(nil)
 	statusPatchBank := map[string]automap.WallTexture(nil)
 	messageFontBank := map[rune]automap.WallTexture(nil)
 	spritePatchBank := map[string]automap.WallTexture(nil)
@@ -557,6 +558,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		statusPatchBank = buildStatusPatchBank(texSet)
 		if len(statusPatchBank) > 0 {
 			fmt.Fprintf(stderr, "status patch import: patches=%d\n", len(statusPatchBank))
+		}
+		menuPatchBank = buildMenuPatchBank(texSet)
+		if len(menuPatchBank) > 0 {
+			fmt.Fprintf(stderr, "menu patch import: patches=%d\n", len(menuPatchBank))
 		}
 		messageFontBank = buildMessageFontBank(texSet)
 		if len(messageFontBank) > 0 {
@@ -687,6 +692,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DoomPaletteRGBA:            doomPaletteRGBA,
 			DoomColorMap:               doomColorMap,
 			DoomColorMapRows:           doomColorMapRows,
+			MenuPatchBank:              menuPatchBank,
 			StatusPatchBank:            statusPatchBank,
 			MessageFontBank:            messageFontBank,
 			SpritePatchBank:            spritePatchBank,
@@ -694,6 +700,23 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SoundBank:                  soundBank,
 			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
+		}
+		opts.TitleMusicLoader = func() ([]byte, error) {
+			for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
+				l, ok := wf.LumpByName(lump)
+				if !ok {
+					continue
+				}
+				data, err := wf.LumpData(l)
+				if err != nil {
+					return nil, err
+				}
+				if _, err := music.ParseMUS(data); err != nil {
+					return nil, err
+				}
+				return data, nil
+			}
+			return nil, nil
 		}
 		opts.MapMusicLoader = func(mapName string) ([]byte, error) {
 			lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
@@ -1270,6 +1293,45 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 			Height:     h,
 			OffsetX:    ox,
 			OffsetY:    oy,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildMenuPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+	if ts == nil {
+		return nil
+	}
+	names := []string{
+		"M_DOOM", "M_NGAME", "M_OPTION", "M_LOADG", "M_SAVEG", "M_RDTHIS", "M_QUITG",
+		"M_SKULL1", "M_SKULL2",
+		"M_PAUSE",
+		"M_NEWG", "M_SKILL", "M_JKILL", "M_ROUGH", "M_HURT", "M_ULTRA", "M_NMARE",
+		"M_EPISOD", "M_EPI1", "M_EPI2", "M_EPI3", "M_EPI4",
+	}
+	out := make(map[string]automap.WallTexture, len(names))
+	for _, name := range names {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
+		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+			continue
+		}
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		out[name] = automap.WallTexture{
+			RGBA:    rgba,
+			RGBA32:  rgba32,
+			Width:   w,
+			Height:  h,
+			OffsetX: ox,
+			OffsetY: oy,
 		}
 	}
 	if len(out) == 0 {

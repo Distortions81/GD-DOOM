@@ -36,6 +36,7 @@ const (
 	intermissionSkipExitHoldTics   = 12
 	intermissionCounterSoundPeriod = 6
 	finaleHoldTics                 = doomTicsPerSecond * 7
+	menuSkullBlinkTics             = 8
 )
 
 type transitionKind int
@@ -100,6 +101,33 @@ type sessionFinale struct {
 	screen  string
 }
 
+type frontendMode int
+
+const (
+	frontendModeNone frontendMode = iota
+	frontendModeTitle
+	frontendModeReadThis
+	frontendModeSkill
+)
+
+type frontendState struct {
+	mode             frontendMode
+	active           bool
+	menuActive       bool
+	itemOn           int
+	skillOn          int
+	readThisPage     int
+	skullAnimCounter int
+	whichSkull       int
+	tic              int
+	status           string
+	statusTic        int
+}
+
+type quitPromptState struct {
+	active bool
+}
+
 type bootAsyncState struct {
 	g           *game
 	musicPlayer *music.ChunkPlayer
@@ -142,10 +170,13 @@ type sessionGame struct {
 	presentSurface  *ebiten.Image
 	lastFrame       *ebiten.Image
 	bootSplashImage *ebiten.Image
+	menuPatchCache  map[string]*ebiten.Image
 	interPatchCache map[string]*ebiten.Image
 	transition      sessionTransition
 	intermission    sessionIntermission
 	finale          sessionFinale
+	frontend        frontendState
+	quitPrompt      quitPromptState
 	bootInitPending bool
 	bootFrameDrawn  bool
 	bootStarted     bool
@@ -545,8 +576,12 @@ func (sg *sessionGame) finishBootInit() {
 	if sg.musicPlayer == nil || sg.musicDriver == nil {
 		sg.initMusicPlayback()
 	}
-	sg.setBootProgress(8, "starting music stream")
-	sg.playMusicForMap(sg.current)
+	sg.setBootProgress(8, "starting title frontend")
+	if sg.shouldStartInFrontend() {
+		sg.startFrontend()
+	} else {
+		sg.playMusicForMap(sg.current)
+	}
 	sg.setBootProgress(9, "applying startup settings")
 	sg.capturePersistentSettings()
 	if sg.shouldShowBootSplash() {
@@ -621,6 +656,207 @@ func (sg *sessionGame) startBootAsync() {
 	}()
 }
 
+var frontendMainMenuNames = [...]string{
+	"M_NGAME",
+	"M_OPTION",
+	"M_LOADG",
+	"M_SAVEG",
+	"M_RDTHIS",
+	"M_QUITG",
+}
+
+var frontendSkillMenuNames = [...]string{
+	"M_JKILL",
+	"M_ROUGH",
+	"M_HURT",
+	"M_ULTRA",
+	"M_NMARE",
+}
+
+func (sg *sessionGame) shouldStartInFrontend() bool {
+	if sg == nil {
+		return false
+	}
+	if sg.opts.StartInMapMode || sg.opts.DemoScript != nil || strings.TrimSpace(sg.opts.RecordDemoPath) != "" {
+		return false
+	}
+	return true
+}
+
+func (sg *sessionGame) startFrontend() {
+	if sg == nil {
+		return
+	}
+	sg.frontend = frontendState{
+		active:     true,
+		mode:       frontendModeTitle,
+		menuActive: true,
+	}
+	sg.stopAndClearMusic()
+	sg.playTitleMusic()
+}
+
+func (sg *sessionGame) playTitleMusic() {
+	if sg == nil || sg.musicPlayer == nil || sg.musicDriver == nil || sg.opts.TitleMusicLoader == nil {
+		return
+	}
+	data, err := sg.opts.TitleMusicLoader()
+	if err != nil || len(data) == 0 {
+		return
+	}
+	sg.stopAndClearMusic()
+	stream, err := music.NewMUSStreamRenderer(sg.musicDriver, data)
+	if err != nil {
+		return
+	}
+	chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames)
+	if err != nil || len(chunk) == 0 {
+		return
+	}
+	_ = sg.musicPlayer.EnqueueBytesS16LE(chunk)
+	_ = sg.musicPlayer.Start()
+	if done {
+		return
+	}
+	stop := make(chan struct{})
+	sg.musicStreamStop = stop
+	go sg.streamMapMusic(stop, stream)
+}
+
+func (sg *sessionGame) frontendStatus(msg string, tics int) {
+	if sg == nil {
+		return
+	}
+	sg.frontend.status = strings.TrimSpace(msg)
+	sg.frontend.statusTic = tics
+}
+
+func (sg *sessionGame) requestQuitPrompt() {
+	if sg == nil {
+		return
+	}
+	sg.quitPrompt.active = true
+}
+
+func (sg *sessionGame) clearQuitPrompt() {
+	if sg == nil {
+		return
+	}
+	sg.quitPrompt = quitPromptState{}
+}
+
+func (sg *sessionGame) handleQuitPromptInput() error {
+	if sg == nil || !sg.quitPrompt.active {
+		return nil
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyY) {
+		return ebiten.Termination
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyN) ||
+		inpututil.IsKeyJustPressed(ebiten.KeyEscape) ||
+		inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		sg.clearQuitPrompt()
+	}
+	return nil
+}
+
+func (sg *sessionGame) anyQuitPromptTrigger() bool {
+	if sg == nil {
+		return false
+	}
+	return inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10)
+}
+
+func (sg *sessionGame) startGameFromFrontend(skill int) {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	sg.frontend = frontendState{}
+	sg.stopAndClearMusic()
+	sg.g.opts.SkillLevel = normalizeSkillLevel(skill)
+	sg.g = newGame(cloneMapForRestart(sg.bootMap), sg.g.opts)
+	sg.capturePersistentSettings()
+	sg.applyPersistentSettingsToGame(sg.g)
+	sg.current = sg.g.m.Name
+	sg.currentTemplate = cloneMapForRestart(sg.g.m)
+	sg.playMusicForMap(sg.current)
+	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
+	sg.queueTransition(transitionLevel, 0)
+}
+
+func (sg *sessionGame) tickFrontend() error {
+	if sg == nil || !sg.frontend.active {
+		return nil
+	}
+	f := &sg.frontend
+	f.tic++
+	f.skullAnimCounter++
+	if f.skullAnimCounter >= menuSkullBlinkTics {
+		f.skullAnimCounter = 0
+		f.whichSkull ^= 1
+	}
+	if f.statusTic > 0 {
+		f.statusTic--
+		if f.statusTic == 0 {
+			f.status = ""
+		}
+	}
+	switch f.mode {
+	case frontendModeReadThis:
+		if anyIntermissionSkipInput() || inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			f.mode = frontendModeTitle
+			f.menuActive = true
+		}
+		return nil
+	case frontendModeSkill:
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			f.mode = frontendModeTitle
+			f.menuActive = true
+			return nil
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			f.skillOn = (f.skillOn + len(frontendSkillMenuNames) - 1) % len(frontendSkillMenuNames)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			f.skillOn = (f.skillOn + 1) % len(frontendSkillMenuNames)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			sg.startGameFromFrontend(f.skillOn + 1)
+		}
+		return nil
+	default:
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			f.menuActive = !f.menuActive
+		}
+		if !f.menuActive {
+			if anyIntermissionSkipInput() {
+				f.menuActive = true
+			}
+			return nil
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			f.itemOn = (f.itemOn + len(frontendMainMenuNames) - 1) % len(frontendMainMenuNames)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			f.itemOn = (f.itemOn + 1) % len(frontendMainMenuNames)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			switch f.itemOn {
+			case 0:
+				f.mode = frontendModeSkill
+			case 1, 2, 3:
+				sg.frontendStatus("MENU ITEM NOT WIRED YET", doomTicsPerSecond*2)
+			case 4:
+				f.mode = frontendModeReadThis
+				f.readThisPage = 0
+			case 5:
+				sg.requestQuitPrompt()
+			}
+		}
+	}
+	return nil
+}
+
 func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	opts, windowW, windowH := normalizeRunDimensions(opts)
 	sg := &sessionGame{
@@ -687,14 +923,14 @@ func (sg *sessionGame) Update() error {
 			return ebiten.Termination
 		}
 	}
+	if sg.quitPrompt.active {
+		return sg.handleQuitPromptInput()
+	}
+	if sg.anyQuitPromptTrigger() {
+		sg.requestQuitPrompt()
+		return nil
+	}
 	if sg.transitionActive() {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
-			return ebiten.Termination
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
-			(ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)) {
-			return ebiten.Termination
-		}
 		if sg.transition.kind == transitionBoot && sg.transition.holdTics > 0 && anyIntermissionSkipInput() {
 			sg.transition.holdTics = 0
 		}
@@ -702,26 +938,15 @@ func (sg *sessionGame) Update() error {
 		return nil
 	}
 	if sg.finale.active {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
-			return ebiten.Termination
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
-			(ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)) {
-			return ebiten.Termination
-		}
 		if sg.tickFinale() {
 			return ebiten.Termination
 		}
 		return nil
 	}
+	if sg.frontend.active {
+		return sg.tickFrontend()
+	}
 	if sg.intermission.active {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
-			return ebiten.Termination
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) &&
-			(ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)) {
-			return ebiten.Termination
-		}
 		if sg.tickIntermission() {
 			sg.finishIntermission()
 		}
@@ -730,6 +955,11 @@ func (sg *sessionGame) Update() error {
 
 	err := sg.g.Update()
 	if err == nil {
+		if sg.g.quitPromptRequested {
+			sg.g.quitPromptRequested = false
+			sg.requestQuitPrompt()
+			return nil
+		}
 		if sg.g.levelRestartRequested {
 			sg.stopAndClearMusic()
 			sg.g.clearPendingSoundState()
@@ -803,17 +1033,34 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		sg.ensureTransitionReady(tw, th)
 		if sg.transition.initialized {
 			sg.drawTransitionFrame(screen, sw, sh)
+			if sg.quitPrompt.active {
+				sg.drawQuitPrompt(screen)
+			}
 			return
 		}
 		sg.clearTransition()
 	}
 	if sg.intermission.active {
 		sg.drawIntermission(screen)
+		if sg.quitPrompt.active {
+			sg.drawQuitPrompt(screen)
+		}
+		sg.captureLastFrame(screen)
+		return
+	}
+	if sg.frontend.active {
+		sg.drawFrontend(screen)
+		if sg.quitPrompt.active {
+			sg.drawQuitPrompt(screen)
+		}
 		sg.captureLastFrame(screen)
 		return
 	}
 	if sg.finale.active {
 		sg.drawFinale(screen)
+		if sg.quitPrompt.active {
+			sg.drawQuitPrompt(screen)
+		}
 		sg.captureLastFrame(screen)
 		return
 	}
@@ -827,6 +1074,9 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 			src = sg.applyFaithfulPalettePost(sg.presentSurface)
 		}
 		sg.drawSourcePortPresented(screen, src, sw, sh)
+		if sg.quitPrompt.active {
+			sg.drawQuitPrompt(screen)
+		}
 		sg.captureLastFrame(src)
 		return
 	}
@@ -835,6 +1085,9 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	}
 	sg.drawGamePresented(sg.presentSurface, sg.g)
 	screen.DrawImage(sg.presentSurface, nil)
+	if sg.quitPrompt.active {
+		sg.drawQuitPrompt(screen)
+	}
 }
 
 func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
@@ -1110,7 +1363,11 @@ func (sg *sessionGame) ensureTransitionReady(width, height int) {
 	switch t.kind {
 	case transitionBoot:
 		sg.drawBootSplashTransitionSurface(t.from)
-		sg.drawGameTransitionSurface(t.to, sg.g)
+		if sg.frontend.active {
+			sg.drawFrontendTransitionSurface(t.to)
+		} else {
+			sg.drawGameTransitionSurface(t.to, sg.g)
+		}
 	case transitionLevel:
 		if sg.lastFrame != nil {
 			t.from.Clear()
@@ -1227,6 +1484,156 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Scale(float64(sw)/float64(tw), float64(sh)/float64(th))
 	screen.DrawImage(t.work, op)
+}
+
+func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
+	if dst == nil {
+		return
+	}
+	if sg.opts.SourcePortMode {
+		dw := max(dst.Bounds().Dx(), 1)
+		dh := max(dst.Bounds().Dy(), 1)
+		dst.Fill(color.Black)
+		if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != dw || sg.presentSurface.Bounds().Dy() != dh {
+			sg.presentSurface = ebiten.NewImage(dw, dh)
+		}
+		sg.presentSurface.Clear()
+		sg.drawFrontend(sg.presentSurface)
+		sg.drawSourcePortPresented(dst, sg.presentSurface, dw, dh)
+		return
+	}
+	dw := max(dst.Bounds().Dx(), 1)
+	dh := max(dst.Bounds().Dy(), 1)
+	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != dw || sg.presentSurface.Bounds().Dy() != dh {
+		sg.presentSurface = ebiten.NewImage(dw, dh)
+	}
+	sg.presentSurface.Clear()
+	sg.drawFrontend(sg.presentSurface)
+	dst.Fill(color.Black)
+	dst.DrawImage(sg.presentSurface, nil)
+}
+
+func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	scale := float64(sw) / 320.0
+	scaleY := float64(sh) / 200.0
+	if scaleY < scale {
+		scale = scaleY
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	ox := (float64(sw) - 320.0*scale) * 0.5
+	oy := (float64(sh) - 200.0*scale) * 0.5
+
+	switch sg.frontend.mode {
+	case frontendModeReadThis:
+		screen.Fill(color.Black)
+		name := "HELP1"
+		if sg.frontend.readThisPage != 0 {
+			name = "CREDIT"
+		}
+		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) {
+			sg.drawBootSplashPresented(screen)
+		}
+		if (sg.frontend.tic/16)&1 == 0 {
+			sg.drawIntermissionText(screen, "PRESS ANY KEY TO RETURN", 160, 186, scale, ox, oy, true)
+		}
+		return
+	case frontendModeSkill:
+		sg.drawBootSplashPresented(screen)
+		_ = sg.drawMenuPatch(screen, "M_NEWG", 96, 14, scale, ox, oy, false)
+		_ = sg.drawMenuPatch(screen, "M_SKILL", 54, 38, scale, ox, oy, false)
+		for i, name := range frontendSkillMenuNames {
+			_ = sg.drawMenuPatch(screen, name, 48, 63+i*16, scale, ox, oy, false)
+		}
+		sg.drawMenuSkull(screen, 16, 63+sg.frontend.skillOn*16, scale, ox, oy)
+		return
+	default:
+		sg.drawBootSplashPresented(screen)
+		if sg.frontend.menuActive {
+			_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
+			for i, name := range frontendMainMenuNames {
+				_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
+			}
+			sg.drawMenuSkull(screen, 65, 64+sg.frontend.itemOn*16, scale, ox, oy)
+		} else if (sg.frontend.tic/16)&1 == 0 {
+			sg.drawIntermissionText(screen, "PRESS ANY KEY", 160, 186, scale, ox, oy, true)
+		}
+		if msg := strings.TrimSpace(sg.frontend.status); msg != "" {
+			sg.drawIntermissionText(screen, msg, 160, 178, scale, ox, oy, true)
+		}
+	}
+}
+
+func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {
+	if sg == nil || !sg.quitPrompt.active || screen == nil {
+		return
+	}
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	scale := float64(sw) / 320.0
+	scaleY := float64(sh) / 200.0
+	if scaleY < scale {
+		scale = scaleY
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	ox := (float64(sw) - 320.0*scale) * 0.5
+	oy := (float64(sh) - 200.0*scale) * 0.5
+	sg.drawIntermissionText(screen, "ARE YOU SURE YOU WANT TO", 160, 84, scale, ox, oy, true)
+	sg.drawIntermissionText(screen, "QUIT THIS GREAT GAME?", 160, 98, scale, ox, oy, true)
+	sg.drawIntermissionText(screen, "(PRESS Y TO QUIT)", 160, 126, scale, ox, oy, true)
+}
+
+func (sg *sessionGame) drawMenuSkull(screen *ebiten.Image, x, y int, scale, ox, oy float64) {
+	name := "M_SKULL1"
+	if sg.frontend.whichSkull != 0 {
+		name = "M_SKULL2"
+	}
+	_ = sg.drawMenuPatch(screen, name, x, y, scale, ox, oy, false)
+}
+
+func (sg *sessionGame) drawMenuPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64, centered bool) bool {
+	img, p, ok := sg.menuPatch(name)
+	if !ok {
+		return false
+	}
+	px := float64(x)*scale + ox
+	py := float64(y)*scale + oy
+	if centered {
+		px -= float64(p.Width) * scale * 0.5
+		py -= float64(p.Height) * scale * 0.5
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(px-float64(p.OffsetX)*scale, py-float64(p.OffsetY)*scale)
+	screen.DrawImage(img, op)
+	return true
+}
+
+func (sg *sessionGame) menuPatch(name string) (*ebiten.Image, WallTexture, bool) {
+	if sg == nil || sg.opts.MenuPatchBank == nil {
+		return nil, WallTexture{}, false
+	}
+	key := strings.ToUpper(strings.TrimSpace(name))
+	p, ok := sg.opts.MenuPatchBank[key]
+	if !ok {
+		return nil, WallTexture{}, false
+	}
+	if sg.menuPatchCache == nil {
+		sg.menuPatchCache = make(map[string]*ebiten.Image, 32)
+	}
+	if img, ok := sg.menuPatchCache[key]; ok {
+		return img, p, true
+	}
+	img := ebiten.NewImage(p.Width, p.Height)
+	img.WritePixels(p.RGBA)
+	sg.menuPatchCache[key] = img
+	return img, p, true
 }
 
 func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.MapName) {
@@ -2030,7 +2437,9 @@ func formatIntermissionTime(sec int) string {
 func anyIntermissionSkipInput() bool {
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
 		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) ||
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) {
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3) ||
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4) {
 		return true
 	}
 	var keys []ebiten.Key

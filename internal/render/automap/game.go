@@ -309,21 +309,28 @@ type game struct {
 	zoom              float64
 	fitZoom           float64
 
-	mode       viewMode
-	followMode bool
-	rotateView bool
-	showHelp   bool
-	parity     automapParityState
-	showGrid   bool
-	showLegend bool
-	bigMap     bool
-	paused     bool
-	savedView  savedMapView
-	marks      []mapMark
-	nextMarkID int
-	p          player
-	localSlot  int
-	peerStarts []playerStart
+	mode                      viewMode
+	followMode                bool
+	rotateView                bool
+	showHelp                  bool
+	parity                    automapParityState
+	showGrid                  bool
+	showLegend                bool
+	bigMap                    bool
+	paused                    bool
+	pauseMenuActive           bool
+	pauseMenuItemOn           int
+	pauseMenuSkullAnimCounter int
+	pauseMenuWhichSkull       int
+	pauseMenuStatus           string
+	pauseMenuStatusTics       int
+	quitPromptRequested       bool
+	savedView                 savedMapView
+	marks                     []mapMark
+	nextMarkID                int
+	p                         player
+	localSlot                 int
+	peerStarts                []playerStart
 
 	lines                []physLine
 	lineValid            []int
@@ -542,6 +549,7 @@ type game struct {
 	buffers3DH                   int
 	flatImgCache                 map[string]*ebiten.Image
 	statusPatchImg               map[string]*ebiten.Image
+	menuPatchImg                 map[string]*ebiten.Image
 	spritePatchImg               map[string]*ebiten.Image
 	messageFontImg               map[rune]*ebiten.Image
 	whitePixel                   *ebiten.Image
@@ -1254,18 +1262,14 @@ func (g *game) Update() error {
 		return g.updateDemoMode()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
-		return ebiten.Termination
+		g.quitPromptRequested = true
+		return nil
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		if ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight) {
-			return ebiten.Termination
-		}
-		g.paused = !g.paused
-		if !g.paused && g.mode == viewWalk {
-			// Reset mouse baseline on resume to avoid turn spikes.
-			g.mouseLookSet = false
-			g.mouseLookSuppressTicks = detailMouseSuppressTicks
-		}
+		g.togglePauseMenu()
+	}
+	if g.pauseMenuActive {
+		g.tickPauseMenu()
 	}
 	if g.paused {
 		ebiten.SetCursorMode(ebiten.CursorModeVisible)
@@ -2053,6 +2057,78 @@ func (g *game) Draw(screen *ebiten.Image) {
 	}
 	if !g.opts.NoFPS {
 		g.drawPerfOverlay(screen)
+	}
+}
+
+var inGamePauseMenuNames = [...]string{
+	"M_NGAME",
+	"M_OPTION",
+	"M_LOADG",
+	"M_SAVEG",
+	"M_RDTHIS",
+	"M_QUITG",
+}
+
+func (g *game) togglePauseMenu() {
+	if g == nil {
+		return
+	}
+	g.pauseMenuActive = !g.pauseMenuActive
+	g.paused = g.pauseMenuActive
+	if !g.pauseMenuActive {
+		g.pauseMenuStatus = ""
+		g.pauseMenuStatusTics = 0
+		if g.mode == viewWalk {
+			// Reset mouse baseline on resume to avoid turn spikes.
+			g.mouseLookSet = false
+			g.mouseLookSuppressTicks = detailMouseSuppressTicks
+		}
+	}
+}
+
+func (g *game) tickPauseMenu() {
+	if g == nil || !g.pauseMenuActive {
+		return
+	}
+	g.pauseMenuSkullAnimCounter++
+	if g.pauseMenuSkullAnimCounter >= 8 {
+		g.pauseMenuSkullAnimCounter = 0
+		g.pauseMenuWhichSkull ^= 1
+	}
+	if g.pauseMenuStatusTics > 0 {
+		g.pauseMenuStatusTics--
+		if g.pauseMenuStatusTics == 0 {
+			g.pauseMenuStatus = ""
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		g.pauseMenuItemOn = (g.pauseMenuItemOn + len(inGamePauseMenuNames) - 1) % len(inGamePauseMenuNames)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		g.pauseMenuItemOn = (g.pauseMenuItemOn + 1) % len(inGamePauseMenuNames)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+		g.activatePauseMenuItem()
+	}
+}
+
+func (g *game) activatePauseMenuItem() {
+	if g == nil {
+		return
+	}
+	switch g.pauseMenuItemOn {
+	case 0:
+		g.levelRestartRequested = true
+		g.pauseMenuActive = false
+		g.paused = false
+	case 1, 2, 3:
+		g.pauseMenuStatus = "MENU ITEM NOT WIRED YET"
+		g.pauseMenuStatusTics = doomTicsPerSecond * 2
+	case 4:
+		g.pauseMenuStatus = "READ THIS NOT WIRED YET"
+		g.pauseMenuStatusTics = doomTicsPerSecond * 2
+	case 5:
+		g.quitPromptRequested = true
 	}
 }
 
@@ -17527,21 +17603,61 @@ func (g *game) drawHelpUI(screen *ebiten.Image) {
 	}
 }
 
-func (g *game) drawPauseOverlay(screen *ebiten.Image) {
-	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 0, G: 0, B: 0, A: 120})
-	w, h := 220.0, 96.0
-	x := (float64(g.viewW) - w) * 0.5
-	y := (float64(g.viewH) - h) * 0.5
-	ebitenutil.DrawRect(screen, x, y, w, h, color.RGBA{R: 18, G: 20, B: 26, A: 230})
-	ebitenutil.DrawRect(screen, x, y, w, 2, color.RGBA{R: 180, G: 180, B: 180, A: 255})
-	ebitenutil.DrawRect(screen, x, y+h-2, w, 2, color.RGBA{R: 180, G: 180, B: 180, A: 255})
-	ebitenutil.DrawRect(screen, x, y, 2, h, color.RGBA{R: 180, G: 180, B: 180, A: 255})
-	ebitenutil.DrawRect(screen, x+w-2, y, 2, h, color.RGBA{R: 180, G: 180, B: 180, A: 255})
+func (g *game) menuPatch(name string) (*ebiten.Image, int, int, int, int, bool) {
+	key := strings.ToUpper(strings.TrimSpace(name))
+	p, ok := g.opts.MenuPatchBank[key]
+	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+		return nil, 0, 0, 0, 0, false
+	}
+	if g.menuPatchImg == nil {
+		g.menuPatchImg = make(map[string]*ebiten.Image, 32)
+	}
+	if img, ok := g.menuPatchImg[key]; ok {
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+	}
+	img := ebiten.NewImage(p.Width, p.Height)
+	img.WritePixels(p.RGBA)
+	g.menuPatchImg[key] = img
+	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+}
 
-	title := "PAUSED"
-	help := "ESC resume  |  F4/Shift+ESC quit"
-	ebitenutil.DebugPrintAt(screen, title, int(x+w*0.5)-len(title)*3, int(y)+28)
-	ebitenutil.DebugPrintAt(screen, help, int(x+w*0.5)-len(help)*3, int(y)+58)
+func (g *game) drawMenuPatch(screen *ebiten.Image, name string, x, y, sx, sy float64) bool {
+	img, _, _, ox, oy, ok := g.menuPatch(name)
+	if !ok {
+		return false
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(sx, sy)
+	op.GeoM.Translate(x-float64(ox)*sx, y-float64(oy)*sy)
+	screen.DrawImage(img, op)
+	return true
+}
+
+func (g *game) drawPauseOverlay(screen *ebiten.Image) {
+	if !g.pauseMenuActive {
+		return
+	}
+	sx := float64(g.viewW) / 320.0
+	sy := float64(g.viewH) / 200.0
+	px := float64((320 - 68) / 2)
+	py := 4.0
+	if g.mode == viewMap {
+		py = 4.0
+	}
+	_ = g.drawMenuPatch(screen, "M_PAUSE", px*sx, py*sy, sx, sy)
+	_ = g.drawMenuPatch(screen, "M_DOOM", 94*sx, 2*sy, sx, sy)
+	for i, name := range inGamePauseMenuNames {
+		_ = g.drawMenuPatch(screen, name, 97*sx, float64(64+i*16)*sy, sx, sy)
+	}
+	skull := "M_SKULL1"
+	if g.pauseMenuWhichSkull != 0 {
+		skull = "M_SKULL2"
+	}
+	_ = g.drawMenuPatch(screen, skull, 65*sx, float64(64+g.pauseMenuItemOn*16)*sy, sx, sy)
+	if msg := strings.TrimSpace(g.pauseMenuStatus); msg != "" {
+		ebitenutil.DebugPrintAt(screen, msg, g.viewW/2-len(msg)*3, int(182*sy))
+	}
 }
 
 func (g *game) finishPerfCounter(drawStart time.Time) {
