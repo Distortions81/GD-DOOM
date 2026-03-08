@@ -34,6 +34,7 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 #ifdef NORMALUNIX
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -58,6 +59,62 @@ static const char rcsid[] = "$Id: d_main.c,v 1.8 1997/02/03 22:45:09 b1 Exp $";
 
 #include "m_argv.h"
 #include "m_misc.h"
+
+static char*
+FindWadInDir
+( char*         doomwaddir,
+  char*         wadname )
+{
+    char* path;
+    char* upper;
+    size_t dirlen;
+    size_t namelen;
+    size_t i;
+
+    dirlen = strlen(doomwaddir);
+    namelen = strlen(wadname);
+
+    path = malloc(dirlen + 1 + namelen + 1);
+    sprintf(path, "%s/%s", doomwaddir, wadname);
+    if (!access(path, R_OK))
+        return path;
+
+    upper = malloc(namelen + 1);
+    for (i = 0; i < namelen; i++)
+        upper[i] = toupper((unsigned char)wadname[i]);
+    upper[namelen] = 0;
+
+    sprintf(path, "%s/%s", doomwaddir, upper);
+    free(upper);
+    if (!access(path, R_OK))
+        return path;
+
+    free(path);
+    return NULL;
+}
+
+static void
+PrintSelectedIWADInfo (void)
+{
+    char* path;
+    char command[1024];
+    char md5[64];
+    FILE* pipe;
+
+    path = W_SelectedIWADPath();
+    if (!path)
+        return;
+
+    printf(" selected IWAD: %s\n", path);
+
+    snprintf(command, sizeof(command), "md5sum '%s' 2>/dev/null", path);
+    pipe = popen(command, "r");
+    if (!pipe)
+        return;
+    if (fscanf(pipe, "%63s", md5) == 1)
+        printf(" selected IWAD md5: %s\n", md5);
+    pclose(pipe);
+}
 #include "m_menu.h"
 
 #include "i_system.h"
@@ -579,34 +636,13 @@ void IdentifyVersion (void)
     if (!doomwaddir)
 	doomwaddir = ".";
 
-    // Commercial.
-    doom2wad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(doom2wad, "%s/doom2.wad", doomwaddir);
-
-    // Retail.
-    doomuwad = malloc(strlen(doomwaddir)+1+8+1);
-    sprintf(doomuwad, "%s/doomu.wad", doomwaddir);
-    
-    // Registered.
-    doomwad = malloc(strlen(doomwaddir)+1+8+1);
-    sprintf(doomwad, "%s/doom.wad", doomwaddir);
-    
-    // Shareware.
-    doom1wad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(doom1wad, "%s/doom1.wad", doomwaddir);
-
-     // Bug, dear Shawn.
-    // Insufficient malloc, caused spurious realloc errors.
-    plutoniawad = malloc(strlen(doomwaddir)+1+/*9*/12+1);
-    sprintf(plutoniawad, "%s/plutonia.wad", doomwaddir);
-
-    tntwad = malloc(strlen(doomwaddir)+1+9+1);
-    sprintf(tntwad, "%s/tnt.wad", doomwaddir);
-
-
-    // French stuff.
-    doom2fwad = malloc(strlen(doomwaddir)+1+10+1);
-    sprintf(doom2fwad, "%s/doom2f.wad", doomwaddir);
+    doom2wad = FindWadInDir(doomwaddir, "doom2.wad");
+    doomuwad = FindWadInDir(doomwaddir, "doomu.wad");
+    doomwad = FindWadInDir(doomwaddir, "doom.wad");
+    doom1wad = FindWadInDir(doomwaddir, "doom1.wad");
+    plutoniawad = FindWadInDir(doomwaddir, "plutonia.wad");
+    tntwad = FindWadInDir(doomwaddir, "tnt.wad");
+    doom2fwad = FindWadInDir(doomwaddir, "doom2f.wad");
 
     home = getenv("HOME");
     if (!home)
@@ -655,7 +691,7 @@ void IdentifyVersion (void)
 	return;
     }
 
-    if ( !access (doom2fwad,R_OK) )
+    if ( doom2fwad )
     {
 	gamemode = commercial;
 	// C'est ridicule!
@@ -666,42 +702,42 @@ void IdentifyVersion (void)
 	return;
     }
 
-    if ( !access (doom2wad,R_OK) )
+    if ( doom2wad )
     {
 	gamemode = commercial;
 	D_AddFile (doom2wad);
 	return;
     }
 
-    if ( !access (plutoniawad, R_OK ) )
+    if ( plutoniawad )
     {
       gamemode = commercial;
       D_AddFile (plutoniawad);
       return;
     }
 
-    if ( !access ( tntwad, R_OK ) )
+    if ( tntwad )
     {
       gamemode = commercial;
       D_AddFile (tntwad);
       return;
     }
 
-    if ( !access (doomuwad,R_OK) )
+    if ( doomuwad )
     {
       gamemode = retail;
       D_AddFile (doomuwad);
       return;
     }
 
-    if ( !access (doomwad,R_OK) )
+    if ( doomwad )
     {
       gamemode = registered;
       D_AddFile (doomwad);
       return;
     }
 
-    if ( !access (doom1wad,R_OK) )
+    if ( doom1wad )
     {
       gamemode = shareware;
       D_AddFile (doom1wad);
@@ -1019,6 +1055,7 @@ void D_DoomMain (void)
 
     printf ("W_Init: Init WADfiles.\n");
     W_InitMultipleFiles (wadfiles);
+    PrintSelectedIWADInfo();
     
 
     // Check for -file in shareware

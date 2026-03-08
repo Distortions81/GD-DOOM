@@ -62,6 +62,7 @@ lumpinfo_t*		lumpinfo;
 int			numlumps;
 
 void**			lumpcache;
+char*			selectediwad;
 
 
 #define strcmpi	strcasecmp
@@ -193,6 +194,10 @@ void W_AddFile (char *filename)
 	    
 	    // ???modifiedgame = true;		
 	}
+	else if (!selectediwad)
+	{
+	    selectediwad = filename;
+	}
 	header.numlumps = LONG(header.numlumps);
 	header.infotableofs = LONG(header.infotableofs);
 	length = header.numlumps*sizeof(filelump_t);
@@ -295,6 +300,7 @@ void W_InitMultipleFiles (char** filenames)
     
     // open all the files, load headers, and count lumps
     numlumps = 0;
+    selectediwad = NULL;
 
     // will be realloced as lumps are added
     lumpinfo = malloc(1);	
@@ -313,6 +319,11 @@ void W_InitMultipleFiles (char** filenames)
 	I_Error ("Couldn't allocate lumpcache");
 
     memset (lumpcache,0, size);
+}
+
+char* W_SelectedIWADPath (void)
+{
+    return selectediwad;
 }
 
 
@@ -573,5 +584,3 @@ void W_Profile (void)
     }
     fclose (f);
 }
-
-

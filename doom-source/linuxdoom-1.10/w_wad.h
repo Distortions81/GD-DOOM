@@ -65,6 +65,7 @@ typedef struct
 extern	void**		lumpcache;
 extern	lumpinfo_t*	lumpinfo;
 extern	int		numlumps;
+extern	char*		selectediwad;
 
 void    W_InitMultipleFiles (char** filenames);
 void    W_Reload (void);
@@ -77,6 +78,7 @@ void    W_ReadLump (int lump, void *dest);
 
 void*	W_CacheLumpNum (int lump, int tag);
 void*	W_CacheLumpName (char* name, int tag);
+char*	W_SelectedIWADPath (void);
 
 
 
