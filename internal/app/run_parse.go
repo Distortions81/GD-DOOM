@@ -67,7 +67,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMouseLook := true
 	defaultMouseLookSpeed := 2.0
 	defaultKeyboardTurnSpeed := 1.0
-	defaultMusicVolume := 1.0
+	defaultMusicVolume := 0.5
 	defaultMUSPanMax := 0.8
 	defaultOPLVolume := 1.25
 	defaultSFXVolume := 0.5
@@ -2238,6 +2238,10 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		"M_PAUSE",
 		"M_NEWG", "M_SKILL", "M_JKILL", "M_ROUGH", "M_HURT", "M_ULTRA", "M_NMARE",
 		"M_EPISOD", "M_EPI1", "M_EPI2", "M_EPI3", "M_EPI4",
+		"M_OPTTTL", "M_ENDGAM", "M_MESSG", "M_DETAIL", "M_SCRNSZ", "M_MSENS",
+		"M_SVOL", "M_SFXVOL", "M_MUSVOL",
+		"M_GDHIGH", "M_GDLOW", "M_MSGON", "M_MSGOFF",
+		"M_THERML", "M_THERMM", "M_THERMR", "M_THERMO",
 	}
 	out := make(map[string]automap.WallTexture, len(names))
 	for _, name := range names {

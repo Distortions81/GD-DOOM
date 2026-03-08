@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"image/color"
+	"math"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"gddoom/internal/mapdata"
@@ -20,7 +20,6 @@ type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapda
 
 const (
 	bootSplashHoldTics = 2 * doomTicsPerSecond
-	bootTotalSteps     = 9
 	meltVirtualH       = 200
 	quantizeLUTW       = 256
 	quantizeLUTH       = 16
@@ -107,6 +106,8 @@ const (
 	frontendModeNone frontendMode = iota
 	frontendModeTitle
 	frontendModeReadThis
+	frontendModeOptions
+	frontendModeSound
 	frontendModeEpisode
 	frontendModeSkill
 )
@@ -116,6 +117,8 @@ type frontendState struct {
 	active           bool
 	menuActive       bool
 	itemOn           int
+	optionsOn        int
+	soundOn          int
 	episodeOn        int
 	selectedEpisode  int
 	skillOn          int
@@ -132,12 +135,6 @@ type quitPromptState struct {
 	active       bool
 	lines        []string
 	exitDelayTic int
-}
-
-type bootAsyncState struct {
-	g           *game
-	musicPlayer *music.ChunkPlayer
-	musicDriver *music.Driver
 }
 
 const (
@@ -185,14 +182,6 @@ type sessionGame struct {
 	frontend        frontendState
 	quitPrompt      quitPromptState
 	quitMessageSeq  int
-	bootInitPending bool
-	bootFrameDrawn  bool
-	bootStarted     bool
-	bootDone        atomic.Bool
-	bootStatus      atomic.Value // string
-	bootStep        atomic.Int32
-	bootErr         atomic.Value // string
-	bootState       atomic.Pointer[bootAsyncState]
 }
 
 const quitPromptExitDelayTics = 53
@@ -257,9 +246,11 @@ type sessionPersistentSettings struct {
 	detailLevel             int
 	rotateView              bool
 	mouseLook               bool
+	mouseLookSpeed          float64
 	musicVolume             float64
 	oplVolume               float64
 	sfxVolume               float64
+	hudMessagesEnabled      bool
 	alwaysRun               bool
 	autoWeaponSwitch        bool
 	lineColorMode           string
@@ -373,9 +364,11 @@ func (sg *sessionGame) capturePersistentSettings() {
 		detailLevel:             g.detailLevel,
 		rotateView:              g.rotateView,
 		mouseLook:               g.opts.MouseLook,
+		mouseLookSpeed:          g.opts.MouseLookSpeed,
 		musicVolume:             g.opts.MusicVolume,
 		oplVolume:               g.opts.OPLVolume,
 		sfxVolume:               g.opts.SFXVolume,
+		hudMessagesEnabled:      g.hudMessagesEnabled,
 		alwaysRun:               g.alwaysRun,
 		autoWeaponSwitch:        g.autoWeaponSwitch,
 		lineColorMode:           g.opts.LineColorMode,
@@ -394,6 +387,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 
 func (sg *sessionGame) applyPersistentSettingsToOptions() {
 	sg.opts.MouseLook = sg.settings.mouseLook
+	sg.opts.MouseLookSpeed = sg.settings.mouseLookSpeed
 	sg.opts.MusicVolume = clampVolume(sg.settings.musicVolume)
 	sg.opts.OPLVolume = clampOPLVolume(sg.settings.oplVolume)
 	sg.opts.SFXVolume = clampVolume(sg.settings.sfxVolume)
@@ -411,6 +405,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.detailLevel = clampDetailLevelForMode(s.detailLevel, g.opts.SourcePortMode)
 	g.rotateView = s.rotateView
 	g.opts.MouseLook = s.mouseLook
+	g.opts.MouseLookSpeed = s.mouseLookSpeed
 	g.opts.MusicVolume = clampVolume(s.musicVolume)
 	g.opts.OPLVolume = clampOPLVolume(s.oplVolume)
 	g.opts.SFXVolume = clampVolume(s.sfxVolume)
@@ -425,6 +420,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	}
 	g.alwaysRun = s.alwaysRun
 	g.autoWeaponSwitch = s.autoWeaponSwitch
+	g.hudMessagesEnabled = s.hudMessagesEnabled
 	g.opts.LineColorMode = s.lineColorMode
 	g.opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(s.thingRenderMode, g.opts.SourcePortMode)
 	g.showLegend = s.showLegend
@@ -438,6 +434,52 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.parity.iddt = clampIDDT(s.iddt)
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
+}
+
+func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
+	if sg == nil {
+		return
+	}
+	prevMusic := clampVolume(sg.settings.musicVolume)
+	sg.settings.detailLevel = clampDetailLevelForMode(s.DetailLevel, sg.opts.SourcePortMode)
+	sg.settings.mouseLook = s.MouseLook
+	sg.settings.musicVolume = clampVolume(s.MusicVolume)
+	sg.settings.oplVolume = clampOPLVolume(s.OPLVolume)
+	sg.settings.sfxVolume = clampVolume(s.SFXVolume)
+	sg.settings.alwaysRun = s.AlwaysRun
+	sg.settings.autoWeaponSwitch = s.AutoWeaponSwitch
+	if !sg.opts.SourcePortMode {
+		sg.settings.lineColorMode = "parity"
+	} else {
+		sg.settings.lineColorMode = s.LineColorMode
+	}
+	sg.settings.thingRenderMode = normalizeSourcePortThingRenderMode(s.ThingRenderMode, sg.opts.SourcePortMode)
+	sg.settings.gammaLevel = clampGamma(s.GammaLevel)
+	sg.settings.crtEnabled = s.CRTEffect && sg.opts.KageShader
+	sg.opts.MusicVolume = sg.settings.musicVolume
+	sg.opts.OPLVolume = sg.settings.oplVolume
+	sg.opts.SFXVolume = sg.settings.sfxVolume
+	if sg.menuSfx != nil {
+		sg.menuSfx.volume = sg.settings.sfxVolume
+	}
+	if sg.musicDriver != nil {
+		sg.musicDriver.SetOutputGain(sg.opts.OPLVolume)
+	}
+	nextMusic := sg.settings.musicVolume
+	switch {
+	case nextMusic <= 0:
+		sg.stopAndClearMusic()
+	case prevMusic <= 0:
+		if sg.frontend.active {
+			sg.playTitleMusic()
+		} else if sg.g != nil && sg.g.m != nil {
+			sg.playMusicForMap(sg.g.m.Name)
+		} else {
+			sg.playMusicForMap(sg.current)
+		}
+	case sg.musicPlayer != nil:
+		_ = sg.musicPlayer.SetVolume(nextMusic)
+	}
 }
 
 func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
@@ -527,6 +569,9 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 		return
 	}
 	sg.stopAndClearMusic()
+	if clampVolume(sg.opts.MusicVolume) <= 0 {
+		return
+	}
 	data, err := sg.opts.MapMusicLoader(string(name))
 	if err != nil || len(data) == 0 {
 		return
@@ -584,110 +629,23 @@ func (sg *sessionGame) streamMapMusic(stop <-chan struct{}, stream *music.Stream
 	}
 }
 
-func (sg *sessionGame) finishBootInit() {
-	if sg == nil || !sg.bootInitPending {
+func (sg *sessionGame) initSession() {
+	if sg == nil {
 		return
 	}
-	sg.setBootProgress(6, "attaching game state")
-	state := sg.bootState.Load()
-	if state != nil {
-		if sg.g == nil {
-			sg.g = state.g
-		}
-		if sg.musicPlayer == nil {
-			sg.musicPlayer = state.musicPlayer
-		}
-		if sg.musicDriver == nil {
-			sg.musicDriver = state.musicDriver
-		}
-	}
-	sg.bootInitPending = false
-	if sg.g == nil {
-		sg.g = newGame(sg.bootMap, sg.opts)
-	}
-	sg.setBootProgress(7, "initializing graphics")
+	sg.g = newGame(sg.bootMap, sg.opts)
 	sg.g.initSkyLayerShader()
-	if sg.musicPlayer == nil || sg.musicDriver == nil {
-		sg.initMusicPlayback()
-	}
-	sg.setBootProgress(8, "starting title frontend")
+	sg.initMusicPlayback()
 	if sg.shouldStartInFrontend() {
 		sg.startFrontend()
 	} else {
 		sg.playMusicForMap(sg.current)
 	}
-	sg.setBootProgress(9, "applying startup settings")
 	sg.capturePersistentSettings()
 	if sg.shouldShowBootSplash() {
 		sg.queueTransition(transitionBoot, bootSplashHoldTics)
 	}
 	sg.initFaithfulPalettePost()
-}
-
-func (sg *sessionGame) setBootStatus(status string) {
-	if sg == nil {
-		return
-	}
-	sg.bootStatus.Store(status)
-}
-
-func (sg *sessionGame) setBootProgress(step int32, status string) {
-	if sg == nil {
-		return
-	}
-	if step < 0 {
-		step = 0
-	}
-	if step > bootTotalSteps {
-		step = bootTotalSteps
-	}
-	sg.bootStep.Store(step)
-	sg.setBootStatus(fmt.Sprintf("[%d/%d] %s", step, bootTotalSteps, status))
-}
-
-func (sg *sessionGame) bootStatusText() string {
-	if sg == nil {
-		return ""
-	}
-	v := sg.bootStatus.Load()
-	s, _ := v.(string)
-	return s
-}
-
-func (sg *sessionGame) startBootAsync() {
-	if sg == nil || sg.bootStarted {
-		return
-	}
-	sg.bootStarted = true
-	sg.setBootProgress(2, "starting async worker")
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				sg.bootErr.Store(fmt.Sprintf("panic: %v", r))
-			}
-			if strings.TrimSpace(sg.bootStatusText()) == "" {
-				sg.setBootProgress(7, "async phase complete")
-			}
-			sg.bootDone.Store(true)
-		}()
-		sg.setBootProgress(3, "building game state")
-		state := &bootAsyncState{
-			g: newGame(sg.bootMap, sg.opts),
-		}
-		sg.setBootProgress(4, "initializing music backend")
-		if sg.opts.MapMusicLoader != nil {
-			if p, err := music.NewChunkPlayer(); err == nil {
-				state.musicPlayer = p
-				_ = state.musicPlayer.SetVolume(clampVolume(sg.opts.MusicVolume))
-				d := music.NewDriver(state.musicPlayer.SampleRate(), sg.opts.MusicPatchBank)
-				d.SetMUSPanMax(sg.opts.MUSPanMax)
-				d.SetOutputGain(sg.opts.OPLVolume)
-				state.musicDriver = d
-			}
-		}
-		sg.bootState.Store(state)
-		sg.setBootProgress(5, "async phase complete")
-	}()
 }
 
 var frontendMainMenuNames = [...]string{
@@ -713,6 +671,19 @@ var frontendEpisodeMenuNames = map[int]string{
 	3: "M_EPI3",
 	4: "M_EPI4",
 }
+
+var frontendOptionsMenuNames = [...]string{
+	"M_ENDGAM",
+	"M_MESSG",
+	"M_DETAIL",
+	"",
+	"",
+	"M_MSENS",
+	"",
+	"M_SVOL",
+}
+
+var frontendOptionsSelectableRows = [...]int{0, 1, 2, 5, 7}
 
 func (sg *sessionGame) shouldStartInFrontend() bool {
 	if sg == nil {
@@ -741,11 +712,14 @@ func (sg *sessionGame) playTitleMusic() {
 	if sg == nil || sg.musicPlayer == nil || sg.musicDriver == nil || sg.opts.TitleMusicLoader == nil {
 		return
 	}
+	sg.stopAndClearMusic()
+	if clampVolume(sg.opts.MusicVolume) <= 0 {
+		return
+	}
 	data, err := sg.opts.TitleMusicLoader()
 	if err != nil || len(data) == 0 {
 		return
 	}
-	sg.stopAndClearMusic()
 	stream, err := music.NewMUSStreamRenderer(sg.musicDriver, data)
 	if err != nil {
 		return
@@ -867,6 +841,7 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	if sg == nil || sg.g == nil {
 		return
 	}
+	sg.capturePersistentSettings()
 	startMap := string(sg.bootMap.Name)
 	if sg.opts.NewGameLoader != nil {
 		startMap = "MAP01"
@@ -885,7 +860,6 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.stopAndClearMusic()
 	sg.g.opts.SkillLevel = normalizeSkillLevel(skill)
 	sg.g = newGame(cloneMapForRestart(sg.bootMap), sg.g.opts)
-	sg.capturePersistentSettings()
 	sg.applyPersistentSettingsToGame(sg.g)
 	sg.current = sg.g.m.Name
 	sg.currentTemplate = cloneMapForRestart(sg.g.m)
@@ -964,6 +938,214 @@ func (sg *sessionGame) readThisPageName(page int) string {
 	return pages[page]
 }
 
+func frontendNextSelectableOptionRow(cur, dir int) int {
+	rows := frontendOptionsSelectableRows[:]
+	if len(rows) == 0 {
+		return 0
+	}
+	idx := 0
+	for i, row := range rows {
+		if row == cur {
+			idx = i
+			break
+		}
+	}
+	idx = (idx + dir + len(rows)) % len(rows)
+	return rows[idx]
+}
+
+func clampFrontendMouseLookSpeed(v float64) float64 {
+	if v < 0.5 {
+		return 0.5
+	}
+	if v > 8.0 {
+		return 8.0
+	}
+	return v
+}
+
+func frontendMouseSensitivitySpeedForDot(dot int) float64 {
+	if dot < 0 {
+		dot = 0
+	}
+	if dot > 9 {
+		dot = 9
+	}
+	const minSpeed = 0.5
+	const maxSpeed = 8.0
+	if dot == 0 {
+		return minSpeed
+	}
+	if dot == 9 {
+		return maxSpeed
+	}
+	return minSpeed * math.Pow(maxSpeed/minSpeed, float64(dot)/9.0)
+}
+
+func frontendMouseSensitivityDot(speed float64) int {
+	speed = clampFrontendMouseLookSpeed(speed)
+	const minSpeed = 0.5
+	const maxSpeed = 8.0
+	dot := int(math.Round(math.Log(speed/minSpeed) / math.Log(maxSpeed/minSpeed) * 9.0))
+	if dot < 0 {
+		return 0
+	}
+	if dot > 9 {
+		return 9
+	}
+	return dot
+}
+
+func frontendNextMouseSensitivity(speed float64, dir int) float64 {
+	if dir == 0 {
+		return clampFrontendMouseLookSpeed(speed)
+	}
+	dot := frontendMouseSensitivityDot(speed) + dir
+	if dot < 0 {
+		dot = 0
+	}
+	if dot > 9 {
+		dot = 9
+	}
+	return frontendMouseSensitivitySpeedForDot(dot)
+}
+
+func frontendVolumeDot(v float64) int {
+	dot := int(math.Round(clampVolume(v) * 15.0))
+	if dot < 0 {
+		return 0
+	}
+	if dot > 15 {
+		return 15
+	}
+	return dot
+}
+
+func frontendMessagesPatch(enabled bool) string {
+	if enabled {
+		return "M_MSGON"
+	}
+	return "M_MSGOFF"
+}
+
+func frontendDetailPatch(low bool) string {
+	if low {
+		return "M_GDLOW"
+	}
+	return "M_GDHIGH"
+}
+
+func (sg *sessionGame) frontendDetailLow() bool {
+	if sg == nil || sg.g == nil {
+		return false
+	}
+	if sg.g.opts.SourcePortMode {
+		return sg.g.sourcePortDetailDivisor() > 1
+	}
+	return sg.g.lowDetailMode()
+}
+
+func (sg *sessionGame) frontendSourcePortDetailLabel() string {
+	if sg == nil || sg.g == nil {
+		return "FULL"
+	}
+	switch sg.g.sourcePortDetailDivisor() {
+	case 1:
+		return "FULL"
+	case 2:
+		return "1/2"
+	case 3:
+		return "1/3"
+	case 4:
+		return "1/4"
+	default:
+		return fmt.Sprintf("1/%d", sg.g.sourcePortDetailDivisor())
+	}
+}
+
+func (sg *sessionGame) frontendChangeMessages() {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	sg.g.hudMessagesEnabled = !sg.g.hudMessagesEnabled
+	sg.settings.hudMessagesEnabled = sg.g.hudMessagesEnabled
+	if sg.g.hudMessagesEnabled {
+		sg.frontendStatus("MESSAGES ON", doomTicsPerSecond)
+	} else {
+		sg.frontendStatus("MESSAGES OFF", doomTicsPerSecond)
+	}
+}
+
+func (sg *sessionGame) frontendChangeDetail() {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	if sg.g.opts.SourcePortMode {
+		sg.g.cycleSourcePortDetailLevel()
+	} else {
+		sg.g.cycleDetailLevel()
+	}
+	sg.settings.detailLevel = sg.g.detailLevel
+	sg.opts.InitialDetailLevel = sg.g.detailLevel
+}
+
+func (sg *sessionGame) frontendChangeMouseSensitivity(dir int) {
+	if sg == nil || sg.g == nil || dir == 0 {
+		return
+	}
+	next := frontendNextMouseSensitivity(sg.g.opts.MouseLookSpeed, dir)
+	if next == sg.g.opts.MouseLookSpeed {
+		return
+	}
+	sg.g.opts.MouseLookSpeed = next
+	sg.opts.MouseLookSpeed = next
+	sg.settings.mouseLookSpeed = next
+	sg.frontendStatus(fmt.Sprintf("MOUSE SENSITIVITY %.2f", next), doomTicsPerSecond)
+}
+
+func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
+	if sg == nil || sg.g == nil || dir == 0 {
+		return
+	}
+	prev := clampVolume(sg.g.opts.MusicVolume)
+	next := clampVolume(sg.g.opts.MusicVolume + float64(dir)*(1.0/15.0))
+	if next == sg.g.opts.MusicVolume {
+		return
+	}
+	sg.g.opts.MusicVolume = next
+	sg.opts.MusicVolume = next
+	sg.settings.musicVolume = next
+	switch {
+	case next <= 0:
+		sg.stopAndClearMusic()
+	case prev <= 0:
+		if sg.frontend.active {
+			sg.playTitleMusic()
+		} else {
+			sg.playMusicForMap(sg.current)
+		}
+	case sg.musicPlayer != nil:
+		_ = sg.musicPlayer.SetVolume(next)
+	}
+	sg.g.publishRuntimeSettingsIfChanged()
+}
+
+func (sg *sessionGame) frontendChangeSFXVolume(dir int) {
+	if sg == nil || sg.g == nil || dir == 0 {
+		return
+	}
+	next := clampVolume(sg.g.opts.SFXVolume + float64(dir)*(1.0/15.0))
+	if next == sg.g.opts.SFXVolume {
+		return
+	}
+	sg.g.opts.SFXVolume = next
+	sg.opts.SFXVolume = next
+	sg.settings.sfxVolume = next
+	sg.menuSfx = NewMenuSoundPlayer(sg.opts.SoundBank, next)
+	sg.g.publishRuntimeSettingsIfChanged()
+	sg.playMenuMoveSound()
+}
+
 func (sg *sessionGame) tickFrontend() error {
 	if sg == nil || !sg.frontend.active {
 		return nil
@@ -995,6 +1177,81 @@ func (sg *sessionGame) tickFrontend() error {
 			} else {
 				sg.closeReadThis()
 				sg.playMenuBackSound()
+			}
+		}
+		return nil
+	case frontendModeSound:
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			f.mode = frontendModeOptions
+			sg.playMenuBackSound()
+			return nil
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			f.soundOn ^= 1
+			sg.playMenuMoveSound()
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			if f.soundOn == 0 {
+				sg.frontendChangeSFXVolume(-1)
+			} else {
+				sg.frontendChangeMusicVolume(-1)
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			if f.soundOn == 0 {
+				sg.frontendChangeSFXVolume(1)
+			} else {
+				sg.frontendChangeMusicVolume(1)
+			}
+		}
+		return nil
+	case frontendModeOptions:
+		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+			f.mode = frontendModeTitle
+			f.menuActive = true
+			sg.playMenuBackSound()
+			return nil
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			f.optionsOn = frontendNextSelectableOptionRow(f.optionsOn, -1)
+			sg.playMenuMoveSound()
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			f.optionsOn = frontendNextSelectableOptionRow(f.optionsOn, 1)
+			sg.playMenuMoveSound()
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			switch f.optionsOn {
+			case 2:
+				sg.frontendChangeDetail()
+			case 5:
+				sg.frontendChangeMouseSensitivity(-1)
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			switch f.optionsOn {
+			case 2:
+				sg.frontendChangeDetail()
+			case 5:
+				sg.frontendChangeMouseSensitivity(1)
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			switch f.optionsOn {
+			case 0:
+				sg.frontendStatus("NOT IN GAME", doomTicsPerSecond)
+			case 1:
+				sg.frontendChangeMessages()
+				sg.playMenuConfirmSound()
+			case 2:
+				sg.frontendChangeDetail()
+				sg.playMenuConfirmSound()
+			case 5:
+				sg.frontendChangeMouseSensitivity(1)
+				sg.playMenuConfirmSound()
+			case 7:
+				f.mode = frontendModeSound
+				sg.playMenuConfirmSound()
 			}
 		}
 		return nil
@@ -1086,10 +1343,13 @@ func (sg *sessionGame) tickFrontend() error {
 				} else {
 					f.mode = frontendModeSkill
 				}
-			case 1, 2, 3:
-				sg.frontendStatus("MENU ITEM NOT WIRED YET", doomTicsPerSecond*2)
+			case 1:
+				f.mode = frontendModeOptions
+				f.optionsOn = frontendOptionsSelectableRows[0]
 			case 4:
 				sg.openReadThis(false)
+			case 2, 3:
+				sg.frontendStatus("MENU ITEM NOT WIRED YET", doomTicsPerSecond*2)
 			case 5:
 				sg.requestQuitPrompt()
 			}
@@ -1139,11 +1399,17 @@ func NewSession(m *mapdata.Map, opts Options, nextMap NextMapFunc) *Session {
 		currentTemplate: cloneMapForRestart(m),
 		opts:            opts,
 		nextMap:         nextMap,
-		bootInitPending: true,
+	}
+	if prev := opts.OnRuntimeSettingsChanged; true {
+		sg.opts.OnRuntimeSettingsChanged = func(s RuntimeSettings) {
+			sg.applyRuntimeSettings(s)
+			if prev != nil {
+				prev(s)
+			}
+		}
 	}
 	sg.menuSfx = NewMenuSoundPlayer(opts.SoundBank, opts.SFXVolume)
-	sg.setBootProgress(1, "waiting for first frame")
-	sg.bootErr.Store("")
+	sg.initSession()
 	ebiten.SetTPS(doomTicsPerSecond)
 	ebiten.SetVsyncEnabled(!opts.NoVsync)
 	if opts.SourcePortMode {
@@ -1219,20 +1485,6 @@ func (s *Session) Options() Options {
 }
 
 func (sg *sessionGame) Update() error {
-	if sg.bootInitPending {
-		if !sg.bootStarted || !sg.bootDone.Load() {
-			return nil
-		}
-		if msg, _ := sg.bootErr.Load().(string); strings.TrimSpace(msg) != "" {
-			sg.err = fmt.Errorf("boot init failed: %s", msg)
-			return ebiten.Termination
-		}
-		sg.finishBootInit()
-		if sg.g == nil {
-			sg.err = fmt.Errorf("boot init failed: no game instance")
-			return ebiten.Termination
-		}
-	}
 	if sg.quitPrompt.active {
 		return sg.handleQuitPromptInput()
 	}
@@ -1328,30 +1580,8 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	if sg.g != nil {
 		sg.g.quitPromptActive = sg.quitPrompt.active
 	}
-	if sg.bootInitPending {
+	if sg.g == nil {
 		screen.Fill(color.Black)
-		msg := "loading..."
-		if st := strings.TrimSpace(sg.bootStatusText()); st != "" {
-			msg += " " + st
-		}
-		const scale = 3.0
-		const glyphW = 7
-		const glyphH = 13
-		msgW := len(msg) * glyphW
-		msgH := glyphH
-		label := ebiten.NewImage(max(msgW, 1), max(msgH, 1))
-		ebitenutil.DebugPrintAt(label, msg, 0, 0)
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Scale(scale, scale)
-		x := (float64(sw) - float64(msgW)*scale) * 0.5
-		y := (float64(sh) - float64(msgH)*scale) * 0.5
-		op.GeoM.Translate(x, y)
-		screen.DrawImage(label, op)
-		sg.bootFrameDrawn = true
-		if !sg.bootStarted {
-			sg.setBootProgress(2, "starting async worker")
-			sg.startBootAsync()
-		}
 		return
 	}
 	tw, th := sg.transitionSurfaceSize(sw, sh)
@@ -1875,8 +2105,22 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			sg.drawIntermissionText(screen, prompt, 160, 186, scale, ox, oy, true)
 		}
 		return
+	case frontendModeSound:
+		sg.drawFrontendBackdrop(screen, true)
+		if sg.quitPrompt.active {
+			return
+		}
+		sg.drawFrontendSoundMenu(screen, scale, ox, oy)
+		return
+	case frontendModeOptions:
+		sg.drawFrontendBackdrop(screen, true)
+		if sg.quitPrompt.active {
+			return
+		}
+		sg.drawFrontendOptionsMenu(screen, scale, ox, oy)
+		return
 	case frontendModeEpisode:
-		sg.drawFrontendBackdrop(screen, scale, ox, oy)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.active {
 			return
 		}
@@ -1891,7 +2135,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.episodeOn*16, scale, ox, oy)
 		return
 	case frontendModeSkill:
-		sg.drawFrontendBackdrop(screen, scale, ox, oy)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.active {
 			return
 		}
@@ -1903,7 +2147,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.skillOn*16, scale, ox, oy)
 		return
 	default:
-		sg.drawFrontendBackdrop(screen, scale, ox, oy)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.active {
 			return
 		}
@@ -1922,18 +2166,85 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 	}
 }
 
-func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, scale, ox, oy float64) {
+func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool) {
 	if sg == nil || screen == nil {
 		return
 	}
 	screen.Fill(color.Black)
+	backdropTint := color.RGBA{R: 8, G: 8, B: 8, A: 191}
 	img, _, ok := sg.menuPatch("M_DOOM")
-	if !ok || img == nil {
-		ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	if !showLogo || !ok || img == nil {
+		ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), backdropTint)
 		return
 	}
 	drawCenteredIntegerScaledLogo(screen, img)
-	ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), backdropTint)
+}
+
+func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, oy float64) {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	const menuX = 60
+	const menuY = 37
+	const lineHeight = 16
+	_ = sg.drawMenuPatch(screen, "M_OPTTTL", 108, 15, scale, ox, oy, false)
+	_ = sg.drawMenuPatch(screen, frontendMessagesPatch(sg.g.hudMessagesEnabled), menuX+120, menuY+1*lineHeight, scale, ox, oy, false)
+	if sg.g.opts.SourcePortMode {
+		sg.g.drawHUTextAt(screen, sg.frontendSourcePortDetailLabel(), ox+float64(menuX+175)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.6, scale*1.6)
+	} else {
+		_ = sg.drawMenuPatch(screen, frontendDetailPatch(sg.frontendDetailLow()), menuX+175, menuY+2*lineHeight, scale, ox, oy, false)
+	}
+	sg.drawFrontendThermo(screen, menuX, menuY+6*lineHeight, 10, frontendMouseSensitivityDot(sg.g.opts.MouseLookSpeed), scale, ox, oy)
+	for i, name := range frontendOptionsMenuNames {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		_ = sg.drawMenuPatch(screen, name, menuX, menuY+i*lineHeight, scale, ox, oy, false)
+	}
+	sg.drawMenuSkull(screen, menuX-32, menuY+sg.frontend.optionsOn*lineHeight, scale, ox, oy)
+}
+
+func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy float64) {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	const menuX = 80
+	const menuY = 64
+	const lineHeight = 16
+	_ = sg.drawMenuPatch(screen, "M_SVOL", 60, 38, scale, ox, oy, false)
+	sg.drawFrontendThermo(screen, menuX, menuY+1*lineHeight, 16, frontendVolumeDot(sg.g.opts.SFXVolume), scale, ox, oy)
+	sg.drawFrontendThermo(screen, menuX, menuY+3*lineHeight, 16, frontendVolumeDot(sg.g.opts.MusicVolume), scale, ox, oy)
+	_ = sg.drawMenuPatch(screen, "M_SFXVOL", menuX, menuY, scale, ox, oy, false)
+	_ = sg.drawMenuPatch(screen, "M_MUSVOL", menuX, menuY+2*lineHeight, scale, ox, oy, false)
+	skullY := menuY
+	if sg.frontend.soundOn != 0 {
+		skullY += 2 * lineHeight
+	}
+	sg.drawMenuSkull(screen, menuX-32, skullY, scale, ox, oy)
+}
+
+func (sg *sessionGame) drawFrontendThermo(screen *ebiten.Image, x, y, width, dot int, scale, ox, oy float64) {
+	if sg == nil {
+		return
+	}
+	if width < 1 {
+		width = 1
+	}
+	if dot < 0 {
+		dot = 0
+	}
+	if dot > width-1 {
+		dot = width - 1
+	}
+	if !sg.drawMenuPatch(screen, "M_THERML", x, y, scale, ox, oy, false) {
+		return
+	}
+	for i := 0; i < width; i++ {
+		_ = sg.drawMenuPatch(screen, "M_THERMM", x+8+i*8, y, scale, ox, oy, false)
+	}
+	_ = sg.drawMenuPatch(screen, "M_THERMR", x+8+width*8, y, scale, ox, oy, false)
+	_ = sg.drawMenuPatch(screen, "M_THERMO", x+8+dot*8, y, scale, ox, oy, false)
 }
 
 func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {

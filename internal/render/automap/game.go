@@ -320,6 +320,8 @@ type game struct {
 	pauseMenuActive           bool
 	pauseMenuMode             int
 	pauseMenuItemOn           int
+	pauseMenuOptionsOn        int
+	pauseMenuSoundOn          int
 	pauseMenuEpisodeOn        int
 	pauseMenuSelectedEpisode  int
 	pauseMenuSkillOn          int
@@ -2080,6 +2082,8 @@ var inGamePauseMenuNames = [...]string{
 
 const (
 	pauseMenuModeRoot = iota
+	pauseMenuModeOptions
+	pauseMenuModeSound
 	pauseMenuModeEpisode
 	pauseMenuModeSkill
 )
@@ -2100,6 +2104,8 @@ func (g *game) togglePauseMenu() {
 	if g.pauseMenuActive {
 		g.pauseMenuMode = pauseMenuModeRoot
 		g.pauseMenuItemOn = 0
+		g.pauseMenuOptionsOn = frontendOptionsSelectableRows[0]
+		g.pauseMenuSoundOn = 0
 		g.pauseMenuEpisodeOn = 0
 		g.pauseMenuSkillOn = max(0, normalizeSkillLevel(g.opts.SkillLevel)-1)
 	} else {
@@ -2140,6 +2146,29 @@ func (g *game) tickPauseMenu() {
 		return
 	}
 	switch g.pauseMenuMode {
+	case pauseMenuModeOptions:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			g.pauseMenuOptionsOn = frontendNextSelectableOptionRow(g.pauseMenuOptionsOn, -1)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			g.pauseMenuOptionsOn = frontendNextSelectableOptionRow(g.pauseMenuOptionsOn, 1)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			g.adjustPauseOption(-1)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			g.adjustPauseOption(1)
+		}
+	case pauseMenuModeSound:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			g.pauseMenuSoundOn ^= 1
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			g.adjustPauseSound(-1)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			g.adjustPauseSound(1)
+		}
 	case pauseMenuModeEpisode:
 		if n := len(g.availableEpisodeChoices()); n > 0 {
 			if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
@@ -2174,6 +2203,12 @@ func (g *game) activatePauseMenuItem() {
 		return
 	}
 	switch g.pauseMenuMode {
+	case pauseMenuModeOptions:
+		g.activatePauseOptionsItem()
+		return
+	case pauseMenuModeSound:
+		g.pauseMenuMode = pauseMenuModeOptions
+		return
 	case pauseMenuModeEpisode:
 		episodes := g.availableEpisodeChoices()
 		if len(episodes) == 0 {
@@ -2199,7 +2234,9 @@ func (g *game) activatePauseMenuItem() {
 		} else {
 			g.pauseMenuMode = pauseMenuModeSkill
 		}
-	case 1, 2, 3:
+	case 1:
+		g.pauseMenuMode = pauseMenuModeOptions
+	case 2, 3:
 		g.pauseMenuStatus = "MENU ITEM NOT WIRED YET"
 		g.pauseMenuStatusTics = doomTicsPerSecond * 2
 	case 4:
@@ -2254,6 +2291,87 @@ func (g *game) beginNewGameFromPauseMenu() {
 	g.pauseMenuActive = false
 	g.paused = false
 	g.pauseMenuMode = pauseMenuModeRoot
+}
+
+func (g *game) pauseSourcePortDetailLabel() string {
+	if g == nil {
+		return "FULL"
+	}
+	switch g.sourcePortDetailDivisor() {
+	case 1:
+		return "FULL"
+	case 2:
+		return "1/2"
+	case 3:
+		return "1/3"
+	case 4:
+		return "1/4"
+	default:
+		return fmt.Sprintf("1/%d", g.sourcePortDetailDivisor())
+	}
+}
+
+func (g *game) adjustPauseOption(dir int) {
+	if g == nil || dir == 0 {
+		return
+	}
+	switch g.pauseMenuOptionsOn {
+	case 2:
+		if g.opts.SourcePortMode {
+			g.cycleSourcePortDetailLevel()
+		} else {
+			g.cycleDetailLevel()
+		}
+	case 5:
+		next := frontendNextMouseSensitivity(g.opts.MouseLookSpeed, dir)
+		if next != g.opts.MouseLookSpeed {
+			g.opts.MouseLookSpeed = next
+			g.publishRuntimeSettingsIfChanged()
+		}
+	}
+}
+
+func (g *game) adjustPauseSound(dir int) {
+	if g == nil || dir == 0 {
+		return
+	}
+	switch g.pauseMenuSoundOn {
+	case 0:
+		next := clampVolume(g.opts.SFXVolume + float64(dir)*(1.0/15.0))
+		if next != g.opts.SFXVolume {
+			g.opts.SFXVolume = next
+			if g.snd != nil {
+				g.snd.setSFXVolume(next)
+			}
+			g.publishRuntimeSettingsIfChanged()
+		}
+	default:
+		next := clampVolume(g.opts.MusicVolume + float64(dir)*(1.0/15.0))
+		if next != g.opts.MusicVolume {
+			g.opts.MusicVolume = next
+			g.publishRuntimeSettingsIfChanged()
+		}
+	}
+}
+
+func (g *game) activatePauseOptionsItem() {
+	if g == nil {
+		return
+	}
+	switch g.pauseMenuOptionsOn {
+	case 0:
+		g.pauseMenuStatus = "END GAME NOT WIRED YET"
+		g.pauseMenuStatusTics = doomTicsPerSecond
+	case 1:
+		g.hudMessagesEnabled = !g.hudMessagesEnabled
+		g.publishRuntimeSettingsIfChanged()
+	case 2:
+		g.adjustPauseOption(1)
+	case 5:
+		g.adjustPauseOption(1)
+	case 7:
+		g.pauseMenuMode = pauseMenuModeSound
+	}
 }
 
 func (g *game) profileLabel() string {
@@ -17687,6 +17805,29 @@ func (g *game) drawMenuPatch(screen *ebiten.Image, name string, x, y, sx, sy flo
 	return true
 }
 
+func (g *game) drawPauseThermo(screen *ebiten.Image, x, y, width, dot int, sx, sy float64) {
+	if g == nil {
+		return
+	}
+	if width < 1 {
+		width = 1
+	}
+	if dot < 0 {
+		dot = 0
+	}
+	if dot > width-1 {
+		dot = width - 1
+	}
+	if !g.drawMenuPatch(screen, "M_THERML", float64(x)*sx, float64(y)*sy, sx, sy) {
+		return
+	}
+	for i := 0; i < width; i++ {
+		_ = g.drawMenuPatch(screen, "M_THERMM", float64(x+8+i*8)*sx, float64(y)*sy, sx, sy)
+	}
+	_ = g.drawMenuPatch(screen, "M_THERMR", float64(x+8+width*8)*sx, float64(y)*sy, sx, sy)
+	_ = g.drawMenuPatch(screen, "M_THERMO", float64(x+8+dot*8)*sx, float64(y)*sy, sx, sy)
+}
+
 func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 	if !g.pauseMenuActive || g.quitPromptActive {
 		return
@@ -17695,6 +17836,27 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 	sy := float64(g.viewH) / 200.0
 	ebitenutil.DrawRect(screen, 0, 0, 320.0*sx, 200.0*sy, color.RGBA{R: 8, G: 8, B: 8, A: 128})
 	switch g.pauseMenuMode {
+	case pauseMenuModeOptions:
+		_ = g.drawMenuPatch(screen, "M_OPTTTL", 108*sx, 15*sy, sx, sy)
+		for i, name := range frontendOptionsMenuNames {
+			if strings.TrimSpace(name) == "" {
+				continue
+			}
+			_ = g.drawMenuPatch(screen, name, 60*sx, float64(37+i*16)*sy, sx, sy)
+		}
+		_ = g.drawMenuPatch(screen, frontendMessagesPatch(g.hudMessagesEnabled), float64((60+120))*sx, float64(37+1*16)*sy, sx, sy)
+		if g.opts.SourcePortMode {
+			g.drawHUTextAt(screen, g.pauseSourcePortDetailLabel(), float64((60+175))*sx, float64(37+2*16+2)*sy, sx*1.6, sy*1.6)
+		} else {
+			_ = g.drawMenuPatch(screen, frontendDetailPatch(g.lowDetailMode()), float64((60+175))*sx, float64(37+2*16)*sy, sx, sy)
+		}
+		g.drawPauseThermo(screen, 60, 37+6*16, 10, frontendMouseSensitivityDot(g.opts.MouseLookSpeed), sx, sy)
+	case pauseMenuModeSound:
+		_ = g.drawMenuPatch(screen, "M_SVOL", 60*sx, 38*sy, sx, sy)
+		g.drawPauseThermo(screen, 80, 64+1*16, 16, frontendVolumeDot(g.opts.SFXVolume), sx, sy)
+		g.drawPauseThermo(screen, 80, 64+3*16, 16, frontendVolumeDot(g.opts.MusicVolume), sx, sy)
+		_ = g.drawMenuPatch(screen, "M_SFXVOL", 80*sx, 64*sy, sx, sy)
+		_ = g.drawMenuPatch(screen, "M_MUSVOL", 80*sx, float64(64+2*16)*sy, sx, sy)
 	case pauseMenuModeEpisode:
 		_ = g.drawMenuPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
 		_ = g.drawMenuPatch(screen, "M_EPISOD", 54*sx, 38*sy, sx, sy)
@@ -17724,6 +17886,14 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		skull = "M_SKULL2"
 	}
 	switch g.pauseMenuMode {
+	case pauseMenuModeOptions:
+		_ = g.drawMenuPatch(screen, skull, 28*sx, float64(37+g.pauseMenuOptionsOn*16)*sy, sx, sy)
+	case pauseMenuModeSound:
+		skullY := 64
+		if g.pauseMenuSoundOn != 0 {
+			skullY += 2 * 16
+		}
+		_ = g.drawMenuPatch(screen, skull, 48*sx, float64(skullY)*sy, sx, sy)
 	case pauseMenuModeEpisode:
 		_ = g.drawMenuPatch(screen, skull, 16*sx, float64(63+g.pauseMenuEpisodeOn*16)*sy, sx, sy)
 	case pauseMenuModeSkill:
@@ -17795,12 +17965,8 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 	line1 := fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg)))
-	line2 := "F1 Read This"
 	sx, sy, ox, _ := g.hudTransform()
 	w := g.huTextWidth(line1)
-	if w2 := g.huTextWidth(line2); w2 > w {
-		w = w2
-	}
 	maxX := float64(g.viewW)
 	if g.opts.SourcePortMode {
 		maxX = ox + statusBaseW*sx
@@ -17810,7 +17976,6 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 		x = 4
 	}
 	g.drawHUTextAt(screen, line1, float64(x), 10*sy, sx, sy)
-	g.drawHUTextAt(screen, line2, float64(x), 24*sy, sx, sy)
 }
 
 func (g *game) huTextWidth(text string) int {

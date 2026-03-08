@@ -214,7 +214,7 @@ func (p *MenuSoundPlayer) StopAll() {
 }
 
 func (p *MenuSoundPlayer) playSample(sample PCMSample) {
-	if p == nil || p.ctx == nil || sample.SampleRate <= 0 || len(sample.Data) == 0 {
+	if p == nil || p.ctx == nil || p.volume <= 0 || sample.SampleRate <= 0 || len(sample.Data) == 0 {
 		return
 	}
 	var pcm []byte
@@ -441,7 +441,7 @@ func (s *soundSystem) playEvent(ev soundEvent) {
 }
 
 func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) {
-	if s == nil || s.ctx == nil {
+	if s == nil || s.ctx == nil || s.volume <= 0 {
 		return
 	}
 	sample, ok := s.sampleForEvent(ev)
