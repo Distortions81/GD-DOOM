@@ -481,7 +481,81 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 			return true
 		}
 	}
+	for i, th := range g.m.Things {
+		if i == moverThingIdx {
+			continue
+		}
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		if !thingTypeBlocksActorMovement(th.Type, moverIsMonster) {
+			continue
+		}
+		tx, ty := g.thingPosFixed(i, th)
+		if actorsOverlapXY(x, y, radius, tx, ty, thingTypeRadius(th.Type)) {
+			return true
+		}
+	}
 	return false
+}
+
+var doomSolidMapThingTypes = map[int16]struct{}{
+	25:   {},
+	26:   {},
+	27:   {},
+	28:   {},
+	29:   {},
+	30:   {},
+	31:   {},
+	32:   {},
+	33:   {},
+	35:   {},
+	36:   {},
+	37:   {},
+	41:   {},
+	42:   {},
+	43:   {},
+	44:   {},
+	45:   {},
+	46:   {},
+	47:   {},
+	48:   {},
+	49:   {},
+	50:   {},
+	51:   {},
+	52:   {},
+	53:   {},
+	54:   {},
+	55:   {},
+	56:   {},
+	57:   {},
+	70:   {},
+	73:   {},
+	74:   {},
+	75:   {},
+	76:   {},
+	77:   {},
+	78:   {},
+	85:   {},
+	86:   {},
+	88:   {},
+	2028: {},
+	2035: {},
+}
+
+func thingTypeBlocksActorMovement(typ int16, moverIsMonster bool) bool {
+	if _, ok := doomSolidMapThingTypes[typ]; ok {
+		return true
+	}
+	_ = moverIsMonster
+	return false
+}
+
+func thingTypeRadius(typ int16) int64 {
+	if info, ok := demoTraceThingInfoForType(typ); ok && info.radius > 0 {
+		return info.radius
+	}
+	return 20 * fracUnit
 }
 
 func (g *game) blockLinesIterator(x, y int, fn func(int) bool) bool {

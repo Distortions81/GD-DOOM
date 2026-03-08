@@ -1,7 +1,9 @@
 package automap
 
 import (
+	"fmt"
 	"math"
+	"os"
 	"sort"
 
 	"gddoom/internal/doomrand"
@@ -705,13 +707,16 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 
 	if d1 != monsterDirNoDir && d2 != monsterDirNoDir {
 		diag := monsterDiags[(b2i(deltay < 0)<<1)+b2i(deltax > 0)]
+		g.debugMonsterChase(i, fmt.Sprintf("diag candidate=%d turnaround=%d", diag, turnaround))
 		if diag != turnaround && g.monsterTryWalk(i, typ, diag) {
+			g.debugMonsterChase(i, fmt.Sprintf("diag success dir=%d", diag))
 			return
 		}
 	}
 
 	if doomrand.PRandom() > 200 || abs(deltay) > abs(deltax) {
 		d1, d2 = d2, d1
+		g.debugMonsterChase(i, fmt.Sprintf("swap d1=%d d2=%d", d1, d2))
 	}
 
 	if d1 == turnaround {
@@ -722,13 +727,16 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 	}
 
 	if d1 != monsterDirNoDir && g.monsterTryWalk(i, typ, d1) {
+		g.debugMonsterChase(i, fmt.Sprintf("d1 success dir=%d", d1))
 		return
 	}
 	if d2 != monsterDirNoDir && g.monsterTryWalk(i, typ, d2) {
+		g.debugMonsterChase(i, fmt.Sprintf("d2 success dir=%d", d2))
 		return
 	}
 
 	if olddir != monsterDirNoDir && g.monsterTryWalk(i, typ, olddir) {
+		g.debugMonsterChase(i, fmt.Sprintf("olddir success dir=%d", olddir))
 		return
 	}
 
@@ -736,6 +744,7 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		for dir := int(monsterDirEast); dir <= int(monsterDirSouthEast); dir++ {
 			d := monsterMoveDir(dir)
 			if d != turnaround && g.monsterTryWalk(i, typ, d) {
+				g.debugMonsterChase(i, fmt.Sprintf("scan success dir=%d", d))
 				return
 			}
 		}
@@ -743,12 +752,14 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		for dir := int(monsterDirSouthEast); dir >= int(monsterDirEast); dir-- {
 			d := monsterMoveDir(dir)
 			if d != turnaround && g.monsterTryWalk(i, typ, d) {
+				g.debugMonsterChase(i, fmt.Sprintf("reverse scan success dir=%d", d))
 				return
 			}
 		}
 	}
 
 	if turnaround != monsterDirNoDir && g.monsterTryWalk(i, typ, turnaround) {
+		g.debugMonsterChase(i, fmt.Sprintf("turnaround success dir=%d", turnaround))
 		return
 	}
 	g.thingMoveDir[i] = monsterDirNoDir
@@ -759,13 +770,60 @@ func (g *game) monsterTryWalk(i int, typ int16, dir monsterMoveDir) bool {
 		return false
 	}
 	g.thingMoveDir[i] = dir
+	g.debugMonsterChase(i, fmt.Sprintf("trywalk dir=%d", dir))
 	if !g.monsterMoveInDir(i, typ, dir) {
+		g.debugMonsterChase(i, fmt.Sprintf("trywalk blocked dir=%d", dir))
 		return false
 	}
 	if i >= 0 && i < len(g.thingMoveCount) {
 		g.thingMoveCount[i] = doomrand.PRandom() & 15
+		g.debugMonsterChase(i, fmt.Sprintf("trywalk moved dir=%d movecount=%d", dir, g.thingMoveCount[i]))
 	}
 	return true
+}
+
+func (g *game) debugMonsterChase(i int, msg string) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_CHASE") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_CHASE"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if wantIdx >= 0 && i != wantIdx {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	tx, ty := int64(0), int64(0)
+	if g.m != nil && i >= 0 && i < len(g.m.Things) {
+		tx, ty = g.thingPosFixed(i, g.m.Things[i])
+	}
+	fmt.Printf("monster-chase-debug tic=%d world=%d idx=%d type=%d msg=%s pos=(%d,%d) movedir=%d movecount=%d angle=%d target=(%d,%d)\n",
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, msg, tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.m.Things[i].Angle, g.p.x, g.p.y)
+}
+
+func (g *game) debugMonsterMove(i int, msg string) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_MOVE") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_MOVE"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if wantIdx >= 0 && i != wantIdx {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	tx, ty := int64(0), int64(0)
+	if g.m != nil && i >= 0 && i < len(g.m.Things) {
+		tx, ty = g.thingPosFixed(i, g.m.Things[i])
+	}
+	fmt.Printf("monster-move-debug tic=%d world=%d idx=%d type=%d msg=%s pos=(%d,%d) movedir=%d movecount=%d angle=%d\n",
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, msg, tx, ty, g.thingMoveDir[i], g.thingMoveCount[i], g.m.Things[i].Angle)
 }
 
 func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
@@ -785,12 +843,15 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	x, y := g.thingPosFixed(i, g.m.Things[i])
 	nx := x + dx
 	ny := y + dy
+	g.debugMonsterMove(i, fmt.Sprintf("move dir=%d from=(%d,%d) to=(%d,%d)", dir, x, y, nx, ny))
 	if !g.tryMoveProbeMonster(i, typ, nx, ny) {
+		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
 		return g.monsterUseBlockingSpecialLines(i, nx, ny)
 	}
 	prevX, prevY := x, y
 	g.setThingPosFixed(i, nx, ny)
 	g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, false)
+	g.debugMonsterMove(i, fmt.Sprintf("move success dir=%d", dir))
 	return true
 }
 
@@ -1347,6 +1408,7 @@ func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) bool {
 		return false
 	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(typ), true, i, true)
+	g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) ok=%v floor=%d ceil=%d drop=%d", x, y, ok, tmfloor, tmceil, tmdrop))
 	if !ok {
 		return false
 	}

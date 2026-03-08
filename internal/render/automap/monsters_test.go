@@ -1,6 +1,7 @@
 package automap
 
 import (
+	"fmt"
 	"testing"
 
 	"gddoom/internal/doomrand"
@@ -396,6 +397,31 @@ func TestTryMoveProbeMonster_BlockedByOtherMonster(t *testing.T) {
 	}
 }
 
+func TestDoomSolidMapThingTypes_PlayerBlocked(t *testing.T) {
+	for typ := range doomSolidMapThingTypes {
+		t.Run(fmt.Sprintf("type_%d", typ), func(t *testing.T) {
+			g := &game{
+				m: &mapdata.Map{
+					Things: []mapdata.Thing{
+						{Type: typ, X: 32, Y: 0},
+					},
+					Sectors: []mapdata.Sector{
+						{FloorHeight: 0, CeilingHeight: 128},
+					},
+				},
+				thingCollected: []bool{false},
+				thingHP:        []int{20},
+				thingDead:      []bool{false},
+				p:              player{x: 0, y: 0},
+			}
+			g.initPhysics()
+			if g.tryMove(16*fracUnit, 0) {
+				t.Fatalf("player move should be blocked by solid thing type %d", typ)
+			}
+		})
+	}
+}
+
 func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -426,6 +452,31 @@ func TestTryMoveProbeMonster_BlockedByHighStep(t *testing.T) {
 	g.initPhysics()
 	if g.tryMoveProbeMonster(0, 3004, 8*fracUnit, 0) {
 		t.Fatal("monster move should be blocked by a step higher than 24 units")
+	}
+}
+
+func TestDoomSolidMapThingTypes_MonsterBlocked(t *testing.T) {
+	for typ := range doomSolidMapThingTypes {
+		t.Run(fmt.Sprintf("type_%d", typ), func(t *testing.T) {
+			g := &game{
+				m: &mapdata.Map{
+					Things: []mapdata.Thing{
+						{Type: 3002, X: -64, Y: 256},
+						{Type: typ, X: -128, Y: 256},
+					},
+					Sectors: []mapdata.Sector{
+						{FloorHeight: 0, CeilingHeight: 128},
+					},
+				},
+				thingCollected: []bool{false, false},
+				thingHP:        []int{150, 20},
+				thingDead:      []bool{false, false},
+			}
+			g.initPhysics()
+			if g.tryMoveProbeMonster(0, 3002, -93*fracUnit, 227*fracUnit) {
+				t.Fatalf("monster move should be blocked by solid thing type %d", typ)
+			}
+		})
 	}
 }
 

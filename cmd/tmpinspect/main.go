@@ -14,6 +14,17 @@ func secForSide(m *mapdata.Map, side int16) int {
 func main(){
   wf,_:=wad.Open("/home/dist/github/GD-DOOM/doom.wad")
   m,_:=mapdata.LoadMap(wf,"E1M5")
+  mx, my := int16(-93), int16(227)
+  fmt.Printf("near move target approx=(%d,%d)\n", mx, my)
+  for i, th := range m.Things {
+    dx := int(th.X - mx)
+    if dx < 0 { dx = -dx }
+    dy := int(th.Y - my)
+    if dy < 0 { dy = -dy }
+    if dx <= 128 && dy <= 128 {
+      fmt.Printf("near thing idx=%d type=%d pos=(%d,%d) angle=%d flags=0x%04x\n", i, th.Type, th.X, th.Y, th.Angle, uint16(th.Flags))
+    }
+  }
   for i, th := range m.Things {
     x:=int64(th.X)<<16
     y:=int64(th.Y)<<16

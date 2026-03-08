@@ -505,11 +505,6 @@ func demoTraceThingReaction(g *game, i int) int {
 	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 		return g.thingReactionTics[i]
 	}
-	if g != nil && g.m != nil && i >= 0 && i < len(g.m.Things) {
-		if info, ok := demoTraceThingInfoForType(g.m.Things[i].Type); ok {
-			return info.reaction
-		}
-	}
 	return 0
 }
 

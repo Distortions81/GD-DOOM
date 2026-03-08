@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"gddoom/internal/mapdata"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -12,8 +13,8 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	tracePath := t.TempDir() + "/demo-trace.jsonl"
 	g := newGame(base.m, Options{
-		Width:  320,
-		Height: 200,
+		Width:   320,
+		Height:  200,
 		WADHash: "test-wad",
 		DemoScript: &DemoScript{
 			Path: "demo1",
@@ -61,8 +62,8 @@ func TestDemoTraceStopsWhenPlayerDies(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	tracePath := t.TempDir() + "/demo-trace.jsonl"
 	g := newGame(base.m, Options{
-		Width:  320,
-		Height: 200,
+		Width:   320,
+		Height:  200,
 		WADHash: "test-wad",
 		DemoScript: &DemoScript{
 			Path: "demo1",
@@ -91,5 +92,19 @@ func TestDemoTraceStopsWhenPlayerDies(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
 	if got, want := len(lines), 3; got != want {
 		t.Fatalf("trace lines=%d want=%d\n%s", got, want, data)
+	}
+}
+
+func TestDemoTraceThingReactionDoesNotFallBackToSpawnDefault(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 58},
+			},
+		},
+		thingReactionTics: []int{0},
+	}
+	if got := demoTraceThingReaction(g, 0); got != 0 {
+		t.Fatalf("reactiontime=%d want 0", got)
 	}
 }
