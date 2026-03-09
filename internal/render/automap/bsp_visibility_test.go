@@ -24,6 +24,37 @@ func TestLinedefDecisionPseudo3DIgnoresMappedGate(t *testing.T) {
 	}
 }
 
+func TestLinedefDecisionPseudo3DIgnoresIDDTState(t *testing.T) {
+	g := &game{
+		parity: automapParityState{reveal: revealNormal, iddt: 0},
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 64},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+		},
+	}
+	ld := mapdata.Linedef{
+		Flags:   lineNeverSee,
+		SideNum: [2]int16{0, 1},
+	}
+
+	withNoIDDT := g.linedefDecisionPseudo3D(ld)
+	g.parity.iddt = 2
+	withIDDT := g.linedefDecisionPseudo3D(ld)
+
+	if !withNoIDDT.visible {
+		t.Fatal("pseudo3d should not hide line due to automap iddt/reveal state")
+	}
+	if withNoIDDT != withIDDT {
+		t.Fatalf("pseudo3d visibility changed with iddt: noiddt=%+v iddt=%+v", withNoIDDT, withIDDT)
+	}
+}
+
 func TestVisibleSegIndicesPseudo3D_KeepsLightOnlyPortalSplitter(t *testing.T) {
 	prev := doomSectorLighting
 	doomSectorLighting = true
