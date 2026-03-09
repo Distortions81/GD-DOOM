@@ -15,6 +15,7 @@ import (
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -2043,84 +2044,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		}
 		return
 	}
-	g.prepareRenderState()
-	if g.opts.SourcePortMode && len(g.opts.FlatBank) > 0 {
-		g.drawMapFloorTextures2D(screen)
-	}
-	if g.showGrid {
-		g.drawGrid(screen)
-	}
-
-	g.drawMapLines(screen)
-	if g.opts.SourcePortMode {
-		g.drawUseSpecialLines(screen)
-	}
-	if g.opts.SourcePortMode {
-		g.drawUseTargetHighlight(screen)
-	}
-
-	if shouldDrawThings(g.parity) {
-		g.drawThings(screen)
-	}
-	g.drawMarks(screen)
-	g.drawPlayer(screen)
-	g.drawPeerPlayers(screen)
-
-	modeText := "MAP"
-	if g.mode == viewWalk {
-		modeText = "WALK"
-	}
-	revealText := "normal"
-	if g.parity.reveal == revealAllMap {
-		revealText = "allmap"
-	}
-	if g.opts.SourcePortMode {
-		overlay := fmt.Sprintf("map=%s mode=%s skill=%d zoom=%.2f reveal=%s iddt=%d grid=%t marks=%d colors=%s",
-			g.m.Name,
-			modeText,
-			g.opts.SkillLevel,
-			g.zoom,
-			revealText,
-			g.parity.iddt,
-			g.showGrid,
-			len(g.marks),
-			g.opts.LineColorMode,
-		)
-		ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
-		stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s wp=%s",
-			g.stats.Health,
-			g.stats.Armor,
-			g.stats.Bullets,
-			g.stats.Shells,
-			g.stats.Rockets,
-			g.stats.Cells,
-			g.inventory.keySummary(),
-			weaponName(g.inventory.ReadyWeapon),
-		)
-		ebitenutil.DebugPrintAt(screen, stats, 12, 28)
-		cheat := fmt.Sprintf("cheat=%d invuln=%t", g.cheatLevel, g.invulnerable)
-		ebitenutil.DebugPrintAt(screen, cheat, 12, 60)
-		floor2D := fmt.Sprintf("floor2d=textured %s", g.mapFloorWorldState)
-		ebitenutil.DebugPrintAt(screen, floor2D, 12, 76)
-		thingRender := fmt.Sprintf("things=%s", strings.ToLower(sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode)))
-		ebitenutil.DebugPrintAt(screen, thingRender, 12, 92)
-		if g.showLegend {
-			g.drawThingLegend(screen)
-		}
-	}
-	if g.useFlash > 0 {
-		g.drawHUDMessage(screen, g.useText, 0, 0)
-	}
-	if g.isDead {
-		g.drawDeathOverlay(screen)
-	}
-	g.drawFlashOverlay(screen)
-	if g.paused {
-		g.drawPauseOverlay(screen)
-	}
-	if !g.opts.NoFPS {
-		g.drawPerfOverlay(screen)
-	}
+	mapview.Draw(screen, g)
 }
 
 var inGamePauseMenuNames = [...]string{
