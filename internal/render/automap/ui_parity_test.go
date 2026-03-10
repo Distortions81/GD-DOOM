@@ -6,17 +6,9 @@ import (
 	"time"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview/presenter"
 	"gddoom/internal/render/mapview/viewstate"
 )
-
-func TestShouldDrawThings(t *testing.T) {
-	if shouldDrawThings(automapParityState{iddt: 1}) {
-		t.Fatalf("iddt1 should not draw things")
-	}
-	if !shouldDrawThings(automapParityState{iddt: 2}) {
-		t.Fatalf("iddt2 should draw things")
-	}
-}
 
 func TestToggledLineColorMode(t *testing.T) {
 	if got := toggledLineColorMode("doom"); got != "parity" {
@@ -63,6 +55,9 @@ func TestSourcePortDefaultsEnableLegend(t *testing.T) {
 	g := newGame(&mapdata.Map{}, Options{SourcePortMode: true})
 	if !g.showLegend {
 		t.Fatal("sourceport default should enable legend")
+	}
+	if !presenter.ShouldDrawThings(2) {
+		t.Fatal("presenter iddt policy should still draw things at level 2")
 	}
 	if g.opts.SourcePortThingRenderMode != "items" {
 		t.Fatalf("sourceport default thing render mode=%q want items", g.opts.SourcePortThingRenderMode)

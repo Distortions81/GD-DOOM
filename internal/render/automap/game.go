@@ -1903,7 +1903,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 		DrawFloorTextures2D: g.opts.SourcePortMode && len(g.opts.FlatBank) > 0,
 		DrawGrid:            g.showGrid,
 		IsSourcePort:        g.opts.SourcePortMode,
-		DrawThings:          shouldDrawThings(g.parity),
+		DrawThings:          presenter.ShouldDrawThings(g.parity.iddt),
 		ShowLegend:          g.showLegend,
 		HUDMessage:          g.useText,
 		ShowHUDMessage:      g.useFlash > 0,
@@ -1927,7 +1927,29 @@ func (g *game) Draw(screen *ebiten.Image) {
 		},
 		DrawOverlays: func(screen *ebiten.Image, state mapview.RenderState) {
 			if state.ShowLegend {
-				g.drawThingLegend(screen)
+				presenter.DrawThingLegend(screen, presenter.LegendInputs{
+					ViewWidth:            g.viewW,
+					AntiAlias:            g.mapVectorAntiAlias(),
+					SourcePortMode:       g.opts.SourcePortMode,
+					SourcePortThingLabel: sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode),
+					LineColorMode:        g.opts.LineColorMode,
+				}, presenter.LegendColors{
+					ThingPlayer:  thingPlayerColor,
+					ThingMonster: thingMonsterColor,
+					ThingItem:    thingItemColor,
+					ThingKey:     thingKeyBlue,
+					ThingMisc:    thingMiscColor,
+					WallOneSided: wallOneSided,
+					WallFloor:    wallFloorChange,
+					WallCeil:     wallCeilChange,
+					WallTeleport: wallTeleporter,
+					WallUse:      wallUseSpecial,
+					WallHidden:   wallUnrevealed,
+				}, presenter.LegendHooks{
+					DrawGlyph: func(screen *ebiten.Image, glyph presenter.Glyph, clr color.RGBA, x, y, size float64, antiAlias bool) {
+						drawThingGlyph(screen, thingStyle{glyph: thingGlyph(glyph), clr: clr}, x, y, 0, size, antiAlias)
+					},
+				})
 			}
 			if state.ShowHUDMessage {
 				g.drawHUDMessage(screen, state.HUDMessage, 0, 0)
@@ -2401,10 +2423,6 @@ func (g *game) flushSoundEvents() {
 	g.soundQueueOrigin = g.soundQueueOrigin[:0]
 }
 
-func shouldDrawThings(st automapParityState) bool {
-	return st.iddt >= 2
-}
-
 func toggledLineColorMode(mode string) string {
 	if mode == "parity" {
 		return "doom"
@@ -2415,75 +2433,6 @@ func toggledLineColorMode(mode string) string {
 func (g *game) mapVectorAntiAlias() bool {
 	// Faithful mode targets Doom-like crisp map vectors.
 	return g.opts.SourcePortMode
-}
-
-func (g *game) drawThingLegend(screen *ebiten.Image) {
-	type legendEntry struct {
-		label string
-		style thingStyle
-	}
-	entries := []legendEntry{
-		{label: "player starts", style: thingStyle{glyph: thingGlyphSquare, clr: thingPlayerColor}},
-		{label: "monsters", style: thingStyle{glyph: thingGlyphTriangle, clr: thingMonsterColor}},
-		{label: "items/pickups", style: thingStyle{glyph: thingGlyphDiamond, clr: thingItemColor}},
-		{label: "keys", style: thingStyle{glyph: thingGlyphStar, clr: thingKeyBlue}},
-		{label: "misc", style: thingStyle{glyph: thingGlyphCross, clr: thingMiscColor}},
-	}
-	if g.opts.SourcePortMode {
-		entries = append(entries, legendEntry{
-			label: fmt.Sprintf("render: %s", strings.ToLower(sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode))),
-			style: thingStyle{glyph: thingGlyphCross, clr: thingMiscColor},
-		})
-	}
-	type lineLegendEntry struct {
-		label string
-		clr   color.Color
-	}
-	lineEntries := []lineLegendEntry{
-		{label: "one-sided wall", clr: wallOneSided},
-		{label: "floor delta", clr: wallFloorChange},
-		{label: "ceiling delta", clr: wallCeilChange},
-		{label: "teleporter", clr: wallTeleporter},
-		{label: "use switch/button", clr: wallUseSpecial},
-	}
-	if g.opts.LineColorMode == "parity" {
-		lineEntries = append(lineEntries, lineLegendEntry{label: "unrevealed (allmap)", clr: wallUnrevealed})
-	}
-
-	maxLen := len("THING LEGEND")
-	for _, e := range entries {
-		if len(e.label) > maxLen {
-			maxLen = len(e.label)
-		}
-	}
-	if len("LINE COLORS") > maxLen {
-		maxLen = len("LINE COLORS")
-	}
-	for _, e := range lineEntries {
-		if len(e.label) > maxLen {
-			maxLen = len(e.label)
-		}
-	}
-	x := g.viewW - maxLen*7 - 36
-	if x < 10 {
-		x = 10
-	}
-	y := 28
-	aa := g.mapVectorAntiAlias()
-	ebitenutil.DebugPrintAt(screen, "THING LEGEND", x, y)
-	for i, e := range entries {
-		ly := y + 16 + i*14
-		drawThingGlyph(screen, e.style, float64(x+8), float64(ly+5), 0, 4.6, aa)
-		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
-	}
-
-	ly0 := y + 16 + len(entries)*14 + 8
-	ebitenutil.DebugPrintAt(screen, "LINE COLORS", x, ly0)
-	for i, e := range lineEntries {
-		ly := ly0 + 16 + i*14
-		vector.StrokeLine(screen, float32(x+2), float32(ly+5), float32(x+14), float32(ly+5), 2.4, e.clr, aa)
-		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
-	}
 }
 
 func (g *game) addMark() {
