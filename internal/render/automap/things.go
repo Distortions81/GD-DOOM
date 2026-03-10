@@ -2,53 +2,25 @@ package automap
 
 import (
 	"image/color"
-	"math"
 
 	"gddoom/internal/mapdata"
-
-	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
+	"gddoom/internal/render/mapview/presenter"
 )
 
-type thingGlyph int
-
-const (
-	thingGlyphCross thingGlyph = iota
-	thingGlyphSquare
-	thingGlyphDiamond
-	thingGlyphTriangle
-	thingGlyphStar
-)
-
-type thingStyle struct {
-	glyph thingGlyph
-	clr   color.RGBA
-}
-
-var (
-	thingPlayerColor  = color.RGBA{R: 120, G: 220, B: 255, A: 255}
-	thingMonsterColor = color.RGBA{R: 255, G: 120, B: 120, A: 255}
-	thingItemColor    = color.RGBA{R: 255, G: 220, B: 120, A: 255}
-	thingKeyBlue      = color.RGBA{R: 90, G: 150, B: 255, A: 255}
-	thingKeyRed       = color.RGBA{R: 255, G: 90, B: 90, A: 255}
-	thingKeyYellow    = color.RGBA{R: 255, G: 220, B: 70, A: 255}
-	thingMiscColor    = color.RGBA{R: 170, G: 170, B: 170, A: 255}
-)
-
-func styleForThing(t mapdata.Thing) thingStyle {
+func styleForThing(t mapdata.Thing) presenter.ThingStyle {
 	if isPlayerStart(t.Type) {
-		return thingStyle{glyph: thingGlyphSquare, clr: thingPlayerColor}
+		return presenter.ThingStyle{Glyph: presenter.GlyphSquare, Color: presenter.ThingPlayerColor}
 	}
 	if isMonster(t.Type) {
-		return thingStyle{glyph: thingGlyphTriangle, clr: thingMonsterColor}
+		return presenter.ThingStyle{Glyph: presenter.GlyphTriangle, Color: presenter.ThingMonsterColor}
 	}
 	if k, ok := keyColorForType(t.Type); ok {
-		return thingStyle{glyph: thingGlyphStar, clr: k}
+		return presenter.ThingStyle{Glyph: presenter.GlyphStar, Color: k}
 	}
 	if isItemOrPickup(t.Type) {
-		return thingStyle{glyph: thingGlyphDiamond, clr: thingItemColor}
+		return presenter.ThingStyle{Glyph: presenter.GlyphDiamond, Color: presenter.ThingItemColor}
 	}
-	return thingStyle{glyph: thingGlyphCross, clr: thingMiscColor}
+	return presenter.ThingStyle{Glyph: presenter.GlyphCross, Color: presenter.ThingMiscColor}
 }
 
 func isPlayerStart(typ int16) bool {
@@ -69,11 +41,11 @@ func isMonster(typ int16) bool {
 func keyColorForType(typ int16) (color.RGBA, bool) {
 	switch typ {
 	case 5, 40:
-		return thingKeyBlue, true
+		return presenter.ThingKeyBlue, true
 	case 13, 38:
-		return thingKeyRed, true
+		return presenter.ThingKeyRed, true
 	case 6, 39:
-		return thingKeyYellow, true
+		return presenter.ThingKeyYellow, true
 	default:
 		return color.RGBA{}, false
 	}
@@ -86,62 +58,6 @@ func isItemOrPickup(typ int16) bool {
 	default:
 		return false
 	}
-}
-
-func drawThingGlyph(screen *ebiten.Image, style thingStyle, sx, sy float64, angleDeg int16, size float64, antiAlias bool) {
-	switch style.glyph {
-	case thingGlyphSquare:
-		drawSquareGlyph(screen, sx, sy, size*0.90, style.clr, antiAlias)
-	case thingGlyphDiamond:
-		drawDiamondGlyph(screen, sx, sy, size, style.clr, antiAlias)
-	case thingGlyphTriangle:
-		drawTriangleGlyph(screen, sx, sy, size*1.15, angleDeg, style.clr, antiAlias)
-	case thingGlyphStar:
-		drawStarGlyph(screen, sx, sy, size*1.10, style.clr, antiAlias)
-	default:
-		drawCrossGlyph(screen, sx, sy, size*0.80, style.clr, antiAlias)
-	}
-}
-
-func drawCrossGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
-	vector.StrokeLine(screen, float32(sx-r), float32(sy), float32(sx+r), float32(sy), 1.5, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx), float32(sy-r), float32(sx), float32(sy+r), 1.5, clr, antiAlias)
-}
-
-func drawSquareGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
-	vector.StrokeLine(screen, float32(sx-r), float32(sy-r), float32(sx+r), float32(sy-r), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx+r), float32(sy-r), float32(sx+r), float32(sy+r), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx+r), float32(sy+r), float32(sx-r), float32(sy+r), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx-r), float32(sy+r), float32(sx-r), float32(sy-r), 1.4, clr, antiAlias)
-}
-
-func drawDiamondGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
-	vector.StrokeLine(screen, float32(sx), float32(sy-r), float32(sx+r), float32(sy), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx+r), float32(sy), float32(sx), float32(sy+r), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx), float32(sy+r), float32(sx-r), float32(sy), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx-r), float32(sy), float32(sx), float32(sy-r), 1.4, clr, antiAlias)
-}
-
-func drawTriangleGlyph(screen *ebiten.Image, sx, sy, r float64, angleDeg int16, clr color.RGBA, antiAlias bool) {
-	a := float64(angleDeg) * math.Pi / 180.0
-	p1x, p1y := rotatePoint(0, -r, a)
-	p2x, p2y := rotatePoint(r*0.85, r*0.8, a)
-	p3x, p3y := rotatePoint(-r*0.85, r*0.8, a)
-	vector.StrokeLine(screen, float32(sx+p1x), float32(sy+p1y), float32(sx+p2x), float32(sy+p2y), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx+p2x), float32(sy+p2y), float32(sx+p3x), float32(sy+p3y), 1.4, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx+p3x), float32(sy+p3y), float32(sx+p1x), float32(sy+p1y), 1.4, clr, antiAlias)
-}
-
-func drawStarGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
-	drawCrossGlyph(screen, sx, sy, r, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx-r*0.7), float32(sy-r*0.7), float32(sx+r*0.7), float32(sy+r*0.7), 1.3, clr, antiAlias)
-	vector.StrokeLine(screen, float32(sx-r*0.7), float32(sy+r*0.7), float32(sx+r*0.7), float32(sy-r*0.7), 1.3, clr, antiAlias)
-}
-
-func rotatePoint(x, y, angleRad float64) (float64, float64) {
-	c := math.Cos(angleRad)
-	s := math.Sin(angleRad)
-	return x*c - y*s, x*s + y*c
 }
 
 func relativeThingAngle(thingAngle int16, viewAngle uint32) int16 {

@@ -1934,21 +1934,17 @@ func (g *game) Draw(screen *ebiten.Image) {
 					SourcePortThingLabel: sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode),
 					LineColorMode:        g.opts.LineColorMode,
 				}, presenter.LegendColors{
-					ThingPlayer:  thingPlayerColor,
-					ThingMonster: thingMonsterColor,
-					ThingItem:    thingItemColor,
-					ThingKey:     thingKeyBlue,
-					ThingMisc:    thingMiscColor,
+					ThingPlayer:  presenter.ThingPlayerColor,
+					ThingMonster: presenter.ThingMonsterColor,
+					ThingItem:    presenter.ThingItemColor,
+					ThingKey:     presenter.ThingKeyBlue,
+					ThingMisc:    presenter.ThingMiscColor,
 					WallOneSided: wallOneSided,
 					WallFloor:    wallFloorChange,
 					WallCeil:     wallCeilChange,
 					WallTeleport: wallTeleporter,
 					WallUse:      wallUseSpecial,
 					WallHidden:   wallUnrevealed,
-				}, presenter.LegendHooks{
-					DrawGlyph: func(screen *ebiten.Image, glyph presenter.Glyph, clr color.RGBA, x, y, size float64, antiAlias bool) {
-						drawThingGlyph(screen, thingStyle{glyph: thingGlyph(glyph), clr: clr}, x, y, 0, size, antiAlias)
-					},
 				})
 			}
 			if state.ShowHUDMessage {
@@ -2499,7 +2495,7 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		if g.mapRotationActive() {
 			angle = relativeWorldAngle(g.thingWorldAngle(i, th), g.renderAngle)
 		}
-		drawThingGlyph(screen, styleForThing(th), sx, sy, angle, size, aa)
+		presenter.DrawThingGlyph(screen, styleForThing(th), sx, sy, angle, size, aa)
 	}
 }
 

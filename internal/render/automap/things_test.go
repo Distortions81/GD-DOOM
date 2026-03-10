@@ -4,50 +4,51 @@ import (
 	"testing"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview/presenter"
 )
 
 func TestStyleForThing_PlayerStart(t *testing.T) {
 	s := styleForThing(testThing(1))
-	if s.glyph != thingGlyphSquare {
-		t.Fatalf("glyph=%v want %v", s.glyph, thingGlyphSquare)
+	if s.Glyph != presenter.GlyphSquare {
+		t.Fatalf("glyph=%v want %v", s.Glyph, presenter.GlyphSquare)
 	}
 }
 
 func TestStyleForThing_Monster(t *testing.T) {
 	s := styleForThing(testThing(3004))
-	if s.glyph != thingGlyphTriangle {
-		t.Fatalf("glyph=%v want %v", s.glyph, thingGlyphTriangle)
+	if s.Glyph != presenter.GlyphTriangle {
+		t.Fatalf("glyph=%v want %v", s.Glyph, presenter.GlyphTriangle)
 	}
 }
 
 func TestStyleForThing_Key(t *testing.T) {
 	s := styleForThing(testThing(13))
-	if s.glyph != thingGlyphStar {
-		t.Fatalf("glyph=%v want %v", s.glyph, thingGlyphStar)
+	if s.Glyph != presenter.GlyphStar {
+		t.Fatalf("glyph=%v want %v", s.Glyph, presenter.GlyphStar)
 	}
-	if s.clr != thingKeyRed {
-		t.Fatalf("key color=%v want %v", s.clr, thingKeyRed)
+	if s.Color != presenter.ThingKeyRed {
+		t.Fatalf("key color=%v want %v", s.Color, presenter.ThingKeyRed)
 	}
 }
 
 func TestStyleForThing_Item(t *testing.T) {
 	s := styleForThing(testThing(2012))
-	if s.glyph != thingGlyphDiamond {
-		t.Fatalf("glyph=%v want %v", s.glyph, thingGlyphDiamond)
+	if s.Glyph != presenter.GlyphDiamond {
+		t.Fatalf("glyph=%v want %v", s.Glyph, presenter.GlyphDiamond)
 	}
 }
 
 func TestStyleForThing_MegasphereItem(t *testing.T) {
 	s := styleForThing(testThing(83))
-	if s.glyph != thingGlyphDiamond {
-		t.Fatalf("glyph=%v want %v", s.glyph, thingGlyphDiamond)
+	if s.Glyph != presenter.GlyphDiamond {
+		t.Fatalf("glyph=%v want %v", s.Glyph, presenter.GlyphDiamond)
 	}
 }
 
 func TestStyleForThing_MiscFallback(t *testing.T) {
 	s := styleForThing(testThing(9999))
-	if s.glyph != thingGlyphCross {
-		t.Fatalf("glyph=%v want %v", s.glyph, thingGlyphCross)
+	if s.Glyph != presenter.GlyphCross {
+		t.Fatalf("glyph=%v want %v", s.Glyph, presenter.GlyphCross)
 	}
 }
 

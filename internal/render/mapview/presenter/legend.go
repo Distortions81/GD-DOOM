@@ -3,6 +3,7 @@ package presenter
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -18,6 +19,21 @@ const (
 	GlyphDiamond
 	GlyphTriangle
 	GlyphStar
+)
+
+type ThingStyle struct {
+	Glyph Glyph
+	Color color.RGBA
+}
+
+var (
+	ThingPlayerColor  = color.RGBA{R: 120, G: 220, B: 255, A: 255}
+	ThingMonsterColor = color.RGBA{R: 255, G: 120, B: 120, A: 255}
+	ThingItemColor    = color.RGBA{R: 255, G: 220, B: 120, A: 255}
+	ThingKeyBlue      = color.RGBA{R: 90, G: 150, B: 255, A: 255}
+	ThingKeyRed       = color.RGBA{R: 255, G: 90, B: 90, A: 255}
+	ThingKeyYellow    = color.RGBA{R: 255, G: 220, B: 70, A: 255}
+	ThingMiscColor    = color.RGBA{R: 170, G: 170, B: 170, A: 255}
 )
 
 type LegendColors struct {
@@ -42,16 +58,27 @@ type LegendInputs struct {
 	LineColorMode        string
 }
 
-type LegendHooks struct {
-	DrawGlyph func(screen *ebiten.Image, glyph Glyph, clr color.RGBA, x, y, size float64, antiAlias bool)
-}
-
 func ShouldDrawThings(iddt int) bool {
 	return iddt >= 2
 }
 
-func DrawThingLegend(screen *ebiten.Image, in LegendInputs, colors LegendColors, hooks LegendHooks) {
-	if screen == nil || hooks.DrawGlyph == nil {
+func DrawThingGlyph(screen *ebiten.Image, style ThingStyle, sx, sy float64, angleDeg int16, size float64, antiAlias bool) {
+	switch style.Glyph {
+	case GlyphSquare:
+		drawSquareGlyph(screen, sx, sy, size*0.90, style.Color, antiAlias)
+	case GlyphDiamond:
+		drawDiamondGlyph(screen, sx, sy, size, style.Color, antiAlias)
+	case GlyphTriangle:
+		drawTriangleGlyph(screen, sx, sy, size*1.15, angleDeg, style.Color, antiAlias)
+	case GlyphStar:
+		drawStarGlyph(screen, sx, sy, size*1.10, style.Color, antiAlias)
+	default:
+		drawCrossGlyph(screen, sx, sy, size*0.80, style.Color, antiAlias)
+	}
+}
+
+func DrawThingLegend(screen *ebiten.Image, in LegendInputs, colors LegendColors) {
+	if screen == nil {
 		return
 	}
 
@@ -114,7 +141,7 @@ func DrawThingLegend(screen *ebiten.Image, in LegendInputs, colors LegendColors,
 	ebitenutil.DebugPrintAt(screen, "THING LEGEND", x, y)
 	for i, e := range entries {
 		ly := y + 16 + i*14
-		hooks.DrawGlyph(screen, e.glyph, e.clr, float64(x+8), float64(ly+5), 4.6, in.AntiAlias)
+		DrawThingGlyph(screen, ThingStyle{Glyph: e.glyph, Color: e.clr}, float64(x+8), float64(ly+5), 0, 4.6, in.AntiAlias)
 		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
 	}
 
@@ -125,4 +152,45 @@ func DrawThingLegend(screen *ebiten.Image, in LegendInputs, colors LegendColors,
 		vector.StrokeLine(screen, float32(x+2), float32(ly+5), float32(x+14), float32(ly+5), 2.4, e.clr, in.AntiAlias)
 		ebitenutil.DebugPrintAt(screen, e.label, x+18, ly)
 	}
+}
+
+func drawCrossGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
+	vector.StrokeLine(screen, float32(sx-r), float32(sy), float32(sx+r), float32(sy), 1.5, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx), float32(sy-r), float32(sx), float32(sy+r), 1.5, clr, antiAlias)
+}
+
+func drawSquareGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
+	vector.StrokeLine(screen, float32(sx-r), float32(sy-r), float32(sx+r), float32(sy-r), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx+r), float32(sy-r), float32(sx+r), float32(sy+r), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx+r), float32(sy+r), float32(sx-r), float32(sy+r), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx-r), float32(sy+r), float32(sx-r), float32(sy-r), 1.4, clr, antiAlias)
+}
+
+func drawDiamondGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
+	vector.StrokeLine(screen, float32(sx), float32(sy-r), float32(sx+r), float32(sy), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx+r), float32(sy), float32(sx), float32(sy+r), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx), float32(sy+r), float32(sx-r), float32(sy), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx-r), float32(sy), float32(sx), float32(sy-r), 1.4, clr, antiAlias)
+}
+
+func drawTriangleGlyph(screen *ebiten.Image, sx, sy, r float64, angleDeg int16, clr color.RGBA, antiAlias bool) {
+	a := float64(angleDeg) * math.Pi / 180.0
+	p1x, p1y := rotatePoint(0, -r, a)
+	p2x, p2y := rotatePoint(r*0.85, r*0.8, a)
+	p3x, p3y := rotatePoint(-r*0.85, r*0.8, a)
+	vector.StrokeLine(screen, float32(sx+p1x), float32(sy+p1y), float32(sx+p2x), float32(sy+p2y), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx+p2x), float32(sy+p2y), float32(sx+p3x), float32(sy+p3y), 1.4, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx+p3x), float32(sy+p3y), float32(sx+p1x), float32(sy+p1y), 1.4, clr, antiAlias)
+}
+
+func drawStarGlyph(screen *ebiten.Image, sx, sy, r float64, clr color.RGBA, antiAlias bool) {
+	drawCrossGlyph(screen, sx, sy, r, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx-r*0.7), float32(sy-r*0.7), float32(sx+r*0.7), float32(sy+r*0.7), 1.3, clr, antiAlias)
+	vector.StrokeLine(screen, float32(sx-r*0.7), float32(sy+r*0.7), float32(sx+r*0.7), float32(sy-r*0.7), 1.3, clr, antiAlias)
+}
+
+func rotatePoint(x, y, angleRad float64) (float64, float64) {
+	c := math.Cos(angleRad)
+	s := math.Sin(angleRad)
+	return x*c - y*s, x*s + y*c
 }
