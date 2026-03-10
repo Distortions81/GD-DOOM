@@ -1,5 +1,7 @@
 package automap
 
+import "gddoom/internal/render/scene"
+
 const plane3DUnset int16 = -1
 
 type plane3DVisplane struct {
@@ -27,153 +29,108 @@ func newPlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane
 	return pl
 }
 
-// ensurePlane3DForRange emulates Doom's R_FindPlane + R_CheckPlane behavior.
-// If a same-key visplane has no set columns in the overlap range, we reuse it;
-// otherwise we allocate a new same-key visplane.
 func ensurePlane3DForRange(planes map[plane3DKey][]*plane3DVisplane, key plane3DKey, start, stop, viewW int) (*plane3DVisplane, bool) {
 	return ensurePlane3DForRangeAlloc(planes, key, start, stop, viewW, newPlane3DVisplane)
 }
 
 func ensurePlane3DForRangeAlloc(planes map[plane3DKey][]*plane3DVisplane, key plane3DKey, start, stop, viewW int, alloc plane3DAllocator) (*plane3DVisplane, bool) {
-	if start > stop {
-		start, stop = stop, start
-	}
-	if start < 0 {
-		start = 0
-	}
-	if stop >= viewW {
-		stop = viewW - 1
-	}
-	if start > stop {
-		return nil, false
-	}
-	if alloc == nil {
-		alloc = newPlane3DVisplane
-	}
-	list := planes[key]
-	for _, pl := range list {
-		intrl := start
-		if pl.minX > intrl {
-			intrl = pl.minX
-		}
-		intrh := stop
-		if pl.maxX < intrh {
-			intrh = pl.maxX
-		}
-		conflict := false
-		if intrl <= intrh {
-			for x := intrl; x <= intrh; x++ {
-				ix := x + 1
-				if ix >= 0 && ix < len(pl.top) && pl.top[ix] != plane3DUnset {
-					conflict = true
-					break
-				}
+	scenePlanes := make(map[scene.PlaneKey][]*scene.PlaneVisplane, len(planes))
+	backref := make(map[*scene.PlaneVisplane]*plane3DVisplane)
+	for k, list := range planes {
+		sk := plane3DKeyToScene(k)
+		sceneList := make([]*scene.PlaneVisplane, 0, len(list))
+		for _, pl := range list {
+			sp := &scene.PlaneVisplane{
+				Key:    sk,
+				MinX:   pl.minX,
+				MaxX:   pl.maxX,
+				Top:    append([]int16(nil), pl.top...),
+				Bottom: append([]int16(nil), pl.bottom...),
 			}
+			sceneList = append(sceneList, sp)
+			backref[sp] = pl
 		}
-		if conflict {
-			continue
-		}
-		if start < pl.minX {
-			pl.minX = start
-		}
-		if stop > pl.maxX {
-			pl.maxX = stop
-		}
-		return pl, false
+		scenePlanes[sk] = sceneList
 	}
-	pl := alloc(key, start, stop, viewW)
-	planes[key] = append(list, pl)
-	return pl, true
+	var wrapped scene.PlaneAllocator
+	if alloc != nil {
+		wrapped = func(key scene.PlaneKey, start, stop, viewW int) *scene.PlaneVisplane {
+			local := alloc(plane3DKey{
+				height: key.Height, light: key.Light, flat: key.Flat,
+				fallback: key.Fallback, sky: key.Sky, floor: key.Floor,
+			}, start, stop, viewW)
+			sp := &scene.PlaneVisplane{
+				Key:    key,
+				MinX:   local.minX,
+				MaxX:   local.maxX,
+				Top:    local.top,
+				Bottom: local.bottom,
+			}
+			backref[sp] = local
+			return sp
+		}
+	}
+	sp, created := scene.EnsurePlaneForRangeAlloc(scenePlanes, plane3DKeyToScene(key), start, stop, viewW, wrapped)
+	for sk, list := range scenePlanes {
+		localKey := plane3DKey{height: sk.Height, light: sk.Light, flat: sk.Flat, fallback: sk.Fallback, sky: sk.Sky, floor: sk.Floor}
+		localList := make([]*plane3DVisplane, 0, len(list))
+		for _, item := range list {
+			local := backref[item]
+			if local == nil {
+				local = &plane3DVisplane{
+					key:    localKey,
+					minX:   item.MinX,
+					maxX:   item.MaxX,
+					top:    item.Top,
+					bottom: item.Bottom,
+				}
+			} else {
+				local.minX = item.MinX
+				local.maxX = item.MaxX
+				local.top = item.Top
+				local.bottom = item.Bottom
+			}
+			localList = append(localList, local)
+		}
+		planes[localKey] = localList
+	}
+	if sp == nil {
+		return nil, created
+	}
+	return backref[sp], created
 }
 
 func markPlane3DColumnRange(pl *plane3DVisplane, x, top, bottom int, ceilingclip, floorclip []int) bool {
-	if pl == nil || x < 0 || x >= len(ceilingclip) || x >= len(floorclip) {
+	if pl == nil {
 		return false
 	}
-	ix := x + 1
-	if ix < 0 || ix >= len(pl.top) || ix >= len(pl.bottom) {
-		return false
-	}
-	t := top
-	b := bottom
-	clipTop := ceilingclip[x] + 1
-	clipBottom := floorclip[x] - 1
-	if t < clipTop {
-		t = clipTop
-	}
-	if b > clipBottom {
-		b = clipBottom
-	}
-	if t > b {
-		return false
-	}
-	if pl.top[ix] == plane3DUnset || t < int(pl.top[ix]) {
-		pl.top[ix] = int16(t)
-	}
-	if pl.bottom[ix] == plane3DUnset || b > int(pl.bottom[ix]) {
-		pl.bottom[ix] = int16(b)
-	}
-	if x < pl.minX {
-		pl.minX = x
-	}
-	if x > pl.maxX {
-		pl.maxX = x
-	}
-	return true
+	sp := &scene.PlaneVisplane{Key: plane3DKeyToScene(pl.key), MinX: pl.minX, MaxX: pl.maxX, Top: pl.top, Bottom: pl.bottom}
+	ok := scene.MarkPlaneColumnRange(sp, x, top, bottom, ceilingclip, floorclip)
+	pl.minX = sp.MinX
+	pl.maxX = sp.MaxX
+	pl.top = sp.Top
+	pl.bottom = sp.Bottom
+	return ok
 }
 
 func makePlane3DSpans(pl *plane3DVisplane, viewH int, out []plane3DSpan) []plane3DSpan {
-	if pl == nil || viewH <= 0 || pl.minX > pl.maxX {
+	if pl == nil {
 		return out
 	}
-	spanstart := make([]int, viewH)
-	colRange := func(screenX int) (int, int) {
-		ix := screenX + 1
-		if ix < 0 || ix >= len(pl.top) || ix >= len(pl.bottom) {
-			return 1, 0
-		}
-		t := int(pl.top[ix])
-		b := int(pl.bottom[ix])
-		if t == int(plane3DUnset) || b == int(plane3DUnset) || t > b {
-			return 1, 0
-		}
-		if t < 0 {
-			t = 0
-		}
-		if b >= viewH {
-			b = viewH - 1
-		}
-		if t > b {
-			return 1, 0
-		}
-		return t, b
-	}
-
-	t1, b1 := colRange(pl.minX - 1)
-	for x := pl.minX; x <= pl.maxX+1; x++ {
-		t2, b2 := colRange(x)
-		out = makePlane3DSpansTransition(out, pl.key, x, t1, b1, t2, b2, spanstart)
-		t1, b1 = t2, b2
-	}
-	return out
-}
-
-func makePlane3DSpansTransition(out []plane3DSpan, key plane3DKey, x, t1, b1, t2, b2 int, spanstart []int) []plane3DSpan {
-	for t1 < t2 && t1 <= b1 {
-		out = appendPlane3DSpan(out, t1, spanstart[t1], x-1, key)
-		t1++
-	}
-	for b1 > b2 && b1 >= t1 {
-		out = appendPlane3DSpan(out, b1, spanstart[b1], x-1, key)
-		b1--
-	}
-	for t2 < t1 && t2 <= b2 {
-		spanstart[t2] = x
-		t2++
-	}
-	for b2 > b1 && b2 >= t2 {
-		spanstart[b2] = x
-		b2--
+	sceneOut := make([]scene.PlaneSpan, 0, len(out))
+	sp := &scene.PlaneVisplane{Key: plane3DKeyToScene(pl.key), MinX: pl.minX, MaxX: pl.maxX, Top: pl.top, Bottom: pl.bottom}
+	sceneOut = scene.MakePlaneSpans(sp, viewH, sceneOut)
+	out = out[:0]
+	for _, s := range sceneOut {
+		out = append(out, plane3DSpan{
+			y:  s.Y,
+			x1: s.X1,
+			x2: s.X2,
+			key: plane3DKey{
+				height: s.Key.Height, light: s.Key.Light, flat: s.Key.Flat,
+				fallback: s.Key.Fallback, sky: s.Key.Sky, floor: s.Key.Floor,
+			},
+		})
 	}
 	return out
 }

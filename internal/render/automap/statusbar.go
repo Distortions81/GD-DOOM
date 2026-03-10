@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"gddoom/internal/doomrand"
+	"gddoom/internal/render/hud"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 const (
@@ -23,70 +23,32 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 	if len(g.opts.StatusPatchBank) == 0 {
 		return
 	}
-	sx, sy, ox, oy := g.hudTransform()
-	g.drawStatusPatch(screen, "STBAR", ox, oy+statusBarY*sy, sx, sy)
-	g.drawStatusPatch(screen, "STARMS", ox+104*sx, oy+168*sy, sx, sy)
-
-	if ammo, ok := g.statusReadyAmmo(); ok {
-		g.drawStatusTallNum(screen, ammo, 3, ox+44*sx, oy+171*sy, sx, sy)
-	}
-	g.drawStatusPercent(screen, g.stats.Health, ox+90*sx, oy+171*sy, sx, sy)
-	g.drawStatusPercent(screen, g.stats.Armor, ox+221*sx, oy+171*sy, sx, sy)
-
-	for i := 0; i < 6; i++ {
-		slot := i + 2
-		x := ox + float64(110+(i%3)*12)*sx
-		y := oy + float64(172+(i/3)*10)*sy
-		name := fmt.Sprintf("STGNUM%d", slot)
-		if g.statusWeaponOwned(slot) {
-			name = fmt.Sprintf("STYSNUM%d", slot)
-		}
-		g.drawStatusPatch(screen, name, x, y, sx, sy)
-	}
-
-	keyNames := [3]string{"STKEYS0", "STKEYS2", "STKEYS1"} // blue, red, yellow cards
-	keyOn := [3]bool{g.inventory.BlueKey, g.inventory.RedKey, g.inventory.YellowKey}
-	keyY := [3]float64{171, 181, 191}
-	for i := 0; i < 3; i++ {
-		if keyOn[i] {
-			g.drawStatusPatch(screen, keyNames[i], ox+239*sx, oy+keyY[i]*sy, sx, sy)
-		}
-	}
-
 	maxBullets, maxShells, maxRockets, maxCells := ammoCaps(g.inventory.Backpack)
-	cur := [4]int{g.stats.Bullets, g.stats.Shells, g.stats.Cells, g.stats.Rockets}
-	maxv := [4]int{maxBullets, maxShells, maxCells, maxRockets}
-	curPos := [4][2]float64{{288, 173}, {288, 179}, {288, 191}, {288, 185}}
-	maxPos := [4][2]float64{{314, 173}, {314, 179}, {314, 191}, {314, 185}}
-	for i := 0; i < 4; i++ {
-		g.drawStatusShortNum(screen, cur[i], 3, ox+curPos[i][0]*sx, oy+curPos[i][1]*sy, sx, sy)
-		g.drawStatusShortNum(screen, maxv[i], 3, ox+maxPos[i][0]*sx, oy+maxPos[i][1]*sy, sx, sy)
-	}
-
-	g.drawStatusPatch(screen, g.statusFacePatchName(), ox+143*sx, oy+168*sy, sx, sy)
-}
-
-func (g *game) hudTransform() (sx, sy, ox, oy float64) {
-	sx = float64(max(g.viewW, 1)) / doomLogicalW
-	sy = float64(max(g.viewH, 1)) / doomLogicalH
-	if !g.opts.SourcePortMode {
-		return sx, sy, 0, 0
-	}
-	// Keep Doom HUD proportions on widescreen by using uniform scale, centered
-	// horizontally and anchored to screen bottom.
-	sx = sy
-	ox = (float64(g.viewW) - doomLogicalW*sx) * 0.5
-	oy = float64(g.viewH) - doomLogicalH*sy
-	if ox < 0 {
-		ox = 0
-		sx = float64(max(g.viewW, 1)) / doomLogicalW
-		sy = sx
-		oy = (float64(g.viewH) - doomLogicalH*sy) * 0.5
-		if oy < 0 {
-			oy = 0
-		}
-	}
-	return sx, sy, ox, oy
+	readyAmmo, hasReadyAmmo := g.statusReadyAmmo()
+	hud.DrawStatusBar(screen, hud.StatusBarInputs{
+		ViewW:        g.viewW,
+		ViewH:        g.viewH,
+		SourcePort:   g.opts.SourcePortMode,
+		Health:       g.stats.Health,
+		Armor:        g.stats.Armor,
+		ReadyAmmo:    readyAmmo,
+		HasReadyAmmo: hasReadyAmmo,
+		WeaponOwned: [6]bool{
+			g.statusWeaponOwned(2),
+			g.statusWeaponOwned(3),
+			g.statusWeaponOwned(4),
+			g.statusWeaponOwned(5),
+			g.statusWeaponOwned(6),
+			g.statusWeaponOwned(7),
+		},
+		KeyOn:     [3]bool{g.inventory.BlueKey, g.inventory.RedKey, g.inventory.YellowKey},
+		AmmoCur:   [4]int{g.stats.Bullets, g.stats.Shells, g.stats.Cells, g.stats.Rockets},
+		AmmoMax:   [4]int{maxBullets, maxShells, maxCells, maxRockets},
+		FacePatch: g.statusFacePatchName(),
+	}, func(screen *ebiten.Image, name string, x, y, sx, sy float64) bool {
+		g.drawStatusPatch(screen, name, x, y, sx, sy)
+		return true
+	}, g.drawStatusTallNum, g.drawStatusShortNum, g.drawStatusPercent)
 }
 
 func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool) {
@@ -189,44 +151,14 @@ func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, boo
 }
 
 func (g *game) drawHUDMessage(screen *ebiten.Image, msg string, x, y float64) {
-	if strings.TrimSpace(msg) == "" {
-		return
-	}
-	sx, sy, ox, _ := g.hudTransform()
-	px := (float64(huMsgX) + x) * sx
-	py := (float64(huMsgY) + y) * sy
-	maxX := float64(g.viewW)
-	if g.opts.SourcePortMode {
-		px += ox
-		maxX = ox + doomLogicalW*sx
-	}
-	if len(g.opts.MessageFontBank) == 0 {
-		ebitenutil.DebugPrintAt(screen, msg, int(px), int(py))
-		return
-	}
-	for _, ch := range msg {
-		uc := ch
-		if uc >= 'a' && uc <= 'z' {
-			uc -= 'a' - 'A'
-		}
-		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
-			px += 4 * sx
-			continue
-		}
-		img, w, _, ox, oy, ok := g.messageFontGlyph(uc)
-		if !ok {
-			px += 4 * sx
-			continue
-		}
-		if px+float64(w)*sx > maxX {
-			break
-		}
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Scale(sx, sy)
-		op.GeoM.Translate(px-float64(ox)*sx, py-float64(oy)*sy)
-		screen.DrawImage(img, op)
-		px += float64(w) * sx
-	}
+	hud.DrawHUDMessage(screen, hud.MessageInputs{
+		ViewW:      g.viewW,
+		ViewH:      g.viewH,
+		SourcePort: g.opts.SourcePortMode,
+		Message:    msg,
+		X:          float64(huMsgX) + x,
+		Y:          float64(huMsgY) + y,
+	}, g.drawHUTextAt)
 }
 
 func (g *game) statusWeaponOwned(slot int) bool {

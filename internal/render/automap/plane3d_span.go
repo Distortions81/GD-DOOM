@@ -1,5 +1,7 @@
 package automap
 
+import "gddoom/internal/render/scene"
+
 type plane3DKey struct {
 	height   int16
 	light    int16
@@ -41,61 +43,34 @@ func bucketSpanByKey(buckets map[plane3DKey][]plane3DSpan, order []plane3DKey, y
 }
 
 func clipRangeAgainstCovered(x1, x2 int, covered []spanRange) []spanRange {
-	if x2 < x1 {
-		return nil
-	}
-	out := []spanRange{{l: x1, r: x2}}
+	raw := make([][2]int, 0, len(covered))
 	for _, c := range covered {
-		next := make([]spanRange, 0, len(out))
-		for _, r := range out {
-			if c.r < r.l || c.l > r.r {
-				next = append(next, r)
-				continue
-			}
-			if c.l > r.l {
-				next = append(next, spanRange{l: r.l, r: c.l - 1})
-			}
-			if c.r < r.r {
-				next = append(next, spanRange{l: c.r + 1, r: r.r})
-			}
-		}
-		out = next
-		if len(out) == 0 {
-			break
-		}
+		raw = append(raw, [2]int{c.l, c.r})
+	}
+	clipped := scene.ClipRangeAgainstCovered(x1, x2, raw)
+	out := make([]spanRange, 0, len(clipped))
+	for _, c := range clipped {
+		out = append(out, spanRange{l: c[0], r: c[1]})
 	}
 	return out
 }
 
 func addCoveredRange(covered []spanRange, x1, x2 int) []spanRange {
-	if x2 < x1 {
-		return covered
-	}
-	ns := spanRange{l: x1, r: x2}
-	out := make([]spanRange, 0, len(covered)+1)
-	inserted := false
+	raw := make([][2]int, 0, len(covered))
 	for _, c := range covered {
-		if c.r+1 < ns.l {
-			out = append(out, c)
-			continue
-		}
-		if ns.r+1 < c.l {
-			if !inserted {
-				out = append(out, ns)
-				inserted = true
-			}
-			out = append(out, c)
-			continue
-		}
-		if c.l < ns.l {
-			ns.l = c.l
-		}
-		if c.r > ns.r {
-			ns.r = c.r
-		}
+		raw = append(raw, [2]int{c.l, c.r})
 	}
-	if !inserted {
-		out = append(out, ns)
+	merged := scene.AddCoveredRange(raw, x1, x2)
+	out := make([]spanRange, 0, len(merged))
+	for _, c := range merged {
+		out = append(out, spanRange{l: c[0], r: c[1]})
 	}
 	return out
+}
+
+func plane3DKeyToScene(key plane3DKey) scene.PlaneKey {
+	return scene.PlaneKey{
+		Height: key.height, Light: key.light, Flat: key.flat,
+		Fallback: key.fallback, Sky: key.sky, Floor: key.floor,
+	}
 }

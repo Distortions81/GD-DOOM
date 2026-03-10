@@ -6,7 +6,6 @@ import (
 	"image/color"
 	"math"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/hud"
 	"gddoom/internal/render/mapview"
 	"gddoom/internal/render/mapview/bigmap"
 	"gddoom/internal/render/mapview/linecache"
@@ -23,6 +23,7 @@ import (
 	"gddoom/internal/render/mapview/marks"
 	"gddoom/internal/render/mapview/presenter"
 	"gddoom/internal/render/mapview/viewstate"
+	"gddoom/internal/render/scene"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -41,9 +42,6 @@ const (
 	detailMouseSuppressTicks         = 3
 	mlDontPegTop                     = 1 << 3
 	mlDontPegBottom                  = 1 << 4
-	statusBaseW                      = 320.0
-	statusBaseH                      = 200.0
-	statusBarY                       = 168.0
 	statusNumPainFaces               = 5
 	statusNumStraightFaces           = 3
 	statusNumTurnFaces               = 2
@@ -2456,29 +2454,13 @@ func (g *game) toggleBigMap() {
 }
 
 func (g *game) drawGrid(screen *ebiten.Image) {
-	const cell = 128.0
-	view := g.State.Snapshot()
-	left, right, bottom, top := view.BoundsForViewport(g.viewport())
-	grid := color.RGBA{R: 40, G: 50, B: 60, A: 255}
-	aa := g.mapVectorAntiAlias()
-
-	startX := math.Floor(left/cell) * cell
-	for x := startX; x <= right; x += cell {
-		x1, y1 := g.worldToScreen(x, bottom)
-		x2, y2 := g.worldToScreen(x, top)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, aa)
-	}
-	startY := math.Floor(bottom/cell) * cell
-	for y := startY; y <= top; y += cell {
-		x1, y1 := g.worldToScreen(left, y)
-		x2, y2 := g.worldToScreen(right, y)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 1, grid, aa)
-	}
+	mapview.DrawGrid(screen, g.State.Snapshot(), g.viewport(), g.worldToScreen, g.mapVectorAntiAlias())
 }
 
 func (g *game) drawThings(screen *ebiten.Image) {
 	aa := g.mapVectorAntiAlias()
 	view := g.State.Snapshot()
+	items := make([]mapview.ThingDrawItem, 0, len(g.m.Things))
 	for i, th := range g.m.Things {
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
 			continue
@@ -2487,16 +2469,26 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		x := float64(fx) / fracUnit
 		y := float64(fy) / fracUnit
 		sx, sy := g.worldToScreen(x, y)
-		if g.drawMapThingSprite(screen, i, th, sx, sy) {
+		item := mapview.ThingDrawItem{ScreenX: sx, ScreenY: sy}
+		if img, w, h, ok := g.mapThingSprite(i, th); ok {
+			item.Sprite = img
+			item.SpriteW = w
+			item.SpriteH = h
+			item.SpriteTarget = presenter.ThingGlyphSize(view.ZoomLevel()) * 2.4
+			items = append(items, item)
 			continue
 		}
-		size := thingGlyphSize(view.ZoomLevel())
-		angle := worldAngleToGlyphAngle(g.thingWorldAngle(i, th))
+		angle := presenter.WorldAngleToGlyphAngle(g.thingWorldAngle(i, th))
 		if g.mapRotationActive() {
-			angle = relativeWorldAngle(g.thingWorldAngle(i, th), g.renderAngle)
+			angle = presenter.RelativeWorldAngle(g.thingWorldAngle(i, th), g.renderAngle)
 		}
-		presenter.DrawThingGlyph(screen, styleForThing(th), sx, sy, angle, size, aa)
+		style := presenter.StyleForThingType(th.Type, isPlayerStart(th.Type), isMonster(th.Type))
+		item.DrawGlyph = func(screen *ebiten.Image, x, y float64, zoom float64, antiAlias bool) {
+			presenter.DrawThingGlyph(screen, style, x, y, angle, presenter.ThingGlyphSize(zoom), antiAlias)
+		}
+		items = append(items, item)
 	}
+	mapview.DrawThings2D(screen, items, view.ZoomLevel(), aa)
 }
 
 func (g *game) shouldDrawMapThingSprite(th mapdata.Thing) bool {
@@ -2505,7 +2497,7 @@ func (g *game) shouldDrawMapThingSprite(th mapdata.Thing) bool {
 	}
 	switch sourcePortThingRenderMode(normalizeSourcePortThingRenderMode(g.opts.SourcePortThingRenderMode, g.opts.SourcePortMode)) {
 	case sourcePortThingRenderItems:
-		return isItemOrPickup(th.Type)
+		return presenter.IsItemOrPickupType(th.Type)
 	case sourcePortThingRenderSprites:
 		return true
 	default:
@@ -2513,32 +2505,19 @@ func (g *game) shouldDrawMapThingSprite(th mapdata.Thing) bool {
 	}
 }
 
-func (g *game) drawMapThingSprite(screen *ebiten.Image, thingIdx int, th mapdata.Thing, sx, sy float64) bool {
+func (g *game) mapThingSprite(thingIdx int, th mapdata.Thing) (*ebiten.Image, int, int, bool) {
 	if !g.shouldDrawMapThingSprite(th) {
-		return false
+		return nil, 0, 0, false
 	}
 	name := g.mapThingSpriteName(thingIdx, th)
 	if name == "" {
-		return false
+		return nil, 0, 0, false
 	}
 	img, w, h, _, _, ok := g.spritePatch(name)
 	if !ok || w <= 0 || h <= 0 {
-		return false
+		return nil, 0, 0, false
 	}
-	target := thingGlyphSize(g.State.Snapshot().ZoomLevel()) * 2.4
-	if target < 6 {
-		target = 6
-	}
-	scale := math.Min(target/float64(w), target/float64(h))
-	if scale <= 0 {
-		return false
-	}
-	op := &ebiten.DrawImageOptions{}
-	op.Filter = ebiten.FilterNearest
-	op.GeoM.Scale(scale, scale)
-	op.GeoM.Translate(sx-float64(w)*scale*0.5, sy-float64(h)*scale*0.5)
-	screen.DrawImage(img, op)
-	return true
+	return img, w, h, true
 }
 
 func (g *game) mapThingSpriteName(thingIdx int, th mapdata.Thing) string {
@@ -2569,29 +2548,8 @@ func (g *game) mapThingSpriteName(thingIdx int, th mapdata.Thing) string {
 	return g.runtimeWorldThingSpriteNameScaled(thingIdx, th, animTickUnits, animUnitsPerTic)
 }
 
-func thingGlyphSize(zoom float64) float64 {
-	// Doom-like behavior: thing markers scale with map zoom (map-space vectors).
-	const worldHalfUnits = 16.0
-	s := worldHalfUnits * zoom
-	if s < 1.5 {
-		return 1.5
-	}
-	if s > 40 {
-		return 40
-	}
-	return s
-}
-
 func (g *game) drawMarks(screen *ebiten.Image) {
-	mc := color.RGBA{R: 120, G: 210, B: 255, A: 255}
-	aa := g.mapVectorAntiAlias()
-	for _, mk := range g.marks.Items() {
-		sx, sy := g.worldToScreen(mk.X, mk.Y)
-		r := 5.0
-		vector.StrokeLine(screen, float32(sx-r), float32(sy-r), float32(sx+r), float32(sy+r), 1.3, mc, aa)
-		vector.StrokeLine(screen, float32(sx-r), float32(sy+r), float32(sx+r), float32(sy-r), 1.3, mc, aa)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", mk.ID), int(sx)+6, int(sy)-6)
-	}
+	mapview.DrawMarks(screen, g.marks.Items(), g.worldToScreen, g.mapVectorAntiAlias())
 }
 
 func (g *game) drawPlayer(screen *ebiten.Image) {
@@ -2662,7 +2620,9 @@ func (g *game) drawUseTargetHighlight(screen *ebiten.Image) {
 	pl := g.lines[pi]
 	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
 	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
-	vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 3.0, useTargetColor, g.mapVectorAntiAlias())
+	mapview.DrawSegments(screen, []mapview.Segment{{
+		X1: x1, Y1: y1, X2: x2, Y2: y2, Width: 3.0, Color: useTargetColor,
+	}}, g.mapVectorAntiAlias())
 }
 
 func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
@@ -10765,6 +10725,7 @@ func monsterRenderHeight(typ int16) float64 {
 }
 
 func (g *game) drawUseSpecialLines(screen *ebiten.Image) {
+	segs := make([]mapview.Segment, 0, 32)
 	for _, li := range g.visibleLineIndices() {
 		if li < 0 || li >= len(g.lineSpecial) || !buttonHighlightEligible(g.lineSpecial[li]) {
 			continue
@@ -10781,8 +10742,11 @@ func (g *game) drawUseSpecialLines(screen *ebiten.Image) {
 		pl := g.lines[pi]
 		x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
 		x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
-		vector.StrokeLine(screen, float32(x1), float32(y1), float32(x2), float32(y2), 2.4, wallUseSpecial, true)
+		segs = append(segs, mapview.Segment{
+			X1: x1, Y1: y1, X2: x2, Y2: y2, Width: 2.4, Color: wallUseSpecial,
+		})
 	}
+	mapview.DrawSegments(screen, segs, true)
 }
 
 func buttonHighlightEligible(special uint16) bool {
@@ -10794,29 +10758,14 @@ func buttonHighlightEligible(special uint16) bool {
 }
 
 func (g *game) drawDeathOverlay(screen *ebiten.Image) {
-	ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 25, G: 0, B: 0, A: 130})
-	msg1 := "YOU DIED"
-	msg2 := "PRESS ENTER TO RESTART"
-	sx := 2.0
-	sy := 2.0
-	w1 := float64(g.huTextWidth(msg1)) * sx
-	w2 := float64(g.huTextWidth(msg2)) * sx
-	y := float64(g.viewH / 2)
-	x1 := (float64(g.viewW) - w1) * 0.5
-	x2 := (float64(g.viewW) - w2) * 0.5
-	g.drawHUTextAt(screen, msg1, x1, y, sx, sy)
-	g.drawHUTextAt(screen, msg2, x2, y+22*sy, sx, sy)
+	hud.DrawDeathOverlay(screen, hud.DeathOverlayInputs{
+		ViewW: g.viewW,
+		ViewH: g.viewH,
+	}, g.huTextWidth, g.drawHUTextAt)
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {
-	if g.damageFlashTic > 0 {
-		a := uint8(40 + min(120, g.damageFlashTic*8))
-		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 180, G: 20, B: 20, A: a})
-	}
-	if g.bonusFlashTic > 0 {
-		a := uint8(20 + min(80, g.bonusFlashTic*6))
-		ebitenutil.DrawRect(screen, 0, 0, float64(g.viewW), float64(g.viewH), color.RGBA{R: 210, G: 190, B: 80, A: a})
-	}
+	hud.DrawFlashOverlay(screen, g.viewW, g.viewH, g.damageFlashTic, g.bonusFlashTic)
 }
 
 func (g *game) setSkyOutputSize(w, h int) {
@@ -11068,153 +11017,19 @@ func skyTextureForMap(mapName mapdata.MapName, wallTexBank map[string]WallTextur
 }
 
 func skyTextureEntryForMap(mapName mapdata.MapName, wallTexBank map[string]WallTexture) (string, WallTexture, bool) {
-	for _, name := range skyTextureCandidates(mapName) {
-		key := normalizeFlatName(name)
-		tex, ok := wallTexBank[key]
-		if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
-			continue
-		}
-		return key, tex, true
+	bank := make(map[string]scene.Texture, len(wallTexBank))
+	for key, tex := range wallTexBank {
+		bank[key] = scene.Texture{RGBA: tex.RGBA, Width: tex.Width, Height: tex.Height}
 	}
-	return "", WallTexture{}, false
-}
-
-func skyTextureCandidates(mapName mapdata.MapName) []string {
-	name := strings.ToUpper(strings.TrimSpace(string(mapName)))
-	out := make([]string, 0, 5)
-	add := func(c string) {
-		c = normalizeFlatName(c)
-		if c == "" {
-			return
-		}
-		for _, ex := range out {
-			if ex == c {
-				return
-			}
-		}
-		out = append(out, c)
+	key, tex, ok := scene.TextureEntryForMap(mapName, bank, normalizeFlatName)
+	if !ok {
+		return "", WallTexture{}, false
 	}
-	if len(name) == 4 && name[0] == 'E' && name[2] == 'M' && name[1] >= '0' && name[1] <= '9' {
-		switch int(name[1] - '0') {
-		case 1:
-			add("SKY1")
-		case 2:
-			add("SKY2")
-		case 3:
-			add("SKY3")
-		case 4:
-			add("SKY4")
-		}
-	}
-	if strings.HasPrefix(name, "MAP") && len(name) >= 5 {
-		if n, err := strconv.Atoi(name[3:]); err == nil {
-			switch {
-			case n >= 1 && n <= 11:
-				add("SKY1")
-			case n >= 12 && n <= 20:
-				add("SKY2")
-			case n >= 21:
-				add("SKY3")
-			}
-		}
-	}
-	add("SKY1")
-	add("SKY2")
-	add("SKY3")
-	add("SKY4")
-	return out
-}
-
-func skySampleUV(screenX, screenY, viewW, viewH int, focal, camAngle float64, texW, texH int) (u, v int) {
-	if texW <= 0 || texH <= 0 {
-		return 0, 0
-	}
-	if focal <= 1e-6 {
-		focal = 1
-	}
-	angle := skySampleAngle(screenX, viewW, focal, camAngle)
-	uScale := float64(texW*4) / (2 * math.Pi)
-	u = wrapIndex(int(math.Floor(angle*uScale)), texW)
-
-	cy := float64(viewH) * 0.5
-	if cy <= 1e-6 {
-		return u, 0
-	}
-	yn := (float64(screenY) + 0.5) / cy
-	if yn < 0 {
-		yn = 0
-	}
-	if yn > 1 {
-		yn = 1
-	}
-	v = int(math.Floor(yn * float64(texH-1)))
-	if v < 0 {
-		v = 0
-	}
-	if v >= texH {
-		v = texH - 1
-	}
-	return u, v
-}
-
-func skyProjectedSampleIndex(drawCoord, drawSize, sampleSize int) int {
-	if drawSize <= 0 || sampleSize <= 0 {
-		return 0
-	}
-	sample := int((float64(drawCoord) + 0.5) * float64(sampleSize) / float64(drawSize))
-	if sample < 0 {
-		return 0
-	}
-	if sample >= sampleSize {
-		return sampleSize - 1
-	}
-	return sample
-}
-
-func skyProjectedSampleUV(drawX, drawY, drawW, drawH, sampleW, sampleH int, focal, camAngle float64, texW, texH int) (u, v int) {
-	if drawW <= 0 || drawH <= 0 || sampleW <= 0 || sampleH <= 0 || texW <= 0 || texH <= 0 {
-		return 0, 0
-	}
-	sampleX := skyProjectedSampleIndex(drawX, drawW, sampleW)
-	sampleY := skyProjectedSampleIndex(drawY, drawH, sampleH)
-	angle := skySampleAngle(sampleX, sampleW, focal, camAngle)
-	uScale := float64(texW*4) / (2 * math.Pi)
-	u = wrapIndex(int(math.Floor(angle*uScale)), texW)
-	iscale := doomSkyIScale(sampleW)
-	frac := 100.0 + ((float64(sampleY) - float64(sampleH)*0.5) * iscale)
-	v = wrapIndex(int(math.Floor(frac)), texH)
-	return u, v
-}
-
-func skySampleAngle(screenX, viewW int, focal, camAngle float64) float64 {
-	if focal <= 1e-6 {
-		focal = 1
-	}
-	cx := float64(viewW) * 0.5
-	sampleX := float64(screenX) + 0.5
-	// Match wall projection sign convention: screen x = cx - tan(rel)*focal,
-	// so rel = atan((cx-x)/focal). Using this keeps sky panning direction aligned.
-	return camAngle + math.Atan((cx-sampleX)/focal)
+	return key, WallTexture{RGBA: tex.RGBA, Width: tex.Width, Height: tex.Height}, true
 }
 
 func effectiveSkyTexHeight(tex WallTexture) int {
-	if tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
-		return 1
-	}
-	for y := tex.Height - 1; y >= 0; y-- {
-		rowStart := y * tex.Width * 4
-		opaque := false
-		for x := 0; x < tex.Width; x++ {
-			if tex.RGBA[rowStart+x*4+3] != 0 {
-				opaque = true
-				break
-			}
-		}
-		if opaque {
-			return y + 1
-		}
-	}
-	return 1
+	return scene.EffectiveTextureHeight(scene.Texture{RGBA: tex.RGBA, Width: tex.Width, Height: tex.Height})
 }
 
 func (g *game) beginSkyLayerFrame() {
@@ -11576,18 +11391,15 @@ func (g *game) buildSkyLookupParallel(viewW, viewH int, focal, camAngle float64,
 	angleOff := g.ensureSkyAngleOffsets(sampleW, projFocal)
 	sampleRow := g.ensureSkyRowLookup(sampleW, sampleH, texH)
 	row := g.ensureSkyDrawRowBuffer(viewH)
-	uScale := float64(texW*4) / (2 * math.Pi)
 	col := g.ensureSkyColBuffer(viewW)
-	// Sky column lookup is lightweight and fully cached by size/fov.
-	// Keep this serial to avoid worker/scheduling overhead.
-	for x := 0; x < viewW; x++ {
-		sampleX := skyProjectedSampleIndex(x, viewW, sampleW)
-		angle := camAngle + angleOff[sampleX]
-		col[x] = wrapIndex(int(math.Floor(angle*uScale)), texW)
-	}
 	for y := 0; y < viewH; y++ {
-		sampleY := skyProjectedSampleIndex(y, viewH, sampleH)
+		sampleY := scene.ProjectedSampleIndex(y, viewH, sampleH)
 		row[y] = sampleRow[sampleY]
+	}
+	for x := 0; x < viewW; x++ {
+		sampleX := scene.ProjectedSampleIndex(x, viewW, sampleW)
+		angle := camAngle + angleOff[sampleX]
+		col[x] = wrapIndex(int(math.Floor(angle*float64(texW*4)/(2*math.Pi))), texW)
 	}
 	return col, row
 }
@@ -11659,34 +11471,12 @@ func (g *game) ensureSkyDrawRowBuffer(drawH int) []int {
 }
 
 func (g *game) skyProjectionSize() (drawW, drawH, sampleW, sampleH int) {
-	drawW = max(g.viewW, 1)
-	drawH = max(g.viewH, 1)
-	sampleW = drawW
-	sampleH = drawH
-	if g.opts.SourcePortMode {
-		if g.skyOutputW > 0 {
-			sampleW = g.skyOutputW
-		}
-		if g.skyOutputH > 0 {
-			sampleH = g.skyOutputH
-		}
-		if sampleW < 1 {
-			sampleW = 1
-		}
-		if sampleH < 1 {
-			sampleH = 1
-		}
-	}
-	return drawW, drawH, sampleW, sampleH
+	p := scene.ProjectionSize(g.viewW, g.viewH, g.skyOutputW, g.skyOutputH, g.opts.SourcePortMode)
+	return p.DrawW, p.DrawH, p.SampleW, p.SampleH
 }
 
 func doomSkyIScale(viewW int) float64 {
-	if viewW <= 0 {
-		return 1
-	}
-	// Doom sky columns use dc_iscale = pspriteiscale>>detailshift.
-	// In standard detail this is roughly SCREENWIDTH/viewwidth (320/viewwidth).
-	return 320.0 / float64(viewW)
+	return scene.DoomSkyIScale(viewW)
 }
 
 func wrapIndex(x, size int) int {
@@ -11927,6 +11717,51 @@ func (g *game) ensureMapFloorLoopSetsBuilt() {
 	g.mapFloorLoopInit = true
 }
 
+func (g *game) mapFloorLoopSetsForView() []mapview.FloorLoopSet {
+	out := make([]mapview.FloorLoopSet, len(g.mapFloorLoopSets))
+	for sec, set := range g.mapFloorLoopSets {
+		rings := make([][]mapview.WorldPt, 0, len(set.rings))
+		for _, ring := range set.rings {
+			if len(ring) == 0 {
+				continue
+			}
+			pts := make([]mapview.WorldPt, 0, len(ring))
+			for _, p := range ring {
+				pts = append(pts, mapview.WorldPt{X: p.x, Y: p.y})
+			}
+			rings = append(rings, pts)
+		}
+		out[sec] = mapview.FloorLoopSet{
+			Rings: rings,
+			BBox: mapview.WorldBBox{
+				MinX: set.bbox.minX,
+				MinY: set.bbox.minY,
+				MaxX: set.bbox.maxX,
+				MaxY: set.bbox.maxY,
+			},
+		}
+	}
+	return out
+}
+
+func (g *game) mapFloorShadeMuls() []uint32 {
+	out := make([]uint32, len(g.m.Sectors))
+	for sec := range out {
+		out[sec] = g.sectorLightMulCached(sec)
+	}
+	return out
+}
+
+func (g *game) mapFloorTextures() [][]byte {
+	out := make([][]byte, len(g.m.Sectors))
+	for sec := range out {
+		if sec >= 0 && sec < len(g.sectorPlaneCache) && len(g.sectorPlaneCache[sec].flatRGBA) == 64*64*4 {
+			out[sec] = g.sectorPlaneCache[sec].flatRGBA
+		}
+	}
+	return out
+}
+
 func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 	if g.m == nil || len(g.m.Sectors) == 0 || len(g.opts.FlatBank) == 0 {
 		return
@@ -11945,138 +11780,29 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 	h := g.viewH
 	viewWB := g.screenWorldBBox()
 	pix := g.mapFloorPix
-	stats := floorFrameStats{}
-
-	for sec := range g.m.Sectors {
-		if sec < 0 || sec >= len(g.mapFloorLoopSets) {
-			continue
-		}
-		set := g.mapFloorLoopSets[sec]
-		if len(set.rings) == 0 {
-			continue
-		}
-		// Coarse world-space cull before any per-vertex projection.
-		if set.bbox.maxX < viewWB.minX || set.bbox.minX > viewWB.maxX || set.bbox.maxY < viewWB.minY || set.bbox.minY > viewWB.maxY {
-			continue
-		}
-
-		tex := []byte(nil)
-		texOK := false
-		if sec >= 0 && sec < len(g.sectorPlaneCache) && len(g.sectorPlaneCache[sec].flatRGBA) == 64*64*4 {
-			tex = g.sectorPlaneCache[sec].flatRGBA
-			texOK = true
-		}
-		shadeMul := uint32(g.sectorLightMulCached(sec))
-		screenRings := make([][]screenPt, 0, len(set.rings))
-		minSX := math.Inf(1)
-		minSY := math.Inf(1)
-		maxSX := math.Inf(-1)
-		maxSY := math.Inf(-1)
-		for _, ring := range set.rings {
-			sring := make([]screenPt, 0, len(ring))
-			for _, p := range ring {
-				sx, sy := g.worldToScreen(p.x, p.y)
-				sring = append(sring, screenPt{x: sx, y: sy})
-				if sx < minSX {
-					minSX = sx
-				}
-				if sy < minSY {
-					minSY = sy
-				}
-				if sx > maxSX {
-					maxSX = sx
-				}
-				if sy > maxSY {
-					maxSY = sy
-				}
-			}
-			if len(sring) >= 3 {
-				screenRings = append(screenRings, sring)
-			}
-		}
-		if len(screenRings) == 0 || !isFinite(minSX) || !isFinite(minSY) || !isFinite(maxSX) || !isFinite(maxSY) {
-			continue
-		}
-		x0 := max(0, int(math.Floor(minSX)))
-		y0 := max(0, int(math.Floor(minSY)))
-		x1 := min(w-1, int(math.Ceil(maxSX)))
-		y1 := min(h-1, int(math.Ceil(maxSY)))
-		if x0 > x1 || y0 > y1 {
-			continue
-		}
-
-		xHits := make([]float64, 0, 64)
-		for py := y0; py <= y1; py++ {
-			xHits = xHits[:0]
-			row := py * w * 4
-			fy := float64(py) + 0.5
-			for _, ring := range screenRings {
-				for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
-					a := ring[j]
-					b := ring[i]
-					if (a.y > fy) == (b.y > fy) {
-						continue
-					}
-					x := a.x + (fy-a.y)*(b.x-a.x)/(b.y-a.y)
-					xHits = append(xHits, x)
-				}
-			}
-			if len(xHits) < 2 {
-				continue
-			}
-			sort.Float64s(xHits)
-			rowWX0, rowWY0 := g.screenToWorld(0.5, fy)
-			rowWX1, rowWY1 := g.screenToWorld(1.5, fy)
-			stepWX := rowWX1 - rowWX0
-			stepWY := rowWY1 - rowWY0
-			for i := 0; i+1 < len(xHits); i += 2 {
-				// Fill pixels whose centers lie in [xA, xB) for even-odd winding.
-				start := int(math.Ceil(xHits[i] - 0.5))
-				end := int(math.Ceil(xHits[i+1]-0.5) - 1)
-				if start < x0 {
-					start = x0
-				}
-				if end > x1 {
-					end = x1
-				}
-				if start > end {
-					continue
-				}
-				wx := rowWX0 + float64(start)*stepWX
-				wy := rowWY0 + float64(start)*stepWY
-				for px := start; px <= end; px++ {
-					iPix := row + px*4
-					if texOK {
-						u := int(math.Floor(wx)) & 63
-						v := int(math.Floor(wy)) & 63
-						ti := (v*64 + u) * 4
-						r, gch, b := shadeRGBByMul(tex[ti+0], tex[ti+1], tex[ti+2], shadeMul)
-						pix[iPix+0] = r
-						pix[iPix+1] = gch
-						pix[iPix+2] = b
-						pix[iPix+3] = 255
-						stats.markedCols++
-					} else {
-						r, gch, b := shadeRGBByMul(wallFloorChange.R, wallFloorChange.G, wallFloorChange.B, shadeMul)
-						pix[iPix+0] = r
-						pix[iPix+1] = gch
-						pix[iPix+2] = b
-						pix[iPix+3] = 255
-						stats.rejectedSpan++
-						stats.rejectNoSector++
-					}
-					wx += stepWX
-					wy += stepWY
-				}
-				stats.emittedSpans++
-			}
-		}
-	}
-
+	stats := mapview.RasterizeFloor2D(pix, mapview.FloorRasterInput{
+		ViewW:         w,
+		ViewH:         h,
+		ViewBBox:      mapview.WorldBBox{MinX: viewWB.minX, MinY: viewWB.minY, MaxX: viewWB.maxX, MaxY: viewWB.maxY},
+		LoopSets:      g.mapFloorLoopSetsForView(),
+		ShadeMuls:     g.mapFloorShadeMuls(),
+		Textures:      g.mapFloorTextures(),
+		FallbackRGB:   [3]byte{wallFloorChange.R, wallFloorChange.G, wallFloorChange.B},
+		ScreenToWorld: g.screenToWorld,
+		WorldToScreen: g.worldToScreen,
+	})
 	g.writePixelsTimed(g.mapFloorLayer, pix)
 	screen.DrawImage(g.mapFloorLayer, nil)
 	g.mapFloorWorldState = "live-screen"
-	g.floorFrame = stats
+	g.floorFrame = floorFrameStats{
+		markedCols:       stats.MarkedCols,
+		emittedSpans:     stats.EmittedSpans,
+		rejectedSpan:     stats.RejectedSpan,
+		rejectNoSector:   stats.RejectNoSector,
+		rejectNoPoly:     stats.RejectNoPoly,
+		rejectDegenerate: stats.RejectDegenerate,
+		rejectSpanClip:   stats.RejectSpanClip,
+	}
 }
 
 func (g *game) screenWorldBBox() worldBBox {
@@ -16617,10 +16343,7 @@ func (g *game) drawMapLines(screen *ebiten.Image) {
 	if g.mapLines.NeedsRebuild(key) {
 		g.rebuildMapLineCache(key)
 	}
-	aa := g.mapVectorAntiAlias()
-	for _, ln := range g.mapLines.Items() {
-		vector.StrokeLine(screen, ln.X1, ln.Y1, ln.X2, ln.Y2, ln.W, ln.Clr, aa)
-	}
+	mapview.DrawCachedLines(screen, g.mapLines.Items(), g.mapVectorAntiAlias())
 }
 
 func (g *game) visibleLineIndices() []int {
@@ -17063,105 +16786,50 @@ func (g *game) drawMenuPatch(screen *ebiten.Image, name string, x, y, sx, sy flo
 	return true
 }
 
-func (g *game) drawPauseThermo(screen *ebiten.Image, x, y, width, dot int, sx, sy float64) {
-	if g == nil {
-		return
-	}
-	if width < 1 {
-		width = 1
-	}
-	if dot < 0 {
-		dot = 0
-	}
-	if dot > width-1 {
-		dot = width - 1
-	}
-	if !g.drawMenuPatch(screen, "M_THERML", float64(x)*sx, float64(y)*sy, sx, sy) {
-		return
-	}
-	for i := 0; i < width; i++ {
-		_ = g.drawMenuPatch(screen, "M_THERMM", float64(x+8+i*8)*sx, float64(y)*sy, sx, sy)
-	}
-	_ = g.drawMenuPatch(screen, "M_THERMR", float64(x+8+width*8)*sx, float64(y)*sy, sx, sy)
-	_ = g.drawMenuPatch(screen, "M_THERMO", float64(x+8+dot*8)*sx, float64(y)*sy, sx, sy)
-}
-
 func (g *game) drawPauseOverlay(screen *ebiten.Image) {
-	if !g.pauseMenuActive || g.quitPromptActive {
-		return
+	episodeNames := make([]string, 0, len(g.availableEpisodeChoices()))
+	for _, ep := range g.availableEpisodeChoices() {
+		if name, ok := inGameEpisodeMenuNames[ep]; ok {
+			episodeNames = append(episodeNames, name)
+		}
 	}
-	sx := float64(g.viewW) / 320.0
-	sy := float64(g.viewH) / 200.0
-	ebitenutil.DrawRect(screen, 0, 0, 320.0*sx, 200.0*sy, color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	mode := hud.PauseModeMain
 	switch g.pauseMenuMode {
 	case pauseMenuModeOptions:
-		_ = g.drawMenuPatch(screen, "M_OPTTTL", 108*sx, 15*sy, sx, sy)
-		for i, name := range frontendOptionsMenuNames {
-			if strings.TrimSpace(name) == "" {
-				continue
-			}
-			_ = g.drawMenuPatch(screen, name, 60*sx, float64(37+i*16)*sy, sx, sy)
-		}
-		_ = g.drawMenuPatch(screen, frontendMessagesPatch(g.hudMessagesEnabled), float64((60+120))*sx, float64(37+1*16)*sy, sx, sy)
-		if g.opts.SourcePortMode {
-			g.drawHUTextAt(screen, g.pauseSourcePortDetailLabel(), float64((60+175))*sx, float64(37+2*16+2)*sy, sx*1.6, sy*1.6)
-		} else {
-			_ = g.drawMenuPatch(screen, frontendDetailPatch(g.lowDetailMode()), float64((60+175))*sx, float64(37+2*16)*sy, sx, sy)
-		}
-		g.drawPauseThermo(screen, 60, 37+6*16, 10, frontendMouseSensitivityDot(g.opts.MouseLookSpeed), sx, sy)
+		mode = hud.PauseModeOptions
 	case pauseMenuModeSound:
-		_ = g.drawMenuPatch(screen, "M_SVOL", 60*sx, 38*sy, sx, sy)
-		g.drawPauseThermo(screen, 80, 64+1*16, 16, frontendVolumeDot(g.opts.SFXVolume), sx, sy)
-		g.drawPauseThermo(screen, 80, 64+3*16, 16, frontendVolumeDot(g.opts.MusicVolume), sx, sy)
-		_ = g.drawMenuPatch(screen, "M_SFXVOL", 80*sx, 64*sy, sx, sy)
-		_ = g.drawMenuPatch(screen, "M_MUSVOL", 80*sx, float64(64+2*16)*sy, sx, sy)
+		mode = hud.PauseModeSound
 	case pauseMenuModeEpisode:
-		_ = g.drawMenuPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
-		_ = g.drawMenuPatch(screen, "M_EPISOD", 54*sx, 38*sy, sx, sy)
-		episodes := g.availableEpisodeChoices()
-		for i, ep := range episodes {
-			if name, ok := inGameEpisodeMenuNames[ep]; ok {
-				_ = g.drawMenuPatch(screen, name, 48*sx, float64(63+i*16)*sy, sx, sy)
-			}
-		}
+		mode = hud.PauseModeEpisode
 	case pauseMenuModeSkill:
-		_ = g.drawMenuPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
-		_ = g.drawMenuPatch(screen, "M_SKILL", 54*sx, 38*sy, sx, sy)
-		for i, name := range frontendSkillMenuNames {
-			_ = g.drawMenuPatch(screen, name, 48*sx, float64(63+i*16)*sy, sx, sy)
-		}
-	default:
-		px := float64((320 - 68) / 2)
-		py := 4.0
-		_ = g.drawMenuPatch(screen, "M_PAUSE", px*sx, py*sy, sx, sy)
-		_ = g.drawMenuPatch(screen, "M_DOOM", 94*sx, 2*sy, sx, sy)
-		for i, name := range inGamePauseMenuNames {
-			_ = g.drawMenuPatch(screen, name, 97*sx, float64(64+i*16)*sy, sx, sy)
-		}
+		mode = hud.PauseModeSkill
 	}
-	skull := "M_SKULL1"
-	if g.pauseMenuWhichSkull != 0 {
-		skull = "M_SKULL2"
-	}
-	switch g.pauseMenuMode {
-	case pauseMenuModeOptions:
-		_ = g.drawMenuPatch(screen, skull, 28*sx, float64(37+g.pauseMenuOptionsOn*16)*sy, sx, sy)
-	case pauseMenuModeSound:
-		skullY := 64
-		if g.pauseMenuSoundOn != 0 {
-			skullY += 2 * 16
-		}
-		_ = g.drawMenuPatch(screen, skull, 48*sx, float64(skullY)*sy, sx, sy)
-	case pauseMenuModeEpisode:
-		_ = g.drawMenuPatch(screen, skull, 16*sx, float64(63+g.pauseMenuEpisodeOn*16)*sy, sx, sy)
-	case pauseMenuModeSkill:
-		_ = g.drawMenuPatch(screen, skull, 16*sx, float64(63+g.pauseMenuSkillOn*16)*sy, sx, sy)
-	default:
-		_ = g.drawMenuPatch(screen, skull, 65*sx, float64(64+g.pauseMenuItemOn*16)*sy, sx, sy)
-	}
-	if msg := strings.TrimSpace(g.pauseMenuStatus); msg != "" {
-		ebitenutil.DebugPrintAt(screen, msg, g.viewW/2-len(msg)*3, int(182*sy))
-	}
+	hud.DrawPauseOverlay(screen, hud.PauseOverlayInputs{
+		ViewW:                  g.viewW,
+		ViewH:                  g.viewH,
+		Visible:                g.pauseMenuActive && !g.quitPromptActive,
+		SourcePortMode:         g.opts.SourcePortMode,
+		Mode:                   mode,
+		OptionsMenuNames:       frontendOptionsMenuNames[:],
+		SoundMenuSFXLabel:      "M_SFXVOL",
+		SoundMenuMusicLabel:    "M_MUSVOL",
+		EpisodeMenuNames:       episodeNames,
+		SkillMenuNames:         frontendSkillMenuNames[:],
+		MainMenuNames:          inGamePauseMenuNames[:],
+		MessagesPatch:          frontendMessagesPatch(g.hudMessagesEnabled),
+		DetailPatch:            frontendDetailPatch(g.lowDetailMode()),
+		SourcePortDetailLabel:  g.pauseSourcePortDetailLabel(),
+		MouseSensitivityDot:    frontendMouseSensitivityDot(g.opts.MouseLookSpeed),
+		SFXVolumeDot:           frontendVolumeDot(g.opts.SFXVolume),
+		MusicVolumeDot:         frontendVolumeDot(g.opts.MusicVolume),
+		SelectedOptions:        g.pauseMenuOptionsOn,
+		SelectedSound:          g.pauseMenuSoundOn,
+		SelectedEpisode:        g.pauseMenuEpisodeOn,
+		SelectedSkill:          g.pauseMenuSkillOn,
+		SelectedMain:           g.pauseMenuItemOn,
+		SelectedSkullAlternate: g.pauseMenuWhichSkull != 0,
+		StatusMessage:          g.pauseMenuStatus,
+	}, g.drawMenuPatch, g.drawHUTextAt)
 }
 
 func (g *game) finishPerfCounter(drawStart time.Time) {
@@ -17222,23 +16890,13 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 }
 
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
-	line1 := fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg)))
-	line2 := fmt.Sprintf("tic %d", g.worldTic)
-	sx, sy, ox, _ := g.hudTransform()
-	w := g.huTextWidth(line1)
-	if w2 := g.huTextWidth(line2); w2 > w {
-		w = w2
-	}
-	maxX := float64(g.viewW)
-	if g.opts.SourcePortMode {
-		maxX = ox + statusBaseW*sx
-	}
-	x := int(maxX - float64(w)*sx - 10*sx)
-	if x < 4 {
-		x = 4
-	}
-	g.drawHUTextAt(screen, line1, float64(x), 10*sy, sx, sy)
-	g.drawHUTextAt(screen, line2, float64(x), 20*sy, sx, sy)
+	hud.DrawPerfOverlay(screen, hud.PerfInputs{
+		ViewW:      g.viewW,
+		ViewH:      g.viewH,
+		SourcePort: g.opts.SourcePortMode,
+		FPSDisplay: fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg))),
+		TicDisplay: fmt.Sprintf("tic %d", g.worldTic),
+	}, g.huTextWidth, g.drawHUTextAt)
 }
 
 func (g *game) huTextWidth(text string) int {

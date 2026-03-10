@@ -4,6 +4,8 @@ import (
 	"math"
 	"strings"
 
+	"gddoom/internal/render/hud"
+
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -437,7 +439,7 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 	if name == "" {
 		return
 	}
-	sx, sy, ox, oy := g.hudTransform()
+	sx, sy, ox, oy := hud.Transform(g.viewW, g.viewH, g.opts.SourcePortMode)
 	bx, by := g.weaponBob()
 	x := ox + (1.0+bx)*sx
 	y := oy + (32.0+by)*sy

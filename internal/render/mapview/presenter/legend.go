@@ -36,6 +36,44 @@ var (
 	ThingMiscColor    = color.RGBA{R: 170, G: 170, B: 170, A: 255}
 )
 
+func StyleForThingType(typ int16, isPlayerStart, isMonster bool) ThingStyle {
+	if isPlayerStart {
+		return ThingStyle{Glyph: GlyphSquare, Color: ThingPlayerColor}
+	}
+	if isMonster {
+		return ThingStyle{Glyph: GlyphTriangle, Color: ThingMonsterColor}
+	}
+	if k, ok := keyColorForType(typ); ok {
+		return ThingStyle{Glyph: GlyphStar, Color: k}
+	}
+	if IsItemOrPickupType(typ) {
+		return ThingStyle{Glyph: GlyphDiamond, Color: ThingItemColor}
+	}
+	return ThingStyle{Glyph: GlyphCross, Color: ThingMiscColor}
+}
+
+func IsItemOrPickupType(typ int16) bool {
+	switch typ {
+	case 8, 17, 83, 2011, 2012, 2013, 2014, 2015, 2018, 2019, 2022, 2023, 2024, 2025, 2026, 2045, 2046, 2047, 2048:
+		return true
+	default:
+		return false
+	}
+}
+
+func keyColorForType(typ int16) (color.RGBA, bool) {
+	switch typ {
+	case 5, 40:
+		return ThingKeyBlue, true
+	case 13, 38:
+		return ThingKeyRed, true
+	case 6, 39:
+		return ThingKeyYellow, true
+	default:
+		return color.RGBA{}, false
+	}
+}
+
 type LegendColors struct {
 	ThingPlayer  color.RGBA
 	ThingMonster color.RGBA
