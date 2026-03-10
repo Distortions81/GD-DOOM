@@ -22,11 +22,13 @@ func TestDefaultDetailLevelForModeSourcePortHalfDetail(t *testing.T) {
 
 func TestCycleDetailLevelChangesViewSize(t *testing.T) {
 	g := &game{
+		automapViewState: automapViewState{
+			FitZoom: 1,
+			Zoom:    1,
+		},
 		viewW:       320,
 		viewH:       200,
 		detailLevel: 0,
-		fitZoom:     1,
-		zoom:        1,
 		bounds: bounds{
 			minX: 0, minY: 0, maxX: 1024, maxY: 1024,
 		},

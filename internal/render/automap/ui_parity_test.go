@@ -28,29 +28,32 @@ func TestToggledLineColorMode(t *testing.T) {
 
 func TestToggleBigMapRoundTrip(t *testing.T) {
 	g := &game{
-		camX:       100,
-		camY:       200,
-		zoom:       3,
-		followMode: true,
+		automapViewState: automapViewState{
+			CamX:       100,
+			CamY:       200,
+			Zoom:       3,
+			FollowMode: true,
+			FitZoom:    0.75,
+		},
 		bounds: bounds{
 			minX: -1000, maxX: 1000,
 			minY: -500, maxY: 500,
 		},
-		fitZoom: 0.75,
 	}
 	g.toggleBigMap()
 	if !g.bigMap {
 		t.Fatalf("bigMap should be enabled after first toggle")
 	}
-	if g.followMode {
+	if g.automapViewState.Snapshot().FollowMode {
 		t.Fatalf("follow mode should be disabled in big-map")
 	}
 	g.toggleBigMap()
 	if g.bigMap {
 		t.Fatalf("bigMap should be disabled after second toggle")
 	}
-	if g.camX != 100 || g.camY != 200 || g.zoom != 3 || !g.followMode {
-		t.Fatalf("restored view mismatch: cam=(%v,%v) zoom=%v follow=%t", g.camX, g.camY, g.zoom, g.followMode)
+	view := g.automapViewState.Snapshot()
+	if view.CamX != 100 || view.CamY != 200 || view.Zoom != 3 || !view.FollowMode {
+		t.Fatalf("restored view mismatch: cam=(%v,%v) zoom=%v follow=%t", view.CamX, view.CamY, view.Zoom, view.FollowMode)
 	}
 }
 
@@ -144,14 +147,14 @@ func TestMapThingSpriteName_WorldThingBlendFramesCanBeDisabled(t *testing.T) {
 
 func TestMapRotationActive_DisabledWhenFollowIsOff(t *testing.T) {
 	g := &game{
-		mode:       viewMap,
-		rotateView: true,
-		followMode: true,
+		automapViewState: automapViewState{FollowMode: true},
+		mode:             viewMap,
+		rotateView:       true,
 	}
 	if !g.mapRotationActive() {
 		t.Fatal("follow-on map rotation should be active")
 	}
-	g.followMode = false
+	g.automapViewState.SetFollowMode(false)
 	if g.mapRotationActive() {
 		t.Fatal("follow-off map rotation should be disabled")
 	}
