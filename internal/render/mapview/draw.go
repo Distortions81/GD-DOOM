@@ -47,12 +47,7 @@ type Backend interface {
 	MapViewDrawMarks(screen *ebiten.Image)
 	MapViewDrawPlayer(screen *ebiten.Image)
 	MapViewDrawPeerPlayers(screen *ebiten.Image)
-	MapViewDrawThingLegend(screen *ebiten.Image)
-	MapViewDrawHUDMessage(screen *ebiten.Image, msg string)
-	MapViewDrawDeathOverlay(screen *ebiten.Image)
-	MapViewDrawFlashOverlay(screen *ebiten.Image)
-	MapViewDrawPauseOverlay(screen *ebiten.Image)
-	MapViewDrawPerfOverlay(screen *ebiten.Image)
+	MapViewDrawOverlays(screen *ebiten.Image, state RenderState)
 }
 
 func Draw(screen *ebiten.Image, state RenderState, b Backend) {
@@ -90,23 +85,8 @@ func drawModeOverlay(screen *ebiten.Image, state RenderState, b Backend) {
 	ebitenutil.DebugPrintAt(screen, state.CheatOverlayText, 12, 60)
 	ebitenutil.DebugPrintAt(screen, state.FloorOverlayText, 12, 76)
 	ebitenutil.DebugPrintAt(screen, state.ThingOverlayText, 12, 92)
-	if state.ShowLegend {
-		b.MapViewDrawThingLegend(screen)
-	}
 }
 
 func drawCommonOverlays(screen *ebiten.Image, state RenderState, b Backend) {
-	if state.ShowHUDMessage {
-		b.MapViewDrawHUDMessage(screen, state.HUDMessage)
-	}
-	if state.IsDead {
-		b.MapViewDrawDeathOverlay(screen)
-	}
-	b.MapViewDrawFlashOverlay(screen)
-	if state.Paused {
-		b.MapViewDrawPauseOverlay(screen)
-	}
-	if state.ShowPerf {
-		b.MapViewDrawPerfOverlay(screen)
-	}
+	b.MapViewDrawOverlays(screen, state)
 }

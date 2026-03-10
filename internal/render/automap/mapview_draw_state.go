@@ -107,26 +107,21 @@ func (g *game) MapViewDrawPeerPlayers(screen *ebiten.Image) {
 	g.drawPeerPlayers(screen)
 }
 
-func (g *game) MapViewDrawThingLegend(screen *ebiten.Image) {
-	g.drawThingLegend(screen)
-}
-
-func (g *game) MapViewDrawHUDMessage(screen *ebiten.Image, msg string) {
-	g.drawHUDMessage(screen, msg, 0, 0)
-}
-
-func (g *game) MapViewDrawDeathOverlay(screen *ebiten.Image) {
-	g.drawDeathOverlay(screen)
-}
-
-func (g *game) MapViewDrawFlashOverlay(screen *ebiten.Image) {
+func (g *game) MapViewDrawOverlays(screen *ebiten.Image, state mapview.RenderState) {
+	if state.ShowLegend {
+		g.drawThingLegend(screen)
+	}
+	if state.ShowHUDMessage {
+		g.drawHUDMessage(screen, state.HUDMessage, 0, 0)
+	}
+	if state.IsDead {
+		g.drawDeathOverlay(screen)
+	}
 	g.drawFlashOverlay(screen)
-}
-
-func (g *game) MapViewDrawPauseOverlay(screen *ebiten.Image) {
-	g.drawPauseOverlay(screen)
-}
-
-func (g *game) MapViewDrawPerfOverlay(screen *ebiten.Image) {
-	g.drawPerfOverlay(screen)
+	if state.Paused {
+		g.drawPauseOverlay(screen)
+	}
+	if state.ShowPerf {
+		g.drawPerfOverlay(screen)
+	}
 }
