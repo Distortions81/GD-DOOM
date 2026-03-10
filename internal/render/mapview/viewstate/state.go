@@ -37,6 +37,85 @@ type Snapshot struct {
 	PrevCamY   float64
 }
 
+type Viewport struct {
+	Width       int
+	Height      int
+	RenderAngle uint32
+	Rotate      bool
+}
+
+type CacheState struct {
+	CamX       float64
+	CamY       float64
+	Zoom       float64
+	Angle      uint32
+	Rotate     bool
+	ViewWidth  int
+	ViewHeight int
+}
+
+func (s Snapshot) FollowEnabled() bool {
+	return s.FollowMode
+}
+
+func (s Snapshot) ZoomLevel() float64 {
+	return s.Zoom
+}
+
+func (s Snapshot) FitZoomLevel() float64 {
+	return s.FitZoom
+}
+
+func (s Snapshot) Camera() (float64, float64) {
+	return s.CamX, s.CamY
+}
+
+func (s Snapshot) RenderCamera() (float64, float64) {
+	return s.RenderCamX, s.RenderCamY
+}
+
+func (s Snapshot) ViewBounds(viewW, viewH int) (left, right, bottom, top float64) {
+	zoom := s.Zoom
+	left = s.RenderCamX - float64(viewW)/(2*zoom)
+	right = s.RenderCamX + float64(viewW)/(2*zoom)
+	bottom = s.RenderCamY - float64(viewH)/(2*zoom)
+	top = s.RenderCamY + float64(viewH)/(2*zoom)
+	return left, right, bottom, top
+}
+
+func (s Snapshot) BoundsForViewport(vp Viewport) (left, right, bottom, top float64) {
+	return s.ViewBounds(vp.Width, vp.Height)
+}
+
+func (s Snapshot) VisibleBounds(vp Viewport, margin float64) (left, right, bottom, top float64) {
+	left, right, bottom, top = s.BoundsForViewport(vp)
+	if !vp.Rotate {
+		left -= margin
+		right += margin
+		bottom -= margin
+		top += margin
+		return left, right, bottom, top
+	}
+	viewHalfW := float64(vp.Width) / (2 * s.Zoom)
+	viewHalfH := float64(vp.Height) / (2 * s.Zoom)
+	camX, camY := s.RenderCamera()
+	r := math.Hypot(viewHalfW, viewHalfH) + margin
+	return camX - r, camX + r, camY - r, camY + r
+}
+
+func (s Snapshot) CacheState(vp Viewport) CacheState {
+	camX, camY := s.RenderCamera()
+	return CacheState{
+		CamX:       camX,
+		CamY:       camY,
+		Zoom:       s.Zoom,
+		Angle:      vp.RenderAngle,
+		Rotate:     vp.Rotate,
+		ViewWidth:  vp.Width,
+		ViewHeight: vp.Height,
+	}
+}
+
 func (s *State) Reset(centerX, centerY, worldW, worldH float64, viewW, viewH int, initialZoomMul float64) {
 	s.CamX = centerX
 	s.CamY = centerY
@@ -174,6 +253,10 @@ func (s *State) WorldToScreen(x, y float64, viewW, viewH int, renderAngle uint32
 	return sx, sy
 }
 
+func (s *State) WorldToScreenViewport(vp Viewport, x, y float64) (float64, float64) {
+	return s.WorldToScreen(x, y, vp.Width, vp.Height, vp.RenderAngle, vp.Rotate)
+}
+
 func (s *State) ScreenToWorld(sx, sy float64, viewW, viewH int, renderAngle uint32, rotate bool) (float64, float64) {
 	dx := (sx - float64(viewW)/2) / s.Zoom
 	dy := (float64(viewH)/2 - sy) / s.Zoom
@@ -187,6 +270,10 @@ func (s *State) ScreenToWorld(sx, sy float64, viewW, viewH int, renderAngle uint
 		dy = wdy
 	}
 	return s.RenderCamX + dx, s.RenderCamY + dy
+}
+
+func (s *State) ScreenToWorldViewport(vp Viewport, sx, sy float64) (float64, float64) {
+	return s.ScreenToWorld(sx, sy, vp.Width, vp.Height, vp.RenderAngle, vp.Rotate)
 }
 
 func FitZoomForWorld(worldW, worldH float64, viewW, viewH int) float64 {

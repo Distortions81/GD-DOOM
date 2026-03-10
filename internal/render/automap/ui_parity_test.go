@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview/viewstate"
 )
 
 func TestShouldDrawThings(t *testing.T) {
@@ -28,7 +29,7 @@ func TestToggledLineColorMode(t *testing.T) {
 
 func TestToggleBigMapRoundTrip(t *testing.T) {
 	g := &game{
-		automapViewState: automapViewState{
+		State: viewstate.State{
 			CamX:       100,
 			CamY:       200,
 			Zoom:       3,
@@ -41,19 +42,20 @@ func TestToggleBigMapRoundTrip(t *testing.T) {
 		},
 	}
 	g.toggleBigMap()
-	if !g.bigMap {
+	if !g.bigMap.Enabled() {
 		t.Fatalf("bigMap should be enabled after first toggle")
 	}
-	if g.automapViewState.Snapshot().FollowMode {
+	if g.State.Snapshot().FollowEnabled() {
 		t.Fatalf("follow mode should be disabled in big-map")
 	}
 	g.toggleBigMap()
-	if g.bigMap {
+	if g.bigMap.Enabled() {
 		t.Fatalf("bigMap should be disabled after second toggle")
 	}
-	view := g.automapViewState.Snapshot()
-	if view.CamX != 100 || view.CamY != 200 || view.Zoom != 3 || !view.FollowMode {
-		t.Fatalf("restored view mismatch: cam=(%v,%v) zoom=%v follow=%t", view.CamX, view.CamY, view.Zoom, view.FollowMode)
+	view := g.State.Snapshot()
+	camX, camY := view.Camera()
+	if camX != 100 || camY != 200 || view.ZoomLevel() != 3 || !view.FollowEnabled() {
+		t.Fatalf("restored view mismatch: cam=(%v,%v) zoom=%v follow=%t", camX, camY, view.ZoomLevel(), view.FollowEnabled())
 	}
 }
 
@@ -147,14 +149,14 @@ func TestMapThingSpriteName_WorldThingBlendFramesCanBeDisabled(t *testing.T) {
 
 func TestMapRotationActive_DisabledWhenFollowIsOff(t *testing.T) {
 	g := &game{
-		automapViewState: automapViewState{FollowMode: true},
-		mode:             viewMap,
-		rotateView:       true,
+		State:      viewstate.State{FollowMode: true},
+		mode:       viewMap,
+		rotateView: true,
 	}
 	if !g.mapRotationActive() {
 		t.Fatal("follow-on map rotation should be active")
 	}
-	g.automapViewState.SetFollowMode(false)
+	g.State.SetFollowMode(false)
 	if g.mapRotationActive() {
 		t.Fatal("follow-off map rotation should be disabled")
 	}

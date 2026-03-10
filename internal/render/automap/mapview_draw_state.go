@@ -7,7 +7,7 @@ import (
 )
 
 func (g *game) buildMapViewRenderState() mapview.RenderState {
-	view := g.automapViewState.Snapshot()
+	view := g.State.Snapshot()
 	modeLabel := "MAP"
 	if g.mode == viewWalk {
 		modeLabel = "WALK"
@@ -21,11 +21,11 @@ func (g *game) buildMapViewRenderState() mapview.RenderState {
 		ModeLabel:            modeLabel,
 		MapName:              string(g.m.Name),
 		SkillLevel:           g.opts.SkillLevel,
-		Zoom:                 view.Zoom,
+		Zoom:                 view.ZoomLevel(),
 		RevealAllMap:         g.parity.reveal == revealAllMap,
 		IDDT:                 g.parity.iddt,
 		ShowGrid:             g.showGrid,
-		MarksCount:           len(g.marks),
+		MarksCount:           g.marks.Count(),
 		LineColorMode:        g.opts.LineColorMode,
 		Health:               g.stats.Health,
 		Armor:                g.stats.Armor,

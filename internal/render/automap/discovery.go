@@ -17,7 +17,7 @@ func (g *game) discoverLinesAroundPlayer() {
 		}
 	}
 	if changed {
-		g.mapLineRev++
+		g.mapLines.Touch()
 	}
 }
 

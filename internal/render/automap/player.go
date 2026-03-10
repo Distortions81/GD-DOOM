@@ -1,6 +1,9 @@
 package automap
 
-import "gddoom/internal/mapdata"
+import (
+	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview/linevisibility"
+)
 
 const (
 	doomTicsPerSecond = 35
@@ -128,6 +131,7 @@ func spawnPlayer(m *mapdata.Map, requestedSlot int) (player, int, []playerStart)
 
 func (g *game) initPhysics() {
 	g.lines = buildPhysLines(g.m)
+	g.mapVisibleLines = buildMapVisibleLines(g.lines)
 	g.lineValid = make([]int, len(g.lines))
 	if g.m.BlockMap != nil {
 		g.bmapOriginX = int64(g.m.BlockMap.OriginX) << fracBits
@@ -155,6 +159,17 @@ func (g *game) initPhysics() {
 	if g.p.viewHeight == 0 {
 		g.p.viewHeight = playerViewHeight
 	}
+}
+
+func buildMapVisibleLines(lines []physLine) []linevisibility.Line {
+	out := make([]linevisibility.Line, 0, len(lines))
+	for _, line := range lines {
+		out = append(out, linevisibility.Line{
+			Index: line.idx,
+			BBox:  line.bbox,
+		})
+	}
+	return out
 }
 
 func buildPhysLines(m *mapdata.Map) []physLine {

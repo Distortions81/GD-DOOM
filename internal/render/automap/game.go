@@ -16,6 +16,11 @@ import (
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/mapview"
+	"gddoom/internal/render/mapview/bigmap"
+	"gddoom/internal/render/mapview/linecache"
+	"gddoom/internal/render/mapview/linevisibility"
+	"gddoom/internal/render/mapview/marks"
+	"gddoom/internal/render/mapview/viewstate"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -276,29 +281,6 @@ type maskedClipSpan struct {
 	hasOpen bool
 }
 
-type mapLineDraw struct {
-	x1  float32
-	y1  float32
-	x2  float32
-	y2  float32
-	w   float32
-	clr color.RGBA
-}
-
-type mapLineCacheKey struct {
-	camX          float64
-	camY          float64
-	zoom          float64
-	angle         uint32
-	rotateView    bool
-	viewW         int
-	viewH         int
-	reveal        revealMode
-	iddt          int
-	lineColorMode string
-	mappedRev     uint32
-}
-
 type game struct {
 	m                 *mapdata.Map
 	opts              Options
@@ -308,14 +290,14 @@ type game struct {
 	crtEnabled        bool
 	viewW             int
 	viewH             int
-	automapViewState
+	viewstate.State
 
 	mode                      viewMode
 	rotateView                bool
 	parity                    automapParityState
 	showGrid                  bool
 	showLegend                bool
-	bigMap                    bool
+	bigMap                    bigmap.State
 	paused                    bool
 	pauseMenuActive           bool
 	pauseMenuMode             int
@@ -334,14 +316,14 @@ type game struct {
 	quitPromptActive          bool
 	newGameRequestedMap       *mapdata.Map
 	newGameRequestedSkill     int
-	marks                     []mapMark
-	nextMarkID                int
+	marks                     marks.State
 	p                         player
 	currentMoveCmd            moveCmd
 	localSlot                 int
 	peerStarts                []playerStart
 
 	lines                []physLine
+	mapVisibleLines      []linevisibility.Line
 	lineValid            []int
 	validCount           int
 	bmapOriginX          int64
@@ -352,6 +334,7 @@ type game struct {
 	renderSeen           []int
 	renderEpoch          int
 	visibleBuf           []int
+	mapLineVisibility    linevisibility.State
 	bspOccBuf            []solidSpan
 	visibleSectorSeen    []int
 	visibleSubSectorSeen []int
@@ -361,10 +344,7 @@ type game struct {
 	nodeChildRangeR      []int
 	nodeChildRangeOK     []uint8
 	thingSectorCache     []int
-	mapLineBuf           []mapLineDraw
-	mapLineKey           mapLineCacheKey
-	mapLineRev           uint32
-	mapLineInit          bool
+	mapLines             linecache.State
 	sectorFloor          []int64
 	sectorCeil           []int64
 	lineSpecial          []uint16
@@ -645,12 +625,6 @@ type savedMapView struct {
 	zoom   float64
 	follow bool
 	valid  bool
-}
-
-type mapMark struct {
-	id int
-	x  float64
-	y  float64
 }
 
 type delayedSoundEvent struct {
@@ -940,7 +914,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		skyOutputW:        max(opts.Width, 1),
 		skyOutputH:        max(opts.Height, 1),
 		mode:              viewMap,
-		automapViewState:  automapViewState{FollowMode: true},
+		State:             viewstate.State{FollowMode: true},
 		rotateView:        opts.SourcePortMode,
 		parity: automapParityState{
 			reveal: revealNormal,
@@ -948,10 +922,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		},
 		showGrid:           false,
 		showLegend:         opts.SourcePortMode,
-		bigMap:             false,
 		hudMessagesEnabled: true,
-		marks:              make([]mapMark, 0, 16),
-		nextMarkID:         1,
+		marks:              marks.New(10),
 		p:                  p,
 		localSlot:          localSlot,
 		peerStarts:         nonLocalStarts(starts, localSlot),
@@ -1033,7 +1005,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if g.opts.DemoScript != nil {
 		// Demo benchmark mode is intentionally isolated from interactive controls.
 		g.mode = viewWalk
-		g.automapViewState.SetFollowMode(true)
+		g.State.SetFollowMode(true)
 		g.rotateView = false
 	}
 	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
@@ -1108,7 +1080,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.discoverLinesAroundPlayer()
 	g.resetView()
 	if opts.StartZoom > 0 {
-		g.automapViewState.SetZoom(opts.StartZoom)
+		g.State.SetZoom(opts.StartZoom)
 	}
 	g.syncRenderState()
 	if g.mode == viewWalk {
@@ -1151,7 +1123,7 @@ func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
 
 func (g *game) resetView() {
 	centerX, centerY, worldW, worldH := boundsViewMetrics(g.bounds)
-	g.automapViewState.Reset(centerX, centerY, worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
+	g.State.Reset(centerX, centerY, worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
 }
 
 func detailPresetIndex(w, h int) int {
@@ -1172,7 +1144,7 @@ func (g *game) cycleDetailLevel() {
 	g.viewW = p[0]
 	g.viewH = p[1]
 	_, _, worldW, worldH := boundsViewMetrics(g.bounds)
-	g.automapViewState.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
+	g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
 	label := "HIGH"
 	if g.lowDetailMode() {
 		label = "LOW"
@@ -1487,7 +1459,7 @@ func (g *game) updateDemoMode() error {
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.writeDemoTraceTic()
 	g.discoverLinesAroundPlayer()
-	g.automapViewState.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 	g.tickStatusWidgets()
 	if g.useFlash > 0 {
 		g.useFlash--
@@ -1587,14 +1559,14 @@ func (g *game) updateWalkMode() {
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.recordDemoTic(cmd, usePressed, firePressed)
 	g.discoverLinesAroundPlayer()
-	g.automapViewState.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 }
 
 func (g *game) mapRotationActive() bool {
 	if g == nil || !g.rotateView {
 		return false
 	}
-	if g.mode == viewMap && !g.automapViewState.Snapshot().FollowMode {
+	if g.mode == viewMap && !g.State.Snapshot().FollowEnabled() {
 		return false
 	}
 	return true
@@ -1862,7 +1834,7 @@ func (g *game) updateZoom() {
 		step = -zoomStep
 	}
 	_, wheelY := ebiten.Wheel()
-	g.automapViewState.AdjustZoom(step, wheelY)
+	g.State.AdjustZoom(step, wheelY)
 }
 
 func (g *game) Draw(screen *ebiten.Image) {
@@ -2460,30 +2432,23 @@ func (g *game) drawThingLegend(screen *ebiten.Image) {
 }
 
 func (g *game) addMark() {
-	if len(g.marks) >= 10 {
+	x, y := g.State.Camera()
+	id, ok := g.marks.Add(x, y)
+	if !ok {
 		g.setHUDMessage("Marks Full", 70)
 		return
 	}
-	id := g.nextMarkID
-	x, y := g.automapViewState.Camera()
-	g.marks = append(g.marks, mapMark{
-		id: g.nextMarkID,
-		x:  x,
-		y:  y,
-	})
-	g.nextMarkID++
 	g.setHUDMessage(fmt.Sprintf("Marked Spot %d", id), 70)
 }
 
 func (g *game) clearMarks() {
-	g.marks = g.marks[:0]
+	g.marks.Clear()
 	g.setHUDMessage("Marks Cleared", 70)
 }
 
 func (g *game) toggleBigMap() {
 	centerX, centerY, _, _ := boundsViewMetrics(g.bounds)
-	g.bigMap = g.automapViewState.ToggleBigMap(centerX, centerY)
-	if g.bigMap {
+	if g.bigMap.Toggle(&g.State, centerX, centerY) {
 		g.setHUDMessage("Big Map ON", 70)
 		return
 	}
@@ -2492,11 +2457,8 @@ func (g *game) toggleBigMap() {
 
 func (g *game) drawGrid(screen *ebiten.Image) {
 	const cell = 128.0
-	view := g.automapViewState.Snapshot()
-	left := view.RenderCamX - float64(g.viewW)/(2*view.Zoom)
-	right := view.RenderCamX + float64(g.viewW)/(2*view.Zoom)
-	bottom := view.RenderCamY - float64(g.viewH)/(2*view.Zoom)
-	top := view.RenderCamY + float64(g.viewH)/(2*view.Zoom)
+	view := g.State.Snapshot()
+	left, right, bottom, top := view.BoundsForViewport(g.viewport())
 	grid := color.RGBA{R: 40, G: 50, B: 60, A: 255}
 	aa := g.mapVectorAntiAlias()
 
@@ -2516,7 +2478,7 @@ func (g *game) drawGrid(screen *ebiten.Image) {
 
 func (g *game) drawThings(screen *ebiten.Image) {
 	aa := g.mapVectorAntiAlias()
-	view := g.automapViewState.Snapshot()
+	view := g.State.Snapshot()
 	for i, th := range g.m.Things {
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
 			continue
@@ -2528,7 +2490,7 @@ func (g *game) drawThings(screen *ebiten.Image) {
 		if g.drawMapThingSprite(screen, i, th, sx, sy) {
 			continue
 		}
-		size := thingGlyphSize(view.Zoom)
+		size := thingGlyphSize(view.ZoomLevel())
 		angle := worldAngleToGlyphAngle(g.thingWorldAngle(i, th))
 		if g.mapRotationActive() {
 			angle = relativeWorldAngle(g.thingWorldAngle(i, th), g.renderAngle)
@@ -2563,7 +2525,7 @@ func (g *game) drawMapThingSprite(screen *ebiten.Image, thingIdx int, th mapdata
 	if !ok || w <= 0 || h <= 0 {
 		return false
 	}
-	target := thingGlyphSize(g.automapViewState.Snapshot().Zoom) * 2.4
+	target := thingGlyphSize(g.State.Snapshot().ZoomLevel()) * 2.4
 	if target < 6 {
 		target = 6
 	}
@@ -2623,12 +2585,12 @@ func thingGlyphSize(zoom float64) float64 {
 func (g *game) drawMarks(screen *ebiten.Image) {
 	mc := color.RGBA{R: 120, G: 210, B: 255, A: 255}
 	aa := g.mapVectorAntiAlias()
-	for _, mk := range g.marks {
-		sx, sy := g.worldToScreen(mk.x, mk.y)
+	for _, mk := range g.marks.Items() {
+		sx, sy := g.worldToScreen(mk.X, mk.Y)
 		r := 5.0
 		vector.StrokeLine(screen, float32(sx-r), float32(sy-r), float32(sx+r), float32(sy+r), 1.3, mc, aa)
 		vector.StrokeLine(screen, float32(sx-r), float32(sy+r), float32(sx+r), float32(sy-r), 1.3, mc, aa)
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", mk.id), int(sx)+6, int(sy)-6)
+		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d", mk.ID), int(sx)+6, int(sy)-6)
 	}
 }
 
@@ -2662,7 +2624,7 @@ func (g *game) drawPlayerArrowWorld(screen *ebiten.Image, px, py, ang float64, c
 func (g *game) drawPlayerArrowScreen(screen *ebiten.Image, sx, sy, ang float64) {
 	ca := math.Cos(ang)
 	sa := math.Sin(ang)
-	scale := g.automapViewState.Snapshot().Zoom
+	scale := g.State.Snapshot().ZoomLevel()
 	for _, seg := range doomPlayerArrow {
 		ax := seg[0]*ca - seg[1]*sa
 		ay := seg[0]*sa + seg[1]*ca
@@ -10883,7 +10845,7 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 			g.viewW = w
 			g.viewH = h
 			_, _, worldW, worldH := boundsViewMetrics(g.bounds)
-			g.automapViewState.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
+			g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
 			// Resolution changes can invalidate shader-side projection assumptions.
 			// Rebuild full sky GPU pipeline (shader + textures + caches).
 			g.resetSkyLayerPipeline(true)
@@ -10903,11 +10865,11 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *game) worldToScreen(x, y float64) (float64, float64) {
-	return g.automapViewState.WorldToScreen(x, y, g.viewW, g.viewH, g.renderAngle, g.mapRotationActive())
+	return g.State.WorldToScreenViewport(g.viewport(), x, y)
 }
 
 func (g *game) screenToWorld(sx, sy float64) (float64, float64) {
-	return g.automapViewState.ScreenToWorld(sx, sy, g.viewW, g.viewH, g.renderAngle, g.mapRotationActive())
+	return g.State.ScreenToWorldViewport(g.viewport(), sx, sy)
 }
 
 func (g *game) ensureMapFloorLayer() {
@@ -16397,7 +16359,7 @@ func isSkyFlatName(name string) bool {
 }
 
 func (g *game) capturePrevState() {
-	g.automapViewState.CapturePrev()
+	g.State.CapturePrev()
 	g.prevPX = g.p.x
 	g.prevPY = g.p.y
 	g.prevAngle = g.p.angle
@@ -16405,7 +16367,7 @@ func (g *game) capturePrevState() {
 
 func (g *game) syncRenderState() {
 	g.capturePrevState()
-	g.automapViewState.SyncRender()
+	g.State.SyncRender()
 	g.renderPX = float64(g.p.x) / fracUnit
 	g.renderPY = float64(g.p.y) / fracUnit
 	g.renderAngle = g.p.angle
@@ -16425,7 +16387,7 @@ func (g *game) prepareRenderState() {
 		// Interpolating from prev can make render state lag behind simulation.
 		alpha = 1
 	}
-	g.automapViewState.PrepareRender(alpha)
+	g.State.PrepareRender(alpha)
 	g.renderPX = lerp(float64(g.prevPX)/fracUnit, float64(g.p.x)/fracUnit, alpha)
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
 	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
@@ -16621,102 +16583,80 @@ func (g *game) decisionStyle(d lineDecision) (color.Color, float64) {
 	}
 }
 
-func (g *game) mapLineStateKey() mapLineCacheKey {
-	view := g.automapViewState.Snapshot()
-	return mapLineCacheKey{
-		camX:          view.RenderCamX,
-		camY:          view.RenderCamY,
-		zoom:          view.Zoom,
-		angle:         g.renderAngle,
-		rotateView:    g.rotateView,
-		viewW:         g.viewW,
-		viewH:         g.viewH,
-		reveal:        g.parity.reveal,
-		iddt:          g.parity.iddt,
-		lineColorMode: g.opts.LineColorMode,
-		mappedRev:     g.mapLineRev,
+func (g *game) mapLineStateKey() linecache.Key {
+	view := g.State.Snapshot()
+	cacheState := view.CacheState(g.viewport())
+	return linecache.Key{
+		CamX:          cacheState.CamX,
+		CamY:          cacheState.CamY,
+		Zoom:          cacheState.Zoom,
+		Angle:         cacheState.Angle,
+		RotateView:    cacheState.Rotate,
+		ViewW:         cacheState.ViewWidth,
+		ViewH:         cacheState.ViewHeight,
+		Reveal:        int(g.parity.reveal),
+		IDDT:          g.parity.iddt,
+		LineColorMode: g.opts.LineColorMode,
+		MappedRev:     g.mapLines.Revision(),
 	}
 }
 
-func (g *game) rebuildMapLineCache() {
-	out := g.mapLineBuf[:0]
-	for _, li := range g.visibleLineIndices() {
-		pi := g.physForLine[li]
-		if pi < 0 || pi >= len(g.lines) {
-			continue
-		}
-		ld := g.m.Linedefs[li]
-		d := g.linedefDecision(ld)
-		if !d.visible {
-			continue
-		}
-		pl := g.lines[pi]
-		x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
-		x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
-		if x1 == x2 && y1 == y2 {
-			continue
-		}
-		c, w := g.decisionStyle(d)
-		crgba := color.RGBAModel.Convert(c).(color.RGBA)
-		out = append(out, mapLineDraw{
-			x1:  float32(x1),
-			y1:  float32(y1),
-			x2:  float32(x2),
-			y2:  float32(y2),
-			w:   float32(w),
-			clr: crgba,
-		})
+func (g *game) rebuildMapLineCache(key linecache.Key) {
+	out := linecache.Build(g.mapLines.Reuse(), g.visibleLineIndices(), g.resolveMapLineDraw)
+	g.mapLines.Reset(out, key)
+}
+
+func (g *game) resolveMapLineDraw(li int) (linecache.Draw, bool) {
+	pi := g.physForLine[li]
+	if pi < 0 || pi >= len(g.lines) {
+		return linecache.Draw{}, false
 	}
-	g.mapLineBuf = out
+	ld := g.m.Linedefs[li]
+	d := g.linedefDecision(ld)
+	if !d.visible {
+		return linecache.Draw{}, false
+	}
+	pl := g.lines[pi]
+	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
+	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
+	if x1 == x2 && y1 == y2 {
+		return linecache.Draw{}, false
+	}
+	c, w := g.decisionStyle(d)
+	crgba := color.RGBAModel.Convert(c).(color.RGBA)
+	return linecache.Draw{
+		X1:  float32(x1),
+		Y1:  float32(y1),
+		X2:  float32(x2),
+		Y2:  float32(y2),
+		W:   float32(w),
+		Clr: crgba,
+	}, true
 }
 
 func (g *game) drawMapLines(screen *ebiten.Image) {
 	key := g.mapLineStateKey()
-	if !g.mapLineInit || key != g.mapLineKey {
-		g.rebuildMapLineCache()
-		g.mapLineKey = key
-		g.mapLineInit = true
+	if g.mapLines.NeedsRebuild(key) {
+		g.rebuildMapLineCache(key)
 	}
 	aa := g.mapVectorAntiAlias()
-	for _, ln := range g.mapLineBuf {
-		vector.StrokeLine(screen, ln.x1, ln.y1, ln.x2, ln.y2, ln.w, ln.clr, aa)
+	for _, ln := range g.mapLines.Items() {
+		vector.StrokeLine(screen, ln.X1, ln.Y1, ln.X2, ln.Y2, ln.W, ln.Clr, aa)
 	}
 }
 
 func (g *game) visibleLineIndices() []int {
-	view := g.automapViewState.Snapshot()
-	margin := 2.0 / view.Zoom
-	camX := view.RenderCamX
-	camY := view.RenderCamY
-	viewHalfW := float64(g.viewW) / (2 * view.Zoom)
-	viewHalfH := float64(g.viewH) / (2 * view.Zoom)
-	minXf := camX - viewHalfW - margin
-	maxXf := camX + viewHalfW + margin
-	minYf := camY - viewHalfH - margin
-	maxYf := camY + viewHalfH + margin
-	if g.rotateView {
-		// Conservative culling when rotating: circumscribed circle around the viewport.
-		r := math.Hypot(viewHalfW, viewHalfH) + margin
-		minXf = camX - r
-		maxXf = camX + r
-		minYf = camY - r
-		maxYf = camY + r
-	}
+	view := g.State.Snapshot()
+	margin := 2.0 / view.ZoomLevel()
+	minXf, maxXf, minYf, maxYf := view.VisibleBounds(g.viewport(), margin)
 	minX := floatToFixed(minXf)
 	maxX := floatToFixed(maxXf)
 	minY := floatToFixed(minYf)
 	maxY := floatToFixed(maxYf)
 
-	g.visibleBuf = g.visibleBuf[:0]
 	// Robust automap visibility: trust line bboxes directly.
 	// Some BLOCKMAP data can omit candidates and cause line pop/disappear at seams.
-	for _, pl := range g.lines {
-		if !bboxIntersects(pl.bbox, minX, minY, maxX, maxY) {
-			continue
-		}
-		g.visibleBuf = append(g.visibleBuf, pl.idx)
-	}
-	return g.visibleBuf
+	return g.mapLineVisibility.Filter(g.mapVisibleLines, minX, minY, maxX, maxY)
 }
 
 func (g *game) sectorVisibleNow(sec int) bool {
@@ -17105,28 +17045,6 @@ func (g *game) spriteFootprintClipYBounds(x, y, radius int64, viewH int, eyeZ, d
 		return top, bottom, false
 	}
 	return top, bottom, true
-}
-
-func (g *game) lineVisibleInBox(lineIdx int, minX, minY, maxX, maxY int64) bool {
-	pi := g.physForLine[lineIdx]
-	if pi < 0 || pi >= len(g.lines) {
-		return false
-	}
-	return bboxIntersects(g.lines[pi].bbox, minX, minY, maxX, maxY)
-}
-
-func bboxIntersects(lineBBox [4]int64, minX, minY, maxX, maxY int64) bool {
-	lineMaxY := lineBBox[0]
-	lineMinY := lineBBox[1]
-	lineMaxX := lineBBox[2]
-	lineMinX := lineBBox[3]
-	if lineMaxX < minX || lineMinX > maxX {
-		return false
-	}
-	if lineMaxY < minY || lineMinY > maxY {
-		return false
-	}
-	return true
 }
 
 func max(a, b int) int {

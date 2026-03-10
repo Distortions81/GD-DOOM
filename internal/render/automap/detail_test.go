@@ -1,5 +1,6 @@
 package automap
 
+import "gddoom/internal/render/mapview/viewstate"
 import "testing"
 
 func TestDetailPresetIndex(t *testing.T) {
@@ -22,7 +23,7 @@ func TestDefaultDetailLevelForModeSourcePortHalfDetail(t *testing.T) {
 
 func TestCycleDetailLevelChangesViewSize(t *testing.T) {
 	g := &game{
-		automapViewState: automapViewState{
+		State: viewstate.State{
 			FitZoom: 1,
 			Zoom:    1,
 		},

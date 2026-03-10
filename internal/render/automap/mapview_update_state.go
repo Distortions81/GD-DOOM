@@ -40,13 +40,13 @@ func (g *game) buildMapViewInputState() mapview.InputState {
 
 func (g *game) buildMapViewUpdateState() mapview.UpdateState {
 	speed := g.currentRunSpeed()
-	view := g.automapViewState.Snapshot()
+	view := g.State.Snapshot()
 	return mapview.UpdateState{
 		EdgeInputPass:          g.edgeInputPass,
 		IsSourcePort:           g.opts.SourcePortMode,
-		FollowMode:             view.FollowMode,
-		Zoom:                   view.Zoom,
-		FitZoom:                view.FitZoom,
+		FollowMode:             view.FollowEnabled(),
+		Zoom:                   view.ZoomLevel(),
+		FitZoom:                view.FitZoomLevel(),
 		RunSpeed:               speed,
 		ForwardMove:            forwardMove[speed],
 		SideMove:               sideMove[speed],
@@ -61,9 +61,9 @@ func (g *game) buildMapViewUpdateState() mapview.UpdateState {
 }
 
 func (g *game) applyMapViewUpdateResult(result mapview.UpdateResult) {
-	g.automapViewState.SetZoom(result.Zoom)
+	g.State.SetZoom(result.Zoom)
 	if result.ToggleFollow {
-		if g.automapViewState.ToggleFollowMode() {
+		if g.State.ToggleFollowMode() {
 			g.setHUDMessage("Follow ON", 70)
 		} else {
 			g.setHUDMessage("Follow OFF", 70)
@@ -103,8 +103,8 @@ func (g *game) applyMapViewUpdateResult(result mapview.UpdateResult) {
 	}, result.ConsumePendingUse, result.FirePressed)
 	g.discoverLinesAroundPlayer()
 	if result.SyncCameraToPlayer {
-		g.automapViewState.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+		g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 		return
 	}
-	g.automapViewState.Pan(result.PanDX, result.PanDY)
+	g.State.Pan(result.PanDX, result.PanDY)
 }
