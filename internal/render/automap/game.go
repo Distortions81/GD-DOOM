@@ -1899,7 +1899,18 @@ func (g *game) Draw(screen *ebiten.Image) {
 		}
 		return
 	}
-	presenter.Draw(screen, g.mapViewPresenterInputs(), presenter.Hooks{
+	presenter.Draw(screen, presenter.Inputs{
+		DrawFloorTextures2D: g.opts.SourcePortMode && len(g.opts.FlatBank) > 0,
+		DrawGrid:            g.showGrid,
+		IsSourcePort:        g.opts.SourcePortMode,
+		DrawThings:          shouldDrawThings(g.parity),
+		ShowLegend:          g.showLegend,
+		HUDMessage:          g.useText,
+		ShowHUDMessage:      g.useFlash > 0,
+		IsDead:              g.isDead,
+		Paused:              g.paused,
+		ShowPerf:            !g.opts.NoFPS,
+	}, presenter.Hooks{
 		PrepareRenderState:  g.prepareRenderState,
 		DrawFloorTextures2D: g.drawMapFloorTextures2D,
 		DrawGrid:            g.drawGrid,
