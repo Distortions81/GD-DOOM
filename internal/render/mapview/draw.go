@@ -1,10 +1,7 @@
 package mapview
 
 import (
-	"gddoom/internal/render/mapview/linepolicy"
-
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
 
 type RenderState struct {
@@ -13,19 +10,6 @@ type RenderState struct {
 	IsSourcePort        bool
 	DrawThings          bool
 	ShowLegend          bool
-	ModeLabel           string
-	MapName             string
-	SkillLevel          int
-	Zoom                float64
-	LinePolicyState     linepolicy.State
-	ShowGrid            bool
-	MarksCount          int
-	LineColorMode       string
-	ModeOverlayText     string
-	StatsOverlayText    string
-	CheatOverlayText    string
-	FloorOverlayText    string
-	ThingOverlayText    string
 	HUDMessage          string
 	ShowHUDMessage      bool
 	IsDead              bool
@@ -41,12 +25,9 @@ type Backend interface {
 	MapViewDrawFloorTextures2D(screen *ebiten.Image)
 	MapViewDrawGrid(screen *ebiten.Image)
 	MapViewDrawLines(screen *ebiten.Image)
-	MapViewDrawUseSpecialLines(screen *ebiten.Image)
-	MapViewDrawUseTargetHighlight(screen *ebiten.Image)
+	MapViewDrawUseOverlays(screen *ebiten.Image)
 	MapViewDrawThings(screen *ebiten.Image)
-	MapViewDrawMarks(screen *ebiten.Image)
-	MapViewDrawPlayer(screen *ebiten.Image)
-	MapViewDrawPeerPlayers(screen *ebiten.Image)
+	MapViewDrawActorOverlays(screen *ebiten.Image)
 	MapViewDrawOverlays(screen *ebiten.Image, state RenderState)
 }
 
@@ -63,28 +44,13 @@ func Draw(screen *ebiten.Image, state RenderState, b Backend) {
 	}
 	b.MapViewDrawLines(screen)
 	if state.IsSourcePort {
-		b.MapViewDrawUseSpecialLines(screen)
-		b.MapViewDrawUseTargetHighlight(screen)
+		b.MapViewDrawUseOverlays(screen)
 	}
 	if state.DrawThings {
 		b.MapViewDrawThings(screen)
 	}
-	b.MapViewDrawMarks(screen)
-	b.MapViewDrawPlayer(screen)
-	b.MapViewDrawPeerPlayers(screen)
-	drawModeOverlay(screen, state, b)
+	b.MapViewDrawActorOverlays(screen)
 	drawCommonOverlays(screen, state, b)
-}
-
-func drawModeOverlay(screen *ebiten.Image, state RenderState, b Backend) {
-	if !state.IsSourcePort {
-		return
-	}
-	ebitenutil.DebugPrintAt(screen, state.ModeOverlayText, 12, 12)
-	ebitenutil.DebugPrintAt(screen, state.StatsOverlayText, 12, 28)
-	ebitenutil.DebugPrintAt(screen, state.CheatOverlayText, 12, 60)
-	ebitenutil.DebugPrintAt(screen, state.FloorOverlayText, 12, 76)
-	ebitenutil.DebugPrintAt(screen, state.ThingOverlayText, 12, 92)
 }
 
 func drawCommonOverlays(screen *ebiten.Image, state RenderState, b Backend) {

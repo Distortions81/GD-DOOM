@@ -21,6 +21,7 @@ import (
 	"gddoom/internal/render/mapview/linepolicy"
 	"gddoom/internal/render/mapview/linevisibility"
 	"gddoom/internal/render/mapview/marks"
+	"gddoom/internal/render/mapview/presenter"
 	"gddoom/internal/render/mapview/viewstate"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -1898,7 +1899,40 @@ func (g *game) Draw(screen *ebiten.Image) {
 		}
 		return
 	}
-	mapview.Draw(screen, g.buildMapViewRenderState(), g)
+	presenter.Draw(screen, g.mapViewPresenterInputs(), presenter.Hooks{
+		PrepareRenderState:  g.prepareRenderState,
+		DrawFloorTextures2D: g.drawMapFloorTextures2D,
+		DrawGrid:            g.drawGrid,
+		DrawLines:           g.drawMapLines,
+		DrawUseOverlays: func(screen *ebiten.Image) {
+			g.drawUseSpecialLines(screen)
+			g.drawUseTargetHighlight(screen)
+		},
+		DrawThings: g.drawThings,
+		DrawActorOverlays: func(screen *ebiten.Image) {
+			g.drawMarks(screen)
+			g.drawPlayer(screen)
+			g.drawPeerPlayers(screen)
+		},
+		DrawOverlays: func(screen *ebiten.Image, state mapview.RenderState) {
+			if state.ShowLegend {
+				g.drawThingLegend(screen)
+			}
+			if state.ShowHUDMessage {
+				g.drawHUDMessage(screen, state.HUDMessage, 0, 0)
+			}
+			if state.IsDead {
+				g.drawDeathOverlay(screen)
+			}
+			g.drawFlashOverlay(screen)
+			if state.Paused {
+				g.drawPauseOverlay(screen)
+			}
+			if state.ShowPerf {
+				g.drawPerfOverlay(screen)
+			}
+		},
+	})
 }
 
 var inGamePauseMenuNames = [...]string{
