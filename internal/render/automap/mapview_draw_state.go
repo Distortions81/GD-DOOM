@@ -2,6 +2,7 @@ package automap
 
 import (
 	"gddoom/internal/render/mapview"
+	"gddoom/internal/render/mapview/linepolicy"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -12,6 +13,7 @@ func (g *game) buildMapViewRenderState() mapview.RenderState {
 	if g.mode == viewWalk {
 		modeLabel = "WALK"
 	}
+	linePolicyState := linepolicy.StateForAutomap(g.parity.reveal == revealAllMap, g.parity.iddt)
 	return mapview.RenderState{
 		DrawFloorTextures2D:  g.opts.SourcePortMode && len(g.opts.FlatBank) > 0,
 		DrawGrid:             g.showGrid,
@@ -22,8 +24,7 @@ func (g *game) buildMapViewRenderState() mapview.RenderState {
 		MapName:              string(g.m.Name),
 		SkillLevel:           g.opts.SkillLevel,
 		Zoom:                 view.ZoomLevel(),
-		RevealAllMap:         g.parity.reveal == revealAllMap,
-		IDDT:                 g.parity.iddt,
+		LinePolicyState:      linePolicyState,
 		ShowGrid:             g.showGrid,
 		MarksCount:           g.marks.Count(),
 		LineColorMode:        g.opts.LineColorMode,

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"gddoom/internal/render/mapview/linepolicy"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
@@ -18,8 +20,7 @@ type RenderState struct {
 	MapName              string
 	SkillLevel           int
 	Zoom                 float64
-	RevealAllMap         bool
-	IDDT                 int
+	LinePolicyState      linepolicy.State
 	ShowGrid             bool
 	MarksCount           int
 	LineColorMode        string
@@ -95,7 +96,7 @@ func drawModeOverlay(screen *ebiten.Image, state RenderState, b Backend) {
 		return
 	}
 	revealText := "normal"
-	if state.RevealAllMap {
+	if state.LinePolicyState.Reveal == linepolicy.RevealAllMap {
 		revealText = "allmap"
 	}
 	overlay := fmt.Sprintf("map=%s mode=%s skill=%d zoom=%.2f reveal=%s iddt=%d grid=%t marks=%d colors=%s",
@@ -104,7 +105,7 @@ func drawModeOverlay(screen *ebiten.Image, state RenderState, b Backend) {
 		state.SkillLevel,
 		state.Zoom,
 		revealText,
-		state.IDDT,
+		state.LinePolicyState.IDDT,
 		state.ShowGrid,
 		state.MarksCount,
 		state.LineColorMode,
