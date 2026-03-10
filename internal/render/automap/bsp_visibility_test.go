@@ -4,10 +4,38 @@ import (
 	"testing"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview/linepolicy"
 )
+
+func TestLinedefDecisionUsesParityStateAndLineColorMode(t *testing.T) {
+	g := &game{
+		opts:   Options{LineColorMode: "parity"},
+		parity: automapParityState{reveal: revealAllMap, iddt: 0},
+		m: &mapdata.Map{
+			Sectors:  []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+			Sidedefs: []mapdata.Sidedef{{Sector: 0}},
+		},
+	}
+	ld := mapdata.Linedef{
+		Flags:   0, // not mapped
+		SideNum: [2]int16{0, -1},
+	}
+
+	d := g.linedefDecision(ld)
+	if !d.Visible {
+		t.Fatal("automap linedefDecision should expose unmapped lines in allmap parity mode")
+	}
+	if d.Appearance != linepolicy.AppearanceUnrevealed {
+		t.Fatalf("appearance=%v want=%v", d.Appearance, linepolicy.AppearanceUnrevealed)
+	}
+	if d.Width != 1.2 {
+		t.Fatalf("width=%v want=1.2", d.Width)
+	}
+}
 
 func TestLinedefDecisionPseudo3DIgnoresMappedGate(t *testing.T) {
 	g := &game{
+		opts:   Options{LineColorMode: "parity"},
 		parity: automapParityState{reveal: revealNormal, iddt: 0},
 		m: &mapdata.Map{
 			Sectors:  []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
@@ -21,6 +49,9 @@ func TestLinedefDecisionPseudo3DIgnoresMappedGate(t *testing.T) {
 	d := g.linedefDecisionPseudo3D(ld)
 	if !d.Visible {
 		t.Fatal("pseudo3d should not hide line due to automap mapped status")
+	}
+	if d.Appearance != linepolicy.AppearanceOneSided {
+		t.Fatalf("appearance=%v want=%v", d.Appearance, linepolicy.AppearanceOneSided)
 	}
 }
 
