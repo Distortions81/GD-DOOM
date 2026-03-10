@@ -1,6 +1,9 @@
 package automap
 
 import (
+	"fmt"
+	"strings"
+
 	"gddoom/internal/render/mapview"
 	"gddoom/internal/render/mapview/linepolicy"
 
@@ -14,37 +17,53 @@ func (g *game) buildMapViewRenderState() mapview.RenderState {
 		modeLabel = "WALK"
 	}
 	linePolicyState := linepolicy.StateForAutomap(g.parity.reveal == revealAllMap, g.parity.iddt)
+	revealText := "normal"
+	if linePolicyState.Reveal == linepolicy.RevealAllMap {
+		revealText = "allmap"
+	}
 	return mapview.RenderState{
-		DrawFloorTextures2D:  g.opts.SourcePortMode && len(g.opts.FlatBank) > 0,
-		DrawGrid:             g.showGrid,
-		IsSourcePort:         g.opts.SourcePortMode,
-		DrawThings:           shouldDrawThings(g.parity),
-		ShowLegend:           g.showLegend,
-		ModeLabel:            modeLabel,
-		MapName:              string(g.m.Name),
-		SkillLevel:           g.opts.SkillLevel,
-		Zoom:                 view.ZoomLevel(),
-		LinePolicyState:      linePolicyState,
-		ShowGrid:             g.showGrid,
-		MarksCount:           g.marks.Count(),
-		LineColorMode:        g.opts.LineColorMode,
-		Health:               g.stats.Health,
-		Armor:                g.stats.Armor,
-		Bullets:              g.stats.Bullets,
-		Shells:               g.stats.Shells,
-		Rockets:              g.stats.Rockets,
-		Cells:                g.stats.Cells,
-		KeySummary:           g.inventory.keySummary(),
-		WeaponName:           weaponName(g.inventory.ReadyWeapon),
-		CheatLevel:           g.cheatLevel,
-		Invulnerable:         g.invulnerable,
-		MapFloorWorldState:   g.mapFloorWorldState,
-		ThingRenderModeLabel: sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode),
-		HUDMessage:           g.useText,
-		ShowHUDMessage:       g.useFlash > 0,
-		IsDead:               g.isDead,
-		Paused:               g.paused,
-		ShowPerf:             !g.opts.NoFPS,
+		DrawFloorTextures2D: g.opts.SourcePortMode && len(g.opts.FlatBank) > 0,
+		DrawGrid:            g.showGrid,
+		IsSourcePort:        g.opts.SourcePortMode,
+		DrawThings:          shouldDrawThings(g.parity),
+		ShowLegend:          g.showLegend,
+		ModeLabel:           modeLabel,
+		MapName:             string(g.m.Name),
+		SkillLevel:          g.opts.SkillLevel,
+		Zoom:                view.ZoomLevel(),
+		LinePolicyState:     linePolicyState,
+		ShowGrid:            g.showGrid,
+		MarksCount:          g.marks.Count(),
+		LineColorMode:       g.opts.LineColorMode,
+		ModeOverlayText: fmt.Sprintf("map=%s mode=%s skill=%d zoom=%.2f reveal=%s iddt=%d grid=%t marks=%d colors=%s",
+			g.m.Name,
+			modeLabel,
+			g.opts.SkillLevel,
+			view.ZoomLevel(),
+			revealText,
+			linePolicyState.IDDT,
+			g.showGrid,
+			g.marks.Count(),
+			g.opts.LineColorMode,
+		),
+		StatsOverlayText: fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s wp=%s",
+			g.stats.Health,
+			g.stats.Armor,
+			g.stats.Bullets,
+			g.stats.Shells,
+			g.stats.Rockets,
+			g.stats.Cells,
+			g.inventory.keySummary(),
+			weaponName(g.inventory.ReadyWeapon),
+		),
+		CheatOverlayText: fmt.Sprintf("cheat=%d invuln=%t", g.cheatLevel, g.invulnerable),
+		FloorOverlayText: fmt.Sprintf("floor2d=textured %s", g.mapFloorWorldState),
+		ThingOverlayText: fmt.Sprintf("things=%s", strings.ToLower(sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode))),
+		HUDMessage:       g.useText,
+		ShowHUDMessage:   g.useFlash > 0,
+		IsDead:           g.isDead,
+		Paused:           g.paused,
+		ShowPerf:         !g.opts.NoFPS,
 	}
 }
 

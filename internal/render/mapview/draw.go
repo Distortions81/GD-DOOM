@@ -1,9 +1,6 @@
 package mapview
 
 import (
-	"fmt"
-	"strings"
-
 	"gddoom/internal/render/mapview/linepolicy"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -11,36 +8,29 @@ import (
 )
 
 type RenderState struct {
-	DrawFloorTextures2D  bool
-	DrawGrid             bool
-	IsSourcePort         bool
-	DrawThings           bool
-	ShowLegend           bool
-	ModeLabel            string
-	MapName              string
-	SkillLevel           int
-	Zoom                 float64
-	LinePolicyState      linepolicy.State
-	ShowGrid             bool
-	MarksCount           int
-	LineColorMode        string
-	Health               int
-	Armor                int
-	Bullets              int
-	Shells               int
-	Rockets              int
-	Cells                int
-	KeySummary           string
-	WeaponName           string
-	CheatLevel           int
-	Invulnerable         bool
-	MapFloorWorldState   string
-	ThingRenderModeLabel string
-	HUDMessage           string
-	ShowHUDMessage       bool
-	IsDead               bool
-	Paused               bool
-	ShowPerf             bool
+	DrawFloorTextures2D bool
+	DrawGrid            bool
+	IsSourcePort        bool
+	DrawThings          bool
+	ShowLegend          bool
+	ModeLabel           string
+	MapName             string
+	SkillLevel          int
+	Zoom                float64
+	LinePolicyState     linepolicy.State
+	ShowGrid            bool
+	MarksCount          int
+	LineColorMode       string
+	ModeOverlayText     string
+	StatsOverlayText    string
+	CheatOverlayText    string
+	FloorOverlayText    string
+	ThingOverlayText    string
+	HUDMessage          string
+	ShowHUDMessage      bool
+	IsDead              bool
+	Paused              bool
+	ShowPerf            bool
 }
 
 // Backend is the narrow bridge that lets TAB map-mode presentation live
@@ -95,39 +85,11 @@ func drawModeOverlay(screen *ebiten.Image, state RenderState, b Backend) {
 	if !state.IsSourcePort {
 		return
 	}
-	revealText := "normal"
-	if state.LinePolicyState.Reveal == linepolicy.RevealAllMap {
-		revealText = "allmap"
-	}
-	overlay := fmt.Sprintf("map=%s mode=%s skill=%d zoom=%.2f reveal=%s iddt=%d grid=%t marks=%d colors=%s",
-		state.MapName,
-		state.ModeLabel,
-		state.SkillLevel,
-		state.Zoom,
-		revealText,
-		state.LinePolicyState.IDDT,
-		state.ShowGrid,
-		state.MarksCount,
-		state.LineColorMode,
-	)
-	ebitenutil.DebugPrintAt(screen, overlay, 12, 12)
-	stats := fmt.Sprintf("hp=%d ar=%d am=%d sh=%d ro=%d ce=%d keys=%s wp=%s",
-		state.Health,
-		state.Armor,
-		state.Bullets,
-		state.Shells,
-		state.Rockets,
-		state.Cells,
-		state.KeySummary,
-		state.WeaponName,
-	)
-	ebitenutil.DebugPrintAt(screen, stats, 12, 28)
-	cheat := fmt.Sprintf("cheat=%d invuln=%t", state.CheatLevel, state.Invulnerable)
-	ebitenutil.DebugPrintAt(screen, cheat, 12, 60)
-	floor2D := fmt.Sprintf("floor2d=textured %s", state.MapFloorWorldState)
-	ebitenutil.DebugPrintAt(screen, floor2D, 12, 76)
-	thingRender := fmt.Sprintf("things=%s", strings.ToLower(state.ThingRenderModeLabel))
-	ebitenutil.DebugPrintAt(screen, thingRender, 12, 92)
+	ebitenutil.DebugPrintAt(screen, state.ModeOverlayText, 12, 12)
+	ebitenutil.DebugPrintAt(screen, state.StatsOverlayText, 12, 28)
+	ebitenutil.DebugPrintAt(screen, state.CheatOverlayText, 12, 60)
+	ebitenutil.DebugPrintAt(screen, state.FloorOverlayText, 12, 76)
+	ebitenutil.DebugPrintAt(screen, state.ThingOverlayText, 12, 92)
 	if state.ShowLegend {
 		b.MapViewDrawThingLegend(screen)
 	}
