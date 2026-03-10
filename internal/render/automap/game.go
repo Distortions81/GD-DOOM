@@ -16437,19 +16437,10 @@ func lerpAngle(a, b uint32, t float64) uint32 {
 	return uint32(int64(v))
 }
 
-func (s automapParityState) linePolicyState() linepolicy.State {
-	state := linepolicy.State{IDDT: s.iddt}
-	if s.reveal == revealAllMap {
-		state.Reveal = linepolicy.RevealAllMap
-	} else {
-		state.Reveal = linepolicy.RevealNormal
-	}
-	return state
-}
-
 func (g *game) linedefDecision(ld mapdata.Linedef) linepolicy.Decision {
 	front, back := g.lineSectors(ld)
-	return linepolicy.ParityDecision(ld, front, back, g.parity.linePolicyState(), g.opts.LineColorMode)
+	st := linepolicy.StateForAutomap(g.parity.reveal == revealAllMap, g.parity.iddt)
+	return linepolicy.ParityDecision(ld, front, back, st, g.opts.LineColorMode)
 }
 
 func (g *game) lineSectors(ld mapdata.Linedef) (*mapdata.Sector, *mapdata.Sector) {

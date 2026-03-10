@@ -20,6 +20,50 @@ func TestParityDecisionNormalHidesUnmapped(t *testing.T) {
 	}
 }
 
+func TestStateForAutomap(t *testing.T) {
+	tests := []struct {
+		name         string
+		revealAllMap bool
+		iddt         int
+		want         State
+	}{
+		{
+			name:         "normal reveal",
+			revealAllMap: false,
+			iddt:         0,
+			want:         State{Reveal: RevealNormal, IDDT: 0},
+		},
+		{
+			name:         "allmap reveal",
+			revealAllMap: true,
+			iddt:         2,
+			want:         State{Reveal: RevealAllMap, IDDT: 2},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := StateForAutomap(tt.revealAllMap, tt.iddt)
+			if got != tt.want {
+				t.Fatalf("StateForAutomap(%v, %d)=%+v want %+v", tt.revealAllMap, tt.iddt, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPseudo3DStateFromAutomapOverridesRevealAndIDDT(t *testing.T) {
+	got := Pseudo3DStateFromAutomap(false, 0)
+	want := State{Reveal: RevealAllMap, IDDT: 1}
+	if got != want {
+		t.Fatalf("Pseudo3DStateFromAutomap(false, 0)=%+v want %+v", got, want)
+	}
+
+	got = Pseudo3DStateFromAutomap(true, 3)
+	if got != want {
+		t.Fatalf("Pseudo3DStateFromAutomap(true, 3)=%+v want %+v", got, want)
+	}
+}
+
 func TestParityDecisionNormalHidesNeverSee(t *testing.T) {
 	ld := mapdata.Linedef{Flags: mlMapped | lineNeverSee}
 	d := ParityDecision(ld, nil, nil, State{Reveal: RevealNormal, IDDT: 0}, "doom")

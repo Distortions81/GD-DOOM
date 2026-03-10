@@ -360,10 +360,7 @@ func addSolidSpanInPlace(spans []solidSpan, l, r int) []solidSpan {
 
 func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) linepolicy.Decision {
 	front, back := g.lineSectors(ld)
-	st := g.parity.linePolicyState()
-	// Pseudo-3D should not depend on automap exploration or IDDT cheat state.
-	st.Reveal = linepolicy.RevealAllMap
-	st.IDDT = 1
+	st := linepolicy.Pseudo3DStateFromAutomap(g.parity.reveal == revealAllMap, g.parity.iddt)
 	return linepolicy.ParityDecision(ld, front, back, st, "doom")
 }
 

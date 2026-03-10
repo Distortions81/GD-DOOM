@@ -57,6 +57,22 @@ type Style struct {
 	Width float64
 }
 
+func StateForAutomap(revealAllMap bool, iddt int) State {
+	st := State{IDDT: iddt, Reveal: RevealNormal}
+	if revealAllMap {
+		st.Reveal = RevealAllMap
+	}
+	return st
+}
+
+func Pseudo3DStateFromAutomap(revealAllMap bool, iddt int) State {
+	st := StateForAutomap(revealAllMap, iddt)
+	// Pseudo-3D should not depend on automap exploration or IDDT cheat state.
+	st.Reveal = RevealAllMap
+	st.IDDT = 1
+	return st
+}
+
 func ParityDecision(ld mapdata.Linedef, front, back *mapdata.Sector, st State, lineColorMode string) Decision {
 	isCheat := st.IDDT > 0
 	mapped := ld.Flags&0x0100 != 0
