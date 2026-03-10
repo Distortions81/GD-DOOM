@@ -19,7 +19,7 @@ func TestLinedefDecisionPseudo3DIgnoresMappedGate(t *testing.T) {
 		SideNum: [2]int16{0, -1},
 	}
 	d := g.linedefDecisionPseudo3D(ld)
-	if !d.visible {
+	if !d.Visible {
 		t.Fatal("pseudo3d should not hide line due to automap mapped status")
 	}
 }
@@ -47,7 +47,7 @@ func TestLinedefDecisionPseudo3DIgnoresIDDTState(t *testing.T) {
 	g.parity.iddt = 2
 	withIDDT := g.linedefDecisionPseudo3D(ld)
 
-	if !withNoIDDT.visible {
+	if !withNoIDDT.Visible {
 		t.Fatal("pseudo3d should not hide line due to automap iddt/reveal state")
 	}
 	if withNoIDDT != withIDDT {

@@ -18,6 +18,7 @@ import (
 	"gddoom/internal/render/mapview"
 	"gddoom/internal/render/mapview/bigmap"
 	"gddoom/internal/render/mapview/linecache"
+	"gddoom/internal/render/mapview/linepolicy"
 	"gddoom/internal/render/mapview/linevisibility"
 	"gddoom/internal/render/mapview/marks"
 	"gddoom/internal/render/mapview/viewstate"
@@ -92,6 +93,15 @@ var (
 	doomRowShadeMulLUT   []uint16
 	doomColormapRGBA     []uint32
 	doomPalIndexLUT32    []uint8
+	mapLinePalette       = linepolicy.Palette{
+		OneSided:     wallOneSided,
+		Secret:       wallSecret,
+		Teleporter:   wallTeleporter,
+		FloorChange:  wallFloorChange,
+		CeilChange:   wallCeilChange,
+		NoHeightDiff: wallNoHeightDiff,
+		Unrevealed:   wallUnrevealed,
+	}
 )
 
 var (
@@ -2697,8 +2707,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			continue
 		}
 		d := g.linedefDecisionPseudo3D(pp.ld)
-		base, _ := g.decisionStyle(d)
-		baseRGBA := color.RGBAModel.Convert(base).(color.RGBA)
+		baseRGBA := d.Style(mapLinePalette).Color
 		ld := pp.ld
 		wallLightBias := doomWallLightBias(&ld, g.m.Vertexes)
 		var frontSideDef *mapdata.Sidedef
@@ -10776,7 +10785,7 @@ func (g *game) drawUseSpecialLines(screen *ebiten.Image) {
 		}
 		ld := g.m.Linedefs[li]
 		d := g.linedefDecision(ld)
-		if !d.visible {
+		if !d.Visible {
 			continue
 		}
 		pl := g.lines[pi]
@@ -11447,7 +11456,7 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 			normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
 			(front.Light != back.Light && doomSectorLighting)
 	}
-	if !d.visible && !hasTwoSidedMid && !portalSplit {
+	if !d.Visible && !hasTwoSidedMid && !portalSplit {
 		return pp
 	}
 	x1 := x1w - camX
@@ -16428,9 +16437,19 @@ func lerpAngle(a, b uint32, t float64) uint32 {
 	return uint32(int64(v))
 }
 
-func (g *game) linedefDecision(ld mapdata.Linedef) lineDecision {
+func (s automapParityState) linePolicyState() linepolicy.State {
+	state := linepolicy.State{IDDT: s.iddt}
+	if s.reveal == revealAllMap {
+		state.Reveal = linepolicy.RevealAllMap
+	} else {
+		state.Reveal = linepolicy.RevealNormal
+	}
+	return state
+}
+
+func (g *game) linedefDecision(ld mapdata.Linedef) linepolicy.Decision {
 	front, back := g.lineSectors(ld)
-	return parityLineDecision(ld, front, back, g.parity, g.opts.LineColorMode)
+	return linepolicy.ParityDecision(ld, front, back, g.parity.linePolicyState(), g.opts.LineColorMode)
 }
 
 func (g *game) lineSectors(ld mapdata.Linedef) (*mapdata.Sector, *mapdata.Sector) {
@@ -16562,27 +16581,6 @@ func (g *game) sectorIndexFromSideNum(side int16) int {
 	return sec
 }
 
-func (g *game) decisionStyle(d lineDecision) (color.Color, float64) {
-	switch d.appearance {
-	case lineAppearanceOneSided:
-		return wallOneSided, d.width
-	case lineAppearanceSecret:
-		return wallSecret, d.width
-	case lineAppearanceTeleporter:
-		return wallTeleporter, d.width
-	case lineAppearanceFloorChange:
-		return wallFloorChange, d.width
-	case lineAppearanceCeilChange:
-		return wallCeilChange, d.width
-	case lineAppearanceNoHeightDiff:
-		return wallNoHeightDiff, d.width
-	case lineAppearanceUnrevealed:
-		return wallUnrevealed, d.width
-	default:
-		return wallNoHeightDiff, d.width
-	}
-}
-
 func (g *game) mapLineStateKey() linecache.Key {
 	view := g.State.Snapshot()
 	cacheState := view.CacheState(g.viewport())
@@ -16613,7 +16611,7 @@ func (g *game) resolveMapLineDraw(li int) (linecache.Draw, bool) {
 	}
 	ld := g.m.Linedefs[li]
 	d := g.linedefDecision(ld)
-	if !d.visible {
+	if !d.Visible {
 		return linecache.Draw{}, false
 	}
 	pl := g.lines[pi]
@@ -16622,15 +16620,14 @@ func (g *game) resolveMapLineDraw(li int) (linecache.Draw, bool) {
 	if x1 == x2 && y1 == y2 {
 		return linecache.Draw{}, false
 	}
-	c, w := g.decisionStyle(d)
-	crgba := color.RGBAModel.Convert(c).(color.RGBA)
+	style := d.Style(mapLinePalette)
 	return linecache.Draw{
 		X1:  float32(x1),
 		Y1:  float32(y1),
 		X2:  float32(x2),
 		Y2:  float32(y2),
-		W:   float32(w),
-		Clr: crgba,
+		W:   float32(style.Width),
+		Clr: style.Color,
 	}, true
 }
 

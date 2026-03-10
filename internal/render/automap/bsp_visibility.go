@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview/linepolicy"
 )
 
 func (g *game) visibleSegIndicesPseudo3D() []int {
@@ -76,7 +77,7 @@ func (g *game) traverseBSPSegs(child uint16, px, py int64, ca, sa, near, focal, 
 			if li < 0 || li >= len(g.m.Linedefs) {
 				continue
 			}
-			if !g.linedefDecisionPseudo3D(g.m.Linedefs[li]).visible &&
+			if !g.linedefDecisionPseudo3D(g.m.Linedefs[li]).Visible &&
 				!g.segHasTwoSidedMidTexture(si) &&
 				!g.segPortalSplitPseudo3D(si) {
 				continue
@@ -357,13 +358,13 @@ func addSolidSpanInPlace(spans []solidSpan, l, r int) []solidSpan {
 	return spans
 }
 
-func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) lineDecision {
+func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) linepolicy.Decision {
 	front, back := g.lineSectors(ld)
-	st := g.parity
+	st := g.parity.linePolicyState()
 	// Pseudo-3D should not depend on automap exploration or IDDT cheat state.
-	st.reveal = revealAllMap
-	st.iddt = 1
-	return parityLineDecision(ld, front, back, st, "doom")
+	st.Reveal = linepolicy.RevealAllMap
+	st.IDDT = 1
+	return linepolicy.ParityDecision(ld, front, back, st, "doom")
 }
 
 func (g *game) segPortalSplitPseudo3D(segIdx int) bool {
