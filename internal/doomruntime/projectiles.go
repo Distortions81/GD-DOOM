@@ -15,19 +15,20 @@ const (
 )
 
 type projectile struct {
-	x          int64
-	y          int64
-	z          int64
-	vx         int64
-	vy         int64
-	vz         int64
-	radius     int64
-	height     int64
-	ttl        int
-	sourceX    int64
-	sourceY    int64
-	sourceType int16
-	kind       projectileKind
+	x           int64
+	y           int64
+	z           int64
+	vx          int64
+	vy          int64
+	vz          int64
+	radius      int64
+	height      int64
+	ttl         int
+	sourceX     int64
+	sourceY     int64
+	sourceThing int
+	sourceType  int16
+	kind        projectileKind
 }
 
 type projectileImpact struct {
@@ -147,19 +148,20 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	}
 
 	g.projectiles = append(g.projectiles, projectile{
-		x:          sx,
-		y:          sy,
-		z:          sz,
-		vx:         vx,
-		vy:         vy,
-		vz:         vz,
-		radius:     monsterProjectileRadius(typ),
-		height:     monsterProjectileHeight(typ),
-		ttl:        monsterProjectileTTL(typ),
-		sourceX:    sx,
-		sourceY:    sy,
-		sourceType: typ,
-		kind:       monsterProjectileKind(typ),
+		x:           sx,
+		y:           sy,
+		z:           sz,
+		vx:          vx,
+		vy:          vy,
+		vz:          vz,
+		radius:      monsterProjectileRadius(typ),
+		height:      monsterProjectileHeight(typ),
+		ttl:         monsterProjectileTTL(typ),
+		sourceX:     sx,
+		sourceY:     sy,
+		sourceThing: thingIdx,
+		sourceType:  typ,
+		kind:        monsterProjectileKind(typ),
 	})
 	return true
 }
@@ -306,6 +308,9 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 	bestFrac := int64(fracUnit + 1)
 	best := projectileThingHit{}
 	for i, th := range g.m.Things {
+		if i == p.sourceThing {
+			continue
+		}
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
 		}

@@ -15,6 +15,18 @@ type triKey struct {
 	c int
 }
 
+type cdtSegKey struct {
+	a int
+	b int
+}
+
+func canonicalCDTSegKey(a, b int) cdtSegKey {
+	if a < b {
+		return cdtSegKey{a: a, b: b}
+	}
+	return cdtSegKey{a: b, b: a}
+}
+
 func triangulateWorldPolygonCDT(verts []worldPt) ([][3]int, bool) {
 	n := len(verts)
 	if n < 3 {
@@ -148,6 +160,7 @@ func triangulateSectorLoopsCDT(set sectorLoopSet) ([]worldTri, bool) {
 		byQ[k] = i
 		return i
 	}
+	segSeen := make(map[cdtSegKey]struct{}, 512)
 	for _, ring := range set.rings {
 		if len(ring) < 3 {
 			continue
@@ -163,20 +176,41 @@ func triangulateSectorLoopsCDT(set sectorLoopSet) ([]worldTri, bool) {
 		for i, p := range rr {
 			ids[i] = idxFor(p)
 		}
+		unique := make([]int, 0, len(ids))
+		for _, id := range ids {
+			if len(unique) > 0 && unique[len(unique)-1] == id {
+				continue
+			}
+			unique = append(unique, id)
+		}
+		if len(unique) >= 2 && unique[0] == unique[len(unique)-1] {
+			unique = unique[:len(unique)-1]
+		}
+		if len(unique) < 3 {
+			return nil, false
+		}
 		for i := 0; i < len(ids); i++ {
 			a := ids[i]
 			b := ids[(i+1)%len(ids)]
 			if a == b {
 				continue
 			}
+			key := canonicalCDTSegKey(a, b)
+			if _, ok := segSeen[key]; ok {
+				continue
+			}
+			segSeen[key] = struct{}{}
 			segs = append(segs, [2]int32{int32(a), int32(b)})
 		}
 		c, ok := worldPolygonCentroid(rr)
-		if ok && !pointInRingsEvenOdd(c.x, c.y, set.rings) {
+		if ok && !pointInRingsEvenOdd(c.x, c.y, set.rings) && !pointOnAnyRingEdge(c, set.rings, 1e-6) {
 			holes = append(holes, [2]float64{c.x, c.y})
 		}
 	}
 	if len(pts) < 3 || len(segs) < 3 {
+		return nil, false
+	}
+	if !cdtSegmentsValid(pts, segs) {
 		return nil, false
 	}
 	in := triangle.NewTriangulateIO()
@@ -228,4 +262,41 @@ func triangulateSectorLoopsCDT(set sectorLoopSet) ([]worldTri, bool) {
 		out = append(out, worldTri{a: a, b: b, c: c})
 	}
 	return out, len(out) > 0
+}
+
+func cdtSegmentsValid(pts [][2]float64, segs [][2]int32) bool {
+	if len(pts) < 3 || len(segs) < 3 {
+		return false
+	}
+	worldPts := make([]worldPt, len(pts))
+	for i, p := range pts {
+		worldPts[i] = worldPt{x: p[0], y: p[1]}
+	}
+	for i, seg := range segs {
+		a := int(seg[0])
+		b := int(seg[1])
+		if a < 0 || b < 0 || a >= len(worldPts) || b >= len(worldPts) || a == b {
+			return false
+		}
+		a1 := worldPts[a]
+		a2 := worldPts[b]
+		if nearlyEqualWorldPt(a1, a2, 1e-9) {
+			return false
+		}
+		for j := i + 1; j < len(segs); j++ {
+			other := segs[j]
+			c := int(other[0])
+			d := int(other[1])
+			if c < 0 || d < 0 || c >= len(worldPts) || d >= len(worldPts) || c == d {
+				return false
+			}
+			if a == c || a == d || b == c || b == d {
+				continue
+			}
+			if segmentsIntersectStrict(a1, a2, worldPts[c], worldPts[d]) {
+				return false
+			}
+		}
+	}
+	return true
 }

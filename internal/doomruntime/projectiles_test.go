@@ -115,3 +115,30 @@ func TestProjectilePassesThroughTwoSidedWindow(t *testing.T) {
 		t.Fatal("projectile should pass through open two-sided line/window")
 	}
 }
+
+func TestProjectileDoesNotHitSourceImp(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 128, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{60},
+		stats:          playerStats{Health: 100},
+		p:              player{x: 0, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+		projectiles:    make([]projectile, 0, 2),
+	}
+	if !g.spawnMonsterProjectile(0, 3001) {
+		t.Fatal("expected imp projectile to spawn")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	p := g.projectiles[0]
+	_, hit := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	if hit {
+		t.Fatal("projectile should not select the source imp as a hit target")
+	}
+}
