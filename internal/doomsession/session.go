@@ -7,7 +7,7 @@ import (
 	"gddoom/internal/demo"
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
-	"gddoom/internal/render/automap"
+	"gddoom/internal/doomruntime"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/session"
@@ -56,7 +56,7 @@ func Run(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 
 func New(m *mapdata.Map, opts Options, nextMap NextMapFunc) *Session {
 	opts, windowW, windowH := runtimecfg.NormalizeRunDimensions(opts)
-	game, meta := automap.NewRuntime(m, opts, nextMap)
+	game, meta := doomruntime.NewRuntime(m, opts, nextMap)
 	runtimehost.ConfigureInitialHost(opts, windowW, windowH, m.Name)
 	return &Session{game: game, meta: meta}
 }
