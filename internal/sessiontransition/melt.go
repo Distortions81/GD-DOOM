@@ -1,13 +1,15 @@
 package sessiontransition
 
+import "gddoom/internal/doomrand"
+
 func initMeltColumns(width int) []int {
 	if width <= 0 {
 		return nil
 	}
 	y := make([]int, width)
-	y[0] = -(meltRand()%16 + 1)
+	y[0] = -(doomrand.MRandom() % 16)
 	for i := 1; i < width; i++ {
-		r := (meltRand() % 3) - 1
+		r := (doomrand.MRandom() % 3) - 1
 		y[i] = y[i-1] + r
 		if y[i] > 0 {
 			y[i] = 0
@@ -26,12 +28,9 @@ func initMeltColumnsScaled(width int, mult int) []int {
 	if mult < 1 {
 		mult = 1
 	}
-	y := initMeltColumns(width)
-	if mult == 1 {
-		return y
-	}
-	for i := range y {
-		y[i] *= mult
+	var y []int
+	for i := 0; i < mult; i++ {
+		y = initMeltColumns(width)
 	}
 	return y
 }
@@ -41,38 +40,65 @@ func InitMeltColumnsScaled(width int, mult int) []int {
 }
 
 func stepMeltColumns(y []int, width, height int, fromPix, toPix, workPix []byte, ticks int) bool {
-	if width <= 0 || height <= 0 || len(y) != width {
+	if ticks <= 0 {
+		return false
+	}
+	if width <= 0 || height <= 0 {
 		return true
 	}
-	if len(fromPix) < width*height*4 || len(toPix) < width*height*4 || len(workPix) < width*height*4 {
+	need := width * height * 4
+	if len(fromPix) < need || len(toPix) < need || len(workPix) < need {
 		return true
 	}
-	for t := 0; t < ticks; t++ {
+	if len(y) < width {
+		return true
+	}
+
+	pairW := width / 2
+	if pairW <= 0 {
+		copy(workPix[:need], toPix[:need])
+		return true
+	}
+
+	for ; ticks > 0; ticks-- {
 		done := true
-		for x := 0; x < width; x++ {
-			yy := y[x]
-			if yy < 0 {
-				y[x]++
+		for i := 0; i < pairW; i++ {
+			if y[i] < 0 {
+				y[i]++
 				done = false
 				continue
 			}
-			if yy >= height {
+			if y[i] >= height {
 				continue
 			}
-			done = false
+
 			dy := 8
-			if yy < 16 {
-				dy = yy + 1
+			if y[i] < 16 {
+				dy = y[i] + 1
 			}
-			if yy+dy > height {
-				dy = height - yy
+			if y[i]+dy >= height {
+				dy = height - y[i]
 			}
-			copyMeltColumn(workPix, toPix, width, x, 0, yy)
-			copyMeltColumn(workPix, fromPix, width, x, yy, height-yy-dy)
-			copyMeltColumn(workPix, toPix, width, x, yy+height-yy-dy, dy)
-			y[x] += dy
+
+			x0 := i * 2
+			for row := 0; row < dy; row++ {
+				yPos := y[i] + row
+				pixOff := (yPos*width + x0) * 4
+				copy(workPix[pixOff:pixOff+8], toPix[pixOff:pixOff+8])
+			}
+
+			y[i] += dy
+			for row := y[i]; row < height; row++ {
+				srcY := row - y[i]
+				srcOff := (srcY*width + x0) * 4
+				dstOff := (row*width + x0) * 4
+				copy(workPix[dstOff:dstOff+8], fromPix[srcOff:srcOff+8])
+			}
+
+			done = false
 		}
 		if done {
+			copy(workPix[:need], toPix[:need])
 			return true
 		}
 	}
@@ -83,58 +109,43 @@ func StepMeltColumns(y []int, width, height int, fromPix, toPix, workPix []byte,
 	return stepMeltColumns(y, width, height, fromPix, toPix, workPix, ticks)
 }
 
-func copyMeltColumn(dst, src []byte, width, x, y0, count int) {
-	if count <= 0 {
-		return
-	}
-	for y := 0; y < count; y++ {
-		si := ((y0+y)*width + x) * 4
-		copy(dst[si:si+4], src[si:si+4])
-	}
-}
-
 func stepMeltSlicesVirtual(y []int, virtualH int, width, height int, fromPix, toPix, workPix []byte, ticks int, slices int) bool {
-	if width <= 0 || height <= 0 || virtualH <= 0 || slices <= 0 || len(y) != slices {
+	if ticks <= 0 {
+		return false
+	}
+	if width <= 0 || height <= 0 || slices <= 0 || virtualH <= 0 {
 		return true
 	}
-	if len(fromPix) < width*height*4 || len(toPix) < width*height*4 || len(workPix) < width*height*4 {
+	need := width * height * 4
+	if len(fromPix) < need || len(toPix) < need || len(workPix) < need || len(y) < slices {
 		return true
 	}
-	sliceW := width / slices
-	if sliceW < 1 {
-		sliceW = 1
-	}
-	for t := 0; t < ticks; t++ {
+
+	for ; ticks > 0; ticks-- {
 		done := true
 		for i := 0; i < slices; i++ {
-			yy := y[i]
-			if yy < 0 {
+			if y[i] < 0 {
 				y[i]++
 				done = false
 				continue
 			}
-			if yy >= virtualH {
+			if y[i] >= virtualH {
 				continue
 			}
-			done = false
 			dy := 8
-			if yy < 16 {
-				dy = yy + 1
+			if y[i] < 16 {
+				dy = y[i] + 1
 			}
-			if yy+dy > virtualH {
-				dy = virtualH - yy
+			if y[i]+dy >= virtualH {
+				dy = virtualH - y[i]
 			}
-			x0 := i * sliceW
-			x1 := x0 + sliceW
-			if i == slices-1 || x1 > width {
-				x1 = width
-			}
-			copyMeltSliceVirtual(workPix, toPix, width, height, x0, x1, 0, yy, virtualH)
-			copyMeltSliceVirtual(workPix, fromPix, width, height, x0, x1, yy, virtualH-dy-yy, virtualH)
-			copyMeltSliceVirtual(workPix, toPix, width, height, x0, x1, yy+(virtualH-dy-yy), dy, virtualH)
 			y[i] += dy
+			done = false
 		}
+
+		composeMeltSlicesVirtual(y, virtualH, width, height, fromPix, toPix, workPix, slices)
 		if done {
+			copy(workPix[:need], toPix[:need])
 			return true
 		}
 	}
@@ -145,27 +156,41 @@ func StepMeltSlicesVirtual(y []int, virtualH int, width, height int, fromPix, to
 	return stepMeltSlicesVirtual(y, virtualH, width, height, fromPix, toPix, workPix, ticks, slices)
 }
 
-func copyMeltSliceVirtual(dst, src []byte, width, height, x0, x1, y0, count, virtualH int) {
-	if count <= 0 || x0 >= x1 {
-		return
-	}
-	for vy := 0; vy < count; vy++ {
-		sy := ((y0 + vy) * height) / virtualH
-		dy := sy
-		if sy < 0 || sy >= height || dy < 0 || dy >= height {
+func composeMeltSlicesVirtual(y []int, virtualH, width, height int, fromPix, toPix, workPix []byte, slices int) {
+	for i := 0; i < slices; i++ {
+		x0 := (i * width) / slices
+		x1 := ((i + 1) * width / slices) - 1
+		if x1 < x0 {
 			continue
 		}
-		for x := x0; x < x1; x++ {
-			si := (sy*width + x) * 4
-			di := (dy*width + x) * 4
-			copy(dst[di:di+4], src[si:si+4])
+		colBytes := (x1 - x0 + 1) * 4
+		cut := y[i]
+		if cut < 0 {
+			cut = 0
+		}
+		if cut > virtualH {
+			cut = virtualH
+		}
+		cutReal := (cut * height) / virtualH
+		if cutReal < 0 {
+			cutReal = 0
+		}
+		if cutReal > height {
+			cutReal = height
+		}
+		for row := 0; row < height; row++ {
+			dstOff := (row*width + x0) * 4
+			if row < cutReal {
+				srcOff := (row*width + x0) * 4
+				copy(workPix[dstOff:dstOff+colBytes], toPix[srcOff:srcOff+colBytes])
+				continue
+			}
+			srcY := row - cutReal
+			if srcY < 0 {
+				srcY = 0
+			}
+			srcOff := (srcY*width + x0) * 4
+			copy(workPix[dstOff:dstOff+colBytes], fromPix[srcOff:srcOff+colBytes])
 		}
 	}
-}
-
-var meltSeed uint32 = 1
-
-func meltRand() int {
-	meltSeed = meltSeed*1664525 + 1013904223
-	return int((meltSeed >> 16) & 0x7fff)
 }

@@ -81,7 +81,7 @@ type sessionGame struct {
 	settings        gameplay.PersistentSettings
 	nextMap         NextMapFunc
 	err             error
-	musicCtl        *sessionmusic.Controller
+	musicCtl        *sessionmusic.Playback
 	faithfulSurface *ebiten.Image
 	faithfulNearest *ebiten.Image
 	faithfulPost    *ebiten.Image
@@ -427,10 +427,17 @@ func (sg *sessionGame) restartMapForRespawn() *mapdata.Map {
 }
 
 func (sg *sessionGame) initMusicPlayback() {
-	if sg == nil || sg.opts.MapMusicLoader == nil {
+	if sg == nil || (sg.opts.MapMusicLoader == nil && sg.opts.TitleMusicLoader == nil) {
 		return
 	}
-	ctl, err := sessionmusic.New(clampVolume(sg.opts.MusicVolume), sg.opts.MUSPanMax, sg.opts.OPLVolume, sg.opts.MusicPatchBank)
+	ctl, err := sessionmusic.NewPlayback(
+		clampVolume(sg.opts.MusicVolume),
+		sg.opts.MUSPanMax,
+		sg.opts.OPLVolume,
+		sg.opts.MusicPatchBank,
+		sg.opts.MapMusicLoader,
+		sg.opts.TitleMusicLoader,
+	)
 	if err != nil {
 		return
 	}
@@ -453,18 +460,10 @@ func (sg *sessionGame) stopAndClearMusic() {
 }
 
 func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
-	if sg == nil || sg.musicCtl == nil || sg.opts.MapMusicLoader == nil {
+	if sg == nil || sg.musicCtl == nil {
 		return
 	}
-	sg.stopAndClearMusic()
-	if clampVolume(sg.opts.MusicVolume) <= 0 {
-		return
-	}
-	data, err := sg.opts.MapMusicLoader(string(name))
-	if err != nil || len(data) == 0 {
-		return
-	}
-	sg.musicCtl.PlayMUS(data)
+	sg.musicCtl.PlayMap(name, clampVolume(sg.opts.MusicVolume))
 }
 
 func (sg *sessionGame) initSession() {

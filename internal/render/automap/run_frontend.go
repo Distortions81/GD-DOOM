@@ -137,18 +137,10 @@ func (sg *sessionGame) advanceFrontendAttract() bool {
 }
 
 func (sg *sessionGame) playTitleMusic() {
-	if sg == nil || sg.musicCtl == nil || sg.opts.TitleMusicLoader == nil {
+	if sg == nil || sg.musicCtl == nil {
 		return
 	}
-	sg.stopAndClearMusic()
-	if clampVolume(sg.opts.MusicVolume) <= 0 {
-		return
-	}
-	data, err := sg.opts.TitleMusicLoader()
-	if err != nil || len(data) == 0 {
-		return
-	}
-	sg.musicCtl.PlayMUS(data)
+	sg.musicCtl.PlayTitle(clampVolume(sg.opts.MusicVolume))
 }
 
 func (sg *sessionGame) frontendStatus(msg string, tics int) {
