@@ -4311,7 +4311,7 @@ func monsterItemScreenBounds(it projectedMonsterItem, viewW, viewH int) (int, in
 	dstW := float64(it.tex.Width) * scale
 	dstH := float64(it.tex.Height) * scale
 	dstX := it.sx - float64(it.tex.OffsetX)*scale
-	dstY := it.yb - float64(it.tex.OffsetY)*scale
+	dstY := floorSpriteTop(dstH, it.yb)
 	x0 := int(math.Floor(dstX))
 	y0 := int(math.Floor(dstY))
 	x1 := int(math.Ceil(dstX+dstW)) - 1
@@ -4351,7 +4351,7 @@ func thingItemScreenBounds(it projectedThingItem, viewW, viewH int) (int, int, i
 	dstW := float64(it.tex.Width) * scale
 	dstH := float64(it.tex.Height) * scale
 	dstX := it.sx - float64(it.tex.OffsetX)*scale
-	dstY := it.yb - float64(it.tex.OffsetY)*scale
+	dstY := floorSpriteTop(dstH, it.yb)
 	x0 := int(math.Floor(dstX))
 	y0 := int(math.Floor(dstY))
 	x1 := int(math.Ceil(dstX+dstW)) - 1
@@ -4378,6 +4378,10 @@ func thingItemScreenBounds(it projectedThingItem, viewW, viewH int) (int, int, i
 		return x0, x1, y0, y1, false
 	}
 	return x0, x1, y0, y1, true
+}
+
+func floorSpriteTop(dstH, yb float64) float64 {
+	return yb - dstH
 }
 
 func spriteRectScreenBounds(rect spriteOpaqueRect, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) (int, int, int, int, bool) {
@@ -8651,7 +8655,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			if sx+xPad < 0 || sx-xPad > float64(viewW) {
 				continue
 			}
-			clipRadius := projectedScreenWidthToWorldRadiusFixed(w, f, focal)
+			clipRadius := monsterSpriteClipRadius(th.Type)
 			clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focal)
 			if !clipOK {
 				continue
@@ -8695,7 +8699,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 						if items[i].hasOpaque && len(items[i].opaque.rects) > 0 && th > 0 {
 							scale := items[i].h / float64(th)
 							dstX := items[i].sx - float64(items[i].tex.OffsetX)*scale
-							dstY := items[i].yb - float64(items[i].tex.OffsetY)*scale
+							dstY := floorSpriteTop(float64(th)*scale, items[i].yb)
 							if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
 								continue
 							}
@@ -8733,9 +8737,9 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			continue
 		}
 		dstX := it.sx - float64(it.tex.OffsetX)*scale
-		dstY := it.yb - float64(it.tex.OffsetY)*scale
 		dstW := float64(tw) * scale
 		dstH := float64(th) * scale
+		dstY := floorSpriteTop(dstH, it.yb)
 		x0 := int(math.Floor(dstX))
 		y0 := int(math.Floor(dstY))
 		x1 := int(math.Ceil(dstX+dstW)) - 1
@@ -9168,7 +9172,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			if sx+xPad < 0 || sx-xPad > float64(viewW) {
 				continue
 			}
-			clipRadius := projectedScreenWidthToWorldRadiusFixed(w, f, focal)
+			clipRadius := worldThingSpriteClipRadius(th.Type)
 			clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focal)
 			if !clipOK {
 				continue
@@ -9207,7 +9211,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 						if items[i].hasOpaque && len(items[i].opaque.rects) > 0 && th > 0 {
 							scale := items[i].h / float64(th)
 							dstX := items[i].sx - float64(items[i].tex.OffsetX)*scale
-							dstY := items[i].yb - float64(items[i].tex.OffsetY)*scale
+							dstY := floorSpriteTop(float64(th)*scale, items[i].yb)
 							if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
 								continue
 							}
@@ -9245,9 +9249,9 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			continue
 		}
 		dstX := it.sx - float64(it.tex.OffsetX)*scale
-		dstY := it.yb - float64(it.tex.OffsetY)*scale
 		dstW := float64(tw) * scale
 		dstH := float64(th) * scale
+		dstY := floorSpriteTop(dstH, it.yb)
 		x0 := int(math.Floor(dstX))
 		y0 := int(math.Floor(dstY))
 		x1 := int(math.Ceil(dstX+dstW)) - 1
@@ -16564,6 +16568,22 @@ func projectedScreenWidthToWorldRadiusFixed(screenW, depth, focal float64) int64
 		r = 1.0
 	}
 	return int64(r * fracUnit)
+}
+
+func monsterSpriteClipRadius(typ int16) int64 {
+	r := monsterRadius(typ)
+	if r <= 0 {
+		return 20 * fracUnit
+	}
+	return r
+}
+
+func worldThingSpriteClipRadius(typ int16) int64 {
+	r := thingTypeRadius(typ)
+	if r <= 0 {
+		return 20 * fracUnit
+	}
+	return r
 }
 
 func (g *game) spriteFootprintClipYBounds(x, y, radius int64, viewH int, eyeZ, depth, focal float64) (int, int, bool) {
