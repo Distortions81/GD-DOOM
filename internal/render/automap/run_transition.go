@@ -3,6 +3,8 @@ package automap
 import (
 	"image/color"
 
+	"gddoom/internal/sessiontransition"
+
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -22,7 +24,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
 		}
 		sg.drawFaithfulPresented(dst, src)
-		sg.captureLastFrame(src)
+		sg.transition.CaptureLastFrame(src)
 		return
 	}
 	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
@@ -176,18 +178,7 @@ func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
 }
 
 func (sg *sessionGame) queueTransition(kind transitionKind, holdTics int) {
-	if kind == transitionNone {
-		sg.clearTransition()
-		return
-	}
-	sg.transition.kind = kind
-	sg.transition.pending = true
-	sg.transition.initialized = false
-	if holdTics < 0 {
-		holdTics = 0
-	}
-	sg.transition.holdTics = holdTics
-	sg.transition.y = nil
+	sg.transition.Queue(kind, holdTics)
 }
 
 func (sg *sessionGame) shouldShowBootSplash() bool {
@@ -203,7 +194,7 @@ func (sg *sessionGame) shouldShowBootSplash() bool {
 }
 
 func (sg *sessionGame) transitionActive() bool {
-	return sg.transition.kind != transitionNone
+	return sg.transition.Active()
 }
 
 func (sg *sessionGame) transitionSurfaceSize(screenW, screenH int) (int, int) {
@@ -223,120 +214,40 @@ func (sg *sessionGame) transitionSurfaceSize(screenW, screenH int) (int, int) {
 
 func (sg *sessionGame) ensureTransitionReady(width, height int) {
 	t := &sg.transition
-	if t.kind == transitionNone || t.initialized || !t.pending {
-		return
-	}
-	tw := width
-	th := height
-	if tw <= 0 || th <= 0 {
-		return
-	}
-	if t.from == nil || t.from.Bounds().Dx() != tw || t.from.Bounds().Dy() != th {
-		t.from = ebiten.NewImage(tw, th)
-	}
-	if t.to == nil || t.to.Bounds().Dx() != tw || t.to.Bounds().Dy() != th {
-		t.to = ebiten.NewImage(tw, th)
-	}
-	if t.work == nil || t.work.Bounds().Dx() != tw || t.work.Bounds().Dy() != th {
-		t.work = ebiten.NewImage(tw, th)
-	}
-	switch t.kind {
-	case transitionBoot:
-		sg.drawBootSplashTransitionSurface(t.from)
-		if sg.frontend.active {
-			sg.drawFrontendTransitionSurface(t.to)
-		} else {
-			sg.drawGameTransitionSurface(t.to, sg.g)
-		}
-	case transitionLevel:
-		if sg.lastFrame != nil {
-			t.from.Clear()
-			op := &ebiten.DrawImageOptions{}
-			lw := max(sg.lastFrame.Bounds().Dx(), 1)
-			lh := max(sg.lastFrame.Bounds().Dy(), 1)
-			op.Filter = ebiten.FilterNearest
-			op.GeoM.Scale(float64(tw)/float64(lw), float64(th)/float64(lh))
-			t.from.DrawImage(sg.lastFrame, op)
-		} else {
-			sg.drawGameTransitionSurface(t.from, sg.g)
-		}
-		sg.drawGameTransitionSurface(t.to, sg.g)
+	switch t.Kind() {
+	case sessiontransition.KindBoot:
+		t.EnsureReady(width, height, sg.opts.SourcePortMode, sourcePortMeltInitColumns(), sourcePortMeltMoveColumns(), func(dst *ebiten.Image) {
+			sg.drawBootSplashTransitionSurface(dst)
+		}, func(dst *ebiten.Image) {
+			if sg.frontend.Active {
+				sg.drawFrontendTransitionSurface(dst)
+			} else {
+				sg.drawGameTransitionSurface(dst, sg.g)
+			}
+		})
+	case sessiontransition.KindLevel:
+		t.EnsureReady(width, height, sg.opts.SourcePortMode, sourcePortMeltInitColumns(), sourcePortMeltMoveColumns(), func(dst *ebiten.Image) {
+			if last := t.LastFrame(); last != nil {
+				dst.Clear()
+				op := &ebiten.DrawImageOptions{}
+				lw := max(last.Bounds().Dx(), 1)
+				lh := max(last.Bounds().Dy(), 1)
+				op.Filter = ebiten.FilterNearest
+				op.GeoM.Scale(float64(width)/float64(lw), float64(height)/float64(lh))
+				dst.DrawImage(last, op)
+			} else {
+				sg.drawGameTransitionSurface(dst, sg.g)
+			}
+		}, func(dst *ebiten.Image) {
+			sg.drawGameTransitionSurface(dst, sg.g)
+		})
 	default:
-		sg.clearTransition()
-		return
-	}
-	need := tw * th * 4
-	if len(t.fromPix) != need {
-		t.fromPix = make([]byte, need)
-	}
-	if len(t.toPix) != need {
-		t.toPix = make([]byte, need)
-	}
-	if len(t.workPix) != need {
-		t.workPix = make([]byte, need)
-	}
-	t.from.ReadPixels(t.fromPix)
-	t.to.ReadPixels(t.toPix)
-	copy(t.workPix, t.fromPix)
-	t.work.WritePixels(t.workPix)
-	t.width = tw
-	t.height = th
-	t.initialized = true
-	t.pending = false
-	if t.holdTics <= 0 {
-		if sg.opts.SourcePortMode {
-			t.y = initMeltColumnsScaled(sourcePortMeltInitColumns(), sourcePortMeltRNGScale(t.height))
-		} else {
-			t.y = initMeltColumns(tw)
-		}
+		sg.transition.Clear()
 	}
 }
 
 func (sg *sessionGame) tickTransition() {
-	t := &sg.transition
-	if t.kind == transitionNone || !t.initialized {
-		return
-	}
-	if t.holdTics > 0 {
-		t.holdTics--
-		if t.holdTics == 0 {
-			if sg.opts.SourcePortMode {
-				t.y = initMeltColumnsScaled(sourcePortMeltInitColumns(), sourcePortMeltRNGScale(t.height))
-			} else {
-				t.y = initMeltColumns(t.width)
-			}
-		}
-		return
-	}
-	if len(t.y) == 0 {
-		if sg.opts.SourcePortMode {
-			t.y = initMeltColumnsScaled(sourcePortMeltInitColumns(), sourcePortMeltRNGScale(t.height))
-		} else {
-			t.y = initMeltColumns(t.width)
-		}
-	}
-	meltTicks := 1
-	done := false
-	if sg.opts.SourcePortMode {
-		done = stepMeltSlicesVirtual(t.y, meltVirtualH, t.width, t.height, t.fromPix, t.toPix, t.workPix, meltTicks, sourcePortMeltMoveColumns())
-	} else {
-		done = stepMeltColumns(t.y, t.width, t.height, t.fromPix, t.toPix, t.workPix, meltTicks)
-	}
-	if done {
-		t.work.WritePixels(t.toPix)
-		sg.captureLastFrame(t.to)
-		sg.clearTransition()
-		return
-	}
-	t.work.WritePixels(t.workPix)
-}
-
-func sourcePortMeltRNGScale(height int) int {
-	scale := height / meltVirtualH
-	if scale < 1 {
-		return 1
-	}
-	return scale
+	sg.transition.Tick(sg.opts.SourcePortMode, sourcePortMeltInitColumns(), sourcePortMeltMoveColumns())
 }
 
 func sourcePortMeltInitColumns() int {
@@ -348,39 +259,5 @@ func sourcePortMeltMoveColumns() int {
 }
 
 func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
-	t := &sg.transition
-	if t.work == nil {
-		screen.Fill(color.Black)
-		return
-	}
-	tw := max(t.width, 1)
-	th := max(t.height, 1)
-	if tw == sw && th == sh {
-		screen.DrawImage(t.work, nil)
-		return
-	}
-	screen.Fill(color.Black)
-	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Scale(float64(sw)/float64(tw), float64(sh)/float64(th))
-	screen.DrawImage(t.work, op)
-}
-
-func (sg *sessionGame) captureLastFrame(src *ebiten.Image) {
-	if src == nil {
-		return
-	}
-	w := src.Bounds().Dx()
-	h := src.Bounds().Dy()
-	if w <= 0 || h <= 0 {
-		return
-	}
-	if sg.lastFrame == nil || sg.lastFrame.Bounds().Dx() != w || sg.lastFrame.Bounds().Dy() != h {
-		sg.lastFrame = ebiten.NewImage(w, h)
-	}
-	sg.lastFrame.Clear()
-	sg.lastFrame.DrawImage(src, nil)
-}
-
-func (sg *sessionGame) clearTransition() {
-	sg.transition = sessionTransition{}
+	sg.transition.DrawFrame(screen, sw, sh)
 }

@@ -23,6 +23,50 @@ type PersistentSettings struct {
 	IDDT             int
 }
 
+type AppliedPersistentSettings struct {
+	DetailLevel      int
+	RotateView       bool
+	MouseLook        bool
+	MouseLookSpeed   float64
+	MusicVolume      float64
+	OPLVolume        float64
+	SFXVolume        float64
+	HUDMessages      bool
+	AlwaysRun        bool
+	AutoWeaponSwitch bool
+	LineColorMode    string
+	ThingRenderMode  string
+	ShowLegend       bool
+	PaletteLUT       bool
+	GammaLevel       int
+	CRTEnabled       bool
+	Reveal           int
+	IDDT             int
+}
+
+func ApplyPersistentSettings(s PersistentSettings, sourcePort bool, faithfulLevels, sourcePortLevels, gammaLevels int, maxOPLGain float64, kageShader, hasPalette bool, normalReveal, allMapReveal int) AppliedPersistentSettings {
+	return AppliedPersistentSettings{
+		DetailLevel:      ClampDetailLevel(s.DetailLevel, sourcePort, faithfulLevels, sourcePortLevels),
+		RotateView:       s.RotateView,
+		MouseLook:        s.MouseLook,
+		MouseLookSpeed:   s.MouseLookSpeed,
+		MusicVolume:      ClampVolume(s.MusicVolume),
+		OPLVolume:        ClampOPLVolume(s.OPLVolume, maxOPLGain),
+		SFXVolume:        ClampVolume(s.SFXVolume),
+		HUDMessages:      s.HUDMessages,
+		AlwaysRun:        s.AlwaysRun,
+		AutoWeaponSwitch: s.AutoWeaponSwitch,
+		LineColorMode:    s.LineColorMode,
+		ThingRenderMode:  s.ThingRenderMode,
+		ShowLegend:       s.ShowLegend,
+		PaletteLUT:       s.PaletteLUT && kageShader && hasPalette,
+		GammaLevel:       ClampGamma(s.GammaLevel, gammaLevels),
+		CRTEnabled:       s.CRTEnabled && kageShader,
+		Reveal:           NormalizeReveal(s.Reveal, sourcePort, normalReveal, allMapReveal),
+		IDDT:             ClampIDDT(s.IDDT),
+	}
+}
+
 func CloneMapForRestart(src *mapdata.Map) *mapdata.Map {
 	if src == nil {
 		return nil

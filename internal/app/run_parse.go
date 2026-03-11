@@ -17,11 +17,12 @@ import (
 	"strings"
 	"unsafe"
 
+	"gddoom/internal/audiofx"
 	"gddoom/internal/demo"
 	"gddoom/internal/doomsession"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/media"
 	"gddoom/internal/music"
-	"gddoom/internal/render/automap"
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/sound"
 	"gddoom/internal/wad"
@@ -61,7 +62,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultRender := true
 	defaultDebug := false
 	defaultMultiCore := true
-	defaultWidth, defaultHeight := automap.DefaultCLIWindowSize()
+	defaultWidth, defaultHeight := doomsession.DefaultCLIWindowSize()
 	defaultZoom := 0.0
 	defaultDetailLevel := -1
 	defaultGammaLevel := -1
@@ -591,7 +592,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	wadHash := hashFileSHA1(resolvedWADPath)
-	soundBank := automap.SoundBank{}
+	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
 	var musicPatchBank music.PatchBank
 	if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
@@ -621,16 +622,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		)
 	}
 	soundBank = buildAutomapSoundBank(dsr, *sourcePortMode)
-	wallTexBank := map[string]automap.WallTexture(nil)
-	bootSplash := automap.WallTexture{}
+	wallTexBank := map[string]media.WallTexture(nil)
+	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
 	doomColorMap := []byte(nil)
 	doomColorMapRows := 0
-	menuPatchBank := map[string]automap.WallTexture(nil)
-	statusPatchBank := map[string]automap.WallTexture(nil)
-	messageFontBank := map[rune]automap.WallTexture(nil)
-	spritePatchBank := map[string]automap.WallTexture(nil)
-	intermissionPatchBank := map[string]automap.WallTexture(nil)
+	menuPatchBank := map[string]media.WallTexture(nil)
+	statusPatchBank := map[string]media.WallTexture(nil)
+	messageFontBank := map[rune]media.WallTexture(nil)
+	spritePatchBank := map[string]media.WallTexture(nil)
+	intermissionPatchBank := map[string]media.WallTexture(nil)
 	var texSet *doomtex.Set
 	if pal, perr := doomtex.LoadPaletteRGBA(wf, 0); perr != nil {
 		fmt.Fprintf(stderr, "palette import failed: %v\n", perr)
@@ -651,7 +652,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			texSet = ts
 			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
 			names := ts.TextureNames()
-			wallTexBank = make(map[string]automap.WallTexture, len(names))
+			wallTexBank = make(map[string]media.WallTexture, len(names))
 			built := 0
 			failed := 0
 			for _, name := range names {
@@ -685,7 +686,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 						}
 					}
 				}
-				wallTexBank[name] = automap.WallTexture{
+				wallTexBank[name] = media.WallTexture{
 					RGBA:            rgba,
 					RGBA32:          rgba32,
 					ColMajor:        colMajor,
@@ -1305,16 +1306,16 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		fmt.Fprintf(stderr, "sound import: ds(found=%d decoded=%d failed=%d)\n", dsr.Found, dsr.Decoded, dsr.Failed)
 	}
 	soundBank := buildAutomapSoundBank(dsr, cfg.sourcePortMode)
-	wallTexBank := map[string]automap.WallTexture(nil)
-	bootSplash := automap.WallTexture{}
+	wallTexBank := map[string]media.WallTexture(nil)
+	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
 	doomColorMap := []byte(nil)
 	doomColorMapRows := 0
-	menuPatchBank := map[string]automap.WallTexture(nil)
-	statusPatchBank := map[string]automap.WallTexture(nil)
-	messageFontBank := map[rune]automap.WallTexture(nil)
-	spritePatchBank := map[string]automap.WallTexture(nil)
-	intermissionPatchBank := map[string]automap.WallTexture(nil)
+	menuPatchBank := map[string]media.WallTexture(nil)
+	statusPatchBank := map[string]media.WallTexture(nil)
+	messageFontBank := map[rune]media.WallTexture(nil)
+	spritePatchBank := map[string]media.WallTexture(nil)
+	intermissionPatchBank := map[string]media.WallTexture(nil)
 	var texSet *doomtex.Set
 	if pal, perr := doomtex.LoadPaletteRGBA(wf, 0); perr == nil {
 		doomPaletteRGBA = pal
@@ -1331,7 +1332,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 			texSet = ts
 			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
 			names := ts.TextureNames()
-			wallTexBank = make(map[string]automap.WallTexture, len(names))
+			wallTexBank = make(map[string]media.WallTexture, len(names))
 			for _, name := range names {
 				indexed, iw, ih, ierr := ts.BuildTextureIndexed(name)
 				rgba, w, h, berr := ts.BuildTextureRGBA(name, 0)
@@ -1362,7 +1363,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 						}
 					}
 				}
-				wallTexBank[name] = automap.WallTexture{RGBA: rgba, RGBA32: rgba32, ColMajor: colMajor, Indexed: indexed, IndexedColMajor: indexedColMajor, Width: w, Height: h}
+				wallTexBank[name] = media.WallTexture{RGBA: rgba, RGBA32: rgba32, ColMajor: colMajor, Indexed: indexed, IndexedColMajor: indexedColMajor, Width: w, Height: h}
 			}
 		}
 	}
@@ -1564,9 +1565,9 @@ type iwadPickerGame struct {
 	bg       *ebiten.Image
 	logo     *ebiten.Image
 	menuImg  map[string]*ebiten.Image
-	fontBank map[rune]automap.WallTexture
+	fontBank map[rune]media.WallTexture
 	fontImg  map[rune]*ebiten.Image
-	sfx      *automap.MenuSoundPlayer
+	sfx      *audiofx.MenuPlayer
 	load     func(string, pickerProfile) (*renderBundle, error)
 	session  *doomsession.Session
 	err      error
@@ -1574,10 +1575,10 @@ type iwadPickerGame struct {
 
 func newIWADPickerGame(choices []iwadChoice, load func(string, pickerProfile) (*renderBundle, error)) (*iwadPickerGame, error) {
 	game := &iwadPickerGame{choices: choices, load: load}
-	_ = automap.EnsureSharedAudioContext()
+	_ = audiofx.EnsureSharedAudioContext()
 	if assetPath, ok := resolvePathCaseInsensitive("DOOM1.WAD"); ok {
 		if wf, err := wad.Open(assetPath); err == nil {
-			game.sfx = automap.NewMenuSoundPlayer(buildAutomapSoundBank(sound.ImportDigitalSounds(wf), false), 0.5)
+			game.sfx = audiofx.NewMenuPlayer(buildAutomapSoundBank(sound.ImportDigitalSounds(wf), false), 0.5)
 			if ts, err := doomtex.LoadFromWAD(wf); err == nil {
 				if rgba, w, h, err := ts.BuildTextureRGBA("WALL24_1", 0); err == nil && w > 0 && h > 0 && len(rgba) == w*h*4 {
 					img := ebiten.NewImage(w, h)
@@ -1992,7 +1993,7 @@ func (g *iwadPickerGame) playPickerBackSound() {
 	}
 }
 
-func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]automap.WallTexture) error {
+func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]media.WallTexture) error {
 	seed = strings.ToUpper(strings.TrimSpace(seed))
 	outDir = strings.TrimSpace(outDir)
 	if seed == "" {
@@ -2036,7 +2037,7 @@ func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]automap.Wall
 	return nil
 }
 
-func spriteSeriesFromSeed(seed string, bank map[string]automap.WallTexture) []string {
+func spriteSeriesFromSeed(seed string, bank map[string]media.WallTexture) []string {
 	if len(seed) < 6 {
 		return nil
 	}
@@ -2072,15 +2073,15 @@ func spriteSeriesFromSeed(seed string, bank map[string]automap.WallTexture) []st
 	return series
 }
 
-func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) automap.SoundBank {
+func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) media.SoundBank {
 	byName := make(map[string]sound.DigitalSound, len(r.Sounds))
 	for _, s := range r.Sounds {
 		byName[s.Name] = s
 	}
-	sample := func(name string) automap.PCMSample {
+	sample := func(name string) media.PCMSample {
 		s, ok := byName[name]
 		if !ok {
-			return automap.PCMSample{}
+			return media.PCMSample{}
 		}
 		data := s.Samples
 		if !sourcePortMode {
@@ -2088,12 +2089,12 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) aut
 			// before playback. Preserve that behavior for the faithful path.
 			data = padDoomSoundSamples(data)
 		}
-		return automap.PCMSample{
+		return media.PCMSample{
 			SampleRate: int(s.SampleRate),
 			Data:       data,
 		}
 	}
-	bank := automap.SoundBank{
+	bank := media.SoundBank{
 		MenuCursor:          firstSample(sample("DSPSTOP"), firstSample(sample("DSSTNMOV"), sample("DSSWTCHN"))),
 		DoorOpen:            firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
 		DoorClose:           firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
@@ -2182,7 +2183,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) aut
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
 	if sourcePortMode {
-		bank = automap.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
+		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
 	}
 	return bank
 }
@@ -2206,16 +2207,16 @@ func padDoomSoundSamples(src []byte) []byte {
 	return out
 }
 
-func firstSample(a, b automap.PCMSample) automap.PCMSample {
+func firstSample(a, b media.PCMSample) media.PCMSample {
 	if len(a.Data) > 0 {
 		return a
 	}
 	return b
 }
 
-func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
+func buildBootSplashTexture(ts *doomtex.Set) media.WallTexture {
 	if ts == nil {
-		return automap.WallTexture{}
+		return media.WallTexture{}
 	}
 	// TITLEPIC is a raw 320x200 indexed image in stock Doom IWADs.
 	if rgba, w, h, err := ts.BuildRawPicRGBA("TITLEPIC", 0, 320, 200); err == nil && len(rgba) == w*h*4 {
@@ -2223,7 +2224,7 @@ func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		return automap.WallTexture{
+		return media.WallTexture{
 			RGBA:   rgba,
 			RGBA32: rgba32,
 			Width:  w,
@@ -2236,7 +2237,7 @@ func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		return automap.WallTexture{
+		return media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -2245,10 +2246,10 @@ func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
 			OffsetY: oy,
 		}
 	}
-	return automap.WallTexture{}
+	return media.WallTexture{}
 }
 
-func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+func buildStatusPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -2285,7 +2286,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		add(fmt.Sprintf("STFEVL%d", pain))
 		add(fmt.Sprintf("STFKILL%d", pain))
 	}
-	out := make(map[string]automap.WallTexture, len(names))
+	out := make(map[string]media.WallTexture, len(names))
 	for _, name := range names {
 		if _, ok := out[name]; ok {
 			continue
@@ -2308,7 +2309,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 				}
 			}
 		}
-		out[name] = automap.WallTexture{
+		out[name] = media.WallTexture{
 			RGBA:       rgba,
 			RGBA32:     rgba32,
 			Indexed:    indexed,
@@ -2325,7 +2326,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	return out
 }
 
-func buildMenuPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+func buildMenuPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -2340,7 +2341,7 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		"M_GDHIGH", "M_GDLOW", "M_MSGON", "M_MSGOFF",
 		"M_THERML", "M_THERMM", "M_THERMR", "M_THERMO",
 	}
-	out := make(map[string]automap.WallTexture, len(names))
+	out := make(map[string]media.WallTexture, len(names))
 	for _, name := range names {
 		if _, ok := out[name]; ok {
 			continue
@@ -2353,7 +2354,7 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[name] = automap.WallTexture{
+		out[name] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -2368,7 +2369,7 @@ func buildMenuPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	return out
 }
 
-func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
+func buildMessageFontBank(ts *doomtex.Set) map[rune]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -2376,7 +2377,7 @@ func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
 		fontStart = 33 // '!'
 		fontEnd   = 95 // '_'
 	)
-	out := make(map[rune]automap.WallTexture, fontEnd-fontStart+1)
+	out := make(map[rune]media.WallTexture, fontEnd-fontStart+1)
 	for c := fontStart; c <= fontEnd; c++ {
 		name := fmt.Sprintf("STCFN%03d", c)
 		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
@@ -2387,7 +2388,7 @@ func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[rune(c)] = automap.WallTexture{
+		out[rune(c)] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -2402,7 +2403,7 @@ func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
 	return out
 }
 
-func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
+func buildMonsterSpriteBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -2487,7 +2488,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		add(name)
 		addExpandedSeed(name)
 	}
-	out := make(map[string]automap.WallTexture, len(names))
+	out := make(map[string]media.WallTexture, len(names))
 	for _, name := range names {
 		if _, ok := out[name]; ok {
 			continue
@@ -2500,7 +2501,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[name] = automap.WallTexture{
+		out[name] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -2515,7 +2516,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	return out
 }
 
-func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+func buildIntermissionPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -2540,7 +2541,7 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture 
 	} {
 		add(n)
 	}
-	out := make(map[string]automap.WallTexture, len(names))
+	out := make(map[string]media.WallTexture, len(names))
 	for _, name := range names {
 		if _, ok := out[name]; ok {
 			continue
@@ -2553,7 +2554,7 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture 
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[name] = automap.WallTexture{
+		out[name] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,

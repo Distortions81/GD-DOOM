@@ -43,18 +43,18 @@ func TestReadThisPageNamesFallbackToCreditWhenHelpMissing(t *testing.T) {
 func TestCloseReadThisFromGameReturnsToGameplay(t *testing.T) {
 	sg := &sessionGame{
 		frontend: frontendState{
-			active:           true,
-			mode:             frontendModeReadThis,
-			readThisFromGame: true,
+			Active:           true,
+			Mode:             frontendModeReadThis,
+			ReadThisFromGame: true,
 		},
 	}
 
 	sg.closeReadThis()
 
-	if sg.frontend.active {
+	if sg.frontend.Active {
 		t.Fatal("expected read-this close from game to deactivate frontend")
 	}
-	if sg.frontend.mode != frontendModeNone {
-		t.Fatalf("expected mode to reset to none, got %d", sg.frontend.mode)
+	if sg.frontend.Mode != frontendModeNone {
+		t.Fatalf("expected mode to reset to none, got %d", sg.frontend.Mode)
 	}
 }

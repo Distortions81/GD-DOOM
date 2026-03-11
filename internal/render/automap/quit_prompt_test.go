@@ -13,8 +13,8 @@ func TestQuitPromptLinesForRenderSizeFallsBackWhenMessageDoesNotFit(t *testing.T
 	sg := &sessionGame{
 		g: &game{},
 		quitPrompt: quitPromptState{
-			active: true,
-			lines: []string{
+			Active: true,
+			Lines: []string{
 				"THIS MESSAGE IS FAR TOO WIDE FOR THE PROMPT AREA AND SHOULD FALL BACK",
 				"(PRESS Y TO QUIT)",
 			},

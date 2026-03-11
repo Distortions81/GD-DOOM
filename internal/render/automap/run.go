@@ -7,7 +7,9 @@ import (
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/runtimehost"
 	"gddoom/internal/session"
+	"gddoom/internal/sessionaudio"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -49,33 +51,7 @@ var frontendOptionsMenuNames = [...]string{
 
 var frontendOptionsSelectableRows = [...]int{0, 1, 2, 5, 7}
 
-func RunAutomap(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
-	sess := NewSession(m, opts, nextMap)
-	defer sess.Close()
-	if err := session.Run(sess.runner); err != nil {
-		return fmt.Errorf("run ebiten automap: %w", err)
-	}
-	if p := sess.Options().RecordDemoPath; p != "" {
-		rec := sess.EffectiveDemoRecord()
-		demo, derr := BuildRecordedDemo(sess.sg.bootMap.Name, sess.Options(), rec)
-		if derr != nil {
-			return fmt.Errorf("build demo recording: %w", derr)
-		}
-		if werr := SaveDemoScript(p, demo); werr != nil {
-			return fmt.Errorf("write demo recording: %w", werr)
-		}
-		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
-	}
-	return sess.Err()
-}
-
-type Session struct {
-	sg     *sessionGame
-	runner *session.Game
-}
-
-func NewSession(m *mapdata.Map, opts Options, nextMap NextMapFunc) *Session {
-	opts, windowW, windowH := normalizeRunDimensions(opts)
+func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (*session.Game, runtimehost.Meta) {
 	sg := &sessionGame{
 		gameFactory:     newGame,
 		bootMap:         m,
@@ -92,197 +68,138 @@ func NewSession(m *mapdata.Map, opts Options, nextMap NextMapFunc) *Session {
 			}
 		}
 	}
-	sg.menuSfx = NewMenuSoundPlayer(opts.SoundBank, opts.SFXVolume)
+	sg.menuSfx = sessionaudio.NewMenuController(opts.SoundBank, opts.SFXVolume)
 	sg.initSession()
-	ebiten.SetTPS(doomTicsPerSecond)
-	ebiten.SetVsyncEnabled(!opts.NoVsync)
-	if opts.SourcePortMode {
-		ebiten.SetWindowSize(opts.Width, opts.Height)
-		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	} else {
-		ebiten.SetWindowSize(windowW, windowH)
-		// Faithful mode keeps corrected presentation while allowing live resize.
-		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
-	}
-	ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", m.Name))
-	ebiten.SetScreenClearedEveryFrame(false)
-	return &Session{sg: sg, runner: session.New(sg)}
-}
-
-func (s *Session) Update() error {
-	if s == nil || s.runner == nil {
-		return ebiten.Termination
-	}
-	return s.runner.Update()
-}
-
-func (s *Session) Draw(screen *ebiten.Image) {
-	if s == nil || s.runner == nil {
-		return
-	}
-	s.runner.Draw(screen)
-}
-
-func (s *Session) Layout(outsideWidth, outsideHeight int) (int, int) {
-	if s == nil || s.runner == nil {
-		return max(outsideWidth, 1), max(outsideHeight, 1)
-	}
-	return s.runner.Layout(outsideWidth, outsideHeight)
-}
-
-func (s *Session) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
-	if s == nil || s.runner == nil {
-		return
-	}
-	s.runner.DrawFinalScreen(screen, offscreen, geoM)
-}
-
-func (s *Session) Close() {
-	if s == nil || s.sg == nil {
-		return
-	}
-	if s.sg.menuSfx != nil {
-		s.sg.menuSfx.StopAll()
-	}
-	s.sg.closeMusicPlayback()
-}
-
-func (s *Session) Err() error {
-	if s == nil || s.sg == nil {
-		return nil
-	}
-	return s.sg.err
-}
-
-func (s *Session) EffectiveDemoRecord() []DemoTic {
-	if s == nil || s.sg == nil {
-		return nil
-	}
-	return s.sg.effectiveDemoRecord()
-}
-
-func (s *Session) Options() Options {
-	if s == nil || s.sg == nil {
-		return Options{}
-	}
-	return s.sg.opts
-}
-
-func (s *Session) StartMapName() mapdata.MapName {
-	if s == nil || s.sg == nil || s.sg.bootMap == nil {
-		return ""
-	}
-	return s.sg.bootMap.Name
+	return runtimehost.NewGame(sg, runtimehost.Accessors{
+		Close: func() {
+			if sg.menuSfx != nil {
+				sg.menuSfx.Close()
+			}
+			sg.closeMusicPlayback()
+		},
+		Err: func() error {
+			return sg.err
+		},
+		EffectiveDemoRecord: sg.effectiveDemoRecord,
+		Options: func() Options {
+			return sg.opts
+		},
+		StartMapName: func() mapdata.MapName {
+			if sg.bootMap == nil {
+				return ""
+			}
+			return sg.bootMap.Name
+		},
+	})
 }
 
 func (sg *sessionGame) Update() error {
-	if sg.quitPrompt.active {
-		return sg.handleQuitPromptInput()
-	}
-	if sg.anyQuitPromptTrigger() {
-		sg.requestQuitPrompt()
-		return nil
-	}
-	if sg.transitionActive() {
-		if sg.transition.kind == transitionBoot && sg.transition.holdTics > 0 && anyIntermissionSkipInput() {
-			sg.transition.holdTics = 0
-		}
-		sg.tickTransition()
-		return nil
-	}
-	if sg.finale.active {
-		if sg.tickFinale() {
-			return ebiten.Termination
-		}
-		return nil
-	}
-	if sg.frontend.active {
-		if sg.rt != nil && sg.rt.sessionSignals().DemoActive {
+	err := runtimehost.RunUpdate(runtimehost.Update{
+		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },
+		HandleQuitPrompt:    sg.handleQuitPromptInput,
+		QuitPromptTriggered: sg.anyQuitPromptTrigger,
+		RequestQuitPrompt:   sg.requestQuitPrompt,
+		TransitionActive:    sg.transitionActive,
+		TransitionIsBootHolding: func() bool {
+			return sg.transition.Kind() == transitionBoot && sg.transition.HoldTics() > 0
+		},
+		SkipRequested:      anyIntermissionSkipInput,
+		SkipTransitionHold: sg.transition.SkipHold,
+		TickTransition:     sg.tickTransition,
+		FinaleActive: func() bool {
+			return sg.finale.Active
+		},
+		TickFinale: sg.tickFinale,
+		FrontendActive: func() bool {
+			return sg.frontend.Active
+		},
+		DemoActive: func() bool {
+			return sg.rt != nil && sg.rt.sessionSignals().DemoActive
+		},
+		UpdateRuntimeForDemo: func() error {
 			err := sg.rt.Update()
 			switch {
 			case err == nil:
+				return nil
 			case errors.Is(err, ebiten.Termination):
 				_ = sg.advanceFrontendAttract()
+				return nil
 			default:
 				sg.err = err
 				return ebiten.Termination
 			}
-		}
-		return sg.tickFrontend()
-	}
-	if sg.intermission.active {
-		if sg.tickIntermission() {
-			sg.finishIntermission()
-		}
-		return nil
-	}
-
-	err := sg.rt.Update()
-	if err == nil {
-		sig := sg.rt.sessionSignals()
-		if sig.NewGameMap != nil {
-			sg.stopAndClearMusic()
-			sg.rt.clearPendingSoundState()
-			sg.capturePersistentSettings()
-			sg.opts.SkillLevel = normalizeSkillLevel(sig.NewGameSkill)
-			sg.rebuildGameWithPersistentSettings(sig.NewGameMap)
-			sig = sg.rt.sessionSignals()
-			sg.current = sig.MapName
-			sg.currentTemplate = cloneMapForRestart(sg.g.m)
-			sg.playMusicForMap(sg.current)
-			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
-			sg.queueTransition(transitionLevel, 0)
-			sg.rt.sessionAcknowledgeNewGameRequest()
-			return nil
-		}
-		if sig.QuitPrompt {
-			sg.rt.sessionAcknowledgeQuitPrompt()
-			sg.requestQuitPrompt()
-			return nil
-		}
-		if sig.ReadThis {
-			sg.rt.sessionAcknowledgeReadThis()
-			sg.openReadThis(true)
-			return nil
-		}
-		if sig.LevelRestart {
-			sg.stopAndClearMusic()
-			sg.rt.clearPendingSoundState()
-			sg.rebuildGameWithPersistentSettings(sg.restartMapForRespawn())
-			sg.playMusicForMap(sg.rt.sessionSignals().MapName)
-			ebiten.SetWindowTitle(fmt.Sprintf("GD-DOOM Automap - %s", sg.current))
-			sg.queueTransition(transitionLevel, 0)
-		}
-		return nil
-	}
-	if !errors.Is(err, ebiten.Termination) {
-		sg.err = err
+		},
+		AdvanceFrontendAttract: sg.advanceFrontendAttract,
+		TickFrontend:           sg.tickFrontend,
+		IntermissionActive: func() bool {
+			return sg.intermission.state.Active
+		},
+		TickIntermission:   sg.tickIntermission,
+		FinishIntermission: sg.finishIntermission,
+		UpdateRuntime: func() error {
+			return sg.rt.Update()
+		},
+		HandleRuntimeProgress: func() (bool, error) {
+			sig := sg.rt.sessionSignals()
+			if sig.NewGameMap != nil {
+				sg.stopAndClearMusic()
+				sg.rt.clearPendingSoundState()
+				sg.capturePersistentSettings()
+				sg.opts.SkillLevel = normalizeSkillLevel(sig.NewGameSkill)
+				sg.rebuildGameWithPersistentSettings(sig.NewGameMap)
+				sig = sg.rt.sessionSignals()
+				sg.current = sig.MapName
+				sg.currentTemplate = cloneMapForRestart(sg.g.m)
+				sg.playMusicForMap(sg.current)
+				ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
+				sg.queueTransition(transitionLevel, 0)
+				sg.rt.sessionAcknowledgeNewGameRequest()
+				return true, nil
+			}
+			if sig.QuitPrompt {
+				sg.rt.sessionAcknowledgeQuitPrompt()
+				sg.requestQuitPrompt()
+				return true, nil
+			}
+			if sig.ReadThis {
+				sg.rt.sessionAcknowledgeReadThis()
+				sg.openReadThis(true)
+				return true, nil
+			}
+			if sig.LevelRestart {
+				sg.stopAndClearMusic()
+				sg.rt.clearPendingSoundState()
+				sg.rebuildGameWithPersistentSettings(sg.restartMapForRespawn())
+				sg.playMusicForMap(sg.rt.sessionSignals().MapName)
+				ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
+				sg.queueTransition(transitionLevel, 0)
+				return true, nil
+			}
+			return false, nil
+		},
+		HandleRuntimeTermination: func() (bool, error) {
+			err := sg.handleGameplayTermination()
+			switch {
+			case err == nil:
+				return true, nil
+			case errors.Is(err, runtimehost.ErrTerminate):
+				return false, err
+			default:
+				return true, err
+			}
+		},
+	})
+	if errors.Is(err, runtimehost.ErrTerminate) {
 		return ebiten.Termination
 	}
-	sig := sg.rt.sessionSignals()
-	if !sig.LevelExit {
-		return ebiten.Termination
-	}
-	if sg.startEpisodeFinale(sg.current, sig.SecretLevelExit) {
-		return nil
-	}
-	if sg.nextMap == nil {
-		return ebiten.Termination
-	}
-	next, nextName, nerr := sg.nextMap(sg.current, sig.SecretLevelExit)
-	if nerr != nil {
-		sg.err = nerr
-		return ebiten.Termination
-	}
-	sg.startIntermission(next, nextName)
-	return nil
+	return err
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	if sg.rt != nil {
-		sg.rt.sessionSetQuitPromptActive(sg.quitPrompt.active)
+		sg.rt.sessionSetQuitPromptActive(sg.quitPrompt.Active)
 	}
 	if sg.g == nil {
 		screen.Fill(color.Black)
@@ -290,45 +207,42 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	}
 	tw, th := sg.transitionSurfaceSize(sw, sh)
 	if sg.transitionActive() {
-		if sg.opts.SourcePortMode && sg.transition.initialized &&
-			(sg.transition.width != tw || sg.transition.height != th) {
+		if sg.opts.SourcePortMode && sg.transition.NeedsResize(tw, th) {
 			// View size changed while transitioning; rebuild transition buffers.
-			sg.transition.initialized = false
-			sg.transition.pending = true
-			sg.transition.y = nil
+			sg.transition.Invalidate()
 		}
 		sg.ensureTransitionReady(tw, th)
-		if sg.transition.initialized {
+		if sg.transition.Initialized() {
 			sg.drawTransitionFrame(screen, sw, sh)
-			if sg.quitPrompt.active {
+			if sg.quitPrompt.Active {
 				sg.drawQuitPrompt(screen)
 			}
 			return
 		}
-		sg.clearTransition()
+		sg.transition.Clear()
 	}
-	if sg.intermission.active {
+	if sg.intermission.state.Active {
 		sg.drawIntermission(screen)
-		if sg.quitPrompt.active {
+		if sg.quitPrompt.Active {
 			sg.drawQuitPrompt(screen)
 		}
-		sg.captureLastFrame(screen)
+		sg.transition.CaptureLastFrame(screen)
 		return
 	}
-	if sg.frontend.active {
+	if sg.frontend.Active {
 		sg.drawFrontend(screen)
-		if sg.quitPrompt.active {
+		if sg.quitPrompt.Active {
 			sg.drawQuitPrompt(screen)
 		}
-		sg.captureLastFrame(screen)
+		sg.transition.CaptureLastFrame(screen)
 		return
 	}
-	if sg.finale.active {
+	if sg.finale.Active {
 		sg.drawFinale(screen)
-		if sg.quitPrompt.active {
+		if sg.quitPrompt.Active {
 			sg.drawQuitPrompt(screen)
 		}
-		sg.captureLastFrame(screen)
+		sg.transition.CaptureLastFrame(screen)
 		return
 	}
 	if sg.opts.SourcePortMode {
@@ -342,10 +256,10 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 			src = sg.applyFaithfulPalettePost(sg.presentSurface)
 		}
 		sg.drawSourcePortPresented(screen, src, sw, sh)
-		if sg.quitPrompt.active {
+		if sg.quitPrompt.Active {
 			sg.drawQuitPrompt(screen)
 		}
-		sg.captureLastFrame(src)
+		sg.transition.CaptureLastFrame(src)
 		return
 	}
 	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
@@ -353,9 +267,29 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	}
 	sg.drawGamePresented(sg.presentSurface, sg.g)
 	screen.DrawImage(sg.presentSurface, nil)
-	if sg.quitPrompt.active {
+	if sg.quitPrompt.Active {
 		sg.drawQuitPrompt(screen)
 	}
+}
+
+func (sg *sessionGame) handleGameplayTermination() error {
+	sig := sg.rt.sessionSignals()
+	if !sig.LevelExit {
+		return runtimehost.ErrTerminate
+	}
+	if sg.startEpisodeFinale(sg.current, sig.SecretLevelExit) {
+		return nil
+	}
+	if sg.nextMap == nil {
+		return runtimehost.ErrTerminate
+	}
+	next, nextName, err := sg.nextMap(sg.current, sig.SecretLevelExit)
+	if err != nil {
+		sg.err = err
+		return ebiten.Termination
+	}
+	sg.startIntermission(next, nextName)
+	return nil
 }
 
 func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {

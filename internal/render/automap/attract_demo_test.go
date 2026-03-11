@@ -30,13 +30,13 @@ func TestStartFrontendBeginsOnTitlePicAttractPage(t *testing.T) {
 
 	sg.startFrontend()
 
-	if !sg.frontend.active {
+	if !sg.frontend.Active {
 		t.Fatal("frontend should be active")
 	}
-	if sg.frontend.menuActive {
+	if sg.frontend.MenuActive {
 		t.Fatal("title loop should not start with menu open")
 	}
-	if got := sg.frontend.attractPage; got != "TITLEPIC" {
+	if got := sg.frontend.AttractPage; got != "TITLEPIC" {
 		t.Fatalf("attractPage=%q want TITLEPIC", got)
 	}
 	if sg.g != nil && sg.g.opts.DemoScript != nil {
@@ -92,11 +92,11 @@ func TestStartGameFromFrontendClearsAttractDemoScript(t *testing.T) {
 		Tics:   []DemoTic{{Forward: 25}},
 	}
 	sg.g.opts.DemoQuitOnComplete = false
-	sg.frontend.active = true
+	sg.frontend.Active = true
 
 	sg.startGameFromFrontend(4)
 
-	if sg.frontend.active {
+	if sg.frontend.Active {
 		t.Fatal("frontend should be closed after starting game")
 	}
 	if sg.g == nil {

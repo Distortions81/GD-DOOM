@@ -43,6 +43,28 @@ type RebuildState struct {
 	Options    OptionState
 }
 
+type RebuildRequest[Opts any, T any] struct {
+	Next           *mapdata.Map
+	Current        T
+	DemoRecord     []demo.Tic
+	CurrentOptions OptionState
+	Settings       PersistentSettings
+	MaxOPLGain     float64
+
+	PendingDemo      func(T) []demo.Tic
+	SetPendingDemo   func(T, []demo.Tic)
+	ClearBeforeBuild func(T)
+	ApplyOptions     func(OptionState) Opts
+	Build            func(*mapdata.Map, Opts) T
+	ApplyPersistent  func(T)
+}
+
+type RebuildResult[Opts any, T any] struct {
+	Runtime    T
+	DemoRecord []demo.Tic
+	Options    Opts
+}
+
 type RuntimeFactory[Opts any, T any] func(*mapdata.Map, Opts) T
 
 type SessionSignals struct {
@@ -82,4 +104,31 @@ func PrepareRebuild(accum []demo.Tic, pending []demo.Tic, opts OptionState, sett
 	state.DemoRecord, remaining = CollectDemoRecord(accum, pending)
 	state.Options = ApplyPersistentSettingsToOptions(opts, settings, maxOPLGain)
 	return state, remaining
+}
+
+func RebuildRuntime[Opts any, T any](req RebuildRequest[Opts, T]) RebuildResult[Opts, T] {
+	var pending []demo.Tic
+	if req.PendingDemo != nil {
+		pending = req.PendingDemo(req.Current)
+	}
+	if req.ClearBeforeBuild != nil {
+		req.ClearBeforeBuild(req.Current)
+	}
+	state, remaining := PrepareRebuild(req.DemoRecord, pending, req.CurrentOptions, req.Settings, req.MaxOPLGain)
+	if req.SetPendingDemo != nil {
+		req.SetPendingDemo(req.Current, remaining)
+	}
+	result := RebuildResult[Opts, T]{
+		DemoRecord: state.DemoRecord,
+	}
+	if req.ApplyOptions != nil {
+		result.Options = req.ApplyOptions(state.Options)
+	}
+	if req.Build != nil {
+		result.Runtime = req.Build(req.Next, result.Options)
+		if req.ApplyPersistent != nil {
+			req.ApplyPersistent(result.Runtime)
+		}
+	}
+	return result
 }

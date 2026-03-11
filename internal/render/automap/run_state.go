@@ -1,20 +1,22 @@
 package automap
 
 import (
-	"time"
-
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
+	"gddoom/internal/runtimehost"
+	"gddoom/internal/sessionaudio"
+	"gddoom/internal/sessionflow"
+	"gddoom/internal/sessionmusic"
+	"gddoom/internal/sessiontransition"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-type NextMapFunc func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error)
+type NextMapFunc = runtimehost.NextMapFunc
 
 const (
 	bootSplashHoldTics = 2 * doomTicsPerSecond
-	meltVirtualH       = 200
 	quantizeLUTW       = 256
 	quantizeLUTH       = 16
 	// Sourceport melt uses Doom-like 2-pixel column pairs over a 320-wide
@@ -22,117 +24,41 @@ const (
 	sourcePortMeltInitCols = 160
 	sourcePortMeltMoveCols = sourcePortMeltInitCols
 
-	intermissionPhaseWaitTics      = 8
-	intermissionEnteringWaitTics   = doomTicsPerSecond * 2
-	intermissionYouAreHereWaitTics = doomTicsPerSecond * 3
-	intermissionSkipInputDelayTics = doomTicsPerSecond / 3
-	intermissionSkipExitHoldTics   = 12
-	intermissionCounterSoundPeriod = 6
-	finaleHoldTics                 = doomTicsPerSecond * 7
-	menuSkullBlinkTics             = 8
+	menuSkullBlinkTics = 8
 )
 
-type transitionKind int
+type transitionKind = sessiontransition.Kind
 
 const (
-	transitionNone transitionKind = iota
-	transitionBoot
-	transitionLevel
+	transitionNone  = sessiontransition.KindNone
+	transitionBoot  = sessiontransition.KindBoot
+	transitionLevel = sessiontransition.KindLevel
 )
 
-type sessionTransition struct {
-	kind        transitionKind
-	pending     bool
-	initialized bool
-	holdTics    int
-	width       int
-	height      int
-	y           []int
-	fromPix     []byte
-	toPix       []byte
-	workPix     []byte
-	from        *ebiten.Image
-	to          *ebiten.Image
-	work        *ebiten.Image
-}
-
-type intermissionStats struct {
-	mapName      mapdata.MapName
-	nextMapName  mapdata.MapName
-	killsPct     int
-	itemsPct     int
-	secretsPct   int
-	timeSec      int
-	killsFound   int
-	killsTotal   int
-	itemsFound   int
-	itemsTotal   int
-	secretsFound int
-	secretsTotal int
-}
+type intermissionStats = sessionflow.Stats
 
 type sessionIntermission struct {
-	active            bool
-	phase             int
-	waitTic           int
-	tic               int
-	stageSoundCounter int
-	showEntering      bool
-	showYouAreHere    bool
-	enteringWait      int
-	youAreHereWait    int
-	show              intermissionStats
-	target            intermissionStats
-	nextMap           *mapdata.Map
+	state   sessionflow.Intermission
+	nextMap *mapdata.Map
 }
 
-type sessionFinale struct {
-	active  bool
-	tic     int
-	waitTic int
-	mapName mapdata.MapName
-	screen  string
-}
+type sessionFinale = sessionflow.Finale
 
-type frontendMode int
+type frontendMode = sessionflow.FrontendMode
 
 const (
-	frontendModeNone frontendMode = iota
-	frontendModeTitle
-	frontendModeReadThis
-	frontendModeOptions
-	frontendModeSound
-	frontendModeEpisode
-	frontendModeSkill
+	frontendModeNone     = sessionflow.FrontendModeNone
+	frontendModeTitle    = sessionflow.FrontendModeTitle
+	frontendModeReadThis = sessionflow.FrontendModeReadThis
+	frontendModeOptions  = sessionflow.FrontendModeOptions
+	frontendModeSound    = sessionflow.FrontendModeSound
+	frontendModeEpisode  = sessionflow.FrontendModeEpisode
+	frontendModeSkill    = sessionflow.FrontendModeSkill
 )
 
-type frontendState struct {
-	mode             frontendMode
-	active           bool
-	menuActive       bool
-	itemOn           int
-	optionsOn        int
-	soundOn          int
-	episodeOn        int
-	selectedEpisode  int
-	skillOn          int
-	readThisPage     int
-	readThisFromGame bool
-	skullAnimCounter int
-	whichSkull       int
-	tic              int
-	status           string
-	statusTic        int
-	attractSeq       int
-	attractPage      string
-	attractPageTic   int
-}
+type frontendState = sessionflow.Frontend
 
-type quitPromptState struct {
-	active       bool
-	lines        []string
-	exitDelayTic int
-}
+type quitPromptState = sessionflow.QuitPrompt
 
 const (
 	intermissionPhaseKills = iota
@@ -152,12 +78,10 @@ type sessionGame struct {
 	currentTemplate *mapdata.Map
 	opts            Options
 	demoRecord      []DemoTic
-	settings        sessionPersistentSettings
+	settings        gameplay.PersistentSettings
 	nextMap         NextMapFunc
 	err             error
-	musicDriver     *music.Driver
-	musicStreamStop chan struct{}
-	musicPlayer     *music.ChunkPlayer
+	musicCtl        *sessionmusic.Controller
 	faithfulSurface *ebiten.Image
 	faithfulNearest *ebiten.Image
 	faithfulPost    *ebiten.Image
@@ -170,12 +94,11 @@ type sessionGame struct {
 	crtShader       *ebiten.Shader
 	crtPost         *ebiten.Image
 	presentSurface  *ebiten.Image
-	lastFrame       *ebiten.Image
 	bootSplashImage *ebiten.Image
 	menuPatchCache  map[string]*ebiten.Image
 	interPatchCache map[string]*ebiten.Image
-	menuSfx         *MenuSoundPlayer
-	transition      sessionTransition
+	menuSfx         *sessionaudio.MenuController
+	transition      sessiontransition.Controller
 	intermission    sessionIntermission
 	finale          sessionFinale
 	frontend        frontendState
@@ -210,8 +133,6 @@ type sessionRuntime interface {
 	sessionTickSound()
 }
 
-const quitPromptExitDelayTics = 53
-
 const (
 	attractPageTitleNonCommercial = 170
 	attractPageTitleCommercial    = 35 * 11
@@ -244,50 +165,6 @@ var doomQuitMessages = []string{
 
 func cloneMapForRestart(src *mapdata.Map) *mapdata.Map { return gameplay.CloneMapForRestart(src) }
 
-type sessionPersistentSettings struct {
-	detailLevel        int
-	rotateView         bool
-	mouseLook          bool
-	mouseLookSpeed     float64
-	musicVolume        float64
-	oplVolume          float64
-	sfxVolume          float64
-	hudMessagesEnabled bool
-	alwaysRun          bool
-	autoWeaponSwitch   bool
-	lineColorMode      string
-	thingRenderMode    string
-	showLegend         bool
-	paletteLUT         bool
-	gammaLevel         int
-	crtEnabled         bool
-	reveal             revealMode
-	iddt               int
-}
-
-func (s sessionPersistentSettings) gameplay() gameplay.PersistentSettings {
-	return gameplay.PersistentSettings{
-		DetailLevel:      s.detailLevel,
-		RotateView:       s.rotateView,
-		MouseLook:        s.mouseLook,
-		MouseLookSpeed:   s.mouseLookSpeed,
-		MusicVolume:      s.musicVolume,
-		OPLVolume:        s.oplVolume,
-		SFXVolume:        s.sfxVolume,
-		HUDMessages:      s.hudMessagesEnabled,
-		AlwaysRun:        s.alwaysRun,
-		AutoWeaponSwitch: s.autoWeaponSwitch,
-		LineColorMode:    s.lineColorMode,
-		ThingRenderMode:  s.thingRenderMode,
-		ShowLegend:       s.showLegend,
-		PaletteLUT:       s.paletteLUT,
-		GammaLevel:       s.gammaLevel,
-		CRTEnabled:       s.crtEnabled,
-		Reveal:           int(s.reveal),
-		IDDT:             s.iddt,
-	}
-}
-
 func clampDetailLevelForMode(level int, sourcePort bool) int {
 	return gameplay.ClampDetailLevel(level, sourcePort, len(detailPresets), len(sourcePortDetailDivisors))
 }
@@ -317,83 +194,75 @@ func (sg *sessionGame) capturePersistentSettings() {
 		return
 	}
 	g := sg.g
-	sg.settings = sessionPersistentSettings{
-		detailLevel:        g.detailLevel,
-		rotateView:         g.rotateView,
-		mouseLook:          g.opts.MouseLook,
-		mouseLookSpeed:     g.opts.MouseLookSpeed,
-		musicVolume:        g.opts.MusicVolume,
-		oplVolume:          g.opts.OPLVolume,
-		sfxVolume:          g.opts.SFXVolume,
-		hudMessagesEnabled: g.hudMessagesEnabled,
-		alwaysRun:          g.alwaysRun,
-		autoWeaponSwitch:   g.autoWeaponSwitch,
-		lineColorMode:      g.opts.LineColorMode,
-		thingRenderMode:    g.opts.SourcePortThingRenderMode,
-		showLegend:         g.showLegend,
-		paletteLUT:         g.paletteLUTEnabled,
-		gammaLevel:         g.gammaLevel,
-		crtEnabled:         g.crtEnabled,
-		reveal:             g.parity.reveal,
-		iddt:               g.parity.iddt,
+	sg.settings = gameplay.PersistentSettings{
+		DetailLevel:      g.detailLevel,
+		RotateView:       g.rotateView,
+		MouseLook:        g.opts.MouseLook,
+		MouseLookSpeed:   g.opts.MouseLookSpeed,
+		MusicVolume:      g.opts.MusicVolume,
+		OPLVolume:        g.opts.OPLVolume,
+		SFXVolume:        g.opts.SFXVolume,
+		HUDMessages:      g.hudMessagesEnabled,
+		AlwaysRun:        g.alwaysRun,
+		AutoWeaponSwitch: g.autoWeaponSwitch,
+		LineColorMode:    g.opts.LineColorMode,
+		ThingRenderMode:  g.opts.SourcePortThingRenderMode,
+		ShowLegend:       g.showLegend,
+		PaletteLUT:       g.paletteLUTEnabled,
+		GammaLevel:       g.gammaLevel,
+		CRTEnabled:       g.crtEnabled,
+		Reveal:           int(g.parity.reveal),
+		IDDT:             g.parity.iddt,
 	}
 }
 
 func (sg *sessionGame) applyPersistentSettingsToOptions() {
-	next := gameplay.ApplyPersistentSettingsToOptions(gameplay.OptionState{
-		MouseLook:        sg.opts.MouseLook,
-		MouseLookSpeed:   sg.opts.MouseLookSpeed,
-		MusicVolume:      sg.opts.MusicVolume,
-		OPLVolume:        sg.opts.OPLVolume,
-		SFXVolume:        sg.opts.SFXVolume,
-		AlwaysRun:        sg.opts.AlwaysRun,
-		AutoWeaponSwitch: sg.opts.AutoWeaponSwitch,
-		LineColorMode:    sg.opts.LineColorMode,
-		ThingRenderMode:  sg.opts.SourcePortThingRenderMode,
-	}, sg.settings.gameplay(), music.MaxOutputGain)
-	sg.opts.MouseLook = next.MouseLook
-	sg.opts.MouseLookSpeed = next.MouseLookSpeed
-	sg.opts.MusicVolume = next.MusicVolume
-	sg.opts.OPLVolume = next.OPLVolume
-	sg.opts.SFXVolume = next.SFXVolume
-	sg.opts.AlwaysRun = next.AlwaysRun
-	sg.opts.AutoWeaponSwitch = next.AutoWeaponSwitch
-	sg.opts.LineColorMode = next.LineColorMode
-	sg.opts.SourcePortThingRenderMode = next.ThingRenderMode
+	applyOptionStateToOptions(&sg.opts, gameplay.ApplyPersistentSettingsToOptions(sg.optionState(), sg.settings, music.MaxOutputGain))
 }
 
 func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	if sg == nil || g == nil {
 		return
 	}
-	s := sg.settings
-	g.detailLevel = clampDetailLevelForMode(s.detailLevel, g.opts.SourcePortMode)
-	g.rotateView = s.rotateView
-	g.opts.MouseLook = s.mouseLook
-	g.opts.MouseLookSpeed = s.mouseLookSpeed
-	g.opts.MusicVolume = clampVolume(s.musicVolume)
-	g.opts.OPLVolume = clampOPLVolume(s.oplVolume)
-	g.opts.SFXVolume = clampVolume(s.sfxVolume)
+	applied := gameplay.ApplyPersistentSettings(
+		sg.settings,
+		g.opts.SourcePortMode,
+		len(detailPresets),
+		len(sourcePortDetailDivisors),
+		len(gammaTargets),
+		music.MaxOutputGain,
+		g.opts.KageShader,
+		len(g.opts.DoomPaletteRGBA) == 256*4,
+		int(revealNormal),
+		int(revealAllMap),
+	)
+	g.detailLevel = applied.DetailLevel
+	g.rotateView = applied.RotateView
+	g.opts.MouseLook = applied.MouseLook
+	g.opts.MouseLookSpeed = applied.MouseLookSpeed
+	g.opts.MusicVolume = applied.MusicVolume
+	g.opts.OPLVolume = applied.OPLVolume
+	g.opts.SFXVolume = applied.SFXVolume
 	if g.snd != nil {
 		g.snd.setSFXVolume(g.opts.SFXVolume)
 	}
-	if sg.musicPlayer != nil {
-		_ = sg.musicPlayer.SetVolume(g.opts.MusicVolume)
+	if sg.musicCtl != nil {
+		sg.musicCtl.SetVolume(g.opts.MusicVolume)
 	}
-	if sg.musicDriver != nil {
-		sg.musicDriver.SetOutputGain(g.opts.OPLVolume)
+	if sg.musicCtl != nil {
+		sg.musicCtl.SetOutputGain(g.opts.OPLVolume)
 	}
-	g.alwaysRun = s.alwaysRun
-	g.autoWeaponSwitch = s.autoWeaponSwitch
-	g.hudMessagesEnabled = s.hudMessagesEnabled
-	g.opts.LineColorMode = s.lineColorMode
-	g.opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(s.thingRenderMode, g.opts.SourcePortMode)
-	g.showLegend = s.showLegend
-	g.paletteLUTEnabled = s.paletteLUT && g.opts.KageShader && len(g.opts.DoomPaletteRGBA) == 256*4
-	g.gammaLevel = clampGamma(s.gammaLevel)
-	g.crtEnabled = s.crtEnabled && g.opts.KageShader
-	g.parity.reveal = normalizeRevealForMode(s.reveal, g.opts.SourcePortMode)
-	g.parity.iddt = clampIDDT(s.iddt)
+	g.alwaysRun = applied.AlwaysRun
+	g.autoWeaponSwitch = applied.AutoWeaponSwitch
+	g.hudMessagesEnabled = applied.HUDMessages
+	g.opts.LineColorMode = applied.LineColorMode
+	g.opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(applied.ThingRenderMode, g.opts.SourcePortMode)
+	g.showLegend = applied.ShowLegend
+	g.paletteLUTEnabled = applied.PaletteLUT
+	g.gammaLevel = applied.GammaLevel
+	g.crtEnabled = applied.CRTEnabled
+	g.parity.reveal = revealMode(applied.Reveal)
+	g.parity.iddt = applied.IDDT
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
 }
@@ -402,9 +271,8 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	if sg == nil {
 		return
 	}
-	prevMusic := clampVolume(sg.settings.musicVolume)
-	next := gameplay.ApplyRuntimeSettings(
-		sg.settings.gameplay(),
+	result := gameplay.ApplyRuntimeSettings(
+		sg.settings,
 		s,
 		sg.opts.SourcePortMode,
 		len(detailPresets),
@@ -412,40 +280,42 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 		len(gammaTargets),
 		music.MaxOutputGain,
 	)
-	sg.settings.detailLevel = next.DetailLevel
-	sg.settings.mouseLook = next.MouseLook
-	sg.settings.musicVolume = next.MusicVolume
-	sg.settings.oplVolume = next.OPLVolume
-	sg.settings.sfxVolume = next.SFXVolume
-	sg.settings.alwaysRun = next.AlwaysRun
-	sg.settings.autoWeaponSwitch = next.AutoWeaponSwitch
-	sg.settings.lineColorMode = next.LineColorMode
-	sg.settings.thingRenderMode = normalizeSourcePortThingRenderMode(next.ThingRenderMode, sg.opts.SourcePortMode)
-	sg.settings.gammaLevel = next.GammaLevel
-	sg.settings.crtEnabled = next.CRTEnabled && sg.opts.KageShader
-	sg.opts.MusicVolume = sg.settings.musicVolume
-	sg.opts.OPLVolume = sg.settings.oplVolume
-	sg.opts.SFXVolume = sg.settings.sfxVolume
+	next := result.Settings
+	sg.settings.DetailLevel = next.DetailLevel
+	sg.settings.MouseLook = next.MouseLook
+	sg.settings.MusicVolume = next.MusicVolume
+	sg.settings.OPLVolume = next.OPLVolume
+	sg.settings.SFXVolume = next.SFXVolume
+	sg.settings.AlwaysRun = next.AlwaysRun
+	sg.settings.AutoWeaponSwitch = next.AutoWeaponSwitch
+	sg.settings.LineColorMode = next.LineColorMode
+	sg.settings.ThingRenderMode = normalizeSourcePortThingRenderMode(next.ThingRenderMode, sg.opts.SourcePortMode)
+	sg.settings.GammaLevel = next.GammaLevel
+	sg.settings.CRTEnabled = next.CRTEnabled && sg.opts.KageShader
+	sg.opts.MusicVolume = sg.settings.MusicVolume
+	sg.opts.OPLVolume = sg.settings.OPLVolume
+	sg.opts.SFXVolume = sg.settings.SFXVolume
 	if sg.menuSfx != nil {
-		sg.menuSfx.SetVolume(sg.settings.sfxVolume)
+		sg.menuSfx.SetVolume(sg.settings.SFXVolume)
 	}
-	if sg.musicDriver != nil {
-		sg.musicDriver.SetOutputGain(sg.opts.OPLVolume)
+	if sg.musicCtl != nil {
+		sg.musicCtl.SetOutputGain(sg.opts.OPLVolume)
 	}
-	nextMusic := sg.settings.musicVolume
-	switch {
-	case nextMusic <= 0:
+	switch result.MusicAction {
+	case gameplay.MusicActionStop:
 		sg.stopAndClearMusic()
-	case prevMusic <= 0:
-		if sg.frontend.active {
+	case gameplay.MusicActionRestart:
+		if sg.frontend.Active {
 			sg.playTitleMusic()
 		} else if sg.g != nil && sg.g.m != nil {
 			sg.playMusicForMap(sg.g.m.Name)
 		} else {
 			sg.playMusicForMap(sg.current)
 		}
-	case sg.musicPlayer != nil:
-		_ = sg.musicPlayer.SetVolume(nextMusic)
+	case gameplay.MusicActionUpdateVolume:
+		if sg.musicCtl != nil {
+			sg.musicCtl.SetVolume(sg.settings.MusicVolume)
+		}
 	}
 }
 
@@ -453,48 +323,42 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 	if sg == nil || next == nil {
 		return
 	}
-	var pending []DemoTic
-	if sg.g != nil {
-		pending = sg.g.demoRecord
-	}
-	if sg.g != nil {
-		sg.g.clearSpritePatchCache()
-	}
 	sg.capturePersistentSettings()
-	state, remaining := gameplay.PrepareRebuild(
-		sg.demoRecord,
-		pending,
-		gameplay.OptionState{
-			MouseLook:        sg.opts.MouseLook,
-			MouseLookSpeed:   sg.opts.MouseLookSpeed,
-			MusicVolume:      sg.opts.MusicVolume,
-			OPLVolume:        sg.opts.OPLVolume,
-			SFXVolume:        sg.opts.SFXVolume,
-			AlwaysRun:        sg.opts.AlwaysRun,
-			AutoWeaponSwitch: sg.opts.AutoWeaponSwitch,
-			LineColorMode:    sg.opts.LineColorMode,
-			ThingRenderMode:  sg.opts.SourcePortThingRenderMode,
+	result := gameplay.RebuildRuntime(gameplay.RebuildRequest[Options, *game]{
+		Next:           next,
+		Current:        sg.g,
+		DemoRecord:     sg.demoRecord,
+		CurrentOptions: sg.optionState(),
+		Settings:       sg.settings,
+		MaxOPLGain:     music.MaxOutputGain,
+		PendingDemo: func(g *game) []DemoTic {
+			if g == nil {
+				return nil
+			}
+			return g.demoRecord
 		},
-		sg.settings.gameplay(),
-		music.MaxOutputGain,
-	)
-	sg.demoRecord = state.DemoRecord
-	if sg.g != nil {
-		sg.g.demoRecord = remaining
-	}
-	sg.opts.MouseLook = state.Options.MouseLook
-	sg.opts.MouseLookSpeed = state.Options.MouseLookSpeed
-	sg.opts.MusicVolume = state.Options.MusicVolume
-	sg.opts.OPLVolume = state.Options.OPLVolume
-	sg.opts.SFXVolume = state.Options.SFXVolume
-	sg.opts.AlwaysRun = state.Options.AlwaysRun
-	sg.opts.AutoWeaponSwitch = state.Options.AutoWeaponSwitch
-	sg.opts.LineColorMode = state.Options.LineColorMode
-	sg.opts.SourcePortThingRenderMode = state.Options.ThingRenderMode
-	ng := sg.buildGame(next, sg.opts)
-	sg.applyPersistentSettingsToGame(ng)
-	sg.g = ng
-	sg.rt = ng
+		SetPendingDemo: func(g *game, remaining []DemoTic) {
+			if g != nil {
+				g.demoRecord = remaining
+			}
+		},
+		ClearBeforeBuild: func(g *game) {
+			if g != nil {
+				g.clearSpritePatchCache()
+			}
+		},
+		ApplyOptions: func(state gameplay.OptionState) Options {
+			opts := sg.opts
+			applyOptionStateToOptions(&opts, state)
+			return opts
+		},
+		Build:           sg.buildGame,
+		ApplyPersistent: sg.applyPersistentSettingsToGame,
+	})
+	sg.demoRecord = result.DemoRecord
+	sg.opts = result.Options
+	sg.g = result.Runtime
+	sg.rt = result.Runtime
 }
 
 func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
@@ -506,6 +370,38 @@ func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
 		factory = newGame
 	}
 	return gameplay.BuildRuntime(factory, m, opts)
+}
+
+func (sg *sessionGame) optionState() gameplay.OptionState {
+	if sg == nil {
+		return gameplay.OptionState{}
+	}
+	return gameplay.OptionState{
+		MouseLook:        sg.opts.MouseLook,
+		MouseLookSpeed:   sg.opts.MouseLookSpeed,
+		MusicVolume:      sg.opts.MusicVolume,
+		OPLVolume:        sg.opts.OPLVolume,
+		SFXVolume:        sg.opts.SFXVolume,
+		AlwaysRun:        sg.opts.AlwaysRun,
+		AutoWeaponSwitch: sg.opts.AutoWeaponSwitch,
+		LineColorMode:    sg.opts.LineColorMode,
+		ThingRenderMode:  sg.opts.SourcePortThingRenderMode,
+	}
+}
+
+func applyOptionStateToOptions(opts *Options, state gameplay.OptionState) {
+	if opts == nil {
+		return
+	}
+	opts.MouseLook = state.MouseLook
+	opts.MouseLookSpeed = state.MouseLookSpeed
+	opts.MusicVolume = state.MusicVolume
+	opts.OPLVolume = state.OPLVolume
+	opts.SFXVolume = state.SFXVolume
+	opts.AlwaysRun = state.AlwaysRun
+	opts.AutoWeaponSwitch = state.AutoWeaponSwitch
+	opts.LineColorMode = state.LineColorMode
+	opts.SourcePortThingRenderMode = state.ThingRenderMode
 }
 
 func (sg *sessionGame) collectDemoRecord() {
@@ -534,45 +430,30 @@ func (sg *sessionGame) initMusicPlayback() {
 	if sg == nil || sg.opts.MapMusicLoader == nil {
 		return
 	}
-	p, err := music.NewChunkPlayer()
+	ctl, err := sessionmusic.New(clampVolume(sg.opts.MusicVolume), sg.opts.MUSPanMax, sg.opts.OPLVolume, sg.opts.MusicPatchBank)
 	if err != nil {
 		return
 	}
-	sg.musicPlayer = p
-	_ = sg.musicPlayer.SetVolume(clampVolume(sg.opts.MusicVolume))
-	sg.musicDriver = music.NewDriver(p.SampleRate(), sg.opts.MusicPatchBank)
-	sg.musicDriver.SetMUSPanMax(sg.opts.MUSPanMax)
-	sg.musicDriver.SetOutputGain(sg.opts.OPLVolume)
+	sg.musicCtl = ctl
 }
 
 func (sg *sessionGame) closeMusicPlayback() {
-	sg.stopMusicStream()
-	if sg == nil || sg.musicPlayer == nil {
+	if sg == nil || sg.musicCtl == nil {
 		return
 	}
-	_ = sg.musicPlayer.Close()
-	sg.musicPlayer = nil
+	sg.musicCtl.Close()
+	sg.musicCtl = nil
 }
 
 func (sg *sessionGame) stopAndClearMusic() {
-	sg.stopMusicStream()
-	if sg == nil || sg.musicPlayer == nil {
+	if sg == nil || sg.musicCtl == nil {
 		return
 	}
-	_ = sg.musicPlayer.Stop()
-	_ = sg.musicPlayer.ClearBuffer()
-}
-
-func (sg *sessionGame) stopMusicStream() {
-	if sg == nil || sg.musicStreamStop == nil {
-		return
-	}
-	close(sg.musicStreamStop)
-	sg.musicStreamStop = nil
+	sg.musicCtl.StopAndClear()
 }
 
 func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
-	if sg == nil || sg.musicPlayer == nil || sg.musicDriver == nil || sg.opts.MapMusicLoader == nil {
+	if sg == nil || sg.musicCtl == nil || sg.opts.MapMusicLoader == nil {
 		return
 	}
 	sg.stopAndClearMusic()
@@ -583,75 +464,30 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 	if err != nil || len(data) == 0 {
 		return
 	}
-	stream, err := music.NewMUSStreamRenderer(sg.musicDriver, data)
-	if err != nil {
-		return
-	}
-	chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames)
-	if err != nil || len(chunk) == 0 {
-		return
-	}
-	_ = sg.musicPlayer.EnqueueBytesS16LE(chunk)
-	_ = sg.musicPlayer.Start()
-	if done {
-		return
-	}
-	stop := make(chan struct{})
-	sg.musicStreamStop = stop
-	go sg.streamMapMusic(stop, stream)
-}
-
-func (sg *sessionGame) streamMapMusic(stop <-chan struct{}, stream *music.StreamRenderer) {
-	if sg == nil || sg.musicPlayer == nil || stream == nil {
-		return
-	}
-	const bytesPerFrame = 4 // s16 stereo
-	const checkPeriod = 12 * time.Millisecond
-	lookaheadBytes := music.DefaultStreamLookahead * bytesPerFrame
-	ticker := time.NewTicker(checkPeriod)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		default:
-		}
-		for sg.musicPlayer.BufferedBytes() >= lookaheadBytes {
-			select {
-			case <-stop:
-				return
-			case <-ticker.C:
-			}
-		}
-		chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames)
-		if err != nil {
-			return
-		}
-		if len(chunk) > 0 {
-			_ = sg.musicPlayer.EnqueueBytesS16LE(chunk)
-		}
-		if done {
-			return
-		}
-	}
+	sg.musicCtl.PlayMUS(data)
 }
 
 func (sg *sessionGame) initSession() {
 	if sg == nil {
 		return
 	}
-	sg.g = sg.buildGame(sg.bootMap, sg.opts)
-	sg.rt = sg.g
-	sg.g.initSkyLayerShader()
-	sg.initMusicPlayback()
-	if sg.shouldStartInFrontend() {
-		sg.startFrontend()
-	} else {
-		sg.playMusicForMap(sg.current)
-	}
-	sg.capturePersistentSettings()
-	if sg.shouldShowBootSplash() {
-		sg.queueTransition(transitionBoot, bootSplashHoldTics)
-	}
-	sg.initFaithfulPalettePost()
+	runtimehost.RunBootstrap(runtimehost.Bootstrap{
+		BuildRuntime: func() {
+			sg.g = sg.buildGame(sg.bootMap, sg.opts)
+			sg.rt = sg.g
+			sg.g.initSkyLayerShader()
+		},
+		InitMusicPlayback:     sg.initMusicPlayback,
+		ShouldStartInFrontend: sg.shouldStartInFrontend,
+		StartFrontend:         sg.startFrontend,
+		StartMapMusic: func() {
+			sg.playMusicForMap(sg.current)
+		},
+		CaptureSettings:      sg.capturePersistentSettings,
+		ShouldShowBootSplash: sg.shouldShowBootSplash,
+		QueueBootSplash: func() {
+			sg.queueTransition(transitionBoot, bootSplashHoldTics)
+		},
+		InitPost: sg.initFaithfulPalettePost,
+	})
 }

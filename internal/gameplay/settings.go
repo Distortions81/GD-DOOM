@@ -15,7 +15,21 @@ type RuntimeSettings struct {
 	CRTEffect        bool
 }
 
-func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort bool, faithfulLevels, sourcePortLevels, gammaLevels int, maxOPLGain float64) PersistentSettings {
+type MusicAction int
+
+const (
+	MusicActionNone MusicAction = iota
+	MusicActionStop
+	MusicActionRestart
+	MusicActionUpdateVolume
+)
+
+type RuntimeSettingsResult struct {
+	Settings    PersistentSettings
+	MusicAction MusicAction
+}
+
+func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort bool, faithfulLevels, sourcePortLevels, gammaLevels int, maxOPLGain float64) RuntimeSettingsResult {
 	next := cur
 	next.DetailLevel = ClampDetailLevel(s.DetailLevel, sourcePort, faithfulLevels, sourcePortLevels)
 	next.MouseLook = s.MouseLook
@@ -32,5 +46,14 @@ func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort 
 	next.ThingRenderMode = s.ThingRenderMode
 	next.GammaLevel = ClampGamma(s.GammaLevel, gammaLevels)
 	next.CRTEnabled = s.CRTEffect
-	return next
+	result := RuntimeSettingsResult{Settings: next}
+	switch {
+	case next.MusicVolume <= 0:
+		result.MusicAction = MusicActionStop
+	case ClampVolume(cur.MusicVolume) <= 0:
+		result.MusicAction = MusicActionRestart
+	default:
+		result.MusicAction = MusicActionUpdateVolume
+	}
+	return result
 }

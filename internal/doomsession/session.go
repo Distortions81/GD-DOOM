@@ -2,21 +2,27 @@ package doomsession
 
 import (
 	"fmt"
+	"strings"
 
+	"gddoom/internal/demo"
+	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/automap"
+	"gddoom/internal/runtimecfg"
+	"gddoom/internal/runtimehost"
 	"gddoom/internal/session"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-type NextMapFunc = automap.NextMapFunc
-type Options = automap.Options
-type RuntimeSettings = automap.RuntimeSettings
-type DemoTic = automap.DemoTic
+type NextMapFunc = runtimehost.NextMapFunc
+type Options = runtimecfg.Options
+type RuntimeSettings = gameplay.RuntimeSettings
+type DemoTic = demo.Tic
 
 type Session struct {
-	inner *automap.Session
+	game *session.Game
+	meta runtimehost.Meta
 }
 
 func Run(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
@@ -27,11 +33,20 @@ func Run(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	}
 	if p := sess.Options().RecordDemoPath; p != "" {
 		rec := sess.EffectiveDemoRecord()
-		demo, derr := automap.BuildRecordedDemo(sess.StartMapName(), sess.Options(), rec)
+		opts := sess.Options()
+		skill := opts.SkillLevel - 1
+		if skill < 0 {
+			skill = 0
+		}
+		demoRec, derr := demo.BuildRecorded(sess.StartMapName(), demo.RecordingOptions{
+			Skill:        skill,
+			Deathmatch:   strings.EqualFold(opts.GameMode, "deathmatch"),
+			FastMonsters: opts.FastMonsters,
+		}, rec)
 		if derr != nil {
 			return fmt.Errorf("build demo recording: %w", derr)
 		}
-		if werr := automap.SaveDemoScript(p, demo); werr != nil {
+		if werr := demo.Save(p, demoRec); werr != nil {
 			return fmt.Errorf("write demo recording: %w", werr)
 		}
 		fmt.Printf("demo-recorded path=%s tics=%d\n", p, len(rec))
@@ -40,25 +55,28 @@ func Run(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 }
 
 func New(m *mapdata.Map, opts Options, nextMap NextMapFunc) *Session {
-	return &Session{inner: automap.NewSession(m, opts, nextMap)}
+	opts, windowW, windowH := runtimecfg.NormalizeRunDimensions(opts)
+	game, meta := automap.NewRuntime(m, opts, nextMap)
+	runtimehost.ConfigureInitialHost(opts, windowW, windowH, m.Name)
+	return &Session{game: game, meta: meta}
 }
 
 func (s *Session) Update() error {
-	if s == nil || s.inner == nil {
+	if s == nil || s.game == nil {
 		return ebiten.Termination
 	}
-	return s.inner.Update()
+	return s.game.Update()
 }
 
 func (s *Session) Draw(screen *ebiten.Image) {
-	if s == nil || s.inner == nil {
+	if s == nil || s.game == nil {
 		return
 	}
-	s.inner.Draw(screen)
+	s.game.Draw(screen)
 }
 
 func (s *Session) Layout(outsideWidth, outsideHeight int) (int, int) {
-	if s == nil || s.inner == nil {
+	if s == nil || s.game == nil {
 		if outsideWidth < 1 {
 			outsideWidth = 1
 		}
@@ -67,47 +85,47 @@ func (s *Session) Layout(outsideWidth, outsideHeight int) (int, int) {
 		}
 		return outsideWidth, outsideHeight
 	}
-	return s.inner.Layout(outsideWidth, outsideHeight)
+	return s.game.Layout(outsideWidth, outsideHeight)
 }
 
 func (s *Session) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
-	if s == nil || s.inner == nil {
+	if s == nil || s.game == nil {
 		return
 	}
-	s.inner.DrawFinalScreen(screen, offscreen, geoM)
+	s.game.DrawFinalScreen(screen, offscreen, geoM)
 }
 
 func (s *Session) Close() {
-	if s == nil || s.inner == nil {
+	if s == nil || s.meta.Close == nil {
 		return
 	}
-	s.inner.Close()
+	s.meta.Close()
 }
 
 func (s *Session) Err() error {
-	if s == nil || s.inner == nil {
+	if s == nil || s.meta.Err == nil {
 		return nil
 	}
-	return s.inner.Err()
+	return s.meta.Err()
 }
 
 func (s *Session) EffectiveDemoRecord() []DemoTic {
-	if s == nil || s.inner == nil {
+	if s == nil || s.meta.EffectiveDemoRecord == nil {
 		return nil
 	}
-	return s.inner.EffectiveDemoRecord()
+	return s.meta.EffectiveDemoRecord()
 }
 
 func (s *Session) Options() Options {
-	if s == nil || s.inner == nil {
+	if s == nil || s.meta.Options == nil {
 		return Options{}
 	}
-	return s.inner.Options()
+	return s.meta.Options()
 }
 
 func (s *Session) StartMapName() mapdata.MapName {
-	if s == nil || s.inner == nil {
+	if s == nil || s.meta.StartMapName == nil {
 		return ""
 	}
-	return s.inner.StartMapName()
+	return s.meta.StartMapName()
 }

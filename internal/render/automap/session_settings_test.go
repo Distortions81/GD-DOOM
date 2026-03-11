@@ -3,6 +3,7 @@ package automap
 import (
 	"testing"
 
+	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
 )
 
@@ -126,15 +127,15 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 	pal := make([]byte, 256*4)
 	sg := &sessionGame{
-		settings: sessionPersistentSettings{
-			detailLevel: 99,
-			gammaLevel:  99,
-			musicVolume: -1,
-			sfxVolume:   2,
-			reveal:      revealMode(99),
-			iddt:        99,
-			paletteLUT:  true,
-			crtEnabled:  true,
+		settings: gameplay.PersistentSettings{
+			DetailLevel: 99,
+			GammaLevel:  99,
+			MusicVolume: -1,
+			SFXVolume:   2,
+			Reveal:      99,
+			IDDT:        99,
+			PaletteLUT:  true,
+			CRTEnabled:  true,
 		},
 	}
 	dst := &game{

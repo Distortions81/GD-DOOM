@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/sessionflow"
 )
 
 func TestEpisodeMapSlot(t *testing.T) {
@@ -61,19 +62,21 @@ func TestEpisodeFinaleScreen(t *testing.T) {
 func TestTickIntermissionProgressesToCompletion(t *testing.T) {
 	sg := &sessionGame{
 		intermission: sessionIntermission{
-			active: true,
-			phase:  intermissionPhaseKills,
-			show: intermissionStats{
-				mapName:     mapdata.MapName("E1M1"),
-				nextMapName: mapdata.MapName("E1M2"),
-			},
-			target: intermissionStats{
-				mapName:     mapdata.MapName("E1M1"),
-				nextMapName: mapdata.MapName("E1M2"),
-				killsPct:    4,
-				itemsPct:    4,
-				secretsPct:  4,
-				timeSec:     6,
+			state: sessionflow.Intermission{
+				Active: true,
+				Phase:  sessionflow.PhaseKills,
+				Show: intermissionStats{
+					MapName:     mapdata.MapName("E1M1"),
+					NextMapName: mapdata.MapName("E1M2"),
+				},
+				Target: intermissionStats{
+					MapName:     mapdata.MapName("E1M1"),
+					NextMapName: mapdata.MapName("E1M2"),
+					KillsPct:    4,
+					ItemsPct:    4,
+					SecretsPct:  4,
+					TimeSec:     6,
+				},
 			},
 		},
 	}
@@ -81,7 +84,7 @@ func TestTickIntermissionProgressesToCompletion(t *testing.T) {
 	done := false
 	for i := 0; i < 600; i++ {
 		done = sg.tickIntermission()
-		if sg.intermission.phase == intermissionPhaseYouAreHere {
+		if sg.intermission.state.Phase == sessionflow.PhaseYouAreHere {
 			sawYouAreHere = true
 		}
 		if done {
@@ -99,23 +102,25 @@ func TestTickIntermissionProgressesToCompletion(t *testing.T) {
 func TestTickIntermissionCommercialSkipsEnteringPhases(t *testing.T) {
 	sg := &sessionGame{
 		intermission: sessionIntermission{
-			active:         true,
-			phase:          intermissionPhaseKills,
-			showEntering:   false,
-			showYouAreHere: false,
-			enteringWait:   0,
-			youAreHereWait: 1,
-			show: intermissionStats{
-				mapName:     mapdata.MapName("MAP01"),
-				nextMapName: mapdata.MapName("MAP02"),
-			},
-			target: intermissionStats{
-				mapName:     mapdata.MapName("MAP01"),
-				nextMapName: mapdata.MapName("MAP02"),
-				killsPct:    2,
-				itemsPct:    2,
-				secretsPct:  2,
-				timeSec:     3,
+			state: sessionflow.Intermission{
+				Active:         true,
+				Phase:          sessionflow.PhaseKills,
+				ShowEntering:   false,
+				ShowYouAreHere: false,
+				EnteringWait:   0,
+				YouAreHereWait: 1,
+				Show: intermissionStats{
+					MapName:     mapdata.MapName("MAP01"),
+					NextMapName: mapdata.MapName("MAP02"),
+				},
+				Target: intermissionStats{
+					MapName:     mapdata.MapName("MAP01"),
+					NextMapName: mapdata.MapName("MAP02"),
+					KillsPct:    2,
+					ItemsPct:    2,
+					SecretsPct:  2,
+					TimeSec:     3,
+				},
 			},
 		},
 	}
@@ -123,7 +128,7 @@ func TestTickIntermissionCommercialSkipsEnteringPhases(t *testing.T) {
 	sawEntering := false
 	for i := 0; i < 300; i++ {
 		done = sg.tickIntermission()
-		if sg.intermission.phase == intermissionPhaseEntering {
+		if sg.intermission.state.Phase == sessionflow.PhaseEntering {
 			sawEntering = true
 		}
 		if done {
@@ -141,24 +146,26 @@ func TestTickIntermissionCommercialSkipsEnteringPhases(t *testing.T) {
 func TestTickIntermissionSkipDoesNotResetFinalHold(t *testing.T) {
 	sg := &sessionGame{
 		intermission: sessionIntermission{
-			active:  true,
-			phase:   intermissionPhaseYouAreHere,
-			tic:     intermissionSkipInputDelayTics + 1,
-			waitTic: 5,
-			show: intermissionStats{
-				mapName:     mapdata.MapName("E1M1"),
-				nextMapName: mapdata.MapName("E1M2"),
-			},
-			target: intermissionStats{
-				mapName:     mapdata.MapName("E1M1"),
-				nextMapName: mapdata.MapName("E1M2"),
+			state: sessionflow.Intermission{
+				Active:  true,
+				Phase:   sessionflow.PhaseYouAreHere,
+				Tic:     sessionflow.IntermissionSkipInputDelayTics + 1,
+				WaitTic: 5,
+				Show: intermissionStats{
+					MapName:     mapdata.MapName("E1M1"),
+					NextMapName: mapdata.MapName("E1M2"),
+				},
+				Target: intermissionStats{
+					MapName:     mapdata.MapName("E1M1"),
+					NextMapName: mapdata.MapName("E1M2"),
+				},
 			},
 		},
 	}
 	if done := sg.tickIntermissionAdvance(true); done {
 		t.Fatal("final intermission hold should not complete immediately")
 	}
-	if got := sg.intermission.waitTic; got != 4 {
+	if got := sg.intermission.state.WaitTic; got != 4 {
 		t.Fatalf("waitTic=%d want=4", got)
 	}
 }
@@ -175,13 +182,13 @@ func TestCollectIntermissionStats_UsesInitialSecretTotalAfterDiscovery(t *testin
 		secretsFound: 1,
 	}
 	got := collectIntermissionStats(g, "E1M1", "E1M2")
-	if got.secretsTotal != 2 {
-		t.Fatalf("secretsTotal=%d want=2", got.secretsTotal)
+	if got.SecretsTotal != 2 {
+		t.Fatalf("secretsTotal=%d want=2", got.SecretsTotal)
 	}
-	if got.secretsFound != 1 {
-		t.Fatalf("secretsFound=%d want=1", got.secretsFound)
+	if got.SecretsFound != 1 {
+		t.Fatalf("secretsFound=%d want=1", got.SecretsFound)
 	}
-	if got.secretsPct != 50 {
-		t.Fatalf("secretsPct=%d want=50", got.secretsPct)
+	if got.SecretsPct != 50 {
+		t.Fatalf("secretsPct=%d want=50", got.SecretsPct)
 	}
 }
