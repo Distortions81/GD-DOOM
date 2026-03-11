@@ -18,3 +18,4 @@ doom-source/linuxdoom-1.10/linux/*.o
 linuxdoom-1.10/linux/linuxxdoom
 doom-source/linuxdoom-1.10/linux/linuxxdoom
 tmp/*
+internal/doomruntime/
