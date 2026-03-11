@@ -5,6 +5,7 @@ import (
 
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/mapview/linepolicy"
+	"gddoom/internal/render/scene"
 )
 
 func (g *game) visibleSegIndicesPseudo3D() []int {
@@ -90,7 +91,7 @@ func (g *game) traverseBSPSegs(child uint16, px, py int64, ca, sa, near, focal, 
 			if !ok {
 				continue
 			}
-			occ = addSolidSpanInPlace(occ, l, r)
+			occ = scene.AddSpanInPlace(occ, l, r)
 		}
 		return occ
 	}
@@ -120,129 +121,11 @@ func (g *game) traverseBSPSegs(child uint16, px, py int64, ca, sa, near, focal, 
 }
 
 func (g *game) nodeChildBBoxMaybeVisible(n mapdata.Node, childSide int, px, py int64, ca, sa, near, tanHalfFOV float64) bool {
-	bb := n.BBoxR
-	if childSide != 0 {
-		bb = n.BBoxL
-	}
-	top := float64(bb[0])
-	bottom := float64(bb[1])
-	left := float64(bb[2])
-	right := float64(bb[3])
-	minX := math.Min(left, right)
-	maxX := math.Max(left, right)
-	minY := math.Min(bottom, top)
-	maxY := math.Max(bottom, top)
-	if minX > maxX || minY > maxY {
-		return true
-	}
-
-	pxw := float64(px) / fracUnit
-	pyw := float64(py) / fracUnit
-	if pxw >= minX && pxw <= maxX && pyw >= minY && pyw <= maxY {
-		return true
-	}
-
-	// Test bbox corners against the camera frustum half-planes in camera space.
-	// Reject only when all corners are outside the same plane.
-	corners := [4][2]float64{
-		{minX, minY},
-		{maxX, minY},
-		{maxX, maxY},
-		{minX, maxY},
-	}
-	outNear := 0
-	outLeft := 0
-	outRight := 0
-	for _, c := range corners {
-		dx := c[0] - pxw
-		dy := c[1] - pyw
-		f := dx*ca + dy*sa
-		s := -dx*sa + dy*ca
-		if f < near {
-			outNear++
-		}
-		if s+tanHalfFOV*f < 0 {
-			outLeft++
-		}
-		if -s+tanHalfFOV*f < 0 {
-			outRight++
-		}
-	}
-	if outNear == len(corners) || outLeft == len(corners) || outRight == len(corners) {
-		return false
-	}
-	return true
+	return scene.NodeChildBBoxMaybeVisible(n, childSide, float64(px)/fracUnit, float64(py)/fracUnit, ca, sa, near, tanHalfFOV)
 }
 
 func (g *game) nodeChildScreenRange(n mapdata.Node, childSide int, px, py int64, ca, sa, near, focal float64) (int, int, bool) {
-	bb := n.BBoxR
-	if childSide != 0 {
-		bb = n.BBoxL
-	}
-	top := float64(bb[0])
-	bottom := float64(bb[1])
-	left := float64(bb[2])
-	right := float64(bb[3])
-	minX := math.Min(left, right)
-	maxX := math.Max(left, right)
-	minY := math.Min(bottom, top)
-	maxY := math.Max(bottom, top)
-	if minX > maxX || minY > maxY || g.viewW <= 0 {
-		return 0, 0, false
-	}
-	pxw := float64(px) / fracUnit
-	pyw := float64(py) / fracUnit
-	if pxw >= minX && pxw <= maxX && pyw >= minY && pyw <= maxY {
-		return 0, g.viewW - 1, true
-	}
-	corners := [4][2]float64{
-		{minX, minY},
-		{maxX, minY},
-		{maxX, maxY},
-		{minX, maxY},
-	}
-	minSX := float64(g.viewW - 1)
-	maxSX := 0.0
-	any := false
-	for _, c := range corners {
-		dx := c[0] - pxw
-		dy := c[1] - pyw
-		f := dx*ca + dy*sa
-		s := -dx*sa + dy*ca
-		if f < near {
-			f = near
-		}
-		if f <= 0 {
-			continue
-		}
-		sx := float64(g.viewW)/2 - (s/f)*focal
-		if sx < minSX {
-			minSX = sx
-		}
-		if sx > maxSX {
-			maxSX = sx
-		}
-		any = true
-	}
-	if !any {
-		return 0, 0, false
-	}
-	// Conservative screen bounds for BSP child culling.
-	// BBox-corner projection can slightly underestimate the true covered span
-	// while turning near partition planes; pad a little to avoid false culls.
-	const childCullPad = 1
-	l := int(math.Floor(minSX)) - childCullPad
-	r := int(math.Ceil(maxSX)) + childCullPad
-	if l < 0 {
-		l = 0
-	}
-	if r >= g.viewW {
-		r = g.viewW - 1
-	}
-	if l > r {
-		return 0, 0, false
-	}
-	return l, r, true
+	return scene.NodeChildScreenRange(n, childSide, float64(px)/fracUnit, float64(py)/fracUnit, ca, sa, near, focal, g.viewW)
 }
 
 func (g *game) nodeChildScreenRangeCached(nodeIdx int, n mapdata.Node, childSide int, px, py int64, ca, sa, near, focal float64) (int, int, bool) {
@@ -280,82 +163,7 @@ func (g *game) segScreenRange(si int, px, py int64, ca, sa, near, focal float64)
 	if !ok || g.viewW <= 0 {
 		return 0, 0, false
 	}
-	pxw := float64(px) / fracUnit
-	pyw := float64(py) / fracUnit
-	x1 := x1w - pxw
-	y1 := y1w - pyw
-	x2 := x2w - pxw
-	y2 := y2w - pyw
-	f1 := x1*ca + y1*sa
-	s1 := -x1*sa + y1*ca
-	f2 := x2*ca + y2*sa
-	s2 := -x2*sa + y2*ca
-	f1, s1, f2, s2, ok = clipSegmentToNear(f1, s1, f2, s2, near)
-	if !ok {
-		return 0, 0, false
-	}
-	if f1*s2-s1*f2 >= 0 {
-		return 0, 0, false
-	}
-	sx1 := float64(g.viewW)/2 - (s1/f1)*focal
-	sx2 := float64(g.viewW)/2 - (s2/f2)*focal
-	if !isFinite(sx1) || !isFinite(sx2) {
-		return 0, 0, false
-	}
-	l := int(math.Floor(math.Min(sx1, sx2)))
-	r := int(math.Ceil(math.Max(sx1, sx2)))
-	if l < 0 {
-		l = 0
-	}
-	if r >= g.viewW {
-		r = g.viewW - 1
-	}
-	if l > r {
-		return 0, 0, false
-	}
-	return l, r, true
-}
-
-func addSolidSpanInPlace(spans []solidSpan, l, r int) []solidSpan {
-	if l > r {
-		return spans
-	}
-	n := len(spans)
-	if n == 0 {
-		return append(spans, solidSpan{l: l, r: r})
-	}
-	i := 0
-	for i < n && spans[i].r+1 < l {
-		i++
-	}
-	if i == n {
-		return append(spans, solidSpan{l: l, r: r})
-	}
-	if r+1 < spans[i].l {
-		spans = append(spans, solidSpan{})
-		copy(spans[i+1:], spans[i:n])
-		spans[i] = solidSpan{l: l, r: r}
-		return spans
-	}
-	if spans[i].l < l {
-		l = spans[i].l
-	}
-	if spans[i].r > r {
-		r = spans[i].r
-	}
-	j := i + 1
-	for j < n && spans[j].l-1 <= r {
-		if spans[j].r > r {
-			r = spans[j].r
-		}
-		j++
-	}
-	spans[i] = solidSpan{l: l, r: r}
-	if j > i+1 {
-		copy(spans[i+1:], spans[j:n])
-		spans = spans[:n-(j-(i+1))]
-	}
-	return spans
+	return scene.SegScreenRangeFromWorld(x1w, y1w, x2w, y2w, float64(px)/fracUnit, float64(py)/fracUnit, ca, sa, near, focal, g.viewW)
 }
 
 func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) linepolicy.Decision {

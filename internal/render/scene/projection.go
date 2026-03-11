@@ -13,6 +13,47 @@ type WallProjection struct {
 	UOverDepth2 float64
 }
 
+type WallPrepass struct {
+	Projection WallProjection
+	LogReason  string
+	LogZ1      float64
+	LogZ2      float64
+	LogX1      float64
+	LogX2      float64
+	OK         bool
+}
+
+type WallPrepassWorldInput struct {
+	X1W float64
+	Y1W float64
+	U1  float64
+	X2W float64
+	Y2W float64
+	U2  float64
+}
+
+type MaskedMidSeg struct {
+	Dist       float64
+	X0         int
+	X1         int
+	Projection WallProjection
+	WorldHigh  float64
+	WorldLow   float64
+	TexUOff    float64
+	TexMid     float64
+}
+
+func NewWallPrepassWorldInput(x1w, y1w, x2w, y2w, uBase, segLen float64, frontSide int) WallPrepassWorldInput {
+	u2 := uBase + segLen
+	if frontSide == 1 {
+		u2 = uBase - segLen
+	}
+	return WallPrepassWorldInput{
+		X1W: x1w, Y1W: y1w, U1: uBase,
+		X2W: x2w, Y2W: y2w, U2: u2,
+	}
+}
+
 type WallProjectionStatus uint8
 
 const (
@@ -141,6 +182,82 @@ func ProjectWallSegment(f1, s1, u1, f2, s2, u2 float64, viewW int, focal float64
 		UOverDepth1: u1 / f1,
 		UOverDepth2: u2 / f2,
 	}, WallProjectionOK
+}
+
+func BuildWallPrepass(f1, s1, u1, f2, s2, u2 float64, viewW int, focal, near float64) WallPrepass {
+	origF1, origS1, origF2, origS2 := f1, s1, f2, s2
+	preSX1 := float64(viewW) / 2
+	preSX2 := float64(viewW) / 2
+	if math.Abs(origF1) > 1e-9 {
+		preSX1 -= (origS1 / origF1) * focal
+	}
+	if math.Abs(origF2) > 1e-9 {
+		preSX2 -= (origS2 / origF2) * focal
+	}
+
+	var ok bool
+	f1, s1, u1, f2, s2, u2, ok = ClipSegmentToNearWithAttr(f1, s1, u1, f2, s2, u2, near)
+	if !ok {
+		return WallPrepass{
+			LogReason: "BEHIND",
+			LogZ1:     origF1,
+			LogZ2:     origF2,
+			LogX1:     preSX1,
+			LogX2:     preSX2,
+		}
+	}
+	if f1*s2-s1*f2 >= 0 {
+		return WallPrepass{
+			LogReason: "BACKFACE",
+			LogZ1:     f1,
+			LogZ2:     f2,
+			LogX1:     s1,
+			LogX2:     s2,
+		}
+	}
+
+	proj, status := ProjectWallSegment(f1, s1, u1, f2, s2, u2, viewW, focal)
+	sx1 := float64(viewW)/2 - (s1/f1)*focal
+	sx2 := float64(viewW)/2 - (s2/f2)*focal
+	switch status {
+	case WallProjectionFlipped:
+		return WallPrepass{
+			LogReason: "FLIPPED",
+			LogZ1:     f1,
+			LogZ2:     f2,
+			LogX1:     sx1,
+			LogX2:     sx2,
+		}
+	case WallProjectionOffscreen:
+		return WallPrepass{
+			LogReason: "OFFSCREEN",
+			LogZ1:     f1,
+			LogZ2:     f2,
+			LogX1:     sx1,
+			LogX2:     sx2,
+		}
+	default:
+		return WallPrepass{
+			Projection: proj,
+			LogZ1:      f1,
+			LogZ2:      f2,
+			LogX1:      sx1,
+			LogX2:      sx2,
+			OK:         true,
+		}
+	}
+}
+
+func BuildWallPrepassFromWorld(input WallPrepassWorldInput, camX, camY, ca, sa float64, viewW int, focal, near float64) WallPrepass {
+	x1 := input.X1W - camX
+	y1 := input.Y1W - camY
+	x2 := input.X2W - camX
+	y2 := input.Y2W - camY
+	f1 := x1*ca + y1*sa
+	s1 := -x1*sa + y1*ca
+	f2 := x2*ca + y2*sa
+	s2 := -x2*sa + y2*ca
+	return BuildWallPrepass(f1, s1, input.U1, f2, s2, input.U2, viewW, focal, near)
 }
 
 func ProjectedWallDepthAtX(proj WallProjection, x int) (float64, bool) {

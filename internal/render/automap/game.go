@@ -262,58 +262,31 @@ const (
 )
 
 type maskedMidSeg struct {
-	dist      float64
-	x0        int
-	x1        int
-	sx1       float64
-	sx2       float64
-	invF1     float64
-	invF2     float64
-	uOverF1   float64
-	uOverF2   float64
-	worldHigh float64
-	worldLow  float64
-	texUOff   float64
-	texMid    float64
+	scene.MaskedMidSeg
 	tex       WallTexture
 	light     int16
 	lightBias int
 }
 
-type maskedClipSpan struct {
-	y0      int16
-	y1      int16
-	openY0  int16
-	openY1  int16
-	depthQ  uint16
-	closed  bool
-	hasOpen bool
-}
-
 func wallSegPrepassProjection(pp wallSegPrepass) scene.WallProjection {
-	return scene.WallProjection{
-		SX1:         pp.sx1,
-		SX2:         pp.sx2,
-		MinX:        pp.minSX,
-		MaxX:        pp.maxSX,
-		InvDepth1:   pp.invF1,
-		InvDepth2:   pp.invF2,
-		UOverDepth1: pp.uOverF1,
-		UOverDepth2: pp.uOverF2,
-	}
+	return pp.prepass.Projection
 }
 
-func maskedMidSegProjection(ms maskedMidSeg) scene.WallProjection {
-	return scene.WallProjection{
-		SX1:         ms.sx1,
-		SX2:         ms.sx2,
-		MinX:        ms.x0,
-		MaxX:        ms.x1,
-		InvDepth1:   ms.invF1,
-		InvDepth2:   ms.invF2,
-		UOverDepth1: ms.uOverF1,
-		UOverDepth2: ms.uOverF2,
+func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
+	if g == nil || x < 0 || x >= len(g.wallDepthQCol) {
+		return scene.WallDepthColumn{DepthQ: 0xFFFF, Top: 1, Bottom: 0}
 	}
+	col := scene.WallDepthColumn{DepthQ: g.wallDepthQCol[x], Top: g.viewH, Bottom: -1}
+	if x < len(g.wallDepthTopCol) {
+		col.Top = g.wallDepthTopCol[x]
+	}
+	if x < len(g.wallDepthBottomCol) {
+		col.Bottom = g.wallDepthBottomCol[x]
+	}
+	if x < len(g.wallDepthClosedCol) {
+		col.Closed = g.wallDepthClosedCol[x]
+	}
+	return col
 }
 
 type game struct {
@@ -574,7 +547,7 @@ type game struct {
 	wallDepthTopCol              []int
 	wallDepthBottomCol           []int
 	wallDepthClosedCol           []bool
-	maskedClipCols               [][]maskedClipSpan
+	maskedClipCols               [][]scene.MaskedClipSpan
 	wallTop3D                    []int
 	wallBottom3D                 []int
 	ceilingClip3D                []int
@@ -805,20 +778,7 @@ type wallSegPrepass struct {
 	segIdx          int
 	ld              mapdata.Linedef
 	frontSideDefIdx int
-	sx1             float64
-	sx2             float64
-	minSX           int
-	maxSX           int
-	invF1           float64
-	invF2           float64
-	uOverF1         float64
-	uOverF2         float64
-	logReason       string
-	logZ1           float64
-	logZ2           float64
-	logX1           float64
-	logX2           float64
-	ok              bool
+	prepass         scene.WallPrepass
 }
 
 type wallSegStatic struct {
@@ -828,12 +788,7 @@ type wallSegStatic struct {
 	frontSideDefIdx   int
 	frontSectorIdx    int
 	backSectorIdx     int
-	x1w               float64
-	y1w               float64
-	x2w               float64
-	y2w               float64
-	segLen            float64
-	uBase             float64
+	input             scene.WallPrepassWorldInput
 	hasTwoSidedMidTex bool
 }
 
@@ -862,18 +817,6 @@ type orphanRepairCandidate struct {
 	ss    int
 	sec   int
 	votes int
-}
-
-type wallPortalState struct {
-	worldTop    float64
-	worldBottom float64
-	worldHigh   float64
-	worldLow    float64
-	topWall     bool
-	bottomWall  bool
-	markCeiling bool
-	markFloor   bool
-	solidWall   bool
 }
 
 type plane3DVisBucket struct {
@@ -2676,9 +2619,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if si < 0 || si >= len(g.m.Segs) {
 			continue
 		}
-		if !pp.ok {
-			if pp.logReason != "" {
-				g.logWallCull(si, pp.logReason, pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+		if !pp.prepass.OK {
+			if pp.prepass.LogReason != "" {
+				g.logWallCull(si, pp.prepass.LogReason, pp.prepass.LogZ1, pp.prepass.LogZ2, pp.prepass.LogX1, pp.prepass.LogX2)
 			}
 			continue
 		}
@@ -2712,17 +2655,17 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 		}
 		ws := classifyWallPortal(front, back, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
-		worldTop := ws.worldTop
-		worldBottom := ws.worldBottom
-		worldHigh := ws.worldHigh
-		worldLow := ws.worldLow
-		topWall := ws.topWall
-		bottomWall := ws.bottomWall
-		markCeiling := ws.markCeiling
-		markFloor := ws.markFloor
-		solidWall := ws.solidWall
-		if solidWall && g.wallSpanRejectEnabled() && solidFullyCoveredFast(solid, pp.minSX, pp.maxSX) {
-			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+		worldTop := ws.WorldTop
+		worldBottom := ws.WorldBottom
+		worldHigh := ws.WorldHigh
+		worldLow := ws.WorldLow
+		topWall := ws.TopWall
+		bottomWall := ws.BottomWall
+		markCeiling := ws.MarkCeiling
+		markFloor := ws.MarkFloor
+		solidWall := ws.SolidWall
+		if solidWall && g.wallSpanRejectEnabled() && solidFullyCoveredFast(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX) {
+			g.logWallCull(si, "OCCLUDED", pp.prepass.LogZ1, pp.prepass.LogZ2, pp.prepass.LogX1, pp.prepass.LogX2)
 			continue
 		}
 		var midTex WallTexture
@@ -2779,11 +2722,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		var ceilPlane *plane3DVisplane
 		if planesEnabled {
 			var created bool
-			floorPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, true), pp.minSX, pp.maxSX, g.viewW)
+			floorPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, true), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
 			if created && floorPlane != nil {
 				planeOrder = append(planeOrder, floorPlane)
 			}
-			ceilPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, false), pp.minSX, pp.maxSX, g.viewW)
+			ceilPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, false), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
 			if created && ceilPlane != nil {
 				planeOrder = append(planeOrder, ceilPlane)
 			}
@@ -2791,32 +2734,32 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 		visibleRanges := g.solidClipScratch[:0]
 		if solidWall && g.wallSpanClipEnabled() {
-			visibleRanges = clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, solid, visibleRanges)
+			visibleRanges = clipRangeAgainstSolidSpans(pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, solid, visibleRanges)
 		} else {
-			visibleRanges = append(visibleRanges, solidSpan{l: pp.minSX, r: pp.maxSX})
+			visibleRanges = append(visibleRanges, solidSpan{L: pp.prepass.Projection.MinX, R: pp.prepass.Projection.MaxX})
 		}
 		g.solidClipScratch = visibleRanges
 		if len(visibleRanges) == 0 {
-			g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+			g.logWallCull(si, "OCCLUDED", pp.prepass.LogZ1, pp.prepass.LogZ2, pp.prepass.LogX1, pp.prepass.LogX2)
 			continue
 		}
 		if solidWall && g.wallSliceOcclusionEnabled() && !g.depthOcclusionEnabled() {
 			allOcc := true
 			for _, vis := range visibleRanges {
-				visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.l, vis.r, worldTop, worldBottom, focal)
+				visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.L, vis.R, worldTop, worldBottom, focal)
 				if !visOcc {
 					allOcc = false
 					break
 				}
 			}
 			if allOcc {
-				g.logWallCull(si, "OCCLUDED", pp.logZ1, pp.logZ2, pp.logX1, pp.logX2)
+				g.logWallCull(si, "OCCLUDED", pp.prepass.LogZ1, pp.prepass.LogZ2, pp.prepass.LogX1, pp.prepass.LogX2)
 				continue
 			}
 		}
 		for _, vis := range visibleRanges {
 			proj := wallSegPrepassProjection(pp)
-			for x := vis.l; x <= vis.r; x++ {
+			for x := vis.L; x <= vis.R; x++ {
 				f, texU, ok := scene.ProjectedWallSampleAtX(proj, x)
 				if !ok {
 					continue
@@ -2916,27 +2859,24 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 		if back != nil && hasMidTex {
 			for _, vis := range visibleRanges {
-				if vis.l > vis.r {
+				if vis.L > vis.R {
 					continue
 				}
 				dist := 0.0
-				if pp.invF1+pp.invF2 > 0 {
-					dist = 2.0 / (pp.invF1 + pp.invF2)
+				if pp.prepass.Projection.InvDepth1+pp.prepass.Projection.InvDepth2 > 0 {
+					dist = 2.0 / (pp.prepass.Projection.InvDepth1 + pp.prepass.Projection.InvDepth2)
 				}
 				maskedMids = append(maskedMids, maskedMidSeg{
-					dist:      dist,
-					x0:        vis.l,
-					x1:        vis.r,
-					sx1:       pp.sx1,
-					sx2:       pp.sx2,
-					invF1:     pp.invF1,
-					invF2:     pp.invF2,
-					uOverF1:   pp.uOverF1,
-					uOverF2:   pp.uOverF2,
-					worldHigh: worldHigh,
-					worldLow:  worldLow,
-					texUOff:   texUOffset,
-					texMid:    midTexMid,
+					MaskedMidSeg: scene.MaskedMidSeg{
+						Dist:       dist,
+						X0:         vis.L,
+						X1:         vis.R,
+						Projection: pp.prepass.Projection,
+						WorldHigh:  worldHigh,
+						WorldLow:   worldLow,
+						TexUOff:    texUOffset,
+						TexMid:     midTexMid,
+					},
 					tex:       midTex,
 					light:     front.Light,
 					lightBias: wallLightBias,
@@ -2945,7 +2885,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		}
 
 		if solidWall {
-			solid = addSolidSpan(solid, pp.minSX, pp.maxSX)
+			solid = addSolidSpan(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX)
 		}
 	}
 	g.maskedMidSegsScratch = maskedMids
@@ -3000,59 +2940,26 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	screen.DrawImage(g.wallLayer, nil)
 }
 
-func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil, backFloor, backCeil float64) wallPortalState {
+func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil, backFloor, backCeil float64) scene.WallPortalState {
 	if front == nil {
-		return wallPortalState{}
+		return scene.WallPortalState{}
 	}
-	s := wallPortalState{
-		worldTop:    frontCeil - eyeZ,
-		worldBottom: frontFloor - eyeZ,
-		markCeiling: true,
-		markFloor:   true,
-		solidWall:   back == nil,
+	in := scene.WallPortalInput{
+		FrontFloor: frontFloor, FrontCeil: frontCeil, BackFloor: backFloor, BackCeil: backCeil, EyeZ: eyeZ,
+		FrontFloorFlat:     normalizeFlatName(front.FloorPic),
+		FrontCeilingFlat:   normalizeFlatName(front.CeilingPic),
+		FrontLight:         front.Light,
+		BackExists:         back != nil,
+		DoomSectorLighting: doomSectorLighting,
+		IsFrontCeilingSky:  isSkyFlatName(front.CeilingPic),
 	}
-	s.worldHigh = s.worldTop
-	s.worldLow = s.worldBottom
-
 	if back != nil {
-		s.worldHigh = backCeil - eyeZ
-		s.worldLow = backFloor - eyeZ
-		skyPortal := isSkyFlatName(front.CeilingPic) && isSkyFlatName(back.CeilingPic)
-		if skyPortal {
-			// Doom sky hack: keep upper portal open when both sides are sky.
-			s.worldTop = s.worldHigh
-		}
-		lightDiff := back.Light != front.Light && doomSectorLighting
-		s.markFloor = s.worldLow != s.worldBottom ||
-			normalizeFlatName(back.FloorPic) != normalizeFlatName(front.FloorPic) ||
-			lightDiff
-		s.markCeiling = s.worldHigh != s.worldTop ||
-			normalizeFlatName(back.CeilingPic) != normalizeFlatName(front.CeilingPic) ||
-			lightDiff
-		if skyPortal && backCeil != frontCeil {
-			// Keep sky-marking active so the portal reliably masks farther geometry.
-			s.markCeiling = true
-		}
-		// Portal solidity should follow the current tic state, not the render
-		// look-ahead height, or doors can close floor visibility a fraction of a
-		// tic early and wipe the whole floor behind them.
-		if float64(back.CeilingHeight) <= float64(front.FloorHeight) ||
-			float64(back.FloorHeight) >= float64(front.CeilingHeight) {
-			s.markFloor = true
-			s.markCeiling = true
-			s.solidWall = true
-		}
-		s.topWall = s.worldHigh < s.worldTop
-		s.bottomWall = s.worldLow > s.worldBottom
+		in.BackFloorFlat = normalizeFlatName(back.FloorPic)
+		in.BackCeilingFlat = normalizeFlatName(back.CeilingPic)
+		in.BackLight = back.Light
+		in.IsBackCeilingSky = isSkyFlatName(back.CeilingPic)
 	}
-
-	if frontFloor >= eyeZ {
-		s.markFloor = false
-	}
-	if frontCeil <= eyeZ && !isSkyFlatName(front.CeilingPic) {
-		s.markCeiling = false
-	}
-	return s
+	return scene.ClassifyWallPortal(in)
 }
 
 func (g *game) lowDetailMode() bool {
@@ -3273,12 +3180,12 @@ func (g *game) appendSpriteClipColumnSpan(x, y0, y1 int, depthQ uint16) {
 	if y0 > y1 {
 		return
 	}
-	g.maskedClipCols[x] = append(g.maskedClipCols[x], maskedClipSpan{
-		y0:      int16(y0),
-		y1:      int16(y1),
-		depthQ:  depthQ,
-		closed:  false,
-		hasOpen: false,
+	g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
+		Y0:      int16(y0),
+		Y1:      int16(y1),
+		DepthQ:  depthQ,
+		Closed:  false,
+		HasOpen: false,
 	})
 }
 
@@ -3286,10 +3193,10 @@ func (g *game) markSpriteClipColumnClosed(x int, depthQ uint16) {
 	if g == nil || g.depthOcclusionEnabled() || x < 0 || x >= len(g.maskedClipCols) {
 		return
 	}
-	g.maskedClipCols[x] = append(g.maskedClipCols[x], maskedClipSpan{
-		depthQ:  depthQ,
-		closed:  true,
-		hasOpen: false,
+	g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
+		DepthQ:  depthQ,
+		Closed:  true,
+		HasOpen: false,
 	})
 }
 
@@ -3303,12 +3210,12 @@ func (g *game) appendSpritePortalColumnGap(x, openY0, openY1 int, depthQ uint16)
 	if openY1 >= g.viewH {
 		openY1 = g.viewH - 1
 	}
-	g.maskedClipCols[x] = append(g.maskedClipCols[x], maskedClipSpan{
-		openY0:  int16(openY0),
-		openY1:  int16(openY1),
-		depthQ:  depthQ,
-		closed:  false,
-		hasOpen: true,
+	g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
+		OpenY0:  int16(openY0),
+		OpenY1:  int16(openY1),
+		DepthQ:  depthQ,
+		Closed:  false,
+		HasOpen: true,
 	})
 }
 
@@ -3556,10 +3463,10 @@ func (g *game) rowFullyOccludedByWallsDepthQ(depthQ uint16, rowBase, x0, x1 int)
 
 func solidSpanContainsX(spans []solidSpan, x int) bool {
 	for _, s := range spans {
-		if x < s.l {
+		if x < s.L {
 			return false
 		}
-		if x <= s.r {
+		if x <= s.R {
 			return true
 		}
 	}
@@ -3655,42 +3562,13 @@ func (g *game) spriteWallClipOccludedAtXYDepth(x, y int, depthQ uint16) bool {
 	if x >= len(g.wallDepthQCol) {
 		return false
 	}
-	wq := g.wallDepthQCol[x]
-	if wq != 0xFFFF && depthQ > wq {
-		if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
-			return true
-		}
-		if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) {
-			top := g.wallDepthTopCol[x]
-			bottom := g.wallDepthBottomCol[x]
-			if y >= top && y <= bottom {
-				return true
-			}
-		} else {
-			return true
-		}
+	if scene.WallDepthColumnOccludesPoint(g.wallDepthColumnAt(x), y, depthQ) {
+		return true
 	}
 	if x >= len(g.maskedClipCols) {
 		return false
 	}
-	for _, sp := range g.maskedClipCols[x] {
-		if depthQ <= sp.depthQ {
-			continue
-		}
-		if sp.closed {
-			return true
-		}
-		if sp.hasOpen {
-			if y < int(sp.openY0) || y > int(sp.openY1) {
-				return true
-			}
-			continue
-		}
-		if y >= int(sp.y0) && y <= int(sp.y1) {
-			return true
-		}
-	}
-	return false
+	return scene.MaskedClipColumnOccludesPoint(g.maskedClipCols[x], y, depthQ)
 }
 
 func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bool {
@@ -3709,20 +3587,8 @@ func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bo
 	if x >= len(g.wallDepthQCol) {
 		return false
 	}
-	wq := g.wallDepthQCol[x]
-	if wq != 0xFFFF && depthQ > wq {
-		if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
-			return true
-		}
-		if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) {
-			top := g.wallDepthTopCol[x]
-			bottom := g.wallDepthBottomCol[x]
-			if y0 >= top && y1 <= bottom {
-				return true
-			}
-		} else {
-			return true
-		}
+	if scene.WallDepthColumnOccludesBBox(g.wallDepthColumnAt(x), y0, y1, depthQ) {
+		return true
 	}
 	// Transparent/masked mid textures should not act as hard occluders.
 	return false
@@ -3744,22 +3610,7 @@ func (g *game) wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1 int, depthQ uint1
 	if x >= len(g.wallDepthQCol) {
 		return false
 	}
-	wq := g.wallDepthQCol[x]
-	if wq != 0xFFFF && depthQ > wq {
-		if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
-			return true
-		}
-		if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) {
-			top := g.wallDepthTopCol[x]
-			bottom := g.wallDepthBottomCol[x]
-			if y0 >= top && y1 <= bottom {
-				return true
-			}
-		} else {
-			return true
-		}
-	}
-	return false
+	return scene.WallDepthColumnOccludesBBox(g.wallDepthColumnAt(x), y0, y1, depthQ)
 }
 
 func (g *game) wallClipPointOccludedByWallsOnly(x, y int, depthQ uint16) bool {
@@ -3840,42 +3691,14 @@ func (g *game) spriteWallClipBBoxHasAnyOccluder(x0, x1, y0, y1 int, depthQ uint1
 		return false
 	}
 	for x := x0; x <= x1; x++ {
-		if x < len(g.wallDepthQCol) {
-			wq := g.wallDepthQCol[x]
-			if wq != 0xFFFF && depthQ > wq {
-				if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
-					return true
-				}
-				if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) {
-					top := g.wallDepthTopCol[x]
-					bottom := g.wallDepthBottomCol[x]
-					if y0 <= bottom && y1 >= top {
-						return true
-					}
-				} else {
-					return true
-				}
-			}
+		if scene.WallDepthColumnHasAnyOccluder(g.wallDepthColumnAt(x), y0, y1, depthQ) {
+			return true
 		}
 		if x >= len(g.maskedClipCols) {
 			continue
 		}
-		for _, sp := range g.maskedClipCols[x] {
-			if depthQ <= sp.depthQ {
-				continue
-			}
-			if sp.closed {
-				return true
-			}
-			if sp.hasOpen {
-				if y0 < int(sp.openY0) || y1 > int(sp.openY1) {
-					return true
-				}
-				continue
-			}
-			if y0 <= int(sp.y1) && y1 >= int(sp.y0) {
-				return true
-			}
+		if scene.MaskedClipColumnHasAnyOccluder(g.maskedClipCols[x], y0, y1, depthQ) {
+			return true
 		}
 	}
 	return false
@@ -5693,8 +5516,8 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 	base := ty * tw
 	for _, sp := range spans {
 		if useIndexed {
-			for x := sp.l; x <= sp.r; {
-				if x+1 <= sp.r {
+			for x := sp.L; x <= sp.R; {
+				if x+1 <= sp.R {
 					i0 := row + x
 					i1 := i0 + 1
 					s0 := base + txLUT[x-x0]
@@ -5740,8 +5563,8 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 			}
 			continue
 		}
-		for x := sp.l; x <= sp.r; {
-			if x+1 <= sp.r {
+		for x := sp.L; x <= sp.R; {
+			if x+1 <= sp.R {
 				i0 := row + x
 				i1 := i0 + 1
 				p0 := src32[base+txLUT[x-x0]]
@@ -5804,26 +5627,25 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 		return
 	}
 	sort.Slice(g.maskedMidSegsScratch, func(i, j int) bool {
-		return g.maskedMidSegsScratch[i].dist > g.maskedMidSegsScratch[j].dist
+		return g.maskedMidSegsScratch[i].Dist > g.maskedMidSegsScratch[j].Dist
 	})
 	halfH := float64(g.viewH) * 0.5
 	for _, ms := range g.maskedMidSegsScratch {
 		if ms.tex.Width <= 0 || ms.tex.Height <= 0 {
 			continue
 		}
-		proj := maskedMidSegProjection(ms)
-		for x := ms.x0; x <= ms.x1; x++ {
-			f, texU, ok := scene.ProjectedWallSampleAtX(proj, x)
+		for x := ms.X0; x <= ms.X1; x++ {
+			f, texU, ok := scene.ProjectedWallSampleAtX(ms.Projection, x)
 			if !ok {
 				continue
 			}
-			texU += ms.texUOff
-			y0 := int(math.Ceil(halfH - (ms.worldHigh/f)*focal))
-			y1 := int(math.Floor(halfH - (ms.worldLow/f)*focal))
+			texU += ms.TexUOff
+			y0 := int(math.Ceil(halfH - (ms.WorldHigh/f)*focal))
+			y1 := int(math.Floor(halfH - (ms.WorldLow/f)*focal))
 			if y0 > y1 {
 				continue
 			}
-			shadeMul := sectorDistanceShadeMul(ms.light, ms.dist, doomLightingEnabled)
+			shadeMul := sectorDistanceShadeMul(ms.light, ms.Dist, doomLightingEnabled)
 			doomRow := 0
 			if doomLightingEnabled {
 				doomRow = doomWallLightRow(ms.light, ms.lightBias, f, focal)
@@ -5831,7 +5653,7 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 					shadeMul = doomShadeMulFromRowF(doomWallLightRowF(ms.light, ms.lightBias, f, focal))
 				}
 			}
-			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.texMid, focal, ms.tex, shadeMul, doomRow)
+			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
 		}
 	}
 }
@@ -5842,12 +5664,11 @@ func (g *game) buildMaskedMidClipColumns(focal float64) {
 	}
 	halfH := float64(g.viewH) * 0.5
 	for _, ms := range g.maskedMidSegsScratch {
-		proj := maskedMidSegProjection(ms)
-		if ms.x0 > ms.x1 || proj.SX2 == proj.SX1 {
+		if ms.X0 > ms.X1 || ms.Projection.SX2 == ms.Projection.SX1 {
 			continue
 		}
-		x0 := ms.x0
-		x1 := ms.x1
+		x0 := ms.X0
+		x1 := ms.X1
 		if x0 < 0 {
 			x0 = 0
 		}
@@ -5855,12 +5676,12 @@ func (g *game) buildMaskedMidClipColumns(focal float64) {
 			x1 = g.viewW - 1
 		}
 		for x := x0; x <= x1; x++ {
-			f, ok := scene.ProjectedWallDepthAtX(proj, x)
+			f, ok := scene.ProjectedWallDepthAtX(ms.Projection, x)
 			if !ok {
 				continue
 			}
-			y0 := int(math.Ceil(halfH - (ms.worldHigh/f)*focal))
-			y1 := int(math.Floor(halfH - (ms.worldLow/f)*focal))
+			y0 := int(math.Ceil(halfH - (ms.WorldHigh/f)*focal))
+			y1 := int(math.Floor(halfH - (ms.WorldLow/f)*focal))
 			if y0 < 0 {
 				y0 = 0
 			}
@@ -5870,10 +5691,10 @@ func (g *game) buildMaskedMidClipColumns(focal float64) {
 			if y1 < y0 {
 				continue
 			}
-			g.maskedClipCols[x] = append(g.maskedClipCols[x], maskedClipSpan{
-				y0:     int16(y0),
-				y1:     int16(y1),
-				depthQ: encodeDepthQ(f),
+			g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
+				Y0:     int16(y0),
+				Y1:     int16(y1),
+				DepthQ: encodeDepthQ(f),
 			})
 		}
 	}
@@ -7351,99 +7172,18 @@ func clipSegmentToNearWithAttr(f1, s1, a1, f2, s2, a2, near float64) (float64, f
 	return scene.ClipSegmentToNearWithAttr(f1, s1, a1, f2, s2, a2, near)
 }
 
-type solidSpan struct {
-	l int
-	r int
-}
+type solidSpan = scene.ScreenSpan
 
 func solidFullyCovered(spans []solidSpan, l, r int) bool {
-	if l > r {
-		return true
-	}
-	cur := l
-	for _, s := range spans {
-		if s.r < cur {
-			continue
-		}
-		if s.l > cur {
-			return false
-		}
-		if s.r+1 > cur {
-			cur = s.r + 1
-		}
-		if cur > r {
-			return true
-		}
-	}
-	return false
+	return scene.SpanFullyCovered(spans, l, r)
 }
 
 func addSolidSpan(spans []solidSpan, l, r int) []solidSpan {
-	if l > r {
-		return spans
-	}
-	ns := solidSpan{l: l, r: r}
-	out := make([]solidSpan, 0, len(spans)+1)
-	inserted := false
-	for _, s := range spans {
-		if s.r+1 < ns.l {
-			out = append(out, s)
-			continue
-		}
-		if ns.r+1 < s.l {
-			if !inserted {
-				out = append(out, ns)
-				inserted = true
-			}
-			out = append(out, s)
-			continue
-		}
-		if s.l < ns.l {
-			ns.l = s.l
-		}
-		if s.r > ns.r {
-			ns.r = s.r
-		}
-	}
-	if !inserted {
-		out = append(out, ns)
-	}
-	return out
+	return scene.AddSpan(spans, l, r)
 }
 
 func clipRangeAgainstSolidSpans(l, r int, covered []solidSpan, out []solidSpan) []solidSpan {
-	out = out[:0]
-	if r < l {
-		return out
-	}
-	if len(covered) == 0 {
-		return append(out, solidSpan{l: l, r: r})
-	}
-	cur := l
-	for _, s := range covered {
-		if s.r < cur {
-			continue
-		}
-		if s.l > r {
-			break
-		}
-		if s.l > cur {
-			right := min(r, s.l-1)
-			if right >= cur {
-				out = append(out, solidSpan{l: cur, r: right})
-			}
-		}
-		if s.r+1 > cur {
-			cur = s.r + 1
-		}
-		if cur > r {
-			break
-		}
-	}
-	if cur <= r {
-		out = append(out, solidSpan{l: cur, r: r})
-	}
-	return out
+	return scene.ClipRangeAgainstSpans(l, r, covered, out[:0])
 }
 
 func (g *game) drawBasicWallColumnRange(screen *ebiten.Image, depthPix []float64, wallTop, wallBottom []int, sx1, sx2, f1, f2, zTop, zBot, eyeZ, focal float64, base color.RGBA) {
@@ -7935,9 +7675,9 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 							}
 							filtered := g.solidClipScratch[:0]
 							for _, sp := range rowSpans {
-								l, r, ok := trimSpanToOpaqueLUTRange(sp.l, sp.r, x0, txLUT, minTex, maxTex)
+								l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
 								if ok {
-									filtered = append(filtered, solidSpan{l: l, r: r})
+									filtered = append(filtered, solidSpan{L: l, R: r})
 								}
 							}
 							g.solidClipScratch = filtered
@@ -8844,7 +8584,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
 				g.solidClipScratch = rowSpans
 				for _, sp := range rowSpans {
-					for x := sp.l; x <= sp.r; x++ {
+					for x := sp.L; x <= sp.R; x++ {
 						i := row + x
 						p := src32[tyLUT[y-y0]*tw+txLUT[x-x0]]
 						if ((p >> pixelAShift) & 0xFF) == 0 {
@@ -8876,9 +8616,9 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 					}
 					filtered := g.solidClipScratch[:0]
 					for _, sp := range rowSpans {
-						l, r, ok := trimSpanToOpaqueLUTRange(sp.l, sp.r, x0, txLUT, minTex, maxTex)
+						l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
 						if ok {
-							filtered = append(filtered, solidSpan{l: l, r: r})
+							filtered = append(filtered, solidSpan{L: l, R: r})
 						}
 					}
 					g.solidClipScratch = filtered
@@ -9347,9 +9087,9 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 					}
 					filtered := g.solidClipScratch[:0]
 					for _, sp := range rowSpans {
-						l, r, ok := trimSpanToOpaqueLUTRange(sp.l, sp.r, x0, txLUT, minTex, maxTex)
+						l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
 						if ok {
-							filtered = append(filtered, solidSpan{l: l, r: r})
+							filtered = append(filtered, solidSpan{L: l, R: r})
 						}
 					}
 					g.solidClipScratch = filtered
@@ -10768,7 +10508,7 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 		g.wallDepthClosedCol = make([]bool, w)
 	}
 	if len(g.maskedClipCols) != w {
-		g.maskedClipCols = make([][]maskedClipSpan, w)
+		g.maskedClipCols = make([][]scene.MaskedClipSpan, w)
 	}
 	for i := 0; i < w; i++ {
 		g.wallTop3D[i] = h
@@ -11079,23 +10819,17 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 	}
 	cacheOK := si >= 0 && si < len(g.wallSegStaticCache) && g.wallSegStaticCache[si].valid
 	var (
-		ld                 mapdata.Linedef
-		x1w, y1w, x2w, y2w float64
-		u1, u2             float64
-		hasTwoSidedMid     bool
-		frontSectorIdx     = -1
-		backSectorIdx      = -1
+		ld             mapdata.Linedef
+		input          scene.WallPrepassWorldInput
+		hasTwoSidedMid bool
+		frontSectorIdx = -1
+		backSectorIdx  = -1
 	)
 	if cacheOK {
 		c := g.wallSegStaticCache[si]
 		ld = c.ld
-		x1w, y1w, x2w, y2w = c.x1w, c.y1w, c.x2w, c.y2w
+		input = c.input
 		pp.frontSideDefIdx = c.frontSideDefIdx
-		u1 = c.uBase
-		u2 = u1 + c.segLen
-		if c.frontSide == 1 {
-			u2 = u1 - c.segLen
-		}
 		hasTwoSidedMid = c.hasTwoSidedMidTex
 		frontSectorIdx = c.frontSectorIdx
 		backSectorIdx = c.backSectorIdx
@@ -11110,7 +10844,7 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 		}
 		ld = g.m.Linedefs[li]
 		var ok bool
-		x1w, y1w, x2w, y2w, ok = g.segWorldEndpoints(si)
+		x1w, y1w, x2w, y2w, ok := g.segWorldEndpoints(si)
 		if !ok {
 			return pp
 		}
@@ -11123,14 +10857,11 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 			pp.frontSideDefIdx = int(sn)
 		}
 		segLen := math.Hypot(x2w-x1w, y2w-y1w)
-		u1 = float64(seg.Offset)
+		uBase := float64(seg.Offset)
 		if pp.frontSideDefIdx >= 0 {
-			u1 += float64(g.m.Sidedefs[pp.frontSideDefIdx].TextureOffset)
+			uBase += float64(g.m.Sidedefs[pp.frontSideDefIdx].TextureOffset)
 		}
-		u2 = u1 + segLen
-		if frontSide == 1 {
-			u2 = u1 - segLen
-		}
+		input = scene.NewWallPrepassWorldInput(x1w, y1w, x2w, y2w, uBase, segLen, frontSide)
 		hasTwoSidedMid = g.segHasTwoSidedMidTexture(si)
 		frontSectorIdx = g.sectorIndexFromSideNum(ld.SideNum[frontSide])
 		backSectorIdx = g.sectorIndexFromSideNum(ld.SideNum[backSide])
@@ -11151,58 +10882,11 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 	if !d.Visible && !hasTwoSidedMid && !portalSplit {
 		return pp
 	}
-	x1 := x1w - camX
-	y1 := y1w - camY
-	x2 := x2w - camX
-	y2 := y2w - camY
-	f1 := x1*ca + y1*sa
-	s1 := -x1*sa + y1*ca
-	f2 := x2*ca + y2*sa
-	s2 := -x2*sa + y2*ca
-	origF1, origS1, origF2, origS2 := f1, s1, f2, s2
-	preSX1 := float64(g.viewW) / 2
-	preSX2 := float64(g.viewW) / 2
-	if math.Abs(origF1) > 1e-9 {
-		preSX1 -= (origS1 / origF1) * focal
-	}
-	if math.Abs(origF2) > 1e-9 {
-		preSX2 -= (origS2 / origF2) * focal
-	}
-	var ok bool
-	f1, s1, u1, f2, s2, u2, ok = clipSegmentToNearWithAttr(f1, s1, u1, f2, s2, u2, near)
-	if !ok {
-		pp.logReason = "BEHIND"
-		pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = origF1, origF2, preSX1, preSX2
+	prepass := scene.BuildWallPrepassFromWorld(input, camX, camY, ca, sa, g.viewW, focal, near)
+	pp.prepass = prepass
+	if !pp.prepass.OK {
 		return pp
 	}
-	if f1*s2-s1*f2 >= 0 {
-		pp.logReason = "BACKFACE"
-		pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, s1, s2
-		return pp
-	}
-	proj, status := scene.ProjectWallSegment(f1, s1, u1, f2, s2, u2, g.viewW, focal)
-	sx1 := float64(g.viewW)/2 - (s1/f1)*focal
-	sx2 := float64(g.viewW)/2 - (s2/f2)*focal
-	if status == scene.WallProjectionFlipped {
-		pp.logReason = "FLIPPED"
-		pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
-		return pp
-	}
-	if status == scene.WallProjectionOffscreen {
-		pp.logReason = "OFFSCREEN"
-		pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
-		return pp
-	}
-	pp.sx1 = proj.SX1
-	pp.sx2 = proj.SX2
-	pp.minSX = proj.MinX
-	pp.maxSX = proj.MaxX
-	pp.invF1 = proj.InvDepth1
-	pp.invF2 = proj.InvDepth2
-	pp.uOverF1 = proj.UOverDepth1
-	pp.uOverF2 = proj.UOverDepth2
-	pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
-	pp.ok = true
 	return pp
 }
 
@@ -13267,12 +12951,7 @@ func (g *game) buildWallSegStaticCache() {
 			frontSideDefIdx:   frontSideDefIdx,
 			frontSectorIdx:    frontSectorIdx,
 			backSectorIdx:     backSectorIdx,
-			x1w:               x1w,
-			y1w:               y1w,
-			x2w:               x2w,
-			y2w:               y2w,
-			segLen:            segLen,
-			uBase:             uBase,
+			input:             scene.NewWallPrepassWorldInput(x1w, y1w, x2w, y2w, uBase, segLen, frontSide),
 			hasTwoSidedMidTex: hasTwoSidedMidTex,
 		}
 	}
@@ -16253,10 +15932,10 @@ func xInSolidSpans(x int, spans []solidSpan) bool {
 		return true
 	}
 	for _, sp := range spans {
-		if x < sp.l {
+		if x < sp.L {
 			return false
 		}
-		if x <= sp.r {
+		if x <= sp.R {
 			return true
 		}
 	}
@@ -16273,7 +15952,7 @@ func appendClippedSolidSpan(out []solidSpan, l, r, minX, maxX int) []solidSpan {
 	if l > r {
 		return out
 	}
-	return append(out, solidSpan{l: l, r: r})
+	return append(out, solidSpan{L: l, R: r})
 }
 
 func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpans, out []solidSpan) []solidSpan {
@@ -16283,71 +15962,24 @@ func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpa
 	}
 	if !g.billboardClippingEnabled() {
 		if len(clipSpans) == 0 {
-			return append(out, solidSpan{l: x0, r: x1})
+			return append(out, solidSpan{L: x0, R: x1})
 		}
 		for _, sp := range clipSpans {
-			out = appendClippedSolidSpan(out, sp.l, sp.r, x0, x1)
+			out = appendClippedSolidSpan(out, sp.L, sp.R, x0, x1)
 		}
 		return out
 	}
-
-	appendVisible := func(l, r int) {
-		if l > r {
-			return
+	scene.AppendVisibleRowSpans(x0, x1, len(clipSpans), func(i int) (int, int) {
+		return clipSpans[i].L, clipSpans[i].R
+	}, func(x int) bool {
+		var masked []scene.MaskedClipSpan
+		if x >= 0 && x < len(g.maskedClipCols) {
+			masked = g.maskedClipCols[x]
 		}
-		runStart := -1
-		for x := l; x <= r; x++ {
-			occluded := false
-			if x < len(g.wallDepthQCol) {
-				wq := g.wallDepthQCol[x]
-				if wq != 0xFFFF && depthQ > wq {
-					if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
-						occluded = true
-					} else if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) {
-						top := g.wallDepthTopCol[x]
-						bottom := g.wallDepthBottomCol[x]
-						if y >= top && y <= bottom {
-							occluded = true
-						}
-					} else {
-						occluded = true
-					}
-				}
-			}
-			if !occluded {
-				occluded = g.spriteWallClipOccludedAtXYDepth(x, y, depthQ)
-			}
-			if occluded {
-				if runStart >= 0 {
-					out = append(out, solidSpan{l: runStart, r: x - 1})
-					runStart = -1
-				}
-				continue
-			}
-			if runStart < 0 {
-				runStart = x
-			}
-		}
-		if runStart >= 0 {
-			out = append(out, solidSpan{l: runStart, r: r})
-		}
-	}
-
-	if len(clipSpans) == 0 {
-		appendVisible(x0, x1)
-		return out
-	}
-	for _, sp := range clipSpans {
-		l := sp.l
-		r := sp.r
-		if l < x0 {
-			l = x0
-		}
-		if r > x1 {
-			r = x1
-		}
-		appendVisible(l, r)
-	}
+		return scene.SpriteColumnOccludesPoint(g.wallDepthColumnAt(x), masked, y, depthQ)
+	}, func(l, r int) {
+		out = append(out, solidSpan{L: l, R: r})
+	})
 	return out
 }
 

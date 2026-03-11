@@ -66,3 +66,87 @@ func TestProjectedWallYDepthAtX_MatchesManualInterpolation(t *testing.T) {
 		t.Fatalf("y=%f want %f", y, wantY)
 	}
 }
+
+func TestBuildWallPrepass_RejectsBehind(t *testing.T) {
+	got := BuildWallPrepass(1, -4, 0, 1.5, 5, 8, 320, 160, 2)
+	if got.OK {
+		t.Fatal("expected reject")
+	}
+	if got.LogReason != "BEHIND" {
+		t.Fatalf("reason=%q want BEHIND", got.LogReason)
+	}
+}
+
+func TestBuildWallPrepass_RejectsBackface(t *testing.T) {
+	got := BuildWallPrepass(4, -2, 0, 8, 2, 8, 320, 160, 2)
+	if got.OK {
+		t.Fatal("expected reject")
+	}
+	if got.LogReason != "BACKFACE" {
+		t.Fatalf("reason=%q want BACKFACE", got.LogReason)
+	}
+}
+
+func TestBuildWallPrepass_ProjectsVisibleSegment(t *testing.T) {
+	got := BuildWallPrepass(4, 2, 1, 8, -2, 9, 320, 160, 2)
+	if !got.OK {
+		t.Fatalf("reason=%q want projected segment", got.LogReason)
+	}
+	if got.Projection.MinX > got.Projection.MaxX {
+		t.Fatalf("range=%d..%d invalid", got.Projection.MinX, got.Projection.MaxX)
+	}
+	if got.LogReason != "" {
+		t.Fatalf("log reason=%q want empty", got.LogReason)
+	}
+}
+
+func TestBuildWallPrepassFromWorld_MatchesCameraSpaceBuild(t *testing.T) {
+	input := WallPrepassWorldInput{
+		X1W: 4, Y1W: 2, U1: 1,
+		X2W: 8, Y2W: -2, U2: 9,
+	}
+	got := BuildWallPrepassFromWorld(input, 0, 0, 1, 0, 320, 160, 2)
+	want := BuildWallPrepass(4, 2, 1, 8, -2, 9, 320, 160, 2)
+	if got.OK != want.OK {
+		t.Fatalf("ok=%v want %v", got.OK, want.OK)
+	}
+	if got.LogReason != want.LogReason {
+		t.Fatalf("reason=%q want %q", got.LogReason, want.LogReason)
+	}
+	if got.Projection != want.Projection {
+		t.Fatalf("projection=%+v want %+v", got.Projection, want.Projection)
+	}
+}
+
+func TestNewWallPrepassWorldInput_ReversesUForBackSide(t *testing.T) {
+	got := NewWallPrepassWorldInput(1, 2, 3, 4, 10, 6, 1)
+	if got.U1 != 10 {
+		t.Fatalf("u1=%f want 10", got.U1)
+	}
+	if got.U2 != 4 {
+		t.Fatalf("u2=%f want 4", got.U2)
+	}
+}
+
+func TestMaskedMidSeg_CarriesProjectionPayload(t *testing.T) {
+	proj, status := ProjectWallSegment(4, -2, 1, 8, 2, 9, 320, 160)
+	if status != WallProjectionOK {
+		t.Fatalf("status=%v want ok", status)
+	}
+	got := MaskedMidSeg{
+		Dist:       6,
+		X0:         proj.MinX,
+		X1:         proj.MaxX,
+		Projection: proj,
+		WorldHigh:  48,
+		WorldLow:   16,
+		TexUOff:    3,
+		TexMid:     20,
+	}
+	if got.Projection != proj {
+		t.Fatalf("projection=%+v want %+v", got.Projection, proj)
+	}
+	if got.X0 != proj.MinX || got.X1 != proj.MaxX {
+		t.Fatalf("x range=%d..%d want %d..%d", got.X0, got.X1, proj.MinX, proj.MaxX)
+	}
+}

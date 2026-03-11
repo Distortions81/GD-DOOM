@@ -306,14 +306,14 @@ func e1m1DoorColumns(g *game, doorSec int) (columnRange, bool) {
 	found := false
 	for _, segIdx := range faceSegs {
 		pp := g.buildWallSegPrepassSingle(segIdx, g.renderPX, g.renderPY, math.Cos(angleToRadians(g.renderAngle)), math.Sin(angleToRadians(g.renderAngle)), doomFocalLength(g.viewW), 2.0)
-		if !pp.ok {
+		if !pp.prepass.OK {
 			continue
 		}
-		if pp.minSX < minX {
-			minX = pp.minSX
+		if pp.prepass.Projection.MinX < minX {
+			minX = pp.prepass.Projection.MinX
 		}
-		if pp.maxSX > maxX {
-			maxX = pp.maxSX
+		if pp.prepass.Projection.MaxX > maxX {
+			maxX = pp.prepass.Projection.MaxX
 		}
 		found = true
 	}
@@ -344,7 +344,7 @@ func collectBasic3DPlanesForTest(g *game) []*plane3DVisplane {
 	prepass := g.buildWallSegPrepassParallel(g.visibleSegIndicesPseudo3D(), camX, camY, ca, sa, focal, near)
 
 	for _, pp := range prepass {
-		if !pp.ok || solidFullyCoveredFast(solid, pp.minSX, pp.maxSX) {
+		if !pp.prepass.OK || solidFullyCoveredFast(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX) {
 			continue
 		}
 		front, back := g.segSectors(pp.segIdx)
@@ -370,30 +370,30 @@ func collectBasic3DPlanesForTest(g *game) []*plane3DVisplane {
 		}
 		ws := classifyWallPortal(front, back, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 
-		floorPlane, created := g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, true), pp.minSX, pp.maxSX, g.viewW)
+		floorPlane, created := g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, true), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
 		if created && floorPlane != nil {
 			planeOrder = append(planeOrder, floorPlane)
 		}
-		ceilPlane, created := g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, false), pp.minSX, pp.maxSX, g.viewW)
+		ceilPlane, created := g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, false), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
 		if created && ceilPlane != nil {
 			planeOrder = append(planeOrder, ceilPlane)
 		}
 
-		visibleRanges := clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, solid, g.solidClipScratch[:0])
+		visibleRanges := clipRangeAgainstSolidSpans(pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, solid, g.solidClipScratch[:0])
 		g.solidClipScratch = visibleRanges
 		if len(visibleRanges) == 0 {
 			continue
 		}
 		for _, vis := range visibleRanges {
-			for x := vis.l; x <= vis.r; x++ {
-				t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+			for x := vis.L; x <= vis.R; x++ {
+				t := (float64(x) - pp.prepass.Projection.SX1) / (pp.prepass.Projection.SX2 - pp.prepass.Projection.SX1)
 				if t < 0 {
 					t = 0
 				}
 				if t > 1 {
 					t = 1
 				}
-				invF := pp.invF1 + (pp.invF2-pp.invF1)*t
+				invF := pp.prepass.Projection.InvDepth1 + (pp.prepass.Projection.InvDepth2-pp.prepass.Projection.InvDepth1)*t
 				if invF <= 0 {
 					continue
 				}
@@ -401,11 +401,11 @@ func collectBasic3DPlanesForTest(g *game) []*plane3DVisplane {
 				if f <= 0 {
 					continue
 				}
-				yl := int(math.Ceil(float64(g.viewH)/2 - (ws.worldTop/f)*focal))
+				yl := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldTop/f)*focal))
 				if yl < ceilingClip[x]+1 {
 					yl = ceilingClip[x] + 1
 				}
-				if ws.markCeiling && ceilPlane != nil {
+				if ws.MarkCeiling && ceilPlane != nil {
 					top := ceilingClip[x] + 1
 					bottom := yl - 1
 					if bottom >= floorClip[x] {
@@ -413,11 +413,11 @@ func collectBasic3DPlanesForTest(g *game) []*plane3DVisplane {
 					}
 					markPlane3DColumnRange(ceilPlane, x, top, bottom, ceilingClip, floorClip)
 				}
-				yh := int(math.Floor(float64(g.viewH)/2 - (ws.worldBottom/f)*focal))
+				yh := int(math.Floor(float64(g.viewH)/2 - (ws.WorldBottom/f)*focal))
 				if yh >= floorClip[x] {
 					yh = floorClip[x] - 1
 				}
-				if ws.markFloor && floorPlane != nil {
+				if ws.MarkFloor && floorPlane != nil {
 					top := yh + 1
 					bottom := floorClip[x] - 1
 					if top <= ceilingClip[x] {
@@ -425,13 +425,13 @@ func collectBasic3DPlanesForTest(g *game) []*plane3DVisplane {
 					}
 					markPlane3DColumnRange(floorPlane, x, top, bottom, ceilingClip, floorClip)
 				}
-				if ws.solidWall {
+				if ws.SolidWall {
 					ceilingClip[x] = g.viewH
 					floorClip[x] = -1
 					continue
 				}
-				if ws.topWall {
-					mid := int(math.Floor(float64(g.viewH)/2 - (ws.worldHigh/f)*focal))
+				if ws.TopWall {
+					mid := int(math.Floor(float64(g.viewH)/2 - (ws.WorldHigh/f)*focal))
 					if mid >= floorClip[x] {
 						mid = floorClip[x] - 1
 					}
@@ -440,11 +440,11 @@ func collectBasic3DPlanesForTest(g *game) []*plane3DVisplane {
 					} else {
 						ceilingClip[x] = yl - 1
 					}
-				} else if ws.markCeiling {
+				} else if ws.MarkCeiling {
 					ceilingClip[x] = yl - 1
 				}
-				if ws.bottomWall {
-					mid := int(math.Ceil(float64(g.viewH)/2 - (ws.worldLow/f)*focal))
+				if ws.BottomWall {
+					mid := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldLow/f)*focal))
 					if mid <= ceilingClip[x] {
 						mid = ceilingClip[x] + 1
 					}
@@ -453,13 +453,13 @@ func collectBasic3DPlanesForTest(g *game) []*plane3DVisplane {
 					} else {
 						floorClip[x] = yh + 1
 					}
-				} else if ws.markFloor {
+				} else if ws.MarkFloor {
 					floorClip[x] = yh + 1
 				}
 			}
 		}
-		if ws.solidWall {
-			solid = addSolidSpan(solid, pp.minSX, pp.maxSX)
+		if ws.SolidWall {
+			solid = addSolidSpan(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX)
 		}
 	}
 	return planeOrder
@@ -535,7 +535,7 @@ func applyDoorSegClipForTest(g *game, segIdx int, ceilingClip, floorClip []int) 
 	eyeZ := g.playerEyeZ()
 
 	pp := g.buildWallSegPrepassSingle(segIdx, camX, camY, ca, sa, focal, near)
-	if !pp.ok {
+	if !pp.prepass.OK {
 		return -1, -1, false
 	}
 	front, back := g.segSectors(segIdx)
@@ -561,15 +561,15 @@ func applyDoorSegClipForTest(g *game, segIdx int, ceilingClip, floorClip []int) 
 	}
 	ws := classifyWallPortal(front, back, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 
-	for x := pp.minSX; x <= pp.maxSX; x++ {
-		t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+	for x := pp.prepass.Projection.MinX; x <= pp.prepass.Projection.MaxX; x++ {
+		t := (float64(x) - pp.prepass.Projection.SX1) / (pp.prepass.Projection.SX2 - pp.prepass.Projection.SX1)
 		if t < 0 {
 			t = 0
 		}
 		if t > 1 {
 			t = 1
 		}
-		invF := pp.invF1 + (pp.invF2-pp.invF1)*t
+		invF := pp.prepass.Projection.InvDepth1 + (pp.prepass.Projection.InvDepth2-pp.prepass.Projection.InvDepth1)*t
 		if invF <= 0 {
 			continue
 		}
@@ -578,22 +578,22 @@ func applyDoorSegClipForTest(g *game, segIdx int, ceilingClip, floorClip []int) 
 			continue
 		}
 
-		yl := int(math.Ceil(float64(g.viewH)/2 - (ws.worldTop/f)*focal))
+		yl := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldTop/f)*focal))
 		if yl < ceilingClip[x]+1 {
 			yl = ceilingClip[x] + 1
 		}
-		yh := int(math.Floor(float64(g.viewH)/2 - (ws.worldBottom/f)*focal))
+		yh := int(math.Floor(float64(g.viewH)/2 - (ws.WorldBottom/f)*focal))
 		if yh >= floorClip[x] {
 			yh = floorClip[x] - 1
 		}
 
-		if ws.solidWall {
+		if ws.SolidWall {
 			ceilingClip[x] = g.viewH
 			floorClip[x] = -1
 			continue
 		}
-		if ws.topWall {
-			mid := int(math.Floor(float64(g.viewH)/2 - (ws.worldHigh/f)*focal))
+		if ws.TopWall {
+			mid := int(math.Floor(float64(g.viewH)/2 - (ws.WorldHigh/f)*focal))
 			if mid >= floorClip[x] {
 				mid = floorClip[x] - 1
 			}
@@ -602,11 +602,11 @@ func applyDoorSegClipForTest(g *game, segIdx int, ceilingClip, floorClip []int) 
 			} else {
 				ceilingClip[x] = yl - 1
 			}
-		} else if ws.markCeiling {
+		} else if ws.MarkCeiling {
 			ceilingClip[x] = yl - 1
 		}
-		if ws.bottomWall {
-			mid := int(math.Ceil(float64(g.viewH)/2 - (ws.worldLow/f)*focal))
+		if ws.BottomWall {
+			mid := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldLow/f)*focal))
 			if mid <= ceilingClip[x] {
 				mid = ceilingClip[x] + 1
 			}
@@ -615,11 +615,11 @@ func applyDoorSegClipForTest(g *game, segIdx int, ceilingClip, floorClip []int) 
 			} else {
 				floorClip[x] = yh + 1
 			}
-		} else if ws.markFloor {
+		} else if ws.MarkFloor {
 			floorClip[x] = yh + 1
 		}
 	}
-	return pp.minSX, pp.maxSX, true
+	return pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, true
 }
 
 func TestMovingDoorTopWallRevealThresholdIsMonotonic(t *testing.T) {
@@ -669,18 +669,18 @@ func TestMovingDoorTopWallRevealThresholdIsMonotonic(t *testing.T) {
 		g.sectorCeil[1] = int64(h) * fracUnit
 
 		pp := g.buildWallSegPrepassSingle(0, g.renderPX, g.renderPY, 1, 0, doomFocalLength(g.viewW), 2)
-		if !pp.ok {
+		if !pp.prepass.OK {
 			t.Fatalf("door height=%d: prepass failed", h)
 		}
-		x := (pp.minSX + pp.maxSX) / 2
-		tu := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+		x := (pp.prepass.Projection.MinX + pp.prepass.Projection.MaxX) / 2
+		tu := (float64(x) - pp.prepass.Projection.SX1) / (pp.prepass.Projection.SX2 - pp.prepass.Projection.SX1)
 		if tu < 0 {
 			tu = 0
 		}
 		if tu > 1 {
 			tu = 1
 		}
-		invF := pp.invF1 + (pp.invF2-pp.invF1)*tu
+		invF := pp.prepass.Projection.InvDepth1 + (pp.prepass.Projection.InvDepth2-pp.prepass.Projection.InvDepth1)*tu
 		if invF <= 0 {
 			t.Fatalf("door height=%d: invalid invF", h)
 		}
@@ -690,14 +690,14 @@ func TestMovingDoorTopWallRevealThresholdIsMonotonic(t *testing.T) {
 			t.Fatal("expected two-sided door seg")
 		}
 		ws := classifyWallPortal(front, back, 41, 0, 128, 0, float64(h))
-		yl := int(math.Ceil(float64(g.viewH)/2 - (ws.worldTop/f)*doomFocalLength(g.viewW)))
-		mid := int(math.Floor(float64(g.viewH)/2 - (ws.worldHigh/f)*doomFocalLength(g.viewW)))
+		yl := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldTop/f)*doomFocalLength(g.viewW)))
+		mid := int(math.Floor(float64(g.viewH)/2 - (ws.WorldHigh/f)*doomFocalLength(g.viewW)))
 		samples = append(samples, sample{
 			h:        h,
-			topWall:  ws.topWall,
+			topWall:  ws.TopWall,
 			yl:       yl,
 			mid:      mid,
-			revealed: ws.topWall && mid >= yl,
+			revealed: ws.TopWall && mid >= yl,
 		})
 	}
 
@@ -769,18 +769,18 @@ func TestE1M1SpawnDoorTopWallRevealStartsBeforeHalfOpen(t *testing.T) {
 		anyReveal := false
 		for _, segIdx := range faceSegs {
 			pp := g.buildWallSegPrepassSingle(segIdx, g.renderPX, g.renderPY, math.Cos(angleToRadians(g.renderAngle)), math.Sin(angleToRadians(g.renderAngle)), doomFocalLength(g.viewW), 2.0)
-			if !pp.ok {
+			if !pp.prepass.OK {
 				continue
 			}
-			x := (pp.minSX + pp.maxSX) / 2
-			tu := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+			x := (pp.prepass.Projection.MinX + pp.prepass.Projection.MaxX) / 2
+			tu := (float64(x) - pp.prepass.Projection.SX1) / (pp.prepass.Projection.SX2 - pp.prepass.Projection.SX1)
 			if tu < 0 {
 				tu = 0
 			}
 			if tu > 1 {
 				tu = 1
 			}
-			invF := pp.invF1 + (pp.invF2-pp.invF1)*tu
+			invF := pp.prepass.Projection.InvDepth1 + (pp.prepass.Projection.InvDepth2-pp.prepass.Projection.InvDepth1)*tu
 			if invF <= 0 {
 				continue
 			}
@@ -806,11 +806,11 @@ func TestE1M1SpawnDoorTopWallRevealStartsBeforeHalfOpen(t *testing.T) {
 				backCeil = float64(cz) / fracUnit
 			}
 			ws := classifyWallPortal(front, back, g.playerEyeZ(), frontFloor, frontCeil, backFloor, backCeil)
-			if !ws.topWall {
+			if !ws.TopWall {
 				continue
 			}
-			yl := int(math.Ceil(float64(g.viewH)/2 - (ws.worldTop/f)*doomFocalLength(g.viewW)))
-			mid := int(math.Floor(float64(g.viewH)/2 - (ws.worldHigh/f)*doomFocalLength(g.viewW)))
+			yl := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldTop/f)*doomFocalLength(g.viewW)))
+			mid := int(math.Floor(float64(g.viewH)/2 - (ws.WorldHigh/f)*doomFocalLength(g.viewW)))
 			if mid >= yl {
 				anyReveal = true
 				break
@@ -897,7 +897,7 @@ func TestE1M1SpawnDoorColumns_NotClosedByUnrelatedSegBeforeHalfOpen(t *testing.T
 		solid := g.beginSolid3DFrame()
 		prepass := g.buildWallSegPrepassParallel(g.visibleSegIndicesPseudo3D(), camX, camY, ca, sa, focal, near)
 		for _, pp := range prepass {
-			if !pp.ok || solidFullyCoveredFast(solid, pp.minSX, pp.maxSX) {
+			if !pp.prepass.OK || solidFullyCoveredFast(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX) {
 				continue
 			}
 			front, back := g.segSectors(pp.segIdx)
@@ -922,23 +922,23 @@ func TestE1M1SpawnDoorColumns_NotClosedByUnrelatedSegBeforeHalfOpen(t *testing.T
 				}
 			}
 			ws := classifyWallPortal(front, back, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
-			visibleRanges := clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, solid, g.solidClipScratch[:0])
+			visibleRanges := clipRangeAgainstSolidSpans(pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, solid, g.solidClipScratch[:0])
 			g.solidClipScratch = visibleRanges
 			for _, vis := range visibleRanges {
-				for x := vis.l; x <= vis.r; x++ {
+				for x := vis.L; x <= vis.R; x++ {
 					if x < doorCols.l || x > doorCols.r {
 						continue
 					}
 					prevCeil := ceilingClip[x]
 					prevFloor := floorClip[x]
-					tu := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
+					tu := (float64(x) - pp.prepass.Projection.SX1) / (pp.prepass.Projection.SX2 - pp.prepass.Projection.SX1)
 					if tu < 0 {
 						tu = 0
 					}
 					if tu > 1 {
 						tu = 1
 					}
-					invF := pp.invF1 + (pp.invF2-pp.invF1)*tu
+					invF := pp.prepass.Projection.InvDepth1 + (pp.prepass.Projection.InvDepth2-pp.prepass.Projection.InvDepth1)*tu
 					if invF <= 0 {
 						continue
 					}
@@ -946,20 +946,20 @@ func TestE1M1SpawnDoorColumns_NotClosedByUnrelatedSegBeforeHalfOpen(t *testing.T
 					if f <= 0 {
 						continue
 					}
-					yl := int(math.Ceil(float64(g.viewH)/2 - (ws.worldTop/f)*focal))
+					yl := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldTop/f)*focal))
 					if yl < ceilingClip[x]+1 {
 						yl = ceilingClip[x] + 1
 					}
-					yh := int(math.Floor(float64(g.viewH)/2 - (ws.worldBottom/f)*focal))
+					yh := int(math.Floor(float64(g.viewH)/2 - (ws.WorldBottom/f)*focal))
 					if yh >= floorClip[x] {
 						yh = floorClip[x] - 1
 					}
-					if ws.solidWall {
+					if ws.SolidWall {
 						ceilingClip[x] = g.viewH
 						floorClip[x] = -1
 					} else {
-						if ws.topWall {
-							mid := int(math.Floor(float64(g.viewH)/2 - (ws.worldHigh/f)*focal))
+						if ws.TopWall {
+							mid := int(math.Floor(float64(g.viewH)/2 - (ws.WorldHigh/f)*focal))
 							if mid >= floorClip[x] {
 								mid = floorClip[x] - 1
 							}
@@ -968,11 +968,11 @@ func TestE1M1SpawnDoorColumns_NotClosedByUnrelatedSegBeforeHalfOpen(t *testing.T
 							} else {
 								ceilingClip[x] = yl - 1
 							}
-						} else if ws.markCeiling {
+						} else if ws.MarkCeiling {
 							ceilingClip[x] = yl - 1
 						}
-						if ws.bottomWall {
-							mid := int(math.Ceil(float64(g.viewH)/2 - (ws.worldLow/f)*focal))
+						if ws.BottomWall {
+							mid := int(math.Ceil(float64(g.viewH)/2 - (ws.WorldLow/f)*focal))
 							if mid <= ceilingClip[x] {
 								mid = ceilingClip[x] + 1
 							}
@@ -981,7 +981,7 @@ func TestE1M1SpawnDoorColumns_NotClosedByUnrelatedSegBeforeHalfOpen(t *testing.T
 							} else {
 								floorClip[x] = yh + 1
 							}
-						} else if ws.markFloor {
+						} else if ws.MarkFloor {
 							floorClip[x] = yh + 1
 						}
 					}
@@ -993,8 +993,8 @@ func TestE1M1SpawnDoorColumns_NotClosedByUnrelatedSegBeforeHalfOpen(t *testing.T
 					}
 				}
 			}
-			if ws.solidWall {
-				solid = addSolidSpan(solid, pp.minSX, pp.maxSX)
+			if ws.SolidWall {
+				solid = addSolidSpan(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX)
 			}
 		}
 

@@ -39,7 +39,7 @@ func TestAddSolidSpanAndCoverage(t *testing.T) {
 	if len(spans) != 1 {
 		t.Fatalf("expected one merged span, got %d", len(spans))
 	}
-	if spans[0].l != 10 || spans[0].r != 40 {
+	if spans[0].L != 10 || spans[0].R != 40 {
 		t.Fatalf("unexpected merged span: %+v", spans[0])
 	}
 
@@ -52,32 +52,32 @@ func TestAddSolidSpanAndCoverage(t *testing.T) {
 }
 
 func TestClipRangeAgainstSolidSpans(t *testing.T) {
-	covered := []solidSpan{{l: 10, r: 20}, {l: 30, r: 40}}
+	covered := []solidSpan{{L: 10, R: 20}, {L: 30, R: 40}}
 
 	out := clipRangeAgainstSolidSpans(0, 50, covered, nil)
 	if len(out) != 3 {
 		t.Fatalf("range count=%d want=3", len(out))
 	}
-	if out[0] != (solidSpan{l: 0, r: 9}) {
+	if out[0] != (solidSpan{L: 0, R: 9}) {
 		t.Fatalf("out[0]=%+v want=0..9", out[0])
 	}
-	if out[1] != (solidSpan{l: 21, r: 29}) {
+	if out[1] != (solidSpan{L: 21, R: 29}) {
 		t.Fatalf("out[1]=%+v want=21..29", out[1])
 	}
-	if out[2] != (solidSpan{l: 41, r: 50}) {
+	if out[2] != (solidSpan{L: 41, R: 50}) {
 		t.Fatalf("out[2]=%+v want=41..50", out[2])
 	}
 }
 
 func TestClipRangeAgainstSolidSpans_ReuseScratch(t *testing.T) {
-	covered := []solidSpan{{l: 5, r: 15}}
+	covered := []solidSpan{{L: 5, R: 15}}
 	scratch := make([]solidSpan, 0, 8)
 
 	out := clipRangeAgainstSolidSpans(0, 20, covered, scratch)
 	if len(out) != 2 {
 		t.Fatalf("range count=%d want=2", len(out))
 	}
-	if out[0] != (solidSpan{l: 0, r: 4}) || out[1] != (solidSpan{l: 16, r: 20}) {
+	if out[0] != (solidSpan{L: 0, R: 4}) || out[1] != (solidSpan{L: 16, R: 20}) {
 		t.Fatalf("unexpected ranges: %+v", out)
 	}
 
@@ -118,10 +118,10 @@ func estimateWallColumnWork(g *game, clipPartials bool) int {
 	cols := 0
 
 	for _, pp := range prepass {
-		if !pp.ok {
+		if !pp.prepass.OK {
 			continue
 		}
-		if solidFullyCovered(solid, pp.minSX, pp.maxSX) {
+		if solidFullyCovered(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX) {
 			continue
 		}
 		front, back := g.segSectors(pp.segIdx)
@@ -134,17 +134,17 @@ func estimateWallColumnWork(g *game, clipPartials bool) int {
 		}
 
 		if clipPartials {
-			vis := clipRangeAgainstSolidSpans(pp.minSX, pp.maxSX, solid, scratch[:0])
+			vis := clipRangeAgainstSolidSpans(pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, solid, scratch[:0])
 			scratch = vis
 			for _, r := range vis {
-				cols += r.r - r.l + 1
+				cols += r.R - r.L + 1
 			}
 		} else {
-			cols += pp.maxSX - pp.minSX + 1
+			cols += pp.prepass.Projection.MaxX - pp.prepass.Projection.MinX + 1
 		}
 
 		if solidWall {
-			solid = addSolidSpan(solid, pp.minSX, pp.maxSX)
+			solid = addSolidSpan(solid, pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX)
 		}
 	}
 	return cols
