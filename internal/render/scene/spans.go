@@ -7,6 +7,17 @@ func SpriteColumnOccludesPoint(wall WallDepthColumn, masked []MaskedClipSpan, y 
 	return MaskedClipColumnOccludesPoint(masked, y, depthQ)
 }
 
+func SpriteColumnOccludesBBox(wall WallDepthColumn, y0, y1 int, depthQ uint16) bool {
+	return WallDepthColumnOccludesBBox(wall, y0, y1, depthQ)
+}
+
+func SpriteColumnHasAnyOccluder(wall WallDepthColumn, masked []MaskedClipSpan, y0, y1 int, depthQ uint16) bool {
+	if WallDepthColumnHasAnyOccluder(wall, y0, y1, depthQ) {
+		return true
+	}
+	return MaskedClipColumnHasAnyOccluder(masked, y0, y1, depthQ)
+}
+
 func AppendVisibleRowSpans(x0, x1 int, clipCount int, clipAt func(i int) (int, int), columnOccluded func(x int) bool, appendSpan func(l, r int)) {
 	appendVisible := func(l, r int) {
 		if l > r {

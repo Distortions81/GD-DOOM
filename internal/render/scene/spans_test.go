@@ -18,6 +18,24 @@ func TestSpriteColumnOccludesPoint_ComposesWallAndMasked(t *testing.T) {
 	}
 }
 
+func TestSpriteColumnOccludesBBox_UsesWallOnly(t *testing.T) {
+	wall := WallDepthColumn{DepthQ: 100, Top: 10, Bottom: 20}
+	if !SpriteColumnOccludesBBox(wall, 12, 18, 101) {
+		t.Fatal("expected wall slice bbox occlusion")
+	}
+	if SpriteColumnOccludesBBox(wall, 8, 18, 101) {
+		t.Fatal("bbox partly outside wall slice should remain visible")
+	}
+}
+
+func TestSpriteColumnHasAnyOccluder_ComposesWallAndMasked(t *testing.T) {
+	wall := WallDepthColumn{DepthQ: 0xFFFF, Top: 1, Bottom: 0}
+	masked := []MaskedClipSpan{{OpenY0: 12, OpenY1: 24, DepthQ: 100, HasOpen: true}}
+	if !SpriteColumnHasAnyOccluder(wall, masked, 8, 20, 101) {
+		t.Fatal("expected masked gap edges to count as occluder")
+	}
+}
+
 func TestAppendVisibleRowSpans_SplitsOnOcclusion(t *testing.T) {
 	var got [][2]int
 	AppendVisibleRowSpans(0, 8, 0, nil, func(x int) bool {

@@ -3562,13 +3562,11 @@ func (g *game) spriteWallClipOccludedAtXYDepth(x, y int, depthQ uint16) bool {
 	if x >= len(g.wallDepthQCol) {
 		return false
 	}
-	if scene.WallDepthColumnOccludesPoint(g.wallDepthColumnAt(x), y, depthQ) {
-		return true
+	var masked []scene.MaskedClipSpan
+	if x >= 0 && x < len(g.maskedClipCols) {
+		masked = g.maskedClipCols[x]
 	}
-	if x >= len(g.maskedClipCols) {
-		return false
-	}
-	return scene.MaskedClipColumnOccludesPoint(g.maskedClipCols[x], y, depthQ)
+	return scene.SpriteColumnOccludesPoint(g.wallDepthColumnAt(x), masked, y, depthQ)
 }
 
 func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bool {
@@ -3587,11 +3585,7 @@ func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bo
 	if x >= len(g.wallDepthQCol) {
 		return false
 	}
-	if scene.WallDepthColumnOccludesBBox(g.wallDepthColumnAt(x), y0, y1, depthQ) {
-		return true
-	}
-	// Transparent/masked mid textures should not act as hard occluders.
-	return false
+	return scene.SpriteColumnOccludesBBox(g.wallDepthColumnAt(x), y0, y1, depthQ)
 }
 
 func (g *game) wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1 int, depthQ uint16) bool {
@@ -3610,7 +3604,7 @@ func (g *game) wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1 int, depthQ uint1
 	if x >= len(g.wallDepthQCol) {
 		return false
 	}
-	return scene.WallDepthColumnOccludesBBox(g.wallDepthColumnAt(x), y0, y1, depthQ)
+	return scene.SpriteColumnOccludesBBox(g.wallDepthColumnAt(x), y0, y1, depthQ)
 }
 
 func (g *game) wallClipPointOccludedByWallsOnly(x, y int, depthQ uint16) bool {
@@ -3624,84 +3618,36 @@ func (g *game) wallClipPointOccludedByWallsOnly(x, y int, depthQ uint16) bool {
 }
 
 func (g *game) wallClipBBoxFullyOccludedByWallsOnly(x0, x1, y0, y1 int, depthQ uint16) bool {
-	if g == nil || g.viewW <= 0 || x0 > x1 || y0 > y1 {
+	if g == nil {
 		return true
 	}
-	if x0 < 0 {
-		x0 = 0
-	}
-	if x1 >= g.viewW {
-		x1 = g.viewW - 1
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if y1 >= g.viewH {
-		y1 = g.viewH - 1
-	}
-	if x0 > x1 || y0 > y1 {
-		return true
-	}
-	for x := x0; x <= x1; x++ {
-		if !g.wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1, depthQ) {
-			return false
-		}
-	}
-	return true
+	return scene.BBoxFullyOccluded(x0, x1, y0, y1, g.viewW, g.viewH, func(x, y0, y1 int) bool {
+		return g.wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1, depthQ)
+	})
 }
 
 func (g *game) spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1 int, depthQ uint16) bool {
-	if g == nil || g.viewW <= 0 || x0 > x1 || y0 > y1 {
+	if g == nil {
 		return true
 	}
-	if x0 < 0 {
-		x0 = 0
-	}
-	if x1 >= g.viewW {
-		x1 = g.viewW - 1
-	}
-	if x0 > x1 {
-		return true
-	}
-	for x := x0; x <= x1; x++ {
-		if !g.spriteWallClipColumnOccludedBBox(x, y0, y1, depthQ) {
-			return false
-		}
-	}
-	return true
+	return scene.BBoxFullyOccluded(x0, x1, y0, y1, g.viewW, g.viewH, func(x, y0, y1 int) bool {
+		return g.spriteWallClipColumnOccludedBBox(x, y0, y1, depthQ)
+	})
 }
 
 func (g *game) spriteWallClipBBoxHasAnyOccluder(x0, x1, y0, y1 int, depthQ uint16) bool {
-	if !g.billboardClippingEnabled() || g == nil || g.viewW <= 0 || x0 > x1 || y0 > y1 {
+	if !g.billboardClippingEnabled() || g == nil {
 		return false
 	}
-	if x0 < 0 {
-		x0 = 0
-	}
-	if x1 >= g.viewW {
-		x1 = g.viewW - 1
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if y1 >= g.viewH {
-		y1 = g.viewH - 1
-	}
-	if x0 > x1 || y0 > y1 {
-		return false
-	}
-	for x := x0; x <= x1; x++ {
-		if scene.WallDepthColumnHasAnyOccluder(g.wallDepthColumnAt(x), y0, y1, depthQ) {
-			return true
-		}
+	return scene.BBoxHasAnyOccluder(x0, x1, y0, y1, g.viewW, g.viewH, func(x, y0, y1 int) bool {
+		var masked []scene.MaskedClipSpan
 		if x >= len(g.maskedClipCols) {
-			continue
+			masked = nil
+		} else {
+			masked = g.maskedClipCols[x]
 		}
-		if scene.MaskedClipColumnHasAnyOccluder(g.maskedClipCols[x], y0, y1, depthQ) {
-			return true
-		}
-	}
-	return false
+		return scene.SpriteColumnHasAnyOccluder(g.wallDepthColumnAt(x), masked, y0, y1, depthQ)
+	})
 }
 
 func (g *game) spriteOpaqueRectsFullyOccluded(rects []spriteOpaqueRect, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int, depthQ uint16) bool {
@@ -3749,28 +3695,9 @@ func (g *game) spriteWallClipPointOccluded(x, y int, depthQ uint16) bool {
 }
 
 func (g *game) spriteWallClipQuadTriMaybeVisible(x0, x1, y0, y1 int, depthQ uint16) bool {
-	// Split quad into two triangles:
-	// T0: (x0,y0), (x1,y0), (x1,y1)
-	// T1: (x0,y0), (x1,y1), (x0,y1)
-	if !g.spriteWallClipPointOccluded(x0, y0, depthQ) {
-		return true
-	}
-	if !g.spriteWallClipPointOccluded(x1, y0, depthQ) {
-		return true
-	}
-	if !g.spriteWallClipPointOccluded(x1, y1, depthQ) {
-		return true
-	}
-	if !g.spriteWallClipPointOccluded(x0, y1, depthQ) {
-		return true
-	}
-	// Catch center openings before falling back to full-column coverage.
-	cx := (x0 + x1) >> 1
-	cy := (y0 + y1) >> 1
-	if !g.spriteWallClipPointOccluded(cx, cy, depthQ) {
-		return true
-	}
-	return false
+	return scene.QuadTriMaybeVisible(x0, x1, y0, y1, func(x, y int) bool {
+		return g.spriteWallClipPointOccluded(x, y, depthQ)
+	})
 }
 
 func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy int, depthQ uint16) bool {
@@ -3782,92 +3709,11 @@ func (g *game) spriteWallClipTriangleFullyOccludedFast(ax, ay, bx, by, cx, cy in
 // 1 = maybe occluded (fast tests say maybe, exact confirms not fully occluded)
 // 2 = fully occluded
 func (g *game) spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy int, depthQ uint16) int {
-	if g == nil || g.viewW <= 0 || g.viewH <= 0 {
-		return 2
-	}
-	edgeMaybeVisible := func(x0, y0, x1, y1 int) bool {
-		dx := x1 - x0
-		if dx < 0 {
-			dx = -dx
-		}
-		dy := y1 - y0
-		if dy < 0 {
-			dy = -dy
-		}
-		steps := dx
-		if dy > steps {
-			steps = dy
-		}
-		if steps < 1 {
-			steps = 1
-		}
-		// Limit per-edge sampling cost while still catching sliver visibility.
-		if steps > 32 {
-			steps = 32
-		}
-		for i := 0; i <= steps; i++ {
-			t := float64(i) / float64(steps)
-			x := int(math.Floor(float64(x0) + float64(x1-x0)*t))
-			y := int(math.Floor(float64(y0) + float64(y1-y0)*t))
-			if !g.spriteWallClipPointOccluded(x, y, depthQ) {
-				return true
-			}
-		}
-		return false
-	}
-	if !g.spriteWallClipPointOccluded(ax, ay, depthQ) {
-		return 0
-	}
-	if !g.spriteWallClipPointOccluded(bx, by, depthQ) {
-		return 0
-	}
-	if !g.spriteWallClipPointOccluded(cx, cy, depthQ) {
-		return 0
-	}
-	mx := (ax + bx + cx) / 3
-	my := (ay + by + cy) / 3
-	if !g.spriteWallClipPointOccluded(mx, my, depthQ) {
-		return 0
-	}
-	// If any triangle edge has a visible sample, don't cull yet.
-	if edgeMaybeVisible(ax, ay, bx, by) || edgeMaybeVisible(bx, by, cx, cy) || edgeMaybeVisible(cx, cy, ax, ay) {
-		return 0
-	}
-	// Point sampling can miss small visible slivers inside the triangle.
-	// Require an exact per-column occlusion confirmation over the triangle AABB
-	// before declaring full occlusion.
-	x0 := ax
-	if bx < x0 {
-		x0 = bx
-	}
-	if cx < x0 {
-		x0 = cx
-	}
-	x1 := ax
-	if bx > x1 {
-		x1 = bx
-	}
-	if cx > x1 {
-		x1 = cx
-	}
-	y0 := ay
-	if by < y0 {
-		y0 = by
-	}
-	if cy < y0 {
-		y0 = cy
-	}
-	y1 := ay
-	if by > y1 {
-		y1 = by
-	}
-	if cy > y1 {
-		y1 = cy
-	}
-	if g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ) {
-		return 2
-	}
-	return 1
+	return scene.TriangleOcclusionState(ax, ay, bx, by, cx, cy, g.viewW, g.viewH, func(x, y int) bool {
+		return g.spriteWallClipPointOccluded(x, y, depthQ)
+	}, func(x0, x1, y0, y1 int) bool {
+		return g.spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1, depthQ)
+	})
 }
 
 func (g *game) wallSliceYDepthAtX(pp wallSegPrepass, x int, z, focal float64) (float64, float64, bool) {
@@ -3910,126 +3756,16 @@ func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r
 		return encodeDepthQ(depth)
 	}
 	triOccState := func(ax, ay, bx, by, cx, cy int) int {
-		inView := func(x, y int) bool {
-			return x >= 0 && x < g.viewW && y >= 0 && y < g.viewH
-		}
-		edgeMaybeVisible := func(x0, y0, x1, y1 int) bool {
-			dx := x1 - x0
-			if dx < 0 {
-				dx = -dx
-			}
-			dy := y1 - y0
-			if dy < 0 {
-				dy = -dy
-			}
-			steps := dx
-			if dy > steps {
-				steps = dy
-			}
-			if steps < 1 {
-				steps = 1
-			}
-			if steps > 32 {
-				steps = 32
-			}
-			tested := false
-			for i := 0; i <= steps; i++ {
-				t := float64(i) / float64(steps)
-				x := int(math.Floor(float64(x0) + float64(x1-x0)*t))
-				y := int(math.Floor(float64(y0) + float64(y1-y0)*t))
-				if !inView(x, y) {
-					continue
-				}
-				tested = true
-				if !g.wallClipPointOccludedByWallsOnly(x, y, depthQAtX(x)) {
-					return true
-				}
-			}
-			// No in-view sample means this edge can't prove full cull.
-			if !tested {
-				return true
-			}
-			return false
-		}
-		tested := false
-		testPointOccluded := func(x, y int) bool {
-			if !inView(x, y) {
-				return true
-			}
-			tested = true
+		return scene.TriangleOcclusionStateInView(ax, ay, bx, by, cx, cy, g.viewW, g.viewH, func(x, y int) bool {
 			return g.wallClipPointOccludedByWallsOnly(x, y, depthQAtX(x))
-		}
-		if !testPointOccluded(ax, ay) ||
-			!testPointOccluded(bx, by) ||
-			!testPointOccluded(cx, cy) {
-			return 0
-		}
-		mx := (ax + bx + cx) / 3
-		my := (ay + by + cy) / 3
-		if !testPointOccluded(mx, my) {
-			return 0
-		}
-		// If no point landed on-screen, keep for raster; don't cull.
-		if !tested {
-			return 0
-		}
-		if edgeMaybeVisible(ax, ay, bx, by) || edgeMaybeVisible(bx, by, cx, cy) || edgeMaybeVisible(cx, cy, ax, ay) {
-			return 0
-		}
-		x0 := ax
-		if bx < x0 {
-			x0 = bx
-		}
-		if cx < x0 {
-			x0 = cx
-		}
-		x1 := ax
-		if bx > x1 {
-			x1 = bx
-		}
-		if cx > x1 {
-			x1 = cx
-		}
-		y0 := ay
-		if by < y0 {
-			y0 = by
-		}
-		if cy < y0 {
-			y0 = cy
-		}
-		y1 := ay
-		if by > y1 {
-			y1 = by
-		}
-		if cy > y1 {
-			y1 = cy
-		}
-		if x0 < 0 {
-			x0 = 0
-		}
-		if x1 >= g.viewW {
-			x1 = g.viewW - 1
-		}
-		if y0 < 0 {
-			y0 = 0
-		}
-		if y1 >= g.viewH {
-			y1 = g.viewH - 1
-		}
-		if x0 > x1 || y0 > y1 {
-			return 0
-		}
-		allColsOcc := true
-		for x := x0; x <= x1; x++ {
-			if !g.wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1, depthQAtX(x)) {
-				allColsOcc = false
-				break
+		}, func(x0, x1, y0, y1 int) bool {
+			for x := x0; x <= x1; x++ {
+				if !g.wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1, depthQAtX(x)) {
+					return false
+				}
 			}
-		}
-		if allColsOcc {
-			return 2
-		}
-		return 1
+			return true
+		})
 	}
 	triAOcc := triOccState(ax, ay, bx, by, cx, cy) == 2
 	if !triAOcc {
@@ -4071,10 +3807,6 @@ func (g *game) spriteWallClipQuadFullyOccluded(x0, x1, y0, y1 int, depthQ uint16
 }
 
 func projectileItemScreenBounds(it projectedProjectileItem, viewW, viewH int) (int, int, int, int, bool) {
-	if viewW <= 0 || viewH <= 0 {
-		return 0, -1, 0, -1, false
-	}
-	x0, x1, y0, y1 := 0, -1, 0, -1
 	if it.hasSprite && it.spriteTex.Width > 0 && it.spriteTex.Height > 0 {
 		scale := it.h / float64(it.spriteTex.Height)
 		if scale <= 0 {
@@ -4084,237 +3816,40 @@ func projectileItemScreenBounds(it projectedProjectileItem, viewW, viewH int) (i
 		dstH := float64(it.spriteTex.Height) * scale
 		dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
 		dstY := it.yb - float64(it.spriteTex.OffsetY)*scale
-		x0 = int(math.Floor(dstX))
-		y0 = int(math.Floor(dstY))
-		x1 = int(math.Ceil(dstX+dstW)) - 1
-		y1 = int(math.Ceil(dstY+dstH)) - 1
-	} else {
-		rad := it.h * 0.5
-		if rad <= 0 {
-			return 0, -1, 0, -1, false
-		}
-		cy := it.yb - rad
-		x0 = int(math.Floor(it.sx - rad))
-		x1 = int(math.Ceil(it.sx + rad))
-		y0 = int(math.Floor(cy - rad))
-		y1 = int(math.Ceil(cy + rad))
+		return scene.ClampedSpriteBounds(dstX, dstY, dstW, dstH, it.clipTop, it.clipBottom, viewW, viewH)
 	}
-	if x0 < 0 {
-		x0 = 0
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if x1 >= viewW {
-		x1 = viewW - 1
-	}
-	if y1 >= viewH {
-		y1 = viewH - 1
-	}
-	if y0 < it.clipTop {
-		y0 = it.clipTop
-	}
-	if y1 > it.clipBottom {
-		y1 = it.clipBottom
-	}
-	if x0 > x1 || y0 > y1 {
-		return x0, x1, y0, y1, false
-	}
-	return x0, x1, y0, y1, true
+	return scene.ProjectileFallbackBounds(it.sx, it.yb, it.h, it.clipTop, it.clipBottom, viewW, viewH)
 }
 
 func monsterItemScreenBounds(it projectedMonsterItem, viewW, viewH int) (int, int, int, int, bool) {
-	if viewW <= 0 || viewH <= 0 || it.tex.Width <= 0 || it.tex.Height <= 0 {
-		return 0, -1, 0, -1, false
-	}
-	scale := it.h / float64(it.tex.Height)
-	if scale <= 0 {
-		return 0, -1, 0, -1, false
-	}
-	dstW := float64(it.tex.Width) * scale
-	dstH := float64(it.tex.Height) * scale
-	dstX := it.sx - float64(it.tex.OffsetX)*scale
-	dstY := floorSpriteTop(dstH, it.yb)
-	x0 := int(math.Floor(dstX))
-	y0 := int(math.Floor(dstY))
-	x1 := int(math.Ceil(dstX+dstW)) - 1
-	y1 := int(math.Ceil(dstY+dstH)) - 1
-	if x0 < 0 {
-		x0 = 0
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if x1 >= viewW {
-		x1 = viewW - 1
-	}
-	if y1 >= viewH {
-		y1 = viewH - 1
-	}
-	if y0 < it.clipTop {
-		y0 = it.clipTop
-	}
-	if y1 > it.clipBottom {
-		y1 = it.clipBottom
-	}
-	if x0 > x1 || y0 > y1 {
-		return x0, x1, y0, y1, false
-	}
-	return x0, x1, y0, y1, true
+	return scene.SpritePatchBounds(it.sx, it.yb, it.h, it.tex.Width, it.tex.Height, it.tex.OffsetX, it.clipTop, it.clipBottom, viewW, viewH, true)
 }
 
 func thingItemScreenBounds(it projectedThingItem, viewW, viewH int) (int, int, int, int, bool) {
-	if viewW <= 0 || viewH <= 0 || it.tex.Width <= 0 || it.tex.Height <= 0 {
-		return 0, -1, 0, -1, false
-	}
-	scale := it.h / float64(it.tex.Height)
-	if scale <= 0 {
-		return 0, -1, 0, -1, false
-	}
-	dstW := float64(it.tex.Width) * scale
-	dstH := float64(it.tex.Height) * scale
-	dstX := it.sx - float64(it.tex.OffsetX)*scale
-	dstY := floorSpriteTop(dstH, it.yb)
-	x0 := int(math.Floor(dstX))
-	y0 := int(math.Floor(dstY))
-	x1 := int(math.Ceil(dstX+dstW)) - 1
-	y1 := int(math.Ceil(dstY+dstH)) - 1
-	if x0 < 0 {
-		x0 = 0
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if x1 >= viewW {
-		x1 = viewW - 1
-	}
-	if y1 >= viewH {
-		y1 = viewH - 1
-	}
-	if y0 < it.clipTop {
-		y0 = it.clipTop
-	}
-	if y1 > it.clipBottom {
-		y1 = it.clipBottom
-	}
-	if x0 > x1 || y0 > y1 {
-		return x0, x1, y0, y1, false
-	}
-	return x0, x1, y0, y1, true
+	return scene.SpritePatchBounds(it.sx, it.yb, it.h, it.tex.Width, it.tex.Height, it.tex.OffsetX, it.clipTop, it.clipBottom, viewW, viewH, true)
 }
 
 func floorSpriteTop(dstH, yb float64) float64 {
-	return yb - dstH
+	return scene.FloorSpriteTop(dstH, yb)
 }
 
 func spriteRectScreenBounds(rect spriteOpaqueRect, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) (int, int, int, int, bool) {
-	if scale <= 0 || viewW <= 0 || viewH <= 0 {
-		return 0, -1, 0, -1, false
-	}
-	x0 := int(math.Floor(dstX + float64(rect.minX)*scale))
-	y0 := int(math.Floor(dstY + float64(rect.minY)*scale))
-	x1 := int(math.Ceil(dstX+float64(int(rect.maxX)+1)*scale)) - 1
-	y1 := int(math.Ceil(dstY+float64(int(rect.maxY)+1)*scale)) - 1
-	if x1 < 0 || y1 < 0 || x0 >= viewW || y0 >= viewH {
-		return 0, -1, 0, -1, false
-	}
-	if x0 < 0 {
-		x0 = 0
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if x1 >= viewW {
-		x1 = viewW - 1
-	}
-	if y1 >= viewH {
-		y1 = viewH - 1
-	}
-	if y0 < clipTop {
-		y0 = clipTop
-	}
-	if y1 > clipBottom {
-		y1 = clipBottom
-	}
-	if x0 > x1 || y0 > y1 {
-		return 0, -1, 0, -1, false
-	}
-	return x0, x1, y0, y1, true
+	return scene.OpaqueRectScreenBounds(int(rect.minX), int(rect.minY), int(rect.maxX), int(rect.maxY), dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
 }
 
 func puffItemScreenBounds(it projectedPuffItem, focal float64, viewW, viewH int) (int, int, int, int, bool) {
-	if viewW <= 0 || viewH <= 0 {
-		return 0, -1, 0, -1, false
-	}
-	x0, x1, y0, y1 := 0, -1, 0, -1
 	if it.hasSprite && it.spriteTex.Width > 0 && it.spriteTex.Height > 0 {
 		scale := focal / it.dist
 		if scale <= 0 {
 			return 0, -1, 0, -1, false
 		}
-		dstW := float64(it.spriteTex.Width) * scale
-		dstH := float64(it.spriteTex.Height) * scale
-		dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
-		dstY := it.sy - float64(it.spriteTex.OffsetY)*scale
-		x0 = int(math.Floor(dstX))
-		y0 = int(math.Floor(dstY))
-		x1 = int(math.Ceil(dstX+dstW)) - 1
-		y1 = int(math.Ceil(dstY+dstH)) - 1
-	} else {
-		if it.r <= 0 {
-			return 0, -1, 0, -1, false
-		}
-		x0 = int(math.Floor(it.sx - it.r))
-		x1 = int(math.Ceil(it.sx + it.r))
-		y0 = int(math.Floor(it.sy - it.r))
-		y1 = int(math.Ceil(it.sy + it.r))
+		return scene.SpritePatchBoundsFromScale(it.sx, it.sy, scale, it.spriteTex.Width, it.spriteTex.Height, it.spriteTex.OffsetX, it.spriteTex.OffsetY, it.clipTop, it.clipBottom, viewW, viewH)
 	}
-	if x0 < 0 {
-		x0 = 0
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if x1 >= viewW {
-		x1 = viewW - 1
-	}
-	if y1 >= viewH {
-		y1 = viewH - 1
-	}
-	if y0 < it.clipTop {
-		y0 = it.clipTop
-	}
-	if y1 > it.clipBottom {
-		y1 = it.clipBottom
-	}
-	if x0 > x1 || y0 > y1 {
-		return x0, x1, y0, y1, false
-	}
-	return x0, x1, y0, y1, true
+	return scene.CircleScreenBounds(it.sx, it.sy, it.r, it.clipTop, it.clipBottom, viewW, viewH)
 }
 
 func spriteOccludedDepthQAtCore(depthPix, depthPlanePix []uint32, stamp, depthQ, planeBiasQ uint16, idx int) bool {
-	if len(depthPix) == 0 {
-		return false
-	}
-	if idx < 0 || idx >= len(depthPix) {
-		return true
-	}
-	// Walls and already-drawn sprites occlude strictly.
-	if cur := depthPix[idx]; unpackDepthStamp(cur) == stamp && depthQ > unpackDepthQ(cur) {
-		return true
-	}
-	// Floor/ceiling depth is used with bias because billboard depth is constant
-	// across Y while plane depth varies by scanline.
-	if idx < len(depthPlanePix) {
-		if cur := depthPlanePix[idx]; unpackDepthStamp(cur) == stamp {
-			threshold := addDepthQ(unpackDepthQ(cur), planeBiasQ)
-			if depthQ > threshold {
-				return true
-			}
-		}
-	}
-	return false
+	return scene.SpriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, idx)
 }
 
 func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, focal float64, tex WallTexture, shadeMul, doomRow int) {
@@ -4663,41 +4198,23 @@ func encodeDepthQ(depth float64) uint16 {
 }
 
 func encodeDepthBiasQ(bias float64) uint16 {
-	if bias <= 0 {
-		return 0
-	}
-	scaled := bias * depthQuantScale
-	q := int(scaled)
-	if float64(q) < scaled {
-		q++
-	}
-	if q <= 0 {
-		return 0
-	}
-	if q >= 0xFFFF {
-		return 0xFFFF
-	}
-	return uint16(q)
+	return scene.EncodeDepthBiasQ(bias)
 }
 
 func addDepthQ(a, b uint16) uint16 {
-	sum := uint32(a) + uint32(b)
-	if sum >= 0xFFFF {
-		return 0xFFFF
-	}
-	return uint16(sum)
+	return scene.AddDepthQ(a, b)
 }
 
 func packDepthStamped(depth, stamp uint16) uint32 {
-	return (uint32(stamp) << 16) | uint32(depth)
+	return scene.PackDepthStamped(depth, stamp)
 }
 
 func unpackDepthStamp(v uint32) uint16 {
-	return uint16(v >> 16)
+	return scene.UnpackDepthStamp(v)
 }
 
 func unpackDepthQ(v uint32) uint16 {
-	return uint16(v & 0xFFFF)
+	return scene.UnpackDepthQ(v)
 }
 
 func shadePackedRGBABig(src, mul uint32) uint32 {
