@@ -1,4 +1,4 @@
-package viewstate
+package mapview
 
 import "math"
 
@@ -10,7 +10,7 @@ type SavedView struct {
 	Valid  bool
 }
 
-type State struct {
+type ViewState struct {
 	CamX       float64
 	CamY       float64
 	Zoom       float64
@@ -116,14 +116,14 @@ func (s Snapshot) CacheState(vp Viewport) CacheState {
 	}
 }
 
-func (s *State) Reset(centerX, centerY, worldW, worldH float64, viewW, viewH int, initialZoomMul float64) {
+func (s *ViewState) Reset(centerX, centerY, worldW, worldH float64, viewW, viewH int, initialZoomMul float64) {
 	s.CamX = centerX
 	s.CamY = centerY
 	s.FitZoom = FitZoomForWorld(worldW, worldH, viewW, viewH)
 	s.Zoom = s.FitZoom * initialZoomMul
 }
 
-func (s *State) Refit(worldW, worldH float64, viewW, viewH int, initialZoomMul float64) {
+func (s *ViewState) Refit(worldW, worldH float64, viewW, viewH int, initialZoomMul float64) {
 	oldFit := s.FitZoom
 	s.FitZoom = FitZoomForWorld(worldW, worldH, viewW, viewH)
 	if oldFit > 0 {
@@ -133,7 +133,7 @@ func (s *State) Refit(worldW, worldH float64, viewW, viewH int, initialZoomMul f
 	s.Zoom = s.FitZoom * initialZoomMul
 }
 
-func (s *State) ToggleBigMap(centerX, centerY float64) bool {
+func (s *ViewState) ToggleBigMap(centerX, centerY float64) bool {
 	if !s.SavedView.Valid {
 		s.SavedView = SavedView{
 			CamX:   s.CamX,
@@ -156,7 +156,7 @@ func (s *State) ToggleBigMap(centerX, centerY float64) bool {
 	return false
 }
 
-func (s *State) Snapshot() Snapshot {
+func (s *ViewState) Snapshot() Snapshot {
 	return Snapshot{
 		CamX:       s.CamX,
 		CamY:       s.CamY,
@@ -170,24 +170,24 @@ func (s *State) Snapshot() Snapshot {
 	}
 }
 
-func (s *State) Camera() (float64, float64) {
+func (s *ViewState) Camera() (float64, float64) {
 	return s.CamX, s.CamY
 }
 
-func (s *State) ToggleFollowMode() bool {
+func (s *ViewState) ToggleFollowMode() bool {
 	s.FollowMode = !s.FollowMode
 	return s.FollowMode
 }
 
-func (s *State) SetFollowMode(v bool) {
+func (s *ViewState) SetFollowMode(v bool) {
 	s.FollowMode = v
 }
 
-func (s *State) SetZoom(v float64) {
+func (s *ViewState) SetZoom(v float64) {
 	s.Zoom = v
 }
 
-func (s *State) AdjustZoom(zoomStep, wheelY float64) {
+func (s *ViewState) AdjustZoom(zoomStep, wheelY float64) {
 	if zoomStep > 0 {
 		s.Zoom *= zoomStep
 	}
@@ -210,33 +210,33 @@ func (s *State) AdjustZoom(zoomStep, wheelY float64) {
 	}
 }
 
-func (s *State) SetCamera(x, y float64) {
+func (s *ViewState) SetCamera(x, y float64) {
 	s.CamX = x
 	s.CamY = y
 }
 
-func (s *State) Pan(dx, dy float64) {
+func (s *ViewState) Pan(dx, dy float64) {
 	s.CamX += dx
 	s.CamY += dy
 }
 
-func (s *State) CapturePrev() {
+func (s *ViewState) CapturePrev() {
 	s.PrevCamX = s.CamX
 	s.PrevCamY = s.CamY
 }
 
-func (s *State) SyncRender() {
+func (s *ViewState) SyncRender() {
 	s.CapturePrev()
 	s.RenderCamX = s.CamX
 	s.RenderCamY = s.CamY
 }
 
-func (s *State) PrepareRender(alpha float64) {
+func (s *ViewState) PrepareRender(alpha float64) {
 	s.RenderCamX = Lerp(s.PrevCamX, s.CamX, alpha)
 	s.RenderCamY = Lerp(s.PrevCamY, s.CamY, alpha)
 }
 
-func (s *State) WorldToScreen(x, y float64, viewW, viewH int, renderAngle uint32, rotate bool) (float64, float64) {
+func (s *ViewState) WorldToScreen(x, y float64, viewW, viewH int, renderAngle uint32, rotate bool) (float64, float64) {
 	dx := x - s.RenderCamX
 	dy := y - s.RenderCamY
 	if rotate {
@@ -253,11 +253,11 @@ func (s *State) WorldToScreen(x, y float64, viewW, viewH int, renderAngle uint32
 	return sx, sy
 }
 
-func (s *State) WorldToScreenViewport(vp Viewport, x, y float64) (float64, float64) {
+func (s *ViewState) WorldToScreenViewport(vp Viewport, x, y float64) (float64, float64) {
 	return s.WorldToScreen(x, y, vp.Width, vp.Height, vp.RenderAngle, vp.Rotate)
 }
 
-func (s *State) ScreenToWorld(sx, sy float64, viewW, viewH int, renderAngle uint32, rotate bool) (float64, float64) {
+func (s *ViewState) ScreenToWorld(sx, sy float64, viewW, viewH int, renderAngle uint32, rotate bool) (float64, float64) {
 	dx := (sx - float64(viewW)/2) / s.Zoom
 	dy := (float64(viewH)/2 - sy) / s.Zoom
 	if rotate {
@@ -272,7 +272,7 @@ func (s *State) ScreenToWorld(sx, sy float64, viewW, viewH int, renderAngle uint
 	return s.RenderCamX + dx, s.RenderCamY + dy
 }
 
-func (s *State) ScreenToWorldViewport(vp Viewport, sx, sy float64) (float64, float64) {
+func (s *ViewState) ScreenToWorldViewport(vp Viewport, sx, sy float64) (float64, float64) {
 	return s.ScreenToWorld(sx, sy, vp.Width, vp.Height, vp.RenderAngle, vp.Rotate)
 }
 

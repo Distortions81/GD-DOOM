@@ -16,13 +16,8 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/hud"
 	"gddoom/internal/render/mapview"
-	"gddoom/internal/render/mapview/bigmap"
-	"gddoom/internal/render/mapview/linecache"
 	"gddoom/internal/render/mapview/linepolicy"
-	"gddoom/internal/render/mapview/linevisibility"
-	"gddoom/internal/render/mapview/marks"
 	"gddoom/internal/render/mapview/presenter"
-	"gddoom/internal/render/mapview/viewstate"
 	"gddoom/internal/render/scene"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -298,14 +293,14 @@ type game struct {
 	crtEnabled        bool
 	viewW             int
 	viewH             int
-	viewstate.State
+	State             mapview.ViewState
 
 	mode                      viewMode
 	rotateView                bool
 	parity                    automapParityState
 	showGrid                  bool
 	showLegend                bool
-	bigMap                    bigmap.State
+	bigMap                    mapview.BigMapState
 	paused                    bool
 	pauseMenuActive           bool
 	pauseMenuMode             int
@@ -324,14 +319,14 @@ type game struct {
 	quitPromptActive          bool
 	newGameRequestedMap       *mapdata.Map
 	newGameRequestedSkill     int
-	marks                     marks.State
+	marks                     mapview.MarksState
 	p                         player
 	currentMoveCmd            moveCmd
 	localSlot                 int
 	peerStarts                []playerStart
 
 	lines                []physLine
-	mapVisibleLines      []linevisibility.Line
+	mapVisibleLines      []mapview.Line
 	lineValid            []int
 	validCount           int
 	bmapOriginX          int64
@@ -342,7 +337,7 @@ type game struct {
 	renderSeen           []int
 	renderEpoch          int
 	visibleBuf           []int
-	mapLineVisibility    linevisibility.State
+	mapLineVisibility    mapview.VisibilityState
 	bspOccBuf            []solidSpan
 	visibleSectorSeen    []int
 	visibleSubSectorSeen []int
@@ -352,7 +347,7 @@ type game struct {
 	nodeChildRangeR      []int
 	nodeChildRangeOK     []uint8
 	thingSectorCache     []int
-	mapLines             linecache.State
+	mapLines             mapview.LineCacheState
 	sectorFloor          []int64
 	sectorCeil           []int64
 	lineSpecial          []uint16
@@ -892,7 +887,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		skyOutputW:        max(opts.Width, 1),
 		skyOutputH:        max(opts.Height, 1),
 		mode:              viewMap,
-		State:             viewstate.State{FollowMode: true},
+		State:             mapview.ViewState{FollowMode: true},
 		rotateView:        opts.SourcePortMode,
 		parity: automapParityState{
 			reveal: revealNormal,
@@ -901,7 +896,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		showGrid:           false,
 		showLegend:         opts.SourcePortMode,
 		hudMessagesEnabled: true,
-		marks:              marks.New(10),
+		marks:              mapview.NewMarksState(10),
 		p:                  p,
 		localSlot:          localSlot,
 		peerStarts:         nonLocalStarts(starts, localSlot),
@@ -15362,10 +15357,10 @@ func (g *game) sectorIndexFromSideNum(side int16) int {
 	return sec
 }
 
-func (g *game) mapLineStateKey() linecache.Key {
+func (g *game) mapLineStateKey() mapview.LineCacheKey {
 	view := g.State.Snapshot()
 	cacheState := view.CacheState(g.viewport())
-	return linecache.Key{
+	return mapview.LineCacheKey{
 		CamX:          cacheState.CamX,
 		CamY:          cacheState.CamY,
 		Zoom:          cacheState.Zoom,
@@ -15380,29 +15375,29 @@ func (g *game) mapLineStateKey() linecache.Key {
 	}
 }
 
-func (g *game) rebuildMapLineCache(key linecache.Key) {
-	out := linecache.Build(g.mapLines.Reuse(), g.visibleLineIndices(), g.resolveMapLineDraw)
+func (g *game) rebuildMapLineCache(key mapview.LineCacheKey) {
+	out := mapview.BuildLineCache(g.mapLines.Reuse(), g.visibleLineIndices(), g.resolveMapLineDraw)
 	g.mapLines.Reset(out, key)
 }
 
-func (g *game) resolveMapLineDraw(li int) (linecache.Draw, bool) {
+func (g *game) resolveMapLineDraw(li int) (mapview.CachedLine, bool) {
 	pi := g.physForLine[li]
 	if pi < 0 || pi >= len(g.lines) {
-		return linecache.Draw{}, false
+		return mapview.CachedLine{}, false
 	}
 	ld := g.m.Linedefs[li]
 	d := g.linedefDecision(ld)
 	if !d.Visible {
-		return linecache.Draw{}, false
+		return mapview.CachedLine{}, false
 	}
 	pl := g.lines[pi]
 	x1, y1 := g.worldToScreen(float64(pl.x1)/fracUnit, float64(pl.y1)/fracUnit)
 	x2, y2 := g.worldToScreen(float64(pl.x2)/fracUnit, float64(pl.y2)/fracUnit)
 	if x1 == x2 && y1 == y2 {
-		return linecache.Draw{}, false
+		return mapview.CachedLine{}, false
 	}
 	style := d.Style(mapLinePalette)
-	return linecache.Draw{
+	return mapview.CachedLine{
 		X1:  float32(x1),
 		Y1:  float32(y1),
 		X2:  float32(x2),

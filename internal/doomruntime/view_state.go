@@ -1,6 +1,6 @@
 package doomruntime
 
-import "gddoom/internal/render/mapview/viewstate"
+import "gddoom/internal/render/mapview"
 
 func boundsViewMetrics(b bounds) (centerX, centerY, worldW, worldH float64) {
 	centerX = (b.minX + b.maxX) / 2
@@ -10,8 +10,8 @@ func boundsViewMetrics(b bounds) (centerX, centerY, worldW, worldH float64) {
 	return centerX, centerY, worldW, worldH
 }
 
-func (g *game) viewport() viewstate.Viewport {
-	return viewstate.Viewport{
+func (g *game) viewport() mapview.Viewport {
+	return mapview.Viewport{
 		Width:       g.viewW,
 		Height:      g.viewH,
 		RenderAngle: g.renderAngle,

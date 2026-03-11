@@ -1,15 +1,15 @@
-package linevisibility
+package mapview
 
 type Line struct {
 	Index int
 	BBox  [4]int64
 }
 
-type State struct {
+type VisibilityState struct {
 	items []int
 }
 
-func (s *State) Filter(lines []Line, minX, minY, maxX, maxY int64) []int {
+func (s *VisibilityState) Filter(lines []Line, minX, minY, maxX, maxY int64) []int {
 	if s == nil {
 		return nil
 	}

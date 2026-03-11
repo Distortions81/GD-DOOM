@@ -1,7 +1,10 @@
 package doomruntime
 
-import "gddoom/internal/render/mapview/viewstate"
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/render/mapview"
+)
 
 func TestDetailPresetIndex(t *testing.T) {
 	if got := detailPresetIndex(320, 200); got != 0 {
@@ -23,7 +26,7 @@ func TestDefaultDetailLevelForModeSourcePortHalfDetail(t *testing.T) {
 
 func TestCycleDetailLevelChangesViewSize(t *testing.T) {
 	g := &game{
-		State: viewstate.State{
+		State: mapview.ViewState{
 			FitZoom: 1,
 			Zoom:    1,
 		},

@@ -1,8 +1,8 @@
-package linecache
+package mapview
 
 import "image/color"
 
-type Draw struct {
+type CachedLine struct {
 	X1  float32
 	Y1  float32
 	X2  float32
@@ -11,7 +11,7 @@ type Draw struct {
 	Clr color.RGBA
 }
 
-type Key struct {
+type LineCacheKey struct {
 	CamX          float64
 	CamY          float64
 	Zoom          float64
@@ -25,32 +25,32 @@ type Key struct {
 	MappedRev     uint32
 }
 
-type State struct {
-	items []Draw
-	key   Key
+type LineCacheState struct {
+	items []CachedLine
+	key   LineCacheKey
 	rev   uint32
 	init  bool
 }
 
-func (s *State) Revision() uint32 {
+func (s *LineCacheState) Revision() uint32 {
 	if s == nil {
 		return 0
 	}
 	return s.rev
 }
 
-func (s *State) Touch() {
+func (s *LineCacheState) Touch() {
 	if s == nil {
 		return
 	}
 	s.rev++
 }
 
-func (s *State) NeedsRebuild(key Key) bool {
+func (s *LineCacheState) NeedsRebuild(key LineCacheKey) bool {
 	return s == nil || !s.init || s.key != key
 }
 
-func (s *State) Reset(draws []Draw, key Key) {
+func (s *LineCacheState) Reset(draws []CachedLine, key LineCacheKey) {
 	if s == nil {
 		return
 	}
@@ -59,14 +59,14 @@ func (s *State) Reset(draws []Draw, key Key) {
 	s.init = true
 }
 
-func (s *State) Reuse() []Draw {
+func (s *LineCacheState) Reuse() []CachedLine {
 	if s == nil {
 		return nil
 	}
 	return s.items[:0]
 }
 
-func (s *State) Items() []Draw {
+func (s *LineCacheState) Items() []CachedLine {
 	if s == nil {
 		return nil
 	}

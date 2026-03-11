@@ -2,7 +2,7 @@ package doomruntime
 
 import (
 	"gddoom/internal/mapdata"
-	"gddoom/internal/render/mapview/linevisibility"
+	"gddoom/internal/render/mapview"
 )
 
 const (
@@ -161,10 +161,10 @@ func (g *game) initPhysics() {
 	}
 }
 
-func buildMapVisibleLines(lines []physLine) []linevisibility.Line {
-	out := make([]linevisibility.Line, 0, len(lines))
+func buildMapVisibleLines(lines []physLine) []mapview.Line {
+	out := make([]mapview.Line, 0, len(lines))
 	for _, line := range lines {
-		out = append(out, linevisibility.Line{
+		out = append(out, mapview.Line{
 			Index: line.idx,
 			BBox:  line.bbox,
 		})

@@ -1,4 +1,4 @@
-package marks
+package mapview
 
 type Mark struct {
 	ID int
@@ -6,24 +6,24 @@ type Mark struct {
 	Y  float64
 }
 
-type State struct {
+type MarksState struct {
 	items  []Mark
 	nextID int
 	limit  int
 }
 
-func New(limit int) State {
+func NewMarksState(limit int) MarksState {
 	if limit <= 0 {
 		limit = 10
 	}
-	return State{
+	return MarksState{
 		items:  make([]Mark, 0, limit),
 		nextID: 1,
 		limit:  limit,
 	}
 }
 
-func (s *State) Add(x, y float64) (id int, ok bool) {
+func (s *MarksState) Add(x, y float64) (id int, ok bool) {
 	if len(s.items) >= s.limit {
 		return 0, false
 	}
@@ -33,14 +33,14 @@ func (s *State) Add(x, y float64) (id int, ok bool) {
 	return id, true
 }
 
-func (s *State) Clear() {
+func (s *MarksState) Clear() {
 	s.items = s.items[:0]
 }
 
-func (s *State) Count() int {
+func (s *MarksState) Count() int {
 	return len(s.items)
 }
 
-func (s *State) Items() []Mark {
+func (s *MarksState) Items() []Mark {
 	return s.items
 }

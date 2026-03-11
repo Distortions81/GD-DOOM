@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/mapview"
 	"gddoom/internal/render/mapview/presenter"
-	"gddoom/internal/render/mapview/viewstate"
 )
 
 func TestToggledLineColorMode(t *testing.T) {
@@ -21,7 +21,7 @@ func TestToggledLineColorMode(t *testing.T) {
 
 func TestToggleBigMapRoundTrip(t *testing.T) {
 	g := &game{
-		State: viewstate.State{
+		State: mapview.ViewState{
 			CamX:       100,
 			CamY:       200,
 			Zoom:       3,
@@ -144,7 +144,7 @@ func TestMapThingSpriteName_WorldThingBlendFramesCanBeDisabled(t *testing.T) {
 
 func TestMapRotationActive_DisabledWhenFollowIsOff(t *testing.T) {
 	g := &game{
-		State:      viewstate.State{FollowMode: true},
+		State:      mapview.ViewState{FollowMode: true},
 		mode:       viewMap,
 		rotateView: true,
 	}

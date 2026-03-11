@@ -5,10 +5,6 @@ import (
 	"image/color"
 	"math"
 
-	"gddoom/internal/render/mapview/linecache"
-	"gddoom/internal/render/mapview/marks"
-	"gddoom/internal/render/mapview/viewstate"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
@@ -23,7 +19,7 @@ type Segment struct {
 	Color color.Color
 }
 
-func DrawCachedLines(screen *ebiten.Image, items []linecache.Draw, antiAlias bool) {
+func DrawCachedLines(screen *ebiten.Image, items []CachedLine, antiAlias bool) {
 	if screen == nil {
 		return
 	}
@@ -32,7 +28,7 @@ func DrawCachedLines(screen *ebiten.Image, items []linecache.Draw, antiAlias boo
 	}
 }
 
-func DrawGrid(screen *ebiten.Image, view viewstate.Snapshot, vp viewstate.Viewport, worldToScreen func(float64, float64) (float64, float64), antiAlias bool) {
+func DrawGrid(screen *ebiten.Image, view Snapshot, vp Viewport, worldToScreen func(float64, float64) (float64, float64), antiAlias bool) {
 	if screen == nil || worldToScreen == nil {
 		return
 	}
@@ -54,7 +50,7 @@ func DrawGrid(screen *ebiten.Image, view viewstate.Snapshot, vp viewstate.Viewpo
 	}
 }
 
-func DrawMarks(screen *ebiten.Image, items []marks.Mark, worldToScreen func(float64, float64) (float64, float64), antiAlias bool) {
+func DrawMarks(screen *ebiten.Image, items []Mark, worldToScreen func(float64, float64) (float64, float64), antiAlias bool) {
 	if screen == nil || worldToScreen == nil {
 		return
 	}
