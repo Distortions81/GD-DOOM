@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gddoom/internal/render/automap"
+	"gddoom/internal/doomsession"
 
 	"github.com/BurntSushi/toml"
 )
@@ -125,7 +125,7 @@ func configuredDetailLevelForMode(cfg *fileConfig, sourcePortMode bool) int {
 	return -1
 }
 
-func saveRuntimeSettings(path string, s automap.RuntimeSettings, sourcePortMode bool) error {
+func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortMode bool) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}

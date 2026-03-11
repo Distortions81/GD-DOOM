@@ -17,6 +17,8 @@ import (
 	"strings"
 	"unsafe"
 
+	"gddoom/internal/demo"
+	"gddoom/internal/doomsession"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
 	"gddoom/internal/render/automap"
@@ -543,12 +545,21 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if p := picker.Session().Options().RecordDemoPath; p != "" {
 			rec := picker.Session().EffectiveDemoRecord()
-			demo, derr := automap.BuildRecordedDemo(picker.Session().StartMapName(), picker.Session().Options(), rec)
+			opts := picker.Session().Options()
+			skill := opts.SkillLevel - 1
+			if skill < 0 {
+				skill = 0
+			}
+			demoRec, derr := demo.BuildRecorded(picker.Session().StartMapName(), demo.RecordingOptions{
+				Skill:        skill,
+				Deathmatch:   strings.EqualFold(opts.GameMode, "deathmatch"),
+				FastMonsters: opts.FastMonsters,
+			}, rec)
 			if derr != nil {
 				fmt.Fprintf(stderr, "build demo recording: %v\n", derr)
 				return 1
 			}
-			if werr := automap.SaveDemoScript(p, demo); werr != nil {
+			if werr := demo.Save(p, demoRec); werr != nil {
 				fmt.Fprintf(stderr, "write demo recording: %v\n", werr)
 				return 1
 			}
@@ -770,7 +781,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			*wallSliceOcclusion = false
 			*billboardClipping = false
 		}
-		opts := automap.Options{
+		opts := doomsession.Options{
 			Width:                      *width,
 			Height:                     *height,
 			StartZoom:                  *zoom,
@@ -873,8 +884,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 			return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
 		}
-		opts.DemoMapLoader = func(demo *automap.DemoScript) (*mapdata.Map, error) {
-			name, err := resolveDemoStartMap(wf, demo, "")
+		opts.DemoMapLoader = func(script *demo.Script) (*mapdata.Map, error) {
+			name, err := resolveDemoStartMap(wf, script, "")
 			if err != nil {
 				return nil, err
 			}
@@ -883,14 +894,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		opts.Episodes = availableEpisodes(wf)
 		if strings.TrimSpace(configPath) != "" {
 			path := configPath
-			opts.OnRuntimeSettingsChanged = func(s automap.RuntimeSettings) {
+			opts.OnRuntimeSettingsChanged = func(s doomsession.RuntimeSettings) {
 				if err := saveRuntimeSettings(path, s, opts.SourcePortMode); err != nil {
 					fmt.Fprintf(stderr, "config save warning: %v\n", err)
 				}
 			}
 		}
 		if p := resolvedDemoPath; p != "" {
-			demo, derr := automap.LoadDemoScript(p)
+			demo, derr := demo.Load(p)
 			if derr != nil {
 				fmt.Fprintf(stderr, "load demo: %v\n", derr)
 				return 1
@@ -935,7 +946,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return nm, next, nil
 		}
-		rerr := automap.RunAutomap(m, opts, nextMap)
+		rerr := doomsession.Run(m, opts, nextMap)
 		if rerr != nil {
 			fmt.Fprintf(stderr, "render map %s: %v\n", selected, rerr)
 			return 1
@@ -944,7 +955,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if p := resolvedDemoPath; p != "" && !*render {
-		demo, derr := automap.LoadDemoScript(p)
+		demo, derr := demo.Load(p)
 		if derr != nil {
 			fmt.Fprintf(stderr, "load demo: %v\n", derr)
 			return 1
@@ -1261,8 +1272,8 @@ const (
 
 type renderBundle struct {
 	m       *mapdata.Map
-	opts    automap.Options
-	nextMap automap.NextMapFunc
+	opts    doomsession.Options
+	nextMap doomsession.NextMapFunc
 }
 
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
@@ -1372,7 +1383,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		flatBankIndexed = fbi
 	}
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(cfg.selectedMap)))
-	opts := automap.Options{
+	opts := doomsession.Options{
 		Width:                      cfg.width,
 		Height:                     cfg.height,
 		StartZoom:                  cfg.zoom,
@@ -1471,8 +1482,8 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 		return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
 	}
-	opts.DemoMapLoader = func(demo *automap.DemoScript) (*mapdata.Map, error) {
-		name, err := resolveDemoStartMap(wf, demo, "")
+	opts.DemoMapLoader = func(script *demo.Script) (*mapdata.Map, error) {
+		name, err := resolveDemoStartMap(wf, script, "")
 		if err != nil {
 			return nil, err
 		}
@@ -1481,12 +1492,12 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	opts.Episodes = availableEpisodes(wf)
 	if strings.TrimSpace(cfg.configPath) != "" {
 		path := cfg.configPath
-		opts.OnRuntimeSettingsChanged = func(s automap.RuntimeSettings) {
+		opts.OnRuntimeSettingsChanged = func(s doomsession.RuntimeSettings) {
 			_ = saveRuntimeSettings(path, s, opts.SourcePortMode)
 		}
 	}
 	if p := cfg.demoPath; p != "" {
-		demo, derr := automap.LoadDemoScript(p)
+		demo, derr := demo.Load(p)
 		if derr != nil {
 			return nil, fmt.Errorf("load demo: %w", derr)
 		}
@@ -1557,7 +1568,7 @@ type iwadPickerGame struct {
 	fontImg  map[rune]*ebiten.Image
 	sfx      *automap.MenuSoundPlayer
 	load     func(string, pickerProfile) (*renderBundle, error)
-	session  *automap.Session
+	session  *doomsession.Session
 	err      error
 }
 
@@ -1659,7 +1670,7 @@ func (g *iwadPickerGame) Update() error {
 				g.status = err.Error()
 				return nil
 			}
-			g.session = automap.NewSession(bundle.m, bundle.opts, bundle.nextMap)
+			g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
 			return nil
 		}
 	default:
@@ -1798,7 +1809,7 @@ func (g *iwadPickerGame) Close() {
 	}
 }
 
-func (g *iwadPickerGame) Session() *automap.Session {
+func (g *iwadPickerGame) Session() *doomsession.Session {
 	return g.session
 }
 
@@ -2579,16 +2590,16 @@ func availableEpisodes(wf *wad.File) []int {
 	return out
 }
 
-func resolveDemoStartMap(wf *wad.File, demo *automap.DemoScript, fallback mapdata.MapName) (mapdata.MapName, error) {
-	if wf == nil || demo == nil {
+func resolveDemoStartMap(wf *wad.File, script *demo.Script, fallback mapdata.MapName) (mapdata.MapName, error) {
+	if wf == nil || script == nil {
 		return "", fmt.Errorf("missing demo")
 	}
 	candidates := make([]mapdata.MapName, 0, 2)
-	if demo.Header.Map > 0 {
-		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("MAP%02d", demo.Header.Map)))
+	if script.Header.Map > 0 {
+		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("MAP%02d", script.Header.Map)))
 	}
-	if demo.Header.Episode > 0 && demo.Header.Map > 0 && demo.Header.Map <= 9 {
-		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("E%dM%d", demo.Header.Episode, demo.Header.Map)))
+	if script.Header.Episode > 0 && script.Header.Map > 0 && script.Header.Map <= 9 {
+		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("E%dM%d", script.Header.Episode, script.Header.Map)))
 	}
 	for _, candidate := range candidates {
 		if _, err := mapdata.LoadMap(wf, candidate); err == nil {
@@ -2596,16 +2607,16 @@ func resolveDemoStartMap(wf *wad.File, demo *automap.DemoScript, fallback mapdat
 		}
 	}
 	if fallback != "" {
-		return "", fmt.Errorf("demo map episode=%d map=%d not present in wad (requested map %s ignored)", demo.Header.Episode, demo.Header.Map, fallback)
+		return "", fmt.Errorf("demo map episode=%d map=%d not present in wad (requested map %s ignored)", script.Header.Episode, script.Header.Map, fallback)
 	}
-	return "", fmt.Errorf("demo map episode=%d map=%d not present in wad", demo.Header.Episode, demo.Header.Map)
+	return "", fmt.Errorf("demo map episode=%d map=%d not present in wad", script.Header.Episode, script.Header.Map)
 }
 
-func loadBuiltInDemos(wf *wad.File) []*automap.DemoScript {
+func loadBuiltInDemos(wf *wad.File) []*demo.Script {
 	if wf == nil {
 		return nil
 	}
-	out := make([]*automap.DemoScript, 0, 4)
+	out := make([]*demo.Script, 0, 4)
 	for _, name := range []string{"DEMO1", "DEMO2", "DEMO3", "DEMO4"} {
 		lump, ok := wf.LumpByName(name)
 		if !ok {
@@ -2615,7 +2626,7 @@ func loadBuiltInDemos(wf *wad.File) []*automap.DemoScript {
 		if err != nil {
 			continue
 		}
-		demo, err := automap.ParseDemoScript(data)
+		demo, err := demo.Parse(data)
 		if err != nil {
 			continue
 		}
@@ -2625,11 +2636,11 @@ func loadBuiltInDemos(wf *wad.File) []*automap.DemoScript {
 	return out
 }
 
-func demoGameMode(demo *automap.DemoScript) string {
-	if demo == nil {
+func demoGameMode(script *demo.Script) string {
+	if script == nil {
 		return "single"
 	}
-	if demo.Header.Deathmatch {
+	if script.Header.Deathmatch {
 		return "deathmatch"
 	}
 	return "single"

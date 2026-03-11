@@ -522,12 +522,11 @@ func (sg *sessionGame) frontendSourcePortDetailLabel() string {
 }
 
 func (sg *sessionGame) frontendChangeMessages() {
-	if sg == nil || sg.g == nil {
+	if sg == nil || sg.rt == nil {
 		return
 	}
-	sg.g.hudMessagesEnabled = !sg.g.hudMessagesEnabled
-	sg.settings.hudMessagesEnabled = sg.g.hudMessagesEnabled
-	if sg.g.hudMessagesEnabled {
+	sg.settings.hudMessagesEnabled = sg.rt.sessionToggleHUDMessages()
+	if sg.settings.hudMessagesEnabled {
 		sg.frontendStatus("MESSAGES ON", doomTicsPerSecond)
 	} else {
 		sg.frontendStatus("MESSAGES OFF", doomTicsPerSecond)
@@ -535,42 +534,39 @@ func (sg *sessionGame) frontendChangeMessages() {
 }
 
 func (sg *sessionGame) frontendChangeDetail() {
-	if sg == nil || sg.g == nil {
+	if sg == nil || sg.rt == nil {
 		return
 	}
-	if sg.g.opts.SourcePortMode {
-		sg.g.cycleSourcePortDetailLevel()
-	} else {
-		sg.g.cycleDetailLevel()
-	}
-	sg.settings.detailLevel = sg.g.detailLevel
-	sg.opts.InitialDetailLevel = sg.g.detailLevel
+	sg.settings.detailLevel = sg.rt.sessionCycleDetail()
+	sg.opts.InitialDetailLevel = sg.settings.detailLevel
 }
 
 func (sg *sessionGame) frontendChangeMouseSensitivity(dir int) {
-	if sg == nil || sg.g == nil || dir == 0 {
+	if sg == nil || sg.rt == nil || dir == 0 {
 		return
 	}
-	next := frontendNextMouseSensitivity(sg.g.opts.MouseLookSpeed, dir)
-	if next == sg.g.opts.MouseLookSpeed {
+	cur := sg.rt.sessionMouseLookSpeed()
+	next := frontendNextMouseSensitivity(cur, dir)
+	if next == cur {
 		return
 	}
-	sg.g.opts.MouseLookSpeed = next
+	sg.rt.sessionSetMouseLookSpeed(next)
 	sg.opts.MouseLookSpeed = next
 	sg.settings.mouseLookSpeed = next
 	sg.frontendStatus(fmt.Sprintf("MOUSE SENSITIVITY %.2f", next), doomTicsPerSecond)
 }
 
 func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
-	if sg == nil || sg.g == nil || dir == 0 {
+	if sg == nil || sg.rt == nil || dir == 0 {
 		return
 	}
-	prev := clampVolume(sg.g.opts.MusicVolume)
-	next := clampVolume(sg.g.opts.MusicVolume + float64(dir)*(1.0/15.0))
-	if next == sg.g.opts.MusicVolume {
+	cur := sg.rt.sessionMusicVolume()
+	prev := clampVolume(cur)
+	next := clampVolume(cur + float64(dir)*(1.0/15.0))
+	if next == cur {
 		return
 	}
-	sg.g.opts.MusicVolume = next
+	sg.rt.sessionSetMusicVolume(next)
 	sg.opts.MusicVolume = next
 	sg.settings.musicVolume = next
 	switch {
@@ -585,22 +581,23 @@ func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
 	case sg.musicPlayer != nil:
 		_ = sg.musicPlayer.SetVolume(next)
 	}
-	sg.g.publishRuntimeSettingsIfChanged()
+	sg.rt.sessionPublishRuntimeSettings()
 }
 
 func (sg *sessionGame) frontendChangeSFXVolume(dir int) {
-	if sg == nil || sg.g == nil || dir == 0 {
+	if sg == nil || sg.rt == nil || dir == 0 {
 		return
 	}
-	next := clampVolume(sg.g.opts.SFXVolume + float64(dir)*(1.0/15.0))
-	if next == sg.g.opts.SFXVolume {
+	cur := sg.rt.sessionSFXVolume()
+	next := clampVolume(cur + float64(dir)*(1.0/15.0))
+	if next == cur {
 		return
 	}
-	sg.g.opts.SFXVolume = next
+	sg.rt.sessionSetSFXVolume(next)
 	sg.opts.SFXVolume = next
 	sg.settings.sfxVolume = next
 	sg.menuSfx = NewMenuSoundPlayer(sg.opts.SoundBank, next)
-	sg.g.publishRuntimeSettingsIfChanged()
+	sg.rt.sessionPublishRuntimeSettings()
 	sg.playMenuMoveSound()
 }
 
@@ -1000,7 +997,7 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	_ = sg.drawMenuPatch(screen, "M_OPTTTL", 108, 15, scale, ox, oy, false)
 	_ = sg.drawMenuPatch(screen, frontendMessagesPatch(sig.HUDMessages), menuX+120, menuY+1*lineHeight, scale, ox, oy, false)
 	if sig.SourcePortMode {
-		sg.g.drawHUTextAt(screen, sg.frontendSourcePortDetailLabel(), ox+float64(menuX+175)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.6, scale*1.6)
+		sg.rt.sessionDrawHUTextAt(screen, sg.frontendSourcePortDetailLabel(), ox+float64(menuX+175)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.6, scale*1.6)
 	} else {
 		_ = sg.drawMenuPatch(screen, frontendDetailPatch(sg.frontendDetailLow()), menuX+175, menuY+2*lineHeight, scale, ox, oy, false)
 	}

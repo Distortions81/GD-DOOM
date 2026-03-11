@@ -7,7 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"gddoom/internal/render/automap"
+	"gddoom/internal/demo"
+	"gddoom/internal/doomsession"
 )
 
 func TestRunParseLoadsConfigDefaults(t *testing.T) {
@@ -106,15 +107,15 @@ func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
 func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
 	td := t.TempDir()
 	demoPath := filepath.Join(td, "demo.lmp")
-	data, err := automap.FormatDemoScript(&automap.DemoScript{
-		Header: automap.DemoHeader{
+	data, err := demo.Format(&demo.Script{
+		Header: demo.Header{
 			Version:      110,
 			Skill:        2,
 			Episode:      1,
 			Map:          2,
 			PlayerInGame: [4]bool{true},
 		},
-		Tics: []automap.DemoTic{{Forward: 25}},
+		Tics: []demo.Tic{{Forward: 25}},
 	})
 	if err != nil {
 		t.Fatalf("FormatDemoScript() error = %v", err)
@@ -415,7 +416,7 @@ func TestRunParseRejectsInvalidOPLVolume(t *testing.T) {
 func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "config.toml")
-	in := automap.RuntimeSettings{
+	in := doomsession.RuntimeSettings{
 		DetailLevel:      2,
 		GammaLevel:       5,
 		MusicVolume:      1.0,
@@ -476,10 +477,10 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 func TestSaveRuntimeSettingsWritesFaithfulDetailSeparately(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "config.toml")
-	if err := saveRuntimeSettings(cfgPath, automap.RuntimeSettings{DetailLevel: 1}, false); err != nil {
+	if err := saveRuntimeSettings(cfgPath, doomsession.RuntimeSettings{DetailLevel: 1}, false); err != nil {
 		t.Fatalf("saveRuntimeSettings() faithful error: %v", err)
 	}
-	if err := saveRuntimeSettings(cfgPath, automap.RuntimeSettings{DetailLevel: 3}, true); err != nil {
+	if err := saveRuntimeSettings(cfgPath, doomsession.RuntimeSettings{DetailLevel: 3}, true); err != nil {
 		t.Fatalf("saveRuntimeSettings() sourceport error: %v", err)
 	}
 	cfg, err := loadConfig(cfgPath, true)

@@ -196,6 +196,18 @@ type sessionRuntime interface {
 	sessionAcknowledgeNewGameRequest()
 	sessionAcknowledgeQuitPrompt()
 	sessionAcknowledgeReadThis()
+	sessionToggleHUDMessages() bool
+	sessionCycleDetail() int
+	sessionMouseLookSpeed() float64
+	sessionSetMouseLookSpeed(float64)
+	sessionMusicVolume() float64
+	sessionSetMusicVolume(float64)
+	sessionSFXVolume() float64
+	sessionSetSFXVolume(float64)
+	sessionPublishRuntimeSettings()
+	sessionDrawHUTextAt(*ebiten.Image, string, float64, float64, float64, float64)
+	sessionPlaySoundEvent(soundEvent)
+	sessionTickSound()
 }
 
 const quitPromptExitDelayTics = 53
