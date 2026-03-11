@@ -290,6 +290,32 @@ type maskedClipSpan struct {
 	hasOpen bool
 }
 
+func wallSegPrepassProjection(pp wallSegPrepass) scene.WallProjection {
+	return scene.WallProjection{
+		SX1:         pp.sx1,
+		SX2:         pp.sx2,
+		MinX:        pp.minSX,
+		MaxX:        pp.maxSX,
+		InvDepth1:   pp.invF1,
+		InvDepth2:   pp.invF2,
+		UOverDepth1: pp.uOverF1,
+		UOverDepth2: pp.uOverF2,
+	}
+}
+
+func maskedMidSegProjection(ms maskedMidSeg) scene.WallProjection {
+	return scene.WallProjection{
+		SX1:         ms.sx1,
+		SX2:         ms.sx2,
+		MinX:        ms.x0,
+		MaxX:        ms.x1,
+		InvDepth1:   ms.invF1,
+		InvDepth2:   ms.invF2,
+		UOverDepth1: ms.uOverF1,
+		UOverDepth2: ms.uOverF2,
+	}
+}
+
 type game struct {
 	m                 *mapdata.Map
 	opts              Options
@@ -2789,23 +2815,12 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			}
 		}
 		for _, vis := range visibleRanges {
+			proj := wallSegPrepassProjection(pp)
 			for x := vis.l; x <= vis.r; x++ {
-				t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
-				if t < 0 {
-					t = 0
-				}
-				if t > 1 {
-					t = 1
-				}
-				invF := pp.invF1 + (pp.invF2-pp.invF1)*t
-				if invF <= 0 {
+				f, texU, ok := scene.ProjectedWallSampleAtX(proj, x)
+				if !ok {
 					continue
 				}
-				f := 1.0 / invF
-				if f <= 0 {
-					continue
-				}
-				texU := (pp.uOverF1 + (pp.uOverF2-pp.uOverF1)*t) * f
 				texU += texUOffset
 
 				yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focal))
@@ -4033,26 +4048,7 @@ func (g *game) spriteWallClipTriangleOcclusionState(ax, ay, bx, by, cx, cy int, 
 }
 
 func (g *game) wallSliceYDepthAtX(pp wallSegPrepass, x int, z, focal float64) (float64, float64, bool) {
-	if pp.sx2 == pp.sx1 {
-		return 0, 0, false
-	}
-	t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
-	if t < 0 {
-		t = 0
-	}
-	if t > 1 {
-		t = 1
-	}
-	invF := pp.invF1 + (pp.invF2-pp.invF1)*t
-	if invF <= 0 {
-		return 0, 0, false
-	}
-	f := 1.0 / invF
-	if f <= 0 {
-		return 0, 0, false
-	}
-	y := float64(g.viewH)/2 - (z/f)*focal
-	return y, f, true
+	return scene.ProjectedWallYDepthAtX(wallSegPrepassProjection(pp), x, g.viewH, z, focal)
 }
 
 func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r int, zTop, zBottom, focal float64) bool {
@@ -4079,22 +4075,16 @@ func (g *game) wallSliceRangeTriFullyOccludedByWallsOnly(pp wallSegPrepass, l, r
 	bx, by := r, int(math.Floor(ytR))
 	cx, cy := r, int(math.Floor(ybR))
 	dx, dy := l, int(math.Floor(ybL))
+	proj := wallSegPrepassProjection(pp)
 	depthQAtX := func(x int) uint16 {
-		if pp.sx2 == pp.sx1 {
+		if proj.SX2 == proj.SX1 {
 			return encodeDepthQ((fL + fR) * 0.5)
 		}
-		t := (float64(x) - pp.sx1) / (pp.sx2 - pp.sx1)
-		if t < 0 {
-			t = 0
-		}
-		if t > 1 {
-			t = 1
-		}
-		invF := pp.invF1 + (pp.invF2-pp.invF1)*t
-		if invF <= 0 {
+		depth, ok := scene.ProjectedWallDepthAtX(proj, x)
+		if !ok {
 			return encodeDepthQ((fL + fR) * 0.5)
 		}
-		return encodeDepthQ(1.0 / invF)
+		return encodeDepthQ(depth)
 	}
 	triOccState := func(ax, ay, bx, by, cx, cy int) int {
 		inView := func(x, y int) bool {
@@ -5817,26 +5807,12 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 		if ms.tex.Width <= 0 || ms.tex.Height <= 0 {
 			continue
 		}
+		proj := maskedMidSegProjection(ms)
 		for x := ms.x0; x <= ms.x1; x++ {
-			t := 0.0
-			if math.Abs(ms.sx2-ms.sx1) > 1e-9 {
-				t = (float64(x) - ms.sx1) / (ms.sx2 - ms.sx1)
-			}
-			if t < 0 {
-				t = 0
-			}
-			if t > 1 {
-				t = 1
-			}
-			invF := ms.invF1 + (ms.invF2-ms.invF1)*t
-			if invF <= 0 {
+			f, texU, ok := scene.ProjectedWallSampleAtX(proj, x)
+			if !ok {
 				continue
 			}
-			f := 1.0 / invF
-			if f <= 0 {
-				continue
-			}
-			texU := (ms.uOverF1 + (ms.uOverF2-ms.uOverF1)*t) * f
 			texU += ms.texUOff
 			y0 := int(math.Ceil(halfH - (ms.worldHigh/f)*focal))
 			y1 := int(math.Floor(halfH - (ms.worldLow/f)*focal))
@@ -5862,7 +5838,8 @@ func (g *game) buildMaskedMidClipColumns(focal float64) {
 	}
 	halfH := float64(g.viewH) * 0.5
 	for _, ms := range g.maskedMidSegsScratch {
-		if ms.x0 > ms.x1 || math.Abs(ms.sx2-ms.sx1) < 1e-9 {
+		proj := maskedMidSegProjection(ms)
+		if ms.x0 > ms.x1 || proj.SX2 == proj.SX1 {
 			continue
 		}
 		x0 := ms.x0
@@ -5874,19 +5851,8 @@ func (g *game) buildMaskedMidClipColumns(focal float64) {
 			x1 = g.viewW - 1
 		}
 		for x := x0; x <= x1; x++ {
-			t := (float64(x) - ms.sx1) / (ms.sx2 - ms.sx1)
-			if t < 0 {
-				t = 0
-			}
-			if t > 1 {
-				t = 1
-			}
-			invF := ms.invF1 + (ms.invF2-ms.invF1)*t
-			if invF <= 0 {
-				continue
-			}
-			f := 1.0 / invF
-			if f <= 0 {
+			f, ok := scene.ProjectedWallDepthAtX(proj, x)
+			if !ok {
 				continue
 			}
 			y0 := int(math.Ceil(halfH - (ms.worldHigh/f)*focal))
@@ -7374,94 +7340,11 @@ func (g *game) logWallCull(segIdx int, reason string, z1, z2, x1, x2 float64) {
 }
 
 func clipSegmentToNear(f1, s1, f2, s2, near float64) (float64, float64, float64, float64, bool) {
-	const eps = 0.125
-	clipNear := near + eps
-	if f1 <= near && f2 <= near {
-		return 0, 0, 0, 0, false
-	}
-	// Work from originals so we never interpolate from already-mutated values.
-	of1, os1 := f1, s1
-	of2, os2 := f2, s2
-	if of1 < near {
-		den := of2 - of1
-		if math.Abs(den) < 1e-9 {
-			return 0, 0, 0, 0, false
-		}
-		t := (clipNear - of1) / den
-		if t < 0 {
-			t = 0
-		}
-		if t > 1 {
-			t = 1
-		}
-		f1 = clipNear
-		s1 = os1 + (os2-os1)*t
-	}
-	if of2 < near {
-		den := of1 - of2
-		if math.Abs(den) < 1e-9 {
-			return 0, 0, 0, 0, false
-		}
-		t := (clipNear - of2) / den
-		if t < 0 {
-			t = 0
-		}
-		if t > 1 {
-			t = 1
-		}
-		f2 = clipNear
-		s2 = os2 + (os1-os2)*t
-	}
-	if f1 < near || f2 < near {
-		return 0, 0, 0, 0, false
-	}
-	return f1, s1, f2, s2, true
+	return scene.ClipSegmentToNear(f1, s1, f2, s2, near)
 }
 
 func clipSegmentToNearWithAttr(f1, s1, a1, f2, s2, a2, near float64) (float64, float64, float64, float64, float64, float64, bool) {
-	const eps = 0.125
-	clipNear := near + eps
-	if f1 <= near && f2 <= near {
-		return 0, 0, 0, 0, 0, 0, false
-	}
-	of1, os1, oa1 := f1, s1, a1
-	of2, os2, oa2 := f2, s2, a2
-	if of1 < near {
-		den := of2 - of1
-		if math.Abs(den) < 1e-9 {
-			return 0, 0, 0, 0, 0, 0, false
-		}
-		t := (clipNear - of1) / den
-		if t < 0 {
-			t = 0
-		}
-		if t > 1 {
-			t = 1
-		}
-		f1 = clipNear
-		s1 = os1 + (os2-os1)*t
-		a1 = oa1 + (oa2-oa1)*t
-	}
-	if of2 < near {
-		den := of1 - of2
-		if math.Abs(den) < 1e-9 {
-			return 0, 0, 0, 0, 0, 0, false
-		}
-		t := (clipNear - of2) / den
-		if t < 0 {
-			t = 0
-		}
-		if t > 1 {
-			t = 1
-		}
-		f2 = clipNear
-		s2 = os2 + (os1-os2)*t
-		a2 = oa2 + (oa1-oa2)*t
-	}
-	if f1 < near || f2 < near {
-		return 0, 0, 0, 0, 0, 0, false
-	}
-	return f1, s1, a1, f2, s2, a2, true
+	return scene.ClipSegmentToNearWithAttr(f1, s1, a1, f2, s2, a2, near)
 }
 
 type solidSpan struct {
@@ -11293,36 +11176,27 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 		pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, s1, s2
 		return pp
 	}
+	proj, status := scene.ProjectWallSegment(f1, s1, u1, f2, s2, u2, g.viewW, focal)
 	sx1 := float64(g.viewW)/2 - (s1/f1)*focal
 	sx2 := float64(g.viewW)/2 - (s2/f2)*focal
-	if !isFinite(sx1) || !isFinite(sx2) {
+	if status == scene.WallProjectionFlipped {
 		pp.logReason = "FLIPPED"
 		pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
 		return pp
 	}
-	minSX := int(math.Floor(math.Min(sx1, sx2)))
-	maxSX := int(math.Ceil(math.Max(sx1, sx2)))
-	if minSX < 0 {
-		minSX = 0
-	}
-	if maxSX >= g.viewW {
-		maxSX = g.viewW - 1
-	}
-	if minSX > maxSX {
+	if status == scene.WallProjectionOffscreen {
 		pp.logReason = "OFFSCREEN"
 		pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
 		return pp
 	}
-	invF1 := 1.0 / f1
-	invF2 := 1.0 / f2
-	pp.sx1 = sx1
-	pp.sx2 = sx2
-	pp.minSX = minSX
-	pp.maxSX = maxSX
-	pp.invF1 = invF1
-	pp.invF2 = invF2
-	pp.uOverF1 = u1 * invF1
-	pp.uOverF2 = u2 * invF2
+	pp.sx1 = proj.SX1
+	pp.sx2 = proj.SX2
+	pp.minSX = proj.MinX
+	pp.maxSX = proj.MaxX
+	pp.invF1 = proj.InvDepth1
+	pp.invF2 = proj.InvDepth2
+	pp.uOverF1 = proj.UOverDepth1
+	pp.uOverF2 = proj.UOverDepth2
 	pp.logZ1, pp.logZ2, pp.logX1, pp.logX2 = f1, f2, sx1, sx2
 	pp.ok = true
 	return pp
