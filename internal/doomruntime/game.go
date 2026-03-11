@@ -527,17 +527,11 @@ type game struct {
 	maskedMidSegsScratch         []maskedMidSeg
 	spriteTXScratch              []int
 	spriteTYScratch              []int
-	spriteSourceColumnScratch    []uint32
-	spriteColumnScratch          []uint32
-	billboardColumnRunsScratch   []billboardColumnRun
 	wallLayer                    *ebiten.Image
 	wallPix                      []byte
 	wallPix32                    []uint32
 	wallW                        int
 	wallH                        int
-	depthPix3D                   []uint32
-	depthPlanePix3D              []uint32
-	depthFrameStamp              uint16
 	wallDepthQCol                []uint16
 	wallDepthTopCol              []int
 	wallDepthBottomCol           []int
@@ -614,12 +608,6 @@ type game struct {
 	demoRNGCaptured              bool
 	demoTrace                    *demoTraceWriter
 	demoRecord                   []DemoTic
-}
-
-type billboardColumnRun struct {
-	x0 int
-	x1 int
-	tx int
 }
 
 type savedMapView struct {
@@ -2738,7 +2726,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.logWallCull(si, "OCCLUDED", pp.prepass.LogZ1, pp.prepass.LogZ2, pp.prepass.LogX1, pp.prepass.LogX2)
 			continue
 		}
-		if solidWall && g.wallSliceOcclusionEnabled() && !g.depthOcclusionEnabled() {
+		if solidWall && g.wallSliceOcclusionEnabled() {
 			allOcc := true
 			for _, vis := range visibleRanges {
 				visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.L, vis.R, worldTop, worldBottom, focal)
@@ -2890,41 +2878,34 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
 	g.drawMaskedMidSegs(focal)
-	if !g.depthOcclusionEnabled() {
-		g.buildMaskedMidClipColumns(focal)
-		g.billboardQueueCollect = true
-		g.billboardQueueScratch = g.billboardQueueScratch[:0]
-		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
-		g.billboardQueueCollect = false
-		sort.Slice(g.billboardQueueScratch, func(i, j int) bool {
-			return g.billboardQueueScratch[i].dist > g.billboardQueueScratch[j].dist
-		})
-		for _, qi := range g.billboardQueueScratch {
-			g.billboardReplayActive = true
-			g.billboardReplayKind = qi.kind
-			g.billboardReplayIndex = qi.idx
-			switch qi.kind {
-			case billboardQueueProjectiles:
-				g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-			case billboardQueueMonsters:
-				g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-			case billboardQueueWorldThings:
-				g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-			case billboardQueuePuffs:
-				g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
-			}
+	g.buildMaskedMidClipColumns(focal)
+	g.billboardQueueCollect = true
+	g.billboardQueueScratch = g.billboardQueueScratch[:0]
+	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+	g.billboardQueueCollect = false
+	sort.Slice(g.billboardQueueScratch, func(i, j int) bool {
+		return g.billboardQueueScratch[i].dist > g.billboardQueueScratch[j].dist
+	})
+	for _, qi := range g.billboardQueueScratch {
+		g.billboardReplayActive = true
+		g.billboardReplayKind = qi.kind
+		g.billboardReplayIndex = qi.idx
+		switch qi.kind {
+		case billboardQueueProjectiles:
+			g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+		case billboardQueueMonsters:
+			g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+		case billboardQueueWorldThings:
+			g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+		case billboardQueuePuffs:
+			g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 		}
-		g.billboardReplayActive = false
-		g.billboardQueueScratch = g.billboardQueueScratch[:0]
-	} else {
-		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 	}
+	g.billboardReplayActive = false
+	g.billboardQueueScratch = g.billboardQueueScratch[:0]
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
 	}
@@ -2970,46 +2951,6 @@ func (g *game) duplicateLowDetailColumns() {
 		for x := 1; x < g.viewW; x += 2 {
 			g.wallPix32[row+x] = g.wallPix32[row+x-1]
 		}
-	}
-}
-
-func (g *game) drawDepthBufferView() {
-	n := g.viewW * g.viewH
-	if n <= 0 || len(g.wallPix32) != n {
-		return
-	}
-	stamp := g.depthFrameStamp
-	var maxQ uint16
-	for i := 0; i < n; i++ {
-		d, ok := g.depthQAtStamped(i, stamp)
-		if !ok {
-			continue
-		}
-		if d > maxQ {
-			maxQ = d
-		}
-	}
-	if maxQ == 0 {
-		clear(g.wallPix32)
-		return
-	}
-	invMax := 1.0 / float64(maxQ)
-	for i := 0; i < n; i++ {
-		d, ok := g.depthQAtStamped(i, stamp)
-		if !ok {
-			g.wallPix32[i] = packRGBA(0, 0, 0)
-			continue
-		}
-		norm := float64(d) * invMax
-		if norm < 0 {
-			norm = 0
-		}
-		if norm > 1 {
-			norm = 1
-		}
-		// Near is bright, far is dark.
-		v := uint8((1.0 - norm) * 255.0)
-		g.wallPix32[i] = packRGBA(v, v, v)
 	}
 }
 
@@ -3098,7 +3039,6 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	}
 	if useTex {
 		g.drawBasicWallColumnTextured(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul, doomRow)
-		g.writeDepthColumn(x, y0, y1, depth)
 		return
 	}
 	rowStridePix := g.viewW
@@ -3113,7 +3053,6 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 			pix32[pixI] = basePacked
 			pixI += rowStridePix
 		}
-		g.writeDepthColumn(x, y0, y1, depth)
 		return
 	}
 	if shadeMul != 256 {
@@ -3128,7 +3067,6 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 		pix32[pixI] = basePacked
 		pixI += rowStridePix
 	}
-	g.writeDepthColumn(x, y0, y1, depth)
 }
 
 func (g *game) setWallDepthColumnMinQ(x, y0, y1 int, depthQ uint16) {
@@ -3163,7 +3101,7 @@ func (g *game) setWallDepthColumnClosedQ(x int, depthQ uint16) {
 }
 
 func (g *game) appendSpriteClipColumnSpan(x, y0, y1 int, depthQ uint16) {
-	if g == nil || g.depthOcclusionEnabled() || x < 0 || x >= len(g.maskedClipCols) || y0 > y1 {
+	if g == nil || x < 0 || x >= len(g.maskedClipCols) || y0 > y1 {
 		return
 	}
 	if y0 < 0 {
@@ -3185,7 +3123,7 @@ func (g *game) appendSpriteClipColumnSpan(x, y0, y1 int, depthQ uint16) {
 }
 
 func (g *game) markSpriteClipColumnClosed(x int, depthQ uint16) {
-	if g == nil || g.depthOcclusionEnabled() || x < 0 || x >= len(g.maskedClipCols) {
+	if g == nil || x < 0 || x >= len(g.maskedClipCols) {
 		return
 	}
 	g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
@@ -3196,7 +3134,7 @@ func (g *game) markSpriteClipColumnClosed(x int, depthQ uint16) {
 }
 
 func (g *game) appendSpritePortalColumnGap(x, openY0, openY1 int, depthQ uint16) {
-	if g == nil || g.depthOcclusionEnabled() || x < 0 || x >= len(g.maskedClipCols) {
+	if g == nil || x < 0 || x >= len(g.maskedClipCols) {
 		return
 	}
 	if openY0 < 0 {
@@ -3212,10 +3150,6 @@ func (g *game) appendSpritePortalColumnGap(x, openY0, openY1 int, depthQ uint16)
 		Closed:  false,
 		HasOpen: true,
 	})
-}
-
-func (g *game) depthOcclusionEnabled() bool {
-	return false
 }
 
 func (g *game) wallOcclusionEnabled() bool {
@@ -3247,209 +3181,16 @@ func (g *game) writeWallPixelPair(i int, p0, p1 uint32) {
 	g.wallPix32[i+1] = p1
 }
 
-func (g *game) writeDepthColumn(x, y0, y1 int, depth float64) {
-	if !g.depthOcclusionEnabled() {
-		return
-	}
-	if x < 0 || x >= g.viewW || y0 > y1 || len(g.depthPix3D) != g.viewW*g.viewH {
-		return
-	}
-	if y0 < 0 {
-		y0 = 0
-	}
-	if y1 >= g.viewH {
-		y1 = g.viewH - 1
-	}
-	if y0 > y1 {
-		return
-	}
-	pixI := y0*g.viewW + x
-	stamp := g.depthFrameStamp
-	d := encodeDepthQ(depth)
-	packed := packDepthStamped(d, stamp)
-	for y := y0; y <= y1; y++ {
-		g.depthPix3D[pixI] = packed
-		pixI += g.viewW
-	}
-}
-
-func (g *game) setDepthPixel(idx int, depth float64) {
-	if !g.depthOcclusionEnabled() {
-		return
-	}
-	g.setDepthPixelEncoded(idx, packDepthStamped(encodeDepthQ(depth), g.depthFrameStamp))
-}
-
-func (g *game) setDepthPixelEncoded(idx int, packed uint32) {
-	if !g.depthOcclusionEnabled() {
-		return
-	}
-	if idx < 0 || idx >= len(g.depthPix3D) {
-		return
-	}
-	g.depthPix3D[idx] = packed
-}
-
-func (g *game) setDepthPixelPairEncoded(idx int, packed uint32) {
-	if !g.depthOcclusionEnabled() {
-		return
-	}
-	if idx < 0 || idx+1 >= len(g.depthPix3D) {
-		return
-	}
-	ptr := unsafe.Pointer(&g.depthPix3D[idx])
-	if uintptr(ptr)%unsafe.Alignof(uint64(0)) == 0 {
-		pair := (uint64(packed) << 32) | uint64(packed)
-		*(*uint64)(ptr) = pair
-		return
-	}
-	g.depthPix3D[idx] = packed
-	g.depthPix3D[idx+1] = packed
-}
-
-func (g *game) setPlaneDepthMin(idx int, depth float64) {
-	if !g.depthOcclusionEnabled() {
-		return
-	}
-	if idx < 0 || idx >= len(g.depthPlanePix3D) {
-		return
-	}
-	stamp := g.depthFrameStamp
-	d := encodeDepthQ(depth)
-	g.setPlaneDepthMinEncoded(idx, stamp, d, packDepthStamped(d, stamp))
-}
-
-func (g *game) setPlaneDepthMinEncoded(idx int, stamp, d uint16, packed uint32) {
-	if !g.depthOcclusionEnabled() {
-		return
-	}
-	if idx < 0 || idx >= len(g.depthPlanePix3D) {
-		return
-	}
-	cur := g.depthPlanePix3D[idx]
-	if unpackDepthStamp(cur) != stamp || d < unpackDepthQ(cur) {
-		g.depthPlanePix3D[idx] = packed
-	}
-}
-
-func (g *game) setPlaneDepthMinPairEncoded(idx int, stamp, d uint16, packed uint32) {
-	if !g.depthOcclusionEnabled() {
-		return
-	}
-	if idx < 0 || idx+1 >= len(g.depthPlanePix3D) {
-		return
-	}
-	cur0 := g.depthPlanePix3D[idx]
-	cur1 := g.depthPlanePix3D[idx+1]
-	update0 := unpackDepthStamp(cur0) != stamp || d < unpackDepthQ(cur0)
-	update1 := unpackDepthStamp(cur1) != stamp || d < unpackDepthQ(cur1)
-	if !update0 && !update1 {
-		return
-	}
-	if update0 && update1 {
-		ptr := unsafe.Pointer(&g.depthPlanePix3D[idx])
-		if uintptr(ptr)%unsafe.Alignof(uint64(0)) == 0 {
-			pair := (uint64(packed) << 32) | uint64(packed)
-			*(*uint64)(ptr) = pair
-			return
-		}
-	}
-	if update0 {
-		g.depthPlanePix3D[idx] = packed
-	}
-	if update1 {
-		g.depthPlanePix3D[idx+1] = packed
-	}
-}
-
-func (g *game) depthQAtStamped(idx int, stamp uint16) (uint16, bool) {
-	if !g.depthOcclusionEnabled() {
-		return 0, false
-	}
-	if idx < 0 || idx >= len(g.depthPix3D) {
-		return 0, false
-	}
-	var (
-		best uint16
-		ok   bool
-	)
-	if cur := g.depthPix3D[idx]; unpackDepthStamp(cur) == stamp {
-		best = unpackDepthQ(cur)
-		ok = true
-	}
-	if idx < len(g.depthPlanePix3D) {
-		cur := g.depthPlanePix3D[idx]
-		if unpackDepthStamp(cur) != stamp {
-			return best, ok
-		}
-		pd := unpackDepthQ(cur)
-		if !ok || pd < best {
-			best = pd
-			ok = true
-		}
-	}
-	return best, ok
-}
-
-func (g *game) rowFullyOccludedDepthQ(depthQ, planeBiasQ uint16, rowBase, x0, x1 int) bool {
+func (g *game) rowFullyOccludedDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
 	if !g.billboardClippingEnabled() {
 		return false
 	}
-	if !g.depthOcclusionEnabled() {
-		if g == nil || g.viewW <= 0 {
-			return false
-		}
-		y := rowBase / g.viewW
-		for x := x0; x <= x1; x++ {
-			if !g.spriteWallClipOccludedAtXYDepth(x, y, depthQ) {
-				return false
-			}
-		}
-		return true
-	}
-	if x1 < x0 || rowBase < 0 {
+	if g == nil || g.viewW <= 0 || x1 < x0 || rowBase < 0 {
 		return false
 	}
-	stamp := g.depthFrameStamp
+	y := rowBase / g.viewW
 	for x := x0; x <= x1; x++ {
-		idx := rowBase + x
-		if idx < 0 || idx >= len(g.depthPix3D) {
-			return false
-		}
-		if cur := g.depthPix3D[idx]; unpackDepthStamp(cur) == stamp && depthQ > unpackDepthQ(cur) {
-			continue
-		}
-		if idx >= len(g.depthPlanePix3D) {
-			return false
-		}
-		cur := g.depthPlanePix3D[idx]
-		if unpackDepthStamp(cur) != stamp {
-			return false
-		}
-		threshold := addDepthQ(unpackDepthQ(cur), planeBiasQ)
-		if depthQ > threshold {
-			continue
-		}
-		return false
-	}
-	return true
-}
-
-func (g *game) rowFullyOccludedByWallsDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
-	if !g.depthOcclusionEnabled() {
-		return false
-	}
-	if x1 < x0 || rowBase < 0 {
-		return false
-	}
-	stamp := g.depthFrameStamp
-	for x := x0; x <= x1; x++ {
-		idx := rowBase + x
-		if idx < 0 || idx >= len(g.depthPix3D) {
-			return false
-		}
-		cur := g.depthPix3D[idx]
-		if unpackDepthStamp(cur) != stamp || depthQ <= unpackDepthQ(cur) {
+		if !g.spriteWallClipOccludedAtXYDepth(x, y, depthQ) {
 			return false
 		}
 	}
@@ -3480,36 +3221,17 @@ func solidFullyCoveredFast(spans []solidSpan, l, r int) bool {
 	return solidFullyCovered(spans, l, r)
 }
 
-func (g *game) rowPointOccludedByWallsDepthQ(depthQ uint16, rowBase, x int) bool {
-	if g == nil || g.viewW <= 0 || g.viewH <= 0 || x < 0 || x >= g.viewW || rowBase < 0 {
-		return true
-	}
-	if g.depthOcclusionEnabled() {
-		idx := rowBase + x
-		if idx < 0 || idx >= len(g.depthPix3D) {
-			return true
-		}
-		cur := g.depthPix3D[idx]
-		return unpackDepthStamp(cur) == g.depthFrameStamp && depthQ > unpackDepthQ(cur)
-	}
-	y := rowBase / g.viewW
-	return g.spriteWallClipOccludedAtXYDepth(x, y, depthQ)
-}
-
 func (g *game) rowFullyOccludedByWallsFastDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
 	if x1 < x0 || rowBase < 0 {
 		return false
 	}
 	mid := (x0 + x1) >> 1
-	if !g.rowPointOccludedByWallsDepthQ(depthQ, rowBase, x0) ||
-		!g.rowPointOccludedByWallsDepthQ(depthQ, rowBase, x1) ||
-		!g.rowPointOccludedByWallsDepthQ(depthQ, rowBase, mid) {
+	y := rowBase / g.viewW
+	if !g.spriteWallClipOccludedAtXYDepth(x0, y, depthQ) ||
+		!g.spriteWallClipOccludedAtXYDepth(x1, y, depthQ) ||
+		!g.spriteWallClipOccludedAtXYDepth(mid, y, depthQ) {
 		return false
 	}
-	if g.depthOcclusionEnabled() {
-		return g.rowFullyOccludedByWallsDepthQ(depthQ, rowBase, x0, x1)
-	}
-	y := rowBase / g.viewW
 	for x := x0; x <= x1; x++ {
 		if !g.spriteWallClipOccludedAtXYDepth(x, y, depthQ) {
 			return false
@@ -3522,20 +3244,8 @@ func (g *game) spriteOccludedAt(depth float64, idx int, planeBias float64) bool 
 	if !g.billboardClippingEnabled() {
 		return false
 	}
-	if !g.depthOcclusionEnabled() {
-		return g.spriteWallClipOccludedAtIndexDepth(idx, encodeDepthQ(depth))
-	}
-	return g.spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, g.depthFrameStamp, encodeDepthQ(depth), encodeDepthBiasQ(planeBias), idx)
-}
-
-func (g *game) spriteOccludedDepthQAt(depthPix, depthPlanePix []uint32, stamp, depthQ, planeBiasQ uint16, idx int) bool {
-	if !g.billboardClippingEnabled() {
-		return false
-	}
-	if !g.depthOcclusionEnabled() {
-		return g.spriteWallClipOccludedAtIndexDepth(idx, depthQ)
-	}
-	return spriteOccludedDepthQAtCore(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, idx)
+	_ = planeBias
+	return g.spriteWallClipOccludedAtIndexDepth(idx, encodeDepthQ(depth))
 }
 
 func (g *game) spriteWallClipOccludedAtIndexDepth(idx int, depthQ uint16) bool {
@@ -3630,21 +3340,6 @@ func (g *game) spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1 int, depthQ uint16
 	})
 }
 
-func (g *game) spriteWallClipBBoxHasAnyOccluder(x0, x1, y0, y1 int, depthQ uint16) bool {
-	if !g.billboardClippingEnabled() || g == nil {
-		return false
-	}
-	return scene.BBoxHasAnyOccluder(x0, x1, y0, y1, g.viewW, g.viewH, func(x, y0, y1 int) bool {
-		var masked []scene.MaskedClipSpan
-		if x >= len(g.maskedClipCols) {
-			masked = nil
-		} else {
-			masked = g.maskedClipCols[x]
-		}
-		return scene.SpriteColumnHasAnyOccluder(g.wallDepthColumnAt(x), masked, y0, y1, depthQ)
-	})
-}
-
 func (g *game) spriteOpaqueRectsFullyOccluded(rects []spriteOpaqueRect, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int, depthQ uint16) bool {
 	if len(rects) == 0 {
 		return false
@@ -3661,22 +3356,6 @@ func (g *game) spriteOpaqueRectsFullyOccluded(rects []spriteOpaqueRect, dstX, ds
 		}
 	}
 	return anyVisibleRect
-}
-
-func (g *game) spriteOpaqueRectsHaveAnyOccluder(rects []spriteOpaqueRect, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int, depthQ uint16) bool {
-	if len(rects) == 0 {
-		return false
-	}
-	for _, rect := range rects {
-		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
-		if !ok {
-			continue
-		}
-		if g.spriteWallClipBBoxHasAnyOccluder(x0, x1, y0, y1, depthQ) {
-			return true
-		}
-	}
-	return false
 }
 
 func (g *game) spriteWallClipPointOccluded(x, y int, depthQ uint16) bool {
@@ -3841,10 +3520,6 @@ func puffItemScreenBounds(it projectedPuffItem, focal float64, viewW, viewH int)
 		return scene.SpritePatchBoundsFromScale(it.sx, it.sy, scale, it.spriteTex.Width, it.spriteTex.Height, it.spriteTex.OffsetX, it.spriteTex.OffsetY, it.clipTop, it.clipBottom, viewW, viewH)
 	}
 	return scene.CircleScreenBounds(it.sx, it.sy, it.r, it.clipTop, it.clipBottom, viewW, viewH)
-}
-
-func spriteOccludedDepthQAtCore(depthPix, depthPlanePix []uint32, stamp, depthQ, planeBiasQ uint16, idx int) bool {
-	return scene.SpriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, idx)
 }
 
 func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, focal float64, tex WallTexture, shadeMul, doomRow int) {
@@ -4136,9 +3811,7 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	texV := texMid - ((cy - (float64(y0) + 0.5)) * rowScale)
 	texVFixed := floorFixed(texV)
 	texVStepFixed := floorFixed(rowScale)
-	stamp := g.depthFrameStamp
 	depthQ := encodeDepthQ(depth)
-	depthPacked := packDepthStamped(depthQ, stamp)
 	shadeMulU := uint32(shadeMul)
 	for y := y0; y <= y1; y++ {
 		ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
@@ -4148,13 +3821,12 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 		if hasRGBA {
 			opaque = texRGBA[ti*4+3] != 0
 		}
-		if opaque && !g.spriteOccludedDepthQAt(g.depthPix3D, g.depthPlanePix3D, stamp, depthQ, 0, pixI) {
+		if opaque && !g.spriteWallClipOccludedAtIndexDepth(pixI, depthQ) {
 			if doomColormapEnabled {
 				pix32[pixI] = shadePackedDOOMColormapRow(src, doomRow)
 			} else {
 				pix32[pixI] = shadePackedRGBA(src, shadeMulU)
 			}
-			g.setDepthPixelEncoded(pixI, depthPacked)
 		}
 		pixI += rowStridePix
 		texVFixed += texVStepFixed
@@ -4192,24 +3864,8 @@ func encodeDepthQ(depth float64) uint16 {
 	return uint16(q)
 }
 
-func encodeDepthBiasQ(bias float64) uint16 {
-	return scene.EncodeDepthBiasQ(bias)
-}
-
 func addDepthQ(a, b uint16) uint16 {
 	return scene.AddDepthQ(a, b)
-}
-
-func packDepthStamped(depth, stamp uint16) uint32 {
-	return scene.PackDepthStamped(depth, stamp)
-}
-
-func unpackDepthStamp(v uint32) uint16 {
-	return scene.UnpackDepthStamp(v)
-}
-
-func unpackDepthQ(v uint32) uint16 {
-	return scene.UnpackDepthQ(v)
 }
 
 func shadePackedRGBABig(src, mul uint32) uint32 {
@@ -4818,44 +4474,6 @@ func (g *game) ensureSpriteTYScratch(n int) []int {
 	return g.spriteTYScratch
 }
 
-func (g *game) ensureSpriteColumnScratch(n int) []uint32 {
-	if n <= 0 {
-		return nil
-	}
-	if cap(g.spriteColumnScratch) < n {
-		g.spriteColumnScratch = make([]uint32, n)
-	} else {
-		g.spriteColumnScratch = g.spriteColumnScratch[:n]
-		clear(g.spriteColumnScratch)
-	}
-	return g.spriteColumnScratch
-}
-
-func (g *game) ensureSpriteSourceColumnScratch(n int) []uint32 {
-	if n <= 0 {
-		return nil
-	}
-	if cap(g.spriteSourceColumnScratch) < n {
-		g.spriteSourceColumnScratch = make([]uint32, n)
-	} else {
-		g.spriteSourceColumnScratch = g.spriteSourceColumnScratch[:n]
-		clear(g.spriteSourceColumnScratch)
-	}
-	return g.spriteSourceColumnScratch
-}
-
-func (g *game) ensureBillboardColumnRunsScratch(n int) []billboardColumnRun {
-	if n <= 0 {
-		return nil
-	}
-	if cap(g.billboardColumnRunsScratch) < n {
-		g.billboardColumnRunsScratch = make([]billboardColumnRun, n)
-	} else {
-		g.billboardColumnRunsScratch = g.billboardColumnRunsScratch[:n]
-	}
-	return g.billboardColumnRunsScratch
-}
-
 func (g *game) ensurePlaneRenderScratch(n int) ([]uint32, [][]uint32, [][]byte, []bool) {
 	if n <= 0 {
 		return nil, nil, nil, nil
@@ -4926,99 +4544,6 @@ func (g *game) ensurePuffItemsScratch(n int) []projectedPuffItem {
 	}
 	g.puffItemsScratch = g.puffItemsScratch[:0]
 	return g.puffItemsScratch
-}
-
-func (g *game) drawBillboardSpriteRowsDirect(src32 []uint32, srcIndexed, srcMask []byte, tw int, txLUT, tyLUT []int, x0, x1, y0, y1 int, shadeMul uint32) {
-	if g == nil || x0 > x1 || y0 > y1 || tw <= 0 {
-		return
-	}
-	useIndexed := len(srcIndexed) == len(srcMask) && len(srcIndexed) >= tw
-	viewW := g.viewW
-	pix32 := g.wallPix32
-	fullbright := shadeMul >= 256
-	var shadeRow []uint32
-	if useIndexed && wallShadePackedOK {
-		if shadeMul > 256 {
-			shadeMul = 256
-		}
-		shadeRow = wallShadePackedLUT[shadeMul][:]
-	}
-	useShadeRow := len(shadeRow) == 256
-	height := y1 - y0 + 1
-	th := 0
-	if useIndexed && tw > 0 && len(srcIndexed) >= tw {
-		th = len(srcIndexed) / tw
-	} else if len(src32) >= tw && tw > 0 {
-		th = len(src32) / tw
-	}
-	if th <= 0 {
-		return
-	}
-	sourceColumnScratch := g.ensureSpriteSourceColumnScratch(th)
-	columnScratch := g.ensureSpriteColumnScratch(height)
-	runs := g.ensureBillboardColumnRunsScratch(len(txLUT))
-	runCount := 0
-	for x := x0; x <= x1; {
-		tx := txLUT[x-x0]
-		runEnd := x
-		for runEnd+1 <= x1 && txLUT[runEnd+1-x0] == tx {
-			runEnd++
-		}
-		runs[runCount] = billboardColumnRun{x0: x, x1: runEnd, tx: tx}
-		runCount++
-		x = runEnd + 1
-	}
-	for i := 0; i < runCount; i++ {
-		run := runs[i]
-		runLen := run.x1 - run.x0 + 1
-		clear(sourceColumnScratch)
-		for ty := 0; ty < th; ty++ {
-			s := ty*tw + run.tx
-			if useIndexed {
-				if srcMask[s] == 0 {
-					continue
-				}
-				if useShadeRow {
-					sourceColumnScratch[ty] = shadeRow[srcIndexed[s]]
-				} else {
-					sourceColumnScratch[ty] = shadePaletteIndexPacked(srcIndexed[s], shadeMul)
-				}
-				continue
-			}
-			p := src32[s]
-			if ((p >> pixelAShift) & 0xFF) == 0 {
-				continue
-			}
-			if fullbright {
-				sourceColumnScratch[ty] = p | pixelOpaqueA
-			} else {
-				sourceColumnScratch[ty] = shadePackedRGBA(p, shadeMul)
-			}
-		}
-		if runLen == 1 {
-			for y := y0; y <= y1; y++ {
-				if p := sourceColumnScratch[tyLUT[y-y0]]; p != 0 {
-					pix32[y*viewW+run.x0] = p
-				}
-			}
-			continue
-		}
-		clear(columnScratch)
-		for y := y0; y <= y1; y++ {
-			if p := sourceColumnScratch[tyLUT[y-y0]]; p != 0 {
-				columnScratch[y-y0] = p
-			}
-		}
-		for dx := run.x0; dx <= run.x1; dx++ {
-			pixI := y0*viewW + dx
-			for i := 0; i < height; i++ {
-				if p := columnScratch[i]; p != 0 {
-					pix32[pixI] = p
-				}
-				pixI += viewW
-			}
-		}
-	}
 }
 
 func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []solidSpan, src32 []uint32, srcIndexed, srcMask []byte, shadeMul uint32, shadeRow []uint32) {
@@ -6871,19 +6396,10 @@ func drawCircleApprox(screen *ebiten.Image, cx, cy, r float64, clr color.RGBA) {
 }
 
 func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near float64) {
-	const planeDepthBias = 24.0
-	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
-	useDepth := g.depthOcclusionEnabled()
-	depthPix := g.depthPix3D
-	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
-	stamp := g.depthFrameStamp
 	if len(wallPix) != viewW*viewH {
-		return
-	}
-	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	replay := g.billboardReplayActive && g.billboardReplayKind == billboardQueueProjectiles
@@ -7045,24 +6561,22 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 		if g.billboardQueueCollect {
 			for i := range items {
-				if !useDepth {
-					x0, x1, y0, y1, ok := projectileItemScreenBounds(items[i], viewW, viewH)
-					if ok {
-						depthQ := encodeDepthQ(items[i].dist)
-						if items[i].hasOpaque && len(items[i].opaque.rects) > 0 {
-							th := items[i].spriteTex.Height
-							if th > 0 {
-								scale := items[i].h / float64(th)
-								dstX := items[i].sx - float64(items[i].spriteTex.OffsetX)*scale
-								dstY := items[i].yb - float64(items[i].spriteTex.OffsetY)*scale
-								if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
-									continue
-								}
+				x0, x1, y0, y1, ok := projectileItemScreenBounds(items[i], viewW, viewH)
+				if ok {
+					depthQ := encodeDepthQ(items[i].dist)
+					if items[i].hasOpaque && len(items[i].opaque.rects) > 0 {
+						th := items[i].spriteTex.Height
+						if th > 0 {
+							scale := items[i].h / float64(th)
+							dstX := items[i].sx - float64(items[i].spriteTex.OffsetX)*scale
+							dstY := items[i].yb - float64(items[i].spriteTex.OffsetY)*scale
+							if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
+								continue
 							}
 						}
-						if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
-							continue
-						}
+					}
+					if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+						continue
 					}
 				}
 				g.billboardQueueScratch = append(g.billboardQueueScratch, billboardQueueItem{
@@ -7076,7 +6590,6 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 	}
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
-		depthPacked := packDepthStamped(depthQ, stamp)
 		shadeMul := uint32(256)
 		if !it.fullBright {
 			shadeMul = uint32(combineShadeMul(int(monsterShadeFactor(it.dist, near)*256.0), int(it.lightMul)))
@@ -7131,7 +6644,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 				if y0 > y1 {
 					continue
 				}
-				if !useDepth && ((it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsFullyOccluded(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ)) {
+				if (it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsFullyOccluded(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 					continue
 				}
 				txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
@@ -7163,121 +6676,37 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 						continue
 					}
 				}
-				if !useDepth && len(it.clipSpans) == 0 && !((it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsHaveAnyOccluder(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipBBoxHasAnyOccluder(x0, x1, y0, y1, depthQ)) {
-					g.drawBillboardSpriteRowsDirect(src32, srcIndexed, srcMask, tw, txLUT, tyLUT, x0, x1, y0, y1, shadeMul)
-					continue
-				}
 				for y := y0; y <= y1; y++ {
 					ty := tyLUT[y-y0]
 					row := y * viewW
-					if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+					if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
 						continue
 					}
-					if !useDepth {
-						rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
-						g.solidClipScratch = rowSpans
+					rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
+					g.solidClipScratch = rowSpans
+					if len(rowSpans) == 0 {
+						continue
+					}
+					if it.hasOpaque && ty >= 0 && ty < len(it.opaque.rowMin) {
+						minTex := int(it.opaque.rowMin[ty])
+						maxTex := int(it.opaque.rowMax[ty])
+						if maxTex < minTex {
+							continue
+						}
+						filtered := g.solidClipScratch[:0]
+						for _, sp := range rowSpans {
+							l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
+							if ok {
+								filtered = append(filtered, solidSpan{L: l, R: r})
+							}
+						}
+						g.solidClipScratch = filtered
+						rowSpans = filtered
 						if len(rowSpans) == 0 {
 							continue
 						}
-						if it.hasOpaque && ty >= 0 && ty < len(it.opaque.rowMin) {
-							minTex := int(it.opaque.rowMin[ty])
-							maxTex := int(it.opaque.rowMax[ty])
-							if maxTex < minTex {
-								continue
-							}
-							filtered := g.solidClipScratch[:0]
-							for _, sp := range rowSpans {
-								l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
-								if ok {
-									filtered = append(filtered, solidSpan{L: l, R: r})
-								}
-							}
-							g.solidClipScratch = filtered
-							rowSpans = filtered
-							if len(rowSpans) == 0 {
-								continue
-							}
-						}
-						g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
-						continue
 					}
-					for x := x0; x <= x1; {
-						if x+1 <= x1 {
-							in0 := xInSolidSpans(x, it.clipSpans)
-							in1 := xInSolidSpans(x+1, it.clipSpans)
-							if !in0 && !in1 {
-								x += 2
-								continue
-							}
-							i0 := row + x
-							i1 := i0 + 1
-							occ0 := !in0 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
-							occ1 := !in1 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
-							if !occ0 && !occ1 {
-								p0 := src32[ty*tw+txLUT[x-x0]]
-								p1 := src32[ty*tw+txLUT[x+1-x0]]
-								a0 := ((p0 >> pixelAShift) & 0xFF) != 0
-								a1 := ((p1 >> pixelAShift) & 0xFF) != 0
-								if a0 && a1 {
-									if shadeMul >= 256 {
-										g.writeWallPixelPair(i0, p0|pixelOpaqueA, p1|pixelOpaqueA)
-									} else {
-										g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
-									}
-									g.setDepthPixelPairEncoded(i0, depthPacked)
-									x += 2
-									continue
-								}
-								if a0 {
-									if shadeMul >= 256 {
-										g.writeWallPixel(i0, p0|pixelOpaqueA)
-									} else {
-										g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-									}
-									g.setDepthPixelEncoded(i0, depthPacked)
-								}
-								if a1 {
-									if shadeMul >= 256 {
-										g.writeWallPixel(i1, p1|pixelOpaqueA)
-									} else {
-										g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-									}
-									g.setDepthPixelEncoded(i1, depthPacked)
-								}
-								x += 2
-								continue
-							}
-							if !occ0 {
-								p0 := src32[ty*tw+txLUT[x-x0]]
-								if ((p0 >> pixelAShift) & 0xFF) != 0 {
-									g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-									g.setDepthPixelEncoded(i0, depthPacked)
-								}
-							}
-							if !occ1 {
-								p1 := src32[ty*tw+txLUT[x+1-x0]]
-								if ((p1 >> pixelAShift) & 0xFF) != 0 {
-									g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-									g.setDepthPixelEncoded(i1, depthPacked)
-								}
-							}
-							x += 2
-							continue
-						}
-						i := row + x
-						if !xInSolidSpans(x, it.clipSpans) {
-							x++
-							continue
-						}
-						if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
-							p := src32[ty*tw+txLUT[x-x0]]
-							if ((p >> pixelAShift) & 0xFF) != 0 {
-								g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
-								g.setDepthPixelEncoded(i, depthPacked)
-							}
-						}
-						x++
-					}
+					g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
 				}
 				continue
 			}
@@ -7310,7 +6739,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		rc := uint8((uint32(it.clr.R) * shadeMul) >> 8)
@@ -7319,7 +6748,7 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 		for y := y0; y <= y1; y++ {
 			dy := (float64(y) + 0.5) - cy
 			row := y * viewW
-			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
 				continue
 			}
 			for x := x0; x <= x1; x++ {
@@ -7331,11 +6760,10 @@ func (g *game) drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near 
 					continue
 				}
 				i := row + x
-				if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+				if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
 					continue
 				}
 				g.writeWallPixel(i, packRGBA(rc, gc, b))
-				g.setDepthPixelEncoded(i, depthPacked)
 			}
 		}
 	}
@@ -7564,19 +6992,10 @@ func (g *game) tickHitscanPuffs() {
 }
 
 func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64) {
-	const planeDepthBias = 16.0
-	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
-	useDepth := g.depthOcclusionEnabled()
-	depthPix := g.depthPix3D
-	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
-	stamp := g.depthFrameStamp
 	if len(wallPix) != viewW*viewH {
-		return
-	}
-	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	replay := g.billboardReplayActive && g.billboardReplayKind == billboardQueuePuffs
@@ -7662,11 +7081,9 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 		sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 		if g.billboardQueueCollect {
 			for i := range items {
-				if !useDepth {
-					x0, x1, y0, y1, ok := puffItemScreenBounds(items[i], focal, viewW, viewH)
-					if ok && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
-						continue
-					}
+				x0, x1, y0, y1, ok := puffItemScreenBounds(items[i], focal, viewW, viewH)
+				if ok && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
+					continue
 				}
 				g.billboardQueueScratch = append(g.billboardQueueScratch, billboardQueueItem{
 					dist: items[i].dist,
@@ -7718,7 +7135,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 					if y0 > y1 {
 						continue
 					}
-					if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+					if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 						continue
 					}
 					txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
@@ -7746,7 +7163,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 					for y := y0; y <= y1; y++ {
 						ty := tyLUT[y-y0]
 						row := y * viewW
-						if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+						if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
 							continue
 						}
 						for x := x0; x <= x1; x++ {
@@ -7754,7 +7171,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 								continue
 							}
 							i := row + x
-							if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+							if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
 								continue
 							}
 							pix := src32[ty*tw+txLUT[x-x0]]
@@ -7794,13 +7211,13 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		for y := y0; y <= y1; y++ {
 			dy := (float64(y) + 0.5) - it.sy
 			row := y * viewW
-			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
 				continue
 			}
 			for x := x0; x <= x1; x++ {
@@ -7812,7 +7229,7 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 					continue
 				}
 				i := row + x
-				if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+				if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
 					continue
 				}
 				if it.kind == hitscanFxBlood {
@@ -7826,19 +7243,10 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 }
 
 func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near float64) {
-	const planeDepthBias = 32.0
-	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
-	useDepth := g.depthOcclusionEnabled()
-	depthPix := g.depthPix3D
-	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
-	stamp := g.depthFrameStamp
 	if len(wallPix) != viewW*viewH {
-		return
-	}
-	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	replay := g.billboardReplayActive && g.billboardReplayKind == billboardQueueMonsters
@@ -7943,22 +7351,20 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 		if g.billboardQueueCollect {
 			for i := range items {
-				if !useDepth {
-					x0, x1, y0, y1, ok := monsterItemScreenBounds(items[i], viewW, viewH)
-					if ok {
-						depthQ := encodeDepthQ(items[i].dist)
-						th := items[i].tex.Height
-						if items[i].hasOpaque && len(items[i].opaque.rects) > 0 && th > 0 {
-							scale := items[i].h / float64(th)
-							dstX := items[i].sx - float64(items[i].tex.OffsetX)*scale
-							dstY := floorSpriteTop(float64(th)*scale, items[i].yb)
-							if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
-								continue
-							}
-						}
-						if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+				x0, x1, y0, y1, ok := monsterItemScreenBounds(items[i], viewW, viewH)
+				if ok {
+					depthQ := encodeDepthQ(items[i].dist)
+					th := items[i].tex.Height
+					if items[i].hasOpaque && len(items[i].opaque.rects) > 0 && th > 0 {
+						scale := items[i].h / float64(th)
+						dstX := items[i].sx - float64(items[i].tex.OffsetX)*scale
+						dstY := floorSpriteTop(float64(th)*scale, items[i].yb)
+						if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
 							continue
 						}
+					}
+					if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+						continue
 					}
 				}
 				g.billboardQueueScratch = append(g.billboardQueueScratch, billboardQueueItem{
@@ -7972,7 +7378,6 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 	}
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
-		depthPacked := packDepthStamped(depthQ, stamp)
 		th := it.tex.Height
 		tw := it.tex.Width
 		if th <= 0 || tw <= 0 {
@@ -8020,7 +7425,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && ((it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsFullyOccluded(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ)) {
+		if (it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsFullyOccluded(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		shadeMul := uint32(256)
@@ -8078,16 +7483,7 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				y0,
 				y1,
 				depthQ,
-				depthPacked,
-				stamp,
-				planeBiasQ,
-				depthPix,
-				depthPlanePix,
 			)
-			continue
-		}
-		if !it.shadow && !useDepth && len(it.clipSpans) == 0 && !((it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsHaveAnyOccluder(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipBBoxHasAnyOccluder(x0, x1, y0, y1, depthQ)) {
-			g.drawBillboardSpriteRowsDirect(src32, srcIndexed, srcMask, tw, txLUT, tyLUT, x0, x1, y0, y1, shadeMul)
 			continue
 		}
 		if it.shadow {
@@ -8111,127 +7507,34 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 		for y := y0; y <= y1; y++ {
 			ty := tyLUT[y-y0]
 			row := y * viewW
-			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
 				continue
 			}
-			if !useDepth {
-				rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
-				g.solidClipScratch = rowSpans
+			rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
+			g.solidClipScratch = rowSpans
+			if len(rowSpans) == 0 {
+				continue
+			}
+			if it.hasOpaque && ty >= 0 && ty < len(it.opaque.rowMin) {
+				minTex := int(it.opaque.rowMin[ty])
+				maxTex := int(it.opaque.rowMax[ty])
+				if maxTex < minTex {
+					continue
+				}
+				filtered := g.solidClipScratch[:0]
+				for _, sp := range rowSpans {
+					l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
+					if ok {
+						filtered = append(filtered, solidSpan{L: l, R: r})
+					}
+				}
+				g.solidClipScratch = filtered
+				rowSpans = filtered
 				if len(rowSpans) == 0 {
 					continue
 				}
-				if it.hasOpaque && ty >= 0 && ty < len(it.opaque.rowMin) {
-					minTex := int(it.opaque.rowMin[ty])
-					maxTex := int(it.opaque.rowMax[ty])
-					if maxTex < minTex {
-						continue
-					}
-					filtered := g.solidClipScratch[:0]
-					for _, sp := range rowSpans {
-						l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
-						if ok {
-							filtered = append(filtered, solidSpan{L: l, R: r})
-						}
-					}
-					g.solidClipScratch = filtered
-					rowSpans = filtered
-					if len(rowSpans) == 0 {
-						continue
-					}
-				}
-				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
-				continue
 			}
-			for x := x0; x <= x1; {
-				if x+1 <= x1 {
-					in0 := xInSolidSpans(x, it.clipSpans)
-					in1 := xInSolidSpans(x+1, it.clipSpans)
-					if !in0 && !in1 {
-						x += 2
-						continue
-					}
-					i0 := row + x
-					i1 := i0 + 1
-					occ0 := !in0 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
-					occ1 := !in1 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
-					if !occ0 && !occ1 {
-						p0 := src32[ty*tw+txLUT[x-x0]]
-						p1 := src32[ty*tw+txLUT[x+1-x0]]
-						a0 := ((p0 >> pixelAShift) & 0xFF) != 0
-						a1 := ((p1 >> pixelAShift) & 0xFF) != 0
-						if a0 && a1 {
-							if it.shadow {
-								g.writeFuzzPixel(x, y, i0)
-								g.writeFuzzPixel(x+1, y, i1)
-							} else {
-								g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
-							}
-							g.setDepthPixelPairEncoded(i0, depthPacked)
-							x += 2
-							continue
-						}
-						if a0 {
-							if it.shadow {
-								g.writeFuzzPixel(x, y, i0)
-							} else {
-								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-							}
-							g.setDepthPixelEncoded(i0, depthPacked)
-						}
-						if a1 {
-							if it.shadow {
-								g.writeFuzzPixel(x+1, y, i1)
-							} else {
-								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-							}
-							g.setDepthPixelEncoded(i1, depthPacked)
-						}
-						x += 2
-						continue
-					}
-					if !occ0 {
-						p0 := src32[ty*tw+txLUT[x-x0]]
-						if ((p0 >> pixelAShift) & 0xFF) != 0 {
-							if it.shadow {
-								g.writeFuzzPixel(x, y, i0)
-							} else {
-								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-							}
-							g.setDepthPixelEncoded(i0, depthPacked)
-						}
-					}
-					if !occ1 {
-						p1 := src32[ty*tw+txLUT[x+1-x0]]
-						if ((p1 >> pixelAShift) & 0xFF) != 0 {
-							if it.shadow {
-								g.writeFuzzPixel(x+1, y, i1)
-							} else {
-								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-							}
-							g.setDepthPixelEncoded(i1, depthPacked)
-						}
-					}
-					x += 2
-					continue
-				}
-				i := row + x
-				if !xInSolidSpans(x, it.clipSpans) {
-					x++
-					continue
-				}
-				if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
-					p := src32[ty*tw+txLUT[x-x0]]
-					if ((p >> pixelAShift) & 0xFF) != 0 {
-						if it.shadow {
-							g.writeFuzzPixel(x, y, i)
-						} else {
-							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
-						}
-						g.setDepthPixelEncoded(i, depthPacked)
-					}
-				}
-				x++
-			}
+			g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
 		}
 	}
 }
@@ -8243,10 +7546,6 @@ func (g *game) drawShadowMonsterSourcePort(
 	txLUT, tyLUT []int,
 	x0, x1, y0, y1 int,
 	depthQ uint16,
-	depthPacked uint32,
-	stamp uint16,
-	planeBiasQ uint16,
-	depthPix, depthPlanePix []uint32,
 ) {
 	if g == nil || g.viewW <= 0 || g.viewH <= 0 || x0 > x1 || y0 > y1 {
 		return
@@ -8343,11 +7642,10 @@ func (g *game) drawShadowMonsterSourcePort(
 						continue
 					}
 					i := row + x
-					if g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
+					if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
 						continue
 					}
 					g.writeWallPixel(i, fuzzPix)
-					g.setDepthPixelEncoded(i, depthPacked)
 				}
 			}
 		}
@@ -8355,19 +7653,10 @@ func (g *game) drawShadowMonsterSourcePort(
 }
 
 func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near float64) {
-	const planeDepthBias = 64.0
-	planeBiasQ := encodeDepthBiasQ(planeDepthBias)
-	useDepth := g.depthOcclusionEnabled()
-	depthPix := g.depthPix3D
-	depthPlanePix := g.depthPlanePix3D
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
-	stamp := g.depthFrameStamp
 	if len(wallPix) != viewW*viewH {
-		return
-	}
-	if useDepth && len(depthPix) != viewW*viewH {
 		return
 	}
 	replay := g.billboardReplayActive && g.billboardReplayKind == billboardQueueWorldThings
@@ -8455,22 +7744,20 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		sort.Slice(items, func(i, j int) bool { return items[i].dist > items[j].dist })
 		if g.billboardQueueCollect {
 			for i := range items {
-				if !useDepth {
-					x0, x1, y0, y1, ok := thingItemScreenBounds(items[i], viewW, viewH)
-					if ok {
-						depthQ := encodeDepthQ(items[i].dist)
-						th := items[i].tex.Height
-						if items[i].hasOpaque && len(items[i].opaque.rects) > 0 && th > 0 {
-							scale := items[i].h / float64(th)
-							dstX := items[i].sx - float64(items[i].tex.OffsetX)*scale
-							dstY := floorSpriteTop(float64(th)*scale, items[i].yb)
-							if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
-								continue
-							}
-						}
-						if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+				x0, x1, y0, y1, ok := thingItemScreenBounds(items[i], viewW, viewH)
+				if ok {
+					depthQ := encodeDepthQ(items[i].dist)
+					th := items[i].tex.Height
+					if items[i].hasOpaque && len(items[i].opaque.rects) > 0 && th > 0 {
+						scale := items[i].h / float64(th)
+						dstX := items[i].sx - float64(items[i].tex.OffsetX)*scale
+						dstY := floorSpriteTop(float64(th)*scale, items[i].yb)
+						if g.spriteOpaqueRectsFullyOccluded(items[i].opaque.rects, dstX, dstY, scale, items[i].clipTop, items[i].clipBottom, viewW, viewH, depthQ) {
 							continue
 						}
+					}
+					if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+						continue
 					}
 				}
 				g.billboardQueueScratch = append(g.billboardQueueScratch, billboardQueueItem{
@@ -8484,7 +7771,6 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 	}
 	for _, it := range items {
 		depthQ := encodeDepthQ(it.dist)
-		depthPacked := packDepthStamped(depthQ, stamp)
 		th := it.tex.Height
 		tw := it.tex.Width
 		if th <= 0 || tw <= 0 {
@@ -8532,7 +7818,7 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 		if y0 > y1 {
 			continue
 		}
-		if !useDepth && ((it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsFullyOccluded(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ)) {
+		if (it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsFullyOccluded(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		shadeMul := uint32(256)
@@ -8575,121 +7861,37 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				continue
 			}
 		}
-		if !useDepth && len(it.clipSpans) == 0 && !((it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsHaveAnyOccluder(it.opaque.rects, dstX, dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, depthQ)) || g.spriteWallClipBBoxHasAnyOccluder(x0, x1, y0, y1, depthQ)) {
-			g.drawBillboardSpriteRowsDirect(src32, srcIndexed, srcMask, tw, txLUT, tyLUT, x0, x1, y0, y1, shadeMul)
-			continue
-		}
 		for y := y0; y <= y1; y++ {
 			ty := tyLUT[y-y0]
 			row := y * viewW
-			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, planeBiasQ, row, x0, x1) {
+			if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
 				continue
 			}
-			if !useDepth {
-				rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
-				g.solidClipScratch = rowSpans
+			rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, it.clipSpans, g.solidClipScratch[:0])
+			g.solidClipScratch = rowSpans
+			if len(rowSpans) == 0 {
+				continue
+			}
+			if it.hasOpaque && ty >= 0 && ty < len(it.opaque.rowMin) {
+				minTex := int(it.opaque.rowMin[ty])
+				maxTex := int(it.opaque.rowMax[ty])
+				if maxTex < minTex {
+					continue
+				}
+				filtered := g.solidClipScratch[:0]
+				for _, sp := range rowSpans {
+					l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
+					if ok {
+						filtered = append(filtered, solidSpan{L: l, R: r})
+					}
+				}
+				g.solidClipScratch = filtered
+				rowSpans = filtered
 				if len(rowSpans) == 0 {
 					continue
 				}
-				if it.hasOpaque && ty >= 0 && ty < len(it.opaque.rowMin) {
-					minTex := int(it.opaque.rowMin[ty])
-					maxTex := int(it.opaque.rowMax[ty])
-					if maxTex < minTex {
-						continue
-					}
-					filtered := g.solidClipScratch[:0]
-					for _, sp := range rowSpans {
-						l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, minTex, maxTex)
-						if ok {
-							filtered = append(filtered, solidSpan{L: l, R: r})
-						}
-					}
-					g.solidClipScratch = filtered
-					rowSpans = filtered
-					if len(rowSpans) == 0 {
-						continue
-					}
-				}
-				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
-				continue
 			}
-			for x := x0; x <= x1; {
-				if x+1 <= x1 {
-					in0 := xInSolidSpans(x, it.clipSpans)
-					in1 := xInSolidSpans(x+1, it.clipSpans)
-					if !in0 && !in1 {
-						x += 2
-						continue
-					}
-					i0 := row + x
-					i1 := i0 + 1
-					occ0 := !in0 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i0)
-					occ1 := !in1 || g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i1)
-					if !occ0 && !occ1 {
-						p0 := src32[ty*tw+txLUT[x-x0]]
-						p1 := src32[ty*tw+txLUT[x+1-x0]]
-						a0 := ((p0 >> pixelAShift) & 0xFF) != 0
-						a1 := ((p1 >> pixelAShift) & 0xFF) != 0
-						if a0 && a1 {
-							g.writeWallPixelPair(i0, shadePackedRGBA(p0, shadeMul), shadePackedRGBA(p1, shadeMul))
-							g.setDepthPixelPairEncoded(i0, depthPacked)
-							x += 2
-							continue
-						}
-						if a0 {
-							g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-							g.setDepthPixelEncoded(i0, depthPacked)
-						}
-						if a1 {
-							g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-							g.setDepthPixelEncoded(i1, depthPacked)
-						}
-						x += 2
-						continue
-					}
-					if !occ0 {
-						p0 := src32[ty*tw+txLUT[x-x0]]
-						if ((p0 >> pixelAShift) & 0xFF) != 0 {
-							if shadeMul >= 256 {
-								g.writeWallPixel(i0, p0|pixelOpaqueA)
-							} else {
-								g.writeWallPixel(i0, shadePackedRGBA(p0, shadeMul))
-							}
-							g.setDepthPixelEncoded(i0, depthPacked)
-						}
-					}
-					if !occ1 {
-						p1 := src32[ty*tw+txLUT[x+1-x0]]
-						if ((p1 >> pixelAShift) & 0xFF) != 0 {
-							if shadeMul >= 256 {
-								g.writeWallPixel(i1, p1|pixelOpaqueA)
-							} else {
-								g.writeWallPixel(i1, shadePackedRGBA(p1, shadeMul))
-							}
-							g.setDepthPixelEncoded(i1, depthPacked)
-						}
-					}
-					x += 2
-					continue
-				}
-				i := row + x
-				if !xInSolidSpans(x, it.clipSpans) {
-					x++
-					continue
-				}
-				if !g.spriteOccludedDepthQAt(depthPix, depthPlanePix, stamp, depthQ, planeBiasQ, i) {
-					p := src32[ty*tw+txLUT[x-x0]]
-					if ((p >> pixelAShift) & 0xFF) != 0 {
-						if shadeMul >= 256 {
-							g.writeWallPixel(i, p|pixelOpaqueA)
-						} else {
-							g.writeWallPixel(i, shadePackedRGBA(p, shadeMul))
-						}
-						g.setDepthPixelEncoded(i, depthPacked)
-					}
-				}
-				x++
-			}
+			g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, src32, srcIndexed, srcMask, shadeMul, shadeRow)
 		}
 	}
 }
