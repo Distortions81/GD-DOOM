@@ -3,6 +3,8 @@ package music
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"os"
 )
 
 const (
@@ -127,6 +129,15 @@ func (b *OP2PatchBank) Patch(program uint8, percussion bool, note uint8) Patch {
 // ParseGENMIDIOP2PatchBank parses bytes and returns a PatchBank interface.
 func ParseGENMIDIOP2PatchBank(data []byte) (PatchBank, error) {
 	return ParseGENMIDIOP2(data)
+}
+
+// ParseGENMIDIOP2PatchBankFile parses a Doom-compatible GENMIDI/OP2 bank from disk.
+func ParseGENMIDIOP2PatchBankFile(path string) (PatchBank, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("music: read GENMIDI/OP2 %s: %w", path, err)
+	}
+	return ParseGENMIDIOP2PatchBank(data)
 }
 
 func (b *OP2PatchBank) PatchVoices(program uint8, percussion bool, note uint8) []NotePatch {

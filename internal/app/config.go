@@ -37,6 +37,7 @@ type fileConfig struct {
 	OPLVolume                  *float64 `toml:"opl_volume"`
 	AudioPreEmphasis           *bool    `toml:"audio_preemphasis"`
 	OPL3Backend                *string  `toml:"opl3_backend"`
+	OPLBank                    *string  `toml:"opl_bank"`
 	SFXVolume                  *float64 `toml:"sfx_volume"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
 	AlwaysRun                  *bool    `toml:"always_run"`

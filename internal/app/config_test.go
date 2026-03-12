@@ -10,6 +10,7 @@ import (
 
 	"gddoom/internal/demo"
 	"gddoom/internal/doomsession"
+	"gddoom/internal/music"
 )
 
 func TestRunParseLoadsConfigDefaults(t *testing.T) {
@@ -473,6 +474,42 @@ func TestLoadConfigParsesItemSpawnOverrides(t *testing.T) {
 	}
 	if loaded.ShowAllItems == nil || !*loaded.ShowAllItems {
 		t.Fatalf("show_all_items=%v want true", loaded.ShowAllItems)
+	}
+}
+
+func TestLoadConfigParsesOPLBankPath(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("opl_bank = \"banks/doom.op2\"\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.OPLBank == nil || *loaded.OPLBank != "banks/doom.op2" {
+		t.Fatalf("opl_bank=%v want banks/doom.op2", loaded.OPLBank)
+	}
+}
+
+func TestResolveMusicPatchBankUsesExplicitOverride(t *testing.T) {
+	td := t.TempDir()
+	path := filepath.Join(td, "override.op2")
+	data := make([]byte, 8+(128+47)*36)
+	copy(data[:8], []byte("#OPL_II#"))
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write override: %v", err)
+	}
+	bank, err := resolveMusicPatchBank(nil, path, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("resolveMusicPatchBank() error: %v", err)
+	}
+	if bank == nil {
+		t.Fatal("expected explicit override patch bank")
+	}
+	if _, ok := bank.(*music.OP2PatchBank); !ok {
+		t.Fatalf("bank type=%T want *music.OP2PatchBank", bank)
 	}
 }
 

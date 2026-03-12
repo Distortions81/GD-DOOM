@@ -83,7 +83,7 @@ func findDOOM1WADForMusicTests(t *testing.T) string {
 	}
 	dir := wd
 	for i := 0; i < 8; i++ {
-		for _, name := range []string{"DOOM1.WAD", "DOOM.WAD"} {
+		for _, name := range []string{"DOOM.WAD", "doom.wad", "DOOM1.WAD", "doom1.wad"} {
 			cand := filepath.Join(dir, name)
 			if st, err := os.Stat(cand); err == nil && !st.IsDir() {
 				return cand

@@ -65,6 +65,8 @@ go run ./cmd/gddoom -wad DOOM1.WAD -map E1M1 -sourceport-mode
 - `-sfx-volume <0..1>`: set sound-effect volume.
 - `-mus-pan-max <0..1>`: limit stereo panning for OPL3 music playback.
 - `-opl-volume <0..4>`: adjust OPL synth output gain.
+- `-opl3-backend <auto|purego|nuked>`: choose the OPL3 backend implementation.
+- `-opl-bank <path>`: override the WAD `GENMIDI` bank with an external OP2/GENMIDI bank file.
 
 ## Rendering and Presentation
 

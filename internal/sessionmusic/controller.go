@@ -14,6 +14,11 @@ type Controller struct {
 	stop    chan struct{}
 }
 
+const (
+	pureGoOPLGainRatio = 1.0
+	nukedOPLGainRatio  = 1.0
+)
+
 func New(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank) (*Controller, error) {
 	player, err := music.NewChunkPlayer()
 	if err != nil {
@@ -137,8 +142,16 @@ func effectiveOPLGain(backend sound.Backend, gain float64) float64 {
 	if backend == sound.BackendAuto {
 		backend = sound.DefaultBackend()
 	}
-	if backend == sound.BackendPureGo {
+	return gain * oplGainRatio(backend)
+}
+
+func oplGainRatio(backend sound.Backend) float64 {
+	switch backend {
+	case sound.BackendPureGo:
+		return pureGoOPLGainRatio
+	case sound.BackendNuked:
+		return nukedOPLGainRatio
+	default:
 		return 1.0
 	}
-	return gain
 }

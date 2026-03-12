@@ -80,6 +80,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultOPLVolume := 2.25
 	defaultAudioPreEmphasis := false
 	defaultOPL3Backend := sound.DefaultBackend().String()
+	defaultOPLBankPath := ""
 	defaultSFXVolume := 0.5
 	defaultFastMonsters := false
 	defaultAlwaysRun := true
@@ -185,6 +186,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.OPL3Backend != nil {
 			defaultOPL3Backend = *cfg.OPL3Backend
+		}
+		if cfg.OPLBank != nil {
+			defaultOPLBankPath = *cfg.OPLBank
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
@@ -330,6 +334,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	oplVolume := fs.Float64("opl-volume", defaultOPLVolume, "OPL synth output gain (0..4; default 2.0)")
 	audioPreEmphasis := fs.Bool("audio-preemphasis", defaultAudioPreEmphasis, "enable OPL music pre-emphasis filter")
 	opl3Backend := fs.String("opl3-backend", defaultOPL3Backend, "OPL3 backend (auto|purego|nuked)")
+	oplBank := fs.String("opl-bank", defaultOPLBankPath, "path to external OPL bank (.op2/GENMIDI bytes) overriding WAD GENMIDI")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
@@ -515,6 +520,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			oplVolume:                  *oplVolume,
 			audioPreEmphasis:           *audioPreEmphasis,
 			opl3Backend:                resolvedOPL3Backend,
+			oplBankPath:                strings.TrimSpace(*oplBank),
 			sfxVolume:                  *sfxVolume,
 			fastMonsters:               *fastMonsters,
 			alwaysRun:                  *alwaysRun,
@@ -619,21 +625,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wadHash := hashWADStackSHA1(wadPaths)
 	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
-	var musicPatchBank music.PatchBank
-	if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
-		if genmidiData, gerr := wf.LumpData(genmidiLump); gerr != nil {
-			fmt.Fprintf(stderr, "music patch import warning: read GENMIDI: %v\n", gerr)
-		} else if bank, gerr := music.ParseGENMIDIOP2PatchBank(genmidiData); gerr != nil {
-			fmt.Fprintf(stderr, "music patch import warning: parse GENMIDI: %v\n", gerr)
-		} else {
-			musicPatchBank = bank
-			fmt.Fprintf(stderr, "music patch import: source=GENMIDI instruments=%d\n", 128+47)
-		}
-	} else if genmidiData, gerr := os.ReadFile("GENMIDI.op2"); gerr == nil {
-		if bank, perr := music.ParseGENMIDIOP2PatchBank(genmidiData); perr == nil {
-			musicPatchBank = bank
-			fmt.Fprintf(stderr, "music patch import: source=GENMIDI.op2 instruments=%d\n", 128+47)
-		}
+	musicPatchBank, err := resolveMusicPatchBank(wf, strings.TrimSpace(*oplBank), stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "music patch import error: %v\n", err)
+		return 1
 	}
 	if *importPCSpeaker {
 		dpr := sound.ImportPCSpeakerSounds(wf)
@@ -1436,6 +1431,7 @@ type renderBuildConfig struct {
 	oplVolume                  float64
 	audioPreEmphasis           bool
 	opl3Backend                sound.Backend
+	oplBankPath                string
 	sfxVolume                  float64
 	fastMonsters               bool
 	alwaysRun                  bool
@@ -1502,6 +1498,47 @@ type renderBundle struct {
 	nextMap doomsession.NextMapFunc
 }
 
+func resolveMusicPatchBank(wf *wad.File, overridePath string, stderr io.Writer) (music.PatchBank, error) {
+	overridePath = strings.TrimSpace(overridePath)
+	if overridePath != "" {
+		bank, err := music.ParseGENMIDIOP2PatchBankFile(overridePath)
+		if err != nil {
+			return nil, err
+		}
+		if stderr != nil {
+			fmt.Fprintf(stderr, "music patch import: source=%s instruments=%d\n", overridePath, 128+47)
+		}
+		return bank, nil
+	}
+
+	if wf != nil {
+		if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
+			if genmidiData, gerr := wf.LumpData(genmidiLump); gerr != nil {
+				if stderr != nil {
+					fmt.Fprintf(stderr, "music patch import warning: read GENMIDI: %v\n", gerr)
+				}
+			} else if bank, gerr := music.ParseGENMIDIOP2PatchBank(genmidiData); gerr != nil {
+				if stderr != nil {
+					fmt.Fprintf(stderr, "music patch import warning: parse GENMIDI: %v\n", gerr)
+				}
+			} else {
+				if stderr != nil {
+					fmt.Fprintf(stderr, "music patch import: source=GENMIDI instruments=%d\n", 128+47)
+				}
+				return bank, nil
+			}
+		}
+	}
+
+	if bank, err := music.ParseGENMIDIOP2PatchBankFile("GENMIDI.op2"); err == nil {
+		if stderr != nil {
+			fmt.Fprintf(stderr, "music patch import: source=GENMIDI.op2 instruments=%d\n", 128+47)
+		}
+		return bank, nil
+	}
+	return nil, nil
+}
+
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
 	wf, wadPaths, err := openWADStack(resolvedWADPath, cfg.pwadPaths)
 	if err != nil {
@@ -1509,19 +1546,9 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	}
 	wadHash := hashWADStackSHA1(wadPaths)
 	dsr := sound.ImportDigitalSounds(wf)
-	var musicPatchBank music.PatchBank
-	if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
-		if genmidiData, gerr := wf.LumpData(genmidiLump); gerr == nil {
-			if bank, gerr := music.ParseGENMIDIOP2PatchBank(genmidiData); gerr == nil {
-				musicPatchBank = bank
-				fmt.Fprintf(stderr, "music patch import: source=GENMIDI instruments=%d\n", 128+47)
-			}
-		}
-	} else if genmidiData, gerr := os.ReadFile("GENMIDI.op2"); gerr == nil {
-		if bank, perr := music.ParseGENMIDIOP2PatchBank(genmidiData); perr == nil {
-			musicPatchBank = bank
-			fmt.Fprintf(stderr, "music patch import: source=GENMIDI.op2 instruments=%d\n", 128+47)
-		}
+	musicPatchBank, err := resolveMusicPatchBank(wf, cfg.oplBankPath, stderr)
+	if err != nil {
+		return nil, err
 	}
 	if cfg.importPCSpeaker {
 		dpr := sound.ImportPCSpeakerSounds(wf)

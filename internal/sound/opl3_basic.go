@@ -7,17 +7,20 @@ const (
 	opl3ChannelCount      = 18
 	opl3OperatorCount     = 2
 
-	oplEnvOff oplEnvStage = iota
+	oplWaveTableSize  = 1024
+	oplWaveTableMask  = oplWaveTableSize - 1
+	oplPhaseFracBits  = 9
+	oplEnvelopeSilent = 0x1ff
+	oplAttenTableSize = 2048
+
+	oplChannelMixGain                      = 0.125
+	oplCarrierModDepth                     = 96.0
+	oplFeedbackPhaseScaleRatio             = 4.0
+	oplEnvOff                  oplEnvStage = iota
 	oplEnvAttack
 	oplEnvDecay
 	oplEnvSustain
 	oplEnvRelease
-)
-
-const (
-	operatorBaseGain = 0.7
-	modulatorDepth   = 0.22
-	channelMixGain   = 0.38
 )
 
 var (
@@ -31,41 +34,69 @@ var (
 		0, 0, 0, 1, 1, 1, -1, -1,
 		0, 0, 0, 1, 1, 1,
 	}
-	oplMultiples = [16]float64{
-		0.5, 1, 2, 3, 4, 5, 6, 7,
-		8, 9, 10, 10, 12, 12, 15, 15,
+	// Nuked's OPL frequency multiplier table is stored doubled.
+	oplFrequencyMultiples = [16]uint32{
+		1, 2, 4, 6, 8, 10, 12, 14,
+		16, 18, 20, 20, 24, 24, 30, 30,
 	}
-	oplFeedbackScale = [8]float64{
-		0.0, 0.03125, 0.0625, 0.125,
-		0.25, 0.5, 1.0, 2.0,
+	oplKSLROM = [16]uint8{
+		0, 32, 40, 45, 48, 51, 53, 55,
+		56, 58, 59, 60, 61, 62, 63, 64,
 	}
+	oplKSLShift  = [4]uint8{8, 1, 2, 0}
+	oplEGIncStep = [4][4]uint8{
+		{0, 0, 0, 0},
+		{1, 0, 0, 0},
+		{1, 0, 1, 0},
+		{1, 1, 1, 0},
+	}
+	oplFeedbackPhaseScale = [8]float64{
+		0,
+		1 * oplFeedbackPhaseScaleRatio,
+		2 * oplFeedbackPhaseScaleRatio,
+		4 * oplFeedbackPhaseScaleRatio,
+		8 * oplFeedbackPhaseScaleRatio,
+		16 * oplFeedbackPhaseScaleRatio,
+		32 * oplFeedbackPhaseScaleRatio,
+		64 * oplFeedbackPhaseScaleRatio,
+	}
+	oplWaveTable  [8][oplWaveTableSize]float64
+	oplAttenTable [oplAttenTableSize]float64
 )
 
 type oplEnvStage uint8
 
 type basicOperatorState struct {
-	phase        float64
-	env          float64
-	stage        oplEnvStage
-	multiple     float64
-	level        float64
-	attackCoef   float64
-	decayCoef    float64
-	sustainLevel float64
-	releaseCoef  float64
-	waveform     int
-	vibrato      bool
-	tremolo      bool
-	sustain      bool
+	pgPhase    uint32
+	phaseReset bool
+	egRout     uint16
+	egOut      uint16
+	stage      oplEnvStage
+	regVib     bool
+	regTrem    bool
+	regType    bool
+	regKSR     bool
+	regMult    uint8
+	regKSL     uint8
+	regTL      uint8
+	regAR      uint8
+	regDR      uint8
+	regSL      uint8
+	regRR      uint8
+	regWave    uint8
+	egKSL      uint8
+	out        float64
 }
 
 type basicChannelState struct {
 	keyOn    bool
-	freq     float64
+	fnum     uint16
+	block    uint8
+	ksv      uint8
 	additive bool
 	panL     float64
 	panR     float64
-	feedback float64
+	feedback uint8
 	fbPrev   [2]float64
 	ops      [opl3OperatorCount]basicOperatorState
 }
@@ -78,10 +109,24 @@ type BasicOPL3 struct {
 	regs             [0x200]uint8
 	ch               [opl3ChannelCount]basicChannelState
 	waveformSelectOn bool
-	vibPhase         float64
-	tremPhase        float64
+	noteSelect       uint8
+	tremoloShift     uint8
+	vibShift         uint8
+	tremoloPos       uint8
+	tremolo          uint8
+	vibPos           uint8
+	timer            uint64
+	egTimer          uint64
+	egState          uint8
+	egAdd            uint8
+	egTimerLo        uint8
 	stereoBuf        []int16
 	monoBuf          []byte
+}
+
+func init() {
+	buildOPLWaveTables()
+	buildOPLAttenuationTable()
 }
 
 // NewBasicOPL3 creates a pure-Go OPL3 fallback at the provided sample rate.
@@ -102,19 +147,25 @@ func (o *BasicOPL3) Reset() {
 	o.regs = [0x200]uint8{}
 	o.ch = [opl3ChannelCount]basicChannelState{}
 	o.waveformSelectOn = false
-	o.vibPhase = 0
-	o.tremPhase = 0
+	o.noteSelect = 0
+	o.tremoloShift = 4
+	o.vibShift = 1
+	o.tremoloPos = 0
+	o.tremolo = 0
+	o.vibPos = 0
+	o.timer = 0
+	o.egTimer = 0
+	o.egState = 0
+	o.egAdd = 0
+	o.egTimerLo = 0
 	for i := range o.ch {
 		o.ch[i].panL = 1
 		o.ch[i].panR = 1
 		for op := range o.ch[i].ops {
 			o.ch[i].ops[op] = basicOperatorState{
-				multiple:     1,
-				level:        0,
-				attackCoef:   rateCoef(o.sampleRate, attackSeconds(15)),
-				decayCoef:    rateCoef(o.sampleRate, decayReleaseSeconds(15)),
-				sustainLevel: 0,
-				releaseCoef:  rateCoef(o.sampleRate, decayReleaseSeconds(15)),
+				egRout: oplEnvelopeSilent,
+				egOut:  oplEnvelopeSilent,
+				stage:  oplEnvRelease,
 			}
 		}
 	}
@@ -135,6 +186,16 @@ func (o *BasicOPL3) WriteReg(addr uint16, value uint8) {
 				o.refreshOperator(ch, op)
 			}
 		}
+		return
+	case 0x08:
+		o.noteSelect = (value >> 6) & 0x01
+		for ch := range o.ch {
+			o.refreshChannelFreq(ch)
+		}
+		return
+	case 0xBD:
+		o.tremoloShift = (((value >> 7) ^ 1) << 1) + 2
+		o.vibShift = ((value >> 6) & 0x01) ^ 1
 		return
 	}
 
@@ -199,34 +260,18 @@ func (o *BasicOPL3) GenerateStereoS16(frames int) []int16 {
 		o.stereoBuf = o.stereoBuf[:need]
 	}
 	out := o.stereoBuf
-	invSampleRate := 1.0 / float64(o.sampleRate)
 	for i := 0; i < frames; i++ {
-		o.vibPhase += 6.1 * invSampleRate
-		if o.vibPhase >= 1 {
-			o.vibPhase -= math.Floor(o.vibPhase)
-		}
-		o.tremPhase += 3.7 * invSampleRate
-		if o.tremPhase >= 1 {
-			o.tremPhase -= math.Floor(o.tremPhase)
-		}
 		var l, r float64
 		for ch := 0; ch < opl3ChannelCount; ch++ {
-			sl, sr := o.renderChannel(ch, invSampleRate)
+			sl, sr := o.renderChannel(ch)
 			l += sl
 			r += sr
 		}
-		if l < -1 {
-			l = -1
-		} else if l > 1 {
-			l = 1
-		}
-		if r < -1 {
-			r = -1
-		} else if r > 1 {
-			r = 1
-		}
+		l = clampSample(l)
+		r = clampSample(r)
 		out[i*2] = int16(l * 32767)
 		out[i*2+1] = int16(r * 32767)
+		o.advanceChipState()
 	}
 	return out
 }
@@ -260,136 +305,216 @@ func (o *BasicOPL3) GenerateMonoU8(frames int) []byte {
 	return out
 }
 
-func (o *BasicOPL3) renderChannel(ch int, invSampleRate float64) (float64, float64) {
+func (o *BasicOPL3) renderChannel(ch int) (float64, float64) {
 	if ch < 0 || ch >= len(o.ch) {
 		return 0, 0
 	}
 	c := &o.ch[ch]
-	if c.freq <= 0 {
+	if c.fnum == 0 && !c.keyOn && c.ops[0].egRout >= oplEnvelopeSilent && c.ops[1].egRout >= oplEnvelopeSilent {
 		return 0, 0
 	}
 
 	mod := &c.ops[0]
 	car := &c.ops[1]
-	modEnv := o.advanceEnvelope(mod)
-	carEnv := o.advanceEnvelope(car)
-	if mod.stage == oplEnvOff && car.stage == oplEnvOff {
-		c.fbPrev = [2]float64{}
-		return 0, 0
-	}
 
-	modMul := mod.multiple
-	if modMul <= 0 {
-		modMul = 1
+	o.advanceEnvelope(c, mod)
+	modPhase := o.advanceOperatorPhase(c, mod)
+	modFB := 0.0
+	if c.feedback != 0 {
+		modFB = (c.fbPrev[0] + c.fbPrev[1]) * oplFeedbackPhaseScale[c.feedback]
 	}
-	carMul := car.multiple
-	if carMul <= 0 {
-		carMul = 1
-	}
-	modFreq := c.freq * modMul
-	carFreq := c.freq * carMul
-	vib := math.Sin(2 * math.Pi * o.vibPhase)
-	if mod.vibrato {
-		modFreq *= 1 + vib*0.0025
-	}
-	if car.vibrato {
-		carFreq *= 1 + vib*0.0025
-	}
-	modStep := (2 * math.Pi * modFreq) * invSampleRate
-	carStep := (2 * math.Pi * carFreq) * invSampleRate
-
-	modTrem := 1.0
-	carTrem := 1.0
-	if mod.tremolo {
-		modTrem = 1 - ((math.Sin(2*math.Pi*o.tremPhase)+1)*0.5)*0.18
-	}
-	if car.tremolo {
-		carTrem = 1 - ((math.Sin(2*math.Pi*o.tremPhase)+1)*0.5)*0.18
-	}
-	modAmp := modEnv * mod.level * operatorBaseGain * modTrem
-	carAmp := carEnv * car.level * operatorBaseGain * carTrem
-	modFeedback := (c.fbPrev[0] + c.fbPrev[1]) * c.feedback * 0.18
-	mod.phase = wrapPhase(mod.phase + modStep)
-	modRaw := oplWaveform(mod.waveform, mod.phase+modFeedback)
-	modSample := modRaw * modAmp
+	modSample := o.sampleOperator(mod, modPhase, modFB)
+	mod.out = modSample
 	c.fbPrev[1] = c.fbPrev[0]
 	c.fbPrev[0] = modSample
 
-	car.phase = wrapPhase(car.phase + carStep)
-	carInput := 0.0
-	out := 0.0
-	if c.additive {
-		out += modSample * 0.42
-	} else {
-		// Keep FM coloration without letting the modulator pull the perceived note
-		// center too far away from the programmed carrier pitch.
-		carInput = modRaw * modAmp * (modulatorDepth + modMul*0.04 + carMul*0.01)
+	o.advanceEnvelope(c, car)
+	carPhase := o.advanceOperatorPhase(c, car)
+	carMod := 0.0
+	if !c.additive {
+		carMod = modSample * oplCarrierModDepth
 	}
-	carSample := oplWaveform(car.waveform, car.phase+carInput) * carAmp
-	out += carSample
-	return out * c.panL * channelMixGain, out * c.panR * channelMixGain
+	carSample := o.sampleOperator(car, carPhase, carMod)
+
+	out := carSample
+	if c.additive {
+		out += modSample
+	}
+	return out * c.panL * oplChannelMixGain, out * c.panR * oplChannelMixGain
 }
 
-func (o *BasicOPL3) advanceEnvelope(op *basicOperatorState) float64 {
+func (o *BasicOPL3) sampleOperator(op *basicOperatorState, phase int, phaseMod float64) float64 {
 	if op == nil {
 		return 0
 	}
-	switch op.stage {
-	case oplEnvOff:
-		op.env = 0
-	case oplEnvAttack:
-		op.env += (1 - op.env) * op.attackCoef
-		if op.env >= 0.999 {
-			op.env = 1
-			op.stage = oplEnvDecay
-		}
-	case oplEnvDecay:
-		op.env += (op.sustainLevel - op.env) * op.decayCoef
-		if math.Abs(op.env-op.sustainLevel) <= 0.0005 {
-			op.env = op.sustainLevel
-			op.stage = oplEnvSustain
-		}
-	case oplEnvSustain:
-		if op.sustain {
-			op.env = op.sustainLevel
-		} else {
-			op.env += (0 - op.env) * op.releaseCoef
-			if op.env <= 0.0001 {
-				op.env = 0
-				op.stage = oplEnvOff
+	idx := (phase + int(phaseMod)) & oplWaveTableMask
+	atten := int(op.egOut)
+	if atten < 0 {
+		atten = 0
+	} else if atten >= len(oplAttenTable) {
+		atten = len(oplAttenTable) - 1
+	}
+	return oplWaveTable[op.regWave&0x07][idx] * oplAttenTable[atten]
+}
+
+func (o *BasicOPL3) advanceEnvelope(c *basicChannelState, op *basicOperatorState) {
+	if c == nil || op == nil {
+		return
+	}
+	trem := 0
+	if op.regTrem {
+		trem = int(o.tremolo)
+	}
+
+	reset := c.keyOn && op.stage == oplEnvRelease
+	regRate := uint8(0)
+	if reset {
+		regRate = op.regAR
+	} else {
+		switch op.stage {
+		case oplEnvAttack:
+			regRate = op.regAR
+		case oplEnvDecay:
+			regRate = op.regDR
+		case oplEnvSustain:
+			if !op.regType {
+				regRate = op.regRR
 			}
-		}
-	case oplEnvRelease:
-		op.env += (0 - op.env) * op.releaseCoef
-		if op.env <= 0.0001 {
-			op.env = 0
-			op.stage = oplEnvOff
+		case oplEnvRelease:
+			regRate = op.regRR
 		}
 	}
-	return op.env
+	op.phaseReset = reset
+
+	ks := int(c.ksv)
+	if !op.regKSR {
+		ks >>= 2
+	}
+	nonZero := regRate != 0
+	rate := ks + int(regRate<<2)
+	if rate > 0x3f {
+		rate = 0x3f
+	}
+	rateHi := rate >> 2
+	rateLo := rate & 0x03
+	egShift := rateHi + int(o.egAdd)
+	shift := 0
+	if nonZero {
+		if rateHi < 12 {
+			if o.egState != 0 {
+				switch egShift {
+				case 12:
+					shift = 1
+				case 13:
+					shift = (rateLo >> 1) & 0x01
+				case 14:
+					shift = rateLo & 0x01
+				}
+			}
+		} else {
+			shift = (rateHi & 0x03) + int(oplEGIncStep[rateLo][o.egTimerLo])
+			if (shift & 0x04) != 0 {
+				shift = 0x03
+			}
+			if shift == 0 {
+				shift = int(o.egState)
+			}
+		}
+	}
+	if shift == 0 && nonZero && (reset || op.stage == oplEnvAttack) {
+		shift = 1
+	}
+
+	egRout := int(op.egRout)
+	if reset && rateHi == 0x0f {
+		egRout = 0
+	}
+	egOff := (op.egRout & 0x1f8) == 0x1f8
+	if op.stage != oplEnvAttack && !reset && egOff {
+		egRout = oplEnvelopeSilent
+	}
+
+	egInc := 0
+	switch op.stage {
+	case oplEnvAttack:
+		if op.egRout == 0 {
+			op.stage = oplEnvDecay
+		} else if c.keyOn && shift > 0 && rateHi != 0x0f {
+			// Match the chip's 9-bit attack wraparound instead of masking the
+			// complement first. Masking first leaves a fully silent operator
+			// stuck at 0x1ff for medium attack rates.
+			egInc = int(^op.egRout) >> uint(4-shift)
+		}
+	case oplEnvDecay:
+		if int(op.egRout>>4) >= int(op.regSL) {
+			op.stage = oplEnvSustain
+		} else if !egOff && !reset && shift > 0 {
+			egInc = 1 << (shift - 1)
+		}
+	case oplEnvSustain, oplEnvRelease:
+		if !egOff && !reset && shift > 0 {
+			egInc = 1 << (shift - 1)
+		}
+	}
+
+	op.egRout = uint16((egRout + egInc) & oplEnvelopeSilent)
+	if reset {
+		op.stage = oplEnvAttack
+	}
+	if !c.keyOn {
+		op.stage = oplEnvRelease
+	}
+
+	baseAtten := int(op.egRout) + int(op.regTL<<2) + int(op.egKSL>>oplKSLShift[op.regKSL]) + trem
+	op.egOut = uint16(clampAtten(baseAtten))
+}
+
+func (o *BasicOPL3) advanceOperatorPhase(c *basicChannelState, op *basicOperatorState) int {
+	if c == nil || op == nil {
+		return 0
+	}
+	phase := int(uint16(op.pgPhase >> oplPhaseFracBits))
+	if op.phaseReset {
+		op.pgPhase = 0
+		phase = 0
+		op.phaseReset = false
+	}
+
+	fnum := int(c.fnum)
+	if op.regVib {
+		rangeVal := (fnum >> 7) & 0x07
+		vibPos := int(o.vibPos)
+		if (vibPos & 0x03) == 0 {
+			rangeVal = 0
+		} else if (vibPos & 0x01) != 0 {
+			rangeVal >>= 1
+		}
+		rangeVal >>= o.vibShift
+		if (vibPos & 0x04) != 0 {
+			rangeVal = -rangeVal
+		}
+		fnum += rangeVal
+	}
+
+	baseFreq := (fnum << c.block) >> 1
+	op.pgPhase += uint32((baseFreq * int(oplFrequencyMultiples[op.regMult])) >> 1)
+	return phase & oplWaveTableMask
 }
 
 func (o *BasicOPL3) keyOnChannel(ch int) {
 	if ch < 0 || ch >= len(o.ch) {
 		return
 	}
-	c := &o.ch[ch]
-	c.fbPrev = [2]float64{}
-	for op := 0; op < opl3OperatorCount; op++ {
-		c.ops[op].phase = 0
-		c.ops[op].env = 0
-		c.ops[op].stage = oplEnvAttack
-	}
+	o.ch[ch].fbPrev = [2]float64{}
 }
 
 func (o *BasicOPL3) keyOffChannel(ch int) {
 	if ch < 0 || ch >= len(o.ch) {
 		return
 	}
-	for op := 0; op < opl3OperatorCount; op++ {
-		if o.ch[ch].ops[op].stage != oplEnvOff {
-			o.ch[ch].ops[op].stage = oplEnvRelease
-		}
+	o.ch[ch].fbPrev = [2]float64{}
+	for op := range o.ch[ch].ops {
+		o.ch[ch].ops[op].stage = oplEnvRelease
 	}
 }
 
@@ -400,13 +525,12 @@ func (o *BasicOPL3) refreshChannelFreq(ch int) {
 	}
 	a := o.regs[base+0xA0+ci]
 	b := o.regs[base+0xB0+ci]
-	fnum := int(a) | (int(b&0x03) << 8)
-	block := int((b >> 2) & 0x07)
-	if fnum == 0 {
-		o.ch[ch].freq = 0
-		return
+	o.ch[ch].fnum = uint16(a) | (uint16(b&0x03) << 8)
+	o.ch[ch].block = (b >> 2) & 0x07
+	o.ch[ch].ksv = (o.ch[ch].block << 1) | uint8((o.ch[ch].fnum>>(0x09-o.noteSelect))&0x01)
+	for op := 0; op < opl3OperatorCount; op++ {
+		o.updateOperatorKSL(ch, op)
 	}
-	o.ch[ch].freq = float64(fnum) * math.Ldexp(49716.0/1048576.0, block)
 }
 
 func (o *BasicOPL3) refreshChannelControl(ch int) {
@@ -416,16 +540,16 @@ func (o *BasicOPL3) refreshChannelControl(ch int) {
 	}
 	c0 := o.regs[base+0xC0+ci]
 	o.ch[ch].additive = (c0 & 0x01) != 0
-	o.ch[ch].feedback = oplFeedbackScale[(c0>>1)&0x07]
+	o.ch[ch].feedback = (c0 >> 1) & 0x07
 	left := (c0 & 0x10) != 0
 	right := (c0 & 0x20) != 0
 	switch {
 	case left && right:
 		o.ch[ch].panL, o.ch[ch].panR = 1, 1
 	case left:
-		o.ch[ch].panL, o.ch[ch].panR = 1, 0
-	case right:
 		o.ch[ch].panL, o.ch[ch].panR = 0, 1
+	case right:
+		o.ch[ch].panL, o.ch[ch].panR = 1, 0
 	default:
 		o.ch[ch].panL, o.ch[ch].panR = 1, 1
 	}
@@ -447,20 +571,73 @@ func (o *BasicOPL3) refreshOperator(ch int, op int) {
 	reg80 := o.regs[base+0x80+slot]
 	regE0 := o.regs[base+0xE0+slot]
 
-	s.multiple = oplMultiples[reg20&0x0F]
-	s.level = totalLevelScale(reg40)
-	s.attackCoef = rateCoef(o.sampleRate, attackSeconds(int((reg60>>4)&0x0F)))
-	s.decayCoef = rateCoef(o.sampleRate, decayReleaseSeconds(int(reg60&0x0F)))
-	s.sustainLevel = sustainScale(int((reg80 >> 4) & 0x0F))
-	s.releaseCoef = rateCoef(o.sampleRate, decayReleaseSeconds(int(reg80&0x0F)))
-	s.tremolo = (reg20 & 0x80) != 0
-	s.vibrato = (reg20 & 0x40) != 0
-	s.sustain = (reg20 & 0x20) != 0
-	if o.waveformSelectOn {
-		s.waveform = int(regE0 & 0x07)
-	} else {
-		s.waveform = 0
+	s.regTrem = (reg20 & 0x80) != 0
+	s.regVib = (reg20 & 0x40) != 0
+	s.regType = (reg20 & 0x20) != 0
+	s.regKSR = (reg20 & 0x10) != 0
+	s.regMult = reg20 & 0x0F
+	s.regKSL = (reg40 >> 6) & 0x03
+	s.regTL = reg40 & 0x3F
+	s.regAR = (reg60 >> 4) & 0x0F
+	s.regDR = reg60 & 0x0F
+	s.regSL = (reg80 >> 4) & 0x0F
+	if s.regSL == 0x0F {
+		s.regSL = 0x1F
 	}
+	s.regRR = reg80 & 0x0F
+	s.regWave = regE0 & 0x07
+	if !o.waveformSelectOn {
+		s.regWave &= 0x03
+	}
+	o.updateOperatorKSL(ch, op)
+}
+
+func (o *BasicOPL3) updateOperatorKSL(ch int, op int) {
+	if ch < 0 || ch >= len(o.ch) || op < 0 || op >= opl3OperatorCount {
+		return
+	}
+	fnumIndex := int(o.ch[ch].fnum >> 6)
+	if fnumIndex < 0 {
+		fnumIndex = 0
+	} else if fnumIndex >= len(oplKSLROM) {
+		fnumIndex = len(oplKSLROM) - 1
+	}
+	ksl := (int(oplKSLROM[fnumIndex]) << 2) - ((0x08 - int(o.ch[ch].block)) << 5)
+	if ksl < 0 {
+		ksl = 0
+	}
+	o.ch[ch].ops[op].egKSL = uint8(ksl)
+}
+
+func (o *BasicOPL3) advanceChipState() {
+	if (o.timer & 0x3F) == 0x3F {
+		o.tremoloPos = (o.tremoloPos + 1) % 210
+	}
+	if o.tremoloPos < 105 {
+		o.tremolo = o.tremoloPos >> o.tremoloShift
+	} else {
+		o.tremolo = (210 - o.tremoloPos) >> o.tremoloShift
+	}
+
+	if (o.timer & 0x3FF) == 0x3FF {
+		o.vibPos = (o.vibPos + 1) & 7
+	}
+	o.timer++
+
+	if o.egState != 0 {
+		shift := uint8(0)
+		for shift < 13 && ((o.egTimer>>shift)&0x01) == 0 {
+			shift++
+		}
+		if shift > 12 {
+			o.egAdd = 0
+		} else {
+			o.egAdd = shift + 1
+		}
+		o.egTimerLo = uint8(o.egTimer & 0x03)
+		o.egTimer++
+	}
+	o.egState ^= 1
 }
 
 func decodeOperatorSlot(bank int, slot int) (ch int, op int, ok bool) {
@@ -497,89 +674,93 @@ func oplSlotForChannelOp(ch int, op int) int {
 	return carSlots[ch]
 }
 
-func wrapPhase(v float64) float64 {
-	if v < 2*math.Pi {
-		return v
+func buildOPLWaveTables() {
+	for wave := 0; wave < len(oplWaveTable); wave++ {
+		for i := 0; i < oplWaveTableSize; i++ {
+			oplWaveTable[wave][i] = oplWaveSample(wave, i)
+		}
 	}
-	return math.Mod(v, 2*math.Pi)
 }
 
-func totalLevelScale(reg40 uint8) float64 {
-	tl := float64(reg40 & 0x3F)
-	db := tl * 0.75
-	return math.Pow(10, -db/20)
-}
-
-func sustainScale(level int) float64 {
-	if level < 0 {
-		level = 0
-	}
-	if level > 15 {
-		level = 15
-	}
-	return math.Pow(10, -(float64(level)*3.0)/20.0)
-}
-
-func attackSeconds(rate int) float64 {
-	return scaledRateSeconds(rate, 0.0025, 0.55)
-}
-
-func decayReleaseSeconds(rate int) float64 {
-	return scaledRateSeconds(rate, 0.012, 0.5)
-}
-
-func scaledRateSeconds(rate int, base float64, exp float64) float64 {
-	if rate < 0 {
-		rate = 0
-	}
-	if rate > 15 {
-		rate = 15
-	}
-	return base * math.Exp2(float64(15-rate)*exp)
-}
-
-func rateCoef(sampleRate int, seconds float64) float64 {
-	if sampleRate <= 0 || seconds <= 0 {
-		return 1
-	}
-	return 1 - math.Exp(-1/(seconds*float64(sampleRate)))
-}
-
-func oplWaveform(wave int, phase float64) float64 {
-	p := wrapPhase(phase)
-	s := math.Sin(p)
+func oplWaveSample(wave int, idx int) float64 {
+	idx &= oplWaveTableMask
+	phase := float64(idx) / float64(oplWaveTableSize)
 	switch wave & 0x07 {
 	case 0:
-		return s
+		return math.Sin(phase * 2 * math.Pi)
 	case 1:
-		if s < 0 {
+		if idx >= 512 {
 			return 0
 		}
-		return s
+		return math.Sin((float64(idx) / 512.0) * math.Pi)
 	case 2:
-		return math.Abs(s)*2 - 1
+		return math.Abs(math.Sin(phase * 2 * math.Pi))
 	case 3:
-		if s < 0 {
-			return -1
+		if (idx & 0x100) != 0 {
+			return 0
 		}
-		return s*2 - 1
+		return math.Sin((float64(idx&0x0FF) / 256.0) * (math.Pi / 2))
 	case 4:
-		return 1 - 2*(p/(2*math.Pi))
+		if idx >= 512 {
+			return 0
+		}
+		if idx < 256 {
+			return math.Sin((float64(idx) / 256.0) * math.Pi)
+		}
+		return -math.Sin((float64(idx-256) / 256.0) * math.Pi)
 	case 5:
-		if s < 0 {
-			return -1
+		if idx >= 512 {
+			return 0
 		}
-		return 1
+		if idx < 256 {
+			return math.Sin((float64(idx) / 256.0) * math.Pi)
+		}
+		return math.Sin((float64(idx-256) / 256.0) * math.Pi)
 	case 6:
-		x := p / (2 * math.Pi)
-		if x < 0.25 {
-			return x * 4
+		if idx < 512 {
+			return 1
 		}
-		if x < 0.75 {
-			return 2 - x*4
-		}
-		return x*4 - 4
+		return -1
 	default:
-		return (s * 0.7) + (math.Sin(2*p) * 0.3)
+		if idx < 512 {
+			return 1 - float64(idx)/256.0
+		}
+		return float64(idx-512)/256.0 - 1
 	}
+}
+
+func buildOPLAttenuationTable() {
+	for i := 0; i < len(oplAttenTable); i++ {
+		oplAttenTable[i] = math.Exp2(-float64(i) / 32.0)
+	}
+}
+
+func clampEnvelope(v int) uint16 {
+	if v < 0 {
+		return 0
+	}
+	if v > oplEnvelopeSilent {
+		return oplEnvelopeSilent
+	}
+	return uint16(v)
+}
+
+func clampAtten(v int) int {
+	if v < 0 {
+		return 0
+	}
+	if v >= oplAttenTableSize {
+		return oplAttenTableSize - 1
+	}
+	return v
+}
+
+func clampSample(v float64) float64 {
+	if v < -1 {
+		return -1
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }
