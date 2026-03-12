@@ -5112,576 +5112,63 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		}
 	}
 
-	renderRows := func(yStart, yEnd int) {
-		for planeIdx, pl := range planes {
-			spans := spansByPlane[planeIdx]
-			if len(spans) == 0 {
+	for planeIdx, pl := range planes {
+		spans := spansByPlane[planeIdx]
+		if len(spans) == 0 {
+			continue
+		}
+		key := pl.key
+		fbPacked := planeFBPacked[planeIdx]
+		tex32 := planeFlatTex32[planeIdx]
+		texIndexed := planeFlatTexIndexed[planeIdx]
+		flatTexReady := planeFlatReady[planeIdx]
+		for _, sp := range spans {
+			if sp.y < 0 || sp.y >= h {
 				continue
 			}
-			key := pl.key
-			fbPacked := planeFBPacked[planeIdx]
-			tex32 := planeFlatTex32[planeIdx]
-			texIndexed := planeFlatTexIndexed[planeIdx]
-			flatTexReady := planeFlatReady[planeIdx]
-			flatIndexedReady := len(texIndexed) == 64*64 && (wallShadePackedOK || doomColormapEnabled)
-			for _, sp := range spans {
-				if sp.y < yStart || sp.y >= yEnd || sp.y < 0 || sp.y >= h {
+			x1 := sp.x1
+			x2 := sp.x2
+			if x1 < 0 {
+				x1 = 0
+			}
+			if x2 >= w {
+				x2 = w - 1
+			}
+			if x2 < x1 {
+				continue
+			}
+			rowPix := sp.y * w
+			if key.sky {
+				if skyLayerEnabled {
+					clear(pix32[rowPix+x1 : rowPix+x2+1])
 					continue
-				}
-				x1 := sp.x1
-				x2 := sp.x2
-				if x1 < 0 {
-					x1 = 0
-				}
-				if x2 >= w {
-					x2 = w - 1
-				}
-				if x2 < x1 {
-					continue
-				}
-				rowPix := sp.y * w
-				if key.sky {
-					if skyLayerEnabled {
-						clear(pix32[rowPix+x1 : rowPix+x2+1])
-						continue
-					}
-					pixI := rowPix + x1
-					if skyTexReady {
-						v := skyRowV[sp.y]
-						x := x1
-						for ; x+1 <= x2; x += 2 {
-							u0 := skyColU[x]
-							u1 := skyColU[x+1]
-							ti0 := v*skyTex.Width + u0
-							ti1 := v*skyTex.Width + u1
-							pix32[pixI] = skyTex32[ti0]
-							pix32[pixI+1] = skyTex32[ti1]
-							pixI += 2
-						}
-						if x <= x2 {
-							u := skyColU[x]
-							ti := v*skyTex.Width + u
-							pix32[pixI] = skyTex32[ti]
-						}
-					} else {
-						x := x1
-						for ; x+1 <= x2; x += 2 {
-							pix32[pixI] = fbPacked
-							pix32[pixI+1] = fbPacked
-							pixI += 2
-						}
-						if x <= x2 {
-							pix32[pixI] = fbPacked
-						}
-					}
-					continue
-				}
-				den := cy - (float64(sp.y) + 0.5)
-				if math.Abs(den) < 1e-6 {
-					continue
-				}
-				planeZ := float64(key.height)
-				depth := ((planeZ - eyeZ) / den) * focal
-				if depth <= 0 {
-					continue
-				}
-				depthQ := encodeDepthQ(depth)
-				if g.rowFullyOccludedByWallsFastDepthQ(depthQ, rowPix, x1, x2) {
-					continue
-				}
-				stepWX := (depth / focal) * sa
-				stepWY := -(depth / focal) * ca
-				rowBaseWX := camX + depth*ca - ((cx-0.5)*depth/focal)*sa
-				rowBaseWY := camY + depth*sa + ((cx-0.5)*depth/focal)*ca
-				rowBaseWXFixed := floorFixed(rowBaseWX)
-				rowBaseWYFixed := floorFixed(rowBaseWY)
-				stepWXFixed := floorFixed(stepWX)
-				stepWYFixed := floorFixed(stepWY)
-				xOff := int64(x1)
-				wxFixed := rowBaseWXFixed + xOff*stepWXFixed
-				wyFixed := rowBaseWYFixed + xOff*stepWYFixed
-				defaultShade := uint32(sectorLightMul(key.light))
-				defaultRow := 0
-				if doomLightingEnabled {
-					defaultRow = doomPlaneLightRow(key.light, depth)
-					if !doomColormapEnabled {
-						defaultShade = uint32(doomShadeMulFromRowF(doomPlaneLightRowF(key.light, depth)))
-					}
-				}
-				var packedShadeRow []uint32
-				if !doomColormapEnabled && wallShadePackedOK {
-					if defaultShade > 256 {
-						defaultShade = 256
-					}
-					packedShadeRow = wallShadePackedLUT[defaultShade][:]
-				}
-				var fullbrightPackedRow []uint32
-				if wallShadePackedOK {
-					fullbrightPackedRow = wallShadePackedLUT[256][:]
 				}
 				pixI := rowPix + x1
-				if !flatTexReady {
-					if doomColormapEnabled {
-						x := x1
-						for ; x+1 <= x2; x += 2 {
-							row0 := defaultRow
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
-							row1 := defaultRow
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
-							pix32[pixI] = shadePackedDOOMColormapRow(fbPacked, row0)
-							pix32[pixI+1] = shadePackedDOOMColormapRow(fbPacked, row1)
-							pixI += 2
-						}
-						if x <= x2 {
-							pix32[pixI] = shadePackedDOOMColormapRow(fbPacked, defaultRow)
-						}
-						continue
-					}
-					if fullbrightNoLighting {
-						x := x1
-						for ; x+1 <= x2; x += 2 {
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
-							pix32[pixI] = fbPacked
-							pix32[pixI+1] = fbPacked
-							pixI += 2
-						}
-						if x <= x2 {
-							pix32[pixI] = fbPacked
-						}
-						continue
-					}
-					if doomLightingEnabled {
-						x := x1
-						for ; x+1 <= x2; x += 2 {
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
-							wxFixed += stepWXFixed
-							wyFixed += stepWYFixed
-							if defaultShade == 256 {
-								pix32[pixI] = fbPacked
-								pix32[pixI+1] = fbPacked
-							} else {
-								pix32[pixI] = shadePackedRGBA(fbPacked, defaultShade)
-								pix32[pixI+1] = shadePackedRGBA(fbPacked, defaultShade)
-							}
-							pixI += 2
-						}
-						if x <= x2 {
-							if defaultShade == 256 {
-								pix32[pixI] = fbPacked
-							} else {
-								pix32[pixI] = shadePackedRGBA(fbPacked, defaultShade)
-							}
-						}
-						continue
-					}
+				if skyTexReady {
+					v := skyRowV[sp.y]
 					x := x1
 					for ; x+1 <= x2; x += 2 {
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						if defaultShade == 256 {
-							pix32[pixI] = fbPacked
-						} else {
-							pix32[pixI] = shadePackedRGBA(fbPacked, defaultShade)
-						}
-						if defaultShade == 256 {
-							pix32[pixI+1] = fbPacked
-						} else {
-							pix32[pixI+1] = shadePackedRGBA(fbPacked, defaultShade)
-						}
+						u0 := skyColU[x]
+						u1 := skyColU[x+1]
+						ti0 := v*skyTex.Width + u0
+						ti1 := v*skyTex.Width + u1
+						pix32[pixI] = skyTex32[ti0]
+						pix32[pixI+1] = skyTex32[ti1]
 						pixI += 2
 					}
 					if x <= x2 {
-						if defaultShade == 256 {
-							pix32[pixI] = fbPacked
-						} else {
-							pix32[pixI] = shadePackedRGBA(fbPacked, defaultShade)
-						}
+						u := skyColU[x]
+						ti := v*skyTex.Width + u
+						pix32[pixI] = skyTex32[ti]
 					}
-					continue
+				} else {
+					fillPackedRun(pix32, pixI, x2-x1+1, fbPacked)
 				}
-				if doomColormapEnabled && flatIndexedReady {
-					const fracMask = fracUnit - 1
-					uInt := int(wxFixed >> fracBits)
-					vInt := int(wyFixed >> fracBits)
-					uFrac := int(wxFixed & fracMask)
-					vFrac := int(wyFixed & fracMask)
-					stepUInt := int(stepWXFixed >> fracBits)
-					stepVInt := int(stepWYFixed >> fracBits)
-					stepUFrac := int(stepWXFixed & fracMask)
-					stepVFrac := int(stepWYFixed & fracMask)
-					canRepeatFill := stepWXFixed > -fracUnit && stepWXFixed < fracUnit && stepWYFixed > -fracUnit && stepWYFixed < fracUnit
-					if canRepeatFill {
-						x := x1
-						for x <= x2 {
-							texIdx := ((vInt & 63) << 6) + (uInt & 63)
-							packed := shadePaletteIndexDOOMRow(texIndexed[texIdx], defaultRow)
-							for {
-								pix32[pixI] = packed
-								x++
-								pixI++
-								if x > x2 {
-									break
-								}
-								uFrac += stepUFrac
-								vFrac += stepVFrac
-								uInt += stepUInt + (uFrac >> fracBits)
-								vInt += stepVInt + (vFrac >> fracBits)
-								uFrac &= fracMask
-								vFrac &= fracMask
-								nextTexIdx := ((vInt & 63) << 6) + (uInt & 63)
-								if nextTexIdx != texIdx {
-									break
-								}
-							}
-						}
-						continue
-					}
-					x := x1
-					for ; x+1 <= x2; x += 2 {
-						u0 := uInt & 63
-						v0 := vInt & 63
-						p0 := texIndexed[(v0<<6)+u0]
-						row0 := defaultRow
-						uFrac += stepUFrac
-						vFrac += stepVFrac
-						uInt += stepUInt + (uFrac >> fracBits)
-						vInt += stepVInt + (vFrac >> fracBits)
-						uFrac &= fracMask
-						vFrac &= fracMask
-						u1 := uInt & 63
-						v1 := vInt & 63
-						p1 := texIndexed[(v1<<6)+u1]
-						row1 := defaultRow
-						pix32[pixI] = shadePaletteIndexDOOMRow(p0, row0)
-						pix32[pixI+1] = shadePaletteIndexDOOMRow(p1, row1)
-						uFrac += stepUFrac
-						vFrac += stepVFrac
-						uInt += stepUInt + (uFrac >> fracBits)
-						vInt += stepVInt + (vFrac >> fracBits)
-						uFrac &= fracMask
-						vFrac &= fracMask
-						pixI += 2
-					}
-					if x <= x2 {
-						u := uInt & 63
-						v := vInt & 63
-						pix32[pixI] = shadePaletteIndexDOOMRow(texIndexed[(v<<6)+u], defaultRow)
-					}
-					continue
-				}
-				if doomColormapEnabled {
-					x := x1
-					for ; x+1 <= x2; x += 2 {
-						u0 := int(wxFixed>>fracBits) & 63
-						v0 := int(wyFixed>>fracBits) & 63
-						p0 := tex32[(v0<<6)+u0]
-						row0 := defaultRow
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						u1 := int(wxFixed>>fracBits) & 63
-						v1 := int(wyFixed>>fracBits) & 63
-						p1 := tex32[(v1<<6)+u1]
-						row1 := defaultRow
-						pix32[pixI] = shadePackedDOOMColormapRow(p0, row0)
-						pix32[pixI+1] = shadePackedDOOMColormapRow(p1, row1)
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						pixI += 2
-					}
-					if x <= x2 {
-						u := int(wxFixed>>fracBits) & 63
-						v := int(wyFixed>>fracBits) & 63
-						pix32[pixI] = shadePackedDOOMColormapRow(tex32[(v<<6)+u], defaultRow)
-					}
-					continue
-				}
-				if fullbrightNoLighting {
-					const fracMask = fracUnit - 1
-					uInt := int(wxFixed >> fracBits)
-					vInt := int(wyFixed >> fracBits)
-					uFrac := int(wxFixed & fracMask)
-					vFrac := int(wyFixed & fracMask)
-					stepUInt := int(stepWXFixed >> fracBits)
-					stepVInt := int(stepWYFixed >> fracBits)
-					stepUFrac := int(stepWXFixed & fracMask)
-					stepVFrac := int(stepWYFixed & fracMask)
-					canRepeatFill := stepWXFixed > -fracUnit && stepWXFixed < fracUnit && stepWYFixed > -fracUnit && stepWYFixed < fracUnit
-					if flatIndexedReady && canRepeatFill {
-						x := x1
-						for x <= x2 {
-							texIdx := ((vInt & 63) << 6) + (uInt & 63)
-							var packed uint32
-							if len(fullbrightPackedRow) == 256 {
-								packed = fullbrightPackedRow[texIndexed[texIdx]]
-							} else {
-								packed = shadePaletteIndexPacked(texIndexed[texIdx], 256)
-							}
-							for {
-								pix32[pixI] = packed
-								x++
-								pixI++
-								if x > x2 {
-									break
-								}
-								uFrac += stepUFrac
-								vFrac += stepVFrac
-								uInt += stepUInt + (uFrac >> fracBits)
-								vInt += stepVInt + (vFrac >> fracBits)
-								uFrac &= fracMask
-								vFrac &= fracMask
-								nextTexIdx := ((vInt & 63) << 6) + (uInt & 63)
-								if nextTexIdx != texIdx {
-									break
-								}
-							}
-						}
-						continue
-					}
-					x := x1
-					for ; x+1 <= x2; x += 2 {
-						u0 := uInt & 63
-						v0 := vInt & 63
-						if flatIndexedReady {
-							if len(fullbrightPackedRow) == 256 {
-								pix32[pixI] = fullbrightPackedRow[texIndexed[(v0<<6)+u0]]
-							} else {
-								pix32[pixI] = shadePaletteIndexPacked(texIndexed[(v0<<6)+u0], 256)
-							}
-						} else {
-							pix32[pixI] = tex32[(v0<<6)+u0]
-						}
-						uFrac += stepUFrac
-						vFrac += stepVFrac
-						uInt += stepUInt + (uFrac >> fracBits)
-						vInt += stepVInt + (vFrac >> fracBits)
-						uFrac &= fracMask
-						vFrac &= fracMask
-						u1 := uInt & 63
-						v1 := vInt & 63
-						if flatIndexedReady {
-							if len(fullbrightPackedRow) == 256 {
-								pix32[pixI+1] = fullbrightPackedRow[texIndexed[(v1<<6)+u1]]
-							} else {
-								pix32[pixI+1] = shadePaletteIndexPacked(texIndexed[(v1<<6)+u1], 256)
-							}
-						} else {
-							pix32[pixI+1] = tex32[(v1<<6)+u1]
-						}
-						uFrac += stepUFrac
-						vFrac += stepVFrac
-						uInt += stepUInt + (uFrac >> fracBits)
-						vInt += stepVInt + (vFrac >> fracBits)
-						uFrac &= fracMask
-						vFrac &= fracMask
-						pixI += 2
-					}
-					if x <= x2 {
-						u := uInt & 63
-						v := vInt & 63
-						if flatIndexedReady {
-							if len(fullbrightPackedRow) == 256 {
-								pix32[pixI] = fullbrightPackedRow[texIndexed[(v<<6)+u]]
-							} else {
-								pix32[pixI] = shadePaletteIndexPacked(texIndexed[(v<<6)+u], 256)
-							}
-						} else {
-							pix32[pixI] = tex32[(v<<6)+u]
-						}
-					}
-					continue
-				}
-				if flatIndexedReady {
-					if len(packedShadeRow) == 256 {
-						const fracMask = fracUnit - 1
-						uInt := int(wxFixed >> fracBits)
-						vInt := int(wyFixed >> fracBits)
-						uFrac := int(wxFixed & fracMask)
-						vFrac := int(wyFixed & fracMask)
-						stepUInt := int(stepWXFixed >> fracBits)
-						stepVInt := int(stepWYFixed >> fracBits)
-						stepUFrac := int(stepWXFixed & fracMask)
-						stepVFrac := int(stepWYFixed & fracMask)
-						canRepeatFill := stepWXFixed > -fracUnit && stepWXFixed < fracUnit && stepWYFixed > -fracUnit && stepWYFixed < fracUnit
-						if canRepeatFill {
-							x := x1
-							for x <= x2 {
-								texIdx := ((vInt & 63) << 6) + (uInt & 63)
-								packed := packedShadeRow[texIndexed[texIdx]]
-								for {
-									pix32[pixI] = packed
-									x++
-									pixI++
-									if x > x2 {
-										break
-									}
-									uFrac += stepUFrac
-									vFrac += stepVFrac
-									uInt += stepUInt + (uFrac >> fracBits)
-									vInt += stepVInt + (vFrac >> fracBits)
-									uFrac &= fracMask
-									vFrac &= fracMask
-									nextTexIdx := ((vInt & 63) << 6) + (uInt & 63)
-									if nextTexIdx != texIdx {
-										break
-									}
-								}
-							}
-							continue
-						}
-						x := x1
-						for ; x+3 <= x2; x += 4 {
-							u0 := uInt & 63
-							v0 := vInt & 63
-							p0 := texIndexed[(v0<<6)+u0]
-							uFrac += stepUFrac
-							vFrac += stepVFrac
-							uInt += stepUInt + (uFrac >> fracBits)
-							vInt += stepVInt + (vFrac >> fracBits)
-							uFrac &= fracMask
-							vFrac &= fracMask
-							u1 := uInt & 63
-							v1 := vInt & 63
-							p1 := texIndexed[(v1<<6)+u1]
-							uFrac += stepUFrac
-							vFrac += stepVFrac
-							uInt += stepUInt + (uFrac >> fracBits)
-							vInt += stepVInt + (vFrac >> fracBits)
-							uFrac &= fracMask
-							vFrac &= fracMask
-							u2 := uInt & 63
-							v2 := vInt & 63
-							p2 := texIndexed[(v2<<6)+u2]
-							uFrac += stepUFrac
-							vFrac += stepVFrac
-							uInt += stepUInt + (uFrac >> fracBits)
-							vInt += stepVInt + (vFrac >> fracBits)
-							uFrac &= fracMask
-							vFrac &= fracMask
-							u3 := uInt & 63
-							v3 := vInt & 63
-							p3 := texIndexed[(v3<<6)+u3]
-							pix32[pixI] = packedShadeRow[p0]
-							pix32[pixI+1] = packedShadeRow[p1]
-							pix32[pixI+2] = packedShadeRow[p2]
-							pix32[pixI+3] = packedShadeRow[p3]
-							uFrac += stepUFrac
-							vFrac += stepVFrac
-							uInt += stepUInt + (uFrac >> fracBits)
-							vInt += stepVInt + (vFrac >> fracBits)
-							uFrac &= fracMask
-							vFrac &= fracMask
-							pixI += 4
-						}
-						for ; x+1 <= x2; x += 2 {
-							u0 := uInt & 63
-							v0 := vInt & 63
-							p0 := texIndexed[(v0<<6)+u0]
-							uFrac += stepUFrac
-							vFrac += stepVFrac
-							uInt += stepUInt + (uFrac >> fracBits)
-							vInt += stepVInt + (vFrac >> fracBits)
-							uFrac &= fracMask
-							vFrac &= fracMask
-							u1 := uInt & 63
-							v1 := vInt & 63
-							p1 := texIndexed[(v1<<6)+u1]
-							pix32[pixI] = packedShadeRow[p0]
-							pix32[pixI+1] = packedShadeRow[p1]
-							uFrac += stepUFrac
-							vFrac += stepVFrac
-							uInt += stepUInt + (uFrac >> fracBits)
-							vInt += stepVInt + (vFrac >> fracBits)
-							uFrac &= fracMask
-							vFrac &= fracMask
-							pixI += 2
-						}
-						if x <= x2 {
-							u := uInt & 63
-							v := vInt & 63
-							pix32[pixI] = packedShadeRow[texIndexed[(v<<6)+u]]
-						}
-						continue
-					}
-				}
-				if doomLightingEnabled {
-					x := x1
-					for ; x+1 <= x2; x += 2 {
-						u0 := int(wxFixed>>fracBits) & 63
-						v0 := int(wyFixed>>fracBits) & 63
-						p0 := tex32[(v0<<6)+u0]
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						u1 := int(wxFixed>>fracBits) & 63
-						v1 := int(wyFixed>>fracBits) & 63
-						p1 := tex32[(v1<<6)+u1]
-						if defaultShade == 256 {
-							pix32[pixI] = p0
-							pix32[pixI+1] = p1
-						} else {
-							pix32[pixI] = shadePackedRGBA(p0, defaultShade)
-							pix32[pixI+1] = shadePackedRGBA(p1, defaultShade)
-						}
-						wxFixed += stepWXFixed
-						wyFixed += stepWYFixed
-						pixI += 2
-					}
-					if x <= x2 {
-						u := int(wxFixed>>fracBits) & 63
-						v := int(wyFixed>>fracBits) & 63
-						if defaultShade == 256 {
-							pix32[pixI] = tex32[(v<<6)+u]
-						} else {
-							pix32[pixI] = shadePackedRGBA(tex32[(v<<6)+u], defaultShade)
-						}
-					}
-					continue
-				}
-				x := x1
-				for ; x+1 <= x2; x += 2 {
-					u0 := int(wxFixed>>fracBits) & 63
-					v0 := int(wyFixed>>fracBits) & 63
-					p0 := tex32[(v0<<6)+u0]
-					wxFixed += stepWXFixed
-					wyFixed += stepWYFixed
-					u1 := int(wxFixed>>fracBits) & 63
-					v1 := int(wyFixed>>fracBits) & 63
-					p1 := tex32[(v1<<6)+u1]
-					if defaultShade == 256 {
-						pix32[pixI] = p0
-					} else {
-						pix32[pixI] = shadePackedRGBA(p0, defaultShade)
-					}
-					if defaultShade == 256 {
-						pix32[pixI+1] = p1
-					} else {
-						pix32[pixI+1] = shadePackedRGBA(p1, defaultShade)
-					}
-					wxFixed += stepWXFixed
-					wyFixed += stepWYFixed
-					pixI += 2
-				}
-				if x <= x2 {
-					u := int(wxFixed>>fracBits) & 63
-					v := int(wyFixed>>fracBits) & 63
-					if defaultShade == 256 {
-						pix32[pixI] = tex32[(v<<6)+u]
-					} else {
-						pix32[pixI] = shadePackedRGBA(tex32[(v<<6)+u], defaultShade)
-					}
-				}
+				continue
 			}
+			g.drawPlaneTexturedSpan(pix32, rowPix, x1, x2, sp.y, key, fbPacked, tex32, texIndexed, flatTexReady, camX, camY, ca, sa, eyeZ, focal, cx, cy)
 		}
 	}
-
-	renderRows(0, h)
 	if g.opts.Debug && g.debugAimSS >= 0 {
 		g.overlayDebugAimFloorOnPlanes(pix32, spansByPlane, planes, camX, camY, ca, sa, eyeZ, focal)
 	}
