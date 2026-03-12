@@ -1,10 +1,11 @@
 package doomruntime
 
 import (
+	"image"
 	"math"
 	"strings"
 
-	"gddoom/internal/render/hud"
+	"gddoom/internal/render/scene"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -424,10 +425,40 @@ func (g *game) drawSpritePatch(screen *ebiten.Image, name string, x, y, sx, sy f
 	if !ok {
 		return false
 	}
+	return drawSpritePatchClipped(screen, img, x, y, sx, sy, ox, oy, screen.Bounds().Dx(), screen.Bounds().Dy())
+}
+
+func drawSpritePatchClipped(screen, img *ebiten.Image, x, y, sx, sy float64, ox, oy, clipW, clipH int) bool {
+	if screen == nil || img == nil || sx <= 0 || sy <= 0 || clipW <= 0 || clipH <= 0 {
+		return false
+	}
+	w := img.Bounds().Dx()
+	h := img.Bounds().Dy()
+	if w <= 0 || h <= 0 {
+		return false
+	}
+	dstX := x - float64(ox)*sx
+	dstY := y - float64(oy)*sy
+	x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, float64(w)*sx, float64(h)*sy, 0, clipH-1, clipW, clipH)
+	if !ok {
+		return false
+	}
+	srcX0 := max(0, min(w, int(math.Floor((float64(x0)-dstX)/sx))))
+	srcY0 := max(0, min(h, int(math.Floor((float64(y0)-dstY)/sy))))
+	srcX1 := max(srcX0+1, min(w, int(math.Ceil((float64(x1+1)-dstX)/sx))))
+	srcY1 := max(srcY0+1, min(h, int(math.Ceil((float64(y1+1)-dstY)/sy))))
+	if srcX0 >= srcX1 || srcY0 >= srcY1 {
+		return false
+	}
+	sub, ok := img.SubImage(image.Rect(srcX0, srcY0, srcX1, srcY1)).(*ebiten.Image)
+	if !ok {
+		return false
+	}
 	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
 	op.GeoM.Scale(sx, sy)
-	op.GeoM.Translate(x-float64(ox)*sx, y-float64(oy)*sy)
-	screen.DrawImage(img, op)
+	op.GeoM.Translate(dstX+float64(srcX0)*sx, dstY+float64(srcY0)*sy)
+	screen.DrawImage(sub, op)
 	return true
 }
 
@@ -439,12 +470,28 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 	if name == "" {
 		return
 	}
-	sx, sy, ox, oy := hud.Transform(g.viewW, g.viewH, g.opts.SourcePortMode)
+	baseY := 32.0
+	switch g.statusBarDisplayMode() {
+	case statusBarDisplayOverlay, statusBarDisplayHidden:
+		baseY = 24.0
+	}
+	rect := g.walkWeaponViewportRect()
+	target := screen
+	if rect.Dx() < g.viewW || rect.Dy() < g.viewH || rect.Min.X != 0 || rect.Min.Y != 0 {
+		sub, ok := screen.SubImage(rect).(*ebiten.Image)
+		if !ok {
+			return
+		}
+		target = sub
+	}
+	scale := float64(rect.Dx()) / doomLogicalW
 	bx, by := g.weaponBob()
-	x := ox + (1.0+bx)*sx
-	y := oy + (32.0+by)*sy
-	_ = g.drawSpritePatch(screen, name, x, y, sx, sy)
+	const weaponBottomCheat = -8.0
+	const weaponBobBottomReserve = 4.0
+	x := (1.0 + bx) * scale
+	y := float64(rect.Dy()) - (doomLogicalH-(baseY+by)+weaponBottomCheat+weaponBobBottomReserve)*scale
+	_ = g.drawSpritePatch(target, name, x, y, scale, scale)
 	if flash := g.weaponFlashSpriteName(); flash != "" {
-		_ = g.drawSpritePatch(screen, flash, x, y, sx, sy)
+		_ = g.drawSpritePatch(target, flash, x, y, scale, scale)
 	}
 }

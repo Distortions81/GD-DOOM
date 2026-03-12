@@ -39,17 +39,26 @@ var frontendEpisodeMenuNames = map[int]string{
 }
 
 var frontendOptionsMenuNames = [...]string{
-	"M_ENDGAM",
-	"M_MESSG",
-	"M_DETAIL",
 	"",
 	"",
-	"M_MSENS",
 	"",
-	"M_SVOL",
+	"",
+	"",
+	"",
+	"",
 }
 
-var frontendOptionsSelectableRows = [...]int{0, 1, 2, 5, 7}
+var frontendOptionsTextLabels = [...]string{
+	"MESSAGES",
+	"STATUS BAR MODE",
+	"HUD SIZE",
+	"FPS",
+	"MOUSE SENSITIVITY",
+	"SOUND VOLUME",
+	"MUSIC VOLUME",
+}
+
+var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6}
 
 func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (*session.Game, runtimehost.Meta) {
 	sg := runtimehost.Init(runtimehost.Initializer[*sessionGame]{
@@ -263,20 +272,10 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		DrawFinale: sg.drawFinale,
 		DrawGameplay: func(screen *ebiten.Image) {
 			if sg.opts.SourcePortMode {
-				sig := sg.g.sessionSignals()
-				if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sig.ViewWidth || sg.presentSurface.Bounds().Dy() != sig.ViewHeight {
-					sg.presentSurface = ebiten.NewImage(max(sig.ViewWidth, 1), max(sig.ViewHeight, 1))
-				}
-				sg.rt.Draw(sg.presentSurface)
-				src := sg.presentSurface
-				if sg.palettePostEnabled() {
-					src = sg.applyFaithfulPalettePost(sg.presentSurface)
-				}
-				sg.drawSourcePortPresented(screen, src, sw, sh)
+				sg.drawGamePresented(screen, sg.g)
 				if sg.quitPrompt.Active {
 					sg.drawQuitPrompt(screen)
 				}
-				sg.transition.CaptureLastFrame(src)
 				return
 			}
 			if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
@@ -323,7 +322,7 @@ func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebi
 	if sg == nil {
 		op := &ebiten.DrawImageOptions{}
 		op.GeoM = geoM
-		op.Filter = ebiten.FilterLinear
+		op.Filter = ebiten.FilterNearest
 		screen.DrawImage(offscreen, op)
 		return
 	}
@@ -347,7 +346,7 @@ func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebi
 	ow := max(offscreen.Bounds().Dx(), 1)
 	oh := max(offscreen.Bounds().Dy(), 1)
 	op := &ebiten.DrawImageOptions{}
-	op.Filter = ebiten.FilterLinear
+	op.Filter = ebiten.FilterNearest
 	op.GeoM.Scale(float64(rw)/float64(ow), float64(rh)/float64(oh))
 	op.GeoM.Translate(float64(ox), float64(oy))
 	screen.DrawImage(offscreen, op)
@@ -587,18 +586,10 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		return w, h
 	}
 	// Faithful mode renders game internals at 320x200 and presents at an
-	// auto integer-scaled corrected layout (320*n x aspect*n).
-	sg.rt.Layout(doomLogicalW, doomLogicalH)
-	w := max(outsideWidth, 1)
-	h := max(outsideHeight, 1)
-	w, h, _, _ = fitRect(w, h, doomLogicalW, aspectH)
-	scale := w / doomLogicalW
-	scaleY := h / aspectH
-	if scaleY < scale {
-		scale = scaleY
-	}
-	if scale < 1 {
-		scale = 1
-	}
-	return doomLogicalW * scale, aspectH * scale
+	// fixed 640x400 logical buffer, with detail level selecting the internal
+	// game buffer size and final-screen presentation applying aspect correction.
+	rw, rh := faithfulDetailPresetSize(sg.g.detailLevel)
+	sg.rt.Layout(rw, rh)
+	_ = aspectH
+	return faithfulBufferW, faithfulBufferH
 }

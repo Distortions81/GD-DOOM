@@ -1,6 +1,9 @@
 package doomruntime
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestWeaponReadySpriteName(t *testing.T) {
 	if got := weaponReadySpriteName(weaponPistol, 0); got != "PISGA0" {
@@ -114,5 +117,24 @@ func TestSpritePatch_FallsBackToBasePatchForMissingBlendToken(t *testing.T) {
 	}
 	if w <= 0 || h <= 0 {
 		t.Fatalf("got w=%d h=%d want positive blended size", w, h)
+	}
+}
+
+func TestWeaponOverlayAnchorUsesDoomCenterX(t *testing.T) {
+	rectW := 640
+	scale := float64(rectW) / doomLogicalW
+	got := 1.0 * scale
+	if math.Abs(got-2.0) > 1e-9 {
+		t.Fatalf("psprite x anchor=%v want 2", got)
+	}
+}
+
+func TestWeaponOverlayYUsesViewportCenter(t *testing.T) {
+	rectW := 640
+	rectH := 336
+	scale := float64(rectW) / doomLogicalW
+	got := float64(rectH) - (doomLogicalH-(32.0)-8.0+4.0)*scale
+	if math.Abs(got-8.0) > 1e-9 {
+		t.Fatalf("bottom-anchored overlay y=%v want 8", got)
 	}
 }

@@ -7,6 +7,7 @@ type RuntimeSettings struct {
 	MUSPanMax        float64
 	OPLVolume        float64
 	SFXVolume        float64
+	HUDMessages      bool
 	MouseLook        bool
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
@@ -36,6 +37,7 @@ func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort 
 	next.MusicVolume = ClampVolume(s.MusicVolume)
 	next.OPLVolume = ClampOPLVolume(s.OPLVolume, maxOPLGain)
 	next.SFXVolume = ClampVolume(s.SFXVolume)
+	next.HUDMessages = s.HUDMessages
 	next.AlwaysRun = s.AlwaysRun
 	next.AutoWeaponSwitch = s.AutoWeaponSwitch
 	if !sourcePort {

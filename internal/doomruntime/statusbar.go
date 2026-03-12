@@ -13,27 +13,41 @@ import (
 )
 
 const (
-	huFontStart = '!' // HU_FONTSTART
-	huFontEnd   = '_' // HU_FONTEND
-	huMsgX      = 0   // HU_MSGX
-	huMsgY      = 0   // HU_MSGY
+	huFontStart       = '!' // HU_FONTSTART
+	huFontEnd         = '_' // HU_FONTEND
+	huMsgX            = 0   // HU_MSGX
+	huMsgY            = 0   // HU_MSGY
+	statusBarLogicalY = 168.0
 )
 
+type statusBarCacheState struct {
+	mode         statusBarDisplayMode
+	hudScale     float64
+	health       int
+	armor        int
+	readyAmmo    int
+	hasReadyAmmo bool
+	weaponOwned  [6]bool
+	keyOn        [3]bool
+	ammoCur      [4]int
+	ammoMax      [4]int
+	facePatch    string
+}
+
 func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
-	if len(g.opts.StatusPatchBank) == 0 {
+	if !g.statusBarVisible() {
 		return
 	}
 	maxBullets, maxShells, maxRockets, maxCells := ammoCaps(g.inventory.Backpack)
 	readyAmmo, hasReadyAmmo := g.statusReadyAmmo()
-	hud.DrawStatusBar(screen, hud.StatusBarInputs{
-		ViewW:        g.viewW,
-		ViewH:        g.viewH,
-		SourcePort:   g.opts.SourcePortMode,
-		Health:       g.stats.Health,
-		Armor:        g.stats.Armor,
-		ReadyAmmo:    readyAmmo,
-		HasReadyAmmo: hasReadyAmmo,
-		WeaponOwned: [6]bool{
+	state := statusBarCacheState{
+		mode:         g.statusBarDisplayMode(),
+		hudScale:     g.hudScaleValue(),
+		health:       g.stats.Health,
+		armor:        g.stats.Armor,
+		readyAmmo:    readyAmmo,
+		hasReadyAmmo: hasReadyAmmo,
+		weaponOwned: [6]bool{
 			g.statusWeaponOwned(2),
 			g.statusWeaponOwned(3),
 			g.statusWeaponOwned(4),
@@ -41,14 +55,107 @@ func (g *game) drawDoomStatusBar(screen *ebiten.Image) {
 			g.statusWeaponOwned(6),
 			g.statusWeaponOwned(7),
 		},
-		KeyOn:     [3]bool{g.inventory.BlueKey, g.inventory.RedKey, g.inventory.YellowKey},
-		AmmoCur:   [4]int{g.stats.Bullets, g.stats.Shells, g.stats.Cells, g.stats.Rockets},
-		AmmoMax:   [4]int{maxBullets, maxShells, maxCells, maxRockets},
-		FacePatch: g.statusFacePatchName(),
-	}, func(screen *ebiten.Image, name string, x, y, sx, sy float64) bool {
-		g.drawStatusPatch(screen, name, x, y, sx, sy)
-		return true
-	}, g.drawStatusTallNum, g.drawStatusShortNum, g.drawStatusPercent)
+		keyOn:     [3]bool{g.inventory.BlueKey, g.inventory.RedKey, g.inventory.YellowKey},
+		ammoCur:   [4]int{g.stats.Bullets, g.stats.Shells, g.stats.Cells, g.stats.Rockets},
+		ammoMax:   [4]int{maxBullets, maxShells, maxCells, maxRockets},
+		facePatch: g.statusFacePatchName(),
+	}
+	g.ensureStatusBarCache(state)
+	if g.statusBarCacheImg != nil {
+		g.drawStatusBarCacheImage(screen, state)
+	}
+}
+
+func (g *game) ensureStatusBarCache(state statusBarCacheState) {
+	if g == nil {
+		return
+	}
+	w := doomLogicalW
+	h := doomLogicalH - int(statusBarLogicalY)
+	if g.statusBarCacheImg == nil || g.statusBarCacheImg.Bounds().Dx() != w || g.statusBarCacheImg.Bounds().Dy() != h {
+		g.statusBarCacheImg = ebiten.NewImage(w, h)
+		g.statusBarCacheValid = false
+	}
+	if g.statusBarCacheValid && g.statusBarCacheState == state {
+		return
+	}
+	g.statusBarCacheImg.Clear()
+	g.drawStatusBarCached(g.statusBarCacheImg, state)
+	g.statusBarCacheState = state
+	g.statusBarCacheValid = true
+}
+
+func (g *game) drawStatusBarCacheImage(screen *ebiten.Image, state statusBarCacheState) {
+	if g == nil || g.statusBarCacheImg == nil {
+		return
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	switch state.mode {
+	case statusBarDisplayOverlay:
+		scale := math.Max(1.0, state.hudScale)
+		x := (float64(g.viewW) - float64(g.statusBarCacheImg.Bounds().Dx())*scale) * 0.5
+		y := float64(g.viewH) - float64(g.statusBarCacheImg.Bounds().Dy())*scale
+		op.GeoM.Scale(scale, scale)
+		op.GeoM.Translate(x, y)
+	default:
+		sx, sy, ox, oy := hud.Transform(g.viewW, g.viewH, g.hudUsesLogicalLayout(), state.hudScale)
+		op.GeoM.Scale(sx, sy)
+		op.GeoM.Translate(ox, oy+statusBarLogicalY*sy)
+	}
+	screen.DrawImage(g.statusBarCacheImg, op)
+}
+
+func (g *game) drawStatusBarCached(screen *ebiten.Image, state statusBarCacheState) {
+	g.drawStatusBarLogicalBar(screen, state)
+}
+
+func (g *game) drawStatusBarLogicalBar(screen *ebiten.Image, state statusBarCacheState) {
+	x0 := 0.0
+	y0 := 0.0
+	drawPatch := func(name string, x, y float64) {
+		g.drawStatusPatch(screen, name, x0+x, y0+(y-statusBarLogicalY), 1, 1)
+	}
+	drawTallNum := func(value, digits int, rightX, y float64) {
+		g.drawStatusTallNum(screen, value, digits, x0+rightX, y0+(y-statusBarLogicalY), 1, 1)
+	}
+	drawShortNum := func(value, digits int, rightX, y float64) {
+		g.drawStatusShortNum(screen, value, digits, x0+rightX, y0+(y-statusBarLogicalY), 1, 1)
+	}
+	drawPercent := func(value int, x, y float64) {
+		g.drawStatusPercent(screen, value, x0+x, y0+(y-statusBarLogicalY), 1, 1)
+	}
+	drawPatch("STBAR", 0, 168)
+	drawPatch("STARMS", 104, 168)
+	if state.hasReadyAmmo {
+		drawTallNum(state.readyAmmo, 3, 44, 171)
+	}
+	drawPercent(state.health, 90, 171)
+	drawPercent(state.armor, 221, 171)
+	for i := 0; i < 6; i++ {
+		slot := i + 2
+		x := float64(110 + (i%3)*12)
+		y := float64(172 + (i/3)*10)
+		name := "STGNUM" + string(rune('0'+slot))
+		if state.weaponOwned[i] {
+			name = "STYSNUM" + string(rune('0'+slot))
+		}
+		drawPatch(name, x, y)
+	}
+	keyNames := [3]string{"STKEYS0", "STKEYS2", "STKEYS1"}
+	keyY := [3]float64{171, 181, 191}
+	for i := 0; i < 3; i++ {
+		if state.keyOn[i] {
+			drawPatch(keyNames[i], 239, keyY[i])
+		}
+	}
+	curPos := [4][2]float64{{288, 173}, {288, 179}, {288, 191}, {288, 185}}
+	maxPos := [4][2]float64{{314, 173}, {314, 179}, {314, 191}, {314, 185}}
+	for i := 0; i < 4; i++ {
+		drawShortNum(state.ammoCur[i], 3, curPos[i][0], curPos[i][1])
+		drawShortNum(state.ammoMax[i], 3, maxPos[i][0], maxPos[i][1])
+	}
+	drawPatch(state.facePatch, 143, 168)
 }
 
 func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool) {
@@ -69,18 +176,24 @@ func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 }
 
-func (g *game) drawStatusPatch(screen *ebiten.Image, name string, x, y, sx, sy float64) {
+func (g *game) drawStatusPatchAlpha(screen *ebiten.Image, name string, x, y, sx, sy, alpha float64) {
 	img, _, _, ox, oy, ok := g.statusPatch(name)
 	if !ok {
 		return
 	}
 	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.ColorScale.ScaleAlpha(float32(alpha))
 	op.GeoM.Scale(sx, sy)
 	op.GeoM.Translate(x-float64(ox)*sx, y-float64(oy)*sy)
 	screen.DrawImage(img, op)
 }
 
-func (g *game) drawStatusTallNum(screen *ebiten.Image, value, digits int, rightX, y, sx, sy float64) {
+func (g *game) drawStatusPatch(screen *ebiten.Image, name string, x, y, sx, sy float64) {
+	g.drawStatusPatchAlpha(screen, name, x, y, sx, sy, 1)
+}
+
+func (g *game) drawStatusTallNumAlpha(screen *ebiten.Image, value, digits int, rightX, y, sx, sy, alpha float64) {
 	if value < 0 {
 		value = 0
 	}
@@ -96,11 +209,15 @@ func (g *game) drawStatusTallNum(screen *ebiten.Image, value, digits int, rightX
 			continue
 		}
 		x -= float64(w) * sx
-		g.drawStatusPatch(screen, name, x, y, sx, sy)
+		g.drawStatusPatchAlpha(screen, name, x, y, sx, sy, alpha)
 	}
 }
 
-func (g *game) drawStatusShortNum(screen *ebiten.Image, value, digits int, rightX, y, sx, sy float64) {
+func (g *game) drawStatusTallNum(screen *ebiten.Image, value, digits int, rightX, y, sx, sy float64) {
+	g.drawStatusTallNumAlpha(screen, value, digits, rightX, y, sx, sy, 1)
+}
+
+func (g *game) drawStatusShortNumAlpha(screen *ebiten.Image, value, digits int, rightX, y, sx, sy, alpha float64) {
 	if value < 0 {
 		value = 0
 	}
@@ -116,18 +233,26 @@ func (g *game) drawStatusShortNum(screen *ebiten.Image, value, digits int, right
 			continue
 		}
 		x -= float64(w) * sx
-		g.drawStatusPatch(screen, name, x, y, sx, sy)
+		g.drawStatusPatchAlpha(screen, name, x, y, sx, sy, alpha)
 	}
 }
 
-func (g *game) drawStatusPercent(screen *ebiten.Image, value int, x, y, sx, sy float64) {
+func (g *game) drawStatusShortNum(screen *ebiten.Image, value, digits int, rightX, y, sx, sy float64) {
+	g.drawStatusShortNumAlpha(screen, value, digits, rightX, y, sx, sy, 1)
+}
+
+func (g *game) drawStatusPercentAlpha(screen *ebiten.Image, value int, x, y, sx, sy, alpha float64) {
 	_, _, _, _, _, ok := g.statusPatch("STTPRCNT")
 	if ok {
-		g.drawStatusPatch(screen, "STTPRCNT", x, y, sx, sy)
-		g.drawStatusTallNum(screen, value, 3, x, y, sx, sy)
+		g.drawStatusPatchAlpha(screen, "STTPRCNT", x, y, sx, sy, alpha)
+		g.drawStatusTallNumAlpha(screen, value, 3, x, y, sx, sy, alpha)
 		return
 	}
-	g.drawStatusTallNum(screen, value, 3, x, y, sx, sy)
+	g.drawStatusTallNumAlpha(screen, value, 3, x, y, sx, sy, alpha)
+}
+
+func (g *game) drawStatusPercent(screen *ebiten.Image, value int, x, y, sx, sy float64) {
+	g.drawStatusPercentAlpha(screen, value, x, y, sx, sy, 1)
 }
 
 func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, bool) {
@@ -154,7 +279,8 @@ func (g *game) drawHUDMessage(screen *ebiten.Image, msg string, x, y float64) {
 	hud.DrawHUDMessage(screen, hud.MessageInputs{
 		ViewW:      g.viewW,
 		ViewH:      g.viewH,
-		SourcePort: g.opts.SourcePortMode,
+		SourcePort: g.hudUsesLogicalLayout(),
+		HUDScale:   g.hudScaleValue(),
 		Message:    msg,
 		X:          float64(huMsgX) + x,
 		Y:          float64(huMsgY) + y,

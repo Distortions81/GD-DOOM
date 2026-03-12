@@ -120,6 +120,7 @@ type sessionRuntime interface {
 	sessionAcknowledgeQuitPrompt()
 	sessionAcknowledgeReadThis()
 	sessionToggleHUDMessages() bool
+	sessionTogglePerfOverlay() bool
 	sessionCycleDetail() int
 	sessionMouseLookSpeed() float64
 	sessionSetMouseLookSpeed(float64)
@@ -286,6 +287,7 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	sg.settings.MusicVolume = next.MusicVolume
 	sg.settings.OPLVolume = next.OPLVolume
 	sg.settings.SFXVolume = next.SFXVolume
+	sg.settings.HUDMessages = next.HUDMessages
 	sg.settings.AlwaysRun = next.AlwaysRun
 	sg.settings.AutoWeaponSwitch = next.AutoWeaponSwitch
 	sg.settings.LineColorMode = next.LineColorMode

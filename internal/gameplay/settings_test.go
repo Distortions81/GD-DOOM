@@ -64,3 +64,12 @@ func TestApplyRuntimeSettingsMusicActionRestartWhenTurningMusicBackOn(t *testing
 		t.Fatalf("musicAction=%v want restart", got.MusicAction)
 	}
 }
+
+func TestApplyRuntimeSettingsPreservesHUDMessages(t *testing.T) {
+	got := ApplyRuntimeSettings(PersistentSettings{HUDMessages: false}, RuntimeSettings{
+		HUDMessages: true,
+	}, true, 3, 5, 7, 4)
+	if !got.Settings.HUDMessages {
+		t.Fatal("HUDMessages should be updated from runtime settings")
+	}
+}

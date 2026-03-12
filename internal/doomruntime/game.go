@@ -28,8 +28,12 @@ import (
 )
 
 const (
-	doomLogicalW = 320
-	doomLogicalH = 200
+	doomLogicalW            = 320
+	doomLogicalH            = 200
+	doomScreenBlocksMin     = 0
+	doomScreenBlocksOverlay = 1
+	doomScreenBlocksFull    = 2
+	doomScreenBlocksDefault = doomScreenBlocksMin
 
 	lineOneSidedWidth  = 1.8
 	lineTwoSidedWidth  = 1.2
@@ -117,11 +121,13 @@ var doomPlayerArrow = [][4]float64{
 }
 
 var detailPresets = [][2]int{
-	{doomLogicalW, doomLogicalH}, // high detail
-	{doomLogicalW, doomLogicalH}, // low detail (column-doubled)
+	{doomLogicalW, doomLogicalH},         // high detail
+	{doomLogicalW, doomLogicalH},         // low detail (column-doubled)
+	{doomLogicalW * 2, doomLogicalH * 2}, // extra high
 }
 
 var sourcePortDetailDivisors = []int{1, 2, 3, 4}
+var sourcePortHUDScaleSteps = []float64{1.0, 2.0, 3.0, 4.0}
 
 type projectedProjectileItem struct {
 	dist       float64
@@ -227,6 +233,7 @@ const (
 	billboardQueueMonsters
 	billboardQueueWorldThings
 	billboardQueuePuffs
+	billboardQueueMaskedMids
 )
 
 type billboardQueueItem struct {
@@ -300,6 +307,9 @@ type game struct {
 	crtEnabled        bool
 	viewW             int
 	viewH             int
+	screenBlocks      int
+	hudScaleStep      int
+	hudLogicalLayout  bool
 	State             mapview.ViewState
 
 	mode                      viewMode
@@ -515,11 +525,12 @@ type game struct {
 	mapFloorWorldAnim            int
 	mapFloorLoopSets             []sectorLoopSet
 	mapFloorLoopInit             bool
-	textureAnimCrossfadeFrames   int
 	spriteOpaqueShapeCache       map[string]spriteOpaqueShape
 	thingSpriteExpandCache       map[string][]string
-	planeFlatCache32Scratch      map[string][]uint32
-	planeFlatCacheIndexedScratch map[string][]byte
+	flatNameToID                 map[string]uint16
+	flatIDToName                 []string
+	planeFlatCache32Scratch      [][]uint32
+	planeFlatCacheIndexedScratch [][]byte
 	planeFBPackedScratch         []uint32
 	planeFlatTex32Scratch        [][]uint32
 	planeFlatTexIndexedScratch   [][]byte
@@ -554,6 +565,9 @@ type game struct {
 	buffers3DW                   int
 	buffers3DH                   int
 	flatImgCache                 map[string]*ebiten.Image
+	statusBarCacheImg            *ebiten.Image
+	statusBarCacheState          statusBarCacheState
+	statusBarCacheValid          bool
 	statusPatchImg               map[string]*ebiten.Image
 	menuPatchImg                 map[string]*ebiten.Image
 	spritePatchImg               map[string]*ebiten.Image
@@ -588,6 +602,8 @@ type game struct {
 	plane3DVisBuckets            map[plane3DKey]plane3DVisBucket
 	plane3DVisGen                uint64
 	plane3DOrder                 []*plane3DVisplane
+	plane3DSpanScratch           [][]plane3DSpan
+	plane3DSceneSpanScratch      [][]scene.PlaneSpan
 	plane3DPool                  []*plane3DVisplane
 	plane3DPoolUsed              int
 	plane3DPoolViewW             int
@@ -883,6 +899,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		crtEnabled:        opts.CRTEffect,
 		viewW:             opts.Width,
 		viewH:             opts.Height,
+		screenBlocks:      defaultScreenBlocks(opts),
+		hudScaleStep:      defaultHUDScaleStep(opts),
 		skyOutputW:        max(opts.Width, 1),
 		skyOutputH:        max(opts.Height, 1),
 		mode:              viewMap,
@@ -916,7 +934,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
-	g.textureAnimCrossfadeFrames = 0
 	g.thingSpriteExpandCache = make(map[string][]string, 256)
 	g.detailLevel = defaultDetailLevelForMode(g.viewW, g.viewH, opts.SourcePortMode)
 	if opts.InitialDetailLevel >= 0 {
@@ -1054,6 +1071,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.StartZoom > 0 {
 		g.State.SetZoom(opts.StartZoom)
 	}
+	g.reserveRenderScratch()
+	g.precacheRenderAssets()
 	g.syncRenderState()
 	if g.mode == viewWalk {
 		// Avoid startup cursor-capture deltas rotating the initial spawn heading.
@@ -1070,6 +1089,261 @@ func (g *game) clearSpritePatchCache() {
 		return
 	}
 	g.spritePatchImg = nil
+}
+
+func reserveSliceCap[T any](buf []T, n int) []T {
+	if n <= 0 {
+		return buf[:0]
+	}
+	if cap(buf) < n {
+		return make([]T, 0, n)
+	}
+	return buf[:0]
+}
+
+func resizeSliceLen[T any](buf []T, n int) []T {
+	if n <= 0 {
+		return buf[:0]
+	}
+	if cap(buf) < n {
+		return make([]T, n)
+	}
+	buf = buf[:n]
+	clear(buf)
+	return buf
+}
+
+func (g *game) reserveRenderScratch() {
+	if g == nil || g.m == nil {
+		return
+	}
+	monsterCount := 0
+	otherThingCount := 0
+	for _, th := range g.m.Things {
+		switch {
+		case isMonster(th.Type):
+			monsterCount++
+		case th.Type == 1 || th.Type == 2 || th.Type == 3 || th.Type == 4:
+			// Player starts do not participate in billboard rendering.
+		default:
+			otherThingCount++
+		}
+	}
+	wallSegCap := max(len(g.m.Segs), 64)
+	billboardCap := max(monsterCount+otherThingCount+32, 64)
+	rowSpanCap := max(g.viewW/2, 64)
+	rowOccluderCap := max(min(billboardCap/8, 16), 4)
+
+	g.spriteTXScratch = reserveSliceCap(g.spriteTXScratch, max(g.viewW, 64))
+	g.spriteTYScratch = reserveSliceCap(g.spriteTYScratch, max(g.viewH, 64))
+	g.planeFBPackedScratch = reserveSliceCap(g.planeFBPackedScratch, max(len(g.m.Sectors), 64))
+	g.planeFlatTex32Scratch = reserveSliceCap(g.planeFlatTex32Scratch, max(len(g.m.Sectors), 64))
+	g.planeFlatTexIndexedScratch = reserveSliceCap(g.planeFlatTexIndexedScratch, max(len(g.m.Sectors), 64))
+	g.planeFlatReadyScratch = reserveSliceCap(g.planeFlatReadyScratch, max(len(g.m.Sectors), 64))
+	g.plane3DSpanScratch = reserveSliceCap(g.plane3DSpanScratch, max(len(g.m.Sectors), 64))
+	g.plane3DSceneSpanScratch = reserveSliceCap(g.plane3DSceneSpanScratch, max(len(g.m.Sectors), 64))
+	g.projectileItemsScratch = reserveSliceCap(g.projectileItemsScratch, 32)
+	g.monsterItemsScratch = reserveSliceCap(g.monsterItemsScratch, max(monsterCount, 32))
+	g.thingItemsScratch = reserveSliceCap(g.thingItemsScratch, max(otherThingCount, 32))
+	g.puffItemsScratch = reserveSliceCap(g.puffItemsScratch, 64)
+	g.billboardQueueScratch = reserveSliceCap(g.billboardQueueScratch, billboardCap)
+	g.maskedMidSegsScratch = reserveSliceCap(g.maskedMidSegsScratch, wallSegCap/2)
+	g.wallPrepassBuf = reserveSliceCap(g.wallPrepassBuf, wallSegCap)
+	g.solid3DBuf = reserveSliceCap(g.solid3DBuf, rowSpanCap)
+	g.solidClipScratch = reserveSliceCap(g.solidClipScratch, rowSpanCap)
+
+	if g.viewH > 0 {
+		if len(g.billboardPlaneOccluderRows) != g.viewH {
+			g.billboardPlaneOccluderRows = make([][]billboardPlaneOccluderSpan, g.viewH)
+		}
+		for y := range g.billboardPlaneOccluderRows {
+			g.billboardPlaneOccluderRows[y] = reserveSliceCap(g.billboardPlaneOccluderRows[y], rowOccluderCap)
+		}
+	}
+}
+
+func (g *game) precacheRenderAssets() {
+	if g == nil {
+		return
+	}
+	g.precacheMapTextureAssets()
+	g.precacheSpritePatchRenderData()
+	g.precacheThingSpriteExpansion()
+}
+
+func collectAnimatedTextureFrames(name string, refs map[string]textureAnimRef) []string {
+	key := normalizeFlatName(name)
+	if key == "" {
+		return nil
+	}
+	ref, ok := refs[key]
+	if !ok || len(ref.frames) < 2 {
+		return []string{key}
+	}
+	return ref.frames
+}
+
+func appendUniqueTextureKeys(dst []string, seen map[string]struct{}, refs map[string]textureAnimRef, name string) []string {
+	for _, key := range collectAnimatedTextureFrames(name, refs) {
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		dst = append(dst, key)
+	}
+	return dst
+}
+
+func (g *game) collectMapTextureUsage() ([]string, []string) {
+	if g == nil || g.m == nil {
+		return nil, nil
+	}
+	flatSeen := make(map[string]struct{}, len(g.m.Sectors)*2)
+	wallSeen := make(map[string]struct{}, len(g.m.Sidedefs)*3)
+	flatKeys := make([]string, 0, len(flatSeen))
+	wallKeys := make([]string, 0, len(wallSeen))
+	for _, sec := range g.m.Sectors {
+		flatKeys = appendUniqueTextureKeys(flatKeys, flatSeen, flatTextureAnimRefs, sec.FloorPic)
+		flatKeys = appendUniqueTextureKeys(flatKeys, flatSeen, flatTextureAnimRefs, sec.CeilingPic)
+	}
+	for _, side := range g.m.Sidedefs {
+		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, wallTextureAnimRefs, side.Mid)
+		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, wallTextureAnimRefs, side.Top)
+		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, wallTextureAnimRefs, side.Bottom)
+	}
+	return flatKeys, wallKeys
+}
+
+func (g *game) precacheMapTextureAssets() {
+	if g == nil || g.m == nil {
+		return
+	}
+	flatKeys, _ := g.collectMapTextureUsage()
+	g.initFlatIDTable(flatKeys)
+	if len(flatKeys) != 0 {
+		if g.flatImgCache == nil {
+			g.flatImgCache = make(map[string]*ebiten.Image, len(flatKeys))
+		}
+		for _, key := range flatKeys {
+			g.flatRGBAResolvedKey(key)
+			g.flatIndexedResolvedKey(key)
+			g.flatImageResolvedKey(key)
+		}
+	}
+	if len(g.sectorPlaneCache) == len(g.m.Sectors) && len(g.m.Sectors) != 0 {
+		g.refreshSectorPlaneCacheTextureRefs()
+	}
+}
+
+func (g *game) initFlatIDTable(flatKeys []string) {
+	if g == nil {
+		return
+	}
+	if g.flatNameToID == nil {
+		g.flatNameToID = make(map[string]uint16, max(len(flatKeys), 16))
+	} else {
+		clear(g.flatNameToID)
+	}
+	g.flatIDToName = g.flatIDToName[:0]
+	for _, key := range flatKeys {
+		if key == "" {
+			continue
+		}
+		if _, ok := g.flatNameToID[key]; ok {
+			continue
+		}
+		if len(g.flatIDToName) >= 1<<16 {
+			break
+		}
+		id := uint16(len(g.flatIDToName))
+		g.flatNameToID[key] = id
+		g.flatIDToName = append(g.flatIDToName, key)
+	}
+	g.planeFlatCache32Scratch = resizeSliceLen(g.planeFlatCache32Scratch, len(g.flatIDToName))
+	g.planeFlatCacheIndexedScratch = resizeSliceLen(g.planeFlatCacheIndexedScratch, len(g.flatIDToName))
+}
+
+func (g *game) flatIDForResolvedName(name string) uint16 {
+	if g == nil || name == "" {
+		return 0
+	}
+	if id, ok := g.flatNameToID[name]; ok {
+		return id
+	}
+	if g.flatNameToID == nil {
+		g.flatNameToID = make(map[string]uint16, 16)
+	}
+	if len(g.flatIDToName) >= 1<<16 {
+		return 0
+	}
+	id := uint16(len(g.flatIDToName))
+	g.flatNameToID[name] = id
+	g.flatIDToName = append(g.flatIDToName, name)
+	if len(g.planeFlatCache32Scratch) < len(g.flatIDToName) {
+		g.planeFlatCache32Scratch = append(g.planeFlatCache32Scratch, nil)
+		g.planeFlatCacheIndexedScratch = append(g.planeFlatCacheIndexedScratch, nil)
+	}
+	return id
+}
+
+func (g *game) flatNameByID(id uint16) string {
+	if g == nil {
+		return ""
+	}
+	i := int(id)
+	if i < 0 || i >= len(g.flatIDToName) {
+		return ""
+	}
+	return g.flatIDToName[i]
+}
+
+func (g *game) flatIDForName(name string) uint16 {
+	return g.flatIDForResolvedName(g.resolveAnimatedFlatName(name))
+}
+
+func (g *game) flatRGBAResolvedID(id uint16) ([]byte, bool) {
+	return g.flatRGBAResolvedKey(g.flatNameByID(id))
+}
+
+func (g *game) flatIndexedResolvedID(id uint16) ([]byte, bool) {
+	return g.flatIndexedResolvedKey(g.flatNameByID(id))
+}
+
+func (g *game) precacheSpritePatchRenderData() {
+	if g == nil || len(g.opts.SpritePatchBank) == 0 {
+		return
+	}
+	if g.spriteOpaqueShapeCache == nil {
+		g.spriteOpaqueShapeCache = make(map[string]spriteOpaqueShape, len(g.opts.SpritePatchBank))
+	}
+	for key, tex := range g.opts.SpritePatchBank {
+		if tex.Width <= 0 || tex.Height <= 0 {
+			continue
+		}
+		if built, ok := synthesizeIndexedSpriteTexture(tex); ok {
+			tex = built
+			g.opts.SpritePatchBank[key] = tex
+		}
+		g.spriteOpaqueShapeForKey(key, tex)
+	}
+}
+
+func (g *game) precacheThingSpriteExpansion() {
+	if g == nil || g.m == nil || len(g.m.Things) == 0 {
+		return
+	}
+	if g.thingSpriteExpandCache == nil {
+		g.thingSpriteExpandCache = make(map[string][]string, 256)
+	}
+	for i, th := range g.m.Things {
+		name := g.mapThingSpriteName(i, th)
+		if name != "" {
+			g.expandThingSpriteFrames(name)
+		}
+	}
 }
 
 func (g *game) initSkyLayerShader() {
@@ -1090,7 +1364,7 @@ func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
 		}
 		return 0
 	}
-	return detailPresetIndex(viewW, viewH)
+	return 0
 }
 
 func (g *game) resetView() {
@@ -1107,19 +1381,40 @@ func detailPresetIndex(w, h int) int {
 	return 0
 }
 
+func faithfulDetailPresetSize(level int) (int, int) {
+	if len(detailPresets) == 0 {
+		return doomLogicalW, doomLogicalH
+	}
+	if level < 0 || level >= len(detailPresets) {
+		level = 0
+	}
+	return detailPresets[level][0], detailPresets[level][1]
+}
+
 func (g *game) cycleDetailLevel() {
 	if len(detailPresets) == 0 {
 		return
 	}
-	g.detailLevel = (g.detailLevel + 1) % len(detailPresets)
-	p := detailPresets[g.detailLevel]
-	g.viewW = p[0]
-	g.viewH = p[1]
-	_, _, worldW, worldH := boundsViewMetrics(g.bounds)
-	g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
+	if len(detailPresets) > 1 {
+		if g.detailLevel == 0 {
+			g.detailLevel = 1
+		} else {
+			g.detailLevel = 0
+		}
+	}
 	label := "HIGH"
-	if g.lowDetailMode() {
+	switch {
+	case g.lowDetailMode():
 		label = "LOW"
+	case g.detailLevel == len(detailPresets)-1:
+		label = "EXTRA HIGH"
+	}
+	w, h := faithfulDetailPresetSize(g.detailLevel)
+	if g.viewW != w || g.viewH != h {
+		g.viewW = w
+		g.viewH = h
+		_, _, worldW, worldH := boundsViewMetrics(g.bounds)
+		g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
 	}
 	g.setHUDMessage(fmt.Sprintf("Detail: %s", label), 70)
 	// Avoid a large turn delta on the next walk-mode update after viewport size changes.
@@ -1171,8 +1466,8 @@ func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
 		return 0
 	}
 	base := float64(40 << 16)
-	scale := mouseLookResolutionScale(renderW)
-	raw := int64(math.Round(float64(dx) * scale * base * speed))
+	_ = renderW
+	raw := int64(math.Round(float64(dx) * base * speed))
 	if raw == 0 {
 		if dx > 0 {
 			raw = 1
@@ -1184,17 +1479,6 @@ func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
 	return -raw
 }
 
-func mouseLookResolutionScale(renderW int) float64 {
-	refW := doomLogicalW
-	if renderW <= 0 {
-		renderW = refW
-	}
-	if renderW < 1 {
-		renderW = 1
-	}
-	return float64(refW) / float64(renderW)
-}
-
 func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 	return RuntimeSettings{
 		DetailLevel:      g.detailLevel,
@@ -1203,6 +1487,7 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		MUSPanMax:        g.opts.MUSPanMax,
 		OPLVolume:        g.opts.OPLVolume,
 		SFXVolume:        g.opts.SFXVolume,
+		HUDMessages:      g.hudMessagesEnabled,
 		MouseLook:        g.opts.MouseLook,
 		AlwaysRun:        g.alwaysRun,
 		AutoWeaponSwitch: g.autoWeaponSwitch,
@@ -1482,7 +1767,14 @@ func (g *game) updateMapMode() {
 func (g *game) updateWalkMode() {
 	g.updateParityControls()
 	g.updateWeaponHotkeys(true)
-	g.updateZoom()
+	g.updateWalkScreenSize()
+	ctrlHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight)
+	if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
+		g.adjustHUDScale(1)
+	}
+	if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
+		g.adjustHUDScale(-1)
+	}
 	cmd := moveCmd{}
 	usePressed := false
 	firePressed := false
@@ -1649,14 +1941,21 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 	if !allowCycleInput {
 		return
 	}
+	ctrlHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight)
 	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyPageDown) ||
 		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4) {
+		if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
+			return
+		}
 		g.cycleWeapon(1)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) ||
 		inpututil.IsKeyJustPressed(ebiten.KeyPageUp) ||
 		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3) {
+		if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
+			return
+		}
 		g.cycleWeapon(-1)
 	}
 	_, wheelY := ebiten.Wheel()
@@ -1818,6 +2117,263 @@ func (g *game) updateZoom() {
 	g.State.AdjustZoom(step, wheelY)
 }
 
+func defaultScreenBlocks(opts Options) int {
+	if len(opts.StatusPatchBank) == 0 {
+		return doomScreenBlocksFull
+	}
+	if opts.SourcePortMode {
+		return doomScreenBlocksOverlay
+	}
+	return doomScreenBlocksDefault
+}
+
+func allowedScreenBlocksRange(opts Options) (int, int) {
+	minBlocks := doomScreenBlocksMin
+	if opts.SourcePortMode {
+		minBlocks = doomScreenBlocksOverlay
+	} else {
+		minBlocks = doomScreenBlocksDefault
+	}
+	return minBlocks, doomScreenBlocksFull
+}
+
+func clampScreenBlocks(opts Options, blocks int) int {
+	if !opts.SourcePortMode && blocks == doomScreenBlocksOverlay {
+		blocks = doomScreenBlocksDefault
+	}
+	if opts.SourcePortMode && blocks == doomScreenBlocksDefault {
+		blocks = doomScreenBlocksOverlay
+	}
+	minBlocks, maxBlocks := allowedScreenBlocksRange(opts)
+	return min(maxBlocks, max(minBlocks, blocks))
+}
+
+func defaultHUDScaleStep(opts Options) int {
+	if len(sourcePortHUDScaleSteps) == 0 {
+		return 0
+	}
+	targetScale := 2.0
+	if !opts.SourcePortMode && defaultScreenBlocks(opts) == doomScreenBlocksOverlay {
+		targetScale = 1.0
+	}
+	for i, v := range sourcePortHUDScaleSteps {
+		if v >= targetScale {
+			return i
+		}
+	}
+	return len(sourcePortHUDScaleSteps) - 1
+}
+
+func (g *game) hudScaleValue() float64 {
+	if g == nil || len(sourcePortHUDScaleSteps) == 0 {
+		return 1
+	}
+	i := g.hudScaleStep
+	if i < 0 || i >= len(sourcePortHUDScaleSteps) {
+		i = 0
+	}
+	v := sourcePortHUDScaleSteps[i]
+	if v <= 0 {
+		return 1
+	}
+	return v
+}
+
+func (g *game) hudUsesLogicalLayout() bool {
+	return g != nil && (g.opts.SourcePortMode || g.hudLogicalLayout)
+}
+
+func (g *game) hudScaleDot() int {
+	if g == nil || len(sourcePortHUDScaleSteps) == 0 {
+		return 0
+	}
+	return min(len(sourcePortHUDScaleSteps)-1, max(0, g.hudScaleStep))
+}
+
+func (g *game) hudScaleLabel() string {
+	return fmt.Sprintf("%d%%", int(math.Round(g.hudScaleValue()*100)))
+}
+
+type statusBarDisplayMode uint8
+
+const (
+	statusBarDisplayBottom statusBarDisplayMode = iota
+	statusBarDisplayOverlay
+	statusBarDisplayHidden
+)
+
+func (g *game) statusBarDisplayMode() statusBarDisplayMode {
+	if g == nil || len(g.opts.StatusPatchBank) == 0 {
+		return statusBarDisplayHidden
+	}
+	switch clampScreenBlocks(g.opts, g.screenBlocks) {
+	case doomScreenBlocksFull:
+		return statusBarDisplayHidden
+	case doomScreenBlocksOverlay:
+		return statusBarDisplayOverlay
+	default:
+		return statusBarDisplayBottom
+	}
+}
+
+func (g *game) statusBarVisible() bool {
+	return g != nil && g.statusBarDisplayMode() != statusBarDisplayHidden
+}
+
+func (g *game) walkStatusBarTop() int {
+	h := max(g.viewH, 1)
+	if g.statusBarDisplayMode() != statusBarDisplayBottom {
+		return h
+	}
+	top := int(math.Floor(hud.StatusBarTop(g.viewW, g.viewH, g.hudUsesLogicalLayout(), g.hudScaleValue())))
+	if top < 1 {
+		return 1
+	}
+	if top > h {
+		return h
+	}
+	return top
+}
+
+func (g *game) walkRenderViewportRect() image.Rectangle {
+	viewW := max(g.viewW, 1)
+	viewH := max(g.viewH, 1)
+	if g == nil {
+		return image.Rect(0, 0, viewW, viewH)
+	}
+	switch g.statusBarDisplayMode() {
+	case statusBarDisplayOverlay, statusBarDisplayHidden:
+		return image.Rect(0, 0, viewW, viewH)
+	}
+	availH := g.walkStatusBarTop()
+	if availH <= 0 {
+		return image.Rect(0, 0, viewW, 1)
+	}
+	return image.Rect(0, 0, viewW, availH)
+}
+
+func (g *game) walkWeaponViewportRect() image.Rectangle {
+	viewW := max(g.viewW, 1)
+	viewH := max(g.viewH, 1)
+	if g == nil {
+		return image.Rect(0, 0, viewW, viewH)
+	}
+	switch g.statusBarDisplayMode() {
+	case statusBarDisplayOverlay, statusBarDisplayHidden:
+		return image.Rect(0, 0, viewW, viewH)
+	}
+	availH := g.walkStatusBarTop()
+	if g.hudUsesLogicalLayout() {
+		top := int(math.Floor(hud.StatusBarTop(g.viewW, g.viewH, true, 1.0)))
+		if top >= 1 && top <= viewH {
+			availH = top
+		}
+	}
+	if availH <= 0 {
+		return image.Rect(0, 0, viewW, 1)
+	}
+	return image.Rect(0, 0, viewW, availH)
+}
+
+func (g *game) screenSizeDot() int {
+	if g == nil {
+		return doomScreenBlocksDefault
+	}
+	return clampScreenBlocks(g.opts, g.screenBlocks)
+}
+
+func (g *game) screenSizeLabel() string {
+	switch g.statusBarDisplayMode() {
+	case statusBarDisplayOverlay:
+		return "OVERLAY"
+	case statusBarDisplayHidden:
+		return "OFF"
+	default:
+		return "BOTTOM"
+	}
+}
+
+func (g *game) adjustScreenBlocks(dir int) bool {
+	if g == nil || dir == 0 {
+		return false
+	}
+	minBlocks, maxBlocks := allowedScreenBlocksRange(g.opts)
+	next := min(maxBlocks, max(minBlocks, g.screenBlocks+dir))
+	if next == g.screenBlocks {
+		return false
+	}
+	g.screenBlocks = next
+	g.setHUDMessage(fmt.Sprintf("Status bar %s", g.screenSizeLabel()), 70)
+	return true
+}
+
+func (g *game) adjustHUDScale(dir int) bool {
+	if g == nil || dir == 0 || len(sourcePortHUDScaleSteps) == 0 {
+		return false
+	}
+	next := min(len(sourcePortHUDScaleSteps)-1, max(0, g.hudScaleStep+dir))
+	if next == g.hudScaleStep {
+		return false
+	}
+	g.hudScaleStep = next
+	g.statusBarCacheValid = false
+	g.setHUDMessage(fmt.Sprintf("HUD size %s", g.hudScaleLabel()), 70)
+	return true
+}
+
+func (g *game) updateWalkScreenSize() {
+	if g == nil {
+		return
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.KeyKPAdd) {
+		g.adjustScreenBlocks(1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) || inpututil.IsKeyJustPressed(ebiten.KeyKPSubtract) {
+		g.adjustScreenBlocks(-1)
+	}
+}
+
+func (g *game) drawWalk3D(screen *ebiten.Image) {
+	rect := g.walkRenderViewportRect()
+	if rect.Dx() >= g.viewW && rect.Dy() >= g.viewH && rect.Min.X == 0 && rect.Min.Y == 0 {
+		g.setSkyOutputSize(g.viewW, g.viewH)
+		g.prepareRenderState()
+		g.drawDoomBasic3D(screen)
+		return
+	}
+	fullW := g.viewW
+	fullH := g.viewH
+	sub := screen.SubImage(rect).(*ebiten.Image)
+	g.viewW = rect.Dx()
+	g.viewH = rect.Dy()
+	g.setSkyOutputSize(g.viewW, g.viewH)
+	g.prepareRenderState()
+	g.drawDoomBasic3D(sub)
+	g.viewW = fullW
+	g.viewH = fullH
+}
+
+func (g *game) drawWalkOverlays(screen *ebiten.Image) {
+	if g == nil {
+		return
+	}
+	g.drawWeaponOverlay(screen)
+	g.drawDoomStatusBar(screen)
+	if g.isDead {
+		g.drawDeathOverlay(screen)
+	}
+	g.drawFlashOverlay(screen)
+	if g.useFlash > 0 {
+		g.drawHUDMessage(screen, g.useText, 0, 0)
+	}
+	if g.paused {
+		g.drawPauseOverlay(screen)
+	}
+	if g.opts.SourcePortMode && !g.opts.NoFPS {
+		g.drawPerfOverlay(screen)
+	}
+}
+
 func (g *game) Draw(screen *ebiten.Image) {
 	drawStart := time.Now()
 	if g.opts.DemoScript != nil {
@@ -1836,8 +2392,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 			normalizeDeg360(float64(g.p.angle)*360.0/4294967296.0),
 		)
 		aimSS := g.debugAimSS
-		g.prepareRenderState()
-		g.drawDoomBasic3D(screen)
+		g.drawWalk3D(screen)
 		if g.opts.Debug {
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
 			if g.opts.SourcePortMode {
@@ -1848,25 +2403,12 @@ func (g *game) Draw(screen *ebiten.Image) {
 				ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | F1 help", 12, 44)
 			}
 			planes3DOn := len(g.opts.FlatBank) > 0
-			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH), 12, 60)
+			rect := g.walkRenderViewportRect()
+			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("planes3d=%t flats=%d detail=%dx%d render=%dx%d", planes3DOn, len(g.opts.FlatBank), g.viewW, g.viewH, rect.Dx(), rect.Dy()), 12, 60)
 			ebitenutil.DebugPrintAt(screen, debugPos, 12, 76)
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("ss=%d", aimSS), 12, 92)
 		}
-		g.drawWeaponOverlay(screen)
-		g.drawDoomStatusBar(screen)
-		if g.isDead {
-			g.drawDeathOverlay(screen)
-		}
-		g.drawFlashOverlay(screen)
-		if g.useFlash > 0 {
-			g.drawHUDMessage(screen, g.useText, 0, 0)
-		}
-		if g.paused {
-			g.drawPauseOverlay(screen)
-		}
-		if !g.opts.NoFPS {
-			g.drawPerfOverlay(screen)
-		}
+		g.drawWalkOverlays(screen)
 		return
 	}
 	presenter.Draw(screen, presenter.Inputs{
@@ -2070,7 +2612,7 @@ func (g *game) activatePauseMenuItem() {
 		g.activatePauseOptionsItem()
 		return
 	case pauseMenuModeSound:
-		g.pauseMenuMode = pauseMenuModeOptions
+		g.adjustPauseSound(1)
 		return
 	case pauseMenuModeEpisode:
 		episodes := g.availableEpisodeChoices()
@@ -2179,18 +2721,94 @@ func (g *game) adjustPauseOption(dir int) {
 		return
 	}
 	switch g.pauseMenuOptionsOn {
+	case 0:
+		g.hudMessagesEnabled = !g.hudMessagesEnabled
+		g.publishRuntimeSettingsIfChanged()
+	case 1:
+		g.adjustScreenBlocks(dir)
 	case 2:
-		if g.opts.SourcePortMode {
-			g.cycleSourcePortDetailLevel()
-		} else {
-			g.cycleDetailLevel()
-		}
-	case 5:
-		next := frontendNextMouseSensitivity(g.opts.MouseLookSpeed, dir)
+		g.adjustHUDScale(dir)
+	case 3:
+		g.opts.NoFPS = !g.opts.NoFPS
+	case 4:
+		_, mouseThermoCount, _ := g.pauseMouseSensitivityLayout(36, "MOUSE SENSITIVITY")
+		next := frontendNextMouseSensitivityForCount(g.opts.MouseLookSpeed, dir, mouseThermoCount)
 		if next != g.opts.MouseLookSpeed {
 			g.opts.MouseLookSpeed = next
 			g.publishRuntimeSettingsIfChanged()
 		}
+	case 5:
+		next := clampVolume(g.opts.SFXVolume + float64(dir)*0.1)
+		if next != g.opts.SFXVolume {
+			g.opts.SFXVolume = next
+			if g.snd != nil {
+				g.snd.setSFXVolume(next)
+			}
+			g.publishRuntimeSettingsIfChanged()
+		}
+	case 6:
+		next := clampVolume(g.opts.MusicVolume + float64(dir)*0.1)
+		if next != g.opts.MusicVolume {
+			g.opts.MusicVolume = next
+			g.publishRuntimeSettingsIfChanged()
+		}
+	}
+}
+
+func (g *game) cyclePauseOption() {
+	if g == nil {
+		return
+	}
+	switch g.pauseMenuOptionsOn {
+	case 0:
+		g.hudMessagesEnabled = !g.hudMessagesEnabled
+		g.publishRuntimeSettingsIfChanged()
+	case 1:
+		minBlocks, maxBlocks := allowedScreenBlocksRange(g.opts)
+		if g.screenBlocks >= maxBlocks {
+			g.screenBlocks = minBlocks
+			g.setHUDMessage(fmt.Sprintf("Status bar %s", g.screenSizeLabel()), 70)
+			return
+		}
+		g.adjustScreenBlocks(1)
+	case 2:
+		if len(sourcePortHUDScaleSteps) == 0 {
+			return
+		}
+		if g.hudScaleStep >= len(sourcePortHUDScaleSteps)-1 {
+			g.hudScaleStep = 0
+			g.statusBarCacheValid = false
+			g.setHUDMessage(fmt.Sprintf("HUD size %s", g.hudScaleLabel()), 70)
+			return
+		}
+		g.adjustHUDScale(1)
+	case 3:
+		g.opts.NoFPS = !g.opts.NoFPS
+	case 4:
+		_, mouseThermoCount, _ := g.pauseMouseSensitivityLayout(36, "MOUSE SENSITIVITY")
+		next := frontendNextMouseSensitivityForCount(g.opts.MouseLookSpeed, 1, mouseThermoCount)
+		if next == g.opts.MouseLookSpeed {
+			next = frontendMouseSensitivitySpeedForDotCount(0, mouseThermoCount)
+		}
+		g.opts.MouseLookSpeed = next
+		g.publishRuntimeSettingsIfChanged()
+	case 5:
+		next := clampVolume(g.opts.SFXVolume + 0.1)
+		if next == g.opts.SFXVolume {
+			next = 0
+		}
+		g.opts.SFXVolume = next
+		if g.snd != nil {
+			g.snd.setSFXVolume(next)
+		}
+		g.publishRuntimeSettingsIfChanged()
+	case 6:
+		next := clampVolume(g.opts.MusicVolume + 0.1)
+		if next == g.opts.MusicVolume {
+			next = 0
+		}
+		g.opts.MusicVolume = next
+		g.publishRuntimeSettingsIfChanged()
 	}
 }
 
@@ -2200,7 +2818,7 @@ func (g *game) adjustPauseSound(dir int) {
 	}
 	switch g.pauseMenuSoundOn {
 	case 0:
-		next := clampVolume(g.opts.SFXVolume + float64(dir)*(1.0/15.0))
+		next := clampVolume(g.opts.SFXVolume + float64(dir)*0.1)
 		if next != g.opts.SFXVolume {
 			g.opts.SFXVolume = next
 			if g.snd != nil {
@@ -2209,7 +2827,7 @@ func (g *game) adjustPauseSound(dir int) {
 			g.publishRuntimeSettingsIfChanged()
 		}
 	default:
-		next := clampVolume(g.opts.MusicVolume + float64(dir)*(1.0/15.0))
+		next := clampVolume(g.opts.MusicVolume + float64(dir)*0.1)
 		if next != g.opts.MusicVolume {
 			g.opts.MusicVolume = next
 			g.publishRuntimeSettingsIfChanged()
@@ -2221,20 +2839,7 @@ func (g *game) activatePauseOptionsItem() {
 	if g == nil {
 		return
 	}
-	switch g.pauseMenuOptionsOn {
-	case 0:
-		g.pauseMenuStatus = "END GAME NOT WIRED YET"
-		g.pauseMenuStatusTics = doomTicsPerSecond
-	case 1:
-		g.hudMessagesEnabled = !g.hudMessagesEnabled
-		g.publishRuntimeSettingsIfChanged()
-	case 2:
-		g.adjustPauseOption(1)
-	case 5:
-		g.adjustPauseOption(1)
-	case 7:
-		g.pauseMenuMode = pauseMenuModeSound
-	}
+	g.cyclePauseOption()
 }
 
 func (g *game) profileLabel() string {
@@ -2510,11 +3115,7 @@ func (g *game) mapThingSpriteName(thingIdx int, th mapdata.Thing) string {
 		return name
 	}
 	if !g.opts.SourcePortThingBlendFrames {
-		cf := g.textureAnimCrossfadeFrames
-		g.textureAnimCrossfadeFrames = 0
-		name := g.runtimeWorldThingSpriteNameScaled(thingIdx, th, g.worldTic, 1)
-		g.textureAnimCrossfadeFrames = cf
-		return name
+		return g.runtimeWorldThingSpriteNameScaled(thingIdx, th, g.worldTic, 1)
 	}
 	animTickUnits, animUnitsPerTic := g.worldThingAnimTickUnits()
 	return g.runtimeWorldThingSpriteNameScaled(thingIdx, th, animTickUnits, animUnitsPerTic)
@@ -2893,7 +3494,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	g.maskedMidSegsScratch = maskedMids
 	g.solid3DBuf = solid
-	g.buildMaskedMidClipColumns(focal)
+	// Masked midtextures render in their own pass and should not occlude sprites.
 	g.finalizeMaskedClipColumns()
 	planePassReady := planesEnabled && hasMarkedPlane3DData(planeOrder)
 	if planePassReady {
@@ -2912,7 +3513,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	if planePassReady {
 		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
-	g.drawMaskedMidSegs(focal)
 	if !planePassReady {
 		g.billboardQueueCollect = true
 		g.billboardQueueScratch = g.billboardQueueScratch[:0]
@@ -2922,6 +3522,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 		g.billboardQueueCollect = false
 	}
+	g.appendMaskedMidSegsToBillboardQueue()
 	sort.Slice(g.billboardQueueScratch, func(i, j int) bool {
 		return g.billboardQueueScratch[i].dist > g.billboardQueueScratch[j].dist
 	})
@@ -2938,6 +3539,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
 		case billboardQueuePuffs:
 			g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+		case billboardQueueMaskedMids:
+			if qi.idx >= 0 && qi.idx < len(g.maskedMidSegsScratch) {
+				g.drawMaskedMidSeg(g.maskedMidSegsScratch[qi.idx], focal)
+			}
 		}
 	}
 	g.billboardReplayActive = false
@@ -3033,12 +3638,12 @@ func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
 		key.sky = true
 		key.height = 0
 		key.light = 0
-		key.flat = "SKY"
+		key.flatID = g.flatIDForResolvedName("SKY")
 		key.fallback = true
 		return key
 	}
-	key.flat = g.resolveAnimatedFlatName(pic)
-	tex, ok := g.flatRGBAResolvedKey(key.flat)
+	key.flatID = g.flatIDForName(pic)
+	tex, ok := g.flatRGBAResolvedID(key.flatID)
 	key.fallback = !ok || len(tex) != 64*64*4
 	return key
 }
@@ -4313,9 +4918,12 @@ func trimSpanToOpaqueLUTRange(l, r, baseX int, lut []int, minTex, maxTex int) (i
 }
 
 const (
-	spriteOpaqueRectMaxCount       = 4
-	spriteOpaqueRectMinExtraPixels = 8
-	spriteOpaqueRectExtraDivisor   = 64
+	spriteOpaqueRectMaxCount       = 3
+	spriteOpaqueRectMinExtraPixels = 16
+	spriteOpaqueRectExtraDivisor   = 48
+	spriteOpaqueRectExtraCoverage  = 5
+	spriteOpaqueRectMinWidth       = 4
+	spriteOpaqueRectMinHeight      = 4
 	spriteOpaqueRectExpectedScale  = 6
 	spriteOpaqueRectMinScreenGain  = 384
 )
@@ -4324,8 +4932,23 @@ func spriteOpaqueRectArea(rect spriteOpaqueRect) int {
 	return (int(rect.maxX) - int(rect.minX) + 1) * (int(rect.maxY) - int(rect.minY) + 1)
 }
 
-func keepSpriteOpaqueRect(area, opaquePixels, coveredPixels, rectIndex int) bool {
-	if area <= 0 {
+func spriteOpaqueRectWidth(rect spriteOpaqueRect) int {
+	return int(rect.maxX) - int(rect.minX) + 1
+}
+
+func spriteOpaqueRectHeight(rect spriteOpaqueRect) int {
+	return int(rect.maxY) - int(rect.minY) + 1
+}
+
+func keepSpriteOpaqueRectShape(rect spriteOpaqueRect, opaquePixels, coveredPixels, rectIndex int) bool {
+	area := spriteOpaqueRectArea(rect)
+	if area <= 0 || opaquePixels <= 0 {
+		return false
+	}
+	if spriteOpaqueRectWidth(rect) < spriteOpaqueRectMinWidth || spriteOpaqueRectHeight(rect) < spriteOpaqueRectMinHeight {
+		return false
+	}
+	if area*spriteOpaqueRectExpectedScale*spriteOpaqueRectExpectedScale < spriteOpaqueRectMinScreenGain {
 		return false
 	}
 	if rectIndex == 0 {
@@ -4335,7 +4958,7 @@ func keepSpriteOpaqueRect(area, opaquePixels, coveredPixels, rectIndex int) bool
 	if area < minArea {
 		return false
 	}
-	if area*spriteOpaqueRectExpectedScale*spriteOpaqueRectExpectedScale < spriteOpaqueRectMinScreenGain {
+	if area*spriteOpaqueRectExtraCoverage < opaquePixels {
 		return false
 	}
 	return true
@@ -4417,7 +5040,7 @@ func buildSpriteOpaqueRects(pix32 []uint32, w, h int) []spriteOpaqueRect {
 		if !ok {
 			break
 		}
-		if !keepSpriteOpaqueRect(area, opaquePixels, coveredPixels, len(rects)) {
+		if !keepSpriteOpaqueRectShape(rect, opaquePixels, coveredPixels, len(rects)) {
 			break
 		}
 		rects = append(rects, rect)
@@ -4698,39 +5321,44 @@ func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
 	return g.maskedMidSegsScratch
 }
 
-func (g *game) drawMaskedMidSegs(focal float64) {
+func (g *game) drawMaskedMidSeg(ms maskedMidSeg, focal float64) {
+	if ms.tex.Width <= 0 || ms.tex.Height <= 0 {
+		return
+	}
+	halfH := float64(g.viewH) * 0.5
+	for x := ms.X0; x <= ms.X1; x++ {
+		f, texU, ok := scene.ProjectedWallSampleAtX(ms.Projection, x)
+		if !ok {
+			continue
+		}
+		texU += ms.TexUOff
+		y0 := int(math.Ceil(halfH - (ms.WorldHigh/f)*focal))
+		y1 := int(math.Floor(halfH - (ms.WorldLow/f)*focal))
+		if y0 > y1 {
+			continue
+		}
+		shadeMul := sectorDistanceShadeMul(ms.light, ms.Dist, doomLightingEnabled)
+		doomRow := 0
+		if doomLightingEnabled {
+			doomRow = doomWallLightRow(ms.light, ms.lightBias, f, focal)
+			if !doomColormapEnabled {
+				shadeMul = doomShadeMulFromRowF(doomWallLightRowF(ms.light, ms.lightBias, f, focal))
+			}
+		}
+		g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
+	}
+}
+
+func (g *game) appendMaskedMidSegsToBillboardQueue() {
 	if len(g.maskedMidSegsScratch) == 0 {
 		return
 	}
-	sort.Slice(g.maskedMidSegsScratch, func(i, j int) bool {
-		return g.maskedMidSegsScratch[i].Dist > g.maskedMidSegsScratch[j].Dist
-	})
-	halfH := float64(g.viewH) * 0.5
-	for _, ms := range g.maskedMidSegsScratch {
-		if ms.tex.Width <= 0 || ms.tex.Height <= 0 {
-			continue
-		}
-		for x := ms.X0; x <= ms.X1; x++ {
-			f, texU, ok := scene.ProjectedWallSampleAtX(ms.Projection, x)
-			if !ok {
-				continue
-			}
-			texU += ms.TexUOff
-			y0 := int(math.Ceil(halfH - (ms.WorldHigh/f)*focal))
-			y1 := int(math.Floor(halfH - (ms.WorldLow/f)*focal))
-			if y0 > y1 {
-				continue
-			}
-			shadeMul := sectorDistanceShadeMul(ms.light, ms.Dist, doomLightingEnabled)
-			doomRow := 0
-			if doomLightingEnabled {
-				doomRow = doomWallLightRow(ms.light, ms.lightBias, f, focal)
-				if !doomColormapEnabled {
-					shadeMul = doomShadeMulFromRowF(doomWallLightRowF(ms.light, ms.lightBias, f, focal))
-				}
-			}
-			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
-		}
+	for i := range g.maskedMidSegsScratch {
+		g.billboardQueueScratch = append(g.billboardQueueScratch, billboardQueueItem{
+			dist: g.maskedMidSegsScratch[i].Dist,
+			kind: billboardQueueMaskedMids,
+			idx:  i,
+		})
 	}
 }
 
@@ -4752,48 +5380,6 @@ func (g *game) finalizeMaskedClipColumns() {
 			}
 			return 0
 		})
-	}
-}
-
-func (g *game) buildMaskedMidClipColumns(focal float64) {
-	if g == nil || focal <= 0 || len(g.maskedMidSegsScratch) == 0 || len(g.maskedClipCols) != g.viewW {
-		return
-	}
-	halfH := float64(g.viewH) * 0.5
-	for _, ms := range g.maskedMidSegsScratch {
-		if ms.X0 > ms.X1 || ms.Projection.SX2 == ms.Projection.SX1 {
-			continue
-		}
-		x0 := ms.X0
-		x1 := ms.X1
-		if x0 < 0 {
-			x0 = 0
-		}
-		if x1 >= g.viewW {
-			x1 = g.viewW - 1
-		}
-		for x := x0; x <= x1; x++ {
-			f, ok := scene.ProjectedWallDepthAtX(ms.Projection, x)
-			if !ok {
-				continue
-			}
-			y0 := int(math.Ceil(halfH - (ms.WorldHigh/f)*focal))
-			y1 := int(math.Floor(halfH - (ms.WorldLow/f)*focal))
-			if y0 < 0 {
-				y0 = 0
-			}
-			if y1 >= g.viewH {
-				y1 = g.viewH - 1
-			}
-			if y1 < y0 {
-				continue
-			}
-			g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
-				Y0:     int16(y0),
-				Y1:     int16(y1),
-				DepthQ: encodeDepthQ(f),
-			})
-		}
 	}
 }
 
@@ -5072,24 +5658,12 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	spansByPlane, _, _, hasSky := g.buildPlaneSpansParallel(planes, h)
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
-	if g.planeFlatCache32Scratch == nil {
-		g.planeFlatCache32Scratch = make(map[string][]uint32, max(len(planes), 64))
-	} else {
-		clear(g.planeFlatCache32Scratch)
-	}
-	if g.planeFlatCacheIndexedScratch == nil {
-		g.planeFlatCacheIndexedScratch = make(map[string][]byte, max(len(planes), 64))
-	} else {
-		clear(g.planeFlatCacheIndexedScratch)
-	}
-	flatCache32 := g.planeFlatCache32Scratch
-	flatCacheIndexed := g.planeFlatCacheIndexedScratch
 	planeFBPacked, planeFlatTex32, planeFlatTexIndexed, planeFlatReady := g.ensurePlaneRenderScratch(len(planes))
 	skyTexKey := ""
 	skyTex, skyTexOK := WallTexture{}, false
 	skyTex32 := []uint32(nil)
-	skyColU := make([]int, 0)
-	skyRowV := make([]int, 0)
+	var skyColU []int
+	var skyRowV []int
 	if hasSky {
 		skyTexKey, skyTex, skyTexOK = skyTextureEntryForMap(g.m.Name, g.opts.WallTexBank)
 		if skyTexOK {
@@ -5127,18 +5701,22 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		if key.sky || key.fallback {
 			continue
 		}
-		tex32, ok := flatCache32[key.flat]
-		if !ok {
-			tex, _ := g.flatRGBAResolvedKey(key.flat)
+		flatID := int(key.flatID)
+		if flatID < 0 || flatID >= len(g.planeFlatCache32Scratch) {
+			continue
+		}
+		tex32 := g.planeFlatCache32Scratch[flatID]
+		if len(tex32) == 0 {
+			tex, _ := g.flatRGBAResolvedID(key.flatID)
 			if len(tex) == 64*64*4 {
 				tex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex))), len(tex)/4)
 			}
-			flatCache32[key.flat] = tex32
+			g.planeFlatCache32Scratch[flatID] = tex32
 		}
-		indexed, ok := flatCacheIndexed[key.flat]
-		if !ok {
-			indexed, _ = g.flatIndexedResolvedKey(key.flat)
-			flatCacheIndexed[key.flat] = indexed
+		indexed := g.planeFlatCacheIndexedScratch[flatID]
+		if len(indexed) == 0 {
+			indexed, _ = g.flatIndexedResolvedID(key.flatID)
+			g.planeFlatCacheIndexedScratch[flatID] = indexed
 		}
 		if len(tex32) == 64*64 {
 			planeFlatTex32[planeIdx] = tex32
@@ -5429,9 +6007,9 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 					pic = g.m.Sectors[sec].FloorPic
 					pkey.height = g.m.Sectors[sec].FloorHeight
 				}
-				k := g.resolveAnimatedFlatName(pic)
-				pkey.flat = k
-				pkey.fallback = len(g.opts.FlatBank[k]) != 64*64*4
+				pkey.flatID = g.flatIDForName(pic)
+				tex, _ := g.flatRGBAResolvedID(pkey.flatID)
+				pkey.fallback = len(tex) != 64*64*4
 				if !isFloor && isSkyFlatName(pic) {
 					pkey.sky = true
 					pkey.fallback = true
@@ -5463,8 +6041,8 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		if keyOrder[i].light != keyOrder[j].light {
 			return keyOrder[i].light < keyOrder[j].light
 		}
-		if keyOrder[i].flat != keyOrder[j].flat {
-			return keyOrder[i].flat < keyOrder[j].flat
+		if keyOrder[i].flatID != keyOrder[j].flatID {
+			return keyOrder[i].flatID < keyOrder[j].flatID
 		}
 		if keyOrder[i].fallback != keyOrder[j].fallback {
 			return keyOrder[j].fallback
@@ -5472,8 +6050,8 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		return false
 	})
 	skyTex, skyTexOK := skyTextureForMap(g.m.Name, g.opts.WallTexBank)
-	skyColU := make([]int, 0)
-	skyRowV := make([]int, 0)
+	var skyColU []int
+	var skyRowV []int
 	if skyTexOK {
 		camAng := math.Atan2(sa, ca)
 		skyTexH := effectiveSkyTexHeight(skyTex)
@@ -5485,10 +6063,10 @@ func (g *game) drawDoomBasicTexturedPlanesSpanPass(screen *ebiten.Image, camX, c
 		if key.floor {
 			fb = floorFallback
 		}
-		tex := flatCache[key.flat]
+		tex := flatCache[g.flatNameByID(key.flatID)]
 		if !key.fallback && tex == nil {
-			tex, _ = g.flatRGBAResolvedKey(key.flat)
-			flatCache[key.flat] = tex
+			tex, _ = g.flatRGBAResolvedID(key.flatID)
+			flatCache[g.flatNameByID(key.flatID)] = tex
 		}
 		for _, sp := range spanBuckets[key] {
 			if sp.y < 0 || sp.y >= h {
@@ -8727,11 +9305,16 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 		}
 		return g.viewW, g.viewH
 	}
-	if g.viewW < 1 {
-		g.viewW = 1
-	}
-	if g.viewH < 1 {
-		g.viewH = 1
+	w := max(outsideWidth, 1)
+	h := max(outsideHeight, 1)
+	if w != g.viewW || h != g.viewH {
+		g.viewW = w
+		g.viewH = h
+		_, _, worldW, worldH := boundsViewMetrics(g.bounds)
+		g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
+		g.mouseLookSet = false
+		g.mouseLookSuppressTicks = detailMouseSuppressTicks
+		g.syncRenderState()
 	}
 	return g.viewW, g.viewH
 }
@@ -8842,6 +9425,33 @@ func (g *game) beginPlane3DFrame(viewW int) []*plane3DVisplane {
 func (g *game) beginSolid3DFrame() []solidSpan {
 	g.solid3DBuf = g.solid3DBuf[:0]
 	return g.solid3DBuf
+}
+
+func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]scene.PlaneSpan) {
+	if n <= 0 {
+		g.plane3DSpanScratch = g.plane3DSpanScratch[:0]
+		g.plane3DSceneSpanScratch = g.plane3DSceneSpanScratch[:0]
+		return g.plane3DSpanScratch, g.plane3DSceneSpanScratch
+	}
+	if cap(g.plane3DSpanScratch) < n {
+		g.plane3DSpanScratch = make([][]plane3DSpan, n)
+	} else {
+		g.plane3DSpanScratch = g.plane3DSpanScratch[:n]
+	}
+	if cap(g.plane3DSceneSpanScratch) < n {
+		g.plane3DSceneSpanScratch = make([][]scene.PlaneSpan, n)
+	} else {
+		g.plane3DSceneSpanScratch = g.plane3DSceneSpanScratch[:n]
+	}
+	for i := 0; i < n; i++ {
+		if i < len(g.plane3DSpanScratch) {
+			g.plane3DSpanScratch[i] = g.plane3DSpanScratch[i][:0]
+		}
+		if i < len(g.plane3DSceneSpanScratch) {
+			g.plane3DSceneSpanScratch[i] = g.plane3DSceneSpanScratch[i][:0]
+		}
+	}
+	return g.plane3DSpanScratch, g.plane3DSceneSpanScratch
 }
 
 func (g *game) acquirePlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane {
@@ -9075,12 +9685,31 @@ func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
 }
 
 func (g *game) buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([][]plane3DSpan, int, int, bool) {
-	spansByPlane := make([][]plane3DSpan, len(planes))
+	spansByPlane, sceneSpansByPlane := g.ensurePlaneSpanScratch(len(planes))
 	if len(planes) == 0 {
 		return spansByPlane, 0, 0, false
 	}
 	for i := range planes {
-		spansByPlane[i] = makePlane3DSpans(planes[i], viewH, nil)
+		pl := planes[i]
+		if pl == nil {
+			spansByPlane[i] = spansByPlane[i][:0]
+			sceneSpansByPlane[i] = sceneSpansByPlane[i][:0]
+			continue
+		}
+		sceneOut := sceneSpansByPlane[i][:0]
+		sp := &scene.PlaneVisplane{Key: plane3DKeyToScene(pl.key), MinX: pl.minX, MaxX: pl.maxX, Top: pl.top, Bottom: pl.bottom}
+		sceneOut = scene.MakePlaneSpans(sp, viewH, sceneOut)
+		sceneSpansByPlane[i] = sceneOut
+		out := spansByPlane[i][:0]
+		for _, s := range sceneOut {
+			out = append(out, plane3DSpan{
+				y:   s.Y,
+				x1:  s.X1,
+				x2:  s.X2,
+				key: pl.key,
+			})
+		}
+		spansByPlane[i] = out
 	}
 	active := 0
 	input := 0
@@ -13761,6 +14390,16 @@ func (g *game) flatImage(name string) (*ebiten.Image, bool) {
 		g.flatImgCache = make(map[string]*ebiten.Image)
 	}
 	key, _ := g.resolveAnimatedFlatSample(name)
+	return g.flatImageResolvedKey(key)
+}
+
+func (g *game) flatImageResolvedKey(key string) (*ebiten.Image, bool) {
+	if key == "" {
+		return nil, false
+	}
+	if g.flatImgCache == nil {
+		g.flatImgCache = make(map[string]*ebiten.Image)
+	}
 	if img, ok := g.flatImgCache[key]; ok {
 		return img, true
 	}
@@ -13904,10 +14543,6 @@ func (g *game) resolveAnimatedTextureSample(name string, worldTic int, refs map[
 		idx += len(ref.frames)
 	}
 	return ref.frames[idx], false
-}
-
-func normalizeTextureAnimCrossfadeFrames(n int, sourcePort bool) int {
-	return 0
 }
 
 func (g *game) textureAnimTick() int {
@@ -14679,6 +15314,8 @@ func (g *game) drawMenuPatch(screen *ebiten.Image, name string, x, y, sx, sy flo
 }
 
 func (g *game) drawPauseOverlay(screen *ebiten.Image) {
+	optionsSkullX := g.pauseOptionsSkullX(36)
+	mouseThermoX, mouseThermoCount, mouseValueX := g.pauseMouseSensitivityLayout(36, "MOUSE SENSITIVITY")
 	episodeNames := make([]string, 0, len(g.availableEpisodeChoices()))
 	for _, ep := range g.availableEpisodeChoices() {
 		if name, ok := inGameEpisodeMenuNames[ep]; ok {
@@ -14700,18 +15337,28 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		ViewW:                  g.viewW,
 		ViewH:                  g.viewH,
 		Visible:                g.pauseMenuActive && !g.quitPromptActive,
-		SourcePortMode:         g.opts.SourcePortMode,
+		SourcePortMode:         g.hudUsesLogicalLayout(),
 		Mode:                   mode,
 		OptionsMenuNames:       frontendOptionsMenuNames[:],
+		OptionsMenuText:        frontendOptionsTextLabels[:],
 		SoundMenuSFXLabel:      "M_SFXVOL",
 		SoundMenuMusicLabel:    "M_MUSVOL",
 		EpisodeMenuNames:       episodeNames,
 		SkillMenuNames:         frontendSkillMenuNames[:],
 		MainMenuNames:          inGamePauseMenuNames[:],
 		MessagesPatch:          frontendMessagesPatch(g.hudMessagesEnabled),
-		DetailPatch:            frontendDetailPatch(g.lowDetailMode()),
-		SourcePortDetailLabel:  g.pauseSourcePortDetailLabel(),
-		MouseSensitivityDot:    frontendMouseSensitivityDot(g.opts.MouseLookSpeed),
+		ScreenSizeDot:          g.screenSizeDot(),
+		ScreenSizeLabel:        g.screenSizeLabel(),
+		HUDScaleDot:            g.hudScaleDot(),
+		HUDScaleCount:          len(sourcePortHUDScaleSteps),
+		HUDScaleLabel:          g.hudScaleLabel(),
+		ShowPerf:               !g.opts.NoFPS,
+		OptionsSkullX:          optionsSkullX,
+		MouseSensitivityDot:    frontendMouseSensitivityDotForCount(g.opts.MouseLookSpeed, mouseThermoCount),
+		MouseSensitivityCount:  mouseThermoCount,
+		MouseSensitivityLabel:  fmt.Sprintf("%.2f", g.opts.MouseLookSpeed),
+		MouseSensitivityX:      mouseThermoX,
+		MouseSensitivityValueX: mouseValueX,
 		SFXVolumeDot:           frontendVolumeDot(g.opts.SFXVolume),
 		MusicVolumeDot:         frontendVolumeDot(g.opts.MusicVolume),
 		SelectedOptions:        g.pauseMenuOptionsOn,
@@ -14721,7 +15368,62 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		SelectedMain:           g.pauseMenuItemOn,
 		SelectedSkullAlternate: g.pauseMenuWhichSkull != 0,
 		StatusMessage:          g.pauseMenuStatus,
-	}, g.drawMenuPatch, g.drawHUTextAt)
+	}, g.drawMenuPatch, g.drawHUTextAt, g.huTextWidth)
+}
+
+func (g *game) pauseMouseSensitivityLayout(menuX int, label string) (thermoX, thermoCount, valueX int) {
+	const (
+		menuRightEdge = 320
+		rightMargin   = 8
+		valueWidth    = 28
+		labelGap      = 2
+	)
+	thermoCount = frontendMouseSensitivitySliderDots()
+	labelRight := menuX + int(math.Ceil(float64(g.huTextWidth(label))*1.2))
+	thermoX = labelRight + labelGap
+	maxAvailable := menuRightEdge - rightMargin - valueWidth - thermoX
+	fitCount := (maxAvailable - 16) / 8
+	if fitCount < 3 {
+		fitCount = 3
+	}
+	if fitCount > thermoCount {
+		fitCount = thermoCount
+	}
+	if fitCount%2 == 0 {
+		fitCount--
+	}
+	if fitCount < 3 {
+		fitCount = 3
+	}
+	thermoCount = fitCount
+	valueX = thermoX + 16 + thermoCount*8 + 4
+	return thermoX, thermoCount, valueX
+}
+
+func (g *game) pauseOptionsSkullX(menuX int) int {
+	const gap = 8
+	leftEdge := menuX
+	haveLabel := false
+	for _, name := range frontendOptionsMenuNames {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		_, w, _, ox, _, ok := g.menuPatch(name)
+		if !ok {
+			continue
+		}
+		labelLeft := menuX - ox
+		if !haveLabel || labelLeft < leftEdge {
+			leftEdge = labelLeft
+			haveLabel = true
+		}
+		_ = w
+	}
+	_, skullW, _, skullOX, _, ok := g.menuPatch("M_SKULL1")
+	if ok {
+		return leftEdge - gap - skullW + skullOX
+	}
+	return leftEdge - 32
 }
 
 func (g *game) finishPerfCounter(drawStart time.Time) {
@@ -14803,8 +15505,9 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 	hud.DrawPerfOverlay(screen, hud.PerfInputs{
 		ViewW:      g.viewW,
 		ViewH:      g.viewH,
-		SourcePort: g.opts.SourcePortMode,
-		FPSDisplay: fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg))),
+		SourcePort: g.hudUsesLogicalLayout(),
+		HUDScale:   g.hudScaleValue(),
+		FPSDisplay: fmt.Sprintf("%.2f, %.2fms", g.fpsDisplay, g.renderMSAvg),
 		TicDisplay: fmt.Sprintf("tic %d", g.worldTic),
 		BenchLine:  benchDisplay,
 	}, g.huTextWidth, g.drawHUTextAt)
@@ -14904,6 +15607,7 @@ func (g *game) drawHUTextAt(screen *ebiten.Image, text string, x, y, sx, sy floa
 			continue
 		}
 		op := &ebiten.DrawImageOptions{}
+		op.Filter = ebiten.FilterNearest
 		op.GeoM.Scale(sx, sy)
 		op.GeoM.Translate(px-float64(ox)*sx, py-float64(oy)*sy)
 		screen.DrawImage(img, op)

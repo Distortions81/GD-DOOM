@@ -1,7 +1,9 @@
 package hud
 
 import (
+	"fmt"
 	"image/color"
+	"math"
 	"strings"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -18,31 +20,46 @@ type PatchDrawer func(screen *ebiten.Image, name string, x, y, sx, sy float64) b
 type TextDrawer func(screen *ebiten.Image, text string, x, y, sx, sy float64)
 type TextWidthFunc func(text string) int
 
-func Transform(viewW, viewH int, sourcePort bool) (sx, sy, ox, oy float64) {
+func Transform(viewW, viewH int, sourcePort bool, hudScale float64) (sx, sy, ox, oy float64) {
+	if hudScale <= 0 {
+		hudScale = 1
+	}
 	sx = float64(max(viewW, 1)) / doomLogicalW
 	sy = float64(max(viewH, 1)) / doomLogicalH
 	if !sourcePort {
 		return sx, sy, 0, 0
 	}
-	sx = sy
+	sx = hudScale
+	sy = hudScale
+	fitScale := math.Floor(math.Min(float64(max(viewW, 1))/doomLogicalW, float64(max(viewH, 1))/doomLogicalH))
+	if fitScale < 1 {
+		fitScale = 1
+	}
+	if sx > fitScale {
+		sx = fitScale
+		sy = fitScale
+	}
 	ox = (float64(viewW) - doomLogicalW*sx) * 0.5
 	oy = float64(viewH) - doomLogicalH*sy
 	if ox < 0 {
 		ox = 0
-		sx = float64(max(viewW, 1)) / doomLogicalW
-		sy = sx
-		oy = (float64(viewH) - doomLogicalH*sy) * 0.5
-		if oy < 0 {
-			oy = 0
-		}
+	}
+	if oy < 0 {
+		oy = 0
 	}
 	return sx, sy, ox, oy
+}
+
+func StatusBarTop(viewW, viewH int, sourcePort bool, hudScale float64) float64 {
+	_, sy, _, oy := Transform(viewW, viewH, sourcePort, hudScale)
+	return oy + statusBarY*sy
 }
 
 type StatusBarInputs struct {
 	ViewW        int
 	ViewH        int
 	SourcePort   bool
+	HUDScale     float64
 	Health       int
 	Armor        int
 	ReadyAmmo    int
@@ -58,7 +75,7 @@ func DrawStatusBar(screen *ebiten.Image, in StatusBarInputs, drawPatch PatchDraw
 	if drawPatch == nil || drawTallNum == nil || drawShortNum == nil || drawPercent == nil {
 		return
 	}
-	sx, sy, ox, oy := Transform(in.ViewW, in.ViewH, in.SourcePort)
+	sx, sy, ox, oy := Transform(in.ViewW, in.ViewH, in.SourcePort, in.HUDScale)
 	drawPatch(screen, "STBAR", ox, oy+statusBarY*sy, sx, sy)
 	drawPatch(screen, "STARMS", ox+104*sx, oy+168*sy, sx, sy)
 
@@ -101,6 +118,7 @@ type MessageInputs struct {
 	ViewW      int
 	ViewH      int
 	SourcePort bool
+	HUDScale   float64
 	Message    string
 	X          float64
 	Y          float64
@@ -110,14 +128,16 @@ func DrawHUDMessage(screen *ebiten.Image, in MessageInputs, drawText TextDrawer)
 	if drawText == nil || strings.TrimSpace(in.Message) == "" {
 		return
 	}
-	sx, sy, _, _ := Transform(in.ViewW, in.ViewH, in.SourcePort)
-	px := in.X * sx
-	py := in.Y * sy
 	if in.SourcePort {
-		_, _, ox, _ := Transform(in.ViewW, in.ViewH, in.SourcePort)
-		px += ox
+		scale := in.HUDScale
+		if scale <= 0 {
+			scale = 1
+		}
+		drawText(screen, in.Message, in.X*scale, in.Y*scale, scale, scale)
+		return
 	}
-	drawText(screen, in.Message, px, py, sx, sy)
+	sx, sy, _, _ := Transform(in.ViewW, in.ViewH, in.SourcePort, in.HUDScale)
+	drawText(screen, in.Message, in.X*sx, in.Y*sy, sx, sy)
 }
 
 type DeathOverlayInputs struct {
@@ -171,15 +191,25 @@ type PauseOverlayInputs struct {
 	SourcePortMode         bool
 	Mode                   PauseMode
 	OptionsMenuNames       []string
+	OptionsMenuText        []string
 	SoundMenuSFXLabel      string
 	SoundMenuMusicLabel    string
 	EpisodeMenuNames       []string
 	SkillMenuNames         []string
 	MainMenuNames          []string
 	MessagesPatch          string
-	DetailPatch            string
-	SourcePortDetailLabel  string
+	ScreenSizeDot          int
+	ScreenSizeLabel        string
+	HUDScaleDot            int
+	HUDScaleCount          int
+	HUDScaleLabel          string
+	ShowPerf               bool
+	OptionsSkullX          int
 	MouseSensitivityDot    int
+	MouseSensitivityCount  int
+	MouseSensitivityLabel  string
+	MouseSensitivityX      int
+	MouseSensitivityValueX int
 	SFXVolumeDot           int
 	MusicVolumeDot         int
 	HUDMessagesEnabled     bool
@@ -192,37 +222,73 @@ type PauseOverlayInputs struct {
 	StatusMessage          string
 }
 
-func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch PatchDrawer, drawText TextDrawer) {
+func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch PatchDrawer, drawText TextDrawer, textWidth TextWidthFunc) {
 	if !in.Visible || drawPatch == nil {
 		return
 	}
+	const optionsMenuX = 36
 	sx := float64(in.ViewW) / 320.0
 	sy := float64(in.ViewH) / 200.0
 	ebitenutil.DrawRect(screen, 0, 0, 320.0*sx, 200.0*sy, color.RGBA{R: 8, G: 8, B: 8, A: 128})
 	switch in.Mode {
 	case PauseModeOptions:
-		drawPatch(screen, "M_OPTTTL", 108*sx, 15*sy, sx, sy)
-		for i, name := range in.OptionsMenuNames {
-			if strings.TrimSpace(name) == "" {
-				continue
+		drawPatch(screen, "M_OPTTTL", optionsMenuX*sx, 15*sy, sx, sy)
+		if drawText != nil {
+			backLabel := "BACK: ESC"
+			backW := len(backLabel) * 7
+			if textWidth != nil {
+				backW = textWidth(backLabel)
 			}
-			drawPatch(screen, name, 60*sx, float64(37+i*16)*sy, sx, sy)
+			backX := 320 - 8 - int(math.Ceil(float64(backW)*1.2))
+			drawText(screen, backLabel, float64(backX)*sx, float64(17)*sy, sx*1.2, sy*1.2)
 		}
-		drawPatch(screen, in.MessagesPatch, float64(180)*sx, float64(53)*sy, sx, sy)
-		if in.SourcePortMode {
-			if drawText != nil {
-				drawText(screen, in.SourcePortDetailLabel, float64(235)*sx, float64(71)*sy, sx*1.6, sy*1.6)
+		if drawText != nil {
+			for i, label := range in.OptionsMenuText {
+				if strings.TrimSpace(label) == "" {
+					continue
+				}
+				drawText(screen, label, float64(optionsMenuX)*sx, float64(39+i*16)*sy, sx*1.2, sy*1.2)
 			}
-		} else {
-			drawPatch(screen, in.DetailPatch, float64(235)*sx, float64(69)*sy, sx, sy)
 		}
-		drawPauseThermo(screen, 60, 133, 10, in.MouseSensitivityDot, sx, sy, drawPatch)
+		if drawText != nil {
+			label := "OFF"
+			if in.HUDMessagesEnabled {
+				label = "ON"
+			}
+			drawText(screen, label, float64(optionsMenuX+215)*sx, float64(39)*sy, sx*1.2, sy*1.2)
+		}
+		if drawText != nil && strings.TrimSpace(in.ScreenSizeLabel) != "" {
+			drawText(screen, in.ScreenSizeLabel, float64(optionsMenuX+215)*sx, float64(55)*sy, sx*1.2, sy*1.2)
+		}
+		if drawText != nil && strings.TrimSpace(in.HUDScaleLabel) != "" {
+			drawText(screen, in.HUDScaleLabel, float64(optionsMenuX+215)*sx, float64(71)*sy, sx*1.2, sy*1.2)
+		}
+		if drawText != nil {
+			label := "OFF"
+			if in.ShowPerf {
+				label = "ON"
+			}
+			drawText(screen, label, float64(optionsMenuX+215)*sx, float64(87)*sy, sx*1.2, sy*1.2)
+		}
+		label := in.MouseSensitivityLabel
+		if strings.TrimSpace(label) == "" {
+			label = fmt.Sprintf("%.2f", 0.0)
+		}
+		if drawText != nil {
+			drawText(screen, label, float64(optionsMenuX+215)*sx, float64(103)*sy, sx*1.2, sy*1.2)
+		}
+		if drawText != nil {
+			drawText(screen, fmt.Sprintf("%d", in.SFXVolumeDot), float64(optionsMenuX+215)*sx, float64(119)*sy, sx*1.2, sy*1.2)
+			drawText(screen, fmt.Sprintf("%d", in.MusicVolumeDot), float64(optionsMenuX+215)*sx, float64(135)*sy, sx*1.2, sy*1.2)
+		}
 	case PauseModeSound:
 		drawPatch(screen, "M_SVOL", 60*sx, 38*sy, sx, sy)
-		drawPauseThermo(screen, 80, 80, 16, in.SFXVolumeDot, sx, sy, drawPatch)
-		drawPauseThermo(screen, 80, 112, 16, in.MusicVolumeDot, sx, sy, drawPatch)
 		drawPatch(screen, in.SoundMenuSFXLabel, 80*sx, 64*sy, sx, sy)
 		drawPatch(screen, in.SoundMenuMusicLabel, 80*sx, 96*sy, sx, sy)
+		if drawText != nil {
+			drawText(screen, fmt.Sprintf("%d", in.SFXVolumeDot), float64(235)*sx, float64(66)*sy, sx*1.2, sy*1.2)
+			drawText(screen, fmt.Sprintf("%d", in.MusicVolumeDot), float64(235)*sx, float64(98)*sy, sx*1.2, sy*1.2)
+		}
 	case PauseModeEpisode:
 		drawPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
 		drawPatch(screen, "M_EPISOD", 54*sx, 38*sy, sx, sy)
@@ -251,7 +317,11 @@ func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch Pat
 	}
 	switch in.Mode {
 	case PauseModeOptions:
-		drawPatch(screen, skull, 28*sx, float64(37+in.SelectedOptions*16)*sy, sx, sy)
+		skullX := in.OptionsSkullX
+		if skullX <= 0 {
+			skullX = optionsMenuX - 32
+		}
+		drawPatch(screen, skull, float64(skullX)*sx, float64(37+in.SelectedOptions*16)*sy, sx, sy)
 	case PauseModeSound:
 		skullY := 64
 		if in.SelectedSound != 0 {
@@ -274,6 +344,7 @@ type PerfInputs struct {
 	ViewW      int
 	ViewH      int
 	SourcePort bool
+	HUDScale   float64
 	FPSDisplay string
 	TicDisplay string
 	BenchLine  string
@@ -283,7 +354,17 @@ func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFun
 	if textWidth == nil || drawText == nil {
 		return
 	}
-	sx, sy, ox, _ := Transform(in.ViewW, in.ViewH, in.SourcePort)
+	sx, sy, _, _ := Transform(in.ViewW, in.ViewH, in.SourcePort, in.HUDScale)
+	if in.SourcePort {
+		sx = in.HUDScale
+		sy = in.HUDScale
+		if sx <= 0 {
+			sx = 1
+		}
+		if sy <= 0 {
+			sy = 1
+		}
+	}
 	w := textWidth(in.FPSDisplay)
 	if w2 := textWidth(in.TicDisplay); w2 > w {
 		w = w2
@@ -294,9 +375,6 @@ func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFun
 		}
 	}
 	maxX := float64(in.ViewW)
-	if in.SourcePort {
-		maxX = ox + doomLogicalW*sx
-	}
 	x := int(maxX - float64(w)*sx - 10*sx)
 	if x < 4 {
 		x = 4

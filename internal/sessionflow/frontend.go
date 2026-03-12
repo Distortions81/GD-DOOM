@@ -76,6 +76,7 @@ type FrontendResult struct {
 	Sound            FrontendSound
 	AdvanceAttract   bool
 	ChangeMessages   bool
+	ChangePerf       bool
 	ChangeDetail     bool
 	ChangeMouse      int
 	ChangeMusic      int
@@ -99,6 +100,14 @@ type AttractAction struct {
 	Name      string
 	PlayTitle bool
 }
+
+const (
+	mouseSensitivityDefaultSpeed = 0.5
+	mouseSensitivityMinSpeed     = mouseSensitivityDefaultSpeed / 3.0
+	mouseSensitivityMaxSpeed     = mouseSensitivityDefaultSpeed * 3.0
+	mouseSensitivityCenterDot    = 9
+	mouseSensitivitySliderDots   = mouseSensitivityCenterDot*2 + 1
+)
 
 func StartFrontend() Frontend {
 	return Frontend{
@@ -255,68 +264,115 @@ func NextSelectableOptionRow(rows []int, cur, dir int) int {
 }
 
 func ClampMouseLookSpeed(v float64) float64 {
-	if v < 0.5 {
-		return 0.5
+	if v < mouseSensitivityMinSpeed {
+		return mouseSensitivityMinSpeed
 	}
-	if v > 8.0 {
-		return 8.0
+	if v > mouseSensitivityMaxSpeed {
+		return mouseSensitivityMaxSpeed
 	}
 	return v
 }
 
-func MouseSensitivitySpeedForDot(dot int) float64 {
+func MouseSensitivitySliderDots() int {
+	return mouseSensitivitySliderDots
+}
+
+func clampMouseSensitivityDotCount(count int) int {
+	if count < 3 {
+		count = 3
+	}
+	if count > mouseSensitivitySliderDots {
+		count = mouseSensitivitySliderDots
+	}
+	if count%2 == 0 {
+		count--
+	}
+	if count < 3 {
+		return 3
+	}
+	return count
+}
+
+func MouseSensitivitySpeedForDotCount(dot, count int) float64 {
+	count = clampMouseSensitivityDotCount(count)
 	if dot < 0 {
 		dot = 0
 	}
-	if dot > 9 {
-		dot = 9
+	if dot > count-1 {
+		dot = count - 1
 	}
-	const minSpeed = 0.5
-	const maxSpeed = 8.0
 	if dot == 0 {
-		return minSpeed
+		return mouseSensitivityMinSpeed
 	}
-	if dot == 9 {
-		return maxSpeed
+	if dot == count-1 {
+		return mouseSensitivityMaxSpeed
 	}
-	return minSpeed * math.Pow(maxSpeed/minSpeed, float64(dot)/9.0)
+	centerDot := count / 2
+	if dot == centerDot {
+		return mouseSensitivityDefaultSpeed
+	}
+	if dot < centerDot {
+		t := float64(dot) / float64(centerDot)
+		return mouseSensitivityMinSpeed * math.Pow(mouseSensitivityDefaultSpeed/mouseSensitivityMinSpeed, t)
+	}
+	t := float64(dot-centerDot) / float64(count-1-centerDot)
+	return mouseSensitivityDefaultSpeed * math.Pow(mouseSensitivityMaxSpeed/mouseSensitivityDefaultSpeed, t)
 }
 
-func MouseSensitivityDot(speed float64) int {
+func MouseSensitivitySpeedForDot(dot int) float64 {
+	return MouseSensitivitySpeedForDotCount(dot, mouseSensitivitySliderDots)
+}
+
+func MouseSensitivityDotForCount(speed float64, count int) int {
+	count = clampMouseSensitivityDotCount(count)
 	speed = ClampMouseLookSpeed(speed)
-	const minSpeed = 0.5
-	const maxSpeed = 8.0
-	dot := int(math.Round(math.Log(speed/minSpeed) / math.Log(maxSpeed/minSpeed) * 9.0))
+	var dot int
+	centerDot := count / 2
+	switch {
+	case speed <= mouseSensitivityDefaultSpeed:
+		dot = int(math.Round(math.Log(speed/mouseSensitivityMinSpeed) / math.Log(mouseSensitivityDefaultSpeed/mouseSensitivityMinSpeed) * float64(centerDot)))
+	default:
+		dot = centerDot + int(math.Round(math.Log(speed/mouseSensitivityDefaultSpeed)/math.Log(mouseSensitivityMaxSpeed/mouseSensitivityDefaultSpeed)*float64(count-1-centerDot)))
+	}
 	if dot < 0 {
 		return 0
 	}
-	if dot > 9 {
-		return 9
+	if dot > count-1 {
+		return count - 1
 	}
 	return dot
 }
 
-func NextMouseSensitivity(speed float64, dir int) float64 {
+func MouseSensitivityDot(speed float64) int {
+	return MouseSensitivityDotForCount(speed, mouseSensitivitySliderDots)
+}
+
+func NextMouseSensitivityForCount(speed float64, dir, count int) float64 {
+	count = clampMouseSensitivityDotCount(count)
 	if dir == 0 {
 		return ClampMouseLookSpeed(speed)
 	}
-	dot := MouseSensitivityDot(speed) + dir
+	dot := MouseSensitivityDotForCount(speed, count) + dir
 	if dot < 0 {
 		dot = 0
 	}
-	if dot > 9 {
-		dot = 9
+	if dot > count-1 {
+		dot = count - 1
 	}
-	return MouseSensitivitySpeedForDot(dot)
+	return MouseSensitivitySpeedForDotCount(dot, count)
+}
+
+func NextMouseSensitivity(speed float64, dir int) float64 {
+	return NextMouseSensitivityForCount(speed, dir, mouseSensitivitySliderDots)
 }
 
 func VolumeDot(v float64) int {
-	dot := int(math.Round(clampUnit(v) * 15.0))
+	dot := int(math.Round(clampUnit(v) * 10.0))
 	if dot < 0 {
 		return 0
 	}
-	if dot > 15 {
-		return 15
+	if dot > 10 {
+		return 10
 	}
 	return dot
 }
@@ -393,6 +449,14 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeMusic = 1
 			}
 		}
+		if input.Select {
+			if state.SoundOn == 0 {
+				result.ChangeSFX = 1
+			} else {
+				result.ChangeMusic = 1
+			}
+			result.Sound = FrontendSoundConfirm
+		}
 		return result
 	case FrontendModeOptions:
 		if input.Escape {
@@ -411,36 +475,54 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 		}
 		if input.Left {
 			switch state.OptionsOn {
-			case 2:
+			case 0:
+				result.ChangeMessages = true
+			case 1, 2:
 				result.ChangeDetail = true
-			case 5:
+			case 4:
 				result.ChangeMouse = -1
+			case 5:
+				result.ChangeSFX = -1
+			case 6:
+				result.ChangeMusic = -1
 			}
 		}
 		if input.Right {
 			switch state.OptionsOn {
-			case 2:
+			case 0:
+				result.ChangeMessages = true
+			case 1, 2:
 				result.ChangeDetail = true
-			case 5:
+			case 4:
 				result.ChangeMouse = 1
+			case 5:
+				result.ChangeSFX = 1
+			case 6:
+				result.ChangeMusic = 1
 			}
 		}
 		if input.Select {
 			switch state.OptionsOn {
 			case 0:
-				result.StatusMessage = "NOT IN GAME"
-				result.StatusMessageTic = cfg.StatusTics
-			case 1:
 				result.ChangeMessages = true
+				result.Sound = FrontendSoundConfirm
+			case 1:
+				result.ChangeDetail = true
 				result.Sound = FrontendSoundConfirm
 			case 2:
 				result.ChangeDetail = true
 				result.Sound = FrontendSoundConfirm
-			case 5:
+			case 3:
+				result.ChangePerf = true
+				result.Sound = FrontendSoundConfirm
+			case 4:
 				result.ChangeMouse = 1
 				result.Sound = FrontendSoundConfirm
-			case 7:
-				result.State.Mode = FrontendModeSound
+			case 5:
+				result.ChangeSFX = 1
+				result.Sound = FrontendSoundConfirm
+			case 6:
+				result.ChangeMusic = 1
 				result.Sound = FrontendSoundConfirm
 			}
 		}

@@ -136,25 +136,34 @@ func TestNormalizeMouseLookSpeed(t *testing.T) {
 }
 
 func TestFrontendMouseSensitivityScale(t *testing.T) {
-	if got := clampFrontendMouseLookSpeed(0.1); got != 0.5 {
-		t.Fatalf("clampFrontendMouseLookSpeed(0.1)=%.2f want=0.5", got)
+	if got := clampFrontendMouseLookSpeed(0.1); got != 1.0/6.0 {
+		t.Fatalf("clampFrontendMouseLookSpeed(0.1)=%.4f want=%.4f", got, 1.0/6.0)
 	}
-	if got := clampFrontendMouseLookSpeed(12); got != 8.0 {
-		t.Fatalf("clampFrontendMouseLookSpeed(12)=%.2f want=8.0", got)
+	if got := clampFrontendMouseLookSpeed(12); got != 1.5 {
+		t.Fatalf("clampFrontendMouseLookSpeed(12)=%.2f want=1.5", got)
 	}
-	if got := frontendMouseSensitivityDot(2.0); got != 5 {
-		t.Fatalf("frontendMouseSensitivityDot(2.0)=%d want 5", got)
+	if got := frontendMouseSensitivityDot(0.5); got != 9 {
+		t.Fatalf("frontendMouseSensitivityDot(0.5)=%d want 9", got)
 	}
-	if got := frontendMouseSensitivitySpeedForDot(0); got != 0.5 {
-		t.Fatalf("frontendMouseSensitivitySpeedForDot(0)=%.2f want=0.5", got)
+	if got := frontendMouseSensitivitySpeedForDot(0); got != 1.0/6.0 {
+		t.Fatalf("frontendMouseSensitivitySpeedForDot(0)=%.4f want=%.4f", got, 1.0/6.0)
 	}
-	if got := frontendMouseSensitivitySpeedForDot(9); got != 8.0 {
-		t.Fatalf("frontendMouseSensitivitySpeedForDot(9)=%.2f want=8.0", got)
+	if got := frontendMouseSensitivitySpeedForDot(9); got != 0.5 {
+		t.Fatalf("frontendMouseSensitivitySpeedForDot(9)=%.2f want=0.5", got)
 	}
-	if got := frontendNextMouseSensitivity(2.0, -1); got >= 2.0 {
-		t.Fatalf("frontendNextMouseSensitivity(2.0, -1)=%.4f want < 2.0", got)
+	if got := frontendMouseSensitivitySpeedForDot(18); got != 1.5 {
+		t.Fatalf("frontendMouseSensitivitySpeedForDot(18)=%.2f want=1.5", got)
 	}
-	if got := frontendNextMouseSensitivity(2.0, 1); got <= 2.0 {
-		t.Fatalf("frontendNextMouseSensitivity(2.0, 1)=%.4f want > 2.0", got)
+	if got := frontendMouseSensitivityDot(1.0 / 6.0); got != 0 {
+		t.Fatalf("frontendMouseSensitivityDot(min)=%d want 0", got)
+	}
+	if got := frontendMouseSensitivityDot(1.5); got != 18 {
+		t.Fatalf("frontendMouseSensitivityDot(max)=%d want 18", got)
+	}
+	if got := frontendNextMouseSensitivity(1.0, -1); got >= 1.0 {
+		t.Fatalf("frontendNextMouseSensitivity(1.0, -1)=%.4f want < 1.0", got)
+	}
+	if got := frontendNextMouseSensitivity(1.0, 1); got <= 1.0 {
+		t.Fatalf("frontendNextMouseSensitivity(1.0, 1)=%.4f want > 1.0", got)
 	}
 }

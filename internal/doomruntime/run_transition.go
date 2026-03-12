@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"image/color"
+	"time"
 
 	"gddoom/internal/sessiontransition"
 
@@ -12,13 +13,30 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	if dst == nil || g == nil {
 		return
 	}
+	var drawStart time.Time
+	if g.mode != viewMap {
+		drawStart = time.Now()
+		if g.opts.DemoScript != nil {
+			g.demoBenchDraws++
+		}
+		g.frameUpload = 0
+		g.perfInDraw = true
+		defer func() { g.perfInDraw = false }()
+		defer g.finishPerfCounter(drawStart)
+	}
 	if !sg.opts.SourcePortMode {
 		vw := max(g.viewW, 1)
 		vh := max(g.viewH, 1)
 		if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
 			sg.faithfulSurface = ebiten.NewImage(vw, vh)
 		}
-		g.Draw(sg.faithfulSurface)
+		sg.faithfulSurface.Fill(color.Black)
+		if g.mode != viewMap {
+			g.drawWalk3D(sg.faithfulSurface)
+			g.drawWalkOverlays(sg.faithfulSurface)
+		} else {
+			g.Draw(sg.faithfulSurface)
+		}
 		src := sg.faithfulSurface
 		if sg.palettePostEnabled() {
 			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
@@ -30,12 +48,28 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
 		sg.presentSurface = ebiten.NewImage(max(g.viewW, 1), max(g.viewH, 1))
 	}
-	g.Draw(sg.presentSurface)
+	sg.presentSurface.Fill(color.Black)
+	if g.mode != viewMap {
+		g.drawWalk3D(sg.presentSurface)
+	} else {
+		g.Draw(sg.presentSurface)
+	}
 	src := sg.presentSurface
 	if sg.palettePostEnabled() {
 		src = sg.applyFaithfulPalettePost(sg.presentSurface)
 	}
-	sg.drawSourcePortPresented(dst, src, max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
+	ow := max(dst.Bounds().Dx(), 1)
+	oh := max(dst.Bounds().Dy(), 1)
+	sg.drawSourcePortPresented(dst, src, ow, oh)
+	if g.mode != viewMap {
+		prevW, prevH := g.viewW, g.viewH
+		g.viewW = ow
+		g.viewH = oh
+		g.drawWalkOverlays(dst)
+		g.viewW = prevW
+		g.viewH = prevH
+	}
+	sg.transition.CaptureLastFrame(src)
 }
 
 func (sg *sessionGame) drawSourcePortPresented(dst, src *ebiten.Image, sw, sh int) {
@@ -58,34 +92,11 @@ func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
 	sh := max(dst.Bounds().Dy(), 1)
 	vw := max(src.Bounds().Dx(), 1)
 	vh := max(src.Bounds().Dy(), 1)
-	targetH := faithfulAspectLogicalH
-	if sg.opts.DisableAspectCorrection {
-		targetH = doomLogicalH
-	}
-	scale := sw / doomLogicalW
-	scaleY := sh / targetH
-	if scaleY < scale {
-		scale = scaleY
-	}
-	if scale < 1 {
-		scale = 1
-	}
-	nearestW := doomLogicalW * scale
-	nearestH := doomLogicalH * scale
-	if sg.faithfulNearest == nil || sg.faithfulNearest.Bounds().Dx() != nearestW || sg.faithfulNearest.Bounds().Dy() != nearestH {
-		sg.faithfulNearest = ebiten.NewImage(nearestW, nearestH)
-	}
-	sg.faithfulNearest.Clear()
-	nearestOp := &ebiten.DrawImageOptions{}
-	nearestOp.Filter = ebiten.FilterNearest
-	nearestOp.GeoM.Scale(float64(nearestW)/float64(vw), float64(nearestH)/float64(vh))
-	sg.faithfulNearest.DrawImage(src, nearestOp)
-
 	dst.Clear()
 	op := &ebiten.DrawImageOptions{}
-	op.Filter = ebiten.FilterLinear
-	op.GeoM.Scale(float64(sw)/float64(nearestW), float64(sh)/float64(nearestH))
-	dst.DrawImage(sg.faithfulNearest, op)
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(sw)/float64(vw), float64(sh)/float64(vh))
+	dst.DrawImage(src, op)
 }
 
 func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {

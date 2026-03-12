@@ -2,7 +2,7 @@ package doomruntime
 
 import "testing"
 
-func TestMouseLookTurnRawWithWidthScalesByResolution(t *testing.T) {
+func TestMouseLookTurnRawWithWidthIgnoresResolution(t *testing.T) {
 	base := mouseLookTurnRawWithWidth(10, 1.0, doomLogicalW)
 	if base >= 0 {
 		t.Fatalf("base turn=%d want negative for +dx", base)
@@ -15,11 +15,11 @@ func TestMouseLookTurnRawWithWidthScalesByResolution(t *testing.T) {
 	if halfW >= 0 {
 		t.Fatalf("half-width turn=%d want negative for +dx", halfW)
 	}
-	if -doubleW >= -base {
-		t.Fatalf("double-width magnitude=%d should be less than base=%d", -doubleW, -base)
+	if doubleW != base {
+		t.Fatalf("double-width turn=%d want=%d", doubleW, base)
 	}
-	if -halfW <= -base {
-		t.Fatalf("half-width magnitude=%d should be greater than base=%d", -halfW, -base)
+	if halfW != base {
+		t.Fatalf("half-width turn=%d want=%d", halfW, base)
 	}
 }
 
@@ -32,14 +32,5 @@ func TestMouseLookTurnRawWithWidthPreservesDirectionAndMinimumStep(t *testing.T)
 	}
 	if got := mouseLookTurnRawWithWidth(-1, 0.0000001, doomLogicalW); got != 1 {
 		t.Fatalf("-tiny dx got=%d want=+1", got)
-	}
-}
-
-func TestMouseLookResolutionScaleFallback(t *testing.T) {
-	if got := mouseLookResolutionScale(0); got != 1 {
-		t.Fatalf("scale(0)=%.3f want 1", got)
-	}
-	if got := mouseLookResolutionScale(doomLogicalW); got != 1 {
-		t.Fatalf("scale(default)=%.3f want 1", got)
 	}
 }

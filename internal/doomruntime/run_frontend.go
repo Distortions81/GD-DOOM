@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"fmt"
 	"image/color"
+	"math"
 	"strings"
 
 	"gddoom/internal/runtimehost"
@@ -324,29 +325,12 @@ func (sg *sessionGame) readThisPageName(page int) string {
 	return pages[page]
 }
 
-func (sg *sessionGame) frontendDetailLow() bool {
-	if sg == nil || sg.g == nil {
-		return false
-	}
-	sig := sg.g.sessionSignals()
-	if sig.SourcePortMode {
-		return sig.SourcePortDetail > 1
-	}
-	return sig.LowDetail
-}
-
-func (sg *sessionGame) frontendSourcePortDetailLabel() string {
-	if sg == nil || sg.g == nil {
-		return "FULL"
-	}
-	return sessionflow.SourcePortDetailLabel(sg.g.sessionSignals().SourcePortDetail)
-}
-
 func (sg *sessionGame) frontendChangeMessages() {
 	if sg == nil || sg.rt == nil {
 		return
 	}
 	sg.settings.HUDMessages = sg.rt.sessionToggleHUDMessages()
+	sg.rt.sessionPublishRuntimeSettings()
 	if sg.settings.HUDMessages {
 		sg.frontendStatus("MESSAGES ON", doomTicsPerSecond)
 	} else {
@@ -354,12 +338,55 @@ func (sg *sessionGame) frontendChangeMessages() {
 	}
 }
 
-func (sg *sessionGame) frontendChangeDetail() {
+func (sg *sessionGame) frontendChangeScreenSize(dir int) {
+	if sg == nil || sg.g == nil || dir == 0 {
+		return
+	}
+	sg.g.adjustScreenBlocks(dir)
+}
+
+func (sg *sessionGame) frontendCycleScreenSize() {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	minBlocks, maxBlocks := allowedScreenBlocksRange(sg.g.opts)
+	if sg.g.screenBlocks >= maxBlocks {
+		sg.g.screenBlocks = minBlocks
+		sg.g.setHUDMessage(fmt.Sprintf("Status bar %s", sg.g.screenSizeLabel()), 70)
+		return
+	}
+	sg.g.adjustScreenBlocks(1)
+}
+
+func (sg *sessionGame) frontendChangeHUDScale(dir int) {
+	if sg == nil || sg.g == nil || dir == 0 {
+		return
+	}
+	sg.g.adjustHUDScale(dir)
+}
+
+func (sg *sessionGame) frontendCycleHUDScale() {
+	if sg == nil || sg.g == nil || len(sourcePortHUDScaleSteps) == 0 {
+		return
+	}
+	if sg.g.hudScaleStep >= len(sourcePortHUDScaleSteps)-1 {
+		sg.g.hudScaleStep = 0
+		sg.g.statusBarCacheValid = false
+		sg.g.setHUDMessage(fmt.Sprintf("HUD size %s", sg.g.hudScaleLabel()), 70)
+		return
+	}
+	sg.g.adjustHUDScale(1)
+}
+
+func (sg *sessionGame) frontendChangePerfOverlay() {
 	if sg == nil || sg.rt == nil {
 		return
 	}
-	sg.settings.DetailLevel = sg.rt.sessionCycleDetail()
-	sg.opts.InitialDetailLevel = sg.settings.DetailLevel
+	if sg.rt.sessionTogglePerfOverlay() {
+		sg.frontendStatus("FPS ON", doomTicsPerSecond)
+	} else {
+		sg.frontendStatus("FPS OFF", doomTicsPerSecond)
+	}
 }
 
 func (sg *sessionGame) frontendChangeMouseSensitivity(dir int) {
@@ -367,9 +394,26 @@ func (sg *sessionGame) frontendChangeMouseSensitivity(dir int) {
 		return
 	}
 	cur := sg.rt.sessionMouseLookSpeed()
-	next := sessionflow.NextMouseSensitivity(cur, dir)
+	_, mouseThermoCount, _ := sg.frontendMouseSensitivityLayout(36, "M_MSENS")
+	next := sessionflow.NextMouseSensitivityForCount(cur, dir, mouseThermoCount)
 	if next == cur {
 		return
+	}
+	sg.rt.sessionSetMouseLookSpeed(next)
+	sg.opts.MouseLookSpeed = next
+	sg.settings.MouseLookSpeed = next
+	sg.frontendStatus(fmt.Sprintf("MOUSE SENSITIVITY %.2f", next), doomTicsPerSecond)
+}
+
+func (sg *sessionGame) frontendCycleMouseSensitivity() {
+	if sg == nil || sg.rt == nil {
+		return
+	}
+	cur := sg.rt.sessionMouseLookSpeed()
+	_, mouseThermoCount, _ := sg.frontendMouseSensitivityLayout(36, "MOUSE SENSITIVITY")
+	next := sessionflow.NextMouseSensitivityForCount(cur, 1, mouseThermoCount)
+	if next == cur {
+		next = sessionflow.MouseSensitivitySpeedForDotCount(0, mouseThermoCount)
 	}
 	sg.rt.sessionSetMouseLookSpeed(next)
 	sg.opts.MouseLookSpeed = next
@@ -383,7 +427,7 @@ func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
 	}
 	cur := sg.rt.sessionMusicVolume()
 	prev := clampVolume(cur)
-	next := clampVolume(cur + float64(dir)*(1.0/15.0))
+	next := clampVolume(cur + float64(dir)*0.1)
 	if next == cur {
 		return
 	}
@@ -405,14 +449,58 @@ func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
 	sg.rt.sessionPublishRuntimeSettings()
 }
 
+func (sg *sessionGame) frontendCycleMusicVolume() {
+	if sg == nil || sg.rt == nil {
+		return
+	}
+	cur := sg.rt.sessionMusicVolume()
+	next := clampVolume(cur + 0.1)
+	if next == cur {
+		next = 0
+	}
+	sg.rt.sessionSetMusicVolume(next)
+	sg.opts.MusicVolume = next
+	sg.settings.MusicVolume = next
+	switch {
+	case next <= 0:
+		sg.stopAndClearMusic()
+	case cur <= 0:
+		if sg.frontend.Active {
+			sg.playTitleMusic()
+		} else {
+			sg.playMusicForMap(sg.current)
+		}
+	case sg.musicCtl != nil:
+		sg.musicCtl.SetVolume(next)
+	}
+	sg.rt.sessionPublishRuntimeSettings()
+}
+
 func (sg *sessionGame) frontendChangeSFXVolume(dir int) {
 	if sg == nil || sg.rt == nil || dir == 0 {
 		return
 	}
 	cur := sg.rt.sessionSFXVolume()
-	next := clampVolume(cur + float64(dir)*(1.0/15.0))
+	next := clampVolume(cur + float64(dir)*0.1)
 	if next == cur {
 		return
+	}
+	sg.rt.sessionSetSFXVolume(next)
+	sg.opts.SFXVolume = next
+	sg.settings.SFXVolume = next
+	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, next)
+	sg.rt.sessionPublishRuntimeSettings()
+	sg.playMenuMoveSound()
+}
+
+func (sg *sessionGame) frontendCycleSFXVolume() {
+	if sg == nil || sg.rt == nil {
+		return
+	}
+	cur := sg.rt.sessionSFXVolume()
+	next := clampVolume(cur + 0.1)
+	if next == cur {
+		next = 0
 	}
 	sg.rt.sessionSetSFXVolume(next)
 	sg.opts.SFXVolume = next
@@ -431,17 +519,18 @@ func (sg *sessionGame) tickFrontend() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
+	input := sessionflow.FrontendInput{
+		Escape: inpututil.IsKeyJustPressed(ebiten.KeyEscape),
+		Up:     inpututil.IsKeyJustPressed(ebiten.KeyArrowUp),
+		Down:   inpututil.IsKeyJustPressed(ebiten.KeyArrowDown),
+		Left:   inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft),
+		Right:  inpututil.IsKeyJustPressed(ebiten.KeyArrowRight),
+		Select: inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter),
+		Skip:   anyIntermissionSkipInput(),
+	}
 	result := sessionflow.StepFrontend(
 		sessionflow.Frontend(sg.frontend),
-		sessionflow.FrontendInput{
-			Escape: inpututil.IsKeyJustPressed(ebiten.KeyEscape),
-			Up:     inpututil.IsKeyJustPressed(ebiten.KeyArrowUp),
-			Down:   inpututil.IsKeyJustPressed(ebiten.KeyArrowDown),
-			Left:   inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft),
-			Right:  inpututil.IsKeyJustPressed(ebiten.KeyArrowRight),
-			Select: inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter),
-			Skip:   anyIntermissionSkipInput(),
-		},
+		input,
 		sessionflow.FrontendConfig{
 			ReadThisPageCount: len(sg.readThisPageNames()),
 			EpisodeChoices:    sg.availableFrontendEpisodeChoices(),
@@ -467,16 +556,49 @@ func (sg *sessionGame) tickFrontend() error {
 		sg.frontendChangeMessages()
 	}
 	if result.ChangeDetail {
-		sg.frontendChangeDetail()
+		if input.Select {
+			switch sg.frontend.OptionsOn {
+			case 2:
+				sg.frontendCycleHUDScale()
+			default:
+				sg.frontendCycleScreenSize()
+			}
+		} else {
+			dir := 1
+			if input.Left && !input.Right {
+				dir = -1
+			}
+			switch sg.frontend.OptionsOn {
+			case 2:
+				sg.frontendChangeHUDScale(dir)
+			default:
+				sg.frontendChangeScreenSize(dir)
+			}
+		}
+	}
+	if result.ChangePerf {
+		sg.frontendChangePerfOverlay()
 	}
 	if result.ChangeMouse != 0 {
-		sg.frontendChangeMouseSensitivity(result.ChangeMouse)
+		if input.Select {
+			sg.frontendCycleMouseSensitivity()
+		} else {
+			sg.frontendChangeMouseSensitivity(result.ChangeMouse)
+		}
 	}
 	if result.ChangeMusic != 0 {
-		sg.frontendChangeMusicVolume(result.ChangeMusic)
+		if input.Select {
+			sg.frontendCycleMusicVolume()
+		} else {
+			sg.frontendChangeMusicVolume(result.ChangeMusic)
+		}
 	}
 	if result.ChangeSFX != 0 {
-		sg.frontendChangeSFXVolume(result.ChangeSFX)
+		if input.Select {
+			sg.frontendCycleSFXVolume()
+		} else {
+			sg.frontendChangeSFXVolume(result.ChangeSFX)
+		}
 	}
 	if result.RequestQuit {
 		sg.requestQuitPrompt()
@@ -659,24 +781,37 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 		return
 	}
 	sig := sg.g.sessionSignals()
-	const menuX = 60
+	const menuX = 36
 	const menuY = 37
 	const lineHeight = 16
-	_ = sg.drawMenuPatch(screen, "M_OPTTTL", 108, 15, scale, ox, oy, false)
-	_ = sg.drawMenuPatch(screen, sessionflow.MessagesPatch(sig.HUDMessages), menuX+120, menuY+1*lineHeight, scale, ox, oy, false)
-	if sig.SourcePortMode {
-		sg.rt.sessionDrawHUTextAt(screen, sg.frontendSourcePortDetailLabel(), ox+float64(menuX+175)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.6, scale*1.6)
-	} else {
-		_ = sg.drawMenuPatch(screen, sessionflow.DetailPatch(sg.frontendDetailLow()), menuX+175, menuY+2*lineHeight, scale, ox, oy, false)
+	_ = sg.drawMenuPatch(screen, "M_OPTTTL", menuX, 15, scale, ox, oy, false)
+	backLabel := "BACK: ESC"
+	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
+	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(17)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "MESSAGES", ox+float64(menuX)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "STATUS BAR MODE", ox+float64(menuX)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	msgLabel := "OFF"
+	if sig.HUDMessages {
+		msgLabel = "ON"
 	}
-	sg.drawFrontendThermo(screen, menuX, menuY+6*lineHeight, 10, frontendMouseSensitivityDot(sig.MouseLookSpeed), scale, ox, oy)
-	for i, name := range frontendOptionsMenuNames {
-		if strings.TrimSpace(name) == "" {
-			continue
-		}
-		_ = sg.drawMenuPatch(screen, name, menuX, menuY+i*lineHeight, scale, ox, oy, false)
+	sg.rt.sessionDrawHUTextAt(screen, msgLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+0*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, sg.g.screenSizeLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+1*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "HUD SIZE", ox+float64(menuX)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, sg.g.hudScaleLabel(), ox+float64(menuX+215)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "FPS", ox+float64(menuX)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	fpsLabel := "OFF"
+	if sig.ShowPerf {
+		fpsLabel = "ON"
 	}
-	sg.drawMenuSkull(screen, menuX-32, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
+	sg.rt.sessionDrawHUTextAt(screen, fpsLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "MOUSE SENSITIVITY", ox+float64(menuX)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	optionsSkullX := sg.frontendOptionsSkullX(menuX)
+	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%.2f", sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "SOUND VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "MUSIC VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
 }
 
 func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy float64) {
@@ -688,10 +823,10 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 	const menuY = 64
 	const lineHeight = 16
 	_ = sg.drawMenuPatch(screen, "M_SVOL", 60, 38, scale, ox, oy, false)
-	sg.drawFrontendThermo(screen, menuX, menuY+1*lineHeight, 16, sessionflow.VolumeDot(sig.SFXVolume), scale, ox, oy)
-	sg.drawFrontendThermo(screen, menuX, menuY+3*lineHeight, 16, sessionflow.VolumeDot(sig.MusicVolume), scale, ox, oy)
 	_ = sg.drawMenuPatch(screen, "M_SFXVOL", menuX, menuY, scale, ox, oy, false)
 	_ = sg.drawMenuPatch(screen, "M_MUSVOL", menuX, menuY+2*lineHeight, scale, ox, oy, false)
+	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(235)*scale, oy+float64(menuY+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(235)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	skullY := menuY
 	if sg.frontend.SoundOn != 0 {
 		skullY += 2 * lineHeight
@@ -720,6 +855,59 @@ func (sg *sessionGame) drawFrontendThermo(screen *ebiten.Image, x, y, width, dot
 	}
 	_ = sg.drawMenuPatch(screen, "M_THERMR", x+8+width*8, y, scale, ox, oy, false)
 	_ = sg.drawMenuPatch(screen, "M_THERMO", x+8+dot*8, y, scale, ox, oy, false)
+}
+
+func (sg *sessionGame) frontendMouseSensitivityLayout(menuX int, label string) (thermoX, thermoCount, valueX int) {
+	const (
+		menuRightEdge = 320
+		rightMargin   = 8
+		valueWidth    = 28
+		labelGap      = 2
+	)
+	thermoCount = sessionflow.MouseSensitivitySliderDots()
+	labelRight := menuX + int(math.Ceil(float64(sg.intermissionTextWidth(label))*1.2))
+	thermoX = labelRight + labelGap
+	maxAvailable := menuRightEdge - rightMargin - valueWidth - thermoX
+	fitCount := (maxAvailable - 16) / 8
+	if fitCount < 3 {
+		fitCount = 3
+	}
+	if fitCount > thermoCount {
+		fitCount = thermoCount
+	}
+	if fitCount%2 == 0 {
+		fitCount--
+	}
+	if fitCount < 3 {
+		fitCount = 3
+	}
+	thermoCount = fitCount
+	valueX = thermoX + 16 + thermoCount*8 + 4
+	return thermoX, thermoCount, valueX
+}
+
+func (sg *sessionGame) frontendOptionsSkullX(menuX int) int {
+	const gap = 8
+	leftEdge := menuX
+	haveLabel := false
+	for _, name := range frontendOptionsMenuNames {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		_, p, ok := sg.menuPatch(name)
+		if !ok {
+			continue
+		}
+		labelLeft := menuX - p.OffsetX
+		if !haveLabel || labelLeft < leftEdge {
+			leftEdge = labelLeft
+			haveLabel = true
+		}
+	}
+	if _, p, ok := sg.menuPatch("M_SKULL1"); ok {
+		return leftEdge - gap - p.Width + p.OffsetX
+	}
+	return leftEdge - 32
 }
 
 func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {

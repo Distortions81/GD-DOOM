@@ -82,6 +82,7 @@ type SessionSignals struct {
 	ViewHeight       int
 	LowDetail        bool
 	HUDMessages      bool
+	ShowPerf         bool
 	MouseLookSpeed   float64
 	MusicVolume      float64
 	SFXVolume        float64

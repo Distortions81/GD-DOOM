@@ -118,8 +118,7 @@ func TestMapThingSpriteName_PlayerStartUsesPlayerSprite(t *testing.T) {
 
 func TestMapThingSpriteName_WorldThingBlendFramesCanBeDisabled(t *testing.T) {
 	g := &game{
-		worldTic:                   2,
-		textureAnimCrossfadeFrames: 2,
+		worldTic: 2,
 		opts: Options{
 			SourcePortMode:             true,
 			SourcePortThingBlendFrames: false,
@@ -137,8 +136,8 @@ func TestMapThingSpriteName_WorldThingBlendFramesCanBeDisabled(t *testing.T) {
 	g.opts.SourcePortThingBlendFrames = true
 	g.simTickScale = 1.0
 	g.lastUpdate = time.Now().Add(-time.Second / (2 * doomTicsPerSecond))
-	if got := g.mapThingSpriteName(0, mapdata.Thing{Type: 56}); !strings.Contains(got, ">") {
-		t.Fatalf("blend enabled map sprite=%q want blend token", got)
+	if got := g.mapThingSpriteName(0, mapdata.Thing{Type: 56}); got == "" || strings.Contains(got, ">") {
+		t.Fatalf("blend enabled map sprite=%q want discrete sprite frame", got)
 	}
 }
 

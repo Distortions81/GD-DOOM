@@ -24,6 +24,7 @@ func (g *game) sessionSignals() gameplay.SessionSignals {
 		ViewHeight:       g.viewH,
 		LowDetail:        g.lowDetailMode(),
 		HUDMessages:      g.hudMessagesEnabled,
+		ShowPerf:         !g.opts.NoFPS,
 		MouseLookSpeed:   g.opts.MouseLookSpeed,
 		MusicVolume:      g.opts.MusicVolume,
 		SFXVolume:        g.opts.SFXVolume,
@@ -74,6 +75,14 @@ func (g *game) sessionToggleHUDMessages() bool {
 	}
 	g.hudMessagesEnabled = !g.hudMessagesEnabled
 	return g.hudMessagesEnabled
+}
+
+func (g *game) sessionTogglePerfOverlay() bool {
+	if g == nil {
+		return false
+	}
+	g.opts.NoFPS = !g.opts.NoFPS
+	return !g.opts.NoFPS
 }
 
 func (g *game) sessionCycleDetail() int {
