@@ -22,7 +22,7 @@ func newOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {
 	case BackendAuto, BackendNuked:
 		return NewNukedOPL3(sampleRate), nil
 	case BackendPureGo:
-		return NewBasicOPL3(sampleRate), nil
+		return NewDMXLikeOPL3(sampleRate), nil
 	default:
 		return nil, fmt.Errorf("unknown backend %q (want auto|purego|nuked)", backend)
 	}

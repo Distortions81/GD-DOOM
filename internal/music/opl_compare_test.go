@@ -106,6 +106,25 @@ type oplLevelMetrics struct {
 	onsetStepDelta  float64
 }
 
+type backendLevelMetrics struct {
+	sustainRMS float64
+	peak       float64
+	popRatio   float64
+	onsetStep  float64
+}
+
+type backendEnvelopeProfile struct {
+	attackPeak      float64
+	attackPeakFrame int
+	attackRise10    int
+	attackRise90    int
+	attackRiseSpan  int
+	earlyDecayMean  float64
+	lateDecayMean   float64
+	decayDropDB     float64
+	decaySettle     int
+}
+
 type notePhrase struct {
 	name    string
 	channel uint8
@@ -118,7 +137,7 @@ type fftScoredPhrase struct {
 	metrics fftTimbreMetrics
 }
 
-func TestBasicOPL3MatchesNukedForMicroPatches(t *testing.T) {
+func TestDMXLikeOPL3MatchesNukedForMicroPatches(t *testing.T) {
 	cases := []struct {
 		name       string
 		bank       PatchBank
@@ -183,14 +202,14 @@ func TestBasicOPL3MatchesNukedForMicroPatches(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			trace := captureTraceForEvents(t, tc.bank, tc.events)
-			basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
+			basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
 			nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 			assertOPLSimilarity(t, tc.name, basicPCM, nukedPCM, tc.thresholds)
 		})
 	}
 }
 
-func TestBasicOPL3MatchesNukedOnReferenceDoomTracks(t *testing.T) {
+func TestDMXLikeOPL3MatchesNukedOnReferenceDoomTracks(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -236,14 +255,14 @@ func TestBasicOPL3MatchesNukedOnReferenceDoomTracks(t *testing.T) {
 				t.Fatalf("parse %s: %v", tc.lump, err)
 			}
 			trace := captureTraceForEvents(t, bank, trimEventsToTics(events, tc.maxTics))
-			basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
+			basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
 			nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 			assertOPLSimilarity(t, tc.lump, basicPCM, nukedPCM, tc.thresholds)
 		})
 	}
 }
 
-func TestBasicOPL3MatchesNukedOnE1M1LeadPhrases(t *testing.T) {
+func TestDMXLikeOPL3MatchesNukedOnE1M1LeadPhrases(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -294,14 +313,14 @@ func TestBasicOPL3MatchesNukedOnE1M1LeadPhrases(t *testing.T) {
 		phrase := phrase
 		t.Run(phrase.name, func(t *testing.T) {
 			trace := captureTraceForEvents(t, bank, phrase.events)
-			basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
+			basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
 			nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 			assertOPLSimilarity(t, phrase.name, basicPCM, nukedPCM, thresholds)
 		})
 	}
 }
 
-func TestBasicOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
+func TestDMXLikeOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -342,7 +361,7 @@ func TestBasicOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 	var scored []fftScoredPhrase
 	for _, phrase := range phrases {
 		trace := captureTraceForEvents(t, bank, phrase.events)
-		basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
+		basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
 		nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 		metrics := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
 		scored = append(scored, fftScoredPhrase{name: phrase.name, metrics: metrics})
@@ -380,7 +399,7 @@ func TestBasicOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
+func TestDMXLikeOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -423,7 +442,7 @@ func TestBasicOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
 				phrase := phrase
 				t.Run(phrase.name, func(t *testing.T) {
 					trace := captureTraceForEvents(t, bank, phrase.events)
-					basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
+					basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
 					nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 					metrics := computeOPLLevelMetrics(basicPCM, nukedPCM)
 					t.Logf("%s sustainRMSRatio=%.3f peakRatio=%.3f sustainDelta=%.1f peakDelta=%.1f popRatioDelta=%.2f onsetStepDelta=%.4f",
@@ -443,7 +462,341 @@ func TestBasicOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3MatchesNukedOnReferenceNoteSpectra(t *testing.T) {
+func TestDMXLikeOPL3MatchesNukedOnVolumeAttackSustainSweeps(t *testing.T) {
+	requireOPLTuningSuite(t)
+	wadPath := findDOOM1WADForMusicTests(t)
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+
+	var bank PatchBank
+	if lump, ok := wf.LumpByName("GENMIDI"); ok {
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			t.Fatalf("read GENMIDI: %v", err)
+		}
+		bank, err = ParseGENMIDIOP2PatchBank(data)
+		if err != nil {
+			t.Fatalf("parse GENMIDI: %v", err)
+		}
+	}
+	if bank == nil {
+		t.Fatal("missing GENMIDI patch bank")
+	}
+
+	type patchTarget struct {
+		name    string
+		program uint8
+		note    uint8
+	}
+	targets := []patchTarget{
+		{name: "prog30_mid", program: 30, note: 42},
+		{name: "prog34_low", program: 34, note: 30},
+		{name: "prog44_low", program: 44, note: 36},
+		{name: "prog118_high", program: 118, note: 72},
+	}
+	volumeCases := []struct {
+		name       string
+		channelVol uint8
+		velocity   uint8
+	}{
+		{name: "quiet", channelVol: 48, velocity: 48},
+		{name: "vel_hot", channelVol: 48, velocity: 127},
+		{name: "chan_hot", channelVol: 127, velocity: 48},
+		{name: "full", channelVol: 127, velocity: 127},
+	}
+	attackCases := []struct {
+		name string
+		ar   uint8
+	}{
+		{name: "slow", ar: 0x3},
+		{name: "mid", ar: 0x8},
+		{name: "fast", ar: 0xF},
+	}
+	sustainCases := []struct {
+		name string
+		sl   uint8
+	}{
+		{name: "open", sl: 0x2},
+		{name: "mid", sl: 0x8},
+		{name: "muted", sl: 0xE},
+	}
+
+	for _, target := range targets {
+		basePatch := bank.Patch(target.program, false, target.note)
+		target := target
+		t.Run(target.name, func(t *testing.T) {
+			for _, volCase := range volumeCases {
+				volCase := volCase
+				for _, attackCase := range attackCases {
+					attackCase := attackCase
+					for _, sustainCase := range sustainCases {
+						sustainCase := sustainCase
+						name := target.name + "_" + volCase.name + "_" + attackCase.name + "_" + sustainCase.name
+						t.Run(name, func(t *testing.T) {
+							patch := patchWithAttackAndSustain(basePatch, attackCase.ar, sustainCase.sl)
+							events := volumeSweepEvents(target.note, volCase.channelVol, volCase.velocity)
+							trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
+							basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+							nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
+							level := computeOPLLevelMetrics(basicPCM, nukedPCM)
+							fft := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
+							t.Logf("%s sustainRMSRatio=%.3f peakRatio=%.3f popRatioDelta=%.2f spectralCorr=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
+								name, level.sustainRMSRatio, level.peakRatio, level.popRatioDelta, fft.spectralCorr, fft.presenceRatioDelta, fft.aWeightedDeltaDB)
+							if math.Abs(level.sustainRMSRatio-1.0) > 0.28 {
+								t.Fatalf("sustainRMSRatio=%.3f want within 0.28 of 1.0", level.sustainRMSRatio)
+							}
+							if math.Abs(level.peakRatio-1.0) > 0.20 {
+								t.Fatalf("peakRatio=%.3f want within 0.20 of 1.0", level.peakRatio)
+							}
+							if level.popRatioDelta > 1.25 {
+								t.Fatalf("popRatioDelta=%.2f want <= 1.25", level.popRatioDelta)
+							}
+							if fft.presenceRatioDelta > 0.30 {
+								t.Fatalf("presenceRatioDelta=%.3f want <= 0.30", fft.presenceRatioDelta)
+							}
+							if fft.aWeightedDeltaDB > 6.5 {
+								t.Fatalf("aWeightedDeltaDB=%.2f want <= 6.5", fft.aWeightedDeltaDB)
+							}
+						})
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestDMXLikeOPL3SustainResponseProfile(t *testing.T) {
+	requireOPLTuningSuite(t)
+	wadPath := findDOOM1WADForMusicTests(t)
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+
+	var bank PatchBank
+	if lump, ok := wf.LumpByName("GENMIDI"); ok {
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			t.Fatalf("read GENMIDI: %v", err)
+		}
+		bank, err = ParseGENMIDIOP2PatchBank(data)
+		if err != nil {
+			t.Fatalf("parse GENMIDI: %v", err)
+		}
+	}
+	if bank == nil {
+		t.Fatal("missing GENMIDI patch bank")
+	}
+
+	type patchTarget struct {
+		name    string
+		program uint8
+		note    uint8
+	}
+	targets := []patchTarget{
+		{name: "prog30_mid", program: 30, note: 42},
+		{name: "prog34_low", program: 34, note: 30},
+		{name: "prog44_low", program: 44, note: 36},
+		{name: "prog118_high", program: 118, note: 72},
+	}
+	attackCases := []struct {
+		name string
+		ar   uint8
+	}{
+		{name: "slow", ar: 0x3},
+		{name: "mid", ar: 0x8},
+		{name: "fast", ar: 0xF},
+	}
+	sustainCases := []struct {
+		name string
+		sl   uint8
+	}{
+		{name: "open", sl: 0x2},
+		{name: "mid", sl: 0x8},
+		{name: "muted", sl: 0xE},
+	}
+
+	for _, target := range targets {
+		basePatch := bank.Patch(target.program, false, target.note)
+		target := target
+		t.Run(target.name, func(t *testing.T) {
+			for _, attackCase := range attackCases {
+				attackCase := attackCase
+				t.Run(attackCase.name, func(t *testing.T) {
+					pureGoBySustain := map[string]backendLevelMetrics{}
+					nukedBySustain := map[string]backendLevelMetrics{}
+					for _, sustainCase := range sustainCases {
+						patch := patchWithAttackDecayAndSustain(basePatch, attackCase.ar, 0xC, sustainCase.sl)
+						events := volumeSweepEventsWithHold(target.note, 127, 127, 320, 24)
+						trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
+						pureGoPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+						nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
+						pureGoBySustain[sustainCase.name] = computeBackendLevelMetrics(pureGoPCM)
+						nukedBySustain[sustainCase.name] = computeBackendLevelMetrics(nukedPCM)
+					}
+
+					openPureGo := pureGoBySustain["open"]
+					midPureGo := pureGoBySustain["mid"]
+					mutedPureGo := pureGoBySustain["muted"]
+					openNuked := nukedBySustain["open"]
+					midNuked := nukedBySustain["mid"]
+					mutedNuked := nukedBySustain["muted"]
+
+					pureGoOpenMidCut := -dbRatio(midPureGo.sustainRMS, openPureGo.sustainRMS)
+					pureGoOpenMutedCut := -dbRatio(mutedPureGo.sustainRMS, openPureGo.sustainRMS)
+					nukedOpenMidCut := -dbRatio(midNuked.sustainRMS, openNuked.sustainRMS)
+					nukedOpenMutedCut := -dbRatio(mutedNuked.sustainRMS, openNuked.sustainRMS)
+
+					t.Logf("purego sustainRMS open=%.6f mid=%.6f muted=%.6f cuts_db(open->mid)=%.2f cuts_db(open->muted)=%.2f",
+						openPureGo.sustainRMS, midPureGo.sustainRMS, mutedPureGo.sustainRMS, pureGoOpenMidCut, pureGoOpenMutedCut)
+					t.Logf("nuked  sustainRMS open=%.6f mid=%.6f muted=%.6f cuts_db(open->mid)=%.2f cuts_db(open->muted)=%.2f",
+						openNuked.sustainRMS, midNuked.sustainRMS, mutedNuked.sustainRMS, nukedOpenMidCut, nukedOpenMutedCut)
+
+					if nukedOpenMutedCut < 1.0 {
+						t.Logf("nuked sustain response is only %.2fdB; skipping sustain-depth comparison for this case", nukedOpenMutedCut)
+						return
+					}
+					if !nonIncreasing(openPureGo.sustainRMS, midPureGo.sustainRMS, mutedPureGo.sustainRMS) {
+						t.Fatalf("purego sustain response not descending: open=%.1f mid=%.1f muted=%.1f",
+							openPureGo.sustainRMS, midPureGo.sustainRMS, mutedPureGo.sustainRMS)
+					}
+					if !nonIncreasing(openNuked.sustainRMS, midNuked.sustainRMS, mutedNuked.sustainRMS) {
+						t.Fatalf("nuked sustain response not descending: open=%.1f mid=%.1f muted=%.1f",
+							openNuked.sustainRMS, midNuked.sustainRMS, mutedNuked.sustainRMS)
+					}
+					if math.Abs(pureGoOpenMidCut-nukedOpenMidCut) > 2.5 {
+						t.Fatalf("open->mid sustain cut mismatch: purego=%.2fdB nuked=%.2fdB", pureGoOpenMidCut, nukedOpenMidCut)
+					}
+					if math.Abs(pureGoOpenMutedCut-nukedOpenMutedCut) > 2.5 {
+						t.Fatalf("open->muted sustain cut mismatch: purego=%.2fdB nuked=%.2fdB", pureGoOpenMutedCut, nukedOpenMutedCut)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestDMXLikeOPL3AttackDecayResponseProfile(t *testing.T) {
+	requireOPLTuningSuite(t)
+	wadPath := findDOOM1WADForMusicTests(t)
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+
+	var bank PatchBank
+	if lump, ok := wf.LumpByName("GENMIDI"); ok {
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			t.Fatalf("read GENMIDI: %v", err)
+		}
+		bank, err = ParseGENMIDIOP2PatchBank(data)
+		if err != nil {
+			t.Fatalf("parse GENMIDI: %v", err)
+		}
+	}
+	if bank == nil {
+		t.Fatal("missing GENMIDI patch bank")
+	}
+
+	type patchTarget struct {
+		name    string
+		program uint8
+		note    uint8
+	}
+	targets := []patchTarget{
+		{name: "prog30_mid", program: 30, note: 42},
+		{name: "prog34_low", program: 34, note: 30},
+		{name: "prog44_low", program: 44, note: 36},
+		{name: "prog118_high", program: 118, note: 72},
+	}
+	attackCases := []struct {
+		name string
+		ar   uint8
+	}{
+		{name: "slow", ar: 0x3},
+		{name: "mid", ar: 0x8},
+		{name: "fast", ar: 0xF},
+	}
+	decayCases := []struct {
+		name string
+		dr   uint8
+	}{
+		{name: "slow", dr: 0x3},
+		{name: "mid", dr: 0x8},
+		{name: "fast", dr: 0xE},
+	}
+
+	for _, target := range targets {
+		basePatch := bank.Patch(target.program, false, target.note)
+		target := target
+		t.Run(target.name, func(t *testing.T) {
+			t.Run("attack", func(t *testing.T) {
+				for _, attackCase := range attackCases {
+					attackCase := attackCase
+					t.Run(attackCase.name, func(t *testing.T) {
+						patch := patchWithAttackDecayAndSustain(basePatch, attackCase.ar, 0x8, 0x4)
+						events := volumeSweepEventsWithHold(target.note, 127, 127, 192, 24)
+						trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
+						pureGoPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+						nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
+						pureGo := computeBackendEnvelopeProfile(pureGoPCM)
+						nuked := computeBackendEnvelopeProfile(nukedPCM)
+
+						t.Logf("purego attack peak=%.4f peakFrame=%d rise10=%d rise90=%d riseSpan=%d decayDropDB=%.2f",
+							pureGo.attackPeak, pureGo.attackPeakFrame, pureGo.attackRise10, pureGo.attackRise90, pureGo.attackRiseSpan, pureGo.decayDropDB)
+						t.Logf("nuked  attack peak=%.4f peakFrame=%d rise10=%d rise90=%d riseSpan=%d decayDropDB=%.2f",
+							nuked.attackPeak, nuked.attackPeakFrame, nuked.attackRise10, nuked.attackRise90, nuked.attackRiseSpan, nuked.decayDropDB)
+
+						if pureGo.attackPeak == 0 || nuked.attackPeak == 0 {
+							t.Fatalf("empty attack peak: purego=%.4f nuked=%.4f", pureGo.attackPeak, nuked.attackPeak)
+						}
+						if math.Abs(float64(pureGo.attackPeakFrame-nuked.attackPeakFrame)) > 1536 {
+							t.Fatalf("attack peak frame mismatch: purego=%d nuked=%d", pureGo.attackPeakFrame, nuked.attackPeakFrame)
+						}
+						if math.Abs(float64(pureGo.attackRiseSpan-nuked.attackRiseSpan)) > 1536 {
+							t.Fatalf("attack rise span mismatch: purego=%d nuked=%d", pureGo.attackRiseSpan, nuked.attackRiseSpan)
+						}
+					})
+				}
+			})
+
+			t.Run("decay", func(t *testing.T) {
+				for _, decayCase := range decayCases {
+					decayCase := decayCase
+					t.Run(decayCase.name, func(t *testing.T) {
+						patch := patchWithAttackDecayAndSustain(basePatch, 0xF, decayCase.dr, 0x8)
+						events := volumeSweepEventsWithHold(target.note, 127, 127, 320, 24)
+						trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
+						pureGoPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+						nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
+						pureGo := computeBackendEnvelopeProfile(pureGoPCM)
+						nuked := computeBackendEnvelopeProfile(nukedPCM)
+
+						t.Logf("purego decay early=%.4f late=%.4f drop=%.2fdB settle=%d",
+							pureGo.earlyDecayMean, pureGo.lateDecayMean, pureGo.decayDropDB, pureGo.decaySettle)
+						t.Logf("nuked  decay early=%.4f late=%.4f drop=%.2fdB settle=%d",
+							nuked.earlyDecayMean, nuked.lateDecayMean, nuked.decayDropDB, nuked.decaySettle)
+
+						if pureGo.earlyDecayMean == 0 || nuked.earlyDecayMean == 0 {
+							t.Fatalf("empty decay probe: purego early=%.4f nuked early=%.4f", pureGo.earlyDecayMean, nuked.earlyDecayMean)
+						}
+						if math.Abs(pureGo.decayDropDB-nuked.decayDropDB) > 3.0 {
+							t.Fatalf("decay drop mismatch: purego=%.2fdB nuked=%.2fdB", pureGo.decayDropDB, nuked.decayDropDB)
+						}
+						if math.Abs(float64(pureGo.decaySettle-nuked.decaySettle)) > 2048 {
+							t.Fatalf("decay settle mismatch: purego=%d nuked=%d", pureGo.decaySettle, nuked.decaySettle)
+						}
+					})
+				}
+			})
+		})
+	}
+}
+
+func TestDMXLikeOPL3MatchesNukedOnReferenceNoteSpectra(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -487,7 +840,7 @@ func TestBasicOPL3MatchesNukedOnReferenceNoteSpectra(t *testing.T) {
 			var scored []fftScoredPhrase
 			for _, phrase := range phrases {
 				trace := captureTraceForEvents(t, bank, phrase.events)
-				basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
+				basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
 				nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 				metrics := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
 				scored = append(scored, fftScoredPhrase{name: phrase.name, metrics: metrics})
@@ -538,6 +891,38 @@ func captureTraceForEvents(t *testing.T, bank PatchBank, events []Event) []oplTr
 	return append([]oplTraceOp(nil), tracer.ops...)
 }
 
+func volumeSweepEvents(note uint8, channelVol uint8, velocity uint8) []Event {
+	return volumeSweepEventsWithHold(note, channelVol, velocity, 112, 24)
+}
+
+func volumeSweepEventsWithHold(note uint8, channelVol uint8, velocity uint8, holdTics uint32, releaseTailTics uint32) []Event {
+	return []Event{
+		{Type: EventProgramChange, Channel: 0, A: 0},
+		{Type: EventControlChange, Channel: 0, A: controllerVol, B: channelVol},
+		{Type: EventControlChange, Channel: 0, A: controllerExpr, B: 127},
+		{Type: EventControlChange, Channel: 0, A: controllerPan, B: 64},
+		{Type: EventNoteOn, Channel: 0, A: note, B: velocity},
+		{Type: EventNoteOff, Channel: 0, A: note, DeltaTics: holdTics},
+		{Type: EventEnd, DeltaTics: releaseTailTics},
+	}
+}
+
+func patchWithAttackAndSustain(p Patch, attack uint8, sustain uint8) Patch {
+	p.Mod60 = (p.Mod60 & 0x0F) | ((attack & 0x0F) << 4)
+	p.Car60 = (p.Car60 & 0x0F) | ((attack & 0x0F) << 4)
+	p.Mod80 = (p.Mod80 & 0x0F) | ((sustain & 0x0F) << 4)
+	p.Car80 = (p.Car80 & 0x0F) | ((sustain & 0x0F) << 4)
+	return p
+}
+
+func patchWithAttackDecayAndSustain(p Patch, attack uint8, decay uint8, sustain uint8) Patch {
+	p.Mod60 = ((attack & 0x0F) << 4) | (decay & 0x0F)
+	p.Car60 = ((attack & 0x0F) << 4) | (decay & 0x0F)
+	p.Mod80 = (p.Mod80 & 0x0F) | ((sustain & 0x0F) << 4)
+	p.Car80 = (p.Car80 & 0x0F) | ((sustain & 0x0F) << 4)
+	return p
+}
+
 func computeOPLLevelMetrics(a []int16, b []int16) oplLevelMetrics {
 	monoA := monoFromStereoPCM(a)
 	monoB := monoFromStereoPCM(b)
@@ -561,6 +946,87 @@ func computeOPLLevelMetrics(a []int16, b []int16) oplLevelMetrics {
 		peakDelta:       peakA - peakB,
 		popRatioDelta:   math.Abs(popA - popB),
 		onsetStepDelta:  math.Abs(stepA - stepB),
+	}
+}
+
+func computeBackendLevelMetrics(pcm []int16) backendLevelMetrics {
+	mono := monoFromStereoPCM(pcm)
+	sustain := sustainWindow(mono)
+	onset := onsetWindow(mono, 96)
+	return backendLevelMetrics{
+		sustainRMS: rmsFloat(sustain),
+		peak:       peakPCM(pcm),
+		popRatio:   safeRatio(maxAbsFloat(onset), rmsFloat(sustain)),
+		onsetStep:  maxDelta(onset),
+	}
+}
+
+func computeBackendEnvelopeProfile(pcm []int16) backendEnvelopeProfile {
+	mono := monoFromStereoPCM(pcm)
+	env := smoothedAbsEnvelope(mono, 96)
+	if len(env) == 0 {
+		return backendEnvelopeProfile{}
+	}
+	onset := onsetFrame(mono)
+	if onset >= len(env) {
+		onset = 0
+	}
+
+	attackEnd := onset + 12288
+	if attackEnd > len(env) {
+		attackEnd = len(env)
+	}
+	attackPeakFrame, attackPeak := maxIndexFloat(env[onset:attackEnd])
+	attackPeakFrame += onset
+	rise10 := firstAtOrAbove(env, onset, attackPeakFrame+1, attackPeak*0.10)
+	rise90 := firstAtOrAbove(env, onset, attackPeakFrame+1, attackPeak*0.90)
+	riseSpan := 0
+	if rise10 >= 0 && rise90 >= rise10 {
+		riseSpan = rise90 - rise10
+	}
+
+	earlyStart := attackPeakFrame + 1024
+	earlyEnd := earlyStart + 2048
+	lateStart := attackPeakFrame + 8192
+	lateEnd := lateStart + 4096
+	if earlyStart > len(env) {
+		earlyStart = len(env)
+	}
+	if earlyEnd > len(env) {
+		earlyEnd = len(env)
+	}
+	if lateStart > len(env) {
+		lateStart = len(env)
+	}
+	if lateEnd > len(env) {
+		lateEnd = len(env)
+	}
+	if lateStart < earlyEnd {
+		lateStart = earlyEnd
+	}
+	if lateStart > lateEnd {
+		lateStart = lateEnd
+	}
+	earlyMean := meanFloat(env[earlyStart:earlyEnd])
+	lateMean := meanFloat(env[lateStart:lateEnd])
+	settle := -1
+	if lateMean > 1e-6 {
+		settle = firstAtOrBelow(env, attackPeakFrame, lateEnd, lateMean*1.15)
+	}
+	if settle >= 0 {
+		settle -= attackPeakFrame
+	}
+
+	return backendEnvelopeProfile{
+		attackPeak:      attackPeak,
+		attackPeakFrame: attackPeakFrame - onset,
+		attackRise10:    relativeIndex(rise10, onset),
+		attackRise90:    relativeIndex(rise90, onset),
+		attackRiseSpan:  riseSpan,
+		earlyDecayMean:  earlyMean,
+		lateDecayMean:   lateMean,
+		decayDropDB:     math.Abs(dbRatio(earlyMean, lateMean)),
+		decaySettle:     settle,
 	}
 }
 
@@ -900,11 +1366,11 @@ func sustainWindow(mono []float64) []float64 {
 	if len(mono) == 0 {
 		return nil
 	}
-	start := onsetFrame(mono) + 512
+	start := onsetFrame(mono) + 8192
 	if start >= len(mono) {
-		start = len(mono) / 4
+		start = len(mono) / 3
 	}
-	end := start + 1536
+	end := start + 4096
 	if end > len(mono) {
 		end = len(mono)
 	}
@@ -912,6 +1378,100 @@ func sustainWindow(mono []float64) []float64 {
 		return mono
 	}
 	return mono[start:end]
+}
+
+func nonIncreasing(a float64, b float64, c float64) bool {
+	return a >= b && b >= c
+}
+
+func smoothedAbsEnvelope(in []float64, width int) []float64 {
+	if len(in) == 0 {
+		return nil
+	}
+	if width <= 1 {
+		out := make([]float64, len(in))
+		for i, v := range in {
+			out[i] = math.Abs(v)
+		}
+		return out
+	}
+	out := make([]float64, len(in))
+	var sum float64
+	for i, v := range in {
+		sum += math.Abs(v)
+		if i >= width {
+			sum -= math.Abs(in[i-width])
+		}
+		n := i + 1
+		if n > width {
+			n = width
+		}
+		out[i] = sum / float64(n)
+	}
+	return out
+}
+
+func maxIndexFloat(in []float64) (int, float64) {
+	if len(in) == 0 {
+		return 0, 0
+	}
+	maxIdx := 0
+	maxVal := in[0]
+	for i, v := range in[1:] {
+		if v > maxVal {
+			maxVal = v
+			maxIdx = i + 1
+		}
+	}
+	return maxIdx, maxVal
+}
+
+func firstAtOrAbove(in []float64, start int, end int, want float64) int {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(in) {
+		end = len(in)
+	}
+	for i := start; i < end; i++ {
+		if in[i] >= want {
+			return i
+		}
+	}
+	return -1
+}
+
+func firstAtOrBelow(in []float64, start int, end int, want float64) int {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(in) {
+		end = len(in)
+	}
+	for i := start; i < end; i++ {
+		if in[i] <= want {
+			return i
+		}
+	}
+	return -1
+}
+
+func relativeIndex(idx int, start int) int {
+	if idx < 0 {
+		return -1
+	}
+	return idx - start
+}
+
+func meanFloat(in []float64) float64 {
+	if len(in) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, v := range in {
+		sum += v
+	}
+	return sum / float64(len(in))
 }
 
 func fftAnalysisWindow(mono []float64, n int) []float64 {

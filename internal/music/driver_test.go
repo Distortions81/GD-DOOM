@@ -353,6 +353,13 @@ func TestDriverPanScalingAffectsOPLPanBucket(t *testing.T) {
 	if got := val & 0x30; got != 0x30 {
 		t.Fatalf("scaled pan lr bits=0x%02X want=0x30 (center)", got)
 	}
+	panVal, ok := opl.lastWrite(0xD0)
+	if !ok {
+		t.Fatal("expected D0 stereo pan register write")
+	}
+	if panVal != 187 {
+		t.Fatalf("scaled stereo pan=%d want=187", panVal)
+	}
 
 	opl.writes = nil
 	d.SetMUSPanMax(1.0)
@@ -363,6 +370,13 @@ func TestDriverPanScalingAffectsOPLPanBucket(t *testing.T) {
 	}
 	if got := val & 0x30; got != 0x10 {
 		t.Fatalf("full pan lr bits=0x%02X want=0x10 (right)", got)
+	}
+	panVal, ok = opl.lastWrite(0xD0)
+	if !ok {
+		t.Fatal("expected D0 stereo pan register write")
+	}
+	if panVal != 201 {
+		t.Fatalf("full stereo pan=%d want=201", panVal)
 	}
 }
 

@@ -4,6 +4,10 @@ package music
 
 import (
 	"math"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"gddoom/internal/sound"
@@ -82,6 +86,126 @@ func TestPureGoMaintainsFullSongActivityAgainstNuked(t *testing.T) {
 	}
 }
 
+func TestPureGoMaintainsWideDoomCorpusActivityAgainstNuked(t *testing.T) {
+	requireOPLTuningSuite(t)
+
+	type corpusWAD struct {
+		label string
+		path  string
+	}
+	wads := []corpusWAD{
+		{label: "doom.wad", path: findNamedWADForMusicTests(t, "DOOM.WAD", "doom.wad")},
+		{label: "doom2.wad", path: findNamedWADForMusicTests(t, "DOOM2.WAD", "doom2.wad")},
+	}
+
+	type corpusResult struct {
+		wad           string
+		song          string
+		rmsRatio      float64
+		activeRatio   float64
+		dropoutRatio  float64
+		pureSilent    int
+		nukedSilent   int
+		severityScore float64
+	}
+	var results []corpusResult
+	totalSongs := 0
+	const maxSongTics = 140 * 45
+
+	for _, wadInfo := range wads {
+		wf, err := wad.Open(wadInfo.path)
+		if err != nil {
+			t.Fatalf("open wad %s: %v", wadInfo.path, err)
+		}
+		bank := loadGENMIDIBankForMusicTests(t, wf)
+		songs := parseableMusicLumpsForTests(t, wf)
+		if len(songs) == 0 {
+			t.Fatalf("%s has no parseable music lumps", wadInfo.path)
+		}
+		t.Logf("%s: testing %d music lumps", wadInfo.label, len(songs))
+
+		for _, song := range songs {
+			totalSongs++
+			lump, ok := wf.LumpByName(song)
+			if !ok {
+				t.Fatalf("%s missing lump %s after discovery", wadInfo.path, song)
+			}
+			musData, err := wf.LumpData(lump)
+			if err != nil {
+				t.Fatalf("read %s/%s: %v", wadInfo.label, song, err)
+			}
+			events, err := ParseMUS(musData)
+			if err != nil {
+				t.Fatalf("parse %s/%s: %v", wadInfo.label, song, err)
+			}
+			trimmed := trimEventsToTics(events, maxSongTics)
+			nukedStats := renderEventStats(t, bank, sound.BackendNuked, trimmed)
+			pureStats := renderEventStats(t, bank, sound.BackendPureGo, trimmed)
+			if nukedStats.activeWindows == 0 {
+				t.Fatalf("%s/%s nuked active windows=0", wadInfo.label, song)
+			}
+
+			rmsRatio := pureStats.rms / nukedStats.rms
+			activeRatio := float64(pureStats.activeWindows) / float64(nukedStats.activeWindows)
+			dropoutRatio := activeWindowDropoutRatio(pureStats.windowRMS, nukedStats.windowRMS, 200)
+			pureLongestSilent, _ := longestInactiveRun(pureStats.windowRMS, 200)
+			nukedLongestSilent, _ := longestInactiveRun(nukedStats.windowRMS, 200)
+			result := corpusResult{
+				wad:          wadInfo.label,
+				song:         song,
+				rmsRatio:     rmsRatio,
+				activeRatio:  activeRatio,
+				dropoutRatio: dropoutRatio,
+				pureSilent:   pureLongestSilent,
+				nukedSilent:  nukedLongestSilent,
+			}
+			result.severityScore =
+				math.Max(0, 0.20-rmsRatio)*4 +
+					math.Max(0, 0.50-activeRatio)*4 +
+					math.Max(0, dropoutRatio-0.35)*6 +
+					math.Max(0, float64(pureLongestSilent-(nukedLongestSilent+12)))/24.0
+			results = append(results, result)
+
+			if rmsRatio < 0.20 {
+				t.Errorf("%s/%s purego rms ratio=%.3f want >= 0.20", wadInfo.label, song, rmsRatio)
+			}
+			if activeRatio < 0.50 {
+				t.Errorf("%s/%s purego active ratio=%.3f want >= 0.50", wadInfo.label, song, activeRatio)
+			}
+			if dropoutRatio > 0.35 {
+				t.Errorf("%s/%s purego dropout ratio=%.3f want <= 0.35", wadInfo.label, song, dropoutRatio)
+			}
+			if pureLongestSilent > nukedLongestSilent+12 {
+				t.Errorf("%s/%s purego longest silent run=%d want <= nuked+12 (%d)", wadInfo.label, song, pureLongestSilent, nukedLongestSilent+12)
+			}
+		}
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].severityScore == results[j].severityScore {
+			if results[i].dropoutRatio == results[j].dropoutRatio {
+				if results[i].activeRatio == results[j].activeRatio {
+					return results[i].song < results[j].song
+				}
+				return results[i].activeRatio < results[j].activeRatio
+			}
+			return results[i].dropoutRatio > results[j].dropoutRatio
+		}
+		return results[i].severityScore > results[j].severityScore
+	})
+
+	top := len(results)
+	if top > 8 {
+		top = 8
+	}
+	for i := 0; i < top; i++ {
+		r := results[i]
+		t.Logf("worst[%d] %s/%s rms=%.3f active=%.3f dropout=%.3f longestSilent=%d vs %d score=%.2f",
+			i+1, r.wad, r.song, r.rmsRatio, r.activeRatio, r.dropoutRatio, r.pureSilent, r.nukedSilent, r.severityScore)
+	}
+	t.Logf("checked %d songs across %d WADs (trimmed to %d tics each)", totalSongs, len(wads), maxSongTics)
+}
+
 type songRenderStats struct {
 	rms           float64
 	activeWindows int
@@ -99,6 +223,22 @@ func renderSongStats(t *testing.T, bank PatchBank, backend sound.Backend, musDat
 	if err != nil {
 		t.Fatalf("render mus %s: %v", backend, err)
 	}
+	windowRMS := rmsWindows(pcm, 2048)
+	return songRenderStats{
+		rms:           rmsInt16(pcm),
+		activeWindows: countActiveWindows(windowRMS, 200),
+		windowRMS:     windowRMS,
+	}
+}
+
+func renderEventStats(t *testing.T, bank PatchBank, backend sound.Backend, events []Event) songRenderStats {
+	t.Helper()
+	driver, err := NewOutputDriverWithBackend(bank, backend)
+	if err != nil {
+		t.Fatalf("new driver %s: %v", backend, err)
+	}
+	driver.Reset()
+	pcm := driver.Render(events)
 	windowRMS := rmsWindows(pcm, 2048)
 	return songRenderStats{
 		rms:           rmsInt16(pcm),
@@ -211,4 +351,73 @@ func windowIndexSeconds(index int, windowFrames int) float64 {
 		return -1
 	}
 	return float64(index*windowFrames) / float64(OutputSampleRate)
+}
+
+func findNamedWADForMusicTests(t *testing.T, names ...string) string {
+	t.Helper()
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	dir := wd
+	for i := 0; i < 8; i++ {
+		for _, name := range names {
+			cand := filepath.Join(dir, name)
+			if st, err := os.Stat(cand); err == nil && !st.IsDir() {
+				return cand
+			}
+		}
+		next := filepath.Dir(dir)
+		if next == dir {
+			break
+		}
+		dir = next
+	}
+	t.Fatalf("could not find any of %v from %s", names, wd)
+	return ""
+}
+
+func loadGENMIDIBankForMusicTests(t *testing.T, wf *wad.File) PatchBank {
+	t.Helper()
+
+	lump, ok := wf.LumpByName("GENMIDI")
+	if !ok {
+		t.Fatalf("%s missing GENMIDI lump", wf.Path)
+	}
+	data, err := wf.LumpData(lump)
+	if err != nil {
+		t.Fatalf("read GENMIDI from %s: %v", wf.Path, err)
+	}
+	bank, err := ParseGENMIDIOP2PatchBank(data)
+	if err != nil {
+		t.Fatalf("parse GENMIDI from %s: %v", wf.Path, err)
+	}
+	return bank
+}
+
+func parseableMusicLumpsForTests(t *testing.T, wf *wad.File) []string {
+	t.Helper()
+
+	seen := map[string]struct{}{}
+	var songs []string
+	for _, lump := range wf.Lumps {
+		if !strings.HasPrefix(lump.Name, "D_") {
+			continue
+		}
+		if _, ok := seen[lump.Name]; ok {
+			continue
+		}
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			t.Fatalf("read %s from %s: %v", lump.Name, wf.Path, err)
+		}
+		if _, err := ParseMUS(data); err != nil {
+			continue
+		}
+		seen[lump.Name] = struct{}{}
+		songs = append(songs, lump.Name)
+	}
+	sort.Strings(songs)
+	return songs
 }

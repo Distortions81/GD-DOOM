@@ -22,7 +22,7 @@ func validateBackend(backend Backend) error {
 func newOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {
 	switch backend {
 	case BackendAuto, BackendPureGo:
-		return NewBasicOPL3(sampleRate), nil
+		return NewDMXLikeOPL3(sampleRate), nil
 	case BackendNuked:
 		return nil, fmt.Errorf("backend %q requires a cgo build", backend)
 	default:

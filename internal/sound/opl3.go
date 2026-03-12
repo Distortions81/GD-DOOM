@@ -55,7 +55,7 @@ func NewOPL3(sampleRate int) OPL3 {
 	if err == nil {
 		return opl
 	}
-	return NewBasicOPL3(sampleRate)
+	return NewDMXLikeOPL3(sampleRate)
 }
 
 func NewOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {

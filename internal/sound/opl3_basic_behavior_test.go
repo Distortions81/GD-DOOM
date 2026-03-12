@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestBasicOPL3CarrierAttenuationTracksTLAndKSL(t *testing.T) {
+func TestDMXLikeOPL3CarrierAttenuationTracksTLAndKSL(t *testing.T) {
 	lowTL := measureCarrierEnvelopeOut(0x00, 0x20, 0x20)
 	highTL := measureCarrierEnvelopeOut(0x20, 0x20, 0x20)
 	if highTL <= lowTL {
@@ -19,8 +19,8 @@ func TestBasicOPL3CarrierAttenuationTracksTLAndKSL(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3AttackDecayReleaseHaveExpectedShape(t *testing.T) {
-	opl := newBasicOPL3Tone(
+func TestDMXLikeOPL3AttackDecayReleaseHaveExpectedShape(t *testing.T) {
+	opl := newDMXLikeOPL3Tone(
 		0x20, 0x01,
 		0x23, 0x01,
 		0x40, 0x3F,
@@ -68,7 +68,7 @@ func TestBasicOPL3AttackDecayReleaseHaveExpectedShape(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3AdditiveAndFMModeProduceDifferentSpectra(t *testing.T) {
+func TestDMXLikeOPL3AdditiveAndFMModeProduceDifferentSpectra(t *testing.T) {
 	fm := renderBasicTone(0x20, 0x2D, 0x23, 0x01, 0x40, 0x00, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x30, 0xA0, 0x98, 0xB0, 0x31)
 	add := renderBasicTone(0x20, 0x2D, 0x23, 0x01, 0x40, 0x00, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x31, 0xA0, 0x98, 0xB0, 0x31)
 	diff := meanAbsPCMDiff(fm, add)
@@ -77,7 +77,7 @@ func TestBasicOPL3AdditiveAndFMModeProduceDifferentSpectra(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3FeedbackChangesToneShape(t *testing.T) {
+func TestDMXLikeOPL3FeedbackChangesToneShape(t *testing.T) {
 	noFeedback := renderBasicTone(0x20, 0x2B, 0x23, 0x21, 0x40, 0x00, 0x43, 0x00, 0x60, 0xF3, 0x63, 0xF3, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x30, 0xA0, 0x98, 0xB0, 0x31)
 	fullFeedback := renderBasicTone(0x20, 0x2B, 0x23, 0x21, 0x40, 0x00, 0x43, 0x00, 0x60, 0xF3, 0x63, 0xF3, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x3E, 0xA0, 0x98, 0xB0, 0x31)
 	diff := meanAbsPCMDiff(noFeedback, fullFeedback)
@@ -86,7 +86,7 @@ func TestBasicOPL3FeedbackChangesToneShape(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3TremoloChangesWindowAmplitudeVariance(t *testing.T) {
+func TestDMXLikeOPL3TremoloChangesWindowAmplitudeVariance(t *testing.T) {
 	steady := renderBasicTone(0x20, 0x01, 0x23, 0x01, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x30, 0xA0, 0x98, 0xB0, 0x31)
 	trem := renderBasicTone(0xBD, 0x80, 0x20, 0x81, 0x23, 0x81, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x30, 0xA0, 0x98, 0xB0, 0x31)
 	steadyVar := variance(windowedRMS(monoFromStereo(steady), 256))
@@ -96,7 +96,7 @@ func TestBasicOPL3TremoloChangesWindowAmplitudeVariance(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3VibratoChangesZeroCrossingVariance(t *testing.T) {
+func TestDMXLikeOPL3VibratoChangesZeroCrossingVariance(t *testing.T) {
 	steady := renderBasicTone(0x20, 0x01, 0x23, 0x01, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x30, 0xA0, 0x98, 0xB0, 0x31)
 	vibrato := renderBasicTone(0xBD, 0x40, 0x20, 0x41, 0x23, 0x41, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x30, 0xA0, 0x98, 0xB0, 0x31)
 	steadyCross := zeroCrossingsPerWindow(monoFromStereo(steady), 512)
@@ -108,7 +108,7 @@ func TestBasicOPL3VibratoChangesZeroCrossingVariance(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3PanBitsMatchDriverSemantics(t *testing.T) {
+func TestDMXLikeOPL3PanBitsMatchDriverSemantics(t *testing.T) {
 	rightOnly := renderBasicTone(0x20, 0x01, 0x23, 0x01, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x10, 0xA0, 0x98, 0xB0, 0x31)
 	leftOnly := renderBasicTone(0x20, 0x01, 0x23, 0x01, 0x43, 0x00, 0x60, 0xF4, 0x63, 0xF4, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x20, 0xA0, 0x98, 0xB0, 0x31)
 
@@ -122,8 +122,49 @@ func TestBasicOPL3PanBitsMatchDriverSemantics(t *testing.T) {
 	}
 }
 
-func TestBasicOPL3MediumAttackPatchEscapesSilence(t *testing.T) {
-	opl := newBasicOPL3Tone(
+func TestDMXLikeOPL3StereoExtensionPanFollowsD0(t *testing.T) {
+	leftOnly := renderBasicTone(
+		0x105, 0x03,
+		0x20, 0x01, 0x23, 0x01, 0x43, 0x00,
+		0x60, 0xF4, 0x63, 0xF4,
+		0x80, 0x24, 0x83, 0x24,
+		0xC0, 0x30, 0xD0, 0x00,
+		0xA0, 0x98, 0xB0, 0x31,
+	)
+	center := renderBasicTone(
+		0x105, 0x03,
+		0x20, 0x01, 0x23, 0x01, 0x43, 0x00,
+		0x60, 0xF4, 0x63, 0xF4,
+		0x80, 0x24, 0x83, 0x24,
+		0xC0, 0x30, 0xD0, 0x80,
+		0xA0, 0x98, 0xB0, 0x31,
+	)
+	rightOnly := renderBasicTone(
+		0x105, 0x03,
+		0x20, 0x01, 0x23, 0x01, 0x43, 0x00,
+		0x60, 0xF4, 0x63, 0xF4,
+		0x80, 0x24, 0x83, 0x24,
+		0xC0, 0x30, 0xD0, 0xFF,
+		0xA0, 0x98, 0xB0, 0x31,
+	)
+
+	leftL, leftR := channelRMS(leftOnly)
+	centerL, centerR := channelRMS(center)
+	rightL, rightR := channelRMS(rightOnly)
+
+	if leftL <= leftR*20 {
+		t.Fatalf("stereoext left pan rms L=%.1f R=%.1f want strongly left-dominant output", leftL, leftR)
+	}
+	if rightR <= rightL*20 {
+		t.Fatalf("stereoext right pan rms L=%.1f R=%.1f want strongly right-dominant output", rightL, rightR)
+	}
+	if math.Abs(centerL-centerR) > centerL*0.15 {
+		t.Fatalf("stereoext center pan rms L=%.1f R=%.1f want roughly balanced output", centerL, centerR)
+	}
+}
+
+func TestDMXLikeOPL3MediumAttackPatchEscapesSilence(t *testing.T) {
+	opl := newDMXLikeOPL3Tone(
 		0x20, 0x60,
 		0x23, 0xB1,
 		0x40, 0x51,
@@ -163,7 +204,7 @@ func TestBasicOPL3MediumAttackPatchEscapesSilence(t *testing.T) {
 	}
 }
 
-func BenchmarkBasicOPL3RenderDMXLikeCorpus(b *testing.B) {
+func BenchmarkDMXLikeOPL3RenderDMXLikeCorpus(b *testing.B) {
 	cases := []struct {
 		name string
 		regs []uint16
@@ -184,7 +225,7 @@ func BenchmarkBasicOPL3RenderDMXLikeCorpus(b *testing.B) {
 
 	for _, tc := range cases {
 		b.Run(tc.name, func(b *testing.B) {
-			opl := newBasicOPL3Tone(tc.regs...)
+			opl := newDMXLikeOPL3Tone(tc.regs...)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
@@ -195,7 +236,7 @@ func BenchmarkBasicOPL3RenderDMXLikeCorpus(b *testing.B) {
 }
 
 func measureCarrierEnvelopeOut(car40, a0, b0 uint8) uint16 {
-	opl := newBasicOPL3Tone(
+	opl := newDMXLikeOPL3Tone(
 		0x20, 0x01,
 		0x23, 0x01,
 		0x40, 0x3F,
@@ -215,12 +256,12 @@ func measureCarrierEnvelopeOut(car40, a0, b0 uint8) uint16 {
 }
 
 func renderBasicTone(regs ...uint16) []int16 {
-	opl := newBasicOPL3Tone(regs...)
+	opl := newDMXLikeOPL3Tone(regs...)
 	return opl.GenerateStereoS16(8192)
 }
 
-func newBasicOPL3Tone(regs ...uint16) *BasicOPL3 {
-	opl := NewBasicOPL3(49716)
+func newDMXLikeOPL3Tone(regs ...uint16) *DMXLikeOPL3 {
+	opl := NewDMXLikeOPL3(49716)
 	opl.WriteReg(0x01, 0x20)
 	for i := 0; i+1 < len(regs); i += 2 {
 		opl.WriteReg(regs[i], uint8(regs[i+1]))
