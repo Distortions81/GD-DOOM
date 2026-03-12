@@ -104,6 +104,23 @@ func TestDeadPlayerDoesNotPickup(t *testing.T) {
 	}
 }
 
+func TestFilteredPickupDoesNotCollect(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2008, Flags: 0}},
+		},
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+
+	g.processThingPickups()
+
+	if g.thingCollected[0] {
+		t.Fatal("filtered pickup should not collect")
+	}
+}
+
 func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
 	px, py, pz := int64(0), int64(0), int64(0)
 	tx, ty, tz := int64(35*fracUnit), int64(0), int64(0)

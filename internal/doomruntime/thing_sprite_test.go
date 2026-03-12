@@ -223,7 +223,6 @@ func TestWorldThingSpriteName_DoomTimingParity(t *testing.T) {
 
 func TestWorldThingSpriteName_SmallGreenTorchDiscreteTiming(t *testing.T) {
 	g := &game{
-		textureAnimCrossfadeFrames: 2,
 		opts: Options{
 			SpritePatchBank: map[string]WallTexture{
 				"SMGTA0": {Width: 1, Height: 1, RGBA: []byte{255, 0, 0, 255}},
@@ -263,7 +262,6 @@ func TestWorldThingSpriteName_SmallGreenTorchDiscreteTiming(t *testing.T) {
 
 func TestWorldThingSpriteNameScaled_SmallGreenTorchUsesDiscreteFrames(t *testing.T) {
 	g := &game{
-		textureAnimCrossfadeFrames: 2,
 		opts: Options{
 			SourcePortMode: true,
 			SpritePatchBank: map[string]WallTexture{

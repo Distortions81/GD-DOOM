@@ -103,3 +103,14 @@ func TestPickerDefaultsPreferSourcePortAndFirstNonSharewareIWAD(t *testing.T) {
 		t.Fatalf("default selected=%d want=0", game.selected)
 	}
 }
+
+func TestPickerAssetWADPathFallsBackToNonSharewareChoice(t *testing.T) {
+	choices := []iwadChoice{
+		{Path: "/tmp/plutonia.wad", Label: "Final DOOM: Plutonia"},
+		{Path: "/tmp/custom-total-conversion.wad", Label: "Custom"},
+	}
+
+	if got := pickerAssetWADPath(choices); got != "/tmp/plutonia.wad" {
+		t.Fatalf("pickerAssetWADPath() = %q want %q", got, "/tmp/plutonia.wad")
+	}
+}

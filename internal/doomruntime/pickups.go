@@ -17,13 +17,13 @@ type playerInventory struct {
 }
 
 type playerStats struct {
-	Health  int
-	Armor   int
+	Health    int
+	Armor     int
 	ArmorType int
-	Bullets int
-	Shells  int
-	Rockets int
-	Cells   int
+	Bullets   int
+	Shells    int
+	Rockets   int
+	Cells     int
 }
 
 func (g *game) initPlayerState() {
@@ -79,7 +79,7 @@ func (g *game) processThingPickups() {
 		return
 	}
 	for i, th := range g.m.Things {
-		if g.thingCollected[i] {
+		if !g.thingActiveInSession(i) {
 			continue
 		}
 		if !isPickupType(th.Type) {

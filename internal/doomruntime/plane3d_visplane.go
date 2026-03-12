@@ -55,10 +55,7 @@ func ensurePlane3DForRangeAlloc(planes map[plane3DKey][]*plane3DVisplane, key pl
 	var wrapped scene.PlaneAllocator
 	if alloc != nil {
 		wrapped = func(key scene.PlaneKey, start, stop, viewW int) *scene.PlaneVisplane {
-			local := alloc(plane3DKey{
-				height: key.Height, light: key.Light, flat: key.Flat,
-				fallback: key.Fallback, sky: key.Sky, floor: key.Floor,
-			}, start, stop, viewW)
+			local := alloc(plane3DKeyFromScene(key), start, stop, viewW)
 			sp := &scene.PlaneVisplane{
 				Key:    key,
 				MinX:   local.minX,
@@ -72,7 +69,7 @@ func ensurePlane3DForRangeAlloc(planes map[plane3DKey][]*plane3DVisplane, key pl
 	}
 	sp, created := scene.EnsurePlaneForRangeAlloc(scenePlanes, plane3DKeyToScene(key), start, stop, viewW, wrapped)
 	for sk, list := range scenePlanes {
-		localKey := plane3DKey{height: sk.Height, light: sk.Light, flat: sk.Flat, fallback: sk.Fallback, sky: sk.Sky, floor: sk.Floor}
+		localKey := plane3DKeyFromScene(sk)
 		localList := make([]*plane3DVisplane, 0, len(list))
 		for _, item := range list {
 			local := backref[item]
@@ -123,13 +120,10 @@ func makePlane3DSpans(pl *plane3DVisplane, viewH int, out []plane3DSpan) []plane
 	out = out[:0]
 	for _, s := range sceneOut {
 		out = append(out, plane3DSpan{
-			y:  s.Y,
-			x1: s.X1,
-			x2: s.X2,
-			key: plane3DKey{
-				height: s.Key.Height, light: s.Key.Light, flat: s.Key.Flat,
-				fallback: s.Key.Fallback, sky: s.Key.Sky, floor: s.Key.Floor,
-			},
+			y:   s.Y,
+			x1:  s.X1,
+			x2:  s.X2,
+			key: pl.key,
 		})
 	}
 	return out

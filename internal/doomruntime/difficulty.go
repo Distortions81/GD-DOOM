@@ -101,3 +101,16 @@ func thingSpawnsInSession(t mapdata.Thing, skill int, mode string, showNoSkillIt
 	}
 	return thingSpawnsForSkill(t, skill, showNoSkillItems) && thingSpawnsForGameMode(t, mode)
 }
+
+func (g *game) thingActiveInSession(i int) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if i < len(g.thingCollected) && g.thingCollected[i] {
+		return false
+	}
+	if i < len(g.thingDead) && g.thingDead[i] {
+		return false
+	}
+	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems)
+}

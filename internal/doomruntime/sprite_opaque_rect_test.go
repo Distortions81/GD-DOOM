@@ -62,3 +62,29 @@ func TestBuildSpriteOpaqueRects_DoesNotDropSetForLowCoverageAlone(t *testing.T) 
 		t.Fatalf("first rect=%+v want largest block [0,0]-[7,7]", got)
 	}
 }
+
+func TestBuildSpriteOpaqueRects_RejectsSkinnyExtras(t *testing.T) {
+	const (
+		w = 32
+		h = 16
+	)
+	pix := make([]uint32, w*h)
+	fill := func(x0, y0, x1, y1 int) {
+		for y := y0; y <= y1; y++ {
+			for x := x0; x <= x1; x++ {
+				pix[y*w+x] = pixelOpaqueA
+			}
+		}
+	}
+	fill(0, 0, 7, 7)
+	fill(12, 0, 12, 11)
+	fill(15, 0, 15, 11)
+
+	rects := buildSpriteOpaqueRects(pix, w, h)
+	if len(rects) != 1 {
+		t.Fatalf("rect count=%d want 1", len(rects))
+	}
+	if got := rects[0]; got.minX != 0 || got.minY != 0 || got.maxX != 7 || got.maxY != 7 {
+		t.Fatalf("first rect=%+v want largest block [0,0]-[7,7]", got)
+	}
+}

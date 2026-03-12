@@ -72,7 +72,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultShowNoSkillItems := false
 	defaultShowAllItems := false
 	defaultMouseLook := true
-	defaultMouseLookSpeed := 2.0
+	defaultMouseLookSpeed := 0.5
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 0.5
 	defaultMUSPanMax := 0.8
@@ -1576,7 +1576,7 @@ type iwadPickerGame struct {
 func newIWADPickerGame(choices []iwadChoice, load func(string, pickerProfile) (*renderBundle, error)) (*iwadPickerGame, error) {
 	game := &iwadPickerGame{choices: choices, load: load}
 	_ = audiofx.EnsureSharedAudioContext()
-	if assetPath, ok := resolvePathCaseInsensitive("DOOM1.WAD"); ok {
+	if assetPath := pickerAssetWADPath(choices); assetPath != "" {
 		if wf, err := wad.Open(assetPath); err == nil {
 			game.sfx = audiofx.NewMenuPlayer(buildAutomapSoundBank(sound.ImportDigitalSounds(wf), false), 0.5)
 			if ts, err := doomtex.LoadFromWAD(wf); err == nil {
@@ -1618,6 +1618,11 @@ func pickerAssetWADPath(choices []iwadChoice) string {
 			if strings.EqualFold(filepath.Base(c.Path), want) {
 				return c.Path
 			}
+		}
+	}
+	for _, want := range []string{"DOOM1.WAD", "DOOM.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD"} {
+		if p, ok := resolvePathCaseInsensitive(want); ok {
+			return p
 		}
 	}
 	if len(choices) > 0 {

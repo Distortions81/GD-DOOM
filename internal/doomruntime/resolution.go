@@ -10,6 +10,8 @@ const (
 
 	faithfulDefaultWindowW = 1280
 	faithfulDefaultWindowH = 960
+	faithfulBufferW        = doomLogicalW * 2
+	faithfulBufferH        = doomLogicalH * 2
 	faithfulAspectLogicalH = 240
 )
 

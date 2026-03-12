@@ -4,7 +4,7 @@ import "testing"
 
 func TestEnsurePlane3DForRange_ReusesWhenNoOverlapConflict(t *testing.T) {
 	planes := make(map[plane3DKey][]*plane3DVisplane)
-	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
+	key := plane3DKey{height: 0, light: 160, flatID: 1, floor: true}
 	pl1, created := ensurePlane3DForRange(planes, key, 2, 5, 32)
 	if pl1 == nil {
 		t.Fatal("expected visplane allocation")
@@ -29,7 +29,7 @@ func TestEnsurePlane3DForRange_ReusesWhenNoOverlapConflict(t *testing.T) {
 
 func TestEnsurePlane3DForRange_SplitsOnOverlapConflict(t *testing.T) {
 	planes := make(map[plane3DKey][]*plane3DVisplane)
-	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
+	key := plane3DKey{height: 0, light: 160, flatID: 1, floor: true}
 	pl1, created := ensurePlane3DForRange(planes, key, 2, 6, 32)
 	if pl1 == nil {
 		t.Fatal("expected visplane allocation")
@@ -62,7 +62,7 @@ func TestEnsurePlane3DForRange_SplitsOnOverlapConflict(t *testing.T) {
 }
 
 func TestMarkPlane3DColumnRange_MergesRepeatedColumnMarks(t *testing.T) {
-	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
+	key := plane3DKey{height: 0, light: 160, flatID: 1, floor: true}
 	pl := newPlane3DVisplane(key, 2, 6, 32)
 	ceilingClip := make([]int, 32)
 	floorClip := make([]int, 32)
@@ -88,7 +88,7 @@ func TestMarkPlane3DColumnRange_MergesRepeatedColumnMarks(t *testing.T) {
 }
 
 func TestMakePlane3DSpans_PartialCoverageSurvivesInteriorGap(t *testing.T) {
-	key := plane3DKey{height: 0, light: 160, flat: "FLOOR0_1", floor: true}
+	key := plane3DKey{height: 0, light: 160, flatID: 1, floor: true}
 	pl := newPlane3DVisplane(key, 2, 6, 16)
 	ceilingClip := make([]int, 16)
 	floorClip := make([]int, 16)

@@ -1,11 +1,15 @@
 package doomruntime
 
-import "gddoom/internal/render/scene"
+import (
+	"strconv"
+
+	"gddoom/internal/render/scene"
+)
 
 type plane3DKey struct {
 	height   int16
 	light    int16
-	flat     string
+	flatID   uint16
 	fallback bool
 	sky      bool
 	floor    bool
@@ -70,7 +74,24 @@ func addCoveredRange(covered []spanRange, x1, x2 int) []spanRange {
 
 func plane3DKeyToScene(key plane3DKey) scene.PlaneKey {
 	return scene.PlaneKey{
-		Height: key.height, Light: key.light, Flat: key.flat,
+		Height: key.height, Light: key.light, Flat: strconv.FormatUint(uint64(key.flatID), 10),
 		Fallback: key.fallback, Sky: key.sky, Floor: key.floor,
+	}
+}
+
+func plane3DKeyFromScene(key scene.PlaneKey) plane3DKey {
+	flatID := uint16(0)
+	if key.Flat != "" {
+		if v, err := strconv.ParseUint(key.Flat, 10, 16); err == nil {
+			flatID = uint16(v)
+		}
+	}
+	return plane3DKey{
+		height:   key.Height,
+		light:    key.Light,
+		flatID:   flatID,
+		fallback: key.Fallback,
+		sky:      key.Sky,
+		floor:    key.Floor,
 	}
 }
