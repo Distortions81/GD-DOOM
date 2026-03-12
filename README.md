@@ -1,5 +1,7 @@
 # GD-DOOM
 
+![E1M1 screenshot](e1m1.png)
+
 Minimal Doom map/parser + automap project in Go.
 
 ## What It Does
