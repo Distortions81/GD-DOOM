@@ -235,6 +235,12 @@ type billboardQueueItem struct {
 	idx  int
 }
 
+type billboardPlaneOccluderSpan struct {
+	L      int
+	R      int
+	DepthQ uint16
+}
+
 type hitscanPuff struct {
 	x        int64
 	y        int64
@@ -382,6 +388,8 @@ type game struct {
 	fpsDisplay    float64
 	renderAccum   time.Duration
 	renderMSAvg   float64
+	benchLow1MS   float64
+	benchLow01MS  float64
 	frameUpload   time.Duration
 	perfInDraw    bool
 	interpAutoOff bool
@@ -521,6 +529,7 @@ type game struct {
 	thingItemsScratch            []projectedThingItem
 	puffItemsScratch             []projectedPuffItem
 	billboardQueueScratch        []billboardQueueItem
+	billboardPlaneOccluderRows   [][]billboardPlaneOccluderSpan
 	billboardQueueCollect        bool
 	billboardReplayActive        bool
 	billboardReplayKind          billboardQueueKind
@@ -604,6 +613,7 @@ type game struct {
 	statusBonusCount             int
 	demoBenchStart               time.Time
 	demoBenchDraws               int
+	demoBenchFrameNS             []int64
 	demoStartRnd                 int
 	demoStartPRnd                int
 	demoRNGCaptured              bool
@@ -1372,6 +1382,9 @@ func (g *game) updateDemoMode() error {
 	if !g.demoBenchStarted {
 		g.demoBenchStarted = true
 		g.demoBenchStart = time.Now()
+		g.demoBenchFrameNS = g.demoBenchFrameNS[:0]
+		g.benchLow1MS = 0
+		g.benchLow01MS = 0
 	}
 	if !g.demoRNGCaptured {
 		g.demoStartRnd, g.demoStartPRnd = doomrand.State()
@@ -1397,12 +1410,18 @@ func (g *game) updateDemoMode() error {
 			if tics > 0 {
 				msPerTic = elapsed.Seconds() * 1000 / float64(tics)
 			}
+			low1NS := demoBenchLowFrameNS(g.demoBenchFrameNS, 0.99)
+			low01NS := demoBenchLowFrameNS(g.demoBenchFrameNS, 0.999)
+			low1MS := float64(low1NS) / float64(time.Millisecond)
+			low01MS := float64(low01NS) / float64(time.Millisecond)
+			low1FPS := demoBenchFPSFromFrameNS(low1NS)
+			low01FPS := demoBenchFPSFromFrameNS(low01NS)
 			label := "demo"
 			if strings.TrimSpace(script.Path) != "" {
 				label = script.Path
 			}
-			fmt.Printf("demo-bench path=%s wad=%s map=%s rng_start=%d/%d tics=%d draws=%d elapsed=%s tps=%.2f fps=%.2f ms_per_tic=%.3f\n",
-				label, g.opts.WADHash, g.m.Name, g.demoStartRnd, g.demoStartPRnd, tics, g.demoBenchDraws, elapsed.Round(time.Millisecond), tps, fps, msPerTic)
+			fmt.Printf("demo-bench path=%s wad=%s map=%s rng_start=%d/%d tics=%d draws=%d elapsed=%s tps=%.2f fps=%.2f ms_per_tic=%.3f low_1pct_ms=%.3f low_1pct_fps=%.2f low_01pct_ms=%.3f low_01pct_fps=%.2f\n",
+				label, g.opts.WADHash, g.m.Name, g.demoStartRnd, g.demoStartPRnd, tics, g.demoBenchDraws, elapsed.Round(time.Millisecond), tps, fps, msPerTic, low1MS, low1FPS, low01MS, low01FPS)
 		}
 		if g.opts.DemoQuitOnComplete {
 			return ebiten.Termination
@@ -2874,20 +2893,35 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	g.maskedMidSegsScratch = maskedMids
 	g.solid3DBuf = solid
+	g.buildMaskedMidClipColumns(focal)
+	g.finalizeMaskedClipColumns()
+	planePassReady := planesEnabled && hasMarkedPlane3DData(planeOrder)
+	if planePassReady {
+		g.billboardQueueCollect = true
+		g.billboardQueueScratch = g.billboardQueueScratch[:0]
+		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+		g.billboardQueueCollect = false
+		g.buildBillboardPlaneOccludersFromQueue()
+	} else {
+		g.clearBillboardPlaneOccluderRows()
+	}
 	usedSkyLayer := false
-	if planesEnabled && hasMarkedPlane3DData(planeOrder) {
+	if planePassReady {
 		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
 	}
 	g.drawMaskedMidSegs(focal)
-	g.buildMaskedMidClipColumns(focal)
-	g.finalizeMaskedClipColumns()
-	g.billboardQueueCollect = true
-	g.billboardQueueScratch = g.billboardQueueScratch[:0]
-	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
-	g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
-	g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
-	g.billboardQueueCollect = false
+	if !planePassReady {
+		g.billboardQueueCollect = true
+		g.billboardQueueScratch = g.billboardQueueScratch[:0]
+		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
+		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
+		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+		g.billboardQueueCollect = false
+	}
 	sort.Slice(g.billboardQueueScratch, func(i, j int) bool {
 		return g.billboardQueueScratch[i].dist > g.billboardQueueScratch[j].dist
 	})
@@ -3224,18 +3258,18 @@ func solidFullyCoveredFast(spans []solidSpan, l, r int) bool {
 }
 
 func (g *game) rowFullyOccludedByWallsFastDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
-	if x1 < x0 || rowBase < 0 {
+	if g == nil || g.viewW <= 0 || x1 < x0 || rowBase < 0 {
 		return false
 	}
 	mid := (x0 + x1) >> 1
 	y := rowBase / g.viewW
-	if !g.spriteWallClipOccludedAtXYDepth(x0, y, depthQ) ||
-		!g.spriteWallClipOccludedAtXYDepth(x1, y, depthQ) ||
-		!g.spriteWallClipOccludedAtXYDepth(mid, y, depthQ) {
+	if !g.wallClipPointOccludedByWallsOnly(x0, y, depthQ) ||
+		!g.wallClipPointOccludedByWallsOnly(x1, y, depthQ) ||
+		!g.wallClipPointOccludedByWallsOnly(mid, y, depthQ) {
 		return false
 	}
 	for x := x0; x <= x1; x++ {
-		if !g.spriteWallClipOccludedAtXYDepth(x, y, depthQ) {
+		if !g.wallClipPointOccludedByWallsOnly(x, y, depthQ) {
 			return false
 		}
 	}
@@ -5082,6 +5116,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		camAng := math.Atan2(sa, ca)
 		skyLayerEnabled = g.enableSkyLayerFrame(camAng, focal, skyTexKey, skyTex, effectiveSkyTexHeight(skyTex))
 	}
+	planeClipScratch := g.solidClipScratch[:0]
 	for planeIdx, pl := range planes {
 		key := pl.key
 		fb := ceilFallback
@@ -5138,35 +5173,70 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				continue
 			}
 			rowPix := sp.y * w
+			rowOccluders := []billboardPlaneOccluderSpan(nil)
+			if sp.y >= 0 && sp.y < len(g.billboardPlaneOccluderRows) {
+				rowOccluders = g.billboardPlaneOccluderRows[sp.y]
+			}
 			if key.sky {
-				if skyLayerEnabled {
-					clear(pix32[rowPix+x1 : rowPix+x2+1])
-					continue
-				}
-				pixI := rowPix + x1
-				if skyTexReady {
-					v := skyRowV[sp.y]
-					x := x1
-					for ; x+1 <= x2; x += 2 {
-						u0 := skyColU[x]
-						u1 := skyColU[x+1]
-						ti0 := v*skyTex.Width + u0
-						ti1 := v*skyTex.Width + u1
-						pix32[pixI] = skyTex32[ti0]
-						pix32[pixI+1] = skyTex32[ti1]
-						pixI += 2
-					}
-					if x <= x2 {
-						u := skyColU[x]
-						ti := v*skyTex.Width + u
-						pix32[pixI] = skyTex32[ti]
+				if len(rowOccluders) != 0 {
+					planeClipScratch = clipRangeAgainstBillboardPlaneOccluders(x1, x2, 0xFFFF, rowOccluders, planeClipScratch)
+					if len(planeClipScratch) == 0 {
+						continue
 					}
 				} else {
-					fillPackedRun(pix32, pixI, x2-x1+1, fbPacked)
+					planeClipScratch = append(planeClipScratch[:0], solidSpan{L: x1, R: x2})
+				}
+				if skyLayerEnabled {
+					for _, vis := range planeClipScratch {
+						clear(pix32[rowPix+vis.L : rowPix+vis.R+1])
+					}
+					continue
+				}
+				if skyTexReady {
+					v := skyRowV[sp.y]
+					for _, vis := range planeClipScratch {
+						pixI := rowPix + vis.L
+						x := vis.L
+						for ; x+1 <= vis.R; x += 2 {
+							u0 := skyColU[x]
+							u1 := skyColU[x+1]
+							ti0 := v*skyTex.Width + u0
+							ti1 := v*skyTex.Width + u1
+							pix32[pixI] = skyTex32[ti0]
+							pix32[pixI+1] = skyTex32[ti1]
+							pixI += 2
+						}
+						if x <= vis.R {
+							u := skyColU[x]
+							ti := v*skyTex.Width + u
+							pix32[pixI] = skyTex32[ti]
+						}
+					}
+				} else {
+					for _, vis := range planeClipScratch {
+						fillPackedRun(pix32, rowPix+vis.L, vis.R-vis.L+1, fbPacked)
+					}
 				}
 				continue
 			}
-			g.drawPlaneTexturedSpan(pix32, rowPix, x1, x2, sp.y, key, fbPacked, tex32, texIndexed, flatTexReady, camX, camY, ca, sa, eyeZ, focal, cx, cy)
+			depth, depthQ, ok := planeSpanDepth(sp.y, key, eyeZ, focal, cy)
+			if !ok {
+				continue
+			}
+			if g.rowFullyOccludedByWallsFastDepthQ(depthQ, rowPix, x1, x2) {
+				continue
+			}
+			if len(rowOccluders) != 0 {
+				planeClipScratch = clipRangeAgainstBillboardPlaneOccluders(x1, x2, depthQ, rowOccluders, planeClipScratch)
+				if len(planeClipScratch) == 0 {
+					continue
+				}
+				for _, vis := range planeClipScratch {
+					g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, fbPacked, tex32, texIndexed, flatTexReady, camX, camY, ca, sa, focal, cx, depth)
+				}
+				continue
+			}
+			g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, fbPacked, tex32, texIndexed, flatTexReady, camX, camY, ca, sa, focal, cx, depth)
 		}
 	}
 	if g.opts.Debug && g.debugAimSS >= 0 {
@@ -14665,9 +14735,23 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 		renderDur = 0
 	}
 	g.renderAccum += renderDur
+	if g.demoBenchmarkActive() {
+		g.recordDemoBenchFrame(renderDur)
+	}
 	elapsed := now.Sub(g.fpsStamp)
 	if elapsed >= time.Second {
 		fps := float64(g.fpsFrames) / elapsed.Seconds()
+		if g.demoBenchmarkActive() && g.fpsFrames > 0 && g.renderAccum > 0 {
+			avgFrameNS := float64(g.renderAccum) / float64(g.fpsFrames) / float64(time.Nanosecond)
+			if avgFrameNS > 0 {
+				fps = 1e9 / avgFrameNS
+			}
+			g.benchLow1MS = float64(demoBenchLowFrameNS(g.demoBenchFrameNS, 0.99)) / float64(time.Millisecond)
+			g.benchLow01MS = float64(demoBenchLowFrameNS(g.demoBenchFrameNS, 0.999)) / float64(time.Millisecond)
+		} else {
+			g.benchLow1MS = 0
+			g.benchLow01MS = 0
+		}
 		g.fpsDisplay = fps
 		g.updateInterpolationPerfState(fps)
 		if g.fpsFrames > 0 {
@@ -14712,13 +14796,63 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 }
 
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
+	benchDisplay := ""
+	if g.demoBenchmarkActive() {
+		benchDisplay = fmt.Sprintf("1%% %.2fms | 0.1%% %.2fms", g.benchLow1MS, g.benchLow01MS)
+	}
 	hud.DrawPerfOverlay(screen, hud.PerfInputs{
 		ViewW:      g.viewW,
 		ViewH:      g.viewH,
 		SourcePort: g.opts.SourcePortMode,
 		FPSDisplay: fmt.Sprintf("%.2f, %dms", g.fpsDisplay, int(math.Round(g.renderMSAvg))),
 		TicDisplay: fmt.Sprintf("tic %d", g.worldTic),
+		BenchLine:  benchDisplay,
 	}, g.huTextWidth, g.drawHUTextAt)
+}
+
+func (g *game) demoBenchmarkActive() bool {
+	return g != nil && g.opts.DemoScript != nil && g.opts.DemoQuitOnComplete
+}
+
+func (g *game) recordDemoBenchFrame(renderDur time.Duration) {
+	if g == nil {
+		return
+	}
+	ns := renderDur.Nanoseconds()
+	if ns < 0 {
+		ns = 0
+	}
+	g.demoBenchFrameNS = append(g.demoBenchFrameNS, ns)
+	fmt.Printf("demo-frame tick=%d draw=%d ns=%d ms=%.3f\n", g.worldTic, g.demoBenchDraws, ns, float64(ns)/float64(time.Millisecond))
+}
+
+func demoBenchLowFrameNS(frameNS []int64, quantile float64) int64 {
+	if len(frameNS) == 0 {
+		return 0
+	}
+	if quantile < 0 {
+		quantile = 0
+	}
+	if quantile > 1 {
+		quantile = 1
+	}
+	sorted := append([]int64(nil), frameNS...)
+	slices.Sort(sorted)
+	idx := int(math.Ceil(quantile*float64(len(sorted)))) - 1
+	if idx < 0 {
+		idx = 0
+	}
+	if idx >= len(sorted) {
+		idx = len(sorted) - 1
+	}
+	return sorted[idx]
+}
+
+func demoBenchFPSFromFrameNS(frameNS int64) float64 {
+	if frameNS <= 0 {
+		return 0
+	}
+	return 1e9 / float64(frameNS)
 }
 
 func (g *game) huTextWidth(text string) int {

@@ -276,6 +276,7 @@ type PerfInputs struct {
 	SourcePort bool
 	FPSDisplay string
 	TicDisplay string
+	BenchLine  string
 }
 
 func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFunc, drawText TextDrawer) {
@@ -287,6 +288,11 @@ func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFun
 	if w2 := textWidth(in.TicDisplay); w2 > w {
 		w = w2
 	}
+	if strings.TrimSpace(in.BenchLine) != "" {
+		if w2 := textWidth(in.BenchLine); w2 > w {
+			w = w2
+		}
+	}
 	maxX := float64(in.ViewW)
 	if in.SourcePort {
 		maxX = ox + doomLogicalW*sx
@@ -297,6 +303,9 @@ func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFun
 	}
 	drawText(screen, in.FPSDisplay, float64(x), 10*sy, sx, sy)
 	drawText(screen, in.TicDisplay, float64(x), 20*sy, sx, sy)
+	if strings.TrimSpace(in.BenchLine) != "" {
+		drawText(screen, in.BenchLine, float64(x), 30*sy, sx, sy)
+	}
 }
 
 func drawPauseThermo(screen *ebiten.Image, x, y, width, dot int, sx, sy float64, drawPatch PatchDrawer) {

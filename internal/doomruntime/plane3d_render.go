@@ -218,20 +218,20 @@ func planeFallbackPacked(fbPacked uint32, defaultShade uint32, defaultRow int) u
 	return shadePackedRGBA(fbPacked, defaultShade)
 }
 
-func (g *game) drawPlaneTexturedSpan(pix32 []uint32, rowPix, x1, x2, y int, key plane3DKey, fbPacked uint32, tex32 []uint32, texIndexed []byte, flatTexReady bool, camX, camY, ca, sa, eyeZ, focal, cx, cy float64) {
+func planeSpanDepth(y int, key plane3DKey, eyeZ, focal, cy float64) (float64, uint16, bool) {
 	den := cy - (float64(y) + 0.5)
 	if math.Abs(den) < 1e-6 {
-		return
+		return 0, 0, false
 	}
 	planeZ := float64(key.height)
 	depth := ((planeZ - eyeZ) / den) * focal
 	if depth <= 0 {
-		return
+		return 0, 0, false
 	}
-	depthQ := encodeDepthQ(depth)
-	if g.rowFullyOccludedByWallsFastDepthQ(depthQ, rowPix, x1, x2) {
-		return
-	}
+	return depth, encodeDepthQ(depth), true
+}
+
+func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, key plane3DKey, fbPacked uint32, tex32 []uint32, texIndexed []byte, flatTexReady bool, camX, camY, ca, sa, focal, cx float64, depth float64) {
 	stepWX := (depth / focal) * sa
 	stepWY := -(depth / focal) * ca
 	rowBaseWX := camX + depth*ca - ((cx-0.5)*depth/focal)*sa
