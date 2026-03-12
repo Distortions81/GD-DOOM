@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,6 +136,32 @@ func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
 	}
 }
 
+func TestRunParseLoadsPWADMapFromFileOverlay(t *testing.T) {
+	td := t.TempDir()
+	iwadPath := filepath.Join(td, "base.wad")
+	pwadPath := filepath.Join(td, "patch.wad")
+	if err := os.WriteFile(iwadPath, buildAppTestWAD("IWAD", appTestMapLumpSet("E1M1")), 0o644); err != nil {
+		t.Fatalf("write iwad: %v", err)
+	}
+	if err := os.WriteFile(pwadPath, buildAppTestWAD("PWAD", appTestMapLumpSet("MAP01")), 0o644); err != nil {
+		t.Fatalf("write pwad: %v", err)
+	}
+
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{
+		"-wad", iwadPath,
+		"-file", pwadPath,
+		"-render=false",
+	}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=MAP01 ") {
+		t.Fatalf("stdout %q does not contain map=MAP01", out.String())
+	}
+}
+
 func TestRunParseLoadsNoVsyncFromConfig(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")
@@ -218,6 +245,88 @@ func TestLoadConfigParsesSkyUpscaleMode(t *testing.T) {
 	}
 	if loaded.SkyUpscaleMode == nil || *loaded.SkyUpscaleMode != "sharp" {
 		t.Fatalf("sky_upscale=%v want sharp", loaded.SkyUpscaleMode)
+	}
+}
+
+type appTestLump struct {
+	name string
+	data []byte
+}
+
+func buildAppTestWAD(ident string, lumps []appTestLump) []byte {
+	const headerLen = 12
+	const dirEntryLen = 16
+	payloadSize := 0
+	for _, l := range lumps {
+		payloadSize += len(l.data)
+	}
+	dirPos := headerLen + payloadSize
+	buf := make([]byte, headerLen+payloadSize+len(lumps)*dirEntryLen)
+	copy(buf[0:4], []byte(ident))
+	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(lumps)))
+	binary.LittleEndian.PutUint32(buf[8:12], uint32(dirPos))
+
+	writePos := headerLen
+	for i, l := range lumps {
+		copy(buf[writePos:writePos+len(l.data)], l.data)
+		dir := buf[dirPos+i*dirEntryLen : dirPos+(i+1)*dirEntryLen]
+		binary.LittleEndian.PutUint32(dir[0:4], uint32(writePos))
+		binary.LittleEndian.PutUint32(dir[4:8], uint32(len(l.data)))
+		copy(dir[8:16], []byte(l.name))
+		writePos += len(l.data)
+	}
+	return buf
+}
+
+func appTestMapLumpSet(name string) []appTestLump {
+	vertexes := make([]byte, 8)
+	binary.LittleEndian.PutUint16(vertexes[0:2], 0)
+	binary.LittleEndian.PutUint16(vertexes[2:4], 0)
+	binary.LittleEndian.PutUint16(vertexes[4:6], 128)
+	binary.LittleEndian.PutUint16(vertexes[6:8], 0)
+
+	linedefs := make([]byte, 14)
+	binary.LittleEndian.PutUint16(linedefs[0:2], 0)
+	binary.LittleEndian.PutUint16(linedefs[2:4], 1)
+	binary.LittleEndian.PutUint16(linedefs[10:12], 0)
+	binary.LittleEndian.PutUint16(linedefs[12:14], 0xffff)
+
+	sidedefs := make([]byte, 30)
+	binary.LittleEndian.PutUint16(sidedefs[28:30], 0)
+
+	segs := make([]byte, 12)
+	binary.LittleEndian.PutUint16(segs[0:2], 0)
+	binary.LittleEndian.PutUint16(segs[2:4], 1)
+	binary.LittleEndian.PutUint16(segs[6:8], 0)
+
+	ssectors := make([]byte, 4)
+	binary.LittleEndian.PutUint16(ssectors[0:2], 1)
+	binary.LittleEndian.PutUint16(ssectors[2:4], 0)
+
+	sectors := make([]byte, 26)
+
+	reject := []byte{0}
+
+	blockmap := make([]byte, 12)
+	binary.LittleEndian.PutUint16(blockmap[4:6], 1)
+	binary.LittleEndian.PutUint16(blockmap[6:8], 1)
+	binary.LittleEndian.PutUint16(blockmap[8:10], 5)
+	binary.LittleEndian.PutUint16(blockmap[10:12], 0xffff)
+
+	return []appTestLump{
+		{name: "PLAYPAL", data: make([]byte, 256*3)},
+		{name: "COLORMAP", data: make([]byte, 256)},
+		{name: name, data: nil},
+		{name: "THINGS", data: nil},
+		{name: "LINEDEFS", data: linedefs},
+		{name: "SIDEDEFS", data: sidedefs},
+		{name: "VERTEXES", data: vertexes},
+		{name: "SEGS", data: segs},
+		{name: "SSECTORS", data: ssectors},
+		{name: "NODES", data: nil},
+		{name: "SECTORS", data: sectors},
+		{name: "REJECT", data: reject},
+		{name: "BLOCKMAP", data: blockmap},
 	}
 }
 

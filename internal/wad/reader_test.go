@@ -41,7 +41,7 @@ func TestOpenValidMinimalIWAD(t *testing.T) {
 func TestOpenRejectsNonIWAD(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "badid.wad")
-	data := minimalWAD(t, "PWAD", "TEST", []byte{1, 2})
+	data := minimalWAD(t, "NOPE", "TEST", []byte{1, 2})
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("write test wad: %v", err)
 	}
@@ -49,6 +49,23 @@ func TestOpenRejectsNonIWAD(t *testing.T) {
 	_, err := Open(path)
 	if err == nil {
 		t.Fatal("Open() expected error")
+	}
+}
+
+func TestOpenAcceptsPWAD(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "patch.wad")
+	data := minimalWAD(t, "PWAD", "TEST", []byte{1, 2})
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write test wad: %v", err)
+	}
+
+	f, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	if got, want := f.Header.Identification, "PWAD"; got != want {
+		t.Fatalf("identification = %q, want %q", got, want)
 	}
 }
 
@@ -90,4 +107,32 @@ func minimalWAD(t *testing.T, ident, lumpName string, lumpData []byte) []byte {
 	binary.LittleEndian.PutUint32(dir[4:8], uint32(len(lumpData)))
 	copy(dir[8:16], []byte(lumpName))
 	return buf
+}
+
+func TestOpenFilesPrefersLaterLumpsByName(t *testing.T) {
+	tmp := t.TempDir()
+	basePath := filepath.Join(tmp, "base.wad")
+	patchPath := filepath.Join(tmp, "patch.wad")
+	if err := os.WriteFile(basePath, minimalWAD(t, "IWAD", "TEST", []byte{1, 2, 3}), 0o644); err != nil {
+		t.Fatalf("write base wad: %v", err)
+	}
+	if err := os.WriteFile(patchPath, minimalWAD(t, "PWAD", "TEST", []byte{9, 8, 7}), 0o644); err != nil {
+		t.Fatalf("write patch wad: %v", err)
+	}
+
+	f, err := OpenFiles(basePath, patchPath)
+	if err != nil {
+		t.Fatalf("OpenFiles() error = %v", err)
+	}
+	lump, ok := f.LumpByName("TEST")
+	if !ok {
+		t.Fatal("LumpByName(TEST) missing")
+	}
+	data, err := f.LumpData(lump)
+	if err != nil {
+		t.Fatalf("LumpData() error = %v", err)
+	}
+	if len(data) != 3 || data[0] != 9 || data[1] != 8 || data[2] != 7 {
+		t.Fatalf("lump bytes = %#v, want patch data", data)
+	}
 }

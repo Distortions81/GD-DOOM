@@ -106,6 +106,16 @@ func TestUseSpecialLine_WalkOnlySpecialDoesNotReportUnsupported(t *testing.T) {
 	}
 }
 
+func TestUseSpecialLine_ReportsUnsupportedSpecialNumber(t *testing.T) {
+	g := &game{
+		lineSpecial: []uint16{242},
+	}
+	g.useSpecialLine(0, 0)
+	if g.useText != "USE: unsupported special 242" {
+		t.Fatalf("useText=%q want %q", g.useText, "USE: unsupported special 242")
+	}
+}
+
 func TestUseSpecialLine_ActivatesCeilingSpecial(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

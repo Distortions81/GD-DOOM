@@ -298,6 +298,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	configFlag := fs.String("config", defaultConfigPath, "path to config toml file (default: config.toml)")
 	wadPath := fs.String("wad", defaultWAD, "path to IWAD file")
+	filePaths := fs.String("file", "", "comma-separated PWAD overlay paths")
 	mapName := fs.String("map", defaultMap, "map name (E#M# or MAP##); empty selects first valid map")
 	details := fs.Bool("details", defaultDetails, "print decoded gameplay-relevant map details")
 	render := fs.Bool("render", defaultRender, "launch Ebiten automap renderer")
@@ -447,6 +448,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	resolvedDemoPath := strings.TrimSpace(*demoPath)
 	resolvedRecordDemoPath := strings.TrimSpace(*recordDemoPath)
 	resolvedDemoTracePath := strings.TrimSpace(*demoTracePath)
+	resolvedFilePaths := resolveWADOverlayPaths(*filePaths)
 	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
 		fmt.Fprintln(stderr, "-demo and -record-demo are mutually exclusive")
 		return 2
@@ -523,6 +525,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			importTextures:             *importTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
+			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
 		picker, perr := newIWADPickerGame(choices, func(path string, profile pickerProfile) (*renderBundle, error) {
@@ -587,12 +590,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	resolvedWADPath := resolveIWADAliasPath(*wadPath)
-	wf, err := wad.Open(resolvedWADPath)
+	wf, wadPaths, err := openWADStack(resolvedWADPath, resolvedFilePaths)
 	if err != nil {
 		fmt.Fprintf(stderr, "open wad: %v\n", err)
 		return 1
 	}
-	wadHash := hashFileSHA1(resolvedWADPath)
+	wadHash := hashWADStackSHA1(wadPaths)
 	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
 	var musicPatchBank music.PatchBank
@@ -970,7 +973,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	if selected == "" {
-		selected, err = mapdata.FirstMapName(wf)
+		selected, err = defaultStartMap(wf, resolvedFilePaths)
 		if err != nil {
 			fmt.Fprintf(stderr, "resolve first map: %v\n", err)
 			return 1
@@ -1032,15 +1035,71 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	return 0
 }
 
-func hashFileSHA1(path string) string {
-	f, err := os.Open(path)
+func resolveWADOverlayPaths(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		path := strings.TrimSpace(part)
+		if path == "" {
+			continue
+		}
+		out = append(out, resolveIWADAliasPath(path))
+	}
+	return out
+}
+
+func openWADStack(basePath string, overlayPaths []string) (*wad.File, []string, error) {
+	paths := make([]string, 0, 1+len(overlayPaths))
+	basePath = strings.TrimSpace(resolveIWADAliasPath(basePath))
+	if basePath == "" {
+		return nil, nil, fmt.Errorf("missing base wad path")
+	}
+	paths = append(paths, basePath)
+	for _, path := range overlayPaths {
+		path = strings.TrimSpace(resolveIWADAliasPath(path))
+		if path == "" {
+			continue
+		}
+		paths = append(paths, path)
+	}
+	wf, err := wad.OpenFiles(paths...)
 	if err != nil {
+		return nil, nil, err
+	}
+	return wf, paths, nil
+}
+
+func defaultStartMap(wf *wad.File, overlayPaths []string) (mapdata.MapName, error) {
+	for i := len(overlayPaths) - 1; i >= 0; i-- {
+		overlay, err := wad.Open(overlayPaths[i])
+		if err != nil {
+			return "", err
+		}
+		if name, err := mapdata.FirstMapName(overlay); err == nil {
+			return name, nil
+		}
+	}
+	return mapdata.FirstMapName(wf)
+}
+
+func hashWADStackSHA1(paths []string) string {
+	if len(paths) == 0 {
 		return ""
 	}
-	defer f.Close()
 	h := sha1.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return ""
+	for _, path := range paths {
+		f, err := os.Open(path)
+		if err != nil {
+			return ""
+		}
+		_, copyErr := io.Copy(h, f)
+		closeErr := f.Close()
+		if copyErr != nil || closeErr != nil {
+			return ""
+		}
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
@@ -1376,6 +1435,7 @@ type renderBuildConfig struct {
 	importTextures             bool
 	demoPath                   string
 	recordDemoPath             string
+	pwadPaths                  []string
 	configPath                 string
 }
 
@@ -1411,11 +1471,11 @@ type renderBundle struct {
 }
 
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
-	wf, err := wad.Open(resolvedWADPath)
+	wf, wadPaths, err := openWADStack(resolvedWADPath, cfg.pwadPaths)
 	if err != nil {
 		return nil, fmt.Errorf("open wad: %w", err)
 	}
-	wadHash := hashFileSHA1(resolvedWADPath)
+	wadHash := hashWADStackSHA1(wadPaths)
 	dsr := sound.ImportDigitalSounds(wf)
 	var musicPatchBank music.PatchBank
 	if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
@@ -1647,7 +1707,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		opts.GameMode = demoGameMode(demo)
 	}
 	if selected == "" {
-		selected, err = mapdata.FirstMapName(wf)
+		selected, err = defaultStartMap(wf, cfg.pwadPaths)
 		if err != nil {
 			return nil, fmt.Errorf("resolve first map: %w", err)
 		}

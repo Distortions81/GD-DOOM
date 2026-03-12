@@ -42,13 +42,7 @@ func LoadMap(f *wad.File, name MapName) (*Map, error) {
 		return nil, fmt.Errorf("invalid map name %q", name)
 	}
 
-	idx := -1
-	for i, l := range f.Lumps {
-		if l.Name == target {
-			idx = i
-			break
-		}
-	}
+	idx := findMapMarkerIndex(f, target)
 	if idx == -1 {
 		return nil, fmt.Errorf("missing map marker %q", target)
 	}
@@ -88,6 +82,9 @@ func LoadMap(f *wad.File, name MapName) (*Map, error) {
 		return nil, err
 	}
 	if m.Nodes, err = decodeNodes(f, resolved["NODES"]); err != nil {
+		if wadHasXNOD(f) {
+			return nil, fmt.Errorf("map %s has no usable vanilla NODES lump and includes XNOD data; it may use a BSP node format we do not support", target)
+		}
 		return nil, err
 	}
 	if m.Sectors, err = decodeSectors(f, resolved["SECTORS"]); err != nil {
@@ -110,6 +107,18 @@ func LoadMap(f *wad.File, name MapName) (*Map, error) {
 	return m, nil
 }
 
+func findMapMarkerIndex(f *wad.File, target string) int {
+	if f == nil {
+		return -1
+	}
+	for i := len(f.Lumps) - 1; i >= 0; i-- {
+		if f.Lumps[i].Name == target {
+			return i
+		}
+	}
+	return -1
+}
+
 func isMapMarker(name string) bool {
 	return episodeMapRE.MatchString(name) || mapXXRE.MatchString(name)
 }
@@ -127,6 +136,18 @@ func hasRequiredLumpsAt(f *wad.File, markerIndex int) bool {
 		}
 	}
 	return true
+}
+
+func wadHasXNOD(f *wad.File) bool {
+	if f == nil {
+		return false
+	}
+	for i := range f.Lumps {
+		if f.Lumps[i].Name == "XNOD" {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeThings(f *wad.File, l wad.Lump) ([]Thing, error) {
@@ -347,6 +368,9 @@ func decodeRejectMatrix(reject []byte, sectorCount int) (*RejectMatrix, error) {
 	}
 	neededBits := sectorCount * sectorCount
 	neededBytes := (neededBits + 7) / 8
+	if len(reject) == 0 && neededBytes > 0 {
+		reject = make([]byte, neededBytes)
+	}
 	if len(reject) < neededBytes {
 		return nil, fmt.Errorf("REJECT too small: have %d bytes need at least %d for %d sectors", len(reject), neededBytes, sectorCount)
 	}

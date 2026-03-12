@@ -8,23 +8,25 @@ func LoadFlatsIndexed(f *wad.File) (map[string][]byte, error) {
 	if f == nil {
 		return nil, parseErrorf("nil wad")
 	}
-	start, end, ok := flatRange(f.Lumps)
-	if !ok {
+	ranges := flatRanges(f.Lumps)
+	if len(ranges) == 0 {
 		return nil, parseErrorf("flat range marker not found")
 	}
 	out := make(map[string][]byte)
-	for i := start; i < end; i++ {
-		l := f.Lumps[i]
-		if l.Name == "" || l.Size != doomFlatSize {
-			continue
+	for _, r := range ranges {
+		for i := r[0]; i < r[1]; i++ {
+			l := f.Lumps[i]
+			if l.Name == "" || l.Size != doomFlatSize {
+				continue
+			}
+			data, err := f.LumpData(l)
+			if err != nil || len(data) != doomFlatSize {
+				continue
+			}
+			flat := make([]byte, doomFlatSize)
+			copy(flat, data)
+			out[l.Name] = flat
 		}
-		data, err := f.LumpData(l)
-		if err != nil || len(data) != doomFlatSize {
-			continue
-		}
-		flat := make([]byte, doomFlatSize)
-		copy(flat, data)
-		out[l.Name] = flat
 	}
 	return out, nil
 }
@@ -50,37 +52,39 @@ func LoadFlatsRGBA(f *wad.File, palette int) (map[string][]byte, error) {
 	}
 	pal := palettes[palette]
 
-	start, end, ok := flatRange(f.Lumps)
-	if !ok {
+	ranges := flatRanges(f.Lumps)
+	if len(ranges) == 0 {
 		return nil, parseErrorf("flat range marker not found")
 	}
 	out := make(map[string][]byte)
-	for i := start; i < end; i++ {
-		l := f.Lumps[i]
-		if l.Name == "" || l.Size != doomFlatSize {
-			continue
+	for _, r := range ranges {
+		for i := r[0]; i < r[1]; i++ {
+			l := f.Lumps[i]
+			if l.Name == "" || l.Size != doomFlatSize {
+				continue
+			}
+			data, err := f.LumpData(l)
+			if err != nil {
+				continue
+			}
+			rgba := make([]byte, doomFlatSize*4)
+			for p := 0; p < doomFlatSize; p++ {
+				c := pal[data[p]]
+				o := p * 4
+				rgba[o+0] = c[0]
+				rgba[o+1] = c[1]
+				rgba[o+2] = c[2]
+				rgba[o+3] = 0xFF
+			}
+			out[l.Name] = rgba
 		}
-		data, err := f.LumpData(l)
-		if err != nil {
-			continue
-		}
-		rgba := make([]byte, doomFlatSize*4)
-		for p := 0; p < doomFlatSize; p++ {
-			c := pal[data[p]]
-			o := p * 4
-			rgba[o+0] = c[0]
-			rgba[o+1] = c[1]
-			rgba[o+2] = c[2]
-			rgba[o+3] = 0xFF
-		}
-		out[l.Name] = rgba
 	}
 	return out, nil
 }
 
-func flatRange(lumps []wad.Lump) (int, int, bool) {
+func flatRanges(lumps []wad.Lump) [][2]int {
+	ranges := make([][2]int, 0, 2)
 	start := -1
-	end := -1
 	for i, l := range lumps {
 		switch l.Name {
 		case "F_START", "FF_START":
@@ -89,10 +93,10 @@ func flatRange(lumps []wad.Lump) (int, int, bool) {
 			}
 		case "F_END", "FF_END":
 			if start >= 0 {
-				end = i
-				return start, end, true
+				ranges = append(ranges, [2]int{start, i})
+				start = -1
 			}
 		}
 	}
-	return 0, 0, false
+	return ranges
 }

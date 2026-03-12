@@ -88,6 +88,26 @@ func TestRejectMatrixRejectsBounds(t *testing.T) {
 	}
 }
 
+func TestDecodeRejectMatrixZeroLengthFallsBackToNoRejects(t *testing.T) {
+	r, err := decodeRejectMatrix(nil, 3)
+	if err != nil {
+		t.Fatalf("decodeRejectMatrix() error = %v", err)
+	}
+	if r == nil {
+		t.Fatal("decodeRejectMatrix() returned nil matrix")
+	}
+	if len(r.Data) != 2 {
+		t.Fatalf("len(r.Data) = %d, want 2", len(r.Data))
+	}
+	rejects, err := r.Rejects(0, 2)
+	if err != nil {
+		t.Fatalf("Rejects() error = %v", err)
+	}
+	if rejects {
+		t.Fatal("Rejects() = true, want false")
+	}
+}
+
 func TestDoorStatsCountsSectorTimedDoors(t *testing.T) {
 	m := &Map{
 		Linedefs: []Linedef{{Special: 1}, {Special: 26}, {Special: 103}},

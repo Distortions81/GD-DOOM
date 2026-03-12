@@ -26,7 +26,7 @@ func Open(path string) (*File, error) {
 		NumLumps:       int32(binary.LittleEndian.Uint32(data[4:8])),
 		InfoTableOfs:   int32(binary.LittleEndian.Uint32(data[8:12])),
 	}
-	if hdr.Identification != "IWAD" {
+	if hdr.Identification != "IWAD" && hdr.Identification != "PWAD" {
 		return nil, fmt.Errorf("%w: got %q", ErrInvalidIdentification, hdr.Identification)
 	}
 	if hdr.NumLumps < 0 || hdr.InfoTableOfs < 0 {
@@ -63,27 +63,102 @@ func Open(path string) (*File, error) {
 		})
 	}
 
-	return &File{Path: path, Header: hdr, Lumps: lumps, data: data}, nil
+	f := &File{Path: path, Header: hdr, Lumps: lumps, data: data}
+	for i := range f.Lumps {
+		f.Lumps[i].file = f
+	}
+	return f, nil
+}
+
+func OpenFiles(paths ...string) (*File, error) {
+	trimmed := make([]string, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		trimmed = append(trimmed, path)
+	}
+	if len(trimmed) == 0 {
+		return nil, fmt.Errorf("open wad stack: no wad paths")
+	}
+
+	files := make([]*File, 0, len(trimmed))
+	for _, path := range trimmed {
+		f, err := Open(path)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, f)
+	}
+	return Merge(files...), nil
+}
+
+func Merge(files ...*File) *File {
+	if len(files) == 0 {
+		return nil
+	}
+	if len(files) == 1 {
+		return files[0]
+	}
+
+	out := &File{
+		Path:   files[0].Path,
+		Header: Header{Identification: files[0].Header.Identification},
+		Lumps:  make([]Lump, 0, countLumps(files)),
+	}
+	for _, src := range files {
+		if src == nil {
+			continue
+		}
+		if out.Path == "" {
+			out.Path = src.Path
+		}
+		for _, lump := range src.Lumps {
+			lump.Index = len(out.Lumps)
+			lump.file = src
+			out.Lumps = append(out.Lumps, lump)
+		}
+	}
+	out.Header.NumLumps = int32(len(out.Lumps))
+	return out
+}
+
+func countLumps(files []*File) int {
+	total := 0
+	for _, f := range files {
+		if f != nil {
+			total += len(f.Lumps)
+		}
+	}
+	return total
 }
 
 func (f *File) LumpByName(name string) (Lump, bool) {
 	needle := strings.ToUpper(strings.TrimSpace(name))
-	for _, l := range f.Lumps {
-		if l.Name == needle {
-			return l, true
+	for i := len(f.Lumps) - 1; i >= 0; i-- {
+		if f.Lumps[i].Name == needle {
+			return f.Lumps[i], true
 		}
 	}
 	return Lump{}, false
 }
 
 func (f *File) LumpData(l Lump) ([]byte, error) {
+	src := f
+	if l.file != nil {
+		src = l.file
+	}
+	if src == nil {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidLumpBounds, l.Name)
+	}
 	start := int(l.FilePos)
 	end := start + int(l.Size)
-	if start < 0 || start > len(f.data) || end < start || end > len(f.data) {
+	if start < 0 || start > len(src.data) || end < start || end > len(src.data) {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidLumpBounds, l.Name)
 	}
 	out := make([]byte, l.Size)
-	copy(out, f.data[start:end])
+	copy(out, src.data[start:end])
 	return out, nil
 }
 

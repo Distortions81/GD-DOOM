@@ -13,6 +13,8 @@ type Lump struct {
 	FilePos int32
 	Size    int32
 	Index   int
+
+	file *File
 }
 
 // File is an opened and indexed WAD file.

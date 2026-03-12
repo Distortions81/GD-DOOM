@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -162,13 +163,13 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 		return true
 	}
-	info := mapdata.LookupLineSpecial(special)
-	if !lineSpecialSupported(info) {
-		if isPlayer {
-			g.useText = "USE: unsupported special"
-			g.useFlash = 35
-			g.emitSoundEvent(soundEventNoWay)
-		}
+		info := mapdata.LookupLineSpecial(special)
+		if !lineSpecialSupported(info) {
+			if isPlayer {
+				g.useText = fmt.Sprintf("USE: unsupported special %d", special)
+				g.useFlash = 35
+				g.emitSoundEvent(soundEventNoWay)
+			}
 		return false
 	}
 	if info.Trigger != mapdata.TriggerManual && info.Trigger != mapdata.TriggerUse {

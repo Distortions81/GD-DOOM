@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gddoom/internal/wad"
@@ -138,6 +139,41 @@ func TestDecodeSegsAndSSECTORS_StrideErrors(t *testing.T) {
 	}
 	if _, err := decodeSubSectors(f, ssEntry); err == nil {
 		t.Fatal("decodeSubSectors expected stride error")
+	}
+}
+
+func TestLoadMapReportsUnsupportedXNODBSPWhenNodesAreUnusable(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "xnod_map.wad")
+
+	data := buildTestWAD(t, []wadLumpData{
+		{name: "MAP01", data: nil},
+		{name: "THINGS", data: nil},
+		{name: "LINEDEFS", data: nil},
+		{name: "SIDEDEFS", data: nil},
+		{name: "VERTEXES", data: nil},
+		{name: "SEGS", data: nil},
+		{name: "SSECTORS", data: nil},
+		{name: "NODES", data: []byte{1}}, // invalid vanilla nodes
+		{name: "SECTORS", data: nil},
+		{name: "REJECT", data: nil},
+		{name: "BLOCKMAP", data: []byte{0, 0, 0, 0, 0, 0, 0, 0}},
+		{name: "XNOD", data: []byte{1, 2, 3, 4}},
+	})
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write test wad: %v", err)
+	}
+	f, err := wad.Open(path)
+	if err != nil {
+		t.Fatalf("open test wad: %v", err)
+	}
+
+	_, err = LoadMap(f, "MAP01")
+	if err == nil {
+		t.Fatal("LoadMap expected unsupported XNOD error")
+	}
+	if !strings.Contains(err.Error(), "includes XNOD data") {
+		t.Fatalf("LoadMap error %q does not mention XNOD", err)
 	}
 }
 
