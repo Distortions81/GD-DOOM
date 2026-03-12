@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"gddoom/internal/render/automap"
+	"gddoom/internal/doomsession"
 
 	"github.com/BurntSushi/toml"
 )
@@ -19,12 +20,15 @@ type fileConfig struct {
 	MultiCore                  *bool    `toml:"multi_core"`
 	Width                      *int     `toml:"width"`
 	Height                     *int     `toml:"height"`
-	DetailLevel                *int     `toml:"detail_level"`
+	DetailLevelFaithful        *int     `toml:"detail_level_faithful"`
+	DetailLevelSourcePort      *int     `toml:"detail_level_sourceport"`
 	GammaLevel                 *int     `toml:"gamma_level"`
 	Zoom                       *float64 `toml:"zoom"`
 	Player                     *int     `toml:"player"`
 	Skill                      *int     `toml:"skill"`
 	GameMode                   *string  `toml:"game_mode"`
+	ShowNoSkillItems           *bool    `toml:"show_no_skill_items"`
+	ShowAllItems               *bool    `toml:"show_all_items"`
 	MouseLook                  *bool    `toml:"mouselook"`
 	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
 	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
@@ -40,10 +44,20 @@ type fileConfig struct {
 	ImportTextures             *bool    `toml:"import_textures"`
 	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
+	SourcePortThingRenderMode  *string  `toml:"sourceport_thing_render_mode"`
+	SourcePortThingBlendFrames *bool    `toml:"sourceport_thing_blend_frames"`
+	SourcePortItemSprites      *bool    `toml:"sourceport_item_sprites"`
+	SourcePortSectorLighting   *bool    `toml:"sourceport_sector_lighting"`
+	DoomLighting               *bool    `toml:"doom_lighting"`
 	KageShader                 *bool    `toml:"kage_shader"`
 	GPUSky                     *bool    `toml:"gpu_sky"`
+	SkyUpscaleMode             *string  `toml:"sky_upscale"`
 	CRTEffect                  *bool    `toml:"crt_effect"`
-	DepthBufferView            *bool    `toml:"depth_buffer_view"`
+	WallOcclusion              *bool    `toml:"wall_occlusion"`
+	WallSpanReject             *bool    `toml:"wall_span_reject"`
+	WallSpanClip               *bool    `toml:"wall_span_clip"`
+	WallSliceOcclusion         *bool    `toml:"wall_slice_occlusion"`
+	BillboardClipping          *bool    `toml:"billboard_clipping"`
 	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
 	AllCheats                  *bool    `toml:"all_cheats"`
 	StartInMap                 *bool    `toml:"start_in_map"`
@@ -89,10 +103,29 @@ func loadConfig(path string, explicit bool) (*fileConfig, error) {
 	if err := toml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	if err := writeConfigAtomic(path, cfg); err != nil {
+		return nil, err
+	}
 	return cfg, nil
 }
 
-func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
+func configuredDetailLevelForMode(cfg *fileConfig, sourcePortMode bool) int {
+	if cfg == nil {
+		return -1
+	}
+	if sourcePortMode {
+		if cfg.DetailLevelSourcePort != nil {
+			return *cfg.DetailLevelSourcePort
+		}
+	} else {
+		if cfg.DetailLevelFaithful != nil {
+			return *cfg.DetailLevelFaithful
+		}
+	}
+	return -1
+}
+
+func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortMode bool) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
@@ -102,7 +135,11 @@ func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
 	} else if err != nil {
 		return err
 	}
-	cfg.DetailLevel = intPtr(s.DetailLevel)
+	if sourcePortMode {
+		cfg.DetailLevelSourcePort = intPtr(s.DetailLevel)
+	} else {
+		cfg.DetailLevelFaithful = intPtr(s.DetailLevel)
+	}
 	cfg.GammaLevel = intPtr(s.GammaLevel)
 	cfg.MusicVolume = floatPtr(s.MusicVolume)
 	cfg.MUSPanMax = floatPtr(s.MUSPanMax)
@@ -113,12 +150,37 @@ func saveRuntimeSettings(path string, s automap.RuntimeSettings) error {
 	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
 	cfg.LineColorMode = strPtr(s.LineColorMode)
 	cfg.CRTEffect = boolPtr(s.CRTEffect)
+	return writeConfigAtomic(path, cfg)
+}
+
+func writeConfigAtomic(path string, cfg *fileConfig) error {
 	var b bytes.Buffer
 	if err := toml.NewEncoder(&b).Encode(cfg); err != nil {
 		return fmt.Errorf("encode config %s: %w", path, err)
 	}
-	if err := os.WriteFile(path, b.Bytes(), 0o644); err != nil {
+	if err := writeBytesAtomic(path, b.Bytes()); err != nil {
 		return fmt.Errorf("write config %s: %w", path, err)
+	}
+	return nil
+}
+
+func writeBytesAtomic(path string, data []byte) error {
+	perm := os.FileMode(0o644)
+	if fi, err := os.Stat(path); err == nil {
+		perm = fi.Mode().Perm()
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, perm); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
 	}
 	return nil
 }

@@ -11,12 +11,14 @@ var errNilStreamDriver = errors.New("music: nil stream driver")
 
 // StreamRenderer incrementally renders parsed events into fixed-size PCM chunks.
 type StreamRenderer struct {
-	driver *Driver
-	events []Event
-	idx    int
-	wait   int
-	waited bool
-	done   bool
+	driver  *Driver
+	events  []Event
+	idx     int
+	wait    int
+	waited  bool
+	done    bool
+	pcmBuf  []int16
+	byteBuf []byte
 }
 
 func NewMUSStreamRenderer(driver *Driver, musData []byte) (*StreamRenderer, error) {
@@ -46,7 +48,10 @@ func (sr *StreamRenderer) NextChunkS16LE(maxFrames int) (chunk []byte, done bool
 	if sr.done {
 		return nil, true, nil
 	}
-	out := make([]int16, 0, maxFrames*2)
+	if cap(sr.pcmBuf) < maxFrames*2 {
+		sr.pcmBuf = make([]int16, 0, maxFrames*2)
+	}
+	out := sr.pcmBuf[:0]
 	for len(out) < maxFrames*2 {
 		if sr.wait > 0 {
 			need := maxFrames - (len(out) / 2)
@@ -86,7 +91,10 @@ func (sr *StreamRenderer) NextChunkS16LE(maxFrames int) (chunk []byte, done bool
 		}
 	}
 	if len(out) == 0 {
+		sr.pcmBuf = out
 		return nil, sr.done, nil
 	}
-	return PCMInt16ToBytesLE(out), sr.done, nil
+	sr.pcmBuf = out
+	sr.byteBuf = PCMInt16ToBytesLEInto(sr.byteBuf[:0], out)
+	return sr.byteBuf, sr.done, nil
 }

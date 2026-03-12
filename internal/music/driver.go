@@ -258,13 +258,26 @@ func PCMInt16ToBytesLE(samples []int16) []byte {
 		return nil
 	}
 	out := make([]byte, len(samples)*2)
+	return PCMInt16ToBytesLEInto(out, samples)
+}
+
+func PCMInt16ToBytesLEInto(dst []byte, samples []int16) []byte {
+	if len(samples) == 0 {
+		return nil
+	}
+	need := len(samples) * 2
+	if cap(dst) < need {
+		dst = make([]byte, need)
+	} else {
+		dst = dst[:need]
+	}
 	oi := 0
 	for _, s := range samples {
-		out[oi] = byte(s)
-		out[oi+1] = byte(s >> 8)
+		dst[oi] = byte(s)
+		dst[oi+1] = byte(s >> 8)
 		oi += 2
 	}
-	return out
+	return dst
 }
 
 func (d *Driver) applyEvent(ev Event) {

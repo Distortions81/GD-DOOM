@@ -14,7 +14,7 @@ This project now has a clear mode split:
 
 - Enables convenience and debug behaviors that are not strict vanilla parity.
 - Includes sourceport-style extras like:
-  - wireframe toggle (`P`)
+  - single software walk renderer (`doom-basic`)
   - plane/debug toggles (`J/K/U/Y`)
   - additional automap convenience controls (`R`, `B`, `O`, `I`, `L`, `HOME`, etc.)
 - 2D automap floor texture overlay is sourceport-only.

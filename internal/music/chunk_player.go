@@ -99,7 +99,7 @@ func (cp *ChunkPlayer) EnqueueBytesS16LE(chunk []byte) error {
 	if len(chunk) == 0 {
 		return nil
 	}
-	b := make([]byte, len(chunk))
+	b := cp.src.acquireChunk(len(chunk))
 	copy(b, chunk)
 	return cp.send(playerCmd{typ: cmdEnqueue, data: b})
 }
@@ -167,18 +167,39 @@ func (cp *ChunkPlayer) run() {
 }
 
 type pcmChunkBuffer struct {
-	mu     sync.Mutex
-	cond   *sync.Cond
-	chunks [][]byte
-	off    int
-	closed bool
-	bytes  int
+	mu        sync.Mutex
+	cond      *sync.Cond
+	chunks    [][]byte
+	chunkPool sync.Pool
+	off       int
+	closed    bool
+	bytes     int
 }
 
 func newPCMChunkBuffer() *pcmChunkBuffer {
 	b := &pcmChunkBuffer{}
 	b.cond = sync.NewCond(&b.mu)
 	return b
+}
+
+func (b *pcmChunkBuffer) acquireChunk(n int) []byte {
+	if n <= 0 {
+		return nil
+	}
+	if v := b.chunkPool.Get(); v != nil {
+		chunk := v.([]byte)
+		if cap(chunk) >= n {
+			return chunk[:n]
+		}
+	}
+	return make([]byte, n)
+}
+
+func (b *pcmChunkBuffer) releaseChunk(chunk []byte) {
+	if chunk == nil {
+		return
+	}
+	b.chunkPool.Put(chunk[:0])
 }
 
 func (b *pcmChunkBuffer) Enqueue(chunk []byte) {
@@ -196,6 +217,9 @@ func (b *pcmChunkBuffer) Enqueue(chunk []byte) {
 
 func (b *pcmChunkBuffer) Clear() {
 	b.mu.Lock()
+	for _, chunk := range b.chunks {
+		b.releaseChunk(chunk)
+	}
 	b.chunks = b.chunks[:0]
 	b.off = 0
 	b.bytes = 0
@@ -212,29 +236,33 @@ func (b *pcmChunkBuffer) Close() {
 func (b *pcmChunkBuffer) Read(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	for len(b.chunks) == 0 && !b.closed {
-		b.cond.Wait()
+	for {
+		for len(b.chunks) == 0 && !b.closed {
+			b.cond.Wait()
+		}
+		if len(b.chunks) == 0 && b.closed {
+			return 0, io.EOF
+		}
+		cur := b.chunks[0]
+		if b.off >= len(cur) {
+			b.releaseChunk(cur)
+			b.chunks = b.chunks[1:]
+			b.off = 0
+			continue
+		}
+		n := copy(p, cur[b.off:])
+		b.off += n
+		b.bytes -= n
+		if b.bytes < 0 {
+			b.bytes = 0
+		}
+		if b.off >= len(cur) {
+			b.releaseChunk(cur)
+			b.chunks = b.chunks[1:]
+			b.off = 0
+		}
+		return n, nil
 	}
-	if len(b.chunks) == 0 && b.closed {
-		return 0, io.EOF
-	}
-	cur := b.chunks[0]
-	if b.off >= len(cur) {
-		b.chunks = b.chunks[1:]
-		b.off = 0
-		return b.Read(p)
-	}
-	n := copy(p, cur[b.off:])
-	b.off += n
-	b.bytes -= n
-	if b.bytes < 0 {
-		b.bytes = 0
-	}
-	if b.off >= len(cur) {
-		b.chunks = b.chunks[1:]
-		b.off = 0
-	}
-	return n, nil
 }
 
 func (b *pcmChunkBuffer) BufferedBytes() int {

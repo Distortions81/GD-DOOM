@@ -1,0 +1,26 @@
+//kage:unit pixels
+package main
+
+var GammaRatio float
+var EnableQuantize float
+
+func Fragment(position vec4, texCoord vec2, color vec4) vec4 {
+	c := imageSrc0At(texCoord)
+	if c.a <= 0.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+	outRGB := c.rgb
+	if EnableQuantize >= 0.5 {
+		// 16x16x16 RGB cube LUT flattened into a 256x16 block at source1 top-left.
+		ri := int(clamp(c.r*15.0+0.5, 0.0, 15.0))
+		gi := int(clamp(c.g*15.0+0.5, 0.0, 15.0))
+		bi := int(clamp(c.b*15.0+0.5, 0.0, 15.0))
+		idx := ri + gi*16 + bi*256
+		lx := float(idx%256) + 0.5
+		ly := float(idx/256) + 0.5
+		outRGB = imageSrc1At(vec2(lx, ly) + imageSrc0Origin()).rgb
+	}
+	// Apply display gamma after optional quantization.
+	post := vec3(pow(outRGB.r, GammaRatio), pow(outRGB.g, GammaRatio), pow(outRGB.b, GammaRatio))
+	return vec4(post, 1.0)
+}

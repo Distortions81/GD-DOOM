@@ -1,84 +1,78 @@
 # Implemented
 
-Snapshot of features currently working in this repo.
+Current feature snapshot for this repo.
 
-## Parser and Data
+For launch flags, see [launch-params.md](/home/dist/github/GD-DOOM/docs/launch-params.md).
 
-- IWAD header/directory parsing (`IWAD` validation)
-- Map marker discovery for `E#M#` and `MAP##`
-- Required map lump bundle parsing:
-  - `THINGS`, `LINEDEFS`, `SIDEDEFS`, `VERTEXES`, `SEGS`, `SSECTORS`, `NODES`, `SECTORS`, `REJECT`, `BLOCKMAP`
-- Strict map validation (index/reference bounds and structural checks)
-- CLI summary output and detailed parse output mode
-- Startup sound import from `DP*` (PC speaker) and `DS*` (digital PCM) lumps (in-memory parse + status report)
+## Data and Startup
 
-## Renderer and Runtime
+- IWAD loading, directory parsing, and validation.
+- Map discovery for both `E#M#` and `MAP##`.
+- Parsing and validation for Doom map lumps including `THINGS`, `LINEDEFS`, `SIDEDEFS`, `VERTEXES`, `SEGS`, `SSECTORS`, `NODES`, `SECTORS`, `REJECT`, and `BLOCKMAP`.
+- CLI summary/detail output for parsed maps.
+- Startup sound import/reporting for `DP*` and `DS*` lumps.
+- Config-driven startup defaults via `config.toml` with CLI override precedence.
 
-- Ebiten windowed automap renderer
-- Doom-style startup zoom behavior (`fit / 0.7`) with `-zoom` override
-- Doom profile default behavior (north-up orientation)
-- Source-port startup profile via `-sourceport-mode`
-- Walk/map mode toggle (`TAB`)
-- Local spawn slot selection (`-player 1..4`) with internal tracking of non-local player starts
-- Doom skill level selection (`-skill 1..5`) with THINGS skill-flag spawn filtering
-- Doom-emulation software 3D renderer (`doom-basic`) is default in walk mode
-- 3D wall-driven clip + visplane/span floor/ceiling path
-- 3D textured wall column rendering (mid/top/bottom wall textures)
-- Deferred masked mid-texture pass for two-sided lines (depth-tested, back-to-front draw)
-- Closed two-sided door panels now render textured in 3D (upper/lower texture fallback when mid texture is absent)
-- Door sectors now animate in 3D walk view (door ceilings visibly slide open/closed)
-- Doom `COLORMAP`-driven sector lighting in 3D path
-- Fullbright sprite handling in 3D path
-- 3D detail presets with cycle hotkey (`F5`): `320x200`, `640x400`, `960x600`
-- Optional depth-buffer debug view (`-depth-buffer-view`)
-- Optional Kage postprocess chain (`-kage-shader`) with CRT pass toggle (`-crt-effect`)
-- Doom-style door sound event wiring (`open/close/blaze`) with runtime playback from imported `DS*` lumps
-- Level exit special handling with automatic next-map loading (normal + secret exits)
-- In-session level transitions (single Ebiten/GLFW session across map changes)
-- Item pickup runtime for keys/health/armor/ammo/backpack/weapons, with inventory + player stat tracking
-- Locked door activation now uses collected key inventory
-- Hazard sector damage (specials `4/5/7/16`) with Doom-style periodic ticks; radiation suit pickup support
-- Player death state tracking and death overlay when health reaches zero
-- In-session death restart (`Enter`) with dead-state action lockout
-- Screen flash feedback for damage and pickups
-- Config-driven startup defaults via `config.toml` with CLI override precedence
-- Basic combat foundation (pistol-style hitscan, ammo drain, monster HP/death handling)
-- Basic monster thinker loop (wake/chase/attack with cooldown and LOS checks)
-- Type-specific monster attack behavior (melee-only vs ranged, randomized attack chance/cooldown)
+## Runtime and Rendering
 
-## Automap Features
+- Ebiten desktop runtime with walk/map toggle (`TAB`).
+- Doom profile as the default runtime behavior.
+- Sourceport profile via `-sourceport-mode`.
+- Doom-emulation software 3D renderer active in walk mode by default.
+- 3D wall-driven clip plus visplane/span floor-ceiling rendering.
+- Textured wall rendering for mid, top, and bottom wall sections.
+- Deferred masked mid-texture rendering for two-sided lines.
+- Door panel rendering and visible door ceiling motion in 3D.
+- Doom `COLORMAP` sector lighting in the 3D path.
+- Fullbright sprite handling.
+- 3D detail presets (`320x200`, `640x400`, `960x600`) with runtime cycling.
+- Optional debug/postprocess features including depth-buffer view, Kage shader, and CRT effect.
+- Sourceport-only 2D automap floor texture overlay.
 
-- Follow toggle and map panning
-- Grid toggle
-- Big-map toggle
-- Mark and clear marks with numbered markers
-- Automap line visibility/style rules including:
-  - `ML_MAPPED`
-  - `LINE_NEVERSEE`
-  - allmap unrevealed line handling
-  - secret/teleporter/floor-change/ceiling-change handling
-  - cheat gate for no-height-delta two-sided lines
-- Runtime line discovery/mapping around player
-- `IDDT` level 2 thing rendering path
-- Typed thing glyph rendering (players/monsters/items/keys/misc)
-- Collected pickups are hidden from thing rendering
+## Player, World, and Progression
 
-## Control and UX
+- Local player start selection with tracking for additional player starts.
+- Doom skill selection with THINGS skill-flag filtering.
+- Level exits and secret exits with in-session map transitions.
+- Item pickups for keys, health, armor, ammo, backpack, and weapons.
+- Key inventory checks for locked doors.
+- Hazard sector damage and radiation suit support.
+- Player death state, death overlay, and in-session restart.
+- Screen flash feedback for damage and pickups.
 
-- In-app profile-aware HUD and help (`F1`)
-- Source-port-only extra toggles gated behind `-sourceport-mode`
-- Source-port default thing legend overlay with runtime toggle
-- Source-port use-target automap highlight (line currently hittable by `use`)
-- Source-port pseudo-3D wireframe mode (toggle with `P`)
-- Pseudo-3D visibility now uses BSP node traversal (not automap discovery state)
-- Doom-style turn acceleration behavior (`SLOWTURNTICS` style ramp)
-- 2D automap floor texture overlay is sourceport-only
-- Sourceport texture animation crossfade generation (`-texture-anim-crossfade-frames`)
+## Combat and Monsters
 
-## Tests
+- Basic Doom-style combat foundation with pistol-like hitscan and ammo use.
+- Monster health, death handling, and removal.
+- Basic monster thinker loop with wake, chase, LOS checks, and cooldown-based attacks.
+- Type-specific melee versus ranged monster attack behavior.
 
-- Unit + integration coverage for parser/validation flows
-- Automap parity rule tests
-- Discovery logic tests
-- Turn acceleration tests
-- Projectile sprite mapping regression tests
+## Audio and Music
+
+- MUS playback through the OPL3 path.
+- Doom-style door sound events.
+- Doom-style world sound spatialization with distance falloff and stereo panning.
+- Monster alert, idle-active, pain, death, and core attack sound coverage.
+
+## Automap and Controls
+
+- Doom-style startup zoom behavior with `-zoom` override.
+- North-up Doom profile automap defaults.
+- Follow, pan, grid, big-map, mark, and clear-mark controls.
+- Automap visibility/style rules for `ML_MAPPED`, `LINE_NEVERSEE`, allmap, secret doors, teleporters, floor-change, ceiling-change, and cheat-gated two-sided lines.
+- Runtime line discovery around the player.
+- `IDDT` level 2 thing rendering path with typed glyphs.
+- Collected pickups hidden from thing rendering.
+- Profile-aware HUD/help.
+- Source-port-only extra controls and overlays gated behind `-sourceport-mode`.
+- BSP-based pseudo-3D visibility traversal.
+- Doom-style turn acceleration.
+- Sourceport texture animation crossfade generation.
+
+## Tests and Validation
+
+- Unit and integration coverage for parser and validation flows.
+- Automap parity rule tests.
+- Discovery logic tests.
+- Turn acceleration tests.
+- Projectile sprite mapping regression tests.

@@ -1,9 +1,7 @@
-doom-source/
 .VSCodeCounter/
 profiles/
 .tmp/
 gddoom
-automap.test
 *.log
 *.prof
 bin/
@@ -12,6 +10,11 @@ dist/
 *.test
 *.out
 config.toml
-dump
-dump2
-anidump
+deutex_doom1_images/
+oversat/Oversat.wad
+doom-source/linuxdoom-1.10/*.o
+doom-source/linuxdoom-1.10/linux/*.o
+linuxdoom-1.10/linux/linuxxdoom
+doom-source/linuxdoom-1.10/linux/linuxxdoom
+tmp/*
+internal/doomruntime/testdata/

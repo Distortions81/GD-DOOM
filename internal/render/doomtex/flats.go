@@ -4,6 +4,31 @@ import "gddoom/internal/wad"
 
 const doomFlatSize = 64 * 64
 
+func LoadFlatsIndexed(f *wad.File) (map[string][]byte, error) {
+	if f == nil {
+		return nil, parseErrorf("nil wad")
+	}
+	start, end, ok := flatRange(f.Lumps)
+	if !ok {
+		return nil, parseErrorf("flat range marker not found")
+	}
+	out := make(map[string][]byte)
+	for i := start; i < end; i++ {
+		l := f.Lumps[i]
+		if l.Name == "" || l.Size != doomFlatSize {
+			continue
+		}
+		data, err := f.LumpData(l)
+		if err != nil || len(data) != doomFlatSize {
+			continue
+		}
+		flat := make([]byte, doomFlatSize)
+		copy(flat, data)
+		out[l.Name] = flat
+	}
+	return out, nil
+}
+
 func LoadFlatsRGBA(f *wad.File, palette int) (map[string][]byte, error) {
 	if f == nil {
 		return nil, parseErrorf("nil wad")

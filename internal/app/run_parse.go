@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"image"
+	"image/color"
 	"image/png"
 	"io"
 	"os"
@@ -16,13 +17,36 @@ import (
 	"strings"
 	"unsafe"
 
+	"gddoom/internal/audiofx"
+	"gddoom/internal/demo"
+	"gddoom/internal/doomsession"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/media"
 	"gddoom/internal/music"
-	"gddoom/internal/render/automap"
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/sound"
 	"gddoom/internal/wad"
+
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
+
+func flagProvided(args []string, name string) bool {
+	long := "-" + name
+	prefix := long + "="
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == long || strings.HasPrefix(a, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func explicitMapStartInMap(startInMap bool, mapExplicit bool) bool {
+	return startInMap || mapExplicit
+}
 
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	configPath, configExplicit := resolveConfigPath(args)
@@ -38,31 +62,42 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultRender := true
 	defaultDebug := false
 	defaultMultiCore := true
-	defaultWidth, defaultHeight := automap.DefaultCLIWindowSize()
+	defaultWidth, defaultHeight := doomsession.DefaultCLIWindowSize()
 	defaultZoom := 0.0
 	defaultDetailLevel := -1
 	defaultGammaLevel := -1
 	defaultPlayer := 1
 	defaultSkill := 3
 	defaultGameMode := "single"
+	defaultShowNoSkillItems := false
+	defaultShowAllItems := false
 	defaultMouseLook := true
 	defaultMouseLookSpeed := 2.0
 	defaultKeyboardTurnSpeed := 1.0
-	defaultMusicVolume := 1.0
+	defaultMusicVolume := 0.5
 	defaultMUSPanMax := 0.8
-	defaultOPLVolume := 2.5
-	defaultSFXVolume := 1.0
+	defaultOPLVolume := 1.25
+	defaultSFXVolume := 0.5
 	defaultFastMonsters := false
-	defaultAlwaysRun := false
+	defaultAlwaysRun := true
 	defaultAutoWeaponSwitch := true
 	defaultCheatLevel := 0
 	defaultInvuln := false
 	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
+	defaultSourcePortThingRenderMode := "sprites"
+	defaultSourcePortThingBlendFrames := false
+	defaultSourcePortSectorLighting := true
+	defaultDoomLighting := true
 	defaultKageShader := false
 	defaultGPUSky := false
+	defaultSkyUpscaleMode := "nearest"
 	defaultCRTEffect := false
-	defaultDepthBufferView := false
+	defaultWallOcclusion := false
+	defaultWallSpanReject := true
+	defaultWallSpanClip := false
+	defaultWallSliceOcclusion := true
+	defaultBillboardClipping := true
 	defaultTextureAnimCrossfadeFrames := 7 // Max effective value is 7 (Doom texture animation cadence is 8 tics).
 	defaultAllCheats := false
 	defaultStartInMap := false
@@ -106,9 +141,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.Zoom != nil {
 			defaultZoom = *cfg.Zoom
 		}
-		if cfg.DetailLevel != nil {
-			defaultDetailLevel = *cfg.DetailLevel
-		}
 		if cfg.GammaLevel != nil {
 			defaultGammaLevel = *cfg.GammaLevel
 		}
@@ -120,6 +152,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.GameMode != nil {
 			defaultGameMode = *cfg.GameMode
+		}
+		if cfg.ShowNoSkillItems != nil {
+			defaultShowNoSkillItems = *cfg.ShowNoSkillItems
+		}
+		if cfg.ShowAllItems != nil {
+			defaultShowAllItems = *cfg.ShowAllItems
 		}
 		if cfg.MouseLook != nil {
 			defaultMouseLook = *cfg.MouseLook
@@ -164,17 +202,51 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
+		if cfg.SourcePortThingRenderMode != nil {
+			defaultSourcePortThingRenderMode = *cfg.SourcePortThingRenderMode
+		}
+		if cfg.SourcePortThingBlendFrames != nil {
+			defaultSourcePortThingBlendFrames = *cfg.SourcePortThingBlendFrames
+		}
+		if cfg.SourcePortItemSprites != nil {
+			if *cfg.SourcePortItemSprites {
+				defaultSourcePortThingRenderMode = "items"
+			} else {
+				defaultSourcePortThingRenderMode = "glyphs"
+			}
+		}
+		if cfg.SourcePortSectorLighting != nil {
+			defaultSourcePortSectorLighting = *cfg.SourcePortSectorLighting
+		}
+		if cfg.DoomLighting != nil {
+			defaultDoomLighting = *cfg.DoomLighting
+		}
 		if cfg.KageShader != nil {
 			defaultKageShader = *cfg.KageShader
 		}
 		if cfg.GPUSky != nil {
 			defaultGPUSky = *cfg.GPUSky
 		}
+		if cfg.SkyUpscaleMode != nil {
+			defaultSkyUpscaleMode = *cfg.SkyUpscaleMode
+		}
 		if cfg.CRTEffect != nil {
 			defaultCRTEffect = *cfg.CRTEffect
 		}
-		if cfg.DepthBufferView != nil {
-			defaultDepthBufferView = *cfg.DepthBufferView
+		if cfg.WallOcclusion != nil {
+			defaultWallOcclusion = *cfg.WallOcclusion
+		}
+		if cfg.WallSpanReject != nil {
+			defaultWallSpanReject = *cfg.WallSpanReject
+		}
+		if cfg.WallSpanClip != nil {
+			defaultWallSpanClip = *cfg.WallSpanClip
+		}
+		if cfg.WallSliceOcclusion != nil {
+			defaultWallSliceOcclusion = *cfg.WallSliceOcclusion
+		}
+		if cfg.BillboardClipping != nil {
+			defaultBillboardClipping = *cfg.BillboardClipping
 		}
 		if cfg.TextureAnimCrossfadeFrames != nil {
 			defaultTextureAnimCrossfadeFrames = *cfg.TextureAnimCrossfadeFrames
@@ -209,6 +281,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.NoAspectCorrection != nil {
 			defaultNoAspectCorrection = *cfg.NoAspectCorrection
 		}
+		defaultDetailLevel = configuredDetailLevelForMode(cfg, defaultSourcePortMode)
+	}
+	if defaultSourcePortMode {
+		if cfg == nil || cfg.GPUSky == nil {
+			defaultGPUSky = true
+		}
+		if cfg == nil || cfg.SkyUpscaleMode == nil {
+			defaultSkyUpscaleMode = "sharp"
+		}
 	}
 
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
@@ -229,6 +310,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
 	gameMode := fs.String("game-mode", defaultGameMode, "thing spawn game mode (single|coop|deathmatch)")
+	showNoSkillItems := fs.Bool("show-no-skill-items", defaultShowNoSkillItems, "show pickup items that have no skill bits set")
+	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
 	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
@@ -243,18 +326,29 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
+	sourcePortThingRenderMode := fs.String("sourceport-thing-render-mode", defaultSourcePortThingRenderMode, "sourceport automap thing rendering (glyphs|items|sprites)")
+	sourcePortThingBlendFrames := fs.Bool("sourceport-thing-blend-frames", defaultSourcePortThingBlendFrames, "allow blended sub-tic thing sprite frames on the automap")
+	sourcePortSectorLighting := fs.Bool("sourceport-sector-lighting", defaultSourcePortSectorLighting, "show classic sector lighting while in sourceport mode")
+	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
 	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
 	gpuSky := fs.Bool("gpu-sky", defaultGPUSky, "enable experimental GPU sky path in sourceport mode (default off)")
+	skyUpscale := fs.String("sky-upscale", defaultSkyUpscaleMode, "GPU sky upscale mode (nearest|sharp)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
-	depthBufferView := fs.Bool("depth-buffer-view", defaultDepthBufferView, "replace 3D viewport with grayscale depth-buffer visualization")
+	wallOcclusion := fs.Bool("wall-occlusion", defaultWallOcclusion, "enable coarse wall-span occlusion for wall traversal")
+	wallSpanReject := fs.Bool("wall-span-reject", defaultWallSpanReject, "enable early solid-span wall rejection")
+	wallSpanClip := fs.Bool("wall-span-clip", defaultWallSpanClip, "clip solid wall x-ranges against coarse wall spans")
+	wallSliceOcclusion := fs.Bool("wall-slice-occlusion", defaultWallSliceOcclusion, "enable wall-slice triangle/bbox occlusion checks")
+	billboardClipping := fs.Bool("billboard-clipping", defaultBillboardClipping, "enable sprite/thing/projectile/puff clipping and occlusion")
+	noCullClipping := fs.Bool("no-cull-clipping", false, "disable wall occlusion and billboard clipping together")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
-	demoPath := fs.String("demo", defaultDemo, "path to gddoom-demo-v1 script; runs scripted benchmark and exits when demo ends")
-	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write gddoom-demo-v1 script recorded from live input")
+	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
+	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
+	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -267,6 +361,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stderr, "flag error: %v\n", err)
 		return 2
+	}
+	mapExplicit := flagProvided(args, "map") && strings.TrimSpace(*mapName) != ""
+	gpuSkyFlagSet := flagProvided(args, "gpu-sky")
+	skyUpscaleFlagSet := flagProvided(args, "sky-upscale")
+	wadFlagSet := flagProvided(args, "wad")
+	positionalWADSet := false
+	if !wadFlagSet && fs.NArg() > 0 {
+		if path := strings.TrimSpace(fs.Arg(0)); path != "" {
+			*wadPath = path
+			positionalWADSet = true
+		}
+	}
+	if *sourcePortMode {
+		if !gpuSkyFlagSet && (cfg == nil || cfg.GPUSky == nil) {
+			*gpuSky = true
+		}
+		if !skyUpscaleFlagSet && (cfg == nil || cfg.SkyUpscaleMode == nil) {
+			*skyUpscale = "sharp"
+		}
 	}
 	_ = configFlag
 	lineColorModeSet := configLineColorSet
@@ -287,6 +400,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			invulnSet = true
 		}
 	})
+	detailLevelSet := flagProvided(args, "detail-level")
+	if !detailLevelSet {
+		*detailLevel = configuredDetailLevelForMode(cfg, *sourcePortMode)
+	}
 	resolvedCheatLevel := *cheatLevel
 	resolvedInvuln := *invuln
 	resolvedGameMode := strings.ToLower(strings.TrimSpace(*gameMode))
@@ -328,9 +445,135 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	resolvedDemoPath := strings.TrimSpace(*demoPath)
 	resolvedRecordDemoPath := strings.TrimSpace(*recordDemoPath)
+	resolvedDemoTracePath := strings.TrimSpace(*demoTracePath)
 	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
 		fmt.Fprintln(stderr, "-demo and -record-demo are mutually exclusive")
 		return 2
+	}
+	if resolvedDemoTracePath != "" && resolvedDemoPath == "" {
+		fmt.Fprintln(stderr, "-trace-demo-state requires -demo")
+		return 2
+	}
+	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
+	choices := detectAvailableIWADChoices(".")
+	if noExplicitWAD && *render && len(choices) > 1 {
+		resolvedLineColorMode := *lineColorMode
+		if *sourcePortMode && !lineColorModeSet {
+			resolvedLineColorMode = "doom"
+		}
+		if *noCullClipping {
+			*wallOcclusion = false
+			*wallSpanReject = false
+			*wallSpanClip = false
+			*wallSliceOcclusion = false
+			*billboardClipping = false
+		}
+		buildCfg := renderBuildConfig{
+			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
+			mapExplicit:                mapExplicit,
+			width:                      *width,
+			height:                     *height,
+			zoom:                       *zoom,
+			detailLevel:                *detailLevel,
+			detailLevelExplicit:        detailLevelSet,
+			detailLevelFaithful:        configuredDetailLevelForMode(cfg, false),
+			detailLevelSourcePort:      configuredDetailLevelForMode(cfg, true),
+			gammaLevel:                 *gammaLevel,
+			debug:                      *debug,
+			playerSlot:                 *playerSlot,
+			skillLevel:                 *skillLevel,
+			gameMode:                   resolvedGameMode,
+			showNoSkillItems:           *showNoSkillItems,
+			showAllItems:               *showAllItems,
+			mouseLook:                  *mouseLook,
+			mouseLookSpeed:             *mouseLookSpeed,
+			keyboardTurnSpeed:          *keyboardTurnSpeed,
+			musicVolume:                *musicVolume,
+			musPanMax:                  *musPanMax,
+			oplVolume:                  *oplVolume,
+			sfxVolume:                  *sfxVolume,
+			fastMonsters:               *fastMonsters,
+			alwaysRun:                  *alwaysRun,
+			autoWeaponSwitch:           *autoWeaponSwitch,
+			cheatLevel:                 resolvedCheatLevel,
+			invuln:                     resolvedInvuln,
+			lineColorMode:              resolvedLineColorMode,
+			sourcePortMode:             *sourcePortMode,
+			sourcePortThingRenderMode:  *sourcePortThingRenderMode,
+			sourcePortThingBlendFrames: *sourcePortThingBlendFrames,
+			sourcePortSectorLighting:   *sourcePortSectorLighting,
+			doomLighting:               *doomLighting,
+			kageShader:                 *kageShader,
+			gpuSky:                     *gpuSky,
+			skyUpscaleMode:             *skyUpscale,
+			crtEffect:                  *crtEffect,
+			wallOcclusion:              *wallOcclusion,
+			wallSpanReject:             *wallSpanReject,
+			wallSpanClip:               *wallSpanClip,
+			wallSliceOcclusion:         *wallSliceOcclusion,
+			billboardClipping:          *billboardClipping,
+			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
+			noVsync:                    *noVsync,
+			noFPS:                      *noFPS,
+			noAspectCorrection:         *noAspectCorrection,
+			allCheats:                  *allCheats,
+			startInMap:                 *startInMap,
+			importPCSpeaker:            *importPCSpeaker,
+			importTextures:             *importTextures,
+			demoPath:                   resolvedDemoPath,
+			recordDemoPath:             resolvedRecordDemoPath,
+			configPath:                 configPath,
+		}
+		picker, perr := newIWADPickerGame(choices, func(path string, profile pickerProfile) (*renderBundle, error) {
+			return buildRenderBundle(resolveIWADAliasPath(path), applyPickerProfile(buildCfg, profile), stderr)
+		})
+		if perr != nil {
+			fmt.Fprintf(stderr, "iwad picker: %v\n", perr)
+			return 1
+		}
+		if *multiCore {
+			runtime.GOMAXPROCS(runtime.NumCPU())
+		} else {
+			runtime.GOMAXPROCS(1)
+		}
+		if err := ebiten.RunGame(picker); err != nil && !errors.Is(err, ebiten.Termination) {
+			fmt.Fprintf(stderr, "iwad picker: %v\n", err)
+			return 1
+		}
+		defer picker.Close()
+		if picker.Session() == nil {
+			return 1
+		}
+		if p := picker.Session().Options().RecordDemoPath; p != "" {
+			rec := picker.Session().EffectiveDemoRecord()
+			opts := picker.Session().Options()
+			skill := opts.SkillLevel - 1
+			if skill < 0 {
+				skill = 0
+			}
+			demoRec, derr := demo.BuildRecorded(picker.Session().StartMapName(), demo.RecordingOptions{
+				Skill:        skill,
+				Deathmatch:   strings.EqualFold(opts.GameMode, "deathmatch"),
+				FastMonsters: opts.FastMonsters,
+			}, rec)
+			if derr != nil {
+				fmt.Fprintf(stderr, "build demo recording: %v\n", derr)
+				return 1
+			}
+			if werr := demo.Save(p, demoRec); werr != nil {
+				fmt.Fprintf(stderr, "write demo recording: %v\n", werr)
+				return 1
+			}
+			fmt.Fprintf(stdout, "demo-recorded path=%s tics=%d\n", p, len(rec))
+		}
+		if err := picker.Session().Err(); err != nil {
+			fmt.Fprintf(stderr, "render: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	if noExplicitWAD && len(choices) > 0 {
+		*wadPath = choices[0].Path
 	}
 	if strings.TrimSpace(*wadPath) == "" {
 		fmt.Fprintln(stderr, "-wad is required")
@@ -349,7 +592,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	wadHash := hashFileSHA1(resolvedWADPath)
-	soundBank := automap.SoundBank{}
+	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
 	var musicPatchBank music.PatchBank
 	if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
@@ -378,16 +621,17 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			dsr.Found, dsr.Decoded, dsr.Failed,
 		)
 	}
-	soundBank = buildAutomapSoundBank(dsr)
-	wallTexBank := map[string]automap.WallTexture(nil)
-	bootSplash := automap.WallTexture{}
+	soundBank = buildAutomapSoundBank(dsr, *sourcePortMode)
+	wallTexBank := map[string]media.WallTexture(nil)
+	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
 	doomColorMap := []byte(nil)
 	doomColorMapRows := 0
-	statusPatchBank := map[string]automap.WallTexture(nil)
-	messageFontBank := map[rune]automap.WallTexture(nil)
-	spritePatchBank := map[string]automap.WallTexture(nil)
-	intermissionPatchBank := map[string]automap.WallTexture(nil)
+	menuPatchBank := map[string]media.WallTexture(nil)
+	statusPatchBank := map[string]media.WallTexture(nil)
+	messageFontBank := map[rune]media.WallTexture(nil)
+	spritePatchBank := map[string]media.WallTexture(nil)
+	intermissionPatchBank := map[string]media.WallTexture(nil)
 	var texSet *doomtex.Set
 	if pal, perr := doomtex.LoadPaletteRGBA(wf, 0); perr != nil {
 		fmt.Fprintf(stderr, "palette import failed: %v\n", perr)
@@ -408,10 +652,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			texSet = ts
 			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
 			names := ts.TextureNames()
-			wallTexBank = make(map[string]automap.WallTexture, len(names))
+			wallTexBank = make(map[string]media.WallTexture, len(names))
 			built := 0
 			failed := 0
 			for _, name := range names {
+				indexed, iw, ih, ierr := ts.BuildTextureIndexed(name)
 				rgba, w, h, berr := ts.BuildTextureRGBA(name, 0)
 				if berr != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
 					failed++
@@ -431,12 +676,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 						}
 					}
 				}
-				wallTexBank[name] = automap.WallTexture{
-					RGBA:     rgba,
-					RGBA32:   rgba32,
-					ColMajor: colMajor,
-					Width:    w,
-					Height:   h,
+				indexedColMajor := []byte(nil)
+				if ierr == nil && iw == w && ih == h && len(indexed) == w*h {
+					indexedColMajor = make([]byte, len(indexed))
+					for tx := 0; tx < w; tx++ {
+						colBase := tx * h
+						for ty := 0; ty < h; ty++ {
+							indexedColMajor[colBase+ty] = indexed[ty*w+tx]
+						}
+					}
+				}
+				wallTexBank[name] = media.WallTexture{
+					RGBA:            rgba,
+					RGBA32:          rgba32,
+					ColMajor:        colMajor,
+					Indexed:         indexed,
+					IndexedColMajor: indexedColMajor,
+					Width:           w,
+					Height:          h,
 				}
 				built++
 			}
@@ -451,6 +708,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		statusPatchBank = buildStatusPatchBank(texSet)
 		if len(statusPatchBank) > 0 {
 			fmt.Fprintf(stderr, "status patch import: patches=%d\n", len(statusPatchBank))
+		}
+		menuPatchBank = buildMenuPatchBank(texSet)
+		if len(menuPatchBank) > 0 {
+			fmt.Fprintf(stderr, "menu patch import: patches=%d\n", len(menuPatchBank))
 		}
 		messageFontBank = buildMessageFontBank(texSet)
 		if len(messageFontBank) > 0 {
@@ -473,6 +734,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	flatBank := map[string][]byte(nil)
+	flatBankIndexed := map[string][]byte(nil)
 	fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
 	if ferr != nil {
 		fmt.Fprintf(stderr, "flat import failed: %v\n", ferr)
@@ -480,15 +742,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		flatBank = fb
 		fmt.Fprintf(stderr, "flat import: flats=%d\n", len(flatBank))
 	}
+	fbi, ferr := doomtex.LoadFlatsIndexed(wf)
+	if ferr == nil {
+		flatBankIndexed = fbi
+	}
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
-	if selected == "" {
-		selected, err = mapdata.FirstMapName(wf)
-		if err != nil {
-			fmt.Fprintf(stderr, "resolve first map: %v\n", err)
-			return 1
-		}
-	}
 
 	if *render {
 		stopCPUProfile := func() {}
@@ -516,7 +775,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if *sourcePortMode && !lineColorModeSet {
 			resolvedLineColorMode = "doom"
 		}
-		opts := automap.Options{
+		if *noCullClipping {
+			*wallOcclusion = false
+			*wallSpanReject = false
+			*wallSpanClip = false
+			*wallSliceOcclusion = false
+			*billboardClipping = false
+		}
+		opts := doomsession.Options{
 			Width:                      *width,
 			Height:                     *height,
 			StartZoom:                  *zoom,
@@ -527,6 +793,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			PlayerSlot:                 *playerSlot,
 			SkillLevel:                 *skillLevel,
 			GameMode:                   resolvedGameMode,
+			ShowNoSkillItems:           *showNoSkillItems,
+			ShowAllItems:               *showAllItems,
 			MouseLook:                  *mouseLook,
 			MouseLookSpeed:             *mouseLookSpeed,
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
@@ -541,22 +809,33 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Invulnerable:               resolvedInvuln,
 			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
+			SourcePortThingRenderMode:  *sourcePortThingRenderMode,
+			SourcePortThingBlendFrames: *sourcePortThingBlendFrames,
+			SourcePortSectorLighting:   *sourcePortSectorLighting,
+			DisableDoomLighting:        !*doomLighting,
 			KageShader:                 *kageShader,
 			GPUSky:                     *gpuSky,
+			SkyUpscaleMode:             *skyUpscale,
 			CRTEffect:                  *crtEffect,
-			DepthBufferView:            *depthBufferView,
+			DisableWallOcclusion:       !*wallOcclusion,
+			DisableWallSpanReject:      !*wallSpanReject,
+			DisableWallSpanClip:        !*wallSpanClip,
+			DisableWallSliceOcclusion:  !*wallSliceOcclusion,
+			DisableBillboardClipping:   !*billboardClipping,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,
 			DisableAspectCorrection:    *noAspectCorrection,
 			AllCheats:                  *allCheats,
-			StartInMapMode:             *startInMap,
+			StartInMapMode:             explicitMapStartInMap(*startInMap, mapExplicit),
 			FlatBank:                   flatBank,
+			FlatBankIndexed:            flatBankIndexed,
 			WallTexBank:                wallTexBank,
 			BootSplash:                 bootSplash,
 			DoomPaletteRGBA:            doomPaletteRGBA,
 			DoomColorMap:               doomColorMap,
 			DoomColorMapRows:           doomColorMapRows,
+			MenuPatchBank:              menuPatchBank,
 			StatusPatchBank:            statusPatchBank,
 			MessageFontBank:            messageFontBank,
 			SpritePatchBank:            spritePatchBank,
@@ -564,6 +843,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SoundBank:                  soundBank,
 			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
+			DemoTracePath:              resolvedDemoTracePath,
+			AttractDemos:               loadBuiltInDemos(wf),
+		}
+		opts.TitleMusicLoader = func() ([]byte, error) {
+			for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
+				l, ok := wf.LumpByName(lump)
+				if !ok {
+					continue
+				}
+				data, err := wf.LumpData(l)
+				if err != nil {
+					return nil, err
+				}
+				if _, err := music.ParseMUS(data); err != nil {
+					return nil, err
+				}
+				return data, nil
+			}
+			return nil, nil
 		}
 		opts.MapMusicLoader = func(mapName string) ([]byte, error) {
 			lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
@@ -584,22 +882,49 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return data, nil
 		}
+		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
+			return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
+		}
+		opts.DemoMapLoader = func(script *demo.Script) (*mapdata.Map, error) {
+			name, err := resolveDemoStartMap(wf, script, "")
+			if err != nil {
+				return nil, err
+			}
+			return mapdata.LoadMap(wf, name)
+		}
+		opts.Episodes = availableEpisodes(wf)
 		if strings.TrimSpace(configPath) != "" {
 			path := configPath
-			opts.OnRuntimeSettingsChanged = func(s automap.RuntimeSettings) {
-				if err := saveRuntimeSettings(path, s); err != nil {
+			opts.OnRuntimeSettingsChanged = func(s doomsession.RuntimeSettings) {
+				if err := saveRuntimeSettings(path, s, opts.SourcePortMode); err != nil {
 					fmt.Fprintf(stderr, "config save warning: %v\n", err)
 				}
 			}
 		}
 		if p := resolvedDemoPath; p != "" {
-			demo, derr := automap.LoadDemoScript(p)
+			demo, derr := demo.Load(p)
 			if derr != nil {
 				fmt.Fprintf(stderr, "load demo: %v\n", derr)
 				return 1
 			}
 			opts.DemoScript = demo
+			opts.DemoQuitOnComplete = true
+			selected, err = resolveDemoStartMap(wf, demo, selected)
+			if err != nil {
+				fmt.Fprintf(stderr, "resolve demo map: %v\n", err)
+				return 1
+			}
+			opts.SkillLevel = int(demo.Header.Skill) + 1
+			opts.FastMonsters = demo.Header.Fast
+			opts.GameMode = demoGameMode(demo)
 			fmt.Fprintf(stderr, "demo loaded: %s tics=%d\n", p, len(demo.Tics))
+		}
+		if selected == "" {
+			selected, err = mapdata.FirstMapName(wf)
+			if err != nil {
+				fmt.Fprintf(stderr, "resolve first map: %v\n", err)
+				return 1
+			}
 		}
 		m, lerr := mapdata.LoadMap(wf, selected)
 		if lerr != nil {
@@ -622,7 +947,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return nm, next, nil
 		}
-		rerr := automap.RunAutomap(m, opts, nextMap)
+		rerr := doomsession.Run(m, opts, nextMap)
 		if rerr != nil {
 			fmt.Fprintf(stderr, "render map %s: %v\n", selected, rerr)
 			return 1
@@ -630,6 +955,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	}
 
+	if p := resolvedDemoPath; p != "" && !*render {
+		demo, derr := demo.Load(p)
+		if derr != nil {
+			fmt.Fprintf(stderr, "load demo: %v\n", derr)
+			return 1
+		}
+		selected, err = resolveDemoStartMap(wf, demo, selected)
+		if err != nil {
+			fmt.Fprintf(stderr, "resolve demo map: %v\n", err)
+			return 1
+		}
+	}
+	if selected == "" {
+		selected, err = mapdata.FirstMapName(wf)
+		if err != nil {
+			fmt.Fprintf(stderr, "resolve first map: %v\n", err)
+			return 1
+		}
+	}
 	m, err := mapdata.LoadMap(wf, selected)
 	if err != nil {
 		fmt.Fprintf(stderr, "load map %s: %v\n", selected, err)
@@ -793,6 +1137,9 @@ func resolveIWADAliasPath(path string) string {
 	if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, "DOOM.WAD")); ok {
 		return alias
 	}
+	if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, "DOOM2.WAD")); ok {
+		return alias
+	}
 	return path
 }
 
@@ -814,7 +1161,839 @@ func resolvePathCaseInsensitive(path string) (string, bool) {
 	return "", false
 }
 
-func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]automap.WallTexture) error {
+type iwadChoice struct {
+	Path  string
+	Label string
+}
+
+func detectAvailableIWADChoices(dir string) []iwadChoice {
+	known := []struct {
+		Name  string
+		Label string
+	}{
+		{Name: "DOOM.WAD", Label: "The Ultimate DOOM"},
+		{Name: "DOOM2.WAD", Label: "DOOM II: Hell on Earth"},
+		{Name: "TNT.WAD", Label: "Final DOOM: TNT"},
+		{Name: "PLUTONIA.WAD", Label: "Final DOOM: Plutonia"},
+		{Name: "DOOM1.WAD", Label: "DOOM Shareware"},
+	}
+	out := make([]iwadChoice, 0, len(known))
+	for _, k := range known {
+		if p, ok := resolvePathCaseInsensitive(filepath.Join(dir, k.Name)); ok {
+			out = append(out, iwadChoice{
+				Path:  p,
+				Label: k.Label,
+			})
+		}
+	}
+	return out
+}
+
+type renderBuildConfig struct {
+	selectedMap                string
+	mapExplicit                bool
+	width                      int
+	height                     int
+	zoom                       float64
+	detailLevel                int
+	detailLevelExplicit        bool
+	detailLevelFaithful        int
+	detailLevelSourcePort      int
+	gammaLevel                 int
+	debug                      bool
+	playerSlot                 int
+	skillLevel                 int
+	gameMode                   string
+	showNoSkillItems           bool
+	showAllItems               bool
+	mouseLook                  bool
+	mouseLookSpeed             float64
+	keyboardTurnSpeed          float64
+	musicVolume                float64
+	musPanMax                  float64
+	oplVolume                  float64
+	sfxVolume                  float64
+	fastMonsters               bool
+	alwaysRun                  bool
+	autoWeaponSwitch           bool
+	cheatLevel                 int
+	invuln                     bool
+	lineColorMode              string
+	sourcePortMode             bool
+	sourcePortThingRenderMode  string
+	sourcePortThingBlendFrames bool
+	sourcePortSectorLighting   bool
+	doomLighting               bool
+	kageShader                 bool
+	gpuSky                     bool
+	skyUpscaleMode             string
+	crtEffect                  bool
+	wallOcclusion              bool
+	wallSpanReject             bool
+	wallSpanClip               bool
+	wallSliceOcclusion         bool
+	billboardClipping          bool
+	textureAnimCrossfadeFrames int
+	noVsync                    bool
+	noFPS                      bool
+	noAspectCorrection         bool
+	allCheats                  bool
+	startInMap                 bool
+	importPCSpeaker            bool
+	importTextures             bool
+	demoPath                   string
+	recordDemoPath             string
+	configPath                 string
+}
+
+type pickerProfile int
+
+const (
+	pickerProfileSourcePort pickerProfile = iota
+	pickerProfileFaithful
+)
+
+type pickerProfileOption struct {
+	label          string
+	description    string
+	sourcePortMode bool
+}
+
+var pickerProfiles = [...]pickerProfileOption{
+	{label: "MODERN", description: "BETTER GRAPHICS", sourcePortMode: true},
+	{label: "FAITHFUL", description: "CLASSIC DOOM - PIXELATED / RETRO", sourcePortMode: false},
+}
+
+type pickerStage int
+
+const (
+	pickerStageIWAD pickerStage = iota
+	pickerStageProfile
+)
+
+type renderBundle struct {
+	m       *mapdata.Map
+	opts    doomsession.Options
+	nextMap doomsession.NextMapFunc
+}
+
+func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
+	wf, err := wad.Open(resolvedWADPath)
+	if err != nil {
+		return nil, fmt.Errorf("open wad: %w", err)
+	}
+	wadHash := hashFileSHA1(resolvedWADPath)
+	dsr := sound.ImportDigitalSounds(wf)
+	var musicPatchBank music.PatchBank
+	if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
+		if genmidiData, gerr := wf.LumpData(genmidiLump); gerr == nil {
+			if bank, gerr := music.ParseGENMIDIOP2PatchBank(genmidiData); gerr == nil {
+				musicPatchBank = bank
+				fmt.Fprintf(stderr, "music patch import: source=GENMIDI instruments=%d\n", 128+47)
+			}
+		}
+	} else if genmidiData, gerr := os.ReadFile("GENMIDI.op2"); gerr == nil {
+		if bank, perr := music.ParseGENMIDIOP2PatchBank(genmidiData); perr == nil {
+			musicPatchBank = bank
+			fmt.Fprintf(stderr, "music patch import: source=GENMIDI.op2 instruments=%d\n", 128+47)
+		}
+	}
+	if cfg.importPCSpeaker {
+		dpr := sound.ImportPCSpeakerSounds(wf)
+		fmt.Fprintf(stderr, "sound import: dp(found=%d decoded=%d failed=%d) ds(found=%d decoded=%d failed=%d)\n",
+			dpr.Found, dpr.Decoded, dpr.Failed, dsr.Found, dsr.Decoded, dsr.Failed)
+	} else {
+		fmt.Fprintf(stderr, "sound import: ds(found=%d decoded=%d failed=%d)\n", dsr.Found, dsr.Decoded, dsr.Failed)
+	}
+	soundBank := buildAutomapSoundBank(dsr, cfg.sourcePortMode)
+	wallTexBank := map[string]media.WallTexture(nil)
+	bootSplash := media.WallTexture{}
+	doomPaletteRGBA := []byte(nil)
+	doomColorMap := []byte(nil)
+	doomColorMapRows := 0
+	menuPatchBank := map[string]media.WallTexture(nil)
+	statusPatchBank := map[string]media.WallTexture(nil)
+	messageFontBank := map[rune]media.WallTexture(nil)
+	spritePatchBank := map[string]media.WallTexture(nil)
+	intermissionPatchBank := map[string]media.WallTexture(nil)
+	var texSet *doomtex.Set
+	if pal, perr := doomtex.LoadPaletteRGBA(wf, 0); perr == nil {
+		doomPaletteRGBA = pal
+	}
+	if cmLump, ok := wf.LumpByName("COLORMAP"); ok {
+		if cmData, err := wf.LumpData(cmLump); err == nil && len(cmData) >= 256 {
+			doomColorMapRows = len(cmData) / 256
+			doomColorMap = cmData[:doomColorMapRows*256]
+		}
+	}
+	if cfg.importTextures {
+		ts, terr := doomtex.LoadFromWAD(wf)
+		if terr == nil {
+			texSet = ts
+			fmt.Fprintf(stderr, "texture import: palettes=%d textures=%d\n", ts.PaletteCount(), ts.TextureCount())
+			names := ts.TextureNames()
+			wallTexBank = make(map[string]media.WallTexture, len(names))
+			for _, name := range names {
+				indexed, iw, ih, ierr := ts.BuildTextureIndexed(name)
+				rgba, w, h, berr := ts.BuildTextureRGBA(name, 0)
+				if berr != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+					continue
+				}
+				rgba32 := []uint32(nil)
+				if len(rgba) >= 4 {
+					rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+				}
+				colMajor := []uint32(nil)
+				if len(rgba32) == w*h {
+					colMajor = make([]uint32, len(rgba32))
+					for tx := 0; tx < w; tx++ {
+						colBase := tx * h
+						for ty := 0; ty < h; ty++ {
+							colMajor[colBase+ty] = rgba32[ty*w+tx]
+						}
+					}
+				}
+				indexedColMajor := []byte(nil)
+				if ierr == nil && iw == w && ih == h && len(indexed) == w*h {
+					indexedColMajor = make([]byte, len(indexed))
+					for tx := 0; tx < w; tx++ {
+						colBase := tx * h
+						for ty := 0; ty < h; ty++ {
+							indexedColMajor[colBase+ty] = indexed[ty*w+tx]
+						}
+					}
+				}
+				wallTexBank[name] = media.WallTexture{RGBA: rgba, RGBA32: rgba32, ColMajor: colMajor, Indexed: indexed, IndexedColMajor: indexedColMajor, Width: w, Height: h}
+			}
+		}
+	}
+	if texSet != nil {
+		bootSplash = buildBootSplashTexture(texSet)
+		statusPatchBank = buildStatusPatchBank(texSet)
+		menuPatchBank = buildMenuPatchBank(texSet)
+		messageFontBank = buildMessageFontBank(texSet)
+		spritePatchBank = buildMonsterSpriteBank(texSet)
+		intermissionPatchBank = buildIntermissionPatchBank(texSet)
+	}
+	flatBank := map[string][]byte(nil)
+	flatBankIndexed := map[string][]byte(nil)
+	if fb, ferr := doomtex.LoadFlatsRGBA(wf, 0); ferr == nil {
+		flatBank = fb
+	}
+	if fbi, ferr := doomtex.LoadFlatsIndexed(wf); ferr == nil {
+		flatBankIndexed = fbi
+	}
+	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(cfg.selectedMap)))
+	opts := doomsession.Options{
+		Width:                      cfg.width,
+		Height:                     cfg.height,
+		StartZoom:                  cfg.zoom,
+		InitialDetailLevel:         cfg.detailLevel,
+		InitialGammaLevel:          cfg.gammaLevel,
+		WADHash:                    wadHash,
+		Debug:                      cfg.debug,
+		PlayerSlot:                 cfg.playerSlot,
+		SkillLevel:                 cfg.skillLevel,
+		GameMode:                   cfg.gameMode,
+		ShowNoSkillItems:           cfg.showNoSkillItems,
+		ShowAllItems:               cfg.showAllItems,
+		MouseLook:                  cfg.mouseLook,
+		MouseLookSpeed:             cfg.mouseLookSpeed,
+		KeyboardTurnSpeed:          cfg.keyboardTurnSpeed,
+		MusicVolume:                cfg.musicVolume,
+		MUSPanMax:                  cfg.musPanMax,
+		OPLVolume:                  cfg.oplVolume,
+		SFXVolume:                  cfg.sfxVolume,
+		FastMonsters:               cfg.fastMonsters,
+		AlwaysRun:                  cfg.alwaysRun,
+		AutoWeaponSwitch:           cfg.autoWeaponSwitch,
+		CheatLevel:                 cfg.cheatLevel,
+		Invulnerable:               cfg.invuln,
+		LineColorMode:              cfg.lineColorMode,
+		SourcePortMode:             cfg.sourcePortMode,
+		SourcePortThingRenderMode:  cfg.sourcePortThingRenderMode,
+		SourcePortThingBlendFrames: cfg.sourcePortThingBlendFrames,
+		SourcePortSectorLighting:   cfg.sourcePortSectorLighting,
+		DisableDoomLighting:        !cfg.doomLighting,
+		KageShader:                 cfg.kageShader,
+		GPUSky:                     cfg.gpuSky,
+		SkyUpscaleMode:             cfg.skyUpscaleMode,
+		CRTEffect:                  cfg.crtEffect,
+		DisableWallOcclusion:       !cfg.wallOcclusion,
+		DisableWallSpanReject:      !cfg.wallSpanReject,
+		DisableWallSpanClip:        !cfg.wallSpanClip,
+		DisableWallSliceOcclusion:  !cfg.wallSliceOcclusion,
+		DisableBillboardClipping:   !cfg.billboardClipping,
+		TextureAnimCrossfadeFrames: cfg.textureAnimCrossfadeFrames,
+		NoVsync:                    cfg.noVsync,
+		NoFPS:                      cfg.noFPS,
+		DisableAspectCorrection:    cfg.noAspectCorrection,
+		AllCheats:                  cfg.allCheats,
+		StartInMapMode:             explicitMapStartInMap(cfg.startInMap, cfg.mapExplicit),
+		FlatBank:                   flatBank,
+		FlatBankIndexed:            flatBankIndexed,
+		WallTexBank:                wallTexBank,
+		BootSplash:                 bootSplash,
+		DoomPaletteRGBA:            doomPaletteRGBA,
+		DoomColorMap:               doomColorMap,
+		DoomColorMapRows:           doomColorMapRows,
+		MenuPatchBank:              menuPatchBank,
+		StatusPatchBank:            statusPatchBank,
+		MessageFontBank:            messageFontBank,
+		SpritePatchBank:            spritePatchBank,
+		IntermissionPatchBank:      intermissionPatchBank,
+		SoundBank:                  soundBank,
+		MusicPatchBank:             musicPatchBank,
+		RecordDemoPath:             cfg.recordDemoPath,
+		AttractDemos:               loadBuiltInDemos(wf),
+	}
+	opts.TitleMusicLoader = func() ([]byte, error) {
+		for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
+			if l, ok := wf.LumpByName(lump); ok {
+				data, err := wf.LumpData(l)
+				if err != nil {
+					return nil, err
+				}
+				if _, err := music.ParseMUS(data); err != nil {
+					return nil, err
+				}
+				return data, nil
+			}
+		}
+		return nil, nil
+	}
+	opts.MapMusicLoader = func(mapName string) ([]byte, error) {
+		lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
+		if !ok {
+			return nil, nil
+		}
+		l, ok := wf.LumpByName(lump)
+		if !ok {
+			return nil, nil
+		}
+		data, err := wf.LumpData(l)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := music.ParseMUS(data); err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+	opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
+		return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
+	}
+	opts.DemoMapLoader = func(script *demo.Script) (*mapdata.Map, error) {
+		name, err := resolveDemoStartMap(wf, script, "")
+		if err != nil {
+			return nil, err
+		}
+		return mapdata.LoadMap(wf, name)
+	}
+	opts.Episodes = availableEpisodes(wf)
+	if strings.TrimSpace(cfg.configPath) != "" {
+		path := cfg.configPath
+		opts.OnRuntimeSettingsChanged = func(s doomsession.RuntimeSettings) {
+			_ = saveRuntimeSettings(path, s, opts.SourcePortMode)
+		}
+	}
+	if p := cfg.demoPath; p != "" {
+		demo, derr := demo.Load(p)
+		if derr != nil {
+			return nil, fmt.Errorf("load demo: %w", derr)
+		}
+		opts.DemoScript = demo
+		opts.DemoQuitOnComplete = true
+		selected, err = resolveDemoStartMap(wf, demo, selected)
+		if err != nil {
+			return nil, fmt.Errorf("resolve demo map: %w", err)
+		}
+		opts.SkillLevel = int(demo.Header.Skill) + 1
+		opts.FastMonsters = demo.Header.Fast
+		opts.GameMode = demoGameMode(demo)
+	}
+	if selected == "" {
+		selected, err = mapdata.FirstMapName(wf)
+		if err != nil {
+			return nil, fmt.Errorf("resolve first map: %w", err)
+		}
+	}
+	m, lerr := mapdata.LoadMap(wf, selected)
+	if lerr != nil {
+		return nil, fmt.Errorf("load map %s: %w", selected, lerr)
+	}
+	nextMap := func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error) {
+		next, nerr := mapdata.NextMapName(wf, current, secret)
+		if nerr != nil {
+			return nil, "", fmt.Errorf("resolve next map after %s: %w", current, nerr)
+		}
+		nm, lerr := mapdata.LoadMap(wf, next)
+		if lerr != nil {
+			return nil, "", fmt.Errorf("load map %s: %w", next, lerr)
+		}
+		return nm, next, nil
+	}
+	return &renderBundle{m: m, opts: opts, nextMap: nextMap}, nil
+}
+
+func applyPickerProfile(cfg renderBuildConfig, profile pickerProfile) renderBuildConfig {
+	switch profile {
+	case pickerProfileSourcePort:
+		cfg.sourcePortMode = true
+		if !cfg.detailLevelExplicit {
+			cfg.detailLevel = cfg.detailLevelSourcePort
+		}
+		if strings.TrimSpace(cfg.lineColorMode) == "" || strings.EqualFold(cfg.lineColorMode, "default") {
+			cfg.lineColorMode = "doom"
+		}
+	case pickerProfileFaithful:
+		cfg.sourcePortMode = false
+		if !cfg.detailLevelExplicit {
+			cfg.detailLevel = cfg.detailLevelFaithful
+		}
+	}
+	return cfg
+}
+
+type iwadPickerGame struct {
+	choices  []iwadChoice
+	selected int
+	profile  pickerProfile
+	stage    pickerStage
+	status   string
+	tic      int
+	bg       *ebiten.Image
+	logo     *ebiten.Image
+	menuImg  map[string]*ebiten.Image
+	fontBank map[rune]media.WallTexture
+	fontImg  map[rune]*ebiten.Image
+	sfx      *audiofx.MenuPlayer
+	load     func(string, pickerProfile) (*renderBundle, error)
+	session  *doomsession.Session
+	err      error
+}
+
+func newIWADPickerGame(choices []iwadChoice, load func(string, pickerProfile) (*renderBundle, error)) (*iwadPickerGame, error) {
+	game := &iwadPickerGame{choices: choices, load: load}
+	_ = audiofx.EnsureSharedAudioContext()
+	if assetPath, ok := resolvePathCaseInsensitive("DOOM1.WAD"); ok {
+		if wf, err := wad.Open(assetPath); err == nil {
+			game.sfx = audiofx.NewMenuPlayer(buildAutomapSoundBank(sound.ImportDigitalSounds(wf), false), 0.5)
+			if ts, err := doomtex.LoadFromWAD(wf); err == nil {
+				if rgba, w, h, err := ts.BuildTextureRGBA("WALL24_1", 0); err == nil && w > 0 && h > 0 && len(rgba) == w*h*4 {
+					img := ebiten.NewImage(w, h)
+					img.WritePixels(rgba)
+					game.bg = img
+				}
+				if bank := buildMenuPatchBank(ts); bank != nil {
+					game.menuImg = make(map[string]*ebiten.Image, 3)
+					if patch, ok := bank["M_DOOM"]; ok && patch.Width > 0 && patch.Height > 0 && len(patch.RGBA) == patch.Width*patch.Height*4 {
+						img := ebiten.NewImage(patch.Width, patch.Height)
+						img.WritePixels(patch.RGBA)
+						game.logo = img
+						game.menuImg["M_DOOM"] = img
+					}
+					for _, name := range []string{"M_SKULL1", "M_SKULL2"} {
+						if patch, ok := bank[name]; ok && patch.Width > 0 && patch.Height > 0 && len(patch.RGBA) == patch.Width*patch.Height*4 {
+							img := ebiten.NewImage(patch.Width, patch.Height)
+							img.WritePixels(patch.RGBA)
+							game.menuImg[name] = img
+						}
+					}
+				}
+				game.fontBank = buildMessageFontBank(ts)
+			}
+		}
+	}
+	ebiten.SetWindowTitle("GD-DOOM - Select Game")
+	ebiten.SetWindowSize(960, 600)
+	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
+	ebiten.SetScreenClearedEveryFrame(true)
+	return game, nil
+}
+
+func pickerAssetWADPath(choices []iwadChoice) string {
+	for _, want := range []string{"DOOM1.WAD", "DOOM.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD"} {
+		for _, c := range choices {
+			if strings.EqualFold(filepath.Base(c.Path), want) {
+				return c.Path
+			}
+		}
+	}
+	if len(choices) > 0 {
+		return choices[0].Path
+	}
+	return ""
+}
+
+func (g *iwadPickerGame) Update() error {
+	if g.session != nil {
+		return g.session.Update()
+	}
+	if len(g.choices) == 0 {
+		g.err = fmt.Errorf("no IWADs available")
+		return ebiten.Termination
+	}
+	g.tic++
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if g.stage == pickerStageProfile {
+			g.stage = pickerStageIWAD
+			g.playPickerBackSound()
+		} else {
+			g.err = fmt.Errorf("iwad selection cancelled")
+			return ebiten.Termination
+		}
+	}
+	switch g.stage {
+	case pickerStageProfile:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			prev := g.profile
+			g.profile = (g.profile + pickerProfile(len(pickerProfiles)) - 1) % pickerProfile(len(pickerProfiles))
+			if g.profile != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			prev := g.profile
+			g.profile = (g.profile + 1) % pickerProfile(len(pickerProfiles))
+			if g.profile != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			if g.load == nil {
+				g.err = fmt.Errorf("iwad loader unavailable")
+				return ebiten.Termination
+			}
+			g.playPickerConfirmSound()
+			bundle, err := g.load(g.choices[g.selected].Path, g.profile)
+			if err != nil {
+				g.status = err.Error()
+				return nil
+			}
+			g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+			return nil
+		}
+	default:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			prev := g.selected
+			g.selected = (g.selected + len(g.choices) - 1) % len(g.choices)
+			if g.selected != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			prev := g.selected
+			g.selected = (g.selected + 1) % len(g.choices)
+			if g.selected != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+			g.playPickerConfirmSound()
+			g.stage = pickerStageProfile
+			return nil
+		}
+	}
+	return nil
+}
+
+func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
+	if g.session != nil {
+		g.session.Draw(screen)
+		return
+	}
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	if g.bg != nil {
+		drawPickerCoverImage(screen, g.bg)
+	} else {
+		screen.Fill(color.Black)
+	}
+	if g.logo != nil {
+		drawPickerCenteredIntegerScaledLogo(screen, g.logo)
+	} else {
+		g.drawPickerTextCentered(screen, "SELECT GAME", sw/2, 20)
+	}
+	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	switch g.stage {
+	case pickerStageProfile:
+		titleWidth := 0
+		descWidth := 0
+		for _, profile := range pickerProfiles {
+			titleWidth = max(titleWidth, g.pickerTextWidthScaled(profile.label, 2))
+			descWidth = max(descWidth, g.pickerTextWidth(profile.description))
+		}
+		contentWidth := max(titleWidth, descWidth)
+		titleX := sw/2 - contentWidth/2
+		profileY := sh - 112
+		for i, profile := range pickerProfiles {
+			rowY := profileY + i*52
+			if i == int(g.profile) {
+				g.drawPickerSkull(screen, titleX, rowY+4)
+			}
+			g.drawPickerTextScaled(screen, profile.label, titleX, rowY, 2)
+			g.drawPickerText(screen, profile.description, titleX, rowY+22)
+		}
+	default:
+		labelTexts := make([]string, len(g.choices))
+		fileTexts := make([]string, len(g.choices))
+		labelWidth := 0
+		fileWidth := 0
+		for i, choice := range g.choices {
+			labelTexts[i] = strings.ToUpper(choice.Label)
+			fileTexts[i] = strings.ToUpper(filepath.Base(choice.Path))
+			labelWidth = max(labelWidth, g.pickerTextWidth("> "+labelTexts[i]))
+			fileWidth = max(fileWidth, g.pickerTextWidth(fileTexts[i]))
+		}
+		gap := 16
+		blockWidth := labelWidth + gap + fileWidth
+		labelX := sw/2 - blockWidth/2
+		fileX := labelX + labelWidth + gap
+		rowHeight := 18
+		blockHeight := max(len(g.choices)*rowHeight, rowHeight)
+		y := sh/2 - blockHeight/2
+		for i := range g.choices {
+			if i == g.selected {
+				g.drawPickerSkull(screen, labelX, y+i*rowHeight)
+			}
+			g.drawPickerText(screen, labelTexts[i], labelX, y+i*rowHeight)
+			g.drawPickerText(screen, fileTexts[i], fileX, y+i*rowHeight)
+		}
+	}
+	if strings.TrimSpace(g.status) != "" {
+		g.drawPickerTextCentered(screen, strings.ToUpper(g.status), sw/2, sh-52)
+	}
+	g.drawPickerTextCentered(screen, "UP/DOWN    ESC - BACK    ENTER - NEXT", sw/2, sh-12)
+}
+
+func (g *iwadPickerGame) Layout(outsideWidth, outsideHeight int) (int, int) {
+	if g.session != nil {
+		return g.session.Layout(outsideWidth, outsideHeight)
+	}
+	return 320, 200
+}
+
+func (g *iwadPickerGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
+	if g.session != nil {
+		g.session.DrawFinalScreen(screen, offscreen, geoM)
+		return
+	}
+	if screen == nil || offscreen == nil {
+		return
+	}
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	ow := max(offscreen.Bounds().Dx(), 1)
+	oh := max(offscreen.Bounds().Dy(), 1)
+	scale := min(sw/ow, sh/oh)
+	if scale < 1 {
+		scale = 1
+	}
+	rw := ow * scale
+	rh := oh * scale
+	ox := (sw - rw) / 2
+	oy := (sh - rh) / 2
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(scale), float64(scale))
+	op.GeoM.Translate(float64(ox), float64(oy))
+	screen.DrawImage(offscreen, op)
+}
+
+func (g *iwadPickerGame) Close() {
+	if g.sfx != nil {
+		g.sfx.StopAll()
+	}
+	if g.session != nil {
+		g.session.Close()
+	}
+}
+
+func (g *iwadPickerGame) Session() *doomsession.Session {
+	return g.session
+}
+
+func drawPickerCenteredIntegerScaledLogo(screen, img *ebiten.Image) {
+	if screen == nil || img == nil {
+		return
+	}
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	lw := max(img.Bounds().Dx(), 1)
+	lh := max(img.Bounds().Dy(), 1)
+	scaleW := int(0.7 * float64(sw) / float64(lw))
+	scaleH := int(0.38 * float64(sh) / float64(lh))
+	scale := min(max(scaleW, 1), max(scaleH, 1))
+	if scale < 1 {
+		scale = 1
+	}
+	dw := lw * scale
+	dh := lh * scale
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(scale), float64(scale))
+	op.GeoM.Translate(float64((sw-dw)/2), float64(max((sh/10)-(dh/6), 8)))
+	screen.DrawImage(img, op)
+}
+
+func drawPickerCoverImage(screen, img *ebiten.Image) {
+	if screen == nil || img == nil {
+		return
+	}
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	iw := max(img.Bounds().Dx(), 1)
+	ih := max(img.Bounds().Dy(), 1)
+	scale := max(float64(sw)/float64(iw), float64(sh)/float64(ih))
+	dw := float64(iw) * scale
+	dh := float64(ih) * scale
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate((float64(sw)-dw)*0.5, (float64(sh)-dh)*0.5)
+	screen.DrawImage(img, op)
+}
+
+func (g *iwadPickerGame) pickerFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, bool) {
+	if ch >= 'a' && ch <= 'z' {
+		ch -= 'a' - 'A'
+	}
+	p, ok := g.fontBank[ch]
+	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+		return nil, 0, 0, 0, 0, false
+	}
+	if g.fontImg == nil {
+		g.fontImg = make(map[rune]*ebiten.Image, 96)
+	}
+	if img, ok := g.fontImg[ch]; ok {
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+	}
+	img := ebiten.NewImage(p.Width, p.Height)
+	img.WritePixels(p.RGBA)
+	g.fontImg[ch] = img
+	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+}
+
+func (g *iwadPickerGame) pickerTextWidth(text string) int {
+	return g.pickerTextWidthScaled(text, 1)
+}
+
+func (g *iwadPickerGame) pickerTextWidthScaled(text string, scale int) int {
+	if scale < 1 {
+		scale = 1
+	}
+	if len(g.fontBank) == 0 {
+		return len(text) * 7 * scale
+	}
+	w := 0
+	for _, ch := range text {
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < 33 || uc > 95 {
+			w += 4 * scale
+			continue
+		}
+		_, gw, _, _, _, ok := g.pickerFontGlyph(uc)
+		if !ok {
+			w += 4 * scale
+			continue
+		}
+		w += gw * scale
+	}
+	return w
+}
+
+func (g *iwadPickerGame) drawPickerTextCentered(screen *ebiten.Image, text string, x, y int) {
+	g.drawPickerText(screen, text, x-g.pickerTextWidth(text)/2, y)
+}
+
+func (g *iwadPickerGame) drawPickerTextCenteredScaled(screen *ebiten.Image, text string, x, y, scale int) {
+	g.drawPickerTextScaled(screen, text, x-g.pickerTextWidthScaled(text, scale)/2, y, scale)
+}
+
+func (g *iwadPickerGame) drawPickerText(screen *ebiten.Image, text string, x, y int) {
+	g.drawPickerTextScaled(screen, text, x, y, 1)
+}
+
+func (g *iwadPickerGame) drawPickerTextScaled(screen *ebiten.Image, text string, x, y, scale int) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	if len(g.fontBank) == 0 {
+		ebitenutil.DebugPrintAt(screen, text, x, y)
+		return
+	}
+	px := float64(x)
+	py := float64(y)
+	for _, ch := range text {
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < 33 || uc > 95 {
+			px += float64(4 * scale)
+			continue
+		}
+		img, w, _, ox, oy, ok := g.pickerFontGlyph(uc)
+		if !ok {
+			px += float64(4 * scale)
+			continue
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.Filter = ebiten.FilterNearest
+		op.GeoM.Scale(float64(scale), float64(scale))
+		op.GeoM.Translate(px-float64(ox*scale), py-float64(oy*scale))
+		screen.DrawImage(img, op)
+		px += float64(w * scale)
+	}
+}
+
+func (g *iwadPickerGame) drawPickerSkull(screen *ebiten.Image, textX, textY int) {
+	if screen == nil {
+		return
+	}
+	name := "M_SKULL1"
+	if (g.tic/8)&1 != 0 {
+		name = "M_SKULL2"
+	}
+	img := g.menuImg[name]
+	if img == nil {
+		g.drawPickerText(screen, ">", max(textX-10, 0), textY)
+		return
+	}
+	w := max(img.Bounds().Dx(), 1)
+	h := max(img.Bounds().Dy(), 1)
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Translate(float64(textX-w-3), float64(textY+6-h/2))
+	screen.DrawImage(img, op)
+}
+
+func (g *iwadPickerGame) playPickerMoveSound() {
+	if g != nil && g.sfx != nil {
+		g.sfx.PlayMove()
+	}
+}
+
+func (g *iwadPickerGame) playPickerConfirmSound() {
+	if g != nil && g.sfx != nil {
+		g.sfx.PlayConfirm()
+	}
+}
+
+func (g *iwadPickerGame) playPickerBackSound() {
+	if g != nil && g.sfx != nil {
+		g.sfx.PlayBack()
+	}
+}
+
+func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]media.WallTexture) error {
 	seed = strings.ToUpper(strings.TrimSpace(seed))
 	outDir = strings.TrimSpace(outDir)
 	if seed == "" {
@@ -858,7 +2037,7 @@ func dumpSpriteAnimationSeries(outDir, seed string, bank map[string]automap.Wall
 	return nil
 }
 
-func spriteSeriesFromSeed(seed string, bank map[string]automap.WallTexture) []string {
+func spriteSeriesFromSeed(seed string, bank map[string]media.WallTexture) []string {
 	if len(seed) < 6 {
 		return nil
 	}
@@ -894,22 +2073,29 @@ func spriteSeriesFromSeed(seed string, bank map[string]automap.WallTexture) []st
 	return series
 }
 
-func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
+func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) media.SoundBank {
 	byName := make(map[string]sound.DigitalSound, len(r.Sounds))
 	for _, s := range r.Sounds {
 		byName[s.Name] = s
 	}
-	sample := func(name string) automap.PCMSample {
+	sample := func(name string) media.PCMSample {
 		s, ok := byName[name]
 		if !ok {
-			return automap.PCMSample{}
+			return media.PCMSample{}
 		}
-		return automap.PCMSample{
+		data := s.Samples
+		if !sourcePortMode {
+			// Doom pads digital sound payloads to the mixer block size with 128s
+			// before playback. Preserve that behavior for the faithful path.
+			data = padDoomSoundSamples(data)
+		}
+		return media.PCMSample{
 			SampleRate: int(s.SampleRate),
-			Data:       s.Samples,
+			Data:       data,
 		}
 	}
-	return automap.SoundBank{
+	bank := media.SoundBank{
+		MenuCursor:          firstSample(sample("DSPSTOP"), firstSample(sample("DSSTNMOV"), sample("DSSWTCHN"))),
 		DoorOpen:            firstSample(sample("DSDOROPN"), sample("DSBDOPN")),
 		DoorClose:           firstSample(sample("DSDORCLS"), sample("DSBDCLS")),
 		BlazeOpen:           sample("DSBDOPN"),
@@ -926,36 +2112,111 @@ func buildAutomapSoundBank(r sound.DigitalImportReport) automap.SoundBank {
 		ShootShotgun:        firstSample(sample("DSSHOTGN"), sample("DSPISTOL")),
 		ShootFireball:       firstSample(sample("DSFIRSHT"), sample("DSPISTOL")),
 		ShootRocket:         firstSample(sample("DSRLAUNC"), sample("DSSHOTGN")),
+		AttackClaw:          firstSample(sample("DSCLAW"), sample("DSFIRSHT")),
+		AttackSgt:           firstSample(sample("DSSGTATK"), sample("DSSHOTGN")),
+		AttackSkull:         firstSample(sample("DSSKLATK"), sample("DSFIRSHT")),
 		ImpactFire:          firstSample(sample("DSFIRXPL"), sample("DSBAREXP")),
 		ImpactRocket:        firstSample(firstSample(sample("DSRXPLOD"), sample("DSRXPLO")), sample("DSBAREXP")),
+		BarrelExplode:       firstSample(sample("DSBAREXP"), sample("DSRXPLOD")),
+		SeePosit1:           sample("DSPOSIT1"),
+		SeePosit2:           sample("DSPOSIT2"),
+		SeePosit3:           sample("DSPOSIT3"),
+		SeeBGSit1:           sample("DSBGSIT1"),
+		SeeBGSit2:           sample("DSBGSIT2"),
+		SeeSgtSit:           sample("DSSGTSIT"),
+		SeeCacoSit:          sample("DSCACSIT"),
+		SeeBruiserSit:       sample("DSBRSSIT"),
+		SeeKnightSit:        sample("DSKNTSIT"),
+		SeeSpiderSit:        sample("DSPISIT"),
+		SeeBabySit:          sample("DSBSPSIT"),
+		SeeCyberSit:         sample("DSCYBSIT"),
+		SeePainSit:          sample("DSPESIT"),
+		SeeSSSit:            sample("DSSSSIT"),
+		SeeVileSit:          sample("DSVILSIT"),
+		SeeSkeSit:           sample("DSSKESIT"),
+		ActivePosAct:        sample("DSPOSACT"),
+		ActiveBGAct:         sample("DSBGACT"),
+		ActiveDMAct:         sample("DSDMACT"),
+		ActiveBSPAct:        sample("DSBSPACT"),
+		ActiveVilAct:        sample("DSVILACT"),
+		ActiveSkeAct:        sample("DSSKEACT"),
 		MonsterPainHumanoid: firstSample(sample("DSPOPAIN"), firstSample(sample("DSPLPAIN"), sample("DSOOF"))),
 		MonsterPainDemon:    firstSample(sample("DSDMPAIN"), firstSample(sample("DSPOPAIN"), sample("DSPLPAIN"))),
+		DeathPodth1:         sample("DSPODTH1"),
+		DeathPodth2:         sample("DSPODTH2"),
+		DeathPodth3:         sample("DSPODTH3"),
+		DeathBgdth1:         sample("DSBGDTH1"),
+		DeathBgdth2:         sample("DSBGDTH2"),
+		DeathSgtDth:         sample("DSSGTDTH"),
+		DeathCacoRaw:        sample("DSCACDTH"),
+		DeathBaronRaw:       sample("DSBRSDTH"),
+		DeathKnightRaw:      sample("DSKNTDTH"),
+		DeathCyberRaw:       sample("DSCYBDTH"),
+		DeathSpiderRaw:      sample("DSSPIDTH"),
+		DeathArachRaw:       sample("DSBSPDTH"),
+		DeathLostSoulRaw:    sample("DSFIRXPL"),
+		DeathMancubusRaw:    sample("DSMANDTH"),
+		DeathRevenantRaw:    sample("DSSKEDTH"),
+		DeathPainElemRaw:    sample("DSPEDTH"),
+		DeathWolfSSRaw:      sample("DSSDTH"),
+		DeathArchvileRaw:    sample("DSVILDTH"),
 		DeathZombie:         firstSample(sample("DSPODTH1"), sample("DSBGDTH1")),
 		DeathShotgunGuy:     firstSample(sample("DSPODTH2"), sample("DSPODTH1")),
+		DeathChaingunner:    firstSample(sample("DSPODTH2"), sample("DSPODTH1")),
 		DeathImp:            firstSample(sample("DSBGDTH1"), sample("DSSGTDTH")),
 		DeathDemon:          firstSample(sample("DSSGTDTH"), sample("DSBGDTH1")),
 		DeathCaco:           firstSample(sample("DSCACDTH"), sample("DSSGTDTH")),
 		DeathBaron:          firstSample(sample("DSBRSDTH"), sample("DSSGTDTH")),
+		DeathKnight:         firstSample(sample("DSKNTDTH"), sample("DSBRSDTH")),
 		DeathCyber:          firstSample(sample("DSCYBDTH"), sample("DSBRSDTH")),
 		DeathSpider:         firstSample(sample("DSSPIDTH"), sample("DSBRSDTH")),
+		DeathArachnotron:    firstSample(sample("DSBSPDTH"), sample("DSSPIDTH")),
 		DeathLostSoul:       firstSample(sample("DSFIRXPL"), sample("DSSGTDTH")),
+		DeathMancubus:       firstSample(sample("DSMANDTH"), sample("DSBRSDTH")),
+		DeathRevenant:       firstSample(sample("DSSKEDTH"), sample("DSSGTDTH")),
+		DeathPainElemental:  firstSample(sample("DSPEDTH"), sample("DSCACDTH")),
+		DeathWolfSS:         firstSample(sample("DSSDTH"), sample("DSPODTH1")),
+		DeathArchvile:       firstSample(sample("DSVILDTH"), sample("DSBRSDTH")),
 		MonsterDeath:        firstSample(firstSample(firstSample(sample("DSBGDTH1"), sample("DSSGTDTH")), sample("DSCACDTH")), sample("DSPODTH1")),
 		PlayerDeath:         firstSample(sample("DSPLDETH"), sample("DSPLPAIN")),
 		InterTick:           firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
+	if sourcePortMode {
+		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
+	}
+	return bank
 }
 
-func firstSample(a, b automap.PCMSample) automap.PCMSample {
+func padDoomSoundSamples(src []byte) []byte {
+	const doomSoundMixBlock = 512
+	if len(src) == 0 {
+		return nil
+	}
+	paddedLen := ((len(src) + (doomSoundMixBlock - 1)) / doomSoundMixBlock) * doomSoundMixBlock
+	if paddedLen == len(src) {
+		out := make([]byte, len(src))
+		copy(out, src)
+		return out
+	}
+	out := make([]byte, paddedLen)
+	copy(out, src)
+	for i := len(src); i < len(out); i++ {
+		out[i] = 128
+	}
+	return out
+}
+
+func firstSample(a, b media.PCMSample) media.PCMSample {
 	if len(a.Data) > 0 {
 		return a
 	}
 	return b
 }
 
-func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
+func buildBootSplashTexture(ts *doomtex.Set) media.WallTexture {
 	if ts == nil {
-		return automap.WallTexture{}
+		return media.WallTexture{}
 	}
 	// TITLEPIC is a raw 320x200 indexed image in stock Doom IWADs.
 	if rgba, w, h, err := ts.BuildRawPicRGBA("TITLEPIC", 0, 320, 200); err == nil && len(rgba) == w*h*4 {
@@ -963,7 +2224,7 @@ func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		return automap.WallTexture{
+		return media.WallTexture{
 			RGBA:   rgba,
 			RGBA32: rgba32,
 			Width:  w,
@@ -976,7 +2237,7 @@ func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		return automap.WallTexture{
+		return media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -985,10 +2246,10 @@ func buildBootSplashTexture(ts *doomtex.Set) automap.WallTexture {
 			OffsetY: oy,
 		}
 	}
-	return automap.WallTexture{}
+	return media.WallTexture{}
 }
 
-func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+func buildStatusPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -1025,7 +2286,62 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		add(fmt.Sprintf("STFEVL%d", pain))
 		add(fmt.Sprintf("STFKILL%d", pain))
 	}
-	out := make(map[string]automap.WallTexture, len(names))
+	out := make(map[string]media.WallTexture, len(names))
+	for _, name := range names {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		indexed, opaque, iw, ih, _, _, ierr := ts.BuildPatchIndexed(name)
+		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
+		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
+			continue
+		}
+		rgba32 := []uint32(nil)
+		if len(rgba) >= 4 {
+			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
+		}
+		mask := []byte(nil)
+		if ierr == nil && iw == w && ih == h && len(indexed) == w*h && len(opaque) == w*h {
+			mask = make([]byte, len(opaque))
+			for i := range opaque {
+				if opaque[i] {
+					mask[i] = 1
+				}
+			}
+		}
+		out[name] = media.WallTexture{
+			RGBA:       rgba,
+			RGBA32:     rgba32,
+			Indexed:    indexed,
+			OpaqueMask: mask,
+			Width:      w,
+			Height:     h,
+			OffsetX:    ox,
+			OffsetY:    oy,
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func buildMenuPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
+	if ts == nil {
+		return nil
+	}
+	names := []string{
+		"M_DOOM", "M_NGAME", "M_OPTION", "M_LOADG", "M_SAVEG", "M_RDTHIS", "M_QUITG",
+		"M_SKULL1", "M_SKULL2",
+		"M_PAUSE",
+		"M_NEWG", "M_SKILL", "M_JKILL", "M_ROUGH", "M_HURT", "M_ULTRA", "M_NMARE",
+		"M_EPISOD", "M_EPI1", "M_EPI2", "M_EPI3", "M_EPI4",
+		"M_OPTTTL", "M_ENDGAM", "M_MESSG", "M_DETAIL", "M_SCRNSZ", "M_MSENS",
+		"M_SVOL", "M_SFXVOL", "M_MUSVOL",
+		"M_GDHIGH", "M_GDLOW", "M_MSGON", "M_MSGOFF",
+		"M_THERML", "M_THERMM", "M_THERMR", "M_THERMO",
+	}
+	out := make(map[string]media.WallTexture, len(names))
 	for _, name := range names {
 		if _, ok := out[name]; ok {
 			continue
@@ -1038,7 +2354,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[name] = automap.WallTexture{
+		out[name] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -1053,7 +2369,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	return out
 }
 
-func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
+func buildMessageFontBank(ts *doomtex.Set) map[rune]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -1061,7 +2377,7 @@ func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
 		fontStart = 33 // '!'
 		fontEnd   = 95 // '_'
 	)
-	out := make(map[rune]automap.WallTexture, fontEnd-fontStart+1)
+	out := make(map[rune]media.WallTexture, fontEnd-fontStart+1)
 	for c := fontStart; c <= fontEnd; c++ {
 		name := fmt.Sprintf("STCFN%03d", c)
 		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
@@ -1072,7 +2388,7 @@ func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[rune(c)] = automap.WallTexture{
+		out[rune(c)] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -1087,12 +2403,13 @@ func buildMessageFontBank(ts *doomtex.Set) map[rune]automap.WallTexture {
 	return out
 }
 
-func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
+func buildMonsterSpriteBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
 	spritePrefixes := []string{
-		"POSS", "SPOS", "TROO", "SARG", "SKUL", "HEAD", "BOSS", "CYBR", "SPID",
+		"POSS", "SPOS", "SSWV", "TROO", "SARG", "SKUL", "HEAD", "BOSS", "BOS2",
+		"VILE", "CPOS", "SKEL", "FATT", "BSPI", "CYBR", "SPID", "PAIN",
 	}
 	frames := make([]byte, 0, 26)
 	for fr := byte('A'); fr <= byte('Z'); fr++ {
@@ -1136,6 +2453,12 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 			add(fmt.Sprintf("%s%c1", pfx, fr))
 		}
 	}
+	// First-person weapon psprites use rotation 0 only.
+	for _, pfx := range []string{"PUNG", "PISG", "PISF", "SHTG", "SHTF", "CHGG", "CHGF", "MISG", "MISF", "SAWG", "PLSG", "PLSF", "BFGG", "BFGF"} {
+		for fr := byte('A'); fr <= byte('Z'); fr++ {
+			add(fmt.Sprintf("%s%c0", pfx, fr))
+		}
+	}
 	// Common pickups, weapons, and decorations (A0 single-frame or animated 0-suffixed sets).
 	for _, name := range []string{
 		"PLAYN0", "POSSL0", "SPOSL0", "TROOL0", "SARGN0", "HEADL0", "SKULL0",
@@ -1165,7 +2488,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		add(name)
 		addExpandedSeed(name)
 	}
-	out := make(map[string]automap.WallTexture, len(names))
+	out := make(map[string]media.WallTexture, len(names))
 	for _, name := range names {
 		if _, ok := out[name]; ok {
 			continue
@@ -1178,7 +2501,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[name] = automap.WallTexture{
+		out[name] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -1193,7 +2516,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]automap.WallTexture {
 	return out
 }
 
-func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture {
+func buildIntermissionPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
@@ -1218,7 +2541,7 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture 
 	} {
 		add(n)
 	}
-	out := make(map[string]automap.WallTexture, len(names))
+	out := make(map[string]media.WallTexture, len(names))
 	for _, name := range names {
 		if _, ok := out[name]; ok {
 			continue
@@ -1231,7 +2554,7 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture 
 		if len(rgba) >= 4 {
 			rgba32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(rgba))), len(rgba)/4)
 		}
-		out[name] = automap.WallTexture{
+		out[name] = media.WallTexture{
 			RGBA:    rgba,
 			RGBA32:  rgba32,
 			Width:   w,
@@ -1244,4 +2567,82 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]automap.WallTexture 
 		return nil
 	}
 	return out
+}
+
+func availableEpisodes(wf *wad.File) []int {
+	if wf == nil {
+		return nil
+	}
+	names := mapdata.AvailableMapNames(wf)
+	seen := make(map[int]struct{}, 4)
+	out := make([]int, 0, 4)
+	for _, name := range names {
+		s := strings.ToUpper(strings.TrimSpace(string(name)))
+		if len(s) == 4 && s[0] == 'E' && s[2] == 'M' && s[1] >= '1' && s[1] <= '9' && s[3] >= '1' && s[3] <= '9' {
+			ep := int(s[1] - '0')
+			if _, ok := seen[ep]; ok {
+				continue
+			}
+			seen[ep] = struct{}{}
+			out = append(out, ep)
+		}
+	}
+	sort.Ints(out)
+	return out
+}
+
+func resolveDemoStartMap(wf *wad.File, script *demo.Script, fallback mapdata.MapName) (mapdata.MapName, error) {
+	if wf == nil || script == nil {
+		return "", fmt.Errorf("missing demo")
+	}
+	candidates := make([]mapdata.MapName, 0, 2)
+	if script.Header.Map > 0 {
+		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("MAP%02d", script.Header.Map)))
+	}
+	if script.Header.Episode > 0 && script.Header.Map > 0 && script.Header.Map <= 9 {
+		candidates = append(candidates, mapdata.MapName(fmt.Sprintf("E%dM%d", script.Header.Episode, script.Header.Map)))
+	}
+	for _, candidate := range candidates {
+		if _, err := mapdata.LoadMap(wf, candidate); err == nil {
+			return candidate, nil
+		}
+	}
+	if fallback != "" {
+		return "", fmt.Errorf("demo map episode=%d map=%d not present in wad (requested map %s ignored)", script.Header.Episode, script.Header.Map, fallback)
+	}
+	return "", fmt.Errorf("demo map episode=%d map=%d not present in wad", script.Header.Episode, script.Header.Map)
+}
+
+func loadBuiltInDemos(wf *wad.File) []*demo.Script {
+	if wf == nil {
+		return nil
+	}
+	out := make([]*demo.Script, 0, 4)
+	for _, name := range []string{"DEMO1", "DEMO2", "DEMO3", "DEMO4"} {
+		lump, ok := wf.LumpByName(name)
+		if !ok {
+			continue
+		}
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			continue
+		}
+		demo, err := demo.Parse(data)
+		if err != nil {
+			continue
+		}
+		demo.Path = name
+		out = append(out, demo)
+	}
+	return out
+}
+
+func demoGameMode(script *demo.Script) string {
+	if script == nil {
+		return "single"
+	}
+	if script.Header.Deathmatch {
+		return "deathmatch"
+	}
+	return "single"
 }
