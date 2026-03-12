@@ -163,3 +163,19 @@ func TestMonsterSpriteNameForView_SpectreUsesDeathFrame(t *testing.T) {
 		t.Fatalf("spectre death end got=%q want=SARGN0", name)
 	}
 }
+
+func TestMonsterVisibleAfterDeath_LostSoulDisappearsWhenAnimEnds(t *testing.T) {
+	g := &game{
+		thingDead:      []bool{true, true, true},
+		thingDeathTics: []int{1, 0, 0},
+	}
+	if !g.monsterVisibleAfterDeath(0, 3006) {
+		t.Fatalf("lost soul should remain visible while death animation is active")
+	}
+	if g.monsterVisibleAfterDeath(1, 3006) {
+		t.Fatalf("lost soul should disappear after death animation finishes")
+	}
+	if !g.monsterVisibleAfterDeath(2, 3002) {
+		t.Fatalf("demon corpse should remain visible after death animation finishes")
+	}
+}

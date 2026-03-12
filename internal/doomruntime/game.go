@@ -3121,6 +3121,36 @@ func (g *game) mapThingSpriteName(thingIdx int, th mapdata.Thing) string {
 	return g.runtimeWorldThingSpriteNameScaled(thingIdx, th, animTickUnits, animUnitsPerTic)
 }
 
+func (g *game) worldThingDrawnInView(thingIdx int, th mapdata.Thing) bool {
+	if g == nil {
+		return false
+	}
+	if !g.thingActiveInSession(thingIdx) {
+		return false
+	}
+	if isMonster(th.Type) {
+		if !g.monsterVisibleAfterDeath(thingIdx, th.Type) {
+			return false
+		}
+		name, _ := g.monsterSpriteNameForView(
+			thingIdx,
+			th,
+			g.worldTic,
+			float64(g.p.x)/fracUnit,
+			float64(g.p.y)/fracUnit,
+		)
+		tex, ok := g.monsterSpriteTexture(name)
+		return ok && tex.Width > 0 && tex.Height > 0
+	}
+	animTickUnits, animUnitsPerTic := g.worldThingAnimTickUnits()
+	name := g.runtimeWorldThingSpriteNameScaled(thingIdx, th, animTickUnits, animUnitsPerTic)
+	if name == "" {
+		return false
+	}
+	tex, ok := g.monsterSpriteTexture(name)
+	return ok && tex.Width > 0 && tex.Height > 0
+}
+
 func (g *game) drawMarks(screen *ebiten.Image) {
 	mapview.DrawMarks(screen, g.marks.Items(), g.worldToScreen, g.mapVectorAntiAlias())
 }
@@ -7433,6 +7463,9 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			if !isMonster(th.Type) {
 				continue
 			}
+			if !g.monsterVisibleAfterDeath(i, th.Type) {
+				continue
+			}
 			txFixed, tyFixed := g.thingPosFixed(i, th)
 			tx := float64(txFixed)/fracUnit - camX
 			ty := float64(tyFixed)/fracUnit - camY
@@ -8156,6 +8189,8 @@ func (g *game) worldThingSpriteNameScaled(typ int16, tickUnits, unitsPerTic int)
 		return pick("SMITA0")
 	case 48:
 		return pick("ELECA0")
+	case 2028:
+		return pick("COLUA0")
 	case 49:
 		return pickState(
 			thingAnimState{name: "GOR1A0", tics: 10},

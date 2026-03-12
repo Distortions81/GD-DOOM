@@ -509,10 +509,7 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		if i == moverThingIdx {
 			return false
 		}
-		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
-			return false
-		}
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		if !g.thingActiveInSession(i) {
 			return false
 		}
 		tx, ty := g.thingPosFixed(i, th)
@@ -526,6 +523,9 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 			}
 		}
 		if !thingTypeBlocksActorMovement(th.Type, moverIsMonster) {
+			return false
+		}
+		if !g.worldThingDrawnInView(i, th) {
 			return false
 		}
 		tx, ty = g.thingPosFixed(i, th)

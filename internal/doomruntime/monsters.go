@@ -1263,6 +1263,25 @@ func monsterMoveStep(typ int16, fast bool) int64 {
 	}
 }
 
+func monsterLeavesCorpse(typ int16) bool {
+	switch typ {
+	case 3006: // lost soul
+		return false
+	default:
+		return true
+	}
+}
+
+func (g *game) monsterVisibleAfterDeath(i int, typ int16) bool {
+	if g == nil || i < 0 || i >= len(g.thingDead) || !g.thingDead[i] {
+		return true
+	}
+	if monsterLeavesCorpse(typ) {
+		return true
+	}
+	return i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0
+}
+
 func monsterAttackCooldown(typ int16, fast bool) int {
 	scale := 1
 	if fast {

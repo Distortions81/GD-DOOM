@@ -2463,7 +2463,7 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]media.WallTexture {
 	for _, name := range []string{
 		"PLAYN0", "POSSL0", "SPOSL0", "TROOL0", "SARGN0", "HEADL0", "SKULL0",
 		"POL1A0", "POL2A0", "POL3A0", "POL4A0", "POL5A0", "POL6A0",
-		"COL1A0", "COL2A0", "COL3A0", "COL4A0", "COL5A0", "TRE1A0", "TRE2A0",
+		"COL1A0", "COL2A0", "COL3A0", "COL4A0", "COL5A0", "COLUA0", "TRE1A0", "TRE2A0",
 		"CANDA0", "CBRAA0", "CEYEA0", "FSKUA0", "FCANA0", "ELECA0",
 		"GOR1A0", "GOR2A0", "GOR3A0", "GOR4A0", "GOR5A0",
 		"SMITA0", "SMITB0", "SMITC0", "SMITD0",

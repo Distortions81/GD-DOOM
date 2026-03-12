@@ -709,6 +709,49 @@ func TestDoomSolidMapThingTypes_PlayerBlocked(t *testing.T) {
 	}
 }
 
+func TestTryMove_PlayerNotBlockedByFilteredSolidThing(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 2035, X: 32, Y: 0, Flags: thingFlagNotSingle},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		opts:           Options{SkillLevel: 3, GameMode: gameModeSingle},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+		p:              player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	if !g.tryMove(16*fracUnit, 0) {
+		t.Fatal("player move should ignore filtered solid thing")
+	}
+}
+
+func TestTryMove_PlayerNotBlockedByUndrawnSolidThing(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 43, X: 32, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+		p:              player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	if !g.tryMove(16*fracUnit, 0) {
+		t.Fatal("player move should ignore solid thing that is not drawable")
+	}
+}
+
 func TestTryMove_PlayerNotBlockedByDeadBarrel(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

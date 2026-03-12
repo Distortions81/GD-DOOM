@@ -98,3 +98,26 @@ func TestNewGameStartMapUsesEpisodeSelection(t *testing.T) {
 		t.Fatalf("startMap=%q want E4M1", got)
 	}
 }
+
+func TestStepFrontendOptionsMessagesChangesOnLeftRightAndSelect(t *testing.T) {
+	cfg := FrontendConfig{OptionRows: []int{0, 1, 2, 3, 4, 5, 6}}
+	for _, tc := range []struct {
+		name  string
+		input FrontendInput
+	}{
+		{name: "left", input: FrontendInput{Left: true}},
+		{name: "right", input: FrontendInput{Right: true}},
+		{name: "select", input: FrontendInput{Select: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			result := StepFrontend(
+				Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 0},
+				tc.input,
+				cfg,
+			)
+			if !result.ChangeMessages {
+				t.Fatal("expected messages toggle request")
+			}
+		})
+	}
+}

@@ -326,11 +326,20 @@ func (sg *sessionGame) readThisPageName(page int) string {
 }
 
 func (sg *sessionGame) frontendChangeMessages() {
-	if sg == nil || sg.rt == nil {
+	if sg == nil {
 		return
 	}
-	sg.settings.HUDMessages = sg.rt.sessionToggleHUDMessages()
-	sg.rt.sessionPublishRuntimeSettings()
+	switch {
+	case sg.g != nil:
+		sg.g.hudMessagesEnabled = !sg.g.hudMessagesEnabled
+		sg.settings.HUDMessages = sg.g.hudMessagesEnabled
+		sg.g.publishRuntimeSettingsIfChanged()
+	case sg.rt != nil:
+		sg.settings.HUDMessages = sg.rt.sessionToggleHUDMessages()
+		sg.rt.sessionPublishRuntimeSettings()
+	default:
+		return
+	}
 	if sg.settings.HUDMessages {
 		sg.frontendStatus("MESSAGES ON", doomTicsPerSecond)
 	} else {

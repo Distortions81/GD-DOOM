@@ -42,6 +42,7 @@ func TestWorldThingSpriteName_PickupAndDecor(t *testing.T) {
 				"FSKUC0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"COL5A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"COL5B0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"COLUA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"POL6A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"POL6B0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"POL3A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
@@ -87,6 +88,9 @@ func TestWorldThingSpriteName_PickupAndDecor(t *testing.T) {
 	}
 	if got := g.worldThingSpriteName(48, 0); got != "ELECA0" {
 		t.Fatalf("tech pillar sprite=%q want ELECA0", got)
+	}
+	if got := g.worldThingSpriteName(2028, 0); got != "COLUA0" {
+		t.Fatalf("tech column sprite=%q want COLUA0", got)
 	}
 	if got := g.worldThingSpriteName(54, 0); got != "TRE2A0" {
 		t.Fatalf("big tree sprite=%q want TRE2A0", got)
