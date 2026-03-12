@@ -1,6 +1,10 @@
 package doomruntime
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/media"
+)
 
 func TestTransitionSurfaceSizeFaithfulUsesLogicalRenderSize(t *testing.T) {
 	sg := &sessionGame{
@@ -44,3 +48,18 @@ func TestTransitionSurfaceSizeSourcePortUsesScreenSize(t *testing.T) {
 	}
 }
 
+func TestShouldShowBootSplashAllowsFrontendMenuStartup(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{
+			OpenMenuOnFrontendStart: true,
+			BootSplash: media.WallTexture{
+				Width:  1,
+				Height: 1,
+				RGBA:   []byte{0, 0, 0, 255},
+			},
+		},
+	}
+	if !sg.shouldShowBootSplash() {
+		t.Fatal("shouldShowBootSplash() = false, want true for frontend menu startup")
+	}
+}

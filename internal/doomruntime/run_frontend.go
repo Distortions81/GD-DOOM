@@ -15,6 +15,8 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
+const frontendMainMenuTitle = "GD-DOOM [ALPHA]"
+
 func (sg *sessionGame) shouldStartInFrontend() bool {
 	if sg == nil {
 		return false
@@ -30,8 +32,10 @@ func (sg *sessionGame) startFrontend() {
 		return
 	}
 	sg.frontend = frontendState(sessionflow.StartFrontend())
+	sg.frontendMenuPending = false
 	if sg.opts.OpenMenuOnFrontendStart && len(sg.opts.AttractDemos) == 0 {
-		sg.frontend.MenuActive = true
+		sg.frontend.AttractPage = "TITLEPIC"
+		sg.frontendMenuPending = true
 		sg.stopAndClearMusic()
 		sg.playTitleMusic()
 		return
@@ -572,6 +576,10 @@ func (sg *sessionGame) tickFrontend() error {
 	if sg == nil || !sg.frontend.Active {
 		return nil
 	}
+	if sg.frontendMenuPending {
+		sg.frontend.MenuActive = true
+		sg.frontendMenuPending = false
+	}
 	if sg.frontend.Mode == frontendModeMusicPlayer {
 		return sg.tickFrontendMusicPlayer()
 	}
@@ -789,7 +797,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			return
 		}
 		if sg.frontend.MenuActive {
-			_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
+			sg.drawFrontendMainMenuTitle(screen, scale, ox, oy)
 			for i, name := range frontendMainMenuNames {
 				_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
 			}
@@ -799,6 +807,21 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			sg.drawIntermissionText(screen, msg, 160, 178, scale, ox, oy, true)
 		}
 	}
+}
+
+func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox, oy float64) {
+	if sg == nil || screen == nil {
+		return
+	}
+	if sg.g == nil || sg.rt == nil || len(sg.g.opts.MessageFontBank) == 0 {
+		_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
+		return
+	}
+	titleScale := math.Max(scale*1.8, 1)
+	titleWidth := float64(sg.intermissionTextWidth(frontendMainMenuTitle)) * titleScale
+	px := ox + (320.0*scale-titleWidth)*0.5
+	py := oy + 8.0*scale
+	sg.rt.sessionDrawHUTextAt(screen, frontendMainMenuTitle, px, py, titleScale, titleScale)
 }
 
 func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool) {

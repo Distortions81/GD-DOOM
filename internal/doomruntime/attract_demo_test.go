@@ -126,10 +126,16 @@ func TestStartFrontendOpensMenuWhenConfiguredWithoutAttractDemos(t *testing.T) {
 	if !sg.frontend.Active {
 		t.Fatal("frontend should be active")
 	}
-	if !sg.frontend.MenuActive {
-		t.Fatal("frontend should open main menu")
+	if sg.frontend.MenuActive {
+		t.Fatal("frontend menu should wait until after boot presentation")
 	}
-	if got := sg.frontend.AttractPage; got != "" {
-		t.Fatalf("attractPage=%q want empty", got)
+	if got := sg.frontend.AttractPage; got != "TITLEPIC" {
+		t.Fatalf("attractPage=%q want TITLEPIC", got)
+	}
+	if got := sg.frontend.AttractPageTic; got != 0 {
+		t.Fatalf("attractPageTic=%d want 0", got)
+	}
+	if !sg.frontendMenuPending {
+		t.Fatal("frontend menu should be pending")
 	}
 }

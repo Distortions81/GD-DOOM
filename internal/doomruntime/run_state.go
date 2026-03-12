@@ -94,6 +94,7 @@ type sessionGame struct {
 	intermission    sessionIntermission
 	finale          sessionFinale
 	frontend        frontendState
+	frontendMenuPending bool
 	musicPlayer     frontendMusicPlayerState
 	quitPrompt      quitPromptState
 	quitMessageSeq  int

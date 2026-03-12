@@ -16,7 +16,8 @@ const (
 
 const (
 	operatorBaseGain = 0.7
-	modulatorDepth   = 4.0
+	modulatorDepth   = 0.22
+	channelMixGain   = 0.38
 )
 
 var (
@@ -53,6 +54,9 @@ type basicOperatorState struct {
 	sustainLevel float64
 	releaseCoef  float64
 	waveform     int
+	vibrato      bool
+	tremolo      bool
+	sustain      bool
 }
 
 type basicChannelState struct {
@@ -74,6 +78,8 @@ type BasicOPL3 struct {
 	regs             [0x200]uint8
 	ch               [opl3ChannelCount]basicChannelState
 	waveformSelectOn bool
+	vibPhase         float64
+	tremPhase        float64
 	stereoBuf        []int16
 	monoBuf          []byte
 }
@@ -96,6 +102,8 @@ func (o *BasicOPL3) Reset() {
 	o.regs = [0x200]uint8{}
 	o.ch = [opl3ChannelCount]basicChannelState{}
 	o.waveformSelectOn = false
+	o.vibPhase = 0
+	o.tremPhase = 0
 	for i := range o.ch {
 		o.ch[i].panL = 1
 		o.ch[i].panR = 1
@@ -193,14 +201,30 @@ func (o *BasicOPL3) GenerateStereoS16(frames int) []int16 {
 	out := o.stereoBuf
 	invSampleRate := 1.0 / float64(o.sampleRate)
 	for i := 0; i < frames; i++ {
+		o.vibPhase += 6.1 * invSampleRate
+		if o.vibPhase >= 1 {
+			o.vibPhase -= math.Floor(o.vibPhase)
+		}
+		o.tremPhase += 3.7 * invSampleRate
+		if o.tremPhase >= 1 {
+			o.tremPhase -= math.Floor(o.tremPhase)
+		}
 		var l, r float64
 		for ch := 0; ch < opl3ChannelCount; ch++ {
 			sl, sr := o.renderChannel(ch, invSampleRate)
 			l += sl
 			r += sr
 		}
-		l = math.Tanh(l * 0.9)
-		r = math.Tanh(r * 0.9)
+		if l < -1 {
+			l = -1
+		} else if l > 1 {
+			l = 1
+		}
+		if r < -1 {
+			r = -1
+		} else if r > 1 {
+			r = 1
+		}
 		out[i*2] = int16(l * 32767)
 		out[i*2+1] = int16(r * 32767)
 	}
@@ -262,12 +286,32 @@ func (o *BasicOPL3) renderChannel(ch int, invSampleRate float64) (float64, float
 	if carMul <= 0 {
 		carMul = 1
 	}
-	modStep := (2 * math.Pi * c.freq * modMul) * invSampleRate
-	carStep := (2 * math.Pi * c.freq * carMul) * invSampleRate
+	modFreq := c.freq * modMul
+	carFreq := c.freq * carMul
+	vib := math.Sin(2 * math.Pi * o.vibPhase)
+	if mod.vibrato {
+		modFreq *= 1 + vib*0.0025
+	}
+	if car.vibrato {
+		carFreq *= 1 + vib*0.0025
+	}
+	modStep := (2 * math.Pi * modFreq) * invSampleRate
+	carStep := (2 * math.Pi * carFreq) * invSampleRate
 
-	modFeedback := (c.fbPrev[0] + c.fbPrev[1]) * c.feedback
+	modTrem := 1.0
+	carTrem := 1.0
+	if mod.tremolo {
+		modTrem = 1 - ((math.Sin(2*math.Pi*o.tremPhase)+1)*0.5)*0.18
+	}
+	if car.tremolo {
+		carTrem = 1 - ((math.Sin(2*math.Pi*o.tremPhase)+1)*0.5)*0.18
+	}
+	modAmp := modEnv * mod.level * operatorBaseGain * modTrem
+	carAmp := carEnv * car.level * operatorBaseGain * carTrem
+	modFeedback := (c.fbPrev[0] + c.fbPrev[1]) * c.feedback * 0.18
 	mod.phase = wrapPhase(mod.phase + modStep)
-	modSample := oplWaveform(mod.waveform, mod.phase+modFeedback) * modEnv * mod.level * operatorBaseGain
+	modRaw := oplWaveform(mod.waveform, mod.phase+modFeedback)
+	modSample := modRaw * modAmp
 	c.fbPrev[1] = c.fbPrev[0]
 	c.fbPrev[0] = modSample
 
@@ -275,13 +319,15 @@ func (o *BasicOPL3) renderChannel(ch int, invSampleRate float64) (float64, float
 	carInput := 0.0
 	out := 0.0
 	if c.additive {
-		out += modSample * 0.7
+		out += modSample * 0.42
 	} else {
-		carInput = modSample * modulatorDepth
+		// Keep FM coloration without letting the modulator pull the perceived note
+		// center too far away from the programmed carrier pitch.
+		carInput = modRaw * modAmp * (modulatorDepth + modMul*0.04 + carMul*0.01)
 	}
-	carSample := oplWaveform(car.waveform, car.phase+carInput) * carEnv * car.level * operatorBaseGain
+	carSample := oplWaveform(car.waveform, car.phase+carInput) * carAmp
 	out += carSample
-	return out * c.panL, out * c.panR
+	return out * c.panL * channelMixGain, out * c.panR * channelMixGain
 }
 
 func (o *BasicOPL3) advanceEnvelope(op *basicOperatorState) float64 {
@@ -304,7 +350,15 @@ func (o *BasicOPL3) advanceEnvelope(op *basicOperatorState) float64 {
 			op.stage = oplEnvSustain
 		}
 	case oplEnvSustain:
-		op.env = op.sustainLevel
+		if op.sustain {
+			op.env = op.sustainLevel
+		} else {
+			op.env += (0 - op.env) * op.releaseCoef
+			if op.env <= 0.0001 {
+				op.env = 0
+				op.stage = oplEnvOff
+			}
+		}
 	case oplEnvRelease:
 		op.env += (0 - op.env) * op.releaseCoef
 		if op.env <= 0.0001 {
@@ -399,6 +453,9 @@ func (o *BasicOPL3) refreshOperator(ch int, op int) {
 	s.decayCoef = rateCoef(o.sampleRate, decayReleaseSeconds(int(reg60&0x0F)))
 	s.sustainLevel = sustainScale(int((reg80 >> 4) & 0x0F))
 	s.releaseCoef = rateCoef(o.sampleRate, decayReleaseSeconds(int(reg80&0x0F)))
+	s.tremolo = (reg20 & 0x80) != 0
+	s.vibrato = (reg20 & 0x40) != 0
+	s.sustain = (reg20 & 0x20) != 0
 	if o.waveformSelectOn {
 		s.waveform = int(regE0 & 0x07)
 	} else {

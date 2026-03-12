@@ -196,7 +196,7 @@ func (sg *sessionGame) shouldShowBootSplash() bool {
 	if sg.opts.DemoScript != nil {
 		return false
 	}
-	if sg.shouldStartInFrontend() {
+	if sg.shouldStartInFrontend() && !(sg.opts.OpenMenuOnFrontendStart && len(sg.opts.AttractDemos) == 0) {
 		return false
 	}
 	return sg.opts.BootSplash.Width > 0 &&
