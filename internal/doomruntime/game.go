@@ -15382,6 +15382,7 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		SkillMenuNames:         frontendSkillMenuNames[:],
 		MainMenuNames:          inGamePauseMenuNames[:],
 		MessagesPatch:          frontendMessagesPatch(g.hudMessagesEnabled),
+		HUDMessagesEnabled:     g.hudMessagesEnabled,
 		ScreenSizeDot:          g.screenSizeDot(),
 		ScreenSizeLabel:        g.screenSizeLabel(),
 		HUDScaleDot:            g.hudScaleDot(),
