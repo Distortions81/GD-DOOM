@@ -133,8 +133,8 @@ func TestWeaponOverlayYUsesViewportCenter(t *testing.T) {
 	rectW := 640
 	rectH := 336
 	scale := float64(rectW) / doomLogicalW
-	got := float64(rectH) - (doomLogicalH-(32.0)-8.0+4.0)*scale
-	if math.Abs(got-8.0) > 1e-9 {
-		t.Fatalf("bottom-anchored overlay y=%v want 8", got)
+	got := float64(rectH)/2 - (100.5-32.0)*scale
+	if math.Abs(got-31.0) > 1e-9 {
+		t.Fatalf("faithful overlay y=%v want 31", got)
 	}
 }

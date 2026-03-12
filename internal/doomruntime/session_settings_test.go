@@ -113,8 +113,8 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	if dst.paletteLUTEnabled {
 		t.Fatal("paletteLUT should be persisted as OFF")
 	}
-	if dst.gammaLevel != 5 {
-		t.Fatalf("gammaLevel=%d want 5", dst.gammaLevel)
+	if dst.gammaLevel != 4 {
+		t.Fatalf("gammaLevel=%d want 4", dst.gammaLevel)
 	}
 	if !dst.crtEnabled {
 		t.Fatal("crt should be persisted as ON")
@@ -153,8 +153,8 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 	if dst.detailLevel != len(sourcePortDetailDivisors)-1 {
 		t.Fatalf("detailLevel clamp failed: got %d want %d", dst.detailLevel, len(sourcePortDetailDivisors)-1)
 	}
-	if dst.gammaLevel != len(gammaTargets)-1 {
-		t.Fatalf("gamma clamp failed: got %d want %d", dst.gammaLevel, len(gammaTargets)-1)
+	if dst.gammaLevel != doomGammaLevels-1 {
+		t.Fatalf("gamma clamp failed: got %d want %d", dst.gammaLevel, doomGammaLevels-1)
 	}
 	if dst.opts.MusicVolume != 0 {
 		t.Fatalf("music volume clamp failed: got %.2f want 0", dst.opts.MusicVolume)
@@ -219,7 +219,7 @@ func TestRebuildGameWithPersistentSettings_PersistsSourcePortDetailAndGamma(t *t
 				Height:         800,
 			},
 			detailLevel: 2,
-			gammaLevel:  6,
+			gammaLevel:  4,
 		},
 	}
 	sg.rebuildGameWithPersistentSettings(&mapdata.Map{})
@@ -229,8 +229,8 @@ func TestRebuildGameWithPersistentSettings_PersistsSourcePortDetailAndGamma(t *t
 	if sg.g.detailLevel != 2 {
 		t.Fatalf("sourceport detail level=%d want 2", sg.g.detailLevel)
 	}
-	if sg.g.gammaLevel != 6 {
-		t.Fatalf("sourceport gamma level=%d want 6", sg.g.gammaLevel)
+	if sg.g.gammaLevel != 4 {
+		t.Fatalf("sourceport gamma level=%d want 4", sg.g.gammaLevel)
 	}
 }
 

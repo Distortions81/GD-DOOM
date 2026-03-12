@@ -11,7 +11,9 @@ func TestUseSpecialLineLockedWithoutKeyAndUnlocksWithPickup(t *testing.T) {
 		m:           &mapdata.Map{Things: []mapdata.Thing{{X: 0, Y: 0, Type: 5}}},
 		lineSpecial: []uint16{26}, // blue key manual door
 		soundQueue:  make([]soundEvent, 0, 4),
+		opts:        Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
 	}
+	g.m.Things[0].Flags = skillMediumBits
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(g.m.Things))
 
@@ -30,15 +32,16 @@ func TestProcessThingPickupsMarksCollectedAndUpdatesStats(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{X: 0, Y: 0, Type: 2011},    // stimpack
-				{X: 0, Y: 0, Type: 2007},    // clip
-				{X: 0, Y: 0, Type: 2018},    // green armor
-				{X: 0, Y: 0, Type: 2001},    // shotgun
-				{X: 0, Y: 0, Type: 2048},    // box bullets
-				{X: 9999, Y: 9999, Type: 5}, // far key, should not pick up
+				{X: 0, Y: 0, Type: 2011, Flags: skillMediumBits},    // stimpack
+				{X: 0, Y: 0, Type: 2007, Flags: skillMediumBits},    // clip
+				{X: 0, Y: 0, Type: 2018, Flags: skillMediumBits},    // green armor
+				{X: 0, Y: 0, Type: 2001, Flags: skillMediumBits},    // shotgun
+				{X: 0, Y: 0, Type: 2048, Flags: skillMediumBits},    // box bullets
+				{X: 9999, Y: 9999, Type: 5, Flags: skillMediumBits}, // far key, should not pick up
 			},
 		},
 		soundQueue: make([]soundEvent, 0, 8),
+		opts:       Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
 	}
 	g.initPlayerState()
 	g.stats.Health = 80
@@ -88,9 +91,10 @@ func TestBackpackDoublesAmmoCap(t *testing.T) {
 func TestDeadPlayerDoesNotPickup(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
-			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2011}},
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2011, Flags: skillMediumBits}},
 		},
 		isDead: true,
+		opts:   Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
 	}
 	g.initPlayerState()
 	g.stats.Health = 50
@@ -150,12 +154,13 @@ func TestCanTouchPickup_ZOverlap(t *testing.T) {
 func TestWeaponPickupRespectsAutoSwitchToggle(t *testing.T) {
 	baseMap := &mapdata.Map{
 		Things: []mapdata.Thing{
-			{X: 0, Y: 0, Type: 2001}, // shotgun
+			{X: 0, Y: 0, Type: 2001, Flags: skillMediumBits}, // shotgun
 		},
 	}
 	g := &game{
 		m:                baseMap,
 		autoWeaponSwitch: false,
+		opts:             Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(g.m.Things))
@@ -174,10 +179,11 @@ func TestWeaponPickupAutoSwitchesWhenEnabled(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{X: 0, Y: 0, Type: 2001}, // shotgun
+				{X: 0, Y: 0, Type: 2001, Flags: skillMediumBits}, // shotgun
 			},
 		},
 		autoWeaponSwitch: true,
+		opts:             Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
 	}
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(g.m.Things))

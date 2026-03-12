@@ -46,6 +46,7 @@ var frontendOptionsMenuNames = [...]string{
 	"",
 	"",
 	"",
+	"",
 }
 
 var frontendOptionsTextLabels = [...]string{
@@ -56,9 +57,10 @@ var frontendOptionsTextLabels = [...]string{
 	"MOUSE SENSITIVITY",
 	"SOUND VOLUME",
 	"MUSIC VOLUME",
+	"MUSIC PLAYER",
 }
 
-var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6}
+var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6, 7}
 
 func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (*session.Game, runtimehost.Meta) {
 	sg := runtimehost.Init(runtimehost.Initializer[*sessionGame]{
@@ -356,26 +358,11 @@ func (sg *sessionGame) initFaithfulPalettePost() {
 	if !sg.opts.KageShader {
 		return
 	}
-	if len(sg.opts.DoomPaletteRGBA) != 256*4 {
-		return
-	}
-	sh, err := ebiten.NewShader(faithfulPaletteShaderSrc)
-	if err != nil {
-		fmt.Printf("warning: palette shader disabled: %v\n", err)
-		return
-	}
-	noGammaSh, err := ebiten.NewShader(faithfulPaletteNoGammaShaderSrc)
-	if err != nil {
-		fmt.Printf("warning: no-gamma palette shader disabled: %v\n", err)
-		return
-	}
 	crtSh, err := ebiten.NewShader(crtPostShaderSrc)
 	if err != nil {
 		fmt.Printf("warning: crt shader disabled: %v\n", err)
 		return
 	}
-	sg.faithfulShader = sh
-	sg.noGammaShader = noGammaSh
 	sg.crtShader = crtSh
 }
 
@@ -386,18 +373,18 @@ func (sg *sessionGame) palettePostEnabled() bool {
 	if !sg.opts.KageShader {
 		return false
 	}
-	if sg.faithfulShader == nil || sg.noGammaShader == nil || sg.crtShader == nil {
+	if sg.crtShader == nil {
 		return false
 	}
 	sig := sg.g.sessionSignals()
-	return sig.PaletteLUT || !isNeutralGammaLevel(sig.GammaLevel) || sig.CRTEnabled
+	return sig.CRTEnabled
 }
 
 func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image {
 	if !sg.opts.KageShader {
 		return src
 	}
-	if src == nil || sg.faithfulShader == nil || sg.noGammaShader == nil || sg.crtShader == nil {
+	if src == nil || sg.crtShader == nil {
 		return src
 	}
 	w := src.Bounds().Dx()
@@ -409,138 +396,20 @@ func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image
 	if sg.g != nil {
 		sig = sg.g.sessionSignals()
 	}
-	needsPaletteGamma := sg.g != nil && (sig.PaletteLUT || !isNeutralGammaLevel(sig.GammaLevel))
 	needsCRT := sg.g != nil && sig.CRTEnabled
-	if !needsPaletteGamma && !needsCRT {
-		return src
-	}
-	stage := src
-	if needsPaletteGamma {
-		if sg.faithfulPost == nil || sg.faithfulPost.Bounds().Dx() != w || sg.faithfulPost.Bounds().Dy() != h {
-			sg.faithfulPost = ebiten.NewImage(w, h)
-		}
-		sg.ensureFaithfulLUTSurface(w, h)
-		if sg.faithfulLUT == nil {
-			return src
-		}
-		op := &ebiten.DrawRectShaderOptions{}
-		op.Images[0] = src
-		op.Images[1] = sg.faithfulLUT
-		enableQuant := float32(0)
-		if sg.g != nil && sig.PaletteLUT && w >= quantizeLUTW && h >= quantizeLUTH {
-			enableQuant = 1
-		}
-		useGamma := true
-		if sg.g != nil && isNeutralGammaLevel(sig.GammaLevel) {
-			useGamma = false
-		}
-		if useGamma {
-			op.Uniforms = map[string]any{
-				"GammaRatio":     gammaRatioForLevel(sig.GammaLevel),
-				"EnableQuantize": enableQuant,
-			}
-			sg.faithfulPost.DrawRectShader(w, h, sg.faithfulShader, op)
-		} else {
-			op.Uniforms = map[string]any{
-				"EnableQuantize": enableQuant,
-			}
-			sg.faithfulPost.DrawRectShader(w, h, sg.noGammaShader, op)
-		}
-		stage = sg.faithfulPost
-	}
 	if !needsCRT {
-		return stage
+		return src
 	}
 	if sg.crtPost == nil || sg.crtPost.Bounds().Dx() != w || sg.crtPost.Bounds().Dy() != h {
 		sg.crtPost = ebiten.NewImage(w, h)
 	}
 	op := &ebiten.DrawRectShaderOptions{}
-	op.Images[0] = stage
+	op.Images[0] = src
 	op.Uniforms = map[string]any{
 		"Time": float32(sig.WorldTic) / float32(doomTicsPerSecond),
 	}
 	sg.crtPost.DrawRectShader(w, h, sg.crtShader, op)
 	return sg.crtPost
-}
-
-func gammaRatioForLevel(level int) float32 {
-	targetGamma := gammaTargetForLevel(level)
-	return float32(targetGamma / 2.2)
-}
-
-var gammaTargets = [...]float64{3.2, 2.8, 2.4, 2.2, 1.8, 1.5, 1.4}
-
-func gammaTargetForLevel(level int) float64 {
-	if level < 0 {
-		level = 0
-	}
-	if level >= len(gammaTargets) {
-		level = len(gammaTargets) - 1
-	}
-	return gammaTargets[level]
-}
-
-func isNeutralGammaLevel(level int) bool {
-	return gammaTargetForLevel(level) == 2.2
-}
-
-func (sg *sessionGame) ensureFaithfulLUTSurface(w, h int) {
-	if w <= 0 || h <= 0 {
-		return
-	}
-	if len(sg.opts.DoomPaletteRGBA) != 256*4 {
-		return
-	}
-	if sg.faithfulLUT == nil || sg.faithfulLUTW != w || sg.faithfulLUTH != h {
-		sg.faithfulLUT = ebiten.NewImage(w, h)
-		sg.faithfulLUTW = w
-		sg.faithfulLUTH = h
-		sg.faithfulLUTPix = make([]byte, w*h*4)
-		buildQuantizeLUT16x16x16(sg.faithfulLUTPix, w, h, sg.opts.DoomPaletteRGBA)
-		sg.faithfulLUT.WritePixels(sg.faithfulLUTPix)
-	}
-}
-
-func buildQuantizeLUT16x16x16(dst []byte, w, h int, pal []byte) {
-	if len(dst) < w*h*4 || len(pal) < 256*4 {
-		return
-	}
-	const lutW = quantizeLUTW
-	const lutH = quantizeLUTH
-	if w < lutW || h < lutH {
-		return
-	}
-	for b := 0; b < 16; b++ {
-		bv := uint8(b * 17)
-		for g := 0; g < 16; g++ {
-			gv := uint8(g * 17)
-			for r := 0; r < 16; r++ {
-				rv := uint8(r * 17)
-				best := 0
-				bestDist := int(^uint(0) >> 1)
-				for i := 0; i < 256; i++ {
-					pi := i * 4
-					dr := int(rv) - int(pal[pi+0])
-					dg := int(gv) - int(pal[pi+1])
-					db := int(bv) - int(pal[pi+2])
-					d := dr*dr + dg*dg + db*db
-					if d < bestDist {
-						bestDist = d
-						best = i
-					}
-				}
-				idx := r + g*16 + b*256
-				x := idx % lutW
-				y := idx / lutW
-				di := (y*w + x) * 4
-				si := best * 4
-				dst[di+0] = pal[si+0]
-				dst[di+1] = pal[si+1]
-				dst[di+2] = pal[si+2]
-				dst[di+3] = 0xFF
-			}
-		}
-	}
 }
 
 func fitRect(w, h, baseW, baseH int) (rw, rh, ox, oy int) {

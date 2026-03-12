@@ -8,6 +8,23 @@ import (
 	"gddoom/internal/music"
 )
 
+type MusicPlayerTrack struct {
+	MapName  mapdata.MapName
+	Label    string
+	LumpName string
+}
+
+type MusicPlayerEpisode struct {
+	Label  string
+	Tracks []MusicPlayerTrack
+}
+
+type MusicPlayerWAD struct {
+	Key      string
+	Label    string
+	Episodes []MusicPlayerEpisode
+}
+
 type Options struct {
 	Width                      int
 	Height                     int
@@ -74,6 +91,8 @@ type Options struct {
 	DemoTracePath              string
 	TitleMusicLoader           func() ([]byte, error)
 	MapMusicLoader             func(mapName string) ([]byte, error)
+	MusicPlayerCatalog         []MusicPlayerWAD
+	MusicPlayerTrackLoader     func(wadKey string, mapName string) ([]byte, error)
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)
 	DemoMapLoader              func(demo *demo.Script) (*mapdata.Map, error)
 	Episodes                   []int

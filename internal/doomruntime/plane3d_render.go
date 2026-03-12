@@ -252,7 +252,11 @@ func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, 
 	if doomLightingEnabled {
 		defaultRow = doomPlaneLightRow(key.light, depth)
 		if !doomColormapEnabled {
-			defaultShade = uint32(doomShadeMulFromRowF(doomPlaneLightRowF(key.light, depth)))
+			if g != nil && !g.opts.SourcePortMode {
+				defaultShade = uint32(doomShadeMulFromRow(defaultRow))
+			} else {
+				defaultShade = uint32(doomShadeMulFromRowF(doomPlaneLightRowF(key.light, depth)))
+			}
 		}
 	}
 	count := x2 - x1 + 1

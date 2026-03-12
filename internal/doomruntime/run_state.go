@@ -17,8 +17,6 @@ type NextMapFunc = runtimehost.NextMapFunc
 
 const (
 	bootSplashHoldTics = 2 * doomTicsPerSecond
-	quantizeLUTW       = 256
-	quantizeLUTH       = 16
 	// Sourceport melt uses Doom-like 2-pixel column pairs over a 320-wide
 	// virtual layout, i.e. 160 moving slices.
 	sourcePortMeltInitCols = 160
@@ -47,13 +45,14 @@ type sessionFinale = sessionflow.Finale
 type frontendMode = sessionflow.FrontendMode
 
 const (
-	frontendModeNone     = sessionflow.FrontendModeNone
-	frontendModeTitle    = sessionflow.FrontendModeTitle
-	frontendModeReadThis = sessionflow.FrontendModeReadThis
-	frontendModeOptions  = sessionflow.FrontendModeOptions
-	frontendModeSound    = sessionflow.FrontendModeSound
-	frontendModeEpisode  = sessionflow.FrontendModeEpisode
-	frontendModeSkill    = sessionflow.FrontendModeSkill
+	frontendModeNone                     = sessionflow.FrontendModeNone
+	frontendModeTitle                    = sessionflow.FrontendModeTitle
+	frontendModeReadThis                 = sessionflow.FrontendModeReadThis
+	frontendModeOptions                  = sessionflow.FrontendModeOptions
+	frontendModeSound                    = sessionflow.FrontendModeSound
+	frontendModeEpisode                  = sessionflow.FrontendModeEpisode
+	frontendModeSkill                    = sessionflow.FrontendModeSkill
+	frontendModeMusicPlayer frontendMode = 100
 )
 
 type frontendState = sessionflow.Frontend
@@ -84,13 +83,6 @@ type sessionGame struct {
 	musicCtl        *sessionmusic.Playback
 	faithfulSurface *ebiten.Image
 	faithfulNearest *ebiten.Image
-	faithfulPost    *ebiten.Image
-	faithfulLUT     *ebiten.Image
-	faithfulLUTPix  []byte
-	faithfulLUTW    int
-	faithfulLUTH    int
-	faithfulShader  *ebiten.Shader
-	noGammaShader   *ebiten.Shader
 	crtShader       *ebiten.Shader
 	crtPost         *ebiten.Image
 	presentSurface  *ebiten.Image
@@ -102,6 +94,7 @@ type sessionGame struct {
 	intermission    sessionIntermission
 	finale          sessionFinale
 	frontend        frontendState
+	musicPlayer     frontendMusicPlayerState
 	quitPrompt      quitPromptState
 	quitMessageSeq  int
 }
@@ -179,7 +172,7 @@ func clampIDDT(v int) int {
 }
 
 func clampGamma(level int) int {
-	return gameplay.ClampGamma(level, len(gammaTargets))
+	return gameplay.ClampGamma(level, doomGammaLevels)
 }
 
 func clampVolume(v float64) float64 {
@@ -230,7 +223,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 		g.opts.SourcePortMode,
 		len(detailPresets),
 		len(sourcePortDetailDivisors),
-		len(gammaTargets),
+		doomGammaLevels,
 		music.MaxOutputGain,
 		g.opts.KageShader,
 		len(g.opts.DoomPaletteRGBA) == 256*4,
@@ -260,7 +253,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(applied.ThingRenderMode, g.opts.SourcePortMode)
 	g.showLegend = applied.ShowLegend
 	g.paletteLUTEnabled = applied.PaletteLUT
-	g.gammaLevel = applied.GammaLevel
+	g.setGammaLevel(applied.GammaLevel)
 	g.crtEnabled = applied.CRTEnabled
 	g.parity.reveal = revealMode(applied.Reveal)
 	g.parity.iddt = applied.IDDT
@@ -278,7 +271,7 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 		sg.opts.SourcePortMode,
 		len(detailPresets),
 		len(sourcePortDetailDivisors),
-		len(gammaTargets),
+		doomGammaLevels,
 		music.MaxOutputGain,
 	)
 	next := result.Settings

@@ -75,3 +75,11 @@ func (p *Playback) PlayMap(name mapdata.MapName, volume float64) {
 	}
 	p.ctl.PlayMUS(data)
 }
+
+func (p *Playback) PlayData(data []byte, volume float64) {
+	if p == nil || p.ctl == nil || volume <= 0 || len(data) == 0 {
+		return
+	}
+	p.StopAndClear()
+	p.ctl.PlayMUS(data)
+}

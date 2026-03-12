@@ -112,5 +112,10 @@ func (g *game) thingActiveInSession(i int) bool {
 	if i < len(g.thingDead) && g.thingDead[i] {
 		return false
 	}
+	// Runtime-spawned drops do not carry map spawn flags; they should remain
+	// active regardless of skill/game-mode filtering.
+	if i < len(g.thingDropped) && g.thingDropped[i] {
+		return true
+	}
 	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems)
 }

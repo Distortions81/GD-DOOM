@@ -42,11 +42,20 @@ func TestDefaultHUDScaleStep(t *testing.T) {
 	if got := defaultHUDScaleStep(Options{}); got != 1 {
 		t.Fatalf("defaultHUDScaleStep without sourceport = %d, want 1", got)
 	}
-	if got := defaultHUDScaleStep(Options{SourcePortMode: true}); got != 1 {
-		t.Fatalf("defaultHUDScaleStep with sourceport = %d, want 1", got)
+	if got := defaultHUDScaleStep(Options{SourcePortMode: true}); got != 3 {
+		t.Fatalf("defaultHUDScaleStep with sourceport = %d, want 3", got)
 	}
 	if got := defaultHUDScaleStep(Options{StatusPatchBank: map[string]WallTexture{"STBAR": {}}, SourcePortMode: false}); got != 1 {
 		t.Fatalf("defaultHUDScaleStep faithful bottom bar = %d, want 1", got)
+	}
+}
+
+func TestSourcePortHUDScaleRange(t *testing.T) {
+	if got := len(sourcePortHUDScaleSteps); got != 8 {
+		t.Fatalf("sourcePortHUDScaleSteps len = %d, want 8", got)
+	}
+	if got := sourcePortHUDScaleSteps[len(sourcePortHUDScaleSteps)-1]; got != 8.0 {
+		t.Fatalf("sourcePortHUDScaleSteps max = %.1f, want 8.0", got)
 	}
 }
 
@@ -96,11 +105,11 @@ func TestWalkWeaponViewportRectIgnoresHUDScale(t *testing.T) {
 			SourcePortMode:  true,
 			StatusPatchBank: map[string]WallTexture{"STBAR": {}},
 		},
-		viewW:           1280,
-		viewH:           720,
-		screenBlocks:    doomScreenBlocksDefault,
+		viewW:            1280,
+		viewH:            720,
+		screenBlocks:     doomScreenBlocksDefault,
 		hudLogicalLayout: true,
-		hudScaleStep:    0,
+		hudScaleStep:     0,
 	}
 	base := g.walkWeaponViewportRect()
 	g.hudScaleStep = len(sourcePortHUDScaleSteps) - 1

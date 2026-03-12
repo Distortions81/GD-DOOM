@@ -79,6 +79,7 @@ var (
 	useTargetColor       = color.RGBA{R: 255, G: 210, B: 70, A: 255}
 	wallShadeLUTOnce     sync.Once
 	wallShadeLUT         [257][256]uint8
+	wallShadePackedBanks [doomGammaLevels][257][256]uint32
 	wallShadePackedLUT   [257][256]uint32
 	wallShadePackedOK    bool
 	paletteIndexByPacked map[uint32]uint8
@@ -90,8 +91,10 @@ var (
 	doomColormapEnabled  bool
 	doomColormapRows     int
 	doomRowShadeMulLUT   []uint16
+	doomColormapBanks    [doomGammaLevels][]uint32
 	doomColormapRGBA     []uint32
 	doomPalIndexLUT32    []uint8
+	activeGammaLevel     int
 	mapLinePalette       = linepolicy.Palette{
 		OneSided:     wallOneSided,
 		Secret:       wallSecret,
@@ -127,7 +130,7 @@ var detailPresets = [][2]int{
 }
 
 var sourcePortDetailDivisors = []int{1, 2, 3, 4}
-var sourcePortHUDScaleSteps = []float64{1.0, 2.0, 3.0, 4.0}
+var sourcePortHUDScaleSteps = []float64{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}
 
 type projectedProjectileItem struct {
 	dist       float64
@@ -942,6 +945,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.InitialGammaLevel >= 0 {
 		g.gammaLevel = clampGamma(opts.InitialGammaLevel)
 	}
+	g.setGammaLevel(g.gammaLevel)
 	g.initPlayerState()
 	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
@@ -2021,14 +2025,7 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Quickload not wired yet", 70)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
-			if !g.opts.KageShader {
-				g.setHUDMessage("Gamma unavailable (-kage-shader off)", 70)
-			} else if len(g.opts.DoomPaletteRGBA) != 256*4 {
-				g.setHUDMessage("Gamma unavailable", 70)
-			} else {
-				g.gammaLevel = (g.gammaLevel + 1) % len(gammaTargets)
-				g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
-			}
+			g.cycleGammaLevel()
 		}
 	}
 	if g.opts.SourcePortMode {
@@ -2061,33 +2058,14 @@ func (g *game) updateParityControls() {
 			g.opts.SourcePortThingRenderMode = cycleSourcePortThingRenderMode(g.opts.SourcePortThingRenderMode)
 			g.setHUDMessage(fmt.Sprintf("Thing Render: %s", sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode)), 70)
 		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
+			g.cycleGammaLevel()
+		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
-			if !g.opts.KageShader {
-				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
-				return
-			}
-			if len(g.opts.DoomPaletteRGBA) != 256*4 {
-				g.setHUDMessage("Palette LUT unavailable", 70)
-				return
-			}
-			g.paletteLUTEnabled = !g.paletteLUTEnabled
-			if g.paletteLUTEnabled {
-				g.setHUDMessage("Palette LUT ON", 70)
-			} else {
-				g.setHUDMessage("Palette LUT OFF", 70)
-			}
+			g.setHUDMessage("Palette shader removed", 70)
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
-			if !g.opts.KageShader {
-				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
-				return
-			}
-			if len(g.opts.DoomPaletteRGBA) != 256*4 {
-				g.setHUDMessage("Gamma unavailable", 70)
-				return
-			}
-			g.gammaLevel = (g.gammaLevel + 1) % len(gammaTargets)
-			g.setHUDMessage(fmt.Sprintf("Gamma %d [%.1f]", g.gammaLevel, gammaTargetForLevel(g.gammaLevel)), 70)
+			g.cycleGammaLevel()
 		}
 		if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
 			if !g.opts.KageShader {
@@ -2102,6 +2080,27 @@ func (g *game) updateParityControls() {
 			}
 		}
 	}
+}
+
+func (g *game) setGammaLevel(level int) {
+	level = clampGamma(level)
+	activeGammaLevel = level
+	applyActiveGammaLUTs()
+	if g != nil {
+		g.gammaLevel = level
+	}
+}
+
+func (g *game) cycleGammaLevel() {
+	if g == nil {
+		return
+	}
+	next := g.gammaLevel + 1
+	if next >= doomGammaLevels {
+		next = 0
+	}
+	g.setGammaLevel(next)
+	g.setHUDMessage(gammaMessage(g.gammaLevel), 70)
 }
 
 func (g *game) updateZoom() {
@@ -2153,6 +2152,9 @@ func defaultHUDScaleStep(opts Options) int {
 		return 0
 	}
 	targetScale := 2.0
+	if opts.SourcePortMode {
+		targetScale = 4.0
+	}
 	if !opts.SourcePortMode && defaultScreenBlocks(opts) == doomScreenBlocksOverlay {
 		targetScale = 1.0
 	}
@@ -3705,7 +3707,11 @@ func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, dep
 	if doomLightingEnabled {
 		doomRow = doomWallLightRow(sectorLight, lightBias, depth, focal)
 		if !doomColormapEnabled {
-			shadeMul = doomShadeMulFromRowF(doomWallLightRowF(sectorLight, lightBias, depth, focal))
+			if g != nil && !g.opts.SourcePortMode {
+				shadeMul = doomShadeMulFromRow(doomRow)
+			} else {
+				shadeMul = doomShadeMulFromRowF(doomWallLightRowF(sectorLight, lightBias, depth, focal))
+			}
 		}
 	}
 	if useTex {
@@ -5372,7 +5378,11 @@ func (g *game) drawMaskedMidSeg(ms maskedMidSeg, focal float64) {
 		if doomLightingEnabled {
 			doomRow = doomWallLightRow(ms.light, ms.lightBias, f, focal)
 			if !doomColormapEnabled {
-				shadeMul = doomShadeMulFromRowF(doomWallLightRowF(ms.light, ms.lightBias, f, focal))
+				if g != nil && !g.opts.SourcePortMode {
+					shadeMul = doomShadeMulFromRow(doomRow)
+				} else {
+					shadeMul = doomShadeMulFromRowF(doomWallLightRowF(ms.light, ms.lightBias, f, focal))
+				}
 			}
 		}
 		g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
@@ -5509,28 +5519,40 @@ func initWallShadePackedLUT(paletteRGBA []byte) {
 	wallShadePackedOK = false
 	paletteIndexByPacked = nil
 	if len(paletteRGBA) < 256*4 {
+		clear(wallShadePackedBanks[:])
 		clear(wallShadePackedLUT[:])
 		return
 	}
 	paletteIndexByPacked = make(map[uint32]uint8, 256)
-	for mul := 0; mul <= 256; mul++ {
-		row := &wallShadePackedLUT[mul]
-		for idx := 0; idx < 256; idx++ {
-			pi := idx * 4
-			r := uint32(paletteRGBA[pi+0])
-			g := uint32(paletteRGBA[pi+1])
-			b := uint32(paletteRGBA[pi+2])
-			if mul < 256 {
-				r = (r * uint32(mul)) >> 8
-				g = (g * uint32(mul)) >> 8
-				b = (b * uint32(mul)) >> 8
-			}
-			row[idx] = pixelOpaqueA | (r << pixelRShift) | (g << pixelGShift) | (b << pixelBShift)
-			if mul == 256 {
-				paletteIndexByPacked[row[idx]] = uint8(idx)
+	for idx := 0; idx < 256; idx++ {
+		pi := idx * 4
+		base := pixelOpaqueA |
+			(uint32(paletteRGBA[pi+0]) << pixelRShift) |
+			(uint32(paletteRGBA[pi+1]) << pixelGShift) |
+			(uint32(paletteRGBA[pi+2]) << pixelBShift)
+		paletteIndexByPacked[base] = uint8(idx)
+	}
+	for gamma := 0; gamma < doomGammaLevels; gamma++ {
+		for mul := 0; mul <= 256; mul++ {
+			row := &wallShadePackedBanks[gamma][mul]
+			for idx := 0; idx < 256; idx++ {
+				pi := idx * 4
+				r := uint32(paletteRGBA[pi+0])
+				g := uint32(paletteRGBA[pi+1])
+				b := uint32(paletteRGBA[pi+2])
+				if mul < 256 {
+					r = (r * uint32(mul)) >> 8
+					g = (g * uint32(mul)) >> 8
+					b = (b * uint32(mul)) >> 8
+				}
+				r = uint32(doomGammaTables[gamma][uint8(r)])
+				g = uint32(doomGammaTables[gamma][uint8(g)])
+				b = uint32(doomGammaTables[gamma][uint8(b)])
+				row[idx] = pixelOpaqueA | (r << pixelRShift) | (g << pixelGShift) | (b << pixelBShift)
 			}
 		}
 	}
+	applyActiveGammaLUTs()
 	wallShadePackedOK = true
 }
 
@@ -5547,6 +5569,7 @@ func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int, enableColor
 	doomColormapEnabled = false
 	doomColormapRows = 0
 	doomRowShadeMulLUT = nil
+	clear(doomColormapBanks[:])
 	doomColormapRGBA = nil
 	doomPalIndexLUT32 = nil
 	if len(colorMap) < 256 || rows <= 0 {
@@ -5565,19 +5588,26 @@ func initDoomColormapShading(paletteRGBA, colorMap []byte, rows int, enableColor
 	if !enableColormapRemap || len(paletteRGBA) < 256*4 {
 		return
 	}
-	doomColormapRGBA = make([]uint32, rows*256)
-	for r := 0; r < rows; r++ {
-		rowBase := r * 256
-		for i := 0; i < 256; i++ {
-			pi := int(colorMap[rowBase+i]) * 4
-			if pi+3 >= len(paletteRGBA) {
-				doomColormapRGBA[rowBase+i] = packRGBA(0, 0, 0)
-				continue
+	for gamma := 0; gamma < doomGammaLevels; gamma++ {
+		doomColormapBanks[gamma] = make([]uint32, rows*256)
+		for r := 0; r < rows; r++ {
+			rowBase := r * 256
+			for i := 0; i < 256; i++ {
+				pi := int(colorMap[rowBase+i]) * 4
+				if pi+3 >= len(paletteRGBA) {
+					doomColormapBanks[gamma][rowBase+i] = packRGBA(0, 0, 0)
+					continue
+				}
+				doomColormapBanks[gamma][rowBase+i] = packRGBA(
+					doomGammaTables[gamma][paletteRGBA[pi+0]],
+					doomGammaTables[gamma][paletteRGBA[pi+1]],
+					doomGammaTables[gamma][paletteRGBA[pi+2]],
+				)
 			}
-			doomColormapRGBA[rowBase+i] = packRGBA(paletteRGBA[pi], paletteRGBA[pi+1], paletteRGBA[pi+2])
 		}
 	}
 	doomPalIndexLUT32 = buildPaletteIndexLUT32(paletteRGBA)
+	applyActiveGammaLUTs()
 	doomColormapEnabled = len(doomPalIndexLUT32) == 32*32*32
 }
 
@@ -5588,8 +5618,16 @@ func disableDoomLighting() {
 	doomColormapEnabled = false
 	doomColormapRows = 0
 	doomRowShadeMulLUT = nil
+	clear(doomColormapBanks[:])
 	doomColormapRGBA = nil
 	doomPalIndexLUT32 = nil
+}
+
+func applyActiveGammaLUTs() {
+	level := clampGamma(activeGammaLevel)
+	activeGammaLevel = level
+	wallShadePackedLUT = wallShadePackedBanks[level]
+	doomColormapRGBA = doomColormapBanks[level]
 }
 
 func buildDoomRowShadeMulLUT(paletteRGBA, colorMap []byte, rows int) []uint16 {

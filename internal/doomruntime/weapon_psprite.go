@@ -486,10 +486,14 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 	}
 	scale := float64(rect.Dx()) / doomLogicalW
 	bx, by := g.weaponBob()
-	const weaponBottomCheat = -8.0
-	const weaponBobBottomReserve = 4.0
 	x := (1.0 + bx) * scale
-	y := float64(rect.Dy()) - (doomLogicalH-(baseY+by)+weaponBottomCheat+weaponBobBottomReserve)*scale
+	y := float64(rect.Dy()) - (doomLogicalH-(baseY+by))*scale
+	if !g.opts.SourcePortMode {
+		// Vanilla Doom psprites are positioned from the render center, not
+		// the bottom edge of the weapon viewport.
+		const doomBaseYCenter = 100.5
+		y = float64(rect.Dy())/2 - (doomBaseYCenter-(baseY+by))*scale
+	}
 	_ = g.drawSpritePatch(target, name, x, y, scale, scale)
 	if flash := g.weaponFlashSpriteName(); flash != "" {
 		_ = g.drawSpritePatch(target, flash, x, y, scale, scale)

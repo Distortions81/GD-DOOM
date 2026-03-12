@@ -49,9 +49,9 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-invuln`: start with invulnerability (`IDDQD`-like)
 - `-sourceport-mode`: enable source-port style automap extras at startup
 - `-sourceport-sector-lighting`: in sourceport mode, apply classic sector-based light contribution (default `false`)
-- `-kage-shader`: enable postprocess shader chain (LUT/gamma/CRT)
+- `-kage-shader`: enable Kage postprocess shaders (currently CRT only)
 - `-gpu-sky`: enable experimental GPU sky path in sourceport mode (default `false`; CPU sky is default)
-- `-crt-effect`: enable CRT pass (applied last in shader chain)
+- `-crt-effect`: enable CRT pass
 - `-depth-buffer-view`: show grayscale depth view instead of 3D scene
 - `-texture-anim-crossfade-frames`: sourceport animation blend frames (`0` disables, max effective `7` at Doom's 8-tic cadence)
 - `-all-cheats`: legacy alias for full cheats (`-cheat-level=3 -invuln=true`)
@@ -117,7 +117,7 @@ Level progression:
 - `F8`: toggle HUD messages
 - `F9`: quickload (WIP)
 - `F10`: quit
-- `F11`: gamma (faithful mode; requires `-kage-shader`)
+- `F11`: cycle Doom-style gamma correction
 - `Esc`: quit
 
 Cheat controls are currently startup-config driven (`-cheat-level`, `-invuln`, `-all-cheats`).
@@ -151,7 +151,7 @@ Config notes:
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).
 - 3D lighting now uses Doom `COLORMAP` behavior with fullbright sprite support.
 - Two-sided masked mid textures render in a deferred masked pass (portal/grate style walls).
-- Kage postprocess is opt-in (`-kage-shader`); default faithful startup path runs without post shaders.
+- Kage postprocess is opt-in (`-kage-shader`); the remaining postprocess path is CRT only.
 - Sourceport GPU sky is currently experimental and opt-in (`-gpu-sky`); default path uses CPU sky rendering.
 
 ## Project Docs

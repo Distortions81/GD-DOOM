@@ -24,6 +24,7 @@ import (
 	"gddoom/internal/media"
 	"gddoom/internal/music"
 	"gddoom/internal/render/doomtex"
+	"gddoom/internal/runtimecfg"
 	"gddoom/internal/sound"
 	"gddoom/internal/wad"
 
@@ -74,9 +75,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMouseLook := true
 	defaultMouseLookSpeed := 0.5
 	defaultKeyboardTurnSpeed := 1.0
-	defaultMusicVolume := 0.5
+	defaultMusicVolume := 1.0
 	defaultMUSPanMax := 0.8
-	defaultOPLVolume := 1.25
+	defaultOPLVolume := 2.25
 	defaultSFXVolume := 0.5
 	defaultFastMonsters := false
 	defaultAlwaysRun := true
@@ -90,8 +91,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
-	defaultGPUSky := false
-	defaultSkyUpscaleMode := "nearest"
+	defaultGPUSky := true
+	defaultSkyUpscaleMode := "sharp"
 	defaultCRTEffect := false
 	defaultWallOcclusion := false
 	defaultWallSpanReject := true
@@ -882,6 +883,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return data, nil
 		}
+		opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 			return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
 		}
@@ -1119,6 +1121,137 @@ func mapMusicLumpName(name mapdata.MapName) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD, func(string, string) ([]byte, error)) {
+	currentWADPath = strings.TrimSpace(resolveIWADAliasPath(currentWADPath))
+	if currentWADPath == "" {
+		return nil, nil
+	}
+	seen := make(map[string]struct{}, 8)
+	choices := make([]iwadChoice, 0, 8)
+	appendChoice := func(path, label string) {
+		path = strings.TrimSpace(resolveIWADAliasPath(path))
+		if path == "" {
+			return
+		}
+		if _, ok := seen[path]; ok {
+			return
+		}
+		seen[path] = struct{}{}
+		choices = append(choices, iwadChoice{Path: path, Label: label})
+	}
+	appendChoice(currentWADPath, strings.TrimSpace(filepath.Base(currentWADPath)))
+	for _, choice := range detectAvailableIWADChoices(filepath.Dir(currentWADPath)) {
+		appendChoice(choice.Path, choice.Label)
+	}
+	catalog := make([]runtimecfg.MusicPlayerWAD, 0, len(choices))
+	for _, choice := range choices {
+		wf, err := wad.Open(choice.Path)
+		if err != nil {
+			continue
+		}
+		episodes := musicPlayerEpisodesForWAD(wf)
+		if len(episodes) == 0 {
+			continue
+		}
+		label := strings.TrimSpace(choice.Label)
+		if label == "" {
+			label = filepath.Base(choice.Path)
+		}
+		catalog = append(catalog, runtimecfg.MusicPlayerWAD{
+			Key:      choice.Path,
+			Label:    label,
+			Episodes: episodes,
+		})
+	}
+	if len(catalog) == 0 {
+		return nil, nil
+	}
+	loader := func(wadKey string, mapName string) ([]byte, error) {
+		wadKey = strings.TrimSpace(wadKey)
+		if wadKey == "" {
+			return nil, nil
+		}
+		lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
+		if !ok {
+			return nil, nil
+		}
+		wf, err := wad.Open(wadKey)
+		if err != nil {
+			return nil, err
+		}
+		l, ok := wf.LumpByName(lump)
+		if !ok {
+			return nil, nil
+		}
+		data, err := wf.LumpData(l)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := music.ParseMUS(data); err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+	return catalog, loader
+}
+
+func musicPlayerEpisodesForWAD(wf *wad.File) []runtimecfg.MusicPlayerEpisode {
+	if wf == nil {
+		return nil
+	}
+	names := mapdata.AvailableMapNames(wf)
+	if len(names) == 0 {
+		return nil
+	}
+	type group struct {
+		label  string
+		tracks []runtimecfg.MusicPlayerTrack
+	}
+	order := make([]string, 0, 8)
+	groups := make(map[string]*group, 8)
+	groupFor := func(label string) *group {
+		if g, ok := groups[label]; ok {
+			return g
+		}
+		g := &group{label: label}
+		groups[label] = g
+		order = append(order, label)
+		return g
+	}
+	for _, name := range names {
+		lump, ok := mapMusicLumpName(name)
+		if !ok {
+			continue
+		}
+		if _, ok := wf.LumpByName(lump); !ok {
+			continue
+		}
+		mapLabel := strings.ToUpper(strings.TrimSpace(string(name)))
+		episodeLabel := "MAPS"
+		if len(mapLabel) == 4 && mapLabel[0] == 'E' && mapLabel[2] == 'M' && mapLabel[1] >= '1' && mapLabel[1] <= '9' {
+			episodeLabel = fmt.Sprintf("EPISODE %c", mapLabel[1])
+		}
+		g := groupFor(episodeLabel)
+		g.tracks = append(g.tracks, runtimecfg.MusicPlayerTrack{
+			MapName:  name,
+			Label:    mapLabel,
+			LumpName: lump,
+		})
+	}
+	episodes := make([]runtimecfg.MusicPlayerEpisode, 0, len(order))
+	for _, label := range order {
+		g := groups[label]
+		if g == nil || len(g.tracks) == 0 {
+			continue
+		}
+		episodes = append(episodes, runtimecfg.MusicPlayerEpisode{
+			Label:  g.label,
+			Tracks: g.tracks,
+		})
+	}
+	return episodes
 }
 
 func resolveIWADAliasPath(path string) string {
@@ -1480,6 +1613,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		}
 		return data, nil
 	}
+	opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 	opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 		return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
 	}
