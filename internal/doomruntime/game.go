@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -2879,6 +2880,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	}
 	g.drawMaskedMidSegs(focal)
 	g.buildMaskedMidClipColumns(focal)
+	g.finalizeMaskedClipColumns()
 	g.billboardQueueCollect = true
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
 	g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
@@ -3271,7 +3273,10 @@ func (g *game) spriteWallClipOccludedAtXYDepth(x, y int, depthQ uint16) bool {
 	if x >= 0 && x < len(g.maskedClipCols) {
 		masked = g.maskedClipCols[x]
 	}
-	return scene.SpriteColumnOccludesPoint(g.wallDepthColumnAt(x), masked, y, depthQ)
+	if scene.WallDepthColumnOccludesPoint(g.wallDepthColumnAt(x), y, depthQ) {
+		return true
+	}
+	return maskedClipColumnOccludesPointSorted(masked, y, depthQ)
 }
 
 func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bool {
@@ -4692,6 +4697,27 @@ func (g *game) drawMaskedMidSegs(focal float64) {
 			}
 			g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
 		}
+	}
+}
+
+func (g *game) finalizeMaskedClipColumns() {
+	if g == nil {
+		return
+	}
+	for x := range g.maskedClipCols {
+		spans := g.maskedClipCols[x]
+		if len(spans) < 2 {
+			continue
+		}
+		slices.SortFunc(spans, func(a, b scene.MaskedClipSpan) int {
+			if a.DepthQ < b.DepthQ {
+				return -1
+			}
+			if a.DepthQ > b.DepthQ {
+				return 1
+			}
+			return 0
+		})
 	}
 }
 
@@ -14669,6 +14695,27 @@ func appendClippedSolidSpan(out []solidSpan, l, r, minX, maxX int) []solidSpan {
 	return append(out, solidSpan{L: l, R: r})
 }
 
+func maskedClipColumnOccludesPointSorted(spans []scene.MaskedClipSpan, y int, depthQ uint16) bool {
+	for _, sp := range spans {
+		if depthQ <= sp.DepthQ {
+			break
+		}
+		if sp.Closed {
+			return true
+		}
+		if sp.HasOpen {
+			if y < int(sp.OpenY0) || y > int(sp.OpenY1) {
+				return true
+			}
+			continue
+		}
+		if y >= int(sp.Y0) && y <= int(sp.Y1) {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpans, out []solidSpan) []solidSpan {
 	out = out[:0]
 	if x1 < x0 || g == nil || y < 0 || y >= g.viewH {
@@ -14683,17 +14730,65 @@ func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpa
 		}
 		return out
 	}
-	scene.AppendVisibleRowSpans(x0, x1, len(clipSpans), func(i int) (int, int) {
-		return clipSpans[i].L, clipSpans[i].R
-	}, func(x int) bool {
-		var masked []scene.MaskedClipSpan
-		if x >= 0 && x < len(g.maskedClipCols) {
-			masked = g.maskedClipCols[x]
+
+	appendVisible := func(l, r int) {
+		if l > r {
+			return
 		}
-		return scene.SpriteColumnOccludesPoint(g.wallDepthColumnAt(x), masked, y, depthQ)
-	}, func(l, r int) {
-		out = append(out, solidSpan{L: l, R: r})
-	})
+		runStart := -1
+		for x := l; x <= r; x++ {
+			occluded := false
+			if x >= 0 && x < len(g.wallDepthQCol) && depthQ > g.wallDepthQCol[x] {
+				if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
+					occluded = true
+				} else {
+					top := g.viewH
+					bottom := -1
+					if x < len(g.wallDepthTopCol) {
+						top = g.wallDepthTopCol[x]
+					}
+					if x < len(g.wallDepthBottomCol) {
+						bottom = g.wallDepthBottomCol[x]
+					}
+					if top <= bottom && y >= top && y <= bottom {
+						occluded = true
+					}
+				}
+			}
+			if !occluded && x >= 0 && x < len(g.maskedClipCols) {
+				occluded = maskedClipColumnOccludesPointSorted(g.maskedClipCols[x], y, depthQ)
+			}
+			if occluded {
+				if runStart >= 0 {
+					out = append(out, solidSpan{L: runStart, R: x - 1})
+					runStart = -1
+				}
+				continue
+			}
+			if runStart < 0 {
+				runStart = x
+			}
+		}
+		if runStart >= 0 {
+			out = append(out, solidSpan{L: runStart, R: r})
+		}
+	}
+
+	if len(clipSpans) == 0 {
+		appendVisible(x0, x1)
+		return out
+	}
+	for _, sp := range clipSpans {
+		l := sp.L
+		r := sp.R
+		if l < x0 {
+			l = x0
+		}
+		if r > x1 {
+			r = x1
+		}
+		appendVisible(l, r)
+	}
 	return out
 }
 

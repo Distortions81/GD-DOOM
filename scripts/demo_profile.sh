@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_PATH="${ROOT_DIR}/.tmp/gddoom-profile"
 WAD_PATH="${ROOT_DIR}/doom.wad"
-DEMO_PATH="${ROOT_DIR}/newdemo.demo"
+DEMO_PATH="${ROOT_DIR}/imp.demo"
 MAP_NAME="E1M4"
 OUT_DIR="${ROOT_DIR}/profiles"
 
@@ -16,9 +16,9 @@ Usage:
   scripts/demo_profile.sh [options] [-- <extra gddoom flags>]
 
 Options:
-  --wad <path>       IWAD path (default: ./DOOM1.WAD)
-  --demo <path>      Demo script path (default: ./e1m1.demo)
-  --map <name>       Map name (default: E1M1)
+  --wad <path>       IWAD path (default: ./doom.wad)
+  --demo <path>      Doom .lmp demo path (default: ./imp.demo)
+  --map <name>       Map name (default: E1M4)
   --out <dir>        Output directory for profiles/logs (default: ./profiles)
   --bin <path>       Override built binary path (default: ./.tmp/gddoom-profile)
   -h, --help         Show this help
@@ -84,26 +84,26 @@ fi
 echo "Building profiler binary: ${BIN_PATH}"
 (
   cd "${ROOT_DIR}"
-  go build -o "${BIN_PATH}" ./cmd/gddoom
+  go build -o "${BIN_PATH}" .
 )
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
-CPU_PROFILE="${OUT_DIR}/demo-${MAP_NAME}-${STAMP}.cpu.prof"
-RUN_LOG="${OUT_DIR}/demo-${MAP_NAME}-${STAMP}.log"
+RUN_LABEL="${MAP_NAME}"
+CPU_PROFILE="${OUT_DIR}/demo-${RUN_LABEL}-${STAMP}.cpu.prof"
+RUN_LOG="${OUT_DIR}/demo-${RUN_LABEL}-${STAMP}.log"
 
 CMD=(
   "${BIN_PATH}"
   -wad "${WAD_PATH}"
-  -map "${MAP_NAME}"
-  -demo "${DEMO_PATH}"
+  -skill 5
+  -invuln
+  -sourceport-mode
+  -no-vsync
   -width 3840
   -height 2160
+  -map "${MAP_NAME}"
+  -demo "${DEMO_PATH}"
   -cpuprofile "${CPU_PROFILE}"
-  -skill 5
-  -sourceport-mode
-  -cheat-level 2
-  -no-vsync
-  -invuln
 )
 if [[ ${#EXTRA_FLAGS[@]} -gt 0 ]]; then
   CMD+=("${EXTRA_FLAGS[@]}")
