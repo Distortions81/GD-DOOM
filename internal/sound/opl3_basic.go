@@ -14,7 +14,7 @@ const (
 	oplAttenTableSize = 2048
 
 	oplChannelMixGain                      = 0.125
-	oplCarrierModDepth                     = 96.0
+	oplPhaseModScale                       = 2032.0
 	oplFeedbackPhaseScaleRatio             = 4.0
 	oplEnvOff                  oplEnvStage = iota
 	oplEnvAttack
@@ -97,7 +97,7 @@ type basicChannelState struct {
 	panL     float64
 	panR     float64
 	feedback uint8
-	fbPrev   [2]float64
+	fbPrev   [2]int
 	ops      [opl3OperatorCount]basicOperatorState
 }
 
@@ -321,18 +321,19 @@ func (o *BasicOPL3) renderChannel(ch int) (float64, float64) {
 	modPhase := o.advanceOperatorPhase(c, mod)
 	modFB := 0.0
 	if c.feedback != 0 {
-		modFB = (c.fbPrev[0] + c.fbPrev[1]) * oplFeedbackPhaseScale[c.feedback]
+		modFB = float64(oplFeedbackPhaseOffset(c.fbPrev[0], c.fbPrev[1], c.feedback))
 	}
 	modSample := o.sampleOperator(mod, modPhase, modFB)
+	modPhaseOut := phaseModFromSample(modSample)
 	mod.out = modSample
 	c.fbPrev[1] = c.fbPrev[0]
-	c.fbPrev[0] = modSample
+	c.fbPrev[0] = modPhaseOut
 
 	o.advanceEnvelope(c, car)
 	carPhase := o.advanceOperatorPhase(c, car)
 	carMod := 0.0
 	if !c.additive {
-		carMod = modSample * oplCarrierModDepth
+		carMod = float64(modPhaseOut)
 	}
 	carSample := o.sampleOperator(car, carPhase, carMod)
 
@@ -505,14 +506,14 @@ func (o *BasicOPL3) keyOnChannel(ch int) {
 	if ch < 0 || ch >= len(o.ch) {
 		return
 	}
-	o.ch[ch].fbPrev = [2]float64{}
+	o.ch[ch].fbPrev = [2]int{}
 }
 
 func (o *BasicOPL3) keyOffChannel(ch int) {
 	if ch < 0 || ch >= len(o.ch) {
 		return
 	}
-	o.ch[ch].fbPrev = [2]float64{}
+	o.ch[ch].fbPrev = [2]int{}
 	for op := range o.ch[ch].ops {
 		o.ch[ch].ops[op].stage = oplEnvRelease
 	}
@@ -763,4 +764,19 @@ func clampSample(v float64) float64 {
 		return 1
 	}
 	return v
+}
+
+func phaseModFromSample(sample float64) int {
+	return int(math.Round(sample * oplPhaseModScale))
+}
+
+func oplFeedbackPhaseOffset(prev0, prev1 int, feedback uint8) int {
+	if feedback == 0 {
+		return 0
+	}
+	shift := 9 - int(feedback)
+	if shift <= 0 {
+		return prev0 + prev1
+	}
+	return (prev0 + prev1) / (1 << shift)
 }

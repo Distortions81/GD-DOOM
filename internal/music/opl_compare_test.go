@@ -93,13 +93,17 @@ type fftTimbreMetrics struct {
 	spectralCorr       float64
 	centroidDeltaHz    float64
 	highBandRatioDelta float64
+	presenceRatioDelta float64
+	aWeightedDeltaDB   float64
 }
 
 type oplLevelMetrics struct {
-	rmsRatio  float64
-	peakRatio float64
-	rmsDelta  float64
-	peakDelta float64
+	sustainRMSRatio float64
+	peakRatio       float64
+	sustainDelta    float64
+	peakDelta       float64
+	popRatioDelta   float64
+	onsetStepDelta  float64
 }
 
 type notePhrase struct {
@@ -342,14 +346,14 @@ func TestBasicOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 		nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 		metrics := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
 		scored = append(scored, fftScoredPhrase{name: phrase.name, metrics: metrics})
-		t.Logf("%s fft logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f",
-			phrase.name, metrics.logMagErr, metrics.spectralCorr, metrics.centroidDeltaHz, metrics.highBandRatioDelta)
+		t.Logf("%s fft logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
+			phrase.name, metrics.logMagErr, metrics.spectralCorr, metrics.centroidDeltaHz, metrics.highBandRatioDelta, metrics.presenceRatioDelta, metrics.aWeightedDeltaDB)
 	}
 
 	worst := worstFFTPhrase(scored)
 	if worst.name != "" {
-		t.Logf("worst fft phrase=%s logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f",
-			worst.name, worst.metrics.logMagErr, worst.metrics.spectralCorr, worst.metrics.centroidDeltaHz, worst.metrics.highBandRatioDelta)
+		t.Logf("worst fft phrase=%s logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
+			worst.name, worst.metrics.logMagErr, worst.metrics.spectralCorr, worst.metrics.centroidDeltaHz, worst.metrics.highBandRatioDelta, worst.metrics.presenceRatioDelta, worst.metrics.aWeightedDeltaDB)
 	}
 
 	for _, phrase := range scored {
@@ -365,6 +369,12 @@ func TestBasicOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 			}
 			if phrase.metrics.highBandRatioDelta > 0.12 {
 				t.Fatalf("fft high-band ratio delta=%.3f want <= 0.12", phrase.metrics.highBandRatioDelta)
+			}
+			if phrase.metrics.presenceRatioDelta > 0.14 {
+				t.Fatalf("fft presence ratio delta=%.3f want <= 0.14", phrase.metrics.presenceRatioDelta)
+			}
+			if phrase.metrics.aWeightedDeltaDB > 2.0 {
+				t.Fatalf("fft A-weighted delta=%.2fdB want <= 2.0dB", phrase.metrics.aWeightedDeltaDB)
 			}
 		})
 	}
@@ -416,13 +426,101 @@ func TestBasicOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
 					basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
 					nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
 					metrics := computeOPLLevelMetrics(basicPCM, nukedPCM)
-					t.Logf("%s rmsRatio=%.3f peakRatio=%.3f rmsDelta=%.1f peakDelta=%.1f",
-						phrase.name, metrics.rmsRatio, metrics.peakRatio, metrics.rmsDelta, metrics.peakDelta)
-					if math.Abs(metrics.rmsRatio-1.0) > 0.18 {
-						t.Fatalf("rmsRatio=%.3f want within 0.18 of 1.0", metrics.rmsRatio)
+					t.Logf("%s sustainRMSRatio=%.3f peakRatio=%.3f sustainDelta=%.1f peakDelta=%.1f popRatioDelta=%.2f onsetStepDelta=%.4f",
+						phrase.name, metrics.sustainRMSRatio, metrics.peakRatio, metrics.sustainDelta, metrics.peakDelta, metrics.popRatioDelta, metrics.onsetStepDelta)
+					if math.Abs(metrics.sustainRMSRatio-1.0) > 0.18 {
+						t.Fatalf("sustainRMSRatio=%.3f want within 0.18 of 1.0", metrics.sustainRMSRatio)
 					}
 					if math.Abs(metrics.peakRatio-1.0) > 0.18 {
 						t.Fatalf("peakRatio=%.3f want within 0.18 of 1.0", metrics.peakRatio)
+					}
+					if metrics.popRatioDelta > 0.75 {
+						t.Fatalf("popRatioDelta=%.2f want <= 0.75", metrics.popRatioDelta)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestBasicOPL3MatchesNukedOnReferenceNoteSpectra(t *testing.T) {
+	requireOPLTuningSuite(t)
+	wadPath := findDOOM1WADForMusicTests(t)
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+
+	var bank PatchBank
+	if lump, ok := wf.LumpByName("GENMIDI"); ok {
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			t.Fatalf("read GENMIDI: %v", err)
+		}
+		bank, err = ParseGENMIDIOP2PatchBank(data)
+		if err != nil {
+			t.Fatalf("parse GENMIDI: %v", err)
+		}
+	}
+
+	for _, song := range []string{"D_E1M1", "D_E1M4", "D_E1M8"} {
+		song := song
+		t.Run(song, func(t *testing.T) {
+			lump, ok := wf.LumpByName(song)
+			if !ok {
+				t.Fatalf("missing %s lump", song)
+			}
+			data, err := wf.LumpData(lump)
+			if err != nil {
+				t.Fatalf("read %s: %v", song, err)
+			}
+			events, err := ParseMUS(data)
+			if err != nil {
+				t.Fatalf("parse %s: %v", song, err)
+			}
+
+			phrases := extractNotePhrases(events, 6, 48, 18)
+			if len(phrases) == 0 {
+				t.Fatalf("no note phrases extracted from %s", song)
+			}
+
+			var scored []fftScoredPhrase
+			for _, phrase := range phrases {
+				trace := captureTraceForEvents(t, bank, phrase.events)
+				basicPCM := renderTraceWithBackend(t, trace, sound.NewBasicOPL3(OutputSampleRate))
+				nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
+				metrics := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
+				scored = append(scored, fftScoredPhrase{name: phrase.name, metrics: metrics})
+				t.Logf("%s fft logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
+					phrase.name, metrics.logMagErr, metrics.spectralCorr, metrics.centroidDeltaHz, metrics.highBandRatioDelta, metrics.presenceRatioDelta, metrics.aWeightedDeltaDB)
+			}
+
+			worst := worstFFTPhrase(scored)
+			if worst.name != "" {
+				t.Logf("worst fft phrase=%s logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
+					worst.name, worst.metrics.logMagErr, worst.metrics.spectralCorr, worst.metrics.centroidDeltaHz, worst.metrics.highBandRatioDelta, worst.metrics.presenceRatioDelta, worst.metrics.aWeightedDeltaDB)
+			}
+
+			for _, phrase := range scored {
+				phrase := phrase
+				t.Run(phrase.name, func(t *testing.T) {
+					if phrase.metrics.logMagErr > 0.28 {
+						t.Fatalf("fft log magnitude error=%.3f want <= 0.28", phrase.metrics.logMagErr)
+					}
+					if phrase.metrics.spectralCorr < 0.80 {
+						t.Fatalf("fft spectral correlation=%.3f want >= 0.80", phrase.metrics.spectralCorr)
+					}
+					if phrase.metrics.centroidDeltaHz > 900 {
+						t.Fatalf("fft centroid delta=%.1fHz want <= 900Hz", phrase.metrics.centroidDeltaHz)
+					}
+					if phrase.metrics.highBandRatioDelta > 0.18 {
+						t.Fatalf("fft high-band ratio delta=%.3f want <= 0.18", phrase.metrics.highBandRatioDelta)
+					}
+					if phrase.metrics.presenceRatioDelta > 0.18 {
+						t.Fatalf("fft presence ratio delta=%.3f want <= 0.18", phrase.metrics.presenceRatioDelta)
+					}
+					if phrase.metrics.aWeightedDeltaDB > 2.5 {
+						t.Fatalf("fft A-weighted delta=%.2fdB want <= 2.5dB", phrase.metrics.aWeightedDeltaDB)
 					}
 				})
 			}
@@ -441,15 +539,28 @@ func captureTraceForEvents(t *testing.T, bank PatchBank, events []Event) []oplTr
 }
 
 func computeOPLLevelMetrics(a []int16, b []int16) oplLevelMetrics {
-	rmsA := rmsPCM(a)
-	rmsB := rmsPCM(b)
+	monoA := monoFromStereoPCM(a)
+	monoB := monoFromStereoPCM(b)
+	sustainA := sustainWindow(monoA)
+	sustainB := sustainWindow(monoB)
+	onsetA := onsetWindow(monoA, 96)
+	onsetB := onsetWindow(monoB, 96)
+
+	rmsA := rmsFloat(sustainA)
+	rmsB := rmsFloat(sustainB)
 	peakA := peakPCM(a)
 	peakB := peakPCM(b)
+	popA := safeRatio(maxAbsFloat(onsetA), rmsFloat(sustainA))
+	popB := safeRatio(maxAbsFloat(onsetB), rmsFloat(sustainB))
+	stepA := maxDelta(onsetA)
+	stepB := maxDelta(onsetB)
 	return oplLevelMetrics{
-		rmsRatio:  safeRatio(rmsA, rmsB),
-		peakRatio: safeRatio(peakA, peakB),
-		rmsDelta:  rmsA - rmsB,
-		peakDelta: peakA - peakB,
+		sustainRMSRatio: safeRatio(rmsA, rmsB),
+		peakRatio:       safeRatio(peakA, peakB),
+		sustainDelta:    rmsA - rmsB,
+		peakDelta:       peakA - peakB,
+		popRatioDelta:   math.Abs(popA - popB),
+		onsetStepDelta:  math.Abs(stepA - stepB),
 	}
 }
 
@@ -694,6 +805,8 @@ func computeFFTTimbreMetrics(a []int16, b []int16, sampleRate int) fftTimbreMetr
 		spectralCorr:       correlation(specA, specB),
 		centroidDeltaHz:    math.Abs(spectralCentroidHz(windowA, sampleRate) - spectralCentroidHz(windowB, sampleRate)),
 		highBandRatioDelta: math.Abs(highBandEnergyRatio(windowA, sampleRate) - highBandEnergyRatio(windowB, sampleRate)),
+		presenceRatioDelta: math.Abs(presenceBandEnergyRatio(windowA, sampleRate) - presenceBandEnergyRatio(windowB, sampleRate)),
+		aWeightedDeltaDB:   math.Abs(dbRatio(aWeightedSpectralLevel(windowA, sampleRate), aWeightedSpectralLevel(windowB, sampleRate))),
 	}
 }
 
@@ -709,6 +822,17 @@ func rmsPCM(p []int16) float64 {
 	return math.Sqrt(sum / float64(len(p)))
 }
 
+func rmsFloat(in []float64) float64 {
+	if len(in) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, v := range in {
+		sum += v * v
+	}
+	return math.Sqrt(sum / float64(len(in)))
+}
+
 func peakPCM(p []int16) float64 {
 	peak := 0.0
 	for _, v := range p {
@@ -720,6 +844,33 @@ func peakPCM(p []int16) float64 {
 	return peak
 }
 
+func maxAbsFloat(in []float64) float64 {
+	maxV := 0.0
+	for _, v := range in {
+		abs := math.Abs(v)
+		if abs > maxV {
+			maxV = abs
+		}
+	}
+	return maxV
+}
+
+func maxDelta(in []float64) float64 {
+	if len(in) < 2 {
+		return 0
+	}
+	maxV := 0.0
+	prev := in[0]
+	for _, v := range in[1:] {
+		d := math.Abs(v - prev)
+		if d > maxV {
+			maxV = d
+		}
+		prev = v
+	}
+	return maxV
+}
+
 func safeRatio(a float64, b float64) float64 {
 	if b == 0 {
 		if a == 0 {
@@ -728,6 +879,39 @@ func safeRatio(a float64, b float64) float64 {
 		return a
 	}
 	return a / b
+}
+
+func onsetWindow(mono []float64, length int) []float64 {
+	if len(mono) == 0 || length <= 0 {
+		return nil
+	}
+	start := onsetFrame(mono)
+	if start >= len(mono) {
+		return nil
+	}
+	end := start + length
+	if end > len(mono) {
+		end = len(mono)
+	}
+	return mono[start:end]
+}
+
+func sustainWindow(mono []float64) []float64 {
+	if len(mono) == 0 {
+		return nil
+	}
+	start := onsetFrame(mono) + 512
+	if start >= len(mono) {
+		start = len(mono) / 4
+	}
+	end := start + 1536
+	if end > len(mono) {
+		end = len(mono)
+	}
+	if start >= end {
+		return mono
+	}
+	return mono[start:end]
 }
 
 func fftAnalysisWindow(mono []float64, n int) []float64 {
@@ -824,15 +1008,91 @@ func highBandEnergyRatio(samples []float64, sampleRate int) float64 {
 	return high / total
 }
 
+func presenceBandEnergyRatio(samples []float64, sampleRate int) float64 {
+	mags := dftMagnitudes(samples)
+	if len(mags) == 0 || sampleRate <= 0 {
+		return 0
+	}
+	var presence, total float64
+	for k, mag := range mags {
+		freq := float64(k*sampleRate) / float64(len(samples))
+		total += mag
+		if freq >= 1000 && freq <= 5000 {
+			presence += mag
+		}
+	}
+	if total == 0 {
+		return 0
+	}
+	return presence / total
+}
+
+func aWeightedSpectralLevel(samples []float64, sampleRate int) float64 {
+	mags := dftMagnitudes(samples)
+	if len(mags) == 0 || sampleRate <= 0 {
+		return 0
+	}
+	var energy float64
+	for k, mag := range mags {
+		freq := float64(k*sampleRate) / float64(len(samples))
+		weight := aWeightAmplitude(freq)
+		if weight == 0 {
+			continue
+		}
+		v := mag * weight
+		energy += v * v
+	}
+	return math.Sqrt(energy)
+}
+
+func aWeightAmplitude(freq float64) float64 {
+	if freq < 10 {
+		return 0
+	}
+	f2 := freq * freq
+	const (
+		f1  = 20.6
+		f2c = 107.7
+		f3  = 737.9
+		f4  = 12200.0
+	)
+	num := (f4 * f4) * (f2 * f2)
+	den := (f2 + f1*f1) *
+		math.Sqrt((f2+f2c*f2c)*(f2+f3*f3)) *
+		(f2 + f4*f4)
+	if den == 0 {
+		return 0
+	}
+	ra := num / den
+	if ra <= 0 {
+		return 0
+	}
+	db := 20*math.Log10(ra) + 2.0
+	return math.Pow(10, db/20)
+}
+
+func dbRatio(a float64, b float64) float64 {
+	const floor = 1e-12
+	return 20 * math.Log10((a+floor)/(b+floor))
+}
+
 func worstFFTPhrase(phrases []fftScoredPhrase) fftScoredPhrase {
 	var zero fftScoredPhrase
 	if len(phrases) == 0 {
 		return zero
 	}
 	worst := phrases[0]
-	worstScore := phrases[0].metrics.logMagErr + (1 - phrases[0].metrics.spectralCorr) + phrases[0].metrics.highBandRatioDelta
+	worstScore := phrases[0].metrics.logMagErr +
+		(1 - phrases[0].metrics.spectralCorr) +
+		phrases[0].metrics.highBandRatioDelta +
+		phrases[0].metrics.presenceRatioDelta +
+		(phrases[0].metrics.aWeightedDeltaDB / 6)
 	for _, phrase := range phrases[1:] {
-		score := phrase.metrics.logMagErr + (1 - phrase.metrics.spectralCorr) + phrase.metrics.highBandRatioDelta
+		score := phrase.metrics.logMagErr +
+			(1 - phrase.metrics.spectralCorr) +
+			phrase.metrics.highBandRatioDelta +
+			phrase.metrics.presenceRatioDelta +
+			(phrase.metrics.aWeightedDeltaDB / 6)
 		if score > worstScore {
 			worst = phrase
 			worstScore = score
