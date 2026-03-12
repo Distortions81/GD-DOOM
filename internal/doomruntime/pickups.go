@@ -7,13 +7,14 @@ import (
 )
 
 type playerInventory struct {
-	BlueKey     bool
-	RedKey      bool
-	YellowKey   bool
-	Backpack    bool
-	RadSuitTics int
-	ReadyWeapon weaponID
-	Weapons     map[int16]bool
+	BlueKey       bool
+	RedKey        bool
+	YellowKey     bool
+	Backpack      bool
+	RadSuitTics   int
+	ReadyWeapon   weaponID
+	PendingWeapon weaponID
+	Weapons       map[int16]bool
 }
 
 type playerStats struct {
@@ -275,7 +276,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			if !g.autoWeaponSwitch {
 				return
 			}
-			g.inventory.ReadyWeapon = id
+			g.queueWeaponSwitch(id)
 		}
 		switch typ {
 		case 2001:

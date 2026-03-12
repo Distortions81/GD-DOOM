@@ -1,5 +1,46 @@
 package sound
 
+import (
+	"fmt"
+	"strings"
+)
+
+type Backend string
+
+const (
+	BackendAuto   Backend = "auto"
+	BackendPureGo Backend = "purego"
+	BackendNuked  Backend = "nuked"
+)
+
+func (b Backend) String() string {
+	if strings.TrimSpace(string(b)) == "" {
+		return string(BackendAuto)
+	}
+	return string(b)
+}
+
+func ParseBackend(name string) (Backend, error) {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", string(BackendAuto):
+		return BackendAuto, nil
+	case string(BackendPureGo):
+		return BackendPureGo, nil
+	case string(BackendNuked):
+		return BackendNuked, nil
+	default:
+		return "", fmt.Errorf("unknown backend %q (want auto|purego|nuked)", name)
+	}
+}
+
+func DefaultBackend() Backend {
+	return defaultBackend()
+}
+
+func ValidateBackend(backend Backend) error {
+	return validateBackend(backend)
+}
+
 // OPL3 is the runtime synth interface used by the music driver.
 type OPL3 interface {
 	Reset()
@@ -10,5 +51,19 @@ type OPL3 interface {
 
 // NewOPL3 creates the default OPL3 backend for the current build.
 func NewOPL3(sampleRate int) OPL3 {
-	return newOPL3(sampleRate)
+	opl, err := NewOPL3WithBackend(sampleRate, BackendAuto)
+	if err == nil {
+		return opl
+	}
+	return NewBasicOPL3(sampleRate)
+}
+
+func NewOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {
+	if strings.TrimSpace(string(backend)) == "" {
+		backend = BackendAuto
+	}
+	if err := ValidateBackend(backend); err != nil {
+		return nil, err
+	}
+	return newOPL3WithBackend(sampleRate, backend)
 }

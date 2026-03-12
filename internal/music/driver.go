@@ -109,27 +109,41 @@ type voiceState struct {
 }
 
 type Driver struct {
-	opl        sound.OPL3
-	sampleRate int
-	ticRate    int
-	musPanMax  float64
-	outputGain float64
-	bank       PatchBank
-	ch         [16]channelState
-	voices     []voiceState
-	freeList   []int
-	allocList  []int
+	opl         sound.OPL3
+	sampleRate  int
+	ticRate     int
+	musPanMax   float64
+	outputGain  float64
+	preEmphasis bool
+	preEmphPrev [2]float64
+	bank        PatchBank
+	ch          [16]channelState
+	voices      []voiceState
+	freeList    []int
+	allocList   []int
 }
 
 func NewDriver(sampleRate int, bank PatchBank) *Driver {
+	d, err := NewDriverWithBackend(sampleRate, bank, sound.BackendAuto)
+	if err != nil {
+		return nil
+	}
+	return d
+}
+
+func NewDriverWithBackend(sampleRate int, bank PatchBank, backend sound.Backend) (*Driver, error) {
 	if sampleRate <= 0 {
 		sampleRate = OutputSampleRate
 	}
 	if bank == nil {
 		bank = DefaultPatchBank{}
 	}
+	opl, err := sound.NewOPL3WithBackend(sampleRate, backend)
+	if err != nil {
+		return nil, err
+	}
 	d := &Driver{
-		opl:        sound.NewOPL3(sampleRate),
+		opl:        opl,
 		sampleRate: sampleRate,
 		ticRate:    defaultTicRate,
 		musPanMax:  defaultMUSPanMax,
@@ -150,11 +164,19 @@ func NewDriver(sampleRate int, bank PatchBank) *Driver {
 			pan:        defaultChanPan,
 		}
 	}
-	return d
+	return d, nil
 }
 
 func NewOutputDriver(bank PatchBank) *Driver {
-	return NewDriver(OutputSampleRate, bank)
+	d, err := NewDriverWithBackend(OutputSampleRate, bank, sound.BackendAuto)
+	if err != nil {
+		return nil
+	}
+	return d
+}
+
+func NewOutputDriverWithBackend(bank PatchBank, backend sound.Backend) (*Driver, error) {
+	return NewDriverWithBackend(OutputSampleRate, bank, backend)
 }
 
 // SetMUSPanMax sets the MUS pan scaling factor in the 0..1 range.
@@ -173,6 +195,14 @@ func (d *Driver) SetOutputGain(gain float64) {
 		return
 	}
 	d.outputGain = clampOutputGain(gain)
+}
+
+func (d *Driver) SetPreEmphasis(enabled bool) {
+	if d == nil {
+		return
+	}
+	d.preEmphasis = enabled
+	d.preEmphPrev = [2]float64{}
 }
 
 func (d *Driver) Reset() {
@@ -202,6 +232,7 @@ func (d *Driver) Reset() {
 			pan:        defaultChanPan,
 		}
 	}
+	d.preEmphPrev = [2]float64{}
 }
 
 // Render processes events and returns signed 16-bit stereo interleaved PCM.
@@ -631,6 +662,9 @@ func (d *Driver) generateStereoS16(frames int) []int16 {
 		return out
 	}
 	applyOutputGainSoftKnee(out, d.outputGain)
+	if d.preEmphasis {
+		applyPreEmphasis(out, &d.preEmphPrev)
+	}
 	return out
 }
 
@@ -691,6 +725,26 @@ func applyOutputGainSoftKnee(samples []int16, gain float64) {
 			samples[i] = int16(math.Round(y * negFullScale))
 		} else {
 			samples[i] = int16(math.Round(y * fullScale))
+		}
+	}
+}
+
+func applyPreEmphasis(samples []int16, prev *[2]float64) {
+	if len(samples) == 0 || prev == nil {
+		return
+	}
+	const coeff = 0.85
+	for i := 0; i+1 < len(samples); i += 2 {
+		for ch := 0; ch < 2; ch++ {
+			in := float64(samples[i+ch])
+			out := in - coeff*prev[ch]
+			prev[ch] = in
+			if out > 32767 {
+				out = 32767
+			} else if out < -32768 {
+				out = -32768
+			}
+			samples[i+ch] = int16(out)
 		}
 	}
 }

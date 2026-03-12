@@ -97,8 +97,20 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	g.inventory.Weapons[2001] = true
 	g.statusAttackDown = false
 	g.selectWeaponSlot(3)
-	if g.weaponState != weaponStateShotgunReady || g.weaponFlashState != weaponStateNone {
-		t.Fatalf("weapon psprites not reset on switch: state=%v flash=%v", g.weaponState, g.weaponFlashState)
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun", g.inventory.PendingWeapon)
+	}
+	if g.inventory.ReadyWeapon != weaponPistol {
+		t.Fatalf("ready weapon=%v want pistol until current attack finishes", g.inventory.ReadyWeapon)
+	}
+	for i := 0; i < 32; i++ {
+		g.tickWeaponOverlay()
+	}
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want cleared after switch", g.inventory.PendingWeapon)
+	}
+	if g.inventory.ReadyWeapon != weaponShotgun || g.weaponState != weaponStateShotgunReady || g.weaponFlashState != weaponStateNone {
+		t.Fatalf("weapon switch not applied after attack: ready=%v state=%v flash=%v", g.inventory.ReadyWeapon, g.weaponState, g.weaponFlashState)
 	}
 }
 

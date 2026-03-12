@@ -225,6 +225,10 @@ func (g *game) weaponActionReady(_ weaponPspriteState) {
 	if g == nil || g.isDead {
 		return
 	}
+	if g.inventory.PendingWeapon != 0 {
+		g.applyPendingWeapon()
+		return
+	}
 	if g.statusAttackDown {
 		if !g.weaponAttackDown || (g.inventory.ReadyWeapon != weaponRocketLauncher && g.inventory.ReadyWeapon != weaponBFG) {
 			g.weaponAttackDown = true
@@ -239,6 +243,12 @@ func (g *game) weaponActionReady(_ weaponPspriteState) {
 
 func (g *game) weaponActionRefire(_ weaponPspriteState) {
 	if g == nil {
+		return
+	}
+	if g.inventory.PendingWeapon != 0 {
+		g.weaponRefire = false
+		g.weaponAttackDown = false
+		g.applyPendingWeapon()
 		return
 	}
 	if g.statusAttackDown && !g.isDead {
@@ -1222,45 +1232,72 @@ func (g *game) ensureWeaponDefaults() {
 	}
 }
 
+func (g *game) queueWeaponSwitch(id weaponID) bool {
+	g.ensureWeaponDefaults()
+	if id == 0 || id == g.inventory.ReadyWeapon {
+		g.inventory.PendingWeapon = 0
+		return false
+	}
+	g.inventory.PendingWeapon = id
+	if g.weaponState == weaponStateNone {
+		return g.applyPendingWeapon()
+	}
+	return true
+}
+
+func (g *game) applyPendingWeapon() bool {
+	next := g.inventory.PendingWeapon
+	if next == 0 {
+		return false
+	}
+	if next == g.inventory.ReadyWeapon {
+		g.inventory.PendingWeapon = 0
+		return false
+	}
+	g.weaponRefire = false
+	g.weaponAttackDown = false
+	g.clearWeaponOverlay()
+	g.inventory.ReadyWeapon = next
+	g.inventory.PendingWeapon = 0
+	g.setWeaponPSpriteState(weaponStateForReady(next), false)
+	return true
+}
+
 func (g *game) ensureWeaponHasAmmo() {
 	if g.canFireSelectedWeapon() {
 		return
 	}
 	switchTo := func(id weaponID) {
-		if g.inventory.ReadyWeapon != id {
-			g.weaponRefire = false
-			g.weaponAttackDown = false
-			g.clearWeaponOverlay()
+		if g.queueWeaponSwitch(id) {
+			g.applyPendingWeapon()
 		}
-		g.inventory.ReadyWeapon = id
-		g.setWeaponPSpriteState(weaponStateForReady(id), false)
+	}
+	if g.stats.Cells > 0 && g.inventory.Weapons[2004] {
+		switchTo(weaponPlasma)
+		return
+	}
+	if g.stats.Bullets > 2 && g.inventory.Weapons[2002] {
+		switchTo(weaponChaingun)
+		return
 	}
 	if g.stats.Shells > 0 && g.inventory.Weapons[2001] {
 		switchTo(weaponShotgun)
-		return
-	}
-	if g.stats.Bullets > 0 && g.inventory.Weapons[2002] {
-		switchTo(weaponChaingun)
 		return
 	}
 	if g.stats.Bullets > 0 {
 		switchTo(weaponPistol)
 		return
 	}
-	if g.stats.Cells >= 40 && g.inventory.Weapons[2006] {
-		switchTo(weaponBFG)
-		return
-	}
-	if g.stats.Cells > 0 && g.inventory.Weapons[2004] {
-		switchTo(weaponPlasma)
+	if g.inventory.Weapons[2005] {
+		switchTo(weaponChainsaw)
 		return
 	}
 	if g.stats.Rockets > 0 && g.inventory.Weapons[2003] {
 		switchTo(weaponRocketLauncher)
 		return
 	}
-	if g.inventory.Weapons[2005] {
-		switchTo(weaponChainsaw)
+	if g.stats.Cells >= 40 && g.inventory.Weapons[2006] {
+		switchTo(weaponBFG)
 		return
 	}
 	switchTo(weaponFist)
@@ -1287,43 +1324,38 @@ func (g *game) canFireSelectedWeapon() bool {
 
 func (g *game) selectWeaponSlot(slot int) {
 	g.ensureWeaponDefaults()
-	prev := g.inventory.ReadyWeapon
+	next := g.inventory.ReadyWeapon
 	switch slot {
 	case 1:
 		if g.inventory.Weapons[2005] {
-			g.inventory.ReadyWeapon = weaponChainsaw
+			next = weaponChainsaw
 		} else {
-			g.inventory.ReadyWeapon = weaponFist
+			next = weaponFist
 		}
 	case 2:
-		g.inventory.ReadyWeapon = weaponPistol
+		next = weaponPistol
 	case 3:
 		if g.inventory.Weapons[2001] {
-			g.inventory.ReadyWeapon = weaponShotgun
+			next = weaponShotgun
 		}
 	case 4:
 		if g.inventory.Weapons[2002] {
-			g.inventory.ReadyWeapon = weaponChaingun
+			next = weaponChaingun
 		}
 	case 5:
 		if g.inventory.Weapons[2003] {
-			g.inventory.ReadyWeapon = weaponRocketLauncher
+			next = weaponRocketLauncher
 		}
 	case 6:
 		if g.inventory.Weapons[2004] {
-			g.inventory.ReadyWeapon = weaponPlasma
+			next = weaponPlasma
 		}
 	case 7:
 		if g.inventory.Weapons[2006] {
-			g.inventory.ReadyWeapon = weaponBFG
+			next = weaponBFG
 		}
 	}
-	if g.inventory.ReadyWeapon != prev {
-		g.weaponRefire = false
-		g.weaponAttackDown = false
-		g.clearWeaponOverlay()
-		g.setWeaponPSpriteState(weaponStateForReady(g.inventory.ReadyWeapon), false)
-	}
+	g.queueWeaponSwitch(next)
 }
 
 func (g *game) weaponOwned(id weaponID) bool {
@@ -1392,11 +1424,7 @@ func (g *game) cycleWeapon(step int) {
 		if next == cur {
 			continue
 		}
-		g.inventory.ReadyWeapon = next
-		g.weaponRefire = false
-		g.weaponAttackDown = false
-		g.clearWeaponOverlay()
-		g.setWeaponPSpriteState(weaponStateForReady(next), false)
+		g.queueWeaponSwitch(next)
 		return
 	}
 }

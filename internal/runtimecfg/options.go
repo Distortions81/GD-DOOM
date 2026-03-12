@@ -6,6 +6,7 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/sound"
 )
 
 type MusicPlayerTrack struct {
@@ -44,6 +45,9 @@ type Options struct {
 	MusicVolume                float64
 	MUSPanMax                  float64
 	OPLVolume                  float64
+	AudioPreEmphasis           bool
+	OPL3Backend                sound.Backend
+	OpenMenuOnFrontendStart    bool
 	SFXVolume                  float64
 	FastMonsters               bool
 	AlwaysRun                  bool

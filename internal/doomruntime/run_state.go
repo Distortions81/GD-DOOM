@@ -429,6 +429,8 @@ func (sg *sessionGame) initMusicPlayback() {
 		clampVolume(sg.opts.MusicVolume),
 		sg.opts.MUSPanMax,
 		sg.opts.OPLVolume,
+		sg.opts.AudioPreEmphasis,
+		sg.opts.OPL3Backend,
 		sg.opts.MusicPatchBank,
 		sg.opts.MapMusicLoader,
 		sg.opts.TitleMusicLoader,

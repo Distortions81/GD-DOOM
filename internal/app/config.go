@@ -35,6 +35,8 @@ type fileConfig struct {
 	MusicVolume                *float64 `toml:"music_volume"`
 	MUSPanMax                  *float64 `toml:"mus_pan_max"`
 	OPLVolume                  *float64 `toml:"opl_volume"`
+	AudioPreEmphasis           *bool    `toml:"audio_preemphasis"`
+	OPL3Backend                *string  `toml:"opl3_backend"`
 	SFXVolume                  *float64 `toml:"sfx_volume"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
 	AlwaysRun                  *bool    `toml:"always_run"`
@@ -92,6 +94,12 @@ func loadConfig(path string, explicit bool) (*fileConfig, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
 	}
+	if !configFileAccessSupported() {
+		if explicit {
+			return nil, fmt.Errorf("config files are not supported on js/wasm")
+		}
+		return nil, nil
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) && !explicit {
@@ -127,6 +135,9 @@ func configuredDetailLevelForMode(cfg *fileConfig, sourcePortMode bool) int {
 
 func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortMode bool) error {
 	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	if !configFileAccessSupported() {
 		return nil
 	}
 	cfg := &fileConfig{}

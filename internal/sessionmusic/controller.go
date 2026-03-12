@@ -4,26 +4,34 @@ import (
 	"time"
 
 	"gddoom/internal/music"
+	"gddoom/internal/sound"
 )
 
 type Controller struct {
-	player *music.ChunkPlayer
-	driver *music.Driver
-	stop   chan struct{}
+	player  *music.ChunkPlayer
+	driver  *music.Driver
+	backend sound.Backend
+	stop    chan struct{}
 }
 
-func New(volume float64, musPanMax float64, oplVolume float64, bank music.PatchBank) (*Controller, error) {
+func New(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank) (*Controller, error) {
 	player, err := music.NewChunkPlayer()
 	if err != nil {
 		return nil, err
 	}
 	_ = player.SetVolume(volume)
-	driver := music.NewDriver(player.SampleRate(), bank)
+	driver, err := music.NewDriverWithBackend(player.SampleRate(), bank, backend)
+	if err != nil {
+		_ = player.Close()
+		return nil, err
+	}
 	driver.SetMUSPanMax(musPanMax)
-	driver.SetOutputGain(oplVolume)
+	driver.SetOutputGain(effectiveOPLGain(backend, oplVolume))
+	driver.SetPreEmphasis(preEmphasis)
 	return &Controller{
-		player: player,
-		driver: driver,
+		player:  player,
+		driver:  driver,
+		backend: backend,
 	}, nil
 }
 
@@ -56,7 +64,7 @@ func (c *Controller) SetOutputGain(v float64) {
 	if c == nil || c.driver == nil {
 		return
 	}
-	c.driver.SetOutputGain(v)
+	c.driver.SetOutputGain(effectiveOPLGain(c.backend, v))
 }
 
 func (c *Controller) PlayMUS(data []byte) {
@@ -123,4 +131,14 @@ func (c *Controller) stream(stop <-chan struct{}, stream *music.StreamRenderer) 
 			return
 		}
 	}
+}
+
+func effectiveOPLGain(backend sound.Backend, gain float64) float64 {
+	if backend == sound.BackendAuto {
+		backend = sound.DefaultBackend()
+	}
+	if backend == sound.BackendPureGo {
+		return 1.0
+	}
+	return gain
 }

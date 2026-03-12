@@ -405,3 +405,40 @@ func TestApplyOutputGainSoftKneeLimitsClipping(t *testing.T) {
 		t.Fatalf("expected soft-knee headroom before hard clip, got %v", samples)
 	}
 }
+
+func TestSetPreEmphasisTogglesAndResetsState(t *testing.T) {
+	d := NewOutputDriver(nil)
+	d.preEmphPrev = [2]float64{12, -8}
+	d.SetPreEmphasis(true)
+	if !d.preEmphasis {
+		t.Fatal("preEmphasis=false want true")
+	}
+	if d.preEmphPrev != [2]float64{} {
+		t.Fatalf("preEmphPrev=%v want zeroed", d.preEmphPrev)
+	}
+	d.preEmphPrev = [2]float64{1, 2}
+	d.SetPreEmphasis(false)
+	if d.preEmphasis {
+		t.Fatal("preEmphasis=true want false")
+	}
+	if d.preEmphPrev != [2]float64{} {
+		t.Fatalf("preEmphPrev=%v want zeroed after disable", d.preEmphPrev)
+	}
+}
+
+func TestGenerateStereoS16AppliesPreEmphasisWhenEnabled(t *testing.T) {
+	d := NewOutputDriver(nil)
+	d.opl = &captureOPL{pcm: []int16{1000, -1000, 500, -500}}
+	d.SetOutputGain(1.0)
+	d.SetPreEmphasis(true)
+	out := d.generateStereoS16(2)
+	if len(out) != 4 {
+		t.Fatalf("len(out)=%d want 4", len(out))
+	}
+	if out[0] != 1000 || out[1] != -1000 {
+		t.Fatalf("first frame=%v want unchanged first sample pair", out[:2])
+	}
+	if out[2] == 500 || out[3] == -500 {
+		t.Fatalf("second frame=%v want pre-emphasized samples", out[2:4])
+	}
+}

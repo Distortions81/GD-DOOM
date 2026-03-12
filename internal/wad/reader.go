@@ -13,10 +13,21 @@ const (
 )
 
 func Open(path string) (*File, error) {
+	if data, ok := embeddedDataForPath(path); ok {
+		return openData(path, data)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read wad: %w", err)
 	}
+	return openData(path, data)
+}
+
+func OpenData(path string, data []byte) (*File, error) {
+	return openData(path, data)
+}
+
+func openData(path string, data []byte) (*File, error) {
 	if len(data) < headerSize {
 		return nil, ErrTruncatedHeader
 	}
@@ -68,6 +79,10 @@ func Open(path string) (*File, error) {
 		f.Lumps[i].file = f
 	}
 	return f, nil
+}
+
+func EmbeddedDataForPath(path string) ([]byte, bool) {
+	return embeddedDataForPath(path)
 }
 
 func OpenFiles(paths ...string) (*File, error) {

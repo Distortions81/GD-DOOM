@@ -31,6 +31,44 @@ func TestRunParseLoadsConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestRunParseLoadsAudioPreEmphasisFromConfig(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("map = \"E1M2\"\nrender = false\naudio_preemphasis = true\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{"-wad", wadPath, "-config", cfgPath}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=E1M2 ") {
+		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
+	}
+}
+
+func TestRunParseLoadsOPL3BackendFromConfig(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("map = \"E1M2\"\nrender = false\nopl3_backend = \"purego\"\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{"-wad", wadPath, "-config", cfgPath}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=E1M2 ") {
+		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
+	}
+}
+
 func TestRunParseCLIOverridesConfig(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")
@@ -519,6 +557,18 @@ func TestRunParseRejectsInvalidOPLVolume(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "invalid -opl-volume") {
 		t.Fatalf("stderr %q does not mention invalid opl volume", errb.String())
+	}
+}
+
+func TestRunParseRejectsInvalidOPL3Backend(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-opl3-backend", "bogus", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "invalid -opl3-backend") {
+		t.Fatalf("stderr %q does not mention invalid opl3 backend", errb.String())
 	}
 }
 

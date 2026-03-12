@@ -30,6 +30,12 @@ func (sg *sessionGame) startFrontend() {
 		return
 	}
 	sg.frontend = frontendState(sessionflow.StartFrontend())
+	if sg.opts.OpenMenuOnFrontendStart && len(sg.opts.AttractDemos) == 0 {
+		sg.frontend.MenuActive = true
+		sg.stopAndClearMusic()
+		sg.playTitleMusic()
+		return
+	}
 	if !sg.advanceFrontendAttract() {
 		sg.stopAndClearMusic()
 		sg.playTitleMusic()

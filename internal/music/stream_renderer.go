@@ -1,10 +1,13 @@
 package music
 
-import "errors"
+import (
+	"errors"
+	"unsafe"
+)
 
 const (
-	DefaultStreamChunkFrames = 4096
-	DefaultStreamLookahead   = OutputSampleRate * 2
+	DefaultStreamChunkFrames = 1024
+	DefaultStreamLookahead   = DefaultStreamChunkFrames * 6
 )
 
 var errNilStreamDriver = errors.New("music: nil stream driver")
@@ -95,6 +98,21 @@ func (sr *StreamRenderer) NextChunkS16LE(maxFrames int) (chunk []byte, done bool
 		return nil, sr.done, nil
 	}
 	sr.pcmBuf = out
+	if nativeLittleEndian() {
+		return pcmInt16ViewAsBytesLE(out), sr.done, nil
+	}
 	sr.byteBuf = PCMInt16ToBytesLEInto(sr.byteBuf[:0], out)
 	return sr.byteBuf, sr.done, nil
+}
+
+func pcmInt16ViewAsBytesLE(samples []int16) []byte {
+	if len(samples) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(samples))), len(samples)*2)
+}
+
+func nativeLittleEndian() bool {
+	var probe uint16 = 1
+	return *(*byte)(unsafe.Pointer(&probe)) == 1
 }

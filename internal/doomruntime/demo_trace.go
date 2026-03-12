@@ -175,13 +175,17 @@ func (g *game) writeDemoTraceTic() {
 	}
 
 	rndIndex, prndIndex := doomrand.State()
+	pendingWeapon := demoTraceWeaponNoChange
+	if g.inventory.PendingWeapon != 0 {
+		pendingWeapon = demoTraceWeaponID(g.inventory.PendingWeapon)
+	}
 	player := demoTracePlayer{
 		PlayerState:   boolToInt(g.isDead),
 		Health:        g.stats.Health,
 		ArmorPoints:   g.stats.Armor,
 		ArmorType:     g.stats.ArmorType,
 		ReadyWeapon:   demoTraceWeaponID(g.inventory.ReadyWeapon),
-		PendingWeapon: demoTraceWeaponNoChange,
+		PendingWeapon: pendingWeapon,
 		MO:            1,
 		X:             g.p.x,
 		Y:             g.p.y,

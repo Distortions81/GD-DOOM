@@ -5,6 +5,7 @@ gddoom
 *.log
 *.prof
 bin/
+build/
 dist/
 *.exe
 *.test

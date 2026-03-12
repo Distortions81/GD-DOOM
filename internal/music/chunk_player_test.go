@@ -15,6 +15,29 @@ func TestPCMInt16ToBytesLE(t *testing.T) {
 	}
 }
 
+func TestPCMInt16ViewAsBytesLE(t *testing.T) {
+	if !nativeLittleEndian() {
+		t.Skip("unsafe LE byte view only applies on little-endian targets")
+	}
+	in := []int16{0x1234, -2}
+	got := pcmInt16ViewAsBytesLE(in)
+	if len(got) != len(in)*2 {
+		t.Fatalf("len=%d want=%d", len(got), len(in)*2)
+	}
+	if got[0] != 0x34 || got[1] != 0x12 {
+		t.Fatalf("first sample bytes=%02x %02x want=34 12", got[0], got[1])
+	}
+}
+
+func TestDefaultStreamChunkSettings(t *testing.T) {
+	if DefaultStreamChunkFrames != 1024 {
+		t.Fatalf("DefaultStreamChunkFrames=%d want=1024", DefaultStreamChunkFrames)
+	}
+	if DefaultStreamLookahead != DefaultStreamChunkFrames*6 {
+		t.Fatalf("DefaultStreamLookahead=%d want=%d", DefaultStreamLookahead, DefaultStreamChunkFrames*6)
+	}
+}
+
 func TestPCMChunkBufferReadClear(t *testing.T) {
 	b := newPCMChunkBuffer()
 	b.Enqueue([]byte{1, 2, 3, 4})

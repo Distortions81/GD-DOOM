@@ -109,3 +109,27 @@ func TestStartGameFromFrontendClearsAttractDemoScript(t *testing.T) {
 		t.Fatalf("skill=%d want=4", got)
 	}
 }
+
+func TestStartFrontendOpensMenuWhenConfiguredWithoutAttractDemos(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	boot := cloneMapForRestart(base.m)
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			OpenMenuOnFrontendStart: true,
+		},
+		g: base,
+	}
+
+	sg.startFrontend()
+
+	if !sg.frontend.Active {
+		t.Fatal("frontend should be active")
+	}
+	if !sg.frontend.MenuActive {
+		t.Fatal("frontend should open main menu")
+	}
+	if got := sg.frontend.AttractPage; got != "" {
+		t.Fatalf("attractPage=%q want empty", got)
+	}
+}

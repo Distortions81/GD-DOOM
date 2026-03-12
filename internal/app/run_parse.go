@@ -78,6 +78,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMusicVolume := 1.0
 	defaultMUSPanMax := 0.8
 	defaultOPLVolume := 2.25
+	defaultAudioPreEmphasis := false
+	defaultOPL3Backend := sound.DefaultBackend().String()
 	defaultSFXVolume := 0.5
 	defaultFastMonsters := false
 	defaultAlwaysRun := true
@@ -177,6 +179,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.OPLVolume != nil {
 			defaultOPLVolume = *cfg.OPLVolume
+		}
+		if cfg.AudioPreEmphasis != nil {
+			defaultAudioPreEmphasis = *cfg.AudioPreEmphasis
+		}
+		if cfg.OPL3Backend != nil {
+			defaultOPL3Backend = *cfg.OPL3Backend
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
@@ -320,6 +328,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
 	oplVolume := fs.Float64("opl-volume", defaultOPLVolume, "OPL synth output gain (0..4; default 2.0)")
+	audioPreEmphasis := fs.Bool("audio-preemphasis", defaultAudioPreEmphasis, "enable OPL music pre-emphasis filter")
+	opl3Backend := fs.String("opl3-backend", defaultOPL3Backend, "OPL3 backend (auto|purego|nuked)")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
@@ -439,6 +449,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "invalid -sfx-volume %.3f (must be between 0 and 1)\n", *sfxVolume)
 		return 2
 	}
+	resolvedOPL3Backend, err := sound.ParseBackend(*opl3Backend)
+	if err != nil {
+		fmt.Fprintf(stderr, "invalid -opl3-backend %q: %v\n", *opl3Backend, err)
+		return 2
+	}
+	if err := sound.ValidateBackend(resolvedOPL3Backend); err != nil {
+		fmt.Fprintf(stderr, "invalid -opl3-backend %q: %v\n", *opl3Backend, err)
+		return 2
+	}
 	if *allCheats && allCheatsSet && !cheatLevelSet {
 		resolvedCheatLevel = 3
 		if !invulnSet {
@@ -494,6 +513,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			musicVolume:                *musicVolume,
 			musPanMax:                  *musPanMax,
 			oplVolume:                  *oplVolume,
+			audioPreEmphasis:           *audioPreEmphasis,
+			opl3Backend:                resolvedOPL3Backend,
 			sfxVolume:                  *sfxVolume,
 			fastMonsters:               *fastMonsters,
 			alwaysRun:                  *alwaysRun,
@@ -805,6 +826,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicVolume:                *musicVolume,
 			MUSPanMax:                  *musPanMax,
 			OPLVolume:                  *oplVolume,
+			AudioPreEmphasis:           *audioPreEmphasis,
+			OPL3Backend:                resolvedOPL3Backend,
+			OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 			SFXVolume:                  *sfxVolume,
 			FastMonsters:               *fastMonsters,
 			AlwaysRun:                  *alwaysRun,
@@ -848,7 +872,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoTracePath:              resolvedDemoTracePath,
-			AttractDemos:               loadBuiltInDemos(wf),
+			AttractDemos:               builtInAttractDemos(wf),
 		}
 		opts.TitleMusicLoader = func() ([]byte, error) {
 			for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
@@ -1091,6 +1115,12 @@ func hashWADStackSHA1(paths []string) string {
 	}
 	h := sha1.New()
 	for _, path := range paths {
+		if data, ok := wad.EmbeddedDataForPath(path); ok {
+			if _, err := h.Write(data); err != nil {
+				return ""
+			}
+			continue
+		}
 		f, err := os.Open(path)
 		if err != nil {
 			return ""
@@ -1404,6 +1434,8 @@ type renderBuildConfig struct {
 	musicVolume                float64
 	musPanMax                  float64
 	oplVolume                  float64
+	audioPreEmphasis           bool
+	opl3Backend                sound.Backend
 	sfxVolume                  float64
 	fastMonsters               bool
 	alwaysRun                  bool
@@ -1596,6 +1628,9 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		MusicVolume:                cfg.musicVolume,
 		MUSPanMax:                  cfg.musPanMax,
 		OPLVolume:                  cfg.oplVolume,
+		AudioPreEmphasis:           cfg.audioPreEmphasis,
+		OPL3Backend:                cfg.opl3Backend,
+		OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 		SFXVolume:                  cfg.sfxVolume,
 		FastMonsters:               cfg.fastMonsters,
 		AlwaysRun:                  cfg.alwaysRun,
@@ -1638,7 +1673,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		SoundBank:                  soundBank,
 		MusicPatchBank:             musicPatchBank,
 		RecordDemoPath:             cfg.recordDemoPath,
-		AttractDemos:               loadBuiltInDemos(wf),
+		AttractDemos:               builtInAttractDemos(wf),
 	}
 	opts.TitleMusicLoader = func() ([]byte, error) {
 		for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
