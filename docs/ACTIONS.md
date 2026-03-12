@@ -28,11 +28,9 @@ Single action list for the remaining work in this repo.
 
 ## Automap and Visibility
 
-- Show automap things only in `IDDT` level 2 mode.
 - Add multiplayer arrow/color behavior.
 - Remove non-vanilla open-door styling from strict parity mode.
-- Document rotating-map behavior as source-port-only.
-- Add E1M1 acceptance checks for normal mode, allmap, `iddt1`, and `iddt2`.
+- Add E1M1 acceptance checks for normal mode, allmap, `iddt1`, and `iddt2`, plus sourceport-only heading-up map behavior.
 
 ## Audio and Progression
 
@@ -40,7 +38,7 @@ Single action list for the remaining work in this repo.
 - Add remaining monster movement/state sounds and verify per-event routing/timing parity.
 - Add a Doom-style software SFX mixer for faithful mode.
 - Add a separate higher-quality sourceport mixer/worker path later.
-- Add menu/demo-attract, intermission, and level-end presentation flow.
+- Finish frontend/demo-attract, intermission, and level-end presentation flow.
 
 ## Validation and Performance
 
@@ -55,4 +53,5 @@ Single action list for the remaining work in this repo.
 - What is already done: [IMPLEMENTED.md](/home/dist/github/GD-DOOM/docs/IMPLEMENTED.md)
 - Launch flags and runtime controls: [launch-params.md](/home/dist/github/GD-DOOM/docs/launch-params.md)
 - Mode split policy: [render-modes.md](/home/dist/github/GD-DOOM/docs/render-modes.md)
+- Demo trace harness status: [doom-trace-harness-checklist.md](/home/dist/github/GD-DOOM/docs/doom-trace-harness-checklist.md)
 - IWAD map-data audit: [map-audit.md](/home/dist/github/GD-DOOM/docs/map-audit.md)

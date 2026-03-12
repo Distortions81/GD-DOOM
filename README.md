@@ -1,15 +1,18 @@
 # GD-DOOM
 
-![E1M1 screenshot](e1m1.png)
+<p align="center">
+  <img src="e1m1.png" alt="E1M1 screenshot" width="900">
+</p>
 
-Minimal Doom map/parser + automap project in Go.
+Minimal Doom runtime, map parser, and renderer in Go.
 
 ## What It Does
 
 - Loads an IWAD (`IWAD` only) and parses Doom map lumps.
 - Validates map data with strict checks.
-- Launches an Ebiten desktop automap renderer.
-- Supports Doom-style defaults plus optional source-port controls.
+- Launches an Ebiten desktop Doom runtime with walk view, automap, and in-session frontend screens.
+- Supports faithful Doom defaults plus optional source-port conveniences.
+- Can play, record, and trace Doom v1.10 demos.
 
 ## Quick Start
 
@@ -27,6 +30,12 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 
 ## Key Flags
 
+For the exact current CLI, run:
+
+```bash
+go run ./cmd/gddoom -h
+```
+
 - `-wad <path>`: IWAD path
 - `-config <path>`: TOML config file path (defaults to `config.toml` if present)
 - `-map <E#M#|MAP##>`: map to load
@@ -38,52 +47,49 @@ By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles wal
 - `-gamma-level <int>`: startup gamma level (`-1` keeps mode default)
 - `-player <1-4>`: choose local player start slot
 - `-skill <1-5>`: Doom skill level (`1=ITYTD`, `2=HNTR`, `3=HMP`, `4=UV`, `5=NM`)
+- `-game-mode <single|coop|deathmatch>`: apply thing spawn filtering for the selected mode
+- `-fastmonsters`: enable fast-monsters behavior
+- `-show-no-skill-items`: show pickup items that have no skill bits set
+- `-show-all-items`: show pickup items regardless of normal pickup spawn filters
 - `-mouselook`: enable mouse-based turning in walk mode (default `true`)
-- `-mouselook-speed <float>`: mouse turn speed multiplier (`>0`, default `1.0`)
+- `-mouselook-speed <float>`: mouse turn speed multiplier (`>0`, default `0.5`)
 - `-keyboard-turn-speed <float>`: keyboard turn speed multiplier (`>0`, default `1.0`)
 - `-music-volume <float>`: music output volume (`0..1`, default `1.0`)
 - `-mus-pan-max <float>`: maximum MUS pan amount (`0..1`, default `0.8`; lower pulls pan toward center)
-- `-opl-volume <float>`: OPL synth output gain (`0..4`, default `2.0`; soft-knee limited)
-- `-sfx-volume <float>`: sound-effect output volume (`0..1`, default `0.66`)
+- `-opl-volume <float>`: OPL synth output gain (`0..4`, default `2.25`)
+- `-sfx-volume <float>`: sound-effect output volume (`0..1`, default `0.5`)
 - `-always-run`: start with always-run enabled (holding `Shift` temporarily inverts it)
 - `-auto-weapon-switch`: auto-switch to newly picked weapons (default `true`)
 - `-cheat-level <0-3>`: startup cheats (`0=off`, `1=automap reveal`, `2=IDFA-like`, `3=IDKFA + invuln`)
 - `-invuln`: start with invulnerability (`IDDQD`-like)
-- `-sourceport-mode`: enable source-port style automap extras at startup
-- `-sourceport-sector-lighting`: in sourceport mode, apply classic sector-based light contribution (default `false`)
-- `-kage-shader`: enable Kage postprocess shaders (currently CRT only)
-- `-gpu-sky`: enable experimental GPU sky path in sourceport mode (default `false`; CPU sky is default)
-- `-crt-effect`: enable CRT pass
-- `-depth-buffer-view`: show grayscale depth view instead of 3D scene
-- `-texture-anim-crossfade-frames`: sourceport animation blend frames (`0` disables, max effective `7` at Doom's 8-tic cadence)
 - `-all-cheats`: legacy alias for full cheats (`-cheat-level=3 -invuln=true`)
-- `-start-in-map`: start with automap open (default `false`)
 - `-line-color-mode <parity|doom>`: automap line coloring mode
+- `-sourceport-mode`: enable source-port defaults and runtime conveniences
+- `-sourceport-sector-lighting`: show classic sector lighting while in sourceport mode (default `true`)
+- `-sourceport-thing-render-mode <glyphs|items|sprites>`: sourceport automap thing rendering mode
+- `-sourceport-thing-blend-frames`: allow blended sub-tic thing sprite frames on the automap
+- `-doom-lighting`: enable Doom lighting math and `COLORMAP` shading
+- `-gpu-sky`: enable the experimental GPU sky path for sourceport mode
+- `-sky-upscale <nearest|sharp>`: GPU sky upscale mode
+- `-kage-shader`: enable Kage postprocess shaders
+- `-crt-effect`: enable CRT pass
+- `-texture-anim-crossfade-frames`: sourceport animation blend frames (`0` disables, max effective `7` at Doom's 8-tic cadence)
+- `-start-in-map`: start with automap open (default `false`)
 - `-import-pcspeaker`: import startup sound lumps (`DP*` and `DS*`) and print decode status
-- `-import-textures`: parse `PLAYPAL`/`PNAMES`/`TEXTURE1/2` and build texture tables for Ebiten use
-- `-map-floor-tex-2d`: sourceport map mode: draw floor flat textures in 2D automap (defaults to `true` when `-sourceport-mode` is enabled)
-- `-demo <path>`: run a scripted `gddoom-demo-v1` input stream for benchmarking and exit when done
-- `-record-demo <path>`: record live input each game tic to `gddoom-demo-v1` and write on exit
+- `-import-textures`: parse Doom texture data and build tables for the software renderer
+- `-demo <path>`: run a Doom v1.10 `.lmp` demo for benchmarking and exit when it completes
+- `-record-demo <path>`: record live input to a Doom v1.10 `.lmp` demo
+- `-trace-demo-state <path>`: write per-tic GD-DOOM demo state JSONL during `-demo` playback
 - `-cpuprofile <path>`: write Go CPU profile
 - `-no-vsync`: disable vsync and uncap draw FPS
 - `-nofps`: hide FPS/MS overlay
+- `-no-aspect-correction`: disable Doom-style 4:3 aspect correction
 
-Demo format (`gddoom-demo-v1`):
-
-```text
-gddoom-demo-v1
-# forward side turn turn_raw run use fire
-25 0 0 0 0 0 0
-25 0 -1 0 0 0 0
-0 0 0 0 0 1 0
-0 0 0 0 0 0 1
-```
-
-- One tic per line after the header.
-- `run/use/fire` are bits (`0` or `1`).
-- At completion, the app prints `demo-bench ...` timing stats and exits.
+- `-demo` and `-record-demo` use Doom v1.10 `.lmp` files.
+- At completion, `-demo` prints `demo-bench ...` timing stats and exits.
   It includes `wad` (WAD SHA-1 hash), `map`, and `rng_start` (`M_Random`/`P_Random` indices at demo start).
 - `-demo` and `-record-demo` are mutually exclusive.
+- `-trace-demo-state` requires `-demo`.
 
 Level progression:
 - Exit linedefs now transition to the next map in-sequence.
@@ -93,45 +99,48 @@ Level progression:
 ## Controls (Default Doom Profile)
 
 - `TAB`: toggle walk/map mode
-- `WASD`: move
-- `Q/E`: turn (map mode)
+- `Esc`: open/close the in-game pause menu
+- `F4` / `F10`: open the quit prompt
+- `F1`: open the Read This/help screen
+- `WASD` or arrow keys: move/turn in walk mode (`Alt` + left/right arrow strafes)
+- `Q/E`: turn in map mode
 - `Shift`: run
 - `CapsLock`: toggle always-run
 - `E` / `Space`: use
 - `Ctrl` / left mouse: fire (hitscan prototype)
 - `1..7`: weapon slot select
 - `[` / `]` or `PgUp` / `PgDn`: previous/next weapon (walk mode)
-- mouse wheel (walk mode): cycle weapons
+- `Ctrl` + `[` / `]`: HUD size down/up
+- mouse wheel or side mouse buttons (walk mode): cycle weapons
 - `F12`: toggle auto weapon-switch
 - `Arrow keys`: pan map (follow off)
 - `F`: toggle follow
-- `G`: toggle grid
 - `0`: big map toggle
+- `Home`: reset map view
 - `M`: add mark
 - `C`: clear marks
-- `+` / `-` / mouse wheel: zoom
-- `F1`: help overlay
-- `F2`: save (menu WIP)
-- `F3`: load (menu WIP)
-- `F5`: cycle detail level (faithful) / clean upscale ratio (sourceport)
-- `F6`: quicksave (WIP)
-- `F7`: end game flow (WIP)
-- `F8`: toggle HUD messages
-- `F9`: quickload (WIP)
-- `F10`: quit
+- `G`: toggle grid
+- `+` / `-`: zoom
+- `,` / `.` / `/`: game speed down/up/reset
+- `F2`: save menu placeholder
+- `F3`: load menu placeholder
+- `F5`: cycle detail level
+- `F6`: quicksave placeholder in faithful mode
+- `F7`: end-game placeholder in faithful mode
+- `F8`: toggle HUD messages in faithful mode
+- `F9`: quickload placeholder
 - `F11`: cycle Doom-style gamma correction
-- `Esc`: quit
+- `Enter`: restart the current level after death
 
 Cheat controls are currently startup-config driven (`-cheat-level`, `-invuln`, `-all-cheats`).
 
 Source-port extras are enabled only with `-sourceport-mode`.
 In sourceport mode, press `\` to toggle mouselook at runtime.
-In sourceport mode, thing legend overlay is enabled by default; press `V` to toggle it.
-In sourceport mode, the current `use` target line is highlighted on automap.
-In sourceport mode, use-trigger button/switch lines are drawn in a distinct overlay color.
-In sourceport mode, legend panel includes map line-color meanings.
-In sourceport mode, walk view defaults to `doom-basic` textured wall rendering; press `P` to toggle pseudo-3D.
-In sourceport mode, map floor flats are drawn in 2D automap by default; press `J` to toggle at runtime.
+In sourceport mode, press `R` to toggle heading-up automap while follow mode is enabled.
+In sourceport mode, press `B` for big-map, `O` to toggle allmap, and `I` to cycle `IDDT` state.
+In sourceport mode, press `L` to toggle line-color mode, `V` to toggle the thing legend, and `T` to cycle automap thing rendering.
+In sourceport mode, the legend is enabled by default and thing rendering normalizes to `items` unless overridden with `-sourceport-thing-render-mode`.
+In sourceport mode, if you do not explicitly set `-gpu-sky` or `-sky-upscale`, GD-DOOM defaults to GPU sky with `-sky-upscale=sharp`.
 
 Config notes:
 - `config.toml` is auto-read by default when present.
@@ -153,15 +162,16 @@ Config notes:
 - Source-port info line shows tracked player stats (`hp`, `armor`, ammo pools, keyring).
 - 3D lighting now uses Doom `COLORMAP` behavior with fullbright sprite support.
 - Two-sided masked mid textures render in a deferred masked pass (portal/grate style walls).
-- Kage postprocess is opt-in (`-kage-shader`); the remaining postprocess path is CRT only.
-- Sourceport GPU sky is currently experimental and opt-in (`-gpu-sky`); default path uses CPU sky rendering.
+- In-session pause/options screens, Read This, and quit prompt frontend are wired.
+- Demo playback, live demo recording, and JSONL demo-state tracing are available.
+- Kage postprocess is opt-in (`-kage-shader`); CRT is the active runtime postprocess effect.
+- Sourceport GPU sky remains experimental, but sourceport mode now defaults it on unless you explicitly disable or override sky settings.
 
 ## Project Docs
 
-- Implemented features: `docs/IMPLEMENTED.md`
+- Implemented feature snapshot: `docs/IMPLEMENTED.md`
+- Launch flags and runtime defaults: `docs/launch-params.md`
 - Action list: `docs/ACTIONS.md`
 - Render mode policy: `docs/render-modes.md`
+- Demo trace harness notes: `docs/doom-trace-harness-checklist.md`
 - IWAD map-data audit: `docs/map-audit.md`
-- Historical milestone specs (archive):
-  - `docs/archive/m1-parser-spec.md`
-  - `docs/archive/m2-automap-spec.md`
