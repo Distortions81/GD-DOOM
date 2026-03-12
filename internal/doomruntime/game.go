@@ -3295,6 +3295,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		worldBottom := ws.WorldBottom
 		worldHigh := ws.WorldHigh
 		worldLow := ws.WorldLow
+		maskedWorldHigh := math.Min(worldTop, worldHigh)
+		maskedWorldLow := math.Max(worldBottom, worldLow)
 		topWall := ws.TopWall
 		bottomWall := ws.BottomWall
 		markCeiling := ws.MarkCeiling
@@ -3508,8 +3510,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						X0:         vis.L,
 						X1:         vis.R,
 						Projection: pp.prepass.Projection,
-						WorldHigh:  worldHigh,
-						WorldLow:   worldLow,
+						WorldHigh:  maskedWorldHigh,
+						WorldLow:   maskedWorldLow,
 						TexUOff:    texUOffset,
 						TexMid:     midTexMid,
 					},
