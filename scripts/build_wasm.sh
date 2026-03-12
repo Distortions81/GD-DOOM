@@ -21,18 +21,21 @@ chmod -f u+w \
   "${OUT_DIR}/gddoom.wasm" \
   "${OUT_DIR}/wasm_exec.js" \
   "${OUT_DIR}/index.html" \
+  "${OUT_DIR}/player.html" \
   "${OUT_DIR}/launch.js" \
   "${OUT_DIR}/server.go" 2>/dev/null || true
 rm -f \
   "${OUT_DIR}/gddoom.wasm" \
   "${OUT_DIR}/wasm_exec.js" \
   "${OUT_DIR}/index.html" \
+  "${OUT_DIR}/player.html" \
   "${OUT_DIR}/launch.js" \
   "${OUT_DIR}/server.go"
 
 GOOS=js GOARCH=wasm go build -o "${OUT_DIR}/gddoom.wasm" "${ROOT_DIR}"
 cp "${WASM_EXEC_JS}" "${OUT_DIR}/wasm_exec.js"
 cp "${ROOT_DIR}/web/wasm/index.html" "${OUT_DIR}/index.html"
+cp "${ROOT_DIR}/web/wasm/player.html" "${OUT_DIR}/player.html"
 cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"
 cp "${ROOT_DIR}/cmd/wasmserve/main.go" "${OUT_DIR}/server.go"
 

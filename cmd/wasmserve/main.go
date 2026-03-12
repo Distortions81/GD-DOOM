@@ -34,7 +34,7 @@ func defaultServeDir() string {
 }
 
 func hasAppFiles(dir string) bool {
-	for _, name := range []string{"index.html", "launch.js", "wasm_exec.js", "gddoom.wasm"} {
+	for _, name := range []string{"index.html", "player.html", "launch.js", "wasm_exec.js", "gddoom.wasm"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			return false
 		}
@@ -46,6 +46,7 @@ func newHandler(dir string) http.Handler {
 	files := map[string]string{
 		"/":             "index.html",
 		"/index.html":   "index.html",
+		"/player.html":  "player.html",
 		"/favicon.ico":  "",
 		"/launch.js":    "launch.js",
 		"/wasm_exec.js": "wasm_exec.js",
