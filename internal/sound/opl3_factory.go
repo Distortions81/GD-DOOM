@@ -1,5 +1,3 @@
-//go:build !cgo
-
 package sound
 
 import "fmt"
@@ -12,10 +10,8 @@ func validateBackend(backend Backend) error {
 	switch backend {
 	case BackendAuto, BackendImpSynth:
 		return nil
-	case BackendNuked:
-		return fmt.Errorf("backend %q requires a cgo build", backend)
 	default:
-		return fmt.Errorf("unknown backend %q (want auto|impsynth|nuked)", backend)
+		return fmt.Errorf("unknown backend %q (want auto|impsynth)", backend)
 	}
 }
 
@@ -23,9 +19,7 @@ func newOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {
 	switch backend {
 	case BackendAuto, BackendImpSynth:
 		return NewImpSynth(sampleRate), nil
-	case BackendNuked:
-		return nil, fmt.Errorf("backend %q requires a cgo build", backend)
 	default:
-		return nil, fmt.Errorf("unknown backend %q (want auto|impsynth|nuked)", backend)
+		return nil, fmt.Errorf("unknown backend %q (want auto|impsynth)", backend)
 	}
 }

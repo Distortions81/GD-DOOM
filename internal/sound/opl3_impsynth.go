@@ -38,7 +38,7 @@ var (
 		0, 0, 0, 1, 1, 1, -1, -1,
 		0, 0, 0, 1, 1, 1,
 	}
-	// Nuked's OPL frequency multiplier table is stored doubled.
+	// The OPL frequency multiplier table is stored doubled.
 	oplFrequencyMultiples = [16]uint32{
 		1, 2, 4, 6, 8, 10, 12, 14,
 		16, 18, 20, 20, 24, 24, 30, 30,

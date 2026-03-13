@@ -26,9 +26,7 @@ type wadTarget struct {
 type exportMode string
 
 const (
-	exportModeCompare  exportMode = "compare"
 	exportModeImpSynth exportMode = "impsynth"
-	exportModeNuked    exportMode = "nuked"
 )
 
 func main() {
@@ -42,7 +40,7 @@ func run(args []string) int {
 	doom1Path := fs.String("doom1", "doom.wad", "path to Doom 1 IWAD")
 	doom2Path := fs.String("doom2", "doom2.wad", "path to Doom 2 IWAD")
 	songFilter := fs.String("song", "", "exact music lump to export (default: all parseable D_* lumps)")
-	modeFlag := fs.String("mode", string(exportModeCompare), "export mode (compare|impsynth|nuked)")
+	modeFlag := fs.String("mode", string(exportModeImpSynth), "export mode (impsynth)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -95,14 +93,10 @@ func run(args []string) int {
 
 func parseExportMode(raw string) (exportMode, error) {
 	switch exportMode(strings.ToLower(strings.TrimSpace(raw))) {
-	case exportModeCompare:
-		return exportModeCompare, nil
 	case exportModeImpSynth:
 		return exportModeImpSynth, nil
-	case exportModeNuked:
-		return exportModeNuked, nil
 	default:
-		return "", fmt.Errorf("invalid -mode %q (want compare|impsynth|nuked)", raw)
+		return "", fmt.Errorf("invalid -mode %q (want impsynth)", raw)
 	}
 }
 
@@ -204,20 +198,8 @@ func parseableMusicLumps(wf *wad.File) ([]string, error) {
 
 func renderPCM(bank music.PatchBank, musData []byte, mode exportMode) ([]int16, error) {
 	switch mode {
-	case exportModeCompare:
-		impPCM, err := renderBackendPCM(bank, musData, sound.BackendImpSynth, "impsynth")
-		if err != nil {
-			return nil, err
-		}
-		nukedPCM, err := renderBackendPCM(bank, musData, sound.BackendNuked, "nuked")
-		if err != nil {
-			return nil, err
-		}
-		return interleaveCompare(impPCM, nukedPCM), nil
 	case exportModeImpSynth:
 		return renderBackendPCM(bank, musData, sound.BackendImpSynth, "impsynth")
-	case exportModeNuked:
-		return renderBackendPCM(bank, musData, sound.BackendNuked, "nuked")
 	default:
 		return nil, fmt.Errorf("unsupported export mode %q", mode)
 	}
@@ -234,34 +216,6 @@ func renderBackendPCM(bank music.PatchBank, musData []byte, backend sound.Backen
 		return nil, fmt.Errorf("render %s: %w", label, err)
 	}
 	return pcm, nil
-}
-
-func interleaveCompare(leftStereo []int16, rightStereo []int16) []int16 {
-	leftFrames := len(leftStereo) / 2
-	rightFrames := len(rightStereo) / 2
-	frames := leftFrames
-	if rightFrames > frames {
-		frames = rightFrames
-	}
-	if frames == 0 {
-		return nil
-	}
-	out := make([]int16, frames*2)
-	for i := 0; i < frames; i++ {
-		out[i*2] = monoFrame(leftStereo, i)
-		out[i*2+1] = monoFrame(rightStereo, i)
-	}
-	return out
-}
-
-func monoFrame(stereo []int16, frame int) int16 {
-	base := frame * 2
-	if base+1 >= len(stereo) {
-		return 0
-	}
-	l := int32(stereo[base])
-	r := int32(stereo[base+1])
-	return int16((l + r) / 2)
 }
 
 func writePCM16StereoWAV(path string, sampleRate int, pcm []int16) error {

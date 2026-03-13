@@ -57,7 +57,7 @@ go run ./cmd/gddoom -h
 - `-music-volume <float>`: music output volume (`0..1`, default `1.0`)
 - `-mus-pan-max <float>`: maximum MUS pan amount (`0..1`, default `0.8`; lower pulls pan toward center)
 - `-opl-volume <float>`: OPL synth output gain (`0..4`, default `2.25`)
-- `-opl3-backend <auto|impsynth|nuked>`: choose the OPL3 backend
+- `-opl3-backend <auto|impsynth>`: choose the OPL3 backend
 - `-opl-bank <path>`: override the WAD `GENMIDI` bank with an external OP2/GENMIDI file
 - `-sfx-volume <float>`: sound-effect output volume (`0..1`, default `0.5`)
 - `-always-run`: start with always-run enabled (holding `Shift` temporarily inverts it)

@@ -10,7 +10,6 @@ type Backend string
 const (
 	BackendAuto     Backend = "auto"
 	BackendImpSynth Backend = "impsynth"
-	BackendNuked    Backend = "nuked"
 )
 
 func (b Backend) String() string {
@@ -26,10 +25,8 @@ func ParseBackend(name string) (Backend, error) {
 		return BackendAuto, nil
 	case string(BackendImpSynth):
 		return BackendImpSynth, nil
-	case string(BackendNuked):
-		return BackendNuked, nil
 	default:
-		return "", fmt.Errorf("unknown backend %q (want auto|impsynth|nuked)", name)
+		return "", fmt.Errorf("unknown backend %q (want auto|impsynth)", name)
 	}
 }
 

@@ -205,7 +205,7 @@ func TestImpSynthMediumAttackPatchEscapesSilence(t *testing.T) {
 }
 
 func BenchmarkImpSynthRenderReferenceCorpus(b *testing.B) {
-	benchmarkOPLReferenceCorpus(b, "impsynth_legacy", func() *ImpSynth {
+	benchmarkOPLReferenceCorpus(b, "impsynth", func() *ImpSynth {
 		return NewImpSynth(49716)
 	})
 }
