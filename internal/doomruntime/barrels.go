@@ -194,7 +194,7 @@ func (g *game) radiusAttackFromThing(spotIdx int, damage int) {
 	g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion")
 }
 
-func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, sourceThing int, damage int, msg string) {
+func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage int, msg string) {
 	if g == nil || damage <= 0 {
 		return
 	}
@@ -222,7 +222,7 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, sourceThing int, damage
 
 	seen := make([]bool, len(g.m.Things))
 	visitThing := func(i int) {
-		if i < 0 || i >= len(g.m.Things) || seen[i] || i == sourceThing {
+		if i < 0 || i >= len(g.m.Things) || seen[i] || i == ignoreThing {
 			return
 		}
 		seen[i] = true

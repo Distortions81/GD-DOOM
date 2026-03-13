@@ -248,7 +248,7 @@ func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
 	if damage <= 0 {
 		return
 	}
-	g.radiusAttackAt(x, y, z, p.height, p.sourceThing, damage, projectileHitMessage(p.kind))
+	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind))
 }
 
 func (g *game) spawnPlayerRocket() bool {
