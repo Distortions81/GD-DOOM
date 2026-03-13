@@ -1,10 +1,17 @@
 package sessiontransition
 
 import (
+	"image"
 	"image/color"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
+
+func newUnmanagedImage(w, h int) *ebiten.Image {
+	return ebiten.NewImageWithOptions(image.Rect(0, 0, w, h), &ebiten.NewImageOptions{
+		Unmanaged: true,
+	})
+}
 
 const MeltVirtualH = 200
 
@@ -110,7 +117,7 @@ func (c *Controller) CaptureLastFrame(src *ebiten.Image) {
 		return
 	}
 	if c.lastFrame == nil || c.lastFrame.Bounds().Dx() != w || c.lastFrame.Bounds().Dy() != h {
-		c.lastFrame = ebiten.NewImage(w, h)
+		c.lastFrame = newUnmanagedImage(w, h)
 	}
 	c.lastFrame.Clear()
 	c.lastFrame.DrawImage(src, nil)
@@ -124,30 +131,19 @@ func (c *Controller) EnsureReady(width, height int, sourcePort bool, initCols, m
 		return
 	}
 	if c.from == nil || c.from.Bounds().Dx() != width || c.from.Bounds().Dy() != height {
-		c.from = ebiten.NewImage(width, height)
+		c.from = newUnmanagedImage(width, height)
 	}
 	if c.to == nil || c.to.Bounds().Dx() != width || c.to.Bounds().Dy() != height {
-		c.to = ebiten.NewImage(width, height)
+		c.to = newUnmanagedImage(width, height)
 	}
 	if c.work == nil || c.work.Bounds().Dx() != width || c.work.Bounds().Dy() != height {
-		c.work = ebiten.NewImage(width, height)
+		c.work = newUnmanagedImage(width, height)
 	}
 	if drawFrom != nil {
 		drawFrom(c.from)
 	}
 	if drawTo != nil {
 		drawTo(c.to)
-	}
-	if isWASMBuild() {
-		c.work.Clear()
-		c.work.DrawImage(c.to, nil)
-		c.width = width
-		c.height = height
-		c.initialized = true
-		c.pending = false
-		c.holdTics = 0
-		c.y = nil
-		return
 	}
 	need := width * height * 4
 	if len(c.fromPix) != need {
@@ -178,13 +174,6 @@ func (c *Controller) EnsureReady(width, height int, sourcePort bool, initCols, m
 
 func (c *Controller) Tick(sourcePort bool, initCols, moveCols int) {
 	if c == nil || c.kind == KindNone || !c.initialized {
-		return
-	}
-	if isWASMBuild() {
-		if c.to != nil {
-			c.CaptureLastFrame(c.to)
-		}
-		c.Clear()
 		return
 	}
 	if c.holdTics > 0 {

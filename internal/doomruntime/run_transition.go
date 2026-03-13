@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"image"
 	"image/color"
 	"time"
 
@@ -8,6 +9,12 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
+
+func newUnmanagedImage(w, h int) *ebiten.Image {
+	return ebiten.NewImageWithOptions(image.Rect(0, 0, w, h), &ebiten.NewImageOptions{
+		Unmanaged: true,
+	})
+}
 
 func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	if dst == nil || g == nil {
@@ -28,7 +35,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		vw := max(g.viewW, 1)
 		vh := max(g.viewH, 1)
 		if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
-			sg.faithfulSurface = ebiten.NewImage(vw, vh)
+			sg.faithfulSurface = newUnmanagedImage(vw, vh)
 		}
 		sg.faithfulSurface.Fill(color.Black)
 		if g.mode != viewMap {
@@ -46,7 +53,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		return
 	}
 	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
-		sg.presentSurface = ebiten.NewImage(max(g.viewW, 1), max(g.viewH, 1))
+		sg.presentSurface = newUnmanagedImage(max(g.viewW, 1), max(g.viewH, 1))
 	}
 	sg.presentSurface.Fill(color.Black)
 	if g.mode != viewMap {
@@ -103,31 +110,9 @@ func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {
 	if dst == nil {
 		return
 	}
-	if isWASMBuild() {
-		if sg.opts.BootSplash.Width <= 0 || sg.opts.BootSplash.Height <= 0 ||
-			len(sg.opts.BootSplash.RGBA) != sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
-			dst.Fill(color.Black)
-			return
-		}
-		img := ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
-		img.WritePixels(sg.opts.BootSplash.RGBA)
-		if !sg.opts.SourcePortMode {
-			sg.drawFaithfulPresented(dst, img)
-			return
-		}
-		sw := max(dst.Bounds().Dx(), 1)
-		sh := max(dst.Bounds().Dy(), 1)
-		bw := max(img.Bounds().Dx(), 1)
-		bh := max(img.Bounds().Dy(), 1)
-		dst.Fill(color.Black)
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Scale(float64(sw)/float64(bw), float64(sh)/float64(bh))
-		dst.DrawImage(img, op)
-		return
-	}
 	if sg.bootSplashImage == nil && sg.opts.BootSplash.Width > 0 && sg.opts.BootSplash.Height > 0 &&
 		len(sg.opts.BootSplash.RGBA) == sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
-		sg.bootSplashImage = ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
+		sg.bootSplashImage = newUnmanagedImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
 		sg.bootSplashImage.WritePixels(sg.opts.BootSplash.RGBA)
 	}
 	if sg.bootSplashImage == nil {
@@ -154,7 +139,7 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 	}
 	if sg.opts.SourcePortMode {
 		if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
-			sg.presentSurface = ebiten.NewImage(max(g.viewW, 1), max(g.viewH, 1))
+			sg.presentSurface = newUnmanagedImage(max(g.viewW, 1), max(g.viewH, 1))
 		}
 		g.Draw(sg.presentSurface)
 		src := sg.presentSurface
@@ -170,7 +155,7 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 	vw := max(g.viewW, 1)
 	vh := max(g.viewH, 1)
 	if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
-		sg.faithfulSurface = ebiten.NewImage(vw, vh)
+		sg.faithfulSurface = newUnmanagedImage(vw, vh)
 	}
 	g.Draw(sg.faithfulSurface)
 	src := sg.faithfulSurface
@@ -190,28 +175,9 @@ func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
 	if dst == nil {
 		return
 	}
-	if isWASMBuild() {
-		if sg.opts.BootSplash.Width <= 0 || sg.opts.BootSplash.Height <= 0 ||
-			len(sg.opts.BootSplash.RGBA) != sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
-			dst.Fill(color.Black)
-			return
-		}
-		img := ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
-		img.WritePixels(sg.opts.BootSplash.RGBA)
-		dw := max(dst.Bounds().Dx(), 1)
-		dh := max(dst.Bounds().Dy(), 1)
-		bw := max(img.Bounds().Dx(), 1)
-		bh := max(img.Bounds().Dy(), 1)
-		dst.Fill(color.Black)
-		op := &ebiten.DrawImageOptions{}
-		op.Filter = ebiten.FilterNearest
-		op.GeoM.Scale(float64(dw)/float64(bw), float64(dh)/float64(bh))
-		dst.DrawImage(img, op)
-		return
-	}
 	if sg.bootSplashImage == nil && sg.opts.BootSplash.Width > 0 && sg.opts.BootSplash.Height > 0 &&
 		len(sg.opts.BootSplash.RGBA) == sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
-		sg.bootSplashImage = ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
+		sg.bootSplashImage = newUnmanagedImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
 		sg.bootSplashImage.WritePixels(sg.opts.BootSplash.RGBA)
 	}
 	if sg.bootSplashImage == nil {
@@ -230,10 +196,6 @@ func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
 }
 
 func (sg *sessionGame) queueTransition(kind transitionKind, holdTics int) {
-	if isWASMBuild() {
-		sg.transition.Clear()
-		return
-	}
 	sg.transition.Queue(kind, holdTics)
 }
 
@@ -250,9 +212,6 @@ func (sg *sessionGame) shouldShowBootSplash() bool {
 }
 
 func (sg *sessionGame) transitionActive() bool {
-	if isWASMBuild() {
-		return false
-	}
 	return sg.transition.Active()
 }
 
@@ -272,10 +231,6 @@ func (sg *sessionGame) transitionSurfaceSize(screenW, screenH int) (int, int) {
 }
 
 func (sg *sessionGame) ensureTransitionReady(width, height int) {
-	if isWASMBuild() {
-		sg.transition.Clear()
-		return
-	}
 	t := &sg.transition
 	switch t.Kind() {
 	case sessiontransition.KindBoot:
@@ -310,10 +265,6 @@ func (sg *sessionGame) ensureTransitionReady(width, height int) {
 }
 
 func (sg *sessionGame) tickTransition() {
-	if isWASMBuild() {
-		sg.transition.Clear()
-		return
-	}
 	sg.transition.Tick(sg.opts.SourcePortMode, sourcePortMeltInitColumns(), sourcePortMeltMoveColumns())
 }
 
@@ -326,11 +277,5 @@ func sourcePortMeltMoveColumns() int {
 }
 
 func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
-	if isWASMBuild() {
-		if screen != nil {
-			screen.Clear()
-		}
-		return
-	}
 	sg.transition.DrawFrame(screen, sw, sh)
 }

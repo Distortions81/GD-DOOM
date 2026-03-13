@@ -696,7 +696,7 @@ func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
 		dh := max(dst.Bounds().Dy(), 1)
 		dst.Fill(color.Black)
 		if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != dw || sg.presentSurface.Bounds().Dy() != dh {
-			sg.presentSurface = ebiten.NewImage(dw, dh)
+			sg.presentSurface = newUnmanagedImage(dw, dh)
 		}
 		sg.presentSurface.Clear()
 		sg.drawFrontend(sg.presentSurface)
@@ -706,7 +706,7 @@ func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
 	dw := max(dst.Bounds().Dx(), 1)
 	dh := max(dst.Bounds().Dy(), 1)
 	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != dw || sg.presentSurface.Bounds().Dy() != dh {
-		sg.presentSurface = ebiten.NewImage(dw, dh)
+		sg.presentSurface = newUnmanagedImage(dw, dh)
 	}
 	sg.presentSurface.Clear()
 	sg.drawFrontend(sg.presentSurface)

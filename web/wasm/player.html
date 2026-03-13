@@ -27,6 +27,22 @@
       place-items: center;
       overflow: hidden;
     }
+    .notice {
+      position: fixed;
+      left: 50%;
+      bottom: 20px;
+      transform: translateX(-50%);
+      z-index: 3;
+      padding: 10px 14px;
+      border: 1px solid #663;
+      background: rgba(0, 0, 0, 0.88);
+      color: #f2d9a6;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .notice[hidden] {
+      display: none;
+    }
     canvas {
       display: block;
       image-rendering: pixelated;
@@ -38,10 +54,30 @@
 </head>
 <body>
   <main></main>
+  <div id="notice" class="notice" hidden></div>
   <script src="./wasm_exec.js"></script>
   <script>
     const go = new Go();
     go.argv = ["gddoom", "-wad=./DOOM1.WAD", "-opl3-backend=impsynth"];
+    const notice = document.getElementById("notice");
+    let boundCanvas = null;
+    let reloadScheduled = false;
+
+    function showNotice(text) {
+      if (!notice) {
+        return;
+      }
+      notice.textContent = text;
+      notice.hidden = false;
+    }
+
+    function hideNotice() {
+      if (!notice) {
+        return;
+      }
+      notice.hidden = true;
+      notice.textContent = "";
+    }
 
     function focusCanvas() {
       const canvas = document.querySelector("canvas");
@@ -54,6 +90,41 @@
         canvas.focus({ preventScroll: true });
       });
       return true;
+    }
+
+    function scheduleReload() {
+      if (reloadScheduled) {
+        return;
+      }
+      reloadScheduled = true;
+      showNotice("Graphics context lost. Reloading...");
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "gddoom-webgl-context-lost" }, window.location.origin);
+      }
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 750);
+    }
+
+    function bindCanvas(canvas) {
+      if (!canvas || canvas === boundCanvas) {
+        return;
+      }
+      boundCanvas = canvas;
+      canvas.addEventListener("webglcontextlost", (event) => {
+        event.preventDefault();
+        scheduleReload();
+      });
+      canvas.addEventListener("webglcontextrestored", () => {
+        reloadScheduled = false;
+        hideNotice();
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
+        }
+      });
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
+      }
     }
 
     window.addEventListener("message", (event) => {
@@ -78,6 +149,14 @@
     window.addEventListener("click", () => {
       focusCanvas();
     });
+
+    const canvasObserver = new MutationObserver(() => {
+      const canvas = document.querySelector("canvas");
+      if (canvas) {
+        bindCanvas(canvas);
+      }
+    });
+    canvasObserver.observe(document.documentElement, { childList: true, subtree: true });
 
     fetch("./gddoom.wasm")
       .then((response) => response.arrayBuffer())

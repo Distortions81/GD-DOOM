@@ -281,7 +281,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 				return
 			}
 			if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
-				sg.presentSurface = ebiten.NewImage(sw, sh)
+				sg.presentSurface = newUnmanagedImage(sw, sh)
 			}
 			sg.drawGamePresented(sg.presentSurface, sg.g)
 			screen.DrawImage(sg.presentSurface, nil)
@@ -401,7 +401,7 @@ func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image
 		return src
 	}
 	if sg.crtPost == nil || sg.crtPost.Bounds().Dx() != w || sg.crtPost.Bounds().Dy() != h {
-		sg.crtPost = ebiten.NewImage(w, h)
+		sg.crtPost = newUnmanagedImage(w, h)
 	}
 	op := &ebiten.DrawRectShaderOptions{}
 	op.Images[0] = src

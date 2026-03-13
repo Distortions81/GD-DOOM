@@ -1135,6 +1135,8 @@ func (g *game) clearSpritePatchCache() {
 		return
 	}
 	g.spritePatchImg = nil
+	g.statusPatchImg = nil
+	g.messageFontImg = nil
 }
 
 func reserveSliceCap[T any](buf []T, n int) []T {

@@ -2,6 +2,7 @@ const splash = document.getElementById("splash");
 const shell = document.getElementById("game-shell");
 
 let splashDismissed = false;
+let pendingReload = false;
 
 function hideSplash() {
   if (splashDismissed || !splash) {
@@ -17,6 +18,16 @@ function focusPlayer() {
   }
   shell.focus({ preventScroll: true });
   shell.contentWindow.postMessage({ type: "gddoom-focus-canvas" }, window.location.origin);
+}
+
+function reloadPlayer() {
+  if (!shell || pendingReload) {
+    return;
+  }
+  pendingReload = true;
+  const url = new URL(shell.src, window.location.href);
+  url.searchParams.set("reload", String(Date.now()));
+  shell.src = url.toString();
 }
 
 function claimFocusAndStart() {
@@ -40,4 +51,20 @@ window.addEventListener("keydown", (event) => {
   }
   event.preventDefault();
   claimFocusAndStart();
+});
+
+window.addEventListener("message", (event) => {
+  if (event.origin !== window.location.origin || !event.data) {
+    return;
+  }
+  switch (event.data.type) {
+    case "gddoom-player-ready":
+      pendingReload = false;
+      break;
+    case "gddoom-webgl-context-lost":
+      reloadPlayer();
+      break;
+    default:
+      break;
+  }
 });
