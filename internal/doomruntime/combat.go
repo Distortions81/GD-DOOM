@@ -348,8 +348,8 @@ func (g *game) fireSelectedWeapon() bool {
 		return hit
 	case weaponRocketLauncher:
 		g.stats.Rockets--
-		g.setHUDMessage("Rocket weapon not wired yet", 12)
-		return false
+		g.emitSoundEvent(soundEventShootRocket)
+		return g.spawnPlayerRocket()
 	case weaponPlasma:
 		g.stats.Cells--
 		g.setHUDMessage("Plasma weapon not wired yet", 12)

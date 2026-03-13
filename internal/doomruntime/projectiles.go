@@ -15,20 +15,21 @@ const (
 )
 
 type projectile struct {
-	x           int64
-	y           int64
-	z           int64
-	vx          int64
-	vy          int64
-	vz          int64
-	radius      int64
-	height      int64
-	ttl         int
-	sourceX     int64
-	sourceY     int64
-	sourceThing int
-	sourceType  int16
-	kind        projectileKind
+	x            int64
+	y            int64
+	z            int64
+	vx           int64
+	vy           int64
+	vz           int64
+	radius       int64
+	height       int64
+	ttl          int
+	sourceX      int64
+	sourceY      int64
+	sourceThing  int
+	sourceType   int16
+	sourcePlayer bool
+	kind         projectileKind
 }
 
 type projectileImpact struct {
@@ -184,7 +185,7 @@ func (g *game) tickProjectiles() {
 		if hitThing && (!blocked || thingHit.frac <= blockFrac) {
 			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
-			if dmg := monsterRangedDamage(p.sourceType); dmg > 0 {
+			if dmg := projectileDamage(p); dmg > 0 {
 				g.damageShootableThing(thingHit.idx, dmg)
 			}
 			continue
@@ -203,10 +204,10 @@ func (g *game) tickProjectiles() {
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
 			continue
 		}
-		if g.projectileHitsPlayer(p) {
+		if !p.sourcePlayer && g.projectileHitsPlayer(p) {
 			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-			dmg := monsterRangedDamage(p.sourceType)
+			dmg := projectileDamage(p)
 			if dmg > 0 {
 				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
 			}
@@ -215,6 +216,60 @@ func (g *game) tickProjectiles() {
 		kept = append(kept, p)
 	}
 	g.projectiles = kept
+}
+
+func projectileDamage(p projectile) int {
+	if p.sourcePlayer {
+		switch p.kind {
+		case projectileRocket:
+			return 20 * (1 + doomPRandomN(8))
+		default:
+			return 0
+		}
+	}
+	return monsterRangedDamage(p.sourceType)
+}
+
+func (g *game) spawnPlayerRocket() bool {
+	if g == nil {
+		return false
+	}
+	const (
+		rocketSpeed  = 20 * fracUnit
+		rocketRadius = 11 * fracUnit
+		rocketHeight = 8 * fracUnit
+		rocketTTL    = 10 * doomTicsPerSecond
+	)
+	ang := angleToRadians(g.p.angle)
+	vx := int64(math.Cos(ang) * float64(rocketSpeed))
+	vy := int64(math.Sin(ang) * float64(rocketSpeed))
+	if vx == 0 && vy == 0 {
+		return false
+	}
+	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
+	vz := fixedMul(rocketSpeed, slope)
+	launchOffset := playerRadius + rocketRadius + 4*fracUnit
+	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
+	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
+	sz := g.playerShootZ() - (rocketHeight >> 1)
+	g.projectiles = append(g.projectiles, projectile{
+		x:            sx,
+		y:            sy,
+		z:            sz,
+		vx:           vx,
+		vy:           vy,
+		vz:           vz,
+		radius:       rocketRadius,
+		height:       rocketHeight,
+		ttl:          rocketTTL,
+		sourceX:      g.p.x,
+		sourceY:      g.p.y,
+		sourceThing:  -1,
+		sourceType:   16,
+		sourcePlayer: true,
+		kind:         projectileRocket,
+	})
+	return true
 }
 
 func (g *game) tickProjectileImpacts() {

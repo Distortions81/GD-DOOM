@@ -142,3 +142,36 @@ func TestProjectileDoesNotHitSourceImp(t *testing.T) {
 		t.Fatal("projectile should not select the source imp as a hit target")
 	}
 }
+
+func TestPlayerRocketSpawnsProjectile(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{Health: 100, Rockets: 3},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      0,
+			angle:  0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		inventory:   playerInventory{ReadyWeapon: weaponRocketLauncher},
+		projectiles: make([]projectile, 0, 1),
+	}
+	if !g.fireSelectedWeapon() {
+		t.Fatal("rocket launcher should spawn a projectile")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	p := g.projectiles[0]
+	if p.kind != projectileRocket {
+		t.Fatalf("projectile kind=%v want=%v", p.kind, projectileRocket)
+	}
+	if !p.sourcePlayer {
+		t.Fatal("player rocket should be marked as player-sourced")
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventShootRocket) {
+		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventShootRocket)
+	}
+}
