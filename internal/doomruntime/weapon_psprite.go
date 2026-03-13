@@ -392,6 +392,11 @@ func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 		return nil, 0, 0, 0, 0, false
 	}
+	if isWASMBuild() {
+		img := ebiten.NewImage(p.Width, p.Height)
+		img.WritePixels(p.RGBA)
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+	}
 	if g.spritePatchImg == nil {
 		g.spritePatchImg = make(map[string]*ebiten.Image, 256)
 	}

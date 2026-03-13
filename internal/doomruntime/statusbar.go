@@ -164,6 +164,11 @@ func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 		return nil, 0, 0, 0, 0, false
 	}
+	if isWASMBuild() {
+		img := ebiten.NewImage(p.Width, p.Height)
+		img.WritePixels(p.RGBA)
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
+	}
 	if g.statusPatchImg == nil {
 		g.statusPatchImg = make(map[string]*ebiten.Image, 96)
 	}
@@ -262,6 +267,11 @@ func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, boo
 	p, ok := g.opts.MessageFontBank[ch]
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 		return nil, 0, 0, 0, 0, false
+	}
+	if isWASMBuild() {
+		img := ebiten.NewImage(p.Width, p.Height)
+		img.WritePixels(p.RGBA)
+		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
 	if g.messageFontImg == nil {
 		g.messageFontImg = make(map[rune]*ebiten.Image, 96)

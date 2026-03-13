@@ -89,8 +89,6 @@ type sessionGame struct {
 	crtPost             *ebiten.Image
 	presentSurface      *ebiten.Image
 	bootSplashImage     *ebiten.Image
-	menuPatchCache      map[string]*ebiten.Image
-	interPatchCache     map[string]*ebiten.Image
 	menuSfx             *sessionaudio.MenuController
 	transition          sessiontransition.Controller
 	intermission        sessionIntermission
@@ -335,8 +333,6 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 		sg.faithfulSurface = nil
 		sg.faithfulNearest = nil
 		sg.crtPost = nil
-		sg.menuPatchCache = nil
-		sg.interPatchCache = nil
 		runtime.GC()
 
 		opts := sg.opts

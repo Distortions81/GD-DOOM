@@ -2467,7 +2467,9 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		InterTick:           firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
-	bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
+	if !isWASMBuild() {
+		bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
+	}
 	if sourcePortMode {
 		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
 	}

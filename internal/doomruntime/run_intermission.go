@@ -290,15 +290,8 @@ func (sg *sessionGame) intermissionPatch(name string) (*ebiten.Image, WallTextur
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 		return nil, WallTexture{}, false
 	}
-	if sg.interPatchCache == nil {
-		sg.interPatchCache = make(map[string]*ebiten.Image, 64)
-	}
-	if img, ok := sg.interPatchCache[key]; ok {
-		return img, p, true
-	}
 	img := ebiten.NewImage(p.Width, p.Height)
 	img.WritePixels(p.RGBA)
-	sg.interPatchCache[key] = img
 	return img, p, true
 }
 

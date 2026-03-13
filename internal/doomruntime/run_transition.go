@@ -103,6 +103,28 @@ func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {
 	if dst == nil {
 		return
 	}
+	if isWASMBuild() {
+		if sg.opts.BootSplash.Width <= 0 || sg.opts.BootSplash.Height <= 0 ||
+			len(sg.opts.BootSplash.RGBA) != sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
+			dst.Fill(color.Black)
+			return
+		}
+		img := ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
+		img.WritePixels(sg.opts.BootSplash.RGBA)
+		if !sg.opts.SourcePortMode {
+			sg.drawFaithfulPresented(dst, img)
+			return
+		}
+		sw := max(dst.Bounds().Dx(), 1)
+		sh := max(dst.Bounds().Dy(), 1)
+		bw := max(img.Bounds().Dx(), 1)
+		bh := max(img.Bounds().Dy(), 1)
+		dst.Fill(color.Black)
+		op := &ebiten.DrawImageOptions{}
+		op.GeoM.Scale(float64(sw)/float64(bw), float64(sh)/float64(bh))
+		dst.DrawImage(img, op)
+		return
+	}
 	if sg.bootSplashImage == nil && sg.opts.BootSplash.Width > 0 && sg.opts.BootSplash.Height > 0 &&
 		len(sg.opts.BootSplash.RGBA) == sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
 		sg.bootSplashImage = ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
@@ -166,6 +188,25 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 
 func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
 	if dst == nil {
+		return
+	}
+	if isWASMBuild() {
+		if sg.opts.BootSplash.Width <= 0 || sg.opts.BootSplash.Height <= 0 ||
+			len(sg.opts.BootSplash.RGBA) != sg.opts.BootSplash.Width*sg.opts.BootSplash.Height*4 {
+			dst.Fill(color.Black)
+			return
+		}
+		img := ebiten.NewImage(sg.opts.BootSplash.Width, sg.opts.BootSplash.Height)
+		img.WritePixels(sg.opts.BootSplash.RGBA)
+		dw := max(dst.Bounds().Dx(), 1)
+		dh := max(dst.Bounds().Dy(), 1)
+		bw := max(img.Bounds().Dx(), 1)
+		bh := max(img.Bounds().Dy(), 1)
+		dst.Fill(color.Black)
+		op := &ebiten.DrawImageOptions{}
+		op.Filter = ebiten.FilterNearest
+		op.GeoM.Scale(float64(dw)/float64(bw), float64(dh)/float64(bh))
+		dst.DrawImage(img, op)
 		return
 	}
 	if sg.bootSplashImage == nil && sg.opts.BootSplash.Width > 0 && sg.opts.BootSplash.Height > 0 &&

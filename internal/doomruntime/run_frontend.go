@@ -1179,14 +1179,7 @@ func (sg *sessionGame) menuPatch(name string) (*ebiten.Image, WallTexture, bool)
 	if !ok {
 		return nil, WallTexture{}, false
 	}
-	if sg.menuPatchCache == nil {
-		sg.menuPatchCache = make(map[string]*ebiten.Image, 32)
-	}
-	if img, ok := sg.menuPatchCache[key]; ok {
-		return img, p, true
-	}
 	img := ebiten.NewImage(p.Width, p.Height)
 	img.WritePixels(p.RGBA)
-	sg.menuPatchCache[key] = img
 	return img, p, true
 }
