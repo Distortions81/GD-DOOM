@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/binary"
 	"flag"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unsafe"
 
 	"gddoom/internal/music"
 	"gddoom/internal/sound"
@@ -21,6 +23,14 @@ type wadTarget struct {
 	path  string
 }
 
+type exportMode string
+
+const (
+	exportModeCompare  exportMode = "compare"
+	exportModeImpSynth exportMode = "impsynth"
+	exportModeNuked    exportMode = "nuked"
+)
+
 func main() {
 	os.Exit(run(os.Args[1:]))
 }
@@ -32,7 +42,13 @@ func run(args []string) int {
 	doom1Path := fs.String("doom1", "doom.wad", "path to Doom 1 IWAD")
 	doom2Path := fs.String("doom2", "doom2.wad", "path to Doom 2 IWAD")
 	songFilter := fs.String("song", "", "exact music lump to export (default: all parseable D_* lumps)")
+	modeFlag := fs.String("mode", string(exportModeCompare), "export mode (compare|impsynth|nuked)")
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	mode, err := parseExportMode(*modeFlag)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
 
@@ -68,7 +84,7 @@ func run(args []string) int {
 			fmt.Fprintf(os.Stderr, "skip %s: %v\n", target.path, err)
 			continue
 		}
-		if err := exportWAD(target, *outDir, strings.ToUpper(strings.TrimSpace(*songFilter))); err != nil {
+		if err := exportWAD(target, *outDir, strings.ToUpper(strings.TrimSpace(*songFilter)), mode); err != nil {
 			fmt.Fprintf(os.Stderr, "export %s: %v\n", target.path, err)
 			return 1
 		}
@@ -77,7 +93,20 @@ func run(args []string) int {
 	return 0
 }
 
-func exportWAD(target wadTarget, rootOut string, songFilter string) error {
+func parseExportMode(raw string) (exportMode, error) {
+	switch exportMode(strings.ToLower(strings.TrimSpace(raw))) {
+	case exportModeCompare:
+		return exportModeCompare, nil
+	case exportModeImpSynth:
+		return exportModeImpSynth, nil
+	case exportModeNuked:
+		return exportModeNuked, nil
+	default:
+		return "", fmt.Errorf("invalid -mode %q (want compare|impsynth|nuked)", raw)
+	}
+}
+
+func exportWAD(target wadTarget, rootOut string, songFilter string, mode exportMode) error {
 	wf, err := wad.Open(target.path)
 	if err != nil {
 		return fmt.Errorf("open wad: %w", err)
@@ -120,7 +149,7 @@ func exportWAD(target wadTarget, rootOut string, songFilter string) error {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", song, err)
 		}
-		pcm, err := renderComparePCM(bank, musData)
+		pcm, err := renderPCM(bank, musData, mode)
 		if err != nil {
 			return fmt.Errorf("render %s: %w", song, err)
 		}
@@ -173,28 +202,38 @@ func parseableMusicLumps(wf *wad.File) ([]string, error) {
 	return songs, nil
 }
 
-func renderComparePCM(bank music.PatchBank, musData []byte) ([]int16, error) {
-	impDriver, err := music.NewOutputDriverWithBackend(bank, sound.BackendImpSynth)
-	if err != nil {
-		return nil, fmt.Errorf("new impsynth driver: %w", err)
+func renderPCM(bank music.PatchBank, musData []byte, mode exportMode) ([]int16, error) {
+	switch mode {
+	case exportModeCompare:
+		impPCM, err := renderBackendPCM(bank, musData, sound.BackendImpSynth, "impsynth")
+		if err != nil {
+			return nil, err
+		}
+		nukedPCM, err := renderBackendPCM(bank, musData, sound.BackendNuked, "nuked")
+		if err != nil {
+			return nil, err
+		}
+		return interleaveCompare(impPCM, nukedPCM), nil
+	case exportModeImpSynth:
+		return renderBackendPCM(bank, musData, sound.BackendImpSynth, "impsynth")
+	case exportModeNuked:
+		return renderBackendPCM(bank, musData, sound.BackendNuked, "nuked")
+	default:
+		return nil, fmt.Errorf("unsupported export mode %q", mode)
 	}
-	nukedDriver, err := music.NewOutputDriverWithBackend(bank, sound.BackendNuked)
-	if err != nil {
-		return nil, fmt.Errorf("new nuked driver: %w", err)
-	}
+}
 
-	impDriver.Reset()
-	nukedDriver.Reset()
-
-	impPCM, err := impDriver.RenderMUS(musData)
+func renderBackendPCM(bank music.PatchBank, musData []byte, backend sound.Backend, label string) ([]int16, error) {
+	driver, err := music.NewOutputDriverWithBackend(bank, backend)
 	if err != nil {
-		return nil, fmt.Errorf("render impsynth: %w", err)
+		return nil, fmt.Errorf("new %s driver: %w", label, err)
 	}
-	nukedPCM, err := nukedDriver.RenderMUS(musData)
+	driver.Reset()
+	pcm, err := driver.RenderMUS(musData)
 	if err != nil {
-		return nil, fmt.Errorf("render nuked: %w", err)
+		return nil, fmt.Errorf("render %s: %w", label, err)
 	}
-	return interleaveCompare(impPCM, nukedPCM), nil
+	return pcm, nil
 }
 
 func interleaveCompare(leftStereo []int16, rightStereo []int16) []int16 {
@@ -246,50 +285,77 @@ func writePCM16StereoWAV(path string, sampleRate int, pcm []int16) error {
 		return err
 	}
 	defer f.Close()
+	w := bufio.NewWriterSize(f, 1<<20)
+	defer w.Flush()
 
-	if _, err := f.Write([]byte("RIFF")); err != nil {
+	if _, err := w.Write([]byte("RIFF")); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint32(36+dataSize)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint32(36+dataSize)); err != nil {
 		return err
 	}
-	if _, err := f.Write([]byte("WAVE")); err != nil {
+	if _, err := w.Write([]byte("WAVE")); err != nil {
 		return err
 	}
-	if _, err := f.Write([]byte("fmt ")); err != nil {
+	if _, err := w.Write([]byte("fmt ")); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint32(16)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint32(16)); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint16(1)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint16(1)); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint16(numChannels)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint16(numChannels)); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint32(sampleRate)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint32(sampleRate)); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint32(byteRate)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint32(byteRate)); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint16(blockAlign)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint16(blockAlign)); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint16(bitsPerSample)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint16(bitsPerSample)); err != nil {
 		return err
 	}
-	if _, err := f.Write([]byte("data")); err != nil {
+	if _, err := w.Write([]byte("data")); err != nil {
 		return err
 	}
-	if err := binary.Write(f, binary.LittleEndian, uint32(dataSize)); err != nil {
+	if err := binary.Write(w, binary.LittleEndian, uint32(dataSize)); err != nil {
 		return err
 	}
+	if len(pcm) == 0 {
+		return nil
+	}
+	if nativeLittleEndian() {
+		data := unsafe.Slice((*byte)(unsafe.Pointer(unsafe.SliceData(pcm))), dataSize)
+		if _, err := w.Write(data); err != nil {
+			return err
+		}
+		return nil
+	}
+	buf := make([]byte, 0, 1<<20)
 	for _, s := range pcm {
-		if err := binary.Write(f, binary.LittleEndian, s); err != nil {
+		buf = binary.LittleEndian.AppendUint16(buf, uint16(s))
+		if len(buf) >= 1<<20 {
+			if _, err := w.Write(buf); err != nil {
+				return err
+			}
+			buf = buf[:0]
+		}
+	}
+	if len(buf) > 0 {
+		if _, err := w.Write(buf); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func nativeLittleEndian() bool {
+	var v uint16 = 0x0102
+	return *(*byte)(unsafe.Pointer(&v)) == 0x02
 }
