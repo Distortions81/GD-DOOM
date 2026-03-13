@@ -3,7 +3,7 @@
 package sound
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/third_party/nuked_opl3 -DOPL_ENABLE_STEREOEXT=1
+#cgo CFLAGS: -I${SRCDIR}/third_party/nuked_opl3
 #cgo LDFLAGS: -lm
 #include <stdlib.h>
 #include "opl3.h"

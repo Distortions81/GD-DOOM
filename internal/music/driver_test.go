@@ -211,9 +211,14 @@ func TestDriverPitchBendUsesMSB(t *testing.T) {
 
 func TestDriverResetMatchesChocolateChannelDefaults(t *testing.T) {
 	d := NewOutputDriver(nil)
+	opl := &captureOPL{}
+	d.opl = opl
 	d.Reset()
 	if got := len(d.voices); got != 18 {
 		t.Fatalf("voice count=%d want=18", got)
+	}
+	if got, ok := opl.lastWrite(0x105); !ok || got != 0x01 {
+		t.Fatalf("reset OPL new-mode write=%#02x ok=%v want 0x01,true", got, ok)
 	}
 	for i, ch := range d.ch {
 		if ch.volume != 100 {
@@ -423,12 +428,8 @@ func TestDriverPanScalingAffectsOPLPanBucket(t *testing.T) {
 	if got := val & 0x30; got != 0x30 {
 		t.Fatalf("scaled pan lr bits=0x%02X want=0x30 (center)", got)
 	}
-	panVal, ok := opl.lastWrite(0xD0)
-	if !ok {
-		t.Fatal("expected D0 stereo pan register write")
-	}
-	if panVal != 187 {
-		t.Fatalf("scaled stereo pan=%d want=187", panVal)
+	if opl.wroteAddr(0xD0) {
+		t.Fatal("unexpected D0 stereo-extension pan register write")
 	}
 
 	opl.writes = nil
@@ -441,12 +442,8 @@ func TestDriverPanScalingAffectsOPLPanBucket(t *testing.T) {
 	if got := val & 0x30; got != 0x10 {
 		t.Fatalf("full pan lr bits=0x%02X want=0x10 (right)", got)
 	}
-	panVal, ok = opl.lastWrite(0xD0)
-	if !ok {
-		t.Fatal("expected D0 stereo pan register write")
-	}
-	if panVal != 201 {
-		t.Fatalf("full stereo pan=%d want=201", panVal)
+	if opl.wroteAddr(0xD0) {
+		t.Fatal("unexpected D0 stereo-extension pan register write")
 	}
 }
 

@@ -31,6 +31,7 @@ func run(args []string) int {
 	outDir := fs.String("out", "out/opl-compare", "output directory")
 	doom1Path := fs.String("doom1", "doom.wad", "path to Doom 1 IWAD")
 	doom2Path := fs.String("doom2", "doom2.wad", "path to Doom 2 IWAD")
+	songFilter := fs.String("song", "", "exact music lump to export (default: all parseable D_* lumps)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -67,7 +68,7 @@ func run(args []string) int {
 			fmt.Fprintf(os.Stderr, "skip %s: %v\n", target.path, err)
 			continue
 		}
-		if err := exportWAD(target, *outDir); err != nil {
+		if err := exportWAD(target, *outDir, strings.ToUpper(strings.TrimSpace(*songFilter))); err != nil {
 			fmt.Fprintf(os.Stderr, "export %s: %v\n", target.path, err)
 			return 1
 		}
@@ -76,7 +77,7 @@ func run(args []string) int {
 	return 0
 }
 
-func exportWAD(target wadTarget, rootOut string) error {
+func exportWAD(target wadTarget, rootOut string, songFilter string) error {
 	wf, err := wad.Open(target.path)
 	if err != nil {
 		return fmt.Errorf("open wad: %w", err)
@@ -91,6 +92,18 @@ func exportWAD(target wadTarget, rootOut string) error {
 	}
 	if len(songs) == 0 {
 		return fmt.Errorf("no parseable D_* lumps found")
+	}
+	if songFilter != "" {
+		filtered := songs[:0]
+		for _, song := range songs {
+			if song == songFilter {
+				filtered = append(filtered, song)
+			}
+		}
+		songs = filtered
+		if len(songs) == 0 {
+			return fmt.Errorf("missing parseable lump %s", songFilter)
+		}
 	}
 
 	wadOut := filepath.Join(rootOut, target.label)

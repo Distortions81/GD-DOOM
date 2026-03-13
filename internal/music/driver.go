@@ -214,9 +214,8 @@ func (d *Driver) Reset() {
 	d.opl.WriteReg(0x04, 0x60) // reset timers
 	d.opl.WriteReg(0x04, 0x80) // enable interrupts
 	d.opl.WriteReg(0x01, 0x20) // waveform control enable
-	// Use OPL3 NEW mode so upper-bank channel registers (0x1xx) are active.
-	// Also enable the stereo extension pan register path (0xD0-0xD8).
-	d.opl.WriteReg(0x105, 0x03)
+	// Match Chocolate Doom's OPL3 NEW-mode init.
+	d.opl.WriteReg(0x105, 0x01)
 	d.opl.WriteReg(0x08, 0x40) // FM mode / keyboard split
 	for i := range d.voices {
 		d.voices[i] = voiceState{oplCh: i}
@@ -598,7 +597,6 @@ func (d *Driver) writePan(oplCh int, ch, c0 uint8) {
 		lr = 0x20
 	}
 	d.opl.WriteReg(uint16(base+0xC0+ci), (c0&0x0F)|lr)
-	d.opl.WriteReg(uint16(base+0xD0+ci), oplStereoPanValue(pan))
 }
 
 func (d *Driver) writeNote(oplCh int, note uint8, bend int16, keyOn bool) uint16 {
@@ -664,10 +662,6 @@ func scaleMUSPan(pan uint8, max float64) uint8 {
 	}
 	scaled := int(math.Round(64 + (float64(int(pan)-64) * m)))
 	return uint8(clampMIDI7(scaled))
-}
-
-func oplStereoPanValue(pan uint8) uint8 {
-	return uint8(math.Round((float64(pan) * 255.0) / 127.0))
 }
 
 func (d *Driver) generateStereoS16(frames int) []int16 {
