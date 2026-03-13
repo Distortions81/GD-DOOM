@@ -1,9 +1,13 @@
 package music
 
 import (
+	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gddoom/internal/wad"
 )
 
 func TestParseGENMIDIOP2PatchBank(t *testing.T) {
@@ -114,5 +118,87 @@ func TestParseGENMIDIOP2PatchBankFile(t *testing.T) {
 	}
 	if bank == nil {
 		t.Fatal("expected parsed patch bank")
+	}
+}
+
+func TestParseRealWADGENMIDIMapsRawBytesDirectly(t *testing.T) {
+	wadPath := findDOOM1WADForMusicTests(t)
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+	lump, ok := wf.LumpByName("GENMIDI")
+	if !ok {
+		t.Fatalf("%s missing GENMIDI lump", wadPath)
+	}
+	data, err := wf.LumpData(lump)
+	if err != nil {
+		t.Fatalf("read GENMIDI: %v", err)
+	}
+	parsedAny, err := ParseGENMIDIOP2PatchBank(data)
+	if err != nil {
+		t.Fatalf("ParseGENMIDIOP2PatchBank() error: %v", err)
+	}
+	parsed, ok := parsedAny.(*OP2PatchBank)
+	if !ok {
+		t.Fatalf("bank type=%T want *OP2PatchBank", parsedAny)
+	}
+
+	checkIndex := func(t *testing.T, idx int) {
+		t.Helper()
+		if idx < 0 || idx >= genmidiTotalInstrs {
+			t.Fatalf("invalid instrument index %d", idx)
+		}
+		base := genmidiDataOffset + idx*genmidiInstrSize
+		rawFlags := binary.LittleEndian.Uint16(data[base : base+2])
+		rawFine := data[base+2]
+		rawFixed := data[base+3]
+
+		got := parsed.instruments[idx]
+		if got.flags != rawFlags {
+			t.Fatalf("idx=%d flags=%#04x want=%#04x", idx, got.flags, rawFlags)
+		}
+		if got.fineTuning != rawFine {
+			t.Fatalf("idx=%d fine_tuning=%d want=%d", idx, got.fineTuning, rawFine)
+		}
+		if got.fixedNote != rawFixed {
+			t.Fatalf("idx=%d fixed_note=%d want=%d", idx, got.fixedNote, rawFixed)
+		}
+
+		for voice := 0; voice < 2; voice++ {
+			vbase := base + 4 + voice*16
+			wantMod20 := data[vbase+0]
+			wantMod40 := (data[vbase+4] & 0xC0) | (data[vbase+5] & 0x3F)
+			wantMod60 := data[vbase+1]
+			wantMod80 := data[vbase+2]
+			wantModE0 := data[vbase+3]
+			wantC0 := data[vbase+6] & 0x0F
+			wantCar20 := data[vbase+7]
+			wantCar40 := (data[vbase+11] & 0xC0) | (data[vbase+12] & 0x3F)
+			wantCar60 := data[vbase+8]
+			wantCar80 := data[vbase+9]
+			wantCarE0 := data[vbase+10]
+			wantBase := int16(binary.LittleEndian.Uint16(data[vbase+14 : vbase+16]))
+
+			gotPatch := parsed.voiceToPatch(got.voices[voice])
+			if gotPatch.Mod20 != wantMod20 || gotPatch.Mod40 != wantMod40 || gotPatch.Mod60 != wantMod60 || gotPatch.Mod80 != wantMod80 || gotPatch.ModE0 != wantModE0 {
+				t.Fatalf("idx=%d voice=%d mod patch=%+v raw=(20=%#02x 40=%#02x 60=%#02x 80=%#02x e0=%#02x)", idx, voice, gotPatch, wantMod20, wantMod40, wantMod60, wantMod80, wantModE0)
+			}
+			if gotPatch.Car20 != wantCar20 || gotPatch.Car40 != wantCar40 || gotPatch.Car60 != wantCar60 || gotPatch.Car80 != wantCar80 || gotPatch.CarE0 != wantCarE0 {
+				t.Fatalf("idx=%d voice=%d car patch=%+v raw=(20=%#02x 40=%#02x 60=%#02x 80=%#02x e0=%#02x)", idx, voice, gotPatch, wantCar20, wantCar40, wantCar60, wantCar80, wantCarE0)
+			}
+			if gotPatch.C0 != wantC0 {
+				t.Fatalf("idx=%d voice=%d C0=%#02x want=%#02x", idx, voice, gotPatch.C0, wantC0)
+			}
+			if got.voices[voice].baseNoteOffset != wantBase {
+				t.Fatalf("idx=%d voice=%d base_note_offset=%d want=%d", idx, voice, got.voices[voice].baseNoteOffset, wantBase)
+			}
+		}
+	}
+
+	for _, idx := range []int{0, 30, 44, 118, 128, 174} {
+		t.Run(fmt.Sprintf("idx_%d", idx), func(t *testing.T) {
+			checkIndex(t, idx)
+		})
 	}
 }

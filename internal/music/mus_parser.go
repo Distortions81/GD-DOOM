@@ -177,7 +177,7 @@ func readMUSVarLen(data []byte) (uint32, int, error) {
 func musControllerToMIDI(c uint8) (uint8, bool) {
 	switch c {
 	case 1:
-		return 0, true // bank select
+		return 32, true // bank select (DMX mus2mid uses CC 0x20)
 	case 2:
 		return 1, true // modulation
 	case 3:
