@@ -127,6 +127,56 @@
       }
     }
 
+    function hasWASMMagic(bytes) {
+      return bytes &&
+        bytes.length >= 4 &&
+        bytes[0] === 0x00 &&
+        bytes[1] === 0x61 &&
+        bytes[2] === 0x73 &&
+        bytes[3] === 0x6d;
+    }
+
+    async function readStreamBytes(stream) {
+      const response = new Response(stream);
+      return new Uint8Array(await response.arrayBuffer());
+    }
+
+    async function fetchWASMBytes(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`fetch failed for ${url}: ${response.status}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    }
+
+    async function fetchCompressedWASMBytes(url) {
+      if (typeof DecompressionStream !== "function") {
+        throw new Error("gzip fallback unavailable: DecompressionStream is not supported");
+      }
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`fetch failed for ${url}: ${response.status}`);
+      }
+      const ds = new DecompressionStream("gzip");
+      return readStreamBytes(response.body.pipeThrough(ds));
+    }
+
+    async function loadWASMBytes() {
+      try {
+        const bytes = await fetchWASMBytes("./gddoom.wasm");
+        if (hasWASMMagic(bytes)) {
+          return bytes;
+        }
+      } catch (err) {
+      }
+
+      const bytes = await fetchCompressedWASMBytes("./gddoom.wasm.gz");
+      if (!hasWASMMagic(bytes)) {
+        throw new Error("gzip fallback did not produce a valid wasm binary");
+      }
+      return bytes;
+    }
+
     window.addEventListener("message", (event) => {
       if (event.origin !== window.location.origin) {
         return;
@@ -158,8 +208,7 @@
     });
     canvasObserver.observe(document.documentElement, { childList: true, subtree: true });
 
-    fetch("./gddoom.wasm")
-      .then((response) => response.arrayBuffer())
+    loadWASMBytes()
       .then((bytes) => WebAssembly.instantiate(bytes, go.importObject))
       .then((result) => {
         go.run(result.instance);
