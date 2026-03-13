@@ -54,7 +54,7 @@ func TestRunParseLoadsAudioPreEmphasisFromConfig(t *testing.T) {
 func TestRunParseLoadsOPL3BackendFromConfig(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")
-	cfg := []byte("map = \"E1M2\"\nrender = false\nopl3_backend = \"purego\"\n")
+	cfg := []byte("map = \"E1M2\"\nrender = false\nopl3_backend = \"impsynth\"\n")
 	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}

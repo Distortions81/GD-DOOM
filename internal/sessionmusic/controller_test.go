@@ -6,17 +6,17 @@ import (
 	"gddoom/internal/sound"
 )
 
-func TestEffectiveOPLGainUsesPureGoRatio(t *testing.T) {
-	want := 3.5 * pureGoOPLGainRatio
-	if got := effectiveOPLGain(sound.BackendPureGo, 3.5); got != want {
-		t.Fatalf("effectiveOPLGain(purego)=%.2f want %.2f", got, want)
+func TestEffectiveOPLGainUsesImpSynthRatio(t *testing.T) {
+	want := 3.5 * impSynthOPLGainRatio
+	if got := effectiveOPLGain(sound.BackendImpSynth, 3.5); got != want {
+		t.Fatalf("effectiveOPLGain(impsynth)=%.2f want %.2f", got, want)
 	}
 }
 
 func TestEffectiveOPLGainUsesDefaultForAuto(t *testing.T) {
 	want := 2.25
-	if sound.DefaultBackend() == sound.BackendPureGo {
-		want *= pureGoOPLGainRatio
+	if sound.DefaultBackend() == sound.BackendImpSynth {
+		want *= impSynthOPLGainRatio
 	} else if sound.DefaultBackend() == sound.BackendNuked {
 		want *= nukedOPLGainRatio
 	}

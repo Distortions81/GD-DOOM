@@ -333,7 +333,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
 	oplVolume := fs.Float64("opl-volume", defaultOPLVolume, "OPL synth output gain (0..4; default 2.0)")
 	audioPreEmphasis := fs.Bool("audio-preemphasis", defaultAudioPreEmphasis, "enable OPL music pre-emphasis filter")
-	opl3Backend := fs.String("opl3-backend", defaultOPL3Backend, "OPL3 backend (auto|purego|nuked)")
+	opl3Backend := fs.String("opl3-backend", defaultOPL3Backend, "OPL3 backend (auto|impsynth|nuked)")
 	oplBank := fs.String("opl-bank", defaultOPLBankPath, "path to external OPL bank (.op2/GENMIDI bytes) overriding WAD GENMIDI")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")

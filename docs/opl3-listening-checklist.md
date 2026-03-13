@@ -1,20 +1,20 @@
 # OPL3 Listening Checklist
 
-Use this checklist when tuning the pure-Go OPL3 backend against the Nuked backend.
+Use this checklist when tuning the ImpSynth OPL3 backend against the Nuked backend.
 
 ## Setup
 
 Run the same WAD, map music, and output device twice:
 
 ```bash
-go run ./cmd/gddoom -wad DOOM1.WAD -map E1M1 -opl3-backend=purego
+go run ./cmd/gddoom -wad DOOM1.WAD -map E1M1 -opl3-backend=impsynth
 go run ./cmd/gddoom -wad DOOM1.WAD -map E1M1 -opl3-backend=nuked
 ```
 
 Optional bank override:
 
 ```bash
-go run ./cmd/gddoom -wad DOOM1.WAD -map E1M1 -opl3-backend=purego -opl-bank=GENMIDI.op2
+go run ./cmd/gddoom -wad DOOM1.WAD -map E1M1 -opl3-backend=impsynth -opl-bank=GENMIDI.op2
 ```
 
 ## Tracks
@@ -37,4 +37,4 @@ go run ./cmd/gddoom -wad DOOM1.WAD -map E1M1 -opl3-backend=purego -opl-bank=GENM
 
 - Automated `internal/music` comparison tests pass.
 - Automated `internal/sound` behavior tests pass.
-- No obvious regression is audible on the three reference tracks above when switching between `purego` and `nuked`.
+- No obvious regression is audible on the three reference tracks above when switching between `impsynth` and `nuked`.

@@ -66,7 +66,7 @@ var (
 
 type oplEnvStage uint8
 
-type basicOperatorState struct {
+type impSynthOperatorState struct {
 	pgPhase    uint32
 	phaseReset bool
 	egRout     uint16
@@ -88,7 +88,7 @@ type basicOperatorState struct {
 	out        float64
 }
 
-type basicChannelState struct {
+type impSynthChannelState struct {
 	keyOn    bool
 	fnum     uint16
 	block    uint8
@@ -98,16 +98,16 @@ type basicChannelState struct {
 	panR     float64
 	feedback uint8
 	fbPrev   [2]int
-	ops      [opl3OperatorCount]basicOperatorState
+	ops      [opl3OperatorCount]impSynthOperatorState
 }
 
-// DMXLikeOPL3 is a pure-Go OPL3-inspired synth for the subset of the chip this
+// ImpSynth is a Go-native OPL3-inspired synth for the subset of the chip this
 // codebase drives: 2-op voices, operator envelopes, feedback, waveforms, pan,
 // and DMX-style register writes.
-type DMXLikeOPL3 struct {
+type ImpSynth struct {
 	sampleRate       int
 	regs             [0x200]uint8
-	ch               [opl3ChannelCount]basicChannelState
+	ch               [opl3ChannelCount]impSynthChannelState
 	waveformSelectOn bool
 	stereoExt        bool
 	noteSelect       uint8
@@ -130,31 +130,23 @@ func init() {
 	buildOPLAttenuationTable()
 }
 
-// NewDMXLikeOPL3 creates a pure-Go OPL3 fallback at the provided sample rate.
-func NewDMXLikeOPL3(sampleRate int) *DMXLikeOPL3 {
+// NewImpSynth creates an ImpSynth fallback at the provided sample rate.
+func NewImpSynth(sampleRate int) *ImpSynth {
 	if sampleRate <= 0 {
 		sampleRate = opl3DefaultSampleRate
 	}
-	o := &DMXLikeOPL3{sampleRate: sampleRate}
+	o := &ImpSynth{sampleRate: sampleRate}
 	o.Reset()
 	return o
 }
 
-// BasicOPL3 is kept as a compatibility alias for the older synth name.
-type BasicOPL3 = DMXLikeOPL3
-
-// NewBasicOPL3 is kept as a compatibility wrapper for the older constructor name.
-func NewBasicOPL3(sampleRate int) *DMXLikeOPL3 {
-	return NewDMXLikeOPL3(sampleRate)
-}
-
 // Reset clears all registers and runtime state.
-func (o *DMXLikeOPL3) Reset() {
+func (o *ImpSynth) Reset() {
 	if o == nil {
 		return
 	}
 	o.regs = [0x200]uint8{}
-	o.ch = [opl3ChannelCount]basicChannelState{}
+	o.ch = [opl3ChannelCount]impSynthChannelState{}
 	o.waveformSelectOn = false
 	o.stereoExt = false
 	o.noteSelect = 0
@@ -172,7 +164,7 @@ func (o *DMXLikeOPL3) Reset() {
 		o.ch[i].panL = 1
 		o.ch[i].panR = 1
 		for op := range o.ch[i].ops {
-			o.ch[i].ops[op] = basicOperatorState{
+			o.ch[i].ops[op] = impSynthOperatorState{
 				egRout: oplEnvelopeSilent,
 				egOut:  oplEnvelopeSilent,
 				stage:  oplEnvRelease,
@@ -182,7 +174,7 @@ func (o *DMXLikeOPL3) Reset() {
 }
 
 // WriteReg applies a subset of OPL3 register writes.
-func (o *DMXLikeOPL3) WriteReg(addr uint16, value uint8) {
+func (o *ImpSynth) WriteReg(addr uint16, value uint8) {
 	if o == nil {
 		return
 	}
@@ -271,7 +263,7 @@ func (o *DMXLikeOPL3) WriteReg(addr uint16, value uint8) {
 // GenerateStereoS16 produces interleaved stereo signed-16 PCM.
 // The returned slice is backed by an internal reusable buffer and is only
 // valid until the next GenerateStereoS16/GenerateMonoU8 call on this instance.
-func (o *DMXLikeOPL3) GenerateStereoS16(frames int) []int16 {
+func (o *ImpSynth) GenerateStereoS16(frames int) []int16 {
 	if o == nil || frames <= 0 || o.sampleRate <= 0 {
 		return nil
 	}
@@ -301,7 +293,7 @@ func (o *DMXLikeOPL3) GenerateStereoS16(frames int) []int16 {
 // GenerateMonoU8 produces unsigned 8-bit mono PCM from the mixed stereo output.
 // The returned slice is backed by an internal reusable buffer and is only
 // valid until the next GenerateStereoS16/GenerateMonoU8 call on this instance.
-func (o *DMXLikeOPL3) GenerateMonoU8(frames int) []byte {
+func (o *ImpSynth) GenerateMonoU8(frames int) []byte {
 	st := o.GenerateStereoS16(frames)
 	if len(st) == 0 {
 		return nil
@@ -327,7 +319,7 @@ func (o *DMXLikeOPL3) GenerateMonoU8(frames int) []byte {
 	return out
 }
 
-func (o *DMXLikeOPL3) renderChannel(ch int) (float64, float64) {
+func (o *ImpSynth) renderChannel(ch int) (float64, float64) {
 	if ch < 0 || ch >= len(o.ch) {
 		return 0, 0
 	}
@@ -366,7 +358,7 @@ func (o *DMXLikeOPL3) renderChannel(ch int) (float64, float64) {
 	return out * c.panL * oplChannelMixGain, out * c.panR * oplChannelMixGain
 }
 
-func (o *DMXLikeOPL3) sampleOperator(op *basicOperatorState, phase int, phaseMod float64) float64 {
+func (o *ImpSynth) sampleOperator(op *impSynthOperatorState, phase int, phaseMod float64) float64 {
 	if op == nil {
 		return 0
 	}
@@ -380,7 +372,7 @@ func (o *DMXLikeOPL3) sampleOperator(op *basicOperatorState, phase int, phaseMod
 	return oplWaveTable[op.regWave&0x07][idx] * oplAttenTable[atten]
 }
 
-func (o *DMXLikeOPL3) advanceEnvelope(c *basicChannelState, op *basicOperatorState) {
+func (o *ImpSynth) advanceEnvelope(c *impSynthChannelState, op *impSynthOperatorState) {
 	if c == nil || op == nil {
 		return
 	}
@@ -483,12 +475,11 @@ func (o *DMXLikeOPL3) advanceEnvelope(c *basicChannelState, op *basicOperatorSta
 	if !c.keyOn {
 		op.stage = oplEnvRelease
 	}
-
 	baseAtten := int(op.egRout) + int(op.regTL<<2) + int(op.egKSL>>oplKSLShift[op.regKSL]) + trem
 	op.egOut = uint16(clampAtten(baseAtten))
 }
 
-func (o *DMXLikeOPL3) advanceOperatorPhase(c *basicChannelState, op *basicOperatorState) int {
+func (o *ImpSynth) advanceOperatorPhase(c *impSynthChannelState, op *impSynthOperatorState) int {
 	if c == nil || op == nil {
 		return 0
 	}
@@ -520,14 +511,14 @@ func (o *DMXLikeOPL3) advanceOperatorPhase(c *basicChannelState, op *basicOperat
 	return phase & oplWaveTableMask
 }
 
-func (o *DMXLikeOPL3) keyOnChannel(ch int) {
+func (o *ImpSynth) keyOnChannel(ch int) {
 	if ch < 0 || ch >= len(o.ch) {
 		return
 	}
 	o.ch[ch].fbPrev = [2]int{}
 }
 
-func (o *DMXLikeOPL3) keyOffChannel(ch int) {
+func (o *ImpSynth) keyOffChannel(ch int) {
 	if ch < 0 || ch >= len(o.ch) {
 		return
 	}
@@ -537,7 +528,7 @@ func (o *DMXLikeOPL3) keyOffChannel(ch int) {
 	}
 }
 
-func (o *DMXLikeOPL3) refreshChannelFreq(ch int) {
+func (o *ImpSynth) refreshChannelFreq(ch int) {
 	base, ci := oplBaseAndChannel(ch)
 	if ci < 0 {
 		return
@@ -552,7 +543,7 @@ func (o *DMXLikeOPL3) refreshChannelFreq(ch int) {
 	}
 }
 
-func (o *DMXLikeOPL3) refreshChannelControl(ch int) {
+func (o *ImpSynth) refreshChannelControl(ch int) {
 	base, ci := oplBaseAndChannel(ch)
 	if ci < 0 {
 		return
@@ -577,7 +568,7 @@ func (o *DMXLikeOPL3) refreshChannelControl(ch int) {
 	}
 }
 
-func (o *DMXLikeOPL3) refreshChannelStereoPan(ch int) {
+func (o *ImpSynth) refreshChannelStereoPan(ch int) {
 	base, ci := oplBaseAndChannel(ch)
 	if ci < 0 {
 		return
@@ -586,7 +577,7 @@ func (o *DMXLikeOPL3) refreshChannelStereoPan(ch int) {
 	o.ch[ch].panL, o.ch[ch].panR = oplStereoPanGains(pan)
 }
 
-func (o *DMXLikeOPL3) refreshOperator(ch int, op int) {
+func (o *ImpSynth) refreshOperator(ch int, op int) {
 	base, ci := oplBaseAndChannel(ch)
 	if ci < 0 || op < 0 || op >= opl3OperatorCount {
 		return
@@ -623,7 +614,7 @@ func (o *DMXLikeOPL3) refreshOperator(ch int, op int) {
 	o.updateOperatorKSL(ch, op)
 }
 
-func (o *DMXLikeOPL3) updateOperatorKSL(ch int, op int) {
+func (o *ImpSynth) updateOperatorKSL(ch int, op int) {
 	if ch < 0 || ch >= len(o.ch) || op < 0 || op >= opl3OperatorCount {
 		return
 	}
@@ -640,7 +631,7 @@ func (o *DMXLikeOPL3) updateOperatorKSL(ch int, op int) {
 	o.ch[ch].ops[op].egKSL = uint8(ksl)
 }
 
-func (o *DMXLikeOPL3) advanceChipState() {
+func (o *ImpSynth) advanceChipState() {
 	if (o.timer & 0x3F) == 0x3F {
 		o.tremoloPos = (o.tremoloPos + 1) % 210
 	}

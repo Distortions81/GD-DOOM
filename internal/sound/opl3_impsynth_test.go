@@ -2,8 +2,8 @@ package sound
 
 import "testing"
 
-func TestDMXLikeOPL3GenerateNonZeroWhenKeyOn(t *testing.T) {
-	opl := NewDMXLikeOPL3(49716)
+func TestImpSynthGenerateNonZeroWhenKeyOn(t *testing.T) {
+	opl := NewImpSynth(49716)
 	// Channel 0 tone: FNUM + BLOCK + KEYON.
 	opl.WriteReg(0x20, 0x01)
 	opl.WriteReg(0x23, 0x01)
@@ -32,8 +32,8 @@ func TestDMXLikeOPL3GenerateNonZeroWhenKeyOn(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3KeyOffHasReleaseTail(t *testing.T) {
-	opl := NewDMXLikeOPL3(49716)
+func TestImpSynthKeyOffHasReleaseTail(t *testing.T) {
+	opl := NewImpSynth(49716)
 	opl.WriteReg(0x20, 0x21)
 	opl.WriteReg(0x23, 0x21)
 	opl.WriteReg(0x40, 0x3f)
@@ -62,8 +62,8 @@ func TestDMXLikeOPL3KeyOffHasReleaseTail(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3GenerateMonoU8(t *testing.T) {
-	opl := NewDMXLikeOPL3(49716)
+func TestImpSynthGenerateMonoU8(t *testing.T) {
+	opl := NewImpSynth(49716)
 	opl.WriteReg(0x20, 0x01)
 	opl.WriteReg(0x23, 0x01)
 	opl.WriteReg(0xA0, 0x80)
@@ -75,9 +75,9 @@ func TestDMXLikeOPL3GenerateMonoU8(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3PatchSettingsChangeWaveform(t *testing.T) {
-	render := func(setup func(*DMXLikeOPL3)) []int16 {
-		opl := NewDMXLikeOPL3(49716)
+func TestImpSynthPatchSettingsChangeWaveform(t *testing.T) {
+	render := func(setup func(*ImpSynth)) []int16 {
+		opl := NewImpSynth(49716)
 		opl.WriteReg(0x01, 0x20) // enable waveform select
 		opl.WriteReg(0x20, 0x21)
 		opl.WriteReg(0x23, 0x21)
@@ -94,12 +94,12 @@ func TestDMXLikeOPL3PatchSettingsChangeWaveform(t *testing.T) {
 		return opl.GenerateStereoS16(128)
 	}
 
-	pcmA := render(func(opl *DMXLikeOPL3) {
+	pcmA := render(func(opl *ImpSynth) {
 		opl.WriteReg(0xE0, 0x00)
 		opl.WriteReg(0xE3, 0x00)
 		opl.WriteReg(0xC0, 0x30)
 	})
-	pcmB := render(func(opl *DMXLikeOPL3) {
+	pcmB := render(func(opl *ImpSynth) {
 		opl.WriteReg(0xE0, 0x07)
 		opl.WriteReg(0xE3, 0x05)
 		opl.WriteReg(0xC0, 0x31)
@@ -120,18 +120,18 @@ func TestDMXLikeOPL3PatchSettingsChangeWaveform(t *testing.T) {
 	}
 }
 
-func TestNewOPL3WithBackendUsesPureGo(t *testing.T) {
-	opl, err := NewOPL3WithBackend(49716, BackendPureGo)
+func TestNewOPL3WithBackendUsesImpSynth(t *testing.T) {
+	opl, err := NewOPL3WithBackend(49716, BackendImpSynth)
 	if err != nil {
 		t.Fatalf("NewOPL3WithBackend() error: %v", err)
 	}
-	if _, ok := opl.(*DMXLikeOPL3); !ok {
-		t.Fatalf("backend type=%T want *DMXLikeOPL3", opl)
+	if _, ok := opl.(*ImpSynth); !ok {
+		t.Fatalf("backend type=%T want *ImpSynth", opl)
 	}
 }
 
-func TestDMXLikeOPL3GenerateStereoS16ReusesBuffer(t *testing.T) {
-	opl := NewDMXLikeOPL3(49716)
+func TestImpSynthGenerateStereoS16ReusesBuffer(t *testing.T) {
+	opl := NewImpSynth(49716)
 	opl.WriteReg(0x20, 0x01)
 	opl.WriteReg(0x23, 0x01)
 	opl.WriteReg(0xA0, 0x98)
@@ -147,8 +147,8 @@ func TestDMXLikeOPL3GenerateStereoS16ReusesBuffer(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3GenerateMonoU8ReusesBuffer(t *testing.T) {
-	opl := NewDMXLikeOPL3(49716)
+func TestImpSynthGenerateMonoU8ReusesBuffer(t *testing.T) {
+	opl := NewImpSynth(49716)
 	opl.WriteReg(0x20, 0x01)
 	opl.WriteReg(0x23, 0x01)
 	opl.WriteReg(0xA0, 0x98)

@@ -14,7 +14,7 @@ import (
 	"gddoom/internal/wad"
 )
 
-func TestPureGoMaintainsFullSongActivityAgainstNuked(t *testing.T) {
+func TestImpSynthMaintainsFullSongActivityAgainstNuked(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -56,7 +56,7 @@ func TestPureGoMaintainsFullSongActivityAgainstNuked(t *testing.T) {
 		}
 
 		nukedStats := renderSongStats(t, bank, sound.BackendNuked, musData)
-		pureStats := renderSongStats(t, bank, sound.BackendPureGo, musData)
+		pureStats := renderSongStats(t, bank, sound.BackendImpSynth, musData)
 		if nukedStats.activeWindows == 0 {
 			t.Fatalf("%s nuked active windows=0", song)
 		}
@@ -66,27 +66,27 @@ func TestPureGoMaintainsFullSongActivityAgainstNuked(t *testing.T) {
 		dropoutRatio := activeWindowDropoutRatio(pureStats.windowRMS, nukedStats.windowRMS, 200)
 		pureLongestSilent, pureLongestStart := longestInactiveRun(pureStats.windowRMS, 200)
 		nukedLongestSilent, nukedLongestStart := longestInactiveRun(nukedStats.windowRMS, 200)
-		t.Logf("%s purego rms=%.1f active=%d longestSilent=%d@%.1fs | nuked rms=%.1f active=%d longestSilent=%d@%.1fs | ratios rms=%.3f active=%.3f dropout=%.3f",
+		t.Logf("%s impsynth rms=%.1f active=%d longestSilent=%d@%.1fs | nuked rms=%.1f active=%d longestSilent=%d@%.1fs | ratios rms=%.3f active=%.3f dropout=%.3f",
 			song,
 			pureStats.rms, pureStats.activeWindows, pureLongestSilent, windowIndexSeconds(pureLongestStart, 2048),
 			nukedStats.rms, nukedStats.activeWindows, nukedLongestSilent, windowIndexSeconds(nukedLongestStart, 2048),
 			rmsRatio, activeRatio, dropoutRatio)
 		if rmsRatio < 0.20 {
-			t.Fatalf("%s purego rms ratio=%.3f want >= 0.20", song, rmsRatio)
+			t.Fatalf("%s impsynth rms ratio=%.3f want >= 0.20", song, rmsRatio)
 		}
 		if activeRatio < 0.50 {
-			t.Fatalf("%s purego active ratio=%.3f want >= 0.50", song, activeRatio)
+			t.Fatalf("%s impsynth active ratio=%.3f want >= 0.50", song, activeRatio)
 		}
 		if dropoutRatio > 0.35 {
-			t.Fatalf("%s purego dropout ratio=%.3f want <= 0.35", song, dropoutRatio)
+			t.Fatalf("%s impsynth dropout ratio=%.3f want <= 0.35", song, dropoutRatio)
 		}
 		if pureLongestSilent > nukedLongestSilent+12 {
-			t.Fatalf("%s purego longest silent run=%d want <= nuked+12 (%d)", song, pureLongestSilent, nukedLongestSilent+12)
+			t.Fatalf("%s impsynth longest silent run=%d want <= nuked+12 (%d)", song, pureLongestSilent, nukedLongestSilent+12)
 		}
 	}
 }
 
-func TestPureGoMaintainsWideDoomCorpusActivityAgainstNuked(t *testing.T) {
+func TestImpSynthMaintainsWideDoomCorpusActivityAgainstNuked(t *testing.T) {
 	requireOPLTuningSuite(t)
 
 	type corpusWAD struct {
@@ -140,7 +140,7 @@ func TestPureGoMaintainsWideDoomCorpusActivityAgainstNuked(t *testing.T) {
 			}
 			trimmed := trimEventsToTics(events, maxSongTics)
 			nukedStats := renderEventStats(t, bank, sound.BackendNuked, trimmed)
-			pureStats := renderEventStats(t, bank, sound.BackendPureGo, trimmed)
+			pureStats := renderEventStats(t, bank, sound.BackendImpSynth, trimmed)
 			if nukedStats.activeWindows == 0 {
 				t.Fatalf("%s/%s nuked active windows=0", wadInfo.label, song)
 			}
@@ -167,16 +167,16 @@ func TestPureGoMaintainsWideDoomCorpusActivityAgainstNuked(t *testing.T) {
 			results = append(results, result)
 
 			if rmsRatio < 0.20 {
-				t.Errorf("%s/%s purego rms ratio=%.3f want >= 0.20", wadInfo.label, song, rmsRatio)
+				t.Errorf("%s/%s impsynth rms ratio=%.3f want >= 0.20", wadInfo.label, song, rmsRatio)
 			}
 			if activeRatio < 0.50 {
-				t.Errorf("%s/%s purego active ratio=%.3f want >= 0.50", wadInfo.label, song, activeRatio)
+				t.Errorf("%s/%s impsynth active ratio=%.3f want >= 0.50", wadInfo.label, song, activeRatio)
 			}
 			if dropoutRatio > 0.35 {
-				t.Errorf("%s/%s purego dropout ratio=%.3f want <= 0.35", wadInfo.label, song, dropoutRatio)
+				t.Errorf("%s/%s impsynth dropout ratio=%.3f want <= 0.35", wadInfo.label, song, dropoutRatio)
 			}
 			if pureLongestSilent > nukedLongestSilent+12 {
-				t.Errorf("%s/%s purego longest silent run=%d want <= nuked+12 (%d)", wadInfo.label, song, pureLongestSilent, nukedLongestSilent+12)
+				t.Errorf("%s/%s impsynth longest silent run=%d want <= nuked+12 (%d)", wadInfo.label, song, pureLongestSilent, nukedLongestSilent+12)
 			}
 		}
 	}

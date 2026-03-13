@@ -137,7 +137,7 @@ type fftScoredPhrase struct {
 	metrics fftTimbreMetrics
 }
 
-func TestDMXLikeOPL3MatchesNukedForMicroPatches(t *testing.T) {
+func TestImpSynthMatchesNukedForMicroPatches(t *testing.T) {
 	cases := []struct {
 		name       string
 		bank       PatchBank
@@ -202,14 +202,14 @@ func TestDMXLikeOPL3MatchesNukedForMicroPatches(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			trace := captureTraceForEvents(t, tc.bank, tc.events)
-			basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+			impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 			nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-			assertOPLSimilarity(t, tc.name, basicPCM, nukedPCM, tc.thresholds)
+			assertOPLSimilarity(t, tc.name, impSynthPCM, nukedPCM, tc.thresholds)
 		})
 	}
 }
 
-func TestDMXLikeOPL3MatchesNukedOnReferenceDoomTracks(t *testing.T) {
+func TestImpSynthMatchesNukedOnReferenceDoomTracks(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -255,14 +255,14 @@ func TestDMXLikeOPL3MatchesNukedOnReferenceDoomTracks(t *testing.T) {
 				t.Fatalf("parse %s: %v", tc.lump, err)
 			}
 			trace := captureTraceForEvents(t, bank, trimEventsToTics(events, tc.maxTics))
-			basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+			impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 			nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-			assertOPLSimilarity(t, tc.lump, basicPCM, nukedPCM, tc.thresholds)
+			assertOPLSimilarity(t, tc.lump, impSynthPCM, nukedPCM, tc.thresholds)
 		})
 	}
 }
 
-func TestDMXLikeOPL3MatchesNukedOnE1M1LeadPhrases(t *testing.T) {
+func TestImpSynthMatchesNukedOnE1M1LeadPhrases(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -313,14 +313,14 @@ func TestDMXLikeOPL3MatchesNukedOnE1M1LeadPhrases(t *testing.T) {
 		phrase := phrase
 		t.Run(phrase.name, func(t *testing.T) {
 			trace := captureTraceForEvents(t, bank, phrase.events)
-			basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+			impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 			nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-			assertOPLSimilarity(t, phrase.name, basicPCM, nukedPCM, thresholds)
+			assertOPLSimilarity(t, phrase.name, impSynthPCM, nukedPCM, thresholds)
 		})
 	}
 }
 
-func TestDMXLikeOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
+func TestImpSynthMatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -361,9 +361,9 @@ func TestDMXLikeOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 	var scored []fftScoredPhrase
 	for _, phrase := range phrases {
 		trace := captureTraceForEvents(t, bank, phrase.events)
-		basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+		impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 		nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-		metrics := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
+		metrics := computeFFTTimbreMetrics(impSynthPCM, nukedPCM, OutputSampleRate)
 		scored = append(scored, fftScoredPhrase{name: phrase.name, metrics: metrics})
 		t.Logf("%s fft logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
 			phrase.name, metrics.logMagErr, metrics.spectralCorr, metrics.centroidDeltaHz, metrics.highBandRatioDelta, metrics.presenceRatioDelta, metrics.aWeightedDeltaDB)
@@ -399,7 +399,7 @@ func TestDMXLikeOPL3MatchesNukedOnE1M1LeadPhrasesFFT(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
+func TestImpSynthMatchesNukedOnReferenceNoteLevels(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -442,9 +442,9 @@ func TestDMXLikeOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
 				phrase := phrase
 				t.Run(phrase.name, func(t *testing.T) {
 					trace := captureTraceForEvents(t, bank, phrase.events)
-					basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+					impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 					nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-					metrics := computeOPLLevelMetrics(basicPCM, nukedPCM)
+					metrics := computeOPLLevelMetrics(impSynthPCM, nukedPCM)
 					t.Logf("%s sustainRMSRatio=%.3f peakRatio=%.3f sustainDelta=%.1f peakDelta=%.1f popRatioDelta=%.2f onsetStepDelta=%.4f",
 						phrase.name, metrics.sustainRMSRatio, metrics.peakRatio, metrics.sustainDelta, metrics.peakDelta, metrics.popRatioDelta, metrics.onsetStepDelta)
 					if math.Abs(metrics.sustainRMSRatio-1.0) > 0.18 {
@@ -462,7 +462,7 @@ func TestDMXLikeOPL3MatchesNukedOnReferenceNoteLevels(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3MatchesNukedOnVolumeAttackSustainSweeps(t *testing.T) {
+func TestImpSynthMatchesNukedOnVolumeAttackSustainSweeps(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -538,10 +538,10 @@ func TestDMXLikeOPL3MatchesNukedOnVolumeAttackSustainSweeps(t *testing.T) {
 							patch := patchWithAttackAndSustain(basePatch, attackCase.ar, sustainCase.sl)
 							events := volumeSweepEvents(target.note, volCase.channelVol, volCase.velocity)
 							trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
-							basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+							impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 							nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-							level := computeOPLLevelMetrics(basicPCM, nukedPCM)
-							fft := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
+							level := computeOPLLevelMetrics(impSynthPCM, nukedPCM)
+							fft := computeFFTTimbreMetrics(impSynthPCM, nukedPCM, OutputSampleRate)
 							t.Logf("%s sustainRMSRatio=%.3f peakRatio=%.3f popRatioDelta=%.2f spectralCorr=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
 								name, level.sustainRMSRatio, level.peakRatio, level.popRatioDelta, fft.spectralCorr, fft.presenceRatioDelta, fft.aWeightedDeltaDB)
 							if math.Abs(level.sustainRMSRatio-1.0) > 0.28 {
@@ -567,7 +567,7 @@ func TestDMXLikeOPL3MatchesNukedOnVolumeAttackSustainSweeps(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3SustainResponseProfile(t *testing.T) {
+func TestImpSynthSustainResponseProfile(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -625,32 +625,32 @@ func TestDMXLikeOPL3SustainResponseProfile(t *testing.T) {
 			for _, attackCase := range attackCases {
 				attackCase := attackCase
 				t.Run(attackCase.name, func(t *testing.T) {
-					pureGoBySustain := map[string]backendLevelMetrics{}
+					impSynthBySustain := map[string]backendLevelMetrics{}
 					nukedBySustain := map[string]backendLevelMetrics{}
 					for _, sustainCase := range sustainCases {
 						patch := patchWithAttackDecayAndSustain(basePatch, attackCase.ar, 0xC, sustainCase.sl)
 						events := volumeSweepEventsWithHold(target.note, 127, 127, 320, 24)
 						trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
-						pureGoPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+						impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 						nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-						pureGoBySustain[sustainCase.name] = computeBackendLevelMetrics(pureGoPCM)
+						impSynthBySustain[sustainCase.name] = computeBackendLevelMetrics(impSynthPCM)
 						nukedBySustain[sustainCase.name] = computeBackendLevelMetrics(nukedPCM)
 					}
 
-					openPureGo := pureGoBySustain["open"]
-					midPureGo := pureGoBySustain["mid"]
-					mutedPureGo := pureGoBySustain["muted"]
+					openImpSynth := impSynthBySustain["open"]
+					midImpSynth := impSynthBySustain["mid"]
+					mutedImpSynth := impSynthBySustain["muted"]
 					openNuked := nukedBySustain["open"]
 					midNuked := nukedBySustain["mid"]
 					mutedNuked := nukedBySustain["muted"]
 
-					pureGoOpenMidCut := -dbRatio(midPureGo.sustainRMS, openPureGo.sustainRMS)
-					pureGoOpenMutedCut := -dbRatio(mutedPureGo.sustainRMS, openPureGo.sustainRMS)
+					impSynthOpenMidCut := -dbRatio(midImpSynth.sustainRMS, openImpSynth.sustainRMS)
+					impSynthOpenMutedCut := -dbRatio(mutedImpSynth.sustainRMS, openImpSynth.sustainRMS)
 					nukedOpenMidCut := -dbRatio(midNuked.sustainRMS, openNuked.sustainRMS)
 					nukedOpenMutedCut := -dbRatio(mutedNuked.sustainRMS, openNuked.sustainRMS)
 
-					t.Logf("purego sustainRMS open=%.6f mid=%.6f muted=%.6f cuts_db(open->mid)=%.2f cuts_db(open->muted)=%.2f",
-						openPureGo.sustainRMS, midPureGo.sustainRMS, mutedPureGo.sustainRMS, pureGoOpenMidCut, pureGoOpenMutedCut)
+					t.Logf("impsynth sustainRMS open=%.6f mid=%.6f muted=%.6f cuts_db(open->mid)=%.2f cuts_db(open->muted)=%.2f",
+						openImpSynth.sustainRMS, midImpSynth.sustainRMS, mutedImpSynth.sustainRMS, impSynthOpenMidCut, impSynthOpenMutedCut)
 					t.Logf("nuked  sustainRMS open=%.6f mid=%.6f muted=%.6f cuts_db(open->mid)=%.2f cuts_db(open->muted)=%.2f",
 						openNuked.sustainRMS, midNuked.sustainRMS, mutedNuked.sustainRMS, nukedOpenMidCut, nukedOpenMutedCut)
 
@@ -658,19 +658,19 @@ func TestDMXLikeOPL3SustainResponseProfile(t *testing.T) {
 						t.Logf("nuked sustain response is only %.2fdB; skipping sustain-depth comparison for this case", nukedOpenMutedCut)
 						return
 					}
-					if !nonIncreasing(openPureGo.sustainRMS, midPureGo.sustainRMS, mutedPureGo.sustainRMS) {
-						t.Fatalf("purego sustain response not descending: open=%.1f mid=%.1f muted=%.1f",
-							openPureGo.sustainRMS, midPureGo.sustainRMS, mutedPureGo.sustainRMS)
+					if !nonIncreasing(openImpSynth.sustainRMS, midImpSynth.sustainRMS, mutedImpSynth.sustainRMS) {
+						t.Fatalf("impsynth sustain response not descending: open=%.1f mid=%.1f muted=%.1f",
+							openImpSynth.sustainRMS, midImpSynth.sustainRMS, mutedImpSynth.sustainRMS)
 					}
 					if !nonIncreasing(openNuked.sustainRMS, midNuked.sustainRMS, mutedNuked.sustainRMS) {
 						t.Fatalf("nuked sustain response not descending: open=%.1f mid=%.1f muted=%.1f",
 							openNuked.sustainRMS, midNuked.sustainRMS, mutedNuked.sustainRMS)
 					}
-					if math.Abs(pureGoOpenMidCut-nukedOpenMidCut) > 2.5 {
-						t.Fatalf("open->mid sustain cut mismatch: purego=%.2fdB nuked=%.2fdB", pureGoOpenMidCut, nukedOpenMidCut)
+					if math.Abs(impSynthOpenMidCut-nukedOpenMidCut) > 2.5 {
+						t.Fatalf("open->mid sustain cut mismatch: impsynth=%.2fdB nuked=%.2fdB", impSynthOpenMidCut, nukedOpenMidCut)
 					}
-					if math.Abs(pureGoOpenMutedCut-nukedOpenMutedCut) > 2.5 {
-						t.Fatalf("open->muted sustain cut mismatch: purego=%.2fdB nuked=%.2fdB", pureGoOpenMutedCut, nukedOpenMutedCut)
+					if math.Abs(impSynthOpenMutedCut-nukedOpenMutedCut) > 2.5 {
+						t.Fatalf("open->muted sustain cut mismatch: impsynth=%.2fdB nuked=%.2fdB", impSynthOpenMutedCut, nukedOpenMutedCut)
 					}
 				})
 			}
@@ -678,7 +678,7 @@ func TestDMXLikeOPL3SustainResponseProfile(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3AttackDecayResponseProfile(t *testing.T) {
+func TestImpSynthAttackDecayResponseProfile(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -740,24 +740,24 @@ func TestDMXLikeOPL3AttackDecayResponseProfile(t *testing.T) {
 						patch := patchWithAttackDecayAndSustain(basePatch, attackCase.ar, 0x8, 0x4)
 						events := volumeSweepEventsWithHold(target.note, 127, 127, 192, 24)
 						trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
-						pureGoPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+						impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 						nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-						pureGo := computeBackendEnvelopeProfile(pureGoPCM)
+						impSynth := computeBackendEnvelopeProfile(impSynthPCM)
 						nuked := computeBackendEnvelopeProfile(nukedPCM)
 
-						t.Logf("purego attack peak=%.4f peakFrame=%d rise10=%d rise90=%d riseSpan=%d decayDropDB=%.2f",
-							pureGo.attackPeak, pureGo.attackPeakFrame, pureGo.attackRise10, pureGo.attackRise90, pureGo.attackRiseSpan, pureGo.decayDropDB)
+						t.Logf("impsynth attack peak=%.4f peakFrame=%d rise10=%d rise90=%d riseSpan=%d decayDropDB=%.2f",
+							impSynth.attackPeak, impSynth.attackPeakFrame, impSynth.attackRise10, impSynth.attackRise90, impSynth.attackRiseSpan, impSynth.decayDropDB)
 						t.Logf("nuked  attack peak=%.4f peakFrame=%d rise10=%d rise90=%d riseSpan=%d decayDropDB=%.2f",
 							nuked.attackPeak, nuked.attackPeakFrame, nuked.attackRise10, nuked.attackRise90, nuked.attackRiseSpan, nuked.decayDropDB)
 
-						if pureGo.attackPeak == 0 || nuked.attackPeak == 0 {
-							t.Fatalf("empty attack peak: purego=%.4f nuked=%.4f", pureGo.attackPeak, nuked.attackPeak)
+						if impSynth.attackPeak == 0 || nuked.attackPeak == 0 {
+							t.Fatalf("empty attack peak: impsynth=%.4f nuked=%.4f", impSynth.attackPeak, nuked.attackPeak)
 						}
-						if math.Abs(float64(pureGo.attackPeakFrame-nuked.attackPeakFrame)) > 1536 {
-							t.Fatalf("attack peak frame mismatch: purego=%d nuked=%d", pureGo.attackPeakFrame, nuked.attackPeakFrame)
+						if math.Abs(float64(impSynth.attackPeakFrame-nuked.attackPeakFrame)) > 1536 {
+							t.Fatalf("attack peak frame mismatch: impsynth=%d nuked=%d", impSynth.attackPeakFrame, nuked.attackPeakFrame)
 						}
-						if math.Abs(float64(pureGo.attackRiseSpan-nuked.attackRiseSpan)) > 1536 {
-							t.Fatalf("attack rise span mismatch: purego=%d nuked=%d", pureGo.attackRiseSpan, nuked.attackRiseSpan)
+						if math.Abs(float64(impSynth.attackRiseSpan-nuked.attackRiseSpan)) > 1536 {
+							t.Fatalf("attack rise span mismatch: impsynth=%d nuked=%d", impSynth.attackRiseSpan, nuked.attackRiseSpan)
 						}
 					})
 				}
@@ -770,24 +770,24 @@ func TestDMXLikeOPL3AttackDecayResponseProfile(t *testing.T) {
 						patch := patchWithAttackDecayAndSustain(basePatch, 0xF, decayCase.dr, 0x8)
 						events := volumeSweepEventsWithHold(target.note, 127, 127, 320, 24)
 						trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
-						pureGoPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+						impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 						nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-						pureGo := computeBackendEnvelopeProfile(pureGoPCM)
+						impSynth := computeBackendEnvelopeProfile(impSynthPCM)
 						nuked := computeBackendEnvelopeProfile(nukedPCM)
 
-						t.Logf("purego decay early=%.4f late=%.4f drop=%.2fdB settle=%d",
-							pureGo.earlyDecayMean, pureGo.lateDecayMean, pureGo.decayDropDB, pureGo.decaySettle)
+						t.Logf("impsynth decay early=%.4f late=%.4f drop=%.2fdB settle=%d",
+							impSynth.earlyDecayMean, impSynth.lateDecayMean, impSynth.decayDropDB, impSynth.decaySettle)
 						t.Logf("nuked  decay early=%.4f late=%.4f drop=%.2fdB settle=%d",
 							nuked.earlyDecayMean, nuked.lateDecayMean, nuked.decayDropDB, nuked.decaySettle)
 
-						if pureGo.earlyDecayMean == 0 || nuked.earlyDecayMean == 0 {
-							t.Fatalf("empty decay probe: purego early=%.4f nuked early=%.4f", pureGo.earlyDecayMean, nuked.earlyDecayMean)
+						if impSynth.earlyDecayMean == 0 || nuked.earlyDecayMean == 0 {
+							t.Fatalf("empty decay probe: impsynth early=%.4f nuked early=%.4f", impSynth.earlyDecayMean, nuked.earlyDecayMean)
 						}
-						if math.Abs(pureGo.decayDropDB-nuked.decayDropDB) > 3.0 {
-							t.Fatalf("decay drop mismatch: purego=%.2fdB nuked=%.2fdB", pureGo.decayDropDB, nuked.decayDropDB)
+						if math.Abs(impSynth.decayDropDB-nuked.decayDropDB) > 3.0 {
+							t.Fatalf("decay drop mismatch: impsynth=%.2fdB nuked=%.2fdB", impSynth.decayDropDB, nuked.decayDropDB)
 						}
-						if math.Abs(float64(pureGo.decaySettle-nuked.decaySettle)) > 2048 {
-							t.Fatalf("decay settle mismatch: purego=%d nuked=%d", pureGo.decaySettle, nuked.decaySettle)
+						if math.Abs(float64(impSynth.decaySettle-nuked.decaySettle)) > 2048 {
+							t.Fatalf("decay settle mismatch: impsynth=%d nuked=%d", impSynth.decaySettle, nuked.decaySettle)
 						}
 					})
 				}
@@ -796,7 +796,7 @@ func TestDMXLikeOPL3AttackDecayResponseProfile(t *testing.T) {
 	}
 }
 
-func TestDMXLikeOPL3MatchesNukedOnReferenceNoteSpectra(t *testing.T) {
+func TestImpSynthMatchesNukedOnReferenceNoteSpectra(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
 	wf, err := wad.Open(wadPath)
@@ -840,9 +840,9 @@ func TestDMXLikeOPL3MatchesNukedOnReferenceNoteSpectra(t *testing.T) {
 			var scored []fftScoredPhrase
 			for _, phrase := range phrases {
 				trace := captureTraceForEvents(t, bank, phrase.events)
-				basicPCM := renderTraceWithBackend(t, trace, sound.NewDMXLikeOPL3(OutputSampleRate))
+				impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
 				nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
-				metrics := computeFFTTimbreMetrics(basicPCM, nukedPCM, OutputSampleRate)
+				metrics := computeFFTTimbreMetrics(impSynthPCM, nukedPCM, OutputSampleRate)
 				scored = append(scored, fftScoredPhrase{name: phrase.name, metrics: metrics})
 				t.Logf("%s fft logMagErr=%.3f spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f",
 					phrase.name, metrics.logMagErr, metrics.spectralCorr, metrics.centroidDeltaHz, metrics.highBandRatioDelta, metrics.presenceRatioDelta, metrics.aWeightedDeltaDB)
@@ -1216,9 +1216,9 @@ func requireOPLTuningSuite(t *testing.T) {
 	}
 }
 
-func assertOPLSimilarity(t *testing.T, name string, basicPCM []int16, nukedPCM []int16, thresholds oplSimilarityThresholds) {
+func assertOPLSimilarity(t *testing.T, name string, impSynthPCM []int16, nukedPCM []int16, thresholds oplSimilarityThresholds) {
 	t.Helper()
-	metrics := computeOPLSimilarity(basicPCM, nukedPCM, OutputSampleRate)
+	metrics := computeOPLSimilarity(impSynthPCM, nukedPCM, OutputSampleRate)
 	t.Logf("%s onset=%d envCorr=%.3f envErr=%.3f midCorr=%.3f tailCorr=%.3f bandErr=%.3f", name, metrics.onsetFrames, metrics.envCorr, metrics.envErr, metrics.midCorr, metrics.tailCorr, metrics.bandErr)
 	if metrics.onsetFrames > thresholds.maxOnsetFrames {
 		t.Fatalf("onset delta=%d want <= %d", metrics.onsetFrames, thresholds.maxOnsetFrames)

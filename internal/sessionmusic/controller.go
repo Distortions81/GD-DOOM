@@ -15,8 +15,8 @@ type Controller struct {
 }
 
 const (
-	pureGoOPLGainRatio = 1.0
-	nukedOPLGainRatio  = 1.0
+	impSynthOPLGainRatio = 1.0
+	nukedOPLGainRatio    = 1.0
 )
 
 func New(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank) (*Controller, error) {
@@ -147,8 +147,8 @@ func effectiveOPLGain(backend sound.Backend, gain float64) float64 {
 
 func oplGainRatio(backend sound.Backend) float64 {
 	switch backend {
-	case sound.BackendPureGo:
-		return pureGoOPLGainRatio
+	case sound.BackendImpSynth:
+		return impSynthOPLGainRatio
 	case sound.BackendNuked:
 		return nukedOPLGainRatio
 	default:

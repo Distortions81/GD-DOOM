@@ -8,9 +8,9 @@ import (
 type Backend string
 
 const (
-	BackendAuto   Backend = "auto"
-	BackendPureGo Backend = "purego"
-	BackendNuked  Backend = "nuked"
+	BackendAuto     Backend = "auto"
+	BackendImpSynth Backend = "impsynth"
+	BackendNuked    Backend = "nuked"
 )
 
 func (b Backend) String() string {
@@ -24,12 +24,12 @@ func ParseBackend(name string) (Backend, error) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "", string(BackendAuto):
 		return BackendAuto, nil
-	case string(BackendPureGo):
-		return BackendPureGo, nil
+	case string(BackendImpSynth):
+		return BackendImpSynth, nil
 	case string(BackendNuked):
 		return BackendNuked, nil
 	default:
-		return "", fmt.Errorf("unknown backend %q (want auto|purego|nuked)", name)
+		return "", fmt.Errorf("unknown backend %q (want auto|impsynth|nuked)", name)
 	}
 }
 
@@ -55,7 +55,7 @@ func NewOPL3(sampleRate int) OPL3 {
 	if err == nil {
 		return opl
 	}
-	return NewDMXLikeOPL3(sampleRate)
+	return NewImpSynth(sampleRate)
 }
 
 func NewOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {
