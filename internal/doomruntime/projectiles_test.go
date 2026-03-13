@@ -175,3 +175,88 @@ func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventShootRocket)
 	}
 }
+
+func TestPlayerRocketSplashDamagesNearbyBarrel(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: barrelThingType, X: 0, Y: 0},
+				{Type: barrelThingType, X: 32, Y: 0},
+			},
+		},
+		thingCollected:  []bool{false, false},
+		thingHP:         []int{20, 20},
+		thingDead:       []bool{false, false},
+		thingState:      []monsterThinkState{monsterStateSpawn, monsterStateSpawn},
+		thingStateTics:  []int{6, 6},
+		thingStatePhase: []int{0, 0},
+		thingDeathTics:  []int{0, 0},
+		projectiles: []projectile{
+			{
+				x:            -30 * fracUnit,
+				y:            0,
+				z:            20 * fracUnit,
+				vx:           24 * fracUnit,
+				vy:           0,
+				vz:           0,
+				radius:       11 * fracUnit,
+				height:       8 * fracUnit,
+				ttl:          5,
+				sourceType:   16,
+				sourceThing:  -1,
+				sourcePlayer: true,
+				kind:         projectileRocket,
+			},
+		},
+	}
+
+	g.tickProjectiles()
+
+	if !g.thingDead[0] {
+		t.Fatal("direct-hit barrel should die")
+	}
+	if !g.thingDead[1] {
+		t.Fatal("nearby barrel should die from rocket splash")
+	}
+}
+
+func TestPlayerRocketSplashCanDamagePlayer(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{Health: 100},
+		p: player{
+			x:      32 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		projectiles: []projectile{
+			{
+				x:            0,
+				y:            0,
+				z:            20 * fracUnit,
+				vx:           0,
+				vy:           0,
+				vz:           0,
+				radius:       11 * fracUnit,
+				height:       8 * fracUnit,
+				ttl:          1,
+				sourceType:   16,
+				sourceThing:  -1,
+				sourcePlayer: true,
+				kind:         projectileRocket,
+			},
+		},
+	}
+
+	g.tickProjectiles()
+
+	if g.stats.Health >= 100 {
+		t.Fatalf("health=%d want < 100 after rocket splash", g.stats.Health)
+	}
+	if got := len(g.projectiles); got != 0 {
+		t.Fatalf("projectiles remaining=%d want=0", got)
+	}
+}

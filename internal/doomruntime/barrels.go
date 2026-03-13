@@ -191,9 +191,16 @@ func (g *game) radiusAttackFromThing(spotIdx int, damage int) {
 	sx, sy := g.thingPosFixed(spotIdx, spot)
 	sz, _, _ := g.thingSupportState(spotIdx, spot)
 	sheight := g.thingCurrentHeight(spotIdx, spot)
+	g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion")
+}
+
+func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, sourceThing int, damage int, msg string) {
+	if g == nil || damage <= 0 {
+		return
+	}
 	dist := int64(damage)*fracUnit + doomMaxThingRadius
 
-	if !g.isDead {
+	if !g.isDead && playerHeight > 0 {
 		dx := abs(g.p.x - sx)
 		dy := abs(g.p.y - sy)
 		playerDist := dx
@@ -205,13 +212,17 @@ func (g *game) radiusAttackFromThing(spotIdx int, damage int) {
 			playerDist = 0
 		}
 		if playerDist < int64(damage) && g.actorHasLOS(g.p.x, g.p.y, g.p.z, playerHeight, sx, sy, sz, sheight) {
-			g.damagePlayerFrom(damage-int(playerDist), "Explosion", sx, sy, true)
+			g.damagePlayerFrom(damage-int(playerDist), msg, sx, sy, true)
 		}
+	}
+
+	if g.m == nil {
+		return
 	}
 
 	seen := make([]bool, len(g.m.Things))
 	visitThing := func(i int) {
-		if i < 0 || i >= len(g.m.Things) || seen[i] || i == spotIdx {
+		if i < 0 || i >= len(g.m.Things) || seen[i] || i == sourceThing {
 			return
 		}
 		seen[i] = true

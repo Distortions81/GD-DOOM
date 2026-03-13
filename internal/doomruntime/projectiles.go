@@ -188,11 +188,13 @@ func (g *game) tickProjectiles() {
 			if dmg := projectileDamage(p); dmg > 0 {
 				g.damageShootableThing(thingHit.idx, dmg)
 			}
+			g.projectileSplashDamage(p, thingHit.x, thingHit.y, thingHit.z)
 			continue
 		}
 		if blocked {
 			g.spawnProjectileImpact(p.kind, hx, hy, hz)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
+			g.projectileSplashDamage(p, hx, hy, hz)
 			continue
 		}
 		p.x = nx
@@ -202,6 +204,7 @@ func (g *game) tickProjectiles() {
 		if p.ttl <= 0 {
 			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
+			g.projectileSplashDamage(p, p.x, p.y, p.z)
 			continue
 		}
 		if !p.sourcePlayer && g.projectileHitsPlayer(p) {
@@ -211,6 +214,7 @@ func (g *game) tickProjectiles() {
 			if dmg > 0 {
 				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
 			}
+			g.projectileSplashDamage(p, p.x, p.y, p.z)
 			continue
 		}
 		kept = append(kept, p)
@@ -228,6 +232,23 @@ func projectileDamage(p projectile) int {
 		}
 	}
 	return monsterRangedDamage(p.sourceType)
+}
+
+func projectileSplashDamage(kind projectileKind) int {
+	switch kind {
+	case projectileRocket:
+		return 128
+	default:
+		return 0
+	}
+}
+
+func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
+	damage := projectileSplashDamage(p.kind)
+	if damage <= 0 {
+		return
+	}
+	g.radiusAttackAt(x, y, z, p.height, p.sourceThing, damage, projectileHitMessage(p.kind))
 }
 
 func (g *game) spawnPlayerRocket() bool {
