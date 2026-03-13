@@ -116,6 +116,13 @@ type impSynthChannelState struct {
 // and DMX-style register writes.
 type ImpSynth struct {
 	sampleRate       int
+	resampleStep     uint64
+	resamplePhase    uint64
+	resamplePrimed   bool
+	resamplePrevL    float64
+	resamplePrevR    float64
+	resampleNextL    float64
+	resampleNextR    float64
 	regs             [0x200]uint8
 	ch               [opl3ChannelCount]impSynthChannelState
 	waveformSelectOn bool
@@ -145,7 +152,10 @@ func NewImpSynth(sampleRate int) *ImpSynth {
 	if sampleRate <= 0 {
 		sampleRate = opl3DefaultSampleRate
 	}
-	o := &ImpSynth{sampleRate: sampleRate}
+	o := &ImpSynth{
+		sampleRate:   sampleRate,
+		resampleStep: (uint64(opl3DefaultSampleRate) << 32) / uint64(sampleRate),
+	}
 	o.Reset()
 	return o
 }
@@ -170,6 +180,12 @@ func (o *ImpSynth) Reset() {
 	o.egState = 0
 	o.egAdd = 0
 	o.egTimerLo = 0
+	o.resamplePhase = 0
+	o.resamplePrimed = false
+	o.resamplePrevL = 0
+	o.resamplePrevR = 0
+	o.resampleNextL = 0
+	o.resampleNextR = 0
 	for i := range o.ch {
 		o.ch[i].panL = 1
 		o.ch[i].panR = 1
@@ -285,12 +301,7 @@ func (o *ImpSynth) GenerateStereoS16(frames int) []int16 {
 	}
 	out := o.stereoBuf
 	for i := 0; i < frames; i++ {
-		var l, r float64
-		for ch := 0; ch < opl3ChannelCount; ch++ {
-			sl, sr := o.renderChannel(ch)
-			l += sl
-			r += sr
-		}
+		l, r := o.nextStereoSample()
 		l = clampSample(l)
 		r = clampSample(r)
 		out[i*2] = int16(l * 32767)
@@ -298,6 +309,48 @@ func (o *ImpSynth) GenerateStereoS16(frames int) []int16 {
 		o.advanceChipState()
 	}
 	return out
+}
+
+func (o *ImpSynth) nextStereoSample() (float64, float64) {
+	if o == nil {
+		return 0, 0
+	}
+	if o.sampleRate == opl3DefaultSampleRate {
+		return o.renderChipSample()
+	}
+	o.primeResampler()
+	alpha := float64(o.resamplePhase) / float64(uint64(1)<<32)
+	l := o.resamplePrevL + (o.resampleNextL-o.resamplePrevL)*alpha
+	r := o.resamplePrevR + (o.resampleNextR-o.resamplePrevR)*alpha
+
+	o.resamplePhase += o.resampleStep
+	for o.resamplePhase >= (uint64(1) << 32) {
+		o.resamplePhase -= uint64(1) << 32
+		o.resamplePrevL = o.resampleNextL
+		o.resamplePrevR = o.resampleNextR
+		o.resampleNextL, o.resampleNextR = o.renderChipSample()
+	}
+	return l, r
+}
+
+func (o *ImpSynth) primeResampler() {
+	if o == nil || o.resamplePrimed {
+		return
+	}
+	o.resamplePrevL, o.resamplePrevR = o.renderChipSample()
+	o.resampleNextL, o.resampleNextR = o.renderChipSample()
+	o.resamplePrimed = true
+}
+
+func (o *ImpSynth) renderChipSample() (float64, float64) {
+	var l, r float64
+	for ch := 0; ch < opl3ChannelCount; ch++ {
+		sl, sr := o.renderChannel(ch)
+		l += sl
+		r += sr
+	}
+	o.advanceChipState()
+	return l, r
 }
 
 // GenerateMonoU8 produces unsigned 8-bit mono PCM from the mixed stereo output.

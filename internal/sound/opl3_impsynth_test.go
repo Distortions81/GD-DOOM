@@ -1,6 +1,9 @@
 package sound
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestImpSynthGenerateNonZeroWhenKeyOn(t *testing.T) {
 	opl := NewImpSynth(49716)
@@ -162,4 +165,66 @@ func TestImpSynthGenerateMonoU8ReusesBuffer(t *testing.T) {
 	if allocs != 0 {
 		t.Fatalf("GenerateMonoU8 allocs=%v want 0", allocs)
 	}
+}
+
+func TestImpSynthPitchStaysStableAcrossOutputRates(t *testing.T) {
+	render := func(rate int) []int16 {
+		opl := NewImpSynth(rate)
+		opl.WriteReg(0x20, 0x01)
+		opl.WriteReg(0x23, 0x01)
+		opl.WriteReg(0x40, 0x3f)
+		opl.WriteReg(0x43, 0x00)
+		opl.WriteReg(0x60, 0xF3)
+		opl.WriteReg(0x63, 0xF3)
+		opl.WriteReg(0x80, 0x24)
+		opl.WriteReg(0x83, 0x24)
+		opl.WriteReg(0xA0, 0x98)
+		opl.WriteReg(0xB0, 0x31)
+		opl.WriteReg(0xC0, 0x30)
+		return opl.GenerateStereoS16(8192)
+	}
+
+	refHz := estimateDominantHz(render(49716), 49716)
+	testHz := estimateDominantHz(render(44100), 44100)
+	if refHz == 0 || testHz == 0 {
+		t.Fatalf("dominant frequency estimate failed: ref=%.2f test=%.2f", refHz, testHz)
+	}
+	ratio := testHz / refHz
+	if math.Abs(1-ratio) > 0.02 {
+		t.Fatalf("pitch ratio=%.4f want ~= 1.0 (ref=%.2fHz test=%.2fHz)", ratio, refHz, testHz)
+	}
+}
+
+func estimateDominantHz(stereo []int16, sampleRate int) float64 {
+	if len(stereo) < 6 || sampleRate <= 0 {
+		return 0
+	}
+	prev := 0.0
+	lastCross := -1
+	var periods []int
+	for i := 0; i < len(stereo)/2; i++ {
+		v := float64(stereo[i*2])
+		if i > 256 && prev < 0 && v >= 0 {
+			if lastCross >= 0 {
+				periods = append(periods, i-lastCross)
+			}
+			lastCross = i
+			if len(periods) >= 32 {
+				break
+			}
+		}
+		prev = v
+	}
+	if len(periods) == 0 {
+		return 0
+	}
+	total := 0
+	for _, p := range periods {
+		total += p
+	}
+	avgPeriod := float64(total) / float64(len(periods))
+	if avgPeriod == 0 {
+		return 0
+	}
+	return float64(sampleRate) / avgPeriod
 }
