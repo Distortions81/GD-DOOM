@@ -219,26 +219,45 @@ func prandDelta(before, after int) int {
 	return d
 }
 
+func advanceWeaponToReady(g *game) {
+	g.ensureWeaponDefaults()
+	g.bringUpWeapon()
+	for i := 0; i < 20; i++ {
+		g.tickWeaponOverlay()
+	}
+}
+
 func TestTickWeaponFirePistolCadence(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
 		stats:     playerStats{Bullets: 3},
 		inventory: playerInventory{ReadyWeapon: weaponPistol, Weapons: map[int16]bool{}},
 	}
+	advanceWeaponToReady(g)
 	g.setAttackHeld(true)
 	g.tickWeaponFire()
-	if g.stats.Bullets != 2 {
-		t.Fatalf("bullets=%d want=2 after first shot", g.stats.Bullets)
+	if g.stats.Bullets != 3 {
+		t.Fatalf("bullets=%d want=3 before first fire frame", g.stats.Bullets)
 	}
-	for i := 0; i < 13; i++ {
+	for i := 0; i < 3; i++ {
 		g.tickWeaponFire()
-		if g.stats.Bullets != 2 {
+		if g.stats.Bullets != 3 {
 			t.Fatalf("shot fired too early at tic %d: bullets=%d", i+1, g.stats.Bullets)
 		}
 	}
 	g.tickWeaponFire()
+	if g.stats.Bullets != 2 {
+		t.Fatalf("bullets=%d want=2 at first pistol fire frame", g.stats.Bullets)
+	}
+	for i := 0; i < 13; i++ {
+		g.tickWeaponFire()
+		if g.stats.Bullets != 2 {
+			t.Fatalf("refire happened too early at tic %d: bullets=%d", i+5, g.stats.Bullets)
+		}
+	}
+	g.tickWeaponFire()
 	if g.stats.Bullets != 1 {
-		t.Fatalf("bullets=%d want=1 at tic 14 refire cadence", g.stats.Bullets)
+		t.Fatalf("bullets=%d want=1 at second pistol fire frame", g.stats.Bullets)
 	}
 }
 
@@ -292,6 +311,119 @@ func TestCycleWeaponWrapsBackward(t *testing.T) {
 	g.cycleWeapon(-1)
 	if g.inventory.ReadyWeapon != weaponBFG {
 		t.Fatalf("weapon=%v want=%v", g.inventory.ReadyWeapon, weaponBFG)
+	}
+}
+
+func TestSelectWeaponSlot1SwitchesFromChainsawToFistWithBerserk(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon: weaponChainsaw,
+			Weapons:     map[int16]bool{2005: true},
+			Strength:    true,
+		},
+	}
+	advanceWeaponToReady(g)
+	g.selectWeaponSlot(1)
+	if g.inventory.PendingWeapon != weaponFist {
+		t.Fatalf("pending weapon=%v want=%v", g.inventory.PendingWeapon, weaponFist)
+	}
+}
+
+func TestSelectWeaponSlot3PrefersSuperShotgunWhenBothOwned(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Name: "MAP01"},
+		inventory: playerInventory{
+			ReadyWeapon: weaponShotgun,
+			Weapons:     map[int16]bool{2001: true, 82: true},
+		},
+	}
+	advanceWeaponToReady(g)
+	g.selectWeaponSlot(3)
+	if g.inventory.PendingWeapon != weaponSuperShotgun {
+		t.Fatalf("pending weapon=%v want=%v", g.inventory.PendingWeapon, weaponSuperShotgun)
+	}
+}
+
+func TestSuperShotgunConsumesTwoShellsAndTwentyPelletRolls(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m:     &mapdata.Map{Name: "MAP01"},
+		stats: playerStats{Shells: 2},
+		inventory: playerInventory{
+			ReadyWeapon: weaponSuperShotgun,
+			Weapons:     map[int16]bool{82: true},
+		},
+	}
+	_, p0 := doomrand.State()
+	g.handleFire()
+	_, p1 := doomrand.State()
+	if g.stats.Shells != 0 {
+		t.Fatalf("shells=%d want=0 after super shotgun shot", g.stats.Shells)
+	}
+	if d := prandDelta(p0, p1); d != 100 {
+		t.Fatalf("p-random calls=%d want=100 for 20-pellet super shotgun shot", d)
+	}
+}
+
+func TestEnsureWeaponHasAmmoUsesSourceThresholds(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Name: "MAP01"},
+		stats: playerStats{
+			Shells: 2,
+			Cells:  40,
+		},
+		inventory: playerInventory{
+			ReadyWeapon: weaponRocketLauncher,
+			Weapons:     map[int16]bool{82: true, 2006: true},
+		},
+	}
+	g.ensureWeaponHasAmmo()
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want cleared when fallback weapon is brought up immediately", g.inventory.PendingWeapon)
+	}
+	if g.inventory.ReadyWeapon != weaponFist {
+		t.Fatalf("ready weapon=%v want=%v when SSG/BFG thresholds are not met", g.inventory.ReadyWeapon, weaponFist)
+	}
+}
+
+func TestTickWeaponFireNoAmmoStartsLoweringImmediately(t *testing.T) {
+	g := &game{
+		stats: playerStats{Bullets: 0, Shells: 4},
+		inventory: playerInventory{
+			ReadyWeapon: weaponPistol,
+			Weapons:     map[int16]bool{2001: true},
+		},
+	}
+	advanceWeaponToReady(g)
+	g.setAttackHeld(true)
+	g.tickWeaponFire()
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want=%v", g.inventory.PendingWeapon, weaponShotgun)
+	}
+	if g.weaponState != weaponStatePistolDown {
+		t.Fatalf("weapon state=%v want=%v", g.weaponState, weaponStatePistolDown)
+	}
+}
+
+func TestFistHitUsesPunchSound(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 64, Y: 0}},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		p:              player{x: 0, y: 0, angle: degToAngle(0)},
+		inventory: playerInventory{
+			ReadyWeapon: weaponFist,
+			Weapons:     map[int16]bool{},
+		},
+	}
+	if !g.fireFist() {
+		t.Fatal("expected punch to hit")
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventPunch) {
+		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventPunch)
 	}
 }
 

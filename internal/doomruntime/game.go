@@ -493,6 +493,7 @@ type game struct {
 	weaponStateTics      int
 	weaponFlashState     weaponPspriteState
 	weaponFlashTics      int
+	weaponPSpriteY       int
 	stats                playerStats
 	worldTic             int
 	spectreFuzzPos       int
@@ -664,7 +665,7 @@ type game struct {
 	statusAttackerX              int64
 	statusAttackerY              int64
 	statusHasAttacker            bool
-	statusOldWeapons             [8]bool
+	statusOldWeapons             [9]bool
 	statusDamageCount            int
 	statusBonusCount             int
 	demoBenchStart               time.Time
@@ -7141,6 +7142,22 @@ func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) stri
 	prefix := "BAL1"
 	frame := byte('C')
 	switch kind {
+	case projectileBFGBall:
+		prefix = "BFE1"
+		switch {
+		case elapsed < 8:
+			frame = 'A'
+		case elapsed < 16:
+			frame = 'B'
+		case elapsed < 24:
+			frame = 'C'
+		case elapsed < 32:
+			frame = 'D'
+		case elapsed < 40:
+			frame = 'E'
+		default:
+			frame = 'F'
+		}
 	case projectileRocket:
 		prefix = "MISL"
 		switch {
@@ -7213,8 +7230,12 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 	}
 	frame2 := (tic / 4) & 1
 	switch kind {
+	case projectileBFGBall:
+		return pickPrefixFrame("BFS1", []byte{'A', 'B'}, frame2)
 	case projectileRocket:
 		return pickPrefixFrame("MISL", []byte{'A'}, 0)
+	case projectilePlayerPlasma:
+		return pickPrefixFrame("PLSS", []byte{'A', 'B'}, frame2)
 	case projectileBaronBall:
 		return pickPrefixFrame("BAL7", []byte{'A', 'B'}, frame2)
 	case projectilePlasmaBall:

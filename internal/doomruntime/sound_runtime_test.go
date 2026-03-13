@@ -92,6 +92,9 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	if got, ok := s.sampleForEvent(soundEventShootShotgun); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
 		t.Fatalf("shotgun sample=%v ok=%v want switch fallback", got, ok)
 	}
+	if got, ok := s.sampleForEvent(soundEventPunch); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
+		t.Fatalf("punch sample=%v ok=%v want claw fallback", got, ok)
+	}
 	if got, ok := s.sampleForEvent(soundEventShootFireball); !ok || len(got.Data) == 0 || got.Data[0] != 1 {
 		t.Fatalf("fireball sample=%v ok=%v want switch fallback", got, ok)
 	}
@@ -114,6 +117,7 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	s.bank.ShootFireball = PCMSample{SampleRate: 11025, Data: []byte{6}}
 	s.bank.ShootRocket = PCMSample{SampleRate: 11025, Data: []byte{7}}
 	s.bank.AttackClaw = PCMSample{SampleRate: 11025, Data: []byte{15}}
+	s.bank.Punch = PCMSample{SampleRate: 11025, Data: []byte{18}}
 	s.bank.AttackSgt = PCMSample{SampleRate: 11025, Data: []byte{16}}
 	s.bank.AttackSkull = PCMSample{SampleRate: 11025, Data: []byte{17}}
 	s.bank.ImpactFire = PCMSample{SampleRate: 11025, Data: []byte{8}}
@@ -140,6 +144,9 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 	}
 	if got, ok := s.sampleForEvent(soundEventMonsterAttackClaw); !ok || got.Data[0] != 15 {
 		t.Fatalf("claw sample=%v ok=%v want explicit claw", got, ok)
+	}
+	if got, ok := s.sampleForEvent(soundEventPunch); !ok || got.Data[0] != 18 {
+		t.Fatalf("punch sample=%v ok=%v want explicit punch", got, ok)
 	}
 	if got, ok := s.sampleForEvent(soundEventMonsterAttackSgt); !ok || got.Data[0] != 16 {
 		t.Fatalf("sgt attack sample=%v ok=%v want explicit sgt", got, ok)

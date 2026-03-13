@@ -3,6 +3,8 @@ package doomruntime
 import (
 	"math"
 	"sort"
+
+	"gddoom/internal/doomrand"
 )
 
 type projectileKind int
@@ -12,6 +14,8 @@ const (
 	projectilePlasmaBall
 	projectileBaronBall
 	projectileRocket
+	projectilePlayerPlasma
+	projectileBFGBall
 )
 
 type projectile struct {
@@ -29,6 +33,7 @@ type projectile struct {
 	sourceThing  int
 	sourceType   int16
 	sourcePlayer bool
+	angle        uint32
 	kind         projectileKind
 }
 
@@ -39,6 +44,8 @@ type projectileImpact struct {
 	kind      projectileKind
 	tics      int
 	totalTics int
+	angle     uint32
+	sprayDone bool
 }
 
 func usesMonsterProjectile(typ int16) bool {
@@ -163,6 +170,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		sourceThing: thingIdx,
 		sourceType:  typ,
 		kind:        monsterProjectileKind(typ),
+		angle:       angleToThing(sx, sy, tx, ty),
 	})
 	return true
 }
@@ -183,7 +191,7 @@ func (g *game) tickProjectiles() {
 		thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
 		blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
 		if hitThing && (!blocked || thingHit.frac <= blockFrac) {
-			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z)
+			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
 			if dmg := projectileDamage(p); dmg > 0 {
 				g.damageShootableThing(thingHit.idx, dmg)
@@ -192,7 +200,7 @@ func (g *game) tickProjectiles() {
 			continue
 		}
 		if blocked {
-			g.spawnProjectileImpact(p.kind, hx, hy, hz)
+			g.spawnProjectileImpact(p.kind, hx, hy, hz, p.angle)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
 			g.projectileSplashDamage(p, hx, hy, hz)
 			continue
@@ -202,13 +210,13 @@ func (g *game) tickProjectiles() {
 		p.z = nz
 		p.ttl--
 		if p.ttl <= 0 {
-			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
+			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
 			g.projectileSplashDamage(p, p.x, p.y, p.z)
 			continue
 		}
 		if !p.sourcePlayer && g.projectileHitsPlayer(p) {
-			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z)
+			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
 			dmg := projectileDamage(p)
 			if dmg > 0 {
@@ -223,15 +231,11 @@ func (g *game) tickProjectiles() {
 }
 
 func projectileDamage(p projectile) int {
-	if p.sourcePlayer {
-		switch p.kind {
-		case projectileRocket:
-			return 20 * (1 + doomPRandomN(8))
-		default:
-			return 0
-		}
+	base := projectileBaseDamage(p.kind)
+	if base <= 0 {
+		return 0
 	}
-	return monsterRangedDamage(p.sourceType)
+	return base * (1 + doomPRandomN(8))
 }
 
 func projectileSplashDamage(kind projectileKind) int {
@@ -289,8 +293,94 @@ func (g *game) spawnPlayerRocket() bool {
 		sourceType:   16,
 		sourcePlayer: true,
 		kind:         projectileRocket,
+		angle:        g.p.angle,
 	})
 	return true
+}
+
+func projectileBaseDamage(kind projectileKind) int {
+	switch kind {
+	case projectileFireball:
+		return 3
+	case projectilePlasmaBall, projectilePlayerPlasma:
+		return 5
+	case projectileBaronBall:
+		return 8
+	case projectileRocket:
+		return 20
+	case projectileBFGBall:
+		return 100
+	default:
+		return 0
+	}
+}
+
+func (g *game) spawnPlayerPlasma() bool {
+	return g.spawnPlayerMissile(projectilePlayerPlasma, 25*fracUnit, 13*fracUnit, 8*fracUnit, 10*doomTicsPerSecond)
+}
+
+func (g *game) spawnPlayerBFG() bool {
+	return g.spawnPlayerMissile(projectileBFGBall, 25*fracUnit, 13*fracUnit, 8*fracUnit, 10*doomTicsPerSecond)
+}
+
+func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int64, ttl int) bool {
+	if g == nil {
+		return false
+	}
+	ang := angleToRadians(g.p.angle)
+	vx := int64(math.Cos(ang) * float64(speed))
+	vy := int64(math.Sin(ang) * float64(speed))
+	if vx == 0 && vy == 0 {
+		return false
+	}
+	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
+	vz := fixedMul(speed, slope)
+	launchOffset := playerRadius + radius + 4*fracUnit
+	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
+	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
+	sz := g.playerShootZ() - (height >> 1)
+	g.projectiles = append(g.projectiles, projectile{
+		x:            sx,
+		y:            sy,
+		z:            sz,
+		vx:           vx,
+		vy:           vy,
+		vz:           vz,
+		radius:       radius,
+		height:       height,
+		ttl:          ttl,
+		sourceX:      g.p.x,
+		sourceY:      g.p.y,
+		sourceThing:  -1,
+		sourceType:   0,
+		sourcePlayer: true,
+		kind:         kind,
+		angle:        g.p.angle,
+	})
+	return true
+}
+
+func (g *game) applyBFGSpray(center uint32) {
+	if g == nil {
+		return
+	}
+	for i := 0; i < 40; i++ {
+		ang := center - degToAngle(45) + uint32((float64(degToAngle(90))/40.0)*float64(i))
+		slope, ok := g.aimLineAttack(g.playerLineAttackActor(), ang, 1024*fracUnit)
+		if !ok {
+			continue
+		}
+		outcome := g.lineAttackTrace(g.playerLineAttackActor(), ang, 1024*fracUnit, slope, false)
+		if outcome.target.kind != lineAttackTargetThing {
+			continue
+		}
+		damage := 0
+		for j := 0; j < 15; j++ {
+			damage += (doomrand.PRandom() & 7) + 1
+		}
+		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
+		g.damageShootableThing(outcome.target.idx, damage)
+	}
 }
 
 func (g *game) tickProjectileImpacts() {
@@ -299,6 +389,11 @@ func (g *game) tickProjectileImpacts() {
 	}
 	keep := g.projectileImpacts[:0]
 	for _, fx := range g.projectileImpacts {
+		elapsed := fx.totalTics - fx.tics
+		if fx.kind == projectileBFGBall && !fx.sprayDone && elapsed >= 16 {
+			fx.sprayDone = true
+			g.applyBFGSpray(fx.angle)
+		}
 		fx.tics--
 		if fx.tics <= 0 {
 			continue
@@ -308,7 +403,7 @@ func (g *game) tickProjectileImpacts() {
 	g.projectileImpacts = keep
 }
 
-func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64) {
+func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle uint32) {
 	const maxImpacts = 64
 	if len(g.projectileImpacts) >= maxImpacts {
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
@@ -325,6 +420,7 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64) {
 		kind:      kind,
 		tics:      tics,
 		totalTics: tics,
+		angle:     angle,
 	})
 }
 
@@ -442,11 +538,13 @@ func (g *game) projectileHitsPlayer(p projectile) bool {
 
 func projectileHitMessage(kind projectileKind) string {
 	switch kind {
+	case projectileBFGBall:
+		return "BFG blast"
 	case projectileRocket:
 		return "Rocket blast"
 	case projectileBaronBall:
 		return "Baron ball hit"
-	case projectilePlasmaBall:
+	case projectilePlasmaBall, projectilePlayerPlasma:
 		return "Cacodemon ball hit"
 	default:
 		return "Fireball hit"
@@ -455,12 +553,16 @@ func projectileHitMessage(kind projectileKind) string {
 
 func projectileColor(kind projectileKind) [2]uint8 {
 	switch kind {
+	case projectileBFGBall:
+		return [2]uint8{191, 160}
 	case projectileRocket:
 		return [2]uint8{248, 188}
 	case projectileBaronBall:
 		return [2]uint8{130, 84}
 	case projectilePlasmaBall:
 		return [2]uint8{210, 120}
+	case projectilePlayerPlasma:
+		return [2]uint8{224, 192}
 	default:
 		return [2]uint8{236, 86}
 	}
@@ -482,7 +584,7 @@ func projectileLaunchSoundEvent(typ int16) soundEvent {
 }
 
 func projectileImpactSoundEvent(kind projectileKind) soundEvent {
-	if kind == projectileRocket {
+	if kind == projectileRocket || kind == projectileBFGBall {
 		return soundEventImpactRocket
 	}
 	return soundEventImpactFire

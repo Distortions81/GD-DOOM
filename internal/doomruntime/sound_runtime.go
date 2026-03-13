@@ -24,8 +24,19 @@ const (
 	soundEventPain
 	soundEventShootPistol
 	soundEventShootShotgun
+	soundEventShootSuperShotgun
+	soundEventShootPlasma
+	soundEventShootBFG
+	soundEventPunch
 	soundEventShootFireball
 	soundEventShootRocket
+	soundEventSawUp
+	soundEventSawIdle
+	soundEventSawFull
+	soundEventSawHit
+	soundEventShotgunOpen
+	soundEventShotgunLoad
+	soundEventShotgunClose
 	soundEventMonsterAttackClaw
 	soundEventMonsterAttackSgt
 	soundEventMonsterAttackSkull
@@ -212,6 +223,26 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.ShootPistol, true
 		}
 		return s.bank.SwitchOn, true
+	case soundEventShootSuperShotgun:
+		if len(s.bank.ShootSuperShotgun.Data) > 0 {
+			return s.bank.ShootSuperShotgun, true
+		}
+		return s.sampleForEvent(soundEventShootShotgun)
+	case soundEventShootPlasma:
+		if len(s.bank.ShootPlasma.Data) > 0 {
+			return s.bank.ShootPlasma, true
+		}
+		return s.sampleForEvent(soundEventShootFireball)
+	case soundEventShootBFG:
+		if len(s.bank.ShootBFG.Data) > 0 {
+			return s.bank.ShootBFG, true
+		}
+		return s.sampleForEvent(soundEventShootRocket)
+	case soundEventPunch:
+		if len(s.bank.Punch.Data) > 0 {
+			return s.bank.Punch, true
+		}
+		return s.sampleForEvent(soundEventMonsterAttackClaw)
 	case soundEventShootFireball:
 		if len(s.bank.ShootFireball.Data) > 0 {
 			return s.bank.ShootFireball, true
@@ -228,6 +259,41 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.ShootShotgun, true
 		}
 		return s.bank.SwitchOn, true
+	case soundEventSawUp:
+		if len(s.bank.SawUp.Data) > 0 {
+			return s.bank.SawUp, true
+		}
+		return s.sampleForEvent(soundEventWeaponUp)
+	case soundEventSawIdle:
+		if len(s.bank.SawIdle.Data) > 0 {
+			return s.bank.SawIdle, true
+		}
+		return s.sampleForEvent(soundEventSawUp)
+	case soundEventSawFull:
+		if len(s.bank.SawFull.Data) > 0 {
+			return s.bank.SawFull, true
+		}
+		return s.sampleForEvent(soundEventSawIdle)
+	case soundEventSawHit:
+		if len(s.bank.SawHit.Data) > 0 {
+			return s.bank.SawHit, true
+		}
+		return s.sampleForEvent(soundEventSawFull)
+	case soundEventShotgunOpen:
+		if len(s.bank.ShotgunOpen.Data) > 0 {
+			return s.bank.ShotgunOpen, true
+		}
+		return s.sampleForEvent(soundEventWeaponUp)
+	case soundEventShotgunLoad:
+		if len(s.bank.ShotgunLoad.Data) > 0 {
+			return s.bank.ShotgunLoad, true
+		}
+		return s.sampleForEvent(soundEventShotgunOpen)
+	case soundEventShotgunClose:
+		if len(s.bank.ShotgunClose.Data) > 0 {
+			return s.bank.ShotgunClose, true
+		}
+		return s.sampleForEvent(soundEventShotgunOpen)
 	case soundEventMonsterAttackClaw:
 		if len(s.bank.AttackClaw.Data) > 0 {
 			return s.bank.AttackClaw, true

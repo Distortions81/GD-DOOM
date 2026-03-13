@@ -18,6 +18,8 @@ func demoTraceWeaponID(id weaponID) int {
 		return 6
 	case weaponChainsaw:
 		return 7
+	case weaponSuperShotgun:
+		return 8
 	default:
 		return 0
 	}

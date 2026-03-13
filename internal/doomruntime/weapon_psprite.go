@@ -10,22 +10,35 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+const (
+	weaponRaiseSpeed = 6
+	weaponLowerSpeed = 6
+	weaponTopY       = 32
+	weaponBottomY    = 128
+)
+
 type weaponPspriteState int
 
 const (
 	weaponStateNone weaponPspriteState = iota
 	weaponStateFistReady
+	weaponStateFistDown
+	weaponStateFistUp
 	weaponStateFistAtk1
 	weaponStateFistAtk2
 	weaponStateFistAtk3
 	weaponStateFistAtk4
 	weaponStateFistAtk5
 	weaponStatePistolReady
+	weaponStatePistolDown
+	weaponStatePistolUp
 	weaponStatePistolAtk1
 	weaponStatePistolAtk2
 	weaponStatePistolAtk3
 	weaponStatePistolAtk4
 	weaponStateShotgunReady
+	weaponStateShotgunDown
+	weaponStateShotgunUp
 	weaponStateShotgunAtk1
 	weaponStateShotgunAtk2
 	weaponStateShotgunAtk3
@@ -35,23 +48,46 @@ const (
 	weaponStateShotgunAtk7
 	weaponStateShotgunAtk8
 	weaponStateShotgunAtk9
+	weaponStateSuperShotgunReady
+	weaponStateSuperShotgunDown
+	weaponStateSuperShotgunUp
+	weaponStateSuperShotgunAtk1
+	weaponStateSuperShotgunAtk2
+	weaponStateSuperShotgunAtk3
+	weaponStateSuperShotgunAtk4
+	weaponStateSuperShotgunAtk5
+	weaponStateSuperShotgunAtk6
+	weaponStateSuperShotgunAtk7
+	weaponStateSuperShotgunAtk8
+	weaponStateSuperShotgunAtk9
+	weaponStateSuperShotgunAtk10
 	weaponStateChaingunReady
+	weaponStateChaingunDown
+	weaponStateChaingunUp
 	weaponStateChaingunAtk1
 	weaponStateChaingunAtk2
 	weaponStateChaingunAtk3
 	weaponStateRocketReady
+	weaponStateRocketDown
+	weaponStateRocketUp
 	weaponStateRocketAtk1
 	weaponStateRocketAtk2
 	weaponStateRocketAtk3
-	weaponStateSawReadyA
+	weaponStateSawReady
 	weaponStateSawReadyB
+	weaponStateSawDown
+	weaponStateSawUp
 	weaponStateSawAtk1
 	weaponStateSawAtk2
 	weaponStateSawAtk3
 	weaponStatePlasmaReady
+	weaponStatePlasmaDown
+	weaponStatePlasmaUp
 	weaponStatePlasmaAtk1
 	weaponStatePlasmaAtk2
 	weaponStateBFGReady
+	weaponStateBFGDown
+	weaponStateBFGUp
 	weaponStateBFGAtk1
 	weaponStateBFGAtk2
 	weaponStateBFGAtk3
@@ -59,6 +95,8 @@ const (
 	weaponStatePistolFlash
 	weaponStateShotgunFlash1
 	weaponStateShotgunFlash2
+	weaponStateSuperShotgunFlash1
+	weaponStateSuperShotgunFlash2
 	weaponStateChaingunFlash1
 	weaponStateChaingunFlash2
 	weaponStateRocketFlash1
@@ -71,6 +109,34 @@ const (
 	weaponStateBFGFlash2
 )
 
+type weaponPspriteAction uint8
+
+const (
+	weaponPspriteActionNone weaponPspriteAction = iota
+	weaponPspriteActionReady
+	weaponPspriteActionLower
+	weaponPspriteActionRaise
+	weaponPspriteActionPunch
+	weaponPspriteActionFirePistol
+	weaponPspriteActionFireShotgun
+	weaponPspriteActionFireSuperShotgun
+	weaponPspriteActionFireChaingun
+	weaponPspriteActionGunFlash
+	weaponPspriteActionFireMissile
+	weaponPspriteActionSaw
+	weaponPspriteActionFirePlasma
+	weaponPspriteActionBFGSound
+	weaponPspriteActionFireBFG
+	weaponPspriteActionReFire
+	weaponPspriteActionCheckReload
+	weaponPspriteActionOpenShotgun2
+	weaponPspriteActionLoadShotgun2
+	weaponPspriteActionCloseShotgun2
+	weaponPspriteActionLight0
+	weaponPspriteActionLight1
+	weaponPspriteActionLight2
+)
+
 type weaponPspriteDef struct {
 	sprite string
 	tics   int
@@ -78,138 +144,105 @@ type weaponPspriteDef struct {
 	action weaponPspriteAction
 }
 
-type weaponPspriteAction uint8
-
-const (
-	weaponPspriteActionNone weaponPspriteAction = iota
-	weaponPspriteActionReady
-	weaponPspriteActionRefire
-	weaponPspriteActionFire
-	weaponPspriteActionGunFlash
-	weaponPspriteActionBFGSound
-)
-
 var weaponPspriteDefs = map[weaponPspriteState]weaponPspriteDef{
-	weaponStateFistReady:      {sprite: "PUNGA0", tics: 1, next: weaponStateFistReady, action: weaponPspriteActionReady},
-	weaponStateFistAtk1:       {sprite: "PUNGB0", tics: 4, next: weaponStateFistAtk2},
-	weaponStateFistAtk2:       {sprite: "PUNGC0", tics: 4, next: weaponStateFistAtk3, action: weaponPspriteActionFire},
-	weaponStateFistAtk3:       {sprite: "PUNGD0", tics: 5, next: weaponStateFistAtk4},
-	weaponStateFistAtk4:       {sprite: "PUNGC0", tics: 4, next: weaponStateFistAtk5},
-	weaponStateFistAtk5:       {sprite: "PUNGB0", tics: 5, next: weaponStateFistReady, action: weaponPspriteActionRefire},
-	weaponStatePistolReady:    {sprite: "PISGA0", tics: 1, next: weaponStatePistolReady, action: weaponPspriteActionReady},
-	weaponStatePistolAtk1:     {sprite: "PISGA0", tics: 4, next: weaponStatePistolAtk2},
-	weaponStatePistolAtk2:     {sprite: "PISGB0", tics: 6, next: weaponStatePistolAtk3, action: weaponPspriteActionFire},
-	weaponStatePistolAtk3:     {sprite: "PISGC0", tics: 4, next: weaponStatePistolAtk4},
-	weaponStatePistolAtk4:     {sprite: "PISGB0", tics: 5, next: weaponStatePistolReady, action: weaponPspriteActionRefire},
-	weaponStateShotgunReady:   {sprite: "SHTGA0", tics: 1, next: weaponStateShotgunReady, action: weaponPspriteActionReady},
-	weaponStateShotgunAtk1:    {sprite: "SHTGA0", tics: 3, next: weaponStateShotgunAtk2},
-	weaponStateShotgunAtk2:    {sprite: "SHTGA0", tics: 7, next: weaponStateShotgunAtk3, action: weaponPspriteActionFire},
-	weaponStateShotgunAtk3:    {sprite: "SHTGB0", tics: 5, next: weaponStateShotgunAtk4},
-	weaponStateShotgunAtk4:    {sprite: "SHTGC0", tics: 5, next: weaponStateShotgunAtk5},
-	weaponStateShotgunAtk5:    {sprite: "SHTGD0", tics: 4, next: weaponStateShotgunAtk6},
-	weaponStateShotgunAtk6:    {sprite: "SHTGC0", tics: 5, next: weaponStateShotgunAtk7},
-	weaponStateShotgunAtk7:    {sprite: "SHTGB0", tics: 5, next: weaponStateShotgunAtk8},
-	weaponStateShotgunAtk8:    {sprite: "SHTGA0", tics: 3, next: weaponStateShotgunAtk9},
-	weaponStateShotgunAtk9:    {sprite: "SHTGA0", tics: 7, next: weaponStateShotgunReady, action: weaponPspriteActionRefire},
-	weaponStateChaingunReady:  {sprite: "CHGGA0", tics: 1, next: weaponStateChaingunReady, action: weaponPspriteActionReady},
-	weaponStateChaingunAtk1:   {sprite: "CHGGA0", tics: 4, next: weaponStateChaingunAtk2, action: weaponPspriteActionFire},
-	weaponStateChaingunAtk2:   {sprite: "CHGGB0", tics: 4, next: weaponStateChaingunAtk3, action: weaponPspriteActionFire},
-	weaponStateChaingunAtk3:   {sprite: "CHGGB0", tics: 0, next: weaponStateChaingunReady, action: weaponPspriteActionRefire},
-	weaponStateRocketReady:    {sprite: "MISGA0", tics: 1, next: weaponStateRocketReady, action: weaponPspriteActionReady},
-	weaponStateRocketAtk1:     {sprite: "MISGB0", tics: 8, next: weaponStateRocketAtk2, action: weaponPspriteActionGunFlash},
-	weaponStateRocketAtk2:     {sprite: "MISGB0", tics: 12, next: weaponStateRocketAtk3, action: weaponPspriteActionFire},
-	weaponStateRocketAtk3:     {sprite: "MISGB0", tics: 0, next: weaponStateRocketReady, action: weaponPspriteActionRefire},
-	weaponStateSawReadyA:      {sprite: "SAWGC0", tics: 4, next: weaponStateSawReadyB, action: weaponPspriteActionReady},
-	weaponStateSawReadyB:      {sprite: "SAWGD0", tics: 4, next: weaponStateSawReadyA, action: weaponPspriteActionReady},
-	weaponStateSawAtk1:        {sprite: "SAWGA0", tics: 4, next: weaponStateSawAtk2, action: weaponPspriteActionFire},
-	weaponStateSawAtk2:        {sprite: "SAWGB0", tics: 4, next: weaponStateSawAtk3, action: weaponPspriteActionFire},
-	weaponStateSawAtk3:        {sprite: "SAWGB0", tics: 0, next: weaponStateSawReadyA, action: weaponPspriteActionRefire},
-	weaponStatePlasmaReady:    {sprite: "PLSGA0", tics: 1, next: weaponStatePlasmaReady, action: weaponPspriteActionReady},
-	weaponStatePlasmaAtk1:     {sprite: "PLSGA0", tics: 3, next: weaponStatePlasmaAtk2, action: weaponPspriteActionFire},
-	weaponStatePlasmaAtk2:     {sprite: "PLSGB0", tics: 20, next: weaponStatePlasmaReady, action: weaponPspriteActionRefire},
-	weaponStateBFGReady:       {sprite: "BFGGA0", tics: 1, next: weaponStateBFGReady, action: weaponPspriteActionReady},
-	weaponStateBFGAtk1:        {sprite: "BFGGA0", tics: 20, next: weaponStateBFGAtk2, action: weaponPspriteActionBFGSound},
-	weaponStateBFGAtk2:        {sprite: "BFGGB0", tics: 10, next: weaponStateBFGAtk3, action: weaponPspriteActionGunFlash},
-	weaponStateBFGAtk3:        {sprite: "BFGGB0", tics: 10, next: weaponStateBFGAtk4, action: weaponPspriteActionFire},
-	weaponStateBFGAtk4:        {sprite: "BFGGB0", tics: 20, next: weaponStateBFGReady, action: weaponPspriteActionRefire},
-	weaponStatePistolFlash:    {sprite: "PISFA0", tics: 7, next: weaponStateNone},
-	weaponStateShotgunFlash1:  {sprite: "SHTFA0", tics: 4, next: weaponStateShotgunFlash2},
-	weaponStateShotgunFlash2:  {sprite: "SHTFB0", tics: 3, next: weaponStateNone},
-	weaponStateChaingunFlash1: {sprite: "CHGFA0", tics: 5, next: weaponStateNone},
-	weaponStateChaingunFlash2: {sprite: "CHGFB0", tics: 5, next: weaponStateNone},
-	weaponStateRocketFlash1:   {sprite: "MISFA0", tics: 3, next: weaponStateRocketFlash2},
-	weaponStateRocketFlash2:   {sprite: "MISFB0", tics: 4, next: weaponStateRocketFlash3},
-	weaponStateRocketFlash3:   {sprite: "MISFC0", tics: 4, next: weaponStateRocketFlash4},
-	weaponStateRocketFlash4:   {sprite: "MISFD0", tics: 4, next: weaponStateNone},
-	weaponStatePlasmaFlash1:   {sprite: "PLSFA0", tics: 4, next: weaponStateNone},
-	weaponStatePlasmaFlash2:   {sprite: "PLSFB0", tics: 4, next: weaponStateNone},
-	weaponStateBFGFlash1:      {sprite: "BFGFA0", tics: 11, next: weaponStateBFGFlash2},
-	weaponStateBFGFlash2:      {sprite: "BFGFB0", tics: 6, next: weaponStateNone},
+	weaponStateFistReady:          {sprite: "PUNGA0", tics: 1, next: weaponStateFistReady, action: weaponPspriteActionReady},
+	weaponStateFistDown:           {sprite: "PUNGA0", tics: 1, next: weaponStateFistDown, action: weaponPspriteActionLower},
+	weaponStateFistUp:             {sprite: "PUNGA0", tics: 1, next: weaponStateFistUp, action: weaponPspriteActionRaise},
+	weaponStateFistAtk1:           {sprite: "PUNGB0", tics: 4, next: weaponStateFistAtk2},
+	weaponStateFistAtk2:           {sprite: "PUNGC0", tics: 4, next: weaponStateFistAtk3, action: weaponPspriteActionPunch},
+	weaponStateFistAtk3:           {sprite: "PUNGD0", tics: 5, next: weaponStateFistAtk4},
+	weaponStateFistAtk4:           {sprite: "PUNGC0", tics: 4, next: weaponStateFistAtk5},
+	weaponStateFistAtk5:           {sprite: "PUNGB0", tics: 5, next: weaponStateFistReady, action: weaponPspriteActionReFire},
+	weaponStatePistolReady:        {sprite: "PISGA0", tics: 1, next: weaponStatePistolReady, action: weaponPspriteActionReady},
+	weaponStatePistolDown:         {sprite: "PISGA0", tics: 1, next: weaponStatePistolDown, action: weaponPspriteActionLower},
+	weaponStatePistolUp:           {sprite: "PISGA0", tics: 1, next: weaponStatePistolUp, action: weaponPspriteActionRaise},
+	weaponStatePistolAtk1:         {sprite: "PISGA0", tics: 4, next: weaponStatePistolAtk2},
+	weaponStatePistolAtk2:         {sprite: "PISGB0", tics: 6, next: weaponStatePistolAtk3, action: weaponPspriteActionFirePistol},
+	weaponStatePistolAtk3:         {sprite: "PISGC0", tics: 4, next: weaponStatePistolAtk4},
+	weaponStatePistolAtk4:         {sprite: "PISGB0", tics: 5, next: weaponStatePistolReady, action: weaponPspriteActionReFire},
+	weaponStateShotgunReady:       {sprite: "SHTGA0", tics: 1, next: weaponStateShotgunReady, action: weaponPspriteActionReady},
+	weaponStateShotgunDown:        {sprite: "SHTGA0", tics: 1, next: weaponStateShotgunDown, action: weaponPspriteActionLower},
+	weaponStateShotgunUp:          {sprite: "SHTGA0", tics: 1, next: weaponStateShotgunUp, action: weaponPspriteActionRaise},
+	weaponStateShotgunAtk1:        {sprite: "SHTGA0", tics: 3, next: weaponStateShotgunAtk2},
+	weaponStateShotgunAtk2:        {sprite: "SHTGA0", tics: 7, next: weaponStateShotgunAtk3, action: weaponPspriteActionFireShotgun},
+	weaponStateShotgunAtk3:        {sprite: "SHTGB0", tics: 5, next: weaponStateShotgunAtk4},
+	weaponStateShotgunAtk4:        {sprite: "SHTGC0", tics: 5, next: weaponStateShotgunAtk5},
+	weaponStateShotgunAtk5:        {sprite: "SHTGD0", tics: 4, next: weaponStateShotgunAtk6},
+	weaponStateShotgunAtk6:        {sprite: "SHTGC0", tics: 5, next: weaponStateShotgunAtk7},
+	weaponStateShotgunAtk7:        {sprite: "SHTGB0", tics: 5, next: weaponStateShotgunAtk8},
+	weaponStateShotgunAtk8:        {sprite: "SHTGA0", tics: 3, next: weaponStateShotgunAtk9},
+	weaponStateShotgunAtk9:        {sprite: "SHTGA0", tics: 7, next: weaponStateShotgunReady, action: weaponPspriteActionReFire},
+	weaponStateSuperShotgunReady:  {sprite: "SHT2A0", tics: 1, next: weaponStateSuperShotgunReady, action: weaponPspriteActionReady},
+	weaponStateSuperShotgunDown:   {sprite: "SHT2A0", tics: 1, next: weaponStateSuperShotgunDown, action: weaponPspriteActionLower},
+	weaponStateSuperShotgunUp:     {sprite: "SHT2A0", tics: 1, next: weaponStateSuperShotgunUp, action: weaponPspriteActionRaise},
+	weaponStateSuperShotgunAtk1:   {sprite: "SHT2A0", tics: 3, next: weaponStateSuperShotgunAtk2},
+	weaponStateSuperShotgunAtk2:   {sprite: "SHT2A0", tics: 7, next: weaponStateSuperShotgunAtk3, action: weaponPspriteActionFireSuperShotgun},
+	weaponStateSuperShotgunAtk3:   {sprite: "SHT2B0", tics: 7, next: weaponStateSuperShotgunAtk4},
+	weaponStateSuperShotgunAtk4:   {sprite: "SHT2C0", tics: 7, next: weaponStateSuperShotgunAtk5, action: weaponPspriteActionCheckReload},
+	weaponStateSuperShotgunAtk5:   {sprite: "SHT2D0", tics: 7, next: weaponStateSuperShotgunAtk6, action: weaponPspriteActionOpenShotgun2},
+	weaponStateSuperShotgunAtk6:   {sprite: "SHT2E0", tics: 7, next: weaponStateSuperShotgunAtk7},
+	weaponStateSuperShotgunAtk7:   {sprite: "SHT2F0", tics: 7, next: weaponStateSuperShotgunAtk8, action: weaponPspriteActionLoadShotgun2},
+	weaponStateSuperShotgunAtk8:   {sprite: "SHT2G0", tics: 6, next: weaponStateSuperShotgunAtk9},
+	weaponStateSuperShotgunAtk9:   {sprite: "SHT2H0", tics: 6, next: weaponStateSuperShotgunAtk10, action: weaponPspriteActionCloseShotgun2},
+	weaponStateSuperShotgunAtk10:  {sprite: "SHT2A0", tics: 5, next: weaponStateSuperShotgunReady, action: weaponPspriteActionReFire},
+	weaponStateChaingunReady:      {sprite: "CHGGA0", tics: 1, next: weaponStateChaingunReady, action: weaponPspriteActionReady},
+	weaponStateChaingunDown:       {sprite: "CHGGA0", tics: 1, next: weaponStateChaingunDown, action: weaponPspriteActionLower},
+	weaponStateChaingunUp:         {sprite: "CHGGA0", tics: 1, next: weaponStateChaingunUp, action: weaponPspriteActionRaise},
+	weaponStateChaingunAtk1:       {sprite: "CHGGA0", tics: 4, next: weaponStateChaingunAtk2, action: weaponPspriteActionFireChaingun},
+	weaponStateChaingunAtk2:       {sprite: "CHGGB0", tics: 4, next: weaponStateChaingunAtk3, action: weaponPspriteActionFireChaingun},
+	weaponStateChaingunAtk3:       {sprite: "CHGGB0", tics: 0, next: weaponStateChaingunReady, action: weaponPspriteActionReFire},
+	weaponStateRocketReady:        {sprite: "MISGA0", tics: 1, next: weaponStateRocketReady, action: weaponPspriteActionReady},
+	weaponStateRocketDown:         {sprite: "MISGA0", tics: 1, next: weaponStateRocketDown, action: weaponPspriteActionLower},
+	weaponStateRocketUp:           {sprite: "MISGA0", tics: 1, next: weaponStateRocketUp, action: weaponPspriteActionRaise},
+	weaponStateRocketAtk1:         {sprite: "MISGB0", tics: 8, next: weaponStateRocketAtk2, action: weaponPspriteActionGunFlash},
+	weaponStateRocketAtk2:         {sprite: "MISGB0", tics: 12, next: weaponStateRocketAtk3, action: weaponPspriteActionFireMissile},
+	weaponStateRocketAtk3:         {sprite: "MISGB0", tics: 0, next: weaponStateRocketReady, action: weaponPspriteActionReFire},
+	weaponStateSawReady:           {sprite: "SAWGC0", tics: 4, next: weaponStateSawReadyB, action: weaponPspriteActionReady},
+	weaponStateSawReadyB:          {sprite: "SAWGD0", tics: 4, next: weaponStateSawReady, action: weaponPspriteActionReady},
+	weaponStateSawDown:            {sprite: "SAWGC0", tics: 1, next: weaponStateSawDown, action: weaponPspriteActionLower},
+	weaponStateSawUp:              {sprite: "SAWGC0", tics: 1, next: weaponStateSawUp, action: weaponPspriteActionRaise},
+	weaponStateSawAtk1:            {sprite: "SAWGA0", tics: 4, next: weaponStateSawAtk2, action: weaponPspriteActionSaw},
+	weaponStateSawAtk2:            {sprite: "SAWGB0", tics: 4, next: weaponStateSawAtk3, action: weaponPspriteActionSaw},
+	weaponStateSawAtk3:            {sprite: "SAWGB0", tics: 0, next: weaponStateSawReady, action: weaponPspriteActionReFire},
+	weaponStatePlasmaReady:        {sprite: "PLSGA0", tics: 1, next: weaponStatePlasmaReady, action: weaponPspriteActionReady},
+	weaponStatePlasmaDown:         {sprite: "PLSGA0", tics: 1, next: weaponStatePlasmaDown, action: weaponPspriteActionLower},
+	weaponStatePlasmaUp:           {sprite: "PLSGA0", tics: 1, next: weaponStatePlasmaUp, action: weaponPspriteActionRaise},
+	weaponStatePlasmaAtk1:         {sprite: "PLSGA0", tics: 3, next: weaponStatePlasmaAtk2, action: weaponPspriteActionFirePlasma},
+	weaponStatePlasmaAtk2:         {sprite: "PLSGB0", tics: 20, next: weaponStatePlasmaReady, action: weaponPspriteActionReFire},
+	weaponStateBFGReady:           {sprite: "BFGGA0", tics: 1, next: weaponStateBFGReady, action: weaponPspriteActionReady},
+	weaponStateBFGDown:            {sprite: "BFGGA0", tics: 1, next: weaponStateBFGDown, action: weaponPspriteActionLower},
+	weaponStateBFGUp:              {sprite: "BFGGA0", tics: 1, next: weaponStateBFGUp, action: weaponPspriteActionRaise},
+	weaponStateBFGAtk1:            {sprite: "BFGGA0", tics: 20, next: weaponStateBFGAtk2, action: weaponPspriteActionBFGSound},
+	weaponStateBFGAtk2:            {sprite: "BFGGB0", tics: 10, next: weaponStateBFGAtk3, action: weaponPspriteActionGunFlash},
+	weaponStateBFGAtk3:            {sprite: "BFGGB0", tics: 10, next: weaponStateBFGAtk4, action: weaponPspriteActionFireBFG},
+	weaponStateBFGAtk4:            {sprite: "BFGGB0", tics: 20, next: weaponStateBFGReady, action: weaponPspriteActionReFire},
+	weaponStatePistolFlash:        {sprite: "PISFA0", tics: 7, next: weaponStateNone, action: weaponPspriteActionLight1},
+	weaponStateShotgunFlash1:      {sprite: "SHTFA0", tics: 4, next: weaponStateShotgunFlash2, action: weaponPspriteActionLight1},
+	weaponStateShotgunFlash2:      {sprite: "SHTFB0", tics: 3, next: weaponStateNone, action: weaponPspriteActionLight2},
+	weaponStateSuperShotgunFlash1: {sprite: "SHT2I0", tics: 5, next: weaponStateSuperShotgunFlash2, action: weaponPspriteActionLight1},
+	weaponStateSuperShotgunFlash2: {sprite: "SHT2J0", tics: 4, next: weaponStateNone, action: weaponPspriteActionLight2},
+	weaponStateChaingunFlash1:     {sprite: "CHGFA0", tics: 5, next: weaponStateNone, action: weaponPspriteActionLight1},
+	weaponStateChaingunFlash2:     {sprite: "CHGFB0", tics: 5, next: weaponStateNone, action: weaponPspriteActionLight2},
+	weaponStateRocketFlash1:       {sprite: "MISFA0", tics: 3, next: weaponStateRocketFlash2, action: weaponPspriteActionLight1},
+	weaponStateRocketFlash2:       {sprite: "MISFB0", tics: 4, next: weaponStateRocketFlash3},
+	weaponStateRocketFlash3:       {sprite: "MISFC0", tics: 4, next: weaponStateRocketFlash4, action: weaponPspriteActionLight2},
+	weaponStateRocketFlash4:       {sprite: "MISFD0", tics: 4, next: weaponStateNone, action: weaponPspriteActionLight2},
+	weaponStatePlasmaFlash1:       {sprite: "PLSFA0", tics: 4, next: weaponStateNone, action: weaponPspriteActionLight1},
+	weaponStatePlasmaFlash2:       {sprite: "PLSFB0", tics: 4, next: weaponStateNone, action: weaponPspriteActionLight1},
+	weaponStateBFGFlash1:          {sprite: "BFGFA0", tics: 11, next: weaponStateBFGFlash2, action: weaponPspriteActionLight1},
+	weaponStateBFGFlash2:          {sprite: "BFGFB0", tics: 6, next: weaponStateNone, action: weaponPspriteActionLight2},
 }
 
 func weaponStateForReady(id weaponID) weaponPspriteState {
-	switch id {
-	case weaponFist:
-		return weaponStateFistReady
-	case weaponPistol:
-		return weaponStatePistolReady
-	case weaponShotgun:
-		return weaponStateShotgunReady
-	case weaponChaingun:
-		return weaponStateChaingunReady
-	case weaponRocketLauncher:
-		return weaponStateRocketReady
-	case weaponPlasma:
-		return weaponStatePlasmaReady
-	case weaponBFG:
-		return weaponStateBFGReady
-	case weaponChainsaw:
-		return weaponStateSawReadyA
-	default:
-		return weaponStateNone
-	}
+	return weaponInfo(id).readystate
 }
 
 func weaponStateForAttack(id weaponID) weaponPspriteState {
-	switch id {
-	case weaponFist:
-		return weaponStateFistAtk1
-	case weaponPistol:
-		return weaponStatePistolAtk1
-	case weaponShotgun:
-		return weaponStateShotgunAtk1
-	case weaponChaingun:
-		return weaponStateChaingunAtk1
-	case weaponRocketLauncher:
-		return weaponStateRocketAtk1
-	case weaponPlasma:
-		return weaponStatePlasmaAtk1
-	case weaponBFG:
-		return weaponStateBFGAtk1
-	case weaponChainsaw:
-		return weaponStateSawAtk1
-	default:
-		return weaponStateNone
-	}
+	return weaponInfo(id).atkstate
 }
 
 func flashStartState(id weaponID) weaponPspriteState {
-	switch id {
-	case weaponPistol:
-		return weaponStatePistolFlash
-	case weaponShotgun:
-		return weaponStateShotgunFlash1
-	case weaponChaingun:
-		return weaponStateChaingunFlash1
-	case weaponRocketLauncher:
-		return weaponStateRocketFlash1
-	case weaponPlasma:
-		return weaponStatePlasmaFlash1
-	case weaponBFG:
-		return weaponStateBFGFlash1
-	default:
-		return weaponStateNone
-	}
+	return weaponInfo(id).flashstate
 }
 
 func (g *game) tickWeaponOverlay() {
@@ -251,6 +284,7 @@ func (g *game) clearWeaponOverlay() {
 	g.weaponStateTics = 0
 	g.weaponFlashState = weaponStateNone
 	g.weaponFlashTics = 0
+	g.weaponPSpriteY = weaponTopY
 }
 
 func (g *game) startWeaponOverlayFire(id weaponID) {
@@ -261,6 +295,24 @@ func (g *game) startWeaponFlashState(state weaponPspriteState) {
 	g.setWeaponPSpriteState(state, true)
 }
 
+func (g *game) bringUpWeapon() {
+	g.ensureWeaponDefaults()
+	next := g.inventory.PendingWeapon
+	if next == 0 {
+		next = g.inventory.ReadyWeapon
+	}
+	if next == 0 {
+		next = weaponPistol
+	}
+	if next == weaponChainsaw {
+		g.emitSoundEvent(soundEventSawUp)
+	}
+	g.weaponPSpriteY = weaponBottomY
+	g.inventory.PendingWeapon = 0
+	g.inventory.ReadyWeapon = next
+	g.setWeaponPSpriteState(weaponInfo(next).upstate, false)
+}
+
 func (g *game) ensureWeaponPSprites() {
 	if g == nil {
 		return
@@ -269,7 +321,7 @@ func (g *game) ensureWeaponPSprites() {
 		return
 	}
 	g.ensureWeaponDefaults()
-	g.setWeaponPSpriteState(weaponStateForReady(g.inventory.ReadyWeapon), false)
+	g.bringUpWeapon()
 }
 
 func (g *game) setWeaponPSpriteState(state weaponPspriteState, flash bool) {
@@ -305,14 +357,48 @@ func (g *game) setWeaponPSpriteState(state weaponPspriteState, flash bool) {
 		switch def.action {
 		case weaponPspriteActionReady:
 			g.weaponActionReady(state)
-		case weaponPspriteActionRefire:
-			g.weaponActionRefire(state)
-		case weaponPspriteActionFire:
-			g.weaponActionFire(state)
+		case weaponPspriteActionLower:
+			g.weaponActionLower(state)
+		case weaponPspriteActionRaise:
+			g.weaponActionRaise(state)
+		case weaponPspriteActionPunch:
+			g.weaponActionPunch(state)
+		case weaponPspriteActionFirePistol:
+			g.weaponActionFirePistol(state)
+		case weaponPspriteActionFireShotgun:
+			g.weaponActionFireShotgun(state)
+		case weaponPspriteActionFireSuperShotgun:
+			g.weaponActionFireSuperShotgun(state)
+		case weaponPspriteActionFireChaingun:
+			g.weaponActionFireChaingun(state)
 		case weaponPspriteActionGunFlash:
 			g.weaponActionGunFlash(state)
+		case weaponPspriteActionFireMissile:
+			g.weaponActionFireMissile(state)
+		case weaponPspriteActionSaw:
+			g.weaponActionSaw(state)
+		case weaponPspriteActionFirePlasma:
+			g.weaponActionFirePlasma(state)
 		case weaponPspriteActionBFGSound:
 			g.weaponActionBFGSound(state)
+		case weaponPspriteActionFireBFG:
+			g.weaponActionFireBFG(state)
+		case weaponPspriteActionReFire:
+			g.weaponActionRefire(state)
+		case weaponPspriteActionCheckReload:
+			g.weaponActionCheckReload(state)
+		case weaponPspriteActionOpenShotgun2:
+			g.weaponActionOpenShotgun2(state)
+		case weaponPspriteActionLoadShotgun2:
+			g.weaponActionLoadShotgun2(state)
+		case weaponPspriteActionCloseShotgun2:
+			g.weaponActionCloseShotgun2(state)
+		case weaponPspriteActionLight0:
+			g.weaponActionLight0(state)
+		case weaponPspriteActionLight1:
+			g.weaponActionLight1(state)
+		case weaponPspriteActionLight2:
+			g.weaponActionLight2(state)
 		}
 		if def.tics != 0 {
 			return
@@ -339,7 +425,11 @@ func (g *game) weaponSpriteName() string {
 		return ""
 	}
 	g.ensureWeaponPSprites()
-	name := weaponPspriteDefs[g.weaponState].sprite
+	def, ok := weaponPspriteDefs[g.weaponState]
+	if !ok {
+		return ""
+	}
+	name := def.sprite
 	if _, ok := g.opts.SpritePatchBank[name]; ok {
 		return name
 	}
@@ -350,7 +440,11 @@ func (g *game) weaponFlashSpriteName() string {
 	if g == nil || g.weaponFlashState == weaponStateNone {
 		return ""
 	}
-	name := weaponPspriteDefs[g.weaponFlashState].sprite
+	def, ok := weaponPspriteDefs[g.weaponFlashState]
+	if !ok {
+		return ""
+	}
+	name := def.sprite
 	if _, ok := g.opts.SpritePatchBank[name]; ok {
 		return name
 	}
@@ -470,10 +564,13 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 	if name == "" {
 		return
 	}
-	baseY := 32.0
+	logicalY := float64(g.weaponPSpriteY)
+	if logicalY == 0 {
+		logicalY = weaponTopY
+	}
 	switch g.statusBarDisplayMode() {
 	case statusBarDisplayOverlay, statusBarDisplayHidden:
-		baseY = 24.0
+		logicalY -= 8
 	}
 	rect := g.walkWeaponViewportRect()
 	target := screen
@@ -487,12 +584,10 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 	scale := float64(rect.Dx()) / doomLogicalW
 	bx, by := g.weaponBob()
 	x := (1.0 + bx) * scale
-	y := float64(rect.Dy()) - (doomLogicalH-(baseY+by))*scale
+	y := float64(rect.Dy()) - (doomLogicalH-(logicalY+by))*scale
 	if !g.opts.SourcePortMode {
-		// Vanilla Doom psprites are positioned from the render center, not
-		// the bottom edge of the weapon viewport.
 		const doomBaseYCenter = 100.5
-		y = float64(rect.Dy())/2 - (doomBaseYCenter-(baseY+by))*scale
+		y = float64(rect.Dy())/2 - (doomBaseYCenter-(logicalY+by))*scale
 	}
 	_ = g.drawSpritePatch(target, name, x, y, scale, scale)
 	if flash := g.weaponFlashSpriteName(); flash != "" {

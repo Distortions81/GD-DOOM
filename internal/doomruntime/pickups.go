@@ -11,6 +11,7 @@ type playerInventory struct {
 	RedKey        bool
 	YellowKey     bool
 	Backpack      bool
+	Strength      bool
 	RadSuitTics   int
 	ReadyWeapon   weaponID
 	PendingWeapon weaponID
@@ -33,6 +34,7 @@ func (g *game) initPlayerState() {
 		Weapons: map[int16]bool{
 			2002: false, // chaingun
 			2001: false, // shotgun
+			82:   false, // super shotgun
 			2005: false, // chainsaw
 			2003: false, // rocket launcher
 			2004: false, // plasma gun
@@ -152,7 +154,7 @@ func isPickupType(typ int16) bool {
 	switch typ {
 	case 5, 6, 13, 38, 39, 40: // keys
 		return true
-	case 2011, 2012, 2014: // health
+	case 2011, 2012, 2014, 2023: // health + berserk
 		return true
 	case 2015, 2018, 2019: // armor
 		return true
@@ -160,7 +162,7 @@ func isPickupType(typ int16) bool {
 		return true
 	case 2007, 2048, 2008, 2049, 2010, 2046, 2047, 17, 8: // ammo + backpack
 		return true
-	case 2001, 2002, 2003, 2004, 2005, 2006: // weapons
+	case 2001, 2002, 2003, 2004, 2005, 2006, 82: // weapons
 		return true
 	default:
 		return false
@@ -193,6 +195,12 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		return g.gainHealth(25, 100, "Picked up a medikit")
 	case 2014:
 		return g.gainHealth(1, 200, "Picked up a health bonus")
+	case 2023:
+		if g.stats.Health < 100 {
+			g.stats.Health = 100
+		}
+		g.inventory.Strength = true
+		return "Berserk!", soundEventPowerUp, true
 	case 2015:
 		return g.gainArmor(1, 200, "Picked up an armor bonus")
 	case 2018:
@@ -245,7 +253,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.gainAmmoNoMsg("rockets", 1)
 		g.gainAmmoNoMsg("cells", 20)
 		return "Picked up a backpack", soundEventItemUp, true
-	case 2001, 2002, 2003, 2004, 2005, 2006:
+	case 2001, 2002, 2003, 2004, 2005, 2006, 82:
 		if g.inventory.Weapons[typ] {
 			// Treat duplicate weapons as ammo pickups where sensible.
 			switch typ {
@@ -267,6 +275,8 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 				return g.gainAmmo("cells", 20, "Picked up cells")
 			case 2006:
 				return g.gainAmmo("cells", 40, "Picked up cells")
+			case 82:
+				return g.gainAmmo("shells", 8, "Picked up shells")
 			default:
 				return "", 0, false
 			}
@@ -310,6 +320,10 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			g.gainAmmoNoMsg("cells", 40)
 			setReadyWeapon(weaponBFG)
 			return "Picked up a BFG9000", soundEventWeaponUp, true
+		case 82:
+			g.gainAmmoNoMsg("shells", 8)
+			setReadyWeapon(weaponSuperShotgun)
+			return "You got the super shotgun!", soundEventWeaponUp, true
 		}
 	}
 	return "", 0, false

@@ -38,8 +38,19 @@ type SoundBank struct {
 	Pain                PCMSample
 	ShootPistol         PCMSample
 	ShootShotgun        PCMSample
+	ShootSuperShotgun   PCMSample
+	ShootPlasma         PCMSample
+	ShootBFG            PCMSample
+	Punch               PCMSample
 	ShootFireball       PCMSample
 	ShootRocket         PCMSample
+	SawUp               PCMSample
+	SawIdle             PCMSample
+	SawFull             PCMSample
+	SawHit              PCMSample
+	ShotgunOpen         PCMSample
+	ShotgunLoad         PCMSample
+	ShotgunClose        PCMSample
 	AttackClaw          PCMSample
 	AttackSgt           PCMSample
 	AttackSkull         PCMSample

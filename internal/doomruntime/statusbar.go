@@ -292,15 +292,15 @@ func (g *game) statusWeaponOwned(slot int) bool {
 	case 2:
 		return true
 	case 3:
-		return g.inventory.Weapons[2001]
+		return g.weaponOwned(weaponShotgun) || g.weaponOwned(weaponSuperShotgun)
 	case 4:
-		return g.inventory.Weapons[2002]
+		return g.weaponOwned(weaponChaingun)
 	case 5:
-		return g.inventory.Weapons[2003]
+		return g.weaponOwned(weaponRocketLauncher)
 	case 6:
-		return g.inventory.Weapons[2004]
+		return g.weaponOwned(weaponPlasma)
 	case 7:
-		return g.inventory.Weapons[2006]
+		return g.weaponOwned(weaponBFG)
 	default:
 		return false
 	}
@@ -310,7 +310,7 @@ func (g *game) statusReadyAmmo() (int, bool) {
 	switch g.inventory.ReadyWeapon {
 	case weaponPistol, weaponChaingun:
 		return g.stats.Bullets, true
-	case weaponShotgun:
+	case weaponShotgun, weaponSuperShotgun:
 		return g.stats.Shells, true
 	case weaponRocketLauncher:
 		return g.stats.Rockets, true
@@ -334,16 +334,17 @@ func (g *game) initStatusFaceState() {
 	g.statusOldWeapons = g.statusOwnedWeapons()
 }
 
-func (g *game) statusOwnedWeapons() [8]bool {
-	var owned [8]bool
-	owned[0] = g.inventory.Weapons[2005] // chainsaw
-	owned[1] = true                      // fist
-	owned[2] = true                      // pistol
-	owned[3] = g.inventory.Weapons[2001] // shotgun
-	owned[4] = g.inventory.Weapons[2002] // chaingun
-	owned[5] = g.inventory.Weapons[2003] // rocket launcher
-	owned[6] = g.inventory.Weapons[2004] // plasma
-	owned[7] = g.inventory.Weapons[2006] // BFG
+func (g *game) statusOwnedWeapons() [9]bool {
+	var owned [9]bool
+	owned[0] = g.weaponOwned(weaponChainsaw)
+	owned[1] = g.weaponOwned(weaponFist)
+	owned[2] = g.weaponOwned(weaponPistol)
+	owned[3] = g.weaponOwned(weaponShotgun)
+	owned[4] = g.weaponOwned(weaponSuperShotgun)
+	owned[5] = g.weaponOwned(weaponChaingun)
+	owned[6] = g.weaponOwned(weaponRocketLauncher)
+	owned[7] = g.weaponOwned(weaponPlasma)
+	owned[8] = g.weaponOwned(weaponBFG)
 	return owned
 }
 

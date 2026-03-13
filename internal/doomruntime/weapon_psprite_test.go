@@ -23,6 +23,48 @@ func TestWeaponReadySpriteName(t *testing.T) {
 	}
 }
 
+func TestBringUpWeaponStartsOffscreenAndReachesReady(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon: weaponPistol,
+			Weapons:     map[int16]bool{},
+		},
+	}
+
+	g.bringUpWeapon()
+	if g.weaponPSpriteY != weaponBottomY-weaponRaiseSpeed {
+		t.Fatalf("weapon y=%d want=%d", g.weaponPSpriteY, weaponBottomY-weaponRaiseSpeed)
+	}
+	if g.weaponState != weaponStatePistolUp {
+		t.Fatalf("weapon state=%v want=%v", g.weaponState, weaponStatePistolUp)
+	}
+	advanceWeaponToReady(g)
+	if g.weaponPSpriteY != weaponTopY {
+		t.Fatalf("weapon y=%d want=%d after raise", g.weaponPSpriteY, weaponTopY)
+	}
+	if g.weaponState != weaponStatePistolReady {
+		t.Fatalf("weapon state=%v want=%v after raise", g.weaponState, weaponStatePistolReady)
+	}
+}
+
+func TestBringUpChainsawStartsIdleLoopSoundWhenReady(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon: weaponChainsaw,
+			Weapons:     map[int16]bool{2005: true},
+		},
+	}
+
+	g.bringUpWeapon()
+	advanceWeaponToReady(g)
+	if !hasSoundEvent(g.soundQueue, soundEventSawUp) {
+		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventSawUp)
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventSawIdle) {
+		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventSawIdle)
+	}
+}
+
 func TestWeaponSpriteName_PrefersFireAnimationThenReady(t *testing.T) {
 	g := &game{
 		worldTic: 0,
@@ -71,7 +113,7 @@ func TestWeaponSpriteName_PrefersFireAnimationThenReady(t *testing.T) {
 
 func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	g := &game{
-		statusAttackDown: true,
+		statusAttackDown: false,
 		stats: playerStats{
 			Bullets: 10,
 		},
@@ -90,6 +132,8 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 		},
 	}
 
+	advanceWeaponToReady(g)
+	g.statusAttackDown = true
 	g.tickWeaponFire()
 	if g.weaponState != weaponStatePistolAtk1 || g.weaponStateTics <= 0 || g.weaponFlashState != weaponStateNone {
 		t.Fatalf("weapon state not started: state=%v tics=%d flash=%v", g.weaponState, g.weaponStateTics, g.weaponFlashState)
@@ -106,11 +150,20 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	for i := 0; i < 32; i++ {
 		g.tickWeaponOverlay()
 	}
+	if g.inventory.PendingWeapon != 0 || g.inventory.ReadyWeapon != weaponShotgun {
+		t.Fatalf("weapon switch should be in progress after attack: ready=%v pending=%v", g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+	}
+	if g.weaponState != weaponStateShotgunUp && g.weaponState != weaponStateShotgunReady {
+		t.Fatalf("weapon state=%v want shotgun raise or ready", g.weaponState)
+	}
+	for i := 0; i < 32; i++ {
+		g.tickWeaponOverlay()
+	}
 	if g.inventory.PendingWeapon != 0 {
 		t.Fatalf("pending weapon=%v want cleared after switch", g.inventory.PendingWeapon)
 	}
 	if g.inventory.ReadyWeapon != weaponShotgun || g.weaponState != weaponStateShotgunReady || g.weaponFlashState != weaponStateNone {
-		t.Fatalf("weapon switch not applied after attack: ready=%v state=%v flash=%v", g.inventory.ReadyWeapon, g.weaponState, g.weaponFlashState)
+		t.Fatalf("weapon switch not applied after raise: ready=%v state=%v flash=%v", g.inventory.ReadyWeapon, g.weaponState, g.weaponFlashState)
 	}
 }
 

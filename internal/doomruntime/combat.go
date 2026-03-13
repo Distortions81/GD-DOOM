@@ -1,7 +1,9 @@
 package doomruntime
 
 import (
+	"math"
 	"sort"
+	"strings"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -71,6 +73,7 @@ const (
 	weaponFist weaponID = iota + 1
 	weaponPistol
 	weaponShotgun
+	weaponSuperShotgun
 	weaponChaingun
 	weaponRocketLauncher
 	weaponPlasma
@@ -221,16 +224,23 @@ func (g *game) tickWeaponFire() {
 	g.tickWeaponOverlay()
 }
 
-func (g *game) weaponActionReady(_ weaponPspriteState) {
+func (g *game) weaponActionReady(state weaponPspriteState) {
 	if g == nil || g.isDead {
+		if g != nil && g.isDead {
+			g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
+		}
 		return
 	}
+	if g.inventory.ReadyWeapon == weaponChainsaw && state == weaponStateSawReady {
+		g.emitSoundEvent(soundEventSawIdle)
+	}
 	if g.inventory.PendingWeapon != 0 {
-		g.applyPendingWeapon()
+		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
 		return
 	}
 	if g.statusAttackDown {
-		if !g.weaponAttackDown || (g.inventory.ReadyWeapon != weaponRocketLauncher && g.inventory.ReadyWeapon != weaponBFG) {
+		info := weaponInfo(g.inventory.ReadyWeapon)
+		if !g.weaponAttackDown || !info.nonAutoRefire {
 			g.weaponAttackDown = true
 			g.fireWeaponStateSequence()
 			return
@@ -245,13 +255,7 @@ func (g *game) weaponActionRefire(_ weaponPspriteState) {
 	if g == nil {
 		return
 	}
-	if g.inventory.PendingWeapon != 0 {
-		g.weaponRefire = false
-		g.weaponAttackDown = false
-		g.applyPendingWeapon()
-		return
-	}
-	if g.statusAttackDown && !g.isDead {
+	if g.statusAttackDown && g.inventory.PendingWeapon == 0 && !g.isDead {
 		g.weaponRefire = true
 		g.weaponAttackDown = true
 		g.fireWeaponStateSequence()
@@ -260,13 +264,9 @@ func (g *game) weaponActionRefire(_ weaponPspriteState) {
 	g.weaponRefire = false
 	g.weaponAttackDown = false
 	g.ensureWeaponHasAmmo()
-}
-
-func (g *game) weaponActionFire(state weaponPspriteState) {
-	if g == nil || g.isDead {
-		return
+	if g.inventory.PendingWeapon != 0 {
+		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
 	}
-	g.handleFireFromState(state)
 }
 
 func (g *game) weaponActionGunFlash(_ weaponPspriteState) {
@@ -280,7 +280,125 @@ func (g *game) weaponActionBFGSound(_ weaponPspriteState) {
 	if g == nil {
 		return
 	}
-	g.emitSoundEvent(soundEventShootRocket)
+	g.emitSoundEvent(soundEventShootBFG)
+}
+
+func (g *game) weaponActionLower(_ weaponPspriteState) {
+	if g == nil {
+		return
+	}
+	g.weaponPSpriteY += weaponLowerSpeed
+	if g.weaponPSpriteY < weaponBottomY {
+		return
+	}
+	if g.isDead {
+		g.weaponPSpriteY = weaponBottomY
+		g.setWeaponPSpriteState(weaponStateNone, false)
+		return
+	}
+	if g.inventory.PendingWeapon == 0 {
+		g.inventory.PendingWeapon = g.inventory.ReadyWeapon
+	}
+	g.bringUpWeapon()
+}
+
+func (g *game) weaponActionRaise(_ weaponPspriteState) {
+	if g == nil {
+		return
+	}
+	g.weaponPSpriteY -= weaponRaiseSpeed
+	if g.weaponPSpriteY > weaponTopY {
+		return
+	}
+	g.weaponPSpriteY = weaponTopY
+	g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).readystate, false)
+}
+
+func (g *game) weaponActionPunch(_ weaponPspriteState) {
+	g.fireFist()
+}
+
+func (g *game) weaponActionFirePistol(_ weaponPspriteState) {
+	g.firePistol(!g.weaponRefire)
+}
+
+func (g *game) weaponActionFireShotgun(_ weaponPspriteState) {
+	g.fireShotgun()
+}
+
+func (g *game) weaponActionFireSuperShotgun(_ weaponPspriteState) {
+	g.fireSuperShotgun()
+}
+
+func (g *game) weaponActionFireChaingun(state weaponPspriteState) {
+	g.fireChaingun(state)
+}
+
+func (g *game) weaponActionFireMissile(_ weaponPspriteState) {
+	g.fireRocketLauncher()
+}
+
+func (g *game) weaponActionSaw(_ weaponPspriteState) {
+	g.fireChainsaw()
+}
+
+func (g *game) weaponActionFirePlasma(_ weaponPspriteState) {
+	g.firePlasma()
+}
+
+func (g *game) weaponActionFireBFG(_ weaponPspriteState) {
+	g.fireBFG()
+}
+
+func (g *game) weaponActionCheckReload(_ weaponPspriteState) {
+	if g == nil {
+		return
+	}
+	g.ensureWeaponHasAmmo()
+}
+
+func (g *game) weaponActionOpenShotgun2(_ weaponPspriteState) {
+	g.emitSoundEvent(soundEventShotgunOpen)
+}
+
+func (g *game) weaponActionLoadShotgun2(_ weaponPspriteState) {
+	g.emitSoundEvent(soundEventShotgunLoad)
+}
+
+func (g *game) weaponActionCloseShotgun2(state weaponPspriteState) {
+	g.emitSoundEvent(soundEventShotgunClose)
+	g.weaponActionRefire(state)
+}
+
+func (g *game) weaponActionLight0(_ weaponPspriteState) {}
+
+func (g *game) weaponActionLight1(_ weaponPspriteState) {}
+
+func (g *game) weaponActionLight2(_ weaponPspriteState) {}
+
+func (g *game) fireSelectedWeapon() bool {
+	switch g.inventory.ReadyWeapon {
+	case weaponFist:
+		return g.fireFist()
+	case weaponPistol:
+		return g.firePistol(!g.weaponRefire)
+	case weaponShotgun:
+		return g.fireShotgun()
+	case weaponSuperShotgun:
+		return g.fireSuperShotgun()
+	case weaponChaingun:
+		return g.fireChaingun(weaponStateChaingunAtk1)
+	case weaponRocketLauncher:
+		return g.fireRocketLauncher()
+	case weaponPlasma:
+		return g.firePlasma()
+	case weaponBFG:
+		return g.fireBFG()
+	case weaponChainsaw:
+		return g.fireChainsaw()
+	default:
+		return false
+	}
 }
 
 func (g *game) fireWeaponStateSequence() {
@@ -293,96 +411,126 @@ func (g *game) fireWeaponStateSequence() {
 			return
 		}
 	}
-	g.setWeaponPSpriteState(weaponStateForAttack(g.inventory.ReadyWeapon), false)
-}
-
-func (g *game) handleFireFromState(state weaponPspriteState) {
 	g.propagateNoiseAlertFrom(g.p.x, g.p.y)
-	switch g.inventory.ReadyWeapon {
-	case weaponPistol:
-		g.startWeaponFlashState(weaponStatePistolFlash)
-	case weaponShotgun:
-		g.startWeaponFlashState(weaponStateShotgunFlash1)
-	case weaponChaingun:
-		flash := weaponStateChaingunFlash1
-		if state == weaponStateChaingunAtk2 {
-			flash = weaponStateChaingunFlash2
-		}
-		g.startWeaponFlashState(flash)
-	case weaponPlasma:
-		flash := weaponStatePlasmaFlash1
-		if doomrand.PRandom()&1 != 0 {
-			flash = weaponStatePlasmaFlash2
-		}
-		g.startWeaponFlashState(flash)
-	}
-	g.handleFire()
-}
-
-func (g *game) fireSelectedWeapon() bool {
-	switch g.inventory.ReadyWeapon {
-	case weaponFist:
-		return g.fireFist()
-	case weaponChainsaw:
-		return g.fireChainsaw()
-	case weaponPistol:
-		g.stats.Bullets--
-		slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
-		g.emitSoundEvent(soundEventShootPistol)
-		return g.fireGunShot(g.p.angle, pistolRange, slope, !g.weaponRefire)
-	case weaponChaingun:
-		g.stats.Bullets--
-		slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
-		g.emitSoundEvent(soundEventShootPistol)
-		return g.fireGunShot(g.p.angle, pistolRange, slope, !g.weaponRefire)
-	case weaponShotgun:
-		g.stats.Shells--
-		slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
-		g.emitSoundEvent(soundEventShootShotgun)
-		hit := false
-		for i := 0; i < 7; i++ {
-			if g.fireGunShot(g.p.angle, shotgunRange, slope, false) {
-				hit = true
-			}
-		}
-		return hit
-	case weaponRocketLauncher:
-		g.stats.Rockets--
-		g.emitSoundEvent(soundEventShootRocket)
-		return g.spawnPlayerRocket()
-	case weaponPlasma:
-		g.stats.Cells--
-		g.setHUDMessage("Plasma weapon not wired yet", 12)
-		return false
-	case weaponBFG:
-		g.stats.Cells -= 40
-		g.setHUDMessage("BFG not wired yet", 12)
-		return false
-	default:
-		return false
-	}
+	g.setWeaponPSpriteState(weaponStateForAttack(g.inventory.ReadyWeapon), false)
 }
 
 func (g *game) fireFist() bool {
 	damage := 2 * (1 + (doomrand.PRandom() % 10))
+	if g.inventory.Strength {
+		damage *= 10
+	}
 	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift)
-	return g.fireMeleeAtAngle(angle, 64*fracUnit, damage)
+	hit, targetX, targetY := g.fireMeleeAtAngle(angle, 64*fracUnit, damage)
+	if hit {
+		g.emitSoundEvent(soundEventPunch)
+		g.p.angle = angleToThing(g.p.x, g.p.y, targetX, targetY)
+	}
+	return hit
 }
 
 func (g *game) fireChainsaw() bool {
 	damage := 2 * (1 + (doomrand.PRandom() % 10))
 	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift)
-	// Doom uses MELEERANGE+1 to avoid clipping through nearby targets.
-	return g.fireMeleeAtAngle(angle, 64*fracUnit+fracUnit, damage)
-}
-
-func (g *game) fireMeleeAtAngle(angle uint32, rng int64, damage int) bool {
-	slope := g.bulletSlopeForAim(angle, rng)
-	if damage <= 0 {
+	hit, targetX, targetY := g.fireMeleeAtAngle(angle, 64*fracUnit+fracUnit, damage)
+	if !hit {
+		g.emitSoundEvent(soundEventSawFull)
 		return false
 	}
+	g.emitSoundEvent(soundEventSawHit)
+	g.p.angle = turnTowardChainsawTarget(g.p.angle, angleToThing(g.p.x, g.p.y, targetX, targetY))
+	return true
+}
+
+func (g *game) firePistol(accurate bool) bool {
+	g.stats.Bullets--
+	g.emitSoundEvent(soundEventShootPistol)
+	g.startWeaponFlashState(weaponStatePistolFlash)
+	slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+	return g.fireGunShot(g.p.angle, pistolRange, slope, accurate)
+}
+
+func (g *game) fireShotgun() bool {
+	g.stats.Shells--
+	g.emitSoundEvent(soundEventShootShotgun)
+	g.startWeaponFlashState(weaponStateShotgunFlash1)
+	slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
+	hit := false
+	for i := 0; i < 7; i++ {
+		if g.fireGunShot(g.p.angle, shotgunRange, slope, false) {
+			hit = true
+		}
+	}
+	return hit
+}
+
+func (g *game) fireSuperShotgun() bool {
+	g.stats.Shells -= 2
+	g.emitSoundEvent(soundEventShootSuperShotgun)
+	g.startWeaponFlashState(weaponStateSuperShotgunFlash1)
+	slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
+	hit := false
+	for i := 0; i < 20; i++ {
+		damage := doomGunShotDamage()
+		angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift+1)
+		pelletSlope := slope + int64((doomrand.PRandom()-doomrand.PRandom())<<5)
+		outcome := g.lineAttackTrace(g.playerLineAttackActor(), angle, shotgunRange, pelletSlope, true)
+		if g.applyLineAttackOutcome(g.playerLineAttackActor(), outcome, damage) {
+			hit = true
+		}
+	}
+	return hit
+}
+
+func (g *game) fireChaingun(state weaponPspriteState) bool {
+	g.stats.Bullets--
+	g.emitSoundEvent(soundEventShootPistol)
+	flash := weaponStateChaingunFlash1
+	if state == weaponStateChaingunAtk2 {
+		flash = weaponStateChaingunFlash2
+	}
+	g.startWeaponFlashState(flash)
+	slope := g.bulletSlopeForAim(g.p.angle, pistolRange)
+	return g.fireGunShot(g.p.angle, pistolRange, slope, !g.weaponRefire)
+}
+
+func (g *game) fireRocketLauncher() bool {
+	g.stats.Rockets--
+	g.emitSoundEvent(soundEventShootRocket)
+	return g.spawnPlayerRocket()
+}
+
+func (g *game) firePlasma() bool {
+	g.stats.Cells--
+	flash := weaponStatePlasmaFlash1
+	if doomrand.PRandom()&1 != 0 {
+		flash = weaponStatePlasmaFlash2
+	}
+	g.startWeaponFlashState(flash)
+	g.emitSoundEvent(soundEventShootPlasma)
+	return g.spawnPlayerPlasma()
+}
+
+func (g *game) fireBFG() bool {
+	g.stats.Cells -= 40
+	g.startWeaponFlashState(weaponStateBFGFlash1)
+	return g.spawnPlayerBFG()
+}
+
+func (g *game) fireMeleeAtAngle(angle uint32, rng int64, damage int) (bool, int64, int64) {
+	slope := g.bulletSlopeForAim(angle, rng)
+	if damage <= 0 {
+		return false, 0, 0
+	}
 	outcome := g.lineAttackTrace(g.playerLineAttackActor(), angle, rng, slope, false)
-	return g.applyLineAttackOutcome(g.playerLineAttackActor(), outcome, damage)
+	if !g.applyLineAttackOutcome(g.playerLineAttackActor(), outcome, damage) {
+		return false, 0, 0
+	}
+	if outcome.target.kind != lineAttackTargetThing || g.m == nil || outcome.target.idx < 0 || outcome.target.idx >= len(g.m.Things) {
+		return true, g.p.x, g.p.y
+	}
+	tx, ty := g.thingPosFixed(outcome.target.idx, g.m.Things[outcome.target.idx])
+	return true, tx, ty
 }
 
 func (g *game) fireGunShot(baseAngle uint32, rng int64, slope int64, accurate bool) bool {
@@ -1239,9 +1387,13 @@ func (g *game) queueWeaponSwitch(id weaponID) bool {
 		g.inventory.PendingWeapon = 0
 		return false
 	}
+	if !g.weaponOwned(id) {
+		return false
+	}
 	g.inventory.PendingWeapon = id
 	if g.weaponState == weaponStateNone {
-		return g.applyPendingWeapon()
+		g.bringUpWeapon()
+		return true
 	}
 	return true
 }
@@ -1260,7 +1412,7 @@ func (g *game) applyPendingWeapon() bool {
 	g.clearWeaponOverlay()
 	g.inventory.ReadyWeapon = next
 	g.inventory.PendingWeapon = 0
-	g.setWeaponPSpriteState(weaponStateForReady(next), false)
+	g.bringUpWeapon()
 	return true
 }
 
@@ -1268,36 +1420,42 @@ func (g *game) ensureWeaponHasAmmo() {
 	if g.canFireSelectedWeapon() {
 		return
 	}
-	switchTo := func(id weaponID) {
-		if g.queueWeaponSwitch(id) {
-			g.applyPendingWeapon()
+	switchTo := func(id weaponID) bool {
+		queued := g.queueWeaponSwitch(id)
+		if queued && g.weaponState != weaponStateNone {
+			g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
 		}
+		return queued
 	}
-	if g.stats.Cells > 0 && g.inventory.Weapons[2004] {
+	if g.weaponOwned(weaponPlasma) && weaponAmmoCount(g.stats, ammoKindCells) >= 1 {
 		switchTo(weaponPlasma)
 		return
 	}
-	if g.stats.Bullets > 2 && g.inventory.Weapons[2002] {
+	if g.weaponOwned(weaponSuperShotgun) && weaponAmmoCount(g.stats, ammoKindShells) > 2 {
+		switchTo(weaponSuperShotgun)
+		return
+	}
+	if g.weaponOwned(weaponChaingun) && weaponAmmoCount(g.stats, ammoKindBullets) >= 1 {
 		switchTo(weaponChaingun)
 		return
 	}
-	if g.stats.Shells > 0 && g.inventory.Weapons[2001] {
+	if g.weaponOwned(weaponShotgun) && weaponAmmoCount(g.stats, ammoKindShells) >= 1 {
 		switchTo(weaponShotgun)
 		return
 	}
-	if g.stats.Bullets > 0 {
+	if weaponAmmoCount(g.stats, ammoKindBullets) >= 1 {
 		switchTo(weaponPistol)
 		return
 	}
-	if g.inventory.Weapons[2005] {
+	if g.weaponOwned(weaponChainsaw) {
 		switchTo(weaponChainsaw)
 		return
 	}
-	if g.stats.Rockets > 0 && g.inventory.Weapons[2003] {
+	if g.weaponOwned(weaponRocketLauncher) && weaponAmmoCount(g.stats, ammoKindRockets) >= 1 {
 		switchTo(weaponRocketLauncher)
 		return
 	}
-	if g.stats.Cells >= 40 && g.inventory.Weapons[2006] {
+	if g.weaponOwned(weaponBFG) && weaponAmmoCount(g.stats, ammoKindCells) > 40 {
 		switchTo(weaponBFG)
 		return
 	}
@@ -1305,22 +1463,11 @@ func (g *game) ensureWeaponHasAmmo() {
 }
 
 func (g *game) canFireSelectedWeapon() bool {
-	switch g.inventory.ReadyWeapon {
-	case weaponFist, weaponChainsaw:
+	info := weaponInfo(g.inventory.ReadyWeapon)
+	if info.ammo == ammoKindNone {
 		return true
-	case weaponPistol, weaponChaingun:
-		return g.stats.Bullets > 0
-	case weaponShotgun:
-		return g.stats.Shells > 0
-	case weaponRocketLauncher:
-		return g.stats.Rockets > 0
-	case weaponPlasma:
-		return g.stats.Cells > 0
-	case weaponBFG:
-		return g.stats.Cells >= 40
-	default:
-		return false
 	}
+	return weaponAmmoCount(g.stats, info.ammo) >= info.minAmmo
 }
 
 func (g *game) selectWeaponSlot(slot int) {
@@ -1328,7 +1475,7 @@ func (g *game) selectWeaponSlot(slot int) {
 	next := g.inventory.ReadyWeapon
 	switch slot {
 	case 1:
-		if g.inventory.Weapons[2005] {
+		if g.inventory.Weapons[2005] && !(g.inventory.ReadyWeapon == weaponChainsaw && g.inventory.Strength) {
 			next = weaponChainsaw
 		} else {
 			next = weaponFist
@@ -1336,23 +1483,27 @@ func (g *game) selectWeaponSlot(slot int) {
 	case 2:
 		next = weaponPistol
 	case 3:
-		if g.inventory.Weapons[2001] {
+		if g.weaponOwned(weaponSuperShotgun) && g.inventory.ReadyWeapon == weaponShotgun {
+			next = weaponSuperShotgun
+		} else if g.weaponOwned(weaponShotgun) {
 			next = weaponShotgun
+		} else if g.weaponOwned(weaponSuperShotgun) {
+			next = weaponSuperShotgun
 		}
 	case 4:
-		if g.inventory.Weapons[2002] {
+		if g.weaponOwned(weaponChaingun) {
 			next = weaponChaingun
 		}
 	case 5:
-		if g.inventory.Weapons[2003] {
+		if g.weaponOwned(weaponRocketLauncher) {
 			next = weaponRocketLauncher
 		}
 	case 6:
-		if g.inventory.Weapons[2004] {
+		if g.weaponOwned(weaponPlasma) {
 			next = weaponPlasma
 		}
 	case 7:
-		if g.inventory.Weapons[2006] {
+		if g.weaponOwned(weaponBFG) {
 			next = weaponBFG
 		}
 	}
@@ -1367,14 +1518,16 @@ func (g *game) weaponOwned(id weaponID) bool {
 		return true
 	case weaponShotgun:
 		return g.inventory.Weapons[2001]
+	case weaponSuperShotgun:
+		return g.inventory.Weapons[82] && g.isCommercialWeaponSet()
 	case weaponChaingun:
 		return g.inventory.Weapons[2002]
 	case weaponRocketLauncher:
 		return g.inventory.Weapons[2003]
 	case weaponPlasma:
-		return g.inventory.Weapons[2004]
+		return g.inventory.Weapons[2004] && g.isCommercialWeaponSet()
 	case weaponBFG:
-		return g.inventory.Weapons[2006]
+		return g.inventory.Weapons[2006] && g.isCommercialWeaponSet()
 	case weaponChainsaw:
 		return g.inventory.Weapons[2005]
 	default:
@@ -1388,6 +1541,7 @@ func weaponCycleOrder() []weaponID {
 		weaponChainsaw,
 		weaponPistol,
 		weaponShotgun,
+		weaponSuperShotgun,
 		weaponChaingun,
 		weaponRocketLauncher,
 		weaponPlasma,
@@ -1438,6 +1592,8 @@ func weaponName(id weaponID) string {
 		return "pistol"
 	case weaponShotgun:
 		return "shotgun"
+	case weaponSuperShotgun:
+		return "supershotgun"
 	case weaponChaingun:
 		return "chaingun"
 	case weaponRocketLauncher:
@@ -1451,4 +1607,58 @@ func weaponName(id weaponID) string {
 	default:
 		return "unknown"
 	}
+}
+
+func (g *game) isCommercialWeaponSet() bool {
+	if g == nil || g.m == nil {
+		return true
+	}
+	name := strings.ToUpper(strings.TrimSpace(string(g.m.Name)))
+	return strings.HasPrefix(name, "MAP")
+}
+
+func angleToThing(sx, sy, tx, ty int64) uint32 {
+	ang := math.Atan2(float64(ty-sy), float64(tx-sx))
+	if ang < 0 {
+		ang += 2 * math.Pi
+	}
+	return uint32(ang * (4294967296.0 / (2 * math.Pi)))
+}
+
+func turnTowardAngle(cur, want, step uint32) uint32 {
+	if cur == want || step == 0 {
+		return want
+	}
+	diff := want - cur
+	if diff == 0 {
+		return want
+	}
+	if diff < 0x80000000 {
+		if diff < step {
+			return want
+		}
+		return cur + step
+	}
+	if ^diff+1 < step {
+		return want
+	}
+	return cur - step
+}
+
+func turnTowardChainsawTarget(cur, want uint32) uint32 {
+	const (
+		chainsawTurnStep = doomAng90 / 20
+		chainsawTurnSnap = doomAng90 / 21
+	)
+	diff := want - cur
+	if diff > doomAng180 {
+		if diff < ^uint32(chainsawTurnStep-1) {
+			return want + chainsawTurnSnap
+		}
+		return cur - chainsawTurnStep
+	}
+	if diff > chainsawTurnStep {
+		return want - chainsawTurnSnap
+	}
+	return cur + chainsawTurnStep
 }
