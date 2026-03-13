@@ -60,6 +60,16 @@ var (
 		32 * oplFeedbackPhaseScaleRatio,
 		64 * oplFeedbackPhaseScaleRatio,
 	}
+	oplWavePhaseModScale = [8]float64{
+		1.18, // sine needs a little more phase authority to keep low-note body
+		1.08,
+		0.76, // rectified sine runs too bright without an extra trim
+		0.92,
+		0.92,
+		0.88,
+		0.72,
+		0.80,
+	}
 	oplWaveTable  [8][oplWaveTableSize]float64
 	oplAttenTable [oplAttenTableSize]float64
 )
@@ -338,7 +348,7 @@ func (o *ImpSynth) renderChannel(ch int) (float64, float64) {
 		modFB = float64(oplFeedbackPhaseOffset(c.fbPrev[0], c.fbPrev[1], c.feedback))
 	}
 	modSample := o.sampleOperator(mod, modPhase, modFB)
-	modPhaseOut := phaseModFromSample(modSample)
+	modPhaseOut := phaseModFromSample(mod, modSample)
 	mod.out = modSample
 	c.fbPrev[1] = c.fbPrev[0]
 	c.fbPrev[0] = modPhaseOut
@@ -793,8 +803,12 @@ func clampSample(v float64) float64 {
 	return v
 }
 
-func phaseModFromSample(sample float64) int {
-	return int(math.Round(sample * oplPhaseModScale))
+func phaseModFromSample(op *impSynthOperatorState, sample float64) int {
+	scale := oplPhaseModScale
+	if op != nil {
+		scale *= oplWavePhaseModScale[op.regWave&0x07]
+	}
+	return int(math.Round(sample * scale))
 }
 
 func oplFeedbackPhaseOffset(prev0, prev1 int, feedback uint8) int {

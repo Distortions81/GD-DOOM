@@ -137,6 +137,16 @@ type fftScoredPhrase struct {
 	metrics fftTimbreMetrics
 }
 
+type fftSweepCase struct {
+	name         string
+	program      uint8
+	note         uint8
+	channelVol   uint8
+	velocity     uint8
+	metrics      fftTimbreMetrics
+	sustainLevel oplLevelMetrics
+}
+
 func TestImpSynthMatchesNukedForMicroPatches(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -567,6 +577,144 @@ func TestImpSynthMatchesNukedOnVolumeAttackSustainSweeps(t *testing.T) {
 	}
 }
 
+func TestImpSynthFFTTracksLowNotesAndQuietVelocities(t *testing.T) {
+	requireOPLTuningSuite(t)
+	wadPath := findDOOM1WADForMusicTests(t)
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+
+	var bank PatchBank
+	if lump, ok := wf.LumpByName("GENMIDI"); ok {
+		data, err := wf.LumpData(lump)
+		if err != nil {
+			t.Fatalf("read GENMIDI: %v", err)
+		}
+		bank, err = ParseGENMIDIOP2PatchBank(data)
+		if err != nil {
+			t.Fatalf("parse GENMIDI: %v", err)
+		}
+	}
+	if bank == nil {
+		t.Fatal("missing GENMIDI patch bank")
+	}
+
+	type patchTarget struct {
+		name    string
+		program uint8
+		base    uint8
+	}
+	targets := []patchTarget{
+		{name: "prog30", program: 30, base: 42},
+		{name: "prog34", program: 34, base: 30},
+		{name: "prog44", program: 44, base: 36},
+		{name: "prog118", program: 118, base: 72},
+	}
+	noteCases := []struct {
+		name   string
+		offset int
+	}{
+		{name: "low", offset: -12},
+		{name: "base", offset: 0},
+		{name: "high", offset: 12},
+	}
+	volumeCases := []struct {
+		name       string
+		channelVol uint8
+		velocity   uint8
+	}{
+		{name: "quiet", channelVol: 48, velocity: 48},
+		{name: "full", channelVol: 127, velocity: 127},
+	}
+
+	for _, target := range targets {
+		target := target
+		t.Run(target.name, func(t *testing.T) {
+			basePatch := bank.Patch(target.program, false, target.base)
+			var scored []fftSweepCase
+			for _, noteCase := range noteCases {
+				noteCase := noteCase
+				noteInt := int(target.base) + noteCase.offset
+				if noteInt < 0 {
+					noteInt = 0
+				}
+				if noteInt > 127 {
+					noteInt = 127
+				}
+				note := uint8(noteInt)
+				patch := bank.Patch(target.program, false, note)
+				if patch == (Patch{}) {
+					patch = basePatch
+				}
+				for _, volCase := range volumeCases {
+					volCase := volCase
+					caseName := target.name + "_" + noteCase.name + "_" + volCase.name
+					t.Run(caseName, func(t *testing.T) {
+						events := volumeSweepEventsWithHold(note, volCase.channelVol, volCase.velocity, 160, 24)
+						trace := captureTraceForEvents(t, fixedPatchBank{patch: patch}, events)
+						impSynthPCM := renderTraceWithBackend(t, trace, sound.NewImpSynth(OutputSampleRate))
+						nukedPCM := renderTraceWithBackend(t, trace, sound.NewNukedOPL3(OutputSampleRate))
+						level := computeOPLLevelMetrics(impSynthPCM, nukedPCM)
+						fft := computeFFTTimbreMetrics(impSynthPCM, nukedPCM, OutputSampleRate)
+						scored = append(scored, fftSweepCase{
+							name:         caseName,
+							program:      target.program,
+							note:         note,
+							channelVol:   volCase.channelVol,
+							velocity:     volCase.velocity,
+							metrics:      fft,
+							sustainLevel: level,
+						})
+						t.Logf("%s note=%d vel=%d chvol=%d spectralCorr=%.3f centroidDeltaHz=%.1f highBandDelta=%.3f presenceDelta=%.3f aWeightedDeltaDB=%.2f sustainRMSRatio=%.3f",
+							caseName, note, volCase.velocity, volCase.channelVol, fft.spectralCorr, fft.centroidDeltaHz, fft.highBandRatioDelta, fft.presenceRatioDelta, fft.aWeightedDeltaDB, level.sustainRMSRatio)
+					})
+				}
+			}
+
+			baseFull, ok := findFFTSweepCase(scored, target.name+"_base_full")
+			if !ok {
+				t.Fatalf("missing baseline case for %s", target.name)
+			}
+			for _, candidateName := range []string{
+				target.name + "_low_full",
+				target.name + "_base_quiet",
+				target.name + "_low_quiet",
+			} {
+				candidate, ok := findFFTSweepCase(scored, candidateName)
+				if !ok {
+					t.Fatalf("missing candidate case %s", candidateName)
+				}
+				t.Logf("%s vs baseline spectralCorrDelta=%.3f highBandDeltaDelta=%.3f presenceDeltaDelta=%.3f aWeightedDeltaDelta=%.2f",
+					candidate.name,
+					baseFull.metrics.spectralCorr-candidate.metrics.spectralCorr,
+					candidate.metrics.highBandRatioDelta-baseFull.metrics.highBandRatioDelta,
+					candidate.metrics.presenceRatioDelta-baseFull.metrics.presenceRatioDelta,
+					candidate.metrics.aWeightedDeltaDB-baseFull.metrics.aWeightedDeltaDB)
+			}
+
+			lowFull, _ := findFFTSweepCase(scored, target.name+"_low_full")
+			baseQuiet, _ := findFFTSweepCase(scored, target.name+"_base_quiet")
+			lowQuiet, _ := findFFTSweepCase(scored, target.name+"_low_quiet")
+			if baseFull.metrics.spectralCorr-lowFull.metrics.spectralCorr > 0.20 {
+				t.Fatalf("low-note spectral correlation drop=%.3f want <= 0.20", baseFull.metrics.spectralCorr-lowFull.metrics.spectralCorr)
+			}
+			if baseQuiet.metrics.highBandRatioDelta-baseFull.metrics.highBandRatioDelta > 0.10 {
+				t.Fatalf("quiet-note high-band delta improved unexpectedly by %.3f; check comparator assumptions", baseQuiet.metrics.highBandRatioDelta-baseFull.metrics.highBandRatioDelta)
+			}
+			if lowQuiet.metrics.highBandRatioDelta-baseFull.metrics.highBandRatioDelta > 0.12 {
+				t.Fatalf("low+quiet high-band ratio delta worsened by %.3f want <= 0.12", lowQuiet.metrics.highBandRatioDelta-baseFull.metrics.highBandRatioDelta)
+			}
+			if lowQuiet.metrics.presenceRatioDelta-baseFull.metrics.presenceRatioDelta > 0.12 {
+				t.Fatalf("low+quiet presence ratio delta worsened by %.3f want <= 0.12", lowQuiet.metrics.presenceRatioDelta-baseFull.metrics.presenceRatioDelta)
+			}
+			if lowQuiet.metrics.aWeightedDeltaDB-baseFull.metrics.aWeightedDeltaDB > 3.0 {
+				t.Fatalf("low+quiet A-weighted delta worsened by %.2fdB want <= 3.0dB", lowQuiet.metrics.aWeightedDeltaDB-baseFull.metrics.aWeightedDeltaDB)
+			}
+		})
+	}
+}
+
 func TestImpSynthSustainResponseProfile(t *testing.T) {
 	requireOPLTuningSuite(t)
 	wadPath := findDOOM1WADForMusicTests(t)
@@ -889,6 +1037,15 @@ func captureTraceForEvents(t *testing.T, bank PatchBank, events []Event) []oplTr
 	d.Reset()
 	_ = d.Render(events)
 	return append([]oplTraceOp(nil), tracer.ops...)
+}
+
+func findFFTSweepCase(cases []fftSweepCase, name string) (fftSweepCase, bool) {
+	for _, c := range cases {
+		if c.name == name {
+			return c, true
+		}
+	}
+	return fftSweepCase{}, false
 }
 
 func volumeSweepEvents(note uint8, channelVol uint8, velocity uint8) []Event {
