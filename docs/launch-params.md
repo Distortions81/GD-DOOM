@@ -93,6 +93,7 @@ Sourceport note:
 - `-record-demo <path>`: record live input to a Doom v1.10 `.lmp` demo.
 - `-trace-demo-state <path>`: write per-tic JSONL demo state while `-demo` is playing back.
 - `-cpuprofile <path>`: write a Go CPU profile.
+- `-memprofile <path>`: write a Go heap profile on exit.
 
 ## Advanced Render Tuning
 

@@ -30,11 +30,11 @@ func TestPCMInt16ViewAsBytesLE(t *testing.T) {
 }
 
 func TestDefaultStreamChunkSettings(t *testing.T) {
-	if DefaultStreamChunkFrames != 1024 {
-		t.Fatalf("DefaultStreamChunkFrames=%d want=1024", DefaultStreamChunkFrames)
+	if got := DefaultStreamChunkFrames(); got != 1024 {
+		t.Fatalf("DefaultStreamChunkFrames()=%d want=1024", got)
 	}
-	if DefaultStreamLookahead != DefaultStreamChunkFrames*6 {
-		t.Fatalf("DefaultStreamLookahead=%d want=%d", DefaultStreamLookahead, DefaultStreamChunkFrames*6)
+	if got := DefaultStreamLookahead(); got != DefaultStreamChunkFrames()*6 {
+		t.Fatalf("DefaultStreamLookahead()=%d want=%d", got, DefaultStreamChunkFrames()*6)
 	}
 }
 

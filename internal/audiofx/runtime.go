@@ -1,6 +1,7 @@
 package audiofx
 
 import (
+	"io"
 	"math"
 	"reflect"
 
@@ -32,7 +33,7 @@ type SpatialOrigin struct {
 type SpatialPlayer struct {
 	ctx        *audio.Context
 	volume     float64
-	players    []*audio.Player
+	voices     []*spatialVoice
 	sourcePort bool
 }
 
@@ -44,7 +45,22 @@ type MenuPlayer struct {
 	back    media.PCMSample
 	quit1   []media.PCMSample
 	quit2   []media.PCMSample
-	players []*audio.Player
+	voices  []*menuVoice
+}
+
+type pcmBufferSource struct {
+	buf []byte
+	pos int64
+}
+
+type spatialVoice struct {
+	player *audio.Player
+	src    *pcmBufferSource
+}
+
+type menuVoice struct {
+	player *audio.Player
+	src    *pcmBufferSource
 }
 
 var (
@@ -91,7 +107,7 @@ func NewMenuPlayer(bank media.SoundBank, volume float64) *MenuPlayer {
 			firstMenuSample(bank.ActiveBSPAct, bank.ActiveDMAct),
 			firstMenuSample(bank.AttackSgt, bank.ShootShotgun),
 		},
-		players: make([]*audio.Player, 0, 8),
+		voices: make([]*menuVoice, 0, maxMenuVoices()),
 	}
 }
 
@@ -141,14 +157,14 @@ func (p *MenuPlayer) StopAll() {
 	if p == nil {
 		return
 	}
-	for _, player := range p.players {
-		if player == nil {
+	for _, voice := range p.voices {
+		if voice == nil || voice.player == nil {
 			continue
 		}
-		player.Pause()
-		_ = player.Close()
+		voice.player.Pause()
+		_ = voice.player.Close()
 	}
-	p.players = p.players[:0]
+	p.voices = p.voices[:0]
 }
 
 func NewSpatialPlayer(sfxVolume float64, sourcePort bool) *SpatialPlayer {
@@ -163,6 +179,7 @@ func NewSpatialPlayer(sfxVolume float64, sourcePort bool) *SpatialPlayer {
 	return &SpatialPlayer{
 		ctx:        ctx,
 		volume:     clampVolume(sfxVolume),
+		voices:     make([]*spatialVoice, 0, maxSpatialVoices()),
 		sourcePort: sourcePort,
 	}
 }
@@ -186,50 +203,58 @@ func (p *SpatialPlayer) PlaySampleSpatial(sample media.PCMSample, origin Spatial
 		return
 	}
 	leftGain, rightGain := p.eventStereoGains(origin, listenerX, listenerY, listenerAngle, mapUsesFullClip)
-	var pcm []byte
+	var mono []int16
 	if p.sourcePort && sample.PreparedRate == p.ctx.SampleRate() && len(sample.PreparedMono) > 0 {
-		pcm = PCMMonoS16ToStereoS16LESpatial(sample.PreparedMono, leftGain, rightGain)
+		mono = sample.PreparedMono
+	} else if !p.sourcePort && sample.FaithfulPreparedRate == p.ctx.SampleRate() && len(sample.FaithfulPreparedMono) > 0 {
+		mono = sample.FaithfulPreparedMono
 	} else if sample.SampleRate != p.ctx.SampleRate() {
-		pcm = PCMMonoU8ToStereoS16LESpatialResampled(sample.Data, sample.SampleRate, p.ctx.SampleRate(), leftGain, rightGain)
+		mono = PCMMonoU8ToMonoS16(sample.Data)
+		mono = resampleMonoS16Linear(mono, sample.SampleRate, p.ctx.SampleRate())
 	} else {
-		pcm = PCMMonoU8ToStereoS16LESpatial(sample.Data, leftGain, rightGain)
+		mono = PCMMonoU8ToMonoS16(sample.Data)
 	}
-	if len(pcm) == 0 {
+	if len(mono) == 0 {
 		return
 	}
-	player := audio.NewPlayerFromBytes(p.ctx, pcm)
-	player.SetVolume(1)
-	player.Play()
-	p.players = append(p.players, player)
+	voice := p.acquireVoice(len(mono) * 4)
+	if voice == nil {
+		return
+	}
+	pcm := PCMMonoS16ToStereoS16LESpatialInto(voice.src.buf[:0], mono, leftGain, rightGain)
+	voice.src.Reset(pcm)
+	if err := voice.player.Rewind(); err != nil {
+		_ = voice.player.Close()
+		return
+	}
+	voice.player.SetVolume(1)
+	voice.player.Play()
 }
 
 func (p *SpatialPlayer) Tick() {
-	if p == nil || len(p.players) == 0 {
+	if p == nil || len(p.voices) == 0 {
 		return
 	}
-	keep := p.players[:0]
-	for _, player := range p.players {
-		if player.IsPlaying() {
-			keep = append(keep, player)
+	for _, voice := range p.voices {
+		if voice == nil || voice.player == nil || voice.player.IsPlaying() {
 			continue
 		}
-		_ = player.Close()
+		voice.src.Reset(voice.src.buf[:0])
 	}
-	p.players = keep
 }
 
 func (p *SpatialPlayer) StopAll() {
-	if p == nil || len(p.players) == 0 {
+	if p == nil || len(p.voices) == 0 {
 		return
 	}
-	for _, player := range p.players {
-		if player == nil {
+	for _, voice := range p.voices {
+		if voice == nil || voice.player == nil {
 			continue
 		}
-		player.Pause()
-		_ = player.Close()
+		voice.player.Pause()
+		_ = voice.player.Close()
 	}
-	p.players = p.players[:0]
+	p.voices = p.voices[:0]
 }
 
 func PrepareSoundBankForSourcePort(bank media.SoundBank, dstRate int) media.SoundBank {
@@ -244,6 +269,22 @@ func PrepareSoundBankForSourcePort(bank media.SoundBank, dstRate int) media.Soun
 			continue
 		}
 		prepareSampleForSourcePort(sample, dstRate)
+	}
+	return bank
+}
+
+func PrepareSoundBankForFaithful(bank media.SoundBank, dstRate int) media.SoundBank {
+	if dstRate <= 0 {
+		return bank
+	}
+	rv := reflect.ValueOf(&bank).Elem()
+	for i := 0; i < rv.NumField(); i++ {
+		field := rv.Field(i)
+		sample, ok := field.Addr().Interface().(*media.PCMSample)
+		if !ok || sample == nil {
+			continue
+		}
+		prepareSampleForFaithful(sample, dstRate)
 	}
 	return bank
 }
@@ -286,7 +327,11 @@ func PCMMonoU8ToMonoS16(src []byte) []int16 {
 }
 
 func PCMMonoS16ToStereoS16LESpatial(src []int16, leftGain, rightGain float64) []byte {
-	out := make([]byte, len(src)*4)
+	return PCMMonoS16ToStereoS16LESpatialInto(nil, src, leftGain, rightGain)
+}
+
+func PCMMonoS16ToStereoS16LESpatialInto(dst []byte, src []int16, leftGain, rightGain float64) []byte {
+	out := resizePCMBuffer(dst, len(src)*4)
 	oi := 0
 	for _, base := range src {
 		left := int16(clampFloat(float64(base)*leftGain, -32768, 32767))
@@ -315,7 +360,7 @@ func PCMMonoU8ToStereoS16LESpatialResampled(src []byte, srcRate, dstRate int, le
 	if srcRate == dstRate {
 		return PCMMonoU8ToStereoS16LESpatial(src, leftGain, rightGain)
 	}
-	return PCMMonoS16ToStereoS16LESpatial(resampleMonoS16Polyphase(PCMMonoU8ToMonoS16(src), srcRate, dstRate), leftGain, rightGain)
+	return PCMMonoS16ToStereoS16LESpatial(resampleMonoS16Linear(PCMMonoU8ToMonoS16(src), srcRate, dstRate), leftGain, rightGain)
 }
 
 func DoomAdjustSoundParams(listenerX, listenerY int64, listenerAngle uint32, sourceX, sourceY int64, baseVol int, mapUsesFullClip bool) (vol, sep int, ok bool) {
@@ -429,19 +474,30 @@ func (p *MenuPlayer) playSample(sample media.PCMSample) {
 	if p == nil || p.ctx == nil || p.volume <= 0 || sample.SampleRate <= 0 || len(sample.Data) == 0 {
 		return
 	}
-	var pcm []byte
-	if sample.SampleRate == p.ctx.SampleRate() {
-		pcm = PCMMonoU8ToStereoS16LESpatial(sample.Data, 1, 1)
+	var mono []int16
+	if sample.FaithfulPreparedRate == p.ctx.SampleRate() && len(sample.FaithfulPreparedMono) > 0 {
+		mono = sample.FaithfulPreparedMono
+	} else if sample.SampleRate == p.ctx.SampleRate() {
+		mono = PCMMonoU8ToMonoS16(sample.Data)
 	} else {
-		pcm = PCMMonoU8ToStereoS16LEResampled(sample.Data, sample.SampleRate, p.ctx.SampleRate())
+		mono = PCMMonoU8ToMonoS16(sample.Data)
+		mono = resampleMonoS16Linear(mono, sample.SampleRate, p.ctx.SampleRate())
 	}
-	if len(pcm) == 0 {
+	if len(mono) == 0 {
 		return
 	}
-	player := audio.NewPlayerFromBytes(p.ctx, pcm)
-	player.SetVolume(p.volume)
-	player.Play()
-	p.players = append(p.players, player)
+	voice := p.acquireVoice(len(mono) * 4)
+	if voice == nil {
+		return
+	}
+	pcm := PCMMonoS16ToStereoS16LESpatialInto(voice.src.buf[:0], mono, 1, 1)
+	voice.src.Reset(pcm)
+	if err := voice.player.Rewind(); err != nil {
+		_ = voice.player.Close()
+		return
+	}
+	voice.player.SetVolume(p.volume)
+	voice.player.Play()
 }
 
 func prepareSampleForSourcePort(sample *media.PCMSample, dstRate int) {
@@ -457,6 +513,18 @@ func prepareSampleForSourcePort(sample *media.PCMSample, dstRate int) {
 	sample.PreparedMono = mono
 }
 
+func prepareSampleForFaithful(sample *media.PCMSample, dstRate int) {
+	if sample == nil || len(sample.Data) == 0 || sample.SampleRate <= 0 || dstRate <= 0 {
+		return
+	}
+	mono := PCMMonoU8ToMonoS16(sample.Data)
+	if sample.SampleRate != dstRate {
+		mono = resampleMonoS16Linear(mono, sample.SampleRate, dstRate)
+	}
+	sample.FaithfulPreparedRate = dstRate
+	sample.FaithfulPreparedMono = mono
+}
+
 func sharedOrNewAudioContext(rate int) *audio.Context {
 	if sharedAudioCtx != nil {
 		if sharedAudioRate == rate {
@@ -467,6 +535,98 @@ func sharedOrNewAudioContext(rate int) *audio.Context {
 	sharedAudioCtx = audio.NewContext(rate)
 	sharedAudioRate = rate
 	return sharedAudioCtx
+}
+
+func (p *SpatialPlayer) acquireVoice(size int) *spatialVoice {
+	for _, voice := range p.voices {
+		if voice != nil && voice.player != nil && !voice.player.IsPlaying() {
+			voice.src.buf = resizePCMBuffer(voice.src.buf[:0], size)
+			return voice
+		}
+	}
+	if len(p.voices) >= maxSpatialVoices() {
+		return nil
+	}
+	src := &pcmBufferSource{buf: make([]byte, size)}
+	player, err := p.ctx.NewPlayer(src)
+	if err != nil {
+		return nil
+	}
+	voice := &spatialVoice{player: player, src: src}
+	p.voices = append(p.voices, voice)
+	return voice
+}
+
+func (p *MenuPlayer) acquireVoice(size int) *menuVoice {
+	for _, voice := range p.voices {
+		if voice != nil && voice.player != nil && !voice.player.IsPlaying() {
+			voice.src.buf = resizePCMBuffer(voice.src.buf[:0], size)
+			return voice
+		}
+	}
+	if len(p.voices) >= maxMenuVoices() {
+		return nil
+	}
+	src := &pcmBufferSource{buf: make([]byte, size)}
+	player, err := p.ctx.NewPlayer(src)
+	if err != nil {
+		return nil
+	}
+	voice := &menuVoice{player: player, src: src}
+	p.voices = append(p.voices, voice)
+	return voice
+}
+
+func resizePCMBuffer(buf []byte, size int) []byte {
+	if cap(buf) >= size {
+		return buf[:size]
+	}
+	return make([]byte, size)
+}
+
+func (s *pcmBufferSource) Reset(buf []byte) {
+	if s == nil {
+		return
+	}
+	s.buf = buf
+	s.pos = 0
+}
+
+func (s *pcmBufferSource) Read(p []byte) (int, error) {
+	if s == nil || s.pos >= int64(len(s.buf)) {
+		return 0, io.EOF
+	}
+	n := copy(p, s.buf[s.pos:])
+	s.pos += int64(n)
+	if n == 0 {
+		return 0, io.EOF
+	}
+	return n, nil
+}
+
+func (s *pcmBufferSource) Seek(offset int64, whence int) (int64, error) {
+	if s == nil {
+		return 0, io.ErrClosedPipe
+	}
+	var next int64
+	switch whence {
+	case io.SeekStart:
+		next = offset
+	case io.SeekCurrent:
+		next = s.pos + offset
+	case io.SeekEnd:
+		next = int64(len(s.buf)) + offset
+	default:
+		return 0, io.ErrUnexpectedEOF
+	}
+	if next < 0 {
+		return 0, io.ErrUnexpectedEOF
+	}
+	if next > int64(len(s.buf)) {
+		next = int64(len(s.buf))
+	}
+	s.pos = next
+	return s.pos, nil
 }
 
 func resampleMonoS16Polyphase(src []int16, srcRate, dstRate int) []int16 {
@@ -532,6 +692,43 @@ func resampleMonoS16Polyphase(src []int16, srcRate, dstRate int) []int16 {
 			acc += float64(src[idx]) * kernels[phase][k]
 		}
 		out[i] = int16(clampFloat(math.Round(acc), -32768, 32767))
+	}
+	return out
+}
+
+func resampleMonoS16Linear(src []int16, srcRate, dstRate int) []int16 {
+	if len(src) == 0 || srcRate <= 0 || dstRate <= 0 {
+		return nil
+	}
+	if srcRate == dstRate {
+		out := make([]int16, len(src))
+		copy(out, src)
+		return out
+	}
+	dstLen := int(math.Ceil(float64(len(src)) * float64(dstRate) / float64(srcRate)))
+	if dstLen < 1 {
+		dstLen = 1
+	}
+	out := make([]int16, dstLen)
+	if len(src) == 1 {
+		for i := range out {
+			out[i] = src[0]
+		}
+		return out
+	}
+	scale := float64(srcRate) / float64(dstRate)
+	last := len(src) - 1
+	for i := range out {
+		pos := float64(i) * scale
+		base := int(pos)
+		if base >= last {
+			out[i] = src[last]
+			continue
+		}
+		frac := pos - float64(base)
+		a := float64(src[base])
+		b := float64(src[base+1])
+		out[i] = int16(math.Round(a + (b-a)*frac))
 	}
 	return out
 }

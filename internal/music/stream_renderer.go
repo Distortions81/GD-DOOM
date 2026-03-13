@@ -5,12 +5,15 @@ import (
 	"unsafe"
 )
 
-const (
-	DefaultStreamChunkFrames = 1024
-	DefaultStreamLookahead   = DefaultStreamChunkFrames * 6
-)
-
 var errNilStreamDriver = errors.New("music: nil stream driver")
+
+func DefaultStreamChunkFrames() int {
+	return streamChunkFrames()
+}
+
+func DefaultStreamLookahead() int {
+	return streamLookaheadFrames()
+}
 
 // StreamRenderer incrementally renders parsed events into fixed-size PCM chunks.
 type StreamRenderer struct {
@@ -46,7 +49,7 @@ func (sr *StreamRenderer) NextChunkS16LE(maxFrames int) (chunk []byte, done bool
 		return nil, true, errNilStreamDriver
 	}
 	if maxFrames <= 0 {
-		maxFrames = DefaultStreamChunkFrames
+		maxFrames = DefaultStreamChunkFrames()
 	}
 	if sr.done {
 		return nil, true, nil

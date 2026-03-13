@@ -1136,6 +1136,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingState = append(g.thingState, monsterStateSpawn)
 	g.thingStateTics = append(g.thingStateTics, 0)
 	g.thingStatePhase = append(g.thingStatePhase, 0)
+	g.thingWorldAnimRef = append(g.thingWorldAnimRef, g.buildThingWorldAnimRef(th))
 	sec := -1
 	sec = g.sectorAt(x, y)
 	g.thingSectorCache = append(g.thingSectorCache, sec)

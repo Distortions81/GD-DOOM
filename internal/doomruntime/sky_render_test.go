@@ -1,6 +1,10 @@
 package doomruntime
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/mapdata"
+)
 
 func TestBuildSkyLookupParallel_SourcePortDetailDoesNotWarpSkyProjection(t *testing.T) {
 	g := &game{opts: Options{SourcePortMode: true}}
@@ -122,5 +126,42 @@ func TestNormalizeSkyUpscaleMode(t *testing.T) {
 	}
 	if got := normalizeSkyUpscaleMode("sharp", false); got != "nearest" {
 		t.Fatalf("normalizeSkyUpscaleMode('sharp', false)=%q want nearest", got)
+	}
+}
+
+func TestPrimarySkyTextureKey(t *testing.T) {
+	tests := []struct {
+		name   mapdata.MapName
+		want   string
+		wantOK bool
+	}{
+		{name: "E1M1", want: "SKY1", wantOK: true},
+		{name: "e2m8", want: "SKY2", wantOK: true},
+		{name: "E4M1", want: "SKY4", wantOK: true},
+		{name: "MAP01", want: "SKY1", wantOK: true},
+		{name: "map15", want: "SKY2", wantOK: true},
+		{name: "MAP21", want: "SKY3", wantOK: true},
+		{name: "MAP00", wantOK: false},
+		{name: "TITLE", wantOK: false},
+	}
+	for _, tt := range tests {
+		got, ok := primarySkyTextureKey(tt.name)
+		if got != tt.want || ok != tt.wantOK {
+			t.Fatalf("primarySkyTextureKey(%q)=(%q,%v) want (%q,%v)", tt.name, got, ok, tt.want, tt.wantOK)
+		}
+	}
+}
+
+func TestSkyTextureEntryForMap_PrefersPrimaryThenFallback(t *testing.T) {
+	bank := map[string]WallTexture{
+		"SKY1": {RGBA: make([]byte, 4), Width: 1, Height: 1},
+		"SKY2": {RGBA: make([]byte, 4), Width: 1, Height: 1},
+	}
+	if got, _, ok := skyTextureEntryForMap("E2M1", bank); !ok || got != "SKY2" {
+		t.Fatalf("skyTextureEntryForMap(E2M1)=(%q,%v) want (SKY2,true)", got, ok)
+	}
+	delete(bank, "SKY2")
+	if got, _, ok := skyTextureEntryForMap("E2M1", bank); !ok || got != "SKY1" {
+		t.Fatalf("skyTextureEntryForMap(E2M1 fallback)=(%q,%v) want (SKY1,true)", got, ok)
 	}
 }

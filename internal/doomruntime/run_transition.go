@@ -189,6 +189,10 @@ func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
 }
 
 func (sg *sessionGame) queueTransition(kind transitionKind, holdTics int) {
+	if isWASMBuild() {
+		sg.transition.Clear()
+		return
+	}
 	sg.transition.Queue(kind, holdTics)
 }
 
@@ -205,6 +209,9 @@ func (sg *sessionGame) shouldShowBootSplash() bool {
 }
 
 func (sg *sessionGame) transitionActive() bool {
+	if isWASMBuild() {
+		return false
+	}
 	return sg.transition.Active()
 }
 
@@ -224,6 +231,10 @@ func (sg *sessionGame) transitionSurfaceSize(screenW, screenH int) (int, int) {
 }
 
 func (sg *sessionGame) ensureTransitionReady(width, height int) {
+	if isWASMBuild() {
+		sg.transition.Clear()
+		return
+	}
 	t := &sg.transition
 	switch t.Kind() {
 	case sessiontransition.KindBoot:
@@ -258,6 +269,10 @@ func (sg *sessionGame) ensureTransitionReady(width, height int) {
 }
 
 func (sg *sessionGame) tickTransition() {
+	if isWASMBuild() {
+		sg.transition.Clear()
+		return
+	}
 	sg.transition.Tick(sg.opts.SourcePortMode, sourcePortMeltInitColumns(), sourcePortMeltMoveColumns())
 }
 
@@ -270,5 +285,11 @@ func sourcePortMeltMoveColumns() int {
 }
 
 func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
+	if isWASMBuild() {
+		if screen != nil {
+			screen.Clear()
+		}
+		return
+	}
 	sg.transition.DrawFrame(screen, sw, sh)
 }

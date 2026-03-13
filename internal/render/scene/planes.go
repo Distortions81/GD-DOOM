@@ -141,10 +141,14 @@ func MarkPlaneColumnRange(pl *PlaneVisplane, x, top, bottom int, ceilingclip, fl
 }
 
 func MakePlaneSpans(pl *PlaneVisplane, viewH int, out []PlaneSpan) []PlaneSpan {
+	return MakePlaneSpansWithScratch(pl, viewH, out, nil)
+}
+
+func MakePlaneSpansWithScratch(pl *PlaneVisplane, viewH int, out []PlaneSpan, spanstart []int) []PlaneSpan {
 	if pl == nil || viewH <= 0 || pl.MinX > pl.MaxX {
 		return out
 	}
-	spanstart := make([]int, viewH)
+	spanstart = ensurePlaneSpanStartScratch(spanstart, viewH)
 	colRange := func(screenX int) (int, int) {
 		ix := screenX + 1
 		if ix < 0 || ix >= len(pl.Top) || ix >= len(pl.Bottom) {
@@ -174,6 +178,17 @@ func MakePlaneSpans(pl *PlaneVisplane, viewH int, out []PlaneSpan) []PlaneSpan {
 		t1, b1 = t2, b2
 	}
 	return out
+}
+
+func ensurePlaneSpanStartScratch(spanstart []int, viewH int) []int {
+	if cap(spanstart) < viewH {
+		return make([]int, viewH)
+	}
+	spanstart = spanstart[:viewH]
+	for i := range spanstart {
+		spanstart[i] = 0
+	}
+	return spanstart
 }
 
 func AppendPlaneSpan(out []PlaneSpan, y, x1, x2 int, key PlaneKey) []PlaneSpan {

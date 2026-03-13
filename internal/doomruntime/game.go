@@ -7,6 +7,7 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -229,6 +230,31 @@ type spriteOpaqueShape struct {
 	rects  []spriteOpaqueRect
 }
 
+type spriteRenderRef struct {
+	key        string
+	tex        WallTexture
+	opaque     spriteOpaqueShape
+	hasOpaque  bool
+	fullBright bool
+}
+
+type thingAnimRefState struct {
+	refs       []*spriteRenderRef
+	tics       []int
+	frameUnits int
+}
+
+type monsterFrameRenderEntry struct {
+	ref  *spriteRenderRef
+	flip bool
+}
+
+type monsterFrameRenderKey struct {
+	prefix string
+	frame  byte
+	rot    uint8
+}
+
 type billboardQueueKind uint8
 
 const (
@@ -368,6 +394,7 @@ type game struct {
 	nodeChildRangeOK     []uint8
 	thingSectorCache     []int
 	mapLines             mapview.LineCacheState
+	useSpecialSegScratch []mapview.Segment
 	sectorFloor          []int64
 	sectorCeil           []int64
 	lineSpecial          []uint16
@@ -451,6 +478,7 @@ type game struct {
 	thingState           []monsterThinkState
 	thingStateTics       []int
 	thingStatePhase      []int
+	thingWorldAnimRef    []thingAnimRefState
 	projectiles          []projectile
 	projectileImpacts    []projectileImpact
 	hitscanPuffs         []hitscanPuff
@@ -512,6 +540,10 @@ type game struct {
 	skyLayerFrameCamAng          float64
 	skyLayerFrameFocal           float64
 	skyLayerFrameTexH            float64
+	skyLayerVerts                [4]ebiten.Vertex
+	skyLayerIdx                  [6]uint16
+	skyLayerShaderOp             ebiten.DrawTrianglesShaderOptions
+	skyLayerUniforms             map[string]any
 	skyLayerProjDrawW            int
 	skyLayerProjDrawH            int
 	skyLayerProjSampleW          int
@@ -529,7 +561,10 @@ type game struct {
 	mapFloorLoopSets             []sectorLoopSet
 	mapFloorLoopInit             bool
 	spriteOpaqueShapeCache       map[string]spriteOpaqueShape
+	spriteRenderRefCache         map[string]*spriteRenderRef
+	monsterFrameRenderCache      map[monsterFrameRenderKey]monsterFrameRenderEntry
 	thingSpriteExpandCache       map[string][]string
+	worldThingAnimRefCache       map[int16]thingAnimRefState
 	flatNameToID                 map[string]uint16
 	flatIDToName                 []string
 	planeFlatCache32Scratch      [][]uint32
@@ -573,6 +608,7 @@ type game struct {
 	statusBarCacheValid          bool
 	statusPatchImg               map[string]*ebiten.Image
 	menuPatchImg                 map[string]*ebiten.Image
+	pauseEpisodeNamesScratch     []string
 	spritePatchImg               map[string]*ebiten.Image
 	messageFontImg               map[rune]*ebiten.Image
 	whitePixel                   *ebiten.Image
@@ -607,6 +643,7 @@ type game struct {
 	plane3DOrder                 []*plane3DVisplane
 	plane3DSpanScratch           [][]plane3DSpan
 	plane3DSceneSpanScratch      [][]scene.PlaneSpan
+	plane3DSpanStartScratch      [][]int
 	plane3DPool                  []*plane3DVisplane
 	plane3DPoolUsed              int
 	plane3DPoolViewW             int
@@ -938,6 +975,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.plane3DVisBuckets = make(map[plane3DKey]plane3DVisBucket, 64)
 	g.plane3DOrder = make([]*plane3DVisplane, 0, 64)
 	g.thingSpriteExpandCache = make(map[string][]string, 256)
+	g.spriteRenderRefCache = make(map[string]*spriteRenderRef, 256)
+	g.monsterFrameRenderCache = make(map[monsterFrameRenderKey]monsterFrameRenderEntry, 512)
+	g.worldThingAnimRefCache = make(map[int16]thingAnimRefState, 128)
 	g.detailLevel = defaultDetailLevelForMode(g.viewW, g.viewH, opts.SourcePortMode)
 	if opts.InitialDetailLevel >= 0 {
 		g.detailLevel = clampDetailLevelForMode(opts.InitialDetailLevel, opts.SourcePortMode)
@@ -982,6 +1022,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingState = make([]monsterThinkState, len(m.Things))
 	g.thingStateTics = make([]int, len(m.Things))
 	g.thingStatePhase = make([]int, len(m.Things))
+	g.thingWorldAnimRef = make([]thingAnimRefState, len(m.Things))
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.sectorSoundTarget = make([]bool, len(m.Sectors))
 	for _, sec := range m.Sectors {
@@ -991,6 +1032,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.applyThingSpawnFiltering()
 	g.initThingCombatState()
+	g.initThingRenderState()
 	g.initSectorLightEffects()
 	g.cheatLevel = normalizeCheatLevel(opts.CheatLevel)
 	g.invulnerable = opts.Invulnerable
@@ -1170,9 +1212,24 @@ func (g *game) precacheRenderAssets() {
 	if g == nil {
 		return
 	}
+	if isWASMBuild() {
+		g.precacheRenderAssetsWASM()
+		return
+	}
 	g.precacheMapTextureAssets()
 	g.precacheSpritePatchRenderData()
 	g.precacheThingSpriteExpansion()
+}
+
+func (g *game) precacheRenderAssetsWASM() {
+	if g == nil {
+		return
+	}
+	flatKeys, _ := g.collectMapTextureUsage()
+	g.initFlatIDTable(flatKeys)
+	if len(g.sectorPlaneCache) == len(g.m.Sectors) && len(g.m.Sectors) != 0 {
+		g.refreshSectorPlaneCacheTextureRefs()
+	}
 }
 
 func collectAnimatedTextureFrames(name string, refs map[string]textureAnimRef) []string {
@@ -1455,8 +1512,8 @@ func (g *game) cycleSourcePortDetailLevel() {
 		g.setHUDMessage(fmt.Sprintf("Detail: 1/%dx", div), 70)
 	}
 	// Detail ratio changes rewire sourceport internal resolution, so force a
-	// clean sky shader/image state before the next frame.
-	g.resetSkyLayerPipeline(true)
+	// clean sky projection/image state before the next frame.
+	g.resetSkyLayerPipeline(false)
 	g.mouseLookSet = false
 	g.mouseLookSuppressTicks = detailMouseSuppressTicks
 }
@@ -1512,6 +1569,49 @@ func (g *game) publishRuntimeSettingsIfChanged() {
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = cur
 	g.opts.OnRuntimeSettingsChanged(cur)
+}
+
+func wasmPointerLockGestureActive() bool {
+	return ebiten.IsKeyPressed(ebiten.KeyW) ||
+		ebiten.IsKeyPressed(ebiten.KeyA) ||
+		ebiten.IsKeyPressed(ebiten.KeyS) ||
+		ebiten.IsKeyPressed(ebiten.KeyD) ||
+		ebiten.IsKeyPressed(ebiten.KeyArrowUp) ||
+		ebiten.IsKeyPressed(ebiten.KeyArrowDown) ||
+		ebiten.IsKeyPressed(ebiten.KeyArrowLeft) ||
+		ebiten.IsKeyPressed(ebiten.KeyArrowRight) ||
+		ebiten.IsKeyPressed(ebiten.KeySpace) ||
+		ebiten.IsKeyPressed(ebiten.KeyEnter) ||
+		ebiten.IsKeyPressed(ebiten.KeyKPEnter) ||
+		ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft) ||
+		ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight) ||
+		ebiten.IsMouseButtonPressed(ebiten.MouseButtonMiddle)
+}
+
+func applyRuntimeCursorMode(captured bool) {
+	current := ebiten.CursorMode()
+	want := ebiten.CursorModeVisible
+	if captured {
+		want = ebiten.CursorModeCaptured
+	}
+	if !isWASMBuild() {
+		if current != want {
+			ebiten.SetCursorMode(want)
+		}
+		return
+	}
+	if !captured {
+		if current != ebiten.CursorModeVisible {
+			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+		}
+		return
+	}
+	if current == ebiten.CursorModeCaptured {
+		return
+	}
+	if wasmPointerLockGestureActive() {
+		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+	}
 }
 
 func (g *game) Update() error {
@@ -1601,13 +1701,13 @@ func (g *game) Update() error {
 		g.capturePrevState()
 		if g.mode == viewMap {
 			if g.opts.SourcePortMode {
-				ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+				applyRuntimeCursorMode(true)
 			} else {
-				ebiten.SetCursorMode(ebiten.CursorModeVisible)
+				applyRuntimeCursorMode(false)
 			}
 			g.updateMapMode()
 		} else {
-			ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+			applyRuntimeCursorMode(true)
 			g.updateWalkMode()
 		}
 		g.tickStatusWidgets()
@@ -2338,7 +2438,6 @@ func (g *game) updateWalkScreenSize() {
 func (g *game) drawWalk3D(screen *ebiten.Image) {
 	rect := g.walkRenderViewportRect()
 	if rect.Dx() >= g.viewW && rect.Dy() >= g.viewH && rect.Min.X == 0 && rect.Min.Y == 0 {
-		g.setSkyOutputSize(g.viewW, g.viewH)
 		g.prepareRenderState()
 		g.drawDoomBasic3D(screen)
 		return
@@ -2348,7 +2447,6 @@ func (g *game) drawWalk3D(screen *ebiten.Image) {
 	sub := screen.SubImage(rect).(*ebiten.Image)
 	g.viewW = rect.Dx()
 	g.viewH = rect.Dy()
-	g.setSkyOutputSize(g.viewW, g.viewH)
 	g.prepareRenderState()
 	g.drawDoomBasic3D(sub)
 	g.viewW = fullW
@@ -5003,10 +5101,15 @@ func keepSpriteOpaqueRectShape(rect spriteOpaqueRect, opaquePixels, coveredPixel
 }
 
 func largestOpaqueRect(mask []bool, w, h int) (spriteOpaqueRect, int, bool) {
+	return largestOpaqueRectWithScratch(mask, w, h, nil, nil)
+}
+
+func largestOpaqueRectWithScratch(mask []bool, w, h int, heights, stack []int) (spriteOpaqueRect, int, bool) {
 	if w <= 0 || h <= 0 || len(mask) != w*h {
 		return spriteOpaqueRect{}, 0, false
 	}
-	heights := make([]int, w)
+	heights = ensureIntScratch(heights, w)
+	stack = ensureIntScratch(stack, w+1)
 	best := spriteOpaqueRect{}
 	bestArea := 0
 	for y := 0; y < h; y++ {
@@ -5017,7 +5120,7 @@ func largestOpaqueRect(mask []bool, w, h int) (spriteOpaqueRect, int, bool) {
 				heights[x] = 0
 			}
 		}
-		stack := make([]int, 0, w+1)
+		stack = stack[:0]
 		for i := 0; i <= w; i++ {
 			curH := 0
 			if i < w {
@@ -5060,6 +5163,8 @@ func buildSpriteOpaqueRects(pix32 []uint32, w, h int) []spriteOpaqueRect {
 		return nil
 	}
 	mask := make([]bool, w*h)
+	heights := make([]int, w)
+	stack := make([]int, 0, w+1)
 	opaquePixels := 0
 	for i, p := range pix32 {
 		if ((p >> pixelAShift) & 0xFF) != 0xFF {
@@ -5074,7 +5179,7 @@ func buildSpriteOpaqueRects(pix32 []uint32, w, h int) []spriteOpaqueRect {
 	rects := make([]spriteOpaqueRect, 0, spriteOpaqueRectMaxCount)
 	coveredPixels := 0
 	for len(rects) < spriteOpaqueRectMaxCount {
-		rect, area, ok := largestOpaqueRect(mask, w, h)
+		rect, area, ok := largestOpaqueRectWithScratch(mask, w, h, heights, stack)
 		if !ok {
 			break
 		}
@@ -5091,6 +5196,17 @@ func buildSpriteOpaqueRects(pix32 []uint32, w, h int) []spriteOpaqueRect {
 		}
 	}
 	return rects
+}
+
+func ensureIntScratch(buf []int, n int) []int {
+	if cap(buf) < n {
+		return make([]int, n)
+	}
+	buf = buf[:n]
+	for i := range buf {
+		buf[i] = 0
+	}
+	return buf
 }
 
 func (g *game) spriteOpaqueShapeForKey(key string, tex WallTexture) (spriteOpaqueShape, bool) {
@@ -7518,9 +7634,8 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			floorZFixed := g.thingFloorZ(txFixed, tyFixed)
 			floorZ := float64(floorZFixed) / fracUnit
 			yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
-			sprite, flip := g.monsterSpriteNameForView(i, th, g.worldTic, camX, camY)
-			tex, ok := g.monsterSpriteTexture(sprite)
-			if !ok || tex.Height <= 0 || tex.Width <= 0 {
+			ref, flip, ok := g.monsterSpriteRefForView(i, th, g.worldTic, camX, camY)
+			if !ok || ref == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 				continue
 			}
 			h := 0.0
@@ -7531,8 +7646,8 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				if scale <= 0 {
 					continue
 				}
-				h = float64(tex.Height) * scale
-				w = float64(tex.Width) * scale
+				h = float64(ref.tex.Height) * scale
+				w = float64(ref.tex.Width) * scale
 			} else {
 				monsterH := monsterRenderHeight(th.Type)
 				yt := float64(viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
@@ -7559,7 +7674,6 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				lightMul = g.sectorLightMulCached(sec)
 			}
-			opaque, hasOpaque := g.spriteOpaqueShapeForKey(sprite, tex)
 			items = append(items, projectedMonsterItem{
 				dist:       f,
 				sx:         sx,
@@ -7568,13 +7682,13 @@ func (g *game) drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near flo
 				w:          w,
 				clipTop:    clipTop,
 				clipBottom: clipBottom,
-				tex:        tex,
+				tex:        ref.tex,
 				flip:       flip,
 				lightMul:   lightMul,
-				fullBright: monsterSpriteFullBright(sprite),
-				spriteKey:  sprite,
-				opaque:     opaque,
-				hasOpaque:  hasOpaque,
+				fullBright: ref.fullBright,
+				spriteKey:  ref.key,
+				opaque:     ref.opaque,
+				hasOpaque:  ref.hasOpaque,
 				shadow:     monsterUsesShadow(th.Type),
 			})
 		}
@@ -7917,9 +8031,8 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				continue
 			}
 			sec := g.thingSectorCached(i, th)
-			sprite := g.runtimeWorldThingSpriteNameScaled(i, th, animTickUnits, animUnitsPerTic)
-			tex, ok := g.monsterSpriteTexture(sprite)
-			if !ok || tex.Height <= 0 || tex.Width <= 0 {
+			ref, ok := g.runtimeWorldThingSpriteRef(i, th, animTickUnits, animUnitsPerTic)
+			if !ok || ref == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 				continue
 			}
 			txFixed, tyFixed := g.thingPosFixed(i, th)
@@ -7937,12 +8050,12 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			floorZFixed := g.thingFloorZ(txFixed, tyFixed)
 			floorZ := float64(floorZFixed) / fracUnit
 			yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
-			h := float64(tex.Height) * scale
+			h := float64(ref.tex.Height) * scale
 			if h <= 0 {
 				continue
 			}
 			sx := float64(viewW)/2 - (s/f)*focal
-			w := float64(tex.Width) * scale
+			w := float64(ref.tex.Width) * scale
 			xPad := w/2 + 4
 			if sx+xPad < 0 || sx-xPad > float64(viewW) {
 				continue
@@ -7956,7 +8069,6 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 			if sec >= 0 && sec < len(g.m.Sectors) {
 				lightMul = g.sectorLightMulCached(sec)
 			}
-			opaque, hasOpaque := g.spriteOpaqueShapeForKey(sprite, tex)
 			items = append(items, projectedThingItem{
 				dist:       f,
 				sx:         sx,
@@ -7964,12 +8076,12 @@ func (g *game) drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near 
 				h:          h,
 				clipTop:    clipTop,
 				clipBottom: clipBottom,
-				tex:        tex,
+				tex:        ref.tex,
 				lightMul:   lightMul,
-				fullBright: worldThingSpriteFullBright(sprite),
-				spriteKey:  sprite,
-				opaque:     opaque,
-				hasOpaque:  hasOpaque,
+				fullBright: ref.fullBright,
+				spriteKey:  ref.key,
+				opaque:     ref.opaque,
+				hasOpaque:  ref.hasOpaque,
 			})
 		}
 	}
@@ -8463,6 +8575,418 @@ func (g *game) worldThingSpriteNameScaled(typ int16, tickUnits, unitsPerTic int)
 	}
 }
 
+func (g *game) spriteRenderRef(name string) (*spriteRenderRef, bool) {
+	if name == "" {
+		return nil, false
+	}
+	if g.spriteRenderRefCache == nil {
+		g.spriteRenderRefCache = make(map[string]*spriteRenderRef, 256)
+	}
+	if ref, ok := g.spriteRenderRefCache[name]; ok {
+		return ref, ref != nil
+	}
+	tex, ok := g.monsterSpriteTexture(name)
+	if !ok || tex.Width <= 0 || tex.Height <= 0 {
+		g.spriteRenderRefCache[name] = nil
+		return nil, false
+	}
+	opaque, hasOpaque := g.spriteOpaqueShapeForKey(name, tex)
+	ref := &spriteRenderRef{
+		key:        name,
+		tex:        tex,
+		opaque:     opaque,
+		hasOpaque:  hasOpaque,
+		fullBright: worldThingSpriteFullBright(name),
+	}
+	g.spriteRenderRefCache[name] = ref
+	return ref, true
+}
+
+func pickThingAnimRef(anim thingAnimRefState, tickUnits, unitsPerTic int) *spriteRenderRef {
+	if len(anim.refs) == 0 {
+		return nil
+	}
+	if len(anim.refs) == 1 {
+		return anim.refs[0]
+	}
+	if unitsPerTic <= 0 {
+		unitsPerTic = 1
+	}
+	if anim.frameUnits > 0 {
+		return anim.refs[(tickUnits/anim.frameUnits)%len(anim.refs)]
+	}
+	total := 0
+	for _, tics := range anim.tics {
+		if tics > 0 {
+			total += tics * unitsPerTic
+		}
+	}
+	if total <= 0 {
+		return anim.refs[0]
+	}
+	t := tickUnits % total
+	if t < 0 {
+		t += total
+	}
+	acc := 0
+	for i, ref := range anim.refs {
+		stepUnits := anim.tics[i] * unitsPerTic
+		if stepUnits <= 0 {
+			return ref
+		}
+		acc += stepUnits
+		if t < acc {
+			return ref
+		}
+	}
+	return anim.refs[len(anim.refs)-1]
+}
+
+func (g *game) thingAnimRefsFromSeq(seq ...string) thingAnimRefState {
+	if len(seq) == 0 {
+		return thingAnimRefState{}
+	}
+	refs := make([]*spriteRenderRef, 0, len(seq))
+	seenExplicit := make(map[string]struct{}, len(seq))
+	for _, raw := range seq {
+		name := strings.ToUpper(strings.TrimSpace(raw))
+		if name == "" {
+			continue
+		}
+		if _, dup := seenExplicit[name]; dup {
+			continue
+		}
+		ref, ok := g.spriteRenderRef(name)
+		if !ok {
+			continue
+		}
+		seenExplicit[name] = struct{}{}
+		refs = append(refs, ref)
+	}
+	if len(refs) <= 1 {
+		expanded := make([]*spriteRenderRef, 0, len(seq)*4)
+		seen := make(map[string]struct{}, len(seq)*8)
+		for _, raw := range seq {
+			name := strings.ToUpper(strings.TrimSpace(raw))
+			if name == "" {
+				continue
+			}
+			if ref, ok := g.spriteRenderRef(name); ok {
+				if _, dup := seen[ref.key]; !dup {
+					seen[ref.key] = struct{}{}
+					expanded = append(expanded, ref)
+				}
+			}
+			for _, ex := range g.expandThingSpriteFrames(name) {
+				ref, ok := g.spriteRenderRef(ex)
+				if !ok {
+					continue
+				}
+				if _, dup := seen[ref.key]; dup {
+					continue
+				}
+				seen[ref.key] = struct{}{}
+				expanded = append(expanded, ref)
+			}
+		}
+		refs = expanded
+	}
+	return thingAnimRefState{refs: refs, frameUnits: 8}
+}
+
+func (g *game) thingAnimRefsFromStates(states ...thingAnimState) thingAnimRefState {
+	if len(states) == 0 {
+		return thingAnimRefState{}
+	}
+	refs := make([]*spriteRenderRef, 0, len(states))
+	tics := make([]int, 0, len(states))
+	for _, st := range states {
+		name := strings.ToUpper(strings.TrimSpace(st.name))
+		if name == "" {
+			continue
+		}
+		ref, ok := g.spriteRenderRef(name)
+		if !ok {
+			continue
+		}
+		refs = append(refs, ref)
+		tics = append(tics, st.tics)
+	}
+	return thingAnimRefState{refs: refs, tics: tics}
+}
+
+func (g *game) worldThingAnimRefs(typ int16) thingAnimRefState {
+	if g.worldThingAnimRefCache == nil {
+		g.worldThingAnimRefCache = make(map[int16]thingAnimRefState, 128)
+	}
+	if anim, ok := g.worldThingAnimRefCache[typ]; ok {
+		return anim
+	}
+	var anim thingAnimRefState
+	switch typ {
+	case 15:
+		anim = g.thingAnimRefsFromSeq("PLAYN0")
+	case 18:
+		anim = g.thingAnimRefsFromSeq("POSSL0")
+	case 19:
+		anim = g.thingAnimRefsFromSeq("SPOSL0")
+	case 20:
+		anim = g.thingAnimRefsFromSeq("TROOL0")
+	case 21:
+		anim = g.thingAnimRefsFromSeq("SARGN0")
+	case 22:
+		anim = g.thingAnimRefsFromSeq("HEADL0")
+	case 23:
+		anim = g.thingAnimRefsFromSeq("SKULL0")
+	case 24:
+		anim = g.thingAnimRefsFromSeq("POL5A0")
+	case 25:
+		anim = g.thingAnimRefsFromSeq("POL1A0")
+	case 26:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "POL6A0", tics: 6},
+			thingAnimState{name: "POL6B0", tics: 8},
+		)
+	case 27:
+		anim = g.thingAnimRefsFromSeq("POL4A0")
+	case 28:
+		anim = g.thingAnimRefsFromSeq("POL2A0")
+	case 29:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "POL3A0", tics: 6},
+			thingAnimState{name: "POL3B0", tics: 6},
+		)
+	case 30:
+		anim = g.thingAnimRefsFromSeq("COL1A0")
+	case 31:
+		anim = g.thingAnimRefsFromSeq("COL2A0")
+	case 32:
+		anim = g.thingAnimRefsFromSeq("COL3A0")
+	case 33:
+		anim = g.thingAnimRefsFromSeq("COL4A0")
+	case 34:
+		anim = g.thingAnimRefsFromSeq("CANDA0")
+	case 35:
+		anim = g.thingAnimRefsFromSeq("CBRAA0")
+	case 36:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "COL5A0", tics: 14},
+			thingAnimState{name: "COL5B0", tics: 14},
+		)
+	case 41:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "CEYEA0", tics: 6},
+			thingAnimState{name: "CEYEB0", tics: 6},
+			thingAnimState{name: "CEYEC0", tics: 6},
+			thingAnimState{name: "CEYEB0", tics: 6},
+		)
+	case 42:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "FSKUA0", tics: 6},
+			thingAnimState{name: "FSKUB0", tics: 6},
+			thingAnimState{name: "FSKUC0", tics: 6},
+		)
+	case 43:
+		anim = g.thingAnimRefsFromSeq("TRE1A0")
+	case 47:
+		anim = g.thingAnimRefsFromSeq("SMITA0")
+	case 48:
+		anim = g.thingAnimRefsFromSeq("ELECA0")
+	case 2028:
+		anim = g.thingAnimRefsFromSeq("COLUA0")
+	case 49:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "GOR1A0", tics: 10},
+			thingAnimState{name: "GOR1B0", tics: 15},
+			thingAnimState{name: "GOR1C0", tics: 8},
+			thingAnimState{name: "GOR1B0", tics: 6},
+		)
+	case 50:
+		anim = g.thingAnimRefsFromSeq("GOR2A0")
+	case 51:
+		anim = g.thingAnimRefsFromSeq("GOR3A0")
+	case 52:
+		anim = g.thingAnimRefsFromSeq("GOR4A0")
+	case 53:
+		anim = g.thingAnimRefsFromSeq("GOR5A0")
+	case 54:
+		anim = g.thingAnimRefsFromSeq("TRE2A0")
+	case 70:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "FCANA0", tics: 4},
+			thingAnimState{name: "FCANB0", tics: 4},
+			thingAnimState{name: "FCANC0", tics: 4},
+		)
+	case 72:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "KEENA0", tics: -1})
+	case 5:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "BKEYA0", tics: 10}, thingAnimState{name: "BKEYB0", tics: 10})
+	case 6:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "YKEYA0", tics: 10}, thingAnimState{name: "YKEYB0", tics: 10})
+	case 13:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "RKEYA0", tics: 10}, thingAnimState{name: "RKEYB0", tics: 10})
+	case 38:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "RSKUA0", tics: 10}, thingAnimState{name: "RSKUB0", tics: 10})
+	case 39:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "YSKUA0", tics: 10}, thingAnimState{name: "YSKUB0", tics: 10})
+	case 40:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "BSKUA0", tics: 10}, thingAnimState{name: "BSKUB0", tics: 10})
+	case 2011:
+		anim = g.thingAnimRefsFromSeq("STIMA0")
+	case 2012:
+		anim = g.thingAnimRefsFromSeq("MEDIA0")
+	case 2013:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "SOULA0", tics: 6}, thingAnimState{name: "SOULB0", tics: 6},
+			thingAnimState{name: "SOULC0", tics: 6}, thingAnimState{name: "SOULD0", tics: 6},
+			thingAnimState{name: "SOULC0", tics: 6}, thingAnimState{name: "SOULB0", tics: 6},
+		)
+	case 2014:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "BON1A0", tics: 6}, thingAnimState{name: "BON1B0", tics: 6},
+			thingAnimState{name: "BON1C0", tics: 6}, thingAnimState{name: "BON1D0", tics: 6},
+			thingAnimState{name: "BON1C0", tics: 6}, thingAnimState{name: "BON1B0", tics: 6},
+		)
+	case 2015:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "BON2A0", tics: 6}, thingAnimState{name: "BON2B0", tics: 6},
+			thingAnimState{name: "BON2C0", tics: 6}, thingAnimState{name: "BON2D0", tics: 6},
+			thingAnimState{name: "BON2C0", tics: 6}, thingAnimState{name: "BON2B0", tics: 6},
+		)
+	case 2018:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "ARM1A0", tics: 6}, thingAnimState{name: "ARM1B0", tics: 7})
+	case 2019:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "ARM2A0", tics: 6}, thingAnimState{name: "ARM2B0", tics: 6})
+	case 2022:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "PINVA0", tics: 6}, thingAnimState{name: "PINVB0", tics: 6},
+			thingAnimState{name: "PINVC0", tics: 6}, thingAnimState{name: "PINVD0", tics: 6},
+		)
+	case 2023:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "PSTRA0", tics: -1})
+	case 2024:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "PINSA0", tics: 6}, thingAnimState{name: "PINSB0", tics: 6},
+			thingAnimState{name: "PINSC0", tics: 6}, thingAnimState{name: "PINSD0", tics: 6},
+		)
+	case 2025:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "SUITA0", tics: -1})
+	case 2026:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "PMAPA0", tics: 6}, thingAnimState{name: "PMAPB0", tics: 6},
+			thingAnimState{name: "PMAPC0", tics: 6}, thingAnimState{name: "PMAPD0", tics: 6},
+			thingAnimState{name: "PMAPC0", tics: 6}, thingAnimState{name: "PMAPB0", tics: 6},
+		)
+	case 2045:
+		anim = g.thingAnimRefsFromStates(thingAnimState{name: "PVISA0", tics: 6}, thingAnimState{name: "PVISB0", tics: 6})
+	case 83:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "MEGAA0", tics: 6}, thingAnimState{name: "MEGAB0", tics: 6},
+			thingAnimState{name: "MEGAC0", tics: 6}, thingAnimState{name: "MEGAD0", tics: 6},
+		)
+	case 2007:
+		anim = g.thingAnimRefsFromSeq("CLIPA0")
+	case 2048:
+		anim = g.thingAnimRefsFromSeq("AMMOA0")
+	case 2008:
+		anim = g.thingAnimRefsFromSeq("SHELA0")
+	case 2049:
+		anim = g.thingAnimRefsFromSeq("SBOXA0")
+	case 2010:
+		anim = g.thingAnimRefsFromSeq("ROCKA0")
+	case 2046:
+		anim = g.thingAnimRefsFromSeq("BROKA0")
+	case 2047:
+		anim = g.thingAnimRefsFromSeq("CELLA0")
+	case 17:
+		anim = g.thingAnimRefsFromSeq("CELPA0")
+	case 8:
+		anim = g.thingAnimRefsFromSeq("BPAKA0")
+	case 2001:
+		anim = g.thingAnimRefsFromSeq("SHOTA0")
+	case 2002:
+		anim = g.thingAnimRefsFromSeq("MGUNA0")
+	case 2003:
+		anim = g.thingAnimRefsFromSeq("LAUNA0")
+	case 2004:
+		anim = g.thingAnimRefsFromSeq("PLASA0")
+	case 2005:
+		anim = g.thingAnimRefsFromSeq("CSAWA0")
+	case 2006:
+		anim = g.thingAnimRefsFromSeq("BFUGA0")
+	case 2035:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "BAR1A0", tics: 6},
+			thingAnimState{name: "BAR1B0", tics: 6},
+			thingAnimState{name: "BEXPA0", tics: 6},
+		)
+	case 44:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "TBLUA0", tics: 4}, thingAnimState{name: "TBLUB0", tics: 4},
+			thingAnimState{name: "TBLUC0", tics: 4}, thingAnimState{name: "TBLUD0", tics: 4},
+		)
+	case 45:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "TGRNA0", tics: 4}, thingAnimState{name: "TGRNB0", tics: 4},
+			thingAnimState{name: "TGRNC0", tics: 4}, thingAnimState{name: "TGRND0", tics: 4},
+		)
+	case 46:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "TREDA0", tics: 4}, thingAnimState{name: "TREDB0", tics: 4},
+			thingAnimState{name: "TREDC0", tics: 4}, thingAnimState{name: "TREDD0", tics: 4},
+		)
+	case 55:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "SMRTA0", tics: 4}, thingAnimState{name: "SMRTB0", tics: 4},
+			thingAnimState{name: "SMRTC0", tics: 4}, thingAnimState{name: "SMRTD0", tics: 4},
+		)
+	case 56:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "SMGTA0", tics: 4}, thingAnimState{name: "SMGTB0", tics: 4},
+			thingAnimState{name: "SMGTC0", tics: 4}, thingAnimState{name: "SMGTD0", tics: 4},
+		)
+	case 57:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "SMBTA0", tics: 4}, thingAnimState{name: "SMBTB0", tics: 4},
+			thingAnimState{name: "SMBTC0", tics: 4}, thingAnimState{name: "SMBTD0", tics: 4},
+		)
+	case 85:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "TLMPA0", tics: 4}, thingAnimState{name: "TLMPB0", tics: 4},
+			thingAnimState{name: "TLMPC0", tics: 4}, thingAnimState{name: "TLMPD0", tics: 4},
+		)
+	case 86:
+		anim = g.thingAnimRefsFromStates(
+			thingAnimState{name: "TLP2A0", tics: 4}, thingAnimState{name: "TLP2B0", tics: 4},
+			thingAnimState{name: "TLP2C0", tics: 4}, thingAnimState{name: "TLP2D0", tics: 4},
+		)
+	}
+	g.worldThingAnimRefCache[typ] = anim
+	return anim
+}
+
+func (g *game) initThingRenderState() {
+	if g == nil || g.m == nil {
+		return
+	}
+	if len(g.thingWorldAnimRef) != len(g.m.Things) {
+		g.thingWorldAnimRef = make([]thingAnimRefState, len(g.m.Things))
+	}
+	for i, th := range g.m.Things {
+		g.thingWorldAnimRef[i] = g.buildThingWorldAnimRef(th)
+	}
+}
+
+func (g *game) buildThingWorldAnimRef(th mapdata.Thing) thingAnimRefState {
+	if isMonster(th.Type) || isPlayerStart(th.Type) {
+		return thingAnimRefState{}
+	}
+	if isBarrelThingType(th.Type) {
+		return thingAnimRefState{}
+	}
+	return g.worldThingAnimRefs(th.Type)
+}
+
 type thingAnimState struct {
 	name string
 	tics int
@@ -8768,12 +9292,39 @@ func monsterSpawnFrameSeq(typ int16) []byte {
 	}
 }
 
+var (
+	monsterSpawnTicsAB         = []int{10, 10}
+	monsterSpawnTicsA          = []int{10}
+	monsterAttackTicsZombieman = []int{10, 8, 8}
+	monsterAttackTicsShotgun   = []int{10, 10, 10}
+	monsterAttackTicsImp       = []int{8, 8, 6}
+	monsterAttackTicsDemon     = []int{8, 8, 8}
+	monsterAttackTicsLostSoul  = []int{6, 6}
+	monsterAttackTicsCaco      = []int{5, 5, 5}
+	monsterAttackTicsSpider    = []int{8, 8}
+	monsterSeeTics4            = []int{4, 4, 4, 4, 4, 4, 4, 4}
+	monsterSeeTics2            = []int{2, 2, 2, 2, 2, 2, 2, 2}
+	monsterSeeTics3            = []int{3, 3, 3, 3, 3, 3, 3, 3}
+	monsterPainTics33          = []int{3, 3}
+	monsterPainTics22          = []int{2, 2}
+	monsterPainTics336         = []int{3, 3, 6}
+	monsterPainTics10          = []int{10}
+	monsterDeathTics5x5        = []int{5, 5, 5, 5, 5}
+	monsterDeathTicsImp        = []int{8, 8, 6, 6, 6}
+	monsterDeathTicsDemon      = []int{8, 8, 4, 4, 4, 4}
+	monsterDeathTicsLostSoul   = []int{6, 6, 6, 6, 6, 6}
+	monsterDeathTics8x6        = []int{8, 8, 8, 8, 8, 8}
+	monsterDeathTics8x7        = []int{8, 8, 8, 8, 8, 8, 8}
+	monsterDeathTicsCyber      = []int{10, 10, 10, 10, 10, 10, 10, 10, 30}
+	monsterDeathTicsSpider     = []int{20, 10, 10, 10, 10, 10, 10, 10, 10, 30}
+)
+
 func monsterSpawnFrameTics(typ int16) []int {
 	switch typ {
 	case 3004, 9, 3001, 3002, 58, 3003, 69:
-		return []int{10, 10}
+		return monsterSpawnTicsAB
 	case 3005:
-		return []int{10}
+		return monsterSpawnTicsA
 	default:
 		return nil
 	}
@@ -8793,23 +9344,23 @@ func monsterSeeFrameSeq(typ int16) []byte {
 func monsterAttackFrameTics(typ int16) []int {
 	switch typ {
 	case 3004: // zombieman
-		return []int{10, 8, 8}
+		return monsterAttackTicsZombieman
 	case 9: // shotgun guy
-		return []int{10, 10, 10}
+		return monsterAttackTicsShotgun
 	case 3001: // imp
-		return []int{8, 8, 6}
+		return monsterAttackTicsImp
 	case 3002, 58: // demon/spectre
-		return []int{8, 8, 8}
+		return monsterAttackTicsDemon
 	case 3006: // lost soul
-		return []int{6, 6}
+		return monsterAttackTicsLostSoul
 	case 3005: // cacodemon
-		return []int{5, 5, 5}
+		return monsterAttackTicsCaco
 	case 3003, 69: // baron/knight
-		return []int{8, 8, 8}
+		return monsterAttackTicsDemon
 	case 16: // cyberdemon
-		return []int{8, 8, 8}
+		return monsterAttackTicsDemon
 	case 7: // spider mastermind
-		return []int{8, 8}
+		return monsterAttackTicsSpider
 	default:
 		return nil
 	}
@@ -8818,23 +9369,23 @@ func monsterAttackFrameTics(typ int16) []int {
 func monsterSeeFrameTics(typ int16, fast bool) []int {
 	switch typ {
 	case 3004:
-		tic := 4
+		tics := monsterSeeTics4
 		if fast {
-			tic = 2
+			tics = monsterSeeTics2
 		}
-		return []int{tic, tic, tic, tic, tic, tic, tic, tic}
+		return tics
 	case 9:
-		tic := 3
+		tics := monsterSeeTics3
 		if fast {
-			tic = 2
+			tics = monsterSeeTics2
 		}
-		return []int{tic, tic, tic, tic, tic, tic, tic, tic}
+		return tics
 	case 3001, 3003, 69:
-		return []int{3, 3, 3, 3, 3, 3, 3, 3}
+		return monsterSeeTics3
 	case 3002, 58:
-		return []int{2, 2, 2, 2, 2, 2, 2, 2}
+		return monsterSeeTics2
 	case 3005:
-		return []int{3}
+		return monsterPainTics33[:1]
 	default:
 		return nil
 	}
@@ -8879,23 +9430,23 @@ func monsterPainFrameSeq(typ int16) []byte {
 func monsterPainFrameTics(typ int16) []int {
 	switch typ {
 	case 3004:
-		return []int{3, 3}
+		return monsterPainTics33
 	case 9:
-		return []int{2, 2}
+		return monsterPainTics22
 	case 3001:
-		return []int{2, 2}
+		return monsterPainTics22
 	case 3002, 58:
-		return []int{2, 2}
+		return monsterPainTics22
 	case 3006:
-		return []int{3, 3}
+		return monsterPainTics33
 	case 3005:
-		return []int{3, 3, 6}
+		return monsterPainTics336
 	case 3003, 69:
-		return []int{2, 2}
+		return monsterPainTics22
 	case 16:
-		return []int{10}
+		return monsterPainTics10
 	case 7:
-		return []int{3, 3}
+		return monsterPainTics33
 	default:
 		return nil
 	}
@@ -8940,23 +9491,23 @@ func monsterDeathFrameSeq(typ int16) []byte {
 func monsterDeathFrameTics(typ int16) []int {
 	switch typ {
 	case 3004:
-		return []int{5, 5, 5, 5, 5}
+		return monsterDeathTics5x5
 	case 9:
-		return []int{5, 5, 5, 5, 5}
+		return monsterDeathTics5x5
 	case 3001:
-		return []int{8, 8, 6, 6, 6}
+		return monsterDeathTicsImp
 	case 3002, 58:
-		return []int{8, 8, 4, 4, 4, 4}
+		return monsterDeathTicsDemon
 	case 3006:
-		return []int{6, 6, 6, 6, 6, 6}
+		return monsterDeathTicsLostSoul
 	case 3005:
-		return []int{8, 8, 8, 8, 8, 8}
+		return monsterDeathTics8x6
 	case 3003:
-		return []int{8, 8, 8, 8, 8, 8, 8}
+		return monsterDeathTics8x7
 	case 16:
-		return []int{10, 10, 10, 10, 10, 10, 10, 10, 30}
+		return monsterDeathTicsCyber
 	case 7:
-		return []int{20, 10, 10, 10, 10, 10, 10, 10, 10, 30}
+		return monsterDeathTicsSpider
 	default:
 		return nil
 	}
@@ -9087,6 +9638,9 @@ func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 }
 
 func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX, viewY float64) (string, bool) {
+	if ref, flip, ok := g.monsterSpriteRefForView(i, th, tic, viewX, viewY); ok && ref != nil {
+		return ref.key, flip
+	}
 	prefix, ok := monsterSpritePrefix(th.Type)
 	if !ok {
 		return g.monsterSpriteName(th.Type, tic), false
@@ -9107,6 +9661,30 @@ func (g *game) monsterSpriteNameForView(i int, th mapdata.Thing, tic int, viewX,
 		return name, flip
 	}
 	return g.monsterSpriteName(th.Type, tic), false
+}
+
+func (g *game) monsterSpriteRefForView(i int, th mapdata.Thing, tic int, viewX, viewY float64) (*spriteRenderRef, bool, bool) {
+	prefix, ok := monsterSpritePrefix(th.Type)
+	if !ok {
+		ref, ok := g.spriteRenderRef(g.monsterSpriteName(th.Type, tic))
+		return ref, false, ok
+	}
+	frameLetter := g.monsterFrameLetter(i, th, tic)
+	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		if ref, ok := g.monsterFrameRenderRef(prefix, frameLetter, 0); ok {
+			return ref, false, true
+		}
+	}
+	fx, fy := g.thingPosFixed(i, th)
+	rot := monsterSpriteRotationIndexAt(g.thingWorldAngle(i, th), float64(fx)/fracUnit, float64(fy)/fracUnit, viewX, viewY)
+	if ref, flip, ok := g.monsterFrameRenderRefRot(prefix, frameLetter, rot); ok {
+		return ref, flip, true
+	}
+	if ref, flip, ok := g.monsterFrameRenderRefRot(prefix, frameLetter, 1); ok {
+		return ref, flip, true
+	}
+	ref, ok := g.spriteRenderRef(g.monsterSpriteName(th.Type, tic))
+	return ref, false, ok
 }
 
 func monsterSpriteRotationIndex(th mapdata.Thing, viewX, viewY float64) int {
@@ -9197,6 +9775,54 @@ func (g *game) monsterSpriteRotFrame(prefix string, frame byte, rot int) (string
 		return pairB, true, true
 	}
 	return "", false, false
+}
+
+func (g *game) monsterFrameRenderRef(prefix string, frame byte, rot int) (*spriteRenderRef, bool) {
+	key := monsterFrameRenderKey{prefix: prefix, frame: frame, rot: uint8(rot)}
+	if g.monsterFrameRenderCache == nil {
+		g.monsterFrameRenderCache = make(map[monsterFrameRenderKey]monsterFrameRenderEntry, 512)
+	}
+	if cached, ok := g.monsterFrameRenderCache[key]; ok {
+		return cached.ref, cached.ref != nil
+	}
+	var ref *spriteRenderRef
+	if rot == 0 {
+		ref, _ = g.spriteRenderRef(spriteFrameName(prefix, frame, '0'))
+	} else if name, flip, ok := g.monsterSpriteRotFrame(prefix, frame, rot); ok {
+		var found bool
+		ref, found = g.spriteRenderRef(name)
+		if found {
+			g.monsterFrameRenderCache[key] = monsterFrameRenderEntry{ref: ref, flip: flip}
+			return ref, true
+		}
+	}
+	g.monsterFrameRenderCache[key] = monsterFrameRenderEntry{ref: ref}
+	return ref, ref != nil
+}
+
+func (g *game) monsterFrameRenderRefRot(prefix string, frame byte, rot int) (*spriteRenderRef, bool, bool) {
+	if rot < 1 || rot > 8 {
+		return nil, false, false
+	}
+	key := monsterFrameRenderKey{prefix: prefix, frame: frame, rot: uint8(rot)}
+	if g.monsterFrameRenderCache == nil {
+		g.monsterFrameRenderCache = make(map[monsterFrameRenderKey]monsterFrameRenderEntry, 512)
+	}
+	if cached, ok := g.monsterFrameRenderCache[key]; ok {
+		return cached.ref, cached.flip, cached.ref != nil
+	}
+	name, flip, ok := g.monsterSpriteRotFrame(prefix, frame, rot)
+	if !ok {
+		g.monsterFrameRenderCache[key] = monsterFrameRenderEntry{}
+		return nil, false, false
+	}
+	ref, ok := g.spriteRenderRef(name)
+	if !ok {
+		g.monsterFrameRenderCache[key] = monsterFrameRenderEntry{}
+		return nil, false, false
+	}
+	g.monsterFrameRenderCache[key] = monsterFrameRenderEntry{ref: ref, flip: flip}
+	return ref, flip, true
 }
 
 func spriteFrameName(prefix string, frame, rot byte) string {
@@ -9302,7 +9928,7 @@ func monsterRenderHeight(typ int16) float64 {
 }
 
 func (g *game) drawUseSpecialLines(screen *ebiten.Image) {
-	segs := make([]mapview.Segment, 0, 32)
+	segs := g.useSpecialSegScratch[:0]
 	for _, li := range g.visibleLineIndices() {
 		if li < 0 || li >= len(g.lineSpecial) || !buttonHighlightEligible(g.lineSpecial[li]) {
 			continue
@@ -9323,6 +9949,7 @@ func (g *game) drawUseSpecialLines(screen *ebiten.Image) {
 			X1: x1, Y1: y1, X2: x2, Y2: y2, Width: 2.4, Color: wallUseSpecial,
 		})
 	}
+	g.useSpecialSegScratch = segs
 	mapview.DrawSegments(screen, segs, true)
 }
 
@@ -9358,7 +9985,7 @@ func (g *game) setSkyOutputSize(w, h int) {
 	g.skyOutputW = w
 	g.skyOutputH = h
 	if g.opts.GPUSky && g.opts.SourcePortMode {
-		g.resetSkyLayerPipeline(true)
+		g.resetSkyLayerPipeline(false)
 	}
 }
 
@@ -9371,9 +9998,8 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 			g.viewH = h
 			_, _, worldW, worldH := boundsViewMetrics(g.bounds)
 			g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
-			// Resolution changes can invalidate shader-side projection assumptions.
-			// Rebuild full sky GPU pipeline (shader + textures + caches).
-			g.resetSkyLayerPipeline(true)
+			// Resolution changes only invalidate sky projection/image caches.
+			g.resetSkyLayerPipeline(false)
 			g.mouseLookSet = false
 			g.mouseLookSuppressTicks = detailMouseSuppressTicks
 			g.syncRenderState()
@@ -9502,11 +10128,12 @@ func (g *game) beginSolid3DFrame() []solidSpan {
 	return g.solid3DBuf
 }
 
-func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]scene.PlaneSpan) {
+func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]scene.PlaneSpan, [][]int) {
 	if n <= 0 {
 		g.plane3DSpanScratch = g.plane3DSpanScratch[:0]
 		g.plane3DSceneSpanScratch = g.plane3DSceneSpanScratch[:0]
-		return g.plane3DSpanScratch, g.plane3DSceneSpanScratch
+		g.plane3DSpanStartScratch = g.plane3DSpanStartScratch[:0]
+		return g.plane3DSpanScratch, g.plane3DSceneSpanScratch, g.plane3DSpanStartScratch
 	}
 	if cap(g.plane3DSpanScratch) < n {
 		g.plane3DSpanScratch = make([][]plane3DSpan, n)
@@ -9518,6 +10145,11 @@ func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]scene.PlaneSp
 	} else {
 		g.plane3DSceneSpanScratch = g.plane3DSceneSpanScratch[:n]
 	}
+	if cap(g.plane3DSpanStartScratch) < n {
+		g.plane3DSpanStartScratch = make([][]int, n)
+	} else {
+		g.plane3DSpanStartScratch = g.plane3DSpanStartScratch[:n]
+	}
 	for i := 0; i < n; i++ {
 		if i < len(g.plane3DSpanScratch) {
 			g.plane3DSpanScratch[i] = g.plane3DSpanScratch[i][:0]
@@ -9525,8 +10157,18 @@ func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]scene.PlaneSp
 		if i < len(g.plane3DSceneSpanScratch) {
 			g.plane3DSceneSpanScratch[i] = g.plane3DSceneSpanScratch[i][:0]
 		}
+		if i < len(g.plane3DSpanStartScratch) && g.viewH > 0 {
+			if cap(g.plane3DSpanStartScratch[i]) < g.viewH {
+				g.plane3DSpanStartScratch[i] = make([]int, g.viewH)
+			} else {
+				g.plane3DSpanStartScratch[i] = g.plane3DSpanStartScratch[i][:g.viewH]
+				for j := range g.plane3DSpanStartScratch[i] {
+					g.plane3DSpanStartScratch[i][j] = 0
+				}
+			}
+		}
 	}
-	return g.plane3DSpanScratch, g.plane3DSceneSpanScratch
+	return g.plane3DSpanScratch, g.plane3DSceneSpanScratch, g.plane3DSpanStartScratch
 }
 
 func (g *game) acquirePlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane {
@@ -9626,15 +10268,59 @@ func skyTextureForMap(mapName mapdata.MapName, wallTexBank map[string]WallTextur
 }
 
 func skyTextureEntryForMap(mapName mapdata.MapName, wallTexBank map[string]WallTexture) (string, WallTexture, bool) {
-	bank := make(map[string]scene.Texture, len(wallTexBank))
-	for key, tex := range wallTexBank {
-		bank[key] = scene.Texture{RGBA: tex.RGBA, Width: tex.Width, Height: tex.Height}
+	if key, ok := primarySkyTextureKey(mapName); ok {
+		if tex, ok := wallTexBank[key]; ok && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+			return key, tex, true
+		}
 	}
-	key, tex, ok := scene.TextureEntryForMap(mapName, bank, normalizeFlatName)
-	if !ok {
-		return "", WallTexture{}, false
+	for _, key := range [...]string{"SKY1", "SKY2", "SKY3", "SKY4"} {
+		if tex, ok := wallTexBank[key]; ok && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+			return key, tex, true
+		}
 	}
-	return key, WallTexture{RGBA: tex.RGBA, Width: tex.Width, Height: tex.Height}, true
+	return "", WallTexture{}, false
+}
+
+func primarySkyTextureKey(mapName mapdata.MapName) (string, bool) {
+	name := string(mapName)
+	if len(name) >= 4 &&
+		(name[0] == 'E' || name[0] == 'e') &&
+		(name[2] == 'M' || name[2] == 'm') &&
+		name[1] >= '1' && name[1] <= '4' &&
+		name[3] >= '0' && name[3] <= '9' {
+		switch name[1] {
+		case '1':
+			return "SKY1", true
+		case '2':
+			return "SKY2", true
+		case '3':
+			return "SKY3", true
+		case '4':
+			return "SKY4", true
+		}
+	}
+	if len(name) >= 5 &&
+		(name[0] == 'M' || name[0] == 'm') &&
+		(name[1] == 'A' || name[1] == 'a') &&
+		(name[2] == 'P' || name[2] == 'p') {
+		n := 0
+		for i := 3; i < len(name); i++ {
+			if name[i] < '0' || name[i] > '9' {
+				n = 0
+				break
+			}
+			n = n*10 + int(name[i]-'0')
+		}
+		switch {
+		case n >= 1 && n <= 11:
+			return "SKY1", true
+		case n >= 12 && n <= 20:
+			return "SKY2", true
+		case n >= 21:
+			return "SKY3", true
+		}
+	}
+	return "", false
 }
 
 func effectiveSkyTexHeight(tex WallTexture) int {
@@ -9669,9 +10355,9 @@ func (g *game) resetSkyLayerPipeline(rebuildShader bool) {
 	g.skyLayerProjDrawH = 0
 	g.skyLayerProjSampleW = 0
 	g.skyLayerProjSampleH = 0
+	g.skyLayerUniforms = nil
 
-	if rebuildShader && g.opts.GPUSky && g.opts.SourcePortMode {
-		g.skyLayerShader = nil
+	if rebuildShader && g.opts.GPUSky && g.opts.SourcePortMode && g.skyLayerShader == nil {
 		if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
 			g.skyLayerShader = sh
 		}
@@ -9729,38 +10415,38 @@ func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
 	if texW <= 0 || texH <= 0 {
 		return false
 	}
-	v := []ebiten.Vertex{
-		{DstX: 0, DstY: 0, SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: 0, Custom1: 0},
-		{DstX: float32(w), DstY: 0, SrcX: float32(texW), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: float32(w), Custom1: 0},
-		{DstX: 0, DstY: float32(h), SrcX: 0, SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: 0, Custom1: float32(h)},
-		{DstX: float32(w), DstY: float32(h), SrcX: float32(texW), SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: float32(w), Custom1: float32(h)},
-	}
-	idx := []uint16{0, 1, 2, 1, 2, 3}
-	op := &ebiten.DrawTrianglesShaderOptions{}
+	v := &g.skyLayerVerts
+	v[0] = ebiten.Vertex{DstX: 0, DstY: 0, SrcX: 0, SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: 0, Custom1: 0}
+	v[1] = ebiten.Vertex{DstX: float32(w), DstY: 0, SrcX: float32(texW), SrcY: 0, ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: float32(w), Custom1: 0}
+	v[2] = ebiten.Vertex{DstX: 0, DstY: float32(h), SrcX: 0, SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: 0, Custom1: float32(h)}
+	v[3] = ebiten.Vertex{DstX: float32(w), DstY: float32(h), SrcX: float32(texW), SrcY: float32(texH), ColorR: 1, ColorG: 1, ColorB: 1, ColorA: 1, Custom0: float32(w), Custom1: float32(h)}
+	g.skyLayerIdx = [6]uint16{0, 1, 2, 1, 2, 3}
+	op := &g.skyLayerShaderOp
 	op.Images[0] = g.skyLayerTex
 	_, _, sampleW, sampleH := g.skyProjectionSize()
-	op.Uniforms = map[string]any{
-		"CamAngle": g.skyLayerFrameCamAng,
-		"Focal":    g.skyLayerFrameFocal,
-		"DrawW":    float64(w),
-		"DrawH":    float64(h),
-		"SampleW":  float64(sampleW),
-		"SampleH":  float64(sampleH),
-		"SkyTexW":  float64(texW),
-		"SkyTexH":  g.skyLayerFrameTexH,
-		"SharpUpscale": func() float64 {
-			if g.opts.SkyUpscaleMode == "sharp" {
-				return 1
-			}
-			return 0
-		}(),
+	if g.skyLayerUniforms == nil {
+		g.skyLayerUniforms = make(map[string]any, 9)
 	}
-	screen.DrawTrianglesShader(v, idx, g.skyLayerShader, op)
+	g.skyLayerUniforms["CamAngle"] = g.skyLayerFrameCamAng
+	g.skyLayerUniforms["Focal"] = g.skyLayerFrameFocal
+	g.skyLayerUniforms["DrawW"] = float64(w)
+	g.skyLayerUniforms["DrawH"] = float64(h)
+	g.skyLayerUniforms["SampleW"] = float64(sampleW)
+	g.skyLayerUniforms["SampleH"] = float64(sampleH)
+	g.skyLayerUniforms["SkyTexW"] = float64(texW)
+	g.skyLayerUniforms["SkyTexH"] = g.skyLayerFrameTexH
+	if g.opts.SkyUpscaleMode == "sharp" {
+		g.skyLayerUniforms["SharpUpscale"] = float64(1)
+	} else {
+		g.skyLayerUniforms["SharpUpscale"] = float64(0)
+	}
+	op.Uniforms = g.skyLayerUniforms
+	screen.DrawTrianglesShader(g.skyLayerVerts[:], g.skyLayerIdx[:], g.skyLayerShader, op)
 	return true
 }
 
 func (g *game) buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([][]plane3DSpan, int, int, bool) {
-	spansByPlane, sceneSpansByPlane := g.ensurePlaneSpanScratch(len(planes))
+	spansByPlane, sceneSpansByPlane, spanStartScratch := g.ensurePlaneSpanScratch(len(planes))
 	if len(planes) == 0 {
 		return spansByPlane, 0, 0, false
 	}
@@ -9773,7 +10459,7 @@ func (g *game) buildPlaneSpansParallel(planes []*plane3DVisplane, viewH int) ([]
 		}
 		sceneOut := sceneSpansByPlane[i][:0]
 		sp := &scene.PlaneVisplane{Key: plane3DKeyToScene(pl.key), MinX: pl.minX, MaxX: pl.maxX, Top: pl.top, Bottom: pl.bottom}
-		sceneOut = scene.MakePlaneSpans(sp, viewH, sceneOut)
+		sceneOut = scene.MakePlaneSpansWithScratch(sp, viewH, sceneOut, spanStartScratch[i])
 		sceneSpansByPlane[i] = sceneOut
 		out := spansByPlane[i][:0]
 		for _, s := range sceneOut {
@@ -15391,12 +16077,13 @@ func (g *game) drawMenuPatch(screen *ebiten.Image, name string, x, y, sx, sy flo
 func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 	optionsSkullX := g.pauseOptionsSkullX(36)
 	mouseThermoX, mouseThermoCount, mouseValueX := g.pauseMouseSensitivityLayout(36, "MOUSE SENSITIVITY")
-	episodeNames := make([]string, 0, len(g.availableEpisodeChoices()))
+	episodeNames := g.pauseEpisodeNamesScratch[:0]
 	for _, ep := range g.availableEpisodeChoices() {
 		if name, ok := inGameEpisodeMenuNames[ep]; ok {
 			episodeNames = append(episodeNames, name)
 		}
 	}
+	g.pauseEpisodeNamesScratch = episodeNames
 	mode := hud.PauseModeMain
 	switch g.pauseMenuMode {
 	case pauseMenuModeOptions:
@@ -15432,7 +16119,7 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		OptionsSkullX:          optionsSkullX,
 		MouseSensitivityDot:    frontendMouseSensitivityDotForCount(g.opts.MouseLookSpeed, mouseThermoCount),
 		MouseSensitivityCount:  mouseThermoCount,
-		MouseSensitivityLabel:  fmt.Sprintf("%.2f", g.opts.MouseLookSpeed),
+		MouseSensitivityLabel:  formatFloat2(g.opts.MouseLookSpeed),
 		MouseSensitivityX:      mouseThermoX,
 		MouseSensitivityValueX: mouseValueX,
 		SFXVolumeDot:           frontendVolumeDot(g.opts.SFXVolume),
@@ -15576,21 +16263,52 @@ func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {
 func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 	benchDisplay := ""
 	if g.demoBenchmarkActive() {
-		benchDisplay = fmt.Sprintf("1%% %.2fms | 0.1%% %.2fms", g.benchLow1MS, g.benchLow01MS)
+		benchDisplay = formatBenchDisplay(g.benchLow1MS, g.benchLow01MS)
 	}
 	hud.DrawPerfOverlay(screen, hud.PerfInputs{
 		ViewW:      g.viewW,
 		ViewH:      g.viewH,
 		SourcePort: g.hudUsesLogicalLayout(),
 		HUDScale:   g.hudScaleValue(),
-		FPSDisplay: fmt.Sprintf("%.2f, %.2fms", g.fpsDisplay, g.renderMSAvg),
-		TicDisplay: fmt.Sprintf("tic %d", g.worldTic),
+		FPSDisplay: formatFPSDisplay(g.fpsDisplay, g.renderMSAvg),
+		TicDisplay: formatTicDisplay(g.worldTic),
 		BenchLine:  benchDisplay,
 	}, g.huTextWidth, g.drawHUTextAt)
 }
 
 func (g *game) demoBenchmarkActive() bool {
 	return g != nil && g.opts.DemoScript != nil && g.opts.DemoQuitOnComplete
+}
+
+func formatFloat2(v float64) string {
+	return strconv.FormatFloat(v, 'f', 2, 64)
+}
+
+func formatInt(v int) string {
+	return strconv.Itoa(v)
+}
+
+func formatTicDisplay(tic int) string {
+	return "tic " + strconv.Itoa(tic)
+}
+
+func formatFPSDisplay(fps, renderMS float64) string {
+	var b []byte
+	b = strconv.AppendFloat(b, fps, 'f', 2, 64)
+	b = append(b, ',', ' ')
+	b = strconv.AppendFloat(b, renderMS, 'f', 2, 64)
+	b = append(b, 'm', 's')
+	return string(b)
+}
+
+func formatBenchDisplay(low1MS, low01MS float64) string {
+	var b []byte
+	b = append(b, '1', '%', ' ')
+	b = strconv.AppendFloat(b, low1MS, 'f', 2, 64)
+	b = append(b, 'm', 's', ' ', '|', ' ', '0', '.', '1', '%', ' ')
+	b = strconv.AppendFloat(b, low01MS, 'f', 2, 64)
+	b = append(b, 'm', 's')
+	return string(b)
 }
 
 func (g *game) recordDemoBenchFrame(renderDur time.Duration) {

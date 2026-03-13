@@ -14,10 +14,12 @@ type WallTexture struct {
 }
 
 type PCMSample struct {
-	SampleRate   int
-	Data         []byte
-	PreparedRate int
-	PreparedMono []int16
+	SampleRate           int
+	Data                 []byte
+	PreparedRate         int
+	PreparedMono         []int16
+	FaithfulPreparedRate int
+	FaithfulPreparedMono []int16
 }
 
 type SoundBank struct {

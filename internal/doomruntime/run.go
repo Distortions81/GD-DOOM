@@ -442,7 +442,9 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
-		sg.rt.setSkyOutputSize(w, h)
+		if sg.g.skyOutputW != w || sg.g.skyOutputH != h {
+			sg.rt.setSkyOutputSize(w, h)
+		}
 		// Sourceport mode renders/presents natively to the current window size,
 		// with detail level controlling internal divisor only.
 		div := sg.g.sessionSignals().SourcePortDetail
@@ -451,7 +453,9 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		}
 		rw := max(w/div, 1)
 		rh := max(h/div, 1)
-		sg.rt.Layout(rw, rh)
+		if sg.g.viewW != rw || sg.g.viewH != rh {
+			sg.rt.Layout(rw, rh)
+		}
 		return w, h
 	}
 	// Faithful mode renders game internals at 320x200 and presents at an

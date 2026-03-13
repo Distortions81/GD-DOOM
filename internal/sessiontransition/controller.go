@@ -138,6 +138,17 @@ func (c *Controller) EnsureReady(width, height int, sourcePort bool, initCols, m
 	if drawTo != nil {
 		drawTo(c.to)
 	}
+	if isWASMBuild() {
+		c.work.Clear()
+		c.work.DrawImage(c.to, nil)
+		c.width = width
+		c.height = height
+		c.initialized = true
+		c.pending = false
+		c.holdTics = 0
+		c.y = nil
+		return
+	}
 	need := width * height * 4
 	if len(c.fromPix) != need {
 		c.fromPix = make([]byte, need)
@@ -167,6 +178,13 @@ func (c *Controller) EnsureReady(width, height int, sourcePort bool, initCols, m
 
 func (c *Controller) Tick(sourcePort bool, initCols, moveCols int) {
 	if c == nil || c.kind == KindNone || !c.initialized {
+		return
+	}
+	if isWASMBuild() {
+		if c.to != nil {
+			c.CaptureLastFrame(c.to)
+		}
+		c.Clear()
 		return
 	}
 	if c.holdTics > 0 {

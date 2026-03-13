@@ -906,11 +906,11 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.rt.sessionDrawHUTextAt(screen, fpsLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+3*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "MOUSE SENSITIVITY", ox+float64(menuX)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	optionsSkullX := sg.frontendOptionsSkullX(menuX)
-	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%.2f", sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "SOUND VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "MUSIC VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "MUSIC PLAYER", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	playerLabel := "OPEN"
 	if !sg.frontendMusicPlayerAvailable() {
@@ -970,8 +970,8 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 	_ = sg.drawMenuPatch(screen, "M_SVOL", 60, 38, scale, ox, oy, false)
 	_ = sg.drawMenuPatch(screen, "M_SFXVOL", menuX, menuY, scale, ox, oy, false)
 	_ = sg.drawMenuPatch(screen, "M_MUSVOL", menuX, menuY+2*lineHeight, scale, ox, oy, false)
-	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(235)*scale, oy+float64(menuY+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, fmt.Sprintf("%d", sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(235)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(235)*scale, oy+float64(menuY+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(235)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	skullY := menuY
 	if sg.frontend.SoundOn != 0 {
 		skullY += 2 * lineHeight

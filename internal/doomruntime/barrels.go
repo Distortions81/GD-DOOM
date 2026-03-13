@@ -302,8 +302,27 @@ func (g *game) barrelSpriteNameScaled(i int, tickUnits, unitsPerTic int) string 
 }
 
 func (g *game) runtimeWorldThingSpriteNameScaled(i int, th mapdata.Thing, tickUnits, unitsPerTic int) string {
+	if ref, ok := g.runtimeWorldThingSpriteRef(i, th, tickUnits, unitsPerTic); ok && ref != nil {
+		return ref.key
+	}
 	if isBarrelThingType(th.Type) {
 		return g.barrelSpriteNameScaled(i, tickUnits, unitsPerTic)
 	}
 	return g.worldThingSpriteNameScaled(th.Type, tickUnits, unitsPerTic)
+}
+
+func (g *game) runtimeWorldThingSpriteRef(i int, th mapdata.Thing, tickUnits, unitsPerTic int) (*spriteRenderRef, bool) {
+	if isBarrelThingType(th.Type) {
+		return g.spriteRenderRef(g.barrelSpriteNameScaled(i, tickUnits, unitsPerTic))
+	}
+	anim := thingAnimRefState{}
+	if i >= 0 && i < len(g.thingWorldAnimRef) {
+		anim = g.thingWorldAnimRef[i]
+	} else {
+		anim = g.worldThingAnimRefs(th.Type)
+	}
+	if len(anim.refs) == 0 {
+		return nil, false
+	}
+	return pickThingAnimRef(anim, tickUnits, unitsPerTic), true
 }

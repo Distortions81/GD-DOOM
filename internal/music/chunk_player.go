@@ -50,7 +50,7 @@ func NewChunkPlayer() (*ChunkPlayer, error) {
 		ctx:    ctx,
 		player: p,
 		src:    src,
-		cmds:   make(chan playerCmd, 64),
+		cmds:   make(chan playerCmd, chunkPlayerCommandQueueCap()),
 		done:   make(chan struct{}),
 	}
 	go cp.run()

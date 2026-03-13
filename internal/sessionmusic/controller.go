@@ -81,7 +81,7 @@ func (c *Controller) PlayMUS(data []byte) {
 	if err != nil {
 		return
 	}
-	chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames)
+	chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames())
 	if err != nil || len(chunk) == 0 {
 		return
 	}
@@ -109,7 +109,7 @@ func (c *Controller) stream(stop <-chan struct{}, stream *music.StreamRenderer) 
 	}
 	const bytesPerFrame = 4
 	const checkPeriod = 12 * time.Millisecond
-	lookaheadBytes := music.DefaultStreamLookahead * bytesPerFrame
+	lookaheadBytes := music.DefaultStreamLookahead() * bytesPerFrame
 	ticker := time.NewTicker(checkPeriod)
 	defer ticker.Stop()
 	for {
@@ -125,7 +125,7 @@ func (c *Controller) stream(stop <-chan struct{}, stream *music.StreamRenderer) 
 			case <-ticker.C:
 			}
 		}
-		chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames)
+		chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames())
 		if err != nil {
 			return
 		}

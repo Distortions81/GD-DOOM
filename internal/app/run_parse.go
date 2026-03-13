@@ -108,6 +108,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultImportPCSpeaker := true
 	defaultImportTextures := true
 	defaultCPUProfile := ""
+	defaultMemProfile := ""
 	defaultDemo := ""
 	defaultRecordDemo := ""
 	defaultNoVsync := false
@@ -279,6 +280,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.CPUProfile != nil {
 			defaultCPUProfile = *cfg.CPUProfile
 		}
+		if cfg.MemProfile != nil {
+			defaultMemProfile = *cfg.MemProfile
+		}
 		if cfg.Demo != nil {
 			defaultDemo = *cfg.Demo
 		}
@@ -363,6 +367,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
+	memProfile := fs.String("memprofile", defaultMemProfile, "write Go heap profile to file on exit")
 	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
@@ -481,6 +486,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "-trace-demo-state requires -demo")
 		return 2
 	}
+	writeMemProfile := func() {}
+	if strings.TrimSpace(*memProfile) != "" {
+		path := strings.TrimSpace(*memProfile)
+		writeMemProfile = func() {
+			runtime.GC()
+			f, perr := os.Create(path)
+			if perr != nil {
+				fmt.Fprintf(stderr, "open mem profile: %v\n", perr)
+				return
+			}
+			defer f.Close()
+			if perr := pprof.WriteHeapProfile(f); perr != nil {
+				fmt.Fprintf(stderr, "write mem profile: %v\n", perr)
+				return
+			}
+			fmt.Fprintf(stderr, "mem profile written to %s\n", path)
+		}
+	}
+	defer writeMemProfile()
 	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
 	choices := detectAvailableIWADChoices(".")
 	if noExplicitWAD && *render && len(choices) > 1 {
@@ -2443,6 +2467,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		InterTick:           firstSample(sample("DSPISTOL"), sample("DSSWTCHN")),
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
+	bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
 	if sourcePortMode {
 		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
 	}

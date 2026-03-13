@@ -83,6 +83,7 @@ go run ./cmd/gddoom -h
 - `-record-demo <path>`: record live input to a Doom v1.10 `.lmp` demo
 - `-trace-demo-state <path>`: write per-tic GD-DOOM demo state JSONL during `-demo` playback
 - `-cpuprofile <path>`: write Go CPU profile
+- `-memprofile <path>`: write Go heap profile on exit
 - `-no-vsync`: disable vsync and uncap draw FPS
 - `-nofps`: hide FPS/MS overlay
 - `-no-aspect-correction`: disable Doom-style 4:3 aspect correction

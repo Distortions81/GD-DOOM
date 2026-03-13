@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"testing"
 
+	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
 )
 
@@ -182,9 +183,9 @@ func TestSampleForEventPainShootFallbacks(t *testing.T) {
 func TestSampleForEventVariantSelectionDoesNotAdvancePRandom(t *testing.T) {
 	s := &soundSystem{
 		bank: SoundBank{
-			SeePosit1:  PCMSample{SampleRate: 11025, Data: []byte{1}},
-			SeePosit2:  PCMSample{SampleRate: 11025, Data: []byte{2}},
-			SeePosit3:  PCMSample{SampleRate: 11025, Data: []byte{3}},
+			SeePosit1:   PCMSample{SampleRate: 11025, Data: []byte{1}},
+			SeePosit2:   PCMSample{SampleRate: 11025, Data: []byte{2}},
+			SeePosit3:   PCMSample{SampleRate: 11025, Data: []byte{3}},
 			DeathPodth1: PCMSample{SampleRate: 11025, Data: []byte{4}},
 			DeathPodth2: PCMSample{SampleRate: 11025, Data: []byte{5}},
 			DeathPodth3: PCMSample{SampleRate: 11025, Data: []byte{6}},
@@ -218,6 +219,24 @@ func TestPCMMonoU8ToStereoS16LEResampledLength(t *testing.T) {
 	// 4x upsample: 4 input frames -> 16 output frames, 4 bytes per frame.
 	if len(got) != 16*4 {
 		t.Fatalf("len=%d want=%d", len(got), 16*4)
+	}
+}
+
+func TestPCMMonoU8ToStereoS16LEResampledPreservesRamp(t *testing.T) {
+	src := []byte{0, 255}
+	got := pcmMonoU8ToStereoS16LEResampled(src, 11025, 44100)
+	if len(got) != 8*4 {
+		t.Fatalf("len=%d want=%d", len(got), 8*4)
+	}
+	samples := make([]int16, 0, len(got)/2)
+	for i := 0; i+1 < len(got); i += 2 {
+		samples = append(samples, int16(uint16(got[i])|uint16(got[i+1])<<8))
+	}
+	if len(samples) < 4 {
+		t.Fatalf("samples len=%d want >= 4", len(samples))
+	}
+	if !(samples[0] < samples[2] && samples[2] < samples[len(samples)-2]) {
+		t.Fatalf("expected rising interpolated ramp, got first=%d mid=%d last=%d", samples[0], samples[2], samples[len(samples)-2])
 	}
 }
 
@@ -257,6 +276,23 @@ func TestPrepareSoundBankForSourcePort_Precomputes44kMono(t *testing.T) {
 	}
 	if s.PreparedMono[0] >= s.PreparedMono[15] {
 		t.Fatalf("prepared mono should preserve rising shape: first=%d sample15=%d", s.PreparedMono[0], s.PreparedMono[15])
+	}
+}
+
+func TestPrepareSoundBankForFaithful_Precomputes44kMono(t *testing.T) {
+	bank := audiofx.PrepareSoundBankForFaithful(SoundBank{
+		ShootPistol: PCMSample{SampleRate: 11025, Data: []byte{0, 64, 128, 255}},
+	}, 44100)
+	s := bank.ShootPistol
+	if s.FaithfulPreparedRate != 44100 {
+		t.Fatalf("faithful prepared rate=%d want=44100", s.FaithfulPreparedRate)
+	}
+	const resampledLen = 16
+	if len(s.FaithfulPreparedMono) != resampledLen {
+		t.Fatalf("faithful prepared len=%d want=%d", len(s.FaithfulPreparedMono), resampledLen)
+	}
+	if s.FaithfulPreparedMono[0] >= s.FaithfulPreparedMono[15] {
+		t.Fatalf("faithful prepared mono should preserve rising shape: first=%d sample15=%d", s.FaithfulPreparedMono[0], s.FaithfulPreparedMono[15])
 	}
 }
 
