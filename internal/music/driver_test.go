@@ -150,6 +150,18 @@ func (doubleVoiceBank) PatchVoices(program uint8, percussion bool, note uint8) [
 	}
 }
 
+type singleVoicePatchBank struct {
+	patch Patch
+}
+
+func (b singleVoicePatchBank) Patch(program uint8, percussion bool, note uint8) Patch {
+	return b.patch
+}
+
+func (b singleVoicePatchBank) PatchVoices(program uint8, percussion bool, note uint8) []NotePatch {
+	return []NotePatch{{Patch: b.patch}}
+}
+
 func TestDriverNoteOffStopsAllVoicesForNote(t *testing.T) {
 	d := NewDriver(49716, doubleVoiceBank{})
 	d.Reset()
@@ -194,6 +206,25 @@ func TestDriverPitchBendUsesMSB(t *testing.T) {
 	d.applyEvent(Event{Type: EventPitchBend, Channel: 0, A: 0x00, B: 0x41})
 	if got := d.ch[0].pitchBend; got != 1 {
 		t.Fatalf("bend=%d want=1", got)
+	}
+}
+
+func TestDriverResetMatchesChocolateChannelDefaults(t *testing.T) {
+	d := NewOutputDriver(nil)
+	d.Reset()
+	if got := len(d.voices); got != 18 {
+		t.Fatalf("voice count=%d want=18", got)
+	}
+	for i, ch := range d.ch {
+		if ch.volume != 100 {
+			t.Fatalf("channel %d volume=%d want=100", i, ch.volume)
+		}
+		if ch.expression != 127 {
+			t.Fatalf("channel %d expression=%d want=127", i, ch.expression)
+		}
+		if ch.pan != 64 {
+			t.Fatalf("channel %d pan=%d want=64", i, ch.pan)
+		}
 	}
 }
 
@@ -279,6 +310,45 @@ func TestDriverControlChangeRefreshesActiveVoiceRegisters(t *testing.T) {
 	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerPan, B: 127})
 	if !opl.wroteAddr(0xC0) {
 		t.Fatal("expected pan/feedback register write on controller pan change")
+	}
+}
+
+func TestDriverNoteOnProgramsOperatorsInChocolateOrder(t *testing.T) {
+	d := NewOutputDriver(nil)
+	opl := &captureOPL{}
+	d.opl = opl
+	d.Reset()
+
+	patch := Patch{
+		Mod20: 0x21, Mod40: 0x12, Mod60: 0xF3, Mod80: 0x24, ModE0: 0x02,
+		Car20: 0x01, Car40: 0x05, Car60: 0xF4, Car80: 0x25, CarE0: 0x03,
+		C0: 0x01,
+	}
+	d.bank = singleVoicePatchBank{patch: patch}
+	opl.writes = nil
+
+	d.noteOn(0, 60, 100)
+
+	want := []oplRegWrite{
+		{addr: 0x43, val: 0x3F},
+		{addr: 0x23, val: patch.Car20},
+		{addr: 0x63, val: patch.Car60},
+		{addr: 0x83, val: patch.Car80},
+		{addr: 0xE3, val: patch.CarE0},
+		{addr: 0x40, val: 0x3F},
+		{addr: 0x20, val: patch.Mod20},
+		{addr: 0x60, val: patch.Mod60},
+		{addr: 0x80, val: patch.Mod80},
+		{addr: 0xE0, val: patch.ModE0},
+	}
+
+	if len(opl.writes) < len(want) {
+		t.Fatalf("writes=%d want at least %d", len(opl.writes), len(want))
+	}
+	for i, w := range want {
+		if opl.writes[i] != w {
+			t.Fatalf("write[%d]=%+v want=%+v", i, opl.writes[i], w)
+		}
 	}
 }
 

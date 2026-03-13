@@ -8,8 +8,8 @@ import (
 const (
 	OutputSampleRate = 44100
 	defaultTicRate   = 140
-	// Doom DMX OPL path uses 9 simultaneous 2-op channels.
-	defaultVoices          = 9
+	// Chocolate Doom's -opl3 DMX path uses 18 simultaneous 2-op voices.
+	defaultVoices          = 18
 	DefaultOutputGain      = 1.0
 	MaxOutputGain          = 5.0
 	outputSoftKneeStart    = 0.85
@@ -19,7 +19,7 @@ const (
 	controllerResetAll     = 121
 	controllerAllSoundsOff = 120
 	controllerAllNotesOff  = 123
-	defaultChanVol         = 127
+	defaultChanVol         = 100
 	defaultChanExpr        = 127
 	defaultChanPan         = 64
 	defaultMUSPanMax       = 1.0
@@ -538,16 +538,27 @@ func resolveVoiceNote(inputNote uint8, percussion bool, p NotePatch) uint8 {
 func (d *Driver) writePatch(oplCh int, p Patch) {
 	base, ch := oplAddrBase(oplCh)
 	modSlot, carSlot := oplSlots(ch)
-	d.opl.WriteReg(uint16(base+0x20+modSlot), p.Mod20)
-	d.opl.WriteReg(uint16(base+0x40+modSlot), p.Mod40)
-	d.opl.WriteReg(uint16(base+0x60+modSlot), p.Mod60)
-	d.opl.WriteReg(uint16(base+0x80+modSlot), p.Mod80)
-	d.opl.WriteReg(uint16(base+0xE0+modSlot), p.ModE0)
+
+	// Match Chocolate Doom's SetVoiceInstrument/LoadOperatorData sequence:
+	// load carrier first at minimum volume, then modulator. In additive mode
+	// the modulator also starts at minimum volume until SetVoiceVolume runs.
+	carInitTL := (p.Car40 & 0xC0) | 0x3F
+	modInitTL := p.Mod40
+	if (p.C0 & 0x01) != 0 {
+		modInitTL = (p.Mod40 & 0xC0) | 0x3F
+	}
+
+	d.opl.WriteReg(uint16(base+0x40+carSlot), carInitTL)
 	d.opl.WriteReg(uint16(base+0x20+carSlot), p.Car20)
-	d.opl.WriteReg(uint16(base+0x40+carSlot), p.Car40)
 	d.opl.WriteReg(uint16(base+0x60+carSlot), p.Car60)
 	d.opl.WriteReg(uint16(base+0x80+carSlot), p.Car80)
 	d.opl.WriteReg(uint16(base+0xE0+carSlot), p.CarE0)
+
+	d.opl.WriteReg(uint16(base+0x40+modSlot), modInitTL)
+	d.opl.WriteReg(uint16(base+0x20+modSlot), p.Mod20)
+	d.opl.WriteReg(uint16(base+0x60+modSlot), p.Mod60)
+	d.opl.WriteReg(uint16(base+0x80+modSlot), p.Mod80)
+	d.opl.WriteReg(uint16(base+0xE0+modSlot), p.ModE0)
 }
 
 func (d *Driver) writeVolume(oplCh int, ch, velocity uint8, patch Patch) {
