@@ -4,9 +4,9 @@ go 1.26.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/Distortions81/impsynth v0.0.0-20260313165954-175474ba2d2c
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
 	github.com/pradeep-pyro/triangle v0.0.0-20181224021403-536c46311a99
-	github.com/remeh/sizedwaitgroup v1.0.0
 )
 
 require (

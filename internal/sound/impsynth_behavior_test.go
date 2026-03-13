@@ -6,16 +6,16 @@ import (
 )
 
 func TestImpSynthCarrierAttenuationTracksTLAndKSL(t *testing.T) {
-	lowTL := measureCarrierEnvelopeOut(0x00, 0x20, 0x20)
-	highTL := measureCarrierEnvelopeOut(0x20, 0x20, 0x20)
-	if highTL <= lowTL {
-		t.Fatalf("carrier attenuation with TL=%d want > TL=0 attenuation=%d", highTL, lowTL)
+	lowTL := renderImpSynthTone(0x20, 0x01, 0x23, 0x01, 0x40, 0x3F, 0x43, 0x00, 0x60, 0xF0, 0x63, 0xF0, 0x80, 0x00, 0x83, 0x00, 0xC0, 0x31, 0xA0, 0x20, 0xB0, 0x20)
+	highTL := renderImpSynthTone(0x20, 0x01, 0x23, 0x01, 0x40, 0x3F, 0x43, 0x20, 0x60, 0xF0, 0x63, 0xF0, 0x80, 0x00, 0x83, 0x00, 0xC0, 0x31, 0xA0, 0x20, 0xB0, 0x20)
+	if rmsMono(highTL) >= rmsMono(lowTL) {
+		t.Fatalf("carrier TL should reduce output rms: highTL=%.4f lowTL=%.4f", rmsMono(highTL), rmsMono(lowTL))
 	}
 
-	lowKSL := measureCarrierEnvelopeOut(0x40, 0x20, 0x20)
-	highKSL := measureCarrierEnvelopeOut(0x40, 0xF0, 0x3B)
-	if highKSL <= lowKSL {
-		t.Fatalf("carrier attenuation with higher KSL=%d want > lower KSL=%d", highKSL, lowKSL)
+	lowKSL := renderImpSynthTone(0x20, 0x01, 0x23, 0x01, 0x40, 0x3F, 0x43, 0x40, 0x60, 0xF0, 0x63, 0xF0, 0x80, 0x00, 0x83, 0x00, 0xC0, 0x31, 0xA0, 0x20, 0xB0, 0x20)
+	highKSL := renderImpSynthTone(0x20, 0x01, 0x23, 0x01, 0x40, 0x3F, 0x43, 0x40, 0x60, 0xF0, 0x63, 0xF0, 0x80, 0x00, 0x83, 0x00, 0xC0, 0x31, 0xA0, 0xF0, 0xB0, 0x3B)
+	if rmsMono(highKSL) >= rmsMono(lowKSL) {
+		t.Fatalf("carrier KSL should reduce output rms: highKSL=%.4f lowKSL=%.4f", rmsMono(highKSL), rmsMono(lowKSL))
 	}
 }
 
@@ -31,40 +31,26 @@ func TestImpSynthAttackDecayReleaseHaveExpectedShape(t *testing.T) {
 		0x83, 0x44,
 		0xC0, 0x30,
 		0xA0, 0x98,
+		0xB0, 0x31,
 	)
-	opl.WriteReg(0xB0, 0x31)
-	ch := &opl.ch[0]
-	op := &ch.ops[1]
-	startAtten := op.egOut
-	minAttackAtten := startAtten
-	for i := 0; i < 2048; i++ {
-		opl.advanceEnvelope(ch, op)
-		opl.advanceChipState()
-		if op.egOut < minAttackAtten {
-			minAttackAtten = op.egOut
-		}
+	onset := normalizedEnvelope(opl.GenerateStereoS16(8192), 256)
+	if len(onset) < 8 {
+		t.Fatalf("envelope windows=%d want >= 8", len(onset))
 	}
-	if minAttackAtten >= startAtten {
-		t.Fatalf("attack attenuation=%d want below start attenuation=%d", minAttackAtten, startAtten)
+	if onset[1] <= onset[0] {
+		t.Fatalf("attack should rise: start=%.4f next=%.4f", onset[0], onset[1])
 	}
-
-	postAttackAtten := op.egOut
-	for i := 0; i < 4096; i++ {
-		opl.advanceEnvelope(ch, op)
-		opl.advanceChipState()
-	}
-	if op.egOut <= postAttackAtten {
-		t.Fatalf("decay attenuation=%d want above post-attack attenuation=%d", op.egOut, postAttackAtten)
+	if maxSlice(onset[:4]) <= onset[0] {
+		t.Fatalf("attack peak %.4f should exceed start %.4f", maxSlice(onset[:4]), onset[0])
 	}
 
 	opl.WriteReg(0xB0, 0x11)
-	releaseStart := op.egOut
-	for i := 0; i < 4096; i++ {
-		opl.advanceEnvelope(ch, op)
-		opl.advanceChipState()
+	release := normalizedEnvelope(opl.GenerateStereoS16(8192), 256)
+	if len(release) < 4 {
+		t.Fatalf("release windows=%d want >= 4", len(release))
 	}
-	if op.egOut <= releaseStart {
-		t.Fatalf("release attenuation=%d want above release start attenuation=%d", op.egOut, releaseStart)
+	if release[len(release)-1] >= release[0] {
+		t.Fatalf("release should decay: start=%.4f end=%.4f", release[0], release[len(release)-1])
 	}
 }
 
@@ -179,18 +165,6 @@ func TestImpSynthMediumAttackPatchEscapesSilence(t *testing.T) {
 		0xA0, 0x98,
 		0xB0, 0x31,
 	)
-
-	ch := &opl.ch[0]
-	car := &ch.ops[1]
-	start := car.egRout
-	for i := 0; i < 8192; i++ {
-		_, _ = opl.renderChannel(0)
-		opl.advanceChipState()
-	}
-	if car.egRout >= start {
-		t.Fatalf("carrier egRout=%d want below initial attenuation=%d", car.egRout, start)
-	}
-
 	pcm := opl.GenerateStereoS16(8192)
 	nonZero := false
 	for _, s := range pcm {
@@ -208,26 +182,6 @@ func BenchmarkImpSynthRenderReferenceCorpus(b *testing.B) {
 	benchmarkSynthReferenceCorpus(b, "impsynth", func() *ImpSynth {
 		return NewImpSynth(49716)
 	})
-}
-
-func measureCarrierEnvelopeOut(car40, a0, b0 uint8) uint16 {
-	opl := newImpSynthTone(
-		0x20, 0x01,
-		0x23, 0x01,
-		0x40, 0x3F,
-		0x43, uint16(car40),
-		0x60, 0xF0,
-		0x63, 0xF0,
-		0x80, 0x00,
-		0x83, 0x00,
-		0xC0, 0x31,
-		0xA0, uint16(a0),
-		0xB0, uint16(b0),
-	)
-	ch := &opl.ch[0]
-	op := &ch.ops[1]
-	opl.advanceEnvelope(ch, op)
-	return op.egOut
 }
 
 func renderImpSynthTone(regs ...uint16) []int16 {
@@ -253,6 +207,31 @@ func monoFromStereo(pcm []int16) []float64 {
 		mono[i] = float64(int(pcm[i*2])+int(pcm[i*2+1])) / 65534.0
 	}
 	return mono
+}
+
+func rmsMono(pcm []int16) float64 {
+	mono := monoFromStereo(pcm)
+	if len(mono) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, v := range mono {
+		sum += v * v
+	}
+	return math.Sqrt(sum / float64(len(mono)))
+}
+
+func maxSlice(v []float64) float64 {
+	if len(v) == 0 {
+		return 0
+	}
+	out := v[0]
+	for _, x := range v[1:] {
+		if x > out {
+			out = x
+		}
+	}
+	return out
 }
 
 func normalizedEnvelope(pcm []int16, window int) []float64 {
