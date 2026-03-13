@@ -1,6 +1,9 @@
 package sound
 
-import "math"
+import (
+	"math"
+	"math/bits"
+)
 
 const (
 	opl3DefaultSampleRate = 49716
@@ -14,6 +17,7 @@ const (
 	oplAttenTableSize = 2048
 
 	oplChannelMixGain                      = 0.125
+	oplOperatorOutputScale                 = 4096.0
 	oplPhaseModScale                       = 2032.0
 	oplFeedbackPhaseScaleRatio             = 4.0
 	oplEnvOff                  oplEnvStage = iota
@@ -138,6 +142,7 @@ type ImpSynth struct {
 	egState          uint8
 	egAdd            uint8
 	egTimerLo        uint8
+	activeMask       uint32
 	stereoBuf        []int16
 	monoBuf          []byte
 }
@@ -180,6 +185,7 @@ func (o *ImpSynth) Reset() {
 	o.egState = 0
 	o.egAdd = 0
 	o.egTimerLo = 0
+	o.activeMask = 0
 	o.resamplePhase = 0
 	o.resamplePrimed = false
 	o.resamplePrevL = 0
@@ -306,7 +312,6 @@ func (o *ImpSynth) GenerateStereoS16(frames int) []int16 {
 		r = clampSample(r)
 		out[i*2] = int16(l * 32767)
 		out[i*2+1] = int16(r * 32767)
-		o.advanceChipState()
 	}
 	return out
 }
@@ -344,7 +349,8 @@ func (o *ImpSynth) primeResampler() {
 
 func (o *ImpSynth) renderChipSample() (float64, float64) {
 	var l, r float64
-	for ch := 0; ch < opl3ChannelCount; ch++ {
+	for active := o.activeMask; active != 0; active &= active - 1 {
+		ch := bits.TrailingZeros32(active)
 		sl, sr := o.renderChannel(ch)
 		l += sl
 		r += sr
@@ -387,7 +393,8 @@ func (o *ImpSynth) renderChannel(ch int) (float64, float64) {
 		return 0, 0
 	}
 	c := &o.ch[ch]
-	if c.fnum == 0 && !c.keyOn && c.ops[0].egRout >= oplEnvelopeSilent && c.ops[1].egRout >= oplEnvelopeSilent {
+	if !c.keyOn && c.ops[0].egRout >= oplEnvelopeSilent && c.ops[1].egRout >= oplEnvelopeSilent {
+		o.activeMask &^= 1 << uint(ch)
 		return 0, 0
 	}
 
@@ -396,23 +403,21 @@ func (o *ImpSynth) renderChannel(ch int) (float64, float64) {
 
 	o.advanceEnvelope(c, mod)
 	modPhase := o.advanceOperatorPhase(c, mod)
-	modFB := 0.0
+	modFB := 0
 	if c.feedback != 0 {
-		modFB = float64(oplFeedbackPhaseOffset(c.fbPrev[0], c.fbPrev[1], c.feedback))
+		modFB = oplFeedbackPhaseOffset(c.fbPrev[0], c.fbPrev[1], c.feedback)
 	}
-	modSample := o.sampleOperator(mod, modPhase, modFB)
-	modPhaseOut := phaseModFromSample(mod, modSample)
-	mod.out = modSample
+	modRaw, modSample := o.sampleOperator(mod, modPhase, modFB)
 	c.fbPrev[1] = c.fbPrev[0]
-	c.fbPrev[0] = modPhaseOut
+	c.fbPrev[0] = modRaw
 
 	o.advanceEnvelope(c, car)
 	carPhase := o.advanceOperatorPhase(c, car)
-	carMod := 0.0
+	carMod := 0
 	if !c.additive {
-		carMod = float64(modPhaseOut)
+		carMod = modRaw
 	}
-	carSample := o.sampleOperator(car, carPhase, carMod)
+	_, carSample := o.sampleOperator(car, carPhase, carMod)
 
 	out := carSample
 	if c.additive {
@@ -421,18 +426,12 @@ func (o *ImpSynth) renderChannel(ch int) (float64, float64) {
 	return out * c.panL * oplChannelMixGain, out * c.panR * oplChannelMixGain
 }
 
-func (o *ImpSynth) sampleOperator(op *impSynthOperatorState, phase int, phaseMod float64) float64 {
+func (o *ImpSynth) sampleOperator(op *impSynthOperatorState, phase int, phaseMod int) (int, float64) {
 	if op == nil {
-		return 0
+		return 0, 0
 	}
-	idx := (phase + int(phaseMod)) & oplWaveTableMask
-	atten := int(op.egOut)
-	if atten < 0 {
-		atten = 0
-	} else if atten >= len(oplAttenTable) {
-		atten = len(oplAttenTable) - 1
-	}
-	return oplWaveTable[op.regWave&0x07][idx] * oplAttenTable[atten]
+	raw := oplWaveOutput(op.regWave&0x07, uint16(phase+phaseMod), op.egOut)
+	return raw, float64(raw) / oplOperatorOutputScale
 }
 
 func (o *ImpSynth) advanceEnvelope(c *impSynthChannelState, op *impSynthOperatorState) {
@@ -443,6 +442,8 @@ func (o *ImpSynth) advanceEnvelope(c *impSynthChannelState, op *impSynthOperator
 	if op.regTrem {
 		trem = int(o.tremolo)
 	}
+	baseAtten := int(op.egRout) + int(op.regTL<<2) + int(op.egKSL>>oplKSLShift[op.regKSL]) + trem
+	op.egOut = uint16(clampAtten(baseAtten))
 
 	reset := c.keyOn && op.stage == oplEnvRelease
 	regRate := uint8(0)
@@ -520,7 +521,7 @@ func (o *ImpSynth) advanceEnvelope(c *impSynthChannelState, op *impSynthOperator
 			egInc = int(^op.egRout) >> uint(4-shift)
 		}
 	case oplEnvDecay:
-		if int(op.egRout>>4) >= int(op.regSL) {
+		if int(op.egRout>>4) == int(op.regSL) {
 			op.stage = oplEnvSustain
 		} else if !egOff && !reset && shift > 0 {
 			egInc = 1 << (shift - 1)
@@ -538,8 +539,6 @@ func (o *ImpSynth) advanceEnvelope(c *impSynthChannelState, op *impSynthOperator
 	if !c.keyOn {
 		op.stage = oplEnvRelease
 	}
-	baseAtten := int(op.egRout) + int(op.regTL<<2) + int(op.egKSL>>oplKSLShift[op.regKSL]) + trem
-	op.egOut = uint16(clampAtten(baseAtten))
 }
 
 func (o *ImpSynth) advanceOperatorPhase(c *impSynthChannelState, op *impSynthOperatorState) int {
@@ -578,6 +577,7 @@ func (o *ImpSynth) keyOnChannel(ch int) {
 	if ch < 0 || ch >= len(o.ch) {
 		return
 	}
+	o.activeMask |= 1 << uint(ch)
 	o.ch[ch].fbPrev = [2]int{}
 }
 
@@ -840,8 +840,8 @@ func clampAtten(v int) int {
 	if v < 0 {
 		return 0
 	}
-	if v >= oplAttenTableSize {
-		return oplAttenTableSize - 1
+	if v > 0x3ff {
+		return 0x3ff
 	}
 	return v
 }
