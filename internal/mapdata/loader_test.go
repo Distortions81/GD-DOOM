@@ -121,7 +121,7 @@ func TestDecodeSegsAndSSECTORS_StrideErrors(t *testing.T) {
 	path := filepath.Join(tmp, "badstride.wad")
 
 	data := buildTestWAD(t, []wadLumpData{
-		{name: "SEGS", data: []byte{1, 2, 3}},      // not divisible by 12
+		{name: "SEGS", data: []byte{1, 2, 3}},     // not divisible by 12
 		{name: "SSECTORS", data: []byte{1, 2, 3}}, // not divisible by 4
 	})
 	if err := os.WriteFile(path, data, 0o644); err != nil {

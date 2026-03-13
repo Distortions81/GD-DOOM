@@ -10,11 +10,11 @@ const (
 	opl3ChannelCount      = 18
 	opl3OperatorCount     = 2
 
-	oplWaveTableSize  = 1024
-	oplWaveTableMask  = oplWaveTableSize - 1
-	oplPhaseFracBits  = 9
-	oplEnvelopeSilent = 0x1ff
-	oplAttenTableSize = 2048
+	synthWaveTableSize = 1024
+	synthWaveTableMask = synthWaveTableSize - 1
+	oplPhaseFracBits   = 9
+	oplEnvelopeSilent  = 0x1ff
+	oplAttenTableSize  = 2048
 
 	oplChannelMixGain                      = 0.125
 	oplOperatorOutputScale                 = 4096.0
@@ -38,7 +38,7 @@ var (
 		0, 0, 0, 1, 1, 1, -1, -1,
 		0, 0, 0, 1, 1, 1,
 	}
-	// The OPL frequency multiplier table is stored doubled.
+	// The synth frequency multiplier table is stored doubled.
 	oplFrequencyMultiples = [16]uint32{
 		1, 2, 4, 6, 8, 10, 12, 14,
 		16, 18, 20, 20, 24, 24, 30, 30,
@@ -64,7 +64,7 @@ var (
 		32 * oplFeedbackPhaseScaleRatio,
 		64 * oplFeedbackPhaseScaleRatio,
 	}
-	oplWavePhaseModScale = [8]float64{
+	synthWavePhaseModScale = [8]float64{
 		1.18, // sine needs a little more phase authority to keep low-note body
 		1.08,
 		0.76, // rectified sine runs too bright without an extra trim
@@ -74,8 +74,8 @@ var (
 		0.72,
 		0.80,
 	}
-	oplWaveTable  [8][oplWaveTableSize]float64
-	oplAttenTable [oplAttenTableSize]float64
+	synthWaveTable [8][synthWaveTableSize]float64
+	oplAttenTable  [oplAttenTableSize]float64
 )
 
 type oplEnvStage uint8
@@ -115,7 +115,7 @@ type impSynthChannelState struct {
 	ops      [opl3OperatorCount]impSynthOperatorState
 }
 
-// ImpSynth is a Go-native OPL3-inspired synth for the subset of the chip this
+// ImpSynth is a Go-native FM synth for the subset of the register model this
 // codebase drives: 2-op voices, operator envelopes, feedback, waveforms, pan,
 // and DMX-style register writes.
 type ImpSynth struct {
@@ -148,8 +148,8 @@ type ImpSynth struct {
 }
 
 func init() {
-	buildOPLWaveTables()
-	buildOPLAttenuationTable()
+	buildSynthWaveTables()
+	buildSynthAttenuationTable()
 }
 
 // NewImpSynth creates an ImpSynth fallback at the provided sample rate.
@@ -205,7 +205,7 @@ func (o *ImpSynth) Reset() {
 	}
 }
 
-// WriteReg applies a subset of OPL3 register writes.
+// WriteReg applies the subset of register writes used by this runtime.
 func (o *ImpSynth) WriteReg(addr uint16, value uint8) {
 	if o == nil {
 		return
@@ -430,7 +430,7 @@ func (o *ImpSynth) sampleOperator(op *impSynthOperatorState, phase int, phaseMod
 	if op == nil {
 		return 0, 0
 	}
-	raw := oplWaveOutput(op.regWave&0x07, uint16(phase+phaseMod), op.egOut)
+	raw := synthWaveOutput(op.regWave&0x07, uint16(phase+phaseMod), op.egOut)
 	return raw, float64(raw) / oplOperatorOutputScale
 }
 
@@ -570,7 +570,7 @@ func (o *ImpSynth) advanceOperatorPhase(c *impSynthChannelState, op *impSynthOpe
 
 	baseFreq := (fnum << c.block) >> 1
 	op.pgPhase += uint32((baseFreq * int(oplFrequencyMultiples[op.regMult])) >> 1)
-	return phase & oplWaveTableMask
+	return phase & synthWaveTableMask
 }
 
 func (o *ImpSynth) keyOnChannel(ch int) {
@@ -759,17 +759,17 @@ func oplSlotForChannelOp(ch int, op int) int {
 	return carSlots[ch]
 }
 
-func buildOPLWaveTables() {
-	for wave := 0; wave < len(oplWaveTable); wave++ {
-		for i := 0; i < oplWaveTableSize; i++ {
-			oplWaveTable[wave][i] = oplWaveSample(wave, i)
+func buildSynthWaveTables() {
+	for wave := 0; wave < len(synthWaveTable); wave++ {
+		for i := 0; i < synthWaveTableSize; i++ {
+			synthWaveTable[wave][i] = synthWaveSample(wave, i)
 		}
 	}
 }
 
-func oplWaveSample(wave int, idx int) float64 {
-	idx &= oplWaveTableMask
-	phase := float64(idx) / float64(oplWaveTableSize)
+func synthWaveSample(wave int, idx int) float64 {
+	idx &= synthWaveTableMask
+	phase := float64(idx) / float64(synthWaveTableSize)
 	switch wave & 0x07 {
 	case 0:
 		return math.Sin(phase * 2 * math.Pi)
@@ -820,7 +820,7 @@ func oplStereoPanGains(pan uint8) (float64, float64) {
 	return left, right
 }
 
-func buildOPLAttenuationTable() {
+func buildSynthAttenuationTable() {
 	for i := 0; i < len(oplAttenTable); i++ {
 		oplAttenTable[i] = math.Exp2(-float64(i) / 32.0)
 	}
@@ -859,7 +859,7 @@ func clampSample(v float64) float64 {
 func phaseModFromSample(op *impSynthOperatorState, sample float64) int {
 	scale := oplPhaseModScale
 	if op != nil {
-		scale *= oplWavePhaseModScale[op.regWave&0x07]
+		scale *= synthWavePhaseModScale[op.regWave&0x07]
 	}
 	return int(math.Round(sample * scale))
 }

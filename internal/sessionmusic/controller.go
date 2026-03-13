@@ -15,10 +15,10 @@ type Controller struct {
 }
 
 const (
-	impSynthOPLGainRatio = 1.0
+	impSynthGainRatio = 1.0
 )
 
-func New(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank) (*Controller, error) {
+func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank) (*Controller, error) {
 	player, err := music.NewChunkPlayer()
 	if err != nil {
 		return nil, err
@@ -30,7 +30,7 @@ func New(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool,
 		return nil, err
 	}
 	driver.SetMUSPanMax(musPanMax)
-	driver.SetOutputGain(effectiveOPLGain(backend, oplVolume))
+	driver.SetOutputGain(effectiveSynthGain(backend, synthGain))
 	driver.SetPreEmphasis(preEmphasis)
 	return &Controller{
 		player:  player,
@@ -67,7 +67,7 @@ func (c *Controller) SetOutputGain(v float64) {
 	if c == nil || c.driver == nil {
 		return
 	}
-	c.driver.SetOutputGain(effectiveOPLGain(c.backend, v))
+	c.driver.SetOutputGain(effectiveSynthGain(c.backend, v))
 }
 
 func (c *Controller) PlayMUS(data []byte) {
@@ -136,17 +136,17 @@ func (c *Controller) stream(stop <-chan struct{}, stream *music.StreamRenderer) 
 	}
 }
 
-func effectiveOPLGain(backend sound.Backend, gain float64) float64 {
+func effectiveSynthGain(backend sound.Backend, gain float64) float64 {
 	if backend == sound.BackendAuto {
 		backend = sound.DefaultBackend()
 	}
-	return gain * oplGainRatio(backend)
+	return gain * synthGainRatio(backend)
 }
 
-func oplGainRatio(backend sound.Backend) float64 {
+func synthGainRatio(backend sound.Backend) float64 {
 	switch backend {
 	case sound.BackendImpSynth:
-		return impSynthOPLGainRatio
+		return impSynthGainRatio
 	default:
 		return 1.0
 	}

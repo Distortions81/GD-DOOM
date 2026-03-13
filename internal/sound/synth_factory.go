@@ -15,7 +15,7 @@ func validateBackend(backend Backend) error {
 	}
 }
 
-func newOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {
+func newSynthWithBackend(sampleRate int, backend Backend) (Synth, error) {
 	switch backend {
 	case BackendAuto, BackendImpSynth:
 		return NewImpSynth(sampleRate), nil

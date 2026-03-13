@@ -38,29 +38,29 @@ func ValidateBackend(backend Backend) error {
 	return validateBackend(backend)
 }
 
-// OPL3 is the runtime synth interface used by the music driver.
-type OPL3 interface {
+// Synth is the runtime synth interface used by the music driver.
+type Synth interface {
 	Reset()
 	WriteReg(addr uint16, value uint8)
 	GenerateStereoS16(frames int) []int16
 	GenerateMonoU8(frames int) []byte
 }
 
-// NewOPL3 creates the default OPL3 backend for the current build.
-func NewOPL3(sampleRate int) OPL3 {
-	opl, err := NewOPL3WithBackend(sampleRate, BackendAuto)
+// NewSynth creates the default synth backend for the current build.
+func NewSynth(sampleRate int) Synth {
+	synth, err := NewSynthWithBackend(sampleRate, BackendAuto)
 	if err == nil {
-		return opl
+		return synth
 	}
 	return NewImpSynth(sampleRate)
 }
 
-func NewOPL3WithBackend(sampleRate int, backend Backend) (OPL3, error) {
+func NewSynthWithBackend(sampleRate int, backend Backend) (Synth, error) {
 	if strings.TrimSpace(string(backend)) == "" {
 		backend = BackendAuto
 	}
 	if err := ValidateBackend(backend); err != nil {
 		return nil, err
 	}
-	return newOPL3WithBackend(sampleRate, backend)
+	return newSynthWithBackend(sampleRate, backend)
 }

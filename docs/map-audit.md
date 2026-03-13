@@ -1,6 +1,6 @@
 # Map Audit
 
-Generated from local IWADs with `doom-source` as the behavior reference.
+Generated from local IWADs with a local reference runtime as the behavior baseline.
 
 This report only lists map-data oddities found in the IWADs.
 
@@ -53,4 +53,3 @@ None.
 ### Unknown Sector Specials
 
 None.
-

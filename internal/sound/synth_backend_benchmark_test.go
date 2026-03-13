@@ -2,12 +2,12 @@ package sound
 
 import "testing"
 
-type oplBenchmarkCase struct {
+type synthBenchmarkCase struct {
 	name string
 	regs []uint16
 }
 
-var oplBenchmarkCases = []oplBenchmarkCase{
+var synthBenchmarkCases = []synthBenchmarkCase{
 	{
 		name: "melodic_fm",
 		regs: []uint16{0x20, 0x21, 0x23, 0x01, 0x40, 0x08, 0x43, 0x00, 0x60, 0xF2, 0x63, 0xF2, 0x80, 0x24, 0x83, 0x24, 0xC0, 0x30, 0xA0, 0x98, 0xB0, 0x31},
@@ -22,28 +22,28 @@ var oplBenchmarkCases = []oplBenchmarkCase{
 	},
 }
 
-func benchmarkOPLReferenceCorpus[B interface {
+func benchmarkSynthReferenceCorpus[B interface {
 	GenerateStereoS16(frames int) []int16
 	WriteReg(addr uint16, value uint8)
 }](b *testing.B, backendName string, newBackend func() B) {
-	for _, tc := range oplBenchmarkCases {
+	for _, tc := range synthBenchmarkCases {
 		b.Run(backendName+"/"+tc.name, func(b *testing.B) {
-			opl := newBackend()
-			opl.WriteReg(0x01, 0x20)
+			synth := newBackend()
+			synth.WriteReg(0x01, 0x20)
 			for i := 0; i+1 < len(tc.regs); i += 2 {
-				opl.WriteReg(tc.regs[i], uint8(tc.regs[i+1]))
+				synth.WriteReg(tc.regs[i], uint8(tc.regs[i+1]))
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_ = opl.GenerateStereoS16(2048)
+				_ = synth.GenerateStereoS16(2048)
 			}
 		})
 	}
 }
 
 func BenchmarkImpSynthReferenceCorpus(b *testing.B) {
-	benchmarkOPLReferenceCorpus(b, "impsynth", func() *ImpSynth {
+	benchmarkSynthReferenceCorpus(b, "impsynth", func() *ImpSynth {
 		return NewImpSynth(49716)
 	})
 }

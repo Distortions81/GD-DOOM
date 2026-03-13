@@ -8,7 +8,7 @@ import (
 const (
 	OutputSampleRate = 44100
 	defaultTicRate   = 140
-	// Chocolate Doom's -opl3 DMX path uses 18 simultaneous 2-op voices.
+	// The music path uses 18 simultaneous 2-op voices.
 	defaultVoices          = 18
 	DefaultOutputGain      = 1.0
 	MaxOutputGain          = 5.0
@@ -105,11 +105,11 @@ type voiceState struct {
 	freqWord   uint16
 	instrVoice uint8
 	patch      Patch
-	oplCh      int
+	synthCh    int
 }
 
 type Driver struct {
-	opl         sound.OPL3
+	synth       sound.Synth
 	sampleRate  int
 	ticRate     int
 	musPanMax   float64
@@ -138,12 +138,12 @@ func NewDriverWithBackend(sampleRate int, bank PatchBank, backend sound.Backend)
 	if bank == nil {
 		bank = DefaultPatchBank{}
 	}
-	opl, err := sound.NewOPL3WithBackend(sampleRate, backend)
+	synth, err := sound.NewSynthWithBackend(sampleRate, backend)
 	if err != nil {
 		return nil, err
 	}
 	d := &Driver{
-		opl:        opl,
+		synth:      synth,
 		sampleRate: sampleRate,
 		ticRate:    defaultTicRate,
 		musPanMax:  defaultMUSPanMax,
@@ -154,7 +154,7 @@ func NewDriverWithBackend(sampleRate int, bank PatchBank, backend sound.Backend)
 		allocList:  make([]int, 0, defaultVoices),
 	}
 	for i := range d.voices {
-		d.voices[i].oplCh = i
+		d.voices[i].synthCh = i
 		d.freeList = append(d.freeList, i)
 	}
 	for i := range d.ch {
@@ -209,16 +209,16 @@ func (d *Driver) Reset() {
 	if d == nil {
 		return
 	}
-	d.opl.Reset()
-	// Mirror Chocolate Doom OPL init low-register setup.
-	d.opl.WriteReg(0x04, 0x60) // reset timers
-	d.opl.WriteReg(0x04, 0x80) // enable interrupts
-	d.opl.WriteReg(0x01, 0x20) // waveform control enable
-	// Match Chocolate Doom's OPL3 NEW-mode init.
-	d.opl.WriteReg(0x105, 0x01)
-	d.opl.WriteReg(0x08, 0x40) // FM mode / keyboard split
+	d.synth.Reset()
+	// Initialize the low register set expected by the music path.
+	d.synth.WriteReg(0x04, 0x60) // reset timers
+	d.synth.WriteReg(0x04, 0x80) // enable interrupts
+	d.synth.WriteReg(0x01, 0x20) // waveform control enable
+	// Enable extended register mode.
+	d.synth.WriteReg(0x105, 0x01)
+	d.synth.WriteReg(0x08, 0x40) // FM mode / keyboard split
 	for i := range d.voices {
-		d.voices[i] = voiceState{oplCh: i}
+		d.voices[i] = voiceState{synthCh: i}
 	}
 	d.freeList = d.freeList[:0]
 	d.allocList = d.allocList[:0]
@@ -237,7 +237,7 @@ func (d *Driver) Reset() {
 
 // Render processes events and returns signed 16-bit stereo interleaved PCM.
 func (d *Driver) Render(events []Event) []int16 {
-	if d == nil || d.opl == nil || d.sampleRate <= 0 {
+	if d == nil || d.synth == nil || d.sampleRate <= 0 {
 		return nil
 	}
 	if d.ticRate <= 0 {
@@ -246,7 +246,7 @@ func (d *Driver) Render(events []Event) []int16 {
 	if len(d.voices) == 0 {
 		d.voices = make([]voiceState, defaultVoices)
 		for i := range d.voices {
-			d.voices[i].oplCh = i
+			d.voices[i].synthCh = i
 		}
 	}
 	d.ensureVoiceLists()
@@ -338,7 +338,7 @@ func (d *Driver) applyEvent(ev Event) {
 			d.allNotesOff(ev.Channel)
 		}
 	case EventPitchBend:
-		// DMX/Chocolate OPL path only uses MIDI pitch bend MSB.
+		// The music path only uses the MIDI pitch bend MSB.
 		d.ch[ch].pitchBend = int16(ev.B) - 64
 		d.refreshChannelPitch(uint8(ch))
 	case EventNoteOn:
@@ -370,10 +370,10 @@ func (d *Driver) noteOn(ch, note, velocity uint8) {
 		v.fineTune = np.FineTune
 		v.instrVoice = uint8(i)
 		v.patch = np.Patch
-		d.writePatch(v.oplCh, np.Patch)
-		d.writeVolume(v.oplCh, ch, velocity, np.Patch)
-		d.writePan(v.oplCh, ch, np.Patch.C0)
-		v.freqWord = d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
+		d.writePatch(v.synthCh, np.Patch)
+		d.writeVolume(v.synthCh, ch, velocity, np.Patch)
+		d.writePan(v.synthCh, ch, np.Patch.C0)
+		v.freqWord = d.writeNote(v.synthCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
 	}
 }
 
@@ -403,7 +403,7 @@ func (d *Driver) refreshChannelPitch(ch uint8) {
 			unchanged = append(unchanged, vi)
 			continue
 		}
-		v.freqWord = d.writeNote(v.oplCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
+		v.freqWord = d.writeNote(v.synthCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
 		updated = append(updated, vi)
 	}
 	d.allocList = append(unchanged, updated...)
@@ -415,7 +415,7 @@ func (d *Driver) refreshChannelVolume(ch uint8) {
 		if !v.active || v.ch != ch {
 			continue
 		}
-		d.writeVolume(v.oplCh, ch, v.velocity, v.patch)
+		d.writeVolume(v.synthCh, ch, v.velocity, v.patch)
 	}
 }
 
@@ -425,7 +425,7 @@ func (d *Driver) refreshChannelPan(ch uint8) {
 		if !v.active || v.ch != ch {
 			continue
 		}
-		d.writePan(v.oplCh, ch, v.patch.C0)
+		d.writePan(v.synthCh, ch, v.patch.C0)
 	}
 }
 
@@ -478,9 +478,9 @@ func (d *Driver) releaseVoiceAt(allocIdx int) {
 	}
 	vi := d.allocList[allocIdx]
 	v := &d.voices[vi]
-	d.writeFreqWord(v.oplCh, v.freqWord, false)
-	oplCh := v.oplCh
-	*v = voiceState{oplCh: oplCh}
+	d.writeFreqWord(v.synthCh, v.freqWord, false)
+	synthCh := v.synthCh
+	*v = voiceState{synthCh: synthCh}
 	copy(d.allocList[allocIdx:], d.allocList[allocIdx+1:])
 	d.allocList = d.allocList[:len(d.allocList)-1]
 	d.freeList = append(d.freeList, vi)
@@ -534,11 +534,11 @@ func resolveVoiceNote(inputNote uint8, percussion bool, p NotePatch) uint8 {
 	return uint8(n)
 }
 
-func (d *Driver) writePatch(oplCh int, p Patch) {
-	base, ch := oplAddrBase(oplCh)
+func (d *Driver) writePatch(synthCh int, p Patch) {
+	base, ch := synthAddrBase(synthCh)
 	modSlot, carSlot := oplSlots(ch)
 
-	// Match Chocolate Doom's SetVoiceInstrument/LoadOperatorData sequence:
+	// Apply voice/operator state in the expected register order:
 	// load carrier first at minimum volume, then modulator. In additive mode
 	// the modulator also starts at minimum volume until SetVoiceVolume runs.
 	carInitTL := (p.Car40 & 0xC0) | 0x3F
@@ -547,21 +547,21 @@ func (d *Driver) writePatch(oplCh int, p Patch) {
 		modInitTL = (p.Mod40 & 0xC0) | 0x3F
 	}
 
-	d.opl.WriteReg(uint16(base+0x40+carSlot), carInitTL)
-	d.opl.WriteReg(uint16(base+0x20+carSlot), p.Car20)
-	d.opl.WriteReg(uint16(base+0x60+carSlot), p.Car60)
-	d.opl.WriteReg(uint16(base+0x80+carSlot), p.Car80)
-	d.opl.WriteReg(uint16(base+0xE0+carSlot), p.CarE0)
+	d.synth.WriteReg(uint16(base+0x40+carSlot), carInitTL)
+	d.synth.WriteReg(uint16(base+0x20+carSlot), p.Car20)
+	d.synth.WriteReg(uint16(base+0x60+carSlot), p.Car60)
+	d.synth.WriteReg(uint16(base+0x80+carSlot), p.Car80)
+	d.synth.WriteReg(uint16(base+0xE0+carSlot), p.CarE0)
 
-	d.opl.WriteReg(uint16(base+0x40+modSlot), modInitTL)
-	d.opl.WriteReg(uint16(base+0x20+modSlot), p.Mod20)
-	d.opl.WriteReg(uint16(base+0x60+modSlot), p.Mod60)
-	d.opl.WriteReg(uint16(base+0x80+modSlot), p.Mod80)
-	d.opl.WriteReg(uint16(base+0xE0+modSlot), p.ModE0)
+	d.synth.WriteReg(uint16(base+0x40+modSlot), modInitTL)
+	d.synth.WriteReg(uint16(base+0x20+modSlot), p.Mod20)
+	d.synth.WriteReg(uint16(base+0x60+modSlot), p.Mod60)
+	d.synth.WriteReg(uint16(base+0x80+modSlot), p.Mod80)
+	d.synth.WriteReg(uint16(base+0xE0+modSlot), p.ModE0)
 }
 
-func (d *Driver) writeVolume(oplCh int, ch, velocity uint8, patch Patch) {
-	base, ci := oplAddrBase(oplCh)
+func (d *Driver) writeVolume(synthCh int, ch, velocity uint8, patch Patch) {
+	base, ci := synthAddrBase(synthCh)
 	modSlot, carSlot := oplSlots(ci)
 	cv := clampMIDI7(int(d.ch[ch&0x0F].volume))
 	vel := clampMIDI7(int(velocity))
@@ -574,7 +574,7 @@ func (d *Driver) writeVolume(oplCh int, ch, velocity uint8, patch Patch) {
 	if carTL > 0x3f {
 		carTL = 0x3f
 	}
-	d.opl.WriteReg(uint16(base+0x40+carSlot), (patch.Car40&0xC0)|uint8(carTL))
+	d.synth.WriteReg(uint16(base+0x40+carSlot), (patch.Car40&0xC0)|uint8(carTL))
 
 	// DMX behavior: in non-modulated feedback mode, modulator volume follows carrier.
 	if (patch.C0&0x01) != 0 && (patch.Mod40&0x3f) != 0x3f {
@@ -582,12 +582,12 @@ func (d *Driver) writeVolume(oplCh int, ch, velocity uint8, patch Patch) {
 		if modTL < carTL {
 			modTL = carTL
 		}
-		d.opl.WriteReg(uint16(base+0x40+modSlot), (patch.Mod40&0xC0)|uint8(modTL))
+		d.synth.WriteReg(uint16(base+0x40+modSlot), (patch.Mod40&0xC0)|uint8(modTL))
 	}
 }
 
-func (d *Driver) writePan(oplCh int, ch, c0 uint8) {
-	base, ci := oplAddrBase(oplCh)
+func (d *Driver) writePan(synthCh int, ch, c0 uint8) {
+	base, ci := synthAddrBase(synthCh)
 	pan := scaleMUSPan(d.ch[ch&0x0F].pan, d.musPanMax)
 	var lr uint8 = 0x30
 	switch {
@@ -596,24 +596,24 @@ func (d *Driver) writePan(oplCh int, ch, c0 uint8) {
 	case pan <= 48:
 		lr = 0x20
 	}
-	d.opl.WriteReg(uint16(base+0xC0+ci), (c0&0x0F)|lr)
+	d.synth.WriteReg(uint16(base+0xC0+ci), (c0&0x0F)|lr)
 }
 
-func (d *Driver) writeNote(oplCh int, note uint8, bend int16, keyOn bool) uint16 {
+func (d *Driver) writeNote(synthCh int, note uint8, bend int16, keyOn bool) uint16 {
 	freqWord := dmxFrequencyWord(int(note), bend)
-	d.writeFreqWord(oplCh, freqWord, keyOn)
+	d.writeFreqWord(synthCh, freqWord, keyOn)
 	return freqWord
 }
 
-func (d *Driver) writeFreqWord(oplCh int, freqWord uint16, keyOn bool) {
-	base, ci := oplAddrBase(oplCh)
+func (d *Driver) writeFreqWord(synthCh int, freqWord uint16, keyOn bool) {
+	base, ci := synthAddrBase(synthCh)
 	a := uint8(freqWord & 0x00FF)
 	b := uint8((freqWord >> 8) & 0x1F)
 	if keyOn {
 		b |= 0x20
 	}
-	d.opl.WriteReg(uint16(base+0xA0+ci), a)
-	d.opl.WriteReg(uint16(base+0xB0+ci), b)
+	d.synth.WriteReg(uint16(base+0xA0+ci), a)
+	d.synth.WriteReg(uint16(base+0xB0+ci), b)
 }
 
 func dmxFrequencyWord(note int, bend int16) uint16 {
@@ -665,10 +665,10 @@ func scaleMUSPan(pan uint8, max float64) uint8 {
 }
 
 func (d *Driver) generateStereoS16(frames int) []int16 {
-	if d == nil || d.opl == nil || frames <= 0 {
+	if d == nil || d.synth == nil || frames <= 0 {
 		return nil
 	}
-	out := d.opl.GenerateStereoS16(frames)
+	out := d.synth.GenerateStereoS16(frames)
 	if len(out) == 0 {
 		return out
 	}
@@ -760,7 +760,7 @@ func applyPreEmphasis(samples []int16, prev *[2]float64) {
 	}
 }
 
-// From Chocolate Doom i_oplmusic.c volume_mapping_table.
+// Volume mapping table used by the music driver.
 var volumeMappingTable = [128]int{
 	0, 1, 3, 5, 6, 8, 10, 11,
 	13, 14, 16, 17, 19, 20, 22, 23,
@@ -780,11 +780,11 @@ var volumeMappingTable = [128]int{
 	124, 124, 125, 125, 126, 126, 127, 127,
 }
 
-func oplAddrBase(oplCh int) (base int, ch int) {
-	if oplCh < 9 {
-		return 0x000, oplCh
+func synthAddrBase(synthCh int) (base int, ch int) {
+	if synthCh < 9 {
+		return 0x000, synthCh
 	}
-	return 0x100, oplCh - 9
+	return 0x100, synthCh - 9
 }
 
 func oplSlots(ch int) (mod int, car int) {

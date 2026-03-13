@@ -6,19 +6,19 @@ import (
 	"gddoom/internal/sound"
 )
 
-func TestEffectiveOPLGainUsesImpSynthRatio(t *testing.T) {
-	want := 3.5 * impSynthOPLGainRatio
-	if got := effectiveOPLGain(sound.BackendImpSynth, 3.5); got != want {
-		t.Fatalf("effectiveOPLGain(impsynth)=%.2f want %.2f", got, want)
+func TestEffectiveSynthGainUsesImpSynthRatio(t *testing.T) {
+	want := 3.5 * impSynthGainRatio
+	if got := effectiveSynthGain(sound.BackendImpSynth, 3.5); got != want {
+		t.Fatalf("effectiveSynthGain(impsynth)=%.2f want %.2f", got, want)
 	}
 }
 
-func TestEffectiveOPLGainUsesDefaultForAuto(t *testing.T) {
+func TestEffectiveSynthGainUsesDefaultForAuto(t *testing.T) {
 	want := 2.25
 	if sound.DefaultBackend() == sound.BackendImpSynth {
-		want *= impSynthOPLGainRatio
+		want *= impSynthGainRatio
 	}
-	if got := effectiveOPLGain(sound.BackendAuto, 2.25); got != want {
-		t.Fatalf("effectiveOPLGain(auto)=%.2f want %.2f", got, want)
+	if got := effectiveSynthGain(sound.BackendAuto, 2.25); got != want {
+		t.Fatalf("effectiveSynthGain(auto)=%.2f want %.2f", got, want)
 	}
 }

@@ -1,8 +1,8 @@
 package doomruntime
 
 const (
-	doomFineAngles = 8192
-	doomFineMask = doomFineAngles - 1
+	doomFineAngles       = 8192
+	doomFineMask         = doomFineAngles - 1
 	doomAngleToFineShift = 19
 )
 

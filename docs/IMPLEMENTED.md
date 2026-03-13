@@ -50,7 +50,7 @@ For launch flags, see [launch-params.md](/home/dist/github/GD-DOOM/docs/launch-p
 
 ## Audio and Music
 
-- MUS playback through the OPL3 path.
+- MUS playback through the FM synth path.
 - Doom-style door sound events.
 - Doom-style world sound spatialization with distance falloff and stereo panning.
 - Monster alert, idle-active, pain, death, and core attack sound coverage.

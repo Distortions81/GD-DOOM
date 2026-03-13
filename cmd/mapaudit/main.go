@@ -163,7 +163,7 @@ func flattenMap[K comparable](m map[K][]issue) []issue {
 func renderDoc(audits map[string]*wadAudit) string {
 	var b strings.Builder
 	b.WriteString("# Map Audit\n\n")
-	b.WriteString("Generated from local IWADs with `doom-source` as the behavior reference.\n\n")
+	b.WriteString("Generated from local IWADs with a local reference runtime as the behavior baseline.\n\n")
 	b.WriteString("This report only lists map-data oddities found in the IWADs.\n\n")
 	b.WriteString("Actionable engine parity gaps from this audit: none. The remaining entries are either expected Doom behavior or malformed map data.\n\n")
 	b.WriteString("Notes:\n")

@@ -212,9 +212,9 @@ func TestXYMovement_StepOffLedgePreservesMomentumWhileAirborne(t *testing.T) {
 			},
 		},
 		p: player{
-			x:      -32 * fracUnit,
-			y:      0,
-			z:      0,
+			x:          -32 * fracUnit,
+			y:          0,
+			z:          0,
 			viewHeight: playerViewHeight,
 		},
 	}

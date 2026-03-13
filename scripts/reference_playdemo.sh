@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DOOM_SRC_DIR="${ROOT_DIR}/doom-source/linuxdoom-1.10"
-BIN_PATH="${DOOM_SRC_DIR}/linux/linuxxdoom"
+REFERENCE_RUNTIME_DIR=""
+BIN_PATH=""
 WAD_DIR="${ROOT_DIR}"
 DEMO_NAME="demo1"
 REBUILD=0
@@ -14,24 +14,24 @@ EXTRA_ARGS=()
 
 usage() {
   cat <<'USAGE'
-Launch linuxdoom in a visible X11 window and play a built-in demo.
+Launch the reference runtime in a visible X11 window and play a built-in demo.
 
 Usage:
-  scripts/linuxdoom_playdemo.sh [options] [-- <extra linuxdoom args>]
+  scripts/reference_playdemo.sh [options] [-- <extra runtime args>]
 
 Options:
   --wad-dir <path>     Directory to use for DOOMWADDIR (default: repo root)
   --demo <name>        Demo name without .lmp suffix (default: demo1)
   --rebuild            Run make before launch
-  --bin <path>         Override linuxdoom binary path
+  --bin <path>         Override runtime binary path
   --direct             Run directly on DISPLAY instead of Xephyr
   --xephyr-display <d> Nested Xephyr display (default: :99)
   --xephyr-screen <g>  Xephyr screen geometry (default: 640x480x8)
   -h, --help           Show this help
 
 Examples:
-  scripts/linuxdoom_playdemo.sh
-  scripts/linuxdoom_playdemo.sh --wad-dir ./disabled-wads --demo demo2
+  scripts/reference_playdemo.sh
+  scripts/reference_playdemo.sh --wad-dir ./disabled-wads --demo demo2
 USAGE
 }
 
@@ -82,6 +82,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+if [[ -z "${BIN_PATH}" ]]; then
+  BIN_PATH="$(find "${ROOT_DIR}" -type f -path '*/linux/linuxxdoom' | head -n 1 || true)"
+fi
+if [[ -n "${BIN_PATH}" ]]; then
+  REFERENCE_RUNTIME_DIR="$(cd "$(dirname "${BIN_PATH}")/.." && pwd)"
+fi
+
 if [[ ! -d "${WAD_DIR}" ]]; then
   echo "WAD directory not found: ${WAD_DIR}" >&2
   exit 1
@@ -93,15 +100,19 @@ if [[ -z "${DISPLAY:-}" ]]; then
 fi
 
 if [[ "${REBUILD}" -eq 1 ]]; then
+  if [[ -z "${REFERENCE_RUNTIME_DIR}" ]]; then
+    echo "reference runtime source tree not found for rebuild" >&2
+    exit 1
+  fi
   (
-    cd "${DOOM_SRC_DIR}"
+    cd "${REFERENCE_RUNTIME_DIR}"
     make
   )
 fi
 
 if [[ ! -x "${BIN_PATH}" ]]; then
-  echo "linuxdoom binary not found or not executable: ${BIN_PATH}" >&2
-  echo "Run with --rebuild or build it in ${DOOM_SRC_DIR}." >&2
+  echo "reference runtime binary not found or not executable: ${BIN_PATH}" >&2
+  echo "Run with --rebuild or point --bin at a built runtime binary." >&2
   exit 1
 fi
 
@@ -111,7 +122,7 @@ if [[ "${USE_XEPHYR}" -eq 0 ]]; then
 fi
 
 if ! command -v Xephyr >/dev/null 2>&1; then
-  echo "Xephyr is required for a visible run because linuxdoom needs an 8-bit PseudoColor X server." >&2
+  echo "Xephyr is required for a visible run because the reference runtime needs an 8-bit PseudoColor X server." >&2
   echo "Install it with: sudo apt install xserver-xephyr" >&2
   echo "Then rerun this script." >&2
   exit 1

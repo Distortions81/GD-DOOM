@@ -46,4 +46,3 @@ func TestEnsureFloorVisplaneForRange_SplitsOnOverlapConflict(t *testing.T) {
 		t.Fatalf("visplane count=%d want=2", got)
 	}
 }
-

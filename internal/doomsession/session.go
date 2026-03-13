@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"gddoom/internal/demo"
+	"gddoom/internal/doomruntime"
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
-	"gddoom/internal/doomruntime"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/session"

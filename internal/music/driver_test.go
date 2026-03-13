@@ -211,14 +211,14 @@ func TestDriverPitchBendUsesMSB(t *testing.T) {
 
 func TestDriverResetMatchesChocolateChannelDefaults(t *testing.T) {
 	d := NewOutputDriver(nil)
-	opl := &captureOPL{}
-	d.opl = opl
+	synth := &captureSynth{}
+	d.synth = synth
 	d.Reset()
 	if got := len(d.voices); got != 18 {
 		t.Fatalf("voice count=%d want=18", got)
 	}
-	if got, ok := opl.lastWrite(0x105); !ok || got != 0x01 {
-		t.Fatalf("reset OPL new-mode write=%#02x ok=%v want 0x01,true", got, ok)
+	if got, ok := synth.lastWrite(0x105); !ok || got != 0x01 {
+		t.Fatalf("reset synth extended-mode write=%#02x ok=%v want 0x01,true", got, ok)
 	}
 	for i, ch := range d.ch {
 		if ch.volume != 100 {
@@ -245,23 +245,23 @@ func TestClampMIDI7(t *testing.T) {
 	}
 }
 
-type oplRegWrite struct {
+type synthRegWrite struct {
 	addr uint16
 	val  uint8
 }
 
-type captureOPL struct {
-	writes []oplRegWrite
+type captureSynth struct {
+	writes []synthRegWrite
 	pcm    []int16
 }
 
-func (o *captureOPL) Reset() {}
+func (o *captureSynth) Reset() {}
 
-func (o *captureOPL) WriteReg(addr uint16, value uint8) {
-	o.writes = append(o.writes, oplRegWrite{addr: addr, val: value})
+func (o *captureSynth) WriteReg(addr uint16, value uint8) {
+	o.writes = append(o.writes, synthRegWrite{addr: addr, val: value})
 }
 
-func (o *captureOPL) GenerateStereoS16(frames int) []int16 {
+func (o *captureSynth) GenerateStereoS16(frames int) []int16 {
 	if frames <= 0 {
 		return nil
 	}
@@ -275,9 +275,9 @@ func (o *captureOPL) GenerateStereoS16(frames int) []int16 {
 	return out
 }
 
-func (o *captureOPL) GenerateMonoU8(frames int) []byte { return nil }
+func (o *captureSynth) GenerateMonoU8(frames int) []byte { return nil }
 
-func (o *captureOPL) wroteAddr(addr uint16) bool {
+func (o *captureSynth) wroteAddr(addr uint16) bool {
 	for _, w := range o.writes {
 		if w.addr == addr {
 			return true
@@ -286,7 +286,7 @@ func (o *captureOPL) wroteAddr(addr uint16) bool {
 	return false
 }
 
-func (o *captureOPL) lastWrite(addr uint16) (uint8, bool) {
+func (o *captureSynth) lastWrite(addr uint16) (uint8, bool) {
 	for i := len(o.writes) - 1; i >= 0; i-- {
 		if o.writes[i].addr == addr {
 			return o.writes[i].val, true
@@ -297,31 +297,31 @@ func (o *captureOPL) lastWrite(addr uint16) (uint8, bool) {
 
 func TestDriverControlChangeRefreshesActiveVoiceRegisters(t *testing.T) {
 	d := NewOutputDriver(nil)
-	opl := &captureOPL{}
-	d.opl = opl
+	synth := &captureSynth{}
+	d.synth = synth
 	d.Reset()
 	d.applyEvent(Event{Type: EventNoteOn, Channel: 0, A: 60, B: 100})
 	if !d.voices[0].active {
 		t.Fatal("expected voice 0 active after note-on")
 	}
 
-	opl.writes = nil
+	synth.writes = nil
 	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerVol, B: 90})
-	if !opl.wroteAddr(0x43) {
+	if !synth.wroteAddr(0x43) {
 		t.Fatal("expected carrier volume register write on controller volume change")
 	}
 
-	opl.writes = nil
+	synth.writes = nil
 	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerPan, B: 127})
-	if !opl.wroteAddr(0xC0) {
+	if !synth.wroteAddr(0xC0) {
 		t.Fatal("expected pan/feedback register write on controller pan change")
 	}
 }
 
 func TestDriverNoteOnProgramsOperatorsInChocolateOrder(t *testing.T) {
 	d := NewOutputDriver(nil)
-	opl := &captureOPL{}
-	d.opl = opl
+	synth := &captureSynth{}
+	d.synth = synth
 	d.Reset()
 
 	patch := Patch{
@@ -330,11 +330,11 @@ func TestDriverNoteOnProgramsOperatorsInChocolateOrder(t *testing.T) {
 		C0: 0x01,
 	}
 	d.bank = singleVoicePatchBank{patch: patch}
-	opl.writes = nil
+	synth.writes = nil
 
 	d.noteOn(0, 60, 100)
 
-	want := []oplRegWrite{
+	want := []synthRegWrite{
 		{addr: 0x43, val: 0x3F},
 		{addr: 0x23, val: patch.Car20},
 		{addr: 0x63, val: patch.Car60},
@@ -347,25 +347,25 @@ func TestDriverNoteOnProgramsOperatorsInChocolateOrder(t *testing.T) {
 		{addr: 0xE0, val: patch.ModE0},
 	}
 
-	if len(opl.writes) < len(want) {
-		t.Fatalf("writes=%d want at least %d", len(opl.writes), len(want))
+	if len(synth.writes) < len(want) {
+		t.Fatalf("writes=%d want at least %d", len(synth.writes), len(want))
 	}
 	for i, w := range want {
-		if opl.writes[i] != w {
-			t.Fatalf("write[%d]=%+v want=%+v", i, opl.writes[i], w)
+		if synth.writes[i] != w {
+			t.Fatalf("write[%d]=%+v want=%+v", i, synth.writes[i], w)
 		}
 	}
 }
 
 func TestDriverPitchBendReordersUpdatedVoicesToEnd(t *testing.T) {
 	d := NewOutputDriver(nil)
-	d.opl = &captureOPL{}
+	d.synth = &captureSynth{}
 	d.Reset()
 	d.allocList = []int{0, 1, 2}
 	d.freeList = d.freeList[:0]
-	d.voices[0] = voiceState{active: true, ch: 0, playNote: 60, oplCh: 0}
-	d.voices[1] = voiceState{active: true, ch: 1, playNote: 62, oplCh: 1}
-	d.voices[2] = voiceState{active: true, ch: 0, playNote: 64, oplCh: 2}
+	d.voices[0] = voiceState{active: true, ch: 0, playNote: 60, synthCh: 0}
+	d.voices[1] = voiceState{active: true, ch: 1, playNote: 62, synthCh: 1}
+	d.voices[2] = voiceState{active: true, ch: 0, playNote: 64, synthCh: 2}
 
 	d.refreshChannelPitch(0)
 	got := d.allocList
@@ -408,41 +408,41 @@ func TestScaleMUSPan(t *testing.T) {
 	}
 }
 
-func TestDriverPanScalingAffectsOPLPanBucket(t *testing.T) {
+func TestDriverPanScalingAffectsSynthPanBucket(t *testing.T) {
 	d := NewOutputDriver(nil)
-	opl := &captureOPL{}
-	d.opl = opl
+	synth := &captureSynth{}
+	d.synth = synth
 	d.Reset()
 	d.applyEvent(Event{Type: EventNoteOn, Channel: 0, A: 60, B: 100})
 	if !d.voices[0].active {
 		t.Fatal("expected active voice after note-on")
 	}
-	opl.writes = nil
+	synth.writes = nil
 
 	d.SetMUSPanMax(0.8)
 	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerPan, B: 100})
-	val, ok := opl.lastWrite(0xC0)
+	val, ok := synth.lastWrite(0xC0)
 	if !ok {
 		t.Fatal("expected C0 pan register write")
 	}
 	if got := val & 0x30; got != 0x30 {
 		t.Fatalf("scaled pan lr bits=0x%02X want=0x30 (center)", got)
 	}
-	if opl.wroteAddr(0xD0) {
+	if synth.wroteAddr(0xD0) {
 		t.Fatal("unexpected D0 stereo-extension pan register write")
 	}
 
-	opl.writes = nil
+	synth.writes = nil
 	d.SetMUSPanMax(1.0)
 	d.applyEvent(Event{Type: EventControlChange, Channel: 0, A: controllerPan, B: 100})
-	val, ok = opl.lastWrite(0xC0)
+	val, ok = synth.lastWrite(0xC0)
 	if !ok {
 		t.Fatal("expected C0 pan register write")
 	}
 	if got := val & 0x30; got != 0x10 {
 		t.Fatalf("full pan lr bits=0x%02X want=0x10 (right)", got)
 	}
-	if opl.wroteAddr(0xD0) {
+	if synth.wroteAddr(0xD0) {
 		t.Fatal("unexpected D0 stereo-extension pan register write")
 	}
 }
@@ -465,7 +465,7 @@ func TestSetOutputGainClampsRange(t *testing.T) {
 
 func TestGenerateStereoS16AppliesOutputGainSoftKnee(t *testing.T) {
 	d := NewOutputDriver(nil)
-	d.opl = &captureOPL{pcm: []int16{10000, -10000}}
+	d.synth = &captureSynth{pcm: []int16{10000, -10000}}
 	d.SetOutputGain(2.0)
 	out := d.generateStereoS16(1)
 	if len(out) != 2 {
@@ -509,7 +509,7 @@ func TestSetPreEmphasisTogglesAndResetsState(t *testing.T) {
 
 func TestGenerateStereoS16AppliesPreEmphasisWhenEnabled(t *testing.T) {
 	d := NewOutputDriver(nil)
-	d.opl = &captureOPL{pcm: []int16{1000, -1000, 500, -500}}
+	d.synth = &captureSynth{pcm: []int16{1000, -1000, 500, -500}}
 	d.SetOutputGain(1.0)
 	d.SetPreEmphasis(true)
 	out := d.generateStereoS16(2)

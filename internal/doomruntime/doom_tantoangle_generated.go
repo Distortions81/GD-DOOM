@@ -1,6 +1,6 @@
 package doomruntime
 
-// Code generated from doom-source/linuxdoom-1.10/tables.c. DO NOT EDIT.
+// Code generated from a reference tables source. DO NOT EDIT.
 var doomTanToAngle = [2049]uint32{
 	0, 333772, 667544, 1001315, 1335086, 1668857, 2002626, 2336395,
 	2670163, 3003929, 3337694, 3671457, 4005219, 4338979, 4672736, 5006492,

@@ -6,6 +6,10 @@
 
 Minimal Doom runtime, map parser, and renderer in Go.
 
+Status: GD-DOOM is still alpha. Monsters, weapons, and fully deterministic demo compatibility are still work in progress.
+
+License: GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and derivative of id Software's DOOM source release. See [LICENSE](/home/dist/github/GD-DOOM/LICENSE) and [NOTICE](/home/dist/github/GD-DOOM/NOTICE).
+
 ## What It Does
 
 - Loads an IWAD (`IWAD` only) and parses Doom map lumps.
@@ -56,9 +60,9 @@ go run ./cmd/gddoom -h
 - `-keyboard-turn-speed <float>`: keyboard turn speed multiplier (`>0`, default `1.0`)
 - `-music-volume <float>`: music output volume (`0..1`, default `1.0`)
 - `-mus-pan-max <float>`: maximum MUS pan amount (`0..1`, default `0.8`; lower pulls pan toward center)
-- `-opl-volume <float>`: OPL synth output gain (`0..4`, default `2.25`)
-- `-opl3-backend <auto|impsynth>`: choose the OPL3 backend
-- `-opl-bank <path>`: override the WAD `GENMIDI` bank with an external OP2/GENMIDI file
+- `-opl-volume <float>`: FM synth output gain (`0..4`, default `2.25`)
+- `-opl3-backend <auto|impsynth>`: choose the FM synth backend
+- `-opl-bank <path>`: override the WAD `GENMIDI` bank with an external patch bank file
 - `-sfx-volume <float>`: sound-effect output volume (`0..1`, default `0.5`)
 - `-always-run`: start with always-run enabled (holding `Shift` temporarily inverts it)
 - `-auto-weapon-switch`: auto-switch to newly picked weapons (default `true`)

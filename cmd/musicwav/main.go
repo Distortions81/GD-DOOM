@@ -34,9 +34,9 @@ func main() {
 }
 
 func run(args []string) int {
-	fs := flag.NewFlagSet("oplwav", flag.ContinueOnError)
+	fs := flag.NewFlagSet("musicwav", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
-	outDir := fs.String("out", "out/opl-compare", "output directory")
+	outDir := fs.String("out", "out/music-compare", "output directory")
 	doom1Path := fs.String("doom1", "doom.wad", "path to Doom 1 IWAD")
 	doom2Path := fs.String("doom2", "doom2.wad", "path to Doom 2 IWAD")
 	songFilter := fs.String("song", "", "exact music lump to export (default: all parseable D_* lumps)")

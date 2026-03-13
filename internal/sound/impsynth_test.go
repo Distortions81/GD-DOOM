@@ -123,10 +123,10 @@ func TestImpSynthPatchSettingsChangeWaveform(t *testing.T) {
 	}
 }
 
-func TestNewOPL3WithBackendUsesImpSynth(t *testing.T) {
-	opl, err := NewOPL3WithBackend(49716, BackendImpSynth)
+func TestNewSynthWithBackendUsesImpSynth(t *testing.T) {
+	opl, err := NewSynthWithBackend(49716, BackendImpSynth)
 	if err != nil {
-		t.Fatalf("NewOPL3WithBackend() error: %v", err)
+		t.Fatalf("NewSynthWithBackend() error: %v", err)
 	}
 	if _, ok := opl.(*ImpSynth); !ok {
 		t.Fatalf("backend type=%T want *ImpSynth", opl)

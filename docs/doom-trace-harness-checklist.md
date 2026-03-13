@@ -1,6 +1,6 @@
 # Doom Trace Harness Checklist
 
-Goal: compare per-tic Doom-source demo traces against GD-DOOM and stop at the first gameplay desync.
+Goal: compare per-tic reference demo traces against GD-DOOM and stop at the first gameplay desync.
 
 ## Already in GD-DOOM
 
@@ -12,9 +12,9 @@ Goal: compare per-tic Doom-source demo traces against GD-DOOM and stop at the fi
 
 ## Remaining Work
 
-### Doom-source trace runner
+### Reference trace runner
 
-- [ ] Add a Doom-source CLI mode for traced demo playback.
+- [ ] Add a reference CLI mode for traced demo playback.
 - [ ] Keep traced demo loading behavior aligned with `-playdemo` / `-timedemo`.
 - [ ] Make traced playback run headless without changing tic behavior.
 - [ ] Hook trace emission at the tic boundary.
@@ -22,7 +22,7 @@ Goal: compare per-tic Doom-source demo traces against GD-DOOM and stop at the fi
 
 ### Schema and parity follow-up
 
-- [ ] Review field naming and ordering against Doom-source output and tighten compatibility where comparison needs it.
+- [ ] Review field naming and ordering against reference output and tighten compatibility where comparison needs it.
 - [ ] Decide which fields currently ignored by `demotracecmp` should become strict matches.
 - [ ] Expand mover and special coverage if a comparison case needs more state.
 - [ ] Add a stable cross-engine object identity strategy where raw ordering is not sufficient.

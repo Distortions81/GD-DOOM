@@ -70,52 +70,52 @@ var oplExpROM = [256]uint16{
 	0x414, 0x411, 0x40e, 0x40b, 0x408, 0x406, 0x403, 0x400,
 }
 
-func oplEnvelopeCalcExp(level uint32) int {
+func synthEnvelopeCalcExp(level uint32) int {
 	if level > 0x1fff {
 		level = 0x1fff
 	}
 	return int((oplExpROM[level&0xff] << 1) >> (level >> 8))
 }
 
-func oplWaveOutput(wave uint8, phase uint16, envelope uint16) int {
+func synthWaveOutput(wave uint8, phase uint16, envelope uint16) int {
 	switch wave & 0x07 {
 	case 0:
-		return oplWaveOutput0(phase, envelope)
+		return synthWaveOutput0(phase, envelope)
 	case 1:
-		return oplWaveOutput1(phase, envelope)
+		return synthWaveOutput1(phase, envelope)
 	case 2:
-		return oplWaveOutput2(phase, envelope)
+		return synthWaveOutput2(phase, envelope)
 	case 3:
-		return oplWaveOutput3(phase, envelope)
+		return synthWaveOutput3(phase, envelope)
 	case 4:
-		return oplWaveOutput4(phase, envelope)
+		return synthWaveOutput4(phase, envelope)
 	case 5:
-		return oplWaveOutput5(phase, envelope)
+		return synthWaveOutput5(phase, envelope)
 	case 6:
-		return oplWaveOutput6(phase, envelope)
+		return synthWaveOutput6(phase, envelope)
 	default:
-		return oplWaveOutput7(phase, envelope)
+		return synthWaveOutput7(phase, envelope)
 	}
 }
 
-func oplSignedOutput(raw int, neg bool) int {
+func synthSignedOutput(raw int, neg bool) int {
 	if !neg {
 		return raw
 	}
 	return int(int16(^uint16(raw)))
 }
 
-func oplWaveOutput0(phase uint16, envelope uint16) int {
+func synthWaveOutput0(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
 	neg := (phase & 0x200) != 0
 	out := oplLogSinROM[phase&0xff]
 	if (phase & 0x100) != 0 {
 		out = oplLogSinROM[(phase&0xff)^0xff]
 	}
-	return oplSignedOutput(oplEnvelopeCalcExp(uint32(out)+(uint32(envelope)<<3)), neg)
+	return synthSignedOutput(synthEnvelopeCalcExp(uint32(out)+(uint32(envelope)<<3)), neg)
 }
 
-func oplWaveOutput1(phase uint16, envelope uint16) int {
+func synthWaveOutput1(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
 	out := uint16(0)
 	if (phase & 0x200) != 0 {
@@ -125,19 +125,19 @@ func oplWaveOutput1(phase uint16, envelope uint16) int {
 	} else {
 		out = oplLogSinROM[phase&0xff]
 	}
-	return oplEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
+	return synthEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
 }
 
-func oplWaveOutput2(phase uint16, envelope uint16) int {
+func synthWaveOutput2(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
 	out := oplLogSinROM[phase&0xff]
 	if (phase & 0x100) != 0 {
 		out = oplLogSinROM[(phase&0xff)^0xff]
 	}
-	return oplEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
+	return synthEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
 }
 
-func oplWaveOutput3(phase uint16, envelope uint16) int {
+func synthWaveOutput3(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
 	out := uint16(0)
 	if (phase & 0x100) != 0 {
@@ -145,10 +145,10 @@ func oplWaveOutput3(phase uint16, envelope uint16) int {
 	} else {
 		out = oplLogSinROM[phase&0xff]
 	}
-	return oplEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
+	return synthEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
 }
 
-func oplWaveOutput4(phase uint16, envelope uint16) int {
+func synthWaveOutput4(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
 	neg := (phase & 0x300) == 0x100
 	out := uint16(0)
@@ -159,10 +159,10 @@ func oplWaveOutput4(phase uint16, envelope uint16) int {
 	} else {
 		out = oplLogSinROM[(phase<<1)&0xff]
 	}
-	return oplSignedOutput(oplEnvelopeCalcExp(uint32(out)+(uint32(envelope)<<3)), neg)
+	return synthSignedOutput(synthEnvelopeCalcExp(uint32(out)+(uint32(envelope)<<3)), neg)
 }
 
-func oplWaveOutput5(phase uint16, envelope uint16) int {
+func synthWaveOutput5(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
 	out := uint16(0)
 	if (phase & 0x200) != 0 {
@@ -172,15 +172,15 @@ func oplWaveOutput5(phase uint16, envelope uint16) int {
 	} else {
 		out = oplLogSinROM[(phase<<1)&0xff]
 	}
-	return oplEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
+	return synthEnvelopeCalcExp(uint32(out) + (uint32(envelope) << 3))
 }
 
-func oplWaveOutput6(phase uint16, envelope uint16) int {
+func synthWaveOutput6(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
-	return oplSignedOutput(oplEnvelopeCalcExp(uint32(envelope)<<3), (phase&0x200) != 0)
+	return synthSignedOutput(synthEnvelopeCalcExp(uint32(envelope)<<3), (phase&0x200) != 0)
 }
 
-func oplWaveOutput7(phase uint16, envelope uint16) int {
+func synthWaveOutput7(phase uint16, envelope uint16) int {
 	phase &= 0x3ff
 	neg := false
 	if (phase & 0x200) != 0 {
@@ -188,5 +188,5 @@ func oplWaveOutput7(phase uint16, envelope uint16) int {
 		phase = (phase & 0x1ff) ^ 0x1ff
 	}
 	out := uint32(phase << 3)
-	return oplSignedOutput(oplEnvelopeCalcExp(out+(uint32(envelope)<<3)), neg)
+	return synthSignedOutput(synthEnvelopeCalcExp(out+(uint32(envelope)<<3)), neg)
 }
