@@ -121,3 +121,18 @@ func TestStepFrontendOptionsMessagesChangesOnLeftRightAndSelect(t *testing.T) {
 		})
 	}
 }
+
+func TestStepFrontendInGameEscapeClosesMenu(t *testing.T) {
+	result := StepFrontend(
+		Frontend{Active: true, InGame: true, Mode: FrontendModeTitle, MenuActive: true},
+		FrontendInput{Escape: true},
+		FrontendConfig{MainMenuCount: 6},
+	)
+
+	if result.State.Active {
+		t.Fatal("expected in-game escape to close frontend")
+	}
+	if result.Sound != FrontendSoundBack {
+		t.Fatalf("sound=%v want back", result.Sound)
+	}
+}

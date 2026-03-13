@@ -69,10 +69,12 @@ type RuntimeFactory[Opts any, T any] func(*mapdata.Map, Opts) T
 
 type SessionSignals struct {
 	DemoActive       bool
+	FrontendMenu     bool
 	NewGameMap       *mapdata.Map
 	NewGameSkill     int
 	QuitPrompt       bool
 	ReadThis         bool
+	MusicPlayer      bool
 	LevelRestart     bool
 	LevelExit        bool
 	SecretLevelExit  bool

@@ -1,7 +1,6 @@
 package doomruntime
 
 import (
-	"fmt"
 	"strings"
 
 	"gddoom/internal/runtimecfg"
@@ -10,10 +9,9 @@ import (
 const (
 	frontendOptionsRowMusicPlayer = 7
 	frontendMusicPlayerRowWAD     = 0
-	frontendMusicPlayerRowEpisode = 1
-	frontendMusicPlayerRowLevel   = 2
-	frontendMusicPlayerRowSong    = 3
-	frontendMusicPlayerRowCount   = 4
+	frontendMusicPlayerRowGroup   = 1
+	frontendMusicPlayerRowTrack   = 2
+	frontendMusicPlayerRowCount   = 3
 )
 
 type frontendMusicPlayerState struct {
@@ -88,6 +86,10 @@ func (sg *sessionGame) frontendMusicPlayerClose() {
 	if sg == nil {
 		return
 	}
+	if sg.frontend.InGame {
+		sg.frontend = frontendState{}
+		return
+	}
 	sg.frontend.Mode = frontendModeOptions
 	sg.frontend.OptionsOn = frontendOptionsRowMusicPlayer
 }
@@ -139,14 +141,14 @@ func (sg *sessionGame) frontendMusicPlayerAdjust(dir int) bool {
 		sg.musicPlayer.WADOn = wrapMusicPlayerIndex(sg.musicPlayer.WADOn, dir, len(sg.opts.MusicPlayerCatalog))
 		sg.musicPlayer.EpisodeOn = 0
 		sg.musicPlayer.TrackOn = 0
-	case frontendMusicPlayerRowEpisode:
+	case frontendMusicPlayerRowGroup:
 		wad := sg.frontendMusicPlayerWAD()
 		if wad == nil || len(wad.Episodes) <= 1 {
 			return false
 		}
 		sg.musicPlayer.EpisodeOn = wrapMusicPlayerIndex(sg.musicPlayer.EpisodeOn, dir, len(wad.Episodes))
 		sg.musicPlayer.TrackOn = 0
-	case frontendMusicPlayerRowLevel:
+	case frontendMusicPlayerRowTrack:
 		ep := sg.frontendMusicPlayerEpisode()
 		if ep == nil || len(ep.Tracks) <= 1 {
 			return false
@@ -168,7 +170,7 @@ func (sg *sessionGame) frontendMusicPlayerPlaySelected() bool {
 	if wad == nil || track == nil {
 		return false
 	}
-	data, err := sg.opts.MusicPlayerTrackLoader(wad.Key, string(track.MapName))
+	data, err := sg.opts.MusicPlayerTrackLoader(wad.Key, track.LumpName)
 	if err != nil {
 		sg.frontendStatus("MUSIC LOAD FAILED", doomTicsPerSecond*2)
 		return false
@@ -178,6 +180,32 @@ func (sg *sessionGame) frontendMusicPlayerPlaySelected() bool {
 		return false
 	}
 	sg.musicCtl.PlayData(data, clampVolume(sg.opts.MusicVolume))
-	sg.frontendStatus(fmt.Sprintf("PLAYING %s", strings.ToUpper(strings.TrimSpace(track.Label))), doomTicsPerSecond*2)
+	sg.setNowPlayingMusic(track.MusicName, track.Label, track.LumpName)
 	return true
+}
+
+func (sg *sessionGame) setNowPlayingMusic(candidates ...string) {
+	if sg == nil {
+		return
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		sg.nowPlayingMusic = candidate
+		return
+	}
+	sg.nowPlayingMusic = ""
+}
+
+func (sg *sessionGame) nowPlayingMusicLabel() string {
+	if sg == nil {
+		return "-"
+	}
+	label := strings.TrimSpace(sg.nowPlayingMusic)
+	if label == "" {
+		return "-"
+	}
+	return strings.ToUpper(label)
 }

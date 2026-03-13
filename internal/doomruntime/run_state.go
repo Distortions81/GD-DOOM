@@ -1,7 +1,9 @@
 package doomruntime
 
 import (
+	"fmt"
 	"runtime"
+	"strings"
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
@@ -95,6 +97,7 @@ type sessionGame struct {
 	frontend            frontendState
 	frontendMenuPending bool
 	musicPlayer         frontendMusicPlayerState
+	nowPlayingMusic     string
 	quitPrompt          quitPromptState
 	quitMessageSeq      int
 }
@@ -112,6 +115,8 @@ type sessionRuntime interface {
 	sessionAcknowledgeNewGameRequest()
 	sessionAcknowledgeQuitPrompt()
 	sessionAcknowledgeReadThis()
+	sessionAcknowledgeMusicPlayer()
+	sessionAcknowledgeFrontendMenu()
 	sessionToggleHUDMessages() bool
 	sessionTogglePerfOverlay() bool
 	sessionCycleDetail() int
@@ -479,6 +484,7 @@ func (sg *sessionGame) stopAndClearMusic() {
 		return
 	}
 	sg.musicCtl.StopAndClear()
+	sg.setNowPlayingMusic("")
 }
 
 func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
@@ -486,6 +492,27 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 		return
 	}
 	sg.musicCtl.PlayMap(name, clampVolume(sg.opts.MusicVolume))
+	if sg.opts.MapMusicInfo != nil {
+		levelLabel, musicName := sg.opts.MapMusicInfo(string(name))
+		sg.setNowPlayingMusic(musicName, levelLabel, string(name))
+	}
+}
+
+func (sg *sessionGame) announceMapMusic(name mapdata.MapName) {
+	if sg == nil || sg.g == nil || sg.opts.MapMusicInfo == nil {
+		return
+	}
+	levelLabel, musicName := sg.opts.MapMusicInfo(string(name))
+	levelLabel = strings.TrimSpace(levelLabel)
+	musicName = strings.TrimSpace(musicName)
+	switch {
+	case levelLabel != "" && musicName != "":
+		sg.g.setHUDMessage(fmt.Sprintf("%s\nSONG: %s", levelLabel, musicName), 70)
+	case levelLabel != "":
+		sg.g.setHUDMessage(levelLabel, 70)
+	case musicName != "":
+		sg.g.setHUDMessage(fmt.Sprintf("SONG: %s", musicName), 70)
+	}
 }
 
 func (sg *sessionGame) initSession() {
@@ -503,6 +530,7 @@ func (sg *sessionGame) initSession() {
 		StartFrontend:         sg.startFrontend,
 		StartMapMusic: func() {
 			sg.playMusicForMap(sg.current)
+			sg.announceMapMusic(sg.current)
 		},
 		CaptureSettings:      sg.capturePersistentSettings,
 		ShouldShowBootSplash: sg.shouldShowBootSplash,

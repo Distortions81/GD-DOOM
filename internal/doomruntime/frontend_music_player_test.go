@@ -19,14 +19,14 @@ func TestFrontendMusicPlayerOpenAndAdjustSelection(t *testing.T) {
 						{
 							Label: "EPISODE 1",
 							Tracks: []runtimecfg.MusicPlayerTrack{
-								{MapName: "E1M1", Label: "E1M1", LumpName: "D_E1M1"},
-								{MapName: "E1M2", Label: "E1M2", LumpName: "D_E1M2"},
+								{MapName: "E1M1", Label: "E1M1 - Hangar", LumpName: "D_E1M1", MusicName: "At Doom's Gate"},
+								{MapName: "E1M2", Label: "E1M2 - Nuclear Plant", LumpName: "D_E1M2", MusicName: "The Imp's Song"},
 							},
 						},
 						{
 							Label: "EPISODE 2",
 							Tracks: []runtimecfg.MusicPlayerTrack{
-								{MapName: "E2M1", Label: "E2M1", LumpName: "D_E2M1"},
+								{MapName: "E2M1", Label: "E2M1 - Deimos Anomaly", LumpName: "D_E2M1", MusicName: "I Sawed the Demons"},
 							},
 						},
 					},
@@ -38,13 +38,13 @@ func TestFrontendMusicPlayerOpenAndAdjustSelection(t *testing.T) {
 						{
 							Label: "MAPS",
 							Tracks: []runtimecfg.MusicPlayerTrack{
-								{MapName: "MAP01", Label: "MAP01", LumpName: "D_RUNNIN"},
+								{MapName: "MAP01", Label: "MAP01 - Entryway", LumpName: "D_RUNNIN", MusicName: "Running from Evil"},
 							},
 						},
 					},
 				},
 			},
-			MusicPlayerTrackLoader: func(wadKey string, mapName string) ([]byte, error) { return nil, nil },
+			MusicPlayerTrackLoader: func(wadKey string, lumpName string) ([]byte, error) { return nil, nil },
 		},
 		frontend: frontendState{Active: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowMusicPlayer},
 	}
@@ -59,7 +59,7 @@ func TestFrontendMusicPlayerOpenAndAdjustSelection(t *testing.T) {
 		t.Fatalf("initial track=%v want E1M1", got)
 	}
 
-	sg.musicPlayer.Row = frontendMusicPlayerRowLevel
+	sg.musicPlayer.Row = frontendMusicPlayerRowTrack
 	if !sg.frontendMusicPlayerAdjust(1) {
 		t.Fatal("level adjust should succeed")
 	}
@@ -67,7 +67,7 @@ func TestFrontendMusicPlayerOpenAndAdjustSelection(t *testing.T) {
 		t.Fatalf("track after level adjust=%v want E1M2", got)
 	}
 
-	sg.musicPlayer.Row = frontendMusicPlayerRowEpisode
+	sg.musicPlayer.Row = frontendMusicPlayerRowGroup
 	if !sg.frontendMusicPlayerAdjust(1) {
 		t.Fatal("episode adjust should succeed")
 	}
@@ -86,7 +86,7 @@ func TestFrontendMusicPlayerOpenAndAdjustSelection(t *testing.T) {
 
 func TestFrontendMusicPlayerPlaySelectedLoadsTrack(t *testing.T) {
 	var gotWAD string
-	var gotMap string
+	var gotLump string
 	sg := &sessionGame{
 		opts: Options{
 			MusicVolume: 0.8,
@@ -98,15 +98,15 @@ func TestFrontendMusicPlayerPlaySelectedLoadsTrack(t *testing.T) {
 						{
 							Label: "EPISODE 1",
 							Tracks: []runtimecfg.MusicPlayerTrack{
-								{MapName: "E1M3", Label: "E1M3", LumpName: "D_E1M3"},
+								{MapName: "E1M3", Label: "E1M3 - Toxin Refinery", LumpName: "D_E1M3", MusicName: "Dark Halls"},
 							},
 						},
 					},
 				},
 			},
-			MusicPlayerTrackLoader: func(wadKey string, mapName string) ([]byte, error) {
+			MusicPlayerTrackLoader: func(wadKey string, lumpName string) ([]byte, error) {
 				gotWAD = wadKey
-				gotMap = mapName
+				gotLump = lumpName
 				return []byte{1, 2, 3}, nil
 			},
 		},
@@ -117,10 +117,29 @@ func TestFrontendMusicPlayerPlaySelectedLoadsTrack(t *testing.T) {
 	if !sg.frontendMusicPlayerPlaySelected() {
 		t.Fatal("frontendMusicPlayerPlaySelected should succeed")
 	}
-	if gotWAD != "doom1" || gotMap != "E1M3" {
-		t.Fatalf("loader called with wad=%q map=%q want doom1/E1M3", gotWAD, gotMap)
+	if gotWAD != "doom1" || gotLump != "D_E1M3" {
+		t.Fatalf("loader called with wad=%q lump=%q want doom1/D_E1M3", gotWAD, gotLump)
 	}
-	if sg.frontend.Status != "PLAYING E1M3" {
-		t.Fatalf("status=%q want PLAYING E1M3", sg.frontend.Status)
+	if sg.frontend.Status != "" {
+		t.Fatalf("status=%q want empty", sg.frontend.Status)
+	}
+	if sg.nowPlayingMusic != "Dark Halls" {
+		t.Fatalf("nowPlayingMusic=%q want Dark Halls", sg.nowPlayingMusic)
+	}
+}
+
+func TestFrontendMusicPlayerCloseReturnsToGameWhenOpenedInGame(t *testing.T) {
+	sg := &sessionGame{
+		frontend: frontendState{
+			Active: true,
+			InGame: true,
+			Mode:   frontendModeMusicPlayer,
+		},
+	}
+
+	sg.frontendMusicPlayerClose()
+
+	if sg.frontend.Active {
+		t.Fatal("frontend should close when leaving in-game music player")
 	}
 }

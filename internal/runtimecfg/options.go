@@ -10,9 +10,10 @@ import (
 )
 
 type MusicPlayerTrack struct {
-	MapName  mapdata.MapName
-	Label    string
-	LumpName string
+	MapName   mapdata.MapName
+	Label     string
+	LumpName  string
+	MusicName string
 }
 
 type MusicPlayerEpisode struct {
@@ -95,9 +96,10 @@ type Options struct {
 	DemoTracePath              string
 	TitleMusicLoader           func() ([]byte, error)
 	MapMusicLoader             func(mapName string) ([]byte, error)
+	MapMusicInfo               func(mapName string) (levelLabel string, musicName string)
 	IntermissionMusicLoader    func(commercial bool) ([]byte, error)
 	MusicPlayerCatalog         []MusicPlayerWAD
-	MusicPlayerTrackLoader     func(wadKey string, mapName string) ([]byte, error)
+	MusicPlayerTrackLoader     func(wadKey string, lumpName string) ([]byte, error)
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)
 	DemoMapLoader              func(demo *demo.Script) (*mapdata.Map, error)
 	Episodes                   []int

@@ -12,10 +12,12 @@ func (g *game) sessionSignals() gameplay.SessionSignals {
 	}
 	sig := gameplay.SessionSignals{
 		DemoActive:       g.opts.DemoScript != nil,
+		FrontendMenu:     g.frontendMenuRequested,
 		NewGameMap:       g.newGameRequestedMap,
 		NewGameSkill:     g.newGameRequestedSkill,
 		QuitPrompt:       g.quitPromptRequested,
 		ReadThis:         g.readThisRequested,
+		MusicPlayer:      g.musicPlayerRequested,
 		LevelRestart:     g.levelRestartRequested,
 		LevelExit:        g.levelExitRequested,
 		SecretLevelExit:  g.secretLevelExit,
@@ -67,6 +69,20 @@ func (g *game) sessionAcknowledgeReadThis() {
 		return
 	}
 	g.readThisRequested = false
+}
+
+func (g *game) sessionAcknowledgeMusicPlayer() {
+	if g == nil {
+		return
+	}
+	g.musicPlayerRequested = false
+}
+
+func (g *game) sessionAcknowledgeFrontendMenu() {
+	if g == nil {
+		return
+	}
+	g.frontendMenuRequested = false
 }
 
 func (g *game) sessionToggleHUDMessages() bool {

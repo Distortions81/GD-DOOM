@@ -929,6 +929,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return data, nil
 		}
+		opts.MapMusicInfo = mapMusicInfo
 		opts.IntermissionMusicLoader = func(commercial bool) ([]byte, error) {
 			lump := "D_INTER"
 			if commercial {
@@ -1314,13 +1315,13 @@ func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD
 	if len(catalog) == 0 {
 		return nil, nil
 	}
-	loader := func(wadKey string, mapName string) ([]byte, error) {
+	loader := func(wadKey string, lumpName string) ([]byte, error) {
 		wadKey = strings.TrimSpace(wadKey)
 		if wadKey == "" {
 			return nil, nil
 		}
-		lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
-		if !ok {
+		lump := strings.ToUpper(strings.TrimSpace(lumpName))
+		if lump == "" {
 			return nil, nil
 		}
 		wf, err := wad.Open(wadKey)
@@ -1357,6 +1358,7 @@ func musicPlayerEpisodesForWAD(wf *wad.File) []runtimecfg.MusicPlayerEpisode {
 	}
 	order := make([]string, 0, 8)
 	groups := make(map[string]*group, 8)
+	seenLumps := make(map[string]struct{}, 64)
 	groupFor := func(label string) *group {
 		if g, ok := groups[label]; ok {
 			return g
@@ -1381,10 +1383,33 @@ func musicPlayerEpisodesForWAD(wf *wad.File) []runtimecfg.MusicPlayerEpisode {
 		}
 		g := groupFor(episodeLabel)
 		g.tracks = append(g.tracks, runtimecfg.MusicPlayerTrack{
-			MapName:  name,
-			Label:    mapLabel,
-			LumpName: lump,
+			MapName:   name,
+			Label:     mapDisplayLabel(name),
+			LumpName:  lump,
+			MusicName: musicTitleForLump(lump),
 		})
+		seenLumps[lump] = struct{}{}
+	}
+	const otherMusicLabel = "OTHER MUSIC"
+	other := groupFor(otherMusicLabel)
+	seenOther := make(map[string]struct{}, 32)
+	for _, lump := range wf.Lumps {
+		name := strings.ToUpper(strings.TrimSpace(lump.Name))
+		if !strings.HasPrefix(name, "D_") {
+			continue
+		}
+		if _, ok := seenLumps[name]; ok {
+			continue
+		}
+		if _, ok := seenOther[name]; ok {
+			continue
+		}
+		other.tracks = append(other.tracks, runtimecfg.MusicPlayerTrack{
+			Label:     musicTitleForLump(name),
+			LumpName:  name,
+			MusicName: musicTitleForLump(name),
+		})
+		seenOther[name] = struct{}{}
 	}
 	episodes := make([]runtimecfg.MusicPlayerEpisode, 0, len(order))
 	for _, label := range order {
@@ -1797,6 +1822,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		}
 		return data, nil
 	}
+	opts.MapMusicInfo = mapMusicInfo
 	opts.IntermissionMusicLoader = func(commercial bool) ([]byte, error) {
 		lump := "D_INTER"
 		if commercial {

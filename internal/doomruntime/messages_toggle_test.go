@@ -53,3 +53,21 @@ func TestPauseMessagesOptionTogglesOnAdjustAndCycle(t *testing.T) {
 		t.Fatal("expected pause enter cycle to toggle messages back on")
 	}
 }
+
+func TestPauseMusicPlayerOptionRequestsFrontendHandOff(t *testing.T) {
+	g := &game{
+		pauseMenuActive:    true,
+		paused:             true,
+		pauseMenuMode:      pauseMenuModeOptions,
+		pauseMenuOptionsOn: frontendOptionsRowMusicPlayer,
+	}
+
+	g.activatePauseOptionsItem()
+
+	if !g.musicPlayerRequested {
+		t.Fatal("expected music player request to be raised")
+	}
+	if g.pauseMenuActive || g.paused {
+		t.Fatal("expected pause menu to close before frontend handoff")
+	}
+}

@@ -128,16 +128,29 @@ func DrawHUDMessage(screen *ebiten.Image, in MessageInputs, drawText TextDrawer)
 	if drawText == nil || strings.TrimSpace(in.Message) == "" {
 		return
 	}
+	lines := strings.Split(in.Message, "\n")
 	if in.SourcePort {
 		scale := in.HUDScale
 		if scale <= 0 {
 			scale = 1
 		}
-		drawText(screen, in.Message, in.X*scale, in.Y*scale, scale, scale)
+		lineStep := 9.0 * scale
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			drawText(screen, line, in.X*scale, in.Y*scale+float64(i)*lineStep, scale, scale)
+		}
 		return
 	}
 	sx, sy, _, _ := Transform(in.ViewW, in.ViewH, in.SourcePort, in.HUDScale)
-	drawText(screen, in.Message, in.X*sx, in.Y*sy, sx, sy)
+	lineStep := 9.0 * sy
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		drawText(screen, line, in.X*sx, in.Y*sy+float64(i)*lineStep, sx, sy)
+	}
 }
 
 type DeathOverlayInputs struct {
@@ -227,12 +240,29 @@ func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch Pat
 		return
 	}
 	const optionsMenuX = 36
-	sx := float64(in.ViewW) / 320.0
-	sy := float64(in.ViewH) / 200.0
-	ebitenutil.DrawRect(screen, 0, 0, 320.0*sx, 200.0*sy, color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	scale := float64(in.ViewW) / 320.0
+	scaleY := float64(in.ViewH) / 200.0
+	if scaleY < scale {
+		scale = scaleY
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	ox := (float64(in.ViewW) - 320.0*scale) * 0.5
+	oy := (float64(in.ViewH) - 200.0*scale) * 0.5
+	ebitenutil.DrawRect(screen, ox, oy, 320.0*scale, 200.0*scale, color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	patchAt := func(name string, x, y float64) {
+		drawPatch(screen, name, ox+x*scale, oy+y*scale, scale, scale)
+	}
+	textAt := func(text string, x, y, textScale float64) {
+		if drawText == nil {
+			return
+		}
+		drawText(screen, text, ox+x*scale, oy+y*scale, scale*textScale, scale*textScale)
+	}
 	switch in.Mode {
 	case PauseModeOptions:
-		drawPatch(screen, "M_OPTTTL", optionsMenuX*sx, 15*sy, sx, sy)
+		patchAt("M_OPTTTL", optionsMenuX, 15)
 		if drawText != nil {
 			backLabel := "BACK: ESC"
 			backW := len(backLabel) * 7
@@ -240,14 +270,14 @@ func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch Pat
 				backW = textWidth(backLabel)
 			}
 			backX := 320 - 8 - int(math.Ceil(float64(backW)*1.2))
-			drawText(screen, backLabel, float64(backX)*sx, float64(17)*sy, sx*1.2, sy*1.2)
+			textAt(backLabel, float64(backX), 17, 1.2)
 		}
 		if drawText != nil {
 			for i, label := range in.OptionsMenuText {
 				if strings.TrimSpace(label) == "" {
 					continue
 				}
-				drawText(screen, label, float64(optionsMenuX)*sx, float64(39+i*16)*sy, sx*1.2, sy*1.2)
+				textAt(label, float64(optionsMenuX), float64(39+i*16), 1.2)
 			}
 		}
 		if drawText != nil {
@@ -255,60 +285,60 @@ func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch Pat
 			if in.HUDMessagesEnabled {
 				label = "ON"
 			}
-			drawText(screen, label, float64(optionsMenuX+215)*sx, float64(39)*sy, sx*1.2, sy*1.2)
+			textAt(label, float64(optionsMenuX+215), 39, 1.2)
 		}
 		if drawText != nil && strings.TrimSpace(in.ScreenSizeLabel) != "" {
-			drawText(screen, in.ScreenSizeLabel, float64(optionsMenuX+215)*sx, float64(55)*sy, sx*1.2, sy*1.2)
+			textAt(in.ScreenSizeLabel, float64(optionsMenuX+215), 55, 1.2)
 		}
 		if drawText != nil && strings.TrimSpace(in.HUDScaleLabel) != "" {
-			drawText(screen, in.HUDScaleLabel, float64(optionsMenuX+215)*sx, float64(71)*sy, sx*1.2, sy*1.2)
+			textAt(in.HUDScaleLabel, float64(optionsMenuX+215), 71, 1.2)
 		}
 		if drawText != nil {
 			label := "OFF"
 			if in.ShowPerf {
 				label = "ON"
 			}
-			drawText(screen, label, float64(optionsMenuX+215)*sx, float64(87)*sy, sx*1.2, sy*1.2)
+			textAt(label, float64(optionsMenuX+215), 87, 1.2)
 		}
 		label := in.MouseSensitivityLabel
 		if strings.TrimSpace(label) == "" {
 			label = fmt.Sprintf("%.2f", 0.0)
 		}
 		if drawText != nil {
-			drawText(screen, label, float64(optionsMenuX+215)*sx, float64(103)*sy, sx*1.2, sy*1.2)
+			textAt(label, float64(optionsMenuX+215), 103, 1.2)
 		}
 		if drawText != nil {
-			drawText(screen, fmt.Sprintf("%d", in.SFXVolumeDot), float64(optionsMenuX+215)*sx, float64(119)*sy, sx*1.2, sy*1.2)
-			drawText(screen, fmt.Sprintf("%d", in.MusicVolumeDot), float64(optionsMenuX+215)*sx, float64(135)*sy, sx*1.2, sy*1.2)
+			textAt(fmt.Sprintf("%d", in.SFXVolumeDot), float64(optionsMenuX+215), 119, 1.2)
+			textAt(fmt.Sprintf("%d", in.MusicVolumeDot), float64(optionsMenuX+215), 135, 1.2)
 		}
 	case PauseModeSound:
-		drawPatch(screen, "M_SVOL", 60*sx, 38*sy, sx, sy)
-		drawPatch(screen, in.SoundMenuSFXLabel, 80*sx, 64*sy, sx, sy)
-		drawPatch(screen, in.SoundMenuMusicLabel, 80*sx, 96*sy, sx, sy)
+		patchAt("M_SVOL", 60, 38)
+		patchAt(in.SoundMenuSFXLabel, 80, 64)
+		patchAt(in.SoundMenuMusicLabel, 80, 96)
 		if drawText != nil {
-			drawText(screen, fmt.Sprintf("%d", in.SFXVolumeDot), float64(235)*sx, float64(66)*sy, sx*1.2, sy*1.2)
-			drawText(screen, fmt.Sprintf("%d", in.MusicVolumeDot), float64(235)*sx, float64(98)*sy, sx*1.2, sy*1.2)
+			textAt(fmt.Sprintf("%d", in.SFXVolumeDot), 235, 66, 1.2)
+			textAt(fmt.Sprintf("%d", in.MusicVolumeDot), 235, 98, 1.2)
 		}
 	case PauseModeEpisode:
-		drawPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
-		drawPatch(screen, "M_EPISOD", 54*sx, 38*sy, sx, sy)
+		patchAt("M_NEWG", 96, 14)
+		patchAt("M_EPISOD", 54, 38)
 		for i, name := range in.EpisodeMenuNames {
 			if strings.TrimSpace(name) == "" {
 				continue
 			}
-			drawPatch(screen, name, 48*sx, float64(63+i*16)*sy, sx, sy)
+			patchAt(name, 48, float64(63+i*16))
 		}
 	case PauseModeSkill:
-		drawPatch(screen, "M_NEWG", 96*sx, 14*sy, sx, sy)
-		drawPatch(screen, "M_SKILL", 54*sx, 38*sy, sx, sy)
+		patchAt("M_NEWG", 96, 14)
+		patchAt("M_SKILL", 54, 38)
 		for i, name := range in.SkillMenuNames {
-			drawPatch(screen, name, 48*sx, float64(63+i*16)*sy, sx, sy)
+			patchAt(name, 48, float64(63+i*16))
 		}
 	default:
-		drawPatch(screen, "M_PAUSE", 126*sx, 4*sy, sx, sy)
-		drawPatch(screen, "M_DOOM", 94*sx, 2*sy, sx, sy)
+		patchAt("M_PAUSE", 126, 4)
+		patchAt("M_DOOM", 94, 2)
 		for i, name := range in.MainMenuNames {
-			drawPatch(screen, name, 97*sx, float64(64+i*16)*sy, sx, sy)
+			patchAt(name, 97, float64(64+i*16))
 		}
 	}
 	skull := "M_SKULL1"
@@ -321,22 +351,24 @@ func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch Pat
 		if skullX <= 0 {
 			skullX = optionsMenuX - 32
 		}
-		drawPatch(screen, skull, float64(skullX)*sx, float64(37+in.SelectedOptions*16)*sy, sx, sy)
+		patchAt(skull, float64(skullX), float64(37+in.SelectedOptions*16))
 	case PauseModeSound:
 		skullY := 64
 		if in.SelectedSound != 0 {
 			skullY += 2 * 16
 		}
-		drawPatch(screen, skull, 48*sx, float64(skullY)*sy, sx, sy)
+		patchAt(skull, 48, float64(skullY))
 	case PauseModeEpisode:
-		drawPatch(screen, skull, 16*sx, float64(63+in.SelectedEpisode*16)*sy, sx, sy)
+		patchAt(skull, 16, float64(63+in.SelectedEpisode*16))
 	case PauseModeSkill:
-		drawPatch(screen, skull, 16*sx, float64(63+in.SelectedSkill*16)*sy, sx, sy)
+		patchAt(skull, 16, float64(63+in.SelectedSkill*16))
 	default:
-		drawPatch(screen, skull, 65*sx, float64(64+in.SelectedMain*16)*sy, sx, sy)
+		patchAt(skull, 65, float64(64+in.SelectedMain*16))
 	}
 	if drawText != nil && strings.TrimSpace(in.StatusMessage) != "" {
-		ebitenutil.DebugPrintAt(screen, in.StatusMessage, in.ViewW/2-len(in.StatusMessage)*3, int(182*sy))
+		statusX := int(ox + 160.0*scale - float64(len(in.StatusMessage))*3)
+		statusY := int(oy + 182.0*scale)
+		ebitenutil.DebugPrintAt(screen, in.StatusMessage, statusX, statusY)
 	}
 }
 

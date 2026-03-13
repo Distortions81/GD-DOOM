@@ -199,6 +199,30 @@ func TestTickIntermissionSkipFastForwardsStatsThenExits(t *testing.T) {
 	}
 }
 
+func TestFinishIntermissionTransitionsAfterStateClears(t *testing.T) {
+	next := &mapdata.Map{Name: "E1M2"}
+	sg := &sessionGame{
+		intermission: sessionIntermission{
+			state:   intermissionState{},
+			nextMap: next,
+		},
+		opts: Options{
+			MapMusicInfo: func(mapName string) (string, string) {
+				return mapName, "TEST MUSIC"
+			},
+		},
+	}
+
+	sg.finishIntermission()
+
+	if sg.current != "E1M2" {
+		t.Fatalf("current=%q want E1M2", sg.current)
+	}
+	if sg.intermission.nextMap != nil || sg.intermission.state.Active {
+		t.Fatalf("intermission not cleared: %+v", sg.intermission)
+	}
+}
+
 func TestCollectIntermissionStats_UsesInitialSecretTotalAfterDiscovery(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

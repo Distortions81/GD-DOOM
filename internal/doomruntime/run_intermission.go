@@ -408,6 +408,11 @@ func (sg *sessionGame) maybeStartIntermissionMusic() {
 	}
 	sg.intermission.state.StartMusic = false
 	sg.musicCtl.PlayIntermission(sg.intermission.state.Commercial, clampVolume(sg.opts.MusicVolume))
+	if sg.intermission.state.Commercial {
+		sg.setNowPlayingMusic("Doom II Intermission")
+	} else {
+		sg.setNowPlayingMusic("Intermission from Doom")
+	}
 }
 
 func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) bool {
@@ -452,16 +457,17 @@ func (sg *sessionGame) tickIntermissionSoundSystem() {
 
 func (sg *sessionGame) finishIntermission() {
 	im := &sg.intermission
-	if !im.state.Active || im.nextMap == nil {
+	if im.nextMap == nil {
 		return
 	}
 	if sg.g != nil {
 		sg.g.clearPendingSoundState()
 	}
-	sg.current = im.state.Target.NextMapName
+	sg.current = im.nextMap.Name
 	sg.currentTemplate = cloneMapForRestart(im.nextMap)
 	sg.rebuildGameWithPersistentSettings(im.nextMap)
 	sg.playMusicForMap(im.nextMap.Name)
+	sg.announceMapMusic(im.nextMap.Name)
 	ebiten.SetWindowTitle(runtimehost.WindowTitle(im.nextMap.Name))
 	sg.intermission = sessionIntermission{}
 	sg.queueTransition(transitionLevel, 0)
@@ -612,24 +618,24 @@ func intermissionAnimPatchName(ep int, index int, frame int) string {
 func (sg *sessionGame) drawIntermissionFinished(screen *ebiten.Image, scale, ox, oy float64, state intermissionState) {
 	y := wiTitleY
 	if name := intermissionLevelPatchName(state.Target.MapName); name != "" {
-		sg.drawCenteredPatch(screen, name, doomLogicalW/2, y, scale, ox, oy)
+		sg.drawHorizCenteredPatch(screen, name, doomLogicalW/2, y, scale, ox, oy)
 		h := sg.intermissionPatchHeight(name)
 		if h > 0 {
 			y += (5 * h) / 4
 		}
 	}
-	sg.drawCenteredPatch(screen, "WIF", doomLogicalW/2, y, scale, ox, oy)
+	sg.drawHorizCenteredPatch(screen, "WIF", doomLogicalW/2, y, scale, ox, oy)
 }
 
 func (sg *sessionGame) drawIntermissionEntering(screen *ebiten.Image, scale, ox, oy float64, state intermissionState) {
 	y := wiTitleY
-	sg.drawCenteredPatch(screen, "WIENTER", doomLogicalW/2, y, scale, ox, oy)
+	sg.drawHorizCenteredPatch(screen, "WIENTER", doomLogicalW/2, y, scale, ox, oy)
 	if name := intermissionLevelPatchName(state.Target.NextMapName); name != "" {
 		h := sg.intermissionPatchHeight(name)
 		if h > 0 {
 			y += (5 * h) / 4
 		}
-		sg.drawCenteredPatch(screen, name, doomLogicalW/2, y, scale, ox, oy)
+		sg.drawHorizCenteredPatch(screen, name, doomLogicalW/2, y, scale, ox, oy)
 	}
 }
 
@@ -678,6 +684,20 @@ func intermissionEpisodeNodePos(ep int) []interNodePos {
 
 func (sg *sessionGame) drawCenteredPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64) bool {
 	return sg.drawIntermissionPatch(screen, name, x, y, scale, ox, oy, true)
+}
+
+func (sg *sessionGame) drawHorizCenteredPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64) bool {
+	img, p, ok := sg.intermissionPatch(name)
+	if !ok || img == nil || p.Width <= 0 || p.Height <= 0 {
+		return false
+	}
+	px := ox + float64(x)*scale - float64(p.Width)*scale*0.5 - float64(p.OffsetX)*scale
+	py := oy + float64(y)*scale - float64(p.OffsetY)*scale
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(scale, scale)
+	op.GeoM.Translate(px, py)
+	screen.DrawImage(img, op)
+	return true
 }
 
 func (sg *sessionGame) drawIntermissionPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64, centered bool) bool {

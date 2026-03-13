@@ -24,6 +24,7 @@ const (
 type Frontend struct {
 	Mode             FrontendMode
 	Active           bool
+	InGame           bool
 	MenuActive       bool
 	ItemOn           int
 	OptionsOn        int
@@ -583,6 +584,11 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 		return result
 	default:
 		if input.Escape {
+			if state.InGame {
+				result.State = Frontend{}
+				result.Sound = FrontendSoundBack
+				return result
+			}
 			result.State.MenuActive = !state.MenuActive
 			if result.State.MenuActive {
 				result.Sound = FrontendSoundMove
@@ -622,7 +628,7 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 					result.State.OptionsOn = cfg.OptionRows[0]
 				}
 			case 4:
-				result.State = OpenReadThis(state, false)
+				result.State = OpenReadThis(state, state.InGame)
 			case 2, 3:
 				result.StatusMessage = "MENU ITEM NOT WIRED YET"
 				result.StatusMessageTic = cfg.StatusTics * 2

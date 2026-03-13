@@ -360,6 +360,8 @@ type game struct {
 	pauseMenuWhichSkull       int
 	pauseMenuStatus           string
 	pauseMenuStatusTics       int
+	musicPlayerRequested      bool
+	frontendMenuRequested     bool
 	quitPromptRequested       bool
 	readThisRequested         bool
 	quitPromptActive          bool
@@ -1629,16 +1631,7 @@ func (g *game) Update() error {
 		return nil
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		g.togglePauseMenu()
-		if g.pauseMenuActive {
-			ebiten.SetCursorMode(ebiten.CursorModeVisible)
-			return nil
-		}
-	}
-	if g.pauseMenuActive {
-		g.tickPauseMenu()
-	}
-	if g.paused {
+		g.frontendMenuRequested = true
 		ebiten.SetCursorMode(ebiten.CursorModeVisible)
 		return nil
 	}
@@ -2940,6 +2933,15 @@ func (g *game) adjustPauseSound(dir int) {
 
 func (g *game) activatePauseOptionsItem() {
 	if g == nil {
+		return
+	}
+	if g.pauseMenuOptionsOn == frontendOptionsRowMusicPlayer {
+		g.musicPlayerRequested = true
+		g.pauseMenuActive = false
+		g.paused = false
+		g.pauseMenuMode = pauseMenuModeRoot
+		g.pauseMenuStatus = ""
+		g.pauseMenuStatusTics = 0
 		return
 	}
 	g.cyclePauseOption()
@@ -16098,63 +16100,119 @@ func (g *game) drawMenuPatch(screen *ebiten.Image, name string, x, y, sx, sy flo
 }
 
 func (g *game) drawPauseOverlay(screen *ebiten.Image) {
-	optionsSkullX := g.pauseOptionsSkullX(36)
-	mouseThermoX, mouseThermoCount, mouseValueX := g.pauseMouseSensitivityLayout(36, "MOUSE SENSITIVITY")
-	episodeNames := g.pauseEpisodeNamesScratch[:0]
-	for _, ep := range g.availableEpisodeChoices() {
-		if name, ok := inGameEpisodeMenuNames[ep]; ok {
-			episodeNames = append(episodeNames, name)
-		}
+	if g == nil || screen == nil || !g.pauseMenuActive || g.quitPromptActive {
+		return
 	}
-	g.pauseEpisodeNamesScratch = episodeNames
-	mode := hud.PauseModeMain
+	sw := max(screen.Bounds().Dx(), 1)
+	sh := max(screen.Bounds().Dy(), 1)
+	scale := float64(sw) / 320.0
+	scaleY := float64(sh) / 200.0
+	if scaleY < scale {
+		scale = scaleY
+	}
+	if scale < 1 {
+		scale = 1
+	}
+	ox := (float64(sw) - 320.0*scale) * 0.5
+	oy := (float64(sh) - 200.0*scale) * 0.5
+	drawPatch := func(name string, x, y float64) bool {
+		return g.drawMenuPatch(screen, name, ox+x*scale, oy+y*scale, scale, scale)
+	}
+	drawText := func(text string, x, y, textScale float64) {
+		g.drawHUTextAt(screen, text, ox+x*scale, oy+y*scale, scale*textScale, scale*textScale)
+	}
+	drawSkull := func(x, y int) {
+		name := "M_SKULL1"
+		if g.pauseMenuWhichSkull != 0 {
+			name = "M_SKULL2"
+		}
+		_ = drawPatch(name, float64(x), float64(y))
+	}
+
 	switch g.pauseMenuMode {
 	case pauseMenuModeOptions:
-		mode = hud.PauseModeOptions
+		const menuX = 36
+		const menuY = 37
+		const lineHeight = 16
+		drawPatch("M_OPTTTL", menuX, 15)
+		backLabel := "BACK: ESC"
+		backX := 320 - 8 - int(math.Ceil(float64(g.huTextWidth(backLabel))*1.2))
+		drawText(backLabel, float64(backX), 17, 1.2)
+		drawText("MESSAGES", menuX, menuY+0*lineHeight+2, 1.2)
+		drawText("STATUS BAR MODE", menuX, menuY+1*lineHeight+2, 1.2)
+		msgLabel := "OFF"
+		if g.hudMessagesEnabled {
+			msgLabel = "ON"
+		}
+		drawText(msgLabel, menuX+215, menuY+0*lineHeight+2, 1.2)
+		drawText(g.screenSizeLabel(), menuX+215, menuY+1*lineHeight+2, 1.2)
+		drawText("HUD SIZE", menuX, menuY+2*lineHeight+2, 1.2)
+		drawText(g.hudScaleLabel(), menuX+215, menuY+2*lineHeight+2, 1.2)
+		drawText("FPS", menuX, menuY+3*lineHeight+2, 1.2)
+		fpsLabel := "OFF"
+		if !g.opts.NoFPS {
+			fpsLabel = "ON"
+		}
+		drawText(fpsLabel, menuX+215, menuY+3*lineHeight+2, 1.2)
+		drawText("MOUSE SENSITIVITY", menuX, menuY+4*lineHeight+2, 1.2)
+		drawText(formatFloat2(g.opts.MouseLookSpeed), menuX+215, menuY+4*lineHeight+2, 1.2)
+		drawText("SOUND VOLUME", menuX, menuY+5*lineHeight+2, 1.2)
+		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), menuX+215, menuY+5*lineHeight+2, 1.2)
+		drawText("MUSIC VOLUME", menuX, menuY+6*lineHeight+2, 1.2)
+		drawText(formatInt(frontendVolumeDot(g.opts.MusicVolume)), menuX+215, menuY+6*lineHeight+2, 1.2)
+		drawText("MUSIC PLAYER", menuX, menuY+7*lineHeight+2, 1.2)
+		playerLabel := "OPEN"
+		if len(g.opts.MusicPlayerCatalog) == 0 || g.opts.MusicPlayerTrackLoader == nil {
+			playerLabel = "N/A"
+		}
+		drawText(playerLabel, menuX+215, menuY+7*lineHeight+2, 1.2)
+		drawSkull(g.pauseOptionsSkullX(menuX), menuY+g.pauseMenuOptionsOn*lineHeight)
 	case pauseMenuModeSound:
-		mode = hud.PauseModeSound
+		const menuX = 80
+		const menuY = 64
+		const lineHeight = 16
+		drawPatch("M_SVOL", 60, 38)
+		drawPatch("M_SFXVOL", menuX, menuY)
+		drawPatch("M_MUSVOL", menuX, menuY+2*lineHeight)
+		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), 235, menuY+2, 1.2)
+		drawText(formatInt(frontendVolumeDot(g.opts.MusicVolume)), 235, menuY+2*lineHeight+2, 1.2)
+		skullY := menuY
+		if g.pauseMenuSoundOn != 0 {
+			skullY += 2 * lineHeight
+		}
+		drawSkull(menuX-32, skullY)
 	case pauseMenuModeEpisode:
-		mode = hud.PauseModeEpisode
+		drawPatch("M_NEWG", 96, 14)
+		drawPatch("M_EPISOD", 54, 38)
+		episodeNames := g.pauseEpisodeNamesScratch[:0]
+		for _, ep := range g.availableEpisodeChoices() {
+			if name, ok := inGameEpisodeMenuNames[ep]; ok {
+				episodeNames = append(episodeNames, name)
+			}
+		}
+		g.pauseEpisodeNamesScratch = episodeNames
+		for i, name := range episodeNames {
+			drawPatch(name, 48, float64(63+i*16))
+		}
+		drawSkull(16, 63+g.pauseMenuEpisodeOn*16)
 	case pauseMenuModeSkill:
-		mode = hud.PauseModeSkill
+		drawPatch("M_NEWG", 96, 14)
+		drawPatch("M_SKILL", 54, 38)
+		for i, name := range frontendSkillMenuNames {
+			drawPatch(name, 48, float64(63+i*16))
+		}
+		drawSkull(16, 63+g.pauseMenuSkillOn*16)
+	default:
+		drawPatch("M_PAUSE", 126, 4)
+		drawPatch("M_DOOM", 94, 2)
+		for i, name := range inGamePauseMenuNames {
+			drawPatch(name, 97, float64(64+i*16))
+		}
+		drawSkull(65, 64+g.pauseMenuItemOn*16)
 	}
-	hud.DrawPauseOverlay(screen, hud.PauseOverlayInputs{
-		ViewW:                  g.viewW,
-		ViewH:                  g.viewH,
-		Visible:                g.pauseMenuActive && !g.quitPromptActive,
-		SourcePortMode:         g.hudUsesLogicalLayout(),
-		Mode:                   mode,
-		OptionsMenuNames:       frontendOptionsMenuNames[:],
-		OptionsMenuText:        frontendOptionsTextLabels[:],
-		SoundMenuSFXLabel:      "M_SFXVOL",
-		SoundMenuMusicLabel:    "M_MUSVOL",
-		EpisodeMenuNames:       episodeNames,
-		SkillMenuNames:         frontendSkillMenuNames[:],
-		MainMenuNames:          inGamePauseMenuNames[:],
-		MessagesPatch:          frontendMessagesPatch(g.hudMessagesEnabled),
-		HUDMessagesEnabled:     g.hudMessagesEnabled,
-		ScreenSizeDot:          g.screenSizeDot(),
-		ScreenSizeLabel:        g.screenSizeLabel(),
-		HUDScaleDot:            g.hudScaleDot(),
-		HUDScaleCount:          len(sourcePortHUDScaleSteps),
-		HUDScaleLabel:          g.hudScaleLabel(),
-		ShowPerf:               !g.opts.NoFPS,
-		OptionsSkullX:          optionsSkullX,
-		MouseSensitivityDot:    frontendMouseSensitivityDotForCount(g.opts.MouseLookSpeed, mouseThermoCount),
-		MouseSensitivityCount:  mouseThermoCount,
-		MouseSensitivityLabel:  formatFloat2(g.opts.MouseLookSpeed),
-		MouseSensitivityX:      mouseThermoX,
-		MouseSensitivityValueX: mouseValueX,
-		SFXVolumeDot:           frontendVolumeDot(g.opts.SFXVolume),
-		MusicVolumeDot:         frontendVolumeDot(g.opts.MusicVolume),
-		SelectedOptions:        g.pauseMenuOptionsOn,
-		SelectedSound:          g.pauseMenuSoundOn,
-		SelectedEpisode:        g.pauseMenuEpisodeOn,
-		SelectedSkill:          g.pauseMenuSkillOn,
-		SelectedMain:           g.pauseMenuItemOn,
-		SelectedSkullAlternate: g.pauseMenuWhichSkull != 0,
-		StatusMessage:          g.pauseMenuStatus,
-	}, g.drawMenuPatch, g.drawHUTextAt, g.huTextWidth)
+	if msg := strings.TrimSpace(g.pauseMenuStatus); msg != "" {
+		drawText(msg, 160-float64(g.huTextWidth(msg))/2.0, 178, 1.0)
+	}
 }
 
 func (g *game) pauseMouseSensitivityLayout(menuX int, label string) (thermoX, thermoCount, valueX int) {

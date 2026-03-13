@@ -152,6 +152,7 @@ func (sg *sessionGame) playTitleMusic() {
 		return
 	}
 	sg.musicCtl.PlayTitle(clampVolume(sg.opts.MusicVolume))
+	sg.setNowPlayingMusic("Title Screen")
 }
 
 func (sg *sessionGame) frontendStatus(msg string, tics int) {
@@ -278,6 +279,7 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.current = sg.g.sessionSignals().MapName
 	sg.currentTemplate = cloneMapForRestart(sg.g.m)
 	sg.playMusicForMap(sg.current)
+	sg.announceMapMusic(sg.current)
 	ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
 	sg.queueTransition(transitionLevel, 0)
 }
@@ -500,7 +502,7 @@ func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
 	case next <= 0:
 		sg.stopAndClearMusic()
 	case prev <= 0:
-		if sg.frontend.Active {
+		if sg.frontend.Active && !sg.frontend.InGame {
 			sg.playTitleMusic()
 		} else {
 			sg.playMusicForMap(sg.current)
@@ -527,7 +529,7 @@ func (sg *sessionGame) frontendCycleMusicVolume() {
 	case next <= 0:
 		sg.stopAndClearMusic()
 	case cur <= 0:
-		if sg.frontend.Active {
+		if sg.frontend.Active && !sg.frontend.InGame {
 			sg.playTitleMusic()
 		} else {
 			sg.playMusicForMap(sg.current)
@@ -797,9 +799,16 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			return
 		}
 		if sg.frontend.MenuActive {
-			sg.drawFrontendMainMenuTitle(screen, scale, ox, oy)
-			for i, name := range frontendMainMenuNames {
-				_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
+			if sg.frontend.InGame {
+				_ = sg.drawMenuPatch(screen, "M_PAUSE", 126, 4, scale, ox, oy, false)
+				for i, name := range inGamePauseMenuNames {
+					_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
+				}
+			} else {
+				sg.drawFrontendMainMenuTitle(screen, scale, ox, oy)
+				for i, name := range frontendMainMenuNames {
+					_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
+				}
 			}
 			sg.drawMenuSkull(screen, 65, 64+sg.frontend.ItemOn*16, scale, ox, oy)
 		}
@@ -813,15 +822,7 @@ func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox
 	if sg == nil || screen == nil {
 		return
 	}
-	if sg.g == nil || sg.rt == nil || len(sg.g.opts.MessageFontBank) == 0 {
-		_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
-		return
-	}
-	titleScale := math.Max(scale*1.8, 1)
-	titleWidth := float64(sg.intermissionTextWidth(frontendMainMenuTitle)) * titleScale
-	px := ox + (320.0*scale-titleWidth)*0.5
-	py := oy + 8.0*scale
-	sg.rt.sessionDrawHUTextAt(screen, frontendMainMenuTitle, px, py, titleScale, titleScale)
+	_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
 }
 
 func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool) {
@@ -829,6 +830,9 @@ func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool)
 		return
 	}
 	sg.drawFrontendAttractBackground(screen)
+	if sg.frontend.MenuActive || sg.frontend.InGame {
+		ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), color.RGBA{A: 128})
+	}
 	if showLogo && sg.frontend.Mode == frontendModeTitle && sg.frontend.MenuActive {
 		return
 	}
@@ -836,6 +840,10 @@ func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool)
 
 func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image) {
 	if sg == nil || screen == nil {
+		return
+	}
+	if sg.frontend.InGame && sg.g != nil {
+		sg.drawGamePresented(screen, sg.g)
 		return
 	}
 	if sg.g != nil && sg.g.sessionSignals().DemoActive {
@@ -928,6 +936,7 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	const menuX = 24
 	const menuY = 42
 	const lineHeight = 16
+	const valueX = 70
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
 	sg.rt.sessionDrawHUTextAt(screen, "MUSIC PLAYER", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
@@ -935,28 +944,29 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	wad := sg.frontendMusicPlayerWAD()
 	episode := sg.frontendMusicPlayerEpisode()
 	track := sg.frontendMusicPlayerTrack()
-	values := [frontendMusicPlayerRowCount]string{"-", "-", "-", "-"}
+	values := [frontendMusicPlayerRowCount]string{"-", "-", "-"}
 	if wad != nil {
 		values[frontendMusicPlayerRowWAD] = strings.ToUpper(strings.TrimSpace(wad.Label))
 	}
 	if episode != nil {
-		values[frontendMusicPlayerRowEpisode] = strings.ToUpper(strings.TrimSpace(episode.Label))
+		values[frontendMusicPlayerRowGroup] = strings.ToUpper(strings.TrimSpace(episode.Label))
 	}
 	if track != nil {
-		values[frontendMusicPlayerRowLevel] = strings.ToUpper(strings.TrimSpace(track.Label))
-		values[frontendMusicPlayerRowSong] = strings.ToUpper(strings.TrimSpace(track.LumpName))
+		values[frontendMusicPlayerRowTrack] = strings.ToUpper(strings.TrimSpace(track.Label))
 	}
-	labels := [frontendMusicPlayerRowCount]string{"WAD", "EPISODE", "LEVEL", "SONG"}
+	labels := [frontendMusicPlayerRowCount]string{"WAD", "GROUP", "TRACK"}
 	for i, label := range labels {
 		y := menuY + i*lineHeight + 2
 		sg.rt.sessionDrawHUTextAt(screen, label, ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
-		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+125)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+valueX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 	}
+	sg.rt.sessionDrawHUTextAt(screen, "CURRENTLY PLAYING", ox+float64(menuX)*scale, oy+float64(116)*scale, scale*1.0, scale*1.0)
+	sg.rt.sessionDrawHUTextAt(screen, sg.nowPlayingMusicLabel(), ox+float64(menuX)*scale, oy+float64(128)*scale, scale*1.0, scale*1.0)
 	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER PLAY", ox+float64(menuX)*scale, oy+float64(160)*scale, scale*1.0, scale*1.0)
 	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 		sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
 	}
-	sg.drawMenuSkull(screen, menuX-32, menuY+sg.musicPlayer.Row*lineHeight, scale, ox, oy)
+	sg.drawMenuSkull(screen, sg.frontendMusicPlayerSkullX(menuX), menuY+sg.musicPlayer.Row*lineHeight, scale, ox, oy)
 }
 
 func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy float64) {
@@ -1053,6 +1063,21 @@ func (sg *sessionGame) frontendOptionsSkullX(menuX int) int {
 		return leftEdge - gap - p.Width + p.OffsetX
 	}
 	return leftEdge - 32
+}
+
+func (sg *sessionGame) frontendMusicPlayerSkullX(menuX int) int {
+	const gap = 8
+	if _, p, ok := sg.menuPatch("M_SKULL1"); ok {
+		x := menuX - gap - p.Width + p.OffsetX
+		if x < p.OffsetX {
+			x = p.OffsetX
+		}
+		return x
+	}
+	if menuX < 32 {
+		return menuX
+	}
+	return menuX - 32
 }
 
 func (sg *sessionGame) drawQuitPrompt(screen *ebiten.Image) {

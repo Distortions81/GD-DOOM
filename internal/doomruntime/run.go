@@ -164,6 +164,26 @@ func (sg *sessionGame) Update() error {
 		},
 		HandleRuntimeProgress: func() (bool, error) {
 			sig := sg.rt.sessionSignals()
+			if sig.FrontendMenu {
+				sg.rt.sessionAcknowledgeFrontendMenu()
+				sg.frontend = frontendState{
+					Active:     true,
+					InGame:     true,
+					Mode:       frontendModeTitle,
+					MenuActive: true,
+				}
+				return true, nil
+			}
+			if sig.MusicPlayer {
+				sg.rt.sessionAcknowledgeMusicPlayer()
+				sg.frontend = frontendState{Active: true, InGame: true, MenuActive: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowMusicPlayer}
+				if sg.frontendMusicPlayerOpen() {
+					return true, nil
+				}
+				sg.frontendStatus("NO MUSIC CATALOG", doomTicsPerSecond*2)
+				sg.frontend = frontendState{}
+				return true, nil
+			}
 			return runtimehost.HandleProgress(
 				runtimehost.ProgressSignals{
 					HasNewGame:    sig.NewGameMap != nil,
@@ -183,6 +203,7 @@ func (sg *sessionGame) Update() error {
 						sg.current = sig.MapName
 						sg.currentTemplate = cloneMapForRestart(sg.g.m)
 						sg.playMusicForMap(sg.current)
+						sg.announceMapMusic(sg.current)
 						ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
 						sg.queueTransition(transitionLevel, 0)
 						sg.rt.sessionAcknowledgeNewGameRequest()
@@ -203,6 +224,7 @@ func (sg *sessionGame) Update() error {
 						sg.rt.clearPendingSoundState()
 						sg.rebuildGameWithPersistentSettings(sg.restartMapForRespawn())
 						sg.playMusicForMap(sg.rt.sessionSignals().MapName)
+						sg.announceMapMusic(sg.rt.sessionSignals().MapName)
 						ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
 						sg.queueTransition(transitionLevel, 0)
 						return nil
