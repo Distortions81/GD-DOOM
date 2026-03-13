@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"sort"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -1407,18 +1406,18 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	topSlope := float64((bz+bheight)-sightZStart) / totalDist
 	bottomSlope := float64(bz-sightZStart) / totalDist
 
-	intercepts := make([]intercept, 0, 8)
+	intercepts := g.losInterceptScratch[:0]
 	for i, ld := range g.lines {
 		frac, ok := segmentIntersectFrac(ax, ay, bx, by, ld.x1, ld.y1, ld.x2, ld.y2)
 		if !ok || frac <= 0 || frac >= 1 {
 			continue
 		}
-		intercepts = append(intercepts, intercept{frac: frac, line: i})
+		intercepts = insertInterceptOrdered(intercepts, intercept{frac: frac, line: i})
 	}
+	g.losInterceptScratch = intercepts[:0]
 	if len(intercepts) == 0 {
 		return true
 	}
-	sort.Slice(intercepts, func(i, j int) bool { return intercepts[i].frac < intercepts[j].frac })
 
 	for _, it := range intercepts {
 		ld := g.lines[it.line]
@@ -1457,6 +1456,17 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 		}
 	}
 	return true
+}
+
+func insertInterceptOrdered(intercepts []intercept, next intercept) []intercept {
+	idx := len(intercepts)
+	for idx > 0 && next.frac < intercepts[idx-1].frac {
+		idx--
+	}
+	intercepts = append(intercepts, intercept{})
+	copy(intercepts[idx+1:], intercepts[idx:])
+	intercepts[idx] = next
+	return intercepts
 }
 
 func (g *game) playerHasLOSMonster(i int, th mapdata.Thing) bool {

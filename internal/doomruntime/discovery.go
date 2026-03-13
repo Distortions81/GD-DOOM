@@ -6,7 +6,7 @@ const automapDiscoverPortalDepth = 3
 
 func (g *game) discoverLinesAroundPlayer() {
 	sec := g.sectorAt(g.p.x, g.p.y)
-	mapped := discoverMappedLinesBySector(g.m, sec, automapDiscoverPortalDepth)
+	mapped := g.discoverMappedLinesBySectorScratch(sec, automapDiscoverPortalDepth)
 	changed := false
 	for i, ok := range mapped {
 		if ok {
@@ -21,46 +21,101 @@ func (g *game) discoverLinesAroundPlayer() {
 	}
 }
 
+func buildAutomapSectorLineAdj(m *mapdata.Map) [][]automapSectorLine {
+	if m == nil || len(m.Sectors) == 0 {
+		return nil
+	}
+	out := make([][]automapSectorLine, len(m.Sectors))
+	for li, ld := range m.Linedefs {
+		front, back, frontOK, backOK := linedefSectorIndices(m, ld)
+		entry := automapSectorLine{
+			line:    li,
+			front:   front,
+			back:    back,
+			frontOK: frontOK,
+			backOK:  backOK,
+		}
+		if frontOK {
+			out[front] = append(out[front], entry)
+		}
+		if backOK && (!frontOK || back != front) {
+			out[back] = append(out[back], entry)
+		}
+	}
+	return out
+}
+
+func (g *game) discoverMappedLinesBySectorScratch(startSector, maxDepth int) []bool {
+	if g == nil || g.m == nil {
+		return nil
+	}
+	out := resizeSliceLen(g.automapMappedScratch, len(g.m.Linedefs))
+	g.automapMappedScratch = out
+	if startSector < 0 || startSector >= len(g.m.Sectors) {
+		return out
+	}
+	visited := resizeSliceLen(g.automapVisitedScratch, len(g.m.Sectors))
+	g.automapVisitedScratch = visited
+	queue := reserveSliceCap(g.automapQueueScratch, max(len(g.m.Sectors), 1))
+	queue = append(queue, automapQueueNode{sec: startSector, depth: 0})
+	visited[startSector] = true
+	for head := 0; head < len(queue); head++ {
+		n := queue[head]
+		for _, entry := range g.sectorLineAdj[n.sec] {
+			ld := g.m.Linedefs[entry.line]
+			if ld.Flags&lineNeverSee != 0 {
+				continue
+			}
+			out[entry.line] = true
+			if n.depth >= maxDepth {
+				continue
+			}
+			other, ok := oppositeSector(n.sec, entry.front, entry.back, entry.frontOK, entry.backOK)
+			if !ok || other < 0 || other >= len(g.m.Sectors) || visited[other] {
+				continue
+			}
+			if !portalTraversable(g.m, ld, entry.front, entry.back, entry.frontOK, entry.backOK) {
+				continue
+			}
+			visited[other] = true
+			queue = append(queue, automapQueueNode{sec: other, depth: n.depth + 1})
+		}
+	}
+	g.automapQueueScratch = queue[:0]
+	return out
+}
+
 func discoverMappedLinesBySector(m *mapdata.Map, startSector, maxDepth int) []bool {
 	out := make([]bool, len(m.Linedefs))
 	if startSector < 0 || startSector >= len(m.Sectors) {
 		return out
 	}
-	type qNode struct {
-		sec   int
-		depth int
-	}
 	visited := make([]bool, len(m.Sectors))
-	queue := []qNode{{sec: startSector, depth: 0}}
+	queue := []automapQueueNode{{sec: startSector, depth: 0}}
+	adj := buildAutomapSectorLineAdj(m)
 	visited[startSector] = true
 
-	for len(queue) > 0 {
-		n := queue[0]
-		queue = queue[1:]
-
-		for li, ld := range m.Linedefs {
-			fsec, bsec, fok, bok := linedefSectorIndices(m, ld)
-			touches := (fok && fsec == n.sec) || (bok && bsec == n.sec)
-			if !touches {
-				continue
-			}
+	for head := 0; head < len(queue); head++ {
+		n := queue[head]
+		for _, entry := range adj[n.sec] {
+			ld := m.Linedefs[entry.line]
 			if ld.Flags&lineNeverSee != 0 {
 				continue
 			}
-			out[li] = true
+			out[entry.line] = true
 
 			if n.depth >= maxDepth {
 				continue
 			}
-			other, ok := oppositeSector(n.sec, fsec, bsec, fok, bok)
+			other, ok := oppositeSector(n.sec, entry.front, entry.back, entry.frontOK, entry.backOK)
 			if !ok || other < 0 || other >= len(m.Sectors) || visited[other] {
 				continue
 			}
-			if !portalTraversable(m, ld, fsec, bsec, fok, bok) {
+			if !portalTraversable(m, ld, entry.front, entry.back, entry.frontOK, entry.backOK) {
 				continue
 			}
 			visited[other] = true
-			queue = append(queue, qNode{sec: other, depth: n.depth + 1})
+			queue = append(queue, automapQueueNode{sec: other, depth: n.depth + 1})
 		}
 	}
 

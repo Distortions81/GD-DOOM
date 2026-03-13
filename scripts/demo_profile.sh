@@ -7,6 +7,7 @@ WAD_PATH="${ROOT_DIR}/doom.wad"
 DEMO_PATH="${ROOT_DIR}/imp.demo"
 MAP_NAME="E1M4"
 OUT_DIR="${ROOT_DIR}/profiles"
+WITH_MEM=0
 
 usage() {
   cat <<'EOF'
@@ -21,6 +22,7 @@ Options:
   --map <name>       Map name (default: E1M4)
   --out <dir>        Output directory for profiles/logs (default: ./profiles)
   --bin <path>       Override built binary path (default: ./.tmp/gddoom-profile)
+  --mem              Also capture heap profile and runtime memstats
   -h, --help         Show this help
 
 Examples:
@@ -51,6 +53,10 @@ while [[ $# -gt 0 ]]; do
     --bin)
       BIN_PATH="$2"
       shift 2
+      ;;
+    --mem)
+      WITH_MEM=1
+      shift
       ;;
     --)
       shift
@@ -90,6 +96,7 @@ echo "Building profiler binary: ${BIN_PATH}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 RUN_LABEL="${MAP_NAME}"
 CPU_PROFILE="${OUT_DIR}/demo-${RUN_LABEL}-${STAMP}.cpu.prof"
+MEM_PROFILE="${OUT_DIR}/demo-${RUN_LABEL}-${STAMP}.mem.prof"
 RUN_LOG="${OUT_DIR}/demo-${RUN_LABEL}-${STAMP}.log"
 
 CMD=(
@@ -105,6 +112,9 @@ CMD=(
   -demo "${DEMO_PATH}"
   -cpuprofile "${CPU_PROFILE}"
 )
+if [[ ${WITH_MEM} -eq 1 ]]; then
+  CMD+=(-memprofile "${MEM_PROFILE}" -memstats)
+fi
 if [[ ${#EXTRA_FLAGS[@]} -gt 0 ]]; then
   CMD+=("${EXTRA_FLAGS[@]}")
 fi
@@ -115,6 +125,9 @@ echo "Command: ${CMD[*]}"
 
 echo
 echo "CPU profile: ${CPU_PROFILE}"
+if [[ ${WITH_MEM} -eq 1 ]]; then
+  echo "Mem profile: ${MEM_PROFILE}"
+fi
 echo "Run log:     ${RUN_LOG}"
 echo
 echo "Open interactive pprof UI:"

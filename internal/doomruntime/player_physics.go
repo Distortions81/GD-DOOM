@@ -367,16 +367,21 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	tmboxBottom := y - radius
 	tmboxRight := x + radius
 	tmboxLeft := x - radius
+	probeEnabled := g.debugPlayerProbeActive()
 
 	sec := g.sectorAt(x, y)
 	if sec < 0 || sec >= len(g.m.Sectors) {
-		g.debugPlayerProbe(fmt.Sprintf("sector invalid sec=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+		if probeEnabled {
+			g.debugPlayerProbe(fmt.Sprintf("sector invalid sec=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+		}
 		return 0, 0, 0, false
 	}
 	tmfloor := g.sectorFloor[sec]
 	tmceil := g.sectorCeil[sec]
 	tmdrop := tmfloor
-	g.debugPlayerProbe(fmt.Sprintf("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+	if probeEnabled {
+		g.debugPlayerProbe(fmt.Sprintf("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+	}
 
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
 		g.debugPlayerProbe("blocked by thing", x, y)
@@ -414,27 +419,39 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if ld.sideNum1 >= 0 && int(ld.sideNum1) < len(g.m.Sidedefs) {
 			backSec = int(g.m.Sidedefs[int(ld.sideNum1)].Sector)
 		}
-		g.debugPlayerProbe(fmt.Sprintf("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3]), x, y)
+		if probeEnabled {
+			g.debugPlayerProbe(fmt.Sprintf("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3]), x, y)
+		}
 
 		if ld.sideNum1 < 0 {
-			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if probeEnabled {
+				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			}
 			return false
 		}
 		if (ld.flags & mlBlocking) != 0 {
-			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blocking floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if probeEnabled {
+				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blocking floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			}
 			return false
 		}
 		if blockMonsterLines && (ld.flags&mlBlockMonsters) != 0 {
-			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blockmonsters floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if probeEnabled {
+				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blockmonsters floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			}
 			return false
 		}
 
 		opentop, openbottom, lowfloor, openrange := g.lineOpening(ld)
 		if openrange <= 0 {
-			g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=openrange floor=%d ceil=%d drop=%d openbottom=%d opentop=%d", ld.idx, tmfloor, tmceil, tmdrop, openbottom, opentop), x, y)
+			if probeEnabled {
+				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=openrange floor=%d ceil=%d drop=%d openbottom=%d opentop=%d", ld.idx, tmfloor, tmceil, tmdrop, openbottom, opentop), x, y)
+			}
 			return false
 		}
-		g.debugPlayerProbe(fmt.Sprintf("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor), x, y)
+		if probeEnabled {
+			g.debugPlayerProbe(fmt.Sprintf("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor), x, y)
+		}
 		if opentop < tmceil {
 			tmceil = opentop
 		}
@@ -456,7 +473,9 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
 		for bx := xl; bx <= xh; bx++ {
 			for by := yl; by <= yh; by++ {
-				g.debugPlayerProbe(fmt.Sprintf("scan block bx=%d by=%d", bx, by), x, y)
+				if probeEnabled {
+					g.debugPlayerProbe(fmt.Sprintf("scan block bx=%d by=%d", bx, by), x, y)
+				}
 				if !g.blockLinesIterator(bx, by, iter) {
 					return 0, 0, 0, false
 				}
@@ -469,19 +488,21 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 			}
 		}
 	}
-	g.debugPlayerProbe(fmt.Sprintf("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop), x, y)
+	if probeEnabled {
+		g.debugPlayerProbe(fmt.Sprintf("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop), x, y)
+	}
 	return tmfloor, tmceil, tmdrop, true
 }
 
+func (g *game) debugPlayerProbeActive() bool {
+	if g == nil || !g.debugPlayerProbeEnabled {
+		return false
+	}
+	return g.demoTick-1 == g.debugPlayerProbeTic || g.worldTic == g.debugPlayerProbeTic
+}
+
 func (g *game) debugPlayerProbe(msg string, x, y int64) {
-	if g == nil || os.Getenv("GD_DEBUG_PLAYER_PROBE_TIC") == "" {
-		return
-	}
-	var want int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PLAYER_PROBE_TIC"), "%d", &want); err != nil {
-		return
-	}
-	if g.demoTick-1 != want && g.worldTic != want {
+	if !g.debugPlayerProbeActive() {
 		return
 	}
 	fmt.Printf("player-probe-debug tic=%d world=%d msg=%s pos=(%d,%d) player=(%d,%d) mom=(%d,%d)\n",
@@ -497,8 +518,11 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 	if g == nil || g.m == nil {
 		return false
 	}
+	probeEnabled := g.debugPlayerProbeActive()
 	if moverIsMonster && !g.isDead && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
-		g.debugPlayerProbe(fmt.Sprintf("block thing=player type=player pos=(%d,%d) radius=%d", g.p.x, g.p.y, playerRadius), x, y)
+		if probeEnabled {
+			g.debugPlayerProbe(fmt.Sprintf("block thing=player type=player pos=(%d,%d) radius=%d", g.p.x, g.p.y, playerRadius), x, y)
+		}
 		return true
 	}
 	visitThing := func(i int) bool {
@@ -518,7 +542,9 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 				return false
 			}
 			if actorsOverlapXY(x, y, radius, tx, ty, monsterRadius(th.Type)) {
-				g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, monsterRadius(th.Type)), x, y)
+				if probeEnabled {
+					g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, monsterRadius(th.Type)), x, y)
+				}
 				return true
 			}
 		}
@@ -530,7 +556,9 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		tx, ty = g.thingPosFixed(i, th)
 		if actorsOverlapXY(x, y, radius, tx, ty, thingTypeRadius(th.Type)) {
-			g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=solid", i, th.Type, tx, ty, thingTypeRadius(th.Type)), x, y)
+			if probeEnabled {
+				g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=solid", i, th.Type, tx, ty, thingTypeRadius(th.Type)), x, y)
+			}
 			return true
 		}
 		return false

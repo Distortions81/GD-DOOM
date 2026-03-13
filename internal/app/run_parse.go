@@ -109,6 +109,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultImportTextures := true
 	defaultCPUProfile := ""
 	defaultMemProfile := ""
+	defaultMemStats := false
 	defaultDemo := ""
 	defaultRecordDemo := ""
 	defaultNoVsync := false
@@ -368,6 +369,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
 	memProfile := fs.String("memprofile", defaultMemProfile, "write Go heap profile to file on exit")
+	memStats := fs.Bool("memstats", defaultMemStats, "log Go runtime memory stats at startup and exit")
 	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
@@ -505,6 +507,19 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	defer writeMemProfile()
+	writeMemStats := func(stage string) {}
+	if *memStats {
+		writeMemStats = func(stage string) {
+			var stats runtime.MemStats
+			runtime.ReadMemStats(&stats)
+			fmt.Fprintf(stderr,
+				"memstats[%s]: alloc=%d heap_alloc=%d heap_inuse=%d heap_objects=%d num_gc=%d pause_total_ns=%d\n",
+				stage, stats.Alloc, stats.HeapAlloc, stats.HeapInuse, stats.HeapObjects, stats.NumGC, stats.PauseTotalNs,
+			)
+		}
+		writeMemStats("start")
+		defer writeMemStats("end")
+	}
 	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
 	choices := detectAvailableIWADChoices(".")
 	if noExplicitWAD && *render && len(choices) > 1 {

@@ -84,6 +84,7 @@ go run ./cmd/gddoom -h
 - `-trace-demo-state <path>`: write per-tic GD-DOOM demo state JSONL during `-demo` playback
 - `-cpuprofile <path>`: write Go CPU profile
 - `-memprofile <path>`: write Go heap profile on exit
+- `-memstats`: log Go runtime memory stats at startup and exit
 - `-no-vsync`: disable vsync and uncap draw FPS
 - `-nofps`: hide FPS/MS overlay
 - `-no-aspect-correction`: disable Doom-style 4:3 aspect correction

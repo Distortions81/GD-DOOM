@@ -94,6 +94,7 @@ Sourceport note:
 - `-trace-demo-state <path>`: write per-tic JSONL demo state while `-demo` is playing back.
 - `-cpuprofile <path>`: write a Go CPU profile.
 - `-memprofile <path>`: write a Go heap profile on exit.
+- `-memstats`: log Go runtime memory stats at startup and exit.
 
 ## Advanced Render Tuning
 

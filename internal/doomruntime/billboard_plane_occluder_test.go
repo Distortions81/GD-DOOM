@@ -91,3 +91,30 @@ func TestBuildBillboardPlaneOccludersFromQueueUsesOpaqueRects(t *testing.T) {
 		}
 	}
 }
+
+func TestAppendBillboardPlaneOccluderRowMaintainsOrder(t *testing.T) {
+	g := &game{
+		viewW:                      32,
+		billboardPlaneOccluderRows: make([][]billboardPlaneOccluderSpan, 1),
+	}
+	g.appendBillboardPlaneOccluderRow(0, 12, 20, 100)
+	g.appendBillboardPlaneOccluderRow(0, 4, 8, 200)
+	g.appendBillboardPlaneOccluderRow(0, 12, 18, 90)
+	g.appendBillboardPlaneOccluderRow(0, 12, 18, 110)
+
+	got := g.billboardPlaneOccluderRows[0]
+	want := []billboardPlaneOccluderSpan{
+		{L: 4, R: 8, DepthQ: 200},
+		{L: 12, R: 18, DepthQ: 90},
+		{L: 12, R: 18, DepthQ: 110},
+		{L: 12, R: 20, DepthQ: 100},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("row len=%d want=%d row=%v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("row[%d]=%+v want %+v", i, got[i], want[i])
+		}
+	}
+}

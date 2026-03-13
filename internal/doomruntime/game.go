@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -395,6 +396,7 @@ type game struct {
 	nodeChildRangeR      []int
 	nodeChildRangeOK     []uint8
 	thingSectorCache     []int
+	sectorLineAdj        [][]automapSectorLine
 	mapLines             mapview.LineCacheState
 	useSpecialSegScratch []mapview.Segment
 	sectorFloor          []int64
@@ -654,6 +656,12 @@ type game struct {
 	wallPrepassBuf               []wallSegPrepass
 	solid3DBuf                   []solidSpan
 	solidClipScratch             []solidSpan
+	losInterceptScratch          []intercept
+	automapMappedScratch         []bool
+	automapVisitedScratch        []bool
+	automapQueueScratch          []automapQueueNode
+	debugPlayerProbeEnabled      bool
+	debugPlayerProbeTic          int
 	demoTick                     int
 	demoDoneReported             bool
 	demoBenchStarted             bool
@@ -709,6 +717,19 @@ type delayedSwitchTexture struct {
 	bottom  string
 	mid     string
 	tics    int
+}
+
+type automapQueueNode struct {
+	sec   int
+	depth int
+}
+
+type automapSectorLine struct {
+	line    int
+	front   int
+	back    int
+	frontOK bool
+	backOK  bool
 }
 
 type revealMode int
@@ -1076,6 +1097,12 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if g.invulnerable {
 		g.setHUDMessage("IDDQD ON", 70)
 	}
+	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_PLAYER_PROBE_TIC")); want != "" {
+		if tic, err := strconv.Atoi(want); err == nil {
+			g.debugPlayerProbeEnabled = true
+			g.debugPlayerProbeTic = tic
+		}
+	}
 	g.physForLine = make([]int, len(g.m.Linedefs))
 	for i := range g.physForLine {
 		g.physForLine[i] = -1
@@ -1085,6 +1112,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 			g.physForLine[pl.idx] = i
 		}
 	}
+	g.sectorLineAdj = buildAutomapSectorLineAdj(g.m)
 	g.renderSeen = make([]int, len(g.m.Linedefs))
 	g.visibleSectorSeen = make([]int, len(g.m.Sectors))
 	g.visibleSubSectorSeen = make([]int, len(g.m.SubSectors))
@@ -1202,6 +1230,10 @@ func (g *game) reserveRenderScratch() {
 	g.wallPrepassBuf = reserveSliceCap(g.wallPrepassBuf, wallSegCap)
 	g.solid3DBuf = reserveSliceCap(g.solid3DBuf, rowSpanCap)
 	g.solidClipScratch = reserveSliceCap(g.solidClipScratch, rowSpanCap)
+	g.losInterceptScratch = reserveSliceCap(g.losInterceptScratch, 16)
+	g.automapMappedScratch = reserveSliceCap(g.automapMappedScratch, max(len(g.m.Linedefs), 1))
+	g.automapVisitedScratch = reserveSliceCap(g.automapVisitedScratch, max(len(g.m.Sectors), 1))
+	g.automapQueueScratch = reserveSliceCap(g.automapQueueScratch, max(len(g.m.Sectors), 1))
 
 	if g.viewH > 0 {
 		if len(g.billboardPlaneOccluderRows) != g.viewH {
@@ -6568,7 +6600,7 @@ func solidFullyCovered(spans []solidSpan, l, r int) bool {
 }
 
 func addSolidSpan(spans []solidSpan, l, r int) []solidSpan {
-	return scene.AddSpan(spans, l, r)
+	return scene.AddSpanInPlace(spans, l, r)
 }
 
 func clipRangeAgainstSolidSpans(l, r int, covered []solidSpan, out []solidSpan) []solidSpan {
@@ -9488,26 +9520,37 @@ func monsterPainAnimTotalTics(typ int16) int {
 	return total
 }
 
+var (
+	monsterDeathFrames5x5    = []byte{'H', 'I', 'J', 'K', 'L'}
+	monsterDeathFramesImp    = []byte{'I', 'J', 'K', 'L', 'M'}
+	monsterDeathFramesDemon  = []byte{'I', 'J', 'K', 'L', 'M', 'N'}
+	monsterDeathFramesLost   = []byte{'F', 'G', 'H', 'I', 'J', 'K'}
+	monsterDeathFrames8x6    = []byte{'G', 'H', 'I', 'J', 'K', 'L'}
+	monsterDeathFrames8x7    = []byte{'I', 'J', 'K', 'L', 'M', 'N', 'O'}
+	monsterDeathFramesCyber  = []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+	monsterDeathFramesSpider = []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'}
+)
+
 func monsterDeathFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004:
-		return []byte{'H', 'I', 'J', 'K', 'L'}
+		return monsterDeathFrames5x5
 	case 9:
-		return []byte{'H', 'I', 'J', 'K', 'L'}
+		return monsterDeathFrames5x5
 	case 3001:
-		return []byte{'I', 'J', 'K', 'L', 'M'}
+		return monsterDeathFramesImp
 	case 3002, 58:
-		return []byte{'I', 'J', 'K', 'L', 'M', 'N'}
+		return monsterDeathFramesDemon
 	case 3006:
-		return []byte{'F', 'G', 'H', 'I', 'J', 'K'}
+		return monsterDeathFramesLost
 	case 3005:
-		return []byte{'G', 'H', 'I', 'J', 'K', 'L'}
+		return monsterDeathFrames8x6
 	case 3003:
-		return []byte{'I', 'J', 'K', 'L', 'M', 'N', 'O'}
+		return monsterDeathFrames8x7
 	case 16:
-		return []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+		return monsterDeathFramesCyber
 	case 7:
-		return []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'}
+		return monsterDeathFramesSpider
 	default:
 		return nil
 	}
@@ -15336,8 +15379,9 @@ func (g *game) textureAnimTick() int {
 }
 
 func normalizeFlatName(name string) string {
-	out := make([]byte, 0, 8)
-	for i := 0; i < len(name) && len(out) < 8; i++ {
+	var out [8]byte
+	n := 0
+	for i := 0; i < len(name) && n < len(out); i++ {
 		c := name[i]
 		if c == 0 {
 			break
@@ -15345,9 +15389,10 @@ func normalizeFlatName(name string) string {
 		if c >= 'a' && c <= 'z' {
 			c -= 'a' - 'A'
 		}
-		out = append(out, c)
+		out[n] = c
+		n++
 	}
-	return string(out)
+	return string(out[:n])
 }
 
 func isSkyFlatName(name string) bool {

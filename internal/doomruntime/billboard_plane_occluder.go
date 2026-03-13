@@ -1,7 +1,5 @@
 package doomruntime
 
-import "sort"
-
 func flipSpriteOpaqueRectX(rect spriteOpaqueRect, texW int) spriteOpaqueRect {
 	if texW <= 0 {
 		return rect
@@ -84,11 +82,24 @@ func (g *game) appendBillboardPlaneOccluderRow(y, l, r int, depthQ uint16) {
 	if l > r {
 		return
 	}
-	g.billboardPlaneOccluderRows[y] = append(g.billboardPlaneOccluderRows[y], billboardPlaneOccluderSpan{
+	row := g.billboardPlaneOccluderRows[y]
+	next := billboardPlaneOccluderSpan{
 		L:      l,
 		R:      r,
 		DepthQ: depthQ,
-	})
+	}
+	idx := len(row)
+	for idx > 0 {
+		prev := row[idx-1]
+		if prev.L < next.L || (prev.L == next.L && (prev.R < next.R || (prev.R == next.R && prev.DepthQ <= next.DepthQ))) {
+			break
+		}
+		idx--
+	}
+	row = append(row, billboardPlaneOccluderSpan{})
+	copy(row[idx+1:], row[idx:])
+	row[idx] = next
+	g.billboardPlaneOccluderRows[y] = row
 }
 
 func (g *game) appendBillboardOpaqueRectPlaneOccluders(rects []spriteOpaqueRect, texW int, flip bool, dstX, dstY, scale float64, clipTop, clipBottom int, depthQ uint16, clipSpans []solidSpan) {
@@ -195,19 +206,5 @@ func (g *game) buildBillboardPlaneOccludersFromQueue() {
 			dstY := floorSpriteTop(float64(it.tex.Height)*scale, it.yb)
 			g.appendBillboardOpaqueRectPlaneOccluders(it.opaque.rects, it.tex.Width, false, dstX, dstY, scale, it.clipTop, it.clipBottom, encodeDepthQ(it.dist), it.clipSpans)
 		}
-	}
-	for y := range rows {
-		if len(rows[y]) < 2 {
-			continue
-		}
-		sort.Slice(rows[y], func(i, j int) bool {
-			if rows[y][i].L != rows[y][j].L {
-				return rows[y][i].L < rows[y][j].L
-			}
-			if rows[y][i].R != rows[y][j].R {
-				return rows[y][i].R < rows[y][j].R
-			}
-			return rows[y][i].DepthQ < rows[y][j].DepthQ
-		})
 	}
 }
