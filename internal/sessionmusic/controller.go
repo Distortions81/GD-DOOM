@@ -54,8 +54,7 @@ func (c *Controller) StopAndClear() {
 	if c == nil || c.player == nil {
 		return
 	}
-	_ = c.player.Stop()
-	_ = c.player.ClearBuffer()
+	_ = c.player.ResetPlayback()
 }
 
 func (c *Controller) SetVolume(v float64) {

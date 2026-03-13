@@ -76,3 +76,24 @@ func TestPCMChunkBufferBufferedBytes(t *testing.T) {
 		t.Fatalf("BufferedBytes() after clear=%d want=0", got)
 	}
 }
+
+func TestChunkPlayerResetPlaybackClearsQueuedBuffer(t *testing.T) {
+	cp, err := NewChunkPlayer()
+	if err != nil {
+		t.Skipf("NewChunkPlayer unavailable: %v", err)
+	}
+	defer func() { _ = cp.Close() }()
+
+	if err := cp.EnqueueBytesS16LE(make([]byte, 256)); err != nil {
+		t.Fatalf("EnqueueBytesS16LE() error: %v", err)
+	}
+	if err := cp.ResetPlayback(); err != nil {
+		t.Fatalf("ResetPlayback() error: %v", err)
+	}
+	if got := cp.BufferedBytes(); got != 0 {
+		t.Fatalf("BufferedBytes() after reset=%d want=0", got)
+	}
+	if err := cp.EnqueueBytesS16LE(make([]byte, 128)); err != nil {
+		t.Fatalf("enqueue after reset error: %v", err)
+	}
+}

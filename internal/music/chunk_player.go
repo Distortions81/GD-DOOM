@@ -14,6 +14,7 @@ const (
 	cmdStart playerCmdType = iota
 	cmdStop
 	cmdClear
+	cmdReset
 	cmdEnqueue
 	cmdSetVolume
 	cmdClose
@@ -30,6 +31,7 @@ type ChunkPlayer struct {
 	ctx    *audio.Context
 	player *audio.Player
 	src    *pcmChunkBuffer
+	volume float64
 
 	cmds chan playerCmd
 	done chan struct{}
@@ -50,6 +52,7 @@ func NewChunkPlayer() (*ChunkPlayer, error) {
 		ctx:    ctx,
 		player: p,
 		src:    src,
+		volume: 1,
 		cmds:   make(chan playerCmd, chunkPlayerCommandQueueCap()),
 		done:   make(chan struct{}),
 	}
@@ -74,6 +77,10 @@ func (cp *ChunkPlayer) Stop() error {
 
 func (cp *ChunkPlayer) ClearBuffer() error {
 	return cp.send(playerCmd{typ: cmdClear})
+}
+
+func (cp *ChunkPlayer) ResetPlayback() error {
+	return cp.send(playerCmd{typ: cmdReset})
 }
 
 func (cp *ChunkPlayer) SetVolume(v float64) error {
@@ -153,9 +160,21 @@ func (cp *ChunkPlayer) run() {
 			playing = false
 		case cmdClear:
 			cp.src.Clear()
+		case cmdReset:
+			cp.src.Clear()
+			cp.player.Pause()
+			_ = cp.player.Close()
+			p, err := audio.NewPlayer(cp.ctx, cp.src)
+			if err != nil {
+				return
+			}
+			cp.player = p
+			cp.player.SetVolume(cp.volume)
+			playing = false
 		case cmdEnqueue:
 			cp.src.Enqueue(cmd.data)
 		case cmdSetVolume:
+			cp.volume = cmd.vol
 			cp.player.SetVolume(cmd.vol)
 		case cmdClose:
 			cp.player.Pause()
