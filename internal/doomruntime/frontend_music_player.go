@@ -180,7 +180,8 @@ func (sg *sessionGame) frontendMusicPlayerPlaySelected() bool {
 		return false
 	}
 	sg.musicCtl.PlayData(data, clampVolume(sg.opts.MusicVolume))
-	sg.setNowPlayingMusic(track.MusicName, track.Label, track.LumpName)
+	sg.setNowPlayingLevel(track.Label, string(track.MapName))
+	sg.setNowPlayingMusic(track.MusicName, track.LumpName)
 	return true
 }
 
@@ -199,13 +200,35 @@ func (sg *sessionGame) setNowPlayingMusic(candidates ...string) {
 	sg.nowPlayingMusic = ""
 }
 
+func (sg *sessionGame) setNowPlayingLevel(candidates ...string) {
+	if sg == nil {
+		return
+	}
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			continue
+		}
+		sg.nowPlayingLevel = candidate
+		return
+	}
+	sg.nowPlayingLevel = ""
+}
+
 func (sg *sessionGame) nowPlayingMusicLabel() string {
 	if sg == nil {
 		return "-"
 	}
-	label := strings.TrimSpace(sg.nowPlayingMusic)
-	if label == "" {
+	level := strings.TrimSpace(sg.nowPlayingLevel)
+	music := strings.TrimSpace(sg.nowPlayingMusic)
+	switch {
+	case level != "" && music != "":
+		return strings.ToUpper(level) + "\nSONG: " + strings.ToUpper(music)
+	case level != "":
+		return strings.ToUpper(level)
+	case music != "":
+		return "SONG: " + strings.ToUpper(music)
+	default:
 		return "-"
 	}
-	return strings.ToUpper(label)
 }

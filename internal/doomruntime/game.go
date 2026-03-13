@@ -16156,7 +16156,7 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawText(fpsLabel, menuX+215, menuY+3*lineHeight+2, 1.2)
 		drawText("MOUSE SENSITIVITY", menuX, menuY+4*lineHeight+2, 1.2)
 		drawText(formatFloat2(g.opts.MouseLookSpeed), menuX+215, menuY+4*lineHeight+2, 1.2)
-		drawText("SOUND VOLUME", menuX, menuY+5*lineHeight+2, 1.2)
+		drawText("EFFECTS VOLUME", menuX, menuY+5*lineHeight+2, 1.2)
 		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), menuX+215, menuY+5*lineHeight+2, 1.2)
 		drawText("MUSIC VOLUME", menuX, menuY+6*lineHeight+2, 1.2)
 		drawText(formatInt(frontendVolumeDot(g.opts.MusicVolume)), menuX+215, menuY+6*lineHeight+2, 1.2)
@@ -16467,7 +16467,13 @@ func (g *game) drawHUTextAt(screen *ebiten.Image, text string, x, y, sx, sy floa
 	}
 	px := x
 	py := y
+	lineAdvance := 9 * sy
 	for _, ch := range text {
+		if ch == '\n' {
+			px = x
+			py += lineAdvance
+			continue
+		}
 		uc := ch
 		if uc >= 'a' && uc <= 'z' {
 			uc -= 'a' - 'A'

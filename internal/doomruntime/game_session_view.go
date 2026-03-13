@@ -153,6 +153,9 @@ func (g *game) sessionSetSFXVolume(v float64) {
 		return
 	}
 	g.opts.SFXVolume = v
+	if g.snd != nil {
+		g.snd.setSFXVolume(v)
+	}
 }
 
 func (g *game) sessionPublishRuntimeSettings() {

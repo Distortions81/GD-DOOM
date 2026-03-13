@@ -126,6 +126,12 @@ func TestFrontendMusicPlayerPlaySelectedLoadsTrack(t *testing.T) {
 	if sg.nowPlayingMusic != "Dark Halls" {
 		t.Fatalf("nowPlayingMusic=%q want Dark Halls", sg.nowPlayingMusic)
 	}
+	if sg.nowPlayingLevel != "E1M3 - Toxin Refinery" {
+		t.Fatalf("nowPlayingLevel=%q want E1M3 - Toxin Refinery", sg.nowPlayingLevel)
+	}
+	if got := sg.nowPlayingMusicLabel(); got != "E1M3 - TOXIN REFINERY\nSONG: DARK HALLS" {
+		t.Fatalf("nowPlayingMusicLabel=%q want multiline level/song", got)
+	}
 }
 
 func TestFrontendMusicPlayerCloseReturnsToGameWhenOpenedInGame(t *testing.T) {

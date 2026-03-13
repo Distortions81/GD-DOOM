@@ -55,7 +55,7 @@ var frontendOptionsTextLabels = [...]string{
 	"HUD SIZE",
 	"FPS",
 	"MOUSE SENSITIVITY",
-	"SOUND VOLUME",
+	"EFFECTS VOLUME",
 	"MUSIC VOLUME",
 	"MUSIC PLAYER",
 }

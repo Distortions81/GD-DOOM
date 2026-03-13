@@ -97,6 +97,7 @@ type sessionGame struct {
 	frontend            frontendState
 	frontendMenuPending bool
 	musicPlayer         frontendMusicPlayerState
+	nowPlayingLevel     string
 	nowPlayingMusic     string
 	quitPrompt          quitPromptState
 	quitMessageSeq      int
@@ -484,6 +485,7 @@ func (sg *sessionGame) stopAndClearMusic() {
 		return
 	}
 	sg.musicCtl.StopAndClear()
+	sg.setNowPlayingLevel("")
 	sg.setNowPlayingMusic("")
 }
 
@@ -494,7 +496,8 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 	sg.musicCtl.PlayMap(name, clampVolume(sg.opts.MusicVolume))
 	if sg.opts.MapMusicInfo != nil {
 		levelLabel, musicName := sg.opts.MapMusicInfo(string(name))
-		sg.setNowPlayingMusic(musicName, levelLabel, string(name))
+		sg.setNowPlayingLevel(levelLabel, string(name))
+		sg.setNowPlayingMusic(musicName, string(name))
 	}
 }
 
