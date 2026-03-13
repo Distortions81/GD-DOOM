@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"gddoom/internal/mapdata"
-	"gddoom/internal/sessionflow"
 )
 
 func TestEpisodeMapSlot(t *testing.T) {
@@ -17,156 +16,186 @@ func TestEpisodeMapSlot(t *testing.T) {
 	}
 }
 
-func TestShouldShowYouAreHere(t *testing.T) {
-	if !shouldShowYouAreHere("E1M1", "E1M2") {
-		t.Fatal("same episode should show YOU ARE HERE")
+func TestIntermissionParSeconds(t *testing.T) {
+	cases := []struct {
+		mapName mapdata.MapName
+		want    int
+	}{
+		{mapName: "E1M1", want: 30},
+		{mapName: "E2M8", want: 30},
+		{mapName: "E3M9", want: 135},
+		{mapName: "MAP01", want: 30},
+		{mapName: "MAP15", want: 210},
+		{mapName: "MAP31", want: 120},
 	}
-	if shouldShowYouAreHere("E1M9", "E2M1") {
-		t.Fatal("different episodes should not show YOU ARE HERE")
-	}
-	if shouldShowYouAreHere("MAP01", "MAP02") {
-		t.Fatal("commercial maps should not show YOU ARE HERE")
-	}
-}
-
-func TestShouldShowEnteringScreen(t *testing.T) {
-	if !shouldShowEnteringScreen("E1M1", "E1M2") {
-		t.Fatal("episode progression should show ENTERING screen")
-	}
-	if shouldShowEnteringScreen("MAP01", "MAP02") {
-		t.Fatal("commercial maps should not use episode ENTERING screen")
-	}
-	if shouldShowEnteringScreen("E1M1", "MAP02") {
-		t.Fatal("mixed map formats should not use episode ENTERING screen")
+	for _, tc := range cases {
+		if got := intermissionParSeconds(tc.mapName); got != tc.want {
+			t.Fatalf("intermissionParSeconds(%s)=%d want=%d", tc.mapName, got, tc.want)
+		}
 	}
 }
 
-func TestEpisodeFinaleScreen(t *testing.T) {
-	if got, ok := episodeFinaleScreen("E1M8", false); !ok || got != "CREDIT" {
-		t.Fatalf("episodeFinaleScreen(E1M8,false)=(%q,%t) want=(CREDIT,true)", got, ok)
+func TestIntermissionBackgroundName(t *testing.T) {
+	if got, ok := intermissionBackgroundName(intermissionState{Episode: 1}); !ok || got != "WIMAP0" {
+		t.Fatalf("episode1 background=(%q,%t) want=(WIMAP0,true)", got, ok)
 	}
-	if got, ok := episodeFinaleScreen("E2M8", false); !ok || got != "VICTORY2" {
-		t.Fatalf("episodeFinaleScreen(E2M8,false)=(%q,%t) want=(VICTORY2,true)", got, ok)
+	if got, ok := intermissionBackgroundName(intermissionState{Episode: 4, Retail: true}); !ok || got != "INTERPIC" {
+		t.Fatalf("retail e4 background=(%q,%t) want=(INTERPIC,true)", got, ok)
 	}
-	if got, ok := episodeFinaleScreen("E3M8", false); !ok || got != "ENDPIC" {
-		t.Fatalf("episodeFinaleScreen(E3M8,false)=(%q,%t) want=(ENDPIC,true)", got, ok)
-	}
-	if _, ok := episodeFinaleScreen("E1M8", true); ok {
-		t.Fatal("secret exits should not trigger episode finale screen")
-	}
-	if _, ok := episodeFinaleScreen("E1M7", false); ok {
-		t.Fatal("non-episode-end map should not trigger episode finale screen")
+	if got, ok := intermissionBackgroundName(intermissionState{Commercial: true}); !ok || got != "INTERPIC" {
+		t.Fatalf("commercial background=(%q,%t) want=(INTERPIC,true)", got, ok)
 	}
 }
 
-func TestTickIntermissionProgressesToCompletion(t *testing.T) {
+func TestIntermissionLevelPatchName(t *testing.T) {
+	if got := intermissionLevelPatchName("E1M1"); got != "WILV00" {
+		t.Fatalf("E1M1 patch=%q want WILV00", got)
+	}
+	if got := intermissionLevelPatchName("E4M9"); got != "WILV38" {
+		t.Fatalf("E4M9 patch=%q want WILV38", got)
+	}
+	if got := intermissionLevelPatchName("MAP01"); got != "CWILV00" {
+		t.Fatalf("MAP01 patch=%q want CWILV00", got)
+	}
+}
+
+func TestTickIntermissionProgressesToShowNextAndCompletion(t *testing.T) {
 	sg := &sessionGame{
 		intermission: sessionIntermission{
-			state: sessionflow.Intermission{
-				Active: true,
-				Phase:  sessionflow.PhaseKills,
-				Show: intermissionStats{
-					MapName:     mapdata.MapName("E1M1"),
-					NextMapName: mapdata.MapName("E1M2"),
-				},
-				Target: intermissionStats{
-					MapName:     mapdata.MapName("E1M1"),
-					NextMapName: mapdata.MapName("E1M2"),
-					KillsPct:    4,
-					ItemsPct:    4,
-					SecretsPct:  4,
-					TimeSec:     6,
-				},
+			state: intermissionState{
+				Active:     true,
+				Screen:     intermissionScreenStats,
+				SPState:    1,
+				PauseTics:  1,
+				Episode:    1,
+				Last:       0,
+				Next:       1,
+				Show:       intermissionStats{MapName: "E1M1", NextMapName: "E1M2", KillsPct: -1, ItemsPct: -1, SecretsPct: -1, TimeSec: -1, ParSec: -1},
+				Target:     intermissionStats{MapName: "E1M1", NextMapName: "E1M2", KillsPct: 2, ItemsPct: 2, SecretsPct: 2, TimeSec: 3, ParSec: 3},
+				StartMusic: false,
 			},
 		},
 	}
-	sawYouAreHere := false
+	sawShowNext := false
 	done := false
-	for i := 0; i < 600; i++ {
-		done = sg.tickIntermission()
-		if sg.intermission.state.Phase == sessionflow.PhaseYouAreHere {
-			sawYouAreHere = true
+	for i := 0; i < 400; i++ {
+		skip := sg.intermission.state.SPState == 10
+		if skip {
+			sg.intermission.state.Tic = wiSkipInputDelay + 1
+		}
+		done = sg.tickIntermissionAdvance(skip)
+		if sg.intermission.state.Screen == intermissionScreenShowNextLoc {
+			sawShowNext = true
 		}
 		if done {
 			break
 		}
 	}
-	if !sawYouAreHere {
-		t.Fatal("intermission did not reach YOU ARE HERE phase")
+	if !sawShowNext {
+		t.Fatal("intermission did not reach show-next screen")
 	}
 	if !done {
 		t.Fatal("intermission did not complete in expected ticks")
 	}
 }
 
-func TestTickIntermissionCommercialSkipsEnteringPhases(t *testing.T) {
+func TestTickIntermissionCommercialSkipsShowNext(t *testing.T) {
 	sg := &sessionGame{
 		intermission: sessionIntermission{
-			state: sessionflow.Intermission{
-				Active:         true,
-				Phase:          sessionflow.PhaseKills,
-				ShowEntering:   false,
-				ShowYouAreHere: false,
-				EnteringWait:   0,
-				YouAreHereWait: 1,
-				Show: intermissionStats{
-					MapName:     mapdata.MapName("MAP01"),
-					NextMapName: mapdata.MapName("MAP02"),
-				},
-				Target: intermissionStats{
-					MapName:     mapdata.MapName("MAP01"),
-					NextMapName: mapdata.MapName("MAP02"),
-					KillsPct:    2,
-					ItemsPct:    2,
-					SecretsPct:  2,
-					TimeSec:     3,
-				},
+			state: intermissionState{
+				Active:     true,
+				Screen:     intermissionScreenStats,
+				SPState:    1,
+				PauseTics:  1,
+				Commercial: true,
+				Show:       intermissionStats{MapName: "MAP01", NextMapName: "MAP02", KillsPct: -1, ItemsPct: -1, SecretsPct: -1, TimeSec: -1, ParSec: -1},
+				Target:     intermissionStats{MapName: "MAP01", NextMapName: "MAP02", KillsPct: 2, ItemsPct: 2, SecretsPct: 2, TimeSec: 3, ParSec: 30},
+				StartMusic: false,
 			},
 		},
 	}
 	done := false
-	sawEntering := false
+	sawShowNext := false
 	for i := 0; i < 300; i++ {
-		done = sg.tickIntermission()
-		if sg.intermission.state.Phase == sessionflow.PhaseEntering {
-			sawEntering = true
+		skip := sg.intermission.state.SPState == 10
+		if skip {
+			sg.intermission.state.Tic = wiSkipInputDelay + 1
+		}
+		done = sg.tickIntermissionAdvance(skip)
+		if sg.intermission.state.Screen == intermissionScreenShowNextLoc {
+			sawShowNext = true
 		}
 		if done {
 			break
 		}
 	}
-	if sawEntering {
-		t.Fatal("commercial intermission should not enter episode map phase")
+	if sawShowNext {
+		t.Fatal("commercial intermission should not use show-next screen")
 	}
 	if !done {
-		t.Fatal("commercial intermission did not complete in expected ticks")
+		t.Fatal("commercial intermission did not complete")
 	}
 }
 
-func TestTickIntermissionSkipDoesNotResetFinalHold(t *testing.T) {
+func TestTickIntermissionRetailEpisode4UsesNoNodeScreen(t *testing.T) {
 	sg := &sessionGame{
 		intermission: sessionIntermission{
-			state: sessionflow.Intermission{
-				Active:  true,
-				Phase:   sessionflow.PhaseYouAreHere,
-				Tic:     sessionflow.IntermissionSkipInputDelayTics + 1,
-				WaitTic: 5,
-				Show: intermissionStats{
-					MapName:     mapdata.MapName("E1M1"),
-					NextMapName: mapdata.MapName("E1M2"),
-				},
-				Target: intermissionStats{
-					MapName:     mapdata.MapName("E1M1"),
-					NextMapName: mapdata.MapName("E1M2"),
-				},
+			state: intermissionState{
+				Active:     true,
+				Screen:     intermissionScreenStats,
+				SPState:    10,
+				PauseTics:  1,
+				Tic:        wiSkipInputDelay + 1,
+				Episode:    4,
+				Retail:     true,
+				Last:       0,
+				Next:       1,
+				Show:       intermissionStats{MapName: "E4M1", NextMapName: "E4M2", KillsPct: 10, ItemsPct: 20, SecretsPct: 30, TimeSec: 40, ParSec: 0},
+				Target:     intermissionStats{MapName: "E4M1", NextMapName: "E4M2", KillsPct: 10, ItemsPct: 20, SecretsPct: 30, TimeSec: 40, ParSec: 0},
+				StartMusic: false,
 			},
 		},
 	}
-	if done := sg.tickIntermissionAdvance(true); done {
-		t.Fatal("final intermission hold should not complete immediately")
+	_ = sg.tickIntermissionAdvance(true)
+	if sg.intermission.state.Screen != intermissionScreenShowNextLoc {
+		t.Fatalf("screen=%v want show-next", sg.intermission.state.Screen)
 	}
-	if got := sg.intermission.state.WaitTic; got != 4 {
-		t.Fatalf("waitTic=%d want=4", got)
+	if got, ok := intermissionBackgroundName(sg.intermission.state); !ok || got != "INTERPIC" {
+		t.Fatalf("retail e4 background=(%q,%t) want=(INTERPIC,true)", got, ok)
+	}
+	if nodes := intermissionEpisodeNodePos(sg.intermission.state.Episode); nodes != nil {
+		t.Fatalf("episode4 nodes=%v want nil", nodes)
+	}
+}
+
+func TestTickIntermissionSkipFastForwardsStatsThenExits(t *testing.T) {
+	sg := &sessionGame{
+		intermission: sessionIntermission{
+			state: intermissionState{
+				Active:     true,
+				Screen:     intermissionScreenStats,
+				SPState:    2,
+				PauseTics:  1,
+				Episode:    1,
+				Last:       0,
+				Next:       1,
+				Tic:        wiSkipInputDelay + 1,
+				Show:       intermissionStats{MapName: "E1M1", NextMapName: "E1M2", KillsPct: 0, ItemsPct: 0, SecretsPct: 0, TimeSec: 0, ParSec: 0},
+				Target:     intermissionStats{MapName: "E1M1", NextMapName: "E1M2", KillsPct: 10, ItemsPct: 20, SecretsPct: 30, TimeSec: 40, ParSec: 50},
+				StartMusic: false,
+			},
+		},
+	}
+	_ = sg.tickIntermissionAdvance(true)
+	if sg.intermission.state.SPState != 10 {
+		t.Fatalf("spState=%d want=10", sg.intermission.state.SPState)
+	}
+	if sg.intermission.state.Show.KillsPct != 10 || sg.intermission.state.Show.TimeSec != 40 {
+		t.Fatalf("fast-forward show=%+v want final counters", sg.intermission.state.Show)
+	}
+	_ = sg.tickIntermissionAdvance(true)
+	if sg.intermission.state.Screen != intermissionScreenShowNextLoc {
+		t.Fatalf("screen=%v want show-next after second skip", sg.intermission.state.Screen)
 	}
 }
 

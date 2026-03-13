@@ -929,6 +929,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return data, nil
 		}
+		opts.IntermissionMusicLoader = func(commercial bool) ([]byte, error) {
+			lump := "D_INTER"
+			if commercial {
+				lump = "D_DM2INT"
+			}
+			l, ok := wf.LumpByName(lump)
+			if !ok {
+				return nil, nil
+			}
+			data, err := wf.LumpData(l)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := music.ParseMUS(data); err != nil {
+				return nil, err
+			}
+			return data, nil
+		}
 		opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 			return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
@@ -1155,6 +1173,26 @@ func hashWADStackSHA1(paths []string) string {
 
 func mapMusicLumpName(name mapdata.MapName) (string, bool) {
 	s := strings.ToUpper(strings.TrimSpace(string(name)))
+	switch s {
+	case "E4M1":
+		return "D_E3M4", true
+	case "E4M2":
+		return "D_E3M2", true
+	case "E4M3":
+		return "D_E3M3", true
+	case "E4M4":
+		return "D_E1M5", true
+	case "E4M5":
+		return "D_E2M7", true
+	case "E4M6":
+		return "D_E2M4", true
+	case "E4M7":
+		return "D_E2M6", true
+	case "E4M8":
+		return "D_E2M5", true
+	case "E4M9":
+		return "D_E1M9", true
+	}
 	if len(s) == 4 && s[0] == 'E' && s[2] == 'M' &&
 		s[1] >= '1' && s[1] <= '9' && s[3] >= '1' && s[3] <= '9' {
 		return "D_" + s, true
@@ -1745,6 +1783,24 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
 		if !ok {
 			return nil, nil
+		}
+		l, ok := wf.LumpByName(lump)
+		if !ok {
+			return nil, nil
+		}
+		data, err := wf.LumpData(l)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := music.ParseMUS(data); err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+	opts.IntermissionMusicLoader = func(commercial bool) ([]byte, error) {
+		lump := "D_INTER"
+		if commercial {
+			lump = "D_DM2INT"
 		}
 		l, ok := wf.LumpByName(lump)
 		if !ok {
@@ -2819,7 +2875,7 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	if ts == nil {
 		return nil
 	}
-	names := make([]string, 0, 96)
+	names := make([]string, 0, 192)
 	add := func(n string) {
 		n = strings.ToUpper(strings.TrimSpace(n))
 		if n == "" {
@@ -2830,8 +2886,38 @@ func buildIntermissionPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 	for i := 0; i < 32; i++ {
 		add(fmt.Sprintf("CWILV%02d", i))
 	}
+	for ep := 0; ep < 4; ep++ {
+		for m := 0; m < 9; m++ {
+			add(fmt.Sprintf("WILV%d%d", ep, m))
+		}
+	}
 	for i := 0; i < 3; i++ {
 		add(fmt.Sprintf("WIMAP%d", i))
+	}
+	for i := 0; i < 10; i++ {
+		add(fmt.Sprintf("WINUM%d", i))
+	}
+	for _, name := range []string{
+		"WIMINUS", "WISUCKS", "WICOLON", "WISCRT2",
+	} {
+		add(name)
+	}
+	for j := 0; j < 10; j++ {
+		for i := 0; i < 3; i++ {
+			add(fmt.Sprintf("WIA0%02d%02d", j, i))
+		}
+	}
+	for j := 0; j < 8; j++ {
+		add(fmt.Sprintf("WIA1%02d00", j))
+	}
+	for i := 0; i < 3; i++ {
+		add(fmt.Sprintf("WIA1%02d%02d", 7, i))
+	}
+	add("WIA10800")
+	for j := 0; j < 6; j++ {
+		for i := 0; i < 3; i++ {
+			add(fmt.Sprintf("WIA2%02d%02d", j, i))
+		}
 	}
 	for _, n := range []string{
 		"WIF", "WIENTER", "WISPLAT", "WIURH0", "WIURH1",

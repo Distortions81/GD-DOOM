@@ -95,6 +95,7 @@ type Options struct {
 	DemoTracePath              string
 	TitleMusicLoader           func() ([]byte, error)
 	MapMusicLoader             func(mapName string) ([]byte, error)
+	IntermissionMusicLoader    func(commercial bool) ([]byte, error)
 	MusicPlayerCatalog         []MusicPlayerWAD
 	MusicPlayerTrackLoader     func(wadKey string, mapName string) ([]byte, error)
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)

@@ -35,10 +35,8 @@ const (
 	transitionLevel = sessiontransition.KindLevel
 )
 
-type intermissionStats = sessionflow.Stats
-
 type sessionIntermission struct {
-	state   sessionflow.Intermission
+	state   intermissionState
 	nextMap *mapdata.Map
 }
 
@@ -83,6 +81,7 @@ type sessionGame struct {
 	nextMap             NextMapFunc
 	err                 error
 	musicCtl            *sessionmusic.Playback
+	secretVisited       bool
 	faithfulSurface     *ebiten.Image
 	faithfulNearest     *ebiten.Image
 	crtShader           *ebiten.Shader
@@ -459,6 +458,7 @@ func (sg *sessionGame) initMusicPlayback() {
 		sg.opts.MusicPatchBank,
 		sg.opts.MapMusicLoader,
 		sg.opts.TitleMusicLoader,
+		sg.opts.IntermissionMusicLoader,
 	)
 	if err != nil {
 		return

@@ -176,6 +176,7 @@ func (sg *sessionGame) Update() error {
 						sg.stopAndClearMusic()
 						sg.rt.clearPendingSoundState()
 						sg.capturePersistentSettings()
+						sg.secretVisited = false
 						sg.opts.SkillLevel = normalizeSkillLevel(sig.NewGameSkill)
 						sg.rebuildGameWithPersistentSettings(sig.NewGameMap)
 						sig = sg.rt.sessionSignals()
@@ -313,7 +314,7 @@ func (sg *sessionGame) handleGameplayTermination() error {
 		sg.err = err
 		return ebiten.Termination
 	}
-	sg.startIntermission(next, nextName)
+	sg.startIntermission(next, nextName, sig.SecretLevelExit)
 	return nil
 }
 

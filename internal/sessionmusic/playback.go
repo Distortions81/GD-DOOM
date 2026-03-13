@@ -7,20 +7,22 @@ import (
 )
 
 type Playback struct {
-	ctl         *Controller
-	mapLoader   func(string) ([]byte, error)
-	titleLoader func() ([]byte, error)
+	ctl                *Controller
+	mapLoader          func(string) ([]byte, error)
+	titleLoader        func() ([]byte, error)
+	intermissionLoader func(commercial bool) ([]byte, error)
 }
 
-func NewPlayback(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank, mapLoader func(string) ([]byte, error), titleLoader func() ([]byte, error)) (*Playback, error) {
+func NewPlayback(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank, mapLoader func(string) ([]byte, error), titleLoader func() ([]byte, error), intermissionLoader func(bool) ([]byte, error)) (*Playback, error) {
 	ctl, err := New(volume, musPanMax, oplVolume, preEmphasis, backend, bank)
 	if err != nil {
 		return nil, err
 	}
 	return &Playback{
-		ctl:         ctl,
-		mapLoader:   mapLoader,
-		titleLoader: titleLoader,
+		ctl:                ctl,
+		mapLoader:          mapLoader,
+		titleLoader:        titleLoader,
+		intermissionLoader: intermissionLoader,
 	}, nil
 }
 
@@ -82,5 +84,17 @@ func (p *Playback) PlayData(data []byte, volume float64) {
 		return
 	}
 	p.StopAndClear()
+	p.ctl.PlayMUS(data)
+}
+
+func (p *Playback) PlayIntermission(commercial bool, volume float64) {
+	if p == nil || p.ctl == nil || p.intermissionLoader == nil || volume <= 0 {
+		return
+	}
+	p.StopAndClear()
+	data, err := p.intermissionLoader(commercial)
+	if err != nil || len(data) == 0 {
+		return
+	}
 	p.ctl.PlayMUS(data)
 }
