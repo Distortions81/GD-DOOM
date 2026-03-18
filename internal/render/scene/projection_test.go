@@ -150,3 +150,27 @@ func TestMaskedMidSeg_CarriesProjectionPayload(t *testing.T) {
 		t.Fatalf("x range=%d..%d want %d..%d", got.X0, got.X1, proj.MinX, proj.MaxX)
 	}
 }
+
+func TestWallProjectionStepper_MatchesProjectedWallSampleAtX(t *testing.T) {
+	proj, status := ProjectWallSegment(4, -2, 1, 8, 2, 9, 320, 160)
+	if status != WallProjectionOK {
+		t.Fatalf("status=%v want ok", status)
+	}
+	stepper := NewWallProjectionStepper(proj, proj.MinX)
+	for x := proj.MinX; x <= proj.MaxX; x++ {
+		gotDepth, gotTexU, gotOK := stepper.Sample()
+		wantDepth, wantTexU, wantOK := ProjectedWallSampleAtX(proj, x)
+		if gotOK != wantOK {
+			t.Fatalf("x=%d ok=%v want %v", x, gotOK, wantOK)
+		}
+		if gotOK {
+			if math.Abs(gotDepth-wantDepth) > 1e-9 {
+				t.Fatalf("x=%d depth=%f want %f", x, gotDepth, wantDepth)
+			}
+			if math.Abs(gotTexU-wantTexU) > 1e-9 {
+				t.Fatalf("x=%d texU=%f want %f", x, gotTexU, wantTexU)
+			}
+		}
+		stepper.Next()
+	}
+}

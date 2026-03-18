@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"math"
 	"reflect"
 	"testing"
 
@@ -441,6 +442,35 @@ func TestDrawMaskedMidTexelBand_UsesIndexedShadeRow(t *testing.T) {
 	}
 }
 
+func TestDrawMaskedMidTexelBand_SingleTexelFillsWholeVisibleRect(t *testing.T) {
+	row := installTestWallShadeRow(t)
+	g := &game{
+		viewW:            3,
+		viewH:            3,
+		wallPix32:        make([]uint32, 9),
+		solidClipScratch: make([]solidSpan, 0, 4),
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          4,
+		Indexed:         []byte{1, 2, 3, 4},
+		IndexedColMajor: []byte{1, 2, 3, 4},
+		OpaqueRunOffs:   []uint32{0, 1},
+		OpaqueRuns:      []uint32{media.PackOpaqueRun(1, 1)},
+	}
+
+	g.drawMaskedMidTexelBand(0, 2, 1, 1, 64, 0, 1.5, 64, &tex, 0, nil, 256, 0)
+
+	want := []uint32{
+		row[2], row[2], row[2],
+		row[2], row[2], row[2],
+		row[2], row[2], row[2],
+	}
+	if !reflect.DeepEqual(g.wallPix32, want) {
+		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
+	}
+}
+
 func TestMaskedTextureColumnHasOpaque_UsesPrecomputedRuns(t *testing.T) {
 	tex := WallTexture{
 		Width:  3,
@@ -454,6 +484,32 @@ func TestMaskedTextureColumnHasOpaque_UsesPrecomputedRuns(t *testing.T) {
 	}
 	if !tex.EnsureOpaqueColumnBounds() {
 		t.Fatal("expected opaque run metadata")
+	}
+}
+
+func TestBuildTexturePointerCache_PrecomputesOpaqueRuns(t *testing.T) {
+	store, ptrs := buildTexturePointerCache(map[string]WallTexture{
+		"T": {
+			Width:  1,
+			Height: 2,
+			RGBA: []byte{
+				1, 1, 1, 255,
+				0, 0, 0, 0,
+			},
+		},
+	})
+	if len(store) != 1 || len(ptrs) != 1 {
+		t.Fatalf("store=%d ptrs=%d want 1,1", len(store), len(ptrs))
+	}
+	tex := ptrs["T"]
+	if tex == nil {
+		t.Fatal("expected cached texture pointer")
+	}
+	if len(tex.OpaqueRunOffs) != tex.Width+1 {
+		t.Fatalf("opaque offs len=%d want %d", len(tex.OpaqueRunOffs), tex.Width+1)
+	}
+	if len(tex.OpaqueRuns) == 0 {
+		t.Fatal("expected precomputed opaque runs")
 	}
 }
 
@@ -488,5 +544,93 @@ func TestMaskedColumnVisibleSpans_RespectsPortalGap(t *testing.T) {
 	want := []solidSpan{{L: 3, R: 5}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("spans=%v want=%v", got, want)
+	}
+}
+
+func TestAppendMaskedClipSpan_MaintainsSortedOrder(t *testing.T) {
+	g := &game{
+		viewW:                2,
+		viewH:                10,
+		maskedClipCols:       make([][]scene.MaskedClipSpan, 2),
+		maskedClipLastDepthQ: make([]uint16, 2),
+	}
+
+	g.appendSpriteClipColumnSpan(0, 1, 2, 10)
+	g.appendSpriteClipColumnSpan(0, 3, 4, 20)
+	g.appendSpriteClipColumnSpan(1, 1, 2, 20)
+	g.appendSpriteClipColumnSpan(1, 3, 4, 10)
+	if got := g.maskedClipCols[0][0].DepthQ; got != 10 {
+		t.Fatalf("ordered column changed unexpectedly: first depth=%d", got)
+	}
+	if got := g.maskedClipCols[0][1].DepthQ; got != 20 {
+		t.Fatalf("ordered column changed unexpectedly: second depth=%d", got)
+	}
+	if got := g.maskedClipCols[1][0].DepthQ; got != 10 {
+		t.Fatalf("dirty column first depth=%d want 10", got)
+	}
+	if got := g.maskedClipCols[1][1].DepthQ; got != 20 {
+		t.Fatalf("dirty column second depth=%d want 20", got)
+	}
+
+	g.finalizeMaskedClipColumns()
+
+	if got := g.maskedClipCols[1][0].DepthQ; got != 10 {
+		t.Fatalf("finalize changed first depth=%d want 10", got)
+	}
+	if got := g.maskedClipCols[1][1].DepthQ; got != 20 {
+		t.Fatalf("finalize changed second depth=%d want 20", got)
+	}
+}
+
+func TestAppendMaskedMidSegsToBillboardQueue_QuantizesSortDist(t *testing.T) {
+	g := &game{
+		maskedMidSegsScratch: []maskedMidSeg{
+			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 9.9}},
+			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 14.1}},
+		},
+	}
+
+	g.appendMaskedMidSegsToBillboardQueue()
+
+	if len(g.billboardQueueScratch) != 2 {
+		t.Fatalf("queue len=%d want 2", len(g.billboardQueueScratch))
+	}
+	if got := g.billboardQueueScratch[0].dist; math.Abs(got-8) > 1e-9 {
+		t.Fatalf("first dist=%f want 8", got)
+	}
+	if got := g.billboardQueueScratch[1].dist; math.Abs(got-16) > 1e-9 {
+		t.Fatalf("second dist=%f want 16", got)
+	}
+}
+
+func TestMaskedMidUseTexelRectMode_UsesLeftRightGuess(t *testing.T) {
+	proj, status := scene.ProjectWallSegment(20, -2, 0, 80, 2, 1, 320, 160)
+	if status != scene.WallProjectionOK {
+		t.Fatalf("status=%v want ok", status)
+	}
+	if !maskedMidUseTexelRectMode(proj, proj.MinX, proj.MaxX, 160) {
+		t.Fatal("expected near edge sample to keep texel-rect mode")
+	}
+
+	projFar, status := scene.ProjectWallSegment(120, -2, 0, 160, 2, 1, 320, 160)
+	if status != scene.WallProjectionOK {
+		t.Fatalf("far status=%v want ok", status)
+	}
+	if maskedMidUseTexelRectMode(projFar, projFar.MinX, projFar.MaxX, 160) {
+		t.Fatal("expected very far segment to use fine fallback")
+	}
+}
+
+func TestMaskedMidBillboardDepthGuess_UsesFartherEdge(t *testing.T) {
+	proj, status := scene.ProjectWallSegment(20, -2, 0, 80, 2, 1, 320, 160)
+	if status != scene.WallProjectionOK {
+		t.Fatalf("status=%v want ok", status)
+	}
+	got, ok := maskedMidBillboardDepthGuess(proj, proj.MinX, proj.MaxX)
+	if !ok {
+		t.Fatal("expected billboard depth guess")
+	}
+	if math.Abs(got-80) > 1 {
+		t.Fatalf("depth=%f want near farther edge depth around 80", got)
 	}
 }

@@ -328,6 +328,8 @@ const (
 	maskedMidSourcePortPadY   = 2
 	maskedMidSourcePortGroupX = 1
 	maskedMidSourcePortGroupY = 1
+	maskedMidSortBucket        = 8.0
+	maskedMidTexelRectMinPX    = 2.0
 )
 
 type maskedMidSeg struct {
@@ -348,6 +350,9 @@ func buildTexturePointerCache(bank map[string]WallTexture) ([]WallTexture, map[s
 	store := make([]WallTexture, 0, len(bank))
 	ptrs := make(map[string]*WallTexture, len(bank))
 	for key, tex := range bank {
+		if tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+			tex.EnsureOpaqueColumnBounds()
+		}
 		store = append(store, tex)
 		ptrs[key] = &store[len(store)-1]
 	}
@@ -662,8 +667,7 @@ type game struct {
 	billboardReplayKind          billboardQueueKind
 	billboardReplayIndex         int
 	maskedMidSegsScratch         []maskedMidSeg
-	maskedMidDepthScratch        []float64
-	maskedMidTexUScratch         []float64
+	maskedMidTXGroupScratch      []uint16
 	spriteTXScratch              []int
 	spriteTYScratch              []int
 	wallLayer                    *ebiten.Image
@@ -676,6 +680,10 @@ type game struct {
 	wallDepthBottomCol           []int
 	wallDepthClosedCol           []bool
 	maskedClipCols               [][]scene.MaskedClipSpan
+	maskedClipLastDepthQ         []uint16
+	maskedSpanScratchA           []solidSpan
+	maskedSpanScratchB           []solidSpan
+	maskedSpanScratchC           []solidSpan
 	wallTop3D                    []int
 	wallBottom3D                 []int
 	ceilingClip3D                []int
@@ -3896,9 +3904,12 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				if vis.L > vis.R {
 					continue
 				}
-				dist := 0.0
-				if pp.prepass.Projection.InvDepth1+pp.prepass.Projection.InvDepth2 > 0 {
-					dist = 2.0 / (pp.prepass.Projection.InvDepth1 + pp.prepass.Projection.InvDepth2)
+				if g.maskedMidRangeFullyOccludedByWallsOnly(pp.prepass.Projection, vis.L, vis.R, maskedWorldHigh, maskedWorldLow, focal, float64(g.viewH)*0.5) {
+					continue
+				}
+				dist, ok := maskedMidBillboardDepthGuess(pp.prepass.Projection, vis.L, vis.R)
+				if !ok {
+					continue
 				}
 				maskedMids = append(maskedMids, maskedMidSeg{
 					MaskedMidSeg: scene.MaskedMidSeg{
@@ -3959,6 +3970,18 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			return -1
 		}
 		if a.dist < b.dist {
+			return 1
+		}
+		if a.kind < b.kind {
+			return -1
+		}
+		if a.kind > b.kind {
+			return 1
+		}
+		if a.idx < b.idx {
+			return -1
+		}
+		if a.idx > b.idx {
 			return 1
 		}
 		return 0
@@ -4166,7 +4189,7 @@ func (g *game) appendSpriteClipColumnSpan(x, y0, y1 int, depthQ uint16) {
 	if y0 > y1 {
 		return
 	}
-	g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
+	g.appendMaskedClipSpan(x, scene.MaskedClipSpan{
 		Y0:      int16(y0),
 		Y1:      int16(y1),
 		DepthQ:  depthQ,
@@ -4179,7 +4202,7 @@ func (g *game) markSpriteClipColumnClosed(x int, depthQ uint16) {
 	if g == nil || x < 0 || x >= len(g.maskedClipCols) {
 		return
 	}
-	g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
+	g.appendMaskedClipSpan(x, scene.MaskedClipSpan{
 		DepthQ:  depthQ,
 		Closed:  true,
 		HasOpen: false,
@@ -4196,13 +4219,49 @@ func (g *game) appendSpritePortalColumnGap(x, openY0, openY1 int, depthQ uint16)
 	if openY1 >= g.viewH {
 		openY1 = g.viewH - 1
 	}
-	g.maskedClipCols[x] = append(g.maskedClipCols[x], scene.MaskedClipSpan{
+	g.appendMaskedClipSpan(x, scene.MaskedClipSpan{
 		OpenY0:  int16(openY0),
 		OpenY1:  int16(openY1),
 		DepthQ:  depthQ,
 		Closed:  false,
 		HasOpen: true,
 	})
+}
+
+func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
+	if g == nil || x < 0 || x >= len(g.maskedClipCols) {
+		return
+	}
+	col := g.maskedClipCols[x]
+	if len(col) == 0 {
+		if x >= 0 && x < len(g.maskedClipLastDepthQ) {
+			g.maskedClipLastDepthQ[x] = sp.DepthQ
+		}
+		g.maskedClipCols[x] = append(col, sp)
+		return
+	}
+	if x >= 0 && x < len(g.maskedClipLastDepthQ) {
+		lastDepthQ := g.maskedClipLastDepthQ[x]
+		g.maskedClipLastDepthQ[x] = sp.DepthQ
+		if sp.DepthQ >= lastDepthQ {
+			g.maskedClipCols[x] = append(col, sp)
+			return
+		}
+	}
+	insertAt := len(col)
+	for lo, hi := 0, len(col); lo < hi; {
+		mid := lo + (hi-lo)/2
+		if col[mid].DepthQ <= sp.DepthQ {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+		insertAt = lo
+	}
+	col = append(col, scene.MaskedClipSpan{})
+	copy(col[insertAt+1:], col[insertAt:])
+	col[insertAt] = sp
+	g.maskedClipCols[x] = col
 }
 
 func (g *game) wallOcclusionEnabled() bool {
@@ -4853,27 +4912,37 @@ func (g *game) maskedColumnVisibleSpans(x, y0, y1 int, depthQ uint16) []solidSpa
 		return nil
 	}
 	if !g.billboardClippingEnabled() {
-		return []solidSpan{{L: y0, R: y1}}
+		out := g.maskedSpanScratchA[:0]
+		return append(out, solidSpan{L: y0, R: y1})
 	}
 	if g.wallClipColumnOccludedBBoxByWallsOnly(x, y0, y1, depthQ) && (x >= len(g.maskedClipCols) || !scene.MaskedClipColumnHasAnyOccluder(g.maskedClipCols[x], y0, y1, depthQ)) {
 		return nil
 	}
-	cur := []solidSpan{{L: y0, R: y1}}
-	next := make([]solidSpan, 0, 4)
+	cur := append(g.maskedSpanScratchA[:0], solidSpan{L: y0, R: y1})
+	next := g.maskedSpanScratchB[:0]
 	if x < len(g.wallDepthQCol) {
 		col := g.wallDepthColumnAt(x)
-		cur = clipVerticalSpansByWallDepth(cur, col, depthQ, next[:0])
-		next = next[:0]
+		next = clipVerticalSpansByWallDepth(cur, col, depthQ, next[:0])
+		cur, next = next, cur[:0]
 		if len(cur) == 0 {
 			return nil
 		}
 	}
 	if x < len(g.maskedClipCols) {
-		cur = clipVerticalSpansByMasked(cur, g.maskedClipCols[x], depthQ, next[:0])
+		tmp := g.maskedSpanScratchC[:0]
+		if cap(tmp) < len(cur)+2 {
+			g.maskedSpanScratchC = make([]solidSpan, 0, len(cur)+2)
+			tmp = g.maskedSpanScratchC[:0]
+		}
+		next = clipVerticalSpansByMasked(cur, g.maskedClipCols[x], depthQ, next[:0], tmp)
+		cur, next = next, cur[:0]
 		if len(cur) == 0 {
 			return nil
 		}
 	}
+	g.maskedSpanScratchA = next[:0]
+	g.maskedSpanScratchB = cur
+	g.maskedSpanScratchC = g.maskedSpanScratchC[:0]
 	return cur
 }
 
@@ -4903,12 +4972,16 @@ func clipVerticalSpansByWallDepth(in []solidSpan, col scene.WallDepthColumn, dep
 	return out
 }
 
-func clipVerticalSpansByMasked(in []solidSpan, masked []scene.MaskedClipSpan, depthQ uint16, out []solidSpan) []solidSpan {
+func clipVerticalSpansByMasked(in []solidSpan, masked []scene.MaskedClipSpan, depthQ uint16, out, tmp []solidSpan) []solidSpan {
 	out = append(out[:0], in...)
 	if len(out) == 0 || len(masked) == 0 {
 		return out
 	}
-	tmp := make([]solidSpan, 0, len(out)+2)
+	if cap(tmp) < len(out)+2 {
+		tmp = make([]solidSpan, 0, len(out)+2)
+	} else {
+		tmp = tmp[:0]
+	}
 	for _, sp := range masked {
 		if depthQ <= sp.DepthQ {
 			break
@@ -6012,73 +6085,91 @@ func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
 	return g.maskedMidSegsScratch
 }
 
-func (g *game) ensureMaskedMidProjectionScratch(n int) ([]float64, []float64) {
-	if n <= 0 {
-		return nil, nil
-	}
-	if cap(g.maskedMidDepthScratch) < n {
-		g.maskedMidDepthScratch = make([]float64, n)
-	} else {
-		g.maskedMidDepthScratch = g.maskedMidDepthScratch[:n]
-	}
-	if cap(g.maskedMidTexUScratch) < n {
-		g.maskedMidTexUScratch = make([]float64, n)
-	} else {
-		g.maskedMidTexUScratch = g.maskedMidTexUScratch[:n]
-	}
-	for i := range g.maskedMidDepthScratch {
-		g.maskedMidDepthScratch[i] = 0
-		g.maskedMidTexUScratch[i] = 0
-	}
-	return g.maskedMidDepthScratch, g.maskedMidTexUScratch
-}
-
 func (g *game) drawMaskedMidSeg(ms maskedMidSeg, focal float64) {
 	if ms.tex == nil || ms.tex.Width <= 0 || ms.tex.Height <= 0 {
 		return
 	}
 	halfH := float64(g.viewH) * 0.5
-	n := ms.X1 - ms.X0 + 1
-	depths, texUs := g.ensureMaskedMidProjectionScratch(n)
-	for x := ms.X0; x <= ms.X1; x++ {
-		f, texU, ok := scene.ProjectedWallSampleAtX(ms.Projection, x)
-		if !ok || f <= 0 || !isFinite(f) {
-			continue
-		}
-		i := x - ms.X0
-		depths[i] = f
-		texUs[i] = texU + ms.TexUOff
-	}
-	if g.maskedMidSegFullyOccluded(ms, focal, halfH, depths) {
+	if g.maskedMidSegFullyOccluded(ms, focal, halfH) {
 		return
 	}
-	g.drawMaskedMidSegColumns(ms, focal, halfH, ms.X0, ms.X1, depths, texUs)
+	g.drawMaskedMidSegColumns(ms, focal, halfH, ms.X0, ms.X1)
 }
 
-func (g *game) maskedMidSegFullyOccluded(ms maskedMidSeg, focal, halfH float64, depths []float64) bool {
+func (g *game) maskedMidSegFullyOccluded(ms maskedMidSeg, focal, halfH float64) bool {
 	if g == nil || !g.billboardClippingEnabled() || ms.X0 > ms.X1 {
 		return false
 	}
-	sampleX := [3]int{ms.X0, (ms.X0 + ms.X1) >> 1, ms.X1}
-	bestDepth := math.Inf(1)
-	for _, x := range sampleX {
-		i := x - ms.X0
-		if i < 0 || i >= len(depths) {
-			continue
-		}
-		f := depths[i]
-		if f <= 0 || !isFinite(f) {
-			continue
-		}
-		if f < bestDepth {
-			bestDepth = f
-		}
-	}
-	if !isFinite(bestDepth) || bestDepth <= 0 {
+	y0, y1, bestDepth, ok := g.maskedMidRangeOcclusionBounds(ms.Projection, ms.X0, ms.X1, ms.WorldHigh, ms.WorldLow, focal, halfH)
+	if !ok {
 		return false
 	}
-	y0 := int(math.Ceil(halfH - (ms.WorldHigh/bestDepth)*focal))
-	y1 := int(math.Floor(halfH - (ms.WorldLow/bestDepth)*focal))
+	return g.spriteWallClipQuadFullyOccluded(ms.X0, ms.X1, y0, y1, encodeDepthQ(bestDepth))
+}
+
+func (g *game) maskedMidRangeFullyOccludedByWallsOnly(proj scene.WallProjection, x0, x1 int, worldHigh, worldLow, focal, halfH float64) bool {
+	if g == nil || x0 > x1 {
+		return false
+	}
+	y0, y1, bestDepth, ok := g.maskedMidRangeOcclusionBounds(proj, x0, x1, worldHigh, worldLow, focal, halfH)
+	if !ok {
+		return false
+	}
+	return g.wallClipBBoxFullyOccludedByWallsOnly(x0, x1, y0, y1, encodeDepthQ(bestDepth))
+}
+
+func maskedMidCenterDepth(proj scene.WallProjection, x0, x1 int) (float64, bool) {
+	if x0 > x1 {
+		return 0, false
+	}
+	sampleX := (x0 + x1) >> 1
+	depth, _, ok := scene.ProjectedWallSampleAtX(proj, sampleX)
+	if ok && depth > 0 && isFinite(depth) {
+		return depth, true
+	}
+	depth, _, ok = scene.ProjectedWallSampleAtX(proj, x0)
+	if ok && depth > 0 && isFinite(depth) {
+		return depth, true
+	}
+	depth, _, ok = scene.ProjectedWallSampleAtX(proj, x1)
+	if ok && depth > 0 && isFinite(depth) {
+		return depth, true
+	}
+	return 0, false
+}
+
+func maskedMidBillboardDepthGuess(proj scene.WallProjection, x0, x1 int) (float64, bool) {
+	if x0 > x1 {
+		return 0, false
+	}
+	best := 0.0
+	okAny := false
+	for _, sampleX := range [2]int{x0, x1} {
+		depth, _, ok := scene.ProjectedWallSampleAtX(proj, sampleX)
+		if !ok || depth <= 0 || !isFinite(depth) {
+			continue
+		}
+		if !okAny || depth > best {
+			best = depth
+			okAny = true
+		}
+	}
+	if okAny {
+		return best, true
+	}
+	return maskedMidCenterDepth(proj, x0, x1)
+}
+
+func (g *game) maskedMidRangeOcclusionBounds(proj scene.WallProjection, x0, x1 int, worldHigh, worldLow, focal, halfH float64) (int, int, float64, bool) {
+	if g == nil || x0 > x1 {
+		return 0, 0, 0, false
+	}
+	bestDepth, ok := maskedMidCenterDepth(proj, x0, x1)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	y0 := int(math.Ceil(halfH - (worldHigh/bestDepth)*focal))
+	y1 := int(math.Floor(halfH - (worldLow/bestDepth)*focal))
 	if y0 < 0 {
 		y0 = 0
 	}
@@ -6086,26 +6177,45 @@ func (g *game) maskedMidSegFullyOccluded(ms maskedMidSeg, focal, halfH float64, 
 		y1 = g.viewH - 1
 	}
 	if y0 > y1 {
-		return true
+		return 0, 0, 0, false
 	}
-	return g.spriteWallClipQuadFullyOccluded(ms.X0, ms.X1, y0, y1, encodeDepthQ(bestDepth))
+	return y0, y1, bestDepth, true
 }
 
-func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, x0, x1 int, depths, texUs []float64) {
-	shadeMul, doomRow := g.maskedMidShade(ms.light)
-	if g != nil && g.opts.SourcePortMode && g.drawMaskedMidSegTexelBands(ms, focal, halfH, x0, x1, depths, texUs, shadeMul, doomRow) {
-		return
+func maskedMidUseTexelRectMode(proj scene.WallProjection, x0, x1 int, focal float64) bool {
+	if focal <= 0 {
+		return false
 	}
-	for x := x0; x <= x1; x++ {
-		i := x - x0
-		if i < 0 || i >= len(depths) {
+	useRect := false
+	for _, sampleX := range [2]int{x0, x1} {
+		depth, _, ok := scene.ProjectedWallSampleAtX(proj, sampleX)
+		if !ok || depth <= 0 || !isFinite(depth) {
 			continue
 		}
-		f := depths[i]
+		if (focal / depth) > maskedMidTexelRectMinPX {
+			useRect = true
+			break
+		}
+	}
+	return useRect
+}
+
+func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, x0, x1 int) {
+	shadeMul, doomRow := g.maskedMidShade(ms.light)
+	if g != nil && maskedMidUseTexelRectMode(ms.Projection, x0, x1, focal) && g.drawMaskedMidSegTexelBands(ms, focal, halfH, x0, x1, shadeMul, doomRow) {
+		return
+	}
+	stepper := scene.NewWallProjectionStepper(ms.Projection, x0)
+	for x := x0; x <= x1; x++ {
+		f, texU, ok := stepper.Sample()
+		stepper.Next()
+		if !ok {
+			continue
+		}
 		if f <= 0 || !isFinite(f) {
 			continue
 		}
-		texU := texUs[i]
+		texU += ms.TexUOff
 		y0 := int(math.Ceil(halfH - (ms.WorldHigh/f)*focal))
 		y1 := int(math.Floor(halfH - (ms.WorldLow/f)*focal))
 		if y0 > y1 {
@@ -6115,11 +6225,11 @@ func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, x0
 	}
 }
 
-func (g *game) drawMaskedMidSegTexelBands(ms maskedMidSeg, focal, halfH float64, x0, x1 int, depths, texUs []float64, shadeMul, doomRow int) bool {
+func (g *game) drawMaskedMidSegTexelBands(ms maskedMidSeg, focal, halfH float64, x0, x1 int, shadeMul, doomRow int) bool {
 	if g == nil || ms.tex == nil || ms.tex.Width <= 0 || ms.tex.Height <= 0 || x1 < x0 {
 		return false
 	}
-	if !ms.tex.EnsureOpaqueColumnBounds() {
+	if len(ms.tex.OpaqueRunOffs) != ms.tex.Width+1 || len(ms.tex.OpaqueRuns) < int(ms.tex.OpaqueRunOffs[ms.tex.Width]) {
 		return false
 	}
 	packedRow := maskedWallShadePackedRow(shadeMul, doomRow)
@@ -6127,39 +6237,49 @@ func (g *game) drawMaskedMidSegTexelBands(ms maskedMidSeg, focal, halfH float64,
 	if !indexedReady {
 		return false
 	}
+	const invalidTXGroup = ^uint16(0)
+	txGroups := g.ensureMaskedMidTXGroupScratch(x1 - x0 + 1)
+	stepper := scene.NewWallProjectionStepper(ms.Projection, x0)
+	for i := range txGroups {
+		f, texU, ok := stepper.Sample()
+		stepper.Next()
+		if !ok || f <= 0 || !isFinite(f) {
+			txGroups[i] = invalidTXGroup
+			continue
+		}
+		texU += ms.TexUOff
+		tx := maskedMidTextureColumn(*ms.tex, texU)
+		txGroups[i] = uint16(tx / maskedMidSourcePortGroupX)
+	}
 	for x := x0; x <= x1; {
 		i := x - x0
-		if i < 0 || i >= len(depths) {
-			break
-		}
-		f := depths[i]
-		if f <= 0 || !isFinite(f) {
+		if i < 0 || i >= len(txGroups) || txGroups[i] == invalidTXGroup {
 			x++
 			continue
 		}
-		tx := maskedMidTextureColumn(*ms.tex, texUs[i])
-		txGroup := tx / maskedMidSourcePortGroupX
+		txGroup := txGroups[i]
 		runX1 := x
 		for runX1+1 <= x1 {
 			j := runX1 + 1 - x0
-			if j < 0 || j >= len(depths) {
+			if j < 0 || j >= len(txGroups) || txGroups[j] == invalidTXGroup {
 				break
 			}
-			fj := depths[j]
-			if fj <= 0 || !isFinite(fj) || maskedMidTextureColumn(*ms.tex, texUs[j])/maskedMidSourcePortGroupX != txGroup {
+			if txGroups[j] != txGroup {
 				break
 			}
 			runX1++
 		}
 		sampleX := (x + runX1) >> 1
-		sampleI := sampleX - x0
-		if sampleI < 0 || sampleI >= len(depths) || depths[sampleI] <= 0 || !isFinite(depths[sampleI]) {
-			sampleI = i
+		f, texU, ok := scene.ProjectedWallSampleAtX(ms.Projection, sampleX)
+		if !ok || f <= 0 || !isFinite(f) {
+			f, texU, ok = scene.ProjectedWallSampleAtX(ms.Projection, x)
+			if !ok || f <= 0 || !isFinite(f) {
+				x = runX1 + 1
+				continue
+			}
 		}
-		f = depths[sampleI]
-		texU := texUs[sampleI]
-		tx = maskedMidTextureColumn(*ms.tex, texU)
-		tx = (tx / maskedMidSourcePortGroupX) * maskedMidSourcePortGroupX
+		texU += ms.TexUOff
+		tx := int(txGroup) * maskedMidSourcePortGroupX
 		if tx >= ms.tex.Width {
 			tx = ms.tex.Width - 1
 		}
@@ -6171,6 +6291,54 @@ func (g *game) drawMaskedMidSegTexelBands(ms maskedMidSeg, focal, halfH float64,
 		x = runX1 + 1
 	}
 	return true
+}
+
+func (g *game) ensureMaskedMidTXGroupScratch(n int) []uint16 {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.maskedMidTXGroupScratch) < n {
+		g.maskedMidTXGroupScratch = make([]uint16, n)
+	} else {
+		g.maskedMidTXGroupScratch = g.maskedMidTXGroupScratch[:n]
+	}
+	return g.maskedMidTXGroupScratch
+}
+
+func fillUint32Span(dst []uint32, value uint32) {
+	if len(dst) == 0 {
+		return
+	}
+	dst[0] = value
+	for filled := 1; filled < len(dst); filled *= 2 {
+		copyLen := filled
+		if copyLen > len(dst)-filled {
+			copyLen = len(dst) - filled
+		}
+		copy(dst[filled:filled+copyLen], dst[:copyLen])
+	}
+}
+
+func fillUint32Rect(pix []uint32, rowStride, x0, x1, y0, y1 int, value uint32) {
+	if rowStride <= 0 || x0 > x1 || y0 > y1 {
+		return
+	}
+	firstRow := y0 * rowStride
+	fillUint32Span(pix[firstRow+x0:firstRow+x1+1], value)
+	rowWidth := x1 - x0 + 1
+	for y := y0 + 1; y <= y1; y++ {
+		rowBase := y * rowStride
+		copy(pix[rowBase+x0:rowBase+x0+rowWidth], pix[firstRow+x0:firstRow+x0+rowWidth])
+	}
+}
+
+func (g *game) fillMaskedMidBandRect(x0, x1, y0, y1, rowStridePix int, rowSpans []solidSpan, dst uint32) {
+	if g == nil || x0 > x1 || y0 > y1 {
+		return
+	}
+	for _, sp := range rowSpans {
+		fillUint32Rect(g.wallPix32, rowStridePix, sp.L, sp.R, y0, y1, dst)
+	}
 }
 
 func (g *game) drawMaskedMidTexelBand(x0, x1, y0, y1 int, depth, texU, texMid, focal float64, tex *WallTexture, tx int, src32 []uint32, shadeMul, doomRow int) {
@@ -6238,6 +6406,60 @@ func (g *game) drawMaskedMidTexelBand(x0, x1, y0, y1 int, depth, texU, texMid, f
 	}
 	colBase := tx * tex.Height
 	useIndexedCol := len(texIndexedCol) == tex.Width*tex.Height
+	type dstCacheEntry struct {
+		srcTy int
+		dst   uint32
+		ok    bool
+	}
+	var colorCache [4]dstCacheEntry
+	colorCacheNext := 0
+	cachedDst := func(srcTy int) uint32 {
+		if srcTy < 0 || srcTy >= tex.Height {
+			return 0
+		}
+		for i := range colorCache {
+			if colorCache[i].ok && colorCache[i].srcTy == srcTy {
+				return colorCache[i].dst
+			}
+		}
+		dst := uint32(0)
+		if useIndexedCol {
+			dst = packedRow[texIndexedCol[colBase+srcTy]]
+		} else {
+			dst = packedRow[texIndexed[srcTy*tex.Width+tx]]
+		}
+		colorCache[colorCacheNext] = dstCacheEntry{
+			srcTy: srcTy,
+			dst:   dst,
+			ok:    true,
+		}
+		colorCacheNext++
+		if colorCacheNext >= len(colorCache) {
+			colorCacheNext = 0
+		}
+		return dst
+	}
+	if startTy == endTy {
+		srcTy := wrapIndex(startTy, tex.Height)
+		dst := cachedDst(srcTy)
+		centerX := (x0 + x1) >> 1
+		centerY := (y0 + y1) >> 1
+		if !g.spriteWallClipOccludedAtXYDepth(centerX, centerY, depthQ) {
+			fillUint32Rect(g.wallPix32, rowStridePix, x0, x1, y0, y1, dst)
+		}
+		return
+	}
+	pendingY0 := 0
+	pendingY1 := -1
+	pendingDst := uint32(0)
+	pending := false
+	flushPending := func() {
+		if !pending {
+			return
+		}
+		fillUint32Rect(g.wallPix32, rowStridePix, x0, x1, pendingY0, pendingY1, pendingDst)
+		pending = false
+	}
 	for i := runStart; i < runEnd; i++ {
 		runTop, runBot := media.UnpackOpaqueRun(tex.OpaqueRuns[i])
 		for ty := int(runTop); ty <= int(runBot); {
@@ -6270,29 +6492,29 @@ func (g *game) drawMaskedMidTexelBand(x0, x1, y0, y1 int, depth, texU, texMid, f
 			if bandY0 > bandY1 {
 				continue
 			}
-			sampleY := (bandY0 + bandY1) >> 1
-			rowSpans := g.spriteRowVisibleSpansDepthQ(sampleY, x0, x1, depthQ, nil, g.solidClipScratch[:0])
-			if len(rowSpans) == 0 {
+			centerX := (x0 + x1) >> 1
+			centerY := (bandY0 + bandY1) >> 1
+			if g.spriteWallClipOccludedAtXYDepth(centerX, centerY, depthQ) {
+				flushPending()
 				ty = groupTyEnd + 1
 				continue
 			}
 			srcTy := wrapIndex(groupTy, tex.Height)
-			dst := uint32(0)
-			if useIndexedCol {
-				dst = packedRow[texIndexedCol[colBase+srcTy]]
-			} else {
-				dst = packedRow[texIndexed[srcTy*tex.Width+tx]]
-			}
-			for y := bandY0; y <= bandY1; y++ {
-				rowBase := y * rowStridePix
-				for _, sp := range rowSpans {
-					for x := sp.L; x <= sp.R; x++ {
-						g.wallPix32[rowBase+x] = dst
-					}
+			dst := cachedDst(srcTy)
+			if pending && dst == pendingDst && bandY0 <= pendingY1+1 {
+				if bandY1 > pendingY1 {
+					pendingY1 = bandY1
 				}
+			} else {
+				flushPending()
+				pendingY0 = bandY0
+				pendingY1 = bandY1
+				pendingDst = dst
+				pending = true
 			}
 			ty = groupTyEnd + 1
 		}
+		flushPending()
 	}
 }
 
@@ -6347,32 +6569,22 @@ func (g *game) appendMaskedMidSegsToBillboardQueue() {
 	}
 	for i := range g.maskedMidSegsScratch {
 		g.billboardQueueScratch = append(g.billboardQueueScratch, billboardQueueItem{
-			dist: g.maskedMidSegsScratch[i].Dist,
+			dist: quantizeMaskedMidSortDist(g.maskedMidSegsScratch[i].Dist),
 			kind: billboardQueueMaskedMids,
 			idx:  i,
 		})
 	}
 }
 
+func quantizeMaskedMidSortDist(dist float64) float64 {
+	if dist <= 0 || !isFinite(dist) || maskedMidSortBucket <= 0 {
+		return dist
+	}
+	return math.Round(dist/maskedMidSortBucket) * maskedMidSortBucket
+}
+
 func (g *game) finalizeMaskedClipColumns() {
-	if g == nil {
-		return
-	}
-	for x := range g.maskedClipCols {
-		spans := g.maskedClipCols[x]
-		if len(spans) < 2 {
-			continue
-		}
-		slices.SortFunc(spans, func(a, b scene.MaskedClipSpan) int {
-			if a.DepthQ < b.DepthQ {
-				return -1
-			}
-			if a.DepthQ > b.DepthQ {
-				return 1
-			}
-			return 0
-		})
-	}
+	// Masked clip columns are kept sorted during insertion.
 }
 
 func wallSpecialScrollXOffset(special uint16, worldTic int) float64 {
@@ -11221,6 +11433,9 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 	if len(g.maskedClipCols) != w {
 		g.maskedClipCols = make([][]scene.MaskedClipSpan, w)
 	}
+	if len(g.maskedClipLastDepthQ) != w {
+		g.maskedClipLastDepthQ = make([]uint16, w)
+	}
 	for i := 0; i < w; i++ {
 		g.wallTop3D[i] = h
 		g.wallBottom3D[i] = -1
@@ -11233,6 +11448,7 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 		if len(g.maskedClipCols[i]) != 0 {
 			g.maskedClipCols[i] = g.maskedClipCols[i][:0]
 		}
+		g.maskedClipLastDepthQ[i] = 0
 	}
 	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
 }
@@ -11376,9 +11592,6 @@ func (g *game) wallTexture(name string) (*WallTexture, bool) {
 	tex, ok := g.wallTexturePtr(key)
 	if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 		return nil, false
-	}
-	if tex.EnsureOpaqueColumnBounds() && g.opts.WallTexBank != nil {
-		g.opts.WallTexBank[key] = *tex
 	}
 	return tex, true
 }

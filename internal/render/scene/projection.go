@@ -13,6 +13,13 @@ type WallProjection struct {
 	UOverDepth2 float64
 }
 
+type WallProjectionStepper struct {
+	proj  WallProjection
+	t     float64
+	tStep float64
+	ok    bool
+}
+
 type WallPrepass struct {
 	Projection WallProjection
 	LogReason  string
@@ -291,6 +298,48 @@ func ProjectedWallSampleAtX(proj WallProjection, x int) (float64, float64, bool)
 	}
 	uOverDepth := proj.UOverDepth1 + (proj.UOverDepth2-proj.UOverDepth1)*t
 	return depth, uOverDepth * depth, true
+}
+
+func NewWallProjectionStepper(proj WallProjection, x int) WallProjectionStepper {
+	if proj.SX2 == proj.SX1 {
+		return WallProjectionStepper{}
+	}
+	return WallProjectionStepper{
+		proj:  proj,
+		t:     (float64(x) - proj.SX1) / (proj.SX2 - proj.SX1),
+		tStep: 1.0 / (proj.SX2 - proj.SX1),
+		ok:    true,
+	}
+}
+
+func (s WallProjectionStepper) Sample() (float64, float64, bool) {
+	if !s.ok {
+		return 0, 0, false
+	}
+	t := s.t
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	invDepth := s.proj.InvDepth1 + (s.proj.InvDepth2-s.proj.InvDepth1)*t
+	if invDepth <= 0 {
+		return 0, 0, false
+	}
+	depth := 1.0 / invDepth
+	if depth <= 0 {
+		return 0, 0, false
+	}
+	uOverDepth := s.proj.UOverDepth1 + (s.proj.UOverDepth2-s.proj.UOverDepth1)*t
+	return depth, uOverDepth * depth, true
+}
+
+func (s *WallProjectionStepper) Next() {
+	if s == nil || !s.ok {
+		return
+	}
+	s.t += s.tStep
 }
 
 func ProjectedWallYDepthAtX(proj WallProjection, x, viewH int, z, focal float64) (float64, float64, bool) {
