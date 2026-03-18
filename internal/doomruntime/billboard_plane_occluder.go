@@ -159,50 +159,20 @@ func (g *game) buildBillboardPlaneOccludersFromQueue() {
 	for _, qi := range g.billboardQueueScratch {
 		switch qi.kind {
 		case billboardQueueProjectiles:
-			if qi.idx < 0 || qi.idx >= len(g.projectileItemsScratch) {
+			if qi.tex == nil || !qi.hasOpaque || len(qi.opaque.rects) == 0 || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
 				continue
 			}
-			it := g.projectileItemsScratch[qi.idx]
-			if !it.hasSprite || it.spriteTex == nil || !it.hasOpaque || len(it.opaque.rects) == 0 || it.spriteTex.Height <= 0 || it.spriteTex.Width <= 0 {
-				continue
-			}
-			scale := it.h / float64(it.spriteTex.Height)
-			if scale <= 0 {
-				continue
-			}
-			dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
-			dstY := it.yb - float64(it.spriteTex.OffsetY)*scale
-			g.appendBillboardOpaqueRectPlaneOccluders(it.opaque.rects, it.spriteTex.Width, false, dstX, dstY, scale, it.clipTop, it.clipBottom, encodeDepthQ(it.dist), it.clipSpans)
+			g.appendBillboardOpaqueRectPlaneOccluders(qi.opaque.rects, qi.tex.Width, false, qi.dstX, qi.dstY, qi.scale, qi.clipTop, qi.clipBottom, qi.depthQ, qi.clipSpans)
 		case billboardQueueMonsters:
-			if qi.idx < 0 || qi.idx >= len(g.monsterItemsScratch) {
+			if qi.shadow || qi.tex == nil || !qi.hasOpaque || len(qi.opaque.rects) == 0 || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
 				continue
 			}
-			it := g.monsterItemsScratch[qi.idx]
-			if it.shadow || it.tex == nil || !it.hasOpaque || len(it.opaque.rects) == 0 || it.tex.Height <= 0 || it.tex.Width <= 0 {
-				continue
-			}
-			scale := it.h / float64(it.tex.Height)
-			if scale <= 0 {
-				continue
-			}
-			dstX := it.sx - float64(it.tex.OffsetX)*scale
-			dstY := floorSpriteTop(float64(it.tex.Height)*scale, it.yb)
-			g.appendBillboardOpaqueRectPlaneOccluders(it.opaque.rects, it.tex.Width, it.flip, dstX, dstY, scale, it.clipTop, it.clipBottom, encodeDepthQ(it.dist), it.clipSpans)
+			g.appendBillboardOpaqueRectPlaneOccluders(qi.opaque.rects, qi.tex.Width, qi.flip, qi.dstX, qi.dstY, qi.scale, qi.clipTop, qi.clipBottom, qi.depthQ, qi.clipSpans)
 		case billboardQueueWorldThings:
-			if qi.idx < 0 || qi.idx >= len(g.thingItemsScratch) {
+			if qi.tex == nil || !qi.hasOpaque || len(qi.opaque.rects) == 0 || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
 				continue
 			}
-			it := g.thingItemsScratch[qi.idx]
-			if it.tex == nil || !it.hasOpaque || len(it.opaque.rects) == 0 || it.tex.Height <= 0 || it.tex.Width <= 0 {
-				continue
-			}
-			scale := it.h / float64(it.tex.Height)
-			if scale <= 0 {
-				continue
-			}
-			dstX := it.sx - float64(it.tex.OffsetX)*scale
-			dstY := floorSpriteTop(float64(it.tex.Height)*scale, it.yb)
-			g.appendBillboardOpaqueRectPlaneOccluders(it.opaque.rects, it.tex.Width, false, dstX, dstY, scale, it.clipTop, it.clipBottom, encodeDepthQ(it.dist), it.clipSpans)
+			g.appendBillboardOpaqueRectPlaneOccluders(qi.opaque.rects, qi.tex.Width, false, qi.dstX, qi.dstY, qi.scale, qi.clipTop, qi.clipBottom, qi.depthQ, qi.clipSpans)
 		}
 	}
 }

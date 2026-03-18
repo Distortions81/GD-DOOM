@@ -52,23 +52,23 @@ func TestBuildBillboardPlaneOccludersFromQueueUsesOpaqueRects(t *testing.T) {
 	g := &game{
 		viewW: 16,
 		viewH: 12,
-		monsterItemsScratch: []projectedMonsterItem{
+		billboardQueueScratch: []billboardQueueItem{
 			{
+				kind:       billboardQueueMonsters,
 				dist:       8,
-				sx:         4,
-				yb:         10,
-				h:          4,
+				depthQ:     encodeDepthQ(8),
 				clipTop:    0,
 				clipBottom: 11,
 				tex:        &WallTexture{Width: 4, Height: 4},
+				dstX:       4,
+				dstY:       6,
+				scale:      1,
 				opaque: spriteOpaqueShape{
 					rects: []spriteOpaqueRect{packSpriteOpaqueRect(1, 2, 1, 2)},
 				},
 				hasOpaque: true,
+				boundsOK:  true,
 			},
-		},
-		billboardQueueScratch: []billboardQueueItem{
-			{kind: billboardQueueMonsters, idx: 0, dist: 8},
 		},
 	}
 

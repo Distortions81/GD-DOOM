@@ -417,60 +417,6 @@ func TestDrawBillboardRowSpans_InvulnerabilityUsesFixedDOOMRow(t *testing.T) {
 	}
 }
 
-func TestDrawMaskedMidTexelBand_UsesIndexedShadeRow(t *testing.T) {
-	row := installTestWallShadeRow(t)
-	g := &game{
-		viewW:            1,
-		viewH:            4,
-		wallPix32:        make([]uint32, 4),
-		solidClipScratch: make([]solidSpan, 0, 4),
-	}
-	tex := WallTexture{
-		Width:           1,
-		Height:          4,
-		Indexed:         []byte{1, 2, 3, 4},
-		IndexedColMajor: []byte{1, 2, 3, 4},
-		OpaqueRunOffs:   []uint32{0, 1},
-		OpaqueRuns:      []uint32{media.PackOpaqueRun(1, 1)},
-	}
-
-	g.drawMaskedMidTexelBand(0, 0, 0, 3, 64, 0, 2, 64, &tex, 0, nil, 256, 0)
-
-	want := []uint32{row[2], row[2], row[2], row[2]}
-	if !reflect.DeepEqual(g.wallPix32, want) {
-		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
-	}
-}
-
-func TestDrawMaskedMidTexelBand_SingleTexelFillsWholeVisibleRect(t *testing.T) {
-	row := installTestWallShadeRow(t)
-	g := &game{
-		viewW:            3,
-		viewH:            3,
-		wallPix32:        make([]uint32, 9),
-		solidClipScratch: make([]solidSpan, 0, 4),
-	}
-	tex := WallTexture{
-		Width:           1,
-		Height:          4,
-		Indexed:         []byte{1, 2, 3, 4},
-		IndexedColMajor: []byte{1, 2, 3, 4},
-		OpaqueRunOffs:   []uint32{0, 1},
-		OpaqueRuns:      []uint32{media.PackOpaqueRun(1, 1)},
-	}
-
-	g.drawMaskedMidTexelBand(0, 2, 1, 1, 64, 0, 1.5, 64, &tex, 0, nil, 256, 0)
-
-	want := []uint32{
-		row[2], row[2], row[2],
-		row[2], row[2], row[2],
-		row[2], row[2], row[2],
-	}
-	if !reflect.DeepEqual(g.wallPix32, want) {
-		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
-	}
-}
-
 func TestMaskedTextureColumnHasOpaque_UsesPrecomputedRuns(t *testing.T) {
 	tex := WallTexture{
 		Width:  3,
@@ -600,24 +546,6 @@ func TestAppendMaskedMidSegsToBillboardQueue_QuantizesSortDist(t *testing.T) {
 	}
 	if got := g.billboardQueueScratch[1].dist; math.Abs(got-16) > 1e-9 {
 		t.Fatalf("second dist=%f want 16", got)
-	}
-}
-
-func TestMaskedMidUseTexelRectMode_UsesLeftRightGuess(t *testing.T) {
-	proj, status := scene.ProjectWallSegment(20, -2, 0, 80, 2, 1, 320, 160)
-	if status != scene.WallProjectionOK {
-		t.Fatalf("status=%v want ok", status)
-	}
-	if !maskedMidUseTexelRectMode(proj, proj.MinX, proj.MaxX, 160) {
-		t.Fatal("expected near edge sample to keep texel-rect mode")
-	}
-
-	projFar, status := scene.ProjectWallSegment(120, -2, 0, 160, 2, 1, 320, 160)
-	if status != scene.WallProjectionOK {
-		t.Fatalf("far status=%v want ok", status)
-	}
-	if maskedMidUseTexelRectMode(projFar, projFar.MinX, projFar.MaxX, 160) {
-		t.Fatal("expected very far segment to use fine fallback")
 	}
 }
 
