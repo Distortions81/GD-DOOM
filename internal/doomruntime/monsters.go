@@ -365,16 +365,16 @@ func (g *game) monsterHasLOSTarget(i int, typ int16, x, y int64) bool {
 		return false
 	}
 	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
-		return g.monsterHasLOSPlayer(typ, x, y)
+		return g.monsterHasLOSPlayerAt(i, typ, x, y)
 	}
 	tx, ty, tz, height, _, ok := g.monsterTargetPos(i)
 	if !ok {
 		return false
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
-		return g.monsterHasLOSPlayer(typ, x, y)
+		return g.monsterHasLOSPlayerAt(i, typ, x, y)
 	}
-	z, _, _, _ := g.checkPositionForActor(x, y, monsterRadius(typ), true, -1, true)
+	z, _, _ := g.monsterSupportHeights(i, g.m.Things[i])
 	return g.actorHasLOS(x, y, z, monsterHeight(typ), tx, ty, tz, height)
 }
 
@@ -1939,13 +1939,29 @@ func (g *game) playerHasLOSMonster(i int, th mapdata.Thing) bool {
 }
 
 func (g *game) monsterHasLOSPlayer(typ int16, x, y int64) bool {
+	return g.monsterHasLOSPlayerAt(-1, typ, x, y)
+}
+
+func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 	if g == nil || g.m == nil || len(g.sectorFloor) == 0 {
 		return true
 	}
 	if typ == 0 {
 		typ = 3004
 	}
-	z, _, _, _ := g.checkPositionForActor(x, y, monsterRadius(typ), true, -1, true)
+	z := g.thingFloorZ(x, y)
+	if i >= 0 && i < len(g.m.Things) {
+		z, _, _ = g.monsterSupportHeights(i, g.m.Things[i])
+	} else {
+		for i, th := range g.m.Things {
+			tx, ty := g.thingPosFixed(i, th)
+			if tx != x || ty != y || th.Type != typ {
+				continue
+			}
+			z, _, _ = g.monsterSupportHeights(i, th)
+			break
+		}
+	}
 	return g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
 }
 
@@ -1962,7 +1978,7 @@ func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
 		return false
 	}
 	if int(g.m.Things[i].Flags)&thingFlagAmbush != 0 {
-		return g.monsterHasLOSPlayer(g.m.Things[i].Type, tx, ty)
+		return g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty)
 	}
 	return true
 }
@@ -1987,7 +2003,7 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 				}
 				return false
 			}
-			if !g.monsterHasLOSPlayer(g.m.Things[i].Type, tx, ty) {
+			if !g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty) {
 				look = (look + 1) & 3
 				continue
 			}

@@ -1606,3 +1606,45 @@ func TestMonsterCheckMissileRange_RespectsReactionTime(t *testing.T) {
 		t.Fatal("missile check should fail while reactiontime > 0")
 	}
 }
+
+func TestMonsterHasLOSPlayerUsesRuntimeSupportZ(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: -64, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 56, CeilingHeight: 128},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+		},
+		lines: []physLine{
+			{
+				x1:       0,
+				y1:       -64 * fracUnit,
+				x2:       0,
+				y2:       64 * fracUnit,
+				flags:    mlTwoSided,
+				sideNum0: 0,
+				sideNum1: 1,
+			},
+		},
+		thingX:            []int64{-64 * fracUnit},
+		thingY:            []int64{0},
+		thingZState:       []int64{64 * fracUnit},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		sectorFloor:       []int64{0, 56 * fracUnit},
+		sectorCeil:        []int64{128 * fracUnit, 128 * fracUnit},
+		p:                 player{x: 64 * fracUnit, y: 0, z: 0},
+	}
+
+	if !g.monsterHasLOSPlayer(3001, g.thingX[0], g.thingY[0]) {
+		t.Fatal("LOS should use the monster runtime z rather than the probed floor height")
+	}
+}
