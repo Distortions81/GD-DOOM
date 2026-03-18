@@ -627,6 +627,28 @@ func TestMaskedMidBillboardDepthGuess_UsesFartherEdge(t *testing.T) {
 	}
 }
 
+func TestMaskedMidDepthSamples_ReturnsCenterAndSortDepth(t *testing.T) {
+	proj, status := scene.ProjectWallSegment(20, -2, 0, 80, 2, 1, 320, 160)
+	if status != scene.WallProjectionOK {
+		t.Fatalf("status=%v want ok", status)
+	}
+	center, sortDepth, ok := maskedMidDepthSamples(proj, proj.MinX, proj.MaxX)
+	if !ok {
+		t.Fatal("expected masked mid depth samples")
+	}
+	midX := (proj.MinX + proj.MaxX) >> 1
+	wantCenter, _, ok := scene.ProjectedWallSampleAtX(proj, midX)
+	if !ok {
+		t.Fatal("expected center sample")
+	}
+	if math.Abs(center-wantCenter) > 1e-9 {
+		t.Fatalf("center=%f want %f", center, wantCenter)
+	}
+	if math.Abs(sortDepth-80) > 1 {
+		t.Fatalf("sortDepth=%f want near farther edge depth around 80", sortDepth)
+	}
+}
+
 func TestMaskedMidSegFullyOccluded_UsesCachedOcclusionBBox(t *testing.T) {
 	g := &game{
 		viewW:              4,

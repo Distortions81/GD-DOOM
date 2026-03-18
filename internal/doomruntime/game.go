@@ -3875,12 +3875,20 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				if vis.L > vis.R {
 					continue
 				}
-				occY0, occY1, occDepthQ, ok := g.maskedMidRangeOcclusionBounds(pp.prepass.Projection, vis.L, vis.R, maskedWorldHigh, maskedWorldLow, focal, float64(g.viewH)*0.5)
-				if ok && g.wallClipBBoxFullyOccludedByWallsOnly(vis.L, vis.R, occY0, occY1, occDepthQ) {
+				centerDepth, dist, ok := maskedMidDepthSamples(pp.prepass.Projection, vis.L, vis.R)
+				if !ok {
 					continue
 				}
-				dist, ok := maskedMidBillboardDepthGuess(pp.prepass.Projection, vis.L, vis.R)
-				if !ok {
+				occY0 := int(math.Ceil(float64(g.viewH)*0.5 - (maskedWorldHigh/centerDepth)*focal))
+				occY1 := int(math.Floor(float64(g.viewH)*0.5 - (maskedWorldLow/centerDepth)*focal))
+				if occY0 < 0 {
+					occY0 = 0
+				}
+				if occY1 >= g.viewH {
+					occY1 = g.viewH - 1
+				}
+				occOK := occY0 <= occY1
+				if occOK && g.wallClipBBoxFullyOccludedByWallsOnly(vis.L, vis.R, occY0, occY1, encodeDepthQ(centerDepth)) {
 					continue
 				}
 				maskedMids = append(maskedMids, maskedMidSeg{
@@ -3898,8 +3906,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					light:            front.Light,
 					occlusionY0:      int16(occY0),
 					occlusionY1:      int16(occY1),
-					occlusionDepthQ:  occDepthQ,
-					hasOcclusionBBox: ok,
+					occlusionDepthQ:  encodeDepthQ(centerDepth),
+					hasOcclusionBBox: occOK,
 				})
 			}
 		}
@@ -6466,46 +6474,49 @@ func (g *game) maskedMidSegFullyOccluded(ms maskedMidSeg, focal, halfH float64) 
 	return g.spriteWallClipQuadFullyOccluded(ms.X0, ms.X1, y0, y1, depthQ)
 }
 
-func maskedMidCenterDepth(proj scene.WallProjection, x0, x1 int) (float64, bool) {
+func maskedMidDepthSamples(proj scene.WallProjection, x0, x1 int) (float64, float64, bool) {
 	if x0 > x1 {
-		return 0, false
+		return 0, 0, false
 	}
 	sampleX := (x0 + x1) >> 1
-	depth, _, ok := scene.ProjectedWallSampleAtX(proj, sampleX)
-	if ok && depth > 0 && isFinite(depth) {
-		return depth, true
+	centerDepth := 0.0
+	if depth, _, ok := scene.ProjectedWallSampleAtX(proj, sampleX); ok && depth > 0 && isFinite(depth) {
+		centerDepth = depth
 	}
-	depth, _, ok = scene.ProjectedWallSampleAtX(proj, x0)
-	if ok && depth > 0 && isFinite(depth) {
-		return depth, true
-	}
-	depth, _, ok = scene.ProjectedWallSampleAtX(proj, x1)
-	if ok && depth > 0 && isFinite(depth) {
-		return depth, true
-	}
-	return 0, false
-}
 
-func maskedMidBillboardDepthGuess(proj scene.WallProjection, x0, x1 int) (float64, bool) {
-	if x0 > x1 {
-		return 0, false
-	}
-	best := 0.0
-	okAny := false
-	for _, sampleX := range [2]int{x0, x1} {
-		depth, _, ok := scene.ProjectedWallSampleAtX(proj, sampleX)
+	sortDepth := 0.0
+	for _, edgeX := range [2]int{x0, x1} {
+		depth, _, ok := scene.ProjectedWallSampleAtX(proj, edgeX)
 		if !ok || depth <= 0 || !isFinite(depth) {
 			continue
 		}
-		if !okAny || depth > best {
-			best = depth
-			okAny = true
+		if depth > sortDepth {
+			sortDepth = depth
 		}
 	}
-	if okAny {
-		return best, true
+	if centerDepth > 0 {
+		if sortDepth <= 0 {
+			sortDepth = centerDepth
+		}
+		return centerDepth, sortDepth, true
 	}
-	return maskedMidCenterDepth(proj, x0, x1)
+	for _, edgeX := range [2]int{x0, x1} {
+		depth, _, ok := scene.ProjectedWallSampleAtX(proj, edgeX)
+		if ok && depth > 0 && isFinite(depth) {
+			return depth, sortDepth, true
+		}
+	}
+	return 0, 0, false
+}
+
+func maskedMidCenterDepth(proj scene.WallProjection, x0, x1 int) (float64, bool) {
+	centerDepth, _, ok := maskedMidDepthSamples(proj, x0, x1)
+	return centerDepth, ok
+}
+
+func maskedMidBillboardDepthGuess(proj scene.WallProjection, x0, x1 int) (float64, bool) {
+	_, sortDepth, ok := maskedMidDepthSamples(proj, x0, x1)
+	return sortDepth, ok
 }
 
 func (g *game) maskedMidRangeOcclusionBounds(proj scene.WallProjection, x0, x1 int, worldHigh, worldLow, focal, halfH float64) (int, int, uint16, bool) {
