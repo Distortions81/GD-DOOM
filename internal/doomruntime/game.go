@@ -1720,7 +1720,11 @@ func (g *game) cycleSourcePortDetailLevel() {
 	if len(sourcePortDetailDivisors) == 0 {
 		return
 	}
+	minLevel := clampSourcePortDetailLevelForPlatform(0, isWASMBuild())
 	g.detailLevel = (g.detailLevel + 1) % len(sourcePortDetailDivisors)
+	if g.detailLevel < minLevel {
+		g.detailLevel = minLevel
+	}
 	div := g.sourcePortDetailDivisor()
 	if div <= 1 {
 		g.setHUDMessage("Detail: 1x", 70)
@@ -3930,7 +3934,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 		g.billboardQueueCollect = false
 		g.buildBillboardPlaneOccludersFromQueue()
 	} else {
@@ -3947,7 +3950,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		g.drawBillboardProjectilesToBuffer(camX, camY, camAng, focal, near)
 		g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 		g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-		g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 		g.billboardQueueCollect = false
 		g.addRenderStageDur(renderStageBillboards, time.Since(stageStart))
 	}
@@ -3973,14 +3975,13 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.drawBillboardMonstersToBuffer(camX, camY, camAng, focal, near)
 		case billboardQueueWorldThings:
 			g.drawBillboardWorldThingsToBuffer(camX, camY, camAng, focal, near)
-		case billboardQueuePuffs:
-			g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 		case billboardQueueMaskedMids:
 			if qi.idx >= 0 && qi.idx < len(g.maskedMidSegsScratch) {
 				g.drawMaskedMidSeg(g.maskedMidSegsScratch[qi.idx], focal)
 			}
 		}
 	}
+	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 	g.addRenderStageDur(renderStageBillboards, time.Since(stageStart))
 	g.billboardReplayActive = false
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
@@ -8311,188 +8312,136 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
-	if len(wallPix) != viewW*viewH {
+	if len(wallPix) != viewW*viewH || len(g.hitscanPuffs) == 0 {
 		return
-	}
-	replay := g.billboardReplayActive && g.billboardReplayKind == billboardQueuePuffs
-	var items []projectedPuffItem
-	if replay {
-		i := g.billboardReplayIndex
-		if i < 0 || i >= len(g.puffItemsScratch) {
-			return
-		}
-		items = g.puffItemsScratch[i : i+1]
-	} else {
-		if len(g.hitscanPuffs) == 0 {
-			return
-		}
-		items = g.ensurePuffItemsScratch(len(g.hitscanPuffs))
 	}
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
-	if !replay {
-		for _, p := range g.hitscanPuffs {
-			px := float64(p.x)/fracUnit - camX
-			py := float64(p.y)/fracUnit - camY
-			f := px*ca + py*sa
-			s := -px*sa + py*ca
-			if f <= near {
-				continue
-			}
-			clipTop := 0
-			clipBottom := viewH - 1
-			clipRadius := int64(8 * fracUnit)
-			var clipOK bool
-			clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focal)
-			if !clipOK {
-				continue
-			}
-			sx := float64(viewW)/2 - (s/f)*focal
-			pz := float64(p.z) / fracUnit
-			sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focal
-			spriteTex, hasSprite := g.hitscanEffectSprite(p)
-			if !hasSprite || spriteTex == nil || spriteTex.Width <= 0 || spriteTex.Height <= 0 {
-				continue
-			}
-			scale := focal / f
-			if scale <= 0 {
-				continue
-			}
-			dstX := sx - float64(spriteTex.OffsetX)*scale
-			dstY := sy - float64(spriteTex.OffsetY)*scale
-			dstW := float64(spriteTex.Width) * scale
-			dstH := float64(spriteTex.Height) * scale
-			if dstX+dstW < 0 || dstX > float64(viewW) || dstY+dstH < 0 || dstY > float64(viewH) {
-				continue
-			}
-			items = append(items, projectedPuffItem{
-				dist:       f,
-				sx:         sx,
-				sy:         sy,
-				clipTop:    clipTop,
-				clipBottom: clipBottom,
-				spriteTex:  spriteTex,
-				hasSprite:  hasSprite,
-			})
+	for _, p := range g.hitscanPuffs {
+		px := float64(p.x)/fracUnit - camX
+		py := float64(p.y)/fracUnit - camY
+		f := px*ca + py*sa
+		s := -px*sa + py*ca
+		if f <= near {
+			continue
 		}
-	}
-	if !replay {
-		g.puffItemsScratch = items
-		slices.SortFunc(items, func(a, b projectedPuffItem) int {
-			if a.dist > b.dist {
-				return -1
-			}
-			if a.dist < b.dist {
-				return 1
-			}
-			return 0
-		})
-		if g.billboardQueueCollect {
-			for i := range items {
-				x0, x1, y0, y1, ok := puffItemScreenBounds(items[i], focal, viewW, viewH)
-				if ok && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, encodeDepthQ(items[i].dist)) {
-					continue
-				}
-				g.billboardQueueScratch = append(g.billboardQueueScratch, billboardQueueItem{
-					dist: items[i].dist,
-					kind: billboardQueuePuffs,
-					idx:  i,
-				})
-			}
-			return
+		clipTop := 0
+		clipBottom := viewH - 1
+		clipRadius := int64(8 * fracUnit)
+		var clipOK bool
+		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focal)
+		if !clipOK {
+			continue
 		}
+		sx := float64(viewW)/2 - (s/f)*focal
+		pz := float64(p.z) / fracUnit
+		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focal
+		spriteTex, hasSprite := g.hitscanEffectSprite(p)
+		if !hasSprite || spriteTex == nil || spriteTex.Width <= 0 || spriteTex.Height <= 0 {
+			continue
+		}
+		it := projectedPuffItem{
+			dist:       f,
+			sx:         sx,
+			sy:         sy,
+			clipTop:    clipTop,
+			clipBottom: clipBottom,
+			spriteTex:  spriteTex,
+			hasSprite:  true,
+		}
+		g.drawProjectedPuffItem(it, focal, viewW, viewH)
 	}
-	for _, it := range items {
-		depthQ := encodeDepthQ(it.dist)
-		if it.hasSprite {
-			th := it.spriteTex.Height
-			tw := it.spriteTex.Width
-			if th > 0 && tw > 0 {
-				src32, ok32 := spritePixels32(it.spriteTex)
-				if ok32 {
-					scale := focal / it.dist
-					if scale <= 0 {
-						continue
-					}
-					dstW := float64(tw) * scale
-					dstH := float64(th) * scale
-					dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
-					dstY := it.sy - float64(it.spriteTex.OffsetY)*scale
-					x0 := int(math.Floor(dstX))
-					y0 := int(math.Floor(dstY))
-					x1 := int(math.Ceil(dstX+dstW)) - 1
-					y1 := int(math.Ceil(dstY+dstH)) - 1
-					if x0 < 0 {
-						x0 = 0
-					}
-					if y0 < 0 {
-						y0 = 0
-					}
-					if x1 >= viewW {
-						x1 = viewW - 1
-					}
-					if y1 >= viewH {
-						y1 = viewH - 1
-					}
-					if y0 < it.clipTop {
-						y0 = it.clipTop
-					}
-					if y1 > it.clipBottom {
-						y1 = it.clipBottom
-					}
-					if y0 > y1 {
-						continue
-					}
-					if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
-						continue
-					}
-					txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
-					for x := x0; x <= x1; x++ {
-						tx := int((float64(x) + 0.5 - dstX) / scale)
-						if tx < 0 {
-							tx = 0
-						}
-						if tx >= tw {
-							tx = tw - 1
-						}
-						txLUT[x-x0] = tx
-					}
-					tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
-					for y := y0; y <= y1; y++ {
-						ty := int((float64(y) + 0.5 - dstY) / scale)
-						if ty < 0 {
-							ty = 0
-						}
-						if ty >= th {
-							ty = th - 1
-						}
-						tyLUT[y-y0] = ty
-					}
-					for y := y0; y <= y1; y++ {
-						ty := tyLUT[y-y0]
-						row := y * viewW
-						if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
-							continue
-						}
-						for x := x0; x <= x1; x++ {
-							if !xInSolidSpans(x, it.clipSpans) {
-								continue
-							}
-							i := row + x
-							if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
-								continue
-							}
-							pix := src32[ty*tw+txLUT[x-x0]]
-							if ((pix >> pixelAShift) & 0xFF) == 0 {
-								continue
-							}
-							g.writeWallPixel(i, pix)
-						}
-					}
-					continue
-				}
+}
+
+func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal float64, viewW, viewH int) {
+	if !it.hasSprite || it.spriteTex == nil {
+		return
+	}
+	depthQ := encodeDepthQ(it.dist)
+	th := it.spriteTex.Height
+	tw := it.spriteTex.Width
+	if th <= 0 || tw <= 0 {
+		return
+	}
+	src32, ok32 := spritePixels32(it.spriteTex)
+	if !ok32 {
+		return
+	}
+	scale := focal / it.dist
+	if scale <= 0 {
+		return
+	}
+	dstW := float64(tw) * scale
+	dstH := float64(th) * scale
+	dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
+	dstY := it.sy - float64(it.spriteTex.OffsetY)*scale
+	x0 := int(math.Floor(dstX))
+	y0 := int(math.Floor(dstY))
+	x1 := int(math.Ceil(dstX+dstW)) - 1
+	y1 := int(math.Ceil(dstY+dstH)) - 1
+	if x0 < 0 {
+		x0 = 0
+	}
+	if y0 < 0 {
+		y0 = 0
+	}
+	if x1 >= viewW {
+		x1 = viewW - 1
+	}
+	if y1 >= viewH {
+		y1 = viewH - 1
+	}
+	if y0 < it.clipTop {
+		y0 = it.clipTop
+	}
+	if y1 > it.clipBottom {
+		y1 = it.clipBottom
+	}
+	if y0 > y1 {
+		return
+	}
+	if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+		return
+	}
+	txLUT := g.ensureSpriteTXScratch(x1 - x0 + 1)
+	for x := x0; x <= x1; x++ {
+		tx := int((float64(x) + 0.5 - dstX) / scale)
+		if tx < 0 {
+			tx = 0
+		}
+		if tx >= tw {
+			tx = tw - 1
+		}
+		txLUT[x-x0] = tx
+	}
+	tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
+	for y := y0; y <= y1; y++ {
+		ty := int((float64(y) + 0.5 - dstY) / scale)
+		if ty < 0 {
+			ty = 0
+		}
+		if ty >= th {
+			ty = th - 1
+		}
+		tyLUT[y-y0] = ty
+	}
+	for y := y0; y <= y1; y++ {
+		ty := tyLUT[y-y0]
+		row := y * viewW
+		if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
+			continue
+		}
+		for x := x0; x <= x1; x++ {
+			i := row + x
+			if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
+				continue
 			}
+			pix := src32[ty*tw+txLUT[x-x0]]
+			if ((pix >> pixelAShift) & 0xFF) == 0 {
+				continue
+			}
+			g.writeWallPixel(i, pix)
 		}
 	}
 }
@@ -11173,6 +11122,7 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if g.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
+		w, h = clampSourcePortLayoutSizeForPlatform(w, h, isWASMBuild())
 		if w != g.viewW || h != g.viewH {
 			g.viewW = w
 			g.viewH = h

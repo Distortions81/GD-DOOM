@@ -13,6 +13,9 @@ const (
 	faithfulBufferW        = doomLogicalW * 2
 	faithfulBufferH        = doomLogicalH * 2
 	faithfulAspectLogicalH = 240
+
+	wasmMaxLayoutW = 1280
+	wasmMaxLayoutH = 720
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.
@@ -40,4 +43,17 @@ func ensurePositiveRenderSize(opts *Options) {
 
 func normalizeRunDimensions(opts Options) (Options, int, int) {
 	return runtimecfg.NormalizeRunDimensions(opts)
+}
+
+func clampSourcePortLayoutSizeForPlatform(w, h int, wasm bool) (int, int) {
+	if !wasm {
+		return w, h
+	}
+	if w > wasmMaxLayoutW {
+		w = wasmMaxLayoutW
+	}
+	if h > wasmMaxLayoutH {
+		h = wasmMaxLayoutH
+	}
+	return w, h
 }

@@ -1,8 +1,11 @@
 package sessionmusic
 
 import (
+	"bytes"
+	"encoding/binary"
 	"testing"
 
+	"gddoom/internal/music"
 	"gddoom/internal/sound"
 )
 
@@ -21,4 +24,70 @@ func TestEffectiveSynthGainUsesDefaultForAuto(t *testing.T) {
 	if got := effectiveSynthGain(sound.BackendAuto, 2.25); got != want {
 		t.Fatalf("effectiveSynthGain(auto)=%.2f want %.2f", got, want)
 	}
+}
+
+func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
+	driver, err := music.NewDriverWithBackend(44100, nil, sound.BackendAuto)
+	if err != nil {
+		t.Fatalf("NewDriverWithBackend() error: %v", err)
+	}
+	score := []byte{
+		0x40, 0, 0,
+		0x10, 60,
+		0x80, 60,
+		0x08,
+		0x60,
+	}
+	musData := buildMUSTestLump(score)
+	factory := func() (*music.StreamRenderer, error) {
+		return music.NewMUSStreamRenderer(driver, musData)
+	}
+
+	var stream *music.StreamRenderer
+	first, err := nextLoopChunk(factory, &stream)
+	if err != nil {
+		t.Fatalf("first nextLoopChunk() error: %v", err)
+	}
+	if len(first) == 0 {
+		t.Fatal("expected initial chunk")
+	}
+
+	doneSeen := false
+	for i := 0; i < 64; i++ {
+		_, err := nextLoopChunk(factory, &stream)
+		if err != nil {
+			t.Fatalf("nextLoopChunk() error: %v", err)
+		}
+		if stream == nil {
+			doneSeen = true
+			break
+		}
+	}
+	if !doneSeen {
+		t.Fatal("stream never reached done state")
+	}
+
+	looped, err := nextLoopChunk(factory, &stream)
+	if err != nil {
+		t.Fatalf("loop restart nextLoopChunk() error: %v", err)
+	}
+	if len(looped) == 0 {
+		t.Fatal("expected chunk after loop restart")
+	}
+	if stream == nil {
+		t.Fatal("stream should be active again after loop restart")
+	}
+}
+
+func buildMUSTestLump(score []byte) []byte {
+	var b bytes.Buffer
+	b.WriteString("MUS\x1a")
+	_ = binary.Write(&b, binary.LittleEndian, uint16(len(score)))
+	_ = binary.Write(&b, binary.LittleEndian, uint16(16))
+	_ = binary.Write(&b, binary.LittleEndian, uint16(0))
+	_ = binary.Write(&b, binary.LittleEndian, uint16(0))
+	_ = binary.Write(&b, binary.LittleEndian, uint16(0))
+	_ = binary.Write(&b, binary.LittleEndian, uint16(0))
+	b.Write(score)
+	return b.Bytes()
 }

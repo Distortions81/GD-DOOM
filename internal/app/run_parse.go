@@ -49,6 +49,10 @@ func explicitMapStartInMap(startInMap bool, mapExplicit bool) bool {
 	return startInMap || mapExplicit
 }
 
+func shouldOpenIWADPicker(render, noExplicitWAD, forceWASMPicker bool, pickerChoiceCount int) bool {
+	return render && pickerChoiceCount > 0 && (noExplicitWAD || forceWASMPicker)
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	configPath, configExplicit := resolveConfigPath(args)
 	cfg, err := loadConfig(configPath, configExplicit)
@@ -532,6 +536,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		defer writeMemStats("end")
 	}
 	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
+	forceWASMPicker := isWASMBuild() && *render
 	choices := detectAvailableIWADChoices(".")
 	pickerChoices := choices
 	if len(pickerChoices) == 0 && isWASMBuild() {
@@ -539,7 +544,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			pickerChoices = []iwadChoice{fallback}
 		}
 	}
-	if noExplicitWAD && *render && len(pickerChoices) > 0 {
+	if shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
 		resolvedLineColorMode := *lineColorMode
 		if *sourcePortMode && !lineColorModeSet {
 			resolvedLineColorMode = "doom"
@@ -619,6 +624,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if perr != nil {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", perr)
 			return 1
+		}
+		if forceWASMPicker {
+			picker.stage = pickerStageIWAD
 		}
 		if err := ebiten.RunGame(picker); err != nil && !errors.Is(err, ebiten.Termination) {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", err)

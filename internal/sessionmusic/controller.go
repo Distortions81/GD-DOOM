@@ -14,6 +14,8 @@ type Controller struct {
 	stop    chan struct{}
 }
 
+type musStreamFactory func() (*music.StreamRenderer, error)
+
 const (
 	impSynthGainRatio = 1.0
 )
@@ -76,22 +78,19 @@ func (c *Controller) PlayMUS(data []byte) {
 	}
 	player := c.player
 	c.StopAndClear()
-	stream, err := music.NewMUSStreamRenderer(c.driver, data)
-	if err != nil {
-		return
+	factory := func() (*music.StreamRenderer, error) {
+		return music.NewMUSStreamRenderer(c.driver, data)
 	}
-	chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames())
+	var stream *music.StreamRenderer
+	chunk, err := nextLoopChunk(factory, &stream)
 	if err != nil || len(chunk) == 0 {
 		return
 	}
 	_ = player.EnqueueBytesS16LE(chunk)
 	_ = player.Start()
-	if done {
-		return
-	}
 	stop := make(chan struct{})
 	c.stop = stop
-	go c.stream(player, stop, stream)
+	go c.stream(player, stop, factory, stream)
 }
 
 func (c *Controller) stopStream() {
@@ -102,8 +101,29 @@ func (c *Controller) stopStream() {
 	c.stop = nil
 }
 
-func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, stream *music.StreamRenderer) {
-	if c == nil || player == nil || stream == nil {
+func nextLoopChunk(factory musStreamFactory, stream **music.StreamRenderer) ([]byte, error) {
+	if factory == nil || stream == nil {
+		return nil, nil
+	}
+	if *stream == nil {
+		next, err := factory()
+		if err != nil {
+			return nil, err
+		}
+		*stream = next
+	}
+	chunk, done, err := (*stream).NextChunkS16LE(music.DefaultStreamChunkFrames())
+	if err != nil {
+		return nil, err
+	}
+	if done {
+		*stream = nil
+	}
+	return chunk, nil
+}
+
+func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer) {
+	if c == nil || player == nil || factory == nil {
 		return
 	}
 	const bytesPerFrame = 4
@@ -124,15 +144,12 @@ func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, str
 			case <-ticker.C:
 			}
 		}
-		chunk, done, err := stream.NextChunkS16LE(music.DefaultStreamChunkFrames())
+		chunk, err := nextLoopChunk(factory, &stream)
 		if err != nil {
 			return
 		}
 		if len(chunk) > 0 {
 			_ = player.EnqueueBytesS16LE(chunk)
-		}
-		if done {
-			return
 		}
 	}
 }

@@ -27,6 +27,21 @@ func TestDefaultDetailLevelForModeFaithfulStartsHigh(t *testing.T) {
 	}
 }
 
+func TestClampSourcePortDetailLevelForWASMSkipsFullRes(t *testing.T) {
+	if got := clampSourcePortDetailLevelForPlatform(0, true); got != 1 {
+		t.Fatalf("wasm sourceport detail=%d want=1", got)
+	}
+	if got := clampSourcePortDetailLevelForPlatform(2, true); got != 2 {
+		t.Fatalf("wasm sourceport detail=%d want=2", got)
+	}
+}
+
+func TestClampSourcePortDetailLevelForNativePreservesFullRes(t *testing.T) {
+	if got := clampSourcePortDetailLevelForPlatform(0, false); got != 0 {
+		t.Fatalf("native sourceport detail=%d want=0", got)
+	}
+}
+
 func TestCycleDetailLevelFaithfulTogglesHighLow(t *testing.T) {
 	g := &game{
 		State: mapview.ViewState{

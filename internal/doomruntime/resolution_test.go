@@ -59,3 +59,17 @@ func TestEnsurePositiveRenderSize(t *testing.T) {
 		t.Fatalf("sourceport render defaults=%dx%d want %dx%d", opts.Width, opts.Height, sourcePortDefaultWindowW, sourcePortDefaultWindowH)
 	}
 }
+
+func TestClampSourcePortLayoutSizeForWASM(t *testing.T) {
+	w, h := clampSourcePortLayoutSizeForPlatform(2560, 1440, true)
+	if w != 1280 || h != 720 {
+		t.Fatalf("layout=%dx%d want 1280x720", w, h)
+	}
+}
+
+func TestClampSourcePortLayoutSizeForNativeLeavesSizeUnchanged(t *testing.T) {
+	w, h := clampSourcePortLayoutSizeForPlatform(2560, 1440, false)
+	if w != 2560 || h != 1440 {
+		t.Fatalf("layout=%dx%d want 2560x1440", w, h)
+	}
+}

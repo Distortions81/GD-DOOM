@@ -508,6 +508,7 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
+		w, h = clampSourcePortLayoutSizeForPlatform(w, h, isWASMBuild())
 		if sg.g.skyOutputW != w || sg.g.skyOutputH != h {
 			sg.rt.setSkyOutputSize(w, h)
 		}

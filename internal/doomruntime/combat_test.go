@@ -747,6 +747,45 @@ func TestHitscanPuffsExpire(t *testing.T) {
 	}
 }
 
+func TestDrawProjectedPuffItemWritesPixels(t *testing.T) {
+	g := &game{
+		viewW:     64,
+		viewH:     64,
+		wallPix32: make([]uint32, 64*64),
+	}
+	tex := &WallTexture{
+		Width:   2,
+		Height:  2,
+		OffsetX: 1,
+		OffsetY: 1,
+		RGBA32: []uint32{
+			packRGBA(255, 255, 255), packRGBA(255, 255, 255),
+			packRGBA(255, 255, 255), packRGBA(255, 255, 255),
+		},
+	}
+	item := projectedPuffItem{
+		dist:       8,
+		sx:         32,
+		sy:         32,
+		clipTop:    0,
+		clipBottom: 63,
+		spriteTex:  tex,
+		hasSprite:  true,
+	}
+
+	g.drawProjectedPuffItem(item, 64, g.viewW, g.viewH)
+
+	wrote := 0
+	for _, p := range g.wallPix32 {
+		if p != 0 {
+			wrote++
+		}
+	}
+	if wrote == 0 {
+		t.Fatal("expected simplified puff draw to write pixels")
+	}
+}
+
 func TestMonsterHitscanAttackSpawnsBloodAndDamagesPlayer(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

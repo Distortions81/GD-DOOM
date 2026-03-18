@@ -114,3 +114,36 @@ func TestPickerAssetWADPathFallsBackToNonSharewareChoice(t *testing.T) {
 		t.Fatalf("pickerAssetWADPath() = %q want %q", got, "/tmp/plutonia.wad")
 	}
 }
+
+func TestShouldOpenIWADPickerForWASMEvenWithExplicitWAD(t *testing.T) {
+	if !shouldOpenIWADPicker(true, false, true, 1) {
+		t.Fatal("WASM should force the IWAD/profile picker when a choice exists")
+	}
+}
+
+func TestShouldOpenIWADPickerRequiresChoicesAndRender(t *testing.T) {
+	if shouldOpenIWADPicker(false, true, true, 1) {
+		t.Fatal("picker should stay closed when render is disabled")
+	}
+	if shouldOpenIWADPicker(true, true, true, 0) {
+		t.Fatal("picker should stay closed when no choices exist")
+	}
+}
+
+func TestWASMPickerStartsAtIWADStageEvenWithSingleChoice(t *testing.T) {
+	game, err := newIWADPickerGame([]iwadChoice{
+		{Path: "/tmp/doom1.wad", Label: "DOOM Shareware"},
+	}, nil)
+	if err != nil {
+		t.Fatalf("newIWADPickerGame() error: %v", err)
+	}
+
+	if got := game.stage; got != pickerStageProfile {
+		t.Fatalf("default single-choice stage=%v want profile", got)
+	}
+
+	game.stage = pickerStageIWAD
+	if got := game.stage; got != pickerStageIWAD {
+		t.Fatalf("forced single-choice stage=%v want iwad", got)
+	}
+}
