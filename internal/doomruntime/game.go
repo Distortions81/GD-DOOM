@@ -4449,6 +4449,23 @@ func (g *game) cutoutColumnSpanFullyCovered(pixI, rowStridePix, count int) bool 
 	return true
 }
 
+func (g *game) cutoutColumnVisibleSpansFullyCovered(x, rowStridePix int, spans []solidSpan) bool {
+	if g == nil || x < 0 || x >= g.viewW || rowStridePix <= 0 || len(spans) == 0 {
+		return false
+	}
+	coveredAny := false
+	for _, sp := range spans {
+		if sp.L > sp.R {
+			continue
+		}
+		coveredAny = true
+		if !g.cutoutColumnSpanFullyCovered(sp.L*rowStridePix+x, rowStridePix, sp.R-sp.L+1) {
+			return false
+		}
+	}
+	return coveredAny
+}
+
 func (g *game) spriteOpaqueRectsFullyCoveredByCutout(rects []spriteOpaqueRect, texW int, flip bool, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) bool {
 	if g == nil || len(rects) == 0 || texW <= 0 || scale <= 0 {
 		return false
@@ -4990,6 +5007,9 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	}
 	visible := g.maskedColumnVisibleSpans(x, y0, y1, depthQ)
 	if len(visible) == 0 {
+		return
+	}
+	if g.cutoutColumnVisibleSpansFullyCovered(x, rowStridePix, visible) {
 		return
 	}
 	if len(tex.OpaqueRunOffs) == tex.Width+1 && tx >= 0 && tx < tex.Width && len(tex.OpaqueRuns) >= int(tex.OpaqueRunOffs[tx+1]) {

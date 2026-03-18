@@ -307,6 +307,42 @@ func TestDrawBasicWallColumnTexturedMasked_FallbackUsesVisibleSpans(t *testing.T
 	}
 }
 
+func TestDrawBasicWallColumnTexturedMasked_FastRejectsCoveredVisibleSpans(t *testing.T) {
+	g := &game{
+		viewW:              1,
+		viewH:              6,
+		wallPix32:          make([]uint32, 6),
+		wallDepthQCol:      []uint16{10},
+		wallDepthTopCol:    []int{2},
+		wallDepthBottomCol: []int{3},
+		wallDepthClosedCol: []bool{false},
+		maskedClipCols:     make([][]scene.MaskedClipSpan, 1),
+		cutoutCoverageBits: make([]uint64, 1),
+	}
+	for i := range g.wallPix32 {
+		g.wallPix32[i] = 0xDEADBEEF
+	}
+	g.markCutoutCoveredAtIndex(0)
+	g.markCutoutCoveredAtIndex(1)
+	g.markCutoutCoveredAtIndex(4)
+	g.markCutoutCoveredAtIndex(5)
+	tex := WallTexture{
+		Width:           1,
+		Height:          6,
+		Indexed:         []byte{1, 2, 3, 4, 5, 6},
+		IndexedColMajor: []byte{1, 2, 3, 4, 5, 6},
+		OpaqueMask:      []byte{1, 1, 1, 1, 1, 1},
+	}
+
+	g.drawBasicWallColumnTexturedMasked(0, 0, 5, 64, 0, 3, 64, &tex, 256, 0)
+
+	for i, got := range g.wallPix32 {
+		if got != 0xDEADBEEF {
+			t.Fatalf("pix[%d]=%08x want untouched", i, got)
+		}
+	}
+}
+
 func TestDrawBillboardRowSpans_OpaqueRunsSkipTransparentGap(t *testing.T) {
 	g := &game{wallPix32: make([]uint32, 6)}
 	tex := WallTexture{
