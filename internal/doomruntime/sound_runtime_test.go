@@ -63,24 +63,37 @@ func TestSampleForEventSwitchSounds(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
-	doomrand.Clear()
-	player := audiofx.NewSpatialPlayer(1, true)
-	if player == nil {
+	s := newSoundSystem(SoundBank{}, 1, true)
+	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}
-	delay := monsterVocalPreDelaySamples(soundEventMonsterSeePosit, player)
+	delay := s.monsterVocalPreDelaySamples(soundEventMonsterSeePosit)
 	maxDelay := 25.0 * float64(audiofx.EnsureSharedAudioContext().SampleRate()) / 1000.0
 	if delay < 0 || delay > maxDelay {
 		t.Fatalf("delay=%f want in [0,%f]", delay, maxDelay)
 	}
-	if got := monsterVocalPreDelaySamples(soundEventMonsterPainHumanoid, player); got < 0 || got > maxDelay {
+	if got := s.monsterVocalPreDelaySamples(soundEventMonsterPainHumanoid); got < 0 || got > maxDelay {
 		t.Fatalf("pain delay=%f want in [0,%f]", got, maxDelay)
 	}
-	if got := monsterVocalPreDelaySamples(soundEventDeathImp, player); got < 0 || got > maxDelay {
+	if got := s.monsterVocalPreDelaySamples(soundEventDeathImp); got < 0 || got > maxDelay {
 		t.Fatalf("death delay=%f want in [0,%f]", got, maxDelay)
 	}
-	if got := monsterVocalPreDelaySamples(soundEventShootPistol, player); got != 0 {
+	if got := s.monsterVocalPreDelaySamples(soundEventShootPistol); got != 0 {
 		t.Fatalf("non-alert delay=%f want 0", got)
+	}
+}
+
+func TestMonsterVocalPreDelaySamples_DoesNotAdvancePRandom(t *testing.T) {
+	s := newSoundSystem(SoundBank{}, 1, true)
+	if s == nil || s.player == nil {
+		t.Skip("audio context unavailable")
+	}
+	doomrand.Clear()
+	wantPRandom := doomrand.PRandom()
+	doomrand.Clear()
+	_ = s.monsterVocalPreDelaySamples(soundEventMonsterSeePosit)
+	if got := doomrand.PRandom(); got != wantPRandom {
+		t.Fatalf("PRandom advanced after vocal pre-delay: got=%d want=%d", got, wantPRandom)
 	}
 }
 

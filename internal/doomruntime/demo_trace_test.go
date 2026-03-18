@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -54,6 +55,13 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 	}
 	if !strings.Contains(lines[2], `"mobjs"`) || !strings.Contains(lines[2], `"specials"`) {
 		t.Fatalf("tic payload missing state arrays: %s", lines[2])
+	}
+	var tic map[string]any
+	if err := json.Unmarshal([]byte(lines[2]), &tic); err != nil {
+		t.Fatalf("unmarshal tic: %v", err)
+	}
+	if got := int(tic["rndindex"].(float64)); got != 1 {
+		t.Fatalf("rndindex=%d want=1", got)
 	}
 }
 

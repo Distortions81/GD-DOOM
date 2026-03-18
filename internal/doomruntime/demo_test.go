@@ -52,6 +52,34 @@ func TestParseDemoScriptAcceptsVersion109(t *testing.T) {
 	}
 }
 
+func TestParseDemoScriptParsesAllHeaderFields(t *testing.T) {
+	src := []byte{
+		demoVersion110, 4, 3, 7, 1, 1, 1, 1, 2,
+		1, 1, 0, 1,
+		25, 0, 0, 0,
+		demoMarker,
+	}
+	d, err := ParseDemoScript(src)
+	if err != nil {
+		t.Fatalf("parse demo: %v", err)
+	}
+	want := DemoHeader{
+		Version:       demoVersion110,
+		Skill:         4,
+		Episode:       3,
+		Map:           7,
+		Deathmatch:    true,
+		Respawn:       true,
+		Fast:          true,
+		NoMonsters:    true,
+		ConsolePlayer: 2,
+		PlayerInGame:  [4]bool{true, true, false, true},
+	}
+	if d.Header != want {
+		t.Fatalf("header=%+v want %+v", d.Header, want)
+	}
+}
+
 func TestParseDemoScriptErrors(t *testing.T) {
 	cases := [][]byte{
 		nil,

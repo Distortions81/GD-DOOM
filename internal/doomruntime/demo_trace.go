@@ -123,9 +123,9 @@ func newDemoTraceWriter(opts Options, mapName string) *demoTraceWriter {
 		"episode":       opts.DemoScript.Header.Episode,
 		"map":           opts.DemoScript.Header.Map,
 		"deathmatch":    boolToInt(opts.GameMode == "deathmatch"),
-		"respawn":       boolToInt(opts.FastMonsters),
+		"respawn":       boolToInt(opts.RespawnMonsters),
 		"fast":          boolToInt(opts.FastMonsters),
-		"nomonsters":    0,
+		"nomonsters":    boolToInt(opts.NoMonsters),
 		"consoleplayer": max(opts.PlayerSlot-1, 0),
 		"playeringame": []int{
 			boolToInt(opts.DemoScript.Header.PlayerInGame[0]),

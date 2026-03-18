@@ -929,7 +929,7 @@ func collectIntermissionStats(g *game, mapName, nextName mapdata.MapName) interm
 		return out
 	}
 	for i, th := range g.m.Things {
-		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems) {
+		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters) {
 			continue
 		}
 		if isMonster(th.Type) {

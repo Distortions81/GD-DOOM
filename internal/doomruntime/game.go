@@ -277,6 +277,7 @@ type hitscanPuff struct {
 	y        int64
 	z        int64
 	momz     int64
+	lastLook int
 	tics     int
 	state    int
 	totalTic int
@@ -287,6 +288,7 @@ type hitscanPuff struct {
 const (
 	hitscanFxPuff uint8 = iota
 	hitscanFxBlood
+	hitscanFxSmoke
 	hitscanFxTeleport
 )
 
@@ -482,102 +484,102 @@ type game struct {
 	secretLevelExit       bool
 	levelRestartRequested bool
 
-	thingCollected       []bool
-	thingDropped         []bool
-	thingX               []int64
-	thingY               []int64
-	thingAngleState      []uint32
-	thingZState          []int64
-	thingFloorState      []int64
-	thingCeilState       []int64
-	thingSupportValid    []bool
-	thingBlockCell       []int
-	thingBlockNext       []int
-	thingBlockLinks      []int
-	thingHP              []int
-	thingAggro           []bool
-	thingTargetPlayer    []bool
-	thingTargetIdx       []int
-	thingThreshold       []int
-	thingCooldown        []int
-	thingMoveDir         []monsterMoveDir
-	thingMoveCount       []int
-	thingJustAtk         []bool
-	thingJustHit         []bool
-	thingReactionTics    []int
-	thingWakeTics        []int
-	thingLastLook        []int
-	thingDead            []bool
-	thingDeathTics       []int
-	thingAttackTics      []int
-	thingAttackPhase     []int
-	thingAttackFireTics  []int
-	thingPainTics        []int
-	thingThinkWait       []int
-	thingState           []monsterThinkState
-	thingStateTics       []int
-	thingStatePhase      []int
-	thingWorldAnimRef    []thingAnimRefState
-	thingShadeTick       []int
-	thingShadeMul        []uint32
-	bossSpawnCubes       []bossSpawnCube
-	bossSpawnFires       []bossSpawnFire
-	bossBrainTargetOrder int
-	bossBrainEasyToggle  bool
-	projectiles          []projectile
-	projectileImpacts    []projectileImpact
-	projectileShadeTick  []int
-	projectileShadeMul   []uint32
-	impactShadeTick      []int
-	impactShadeMul       []uint32
-	hitscanPuffs         []hitscanPuff
-	cheatLevel           int
-	invulnerable         bool
-	inventory            playerInventory
-	alwaysRun            bool
-	autoWeaponSwitch     bool
-	weaponRefire         bool
-	weaponAttackDown     bool
-	weaponState          weaponPspriteState
-	weaponStateTics      int
-	weaponFlashState     weaponPspriteState
-	weaponFlashTics      int
-	weaponPSpriteY       int
-	stats                playerStats
-	worldTic             int
-	spectreFuzzPos       int
-	spectreFuzzAccum     float64
-	spectreFuzzStamp     time.Time
-	spectreFuzzCoarseX   int
-	spectreFuzzCoarseY   int
-	spectreFuzzCoarseSet bool
-	playerViewZ          int64
-	secretFound          []bool
-	secretsFound         int
-	secretsTotal         int
-	sectorSoundTarget    []bool
-	isDead               bool
-	damageFlashTic       int
-	bonusFlashTic        int
-	sectorLightFx        []sectorLightEffect
-	subSectorSec         []int
-	sectorBBox           []worldBBox
-	subSectorLoopVerts   [][]uint16
-	subSectorLoopDiag    []loopBuildDiag
-	subSectorPoly        [][]worldPt
-	subSectorTris        [][][3]int
-	subSectorBBox        []worldBBox
-	dynamicSectorMask    []bool
-	staticSubSectorMask  []bool
-	subSectorPlaneID     []int
-	sectorSubSectors     [][]int
-	holeFillPolys        []holeFillPoly
-	sectorPlaneTris      [][]worldTri
-	sectorPlaneCache     []sectorPlaneCacheEntry
-	sectorLightCacheTick int
+	thingCollected        []bool
+	thingDropped          []bool
+	thingX                []int64
+	thingY                []int64
+	thingAngleState       []uint32
+	thingZState           []int64
+	thingFloorState       []int64
+	thingCeilState        []int64
+	thingSupportValid     []bool
+	thingBlockCell        []int
+	thingBlockNext        []int
+	thingBlockLinks       []int
+	thingHP               []int
+	thingAggro            []bool
+	thingTargetPlayer     []bool
+	thingTargetIdx        []int
+	thingThreshold        []int
+	thingCooldown         []int
+	thingMoveDir          []monsterMoveDir
+	thingMoveCount        []int
+	thingJustAtk          []bool
+	thingJustHit          []bool
+	thingReactionTics     []int
+	thingWakeTics         []int
+	thingLastLook         []int
+	thingDead             []bool
+	thingDeathTics        []int
+	thingAttackTics       []int
+	thingAttackPhase      []int
+	thingAttackFireTics   []int
+	thingPainTics         []int
+	thingThinkWait        []int
+	thingState            []monsterThinkState
+	thingStateTics        []int
+	thingStatePhase       []int
+	thingWorldAnimRef     []thingAnimRefState
+	thingShadeTick        []int
+	thingShadeMul         []uint32
+	bossSpawnCubes        []bossSpawnCube
+	bossSpawnFires        []bossSpawnFire
+	bossBrainTargetOrder  int
+	bossBrainEasyToggle   bool
+	projectiles           []projectile
+	projectileImpacts     []projectileImpact
+	projectileShadeTick   []int
+	projectileShadeMul    []uint32
+	impactShadeTick       []int
+	impactShadeMul        []uint32
+	hitscanPuffs          []hitscanPuff
+	cheatLevel            int
+	invulnerable          bool
+	inventory             playerInventory
+	alwaysRun             bool
+	autoWeaponSwitch      bool
+	weaponRefire          bool
+	weaponAttackDown      bool
+	weaponState           weaponPspriteState
+	weaponStateTics       int
+	weaponFlashState      weaponPspriteState
+	weaponFlashTics       int
+	weaponPSpriteY        int
+	stats                 playerStats
+	worldTic              int
+	spectreFuzzPos        int
+	spectreFuzzAccum      float64
+	spectreFuzzStamp      time.Time
+	spectreFuzzCoarseX    int
+	spectreFuzzCoarseY    int
+	spectreFuzzCoarseSet  bool
+	playerViewZ           int64
+	secretFound           []bool
+	secretsFound          int
+	secretsTotal          int
+	sectorSoundTarget     []bool
+	isDead                bool
+	damageFlashTic        int
+	bonusFlashTic         int
+	sectorLightFx         []sectorLightEffect
+	subSectorSec          []int
+	sectorBBox            []worldBBox
+	subSectorLoopVerts    [][]uint16
+	subSectorLoopDiag     []loopBuildDiag
+	subSectorPoly         [][]worldPt
+	subSectorTris         [][][3]int
+	subSectorBBox         []worldBBox
+	dynamicSectorMask     []bool
+	staticSubSectorMask   []bool
+	subSectorPlaneID      []int
+	sectorSubSectors      [][]int
+	holeFillPolys         []holeFillPoly
+	sectorPlaneTris       [][]worldTri
+	sectorPlaneCache      []sectorPlaneCacheEntry
+	sectorLightCacheTick  int
 	sectorLightCacheValid bool
-	orphanSubSector      []bool
-	orphanRepairQueue    []orphanRepairCandidate
+	orphanSubSector       []bool
+	orphanRepairQueue     []orphanRepairCandidate
 
 	mapFloorLayer                *ebiten.Image
 	mapFloorPix                  []byte
@@ -1048,6 +1050,11 @@ const (
 )
 
 func newGame(m *mapdata.Map, opts Options) *game {
+	// Doom clears both random streams in G_InitNew before setting up a fresh
+	// level, including demo playback. Without this, hidden bootstrap/frontend
+	// builds leak prior RNG state into attract demos and other new sessions.
+	doomrand.Clear()
+
 	ensurePositiveRenderSize(&opts)
 	opts.SkillLevel = normalizeSkillLevel(opts.SkillLevel)
 	opts.GameMode = normalizeGameMode(opts.GameMode)
@@ -1996,10 +2003,10 @@ func (g *game) updateDemoMode() error {
 	usePressed := tc.Buttons&demoButtonUse != 0
 	fireHeld := tc.Buttons&demoButtonAttack != 0
 	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.writeDemoTraceTic()
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 	g.tickStatusWidgets()
+	g.writeDemoTraceTic()
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
@@ -3302,7 +3309,7 @@ func (g *game) setHUDMessage(msg string, tics int) {
 
 func (g *game) applyThingSpawnFiltering() {
 	for i, th := range g.m.Things {
-		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems) {
+		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters) {
 			g.thingCollected[i] = true
 		}
 	}
@@ -8281,7 +8288,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		yb := float64(viewH)/2 - ((float64(p.z)/fracUnit-eyeZ)/f)*focal
-		ref, ok := g.projectileSpriteRef(p.kind, g.worldTic)
+		ref, ok := g.projectileSpriteRef(p.kind, p.frame)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
@@ -8508,7 +8515,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		yb := float64(viewH)/2 - ((float64(fx.z)/fracUnit-eyeZ)/f)*focal
-		ref, ok := g.projectileImpactSpriteRef(fx.kind, fx.totalTics-fx.tics)
+		ref, ok := g.projectileImpactSpriteRef(fx.kind, fx.phase)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
@@ -8653,118 +8660,52 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near floa
 	}
 }
 
-func (g *game) projectileSpriteRef(kind projectileKind, tic int) (*spriteRenderRef, bool) {
-	name := g.projectileSpriteName(kind, tic)
+func (g *game) projectileSpriteRef(kind projectileKind, frame int) (*spriteRenderRef, bool) {
+	name := g.projectileSpriteNameForFrame(kind, frame)
 	if name == "" {
 		return nil, false
 	}
 	return g.spriteRenderRef(name)
 }
 
-func (g *game) projectileImpactSpriteRef(kind projectileKind, elapsed int) (*spriteRenderRef, bool) {
-	name := g.projectileImpactSpriteName(kind, elapsed)
+func (g *game) projectileImpactSpriteRef(kind projectileKind, phase int) (*spriteRenderRef, bool) {
+	name := g.projectileImpactSpriteNameForPhase(kind, phase)
 	if name == "" {
 		return nil, false
 	}
 	return g.spriteRenderRef(name)
 }
 
-func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) string {
-	if elapsed < 0 {
-		elapsed = 0
+func (g *game) projectileImpactSpriteNameForPhase(kind projectileKind, phase int) string {
+	if phase < 0 {
+		phase = 0
 	}
 	prefix := "BAL1"
 	frame := byte('C')
 	switch kind {
 	case projectileBFGBall:
 		prefix = "BFE1"
-		switch {
-		case elapsed < 8:
-			frame = 'A'
-		case elapsed < 16:
-			frame = 'B'
-		case elapsed < 24:
-			frame = 'C'
-		case elapsed < 32:
-			frame = 'D'
-		case elapsed < 40:
-			frame = 'E'
-		default:
-			frame = 'F'
-		}
+		frame = byte('A' + min(phase, 5))
 	case projectileRocket:
 		prefix = "MISL"
-		switch {
-		case elapsed < 8:
-			frame = 'B'
-		case elapsed < 14:
-			frame = 'C'
-		default:
-			frame = 'D'
-		}
+		frame = byte('B' + min(phase, 2))
 	case projectileBaronBall:
 		prefix = "BAL7"
-		switch {
-		case elapsed < 6:
-			frame = 'C'
-		case elapsed < 12:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('C' + min(phase, 2))
 	case projectilePlasmaBall:
 		prefix = "BAL2"
-		switch {
-		case elapsed < 6:
-			frame = 'C'
-		case elapsed < 12:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('C' + min(phase, 2))
 	case projectilePlayerPlasma:
 		prefix = "PLSE"
-		switch {
-		case elapsed < 4:
-			frame = 'A'
-		case elapsed < 8:
-			frame = 'B'
-		case elapsed < 12:
-			frame = 'C'
-		case elapsed < 16:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('A' + min(phase, 4))
 	case projectileTracer:
 		prefix = "FBXP"
-		switch {
-		case elapsed < 8:
-			frame = 'A'
-		case elapsed < 14:
-			frame = 'B'
-		default:
-			frame = 'C'
-		}
+		frame = byte('A' + min(phase, 2))
 	case projectileFatShot:
 		prefix = "MISL"
-		switch {
-		case elapsed < 8:
-			frame = 'B'
-		case elapsed < 14:
-			frame = 'C'
-		default:
-			frame = 'D'
-		}
+		frame = byte('B' + min(phase, 2))
 	default:
-		switch {
-		case elapsed < 6:
-			frame = 'C'
-		case elapsed < 12:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('C' + min(phase, 2))
 	}
 	name0 := spriteFrameName(prefix, byte(frame), '0')
 	if g.spritePatchExists(name0) {
@@ -8774,10 +8715,10 @@ func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) stri
 		return name
 	}
 	// Fallback to flight sprite if impact frame is unavailable in the bank.
-	return g.projectileSpriteName(kind, g.worldTic)
+	return g.projectileSpriteName(kind, 0)
 }
 
-func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
+func (g *game) projectileSpriteNameForFrame(kind projectileKind, frame int) string {
 	pickPrefixFrame := func(prefix string, frameLetters []byte, frame int) string {
 		if len(frameLetters) == 0 {
 			return ""
@@ -8796,7 +8737,7 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 		}
 		return ""
 	}
-	frame2 := (tic / 4) & 1
+	frame2 := frame & 1
 	switch kind {
 	case projectileBFGBall:
 		return pickPrefixFrame("BFS1", []byte{'A', 'B'}, frame2)
@@ -8817,12 +8758,36 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 	}
 }
 
+func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) string {
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	phase := 0
+	for {
+		next := projectileImpactPhaseTics(kind, phase)
+		if next <= 0 || elapsed < next {
+			break
+		}
+		elapsed -= next
+		phase++
+	}
+	return g.projectileImpactSpriteNameForPhase(kind, phase)
+}
+
+func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
+	if tic < 0 {
+		tic = 0
+	}
+	return g.projectileSpriteNameForFrame(kind, (tic/4)&1)
+}
+
 func (g *game) spawnHitscanPuff(x, y, z int64) {
 	const maxPuffs = 64
 	if len(g.hitscanPuffs) >= maxPuffs {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
+	lastLook := doomrand.PRandom() & 3
 	tics := 4 - (doomrand.PRandom() & 3)
 	if tics < 1 {
 		tics = 1
@@ -8832,6 +8797,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		y:        y,
 		z:        z,
 		momz:     fracUnit,
+		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics,
 		state:    93,
@@ -8846,6 +8812,7 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
 	state := 91
+	lastLook := doomrand.PRandom() & 3
 	tics := 8 - (doomrand.PRandom() & 3)
 	if tics < 1 {
 		tics = 1
@@ -8862,10 +8829,37 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		y:        y,
 		z:        z,
 		momz:     2 * fracUnit,
+		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics,
 		state:    state,
 		kind:     hitscanFxBlood,
+	})
+}
+
+func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
+	jitterZ := z + int64((doomrand.PRandom()-doomrand.PRandom())<<10)
+	g.spawnHitscanPuff(x, y, jitterZ)
+	const maxPuffs = 64
+	if len(g.hitscanPuffs) >= maxPuffs {
+		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
+		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
+	}
+	lastLook := doomrand.PRandom() & 3
+	tics := 4 - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		tics = 1
+	}
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
+		x:        x - momx,
+		y:        y - momy,
+		z:        z,
+		momz:     fracUnit,
+		lastLook: lastLook,
+		tics:     tics,
+		totalTic: tics + 16,
+		state:    0,
+		kind:     hitscanFxSmoke,
 	})
 }
 
@@ -8913,6 +8907,20 @@ func (g *game) hitscanEffectSpriteRef(p hitscanPuff) (*spriteRenderRef, bool) {
 			return find("BLUDB0", "BLUDB1")
 		default:
 			return find("BLUDC0", "BLUDC1")
+		}
+	}
+	if p.kind == hitscanFxSmoke {
+		switch p.state {
+		case 0:
+			return find("PUFFB0", "PUFFB1")
+		case 1:
+			return find("PUFFC0", "PUFFC1")
+		case 2:
+			return find("PUFFB0", "PUFFB1")
+		case 3:
+			return find("PUFFC0", "PUFFC1")
+		default:
+			return find("PUFFD0", "PUFFD1")
 		}
 	}
 	if p.kind == hitscanFxTeleport {
@@ -8976,6 +8984,17 @@ func (g *game) tickHitscanPuffs() {
 				p.state, p.tics = 92, 8
 			case 92:
 				p.state, p.tics = 93, 8
+			}
+		} else if p.kind == hitscanFxSmoke && p.tics <= 0 {
+			switch p.state {
+			case 0:
+				p.state, p.tics = 1, 4
+			case 1:
+				p.state, p.tics = 2, 4
+			case 2:
+				p.state, p.tics = 3, 4
+			case 3:
+				p.state, p.tics = 4, 4
 			}
 		}
 		if p.tics <= 0 {

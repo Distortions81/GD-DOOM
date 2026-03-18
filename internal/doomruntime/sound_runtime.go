@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"gddoom/internal/audiofx"
-	"gddoom/internal/doomrand"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
@@ -97,6 +96,7 @@ const (
 type soundSystem struct {
 	bank   SoundBank
 	player *audiofx.SpatialPlayer
+	rand   uint32
 }
 
 type MenuSoundPlayer = audiofx.MenuPlayer
@@ -119,6 +119,7 @@ func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool) *soundSy
 	return &soundSystem{
 		bank:   bank,
 		player: audiofx.NewSpatialPlayer(sfxVolume, sourcePort),
+		rand:   0x1f123bb5,
 	}
 }
 
@@ -153,18 +154,30 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 		X:          origin.x,
 		Y:          origin.y,
 		Positioned: origin.positioned,
-	}, listenerX, listenerY, listenerAngle, mapUsesFullClip, monsterVocalPreDelaySamples(ev, s.player))
+	}, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev))
 }
 
-func monsterVocalPreDelaySamples(ev soundEvent, player *audiofx.SpatialPlayer) float64 {
-	if player == nil || !isMonsterVocalSound(ev) {
+func (s *soundSystem) nextRandByte() int {
+	if s == nil {
+		return 0
+	}
+	if s.rand == 0 {
+		s.rand = 0x1f123bb5
+	}
+	s.rand = s.rand*1664525 + 1013904223
+	return int((s.rand >> 24) & 0xff)
+}
+
+func (s *soundSystem) monsterVocalPreDelaySamples(ev soundEvent) float64 {
+	if s == nil || s.player == nil || !isMonsterVocalSound(ev) {
 		return 0
 	}
 	ctx := audiofx.EnsureSharedAudioContext()
 	if ctx == nil {
 		return 0
 	}
-	delayMS := float64(doomrand.PRandom() % 26)
+	// Audio-only pre-delay is a GD-DOOM effect, not a vanilla gameplay RNG consumer.
+	delayMS := float64(s.nextRandByte() % 26)
 	return delayMS * float64(ctx.SampleRate()) / 1000.0
 }
 

@@ -36,6 +36,9 @@ type projectile struct {
 	sourceType   int16
 	sourcePlayer bool
 	tracerPlayer bool
+	lastLook     int
+	frame        int
+	frameTics    int
 	angle        uint32
 	kind         projectileKind
 }
@@ -47,6 +50,8 @@ type projectileImpact struct {
 	kind      projectileKind
 	tics      int
 	totalTics int
+	phase     int
+	phaseTics int
 	angle     uint32
 	sprayDone bool
 }
@@ -163,6 +168,8 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		return false
 	}
 	tz += height / 2
+	kind := monsterProjectileKind(typ)
+	lastLook := doomrand.PRandom() & 3
 	aimAngle := g.monsterAimAngleToTarget(thingIdx, sx, sy)
 
 	dx := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineCosine(aimAngle))
@@ -196,7 +203,9 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		sourceThing:  thingIdx,
 		sourceType:   typ,
 		tracerPlayer: typ == 66,
-		kind:         monsterProjectileKind(typ),
+		lastLook:     lastLook,
+		frameTics:    randomizedStateTics(projectileSpawnStateTics(kind)),
+		kind:         kind,
 		angle:        aimAngle,
 	})
 	return true
@@ -252,6 +261,7 @@ func (g *game) tickProjectiles() {
 		p.y = ny
 		p.z = nz
 		g.tickProjectileSpecial(&p)
+		g.tickProjectileAnim(&p)
 		p.ttl--
 		if p.ttl <= 0 {
 			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
@@ -342,6 +352,7 @@ func (g *game) spawnPlayerRocket() bool {
 	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
 	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
 	sz := g.playerShootZ() - (rocketHeight >> 1)
+	lastLook := doomrand.PRandom() & 3
 	g.projectiles = append(g.projectiles, projectile{
 		x:            sx,
 		y:            sy,
@@ -357,6 +368,8 @@ func (g *game) spawnPlayerRocket() bool {
 		sourceThing:  -1,
 		sourceType:   16,
 		sourcePlayer: true,
+		lastLook:     lastLook,
+		frameTics:    randomizedStateTics(projectileSpawnStateTics(projectileRocket)),
 		kind:         projectileRocket,
 		angle:        g.p.angle,
 	})
@@ -408,6 +421,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
 	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
 	sz := g.playerShootZ() - (height >> 1)
+	lastLook := doomrand.PRandom() & 3
 	g.projectiles = append(g.projectiles, projectile{
 		x:            sx,
 		y:            sy,
@@ -423,6 +437,8 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		sourceThing:  -1,
 		sourceType:   0,
 		sourcePlayer: true,
+		lastLook:     lastLook,
+		frameTics:    randomizedStateTics(projectileSpawnStateTics(kind)),
 		kind:         kind,
 		angle:        g.p.angle,
 	})
@@ -458,12 +474,20 @@ func (g *game) tickProjectileImpacts() {
 	}
 	keep := g.projectileImpacts[:0]
 	for _, fx := range g.projectileImpacts {
-		elapsed := fx.totalTics - fx.tics
-		if fx.kind == projectileBFGBall && !fx.sprayDone && elapsed >= 16 {
-			fx.sprayDone = true
-			g.applyBFGSpray(fx.angle)
-		}
 		fx.tics--
+		fx.phaseTics--
+		if fx.phaseTics <= 0 {
+			fx.phase++
+			next := projectileImpactPhaseTics(fx.kind, fx.phase)
+			if next <= 0 {
+				continue
+			}
+			fx.phaseTics = next
+			if fx.kind == projectileBFGBall && !fx.sprayDone && fx.phase == 2 {
+				fx.sprayDone = true
+				g.applyBFGSpray(fx.angle)
+			}
+		}
 		if fx.tics <= 0 {
 			continue
 		}
@@ -478,10 +502,15 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
 		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
 	}
-	// Doom timings:
-	// - Fireball families (BAL1/BAL2/BAL7): C/D/E at 6 tics each.
-	// - Rocket (MISL): B/C/D at 8/6/4 tics.
-	tics := 18
+	first := randomizedStateTics(projectileImpactPhaseTics(kind, 0))
+	tics := first
+	for phase := 1; ; phase++ {
+		next := projectileImpactPhaseTics(kind, phase)
+		if next <= 0 {
+			break
+		}
+		tics += next
+	}
 	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
 		x:         x,
 		y:         y,
@@ -489,8 +518,79 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		kind:      kind,
 		tics:      tics,
 		totalTics: tics,
+		phaseTics: first,
 		angle:     angle,
 	})
+}
+
+func projectileSpawnStateTics(kind projectileKind) int {
+	switch kind {
+	case projectileTracer:
+		return 2
+	case projectilePlayerPlasma:
+		return 6
+	case projectileRocket:
+		return 1
+	case projectileBFGBall:
+		return 4
+	default:
+		return 4
+	}
+}
+
+func projectileImpactPhaseTics(kind projectileKind, phase int) int {
+	switch kind {
+	case projectileBFGBall:
+		if phase >= 0 && phase <= 5 {
+			return 8
+		}
+	case projectileRocket, projectileFatShot, projectileTracer:
+		switch phase {
+		case 0:
+			return 8
+		case 1:
+			return 6
+		case 2:
+			return 4
+		}
+	case projectilePlayerPlasma:
+		if phase >= 0 && phase <= 4 {
+			return 4
+		}
+	default:
+		if phase >= 0 && phase <= 2 {
+			return 6
+		}
+	}
+	return 0
+}
+
+func randomizedStateTics(base int) int {
+	if base <= 1 {
+		return 1
+	}
+	tics := base - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		return 1
+	}
+	return tics
+}
+
+func (g *game) tickProjectileAnim(p *projectile) {
+	if p == nil {
+		return
+	}
+	p.frameTics--
+	if p.frameTics > 0 {
+		return
+	}
+	switch p.kind {
+	case projectileRocket:
+		p.frame = 0
+	default:
+		p.frame ^= 1
+	}
+	p.frameTics = projectileSpawnStateTics(p.kind)
 }
 
 func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64) {
@@ -688,6 +788,7 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 	if g.worldTic&3 != 0 {
 		return
 	}
+	g.spawnTracerSmokeTrail(p.x, p.y, p.z, p.vx, p.vy)
 	dx := g.p.x - p.x
 	dy := g.p.y - p.y
 	dxy := hypotFixed(dx, dy)

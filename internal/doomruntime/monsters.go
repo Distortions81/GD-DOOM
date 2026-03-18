@@ -138,6 +138,15 @@ func (g *game) tickMonsters() {
 		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
 			continue
 		}
+		// A sleeping monster can acquire a target while advancing out of its
+		// spawn state. Recompute chase inputs immediately so the wake-up tic
+		// uses the actual target position instead of stale zero values.
+		targetX, targetY = 0, 0
+		dist = 0
+		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+			targetX, targetY = px, py
+			dist = doomApproxDistance(targetX-tx, targetY-ty)
+		}
 		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 			g.thingReactionTics[i]--
 		}

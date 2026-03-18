@@ -59,10 +59,10 @@ func TestThingSpawnsForGameMode(t *testing.T) {
 func TestThingSpawnsInSession_ShowAllItemsOverridesFiltersForPickupsOnly(t *testing.T) {
 	pickup := mapdata.Thing{Type: 2008, Flags: thingFlagNotSingle}
 	monster := mapdata.Thing{Type: 3004, Flags: thingFlagNotSingle}
-	if !thingSpawnsInSession(pickup, 3, gameModeSingle, false, true) {
+	if !thingSpawnsInSession(pickup, 3, gameModeSingle, false, true, false) {
 		t.Fatal("pickup should spawn when show-all-items is enabled")
 	}
-	if thingSpawnsInSession(monster, 3, gameModeSingle, false, true) {
+	if thingSpawnsInSession(monster, 3, gameModeSingle, false, true, false) {
 		t.Fatal("monster should not bypass normal spawn filters when show-all-items is enabled")
 	}
 }

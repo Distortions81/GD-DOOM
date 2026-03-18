@@ -52,6 +52,8 @@ type Options struct {
 	OpenMenuOnFrontendStart    bool
 	SFXVolume                  float64
 	FastMonsters               bool
+	RespawnMonsters            bool
+	NoMonsters                 bool
 	AlwaysRun                  bool
 	AutoWeaponSwitch           bool
 	CheatLevel                 int

@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"testing"
 
+	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 )
 
@@ -72,6 +73,54 @@ func TestAdvanceFrontendAttractStartsDemoPlayback(t *testing.T) {
 	}
 	if sg.g.opts.DemoQuitOnComplete {
 		t.Fatal("frontend attract demo should not use benchmark quit mode")
+	}
+}
+
+func TestAttractDemoBuildDoesNotInheritPriorRNGState(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	boot := cloneMapForRestart(base.m)
+	demo := &DemoScript{
+		Path:   "DEMO1",
+		Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+		Tics:   []DemoTic{{Forward: 25}},
+	}
+
+	doomrand.SetState(123, 231)
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SourcePortMode: base.opts.SourcePortMode,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{demo},
+		},
+		g: base,
+	}
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	gotRndA, gotPRndA := doomrand.State()
+
+	doomrand.SetState(17, 99)
+	sg = &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SourcePortMode: base.opts.SourcePortMode,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{demo},
+		},
+		g: base,
+	}
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	gotRndB, gotPRndB := doomrand.State()
+
+	if gotRndA != gotRndB || gotPRndA != gotPRndB {
+		t.Fatalf("attract demo build inherited prior RNG state: first=%d/%d second=%d/%d", gotRndA, gotPRndA, gotRndB, gotPRndB)
 	}
 }
 

@@ -1405,6 +1405,57 @@ func TestMonsterPickNewChaseDirMovesTowardTarget(t *testing.T) {
 	}
 }
 
+func TestTickMonstersWakeUpRecomputesTargetPositionBeforeChase(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -96, Y: -32},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingAggro:        []bool{false},
+		thingMoveDir:      []monsterMoveDir{monsterDirEast},
+		thingMoveCount:    []int{0},
+		thingReactionTics: []int{0},
+		thingThreshold:    []int{0},
+		thingState:        []monsterThinkState{monsterStateSpawn},
+		thingStateTics:    []int{0},
+		thingStatePhase:   []int{0},
+		thingLastLook:     []int{0},
+		thingX:            []int64{-96 * fracUnit},
+		thingY:            []int64{-32 * fracUnit},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		sectorSoundTarget: []bool{true},
+		p: player{
+			x:      -256 * fracUnit,
+			y:      -256 * fracUnit,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		stats: playerStats{Health: 100},
+	}
+
+	g.tickMonsters()
+
+	if !g.monsterHasTarget(0) {
+		t.Fatal("monster did not acquire player target on wake-up tic")
+	}
+	if got := g.thingMoveDir[0]; got != monsterDirSouthWest {
+		t.Fatalf("movedir=%v want south-west", got)
+	}
+	x, y := g.thingPosFixed(0, g.m.Things[0])
+	if x >= -96*fracUnit || y >= -32*fracUnit {
+		t.Fatalf("monster moved to (%d,%d), want movement toward south-west from wake-up tic", x, y)
+	}
+}
+
 func TestTickMonstersJustAttackedSkipsAttackTic(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

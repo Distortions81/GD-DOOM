@@ -1015,9 +1015,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "resolve demo map: %v\n", err)
 				return 1
 			}
-			opts.SkillLevel = int(demo.Header.Skill) + 1
-			opts.FastMonsters = demo.Header.Fast
-			opts.GameMode = demoGameMode(demo)
+			applyDemoPlaybackHeader(&opts, demo)
 			fmt.Fprintf(stderr, "demo loaded: %s tics=%d\n", p, len(demo.Tics))
 		}
 		if selected == "" {
@@ -1949,9 +1947,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		if err != nil {
 			return nil, fmt.Errorf("resolve demo map: %w", err)
 		}
-		opts.SkillLevel = int(demo.Header.Skill) + 1
-		opts.FastMonsters = demo.Header.Fast
-		opts.GameMode = demoGameMode(demo)
+		applyDemoPlaybackHeader(&opts, demo)
 	}
 	if selected == "" {
 		selected, err = defaultStartMap(wf, cfg.pwadPaths)
@@ -3183,5 +3179,30 @@ func demoGameMode(script *demo.Script) string {
 	if script.Header.Deathmatch {
 		return "deathmatch"
 	}
+	activePlayers := 0
+	for _, on := range script.Header.PlayerInGame {
+		if on {
+			activePlayers++
+		}
+	}
+	if activePlayers > 1 {
+		return "coop"
+	}
 	return "single"
+}
+
+func applyDemoPlaybackHeader(opts *runtimecfg.Options, script *demo.Script) {
+	if opts == nil || script == nil {
+		return
+	}
+	opts.SkillLevel = int(script.Header.Skill) + 1
+	opts.FastMonsters = script.Header.Fast
+	opts.RespawnMonsters = script.Header.Respawn
+	opts.NoMonsters = script.Header.NoMonsters
+	opts.GameMode = demoGameMode(script)
+	playerSlot := int(script.Header.ConsolePlayer) + 1
+	if playerSlot < 1 || playerSlot > 4 || !script.Header.PlayerInGame[playerSlot-1] {
+		playerSlot = 1
+	}
+	opts.PlayerSlot = playerSlot
 }
