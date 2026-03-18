@@ -242,7 +242,7 @@ func TestDrawMaskedColumnOpaqueRuns_SkipsTransparentHole(t *testing.T) {
 	if !tex.EnsureOpaqueColumnBounds() {
 		t.Fatal("expected opaque run metadata")
 	}
-	if !drawMaskedColumnOpaqueRuns(g, 0, 0, 7, 0, fracUnit/2, &tex, 0, nil, encodeDepthQ(64), 256, 0) {
+	if !drawMaskedColumnOpaqueRuns(g, 0, 0, 7, 0, fracUnit/2, &tex, 0, nil, encodeDepthQ(64), 256, 0, []solidSpan{{L: 0, R: 7}}) {
 		t.Fatal("expected run fast-path")
 	}
 	if g.wallPix32[2] != 0 || g.wallPix32[3] != 0 {
@@ -269,11 +269,39 @@ func TestDrawMaskedColumnOpaqueRuns_UsesIndexedShadeRow(t *testing.T) {
 		OpaqueRuns:      []uint32{media.PackOpaqueRun(0, 0), media.PackOpaqueRun(2, 3)},
 	}
 
-	if !drawMaskedColumnOpaqueRuns(g, 0, 0, 3, 0, fracUnit, &tex, 0, nil, encodeDepthQ(64), 256, 0) {
+	if !drawMaskedColumnOpaqueRuns(g, 0, 0, 3, 0, fracUnit, &tex, 0, nil, encodeDepthQ(64), 256, 0, []solidSpan{{L: 0, R: 3}}) {
 		t.Fatal("expected run fast-path")
 	}
 
 	want := []uint32{row[1], 0, row[3], row[4]}
+	if !reflect.DeepEqual(g.wallPix32, want) {
+		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
+	}
+}
+
+func TestDrawBasicWallColumnTexturedMasked_FallbackUsesVisibleSpans(t *testing.T) {
+	row := installTestWallShadeRow(t)
+	g := &game{
+		viewW:              1,
+		viewH:              6,
+		wallPix32:          make([]uint32, 6),
+		wallDepthQCol:      []uint16{10},
+		wallDepthTopCol:    []int{2},
+		wallDepthBottomCol: []int{3},
+		wallDepthClosedCol: []bool{false},
+		maskedClipCols:     make([][]scene.MaskedClipSpan, 1),
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          6,
+		Indexed:         []byte{1, 2, 3, 4, 5, 6},
+		IndexedColMajor: []byte{1, 2, 3, 4, 5, 6},
+		OpaqueMask:      []byte{1, 1, 1, 1, 1, 1},
+	}
+
+	g.drawBasicWallColumnTexturedMasked(0, 0, 5, 64, 0, 3, 64, &tex, 256, 0)
+
+	want := []uint32{row[1], row[2], 0, 0, row[5], row[6]}
 	if !reflect.DeepEqual(g.wallPix32, want) {
 		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
 	}

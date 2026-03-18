@@ -4981,11 +4981,6 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	texVFixed := floorFixed(texV)
 	texVStepFixed := floorFixed(rowScale)
 	depthQ := encodeDepthQ(depth)
-	if len(tex.OpaqueRunOffs) == tex.Width+1 && tx >= 0 && tx < tex.Width && len(tex.OpaqueRuns) >= int(tex.OpaqueRunOffs[tx+1]) {
-		if drawMaskedColumnOpaqueRuns(g, x, y0, y1, texVFixed, texVStepFixed, tex, tx, nil, depthQ, shadeMul, doomRow) {
-			return
-		}
-	}
 	if len(tex.OpaqueColumnTop) == tex.Width && len(tex.OpaqueColumnBot) == tex.Width {
 		var ok bool
 		y0, y1, texVFixed, ok = trimMaskedColumnToOpaqueBounds(y0, y1, texVFixed, texVStepFixed, tex.Height, int(tex.OpaqueColumnTop[tx]), int(tex.OpaqueColumnBot[tx]))
@@ -4993,58 +4988,71 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 			return
 		}
 	}
-	if g.spriteWallClipColumnOccludedBBox(x, y0, y1, depthQ) {
+	visible := g.maskedColumnVisibleSpans(x, y0, y1, depthQ)
+	if len(visible) == 0 {
 		return
+	}
+	if len(tex.OpaqueRunOffs) == tex.Width+1 && tx >= 0 && tx < tex.Width && len(tex.OpaqueRuns) >= int(tex.OpaqueRunOffs[tx+1]) {
+		if drawMaskedColumnOpaqueRuns(g, x, y0, y1, texVFixed, texVStepFixed, tex, tx, nil, depthQ, shadeMul, doomRow, visible) {
+			return
+		}
 	}
 	colBase := tx * tex.Height
 	useIndexedCol := len(texIndexedCol) == tex.Width*tex.Height
 	repeatTexelRows := texVStepFixed*2 <= fracUnit
-	for y := y0; y <= y1; y++ {
-		ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
-		ti := ty*tex.Width + tx
-		if !maskReady || tex.OpaqueMask[ti] == 0 {
-			pixI += rowStridePix
-			texVFixed += texVStepFixed
+	for _, vis := range visible {
+		if vis.L > vis.R {
 			continue
 		}
-		if g.cutoutCoveredAtIndex(pixI) || g.spriteWallClipOccludedAtIndexDepth(pixI, depthQ) {
-			pixI += rowStridePix
-			texVFixed += texVStepFixed
-			continue
-		}
-		dst := uint32(0)
-		if useIndexedCol {
-			dst = packedRow[texIndexedCol[colBase+ty]]
-		} else {
-			dst = packedRow[texIndexed[ti]]
-		}
-		if repeatTexelRows {
-			runLen := 1
-			nextTexVFixed := texVFixed + texVStepFixed
-			for y+runLen <= y1 && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
-				nextPixI := pixI + runLen*rowStridePix
-				if g.cutoutCoveredAtIndex(nextPixI) || g.spriteWallClipOccludedAtIndexDepth(nextPixI, depthQ) {
-					break
-				}
-				runLen++
-				nextTexVFixed += texVStepFixed
-			}
-			if runLen > 1 {
-				g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
-				pixI += runLen * rowStridePix
-				texVFixed += int64(runLen) * texVStepFixed
-				y += runLen - 1
+		pixI = vis.L*rowStridePix + x
+		runTexVFixed := texVFixed + int64(vis.L-y0)*texVStepFixed
+		for y := vis.L; y <= vis.R; y++ {
+			ty := wrapIndex(int(runTexVFixed>>fracBits), tex.Height)
+			ti := ty*tex.Width + tx
+			if !maskReady || tex.OpaqueMask[ti] == 0 {
+				pixI += rowStridePix
+				runTexVFixed += texVStepFixed
 				continue
 			}
+			if g.cutoutCoveredAtIndex(pixI) {
+				pixI += rowStridePix
+				runTexVFixed += texVStepFixed
+				continue
+			}
+			dst := uint32(0)
+			if useIndexedCol {
+				dst = packedRow[texIndexedCol[colBase+ty]]
+			} else {
+				dst = packedRow[texIndexed[ti]]
+			}
+			if repeatTexelRows {
+				runLen := 1
+				nextTexVFixed := runTexVFixed + texVStepFixed
+				for y+runLen <= vis.R && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
+					nextPixI := pixI + runLen*rowStridePix
+					if g.cutoutCoveredAtIndex(nextPixI) {
+						break
+					}
+					runLen++
+					nextTexVFixed += texVStepFixed
+				}
+				if runLen > 1 {
+					g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
+					pixI += runLen * rowStridePix
+					runTexVFixed += int64(runLen) * texVStepFixed
+					y += runLen - 1
+					continue
+				}
+			}
+			pix32[pixI] = dst
+			g.markCutoutCoveredAtIndex(pixI)
+			pixI += rowStridePix
+			runTexVFixed += texVStepFixed
 		}
-		pix32[pixI] = dst
-		g.markCutoutCoveredAtIndex(pixI)
-		pixI += rowStridePix
-		texVFixed += texVStepFixed
 	}
 }
 
-func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed int64, tex *WallTexture, tx int, tex32 []uint32, depthQ uint16, shadeMul, doomRow int) bool {
+func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed int64, tex *WallTexture, tx int, tex32 []uint32, depthQ uint16, shadeMul, doomRow int, visible []solidSpan) bool {
 	if g == nil || tex == nil || texVStepFixed <= 0 || tex.Height <= 0 || tx < 0 || tx >= tex.Width {
 		return false
 	}
@@ -5058,7 +5066,6 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 	if runStart >= runEnd {
 		return true
 	}
-	visible := g.maskedColumnVisibleSpans(x, y0, y1, depthQ)
 	if len(visible) == 0 {
 		return true
 	}
@@ -6503,20 +6510,76 @@ func (g *game) maskedMidRangeOcclusionBounds(proj scene.WallProjection, x0, x1 i
 	return y0, y1, encodeDepthQ(bestDepth), true
 }
 
+type maskedMidEnvelopeStepper struct {
+	proj        scene.WallProjection
+	t           float64
+	tStep       float64
+	topScale    float64
+	bottomScale float64
+	halfH       float64
+	ok          bool
+}
+
+func newMaskedMidEnvelopeStepper(proj scene.WallProjection, x int, worldHigh, worldLow, focal, halfH float64) maskedMidEnvelopeStepper {
+	if proj.SX2 == proj.SX1 {
+		return maskedMidEnvelopeStepper{}
+	}
+	return maskedMidEnvelopeStepper{
+		proj:        proj,
+		t:           (float64(x) - proj.SX1) / (proj.SX2 - proj.SX1),
+		tStep:       1.0 / (proj.SX2 - proj.SX1),
+		topScale:    -worldHigh * focal,
+		bottomScale: -worldLow * focal,
+		halfH:       halfH,
+		ok:          true,
+	}
+}
+
+func (s maskedMidEnvelopeStepper) Sample() (int, int, bool) {
+	if !s.ok {
+		return 0, 0, false
+	}
+	t := s.t
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	invDepth := s.proj.InvDepth1 + (s.proj.InvDepth2-s.proj.InvDepth1)*t
+	if invDepth <= 0 {
+		return 0, 0, false
+	}
+	y0 := int(math.Ceil(s.halfH + s.topScale*invDepth))
+	y1 := int(math.Floor(s.halfH + s.bottomScale*invDepth))
+	return y0, y1, true
+}
+
+func (s *maskedMidEnvelopeStepper) Next() {
+	if s == nil || !s.ok {
+		return
+	}
+	s.t += s.tStep
+}
+
 func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, shadeMul, doomRow int) {
 	stepper := scene.NewWallProjectionStepper(ms.Projection, ms.X0)
+	envelope := newMaskedMidEnvelopeStepper(ms.Projection, ms.X0, ms.WorldHigh, ms.WorldLow, focal, halfH)
 	for x := ms.X0; x <= ms.X1; x++ {
 		f, texU, ok := stepper.Sample()
+		y0, y1, envOK := envelope.Sample()
 		stepper.Next()
+		envelope.Next()
 		if !ok {
 			continue
 		}
 		if f <= 0 || !isFinite(f) {
 			continue
 		}
+		if !envOK {
+			continue
+		}
 		texU += ms.TexUOff
-		y0 := int(math.Ceil(halfH - (ms.WorldHigh/f)*focal))
-		y1 := int(math.Floor(halfH - (ms.WorldLow/f)*focal))
 		if y0 > y1 {
 			continue
 		}
