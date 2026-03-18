@@ -4324,6 +4324,19 @@ func (g *game) cutoutMaskRectFullyCovered(x0, x1, y0, y1 int) bool {
 	return true
 }
 
+func (g *game) cutoutColumnSpanFullyCovered(pixI, rowStridePix, count int) bool {
+	if g == nil || count <= 0 {
+		return false
+	}
+	for i := 0; i < count; i++ {
+		if !g.cutoutCoveredAtIndex(pixI) {
+			return false
+		}
+		pixI += rowStridePix
+	}
+	return true
+}
+
 func (g *game) spriteOpaqueRectsFullyCoveredByCutout(rects []spriteOpaqueRect, texW int, flip bool, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) bool {
 	if g == nil || len(rects) == 0 || texW <= 0 || scale <= 0 {
 		return false
@@ -4936,6 +4949,9 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 			drawY1 := vis.R
 			if drawY1 > runY1 {
 				drawY1 = runY1
+			}
+			if g.cutoutColumnSpanFullyCovered(drawY0*rowStridePix+x, rowStridePix, drawY1-drawY0+1) {
+				continue
 			}
 			pixI := drawY0*rowStridePix + x
 			runTexVFixed := texVFixed + int64(drawY0-y0)*texVStepFixed
