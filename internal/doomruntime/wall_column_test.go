@@ -562,3 +562,28 @@ func TestMaskedMidBillboardDepthGuess_UsesFartherEdge(t *testing.T) {
 		t.Fatalf("depth=%f want near farther edge depth around 80", got)
 	}
 }
+
+func TestMaskedMidSegFullyOccluded_UsesCachedOcclusionBBox(t *testing.T) {
+	g := &game{
+		viewW:              4,
+		viewH:              10,
+		wallDepthQCol:      []uint16{0, 10, 10, 0},
+		wallDepthTopCol:    []int{0, 2, 2, 0},
+		wallDepthBottomCol: []int{0, 7, 7, 0},
+		wallDepthClosedCol: []bool{false, false, false, false},
+		maskedClipCols:     make([][]scene.MaskedClipSpan, 4),
+	}
+	ms := maskedMidSeg{
+		MaskedMidSeg: scene.MaskedMidSeg{
+			X0: 1,
+			X1: 2,
+		},
+		occlusionY0:      2,
+		occlusionY1:      7,
+		occlusionDepthQ:  20,
+		hasOcclusionBBox: true,
+	}
+	if !g.maskedMidSegFullyOccluded(ms, 0, 0) {
+		t.Fatal("expected cached occlusion bbox to report fully occluded")
+	}
+}

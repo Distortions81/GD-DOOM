@@ -1012,11 +1012,18 @@ func (g *game) lineAttackTrace(actor lineAttackActor, angle uint32, distance, sl
 }
 
 func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackOutcome, damage int) bool {
+	hideImpactFx := outcome.target.kind == lineAttackTargetPlayer
 	if outcome.spawnPuff {
 		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
+		if hideImpactFx && len(g.hitscanPuffs) != 0 {
+			g.hitscanPuffs[len(g.hitscanPuffs)-1].hidden = true
+		}
 	}
 	if outcome.spawnBlood {
 		g.spawnHitscanBlood(outcome.impactX, outcome.impactY, outcome.impactZ, damage)
+		if hideImpactFx && len(g.hitscanPuffs) != 0 {
+			g.hitscanPuffs[len(g.hitscanPuffs)-1].hidden = true
+		}
 	}
 	switch outcome.target.kind {
 	case lineAttackTargetThing:

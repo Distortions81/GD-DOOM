@@ -178,6 +178,22 @@ func (r spriteOpaqueRect) maxX() int { return int(uint8(uint32(r) >> 8)) }
 func (r spriteOpaqueRect) minY() int { return int(uint8(uint32(r) >> 16)) }
 func (r spriteOpaqueRect) maxY() int { return int(uint8(uint32(r) >> 24)) }
 
+type projectedOpaqueRect uint64
+
+func packProjectedOpaqueRect(x0, x1, y0, y1 int) projectedOpaqueRect {
+	return projectedOpaqueRect(
+		uint64(uint16(x0)) |
+			(uint64(uint16(x1)) << 16) |
+			(uint64(uint16(y0)) << 32) |
+			(uint64(uint16(y1)) << 48),
+	)
+}
+
+func (r projectedOpaqueRect) x0() int { return int(uint16(uint64(r))) }
+func (r projectedOpaqueRect) x1() int { return int(uint16(uint64(r) >> 16)) }
+func (r projectedOpaqueRect) y0() int { return int(uint16(uint64(r) >> 32)) }
+func (r projectedOpaqueRect) y1() int { return int(uint16(uint64(r) >> 48)) }
+
 type spriteOpaqueShape struct {
 	bounds spriteOpaqueBounds
 	rowMin []int16
@@ -222,28 +238,30 @@ const (
 )
 
 type cutoutItem struct {
-	dist       float64
-	depthQ     uint16
-	kind       billboardQueueKind
-	idx        int
-	x0         int
-	x1         int
-	y0         int
-	y1         int
-	shadeMul   uint32
-	doomRow    int
-	tex        *WallTexture
-	flip       bool
-	shadow     bool
-	clipSpans  []solidSpan
-	clipTop    int
-	clipBottom int
-	dstX       float64
-	dstY       float64
-	scale      float64
-	opaque     spriteOpaqueShape
-	hasOpaque  bool
-	boundsOK   bool
+	dist            float64
+	depthQ          uint16
+	kind            billboardQueueKind
+	idx             int
+	x0              int
+	x1              int
+	y0              int
+	y1              int
+	shadeMul        uint32
+	doomRow         int
+	tex             *WallTexture
+	flip            bool
+	shadow          bool
+	clipSpans       []solidSpan
+	clipTop         int
+	clipBottom      int
+	dstX            float64
+	dstY            float64
+	scale           float64
+	opaque          spriteOpaqueShape
+	hasOpaque       bool
+	opaqueRectStart int
+	opaqueRectCount int
+	boundsOK        bool
 }
 
 type billboardQueueItem = cutoutItem
@@ -263,6 +281,7 @@ type hitscanPuff struct {
 	state    int
 	totalTic int
 	kind     uint8
+	hidden   bool
 }
 
 const (
@@ -273,10 +292,16 @@ const (
 
 const maskedMidSortBucket = 8.0
 
+const spriteMagnifyMinScale = 2.0
+
 type maskedMidSeg struct {
 	scene.MaskedMidSeg
-	tex   *WallTexture
-	light int16
+	tex              *WallTexture
+	light            int16
+	occlusionY0      int16
+	occlusionY1      int16
+	occlusionDepthQ  uint16
+	hasOcclusionBBox bool
 }
 
 func wallSegPrepassProjection(pp wallSegPrepass) scene.WallProjection {
@@ -604,6 +629,7 @@ type game struct {
 	planeFlatReadyScratch        []bool
 	puffItemsScratch             []projectedPuffItem
 	billboardQueueScratch        []cutoutItem
+	projectedOpaqueRectScratch   []projectedOpaqueRect
 	billboardPlaneOccluderRows   [][]billboardPlaneOccluderSpan
 	billboardQueueCollect        bool
 	maskedMidSegsScratch         []maskedMidSeg
@@ -3849,7 +3875,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				if vis.L > vis.R {
 					continue
 				}
-				if g.maskedMidRangeFullyOccludedByWallsOnly(pp.prepass.Projection, vis.L, vis.R, maskedWorldHigh, maskedWorldLow, focal, float64(g.viewH)*0.5) {
+				occY0, occY1, occDepthQ, ok := g.maskedMidRangeOcclusionBounds(pp.prepass.Projection, vis.L, vis.R, maskedWorldHigh, maskedWorldLow, focal, float64(g.viewH)*0.5)
+				if ok && g.wallClipBBoxFullyOccludedByWallsOnly(vis.L, vis.R, occY0, occY1, occDepthQ) {
 					continue
 				}
 				dist, ok := maskedMidBillboardDepthGuess(pp.prepass.Projection, vis.L, vis.R)
@@ -3867,8 +3894,12 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						TexUOff:    texUOffset,
 						TexMid:     midTexMid,
 					},
-					tex:   midTex,
-					light: front.Light,
+					tex:              midTex,
+					light:            front.Light,
+					occlusionY0:      int16(occY0),
+					occlusionY1:      int16(occY1),
+					occlusionDepthQ:  occDepthQ,
+					hasOcclusionBBox: ok,
 				})
 			}
 		}
@@ -4226,25 +4257,106 @@ func (g *game) appendUncoveredCutoutSpans(row, x0, x1 int, out []solidSpan) []so
 	if g == nil || g.viewW <= 0 || row < 0 || x0 > x1 {
 		return out
 	}
-	start := -1
-	for x := x0; x <= x1; x++ {
-		i := row + x
-		covered := g.cutoutCoveredAtIndex(i)
-		if !covered {
-			if start < 0 {
-				start = x
+	if x0 < 0 {
+		x0 = 0
+	}
+	if x1 >= g.viewW {
+		x1 = g.viewW - 1
+	}
+	if x0 > x1 {
+		return out
+	}
+	rowBase := row
+	i0 := rowBase + x0
+	i1 := rowBase + x1
+	word0 := i0 >> 6
+	word1 := i1 >> 6
+	start := x0
+	for word := word0; word <= word1; word++ {
+		wordStartX := x0
+		if word != word0 {
+			wordStartX = ((word << 6) - rowBase)
+		}
+		wordEndX := x1
+		if word != word1 {
+			wordEndX = (((word + 1) << 6) - rowBase) - 1
+		}
+		bits := g.cutoutCoverageBits[word]
+		startBit := 0
+		if word == word0 {
+			startBit = i0 & 63
+			bits |= (uint64(1) << uint(startBit)) - 1
+		}
+		endBit := 63
+		if word == word1 {
+			endBit = i1 & 63
+			if endBit < 63 {
+				bits |= ^uint64(0) << uint(endBit+1)
 			}
+		}
+		if bits == 0 {
 			continue
 		}
-		if start >= 0 {
-			out = append(out, solidSpan{L: start, R: x - 1})
-			start = -1
+		if bits == ^uint64(0) {
+			if start <= wordStartX-1 {
+				out = append(out, solidSpan{L: start, R: wordStartX - 1})
+			}
+			start = wordEndX + 1
+			continue
+		}
+		x := wordStartX
+		for x <= wordEndX {
+			bit := x + rowBase - (word << 6)
+			if ((bits >> uint(bit)) & 1) == 0 {
+				x++
+				continue
+			}
+			if start <= x-1 {
+				out = append(out, solidSpan{L: start, R: x - 1})
+			}
+			for x <= wordEndX {
+				bit = x + rowBase - (word << 6)
+				if ((bits >> uint(bit)) & 1) == 0 {
+					break
+				}
+				x++
+			}
+			start = x
 		}
 	}
-	if start >= 0 {
+	if start <= x1 {
 		out = append(out, solidSpan{L: start, R: x1})
 	}
 	return out
+}
+
+func (g *game) markCutoutRowSpanCovered(row, x0, x1 int) {
+	if g == nil || x0 > x1 || row < 0 || len(g.cutoutCoverageBits) == 0 {
+		return
+	}
+	i0 := row + x0
+	i1 := row + x1
+	word0 := i0 >> 6
+	word1 := i1 >> 6
+	if word0 == word1 {
+		width := x1 - x0 + 1
+		mask := ^uint64(0)
+		if width < 64 {
+			mask = (uint64(1) << uint(width)) - 1
+		}
+		g.cutoutCoverageBits[word0] |= mask << uint(i0&63)
+		return
+	}
+	g.cutoutCoverageBits[word0] |= ^uint64(0) << uint(i0&63)
+	for word := word0 + 1; word < word1; word++ {
+		g.cutoutCoverageBits[word] = ^uint64(0)
+	}
+	lastBits := (i1 & 63) + 1
+	lastMask := ^uint64(0)
+	if lastBits < 64 {
+		lastMask = (uint64(1) << uint(lastBits)) - 1
+	}
+	g.cutoutCoverageBits[word1] |= lastMask
 }
 
 func (g *game) cutoutVisibleSpansForRow(row int, spans []solidSpan) []solidSpan {
@@ -4356,6 +4468,18 @@ func (g *game) spriteOpaqueRectsFullyCoveredByCutout(rects []spriteOpaqueRect, t
 		}
 	}
 	return coveredAny
+}
+
+func (g *game) projectedOpaqueRectsFullyCoveredByCutout(rects []projectedOpaqueRect) bool {
+	if len(rects) == 0 {
+		return false
+	}
+	for _, rect := range rects {
+		if !g.cutoutMaskRectFullyCovered(rect.x0(), rect.x1(), rect.y0(), rect.y1()) {
+			return false
+		}
+	}
+	return true
 }
 
 func (g *game) rowFullyOccludedDepthQ(depthQ uint16, rowBase, x0, x1 int) bool {
@@ -4536,6 +4660,36 @@ func (g *game) spriteOpaqueRectsFullyOccluded(rects []spriteOpaqueRect, dstX, ds
 		}
 	}
 	return anyVisibleRect
+}
+
+func (g *game) projectedOpaqueRectsFullyOccluded(rects []projectedOpaqueRect, depthQ uint16) bool {
+	if len(rects) == 0 {
+		return false
+	}
+	for _, rect := range rects {
+		if !g.spriteWallClipQuadFullyOccluded(rect.x0(), rect.x1(), rect.y0(), rect.y1(), depthQ) {
+			return false
+		}
+	}
+	return true
+}
+
+func (g *game) appendProjectedOpaqueRects(rects []spriteOpaqueRect, texW int, flip bool, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) (int, int) {
+	if g == nil || len(rects) == 0 || texW <= 0 || scale <= 0 {
+		return 0, 0
+	}
+	start := len(g.projectedOpaqueRectScratch)
+	for _, rect := range rects {
+		if flip {
+			rect = flipSpriteOpaqueRectX(rect, texW)
+		}
+		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if !ok {
+			continue
+		}
+		g.projectedOpaqueRectScratch = append(g.projectedOpaqueRectScratch, packProjectedOpaqueRect(x0, x1, y0, y1))
+	}
+	return start, len(g.projectedOpaqueRectScratch) - start
 }
 
 func (g *game) spriteWallClipPointOccluded(x, y int, depthQ uint16) bool {
@@ -4950,6 +5104,13 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 			if drawY1 > runY1 {
 				drawY1 = runY1
 			}
+			if repeatTexelRows {
+				srcDrawTop := wrapIndex(int((texVFixed+int64(drawY0-y0)*texVStepFixed)>>fracBits), tex.Height)
+				srcDrawBot := wrapIndex(int((texVFixed+int64(drawY1-y0)*texVStepFixed)>>fracBits), tex.Height)
+				if srcDrawTop >= runTop && srcDrawBot <= runBot && drawMaskedColumnProjectedTexelSpans(g, x, y0, drawY0, drawY1, texVFixed, texVStepFixed, tex.Width, tex.Height, rowStridePix, packedRow, texIndexed, texIndexedCol, useIndexedCol, colBase, tx, depthQ) {
+					continue
+				}
+			}
 			if g.cutoutColumnSpanFullyCovered(drawY0*rowStridePix+x, rowStridePix, drawY1-drawY0+1) {
 				continue
 			}
@@ -5011,6 +5172,64 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 				pixI += rowStridePix
 				runTexVFixed += texVStepFixed
 			}
+		}
+	}
+	return true
+}
+
+func drawMaskedColumnProjectedTexelSpans(g *game, x, baseY, drawY0, drawY1 int, texVFixed, texVStepFixed int64, texW, texH, rowStridePix int, packedRow []uint32, texIndexed, texIndexedCol []byte, useIndexedCol bool, colBase, tx int, depthQ uint16) bool {
+	if g == nil || drawY0 > drawY1 || texVStepFixed <= 0 || texH <= 0 {
+		return false
+	}
+	if g.cutoutColumnSpanFullyCovered(drawY0*rowStridePix+x, rowStridePix, drawY1-drawY0+1) {
+		return true
+	}
+	srcTop := wrapIndex(int((texVFixed+int64(drawY0-baseY)*texVStepFixed)>>fracBits), texH)
+	srcBot := wrapIndex(int((texVFixed+int64(drawY1-baseY)*texVStepFixed)>>fracBits), texH)
+	if srcTop > srcBot {
+		return false
+	}
+	for ty := srcTop; ty <= srcBot; ty++ {
+		first := ceilDiv(max64(0, int64(ty<<fracBits)-texVFixed), texVStepFixed)
+		lastPlusOne := ceilDiv(max64(0, int64((ty+1)<<fracBits)-texVFixed), texVStepFixed)
+		last := lastPlusOne - 1
+		spanY0 := baseY + int(first)
+		spanY1 := baseY + int(last)
+		if spanY0 < drawY0 {
+			spanY0 = drawY0
+		}
+		if spanY1 > drawY1 {
+			spanY1 = drawY1
+		}
+		if spanY0 > spanY1 {
+			continue
+		}
+		dst := uint32(0)
+		if useIndexedCol {
+			dst = packedRow[texIndexedCol[colBase+ty]]
+		} else {
+			dst = packedRow[texIndexed[ty*texW+tx]]
+		}
+		pixI := spanY0*rowStridePix + x
+		endPixI := spanY1*rowStridePix + x
+		for pixI <= endPixI {
+			if g.cutoutCoveredAtIndex(pixI) || g.spriteWallClipOccludedAtIndexDepth(pixI, depthQ) {
+				pixI += rowStridePix
+				continue
+			}
+			runLen := 1
+			nextPixI := pixI + rowStridePix
+			for nextPixI <= endPixI && !g.cutoutCoveredAtIndex(nextPixI) && !g.spriteWallClipOccludedAtIndexDepth(nextPixI, depthQ) {
+				runLen++
+				nextPixI += rowStridePix
+			}
+			if runLen > 1 {
+				g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
+			} else {
+				g.wallPix32[pixI] = dst
+				g.markCutoutCoveredAtIndex(pixI)
+			}
+			pixI = nextPixI
 		}
 	}
 	return true
@@ -6210,22 +6429,14 @@ func (g *game) maskedMidSegFullyOccluded(ms maskedMidSeg, focal, halfH float64) 
 	if g == nil || !g.billboardClippingEnabled() || ms.X0 > ms.X1 {
 		return false
 	}
-	y0, y1, bestDepth, ok := g.maskedMidRangeOcclusionBounds(ms.Projection, ms.X0, ms.X1, ms.WorldHigh, ms.WorldLow, focal, halfH)
+	if ms.hasOcclusionBBox {
+		return g.spriteWallClipQuadFullyOccluded(ms.X0, ms.X1, int(ms.occlusionY0), int(ms.occlusionY1), ms.occlusionDepthQ)
+	}
+	y0, y1, depthQ, ok := g.maskedMidRangeOcclusionBounds(ms.Projection, ms.X0, ms.X1, ms.WorldHigh, ms.WorldLow, focal, halfH)
 	if !ok {
 		return false
 	}
-	return g.spriteWallClipQuadFullyOccluded(ms.X0, ms.X1, y0, y1, encodeDepthQ(bestDepth))
-}
-
-func (g *game) maskedMidRangeFullyOccludedByWallsOnly(proj scene.WallProjection, x0, x1 int, worldHigh, worldLow, focal, halfH float64) bool {
-	if g == nil || x0 > x1 {
-		return false
-	}
-	y0, y1, bestDepth, ok := g.maskedMidRangeOcclusionBounds(proj, x0, x1, worldHigh, worldLow, focal, halfH)
-	if !ok {
-		return false
-	}
-	return g.wallClipBBoxFullyOccludedByWallsOnly(x0, x1, y0, y1, encodeDepthQ(bestDepth))
+	return g.spriteWallClipQuadFullyOccluded(ms.X0, ms.X1, y0, y1, depthQ)
 }
 
 func maskedMidCenterDepth(proj scene.WallProjection, x0, x1 int) (float64, bool) {
@@ -6270,7 +6481,7 @@ func maskedMidBillboardDepthGuess(proj scene.WallProjection, x0, x1 int) (float6
 	return maskedMidCenterDepth(proj, x0, x1)
 }
 
-func (g *game) maskedMidRangeOcclusionBounds(proj scene.WallProjection, x0, x1 int, worldHigh, worldLow, focal, halfH float64) (int, int, float64, bool) {
+func (g *game) maskedMidRangeOcclusionBounds(proj scene.WallProjection, x0, x1 int, worldHigh, worldLow, focal, halfH float64) (int, int, uint16, bool) {
 	if g == nil || x0 > x1 {
 		return 0, 0, 0, false
 	}
@@ -6289,7 +6500,7 @@ func (g *game) maskedMidRangeOcclusionBounds(proj scene.WallProjection, x0, x1 i
 	if y0 > y1 {
 		return 0, 0, 0, false
 	}
-	return y0, y1, bestDepth, true
+	return y0, y1, encodeDepthQ(bestDepth), true
 }
 
 func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, shadeMul, doomRow int) {
@@ -6332,9 +6543,7 @@ func (g *game) fillCutoutRowSpan(row, x0, x1 int, value uint32) {
 		return
 	}
 	fillUint32Span(g.wallPix32[row+x0:row+x1+1], value)
-	for x := x0; x <= x1; x++ {
-		g.markCutoutCoveredAtIndex(row + x)
-	}
+	g.markCutoutRowSpanCovered(row, x0, x1)
 }
 
 func (g *game) fillCutoutColumnSpan(pixI, rowStridePix, count int, value uint32) {
@@ -6428,7 +6637,9 @@ func maskedMidTextureColumn(tex WallTexture, texU float64) int {
 func (g *game) collectCutoutItems(camX, camY, camAng, focal, near float64) {
 	g.billboardQueueCollect = true
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
+	g.projectedOpaqueRectScratch = g.projectedOpaqueRectScratch[:0]
 	g.appendProjectileCutoutItems(camX, camY, camAng, focal, near)
+	g.appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near)
 	g.appendMonsterCutoutItems(camX, camY, camAng, focal, near)
 	g.appendThingCutoutItems(camX, camY, camAng, focal, near)
 	g.billboardQueueCollect = false
@@ -6462,6 +6673,8 @@ func (g *game) drawCutoutItem(it cutoutItem, focal float64) {
 	switch it.kind {
 	case billboardQueueProjectiles:
 		g.drawSpriteCutoutItem(it)
+	case billboardQueuePuffs:
+		g.drawSpriteCutoutItem(it)
 	case billboardQueueMonsters:
 		g.drawSpriteCutoutItem(it)
 	case billboardQueueWorldThings:
@@ -6478,7 +6691,6 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		return
 	}
 	viewW := g.viewW
-	viewH := g.viewH
 	th := it.tex.Height
 	tw := it.tex.Width
 	if th <= 0 || tw <= 0 {
@@ -6501,11 +6713,11 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 	if x0 > x1 || y0 > y1 {
 		return
 	}
-	if it.hasOpaque && len(it.opaque.rects) > 0 &&
-		g.spriteOpaqueRectsFullyCoveredByCutout(it.opaque.rects, tw, it.flip, it.dstX, it.dstY, scale, it.clipTop, it.clipBottom, viewW, viewH) {
+	projectedOpaque := g.projectedOpaqueRectScratch[it.opaqueRectStart : it.opaqueRectStart+it.opaqueRectCount]
+	if len(projectedOpaque) > 0 && g.projectedOpaqueRectsFullyCoveredByCutout(projectedOpaque) {
 		return
 	}
-	if (it.hasOpaque && len(it.opaque.rects) > 0 && g.spriteOpaqueRectsFullyOccluded(it.opaque.rects, it.dstX, it.dstY, scale, it.clipTop, it.clipBottom, viewW, viewH, it.depthQ)) ||
+	if (len(projectedOpaque) > 0 && g.projectedOpaqueRectsFullyOccluded(projectedOpaque, it.depthQ)) ||
 		g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, it.depthQ) {
 		return
 	}
@@ -6552,6 +6764,11 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		x0, x1, txLUT = trimScreenRangeToOpaqueLUT(x0, x1, txLUT, it.opaque.bounds.minX, it.opaque.bounds.maxX)
 		y0, y1, tyLUT = trimScreenRangeToOpaqueLUT(y0, y1, tyLUT, it.opaque.bounds.minY, it.opaque.bounds.maxY)
 		if x0 > x1 || y0 > y1 {
+			return
+		}
+	}
+	if !it.shadow && scale >= spriteMagnifyMinScale {
+		if g.drawSpriteCutoutMagnifiedMask(it, tw, x0, x1, y0, y1, txLUT, tyLUT, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow) {
 			return
 		}
 	}
@@ -6609,6 +6826,90 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		}
 		g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
 	}
+}
+
+func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 int, txLUT, tyLUT []int, src32 []uint32, srcIndexed []byte, shadeMul uint32, shadeRow []uint32, fixedDOOMRow int) bool {
+	if g == nil || it.tex == nil || x0 > x1 || y0 > y1 {
+		return false
+	}
+	it.tex.EnsureOpaqueMask()
+	if len(it.tex.OpaqueMask) != tw*it.tex.Height {
+		return false
+	}
+	used := false
+	mask := it.tex.OpaqueMask
+	viewW := g.viewW
+	for ty := 0; ty < it.tex.Height; ty++ {
+		rowMask := mask[ty*tw : (ty+1)*tw]
+		for tx0 := 0; tx0 < tw; {
+			for tx0 < tw && rowMask[tx0] == 0 {
+				tx0++
+			}
+			if tx0 >= tw {
+				break
+			}
+			tx1 := tx0
+			for tx1+1 < tw && rowMask[tx1+1] != 0 {
+				tx1++
+			}
+			rect := packSpriteOpaqueRect(tx0, tx1, ty, ty)
+			if it.flip {
+				rect = flipSpriteOpaqueRectX(rect, tw)
+			}
+			rx0, rx1, ry0, ry1, ok := spriteRectScreenBounds(rect, it.dstX, it.dstY, it.scale, it.clipTop, it.clipBottom, g.viewW, g.viewH)
+			if !ok {
+				tx0 = tx1 + 1
+				continue
+			}
+			if rx0 < x0 {
+				rx0 = x0
+			}
+			if rx1 > x1 {
+				rx1 = x1
+			}
+			if ry0 < y0 {
+				ry0 = y0
+			}
+			if ry1 > y1 {
+				ry1 = y1
+			}
+			if rx0 > rx1 || ry0 > ry1 {
+				tx0 = tx1 + 1
+				continue
+			}
+			if g.cutoutMaskRectFullyCovered(rx0, rx1, ry0, ry1) {
+				tx0 = tx1 + 1
+				continue
+			}
+			for yy := ry0; yy <= ry1; yy++ {
+				row := yy * viewW
+				if len(it.clipSpans) == 0 && rx1-rx0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(it.depthQ, row, rx0, rx1) {
+					continue
+				}
+				rowSpans := g.spriteRowVisibleSpansDepthQ(yy, rx0, rx1, it.depthQ, it.clipSpans, g.solidClipScratch[:0])
+				g.solidClipScratch = rowSpans
+				if len(rowSpans) == 0 {
+					continue
+				}
+				filtered := g.solidClipScratch[:0]
+				for _, sp := range rowSpans {
+					l, r, ok := trimSpanToOpaqueLUTRange(sp.L, sp.R, x0, txLUT, tx0, tx1)
+					if ok {
+						filtered = append(filtered, solidSpan{L: l, R: r})
+					}
+				}
+				g.solidClipScratch = filtered
+				rowSpans = filtered
+				if len(rowSpans) == 0 {
+					continue
+				}
+				used = true
+				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
+			}
+			tx0 = tx1 + 1
+		}
+	}
+	return used
 }
 
 func (g *game) appendMaskedMidSegsToCutoutItems() {
@@ -7891,31 +8192,34 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		if !ok {
 			continue
 		}
-		if ref.hasOpaque && len(ref.opaque.rects) > 0 &&
-			g.spriteOpaqueRectsFullyOccluded(ref.opaque.rects, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH, depthQ) {
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 &&
+			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
 		}
 		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
-			dist:       f,
-			depthQ:     depthQ,
-			kind:       billboardQueueProjectiles,
-			x0:         x0,
-			x1:         x1,
-			y0:         y0,
-			y1:         y1,
-			shadeMul:   g.cachedProjectileShadeMul(pi, ref.fullBright, lightMul, f, near),
-			tex:        ref.tex,
-			clipTop:    clipTop,
-			clipBottom: clipBottom,
-			dstX:       dstX,
-			dstY:       dstY,
-			scale:      scale,
-			opaque:     ref.opaque,
-			hasOpaque:  ref.hasOpaque,
-			boundsOK:   true,
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueueProjectiles,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        g.cachedProjectileShadeMul(pi, ref.fullBright, lightMul, f, near),
+			tex:             ref.tex,
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
 		})
 	}
 	for _, cube := range g.bossSpawnCubes {
@@ -7962,31 +8266,34 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		if !ok {
 			continue
 		}
-		if ref.hasOpaque && len(ref.opaque.rects) > 0 &&
-			g.spriteOpaqueRectsFullyOccluded(ref.opaque.rects, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH, depthQ) {
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 &&
+			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
 		}
 		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
-			dist:       f,
-			depthQ:     depthQ,
-			kind:       billboardQueueProjectiles,
-			x0:         x0,
-			x1:         x1,
-			y0:         y0,
-			y1:         y1,
-			shadeMul:   256,
-			tex:        ref.tex,
-			clipTop:    clipTop,
-			clipBottom: clipBottom,
-			dstX:       dstX,
-			dstY:       dstY,
-			scale:      scale,
-			opaque:     ref.opaque,
-			hasOpaque:  ref.hasOpaque,
-			boundsOK:   true,
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueueProjectiles,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        256,
+			tex:             ref.tex,
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
 		})
 	}
 	for _, fire := range g.bossSpawnFires {
@@ -8033,31 +8340,34 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		if !ok {
 			continue
 		}
-		if ref.hasOpaque && len(ref.opaque.rects) > 0 &&
-			g.spriteOpaqueRectsFullyOccluded(ref.opaque.rects, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH, depthQ) {
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 &&
+			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
 		}
 		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
-			dist:       f,
-			depthQ:     depthQ,
-			kind:       billboardQueueProjectiles,
-			x0:         x0,
-			x1:         x1,
-			y0:         y0,
-			y1:         y1,
-			shadeMul:   256,
-			tex:        ref.tex,
-			clipTop:    clipTop,
-			clipBottom: clipBottom,
-			dstX:       dstX,
-			dstY:       dstY,
-			scale:      scale,
-			opaque:     ref.opaque,
-			hasOpaque:  ref.hasOpaque,
-			boundsOK:   true,
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueueProjectiles,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        256,
+			tex:             ref.tex,
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
 		})
 	}
 	for fi, fx := range g.projectileImpacts {
@@ -8109,31 +8419,121 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		if !ok {
 			continue
 		}
-		if ref.hasOpaque && len(ref.opaque.rects) > 0 &&
-			g.spriteOpaqueRectsFullyOccluded(ref.opaque.rects, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH, depthQ) {
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 &&
+			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
 		}
 		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
-			dist:       f,
-			depthQ:     depthQ,
-			kind:       billboardQueueProjectiles,
-			x0:         x0,
-			x1:         x1,
-			y0:         y0,
-			y1:         y1,
-			shadeMul:   g.cachedImpactShadeMul(fi, ref.fullBright, lightMul, f, near),
-			tex:        ref.tex,
-			clipTop:    clipTop,
-			clipBottom: clipBottom,
-			dstX:       dstX,
-			dstY:       dstY,
-			scale:      scale,
-			opaque:     ref.opaque,
-			hasOpaque:  ref.hasOpaque,
-			boundsOK:   true,
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueueProjectiles,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        g.cachedImpactShadeMul(fi, ref.fullBright, lightMul, f, near),
+			tex:             ref.tex,
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
+		})
+	}
+}
+
+func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near float64) {
+	viewW := g.viewW
+	viewH := g.viewH
+	if len(g.wallPix32) != viewW*viewH || len(g.hitscanPuffs) == 0 {
+		return
+	}
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := g.playerEyeZ()
+	for _, p := range g.hitscanPuffs {
+		if p.kind == hitscanFxTeleport || p.hidden {
+			continue
+		}
+		px := float64(p.x)/fracUnit - camX
+		py := float64(p.y)/fracUnit - camY
+		f := px*ca + py*sa
+		s := -px*sa + py*ca
+		if f <= near {
+			continue
+		}
+		clipTop := 0
+		clipBottom := viewH - 1
+		clipRadius := int64(8 * fracUnit)
+		clipTop, clipBottom, ok := g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focal)
+		if !ok {
+			continue
+		}
+		scale := focal / f
+		if scale <= 0 {
+			continue
+		}
+		sx := float64(viewW)/2 - (s/f)*focal
+		pz := float64(p.z) / fracUnit
+		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focal
+		ref, ok := g.hitscanEffectSpriteRef(p)
+		if !ok || ref == nil || ref.tex == nil || ref.tex.Width <= 0 || ref.tex.Height <= 0 {
+			continue
+		}
+		h := float64(ref.tex.Height) * scale
+		w := float64(ref.tex.Width) * scale
+		if h <= 0 || w <= 0 {
+			continue
+		}
+		xPad := w*0.5 + 4
+		yPad := h + 4
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
+			continue
+		}
+		depthQ := encodeDepthQ(f)
+		dstX := sx - float64(ref.tex.OffsetX)*scale
+		dstY := sy - float64(ref.tex.OffsetY)*scale
+		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
+		if !ok {
+			continue
+		}
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 &&
+			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
+			continue
+		}
+		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+			continue
+		}
+		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueuePuffs,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        256,
+			tex:             ref.tex,
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
 		})
 	}
 }
@@ -8482,6 +8882,9 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
 	for _, p := range g.hitscanPuffs {
+		if p.kind != hitscanFxTeleport || p.hidden {
+			continue
+		}
 		px := float64(p.x)/fracUnit - camX
 		py := float64(p.y)/fracUnit - camY
 		f := px*ca + py*sa
@@ -8686,33 +9089,36 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 		if !boundsOK {
 			continue
 		}
-		if ref.hasOpaque && len(ref.opaque.rects) > 0 &&
-			g.spriteOpaqueRectsFullyOccluded(ref.opaque.rects, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH, depthQ) {
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 &&
+			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
 		}
 		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
-			dist:       f,
-			depthQ:     depthQ,
-			kind:       billboardQueueMonsters,
-			x0:         x0,
-			x1:         x1,
-			y0:         y0,
-			y1:         y1,
-			shadeMul:   shadeMul,
-			tex:        ref.tex,
-			flip:       flip,
-			shadow:     monsterUsesShadow(th.Type),
-			clipTop:    clipTop,
-			clipBottom: clipBottom,
-			dstX:       dstX,
-			dstY:       dstY,
-			scale:      scale,
-			opaque:     ref.opaque,
-			hasOpaque:  ref.hasOpaque,
-			boundsOK:   true,
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueueMonsters,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        shadeMul,
+			tex:             ref.tex,
+			flip:            flip,
+			shadow:          monsterUsesShadow(th.Type),
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
 		})
 	}
 }
@@ -8891,31 +9297,34 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, near float64) {
 		if !boundsOK {
 			continue
 		}
-		if ref.hasOpaque && len(ref.opaque.rects) > 0 &&
-			g.spriteOpaqueRectsFullyOccluded(ref.opaque.rects, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH, depthQ) {
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 &&
+			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
 		}
 		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
 		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
-			dist:       f,
-			depthQ:     depthQ,
-			kind:       billboardQueueWorldThings,
-			x0:         x0,
-			x1:         x1,
-			y0:         y0,
-			y1:         y1,
-			shadeMul:   shadeMul,
-			tex:        ref.tex,
-			clipTop:    clipTop,
-			clipBottom: clipBottom,
-			dstX:       dstX,
-			dstY:       dstY,
-			scale:      scale,
-			opaque:     ref.opaque,
-			hasOpaque:  ref.hasOpaque,
-			boundsOK:   true,
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueueWorldThings,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        shadeMul,
+			tex:             ref.tex,
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
 		})
 	}
 }

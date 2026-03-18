@@ -151,25 +151,104 @@ func (g *game) appendBillboardOpaqueRectPlaneOccluders(rects []spriteOpaqueRect,
 	}
 }
 
+func (g *game) appendProjectedOpaqueRectPlaneOccluders(rects []projectedOpaqueRect, depthQ uint16, clipSpans []solidSpan) {
+	if g == nil || len(rects) == 0 || g.viewW <= 0 || g.viewH <= 0 {
+		return
+	}
+	for _, rect := range rects {
+		x0, x1, y0, y1 := rect.x0(), rect.x1(), rect.y0(), rect.y1()
+		if g.billboardClippingEnabled() && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+			continue
+		}
+		if !g.billboardClippingEnabled() {
+			if len(clipSpans) == 0 {
+				for y := y0; y <= y1; y++ {
+					g.appendBillboardPlaneOccluderRow(y, x0, x1, depthQ)
+				}
+				continue
+			}
+			for y := y0; y <= y1; y++ {
+				for _, sp := range clipSpans {
+					l := sp.L
+					r := sp.R
+					if l < x0 {
+						l = x0
+					}
+					if r > x1 {
+						r = x1
+					}
+					g.appendBillboardPlaneOccluderRow(y, l, r, depthQ)
+				}
+			}
+			continue
+		}
+		for y := y0; y <= y1; y++ {
+			row := y * g.viewW
+			if len(clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
+				continue
+			}
+			rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, clipSpans, g.solidClipScratch[:0])
+			g.solidClipScratch = rowSpans
+			for _, sp := range rowSpans {
+				g.appendBillboardPlaneOccluderRow(y, sp.L, sp.R, depthQ)
+			}
+		}
+	}
+}
+
 func (g *game) buildBillboardPlaneOccludersFromQueue() {
 	rows := g.ensureBillboardPlaneOccluderRows()
 	if len(rows) == 0 {
 		return
 	}
 	for _, qi := range g.billboardQueueScratch {
+		projectedOpaque := g.projectedOpaqueRectScratch[qi.opaqueRectStart : qi.opaqueRectStart+qi.opaqueRectCount]
 		switch qi.kind {
 		case billboardQueueProjectiles:
-			if qi.tex == nil || !qi.hasOpaque || len(qi.opaque.rects) == 0 || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
+			if qi.tex == nil || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
+				continue
+			}
+			if len(projectedOpaque) > 0 {
+				g.appendProjectedOpaqueRectPlaneOccluders(projectedOpaque, qi.depthQ, qi.clipSpans)
+				continue
+			}
+			if !qi.hasOpaque || len(qi.opaque.rects) == 0 {
 				continue
 			}
 			g.appendBillboardOpaqueRectPlaneOccluders(qi.opaque.rects, qi.tex.Width, false, qi.dstX, qi.dstY, qi.scale, qi.clipTop, qi.clipBottom, qi.depthQ, qi.clipSpans)
 		case billboardQueueMonsters:
-			if qi.shadow || qi.tex == nil || !qi.hasOpaque || len(qi.opaque.rects) == 0 || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
+			if qi.shadow || qi.tex == nil || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
+				continue
+			}
+			if len(projectedOpaque) > 0 {
+				g.appendProjectedOpaqueRectPlaneOccluders(projectedOpaque, qi.depthQ, qi.clipSpans)
+				continue
+			}
+			if !qi.hasOpaque || len(qi.opaque.rects) == 0 {
 				continue
 			}
 			g.appendBillboardOpaqueRectPlaneOccluders(qi.opaque.rects, qi.tex.Width, qi.flip, qi.dstX, qi.dstY, qi.scale, qi.clipTop, qi.clipBottom, qi.depthQ, qi.clipSpans)
 		case billboardQueueWorldThings:
-			if qi.tex == nil || !qi.hasOpaque || len(qi.opaque.rects) == 0 || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
+			if qi.tex == nil || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
+				continue
+			}
+			if len(projectedOpaque) > 0 {
+				g.appendProjectedOpaqueRectPlaneOccluders(projectedOpaque, qi.depthQ, qi.clipSpans)
+				continue
+			}
+			if !qi.hasOpaque || len(qi.opaque.rects) == 0 {
+				continue
+			}
+			g.appendBillboardOpaqueRectPlaneOccluders(qi.opaque.rects, qi.tex.Width, false, qi.dstX, qi.dstY, qi.scale, qi.clipTop, qi.clipBottom, qi.depthQ, qi.clipSpans)
+		case billboardQueuePuffs:
+			if qi.tex == nil || qi.tex.Height <= 0 || qi.tex.Width <= 0 {
+				continue
+			}
+			if len(projectedOpaque) > 0 {
+				g.appendProjectedOpaqueRectPlaneOccluders(projectedOpaque, qi.depthQ, qi.clipSpans)
+				continue
+			}
+			if !qi.hasOpaque || len(qi.opaque.rects) == 0 {
 				continue
 			}
 			g.appendBillboardOpaqueRectPlaneOccluders(qi.opaque.rects, qi.tex.Width, false, qi.dstX, qi.dstY, qi.scale, qi.clipTop, qi.clipBottom, qi.depthQ, qi.clipSpans)
