@@ -1,0 +1,14 @@
+GD-DOOM licensing notice
+
+GD-DOOM is inspired by, ported from, and derivative of id Software's DOOM source release.
+
+Upstream reference:
+https://github.com/id-Software/DOOM
+
+DOOM is distributed by id Software under the GNU General Public License, version 2.
+This repository is therefore distributed under the GNU General Public License, version 2.
+
+This repository contains substantial original Go code and project-specific structure, but it also
+includes behavior-driven, ported, and derivative work based on the DOOM source release.
+
+See [LICENSE](/home/dist/github/GD-DOOM/LICENSE) for the full GNU GPL v2 text.

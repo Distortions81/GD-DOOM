@@ -1,0 +1,13 @@
+.VSCodeCounter/
+build/
+config.toml
+internal/doomruntime/testdata/
+out/*
+pk*.wad
+*.pprof
+*.prof
+*.tmp
+*.log
+gddoom
+DOOM2.WAD
+DOOMU.WAD

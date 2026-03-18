@@ -1,0 +1,154 @@
+//kage:unit pixels
+package main
+
+var CamAngle float
+var Focal float
+var DrawW float
+var DrawH float
+var SampleW float
+var SampleH float
+var SkyTexW float
+var SkyTexH float
+var SharpUpscale float
+
+func wrap(v, n float) float {
+	return v - floor(v/n)*n
+}
+
+func sampleSkyPoint(u, v float) vec4 {
+	src := vec2(wrap(u+0.5, SkyTexW), wrap(v+0.5, SkyTexH)) + imageSrc0Origin()
+	return imageSrc0At(src)
+}
+
+func sampleSkyPrefiltered(u, v float) vec4 {
+	// Tiny half-pixel prefilter to calm palette dithering before reconstruction.
+	c := sampleSkyPoint(u, v) * 0.7
+	c += sampleSkyPoint(u-0.5, v) * 0.075
+	c += sampleSkyPoint(u+0.5, v) * 0.075
+	c += sampleSkyPoint(u, v-0.5) * 0.075
+	c += sampleSkyPoint(u, v+0.5) * 0.075
+	return c
+}
+
+func catmullRomWeights(t float) vec4 {
+	t2 := t * t
+	t3 := t2 * t
+	return vec4(
+		-0.5*t+t2-0.5*t3,
+		1.0-2.5*t2+1.5*t3,
+		0.5*t+2.0*t2-1.5*t3,
+		-0.5*t2+0.5*t3,
+	)
+}
+
+func minRGB2(a, b vec3) vec3 {
+	return vec3(min(a.x, b.x), min(a.y, b.y), min(a.z, b.z))
+}
+
+func maxRGB2(a, b vec3) vec3 {
+	return vec3(max(a.x, b.x), max(a.y, b.y), max(a.z, b.z))
+}
+
+func sampleSkySharp(u, v float) vec4 {
+	baseU := floor(u)
+	baseV := floor(v)
+	wu := catmullRomWeights(u - baseU)
+	wv := catmullRomWeights(v - baseV)
+	p00 := sampleSkyPrefiltered(baseU-1.0, baseV-1.0)
+	p10 := sampleSkyPrefiltered(baseU, baseV-1.0)
+	p20 := sampleSkyPrefiltered(baseU+1.0, baseV-1.0)
+	p30 := sampleSkyPrefiltered(baseU+2.0, baseV-1.0)
+	p01 := sampleSkyPrefiltered(baseU-1.0, baseV)
+	p11 := sampleSkyPrefiltered(baseU, baseV)
+	p21 := sampleSkyPrefiltered(baseU+1.0, baseV)
+	p31 := sampleSkyPrefiltered(baseU+2.0, baseV)
+	p02 := sampleSkyPrefiltered(baseU-1.0, baseV+1.0)
+	p12 := sampleSkyPrefiltered(baseU, baseV+1.0)
+	p22 := sampleSkyPrefiltered(baseU+1.0, baseV+1.0)
+	p32 := sampleSkyPrefiltered(baseU+2.0, baseV+1.0)
+	p03 := sampleSkyPrefiltered(baseU-1.0, baseV+2.0)
+	p13 := sampleSkyPrefiltered(baseU, baseV+2.0)
+	p23 := sampleSkyPrefiltered(baseU+1.0, baseV+2.0)
+	p33 := sampleSkyPrefiltered(baseU+2.0, baseV+2.0)
+	row0 := p00*wu.x + p10*wu.y + p20*wu.z + p30*wu.w
+	row1 := p01*wu.x + p11*wu.y + p21*wu.z + p31*wu.w
+	row2 := p02*wu.x + p12*wu.y + p22*wu.z + p32*wu.w
+	row3 := p03*wu.x + p13*wu.y + p23*wu.z + p33*wu.w
+	c := row0*wv.x + row1*wv.y + row2*wv.z + row3*wv.w
+	localMin := p00.rgb
+	localMax := p00.rgb
+	localMin = minRGB2(localMin, p10.rgb)
+	localMax = maxRGB2(localMax, p10.rgb)
+	localMin = minRGB2(localMin, p20.rgb)
+	localMax = maxRGB2(localMax, p20.rgb)
+	localMin = minRGB2(localMin, p30.rgb)
+	localMax = maxRGB2(localMax, p30.rgb)
+	localMin = minRGB2(localMin, p01.rgb)
+	localMax = maxRGB2(localMax, p01.rgb)
+	localMin = minRGB2(localMin, p11.rgb)
+	localMax = maxRGB2(localMax, p11.rgb)
+	localMin = minRGB2(localMin, p21.rgb)
+	localMax = maxRGB2(localMax, p21.rgb)
+	localMin = minRGB2(localMin, p31.rgb)
+	localMax = maxRGB2(localMax, p31.rgb)
+	localMin = minRGB2(localMin, p02.rgb)
+	localMax = maxRGB2(localMax, p02.rgb)
+	localMin = minRGB2(localMin, p12.rgb)
+	localMax = maxRGB2(localMax, p12.rgb)
+	localMin = minRGB2(localMin, p22.rgb)
+	localMax = maxRGB2(localMax, p22.rgb)
+	localMin = minRGB2(localMin, p32.rgb)
+	localMax = maxRGB2(localMax, p32.rgb)
+	localMin = minRGB2(localMin, p03.rgb)
+	localMax = maxRGB2(localMax, p03.rgb)
+	localMin = minRGB2(localMin, p13.rgb)
+	localMax = maxRGB2(localMax, p13.rgb)
+	localMin = minRGB2(localMin, p23.rgb)
+	localMax = maxRGB2(localMax, p23.rgb)
+	localMin = minRGB2(localMin, p33.rgb)
+	localMax = maxRGB2(localMax, p33.rgb)
+	center := p11.rgb
+	sharpened := c.rgb + (c.rgb-center)*0.18
+	return vec4(clamp(sharpened, localMin, localMax), 1.0)
+}
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
+	if Focal <= 0.0 || DrawW <= 0.0 || DrawH <= 0.0 || SampleW <= 0.0 || SampleH <= 0.0 || SkyTexW <= 0.0 || SkyTexH <= 0.0 {
+		return vec4(0.0, 0.0, 0.0, 1.0)
+	}
+	pi := 3.141592653589793
+	// Carry draw-space coordinates explicitly through custom varyings rather than
+	// depending on source texture interpolation semantics.
+	x := custom.x + 0.5
+	y := custom.y + 0.5
+	// Quantize through the same internal sample grid used by the CPU sky lookup,
+	// so detail-level and presentation-size changes stay bit-consistent.
+	sampleXi := floor(x * (SampleW / DrawW))
+	if sampleXi < 0.0 {
+		sampleXi = 0.0
+	} else if sampleXi > SampleW-1.0 {
+		sampleXi = SampleW - 1.0
+	}
+	sampleYi := floor(y * (SampleH / DrawH))
+	if sampleYi < 0.0 {
+		sampleYi = 0.0
+	} else if sampleYi > SampleH-1.0 {
+		sampleYi = SampleH - 1.0
+	}
+	sx := sampleXi + 0.5
+	sy := sampleYi
+	cx := SampleW * 0.5
+	cy := SampleH * 0.5
+	ang := CamAngle + atan((cx-sx)/Focal)
+	uScale := (SkyTexW * 4.0) / (2.0 * pi)
+	u := wrap(ang*uScale, SkyTexW)
+	iscale := 320.0 / SampleW
+	v := wrap(100.0+((sy-cy)*iscale), SkyTexH)
+	_ = dstPos
+	_ = srcPos
+	c := sampleSkyPoint(floor(u), floor(v))
+	if SharpUpscale >= 0.5 {
+		c = sampleSkySharp(u, v)
+	}
+	return vec4(c.rgb, 1.0)
+}

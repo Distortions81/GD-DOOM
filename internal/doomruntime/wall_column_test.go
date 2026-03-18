@@ -1,0 +1,492 @@
+package doomruntime
+
+import (
+	"reflect"
+	"testing"
+
+	"gddoom/internal/media"
+	"gddoom/internal/render/scene"
+)
+
+func drawWallColumnTexturedIndexedLEColPow2RowRef(pix32 []uint32, pixI, rowStridePix int, col []byte, texVFixed, texVStepFixed int64, hmask, count int, row []uint32) {
+	for ; count > 0; count-- {
+		ty := int((texVFixed >> fracBits) & int64(hmask))
+		pix32[pixI] = row[col[ty]]
+		pixI += rowStridePix
+		texVFixed += texVStepFixed
+	}
+}
+
+func TestDrawWallColumnTexturedIndexedLEColPow2RowMatchesReference(t *testing.T) {
+	col := make([]byte, 64)
+	for i := range col {
+		col[i] = byte((i * 37) & 0xFF)
+	}
+	row := make([]uint32, 256)
+	for i := range row {
+		row[i] = uint32(i) | 0xABCD0000
+	}
+
+	cases := []struct {
+		name          string
+		texVFixed     int64
+		texVStepFixed int64
+		count         int
+		rowStridePix  int
+	}{
+		{name: "step zero", texVFixed: 0, texVStepFixed: 0, count: 17, rowStridePix: 1},
+		{name: "step one texel", texVFixed: 3 << fracBits, texVStepFixed: 1 << fracBits, count: 21, rowStridePix: 1},
+		{name: "step two texels", texVFixed: 5 << fracBits, texVStepFixed: 2 << fracBits, count: 18, rowStridePix: 1},
+		{name: "fractional small", texVFixed: 7 << fracBits, texVStepFixed: fracUnit / 3, count: 29, rowStridePix: 1},
+		{name: "fractional mixed", texVFixed: (9 << fracBits) + fracUnit/2, texVStepFixed: fracUnit + fracUnit/4, count: 31, rowStridePix: 2},
+		{name: "negative step", texVFixed: 20 << fracBits, texVStepFixed: -fracUnit / 2, count: 25, rowStridePix: 3},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			size := tc.count * tc.rowStridePix
+			got := make([]uint32, size)
+			want := make([]uint32, size)
+			drawWallColumnTexturedIndexedLEColPow2Row(got, 0, tc.rowStridePix, col, tc.texVFixed, tc.texVStepFixed, 63, tc.count, row)
+			drawWallColumnTexturedIndexedLEColPow2RowRef(want, 0, tc.rowStridePix, col, tc.texVFixed, tc.texVStepFixed, 63, tc.count, row)
+			for i := range want {
+				if got[i] != want[i] {
+					t.Fatalf("pix[%d]=%08x want=%08x", i, got[i], want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestDrawBasicWallColumnTextured_ZeroShadeSkipsTextureRead(t *testing.T) {
+	prevColormap := doomColormapEnabled
+	t.Cleanup(func() {
+		doomColormapEnabled = prevColormap
+	})
+	doomColormapEnabled = false
+
+	g := &game{
+		viewW:     3,
+		viewH:     4,
+		wallPix32: make([]uint32, 12),
+	}
+	for i := range g.wallPix32 {
+		g.wallPix32[i] = 0xDEADBEEF
+	}
+
+	tex := WallTexture{Width: 64, Height: 64}
+	g.drawBasicWallColumnTextured(1, 1, 3, 64, 0, 0, 160, &tex, 0, 0)
+
+	for y := 0; y < g.viewH; y++ {
+		for x := 0; x < g.viewW; x++ {
+			got := g.wallPix32[y*g.viewW+x]
+			if x == 1 && y >= 1 && y <= 3 {
+				if got != pixelOpaqueA {
+					t.Fatalf("pix(%d,%d)=%08x want black", x, y, got)
+				}
+				continue
+			}
+			if got != 0xDEADBEEF {
+				t.Fatalf("pix(%d,%d)=%08x want untouched", x, y, got)
+			}
+		}
+	}
+}
+
+func TestDrawBasicWallColumnTextured_RequiresIndexedData(t *testing.T) {
+	g := &game{
+		viewW:     1,
+		viewH:     2,
+		wallPix32: []uint32{0x11111111, 0x22222222},
+	}
+	tex := WallTexture{
+		Width:  1,
+		Height: 2,
+		RGBA: []byte{
+			1, 2, 3, 255,
+			4, 5, 6, 255,
+		},
+	}
+
+	g.drawBasicWallColumnTextured(0, 0, 1, 64, 0, 1, 64, &tex, 256, 0)
+
+	want := []uint32{0x11111111, 0x22222222}
+	if !reflect.DeepEqual(g.wallPix32, want) {
+		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
+	}
+}
+
+func installTestWallShadeRow(t *testing.T) []uint32 {
+	t.Helper()
+	prevOK := wallShadePackedOK
+	prevRow := wallShadePackedLUT[256]
+	t.Cleanup(func() {
+		wallShadePackedOK = prevOK
+		wallShadePackedLUT[256] = prevRow
+	})
+	wallShadePackedOK = true
+	for i := range wallShadePackedLUT[256] {
+		wallShadePackedLUT[256][i] = 0xA5000000 | uint32(i)
+	}
+	return wallShadePackedLUT[256][:]
+}
+
+func TestDrawBasicWallColumnTexturedMasked_UsesIndexedShadeRow(t *testing.T) {
+	row := installTestWallShadeRow(t)
+	g := &game{
+		viewW:     1,
+		viewH:     4,
+		wallPix32: make([]uint32, 4),
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          4,
+		Indexed:         []byte{1, 2, 3, 4},
+		IndexedColMajor: []byte{1, 2, 3, 4},
+		OpaqueMask:      []byte{1, 1, 0, 1},
+	}
+
+	g.drawBasicWallColumnTexturedMasked(0, 0, 3, 64, 0, 2, 64, &tex, 256, 0)
+
+	want := []uint32{row[1], row[2], 0, row[4]}
+	if !reflect.DeepEqual(g.wallPix32, want) {
+		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
+	}
+}
+
+func TestTrimMaskedColumnToOpaqueBounds_SingleCycle(t *testing.T) {
+	y0, y1, texVFixed, ok := trimMaskedColumnToOpaqueBounds(
+		0, 7,
+		0,
+		fracUnit/2,
+		4,
+		1, 2,
+	)
+	if !ok {
+		t.Fatal("expected opaque bounds trim to succeed")
+	}
+	if y0 != 2 || y1 != 5 {
+		t.Fatalf("trimmed y=(%d,%d) want (2,5)", y0, y1)
+	}
+	if texVFixed != fracUnit {
+		t.Fatalf("texVFixed=%d want=%d", texVFixed, fracUnit)
+	}
+}
+
+func TestEnsureOpaqueColumnBounds_ComputesPerColumnExtents(t *testing.T) {
+	tex := WallTexture{
+		Width:  3,
+		Height: 4,
+		RGBA: []byte{
+			0, 0, 0, 0, 1, 1, 1, 255, 0, 0, 0, 0,
+			2, 2, 2, 255, 3, 3, 3, 255, 0, 0, 0, 0,
+			4, 4, 4, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 5, 5, 5, 255, 0, 0, 0, 0,
+		},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque column bounds")
+	}
+	if got, want := tex.OpaqueColumnTop, []int16{1, 0, 4}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("top=%v want=%v", got, want)
+	}
+	if got, want := tex.OpaqueColumnBot, []int16{2, 3, -1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("bot=%v want=%v", got, want)
+	}
+	if got, want := tex.OpaqueRunOffs, []uint32{0, 1, 3, 3}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("offs=%v want=%v", got, want)
+	}
+	if got, want := tex.OpaqueRuns, []uint32{media.PackOpaqueRun(1, 2), media.PackOpaqueRun(0, 1), media.PackOpaqueRun(3, 3)}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("runs=%v want=%v", got, want)
+	}
+	if got, want := tex.OpaqueRowOffs, []uint32{0, 1, 2, 3, 4}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("row offs=%v want=%v", got, want)
+	}
+	if got, want := tex.OpaqueRowRuns, []uint32{media.PackOpaqueRun(1, 1), media.PackOpaqueRun(0, 1), media.PackOpaqueRun(0, 0), media.PackOpaqueRun(1, 1)}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("row runs=%v want=%v", got, want)
+	}
+}
+
+func TestEnsureOpaqueMask_BuildsOneBitCoverage(t *testing.T) {
+	tex := WallTexture{
+		Width:  2,
+		Height: 2,
+		RGBA: []byte{
+			1, 2, 3, 0, 4, 5, 6, 255,
+			7, 8, 9, 255, 10, 11, 12, 0,
+		},
+	}
+	if !tex.EnsureOpaqueMask() {
+		t.Fatal("expected opaque mask to build")
+	}
+	if got, want := tex.OpaqueMask, []byte{0, 1, 1, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("mask=%v want=%v", got, want)
+	}
+}
+
+func TestDrawMaskedColumnOpaqueRuns_SkipsTransparentHole(t *testing.T) {
+	g := &game{
+		viewW:     1,
+		viewH:     8,
+		wallPix32: make([]uint32, 8),
+	}
+	row := installTestWallShadeRow(t)
+	tex := WallTexture{
+		Width:           1,
+		Height:          4,
+		Indexed:         []byte{10, 0, 20, 30},
+		IndexedColMajor: []byte{10, 0, 20, 30},
+		OpaqueMask:      []byte{1, 0, 1, 1},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque run metadata")
+	}
+	if !drawMaskedColumnOpaqueRuns(g, 0, 0, 7, 0, fracUnit/2, &tex, 0, nil, encodeDepthQ(64), 256, 0) {
+		t.Fatal("expected run fast-path")
+	}
+	if g.wallPix32[2] != 0 || g.wallPix32[3] != 0 {
+		t.Fatalf("transparent hole was drawn: %v", g.wallPix32)
+	}
+	if g.wallPix32[0] != row[10] || g.wallPix32[1] != row[10] || g.wallPix32[4] != row[20] {
+		t.Fatalf("opaque pixels missing: %v", g.wallPix32)
+	}
+}
+
+func TestDrawMaskedColumnOpaqueRuns_UsesIndexedShadeRow(t *testing.T) {
+	row := installTestWallShadeRow(t)
+	g := &game{
+		viewW:     1,
+		viewH:     4,
+		wallPix32: make([]uint32, 4),
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          4,
+		Indexed:         []byte{1, 2, 3, 4},
+		IndexedColMajor: []byte{1, 2, 3, 4},
+		OpaqueRunOffs:   []uint32{0, 2},
+		OpaqueRuns:      []uint32{media.PackOpaqueRun(0, 0), media.PackOpaqueRun(2, 3)},
+	}
+
+	if !drawMaskedColumnOpaqueRuns(g, 0, 0, 3, 0, fracUnit, &tex, 0, nil, encodeDepthQ(64), 256, 0) {
+		t.Fatal("expected run fast-path")
+	}
+
+	want := []uint32{row[1], 0, row[3], row[4]}
+	if !reflect.DeepEqual(g.wallPix32, want) {
+		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
+	}
+}
+
+func TestDrawBillboardRowSpans_OpaqueRunsSkipTransparentGap(t *testing.T) {
+	g := &game{wallPix32: make([]uint32, 6)}
+	tex := WallTexture{
+		Width:  4,
+		Height: 1,
+		RGBA: []byte{
+			10, 0, 0, 255,
+			20, 0, 0, 0,
+			30, 0, 0, 255,
+			40, 0, 0, 255,
+		},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque row runs")
+	}
+	src32, ok := spritePixels32(&tex)
+	if !ok {
+		t.Fatal("expected rgba32 pixels")
+	}
+	txLUT := []int{0, 0, 1, 1, 2, 3}
+	g.drawBillboardRowSpans(0, 0, tex.Width, 0, txLUT, []solidSpan{{L: 0, R: 5}}, &tex, src32, nil, 256, nil, -1)
+	if g.wallPix32[2] != 0 || g.wallPix32[3] != 0 {
+		t.Fatalf("transparent gap drawn: %v", g.wallPix32)
+	}
+	if g.wallPix32[0] == 0 || g.wallPix32[1] == 0 || g.wallPix32[4] == 0 || g.wallPix32[5] == 0 {
+		t.Fatalf("opaque billboard texels missing: %v", g.wallPix32)
+	}
+}
+
+func TestDrawBasicWallColumn_InvulnerabilityUsesInverseColormap(t *testing.T) {
+	prevColormap := doomColormapEnabled
+	prevLighting := doomLightingEnabled
+	prevRows := doomColormapRows
+	prevRGBA := doomColormapRGBA
+	t.Cleanup(func() {
+		doomColormapEnabled = prevColormap
+		doomLightingEnabled = prevLighting
+		doomColormapRows = prevRows
+		doomColormapRGBA = prevRGBA
+	})
+
+	doomColormapEnabled = true
+	doomLightingEnabled = true
+	doomColormapRows = doomNumColorMaps + 1
+	doomColormapRGBA = make([]uint32, doomColormapRows*256)
+	doomColormapRGBA[1] = 0x11111111
+	doomColormapRGBA[doomNumColorMaps*256+1] = 0xDEADBEEF
+
+	g := &game{
+		viewW:     1,
+		viewH:     1,
+		wallPix32: make([]uint32, 1),
+		inventory: playerInventory{InvulnTics: 5 * 32},
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          1,
+		Indexed:         []byte{1},
+		IndexedColMajor: []byte{1},
+	}
+
+	wallTop := []int{1}
+	wallBottom := []int{-1}
+	g.drawBasicWallColumn(wallTop, wallBottom, 0, 0, 0, 64, 160, 0, 0, 0, 64, &tex)
+
+	if got := g.wallPix32[0]; got != 0xDEADBEEF {
+		t.Fatalf("pix=%08x want inverse colormap row value", got)
+	}
+}
+
+func TestDrawBasicWallColumn_InvulnerabilityUsesInverseColormapInSourcePortMode(t *testing.T) {
+	prevColormap := doomColormapEnabled
+	prevLighting := doomLightingEnabled
+	prevRows := doomColormapRows
+	prevRGBA := doomColormapRGBA
+	t.Cleanup(func() {
+		doomColormapEnabled = prevColormap
+		doomLightingEnabled = prevLighting
+		doomColormapRows = prevRows
+		doomColormapRGBA = prevRGBA
+	})
+
+	doomColormapEnabled = false
+	doomLightingEnabled = true
+	doomColormapRows = doomNumColorMaps + 1
+	doomColormapRGBA = make([]uint32, doomColormapRows*256)
+	doomColormapRGBA[doomNumColorMaps*256+1] = 0xFEEDBEEF
+
+	g := &game{
+		opts:      Options{SourcePortMode: true},
+		viewW:     1,
+		viewH:     1,
+		wallPix32: make([]uint32, 1),
+		inventory: playerInventory{InvulnTics: 5 * 32},
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          1,
+		Indexed:         []byte{1},
+		IndexedColMajor: []byte{1},
+	}
+
+	wallTop := []int{1}
+	wallBottom := []int{-1}
+	g.drawBasicWallColumn(wallTop, wallBottom, 0, 0, 0, 64, 160, 0, 0, 0, 64, &tex)
+
+	if got := g.wallPix32[0]; got != 0xFEEDBEEF {
+		t.Fatalf("pix=%08x want inverse colormap row value in sourceport mode", got)
+	}
+}
+
+func TestDrawBillboardRowSpans_InvulnerabilityUsesFixedDOOMRow(t *testing.T) {
+	prevRows := doomColormapRows
+	prevRGBA := doomColormapRGBA
+	t.Cleanup(func() {
+		doomColormapRows = prevRows
+		doomColormapRGBA = prevRGBA
+	})
+
+	doomColormapRows = doomNumColorMaps + 1
+	doomColormapRGBA = make([]uint32, doomColormapRows*256)
+	doomColormapRGBA[doomNumColorMaps*256+7] = 0xFACEB00C
+
+	g := &game{wallPix32: make([]uint32, 1)}
+	tex := WallTexture{
+		Width:      1,
+		Height:     1,
+		Indexed:    []byte{7},
+		OpaqueMask: []byte{1},
+	}
+
+	g.drawBillboardRowSpans(0, 0, tex.Width, 0, []int{0}, []solidSpan{{L: 0, R: 0}}, &tex, nil, tex.Indexed, 32, nil, doomNumColorMaps)
+
+	if got := g.wallPix32[0]; got != 0xFACEB00C {
+		t.Fatalf("pix=%08x want fixed colormap row value", got)
+	}
+}
+
+func TestDrawMaskedMidTexelBand_UsesIndexedShadeRow(t *testing.T) {
+	row := installTestWallShadeRow(t)
+	g := &game{
+		viewW:            1,
+		viewH:            4,
+		wallPix32:        make([]uint32, 4),
+		solidClipScratch: make([]solidSpan, 0, 4),
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          4,
+		Indexed:         []byte{1, 2, 3, 4},
+		IndexedColMajor: []byte{1, 2, 3, 4},
+		OpaqueRunOffs:   []uint32{0, 1},
+		OpaqueRuns:      []uint32{media.PackOpaqueRun(1, 1)},
+	}
+
+	g.drawMaskedMidTexelBand(0, 0, 0, 3, 64, 0, 2, 64, &tex, 0, nil, 256, 0)
+
+	want := []uint32{row[2], row[2], row[2], row[2]}
+	if !reflect.DeepEqual(g.wallPix32, want) {
+		t.Fatalf("pix=%#v want=%#v", g.wallPix32, want)
+	}
+}
+
+func TestMaskedTextureColumnHasOpaque_UsesPrecomputedRuns(t *testing.T) {
+	tex := WallTexture{
+		Width:  3,
+		Height: 4,
+		RGBA: []byte{
+			0, 0, 0, 0, 1, 1, 1, 255, 0, 0, 0, 0,
+			2, 2, 2, 255, 3, 3, 3, 255, 0, 0, 0, 0,
+			4, 4, 4, 255, 0, 0, 0, 0, 0, 0, 0, 0,
+			0, 0, 0, 0, 5, 5, 5, 255, 0, 0, 0, 0,
+		},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque run metadata")
+	}
+}
+
+func TestMaskedColumnVisibleSpans_ClipsWallAndMaskedOccluders(t *testing.T) {
+	g := &game{
+		viewW:              1,
+		viewH:              10,
+		wallDepthQCol:      []uint16{10},
+		wallDepthTopCol:    []int{2},
+		wallDepthBottomCol: []int{4},
+		wallDepthClosedCol: []bool{false},
+		maskedClipCols: [][]scene.MaskedClipSpan{{
+			{Y0: 7, Y1: 8, DepthQ: 20},
+		}},
+	}
+	got := g.maskedColumnVisibleSpans(0, 0, 9, 30)
+	want := []solidSpan{{L: 0, R: 1}, {L: 5, R: 6}, {L: 9, R: 9}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("spans=%v want=%v", got, want)
+	}
+}
+
+func TestMaskedColumnVisibleSpans_RespectsPortalGap(t *testing.T) {
+	g := &game{
+		viewW: 1,
+		viewH: 10,
+		maskedClipCols: [][]scene.MaskedClipSpan{{
+			{OpenY0: 3, OpenY1: 5, DepthQ: 10, HasOpen: true},
+		}},
+	}
+	got := g.maskedColumnVisibleSpans(0, 0, 9, 20)
+	want := []solidSpan{{L: 3, R: 5}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("spans=%v want=%v", got, want)
+	}
+}

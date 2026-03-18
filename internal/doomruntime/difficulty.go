@@ -1,0 +1,137 @@
+package doomruntime
+
+import "gddoom/internal/mapdata"
+
+const (
+	skillEasyBits      = 0x0001
+	skillMediumBits    = 0x0002
+	skillHardBits      = 0x0004
+	skillMask          = skillEasyBits | skillMediumBits | skillHardBits
+	thingFlagAmbush    = 0x0008
+	thingFlagNotSingle = 0x0010
+	thingFlagNotDM     = 0x0020
+	thingFlagNotCoop   = 0x0040
+	gameModeSingle     = "single"
+	gameModeCoop       = "coop"
+	gameModeDeathmatch = "deathmatch"
+	defaultGameMode    = gameModeSingle
+)
+
+func normalizeSkillLevel(skill int) int {
+	if skill < 1 {
+		return 3
+	}
+	if skill > 5 {
+		return 5
+	}
+	return skill
+}
+
+func normalizeGameMode(mode string) string {
+	switch mode {
+	case gameModeCoop:
+		return gameModeCoop
+	case gameModeDeathmatch:
+		return gameModeDeathmatch
+	default:
+		return defaultGameMode
+	}
+}
+
+func normalizeKeyboardTurnSpeed(v float64) float64 {
+	if v <= 0 {
+		return 1.0
+	}
+	if v > 4.0 {
+		return 4.0
+	}
+	return v
+}
+
+func normalizeMouseLookSpeed(v float64) float64 {
+	if v <= 0 {
+		return 1.0
+	}
+	if v > 8.0 {
+		return 8.0
+	}
+	return v
+}
+
+func thingSpawnsForSkill(t mapdata.Thing, skill int, showNoSkillItems bool) bool {
+	if isPlayerStart(t.Type) {
+		return true
+	}
+	bits := int(t.Flags) & skillMask
+	if bits == 0 {
+		if showNoSkillItems && isPickupType(t.Type) {
+			return true
+		}
+		// Vanilla Doom: non-player things with no skill bits do not spawn.
+		return false
+	}
+	switch normalizeSkillLevel(skill) {
+	case 1, 2:
+		return bits&skillEasyBits != 0
+	case 3:
+		return bits&skillMediumBits != 0
+	default: // 4, 5
+		return bits&skillHardBits != 0
+	}
+}
+
+func thingSpawnsForGameMode(t mapdata.Thing, mode string) bool {
+	if isPlayerStart(t.Type) {
+		return true
+	}
+	flags := int(t.Flags)
+	switch normalizeGameMode(mode) {
+	case gameModeSingle:
+		return (flags & thingFlagNotSingle) == 0
+	case gameModeCoop:
+		return (flags & thingFlagNotCoop) == 0
+	default: // deathmatch
+		return (flags & thingFlagNotDM) == 0
+	}
+}
+
+func thingSpawnsInSession(t mapdata.Thing, skill int, mode string, showNoSkillItems bool, showAllItems bool) bool {
+	if isPickupType(t.Type) && showAllItems {
+		return true
+	}
+	return thingSpawnsForSkill(t, skill, showNoSkillItems) && thingSpawnsForGameMode(t, mode)
+}
+
+func (g *game) thingActiveInSession(i int) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if i < len(g.thingCollected) && g.thingCollected[i] {
+		return false
+	}
+	if i < len(g.thingDead) && g.thingDead[i] {
+		return false
+	}
+	// Runtime-spawned drops do not carry map spawn flags; they should remain
+	// active regardless of skill/game-mode filtering.
+	if i < len(g.thingDropped) && g.thingDropped[i] {
+		return true
+	}
+	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems)
+}
+
+func (g *game) thingBlocksInSession(i int) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if i < len(g.thingCollected) && g.thingCollected[i] {
+		return false
+	}
+	if i < len(g.thingDead) && g.thingDead[i] {
+		return false
+	}
+	if i < len(g.thingDropped) && g.thingDropped[i] {
+		return true
+	}
+	return thingSpawnsForGameMode(g.m.Things[i], g.opts.GameMode)
+}

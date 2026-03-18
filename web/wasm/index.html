@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GD-DOOM WASM ALPHA</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top, #3a0d0d 0%, #170707 38%, #050505 100%);
+      color: #ddd;
+      font: 16px/1.4 monospace;
+    }
+    .shell {
+      position: fixed;
+      inset: 0;
+      border: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #000;
+    }
+    .overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background:
+        linear-gradient(rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.72)),
+        repeating-linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.035) 0,
+          rgba(255, 255, 255, 0.035) 2px,
+          transparent 2px,
+          transparent 4px
+        );
+    }
+    .overlay[hidden] {
+      display: none;
+    }
+    .card {
+      width: min(560px, 100%);
+      padding: 28px 24px 22px;
+      border: 3px solid #6e1b1b;
+      background: rgba(10, 10, 10, 0.88);
+      box-shadow: 0 0 0 2px #1a1a1a, 0 18px 60px rgba(0, 0, 0, 0.45);
+      text-align: center;
+    }
+    .logo {
+      margin: 0 0 14px;
+      color: #ff533d;
+      font-size: clamp(36px, 10vw, 72px);
+      line-height: 0.92;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-shadow: 0 2px 0 #7f1105, 0 4px 0 #4a0902, 0 0 22px rgba(255, 73, 31, 0.28);
+    }
+    .subtitle {
+      margin: 0 0 18px;
+      color: #f0d5a6;
+      font-size: 14px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+    .prompt {
+      margin: 0;
+      color: #fff3cf;
+      font-size: 18px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      animation: pulse 1s steps(2, end) infinite;
+    }
+    .hint {
+      margin: 14px 0 0;
+      color: #b7a7a7;
+      font-size: 13px;
+    }
+    .controls {
+      margin: 18px 0 0;
+      color: #d9c7a5;
+      font-size: 13px;
+      line-height: 1.6;
+      text-transform: uppercase;
+    }
+    .controls strong {
+      color: #fff3cf;
+      font-weight: 700;
+    }
+    @keyframes pulse {
+      50% {
+        opacity: 0.45;
+      }
+    }
+  </style>
+</head>
+<body>
+  <iframe
+    id="game-shell"
+    class="shell"
+    title="GD-DOOM WASM"
+    allow="autoplay; fullscreen; pointer-lock"
+    tabindex="0"
+    src="./player.html"
+  ></iframe>
+  <div id="splash" class="overlay">
+    <section class="card" aria-label="Click to play">
+      <h1 class="logo">GD-DOOM</h1>
+      <p class="subtitle">WASM Alpha</p>
+      <p class="prompt">Click To Play</p>
+      <p class="hint">The click page stays here until the game frame is focused.</p>
+      <p class="controls">
+        <strong>Menus:</strong> Arrow Keys + Enter<br>
+        <strong>Game:</strong> WASD + Mouse
+      </p>
+    </section>
+  </div>
+  <script src="./launch.js"></script>
+</body>
+</html>
