@@ -476,6 +476,132 @@ func TestBossDeath_E4M6CyberdemonOpensTag666Door(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterFromMonsterRespectsThreshold(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 0, Y: 0},
+				{Type: 3005, X: 64, Y: 0},
+			},
+		},
+		thingHP:           []int{60, 400},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{true, false},
+		thingTargetIdx:    []int{-1, 0},
+		thingThreshold:    []int{20, 0},
+		thingJustHit:      []bool{false, false},
+		thingPainTics:     []int{0, 0},
+	}
+
+	g.damageMonsterFrom(0, 5, false, 1)
+
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target changed despite threshold: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+	if got := g.thingThreshold[0]; got != 20 {
+		t.Fatalf("threshold=%d want=20", got)
+	}
+}
+
+func TestDamageMonsterFromArchvileVictimIgnoresThresholdForRetarget(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 64, X: 0, Y: 0},
+				{Type: 3001, X: 64, Y: 0},
+			},
+		},
+		thingHP:           []int{700, 60},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{true, false},
+		thingTargetIdx:    []int{-1, 0},
+		thingThreshold:    []int{20, 0},
+		thingJustHit:      []bool{false, false},
+		thingPainTics:     []int{0, 0},
+	}
+
+	g.damageMonsterFrom(0, 5, false, 1)
+
+	if g.thingTargetPlayer[0] || g.thingTargetIdx[0] != 1 {
+		t.Fatalf("arch-vile victim should retarget attacker: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+	if got := g.thingThreshold[0]; got != monsterBaseThreshold {
+		t.Fatalf("threshold=%d want=%d", got, monsterBaseThreshold)
+	}
+}
+
+func TestDamageMonsterFromArchvileSourceDoesNotRetarget(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 0, Y: 0},
+				{Type: 64, X: 64, Y: 0},
+			},
+		},
+		thingHP:           []int{60, 700},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{true, false},
+		thingTargetIdx:    []int{-1, 0},
+		thingThreshold:    []int{0, 0},
+		thingJustHit:      []bool{false, false},
+		thingPainTics:     []int{0, 0},
+	}
+
+	g.damageMonsterFrom(0, 5, false, 1)
+
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("arch-vile source should not become target: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+}
+
+func TestDamageMonsterFromSelfDoesNotRetarget(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 0, Y: 0},
+			},
+		},
+		thingHP:           []int{60},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingThreshold:    []int{0},
+		thingJustHit:      []bool{false},
+		thingPainTics:     []int{0},
+	}
+
+	g.damageMonsterFrom(0, 5, false, 0)
+
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("self-damage should not retarget: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+}
+
+func TestDamageMonsterFromSetsJustHitOnlyWhenPainTriggers(t *testing.T) {
+	doomrand.Clear()
+	_ = doomrand.PRandom() // advance past the initial low byte
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3003, X: 0, Y: 0},
+			},
+		},
+		thingHP:           []int{1000},
+		thingAggro:        []bool{false},
+		thingTargetPlayer: []bool{false},
+		thingTargetIdx:    []int{-1},
+		thingThreshold:    []int{0},
+		thingJustHit:      []bool{false},
+		thingPainTics:     []int{0},
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1)
+
+	if g.thingJustHit[0] {
+		t.Fatal("just-hit should stay clear when pain does not trigger")
+	}
+}
+
 func TestSuperShotgunConsumesTwoShellsAndTwentyPelletRolls(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

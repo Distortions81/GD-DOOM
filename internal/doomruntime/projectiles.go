@@ -236,7 +236,7 @@ func (g *game) tickProjectiles() {
 		if hitThing && (!blocked || thingHit.frac <= blockFrac) {
 			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
-			if dmg := projectileDamage(p); dmg > 0 {
+			if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
 				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing)
 			}
 			g.projectileSplashDamage(p, thingHit.x, thingHit.y, thingHit.z)
@@ -272,6 +272,27 @@ func (g *game) tickProjectiles() {
 		kept = append(kept, p)
 	}
 	g.projectiles = kept
+}
+
+func sameMonsterSpecies(a, b int16) bool {
+	if a == b {
+		return true
+	}
+	return (a == 3003 && b == 69) || (a == 69 && b == 3003)
+}
+
+func (g *game) projectileCanDamageThing(p projectile, thingIdx int) bool {
+	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) {
+		return false
+	}
+	if p.sourcePlayer || p.sourceThing < 0 || p.sourceThing >= len(g.m.Things) {
+		return true
+	}
+	hitType := g.m.Things[thingIdx].Type
+	if hitType == 1 {
+		return true
+	}
+	return !sameMonsterSpecies(p.sourceType, hitType)
 }
 
 func projectileDamage(p projectile) int {
@@ -427,7 +448,7 @@ func (g *game) applyBFGSpray(center uint32) {
 			damage += (doomrand.PRandom() & 7) + 1
 		}
 		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
-			g.damageShootableThingFrom(outcome.target.idx, damage, true, -1)
+		g.damageShootableThingFrom(outcome.target.idx, damage, true, -1)
 	}
 }
 

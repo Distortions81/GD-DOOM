@@ -10,10 +10,11 @@ import (
 )
 
 const (
-	monsterWakeRange   = 1024 * fracUnit
-	monsterMeleeRange  = 64 * fracUnit
-	monsterAttackRange = 1024 * fracUnit
-	monsterAttackTics  = 35
+	monsterWakeRange     = 1024 * fracUnit
+	monsterMeleeRange    = 64 * fracUnit
+	monsterAttackRange   = 1024 * fracUnit
+	monsterAttackTics    = 35
+	monsterBaseThreshold = 100
 
 	monsterDiagFrac = 47000
 )
@@ -139,6 +140,13 @@ func (g *game) tickMonsters() {
 		}
 		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 			g.thingReactionTics[i]--
+		}
+		if i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+			if !g.monsterHasTarget(i) {
+				g.thingThreshold[i] = 0
+			} else {
+				g.thingThreshold[i]--
+			}
 		}
 
 		// Doom A_Chase: prevent consecutive missile attacks.
@@ -275,6 +283,9 @@ func (g *game) clearMonsterTargetState(i int) {
 	}
 	if i < len(g.thingTargetIdx) {
 		g.thingTargetIdx[i] = -1
+	}
+	if i < len(g.thingThreshold) {
+		g.thingThreshold[i] = 0
 	}
 }
 
@@ -514,6 +525,11 @@ func (g *game) ensureMonsterAIState() {
 			g.thingTargetIdx[i] = -1
 		}
 		copy(g.thingTargetIdx, old)
+	}
+	if len(g.thingThreshold) != n {
+		old := g.thingThreshold
+		g.thingThreshold = make([]int, n)
+		copy(g.thingThreshold, old)
 	}
 	if len(g.thingMoveDir) != n {
 		old := g.thingMoveDir
@@ -2028,12 +2044,12 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 					}
 				}
 			}
-				if i >= 0 && i < len(g.thingLastLook) {
-					g.thingLastLook[i] = look
-				}
-				g.setMonsterTargetPlayer(i)
-				return true
+			if i >= 0 && i < len(g.thingLastLook) {
+				g.thingLastLook[i] = look
 			}
+			g.setMonsterTargetPlayer(i)
+			return true
+		}
 		look = (look + 1) & 3
 	}
 }

@@ -246,6 +246,83 @@ func TestProjectileImpactSoundEventMatchesVanillaProjectileDeathsounds(t *testin
 	}
 }
 
+func TestImpProjectileExplodesOnImpWithoutDamage(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: -32, Y: 0},
+				{Type: 3001, X: 32, Y: 0},
+			},
+		},
+		thingCollected: []bool{false, false},
+		thingHP:        []int{60, 60},
+		projectiles: []projectile{{
+			x:           -32 * fracUnit,
+			y:           0,
+			z:           40 * fracUnit,
+			vx:          64 * fracUnit,
+			vy:          0,
+			vz:          0,
+			radius:      6 * fracUnit,
+			height:      8 * fracUnit,
+			ttl:         4,
+			sourceThing: 0,
+			sourceType:  3001,
+			kind:        projectileFireball,
+		}},
+	}
+
+	g.tickProjectiles()
+
+	if got := g.thingHP[1]; got != 60 {
+		t.Fatalf("same-species projectile hp=%d want=60", got)
+	}
+	if got := len(g.projectiles); got != 0 {
+		t.Fatalf("projectiles remaining=%d want=0", got)
+	}
+	if got := len(g.projectileImpacts); got != 1 {
+		t.Fatalf("impacts=%d want=1", got)
+	}
+}
+
+func TestBaronProjectileExplodesOnHellKnightWithoutDamage(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3003, X: -32, Y: 0},
+				{Type: 69, X: 32, Y: 0},
+			},
+		},
+		thingCollected: []bool{false, false},
+		thingHP:        []int{1000, 500},
+		projectiles: []projectile{{
+			x:           -32 * fracUnit,
+			y:           0,
+			z:           56 * fracUnit,
+			vx:          64 * fracUnit,
+			vy:          0,
+			vz:          0,
+			radius:      6 * fracUnit,
+			height:      8 * fracUnit,
+			ttl:         4,
+			sourceThing: 0,
+			sourceType:  3003,
+			kind:        projectileBaronBall,
+		}},
+	}
+
+	g.tickProjectiles()
+
+	if got := g.thingHP[1]; got != 500 {
+		t.Fatalf("baron-vs-knight hp=%d want=500", got)
+	}
+	if got := len(g.projectileImpacts); got != 1 {
+		t.Fatalf("impacts=%d want=1", got)
+	}
+}
+
 func TestProjectileHitsPlayer(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

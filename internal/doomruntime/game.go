@@ -528,6 +528,7 @@ type game struct {
 	thingAggro           []bool
 	thingTargetPlayer    []bool
 	thingTargetIdx       []int
+	thingThreshold       []int
 	thingCooldown        []int
 	thingMoveDir         []monsterMoveDir
 	thingMoveCount       []int

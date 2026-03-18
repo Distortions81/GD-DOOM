@@ -712,6 +712,9 @@ func demoTraceThingReaction(g *game, i int) int {
 }
 
 func demoTraceThingThreshold(g *game, i int) int {
+	if i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+		return g.thingThreshold[i]
+	}
 	return 0
 }
 

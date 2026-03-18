@@ -1175,14 +1175,8 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
 	}
-	if sourcePlayer {
-		g.setMonsterTargetPlayer(thingIdx)
-	} else if sourceThing >= 0 && sourceThing != thingIdx {
-		g.setMonsterTargetThing(thingIdx, sourceThing)
-	}
-	if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
-		// Doom P_CheckMissileRange: recently-hit monsters retaliate immediately.
-		g.thingJustHit[thingIdx] = true
+	if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
+		g.thingReactionTics[thingIdx] = 0
 	}
 	if g.thingHP[thingIdx] <= 0 {
 		g.thingHP[thingIdx] = 0
@@ -1234,6 +1228,10 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			chance := monsterPainChance(thingType)
 			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
 				wasInPain := g.thingPainTics[thingIdx] > 0
+				if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
+					// Doom only marks JUSTHIT when the pain state triggers.
+					g.thingJustHit[thingIdx] = true
+				}
 				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(thingType))
 				if !wasInPain {
 					tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
@@ -1248,8 +1246,37 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 				}
 			}
 		}
+		g.maybeRetargetMonsterAfterDamage(thingIdx, thingType, sourcePlayer, sourceThing)
 		g.setHUDMessage("Hit", 8)
 	}
+}
+
+func (g *game) maybeRetargetMonsterAfterDamage(thingIdx int, thingType int16, sourcePlayer bool, sourceThing int) {
+	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) {
+		return
+	}
+	if thingIdx >= len(g.thingThreshold) {
+		return
+	}
+	if thingType != 64 && g.thingThreshold[thingIdx] > 0 {
+		return
+	}
+	if sourcePlayer {
+		g.setMonsterTargetPlayer(thingIdx)
+		g.thingThreshold[thingIdx] = monsterBaseThreshold
+		return
+	}
+	if sourceThing < 0 || sourceThing == thingIdx || sourceThing >= len(g.m.Things) {
+		return
+	}
+	if g.m.Things[sourceThing].Type == 64 {
+		return
+	}
+	if sourceThing >= len(g.thingHP) || g.thingHP[sourceThing] <= 0 {
+		return
+	}
+	g.setMonsterTargetThing(thingIdx, sourceThing)
+	g.thingThreshold[thingIdx] = monsterBaseThreshold
 }
 
 func monsterDropPickupType(typ int16) (int16, bool) {
@@ -1287,6 +1314,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingAggro = append(g.thingAggro, false)
 	g.thingTargetPlayer = append(g.thingTargetPlayer, false)
 	g.thingTargetIdx = append(g.thingTargetIdx, -1)
+	g.thingThreshold = append(g.thingThreshold, 0)
 	g.thingCooldown = append(g.thingCooldown, 0)
 	g.thingMoveDir = append(g.thingMoveDir, 0)
 	g.thingMoveCount = append(g.thingMoveCount, 0)
