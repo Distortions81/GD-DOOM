@@ -278,12 +278,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if thingTypeIsShootable(th.Type) {
 			height = g.thingCurrentHeight(i, th)
 		}
-		target := 0
-		targetType := 0
-		if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
-			target = 1
-			targetType = 0
-		}
+		target, targetType := demoTraceThingTarget(g, i)
 		out = append(out, demoTraceMobj{
 			Type:         demoTraceThingType(th.Type),
 			X:            x,
@@ -399,6 +394,23 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		})
 	}
 	return out
+}
+
+func demoTraceThingTarget(g *game, i int) (target int, targetType int) {
+	if g == nil || i < 0 {
+		return 0, 0
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		return 1, 0
+	}
+	if i < len(g.thingTargetIdx) {
+		idx := g.thingTargetIdx[i]
+		if idx >= 0 {
+			// Demo traces serialize the player mobj first, then map things in map order.
+			return idx + 2, demoTraceThingType(g.m.Things[idx].Type)
+		}
+	}
+	return 0, 0
 }
 
 func (g *game) demoTraceSpecials() []demoTraceSpecial {

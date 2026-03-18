@@ -154,6 +154,46 @@ func TestTickMonstersWakesByNoiseWithoutLOSForNonAmbush(t *testing.T) {
 	}
 }
 
+func TestTickMonstersAmbushNoiseSetsTargetWithoutWakeWhenLOSBlocked(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 2048, Y: 0, Flags: thingFlagAmbush},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 1024, Y: -64},
+				{X: 1024, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingAggro:        []bool{false},
+		thingTargetPlayer: []bool{false},
+		thingTargetIdx:    []int{-1},
+		thingCooldown:     []int{0},
+		sectorSoundTarget: []bool{true},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	g.tickMonsters()
+	if g.thingAggro[0] {
+		t.Fatal("ambush monster should not wake from blocked sound target")
+	}
+	if !g.thingTargetPlayer[0] {
+		t.Fatal("ambush monster should retain player target from sound target even when it stays asleep")
+	}
+}
+
 func TestMonsterMoveStepMatchesDoomSpeedTable(t *testing.T) {
 	tests := []struct {
 		typ  int16

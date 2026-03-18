@@ -215,7 +215,7 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 	}
 	switch g.thingState[i] {
 	case monsterStateSpawn:
-		if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
+		if _, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty); wake || g.monsterLookForPlayer(i, false, tx, ty) {
 			g.thingAggro[i] = true
 			g.setMonsterTargetPlayer(i)
 			g.emitMonsterSeeSound(i, typ, tx, ty)
@@ -1995,17 +1995,23 @@ func (g *game) monsterSupportHeights(i int, th mapdata.Thing) (int64, int64, int
 }
 
 func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
+	_, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty)
+	return wake
+}
+
+func (g *game) monsterAcquireSectorSoundTarget(i int, tx, ty int64) (hasSoundTarget bool, wake bool) {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
-		return false
+		return false, false
 	}
 	sec := g.sectorAt(tx, ty)
 	if sec < 0 || sec >= len(g.sectorSoundTarget) || !g.sectorSoundTarget[sec] {
-		return false
+		return false, false
 	}
+	g.setMonsterTargetPlayer(i)
 	if int(g.m.Things[i].Flags)&thingFlagAmbush != 0 {
-		return g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty)
+		return true, g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty)
 	}
-	return true
+	return true, true
 }
 
 func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {

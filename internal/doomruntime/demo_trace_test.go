@@ -115,3 +115,27 @@ func TestDemoTraceThingReactionDoesNotFallBackToSpawnDefault(t *testing.T) {
 		t.Fatalf("reactiontime=%d want 0", got)
 	}
 }
+
+func TestDemoTraceThingTargetUsesConcreteTargetFields(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001},
+				{Type: 3004},
+			},
+		},
+		thingTargetPlayer: []bool{true, false},
+		thingTargetIdx:    []int{-1, 0},
+		thingAggro:        []bool{false, false},
+	}
+
+	target, targetType := demoTraceThingTarget(g, 0)
+	if target != 1 || targetType != 0 {
+		t.Fatalf("player target=(%d,%d) want (1,0)", target, targetType)
+	}
+
+	target, targetType = demoTraceThingTarget(g, 1)
+	if target != 2 || targetType != demoTraceThingType(3001) {
+		t.Fatalf("thing target=(%d,%d) want (2,%d)", target, targetType, demoTraceThingType(3001))
+	}
+}
