@@ -87,8 +87,6 @@ func (g *game) tickMonsters() {
 		return
 	}
 	g.ensureMonsterAIState()
-	px := g.p.x
-	py := g.p.y
 	for i, th := range g.m.Things {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
@@ -106,16 +104,19 @@ func (g *game) tickMonsters() {
 		if th.Type == 88 {
 			continue
 		}
-		if !g.monsterTargetAlive() {
+		if !g.monsterHasTarget(i) {
 			g.clearMonsterTargetState(i)
 		}
 		tx, ty := g.thingPosFixed(i, th)
-		dx := px - tx
-		dy := py - ty
-		dist := doomApproxDistance(dx, dy)
+		targetX, targetY := int64(0), int64(0)
+		dist := int64(0)
+		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+			targetX, targetY = px, py
+			dist = doomApproxDistance(targetX-tx, targetY-ty)
+		}
 
 		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
-			if g.tickMonsterAttackState(i, th.Type, tx, ty, px, py, dist) {
+			if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
 				continue
 			}
 		}
@@ -133,7 +134,7 @@ func (g *game) tickMonsters() {
 			g.resetMonsterIdleOrChaseState(i, th.Type)
 		}
 
-		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, px, py, dist) {
+		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
 			continue
 		}
 		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
@@ -143,20 +144,20 @@ func (g *game) tickMonsters() {
 		// Doom A_Chase: prevent consecutive missile attacks.
 		if g.thingJustAtk[i] {
 			g.thingJustAtk[i] = false
-			g.monsterPickNewChaseDir(i, th.Type, px, py)
+			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
 			continue
 		}
 		g.monsterTurnTowardMoveDir(i)
 
-		if g.monsterCanMelee(th.Type, dist, tx, ty, px, py) {
-			g.faceMonsterToward(i, tx, ty, px, py)
+		if g.monsterCanMeleeTarget(i, th.Type, dist, tx, ty, targetX, targetY) {
+			g.faceMonsterToward(i, tx, ty, targetX, targetY)
 			if g.startMonsterAttackState(i, th.Type, false) {
 				continue
 			}
 		}
 
-		if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, th.Type, dist, tx, ty, px, py) {
-			g.faceMonsterToward(i, tx, ty, px, py)
+		if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, th.Type, dist, tx, ty, targetX, targetY) {
+			g.faceMonsterToward(i, tx, ty, targetX, targetY)
 			if g.startMonsterAttackState(i, th.Type, true) {
 				continue
 			}
@@ -167,7 +168,7 @@ func (g *game) tickMonsters() {
 
 		g.thingMoveCount[i]--
 		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
-			g.monsterPickNewChaseDir(i, th.Type, px, py)
+			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
 		}
 		g.setMonsterThinkState(i, th.Type, monsterStateSee, g.monsterSeeStateTicsForPhase(i, th.Type))
 		g.emitMonsterActiveSound(i, th.Type, tx, ty)
@@ -199,6 +200,7 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 	case monsterStateSpawn:
 		if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
 			g.thingAggro[i] = true
+			g.setMonsterTargetPlayer(i)
 			g.emitMonsterSeeSound(i, typ, tx, ty)
 			if i >= 0 && i < len(g.thingStatePhase) {
 				g.thingStatePhase[i] = 0
@@ -216,6 +218,15 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 		g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 		return false
 	case monsterStateSee:
+		if !g.monsterHasTarget(i) {
+			if g.monsterLookForPlayer(i, true, tx, ty) {
+				g.thingAggro[i] = true
+				g.setMonsterTargetPlayer(i)
+				return true
+			}
+			g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
+			return false
+		}
 		if i >= 0 && i < len(g.thingStatePhase) {
 			count := len(monsterSeeFrameTics(typ, g.fastMonstersActive()))
 			if count < 1 {
@@ -259,6 +270,112 @@ func (g *game) clearMonsterTargetState(i int) {
 	if i < len(g.thingJustHit) {
 		g.thingJustHit[i] = false
 	}
+	if i < len(g.thingTargetPlayer) {
+		g.thingTargetPlayer[i] = false
+	}
+	if i < len(g.thingTargetIdx) {
+		g.thingTargetIdx[i] = -1
+	}
+}
+
+func (g *game) setMonsterTargetPlayer(i int) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i < len(g.thingTargetPlayer) {
+		g.thingTargetPlayer[i] = true
+	}
+	if i < len(g.thingTargetIdx) {
+		g.thingTargetIdx[i] = -1
+	}
+}
+
+func (g *game) setMonsterTargetThing(i, targetIdx int) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i < len(g.thingTargetPlayer) {
+		g.thingTargetPlayer[i] = false
+	}
+	if i < len(g.thingTargetIdx) {
+		g.thingTargetIdx[i] = targetIdx
+	}
+}
+
+func (g *game) monsterTargetThingIdx(i int) (int, bool) {
+	if g == nil || i < 0 || i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) {
+		return -1, false
+	}
+	if g.thingTargetPlayer[i] {
+		return -1, false
+	}
+	idx := g.thingTargetIdx[i]
+	if idx < 0 || g.m == nil || idx >= len(g.m.Things) {
+		return -1, false
+	}
+	return idx, true
+}
+
+func (g *game) monsterHasTarget(i int) bool {
+	if g == nil || i < 0 {
+		return false
+	}
+	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		return g.monsterTargetAlive()
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		return g.monsterTargetAlive()
+	}
+	if idx, ok := g.monsterTargetThingIdx(i); ok {
+		return idx < len(g.thingHP) && g.thingHP[idx] > 0 && (idx >= len(g.thingCollected) || !g.thingCollected[idx])
+	}
+	return false
+}
+
+func (g *game) monsterTargetPos(i int) (x, y, z, height, radius int64, ok bool) {
+	if g == nil || i < 0 {
+		return 0, 0, 0, 0, 0, false
+	}
+	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		if !g.monsterTargetAlive() {
+			return 0, 0, 0, 0, 0, false
+		}
+		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if !g.monsterTargetAlive() {
+			return 0, 0, 0, 0, 0, false
+		}
+		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+	}
+	targetIdx, ok := g.monsterTargetThingIdx(i)
+	if !ok {
+		return 0, 0, 0, 0, 0, false
+	}
+	th := g.m.Things[targetIdx]
+	x, y = g.thingPosFixed(targetIdx, th)
+	z, _, _ = g.thingSupportState(targetIdx, th)
+	height = g.thingCurrentHeight(targetIdx, th)
+	radius = thingTypeRadius(th.Type)
+	return x, y, z, height, radius, true
+}
+
+func (g *game) monsterHasLOSTarget(i int, typ int16, x, y int64) bool {
+	if g == nil || i < 0 {
+		return false
+	}
+	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		return g.monsterHasLOSPlayer(typ, x, y)
+	}
+	tx, ty, tz, height, _, ok := g.monsterTargetPos(i)
+	if !ok {
+		return false
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		return g.monsterHasLOSPlayer(typ, x, y)
+	}
+	z, _, _, _ := g.checkPositionForActor(x, y, monsterRadius(typ), true, -1, true)
+	return g.actorHasLOS(x, y, z, monsterHeight(typ), tx, ty, tz, height)
 }
 
 func (g *game) monsterIdleOrChaseTics(i int, typ int16) int {
@@ -385,6 +502,19 @@ func (g *game) ensureMonsterAIState() {
 		return
 	}
 	n := len(g.m.Things)
+	if len(g.thingTargetPlayer) != n {
+		old := g.thingTargetPlayer
+		g.thingTargetPlayer = make([]bool, n)
+		copy(g.thingTargetPlayer, old)
+	}
+	if len(g.thingTargetIdx) != n {
+		old := g.thingTargetIdx
+		g.thingTargetIdx = make([]int, n)
+		for i := range g.thingTargetIdx {
+			g.thingTargetIdx[i] = -1
+		}
+		copy(g.thingTargetIdx, old)
+	}
 	if len(g.thingMoveDir) != n {
 		old := g.thingMoveDir
 		g.thingMoveDir = make([]monsterMoveDir, n)
@@ -971,14 +1101,31 @@ func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
 	return g.monsterHasLOSPlayer(typ, tx, ty)
 }
 
+func (g *game) monsterCanMeleeTarget(i int, typ int16, dist, tx, ty, px, py int64) bool {
+	if !g.monsterHasTarget(i) {
+		return false
+	}
+	if !monsterHasMeleeAttack(typ) {
+		return false
+	}
+	_, _, _, _, radius, ok := g.monsterTargetPos(i)
+	if !ok {
+		return false
+	}
+	if dist >= monsterMeleeRange-20*fracUnit+radius {
+		return false
+	}
+	return g.monsterHasLOSTarget(i, typ, tx, ty)
+}
+
 func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py int64) bool {
-	if !g.monsterTargetAlive() {
+	if !g.monsterHasTarget(i) {
 		return false
 	}
 	if isMeleeOnlyMonster(typ) {
 		return false
 	}
-	if !g.monsterHasLOSPlayer(typ, tx, ty) {
+	if !g.monsterHasLOSTarget(i, typ, tx, ty) {
 		return false
 	}
 	if i >= 0 && i < len(g.thingJustHit) && g.thingJustHit[i] {
@@ -1220,7 +1367,7 @@ func (g *game) monsterTurnTowardMoveDir(i int) {
 }
 
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
-	if !g.monsterTargetAlive() {
+	if !g.monsterHasTarget(i) {
 		return false
 	}
 	meleeOnly := isMeleeOnlyMonster(typ)
@@ -1228,8 +1375,12 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if i >= 0 && g.m != nil && i < len(g.m.Things) {
 		sx, sy = g.thingPosFixed(i, g.m.Things[i])
 	}
+	targetX, targetY, _, _, _, ok := g.monsterTargetPos(i)
+	if !ok {
+		return false
+	}
 	if monsterAttackCallsFaceTarget(typ) {
-		g.faceMonsterToward(i, sx, sy, g.p.x, g.p.y)
+		g.faceMonsterToward(i, sx, sy, targetX, targetY)
 	}
 	if dist <= monsterMeleeRange && monsterHasMeleeAttack(typ) {
 		damage := monsterMeleeDamage(typ)
@@ -1237,7 +1388,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 			if ev := monsterMeleeAttackSoundEvent(typ); ev >= 0 {
 				g.emitSoundEventAt(ev, sx, sy)
 			}
-			g.damagePlayerFrom(damage, "Monster hit you", sx, sy, true)
+			g.damageMonsterTarget(i, damage, "Monster hit you", sx, sy)
 			return true
 		}
 	}
@@ -1312,11 +1463,13 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		return g.spawnPainLostSoul(i, g.thingWorldAngle(i, g.m.Things[i]))
 	}
 	if typ == 64 {
-		if !g.monsterHasLOSPlayer(typ, sx, sy) {
+		if !g.monsterHasLOSTarget(i, typ, sx, sy) {
 			return false
 		}
-		g.damagePlayerFrom(20, "Arch-Vile blast", sx, sy, true)
-		g.p.momz = 10 * fracUnit
+		g.damageMonsterTarget(i, 20, "Arch-Vile blast", sx, sy)
+		if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || g.thingTargetPlayer[i] || g.thingTargetIdx[i] < 0 {
+			g.p.momz = 10 * fracUnit
+		}
 		return true
 	}
 	if usesMonsterProjectile(typ) {
@@ -1331,16 +1484,36 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		return false
 	}
 	g.emitSoundEventAt(soundEventShootPistol, sx, sy)
-	g.damagePlayerFrom(damage, "Monster shot you", sx, sy, true)
+	g.damageMonsterTarget(i, damage, "Monster shot you", sx, sy)
 	return true
 }
 
-func (g *game) monsterAimAngleToPlayer(sx, sy int64) uint32 {
-	angle := angleToThing(sx, sy, g.p.x, g.p.y)
-	if g.playerInvisible() {
+func (g *game) monsterAimAngleToTarget(i int, sx, sy int64) uint32 {
+	tx, ty, _, _, _, ok := g.monsterTargetPos(i)
+	if !ok {
+		return 0
+	}
+	angle := angleToThing(sx, sy, tx, ty)
+	if i >= 0 && i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] && g.playerInvisible() {
 		angle += uint32(int32(doomrand.PRandom()-doomrand.PRandom()) << 21)
 	}
 	return angle
+}
+
+func (g *game) damageMonsterTarget(i, damage int, msg string, attackerX, attackerY int64) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i]) {
+		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true)
+		return
+	}
+	targetIdx, ok := g.monsterTargetThingIdx(i)
+	if !ok {
+		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true)
+		return
+	}
+	g.damageShootableThingFrom(targetIdx, damage, false, i)
 }
 
 func (g *game) countActiveThingType(typ int16) int {
@@ -1506,7 +1679,7 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 	if pellets <= 0 {
 		return
 	}
-	baseAngle := g.monsterAimAngleToPlayer(sx, sy)
+	baseAngle := g.monsterAimAngleToTarget(i, sx, sy)
 	actor := g.monsterLineAttackActor(i, typ)
 	slope, ok := g.aimLineAttack(actor, baseAngle, monsterAttackRange)
 	if !ok {
@@ -1839,11 +2012,12 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 					}
 				}
 			}
-			if i >= 0 && i < len(g.thingLastLook) {
-				g.thingLastLook[i] = look
+				if i >= 0 && i < len(g.thingLastLook) {
+					g.thingLastLook[i] = look
+				}
+				g.setMonsterTargetPlayer(i)
+				return true
 			}
-			return true
-		}
 		look = (look + 1) & 3
 	}
 }

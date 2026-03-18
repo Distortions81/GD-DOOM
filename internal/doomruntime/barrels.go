@@ -149,13 +149,17 @@ func (g *game) tickBarrelDeathState(i int, th mapdata.Thing) {
 }
 
 func (g *game) damageShootableThing(thingIdx int, damage int) {
+	g.damageShootableThingFrom(thingIdx, damage, true, -1)
+}
+
+func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
 	typ := g.m.Things[thingIdx].Type
 	switch {
 	case isMonster(typ):
-		g.damageMonster(thingIdx, damage)
+		g.damageMonsterFrom(thingIdx, damage, sourcePlayer, sourceThing)
 	case isBarrelThingType(typ):
 		g.damageBarrel(thingIdx, damage)
 	}

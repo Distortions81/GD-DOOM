@@ -526,6 +526,8 @@ type game struct {
 	thingBlockLinks      []int
 	thingHP              []int
 	thingAggro           []bool
+	thingTargetPlayer    []bool
+	thingTargetIdx       []int
 	thingCooldown        []int
 	thingMoveDir         []monsterMoveDir
 	thingMoveCount       []int
@@ -1152,6 +1154,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingBlockNext = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
+	g.thingTargetPlayer = make([]bool, len(m.Things))
+	g.thingTargetIdx = make([]int, len(m.Things))
+	for i := range g.thingTargetIdx {
+		g.thingTargetIdx[i] = -1
+	}
 	g.thingCooldown = make([]int, len(m.Things))
 	g.thingMoveDir = make([]monsterMoveDir, len(m.Things))
 	g.thingMoveCount = make([]int, len(m.Things))

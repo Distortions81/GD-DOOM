@@ -37,6 +37,41 @@ func TestImpAttackSpawnsProjectile(t *testing.T) {
 	}
 }
 
+func TestImpProjectileSpawnsFromRuntimePosition(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 128, Y: 0},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{60},
+		thingAggro:        []bool{true},
+		thingX:            []int64{320 * fracUnit},
+		thingY:            []int64{64 * fracUnit},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0, z: 0},
+		projectiles:       make([]projectile, 0, 1),
+	}
+	if !g.monsterAttack(0, 3001, doomApproxDistance(g.p.x-g.thingX[0], g.p.y-g.thingY[0])) {
+		t.Fatal("imp attack should spawn a projectile")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	if got := g.projectiles[0].x; got != g.thingX[0] {
+		t.Fatalf("projectile x=%d want runtime x=%d", got, g.thingX[0])
+	}
+	if got := g.projectiles[0].y; got != g.thingY[0] {
+		t.Fatalf("projectile y=%d want runtime y=%d", got, g.thingY[0])
+	}
+}
+
 func TestArachnotronAttackSpawnsProjectileAfterWindup(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

@@ -76,6 +76,8 @@ type gameSaveState struct {
 	ThingSupportValid    []bool
 	ThingHP              []int
 	ThingAggro           []bool
+	ThingTargetPlayer    []bool
+	ThingTargetIdx       []int
 	ThingCooldown        []int
 	ThingMoveDir         []uint8
 	ThingMoveCount       []int
@@ -452,9 +454,11 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingFloorState:      append([]int64(nil), g.thingFloorState...),
 		ThingCeilState:       append([]int64(nil), g.thingCeilState...),
 		ThingSupportValid:    append([]bool(nil), g.thingSupportValid...),
-		ThingHP:              append([]int(nil), g.thingHP...),
-		ThingAggro:           append([]bool(nil), g.thingAggro...),
-		ThingCooldown:        append([]int(nil), g.thingCooldown...),
+			ThingHP:              append([]int(nil), g.thingHP...),
+			ThingAggro:           append([]bool(nil), g.thingAggro...),
+			ThingTargetPlayer:    append([]bool(nil), g.thingTargetPlayer...),
+			ThingTargetIdx:       append([]int(nil), g.thingTargetIdx...),
+			ThingCooldown:        append([]int(nil), g.thingCooldown...),
 		ThingMoveDir:         cloneMonsterMoveDirSlice(g.thingMoveDir),
 		ThingMoveCount:       append([]int(nil), g.thingMoveCount...),
 		ThingJustAtk:         append([]bool(nil), g.thingJustAtk...),
@@ -543,9 +547,11 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingFloorState = append([]int64(nil), s.ThingFloorState...)
 	g.thingCeilState = append([]int64(nil), s.ThingCeilState...)
 	g.thingSupportValid = append([]bool(nil), s.ThingSupportValid...)
-	g.thingHP = append([]int(nil), s.ThingHP...)
-	g.thingAggro = append([]bool(nil), s.ThingAggro...)
-	g.thingCooldown = append([]int(nil), s.ThingCooldown...)
+		g.thingHP = append([]int(nil), s.ThingHP...)
+		g.thingAggro = append([]bool(nil), s.ThingAggro...)
+		g.thingTargetPlayer = append([]bool(nil), s.ThingTargetPlayer...)
+		g.thingTargetIdx = append([]int(nil), s.ThingTargetIdx...)
+		g.thingCooldown = append([]int(nil), s.ThingCooldown...)
 	g.thingMoveDir = restoreMonsterMoveDirSlice(s.ThingMoveDir)
 	g.thingMoveCount = append([]int(nil), s.ThingMoveCount...)
 	g.thingJustAtk = append([]bool(nil), s.ThingJustAtk...)

@@ -1021,7 +1021,7 @@ func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackO
 	switch outcome.target.kind {
 	case lineAttackTargetThing:
 		if damage > 0 {
-			g.damageShootableThing(outcome.target.idx, damage)
+			g.damageShootableThingFrom(outcome.target.idx, damage, actor.isPlayer, actor.thingIdx)
 		}
 		return true
 	case lineAttackTargetPlayer:
@@ -1157,6 +1157,10 @@ func monsterHitHeight(typ int16) int64 {
 }
 
 func (g *game) damageMonster(thingIdx int, damage int) {
+	g.damageMonsterFrom(thingIdx, damage, true, -1)
+}
+
+func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
 	if thingIdx < 0 || thingIdx >= len(g.thingHP) || damage <= 0 {
 		return
 	}
@@ -1170,6 +1174,11 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
+	}
+	if sourcePlayer {
+		g.setMonsterTargetPlayer(thingIdx)
+	} else if sourceThing >= 0 && sourceThing != thingIdx {
+		g.setMonsterTargetThing(thingIdx, sourceThing)
 	}
 	if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
 		// Doom P_CheckMissileRange: recently-hit monsters retaliate immediately.
@@ -1276,6 +1285,8 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingBlockNext = append(g.thingBlockNext, -1)
 	g.thingHP = append(g.thingHP, 0)
 	g.thingAggro = append(g.thingAggro, false)
+	g.thingTargetPlayer = append(g.thingTargetPlayer, false)
+	g.thingTargetIdx = append(g.thingTargetIdx, -1)
 	g.thingCooldown = append(g.thingCooldown, 0)
 	g.thingMoveDir = append(g.thingMoveDir, 0)
 	g.thingMoveCount = append(g.thingMoveCount, 0)

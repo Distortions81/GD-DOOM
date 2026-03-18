@@ -155,13 +155,15 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		return false
 	}
 	th := g.m.Things[thingIdx]
-	sx := int64(th.X) << fracBits
-	sy := int64(th.Y) << fracBits
-	sz := g.thingFloorZ(sx, sy) + monsterMuzzleOffsetZ(typ)
-	tx := g.p.x
-	ty := g.p.y
-	tz := g.p.z + (playerHeight / 2)
-	aimAngle := g.monsterAimAngleToPlayer(sx, sy)
+	sx, sy := g.thingPosFixed(thingIdx, th)
+	baseZ, _, _ := g.thingSupportState(thingIdx, th)
+	sz := baseZ + monsterMuzzleOffsetZ(typ)
+	tx, ty, tz, height, _, ok := g.monsterTargetPos(thingIdx)
+	if !ok {
+		return false
+	}
+	tz += height / 2
+	aimAngle := g.monsterAimAngleToTarget(thingIdx, sx, sy)
 
 	dx := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineCosine(aimAngle))
 	dy := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineSineAtAngle(aimAngle))
@@ -235,7 +237,7 @@ func (g *game) tickProjectiles() {
 			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
 			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
 			if dmg := projectileDamage(p); dmg > 0 {
-				g.damageShootableThing(thingHit.idx, dmg)
+				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing)
 			}
 			g.projectileSplashDamage(p, thingHit.x, thingHit.y, thingHit.z)
 			continue
@@ -425,7 +427,7 @@ func (g *game) applyBFGSpray(center uint32) {
 			damage += (doomrand.PRandom() & 7) + 1
 		}
 		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
-		g.damageShootableThing(outcome.target.idx, damage)
+			g.damageShootableThingFrom(outcome.target.idx, damage, true, -1)
 	}
 }
 
