@@ -103,14 +103,15 @@ RUN_LOG="${OUT_DIR}/demo-${RUN_LABEL}-${STAMP}.log"
 CMD=(
   "${BIN_PATH}"
   -wad "${WAD_PATH}"
-  -skill 5
-  -invuln
+  #-skill 5
+  #-invuln
   -sourceport-mode
-  -no-vsync
-  -width 3840
-  -height 2160
-  -map "${MAP_NAME}"
-  -demo "${DEMO_PATH}"
+  -demo-exit-on-death
+  #-no-vsync
+  -width 1920
+  -height 1080
+  #-map "${MAP_NAME}"
+  #-demo "${DEMO_PATH}"
   -cpuprofile "${CPU_PROFILE}"
 )
 if [[ ${WITH_MEM} -eq 1 ]]; then
