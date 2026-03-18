@@ -3,6 +3,8 @@
 <p align="center">
   "Modern / Source Port" mode depicted below
   <img src="e1m1.png" alt="E1M1 screenshot" width="900">
+  <br>
+  Play the shareware version: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
   
   A "Faithful" mode that strives to be the same as the DOS version is available as well via menu selection.
 </p>
