@@ -14,8 +14,8 @@ const (
 	faithfulBufferH        = doomLogicalH * 2
 	faithfulAspectLogicalH = 240
 
-	wasmMaxLayoutW = 1280
-	wasmMaxLayoutH = 720
+	wasmMaxLayoutW = 1920
+	wasmMaxLayoutH = 1080
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.

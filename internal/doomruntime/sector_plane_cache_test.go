@@ -106,3 +106,36 @@ func TestSectorPlaneCache_TracksLightingTypeAndBrightness(t *testing.T) {
 		t.Fatalf("updated cached light kind=%d want=%d", got, sectorLightEffectGlow)
 	}
 }
+
+func TestSectorLightForRender_PrefersCachedLight(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{Light: 96}},
+		},
+		sectorPlaneCache: []sectorPlaneCacheEntry{
+			{light: 144},
+		},
+	}
+
+	if got := g.sectorLightForRender(0, &g.m.Sectors[0]); got != 144 {
+		t.Fatalf("render light=%d want=144", got)
+	}
+}
+
+func TestPlane3DKeyForSector_UsesCachedLight(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{
+				FloorHeight: 0, CeilingHeight: 128, FloorPic: "FLOOR0_1", CeilingPic: "CEIL1_1", Light: 96,
+			}},
+		},
+		sectorPlaneCache: []sectorPlaneCacheEntry{
+			{light: 160},
+		},
+	}
+
+	key := g.plane3DKeyForSectorCached(0, &g.m.Sectors[0], true)
+	if key.light != 160 {
+		t.Fatalf("plane key light=%d want=160", key.light)
+	}
+}

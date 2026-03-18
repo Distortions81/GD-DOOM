@@ -3603,6 +3603,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			continue
 		}
 		frontIdx, backIdx := g.segSectorIndices(si)
+		frontLight := g.sectorLightForRender(frontIdx, front)
 		frontFloor := float64(front.FloorHeight)
 		frontCeil := float64(front.CeilingHeight)
 		if fz, cz, ok := g.sectorHeightRenderSnapshot(frontIdx); ok {
@@ -3619,7 +3620,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				backCeil = float64(cz) / fracUnit
 			}
 		}
-		ws := classifyWallPortal(front, back, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
+		ws := g.classifyWallPortalCached(frontIdx, front, back, backIdx, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 		worldTop := ws.WorldTop
 		worldBottom := ws.WorldBottom
 		worldHigh := ws.WorldHigh
@@ -3695,11 +3696,11 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		var ceilPlane *plane3DVisplane
 		if planesEnabled {
 			var created bool
-			floorPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, true), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
+			floorPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSectorCached(frontIdx, front, true), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
 			if created && floorPlane != nil {
 				planeOrder = append(planeOrder, floorPlane)
 			}
-			ceilPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSector(front, false), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
+			ceilPlane, created = g.ensurePlane3DForRangeCached(g.plane3DKeyForSectorCached(frontIdx, front, false), pp.prepass.Projection.MinX, pp.prepass.Projection.MaxX, g.viewW)
 			if created && ceilPlane != nil {
 				planeOrder = append(planeOrder, ceilPlane)
 			}
@@ -3804,7 +3805,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 							panic("missing required solid wall texture: " + texName)
 						}
 					} else {
-						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, front.Light, wallLightBias, texU, texMid, focal, tex)
+						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, frontLight, wallLightBias, texU, texMid, focal, tex)
 					}
 					g.setWallDepthColumnClosedQ(x, encodeDepthQ(f))
 					g.markSpriteClipColumnClosed(x, encodeDepthQ(f))
@@ -3827,7 +3828,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 								panic("missing required top wall texture: " + name)
 							}
 						} else {
-							g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, front.Light, wallLightBias, texU, topTexMid, focal, topTex)
+							g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, frontLight, wallLightBias, texU, topTexMid, focal, topTex)
 						}
 						ceilingClip[x] = mid
 					} else {
@@ -3852,7 +3853,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 								panic("missing required bottom wall texture: " + name)
 							}
 						} else {
-							g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, front.Light, wallLightBias, texU, botTexMid, focal, botTex)
+							g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, frontLight, wallLightBias, texU, botTexMid, focal, botTex)
 						}
 						floorClip[x] = mid
 					} else {
@@ -3903,7 +3904,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						TexMid:     midTexMid,
 					},
 					tex:              midTex,
-					light:            front.Light,
+					light:            frontLight,
 					occlusionY0:      int16(occY0),
 					occlusionY1:      int16(occY1),
 					occlusionDepthQ:  encodeDepthQ(centerDepth),
@@ -3957,7 +3958,21 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	screen.DrawImage(g.wallLayer, nil)
 }
 
+func (g *game) sectorLightForRender(secIdx int, sec *mapdata.Sector) int16 {
+	if g != nil && secIdx >= 0 {
+		return g.sectorLightLevelCached(secIdx)
+	}
+	if sec != nil {
+		return sec.Light
+	}
+	return 160
+}
+
 func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil, backFloor, backCeil float64) scene.WallPortalState {
+	return (*game)(nil).classifyWallPortalCached(-1, front, back, -1, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
+}
+
+func (g *game) classifyWallPortalCached(frontIdx int, front, back *mapdata.Sector, backIdx int, eyeZ, frontFloor, frontCeil, backFloor, backCeil float64) scene.WallPortalState {
 	if front == nil {
 		return scene.WallPortalState{}
 	}
@@ -3965,7 +3980,7 @@ func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil
 		FrontFloor: frontFloor, FrontCeil: frontCeil, BackFloor: backFloor, BackCeil: backCeil, EyeZ: eyeZ,
 		FrontFloorFlat:     normalizeFlatName(front.FloorPic),
 		FrontCeilingFlat:   normalizeFlatName(front.CeilingPic),
-		FrontLight:         front.Light,
+		FrontLight:         g.sectorLightForRender(frontIdx, front),
 		BackExists:         back != nil,
 		DoomSectorLighting: doomSectorLighting,
 		IsFrontCeilingSky:  isSkyFlatName(front.CeilingPic),
@@ -3973,7 +3988,7 @@ func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil
 	if back != nil {
 		in.BackFloorFlat = normalizeFlatName(back.FloorPic)
 		in.BackCeilingFlat = normalizeFlatName(back.CeilingPic)
-		in.BackLight = back.Light
+		in.BackLight = g.sectorLightForRender(backIdx, back)
 		in.IsBackCeilingSky = isSkyFlatName(back.CeilingPic)
 	}
 	return scene.ClassifyWallPortal(in)
@@ -4019,6 +4034,10 @@ func hasMarkedPlane3DData(planes []*plane3DVisplane) bool {
 }
 
 func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
+	return g.plane3DKeyForSectorCached(-1, sec, floor)
+}
+
+func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor bool) plane3DKey {
 	key := plane3DKey{
 		light: 160,
 		floor: floor,
@@ -4026,7 +4045,7 @@ func (g *game) plane3DKeyForSector(sec *mapdata.Sector, floor bool) plane3DKey {
 	if sec == nil {
 		return key
 	}
-	key.light = sec.Light
+	key.light = g.sectorLightForRender(secIdx, sec)
 	pic := sec.CeilingPic
 	key.height = sec.CeilingHeight
 	if floor {
@@ -12051,7 +12070,9 @@ func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near
 		hasTwoSidedMid = c.hasTwoSidedMidTex
 		frontSectorIdx = c.frontSectorIdx
 		backSectorIdx = c.backSectorIdx
-		if !hasTwoSidedMid && c.portalSplitStatic {
+		animatedLight := g.sectorLightKindCached(frontSectorIdx) != sectorLightEffectNone ||
+			g.sectorLightKindCached(backSectorIdx) != sectorLightEffectNone
+		if !hasTwoSidedMid && c.portalSplitStatic && !animatedLight {
 			d := g.linedefDecisionPseudo3D(ld)
 			if !d.Visible && !c.portalSplit {
 				pp.ld = ld
@@ -12111,9 +12132,11 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 		frontSectorIdx >= len(g.m.Sectors) || backSectorIdx >= len(g.m.Sectors) {
 		return false
 	}
+	animatedLight := g.sectorLightKindCached(frontSectorIdx) != sectorLightEffectNone ||
+		g.sectorLightKindCached(backSectorIdx) != sectorLightEffectNone
 	if cacheOK && segIdx >= 0 && segIdx < len(g.wallSegStaticCache) {
 		c := &g.wallSegStaticCache[segIdx]
-		if c.portalSplitStatic {
+		if c.portalSplitStatic && !animatedLight {
 			return c.portalSplit
 		}
 		if c.lightTickValid && c.lightTick == g.worldTic {

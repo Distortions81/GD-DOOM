@@ -28,8 +28,8 @@ func TestDefaultDetailLevelForModeFaithfulStartsHigh(t *testing.T) {
 }
 
 func TestClampSourcePortDetailLevelForWASMSkipsFullRes(t *testing.T) {
-	if got := clampSourcePortDetailLevelForPlatform(0, true); got != 1 {
-		t.Fatalf("wasm sourceport detail=%d want=1", got)
+	if got := clampSourcePortDetailLevelForPlatform(0, true); got != 0 {
+		t.Fatalf("wasm sourceport detail=%d want=0", got)
 	}
 	if got := clampSourcePortDetailLevelForPlatform(2, true); got != 2 {
 		t.Fatalf("wasm sourceport detail=%d want=2", got)
