@@ -574,6 +574,8 @@ type game struct {
 	holeFillPolys        []holeFillPoly
 	sectorPlaneTris      [][]worldTri
 	sectorPlaneCache     []sectorPlaneCacheEntry
+	sectorLightCacheTick int
+	sectorLightCacheValid bool
 	orphanSubSector      []bool
 	orphanRepairQueue    []orphanRepairCandidate
 
@@ -14725,6 +14727,7 @@ func (g *game) sectorLightingSnapshot(sec int) (int16, uint8, sectorLightEffectK
 func (g *game) initSectorPlaneLevelCache() {
 	if g == nil || g.m == nil || len(g.m.Sectors) == 0 {
 		g.sectorPlaneCache = nil
+		g.sectorLightCacheValid = false
 		return
 	}
 	if len(g.sectorPlaneTris) != len(g.m.Sectors) {
@@ -14747,6 +14750,8 @@ func (g *game) initSectorPlaneLevelCache() {
 			texTick:   -1,
 		}
 	}
+	g.sectorLightCacheTick = g.worldTic
+	g.sectorLightCacheValid = true
 }
 
 func (g *game) markDynamicSectorPlaneCacheDirty(sec int) {
@@ -14799,6 +14804,15 @@ func (g *game) refreshSectorPlaneCacheLighting() {
 		g.sectorPlaneCache[sec].lightMul = lightMul
 		g.sectorPlaneCache[sec].lightKind = lightKind
 	}
+	g.sectorLightCacheTick = g.worldTic
+	g.sectorLightCacheValid = true
+}
+
+func (g *game) ensureSectorPlaneCacheLightingFresh() {
+	if g == nil || !g.sectorLightCacheValid || g.sectorLightCacheTick == g.worldTic {
+		return
+	}
+	g.refreshSectorPlaneCacheLighting()
 }
 
 func (g *game) ensureSectorPlaneLevelCacheFresh() {
@@ -14811,7 +14825,7 @@ func (g *game) ensureSectorPlaneLevelCacheFresh() {
 	if len(g.sectorPlaneCache) != len(g.m.Sectors) {
 		g.initSectorPlaneLevelCache()
 	}
-	g.refreshSectorPlaneCacheLighting()
+	g.ensureSectorPlaneCacheLightingFresh()
 	g.refreshDynamicSectorPlaneCache()
 }
 
@@ -14848,6 +14862,9 @@ func (g *game) sectorPlaneTrisCached(sec int) []worldTri {
 }
 
 func (g *game) sectorLightLevelCached(sec int) int16 {
+	if g != nil && g.sectorLightCacheValid {
+		g.ensureSectorPlaneCacheLightingFresh()
+	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
 		return g.sectorPlaneCache[sec].light
 	}
@@ -14861,6 +14878,9 @@ func (g *game) sectorLightMulCached(sec int) uint32 {
 	if g.playerInfraredBright() {
 		return 256
 	}
+	if g != nil && g.sectorLightCacheValid {
+		g.ensureSectorPlaneCacheLightingFresh()
+	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
 		return uint32(g.sectorPlaneCache[sec].lightMul)
 	}
@@ -14868,6 +14888,9 @@ func (g *game) sectorLightMulCached(sec int) uint32 {
 }
 
 func (g *game) sectorLightKindCached(sec int) sectorLightEffectKind {
+	if g != nil && g.sectorLightCacheValid {
+		g.ensureSectorPlaneCacheLightingFresh()
+	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
 		return g.sectorPlaneCache[sec].lightKind
 	}

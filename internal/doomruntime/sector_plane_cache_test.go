@@ -52,6 +52,30 @@ func TestSectorPlaneCache_RebuildsDynamicSectorOnHeightChange(t *testing.T) {
 	}
 }
 
+func TestSectorPlaneCacheLightingRefreshesPerTick(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{Light: 160}},
+		},
+		worldTic: 1,
+	}
+
+	g.initSectorPlaneLevelCache()
+	if got := g.sectorLightLevelCached(0); got != 160 {
+		t.Fatalf("initial cached light=%d want=160", got)
+	}
+
+	g.m.Sectors[0].Light = 96
+	if got := g.sectorLightLevelCached(0); got != 160 {
+		t.Fatalf("same-tick cached light=%d want=160", got)
+	}
+
+	g.worldTic = 2
+	if got := g.sectorLightLevelCached(0); got != 96 {
+		t.Fatalf("next-tick cached light=%d want=96", got)
+	}
+}
+
 func TestSectorPlaneCache_StaticSectorIgnoresDirtyMark(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

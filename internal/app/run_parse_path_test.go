@@ -31,6 +31,32 @@ func TestResolveIWADAliasPathFallsBackToDoomAliasCaseInsensitively(t *testing.T)
 	}
 }
 
+func TestResolveIWADAliasPathFallsBackToDoomUAliasCaseInsensitively(t *testing.T) {
+	td := t.TempDir()
+	alias := filepath.Join(td, "doomu.wad")
+	if err := os.WriteFile(alias, []byte("wad"), 0o644); err != nil {
+		t.Fatalf("write alias wad: %v", err)
+	}
+	missing := filepath.Join(td, "DOOM1.WAD")
+	got := resolveIWADAliasPath(missing)
+	if got != alias {
+		t.Fatalf("resolveIWADAliasPath() = %q want %q", got, alias)
+	}
+}
+
+func TestResolveIWADAliasPathMapsDoomToDoomUCaseInsensitively(t *testing.T) {
+	td := t.TempDir()
+	alias := filepath.Join(td, "doomu.wad")
+	if err := os.WriteFile(alias, []byte("wad"), 0o644); err != nil {
+		t.Fatalf("write alias wad: %v", err)
+	}
+	missing := filepath.Join(td, "DOOM.WAD")
+	got := resolveIWADAliasPath(missing)
+	if got != alias {
+		t.Fatalf("resolveIWADAliasPath() = %q want %q", got, alias)
+	}
+}
+
 func TestResolveIWADAliasPathResolvesNonDoomPathCaseInsensitively(t *testing.T) {
 	td := t.TempDir()
 	actual := filepath.Join(td, "custom.wad")
@@ -54,14 +80,14 @@ func TestResolveIWADAliasPathReturnsOriginalWhenNoCandidateExists(t *testing.T) 
 
 func TestDetectAvailableIWADChoicesSkipsSharewareUntilLast(t *testing.T) {
 	td := t.TempDir()
-	for _, name := range []string{"doom1.wad", "doom.wad", "doom2.wad", "tnt.wad", "plutonia.wad"} {
+	for _, name := range []string{"doom1.wad", "doomu.wad", "doom2.wad", "tnt.wad", "plutonia.wad"} {
 		if err := os.WriteFile(filepath.Join(td, name), []byte("wad"), 0o644); err != nil {
 			t.Fatalf("write %s: %v", name, err)
 		}
 	}
 
 	choices := detectAvailableIWADChoices(td)
-	want := []string{"doom.wad", "doom2.wad", "tnt.wad", "plutonia.wad", "doom1.wad"}
+	want := []string{"doomu.wad", "doom2.wad", "tnt.wad", "plutonia.wad", "doom1.wad"}
 	if len(choices) != len(want) {
 		t.Fatalf("choices len=%d want=%d", len(choices), len(want))
 	}
@@ -69,6 +95,26 @@ func TestDetectAvailableIWADChoicesSkipsSharewareUntilLast(t *testing.T) {
 		if got := filepath.Base(choice.Path); got != want[i] {
 			t.Fatalf("choice %d base=%q want=%q", i, got, want[i])
 		}
+	}
+}
+
+func TestDetectAvailableIWADChoicesDeduplicatesDoomAndDoomUAliases(t *testing.T) {
+	td := t.TempDir()
+	for _, name := range []string{"doom.wad", "doomu.wad"} {
+		if err := os.WriteFile(filepath.Join(td, name), []byte("wad"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	choices := detectAvailableIWADChoices(td)
+	if len(choices) != 1 {
+		t.Fatalf("choices len=%d want=1", len(choices))
+	}
+	if got := filepath.Base(choices[0].Path); got != "doomu.wad" {
+		t.Fatalf("choice base=%q want=doomu.wad", got)
+	}
+	if got := choices[0].Label; got != "The Ultimate DOOM" {
+		t.Fatalf("choice label=%q want %q", got, "The Ultimate DOOM")
 	}
 }
 

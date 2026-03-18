@@ -1468,15 +1468,20 @@ func resolveIWADAliasPath(path string) string {
 		return resolved
 	}
 	base := strings.ToUpper(filepath.Base(trimmed))
-	if base != "DOOM1.WAD" {
+	var aliases []string
+	switch base {
+	case "DOOM1.WAD":
+		aliases = []string{"DOOMU.WAD", "DOOM.WAD", "DOOM2.WAD"}
+	case "DOOMU.WAD", "DOOM.WAD":
+		aliases = []string{"DOOMU.WAD", "DOOM.WAD"}
+	default:
 		return path
 	}
 	dir := filepath.Dir(trimmed)
-	if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, "DOOM.WAD")); ok {
-		return alias
-	}
-	if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, "DOOM2.WAD")); ok {
-		return alias
+	for _, candidate := range aliases {
+		if alias, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
+			return alias
+		}
 	}
 	return path
 }
@@ -1504,42 +1509,55 @@ type iwadChoice struct {
 	Label string
 }
 
+type knownIWADChoice struct {
+	Label string
+	Paths []string
+}
+
 func detectAvailableIWADChoices(dir string) []iwadChoice {
 	known := knownIWADChoices()
 	out := make([]iwadChoice, 0, len(known))
 	for _, k := range known {
-		if p, ok := resolvePathCaseInsensitive(filepath.Join(dir, k.Path)); ok {
-			out = append(out, iwadChoice{
-				Path:  p,
-				Label: k.Label,
-			})
-			continue
+		for _, candidate := range k.Paths {
+			if p, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
+				out = append(out, iwadChoice{
+					Path:  p,
+					Label: k.Label,
+				})
+				goto nextKnownIWAD
+			}
 		}
-		if _, ok := wad.EmbeddedDataForPath(k.Path); ok {
-			out = append(out, iwadChoice{
-				Path:  k.Path,
-				Label: k.Label,
-			})
+		for _, candidate := range k.Paths {
+			if _, ok := wad.EmbeddedDataForPath(candidate); ok {
+				out = append(out, iwadChoice{
+					Path:  candidate,
+					Label: k.Label,
+				})
+				goto nextKnownIWAD
+			}
 		}
+	nextKnownIWAD:
 	}
 	return out
 }
 
-func knownIWADChoices() []iwadChoice {
-	return []iwadChoice{
-		{Path: "DOOM.WAD", Label: "The Ultimate DOOM"},
-		{Path: "DOOM2.WAD", Label: "DOOM II: Hell on Earth"},
-		{Path: "TNT.WAD", Label: "Final DOOM: TNT"},
-		{Path: "PLUTONIA.WAD", Label: "Final DOOM: Plutonia"},
-		{Path: "DOOM1.WAD", Label: "DOOM Shareware"},
+func knownIWADChoices() []knownIWADChoice {
+	return []knownIWADChoice{
+		{Label: "The Ultimate DOOM", Paths: []string{"DOOMU.WAD", "DOOM.WAD"}},
+		{Label: "DOOM II: Hell on Earth", Paths: []string{"DOOM2.WAD"}},
+		{Label: "Final DOOM: TNT", Paths: []string{"TNT.WAD"}},
+		{Label: "Final DOOM: Plutonia", Paths: []string{"PLUTONIA.WAD"}},
+		{Label: "DOOM Shareware", Paths: []string{"DOOM1.WAD"}},
 	}
 }
 
 func knownIWADChoiceForPath(path string) (iwadChoice, bool) {
 	base := strings.ToUpper(filepath.Base(strings.TrimSpace(path)))
 	for _, choice := range knownIWADChoices() {
-		if strings.EqualFold(choice.Path, base) {
-			return choice, true
+		for _, candidate := range choice.Paths {
+			if strings.EqualFold(candidate, base) {
+				return iwadChoice{Path: candidate, Label: choice.Label}, true
+			}
 		}
 	}
 	return iwadChoice{}, false
@@ -2044,14 +2062,14 @@ func pickerConfirmHeld() bool {
 }
 
 func pickerAssetWADPath(choices []iwadChoice) string {
-	for _, want := range []string{"DOOM1.WAD", "DOOM.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD"} {
+	for _, want := range []string{"DOOM1.WAD", "DOOMU.WAD", "DOOM.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD"} {
 		for _, c := range choices {
 			if strings.EqualFold(filepath.Base(c.Path), want) {
 				return c.Path
 			}
 		}
 	}
-	for _, want := range []string{"DOOM1.WAD", "DOOM.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD"} {
+	for _, want := range []string{"DOOM1.WAD", "DOOMU.WAD", "DOOM.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD"} {
 		if p, ok := resolvePathCaseInsensitive(want); ok {
 			return p
 		}
