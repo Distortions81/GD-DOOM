@@ -85,3 +85,21 @@ scripts/pprof_graphs.sh
 ```
 
 The extractor saves `DEMO1` from `DOOM1.WAD` to `demos/DOOM1-DEMO1.lmp`, which is the default input for the profiling script. The graph helper renders SVG call graphs from the newest CPU and memory profiles in `./profiles`.
+
+## WebAssembly Build
+
+Build the browser target with:
+
+```bash
+scripts/build_wasm.sh
+```
+
+The script writes assets to `build/wasm` and auto-applies Binaryen's `wasm-opt` when it is installed on `PATH`. You can control that step explicitly:
+
+```bash
+WASM_OPT=0 scripts/build_wasm.sh
+WASM_OPT=1 WASM_OPT_LEVEL=-O3 scripts/build_wasm.sh
+```
+
+`WASM_OPT=1` makes `wasm-opt` required. If you leave `WASM_OPT` unset, the script uses `auto` mode and skips optimization when Binaryen is not installed.
+The optimizer currently defaults to `WASM_OPT_FEATURES=--all-features` so Binaryen can accept Go's post-MVP wasm output; override that env var if you need a stricter feature set.
