@@ -204,3 +204,43 @@ func TestTickDoors_NormalDoorReopensWhenPlayerOverlapsDoorwayFromAdjacentSector(
 		t.Fatalf("blocking normal door should reverse open, direction=%d", d.direction)
 	}
 }
+
+func TestEVVerticalDoor_MonsterReopensClosingDoorAndAdvancesSameTic(t *testing.T) {
+	g := newDoorTimingGame(1)
+	g.m.Linedefs[0].Special = 1
+	g.sectorCeil[0] = 64 * fracUnit
+	g.doors[0] = &doorThinker{
+		sector:    0,
+		typ:       doorNormal,
+		direction: -1,
+		topHeight: 72 * fracUnit,
+		topWait:   vDoorWaitTic,
+		speed:     2 * fracUnit,
+	}
+
+	if !g.evVerticalDoor(0, false) {
+		t.Fatal("monster failed to reactivate active manual door")
+	}
+	if got := g.sectorCeil[0]; got != 66*fracUnit {
+		t.Fatalf("same-tic reopen ceil=%d want=%d", got, 66*fracUnit)
+	}
+	if g.doors[0] == nil || g.doors[0].direction != 1 {
+		t.Fatalf("door direction=%v want=1", g.doors[0])
+	}
+}
+
+func TestEVVerticalDoor_MonsterStartsManualDoorAndAdvancesSameTic(t *testing.T) {
+	g := newDoorTimingGame(1)
+	g.m.Linedefs[0].Special = 1
+	g.sectorCeil[0] = 64 * fracUnit
+
+	if !g.evVerticalDoor(0, false) {
+		t.Fatal("monster failed to activate manual door")
+	}
+	if got := g.sectorCeil[0]; got != 66*fracUnit {
+		t.Fatalf("same-tic start ceil=%d want=%d", got, 66*fracUnit)
+	}
+	if g.doors[0] == nil || g.doors[0].direction != 1 {
+		t.Fatalf("door direction=%v want=1", g.doors[0])
+	}
+}

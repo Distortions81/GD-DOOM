@@ -190,99 +190,121 @@ func (g *game) tickPlayerMobjState() {
 	}
 }
 
-func (g *game) tickDoors() {
-	setDoorCeiling := func(sec int, z int64) {
-		g.setSectorCeilingHeight(sec, z)
+func (g *game) setDoorCeiling(sec int, z int64) {
+	if wantSec := os.Getenv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
+		if wantTic := os.Getenv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
+			d := g.doors[sec]
+			fmt.Printf("door-debug phase=set tic=%d world=%d sec=%d old=%d new=%d dir=%d typ=%d speed=%d top=%d count=%d\n",
+				g.demoTick-1, g.worldTic, sec, g.sectorCeil[sec], z, d.direction, d.typ, d.speed, d.topHeight, d.topCountdown)
+		}
 	}
-	doorWouldCrushPlayer := func(sec int, nextCeil int64) bool {
-		if g == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
-			return false
-		}
-		oldCeil := g.sectorCeil[sec]
-		if nextCeil >= oldCeil {
-			return false
-		}
-		oldMapCeil := int16(0)
-		if g.m != nil && sec < len(g.m.Sectors) {
-			oldMapCeil = g.m.Sectors[sec].CeilingHeight
-			g.m.Sectors[sec].CeilingHeight = int16(nextCeil >> fracBits)
-		}
-		g.sectorCeil[sec] = nextCeil
-		tmfloor, tmceil, _, ok := g.checkPositionFor(g.p.x, g.p.y, false)
-		g.sectorCeil[sec] = oldCeil
-		if g.m != nil && sec < len(g.m.Sectors) {
-			g.m.Sectors[sec].CeilingHeight = oldMapCeil
-		}
-		if !ok {
-			return true
-		}
-		if tmceil-tmfloor < playerHeight {
-			return true
-		}
-		playerTop := g.p.z + playerHeight
-		return tmceil-g.p.z < playerHeight || tmceil < playerTop
+	g.setSectorCeilingHeight(sec, z)
+}
+
+func (g *game) doorWouldCrushPlayer(sec int, nextCeil int64) bool {
+	if g == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return false
 	}
-	for sec, d := range g.doors {
-		switch d.direction {
-		case 0:
-			d.topCountdown--
-			if d.topCountdown <= 0 {
-				switch d.typ {
-				case doorBlazeRaise, doorNormal:
-					d.direction = -1
-					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-				case doorClose30ThenOpen:
-					d.direction = 1
-					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-				}
-			}
-		case 2:
-			d.topCountdown--
-			if d.topCountdown <= 0 && d.typ == doorRaiseIn5Mins {
+	oldCeil := g.sectorCeil[sec]
+	if nextCeil >= oldCeil {
+		return false
+	}
+	oldMapCeil := int16(0)
+	if g.m != nil && sec < len(g.m.Sectors) {
+		oldMapCeil = g.m.Sectors[sec].CeilingHeight
+		g.m.Sectors[sec].CeilingHeight = int16(nextCeil >> fracBits)
+	}
+	g.sectorCeil[sec] = nextCeil
+	tmfloor, tmceil, _, ok := g.checkPositionFor(g.p.x, g.p.y, false)
+	g.sectorCeil[sec] = oldCeil
+	if g.m != nil && sec < len(g.m.Sectors) {
+		g.m.Sectors[sec].CeilingHeight = oldMapCeil
+	}
+	if !ok {
+		return true
+	}
+	if tmceil-tmfloor < playerHeight {
+		return true
+	}
+	playerTop := g.p.z + playerHeight
+	return tmceil-g.p.z < playerHeight || tmceil < playerTop
+}
+
+func (g *game) tickDoor(sec int, d *doorThinker) {
+	if d == nil {
+		return
+	}
+	if wantSec := os.Getenv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
+		if wantTic := os.Getenv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
+			fmt.Printf("door-debug phase=enter tic=%d world=%d sec=%d ceil=%d dir=%d typ=%d speed=%d top=%d count=%d floor=%d\n",
+				g.demoTick-1, g.worldTic, sec, g.sectorCeil[sec], d.direction, d.typ, d.speed, d.topHeight, d.topCountdown, g.sectorFloor[sec])
+		}
+	}
+	switch d.direction {
+	case 0:
+		d.topCountdown--
+		if d.topCountdown <= 0 {
+			switch d.typ {
+			case doorBlazeRaise, doorNormal:
+				d.direction = -1
+				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+			case doorClose30ThenOpen:
 				d.direction = 1
-				d.typ = doorNormal
 				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 			}
-		case -1:
-			next := g.sectorCeil[sec] - d.speed
-			if doorWouldCrushPlayer(sec, next) {
-				switch d.typ {
-				case doorBlazeClose, doorClose:
-					// Vanilla close-only doors keep trying to close, but do not
-					// advance through blocking actors.
-				default:
-					d.direction = 1
-					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-				}
-				continue
-			}
-			if next <= g.sectorFloor[sec] {
-				setDoorCeiling(sec, g.sectorFloor[sec])
-				switch d.typ {
-				case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
-					delete(g.doors, sec)
-				case doorClose30ThenOpen:
-					d.direction = 0
-					d.topCountdown = 35 * 30
-				}
-			} else {
-				setDoorCeiling(sec, next)
-			}
-		case 1:
-			next := g.sectorCeil[sec] + d.speed
-			if next >= d.topHeight {
-				setDoorCeiling(sec, d.topHeight)
-				switch d.typ {
-				case doorBlazeRaise, doorNormal:
-					d.direction = 0
-					d.topCountdown = d.topWait
-				case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
-					delete(g.doors, sec)
-				}
-			} else {
-				setDoorCeiling(sec, next)
-			}
 		}
+	case 2:
+		d.topCountdown--
+		if d.topCountdown <= 0 && d.typ == doorRaiseIn5Mins {
+			d.direction = 1
+			d.typ = doorNormal
+			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+		}
+	case -1:
+		next := g.sectorCeil[sec] - d.speed
+		if g.doorWouldCrushPlayer(sec, next) {
+			switch d.typ {
+			case doorBlazeClose, doorClose:
+				// Vanilla close-only doors keep trying to close, but do not
+				// advance through blocking actors.
+			default:
+				d.direction = 1
+				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+			}
+			return
+		}
+		if next <= g.sectorFloor[sec] {
+			g.setDoorCeiling(sec, g.sectorFloor[sec])
+			switch d.typ {
+			case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
+				delete(g.doors, sec)
+			case doorClose30ThenOpen:
+				d.direction = 0
+				d.topCountdown = 35 * 30
+			}
+		} else {
+			g.setDoorCeiling(sec, next)
+		}
+	case 1:
+		next := g.sectorCeil[sec] + d.speed
+		if next >= d.topHeight {
+			g.setDoorCeiling(sec, d.topHeight)
+			switch d.typ {
+			case doorBlazeRaise, doorNormal:
+				d.direction = 0
+				d.topCountdown = d.topWait
+			case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
+				delete(g.doors, sec)
+			}
+		} else {
+			g.setDoorCeiling(sec, next)
+		}
+	}
+}
+
+func (g *game) tickDoors() {
+	for sec, d := range g.doors {
+		g.tickDoor(sec, d)
 	}
 }
 
@@ -502,6 +524,12 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 
 		opentop, openbottom, lowfloor, openrange := g.lineOpening(ld)
+		if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
+			if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+				fmt.Printf("support-debug phase=line tic=%d world=%d idx=%d line=%d sec=%d front=%d back=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d tmfloor=%d tmceil=%d\n",
+					g.demoTick-1, g.worldTic, moverThingIdx, ld.idx, sec, frontSec, backSec, openbottom, opentop, openrange, lowfloor, tmfloor, tmceil)
+			}
+		}
 		if openrange <= 0 {
 			if probeEnabled {
 				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=openrange floor=%d ceil=%d drop=%d openbottom=%d opentop=%d", ld.idx, tmfloor, tmceil, tmdrop, openbottom, opentop), x, y)
@@ -549,6 +577,12 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	}
 	if probeEnabled {
 		g.debugPlayerProbe(fmt.Sprintf("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop), x, y)
+	}
+	if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
+		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+			fmt.Printf("support-debug phase=final tic=%d world=%d idx=%d x=%d y=%d sec=%d tmfloor=%d tmceil=%d tmdrop=%d ok=true radius=%d\n",
+				g.demoTick-1, g.worldTic, moverThingIdx, x, y, sec, tmfloor, tmceil, tmdrop, radius)
+		}
 	}
 	return tmfloor, tmceil, tmdrop, true
 }

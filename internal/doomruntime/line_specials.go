@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"fmt"
+	"os"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -377,6 +378,12 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 		height := g.thingCurrentHeight(i, th)
 		if z+height > tmceil {
 			z = tmceil - height
+		}
+	}
+	if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(i) {
+		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+			fmt.Printf("support-debug phase=heightclip tic=%d world=%d idx=%d type=%d x=%d y=%d oldz=%d oldfloor=%d tmfloor=%d tmceil=%d newz=%d sec=%d\n",
+				g.demoTick-1, g.worldTic, i, th.Type, x, y, oldZ, oldFloorZ, tmfloor, tmceil, z, g.sectorAt(x, y))
 		}
 	}
 	g.setThingSupportState(i, z, tmfloor, tmceil)

@@ -424,6 +424,14 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 	for _, item := range ordered {
 		out = append(out, item.mobj)
 	}
+	if want := os.Getenv("GD_DEBUG_TRACE_MOBJ_TIC"); want != "" && fmt.Sprint(g.demoTick-1) == want {
+		for idx, item := range ordered {
+			if idx == 39 {
+				fmt.Printf("trace-mobj-debug tic=%d ordinal=%d order=%d type=%d x=%d y=%d sector=%d\n",
+					g.demoTick-1, idx, item.order, item.mobj.Type, item.mobj.X, item.mobj.Y, item.mobj.Sector)
+			}
+		}
+	}
 	return out
 }
 
@@ -460,7 +468,7 @@ func (g *game) demoTraceSpecials() []map[string]any {
 	doorKeys := sortedIntKeys(g.doors)
 	for _, sec := range doorKeys {
 		d := g.doors[sec]
-		out = append(out, map[string]any{
+		entry := map[string]any{
 			"kind":         "door",
 			"sector":       sec,
 			"type":         int(d.typ),
@@ -469,7 +477,11 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"direction":    d.direction,
 			"topwait":      d.topWait,
 			"topcountdown": d.topCountdown,
-		})
+		}
+		if os.Getenv("GD_TRACE_DEBUG_DOOR_HEIGHT") != "" && sec >= 0 && sec < len(g.sectorCeil) {
+			entry["currentceil"] = g.sectorCeil[sec]
+		}
+		out = append(out, entry)
 	}
 	floorKeys := sortedIntKeys(g.floors)
 	for _, sec := range floorKeys {
