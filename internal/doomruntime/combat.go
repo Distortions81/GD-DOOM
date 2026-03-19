@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -475,6 +476,16 @@ func (g *game) fireShotgun() bool {
 	slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
 	hit := false
 	for i := 0; i < 7; i++ {
+		if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+			var wantTic, wantPellet int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantPellet < 0 || wantPellet == i) {
+					rnd, prnd := doomrand.State()
+					fmt.Printf("player-gunshot-debug tic=%d world=%d pellet=%d pre rnd=%d prnd=%d slope=%d angle=%d\n",
+						g.demoTick-1, g.worldTic, i, rnd, prnd, slope, g.p.angle)
+				}
+			}
+		}
 		if g.fireGunShot(g.p.angle, shotgunRange, slope, false) {
 			hit = true
 		}
@@ -565,7 +576,33 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope int64, accurate bo
 		angle = addDoomAngleSpread(baseAngle, doomGunSpreadShift)
 	}
 	actor := g.playerLineAttackActor()
+	if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+		var wantTic, wantPellet int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("player-gunshot-debug tic=%d world=%d damage=%d accurate=%t angle=%d slope=%d postspread rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, damage, accurate, angle, slope, rnd, prnd)
+				if wantPellet >= 0 {
+					g.debugLineAttackIntercepts(actor, angle, rng, slope)
+				}
+			}
+		}
+	}
 	outcome := g.lineAttackTrace(actor, angle, rng, slope, true)
+	if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+		var wantTic, wantPellet int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
+			_ = wantPellet
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("player-gunshot-debug tic=%d world=%d target_kind=%d target_idx=%d dist=%d impact=(%d,%d,%d) puff=%t blood=%t rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, outcome.target.kind, outcome.target.idx, outcome.dist,
+					outcome.impactX, outcome.impactY, outcome.impactZ, outcome.spawnPuff, outcome.spawnBlood,
+					rnd, prnd)
+			}
+		}
+	}
 	return g.applyLineAttackOutcome(actor, outcome, damage)
 }
 
@@ -1387,6 +1424,24 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	thrust := int64(damage) * (fracUnit >> 3) * 100 / int64(mass)
 	momx := fixedMul(thrust, doomFineCosine(angle))
 	momy := fixedMul(thrust, doomFineSineAtAngle(angle))
+	if want := os.Getenv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && os.Getenv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
+		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+			fmt.Printf("barrel-thrust-debug tic=%d world=%d idx=%d src=(%d,%d) target=(%d,%d) angle=%d thrust=%d add=(%d,%d) prev=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, thingIdx, ix, iy, tx, ty, angle, thrust, momx, momy,
+				func() int64 {
+					if thingIdx < len(g.thingMomX) {
+						return g.thingMomX[thingIdx]
+					}
+					return 0
+				}(),
+				func() int64 {
+					if thingIdx < len(g.thingMomY) {
+						return g.thingMomY[thingIdx]
+					}
+					return 0
+				}())
+		}
+	}
 	if thingIdx < len(g.thingMomX) {
 		momx += g.thingMomX[thingIdx]
 	}

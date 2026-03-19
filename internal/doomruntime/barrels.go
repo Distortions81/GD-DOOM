@@ -1,8 +1,10 @@
 package doomruntime
 
 import (
+	"fmt"
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"os"
 )
 
 const (
@@ -81,6 +83,7 @@ func (g *game) tickBarrel(i int, th mapdata.Thing) {
 	if i < len(g.thingCollected) && g.thingCollected[i] {
 		return
 	}
+	g.tickMonsterMomentum(i, th)
 	if i < len(g.thingDead) && g.thingDead[i] {
 		g.tickBarrelDeathState(i, th)
 		return
@@ -156,16 +159,27 @@ func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer b
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
+	if want := os.Getenv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && os.Getenv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
+		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+			rnd, prnd := doomrand.State()
+			fmt.Printf("barrel-damage-debug tic=%d world=%d idx=%d type=%d damage=%d hp_before=%d source_player=%t source_thing=%d rnd=%d prnd=%d\n",
+				g.demoTick-1, g.worldTic, thingIdx, g.m.Things[thingIdx].Type, damage, g.thingHP[thingIdx], sourcePlayer, sourceThing, rnd, prnd)
+		}
+	}
 	typ := g.m.Things[thingIdx].Type
 	switch {
 	case isMonster(typ):
 		g.damageMonsterFrom(thingIdx, damage, sourcePlayer, sourceThing)
 	case isBarrelThingType(typ):
-		g.damageBarrel(thingIdx, damage)
+		g.damageBarrelFrom(thingIdx, damage, sourcePlayer, sourceThing)
 	}
 }
 
 func (g *game) damageBarrel(thingIdx int, damage int) {
+	g.damageBarrelFrom(thingIdx, damage, true, -1)
+}
+
+func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -175,8 +189,14 @@ func (g *game) damageBarrel(thingIdx int, damage int) {
 	if g.thingDead[thingIdx] || g.thingHP[thingIdx] <= 0 {
 		return
 	}
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing)
 	g.thingHP[thingIdx] -= damage
+	if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
+		g.thingReactionTics[thingIdx] = 0
+	}
 	if g.thingHP[thingIdx] > 0 {
+		_ = doomrand.PRandom()
+		g.maybeRetargetMonsterAfterDamage(thingIdx, g.m.Things[thingIdx].Type, sourcePlayer, sourceThing)
 		return
 	}
 	g.thingDead[thingIdx] = true
