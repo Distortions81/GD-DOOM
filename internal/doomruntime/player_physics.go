@@ -109,12 +109,38 @@ func (g *game) tickPlayerSpecialSector() {
 		return
 	}
 	g.trackSecrets()
+	if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				sec := g.sectorAt(g.p.x, g.p.y)
+				special := int16(-1)
+				if g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
+					special = g.m.Sectors[sec].Special
+				}
+				fmt.Printf("world-player-debug tic=%d world=%d sec=%d special=%d suit=%d health=%d\n",
+					g.demoTick-1, g.worldTic, sec, special, g.inventory.RadSuitTics, g.stats.Health)
+			}
+		}
+	}
 	g.applySectorHazardDamage()
 }
 
 func (g *game) tickPlayerCounters() {
 	if g == nil {
 		return
+	}
+	if g.playerPainStateTics > 0 {
+		g.playerPainStateTics--
+		if g.playerPainStateTics == 0 {
+			switch g.playerPainStatePhase {
+			case 1:
+				g.playerPainStatePhase = 2
+				g.playerPainStateTics = 4
+			default:
+				g.playerPainStatePhase = 0
+			}
+		}
 	}
 	if g.p.reactionTime > 0 {
 		g.p.reactionTime--

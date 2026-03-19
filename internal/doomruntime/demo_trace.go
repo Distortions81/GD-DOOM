@@ -36,6 +36,11 @@ type demoTracePlayer struct {
 	MOHealth      int    `json:"mo_health"`
 }
 
+const (
+	doomStatePlayerPain1 = 156
+	doomStatePlayerPain2 = 157
+)
+
 type demoTraceMobj struct {
 	Type         int    `json:"type"`
 	X            int64  `json:"x"`
@@ -227,6 +232,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		return nil
 	}
 	out := make([]demoTraceMobj, 0, 1+len(g.m.Things)+len(g.projectiles))
+	playerState, playerTics := g.demoTracePlayerMobjState()
 	out = append(out, demoTraceMobj{
 		Type:         0,
 		X:            g.p.x,
@@ -240,8 +246,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		CeilingZ:     g.p.ceilz,
 		Radius:       playerRadius,
 		Height:       playerHeight,
-		Tics:         0,
-		State:        0,
+		Tics:         playerTics,
+		State:        playerState,
 		Flags:        0,
 		Health:       g.stats.Health,
 		Movedir:      0,
@@ -394,6 +400,20 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		})
 	}
 	return out
+}
+
+func (g *game) demoTracePlayerMobjState() (state int, tics int) {
+	if g == nil {
+		return 0, 0
+	}
+	switch g.playerPainStatePhase {
+	case 1:
+		return doomStatePlayerPain1, g.playerPainStateTics
+	case 2:
+		return doomStatePlayerPain2, g.playerPainStateTics
+	default:
+		return 0, 0
+	}
 }
 
 func demoTraceThingTarget(g *game, i int) (target int, targetType int) {

@@ -173,6 +173,44 @@ func TestDamagePlayerSetsDeathStateAndFlash(t *testing.T) {
 	}
 }
 
+func TestDamagePlayerFromConsumesPlayerPainChancePRandomAndStartsPainState(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:      playerStats{Health: 100},
+		soundQueue: make([]soundEvent, 0, 2),
+	}
+	_, before := doomrand.State()
+	g.damagePlayerFrom(2, "ouch", 0, 0, false)
+	_, after := doomrand.State()
+	if got := after - before; got != 1 {
+		t.Fatalf("prnd advanced by %d want=1", got)
+	}
+	if g.playerPainStatePhase != 1 || g.playerPainStateTics != 4 {
+		t.Fatalf("player pain phase/tics=%d/%d want=1/4", g.playerPainStatePhase, g.playerPainStateTics)
+	}
+	if got := len(g.soundQueue); got != 1 {
+		t.Fatalf("soundQueue len=%d want=1", got)
+	}
+	if got := g.soundQueue[0]; got != soundEventPain {
+		t.Fatalf("sound=%v want=%v", got, soundEventPain)
+	}
+}
+
+func TestDamagePlayerFromSkipsPainStateWhenPainChanceRollFails(t *testing.T) {
+	doomrand.SetState(0, 157) // next PRandom is table[158]=255
+	g := &game{
+		stats:      playerStats{Health: 100},
+		soundQueue: make([]soundEvent, 0, 2),
+	}
+	g.damagePlayerFrom(2, "ouch", 0, 0, false)
+	if g.playerPainStatePhase != 0 || g.playerPainStateTics != 0 {
+		t.Fatalf("player pain phase/tics=%d/%d want=0/0", g.playerPainStatePhase, g.playerPainStateTics)
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue len=%d want=0", got)
+	}
+}
+
 func TestDamagePlayerBlockedByInvulnerability(t *testing.T) {
 	g := &game{
 		stats:        playerStats{Health: 100},

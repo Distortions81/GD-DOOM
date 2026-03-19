@@ -1360,6 +1360,43 @@ func TestMonsterMoveInDir_DoesNotCloseActiveManualDoorForMonster(t *testing.T) {
 	}
 }
 
+func TestMonsterMoveInDir_OrdinaryBlockedMovePreservesMoveDir(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 58, X: -24, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: 0, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 32, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{150},
+		thingDead:      []bool{false},
+		thingMoveDir:   []monsterMoveDir{monsterDirNorthEast},
+	}
+	g.initPhysics()
+	g.thingMoveDir[0] = monsterDirNorthEast
+	if g.monsterMoveInDir(0, 58, monsterDirNorthEast) {
+		t.Fatal("ordinary blocked move should fail")
+	}
+	if got := g.thingMoveDir[0]; got != monsterDirNorthEast {
+		t.Fatalf("blocked move should preserve old movedir, got %d", got)
+	}
+}
+
 func TestMonsterMoveInDir_DoesNotUseSecretDoor(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

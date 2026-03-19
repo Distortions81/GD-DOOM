@@ -883,7 +883,13 @@ func TestHitscanPuffsExpire(t *testing.T) {
 
 func TestHitscanBloodAdvancesWithGravityLikeDoom(t *testing.T) {
 	doomrand.Clear()
-	g := &game{}
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
 	g.spawnHitscanBlood(0, 0, 0, 5)
 	if len(g.hitscanPuffs) != 1 {
 		t.Fatalf("blood effects=%d want=1", len(g.hitscanPuffs))
@@ -900,6 +906,32 @@ func TestHitscanBloodAdvancesWithGravityLikeDoom(t *testing.T) {
 	}
 	if got := g.hitscanPuffs[0].tics; got < 1 || got > 7 {
 		t.Fatalf("blood tics after thinker tick=%d want within [1,7]", got)
+	}
+}
+
+func TestHitscanBloodClipsToFloorLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		hitscanPuffs: []hitscanPuff{{
+			x:     0,
+			y:     0,
+			z:     fracUnit / 2,
+			momz:  -8 * fracUnit,
+			tics:  4,
+			state: 91,
+			kind:  hitscanFxBlood,
+		}},
+	}
+	g.tickHitscanPuffs()
+	if got := g.hitscanPuffs[0].z; got != 0 {
+		t.Fatalf("blood z after floor clip=%d want=0", got)
+	}
+	if got := g.hitscanPuffs[0].momz; got != 0 {
+		t.Fatalf("blood momz after floor clip=%d want=0", got)
 	}
 }
 

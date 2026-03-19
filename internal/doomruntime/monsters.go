@@ -444,6 +444,16 @@ func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
 	if ev < 0 {
 		return
 	}
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=see-sound ev=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, ev, rnd, prnd, x, y)
+			}
+		}
+	}
 	if fullVolume {
 		g.emitSoundEvent(ev)
 		return
@@ -456,7 +466,18 @@ func (g *game) emitMonsterActiveSound(i int, typ int16, x, y int64) {
 	if ev < 0 {
 		return
 	}
-	if !shouldEmitMonsterActiveSound(doomrand.PRandom()) {
+	roll := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=active-sound roll=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, roll, rnd, prnd, x, y)
+			}
+		}
+	}
+	if !shouldEmitMonsterActiveSound(roll) {
 		return
 	}
 	g.emitSoundEventAt(ev, x, y)
@@ -1286,7 +1307,18 @@ func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py i
 	if typ == 16 && d > 160 {
 		d = 160
 	}
-	return doomrand.PRandom() >= d
+	r := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=missilerange roll=%d dist=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, r, d, rnd, prnd, tx, ty)
+			}
+		}
+	}
+	return r >= d
 }
 
 func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) {
@@ -1325,7 +1357,18 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		}
 	}
 
-	if doomrand.PRandom() > 200 || abs(deltay) > abs(deltax) {
+	swapRoll := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=chase-swap roll=%d absdy=%d absdx=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, swapRoll, abs(deltay), abs(deltax), rnd, prnd, tx, ty)
+			}
+		}
+	}
+	if swapRoll > 200 || abs(deltay) > abs(deltax) {
 		d1, d2 = d2, d1
 		g.debugMonsterChase(i, fmt.Sprintf("swap d1=%d d2=%d", d1, d2))
 	}
@@ -1351,7 +1394,18 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		return
 	}
 
-	if (doomrand.PRandom() & 1) != 0 {
+	scanRoll := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=chase-scan roll=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, scanRoll, rnd, prnd, tx, ty)
+			}
+		}
+	}
+	if (scanRoll & 1) != 0 {
 		for dir := int(monsterDirEast); dir <= int(monsterDirSouthEast); dir++ {
 			d := monsterMoveDir(dir)
 			if d != turnaround && g.monsterTryWalk(i, typ, d) {
@@ -1388,6 +1442,20 @@ func (g *game) monsterTryWalk(i int, typ int16, dir monsterMoveDir) bool {
 	}
 	if i >= 0 && i < len(g.thingMoveCount) {
 		g.thingMoveCount[i] = doomrand.PRandom() & 15
+		if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+			var wantTic int
+			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+					rnd, prnd := doomrand.State()
+					tx, ty := int64(0), int64(0)
+					if g.m != nil && i >= 0 && i < len(g.m.Things) {
+						tx, ty = g.thingPosFixed(i, g.m.Things[i])
+					}
+					fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=trywalk-movecount dir=%d movecount=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, i, typ, dir, g.thingMoveCount[i], rnd, prnd, tx, ty)
+				}
+			}
+		}
 		g.debugMonsterChase(i, fmt.Sprintf("trywalk moved dir=%d movecount=%d", dir, g.thingMoveCount[i]))
 	}
 	return true
@@ -1458,12 +1526,22 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
 	if !ok {
 		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
+		lines := g.touchedSpecialLinesForMonsterMove(i, nx, ny)
+		if len(lines) == 0 {
+			return false
+		}
 		if i >= 0 && i < len(g.thingMoveDir) {
-			// Doom P_Move clears movedir before trying usable blocking
-			// specials, so a successful door-use path leaves DI_NODIR.
+			// Doom P_Move clears movedir only when retrying touched special
+			// lines after a blocked move, so successful door-use leaves
+			// DI_NODIR but ordinary blocked movement preserves olddir.
 			g.thingMoveDir[i] = monsterDirNoDir
 		}
-		return g.monsterUseBlockingSpecialLines(i, nx, ny)
+		for _, lineIdx := range lines {
+			if g.useSpecialLineForActor(lineIdx, 0, false) {
+				return true
+			}
+		}
+		return false
 	}
 	prevX, prevY := x, y
 	g.setThingPosFixed(i, nx, ny)
@@ -1828,7 +1906,29 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 	for pellet := 0; pellet < pellets; pellet++ {
 		angle := addDoomAngleSpread(baseAngle, doomMonsterSpreadShift)
 		damage := 3 * (1 + doomrand.PRandom()%5)
+		if want := os.Getenv("GD_DEBUG_LINE_ATTACK"); want != "" {
+			var wantTic, wantIdx, wantPellet int
+			if _, err := fmt.Sscanf(want, "%d:%d:%d", &wantTic, &wantIdx, &wantPellet); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || i == wantIdx) && (wantPellet < 0 || pellet == wantPellet) {
+					g.debugLineAttackIntercepts(actor, angle, monsterAttackRange, slope)
+				}
+			}
+		}
 		outcome := g.lineAttackTrace(actor, angle, monsterAttackRange, slope, true)
+		if want := os.Getenv("GD_DEBUG_HITSCAN_ATTACK"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || i == wantIdx) {
+					rnd, prnd := doomrand.State()
+					fmt.Printf("hitscan-attack-debug tic=%d world=%d idx=%d type=%d pellet=%d base_angle=%d angle=%d slope=%d damage=%d target_kind=%d target_idx=%d impact=(%d,%d,%d) puff=%t blood=%t\n",
+						g.demoTick-1, g.worldTic, i, typ, pellet, baseAngle, angle, slope, damage,
+						outcome.target.kind, outcome.target.idx, outcome.impactX, outcome.impactY, outcome.impactZ,
+						outcome.spawnPuff, outcome.spawnBlood)
+					fmt.Printf("hitscan-attack-rng-debug tic=%d world=%d idx=%d type=%d pellet=%d rnd=%d prnd=%d\n",
+						g.demoTick-1, g.worldTic, i, typ, pellet, rnd, prnd)
+				}
+			}
+		}
 		g.applyLineAttackOutcome(actor, outcome, damage)
 	}
 }

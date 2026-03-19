@@ -121,13 +121,13 @@ type doorThinker struct {
 	speed        int64
 }
 
-func spawnPlayer(m *mapdata.Map, requestedSlot int) (player, int, []playerStart) {
+func spawnPlayer(m *mapdata.Map, requestedSlot int) (player, int, []playerStart, int) {
 	starts := collectPlayerStarts(m)
 	if s, ok := chooseSpawnStart(starts, requestedSlot); ok {
-		return player{x: s.x, y: s.y, z: 0, floorz: 0, ceilz: 128 * fracUnit, angle: s.angle, viewHeight: playerViewHeight}, s.slot, starts
+		return player{x: s.x, y: s.y, z: 0, floorz: 0, ceilz: 128 * fracUnit, angle: s.angle, viewHeight: playerViewHeight}, s.slot, starts, s.index
 	}
 	b := mapBounds(m)
-	return player{x: int64(((b.minX + b.maxX) / 2) * fracUnit), y: int64(((b.minY + b.maxY) / 2) * fracUnit), ceilz: 128 * fracUnit, viewHeight: playerViewHeight}, 1, starts
+	return player{x: int64(((b.minX + b.maxX) / 2) * fracUnit), y: int64(((b.minY + b.maxY) / 2) * fracUnit), ceilz: 128 * fracUnit, viewHeight: playerViewHeight}, 1, starts, -1
 }
 
 func (g *game) initPhysics() {

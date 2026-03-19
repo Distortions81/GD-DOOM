@@ -1,7 +1,7 @@
 package doomruntime
 
 import (
-	"math"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -696,6 +696,7 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 	if g.m != nil {
 		thingSeen = make([]bool, len(g.m.Things))
 	}
+	playerSeen := false
 	appendThing := func(i int) {
 		if thingSeen == nil || i < 0 || i >= len(thingSeen) || thingSeen[i] {
 			return
@@ -720,6 +721,47 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 			target: target,
 		})
 		order++
+	}
+	appendPlayer := func() {
+		if playerSeen || actor.isPlayer || actor.targetMask&lineAttackMaskPlayer == 0 || g.isDead {
+			return
+		}
+		playerSeen = true
+		frac, ok := lineAttackThingFrac(trace, g.p.x, g.p.y, playerRadius)
+		if !ok {
+			return
+		}
+		intercepts = append(intercepts, lineAttackIntercept{
+			frac:   frac,
+			order:  order,
+			isLine: false,
+			target: lineAttackTarget{kind: lineAttackTargetPlayer, idx: -1},
+		})
+		order++
+	}
+	appendThingsInCell := func(mapx, mapy int) {
+		if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
+			g.rebuildThingBlockmap()
+		}
+		if mapx < 0 || mapy < 0 || mapx >= g.bmapWidth || mapy >= g.bmapHeight {
+			return
+		}
+		cell := mapy*g.bmapWidth + mapx
+		playerCell := -2
+		if !playerSeen && actor.targetMask&lineAttackMaskPlayer != 0 && !actor.isPlayer && !g.isDead {
+			playerCell = g.thingBlockmapCellFor(g.p.x, g.p.y)
+		}
+		playerInserted := false
+		for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
+			if !playerInserted && playerCell == cell && g.localPlayerThingIndex > i {
+				appendPlayer()
+				playerInserted = true
+			}
+			appendThing(i)
+		}
+		if !playerInserted && playerCell == cell {
+			appendPlayer()
+		}
 	}
 
 	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
@@ -784,15 +826,7 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 				appendLine(g.physForLine[lineIdx])
 				return true
 			})
-			if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
-				g.rebuildThingBlockmap()
-			}
-			if mapx >= 0 && mapy >= 0 && mapx < g.bmapWidth && mapy < g.bmapHeight {
-				cell := mapy*g.bmapWidth + mapx
-				for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
-					appendThing(i)
-				}
-			}
+			appendThingsInCell(mapx, mapy)
 			if mapx == xt2 && mapy == yt2 {
 				break
 			}
@@ -814,17 +848,7 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 				appendThing(i)
 			}
 		}
-	}
-
-	if actor.targetMask&lineAttackMaskPlayer != 0 && !actor.isPlayer && !g.isDead {
-		if frac, ok := lineAttackThingFrac(trace, g.p.x, g.p.y, playerRadius); ok {
-			intercepts = append(intercepts, lineAttackIntercept{
-				frac:   frac,
-				order:  order,
-				isLine: false,
-				target: lineAttackTarget{kind: lineAttackTargetPlayer, idx: -1},
-			})
-		}
+		appendPlayer()
 	}
 
 	sort.SliceStable(intercepts, func(i, j int) bool {
@@ -1017,6 +1041,37 @@ func (g *game) lineAttackTrace(actor lineAttackActor, angle uint32, distance, sl
 	return lineAttackOutcome{}
 }
 
+func (g *game) debugLineAttackIntercepts(actor lineAttackActor, angle uint32, distance, slope int64) {
+	intercepts := g.collectLineAttackIntercepts(actor, angle, distance)
+	fmt.Printf("line-attack-debug tic=%d world=%d actor_idx=%d angle=%d slope=%d distance=%d intercepts=%d\n",
+		g.demoTick-1, g.worldTic, actor.thingIdx, angle, slope, distance, len(intercepts))
+	for idx, in := range intercepts {
+		if idx >= 16 {
+			fmt.Printf("line-attack-debug ... truncated\n")
+			break
+		}
+		if in.isLine {
+			ld := g.lines[in.line]
+			fmt.Printf("line-attack-debug intercept=%d frac=%d kind=line line=%d special=%d flags=%d\n",
+				idx, in.frac, ld.idx, ld.special, ld.flags)
+			continue
+		}
+		x, y, z, height, radius, noBlood, ok := g.lineAttackTargetState(in.target)
+		fmt.Printf("line-attack-debug intercept=%d frac=%d kind=target target_kind=%d target_idx=%d pos=(%d,%d,%d) height=%d radius=%d noblood=%t ok=%t\n",
+			idx, in.frac, in.target.kind, in.target.idx, x, y, z, height, radius, noBlood, ok)
+		if !ok {
+			continue
+		}
+		dist := fixedMul(distance, in.frac)
+		if dist <= 0 {
+			continue
+		}
+		topSlope := fixedDiv(z+height-actor.shootZ, dist)
+		bottomSlope := fixedDiv(z-actor.shootZ, dist)
+		fmt.Printf("line-attack-debug intercept=%d dist=%d top=%d bottom=%d shot_slope=%d\n", idx, dist, topSlope, bottomSlope, slope)
+	}
+}
+
 func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackOutcome, damage int) bool {
 	hideImpactFx := outcome.target.kind == lineAttackTargetPlayer
 	if outcome.spawnPuff {
@@ -1143,7 +1198,6 @@ func (g *game) spawnHitscanPuffFromSource(sx, sy, shootZ int64, angle uint32, sl
 	// Doom line hits use 4-unit backoff before spawning a puff.
 	x -= fixedMul(4*fracUnit, doomFineCosine(angle))
 	y -= fixedMul(4*fracUnit, doomFineSineAtAngle(angle))
-	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	g.spawnHitscanPuff(x, y, z)
 }
 
@@ -1161,7 +1215,6 @@ func (g *game) spawnHitscanBloodFromSource(sx, sy, shootZ int64, angle uint32, s
 	// Doom thing hits use 10-unit backoff before spawning blood.
 	x -= fixedMul(10*fracUnit, doomFineCosine(angle))
 	y -= fixedMul(10*fracUnit, doomFineSineAtAngle(angle))
-	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	g.spawnHitscanBlood(x, y, z, damage)
 }
 
@@ -1198,7 +1251,14 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			g.thingDead[thingIdx] = true
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingDeathTics) {
-			g.thingDeathTics[thingIdx] = monsterDeathAnimTotalTics(thingType)
+			deathTics := monsterDeathAnimTotalTics(thingType)
+			if deathTics > 0 {
+				deathTics -= doomrand.PRandom() & 3
+				if deathTics < 1 {
+					deathTics = 1
+				}
+			}
+			g.thingDeathTics[thingIdx] = deathTics
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			g.thingPainTics[thingIdx] = 0
@@ -1414,7 +1474,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingJustHit = append(g.thingJustHit, false)
 	g.thingReactionTics = append(g.thingReactionTics, 0)
 	g.thingWakeTics = append(g.thingWakeTics, 0)
-	g.thingLastLook = append(g.thingLastLook, 0)
+	g.thingLastLook = append(g.thingLastLook, doomrand.PRandom()&3)
 	g.thingDead = append(g.thingDead, false)
 	g.thingDeathTics = append(g.thingDeathTics, 0)
 	g.thingAttackTics = append(g.thingAttackTics, 0)
@@ -1816,11 +1876,7 @@ func (g *game) handleBossDeath(thingIdx int, thingType int16) {
 }
 
 func angleToThing(sx, sy, tx, ty int64) uint32 {
-	ang := math.Atan2(float64(ty-sy), float64(tx-sx))
-	if ang < 0 {
-		ang += 2 * math.Pi
-	}
-	return uint32(ang * (4294967296.0 / (2 * math.Pi)))
+	return doomPointToAngle2(sx, sy, tx, ty)
 }
 
 func turnTowardAngle(cur, want, step uint32) uint32 {

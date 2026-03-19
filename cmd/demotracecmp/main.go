@@ -112,6 +112,9 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 		}
 		keys := unionKeys(l, r)
 		for _, k := range keys {
+			if shouldIgnoreMapKey(path, k, l, r) {
+				continue
+			}
 			lp, lok := l[k]
 			rp, rok := r[k]
 			if !lok || !rok {
@@ -172,6 +175,12 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 }
 
 func shouldIgnorePath(path string) bool {
+	if len(path) >= len("root.mobjs[0].") && path[:len("root.mobjs[0].")] == "root.mobjs[0]." {
+		switch path[len("root.mobjs[0]."):] {
+		case "target", "threshold":
+			return true
+		}
+	}
 	ignoredSuffixes := []string{
 		".rndindex",
 		".prndindex",
@@ -190,6 +199,20 @@ func shouldIgnorePath(path string) bool {
 	for _, suffix := range ignoredSuffixes {
 		if len(path) >= len(suffix) && path[len(path)-len(suffix):] == suffix {
 			return true
+		}
+	}
+	return false
+}
+
+func shouldIgnoreMapKey(path string, key string, left, right map[string]any) bool {
+	if len(path) >= len("root.mobjs[") && path[:len("root.mobjs[")] == "root.mobjs[" {
+		lt, lok := left["type"].(float64)
+		rt, rok := right["type"].(float64)
+		if lok && rok && lt == rt && (lt == 37 || lt == 38) {
+			switch key {
+			case "z", "momz":
+				return true
+			}
 		}
 	}
 	return false

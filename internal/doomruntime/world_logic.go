@@ -1,5 +1,10 @@
 package doomruntime
 
+import (
+	"fmt"
+	"os"
+)
+
 import "gddoom/internal/doomrand"
 
 const playerDeathViewFallSpeed = fracUnit
@@ -157,7 +162,18 @@ func (g *game) tickSectorLightEffects() {
 			if fx.count != 0 {
 				continue
 			}
-			amount := (doomrand.PRandom() & 3) * 16
+			roll := doomrand.PRandom()
+			if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+				var wantTic int
+				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+						rnd, prnd := doomrand.State()
+						fmt.Printf("world-rng-debug tic=%d world=%d kind=fireflicker sec=%d roll=%d rnd=%d prnd=%d\n",
+							g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
+					}
+				}
+			}
+			amount := (roll & 3) * 16
 			if int(g.m.Sectors[sec].Light)-amount < int(fx.minLight) {
 				g.m.Sectors[sec].Light = fx.minLight
 			} else {
@@ -171,10 +187,32 @@ func (g *game) tickSectorLightEffects() {
 			}
 			if g.m.Sectors[sec].Light == fx.maxLight {
 				g.m.Sectors[sec].Light = fx.minLight
-				fx.count = (doomrand.PRandom() & fx.minTime) + 1
+				roll := doomrand.PRandom()
+				if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+					var wantTic int
+					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+							rnd, prnd := doomrand.State()
+							fmt.Printf("world-rng-debug tic=%d world=%d kind=lightflash-dark sec=%d roll=%d rnd=%d prnd=%d\n",
+								g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
+						}
+					}
+				}
+				fx.count = (roll & fx.minTime) + 1
 			} else {
 				g.m.Sectors[sec].Light = fx.maxLight
-				fx.count = (doomrand.PRandom() & fx.maxTime) + 1
+				roll := doomrand.PRandom()
+				if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+					var wantTic int
+					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+							rnd, prnd := doomrand.State()
+							fmt.Printf("world-rng-debug tic=%d world=%d kind=lightflash-bright sec=%d roll=%d rnd=%d prnd=%d\n",
+								g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
+						}
+					}
+				}
+				fx.count = (roll & fx.maxTime) + 1
 			}
 		case sectorLightEffectStrobe:
 			fx.count--
@@ -358,8 +396,19 @@ func (g *game) damagePlayer(amount int, msg string) {
 }
 
 func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int64, hasAttacker bool) {
+	const playerPainChance = 255
+
 	if amount <= 0 || g.stats.Health <= 0 || g.isDead {
 		return
+	}
+	if want := os.Getenv("GD_DEBUG_PLAYER_DAMAGE_TIC"); want != "" {
+		var tic int
+		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil {
+			if g.demoTick-1 == tic || g.worldTic == tic {
+				fmt.Printf("player-damage-debug tic=%d world=%d amount=%d msg=%q attacker=(%d,%d) has_attacker=%t pre_health=%d pre_armor=%d\n",
+					g.demoTick-1, g.worldTic, amount, msg, attackerX, attackerY, hasAttacker, g.stats.Health, g.stats.Armor)
+			}
+		}
 	}
 	if hasAttacker {
 		g.applyPlayerDamageThrust(amount, attackerX, attackerY)
@@ -401,7 +450,11 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		msg = "You Died"
 		g.emitSoundEvent(soundEventPlayerDeath)
 	} else {
-		g.emitSoundEvent(soundEventPain)
+		if doomrand.PRandom() < playerPainChance {
+			g.playerPainStatePhase = 1
+			g.playerPainStateTics = 4
+			g.emitSoundEvent(soundEventPain)
+		}
 	}
 	g.setHUDMessage(msg, 20)
 }

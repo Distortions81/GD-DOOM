@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"math"
-	"math/bits"
 )
 
 const (
@@ -105,26 +104,24 @@ func segmentIntersectFrac(ax, ay, bx, by, cx, cy, dx, dy int64) (float64, bool) 
 func fixedDiv(a, b int64) int64 {
 	if b == 0 {
 		if a >= 0 {
-			return math.MaxInt64
+			return math.MaxInt32
 		}
-		return math.MinInt64
+		return math.MinInt32
 	}
-	neg := (a < 0) != (b < 0)
-	ua := uint64(abs(a))
-	ub := uint64(abs(b))
-	hi, lo := bits.Mul64(ua, fracUnit)
-	q, _ := bits.Div64(hi, lo, ub)
-	if q > uint64(math.MaxInt64) {
-		if neg {
-			return math.MinInt64
+	if (abs(a)>>14) >= abs(b) {
+		if (a ^ b) < 0 {
+			return math.MinInt32
 		}
-		return math.MaxInt64
+		return math.MaxInt32
 	}
-	out := int64(q)
-	if neg {
-		return -out
+	c := (float64(a) / float64(b)) * fracUnit
+	if c >= 2147483648.0 || c < -2147483648.0 {
+		if (a ^ b) < 0 {
+			return math.MinInt32
+		}
+		return math.MaxInt32
 	}
-	return out
+	return int64(c)
 }
 
 func interceptVector(v2, v1 divline) int64 {

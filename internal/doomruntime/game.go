@@ -402,6 +402,7 @@ type game struct {
 	p                         player
 	currentMoveCmd            moveCmd
 	localSlot                 int
+	localPlayerThingIndex     int
 	peerStarts                []playerStart
 
 	lines                []physLine
@@ -739,6 +740,8 @@ type game struct {
 	statusOldWeapons             [9]bool
 	statusDamageCount            int
 	statusBonusCount             int
+	playerPainStatePhase         int
+	playerPainStateTics          int
 	demoBenchStart               time.Time
 	demoBenchDraws               int
 	demoBenchFrameNS             []int64
@@ -1079,7 +1082,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
 		opts.PlayerSlot = 1
 	}
-	p, localSlot, starts := spawnPlayer(m, opts.PlayerSlot)
+	p, localSlot, starts, localPlayerThingIndex := spawnPlayer(m, opts.PlayerSlot)
 	g := &game{
 		m:                 m,
 		opts:              opts,
@@ -1106,6 +1109,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		marks:              mapview.NewMarksState(10),
 		p:                  p,
 		localSlot:          localSlot,
+		localPlayerThingIndex: localPlayerThingIndex,
 		peerStarts:         nonLocalStarts(starts, localSlot),
 		cullLogBudget:      0,
 		floorDbgMode:       floorDebugTextured,
@@ -8797,8 +8801,19 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
+	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 4 - (doomrand.PRandom() & 3)
+	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("hitscan-fx-debug tic=%d world=%d kind=puff pos=(%d,%d,%d) lastlook=%d tics=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, x, y, z, lastLook, tics, rnd, prnd)
+			}
+		}
+	}
 	if tics < 1 {
 		tics = 1
 	}
@@ -8825,6 +8840,16 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 8 - (doomrand.PRandom() & 3)
+	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("hitscan-fx-debug tic=%d world=%d kind=blood pos=(%d,%d,%d) damage=%d lastlook=%d tics=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, x, y, z, damage, lastLook, tics, rnd, prnd)
+			}
+		}
+	}
 	if tics < 1 {
 		tics = 1
 	}
@@ -8980,7 +9005,16 @@ func (g *game) tickHitscanPuffs() {
 	for _, p := range g.hitscanPuffs {
 		p.z += p.momz
 		if p.kind == hitscanFxBlood {
-			if p.momz == 0 {
+			floorz := int64(0)
+			if sec := g.sectorAt(p.x, p.y); sec >= 0 && sec < len(g.sectorFloor) {
+				floorz = g.sectorFloor[sec]
+			}
+			if p.z <= floorz {
+				if p.momz < 0 {
+					p.momz = 0
+				}
+				p.z = floorz
+			} else if p.momz == 0 {
 				p.momz = -2 * fracUnit
 			} else {
 				p.momz -= fracUnit
