@@ -21,6 +21,9 @@ func TestUseSpecialLineLockedWithoutKeyAndUnlocksWithPickup(t *testing.T) {
 	if g.useText != "USE: locked" {
 		t.Fatalf("useText=%q want locked", g.useText)
 	}
+	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventOof {
+		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventOof)
+	}
 
 	g.processThingPickups()
 	if !g.inventory.BlueKey {
@@ -45,8 +48,8 @@ func TestProcessThingPickups_ConsumesKeyEvenIfAlreadyOwned(t *testing.T) {
 	if !g.thingCollected[0] {
 		t.Fatal("duplicate blue key should still be collected")
 	}
-	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventPowerUp {
-		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventPowerUp)
+	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventItemUp {
+		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventItemUp)
 	}
 	if g.useText != "" {
 		t.Fatalf("useText=%q want empty", g.useText)
@@ -72,8 +75,32 @@ func TestProcessThingPickups_ConsumesKeyGrantedByCheat(t *testing.T) {
 	if !g.thingCollected[0] {
 		t.Fatal("cheat-granted red key should still be collected from the map")
 	}
-	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventPowerUp {
-		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventPowerUp)
+	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventItemUp {
+		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventItemUp)
+	}
+}
+
+func TestApplyPickup_DoomItemUpMappingsForKeysAndArmor(t *testing.T) {
+	g := &game{}
+	g.initPlayerState()
+	tests := []struct {
+		typ  int16
+		want soundEvent
+	}{
+		{typ: 5, want: soundEventItemUp},
+		{typ: 13, want: soundEventItemUp},
+		{typ: 6, want: soundEventItemUp},
+		{typ: 2018, want: soundEventItemUp},
+		{typ: 2019, want: soundEventItemUp},
+	}
+	for _, tc := range tests {
+		_, got, ok := g.applyPickup(tc.typ, false)
+		if !ok {
+			t.Fatalf("applyPickup(%d) not applied", tc.typ)
+		}
+		if got != tc.want {
+			t.Fatalf("applyPickup(%d) sound=%v want=%v", tc.typ, got, tc.want)
+		}
 	}
 }
 

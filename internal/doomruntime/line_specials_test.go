@@ -338,10 +338,27 @@ func TestUseSpecialLine_WalkOnlySpecialDoesNotReportUnsupported(t *testing.T) {
 func TestUseSpecialLine_ReportsUnsupportedSpecialNumber(t *testing.T) {
 	g := &game{
 		lineSpecial: []uint16{242},
+		soundQueue:  make([]soundEvent, 0, 1),
 	}
 	g.useSpecialLine(0, 0)
 	if g.useText != "USE: unsupported special 242" {
 		t.Fatalf("useText=%q want %q", g.useText, "USE: unsupported special 242")
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue=%v want empty", g.soundQueue)
+	}
+}
+
+func TestUseLines_NoLineDoesNotPlayNoWaySound(t *testing.T) {
+	g := &game{
+		soundQueue: make([]soundEvent, 0, 1),
+	}
+	g.useLines()
+	if g.useText != "USE: no line" {
+		t.Fatalf("useText=%q want %q", g.useText, "USE: no line")
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue=%v want empty", g.soundQueue)
 	}
 }
 

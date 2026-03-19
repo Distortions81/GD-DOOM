@@ -22,7 +22,6 @@ func (g *game) useLines() {
 	if tr == useTraceNone {
 		g.useText = "USE: no line"
 		g.useFlash = 35
-		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
 	if tr == useTraceBlocked {
@@ -38,7 +37,6 @@ func (g *game) useLines() {
 	if pi < 0 || pi >= len(g.lines) {
 		g.useText = "USE: no line"
 		g.useFlash = 35
-		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
 	ld := g.lines[pi]
@@ -139,7 +137,6 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		if isPlayer {
 			g.useText = "USE: back side"
 			g.useFlash = 35
-			g.emitSoundEvent(soundEventNoWay)
 		}
 		return false
 	}
@@ -168,7 +165,6 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		if isPlayer {
 			g.useText = fmt.Sprintf("USE: unsupported special %d", special)
 			g.useFlash = 35
-			g.emitSoundEvent(soundEventNoWay)
 		}
 		return false
 	}
@@ -183,7 +179,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		if isPlayer {
 			g.useText = "USE: locked"
 			g.useFlash = 35
-			g.emitSoundEvent(soundEventNoWay)
+			g.emitSoundEvent(soundEventOof)
 		}
 		return false
 	}
@@ -213,7 +209,6 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 	} else if isPlayer {
 		g.useText = "USE: no change"
-		g.emitSoundEvent(soundEventNoWay)
 	}
 	if isPlayer {
 		g.useFlash = 35

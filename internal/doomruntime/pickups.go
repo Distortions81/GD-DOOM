@@ -245,13 +245,13 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	switch typ {
 	case 5, 40:
 		g.inventory.BlueKey = true
-		return "Picked up a blue key", soundEventPowerUp, true
+		return "Picked up a blue key", soundEventItemUp, true
 	case 13, 38:
 		g.inventory.RedKey = true
-		return "Picked up a red key", soundEventPowerUp, true
+		return "Picked up a red key", soundEventItemUp, true
 	case 6, 39:
 		g.inventory.YellowKey = true
-		return "Picked up a yellow key", soundEventPowerUp, true
+		return "Picked up a yellow key", soundEventItemUp, true
 	case 2011:
 		return g.gainHealth(10, 100, "Picked up a stimpack")
 	case 2012:
@@ -274,14 +274,14 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		}
 		g.stats.Armor = 100
 		g.stats.ArmorType = 1
-		return "Picked up green armor", soundEventPowerUp, true
+		return "Picked up green armor", soundEventItemUp, true
 	case 2019:
 		if g.stats.Armor >= 200 {
 			return "", 0, false
 		}
 		g.stats.Armor = 200
 		g.stats.ArmorType = 2
-		return "Picked up blue armor", soundEventPowerUp, true
+		return "Picked up blue armor", soundEventItemUp, true
 	case 2022:
 		g.inventory.InvulnTics = 30 * doomTicsPerSecond
 		return "Invulnerability!", soundEventPowerUp, true

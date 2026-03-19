@@ -225,6 +225,29 @@ func TestMonsterMoveStepMatchesDoomSpeedTable(t *testing.T) {
 	}
 }
 
+func TestMonsterAttack_ChaingunnerUsesShotgunSoundLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 65, X: 0, Y: 0},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{70},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		soundQueue:        make([]soundEvent, 0, 4),
+		p:                 player{x: 128 * fracUnit, y: 0},
+		stats:             playerStats{Health: 100},
+	}
+	if !g.monsterAttack(0, 65, 128*fracUnit) {
+		t.Fatal("chaingunner attack should resolve")
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventShootShotgun) {
+		t.Fatalf("soundQueue=%v missing chaingunner shotgun attack sound", g.soundQueue)
+	}
+}
+
 func TestMonsterAttackFrameTablesMatchDoomStateTables(t *testing.T) {
 	tests := []struct {
 		typ      int16
@@ -826,8 +849,8 @@ func TestMonsterMeleeAttackSoundEvent(t *testing.T) {
 		{3001, soundEventMonsterAttackClaw},
 		{3003, soundEventMonsterAttackClaw},
 		{69, soundEventMonsterAttackClaw},
-		{3002, soundEventMonsterAttackSgt},
-		{58, soundEventMonsterAttackSgt},
+		{3002, -1},
+		{58, -1},
 		{3006, soundEventMonsterAttackSkull},
 	}
 	for _, tc := range tests {
@@ -837,6 +860,23 @@ func TestMonsterMeleeAttackSoundEvent(t *testing.T) {
 	}
 	if got := monsterMeleeAttackSoundEvent(66); got != -1 {
 		t.Fatalf("revenant melee sound=%v want none", got)
+	}
+}
+
+func TestMonsterAttackStateEntrySoundEvent(t *testing.T) {
+	tests := []struct {
+		typ  int16
+		want soundEvent
+	}{
+		{3002, soundEventMonsterAttackSgt},
+		{58, soundEventMonsterAttackSgt},
+		{3001, -1},
+		{3006, -1},
+	}
+	for _, tc := range tests {
+		if got := monsterAttackStateEntrySoundEvent(tc.typ); got != tc.want {
+			t.Fatalf("type=%d entry sound=%v want=%v", tc.typ, got, tc.want)
+		}
 	}
 }
 

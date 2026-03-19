@@ -207,6 +207,14 @@ func (p *SpatialPlayer) PlaySampleSpatial(sample media.PCMSample, origin Spatial
 	p.PlaySampleSpatialDelayed(sample, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, 0)
 }
 
+func (p *SpatialPlayer) CanPlaySpatial(origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
+	if p == nil || p.ctx == nil || p.volume <= 0 {
+		return false
+	}
+	leftGain, rightGain, _, _, ok := p.eventStereoMix(origin, listenerX, listenerY, listenerAngle, mapUsesFullClip)
+	return ok && (leftGain > 0 || rightGain > 0)
+}
+
 func (p *SpatialPlayer) PlaySampleSpatialDelayed(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool, preDelaySamples float64) {
 	if p == nil || p.ctx == nil || p.volume <= 0 {
 		return

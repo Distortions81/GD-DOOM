@@ -2011,6 +2011,8 @@ func (g *game) updateDemoMode() error {
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 	g.tickStatusWidgets()
+	// Doom trace snapshots are written after same-tic S_StartSound RNG use.
+	g.flushSoundEvents()
 	g.writeDemoTraceTic()
 	if g.useFlash > 0 {
 		g.useFlash--
@@ -2023,7 +2025,6 @@ func (g *game) updateDemoMode() error {
 	}
 	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
-	g.flushSoundEvents()
 	g.lastUpdate = time.Now()
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
@@ -3321,10 +3322,10 @@ func (g *game) applyThingSpawnFiltering() {
 
 func (g *game) flushSoundEvents() {
 	if g.snd != nil {
-		for i, ev := range g.soundQueue {
+		for idx, ev := range g.soundQueue {
 			origin := queuedSoundOrigin{}
-			if i >= 0 && i < len(g.soundQueueOrigin) {
-				origin = g.soundQueueOrigin[i]
+			if idx >= 0 && idx < len(g.soundQueueOrigin) {
+				origin = g.soundQueueOrigin[idx]
 			}
 			g.snd.playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
 		}

@@ -189,7 +189,11 @@ func (g *game) tickMonsters() {
 			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
 		}
 		g.setMonsterThinkState(i, th.Type, monsterStateSee, g.monsterSeeStateTicsForPhase(i, th.Type))
-		g.emitMonsterActiveSound(i, th.Type, tx, ty)
+		ax, ay := tx, ty
+		if i >= 0 && g.m != nil && i < len(g.m.Things) {
+			ax, ay = g.thingPosFixed(i, g.m.Things[i])
+		}
+		g.emitMonsterActiveSound(i, th.Type, ax, ay)
 	}
 }
 
@@ -434,21 +438,11 @@ func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
 	if ev < 0 {
 		return
 	}
-	consumeMonsterSeeSoundRandom(typ)
 	if fullVolume {
 		g.emitSoundEvent(ev)
 		return
 	}
 	g.emitSoundEventAt(ev, x, y)
-}
-
-func consumeMonsterSeeSoundRandom(typ int16) {
-	switch typ {
-	case 3004, 9, 65:
-		_ = doomrand.PRandom() % 3
-	case 3001, 3003, 69:
-		_ = doomrand.PRandom() % 2
-	}
 }
 
 func (g *game) emitMonsterActiveSound(i int, typ int16, x, y int64) {
@@ -469,9 +463,19 @@ func shouldEmitMonsterActiveSound(r int) bool {
 func monsterSeeSoundEvent(typ int16) (soundEvent, bool) {
 	switch typ {
 	case 3004, 9, 65:
-		return soundEventMonsterSeePosit, false
+		switch doomrand.PRandom() % 3 {
+		case 1:
+			return soundEventMonsterSeePosit2, false
+		case 2:
+			return soundEventMonsterSeePosit3, false
+		default:
+			return soundEventMonsterSeePosit1, false
+		}
 	case 3001:
-		return soundEventMonsterSeeImp, false
+		if doomrand.PRandom()%2 != 0 {
+			return soundEventMonsterSeeImp2, false
+		}
+		return soundEventMonsterSeeImp1, false
 	case 3002, 58:
 		return soundEventMonsterSeeDemon, false
 	case 3005:
@@ -505,8 +509,10 @@ func monsterActiveSoundEvent(typ int16) soundEvent {
 		return soundEventMonsterActivePosit
 	case 3001:
 		return soundEventMonsterActiveImp
-	case 3002, 58, 3005, 3003, 69, 3006, 7, 16, 71, 67:
+	case 3002, 58, 3005, 3003, 69, 3006, 7, 16, 71:
 		return soundEventMonsterActiveDemon
+	case 67:
+		return soundEventMonsterActivePosit
 	case 68:
 		return soundEventMonsterActiveArachnotron
 	case 64:
@@ -815,6 +821,12 @@ func (g *game) startMonsterAttackAnim(i int, typ int16) {
 func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 	if i < 0 || g.m == nil || i >= len(g.m.Things) {
 		return false
+	}
+	if !missile {
+		if ev := monsterAttackStateEntrySoundEvent(typ); ev >= 0 {
+			tx, ty := g.thingPosFixed(i, g.m.Things[i])
+			g.emitSoundEventAt(ev, tx, ty)
+		}
 	}
 	g.startMonsterAttackAnim(i, typ)
 	if monsterUsesExplicitAttackFrames(typ) {
@@ -1510,6 +1522,12 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		g.monsterHitscanAttack(i, typ, sx, sy, 3)
 		return true
 	}
+	if typ == 65 {
+		// Chaingunner uses Doom's A_CPosAttack, which starts sfx_shotgn.
+		g.emitSoundEventAt(soundEventShootShotgun, sx, sy)
+		g.monsterHitscanAttack(i, typ, sx, sy, 1)
+		return true
+	}
 	if typ == 84 {
 		// WolfSS uses the chaingunner-style single hitscan attack action.
 		g.emitSoundEventAt(soundEventShootShotgun, sx, sy)
@@ -1770,9 +1788,18 @@ func monsterMeleeAttackSoundEvent(typ int16) soundEvent {
 	case 3001, 3003, 69:
 		return soundEventMonsterAttackClaw
 	case 3002, 58:
-		return soundEventMonsterAttackSgt
+		return -1
 	case 3006:
 		return soundEventMonsterAttackSkull
+	default:
+		return -1
+	}
+}
+
+func monsterAttackStateEntrySoundEvent(typ int16) soundEvent {
+	switch typ {
+	case 3002, 58:
+		return soundEventMonsterAttackSgt
 	default:
 		return -1
 	}

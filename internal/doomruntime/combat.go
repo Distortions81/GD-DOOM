@@ -1463,13 +1463,13 @@ func monsterDeathSoundEvent(typ int16) soundEvent {
 	case 88:
 		return soundEventBossBrainDeath
 	case 3004:
-		return soundEventDeathZombie
+		return soundEventDeathPodth1
 	case 9:
-		return soundEventDeathShotgunGuy
+		return soundEventDeathPodth2
 	case 65:
-		return soundEventDeathChaingunner
+		return soundEventDeathPodth2
 	case 3001:
-		return soundEventDeathImp
+		return soundEventDeathBgdth1
 	case 3002, 58:
 		return soundEventDeathDemon
 	case 3005:
