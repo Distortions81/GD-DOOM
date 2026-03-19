@@ -679,6 +679,63 @@ func TestDamageMonsterFromSetsJustHitOnlyWhenPainTriggers(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterPainCancelsQueuedAttackStateLikeDoom(t *testing.T) {
+	findPainSeed := func(chance int) int {
+		for seed := 0; seed < 256; seed++ {
+			doomrand.SetState(0, seed)
+			if doomrand.PRandom() < chance {
+				return seed
+			}
+		}
+		t.Fatalf("no PRandom seed found for pain chance %d", chance)
+		return 0
+	}
+
+	seed := findPainSeed(monsterPainChance(9))
+	doomrand.SetState(0, seed)
+
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9, X: 0, Y: 0}},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{30},
+		thingAggro:          []bool{true},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{10},
+		thingAttackPhase:    []int{1},
+		thingAttackFireTics: []int{2},
+		thingJustAtk:        []bool{true},
+		thingJustHit:        []bool{false},
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStateTics:      []int{10},
+		thingStatePhase:     []int{0},
+		thingReactionTics:   []int{8},
+		soundQueue:          make([]soundEvent, 0, 2),
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1)
+
+	if g.thingPainTics[0] <= 0 {
+		t.Fatalf("pain tics=%d want > 0", g.thingPainTics[0])
+	}
+	if g.thingAttackTics[0] != 0 {
+		t.Fatalf("attack tics=%d want 0 after pain", g.thingAttackTics[0])
+	}
+	if g.thingAttackFireTics[0] != -1 {
+		t.Fatalf("attack fire tics=%d want -1 after pain", g.thingAttackFireTics[0])
+	}
+	if g.thingAttackPhase[0] != 0 {
+		t.Fatalf("attack phase=%d want 0 after pain", g.thingAttackPhase[0])
+	}
+	if !g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should remain set so the next chase tic honors Doom's just-attacked gate")
+	}
+	if g.thingState[0] != monsterStatePain {
+		t.Fatalf("state=%d want pain", g.thingState[0])
+	}
+}
+
 func TestSuperShotgunConsumesTwoShellsAndTwentyPelletRolls(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

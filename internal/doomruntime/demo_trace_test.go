@@ -162,3 +162,89 @@ func TestDemoTraceMonsterPainStateTicsMatchesCurrentFrame(t *testing.T) {
 		}
 	}
 }
+
+func TestDemoTraceDoorSpecialKeepsZeroValuedFields(t *testing.T) {
+	g := &game{
+		doors: map[int]*doorThinker{
+			71: {
+				sector:       71,
+				typ:          doorNormal,
+				direction:    1,
+				topHeight:    4456448,
+				topWait:      150,
+				topCountdown: 0,
+				speed:        131072,
+			},
+		},
+	}
+
+	specials := g.demoTraceSpecials()
+	if got, want := len(specials), 1; got != want {
+		t.Fatalf("special count=%d want=%d", got, want)
+	}
+	if got, ok := specials[0]["type"]; !ok || got != int(doorNormal) {
+		t.Fatalf("special type=%v ok=%v want=%d", got, ok, int(doorNormal))
+	}
+	if got, ok := specials[0]["topcountdown"]; !ok || got != 0 {
+		t.Fatalf("topcountdown=%v ok=%v want=0", got, ok)
+	}
+
+	data, err := json.Marshal(specials)
+	if err != nil {
+		t.Fatalf("marshal specials: %v", err)
+	}
+	s := string(data)
+	if !strings.Contains(s, `"type":0`) {
+		t.Fatalf("marshaled specials missing type zero field: %s", s)
+	}
+	if !strings.Contains(s, `"topcountdown":0`) {
+		t.Fatalf("marshaled specials missing topcountdown zero field: %s", s)
+	}
+}
+
+func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
+	tracePath := t.TempDir() + "/door-trace.jsonl"
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	g := newGame(base.m, Options{
+		Width:   320,
+		Height:  200,
+		WADHash: "test-wad",
+		DemoScript: &DemoScript{
+			Path: "demo1",
+			Header: DemoHeader{
+				Version:      demoVersion109,
+				Skill:        2,
+				Episode:      1,
+				Map:          1,
+				PlayerInGame: [4]bool{true},
+			},
+			Tics: []DemoTic{{Forward: 0}},
+		},
+		DemoTracePath: tracePath,
+	})
+	g.doors = map[int]*doorThinker{
+		71: {
+			sector:       71,
+			typ:          doorNormal,
+			direction:    1,
+			topHeight:    4456448,
+			topWait:      150,
+			topCountdown: 0,
+			speed:        131072,
+		},
+	}
+
+	g.writeDemoTraceTic()
+
+	data, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	s := strings.TrimSpace(string(data))
+	if !strings.Contains(s, `"type":0`) {
+		t.Fatalf("tic line missing type zero field: %s", s)
+	}
+	if !strings.Contains(s, `"topcountdown":0`) {
+		t.Fatalf("tic line missing topcountdown zero field: %s", s)
+	}
+}

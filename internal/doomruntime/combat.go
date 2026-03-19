@@ -14,6 +14,7 @@ const (
 	shotgunRange       = 2048 * fracUnit
 	bulletTargetRadius = 20 * fracUnit
 	doomGunSpreadShift = 18
+	doomMonsterSpreadShift = 20
 	doomAimFallbackAng = uint32(1 << 26)
 	doomAimTopSlope    = (100 * fracUnit) / 160
 	doomAimBottomSlope = -((100 * fracUnit) / 160)
@@ -1244,6 +1245,16 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 				if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
 					// Doom only marks JUSTHIT when the pain state triggers.
 					g.thingJustHit[thingIdx] = true
+				}
+				if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
+					// Doom P_SetMobjState(painstate) replaces any in-flight attack state.
+					g.thingAttackTics[thingIdx] = 0
+				}
+				if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
+					g.thingAttackFireTics[thingIdx] = -1
+				}
+				if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
+					g.thingAttackPhase[thingIdx] = 0
 				}
 				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(thingType))
 				if !wasInPain {

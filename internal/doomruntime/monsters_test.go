@@ -1677,6 +1677,88 @@ func TestTickMonstersPainStatePausesThinker(t *testing.T) {
 	}
 }
 
+func TestTickMonstersPainExpiryResumesChaseStateSameTic(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+			},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{30},
+		thingAggro:          []bool{true},
+		thingTargetPlayer:   []bool{true},
+		thingTargetIdx:      []int{-1},
+		thingPainTics:       []int{1},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingReactionTics:   []int{0},
+		thingMoveDir:        []monsterMoveDir{monsterDirEast},
+		thingMoveCount:      []int{1},
+		thingAngleState:     []uint32{degToAngle(0)},
+		thingZState:         []int64{0},
+		thingFloorState:     []int64{0},
+		thingCeilState:      []int64{128 * fracUnit},
+		thingSupportValid:   []bool{true},
+		thingState:          []monsterThinkState{monsterStatePain},
+		thingStateTics:      []int{1},
+		thingStatePhase:     []int{0},
+		p:                   player{x: -128 * fracUnit, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+	}
+
+	g.tickMonsters()
+
+	if g.thingPainTics[0] != 0 {
+		t.Fatalf("pain tics=%d want 0", g.thingPainTics[0])
+	}
+	if g.thingState[0] != monsterStateSee {
+		t.Fatalf("state=%d want see", g.thingState[0])
+	}
+	if g.thingStateTics[0] <= 0 {
+		t.Fatalf("state tics=%d want > 0", g.thingStateTics[0])
+	}
+}
+
+func TestTickMonstersJustAttackedStillTurnsTowardMoveDirLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+			},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{30},
+		thingAggro:          []bool{true},
+		thingTargetPlayer:   []bool{true},
+		thingTargetIdx:      []int{-1},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingReactionTics:   []int{0},
+		thingMoveDir:        []monsterMoveDir{monsterDirWest},
+		thingMoveCount:      []int{0},
+		thingJustAtk:        []bool{true},
+		thingAngleState:     []uint32{2502785088},
+		thingZState:         []int64{0},
+		thingFloorState:     []int64{0},
+		thingCeilState:      []int64{128 * fracUnit},
+		thingSupportValid:   []bool{true},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
+		p:                   player{x: -128 * fracUnit, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+	}
+
+	g.tickMonsters()
+
+	if got := g.thingAngleState[0]; got != 2147483648 {
+		t.Fatalf("angle=%d want %d", got, 2147483648)
+	}
+	if g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should clear after the Doom just-attacked chase gate")
+	}
+}
+
 func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

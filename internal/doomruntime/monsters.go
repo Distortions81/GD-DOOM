@@ -122,6 +122,7 @@ func (g *game) tickMonsters() {
 				continue
 			}
 		}
+		resumedFromPain := false
 		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 			g.thingPainTics[i]--
 			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain {
@@ -130,13 +131,17 @@ func (g *game) tickMonsters() {
 			if i >= 0 && i < len(g.thingAttackFireTics) {
 				g.thingAttackFireTics[i] = -1
 			}
-			continue
+			if g.thingPainTics[i] > 0 {
+				continue
+			}
+			g.resetMonsterIdleOrChaseState(i, th.Type)
+			resumedFromPain = true
 		}
-		if i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
+		if !resumedFromPain && i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
 			g.resetMonsterIdleOrChaseState(i, th.Type)
 		}
 
-		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
+		if !resumedFromPain && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
 			continue
 		}
 		// A sleeping monster can acquire a target while advancing out of its
@@ -158,6 +163,7 @@ func (g *game) tickMonsters() {
 				g.thingThreshold[i]--
 			}
 		}
+		g.monsterTurnTowardMoveDir(i)
 
 		// Doom A_Chase: prevent consecutive missile attacks.
 		if g.thingJustAtk[i] {
@@ -165,7 +171,6 @@ func (g *game) tickMonsters() {
 			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
 			continue
 		}
-		g.monsterTurnTowardMoveDir(i)
 
 		if g.monsterCanMeleeTarget(i, th.Type, dist, tx, ty, targetX, targetY) {
 			g.faceMonsterToward(i, tx, ty, targetX, targetY)
@@ -1821,7 +1826,7 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 		slope = 0
 	}
 	for pellet := 0; pellet < pellets; pellet++ {
-		angle := addDoomAngleSpread(baseAngle, doomGunSpreadShift)
+		angle := addDoomAngleSpread(baseAngle, doomMonsterSpreadShift)
 		damage := 3 * (1 + doomrand.PRandom()%5)
 		outcome := g.lineAttackTrace(actor, angle, monsterAttackRange, slope, true)
 		g.applyLineAttackOutcome(actor, outcome, damage)
