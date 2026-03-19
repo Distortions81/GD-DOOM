@@ -651,12 +651,10 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		tx, ty := g.thingPosFixed(i, th)
 		if isMonster(th.Type) {
-			if i < 0 || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
-				return false
-			}
-			if actorsOverlapXY(x, y, radius, tx, ty, monsterRadius(th.Type)) {
+			r := monsterRadius(th.Type)
+			if actorsOverlapXY(x, y, radius, tx, ty, r) {
 				if probeEnabled {
-					g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, monsterRadius(th.Type)), x, y)
+					g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, r), x, y)
 				}
 				return true
 			}
@@ -773,12 +771,7 @@ func (g *game) blockLinesIterator(x, y int, fn func(int) bool) bool {
 		return true
 	}
 	cell := g.m.BlockMap.Cells[idx]
-	start := 0
-	// Doom blocklists carry a leading 0 sentinel before linedef numbers.
-	if len(cell) > 0 && cell[0] == 0 {
-		start = 1
-	}
-	for _, lineWord := range cell[start:] {
+	for _, lineWord := range cell {
 		if !fn(int(lineWord)) {
 			return false
 		}
