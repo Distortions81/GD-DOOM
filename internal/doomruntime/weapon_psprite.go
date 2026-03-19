@@ -309,7 +309,6 @@ func (g *game) bringUpWeapon() {
 	}
 	g.weaponPSpriteY = weaponBottomY
 	g.inventory.PendingWeapon = 0
-	g.inventory.ReadyWeapon = next
 	g.setWeaponPSpriteState(weaponInfo(next).upstate, false)
 }
 

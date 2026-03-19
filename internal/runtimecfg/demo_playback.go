@@ -17,6 +17,7 @@ func PrepareDemoPlaybackOptions(opts Options, script *demo.Script) Options {
 	// Vanilla demo playback ignores launcher-side gameplay mutators.
 	opts.ShowNoSkillItems = false
 	opts.ShowAllItems = false
+	opts.AutoWeaponSwitch = true
 	opts.CheatLevel = 0
 	opts.Invulnerable = false
 	opts.AllCheats = false

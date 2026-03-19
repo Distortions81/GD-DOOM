@@ -149,6 +149,7 @@ func TestAttractDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
 			GameMode:         gameModeDeathmatch,
 			ShowNoSkillItems: true,
 			ShowAllItems:     true,
+			AutoWeaponSwitch: false,
 			CheatLevel:       3,
 			Invulnerable:     true,
 			AllCheats:        true,
@@ -177,6 +178,9 @@ func TestAttractDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
 	}
 	if sg.g.opts.ShowNoSkillItems || sg.g.opts.ShowAllItems {
 		t.Fatalf("demo playback inherited item filter overrides: shownoskill=%t showall=%t", sg.g.opts.ShowNoSkillItems, sg.g.opts.ShowAllItems)
+	}
+	if !sg.g.opts.AutoWeaponSwitch {
+		t.Fatal("demo playback should force Doom-style auto weapon switching")
 	}
 	if sg.g.cheatLevel != 0 || sg.g.invulnerable || sg.g.opts.AllCheats {
 		t.Fatalf("demo playback inherited cheats: cheat=%d invuln=%t allcheats=%t", sg.g.cheatLevel, sg.g.invulnerable, sg.g.opts.AllCheats)

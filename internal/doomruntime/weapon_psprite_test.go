@@ -147,11 +147,14 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	if g.inventory.ReadyWeapon != weaponPistol {
 		t.Fatalf("ready weapon=%v want pistol until current attack finishes", g.inventory.ReadyWeapon)
 	}
-	for i := 0; i < 32; i++ {
+	for i := 0; i < 64 && g.inventory.ReadyWeapon != weaponShotgun; i++ {
 		g.tickWeaponOverlay()
 	}
-	if g.inventory.PendingWeapon != 0 || g.inventory.ReadyWeapon != weaponShotgun {
-		t.Fatalf("weapon switch should be in progress after attack: ready=%v pending=%v", g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+	if g.inventory.ReadyWeapon != weaponShotgun {
+		t.Fatalf("weapon switch should have selected shotgun after attack: ready=%v pending=%v", g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+	}
+	if g.inventory.PendingWeapon != weaponShotgun && g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want shotgun during raise or cleared after bring-up", g.inventory.PendingWeapon)
 	}
 	if g.weaponState != weaponStateShotgunUp && g.weaponState != weaponStateShotgunReady {
 		t.Fatalf("weapon state=%v want shotgun raise or ready", g.weaponState)
@@ -164,6 +167,36 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	}
 	if g.inventory.ReadyWeapon != weaponShotgun || g.weaponState != weaponStateShotgunReady || g.weaponFlashState != weaponStateNone {
 		t.Fatalf("weapon switch not applied after raise: ready=%v state=%v flash=%v", g.inventory.ReadyWeapon, g.weaponState, g.weaponFlashState)
+	}
+}
+
+func TestWeaponSwitchDoesNotFlipReadyWeaponUntilLowerCompletes(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon:   weaponPistol,
+			PendingWeapon: weaponShotgun,
+			Weapons:       map[int16]bool{2001: true},
+		},
+	}
+
+	g.weaponPSpriteY = weaponTopY
+	g.setWeaponPSpriteState(weaponStatePistolDown, false)
+	if g.inventory.ReadyWeapon != weaponPistol || g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("switch changed too early: ready=%v pending=%v", g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+	}
+	for i := 0; i < 32 && g.inventory.ReadyWeapon == weaponPistol; i++ {
+		prevY := g.weaponPSpriteY
+		prevReady, prevPending := g.inventory.ReadyWeapon, g.inventory.PendingWeapon
+		g.tickWeaponOverlay()
+		if prevY+weaponLowerSpeed < weaponBottomY && (g.inventory.ReadyWeapon != prevReady || g.inventory.PendingWeapon != prevPending) {
+			t.Fatalf("switch changed before lower completed: prevY=%d y=%d ready=%v pending=%v", prevY, g.weaponPSpriteY, g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+		}
+	}
+	if g.inventory.ReadyWeapon != weaponShotgun {
+		t.Fatalf("ready weapon=%v want shotgun after lower completed", g.inventory.ReadyWeapon)
+	}
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want cleared after bring-up starts", g.inventory.PendingWeapon)
 	}
 }
 

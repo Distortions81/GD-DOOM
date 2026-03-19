@@ -557,11 +557,11 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if lowfloor < tmdrop {
 			tmdrop = lowfloor
 		}
-		if ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
-			g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
+			if moverThingIdx >= 0 && moverThingIdx < len(g.thingProbeSpecialLines) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+				g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
+			}
+			return true
 		}
-		return true
-	}
 	iter := func(lineIdx int) bool {
 		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
 			return true

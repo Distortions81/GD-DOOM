@@ -273,9 +273,6 @@ func (g *game) weaponActionRefire(_ weaponPspriteState) {
 	g.weaponRefire = false
 	g.weaponAttackDown = false
 	g.ensureWeaponHasAmmo()
-	if g.inventory.PendingWeapon != 0 {
-		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
-	}
 }
 
 func (g *game) weaponActionGunFlash(_ weaponPspriteState) {
@@ -311,6 +308,7 @@ func (g *game) weaponActionLower(_ weaponPspriteState) {
 	if g.inventory.PendingWeapon == 0 {
 		g.inventory.PendingWeapon = g.inventory.ReadyWeapon
 	}
+	g.inventory.ReadyWeapon = g.inventory.PendingWeapon
 	g.bringUpWeapon()
 }
 
@@ -1684,7 +1682,6 @@ func (g *game) applyPendingWeapon() bool {
 	g.weaponAttackDown = false
 	g.clearWeaponOverlay()
 	g.inventory.ReadyWeapon = next
-	g.inventory.PendingWeapon = 0
 	g.bringUpWeapon()
 	return true
 }

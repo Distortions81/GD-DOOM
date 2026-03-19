@@ -200,6 +200,7 @@ func TestApplyDemoPlaybackHeaderMatchesDoomSourceFields(t *testing.T) {
 		GameMode:         "deathmatch",
 		ShowNoSkillItems: true,
 		ShowAllItems:     true,
+		AutoWeaponSwitch: false,
 		CheatLevel:       3,
 		Invulnerable:     true,
 		AllCheats:        true,
@@ -229,6 +230,9 @@ func TestApplyDemoPlaybackHeaderMatchesDoomSourceFields(t *testing.T) {
 	}
 	if opts.ShowNoSkillItems || opts.ShowAllItems {
 		t.Fatalf("demo playback should ignore item filter overrides, got shownoskill=%t showall=%t", opts.ShowNoSkillItems, opts.ShowAllItems)
+	}
+	if !opts.AutoWeaponSwitch {
+		t.Fatal("demo playback should force Doom-style auto weapon switching")
 	}
 	if opts.CheatLevel != 0 || opts.Invulnerable || opts.AllCheats {
 		t.Fatalf("demo playback should ignore cheats, got cheat=%d invuln=%t allcheats=%t", opts.CheatLevel, opts.Invulnerable, opts.AllCheats)
