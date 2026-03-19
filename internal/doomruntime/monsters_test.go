@@ -1963,6 +1963,57 @@ func TestTickMonstersJustAttackedStillTurnsTowardMoveDirLikeDoom(t *testing.T) {
 	}
 }
 
+func TestTickMonstersAttackExpiryResumesChaseSameTicLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 0, Y: 0},
+			},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{60},
+		thingAggro:          []bool{true},
+		thingTargetPlayer:   []bool{true},
+		thingTargetIdx:      []int{-1},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{1},
+		thingAttackFireTics: []int{-1},
+		thingReactionTics:   []int{0},
+		thingMoveDir:        []monsterMoveDir{monsterDirWest},
+		thingMoveCount:      []int{0},
+		thingJustAtk:        []bool{true},
+		thingThreshold:      []int{monsterBaseThreshold},
+		thingAngleState:     []uint32{2068071311},
+		thingZState:         []int64{0},
+		thingFloorState:     []int64{0},
+		thingCeilState:      []int64{128 * fracUnit},
+		thingSupportValid:   []bool{true},
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStateTics:      []int{1},
+		thingStatePhase:     []int{2},
+		thingAttackPhase:    []int{2},
+		p:                   player{x: -128 * fracUnit, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+	}
+
+	g.tickMonsters()
+
+	if got := g.thingState[0]; got != monsterStateSee {
+		t.Fatalf("state=%d want see", got)
+	}
+	if g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should clear after same-tic chase resumes")
+	}
+	if got := g.thingThreshold[0]; got != monsterBaseThreshold-1 {
+		t.Fatalf("threshold=%d want %d", got, monsterBaseThreshold-1)
+	}
+	if got := g.thingAngleState[0]; got != 2147483648 {
+		t.Fatalf("angle=%d want %d", got, 2147483648)
+	}
+	if got := g.thingMoveCount[0]; got < 0 || got > 15 {
+		t.Fatalf("movecount=%d want [0,15]", got)
+	}
+}
+
 func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

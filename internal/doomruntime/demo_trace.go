@@ -433,11 +433,14 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 	for _, item := range ordered {
 		out = append(out, item.mobj)
 	}
-	if want := os.Getenv("GD_DEBUG_TRACE_MOBJ_TIC"); want != "" && fmt.Sprint(g.demoTick-1) == want {
-		for idx, item := range ordered {
-			if idx == 39 {
-				fmt.Printf("trace-mobj-debug tic=%d ordinal=%d order=%d type=%d x=%d y=%d sector=%d\n",
-					g.demoTick-1, idx, item.order, item.mobj.Type, item.mobj.X, item.mobj.Y, item.mobj.Sector)
+	if want := os.Getenv("GD_DEBUG_TRACE_MOBJ"); want != "" {
+		var wantTic, wantOrdinal int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantOrdinal); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+			for idx, item := range ordered {
+				if idx == wantOrdinal {
+					fmt.Printf("trace-mobj-debug tic=%d ordinal=%d order=%d type=%d x=%d y=%d sector=%d kind=%s target=%d target_type=%d\n",
+						g.demoTick-1, idx, item.order, item.mobj.Type, item.mobj.X, item.mobj.Y, item.mobj.Sector, item.mobj.Kind, item.mobj.Target, item.mobj.TargetType)
+				}
 			}
 		}
 	}

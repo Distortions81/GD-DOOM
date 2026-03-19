@@ -126,6 +126,7 @@ func (g *game) tickMonsters() {
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 			continue
 		}
+		g.debugMonsterTick(i, "start")
 		if th.Type == 88 {
 			continue
 		}
@@ -141,10 +142,12 @@ func (g *game) tickMonsters() {
 			dist = doomApproxDistance(targetX-tx, targetY-ty)
 		}
 
+		resumedFromAttack := false
 		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 			if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
 				continue
 			}
+			resumedFromAttack = i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack
 		}
 		resumedFromPain := false
 		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
@@ -178,11 +181,11 @@ func (g *game) tickMonsters() {
 			g.resetMonsterIdleOrChaseState(i, th.Type)
 			resumedFromPain = true
 		}
-		if !resumedFromPain && i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
+		if !resumedFromPain && !resumedFromAttack && i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
 			g.resetMonsterIdleOrChaseState(i, th.Type)
 		}
 
-		if !resumedFromPain && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
+		if !resumedFromPain && !resumedFromAttack && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
 			continue
 		}
 		// A sleeping monster can acquire a target while advancing out of its
@@ -240,7 +243,32 @@ func (g *game) tickMonsters() {
 			ax, ay = g.thingPosFixed(i, g.m.Things[i])
 		}
 		g.emitMonsterActiveSound(i, th.Type, ax, ay)
+		g.debugMonsterTick(i, "end")
 	}
+}
+
+func (g *game) debugMonsterTick(i int, stage string) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_TICK") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_TICK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if wantIdx >= 0 && i != wantIdx {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	tx, ty := int64(0), int64(0)
+	if g.m != nil && i >= 0 && i < len(g.m.Things) {
+		tx, ty = g.thingPosFixed(i, g.m.Things[i])
+	}
+	fmt.Printf("monster-tick-debug tic=%d world=%d idx=%d type=%d stage=%s state=%d phase=%d statetics=%d movedir=%d movecount=%d threshold=%d reaction=%d justatk=%t targetPlayer=%t pos=(%d,%d) angle=%d\n",
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, stage,
+		g.thingState[i], g.thingStatePhase[i], g.thingStateTics[i], g.thingMoveDir[i], g.thingMoveCount[i],
+		g.thingThreshold[i], g.thingReactionTics[i], g.thingJustAtk[i], g.thingTargetPlayer[i], tx, ty, g.thingWorldAngle(i, g.m.Things[i]))
 }
 
 func (g *game) setMonsterThinkState(i int, typ int16, state monsterThinkState, tics int) {
@@ -1142,10 +1170,13 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 				nextPhase := g.thingAttackPhase[i] + 1
 				if nextPhase >= len(monsterAttackFrameTics(typ)) {
 					g.thingAttackTics[i] = 0
+					if i >= 0 && i < len(g.thingAttackFireTics) {
+						g.thingAttackFireTics[i] = -1
+					}
 					if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
 						g.resetMonsterIdleOrChaseState(i, typ)
 					}
-					return true
+					return false
 				}
 				g.thingAttackPhase[i] = nextPhase
 				g.thingStateTics[i] = monsterAttackFrameDuration(typ, nextPhase)
@@ -1168,6 +1199,16 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 		}
 	}
 	g.thingAttackTics[i]--
+	if g.thingAttackTics[i] <= 0 {
+		g.thingAttackTics[i] = 0
+		if i >= 0 && i < len(g.thingAttackFireTics) {
+			g.thingAttackFireTics[i] = -1
+		}
+		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+			g.resetMonsterIdleOrChaseState(i, typ)
+		}
+		return false
+	}
 	if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateAttack {
 		g.thingStateTics[i] = g.thingAttackTics[i]
 	}
