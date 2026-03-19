@@ -42,9 +42,12 @@ func TestDebugRealDemo1FullTrace(t *testing.T) {
 		DemoScript:         script,
 		DemoQuitOnComplete: true,
 		DemoTracePath:      tracePath,
+		SFXVolume:          0.5,
 		SoundBank:          media.SoundBank{},
 	})
-	g.snd = nil
+	if g.snd != nil {
+		g.snd.player = nil
+	}
 	for tic := 0; tic < 100000; tic++ {
 		err := g.Update()
 		if err == nil {

@@ -196,22 +196,22 @@ func TestDamageMonsterFromPlayerAppliesDoomThrustMomentum(t *testing.T) {
 
 func TestDamageMonsterDeathPreservesNegativeHealthLikeDoom(t *testing.T) {
 	g := &game{
-		m: &mapdata.Map{Things: []mapdata.Thing{{Type: 9}}},
-		thingHP:         []int{3},
-		thingAggro:      []bool{false},
-		thingReactionTics: []int{8},
-		thingDead:       []bool{false},
-		thingDeathTics:  []int{0},
-		thingPainTics:   []int{0},
-		thingAttackTics: []int{0},
+		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 9}}},
+		thingHP:             []int{3},
+		thingAggro:          []bool{false},
+		thingReactionTics:   []int{8},
+		thingDead:           []bool{false},
+		thingDeathTics:      []int{0},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{0},
 		thingAttackFireTics: []int{-1},
-		thingState:      []monsterThinkState{monsterStateSpawn},
-		thingStateTics:  []int{0},
-		thingStatePhase: []int{0},
-		thingX:          []int64{0},
-		thingY:          []int64{0},
-		thingAngleState: []uint32{0},
-		soundQueue:      make([]soundEvent, 0, 2),
+		thingState:          []monsterThinkState{monsterStateSpawn},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
+		thingX:              []int64{0},
+		thingY:              []int64{0},
+		thingAngleState:     []uint32{0},
+		soundQueue:          make([]soundEvent, 0, 2),
 	}
 	doomrand.Clear()
 	g.damageMonsterFrom(0, 8, true, -1)
@@ -1106,6 +1106,37 @@ func TestMonsterPainSoundEventMapping(t *testing.T) {
 	}
 	if got := monsterPainSoundEvent(3001); got != soundEventMonsterPainHumanoid {
 		t.Fatalf("imp pain event=%v want=%v", got, soundEventMonsterPainHumanoid)
+	}
+}
+
+func TestDamageMonsterPainSoundStartsOnPainActionFrame(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9, X: 0, Y: 0}},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{30},
+		thingPainTics:       []int{0},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingAttackPhase:    []int{0},
+		thingJustHit:        []bool{false},
+		soundQueue:          make([]soundEvent, 0, 2),
+	}
+
+	doomrand.Clear()
+	g.damageMonsterFrom(0, 5, false, -1)
+	if len(g.soundQueue) != 0 {
+		t.Fatalf("pain sound should wait for A_Pain frame, queue=%v", g.soundQueue)
+	}
+	if g.thingPainTics[0] != 6 {
+		t.Fatalf("pain tics=%d want 6", g.thingPainTics[0])
+	}
+	if g.thingStateTics[0] != 3 {
+		t.Fatalf("state tics=%d want first pain frame 3", g.thingStateTics[0])
 	}
 }
 

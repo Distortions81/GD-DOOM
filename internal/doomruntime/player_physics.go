@@ -137,6 +137,7 @@ func (g *game) tickPlayerCounters() {
 			case 1:
 				g.playerPainStatePhase = 2
 				g.playerPainStateTics = 4
+				g.emitSoundEvent(soundEventPain)
 			default:
 				g.playerPainStatePhase = 0
 			}
@@ -161,17 +162,7 @@ func (g *game) tickPlayerCounters() {
 
 func (g *game) tickDoors() {
 	setDoorCeiling := func(sec int, z int64) {
-		if sec < 0 || sec >= len(g.sectorCeil) {
-			return
-		}
-		if g.sectorCeil[sec] == z {
-			return
-		}
-		g.sectorCeil[sec] = z
-		g.markDynamicSectorPlaneCacheDirty(sec)
-		if sec >= 0 && sec < len(g.m.Sectors) {
-			g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
-		}
+		g.setSectorCeilingHeight(sec, z)
 	}
 	doorWouldCrushPlayer := func(sec int, nextCeil int64) bool {
 		if g == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
@@ -420,7 +411,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
 		g.debugPlayerProbe("blocked by thing", x, y)
-		return tmfloor, tmceil, tmdrop, false
+		return 0, 0, 0, false
 	}
 
 	g.validCount++
@@ -515,14 +506,14 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 					g.debugPlayerProbe(fmt.Sprintf("scan block bx=%d by=%d", bx, by), x, y)
 				}
 				if !g.blockLinesIterator(bx, by, iter) {
-					return tmfloor, tmceil, tmdrop, false
+					return 0, 0, 0, false
 				}
 			}
 		}
 	} else {
 		for i := range g.lines {
 			if !processPhysLine(i) {
-				return tmfloor, tmceil, tmdrop, false
+				return 0, 0, 0, false
 			}
 		}
 	}

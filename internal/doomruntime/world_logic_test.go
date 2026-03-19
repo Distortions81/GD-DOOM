@@ -188,11 +188,8 @@ func TestDamagePlayerFromConsumesPlayerPainChancePRandomAndStartsPainState(t *te
 	if g.playerPainStatePhase != 1 || g.playerPainStateTics != 4 {
 		t.Fatalf("player pain phase/tics=%d/%d want=1/4", g.playerPainStatePhase, g.playerPainStateTics)
 	}
-	if got := len(g.soundQueue); got != 1 {
-		t.Fatalf("soundQueue len=%d want=1", got)
-	}
-	if got := g.soundQueue[0]; got != soundEventPain {
-		t.Fatalf("sound=%v want=%v", got, soundEventPain)
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue len=%d want=0 before A_Pain frame", got)
 	}
 }
 
@@ -208,6 +205,24 @@ func TestDamagePlayerFromSkipsPainStateWhenPainChanceRollFails(t *testing.T) {
 	}
 	if got := len(g.soundQueue); got != 0 {
 		t.Fatalf("soundQueue len=%d want=0", got)
+	}
+}
+
+func TestTickPlayerCounters_EmitsPainSoundOnSecondPainFrame(t *testing.T) {
+	g := &game{
+		playerPainStatePhase: 1,
+		playerPainStateTics:  1,
+		soundQueue:           make([]soundEvent, 0, 2),
+	}
+	g.tickPlayerCounters()
+	if g.playerPainStatePhase != 2 || g.playerPainStateTics != 4 {
+		t.Fatalf("player pain phase/tics=%d/%d want=2/4", g.playerPainStatePhase, g.playerPainStateTics)
+	}
+	if got := len(g.soundQueue); got != 1 {
+		t.Fatalf("soundQueue len=%d want=1", got)
+	}
+	if got := g.soundQueue[0]; got != soundEventPain {
+		t.Fatalf("sound=%v want=%v", got, soundEventPain)
 	}
 }
 

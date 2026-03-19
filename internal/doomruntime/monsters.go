@@ -129,8 +129,25 @@ func (g *game) tickMonsters() {
 		resumedFromPain := false
 		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 			g.thingPainTics[i]--
-			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain {
-				g.thingStateTics[i] = g.thingPainTics[i]
+			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain && g.thingStateTics[i] > 0 {
+				g.thingStateTics[i]--
+				if g.thingStateTics[i] == 0 && g.thingPainTics[i] > 0 {
+					frameTics := monsterPainFrameTics(th.Type)
+					nextPhase := 0
+					if i >= 0 && i < len(g.thingStatePhase) {
+						nextPhase = g.thingStatePhase[i] + 1
+					}
+					if nextPhase >= 0 && nextPhase < len(frameTics) {
+						if i >= 0 && i < len(g.thingStatePhase) {
+							g.thingStatePhase[i] = nextPhase
+						}
+						g.thingStateTics[i] = frameTics[nextPhase]
+						if nextPhase == monsterPainActionPhase(th.Type) {
+							px, py := g.thingPosFixed(i, th)
+							g.emitSoundEventAt(monsterPainSoundEvent(th.Type), px, py)
+						}
+					}
+				}
 			}
 			if i >= 0 && i < len(g.thingAttackFireTics) {
 				g.thingAttackFireTics[i] = -1
@@ -817,6 +834,18 @@ func monsterPainDurationTics(typ int16) int {
 		return 8
 	default:
 		return 6
+	}
+}
+
+func monsterPainActionPhase(typ int16) int {
+	frameTics := monsterPainFrameTics(typ)
+	switch len(frameTics) {
+	case 0:
+		return -1
+	case 1:
+		return 0
+	default:
+		return 1
 	}
 }
 

@@ -1341,7 +1341,7 @@ func TestMonsterMoveInDir_DoesNotCloseActiveManualDoorForMonster(t *testing.T) {
 		thingCollected: []bool{false},
 		thingHP:        []int{20},
 		thingDead:      []bool{false},
-		p: player{x: -128 * fracUnit, y: 0},
+		p:              player{x: -128 * fracUnit, y: 0},
 	}
 	g.initPhysics()
 	g.doors[1] = &doorThinker{
@@ -1771,15 +1771,18 @@ func TestTickMonstersPainStatePausesThinker(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		thingCollected: []bool{false},
-		thingHP:        []int{20},
-		thingAggro:     []bool{true},
-		thingCooldown:  []int{0},
-		thingMoveDir:   []monsterMoveDir{monsterDirEast},
-		thingMoveCount: []int{0},
-		thingPainTics:  []int{3},
-		sectorFloor:    []int64{0},
-		sectorCeil:     []int64{128 * fracUnit},
+		thingCollected:  []bool{false},
+		thingHP:         []int{20},
+		thingAggro:      []bool{true},
+		thingCooldown:   []int{0},
+		thingMoveDir:    []monsterMoveDir{monsterDirEast},
+		thingMoveCount:  []int{0},
+		thingPainTics:   []int{3},
+		thingState:      []monsterThinkState{monsterStatePain},
+		thingStateTics:  []int{3},
+		thingStatePhase: []int{0},
+		sectorFloor:     []int64{0},
+		sectorCeil:      []int64{128 * fracUnit},
 		p: player{
 			x: 256 * fracUnit,
 			y: 0,
@@ -1796,6 +1799,38 @@ func TestTickMonstersPainStatePausesThinker(t *testing.T) {
 	}
 	if g.stats.Health != 100 {
 		t.Fatalf("monster attacked during pain state: health=%d", g.stats.Health)
+	}
+}
+
+func TestTickMonstersPainStateAdvancesToActionFrameAndEmitsPainSound(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9, X: 0, Y: 0}},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{20},
+		thingAggro:          []bool{true},
+		thingPainTics:       []int{4},
+		thingState:          []monsterThinkState{monsterStatePain},
+		thingStateTics:      []int{1},
+		thingStatePhase:     []int{0},
+		thingAttackFireTics: []int{-1},
+		soundQueue:          make([]soundEvent, 0, 2),
+	}
+
+	g.tickMonsters()
+
+	if g.thingPainTics[0] != 3 {
+		t.Fatalf("pain tics=%d want 3", g.thingPainTics[0])
+	}
+	if g.thingStatePhase[0] != 1 {
+		t.Fatalf("pain phase=%d want 1", g.thingStatePhase[0])
+	}
+	if g.thingStateTics[0] != 3 {
+		t.Fatalf("state tics=%d want second pain frame 3", g.thingStateTics[0])
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventMonsterPainHumanoid) {
+		t.Fatalf("queue=%v missing humanoid pain sound", g.soundQueue)
 	}
 }
 
@@ -1866,15 +1901,15 @@ func TestTickMonstersDeadMonsterStillSlidesLikeDoom(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		thingCollected: []bool{false},
-		thingHP:        []int{-5},
-		thingDead:      []bool{true},
-		thingDeathTics: []int{3},
-		thingMomX:      []int64{2 * fracUnit},
-		thingMomY:      []int64{0},
-		thingMomZ:      []int64{0},
-		thingX:         []int64{0},
-		thingY:         []int64{0},
+		thingCollected:  []bool{false},
+		thingHP:         []int{-5},
+		thingDead:       []bool{true},
+		thingDeathTics:  []int{3},
+		thingMomX:       []int64{2 * fracUnit},
+		thingMomY:       []int64{0},
+		thingMomZ:       []int64{0},
+		thingX:          []int64{0},
+		thingY:          []int64{0},
 		thingAngleState: []uint32{0},
 	}
 	g.ensureMonsterAIState()

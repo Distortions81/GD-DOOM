@@ -246,7 +246,7 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	if g.playerTouchesSector(sec) {
 		g.heightClipPlayer(oldPlayerFloor)
 	}
-	g.heightClipThings()
+	g.heightClipThingsInSector(sec)
 }
 
 func (g *game) setSectorCeilingHeight(sec int, z int64) {
@@ -265,7 +265,7 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	if g.playerTouchesSector(sec) {
 		g.heightClipPlayer(oldPlayerFloor)
 	}
-	g.heightClipThings()
+	g.heightClipThingsInSector(sec)
 }
 
 func (g *game) heightClipPlayer(oldFloorz int64) bool {
@@ -300,12 +300,40 @@ func thingCollisionRadius(typ int16) int64 {
 	return 20 * fracUnit
 }
 
-func (g *game) heightClipThings() {
+func (g *game) thingTouchesSector(sec, i int, th mapdata.Thing) bool {
+	if g == nil || g.m == nil || sec < 0 {
+		return false
+	}
+	x, y := g.thingPosFixed(i, th)
+	if g.sectorAt(x, y) == sec {
+		return true
+	}
+	radius := thingCollisionRadius(th.Type)
+	box := [4]int64{y + radius, y - radius, x + radius, x - radius}
+	for _, ld := range g.lines {
+		front, back := g.physLineSectors(ld)
+		if front != sec && back != sec {
+			continue
+		}
+		if box[3] >= ld.bbox[2] || box[2] <= ld.bbox[3] || box[1] >= ld.bbox[0] || box[0] <= ld.bbox[1] {
+			continue
+		}
+		if g.boxOnLineSide(box, ld) == -1 {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *game) heightClipThingsInSector(sec int) {
 	if g == nil || g.m == nil {
 		return
 	}
 	for i, th := range g.m.Things {
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		if !g.thingTouchesSector(sec, i, th) {
 			continue
 		}
 		g.heightClipThing(i, th)
@@ -320,6 +348,9 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 	radius := thingCollisionRadius(th.Type)
 	oldZ, oldFloorZ, _ := g.thingSupportState(i, th)
 	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, isMonster(th.Type), i, isMonster(th.Type))
+	if !ok {
+		return false
+	}
 	z := oldZ
 	if z == oldFloorZ {
 		z = tmfloor
@@ -330,8 +361,9 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 		}
 	}
 	g.setThingSupportState(i, z, tmfloor, tmceil)
-	return ok && tmceil-tmfloor >= g.thingCurrentHeight(i, th)
+	return tmceil-tmfloor >= g.thingCurrentHeight(i, th)
 }
+
 
 func (g *game) findLowestFloorSurrounding(sec int) int64 {
 	lowest := g.sectorFloor[sec]

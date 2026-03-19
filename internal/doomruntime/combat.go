@@ -10,14 +10,14 @@ import (
 )
 
 const (
-	pistolRange        = 2048 * fracUnit
-	shotgunRange       = 2048 * fracUnit
-	bulletTargetRadius = 20 * fracUnit
-	doomGunSpreadShift = 18
+	pistolRange            = 2048 * fracUnit
+	shotgunRange           = 2048 * fracUnit
+	bulletTargetRadius     = 20 * fracUnit
+	doomGunSpreadShift     = 18
 	doomMonsterSpreadShift = 20
-	doomAimFallbackAng = uint32(1 << 26)
-	doomAimTopSlope    = (100 * fracUnit) / 160
-	doomAimBottomSlope = -((100 * fracUnit) / 160)
+	doomAimFallbackAng     = uint32(1 << 26)
+	doomAimTopSlope        = (100 * fracUnit) / 160
+	doomAimBottomSlope     = -((100 * fracUnit) / 160)
 )
 
 type lineAttackTargetMask uint8
@@ -1300,7 +1300,6 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
-				wasInPain := g.thingPainTics[thingIdx] > 0
 				if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
 					// Doom only marks JUSTHIT when the pain state triggers.
 					g.thingJustHit[thingIdx] = true
@@ -1315,17 +1314,22 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 				if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
 					g.thingAttackPhase[thingIdx] = 0
 				}
-				g.thingPainTics[thingIdx] = max(g.thingPainTics[thingIdx], monsterPainDurationTics(thingType))
-				if !wasInPain {
-					tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
-					g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
-				}
+				g.thingPainTics[thingIdx] = monsterPainDurationTics(thingType)
 				if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
 					g.thingState[thingIdx] = monsterStatePain
-					g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+					frameTics := monsterPainFrameTics(thingType)
+					if len(frameTics) > 0 {
+						g.thingStateTics[thingIdx] = frameTics[0]
+					} else {
+						g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+					}
 				}
 				if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
 					g.thingStatePhase[thingIdx] = 0
+				}
+				if monsterPainActionPhase(thingType) == 0 {
+					tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+					g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
 				}
 			}
 		}

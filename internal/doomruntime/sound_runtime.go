@@ -109,9 +109,10 @@ const (
 )
 
 type soundSystem struct {
-	bank   SoundBank
-	player *audiofx.SpatialPlayer
-	rand   uint32
+	bank          SoundBank
+	player        *audiofx.SpatialPlayer
+	rand          uint32
+	vanillaVolume int
 }
 
 type MenuSoundPlayer = audiofx.MenuPlayer
@@ -132,10 +133,16 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 
 func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool) *soundSystem {
 	return &soundSystem{
-		bank:   bank,
-		player: audiofx.NewSpatialPlayer(sfxVolume, sourcePort),
-		rand:   0x1f123bb5,
+		bank:          bank,
+		player:        audiofx.NewSpatialPlayer(sfxVolume, sourcePort),
+		rand:          0x1f123bb5,
+		vanillaVolume: vanillaSFXVolume(sfxVolume),
 	}
+}
+
+func vanillaSFXVolume(v float64) int {
+	v = clampVolume(v)
+	return int(v*15 + 0.5)
 }
 
 func PrepareSoundBankForSourcePort(bank SoundBank, dstRate int) SoundBank {
@@ -147,10 +154,13 @@ func applySourcePortPresenceBoost(src []int16) []int16 {
 }
 
 func (s *soundSystem) setSFXVolume(v float64) {
-	if s == nil || s.player == nil {
+	if s == nil {
 		return
 	}
-	s.player.SetVolume(v)
+	s.vanillaVolume = vanillaSFXVolume(v)
+	if s.player != nil {
+		s.player.SetVolume(v)
+	}
 }
 
 func (s *soundSystem) playEvent(ev soundEvent) {
@@ -158,6 +168,10 @@ func (s *soundSystem) playEvent(ev soundEvent) {
 }
 
 func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) {
+	if !vanillaSoundWouldStart(s, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
+		return
+	}
+	pitch := vanillaPitchForEvent(ev)
 	if s == nil || s.player == nil {
 		return
 	}
@@ -170,10 +184,7 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 	if !ok || sample.SampleRate <= 0 || len(sample.Data) == 0 {
 		return
 	}
-	if !s.player.CanPlaySpatial(audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
-		return
-	}
-	sample = vanillaPitchAdjustedSample(ev, sample)
+	sample = applyVanillaPitch(sample, pitch)
 	s.player.PlaySampleSpatialDelayed(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev))
 }
 
@@ -201,17 +212,26 @@ func (s *soundSystem) monsterVocalPreDelaySamples(ev soundEvent) float64 {
 	return delayMS * float64(ctx.SampleRate()) / 1000.0
 }
 
-func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
-	if sample.SampleRate <= 0 || len(sample.Data) == 0 {
-		return sample
+func vanillaSoundWouldStart(s *soundSystem, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
+	if !origin.positioned {
+		return true
 	}
+	baseVol := 15
+	if s != nil {
+		baseVol = s.vanillaVolume
+	}
+	_, _, ok := doomAdjustSoundParams(listenerX, listenerY, listenerAngle, origin.x, origin.y, baseVol, mapUsesFullClip)
+	return ok
+}
+
+func vanillaPitchForEvent(ev soundEvent) int {
 	pitch := 128
 	switch ev {
 	case soundEventSawUp, soundEventSawIdle, soundEventSawFull, soundEventSawHit:
 		debugLogVanillaPitch(ev, "saw")
 		pitch += 8 - (doomrand.MRandom() & 15)
 	case soundEventItemUp:
-		return sample
+		return pitch
 	default:
 		debugLogVanillaPitch(ev, "default")
 		pitch += 16 - (doomrand.MRandom() & 31)
@@ -220,6 +240,13 @@ func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
 		pitch = 0
 	} else if pitch > 255 {
 		pitch = 255
+	}
+	return pitch
+}
+
+func applyVanillaPitch(sample PCMSample, pitch int) PCMSample {
+	if sample.SampleRate <= 0 || len(sample.Data) == 0 {
+		return sample
 	}
 	if pitch == 128 {
 		return sample
@@ -231,6 +258,10 @@ func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
 	adjusted.FaithfulPreparedRate = 0
 	adjusted.FaithfulPreparedMono = nil
 	return adjusted
+}
+
+func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
+	return applyVanillaPitch(sample, vanillaPitchForEvent(ev))
 }
 
 func debugLogVanillaPitch(ev soundEvent, mode string) {

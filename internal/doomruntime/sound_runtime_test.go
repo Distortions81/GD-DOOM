@@ -5,6 +5,7 @@ import (
 
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
+	"gddoom/internal/mapdata"
 )
 
 func TestDoorMoveEvent(t *testing.T) {
@@ -94,6 +95,74 @@ func TestMonsterVocalPreDelaySamples_DoesNotAdvancePRandom(t *testing.T) {
 	_ = s.monsterVocalPreDelaySamples(soundEventMonsterSeePosit)
 	if got := doomrand.PRandom(); got != wantPRandom {
 		t.Fatalf("PRandom advanced after vocal pre-delay: got=%d want=%d", got, wantPRandom)
+	}
+}
+
+func TestPlayEventSpatial_ConsumesVanillaPitchRandomWithoutBackend(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15}
+	s.playEventSpatial(soundEventMonsterSeePosit3, queuedSoundOrigin{}, 0, 0, 0, false)
+	rnd, prnd := doomrand.State()
+	if rnd != 1 || prnd != 0 {
+		t.Fatalf("rng state after no-backend sound start=(%d,%d) want=(1,0)", rnd, prnd)
+	}
+}
+
+func TestPlayEventSpatial_InaudiblePositionedSoundDoesNotConsumeVanillaPitchRandom(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15}
+	s.playEventSpatial(
+		soundEventMonsterSeePosit3,
+		queuedSoundOrigin{positioned: true, x: doomSoundClippingDist * 2, y: 0},
+		0, 0, 0, false,
+	)
+	rnd, prnd := doomrand.State()
+	if rnd != 0 || prnd != 0 {
+		t.Fatalf("rng state after inaudible sound=(%d,%d) want=(0,0)", rnd, prnd)
+	}
+}
+
+func TestPlayEventSpatial_ItemUpWithoutBackendDoesNotConsumeVanillaPitchRandom(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15}
+	s.playEventSpatial(soundEventItemUp, queuedSoundOrigin{}, 0, 0, 0, false)
+	rnd, prnd := doomrand.State()
+	if rnd != 0 || prnd != 0 {
+		t.Fatalf("rng state after itemup sound=(%d,%d) want=(0,0)", rnd, prnd)
+	}
+}
+
+func TestFlushSoundEvents_ConsumesVanillaPitchRandomWithoutBackend(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		soundQueue:       []soundEvent{soundEventMonsterSeePosit3},
+		soundQueueOrigin: []queuedSoundOrigin{{}},
+		m:                &mapdata.Map{Name: "E1M5"},
+		snd:              &soundSystem{vanillaVolume: 15},
+	}
+	g.flushSoundEvents()
+	rnd, prnd := doomrand.State()
+	if rnd != 1 || prnd != 0 {
+		t.Fatalf("rng state after flushing no-backend sound queue=(%d,%d) want=(1,0)", rnd, prnd)
+	}
+	if len(g.soundQueue) != 0 || len(g.soundQueueOrigin) != 0 {
+		t.Fatalf("sound queues not cleared: queue=%d origin=%d", len(g.soundQueue), len(g.soundQueueOrigin))
+	}
+}
+
+func TestVanillaSoundWouldStart_UsesDoomVolumeScaleAtClipEdge(t *testing.T) {
+	origin := queuedSoundOrigin{positioned: true, x: 10485760, y: 46137344}
+	listenerX := int64(-27165025)
+	listenerY := int64(-12488865)
+	listenerAngle := uint32(452984832)
+	if vanillaSoundWouldStart(&soundSystem{vanillaVolume: 15}, origin, listenerX, listenerY, listenerAngle, false) {
+		t.Fatalf("edge sound should clip even at Doom max volume")
+	}
+	if !vanillaSoundWouldStart(&soundSystem{vanillaVolume: 127}, origin, listenerX, listenerY, listenerAngle, false) {
+		t.Fatalf("non-Doom 127 scale would incorrectly keep this edge sound audible")
+	}
+	if vanillaSoundWouldStart(nil, origin, listenerX, listenerY, listenerAngle, false) {
+		t.Fatalf("nil sound system should use Doom default volume and clip this edge sound")
 	}
 }
 

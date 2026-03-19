@@ -1118,20 +1118,20 @@ func newGame(m *mapdata.Map, opts Options) *game {
 			reveal: revealNormal,
 			iddt:   0,
 		},
-		showGrid:           false,
-		showLegend:         opts.SourcePortMode,
-		hudMessagesEnabled: true,
-		marks:              mapview.NewMarksState(10),
-		p:                  p,
-		localSlot:          localSlot,
+		showGrid:              false,
+		showLegend:            opts.SourcePortMode,
+		hudMessagesEnabled:    true,
+		marks:                 mapview.NewMarksState(10),
+		p:                     p,
+		localSlot:             localSlot,
 		localPlayerThingIndex: localPlayerThingIndex,
-		peerStarts:         nonLocalStarts(starts, localSlot),
-		cullLogBudget:      0,
-		floorDbgMode:       floorDebugTextured,
-		floorVisDiag:       floorVisDiagOff,
-		alwaysRun:          opts.AlwaysRun,
-		autoWeaponSwitch:   opts.AutoWeaponSwitch,
-		simTickScale:       1.0,
+		peerStarts:            nonLocalStarts(starts, localSlot),
+		cullLogBudget:         0,
+		floorDbgMode:          floorDebugTextured,
+		floorVisDiag:          floorVisDiagOff,
+		alwaysRun:             opts.AlwaysRun,
+		autoWeaponSwitch:      opts.AutoWeaponSwitch,
+		simTickScale:          1.0,
 	}
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
@@ -3220,11 +3220,41 @@ func (g *game) profileLabel() string {
 }
 
 func (g *game) emitSoundEvent(ev soundEvent) {
+	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				if pc, file, line, ok := runtime.Caller(1); ok {
+					name := "<unknown>"
+					if fn := runtime.FuncForPC(pc); fn != nil {
+						name = fn.Name()
+					}
+					fmt.Printf("sound-enqueue side=gd tic=%d world=%d event=%s positioned=false caller=%s file=%s:%d\n",
+						g.demoTick-1, g.worldTic, soundEventDebugName(ev), name, file, line)
+				}
+			}
+		}
+	}
 	g.soundQueue = append(g.soundQueue, ev)
 	g.soundQueueOrigin = append(g.soundQueueOrigin, queuedSoundOrigin{})
 }
 
 func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
+	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				if pc, file, line, ok := runtime.Caller(1); ok {
+					name := "<unknown>"
+					if fn := runtime.FuncForPC(pc); fn != nil {
+						name = fn.Name()
+					}
+					fmt.Printf("sound-enqueue side=gd tic=%d world=%d event=%s positioned=true origin=(%d,%d) caller=%s file=%s:%d\n",
+						g.demoTick-1, g.worldTic, soundEventDebugName(ev), x, y, name, file, line)
+				}
+			}
+		}
+	}
 	g.soundQueue = append(g.soundQueue, ev)
 	g.soundQueueOrigin = append(g.soundQueueOrigin, queuedSoundOrigin{x: x, y: y, positioned: true})
 }
@@ -3350,14 +3380,27 @@ func (g *game) applyThingSpawnFiltering() {
 }
 
 func (g *game) flushSoundEvents() {
-	if g.snd != nil {
-		for idx, ev := range g.soundQueue {
-			origin := queuedSoundOrigin{}
-			if idx >= 0 && idx < len(g.soundQueueOrigin) {
-				origin = g.soundQueueOrigin[idx]
-			}
-			g.snd.playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+	for idx, ev := range g.soundQueue {
+		origin := queuedSoundOrigin{}
+		if idx >= 0 && idx < len(g.soundQueueOrigin) {
+			origin = g.soundQueueOrigin[idx]
 		}
+		if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+			var wantTic int
+			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+					fmt.Printf("sound-debug side=gd tic=%d world=%d event=%s positioned=%t origin=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, soundEventDebugName(ev), origin.positioned, origin.x, origin.y)
+				}
+			}
+		}
+		if g.snd != nil {
+			g.snd.playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+		} else {
+			((*soundSystem)(nil)).playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+		}
+	}
+	if g.snd != nil {
 		g.snd.tick()
 	}
 	g.soundQueue = g.soundQueue[:0]

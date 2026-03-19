@@ -453,7 +453,6 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		if doomrand.PRandom() < playerPainChance {
 			g.playerPainStatePhase = 1
 			g.playerPainStateTics = 4
-			g.emitSoundEvent(soundEventPain)
 		}
 	}
 	g.setHUDMessage(msg, 20)
