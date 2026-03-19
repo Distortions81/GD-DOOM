@@ -646,6 +646,23 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		if i == moverThingIdx {
 			return false
 		}
+		if !moverIsMonster && isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
+			phase := 0
+			if i < len(g.thingStatePhase) {
+				phase = g.thingStatePhase[i]
+			}
+			if monsterCorpseBlocksPlayer(th.Type, phase) {
+				tx, ty := g.thingPosFixed(i, th)
+				r := monsterRadius(th.Type)
+				if actorsOverlapXY(x, y, radius, tx, ty, r) {
+					if probeEnabled {
+						g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=corpse phase=%d", i, th.Type, tx, ty, r, phase), x, y)
+					}
+					return true
+				}
+			}
+			return false
+		}
 		if !g.thingBlocksInSession(i) {
 			return false
 		}
@@ -753,6 +770,23 @@ func thingTypeBlocksActorMovement(typ int16, moverIsMonster bool) bool {
 	}
 	_ = moverIsMonster
 	return false
+}
+
+func monsterCorpseBlocksPlayer(typ int16, phase int) bool {
+	fallPhase := -1
+	switch typ {
+	case 3004, 9:
+		fallPhase = 2
+	case 3001, 3002, 58, 3006:
+		fallPhase = 3
+	case 3005, 3003, 69:
+		fallPhase = 4
+	case 7:
+		fallPhase = 2
+	case 16:
+		fallPhase = 6
+	}
+	return fallPhase >= 0 && phase < fallPhase
 }
 
 func thingTypeRadius(typ int16) int64 {
