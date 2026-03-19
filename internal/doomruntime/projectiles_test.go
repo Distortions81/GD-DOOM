@@ -19,6 +19,7 @@ func TestImpAttackSpawnsProjectile(t *testing.T) {
 		thingHP:        []int{60},
 		thingAggro:     []bool{true},
 		thingCooldown:  []int{0},
+		soundQueue:     make([]soundEvent, 0, 2),
 		stats:          playerStats{Health: 100},
 		p:              player{x: 0, y: 0, z: 0},
 		projectiles:    make([]projectile, 0, 2),
@@ -214,6 +215,7 @@ func TestMancubusAttackSpawnsSixProjectilesAcrossThreeVolleys(t *testing.T) {
 		thingAttackFireTics: []int{-1},
 		thingState:          []monsterThinkState{monsterStateSee},
 		thingStateTics:      []int{0},
+		soundQueue:          make([]soundEvent, 0, 8),
 		projectiles:         make([]projectile, 0, 8),
 		stats:               playerStats{Health: 100},
 		p:                   player{x: 0, y: 0, z: 0},
@@ -231,6 +233,9 @@ func TestMancubusAttackSpawnsSixProjectilesAcrossThreeVolleys(t *testing.T) {
 		if p.kind != projectileFatShot {
 			t.Fatalf("projectile %d kind=%v want=%v", i, p.kind, projectileFatShot)
 		}
+	}
+	if got := countSoundEvent(g.soundQueue, soundEventShootFireball); got != 6 {
+		t.Fatalf("fireball launch sound count=%d want=6 queue=%v", got, g.soundQueue)
 	}
 }
 
@@ -442,6 +447,7 @@ func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 			ceilz:  128 * fracUnit,
 		},
 		inventory:   playerInventory{ReadyWeapon: weaponRocketLauncher},
+		soundQueue:  make([]soundEvent, 0, 2),
 		projectiles: make([]projectile, 0, 1),
 	}
 	if !g.fireSelectedWeapon() {

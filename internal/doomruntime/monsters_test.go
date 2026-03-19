@@ -57,7 +57,9 @@ func TestTickMonstersWakesWhenPlayerInFrontAndVisible(t *testing.T) {
 	if !g.thingAggro[0] {
 		t.Fatal("monster should wake when player is in range and visible")
 	}
-	if !hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit) {
+	if !hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit1) &&
+		!hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit2) &&
+		!hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit3) {
 		t.Fatalf("wake should emit seesound, queue=%v", g.soundQueue)
 	}
 	tx, ty := g.thingPosFixed(0, g.m.Things[0])

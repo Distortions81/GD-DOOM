@@ -257,7 +257,11 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	case 2012:
 		return g.gainHealth(25, 100, "Picked up a medikit")
 	case 2013:
-		return g.gainHealth(100, 200, "Picked up a soulsphere")
+		msg, _, ok := g.gainHealth(100, 200, "Picked up a soulsphere")
+		if !ok {
+			return "", 0, false
+		}
+		return msg, soundEventPowerUp, true
 	case 2014:
 		return g.gainHealth(1, 200, "Picked up a health bonus")
 	case 2023:

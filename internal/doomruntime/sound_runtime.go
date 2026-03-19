@@ -1,8 +1,10 @@
 package doomruntime
 
 import (
+	"fmt"
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
+	"os"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
@@ -206,10 +208,12 @@ func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
 	pitch := 128
 	switch ev {
 	case soundEventSawUp, soundEventSawIdle, soundEventSawFull, soundEventSawHit:
+		debugLogVanillaPitch(ev, "saw")
 		pitch += 8 - (doomrand.MRandom() & 15)
 	case soundEventItemUp:
 		return sample
 	default:
+		debugLogVanillaPitch(ev, "default")
 		pitch += 16 - (doomrand.MRandom() & 31)
 	}
 	if pitch < 0 {
@@ -227,6 +231,72 @@ func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
 	adjusted.FaithfulPreparedRate = 0
 	adjusted.FaithfulPreparedMono = nil
 	return adjusted
+}
+
+func debugLogVanillaPitch(ev soundEvent, mode string) {
+	if os.Getenv("GD_DEBUG_RNG_SOUND") == "" {
+		return
+	}
+	fmt.Printf("doomrand-sound side=gd event=%s mode=%s\n", soundEventDebugName(ev), mode)
+}
+
+func soundEventDebugName(ev soundEvent) string {
+	switch ev {
+	case soundEventItemUp:
+		return "ItemUp"
+	case soundEventPowerUp:
+		return "PowerUp"
+	case soundEventShootPistol:
+		return "ShootPistol"
+	case soundEventShootShotgun:
+		return "ShootShotgun"
+	case soundEventMonsterAttackClaw:
+		return "MonsterAttackClaw"
+	case soundEventMonsterAttackSgt:
+		return "MonsterAttackSgt"
+	case soundEventMonsterAttackSkull:
+		return "MonsterAttackSkull"
+	case soundEventMonsterAttackArchvile:
+		return "MonsterAttackArchvile"
+	case soundEventMonsterAttackMancubus:
+		return "MonsterAttackMancubus"
+	case soundEventMonsterSeePosit1:
+		return "MonsterSeePosit1"
+	case soundEventMonsterSeePosit2:
+		return "MonsterSeePosit2"
+	case soundEventMonsterSeePosit3:
+		return "MonsterSeePosit3"
+	case soundEventMonsterSeeImp1:
+		return "MonsterSeeImp1"
+	case soundEventMonsterSeeImp2:
+		return "MonsterSeeImp2"
+	case soundEventMonsterSeeDemon:
+		return "MonsterSeeDemon"
+	case soundEventMonsterSeeCaco:
+		return "MonsterSeeCaco"
+	case soundEventMonsterSeeBaron:
+		return "MonsterSeeBaron"
+	case soundEventMonsterSeeKnight:
+		return "MonsterSeeKnight"
+	case soundEventMonsterSeeSpider:
+		return "MonsterSeeSpider"
+	case soundEventMonsterSeeCyber:
+		return "MonsterSeeCyber"
+	case soundEventMonsterActivePosit:
+		return "MonsterActivePosit"
+	case soundEventMonsterActiveImp:
+		return "MonsterActiveImp"
+	case soundEventMonsterActiveDemon:
+		return "MonsterActiveDemon"
+	case soundEventMonsterActiveArachnotron:
+		return "MonsterActiveArachnotron"
+	case soundEventMonsterActiveArchvile:
+		return "MonsterActiveArchvile"
+	case soundEventMonsterActiveRevenant:
+		return "MonsterActiveRevenant"
+	default:
+		return fmt.Sprintf("soundEvent(%d)", ev)
+	}
 }
 
 func isMonsterVocalSound(ev soundEvent) bool {

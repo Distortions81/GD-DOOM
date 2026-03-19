@@ -102,7 +102,12 @@ func (g *game) initThingCombatState() {
 				g.thingLastLook[i] = doomrand.PRandom() & 3
 			}
 			if info.spawnTics > 0 {
-				spawnTics := 1 + (doomrand.PRandom() % info.spawnTics)
+				spawnTics := info.spawnTics
+				// Doom P_SpawnMapThing randomizes the initial countdown of any
+				// positive-tic spawn state after P_SpawnMobj sets the baseline.
+				if spawnTics > 0 {
+					spawnTics = 1 + (doomrand.PRandom() % spawnTics)
+				}
 				if i >= 0 && i < len(g.thingThinkWait) {
 					g.thingThinkWait[i] = max(spawnTics-1, 0)
 				}

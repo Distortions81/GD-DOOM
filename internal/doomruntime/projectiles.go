@@ -208,6 +208,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		kind:         kind,
 		angle:        aimAngle,
 	})
+	g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
 	return true
 }
 

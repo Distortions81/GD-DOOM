@@ -2014,9 +2014,10 @@ func (g *game) updateDemoMode() error {
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
-	g.tickStatusWidgets()
-	// Doom trace snapshots are written after same-tic S_StartSound RNG use.
+	// Doom starts gameplay-triggered sounds during the gameplay pass, before ST_Ticker.
 	g.flushSoundEvents()
+	g.tickStatusWidgets()
+	// Doom trace snapshots are written after gameplay and status-bar updates.
 	g.writeDemoTraceTic()
 	if g.useFlash > 0 {
 		g.useFlash--
@@ -8821,6 +8822,7 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
 	state := 90
+	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 8 - (doomrand.PRandom() & 3)
 	if tics < 1 {

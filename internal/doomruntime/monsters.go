@@ -244,7 +244,8 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 			if g.monsterLookForPlayer(i, true, tx, ty) {
 				g.thingAggro[i] = true
 				g.setMonsterTargetPlayer(i)
-				return true
+				g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
+				return false
 			}
 			g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 			return false
@@ -1452,6 +1453,11 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
 	if !ok {
 		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
+		if i >= 0 && i < len(g.thingMoveDir) {
+			// Doom P_Move clears movedir before trying usable blocking
+			// specials, so a successful door-use path leaves DI_NODIR.
+			g.thingMoveDir[i] = monsterDirNoDir
+		}
 		return g.monsterUseBlockingSpecialLines(i, nx, ny)
 	}
 	prevX, prevY := x, y
@@ -1574,7 +1580,6 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		default:
 			return false
 		}
-		g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
 		return true
 	}
 	if typ == 71 {
@@ -1594,11 +1599,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		return true
 	}
 	if usesMonsterProjectile(typ) {
-		if g.spawnMonsterProjectile(i, typ) {
-			g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
-			return true
-		}
-		return false
+		return g.spawnMonsterProjectile(i, typ)
 	}
 	damage := monsterRangedDamage(typ)
 	if damage <= 0 {

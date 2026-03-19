@@ -7,6 +7,60 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestInitThingCombatStateRandomizesMonsterSpawnTicsLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{0},
+		thingReactionTics: []int{0},
+		thingLastLook:     []int{0},
+		thingThinkWait:    []int{0},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{0},
+		thingStatePhase:   []int{0},
+	}
+
+	g.initThingCombatState()
+
+	if got := g.thingState[0]; got != monsterStateSpawn {
+		t.Fatalf("state=%v want=%v", got, monsterStateSpawn)
+	}
+	if got := g.thingStateTics[0]; got < 1 || got > 10 {
+		t.Fatalf("spawn tics=%d want in [1,10]", got)
+	}
+	if got := g.thingThinkWait[0]; got != g.thingStateTics[0]-1 {
+		t.Fatalf("think wait=%d want=%d", got, g.thingStateTics[0]-1)
+	}
+	if got := g.thingReactionTics[0]; got != 8 {
+		t.Fatalf("reaction=%d want=8", got)
+	}
+}
+
+func TestSpawnHitscanBloodUsesDoomZJitterAndPRandomCount(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+
+	_, p0 := doomrand.State()
+	g.spawnHitscanBlood(10, 20, 30, 8)
+	_, p1 := doomrand.State()
+
+	if got := len(g.hitscanPuffs); got != 1 {
+		t.Fatalf("blood effects=%d want=1", got)
+	}
+	if got := g.hitscanPuffs[0].kind; got != hitscanFxBlood {
+		t.Fatalf("effect kind=%d want=%d", got, hitscanFxBlood)
+	}
+	if got := prandDelta(p0, p1); got != 4 {
+		t.Fatalf("p-random calls=%d want=4 (z jitter pair + lastlook + tics)", got)
+	}
+	if got := g.hitscanPuffs[0].z; got == 30 {
+		t.Fatalf("blood z=%d want jittered from base z", got)
+	}
+}
+
 func TestMonsterDeathsSpawnVanillaDrops(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

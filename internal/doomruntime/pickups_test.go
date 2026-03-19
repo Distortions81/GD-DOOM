@@ -80,7 +80,7 @@ func TestProcessThingPickups_ConsumesKeyGrantedByCheat(t *testing.T) {
 	}
 }
 
-func TestApplyPickup_DoomItemUpMappingsForKeysAndArmor(t *testing.T) {
+func TestApplyPickup_DoomSoundMappingsForSpecials(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()
 	tests := []struct {
@@ -90,6 +90,7 @@ func TestApplyPickup_DoomItemUpMappingsForKeysAndArmor(t *testing.T) {
 		{typ: 5, want: soundEventItemUp},
 		{typ: 13, want: soundEventItemUp},
 		{typ: 6, want: soundEventItemUp},
+		{typ: 2013, want: soundEventPowerUp},
 		{typ: 2018, want: soundEventItemUp},
 		{typ: 2019, want: soundEventItemUp},
 	}

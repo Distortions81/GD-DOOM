@@ -78,7 +78,7 @@ type demoTraceSpecial struct {
 	Speed         int64  `json:"speed,omitempty"`
 	Direction     int    `json:"direction,omitempty"`
 	TopWait       int    `json:"topwait,omitempty"`
-	TopCountdown  int    `json:"topcountdown,omitempty"`
+	TopCountdown  int    `json:"topcountdown"`
 	Crush         int    `json:"crush,omitempty"`
 	NewSpecial    int16  `json:"newspecial,omitempty"`
 	Texture       string `json:"texture,omitempty"`
@@ -413,71 +413,71 @@ func demoTraceThingTarget(g *game, i int) (target int, targetType int) {
 	return 0, 0
 }
 
-func (g *game) demoTraceSpecials() []demoTraceSpecial {
+func (g *game) demoTraceSpecials() []map[string]any {
 	if g == nil {
 		return nil
 	}
-	out := make([]demoTraceSpecial, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
+	out := make([]map[string]any, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
 
 	doorKeys := sortedIntKeys(g.doors)
 	for _, sec := range doorKeys {
 		d := g.doors[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:         "door",
-			Sector:       sec,
-			Type:         int(d.typ),
-			TopHeight:    d.topHeight,
-			Speed:        d.speed,
-			Direction:    d.direction,
-			TopWait:      d.topWait,
-			TopCountdown: d.topCountdown,
+		out = append(out, map[string]any{
+			"kind":         "door",
+			"sector":       sec,
+			"type":         int(d.typ),
+			"topheight":    d.topHeight,
+			"speed":        d.speed,
+			"direction":    d.direction,
+			"topwait":      d.topWait,
+			"topcountdown": d.topCountdown,
 		})
 	}
 	floorKeys := sortedIntKeys(g.floors)
 	for _, sec := range floorKeys {
 		f := g.floors[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:          "floor",
-			Sector:        sec,
-			Type:          f.direction,
-			Speed:         f.speed,
-			Direction:     f.direction,
-			FloorDest:     f.destHeight,
-			Texture:       f.finishFlat,
-			FinishSpecial: int16(f.finishSpecial),
+		out = append(out, map[string]any{
+			"kind":            "floor",
+			"sector":          sec,
+			"type":            f.direction,
+			"speed":           f.speed,
+			"direction":       f.direction,
+			"floordestheight": f.destHeight,
+			"texture":         f.finishFlat,
+			"finishspecial":   int16(f.finishSpecial),
 		})
 	}
 	platKeys := sortedIntKeys(g.plats)
 	for _, sec := range platKeys {
 		p := g.plats[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:          "plat",
-			Sector:        sec,
-			Type:          int(p.typ),
-			Speed:         p.speed,
-			Low:           p.low,
-			High:          p.high,
-			Wait:          p.wait,
-			Count:         p.count,
-			Status:        int(p.status),
-			OldStatus:     int(p.oldStatus),
-			FinishSpecial: int16(p.finishSpecial),
-			Texture:       p.finishFlat,
+		out = append(out, map[string]any{
+			"kind":          "plat",
+			"sector":        sec,
+			"type":          int(p.typ),
+			"speed":         p.speed,
+			"low":           p.low,
+			"high":          p.high,
+			"wait":          p.wait,
+			"count":         p.count,
+			"status":        int(p.status),
+			"oldstatus":     int(p.oldStatus),
+			"finishspecial": int16(p.finishSpecial),
+			"texture":       p.finishFlat,
 		})
 	}
 	ceilingKeys := sortedIntKeys(g.ceilings)
 	for _, sec := range ceilingKeys {
 		c := g.ceilings[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:         "ceiling",
-			Sector:       sec,
-			Action:       string(c.action),
-			Speed:        c.speed,
-			Direction:    c.direction,
-			TopHeight:    c.topHeight,
-			BottomHeight: c.bottomHeight,
-			Crush:        boolToInt(c.crush),
-			OldDirection: c.oldDirection,
+		out = append(out, map[string]any{
+			"kind":         "ceiling",
+			"sector":       sec,
+			"action":       string(c.action),
+			"speed":        c.speed,
+			"direction":    c.direction,
+			"topheight":    c.topHeight,
+			"bottomheight": c.bottomHeight,
+			"crush":        boolToInt(c.crush),
+			"olddirection": c.oldDirection,
 		})
 	}
 	return out
