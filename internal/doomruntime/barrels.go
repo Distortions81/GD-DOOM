@@ -24,7 +24,7 @@ var (
 )
 
 func isBarrelThingType(typ int16) bool {
-	return typ == barrelThingType
+	return typ == barrelThingType || typ == 30
 }
 
 func thingTypeIsShootable(typ int16) bool {
@@ -179,7 +179,6 @@ func (g *game) damageBarrel(thingIdx int, damage int) {
 	if g.thingHP[thingIdx] > 0 {
 		return
 	}
-	g.thingHP[thingIdx] = 0
 	g.thingDead[thingIdx] = true
 	g.thingState[thingIdx] = monsterStateDeath
 	g.thingStatePhase[thingIdx] = 0

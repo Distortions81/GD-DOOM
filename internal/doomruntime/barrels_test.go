@@ -126,6 +126,63 @@ func TestBarrelExplosionDamagesNearbyPlayer(t *testing.T) {
 	}
 }
 
+func TestDamageBarrelPreservesNegativeHealthLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: barrelThingType, X: 0, Y: 0}},
+		},
+		thingCollected:  []bool{false},
+		thingHP:         []int{20},
+		thingDead:       []bool{false},
+		thingState:      []monsterThinkState{monsterStateSpawn},
+		thingStateTics:  []int{6},
+		thingStatePhase: []int{0},
+		thingDeathTics:  []int{0},
+	}
+
+	g.damageBarrel(0, 25)
+
+	if got := g.thingHP[0]; got != -5 {
+		t.Fatalf("hp=%d want=-5", got)
+	}
+	if !g.thingDead[0] {
+		t.Fatal("barrel should be dead after lethal damage")
+	}
+}
+
+func TestIsBarrelThingTypeAcceptsMapAndMobjForms(t *testing.T) {
+	if !isBarrelThingType(barrelThingType) {
+		t.Fatal("expected editor barrel type to be recognized")
+	}
+	if !isBarrelThingType(30) {
+		t.Fatal("expected Doom mobj barrel type to be recognized")
+	}
+}
+
+func TestDamageShootableThingFrom_PreservesNegativeHealthForMobjBarrelType(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 30, X: 0, Y: 0}},
+		},
+		thingCollected:  []bool{false},
+		thingHP:         []int{20},
+		thingDead:       []bool{false},
+		thingState:      []monsterThinkState{monsterStateSpawn},
+		thingStateTics:  []int{6},
+		thingStatePhase: []int{0},
+		thingDeathTics:  []int{0},
+	}
+
+	g.damageShootableThingFrom(0, 25, true, -1)
+
+	if got := g.thingHP[0]; got != -5 {
+		t.Fatalf("hp=%d want=-5", got)
+	}
+	if !g.thingDead[0] {
+		t.Fatal("barrel should be dead after lethal damage")
+	}
+}
+
 func TestBarrelExplosionLongChain(t *testing.T) {
 	doomrand.Clear()
 	things := make([]mapdata.Thing, 6)
