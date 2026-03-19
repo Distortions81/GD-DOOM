@@ -1145,7 +1145,7 @@ func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackO
 	switch outcome.target.kind {
 	case lineAttackTargetThing:
 		if damage > 0 {
-			g.damageShootableThingFrom(outcome.target.idx, damage, actor.isPlayer, actor.thingIdx)
+			g.damageShootableThingFrom(outcome.target.idx, damage, actor.isPlayer, actor.thingIdx, actor.x, actor.y, true)
 		}
 		return true
 	case lineAttackTargetPlayer:
@@ -1279,10 +1279,10 @@ func monsterHitHeight(typ int16) int64 {
 }
 
 func (g *game) damageMonster(thingIdx int, damage int) {
-	g.damageMonsterFrom(thingIdx, damage, true, -1)
+	g.damageMonsterFrom(thingIdx, damage, true, -1, 0, 0, false)
 }
 
-func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
+func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
 	if thingIdx < 0 || thingIdx >= len(g.thingHP) || damage <= 0 {
 		return
 	}
@@ -1292,8 +1292,19 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	if g.thingHP[thingIdx] <= 0 {
 		return
 	}
+	if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+		matchIdx := true
+		if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+			matchIdx = wantIdx == fmt.Sprint(thingIdx)
+		}
+		if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
+			rnd, prnd := doomrand.State()
+			fmt.Printf("monster-damage-debug tic=%d world=%d idx=%d type=%d damage=%d hp_before=%d source_player=%t source_thing=%d rnd=%d prnd=%d\n",
+				g.demoTick-1, g.worldTic, thingIdx, g.m.Things[thingIdx].Type, damage, g.thingHP[thingIdx], sourcePlayer, sourceThing, rnd, prnd)
+		}
+	}
 	thingType := g.m.Things[thingIdx].Type
-	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing)
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
@@ -1403,15 +1414,37 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			}
 		}
 		g.maybeRetargetMonsterAfterDamage(thingIdx, thingType, sourcePlayer, sourceThing)
+		if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+			matchIdx := true
+			if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+				matchIdx = wantIdx == fmt.Sprint(thingIdx)
+			}
+			if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
+				targetPlayer := false
+				targetIdx := -1
+				threshold := 0
+				if thingIdx < len(g.thingTargetPlayer) {
+					targetPlayer = g.thingTargetPlayer[thingIdx]
+				}
+				if thingIdx < len(g.thingTargetIdx) {
+					targetIdx = g.thingTargetIdx[thingIdx]
+				}
+				if thingIdx < len(g.thingThreshold) {
+					threshold = g.thingThreshold[thingIdx]
+				}
+				fmt.Printf("monster-damage-post-debug tic=%d world=%d idx=%d target_player=%t target_idx=%d threshold=%d health=%d\n",
+					g.demoTick-1, g.worldTic, thingIdx, targetPlayer, targetIdx, threshold, g.thingHP[thingIdx])
+			}
+		}
 		g.setHUDMessage("Hit", 8)
 	}
 }
 
-func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
+func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
-	ix, iy, ok := g.damageSourcePos(sourcePlayer, sourceThing)
+	ix, iy, ok := g.damageInflictorPos(sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	if !ok {
 		return
 	}
@@ -1442,6 +1475,28 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 				}())
 		}
 	}
+	if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+		matchIdx := true
+		if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+			matchIdx = wantIdx == fmt.Sprint(thingIdx)
+		}
+		if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
+			fmt.Printf("monster-thrust-debug tic=%d world=%d idx=%d src=(%d,%d) target=(%d,%d) angle=%d thrust=%d add=(%d,%d) prev=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, thingIdx, ix, iy, tx, ty, angle, thrust, momx, momy,
+				func() int64 {
+					if thingIdx < len(g.thingMomX) {
+						return g.thingMomX[thingIdx]
+					}
+					return 0
+				}(),
+				func() int64 {
+					if thingIdx < len(g.thingMomY) {
+						return g.thingMomY[thingIdx]
+					}
+					return 0
+				}())
+		}
+	}
 	if thingIdx < len(g.thingMomX) {
 		momx += g.thingMomX[thingIdx]
 	}
@@ -1451,7 +1506,10 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	g.setThingMomentum(thingIdx, momx, momy, 0)
 }
 
-func (g *game) damageSourcePos(sourcePlayer bool, sourceThing int) (x, y int64, ok bool) {
+func (g *game) damageInflictorPos(sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) (x, y int64, ok bool) {
+	if hasInflictor {
+		return inflictorX, inflictorY, true
+	}
 	if sourcePlayer {
 		return g.p.x, g.p.y, true
 	}

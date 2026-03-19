@@ -152,10 +152,10 @@ func (g *game) tickBarrelDeathState(i int, th mapdata.Thing) {
 }
 
 func (g *game) damageShootableThing(thingIdx int, damage int) {
-	g.damageShootableThingFrom(thingIdx, damage, true, -1)
+	g.damageShootableThingFrom(thingIdx, damage, true, -1, 0, 0, false)
 }
 
-func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
+func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -169,17 +169,17 @@ func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer b
 	typ := g.m.Things[thingIdx].Type
 	switch {
 	case isMonster(typ):
-		g.damageMonsterFrom(thingIdx, damage, sourcePlayer, sourceThing)
+		g.damageMonsterFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	case isBarrelThingType(typ):
-		g.damageBarrelFrom(thingIdx, damage, sourcePlayer, sourceThing)
+		g.damageBarrelFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	}
 }
 
 func (g *game) damageBarrel(thingIdx int, damage int) {
-	g.damageBarrelFrom(thingIdx, damage, true, -1)
+	g.damageBarrelFrom(thingIdx, damage, true, -1, 0, 0, false)
 }
 
-func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
+func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -189,7 +189,7 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 	if g.thingDead[thingIdx] || g.thingHP[thingIdx] <= 0 {
 		return
 	}
-	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing)
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
 		g.thingReactionTics[thingIdx] = 0
@@ -214,10 +214,17 @@ func (g *game) radiusAttackFromThing(spotIdx int, damage int) {
 	sx, sy := g.thingPosFixed(spotIdx, spot)
 	sz, _, _ := g.thingSupportState(spotIdx, spot)
 	sheight := g.thingCurrentHeight(spotIdx, spot)
-	g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion")
+	sourcePlayer := false
+	sourceThing := -1
+	if spotIdx >= 0 && spotIdx < len(g.thingTargetPlayer) && g.thingTargetPlayer[spotIdx] {
+		sourcePlayer = true
+	} else if spotIdx >= 0 && spotIdx < len(g.thingTargetIdx) {
+		sourceThing = g.thingTargetIdx[spotIdx]
+	}
+	g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion", sourcePlayer, sourceThing)
 }
 
-func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage int, msg string) {
+func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage int, msg string, sourcePlayer bool, sourceThing int) {
 	if g == nil || damage <= 0 {
 		return
 	}
@@ -282,7 +289,7 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		if !g.actorHasLOS(tx, ty, tz, theight, sx, sy, sz, sheight) {
 			return
 		}
-		g.damageShootableThing(i, damage-int(tdist))
+		g.damageShootableThingFrom(i, damage-int(tdist), sourcePlayer, sourceThing, sx, sy, true)
 	}
 
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {

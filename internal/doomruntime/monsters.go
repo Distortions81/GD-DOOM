@@ -1782,7 +1782,7 @@ func (g *game) damageMonsterTarget(i, damage int, msg string, attackerX, attacke
 		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true)
 		return
 	}
-	g.damageShootableThingFrom(targetIdx, damage, false, i)
+	g.damageShootableThingFrom(targetIdx, damage, false, i, attackerX, attackerY, true)
 }
 
 func (g *game) countActiveThingType(typ int16) int {

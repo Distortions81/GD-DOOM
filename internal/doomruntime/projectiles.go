@@ -42,6 +42,7 @@ type projectile struct {
 	angle        uint32
 	kind         projectileKind
 	order        int64
+	deferredTick bool
 }
 
 type projectileImpact struct {
@@ -136,23 +137,6 @@ func monsterProjectileTTL(typ int16) int {
 	}
 }
 
-func monsterMuzzleOffsetZ(typ int16) int64 {
-	switch typ {
-	case 16:
-		return 72 * fracUnit
-	case 3003:
-		return 56 * fracUnit
-	case 66:
-		return 72 * fracUnit
-	case 67:
-		return 64 * fracUnit
-	case 68:
-		return 48 * fracUnit
-	default:
-		return 40 * fracUnit
-	}
-}
-
 func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	if g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) {
 		return false
@@ -162,34 +146,32 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	}
 	th := g.m.Things[thingIdx]
 	sx, sy := g.thingPosFixed(thingIdx, th)
-	baseZ, _, _ := g.thingSupportState(thingIdx, th)
-	sz := baseZ + monsterMuzzleOffsetZ(typ)
+	sourceZ, _, _ := g.thingSupportState(thingIdx, th)
+	sz := sourceZ + 32*fracUnit
 	tx, ty, tz, height, _, ok := g.monsterTargetPos(thingIdx)
 	if !ok {
 		return false
 	}
-	tz += height / 2
+	_ = height
 	kind := monsterProjectileKind(typ)
 	lastLook := doomrand.PRandom() & 3
 	aimAngle := g.monsterAimAngleToTarget(thingIdx, sx, sy)
 
 	dx := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineCosine(aimAngle))
 	dy := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineSineAtAngle(aimAngle))
-	dz := tz - sz
-	dxy := hypotFixed(tx-sx, ty-sy)
-	if dxy <= 0 {
-		return false
-	}
-
 	speed := monsterProjectileSpeed(typ, g.fastMonstersActive())
 	vx := dx
 	vy := dy
-	vz := int64((float64(dz) / float64(dxy)) * float64(speed))
+	dist := doomApproxDistance(tx-sx, ty-sy) / speed
+	if dist < 1 {
+		dist = 1
+	}
+	vz := (tz - sourceZ) / dist
 	if vx == 0 && vy == 0 {
 		return false
 	}
 
-	g.projectiles = append(g.projectiles, projectile{
+	p := projectile{
 		x:            sx,
 		y:            sy,
 		z:            sz,
@@ -209,7 +191,12 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		kind:         kind,
 		angle:        aimAngle,
 		order:        g.allocThinkerOrder(),
-	})
+		deferredTick: true,
+	}
+	if !g.finishProjectileSpawn(&p) {
+		return false
+	}
+	g.projectiles = append(g.projectiles, p)
 	g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
 	return true
 }
@@ -236,55 +223,84 @@ func (g *game) tickProjectiles() {
 	}
 	kept := g.projectiles[:0]
 	for _, p := range g.projectiles {
-		if p.ttl <= 0 {
+		if p.deferredTick {
+			kept = append(kept, p)
 			continue
 		}
-		ox, oy, oz := p.x, p.y, p.z
-		nx := ox + p.vx
-		ny := oy + p.vy
-		nz := oz + p.vz
-		thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
-		blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
-		if hitThing && (!blocked || thingHit.frac <= blockFrac) {
-			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
-			if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
-				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing)
-			}
-			g.projectileSplashDamage(p, thingHit.x, thingHit.y, thingHit.z)
-			continue
+		if next, keep := g.advanceProjectile(p); keep {
+			kept = append(kept, next)
 		}
-		if blocked {
-			g.spawnProjectileImpact(p.kind, hx, hy, hz, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
-			g.projectileSplashDamage(p, hx, hy, hz)
-			continue
-		}
-		p.x = nx
-		p.y = ny
-		p.z = nz
-		g.tickProjectileSpecial(&p)
-		g.tickProjectileAnim(&p)
-		p.ttl--
-		if p.ttl <= 0 {
-			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-			g.projectileSplashDamage(p, p.x, p.y, p.z)
-			continue
-		}
-		if !p.sourcePlayer && g.projectileHitsPlayer(p) {
-			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-			dmg := projectileDamage(p)
-			if dmg > 0 {
-				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
-			}
-			g.projectileSplashDamage(p, p.x, p.y, p.z)
-			continue
-		}
-		kept = append(kept, p)
 	}
 	g.projectiles = kept
+}
+
+func (g *game) tickDeferredProjectiles() {
+	if len(g.projectiles) == 0 {
+		return
+	}
+	kept := g.projectiles[:0]
+	for _, p := range g.projectiles {
+		if !p.deferredTick {
+			kept = append(kept, p)
+			continue
+		}
+		p.deferredTick = false
+		next, keep := g.advanceProjectile(p)
+		if keep {
+			kept = append(kept, next)
+		}
+	}
+	g.projectiles = kept
+}
+
+func (g *game) advanceProjectile(p projectile) (projectile, bool) {
+	if p.ttl <= 0 {
+		return projectile{}, false
+	}
+	ox, oy, oz := p.x, p.y, p.z
+	nx := ox + p.vx
+	ny := oy + p.vy
+	nz := oz + p.vz
+	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
+	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
+		g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
+		if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
+			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, thingHit.x, thingHit.y, true)
+		}
+		g.projectileSplashDamage(p, thingHit.x, thingHit.y, thingHit.z)
+		return projectile{}, false
+	}
+	if blocked {
+		g.spawnProjectileImpact(p.kind, hx, hy, hz, p.angle)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
+		g.projectileSplashDamage(p, hx, hy, hz)
+		return projectile{}, false
+	}
+	p.x = nx
+	p.y = ny
+	p.z = nz
+	g.tickProjectileSpecial(&p)
+	g.tickProjectileAnim(&p)
+	p.ttl--
+	if p.ttl <= 0 {
+		g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
+		g.projectileSplashDamage(p, p.x, p.y, p.z)
+		return projectile{}, false
+	}
+	if !p.sourcePlayer && g.projectileHitsPlayer(p) {
+		g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
+		dmg := projectileDamage(p)
+		if dmg > 0 {
+			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
+		}
+		g.projectileSplashDamage(p, p.x, p.y, p.z)
+		return projectile{}, false
+	}
+	return p, true
 }
 
 func sameMonsterSpecies(a, b int16) bool {
@@ -330,7 +346,7 @@ func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
 	if damage <= 0 {
 		return
 	}
-	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind))
+	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind), p.sourcePlayer, p.sourceThing)
 }
 
 func (g *game) spawnPlayerRocket() bool {
@@ -356,7 +372,7 @@ func (g *game) spawnPlayerRocket() bool {
 	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
 	sz := g.playerShootZ() - (rocketHeight >> 1)
 	lastLook := doomrand.PRandom() & 3
-	g.projectiles = append(g.projectiles, projectile{
+	p := projectile{
 		x:            sx,
 		y:            sy,
 		z:            sz,
@@ -376,7 +392,11 @@ func (g *game) spawnPlayerRocket() bool {
 		kind:         projectileRocket,
 		angle:        g.p.angle,
 		order:        g.allocThinkerOrder(),
-	})
+	}
+	if !g.finishProjectileSpawn(&p) {
+		return false
+	}
+	g.projectiles = append(g.projectiles, p)
 	return true
 }
 
@@ -426,7 +446,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
 	sz := g.playerShootZ() - (height >> 1)
 	lastLook := doomrand.PRandom() & 3
-	g.projectiles = append(g.projectiles, projectile{
+	p := projectile{
 		x:            sx,
 		y:            sy,
 		z:            sz,
@@ -446,7 +466,57 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		kind:         kind,
 		angle:        g.p.angle,
 		order:        g.allocThinkerOrder(),
-	})
+	}
+	if !g.finishProjectileSpawn(&p) {
+		return false
+	}
+	g.projectiles = append(g.projectiles, p)
+	return true
+}
+
+func (g *game) finishProjectileSpawn(p *projectile) bool {
+	if g == nil || p == nil {
+		return false
+	}
+	ox, oy, oz := p.x, p.y, p.z
+	nx := ox + (p.vx >> 1)
+	ny := oy + (p.vy >> 1)
+	nz := oz + (p.vz >> 1)
+	if len(g.sectorFloor) == 0 || len(g.sectorCeil) == 0 {
+		p.x = nx
+		p.y = ny
+		p.z = nz
+		return true
+	}
+	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
+	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
+		g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
+		if dmg := projectileDamage(*p); dmg > 0 && g.projectileCanDamageThing(*p, thingHit.idx) {
+			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, thingHit.x, thingHit.y, true)
+		}
+		g.projectileSplashDamage(*p, thingHit.x, thingHit.y, thingHit.z)
+		return false
+	}
+	if blocked {
+		g.spawnProjectileImpact(p.kind, hx, hy, hz, p.angle)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
+		g.projectileSplashDamage(*p, hx, hy, hz)
+		return false
+	}
+	p.x = nx
+	p.y = ny
+	p.z = nz
+	if !p.sourcePlayer && g.projectileHitsPlayer(*p) {
+		g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
+		if dmg := projectileDamage(*p); dmg > 0 {
+			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
+		}
+		g.projectileSplashDamage(*p, p.x, p.y, p.z)
+		return false
+	}
 	return true
 }
 
@@ -469,7 +539,7 @@ func (g *game) applyBFGSpray(center uint32) {
 			damage += (doomrand.PRandom() & 7) + 1
 		}
 		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
-		g.damageShootableThingFrom(outcome.target.idx, damage, true, -1)
+		g.damageShootableThingFrom(outcome.target.idx, damage, true, -1, g.p.x, g.p.y, true)
 	}
 }
 

@@ -173,7 +173,7 @@ func TestDamageShootableThingFrom_PreservesNegativeHealthForMobjBarrelType(t *te
 		thingDeathTics:  []int{0},
 	}
 
-	g.damageShootableThingFrom(0, 25, true, -1)
+	g.damageShootableThingFrom(0, 25, true, -1, 0, 0, false)
 
 	if got := g.thingHP[0]; got != -5 {
 		t.Fatalf("hp=%d want=-5", got)

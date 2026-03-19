@@ -338,14 +338,23 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if sec >= 0 && sec < len(g.sectorCeil) {
 			ceilZ = g.sectorCeil[sec]
 		}
+		target := 0
+		targetType := 0
+		if p.sourcePlayer {
+			target = 1
+			targetType = 0
+		} else if p.sourceThing >= 0 && g.m != nil && p.sourceThing < len(g.m.Things) {
+			target = 1
+			targetType = demoTraceThingType(g.m.Things[p.sourceThing].Type)
+		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: p.order,
 			mobj: demoTraceMobj{
-			Type:         1000 + int(p.kind),
+			Type:         demoTraceProjectileType(p),
 			X:            p.x,
 			Y:            p.y,
 			Z:            p.z,
-			Angle:        0,
+			Angle:        p.angle,
 			MomX:         p.vx,
 			MomY:         p.vy,
 			MomZ:         p.vz,
@@ -353,20 +362,20 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			CeilingZ:     ceilZ,
 			Radius:       p.radius,
 			Height:       p.height,
-			Tics:         p.ttl,
-			State:        -1,
-			Flags:        0,
+			Tics:         p.frameTics,
+			State:        demoTraceProjectileState(p),
+			Flags:        demoTraceProjectileFlags(p),
 			Health:       1000,
 			Movedir:      0,
 			Movecount:    0,
-			ReactionTime: 0,
+			ReactionTime: 8,
 			Threshold:    0,
-			LastLook:     0,
+			LastLook:     p.lastLook,
 			Subsector:    boolToInt(sec >= 0),
 			Sector:       sec,
 			Player:       0,
-			Target:       1,
-			TargetType:   int(p.sourceType),
+			Target:       target,
+			TargetType:   targetType,
 			Tracer:       0,
 			Kind:         "projectile",
 		}})
@@ -433,6 +442,95 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 	}
 	return out
+}
+
+func demoTraceProjectileType(p projectile) int {
+	switch p.kind {
+	case projectileFireball:
+		if p.sourceType == 3003 || p.sourceType == 69 {
+			return 16 // MT_BRUISERSHOT
+		}
+		return 31 // MT_TROOPSHOT
+	case projectilePlasmaBall:
+		if p.sourceType == 68 {
+			return 36 // MT_ARACHPLAZ
+		}
+		return 32 // MT_HEADSHOT
+	case projectileBaronBall:
+		return 16 // MT_BRUISERSHOT
+	case projectileTracer:
+		return 6 // MT_TRACER
+	case projectileFatShot:
+		return 9 // MT_FATSHOT
+	case projectileRocket:
+		return 33 // MT_ROCKET
+	case projectilePlayerPlasma:
+		return 34 // MT_PLASMA
+	case projectileBFGBall:
+		return 35 // MT_BFG
+	default:
+		return 0
+	}
+}
+
+func demoTraceProjectileState(p projectile) int {
+	switch p.kind {
+	case projectileFireball:
+		if p.sourceType == 3003 || p.sourceType == 69 {
+			if p.frame&1 != 0 {
+				return 523 // S_BRBALL2
+			}
+			return 522 // S_BRBALL1
+		}
+		if p.frame&1 != 0 {
+			return 98 // S_TBALL2
+		}
+		return 97 // S_TBALL1
+	case projectilePlasmaBall:
+		if p.sourceType == 68 {
+			if p.frame&1 != 0 {
+				return 668 // S_ARACH_PLAZ2
+			}
+			return 667 // S_ARACH_PLAZ
+		}
+		if p.frame&1 != 0 {
+			return 103 // S_RBALL2
+		}
+		return 102 // S_RBALL1
+	case projectileBaronBall:
+		if p.frame&1 != 0 {
+			return 523 // S_BRBALL2
+		}
+		return 522 // S_BRBALL1
+	case projectileTracer:
+		if p.frame&1 != 0 {
+			return 317 // S_TRACER2
+		}
+		return 316 // S_TRACER
+	case projectileFatShot:
+		if p.frame&1 != 0 {
+			return 358 // S_FATSHOT2
+		}
+		return 357 // S_FATSHOT1
+	case projectileRocket:
+		return 114 // S_ROCKET
+	case projectilePlayerPlasma:
+		if p.frame&1 != 0 {
+			return 108 // S_PLASBALL2
+		}
+		return 107 // S_PLASBALL
+	case projectileBFGBall:
+		if p.frame&1 != 0 {
+			return 116 // S_BFGSHOT2
+		}
+		return 115 // S_BFGSHOT
+	default:
+		return -1
+	}
+}
+
+func demoTraceProjectileFlags(_ projectile) int {
+	return 67088
 }
 
 func (g *game) demoTracePlayerMobjState() (state int, tics int) {

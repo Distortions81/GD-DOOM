@@ -184,7 +184,7 @@ func TestDamageMonsterFromPlayerAppliesDoomThrustMomentum(t *testing.T) {
 		p:              player{x: 0, y: 0},
 	}
 
-	g.damageMonsterFrom(0, 5, true, -1)
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
 
 	if g.thingMomX[0] == 0 || g.thingMomY[0] == 0 {
 		t.Fatalf("monster momentum=(%d,%d) want non-zero Doom thrust", g.thingMomX[0], g.thingMomY[0])
@@ -214,7 +214,7 @@ func TestDamageMonsterDeathPreservesNegativeHealthLikeDoom(t *testing.T) {
 		soundQueue:          make([]soundEvent, 0, 2),
 	}
 	doomrand.Clear()
-	g.damageMonsterFrom(0, 8, true, -1)
+	g.damageMonsterFrom(0, 8, true, -1, 0, 0, false)
 	if got := g.thingHP[0]; got != -5 {
 		t.Fatalf("hp=%d want=-5", got)
 	}
@@ -613,7 +613,7 @@ func TestDamageMonsterFromMonsterRespectsThreshold(t *testing.T) {
 		thingPainTics:     []int{0, 0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 1)
+	g.damageMonsterFrom(0, 5, false, 1, 0, 0, false)
 
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("target changed despite threshold: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -640,7 +640,7 @@ func TestDamageMonsterFromArchvileVictimIgnoresThresholdForRetarget(t *testing.T
 		thingPainTics:     []int{0, 0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 1)
+	g.damageMonsterFrom(0, 5, false, 1, 0, 0, false)
 
 	if g.thingTargetPlayer[0] || g.thingTargetIdx[0] != 1 {
 		t.Fatalf("arch-vile victim should retarget attacker: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -667,7 +667,7 @@ func TestDamageMonsterFromArchvileSourceDoesNotRetarget(t *testing.T) {
 		thingPainTics:     []int{0, 0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 1)
+	g.damageMonsterFrom(0, 5, false, 1, 0, 0, false)
 
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("arch-vile source should not become target: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -690,7 +690,7 @@ func TestDamageMonsterFromSelfDoesNotRetarget(t *testing.T) {
 		thingPainTics:     []int{0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 0)
+	g.damageMonsterFrom(0, 5, false, 0, 0, 0, false)
 
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("self-damage should not retarget: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -715,7 +715,7 @@ func TestDamageMonsterFromSetsJustHitOnlyWhenPainTriggers(t *testing.T) {
 		thingPainTics:     []int{0},
 	}
 
-	g.damageMonsterFrom(0, 5, true, -1)
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
 
 	if g.thingJustHit[0] {
 		t.Fatal("just-hit should stay clear when pain does not trigger")
@@ -757,7 +757,7 @@ func TestDamageMonsterPainCancelsQueuedAttackStateLikeDoom(t *testing.T) {
 		soundQueue:          make([]soundEvent, 0, 2),
 	}
 
-	g.damageMonsterFrom(0, 5, true, -1)
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
 
 	if g.thingPainTics[0] <= 0 {
 		t.Fatalf("pain tics=%d want > 0", g.thingPainTics[0])
@@ -1142,7 +1142,7 @@ func TestDamageMonsterPainSoundStartsOnPainActionFrame(t *testing.T) {
 	}
 
 	doomrand.Clear()
-	g.damageMonsterFrom(0, 5, false, -1)
+	g.damageMonsterFrom(0, 5, false, -1, 0, 0, false)
 	if len(g.soundQueue) != 0 {
 		t.Fatalf("pain sound should wait for A_Pain frame, queue=%v", g.soundQueue)
 	}

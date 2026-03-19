@@ -87,6 +87,7 @@ func (g *game) tickThinkers() {
 	g.tickProjectileImpacts()
 	g.tickMonsters()
 	g.tickDoors()
+	g.tickDeferredProjectiles()
 	g.tickHitscanPuffs()
 }
 
