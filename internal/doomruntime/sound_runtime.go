@@ -47,6 +47,8 @@ const (
 	soundEventMonsterAttackClaw
 	soundEventMonsterAttackSgt
 	soundEventMonsterAttackSkull
+	soundEventMonsterAttackArchvile
+	soundEventMonsterAttackMancubus
 	soundEventImpactFire
 	soundEventImpactRocket
 	soundEventBarrelExplode
@@ -456,6 +458,16 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 	case soundEventMonsterAttackSkull:
 		if len(s.bank.AttackSkull.Data) > 0 {
 			return s.bank.AttackSkull, true
+		}
+		return s.sampleForEvent(soundEventShootFireball)
+	case soundEventMonsterAttackArchvile:
+		if len(s.bank.AttackArchvile.Data) > 0 {
+			return s.bank.AttackArchvile, true
+		}
+		return s.sampleForEvent(soundEventBarrelExplode)
+	case soundEventMonsterAttackMancubus:
+		if len(s.bank.AttackMancubus.Data) > 0 {
+			return s.bank.AttackMancubus, true
 		}
 		return s.sampleForEvent(soundEventShootFireball)
 	case soundEventImpactFire:

@@ -176,26 +176,34 @@ func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
 	}
 }
 
-func TestDemoGameModeMatchesHeaderSemantics(t *testing.T) {
-	if got := demoGameMode(&demo.Script{
+func TestPrepareDemoPlaybackOptionsMatchesDoomSourceHeaderSemantics(t *testing.T) {
+	if got := runtimecfg.PrepareDemoPlaybackOptions(runtimecfg.Options{}, &demo.Script{
 		Header: demo.Header{Deathmatch: true, PlayerInGame: [4]bool{true, true}},
-	}); got != "deathmatch" {
-		t.Fatalf("demoGameMode(deathmatch)=%q want deathmatch", got)
+	}).GameMode; got != "deathmatch" {
+		t.Fatalf("GameMode(deathmatch)=%q want deathmatch", got)
 	}
-	if got := demoGameMode(&demo.Script{
+	if got := runtimecfg.PrepareDemoPlaybackOptions(runtimecfg.Options{}, &demo.Script{
 		Header: demo.Header{PlayerInGame: [4]bool{true, true}},
-	}); got != "coop" {
-		t.Fatalf("demoGameMode(coop)=%q want coop", got)
+	}).GameMode; got != "coop" {
+		t.Fatalf("GameMode(coop)=%q want coop", got)
 	}
-	if got := demoGameMode(&demo.Script{
+	if got := runtimecfg.PrepareDemoPlaybackOptions(runtimecfg.Options{}, &demo.Script{
 		Header: demo.Header{PlayerInGame: [4]bool{true}},
-	}); got != "single" {
-		t.Fatalf("demoGameMode(single)=%q want single", got)
+	}).GameMode; got != "single" {
+		t.Fatalf("GameMode(single)=%q want single", got)
 	}
 }
 
 func TestApplyDemoPlaybackHeaderMatchesDoomSourceFields(t *testing.T) {
-	opts := runtimecfg.Options{}
+	opts := runtimecfg.Options{
+		SkillLevel:       1,
+		GameMode:         "deathmatch",
+		ShowNoSkillItems: true,
+		ShowAllItems:     true,
+		CheatLevel:       3,
+		Invulnerable:     true,
+		AllCheats:        true,
+	}
 	applyDemoPlaybackHeader(&opts, &demo.Script{
 		Header: demo.Header{
 			Skill:         4,
@@ -218,6 +226,12 @@ func TestApplyDemoPlaybackHeaderMatchesDoomSourceFields(t *testing.T) {
 	}
 	if !opts.RespawnMonsters || !opts.FastMonsters || !opts.NoMonsters {
 		t.Fatalf("flags respawn=%t fast=%t nomonsters=%t want all true", opts.RespawnMonsters, opts.FastMonsters, opts.NoMonsters)
+	}
+	if opts.ShowNoSkillItems || opts.ShowAllItems {
+		t.Fatalf("demo playback should ignore item filter overrides, got shownoskill=%t showall=%t", opts.ShowNoSkillItems, opts.ShowAllItems)
+	}
+	if opts.CheatLevel != 0 || opts.Invulnerable || opts.AllCheats {
+		t.Fatalf("demo playback should ignore cheats, got cheat=%d invuln=%t allcheats=%t", opts.CheatLevel, opts.Invulnerable, opts.AllCheats)
 	}
 }
 

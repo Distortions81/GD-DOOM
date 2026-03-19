@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionaudio"
 	"gddoom/internal/sessionflow"
@@ -71,7 +72,7 @@ func (sg *sessionGame) startAttractDemoByName(name string) bool {
 		}
 		sg.capturePersistentSettings()
 		sg.applyPersistentSettingsToOptions()
-		demoOpts := sg.opts
+		demoOpts := runtimecfg.PrepareDemoPlaybackOptions(sg.opts, demo)
 		demoOpts.DemoScript = demo
 		demoOpts.DemoQuitOnComplete = false
 		demoOpts.RecordDemoPath = ""

@@ -124,6 +124,65 @@ func TestAttractDemoBuildDoesNotInheritPriorRNGState(t *testing.T) {
 	}
 }
 
+func TestAttractDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	boot := cloneMapForRestart(base.m)
+	demo := &DemoScript{
+		Path: "DEMO1",
+		Header: DemoHeader{
+			Version:       demoVersion110,
+			Skill:         1,
+			Episode:       1,
+			Map:           1,
+			Fast:          true,
+			Respawn:       true,
+			NoMonsters:    true,
+			ConsolePlayer: 0,
+			PlayerInGame:  [4]bool{true},
+		},
+		Tics: []DemoTic{{Forward: 25}},
+	}
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SkillLevel:       5,
+			GameMode:         gameModeDeathmatch,
+			ShowNoSkillItems: true,
+			ShowAllItems:     true,
+			CheatLevel:       3,
+			Invulnerable:     true,
+			AllCheats:        true,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{demo},
+		},
+		g: base,
+	}
+
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	if sg.g == nil {
+		t.Fatal("expected active demo game")
+	}
+	if got := sg.g.opts.SkillLevel; got != 2 {
+		t.Fatalf("SkillLevel=%d want 2", got)
+	}
+	if got := sg.g.opts.GameMode; got != gameModeSingle {
+		t.Fatalf("GameMode=%q want %q", got, gameModeSingle)
+	}
+	if !sg.g.opts.FastMonsters || !sg.g.opts.RespawnMonsters || !sg.g.opts.NoMonsters {
+		t.Fatalf("demo header flags not applied: fast=%t respawn=%t nomonsters=%t", sg.g.opts.FastMonsters, sg.g.opts.RespawnMonsters, sg.g.opts.NoMonsters)
+	}
+	if sg.g.opts.ShowNoSkillItems || sg.g.opts.ShowAllItems {
+		t.Fatalf("demo playback inherited item filter overrides: shownoskill=%t showall=%t", sg.g.opts.ShowNoSkillItems, sg.g.opts.ShowAllItems)
+	}
+	if sg.g.cheatLevel != 0 || sg.g.invulnerable || sg.g.opts.AllCheats {
+		t.Fatalf("demo playback inherited cheats: cheat=%d invuln=%t allcheats=%t", sg.g.cheatLevel, sg.g.invulnerable, sg.g.opts.AllCheats)
+	}
+}
+
 func TestStartGameFromFrontendClearsAttractDemoScript(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	boot := cloneMapForRestart(base.m)

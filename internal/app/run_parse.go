@@ -2587,6 +2587,8 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		AttackClaw:          firstSample(sample("DSCLAW"), sample("DSFIRSHT")),
 		AttackSgt:           firstSample(sample("DSSGTATK"), sample("DSSHOTGN")),
 		AttackSkull:         firstSample(sample("DSSKLATK"), sample("DSFIRSHT")),
+		AttackArchvile:      firstSample(sample("DSVILATK"), sample("DSBAREXP")),
+		AttackMancubus:      firstSample(sample("DSMANATK"), sample("DSFIRSHT")),
 		ImpactFire:          firstSample(sample("DSFIRXPL"), sample("DSBAREXP")),
 		ImpactRocket:        firstSample(firstSample(sample("DSRXPLOD"), sample("DSRXPLO")), sample("DSBAREXP")),
 		BarrelExplode:       firstSample(sample("DSBAREXP"), sample("DSRXPLOD")),
@@ -3172,37 +3174,9 @@ func loadBuiltInDemos(wf *wad.File) []*demo.Script {
 	return out
 }
 
-func demoGameMode(script *demo.Script) string {
-	if script == nil {
-		return "single"
-	}
-	if script.Header.Deathmatch {
-		return "deathmatch"
-	}
-	activePlayers := 0
-	for _, on := range script.Header.PlayerInGame {
-		if on {
-			activePlayers++
-		}
-	}
-	if activePlayers > 1 {
-		return "coop"
-	}
-	return "single"
-}
-
 func applyDemoPlaybackHeader(opts *runtimecfg.Options, script *demo.Script) {
 	if opts == nil || script == nil {
 		return
 	}
-	opts.SkillLevel = int(script.Header.Skill) + 1
-	opts.FastMonsters = script.Header.Fast
-	opts.RespawnMonsters = script.Header.Respawn
-	opts.NoMonsters = script.Header.NoMonsters
-	opts.GameMode = demoGameMode(script)
-	playerSlot := int(script.Header.ConsolePlayer) + 1
-	if playerSlot < 1 || playerSlot > 4 || !script.Header.PlayerInGame[playerSlot-1] {
-		playerSlot = 1
-	}
-	opts.PlayerSlot = playerSlot
+	*opts = runtimecfg.PrepareDemoPlaybackOptions(*opts, script)
 }

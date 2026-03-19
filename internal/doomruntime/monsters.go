@@ -1800,6 +1800,10 @@ func monsterAttackStateEntrySoundEvent(typ int16) soundEvent {
 	switch typ {
 	case 3002, 58:
 		return soundEventMonsterAttackSgt
+	case 64:
+		return soundEventMonsterAttackArchvile
+	case 67:
+		return soundEventMonsterAttackMancubus
 	default:
 		return -1
 	}

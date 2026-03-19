@@ -870,6 +870,8 @@ func TestMonsterAttackStateEntrySoundEvent(t *testing.T) {
 	}{
 		{3002, soundEventMonsterAttackSgt},
 		{58, soundEventMonsterAttackSgt},
+		{64, soundEventMonsterAttackArchvile},
+		{67, soundEventMonsterAttackMancubus},
 		{3001, -1},
 		{3006, -1},
 	}

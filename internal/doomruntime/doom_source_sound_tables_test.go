@@ -93,6 +93,21 @@ func TestMonsterSoundTablesMatchDoomSourceInfoC(t *testing.T) {
 	}
 }
 
+func TestMonsterActionAttackSoundsMatchDoomSourceActions(t *testing.T) {
+	cases := []struct {
+		typ  int16
+		want soundEvent
+	}{
+		{64, soundEventMonsterAttackArchvile},
+		{67, soundEventMonsterAttackMancubus},
+	}
+	for _, tc := range cases {
+		if got := monsterAttackStateEntrySoundEvent(tc.typ); got != tc.want {
+			t.Fatalf("type=%d action attack sound=%v want=%v", tc.typ, got, tc.want)
+		}
+	}
+}
+
 func findRepoRootOrSkipRuntime(t *testing.T) string {
 	t.Helper()
 	wd, err := os.Getwd()
@@ -246,6 +261,10 @@ func doomSoundSetForEvent(ev soundEvent) map[string]struct{} {
 		return set("sfx_sgtatk")
 	case soundEventMonsterAttackSkull:
 		return set("sfx_sklatk")
+	case soundEventMonsterAttackArchvile:
+		return set("sfx_vilatk")
+	case soundEventMonsterAttackMancubus:
+		return set("sfx_manatk")
 	default:
 		return nil
 	}

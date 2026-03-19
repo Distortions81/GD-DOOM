@@ -227,6 +227,8 @@ type SoundBank struct {
 	AttackClaw          PCMSample
 	AttackSgt           PCMSample
 	AttackSkull         PCMSample
+	AttackArchvile      PCMSample
+	AttackMancubus      PCMSample
 	ImpactFire          PCMSample
 	ImpactRocket        PCMSample
 	BarrelExplode       PCMSample
