@@ -195,6 +195,7 @@ func shouldIgnorePath(path string) bool {
 		".tracer_type",
 		".texture",
 		".action",
+		".dropped",
 	}
 	for _, suffix := range ignoredSuffixes {
 		if len(path) >= len(suffix) && path[len(path)-len(suffix):] == suffix {

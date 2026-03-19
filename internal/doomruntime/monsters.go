@@ -92,11 +92,15 @@ func (g *game) tickMonsters() {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
 		}
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
-			g.thingDeathTics[i]--
-		}
 		if isBarrelThingType(th.Type) {
 			g.tickBarrel(i, th)
+			continue
+		}
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			g.tickMonsterMomentum(i, th)
+			if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+				g.thingDeathTics[i]--
+			}
 			continue
 		}
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {

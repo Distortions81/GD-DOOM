@@ -420,7 +420,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
 		g.debugPlayerProbe("blocked by thing", x, y)
-		return 0, 0, 0, false
+		return tmfloor, tmceil, tmdrop, false
 	}
 
 	g.validCount++
@@ -515,14 +515,14 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 					g.debugPlayerProbe(fmt.Sprintf("scan block bx=%d by=%d", bx, by), x, y)
 				}
 				if !g.blockLinesIterator(bx, by, iter) {
-					return 0, 0, 0, false
+					return tmfloor, tmceil, tmdrop, false
 				}
 			}
 		}
 	} else {
 		for i := range g.lines {
 			if !processPhysLine(i) {
-				return 0, 0, 0, false
+				return tmfloor, tmceil, tmdrop, false
 			}
 		}
 	}

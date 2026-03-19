@@ -1246,7 +1246,6 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		g.thingReactionTics[thingIdx] = 0
 	}
 	if g.thingHP[thingIdx] <= 0 {
-		g.thingHP[thingIdx] = 0
 		if thingIdx >= 0 && thingIdx < len(g.thingDead) {
 			g.thingDead[thingIdx] = true
 		}
@@ -1453,6 +1452,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.m.Things = append(g.m.Things, th)
 	g.thingCollected = append(g.thingCollected, false)
 	g.thingDropped = append(g.thingDropped, dropped)
+	g.thingThinkerOrder = append(g.thingThinkerOrder, g.allocThinkerOrder())
 	g.thingX = append(g.thingX, x)
 	g.thingY = append(g.thingY, y)
 	g.thingAngleState = append(g.thingAngleState, thingDegToWorldAngle(th.Angle))
@@ -1472,7 +1472,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingMoveCount = append(g.thingMoveCount, 0)
 	g.thingJustAtk = append(g.thingJustAtk, false)
 	g.thingJustHit = append(g.thingJustHit, false)
-	g.thingReactionTics = append(g.thingReactionTics, 0)
+	g.thingReactionTics = append(g.thingReactionTics, demoTraceSpawnReactionTime(th.Type))
 	g.thingWakeTics = append(g.thingWakeTics, 0)
 	g.thingLastLook = append(g.thingLastLook, doomrand.PRandom()&3)
 	g.thingDead = append(g.thingDead, false)

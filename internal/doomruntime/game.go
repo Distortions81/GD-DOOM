@@ -284,6 +284,7 @@ type hitscanPuff struct {
 	totalTic int
 	kind     uint8
 	hidden   bool
+	order    int64
 }
 
 const (
@@ -325,6 +326,18 @@ func buildTexturePointerCache(bank map[string]WallTexture) ([]WallTexture, map[s
 		ptrs[key] = &store[len(store)-1]
 	}
 	return store, ptrs
+}
+
+func (g *game) allocThinkerOrder() int64 {
+	if g == nil {
+		return 0
+	}
+	if g.nextThinkerOrder <= 0 {
+		g.nextThinkerOrder = 1
+	}
+	order := g.nextThinkerOrder
+	g.nextThinkerOrder++
+	return order
 }
 
 func (g *game) ensureTexturePointerCaches() {
@@ -488,6 +501,7 @@ type game struct {
 
 	thingCollected        []bool
 	thingDropped          []bool
+	thingThinkerOrder     []int64
 	thingX                []int64
 	thingY                []int64
 	thingMomX             []int64
@@ -538,6 +552,7 @@ type game struct {
 	impactShadeTick       []int
 	impactShadeMul        []uint32
 	hitscanPuffs          []hitscanPuff
+	nextThinkerOrder      int64
 	cheatLevel            int
 	invulnerable          bool
 	inventory             playerInventory
@@ -1146,6 +1161,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingDropped = make([]bool, len(m.Things))
+	g.thingThinkerOrder = make([]int64, len(m.Things))
 	g.thingX = make([]int64, len(m.Things))
 	g.thingY = make([]int64, len(m.Things))
 	g.thingMomX = make([]int64, len(m.Things))
@@ -1187,6 +1203,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingStateTics = make([]int, len(m.Things))
 	g.thingStatePhase = make([]int, len(m.Things))
 	g.thingWorldAnimRef = make([]thingAnimRefState, len(m.Things))
+	for i := range g.thingThinkerOrder {
+		g.thingThinkerOrder[i] = int64(i + 1)
+	}
+	g.nextThinkerOrder = int64(len(m.Things) + 1)
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.sectorSoundTarget = make([]bool, len(m.Sectors))
 	for _, sec := range m.Sectors {
@@ -8827,6 +8847,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		totalTic: tics,
 		state:    93,
 		kind:     hitscanFxPuff,
+		order:    g.allocThinkerOrder(),
 	})
 }
 
@@ -8870,6 +8891,7 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		totalTic: tics,
 		state:    state,
 		kind:     hitscanFxBlood,
+		order:    g.allocThinkerOrder(),
 	})
 }
 
@@ -8896,6 +8918,7 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 		totalTic: tics + 16,
 		state:    0,
 		kind:     hitscanFxSmoke,
+		order:    g.allocThinkerOrder(),
 	})
 }
 
@@ -8915,6 +8938,7 @@ func (g *game) spawnTeleportFog(x, y, z int64) {
 		totalTic: teleportFogFrameTics * teleportFogFrames,
 		state:    0,
 		kind:     hitscanFxTeleport,
+		order:    g.allocThinkerOrder(),
 	})
 }
 

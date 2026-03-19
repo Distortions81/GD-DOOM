@@ -1841,6 +1841,53 @@ func TestTickMonstersPainExpiryResumesChaseStateSameTic(t *testing.T) {
 	}
 }
 
+func TestTickMonstersDeadMonsterStillSlidesLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: -128, Y: -128},
+				{X: 128, Y: -128},
+				{X: 128, Y: 128},
+				{X: -128, Y: 128},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, SideNum: [2]int16{0, -1}},
+				{V1: 1, V2: 2, SideNum: [2]int16{0, -1}},
+				{V1: 2, V2: 3, SideNum: [2]int16{0, -1}},
+				{V1: 3, V2: 0, SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{-5},
+		thingDead:      []bool{true},
+		thingDeathTics: []int{3},
+		thingMomX:      []int64{2 * fracUnit},
+		thingMomY:      []int64{0},
+		thingMomZ:      []int64{0},
+		thingX:         []int64{0},
+		thingY:         []int64{0},
+		thingAngleState: []uint32{0},
+	}
+	g.ensureMonsterAIState()
+	g.initPhysics()
+	g.tickMonsters()
+	if got := g.thingDeathTics[0]; got != 2 {
+		t.Fatalf("death tics=%d want=2", got)
+	}
+	if got := g.thingMomX[0]; got != 0 {
+		t.Fatalf("momx=%d want=0 when blocked by test fixture bounds", got)
+	}
+}
+
 func TestTickMonstersJustAttackedStillTurnsTowardMoveDirLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

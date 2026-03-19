@@ -41,6 +41,7 @@ type projectile struct {
 	frameTics    int
 	angle        uint32
 	kind         projectileKind
+	order        int64
 }
 
 type projectileImpact struct {
@@ -207,6 +208,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		frameTics:    randomizedStateTics(projectileSpawnStateTics(kind)),
 		kind:         kind,
 		angle:        aimAngle,
+		order:        g.allocThinkerOrder(),
 	})
 	g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
 	return true
@@ -373,6 +375,7 @@ func (g *game) spawnPlayerRocket() bool {
 		frameTics:    randomizedStateTics(projectileSpawnStateTics(projectileRocket)),
 		kind:         projectileRocket,
 		angle:        g.p.angle,
+		order:        g.allocThinkerOrder(),
 	})
 	return true
 }
@@ -442,6 +445,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		frameTics:    randomizedStateTics(projectileSpawnStateTics(kind)),
 		kind:         kind,
 		angle:        g.p.angle,
+		order:        g.allocThinkerOrder(),
 	})
 	return true
 }

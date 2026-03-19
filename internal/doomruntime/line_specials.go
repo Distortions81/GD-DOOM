@@ -246,6 +246,7 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	if g.playerTouchesSector(sec) {
 		g.heightClipPlayer(oldPlayerFloor)
 	}
+	g.heightClipThings()
 }
 
 func (g *game) setSectorCeilingHeight(sec int, z int64) {
@@ -264,6 +265,7 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	if g.playerTouchesSector(sec) {
 		g.heightClipPlayer(oldPlayerFloor)
 	}
+	g.heightClipThings()
 }
 
 func (g *game) heightClipPlayer(oldFloorz int64) bool {
@@ -286,6 +288,49 @@ func (g *game) heightClipPlayer(oldFloorz int64) bool {
 		return false
 	}
 	return true
+}
+
+func thingCollisionRadius(typ int16) int64 {
+	if info, ok := demoTraceThingInfoForType(typ); ok && info.radius > 0 {
+		return info.radius
+	}
+	if isMonster(typ) {
+		return monsterRadius(typ)
+	}
+	return 20 * fracUnit
+}
+
+func (g *game) heightClipThings() {
+	if g == nil || g.m == nil {
+		return
+	}
+	for i, th := range g.m.Things {
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		g.heightClipThing(i, th)
+	}
+}
+
+func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	x, y := g.thingPosFixed(i, th)
+	radius := thingCollisionRadius(th.Type)
+	oldZ, oldFloorZ, _ := g.thingSupportState(i, th)
+	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, isMonster(th.Type), i, isMonster(th.Type))
+	z := oldZ
+	if z == oldFloorZ {
+		z = tmfloor
+	} else {
+		height := g.thingCurrentHeight(i, th)
+		if z+height > tmceil {
+			z = tmceil - height
+		}
+	}
+	g.setThingSupportState(i, z, tmfloor, tmceil)
+	return ok && tmceil-tmfloor >= g.thingCurrentHeight(i, th)
 }
 
 func (g *game) findLowestFloorSurrounding(sec int) int64 {

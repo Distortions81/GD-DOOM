@@ -231,9 +231,15 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 	if g == nil {
 		return nil
 	}
-	out := make([]demoTraceMobj, 0, 1+len(g.m.Things)+len(g.projectiles))
+	type orderedDemoTraceMobj struct {
+		order int64
+		mobj  demoTraceMobj
+	}
+	ordered := make([]orderedDemoTraceMobj, 0, 1+len(g.m.Things)+len(g.projectiles))
 	playerState, playerTics := g.demoTracePlayerMobjState()
-	out = append(out, demoTraceMobj{
+	ordered = append(ordered, orderedDemoTraceMobj{
+		order: 0,
+		mobj: demoTraceMobj{
 		Type:         0,
 		X:            g.p.x,
 		Y:            g.p.y,
@@ -260,7 +266,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		Player:       1,
 		Target:       0,
 		Tracer:       0,
-	})
+	}})
 	for i, th := range g.m.Things {
 		if playerSlotFromThingType(th.Type) != 0 {
 			continue
@@ -285,7 +291,13 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			height = g.thingCurrentHeight(i, th)
 		}
 		target, targetType := demoTraceThingTarget(g, i)
-		out = append(out, demoTraceMobj{
+		order := int64(i + 1)
+		if i >= 0 && i < len(g.thingThinkerOrder) && g.thingThinkerOrder[i] > 0 {
+			order = g.thingThinkerOrder[i]
+		}
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: order,
+			mobj: demoTraceMobj{
 			Type:         demoTraceThingType(th.Type),
 			X:            x,
 			Y:            y,
@@ -315,7 +327,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Tracer:       0,
 			Kind:         demoTraceThingKind(th.Type),
 			Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),
-		})
+		}})
 	}
 	for _, p := range g.projectiles {
 		sec := g.sectorAt(p.x, p.y)
@@ -324,7 +336,9 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if sec >= 0 && sec < len(g.sectorCeil) {
 			ceilZ = g.sectorCeil[sec]
 		}
-		out = append(out, demoTraceMobj{
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: p.order,
+			mobj: demoTraceMobj{
 			Type:         1000 + int(p.kind),
 			X:            p.x,
 			Y:            p.y,
@@ -353,7 +367,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			TargetType:   int(p.sourceType),
 			Tracer:       0,
 			Kind:         "projectile",
-		})
+		}})
 	}
 	for _, p := range g.hitscanPuffs {
 		sec := g.sectorAt(p.x, p.y)
@@ -368,7 +382,9 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			mobjType = 38
 			flags = 16
 		}
-		out = append(out, demoTraceMobj{
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: p.order,
+			mobj: demoTraceMobj{
 			Type:         mobjType,
 			X:            p.x,
 			Y:            p.y,
@@ -397,7 +413,14 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			TargetType:   0,
 			Tracer:       0,
 			TracerType:   0,
-		})
+		}})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].order < ordered[j].order
+	})
+	out := make([]demoTraceMobj, 0, len(ordered))
+	for _, item := range ordered {
+		out = append(out, item.mobj)
 	}
 	return out
 }

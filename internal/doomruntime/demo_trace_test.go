@@ -248,3 +248,43 @@ func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 		t.Fatalf("tic line missing topcountdown zero field: %s", s)
 	}
 }
+
+func TestDemoTraceMobjsFollowThinkerInsertionOrder(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 2001},
+				{Type: 2007},
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingDropped:      []bool{false, true},
+		thingThinkerOrder: []int64{1, 4},
+		thingX:            []int64{10, 40},
+		thingY:            []int64{0, 0},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{64 * fracUnit, 64 * fracUnit},
+		hitscanPuffs: []hitscanPuff{
+			{x: 20, y: 0, z: 0, tics: 4, state: 93, kind: hitscanFxPuff, order: 2},
+			{x: 30, y: 0, z: 0, tics: 8, state: 92, kind: hitscanFxBlood, order: 3},
+		},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if got, want := len(mobjs), 5; got != want {
+		t.Fatalf("mobj count=%d want=%d", got, want)
+	}
+	if got := mobjs[1].Type; got != 77 {
+		t.Fatalf("mobjs[1].type=%d want=77", got)
+	}
+	if got := mobjs[2].Type; got != 37 {
+		t.Fatalf("mobjs[2].type=%d want=37", got)
+	}
+	if got := mobjs[3].Type; got != 38 {
+		t.Fatalf("mobjs[3].type=%d want=38", got)
+	}
+	if got := mobjs[4].Type; got != 63 {
+		t.Fatalf("mobjs[4].type=%d want=63", got)
+	}
+}

@@ -194,6 +194,49 @@ func TestDamageMonsterFromPlayerAppliesDoomThrustMomentum(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterDeathPreservesNegativeHealthLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Things: []mapdata.Thing{{Type: 9}}},
+		thingHP:         []int{3},
+		thingAggro:      []bool{false},
+		thingReactionTics: []int{8},
+		thingDead:       []bool{false},
+		thingDeathTics:  []int{0},
+		thingPainTics:   []int{0},
+		thingAttackTics: []int{0},
+		thingAttackFireTics: []int{-1},
+		thingState:      []monsterThinkState{monsterStateSpawn},
+		thingStateTics:  []int{0},
+		thingStatePhase: []int{0},
+		thingX:          []int64{0},
+		thingY:          []int64{0},
+		thingAngleState: []uint32{0},
+		soundQueue:      make([]soundEvent, 0, 2),
+	}
+	doomrand.Clear()
+	g.damageMonsterFrom(0, 8, true, -1)
+	if got := g.thingHP[0]; got != -5 {
+		t.Fatalf("hp=%d want=-5", got)
+	}
+	if !g.thingDead[0] {
+		t.Fatal("thing should be dead")
+	}
+}
+
+func TestAppendRuntimeThingInitializesReactionTimeLikeDoomSpawn(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{},
+	}
+	g.ensureMonsterAIState()
+	idx := g.appendRuntimeThing(mapdata.Thing{Type: 2001}, true)
+	if idx != 0 {
+		t.Fatalf("idx=%d want=0", idx)
+	}
+	if got := g.thingReactionTics[0]; got != 8 {
+		t.Fatalf("reactiontime=%d want=8", got)
+	}
+}
+
 func TestHandleFireNoAmmoFallsBackToFist(t *testing.T) {
 	g := &game{
 		stats:     playerStats{Bullets: 0},
