@@ -79,7 +79,6 @@ func (g *game) tickThinkers() {
 	g.tickFloors()
 	g.tickPlats()
 	g.tickCeilings()
-	g.tickDoors()
 	if !g.isDead {
 		g.processThingPickups()
 	}
@@ -87,6 +86,7 @@ func (g *game) tickThinkers() {
 	g.tickProjectiles()
 	g.tickProjectileImpacts()
 	g.tickMonsters()
+	g.tickDoors()
 	g.tickHitscanPuffs()
 }
 
@@ -273,7 +273,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			}
 			return
 		}
-		if next <= g.sectorFloor[sec] {
+		if next < g.sectorFloor[sec] {
 			g.setDoorCeiling(sec, g.sectorFloor[sec])
 			switch d.typ {
 			case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
@@ -287,7 +287,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 		}
 	case 1:
 		next := g.sectorCeil[sec] + d.speed
-		if next >= d.topHeight {
+		if next > d.topHeight {
 			g.setDoorCeiling(sec, d.topHeight)
 			switch d.typ {
 			case doorBlazeRaise, doorNormal:

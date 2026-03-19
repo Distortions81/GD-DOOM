@@ -387,12 +387,6 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 				d.direction = -1
 			}
 			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-			if !isPlayer {
-				// Doom runs doors in the linked thinker list after map-spawned
-				// monsters, so a monster-triggered direction change advances on
-				// the same tic. Our grouped ticker needs the extra step here.
-				g.tickDoor(sec, d)
-			}
 			return true
 		}
 	}
@@ -425,11 +419,6 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 	}
 	g.doors[sec] = d
 	g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-	if !isPlayer {
-		// New monster-triggered doors also tick later in the same Doom thinker
-		// pass because they are appended after the current monster thinker.
-		g.tickDoor(sec, d)
-	}
 	return true
 }
 

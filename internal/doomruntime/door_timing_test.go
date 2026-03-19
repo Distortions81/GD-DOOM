@@ -93,14 +93,15 @@ func TestTickDoors_NormalDoorOpensWaitsThenCloses(t *testing.T) {
 	if got := g.sectorCeil[1]; got != 72*fracUnit {
 		t.Fatalf("after tick4 ceil=%d want=%d", got, 72*fracUnit)
 	}
-	if d == nil || d.direction != 0 || d.topCountdown != 3 {
-		t.Fatalf("at top direction/countdown=%v/%v want 0/3", d.direction, d.topCountdown)
+	if d == nil || d.direction != 1 || d.topCountdown != 0 {
+		t.Fatalf("at exact top direction/countdown=%v/%v want 1/0", d.direction, d.topCountdown)
+	}
+	g.tickDoors()
+	if d.direction != 0 || d.topCountdown != 3 {
+		t.Fatalf("after overshoot tick direction/countdown=%d/%d want 0/3", d.direction, d.topCountdown)
 	}
 	g.tickDoors()
 	g.tickDoors()
-	if d.direction != 0 || d.topCountdown != 1 {
-		t.Fatalf("during wait direction/countdown=%d/%d want 0/1", d.direction, d.topCountdown)
-	}
 	g.tickDoors()
 	if d.direction != -1 {
 		t.Fatalf("after wait direction=%d want=-1", d.direction)
@@ -169,8 +170,12 @@ func TestTickDoors_BlazeRaiseUsesFourTimesSpeed(t *testing.T) {
 	if got := g.sectorCeil[1]; got != 16*fracUnit {
 		t.Fatalf("after tick2 blaze ceil=%d want=%d", got, 16*fracUnit)
 	}
-	if d == nil || d.direction != 0 || d.topCountdown != vDoorWaitTic {
-		t.Fatalf("blaze top direction/countdown=%d/%d want 0/%d", d.direction, d.topCountdown, vDoorWaitTic)
+	if d == nil || d.direction != 1 || d.topCountdown != 0 {
+		t.Fatalf("blaze exact top direction/countdown=%d/%d want 1/0", d.direction, d.topCountdown)
+	}
+	g.tickDoors()
+	if d.direction != 0 || d.topCountdown != vDoorWaitTic {
+		t.Fatalf("blaze wait direction/countdown=%d/%d want 0/%d", d.direction, d.topCountdown, vDoorWaitTic)
 	}
 }
 
@@ -202,45 +207,5 @@ func TestTickDoors_NormalDoorReopensWhenPlayerOverlapsDoorwayFromAdjacentSector(
 	}
 	if d.direction != 1 {
 		t.Fatalf("blocking normal door should reverse open, direction=%d", d.direction)
-	}
-}
-
-func TestEVVerticalDoor_MonsterReopensClosingDoorAndAdvancesSameTic(t *testing.T) {
-	g := newDoorTimingGame(1)
-	g.m.Linedefs[0].Special = 1
-	g.sectorCeil[0] = 64 * fracUnit
-	g.doors[0] = &doorThinker{
-		sector:    0,
-		typ:       doorNormal,
-		direction: -1,
-		topHeight: 72 * fracUnit,
-		topWait:   vDoorWaitTic,
-		speed:     2 * fracUnit,
-	}
-
-	if !g.evVerticalDoor(0, false) {
-		t.Fatal("monster failed to reactivate active manual door")
-	}
-	if got := g.sectorCeil[0]; got != 66*fracUnit {
-		t.Fatalf("same-tic reopen ceil=%d want=%d", got, 66*fracUnit)
-	}
-	if g.doors[0] == nil || g.doors[0].direction != 1 {
-		t.Fatalf("door direction=%v want=1", g.doors[0])
-	}
-}
-
-func TestEVVerticalDoor_MonsterStartsManualDoorAndAdvancesSameTic(t *testing.T) {
-	g := newDoorTimingGame(1)
-	g.m.Linedefs[0].Special = 1
-	g.sectorCeil[0] = 64 * fracUnit
-
-	if !g.evVerticalDoor(0, false) {
-		t.Fatal("monster failed to activate manual door")
-	}
-	if got := g.sectorCeil[0]; got != 66*fracUnit {
-		t.Fatalf("same-tic start ceil=%d want=%d", got, 66*fracUnit)
-	}
-	if g.doors[0] == nil || g.doors[0].direction != 1 {
-		t.Fatalf("door direction=%v want=1", g.doors[0])
 	}
 }
