@@ -16,8 +16,12 @@ const (
 )
 
 const (
-	ButtonAttack = 1
-	ButtonUse    = 2
+	ButtonAttack      = 1
+	ButtonUse         = 2
+	ButtonChange      = 4
+	ButtonWeaponMask  = 8 + 16 + 32
+	ButtonWeaponShift = 3
+	ButtonSpecial     = 128
 )
 
 type Tic struct {

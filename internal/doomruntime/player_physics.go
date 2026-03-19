@@ -97,6 +97,9 @@ func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 	g.updatePlayer(cmd)
 	g.tickPlayerViewHeight()
 	g.tickPlayerSpecialSector()
+	if cmd.weaponSlot != 0 {
+		g.selectWeaponSlot(cmd.weaponSlot)
+	}
 	if usePressed {
 		g.handleUse()
 	}
@@ -558,11 +561,11 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if lowfloor < tmdrop {
 			tmdrop = lowfloor
 		}
-			if moverThingIdx >= 0 && moverThingIdx < len(g.thingProbeSpecialLines) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
-				g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
-			}
-			return true
+		if moverThingIdx >= 0 && moverThingIdx < len(g.thingProbeSpecialLines) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+			g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
 		}
+		return true
+	}
 	iter := func(lineIdx int) bool {
 		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
 			return true

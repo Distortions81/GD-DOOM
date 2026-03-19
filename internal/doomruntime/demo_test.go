@@ -80,6 +80,15 @@ func TestParseDemoScriptParsesAllHeaderFields(t *testing.T) {
 	}
 }
 
+func TestDemoButtonWeaponSlotMatchesDoomButtonPacking(t *testing.T) {
+	if got := demoButtonWeaponSlot(demoButtonChange | (2 << demoButtonWeaponShift)); got != 3 {
+		t.Fatalf("weapon slot=%d want=3", got)
+	}
+	if got := demoButtonWeaponSlot(demoButtonAttack | demoButtonUse); got != 0 {
+		t.Fatalf("weapon slot without change bit=%d want=0", got)
+	}
+}
+
 func TestParseDemoScriptErrors(t *testing.T) {
 	cases := [][]byte{
 		nil,

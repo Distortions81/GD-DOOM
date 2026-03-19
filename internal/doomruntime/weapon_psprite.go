@@ -1,8 +1,10 @@
 package doomruntime
 
 import (
+	"fmt"
 	"image"
 	"math"
+	"os"
 	"strings"
 
 	"gddoom/internal/render/scene"
@@ -264,6 +266,17 @@ func (g *game) tickWeaponPSprite(flash bool) {
 	if state == weaponStateNone {
 		return
 	}
+	if !flash {
+		if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+			var wantTic int
+			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+				if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
+					fmt.Printf("gd-weapon-debug gametic=%d phase=pre state=%d tics=%d y=%d ready=%d pending=%d\n",
+						g.demoTick-1, state, *tics, g.weaponPSpriteY, g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+				}
+			}
+		}
+	}
 	if *tics == -1 {
 		return
 	}
@@ -306,6 +319,15 @@ func (g *game) bringUpWeapon() {
 	}
 	if next == weaponChainsaw {
 		g.emitSoundEvent(soundEventSawUp)
+	}
+	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
+				fmt.Printf("gd-weapon-debug gametic=%d phase=bringup next=%d ready=%d pending=%d y=%d\n",
+					g.demoTick-1, next, g.inventory.ReadyWeapon, g.inventory.PendingWeapon, g.weaponPSpriteY)
+			}
+		}
 	}
 	g.weaponPSpriteY = weaponBottomY
 	g.inventory.PendingWeapon = 0
@@ -352,6 +374,15 @@ func (g *game) setWeaponPSpriteState(state weaponPspriteState, flash bool) {
 		} else {
 			g.weaponState = state
 			g.weaponStateTics = def.tics
+			if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+				var wantTic int
+				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+					if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
+						fmt.Printf("gd-weapon-debug gametic=%d phase=set state=%d tics=%d y=%d ready=%d pending=%d action=%d next=%d\n",
+							g.demoTick-1, state, def.tics, g.weaponPSpriteY, g.inventory.ReadyWeapon, g.inventory.PendingWeapon, def.action, def.next)
+					}
+				}
+			}
 		}
 		switch def.action {
 		case weaponPspriteActionReady:
@@ -470,6 +501,22 @@ func (g *game) weaponBob() (float64, float64) {
 	return math.Cos(t) * bob * 0.5, math.Sin(t*2) * bob * 0.5
 }
 
+func (g *game) weaponBobDoom() (int, int) {
+	if g == nil || g.isDead {
+		return 0, 0
+	}
+	bob := fixedMul(g.p.momx, g.p.momx) + fixedMul(g.p.momy, g.p.momy)
+	bob >>= 2
+	const maxBob = 0x100000
+	if bob > maxBob {
+		bob = maxBob
+	}
+	idx := (128 * g.worldTic) & doomFineMask
+	x := fixedMul(bob, doomFineSine[idx+doomFineAngles/4]) >> fracBits
+	y := fixedMul(bob, doomFineSine[idx]) >> fracBits
+	return int(x), int(y)
+}
+
 func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool) {
 	key := strings.ToUpper(strings.TrimSpace(name))
 	p, ok := g.opts.SpritePatchBank[key]
@@ -581,12 +628,12 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 		target = sub
 	}
 	scale := float64(rect.Dx()) / doomLogicalW
-	bx, by := g.weaponBob()
+	bx, _ := g.weaponBob()
 	x := (1.0 + bx) * scale
-	y := float64(rect.Dy()) - (doomLogicalH-(logicalY+by))*scale
+	y := float64(rect.Dy()) - (doomLogicalH-logicalY)*scale
 	if !g.opts.SourcePortMode {
 		const doomBaseYCenter = 100.5
-		y = float64(rect.Dy())/2 - (doomBaseYCenter-(logicalY+by))*scale
+		y = float64(rect.Dy())/2 - (doomBaseYCenter-logicalY)*scale
 	}
 	_ = g.drawSpritePatch(target, name, x, y, scale, scale)
 	if flash := g.weaponFlashSpriteName(); flash != "" {

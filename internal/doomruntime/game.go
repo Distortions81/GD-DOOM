@@ -418,48 +418,48 @@ type game struct {
 	localPlayerThingIndex     int
 	peerStarts                []playerStart
 
-	lines                []physLine
-	mapVisibleLines      []mapview.Line
-	lineValid            []int
-	validCount           int
+	lines                  []physLine
+	mapVisibleLines        []mapview.Line
+	lineValid              []int
+	validCount             int
 	thingProbeSpecialLines [][]int
-	bmapOriginX          int64
-	bmapOriginY          int64
-	bmapWidth            int
-	bmapHeight           int
-	physForLine          []int
-	renderSeen           []int
-	renderEpoch          int
-	visibleBuf           []int
-	mapLineVisibility    mapview.VisibilityState
-	bspOccBuf            []solidSpan
-	visibleSectorSeen    []int
-	visibleSubSectorSeen []int
-	visibleEpoch         int
-	nodeChildRangeEpoch  []int
-	nodeChildRangeL      []int
-	nodeChildRangeR      []int
-	nodeChildRangeOK     []uint8
-	thingSectorCache     []int
-	sectorLineAdj        [][]automapSectorLine
-	mapLines             mapview.LineCacheState
-	useSpecialSegScratch []mapview.Segment
-	sectorFloor          []int64
-	sectorCeil           []int64
-	lineSpecial          []uint16
-	doors                map[int]*doorThinker
-	floors               map[int]*floorThinker
-	plats                map[int]*platThinker
-	ceilings             map[int]*ceilingThinker
-	useFlash             int
-	useText              string
-	hudMessagesEnabled   bool
-	turnHeld             int
-	snd                  *soundSystem
-	soundQueue           []soundEvent
-	soundQueueOrigin     []queuedSoundOrigin
-	delayedSfx           []delayedSoundEvent
-	delayedSwitchReverts []delayedSwitchTexture
+	bmapOriginX            int64
+	bmapOriginY            int64
+	bmapWidth              int
+	bmapHeight             int
+	physForLine            []int
+	renderSeen             []int
+	renderEpoch            int
+	visibleBuf             []int
+	mapLineVisibility      mapview.VisibilityState
+	bspOccBuf              []solidSpan
+	visibleSectorSeen      []int
+	visibleSubSectorSeen   []int
+	visibleEpoch           int
+	nodeChildRangeEpoch    []int
+	nodeChildRangeL        []int
+	nodeChildRangeR        []int
+	nodeChildRangeOK       []uint8
+	thingSectorCache       []int
+	sectorLineAdj          [][]automapSectorLine
+	mapLines               mapview.LineCacheState
+	useSpecialSegScratch   []mapview.Segment
+	sectorFloor            []int64
+	sectorCeil             []int64
+	lineSpecial            []uint16
+	doors                  map[int]*doorThinker
+	floors                 map[int]*floorThinker
+	plats                  map[int]*platThinker
+	ceilings               map[int]*ceilingThinker
+	useFlash               int
+	useText                string
+	hudMessagesEnabled     bool
+	turnHeld               int
+	snd                    *soundSystem
+	soundQueue             []soundEvent
+	soundQueueOrigin       []queuedSoundOrigin
+	delayedSfx             []delayedSoundEvent
+	delayedSwitchReverts   []delayedSwitchTexture
 
 	prevPX    int64
 	prevPY    int64
@@ -2031,13 +2031,18 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	cmd := moveCmd{
-		forward: int64(tc.Forward),
-		side:    int64(tc.Side),
-		turnRaw: int64(tc.AngleTurn) << 16,
+	buttons := tc.Buttons
+	if buttons&demoButtonSpecial != 0 {
+		buttons = 0
 	}
-	usePressed := tc.Buttons&demoButtonUse != 0
-	fireHeld := tc.Buttons&demoButtonAttack != 0
+	cmd := moveCmd{
+		forward:    int64(tc.Forward),
+		side:       int64(tc.Side),
+		turnRaw:    int64(tc.AngleTurn) << 16,
+		weaponSlot: demoButtonWeaponSlot(buttons),
+	}
+	usePressed := buttons&demoButtonUse != 0
+	fireHeld := buttons&demoButtonAttack != 0
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)

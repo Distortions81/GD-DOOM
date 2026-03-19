@@ -259,6 +259,8 @@ func (g *game) weaponActionReady(state weaponPspriteState) {
 		g.weaponAttackDown = false
 		g.weaponRefire = false
 	}
+	_, bobY := g.weaponBobDoom()
+	g.weaponPSpriteY = weaponTopY + bobY
 }
 
 func (g *game) weaponActionRefire(_ weaponPspriteState) {

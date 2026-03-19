@@ -6,13 +6,24 @@ import (
 )
 
 const (
-	demoVersion109   = demo.Version109
-	demoVersion110   = demo.Version110
-	demoMarker       = demo.Marker
-	demoButtonAttack = demo.ButtonAttack
-	demoButtonUse    = demo.ButtonUse
-	demoHeaderSize   = demo.HeaderSize
+	demoVersion109        = demo.Version109
+	demoVersion110        = demo.Version110
+	demoMarker            = demo.Marker
+	demoButtonAttack      = demo.ButtonAttack
+	demoButtonUse         = demo.ButtonUse
+	demoButtonChange      = demo.ButtonChange
+	demoButtonWeaponMask  = demo.ButtonWeaponMask
+	demoButtonWeaponShift = demo.ButtonWeaponShift
+	demoButtonSpecial     = demo.ButtonSpecial
+	demoHeaderSize        = demo.HeaderSize
 )
+
+func demoButtonWeaponSlot(buttons byte) int {
+	if buttons&demoButtonChange == 0 {
+		return 0
+	}
+	return int((buttons&demoButtonWeaponMask)>>demoButtonWeaponShift) + 1
+}
 
 func LoadDemoScript(path string) (*DemoScript, error) {
 	return demo.Load(path)

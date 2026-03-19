@@ -60,11 +60,12 @@ type player struct {
 }
 
 type moveCmd struct {
-	forward int64
-	side    int64
-	turn    int
-	turnRaw int64
-	run     bool
+	forward    int64
+	side       int64
+	turn       int
+	turnRaw    int64
+	run        bool
+	weaponSlot int
 }
 
 type slopeType int
