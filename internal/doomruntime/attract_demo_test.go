@@ -183,6 +183,38 @@ func TestAttractDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
 	}
 }
 
+func TestAttractDemoPlaybackResetsPersistentAutomapCheatState(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	base.parity.reveal = revealAllMap
+	base.parity.iddt = 2
+	boot := cloneMapForRestart(base.m)
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SourcePortMode: false,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{{
+				Path:   "DEMO1",
+				Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+				Tics:   []DemoTic{{Forward: 25}},
+			}},
+		},
+		g: base,
+	}
+
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	if sg.g == nil {
+		t.Fatal("expected active demo game")
+	}
+	if sg.g.parity.reveal != revealNormal || sg.g.parity.iddt != 0 {
+		t.Fatalf("attract demo inherited automap cheat state: reveal=%d iddt=%d", sg.g.parity.reveal, sg.g.parity.iddt)
+	}
+}
+
 func TestStartGameFromFrontendClearsAttractDemoScript(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	boot := cloneMapForRestart(base.m)

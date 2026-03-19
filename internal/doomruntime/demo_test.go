@@ -144,6 +144,48 @@ func TestBuildRecordedDemo(t *testing.T) {
 	}
 }
 
+func TestNewGameDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
+	g := newGame(&mapdata.Map{}, Options{
+		SkillLevel:       5,
+		GameMode:         gameModeDeathmatch,
+		ShowNoSkillItems: true,
+		ShowAllItems:     true,
+		CheatLevel:       3,
+		Invulnerable:     true,
+		AllCheats:        true,
+		DemoScript: &DemoScript{
+			Header: DemoHeader{
+				Version:       demoVersion110,
+				Skill:         1,
+				Respawn:       true,
+				Fast:          true,
+				NoMonsters:    true,
+				ConsolePlayer: 0,
+				PlayerInGame:  [4]bool{true},
+			},
+			Tics: []DemoTic{{Forward: 25}},
+		},
+	})
+	if g == nil {
+		t.Fatal("expected game")
+	}
+	if got := g.opts.SkillLevel; got != 2 {
+		t.Fatalf("SkillLevel=%d want 2", got)
+	}
+	if got := g.opts.GameMode; got != gameModeSingle {
+		t.Fatalf("GameMode=%q want %q", got, gameModeSingle)
+	}
+	if !g.opts.FastMonsters || !g.opts.RespawnMonsters || !g.opts.NoMonsters {
+		t.Fatalf("demo header flags not applied: fast=%t respawn=%t nomonsters=%t", g.opts.FastMonsters, g.opts.RespawnMonsters, g.opts.NoMonsters)
+	}
+	if g.opts.ShowNoSkillItems || g.opts.ShowAllItems {
+		t.Fatalf("demo playback inherited item filter overrides: shownoskill=%t showall=%t", g.opts.ShowNoSkillItems, g.opts.ShowAllItems)
+	}
+	if g.cheatLevel != 0 || g.invulnerable || g.opts.AllCheats {
+		t.Fatalf("demo playback inherited cheats: cheat=%d invuln=%t allcheats=%t", g.cheatLevel, g.invulnerable, g.opts.AllCheats)
+	}
+}
+
 func TestDemoUpdateModeTerminatesAtEnd(t *testing.T) {
 	g := mustLoadE1M1GameForMapTextureTests(t)
 	g.opts.DemoScript = &DemoScript{

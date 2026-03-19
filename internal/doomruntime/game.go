@@ -22,6 +22,7 @@ import (
 	"gddoom/internal/render/mapview/linepolicy"
 	"gddoom/internal/render/mapview/presenter"
 	"gddoom/internal/render/scene"
+	"gddoom/internal/runtimecfg"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -1057,6 +1058,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	// level, including demo playback. Without this, hidden bootstrap/frontend
 	// builds leak prior RNG state into attract demos and other new sessions.
 	doomrand.Clear()
+	if opts.DemoScript != nil {
+		opts = runtimecfg.PrepareDemoPlaybackOptions(opts, opts.DemoScript)
+	}
 
 	ensurePositiveRenderSize(&opts)
 	opts.SkillLevel = normalizeSkillLevel(opts.SkillLevel)
