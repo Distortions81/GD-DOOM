@@ -185,7 +185,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 	}
 	activated := false
 	if info.Door != nil {
-		activated = g.activateDoorLine(lineIdx, info)
+		activated = g.activateDoorLine(lineIdx, info, isPlayer)
 	} else {
 		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, -1, true)
 		if activated && !info.Repeat && lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
@@ -294,7 +294,7 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			if isPlayer && !info.Door.CanActivate(g.inventory.keys()) {
 				continue
 			}
-			if g.activateDoorLine(ld.idx, info) {
+			if g.activateDoorLine(ld.idx, info, isPlayer) {
 				if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 					g.lineSpecial[ld.idx] = 0
 				}
@@ -354,14 +354,14 @@ func shouldPlaySwitchClick(info mapdata.LineSpecialInfo) bool {
 	return info.Trigger == mapdata.TriggerUse && lineSpecialSupported(info)
 }
 
-func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) bool {
+func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo, isPlayer bool) bool {
 	if info.Trigger == mapdata.TriggerManual {
-		return g.evVerticalDoor(lineIdx)
+		return g.evVerticalDoor(lineIdx, isPlayer)
 	}
 	return g.evDoDoorTagged(lineIdx, info)
 }
 
-func (g *game) evVerticalDoor(lineIdx int) bool {
+func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 	if lineIdx < 0 || lineIdx >= len(g.m.Linedefs) {
 		return false
 	}
@@ -381,6 +381,9 @@ func (g *game) evVerticalDoor(lineIdx int) bool {
 			if d.direction == -1 {
 				d.direction = 1
 			} else {
+				if !isPlayer {
+					return true
+				}
 				d.direction = -1
 			}
 			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))

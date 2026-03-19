@@ -21,7 +21,7 @@ func TestNormalDoorReopensWhenPlayerBlocksClose(t *testing.T) {
 	if info.Door == nil {
 		t.Fatalf("target line %d is not a door special", lineIdx)
 	}
-	if !g.activateDoorLine(lineIdx, info) {
+	if !g.activateDoorLine(lineIdx, info, true) {
 		t.Fatalf("failed to activate spawn door line %d", lineIdx)
 	}
 	targets, err := g.m.DoorTargetSectors(lineIdx)

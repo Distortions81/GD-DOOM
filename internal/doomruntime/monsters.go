@@ -2390,7 +2390,7 @@ func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, 
 	return tmfloor, tmceil, true
 }
 
-func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {
+func (g *game) touchedSpecialLinesForMonsterMove(i int, x, y int64) []int {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return nil
 	}
@@ -2418,19 +2418,7 @@ func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {
 		if g.boxOnLineSide(box, ld) != -1 {
 			return
 		}
-		blocked := false
-		switch {
-		case ld.sideNum1 < 0:
-			blocked = true
-		case (ld.flags & mlBlocking) != 0:
-			blocked = true
-		case (ld.flags & mlBlockMonsters) != 0:
-			blocked = true
-		default:
-			_, _, _, openrange := g.lineOpening(ld)
-			blocked = openrange <= 0
-		}
-		if blocked && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+		if ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
 			lines = append(lines, ld.idx)
 		}
 	}
@@ -2462,7 +2450,7 @@ func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {
 }
 
 func (g *game) monsterUseBlockingSpecialLines(i int, x, y int64) bool {
-	for _, lineIdx := range g.blockedSpecialLinesForMonsterMove(i, x, y) {
+	for _, lineIdx := range g.touchedSpecialLinesForMonsterMove(i, x, y) {
 		if g.useSpecialLineForActor(lineIdx, 0, false) {
 			return true
 		}

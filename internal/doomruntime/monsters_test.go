@@ -1275,6 +1275,91 @@ func TestMonsterMoveInDir_UsesManualDoor(t *testing.T) {
 	}
 }
 
+func TestMonsterMoveInDir_UsesManualDoorWhenOpeningIsTooShortToFit(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -24, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 6},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+		p:              player{x: -128 * fracUnit, y: 0},
+	}
+	g.initPhysics()
+	beforeX, beforeY := g.thingPosFixed(0, g.m.Things[0])
+	if !g.monsterMoveInDir(0, 3004, monsterDirEast) {
+		t.Fatal("monster move should succeed by using the manual door")
+	}
+	if len(g.doors) == 0 {
+		t.Fatal("manual door should have been activated")
+	}
+	afterX, afterY := g.thingPosFixed(0, g.m.Things[0])
+	if afterX != beforeX || afterY != beforeY {
+		t.Fatalf("monster should stay put while opening door: before=(%d,%d) after=(%d,%d)", beforeX, beforeY, afterX, afterY)
+	}
+}
+
+func TestMonsterMoveInDir_DoesNotCloseActiveManualDoorForMonster(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -24, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+		p: player{x: -128 * fracUnit, y: 0},
+	}
+	g.initPhysics()
+	g.doors[1] = &doorThinker{
+		sector:    1,
+		typ:       doorNormal,
+		direction: 1,
+		speed:     vDoorSpeed,
+		topWait:   vDoorWaitTic,
+		topHeight: 124 * fracUnit,
+	}
+	if !g.monsterMoveInDir(0, 3004, monsterDirEast) {
+		t.Fatal("monster use of active manual door should still count as success")
+	}
+	if got := g.doors[1].direction; got != 1 {
+		t.Fatalf("monster should not close active manual door, direction=%d", got)
+	}
+}
+
 func TestMonsterMoveInDir_DoesNotUseSecretDoor(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

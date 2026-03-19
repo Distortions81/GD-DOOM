@@ -105,7 +105,7 @@ func TestE1M1SpawnDoorOpeningSweep_DoorFaceColumnsStayPartiallyOpen(t *testing.T
 	if info.Door == nil {
 		t.Fatalf("target line %d is not a door special", lineIdx)
 	}
-	if !g.activateDoorLine(lineIdx, info) {
+	if !g.activateDoorLine(lineIdx, info, true) {
 		t.Fatalf("failed to activate spawn door line %d", lineIdx)
 	}
 
@@ -197,7 +197,7 @@ func TestE1M1SpawnDoorOpeningSweep_BackSectorFloorVisibleBeforeHalfOpen(t *testi
 	if info.Door == nil {
 		t.Fatalf("target line %d is not a door special", lineIdx)
 	}
-	if !g.activateDoorLine(lineIdx, info) {
+	if !g.activateDoorLine(lineIdx, info, true) {
 		t.Fatalf("failed to activate spawn door line %d", lineIdx)
 	}
 	targets, err := g.m.DoorTargetSectors(lineIdx)
@@ -737,7 +737,7 @@ func TestE1M1SpawnDoorTopWallRevealStartsBeforeHalfOpen(t *testing.T) {
 	if info.Door == nil {
 		t.Fatalf("target line %d is not a door special", lineIdx)
 	}
-	if !g.activateDoorLine(lineIdx, info) {
+	if !g.activateDoorLine(lineIdx, info, true) {
 		t.Fatalf("failed to activate spawn door line %d", lineIdx)
 	}
 	targets, err := g.m.DoorTargetSectors(lineIdx)
@@ -843,7 +843,7 @@ func TestE1M1SpawnDoorColumns_NotClosedByUnrelatedSegBeforeHalfOpen(t *testing.T
 	if info.Door == nil {
 		t.Fatalf("target line %d is not a door special", lineIdx)
 	}
-	if !g.activateDoorLine(lineIdx, info) {
+	if !g.activateDoorLine(lineIdx, info, true) {
 		t.Fatalf("failed to activate spawn door line %d", lineIdx)
 	}
 	targets, err := g.m.DoorTargetSectors(lineIdx)
