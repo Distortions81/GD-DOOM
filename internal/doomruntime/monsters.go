@@ -105,6 +105,7 @@ func (g *game) tickMonsters() {
 		if th.Type == 88 {
 			continue
 		}
+		g.tickMonsterMomentum(i, th)
 		if !g.monsterHasTarget(i) {
 			g.clearMonsterTargetState(i)
 		}
@@ -652,6 +653,83 @@ func (g *game) ensureMonsterAIState() {
 		g.thingStatePhase = make([]int, n)
 		copy(g.thingStatePhase, old)
 	}
+	if len(g.thingMomX) != n {
+		old := g.thingMomX
+		g.thingMomX = make([]int64, n)
+		copy(g.thingMomX, old)
+	}
+	if len(g.thingMomY) != n {
+		old := g.thingMomY
+		g.thingMomY = make([]int64, n)
+		copy(g.thingMomY, old)
+	}
+	if len(g.thingMomZ) != n {
+		old := g.thingMomZ
+		g.thingMomZ = make([]int64, n)
+		copy(g.thingMomZ, old)
+	}
+}
+
+func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return
+	}
+	if i >= len(g.thingMomX) || i >= len(g.thingMomY) || i >= len(g.thingMomZ) {
+		return
+	}
+	momx := g.thingMomX[i]
+	momy := g.thingMomY[i]
+	momz := g.thingMomZ[i]
+	if momx == 0 && momy == 0 && momz == 0 {
+		return
+	}
+	momx = clamp(momx, -maxMove, maxMove)
+	momy = clamp(momy, -maxMove, maxMove)
+
+	tx, ty := g.thingPosFixed(i, th)
+	nx := tx + momx
+	ny := ty + momy
+	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
+		g.setThingPosFixed(i, nx, ny)
+		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+	} else {
+		momx = 0
+		momy = 0
+	}
+
+	if i < len(g.thingZState) && i < len(g.thingFloorState) && g.thingZState[i] > g.thingFloorState[i] {
+		g.thingMomX[i] = momx
+		g.thingMomY[i] = momy
+		g.thingMomZ[i] = momz
+		return
+	}
+	if momx > -stopSpeed && momx < stopSpeed && momy > -stopSpeed && momy < stopSpeed {
+		g.thingMomX[i] = 0
+		g.thingMomY[i] = 0
+		g.thingMomZ[i] = 0
+		return
+	}
+	g.thingMomX[i] = fixedMul(momx, friction)
+	g.thingMomY[i] = fixedMul(momy, friction)
+	g.thingMomZ[i] = momz
+}
+
+func (g *game) setThingMomentum(i int, momx, momy, momz int64) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i >= len(g.thingMomX) {
+		g.thingMomX = append(g.thingMomX, make([]int64, i-len(g.thingMomX)+1)...)
+	}
+	if i >= len(g.thingMomY) {
+		g.thingMomY = append(g.thingMomY, make([]int64, i-len(g.thingMomY)+1)...)
+	}
+	if i >= len(g.thingMomZ) {
+		g.thingMomZ = append(g.thingMomZ, make([]int64, i-len(g.thingMomZ)+1)...)
+	}
+	g.thingMomX[i] = momx
+	g.thingMomY[i] = momy
+	g.thingMomZ[i] = momz
 }
 
 func monsterPainChance(typ int16) int {

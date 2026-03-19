@@ -139,3 +139,26 @@ func TestDemoTraceThingTargetUsesConcreteTargetFields(t *testing.T) {
 		t.Fatalf("thing target=(%d,%d) want (2,%d)", target, targetType, demoTraceThingType(3001))
 	}
 }
+
+func TestDemoTraceMonsterPainStateTicsMatchesCurrentFrame(t *testing.T) {
+	tests := []struct {
+		typ       int16
+		remaining int
+		want      int
+	}{
+		{9, 5, 2},
+		{9, 3, 3},
+		{9, 1, 1},
+		{3001, 3, 1},
+		{3004, 5, 2},
+	}
+	for _, tt := range tests {
+		got, ok := demoTraceMonsterPainStateTics(tt.typ, tt.remaining)
+		if !ok {
+			t.Fatalf("type %d remaining %d: helper returned !ok", tt.typ, tt.remaining)
+		}
+		if got != tt.want {
+			t.Fatalf("type %d remaining %d: tics=%d want=%d", tt.typ, tt.remaining, got, tt.want)
+		}
+	}
+}

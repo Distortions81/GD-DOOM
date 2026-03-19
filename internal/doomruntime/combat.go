@@ -1178,6 +1178,7 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		return
 	}
 	thingType := g.m.Things[thingIdx].Type
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing)
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
@@ -1255,6 +1256,74 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		g.maybeRetargetMonsterAfterDamage(thingIdx, thingType, sourcePlayer, sourceThing)
 		g.setHUDMessage("Hit", 8)
+	}
+}
+
+func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
+	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
+		return
+	}
+	ix, iy, ok := g.damageSourcePos(sourcePlayer, sourceThing)
+	if !ok {
+		return
+	}
+	tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+	mass := thingTypeMass(g.m.Things[thingIdx].Type)
+	if mass <= 0 {
+		return
+	}
+	angle := doomPointToAngle2(ix, iy, tx, ty)
+	thrust := int64(damage) * (fracUnit >> 3) * 100 / int64(mass)
+	momx := fixedMul(thrust, doomFineCosine(angle))
+	momy := fixedMul(thrust, doomFineSineAtAngle(angle))
+	if thingIdx < len(g.thingMomX) {
+		momx += g.thingMomX[thingIdx]
+	}
+	if thingIdx < len(g.thingMomY) {
+		momy += g.thingMomY[thingIdx]
+	}
+	g.setThingMomentum(thingIdx, momx, momy, 0)
+}
+
+func (g *game) damageSourcePos(sourcePlayer bool, sourceThing int) (x, y int64, ok bool) {
+	if sourcePlayer {
+		return g.p.x, g.p.y, true
+	}
+	if g == nil || g.m == nil || sourceThing < 0 || sourceThing >= len(g.m.Things) {
+		return 0, 0, false
+	}
+	x, y = g.thingPosFixed(sourceThing, g.m.Things[sourceThing])
+	return x, y, true
+}
+
+func thingTypeMass(typ int16) int {
+	switch typ {
+	case 3004, 9, 3001, 65, 84:
+		return 100
+	case 3002, 58:
+		return 400
+	case 3005:
+		return 400
+	case 3003, 69:
+		return 1000
+	case 64:
+		return 500
+	case 66:
+		return 500
+	case 67:
+		return 1000
+	case 68:
+		return 600
+	case 71:
+		return 400
+	case 3006:
+		return 50
+	case 7, 16:
+		return 1000
+	case 2035, 30:
+		return 100
+	default:
+		return 100
 	}
 }
 

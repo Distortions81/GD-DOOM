@@ -87,6 +87,7 @@ func (g *game) tickThinkers() {
 	g.tickProjectiles()
 	g.tickProjectileImpacts()
 	g.tickMonsters()
+	g.tickHitscanPuffs()
 }
 
 func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {

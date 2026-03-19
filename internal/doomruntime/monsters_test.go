@@ -333,7 +333,7 @@ func TestMonsterPainFrameTablesMatchDoomStateTables(t *testing.T) {
 		wantTotal int
 	}{
 		{3004, []byte{'G', 'G'}, []int{3, 3}, 6},
-		{9, []byte{'G', 'G'}, []int{2, 2}, 4},
+		{9, []byte{'G', 'G'}, []int{3, 3}, 6},
 		{3001, []byte{'H', 'H'}, []int{2, 2}, 4},
 		{3002, []byte{'H', 'H'}, []int{2, 2}, 4},
 		{58, []byte{'H', 'H'}, []int{2, 2}, 4},

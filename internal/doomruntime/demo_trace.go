@@ -285,9 +285,9 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Y:            y,
 			Z:            z,
 			Angle:        g.thingWorldAngle(i, th),
-			MomX:         0,
-			MomY:         0,
-			MomZ:         0,
+			MomX:         demoTraceThingMomX(g, i),
+			MomY:         demoTraceThingMomY(g, i),
+			MomZ:         demoTraceThingMomZ(g, i),
 			FloorZ:       floorZ,
 			CeilingZ:     ceilZ,
 			Radius:       radius,
@@ -510,11 +510,14 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 	if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
 		return g.thingStateTics[i]
 	}
+	if i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+		if tics, ok := demoTraceMonsterPainStateTics(typ, g.thingPainTics[i]); ok {
+			return tics
+		}
+		return g.thingPainTics[i]
+	}
 	if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 		return g.thingDeathTics[i]
-	}
-	if i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
-		return g.thingPainTics[i]
 	}
 	if i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 		return g.thingAttackTics[i]
@@ -702,6 +705,34 @@ func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
 	return base + len(frameTics) - 1, true
 }
 
+func demoTraceMonsterPainStateTics(typ int16, remaining int) (int, bool) {
+	frameTics := monsterPainFrameTics(typ)
+	if len(frameTics) == 0 || remaining <= 0 {
+		return 0, false
+	}
+	total := 0
+	for _, t := range frameTics {
+		if t > 0 {
+			total += t
+		}
+	}
+	elapsed := total - remaining
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	acc := 0
+	for _, t := range frameTics {
+		if t <= 0 {
+			continue
+		}
+		acc += t
+		if elapsed < acc {
+			return acc - elapsed, true
+		}
+	}
+	return 1, true
+}
+
 func demoTraceThingMoveDir(g *game, i int) int {
 	if i >= 0 && i < len(g.thingMoveDir) {
 		return int(g.thingMoveDir[i])
@@ -712,6 +743,27 @@ func demoTraceThingMoveDir(g *game, i int) int {
 func demoTraceThingMoveCount(g *game, i int) int {
 	if i >= 0 && i < len(g.thingMoveCount) {
 		return g.thingMoveCount[i]
+	}
+	return 0
+}
+
+func demoTraceThingMomX(g *game, i int) int64 {
+	if i >= 0 && i < len(g.thingMomX) {
+		return g.thingMomX[i]
+	}
+	return 0
+}
+
+func demoTraceThingMomY(g *game, i int) int64 {
+	if i >= 0 && i < len(g.thingMomY) {
+		return g.thingMomY[i]
+	}
+	return 0
+}
+
+func demoTraceThingMomZ(g *game, i int) int64 {
+	if i >= 0 && i < len(g.thingMomZ) {
+		return g.thingMomZ[i]
 	}
 	return 0
 }

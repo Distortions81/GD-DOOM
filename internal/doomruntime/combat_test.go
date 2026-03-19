@@ -117,6 +117,29 @@ func TestHandleFireConsumesAmmoAndDamages(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterFromPlayerAppliesDoomThrustMomentum(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 64, Y: 32}},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingMomX:      []int64{0},
+		thingMomY:      []int64{0},
+		thingMomZ:      []int64{0},
+		p:              player{x: 0, y: 0},
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1)
+
+	if g.thingMomX[0] == 0 || g.thingMomY[0] == 0 {
+		t.Fatalf("monster momentum=(%d,%d) want non-zero Doom thrust", g.thingMomX[0], g.thingMomY[0])
+	}
+	if g.thingMomX[0] <= 0 || g.thingMomY[0] <= 0 {
+		t.Fatalf("monster momentum=(%d,%d) want positive thrust away from player", g.thingMomX[0], g.thingMomY[0])
+	}
+}
+
 func TestHandleFireNoAmmoFallsBackToFist(t *testing.T) {
 	g := &game{
 		stats:     playerStats{Bullets: 0},
@@ -744,6 +767,28 @@ func TestHitscanPuffsExpire(t *testing.T) {
 	}
 	if len(g.hitscanPuffs) != 0 {
 		t.Fatalf("puffs=%d want=0 after expiry", len(g.hitscanPuffs))
+	}
+}
+
+func TestHitscanBloodAdvancesWithGravityLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+	g.spawnHitscanBlood(0, 0, 0, 5)
+	if len(g.hitscanPuffs) != 1 {
+		t.Fatalf("blood effects=%d want=1", len(g.hitscanPuffs))
+	}
+	if got := g.hitscanPuffs[0].state; got != 92 {
+		t.Fatalf("initial blood state=%d want=92", got)
+	}
+	g.tickHitscanPuffs()
+	if got := g.hitscanPuffs[0].momz; got != fracUnit {
+		t.Fatalf("blood momz after thinker tick=%d want=%d", got, fracUnit)
+	}
+	if got := g.hitscanPuffs[0].state; got != 92 {
+		t.Fatalf("blood state after thinker tick=%d want=92", got)
+	}
+	if got := g.hitscanPuffs[0].tics; got < 1 || got > 7 {
+		t.Fatalf("blood tics after thinker tick=%d want within [1,7]", got)
 	}
 }
 

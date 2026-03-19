@@ -488,6 +488,9 @@ type game struct {
 	thingDropped          []bool
 	thingX                []int64
 	thingY                []int64
+	thingMomX             []int64
+	thingMomY             []int64
+	thingMomZ             []int64
 	thingAngleState       []uint32
 	thingZState           []int64
 	thingFloorState       []int64
@@ -1137,6 +1140,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingDropped = make([]bool, len(m.Things))
 	g.thingX = make([]int64, len(m.Things))
 	g.thingY = make([]int64, len(m.Things))
+	g.thingMomX = make([]int64, len(m.Things))
+	g.thingMomY = make([]int64, len(m.Things))
+	g.thingMomZ = make([]int64, len(m.Things))
 	g.thingAngleState = make([]uint32, len(m.Things))
 	g.thingZState = make([]int64, len(m.Things))
 	g.thingFloorState = make([]int64, len(m.Things))
@@ -1919,7 +1925,6 @@ func (g *game) Update() error {
 		if g.bonusFlashTic > 0 {
 			g.bonusFlashTic--
 		}
-		g.tickHitscanPuffs()
 		g.tickDelayedSounds()
 		g.tickDelayedSwitchReverts()
 		g.flushSoundEvents()
@@ -2016,7 +2021,6 @@ func (g *game) updateDemoMode() error {
 	if g.bonusFlashTic > 0 {
 		g.bonusFlashTic--
 	}
-	g.tickHitscanPuffs()
 	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
 	g.flushSoundEvents()
@@ -8811,17 +8815,17 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
-	state := 91
+	state := 90
 	lastLook := doomrand.PRandom() & 3
 	tics := 8 - (doomrand.PRandom() & 3)
 	if tics < 1 {
 		tics = 1
 	}
 	if damage <= 12 && damage >= 9 {
-		state = 92
+		state = 91
 		tics = 8
 	} else if damage < 9 {
-		state = 93
+		state = 92
 		tics = 8
 	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
@@ -8968,6 +8972,13 @@ func (g *game) tickHitscanPuffs() {
 	keep := g.hitscanPuffs[:0]
 	for _, p := range g.hitscanPuffs {
 		p.z += p.momz
+		if p.kind == hitscanFxBlood {
+			if p.momz == 0 {
+				p.momz = -2 * fracUnit
+			} else {
+				p.momz -= fracUnit
+			}
+		}
 		p.tics--
 		if p.kind == hitscanFxPuff && p.tics <= 0 {
 			switch p.state {
@@ -8980,10 +8991,10 @@ func (g *game) tickHitscanPuffs() {
 			}
 		} else if p.kind == hitscanFxBlood && p.tics <= 0 {
 			switch p.state {
+			case 90:
+				p.state, p.tics = 91, 8
 			case 91:
 				p.state, p.tics = 92, 8
-			case 92:
-				p.state, p.tics = 93, 8
 			}
 		} else if p.kind == hitscanFxSmoke && p.tics <= 0 {
 			switch p.state {
@@ -10879,7 +10890,7 @@ func monsterPainFrameTics(typ int16) []int {
 	case 3004:
 		return monsterPainTics33
 	case 9:
-		return monsterPainTics22
+		return monsterPainTics33
 	case 3001:
 		return monsterPainTics22
 	case 3002, 58:
