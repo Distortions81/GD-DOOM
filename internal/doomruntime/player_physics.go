@@ -441,6 +441,12 @@ func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int6
 }
 
 func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool) (int64, int64, int64, bool) {
+	if moverThingIdx >= 0 {
+		if moverThingIdx >= len(g.thingProbeSpecialLines) {
+			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
+		}
+		g.thingProbeSpecialLines[moverThingIdx] = g.thingProbeSpecialLines[moverThingIdx][:0]
+	}
 	tmboxTop := y + radius
 	tmboxBottom := y - radius
 	tmboxRight := x + radius
@@ -503,6 +509,15 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if probeEnabled {
 			g.debugPlayerProbe(fmt.Sprintf("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3]), x, y)
 		}
+		if want := os.Getenv("GD_DEBUG_MONSTER_PROBE_LINES"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if moverThingIdx == wantIdx && (g.demoTick-1 == wantTic || g.worldTic == wantTic) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+					fmt.Printf("monster-probe-lines-debug tic=%d world=%d idx=%d line=%d special=%d front=%d back=%d\n",
+						g.demoTick-1, g.worldTic, moverThingIdx, ld.idx, g.lineSpecial[ld.idx], frontSec, backSec)
+				}
+			}
+		}
 
 		if ld.sideNum1 < 0 {
 			if probeEnabled {
@@ -530,12 +545,6 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 					g.demoTick-1, g.worldTic, moverThingIdx, ld.idx, sec, frontSec, backSec, openbottom, opentop, openrange, lowfloor, tmfloor, tmceil)
 			}
 		}
-		if openrange <= 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=openrange floor=%d ceil=%d drop=%d openbottom=%d opentop=%d", ld.idx, tmfloor, tmceil, tmdrop, openbottom, opentop), x, y)
-			}
-			return false
-		}
 		if probeEnabled {
 			g.debugPlayerProbe(fmt.Sprintf("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor), x, y)
 		}
@@ -547,6 +556,9 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 		if lowfloor < tmdrop {
 			tmdrop = lowfloor
+		}
+		if ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+			g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
 		}
 		return true
 	}
@@ -585,6 +597,13 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 	}
 	return tmfloor, tmceil, tmdrop, true
+}
+
+func (g *game) probeSpecialLinesForMover(idx int) []int {
+	if g == nil || idx < 0 || idx >= len(g.thingProbeSpecialLines) || len(g.thingProbeSpecialLines[idx]) == 0 {
+		return nil
+	}
+	return g.thingProbeSpecialLines[idx]
 }
 
 func (g *game) debugPlayerProbeActive() bool {

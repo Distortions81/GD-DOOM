@@ -763,7 +763,7 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	tx, ty := g.thingPosFixed(i, th)
 	nx := tx + momx
 	ny := ty + momy
-	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
 		g.setThingPosFixed(i, nx, ny)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	} else {
@@ -1576,10 +1576,10 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	nx := x + dx
 	ny := y + dy
 	g.debugMonsterMove(i, fmt.Sprintf("move dir=%d from=(%d,%d) to=(%d,%d)", dir, x, y, nx, ny))
-	tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
+	tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
 	if !ok {
 		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
-		lines := g.touchedSpecialLinesForMonsterMove(i, nx, ny)
+		lines := probeLines
 		if g == nil || os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES") == "" {
 			// no-op
 		} else {
@@ -2448,17 +2448,17 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	dy := int64(math.Sin(ang) * float64(step))
 	nx := x + dx
 	ny := y + dy
-	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
 		g.setThingPosFixed(i, nx, ny)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		return
 	}
-	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
 		g.setThingPosFixed(i, x+dx, y)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		return
 	}
-	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
 		g.setThingPosFixed(i, x, y+dy)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	}
@@ -2528,30 +2528,31 @@ func (g *game) tryMoveProbe(x, y int64) bool {
 	return ok
 }
 
-func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, bool) {
+func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, []int, bool) {
 	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
-		return 0, 0, false
+		return 0, 0, nil, false
 	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(typ), true, i, true)
+	probeLines := append([]int(nil), g.probeSpecialLinesForMover(i)...)
 	g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) ok=%v floor=%d ceil=%d drop=%d", x, y, ok, tmfloor, tmceil, tmdrop))
 	if !ok {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
 	height := monsterHeight(typ)
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	if tmceil-tmfloor < height {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
 	if tmceil-z < height {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
 	if tmfloor-z > stepHeight {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
 	if !monsterCanDropOff(typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
-	return tmfloor, tmceil, true
+	return tmfloor, tmceil, probeLines, true
 }
 
 func (g *game) touchedSpecialLinesForMonsterMove(i int, x, y int64) []int {

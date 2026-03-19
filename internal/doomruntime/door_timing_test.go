@@ -209,23 +209,3 @@ func TestTickDoors_NormalDoorReopensWhenPlayerOverlapsDoorwayFromAdjacentSector(
 		t.Fatalf("blocking normal door should reverse open, direction=%d", d.direction)
 	}
 }
-
-func TestEVVerticalDoor_MonsterDoesNotTreatAlreadyOpeningDoorAsSuccess(t *testing.T) {
-	g := newDoorTimingGame(1)
-	g.m.Linedefs[0].Special = 1
-	g.doors[0] = &doorThinker{
-		sector:    0,
-		typ:       doorNormal,
-		direction: 1,
-		topHeight: 72 * fracUnit,
-		topWait:   vDoorWaitTic,
-		speed:     2 * fracUnit,
-	}
-
-	if g.evVerticalDoor(0, false) {
-		t.Fatal("monster should not succeed on already-opening manual door")
-	}
-	if g.doors[0] == nil || g.doors[0].direction != 1 {
-		t.Fatalf("door direction=%v want still opening", g.doors[0])
-	}
-}

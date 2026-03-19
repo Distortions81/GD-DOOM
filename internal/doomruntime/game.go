@@ -422,6 +422,7 @@ type game struct {
 	mapVisibleLines      []mapview.Line
 	lineValid            []int
 	validCount           int
+	thingProbeSpecialLines [][]int
 	bmapOriginX          int64
 	bmapOriginY          int64
 	bmapWidth            int
