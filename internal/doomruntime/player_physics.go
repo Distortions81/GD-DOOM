@@ -130,19 +130,7 @@ func (g *game) tickPlayerCounters() {
 	if g == nil {
 		return
 	}
-	if g.playerPainStateTics > 0 {
-		g.playerPainStateTics--
-		if g.playerPainStateTics == 0 {
-			switch g.playerPainStatePhase {
-			case 1:
-				g.playerPainStatePhase = 2
-				g.playerPainStateTics = 4
-				g.emitSoundEvent(soundEventPain)
-			default:
-				g.playerPainStatePhase = 0
-			}
-		}
-	}
+	g.tickPlayerMobjState()
 	if g.p.reactionTime > 0 {
 		g.p.reactionTime--
 	}
@@ -157,6 +145,48 @@ func (g *game) tickPlayerCounters() {
 	}
 	if g.inventory.LightAmpTics > 0 {
 		g.inventory.LightAmpTics--
+	}
+}
+
+func (g *game) setPlayerMobjState(state, tics int) {
+	if g == nil {
+		return
+	}
+	g.playerMobjState = state
+	g.playerMobjTics = tics
+}
+
+func (g *game) clearPlayerPainState() {
+	if g == nil {
+		return
+	}
+	if g.playerMobjState != doomStatePlayerPain1 && g.playerMobjState != doomStatePlayerPain2 {
+		return
+	}
+	g.playerMobjState = 0
+	g.playerMobjTics = 0
+}
+
+func (g *game) tickPlayerMobjState() {
+	if g == nil || g.playerMobjTics <= 0 {
+		return
+	}
+	g.playerMobjTics--
+	if g.playerMobjTics != 0 {
+		return
+	}
+	switch g.playerMobjState {
+	case doomStatePlayerPain1:
+		g.setPlayerMobjState(doomStatePlayerPain2, 4)
+		g.emitSoundEvent(soundEventPain)
+	case doomStatePlayerPain2:
+		g.setPlayerMobjState(0, 0)
+	case doomStatePlayerAttack2:
+		g.setPlayerMobjState(doomStatePlayerAttack1, 12)
+	case doomStatePlayerAttack1:
+		g.setPlayerMobjState(0, 0)
+	default:
+		g.setPlayerMobjState(0, 0)
 	}
 }
 

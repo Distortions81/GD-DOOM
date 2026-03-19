@@ -755,8 +755,8 @@ type game struct {
 	statusOldWeapons             [9]bool
 	statusDamageCount            int
 	statusBonusCount             int
-	playerPainStatePhase         int
-	playerPainStateTics          int
+	playerMobjState              int
+	playerMobjTics               int
 	demoBenchStart               time.Time
 	demoBenchDraws               int
 	demoBenchFrameNS             []int64
@@ -781,6 +781,8 @@ type delayedSoundEvent struct {
 	x          int64
 	y          int64
 	positioned bool
+	monsterTyp int16
+	deathSound bool
 }
 
 type queuedSoundOrigin struct {
@@ -2038,6 +2040,7 @@ func (g *game) updateDemoMode() error {
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+	g.tickDelayedSounds()
 	// Doom starts gameplay-triggered sounds during the gameplay pass, before ST_Ticker.
 	g.flushSoundEvents()
 	g.tickStatusWidgets()
@@ -2052,7 +2055,6 @@ func (g *game) updateDemoMode() error {
 	if g.bonusFlashTic > 0 {
 		g.bonusFlashTic--
 	}
-	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
 	g.lastUpdate = time.Now()
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
@@ -3275,6 +3277,24 @@ func (g *game) emitSoundEventDelayedAt(ev soundEvent, tics int, x, y int64, posi
 	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{ev: ev, tics: tics, x: x, y: y, positioned: positioned})
 }
 
+func (g *game) emitMonsterDeathSoundDelayedAt(typ int16, tics int, x, y int64) {
+	if g == nil {
+		return
+	}
+	if tics <= 0 {
+		g.emitSoundEventAt(monsterDeathSoundEventVariant(typ), x, y)
+		return
+	}
+	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{
+		tics:       tics,
+		x:          x,
+		y:          y,
+		positioned: true,
+		monsterTyp: typ,
+		deathSound: true,
+	})
+}
+
 func (g *game) emitDoorSectorSound(sec int, ev soundEvent) {
 	if x, y, ok := g.sectorSoundOrigin(sec); ok {
 		g.emitSoundEventAt(ev, x, y)
@@ -3327,6 +3347,10 @@ func (g *game) tickDelayedSounds() {
 	for _, d := range g.delayedSfx {
 		d.tics--
 		if d.tics <= 0 {
+			if d.deathSound {
+				g.emitSoundEventAt(monsterDeathSoundEventVariant(d.monsterTyp), d.x, d.y)
+				continue
+			}
 			if d.positioned {
 				g.emitSoundEventAt(d.ev, d.x, d.y)
 			} else {

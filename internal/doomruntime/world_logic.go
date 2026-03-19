@@ -451,8 +451,7 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		g.emitSoundEvent(soundEventPlayerDeath)
 	} else {
 		if doomrand.PRandom() < playerPainChance {
-			g.playerPainStatePhase = 1
-			g.playerPainStateTics = 4
+			g.setPlayerMobjState(doomStatePlayerPain1, 4)
 		}
 	}
 	g.setHUDMessage(msg, 20)

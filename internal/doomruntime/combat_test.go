@@ -1109,6 +1109,20 @@ func TestMonsterPainSoundEventMapping(t *testing.T) {
 	}
 }
 
+func TestPlayerAttackClearsPendingPainState(t *testing.T) {
+	g := &game{
+		playerMobjState: doomStatePlayerPain1,
+		playerMobjTics:  4,
+		stats:           playerStats{Bullets: 10},
+		soundQueue:      make([]soundEvent, 0, 2),
+		p:               player{angle: 0},
+	}
+	_ = g.firePistol(true)
+	if g.playerMobjState != doomStatePlayerAttack2 || g.playerMobjTics != 6 {
+		t.Fatalf("player mobj state/tics=%d/%d want=%d/6", g.playerMobjState, g.playerMobjTics, doomStatePlayerAttack2)
+	}
+}
+
 func TestDamageMonsterPainSoundStartsOnPainActionFrame(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -1172,6 +1186,7 @@ func TestMonsterDeathSoundEventMapping(t *testing.T) {
 }
 
 func TestDamageMonsterDelaysShotgunDeathSoundToScreamFrame(t *testing.T) {
+	doomrand.Clear()
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -1182,25 +1197,26 @@ func TestDamageMonsterDelaysShotgunDeathSoundToScreamFrame(t *testing.T) {
 		thingHP:        []int{1},
 		thingDead:      []bool{false},
 		thingDeathTics: []int{0},
+		thingState:     []monsterThinkState{monsterStateSee},
+		thingStateTics: []int{0},
+		thingStatePhase: []int{0},
 		soundQueue:     make([]soundEvent, 0, 2),
-		delayedSfx:     make([]delayedSoundEvent, 0, 2),
 	}
 	g.damageMonster(0, 1)
-	if hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
+	if hasSoundEvent(g.soundQueue, soundEventDeathPodth1) || hasSoundEvent(g.soundQueue, soundEventDeathPodth2) || hasSoundEvent(g.soundQueue, soundEventDeathPodth3) {
 		t.Fatalf("death sound should be delayed; queue=%v", g.soundQueue)
 	}
-	if got := len(g.delayedSfx); got != 1 {
-		t.Fatalf("delayedSfx len=%d want=1", got)
-	}
 	for i := 0; i < 4; i++ {
-		g.tickDelayedSounds()
-		if hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
+		g.tickMonsters()
+		if hasSoundEvent(g.soundQueue, soundEventDeathPodth1) || hasSoundEvent(g.soundQueue, soundEventDeathPodth2) || hasSoundEvent(g.soundQueue, soundEventDeathPodth3) {
 			t.Fatalf("death sound fired early at tick %d", i+1)
 		}
 	}
-	g.tickDelayedSounds()
-	if !hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
-		t.Fatalf("queue=%v missing delayed shotgun death sound", g.soundQueue)
+	g.tickMonsters()
+	if !hasSoundEvent(g.soundQueue, soundEventDeathPodth1) &&
+		!hasSoundEvent(g.soundQueue, soundEventDeathPodth2) &&
+		!hasSoundEvent(g.soundQueue, soundEventDeathPodth3) {
+		t.Fatalf("queue=%v missing delayed randomized shotgun death sound", g.soundQueue)
 	}
 }
 

@@ -237,6 +237,9 @@ func (g *game) weaponActionReady(state weaponPspriteState) {
 		}
 		return
 	}
+	if g.playerMobjState == doomStatePlayerAttack1 || g.playerMobjState == doomStatePlayerAttack2 {
+		g.setPlayerMobjState(0, 0)
+	}
 	if g.inventory.ReadyWeapon == weaponChainsaw && state == weaponStateSawReady {
 		g.emitSoundEvent(soundEventSawIdle)
 	}
@@ -279,6 +282,7 @@ func (g *game) weaponActionGunFlash(_ weaponPspriteState) {
 	if g == nil {
 		return
 	}
+	g.setPlayerMobjState(doomStatePlayerAttack2, 6)
 	g.startWeaponFlashState(flashStartState(g.inventory.ReadyWeapon))
 }
 
@@ -286,6 +290,8 @@ func (g *game) weaponActionBFGSound(_ weaponPspriteState) {
 	if g == nil {
 		return
 	}
+	g.clearPlayerPainState()
+	g.setPlayerMobjState(doomStatePlayerAttack1, 12)
 	g.emitSoundEvent(soundEventShootBFG)
 }
 
@@ -418,10 +424,13 @@ func (g *game) fireWeaponStateSequence() {
 		}
 	}
 	g.propagateNoiseAlertFrom(g.p.x, g.p.y)
+	g.clearPlayerPainState()
+	g.setPlayerMobjState(doomStatePlayerAttack1, 12)
 	g.setWeaponPSpriteState(weaponStateForAttack(g.inventory.ReadyWeapon), false)
 }
 
 func (g *game) fireFist() bool {
+	g.clearPlayerPainState()
 	damage := 2 * (1 + (doomrand.PRandom() % 10))
 	if g.inventory.Strength {
 		damage *= 10
@@ -436,6 +445,7 @@ func (g *game) fireFist() bool {
 }
 
 func (g *game) fireChainsaw() bool {
+	g.clearPlayerPainState()
 	damage := 2 * (1 + (doomrand.PRandom() % 10))
 	angle := addDoomAngleSpread(g.p.angle, doomGunSpreadShift)
 	hit, targetX, targetY := g.fireMeleeAtAngle(angle, 64*fracUnit+fracUnit, damage)
@@ -449,6 +459,8 @@ func (g *game) fireChainsaw() bool {
 }
 
 func (g *game) firePistol(accurate bool) bool {
+	g.clearPlayerPainState()
+	g.setPlayerMobjState(doomStatePlayerAttack2, 6)
 	g.stats.Bullets--
 	g.emitSoundEvent(soundEventShootPistol)
 	g.startWeaponFlashState(weaponStatePistolFlash)
@@ -457,6 +469,8 @@ func (g *game) firePistol(accurate bool) bool {
 }
 
 func (g *game) fireShotgun() bool {
+	g.clearPlayerPainState()
+	g.setPlayerMobjState(doomStatePlayerAttack2, 6)
 	g.stats.Shells--
 	g.emitSoundEvent(soundEventShootShotgun)
 	g.startWeaponFlashState(weaponStateShotgunFlash1)
@@ -471,6 +485,8 @@ func (g *game) fireShotgun() bool {
 }
 
 func (g *game) fireSuperShotgun() bool {
+	g.clearPlayerPainState()
+	g.setPlayerMobjState(doomStatePlayerAttack2, 6)
 	g.stats.Shells -= 2
 	g.emitSoundEvent(soundEventShootSuperShotgun)
 	g.startWeaponFlashState(weaponStateSuperShotgunFlash1)
@@ -489,6 +505,8 @@ func (g *game) fireSuperShotgun() bool {
 }
 
 func (g *game) fireChaingun(state weaponPspriteState) bool {
+	g.clearPlayerPainState()
+	g.setPlayerMobjState(doomStatePlayerAttack2, 6)
 	g.stats.Bullets--
 	g.emitSoundEvent(soundEventShootPistol)
 	flash := weaponStateChaingunFlash1
@@ -501,12 +519,14 @@ func (g *game) fireChaingun(state weaponPspriteState) bool {
 }
 
 func (g *game) fireRocketLauncher() bool {
+	g.clearPlayerPainState()
 	g.stats.Rockets--
 	g.emitSoundEvent(soundEventShootRocket)
 	return g.spawnPlayerRocket()
 }
 
 func (g *game) firePlasma() bool {
+	g.clearPlayerPainState()
 	g.stats.Cells--
 	flash := weaponStatePlasmaFlash1
 	if doomrand.PRandom()&1 != 0 {
@@ -518,6 +538,7 @@ func (g *game) firePlasma() bool {
 }
 
 func (g *game) fireBFG() bool {
+	g.clearPlayerPainState()
 	g.stats.Cells -= 40
 	g.startWeaponFlashState(weaponStateBFGFlash1)
 	return g.spawnPlayerBFG()
@@ -1251,13 +1272,28 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingDeathTics) {
 			deathTics := monsterDeathAnimTotalTics(thingType)
+			firstFrameTics := 0
+			frameTics := monsterDeathFrameTics(thingType)
+			if len(frameTics) > 0 {
+				firstFrameTics = frameTics[0]
+			}
 			if deathTics > 0 {
-				deathTics -= doomrand.PRandom() & 3
+				shorten := doomrand.PRandom() & 3
+				deathTics -= shorten
 				if deathTics < 1 {
 					deathTics = 1
 				}
+				if firstFrameTics > 0 {
+					firstFrameTics -= shorten
+					if firstFrameTics < 1 {
+						firstFrameTics = 1
+					}
+				}
 			}
 			g.thingDeathTics[thingIdx] = deathTics
+			if thingIdx >= 0 && thingIdx < len(g.thingStateTics) && firstFrameTics > 0 {
+				g.thingStateTics[thingIdx] = firstFrameTics
+			}
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			g.thingPainTics[thingIdx] = 0
@@ -1270,18 +1306,16 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
 			g.thingState[thingIdx] = monsterStateDeath
-			g.thingStateTics[thingIdx] = g.thingDeathTics[thingIdx]
+			if g.thingStateTics[thingIdx] <= 0 {
+				g.thingStateTics[thingIdx] = g.thingDeathTics[thingIdx]
+			}
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
 			g.thingStatePhase[thingIdx] = 0
 		}
-		deathEv := monsterDeathSoundEvent(thingType)
-		deathDelay := monsterDeathSoundDelayTics(thingType)
 		tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
-		if deathDelay > 0 {
-			g.emitSoundEventDelayedAt(deathEv, deathDelay, tx, ty, true)
-		} else {
-			g.emitSoundEventAt(deathEv, tx, ty)
+		if monsterDeathSoundActionPhase(thingType) == 0 {
+			g.emitSoundEventAt(monsterDeathSoundEventVariant(thingType), tx, ty)
 		}
 		g.setHUDMessage("Monster killed", 15)
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
@@ -1578,6 +1612,36 @@ func monsterDeathSoundEvent(typ int16) soundEvent {
 		return soundEventDeathArchvile
 	default:
 		return soundEventMonsterDeath
+	}
+}
+
+func monsterDeathSoundEventVariant(typ int16) soundEvent {
+	switch typ {
+	case 3004, 9, 65:
+		switch doomrand.PRandom() % 3 {
+		case 1:
+			return soundEventDeathPodth2
+		case 2:
+			return soundEventDeathPodth3
+		default:
+			return soundEventDeathPodth1
+		}
+	case 3001:
+		if doomrand.PRandom()%2 != 0 {
+			return soundEventDeathBgdth2
+		}
+		return soundEventDeathBgdth1
+	default:
+		return monsterDeathSoundEvent(typ)
+	}
+}
+
+func monsterDeathSoundActionPhase(typ int16) int {
+	switch typ {
+	case 7, 68:
+		return 0
+	default:
+		return 1
 	}
 }
 

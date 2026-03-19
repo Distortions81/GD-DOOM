@@ -185,8 +185,8 @@ func TestDamagePlayerFromConsumesPlayerPainChancePRandomAndStartsPainState(t *te
 	if got := after - before; got != 1 {
 		t.Fatalf("prnd advanced by %d want=1", got)
 	}
-	if g.playerPainStatePhase != 1 || g.playerPainStateTics != 4 {
-		t.Fatalf("player pain phase/tics=%d/%d want=1/4", g.playerPainStatePhase, g.playerPainStateTics)
+	if g.playerMobjState != doomStatePlayerPain1 || g.playerMobjTics != 4 {
+		t.Fatalf("player mobj state/tics=%d/%d want=%d/4", g.playerMobjState, g.playerMobjTics, doomStatePlayerPain1)
 	}
 	if got := len(g.soundQueue); got != 0 {
 		t.Fatalf("soundQueue len=%d want=0 before A_Pain frame", got)
@@ -200,8 +200,8 @@ func TestDamagePlayerFromSkipsPainStateWhenPainChanceRollFails(t *testing.T) {
 		soundQueue: make([]soundEvent, 0, 2),
 	}
 	g.damagePlayerFrom(2, "ouch", 0, 0, false)
-	if g.playerPainStatePhase != 0 || g.playerPainStateTics != 0 {
-		t.Fatalf("player pain phase/tics=%d/%d want=0/0", g.playerPainStatePhase, g.playerPainStateTics)
+	if g.playerMobjState != 0 || g.playerMobjTics != 0 {
+		t.Fatalf("player mobj state/tics=%d/%d want=0/0", g.playerMobjState, g.playerMobjTics)
 	}
 	if got := len(g.soundQueue); got != 0 {
 		t.Fatalf("soundQueue len=%d want=0", got)
@@ -210,13 +210,13 @@ func TestDamagePlayerFromSkipsPainStateWhenPainChanceRollFails(t *testing.T) {
 
 func TestTickPlayerCounters_EmitsPainSoundOnSecondPainFrame(t *testing.T) {
 	g := &game{
-		playerPainStatePhase: 1,
-		playerPainStateTics:  1,
-		soundQueue:           make([]soundEvent, 0, 2),
+		playerMobjState: doomStatePlayerPain1,
+		playerMobjTics:  1,
+		soundQueue:      make([]soundEvent, 0, 2),
 	}
 	g.tickPlayerCounters()
-	if g.playerPainStatePhase != 2 || g.playerPainStateTics != 4 {
-		t.Fatalf("player pain phase/tics=%d/%d want=2/4", g.playerPainStatePhase, g.playerPainStateTics)
+	if g.playerMobjState != doomStatePlayerPain2 || g.playerMobjTics != 4 {
+		t.Fatalf("player mobj state/tics=%d/%d want=%d/4", g.playerMobjState, g.playerMobjTics, doomStatePlayerPain2)
 	}
 	if got := len(g.soundQueue); got != 1 {
 		t.Fatalf("soundQueue len=%d want=1", got)

@@ -101,6 +101,26 @@ func (g *game) tickMonsters() {
 			if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 				g.thingDeathTics[i]--
 			}
+			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateDeath && g.thingStateTics[i] > 0 {
+				g.thingStateTics[i]--
+				if g.thingStateTics[i] == 0 && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+					frameTics := monsterDeathFrameTics(th.Type)
+					nextPhase := 0
+					if i >= 0 && i < len(g.thingStatePhase) {
+						nextPhase = g.thingStatePhase[i] + 1
+					}
+					if nextPhase >= 0 && nextPhase < len(frameTics) {
+						if i >= 0 && i < len(g.thingStatePhase) {
+							g.thingStatePhase[i] = nextPhase
+						}
+						g.thingStateTics[i] = frameTics[nextPhase]
+						if nextPhase == monsterDeathSoundActionPhase(th.Type) {
+							px, py := g.thingPosFixed(i, th)
+							g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
+						}
+					}
+				}
+			}
 			continue
 		}
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {

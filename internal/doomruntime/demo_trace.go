@@ -37,6 +37,8 @@ type demoTracePlayer struct {
 }
 
 const (
+	doomStatePlayerAttack1 = 154
+	doomStatePlayerAttack2 = 155
 	doomStatePlayerPain1 = 156
 	doomStatePlayerPain2 = 157
 )
@@ -429,14 +431,7 @@ func (g *game) demoTracePlayerMobjState() (state int, tics int) {
 	if g == nil {
 		return 0, 0
 	}
-	switch g.playerPainStatePhase {
-	case 1:
-		return doomStatePlayerPain1, g.playerPainStateTics
-	case 2:
-		return doomStatePlayerPain2, g.playerPainStateTics
-	default:
-		return 0, 0
-	}
+	return g.playerMobjState, g.playerMobjTics
 }
 
 func demoTraceThingTarget(g *game, i int) (target int, targetType int) {
@@ -595,6 +590,11 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 	if i >= 0 && i < len(g.thingState) {
 		switch g.thingState[i] {
 		case monsterStateDeath:
+			if i >= 0 && i < len(g.thingStatePhase) {
+				if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i]); ok {
+					return state
+				}
+			}
 			return 3
 		case monsterStatePain:
 			if i >= 0 && i < len(g.thingPainTics) {
@@ -627,6 +627,11 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		}
 	}
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		if i >= 0 && i < len(g.thingStatePhase) {
+			if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i]); ok {
+				return state
+			}
+		}
 		return 3
 	}
 	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
@@ -639,6 +644,39 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		return 0
 	}
 	return -1
+}
+
+func demoTraceMonsterDeathState(typ int16, phase int) (int, bool) {
+	base := 0
+	count := 0
+	switch typ {
+	case 3004:
+		base, count = 184, 5
+	case 9:
+		base, count = 222, 5
+	case 3001:
+		base, count = 451, 5
+	case 3002, 58:
+		base, count = 484, 6
+	case 3005:
+		base, count = 514, 6
+	case 3003:
+		base, count = 536, 7
+	case 69:
+		base, count = 565, 7
+	case 3006:
+		base, count = 589, 6
+	case 7:
+		base, count = 623, 10
+	case 16:
+		base, count = 694, 9
+	default:
+		return 0, false
+	}
+	if phase < 0 || phase >= count {
+		return 0, false
+	}
+	return base + phase, true
 }
 
 func demoTraceMonsterSpawnState(typ int16, phase int) (int, bool) {

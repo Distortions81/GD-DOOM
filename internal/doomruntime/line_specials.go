@@ -243,10 +243,7 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	if sec < len(g.m.Sectors) {
 		g.m.Sectors[sec].FloorHeight = int16(z >> fracBits)
 	}
-	if g.playerTouchesSector(sec) {
-		g.heightClipPlayer(oldPlayerFloor)
-	}
-	g.heightClipThingsInSector(sec)
+	g.heightClipAroundSector(sec, oldPlayerFloor)
 }
 
 func (g *game) setSectorCeilingHeight(sec int, z int64) {
@@ -262,10 +259,32 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	if sec < len(g.m.Sectors) {
 		g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
 	}
-	if g.playerTouchesSector(sec) {
-		g.heightClipPlayer(oldPlayerFloor)
+	g.heightClipAroundSector(sec, oldPlayerFloor)
+}
+
+func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
+	if g == nil || g.m == nil || sec < 0 {
+		return
 	}
-	g.heightClipThingsInSector(sec)
+	sectors := map[int]struct{}{sec: {}}
+	for _, ld := range g.m.Linedefs {
+		s0, ok0 := g.sectorIndexFromSidedef(ld.SideNum[0])
+		s1, ok1 := g.sectorIndexFromSidedef(ld.SideNum[1])
+		switch {
+		case ok0 && ok1 && s0 == sec:
+			sectors[s1] = struct{}{}
+		case ok0 && ok1 && s1 == sec:
+			sectors[s0] = struct{}{}
+		}
+	}
+	playerClipped := false
+	for affected := range sectors {
+		if !playerClipped && g.playerTouchesSector(affected) {
+			g.heightClipPlayer(oldPlayerFloor)
+			playerClipped = true
+		}
+		g.heightClipThingsInSector(affected)
+	}
 }
 
 func (g *game) heightClipPlayer(oldFloorz int64) bool {
