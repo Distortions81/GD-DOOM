@@ -380,6 +380,55 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Kind:         "projectile",
 		}})
 	}
+	for _, fx := range g.projectileImpacts {
+		sec := g.sectorAt(fx.x, fx.y)
+		floorZ := g.thingFloorZ(fx.x, fx.y)
+		ceilZ := int64(0)
+		if sec >= 0 && sec < len(g.sectorCeil) {
+			ceilZ = g.sectorCeil[sec]
+		}
+		target := 0
+		targetType := 0
+		if fx.sourcePlayer {
+			target = 1
+			targetType = 0
+		} else if fx.sourceThing >= 0 && g.m != nil && fx.sourceThing < len(g.m.Things) {
+			target = 1
+			targetType = demoTraceThingType(g.m.Things[fx.sourceThing].Type)
+		}
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: fx.order,
+			mobj: demoTraceMobj{
+				Type:         demoTraceProjectileImpactType(fx.kind),
+				X:            fx.x,
+				Y:            fx.y,
+				Z:            fx.z,
+				Angle:        fx.angle,
+				MomX:         0,
+				MomY:         0,
+				MomZ:         0,
+				FloorZ:       floorZ,
+				CeilingZ:     ceilZ,
+				Radius:       demoTraceProjectileImpactRadius(fx.kind),
+				Height:       8 * fracUnit,
+				Tics:         fx.phaseTics,
+				State:        demoTraceProjectileImpactState(fx.kind, fx.phase),
+				Flags:        1552,
+				Health:       1000,
+				Movedir:      0,
+				Movecount:    0,
+				ReactionTime: 8,
+				Threshold:    0,
+				LastLook:     fx.lastLook,
+				Subsector:    boolToInt(sec >= 0),
+				Sector:       sec,
+				Player:       0,
+				Target:       target,
+				TargetType:   targetType,
+				Tracer:       0,
+			},
+		})
+	}
 	for _, p := range g.hitscanPuffs {
 		sec := g.sectorAt(p.x, p.y)
 		floorZ := g.thingFloorZ(p.x, p.y)
@@ -534,6 +583,75 @@ func demoTraceProjectileState(p projectile) int {
 
 func demoTraceProjectileFlags(_ projectile) int {
 	return 67088
+}
+
+func demoTraceProjectileImpactType(kind projectileKind) int {
+	switch kind {
+	case projectileFireball:
+		return 31
+	case projectilePlasmaBall:
+		return 32
+	case projectileBaronBall:
+		return 16
+	case projectileTracer:
+		return 6
+	case projectileFatShot:
+		return 9
+	case projectileRocket:
+		return 33
+	case projectilePlayerPlasma:
+		return 34
+	case projectileBFGBall:
+		return 35
+	default:
+		return 0
+	}
+}
+
+func demoTraceProjectileImpactState(kind projectileKind, phase int) int {
+	switch kind {
+	case projectileFireball:
+		return []int{99, 100, 101}[clampDemoPhase(phase, 3)]
+	case projectilePlasmaBall:
+		return []int{104, 105, 106}[clampDemoPhase(phase, 3)]
+	case projectileBaronBall:
+		return []int{524, 525, 526}[clampDemoPhase(phase, 3)]
+	case projectileTracer:
+		return []int{318, 319, 320}[clampDemoPhase(phase, 3)]
+	case projectileFatShot:
+		return []int{359, 360, 361}[clampDemoPhase(phase, 3)]
+	case projectileRocket:
+		return []int{127, 128, 129}[clampDemoPhase(phase, 3)]
+	case projectilePlayerPlasma:
+		return []int{109, 110, 111}[clampDemoPhase(phase, 3)]
+	case projectileBFGBall:
+		return []int{117, 118, 119, 120, 121, 122}[clampDemoPhase(phase, 6)]
+	default:
+		return -1
+	}
+}
+
+func demoTraceProjectileImpactRadius(kind projectileKind) int64 {
+	switch kind {
+	case projectileRocket, projectileTracer:
+		return 11 * fracUnit
+	case projectilePlayerPlasma:
+		return 13 * fracUnit
+	case projectileBFGBall:
+		return 13 * fracUnit
+	default:
+		return 6 * fracUnit
+	}
+}
+
+func clampDemoPhase(phase, n int) int {
+	if phase < 0 {
+		return 0
+	}
+	if phase >= n {
+		return n - 1
+	}
+	return phase
 }
 
 func (g *game) demoTracePlayerMobjState() (state int, tics int) {

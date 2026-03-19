@@ -255,6 +255,10 @@ type projectileImpactSaveState struct {
 	Y         int64
 	Z         int64
 	Kind      int
+	SourceThing  int
+	SourceType   int16
+	SourcePlayer bool
+	LastLook     int
 	Tics      int
 	TotalTics int
 	Angle     uint32
@@ -1046,6 +1050,10 @@ func captureProjectileImpacts(src []projectileImpact) []projectileImpactSaveStat
 			Y:         p.y,
 			Z:         p.z,
 			Kind:      int(p.kind),
+			SourceThing:  p.sourceThing,
+			SourceType:   p.sourceType,
+			SourcePlayer: p.sourcePlayer,
+			LastLook:     p.lastLook,
 			Tics:      p.tics,
 			TotalTics: p.totalTics,
 			Angle:     p.angle,
@@ -1066,6 +1074,10 @@ func restoreProjectileImpacts(src []projectileImpactSaveState) []projectileImpac
 			y:         p.Y,
 			z:         p.Z,
 			kind:      projectileKind(p.Kind),
+			sourceThing:  p.SourceThing,
+			sourceType:   p.SourceType,
+			sourcePlayer: p.SourcePlayer,
+			lastLook:     p.LastLook,
 			tics:      p.Tics,
 			totalTics: p.TotalTics,
 			angle:     p.Angle,

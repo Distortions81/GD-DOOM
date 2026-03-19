@@ -83,9 +83,9 @@ func (g *game) tickThinkers() {
 		g.processThingPickups()
 	}
 	g.tickBossBrainSpecials()
+	g.tickMonsters()
 	g.tickProjectiles()
 	g.tickProjectileImpacts()
-	g.tickMonsters()
 	g.tickDoors()
 	g.tickDeferredProjectiles()
 	g.tickHitscanPuffs()

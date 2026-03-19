@@ -1,7 +1,9 @@
 package doomruntime
 
 import (
+	"fmt"
 	"math"
+	"os"
 	"slices"
 
 	"gddoom/internal/doomrand"
@@ -50,6 +52,11 @@ type projectileImpact struct {
 	y         int64
 	z         int64
 	kind      projectileKind
+	order     int64
+	sourceThing  int
+	sourceType   int16
+	sourcePlayer bool
+	lastLook     int
 	tics      int
 	totalTics int
 	phase     int
@@ -262,20 +269,39 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	ny := oy + p.vy
 	nz := oz + p.vz
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
-	blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, _, _, _ := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
-		g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
 		if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
-			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, thingHit.x, thingHit.y, true)
+			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
 		}
-		g.projectileSplashDamage(p, thingHit.x, thingHit.y, thingHit.z)
+		g.spawnProjectileImpactFrom(p, ox, oy, oz)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
+		g.projectileSplashDamage(p, ox, oy, oz)
 		return projectile{}, false
 	}
 	if blocked {
-		g.spawnProjectileImpact(p.kind, hx, hy, hz, p.angle)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
-		g.projectileSplashDamage(p, hx, hy, hz)
+		g.spawnProjectileImpactFrom(p, ox, oy, oz)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
+		g.projectileSplashDamage(p, ox, oy, oz)
+		return projectile{}, false
+	}
+	if !p.sourcePlayer && g.projectileHitsPlayerAt(p, nx, ny, nz) {
+		dmg := projectileDamage(p)
+		if want := os.Getenv("GD_DEBUG_PROJECTILE_HIT_TIC"); want != "" {
+			var tic int
+			if _, err := fmt.Sscanf(want, "%d", &tic); err == nil {
+				if g.demoTick-1 == tic || g.worldTic == tic {
+					fmt.Printf("projectile-hit-debug tic=%d world=%d kind=%d source_type=%d source_thing=%d pos=(%d,%d,%d) src=(%d,%d) vel=(%d,%d,%d) damage=%d\n",
+						g.demoTick-1, g.worldTic, p.kind, p.sourceType, p.sourceThing, ox, oy, oz, p.sourceX, p.sourceY, p.vx, p.vy, p.vz, dmg)
+				}
+			}
+		}
+		if dmg > 0 {
+			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
+		}
+		g.spawnProjectileImpactFrom(p, ox, oy, oz)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
+		g.projectileSplashDamage(p, ox, oy, oz)
 		return projectile{}, false
 	}
 	p.x = nx
@@ -285,18 +311,8 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	g.tickProjectileAnim(&p)
 	p.ttl--
 	if p.ttl <= 0 {
-		g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
+		g.spawnProjectileImpactFrom(p, p.x, p.y, p.z)
 		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-		g.projectileSplashDamage(p, p.x, p.y, p.z)
-		return projectile{}, false
-	}
-	if !p.sourcePlayer && g.projectileHitsPlayer(p) {
-		g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-		dmg := projectileDamage(p)
-		if dmg > 0 {
-			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
-		}
 		g.projectileSplashDamage(p, p.x, p.y, p.z)
 		return projectile{}, false
 	}
@@ -489,34 +505,34 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 		return true
 	}
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
-	blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, _, _, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
-		g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
 		if dmg := projectileDamage(*p); dmg > 0 && g.projectileCanDamageThing(*p, thingHit.idx) {
-			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, thingHit.x, thingHit.y, true)
+			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
 		}
-		g.projectileSplashDamage(*p, thingHit.x, thingHit.y, thingHit.z)
+		g.spawnProjectileImpactFrom(*p, ox, oy, oz)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
+		g.projectileSplashDamage(*p, ox, oy, oz)
 		return false
 	}
 	if blocked {
-		g.spawnProjectileImpact(p.kind, hx, hy, hz, p.angle)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
-		g.projectileSplashDamage(*p, hx, hy, hz)
+		g.spawnProjectileImpactFrom(*p, ox, oy, oz)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
+		g.projectileSplashDamage(*p, ox, oy, oz)
+		return false
+	}
+	if !p.sourcePlayer && g.projectileHitsPlayerAt(*p, nx, ny, nz) {
+		if dmg := projectileDamage(*p); dmg > 0 {
+			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
+		}
+		g.spawnProjectileImpactFrom(*p, ox, oy, oz)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
+		g.projectileSplashDamage(*p, ox, oy, oz)
 		return false
 	}
 	p.x = nx
 	p.y = ny
 	p.z = nz
-	if !p.sourcePlayer && g.projectileHitsPlayer(*p) {
-		g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-		if dmg := projectileDamage(*p); dmg > 0 {
-			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
-		}
-		g.projectileSplashDamage(*p, p.x, p.y, p.z)
-		return false
-	}
 	return true
 }
 
@@ -591,11 +607,24 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		y:         y,
 		z:         z,
 		kind:      kind,
+		order:     g.allocThinkerOrder(),
 		tics:      tics,
 		totalTics: tics,
 		phaseTics: first,
 		angle:     angle,
 	})
+}
+
+func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
+	g.spawnProjectileImpact(p.kind, x, y, z, p.angle)
+	if len(g.projectileImpacts) == 0 {
+		return
+	}
+	fx := &g.projectileImpacts[len(g.projectileImpacts)-1]
+	fx.sourceThing = p.sourceThing
+	fx.sourceType = p.sourceType
+	fx.sourcePlayer = p.sourcePlayer
+	fx.lastLook = p.lastLook
 }
 
 func projectileSpawnStateTics(kind projectileKind) int {
@@ -773,12 +802,12 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 	return best, bestFrac <= fracUnit
 }
 
-func (g *game) projectileHitsPlayer(p projectile) bool {
+func (g *game) projectileHitsPlayerAt(p projectile, x, y, z int64) bool {
 	blockdist := playerRadius + p.radius
-	if abs(g.p.x-p.x) > blockdist || abs(g.p.y-p.y) > blockdist {
+	if abs(g.p.x-x) > blockdist || abs(g.p.y-y) > blockdist {
 		return false
 	}
-	delta := p.z - g.p.z
+	delta := z - g.p.z
 	if delta > playerHeight {
 		return false
 	}
