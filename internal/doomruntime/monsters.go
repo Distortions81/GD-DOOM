@@ -1580,6 +1580,17 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	if !ok {
 		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
 		lines := g.touchedSpecialLinesForMonsterMove(i, nx, ny)
+		if g == nil || os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES") == "" {
+			// no-op
+		} else {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES"), "%d:%d", &wantTic, &wantIdx); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || wantIdx == i) {
+					fmt.Printf("monster-move-lines-debug tic=%d world=%d idx=%d dir=%d lines=%v from=(%d,%d) to=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, i, dir, lines, x, y, nx, ny)
+				}
+			}
+		}
 		if len(lines) == 0 {
 			return false
 		}

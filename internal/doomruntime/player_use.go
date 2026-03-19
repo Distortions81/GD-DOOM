@@ -382,7 +382,7 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 				d.direction = 1
 			} else {
 				if !isPlayer {
-					return true
+					return false
 				}
 				d.direction = -1
 			}
