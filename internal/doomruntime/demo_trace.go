@@ -459,14 +459,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if sec < 0 {
 			sec = g.sectorAt(p.x, p.y)
 		}
-		floorZ, ceilZ, ok := g.subsectorFloorCeilAt(p.x, p.y)
-		if !ok {
-			floorZ = g.thingFloorZ(p.x, p.y)
-			ceilZ = 0
-			if sec >= 0 && sec < len(g.sectorCeil) {
-				ceilZ = g.sectorCeil[sec]
-			}
-		}
+		floorZ := p.floorz
+		ceilZ := p.ceilz
 		mobjType := 37
 		flags := 528
 		if p.kind == hitscanFxBlood {
@@ -498,7 +492,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			ReactionTime: 8,
 			Threshold:    0,
 			LastLook:     0,
-				Subsector:    ss,
+				Subsector:    boolToInt(ss >= 0),
 				Sector:       sec,
 			Player:       0,
 			Target:       0,

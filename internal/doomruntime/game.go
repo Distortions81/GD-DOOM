@@ -278,6 +278,8 @@ type hitscanPuff struct {
 	y        int64
 	z        int64
 	momz     int64
+	floorz   int64
+	ceilz    int64
 	lastLook int
 	tics     int
 	state    int
@@ -8912,11 +8914,20 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 	if tics < 1 {
 		tics = 1
 	}
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok {
+		floorz = g.thingFloorZ(x, y)
+		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
+	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
 		x:        x,
 		y:        y,
 		z:        z,
 		momz:     fracUnit,
+		floorz:   floorz,
+		ceilz:    ceilz,
 		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics,
@@ -8956,11 +8967,20 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		state = 92
 		tics = 8
 	}
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok {
+		floorz = g.thingFloorZ(x, y)
+		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
+	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
 		x:        x,
 		y:        y,
 		z:        z,
 		momz:     2 * fracUnit,
+		floorz:   floorz,
+		ceilz:    ceilz,
 		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics,
@@ -9104,10 +9124,7 @@ func (g *game) tickHitscanPuffs() {
 	for _, p := range g.hitscanPuffs {
 		p.z += p.momz
 		if p.kind == hitscanFxBlood {
-			floorz := int64(0)
-			if sec := g.sectorAt(p.x, p.y); sec >= 0 && sec < len(g.sectorFloor) {
-				floorz = g.sectorFloor[sec]
-			}
+			floorz := p.floorz
 			if p.z <= floorz {
 				if p.momz < 0 {
 					p.momz = 0

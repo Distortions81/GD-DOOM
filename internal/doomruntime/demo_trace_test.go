@@ -382,3 +382,23 @@ func TestDemoTraceProjectileImpactRetainsMissileThinkerOrder(t *testing.T) {
 		t.Fatalf("mobjs[4].type=%d want=77", got)
 	}
 }
+
+func TestDemoTraceHitscanBloodUsesCachedSupportHeights(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{},
+		hitscanPuffs: []hitscanPuff{
+			{x: 30, y: 0, z: 0, floorz: -16 * fracUnit, ceilz: 52 * fracUnit, tics: 8, state: 92, kind: hitscanFxBlood, order: 1},
+		},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if got, want := len(mobjs), 2; got != want {
+		t.Fatalf("mobj count=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].FloorZ, int64(-16*fracUnit); got != want {
+		t.Fatalf("floorz=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].CeilingZ, int64(52*fracUnit); got != want {
+		t.Fatalf("ceilingz=%d want=%d", got, want)
+	}
+}
