@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
+	"math"
 	"os"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -20,6 +21,7 @@ const (
 	soundEventSwitchExit
 	soundEventSwitchOff
 	soundEventNoWay
+	soundEventTink
 	soundEventItemUp
 	soundEventWeaponUp
 	soundEventPowerUp
@@ -224,13 +226,32 @@ func vanillaSoundWouldStart(s *soundSystem, origin queuedSoundOrigin, listenerX,
 	return ok
 }
 
-func vanillaPitchForEvent(ev soundEvent) int {
-	pitch := 128
+type vanillaPitchMode int
+
+const (
+	vanillaPitchNone vanillaPitchMode = iota
+	vanillaPitchDefault
+	vanillaPitchSaw
+)
+
+func vanillaPitchModeForEvent(ev soundEvent) vanillaPitchMode {
 	switch ev {
 	case soundEventSawUp, soundEventSawIdle, soundEventSawFull, soundEventSawHit:
+		return vanillaPitchSaw
+	case soundEventItemUp, soundEventTink:
+		return vanillaPitchNone
+	default:
+		return vanillaPitchDefault
+	}
+}
+
+func vanillaPitchForEvent(ev soundEvent) int {
+	pitch := 128
+	switch vanillaPitchModeForEvent(ev) {
+	case vanillaPitchSaw:
 		debugLogVanillaPitch(ev, "saw")
 		pitch += 8 - (doomrand.MRandom() & 15)
-	case soundEventItemUp:
+	case vanillaPitchNone:
 		return pitch
 	default:
 		debugLogVanillaPitch(ev, "default")
@@ -252,12 +273,21 @@ func applyVanillaPitch(sample PCMSample, pitch int) PCMSample {
 		return sample
 	}
 	adjusted := sample
-	adjusted.SampleRate = max(1, (sample.SampleRate*pitch)/128)
+	adjusted.SampleRate = max(1, (sample.SampleRate*doomPitchStep(pitch))/65536)
 	adjusted.PreparedRate = 0
 	adjusted.PreparedMono = nil
 	adjusted.FaithfulPreparedRate = 0
 	adjusted.FaithfulPreparedMono = nil
 	return adjusted
+}
+
+func doomPitchStep(pitch int) int {
+	if pitch < 0 {
+		pitch = 0
+	} else if pitch > 255 {
+		pitch = 255
+	}
+	return int(math.Pow(2.0, (float64(pitch)-128.0)/64.0) * 65536.0)
 }
 
 func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
@@ -275,6 +305,8 @@ func soundEventDebugName(ev soundEvent) string {
 	switch ev {
 	case soundEventItemUp:
 		return "ItemUp"
+	case soundEventTink:
+		return "Tink"
 	case soundEventPowerUp:
 		return "PowerUp"
 	case soundEventShootPistol:
@@ -404,6 +436,11 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.NoWay, true
 		}
 		return s.bank.SwitchOff, true
+	case soundEventTink:
+		if len(s.bank.Tink.Data) > 0 {
+			return s.bank.Tink, true
+		}
+		return s.bank.NoWay, true
 	case soundEventItemUp:
 		if len(s.bank.ItemUp.Data) > 0 {
 			return s.bank.ItemUp, true

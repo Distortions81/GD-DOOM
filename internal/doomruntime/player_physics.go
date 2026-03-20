@@ -458,23 +458,47 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	tmboxRight := x + radius
 	tmboxLeft := x - radius
 	probeEnabled := g.debugPlayerProbeActive()
+	monsterProbeEnabled := false
+	if moverIsMonster {
+		if want := os.Getenv("GD_DEBUG_MONSTER_PROBE"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if wantIdx == moverThingIdx && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+					monsterProbeEnabled = true
+				}
+			}
+		}
+	}
+	debugProbe := probeEnabled || monsterProbeEnabled
+	debugProbef := func(format string, args ...any) {
+		if !debugProbe {
+			return
+		}
+		msg := fmt.Sprintf(format, args...)
+		if monsterProbeEnabled && !probeEnabled {
+			fmt.Printf("monster-probe-debug tic=%d world=%d idx=%d msg=%s pos=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, moverThingIdx, msg, x, y)
+			return
+		}
+		g.debugPlayerProbe(msg, x, y)
+	}
 
 	sec := g.sectorAt(x, y)
 	if sec < 0 || sec >= len(g.m.Sectors) {
-		if probeEnabled {
-			g.debugPlayerProbe(fmt.Sprintf("sector invalid sec=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+		if debugProbe {
+			debugProbef("sector invalid sec=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 		}
 		return 0, 0, 0, false
 	}
 	tmfloor := g.sectorFloor[sec]
 	tmceil := g.sectorCeil[sec]
 	tmdrop := tmfloor
-	if probeEnabled {
-		g.debugPlayerProbe(fmt.Sprintf("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+	if debugProbe {
+		debugProbef("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 	}
 
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
-		g.debugPlayerProbe("blocked by thing", x, y)
+		debugProbef("blocked by thing")
 		return 0, 0, 0, false
 	}
 
@@ -512,8 +536,8 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if ld.sideNum1 >= 0 && int(ld.sideNum1) < len(g.m.Sidedefs) {
 			backSec = int(g.m.Sidedefs[int(ld.sideNum1)].Sector)
 		}
-		if probeEnabled {
-			g.debugPlayerProbe(fmt.Sprintf("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3]), x, y)
+		if debugProbe {
+			debugProbef("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3])
 		}
 		if want := os.Getenv("GD_DEBUG_MONSTER_PROBE_LINES"); want != "" {
 			var wantTic, wantIdx int
@@ -526,20 +550,20 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 
 		if ld.sideNum1 < 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if debugProbe {
+				debugProbef("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop)
 			}
 			return false
 		}
 		if (ld.flags & mlBlocking) != 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blocking floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if debugProbe {
+				debugProbef("block line=%d reason=blocking floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop)
 			}
 			return false
 		}
 		if blockMonsterLines && (ld.flags&mlBlockMonsters) != 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blockmonsters floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if debugProbe {
+				debugProbef("block line=%d reason=blockmonsters floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop)
 			}
 			return false
 		}
@@ -551,8 +575,8 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 					g.demoTick-1, g.worldTic, moverThingIdx, ld.idx, sec, frontSec, backSec, openbottom, opentop, openrange, lowfloor, tmfloor, tmceil)
 			}
 		}
-		if probeEnabled {
-			g.debugPlayerProbe(fmt.Sprintf("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor), x, y)
+		if debugProbe {
+			debugProbef("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor)
 		}
 		if opentop < tmceil {
 			tmceil = opentop
@@ -578,8 +602,8 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
 		for bx := xl; bx <= xh; bx++ {
 			for by := yl; by <= yh; by++ {
-				if probeEnabled {
-					g.debugPlayerProbe(fmt.Sprintf("scan block bx=%d by=%d", bx, by), x, y)
+				if debugProbe {
+					debugProbef("scan block bx=%d by=%d", bx, by)
 				}
 				if !g.blockLinesIterator(bx, by, iter) {
 					return 0, 0, 0, false
@@ -593,8 +617,8 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 			}
 		}
 	}
-	if probeEnabled {
-		g.debugPlayerProbe(fmt.Sprintf("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop), x, y)
+	if debugProbe {
+		debugProbef("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop)
 	}
 	if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
 		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
@@ -654,12 +678,12 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		if i < len(g.thingCollected) && g.thingCollected[i] {
 			return false
 		}
-		if !moverIsMonster && isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
+		if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
 			phase := 0
 			if i < len(g.thingStatePhase) {
 				phase = g.thingStatePhase[i]
 			}
-			if monsterCorpseBlocksPlayer(th.Type, phase) {
+			if monsterCorpseBlocksMovement(th.Type, phase) {
 				tx, ty := g.thingPosFixed(i, th)
 				r := monsterRadius(th.Type)
 				if actorsOverlapXY(x, y, radius, tx, ty, r) {
@@ -673,6 +697,19 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		if !g.thingBlocksInSession(i) {
 			return false
+		}
+		if probeEnabled {
+			tx, ty := g.thingPosFixed(i, th)
+			dx := abs(tx - x)
+			dy := abs(ty - y)
+			if dx < 64*fracUnit && dy < 64*fracUnit {
+				g.debugPlayerProbe(fmt.Sprintf("near thing=%d type=%d pos=(%d,%d) dx=%d dy=%d hp=%d collected=%t", i, th.Type, tx, ty, dx, dy, func() int {
+					if i < len(g.thingHP) {
+						return g.thingHP[i]
+					}
+					return 0
+				}(), i < len(g.thingCollected) && g.thingCollected[i]), x, y)
+			}
 		}
 		tx, ty := g.thingPosFixed(i, th)
 		if isMonster(th.Type) {
@@ -693,30 +730,6 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 				g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=solid", i, th.Type, tx, ty, thingTypeRadius(th.Type)), x, y)
 			}
 			return true
-		}
-		return false
-	}
-
-	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
-		left := int((x - radius - g.bmapOriginX - doomMaxThingRadius) >> (fracBits + 7))
-		right := int((x + radius - g.bmapOriginX + doomMaxThingRadius) >> (fracBits + 7))
-		bottom := int((y - radius - g.bmapOriginY - doomMaxThingRadius) >> (fracBits + 7))
-		top := int((y + radius - g.bmapOriginY + doomMaxThingRadius) >> (fracBits + 7))
-		if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
-			g.rebuildThingBlockmap()
-		}
-		for by := bottom; by <= top; by++ {
-			for bx := left; bx <= right; bx++ {
-				if bx < 0 || by < 0 || bx >= g.bmapWidth || by >= g.bmapHeight {
-					continue
-				}
-				cell := by*g.bmapWidth + bx
-				for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
-					if visitThing(i) {
-						return true
-					}
-				}
-			}
 		}
 		return false
 	}
@@ -780,7 +793,7 @@ func thingTypeBlocksActorMovement(typ int16, moverIsMonster bool) bool {
 	return false
 }
 
-func monsterCorpseBlocksPlayer(typ int16, phase int) bool {
+func monsterCorpseBlocksMovement(typ int16, phase int) bool {
 	fallPhase := -1
 	switch typ {
 	case 3004, 9:
@@ -871,7 +884,7 @@ func (g *game) boxOnLineSide(box [4]int64, ld physLine) int {
 }
 
 func (g *game) pointOnLineSide(x, y int64, line physLine) int {
-	return pointOnDivlineSide(x, y, divline{x: line.x1, y: line.y1, dx: line.dx, dy: line.dy})
+	return pointOnLineSide(x, y, line.x1, line.y1, line.dx, line.dy)
 }
 
 func (g *game) slideMove() {

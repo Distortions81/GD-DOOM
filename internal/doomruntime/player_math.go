@@ -84,6 +84,29 @@ func pointOnDivlineSide(x, y int64, line divline) int {
 	return 1
 }
 
+func pointOnLineSide(x, y, lineX, lineY, lineDX, lineDY int64) int {
+	if lineDX == 0 {
+		if x <= lineX {
+			return b2i(lineDY > 0)
+		}
+		return b2i(lineDY < 0)
+	}
+	if lineDY == 0 {
+		if y <= lineY {
+			return b2i(lineDX < 0)
+		}
+		return b2i(lineDX > 0)
+	}
+	dx := x - lineX
+	dy := y - lineY
+	left := fixedMul(lineDY>>fracBits, dx)
+	right := fixedMul(dy, lineDX>>fracBits)
+	if right < left {
+		return 0
+	}
+	return 1
+}
+
 func segmentIntersectFrac(ax, ay, bx, by, cx, cy, dx, dy int64) (float64, bool) {
 	x1, y1 := float64(ax), float64(ay)
 	x2, y2 := float64(bx), float64(by)

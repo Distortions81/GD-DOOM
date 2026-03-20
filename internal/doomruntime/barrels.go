@@ -293,11 +293,12 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 	}
 
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		seen := make(map[int]struct{})
 		left := int((sx - dist - g.bmapOriginX) >> (fracBits + 7))
 		right := int((sx + dist - g.bmapOriginX) >> (fracBits + 7))
 		bottom := int((sy - dist - g.bmapOriginY) >> (fracBits + 7))
 		top := int((sy + dist - g.bmapOriginY) >> (fracBits + 7))
-		if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
+		if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
 			g.rebuildThingBlockmap()
 		}
 		for by := bottom; by <= top; by++ {
@@ -306,7 +307,11 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 					continue
 				}
 				cell := by*g.bmapWidth + bx
-				for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
+				for _, i := range g.thingBlockCells[cell] {
+					if _, ok := seen[i]; ok {
+						continue
+					}
+					seen[i] = struct{}{}
 					visitThing(i)
 				}
 			}

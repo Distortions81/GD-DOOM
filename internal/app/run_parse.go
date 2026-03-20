@@ -2545,7 +2545,10 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 			data = padDoomSoundSamples(data)
 		}
 		return media.PCMSample{
-			SampleRate: int(s.SampleRate),
+			// Stock Doom's digital mixer treats SFX as fixed 11025 Hz raw data
+			// and ignores the per-lump DMX rate header. Keep the same base pitch
+			// semantics in both faithful and source-port playback paths.
+			SampleRate: 11025,
 			Data:       data,
 		}
 	}
@@ -2558,6 +2561,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		SwitchOn:            sample("DSSWTCHN"),
 		SwitchOff:           sample("DSSWTCHX"),
 		NoWay:               firstSample(sample("DSNOWAY"), sample("DSOOF")),
+		Tink:                sample("DSTINK"),
 		ItemUp:              sample("DSITEMUP"),
 		WeaponUp:            sample("DSWPNUP"),
 		PowerUp:             sample("DSGETPOW"),

@@ -119,7 +119,6 @@ func TestBossCubeResolvesIntoSpawnedMonster(t *testing.T) {
 		thingCeilState:      []int64{128 * fracUnit},
 		thingSupportValid:   []bool{true},
 		thingBlockCell:      []int{-1},
-		thingBlockNext:      []int{-1},
 		thingHP:             []int{1000},
 		thingAggro:          []bool{false},
 		thingCooldown:       []int{0},

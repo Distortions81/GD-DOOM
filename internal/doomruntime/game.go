@@ -514,8 +514,7 @@ type game struct {
 	thingCeilState        []int64
 	thingSupportValid     []bool
 	thingBlockCell        []int
-	thingBlockNext        []int
-	thingBlockLinks       []int
+	thingBlockCells       [][]int
 	thingHP               []int
 	thingAggro            []bool
 	thingTargetPlayer     []bool
@@ -1176,7 +1175,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingCeilState = make([]int64, len(m.Things))
 	g.thingSupportValid = make([]bool, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
-	g.thingBlockNext = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
 	g.thingTargetPlayer = make([]bool, len(m.Things))
@@ -1303,7 +1301,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		}
 	}
 	if g.bmapWidth > 0 && g.bmapHeight > 0 {
-		g.thingBlockLinks = make([]int, g.bmapWidth*g.bmapHeight)
+		g.thingBlockCells = make([][]int, g.bmapWidth*g.bmapHeight)
 		g.rebuildThingBlockmap()
 	}
 	g.discoverLinesAroundPlayer()
@@ -17714,21 +17712,17 @@ func (g *game) rebuildThingBlockmap() {
 	if g == nil || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
 		return
 	}
-	if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
-		g.thingBlockLinks = make([]int, g.bmapWidth*g.bmapHeight)
+	if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
+		g.thingBlockCells = make([][]int, g.bmapWidth*g.bmapHeight)
 	}
-	for i := range g.thingBlockLinks {
-		g.thingBlockLinks[i] = -1
+	for i := range g.thingBlockCells {
+		g.thingBlockCells[i] = g.thingBlockCells[i][:0]
 	}
 	if len(g.thingBlockCell) < len(g.m.Things) {
 		g.thingBlockCell = append(g.thingBlockCell, make([]int, len(g.m.Things)-len(g.thingBlockCell))...)
 	}
-	if len(g.thingBlockNext) < len(g.m.Things) {
-		g.thingBlockNext = append(g.thingBlockNext, make([]int, len(g.m.Things)-len(g.thingBlockNext))...)
-	}
 	for i := range g.m.Things {
 		g.thingBlockCell[i] = -1
-		g.thingBlockNext[i] = -1
 	}
 	for i, th := range g.m.Things {
 		x, y := g.thingPosFixed(i, th)
@@ -17737,8 +17731,7 @@ func (g *game) rebuildThingBlockmap() {
 		if cell < 0 {
 			continue
 		}
-		g.thingBlockNext[i] = g.thingBlockLinks[cell]
-		g.thingBlockLinks[cell] = i
+		g.thingBlockCells[cell] = append(g.thingBlockCells[cell], i)
 	}
 }
 
@@ -17756,13 +17749,8 @@ func (g *game) updateThingBlockmapIndex(i int) {
 	if g == nil || i < 0 || g.m == nil || i >= len(g.m.Things) || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
 		return
 	}
-	if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight || len(g.thingBlockCell) <= i || len(g.thingBlockNext) <= i {
+	if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight || len(g.thingBlockCell) <= i {
 		g.rebuildThingBlockmap()
-		return
-	}
-	x, y := g.thingPosFixed(i, g.m.Things[i])
-	newCell := g.thingBlockmapCellFor(x, y)
-	if g.thingBlockCell[i] == newCell {
 		return
 	}
 	g.rebuildThingBlockmap()

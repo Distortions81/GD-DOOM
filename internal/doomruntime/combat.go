@@ -828,7 +828,7 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 		order++
 	}
 	appendThingsInCell := func(mapx, mapy int) {
-		if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
+		if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
 			g.rebuildThingBlockmap()
 		}
 		if mapx < 0 || mapy < 0 || mapx >= g.bmapWidth || mapy >= g.bmapHeight {
@@ -840,7 +840,7 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 			playerCell = g.thingBlockmapCellFor(g.p.x, g.p.y)
 		}
 		playerInserted := false
-		for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
+		for _, i := range g.thingBlockCells[cell] {
 			if !playerInserted && playerCell == cell && g.localPlayerThingIndex > i {
 				appendPlayer()
 				playerInserted = true
@@ -1642,7 +1642,6 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingCeilState = append(g.thingCeilState, 0)
 	g.thingSupportValid = append(g.thingSupportValid, false)
 	g.thingBlockCell = append(g.thingBlockCell, -1)
-	g.thingBlockNext = append(g.thingBlockNext, -1)
 	g.thingHP = append(g.thingHP, 0)
 	g.thingAggro = append(g.thingAggro, false)
 	g.thingTargetPlayer = append(g.thingTargetPlayer, false)
