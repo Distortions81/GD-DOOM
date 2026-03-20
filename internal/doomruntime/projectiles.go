@@ -621,6 +621,11 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 		return
 	}
 	fx := &g.projectileImpacts[len(g.projectileImpacts)-1]
+	if p.order > 0 {
+		// Doom keeps the same missile thinker when it enters its death states,
+		// so the exploded projectile must retain its original thinker order.
+		fx.order = p.order
+	}
 	fx.sourceThing = p.sourceThing
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer

@@ -260,6 +260,36 @@ func (g *game) weaponActionReady(state weaponPspriteState) {
 		g.weaponRefire = false
 	}
 	_, bobY := g.weaponBobDoom()
+	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
+				alt0, alt1, altm1, altc0 := 0, 0, 0, 0
+				bob := fixedMul(g.p.momx, g.p.momx) + fixedMul(g.p.momy, g.p.momy)
+				bob >>= 2
+				if bob > 0x100000 {
+					bob = 0x100000
+				}
+				for _, item := range []struct {
+					dst *int
+					wt  int
+				}{
+					{&altm1, g.worldTic - 1},
+					{&alt0, g.worldTic},
+					{&alt1, g.worldTic + 1},
+				} {
+					idx := (128 * item.wt) & doomFineMask
+					*item.dst = int(fixedMul(bob, doomFineSine[idx]) >> fracBits)
+				}
+				idx0 := (128 * g.worldTic) & doomFineMask
+				altc0 = int(fixedMul(bob, doomFineSine[idx0+doomFineAngles/4]) >> fracBits)
+				fmt.Printf("gd-weapon-ready-debug gametic=%d world=%d state=%d momx=%d momy=%d boby=%d y=%d bullets=%d shells=%d ready=%d pending=%d canfire=%v\n",
+					g.demoTick-1, g.worldTic, state, g.p.momx, g.p.momy, bobY, weaponTopY+bobY, g.stats.Bullets, g.stats.Shells, g.inventory.ReadyWeapon, g.inventory.PendingWeapon, g.canFireSelectedWeapon())
+				fmt.Printf("gd-weapon-ready-candidates gametic=%d world=%d boby_m1=%d boby_0=%d boby_p1=%d bobcos_0=%d\n",
+					g.demoTick-1, g.worldTic, altm1, alt0, alt1, altc0)
+			}
+		}
+	}
 	g.weaponPSpriteY = weaponTopY + bobY
 }
 

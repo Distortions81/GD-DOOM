@@ -265,10 +265,12 @@ func TestWeaponPickupAutoSwitchesWhenEnabled(t *testing.T) {
 	g.initPlayerState()
 	g.thingCollected = make([]bool, len(g.m.Things))
 	g.inventory.ReadyWeapon = weaponPistol
+	g.weaponState = weaponStatePistolReady
+	g.weaponStateTics = 1
 
 	g.processThingPickups()
-	if g.inventory.ReadyWeapon != weaponShotgun {
-		t.Fatalf("weapon=%v want=%v when auto switch enabled", g.inventory.ReadyWeapon, weaponShotgun)
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want=%v when auto switch enabled", g.inventory.PendingWeapon, weaponShotgun)
 	}
 }
 
@@ -308,6 +310,33 @@ func TestDroppedShotgunUsesDroppedAmmoAmount(t *testing.T) {
 	}
 	if g.stats.Shells != 4 {
 		t.Fatalf("shells=%d want=4 for dropped shotgun", g.stats.Shells)
+	}
+}
+
+func TestDroppedDuplicateShotgunQueuesShotgunWhenShellsRiseFromZero(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2001}},
+		},
+		autoWeaponSwitch: false,
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingDropped = []bool{true}
+	g.inventory.Weapons[2001] = true
+	g.inventory.ReadyWeapon = weaponPistol
+	g.inventory.PendingWeapon = 0
+	g.weaponState = weaponStatePistolReady
+	g.weaponStateTics = 1
+	g.stats.Shells = 0
+
+	g.processThingPickups()
+
+	if g.stats.Shells != 4 {
+		t.Fatalf("shells=%d want=4 for dropped duplicate shotgun", g.stats.Shells)
+	}
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun after shells rise from zero", g.inventory.PendingWeapon)
 	}
 }
 

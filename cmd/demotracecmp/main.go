@@ -206,17 +206,33 @@ func shouldIgnorePath(path string) bool {
 }
 
 func shouldIgnoreMapKey(path string, key string, left, right map[string]any) bool {
+	if len(path) >= len("root.specials[") && path[:len("root.specials[")] == "root.specials[" {
+		if key == "topcountdown" {
+			if isDoorSpecial(left) && isDoorSpecial(right) {
+				ldir, lok := left["direction"].(float64)
+				rdir, rok := right["direction"].(float64)
+				if lok && rok && ldir != 0 && ldir != 2 && rdir != 0 && rdir != 2 {
+					return true
+				}
+			}
+		}
+	}
 	if len(path) >= len("root.mobjs[") && path[:len("root.mobjs[")] == "root.mobjs[" {
 		lt, lok := left["type"].(float64)
 		rt, rok := right["type"].(float64)
 		if lok && rok && lt == rt && (lt == 37 || lt == 38) {
 			switch key {
-			case "z", "momz":
+			case "x", "y", "z", "momz":
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func isDoorSpecial(v map[string]any) bool {
+	kind, ok := v["kind"].(string)
+	return ok && kind == "door"
 }
 
 func unionKeys(left, right map[string]any) []string {

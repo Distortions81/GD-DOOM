@@ -513,7 +513,7 @@ func (g *game) weaponBobDoom() (int, int) {
 	}
 	idx := (128 * g.worldTic) & doomFineMask
 	x := fixedMul(bob, doomFineSine[idx+doomFineAngles/4]) >> fracBits
-	y := fixedMul(bob, doomFineSine[idx]) >> fracBits
+	y := fixedMul(bob, doomFineSine[idx&(doomFineAngles/2-1)]) >> fracBits
 	return int(x), int(y)
 }
 

@@ -2,6 +2,8 @@ package doomruntime
 
 import (
 	"fmt"
+	"os"
+	"strings"
 
 	"gddoom/internal/mapdata"
 )
@@ -353,6 +355,13 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.gainAmmoNoMsg("cells", 20)
 		return "Picked up a backpack", soundEventItemUp, true
 	case 2001, 2002, 2003, 2004, 2005, 2006, 82:
+		if want := strings.TrimSpace(os.Getenv("GD_DEBUG_PICKUP_TIC")); want != "" {
+			var wantTic int
+			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+				fmt.Printf("pickup-debug tic=%d world=%d typ=%d dropped=%v owned_before=%v ready=%d pending=%d auto=%v bullets=%d shells=%d\n",
+					g.demoTick-1, g.worldTic, typ, dropped, g.inventory.Weapons[typ], g.inventory.ReadyWeapon, g.inventory.PendingWeapon, g.autoWeaponSwitch, g.stats.Bullets, g.stats.Shells)
+			}
+		}
 		if g.inventory.Weapons[typ] {
 			// Treat duplicate weapons as ammo pickups where sensible.
 			switch typ {
@@ -471,30 +480,80 @@ func (g *game) gainAmmoNoMsg(kind string, amount int) bool {
 		if g.stats.Bullets > maxBullets {
 			g.stats.Bullets = maxBullets
 		}
-		return g.stats.Bullets != prev
+		changed := g.stats.Bullets != prev
+		if changed {
+			g.maybeQueueWeaponForAmmoPickup(ammoKindBullets, prev)
+		}
+		return changed
 	case "shells":
 		prev := g.stats.Shells
 		g.stats.Shells += amount
 		if g.stats.Shells > maxShells {
 			g.stats.Shells = maxShells
 		}
-		return g.stats.Shells != prev
+		changed := g.stats.Shells != prev
+		if changed {
+			g.maybeQueueWeaponForAmmoPickup(ammoKindShells, prev)
+		}
+		return changed
 	case "rockets":
 		prev := g.stats.Rockets
 		g.stats.Rockets += amount
 		if g.stats.Rockets > maxRockets {
 			g.stats.Rockets = maxRockets
 		}
-		return g.stats.Rockets != prev
+		changed := g.stats.Rockets != prev
+		if changed {
+			g.maybeQueueWeaponForAmmoPickup(ammoKindRockets, prev)
+		}
+		return changed
 	case "cells":
 		prev := g.stats.Cells
 		g.stats.Cells += amount
 		if g.stats.Cells > maxCells {
 			g.stats.Cells = maxCells
 		}
-		return g.stats.Cells != prev
+		changed := g.stats.Cells != prev
+		if changed {
+			g.maybeQueueWeaponForAmmoPickup(ammoKindCells, prev)
+		}
+		return changed
 	default:
 		panic(fmt.Sprintf("unknown ammo kind %q", kind))
+	}
+}
+
+func (g *game) maybeQueueWeaponForAmmoPickup(kind ammoKind, oldAmmo int) {
+	if g == nil || oldAmmo != 0 {
+		return
+	}
+	switch kind {
+	case ammoKindBullets:
+		if g.inventory.ReadyWeapon == weaponFist {
+			if g.weaponOwned(weaponChaingun) {
+				g.queueWeaponSwitch(weaponChaingun)
+			} else {
+				g.queueWeaponSwitch(weaponPistol)
+			}
+		}
+	case ammoKindShells:
+		if g.inventory.ReadyWeapon == weaponFist || g.inventory.ReadyWeapon == weaponPistol {
+			if g.weaponOwned(weaponShotgun) {
+				g.queueWeaponSwitch(weaponShotgun)
+			}
+		}
+	case ammoKindCells:
+		if g.inventory.ReadyWeapon == weaponFist || g.inventory.ReadyWeapon == weaponPistol {
+			if g.weaponOwned(weaponPlasma) {
+				g.queueWeaponSwitch(weaponPlasma)
+			}
+		}
+	case ammoKindRockets:
+		if g.inventory.ReadyWeapon == weaponFist {
+			if g.weaponOwned(weaponRocketLauncher) {
+				g.queueWeaponSwitch(weaponRocketLauncher)
+			}
+		}
 	}
 }
 
