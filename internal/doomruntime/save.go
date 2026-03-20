@@ -142,6 +142,8 @@ type playerSaveState struct {
 	Z               int64
 	FloorZ          int64
 	CeilZ           int64
+	Subsector       int
+	Sector          int
 	Angle           uint32
 	MomX            int64
 	MomY            int64
@@ -628,6 +630,8 @@ func capturePlayerSaveState(p player) playerSaveState {
 		Z:               p.z,
 		FloorZ:          p.floorz,
 		CeilZ:           p.ceilz,
+		Subsector:       p.subsector,
+		Sector:          p.sector,
 		Angle:           p.angle,
 		MomX:            p.momx,
 		MomY:            p.momy,
@@ -645,6 +649,8 @@ func restorePlayerSaveState(s playerSaveState) player {
 		z:               s.Z,
 		floorz:          s.FloorZ,
 		ceilz:           s.CeilZ,
+		subsector:       s.Subsector,
+		sector:          s.Sector,
 		angle:           s.Angle,
 		momx:            s.MomX,
 		momy:            s.MomY,

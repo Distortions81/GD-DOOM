@@ -131,6 +131,89 @@ func TestTrackSecrets_RequiresPlayerOnFloorAndClearsSectorSpecial(t *testing.T) 
 	}
 }
 
+func TestTrackSecrets_UsesCachedPlayerSectorLikeDoomMobj(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: 0}, {Special: 9}}},
+		p: player{
+			x:         0,
+			y:         0,
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    1,
+		},
+		secretFound:        make([]bool, 2),
+		hudMessagesEnabled: true,
+	}
+	g.trackSecrets()
+	if g.secretsFound != 1 {
+		t.Fatalf("secretsFound=%d want=1 from cached sector", g.secretsFound)
+	}
+	if !g.secretFound[1] {
+		t.Fatal("cached secret sector should be marked found")
+	}
+}
+
+func TestApplySectorHazardDamage_UsesCachedPlayerSectorLikeDoomMobj(t *testing.T) {
+	g := &game{
+		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 0}, {Special: 7}}},
+		sectorFloor: []int64{0, 0},
+		p: player{
+			x:         0,
+			y:         0,
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    1,
+		},
+		stats: playerStats{Health: 100},
+	}
+	g.applySectorHazardDamage()
+	if g.stats.Health != 95 {
+		t.Fatalf("health=%d want=95 from cached hazard sector", g.stats.Health)
+	}
+}
+
+func TestApplySectorHazardDamage_UsesSectorFloorNotLocalSupportFloor(t *testing.T) {
+	g := &game{
+		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 7}}},
+		sectorFloor: []int64{-24 * fracUnit},
+		p: player{
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    0,
+		},
+		stats: playerStats{Health: 100},
+	}
+	g.applySectorHazardDamage()
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want=100 when above sector floor", g.stats.Health)
+	}
+}
+
+func TestTrackSecrets_UsesSectorFloorNotLocalSupportFloor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: 9}}},
+		p: player{
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    0,
+		},
+		sectorFloor:         []int64{-24 * fracUnit},
+		secretFound:         make([]bool, 1),
+		hudMessagesEnabled:  true,
+	}
+	g.trackSecrets()
+	if g.secretsFound != 0 {
+		t.Fatalf("secretsFound=%d want=0 when above sector floor", g.secretsFound)
+	}
+	if g.m.Sectors[0].Special != 9 {
+		t.Fatalf("sector special=%d want=9 when above sector floor", g.m.Sectors[0].Special)
+	}
+}
+
 func TestPickupRadSuitSetsTimer(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()

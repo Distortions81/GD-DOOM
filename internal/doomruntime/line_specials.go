@@ -672,6 +672,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
 				pt.finishSpecial = 0
 			}
+			g.m.Sectors[sec].Special = 0
 		case mapdata.PlatRaiseAndChange24:
 			pt.typ = platTypeRaiseToNearestAndChange
 			pt.status = platStatusUp
@@ -940,6 +941,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.p.floorz = tmfloor
 			g.p.ceilz = tmceil
 			g.p.z = tmfloor
+			g.refreshPlayerSubsectorCache(tx, ty)
 			g.p.momz = 0
 			g.p.viewHeight = playerViewHeight
 			g.p.deltaViewHeight = 0

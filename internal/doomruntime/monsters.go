@@ -2634,13 +2634,13 @@ func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, 
 	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
 		return 0, 0, nil, false
 	}
-	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(typ), true, i, true)
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, thingTypeRadius(typ), true, i, true)
 	probeLines := append([]int(nil), g.probeSpecialLinesForMover(i)...)
 	g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) ok=%v floor=%d ceil=%d drop=%d", x, y, ok, tmfloor, tmceil, tmdrop))
 	if !ok {
 		return 0, 0, probeLines, false
 	}
-	height := monsterHeight(typ)
+	height := g.thingCurrentHeight(i, g.m.Things[i])
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	if tmceil-tmfloor < height {
 		return 0, 0, probeLines, false

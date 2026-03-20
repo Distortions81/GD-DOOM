@@ -4,6 +4,7 @@ package doomruntime
 
 import (
 	"math"
+	"os"
 	"sort"
 
 	"github.com/pradeep-pyro/triangle"
@@ -28,6 +29,9 @@ func canonicalCDTSegKey(a, b int) cdtSegKey {
 }
 
 func triangulateWorldPolygonCDT(verts []worldPt) ([][3]int, bool) {
+	if !cdtTriangulationAvailable() {
+		return nil, false
+	}
 	n := len(verts)
 	if n < 3 {
 		return nil, false
@@ -131,10 +135,13 @@ func triangulateWorldPolygonCDT(verts []worldPt) ([][3]int, bool) {
 }
 
 func cdtTriangulationAvailable() bool {
-	return true
+	return os.Getenv("GD_DISABLE_CDT_TRIANGULATION") == ""
 }
 
 func triangulateSectorLoopsCDT(set sectorLoopSet) ([]worldTri, bool) {
+	if !cdtTriangulationAvailable() {
+		return nil, false
+	}
 	if len(set.rings) == 0 {
 		return nil, false
 	}

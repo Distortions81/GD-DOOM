@@ -118,7 +118,7 @@ func (g *game) tickPlayerSpecialSector() {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
-				sec := g.sectorAt(g.p.x, g.p.y)
+				sec := g.playerSector()
 				special := int16(-1)
 				if g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
 					special = g.m.Sectors[sec].Special
@@ -391,6 +391,7 @@ func (g *game) tryMove(x, y int64) bool {
 	g.p.ceilz = tmceil
 	g.p.x = x
 	g.p.y = y
+	g.refreshPlayerSubsectorCache(x, y)
 	return true
 }
 
@@ -648,6 +649,9 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		th := g.m.Things[i]
 		if i == moverThingIdx {
+			return false
+		}
+		if i < len(g.thingCollected) && g.thingCollected[i] {
 			return false
 		}
 		if !moverIsMonster && isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
@@ -1204,4 +1208,45 @@ func (g *game) sectorAt(x, y int64) int {
 		side := pointOnDivlineSide(x, y, dl)
 		child = n.ChildID[side]
 	}
+}
+
+func (g *game) refreshPlayerSubsectorCache(x, y int64) {
+	if g == nil || g.m == nil {
+		return
+	}
+	ss := -1
+	if len(g.m.SubSectors) > 0 {
+		ss = g.subSectorAtFixed(x, y)
+	}
+	sec := -1
+	if ss >= 0 {
+		sec = g.sectorForSubSector(ss)
+	}
+	if sec < 0 {
+		sec = g.sectorAt(x, y)
+	}
+	g.p.subsector = ss
+	g.p.sector = sec
+}
+
+func (g *game) playerSector() int {
+	if g == nil || g.m == nil {
+		return -1
+	}
+	if g.p.sector >= 0 && g.p.sector < len(g.m.Sectors) {
+		return g.p.sector
+	}
+	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
+	return g.p.sector
+}
+
+func (g *game) playerSubsector() int {
+	if g == nil || g.m == nil {
+		return -1
+	}
+	if g.p.subsector >= 0 && g.p.subsector < len(g.m.SubSectors) {
+		return g.p.subsector
+	}
+	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
+	return g.p.subsector
 }

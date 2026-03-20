@@ -1054,7 +1054,7 @@ func TestTryMove_PlayerBlockedByMonster(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{Type: 3002, X: 32, Y: 0},
+				{Type: 3002, X: 32, Y: 0, Flags: skillMediumBits},
 			},
 			Sectors: []mapdata.Sector{
 				{FloorHeight: 0, CeilingHeight: 128},
@@ -1075,8 +1075,8 @@ func TestTryMoveProbeMonster_BlockedByOtherMonster(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{Type: 3004, X: 0, Y: 0},
-				{Type: 3004, X: 32, Y: 0},
+				{Type: 3004, X: 0, Y: 0, Flags: skillMediumBits},
+				{Type: 3004, X: 32, Y: 0, Flags: skillMediumBits},
 			},
 			Sectors: []mapdata.Sector{
 				{FloorHeight: 0, CeilingHeight: 128},
@@ -1136,6 +1136,28 @@ func TestTryMove_PlayerNotBlockedByFilteredSolidThing(t *testing.T) {
 	g.initPhysics()
 	if !g.tryMove(16*fracUnit, 0) {
 		t.Fatal("player move should ignore filtered solid thing")
+	}
+}
+
+func TestTryMove_PlayerNotBlockedBySkillFilteredMonsterWithZeroHP(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 32, Y: 0, Flags: skillHardBits},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		opts:           Options{SkillLevel: 1, GameMode: gameModeSingle},
+		thingCollected: []bool{true},
+		thingHP:        []int{0},
+		thingDead:      []bool{false},
+		p:              player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	if !g.tryMove(16*fracUnit, 0) {
+		t.Fatal("player move should ignore skill-filtered monster placeholder")
 	}
 }
 

@@ -332,11 +332,12 @@ func (g *game) trackSecrets() {
 	if g.m == nil || len(g.m.Sectors) == 0 || len(g.secretFound) != len(g.m.Sectors) {
 		return
 	}
-	if g.p.z != g.p.floorz {
+	sec := g.playerSector()
+	if sec < 0 || sec >= len(g.m.Sectors) {
 		return
 	}
-	sec := g.sectorAt(g.p.x, g.p.y)
-	if sec < 0 || sec >= len(g.m.Sectors) {
+	sectorFloor := g.playerSectorFloor(sec)
+	if g.p.z != sectorFloor {
 		return
 	}
 	if g.m.Sectors[sec].Special != 9 || g.secretFound[sec] {
@@ -356,12 +357,13 @@ func (g *game) applySectorHazardDamage() {
 	if (g.worldTic & 31) != 0 {
 		return
 	}
-	// Sector damage applies while standing on the floor.
-	if g.p.z != g.p.floorz {
+	sec := g.playerSector()
+	if sec < 0 || sec >= len(g.m.Sectors) {
 		return
 	}
-	sec := g.sectorAt(g.p.x, g.p.y)
-	if sec < 0 || sec >= len(g.m.Sectors) {
+	// Doom gates special-sector effects on the current subsector sector floor,
+	// not on the local support floor cached in mo->floorz.
+	if g.p.z != g.playerSectorFloor(sec) {
 		return
 	}
 	hasSuit := g.inventory.RadSuitTics > 0
@@ -389,6 +391,16 @@ func hazardDamage(special int16, hasSuit bool) int {
 		}
 	}
 	return 0
+}
+
+func (g *game) playerSectorFloor(sec int) int64 {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) {
+		return 0
+	}
+	if sec < len(g.sectorFloor) {
+		return g.sectorFloor[sec]
+	}
+	return int64(g.m.Sectors[sec].FloorHeight) << fracBits
 }
 
 func (g *game) damagePlayer(amount int, msg string) {

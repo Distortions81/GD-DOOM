@@ -48,6 +48,29 @@ func TestUseSpecialLine_ActivatesRepeatPlatformButton(t *testing.T) {
 	}
 }
 
+func TestActivatePlatRaiseToNearestAndChangeClearsSectorDamageImmediately(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 62, Tag: 7, SideNum: [2]int16{0, -1}}},
+			Sidedefs: []mapdata.Sidedef{{Sector: 1}},
+			Sectors: []mapdata.Sector{
+				{Tag: 7, FloorHeight: 0, CeilingHeight: 128, Special: 7},
+				{FloorHeight: 0, CeilingHeight: 128, FloorPic: "FLOOR0_1"},
+			},
+		},
+		lineSpecial: []uint16{62},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatRaiseToNearestAndChange}) {
+		t.Fatal("activatePlatLine returned false")
+	}
+	if got := g.m.Sectors[0].Special; got != 0 {
+		t.Fatalf("sector special=%d want=0 immediately after activation", got)
+	}
+}
+
 func TestTickPlats_RaiseToNearestAndChangeRemovesAfterOvershootTick(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

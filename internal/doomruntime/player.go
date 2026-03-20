@@ -50,6 +50,8 @@ type player struct {
 	z               int64
 	floorz          int64
 	ceilz           int64
+	subsector       int
+	sector          int
 	angle           uint32
 	momx            int64
 	momy            int64
@@ -126,10 +128,10 @@ type doorThinker struct {
 func spawnPlayer(m *mapdata.Map, requestedSlot int) (player, int, []playerStart, int) {
 	starts := collectPlayerStarts(m)
 	if s, ok := chooseSpawnStart(starts, requestedSlot); ok {
-		return player{x: s.x, y: s.y, z: 0, floorz: 0, ceilz: 128 * fracUnit, angle: s.angle, viewHeight: playerViewHeight}, s.slot, starts, s.index
+		return player{x: s.x, y: s.y, z: 0, floorz: 0, ceilz: 128 * fracUnit, subsector: -1, sector: -1, angle: s.angle, viewHeight: playerViewHeight}, s.slot, starts, s.index
 	}
 	b := mapBounds(m)
-	return player{x: int64(((b.minX + b.maxX) / 2) * fracUnit), y: int64(((b.minY + b.maxY) / 2) * fracUnit), ceilz: 128 * fracUnit, viewHeight: playerViewHeight}, 1, starts, -1
+	return player{x: int64(((b.minX + b.maxX) / 2) * fracUnit), y: int64(((b.minY + b.maxY) / 2) * fracUnit), ceilz: 128 * fracUnit, subsector: -1, sector: -1, viewHeight: playerViewHeight}, 1, starts, -1
 }
 
 func (g *game) initPhysics() {
@@ -153,7 +155,8 @@ func (g *game) initPhysics() {
 		g.lineSpecial[i] = ld.Special
 	}
 	g.doors = make(map[int]*doorThinker)
-	sec := g.sectorAt(g.p.x, g.p.y)
+	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
+	sec := g.playerSector()
 	if sec >= 0 && sec < len(g.m.Sectors) {
 		g.p.floorz = int64(g.m.Sectors[sec].FloorHeight) << fracBits
 		g.p.ceilz = int64(g.m.Sectors[sec].CeilingHeight) << fracBits

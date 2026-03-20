@@ -111,6 +111,25 @@ func TestApplyThingSpawnFiltering_ShowNoSkillItemsPreservesPickups(t *testing.T)
 	}
 }
 
+func TestThingBlocksInSession_RespectsSkillFiltering(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 25, Flags: skillHardBits}, // solid object, hard only
+				{Type: 25, Flags: skillEasyBits}, // solid object, easy only
+			},
+		},
+		opts: Options{SkillLevel: 1, GameMode: gameModeSingle},
+	}
+	g.thingCollected = make([]bool, len(g.m.Things))
+	if g.thingBlocksInSession(0) {
+		t.Fatal("hard-only solid should not block on skill 1")
+	}
+	if !g.thingBlocksInSession(1) {
+		t.Fatal("easy-only solid should block on skill 1")
+	}
+}
+
 func TestNormalizeKeyboardTurnSpeed(t *testing.T) {
 	if got := normalizeKeyboardTurnSpeed(0); got != 1.0 {
 		t.Fatalf("normalizeKeyboardTurnSpeed(0)=%.2f want=1.0", got)

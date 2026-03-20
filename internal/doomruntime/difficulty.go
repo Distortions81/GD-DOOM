@@ -136,5 +136,5 @@ func (g *game) thingBlocksInSession(i int) bool {
 	if i < len(g.thingDropped) && g.thingDropped[i] {
 		return true
 	}
-	return thingSpawnsForGameMode(g.m.Things[i], g.opts.GameMode)
+	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters)
 }
