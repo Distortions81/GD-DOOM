@@ -218,9 +218,8 @@ func (g *game) spawnMonsterProjectileAngleOffset(thingIdx int, typ int16, angleO
 	}
 	p.angle += angleOffset
 	speed := monsterProjectileSpeed(typ, g.fastMonstersActive())
-	ang := angleToRadians(p.angle)
-	p.vx = int64(math.Cos(ang) * float64(speed))
-	p.vy = int64(math.Sin(ang) * float64(speed))
+	p.vx = fixedMul(speed, doomFineCosine(p.angle))
+	p.vy = fixedMul(speed, doomFineSineAtAngle(p.angle))
 	return true
 }
 
@@ -375,18 +374,16 @@ func (g *game) spawnPlayerRocket() bool {
 		rocketHeight = 8 * fracUnit
 		rocketTTL    = 10 * doomTicsPerSecond
 	)
-	ang := angleToRadians(g.p.angle)
-	vx := int64(math.Cos(ang) * float64(rocketSpeed))
-	vy := int64(math.Sin(ang) * float64(rocketSpeed))
+	vx := fixedMul(rocketSpeed, doomFineCosine(g.p.angle))
+	vy := fixedMul(rocketSpeed, doomFineSineAtAngle(g.p.angle))
 	if vx == 0 && vy == 0 {
 		return false
 	}
 	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
 	vz := fixedMul(rocketSpeed, slope)
-	launchOffset := playerRadius + rocketRadius + 4*fracUnit
-	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
-	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
-	sz := g.playerShootZ() - (rocketHeight >> 1)
+	sx := g.p.x
+	sy := g.p.y
+	sz := g.p.z + 32*fracUnit
 	lastLook := doomrand.PRandom() & 3
 	p := projectile{
 		x:            sx,
@@ -449,18 +446,16 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 	if g == nil {
 		return false
 	}
-	ang := angleToRadians(g.p.angle)
-	vx := int64(math.Cos(ang) * float64(speed))
-	vy := int64(math.Sin(ang) * float64(speed))
+	vx := fixedMul(speed, doomFineCosine(g.p.angle))
+	vy := fixedMul(speed, doomFineSineAtAngle(g.p.angle))
 	if vx == 0 && vy == 0 {
 		return false
 	}
 	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
 	vz := fixedMul(speed, slope)
-	launchOffset := playerRadius + radius + 4*fracUnit
-	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
-	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
-	sz := g.playerShootZ() - (height >> 1)
+	sx := g.p.x
+	sy := g.p.y
+	sz := g.p.z + 32*fracUnit
 	lastLook := doomrand.PRandom() & 3
 	p := projectile{
 		x:            sx,

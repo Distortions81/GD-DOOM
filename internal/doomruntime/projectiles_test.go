@@ -460,11 +460,47 @@ func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 	if p.kind != projectileRocket {
 		t.Fatalf("projectile kind=%v want=%v", p.kind, projectileRocket)
 	}
+	if p.sourceX != g.p.x || p.sourceY != g.p.y {
+		t.Fatalf("projectile source=(%d,%d) want player origin (%d,%d)", p.sourceX, p.sourceY, g.p.x, g.p.y)
+	}
+	if p.x != g.p.x+(p.vx>>1) || p.y != g.p.y+(p.vy>>1) {
+		t.Fatalf("projectile position=(%d,%d) want half-step (%d,%d)", p.x, p.y, g.p.x+(p.vx>>1), g.p.y+(p.vy>>1))
+	}
+	if want := g.p.z + 32*fracUnit + (p.vz >> 1); p.z != want {
+		t.Fatalf("projectile z=%d want=%d", p.z, want)
+	}
 	if !p.sourcePlayer {
 		t.Fatal("player rocket should be marked as player-sourced")
 	}
 	if !hasSoundEvent(g.soundQueue, soundEventShootRocket) {
 		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventShootRocket)
+	}
+}
+
+func TestPlayerRocketUsesDoomFineAngleMomentum(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{Health: 100, Rockets: 3},
+		p: player{
+			x:      16130837,
+			y:      190469,
+			z:      0,
+			angle:  1778384896,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		inventory:   playerInventory{ReadyWeapon: weaponRocketLauncher},
+		projectiles: make([]projectile, 0, 1),
+	}
+	if !g.fireSelectedWeapon() {
+		t.Fatal("rocket launcher should spawn a projectile")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	p := g.projectiles[0]
+	if p.vx != -1124500 || p.vy != 673400 {
+		t.Fatalf("rocket momentum=(%d,%d) want=(-1124500,673400)", p.vx, p.vy)
 	}
 }
 
