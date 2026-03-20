@@ -9,6 +9,7 @@ import (
 type slideIntercept struct {
 	frac int64
 	line int
+	ord  int
 }
 
 const doomMaxThingRadius = 32 * fracUnit
@@ -913,7 +914,11 @@ func (g *game) slideMove() {
 			}
 			return
 		}
-		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d bestFrac=%d", bestLine, bestFrac), g.p.x, g.p.y)
+		bestLineIdx := bestLine
+		if bestLine >= 0 && bestLine < len(g.lines) {
+			bestLineIdx = g.lines[bestLine].idx
+		}
+		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d lineIdx=%d bestFrac=%d", bestLine, bestLineIdx, bestFrac), g.p.x, g.p.y)
 
 		bestFracFixed := bestFrac
 		bestFracFixed -= 0x800
@@ -964,34 +969,143 @@ func (g *game) debugPlayerMove(msg string, x, y int64) {
 func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 	intercepts := make([]slideIntercept, 0, 16)
 	trace := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
-	for i, ld := range g.lines {
-		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
-		if doomPointOnDivlineSide(ld.x1, ld.y1, trace) == doomPointOnDivlineSide(ld.x2, ld.y2, trace) {
-			continue
+	debug := os.Getenv("GD_DEBUG_SLIDE_CANDIDATES_TIC")
+	debugOn := debug == fmt.Sprint(g.demoTick-1) || debug == fmt.Sprint(g.worldTic)
+	appendLine := func(physIdx int) {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return
 		}
-		if doomPointOnDivlineSide(x1, y1, lineDL) == doomPointOnDivlineSide(x2, y2, lineDL) {
-			continue
+		if len(g.lineValid) < len(g.lines) {
+			g.lineValid = append(g.lineValid, make([]int, len(g.lines)-len(g.lineValid))...)
+		}
+		if g.lineValid[physIdx] == g.validCount {
+			return
+		}
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		s1, s2 := 0, 0
+		if trace.dx > 16*fracUnit || trace.dy > 16*fracUnit || trace.dx < -16*fracUnit || trace.dy < -16*fracUnit {
+			s1 = doomPointOnDivlineSide(ld.x1, ld.y1, trace)
+			s2 = doomPointOnDivlineSide(ld.x2, ld.y2, trace)
+		} else {
+			s1 = g.pointOnLineSide(trace.x, trace.y, ld)
+			s2 = g.pointOnLineSide(trace.x+trace.dx, trace.y+trace.dy, ld)
+		}
+		if s1 == s2 {
+			return
 		}
 		frac := interceptVector(trace, lineDL)
 		if frac < 0 || frac > fracUnit {
-			continue
+			return
 		}
-		intercepts = append(intercepts, slideIntercept{frac: frac, line: i})
+		if debugOn && (ld.idx == 0 || ld.idx == 245 || ld.idx == 250 || ld.idx == 252 || ld.idx == 253 || ld.idx == 271) {
+			fmt.Printf("slide-candidate-debug tic=%d world=%d line=%d frac=%d from=(%d,%d) to=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, ld.idx, frac, x1, y1, x2, y2)
+		}
+		intercepts = append(intercepts, slideIntercept{frac: frac, line: physIdx, ord: len(intercepts)})
 	}
-	slices.SortFunc(intercepts, func(a, b slideIntercept) int {
+	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		const (
+			mapBlockShift = fracBits + 7
+			mapBToFrac    = 7
+		)
+		sx, sy, ex, ey := x1, y1, x2, y2
+		if ((sx - g.bmapOriginX) & ((1 << mapBlockShift) - 1)) == 0 {
+			sx += fracUnit
+		}
+		if ((sy - g.bmapOriginY) & ((1 << mapBlockShift) - 1)) == 0 {
+			sy += fracUnit
+		}
+		rx1 := sx - g.bmapOriginX
+		ry1 := sy - g.bmapOriginY
+		rx2 := ex - g.bmapOriginX
+		ry2 := ey - g.bmapOriginY
+		xt1 := int(rx1 >> mapBlockShift)
+		yt1 := int(ry1 >> mapBlockShift)
+		xt2 := int(rx2 >> mapBlockShift)
+		yt2 := int(ry2 >> mapBlockShift)
+		mapxstep, mapystep := 0, 0
+		xstep, ystep := int64(256*fracUnit), int64(256*fracUnit)
+		partial := int64(fracUnit)
+		if xt2 > xt1 {
+			mapxstep = 1
+			partial = fracUnit - ((rx1 >> mapBToFrac) & (fracUnit - 1))
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		} else if xt2 < xt1 {
+			mapxstep = -1
+			partial = (rx1 >> mapBToFrac) & (fracUnit - 1)
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		}
+		yintercept := (ry1 >> mapBToFrac) + fixedMul(partial, ystep)
+		if yt2 > yt1 {
+			mapystep = 1
+			partial = fracUnit - ((ry1 >> mapBToFrac) & (fracUnit - 1))
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		} else if yt2 < yt1 {
+			mapystep = -1
+			partial = (ry1 >> mapBToFrac) & (fracUnit - 1)
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		}
+		xintercept := (rx1 >> mapBToFrac) + fixedMul(partial, xstep)
+		mapx, mapy := xt1, yt1
+		g.validCount++
+		for count := 0; count < 64; count++ {
+			_ = g.blockLinesIterator(mapx, mapy, func(lineIdx int) bool {
+				if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+					return true
+				}
+				appendLine(g.physForLine[lineIdx])
+				return true
+			})
+			if mapx == xt2 && mapy == yt2 {
+				break
+			}
+			if (yintercept >> fracBits) == int64(mapy) {
+				yintercept += ystep
+				mapx += mapxstep
+			} else if (xintercept >> fracBits) == int64(mapx) {
+				xintercept += xstep
+				mapy += mapystep
+			}
+		}
+	} else {
+		g.validCount++
+		for i := range g.lines {
+			appendLine(i)
+		}
+	}
+	slices.SortStableFunc(intercepts, func(a, b slideIntercept) int {
 		if a.frac < b.frac {
 			return -1
 		}
 		if a.frac > b.frac {
 			return 1
 		}
+		if a.ord < b.ord {
+			return -1
+		}
+		if a.ord > b.ord {
+			return 1
+		}
 		return 0
 	})
+	if debugOn {
+		limit := 8
+		if len(intercepts) < limit {
+			limit = len(intercepts)
+		}
+		for i := 0; i < limit; i++ {
+			ld := g.lines[intercepts[i].line]
+			fmt.Printf("slide-candidate-sorted tic=%d world=%d ord=%d line=%d frac=%d flags=0x%04x sides=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, i, ld.idx, intercepts[i].frac, ld.flags, ld.sideNum0, ld.sideNum1)
+		}
+	}
 
 	for _, it := range intercepts {
 		ld := g.lines[it.line]
 		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
-			if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
+			if doomPointOnDivlineSide(g.p.x, g.p.y, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}) == 1 {
 				continue
 			}
 			return it.frac, it.line, true
@@ -1021,7 +1135,7 @@ func (g *game) hitSlideLine(ld physLine, tmxmove, tmymove int64) (int64, int64) 
 		return 0, 0
 	}
 	lineAngle := vectorToAngle(ld.dx, ld.dy)
-	if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
+	if doomPointOnDivlineSide(g.p.x, g.p.y, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}) == 1 {
 		lineAngle += statusAng180
 	}
 	moveAngle := vectorToAngle(tmxmove, tmymove)
