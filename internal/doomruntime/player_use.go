@@ -423,6 +423,7 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 	}
 
 	d := &doorThinker{
+		order:      g.allocThinkerOrder(),
 		sector:    sec,
 		direction: 1,
 		speed:     vDoorSpeed,
@@ -481,6 +482,7 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 			continue
 		}
 		d := &doorThinker{
+			order:      g.allocThinkerOrder(),
 			sector:    sec,
 			topWait:   vDoorWaitTic,
 			speed:     vDoorSpeed,

@@ -1109,102 +1109,106 @@ func monsterAttackFrameDuration(typ int16, phase int) int {
 }
 
 func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, px, py, dist int64) {
+	faceX, faceY := px, py
+	if targetX, targetY, _, _, _, ok := g.monsterTargetPos(i); ok {
+		faceX, faceY = targetX, targetY
+	}
 	switch typ {
 	case 3004: // zombieman
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 9: // shotgun guy
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3001: // imp
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3002, 58: // demon/spectre
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3005: // cacodemon
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3003, 69: // baron/hell knight
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 64: // arch-vile
 		switch phase {
 		case 0, 1, 2, 3, 4, 5, 6, 7, 8:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 9:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 66: // revenant missile
 		switch phase {
 		case 0, 1, 3:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 67: // mancubus
 		switch phase {
 		case 0, 2, 3, 5, 6, 8, 9:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1, 4, 7:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 71: // pain elemental
 		switch phase {
 		case 0, 1, 2:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 3:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 84: // wolf ss
 		switch phase {
 		case 0, 1, 3:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2, 4:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 68: // arachnotron
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 16: // cyberdemon
 		switch phase {
 		case 0, 2, 4:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1, 3, 5:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 7: // spider mastermind
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1, 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
@@ -1246,7 +1250,11 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 			g.thingAttackFireTics[i]--
 		}
 		if g.thingAttackFireTics[i] == 0 {
-			g.faceMonsterToward(i, tx, ty, px, py)
+			faceX, faceY := px, py
+			if targetX, targetY, _, _, _, ok := g.monsterTargetPos(i); ok {
+				faceX, faceY = targetX, targetY
+			}
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 			_ = g.monsterAttack(i, typ, dist)
 			g.thingAttackFireTics[i] = -1
 		}

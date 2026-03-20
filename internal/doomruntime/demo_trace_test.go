@@ -135,8 +135,8 @@ func TestDemoTraceThingTargetUsesConcreteTargetFields(t *testing.T) {
 	}
 
 	target, targetType = demoTraceThingTarget(g, 1)
-	if target != 2 || targetType != demoTraceThingType(3001) {
-		t.Fatalf("thing target=(%d,%d) want (2,%d)", target, targetType, demoTraceThingType(3001))
+	if target != 1 || targetType != demoTraceThingType(3001) {
+		t.Fatalf("thing target=(%d,%d) want (1,%d)", target, targetType, demoTraceThingType(3001))
 	}
 }
 
@@ -246,6 +246,51 @@ func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 	}
 	if !strings.Contains(s, `"topcountdown":0`) {
 		t.Fatalf("tic line missing topcountdown zero field: %s", s)
+	}
+}
+
+func TestDemoTraceSpecialsFollowThinkerInsertionOrder(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{Tag: 6}, {}},
+		},
+		doors: map[int]*doorThinker{
+			71: {
+				order:        9,
+				sector:       71,
+				typ:          doorNormal,
+				direction:    1,
+				topHeight:    4456448,
+				topWait:      150,
+				topCountdown: 0,
+				speed:        131072,
+			},
+		},
+		plats: map[int]*platThinker{
+			0: {
+				order:     4,
+				sector:    0,
+				typ:       platTypeRaiseToNearestAndChange,
+				status:    platStatusUp,
+				oldStatus: platStatusInStasis,
+				speed:     32768,
+				low:       2317958,
+				high:      3670016,
+				wait:      0,
+				count:     0,
+			},
+		},
+	}
+
+	specials := g.demoTraceSpecials()
+	if got, want := len(specials), 2; got != want {
+		t.Fatalf("special count=%d want=%d", got, want)
+	}
+	if got, want := specials[0]["kind"], "plat"; got != want {
+		t.Fatalf("special[0].kind=%v want=%q", got, want)
+	}
+	if got, want := specials[1]["kind"], "door"; got != want {
+		t.Fatalf("special[1].kind=%v want=%q", got, want)
 	}
 }
 

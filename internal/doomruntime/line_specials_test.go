@@ -48,6 +48,38 @@ func TestUseSpecialLine_ActivatesRepeatPlatformButton(t *testing.T) {
 	}
 }
 
+func TestTickPlats_RaiseToNearestAndChangeRemovesAfterOvershootTick(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{31 * fracUnit},
+		sectorCeil:  []int64{128 * fracUnit},
+		plats: map[int]*platThinker{
+			0: {
+				sector: 0,
+				typ:    platTypeRaiseToNearestAndChange,
+				status: platStatusUp,
+				speed:  fracUnit,
+				high:   32 * fracUnit,
+			},
+		},
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; !ok {
+		t.Fatal("plat removed at exact destination; want one more tic like Doom")
+	}
+	if got, want := g.sectorFloor[0], int64(32*fracUnit); got != want {
+		t.Fatalf("floor after exact destination tic=%d want=%d", got, want)
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; ok {
+		t.Fatal("plat not removed on overshoot tic")
+	}
+}
+
 func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

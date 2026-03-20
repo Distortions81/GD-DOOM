@@ -113,6 +113,7 @@ const (
 )
 
 type doorThinker struct {
+	order        int64
 	sector       int
 	typ          doorType
 	direction    int

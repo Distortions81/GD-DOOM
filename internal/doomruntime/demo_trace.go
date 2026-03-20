@@ -684,8 +684,7 @@ func demoTraceThingTarget(g *game, i int) (target int, targetType int) {
 	if i < len(g.thingTargetIdx) {
 		idx := g.thingTargetIdx[i]
 		if idx >= 0 {
-			// Demo traces serialize the player mobj first, then map things in map order.
-			return idx + 2, demoTraceThingType(g.m.Things[idx].Type)
+			return 1, demoTraceThingType(g.m.Things[idx].Type)
 		}
 	}
 	return 0, 0
@@ -695,7 +694,11 @@ func (g *game) demoTraceSpecials() []map[string]any {
 	if g == nil {
 		return nil
 	}
-	out := make([]map[string]any, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
+	type orderedSpecial struct {
+		order int64
+		item  map[string]any
+	}
+	ordered := make([]orderedSpecial, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
 
 	doorKeys := sortedIntKeys(g.doors)
 	for _, sec := range doorKeys {
@@ -713,12 +716,12 @@ func (g *game) demoTraceSpecials() []map[string]any {
 		if os.Getenv("GD_TRACE_DEBUG_DOOR_HEIGHT") != "" && sec >= 0 && sec < len(g.sectorCeil) {
 			entry["currentceil"] = g.sectorCeil[sec]
 		}
-		out = append(out, entry)
+		ordered = append(ordered, orderedSpecial{order: d.order, item: entry})
 	}
 	floorKeys := sortedIntKeys(g.floors)
 	for _, sec := range floorKeys {
 		f := g.floors[sec]
-		out = append(out, map[string]any{
+		ordered = append(ordered, orderedSpecial{order: f.order, item: map[string]any{
 			"kind":            "floor",
 			"sector":          sec,
 			"type":            f.direction,
@@ -727,7 +730,7 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"floordestheight": f.destHeight,
 			"texture":         f.finishFlat,
 			"finishspecial":   int16(f.finishSpecial),
-		})
+		}})
 	}
 	platKeys := sortedIntKeys(g.plats)
 	for _, sec := range platKeys {
@@ -756,12 +759,12 @@ func (g *game) demoTraceSpecials() []map[string]any {
 		if p.finishFlat != "" {
 			item["texture"] = p.finishFlat
 		}
-		out = append(out, item)
+		ordered = append(ordered, orderedSpecial{order: p.order, item: item})
 	}
 	ceilingKeys := sortedIntKeys(g.ceilings)
 	for _, sec := range ceilingKeys {
 		c := g.ceilings[sec]
-		out = append(out, map[string]any{
+		ordered = append(ordered, orderedSpecial{order: c.order, item: map[string]any{
 			"kind":         "ceiling",
 			"sector":       sec,
 			"action":       string(c.action),
@@ -771,7 +774,24 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"bottomheight": c.bottomHeight,
 			"crush":        boolToInt(c.crush),
 			"olddirection": c.oldDirection,
-		})
+		}})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].order != ordered[j].order {
+			return ordered[i].order < ordered[j].order
+		}
+		ik, _ := ordered[i].item["kind"].(string)
+		jk, _ := ordered[j].item["kind"].(string)
+		if ik != jk {
+			return ik < jk
+		}
+		is, _ := ordered[i].item["sector"].(int)
+		js, _ := ordered[j].item["sector"].(int)
+		return is < js
+	})
+	out := make([]map[string]any, 0, len(ordered))
+	for _, entry := range ordered {
+		out = append(out, entry.item)
 	}
 	return out
 }

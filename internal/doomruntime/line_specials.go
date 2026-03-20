@@ -27,6 +27,7 @@ const (
 )
 
 type floorThinker struct {
+	order         int64
 	sector        int
 	direction     int
 	speed         int64
@@ -54,6 +55,7 @@ const (
 )
 
 type platThinker struct {
+	order         int64
 	sector        int
 	typ           platType
 	status        platStatus
@@ -68,6 +70,7 @@ type platThinker struct {
 }
 
 type ceilingThinker struct {
+	order        int64
 	sector       int
 	action       mapdata.CeilingAction
 	direction    int
@@ -160,7 +163,7 @@ func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool 
 		if g.sectorHasActiveMover(sec) {
 			continue
 		}
-		ft := &floorThinker{sector: sec}
+		ft := &floorThinker{order: g.allocThinkerOrder(), sector: sec}
 		switch action {
 		case mapdata.FloorRaiseToTexture:
 			ft.direction = 1
@@ -655,7 +658,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		if g.sectorHasActiveMover(sec) {
 			continue
 		}
-		pt := &platThinker{sector: sec}
+			pt := &platThinker{order: g.allocThinkerOrder(), sector: sec}
 		switch info.Action {
 		case mapdata.PlatRaiseToNearestAndChange:
 			pt.typ = platTypeRaiseToNearestAndChange
@@ -779,6 +782,7 @@ func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
 		for {
 			if !g.sectorHasActiveMover(sec) {
 				g.floors[sec] = &floorThinker{
+					order:      g.allocThinkerOrder(),
 					sector:     sec,
 					direction:  1,
 					speed:      speed,
@@ -1049,7 +1053,7 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 		if g.sectorHasActiveMover(sec) && info.Action != mapdata.CeilingCrushStop {
 			continue
 		}
-		ct := &ceilingThinker{sector: sec, action: info.Action, speed: ceilingMoveSpeed}
+		ct := &ceilingThinker{order: g.allocThinkerOrder(), sector: sec, action: info.Action, speed: ceilingMoveSpeed}
 		switch info.Action {
 		case mapdata.CeilingLowerToFloor:
 			ct.direction = -1
@@ -1148,6 +1152,7 @@ func (g *game) activateDonutLine(lineIdx int) bool {
 		}
 		dest := g.sectorFloor[s3]
 		g.floors[s2] = &floorThinker{
+			order:         g.allocThinkerOrder(),
 			sector:        s2,
 			direction:     1,
 			speed:         floorMoveSpeed / 2,
@@ -1157,6 +1162,7 @@ func (g *game) activateDonutLine(lineIdx int) bool {
 			finishSpecial: 0,
 		}
 		g.floors[s1] = &floorThinker{
+			order:      g.allocThinkerOrder(),
 			sector:     s1,
 			direction:  -1,
 			speed:      floorMoveSpeed / 2,
@@ -1233,7 +1239,7 @@ func (g *game) tickPlats() {
 		switch pt.status {
 		case platStatusUp:
 			next := g.sectorFloor[sec] + pt.speed
-			if next >= pt.high {
+			if next > pt.high {
 				next = pt.high
 				g.setSectorFloorHeight(sec, next)
 				if pt.typ == platTypeRaiseToNearestAndChange {
@@ -1252,7 +1258,7 @@ func (g *game) tickPlats() {
 			g.setSectorFloorHeight(sec, next)
 		case platStatusDown:
 			next := g.sectorFloor[sec] - pt.speed
-			if next <= pt.low {
+			if next < pt.low {
 				next = pt.low
 				g.setSectorFloorHeight(sec, next)
 				pt.status = platStatusWaiting
