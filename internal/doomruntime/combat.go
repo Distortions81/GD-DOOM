@@ -1131,8 +1131,9 @@ func (g *game) lineAttackTrace(actor lineAttackActor, angle uint32, distance, sl
 
 func (g *game) debugLineAttackIntercepts(actor lineAttackActor, angle uint32, distance, slope int64) {
 	intercepts := g.collectLineAttackIntercepts(actor, angle, distance)
-	fmt.Printf("line-attack-debug tic=%d world=%d actor_idx=%d angle=%d slope=%d distance=%d intercepts=%d\n",
-		g.demoTick-1, g.worldTic, actor.thingIdx, angle, slope, distance, len(intercepts))
+	x2, y2 := g.lineAttackEnd(actor, angle, distance)
+	fmt.Printf("line-attack-debug tic=%d world=%d actor_idx=%d trace=(%d,%d)->(%d,%d) dx=%d dy=%d angle=%d slope=%d distance=%d intercepts=%d\n",
+		g.demoTick-1, g.worldTic, actor.thingIdx, actor.x, actor.y, x2, y2, x2-actor.x, y2-actor.y, angle, slope, distance, len(intercepts))
 	for idx, in := range intercepts {
 		if idx >= 16 {
 			fmt.Printf("line-attack-debug ... truncated\n")

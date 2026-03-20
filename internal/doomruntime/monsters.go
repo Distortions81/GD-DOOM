@@ -13,7 +13,7 @@ import (
 const (
 	monsterWakeRange     = 1024 * fracUnit
 	monsterMeleeRange    = 64 * fracUnit
-	monsterAttackRange   = 1024 * fracUnit
+	monsterAttackRange   = 2048 * fracUnit
 	monsterAttackTics    = 35
 	monsterBaseThreshold = 100
 
@@ -2128,8 +2128,8 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || i == wantIdx) {
 					rnd, prnd := doomrand.State()
-					fmt.Printf("hitscan-attack-debug tic=%d world=%d idx=%d type=%d pellet=%d base_angle=%d angle=%d slope=%d damage=%d target_kind=%d target_idx=%d impact=(%d,%d,%d) puff=%t blood=%t\n",
-						g.demoTick-1, g.worldTic, i, typ, pellet, baseAngle, angle, slope, damage,
+					fmt.Printf("hitscan-attack-debug tic=%d world=%d idx=%d type=%d actor=(%d,%d,%d) pellet=%d base_angle=%d angle=%d slope=%d damage=%d target_kind=%d target_idx=%d impact=(%d,%d,%d) puff=%t blood=%t\n",
+						g.demoTick-1, g.worldTic, i, typ, actor.x, actor.y, actor.shootZ, pellet, baseAngle, angle, slope, damage,
 						outcome.target.kind, outcome.target.idx, outcome.impactX, outcome.impactY, outcome.impactZ,
 						outcome.spawnPuff, outcome.spawnBlood)
 					fmt.Printf("hitscan-attack-rng-debug tic=%d world=%d idx=%d type=%d pellet=%d rnd=%d prnd=%d\n",

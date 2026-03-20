@@ -561,6 +561,7 @@ type game struct {
 	autoWeaponSwitch      bool
 	weaponRefire          bool
 	weaponAttackDown      bool
+	useButtonDown         bool
 	weaponState           weaponPspriteState
 	weaponStateTics       int
 	weaponFlashState      weaponPspriteState

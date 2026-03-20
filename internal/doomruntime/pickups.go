@@ -265,7 +265,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		}
 		return msg, soundEventPowerUp, true
 	case 2014:
-		return g.gainHealth(1, 200, "Picked up a health bonus")
+		return g.gainBonusHealth(1, 200, "Picked up a health bonus")
 	case 2023:
 		if g.stats.Health < 100 {
 			g.stats.Health = 100
@@ -273,7 +273,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.inventory.Strength = true
 		return "Berserk!", soundEventPowerUp, true
 	case 2015:
-		return g.gainArmor(1, 200, "Picked up an armor bonus")
+		return g.gainBonusArmor(1, 200, "Picked up an armor bonus")
 	case 2018:
 		if g.stats.Armor >= 100 {
 			return "", 0, false
@@ -449,6 +449,14 @@ func (g *game) gainHealth(amount, cap int, msg string) (string, soundEvent, bool
 	return msg, soundEventItemUp, true
 }
 
+func (g *game) gainBonusHealth(amount, cap int, msg string) (string, soundEvent, bool) {
+	g.stats.Health += amount
+	if g.stats.Health > cap {
+		g.stats.Health = cap
+	}
+	return msg, soundEventItemUp, true
+}
+
 func (g *game) gainArmor(amount, cap int, msg string) (string, soundEvent, bool) {
 	prev := g.stats.Armor
 	g.stats.Armor += amount
@@ -460,6 +468,17 @@ func (g *game) gainArmor(amount, cap int, msg string) (string, soundEvent, bool)
 	}
 	if g.stats.Armor == prev {
 		return "", 0, false
+	}
+	return msg, soundEventItemUp, true
+}
+
+func (g *game) gainBonusArmor(amount, cap int, msg string) (string, soundEvent, bool) {
+	g.stats.Armor += amount
+	if g.stats.Armor > cap {
+		g.stats.Armor = cap
+	}
+	if g.stats.Armor > 0 && g.stats.ArmorType == 0 {
+		g.stats.ArmorType = 1
 	}
 	return msg, soundEventItemUp, true
 }

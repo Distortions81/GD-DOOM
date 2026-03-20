@@ -102,7 +102,12 @@ func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 		g.selectWeaponSlot(cmd.weaponSlot)
 	}
 	if usePressed {
-		g.handleUse()
+		if !g.useButtonDown {
+			g.handleUse()
+			g.useButtonDown = true
+		}
+	} else {
+		g.useButtonDown = false
 	}
 	g.tickWeaponFire()
 	g.tickPlayerCounters()

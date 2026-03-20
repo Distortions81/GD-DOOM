@@ -48,6 +48,66 @@ func TestUseSpecialLine_ActivatesRepeatPlatformButton(t *testing.T) {
 	}
 }
 
+func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 1, SideNum: [2]int16{0, 1}}},
+			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		lineSpecial: []uint16{1},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+		lines: []physLine{{
+			idx:      0,
+			x1:       64 * fracUnit,
+			y1:       -64 * fracUnit,
+			x2:       64 * fracUnit,
+			y2:       64 * fracUnit,
+			dx:       0,
+			dy:       128 * fracUnit,
+			flags:    mlTwoSided,
+			special:  1,
+			sideNum0: 0,
+			sideNum1: 1,
+			bbox:     [4]int64{64 * fracUnit, -64 * fracUnit, 64 * fracUnit, 64 * fracUnit},
+			slope:    slopeVertical,
+		}},
+		p: player{x: 128 * fracUnit, y: 0, angle: doomAng180, floorz: 0, ceilz: 128 * fracUnit, subsector: -1, sector: 0, viewHeight: playerViewHeight},
+	}
+	g.physForLine = []int{0}
+	g.doors = map[int]*doorThinker{
+		1: {
+			sector:    1,
+			typ:       doorNormal,
+			direction: 1,
+			speed:     vDoorSpeed,
+			topWait:   vDoorWaitTic,
+			topHeight: 124 * fracUnit,
+		},
+	}
+	d := g.doors[1]
+
+	g.runGameplayTic(moveCmd{}, true, false)
+	if d.direction != -1 {
+		t.Fatalf("first use on active manual door direction=%d want=-1", d.direction)
+	}
+
+	g.runGameplayTic(moveCmd{}, true, false)
+	if d.direction != -1 {
+		t.Fatalf("held use should not retrigger active manual door, direction=%d want=-1", d.direction)
+	}
+
+	g.runGameplayTic(moveCmd{}, false, false)
+	g.runGameplayTic(moveCmd{}, true, false)
+	if d.direction != 1 {
+		t.Fatalf("use after release should retrigger active manual door, direction=%d want=1", d.direction)
+	}
+}
+
 func TestActivatePlatRaiseToNearestAndChangeClearsSectorDamageImmediately(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

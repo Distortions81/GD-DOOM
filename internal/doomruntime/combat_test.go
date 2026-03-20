@@ -1100,6 +1100,24 @@ func TestMonsterHitscanAttackSpawnsPuffOnWallImpact(t *testing.T) {
 	}
 }
 
+func TestMonsterHitscanAttackUsesDoomMissileRange(t *testing.T) {
+	g := &game{
+		p: player{x: 1500 * fracUnit, y: 0, z: 0},
+	}
+	actor := lineAttackActor{
+		x:          0,
+		y:          0,
+		shootZ:     0,
+		targetMask: lineAttackMaskPlayer,
+	}
+
+	outcome := g.lineAttackTrace(actor, 0, monsterAttackRange, 0, false)
+
+	if outcome.target.kind != lineAttackTargetPlayer {
+		t.Fatalf("target kind=%d want player", outcome.target.kind)
+	}
+}
+
 func TestMonsterPainSoundEventMapping(t *testing.T) {
 	if got := monsterPainSoundEvent(3006); got != soundEventMonsterPainDemon {
 		t.Fatalf("lost soul pain event=%v want=%v", got, soundEventMonsterPainDemon)

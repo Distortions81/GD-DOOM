@@ -149,6 +149,51 @@ func TestProcessThingPickupsMarksCollectedAndUpdatesStats(t *testing.T) {
 	}
 }
 
+func TestProcessThingPickups_ConsumesHealthBonusAtCapLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2014, Flags: skillMediumBits}},
+		},
+		soundQueue: make([]soundEvent, 0, 2),
+		opts:       Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.stats.Health = 200
+	g.thingCollected = make([]bool, len(g.m.Things))
+
+	g.processThingPickups()
+
+	if !g.thingCollected[0] {
+		t.Fatal("health bonus should still be consumed at cap")
+	}
+	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventItemUp {
+		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventItemUp)
+	}
+}
+
+func TestProcessThingPickups_ConsumesArmorBonusAtCapLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2015, Flags: skillMediumBits}},
+		},
+		soundQueue: make([]soundEvent, 0, 2),
+		opts:       Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.stats.Armor = 200
+	g.stats.ArmorType = 2
+	g.thingCollected = make([]bool, len(g.m.Things))
+
+	g.processThingPickups()
+
+	if !g.thingCollected[0] {
+		t.Fatal("armor bonus should still be consumed at cap")
+	}
+	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventItemUp {
+		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventItemUp)
+	}
+}
+
 func TestBackpackDoublesAmmoCap(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()

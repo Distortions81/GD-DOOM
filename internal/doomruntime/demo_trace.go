@@ -448,11 +448,24 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		})
 	}
 	for _, p := range g.hitscanPuffs {
-		sec := g.sectorAt(p.x, p.y)
-		floorZ := g.thingFloorZ(p.x, p.y)
-		ceilZ := int64(0)
-		if sec >= 0 && sec < len(g.sectorCeil) {
-			ceilZ = g.sectorCeil[sec]
+		ss := -1
+		sec := -1
+		if g.m != nil && len(g.m.SubSectors) > 0 {
+			ss = g.subSectorAtFixed(p.x, p.y)
+			if ss >= 0 {
+				sec = g.sectorForSubSector(ss)
+			}
+		}
+		if sec < 0 {
+			sec = g.sectorAt(p.x, p.y)
+		}
+		floorZ, ceilZ, ok := g.subsectorFloorCeilAt(p.x, p.y)
+		if !ok {
+			floorZ = g.thingFloorZ(p.x, p.y)
+			ceilZ = 0
+			if sec >= 0 && sec < len(g.sectorCeil) {
+				ceilZ = g.sectorCeil[sec]
+			}
 		}
 		mobjType := 37
 		flags := 528
@@ -485,8 +498,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			ReactionTime: 8,
 			Threshold:    0,
 			LastLook:     0,
-			Subsector:    boolToInt(sec >= 0),
-			Sector:       sec,
+				Subsector:    ss,
+				Sector:       sec,
 			Player:       0,
 			Target:       0,
 			TargetType:   0,
