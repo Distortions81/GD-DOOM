@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -121,12 +122,14 @@ func (g *game) tickMonsters() {
 					}
 				}
 			}
+			g.debugThingState(i, th, "dead")
 			continue
 		}
 		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 			continue
 		}
 		g.debugMonsterTick(i, "start")
+		g.debugThingState(i, th, "live")
 		if th.Type == 88 {
 			continue
 		}
@@ -245,6 +248,56 @@ func (g *game) tickMonsters() {
 		g.emitMonsterActiveSound(i, th.Type, ax, ay)
 		g.debugMonsterTick(i, "end")
 	}
+}
+
+func (g *game) debugThingState(i int, th mapdata.Thing, tag string) {
+	if g.worldTic != debugThingStateTic() || i != debugThingStateIdx() {
+		return
+	}
+	phase, state, tics := 0, 0, 0
+	hp, dead := 0, false
+	if i >= 0 && i < len(g.thingStatePhase) {
+		phase = g.thingStatePhase[i]
+	}
+	if i >= 0 && i < len(g.thingState) {
+		state = int(g.thingState[i])
+	}
+	if i >= 0 && i < len(g.thingStateTics) {
+		tics = g.thingStateTics[i]
+	}
+	if i >= 0 && i < len(g.thingHP) {
+		hp = g.thingHP[i]
+	}
+	if i >= 0 && i < len(g.thingDead) {
+		dead = g.thingDead[i]
+	}
+	x, y := g.thingPosFixed(i, th)
+	fmt.Fprintf(os.Stderr, "thing-debug tic=%d idx=%d tag=%s type=%d hp=%d dead=%t state=%d phase=%d tics=%d pos=(%d,%d)\n",
+		g.worldTic, i, tag, th.Type, hp, dead, state, phase, tics, x, y)
+}
+
+func debugThingStateIdx() int {
+	v := os.Getenv("GD_DEBUG_THING_IDX")
+	if v == "" {
+		return -1
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+func debugThingStateTic() int {
+	v := os.Getenv("GD_DEBUG_THING_TIC")
+	if v == "" {
+		return -1
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
 }
 
 func (g *game) debugMonsterTick(i int, stage string) {

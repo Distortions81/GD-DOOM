@@ -660,7 +660,9 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		case mapdata.PlatRaiseToNearestAndChange:
 			pt.typ = platTypeRaiseToNearestAndChange
 			pt.status = platStatusUp
+			pt.oldStatus = platStatusInStasis
 			pt.speed = platMoveSpeed / 2
+			pt.low = g.sectorFloor[sec]
 			pt.high = g.findNextHighestFloor(sec, g.sectorFloor[sec])
 			pt.wait = 0
 			if frontSec >= 0 {
@@ -670,7 +672,9 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		case mapdata.PlatRaiseAndChange24:
 			pt.typ = platTypeRaiseToNearestAndChange
 			pt.status = platStatusUp
+			pt.oldStatus = platStatusInStasis
 			pt.speed = platMoveSpeed / 2
+			pt.low = g.sectorFloor[sec]
 			pt.high = g.sectorFloor[sec] + 24*fracUnit
 			if frontSec >= 0 {
 				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
@@ -679,7 +683,9 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		case mapdata.PlatRaiseAndChange32:
 			pt.typ = platTypeRaiseToNearestAndChange
 			pt.status = platStatusUp
+			pt.oldStatus = platStatusInStasis
 			pt.speed = platMoveSpeed / 2
+			pt.low = g.sectorFloor[sec]
 			pt.high = g.sectorFloor[sec] + 32*fracUnit
 			if frontSec >= 0 {
 				pt.finishFlat = g.m.Sectors[frontSec].FloorPic

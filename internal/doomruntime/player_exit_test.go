@@ -46,6 +46,30 @@ func TestCheckWalkSpecialLinesTriggersExitOnCrossing(t *testing.T) {
 	}
 }
 
+func TestCheckWalkSpecialLinesTriggersExitOnReverseCrossing(t *testing.T) {
+	g := &game{
+		lineSpecial: []uint16{52},
+		lines: []physLine{
+			{
+				idx:      0,
+				x1:       0,
+				y1:       100,
+				x2:       0,
+				y2:       -100,
+				dx:       0,
+				dy:       -200,
+				slope:    slopeVertical,
+				sideNum0: -1,
+				sideNum1: -1,
+			},
+		},
+	}
+	g.checkWalkSpecialLines(10, 0, -10, 0)
+	if !g.levelExitRequested {
+		t.Fatal("walk exit should trigger on reverse line crossing")
+	}
+}
+
 func TestHandleExitSpecialBlockedWhenDead(t *testing.T) {
 	g := &game{
 		isDead:      true,

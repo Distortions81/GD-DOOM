@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strings"
 
@@ -258,6 +259,12 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		if special == 0 {
 			continue
 		}
+		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d special=%d prev=(%d,%d) cur=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, ld.idx, special, prevX, prevY, curX, curY)
+			}
+		}
 		info := mapdata.LookupLineSpecial(special)
 		if info.Trigger != mapdata.TriggerWalk {
 			continue
@@ -270,16 +277,40 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
 		endSide := g.pointOnLineSide(curX, curY, ld)
-		if !(startSide == 0 && endSide == 1) {
+		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d start=%d end=%d prevSS=%d curSS=%d\n",
+					g.demoTick-1, g.worldTic, ld.idx, startSide, endSide, prevSS, curSS)
+			}
+		}
+		if startSide == endSide {
 			continue
 		}
 		if _, ok := segmentIntersectFrac(prevX, prevY, curX, curY, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
+			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=no-intersect\n",
+						g.demoTick-1, g.worldTic, ld.idx)
+				}
+			}
 			continue
 		}
 		if (prevSS >= 0 || curSS >= 0) &&
 			!g.lineTouchesSubsector(ld.idx, prevSS) &&
 			!g.lineTouchesSubsector(ld.idx, curSS) {
+			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=subsector\n",
+						g.demoTick-1, g.worldTic, ld.idx)
+				}
+			}
 			continue
+		}
+		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d candidate repeat=%t\n",
+					g.demoTick-1, g.worldTic, ld.idx, info.Repeat)
+			}
 		}
 		if info.Exit != mapdata.ExitNone {
 			if isPlayer && g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk) {

@@ -216,6 +216,15 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 				}
 			}
 		}
+		if isPlatSpecial(left) && isPlatSpecial(right) {
+			if key == "low" || key == "oldstatus" {
+				ltyp, lok := left["type"].(float64)
+				rtyp, rok := right["type"].(float64)
+				if lok && rok && (int(ltyp) == 2 || int(ltyp) == 3) && int(ltyp) == int(rtyp) {
+					return true
+				}
+			}
+		}
 	}
 	if len(path) >= len("root.mobjs[") && path[:len("root.mobjs[")] == "root.mobjs[" {
 		lt, lok := left["type"].(float64)
@@ -228,6 +237,11 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 		}
 	}
 	return false
+}
+
+func isPlatSpecial(v map[string]any) bool {
+	kind, _ := v["kind"].(string)
+	return kind == "plat"
 }
 
 func isDoorSpecial(v map[string]any) bool {

@@ -780,7 +780,7 @@ func monsterCorpseBlocksPlayer(typ int16, phase int) bool {
 	switch typ {
 	case 3004, 9:
 		fallPhase = 2
-	case 3001, 3002, 58, 3006:
+	case 3001, 3002, 3006:
 		fallPhase = 3
 	case 3005, 3003, 69:
 		fallPhase = 4

@@ -144,6 +144,19 @@ func newDemoTraceWriter(opts Options, mapName string) *demoTraceWriter {
 	return tw
 }
 
+func doomPlatType(t platType) int {
+	switch t {
+	case platTypePerpetualRaise:
+		return 0
+	case platTypeDownWaitUpStay:
+		return 1
+	case platTypeRaiseToNearestAndChange:
+		return 3
+	default:
+		return int(t)
+	}
+}
+
 func demoTraceLabel(script *DemoScript) string {
 	if script == nil {
 		return ""
@@ -719,10 +732,14 @@ func (g *game) demoTraceSpecials() []map[string]any {
 	platKeys := sortedIntKeys(g.plats)
 	for _, sec := range platKeys {
 		p := g.plats[sec]
-		out = append(out, map[string]any{
+		tag := 0
+		if g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
+			tag = int(g.m.Sectors[sec].Tag)
+		}
+		item := map[string]any{
 			"kind":          "plat",
 			"sector":        sec,
-			"type":          int(p.typ),
+			"type":          doomPlatType(p.typ),
 			"speed":         p.speed,
 			"low":           p.low,
 			"high":          p.high,
@@ -730,9 +747,16 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"count":         p.count,
 			"status":        int(p.status),
 			"oldstatus":     int(p.oldStatus),
-			"finishspecial": int16(p.finishSpecial),
-			"texture":       p.finishFlat,
-		})
+			"crush":         0,
+			"tag":           tag,
+		}
+		if p.finishSpecial != 0 {
+			item["finishspecial"] = int16(p.finishSpecial)
+		}
+		if p.finishFlat != "" {
+			item["texture"] = p.finishFlat
+		}
+		out = append(out, item)
 	}
 	ceilingKeys := sortedIntKeys(g.ceilings)
 	for _, sec := range ceilingKeys {
