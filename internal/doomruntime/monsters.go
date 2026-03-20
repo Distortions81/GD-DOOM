@@ -134,9 +134,6 @@ func (g *game) tickMonsters() {
 			continue
 		}
 		g.tickMonsterMomentum(i, th)
-		if !g.monsterHasTarget(i) {
-			g.clearMonsterTargetState(i)
-		}
 		tx, ty := g.thingPosFixed(i, th)
 		targetX, targetY := int64(0), int64(0)
 		dist := int64(0)
@@ -203,7 +200,8 @@ func (g *game) tickMonsters() {
 		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 			g.thingReactionTics[i]--
 		}
-		if i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+		skipThresholdTick := i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStateAttack
+		if !skipThresholdTick && i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
 			if !g.monsterHasTarget(i) {
 				g.thingThreshold[i] = 0
 			} else {
@@ -318,10 +316,18 @@ func (g *game) debugMonsterTick(i int, stage string) {
 	if g.m != nil && i >= 0 && i < len(g.m.Things) {
 		tx, ty = g.thingPosFixed(i, g.m.Things[i])
 	}
-	fmt.Printf("monster-tick-debug tic=%d world=%d idx=%d type=%d stage=%s state=%d phase=%d statetics=%d movedir=%d movecount=%d threshold=%d reaction=%d justatk=%t targetPlayer=%t pos=(%d,%d) angle=%d\n",
+	targetIdx := -1
+	targetHP := 0
+	if i >= 0 && i < len(g.thingTargetIdx) {
+		targetIdx = g.thingTargetIdx[i]
+		if targetIdx >= 0 && targetIdx < len(g.thingHP) {
+			targetHP = g.thingHP[targetIdx]
+		}
+	}
+	fmt.Printf("monster-tick-debug tic=%d world=%d idx=%d type=%d stage=%s state=%d phase=%d statetics=%d movedir=%d movecount=%d threshold=%d reaction=%d justatk=%t targetPlayer=%t targetIdx=%d targetHP=%d pos=(%d,%d) angle=%d\n",
 		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, stage,
 		g.thingState[i], g.thingStatePhase[i], g.thingStateTics[i], g.thingMoveDir[i], g.thingMoveCount[i],
-		g.thingThreshold[i], g.thingReactionTics[i], g.thingJustAtk[i], g.thingTargetPlayer[i], tx, ty, g.thingWorldAngle(i, g.m.Things[i]))
+		g.thingThreshold[i], g.thingReactionTics[i], g.thingJustAtk[i], g.thingTargetPlayer[i], targetIdx, targetHP, tx, ty, g.thingWorldAngle(i, g.m.Things[i]))
 }
 
 func (g *game) setMonsterThinkState(i int, typ int16, state monsterThinkState, tics int) {
