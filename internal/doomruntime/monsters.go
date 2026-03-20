@@ -353,16 +353,6 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 	}
 	switch g.thingState[i] {
 	case monsterStateSpawn:
-		if _, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty); wake || g.monsterLookForPlayer(i, false, tx, ty) {
-			g.thingAggro[i] = true
-			g.setMonsterTargetPlayer(i)
-			g.emitMonsterSeeSound(i, typ, tx, ty)
-			if i >= 0 && i < len(g.thingStatePhase) {
-				g.thingStatePhase[i] = 0
-			}
-			g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
-			return true
-		}
 		if i >= 0 && i < len(g.thingStatePhase) {
 			count := len(monsterSpawnFrameTics(typ))
 			if count < 1 {
@@ -370,17 +360,16 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 			}
 			g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
 		}
+		if g.monsterRunLookState(i, typ, tx, ty) {
+			return true
+		}
 		g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 		return false
 	case monsterStateSee:
 		if !g.monsterHasTarget(i) {
-			if g.monsterLookForPlayer(i, true, tx, ty) {
-				g.thingAggro[i] = true
-				g.setMonsterTargetPlayer(i)
-				g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
-				return false
+			if g.monsterRunLostTargetChaseState(i, typ, tx, ty) {
+				return true
 			}
-			g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 			return false
 		}
 		if i >= 0 && i < len(g.thingStatePhase) {
@@ -400,6 +389,45 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 	default:
 		return true
 	}
+}
+
+func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
+	if i < 0 {
+		return false
+	}
+	if i >= 0 && i < len(g.thingThreshold) {
+		g.thingThreshold[i] = 0
+	}
+	if _, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty); wake || g.monsterLookForPlayer(i, false, tx, ty) {
+		if i >= 0 && i < len(g.thingAggro) {
+			g.thingAggro[i] = true
+		}
+		g.emitMonsterSeeSound(i, typ, tx, ty)
+		if i >= 0 && i < len(g.thingStatePhase) {
+			g.thingStatePhase[i] = 0
+		}
+		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
+		return true
+	}
+	return false
+}
+
+func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) bool {
+	if i < 0 {
+		return false
+	}
+	if g.monsterLookForPlayer(i, true, tx, ty) {
+		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
+		return false
+	}
+	if i >= 0 && i < len(g.thingStatePhase) {
+		g.thingStatePhase[i] = 0
+	}
+	if g.monsterRunLookState(i, typ, tx, ty) {
+		return true
+	}
+	g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
+	return false
 }
 
 func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
@@ -684,6 +712,14 @@ func (g *game) ensureMonsterAIState() {
 		return
 	}
 	n := len(g.m.Things)
+	if len(g.thingAmbush) != n {
+		old := g.thingAmbush
+		g.thingAmbush = make([]bool, n)
+		copy(g.thingAmbush, old)
+		for i := len(old); i < n; i++ {
+			g.thingAmbush[i] = int(g.m.Things[i].Flags)&thingFlagAmbush != 0
+		}
+	}
 	if len(g.thingTargetPlayer) != n {
 		old := g.thingTargetPlayer
 		g.thingTargetPlayer = make([]bool, n)
@@ -2279,12 +2315,24 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	bottomSlope := float64(bz-sightZStart) / totalDist
 
 	intercepts := g.losInterceptScratch[:0]
+	trace := divline{x: ax, y: ay, dx: bx - ax, dy: by - ay}
 	for i, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(ax, ay, bx, by, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok || frac <= 0 || frac >= 1 {
+		s1 := doomDivlineSideExact(ld.x1, ld.y1, trace)
+		s2 := doomDivlineSideExact(ld.x2, ld.y2, trace)
+		if s1 == s2 {
 			continue
 		}
-		intercepts = insertInterceptOrdered(intercepts, intercept{frac: frac, line: i})
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		s1 = doomDivlineSideExact(trace.x, trace.y, lineDL)
+		s2 = doomDivlineSideExact(trace.x+trace.dx, trace.y+trace.dy, lineDL)
+		if s1 == s2 {
+			continue
+		}
+		frac := interceptVector(trace, lineDL)
+		if frac <= 0 || frac >= fracUnit {
+			continue
+		}
+		intercepts = insertInterceptOrdered(intercepts, intercept{frac: float64(frac) / float64(fracUnit), line: i})
 	}
 	g.losInterceptScratch = intercepts[:0]
 	if len(intercepts) == 0 {
@@ -2294,10 +2342,33 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	for _, it := range intercepts {
 		ld := g.lines[it.line]
 		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
+			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+				var wantTic, wantIdx int
+				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+						traceS1 := doomDivlineSideExact(ld.x1, ld.y1, trace)
+						traceS2 := doomDivlineSideExact(ld.x2, ld.y2, trace)
+						lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+						lineS1 := doomDivlineSideExact(trace.x, trace.y, lineDL)
+						lineS2 := doomDivlineSideExact(trace.x+trace.dx, trace.y+trace.dy, lineDL)
+						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=onesided flags=%d traceSides=%d/%d lineSides=%d/%d ax=%d ay=%d bx=%d by=%d\n",
+							g.demoTick-1, g.worldTic, it.line, it.frac, ld.flags, traceS1, traceS2, lineS1, lineS2, ax, ay, bx, by)
+					}
+				}
+			}
 			return false
 		}
 		front, back := g.physLineSectors(ld)
 		if front < 0 || back < 0 || front >= len(g.sectorFloor) || back >= len(g.sectorFloor) || front >= len(g.sectorCeil) || back >= len(g.sectorCeil) {
+			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+				var wantTic, wantIdx int
+				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=badsectors front=%d back=%d\n",
+							g.demoTick-1, g.worldTic, it.line, it.frac, front, back)
+					}
+				}
+			}
 			return false
 		}
 		if g.sectorFloor[front] == g.sectorFloor[back] && g.sectorCeil[front] == g.sectorCeil[back] {
@@ -2305,6 +2376,15 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
 		if openrange <= 0 {
+			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+				var wantTic, wantIdx int
+				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=closed opentop=%d openbottom=%d openrange=%d\n",
+							g.demoTick-1, g.worldTic, it.line, it.frac, opentop, openbottom, openrange)
+					}
+				}
+			}
 			return false
 		}
 		dist := totalDist * it.frac
@@ -2324,6 +2404,15 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 			}
 		}
 		if topSlope <= bottomSlope {
+			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+				var wantTic, wantIdx int
+				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=slope topslope=%f bottomslope=%f opentop=%d openbottom=%d\n",
+							g.demoTick-1, g.worldTic, it.line, it.frac, topSlope, bottomSlope, opentop, openbottom)
+					}
+				}
+			}
 			return false
 		}
 	}
@@ -2374,7 +2463,18 @@ func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 			break
 		}
 	}
-	return g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
+	ok := g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+		return ok
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
+		if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+			fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=los ok=%t actor=(%d,%d,%d) player=(%d,%d,%d)\n",
+				g.demoTick-1, g.worldTic, i, ok, x, y, z, g.p.x, g.p.y, g.p.z)
+		}
+	}
+	return ok
 }
 
 func (g *game) monsterSupportHeights(i int, th mapdata.Thing) (int64, int64, int64) {
@@ -2390,12 +2490,12 @@ func (g *game) monsterAcquireSectorSoundTarget(i int, tx, ty int64) (hasSoundTar
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return false, false
 	}
-	sec := g.sectorAt(tx, ty)
+	sec := g.thingSectorCached(i, g.m.Things[i])
 	if sec < 0 || sec >= len(g.sectorSoundTarget) || !g.sectorSoundTarget[sec] {
 		return false, false
 	}
 	g.setMonsterTargetPlayer(i)
-	if int(g.m.Things[i].Flags)&thingFlagAmbush != 0 {
+	if i < len(g.thingAmbush) && g.thingAmbush[i] {
 		return true, g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty)
 	}
 	return true, true
@@ -2422,6 +2522,15 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 				return false
 			}
 			if !g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty) {
+				if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+					var wantTic, wantIdx int
+					if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+						if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+							fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=look los=0 look=%d allaround=%t tx=%d ty=%d player=(%d,%d)\n",
+								g.demoTick-1, g.worldTic, i, look, allAround, tx, ty, g.p.x, g.p.y)
+						}
+					}
+				}
 				look = (look + 1) & 3
 				continue
 			}
@@ -2448,6 +2557,15 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 			}
 			if i >= 0 && i < len(g.thingLastLook) {
 				g.thingLastLook[i] = look
+			}
+			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+				var wantTic, wantIdx int
+				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+					if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+						fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=look acquired look=%d allaround=%t tx=%d ty=%d player=(%d,%d)\n",
+							g.demoTick-1, g.worldTic, i, look, allAround, tx, ty, g.p.x, g.p.y)
+					}
+				}
 			}
 			g.setMonsterTargetPlayer(i)
 			return true
@@ -2582,6 +2700,9 @@ func (g *game) faceMonsterToward(i int, fromX, fromY, toX, toY int64) {
 	angle := doomPointToAngle2(fromX, fromY, toX, toY)
 	g.debugMonsterAngle(i, "face-target", angle)
 	g.setThingWorldAngle(i, angle)
+	if i >= 0 && i < len(g.thingAmbush) {
+		g.thingAmbush[i] = false
+	}
 }
 
 func (g *game) debugMonsterAngle(i int, src string, angle uint32) {

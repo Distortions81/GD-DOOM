@@ -248,12 +248,14 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 	}
 	type orderedDemoTraceMobj struct {
 		order int64
+		idx   int
 		mobj  demoTraceMobj
 	}
 	ordered := make([]orderedDemoTraceMobj, 0, 1+len(g.m.Things)+len(g.projectiles))
 	playerState, playerTics := g.demoTracePlayerMobjState()
 	ordered = append(ordered, orderedDemoTraceMobj{
 		order: 0,
+		idx:   -1,
 		mobj: demoTraceMobj{
 		Type:         0,
 		X:            g.p.x,
@@ -312,6 +314,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: order,
+			idx:   i,
 			mobj: demoTraceMobj{
 			Type:         demoTraceThingType(th.Type),
 			X:            x,
@@ -362,6 +365,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: p.order,
+			idx:   -1,
 			mobj: demoTraceMobj{
 			Type:         demoTraceProjectileType(p),
 			X:            p.x,
@@ -411,6 +415,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: fx.order,
+			idx:   -1,
 			mobj: demoTraceMobj{
 				Type:         demoTraceProjectileImpactType(fx.kind),
 				X:            fx.x,
@@ -457,6 +462,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: p.order,
+			idx:   -1,
 			mobj: demoTraceMobj{
 			Type:         mobjType,
 			X:            p.x,
@@ -500,8 +506,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantOrdinal); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 			for idx, item := range ordered {
 				if idx == wantOrdinal {
-					fmt.Printf("trace-mobj-debug tic=%d ordinal=%d order=%d type=%d x=%d y=%d sector=%d kind=%s target=%d target_type=%d\n",
-						g.demoTick-1, idx, item.order, item.mobj.Type, item.mobj.X, item.mobj.Y, item.mobj.Sector, item.mobj.Kind, item.mobj.Target, item.mobj.TargetType)
+					fmt.Printf("trace-mobj-debug tic=%d ordinal=%d order=%d idx=%d type=%d x=%d y=%d sector=%d kind=%s target=%d target_type=%d\n",
+						g.demoTick-1, idx, item.order, item.idx, item.mobj.Type, item.mobj.X, item.mobj.Y, item.mobj.Sector, item.mobj.Kind, item.mobj.Target, item.mobj.TargetType)
 				}
 			}
 		}

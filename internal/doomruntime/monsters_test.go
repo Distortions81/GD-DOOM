@@ -147,7 +147,7 @@ func TestTickMonstersWakesByNoiseWithoutLOSForNonAmbush(t *testing.T) {
 		thingCooldown:     []int{0},
 		sectorSoundTarget: []bool{true},
 		stats:             playerStats{Health: 100},
-		p:                 player{x: 0, y: 0},
+		p:                 player{x: 1024 * fracUnit, y: 0},
 	}
 	g.initPhysics()
 	g.tickMonsters()
@@ -193,6 +193,121 @@ func TestTickMonstersAmbushNoiseSetsTargetWithoutWakeWhenLOSBlocked(t *testing.T
 	}
 	if !g.thingTargetPlayer[0] {
 		t.Fatal("ambush monster should retain player target from sound target even when it stays asleep")
+	}
+}
+
+func TestTickMonstersLostTargetFallsThroughSpawnLookSameTicLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 2048, Y: 0},
+				{Type: 3004, X: 2560, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 1024, Y: -64},
+				{X: 1024, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{30, 0},
+		thingAggro:        []bool{true, false},
+		thingTargetPlayer: []bool{false, false},
+		thingTargetIdx:    []int{1, -1},
+		thingThreshold:    []int{66, 0},
+		thingMoveDir:      []monsterMoveDir{monsterDirEast, monsterDirNoDir},
+		thingMoveCount:    []int{1, 0},
+		thingState:        []monsterThinkState{monsterStateSee, monsterStateSpawn},
+		thingStatePhase:   []int{3, 0},
+		thingStateTics:    []int{1, 10},
+		thingLastLook:     []int{0, 0},
+		thingCooldown:     []int{0, 0},
+		sectorSoundTarget: []bool{true},
+		soundQueue:        make([]soundEvent, 0, 4),
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	g.tickMonsters()
+	if !g.thingTargetPlayer[0] {
+		t.Fatal("monster should reacquire the player on the same tic it loses a dead target")
+	}
+	if g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target idx=%d want -1 after reacquiring player", g.thingTargetIdx[0])
+	}
+	if g.thingThreshold[0] != 0 {
+		t.Fatalf("threshold=%d want 0 after lost-target chase fallback", g.thingThreshold[0])
+	}
+	if g.thingState[0] != monsterStateSee {
+		t.Fatalf("state=%d want see after spawn look reacquires player", g.thingState[0])
+	}
+	if g.thingStatePhase[0] != 0 {
+		t.Fatalf("phase=%d want 0 after entering see state from spawn look", g.thingStatePhase[0])
+	}
+	if want := monsterSeeStateTicsAtPhase(3002, 0, false); g.thingStateTics[0] != want {
+		t.Fatalf("state tics=%d want %d", g.thingStateTics[0], want)
+	}
+	if len(g.soundQueue) == 0 {
+		t.Fatalf("reacquire should emit seesound, queue=%v", g.soundQueue)
+	}
+}
+
+func TestMonsterAcquireSectorSoundTargetUsesCachedThingSector(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 2048, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingSectorCache:   []int{1},
+		sectorSoundTarget:  []bool{false, true},
+		thingTargetPlayer:  []bool{false},
+		thingTargetIdx:     []int{-1},
+		stats:              playerStats{Health: 100},
+		p:                  player{x: 0, y: 0},
+	}
+	hasSoundTarget, wake := g.monsterAcquireSectorSoundTarget(0, 2048*fracUnit, 0)
+	if !hasSoundTarget || !wake {
+		t.Fatalf("hasSoundTarget=%t wake=%t want true/true", hasSoundTarget, wake)
+	}
+	if !g.thingTargetPlayer[0] {
+		t.Fatal("monster should target player when cached sector has sound target")
+	}
+}
+
+func TestMonsterAcquireSectorSoundTargetUsesRuntimeAmbushState(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 2048, Y: 0, Flags: thingFlagAmbush},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingSectorCache:   []int{0},
+		thingAmbush:        []bool{false},
+		sectorSoundTarget:  []bool{true},
+		thingTargetPlayer:  []bool{false},
+		thingTargetIdx:     []int{-1},
+		stats:              playerStats{Health: 100},
+		p:                  player{x: 0, y: 0},
+	}
+	hasSoundTarget, wake := g.monsterAcquireSectorSoundTarget(0, 2048*fracUnit, 0)
+	if !hasSoundTarget || !wake {
+		t.Fatalf("hasSoundTarget=%t wake=%t want true/true after ambush cleared at runtime", hasSoundTarget, wake)
 	}
 }
 

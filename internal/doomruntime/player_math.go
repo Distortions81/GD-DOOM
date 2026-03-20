@@ -18,6 +18,38 @@ type divline struct {
 	dy int64
 }
 
+func doomDivlineSideExact(x, y int64, line divline) int {
+	if line.dx == 0 {
+		if x == line.x {
+			return 2
+		}
+		if x <= line.x {
+			return b2i(line.dy > 0)
+		}
+		return b2i(line.dy < 0)
+	}
+	if line.dy == 0 {
+		if y == line.y {
+			return 2
+		}
+		if y <= line.y {
+			return b2i(line.dx < 0)
+		}
+		return b2i(line.dx > 0)
+	}
+	dx := x - line.x
+	dy := y - line.y
+	left := fixedMul(line.dy>>8, dx>>8)
+	right := fixedMul(dy>>8, line.dx>>8)
+	if right < left {
+		return 0
+	}
+	if left == right {
+		return 2
+	}
+	return 1
+}
+
 func doomPointOnDivlineSide(x, y int64, line divline) int {
 	if line.dx == 0 {
 		if x <= line.x {

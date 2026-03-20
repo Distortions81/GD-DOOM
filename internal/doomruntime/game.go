@@ -517,6 +517,7 @@ type game struct {
 	thingBlockCells       [][]int
 	thingHP               []int
 	thingAggro            []bool
+	thingAmbush           []bool
 	thingTargetPlayer     []bool
 	thingTargetIdx        []int
 	thingThreshold        []int
@@ -1177,6 +1178,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingBlockCell = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
+	g.thingAmbush = make([]bool, len(m.Things))
 	g.thingTargetPlayer = make([]bool, len(m.Things))
 	g.thingTargetIdx = make([]int, len(m.Things))
 	for i := range g.thingTargetIdx {
@@ -1284,6 +1286,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingSectorCache = make([]int, len(g.m.Things))
 	for i := range g.thingSectorCache {
 		th := g.m.Things[i]
+		g.thingAmbush[i] = int(th.Flags)&thingFlagAmbush != 0
 		g.thingX[i] = int64(th.X) << fracBits
 		g.thingY[i] = int64(th.Y) << fracBits
 		g.thingAngleState[i] = thingDegToWorldAngle(th.Angle)
