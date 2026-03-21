@@ -642,13 +642,6 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
 	fx.lastLook = p.lastLook
-	if p.kind == projectileRocket {
-		// Rocket explosions need to consume one tic immediately to match Doom's
-		// in-place missile thinker transition timing.
-		if !g.advanceProjectileImpactTic(fx) {
-			g.projectileImpacts = g.projectileImpacts[:len(g.projectileImpacts)-1]
-		}
-	}
 }
 
 func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int64) int {
@@ -680,11 +673,6 @@ func (g *game) finalizeDeferredProjectileImpact(idx int) {
 	fx.tics -= base - first
 	fx.totalTics -= base - first
 	fx.phaseTics = first
-	if fx.kind == projectileRocket {
-		if !g.advanceProjectileImpactTic(fx) {
-			g.projectileImpacts = append(g.projectileImpacts[:idx], g.projectileImpacts[idx+1:]...)
-		}
-	}
 }
 
 func (g *game) advanceProjectileImpactTic(fx *projectileImpact) bool {

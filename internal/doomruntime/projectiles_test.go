@@ -416,8 +416,33 @@ func TestDeferredRocketImpactRandomizesAfterSplashPoint(t *testing.T) {
 	if got := g.projectileImpacts[0].order; got != 7 {
 		t.Fatalf("impact order=%d want=7", got)
 	}
-	if got := g.projectileImpacts[0].phaseTics; got < 4 || got > 7 {
-		t.Fatalf("impact phaseTics=%d want in [4,7] after immediate advance", got)
+	if got := g.projectileImpacts[0].phase; got != 0 {
+		t.Fatalf("impact phase=%d want=0", got)
+	}
+	if got := g.projectileImpacts[0].phaseTics; got < 5 || got > 8 {
+		t.Fatalf("impact phaseTics=%d want in [5,8] before first impact tic advances", got)
+	}
+}
+
+func TestSpawnProjectileImpactFrom_RocketKeepsFirstImpactTic(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+	p := projectile{kind: projectileRocket, angle: 123, order: 7}
+
+	g.spawnProjectileImpactFrom(p, 10, 20, 30)
+
+	if got := len(g.projectileImpacts); got != 1 {
+		t.Fatalf("impact count=%d want=1", got)
+	}
+	fx := g.projectileImpacts[0]
+	if got := fx.phase; got != 0 {
+		t.Fatalf("impact phase=%d want=0", got)
+	}
+	if got := fx.phaseTics; got < 5 || got > 8 {
+		t.Fatalf("impact phaseTics=%d want in [5,8]", got)
+	}
+	if got := fx.tics; got < 15 || got > 18 {
+		t.Fatalf("impact total tics=%d want in [15,18]", got)
 	}
 }
 
