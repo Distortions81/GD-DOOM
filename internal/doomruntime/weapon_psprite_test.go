@@ -202,6 +202,35 @@ func TestWeaponSwitchDoesNotFlipReadyWeaponUntilLowerCompletes(t *testing.T) {
 	}
 }
 
+func TestZeroTicRefireAmmoSwitchDoesNotLowerTwice(t *testing.T) {
+	g := &game{
+		stats: playerStats{Rockets: 0, Shells: 4},
+		inventory: playerInventory{
+			ReadyWeapon: weaponRocketLauncher,
+			Weapons: map[int16]bool{
+				2001: true,
+				2003: true,
+			},
+		},
+	}
+
+	g.weaponPSpriteY = 44
+	g.setWeaponPSpriteState(weaponStateRocketAtk3, false)
+
+	if g.weaponState != weaponStateRocketDown {
+		t.Fatalf("weapon state=%v want=%v", g.weaponState, weaponStateRocketDown)
+	}
+	if g.weaponPSpriteY != 50 {
+		t.Fatalf("weapon y=%d want=50 after single lower step", g.weaponPSpriteY)
+	}
+	if g.inventory.ReadyWeapon != weaponRocketLauncher {
+		t.Fatalf("ready weapon=%v want rocket launcher before lower completes", g.inventory.ReadyWeapon)
+	}
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun", g.inventory.PendingWeapon)
+	}
+}
+
 func TestNewGameStartsWeaponBringUpLikeVanilla(t *testing.T) {
 	g := newGame(&mapdata.Map{}, Options{})
 	if g.weaponState != weaponStatePistolUp {

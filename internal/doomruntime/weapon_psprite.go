@@ -430,10 +430,26 @@ func (g *game) setWeaponPSpriteState(state weaponPspriteState, flash bool) {
 		case weaponPspriteActionLight2:
 			g.weaponActionLight2(state)
 		}
-		if def.tics != 0 {
+		var currentState weaponPspriteState
+		var currentTics int
+		if flash {
+			currentState = g.weaponFlashState
+			currentTics = g.weaponFlashTics
+		} else {
+			currentState = g.weaponState
+			currentTics = g.weaponStateTics
+		}
+		if currentTics != 0 {
 			return
 		}
-		state = def.next
+		if currentState == weaponStateNone {
+			return
+		}
+		nextDef, ok := weaponPspriteDefs[currentState]
+		if !ok {
+			return
+		}
+		state = nextDef.next
 	}
 }
 
