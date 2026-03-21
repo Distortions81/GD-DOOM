@@ -1192,17 +1192,26 @@ func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackO
 }
 
 func (g *game) bulletSlopeForAim(baseAngle uint32, rng int64) int64 {
+	_, slope := g.playerMissileAim(baseAngle, rng)
+	return slope
+}
+
+func (g *game) playerMissileAim(baseAngle uint32, rng int64) (uint32, int64) {
 	actor := g.playerLineAttackActor()
 	if slope, ok := g.aimLineAttack(actor, baseAngle, rng); ok {
-		return slope
+		return baseAngle, slope
 	}
-	if slope, ok := g.aimLineAttack(actor, baseAngle+doomAimFallbackAng, rng); ok {
-		return slope
+	if angle := baseAngle + doomAimFallbackAng; true {
+		if slope, ok := g.aimLineAttack(actor, angle, rng); ok {
+			return angle, slope
+		}
 	}
-	if slope, ok := g.aimLineAttack(actor, baseAngle-doomAimFallbackAng, rng); ok {
-		return slope
+	if angle := baseAngle - doomAimFallbackAng; true {
+		if slope, ok := g.aimLineAttack(actor, angle, rng); ok {
+			return angle, slope
+		}
 	}
-	return 0
+	return baseAngle, 0
 }
 
 func (g *game) aimSlopeAtAngle(angle uint32, rng int64) (float64, bool) {

@@ -374,12 +374,12 @@ func (g *game) spawnPlayerRocket() bool {
 		rocketHeight = 8 * fracUnit
 		rocketTTL    = 10 * doomTicsPerSecond
 	)
-	vx := fixedMul(rocketSpeed, doomFineCosine(g.p.angle))
-	vy := fixedMul(rocketSpeed, doomFineSineAtAngle(g.p.angle))
+	angle, slope := g.playerMissileAim(g.p.angle, 1024*fracUnit)
+	vx := fixedMul(rocketSpeed, doomFineCosine(angle))
+	vy := fixedMul(rocketSpeed, doomFineSineAtAngle(angle))
 	if vx == 0 && vy == 0 {
 		return false
 	}
-	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
 	vz := fixedMul(rocketSpeed, slope)
 	sx := g.p.x
 	sy := g.p.y
@@ -403,7 +403,7 @@ func (g *game) spawnPlayerRocket() bool {
 		lastLook:     lastLook,
 		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(projectileRocket)),
 		kind:         projectileRocket,
-		angle:        g.p.angle,
+		angle:        angle,
 		order:        g.allocThinkerOrder(),
 	}
 	if !g.finishProjectileSpawn(&p) {
@@ -446,12 +446,12 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 	if g == nil {
 		return false
 	}
-	vx := fixedMul(speed, doomFineCosine(g.p.angle))
-	vy := fixedMul(speed, doomFineSineAtAngle(g.p.angle))
+	angle, slope := g.playerMissileAim(g.p.angle, 1024*fracUnit)
+	vx := fixedMul(speed, doomFineCosine(angle))
+	vy := fixedMul(speed, doomFineSineAtAngle(angle))
 	if vx == 0 && vy == 0 {
 		return false
 	}
-	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
 	vz := fixedMul(speed, slope)
 	sx := g.p.x
 	sy := g.p.y
@@ -475,7 +475,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		lastLook:     lastLook,
 		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(kind)),
 		kind:         kind,
-		angle:        g.p.angle,
+		angle:        angle,
 		order:        g.allocThinkerOrder(),
 	}
 	if !g.finishProjectileSpawn(&p) {

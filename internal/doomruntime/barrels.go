@@ -229,7 +229,7 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		return
 	}
 	dist := int64(damage)*fracUnit + doomMaxThingRadius
-
+	playerDamage := 0
 	if !g.isDead && playerHeight > 0 {
 		dx := abs(g.p.x - sx)
 		dy := abs(g.p.y - sy)
@@ -242,7 +242,7 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 			playerDist = 0
 		}
 		if playerDist < int64(damage) && g.actorHasLOS(g.p.x, g.p.y, g.p.z, playerHeight, sx, sy, sz, sheight) {
-			g.damagePlayerFrom(damage-int(playerDist), msg, sx, sy, true)
+			playerDamage = damage - int(playerDist)
 		}
 	}
 
@@ -316,10 +316,16 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 				}
 			}
 		}
+		if playerDamage > 0 {
+			g.damagePlayerFrom(playerDamage, msg, sx, sy, true)
+		}
 		return
 	}
 	for i := range g.m.Things {
 		visitThing(i)
+	}
+	if playerDamage > 0 {
+		g.damagePlayerFrom(playerDamage, msg, sx, sy, true)
 	}
 }
 
