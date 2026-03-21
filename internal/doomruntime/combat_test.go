@@ -948,6 +948,81 @@ func TestLineAttackInterceptsIncludeDeadCorpse(t *testing.T) {
 	}
 }
 
+func TestAimLineAttackSkipsDeadCorpseAndTargetsLiveMonster(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 64, Y: 0},
+				{Type: 3004, X: 128, Y: 0},
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{0, 20},
+		thingDead:         []bool{true, false},
+		thingX:            []int64{64 * fracUnit, 128 * fracUnit},
+		thingY:            []int64{0, 0},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+		p:                 player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+	}
+
+	got := g.bulletSlopeForAim(g.p.angle, pistolRange)
+	trace := divline{x: g.p.x, y: g.p.y, dx: pistolRange, dy: 0}
+	frac, ok := lineAttackThingFrac(trace, g.thingX[1], g.thingY[1], thingTypeRadius(g.m.Things[1].Type))
+	if !ok {
+		t.Fatal("expected live monster to be aimable")
+	}
+	dist := fixedMul(pistolRange, frac)
+	wantTop := fixedDiv(monsterHeight(3004)-g.playerShootZ(), dist)
+	wantBottom := fixedDiv(-g.playerShootZ(), dist)
+	want := (wantTop + wantBottom) / 2
+
+	if diff := got - want; diff < -2 || diff > 2 {
+		t.Fatalf("slope=%d want≈%d when dead corpse is in front of live monster", got, want)
+	}
+}
+
+func TestDamageMonsterFatalThrustConsumesDoomForwardFallRandom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3001, X: 128, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{5},
+		thingDead:         []bool{false},
+		thingX:            []int64{128 * fracUnit},
+		thingY:            []int64{0},
+		thingZState:       []int64{128 * fracUnit},
+		thingFloorState:   []int64{128 * fracUnit},
+		thingCeilState:    []int64{256 * fracUnit},
+		thingSupportValid: []bool{true},
+		thingDeathTics:    []int{0},
+		thingMomX:         []int64{0},
+		thingMomY:         []int64{0},
+		thingMomZ:         []int64{0},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{0},
+		thingStatePhase:   []int{0},
+		thingPainTics:     []int{0},
+		thingAttackTics:   []int{0},
+		thingAttackFireTics: []int{
+			-1,
+		},
+		p: player{x: 0, y: 0, z: 0},
+	}
+
+	_, before := doomrand.State()
+	g.damageMonsterFrom(0, 10, true, -1, 0, 0, false)
+	_, after := doomrand.State()
+
+	if got := prandDelta(before, after); got != 2 {
+		t.Fatalf("prandom delta=%d want=2 (forward-fall check + death shorten)", got)
+	}
+}
+
 func TestHitscanPuffsExpire(t *testing.T) {
 	g := &game{}
 	g.spawnHitscanPuff(0, 0, 0)

@@ -986,8 +986,11 @@ func (g *game) aimLineAttack(actor lineAttackActor, angle uint32, distance int64
 			continue
 		}
 
-		_, _, z, height, _, _, _, ok := g.lineAttackTargetState(in.target)
+		_, _, z, height, _, _, shootable, ok := g.lineAttackTargetState(in.target)
 		if !ok {
+			continue
+		}
+		if !shootable {
 			continue
 		}
 		dist := fixedMul(distance, in.frac)
@@ -1348,7 +1351,7 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 	}
 	thingType := g.m.Things[thingIdx].Type
-	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
@@ -1492,21 +1495,26 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	}
 }
 
-func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
+func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, hpBefore int) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
-	ix, iy, ok := g.damageInflictorPos(sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
+	ix, iy, iz, ok := g.damageInflictorPos(sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	if !ok {
 		return
 	}
 	tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+	tz, _, _ := g.thingSupportState(thingIdx, g.m.Things[thingIdx])
 	mass := thingTypeMass(g.m.Things[thingIdx].Type)
 	if mass <= 0 {
 		return
 	}
 	angle := doomPointToAngle2(ix, iy, tx, ty)
 	thrust := int64(damage) * (fracUnit >> 3) * 100 / int64(mass)
+	if damage < 40 && damage > hpBefore && tz-iz > 64*fracUnit && doomrand.PRandom()&1 != 0 {
+		angle += degToAngle(180)
+		thrust *= 4
+	}
 	momx := fixedMul(thrust, doomFineCosine(angle))
 	momy := fixedMul(thrust, doomFineSineAtAngle(angle))
 	if want := os.Getenv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && os.Getenv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
@@ -1558,18 +1566,29 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	g.setThingMomentum(thingIdx, momx, momy, 0)
 }
 
-func (g *game) damageInflictorPos(sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) (x, y int64, ok bool) {
+func (g *game) damageInflictorPos(sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) (x, y, z int64, ok bool) {
 	if hasInflictor {
-		return inflictorX, inflictorY, true
+		if sourcePlayer && inflictorX == g.p.x && inflictorY == g.p.y {
+			return inflictorX, inflictorY, g.p.z, true
+		}
+		if g != nil && g.m != nil && sourceThing >= 0 && sourceThing < len(g.m.Things) {
+			sx, sy := g.thingPosFixed(sourceThing, g.m.Things[sourceThing])
+			if inflictorX == sx && inflictorY == sy {
+				sz, _, _ := g.thingSupportState(sourceThing, g.m.Things[sourceThing])
+				return inflictorX, inflictorY, sz, true
+			}
+		}
+		return inflictorX, inflictorY, 0, true
 	}
 	if sourcePlayer {
-		return g.p.x, g.p.y, true
+		return g.p.x, g.p.y, g.p.z, true
 	}
 	if g == nil || g.m == nil || sourceThing < 0 || sourceThing >= len(g.m.Things) {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	x, y = g.thingPosFixed(sourceThing, g.m.Things[sourceThing])
-	return x, y, true
+	z, _, _ = g.thingSupportState(sourceThing, g.m.Things[sourceThing])
+	return x, y, z, true
 }
 
 func thingTypeMass(typ int16) int {
