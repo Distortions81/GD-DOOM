@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gddoom/internal/doomrand"
+	"gddoom/internal/mapdata"
 )
 
 type demoTraceWriter struct {
@@ -333,11 +334,11 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Height:       height,
 				Tics:         demoTraceThingTics(g, i, th.Type),
 				State:        demoTraceThingState(g, i, th.Type),
-				Flags:        0,
+				Flags:        demoTraceThingFlags(g, i, th),
 				Health:       demoTraceThingHealth(g, i, th.Type),
 				Movedir:      demoTraceThingMoveDir(g, i),
 				Movecount:    demoTraceThingMoveCount(g, i),
-				ReactionTime: demoTraceThingReaction(g, i),
+				ReactionTime: demoTraceThingReaction(g, i, th.Type),
 				Threshold:    demoTraceThingThreshold(g, i),
 				LastLook:     demoTraceThingLastLook(g, i),
 				Subsector:    boolToInt(sec >= 0),
@@ -834,6 +835,17 @@ func demoTraceThingBounds(typ int16) (int64, int64) {
 
 const demoTraceStateGibs = 895
 
+const (
+	demoTraceFlagSpecial   = 0x00000001
+	demoTraceFlagSolid     = 0x00000002
+	demoTraceFlagShootable = 0x00000004
+	demoTraceFlagAmbush    = 0x00000020
+	demoTraceFlagDropoff   = 0x00000400
+	demoTraceFlagDropped   = 0x00020000
+	demoTraceFlagCorpse    = 0x00100000
+	demoTraceFlagCountKill = 0x00400000
+)
+
 func demoTraceThingHealth(g *game, i int, typ int16) int {
 	if thingTypeIsShootable(typ) && i >= 0 && i < len(g.thingHP) {
 		return g.thingHP[i]
@@ -1175,10 +1187,35 @@ func demoTraceThingMomZ(g *game, i int) int64 {
 	return 0
 }
 
-func demoTraceThingReaction(g *game, i int) int {
+func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
+	flags := 0
+	if int(th.Flags)&thingFlagAmbush != 0 {
+		flags |= demoTraceFlagAmbush
+	}
+	switch {
+	case isMonster(th.Type):
+		flags |= demoTraceFlagSolid | demoTraceFlagCountKill
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
+		} else {
+			flags |= demoTraceFlagShootable
+		}
+	case isPickupType(th.Type):
+		flags |= demoTraceFlagSpecial
+		if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
+			flags |= demoTraceFlagDropped
+		}
+	case isBarrelThingType(th.Type):
+		flags |= demoTraceFlagSolid | demoTraceFlagShootable
+	}
+	return flags
+}
+
+func demoTraceThingReaction(g *game, i int, typ int16) int {
 	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 		return g.thingReactionTics[i]
 	}
+	_ = typ
 	return 0
 }
 

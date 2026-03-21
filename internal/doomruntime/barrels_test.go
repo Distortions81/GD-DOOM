@@ -227,6 +227,48 @@ func TestThingBlockmapRebuildPreservesNewestFirstOrder(t *testing.T) {
 	}
 }
 
+func TestRadiusAttackDoesNotSkipLaterThingsWhenDropRebuildsCell(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+				{Type: 3004, X: 0, Y: 32},
+			},
+			BlockMap: &mapdata.BlockMap{OriginX: 0, OriginY: 0, Width: 1, Height: 1},
+		},
+		thingCollected: make([]bool, 2),
+		thingDropped:   make([]bool, 2),
+		thingHP:        []int{20, 20},
+		thingDead:      make([]bool, 2),
+		thingDeathTics: make([]int, 2),
+		thingState: []monsterThinkState{
+			monsterStateSpawn,
+			monsterStateSpawn,
+		},
+		thingStateTics:   []int{10, 10},
+		thingStatePhase:  make([]int, 2),
+		thingBlockOrder:  []int64{1, 2},
+		thingBlockCell:   []int{-1, -1},
+		thingBlockCells:  make([][]int, 1),
+		thingSectorCache: []int{-1, -1},
+		bmapWidth:        1,
+		bmapHeight:       1,
+	}
+	g.rebuildThingBlockmap()
+
+	g.radiusAttackAt(0, 0, 0, 8*fracUnit, -1, 128, "Explosion", true, -1)
+
+	if !g.thingDead[0] || !g.thingDead[1] {
+		t.Fatalf("thingDead=%v want both monsters dead", g.thingDead[:2])
+	}
+	if got := len(g.m.Things); got != 4 {
+		t.Fatalf("thing count=%d want=4 after two clip drops", got)
+	}
+	if !g.thingDropped[2] || !g.thingDropped[3] {
+		t.Fatalf("drop flags=%v want dropped clips for both kills", g.thingDropped)
+	}
+}
+
 func TestBarrelExplosionLongChain(t *testing.T) {
 	doomrand.Clear()
 	things := make([]mapdata.Thing, 6)

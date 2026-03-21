@@ -810,6 +810,27 @@ func (g *game) projectileSupportStateAt(x, y, radius int64) (int64, int64) {
 	return g.sectorFloor[sec], g.sectorCeil[sec]
 }
 
+func (g *game) refreshProjectileSupportInSector(sec int) {
+	if g == nil || sec < 0 {
+		return
+	}
+	for i := range g.projectiles {
+		p := &g.projectiles[i]
+		if !g.actorTouchesSector(sec, p.x, p.y, p.radius) {
+			continue
+		}
+		p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	}
+	for i := range g.projectileImpacts {
+		fx := &g.projectileImpacts[i]
+		radius := demoTraceProjectileImpactRadius(fx.kind)
+		if !g.actorTouchesSector(sec, fx.x, fx.y, radius) {
+			continue
+		}
+		fx.floorz, fx.ceilz = g.projectileSupportStateAt(fx.x, fx.y, radius)
+	}
+}
+
 func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64) {
 	if g.m == nil {
 		return false, 1, nx, ny, nz

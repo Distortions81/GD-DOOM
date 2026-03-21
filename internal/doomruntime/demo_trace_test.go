@@ -111,8 +111,51 @@ func TestDemoTraceThingReactionDoesNotFallBackToSpawnDefault(t *testing.T) {
 		},
 		thingReactionTics: []int{0},
 	}
-	if got := demoTraceThingReaction(g, 0); got != 0 {
+	if got := demoTraceThingReaction(g, 0, 58); got != 0 {
 		t.Fatalf("reactiontime=%d want 0", got)
+	}
+}
+
+func TestDamageMonsterDeathPreservesExistingReactionTime(t *testing.T) {
+	g := &game{
+		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 3004}}},
+		thingHP:             []int{3},
+		thingAggro:          []bool{false},
+		thingReactionTics:   []int{8},
+		thingDead:           []bool{false},
+		thingDeathTics:      []int{0},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingState:          []monsterThinkState{monsterStateSpawn},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
+		thingX:              []int64{0},
+		thingY:              []int64{0},
+		thingAngleState:     []uint32{0},
+	}
+	g.damageMonsterFrom(0, 8, true, -1, 0, 0, false)
+	if got := g.thingReactionTics[0]; got != 8 {
+		t.Fatalf("reactiontime=%d want 8 after lethal hit", got)
+	}
+}
+
+func TestDemoTraceThingFlagsMatchMonsterAndDroppedPickupDefaults(t *testing.T) {
+	g := &game{
+		thingDead:    []bool{false, true, false},
+		thingDropped: []bool{false, false, true},
+	}
+	alive := mapdata.Thing{Type: 3004, Flags: thingFlagAmbush}
+	if got := demoTraceThingFlags(g, 0, alive); got != 0x400026 {
+		t.Fatalf("alive monster flags=%#x want %#x", got, 0x400026)
+	}
+	dead := mapdata.Thing{Type: 3004, Flags: thingFlagAmbush}
+	if got := demoTraceThingFlags(g, 1, dead); got != 0x500422 {
+		t.Fatalf("dead monster flags=%#x want %#x", got, 0x500422)
+	}
+	dropped := mapdata.Thing{Type: 2007}
+	if got := demoTraceThingFlags(g, 2, dropped); got != 0x20001 {
+		t.Fatalf("dropped pickup flags=%#x want %#x", got, 0x20001)
 	}
 }
 

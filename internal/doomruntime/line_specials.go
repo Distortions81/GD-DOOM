@@ -288,6 +288,7 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 			playerClipped = true
 		}
 		g.heightClipThingsInSector(affected)
+		g.refreshProjectileSupportInSector(affected)
 	}
 }
 
@@ -323,15 +324,13 @@ func thingCollisionRadius(typ int16) int64 {
 	return 20 * fracUnit
 }
 
-func (g *game) thingTouchesSector(sec, i int, th mapdata.Thing) bool {
+func (g *game) actorTouchesSector(sec int, x, y, radius int64) bool {
 	if g == nil || g.m == nil || sec < 0 {
 		return false
 	}
-	x, y := g.thingPosFixed(i, th)
 	if g.sectorAt(x, y) == sec {
 		return true
 	}
-	radius := g.thingCurrentRadius(i, th)
 	box := [4]int64{y + radius, y - radius, x + radius, x - radius}
 	for _, ld := range g.lines {
 		front, back := g.physLineSectors(ld)
@@ -346,6 +345,11 @@ func (g *game) thingTouchesSector(sec, i int, th mapdata.Thing) bool {
 		}
 	}
 	return false
+}
+
+func (g *game) thingTouchesSector(sec, i int, th mapdata.Thing) bool {
+	x, y := g.thingPosFixed(i, th)
+	return g.actorTouchesSector(sec, x, y, g.thingCurrentRadius(i, th))
 }
 
 func (g *game) heightClipThingsInSector(sec int) {

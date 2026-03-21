@@ -209,3 +209,43 @@ func TestTickDoors_NormalDoorReopensWhenPlayerOverlapsDoorwayFromAdjacentSector(
 		t.Fatalf("blocking normal door should reverse open, direction=%d", d.direction)
 	}
 }
+
+func TestSetSectorCeilingHeight_RefreshesProjectileSupportCaches(t *testing.T) {
+	g := newDoorTimingGame(1)
+	g.sectorCeil[1] = 64 * fracUnit
+
+	x := int64(32 * fracUnit)
+	if got := g.sectorAt(x, 0); got != 1 {
+		x = -32 * fracUnit
+		if got := g.sectorAt(x, 0); got != 1 {
+			t.Fatalf("failed to find sample point in sector 1, got sectors %d and %d", g.sectorAt(32*fracUnit, 0), g.sectorAt(-32*fracUnit, 0))
+		}
+	}
+
+	g.projectiles = []projectile{{
+		x:      x,
+		y:      0,
+		z:      32 * fracUnit,
+		radius: 11 * fracUnit,
+		height: 8 * fracUnit,
+		floorz: 0,
+		ceilz:  64 * fracUnit,
+	}}
+	g.projectileImpacts = []projectileImpact{{
+		x:      x,
+		y:      0,
+		z:      32 * fracUnit,
+		kind:   projectileRocket,
+		floorz: 0,
+		ceilz:  64 * fracUnit,
+	}}
+
+	g.setSectorCeilingHeight(1, 96*fracUnit)
+
+	if got := g.projectiles[0].ceilz; got != 96*fracUnit {
+		t.Fatalf("projectile ceilz=%d want=%d", got, 96*fracUnit)
+	}
+	if got := g.projectileImpacts[0].ceilz; got != 96*fracUnit {
+		t.Fatalf("impact ceilz=%d want=%d", got, 96*fracUnit)
+	}
+}

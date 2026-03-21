@@ -1351,9 +1351,6 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
 	}
-	if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
-		g.thingReactionTics[thingIdx] = 0
-	}
 	if g.thingHP[thingIdx] <= 0 {
 		xdeath := g.thingHP[thingIdx] < -monsterSpawnHealth(thingType) && monsterHasXDeath(thingType)
 		if thingIdx >= 0 && thingIdx < len(g.thingDead) {
@@ -1427,6 +1424,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		g.handleBossDeath(thingIdx, thingType)
 	} else {
+		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
+			g.thingReactionTics[thingIdx] = 0
+		}
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {

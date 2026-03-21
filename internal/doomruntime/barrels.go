@@ -434,7 +434,8 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 				if cell == playerCell {
 					visitPlayer()
 				}
-				for _, i := range g.thingBlockCells[cell] {
+				cellThings := append([]int(nil), g.thingBlockCells[cell]...)
+				for _, i := range cellThings {
 					if _, ok := seen[i]; ok {
 						continue
 					}
