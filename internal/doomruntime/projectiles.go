@@ -48,21 +48,21 @@ type projectile struct {
 }
 
 type projectileImpact struct {
-	x         int64
-	y         int64
-	z         int64
-	kind      projectileKind
-	order     int64
+	x            int64
+	y            int64
+	z            int64
+	kind         projectileKind
+	order        int64
 	sourceThing  int
 	sourceType   int16
 	sourcePlayer bool
 	lastLook     int
-	tics      int
-	totalTics int
-	phase     int
-	phaseTics int
-	angle     uint32
-	sprayDone bool
+	tics         int
+	totalTics    int
+	phase        int
+	phaseTics    int
+	angle        uint32
+	sprayDone    bool
 }
 
 func usesMonsterProjectile(typ int16) bool {
@@ -273,15 +273,11 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
 			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
 		}
-		g.spawnProjectileImpactFrom(p, ox, oy, oz)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
-		g.projectileSplashDamage(p, ox, oy, oz)
+		g.explodeProjectileAt(p, ox, oy, oz)
 		return projectile{}, false
 	}
 	if blocked {
-		g.spawnProjectileImpactFrom(p, ox, oy, oz)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
-		g.projectileSplashDamage(p, ox, oy, oz)
+		g.explodeProjectileAt(p, ox, oy, oz)
 		return projectile{}, false
 	}
 	if !p.sourcePlayer && g.projectileHitsPlayerAt(p, nx, ny, nz) {
@@ -298,9 +294,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		if dmg > 0 {
 			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
 		}
-		g.spawnProjectileImpactFrom(p, ox, oy, oz)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
-		g.projectileSplashDamage(p, ox, oy, oz)
+		g.explodeProjectileAt(p, ox, oy, oz)
 		return projectile{}, false
 	}
 	p.x = nx
@@ -310,9 +304,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	g.tickProjectileAnim(&p)
 	p.ttl--
 	if p.ttl <= 0 {
-		g.spawnProjectileImpactFrom(p, p.x, p.y, p.z)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-		g.projectileSplashDamage(p, p.x, p.y, p.z)
+		g.explodeProjectileAt(p, p.x, p.y, p.z)
 		return projectile{}, false
 	}
 	return p, true
@@ -362,6 +354,22 @@ func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
 		return
 	}
 	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind), p.sourcePlayer, p.sourceThing)
+}
+
+func (g *game) explodeProjectileAt(p projectile, x, y, z int64) {
+	if g == nil {
+		return
+	}
+	if p.kind == projectileRocket {
+		idx := g.spawnProjectileImpactFromDeferredRandom(p, x, y, z)
+		g.projectileSplashDamage(p, x, y, z)
+		g.finalizeDeferredProjectileImpact(idx)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), x, y)
+		return
+	}
+	g.spawnProjectileImpactFrom(p, x, y, z)
+	g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), x, y)
+	g.projectileSplashDamage(p, x, y, z)
 }
 
 func (g *game) spawnPlayerRocket() bool {
@@ -505,24 +513,18 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 		if dmg := projectileDamage(*p); dmg > 0 && g.projectileCanDamageThing(*p, thingHit.idx) {
 			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
 		}
-		g.spawnProjectileImpactFrom(*p, ox, oy, oz)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
-		g.projectileSplashDamage(*p, ox, oy, oz)
+		g.explodeProjectileAt(*p, ox, oy, oz)
 		return false
 	}
 	if blocked {
-		g.spawnProjectileImpactFrom(*p, ox, oy, oz)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
-		g.projectileSplashDamage(*p, ox, oy, oz)
+		g.explodeProjectileAt(*p, ox, oy, oz)
 		return false
 	}
 	if !p.sourcePlayer && g.projectileHitsPlayerAt(*p, nx, ny, nz) {
 		if dmg := projectileDamage(*p); dmg > 0 {
 			g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
 		}
-		g.spawnProjectileImpactFrom(*p, ox, oy, oz)
-		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), ox, oy)
-		g.projectileSplashDamage(*p, ox, oy, oz)
+		g.explodeProjectileAt(*p, ox, oy, oz)
 		return false
 	}
 	p.x = nx
@@ -596,6 +598,35 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 	})
 }
 
+func (g *game) spawnProjectileImpactDeferredRandom(kind projectileKind, x, y, z int64, angle uint32) int {
+	const maxImpacts = 64
+	if len(g.projectileImpacts) >= maxImpacts {
+		copy(g.projectileImpacts, g.projectileImpacts[1:])
+		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
+	}
+	first := projectileImpactPhaseTics(kind, 0)
+	tics := first
+	for phase := 1; ; phase++ {
+		next := projectileImpactPhaseTics(kind, phase)
+		if next <= 0 {
+			break
+		}
+		tics += next
+	}
+	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
+		x:         x,
+		y:         y,
+		z:         z,
+		kind:      kind,
+		order:     g.allocThinkerOrder(),
+		tics:      tics,
+		totalTics: tics,
+		phaseTics: first,
+		angle:     angle,
+	})
+	return len(g.projectileImpacts) - 1
+}
+
 func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 	g.spawnProjectileImpact(p.kind, x, y, z, p.angle)
 	if len(g.projectileImpacts) == 0 {
@@ -616,6 +647,42 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 		// in-place missile thinker transition timing.
 		if !g.advanceProjectileImpactTic(fx) {
 			g.projectileImpacts = g.projectileImpacts[:len(g.projectileImpacts)-1]
+		}
+	}
+}
+
+func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int64) int {
+	idx := g.spawnProjectileImpactDeferredRandom(p.kind, x, y, z, p.angle)
+	if idx < 0 || idx >= len(g.projectileImpacts) {
+		return -1
+	}
+	fx := &g.projectileImpacts[idx]
+	if p.order > 0 {
+		fx.order = p.order
+	}
+	fx.sourceThing = p.sourceThing
+	fx.sourceType = p.sourceType
+	fx.sourcePlayer = p.sourcePlayer
+	fx.lastLook = p.lastLook
+	return idx
+}
+
+func (g *game) finalizeDeferredProjectileImpact(idx int) {
+	if g == nil || idx < 0 || idx >= len(g.projectileImpacts) {
+		return
+	}
+	fx := &g.projectileImpacts[idx]
+	base := projectileImpactPhaseTics(fx.kind, fx.phase)
+	if base <= 0 {
+		return
+	}
+	first := randomizedStateTics(base)
+	fx.tics -= base - first
+	fx.totalTics -= base - first
+	fx.phaseTics = first
+	if fx.kind == projectileRocket {
+		if !g.advanceProjectileImpactTic(fx) {
+			g.projectileImpacts = append(g.projectileImpacts[:idx], g.projectileImpacts[idx+1:]...)
 		}
 	}
 }

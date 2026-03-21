@@ -1659,6 +1659,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingFloorState = append(g.thingFloorState, 0)
 	g.thingCeilState = append(g.thingCeilState, 0)
 	g.thingSupportValid = append(g.thingSupportValid, false)
+	g.thingBlockOrder = append(g.thingBlockOrder, g.allocBlockmapOrder())
 	g.thingBlockCell = append(g.thingBlockCell, -1)
 	g.thingHP = append(g.thingHP, 0)
 	g.thingAggro = append(g.thingAggro, false)

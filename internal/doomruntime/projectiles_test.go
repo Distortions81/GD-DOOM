@@ -393,6 +393,34 @@ func TestAdvanceProjectileImpactTicTransitionsPhase(t *testing.T) {
 	}
 }
 
+func TestDeferredRocketImpactRandomizesAfterSplashPoint(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+	p := projectile{kind: projectileRocket, angle: 123, order: 7}
+
+	_, p0 := doomrand.State()
+	idx := g.spawnProjectileImpactFromDeferredRandom(p, 10, 20, 30)
+	_, p1 := doomrand.State()
+	if got := prandDelta(p0, p1); got != 0 {
+		t.Fatalf("pre-finalize p-random calls=%d want=0", got)
+	}
+	if idx != 0 || len(g.projectileImpacts) != 1 {
+		t.Fatalf("impact idx=%d count=%d want idx=0 count=1", idx, len(g.projectileImpacts))
+	}
+
+	g.finalizeDeferredProjectileImpact(idx)
+	_, p2 := doomrand.State()
+	if got := prandDelta(p1, p2); got != 1 {
+		t.Fatalf("finalize p-random calls=%d want=1", got)
+	}
+	if got := g.projectileImpacts[0].order; got != 7 {
+		t.Fatalf("impact order=%d want=7", got)
+	}
+	if got := g.projectileImpacts[0].phaseTics; got < 4 || got > 7 {
+		t.Fatalf("impact phaseTics=%d want in [4,7] after immediate advance", got)
+	}
+}
+
 func TestProjectilePassesThroughTwoSidedWindow(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

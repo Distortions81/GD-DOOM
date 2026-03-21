@@ -131,14 +131,14 @@ func TestDamageBarrelPreservesNegativeHealthLikeDoom(t *testing.T) {
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{{Type: barrelThingType, X: 0, Y: 0}},
 		},
-		thingCollected:  []bool{false},
-		thingHP:         []int{20},
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
 		thingReactionTics: []int{8},
-		thingDead:       []bool{false},
-		thingState:      []monsterThinkState{monsterStateSpawn},
-		thingStateTics:  []int{6},
-		thingStatePhase: []int{0},
-		thingDeathTics:  []int{0},
+		thingDead:         []bool{false},
+		thingState:        []monsterThinkState{monsterStateSpawn},
+		thingStateTics:    []int{6},
+		thingStatePhase:   []int{0},
+		thingDeathTics:    []int{0},
 	}
 
 	g.damageBarrel(0, 25)
@@ -184,6 +184,46 @@ func TestDamageShootableThingFrom_PreservesNegativeHealthForMobjBarrelType(t *te
 	}
 	if !g.thingDead[0] {
 		t.Fatal("barrel should be dead after lethal damage")
+	}
+}
+
+func TestThingBlockmapRebuildPreservesNewestFirstOrder(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: barrelThingType, X: 0, Y: 0},
+				{Type: barrelThingType, X: 0, Y: 0},
+				{Type: barrelThingType, X: 0, Y: 0},
+			},
+		},
+		thingX:          []int64{0, 0, 0},
+		thingY:          []int64{0, 0, 0},
+		thingBlockOrder: []int64{1, 2, 3},
+		thingBlockCell:  []int{-1, -1, -1},
+		thingSectorCache: []int{
+			-1, -1, -1,
+		},
+		bmapWidth:       1,
+		bmapHeight:      1,
+		thingBlockCells: make([][]int, 1),
+	}
+
+	g.rebuildThingBlockmap()
+	got := g.thingBlockCells[0]
+	want := []int{2, 1, 0}
+	for i := range want {
+		if i >= len(got) || got[i] != want[i] {
+			t.Fatalf("initial block order=%v want=%v", got, want)
+		}
+	}
+
+	g.setThingPosFixed(0, 0, 0)
+	got = g.thingBlockCells[0]
+	want = []int{0, 2, 1}
+	for i := range want {
+		if i >= len(got) || got[i] != want[i] {
+			t.Fatalf("relinked block order=%v want=%v", got, want)
+		}
 	}
 }
 

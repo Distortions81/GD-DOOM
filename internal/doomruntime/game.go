@@ -342,6 +342,23 @@ func (g *game) allocThinkerOrder() int64 {
 	return order
 }
 
+func (g *game) allocBlockmapOrder() int64 {
+	if g == nil {
+		return 0
+	}
+	if g.nextBlockmapOrder <= 0 {
+		g.nextBlockmapOrder = 1
+		for _, order := range g.thingBlockOrder {
+			if order >= g.nextBlockmapOrder {
+				g.nextBlockmapOrder = order + 1
+			}
+		}
+	}
+	order := g.nextBlockmapOrder
+	g.nextBlockmapOrder++
+	return order
+}
+
 func (g *game) ensureTexturePointerCaches() {
 	if g == nil {
 		return
@@ -515,6 +532,7 @@ type game struct {
 	thingFloorState       []int64
 	thingCeilState        []int64
 	thingSupportValid     []bool
+	thingBlockOrder       []int64
 	thingBlockCell        []int
 	thingBlockCells       [][]int
 	thingHP               []int
@@ -557,6 +575,7 @@ type game struct {
 	impactShadeMul        []uint32
 	hitscanPuffs          []hitscanPuff
 	nextThinkerOrder      int64
+	nextBlockmapOrder     int64
 	cheatLevel            int
 	invulnerable          bool
 	inventory             playerInventory
@@ -1179,6 +1198,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingFloorState = make([]int64, len(m.Things))
 	g.thingCeilState = make([]int64, len(m.Things))
 	g.thingSupportValid = make([]bool, len(m.Things))
+	g.thingBlockOrder = make([]int64, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
@@ -1213,8 +1233,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingWorldAnimRef = make([]thingAnimRefState, len(m.Things))
 	for i := range g.thingThinkerOrder {
 		g.thingThinkerOrder[i] = int64(i + 1)
+		g.thingBlockOrder[i] = int64(i + 1)
 	}
 	g.nextThinkerOrder = int64(len(m.Things) + 1)
+	g.nextBlockmapOrder = int64(len(m.Things) + 1)
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.sectorSoundTarget = make([]bool, len(m.Sectors))
 	for _, sec := range m.Sectors {
@@ -17769,6 +17791,10 @@ func (g *game) setThingPosFixed(i int, x, y int64) {
 		g.thingSectorCache = append(g.thingSectorCache, make([]int, i-len(g.thingSectorCache)+1)...)
 	}
 	g.thingSectorCache[i] = g.sectorAt(x, y)
+	if i >= len(g.thingBlockOrder) {
+		g.thingBlockOrder = append(g.thingBlockOrder, make([]int64, i-len(g.thingBlockOrder)+1)...)
+	}
+	g.thingBlockOrder[i] = g.allocBlockmapOrder()
 	g.updateThingBlockmapIndex(i)
 }
 
@@ -17797,8 +17823,18 @@ func (g *game) rebuildThingBlockmap() {
 	if len(g.thingBlockCell) < len(g.m.Things) {
 		g.thingBlockCell = append(g.thingBlockCell, make([]int, len(g.m.Things)-len(g.thingBlockCell))...)
 	}
+	if len(g.thingBlockOrder) < len(g.m.Things) {
+		start := len(g.thingBlockOrder)
+		g.thingBlockOrder = append(g.thingBlockOrder, make([]int64, len(g.m.Things)-start)...)
+		for i := start; i < len(g.m.Things); i++ {
+			g.thingBlockOrder[i] = g.allocBlockmapOrder()
+		}
+	}
 	for i := range g.m.Things {
 		g.thingBlockCell[i] = -1
+		if g.thingBlockOrder[i] == 0 {
+			g.thingBlockOrder[i] = g.allocBlockmapOrder()
+		}
 	}
 	for i, th := range g.m.Things {
 		x, y := g.thingPosFixed(i, th)
@@ -17808,6 +17844,20 @@ func (g *game) rebuildThingBlockmap() {
 			continue
 		}
 		g.thingBlockCells[cell] = append(g.thingBlockCells[cell], i)
+	}
+	for cell := range g.thingBlockCells {
+		slices.SortStableFunc(g.thingBlockCells[cell], func(a, b int) int {
+			ao := g.thingBlockOrder[a]
+			bo := g.thingBlockOrder[b]
+			switch {
+			case ao > bo:
+				return -1
+			case ao < bo:
+				return 1
+			default:
+				return 0
+			}
+		})
 	}
 }
 
