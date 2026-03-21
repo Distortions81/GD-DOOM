@@ -2314,3 +2314,31 @@ func TestMonsterHasLOSPlayerUsesRuntimeSupportZ(t *testing.T) {
 		t.Fatal("LOS should use the monster runtime z rather than the probed floor height")
 	}
 }
+
+func TestMonsterHasLOSPlayerRejectsByRejectMatrix(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: -64, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+			RejectMatrix: &mapdata.RejectMatrix{
+				SectorCount: 2,
+				Data:        []byte{0x02},
+			},
+		},
+		thingX:          []int64{-64 * fracUnit},
+		thingY:          []int64{0},
+		thingSectorCache: []int{0},
+		sectorFloor:     []int64{0, 0},
+		sectorCeil:      []int64{128 * fracUnit, 128 * fracUnit},
+		p:               player{x: 64 * fracUnit, y: 0, z: 0, sector: 1},
+	}
+
+	if g.monsterHasLOSPlayer(3001, g.thingX[0], g.thingY[0]) {
+		t.Fatal("LOS should fail when the REJECT matrix rejects monster sector to player sector")
+	}
+}

@@ -568,15 +568,32 @@ func (g *game) monsterHasLOSTarget(i int, typ int16, x, y int64) bool {
 	if g == nil || i < 0 {
 		return false
 	}
+	fromSector := -1
+	if g.m != nil && i < len(g.m.Things) {
+		fromSector = g.thingSectorCached(i, g.m.Things[i])
+	}
 	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		if g.sightRejected(fromSector, g.playerSector()) {
+			return false
+		}
 		return g.monsterHasLOSPlayerAt(i, typ, x, y)
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if g.sightRejected(fromSector, g.playerSector()) {
+			return false
+		}
+		return g.monsterHasLOSPlayerAt(i, typ, x, y)
+	}
+	targetIdx, ok := g.monsterTargetThingIdx(i)
+	if !ok {
+		return false
+	}
+	if g.sightRejected(fromSector, g.thingSectorCached(targetIdx, g.m.Things[targetIdx])) {
+		return false
 	}
 	tx, ty, tz, height, _, ok := g.monsterTargetPos(i)
 	if !ok {
 		return false
-	}
-	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
-		return g.monsterHasLOSPlayerAt(i, typ, x, y)
 	}
 	z, _, _ := g.monsterSupportHeights(i, g.m.Things[i])
 	return g.actorHasLOS(x, y, z, monsterHeight(typ), tx, ty, tz, height)
@@ -2477,6 +2494,23 @@ func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 	if g == nil || g.m == nil || len(g.sectorFloor) == 0 {
 		return true
 	}
+	fromSector := g.sectorAt(x, y)
+	if i >= 0 && i < len(g.m.Things) {
+		fromSector = g.thingSectorCached(i, g.m.Things[i])
+	}
+	if g.sightRejected(fromSector, g.playerSector()) {
+		if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+			return false
+		}
+		var wantTic, wantIdx int
+		if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
+			if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+				fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=los-reject from=%d to=%d actor=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, fromSector, g.playerSector(), x, y)
+			}
+		}
+		return false
+	}
 	if typ == 0 {
 		typ = 3004
 	}
@@ -2505,6 +2539,14 @@ func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 		}
 	}
 	return ok
+}
+
+func (g *game) sightRejected(fromSector, toSector int) bool {
+	if g == nil || g.m == nil || g.m.RejectMatrix == nil {
+		return false
+	}
+	rejected, err := g.m.RejectMatrix.Rejects(fromSector, toSector)
+	return err == nil && rejected
 }
 
 func (g *game) monsterSupportHeights(i int, th mapdata.Thing) (int64, int64, int64) {
