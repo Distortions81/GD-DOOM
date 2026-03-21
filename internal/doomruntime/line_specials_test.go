@@ -82,6 +82,45 @@ func TestActivatePlatLine_DownWaitUpStayStartsActiveWithZeroCount(t *testing.T) 
 	}
 }
 
+func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 88, Tag: 7, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+				{FloorHeight: -64, CeilingHeight: 128},
+			},
+		},
+		lineSpecial:      []uint16{88},
+		sectorFloor:      []int64{0, -64 * fracUnit},
+		sectorCeil:       []int64{128 * fracUnit, 128 * fracUnit},
+		platTickedThisTic: true,
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	if got, want := g.sectorFloor[0], int64(-4*fracUnit); got != want {
+		t.Fatalf("floor after same-tic plat activation=%d want %d", got, want)
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.status != platStatusDown {
+		t.Fatalf("status=%v want %v", pt.status, platStatusDown)
+	}
+	if pt.count != 0 {
+		t.Fatalf("count=%d want 0", pt.count)
+	}
+}
+
 func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

@@ -71,6 +71,7 @@ func (g *game) tickPlayerBody() {
 }
 
 func (g *game) tickGameplayWorld() {
+	g.platTickedThisTic = false
 	g.tickThinkers()
 	g.tickWorldLogic()
 }

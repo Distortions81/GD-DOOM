@@ -766,6 +766,9 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			continue
 		}
 		g.plats[sec] = pt
+		if g.platTickedThisTic {
+			g.tickPlat(sec, pt)
+		}
 		activated = true
 	}
 	return activated
@@ -1256,50 +1259,58 @@ func (g *game) tickFloors() {
 }
 
 func (g *game) tickPlats() {
+	g.platTickedThisTic = true
 	for sec, pt := range g.plats {
-		switch pt.status {
-		case platStatusUp:
-			next := g.sectorFloor[sec] + pt.speed
-			if next > pt.high {
-				next = pt.high
-				g.setSectorFloorHeight(sec, next)
-				if pt.typ == platTypeRaiseToNearestAndChange {
-					if pt.finishFlat != "" {
-						g.m.Sectors[sec].FloorPic = pt.finishFlat
-					}
-					g.m.Sectors[sec].Special = pt.finishSpecial
-					g.markDynamicSectorPlaneCacheDirty(sec)
-					delete(g.plats, sec)
-				} else {
-					pt.status = platStatusWaiting
-					pt.count = pt.wait
-				}
-				continue
-			}
+		g.tickPlat(sec, pt)
+	}
+}
+
+func (g *game) tickPlat(sec int, pt *platThinker) {
+	if g == nil || pt == nil {
+		return
+	}
+	switch pt.status {
+	case platStatusUp:
+		next := g.sectorFloor[sec] + pt.speed
+		if next > pt.high {
+			next = pt.high
 			g.setSectorFloorHeight(sec, next)
-		case platStatusDown:
-			next := g.sectorFloor[sec] - pt.speed
-			if next < pt.low {
-				next = pt.low
-				g.setSectorFloorHeight(sec, next)
+			if pt.typ == platTypeRaiseToNearestAndChange {
+				if pt.finishFlat != "" {
+					g.m.Sectors[sec].FloorPic = pt.finishFlat
+				}
+				g.m.Sectors[sec].Special = pt.finishSpecial
+				g.markDynamicSectorPlaneCacheDirty(sec)
+				delete(g.plats, sec)
+			} else {
 				pt.status = platStatusWaiting
 				pt.count = pt.wait
-				continue
 			}
-			g.setSectorFloorHeight(sec, next)
-		case platStatusWaiting:
-			pt.count--
-			if pt.count > 0 {
-				continue
-			}
-			if g.sectorFloor[sec] == pt.low {
-				pt.status = platStatusUp
-			} else {
-				pt.status = platStatusDown
-			}
-		case platStatusInStasis:
-			continue
+			return
 		}
+		g.setSectorFloorHeight(sec, next)
+	case platStatusDown:
+		next := g.sectorFloor[sec] - pt.speed
+		if next < pt.low {
+			next = pt.low
+			g.setSectorFloorHeight(sec, next)
+			pt.status = platStatusWaiting
+			pt.count = pt.wait
+			return
+		}
+		g.setSectorFloorHeight(sec, next)
+	case platStatusWaiting:
+		pt.count--
+		if pt.count > 0 {
+			return
+		}
+		if g.sectorFloor[sec] == pt.low {
+			pt.status = platStatusUp
+		} else {
+			pt.status = platStatusDown
+		}
+	case platStatusInStasis:
+		return
 	}
 }
 

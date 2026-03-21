@@ -765,6 +765,7 @@ type game struct {
 	automapQueueScratch          []automapQueueNode
 	debugPlayerProbeEnabled      bool
 	debugPlayerProbeTic          int
+	platTickedThisTic            bool
 	demoTick                     int
 	demoDoneReported             bool
 	demoBenchStarted             bool
