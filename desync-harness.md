@@ -1,0 +1,101 @@
+# Desync Harness
+
+This repo now has a repeatable demo-desync harness for comparing GD-DOOM against the original Linux DOOM source tree in `../doom-source`.
+
+## Paths
+
+- GD-DOOM repo: `/home/dist/github/GD-DOOM`
+- Original DOOM source tree: `/home/dist/github/doom-source`
+- Reference binary: `/home/dist/github/doom-source/linuxdoom-1.10/linux/linuxxdoom`
+- Harness script: `/home/dist/github/GD-DOOM/scripts/demo_trace_compare.sh`
+- Comparator: `/home/dist/github/GD-DOOM/cmd/demotracecmp`
+
+## What The Harness Does
+
+`scripts/demo_trace_compare.sh` performs the full compare loop:
+
+1. Builds a local GD-DOOM binary if needed.
+2. Builds `cmd/demotracecmp`.
+3. Runs the original DOOM executable with `-tracedemo <demo lump> -tracefile <path>`.
+4. Runs GD-DOOM with `-demo <file> -trace-demo-state <path>`.
+5. Compares the resulting JSONL tic traces and stops at the first mismatch.
+
+The comparator already ignores a small set of known non-parity fields, so the reported mismatch is usually actionable.
+
+## Requirements
+
+- `../doom-source` must exist and contain a built `linuxxdoom`.
+- `DOOM1.WAD` must be available in the GD-DOOM repo root unless overridden.
+- `xvfb-run` must be installed.
+
+Notes:
+
+- The reference runtime already includes trace support via `-tracedemo` and `-tracefile`.
+- GD-DOOM does not emit per-tic demo traces under `-render=false`; for now the harness runs GD-DOOM under `xvfb-run`.
+
+## Default Inputs
+
+- Reference demo lump: `demo1`
+- GD-DOOM demo file: `/home/dist/github/GD-DOOM/demos/DOOM1-DEMO1.lmp`
+- Output directory: `/home/dist/github/GD-DOOM/tmp/demo-trace-compare`
+
+These defaults are set up to compare the built-in `DEMO1` lump from the original runtime against the extracted `.lmp` file in this repo.
+
+## Basic Usage
+
+From `/home/dist/github/GD-DOOM`:
+
+```bash
+scripts/demo_trace_compare.sh
+```
+
+Useful overrides:
+
+```bash
+scripts/demo_trace_compare.sh --out /tmp/demo-trace-check
+scripts/demo_trace_compare.sh --demo-lump demo2 --demo ./demos/DOOM1-DEMO2.lmp
+scripts/demo_trace_compare.sh --ref-bin ../doom-source/linuxdoom-1.10/linux/linuxxdoom
+scripts/demo_trace_compare.sh -- --width 640 -height 400
+```
+
+## Output Files
+
+The harness writes:
+
+- `reference-<demo>.jsonl`: trace from the original DOOM source
+- `reference-<demo>.log`: stdout/stderr from the original runtime
+- `gddoom-<demo-file>.jsonl`: GD-DOOM trace
+- `gddoom-<demo-file>.log`: GD-DOOM stdout/stderr
+- `compare.log`: output from `demotracecmp`
+
+## Verified Result
+
+This setup was verified with:
+
+```bash
+scripts/demo_trace_compare.sh --out /tmp/demo-trace-check
+```
+
+That run completed and found the first mismatch at:
+
+```text
+mismatch line=1699 path=root.mobj_count
+left=202
+right=201
+```
+
+Artifacts from that verified run:
+
+- `/tmp/demo-trace-check/reference-demo1.jsonl`
+- `/tmp/demo-trace-check/reference-demo1.log`
+- `/tmp/demo-trace-check/gddoom-DOOM1-DEMO1.lmp.jsonl`
+- `/tmp/demo-trace-check/gddoom-DOOM1-DEMO1.lmp.log`
+- `/tmp/demo-trace-check/compare.log`
+
+## Current Interpretation
+
+The current `DEMO1` desync is not just a cosmetic field mismatch. At the first failing tic, the reference runtime has one more mobj than GD-DOOM while special counts still match.
+
+Current next step:
+
+- Inspect tic 1699 in both JSONL traces and identify which mobj exists only on the reference side.
