@@ -1829,12 +1829,14 @@ func (g *game) queueWeaponSwitch(id weaponID) bool {
 	g.ensureWeaponDefaults()
 	if id == 0 || id == g.inventory.ReadyWeapon {
 		g.inventory.PendingWeapon = 0
+		g.updateDemoTraceWeaponLatch()
 		return false
 	}
 	if !g.weaponOwned(id) {
 		return false
 	}
 	g.inventory.PendingWeapon = id
+	g.updateDemoTraceWeaponLatch()
 	if g.weaponState == weaponStateNone {
 		g.bringUpWeapon()
 		return true

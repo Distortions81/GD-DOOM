@@ -766,6 +766,9 @@ type game struct {
 	debugPlayerProbeEnabled      bool
 	debugPlayerProbeTic          int
 	platTickedThisTic            bool
+	demoTraceWeaponsLatched      bool
+	demoTraceReadyWeapon         weaponID
+	demoTracePendingWeapon       weaponID
 	demoTick                     int
 	demoDoneReported             bool
 	demoBenchStarted             bool
@@ -1187,6 +1190,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.setGammaLevel(g.gammaLevel)
 	g.initPlayerState()
+	g.bringUpWeapon()
 	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingDropped = make([]bool, len(m.Things))

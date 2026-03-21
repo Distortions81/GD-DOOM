@@ -3,6 +3,8 @@ package doomruntime
 import (
 	"math"
 	"testing"
+
+	"gddoom/internal/mapdata"
 )
 
 func TestWeaponReadySpriteName(t *testing.T) {
@@ -197,6 +199,22 @@ func TestWeaponSwitchDoesNotFlipReadyWeaponUntilLowerCompletes(t *testing.T) {
 	}
 	if g.inventory.PendingWeapon != 0 {
 		t.Fatalf("pending weapon=%v want cleared after bring-up starts", g.inventory.PendingWeapon)
+	}
+}
+
+func TestNewGameStartsWeaponBringUpLikeVanilla(t *testing.T) {
+	g := newGame(&mapdata.Map{}, Options{})
+	if g.weaponState != weaponStatePistolUp {
+		t.Fatalf("weaponState=%v want pistol up", g.weaponState)
+	}
+	if g.weaponStateTics != 1 {
+		t.Fatalf("weaponStateTics=%d want 1", g.weaponStateTics)
+	}
+	if g.weaponPSpriteY != weaponBottomY-weaponRaiseSpeed {
+		t.Fatalf("weaponPSpriteY=%d want %d", g.weaponPSpriteY, weaponBottomY-weaponRaiseSpeed)
+	}
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want cleared after bring-up setup", g.inventory.PendingWeapon)
 	}
 }
 

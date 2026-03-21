@@ -292,6 +292,79 @@ func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 	}
 }
 
+func TestDemoTraceUsesLatchedWeaponsBeforePspriteTick(t *testing.T) {
+	tracePath := t.TempDir() + "/weapon-trace.jsonl"
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	g := newGame(base.m, Options{
+		Width:   320,
+		Height:  200,
+		WADHash: "test-wad",
+		DemoScript: &DemoScript{
+			Path: "demo1",
+			Header: DemoHeader{
+				Version:      demoVersion109,
+				Skill:        2,
+				Episode:      1,
+				Map:          1,
+				PlayerInGame: [4]bool{true},
+			},
+			Tics: []DemoTic{{Forward: 0}},
+		},
+		DemoTracePath: tracePath,
+	})
+	g.inventory.ReadyWeapon = weaponShotgun
+	g.inventory.PendingWeapon = 0
+	g.demoTraceWeaponsLatched = true
+	g.demoTraceReadyWeapon = weaponRocketLauncher
+	g.demoTracePendingWeapon = weaponShotgun
+
+	g.writeDemoTraceTic()
+
+	data, err := os.ReadFile(tracePath)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if got, want := len(lines), 3; got != want {
+		t.Fatalf("trace lines=%d want=%d\n%s", got, want, data)
+	}
+	var tic struct {
+		Player demoTracePlayer `json:"player"`
+	}
+	if err := json.Unmarshal([]byte(lines[2]), &tic); err != nil {
+		t.Fatalf("unmarshal tic: %v", err)
+	}
+	if got, want := tic.Player.ReadyWeapon, 4; got != want {
+		t.Fatalf("readyweapon=%d want=%d", got, want)
+	}
+	if got, want := tic.Player.PendingWeapon, 2; got != want {
+		t.Fatalf("pendingweapon=%d want=%d", got, want)
+	}
+}
+
+func TestQueueWeaponSwitchUpdatesLatchedDemoTraceWeapons(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon: weaponPistol,
+			Weapons: map[int16]bool{
+				2001: true,
+			},
+		},
+		demoTraceWeaponsLatched: true,
+		demoTraceReadyWeapon:    weaponPistol,
+	}
+
+	if !g.queueWeaponSwitch(weaponShotgun) {
+		t.Fatal("queueWeaponSwitch returned false want true")
+	}
+	if got, want := g.demoTraceReadyWeapon, weaponPistol; got != want {
+		t.Fatalf("latched ready=%v want=%v", got, want)
+	}
+	if got, want := g.demoTracePendingWeapon, weaponShotgun; got != want {
+		t.Fatalf("latched pending=%v want=%v", got, want)
+	}
+}
+
 func TestDemoTraceSpecialsFollowThinkerInsertionOrder(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
