@@ -865,6 +865,7 @@ func TestFistHitUsesPunchSound(t *testing.T) {
 func TestFireGunShotSpawnsHitscanPuffOnWallImpact(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
+		m: &mapdata.Map{},
 		lines: []physLine{
 			{
 				x1:       64 * fracUnit,
@@ -907,6 +908,43 @@ func TestFireGunShotSpawnsHitscanBloodOnMonsterHit(t *testing.T) {
 	}
 	if g.hitscanPuffs[0].kind != hitscanFxBlood {
 		t.Fatalf("effect kind=%d want blood", g.hitscanPuffs[0].kind)
+	}
+}
+
+func TestLineAttackInterceptsIncludeDeadCorpse(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3001, X: 64, Y: 0}},
+		},
+		thingCollected: make([]bool, 1),
+		thingHP:        []int{0},
+		thingDead:      []bool{true},
+		thingX:         []int64{64 * fracUnit},
+		thingY:         []int64{0},
+		lines: []physLine{{
+			x1:       128 * fracUnit,
+			y1:       -32 * fracUnit,
+			x2:       128 * fracUnit,
+			y2:       32 * fracUnit,
+			flags:    0,
+			sideNum1: -1,
+		}},
+		p: player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+	}
+
+	intercepts := g.collectLineAttackIntercepts(g.playerLineAttackActor(), g.p.angle, pistolRange)
+	foundCorpse := false
+	for _, in := range intercepts {
+		if in.isLine {
+			continue
+		}
+		if in.target.kind == lineAttackTargetThing && in.target.idx == 0 {
+			foundCorpse = true
+			break
+		}
+	}
+	if !foundCorpse {
+		t.Fatalf("intercepts=%+v want dead corpse target present", intercepts)
 	}
 }
 

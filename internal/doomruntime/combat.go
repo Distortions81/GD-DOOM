@@ -704,22 +704,19 @@ func (g *game) lineAttackThingTargetable(i int, mask lineAttackTargetMask, exclu
 		return lineAttackTarget{}, false
 	}
 	th := g.m.Things[i]
-	if mask&lineAttackMaskShootables != 0 && thingTypeIsShootable(th.Type) && i < len(g.thingHP) && g.thingHP[i] > 0 {
-		if i < len(g.thingDead) && g.thingDead[i] {
-			return lineAttackTarget{}, false
-		}
+	if mask&lineAttackMaskShootables != 0 && thingTypeIsShootable(th.Type) {
 		return lineAttackTarget{kind: lineAttackTargetThing, idx: i}, true
 	}
 	return lineAttackTarget{}, false
 }
 
-func (g *game) lineAttackTargetState(target lineAttackTarget) (x, y, z, height, radius int64, noBlood bool, ok bool) {
+func (g *game) lineAttackTargetState(target lineAttackTarget) (x, y, z, height, radius int64, noBlood bool, shootable bool, ok bool) {
 	switch target.kind {
 	case lineAttackTargetPlayer:
-		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, false, !g.isDead
+		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, false, !g.isDead, !g.isDead
 	case lineAttackTargetThing:
 		if g == nil || g.m == nil || target.idx < 0 || target.idx >= len(g.m.Things) {
-			return 0, 0, 0, 0, 0, false, false
+			return 0, 0, 0, 0, 0, false, false, false
 		}
 		th := g.m.Things[target.idx]
 		x, y = g.thingPosFixed(target.idx, th)
@@ -727,9 +724,10 @@ func (g *game) lineAttackTargetState(target lineAttackTarget) (x, y, z, height, 
 		height = g.thingCurrentHeight(target.idx, th)
 		radius = thingTypeRadius(th.Type)
 		noBlood = thingTypeNoBlood(th.Type)
-		return x, y, z, height, radius, noBlood, true
+		shootable = thingTypeIsShootable(th.Type) && target.idx < len(g.thingHP) && g.thingHP[target.idx] > 0 && !(target.idx < len(g.thingDead) && g.thingDead[target.idx])
+		return x, y, z, height, radius, noBlood, shootable, true
 	default:
-		return 0, 0, 0, 0, 0, false, false
+		return 0, 0, 0, 0, 0, false, false, false
 	}
 }
 
@@ -794,7 +792,7 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 		if !ok {
 			return
 		}
-		tx, ty, _, _, radius, _, ok := g.lineAttackTargetState(target)
+		tx, ty, _, _, radius, _, _, ok := g.lineAttackTargetState(target)
 		if !ok {
 			return
 		}
@@ -988,7 +986,7 @@ func (g *game) aimLineAttack(actor lineAttackActor, angle uint32, distance int64
 			continue
 		}
 
-		_, _, z, height, _, _, ok := g.lineAttackTargetState(in.target)
+		_, _, z, height, _, _, _, ok := g.lineAttackTargetState(in.target)
 		if !ok {
 			continue
 		}
@@ -1096,8 +1094,11 @@ func (g *game) lineAttackTrace(actor lineAttackActor, angle uint32, distance, sl
 			}
 		}
 
-		_, _, z, height, _, noBlood, ok := g.lineAttackTargetState(in.target)
+		_, _, z, height, _, noBlood, shootable, ok := g.lineAttackTargetState(in.target)
 		if !ok {
+			continue
+		}
+		if !shootable {
 			continue
 		}
 		dist := fixedMul(distance, in.frac)
@@ -1145,12 +1146,13 @@ func (g *game) debugLineAttackIntercepts(actor lineAttackActor, angle uint32, di
 				idx, in.frac, ld.idx, ld.special, ld.flags)
 			continue
 		}
-		x, y, z, height, radius, noBlood, ok := g.lineAttackTargetState(in.target)
+		x, y, z, height, radius, noBlood, shootable, ok := g.lineAttackTargetState(in.target)
 		fmt.Printf("line-attack-debug intercept=%d frac=%d kind=target target_kind=%d target_idx=%d pos=(%d,%d,%d) height=%d radius=%d noblood=%t ok=%t\n",
 			idx, in.frac, in.target.kind, in.target.idx, x, y, z, height, radius, noBlood, ok)
 		if !ok {
 			continue
 		}
+		fmt.Printf("line-attack-debug intercept=%d shootable=%t\n", idx, shootable)
 		dist := fixedMul(distance, in.frac)
 		if dist <= 0 {
 			continue
