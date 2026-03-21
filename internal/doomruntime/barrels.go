@@ -48,16 +48,38 @@ func shootableThingSpawnHealth(typ int16) int {
 }
 
 func (g *game) thingCurrentHeight(i int, th mapdata.Thing) int64 {
+	if g != nil && i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return 0
+	}
 	if info, ok := demoTraceThingInfoForType(th.Type); ok && info.height > 0 {
 		if isBarrelThingType(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			return info.height >> 2
+		}
+		if isMonster(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] && monsterLeavesCorpse(th.Type) {
 			return info.height >> 2
 		}
 		return info.height
 	}
 	if isMonster(th.Type) {
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && monsterLeavesCorpse(th.Type) {
+			return monsterHeight(th.Type) >> 2
+		}
 		return monsterHeight(th.Type)
 	}
 	return 16 * fracUnit
+}
+
+func (g *game) thingCurrentRadius(i int, th mapdata.Thing) int64 {
+	if g != nil && i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return 0
+	}
+	if info, ok := demoTraceThingInfoForType(th.Type); ok && info.radius > 0 {
+		return info.radius
+	}
+	if isMonster(th.Type) {
+		return monsterRadius(th.Type)
+	}
+	return 20 * fracUnit
 }
 
 func barrelRandomizedDeathStartTics() int {

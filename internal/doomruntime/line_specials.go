@@ -331,7 +331,7 @@ func (g *game) thingTouchesSector(sec, i int, th mapdata.Thing) bool {
 	if g.sectorAt(x, y) == sec {
 		return true
 	}
-	radius := thingCollisionRadius(th.Type)
+	radius := g.thingCurrentRadius(i, th)
 	box := [4]int64{y + radius, y - radius, x + radius, x - radius}
 	for _, ld := range g.lines {
 		front, back := g.physLineSectors(ld)
@@ -367,8 +367,11 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return false
 	}
+	if i < len(g.thingGibbed) && g.thingGibbed[i] && i < len(g.thingGibTick) && g.thingGibTick[i] == g.worldTic {
+		return true
+	}
 	x, y := g.thingPosFixed(i, th)
-	radius := thingCollisionRadius(th.Type)
+	radius := g.thingCurrentRadius(i, th)
 	oldZ, oldFloorZ, _ := g.thingSupportState(i, th)
 	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, isMonster(th.Type), i, isMonster(th.Type))
 	if !ok {
@@ -390,9 +393,21 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 		}
 	}
 	g.setThingSupportState(i, z, tmfloor, tmceil)
-	return tmceil-tmfloor >= g.thingCurrentHeight(i, th)
+	if tmceil-tmfloor >= g.thingCurrentHeight(i, th) {
+		return true
+	}
+	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		if i < len(g.thingGibbed) {
+			g.thingGibbed[i] = true
+		}
+		if i < len(g.thingGibTick) {
+			g.thingGibTick[i] = g.worldTic
+		}
+		g.setThingSupportState(i, z, tmfloor, tmceil)
+		return true
+	}
+	return false
 }
-
 
 func (g *game) findLowestFloorSurrounding(sec int) int64 {
 	lowest := g.sectorFloor[sec]
@@ -658,7 +673,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		if g.sectorHasActiveMover(sec) {
 			continue
 		}
-			pt := &platThinker{order: g.allocThinkerOrder(), sector: sec}
+		pt := &platThinker{order: g.allocThinkerOrder(), sector: sec}
 		switch info.Action {
 		case mapdata.PlatRaiseToNearestAndChange:
 			pt.typ = platTypeRaiseToNearestAndChange

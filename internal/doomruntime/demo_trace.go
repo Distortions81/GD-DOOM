@@ -304,6 +304,9 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			ceilZ = g.sectorCeil[sec]
 		}
 		radius, height := demoTraceThingBounds(th.Type)
+		if i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+			radius, height = 0, 0
+		}
 		if thingTypeIsShootable(th.Type) {
 			height = g.thingCurrentHeight(i, th)
 		}
@@ -829,6 +832,8 @@ func demoTraceThingBounds(typ int16) (int64, int64) {
 	return 20 * fracUnit, 16 * fracUnit
 }
 
+const demoTraceStateGibs = 895
+
 func demoTraceThingHealth(g *game, i int, typ int16) int {
 	if thingTypeIsShootable(typ) && i >= 0 && i < len(g.thingHP) {
 		return g.thingHP[i]
@@ -842,6 +847,9 @@ func demoTraceThingHealth(g *game, i int, typ int16) int {
 func demoTraceThingTics(g *game, i int, typ int16) int {
 	if i < 0 {
 		return 0
+	}
+	if i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return -1
 	}
 	if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
 		return g.thingStateTics[i]
@@ -865,6 +873,9 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 }
 
 func demoTraceThingState(g *game, i int, typ int16) int {
+	if i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return demoTraceStateGibs
+	}
 	if isBarrelThingType(typ) {
 		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 			phase := 0

@@ -550,6 +550,8 @@ type game struct {
 	thingWakeTics         []int
 	thingLastLook         []int
 	thingDead             []bool
+	thingGibbed           []bool
+	thingGibTick          []int
 	thingXDeath           []bool
 	thingDeathTics        []int
 	thingAttackTics       []int
@@ -1217,6 +1219,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingWakeTics = make([]int, len(m.Things))
 	g.thingLastLook = make([]int, len(m.Things))
 	g.thingDead = make([]bool, len(m.Things))
+	g.thingGibbed = make([]bool, len(m.Things))
+	g.thingGibTick = make([]int, len(m.Things))
+	for i := range g.thingGibTick {
+		g.thingGibTick[i] = -1
+	}
 	g.thingXDeath = make([]bool, len(m.Things))
 	g.thingDeathTics = make([]int, len(m.Things))
 	g.thingAttackTics = make([]int, len(m.Things))

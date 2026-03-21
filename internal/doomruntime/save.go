@@ -88,6 +88,8 @@ type gameSaveState struct {
 	ThingWakeTics        []int
 	ThingLastLook        []int
 	ThingDead            []bool
+	ThingGibbed          []bool
+	ThingGibTick         []int
 	ThingDeathTics       []int
 	ThingAttackTics      []int
 	ThingAttackPhase     []int
@@ -479,6 +481,8 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingWakeTics:        append([]int(nil), g.thingWakeTics...),
 		ThingLastLook:        append([]int(nil), g.thingLastLook...),
 		ThingDead:            append([]bool(nil), g.thingDead...),
+		ThingGibbed:          append([]bool(nil), g.thingGibbed...),
+		ThingGibTick:         append([]int(nil), g.thingGibTick...),
 		ThingDeathTics:       append([]int(nil), g.thingDeathTics...),
 		ThingAttackTics:      append([]int(nil), g.thingAttackTics...),
 		ThingAttackPhase:     append([]int(nil), g.thingAttackPhase...),
@@ -573,6 +577,8 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingWakeTics = append([]int(nil), s.ThingWakeTics...)
 	g.thingLastLook = append([]int(nil), s.ThingLastLook...)
 	g.thingDead = append([]bool(nil), s.ThingDead...)
+	g.thingGibbed = append([]bool(nil), s.ThingGibbed...)
+	g.thingGibTick = append([]int(nil), s.ThingGibTick...)
 	g.thingDeathTics = append([]int(nil), s.ThingDeathTics...)
 	g.thingAttackTics = append([]int(nil), s.ThingAttackTics...)
 	g.thingAttackPhase = append([]int(nil), s.ThingAttackPhase...)

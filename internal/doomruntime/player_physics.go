@@ -690,7 +690,7 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 			}
 			if monsterCorpseBlocksMovement(th.Type, phase) {
 				tx, ty := g.thingPosFixed(i, th)
-				r := monsterRadius(th.Type)
+				r := g.thingCurrentRadius(i, th)
 				if actorsOverlapXY(x, y, radius, tx, ty, r) {
 					if probeEnabled {
 						g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=corpse phase=%d", i, th.Type, tx, ty, r, phase), x, y)
@@ -718,7 +718,7 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		tx, ty := g.thingPosFixed(i, th)
 		if isMonster(th.Type) {
-			r := monsterRadius(th.Type)
+			r := g.thingCurrentRadius(i, th)
 			if actorsOverlapXY(x, y, radius, tx, ty, r) {
 				if probeEnabled {
 					g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, r), x, y)
@@ -730,7 +730,7 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 			return false
 		}
 		tx, ty = g.thingPosFixed(i, th)
-		if actorsOverlapXY(x, y, radius, tx, ty, thingTypeRadius(th.Type)) {
+		if actorsOverlapXY(x, y, radius, tx, ty, g.thingCurrentRadius(i, th)) {
 			if probeEnabled {
 				g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=solid", i, th.Type, tx, ty, thingTypeRadius(th.Type)), x, y)
 			}
