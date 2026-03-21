@@ -239,6 +239,38 @@ func TestDemoUpdateModeTerminatesOnDeathWhenConfigured(t *testing.T) {
 	}
 }
 
+func TestDemoUpdateModeTerminatesAfterConfiguredTicLimit(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.DemoScript = &DemoScript{
+		Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+		Tics: []DemoTic{
+			{Forward: 25},
+			{Forward: 25},
+			{Forward: 25},
+		},
+	}
+	g.opts.DemoQuitOnComplete = true
+	g.opts.DemoStopAfterTics = 2
+	startX := g.p.x
+	startY := g.p.y
+	if err := g.Update(); err != nil {
+		t.Fatalf("update 1: %v", err)
+	}
+	if err := g.Update(); err != nil {
+		t.Fatalf("update 2: %v", err)
+	}
+	if g.p.x == startX && g.p.y == startY {
+		t.Fatal("expected demo movement before tic limit")
+	}
+	err := g.Update()
+	if !errors.Is(err, ebiten.Termination) {
+		t.Fatalf("expected ebiten.Termination after tic limit, got %v", err)
+	}
+	if got := g.demoTick; got != 2 {
+		t.Fatalf("demoTick=%d want 2", got)
+	}
+}
+
 func TestSessionGameRebuildPreservesRecordedDemoTics(t *testing.T) {
 	sg := &sessionGame{
 		opts: Options{RecordDemoPath: "out.lmp"},

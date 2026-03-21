@@ -110,26 +110,9 @@ func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 	} else {
 		g.useButtonDown = false
 	}
-	g.captureDemoTraceWeapons()
 	g.tickWeaponFire()
 	g.tickPlayerCounters()
 	g.tickGameplayWorld()
-}
-
-func (g *game) captureDemoTraceWeapons() {
-	if g == nil {
-		return
-	}
-	g.demoTraceWeaponsLatched = true
-	g.updateDemoTraceWeaponLatch()
-}
-
-func (g *game) updateDemoTraceWeaponLatch() {
-	if g == nil || !g.demoTraceWeaponsLatched {
-		return
-	}
-	g.demoTraceReadyWeapon = g.inventory.ReadyWeapon
-	g.demoTracePendingWeapon = g.inventory.PendingWeapon
 }
 
 func (g *game) tickPlayerSpecialSector() {

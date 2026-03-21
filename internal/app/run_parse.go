@@ -118,6 +118,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDemo := ""
 	defaultRecordDemo := ""
 	defaultDemoExitOnDeath := false
+	defaultDemoStopAfterTics := 0
 	defaultNoVsync := false
 	defaultNoFPS := false
 	defaultNoAspectCorrection := false
@@ -299,6 +300,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.RecordDemo != nil {
 			defaultRecordDemo = *cfg.RecordDemo
 		}
+		if cfg.DemoStopAfterTics != nil {
+			defaultDemoStopAfterTics = *cfg.DemoStopAfterTics
+		}
 		if cfg.NoVsync != nil {
 			defaultNoVsync = *cfg.NoVsync
 		}
@@ -383,6 +387,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
 	demoExitOnDeath := fs.Bool("demo-exit-on-death", defaultDemoExitOnDeath, "during -demo playback, stop early when the player dies")
+	demoStopAfterTics := fs.Int("demo-stop-after-tics", defaultDemoStopAfterTics, "during -demo playback, stop after this many processed tics (0 disables)")
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
@@ -615,6 +620,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			importTextures:             *importTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
+			demoExitOnDeath:            *demoExitOnDeath,
+			demoStopAfterTics:          max(0, *demoStopAfterTics),
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
@@ -924,6 +931,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
+			DemoStopAfterTics:          max(0, *demoStopAfterTics),
 			DemoTracePath:              resolvedDemoTracePath,
 			AttractDemos:               builtInAttractDemos(wf),
 		}
@@ -1621,6 +1629,7 @@ type renderBuildConfig struct {
 	demoPath                   string
 	recordDemoPath             string
 	demoExitOnDeath            bool
+	demoStopAfterTics          int
 	pwadPaths                  []string
 	configPath                 string
 }
@@ -1864,6 +1873,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		MusicPatchBank:             musicPatchBank,
 		RecordDemoPath:             cfg.recordDemoPath,
 		DemoExitOnDeath:            cfg.demoExitOnDeath,
+		DemoStopAfterTics:          cfg.demoStopAfterTics,
 		AttractDemos:               builtInAttractDemos(wf),
 	}
 	opts.TitleMusicLoader = func() ([]byte, error) {

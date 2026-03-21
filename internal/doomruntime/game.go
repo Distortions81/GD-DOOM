@@ -766,9 +766,6 @@ type game struct {
 	debugPlayerProbeEnabled      bool
 	debugPlayerProbeTic          int
 	platTickedThisTic            bool
-	demoTraceWeaponsLatched      bool
-	demoTraceReadyWeapon         weaponID
-	demoTracePendingWeapon       weaponID
 	demoTick                     int
 	demoDoneReported             bool
 	demoBenchStarted             bool
@@ -2057,6 +2054,17 @@ func (g *game) updateDemoMode() error {
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
 		return ebiten.Termination
+	}
+	if g.opts.DemoStopAfterTics > 0 && g.demoTick >= g.opts.DemoStopAfterTics {
+		if g.demoTrace != nil {
+			g.demoTrace.Close()
+			g.demoTrace = nil
+		}
+		g.reportDemoBench(script)
+		if g.opts.DemoQuitOnComplete {
+			return ebiten.Termination
+		}
+		return nil
 	}
 	if g.demoTick >= len(script.Tics) {
 		if g.demoTrace != nil {

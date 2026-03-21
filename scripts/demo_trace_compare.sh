@@ -13,6 +13,7 @@ OUT_DIR="${ROOT_DIR}/tmp/demo-trace-compare"
 KEEP_GOING=0
 GDDOOM_FLAGS=(-demo-exit-on-death)
 USE_XVFB=auto
+STOP_AFTER_TICS=0
 
 usage() {
   cat <<'EOF'
@@ -36,6 +37,8 @@ Options:
   --headless          Force xvfb-run for GD-DOOM
   --no-headless       Do not use xvfb-run; require an existing desktop display
   --keep-going        Keep artifacts even when the compare fails
+  --stop-after-tics <n>
+                      Stop GD-DOOM after <n> processed demo tics (default: 0, disabled)
   -h, --help          Show this help
 
 Examples:
@@ -86,6 +89,10 @@ while [[ $# -gt 0 ]]; do
     --keep-going)
       KEEP_GOING=1
       shift
+      ;;
+    --stop-after-tics)
+      STOP_AFTER_TICS="$2"
+      shift 2
       ;;
     --)
       shift
@@ -155,6 +162,9 @@ env DOOMWADDIR="${WAD_DIR}" \
   >"${REF_LOG}" 2>&1
 
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"
+if [[ "${STOP_AFTER_TICS}" != "0" ]]; then
+  GDDOOM_FLAGS+=(-demo-stop-after-tics "${STOP_AFTER_TICS}")
+fi
 if [[ "${USE_XVFB}" == "yes" ]]; then
   if ! command -v xvfb-run >/dev/null 2>&1; then
     echo "xvfb-run is required for --headless." >&2

@@ -207,10 +207,6 @@ func (g *game) writeDemoTraceTic() {
 	rndIndex, prndIndex := doomrand.State()
 	readyWeapon := g.inventory.ReadyWeapon
 	pendingWeaponID := g.inventory.PendingWeapon
-	if g.demoTraceWeaponsLatched {
-		readyWeapon = g.demoTraceReadyWeapon
-		pendingWeaponID = g.demoTracePendingWeapon
-	}
 	pendingWeapon := demoTraceWeaponNoChange
 	if pendingWeaponID != 0 {
 		pendingWeapon = demoTraceWeaponID(pendingWeaponID)

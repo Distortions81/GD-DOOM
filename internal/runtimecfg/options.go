@@ -97,6 +97,7 @@ type Options struct {
 	AttractDemos               []*demo.Script
 	DemoQuitOnComplete         bool
 	DemoExitOnDeath            bool
+	DemoStopAfterTics          int
 	RecordDemoPath             string
 	DemoTracePath              string
 	TitleMusicLoader           func() ([]byte, error)

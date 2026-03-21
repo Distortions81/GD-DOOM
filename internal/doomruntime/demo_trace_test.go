@@ -292,7 +292,7 @@ func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 	}
 }
 
-func TestDemoTraceUsesLatchedWeaponsBeforePspriteTick(t *testing.T) {
+func TestDemoTraceUsesCurrentWeaponsAtWriteTime(t *testing.T) {
 	tracePath := t.TempDir() + "/weapon-trace.jsonl"
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	g := newGame(base.m, Options{
@@ -314,9 +314,6 @@ func TestDemoTraceUsesLatchedWeaponsBeforePspriteTick(t *testing.T) {
 	})
 	g.inventory.ReadyWeapon = weaponShotgun
 	g.inventory.PendingWeapon = 0
-	g.demoTraceWeaponsLatched = true
-	g.demoTraceReadyWeapon = weaponRocketLauncher
-	g.demoTracePendingWeapon = weaponShotgun
 
 	g.writeDemoTraceTic()
 
@@ -334,34 +331,11 @@ func TestDemoTraceUsesLatchedWeaponsBeforePspriteTick(t *testing.T) {
 	if err := json.Unmarshal([]byte(lines[2]), &tic); err != nil {
 		t.Fatalf("unmarshal tic: %v", err)
 	}
-	if got, want := tic.Player.ReadyWeapon, 4; got != want {
+	if got, want := tic.Player.ReadyWeapon, 2; got != want {
 		t.Fatalf("readyweapon=%d want=%d", got, want)
 	}
-	if got, want := tic.Player.PendingWeapon, 2; got != want {
+	if got, want := tic.Player.PendingWeapon, demoTraceWeaponNoChange; got != want {
 		t.Fatalf("pendingweapon=%d want=%d", got, want)
-	}
-}
-
-func TestQueueWeaponSwitchUpdatesLatchedDemoTraceWeapons(t *testing.T) {
-	g := &game{
-		inventory: playerInventory{
-			ReadyWeapon: weaponPistol,
-			Weapons: map[int16]bool{
-				2001: true,
-			},
-		},
-		demoTraceWeaponsLatched: true,
-		demoTraceReadyWeapon:    weaponPistol,
-	}
-
-	if !g.queueWeaponSwitch(weaponShotgun) {
-		t.Fatal("queueWeaponSwitch returned false want true")
-	}
-	if got, want := g.demoTraceReadyWeapon, weaponPistol; got != want {
-		t.Fatalf("latched ready=%v want=%v", got, want)
-	}
-	if got, want := g.demoTracePendingWeapon, weaponShotgun; got != want {
-		t.Fatalf("latched pending=%v want=%v", got, want)
 	}
 }
 
