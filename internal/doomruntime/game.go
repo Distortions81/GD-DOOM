@@ -532,6 +532,7 @@ type game struct {
 	thingWakeTics         []int
 	thingLastLook         []int
 	thingDead             []bool
+	thingXDeath           []bool
 	thingDeathTics        []int
 	thingAttackTics       []int
 	thingAttackPhase      []int
@@ -1196,6 +1197,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingWakeTics = make([]int, len(m.Things))
 	g.thingLastLook = make([]int, len(m.Things))
 	g.thingDead = make([]bool, len(m.Things))
+	g.thingXDeath = make([]bool, len(m.Things))
 	g.thingDeathTics = make([]int, len(m.Things))
 	g.thingAttackTics = make([]int, len(m.Things))
 	g.thingAttackPhase = make([]int, len(m.Things))
@@ -10871,7 +10873,9 @@ var (
 	monsterPainTics55          = []int{5, 5}
 	monsterPainTics66          = []int{6, 6}
 	monsterDeathTics5x5        = []int{5, 5, 5, 5, 5}
+	monsterDeathTics5x6        = []int{5, 5, 5, 5, 5, -1}
 	monsterDeathTics5x7        = []int{5, 5, 5, 5, 5, 5, -1}
+	monsterDeathTics5x9        = []int{5, 5, 5, 5, 5, 5, 5, 5, -1}
 	monsterDeathTicsImp        = []int{8, 8, 6, 6, 6}
 	monsterDeathTicsDemon      = []int{8, 8, 4, 4, 4, 4}
 	monsterDeathTicsLostSoul   = []int{6, 6, 6, 6, 6, 6}
@@ -11141,6 +11145,19 @@ func monsterDeathFrameSeq(typ int16) []byte {
 	}
 }
 
+func monsterXDeathFrameSeq(typ int16) []byte {
+	switch typ {
+	case 3004, 9:
+		return []byte{'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
+	case 65:
+		return []byte{'O', 'P', 'Q', 'R', 'S', 'T'}
+	case 84:
+		return []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'}
+	default:
+		return nil
+	}
+}
+
 func monsterDeathFrameTics(typ int16) []int {
 	switch typ {
 	case 3004:
@@ -11180,6 +11197,39 @@ func monsterDeathFrameTics(typ int16) []int {
 	}
 }
 
+func monsterXDeathFrameTics(typ int16) []int {
+	switch typ {
+	case 3004, 9, 84:
+		return monsterDeathTics5x9
+	case 65:
+		return monsterDeathTics5x6
+	default:
+		return nil
+	}
+}
+
+func monsterHasXDeath(typ int16) bool {
+	return len(monsterXDeathFrameTics(typ)) > 0
+}
+
+func monsterDeathFrameSeqForMode(typ int16, xdeath bool) []byte {
+	if xdeath {
+		if seq := monsterXDeathFrameSeq(typ); len(seq) > 0 {
+			return seq
+		}
+	}
+	return monsterDeathFrameSeq(typ)
+}
+
+func monsterDeathFrameTicsForMode(typ int16, xdeath bool) []int {
+	if xdeath {
+		if tics := monsterXDeathFrameTics(typ); len(tics) > 0 {
+			return tics
+		}
+	}
+	return monsterDeathFrameTics(typ)
+}
+
 func monsterDeathSoundDelayTics(typ int16) int {
 	// Doom plays death sounds on A_Scream, which is usually the 2nd death frame.
 	switch typ {
@@ -11200,7 +11250,11 @@ func monsterDeathSoundDelayTics(typ int16) int {
 }
 
 func monsterDeathAnimTotalTics(typ int16) int {
-	tics := monsterDeathFrameTics(typ)
+	return monsterDeathAnimTotalTicsForMode(typ, false)
+}
+
+func monsterDeathAnimTotalTicsForMode(typ int16, xdeath bool) int {
+	tics := monsterDeathFrameTicsForMode(typ, xdeath)
 	total := 0
 	for _, t := range tics {
 		if t > 0 {
@@ -11212,10 +11266,11 @@ func monsterDeathAnimTotalTics(typ int16) int {
 
 func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-		seq := monsterDeathFrameSeq(th.Type)
-		frameTics := monsterDeathFrameTics(th.Type)
+		xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+		seq := monsterDeathFrameSeqForMode(th.Type, xdeath)
+		frameTics := monsterDeathFrameTicsForMode(th.Type, xdeath)
 		if len(seq) > 0 && len(seq) == len(frameTics) {
-			total := monsterDeathAnimTotalTics(th.Type)
+			total := monsterDeathAnimTotalTicsForMode(th.Type, xdeath)
 			elapsed := total
 			if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 				elapsed = total - g.thingDeathTics[i]

@@ -879,7 +879,8 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		switch g.thingState[i] {
 		case monsterStateDeath:
 			if i >= 0 && i < len(g.thingStatePhase) {
-				if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i]); ok {
+				xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+				if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i], xdeath); ok {
 					return state
 				}
 			}
@@ -916,7 +917,8 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 	}
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 		if i >= 0 && i < len(g.thingStatePhase) {
-			if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i]); ok {
+			xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+			if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i], xdeath); ok {
 				return state
 			}
 		}
@@ -934,32 +936,47 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 	return -1
 }
 
-func demoTraceMonsterDeathState(typ int16, phase int) (int, bool) {
+func demoTraceMonsterDeathState(typ int16, phase int, xdeath bool) (int, bool) {
 	base := 0
 	count := 0
-	switch typ {
-	case 3004:
-		base, count = 184, 5
-	case 9:
-		base, count = 222, 5
-	case 3001:
-		base, count = 451, 5
-	case 3002, 58:
-		base, count = 484, 6
-	case 3005:
-		base, count = 514, 6
-	case 3003:
-		base, count = 536, 7
-	case 69:
-		base, count = 565, 7
-	case 3006:
-		base, count = 589, 6
-	case 7:
-		base, count = 623, 10
-	case 16:
-		base, count = 694, 9
-	default:
-		return 0, false
+	if xdeath {
+		switch typ {
+		case 3004:
+			base, count = 195, 9
+		case 9:
+			base, count = 228, 9
+		case 65:
+			base, count = 430, 6
+		case 84:
+			base, count = 750, 9
+		default:
+			return 0, false
+		}
+	} else {
+		switch typ {
+		case 3004:
+			base, count = 184, 5
+		case 9:
+			base, count = 222, 5
+		case 3001:
+			base, count = 451, 5
+		case 3002, 58:
+			base, count = 484, 6
+		case 3005:
+			base, count = 514, 6
+		case 3003:
+			base, count = 536, 7
+		case 69:
+			base, count = 565, 7
+		case 3006:
+			base, count = 589, 6
+		case 7:
+			base, count = 623, 10
+		case 16:
+			base, count = 694, 9
+		default:
+			return 0, false
+		}
 	}
 	if phase < 0 || phase >= count {
 		return 0, false

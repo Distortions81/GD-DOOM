@@ -369,6 +369,30 @@ func TestProjectileHitsPlayer(t *testing.T) {
 	}
 }
 
+func TestAdvanceProjectileImpactTicTransitionsPhase(t *testing.T) {
+	g := &game{}
+	fx := projectileImpact{
+		kind:      projectileRocket,
+		tics:      11,
+		totalTics: 11,
+		phase:     0,
+		phaseTics: 1,
+	}
+
+	if ok := g.advanceProjectileImpactTic(&fx); !ok {
+		t.Fatal("advanceProjectileImpactTic returned false")
+	}
+	if got := fx.tics; got != 10 {
+		t.Fatalf("tics=%d want=10", got)
+	}
+	if got := fx.phase; got != 1 {
+		t.Fatalf("phase=%d want=1", got)
+	}
+	if got := fx.phaseTics; got != 6 {
+		t.Fatalf("phaseTics=%d want=6", got)
+	}
+}
+
 func TestProjectilePassesThroughTwoSidedWindow(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

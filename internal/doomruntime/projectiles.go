@@ -560,21 +560,7 @@ func (g *game) tickProjectileImpacts() {
 	}
 	keep := g.projectileImpacts[:0]
 	for _, fx := range g.projectileImpacts {
-		fx.tics--
-		fx.phaseTics--
-		if fx.phaseTics <= 0 {
-			fx.phase++
-			next := projectileImpactPhaseTics(fx.kind, fx.phase)
-			if next <= 0 {
-				continue
-			}
-			fx.phaseTics = next
-			if fx.kind == projectileBFGBall && !fx.sprayDone && fx.phase == 2 {
-				fx.sprayDone = true
-				g.applyBFGSpray(fx.angle)
-			}
-		}
-		if fx.tics <= 0 {
+		if !g.advanceProjectileImpactTic(&fx) {
 			continue
 		}
 		keep = append(keep, fx)
@@ -625,6 +611,34 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
 	fx.lastLook = p.lastLook
+	if p.kind == projectileRocket {
+		// Rocket explosions need to consume one tic immediately to match Doom's
+		// in-place missile thinker transition timing.
+		if !g.advanceProjectileImpactTic(fx) {
+			g.projectileImpacts = g.projectileImpacts[:len(g.projectileImpacts)-1]
+		}
+	}
+}
+
+func (g *game) advanceProjectileImpactTic(fx *projectileImpact) bool {
+	if fx == nil {
+		return false
+	}
+	fx.tics--
+	fx.phaseTics--
+	if fx.phaseTics <= 0 {
+		fx.phase++
+		next := projectileImpactPhaseTics(fx.kind, fx.phase)
+		if next <= 0 {
+			return false
+		}
+		fx.phaseTics = next
+		if fx.kind == projectileBFGBall && !fx.sprayDone && fx.phase == 2 {
+			fx.sprayDone = true
+			g.applyBFGSpray(fx.angle)
+		}
+	}
+	return fx.tics > 0
 }
 
 func projectileSpawnStateTics(kind projectileKind) int {

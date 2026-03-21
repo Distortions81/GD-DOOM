@@ -105,7 +105,8 @@ func (g *game) tickMonsters() {
 			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateDeath && g.thingStateTics[i] > 0 {
 				g.thingStateTics[i]--
 				if g.thingStateTics[i] == 0 && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
-					frameTics := monsterDeathFrameTics(th.Type)
+					xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+					frameTics := monsterDeathFrameTicsForMode(th.Type, xdeath)
 					nextPhase := 0
 					if i >= 0 && i < len(g.thingStatePhase) {
 						nextPhase = g.thingStatePhase[i] + 1
@@ -115,7 +116,11 @@ func (g *game) tickMonsters() {
 							g.thingStatePhase[i] = nextPhase
 						}
 						g.thingStateTics[i] = frameTics[nextPhase]
-						if nextPhase == monsterDeathSoundActionPhase(th.Type) {
+						soundPhase := monsterDeathSoundActionPhase(th.Type)
+						if xdeath {
+							soundPhase = monsterXDeathSoundActionPhase(th.Type)
+						}
+						if nextPhase == soundPhase {
 							if want := os.Getenv("GD_DEBUG_DEATH_SOUND_TIC"); want != "" {
 								var wantTic int
 								if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
@@ -125,7 +130,11 @@ func (g *game) tickMonsters() {
 								}
 							}
 							px, py := g.thingPosFixed(i, th)
-							g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
+							if xdeath {
+								g.emitSoundEventAt(soundEventMonsterDeath, px, py)
+							} else {
+								g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
+							}
 						}
 					}
 				}
@@ -857,6 +866,11 @@ func (g *game) ensureMonsterAIState() {
 		old := g.thingStatePhase
 		g.thingStatePhase = make([]int, n)
 		copy(g.thingStatePhase, old)
+	}
+	if len(g.thingXDeath) != n {
+		old := g.thingXDeath
+		g.thingXDeath = make([]bool, n)
+		copy(g.thingXDeath, old)
 	}
 	if len(g.thingMomX) != n {
 		old := g.thingMomX
@@ -2016,6 +2030,9 @@ func (g *game) archvileTryRaiseCorpse(vileIdx int) bool {
 		if corpseIdx == vileIdx || corpseIdx >= len(g.thingDead) || !g.thingDead[corpseIdx] {
 			continue
 		}
+		if corpseIdx < len(g.thingXDeath) && g.thingXDeath[corpseIdx] {
+			continue
+		}
 		if corpseIdx < len(g.thingCollected) && g.thingCollected[corpseIdx] {
 			continue
 		}
@@ -2031,6 +2048,9 @@ func (g *game) archvileTryRaiseCorpse(vileIdx int) bool {
 		}
 		if corpseIdx < len(g.thingDead) {
 			g.thingDead[corpseIdx] = false
+		}
+		if corpseIdx < len(g.thingXDeath) {
+			g.thingXDeath[corpseIdx] = false
 		}
 		if corpseIdx < len(g.thingDeathTics) {
 			g.thingDeathTics[corpseIdx] = 0

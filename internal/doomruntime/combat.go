@@ -1346,13 +1346,17 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		g.thingReactionTics[thingIdx] = 0
 	}
 	if g.thingHP[thingIdx] <= 0 {
+		xdeath := g.thingHP[thingIdx] < -monsterSpawnHealth(thingType) && monsterHasXDeath(thingType)
 		if thingIdx >= 0 && thingIdx < len(g.thingDead) {
 			g.thingDead[thingIdx] = true
 		}
+		if thingIdx >= 0 && thingIdx < len(g.thingXDeath) {
+			g.thingXDeath[thingIdx] = xdeath
+		}
 		if thingIdx >= 0 && thingIdx < len(g.thingDeathTics) {
-			deathTics := monsterDeathAnimTotalTics(thingType)
+			deathTics := monsterDeathAnimTotalTicsForMode(thingType, xdeath)
 			firstFrameTics := 0
-			frameTics := monsterDeathFrameTics(thingType)
+			frameTics := monsterDeathFrameTicsForMode(thingType, xdeath)
 			if len(frameTics) > 0 {
 				firstFrameTics = frameTics[0]
 			}
@@ -1393,7 +1397,11 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			g.thingStatePhase[thingIdx] = 0
 		}
 		tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
-		if monsterDeathSoundActionPhase(thingType) == 0 {
+		if xdeath {
+			if monsterXDeathSoundActionPhase(thingType) == 0 {
+				g.emitSoundEventAt(soundEventMonsterDeath, tx, ty)
+			}
+		} else if monsterDeathSoundActionPhase(thingType) == 0 {
 			g.emitSoundEventAt(monsterDeathSoundEventVariant(thingType), tx, ty)
 		}
 		g.setHUDMessage("Monster killed", 15)
@@ -1657,6 +1665,7 @@ func (g *game) appendRuntimeThing(th mapdata.Thing, dropped bool) int {
 	g.thingWakeTics = append(g.thingWakeTics, 0)
 	g.thingLastLook = append(g.thingLastLook, doomrand.PRandom()&3)
 	g.thingDead = append(g.thingDead, false)
+	g.thingXDeath = append(g.thingXDeath, false)
 	g.thingDeathTics = append(g.thingDeathTics, 0)
 	g.thingAttackTics = append(g.thingAttackTics, 0)
 	g.thingAttackPhase = append(g.thingAttackPhase, 0)
@@ -1785,6 +1794,15 @@ func monsterDeathSoundActionPhase(typ int16) int {
 		return 0
 	default:
 		return 1
+	}
+}
+
+func monsterXDeathSoundActionPhase(typ int16) int {
+	switch typ {
+	case 3004, 9, 65, 84:
+		return 1
+	default:
+		return -1
 	}
 }
 
