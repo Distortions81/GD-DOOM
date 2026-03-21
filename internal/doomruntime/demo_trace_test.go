@@ -335,6 +335,13 @@ func TestDemoTraceSpecialsFollowThinkerInsertionOrder(t *testing.T) {
 	if got, want := specials[1]["kind"], "door"; got != want {
 		t.Fatalf("special[1].kind=%v want=%q", got, want)
 	}
+	plat := specials[0]
+	if got, want := plat["status"], 0; got != want {
+		t.Fatalf("plat status=%v want=%d", got, want)
+	}
+	if got, want := plat["oldstatus"], 16; got != want {
+		t.Fatalf("plat oldstatus=%v want=%d", got, want)
+	}
 }
 
 func TestDemoTraceMobjsFollowThinkerInsertionOrder(t *testing.T) {

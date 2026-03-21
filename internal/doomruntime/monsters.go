@@ -909,8 +909,10 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	nx := tx + momx
 	ny := ty + momy
 	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
+		prevX, prevY := tx, ty
 		g.setThingPosFixed(i, nx, ny)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
 	} else {
 		momx = 0
 		momy = 0

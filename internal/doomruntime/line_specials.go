@@ -717,6 +717,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		case mapdata.PlatDownWaitUpStay:
 			pt.typ = platTypeDownWaitUpStay
 			pt.status = platStatusDown
+			pt.oldStatus = platStatusInStasis
 			pt.speed = 4 * platMoveSpeed
 			pt.low = g.findLowestFloorSurrounding(sec)
 			if pt.low > g.sectorFloor[sec] {
@@ -724,10 +725,10 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			}
 			pt.high = g.sectorFloor[sec]
 			pt.wait = platWaitTics
-			pt.count = pt.wait
 		case mapdata.PlatBlazeDownWaitUpStay:
 			pt.typ = platTypeDownWaitUpStay
 			pt.status = platStatusDown
+			pt.oldStatus = platStatusInStasis
 			pt.speed = 8 * platMoveSpeed
 			pt.low = g.findLowestFloorSurrounding(sec)
 			if pt.low > g.sectorFloor[sec] {
@@ -735,7 +736,6 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			}
 			pt.high = g.sectorFloor[sec]
 			pt.wait = platWaitTics
-			pt.count = pt.wait
 		case mapdata.PlatPerpetualRaise:
 			if g.activateInStasisPlats(g.m.Linedefs[lineIdx].Tag) {
 				activated = true

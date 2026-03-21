@@ -158,6 +158,15 @@ func doomPlatType(t platType) int {
 	}
 }
 
+func doomPlatStatus(s platStatus) int {
+	switch s {
+	case platStatusInStasis:
+		return 16
+	default:
+		return int(s)
+	}
+}
+
 func demoTraceLabel(script *DemoScript) string {
 	if script == nil {
 		return ""
@@ -775,8 +784,8 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"high":      p.high,
 			"wait":      p.wait,
 			"count":     p.count,
-			"status":    int(p.status),
-			"oldstatus": int(p.oldStatus),
+			"status":    doomPlatStatus(p.status),
+			"oldstatus": doomPlatStatus(p.oldStatus),
 			"crush":     0,
 			"tag":       tag,
 		}

@@ -48,6 +48,40 @@ func TestUseSpecialLine_ActivatesRepeatPlatformButton(t *testing.T) {
 	}
 }
 
+func TestActivatePlatLine_DownWaitUpStayStartsActiveWithZeroCount(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 88, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{88},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.status != platStatusDown {
+		t.Fatalf("status=%v want %v", pt.status, platStatusDown)
+	}
+	if pt.oldStatus != platStatusInStasis {
+		t.Fatalf("oldStatus=%v want %v", pt.oldStatus, platStatusInStasis)
+	}
+	if pt.count != 0 {
+		t.Fatalf("count=%d want 0", pt.count)
+	}
+	if pt.wait != platWaitTics {
+		t.Fatalf("wait=%d want %d", pt.wait, platWaitTics)
+	}
+}
+
 func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
