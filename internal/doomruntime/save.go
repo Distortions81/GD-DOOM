@@ -239,6 +239,8 @@ type projectileSaveState struct {
 	VX           int64
 	VY           int64
 	VZ           int64
+	FloorZ       int64
+	CeilZ        int64
 	Radius       int64
 	Height       int64
 	TTL          int
@@ -253,18 +255,20 @@ type projectileSaveState struct {
 }
 
 type projectileImpactSaveState struct {
-	X         int64
-	Y         int64
-	Z         int64
-	Kind      int
+	X            int64
+	Y            int64
+	Z            int64
+	FloorZ       int64
+	CeilZ        int64
+	Kind         int
 	SourceThing  int
 	SourceType   int16
 	SourcePlayer bool
 	LastLook     int
-	Tics      int
-	TotalTics int
-	Angle     uint32
-	SprayDone bool
+	Tics         int
+	TotalTics    int
+	Angle        uint32
+	SprayDone    bool
 }
 
 type hitscanPuffSaveState struct {
@@ -1000,6 +1004,8 @@ func captureProjectiles(src []projectile) []projectileSaveState {
 			VX:           p.vx,
 			VY:           p.vy,
 			VZ:           p.vz,
+			FloorZ:       p.floorz,
+			CeilZ:        p.ceilz,
 			Radius:       p.radius,
 			Height:       p.height,
 			TTL:          p.ttl,
@@ -1029,6 +1035,8 @@ func restoreProjectiles(src []projectileSaveState) []projectile {
 			vx:           p.VX,
 			vy:           p.VY,
 			vz:           p.VZ,
+			floorz:       p.FloorZ,
+			ceilz:        p.CeilZ,
 			radius:       p.Radius,
 			height:       p.Height,
 			ttl:          p.TTL,
@@ -1052,18 +1060,20 @@ func captureProjectileImpacts(src []projectileImpact) []projectileImpactSaveStat
 	dst := make([]projectileImpactSaveState, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpactSaveState{
-			X:         p.x,
-			Y:         p.y,
-			Z:         p.z,
-			Kind:      int(p.kind),
+			X:            p.x,
+			Y:            p.y,
+			Z:            p.z,
+			FloorZ:       p.floorz,
+			CeilZ:        p.ceilz,
+			Kind:         int(p.kind),
 			SourceThing:  p.sourceThing,
 			SourceType:   p.sourceType,
 			SourcePlayer: p.sourcePlayer,
 			LastLook:     p.lastLook,
-			Tics:      p.tics,
-			TotalTics: p.totalTics,
-			Angle:     p.angle,
-			SprayDone: p.sprayDone,
+			Tics:         p.tics,
+			TotalTics:    p.totalTics,
+			Angle:        p.angle,
+			SprayDone:    p.sprayDone,
 		}
 	}
 	return dst
@@ -1076,18 +1086,20 @@ func restoreProjectileImpacts(src []projectileImpactSaveState) []projectileImpac
 	dst := make([]projectileImpact, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpact{
-			x:         p.X,
-			y:         p.Y,
-			z:         p.Z,
-			kind:      projectileKind(p.Kind),
+			x:            p.X,
+			y:            p.Y,
+			z:            p.Z,
+			floorz:       p.FloorZ,
+			ceilz:        p.CeilZ,
+			kind:         projectileKind(p.Kind),
 			sourceThing:  p.SourceThing,
 			sourceType:   p.SourceType,
 			sourcePlayer: p.SourcePlayer,
 			lastLook:     p.LastLook,
-			tics:      p.Tics,
-			totalTics: p.TotalTics,
-			angle:     p.Angle,
-			sprayDone: p.SprayDone,
+			tics:         p.Tics,
+			totalTics:    p.TotalTics,
+			angle:        p.Angle,
+			sprayDone:    p.SprayDone,
 		}
 	}
 	return dst

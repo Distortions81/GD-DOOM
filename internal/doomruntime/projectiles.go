@@ -29,6 +29,8 @@ type projectile struct {
 	vx           int64
 	vy           int64
 	vz           int64
+	floorz       int64
+	ceilz        int64
 	radius       int64
 	height       int64
 	ttl          int
@@ -51,6 +53,8 @@ type projectileImpact struct {
 	x            int64
 	y            int64
 	z            int64
+	floorz       int64
+	ceilz        int64
 	kind         projectileKind
 	order        int64
 	sourceThing  int
@@ -200,6 +204,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		order:        g.allocThinkerOrder(),
 		deferredTick: true,
 	}
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
 	if !g.finishProjectileSpawn(&p) {
 		return false
 	}
@@ -300,6 +305,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	p.x = nx
 	p.y = ny
 	p.z = nz
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
 	g.tickProjectileSpecial(&p)
 	g.tickProjectileAnim(&p)
 	p.ttl--
@@ -414,6 +420,7 @@ func (g *game) spawnPlayerRocket() bool {
 		angle:        angle,
 		order:        g.allocThinkerOrder(),
 	}
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
 	if !g.finishProjectileSpawn(&p) {
 		return false
 	}
@@ -486,6 +493,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		angle:        angle,
 		order:        g.allocThinkerOrder(),
 	}
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
 	if !g.finishProjectileSpawn(&p) {
 		return false
 	}
@@ -530,6 +538,7 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 	p.x = nx
 	p.y = ny
 	p.z = nz
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
 	return true
 }
 
@@ -585,10 +594,13 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		}
 		tics += next
 	}
+	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind))
 	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
 		x:         x,
 		y:         y,
 		z:         z,
+		floorz:    floorz,
+		ceilz:     ceilz,
 		kind:      kind,
 		order:     g.allocThinkerOrder(),
 		tics:      tics,
@@ -613,10 +625,13 @@ func (g *game) spawnProjectileImpactDeferredRandom(kind projectileKind, x, y, z 
 		}
 		tics += next
 	}
+	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind))
 	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
 		x:         x,
 		y:         y,
 		z:         z,
+		floorz:    floorz,
+		ceilz:     ceilz,
 		kind:      kind,
 		order:     g.allocThinkerOrder(),
 		tics:      tics,
@@ -638,6 +653,8 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 		// so the exploded projectile must retain its original thinker order.
 		fx.order = p.order
 	}
+	fx.floorz = p.floorz
+	fx.ceilz = p.ceilz
 	fx.sourceThing = p.sourceThing
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
@@ -653,6 +670,8 @@ func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int
 	if p.order > 0 {
 		fx.order = p.order
 	}
+	fx.floorz = p.floorz
+	fx.ceilz = p.ceilz
 	fx.sourceThing = p.sourceThing
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
@@ -775,6 +794,20 @@ func (g *game) tickProjectileAnim(p *projectile) {
 		p.frame ^= 1
 	}
 	p.frameTics = projectileSpawnStateTics(p.kind)
+}
+
+func (g *game) projectileSupportStateAt(x, y, radius int64) (int64, int64) {
+	if g == nil || g.m == nil || len(g.sectorFloor) == 0 || len(g.sectorCeil) == 0 {
+		return 0, 0
+	}
+	if tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, false, -1, false); ok {
+		return tmfloor, tmceil
+	}
+	sec := g.sectorAt(x, y)
+	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return 0, 0
+	}
+	return g.sectorFloor[sec], g.sectorCeil[sec]
 }
 
 func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64) {

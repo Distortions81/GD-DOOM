@@ -39,8 +39,8 @@ type demoTracePlayer struct {
 const (
 	doomStatePlayerAttack1 = 154
 	doomStatePlayerAttack2 = 155
-	doomStatePlayerPain1 = 156
-	doomStatePlayerPain2 = 157
+	doomStatePlayerPain1   = 156
+	doomStatePlayerPain2   = 157
 )
 
 type demoTraceMobj struct {
@@ -257,33 +257,33 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		order: 0,
 		idx:   -1,
 		mobj: demoTraceMobj{
-		Type:         0,
-		X:            g.p.x,
-		Y:            g.p.y,
-		Z:            g.p.z,
-		Angle:        g.p.angle,
-		MomX:         g.p.momx,
-		MomY:         g.p.momy,
-		MomZ:         g.p.momz,
-		FloorZ:       g.p.floorz,
-		CeilingZ:     g.p.ceilz,
-		Radius:       playerRadius,
-		Height:       playerHeight,
-		Tics:         playerTics,
-		State:        playerState,
-		Flags:        0,
-		Health:       g.stats.Health,
-		Movedir:      0,
-		Movecount:    0,
-		ReactionTime: 0,
-		Threshold:    0,
-		LastLook:     0,
-		Subsector:    boolToInt(g.playerSubsector() >= 0),
-		Sector:       g.playerSector(),
-		Player:       1,
-		Target:       0,
-		Tracer:       0,
-	}})
+			Type:         0,
+			X:            g.p.x,
+			Y:            g.p.y,
+			Z:            g.p.z,
+			Angle:        g.p.angle,
+			MomX:         g.p.momx,
+			MomY:         g.p.momy,
+			MomZ:         g.p.momz,
+			FloorZ:       g.p.floorz,
+			CeilingZ:     g.p.ceilz,
+			Radius:       playerRadius,
+			Height:       playerHeight,
+			Tics:         playerTics,
+			State:        playerState,
+			Flags:        0,
+			Health:       g.stats.Health,
+			Movedir:      0,
+			Movecount:    0,
+			ReactionTime: 0,
+			Threshold:    0,
+			LastLook:     0,
+			Subsector:    boolToInt(g.playerSubsector() >= 0),
+			Sector:       g.playerSector(),
+			Player:       1,
+			Target:       0,
+			Tracer:       0,
+		}})
 	for i, th := range g.m.Things {
 		if playerSlotFromThingType(th.Type) != 0 {
 			continue
@@ -316,43 +316,48 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			order: order,
 			idx:   i,
 			mobj: demoTraceMobj{
-			Type:         demoTraceThingType(th.Type),
-			X:            x,
-			Y:            y,
-			Z:            z,
-			Angle:        g.thingWorldAngle(i, th),
-			MomX:         demoTraceThingMomX(g, i),
-			MomY:         demoTraceThingMomY(g, i),
-			MomZ:         demoTraceThingMomZ(g, i),
-			FloorZ:       floorZ,
-			CeilingZ:     ceilZ,
-			Radius:       radius,
-			Height:       height,
-			Tics:         demoTraceThingTics(g, i, th.Type),
-			State:        demoTraceThingState(g, i, th.Type),
-			Flags:        0,
-			Health:       demoTraceThingHealth(g, i, th.Type),
-			Movedir:      demoTraceThingMoveDir(g, i),
-			Movecount:    demoTraceThingMoveCount(g, i),
-			ReactionTime: demoTraceThingReaction(g, i),
-			Threshold:    demoTraceThingThreshold(g, i),
-			LastLook:     demoTraceThingLastLook(g, i),
-			Subsector:    boolToInt(sec >= 0),
-			Sector:       sec,
-			Player:       0,
-			Target:       target,
-			TargetType:   targetType,
-			Tracer:       0,
-			Kind:         demoTraceThingKind(th.Type),
-			Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),
-		}})
+				Type:         demoTraceThingType(th.Type),
+				X:            x,
+				Y:            y,
+				Z:            z,
+				Angle:        g.thingWorldAngle(i, th),
+				MomX:         demoTraceThingMomX(g, i),
+				MomY:         demoTraceThingMomY(g, i),
+				MomZ:         demoTraceThingMomZ(g, i),
+				FloorZ:       floorZ,
+				CeilingZ:     ceilZ,
+				Radius:       radius,
+				Height:       height,
+				Tics:         demoTraceThingTics(g, i, th.Type),
+				State:        demoTraceThingState(g, i, th.Type),
+				Flags:        0,
+				Health:       demoTraceThingHealth(g, i, th.Type),
+				Movedir:      demoTraceThingMoveDir(g, i),
+				Movecount:    demoTraceThingMoveCount(g, i),
+				ReactionTime: demoTraceThingReaction(g, i),
+				Threshold:    demoTraceThingThreshold(g, i),
+				LastLook:     demoTraceThingLastLook(g, i),
+				Subsector:    boolToInt(sec >= 0),
+				Sector:       sec,
+				Player:       0,
+				Target:       target,
+				TargetType:   targetType,
+				Tracer:       0,
+				Kind:         demoTraceThingKind(th.Type),
+				Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),
+			}})
 	}
 	for _, p := range g.projectiles {
-		sec := g.sectorAt(p.x, p.y)
-		floorZ := g.thingFloorZ(p.x, p.y)
-		ceilZ := int64(0)
-		if sec >= 0 && sec < len(g.sectorCeil) {
-			ceilZ = g.sectorCeil[sec]
+		ss := -1
+		sec := -1
+		if g.m != nil && len(g.m.SubSectors) > 0 {
+			ss = g.subSectorAtFixed(p.x, p.y)
+			if ss >= 0 {
+				sec = g.sectorForSubSector(ss)
+			}
+		}
+		if sec < 0 {
+			sec = g.sectorAt(p.x, p.y)
 		}
 		target := 0
 		targetType := 0
@@ -367,42 +372,47 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			order: p.order,
 			idx:   -1,
 			mobj: demoTraceMobj{
-			Type:         demoTraceProjectileType(p),
-			X:            p.x,
-			Y:            p.y,
-			Z:            p.z,
-			Angle:        p.angle,
-			MomX:         p.vx,
-			MomY:         p.vy,
-			MomZ:         p.vz,
-			FloorZ:       floorZ,
-			CeilingZ:     ceilZ,
-			Radius:       p.radius,
-			Height:       p.height,
-			Tics:         p.frameTics,
-			State:        demoTraceProjectileState(p),
-			Flags:        demoTraceProjectileFlags(p),
-			Health:       1000,
-			Movedir:      0,
-			Movecount:    0,
-			ReactionTime: 8,
-			Threshold:    0,
-			LastLook:     p.lastLook,
-			Subsector:    boolToInt(sec >= 0),
-			Sector:       sec,
-			Player:       0,
-			Target:       target,
-			TargetType:   targetType,
-			Tracer:       0,
-			Kind:         "projectile",
-		}})
+				Type:         demoTraceProjectileType(p),
+				X:            p.x,
+				Y:            p.y,
+				Z:            p.z,
+				Angle:        p.angle,
+				MomX:         p.vx,
+				MomY:         p.vy,
+				MomZ:         p.vz,
+				FloorZ:       p.floorz,
+				CeilingZ:     p.ceilz,
+				Radius:       p.radius,
+				Height:       p.height,
+				Tics:         p.frameTics,
+				State:        demoTraceProjectileState(p),
+				Flags:        demoTraceProjectileFlags(p),
+				Health:       1000,
+				Movedir:      0,
+				Movecount:    0,
+				ReactionTime: 8,
+				Threshold:    0,
+				LastLook:     p.lastLook,
+				Subsector:    boolToInt(ss >= 0),
+				Sector:       sec,
+				Player:       0,
+				Target:       target,
+				TargetType:   targetType,
+				Tracer:       0,
+				Kind:         "projectile",
+			}})
 	}
 	for _, fx := range g.projectileImpacts {
-		sec := g.sectorAt(fx.x, fx.y)
-		floorZ := g.thingFloorZ(fx.x, fx.y)
-		ceilZ := int64(0)
-		if sec >= 0 && sec < len(g.sectorCeil) {
-			ceilZ = g.sectorCeil[sec]
+		ss := -1
+		sec := -1
+		if g.m != nil && len(g.m.SubSectors) > 0 {
+			ss = g.subSectorAtFixed(fx.x, fx.y)
+			if ss >= 0 {
+				sec = g.sectorForSubSector(ss)
+			}
+		}
+		if sec < 0 {
+			sec = g.sectorAt(fx.x, fx.y)
 		}
 		target := 0
 		targetType := 0
@@ -425,8 +435,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				MomX:         0,
 				MomY:         0,
 				MomZ:         0,
-				FloorZ:       floorZ,
-				CeilingZ:     ceilZ,
+				FloorZ:       fx.floorz,
+				CeilingZ:     fx.ceilz,
 				Radius:       demoTraceProjectileImpactRadius(fx.kind),
 				Height:       8 * fracUnit,
 				Tics:         fx.phaseTics,
@@ -438,7 +448,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				ReactionTime: 8,
 				Threshold:    0,
 				LastLook:     fx.lastLook,
-				Subsector:    boolToInt(sec >= 0),
+				Subsector:    boolToInt(ss >= 0),
 				Sector:       sec,
 				Player:       0,
 				Target:       target,
@@ -471,35 +481,35 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			order: p.order,
 			idx:   -1,
 			mobj: demoTraceMobj{
-			Type:         mobjType,
-			X:            p.x,
-			Y:            p.y,
-			Z:            p.z,
-			Angle:        0,
-			MomX:         0,
-			MomY:         0,
-			MomZ:         p.momz,
-			FloorZ:       floorZ,
-			CeilingZ:     ceilZ,
-			Radius:       20 * fracUnit,
-			Height:       16 * fracUnit,
-			Tics:         p.tics,
-			State:        p.state,
-			Flags:        flags,
-			Health:       1000,
-			Movedir:      0,
-			Movecount:    0,
-			ReactionTime: 8,
-			Threshold:    0,
-			LastLook:     0,
+				Type:         mobjType,
+				X:            p.x,
+				Y:            p.y,
+				Z:            p.z,
+				Angle:        0,
+				MomX:         0,
+				MomY:         0,
+				MomZ:         p.momz,
+				FloorZ:       floorZ,
+				CeilingZ:     ceilZ,
+				Radius:       20 * fracUnit,
+				Height:       16 * fracUnit,
+				Tics:         p.tics,
+				State:        p.state,
+				Flags:        flags,
+				Health:       1000,
+				Movedir:      0,
+				Movecount:    0,
+				ReactionTime: 8,
+				Threshold:    0,
+				LastLook:     0,
 				Subsector:    boolToInt(ss >= 0),
 				Sector:       sec,
-			Player:       0,
-			Target:       0,
-			TargetType:   0,
-			Tracer:       0,
-			TracerType:   0,
-		}})
+				Player:       0,
+				Target:       0,
+				TargetType:   0,
+				Tracer:       0,
+				TracerType:   0,
+			}})
 	}
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return ordered[i].order < ordered[j].order
@@ -753,18 +763,18 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			tag = int(g.m.Sectors[sec].Tag)
 		}
 		item := map[string]any{
-			"kind":          "plat",
-			"sector":        sec,
-			"type":          doomPlatType(p.typ),
-			"speed":         p.speed,
-			"low":           p.low,
-			"high":          p.high,
-			"wait":          p.wait,
-			"count":         p.count,
-			"status":        int(p.status),
-			"oldstatus":     int(p.oldStatus),
-			"crush":         0,
-			"tag":           tag,
+			"kind":      "plat",
+			"sector":    sec,
+			"type":      doomPlatType(p.typ),
+			"speed":     p.speed,
+			"low":       p.low,
+			"high":      p.high,
+			"wait":      p.wait,
+			"count":     p.count,
+			"status":    int(p.status),
+			"oldstatus": int(p.oldStatus),
+			"crush":     0,
+			"tag":       tag,
 		}
 		if p.finishSpecial != 0 {
 			item["finishspecial"] = int16(p.finishSpecial)
