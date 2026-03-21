@@ -11183,7 +11183,7 @@ func monsterDeathFrameTics(typ int16) []int {
 func monsterDeathSoundDelayTics(typ int16) int {
 	// Doom plays death sounds on A_Scream, which is usually the 2nd death frame.
 	switch typ {
-	case 3004, 9:
+	case 3004, 9, 65, 84:
 		return 5
 	case 3001, 3002, 58, 3003, 3005:
 		return 8

@@ -1203,39 +1203,57 @@ func TestMonsterDeathSoundEventMapping(t *testing.T) {
 	}
 }
 
-func TestDamageMonsterDelaysShotgunDeathSoundToScreamFrame(t *testing.T) {
-	doomrand.Clear()
-	g := &game{
-		m: &mapdata.Map{
-			Things: []mapdata.Thing{
-				{Type: 9, X: 0, Y: 0},
+func TestDamageMonsterDelaysFormerHumanDeathSoundToScreamFrame(t *testing.T) {
+	tests := []struct {
+		typ    int16
+		events []soundEvent
+	}{
+		{typ: 3004, events: []soundEvent{soundEventDeathPodth1, soundEventDeathPodth2, soundEventDeathPodth3}},
+		{typ: 9, events: []soundEvent{soundEventDeathPodth1, soundEventDeathPodth2, soundEventDeathPodth3}},
+		{typ: 65, events: []soundEvent{soundEventDeathPodth1, soundEventDeathPodth2, soundEventDeathPodth3}},
+		{typ: 84, events: []soundEvent{soundEventDeathWolfSS}},
+	}
+	for _, tc := range tests {
+		doomrand.Clear()
+		g := &game{
+			m: &mapdata.Map{
+				Things: []mapdata.Thing{
+					{Type: tc.typ, X: 0, Y: 0},
+				},
 			},
-		},
-		thingCollected: []bool{false},
-		thingHP:        []int{1},
-		thingDead:      []bool{false},
-		thingDeathTics: []int{0},
-		thingState:     []monsterThinkState{monsterStateSee},
-		thingStateTics: []int{0},
-		thingStatePhase: []int{0},
-		soundQueue:     make([]soundEvent, 0, 2),
-	}
-	g.damageMonster(0, 1)
-	if hasSoundEvent(g.soundQueue, soundEventDeathPodth1) || hasSoundEvent(g.soundQueue, soundEventDeathPodth2) || hasSoundEvent(g.soundQueue, soundEventDeathPodth3) {
-		t.Fatalf("death sound should be delayed; queue=%v", g.soundQueue)
-	}
-	for i := 0; i < 4; i++ {
+			thingCollected:  []bool{false},
+			thingHP:         []int{1},
+			thingDead:       []bool{false},
+			thingDeathTics:  []int{0},
+			thingState:      []monsterThinkState{monsterStateSee},
+			thingStateTics:  []int{0},
+			thingStatePhase: []int{0},
+			soundQueue:      make([]soundEvent, 0, 2),
+		}
+		g.damageMonster(0, 1)
+		if hasAnySoundEvent(g.soundQueue, tc.events...) {
+			t.Fatalf("type=%d death sound should be delayed; queue=%v", tc.typ, g.soundQueue)
+		}
+		for i := 0; i < 4; i++ {
+			g.tickMonsters()
+			if hasAnySoundEvent(g.soundQueue, tc.events...) {
+				t.Fatalf("type=%d death sound fired early at tick %d", tc.typ, i+1)
+			}
+		}
 		g.tickMonsters()
-		if hasSoundEvent(g.soundQueue, soundEventDeathPodth1) || hasSoundEvent(g.soundQueue, soundEventDeathPodth2) || hasSoundEvent(g.soundQueue, soundEventDeathPodth3) {
-			t.Fatalf("death sound fired early at tick %d", i+1)
+		if !hasAnySoundEvent(g.soundQueue, tc.events...) {
+			t.Fatalf("type=%d queue=%v missing delayed humanoid death sound", tc.typ, g.soundQueue)
 		}
 	}
-	g.tickMonsters()
-	if !hasSoundEvent(g.soundQueue, soundEventDeathPodth1) &&
-		!hasSoundEvent(g.soundQueue, soundEventDeathPodth2) &&
-		!hasSoundEvent(g.soundQueue, soundEventDeathPodth3) {
-		t.Fatalf("queue=%v missing delayed randomized shotgun death sound", g.soundQueue)
+}
+
+func hasAnySoundEvent(queue []soundEvent, want ...soundEvent) bool {
+	for _, ev := range want {
+		if hasSoundEvent(queue, ev) {
+			return true
+		}
 	}
+	return false
 }
 
 func hasSoundEvent(queue []soundEvent, want soundEvent) bool {
