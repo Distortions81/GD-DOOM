@@ -14,10 +14,10 @@ This repo now has a repeatable demo-desync harness for comparing GD-DOOM against
 
 `scripts/demo_trace_compare.sh` performs the full compare loop:
 
-1. Builds a local GD-DOOM binary if needed.
-2. Builds `cmd/demotracecmp`.
+1. Cleans and rebuilds a local GD-DOOM trace binary.
+2. Cleans and rebuilds `cmd/demotracecmp`.
 3. Runs the original DOOM executable with `-tracedemo <demo lump> -tracefile <path>`.
-4. Runs GD-DOOM with `-demo <file> -trace-demo-state <path>`.
+4. Runs GD-DOOM with `-demo <file> -trace-demo-state <path> -demo-exit-on-death`.
 5. Compares the resulting JSONL tic traces and stops at the first mismatch.
 
 The comparator already ignores a small set of known non-parity fields, so the reported mismatch is usually actionable.
@@ -26,12 +26,16 @@ The comparator already ignores a small set of known non-parity fields, so the re
 
 - `../doom-source` must exist and contain a built `linuxxdoom`.
 - `DOOM1.WAD` must be available in the GD-DOOM repo root unless overridden.
-- `xvfb-run` must be installed.
+- A normal desktop display is preferred.
+- `xvfb-run` is only needed when running headless or when no `DISPLAY` is available.
 
 Notes:
 
 - The reference runtime already includes trace support via `-tracedemo` and `-tracefile`.
-- GD-DOOM does not emit per-tic demo traces under `-render=false`; for now the harness runs GD-DOOM under `xvfb-run`.
+- GD-DOOM does not emit per-tic demo traces under `-render=false`.
+- The harness prefers a normal desktop run when `DISPLAY` is set.
+- If no display is available, the harness falls back to `xvfb-run`.
+- Use `--headless` to force `xvfb-run`, or `--no-headless` to require a desktop display.
 
 ## Default Inputs
 
@@ -55,6 +59,8 @@ Useful overrides:
 scripts/demo_trace_compare.sh --out /tmp/demo-trace-check
 scripts/demo_trace_compare.sh --demo-lump demo2 --demo ./demos/DOOM1-DEMO2.lmp
 scripts/demo_trace_compare.sh --ref-bin ../doom-source/linuxdoom-1.10/linux/linuxxdoom
+scripts/demo_trace_compare.sh --headless
+scripts/demo_trace_compare.sh --no-headless
 scripts/demo_trace_compare.sh -- --width 640 -height 400
 ```
 
@@ -70,13 +76,13 @@ The harness writes:
 
 ## Verified Result
 
-This setup was verified with:
+This setup was first verified with:
 
 ```bash
 scripts/demo_trace_compare.sh --out /tmp/demo-trace-check
 ```
 
-That run completed and found the first mismatch at:
+That earlier run completed and found the first mismatch at:
 
 ```text
 mismatch line=1699 path=root.mobj_count
@@ -96,6 +102,14 @@ Artifacts from that verified run:
 
 The current `DEMO1` desync is not just a cosmetic field mismatch. At the first failing tic, the reference runtime has one more mobj than GD-DOOM while special counts still match.
 
+After fixing the earlier rocket splash and player-vs-barrel radius-order issue, the current first mismatch moved later. A current run with `-demo-exit-on-death` enabled reaches:
+
+```text
+mismatch line=1860 path=root.mobjs[203].floorz
+left=-524288
+right=-1572864
+```
+
 Current next step:
 
-- Inspect tic 1699 in both JSONL traces and identify which mobj exists only on the reference side.
+- Inspect the rocket support/floor selection around gametic 1859 in both JSONL traces.

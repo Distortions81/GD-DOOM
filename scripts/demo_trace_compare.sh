@@ -11,7 +11,8 @@ DEMO_LUMP="demo1"
 DEMO_PATH="${ROOT_DIR}/demos/DOOM1-DEMO1.lmp"
 OUT_DIR="${ROOT_DIR}/tmp/demo-trace-compare"
 KEEP_GOING=0
-GDDOOM_FLAGS=()
+GDDOOM_FLAGS=(-demo-exit-on-death)
+USE_XVFB=auto
 
 usage() {
   cat <<'EOF'
@@ -32,6 +33,8 @@ Options:
                       (default: ./tmp/demo-trace-compare)
   --ref-bin <path>    Override the original DOOM binary path
   --gd-bin <path>     Reuse an existing GD-DOOM binary instead of rebuilding
+  --headless          Force xvfb-run for GD-DOOM
+  --no-headless       Do not use xvfb-run; require an existing desktop display
   --keep-going        Keep artifacts even when the compare fails
   -h, --help          Show this help
 
@@ -72,13 +75,21 @@ while [[ $# -gt 0 ]]; do
       GDDOOM_BIN="$2"
       shift 2
       ;;
+    --headless)
+      USE_XVFB=yes
+      shift
+      ;;
+    --no-headless)
+      USE_XVFB=no
+      shift
+      ;;
     --keep-going)
       KEEP_GOING=1
       shift
       ;;
     --)
       shift
-      GDDOOM_FLAGS=("$@")
+      GDDOOM_FLAGS+=("$@")
       break
       ;;
     -h|--help)
@@ -109,25 +120,22 @@ if [[ ! -x "${REFERENCE_BIN}" ]]; then
   echo "Reference runtime not found or not executable: ${REFERENCE_BIN}" >&2
   exit 1
 fi
-if ! command -v xvfb-run >/dev/null 2>&1; then
-  echo "xvfb-run is required to trace GD-DOOM in CI/headless mode." >&2
-  exit 1
-fi
-
 mkdir -p "${OUT_DIR}"
 mkdir -p "${ROOT_DIR}/.tmp"
 
-if [[ ! -x "${GDDOOM_BIN}" ]]; then
-  echo "Building GD-DOOM trace binary: ${GDDOOM_BIN}"
-  (
-    cd "${ROOT_DIR}"
-    go build -o "${GDDOOM_BIN}" .
-  )
-fi
-
-echo "Building trace comparator: ${TRACECMP_BIN}"
+echo "Building GD-DOOM trace binary: ${GDDOOM_BIN}"
+rm -f "${GDDOOM_BIN}"
 (
   cd "${ROOT_DIR}"
+  go clean
+  go build -o "${GDDOOM_BIN}" .
+)
+
+echo "Building trace comparator: ${TRACECMP_BIN}"
+rm -f "${TRACECMP_BIN}"
+(
+  cd "${ROOT_DIR}"
+  go clean ./cmd/demotracecmp
   go build -o "${TRACECMP_BIN}" ./cmd/demotracecmp
 )
 
@@ -147,14 +155,53 @@ env DOOMWADDIR="${WAD_DIR}" \
   >"${REF_LOG}" 2>&1
 
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"
-xvfb-run -a \
+if [[ "${USE_XVFB}" == "yes" ]]; then
+  if ! command -v xvfb-run >/dev/null 2>&1; then
+    echo "xvfb-run is required for --headless." >&2
+    exit 1
+  fi
+  xvfb-run -a \
+    "${GDDOOM_BIN}" \
+    -wad "${WAD_PATH}" \
+    -demo "${DEMO_PATH}" \
+    -trace-demo-state "${GD_TRACE}" \
+    -no-vsync \
+    "${GDDOOM_FLAGS[@]}" \
+    >"${GD_LOG}" 2>&1
+elif [[ "${USE_XVFB}" == "no" ]]; then
+  if [[ -z "${DISPLAY:-}" ]]; then
+    echo "--no-headless requires DISPLAY to be set." >&2
+    exit 1
+  fi
   "${GDDOOM_BIN}" \
-  -wad "${WAD_PATH}" \
-  -demo "${DEMO_PATH}" \
-  -trace-demo-state "${GD_TRACE}" \
-  -no-vsync \
-  "${GDDOOM_FLAGS[@]}" \
-  >"${GD_LOG}" 2>&1
+    -wad "${WAD_PATH}" \
+    -demo "${DEMO_PATH}" \
+    -trace-demo-state "${GD_TRACE}" \
+    -no-vsync \
+    "${GDDOOM_FLAGS[@]}" \
+    >"${GD_LOG}" 2>&1
+elif [[ -n "${DISPLAY:-}" ]]; then
+  "${GDDOOM_BIN}" \
+    -wad "${WAD_PATH}" \
+    -demo "${DEMO_PATH}" \
+    -trace-demo-state "${GD_TRACE}" \
+    -no-vsync \
+    "${GDDOOM_FLAGS[@]}" \
+    >"${GD_LOG}" 2>&1
+else
+  if ! command -v xvfb-run >/dev/null 2>&1; then
+    echo "No DISPLAY found. Install xvfb-run or rerun from a desktop session." >&2
+    exit 1
+  fi
+  xvfb-run -a \
+    "${GDDOOM_BIN}" \
+    -wad "${WAD_PATH}" \
+    -demo "${DEMO_PATH}" \
+    -trace-demo-state "${GD_TRACE}" \
+    -no-vsync \
+    "${GDDOOM_FLAGS[@]}" \
+    >"${GD_LOG}" 2>&1
+fi
 
 echo "Comparing traces"
 set +e
