@@ -40,6 +40,7 @@ const (
 
 func (g *game) tickWorldLogic() {
 	g.worldTic++
+	doomrand.SetDebugTic(g.worldTic)
 	g.ticDisplayText = formatTicDisplay(g.worldTic)
 	g.tickSectorLightEffects()
 	g.refreshSectorPlaneCacheLighting()

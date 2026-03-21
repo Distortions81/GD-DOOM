@@ -191,11 +191,11 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 	}
 	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	g.thingHP[thingIdx] -= damage
-	if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
-		g.thingReactionTics[thingIdx] = 0
-	}
 	if g.thingHP[thingIdx] > 0 {
 		_ = doomrand.PRandom()
+		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
+			g.thingReactionTics[thingIdx] = 0
+		}
 		g.maybeRetargetMonsterAfterDamage(thingIdx, g.m.Things[thingIdx].Type, sourcePlayer, sourceThing)
 		return
 	}

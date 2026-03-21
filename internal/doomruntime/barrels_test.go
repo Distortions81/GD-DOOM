@@ -133,6 +133,7 @@ func TestDamageBarrelPreservesNegativeHealthLikeDoom(t *testing.T) {
 		},
 		thingCollected:  []bool{false},
 		thingHP:         []int{20},
+		thingReactionTics: []int{8},
 		thingDead:       []bool{false},
 		thingState:      []monsterThinkState{monsterStateSpawn},
 		thingStateTics:  []int{6},
@@ -147,6 +148,9 @@ func TestDamageBarrelPreservesNegativeHealthLikeDoom(t *testing.T) {
 	}
 	if !g.thingDead[0] {
 		t.Fatal("barrel should be dead after lethal damage")
+	}
+	if got := g.thingReactionTics[0]; got != 8 {
+		t.Fatalf("reactiontime=%d want=8", got)
 	}
 }
 

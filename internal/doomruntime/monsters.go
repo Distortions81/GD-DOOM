@@ -116,6 +116,14 @@ func (g *game) tickMonsters() {
 						}
 						g.thingStateTics[i] = frameTics[nextPhase]
 						if nextPhase == monsterDeathSoundActionPhase(th.Type) {
+							if want := os.Getenv("GD_DEBUG_DEATH_SOUND_TIC"); want != "" {
+								var wantTic int
+								if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+									px, py := g.thingPosFixed(i, th)
+									fmt.Printf("monster-deathsound-debug tic=%d world=%d idx=%d type=%d phase=%d state=%d tics=%d pos=(%d,%d)\n",
+										g.demoTick-1, g.worldTic, i, th.Type, nextPhase, g.thingState[i], g.thingStateTics[i], px, py)
+								}
+							}
 							px, py := g.thingPosFixed(i, th)
 							g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
 						}

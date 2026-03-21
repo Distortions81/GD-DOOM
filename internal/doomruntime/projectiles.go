@@ -194,7 +194,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		sourceType:   typ,
 		tracerPlayer: typ == 66,
 		lastLook:     lastLook,
-		frameTics:    randomizedStateTics(projectileSpawnStateTics(kind)),
+		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(kind)),
 		kind:         kind,
 		angle:        aimAngle,
 		order:        g.allocThinkerOrder(),
@@ -401,7 +401,7 @@ func (g *game) spawnPlayerRocket() bool {
 		sourceType:   16,
 		sourcePlayer: true,
 		lastLook:     lastLook,
-		frameTics:    randomizedStateTics(projectileSpawnStateTics(projectileRocket)),
+		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(projectileRocket)),
 		kind:         projectileRocket,
 		angle:        g.p.angle,
 		order:        g.allocThinkerOrder(),
@@ -473,7 +473,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		sourceType:   0,
 		sourcePlayer: true,
 		lastLook:     lastLook,
-		frameTics:    randomizedStateTics(projectileSpawnStateTics(kind)),
+		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(kind)),
 		kind:         kind,
 		angle:        g.p.angle,
 		order:        g.allocThinkerOrder(),
@@ -672,6 +672,17 @@ func projectileImpactPhaseTics(kind projectileKind, phase int) int {
 func randomizedStateTics(base int) int {
 	if base <= 1 {
 		return 1
+	}
+	tics := base - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		return 1
+	}
+	return tics
+}
+
+func randomizedMissileSpawnTics(base int) int {
+	if base < 1 {
+		base = 1
 	}
 	tics := base - (doomrand.PRandom() & 3)
 	if tics < 1 {

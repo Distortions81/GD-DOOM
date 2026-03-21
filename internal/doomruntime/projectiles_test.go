@@ -504,6 +504,30 @@ func TestPlayerRocketUsesDoomFineAngleMomentum(t *testing.T) {
 	}
 }
 
+func TestPlayerRocketSpawnConsumesLastLookAndCheckMissileSpawnPRandom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{Health: 100, Rockets: 3},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      0,
+			angle:  0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		inventory:   playerInventory{ReadyWeapon: weaponRocketLauncher},
+		projectiles: make([]projectile, 0, 1),
+	}
+	if !g.fireSelectedWeapon() {
+		t.Fatal("rocket launcher should spawn a projectile")
+	}
+	_, prnd := doomrand.State()
+	if prnd != 2 {
+		t.Fatalf("prnd=%d want=2 after lastlook + checkmissilespawn tics consume", prnd)
+	}
+}
+
 func TestPlayerRocketSplashDamagesNearbyBarrel(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
