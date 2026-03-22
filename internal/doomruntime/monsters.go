@@ -2385,6 +2385,64 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	if g == nil {
 		return false
 	}
+	if g.m == nil || len(g.m.Nodes) == 0 || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 {
+		return g.actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheight)
+	}
+	sightZStart := az + aheight - (aheight >> 2)
+	sight := losTrace{
+		trace:       divline{x: ax, y: ay, dx: bx - ax, dy: by - ay},
+		t2x:         bx,
+		t2y:         by,
+		sightZStart: sightZStart,
+		topSlope:    (bz + bheight) - sightZStart,
+		bottomSlope: bz - sightZStart,
+	}
+	g.validCount++
+	return g.crossBSPLOS(uint16(len(g.m.Nodes)-1), sight)
+}
+
+type losTrace struct {
+	trace       divline
+	t2x         int64
+	t2y         int64
+	sightZStart int64
+	topSlope    int64
+	bottomSlope int64
+}
+
+func doomSightDivlineSide(x, y int64, line divline) int {
+	if line.dx == 0 {
+		if x == line.x {
+			return 2
+		}
+		if x <= line.x {
+			return b2i(line.dy > 0)
+		}
+		return b2i(line.dy < 0)
+	}
+	if line.dy == 0 {
+		if y == line.y {
+			return 2
+		}
+		if y <= line.y {
+			return b2i(line.dx < 0)
+		}
+		return b2i(line.dx > 0)
+	}
+	dx := x - line.x
+	dy := y - line.y
+	left := (line.dy >> fracBits) * (dx >> fracBits)
+	right := (dy >> fracBits) * (line.dx >> fracBits)
+	if right < left {
+		return 0
+	}
+	if left == right {
+		return 2
+	}
+	return 1
+}
+
+func (g *game) actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheight int64) bool {
 	dx := bx - ax
 	dy := by - ay
 	totalDist := math.Hypot(float64(dx), float64(dy))
@@ -2399,14 +2457,14 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	intercepts := g.losInterceptScratch[:0]
 	trace := divline{x: ax, y: ay, dx: bx - ax, dy: by - ay}
 	for i, ld := range g.lines {
-		s1 := doomDivlineSideExact(ld.x1, ld.y1, trace)
-		s2 := doomDivlineSideExact(ld.x2, ld.y2, trace)
+		s1 := doomSightDivlineSide(ld.x1, ld.y1, trace)
+		s2 := doomSightDivlineSide(ld.x2, ld.y2, trace)
 		if s1 == s2 {
 			continue
 		}
 		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
-		s1 = doomDivlineSideExact(trace.x, trace.y, lineDL)
-		s2 = doomDivlineSideExact(trace.x+trace.dx, trace.y+trace.dy, lineDL)
+		s1 = doomSightDivlineSide(trace.x, trace.y, lineDL)
+		s2 = doomSightDivlineSide(trace.x+trace.dx, trace.y+trace.dy, lineDL)
 		if s1 == s2 {
 			continue
 		}
@@ -2424,33 +2482,10 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	for _, it := range intercepts {
 		ld := g.lines[it.line]
 		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
-			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
-				var wantTic, wantIdx int
-				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
-					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
-						traceS1 := doomDivlineSideExact(ld.x1, ld.y1, trace)
-						traceS2 := doomDivlineSideExact(ld.x2, ld.y2, trace)
-						lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
-						lineS1 := doomDivlineSideExact(trace.x, trace.y, lineDL)
-						lineS2 := doomDivlineSideExact(trace.x+trace.dx, trace.y+trace.dy, lineDL)
-						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=onesided flags=%d traceSides=%d/%d lineSides=%d/%d ax=%d ay=%d bx=%d by=%d\n",
-							g.demoTick-1, g.worldTic, it.line, it.frac, ld.flags, traceS1, traceS2, lineS1, lineS2, ax, ay, bx, by)
-					}
-				}
-			}
 			return false
 		}
 		front, back := g.physLineSectors(ld)
 		if front < 0 || back < 0 || front >= len(g.sectorFloor) || back >= len(g.sectorFloor) || front >= len(g.sectorCeil) || back >= len(g.sectorCeil) {
-			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
-				var wantTic, wantIdx int
-				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
-					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
-						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=badsectors front=%d back=%d\n",
-							g.demoTick-1, g.worldTic, it.line, it.frac, front, back)
-					}
-				}
-			}
 			return false
 		}
 		if g.sectorFloor[front] == g.sectorFloor[back] && g.sectorCeil[front] == g.sectorCeil[back] {
@@ -2458,15 +2493,6 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
 		if openrange <= 0 {
-			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
-				var wantTic, wantIdx int
-				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
-					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
-						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=closed opentop=%d openbottom=%d openrange=%d\n",
-							g.demoTick-1, g.worldTic, it.line, it.frac, opentop, openbottom, openrange)
-					}
-				}
-			}
 			return false
 		}
 		dist := totalDist * it.frac
@@ -2486,19 +2512,137 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 			}
 		}
 		if topSlope <= bottomSlope {
-			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
-				var wantTic, wantIdx int
-				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
-					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
-						fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d frac=%f reason=slope topslope=%f bottomslope=%f opentop=%d openbottom=%d\n",
-							g.demoTick-1, g.worldTic, it.line, it.frac, topSlope, bottomSlope, opentop, openbottom)
-					}
-				}
-			}
 			return false
 		}
 	}
 	return true
+}
+
+func (g *game) crossBSPLOS(child uint16, sight losTrace) bool {
+	if child&0x8000 != 0 {
+		ss := int(child & 0x7fff)
+		if ss < 0 || ss >= len(g.m.SubSectors) {
+			return false
+		}
+		return g.crossSubsectorLOS(ss, &sight)
+	}
+	ni := int(child)
+	if ni < 0 || ni >= len(g.m.Nodes) {
+		return false
+	}
+	n := g.m.Nodes[ni]
+	partition := divline{
+		x:  int64(n.X) << fracBits,
+		y:  int64(n.Y) << fracBits,
+		dx: int64(n.DX) << fracBits,
+		dy: int64(n.DY) << fracBits,
+	}
+	side := doomSightDivlineSide(sight.trace.x, sight.trace.y, partition)
+	if side == 2 {
+		side = 0
+	}
+	if !g.crossBSPLOS(n.ChildID[side], sight) {
+		return false
+	}
+	if side == doomSightDivlineSide(sight.t2x, sight.t2y, partition) {
+		return true
+	}
+	return g.crossBSPLOS(n.ChildID[side^1], sight)
+}
+
+func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
+	if g == nil || g.m == nil || ss < 0 || ss >= len(g.m.SubSectors) {
+		return false
+	}
+	sub := g.m.SubSectors[ss]
+	for off := 0; off < int(sub.SegCount); off++ {
+		segIdx := int(sub.FirstSeg) + off
+		if segIdx < 0 || segIdx >= len(g.m.Segs) {
+			continue
+		}
+		sg := g.m.Segs[segIdx]
+		lineIdx := int(sg.Linedef)
+		if lineIdx < 0 || lineIdx >= len(g.lines) || lineIdx >= len(g.m.Linedefs) {
+			continue
+		}
+		if lineIdx >= len(g.lineValid) {
+			g.lineValid = append(g.lineValid, make([]int, lineIdx-len(g.lineValid)+1)...)
+		}
+		if g.lineValid[lineIdx] == g.validCount {
+			continue
+		}
+		g.lineValid[lineIdx] = g.validCount
+		ld := g.lines[lineIdx]
+		s1 := doomSightDivlineSide(ld.x1, ld.y1, sight.trace)
+		s2 := doomSightDivlineSide(ld.x2, ld.y2, sight.trace)
+		if s1 == s2 {
+			continue
+		}
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		s1 = doomSightDivlineSide(sight.trace.x, sight.trace.y, lineDL)
+		s2 = doomSightDivlineSide(sight.t2x, sight.t2y, lineDL)
+		if s1 == s2 {
+			continue
+		}
+		if (ld.flags & mlTwoSided) == 0 {
+			g.debugMonsterLOSBlock("onesided", lineIdx, sight)
+			return false
+		}
+		front, back := g.segSectorIndices(segIdx)
+		if front < 0 || back < 0 || front >= len(g.sectorFloor) || back >= len(g.sectorFloor) || front >= len(g.sectorCeil) || back >= len(g.sectorCeil) {
+			g.debugMonsterLOSBlock("badsectors", lineIdx, sight)
+			return false
+		}
+		if g.sectorFloor[front] == g.sectorFloor[back] && g.sectorCeil[front] == g.sectorCeil[back] {
+			continue
+		}
+		openTop := g.sectorCeil[front]
+		if g.sectorCeil[back] < openTop {
+			openTop = g.sectorCeil[back]
+		}
+		openBottom := g.sectorFloor[front]
+		if g.sectorFloor[back] > openBottom {
+			openBottom = g.sectorFloor[back]
+		}
+		if openBottom >= openTop {
+			g.debugMonsterLOSBlock("closed", lineIdx, sight)
+			return false
+		}
+		frac := interceptVector(sight.trace, lineDL)
+		if frac <= 0 {
+			continue
+		}
+		if g.sectorFloor[front] != g.sectorFloor[back] {
+			if slope := fixedDiv(openBottom-sight.sightZStart, frac); slope > sight.bottomSlope {
+				sight.bottomSlope = slope
+			}
+		}
+		if g.sectorCeil[front] != g.sectorCeil[back] {
+			if slope := fixedDiv(openTop-sight.sightZStart, frac); slope < sight.topSlope {
+				sight.topSlope = slope
+			}
+		}
+		if sight.topSlope <= sight.bottomSlope {
+			g.debugMonsterLOSBlock("slope", lineIdx, sight)
+			return false
+		}
+	}
+	return true
+}
+
+func (g *game) debugMonsterLOSBlock(reason string, lineIdx int, sight *losTrace) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d reason=%s ax=%d ay=%d bx=%d by=%d\n",
+		g.demoTick-1, g.worldTic, lineIdx, reason, sight.trace.x, sight.trace.y, sight.t2x, sight.t2y)
 }
 
 func insertInterceptOrdered(intercepts []intercept, next intercept) []intercept {

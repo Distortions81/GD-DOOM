@@ -272,7 +272,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	ny := oy + p.vy
 	nz := oz + p.vz
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
-	blocked, blockFrac, _, _, _ := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
 	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) && p.kind == projectileFireball {
@@ -310,7 +310,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	}
 	p.x = nx
 	p.y = ny
-	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	p.floorz, p.ceilz = tmfloorz, tmceilingz
 	p.z = nz
 	if p.z <= p.floorz {
 		p.z = p.floorz
@@ -532,7 +532,7 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 		return true
 	}
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
-	blocked, blockFrac, _, _, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
 		if dmg := projectileDamage(*p); dmg > 0 && g.projectileCanDamageThing(*p, thingHit.idx) {
 			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
@@ -553,7 +553,7 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 	}
 	p.x = nx
 	p.y = ny
-	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	p.floorz, p.ceilz = tmfloorz, tmceilingz
 	p.z = nz
 	if p.z <= p.floorz {
 		p.z = p.floorz
@@ -859,25 +859,16 @@ func (g *game) refreshProjectileSupportInSector(sec int) {
 
 func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64) {
 	if g.m == nil {
-		return false, 1, nx, ny, nz
+		return false, 1, 0, 0, nz
 	}
 	sec := g.sectorAt(nx, ny)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
 		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "bad-sector", 1, nx, ny, nz)
-		return true, 1, nx, ny, nz
+		return true, 1, 0, 0, nz
 	}
-	if g.sectorCeil[sec]-g.sectorFloor[sec] < p.height {
-		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "fit", 1, nx, ny, nz)
-		return true, 1, nx, ny, nz
-	}
-	if g.sectorCeil[sec]-oz < p.height {
-		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "ceil", 1, nx, ny, nz)
-		return true, 1, nx, ny, nz
-	}
-	if g.sectorFloor[sec]-oz > 24*fracUnit {
-		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "step", 1, nx, ny, nz)
-		return true, 1, nx, ny, nz
-	}
+	tmfloorz := g.sectorFloor[sec]
+	tmceilingz := g.sectorCeil[sec]
+	tmdropoffz := tmfloorz
 	tmbox := [4]int64{
 		ny + p.radius,
 		ny - p.radius,
@@ -917,10 +908,23 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
-		if openrange <= 0 || hz < openbottom || hz+p.height > opentop {
-			g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "line-open", frac, hx, hy, hz)
-			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
-			return false
+		if g == nil || os.Getenv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+			// no-op
+		} else {
+			var tic int
+			if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
+				fmt.Printf("projectile-line-debug tic=%d world=%d line=%d opentop=%d openbottom=%d openrange=%d oz=%d height=%d\n",
+					g.demoTick-1, g.worldTic, ld.idx, opentop, openbottom, openrange, oz, p.height)
+			}
+		}
+		if opentop < tmceilingz {
+			tmceilingz = opentop
+		}
+		if openbottom > tmfloorz {
+			tmfloorz = openbottom
+		}
+		if lowfloor, ok := g.lineLowFloor(ld); ok && lowfloor < tmdropoffz {
+			tmdropoffz = lowfloor
 		}
 		return true
 	}
@@ -950,7 +954,38 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 			}
 		}
 	}
-	return false, 1, nx, ny, nz
+	if tmceilingz-tmfloorz < p.height {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "fit", 1, nx, ny, oz)
+		return true, 1, tmfloorz, tmceilingz, oz
+	}
+	if tmceilingz-oz < p.height {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "ceil", 1, nx, ny, oz)
+		return true, 1, tmfloorz, tmceilingz, oz
+	}
+	if tmfloorz-oz > 24*fracUnit {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "step", 1, nx, ny, oz)
+		return true, 1, tmfloorz, tmceilingz, oz
+	}
+	_ = tmdropoffz
+	return false, 1, tmfloorz, tmceilingz, nz
+}
+
+func (g *game) lineLowFloor(ld physLine) (int64, bool) {
+	if g == nil {
+		return 0, false
+	}
+	if ld.sideNum0 < 0 || ld.sideNum1 < 0 || int(ld.sideNum0) >= len(g.m.Sidedefs) || int(ld.sideNum1) >= len(g.m.Sidedefs) {
+		return 0, false
+	}
+	s0 := int(g.m.Sidedefs[ld.sideNum0].Sector)
+	s1 := int(g.m.Sidedefs[ld.sideNum1].Sector)
+	if s0 < 0 || s1 < 0 || s0 >= len(g.sectorFloor) || s1 >= len(g.sectorFloor) {
+		return 0, false
+	}
+	if g.sectorFloor[s0] < g.sectorFloor[s1] {
+		return g.sectorFloor[s0], true
+	}
+	return g.sectorFloor[s1], true
 }
 
 func (g *game) debugProjectileBlock(p projectile, ox, oy, oz, nx, ny, nz int64, reason string, frac float64, hx, hy, hz int64) {

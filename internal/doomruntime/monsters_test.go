@@ -2354,6 +2354,24 @@ func TestMonsterHasLOSPlayerRejectsByRejectMatrix(t *testing.T) {
 	}
 }
 
+func TestMonsterHasLOSPlayer_E1M1ImpSightlineMatchesDoom(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	monsterX := int64(-71996864)
+	monsterY := int64(76879808)
+	monsterZ := int64(-9961472)
+	playerX := int64(-105681578)
+	playerY := int64(74940059)
+	playerZ := int64(-12058624)
+	g.p.x = playerX
+	g.p.y = playerY
+	g.p.z = playerZ
+	g.p.sector = g.sectorAt(playerX, playerY)
+
+	if !g.actorHasLOS(monsterX, monsterY, monsterZ, monsterHeight(3001), playerX, playerY, playerZ, playerHeight) {
+		t.Fatal("expected E1M1 imp sightline to player to stay open like Doom P_CheckSight")
+	}
+}
+
 func TestCorpseShouldSkipFrictionWhenHalfOffStep(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

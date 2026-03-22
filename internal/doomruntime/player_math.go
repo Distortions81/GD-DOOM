@@ -163,7 +163,7 @@ func fixedDiv(a, b int64) int64 {
 		}
 		return math.MinInt32
 	}
-	if (abs(a)>>14) >= abs(b) {
+	if (abs(a) >> 14) >= abs(b) {
 		if (a ^ b) < 0 {
 			return math.MinInt32
 		}
