@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"slices"
 
 	"gddoom/internal/doomrand"
 )
@@ -842,38 +841,74 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 	if nz < g.sectorFloor[sec] || nz+p.height > g.sectorCeil[sec] {
 		return true, 1, nx, ny, nz
 	}
-	intercepts := make([]intercept, 0, 8)
-	for i, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(ox, oy, nx, ny, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok {
-			continue
-		}
-		intercepts = append(intercepts, intercept{frac: frac, line: i})
+	tmbox := [4]int64{
+		ny + p.radius,
+		ny - p.radius,
+		nx + p.radius,
+		nx - p.radius,
 	}
-	slices.SortFunc(intercepts, func(a, b intercept) int {
-		if a.frac < b.frac {
-			return -1
+	bestFrac := 2.0
+	bestX, bestY, bestZ := nx, ny, nz
+	processLine := func(physIdx int) bool {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return true
 		}
-		if a.frac > b.frac {
-			return 1
+		if physIdx >= len(g.lineValid) {
+			g.lineValid = append(g.lineValid, make([]int, physIdx-len(g.lineValid)+1)...)
 		}
-		return 0
-	})
-
-	for _, it := range intercepts {
-		ld := g.lines[it.line]
-		hx := ox + int64(float64(nx-ox)*it.frac)
-		hy := oy + int64(float64(ny-oy)*it.frac)
-		hz := oz + int64(float64(nz-oz)*it.frac)
-		if ld.sideNum1 < 0 || (ld.flags&mlBlocking) != 0 {
-			return true, it.frac, hx, hy, hz
+		if g.lineValid[physIdx] == g.validCount {
+			return true
+		}
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		if tmbox[2] <= ld.bbox[3] || tmbox[3] >= ld.bbox[2] || tmbox[0] <= ld.bbox[1] || tmbox[1] >= ld.bbox[0] {
+			return true
+		}
+		if g.boxOnLineSide(tmbox, ld) != -1 {
+			return true
+		}
+		frac := 1.0
+		if f, ok := segmentIntersectFrac(ox, oy, nx, ny, ld.x1, ld.y1, ld.x2, ld.y2); ok {
+			frac = f
+		}
+		hx := ox + int64(float64(nx-ox)*frac)
+		hy := oy + int64(float64(ny-oy)*frac)
+		hz := oz + int64(float64(nz-oz)*frac)
+		if ld.sideNum1 < 0 {
+			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
+			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
-		if openrange <= 0 {
-			return true, it.frac, hx, hy, hz
+		if openrange <= 0 || hz < openbottom || hz+p.height > opentop {
+			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
+			return false
 		}
-		if hz < openbottom || hz+p.height > opentop {
-			return true, it.frac, hx, hy, hz
+		return true
+	}
+	g.validCount++
+	iter := func(lineIdx int) bool {
+		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+			return true
+		}
+		return processLine(g.physForLine[lineIdx])
+	}
+	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		xl := int((tmbox[3] - g.bmapOriginX) >> (fracBits + 7))
+		xh := int((tmbox[2] - g.bmapOriginX) >> (fracBits + 7))
+		yl := int((tmbox[1] - g.bmapOriginY) >> (fracBits + 7))
+		yh := int((tmbox[0] - g.bmapOriginY) >> (fracBits + 7))
+		for bx := xl; bx <= xh; bx++ {
+			for by := yl; by <= yh; by++ {
+				if !g.blockLinesIterator(bx, by, iter) {
+					return true, bestFrac, bestX, bestY, bestZ
+				}
+			}
+		}
+	} else {
+		for i := range g.lines {
+			if !processLine(i) {
+				return true, bestFrac, bestX, bestY, bestZ
+			}
 		}
 	}
 	return false, 1, nx, ny, nz
