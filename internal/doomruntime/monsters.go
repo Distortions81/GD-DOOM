@@ -227,6 +227,19 @@ func (g *game) tickMonsters() {
 		}
 		g.monsterTurnTowardMoveDir(i)
 
+		if !g.monsterHasTarget(i) {
+			if !g.monsterRunLostTargetChaseState(i, th.Type, tx, ty) {
+				continue
+			}
+			targetX, targetY = 0, 0
+			dist = 0
+			if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+				targetX, targetY = px, py
+				dist = doomApproxDistance(targetX-tx, targetY-ty)
+			}
+			g.monsterTurnTowardMoveDir(i)
+		}
+
 		// Doom A_Chase: prevent consecutive missile attacks.
 		if g.thingJustAtk[i] {
 			g.thingJustAtk[i] = false
@@ -431,10 +444,6 @@ func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
 
 func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) bool {
 	if i < 0 {
-		return false
-	}
-	if g.monsterLookForPlayer(i, true, tx, ty) {
-		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
 		return false
 	}
 	if i >= 0 && i < len(g.thingStatePhase) {
@@ -941,6 +950,12 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 		g.thingMomZ[i] = momz
 		return
 	}
+	if g.corpseShouldSkipFriction(i, th, momx, momy) {
+		g.thingMomX[i] = momx
+		g.thingMomY[i] = momy
+		g.thingMomZ[i] = momz
+		return
+	}
 	if momx > -stopSpeed && momx < stopSpeed && momy > -stopSpeed && momy < stopSpeed {
 		g.thingMomX[i] = 0
 		g.thingMomY[i] = 0
@@ -950,6 +965,26 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	g.thingMomX[i] = fixedMul(momx, friction)
 	g.thingMomY[i] = fixedMul(momy, friction)
 	g.thingMomZ[i] = momz
+}
+
+func (g *game) corpseShouldSkipFriction(i int, th mapdata.Thing, momx, momy int64) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if i >= len(g.thingDead) || !g.thingDead[i] || !monsterLeavesCorpse(th.Type) {
+		return false
+	}
+	if momx <= fracUnit/4 && momx >= -fracUnit/4 && momy <= fracUnit/4 && momy >= -fracUnit/4 {
+		return false
+	}
+	if i >= len(g.thingFloorState) || i >= len(g.thingSupportValid) || !g.thingSupportValid[i] {
+		return false
+	}
+	sec := g.thingSectorCached(i, th)
+	if sec < 0 || sec >= len(g.sectorFloor) {
+		return false
+	}
+	return g.thingFloorState[i] != g.sectorFloor[sec]
 }
 
 func (g *game) setThingMomentum(i int, momx, momy, momz int64) {

@@ -271,12 +271,12 @@ func TestMonsterAcquireSectorSoundTargetUsesCachedThingSector(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		thingSectorCache:   []int{1},
-		sectorSoundTarget:  []bool{false, true},
-		thingTargetPlayer:  []bool{false},
-		thingTargetIdx:     []int{-1},
-		stats:              playerStats{Health: 100},
-		p:                  player{x: 0, y: 0},
+		thingSectorCache:  []int{1},
+		sectorSoundTarget: []bool{false, true},
+		thingTargetPlayer: []bool{false},
+		thingTargetIdx:    []int{-1},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0},
 	}
 	hasSoundTarget, wake := g.monsterAcquireSectorSoundTarget(0, 2048*fracUnit, 0)
 	if !hasSoundTarget || !wake {
@@ -297,13 +297,13 @@ func TestMonsterAcquireSectorSoundTargetUsesRuntimeAmbushState(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		thingSectorCache:   []int{0},
-		thingAmbush:        []bool{false},
-		sectorSoundTarget:  []bool{true},
-		thingTargetPlayer:  []bool{false},
-		thingTargetIdx:     []int{-1},
-		stats:              playerStats{Health: 100},
-		p:                  player{x: 0, y: 0},
+		thingSectorCache:  []int{0},
+		thingAmbush:       []bool{false},
+		sectorSoundTarget: []bool{true},
+		thingTargetPlayer: []bool{false},
+		thingTargetIdx:    []int{-1},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0},
 	}
 	hasSoundTarget, wake := g.monsterAcquireSectorSoundTarget(0, 2048*fracUnit, 0)
 	if !hasSoundTarget || !wake {
@@ -2341,15 +2341,85 @@ func TestMonsterHasLOSPlayerRejectsByRejectMatrix(t *testing.T) {
 				Data:        []byte{0x02},
 			},
 		},
-		thingX:          []int64{-64 * fracUnit},
-		thingY:          []int64{0},
+		thingX:           []int64{-64 * fracUnit},
+		thingY:           []int64{0},
 		thingSectorCache: []int{0},
-		sectorFloor:     []int64{0, 0},
-		sectorCeil:      []int64{128 * fracUnit, 128 * fracUnit},
-		p:               player{x: 64 * fracUnit, y: 0, z: 0, sector: 1},
+		sectorFloor:      []int64{0, 0},
+		sectorCeil:       []int64{128 * fracUnit, 128 * fracUnit},
+		p:                player{x: 64 * fracUnit, y: 0, z: 0, sector: 1},
 	}
 
 	if g.monsterHasLOSPlayer(3001, g.thingX[0], g.thingY[0]) {
 		t.Fatal("LOS should fail when the REJECT matrix rejects monster sector to player sector")
+	}
+}
+
+func TestCorpseShouldSkipFrictionWhenHalfOffStep(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 56, CeilingHeight: 128},
+			},
+		},
+		thingDead:         []bool{true},
+		thingFloorState:   []int64{56 * fracUnit},
+		thingSupportValid: []bool{true},
+		thingSectorCache:  []int{0},
+		sectorFloor:       []int64{0, 56 * fracUnit},
+	}
+
+	if !g.corpseShouldSkipFriction(0, g.m.Things[0], fracUnit/2, 0) {
+		t.Fatal("corpse sliding off a step should skip friction like Doom MF_CORPSE logic")
+	}
+}
+
+func TestLostTargetChaseRunsSpawnLookPath(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -64, Y: 0},
+				{Type: 3004, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingX:            []int64{-64 * fracUnit, 0},
+		thingY:            []int64{0, 0},
+		thingSectorCache:  []int{0, 0},
+		thingHP:           []int{20, -4},
+		thingState:        []monsterThinkState{monsterStateSee, monsterStateDeath},
+		thingStateTics:    []int{1, 1},
+		thingMoveDir:      []monsterMoveDir{monsterDirSouthWest, monsterDirNoDir},
+		thingMoveCount:    []int{0, 0},
+		thingThreshold:    []int{10, 0},
+		thingJustAtk:      []bool{true, false},
+		thingTargetIdx:    []int{1, -1},
+		thingTargetPlayer: []bool{false, false},
+		thingDead:         []bool{false, true},
+		sectorSoundTarget: []bool{true},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		p:                 player{x: 64 * fracUnit, y: 0, z: 0},
+	}
+
+	if !g.monsterRunLostTargetChaseState(0, 3004, g.thingX[0], g.thingY[0]) {
+		t.Fatal("lost-target chase should run the spawn/look path immediately")
+	}
+
+	if !g.monsterHasTarget(0) || g.thingTargetPlayer[0] != true {
+		t.Fatal("monster should reacquire the player via the spawn/look path")
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit1) &&
+		!hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit2) &&
+		!hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit3) {
+		t.Fatalf("spawn/look reacquire should emit seesound, queue=%v", g.soundQueue)
+	}
+	if g.thingState[0] != monsterStateSee {
+		t.Fatalf("state=%v want see after spawn/look reacquire", g.thingState[0])
 	}
 }

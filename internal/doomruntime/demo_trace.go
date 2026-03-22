@@ -1009,38 +1009,38 @@ func demoTraceMonsterDeathState(typ int16, phase int, xdeath bool) (int, bool) {
 	if xdeath {
 		switch typ {
 		case 3004:
-			base, count = 195, 9
+			base, count = 194, 9
 		case 9:
-			base, count = 228, 9
+			base, count = 227, 9
 		case 65:
-			base, count = 430, 6
+			base, count = 429, 6
 		case 84:
-			base, count = 750, 9
+			base, count = 749, 9
 		default:
 			return 0, false
 		}
 	} else {
 		switch typ {
 		case 3004:
-			base, count = 184, 5
+			base, count = 189, 5
 		case 9:
 			base, count = 222, 5
 		case 3001:
-			base, count = 451, 5
+			base, count = 457, 5
 		case 3002, 58:
-			base, count = 484, 6
+			base, count = 490, 6
 		case 3005:
-			base, count = 514, 6
+			base, count = 510, 6
 		case 3003:
-			base, count = 536, 7
+			base, count = 542, 7
 		case 69:
-			base, count = 565, 7
+			base, count = 571, 7
 		case 3006:
-			base, count = 589, 6
+			base, count = 595, 6
 		case 7:
-			base, count = 623, 10
+			base, count = 621, 10
 		case 16:
-			base, count = 694, 9
+			base, count = 691, 9
 		default:
 			return 0, false
 		}
