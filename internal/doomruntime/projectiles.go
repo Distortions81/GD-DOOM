@@ -273,6 +273,13 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	nz := oz + p.vz
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
 	blocked, blockFrac, _, _, _ := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var tic int
+		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) && p.kind == projectileFireball {
+			fmt.Printf("projectile-debug tic=%d world=%d phase=advance from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitFrac=%f hitIdx=%d blocked=%t blockFrac=%f floor=%d ceil=%d\n",
+				g.demoTick-1, g.worldTic, ox, oy, oz, nx, ny, nz, hitThing, thingHit.frac, thingHit.idx, blocked, blockFrac, p.floorz, p.ceilz)
+		}
+	}
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
 		if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
 			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
@@ -303,8 +310,18 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	}
 	p.x = nx
 	p.y = ny
-	p.z = nz
 	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	p.z = nz
+	if p.z <= p.floorz {
+		p.z = p.floorz
+		g.explodeProjectileAt(p, p.x, p.y, p.z)
+		return projectile{}, false
+	}
+	if p.z+p.height > p.ceilz {
+		p.z = p.ceilz - p.height
+		g.explodeProjectileAt(p, p.x, p.y, p.z)
+		return projectile{}, false
+	}
 	g.tickProjectileSpecial(&p)
 	g.tickProjectileAnim(&p)
 	p.ttl--
@@ -536,8 +553,18 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 	}
 	p.x = nx
 	p.y = ny
-	p.z = nz
 	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	p.z = nz
+	if p.z <= p.floorz {
+		p.z = p.floorz
+		g.explodeProjectileAt(*p, p.x, p.y, p.z)
+		return false
+	}
+	if p.z+p.height > p.ceilz {
+		p.z = p.ceilz - p.height
+		g.explodeProjectileAt(*p, p.x, p.y, p.z)
+		return false
+	}
 	return true
 }
 
@@ -836,9 +863,19 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 	}
 	sec := g.sectorAt(nx, ny)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "bad-sector", 1, nx, ny, nz)
 		return true, 1, nx, ny, nz
 	}
-	if nz < g.sectorFloor[sec] || nz+p.height > g.sectorCeil[sec] {
+	if g.sectorCeil[sec]-g.sectorFloor[sec] < p.height {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "fit", 1, nx, ny, nz)
+		return true, 1, nx, ny, nz
+	}
+	if g.sectorCeil[sec]-oz < p.height {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "ceil", 1, nx, ny, nz)
+		return true, 1, nx, ny, nz
+	}
+	if g.sectorFloor[sec]-oz > 24*fracUnit {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "step", 1, nx, ny, nz)
 		return true, 1, nx, ny, nz
 	}
 	tmbox := [4]int64{
@@ -873,13 +910,15 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 		}
 		hx := ox + int64(float64(nx-ox)*frac)
 		hy := oy + int64(float64(ny-oy)*frac)
-		hz := oz + int64(float64(nz-oz)*frac)
+		hz := oz
 		if ld.sideNum1 < 0 {
+			g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "onesided", frac, hx, hy, hz)
 			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
 			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
 		if openrange <= 0 || hz < openbottom || hz+p.height > opentop {
+			g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "line-open", frac, hx, hy, hz)
 			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
 			return false
 		}
@@ -912,6 +951,21 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 		}
 	}
 	return false, 1, nx, ny, nz
+}
+
+func (g *game) debugProjectileBlock(p projectile, ox, oy, oz, nx, ny, nz int64, reason string, frac float64, hx, hy, hz int64) {
+	if g == nil || os.Getenv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+		return
+	}
+	var tic int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err != nil {
+		return
+	}
+	if g.demoTick-1 != tic && g.worldTic != tic {
+		return
+	}
+	fmt.Printf("projectile-block-debug tic=%d world=%d reason=%s from=(%d,%d,%d) to=(%d,%d,%d) frac=%f hit=(%d,%d,%d)\n",
+		g.demoTick-1, g.worldTic, reason, ox, oy, oz, nx, ny, nz, frac, hx, hy, hz)
 }
 
 type projectileThingHit struct {
