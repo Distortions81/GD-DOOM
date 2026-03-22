@@ -578,6 +578,7 @@ type game struct {
 	hitscanPuffs          []hitscanPuff
 	nextThinkerOrder      int64
 	nextBlockmapOrder     int64
+	platFree              []*platThinker
 	cheatLevel            int
 	invulnerable          bool
 	inventory             playerInventory

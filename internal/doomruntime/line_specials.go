@@ -677,7 +677,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		if g.sectorHasActiveMover(sec) {
 			continue
 		}
-		pt := &platThinker{order: g.allocThinkerOrder(), sector: sec}
+		pt := g.allocPlatThinker(sec)
 		switch info.Action {
 		case mapdata.PlatRaiseToNearestAndChange:
 			pt.typ = platTypeRaiseToNearestAndChange
@@ -772,6 +772,29 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		activated = true
 	}
 	return activated
+}
+
+func (g *game) allocPlatThinker(sec int) *platThinker {
+	if g == nil {
+		return &platThinker{sector: sec}
+	}
+	var pt *platThinker
+	if n := len(g.platFree); n > 0 {
+		pt = g.platFree[n-1]
+		g.platFree = g.platFree[:n-1]
+	} else {
+		pt = &platThinker{}
+	}
+	pt.order = g.allocThinkerOrder()
+	pt.sector = sec
+	return pt
+}
+
+func (g *game) freePlatThinker(pt *platThinker) {
+	if g == nil || pt == nil {
+		return
+	}
+	g.platFree = append(g.platFree, pt)
 }
 
 func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
@@ -1275,13 +1298,14 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 		if next > pt.high {
 			next = pt.high
 			g.setSectorFloorHeight(sec, next)
-			if pt.typ == platTypeRaiseToNearestAndChange {
+			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeDownWaitUpStay {
 				if pt.finishFlat != "" {
 					g.m.Sectors[sec].FloorPic = pt.finishFlat
 				}
 				g.m.Sectors[sec].Special = pt.finishSpecial
 				g.markDynamicSectorPlaneCacheDirty(sec)
 				delete(g.plats, sec)
+				g.freePlatThinker(pt)
 			} else {
 				pt.status = platStatusWaiting
 				pt.count = pt.wait

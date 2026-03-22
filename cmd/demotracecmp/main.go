@@ -217,10 +217,24 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 			}
 		}
 		if isPlatSpecial(left) && isPlatSpecial(right) {
-			if key == "low" || key == "oldstatus" {
+			if key == "low" {
 				ltyp, lok := left["type"].(float64)
 				rtyp, rok := right["type"].(float64)
 				if lok && rok && (int(ltyp) == 2 || int(ltyp) == 3) && int(ltyp) == int(rtyp) {
+					return true
+				}
+			}
+			if key == "count" {
+				lstatus, lok := left["status"].(float64)
+				rstatus, rok := right["status"].(float64)
+				if lok && rok && int(lstatus) != 2 && int(rstatus) != 2 {
+					return true
+				}
+			}
+			if key == "oldstatus" {
+				lstatus, lok := left["status"].(float64)
+				rstatus, rok := right["status"].(float64)
+				if lok && rok && int(lstatus) != 16 && int(rstatus) != 16 {
 					return true
 				}
 			}

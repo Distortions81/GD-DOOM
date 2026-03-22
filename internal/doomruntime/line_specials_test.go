@@ -82,6 +82,41 @@ func TestActivatePlatLine_DownWaitUpStayStartsActiveWithZeroCount(t *testing.T) 
 	}
 }
 
+func TestActivatePlatLine_DownWaitUpStayReusesStalePlatFieldsLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 88, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{88},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		platFree: []*platThinker{{
+			count:     platWaitTics,
+			oldStatus: platStatusInStasis,
+		}},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.status != platStatusDown {
+		t.Fatalf("status=%v want %v", pt.status, platStatusDown)
+	}
+	if pt.count != platWaitTics {
+		t.Fatalf("count=%d want stale %d from recycled plat", pt.count, platWaitTics)
+	}
+	if pt.oldStatus != platStatusInStasis {
+		t.Fatalf("oldStatus=%v want stale %v from recycled plat", pt.oldStatus, platStatusInStasis)
+	}
+}
+
 func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -233,6 +268,39 @@ func TestTickPlats_RaiseToNearestAndChangeRemovesAfterOvershootTick(t *testing.T
 	g.tickPlats()
 	if _, ok := g.plats[0]; ok {
 		t.Fatal("plat not removed on overshoot tic")
+	}
+}
+
+func TestTickPlats_DownWaitUpStayRemovesAfterOvershootTick(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{-1 * fracUnit},
+		sectorCeil:  []int64{128 * fracUnit},
+		plats: map[int]*platThinker{
+			0: {
+				sector: 0,
+				typ:    platTypeDownWaitUpStay,
+				status: platStatusUp,
+				speed:  fracUnit,
+				high:   0,
+				wait:   platWaitTics,
+			},
+		},
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; !ok {
+		t.Fatal("plat removed at exact destination; want one more tic like Doom")
+	}
+	if got, want := g.sectorFloor[0], int64(0); got != want {
+		t.Fatalf("floor after exact destination tic=%d want=%d", got, want)
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; ok {
+		t.Fatal("downWaitUpStay plat not removed on overshoot tic")
 	}
 }
 

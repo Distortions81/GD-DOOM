@@ -158,6 +158,29 @@ func doomPlatType(t platType) int {
 	}
 }
 
+func doomDoorType(t doorType) int {
+	switch t {
+	case doorNormal:
+		return 0
+	case doorClose30ThenOpen:
+		return 1
+	case doorClose:
+		return 2
+	case doorOpen:
+		return 3
+	case doorRaiseIn5Mins:
+		return 4
+	case doorBlazeRaise:
+		return 5
+	case doorBlazeOpen:
+		return 6
+	case doorBlazeClose:
+		return 7
+	default:
+		return int(t)
+	}
+}
+
 func doomPlatStatus(s platStatus) int {
 	switch s {
 	case platStatusInStasis:
@@ -744,7 +767,7 @@ func (g *game) demoTraceSpecials() []map[string]any {
 		entry := map[string]any{
 			"kind":         "door",
 			"sector":       sec,
-			"type":         int(d.typ),
+			"type":         doomDoorType(d.typ),
 			"topheight":    d.topHeight,
 			"speed":        d.speed,
 			"direction":    d.direction,

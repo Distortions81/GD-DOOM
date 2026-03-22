@@ -398,6 +398,17 @@ func TestMonsterAttackFrameTablesMatchDoomStateTables(t *testing.T) {
 	}
 }
 
+func TestMonsterAttackStateTotalsMatchFrameSums(t *testing.T) {
+	tests := []int16{3004, 9, 3001, 3002, 58, 3005, 3003, 69, 16, 7, 3006}
+	for _, typ := range tests {
+		got := monsterAttackStateTotalTics(typ)
+		want := monsterAttackAnimTotalTics(typ)
+		if got != want {
+			t.Fatalf("type %d attack total=%d want=%d", typ, got, want)
+		}
+	}
+}
+
 func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 	spawnTests := []struct {
 		typ      int16

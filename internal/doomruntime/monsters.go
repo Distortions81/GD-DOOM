@@ -1154,7 +1154,7 @@ func monsterAttackStateTotalTics(typ int16) int {
 	case 3004: // zombieman
 		return 26
 	case 9: // sergeant
-		return 24
+		return 30
 	case 3001: // imp
 		return 22
 	case 3002, 58: // demon/spectre
@@ -1168,7 +1168,7 @@ func monsterAttackStateTotalTics(typ int16) int {
 	case 7: // spider mastermind (single volley cycle)
 		return 29
 	case 3006: // lost soul
-		return 10
+		return 12
 	default:
 		return 0
 	}

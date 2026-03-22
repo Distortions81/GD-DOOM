@@ -211,7 +211,7 @@ func TestDemoTraceDoorSpecialKeepsZeroValuedFields(t *testing.T) {
 		doors: map[int]*doorThinker{
 			71: {
 				sector:       71,
-				typ:          doorNormal,
+				typ:          doorOpen,
 				direction:    1,
 				topHeight:    4456448,
 				topWait:      150,
@@ -225,8 +225,8 @@ func TestDemoTraceDoorSpecialKeepsZeroValuedFields(t *testing.T) {
 	if got, want := len(specials), 1; got != want {
 		t.Fatalf("special count=%d want=%d", got, want)
 	}
-	if got, ok := specials[0]["type"]; !ok || got != int(doorNormal) {
-		t.Fatalf("special type=%v ok=%v want=%d", got, ok, int(doorNormal))
+	if got, ok := specials[0]["type"]; !ok || got != 3 {
+		t.Fatalf("special type=%v ok=%v want=%d", got, ok, 3)
 	}
 	if got, ok := specials[0]["topcountdown"]; !ok || got != 0 {
 		t.Fatalf("topcountdown=%v ok=%v want=0", got, ok)
@@ -237,8 +237,8 @@ func TestDemoTraceDoorSpecialKeepsZeroValuedFields(t *testing.T) {
 		t.Fatalf("marshal specials: %v", err)
 	}
 	s := string(data)
-	if !strings.Contains(s, `"type":0`) {
-		t.Fatalf("marshaled specials missing type zero field: %s", s)
+	if !strings.Contains(s, `"type":3`) {
+		t.Fatalf("marshaled specials missing Doom door type field: %s", s)
 	}
 	if !strings.Contains(s, `"topcountdown":0`) {
 		t.Fatalf("marshaled specials missing topcountdown zero field: %s", s)
@@ -268,7 +268,7 @@ func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 	g.doors = map[int]*doorThinker{
 		71: {
 			sector:       71,
-			typ:          doorNormal,
+			typ:          doorOpen,
 			direction:    1,
 			topHeight:    4456448,
 			topWait:      150,
@@ -284,8 +284,8 @@ func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 		t.Fatalf("read trace: %v", err)
 	}
 	s := strings.TrimSpace(string(data))
-	if !strings.Contains(s, `"type":0`) {
-		t.Fatalf("tic line missing type zero field: %s", s)
+	if !strings.Contains(s, `"type":3`) {
+		t.Fatalf("tic line missing Doom door type field: %s", s)
 	}
 	if !strings.Contains(s, `"topcountdown":0`) {
 		t.Fatalf("tic line missing topcountdown zero field: %s", s)
