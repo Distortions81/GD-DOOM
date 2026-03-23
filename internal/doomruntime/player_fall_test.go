@@ -237,6 +237,27 @@ func TestXYMovement_StepOffLedgePreservesMomentumWhileAirborne(t *testing.T) {
 	}
 }
 
+func TestActorBlockedByDeadSpectreCorpse(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 58, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingHP:         []int{0},
+		thingDead:       []bool{true},
+		thingStatePhase: []int{0},
+	}
+
+	blocked := g.actorBlockedByThings(0, 45*fracUnit, playerRadius, -1, false)
+	if !blocked {
+		t.Fatal("dead spectre corpse should block player movement while still in pre-A_Fall death phase")
+	}
+}
+
 func TestXYMovement_KeepsLowMomentumWhileMoveInputHeld(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
