@@ -605,6 +605,52 @@ func TestPlayerRocketSpawnConsumesLastLookAndCheckMissileSpawnPRandom(t *testing
 	}
 }
 
+func TestSameSpeciesMissileExplosionDoesNotConsumeDamageRandom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 0, Y: 0},
+				{Type: 3001, X: 32, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		thingHP:     []int{60, 60},
+	}
+	g.initPhysics()
+	g.setThingSupportState(0, 0, 0, 128*fracUnit)
+	g.setThingSupportState(1, 0, 0, 128*fracUnit)
+
+	p := projectile{
+		x:           0,
+		y:           0,
+		z:           32 * fracUnit,
+		vx:          8 * fracUnit,
+		vy:          0,
+		vz:          0,
+		radius:      monsterProjectileRadius(3001),
+		height:      monsterProjectileHeight(3001),
+		ttl:         1,
+		sourceThing: 0,
+		sourceType:  3001,
+		kind:        projectileFireball,
+	}
+	p.floorz, p.ceilz = 0, 128*fracUnit
+
+	doomrand.Clear()
+	wantNext := doomrand.PRandomOffset(1)
+	_, keep := g.advanceProjectile(p)
+	if keep {
+		t.Fatal("projectile should explode on same-species contact")
+	}
+	if got := doomrand.PRandom(); got != wantNext {
+		t.Fatalf("same-species explosion consumed wrong number of PRandom calls: got next=%d want=%d (after exactly one in-impact random, not two)", got, wantNext)
+	}
+}
+
 func TestPlayerRocketSplashDamagesNearbyBarrel(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

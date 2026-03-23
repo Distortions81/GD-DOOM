@@ -299,8 +299,10 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		}
 	}
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
-		if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
-			g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
+		if g.projectileCanDamageThing(p, thingHit.idx) {
+			if dmg := projectileDamage(p); dmg > 0 {
+				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
+			}
 		}
 		g.explodeProjectileAt(p, ox, oy, oz)
 		return projectile{}, false
@@ -647,7 +649,27 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
 		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
 	}
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-debug tic=%d world=%d phase=pre kind=%d pos=(%d,%d,%d) rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, kind, x, y, z, rnd, prnd)
+			}
+		}
+	}
 	first := randomizedStateTics(projectileImpactPhaseTics(kind, 0))
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-debug tic=%d world=%d phase=post kind=%d first=%d pos=(%d,%d,%d) rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, kind, first, x, y, z, rnd, prnd)
+			}
+		}
+	}
 	tics := first
 	for phase := 1; ; phase++ {
 		next := projectileImpactPhaseTics(kind, phase)
@@ -677,6 +699,16 @@ func (g *game) spawnProjectileImpactDeferredRandom(kind projectileKind, x, y, z 
 	if len(g.projectileImpacts) >= maxImpacts {
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
 		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
+	}
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-deferred-debug tic=%d world=%d phase=spawn kind=%d pos=(%d,%d,%d) rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, kind, x, y, z, rnd, prnd)
+			}
+		}
 	}
 	first := projectileImpactPhaseTics(kind, 0)
 	tics := first
@@ -750,7 +782,27 @@ func (g *game) finalizeDeferredProjectileImpact(idx int) {
 	if base <= 0 {
 		return
 	}
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-deferred-debug tic=%d world=%d phase=finalize-pre kind=%d base=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, fx.kind, base, rnd, prnd)
+			}
+		}
+	}
 	first := randomizedStateTics(base)
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-deferred-debug tic=%d world=%d phase=finalize-post kind=%d first=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, fx.kind, first, rnd, prnd)
+			}
+		}
+	}
 	fx.tics -= base - first
 	fx.totalTics -= base - first
 	fx.phaseTics = first
