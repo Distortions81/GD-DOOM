@@ -583,6 +583,23 @@ func TestDemoTraceHitscanBloodUsesCachedSupportHeights(t *testing.T) {
 	}
 }
 
+func TestDemoTraceHitscanPuffPreservesLastLook(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{},
+		hitscanPuffs: []hitscanPuff{
+			{x: 30, y: 0, z: 0, floorz: 0, ceilz: 52 * fracUnit, tics: 4, state: 93, kind: hitscanFxPuff, lastLook: 3, order: 1},
+		},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if got, want := len(mobjs), 2; got != want {
+		t.Fatalf("mobj count=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].LastLook, 3; got != want {
+		t.Fatalf("lastlook=%d want=%d", got, want)
+	}
+}
+
 func TestDemoTraceNonShootableCeilingThingUsesCachedSupportState(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

@@ -631,6 +631,100 @@ func TestTickMonsters_LostTargetStillTurnsTowardMoveDirLikeDoomChase(t *testing.
 	}
 }
 
+func TestTickThingThinker_ReacquiredPlayerAfterAttackReturnsImmediatelyLikeDoomAChase(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+				{Type: 9, X: 64, Y: 32},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{30, -5},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{false, false},
+		thingTargetIdx:    []int{1, -1},
+		thingThreshold:    []int{84, 0},
+		thingMoveDir:      []monsterMoveDir{monsterDirSouthWest, monsterDirNoDir},
+		thingMoveCount:    []int{0, 0},
+		thingState:        []monsterThinkState{monsterStateAttack, monsterStateSpawn},
+		thingAttackTics:   []int{1, 0},
+		thingAttackPhase:  []int{2, 0},
+		thingAttackFireTics: []int{
+			-1, -1,
+		},
+		thingStatePhase:   []int{2, 0},
+		thingStateTics:    []int{1, 10},
+		thingReactionTics: []int{0, 0},
+		thingAngleState:   []uint32{uint32(monsterDirSouthWest) << 29, 0},
+		thingSectorCache:  []int{0, 0},
+		sectorSoundTarget: []bool{true},
+		p:                 player{x: 256 * fracUnit, y: 0},
+		stats:             playerStats{Health: 100},
+	}
+
+	g.tickThingThinker(0, g.m.Things[0])
+
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target=(player:%v idx:%d) want player after reacquire", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+	if got, want := g.thingState[0], monsterStateSee; got != want {
+		t.Fatalf("state=%d want=%d", got, want)
+	}
+	if got, want := g.thingMoveDir[0], monsterDirSouthWest; got != want {
+		t.Fatalf("movedir=%d want=%d", got, want)
+	}
+	if got, want := g.thingMoveCount[0], 0; got != want {
+		t.Fatalf("movecount=%d want=%d", got, want)
+	}
+}
+
+func TestMonsterAttack_FacesAndFiresAtDeadTargetPointerLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+				{Type: 9, X: 64, Y: 32},
+			},
+		},
+		lines: []physLine{
+			{
+				x1:       128 * fracUnit,
+				y1:       -64 * fracUnit,
+				x2:       128 * fracUnit,
+				y2:       64 * fracUnit,
+				flags:    0,
+				sideNum1: -1,
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{30, -5},
+		thingTargetPlayer: []bool{false, false},
+		thingTargetIdx:    []int{1, -1},
+		thingAngleState:   []uint32{degToAngle(0), degToAngle(180)},
+		thingX:            []int64{0, 64 * fracUnit},
+		thingY:            []int64{0, 32 * fracUnit},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+	}
+
+	if !g.monsterAttack(0, 9, 128*fracUnit) {
+		t.Fatal("monster attack should still run with a dead target pointer")
+	}
+	if got := len(g.hitscanPuffs); got == 0 {
+		t.Fatal("expected wall puff from attack through dead target pointer")
+	}
+	if got, want := g.thingWorldAngle(0, g.m.Things[0]), doomPointToAngle2(0, 0, 64*fracUnit, 32*fracUnit); got != want {
+		t.Fatalf("angle=%d want=%d", got, want)
+	}
+}
+
 func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 	spawnTests := []struct {
 		typ      int16

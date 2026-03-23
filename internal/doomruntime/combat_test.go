@@ -1145,6 +1145,7 @@ func TestHitscanBloodClipsToFloorLikeDoom(t *testing.T) {
 			y:     0,
 			z:     fracUnit / 2,
 			momz:  -8 * fracUnit,
+			ceilz: 128 * fracUnit,
 			tics:  4,
 			state: 91,
 			kind:  hitscanFxBlood,
@@ -1156,6 +1157,36 @@ func TestHitscanBloodClipsToFloorLikeDoom(t *testing.T) {
 	}
 	if got := g.hitscanPuffs[0].momz; got != 0 {
 		t.Fatalf("blood momz after floor clip=%d want=0", got)
+	}
+}
+
+func TestHitscanPuffClipsToFloorLikeDoom(t *testing.T) {
+	g := &game{
+		hitscanPuffs: []hitscanPuff{{
+			x:      0,
+			y:      0,
+			z:      10*fracUnit - 2*fracUnit,
+			momz:   fracUnit,
+			floorz: 10 * fracUnit,
+			ceilz:  64 * fracUnit,
+			tics:   1,
+			state:  93,
+			kind:   hitscanFxPuff,
+		}},
+	}
+
+	g.tickHitscanPuffs()
+	if got, want := len(g.hitscanPuffs), 1; got != want {
+		t.Fatalf("puffs=%d want=%d", got, want)
+	}
+	if got, want := g.hitscanPuffs[0].z, int64(10*fracUnit); got != want {
+		t.Fatalf("puff z=%d want=%d", got, want)
+	}
+	if got, want := g.hitscanPuffs[0].state, 94; got != want {
+		t.Fatalf("puff state=%d want=%d", got, want)
+	}
+	if got, want := g.hitscanPuffs[0].tics, 4; got != want {
+		t.Fatalf("puff tics=%d want=%d", got, want)
 	}
 }
 

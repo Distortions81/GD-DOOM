@@ -233,13 +233,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		if !g.monsterRunLostTargetChaseState(i, th.Type, tx, ty) {
 			return
 		}
-		targetX, targetY = 0, 0
-		dist = 0
-		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
-			targetX, targetY = px, py
-			dist = doomApproxDistance(targetX-tx, targetY-ty)
-		}
-		g.monsterTurnTowardMoveDir(i)
+		return
 	}
 
 	if g.thingJustAtk[i] {
@@ -2004,9 +1998,6 @@ func (g *game) monsterTurnTowardMoveDir(i int) {
 }
 
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
-	if !g.monsterHasTarget(i) {
-		return false
-	}
 	meleeOnly := isMeleeOnlyMonster(typ)
 	var sx, sy int64
 	if i >= 0 && g.m != nil && i < len(g.m.Things) {

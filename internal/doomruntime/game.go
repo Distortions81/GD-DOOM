@@ -9206,18 +9206,24 @@ func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 		return false
 	}
 	p.z += p.momz
-	if p.kind == hitscanFxBlood {
-		floorz := p.floorz
-		if p.z <= floorz {
-			if p.momz < 0 {
-				p.momz = 0
-			}
-			p.z = floorz
-		} else if p.momz == 0 {
+	if p.z <= p.floorz {
+		if p.momz < 0 {
+			p.momz = 0
+		}
+		p.z = p.floorz
+	} else if p.kind == hitscanFxBlood {
+		if p.momz == 0 {
 			p.momz = -2 * fracUnit
 		} else {
 			p.momz -= fracUnit
 		}
+	}
+	const hitscanEffectHeight = 16 * fracUnit
+	if p.z+hitscanEffectHeight > p.ceilz {
+		if p.momz > 0 {
+			p.momz = 0
+		}
+		p.z = p.ceilz - hitscanEffectHeight
 	}
 	p.tics--
 	if p.kind == hitscanFxPuff && p.tics <= 0 {

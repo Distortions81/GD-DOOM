@@ -543,7 +543,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Movecount:    0,
 				ReactionTime: 8,
 				Threshold:    0,
-				LastLook:     0,
+				LastLook:     p.lastLook,
 				Subsector:    boolToInt(ss >= 0),
 				Sector:       sec,
 				Player:       0,
