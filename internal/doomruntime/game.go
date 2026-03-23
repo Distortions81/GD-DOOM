@@ -9415,9 +9415,9 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		floorZFixed := g.thingFloorZ(txFixed, tyFixed)
-		floorZ := float64(floorZFixed) / fracUnit
-		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
+		baseZFixed := g.monsterRenderBaseZ(i, th, txFixed, tyFixed)
+		baseZ := float64(baseZFixed) / fracUnit
+		yb := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focal
 		ref, flip, ok := g.monsterSpriteRefForView(i, th, g.worldTic, camX, camY)
 		if !ok || ref == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
@@ -9434,7 +9434,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			w = float64(ref.tex.Width) * scale
 		} else {
 			monsterH := monsterRenderHeight(th.Type)
-			yt := float64(viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
+			yt := float64(viewH)/2 - ((baseZ+monsterH-eyeZ)/f)*focal
 			if yb <= yt {
 				continue
 			}
@@ -9496,6 +9496,14 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			boundsOK:        true,
 		})
 	}
+}
+
+func (g *game) monsterRenderBaseZ(i int, th mapdata.Thing, x, y int64) int64 {
+	if monsterCanFloat(th.Type) && (i < 0 || i >= len(g.thingDead) || !g.thingDead[i]) {
+		z, _, _ := g.thingSupportState(i, th)
+		return z
+	}
+	return g.thingFloorZ(x, y)
 }
 
 func (g *game) drawShadowSpriteCutoutSourcePort(

@@ -3066,17 +3066,32 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	ny := y + dy
 	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
 		g.setThingPosFixed(i, nx, ny)
-		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		if monsterCanFloat(typ) {
+			z, _, _ := g.thingSupportState(i, g.m.Things[i])
+			g.setThingSupportState(i, z, tmfloor, tmceil)
+		} else {
+			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		}
 		return
 	}
 	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
 		g.setThingPosFixed(i, x+dx, y)
-		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		if monsterCanFloat(typ) {
+			z, _, _ := g.thingSupportState(i, g.m.Things[i])
+			g.setThingSupportState(i, z, tmfloor, tmceil)
+		} else {
+			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		}
 		return
 	}
 	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
 		g.setThingPosFixed(i, x, y+dy)
-		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		if monsterCanFloat(typ) {
+			z, _, _ := g.thingSupportState(i, g.m.Things[i])
+			g.setThingSupportState(i, z, tmfloor, tmceil)
+		} else {
+			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		}
 	}
 }
 

@@ -170,6 +170,28 @@ func TestMonsterSpritePrefixCoversAllMonsterTypes(t *testing.T) {
 	}
 }
 
+func TestMonsterRenderBaseZ_UsesActualZForLiveFloatMonsters(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3005, X: 0, Y: 0},
+				{Type: 65, X: 0, Y: 0},
+			},
+		},
+		thingDead:         []bool{false, false},
+		thingZState:       []int64{32 * fracUnit, 32 * fracUnit},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+	}
+	if got := g.monsterRenderBaseZ(0, g.m.Things[0], 0, 0); got != 32*fracUnit {
+		t.Fatalf("caco render base z=%d want=%d", got, 32*fracUnit)
+	}
+	if got := g.monsterRenderBaseZ(1, g.m.Things[1], 0, 0); got != 0 {
+		t.Fatalf("chaingunner render base z=%d want=0", got)
+	}
+}
+
 func TestMonsterSpriteNameForView_SpectreUsesDeathFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{
