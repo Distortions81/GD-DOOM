@@ -448,6 +448,75 @@ func TestTickMonsterAttackState_ChaingunnerRefiresToAttack2LikeDoom(t *testing.T
 	}
 }
 
+func TestTickMonsterAttackState_ChaingunnerATK4CanExitOnEntryLikeDoom(t *testing.T) {
+	doomrand.SetState(0, 7) // next PRandom() = 75
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 65, X: 64, Y: 0}},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{70},
+		thingAggro:     []bool{true},
+		thingAttackTics: []int{5},
+		thingAttackPhase: []int{2},
+		thingState:     []monsterThinkState{monsterStateAttack},
+		thingStateTics: []int{1},
+		thingAngleState: []uint32{0},
+		thingX:          []int64{64 * fracUnit},
+		thingY:          []int64{0},
+		isDead:          true,
+	}
+
+	tx, ty := g.thingPosFixed(0, g.m.Things[0])
+	dist := doomApproxDistance(-tx, -ty)
+	if g.tickMonsterAttackState(0, 65, tx, ty, 0, 0, dist) {
+		t.Fatal("chaingunner should leave attack state when refire RNG passes and target is gone")
+	}
+	if got := g.thingState[0]; got != monsterStateSee {
+		t.Fatalf("state=%d want see after refire break", got)
+	}
+}
+
+func TestTickMonsterAttackState_ChaingunnerRefireLoopIgnoresFixedAttackCounter(t *testing.T) {
+	doomrand.Clear() // next PRandom() = 8, so A_CPosRefire keeps firing
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 65, X: 64, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{70},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackTics:   []int{1},
+		thingAttackPhase:  []int{3},
+		thingState:        []monsterThinkState{monsterStateAttack},
+		thingStateTics:    []int{1},
+		thingAngleState:   []uint32{0},
+		thingX:            []int64{64 * fracUnit},
+		thingY:            []int64{0},
+		p:                 player{x: 0, y: 0, z: 0},
+	}
+
+	tx, ty := g.thingPosFixed(0, g.m.Things[0])
+	dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+	if !g.tickMonsterAttackState(0, 65, tx, ty, g.p.x, g.p.y, dist) {
+		t.Fatal("chaingunner should stay in attack loop when refire keeps firing")
+	}
+	if got := g.thingAttackPhase[0]; got != 1 {
+		t.Fatalf("attack phase=%d want 1 after looping refire", got)
+	}
+	if got := g.thingState[0]; got != monsterStateAttack {
+		t.Fatalf("state=%d want attack", got)
+	}
+	if got := g.thingStateTics[0]; got != 4 {
+		t.Fatalf("state tics=%d want 4", got)
+	}
+	if got := g.thingAttackTics[0]; got <= 0 {
+		t.Fatalf("attack tics=%d want > 0 while attack loop remains active", got)
+	}
+}
+
 func TestTickMonsterZMovement_FloatMonsterTracksTargetHeight(t *testing.T) {
 	g := &game{
 		m:                 &mapdata.Map{Things: []mapdata.Thing{{Type: 3005, X: 0, Y: 0}}},
@@ -465,6 +534,29 @@ func TestTickMonsterZMovement_FloatMonsterTracksTargetHeight(t *testing.T) {
 	z, floorZ, ceilZ := g.thingSupportState(0, th)
 	if z != 36*fracUnit || floorZ != 0 || ceilZ != 128*fracUnit {
 		t.Fatalf("support=(%d,%d,%d) want=(%d,0,%d)", z, floorZ, ceilZ, 36*fracUnit, 128*fracUnit)
+	}
+}
+
+func TestTickMonsterMomentum_IdleFloatMonsterStillRunsZMovement(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3005, X: 0, Y: 0}},
+		},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingMomX:         []int64{0},
+		thingMomY:         []int64{0},
+		thingMomZ:         []int64{0},
+		thingTargetPlayer: []bool{false},
+		thingZState:       []int64{104 * fracUnit},
+		thingFloorState:   []int64{112 * fracUnit},
+		thingCeilState:    []int64{232 * fracUnit},
+		thingSupportValid: []bool{true},
+	}
+	g.tickMonsterMomentum(0, g.m.Things[0])
+	z, floorZ, ceilZ := g.thingSupportState(0, g.m.Things[0])
+	if z != 112*fracUnit || floorZ != 112*fracUnit || ceilZ != 232*fracUnit {
+		t.Fatalf("support=(%d,%d,%d) want=(%d,%d,%d)", z, floorZ, ceilZ, 112*fracUnit, 112*fracUnit, 232*fracUnit)
 	}
 }
 

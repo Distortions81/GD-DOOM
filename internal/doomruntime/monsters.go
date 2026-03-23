@@ -931,6 +931,10 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	momy := g.thingMomY[i]
 	momz := g.thingMomZ[i]
 	if momx == 0 && momy == 0 && momz == 0 {
+		z, floorZ, ceilZ := g.thingSupportState(i, th)
+		if z != floorZ {
+			g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, 0)
+		}
 		return
 	}
 	momx = clamp(momx, -maxMove, maxMove)
@@ -1316,8 +1320,21 @@ func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, p
 		}
 	case 65: // chaingunner
 		switch phase {
-		case 0, 3:
+		case 0:
 			g.faceMonsterToward(i, tx, ty, faceX, faceY)
+		case 3:
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
+			if !g.chaingunnerRefireKeepsAttack(i, typ, tx, ty) {
+				if i >= 0 && i < len(g.thingAttackTics) {
+					g.thingAttackTics[i] = 0
+				}
+				if i >= 0 && i < len(g.thingAttackFireTics) {
+					g.thingAttackFireTics[i] = -1
+				}
+				if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+					g.resetMonsterIdleOrChaseState(i, typ)
+				}
+			}
 		case 1, 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
@@ -1413,7 +1430,6 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 		return false
 	}
 	if monsterUsesExplicitAttackFrames(typ) {
-		g.thingAttackTics[i]--
 		if i >= 0 && i < len(g.thingStateTics) {
 			g.thingStateTics[i]--
 			if g.thingStateTics[i] <= 0 {
@@ -1436,6 +1452,9 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 				g.thingAttackPhase[i] = nextPhase
 				g.thingStateTics[i] = monsterAttackFrameDuration(typ, nextPhase)
 				g.runMonsterAttackPhaseEntry(i, typ, nextPhase, tx, ty, px, py, dist)
+				if i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack {
+					return false
+				}
 			}
 		}
 		return true
@@ -1477,15 +1496,22 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 func (g *game) nextMonsterAttackLoopPhase(i int, typ int16, tx, ty int64) (int, bool) {
 	switch typ {
 	case 65:
-		// Doom's A_CPosRefire loops S_CPOS_ATK4 -> S_CPOS_ATK2 unless the
-		// target is invalid or out of sight and the refire RNG chooses to stop.
-		if doomrand.PRandom() >= 40 && (!g.monsterHasTarget(i) || !g.monsterHasLOSTarget(i, typ, tx, ty)) {
-			return 0, false
-		}
+		// Doom's S_CPOS_ATK4 nextstate is always S_CPOS_ATK2; A_CPosRefire
+		// already decided on phase-entry whether to stay attacking.
 		return 1, true
 	default:
 		return 0, false
 	}
+}
+
+func (g *game) chaingunnerRefireKeepsAttack(i int, typ int16, tx, ty int64) bool {
+	if doomrand.PRandom() < 40 {
+		return true
+	}
+	if !g.monsterHasTarget(i) {
+		return false
+	}
+	return g.monsterHasLOSTarget(i, typ, tx, ty)
 }
 
 func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
