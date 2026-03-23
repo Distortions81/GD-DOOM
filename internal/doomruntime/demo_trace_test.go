@@ -300,6 +300,34 @@ func TestDemoTraceDoorSpecialKeepsZeroValuedFields(t *testing.T) {
 	}
 }
 
+func TestDemoTraceBlazePlatUsesDoomTypeFour(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{Tag: 2}},
+		},
+		plats: map[int]*platThinker{
+			0: {
+				sector:    0,
+				typ:       platTypeBlazeDownWaitUpStay,
+				status:    platStatusDown,
+				oldStatus: platStatusInStasis,
+				speed:     8 * platMoveSpeed,
+				low:       96 * fracUnit,
+				high:      160 * fracUnit,
+				wait:      platWaitTics,
+			},
+		},
+	}
+
+	specials := g.demoTraceSpecials()
+	if got, want := len(specials), 1; got != want {
+		t.Fatalf("special count=%d want=%d", got, want)
+	}
+	if got, want := specials[0]["type"], 4; got != want {
+		t.Fatalf("plat type=%v want=%d", got, want)
+	}
+}
+
 func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 	tracePath := t.TempDir() + "/door-trace.jsonl"
 	base := mustLoadE1M1GameForMapTextureTests(t)

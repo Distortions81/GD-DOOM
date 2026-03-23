@@ -55,6 +55,7 @@ const (
 	platTypeDownWaitUpStay platType = iota
 	platTypeRaiseToNearestAndChange
 	platTypePerpetualRaise
+	platTypeBlazeDownWaitUpStay
 )
 
 type platThinker struct {
@@ -810,7 +811,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			pt.high = g.sectorFloor[sec]
 			pt.wait = platWaitTics
 		case mapdata.PlatBlazeDownWaitUpStay:
-			pt.typ = platTypeDownWaitUpStay
+			pt.typ = platTypeBlazeDownWaitUpStay
 			pt.status = platStatusDown
 			pt.oldStatus = platStatusInStasis
 			pt.speed = 8 * platMoveSpeed
@@ -1393,7 +1394,7 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 		if next > pt.high {
 			next = pt.high
 			g.setSectorFloorHeight(sec, next)
-			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeDownWaitUpStay {
+			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeDownWaitUpStay || pt.typ == platTypeBlazeDownWaitUpStay {
 				if pt.finishFlat != "" {
 					g.m.Sectors[sec].FloorPic = pt.finishFlat
 				}

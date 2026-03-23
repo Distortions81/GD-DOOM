@@ -1941,6 +1941,62 @@ func TestTickMonsterMomentum_DeadMonsterTriggersWalkPlat(t *testing.T) {
 	}
 }
 
+func TestTickMonsterMomentum_DeadMonsterTriggersOneShotWalkPlat(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -16, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: 64},
+				{X: 0, Y: -64},
+				{X: -128, Y: 64},
+				{X: -128, Y: -64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 10, Flags: mlTwoSided, Tag: 7, SideNum: [2]int16{0, 1}},
+				{V1: 2, V2: 3, Flags: mlTwoSided, SideNum: [2]int16{2, 3}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+				{Sector: 2},
+				{Sector: 3},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: -64, CeilingHeight: 128, Tag: 7},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{0},
+		thingDead:      []bool{true},
+		thingMomX:      []int64{30 * fracUnit},
+		thingMomY:      []int64{0},
+		thingMomZ:      []int64{0},
+		p:              player{x: -128 * fracUnit, y: 0},
+	}
+	g.initPhysics()
+
+	g.tickMonsterMomentum(0, g.m.Things[0])
+
+	if len(g.plats) != 1 {
+		t.Fatalf("dead monster walk plat count=%d want 1", len(g.plats))
+	}
+	pt := g.plats[2]
+	if pt == nil {
+		t.Fatal("dead monster should activate tagged plat sector")
+	}
+	if pt.typ != platTypeDownWaitUpStay {
+		t.Fatalf("plat type=%v want %v", pt.typ, platTypeDownWaitUpStay)
+	}
+	if got := g.lineSpecial[0]; got != 0 {
+		t.Fatalf("one-shot walk plat special should be consumed: got %d want 0", got)
+	}
+}
+
 func TestActorHasLOS_BlockedByHighWindow(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

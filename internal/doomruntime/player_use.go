@@ -233,7 +233,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 
 func walkSpecialAllowedForNonPlayer(special uint16) bool {
 	switch special {
-	case 4, 39, 88, 97, 125, 126:
+	case 4, 10, 39, 88, 97, 125, 126:
 		return true
 	default:
 		return false
@@ -247,6 +247,12 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, actorIdx int, isPlayer bool) {
 	if prevX == curX && prevY == curY {
 		return
+	}
+	radius := int64(0)
+	if isPlayer {
+		radius = playerRadius
+	} else if g != nil && g.m != nil && actorIdx >= 0 && actorIdx < len(g.m.Things) {
+		radius = monsterRadius(g.m.Things[actorIdx].Type)
 	}
 	prevSS := -1
 	curSS := -1
@@ -262,6 +268,10 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 	if minY > maxY {
 		minY, maxY = maxY, minY
 	}
+	minX -= radius
+	maxX += radius
+	minY -= radius
+	maxY += radius
 	for _, ld := range g.lines {
 		if ld.idx < 0 || ld.idx >= len(g.lineSpecial) {
 			continue
@@ -298,26 +308,6 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			}
 		}
 		if startSide == endSide {
-			continue
-		}
-		if _, ok := segmentIntersectFrac(prevX, prevY, curX, curY, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
-			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
-				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
-					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=no-intersect\n",
-						g.demoTick-1, g.worldTic, ld.idx)
-				}
-			}
-			continue
-		}
-		if (prevSS >= 0 || curSS >= 0) &&
-			!g.lineTouchesSubsector(ld.idx, prevSS) &&
-			!g.lineTouchesSubsector(ld.idx, curSS) {
-			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
-				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
-					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=subsector\n",
-						g.demoTick-1, g.worldTic, ld.idx)
-				}
-			}
 			continue
 		}
 		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {

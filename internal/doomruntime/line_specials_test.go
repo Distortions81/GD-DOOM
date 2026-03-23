@@ -156,6 +156,93 @@ func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
 	}
 }
 
+func TestActivatePlatLine_BlazeDownWaitUpStayUsesBlazeTypeAndSpeed(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 120, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{120},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatBlazeDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.typ != platTypeBlazeDownWaitUpStay {
+		t.Fatalf("plat type=%v want %v", pt.typ, platTypeBlazeDownWaitUpStay)
+	}
+	if got, want := pt.speed, int64(8*platMoveSpeed); got != want {
+		t.Fatalf("speed=%d want %d", got, want)
+	}
+}
+
+func TestCheckWalkSpecialLines_PlayerTriggersBlazePlatWhenRadiusTouchesLineExtension(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 120, Tag: 2, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 96, CeilingHeight: 192, Tag: 2},
+				{FloorHeight: 160, CeilingHeight: 192},
+			},
+		},
+		lineSpecial: []uint16{120},
+		sectorFloor: []int64{96 * fracUnit, 160 * fracUnit},
+		sectorCeil:  []int64{192 * fracUnit, 192 * fracUnit},
+		lines: []physLine{{
+			idx:      0,
+			x1:       0,
+			y1:       64 * fracUnit,
+			x2:       0,
+			y2:       0,
+			dx:       0,
+			dy:       -64 * fracUnit,
+			bbox:     [4]int64{64 * fracUnit, 0, 0, 0},
+			slope:    slopeVertical,
+			special:  120,
+			tag:      2,
+			sideNum0: 0,
+			sideNum1: 1,
+		}},
+		p: player{
+			x:      4 * fracUnit,
+			y:      -9 * fracUnit,
+			z:      160 * fracUnit,
+			floorz: 160 * fracUnit,
+			ceilz:  192 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLines(4*fracUnit, -9*fracUnit, -9*fracUnit, -9*fracUnit)
+
+	if got, want := len(g.plats), 1; got != want {
+		t.Fatalf("plat count=%d want %d", got, want)
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected blaze plat thinker")
+	}
+	if pt.typ != platTypeBlazeDownWaitUpStay {
+		t.Fatalf("plat type=%v want %v", pt.typ, platTypeBlazeDownWaitUpStay)
+	}
+	if got := g.lineSpecial[0]; got != 120 {
+		t.Fatalf("repeat walk special consumed: got %d want 120", got)
+	}
+}
+
 func TestSetSectorCeilingHeight_DoesNotHeightClipNeighborSectorThings(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

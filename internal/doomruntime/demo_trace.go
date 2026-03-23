@@ -153,6 +153,8 @@ func doomPlatType(t platType) int {
 		return 1
 	case platTypeRaiseToNearestAndChange:
 		return 3
+	case platTypeBlazeDownWaitUpStay:
+		return 4
 	default:
 		return int(t)
 	}
