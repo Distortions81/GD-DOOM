@@ -785,12 +785,13 @@ func (g *game) demoTraceSpecials() []map[string]any {
 		ordered = append(ordered, orderedSpecial{order: f.order, item: map[string]any{
 			"kind":            "floor",
 			"sector":          sec,
-			"type":            f.direction,
+			"type":            f.typ,
+			"crush":           boolToInt(f.crush),
 			"speed":           f.speed,
 			"direction":       f.direction,
 			"floordestheight": f.destHeight,
 			"texture":         f.finishFlat,
-			"finishspecial":   int16(f.finishSpecial),
+			"newspecial":      int16(f.finishSpecial),
 		}})
 	}
 	platKeys := sortedIntKeys(g.plats)

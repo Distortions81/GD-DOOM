@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"fmt"
+	"math"
 	"os"
 
 	"gddoom/internal/doomrand"
@@ -29,6 +30,8 @@ const (
 type floorThinker struct {
 	order         int64
 	sector        int
+	typ           int
+	crush         bool
 	direction     int
 	speed         int64
 	destHeight    int64
@@ -166,10 +169,12 @@ func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool 
 		ft := &floorThinker{order: g.allocThinkerOrder(), sector: sec}
 		switch action {
 		case mapdata.FloorRaiseToTexture:
+			ft.typ = 5
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.sectorFloor[sec] + 24*fracUnit
 		case mapdata.FloorLowerToLowest:
+			ft.typ = 1
 			ft.direction = -1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findLowestFloorSurrounding(sec)
@@ -270,26 +275,86 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 	if g == nil || g.m == nil || sec < 0 {
 		return
 	}
-	sectors := map[int]struct{}{sec: {}}
-	for _, ld := range g.m.Linedefs {
-		s0, ok0 := g.sectorIndexFromSidedef(ld.SideNum[0])
-		s1, ok1 := g.sectorIndexFromSidedef(ld.SideNum[1])
-		switch {
-		case ok0 && ok1 && s0 == sec:
-			sectors[s1] = struct{}{}
-		case ok0 && ok1 && s1 == sec:
-			sectors[s0] = struct{}{}
+	left, right, bottom, top, ok := g.sectorBlockBox(sec)
+	if !ok {
+		return
+	}
+	if g.playerBlockCellInBox(left, right, bottom, top) {
+		g.heightClipPlayer(oldPlayerFloor)
+	}
+	if g.bmapWidth > 0 && g.bmapHeight > 0 && len(g.thingBlockCells) == g.bmapWidth*g.bmapHeight {
+		seen := make(map[int]struct{})
+		for bx := left; bx <= right; bx++ {
+			for by := bottom; by <= top; by++ {
+				cell := by*g.bmapWidth + bx
+				if cell < 0 || cell >= len(g.thingBlockCells) {
+					continue
+				}
+				for _, i := range g.thingBlockCells[cell] {
+					if _, dup := seen[i]; dup {
+						continue
+					}
+					seen[i] = struct{}{}
+					if i < 0 || i >= len(g.m.Things) {
+						continue
+					}
+					if i < len(g.thingCollected) && g.thingCollected[i] {
+						continue
+					}
+					g.heightClipThing(i, g.m.Things[i])
+				}
+			}
 		}
 	}
-	playerClipped := false
-	for affected := range sectors {
-		if !playerClipped && g.playerTouchesSector(affected) {
-			g.heightClipPlayer(oldPlayerFloor)
-			playerClipped = true
-		}
-		g.heightClipThingsInSector(affected)
-		g.refreshProjectileSupportInSector(affected)
+	g.refreshProjectileSupportInSector(sec)
+}
+
+func (g *game) sectorBlockBox(sec int) (left, right, bottom, top int, ok bool) {
+	if g == nil || sec < 0 || sec >= len(g.sectorBBox) || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
+		return 0, 0, 0, 0, false
 	}
+	sb := g.sectorBBox[sec]
+	if !isFinite(sb.minX) || !isFinite(sb.minY) || !isFinite(sb.maxX) || !isFinite(sb.maxY) {
+		return 0, 0, 0, 0, false
+	}
+	minX := int64(math.Round(sb.minX)) << fracBits
+	minY := int64(math.Round(sb.minY)) << fracBits
+	maxX := int64(math.Round(sb.maxX)) << fracBits
+	maxY := int64(math.Round(sb.maxY)) << fracBits
+	const maxRadius = 32 * fracUnit
+	top = int((maxY - g.bmapOriginY + maxRadius) >> (fracBits + 7))
+	if top >= g.bmapHeight {
+		top = g.bmapHeight - 1
+	}
+	bottom = int((minY - g.bmapOriginY - maxRadius) >> (fracBits + 7))
+	if bottom < 0 {
+		bottom = 0
+	}
+	right = int((maxX - g.bmapOriginX + maxRadius) >> (fracBits + 7))
+	if right >= g.bmapWidth {
+		right = g.bmapWidth - 1
+	}
+	left = int((minX - g.bmapOriginX - maxRadius) >> (fracBits + 7))
+	if left < 0 {
+		left = 0
+	}
+	if left > right || bottom > top {
+		return 0, 0, 0, 0, false
+	}
+	return left, right, bottom, top, true
+}
+
+func (g *game) playerBlockCellInBox(left, right, bottom, top int) bool {
+	if g == nil || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
+		return false
+	}
+	cell := g.thingBlockmapCellFor(g.p.x, g.p.y)
+	if cell < 0 {
+		return false
+	}
+	bx := cell % g.bmapWidth
+	by := cell / g.bmapWidth
+	return bx >= left && bx <= right && by >= bottom && by <= top
 }
 
 func (g *game) heightClipPlayer(oldFloorz int64) bool {
@@ -376,10 +441,16 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 	}
 	x, y := g.thingPosFixed(i, th)
 	radius := g.thingCurrentRadius(i, th)
-	oldZ, oldFloorZ, _ := g.thingSupportState(i, th)
+	oldZ, oldFloorZ, oldCeilZ := g.thingSupportState(i, th)
 	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, isMonster(th.Type), i, isMonster(th.Type))
 	if !ok {
-		return false
+		if floorZ, ceilZ, found := g.subsectorFloorCeilAt(x, y); found {
+			tmfloor = floorZ
+			tmceil = ceilZ
+		} else {
+			tmfloor = oldFloorZ
+			tmceil = oldCeilZ
+		}
 	}
 	z := oldZ
 	if z == oldFloorZ {
@@ -596,30 +667,38 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 		ft := &floorThinker{sector: sec}
 		switch info.Action {
 		case mapdata.FloorRaise:
+			ft.typ = 3
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.lowestSurroundingCeiling(sec)
 		case mapdata.FloorRaiseToNearest:
+			ft.typ = 4
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findNextHighestFloor(sec, g.sectorFloor[sec])
 		case mapdata.FloorLower:
+			ft.typ = 0
 			ft.direction = -1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findHighestFloorSurrounding(sec)
 		case mapdata.FloorLowerAndChange:
+			ft.typ = 6
 			ft.direction = -1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findLowestFloorSurrounding(sec)
 		case mapdata.FloorRaiseCrush:
+			ft.typ = 9
+			ft.crush = true
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findLowestCeilingSurrounding(sec) - 8*fracUnit
 		case mapdata.FloorRaise24:
+			ft.typ = 7
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.sectorFloor[sec] + 24*fracUnit
 		case mapdata.FloorRaise24AndChange:
+			ft.typ = 8
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.sectorFloor[sec] + 24*fracUnit
@@ -629,14 +708,17 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 				ft.finishSpecial = g.m.Sectors[frontSec].Special
 			}
 		case mapdata.FloorRaiseToTexture:
+			ft.typ = 5
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.sectorFloor[sec] + 24*fracUnit
 		case mapdata.FloorLowerToLowest:
+			ft.typ = 1
 			ft.direction = -1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findLowestFloorSurrounding(sec)
 		case mapdata.FloorTurboLower:
+			ft.typ = 2
 			ft.direction = -1
 			ft.speed = floorTurboSpeed
 			ft.destHeight = g.findHighestFloorSurrounding(sec)
@@ -644,10 +726,12 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 				ft.destHeight += 8 * fracUnit
 			}
 		case mapdata.FloorRaiseTurbo:
+			ft.typ = 10
 			ft.direction = 1
 			ft.speed = floorTurboSpeed
 			ft.destHeight = g.findNextHighestFloor(sec, g.sectorFloor[sec])
 		case mapdata.FloorRaise512:
+			ft.typ = 12
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.sectorFloor[sec] + 512*fracUnit
@@ -830,6 +914,7 @@ func (g *game) activateStairsLine(lineIdx int, info mapdata.StairsInfo) bool {
 				g.floors[sec] = &floorThinker{
 					order:      g.allocThinkerOrder(),
 					sector:     sec,
+					typ:        3,
 					direction:  1,
 					speed:      speed,
 					destHeight: height,
@@ -1201,6 +1286,7 @@ func (g *game) activateDonutLine(lineIdx int) bool {
 		g.floors[s2] = &floorThinker{
 			order:         g.allocThinkerOrder(),
 			sector:        s2,
+			typ:           11,
 			direction:     1,
 			speed:         floorMoveSpeed / 2,
 			destHeight:    dest,
@@ -1211,6 +1297,7 @@ func (g *game) activateDonutLine(lineIdx int) bool {
 		g.floors[s1] = &floorThinker{
 			order:      g.allocThinkerOrder(),
 			sector:     s1,
+			typ:        0,
 			direction:  -1,
 			speed:      floorMoveSpeed / 2,
 			destHeight: dest,

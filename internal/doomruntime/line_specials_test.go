@@ -132,9 +132,9 @@ func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
 				{FloorHeight: -64, CeilingHeight: 128},
 			},
 		},
-		lineSpecial:      []uint16{88},
-		sectorFloor:      []int64{0, -64 * fracUnit},
-		sectorCeil:       []int64{128 * fracUnit, 128 * fracUnit},
+		lineSpecial:       []uint16{88},
+		sectorFloor:       []int64{0, -64 * fracUnit},
+		sectorCeil:        []int64{128 * fracUnit, 128 * fracUnit},
 		platTickedThisTic: true,
 	}
 
@@ -153,6 +153,56 @@ func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
 	}
 	if pt.count != 0 {
 		t.Fatalf("count=%d want 0", pt.count)
+	}
+}
+
+func TestSetSectorCeilingHeight_DoesNotHeightClipNeighborSectorThings(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 72},
+				{FloorHeight: 0, CeilingHeight: 72},
+			},
+			Things: []mapdata.Thing{
+				{X: 96, Y: 64, Type: 3004},
+			},
+		},
+		sectorFloor:       []int64{0, 0},
+		sectorCeil:        []int64{72 * fracUnit, 72 * fracUnit},
+		sectorBBox:        []worldBBox{{minX: 0, minY: 0, maxX: 127, maxY: 127}, {minX: 160, minY: 0, maxX: 255, maxY: 127}},
+		bmapOriginX:       0,
+		bmapOriginY:       0,
+		bmapWidth:         2,
+		bmapHeight:        1,
+		thingCollected:    []bool{false},
+		thingX:            []int64{96 * fracUnit},
+		thingY:            []int64{64 * fracUnit},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{68 * fracUnit},
+		thingSupportValid: []bool{true},
+		p: player{
+			x:      96 * fracUnit,
+			y:      64 * fracUnit,
+			z:      0,
+			floorz: 0,
+			ceilz:  72 * fracUnit,
+		},
+	}
+	g.thingBlockCells = make([][]int, g.bmapWidth*g.bmapHeight)
+	g.rebuildThingBlockmap()
+
+	g.setSectorCeilingHeight(1, 71*fracUnit)
+
+	if got, want := g.thingCeilState[0], int64(68*fracUnit); got != want {
+		t.Fatalf("neighbor thing ceilingz=%d want %d", got, want)
 	}
 }
 

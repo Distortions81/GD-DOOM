@@ -239,6 +239,15 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 				}
 			}
 		}
+		if isFloorSpecial(left) && isFloorSpecial(right) {
+			if key == "newspecial" {
+				ltyp, lok := left["type"].(float64)
+				rtyp, rok := right["type"].(float64)
+				if lok && rok && int(ltyp) == int(rtyp) && int(ltyp) != 6 && int(ltyp) != 11 {
+					return true
+				}
+			}
+		}
 	}
 	if len(path) >= len("root.mobjs[") && path[:len("root.mobjs[")] == "root.mobjs[" {
 		lt, lok := left["type"].(float64)
@@ -261,6 +270,11 @@ func isPlatSpecial(v map[string]any) bool {
 func isDoorSpecial(v map[string]any) bool {
 	kind, ok := v["kind"].(string)
 	return ok && kind == "door"
+}
+
+func isFloorSpecial(v map[string]any) bool {
+	kind, ok := v["kind"].(string)
+	return ok && kind == "floor"
 }
 
 func unionKeys(left, right map[string]any) []string {
