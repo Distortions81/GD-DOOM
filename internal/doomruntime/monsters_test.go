@@ -454,17 +454,17 @@ func TestTickMonsterAttackState_ChaingunnerATK4CanExitOnEntryLikeDoom(t *testing
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{{Type: 65, X: 64, Y: 0}},
 		},
-		thingCollected: []bool{false},
-		thingHP:        []int{70},
-		thingAggro:     []bool{true},
-		thingAttackTics: []int{5},
+		thingCollected:   []bool{false},
+		thingHP:          []int{70},
+		thingAggro:       []bool{true},
+		thingAttackTics:  []int{5},
 		thingAttackPhase: []int{2},
-		thingState:     []monsterThinkState{monsterStateAttack},
-		thingStateTics: []int{1},
-		thingAngleState: []uint32{0},
-		thingX:          []int64{64 * fracUnit},
-		thingY:          []int64{0},
-		isDead:          true,
+		thingState:       []monsterThinkState{monsterStateAttack},
+		thingStateTics:   []int{1},
+		thingAngleState:  []uint32{0},
+		thingX:           []int64{64 * fracUnit},
+		thingY:           []int64{0},
+		isDead:           true,
 	}
 
 	tx, ty := g.thingPosFixed(0, g.m.Things[0])
@@ -560,6 +560,28 @@ func TestTickMonsterMomentum_IdleFloatMonsterStillRunsZMovement(t *testing.T) {
 	}
 }
 
+func TestTickMonsterZMovement_DeadFloatMonsterFallsLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3005, X: 0, Y: 0}},
+		},
+		thingDead:         []bool{true},
+		thingInFloat:      []bool{true},
+		thingZState:       []int64{144 * fracUnit},
+		thingFloorState:   []int64{128 * fracUnit},
+		thingCeilState:    []int64{256 * fracUnit},
+		thingSupportValid: []bool{true},
+	}
+	momz := g.tickMonsterZMovement(0, g.m.Things[0], 144*fracUnit, 128*fracUnit, 256*fracUnit, 0)
+	if got := momz; got != -2*fracUnit {
+		t.Fatalf("momz=%d want=%d for dead floating corpse", got, -2*fracUnit)
+	}
+	z, floorZ, ceilZ := g.thingSupportState(0, g.m.Things[0])
+	if z != 144*fracUnit || floorZ != 128*fracUnit || ceilZ != 256*fracUnit {
+		t.Fatalf("support=(%d,%d,%d) want=(%d,%d,%d)", z, floorZ, ceilZ, 144*fracUnit, 128*fracUnit, 256*fracUnit)
+	}
+}
+
 func TestProbeMonsterMove_DeadCorpseCanDropOffLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -577,6 +599,35 @@ func TestProbeMonsterMove_DeadCorpseCanDropOffLikeDoom(t *testing.T) {
 	g.thingDead[0] = false
 	if g.thingCanDropOff(0, 65) {
 		t.Fatal("live chaingunner should not be allowed to drop off")
+	}
+}
+
+func TestTickMonsters_LostTargetStillTurnsTowardMoveDirLikeDoomChase(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 58, X: 0, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{150},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingMoveDir:      []monsterMoveDir{monsterDirNorth},
+		thingMoveCount:    []int{5},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStatePhase:   []int{4},
+		thingStateTics:    []int{1},
+		thingReactionTics: []int{0},
+		p:                 player{x: 0, y: 0},
+		isDead:            true,
+	}
+	g.setThingWorldAngle(0, uint32(monsterDirNorthEast)<<29)
+	g.tickThingThinker(0, g.m.Things[0])
+	if got := g.thingWorldAngle(0, g.m.Things[0]); got != uint32(monsterDirNorth)<<29 {
+		t.Fatalf("angle=%d want %d after lost-target chase fallback", got, uint32(monsterDirNorth)<<29)
+	}
+	if got := g.thingState[0]; got != monsterStateSpawn {
+		t.Fatalf("state=%d want spawn after lost-target fallback", got)
 	}
 }
 

@@ -463,6 +463,10 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 	}
 	if g.stats.Health == 0 {
 		g.isDead = true
+		// Doom's P_KillMobj always shortens the death state's tics with
+		// `P_Random() & 3`, including the player path. We don't model the
+		// full player death mobj state here, but we must consume the RNG.
+		_ = doomrand.PRandom() & 3
 		msg = "You Died"
 		g.emitSoundEvent(soundEventPlayerDeath)
 	} else {

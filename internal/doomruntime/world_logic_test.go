@@ -95,6 +95,27 @@ func TestDamagePlayerFrom_ClampsPlayerHealthButNotMobjHealth(t *testing.T) {
 	}
 }
 
+func TestDamagePlayerFrom_FatalHitConsumesDoomDeathTicRandom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:            playerStats{Health: 5},
+		playerMobjHealth: 5,
+		soundQueue:       make([]soundEvent, 0, 2),
+	}
+	_, before := doomrand.State()
+	g.damagePlayerFrom(12, "ouch", 0, 0, false)
+	_, after := doomrand.State()
+	if got := after - before; got != 1 {
+		t.Fatalf("prnd advanced by %d want=1 on fatal hit", got)
+	}
+	if !g.isDead {
+		t.Fatal("player should be dead after fatal hit")
+	}
+	if g.playerMobjState != 0 || g.playerMobjTics != 0 {
+		t.Fatalf("player mobj state/tics=%d/%d want=0/0 on fatal hit", g.playerMobjState, g.playerMobjTics)
+	}
+}
+
 func TestHazardDamageSpecial16WithoutSuit(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

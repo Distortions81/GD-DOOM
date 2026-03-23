@@ -397,6 +397,7 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 		return false
 	case monsterStateSee:
 		if !g.monsterHasTarget(i) {
+			g.monsterTurnTowardMoveDir(i)
 			if g.monsterRunLostTargetChaseState(i, typ, tx, ty) {
 				return true
 			}
@@ -990,9 +991,10 @@ func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, m
 	if g == nil {
 		return momz
 	}
+	canFloat := monsterCanFloat(th.Type) && !(i >= 0 && i < len(g.thingDead) && g.thingDead[i])
 	z += momz
 	height := g.thingCurrentHeight(i, th)
-	if monsterCanFloat(th.Type) && g.monsterHasTarget(i) {
+	if canFloat && g.monsterHasTarget(i) {
 		inFloat := i >= 0 && i < len(g.thingInFloat) && g.thingInFloat[i]
 		if !inFloat {
 			targetX, targetY, targetZ, _, _, ok := g.monsterTargetPos(i)
@@ -1016,7 +1018,7 @@ func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, m
 			momz = 0
 		}
 		z = floorZ
-	} else if !monsterCanFloat(th.Type) {
+	} else if !canFloat {
 		if momz == 0 {
 			momz = -2 * fracUnit
 		} else {

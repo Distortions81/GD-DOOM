@@ -1360,6 +1360,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		if thingIdx >= 0 && thingIdx < len(g.thingXDeath) {
 			g.thingXDeath[thingIdx] = xdeath
 		}
+		if thingIdx >= 0 && thingIdx < len(g.thingInFloat) {
+			g.thingInFloat[thingIdx] = false
+		}
 		if thingIdx >= 0 && thingIdx < len(g.thingDeathTics) {
 			deathTics := monsterDeathAnimTotalTicsForMode(thingType, xdeath)
 			firstFrameTics := 0
