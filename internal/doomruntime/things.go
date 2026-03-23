@@ -18,3 +18,16 @@ func isMonster(typ int16) bool {
 		return false
 	}
 }
+
+func thingSpawnsOnCeiling(typ int16) bool {
+	switch typ {
+	case 49, 50, 51, 52, 53:
+		return true
+	case 59, 60, 61, 62, 63:
+		return true
+	case 72, 73, 74, 75, 76, 77, 78:
+		return true
+	default:
+		return false
+	}
+}

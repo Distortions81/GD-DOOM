@@ -95,6 +95,19 @@ func TestApplyThingSpawnFilteringMarksUnavailableThings(t *testing.T) {
 	}
 }
 
+func TestThingSpawnsOnCeiling_UsesDoomSpawnCeilingSet(t *testing.T) {
+	for _, typ := range []int16{49, 50, 51, 52, 53, 59, 60, 61, 62, 63, 72, 73, 74, 75, 76, 77, 78} {
+		if !thingSpawnsOnCeiling(typ) {
+			t.Fatalf("type %d should spawn on ceiling", typ)
+		}
+	}
+	for _, typ := range []int16{9, 58, 64, 65, 71, 79, 2001} {
+		if thingSpawnsOnCeiling(typ) {
+			t.Fatalf("type %d should not spawn on ceiling", typ)
+		}
+	}
+}
+
 func TestApplyThingSpawnFiltering_ShowNoSkillItemsPreservesPickups(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

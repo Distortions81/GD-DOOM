@@ -1334,10 +1334,15 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		sec := g.thingSectorCache[i]
 		if sec >= 0 && sec < len(g.sectorFloor) {
 			g.thingFloorState[i] = g.sectorFloor[sec]
-			g.thingZState[i] = g.thingFloorState[i]
 		}
 		if sec >= 0 && sec < len(g.sectorCeil) {
 			g.thingCeilState[i] = g.sectorCeil[sec]
+		}
+		g.thingZState[i] = g.thingFloorState[i]
+		if thingSpawnsOnCeiling(th.Type) && sec >= 0 && sec < len(g.sectorCeil) {
+			if info, ok := demoTraceThingInfoForType(th.Type); ok {
+				g.thingZState[i] = g.thingCeilState[i] - info.height
+			}
 		}
 		if sec >= 0 {
 			g.thingSupportValid[i] = true
