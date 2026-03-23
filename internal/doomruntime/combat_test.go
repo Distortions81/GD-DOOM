@@ -314,6 +314,53 @@ func TestPistolRefireConsumesSpreadAndDamageRolls(t *testing.T) {
 	}
 }
 
+func TestOutOfAmmoShotgunAutoSwitchPreservesPistolRefire(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{
+			Bullets: 10,
+			Shells:  0,
+		},
+		inventory: playerInventory{
+			ReadyWeapon: weaponShotgun,
+			Weapons:     map[int16]bool{2001: true},
+		},
+	}
+
+	g.weaponPSpriteY = weaponTopY
+	g.setAttackHeld(true)
+	g.setWeaponPSpriteState(weaponStateShotgunAtk9, false)
+
+	if g.inventory.PendingWeapon != weaponPistol {
+		t.Fatalf("pending weapon=%v want pistol", g.inventory.PendingWeapon)
+	}
+	if g.weaponState != weaponStateShotgunDown {
+		t.Fatalf("weapon state=%v want shotgun down", g.weaponState)
+	}
+	if !g.weaponRefire {
+		t.Fatalf("weaponRefire=false want true after held-fire auto-switch")
+	}
+
+	for i := 0; i < 64 && g.inventory.ReadyWeapon != weaponPistol; i++ {
+		g.tickWeaponOverlay()
+	}
+	if g.inventory.ReadyWeapon != weaponPistol {
+		t.Fatalf("ready weapon=%v want pistol after lower/raise", g.inventory.ReadyWeapon)
+	}
+
+	_, p0 := doomrand.State()
+	for i := 0; i < 64 && g.stats.Bullets == 10; i++ {
+		g.tickWeaponFire()
+	}
+	if g.stats.Bullets != 9 {
+		t.Fatalf("bullets=%d want 9 after first pistol shot", g.stats.Bullets)
+	}
+	_, p1 := doomrand.State()
+	if d := prandDelta(p0, p1); d != 3 {
+		t.Fatalf("p-random calls=%d want=3 for first pistol shot after held-fire auto-switch", d)
+	}
+}
+
 func TestShotgunConsumesSevenPelletRandomRolls(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
