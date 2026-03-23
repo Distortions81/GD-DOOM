@@ -955,7 +955,11 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	if g.corpseShouldSkipFriction(i, th, momx, momy) {
 		g.thingMomX[i] = momx
 		g.thingMomY[i] = momy
-		g.thingMomZ[i] = momz
+		if z < floorZ {
+			g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
+		} else {
+			g.thingMomZ[i] = momz
+		}
 		return
 	}
 	if momx > -stopSpeed && momx < stopSpeed && momy > -stopSpeed && momy < stopSpeed {
