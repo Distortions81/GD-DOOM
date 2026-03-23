@@ -2395,6 +2395,56 @@ func TestCorpseShouldSkipFrictionWhenHalfOffStep(t *testing.T) {
 	}
 }
 
+func TestTickMonsterZMovement_StepOffLedgeStartsFallingWithoutSnap(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 0, Y: 0}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+	}
+	momz := g.tickMonsterZMovement(0, g.m.Things[0], 0, -8*fracUnit, 128*fracUnit, 0)
+	if got := momz; got != -2*fracUnit {
+		t.Fatalf("momz=%d want=%d after stepping off ledge", got, -2*fracUnit)
+	}
+	z, floorZ, ceilZ := g.thingSupportState(0, g.m.Things[0])
+	if z != 0 {
+		t.Fatalf("z=%d want=0 after stepping off ledge", z)
+	}
+	if floorZ != -8*fracUnit {
+		t.Fatalf("floorz=%d want=%d after stepping off ledge", floorZ, -8*fracUnit)
+	}
+	if ceilZ != 128*fracUnit {
+		t.Fatalf("ceilz=%d want=%d", ceilZ, 128*fracUnit)
+	}
+}
+
+func TestTickMonsterZMovement_StepUpSnapsToRaisedFloor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 0, Y: 0}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+	}
+	momz := g.tickMonsterZMovement(0, g.m.Things[0], -8*fracUnit, 0, 128*fracUnit, 0)
+	if got := momz; got != 0 {
+		t.Fatalf("momz=%d want=0 after stepping up", got)
+	}
+	z, floorZ, ceilZ := g.thingSupportState(0, g.m.Things[0])
+	if z != 0 {
+		t.Fatalf("z=%d want=0 after stepping up", z)
+	}
+	if floorZ != 0 {
+		t.Fatalf("floorz=%d want=0 after stepping up", floorZ)
+	}
+	if ceilZ != 128*fracUnit {
+		t.Fatalf("ceilz=%d want=%d", ceilZ, 128*fracUnit)
+	}
+}
+
 func TestLostTargetChaseRunsSpawnLookPath(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

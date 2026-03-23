@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+
+	"gddoom/internal/mapdata"
 )
 
 type slideIntercept struct {
@@ -81,16 +83,136 @@ func (g *game) tickGameplayWorld() {
 
 func (g *game) tickThinkers() {
 	g.tickPlayerBody()
+	g.tickMonsters()
+	g.tickBossBrainSpecials()
+	g.tickProjectiles()
+	g.tickProjectileImpacts()
 	g.tickFloors()
 	g.tickPlats()
 	g.tickCeilings()
-	g.tickBossBrainSpecials()
-	g.tickMonsters()
-	g.tickProjectiles()
-	g.tickProjectileImpacts()
 	g.tickDoors()
 	g.tickDeferredProjectiles()
 	g.tickHitscanPuffs()
+}
+
+type worldThinkerKind uint8
+
+const (
+	worldThinkerNone worldThinkerKind = iota
+	worldThinkerThing
+	worldThinkerFloor
+	worldThinkerPlat
+	worldThinkerCeiling
+	worldThinkerDoor
+)
+
+type worldThinkerRef struct {
+	kind  worldThinkerKind
+	key   int
+	order int64
+}
+
+func (g *game) runOrderedWorldThinkers() {
+	if g != nil && g.m != nil {
+		g.ensureMonsterAIState()
+	}
+	for lastOrder := int64(0); ; {
+		next, ok := g.nextWorldThinkerAfter(lastOrder)
+		if !ok {
+			return
+		}
+		g.tickWorldThinker(next)
+		lastOrder = next.order
+	}
+}
+
+func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
+	best := worldThinkerRef{}
+	found := false
+	consider := func(kind worldThinkerKind, key int, order int64) {
+		if order <= lastOrder {
+			return
+		}
+		if !found || order < best.order {
+			best = worldThinkerRef{kind: kind, key: key, order: order}
+			found = true
+		}
+	}
+
+	if g != nil && g.m != nil {
+		for i, th := range g.m.Things {
+			if !g.thingHasWorldThinker(i, th) {
+				continue
+			}
+			order := int64(i + 1)
+			if i >= 0 && i < len(g.thingThinkerOrder) && g.thingThinkerOrder[i] > 0 {
+				order = g.thingThinkerOrder[i]
+			}
+			consider(worldThinkerThing, i, order)
+		}
+	}
+	for sec, ft := range g.floors {
+		if ft == nil {
+			continue
+		}
+		consider(worldThinkerFloor, sec, ft.order)
+	}
+	for sec, pt := range g.plats {
+		if pt == nil {
+			continue
+		}
+		consider(worldThinkerPlat, sec, pt.order)
+	}
+	for sec, ct := range g.ceilings {
+		if ct == nil {
+			continue
+		}
+		consider(worldThinkerCeiling, sec, ct.order)
+	}
+	for sec, d := range g.doors {
+		if d == nil {
+			continue
+		}
+		consider(worldThinkerDoor, sec, d.order)
+	}
+	return best, found
+}
+
+func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if i < len(g.thingCollected) && g.thingCollected[i] {
+		return false
+	}
+	return isBarrelThingType(th.Type) || isMonster(th.Type)
+}
+
+func (g *game) tickWorldThinker(ref worldThinkerRef) {
+	switch ref.kind {
+	case worldThinkerThing:
+		if g == nil || g.m == nil || ref.key < 0 || ref.key >= len(g.m.Things) {
+			return
+		}
+		g.tickThingThinker(ref.key, g.m.Things[ref.key])
+	case worldThinkerFloor:
+		if ft := g.floors[ref.key]; ft != nil && ft.order == ref.order {
+			g.tickFloor(ref.key, ft)
+		}
+	case worldThinkerPlat:
+		if pt := g.plats[ref.key]; pt != nil && pt.order == ref.order {
+			g.platTickedThisTic = true
+			g.tickPlat(ref.key, pt)
+		}
+	case worldThinkerCeiling:
+		if ct := g.ceilings[ref.key]; ct != nil && ct.order == ref.order {
+			g.tickCeiling(ref.key, ct)
+		}
+	case worldThinkerDoor:
+		if d := g.doors[ref.key]; d != nil && d.order == ref.order {
+			g.tickDoor(ref.key, d)
+		}
+	}
 }
 
 func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {

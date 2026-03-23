@@ -354,6 +354,47 @@ func TestTickPlats_DownWaitUpStayRemovesAfterOvershootTick(t *testing.T) {
 	}
 }
 
+func TestTickFloors_RemoveOnOvershootTicNotExactArrival(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		floors: map[int]*floorThinker{
+			0: {
+				direction:  -1,
+				speed:      8 * fracUnit,
+				destHeight: -16 * fracUnit,
+			},
+		},
+	}
+
+	g.tickFloors()
+	if got := g.sectorFloor[0]; got != -8*fracUnit {
+		t.Fatalf("first tick floor=%d want=%d", got, -8*fracUnit)
+	}
+	if _, ok := g.floors[0]; !ok {
+		t.Fatal("floor thinker removed too early after first step")
+	}
+
+	g.tickFloors()
+	if got := g.sectorFloor[0]; got != -16*fracUnit {
+		t.Fatalf("second tick floor=%d want=%d", got, -16*fracUnit)
+	}
+	if _, ok := g.floors[0]; !ok {
+		t.Fatal("floor thinker removed on exact-arrival tic")
+	}
+
+	g.tickFloors()
+	if got := g.sectorFloor[0]; got != -16*fracUnit {
+		t.Fatalf("overshoot tick floor=%d want=%d", got, -16*fracUnit)
+	}
+	if _, ok := g.floors[0]; ok {
+		t.Fatal("floor thinker not removed on overshoot tic")
+	}
+}
+
 func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

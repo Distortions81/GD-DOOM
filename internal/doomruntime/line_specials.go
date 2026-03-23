@@ -1342,30 +1342,38 @@ func (g *game) findDonutSectors(s1 int) (int, int, bool) {
 
 func (g *game) tickFloors() {
 	for sec, ft := range g.floors {
-		cur := g.sectorFloor[sec]
-		next := cur + int64(ft.direction)*ft.speed
-		done := false
-		if ft.direction < 0 {
-			if next <= ft.destHeight {
-				next = ft.destHeight
-				done = true
-			}
-		} else {
-			if next >= ft.destHeight {
-				next = ft.destHeight
-				done = true
-			}
+		g.tickFloor(sec, ft)
+	}
+}
+
+func (g *game) tickFloor(sec int, ft *floorThinker) {
+	if g == nil || ft == nil {
+		return
+	}
+	cur := g.sectorFloor[sec]
+	next := cur + int64(ft.direction)*ft.speed
+	done := false
+	if ft.direction < 0 {
+		if next < ft.destHeight {
+			next = ft.destHeight
+			done = true
 		}
-		g.setSectorFloorHeight(sec, next)
-		if done {
-			if ft.finish == floorFinishSetTexture {
-				g.m.Sectors[sec].FloorPic = ft.finishFlat
-				g.m.Sectors[sec].Special = ft.finishSpecial
-				g.markDynamicSectorPlaneCacheDirty(sec)
-			}
-			delete(g.floors, sec)
+	} else {
+		if next > ft.destHeight {
+			next = ft.destHeight
+			done = true
 		}
 	}
+	g.setSectorFloorHeight(sec, next)
+	if !done {
+		return
+	}
+	if ft.finish == floorFinishSetTexture {
+		g.m.Sectors[sec].FloorPic = ft.finishFlat
+		g.m.Sectors[sec].Special = ft.finishSpecial
+		g.markDynamicSectorPlaneCacheDirty(sec)
+	}
+	delete(g.floors, sec)
 }
 
 func (g *game) tickPlats() {
@@ -1427,32 +1435,39 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 
 func (g *game) tickCeilings() {
 	for sec, ct := range g.ceilings {
-		cur := g.sectorCeil[sec]
-		switch ct.direction {
-		case -1:
-			next := cur - ct.speed
-			if next <= ct.bottomHeight {
-				next = ct.bottomHeight
-				g.setSectorCeilingHeight(sec, next)
-				if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
-					ct.direction = 1
-				} else {
-					delete(g.ceilings, sec)
-				}
-				continue
-			}
+		g.tickCeiling(sec, ct)
+	}
+}
+
+func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
+	if g == nil || ct == nil {
+		return
+	}
+	cur := g.sectorCeil[sec]
+	switch ct.direction {
+	case -1:
+		next := cur - ct.speed
+		if next <= ct.bottomHeight {
+			next = ct.bottomHeight
 			g.setSectorCeilingHeight(sec, next)
-		case 1:
-			next := cur + ct.speed
-			if next >= ct.topHeight {
-				next = ct.topHeight
-				g.setSectorCeilingHeight(sec, next)
+			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
+				ct.direction = 1
+			} else {
 				delete(g.ceilings, sec)
-				continue
 			}
-			g.setSectorCeilingHeight(sec, next)
-		case 0:
-			continue
+			return
 		}
+		g.setSectorCeilingHeight(sec, next)
+	case 1:
+		next := cur + ct.speed
+		if next >= ct.topHeight {
+			next = ct.topHeight
+			g.setSectorCeilingHeight(sec, next)
+			delete(g.ceilings, sec)
+			return
+		}
+		g.setSectorCeilingHeight(sec, next)
+	case 0:
+		return
 	}
 }

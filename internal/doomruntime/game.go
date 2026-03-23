@@ -9167,55 +9167,80 @@ func (g *game) tickHitscanPuffs() {
 	}
 	keep := g.hitscanPuffs[:0]
 	for _, p := range g.hitscanPuffs {
-		p.z += p.momz
-		if p.kind == hitscanFxBlood {
-			floorz := p.floorz
-			if p.z <= floorz {
-				if p.momz < 0 {
-					p.momz = 0
-				}
-				p.z = floorz
-			} else if p.momz == 0 {
-				p.momz = -2 * fracUnit
-			} else {
-				p.momz -= fracUnit
-			}
-		}
-		p.tics--
-		if p.kind == hitscanFxPuff && p.tics <= 0 {
-			switch p.state {
-			case 93:
-				p.state, p.tics = 94, 4
-			case 94:
-				p.state, p.tics = 95, 4
-			case 95:
-				p.state, p.tics = 96, 4
-			}
-		} else if p.kind == hitscanFxBlood && p.tics <= 0 {
-			switch p.state {
-			case 90:
-				p.state, p.tics = 91, 8
-			case 91:
-				p.state, p.tics = 92, 8
-			}
-		} else if p.kind == hitscanFxSmoke && p.tics <= 0 {
-			switch p.state {
-			case 0:
-				p.state, p.tics = 1, 4
-			case 1:
-				p.state, p.tics = 2, 4
-			case 2:
-				p.state, p.tics = 3, 4
-			case 3:
-				p.state, p.tics = 4, 4
-			}
-		}
-		if p.tics <= 0 {
+		if !g.tickHitscanPuff(&p) {
 			continue
 		}
 		keep = append(keep, p)
 	}
 	g.hitscanPuffs = keep
+}
+
+func (g *game) tickHitscanPuffByOrder(order int64) {
+	if g == nil || len(g.hitscanPuffs) == 0 {
+		return
+	}
+	for i := range g.hitscanPuffs {
+		if g.hitscanPuffs[i].order != order {
+			continue
+		}
+		p := g.hitscanPuffs[i]
+		if g.tickHitscanPuff(&p) {
+			g.hitscanPuffs[i] = p
+		} else {
+			g.hitscanPuffs = append(g.hitscanPuffs[:i], g.hitscanPuffs[i+1:]...)
+		}
+		return
+	}
+}
+
+func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
+	if p == nil {
+		return false
+	}
+	p.z += p.momz
+	if p.kind == hitscanFxBlood {
+		floorz := p.floorz
+		if p.z <= floorz {
+			if p.momz < 0 {
+				p.momz = 0
+			}
+			p.z = floorz
+		} else if p.momz == 0 {
+			p.momz = -2 * fracUnit
+		} else {
+			p.momz -= fracUnit
+		}
+	}
+	p.tics--
+	if p.kind == hitscanFxPuff && p.tics <= 0 {
+		switch p.state {
+		case 93:
+			p.state, p.tics = 94, 4
+		case 94:
+			p.state, p.tics = 95, 4
+		case 95:
+			p.state, p.tics = 96, 4
+		}
+	} else if p.kind == hitscanFxBlood && p.tics <= 0 {
+		switch p.state {
+		case 90:
+			p.state, p.tics = 91, 8
+		case 91:
+			p.state, p.tics = 92, 8
+		}
+	} else if p.kind == hitscanFxSmoke && p.tics <= 0 {
+		switch p.state {
+		case 0:
+			p.state, p.tics = 1, 4
+		case 1:
+			p.state, p.tics = 2, 4
+		case 2:
+			p.state, p.tics = 3, 4
+		case 3:
+			p.state, p.tics = 4, 4
+		}
+	}
+	return p.tics > 0
 }
 
 func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64) {

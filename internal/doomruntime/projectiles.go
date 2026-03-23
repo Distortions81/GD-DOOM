@@ -244,6 +244,24 @@ func (g *game) tickProjectiles() {
 	g.projectiles = kept
 }
 
+func (g *game) tickProjectileByOrder(order int64) {
+	if g == nil || len(g.projectiles) == 0 {
+		return
+	}
+	for i := range g.projectiles {
+		if g.projectiles[i].order != order || g.projectiles[i].deferredTick {
+			continue
+		}
+		p := g.projectiles[i]
+		if next, keep := g.advanceProjectile(p); keep {
+			g.projectiles[i] = next
+		} else {
+			g.projectiles = append(g.projectiles[:i], g.projectiles[i+1:]...)
+		}
+		return
+	}
+}
+
 func (g *game) tickDeferredProjectiles() {
 	if len(g.projectiles) == 0 {
 		return
@@ -603,6 +621,24 @@ func (g *game) tickProjectileImpacts() {
 		keep = append(keep, fx)
 	}
 	g.projectileImpacts = keep
+}
+
+func (g *game) tickProjectileImpactByOrder(order int64) {
+	if g == nil || len(g.projectileImpacts) == 0 {
+		return
+	}
+	for i := range g.projectileImpacts {
+		if g.projectileImpacts[i].order != order {
+			continue
+		}
+		fx := g.projectileImpacts[i]
+		if g.advanceProjectileImpactTic(&fx) {
+			g.projectileImpacts[i] = fx
+		} else {
+			g.projectileImpacts = append(g.projectileImpacts[:i], g.projectileImpacts[i+1:]...)
+		}
+		return
+	}
 }
 
 func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle uint32) {

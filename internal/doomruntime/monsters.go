@@ -90,192 +90,192 @@ func (g *game) tickMonsters() {
 	}
 	g.ensureMonsterAIState()
 	for i, th := range g.m.Things {
-		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
-			continue
-		}
-		if isBarrelThingType(th.Type) {
-			g.tickBarrel(i, th)
-			continue
-		}
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-			g.tickMonsterMomentum(i, th)
-			if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
-				g.thingDeathTics[i]--
-			}
-			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateDeath && g.thingStateTics[i] > 0 {
-				g.thingStateTics[i]--
-				if g.thingStateTics[i] == 0 && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
-					xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
-					frameTics := monsterDeathFrameTicsForMode(th.Type, xdeath)
-					nextPhase := 0
-					if i >= 0 && i < len(g.thingStatePhase) {
-						nextPhase = g.thingStatePhase[i] + 1
-					}
-					if nextPhase >= 0 && nextPhase < len(frameTics) {
-						if i >= 0 && i < len(g.thingStatePhase) {
-							g.thingStatePhase[i] = nextPhase
-						}
-						g.thingStateTics[i] = frameTics[nextPhase]
-						soundPhase := monsterDeathSoundActionPhase(th.Type)
-						if xdeath {
-							soundPhase = monsterXDeathSoundActionPhase(th.Type)
-						}
-						if nextPhase == soundPhase {
-							if want := os.Getenv("GD_DEBUG_DEATH_SOUND_TIC"); want != "" {
-								var wantTic int
-								if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
-									px, py := g.thingPosFixed(i, th)
-									fmt.Printf("monster-deathsound-debug tic=%d world=%d idx=%d type=%d phase=%d state=%d tics=%d pos=(%d,%d)\n",
-										g.demoTick-1, g.worldTic, i, th.Type, nextPhase, g.thingState[i], g.thingStateTics[i], px, py)
-								}
-							}
-							px, py := g.thingPosFixed(i, th)
-							if xdeath {
-								g.emitSoundEventAt(soundEventMonsterDeath, px, py)
-							} else {
-								g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
-							}
-						}
-					}
-				}
-			}
-			g.debugThingState(i, th, "dead")
-			continue
-		}
-		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
-			continue
-		}
-		g.debugMonsterTick(i, "start")
-		g.debugThingState(i, th, "live")
-		if th.Type == 88 {
-			continue
-		}
+		g.tickThingThinker(i, th)
+	}
+}
+
+func (g *game) tickThingThinker(i int, th mapdata.Thing) {
+	if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+		return
+	}
+	if isBarrelThingType(th.Type) {
+		g.tickBarrel(i, th)
+		return
+	}
+	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 		g.tickMonsterMomentum(i, th)
-		tx, ty := g.thingPosFixed(i, th)
-		targetX, targetY := int64(0), int64(0)
-		dist := int64(0)
-		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
-			targetX, targetY = px, py
-			dist = doomApproxDistance(targetX-tx, targetY-ty)
+		if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+			g.thingDeathTics[i]--
 		}
-
-		resumedFromAttack := false
-		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
-			if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
-				continue
-			}
-			resumedFromAttack = i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack
-		}
-		resumedFromPain := false
-		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
-			g.thingPainTics[i]--
-			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain && g.thingStateTics[i] > 0 {
-				g.thingStateTics[i]--
-				if g.thingStateTics[i] == 0 && g.thingPainTics[i] > 0 {
-					frameTics := monsterPainFrameTics(th.Type)
-					nextPhase := 0
+		if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateDeath && g.thingStateTics[i] > 0 {
+			g.thingStateTics[i]--
+			if g.thingStateTics[i] == 0 && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+				xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+				frameTics := monsterDeathFrameTicsForMode(th.Type, xdeath)
+				nextPhase := 0
+				if i >= 0 && i < len(g.thingStatePhase) {
+					nextPhase = g.thingStatePhase[i] + 1
+				}
+				if nextPhase >= 0 && nextPhase < len(frameTics) {
 					if i >= 0 && i < len(g.thingStatePhase) {
-						nextPhase = g.thingStatePhase[i] + 1
+						g.thingStatePhase[i] = nextPhase
 					}
-					if nextPhase >= 0 && nextPhase < len(frameTics) {
-						if i >= 0 && i < len(g.thingStatePhase) {
-							g.thingStatePhase[i] = nextPhase
+					g.thingStateTics[i] = frameTics[nextPhase]
+					soundPhase := monsterDeathSoundActionPhase(th.Type)
+					if xdeath {
+						soundPhase = monsterXDeathSoundActionPhase(th.Type)
+					}
+					if nextPhase == soundPhase {
+						if want := os.Getenv("GD_DEBUG_DEATH_SOUND_TIC"); want != "" {
+							var wantTic int
+							if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+								px, py := g.thingPosFixed(i, th)
+								fmt.Printf("monster-deathsound-debug tic=%d world=%d idx=%d type=%d phase=%d state=%d tics=%d pos=(%d,%d)\n",
+									g.demoTick-1, g.worldTic, i, th.Type, nextPhase, g.thingState[i], g.thingStateTics[i], px, py)
+							}
 						}
-						g.thingStateTics[i] = frameTics[nextPhase]
-						if nextPhase == monsterPainActionPhase(th.Type) {
-							px, py := g.thingPosFixed(i, th)
-							g.emitSoundEventAt(monsterPainSoundEvent(th.Type), px, py)
+						px, py := g.thingPosFixed(i, th)
+						if xdeath {
+							g.emitSoundEventAt(soundEventMonsterDeath, px, py)
+						} else {
+							g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
 						}
 					}
 				}
 			}
-			if i >= 0 && i < len(g.thingAttackFireTics) {
-				g.thingAttackFireTics[i] = -1
-			}
-			if g.thingPainTics[i] > 0 {
-				continue
-			}
-			g.resetMonsterIdleOrChaseState(i, th.Type)
-			resumedFromPain = true
 		}
-		if !resumedFromPain && !resumedFromAttack && i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
-			g.resetMonsterIdleOrChaseState(i, th.Type)
-		}
+		g.debugThingState(i, th, "dead")
+		return
+	}
+	if !isMonster(th.Type) || g.thingHP[i] <= 0 {
+		return
+	}
+	g.debugMonsterTick(i, "start")
+	g.debugThingState(i, th, "live")
+	if th.Type == 88 {
+		return
+	}
+	g.tickMonsterMomentum(i, th)
+	tx, ty := g.thingPosFixed(i, th)
+	targetX, targetY := int64(0), int64(0)
+	dist := int64(0)
+	if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+		targetX, targetY = px, py
+		dist = doomApproxDistance(targetX-tx, targetY-ty)
+	}
 
-		if !resumedFromPain && !resumedFromAttack && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
-			continue
+	resumedFromAttack := false
+	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+		if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
+			return
 		}
-		// A sleeping monster can acquire a target while advancing out of its
-		// spawn state. Recompute chase inputs immediately so the wake-up tic
-		// uses the actual target position instead of stale zero values.
+		resumedFromAttack = i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack
+	}
+	resumedFromPain := false
+	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+		g.thingPainTics[i]--
+		if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain && g.thingStateTics[i] > 0 {
+			g.thingStateTics[i]--
+			if g.thingStateTics[i] == 0 && g.thingPainTics[i] > 0 {
+				frameTics := monsterPainFrameTics(th.Type)
+				nextPhase := 0
+				if i >= 0 && i < len(g.thingStatePhase) {
+					nextPhase = g.thingStatePhase[i] + 1
+				}
+				if nextPhase >= 0 && nextPhase < len(frameTics) {
+					if i >= 0 && i < len(g.thingStatePhase) {
+						g.thingStatePhase[i] = nextPhase
+					}
+					g.thingStateTics[i] = frameTics[nextPhase]
+					if nextPhase == monsterPainActionPhase(th.Type) {
+						px, py := g.thingPosFixed(i, th)
+						g.emitSoundEventAt(monsterPainSoundEvent(th.Type), px, py)
+					}
+				}
+			}
+		}
+		if i >= 0 && i < len(g.thingAttackFireTics) {
+			g.thingAttackFireTics[i] = -1
+		}
+		if g.thingPainTics[i] > 0 {
+			return
+		}
+		g.resetMonsterIdleOrChaseState(i, th.Type)
+		resumedFromPain = true
+	}
+	if !resumedFromPain && !resumedFromAttack && i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
+		g.resetMonsterIdleOrChaseState(i, th.Type)
+	}
+
+	if !resumedFromPain && !resumedFromAttack && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
+		return
+	}
+	targetX, targetY = 0, 0
+	dist = 0
+	if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+		targetX, targetY = px, py
+		dist = doomApproxDistance(targetX-tx, targetY-ty)
+	}
+	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+		g.thingReactionTics[i]--
+	}
+	skipThresholdTick := i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStateAttack
+	if !skipThresholdTick && i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+		if !g.monsterHasTarget(i) {
+			g.thingThreshold[i] = 0
+		} else {
+			g.thingThreshold[i]--
+		}
+	}
+	g.monsterTurnTowardMoveDir(i)
+
+	if !g.monsterHasTarget(i) {
+		if !g.monsterRunLostTargetChaseState(i, th.Type, tx, ty) {
+			return
+		}
 		targetX, targetY = 0, 0
 		dist = 0
 		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
 			targetX, targetY = px, py
 			dist = doomApproxDistance(targetX-tx, targetY-ty)
 		}
-		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
-			g.thingReactionTics[i]--
-		}
-		skipThresholdTick := i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStateAttack
-		if !skipThresholdTick && i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
-			if !g.monsterHasTarget(i) {
-				g.thingThreshold[i] = 0
-			} else {
-				g.thingThreshold[i]--
-			}
-		}
 		g.monsterTurnTowardMoveDir(i)
-
-		if !g.monsterHasTarget(i) {
-			if !g.monsterRunLostTargetChaseState(i, th.Type, tx, ty) {
-				continue
-			}
-			targetX, targetY = 0, 0
-			dist = 0
-			if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
-				targetX, targetY = px, py
-				dist = doomApproxDistance(targetX-tx, targetY-ty)
-			}
-			g.monsterTurnTowardMoveDir(i)
-		}
-
-		// Doom A_Chase: prevent consecutive missile attacks.
-		if g.thingJustAtk[i] {
-			g.thingJustAtk[i] = false
-			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
-			continue
-		}
-
-		if g.monsterCanMeleeTarget(i, th.Type, dist, tx, ty, targetX, targetY) {
-			g.faceMonsterToward(i, tx, ty, targetX, targetY)
-			if g.startMonsterAttackState(i, th.Type, false) {
-				continue
-			}
-		}
-
-		if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, th.Type, dist, tx, ty, targetX, targetY) {
-			g.faceMonsterToward(i, tx, ty, targetX, targetY)
-			if g.startMonsterAttackState(i, th.Type, true) {
-				continue
-			}
-		}
-		if th.Type == 64 && g.archvileTryRaiseCorpse(i) {
-			continue
-		}
-
-		g.thingMoveCount[i]--
-		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
-			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
-		}
-		g.setMonsterThinkState(i, th.Type, monsterStateSee, g.monsterSeeStateTicsForPhase(i, th.Type))
-		ax, ay := tx, ty
-		if i >= 0 && g.m != nil && i < len(g.m.Things) {
-			ax, ay = g.thingPosFixed(i, g.m.Things[i])
-		}
-		g.emitMonsterActiveSound(i, th.Type, ax, ay)
-		g.debugMonsterTick(i, "end")
 	}
+
+	if g.thingJustAtk[i] {
+		g.thingJustAtk[i] = false
+		g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
+		return
+	}
+
+	if g.monsterCanMeleeTarget(i, th.Type, dist, tx, ty, targetX, targetY) {
+		g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		if g.startMonsterAttackState(i, th.Type, false) {
+			return
+		}
+	}
+
+	if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, th.Type, dist, tx, ty, targetX, targetY) {
+		g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		if g.startMonsterAttackState(i, th.Type, true) {
+			return
+		}
+	}
+	if th.Type == 64 && g.archvileTryRaiseCorpse(i) {
+		return
+	}
+
+	g.thingMoveCount[i]--
+	if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
+		g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
+	}
+	g.setMonsterThinkState(i, th.Type, monsterStateSee, g.monsterSeeStateTicsForPhase(i, th.Type))
+	ax, ay := tx, ty
+	if i >= 0 && g.m != nil && i < len(g.m.Things) {
+		ax, ay = g.thingPosFixed(i, g.m.Things[i])
+	}
+	g.emitMonsterActiveSound(i, th.Type, ax, ay)
+	g.debugMonsterTick(i, "end")
 }
 
 func (g *game) debugThingState(i int, th mapdata.Thing, tag string) {
@@ -931,23 +931,25 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	momx = clamp(momx, -maxMove, maxMove)
 	momy = clamp(momy, -maxMove, maxMove)
 
+	z, _, _ := g.thingSupportState(i, th)
 	tx, ty := g.thingPosFixed(i, th)
 	nx := tx + momx
 	ny := ty + momy
 	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
 		prevX, prevY := tx, ty
 		g.setThingPosFixed(i, nx, ny)
-		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+		g.setThingSupportState(i, z, tmfloor, tmceil)
 		g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
 	} else {
 		momx = 0
 		momy = 0
 	}
 
-	if i < len(g.thingZState) && i < len(g.thingFloorState) && g.thingZState[i] > g.thingFloorState[i] {
+	z, floorZ, ceilZ := g.thingSupportState(i, th)
+	if z > floorZ || momz != 0 {
 		g.thingMomX[i] = momx
 		g.thingMomY[i] = momy
-		g.thingMomZ[i] = momz
+		g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
 		return
 	}
 	if g.corpseShouldSkipFriction(i, th, momx, momy) {
@@ -964,7 +966,42 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	}
 	g.thingMomX[i] = fixedMul(momx, friction)
 	g.thingMomY[i] = fixedMul(momy, friction)
+	if z < floorZ {
+		g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
+		return
+	}
 	g.thingMomZ[i] = momz
+}
+
+func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, momz int64) int64 {
+	if g == nil {
+		return momz
+	}
+	z += momz
+	height := g.thingCurrentHeight(i, th)
+
+	if z <= floorZ {
+		if momz < 0 {
+			momz = 0
+		}
+		z = floorZ
+	} else if !monsterCanFloat(th.Type) {
+		if momz == 0 {
+			momz = -2 * fracUnit
+		} else {
+			momz -= fracUnit
+		}
+	}
+
+	if z+height > ceilZ {
+		if momz > 0 {
+			momz = 0
+		}
+		z = ceilZ - height
+	}
+
+	g.setThingSupportState(i, z, floorZ, ceilZ)
+	return momz
 }
 
 func (g *game) corpseShouldSkipFriction(i int, th mapdata.Thing, momx, momy int64) bool {
