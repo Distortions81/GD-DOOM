@@ -218,7 +218,7 @@ func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius, theight i
 	if delta > pheight {
 		return false
 	}
-	if delta+theight < -8*fracUnit {
+	if delta < -8*fracUnit {
 		return false
 	}
 	return true

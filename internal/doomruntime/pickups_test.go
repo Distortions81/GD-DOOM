@@ -265,10 +265,10 @@ func TestCanTouchPickup_ZOverlap(t *testing.T) {
 	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, 57*fracUnit, 20*fracUnit, 16*fracUnit) {
 		t.Fatal("thing above player height should not touch")
 	}
-	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -25*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -9*fracUnit, 20*fracUnit, 16*fracUnit) {
 		t.Fatal("thing too far below should not touch")
 	}
-	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -20*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -8*fracUnit, 20*fracUnit, 16*fracUnit) {
 		t.Fatal("thing in lower overlap range should touch")
 	}
 }

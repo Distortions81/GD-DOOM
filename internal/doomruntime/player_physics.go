@@ -66,6 +66,9 @@ func (g *game) tickPlayerBody() {
 		return
 	}
 	g.xyMovement()
+	if !g.isDead {
+		g.processThingPickups()
+	}
 	g.zMovement()
 	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
 }
@@ -81,9 +84,6 @@ func (g *game) tickThinkers() {
 	g.tickFloors()
 	g.tickPlats()
 	g.tickCeilings()
-	if !g.isDead {
-		g.processThingPickups()
-	}
 	g.tickBossBrainSpecials()
 	g.tickMonsters()
 	g.tickProjectiles()

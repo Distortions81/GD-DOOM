@@ -622,6 +622,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			recordDemoPath:             resolvedRecordDemoPath,
 			demoExitOnDeath:            *demoExitOnDeath,
 			demoStopAfterTics:          max(0, *demoStopAfterTics),
+			demoTracePath:              resolvedDemoTracePath,
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
@@ -1060,6 +1061,109 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	}
+
+	if resolvedDemoTracePath != "" {
+		resolvedLineColorMode := *lineColorMode
+		if *sourcePortMode && !lineColorModeSet {
+			resolvedLineColorMode = "doom"
+		}
+		if *noCullClipping {
+			*wallOcclusion = false
+			*wallSpanReject = false
+			*wallSpanClip = false
+			*wallSliceOcclusion = false
+			*billboardClipping = false
+		}
+		buildCfg := renderBuildConfig{
+			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
+			mapExplicit:                mapExplicit,
+			width:                      *width,
+			height:                     *height,
+			zoom:                       *zoom,
+			detailLevel:                *detailLevel,
+			detailLevelExplicit:        detailLevelSet,
+			detailLevelFaithful:        configuredDetailLevelForMode(cfg, false),
+			detailLevelSourcePort:      configuredDetailLevelForMode(cfg, true),
+			gammaLevel:                 *gammaLevel,
+			debug:                      *debug,
+			debugEvents:                *debugEvents,
+			playerSlot:                 *playerSlot,
+			skillLevel:                 *skillLevel,
+			gameMode:                   resolvedGameMode,
+			showNoSkillItems:           *showNoSkillItems,
+			showAllItems:               *showAllItems,
+			mouseLook:                  *mouseLook,
+			mouseLookSpeed:             *mouseLookSpeed,
+			keyboardTurnSpeed:          *keyboardTurnSpeed,
+			musicVolume:                *musicVolume,
+			musPanMax:                  *musPanMax,
+			oplVolume:                  *oplVolume,
+			audioPreEmphasis:           *audioPreEmphasis,
+			opl3Backend:                resolvedOPL3Backend,
+			oplBankPath:                strings.TrimSpace(*oplBank),
+			sfxVolume:                  *sfxVolume,
+			fastMonsters:               *fastMonsters,
+			alwaysRun:                  *alwaysRun,
+			autoWeaponSwitch:           *autoWeaponSwitch,
+			cheatLevel:                 resolvedCheatLevel,
+			invuln:                     resolvedInvuln,
+			lineColorMode:              resolvedLineColorMode,
+			sourcePortMode:             *sourcePortMode,
+			sourcePortThingRenderMode:  *sourcePortThingRenderMode,
+			sourcePortThingBlendFrames: *sourcePortThingBlendFrames,
+			sourcePortSectorLighting:   *sourcePortSectorLighting,
+			doomLighting:               *doomLighting,
+			kageShader:                 *kageShader,
+			gpuSky:                     *gpuSky,
+			skyUpscaleMode:             *skyUpscale,
+			crtEffect:                  *crtEffect,
+			wallOcclusion:              *wallOcclusion,
+			wallSpanReject:             *wallSpanReject,
+			wallSpanClip:               *wallSpanClip,
+			wallSliceOcclusion:         *wallSliceOcclusion,
+			billboardClipping:          *billboardClipping,
+			rendererWorkers:            *rendererWorkers,
+			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
+			noVsync:                    *noVsync,
+			noFPS:                      *noFPS,
+			noAspectCorrection:         *noAspectCorrection,
+			allCheats:                  *allCheats,
+			startInMap:                 explicitMapStartInMap(*startInMap, mapExplicit),
+			importPCSpeaker:            *importPCSpeaker,
+			importTextures:             *importTextures,
+			demoPath:                   resolvedDemoPath,
+			recordDemoPath:             resolvedRecordDemoPath,
+			demoExitOnDeath:            *demoExitOnDeath,
+			demoStopAfterTics:          max(0, *demoStopAfterTics),
+			demoTracePath:              resolvedDemoTracePath,
+			pwadPaths:                  resolvedFilePaths,
+			configPath:                 configPath,
+		}
+		bundle, berr := buildRenderBundle(resolvedWADPath, buildCfg, stderr)
+		if berr != nil {
+			fmt.Fprintf(stderr, "build headless demo trace: %v\n", berr)
+			return 1
+		}
+		sess := doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+		defer sess.Close()
+		for tic := 0; tic < 1_000_000; tic++ {
+			uerr := sess.Update()
+			if uerr == nil {
+				continue
+			}
+			if errors.Is(uerr, ebiten.Termination) {
+				if err := sess.Err(); err != nil {
+					fmt.Fprintf(stderr, "headless demo trace: %v\n", err)
+					return 1
+				}
+				return 0
+			}
+			fmt.Fprintf(stderr, "headless demo trace update %d: %v\n", tic, uerr)
+			return 1
+		}
+		fmt.Fprintln(stderr, "headless demo trace did not terminate")
+		return 1
 	}
 
 	if p := resolvedDemoPath; p != "" && !*render {
@@ -1630,6 +1734,7 @@ type renderBuildConfig struct {
 	recordDemoPath             string
 	demoExitOnDeath            bool
 	demoStopAfterTics          int
+	demoTracePath              string
 	pwadPaths                  []string
 	configPath                 string
 }
@@ -1874,6 +1979,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		RecordDemoPath:             cfg.recordDemoPath,
 		DemoExitOnDeath:            cfg.demoExitOnDeath,
 		DemoStopAfterTics:          cfg.demoStopAfterTics,
+		DemoTracePath:              cfg.demoTracePath,
 		AttractDemos:               builtInAttractDemos(wf),
 	}
 	opts.TitleMusicLoader = func() ([]byte, error) {
