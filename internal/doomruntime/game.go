@@ -545,6 +545,7 @@ type game struct {
 	thingMoveDir          []monsterMoveDir
 	thingMoveCount        []int
 	thingJustAtk          []bool
+	thingInFloat          []bool
 	thingJustHit          []bool
 	thingReactionTics     []int
 	thingWakeTics         []int
@@ -1218,6 +1219,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingMoveDir = make([]monsterMoveDir, len(m.Things))
 	g.thingMoveCount = make([]int, len(m.Things))
 	g.thingJustAtk = make([]bool, len(m.Things))
+	g.thingInFloat = make([]bool, len(m.Things))
 	g.thingJustHit = make([]bool, len(m.Things))
 	g.thingReactionTics = make([]int, len(m.Things))
 	g.thingWakeTics = make([]int, len(m.Things))
@@ -10863,6 +10865,8 @@ func monsterAttackFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9:
 		return []byte{'E', 'F', 'E'}
+	case 65:
+		return []byte{'E', 'F', 'E', 'F'}
 	case 3001:
 		return []byte{'E', 'F', 'G'}
 	case 3002, 58: // demon/spectre
@@ -10894,7 +10898,7 @@ func monsterAttackFrameSeq(typ int16) []byte {
 
 func monsterSpawnFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3003, 69:
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
 		return []byte{'A', 'B'}
 	case 3005:
 		return []byte{'A'}
@@ -10916,6 +10920,7 @@ var (
 	monsterSpawnTicsA          = []int{10}
 	monsterAttackTicsZombieman = []int{10, 8, 8}
 	monsterAttackTicsShotgun   = []int{10, 10, 10}
+	monsterAttackTicsChaingun  = []int{10, 4, 4, 1}
 	monsterAttackTicsImp       = []int{8, 8, 6}
 	monsterAttackTicsDemon     = []int{8, 8, 8}
 	monsterAttackTicsLostSoul  = []int{6, 6}
@@ -10959,7 +10964,7 @@ var (
 
 func monsterSpawnFrameTics(typ int16) []int {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3003, 69:
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
 		return monsterSpawnTicsAB
 	case 3005:
 		return monsterSpawnTicsA
@@ -10978,7 +10983,7 @@ func monsterSpawnFrameTics(typ int16) []int {
 
 func monsterSeeFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3003, 69:
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
 		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
 	case 3005:
 		return []byte{'A'}
@@ -11001,6 +11006,8 @@ func monsterAttackFrameTics(typ int16) []int {
 		return monsterAttackTicsZombieman
 	case 9: // shotgun guy
 		return monsterAttackTicsShotgun
+	case 65: // chaingunner
+		return monsterAttackTicsChaingun
 	case 3001: // imp
 		return monsterAttackTicsImp
 	case 3002, 58: // demon/spectre
@@ -11040,7 +11047,7 @@ func monsterSeeFrameTics(typ int16, fast bool) []int {
 			tics = monsterSeeTics2
 		}
 		return tics
-	case 9:
+	case 9, 65:
 		tics := monsterSeeTics3
 		if fast {
 			tics = monsterSeeTics2
@@ -11082,7 +11089,7 @@ func monsterPainFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004:
 		return []byte{'G', 'G'}
-	case 9:
+	case 9, 65:
 		return []byte{'G', 'G'}
 	case 3001:
 		return []byte{'H', 'H'}
@@ -11119,7 +11126,7 @@ func monsterPainFrameTics(typ int16) []int {
 	switch typ {
 	case 3004:
 		return monsterPainTics33
-	case 9:
+	case 9, 65:
 		return monsterPainTics33
 	case 3001:
 		return monsterPainTics22

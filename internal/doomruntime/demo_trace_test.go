@@ -202,6 +202,18 @@ func TestDemoTraceThingFlagsMatchMonsterAndDroppedPickupDefaults(t *testing.T) {
 	}
 }
 
+func TestDemoTraceThingFlags_AddsFloatAndNoGravityForLiveFloatMonsters(t *testing.T) {
+	g := &game{thingDead: []bool{false, true}}
+	alive := mapdata.Thing{Type: 3005}
+	if got := demoTraceThingFlags(g, 0, alive); got != 0x404206 {
+		t.Fatalf("live caco flags=%#x want %#x", got, 0x404206)
+	}
+	dead := mapdata.Thing{Type: 3005}
+	if got := demoTraceThingFlags(g, 1, dead); got != 0x500402 {
+		t.Fatalf("dead caco flags=%#x want %#x", got, 0x500402)
+	}
+}
+
 func TestDemoTraceThingTargetUsesConcreteTargetFields(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

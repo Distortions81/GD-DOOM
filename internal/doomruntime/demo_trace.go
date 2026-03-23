@@ -875,7 +875,9 @@ const (
 	demoTraceFlagSolid     = 0x00000002
 	demoTraceFlagShootable = 0x00000004
 	demoTraceFlagAmbush    = 0x00000020
+	demoTraceFlagNoGravity = 0x00000200
 	demoTraceFlagDropoff   = 0x00000400
+	demoTraceFlagFloat     = 0x00004000
 	demoTraceFlagDropped   = 0x00020000
 	demoTraceFlagCorpse    = 0x00100000
 	demoTraceFlagCountKill = 0x00400000
@@ -1060,6 +1062,8 @@ func demoTraceMonsterSpawnState(typ int16, phase int) (int, bool) {
 		base, count = 174, 2
 	case 9:
 		base, count = 207, 2
+	case 65:
+		base, count = 582, 2
 	case 3001:
 		base, count = 442, 2
 	case 3002, 58:
@@ -1087,6 +1091,8 @@ func demoTraceMonsterSeeState(typ int16, phase int) (int, bool) {
 		base, count = 176, 8
 	case 9:
 		base, count = 209, 8
+	case 65:
+		base, count = 584, 8
 	case 3001:
 		base, count = 444, 8
 	case 3002, 58:
@@ -1113,6 +1119,8 @@ func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
 		base = 187
 	case 9:
 		base = 220
+	case 65:
+		base = 596
 	case 3001:
 		base = 455
 	case 3002, 58:
@@ -1234,6 +1242,9 @@ func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
 			flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
 		} else {
 			flags |= demoTraceFlagShootable
+			if monsterCanFloat(th.Type) {
+				flags |= demoTraceFlagFloat | demoTraceFlagNoGravity
+			}
 		}
 	case isPickupType(th.Type):
 		flags |= demoTraceFlagSpecial

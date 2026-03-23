@@ -796,6 +796,11 @@ func (g *game) ensureMonsterAIState() {
 		g.thingJustAtk = make([]bool, n)
 		copy(g.thingJustAtk, old)
 	}
+	if len(g.thingInFloat) != n {
+		old := g.thingInFloat
+		g.thingInFloat = make([]bool, n)
+		copy(g.thingInFloat, old)
+	}
 	if len(g.thingJustHit) != n {
 		old := g.thingJustHit
 		g.thingJustHit = make([]bool, n)
@@ -983,6 +988,24 @@ func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, m
 	}
 	z += momz
 	height := g.thingCurrentHeight(i, th)
+	if monsterCanFloat(th.Type) && g.monsterHasTarget(i) {
+		inFloat := i >= 0 && i < len(g.thingInFloat) && g.thingInFloat[i]
+		if !inFloat {
+			targetX, targetY, targetZ, _, _, ok := g.monsterTargetPos(i)
+			if ok {
+				dist := doomApproxDistance(
+					g.thingX[i]-targetX,
+					g.thingY[i]-targetY,
+				)
+				delta := (targetZ + (height >> 1)) - z
+				if delta < 0 && dist < -(delta*3) {
+					z -= 4 * fracUnit
+				} else if delta > 0 && dist < delta*3 {
+					z += 4 * fracUnit
+				}
+			}
+		}
+	}
 
 	if z <= floorZ {
 		if momz < 0 {
@@ -1206,6 +1229,8 @@ func monsterAttackFireDelayTics(typ int16) int {
 		return 10
 	case 9: // sergeant
 		return 16
+	case 65: // chaingunner
+		return 10
 	case 3001: // imp
 		return 16
 	case 3002, 58: // demon/spectre
@@ -1231,6 +1256,8 @@ func monsterAttackStateTotalTics(typ int16) int {
 		return 26
 	case 9: // sergeant
 		return 30
+	case 65: // chaingunner
+		return 19
 	case 3001: // imp
 		return 22
 	case 3002, 58: // demon/spectre
@@ -1252,7 +1279,7 @@ func monsterAttackStateTotalTics(typ int16) int {
 
 func monsterUsesExplicitAttackFrames(typ int16) bool {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3005, 3003, 69, 7, 16, 64, 66, 67, 68, 71, 84: // core roster plus explicit advanced attacks
+	case 3004, 9, 65, 3001, 3002, 58, 3005, 3003, 69, 7, 16, 64, 66, 67, 68, 71, 84: // core roster plus explicit advanced attacks
 		return true
 	default:
 		return false
@@ -1285,6 +1312,13 @@ func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, p
 		case 0:
 			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
+			_ = g.monsterAttack(i, typ, dist)
+		}
+	case 65: // chaingunner
+		switch phase {
+		case 0, 3:
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
+		case 1, 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3001: // imp
@@ -1385,6 +1419,11 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 			if g.thingStateTics[i] <= 0 {
 				nextPhase := g.thingAttackPhase[i] + 1
 				if nextPhase >= len(monsterAttackFrameTics(typ)) {
+					if loopPhase, loop := g.nextMonsterAttackLoopPhase(i, typ, tx, ty); loop {
+						nextPhase = loopPhase
+					}
+				}
+				if nextPhase >= len(monsterAttackFrameTics(typ)) {
 					g.thingAttackTics[i] = 0
 					if i >= 0 && i < len(g.thingAttackFireTics) {
 						g.thingAttackFireTics[i] = -1
@@ -1435,6 +1474,20 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 	return true
 }
 
+func (g *game) nextMonsterAttackLoopPhase(i int, typ int16, tx, ty int64) (int, bool) {
+	switch typ {
+	case 65:
+		// Doom's A_CPosRefire loops S_CPOS_ATK4 -> S_CPOS_ATK2 unless the
+		// target is invalid or out of sight and the refire RNG chooses to stop.
+		if doomrand.PRandom() >= 40 && (!g.monsterHasTarget(i) || !g.monsterHasLOSTarget(i, typ, tx, ty)) {
+			return 0, false
+		}
+		return 1, true
+	default:
+		return 0, false
+	}
+}
+
 func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 	switch typ {
 	case 3004:
@@ -1444,6 +1497,10 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 	case 9:
 		if phase >= 0 && phase <= 2 {
 			return 217 + phase, true
+		}
+	case 65:
+		if phase >= 0 && phase <= 3 {
+			return 592 + phase, true
 		}
 	case 3001:
 		if phase >= 0 && phase <= 2 {
@@ -1837,8 +1894,23 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	nx := x + dx
 	ny := y + dy
 	g.debugMonsterMove(i, fmt.Sprintf("move dir=%d from=(%d,%d) to=(%d,%d)", dir, x, y, nx, ny))
-	tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
+	probe := g.probeMonsterMove(i, typ, nx, ny)
+	tmfloor, tmceil, probeLines, ok := probe.tmfloor, probe.tmceil, probe.probeLines, probe.ok
 	if !ok {
+		if probe.checkPosOK && monsterCanFloat(typ) {
+			z, floorZ, ceilZ := g.thingSupportState(i, g.m.Things[i])
+			if z < probe.tmfloor {
+				z += 4 * fracUnit
+			} else {
+				z -= 4 * fracUnit
+			}
+			g.setThingSupportState(i, z, floorZ, ceilZ)
+			if i >= 0 && i < len(g.thingInFloat) {
+				g.thingInFloat[i] = true
+			}
+			g.debugMonsterMove(i, fmt.Sprintf("move float-adjust dir=%d z=%d floor=%d", dir, z, probe.tmfloor))
+			return true
+		}
 		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
 		lines := probeLines
 		if g == nil || os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES") == "" {
@@ -1869,8 +1941,16 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 		return false
 	}
 	prevX, prevY := x, y
+	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	g.setThingPosFixed(i, nx, ny)
-	g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+	if monsterCanFloat(typ) {
+		g.setThingSupportState(i, z, tmfloor, tmceil)
+		if i >= 0 && i < len(g.thingInFloat) {
+			g.thingInFloat[i] = false
+		}
+	} else {
+		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
+	}
 	g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
 	g.debugMonsterMove(i, fmt.Sprintf("move success dir=%d", dir))
 	return true
@@ -3067,31 +3147,45 @@ func (g *game) tryMoveProbe(x, y int64) bool {
 	return ok
 }
 
-func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, []int, bool) {
+type monsterMoveProbeResult struct {
+	tmfloor    int64
+	tmceil     int64
+	tmdrop     int64
+	probeLines []int
+	checkPosOK bool
+	ok         bool
+}
+
+func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeResult {
 	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
-		return 0, 0, nil, false
+		return monsterMoveProbeResult{}
 	}
-	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, thingTypeRadius(typ), true, i, true)
+	tmfloor, tmceil, tmdrop, checkPosOK := g.checkPositionForActor(x, y, thingTypeRadius(typ), true, i, true)
 	probeLines := append([]int(nil), g.probeSpecialLinesForMover(i)...)
-	g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) ok=%v floor=%d ceil=%d drop=%d", x, y, ok, tmfloor, tmceil, tmdrop))
-	if !ok {
-		return 0, 0, probeLines, false
+	g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) checkpos=%v floor=%d ceil=%d drop=%d", x, y, checkPosOK, tmfloor, tmceil, tmdrop))
+	if !checkPosOK {
+		return monsterMoveProbeResult{probeLines: probeLines}
 	}
 	height := g.thingCurrentHeight(i, g.m.Things[i])
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	if tmceil-tmfloor < height {
-		return 0, 0, probeLines, false
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
 	}
 	if tmceil-z < height {
-		return 0, 0, probeLines, false
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
 	}
 	if tmfloor-z > stepHeight {
-		return 0, 0, probeLines, false
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
 	}
 	if !monsterCanDropOff(typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
-		return 0, 0, probeLines, false
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
 	}
-	return tmfloor, tmceil, probeLines, true
+	return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, ok: true}
+}
+
+func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, []int, bool) {
+	probe := g.probeMonsterMove(i, typ, x, y)
+	return probe.tmfloor, probe.tmceil, probe.probeLines, probe.ok
 }
 
 func (g *game) touchedSpecialLinesForMonsterMove(i int, x, y int64) []int {

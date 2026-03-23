@@ -74,6 +74,7 @@ func TestApplyThingSpawnFilteringMarksUnavailableThings(t *testing.T) {
 				{Type: 2011, Flags: skillEasyBits},
 				{Type: 2011, Flags: skillHardBits | thingFlagNotSingle},
 				{Type: 1, Flags: 0}, // player start always available
+				{Type: 11, Flags: 0},
 			},
 		},
 		opts: Options{SkillLevel: 1, GameMode: gameModeSingle},
@@ -88,6 +89,9 @@ func TestApplyThingSpawnFilteringMarksUnavailableThings(t *testing.T) {
 	}
 	if g.thingCollected[2] {
 		t.Fatal("player start should not be filtered")
+	}
+	if !g.thingCollected[3] {
+		t.Fatal("deathmatch start should be filtered")
 	}
 }
 

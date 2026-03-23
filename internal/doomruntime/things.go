@@ -4,6 +4,10 @@ func isPlayerStart(typ int16) bool {
 	return typ >= 1 && typ <= 4
 }
 
+func isDeathmatchStart(typ int16) bool {
+	return typ == 11
+}
+
 func isMonster(typ int16) bool {
 	switch typ {
 	case 7, 9, 16, 58, 64, 65, 66, 67, 68, 69, 71, 84:

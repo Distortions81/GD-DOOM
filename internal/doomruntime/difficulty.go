@@ -62,6 +62,9 @@ func thingSpawnsForSkill(t mapdata.Thing, skill int, showNoSkillItems bool) bool
 	if isPlayerStart(t.Type) {
 		return true
 	}
+	if isDeathmatchStart(t.Type) {
+		return false
+	}
 	bits := int(t.Flags) & skillMask
 	if bits == 0 {
 		if showNoSkillItems && isPickupType(t.Type) {
@@ -83,6 +86,9 @@ func thingSpawnsForSkill(t mapdata.Thing, skill int, showNoSkillItems bool) bool
 func thingSpawnsForGameMode(t mapdata.Thing, mode string) bool {
 	if isPlayerStart(t.Type) {
 		return true
+	}
+	if isDeathmatchStart(t.Type) {
+		return false
 	}
 	flags := int(t.Flags)
 	switch normalizeGameMode(mode) {

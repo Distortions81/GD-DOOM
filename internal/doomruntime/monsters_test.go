@@ -373,6 +373,7 @@ func TestMonsterAttackFrameTablesMatchDoomStateTables(t *testing.T) {
 	}{
 		{3004, []byte{'E', 'F', 'E'}, []int{10, 8, 8}},
 		{9, []byte{'E', 'F', 'E'}, []int{10, 10, 10}},
+		{65, []byte{'E', 'F', 'E', 'F'}, []int{10, 4, 4, 1}},
 		{3001, []byte{'E', 'F', 'G'}, []int{8, 8, 6}},
 		{3002, []byte{'E', 'F', 'G'}, []int{8, 8, 8}},
 		{58, []byte{'E', 'F', 'G'}, []int{8, 8, 8}},
@@ -399,13 +400,71 @@ func TestMonsterAttackFrameTablesMatchDoomStateTables(t *testing.T) {
 }
 
 func TestMonsterAttackStateTotalsMatchFrameSums(t *testing.T) {
-	tests := []int16{3004, 9, 3001, 3002, 58, 3005, 3003, 69, 16, 7, 3006}
+	tests := []int16{3004, 9, 65, 3001, 3002, 58, 3005, 3003, 69, 16, 7, 3006}
 	for _, typ := range tests {
 		got := monsterAttackStateTotalTics(typ)
 		want := monsterAttackAnimTotalTics(typ)
 		if got != want {
 			t.Fatalf("type %d attack total=%d want=%d", typ, got, want)
 		}
+	}
+}
+
+func TestTickMonsterAttackState_ChaingunnerRefiresToAttack2LikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 65, X: 64, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{70},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackTics:   []int{1},
+		thingAttackPhase:  []int{3},
+		thingState:        []monsterThinkState{monsterStateAttack},
+		thingStateTics:    []int{1},
+		thingAngleState:   []uint32{0},
+		thingX:            []int64{64 * fracUnit},
+		thingY:            []int64{0},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0, z: 0},
+	}
+
+	tx, ty := g.thingPosFixed(0, g.m.Things[0])
+	dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+	if !g.tickMonsterAttackState(0, 65, tx, ty, g.p.x, g.p.y, dist) {
+		t.Fatal("chaingunner should refire instead of leaving attack state")
+	}
+	if got := g.thingAttackPhase[0]; got != 1 {
+		t.Fatalf("attack phase=%d want 1 (S_CPOS_ATK2)", got)
+	}
+	if got := g.thingState[0]; got != monsterStateAttack {
+		t.Fatalf("state=%d want attack", got)
+	}
+	if got := g.thingStateTics[0]; got != 4 {
+		t.Fatalf("state tics=%d want 4", got)
+	}
+}
+
+func TestTickMonsterZMovement_FloatMonsterTracksTargetHeight(t *testing.T) {
+	g := &game{
+		m:                 &mapdata.Map{Things: []mapdata.Thing{{Type: 3005, X: 0, Y: 0}}},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingTargetPlayer: []bool{true},
+		p:                 player{x: 0, y: 0, z: 0},
+	}
+	th := g.m.Things[0]
+	g.setThingSupportState(0, 40*fracUnit, 0, 128*fracUnit)
+	gotMomZ := g.tickMonsterZMovement(0, th, 40*fracUnit, 0, 128*fracUnit, 0)
+	if gotMomZ != 0 {
+		t.Fatalf("momz=%d want 0", gotMomZ)
+	}
+	z, floorZ, ceilZ := g.thingSupportState(0, th)
+	if z != 36*fracUnit || floorZ != 0 || ceilZ != 128*fracUnit {
+		t.Fatalf("support=(%d,%d,%d) want=(%d,0,%d)", z, floorZ, ceilZ, 36*fracUnit, 128*fracUnit)
 	}
 }
 
@@ -417,6 +476,7 @@ func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 	}{
 		{3004, []byte{'A', 'B'}, []int{10, 10}},
 		{9, []byte{'A', 'B'}, []int{10, 10}},
+		{65, []byte{'A', 'B'}, []int{10, 10}},
 		{3001, []byte{'A', 'B'}, []int{10, 10}},
 		{3002, []byte{'A', 'B'}, []int{10, 10}},
 		{58, []byte{'A', 'B'}, []int{10, 10}},
@@ -451,6 +511,8 @@ func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 		{3004, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
 		{9, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
 		{9, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{65, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
+		{65, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
 		{3001, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
 		{3002, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
 		{58, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
