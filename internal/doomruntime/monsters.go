@@ -3218,7 +3218,7 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeRe
 	if tmfloor-z > stepHeight {
 		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
 	}
-	if !monsterCanDropOff(typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
+	if !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
 		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
 	}
 	return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, ok: true}
@@ -3313,6 +3313,13 @@ func monsterCanDropOff(typ int16) bool {
 	default:
 		return false
 	}
+}
+
+func (g *game) thingCanDropOff(i int, typ int16) bool {
+	if monsterCanDropOff(typ) {
+		return true
+	}
+	return g != nil && i >= 0 && i < len(g.thingDead) && g.thingDead[i] && monsterLeavesCorpse(typ)
 }
 
 func monsterRadius(typ int16) int64 {

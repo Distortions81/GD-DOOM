@@ -560,6 +560,26 @@ func TestTickMonsterMomentum_IdleFloatMonsterStillRunsZMovement(t *testing.T) {
 	}
 }
 
+func TestProbeMonsterMove_DeadCorpseCanDropOffLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 65}},
+		},
+		thingDead: []bool{true},
+	}
+	if !g.thingCanDropOff(0, 65) {
+		t.Fatal("dead chaingunner corpse should keep MF_DROPOFF semantics like Doom P_KillMobj")
+	}
+	if g.thingCanDropOff(0, 3004) == false {
+		// keep the same corpse rule across ordinary monsters too
+		t.Fatal("dead monster corpses should be allowed to drop off")
+	}
+	g.thingDead[0] = false
+	if g.thingCanDropOff(0, 65) {
+		t.Fatal("live chaingunner should not be allowed to drop off")
+	}
+}
+
 func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 	spawnTests := []struct {
 		typ      int16
