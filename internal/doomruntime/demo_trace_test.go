@@ -136,6 +136,29 @@ func TestDemoTracePlayerMobjHealthUsesPlayerActorHealth(t *testing.T) {
 	}
 }
 
+func TestDemoTraceSkipsDeathmatchStartsLikeDoomSource(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 1},
+				{Type: 11, X: 32, Y: 64},
+				{Type: 2001, X: 96, Y: 128},
+			},
+		},
+		thingCollected: []bool{false, false, false},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if len(mobjs) != 2 {
+		t.Fatalf("mobjs len=%d want=2", len(mobjs))
+	}
+	for i, m := range mobjs {
+		if i > 0 && m.Type == 11 {
+			t.Fatalf("deathmatch start leaked into demo trace: %+v", m)
+		}
+	}
+}
+
 func TestDamageMonsterDeathPreservesExistingReactionTime(t *testing.T) {
 	g := &game{
 		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 3004}}},

@@ -39,6 +39,7 @@ type fileConfig struct {
 	OPL3Backend                *string  `toml:"opl3_backend"`
 	OPLBank                    *string  `toml:"opl_bank"`
 	SFXVolume                  *float64 `toml:"sfx_volume"`
+	SFXPitchShift              *bool    `toml:"sfx_pitch_shift"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
 	AlwaysRun                  *bool    `toml:"always_run"`
 	AutoWeaponSwitch           *bool    `toml:"auto_weapon_switch"`

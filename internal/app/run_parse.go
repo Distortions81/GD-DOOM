@@ -86,6 +86,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultOPL3Backend := sound.DefaultBackend().String()
 	defaultOPLBankPath := ""
 	defaultSFXVolume := 0.5
+	defaultSFXPitchShift := false
 	defaultFastMonsters := false
 	defaultAlwaysRun := true
 	defaultAutoWeaponSwitch := true
@@ -201,6 +202,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
+		}
+		if cfg.SFXPitchShift != nil {
+			defaultSFXPitchShift = *cfg.SFXPitchShift
 		}
 		if cfg.FastMonsters != nil {
 			defaultFastMonsters = *cfg.FastMonsters
@@ -354,6 +358,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	opl3Backend := fs.String("opl3-backend", defaultOPL3Backend, "FM synth backend (auto|impsynth)")
 	oplBank := fs.String("opl-bank", defaultOPLBankPath, "path to external patch bank (.op2/GENMIDI bytes) overriding WAD GENMIDI")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
+	sfxPitchShift := fs.Bool("sfx-pitch-shift", defaultSFXPitchShift, "enable Doom-style random sound pitch shifting")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
@@ -589,6 +594,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			opl3Backend:                resolvedOPL3Backend,
 			oplBankPath:                strings.TrimSpace(*oplBank),
 			sfxVolume:                  *sfxVolume,
+			sfxPitchShift:              *sfxPitchShift,
 			fastMonsters:               *fastMonsters,
 			alwaysRun:                  *alwaysRun,
 			autoWeaponSwitch:           *autoWeaponSwitch,
@@ -889,6 +895,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			OPL3Backend:                resolvedOPL3Backend,
 			OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 			SFXVolume:                  *sfxVolume,
+			SFXPitchShift:              *sfxPitchShift,
 			FastMonsters:               *fastMonsters,
 			AlwaysRun:                  *alwaysRun,
 			AutoWeaponSwitch:           *autoWeaponSwitch,
@@ -1103,6 +1110,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			opl3Backend:                resolvedOPL3Backend,
 			oplBankPath:                strings.TrimSpace(*oplBank),
 			sfxVolume:                  *sfxVolume,
+			sfxPitchShift:              *sfxPitchShift,
 			fastMonsters:               *fastMonsters,
 			alwaysRun:                  *alwaysRun,
 			autoWeaponSwitch:           *autoWeaponSwitch,
@@ -1701,6 +1709,7 @@ type renderBuildConfig struct {
 	opl3Backend                sound.Backend
 	oplBankPath                string
 	sfxVolume                  float64
+	sfxPitchShift              bool
 	fastMonsters               bool
 	alwaysRun                  bool
 	autoWeaponSwitch           bool
@@ -1935,6 +1944,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		OPL3Backend:                cfg.opl3Backend,
 		OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 		SFXVolume:                  cfg.sfxVolume,
+		SFXPitchShift:              cfg.sfxPitchShift,
 		FastMonsters:               cfg.fastMonsters,
 		AlwaysRun:                  cfg.alwaysRun,
 		AutoWeaponSwitch:           cfg.autoWeaponSwitch,

@@ -51,6 +51,7 @@ type Options struct {
 	OPL3Backend                sound.Backend
 	OpenMenuOnFrontendStart    bool
 	SFXVolume                  float64
+	SFXPitchShift              bool
 	FastMonsters               bool
 	RespawnMonsters            bool
 	NoMonsters                 bool

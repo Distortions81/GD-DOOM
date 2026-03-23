@@ -320,7 +320,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Tracer:       0,
 		}})
 	for i, th := range g.m.Things {
-		if playerSlotFromThingType(th.Type) != 0 {
+		if playerSlotFromThingType(th.Type) != 0 || th.Type == 11 {
 			continue
 		}
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
