@@ -207,6 +207,14 @@ func (p *SpatialPlayer) PlaySampleSpatial(sample media.PCMSample, origin Spatial
 	p.PlaySampleSpatialDelayed(sample, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, 0)
 }
 
+func (p *SpatialPlayer) CanPlaySpatial(origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
+	if p == nil || p.ctx == nil || p.volume <= 0 {
+		return false
+	}
+	leftGain, rightGain, _, _, ok := p.eventStereoMix(origin, listenerX, listenerY, listenerAngle, mapUsesFullClip)
+	return ok && (leftGain > 0 || rightGain > 0)
+}
+
 func (p *SpatialPlayer) PlaySampleSpatialDelayed(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool, preDelaySamples float64) {
 	if p == nil || p.ctx == nil || p.volume <= 0 {
 		return
@@ -236,7 +244,7 @@ func (p *SpatialPlayer) PlaySampleSpatialDelayed(sample media.PCMSample, origin 
 		voice.monoA = PCMMonoU8ToMonoS16Into(voice.monoA[:0], sample.Data)
 		mono = voice.monoA
 		if sample.SampleRate != p.ctx.SampleRate() {
-			voice.monoB = resampleMonoS16LinearInto(voice.monoB[:0], mono, sample.SampleRate, p.ctx.SampleRate())
+			voice.monoB = resampleMonoS16LinearQuantizedInto(voice.monoB[:0], mono, sample.SampleRate, p.ctx.SampleRate())
 			mono = voice.monoB
 		}
 	}
@@ -775,7 +783,7 @@ func (p *MenuPlayer) playSample(sample media.PCMSample) {
 		voice.monoA = PCMMonoU8ToMonoS16Into(voice.monoA[:0], sample.Data)
 		mono = voice.monoA
 		if sample.SampleRate != p.ctx.SampleRate() {
-			voice.monoB = resampleMonoS16LinearInto(voice.monoB[:0], mono, sample.SampleRate, p.ctx.SampleRate())
+			voice.monoB = resampleMonoS16LinearQuantizedInto(voice.monoB[:0], mono, sample.SampleRate, p.ctx.SampleRate())
 			mono = voice.monoB
 		}
 	}
@@ -819,7 +827,7 @@ func prepareSampleForFaithful(sample *media.PCMSample, dstRate int, scratch []in
 	}
 	mono := PCMMonoU8ToMonoS16Into(scratch, sample.Data)
 	if sample.SampleRate != dstRate {
-		sample.FaithfulPreparedMono = resampleMonoS16LinearInto(sample.FaithfulPreparedMono[:0], mono, sample.SampleRate, dstRate)
+		sample.FaithfulPreparedMono = resampleMonoS16LinearQuantizedInto(sample.FaithfulPreparedMono[:0], mono, sample.SampleRate, dstRate)
 	} else {
 		sample.FaithfulPreparedMono = resizePCMInt16Buffer(sample.FaithfulPreparedMono[:0], len(mono))
 		copy(sample.FaithfulPreparedMono, mono)
@@ -1043,6 +1051,47 @@ func resampleMonoS16LinearInto(dst []int16, src []int16, srcRate, dstRate int) [
 		a := float64(src[base])
 		b := float64(src[base+1])
 		out[i] = int16(math.Round(a + (b-a)*frac))
+	}
+	return out
+}
+
+func resampleMonoS16LinearQuantized(src []int16, srcRate, dstRate int) []int16 {
+	return resampleMonoS16LinearQuantizedInto(nil, src, srcRate, dstRate)
+}
+
+func resampleMonoS16LinearQuantizedInto(dst []int16, src []int16, srcRate, dstRate int) []int16 {
+	if len(src) == 0 || srcRate <= 0 || dstRate <= 0 {
+		return nil
+	}
+	if srcRate == dstRate {
+		out := resizePCMInt16Buffer(dst, len(src))
+		copy(out, src)
+		return out
+	}
+	outLen := int((int64(len(src))*int64(dstRate) + int64(srcRate) - 1) / int64(srcRate))
+	if outLen <= 0 {
+		return nil
+	}
+	out := resizePCMInt16Buffer(dst, outLen)
+	step := (int64(srcRate) << 16) / int64(dstRate)
+	pos := int64(0)
+	last := len(src) - 1
+	for i := 0; i < outLen; i++ {
+		idx := int(pos >> 16)
+		if idx < 0 {
+			idx = 0
+		} else if idx > last {
+			idx = last
+		}
+		if idx >= last {
+			out[i] = src[last]
+		} else {
+			frac := int(pos & 0xffff)
+			a := int(src[idx])
+			b := int(src[idx+1])
+			out[i] = int16(((a * (65536 - frac)) + (b * frac) + 32768) >> 16)
+		}
+		pos += step
 	}
 	return out
 }

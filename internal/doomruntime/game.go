@@ -22,6 +22,7 @@ import (
 	"gddoom/internal/render/mapview/linepolicy"
 	"gddoom/internal/render/mapview/presenter"
 	"gddoom/internal/render/scene"
+	"gddoom/internal/runtimecfg"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
@@ -277,16 +278,21 @@ type hitscanPuff struct {
 	y        int64
 	z        int64
 	momz     int64
+	floorz   int64
+	ceilz    int64
+	lastLook int
 	tics     int
 	state    int
 	totalTic int
 	kind     uint8
 	hidden   bool
+	order    int64
 }
 
 const (
 	hitscanFxPuff uint8 = iota
 	hitscanFxBlood
+	hitscanFxSmoke
 	hitscanFxTeleport
 )
 
@@ -322,6 +328,35 @@ func buildTexturePointerCache(bank map[string]WallTexture) ([]WallTexture, map[s
 		ptrs[key] = &store[len(store)-1]
 	}
 	return store, ptrs
+}
+
+func (g *game) allocThinkerOrder() int64 {
+	if g == nil {
+		return 0
+	}
+	if g.nextThinkerOrder <= 0 {
+		g.nextThinkerOrder = 1
+	}
+	order := g.nextThinkerOrder
+	g.nextThinkerOrder++
+	return order
+}
+
+func (g *game) allocBlockmapOrder() int64 {
+	if g == nil {
+		return 0
+	}
+	if g.nextBlockmapOrder <= 0 {
+		g.nextBlockmapOrder = 1
+		for _, order := range g.thingBlockOrder {
+			if order >= g.nextBlockmapOrder {
+				g.nextBlockmapOrder = order + 1
+			}
+		}
+	}
+	order := g.nextBlockmapOrder
+	g.nextBlockmapOrder++
+	return order
 }
 
 func (g *game) ensureTexturePointerCaches() {
@@ -399,49 +434,51 @@ type game struct {
 	p                         player
 	currentMoveCmd            moveCmd
 	localSlot                 int
+	localPlayerThingIndex     int
 	peerStarts                []playerStart
 
-	lines                []physLine
-	mapVisibleLines      []mapview.Line
-	lineValid            []int
-	validCount           int
-	bmapOriginX          int64
-	bmapOriginY          int64
-	bmapWidth            int
-	bmapHeight           int
-	physForLine          []int
-	renderSeen           []int
-	renderEpoch          int
-	visibleBuf           []int
-	mapLineVisibility    mapview.VisibilityState
-	bspOccBuf            []solidSpan
-	visibleSectorSeen    []int
-	visibleSubSectorSeen []int
-	visibleEpoch         int
-	nodeChildRangeEpoch  []int
-	nodeChildRangeL      []int
-	nodeChildRangeR      []int
-	nodeChildRangeOK     []uint8
-	thingSectorCache     []int
-	sectorLineAdj        [][]automapSectorLine
-	mapLines             mapview.LineCacheState
-	useSpecialSegScratch []mapview.Segment
-	sectorFloor          []int64
-	sectorCeil           []int64
-	lineSpecial          []uint16
-	doors                map[int]*doorThinker
-	floors               map[int]*floorThinker
-	plats                map[int]*platThinker
-	ceilings             map[int]*ceilingThinker
-	useFlash             int
-	useText              string
-	hudMessagesEnabled   bool
-	turnHeld             int
-	snd                  *soundSystem
-	soundQueue           []soundEvent
-	soundQueueOrigin     []queuedSoundOrigin
-	delayedSfx           []delayedSoundEvent
-	delayedSwitchReverts []delayedSwitchTexture
+	lines                  []physLine
+	mapVisibleLines        []mapview.Line
+	lineValid              []int
+	validCount             int
+	thingProbeSpecialLines [][]int
+	bmapOriginX            int64
+	bmapOriginY            int64
+	bmapWidth              int
+	bmapHeight             int
+	physForLine            []int
+	renderSeen             []int
+	renderEpoch            int
+	visibleBuf             []int
+	mapLineVisibility      mapview.VisibilityState
+	bspOccBuf              []solidSpan
+	visibleSectorSeen      []int
+	visibleSubSectorSeen   []int
+	visibleEpoch           int
+	nodeChildRangeEpoch    []int
+	nodeChildRangeL        []int
+	nodeChildRangeR        []int
+	nodeChildRangeOK       []uint8
+	thingSectorCache       []int
+	sectorLineAdj          [][]automapSectorLine
+	mapLines               mapview.LineCacheState
+	useSpecialSegScratch   []mapview.Segment
+	sectorFloor            []int64
+	sectorCeil             []int64
+	lineSpecial            []uint16
+	doors                  map[int]*doorThinker
+	floors                 map[int]*floorThinker
+	plats                  map[int]*platThinker
+	ceilings               map[int]*ceilingThinker
+	useFlash               int
+	useText                string
+	hudMessagesEnabled     bool
+	turnHeld               int
+	snd                    *soundSystem
+	soundQueue             []soundEvent
+	soundQueueOrigin       []queuedSoundOrigin
+	delayedSfx             []delayedSoundEvent
+	delayedSwitchReverts   []delayedSwitchTexture
 
 	prevPX    int64
 	prevPY    int64
@@ -482,102 +519,115 @@ type game struct {
 	secretLevelExit       bool
 	levelRestartRequested bool
 
-	thingCollected       []bool
-	thingDropped         []bool
-	thingX               []int64
-	thingY               []int64
-	thingAngleState      []uint32
-	thingZState          []int64
-	thingFloorState      []int64
-	thingCeilState       []int64
-	thingSupportValid    []bool
-	thingBlockCell       []int
-	thingBlockNext       []int
-	thingBlockLinks      []int
-	thingHP              []int
-	thingAggro           []bool
-	thingTargetPlayer    []bool
-	thingTargetIdx       []int
-	thingThreshold       []int
-	thingCooldown        []int
-	thingMoveDir         []monsterMoveDir
-	thingMoveCount       []int
-	thingJustAtk         []bool
-	thingJustHit         []bool
-	thingReactionTics    []int
-	thingWakeTics        []int
-	thingLastLook        []int
-	thingDead            []bool
-	thingDeathTics       []int
-	thingAttackTics      []int
-	thingAttackPhase     []int
-	thingAttackFireTics  []int
-	thingPainTics        []int
-	thingThinkWait       []int
-	thingState           []monsterThinkState
-	thingStateTics       []int
-	thingStatePhase      []int
-	thingWorldAnimRef    []thingAnimRefState
-	thingShadeTick       []int
-	thingShadeMul        []uint32
-	bossSpawnCubes       []bossSpawnCube
-	bossSpawnFires       []bossSpawnFire
-	bossBrainTargetOrder int
-	bossBrainEasyToggle  bool
-	projectiles          []projectile
-	projectileImpacts    []projectileImpact
-	projectileShadeTick  []int
-	projectileShadeMul   []uint32
-	impactShadeTick      []int
-	impactShadeMul       []uint32
-	hitscanPuffs         []hitscanPuff
-	cheatLevel           int
-	invulnerable         bool
-	inventory            playerInventory
-	alwaysRun            bool
-	autoWeaponSwitch     bool
-	weaponRefire         bool
-	weaponAttackDown     bool
-	weaponState          weaponPspriteState
-	weaponStateTics      int
-	weaponFlashState     weaponPspriteState
-	weaponFlashTics      int
-	weaponPSpriteY       int
-	stats                playerStats
-	worldTic             int
-	spectreFuzzPos       int
-	spectreFuzzAccum     float64
-	spectreFuzzStamp     time.Time
-	spectreFuzzCoarseX   int
-	spectreFuzzCoarseY   int
-	spectreFuzzCoarseSet bool
-	playerViewZ          int64
-	secretFound          []bool
-	secretsFound         int
-	secretsTotal         int
-	sectorSoundTarget    []bool
-	isDead               bool
-	damageFlashTic       int
-	bonusFlashTic        int
-	sectorLightFx        []sectorLightEffect
-	subSectorSec         []int
-	sectorBBox           []worldBBox
-	subSectorLoopVerts   [][]uint16
-	subSectorLoopDiag    []loopBuildDiag
-	subSectorPoly        [][]worldPt
-	subSectorTris        [][][3]int
-	subSectorBBox        []worldBBox
-	dynamicSectorMask    []bool
-	staticSubSectorMask  []bool
-	subSectorPlaneID     []int
-	sectorSubSectors     [][]int
-	holeFillPolys        []holeFillPoly
-	sectorPlaneTris      [][]worldTri
-	sectorPlaneCache     []sectorPlaneCacheEntry
-	sectorLightCacheTick int
+	thingCollected        []bool
+	thingDropped          []bool
+	thingThinkerOrder     []int64
+	thingX                []int64
+	thingY                []int64
+	thingMomX             []int64
+	thingMomY             []int64
+	thingMomZ             []int64
+	thingAngleState       []uint32
+	thingZState           []int64
+	thingFloorState       []int64
+	thingCeilState        []int64
+	thingSupportValid     []bool
+	thingBlockOrder       []int64
+	thingBlockCell        []int
+	thingBlockCells       [][]int
+	thingHP               []int
+	thingAggro            []bool
+	thingAmbush           []bool
+	thingTargetPlayer     []bool
+	thingTargetIdx        []int
+	thingThreshold        []int
+	thingCooldown         []int
+	thingMoveDir          []monsterMoveDir
+	thingMoveCount        []int
+	thingJustAtk          []bool
+	thingJustHit          []bool
+	thingReactionTics     []int
+	thingWakeTics         []int
+	thingLastLook         []int
+	thingDead             []bool
+	thingGibbed           []bool
+	thingGibTick          []int
+	thingXDeath           []bool
+	thingDeathTics        []int
+	thingAttackTics       []int
+	thingAttackPhase      []int
+	thingAttackFireTics   []int
+	thingPainTics         []int
+	thingThinkWait        []int
+	thingState            []monsterThinkState
+	thingStateTics        []int
+	thingStatePhase       []int
+	thingWorldAnimRef     []thingAnimRefState
+	thingShadeTick        []int
+	thingShadeMul         []uint32
+	bossSpawnCubes        []bossSpawnCube
+	bossSpawnFires        []bossSpawnFire
+	bossBrainTargetOrder  int
+	bossBrainEasyToggle   bool
+	projectiles           []projectile
+	projectileImpacts     []projectileImpact
+	projectileShadeTick   []int
+	projectileShadeMul    []uint32
+	impactShadeTick       []int
+	impactShadeMul        []uint32
+	hitscanPuffs          []hitscanPuff
+	nextThinkerOrder      int64
+	nextBlockmapOrder     int64
+	platFree              []*platThinker
+	cheatLevel            int
+	invulnerable          bool
+	inventory             playerInventory
+	alwaysRun             bool
+	autoWeaponSwitch      bool
+	weaponRefire          bool
+	weaponAttackDown      bool
+	useButtonDown         bool
+	weaponState           weaponPspriteState
+	weaponStateTics       int
+	weaponFlashState      weaponPspriteState
+	weaponFlashTics       int
+	weaponPSpriteY        int
+	stats                 playerStats
+	worldTic              int
+	spectreFuzzPos        int
+	spectreFuzzAccum      float64
+	spectreFuzzStamp      time.Time
+	spectreFuzzCoarseX    int
+	spectreFuzzCoarseY    int
+	spectreFuzzCoarseSet  bool
+	playerViewZ           int64
+	secretFound           []bool
+	secretsFound          int
+	secretsTotal          int
+	sectorSoundTarget     []bool
+	isDead                bool
+	playerMobjHealth      int
+	damageFlashTic        int
+	bonusFlashTic         int
+	sectorLightFx         []sectorLightEffect
+	subSectorSec          []int
+	sectorBBox            []worldBBox
+	subSectorLoopVerts    [][]uint16
+	subSectorLoopDiag     []loopBuildDiag
+	subSectorPoly         [][]worldPt
+	subSectorTris         [][][3]int
+	subSectorBBox         []worldBBox
+	dynamicSectorMask     []bool
+	staticSubSectorMask   []bool
+	subSectorPlaneID      []int
+	sectorSubSectors      [][]int
+	holeFillPolys         []holeFillPoly
+	sectorPlaneTris       [][]worldTri
+	sectorPlaneCache      []sectorPlaneCacheEntry
+	sectorLightCacheTick  int
 	sectorLightCacheValid bool
-	orphanSubSector      []bool
-	orphanRepairQueue    []orphanRepairCandidate
+	orphanSubSector       []bool
+	orphanRepairQueue     []orphanRepairCandidate
 
 	mapFloorLayer                *ebiten.Image
 	mapFloorPix                  []byte
@@ -717,6 +767,7 @@ type game struct {
 	automapQueueScratch          []automapQueueNode
 	debugPlayerProbeEnabled      bool
 	debugPlayerProbeTic          int
+	platTickedThisTic            bool
 	demoTick                     int
 	demoDoneReported             bool
 	demoBenchStarted             bool
@@ -733,6 +784,8 @@ type game struct {
 	statusOldWeapons             [9]bool
 	statusDamageCount            int
 	statusBonusCount             int
+	playerMobjState              int
+	playerMobjTics               int
 	demoBenchStart               time.Time
 	demoBenchDraws               int
 	demoBenchFrameNS             []int64
@@ -757,6 +810,8 @@ type delayedSoundEvent struct {
 	x          int64
 	y          int64
 	positioned bool
+	monsterTyp int16
+	deathSound bool
 }
 
 type queuedSoundOrigin struct {
@@ -1048,6 +1103,14 @@ const (
 )
 
 func newGame(m *mapdata.Map, opts Options) *game {
+	// Doom clears both random streams in G_InitNew before setting up a fresh
+	// level, including demo playback. Without this, hidden bootstrap/frontend
+	// builds leak prior RNG state into attract demos and other new sessions.
+	doomrand.Clear()
+	if opts.DemoScript != nil {
+		opts = runtimecfg.PrepareDemoPlaybackOptions(opts, opts.DemoScript)
+	}
+
 	ensurePositiveRenderSize(&opts)
 	opts.SkillLevel = normalizeSkillLevel(opts.SkillLevel)
 	opts.GameMode = normalizeGameMode(opts.GameMode)
@@ -1065,7 +1128,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
 		opts.PlayerSlot = 1
 	}
-	p, localSlot, starts := spawnPlayer(m, opts.PlayerSlot)
+	p, localSlot, starts, localPlayerThingIndex := spawnPlayer(m, opts.PlayerSlot)
 	g := &game{
 		m:                 m,
 		opts:              opts,
@@ -1086,19 +1149,20 @@ func newGame(m *mapdata.Map, opts Options) *game {
 			reveal: revealNormal,
 			iddt:   0,
 		},
-		showGrid:           false,
-		showLegend:         opts.SourcePortMode,
-		hudMessagesEnabled: true,
-		marks:              mapview.NewMarksState(10),
-		p:                  p,
-		localSlot:          localSlot,
-		peerStarts:         nonLocalStarts(starts, localSlot),
-		cullLogBudget:      0,
-		floorDbgMode:       floorDebugTextured,
-		floorVisDiag:       floorVisDiagOff,
-		alwaysRun:          opts.AlwaysRun,
-		autoWeaponSwitch:   opts.AutoWeaponSwitch,
-		simTickScale:       1.0,
+		showGrid:              false,
+		showLegend:            opts.SourcePortMode,
+		hudMessagesEnabled:    true,
+		marks:                 mapview.NewMarksState(10),
+		p:                     p,
+		localSlot:             localSlot,
+		localPlayerThingIndex: localPlayerThingIndex,
+		peerStarts:            nonLocalStarts(starts, localSlot),
+		cullLogBudget:         0,
+		floorDbgMode:          floorDebugTextured,
+		floorVisDiag:          floorVisDiagOff,
+		alwaysRun:             opts.AlwaysRun,
+		autoWeaponSwitch:      opts.AutoWeaponSwitch,
+		simTickScale:          1.0,
 	}
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
@@ -1125,20 +1189,26 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.setGammaLevel(g.gammaLevel)
 	g.initPlayerState()
+	g.bringUpWeapon()
 	g.initStatusFaceState()
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingDropped = make([]bool, len(m.Things))
+	g.thingThinkerOrder = make([]int64, len(m.Things))
 	g.thingX = make([]int64, len(m.Things))
 	g.thingY = make([]int64, len(m.Things))
+	g.thingMomX = make([]int64, len(m.Things))
+	g.thingMomY = make([]int64, len(m.Things))
+	g.thingMomZ = make([]int64, len(m.Things))
 	g.thingAngleState = make([]uint32, len(m.Things))
 	g.thingZState = make([]int64, len(m.Things))
 	g.thingFloorState = make([]int64, len(m.Things))
 	g.thingCeilState = make([]int64, len(m.Things))
 	g.thingSupportValid = make([]bool, len(m.Things))
+	g.thingBlockOrder = make([]int64, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
-	g.thingBlockNext = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
 	g.thingAggro = make([]bool, len(m.Things))
+	g.thingAmbush = make([]bool, len(m.Things))
 	g.thingTargetPlayer = make([]bool, len(m.Things))
 	g.thingTargetIdx = make([]int, len(m.Things))
 	for i := range g.thingTargetIdx {
@@ -1153,6 +1223,12 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingWakeTics = make([]int, len(m.Things))
 	g.thingLastLook = make([]int, len(m.Things))
 	g.thingDead = make([]bool, len(m.Things))
+	g.thingGibbed = make([]bool, len(m.Things))
+	g.thingGibTick = make([]int, len(m.Things))
+	for i := range g.thingGibTick {
+		g.thingGibTick[i] = -1
+	}
+	g.thingXDeath = make([]bool, len(m.Things))
 	g.thingDeathTics = make([]int, len(m.Things))
 	g.thingAttackTics = make([]int, len(m.Things))
 	g.thingAttackPhase = make([]int, len(m.Things))
@@ -1166,6 +1242,12 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingStateTics = make([]int, len(m.Things))
 	g.thingStatePhase = make([]int, len(m.Things))
 	g.thingWorldAnimRef = make([]thingAnimRefState, len(m.Things))
+	for i := range g.thingThinkerOrder {
+		g.thingThinkerOrder[i] = int64(i + 1)
+		g.thingBlockOrder[i] = int64(i + 1)
+	}
+	g.nextThinkerOrder = int64(len(m.Things) + 1)
+	g.nextBlockmapOrder = int64(len(m.Things) + 1)
 	g.secretFound = make([]bool, len(m.Sectors))
 	g.sectorSoundTarget = make([]bool, len(m.Sectors))
 	for _, sec := range m.Sectors {
@@ -1242,6 +1324,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingSectorCache = make([]int, len(g.m.Things))
 	for i := range g.thingSectorCache {
 		th := g.m.Things[i]
+		g.thingAmbush[i] = int(th.Flags)&thingFlagAmbush != 0
 		g.thingX[i] = int64(th.X) << fracBits
 		g.thingY[i] = int64(th.Y) << fracBits
 		g.thingAngleState[i] = thingDegToWorldAngle(th.Angle)
@@ -1259,7 +1342,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		}
 	}
 	if g.bmapWidth > 0 && g.bmapHeight > 0 {
-		g.thingBlockLinks = make([]int, g.bmapWidth*g.bmapHeight)
+		g.thingBlockCells = make([][]int, g.bmapWidth*g.bmapHeight)
 		g.rebuildThingBlockmap()
 	}
 	g.discoverLinesAroundPlayer()
@@ -1912,7 +1995,6 @@ func (g *game) Update() error {
 		if g.bonusFlashTic > 0 {
 			g.bonusFlashTic--
 		}
-		g.tickHitscanPuffs()
 		g.tickDelayedSounds()
 		g.tickDelayedSwitchReverts()
 		g.flushSoundEvents()
@@ -1975,6 +2057,17 @@ func (g *game) updateDemoMode() error {
 		g.reportDemoBench(script)
 		return ebiten.Termination
 	}
+	if g.opts.DemoStopAfterTics > 0 && g.demoTick >= g.opts.DemoStopAfterTics {
+		if g.demoTrace != nil {
+			g.demoTrace.Close()
+			g.demoTrace = nil
+		}
+		g.reportDemoBench(script)
+		if g.opts.DemoQuitOnComplete {
+			return ebiten.Termination
+		}
+		return nil
+	}
 	if g.demoTick >= len(script.Tics) {
 		if g.demoTrace != nil {
 			g.demoTrace.Close()
@@ -1988,18 +2081,27 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	cmd := moveCmd{
-		forward: int64(tc.Forward),
-		side:    int64(tc.Side),
-		turnRaw: int64(tc.AngleTurn) << 16,
+	buttons := tc.Buttons
+	if buttons&demoButtonSpecial != 0 {
+		buttons = 0
 	}
-	usePressed := tc.Buttons&demoButtonUse != 0
-	fireHeld := tc.Buttons&demoButtonAttack != 0
+	cmd := moveCmd{
+		forward:    int64(tc.Forward),
+		side:       int64(tc.Side),
+		turnRaw:    int64(tc.AngleTurn) << 16,
+		weaponSlot: demoButtonWeaponSlot(buttons),
+	}
+	usePressed := buttons&demoButtonUse != 0
+	fireHeld := buttons&demoButtonAttack != 0
 	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.writeDemoTraceTic()
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+	g.tickDelayedSounds()
+	// Doom starts gameplay-triggered sounds during the gameplay pass, before ST_Ticker.
+	g.flushSoundEvents()
 	g.tickStatusWidgets()
+	// Doom trace snapshots are written after gameplay and status-bar updates.
+	g.writeDemoTraceTic()
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
@@ -2009,10 +2111,7 @@ func (g *game) updateDemoMode() error {
 	if g.bonusFlashTic > 0 {
 		g.bonusFlashTic--
 	}
-	g.tickHitscanPuffs()
-	g.tickDelayedSounds()
 	g.tickDelayedSwitchReverts()
-	g.flushSoundEvents()
 	g.lastUpdate = time.Now()
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
@@ -3179,11 +3278,41 @@ func (g *game) profileLabel() string {
 }
 
 func (g *game) emitSoundEvent(ev soundEvent) {
+	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				if pc, file, line, ok := runtime.Caller(1); ok {
+					name := "<unknown>"
+					if fn := runtime.FuncForPC(pc); fn != nil {
+						name = fn.Name()
+					}
+					fmt.Printf("sound-enqueue side=gd tic=%d world=%d event=%s positioned=false caller=%s file=%s:%d\n",
+						g.demoTick-1, g.worldTic, soundEventDebugName(ev), name, file, line)
+				}
+			}
+		}
+	}
 	g.soundQueue = append(g.soundQueue, ev)
 	g.soundQueueOrigin = append(g.soundQueueOrigin, queuedSoundOrigin{})
 }
 
 func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
+	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				if pc, file, line, ok := runtime.Caller(1); ok {
+					name := "<unknown>"
+					if fn := runtime.FuncForPC(pc); fn != nil {
+						name = fn.Name()
+					}
+					fmt.Printf("sound-enqueue side=gd tic=%d world=%d event=%s positioned=true origin=(%d,%d) caller=%s file=%s:%d\n",
+						g.demoTick-1, g.worldTic, soundEventDebugName(ev), x, y, name, file, line)
+				}
+			}
+		}
+	}
 	g.soundQueue = append(g.soundQueue, ev)
 	g.soundQueueOrigin = append(g.soundQueueOrigin, queuedSoundOrigin{x: x, y: y, positioned: true})
 }
@@ -3202,6 +3331,24 @@ func (g *game) emitSoundEventDelayedAt(ev soundEvent, tics int, x, y int64, posi
 		return
 	}
 	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{ev: ev, tics: tics, x: x, y: y, positioned: positioned})
+}
+
+func (g *game) emitMonsterDeathSoundDelayedAt(typ int16, tics int, x, y int64) {
+	if g == nil {
+		return
+	}
+	if tics <= 0 {
+		g.emitSoundEventAt(monsterDeathSoundEventVariant(typ), x, y)
+		return
+	}
+	g.delayedSfx = append(g.delayedSfx, delayedSoundEvent{
+		tics:       tics,
+		x:          x,
+		y:          y,
+		positioned: true,
+		monsterTyp: typ,
+		deathSound: true,
+	})
 }
 
 func (g *game) emitDoorSectorSound(sec int, ev soundEvent) {
@@ -3256,6 +3403,10 @@ func (g *game) tickDelayedSounds() {
 	for _, d := range g.delayedSfx {
 		d.tics--
 		if d.tics <= 0 {
+			if d.deathSound {
+				g.emitSoundEventAt(monsterDeathSoundEventVariant(d.monsterTyp), d.x, d.y)
+				continue
+			}
 			if d.positioned {
 				g.emitSoundEventAt(d.ev, d.x, d.y)
 			} else {
@@ -3302,21 +3453,34 @@ func (g *game) setHUDMessage(msg string, tics int) {
 
 func (g *game) applyThingSpawnFiltering() {
 	for i, th := range g.m.Things {
-		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems) {
+		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters) {
 			g.thingCollected[i] = true
 		}
 	}
 }
 
 func (g *game) flushSoundEvents() {
-	if g.snd != nil {
-		for i, ev := range g.soundQueue {
-			origin := queuedSoundOrigin{}
-			if i >= 0 && i < len(g.soundQueueOrigin) {
-				origin = g.soundQueueOrigin[i]
-			}
-			g.snd.playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+	for idx, ev := range g.soundQueue {
+		origin := queuedSoundOrigin{}
+		if idx >= 0 && idx < len(g.soundQueueOrigin) {
+			origin = g.soundQueueOrigin[idx]
 		}
+		if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+			var wantTic int
+			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+					fmt.Printf("sound-debug side=gd tic=%d world=%d event=%s positioned=%t origin=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, soundEventDebugName(ev), origin.positioned, origin.x, origin.y)
+				}
+			}
+		}
+		if g.snd != nil {
+			g.snd.playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+		} else {
+			((*soundSystem)(nil)).playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
+		}
+	}
+	if g.snd != nil {
 		g.snd.tick()
 	}
 	g.soundQueue = g.soundQueue[:0]
@@ -8281,7 +8445,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		yb := float64(viewH)/2 - ((float64(p.z)/fracUnit-eyeZ)/f)*focal
-		ref, ok := g.projectileSpriteRef(p.kind, g.worldTic)
+		ref, ok := g.projectileSpriteRef(p.kind, p.frame)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
@@ -8508,7 +8672,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		yb := float64(viewH)/2 - ((float64(fx.z)/fracUnit-eyeZ)/f)*focal
-		ref, ok := g.projectileImpactSpriteRef(fx.kind, fx.totalTics-fx.tics)
+		ref, ok := g.projectileImpactSpriteRef(fx.kind, fx.phase)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
@@ -8653,118 +8817,52 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near floa
 	}
 }
 
-func (g *game) projectileSpriteRef(kind projectileKind, tic int) (*spriteRenderRef, bool) {
-	name := g.projectileSpriteName(kind, tic)
+func (g *game) projectileSpriteRef(kind projectileKind, frame int) (*spriteRenderRef, bool) {
+	name := g.projectileSpriteNameForFrame(kind, frame)
 	if name == "" {
 		return nil, false
 	}
 	return g.spriteRenderRef(name)
 }
 
-func (g *game) projectileImpactSpriteRef(kind projectileKind, elapsed int) (*spriteRenderRef, bool) {
-	name := g.projectileImpactSpriteName(kind, elapsed)
+func (g *game) projectileImpactSpriteRef(kind projectileKind, phase int) (*spriteRenderRef, bool) {
+	name := g.projectileImpactSpriteNameForPhase(kind, phase)
 	if name == "" {
 		return nil, false
 	}
 	return g.spriteRenderRef(name)
 }
 
-func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) string {
-	if elapsed < 0 {
-		elapsed = 0
+func (g *game) projectileImpactSpriteNameForPhase(kind projectileKind, phase int) string {
+	if phase < 0 {
+		phase = 0
 	}
 	prefix := "BAL1"
 	frame := byte('C')
 	switch kind {
 	case projectileBFGBall:
 		prefix = "BFE1"
-		switch {
-		case elapsed < 8:
-			frame = 'A'
-		case elapsed < 16:
-			frame = 'B'
-		case elapsed < 24:
-			frame = 'C'
-		case elapsed < 32:
-			frame = 'D'
-		case elapsed < 40:
-			frame = 'E'
-		default:
-			frame = 'F'
-		}
+		frame = byte('A' + min(phase, 5))
 	case projectileRocket:
 		prefix = "MISL"
-		switch {
-		case elapsed < 8:
-			frame = 'B'
-		case elapsed < 14:
-			frame = 'C'
-		default:
-			frame = 'D'
-		}
+		frame = byte('B' + min(phase, 2))
 	case projectileBaronBall:
 		prefix = "BAL7"
-		switch {
-		case elapsed < 6:
-			frame = 'C'
-		case elapsed < 12:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('C' + min(phase, 2))
 	case projectilePlasmaBall:
 		prefix = "BAL2"
-		switch {
-		case elapsed < 6:
-			frame = 'C'
-		case elapsed < 12:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('C' + min(phase, 2))
 	case projectilePlayerPlasma:
 		prefix = "PLSE"
-		switch {
-		case elapsed < 4:
-			frame = 'A'
-		case elapsed < 8:
-			frame = 'B'
-		case elapsed < 12:
-			frame = 'C'
-		case elapsed < 16:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('A' + min(phase, 4))
 	case projectileTracer:
 		prefix = "FBXP"
-		switch {
-		case elapsed < 8:
-			frame = 'A'
-		case elapsed < 14:
-			frame = 'B'
-		default:
-			frame = 'C'
-		}
+		frame = byte('A' + min(phase, 2))
 	case projectileFatShot:
 		prefix = "MISL"
-		switch {
-		case elapsed < 8:
-			frame = 'B'
-		case elapsed < 14:
-			frame = 'C'
-		default:
-			frame = 'D'
-		}
+		frame = byte('B' + min(phase, 2))
 	default:
-		switch {
-		case elapsed < 6:
-			frame = 'C'
-		case elapsed < 12:
-			frame = 'D'
-		default:
-			frame = 'E'
-		}
+		frame = byte('C' + min(phase, 2))
 	}
 	name0 := spriteFrameName(prefix, byte(frame), '0')
 	if g.spritePatchExists(name0) {
@@ -8774,10 +8872,10 @@ func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) stri
 		return name
 	}
 	// Fallback to flight sprite if impact frame is unavailable in the bank.
-	return g.projectileSpriteName(kind, g.worldTic)
+	return g.projectileSpriteName(kind, 0)
 }
 
-func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
+func (g *game) projectileSpriteNameForFrame(kind projectileKind, frame int) string {
 	pickPrefixFrame := func(prefix string, frameLetters []byte, frame int) string {
 		if len(frameLetters) == 0 {
 			return ""
@@ -8796,7 +8894,7 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 		}
 		return ""
 	}
-	frame2 := (tic / 4) & 1
+	frame2 := frame & 1
 	switch kind {
 	case projectileBFGBall:
 		return pickPrefixFrame("BFS1", []byte{'A', 'B'}, frame2)
@@ -8817,25 +8915,71 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 	}
 }
 
+func (g *game) projectileImpactSpriteName(kind projectileKind, elapsed int) string {
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	phase := 0
+	for {
+		next := projectileImpactPhaseTics(kind, phase)
+		if next <= 0 || elapsed < next {
+			break
+		}
+		elapsed -= next
+		phase++
+	}
+	return g.projectileImpactSpriteNameForPhase(kind, phase)
+}
+
+func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
+	if tic < 0 {
+		tic = 0
+	}
+	return g.projectileSpriteNameForFrame(kind, (tic/4)&1)
+}
+
 func (g *game) spawnHitscanPuff(x, y, z int64) {
 	const maxPuffs = 64
 	if len(g.hitscanPuffs) >= maxPuffs {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
+	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
+	lastLook := doomrand.PRandom() & 3
 	tics := 4 - (doomrand.PRandom() & 3)
+	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("hitscan-fx-debug tic=%d world=%d kind=puff pos=(%d,%d,%d) lastlook=%d tics=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, x, y, z, lastLook, tics, rnd, prnd)
+			}
+		}
+	}
 	if tics < 1 {
 		tics = 1
+	}
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok {
+		floorz = g.thingFloorZ(x, y)
+		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
 	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
 		x:        x,
 		y:        y,
 		z:        z,
 		momz:     fracUnit,
+		floorz:   floorz,
+		ceilz:    ceilz,
+		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics,
 		state:    93,
 		kind:     hitscanFxPuff,
+		order:    g.allocThinkerOrder(),
 	})
 }
 
@@ -8845,27 +8989,77 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
-	state := 91
+	state := 90
+	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
+	lastLook := doomrand.PRandom() & 3
 	tics := 8 - (doomrand.PRandom() & 3)
+	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("hitscan-fx-debug tic=%d world=%d kind=blood pos=(%d,%d,%d) damage=%d lastlook=%d tics=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, x, y, z, damage, lastLook, tics, rnd, prnd)
+			}
+		}
+	}
 	if tics < 1 {
 		tics = 1
 	}
 	if damage <= 12 && damage >= 9 {
-		state = 92
+		state = 91
 		tics = 8
 	} else if damage < 9 {
-		state = 93
+		state = 92
 		tics = 8
+	}
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok {
+		floorz = g.thingFloorZ(x, y)
+		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
 	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
 		x:        x,
 		y:        y,
 		z:        z,
 		momz:     2 * fracUnit,
+		floorz:   floorz,
+		ceilz:    ceilz,
+		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics,
 		state:    state,
 		kind:     hitscanFxBlood,
+		order:    g.allocThinkerOrder(),
+	})
+}
+
+func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
+	jitterZ := z + int64((doomrand.PRandom()-doomrand.PRandom())<<10)
+	g.spawnHitscanPuff(x, y, jitterZ)
+	const maxPuffs = 64
+	if len(g.hitscanPuffs) >= maxPuffs {
+		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
+		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
+	}
+	lastLook := doomrand.PRandom() & 3
+	tics := 4 - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		tics = 1
+	}
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
+		x:        x - momx,
+		y:        y - momy,
+		z:        z,
+		momz:     fracUnit,
+		lastLook: lastLook,
+		tics:     tics,
+		totalTic: tics + 16,
+		state:    0,
+		kind:     hitscanFxSmoke,
+		order:    g.allocThinkerOrder(),
 	})
 }
 
@@ -8885,6 +9079,7 @@ func (g *game) spawnTeleportFog(x, y, z int64) {
 		totalTic: teleportFogFrameTics * teleportFogFrames,
 		state:    0,
 		kind:     hitscanFxTeleport,
+		order:    g.allocThinkerOrder(),
 	})
 }
 
@@ -8913,6 +9108,20 @@ func (g *game) hitscanEffectSpriteRef(p hitscanPuff) (*spriteRenderRef, bool) {
 			return find("BLUDB0", "BLUDB1")
 		default:
 			return find("BLUDC0", "BLUDC1")
+		}
+	}
+	if p.kind == hitscanFxSmoke {
+		switch p.state {
+		case 0:
+			return find("PUFFB0", "PUFFB1")
+		case 1:
+			return find("PUFFC0", "PUFFC1")
+		case 2:
+			return find("PUFFB0", "PUFFB1")
+		case 3:
+			return find("PUFFC0", "PUFFC1")
+		default:
+			return find("PUFFD0", "PUFFD1")
 		}
 	}
 	if p.kind == hitscanFxTeleport {
@@ -8959,31 +9168,80 @@ func (g *game) tickHitscanPuffs() {
 	}
 	keep := g.hitscanPuffs[:0]
 	for _, p := range g.hitscanPuffs {
-		p.z += p.momz
-		p.tics--
-		if p.kind == hitscanFxPuff && p.tics <= 0 {
-			switch p.state {
-			case 93:
-				p.state, p.tics = 94, 4
-			case 94:
-				p.state, p.tics = 95, 4
-			case 95:
-				p.state, p.tics = 96, 4
-			}
-		} else if p.kind == hitscanFxBlood && p.tics <= 0 {
-			switch p.state {
-			case 91:
-				p.state, p.tics = 92, 8
-			case 92:
-				p.state, p.tics = 93, 8
-			}
-		}
-		if p.tics <= 0 {
+		if !g.tickHitscanPuff(&p) {
 			continue
 		}
 		keep = append(keep, p)
 	}
 	g.hitscanPuffs = keep
+}
+
+func (g *game) tickHitscanPuffByOrder(order int64) {
+	if g == nil || len(g.hitscanPuffs) == 0 {
+		return
+	}
+	for i := range g.hitscanPuffs {
+		if g.hitscanPuffs[i].order != order {
+			continue
+		}
+		p := g.hitscanPuffs[i]
+		if g.tickHitscanPuff(&p) {
+			g.hitscanPuffs[i] = p
+		} else {
+			g.hitscanPuffs = append(g.hitscanPuffs[:i], g.hitscanPuffs[i+1:]...)
+		}
+		return
+	}
+}
+
+func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
+	if p == nil {
+		return false
+	}
+	p.z += p.momz
+	if p.kind == hitscanFxBlood {
+		floorz := p.floorz
+		if p.z <= floorz {
+			if p.momz < 0 {
+				p.momz = 0
+			}
+			p.z = floorz
+		} else if p.momz == 0 {
+			p.momz = -2 * fracUnit
+		} else {
+			p.momz -= fracUnit
+		}
+	}
+	p.tics--
+	if p.kind == hitscanFxPuff && p.tics <= 0 {
+		switch p.state {
+		case 93:
+			p.state, p.tics = 94, 4
+		case 94:
+			p.state, p.tics = 95, 4
+		case 95:
+			p.state, p.tics = 96, 4
+		}
+	} else if p.kind == hitscanFxBlood && p.tics <= 0 {
+		switch p.state {
+		case 90:
+			p.state, p.tics = 91, 8
+		case 91:
+			p.state, p.tics = 92, 8
+		}
+	} else if p.kind == hitscanFxSmoke && p.tics <= 0 {
+		switch p.state {
+		case 0:
+			p.state, p.tics = 1, 4
+		case 1:
+			p.state, p.tics = 2, 4
+		case 2:
+			p.state, p.tics = 3, 4
+		case 3:
+			p.state, p.tics = 4, 4
+		}
+	}
+	return p.tics > 0
 }
 
 func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64) {
@@ -10684,7 +10942,9 @@ var (
 	monsterPainTics55          = []int{5, 5}
 	monsterPainTics66          = []int{6, 6}
 	monsterDeathTics5x5        = []int{5, 5, 5, 5, 5}
+	monsterDeathTics5x6        = []int{5, 5, 5, 5, 5, -1}
 	monsterDeathTics5x7        = []int{5, 5, 5, 5, 5, 5, -1}
+	monsterDeathTics5x9        = []int{5, 5, 5, 5, 5, 5, 5, 5, -1}
 	monsterDeathTicsImp        = []int{8, 8, 6, 6, 6}
 	monsterDeathTicsDemon      = []int{8, 8, 4, 4, 4, 4}
 	monsterDeathTicsLostSoul   = []int{6, 6, 6, 6, 6, 6}
@@ -10860,7 +11120,7 @@ func monsterPainFrameTics(typ int16) []int {
 	case 3004:
 		return monsterPainTics33
 	case 9:
-		return monsterPainTics22
+		return monsterPainTics33
 	case 3001:
 		return monsterPainTics22
 	case 3002, 58:
@@ -10954,6 +11214,19 @@ func monsterDeathFrameSeq(typ int16) []byte {
 	}
 }
 
+func monsterXDeathFrameSeq(typ int16) []byte {
+	switch typ {
+	case 3004, 9:
+		return []byte{'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
+	case 65:
+		return []byte{'O', 'P', 'Q', 'R', 'S', 'T'}
+	case 84:
+		return []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'}
+	default:
+		return nil
+	}
+}
+
 func monsterDeathFrameTics(typ int16) []int {
 	switch typ {
 	case 3004:
@@ -10993,10 +11266,43 @@ func monsterDeathFrameTics(typ int16) []int {
 	}
 }
 
+func monsterXDeathFrameTics(typ int16) []int {
+	switch typ {
+	case 3004, 9, 84:
+		return monsterDeathTics5x9
+	case 65:
+		return monsterDeathTics5x6
+	default:
+		return nil
+	}
+}
+
+func monsterHasXDeath(typ int16) bool {
+	return len(monsterXDeathFrameTics(typ)) > 0
+}
+
+func monsterDeathFrameSeqForMode(typ int16, xdeath bool) []byte {
+	if xdeath {
+		if seq := monsterXDeathFrameSeq(typ); len(seq) > 0 {
+			return seq
+		}
+	}
+	return monsterDeathFrameSeq(typ)
+}
+
+func monsterDeathFrameTicsForMode(typ int16, xdeath bool) []int {
+	if xdeath {
+		if tics := monsterXDeathFrameTics(typ); len(tics) > 0 {
+			return tics
+		}
+	}
+	return monsterDeathFrameTics(typ)
+}
+
 func monsterDeathSoundDelayTics(typ int16) int {
 	// Doom plays death sounds on A_Scream, which is usually the 2nd death frame.
 	switch typ {
-	case 3004, 9:
+	case 3004, 9, 65, 84:
 		return 5
 	case 3001, 3002, 58, 3003, 3005:
 		return 8
@@ -11013,7 +11319,11 @@ func monsterDeathSoundDelayTics(typ int16) int {
 }
 
 func monsterDeathAnimTotalTics(typ int16) int {
-	tics := monsterDeathFrameTics(typ)
+	return monsterDeathAnimTotalTicsForMode(typ, false)
+}
+
+func monsterDeathAnimTotalTicsForMode(typ int16, xdeath bool) int {
+	tics := monsterDeathFrameTicsForMode(typ, xdeath)
 	total := 0
 	for _, t := range tics {
 		if t > 0 {
@@ -11025,10 +11335,11 @@ func monsterDeathAnimTotalTics(typ int16) int {
 
 func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-		seq := monsterDeathFrameSeq(th.Type)
-		frameTics := monsterDeathFrameTics(th.Type)
+		xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+		seq := monsterDeathFrameSeqForMode(th.Type, xdeath)
+		frameTics := monsterDeathFrameTicsForMode(th.Type, xdeath)
 		if len(seq) > 0 && len(seq) == len(frameTics) {
-			total := monsterDeathAnimTotalTics(th.Type)
+			total := monsterDeathAnimTotalTicsForMode(th.Type, xdeath)
 			elapsed := total
 			if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 				elapsed = total - g.thingDeathTics[i]
@@ -17527,6 +17838,10 @@ func (g *game) setThingPosFixed(i int, x, y int64) {
 		g.thingSectorCache = append(g.thingSectorCache, make([]int, i-len(g.thingSectorCache)+1)...)
 	}
 	g.thingSectorCache[i] = g.sectorAt(x, y)
+	if i >= len(g.thingBlockOrder) {
+		g.thingBlockOrder = append(g.thingBlockOrder, make([]int64, i-len(g.thingBlockOrder)+1)...)
+	}
+	g.thingBlockOrder[i] = g.allocBlockmapOrder()
 	g.updateThingBlockmapIndex(i)
 }
 
@@ -17546,21 +17861,27 @@ func (g *game) rebuildThingBlockmap() {
 	if g == nil || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
 		return
 	}
-	if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
-		g.thingBlockLinks = make([]int, g.bmapWidth*g.bmapHeight)
+	if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
+		g.thingBlockCells = make([][]int, g.bmapWidth*g.bmapHeight)
 	}
-	for i := range g.thingBlockLinks {
-		g.thingBlockLinks[i] = -1
+	for i := range g.thingBlockCells {
+		g.thingBlockCells[i] = g.thingBlockCells[i][:0]
 	}
 	if len(g.thingBlockCell) < len(g.m.Things) {
 		g.thingBlockCell = append(g.thingBlockCell, make([]int, len(g.m.Things)-len(g.thingBlockCell))...)
 	}
-	if len(g.thingBlockNext) < len(g.m.Things) {
-		g.thingBlockNext = append(g.thingBlockNext, make([]int, len(g.m.Things)-len(g.thingBlockNext))...)
+	if len(g.thingBlockOrder) < len(g.m.Things) {
+		start := len(g.thingBlockOrder)
+		g.thingBlockOrder = append(g.thingBlockOrder, make([]int64, len(g.m.Things)-start)...)
+		for i := start; i < len(g.m.Things); i++ {
+			g.thingBlockOrder[i] = g.allocBlockmapOrder()
+		}
 	}
 	for i := range g.m.Things {
 		g.thingBlockCell[i] = -1
-		g.thingBlockNext[i] = -1
+		if g.thingBlockOrder[i] == 0 {
+			g.thingBlockOrder[i] = g.allocBlockmapOrder()
+		}
 	}
 	for i, th := range g.m.Things {
 		x, y := g.thingPosFixed(i, th)
@@ -17569,8 +17890,21 @@ func (g *game) rebuildThingBlockmap() {
 		if cell < 0 {
 			continue
 		}
-		g.thingBlockNext[i] = g.thingBlockLinks[cell]
-		g.thingBlockLinks[cell] = i
+		g.thingBlockCells[cell] = append(g.thingBlockCells[cell], i)
+	}
+	for cell := range g.thingBlockCells {
+		slices.SortStableFunc(g.thingBlockCells[cell], func(a, b int) int {
+			ao := g.thingBlockOrder[a]
+			bo := g.thingBlockOrder[b]
+			switch {
+			case ao > bo:
+				return -1
+			case ao < bo:
+				return 1
+			default:
+				return 0
+			}
+		})
 	}
 }
 
@@ -17588,13 +17922,8 @@ func (g *game) updateThingBlockmapIndex(i int) {
 	if g == nil || i < 0 || g.m == nil || i >= len(g.m.Things) || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
 		return
 	}
-	if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight || len(g.thingBlockCell) <= i || len(g.thingBlockNext) <= i {
+	if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight || len(g.thingBlockCell) <= i {
 		g.rebuildThingBlockmap()
-		return
-	}
-	x, y := g.thingPosFixed(i, g.m.Things[i])
-	newCell := g.thingBlockmapCellFor(x, y)
-	if g.thingBlockCell[i] == newCell {
 		return
 	}
 	g.rebuildThingBlockmap()

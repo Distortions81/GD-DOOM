@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionaudio"
 	"gddoom/internal/sessionflow"
@@ -71,12 +72,16 @@ func (sg *sessionGame) startAttractDemoByName(name string) bool {
 		}
 		sg.capturePersistentSettings()
 		sg.applyPersistentSettingsToOptions()
-		demoOpts := sg.opts
+		demoOpts := runtimecfg.PrepareDemoPlaybackOptions(sg.opts, demo)
 		demoOpts.DemoScript = demo
 		demoOpts.DemoQuitOnComplete = false
 		demoOpts.RecordDemoPath = ""
 		ng := sg.buildGame(cloneMapForRestart(m), demoOpts)
 		sg.applyPersistentSettingsToGame(ng)
+		if ng != nil {
+			ng.parity.reveal = normalizeRevealForMode(revealNormal, ng.opts.SourcePortMode)
+			ng.parity.iddt = 0
+		}
 		sg.g = ng
 		sg.rt = ng
 		sg.stopAndClearMusic()

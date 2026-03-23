@@ -93,14 +93,15 @@ func TestTickDoors_NormalDoorOpensWaitsThenCloses(t *testing.T) {
 	if got := g.sectorCeil[1]; got != 72*fracUnit {
 		t.Fatalf("after tick4 ceil=%d want=%d", got, 72*fracUnit)
 	}
-	if d == nil || d.direction != 0 || d.topCountdown != 3 {
-		t.Fatalf("at top direction/countdown=%v/%v want 0/3", d.direction, d.topCountdown)
+	if d == nil || d.direction != 1 || d.topCountdown != 0 {
+		t.Fatalf("at exact top direction/countdown=%v/%v want 1/0", d.direction, d.topCountdown)
+	}
+	g.tickDoors()
+	if d.direction != 0 || d.topCountdown != 3 {
+		t.Fatalf("after overshoot tick direction/countdown=%d/%d want 0/3", d.direction, d.topCountdown)
 	}
 	g.tickDoors()
 	g.tickDoors()
-	if d.direction != 0 || d.topCountdown != 1 {
-		t.Fatalf("during wait direction/countdown=%d/%d want 0/1", d.direction, d.topCountdown)
-	}
 	g.tickDoors()
 	if d.direction != -1 {
 		t.Fatalf("after wait direction=%d want=-1", d.direction)
@@ -169,8 +170,12 @@ func TestTickDoors_BlazeRaiseUsesFourTimesSpeed(t *testing.T) {
 	if got := g.sectorCeil[1]; got != 16*fracUnit {
 		t.Fatalf("after tick2 blaze ceil=%d want=%d", got, 16*fracUnit)
 	}
-	if d == nil || d.direction != 0 || d.topCountdown != vDoorWaitTic {
-		t.Fatalf("blaze top direction/countdown=%d/%d want 0/%d", d.direction, d.topCountdown, vDoorWaitTic)
+	if d == nil || d.direction != 1 || d.topCountdown != 0 {
+		t.Fatalf("blaze exact top direction/countdown=%d/%d want 1/0", d.direction, d.topCountdown)
+	}
+	g.tickDoors()
+	if d.direction != 0 || d.topCountdown != vDoorWaitTic {
+		t.Fatalf("blaze wait direction/countdown=%d/%d want 0/%d", d.direction, d.topCountdown, vDoorWaitTic)
 	}
 }
 
@@ -202,5 +207,45 @@ func TestTickDoors_NormalDoorReopensWhenPlayerOverlapsDoorwayFromAdjacentSector(
 	}
 	if d.direction != 1 {
 		t.Fatalf("blocking normal door should reverse open, direction=%d", d.direction)
+	}
+}
+
+func TestSetSectorCeilingHeight_RefreshesProjectileSupportCaches(t *testing.T) {
+	g := newDoorTimingGame(1)
+	g.sectorCeil[1] = 64 * fracUnit
+
+	x := int64(32 * fracUnit)
+	if got := g.sectorAt(x, 0); got != 1 {
+		x = -32 * fracUnit
+		if got := g.sectorAt(x, 0); got != 1 {
+			t.Fatalf("failed to find sample point in sector 1, got sectors %d and %d", g.sectorAt(32*fracUnit, 0), g.sectorAt(-32*fracUnit, 0))
+		}
+	}
+
+	g.projectiles = []projectile{{
+		x:      x,
+		y:      0,
+		z:      32 * fracUnit,
+		radius: 11 * fracUnit,
+		height: 8 * fracUnit,
+		floorz: 0,
+		ceilz:  64 * fracUnit,
+	}}
+	g.projectileImpacts = []projectileImpact{{
+		x:      x,
+		y:      0,
+		z:      32 * fracUnit,
+		kind:   projectileRocket,
+		floorz: 0,
+		ceilz:  64 * fracUnit,
+	}}
+
+	g.setSectorCeilingHeight(1, 96*fracUnit)
+
+	if got := g.projectiles[0].ceilz; got != 96*fracUnit {
+		t.Fatalf("projectile ceilz=%d want=%d", got, 96*fracUnit)
+	}
+	if got := g.projectileImpacts[0].ceilz; got != 96*fracUnit {
+		t.Fatalf("impact ceilz=%d want=%d", got, 96*fracUnit)
 	}
 }

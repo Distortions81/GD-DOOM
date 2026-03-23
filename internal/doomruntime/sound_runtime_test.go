@@ -5,6 +5,7 @@ import (
 
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
+	"gddoom/internal/mapdata"
 )
 
 func TestDoorMoveEvent(t *testing.T) {
@@ -63,24 +64,203 @@ func TestSampleForEventSwitchSounds(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
-	doomrand.Clear()
-	player := audiofx.NewSpatialPlayer(1, true)
-	if player == nil {
+	s := newSoundSystem(SoundBank{}, 1, true)
+	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}
-	delay := monsterVocalPreDelaySamples(soundEventMonsterSeePosit, player)
+	delay := s.monsterVocalPreDelaySamples(soundEventMonsterSeePosit)
 	maxDelay := 25.0 * float64(audiofx.EnsureSharedAudioContext().SampleRate()) / 1000.0
 	if delay < 0 || delay > maxDelay {
 		t.Fatalf("delay=%f want in [0,%f]", delay, maxDelay)
 	}
-	if got := monsterVocalPreDelaySamples(soundEventMonsterPainHumanoid, player); got < 0 || got > maxDelay {
+	if got := s.monsterVocalPreDelaySamples(soundEventMonsterPainHumanoid); got < 0 || got > maxDelay {
 		t.Fatalf("pain delay=%f want in [0,%f]", got, maxDelay)
 	}
-	if got := monsterVocalPreDelaySamples(soundEventDeathImp, player); got < 0 || got > maxDelay {
+	if got := s.monsterVocalPreDelaySamples(soundEventDeathImp); got < 0 || got > maxDelay {
 		t.Fatalf("death delay=%f want in [0,%f]", got, maxDelay)
 	}
-	if got := monsterVocalPreDelaySamples(soundEventShootPistol, player); got != 0 {
+	if got := s.monsterVocalPreDelaySamples(soundEventShootPistol); got != 0 {
 		t.Fatalf("non-alert delay=%f want 0", got)
+	}
+}
+
+func TestMonsterVocalPreDelaySamples_DoesNotAdvancePRandom(t *testing.T) {
+	s := newSoundSystem(SoundBank{}, 1, true)
+	if s == nil || s.player == nil {
+		t.Skip("audio context unavailable")
+	}
+	doomrand.Clear()
+	wantPRandom := doomrand.PRandom()
+	doomrand.Clear()
+	_ = s.monsterVocalPreDelaySamples(soundEventMonsterSeePosit)
+	if got := doomrand.PRandom(); got != wantPRandom {
+		t.Fatalf("PRandom advanced after vocal pre-delay: got=%d want=%d", got, wantPRandom)
+	}
+}
+
+func TestPlayEventSpatial_ConsumesVanillaPitchRandomWithoutBackend(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15}
+	s.playEventSpatial(soundEventMonsterSeePosit3, queuedSoundOrigin{}, 0, 0, 0, false)
+	rnd, prnd := doomrand.State()
+	if rnd != 1 || prnd != 0 {
+		t.Fatalf("rng state after no-backend sound start=(%d,%d) want=(1,0)", rnd, prnd)
+	}
+}
+
+func TestPlayEventSpatial_InaudiblePositionedSoundDoesNotConsumeVanillaPitchRandom(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15}
+	s.playEventSpatial(
+		soundEventMonsterSeePosit3,
+		queuedSoundOrigin{positioned: true, x: doomSoundClippingDist * 2, y: 0},
+		0, 0, 0, false,
+	)
+	rnd, prnd := doomrand.State()
+	if rnd != 0 || prnd != 0 {
+		t.Fatalf("rng state after inaudible sound=(%d,%d) want=(0,0)", rnd, prnd)
+	}
+}
+
+func TestPlayEventSpatial_ItemUpWithoutBackendDoesNotConsumeVanillaPitchRandom(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15}
+	s.playEventSpatial(soundEventItemUp, queuedSoundOrigin{}, 0, 0, 0, false)
+	rnd, prnd := doomrand.State()
+	if rnd != 0 || prnd != 0 {
+		t.Fatalf("rng state after itemup sound=(%d,%d) want=(0,0)", rnd, prnd)
+	}
+}
+
+func TestPlayEventSpatial_TinkWithoutBackendDoesNotConsumeVanillaPitchRandom(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15}
+	s.playEventSpatial(soundEventTink, queuedSoundOrigin{}, 0, 0, 0, false)
+	rnd, prnd := doomrand.State()
+	if rnd != 0 || prnd != 0 {
+		t.Fatalf("rng state after tink sound=(%d,%d) want=(0,0)", rnd, prnd)
+	}
+}
+
+func TestVanillaPitchModeForEvent_MatchesDoomSoundClasses(t *testing.T) {
+	cases := []struct {
+		ev   soundEvent
+		want vanillaPitchMode
+	}{
+		{soundEventItemUp, vanillaPitchNone},
+		{soundEventTink, vanillaPitchNone},
+		{soundEventSawUp, vanillaPitchSaw},
+		{soundEventSawIdle, vanillaPitchSaw},
+		{soundEventSawFull, vanillaPitchSaw},
+		{soundEventSawHit, vanillaPitchSaw},
+		{soundEventWeaponUp, vanillaPitchDefault},
+		{soundEventPowerUp, vanillaPitchDefault},
+		{soundEventNoWay, vanillaPitchDefault},
+		{soundEventSwitchOn, vanillaPitchDefault},
+		{soundEventSwitchExit, vanillaPitchDefault},
+		{soundEventSwitchOff, vanillaPitchDefault},
+		{soundEventTeleport, vanillaPitchDefault},
+		{soundEventOof, vanillaPitchDefault},
+		{soundEventPain, vanillaPitchDefault},
+		{soundEventShootPistol, vanillaPitchDefault},
+		{soundEventShootShotgun, vanillaPitchDefault},
+		{soundEventShootPlasma, vanillaPitchDefault},
+		{soundEventShootRocket, vanillaPitchDefault},
+		{soundEventShootFireball, vanillaPitchDefault},
+		{soundEventPunch, vanillaPitchDefault},
+		{soundEventMonsterAttackClaw, vanillaPitchDefault},
+		{soundEventMonsterAttackSgt, vanillaPitchDefault},
+		{soundEventMonsterAttackSkull, vanillaPitchDefault},
+		{soundEventMonsterAttackArchvile, vanillaPitchDefault},
+		{soundEventMonsterAttackMancubus, vanillaPitchDefault},
+		{soundEventImpactFire, vanillaPitchDefault},
+		{soundEventImpactRocket, vanillaPitchDefault},
+		{soundEventBarrelExplode, vanillaPitchDefault},
+		{soundEventMonsterSeePosit, vanillaPitchDefault},
+		{soundEventMonsterSeeImp, vanillaPitchDefault},
+		{soundEventMonsterSeeDemon, vanillaPitchDefault},
+		{soundEventMonsterSeeCaco, vanillaPitchDefault},
+		{soundEventMonsterSeeBaron, vanillaPitchDefault},
+		{soundEventMonsterSeeKnight, vanillaPitchDefault},
+		{soundEventMonsterSeeSpider, vanillaPitchDefault},
+		{soundEventMonsterSeeArachnotron, vanillaPitchDefault},
+		{soundEventMonsterSeeCyber, vanillaPitchDefault},
+		{soundEventMonsterSeePainElemental, vanillaPitchDefault},
+		{soundEventMonsterSeeWolfSS, vanillaPitchDefault},
+		{soundEventMonsterSeeArchvile, vanillaPitchDefault},
+		{soundEventMonsterSeeRevenant, vanillaPitchDefault},
+		{soundEventMonsterActivePosit, vanillaPitchDefault},
+		{soundEventMonsterActiveImp, vanillaPitchDefault},
+		{soundEventMonsterActiveDemon, vanillaPitchDefault},
+		{soundEventMonsterActiveArachnotron, vanillaPitchDefault},
+		{soundEventMonsterActiveArchvile, vanillaPitchDefault},
+		{soundEventMonsterActiveRevenant, vanillaPitchDefault},
+		{soundEventMonsterPainHumanoid, vanillaPitchDefault},
+		{soundEventMonsterPainDemon, vanillaPitchDefault},
+		{soundEventDeathZombie, vanillaPitchDefault},
+		{soundEventDeathShotgunGuy, vanillaPitchDefault},
+		{soundEventDeathChaingunner, vanillaPitchDefault},
+		{soundEventDeathImp, vanillaPitchDefault},
+		{soundEventDeathDemon, vanillaPitchDefault},
+		{soundEventDeathCaco, vanillaPitchDefault},
+		{soundEventDeathBaron, vanillaPitchDefault},
+		{soundEventDeathKnight, vanillaPitchDefault},
+		{soundEventDeathCyber, vanillaPitchDefault},
+		{soundEventDeathSpider, vanillaPitchDefault},
+		{soundEventDeathArachnotron, vanillaPitchDefault},
+		{soundEventDeathLostSoul, vanillaPitchDefault},
+		{soundEventDeathMancubus, vanillaPitchDefault},
+		{soundEventDeathRevenant, vanillaPitchDefault},
+		{soundEventDeathPainElemental, vanillaPitchDefault},
+		{soundEventDeathWolfSS, vanillaPitchDefault},
+		{soundEventDeathArchvile, vanillaPitchDefault},
+		{soundEventPlayerDeath, vanillaPitchDefault},
+		{soundEventBossBrainSpit, vanillaPitchDefault},
+		{soundEventBossBrainCube, vanillaPitchDefault},
+		{soundEventBossBrainAwake, vanillaPitchDefault},
+		{soundEventBossBrainPain, vanillaPitchDefault},
+		{soundEventBossBrainDeath, vanillaPitchDefault},
+		{soundEventIntermissionTick, vanillaPitchDefault},
+		{soundEventIntermissionDone, vanillaPitchDefault},
+	}
+	for _, tc := range cases {
+		if got := vanillaPitchModeForEvent(tc.ev); got != tc.want {
+			t.Fatalf("event=%v mode=%v want=%v", tc.ev, got, tc.want)
+		}
+	}
+}
+
+func TestFlushSoundEvents_ConsumesVanillaPitchRandomWithoutBackend(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		soundQueue:       []soundEvent{soundEventMonsterSeePosit3},
+		soundQueueOrigin: []queuedSoundOrigin{{}},
+		m:                &mapdata.Map{Name: "E1M5"},
+		snd:              &soundSystem{vanillaVolume: 15},
+	}
+	g.flushSoundEvents()
+	rnd, prnd := doomrand.State()
+	if rnd != 1 || prnd != 0 {
+		t.Fatalf("rng state after flushing no-backend sound queue=(%d,%d) want=(1,0)", rnd, prnd)
+	}
+	if len(g.soundQueue) != 0 || len(g.soundQueueOrigin) != 0 {
+		t.Fatalf("sound queues not cleared: queue=%d origin=%d", len(g.soundQueue), len(g.soundQueueOrigin))
+	}
+}
+
+func TestVanillaSoundWouldStart_UsesDoomVolumeScaleAtClipEdge(t *testing.T) {
+	origin := queuedSoundOrigin{positioned: true, x: 10485760, y: 46137344}
+	listenerX := int64(-27165025)
+	listenerY := int64(-12488865)
+	listenerAngle := uint32(452984832)
+	if vanillaSoundWouldStart(&soundSystem{vanillaVolume: 15}, origin, listenerX, listenerY, listenerAngle, false) {
+		t.Fatalf("edge sound should clip even at Doom max volume")
+	}
+	if !vanillaSoundWouldStart(&soundSystem{vanillaVolume: 127}, origin, listenerX, listenerY, listenerAngle, false) {
+		t.Fatalf("non-Doom 127 scale would incorrectly keep this edge sound audible")
+	}
+	if vanillaSoundWouldStart(nil, origin, listenerX, listenerY, listenerAngle, false) {
+		t.Fatalf("nil sound system should use Doom default volume and clip this edge sound")
 	}
 }
 
@@ -374,6 +554,18 @@ func TestPrepareSoundBankForFaithful_Precomputes44kMono(t *testing.T) {
 	}
 	if s.FaithfulPreparedMono[0] >= s.FaithfulPreparedMono[15] {
 		t.Fatalf("faithful prepared mono should preserve rising shape: first=%d sample15=%d", s.FaithfulPreparedMono[0], s.FaithfulPreparedMono[15])
+	}
+}
+
+func TestApplyVanillaPitch_UsesDoomExponentialStepTable(t *testing.T) {
+	s := PCMSample{SampleRate: 11025, Data: []byte{0, 64, 128, 255}}
+	got := applyVanillaPitch(s, 144)
+	want := (11025 * doomPitchStep(144)) / 65536
+	if got.SampleRate != want {
+		t.Fatalf("sample rate=%d want=%d", got.SampleRate, want)
+	}
+	if got.SampleRate == (11025*144)/128 {
+		t.Fatalf("sample rate=%d unexpectedly matches old linear scaling", got.SampleRate)
 	}
 }
 

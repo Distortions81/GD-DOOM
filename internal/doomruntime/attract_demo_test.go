@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"testing"
 
+	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 )
 
@@ -72,6 +73,149 @@ func TestAdvanceFrontendAttractStartsDemoPlayback(t *testing.T) {
 	}
 	if sg.g.opts.DemoQuitOnComplete {
 		t.Fatal("frontend attract demo should not use benchmark quit mode")
+	}
+}
+
+func TestAttractDemoBuildDoesNotInheritPriorRNGState(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	boot := cloneMapForRestart(base.m)
+	demo := &DemoScript{
+		Path:   "DEMO1",
+		Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+		Tics:   []DemoTic{{Forward: 25}},
+	}
+
+	doomrand.SetState(123, 231)
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SourcePortMode: base.opts.SourcePortMode,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{demo},
+		},
+		g: base,
+	}
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	gotRndA, gotPRndA := doomrand.State()
+
+	doomrand.SetState(17, 99)
+	sg = &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SourcePortMode: base.opts.SourcePortMode,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{demo},
+		},
+		g: base,
+	}
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	gotRndB, gotPRndB := doomrand.State()
+
+	if gotRndA != gotRndB || gotPRndA != gotPRndB {
+		t.Fatalf("attract demo build inherited prior RNG state: first=%d/%d second=%d/%d", gotRndA, gotPRndA, gotRndB, gotPRndB)
+	}
+}
+
+func TestAttractDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	boot := cloneMapForRestart(base.m)
+	demo := &DemoScript{
+		Path: "DEMO1",
+		Header: DemoHeader{
+			Version:       demoVersion110,
+			Skill:         1,
+			Episode:       1,
+			Map:           1,
+			Fast:          true,
+			Respawn:       true,
+			NoMonsters:    true,
+			ConsolePlayer: 0,
+			PlayerInGame:  [4]bool{true},
+		},
+		Tics: []DemoTic{{Forward: 25}},
+	}
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SkillLevel:       5,
+			GameMode:         gameModeDeathmatch,
+			ShowNoSkillItems: true,
+			ShowAllItems:     true,
+			AutoWeaponSwitch: false,
+			CheatLevel:       3,
+			Invulnerable:     true,
+			AllCheats:        true,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{demo},
+		},
+		g: base,
+	}
+
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	if sg.g == nil {
+		t.Fatal("expected active demo game")
+	}
+	if got := sg.g.opts.SkillLevel; got != 2 {
+		t.Fatalf("SkillLevel=%d want 2", got)
+	}
+	if got := sg.g.opts.GameMode; got != gameModeSingle {
+		t.Fatalf("GameMode=%q want %q", got, gameModeSingle)
+	}
+	if !sg.g.opts.FastMonsters || !sg.g.opts.RespawnMonsters || !sg.g.opts.NoMonsters {
+		t.Fatalf("demo header flags not applied: fast=%t respawn=%t nomonsters=%t", sg.g.opts.FastMonsters, sg.g.opts.RespawnMonsters, sg.g.opts.NoMonsters)
+	}
+	if sg.g.opts.ShowNoSkillItems || sg.g.opts.ShowAllItems {
+		t.Fatalf("demo playback inherited item filter overrides: shownoskill=%t showall=%t", sg.g.opts.ShowNoSkillItems, sg.g.opts.ShowAllItems)
+	}
+	if !sg.g.opts.AutoWeaponSwitch {
+		t.Fatal("demo playback should force Doom-style auto weapon switching")
+	}
+	if sg.g.cheatLevel != 0 || sg.g.invulnerable || sg.g.opts.AllCheats {
+		t.Fatalf("demo playback inherited cheats: cheat=%d invuln=%t allcheats=%t", sg.g.cheatLevel, sg.g.invulnerable, sg.g.opts.AllCheats)
+	}
+}
+
+func TestAttractDemoPlaybackResetsPersistentAutomapCheatState(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	base.parity.reveal = revealAllMap
+	base.parity.iddt = 2
+	boot := cloneMapForRestart(base.m)
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SourcePortMode: false,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{{
+				Path:   "DEMO1",
+				Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+				Tics:   []DemoTic{{Forward: 25}},
+			}},
+		},
+		g: base,
+	}
+
+	if !sg.startAttractDemoByName("DEMO1") {
+		t.Fatal("startAttractDemoByName() = false, want true")
+	}
+	if sg.g == nil {
+		t.Fatal("expected active demo game")
+	}
+	if sg.g.parity.reveal != revealNormal || sg.g.parity.iddt != 0 {
+		t.Fatalf("attract demo inherited automap cheat state: reveal=%d iddt=%d", sg.g.parity.reveal, sg.g.parity.iddt)
 	}
 }
 

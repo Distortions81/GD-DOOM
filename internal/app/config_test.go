@@ -11,6 +11,7 @@ import (
 	"gddoom/internal/demo"
 	"gddoom/internal/doomsession"
 	"gddoom/internal/music"
+	"gddoom/internal/runtimecfg"
 )
 
 func TestRunParseLoadsConfigDefaults(t *testing.T) {
@@ -172,6 +173,69 @@ func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "map=E1M2 ") {
 		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
+	}
+}
+
+func TestPrepareDemoPlaybackOptionsMatchesDoomSourceHeaderSemantics(t *testing.T) {
+	if got := runtimecfg.PrepareDemoPlaybackOptions(runtimecfg.Options{}, &demo.Script{
+		Header: demo.Header{Deathmatch: true, PlayerInGame: [4]bool{true, true}},
+	}).GameMode; got != "deathmatch" {
+		t.Fatalf("GameMode(deathmatch)=%q want deathmatch", got)
+	}
+	if got := runtimecfg.PrepareDemoPlaybackOptions(runtimecfg.Options{}, &demo.Script{
+		Header: demo.Header{PlayerInGame: [4]bool{true, true}},
+	}).GameMode; got != "coop" {
+		t.Fatalf("GameMode(coop)=%q want coop", got)
+	}
+	if got := runtimecfg.PrepareDemoPlaybackOptions(runtimecfg.Options{}, &demo.Script{
+		Header: demo.Header{PlayerInGame: [4]bool{true}},
+	}).GameMode; got != "single" {
+		t.Fatalf("GameMode(single)=%q want single", got)
+	}
+}
+
+func TestApplyDemoPlaybackHeaderMatchesDoomSourceFields(t *testing.T) {
+	opts := runtimecfg.Options{
+		SkillLevel:       1,
+		GameMode:         "deathmatch",
+		ShowNoSkillItems: true,
+		ShowAllItems:     true,
+		AutoWeaponSwitch: false,
+		CheatLevel:       3,
+		Invulnerable:     true,
+		AllCheats:        true,
+	}
+	applyDemoPlaybackHeader(&opts, &demo.Script{
+		Header: demo.Header{
+			Skill:         4,
+			Deathmatch:    false,
+			Respawn:       true,
+			Fast:          true,
+			NoMonsters:    true,
+			ConsolePlayer: 1,
+			PlayerInGame:  [4]bool{true, true, false, false},
+		},
+	})
+	if opts.SkillLevel != 5 {
+		t.Fatalf("SkillLevel=%d want 5", opts.SkillLevel)
+	}
+	if opts.GameMode != "coop" {
+		t.Fatalf("GameMode=%q want coop", opts.GameMode)
+	}
+	if opts.PlayerSlot != 2 {
+		t.Fatalf("PlayerSlot=%d want 2", opts.PlayerSlot)
+	}
+	if !opts.RespawnMonsters || !opts.FastMonsters || !opts.NoMonsters {
+		t.Fatalf("flags respawn=%t fast=%t nomonsters=%t want all true", opts.RespawnMonsters, opts.FastMonsters, opts.NoMonsters)
+	}
+	if opts.ShowNoSkillItems || opts.ShowAllItems {
+		t.Fatalf("demo playback should ignore item filter overrides, got shownoskill=%t showall=%t", opts.ShowNoSkillItems, opts.ShowAllItems)
+	}
+	if !opts.AutoWeaponSwitch {
+		t.Fatal("demo playback should force Doom-style auto weapon switching")
+	}
+	if opts.CheatLevel != 0 || opts.Invulnerable || opts.AllCheats {
+		t.Fatalf("demo playback should ignore cheats, got cheat=%d invuln=%t allcheats=%t", opts.CheatLevel, opts.Invulnerable, opts.AllCheats)
 	}
 }
 

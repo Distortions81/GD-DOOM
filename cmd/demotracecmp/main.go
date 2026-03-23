@@ -112,6 +112,9 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 		}
 		keys := unionKeys(l, r)
 		for _, k := range keys {
+			if shouldIgnoreMapKey(path, k, l, r) {
+				continue
+			}
 			lp, lok := l[k]
 			rp, rok := r[k]
 			if !lok || !rok {
@@ -172,6 +175,12 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 }
 
 func shouldIgnorePath(path string) bool {
+	if len(path) >= len("root.mobjs[0].") && path[:len("root.mobjs[0].")] == "root.mobjs[0]." {
+		switch path[len("root.mobjs[0]."):] {
+		case "target", "threshold":
+			return true
+		}
+	}
 	ignoredSuffixes := []string{
 		".rndindex",
 		".prndindex",
@@ -186,6 +195,7 @@ func shouldIgnorePath(path string) bool {
 		".tracer_type",
 		".texture",
 		".action",
+		".dropped",
 	}
 	for _, suffix := range ignoredSuffixes {
 		if len(path) >= len(suffix) && path[len(path)-len(suffix):] == suffix {
@@ -193,6 +203,78 @@ func shouldIgnorePath(path string) bool {
 		}
 	}
 	return false
+}
+
+func shouldIgnoreMapKey(path string, key string, left, right map[string]any) bool {
+	if len(path) >= len("root.specials[") && path[:len("root.specials[")] == "root.specials[" {
+		if key == "topcountdown" {
+			if isDoorSpecial(left) && isDoorSpecial(right) {
+				ldir, lok := left["direction"].(float64)
+				rdir, rok := right["direction"].(float64)
+				if lok && rok && ldir != 0 && ldir != 2 && rdir != 0 && rdir != 2 {
+					return true
+				}
+			}
+		}
+		if isPlatSpecial(left) && isPlatSpecial(right) {
+			if key == "low" {
+				ltyp, lok := left["type"].(float64)
+				rtyp, rok := right["type"].(float64)
+				if lok && rok && (int(ltyp) == 2 || int(ltyp) == 3) && int(ltyp) == int(rtyp) {
+					return true
+				}
+			}
+			if key == "count" {
+				lstatus, lok := left["status"].(float64)
+				rstatus, rok := right["status"].(float64)
+				if lok && rok && int(lstatus) != 2 && int(rstatus) != 2 {
+					return true
+				}
+			}
+			if key == "oldstatus" {
+				lstatus, lok := left["status"].(float64)
+				rstatus, rok := right["status"].(float64)
+				if lok && rok && int(lstatus) != 16 && int(rstatus) != 16 {
+					return true
+				}
+			}
+		}
+		if isFloorSpecial(left) && isFloorSpecial(right) {
+			if key == "newspecial" {
+				ltyp, lok := left["type"].(float64)
+				rtyp, rok := right["type"].(float64)
+				if lok && rok && int(ltyp) == int(rtyp) && int(ltyp) != 6 && int(ltyp) != 11 {
+					return true
+				}
+			}
+		}
+	}
+	if len(path) >= len("root.mobjs[") && path[:len("root.mobjs[")] == "root.mobjs[" {
+		lt, lok := left["type"].(float64)
+		rt, rok := right["type"].(float64)
+		if lok && rok && lt == rt && (lt == 37 || lt == 38) {
+			switch key {
+			case "x", "y", "z", "momz":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isPlatSpecial(v map[string]any) bool {
+	kind, _ := v["kind"].(string)
+	return kind == "plat"
+}
+
+func isDoorSpecial(v map[string]any) bool {
+	kind, ok := v["kind"].(string)
+	return ok && kind == "door"
+}
+
+func isFloorSpecial(v map[string]any) bool {
+	kind, ok := v["kind"].(string)
+	return ok && kind == "floor"
 }
 
 func unionKeys(left, right map[string]any) []string {

@@ -95,9 +95,12 @@ func thingSpawnsForGameMode(t mapdata.Thing, mode string) bool {
 	}
 }
 
-func thingSpawnsInSession(t mapdata.Thing, skill int, mode string, showNoSkillItems bool, showAllItems bool) bool {
+func thingSpawnsInSession(t mapdata.Thing, skill int, mode string, showNoSkillItems bool, showAllItems bool, noMonsters bool) bool {
 	if isPickupType(t.Type) && showAllItems {
 		return true
+	}
+	if noMonsters && isMonster(t.Type) {
+		return false
 	}
 	return thingSpawnsForSkill(t, skill, showNoSkillItems) && thingSpawnsForGameMode(t, mode)
 }
@@ -117,7 +120,7 @@ func (g *game) thingActiveInSession(i int) bool {
 	if i < len(g.thingDropped) && g.thingDropped[i] {
 		return true
 	}
-	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems)
+	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters)
 }
 
 func (g *game) thingBlocksInSession(i int) bool {
@@ -133,5 +136,5 @@ func (g *game) thingBlocksInSession(i int) bool {
 	if i < len(g.thingDropped) && g.thingDropped[i] {
 		return true
 	}
-	return thingSpawnsForGameMode(g.m.Things[i], g.opts.GameMode)
+	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters)
 }

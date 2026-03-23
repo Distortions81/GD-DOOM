@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	saveGameVersion = 12
+	saveGameVersion = 13
 	saveGamePrefix  = "dsg"
 )
 
@@ -88,6 +88,8 @@ type gameSaveState struct {
 	ThingWakeTics        []int
 	ThingLastLook        []int
 	ThingDead            []bool
+	ThingGibbed          []bool
+	ThingGibTick         []int
 	ThingDeathTics       []int
 	ThingAttackTics      []int
 	ThingAttackPhase     []int
@@ -123,6 +125,7 @@ type gameSaveState struct {
 	SecretsTotal         int
 	SectorSoundTarget    []bool
 	IsDead               bool
+	PlayerMobjHealth     int
 	DamageFlashTic       int
 	BonusFlashTic        int
 	SectorLightFx        []sectorLightEffectSaveState
@@ -142,6 +145,8 @@ type playerSaveState struct {
 	Z               int64
 	FloorZ          int64
 	CeilZ           int64
+	Subsector       int
+	Sector          int
 	Angle           uint32
 	MomX            int64
 	MomY            int64
@@ -237,6 +242,8 @@ type projectileSaveState struct {
 	VX           int64
 	VY           int64
 	VZ           int64
+	FloorZ       int64
+	CeilZ        int64
 	Radius       int64
 	Height       int64
 	TTL          int
@@ -251,14 +258,20 @@ type projectileSaveState struct {
 }
 
 type projectileImpactSaveState struct {
-	X         int64
-	Y         int64
-	Z         int64
-	Kind      int
-	Tics      int
-	TotalTics int
-	Angle     uint32
-	SprayDone bool
+	X            int64
+	Y            int64
+	Z            int64
+	FloorZ       int64
+	CeilZ        int64
+	Kind         int
+	SourceThing  int
+	SourceType   int16
+	SourcePlayer bool
+	LastLook     int
+	Tics         int
+	TotalTics    int
+	Angle        uint32
+	SprayDone    bool
 }
 
 type hitscanPuffSaveState struct {
@@ -469,6 +482,8 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingWakeTics:        append([]int(nil), g.thingWakeTics...),
 		ThingLastLook:        append([]int(nil), g.thingLastLook...),
 		ThingDead:            append([]bool(nil), g.thingDead...),
+		ThingGibbed:          append([]bool(nil), g.thingGibbed...),
+		ThingGibTick:         append([]int(nil), g.thingGibTick...),
 		ThingDeathTics:       append([]int(nil), g.thingDeathTics...),
 		ThingAttackTics:      append([]int(nil), g.thingAttackTics...),
 		ThingAttackPhase:     append([]int(nil), g.thingAttackPhase...),
@@ -504,6 +519,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		SecretsTotal:         g.secretsTotal,
 		SectorSoundTarget:    append([]bool(nil), g.sectorSoundTarget...),
 		IsDead:               g.isDead,
+		PlayerMobjHealth:     g.playerMobjHealth,
 		DamageFlashTic:       g.damageFlashTic,
 		BonusFlashTic:        g.bonusFlashTic,
 		SectorLightFx:        captureSectorLightEffects(g.sectorLightFx),
@@ -563,6 +579,8 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingWakeTics = append([]int(nil), s.ThingWakeTics...)
 	g.thingLastLook = append([]int(nil), s.ThingLastLook...)
 	g.thingDead = append([]bool(nil), s.ThingDead...)
+	g.thingGibbed = append([]bool(nil), s.ThingGibbed...)
+	g.thingGibTick = append([]int(nil), s.ThingGibTick...)
 	g.thingDeathTics = append([]int(nil), s.ThingDeathTics...)
 	g.thingAttackTics = append([]int(nil), s.ThingAttackTics...)
 	g.thingAttackPhase = append([]int(nil), s.ThingAttackPhase...)
@@ -598,6 +616,10 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.secretsTotal = s.SecretsTotal
 	g.sectorSoundTarget = append([]bool(nil), s.SectorSoundTarget...)
 	g.isDead = s.IsDead
+	g.playerMobjHealth = s.PlayerMobjHealth
+	if g.playerMobjHealth == 0 && g.stats.Health != 0 {
+		g.playerMobjHealth = g.stats.Health
+	}
 	g.damageFlashTic = s.DamageFlashTic
 	g.bonusFlashTic = s.BonusFlashTic
 	g.sectorLightFx = restoreSectorLightEffects(s.SectorLightFx)
@@ -624,6 +646,8 @@ func capturePlayerSaveState(p player) playerSaveState {
 		Z:               p.z,
 		FloorZ:          p.floorz,
 		CeilZ:           p.ceilz,
+		Subsector:       p.subsector,
+		Sector:          p.sector,
 		Angle:           p.angle,
 		MomX:            p.momx,
 		MomY:            p.momy,
@@ -641,6 +665,8 @@ func restorePlayerSaveState(s playerSaveState) player {
 		z:               s.Z,
 		floorz:          s.FloorZ,
 		ceilz:           s.CeilZ,
+		subsector:       s.Subsector,
+		sector:          s.Sector,
 		angle:           s.Angle,
 		momx:            s.MomX,
 		momy:            s.MomY,
@@ -990,6 +1016,8 @@ func captureProjectiles(src []projectile) []projectileSaveState {
 			VX:           p.vx,
 			VY:           p.vy,
 			VZ:           p.vz,
+			FloorZ:       p.floorz,
+			CeilZ:        p.ceilz,
 			Radius:       p.radius,
 			Height:       p.height,
 			TTL:          p.ttl,
@@ -1019,6 +1047,8 @@ func restoreProjectiles(src []projectileSaveState) []projectile {
 			vx:           p.VX,
 			vy:           p.VY,
 			vz:           p.VZ,
+			floorz:       p.FloorZ,
+			ceilz:        p.CeilZ,
 			radius:       p.Radius,
 			height:       p.Height,
 			ttl:          p.TTL,
@@ -1042,14 +1072,20 @@ func captureProjectileImpacts(src []projectileImpact) []projectileImpactSaveStat
 	dst := make([]projectileImpactSaveState, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpactSaveState{
-			X:         p.x,
-			Y:         p.y,
-			Z:         p.z,
-			Kind:      int(p.kind),
-			Tics:      p.tics,
-			TotalTics: p.totalTics,
-			Angle:     p.angle,
-			SprayDone: p.sprayDone,
+			X:            p.x,
+			Y:            p.y,
+			Z:            p.z,
+			FloorZ:       p.floorz,
+			CeilZ:        p.ceilz,
+			Kind:         int(p.kind),
+			SourceThing:  p.sourceThing,
+			SourceType:   p.sourceType,
+			SourcePlayer: p.sourcePlayer,
+			LastLook:     p.lastLook,
+			Tics:         p.tics,
+			TotalTics:    p.totalTics,
+			Angle:        p.angle,
+			SprayDone:    p.sprayDone,
 		}
 	}
 	return dst
@@ -1062,14 +1098,20 @@ func restoreProjectileImpacts(src []projectileImpactSaveState) []projectileImpac
 	dst := make([]projectileImpact, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpact{
-			x:         p.X,
-			y:         p.Y,
-			z:         p.Z,
-			kind:      projectileKind(p.Kind),
-			tics:      p.Tics,
-			totalTics: p.TotalTics,
-			angle:     p.Angle,
-			sprayDone: p.SprayDone,
+			x:            p.X,
+			y:            p.Y,
+			z:            p.Z,
+			floorz:       p.FloorZ,
+			ceilz:        p.CeilZ,
+			kind:         projectileKind(p.Kind),
+			sourceThing:  p.SourceThing,
+			sourceType:   p.SourceType,
+			sourcePlayer: p.SourcePlayer,
+			lastLook:     p.LastLook,
+			tics:         p.Tics,
+			totalTics:    p.TotalTics,
+			angle:        p.Angle,
+			sprayDone:    p.SprayDone,
 		}
 	}
 	return dst

@@ -1,8 +1,11 @@
 package doomruntime
 
 import (
+	"fmt"
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
+	"math"
+	"os"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
@@ -18,6 +21,7 @@ const (
 	soundEventSwitchExit
 	soundEventSwitchOff
 	soundEventNoWay
+	soundEventTink
 	soundEventItemUp
 	soundEventWeaponUp
 	soundEventPowerUp
@@ -47,9 +51,16 @@ const (
 	soundEventMonsterAttackClaw
 	soundEventMonsterAttackSgt
 	soundEventMonsterAttackSkull
+	soundEventMonsterAttackArchvile
+	soundEventMonsterAttackMancubus
 	soundEventImpactFire
 	soundEventImpactRocket
 	soundEventBarrelExplode
+	soundEventMonsterSeePosit1
+	soundEventMonsterSeePosit2
+	soundEventMonsterSeePosit3
+	soundEventMonsterSeeImp1
+	soundEventMonsterSeeImp2
 	soundEventMonsterSeePosit
 	soundEventMonsterSeeImp
 	soundEventMonsterSeeDemon
@@ -71,6 +82,11 @@ const (
 	soundEventMonsterActiveRevenant
 	soundEventMonsterPainHumanoid
 	soundEventMonsterPainDemon
+	soundEventDeathPodth1
+	soundEventDeathPodth2
+	soundEventDeathPodth3
+	soundEventDeathBgdth1
+	soundEventDeathBgdth2
 	soundEventDeathZombie
 	soundEventDeathShotgunGuy
 	soundEventDeathChaingunner
@@ -95,8 +111,10 @@ const (
 )
 
 type soundSystem struct {
-	bank   SoundBank
-	player *audiofx.SpatialPlayer
+	bank          SoundBank
+	player        *audiofx.SpatialPlayer
+	rand          uint32
+	vanillaVolume int
 }
 
 type MenuSoundPlayer = audiofx.MenuPlayer
@@ -117,9 +135,16 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 
 func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool) *soundSystem {
 	return &soundSystem{
-		bank:   bank,
-		player: audiofx.NewSpatialPlayer(sfxVolume, sourcePort),
+		bank:          bank,
+		player:        audiofx.NewSpatialPlayer(sfxVolume, sourcePort),
+		rand:          0x1f123bb5,
+		vanillaVolume: vanillaSFXVolume(sfxVolume),
 	}
+}
+
+func vanillaSFXVolume(v float64) int {
+	v = clampVolume(v)
+	return int(v*15 + 0.5)
 }
 
 func PrepareSoundBankForSourcePort(bank SoundBank, dstRate int) SoundBank {
@@ -131,10 +156,13 @@ func applySourcePortPresenceBoost(src []int16) []int16 {
 }
 
 func (s *soundSystem) setSFXVolume(v float64) {
-	if s == nil || s.player == nil {
+	if s == nil {
 		return
 	}
-	s.player.SetVolume(v)
+	s.vanillaVolume = vanillaSFXVolume(v)
+	if s.player != nil {
+		s.player.SetVolume(v)
+	}
 }
 
 func (s *soundSystem) playEvent(ev soundEvent) {
@@ -142,30 +170,196 @@ func (s *soundSystem) playEvent(ev soundEvent) {
 }
 
 func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) {
+	if !vanillaSoundWouldStart(s, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
+		return
+	}
+	pitch := vanillaPitchForEvent(ev)
 	if s == nil || s.player == nil {
 		return
+	}
+	audioOrigin := audiofx.SpatialOrigin{
+		X:          origin.x,
+		Y:          origin.y,
+		Positioned: origin.positioned,
 	}
 	sample, ok := s.sampleForEvent(ev)
 	if !ok || sample.SampleRate <= 0 || len(sample.Data) == 0 {
 		return
 	}
-	s.player.PlaySampleSpatialDelayed(sample, audiofx.SpatialOrigin{
-		X:          origin.x,
-		Y:          origin.y,
-		Positioned: origin.positioned,
-	}, listenerX, listenerY, listenerAngle, mapUsesFullClip, monsterVocalPreDelaySamples(ev, s.player))
+	sample = applyVanillaPitch(sample, pitch)
+	s.player.PlaySampleSpatialDelayed(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev))
 }
 
-func monsterVocalPreDelaySamples(ev soundEvent, player *audiofx.SpatialPlayer) float64 {
-	if player == nil || !isMonsterVocalSound(ev) {
+func (s *soundSystem) nextRandByte() int {
+	if s == nil {
+		return 0
+	}
+	if s.rand == 0 {
+		s.rand = 0x1f123bb5
+	}
+	s.rand = s.rand*1664525 + 1013904223
+	return int((s.rand >> 24) & 0xff)
+}
+
+func (s *soundSystem) monsterVocalPreDelaySamples(ev soundEvent) float64 {
+	if s == nil || s.player == nil || !isMonsterVocalSound(ev) {
 		return 0
 	}
 	ctx := audiofx.EnsureSharedAudioContext()
 	if ctx == nil {
 		return 0
 	}
-	delayMS := float64(doomrand.PRandom() % 26)
+	// Audio-only pre-delay is a GD-DOOM effect, not a vanilla gameplay RNG consumer.
+	delayMS := float64(s.nextRandByte() % 26)
 	return delayMS * float64(ctx.SampleRate()) / 1000.0
+}
+
+func vanillaSoundWouldStart(s *soundSystem, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
+	if !origin.positioned {
+		return true
+	}
+	baseVol := 15
+	if s != nil {
+		baseVol = s.vanillaVolume
+	}
+	_, _, ok := doomAdjustSoundParams(listenerX, listenerY, listenerAngle, origin.x, origin.y, baseVol, mapUsesFullClip)
+	return ok
+}
+
+type vanillaPitchMode int
+
+const (
+	vanillaPitchNone vanillaPitchMode = iota
+	vanillaPitchDefault
+	vanillaPitchSaw
+)
+
+func vanillaPitchModeForEvent(ev soundEvent) vanillaPitchMode {
+	switch ev {
+	case soundEventSawUp, soundEventSawIdle, soundEventSawFull, soundEventSawHit:
+		return vanillaPitchSaw
+	case soundEventItemUp, soundEventTink:
+		return vanillaPitchNone
+	default:
+		return vanillaPitchDefault
+	}
+}
+
+func vanillaPitchForEvent(ev soundEvent) int {
+	pitch := 128
+	switch vanillaPitchModeForEvent(ev) {
+	case vanillaPitchSaw:
+		debugLogVanillaPitch(ev, "saw")
+		pitch += 8 - (doomrand.MRandom() & 15)
+	case vanillaPitchNone:
+		return pitch
+	default:
+		debugLogVanillaPitch(ev, "default")
+		pitch += 16 - (doomrand.MRandom() & 31)
+	}
+	if pitch < 0 {
+		pitch = 0
+	} else if pitch > 255 {
+		pitch = 255
+	}
+	return pitch
+}
+
+func applyVanillaPitch(sample PCMSample, pitch int) PCMSample {
+	if sample.SampleRate <= 0 || len(sample.Data) == 0 {
+		return sample
+	}
+	if pitch == 128 {
+		return sample
+	}
+	adjusted := sample
+	adjusted.SampleRate = max(1, (sample.SampleRate*doomPitchStep(pitch))/65536)
+	adjusted.PreparedRate = 0
+	adjusted.PreparedMono = nil
+	adjusted.FaithfulPreparedRate = 0
+	adjusted.FaithfulPreparedMono = nil
+	return adjusted
+}
+
+func doomPitchStep(pitch int) int {
+	if pitch < 0 {
+		pitch = 0
+	} else if pitch > 255 {
+		pitch = 255
+	}
+	return int(math.Pow(2.0, (float64(pitch)-128.0)/64.0) * 65536.0)
+}
+
+func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
+	return applyVanillaPitch(sample, vanillaPitchForEvent(ev))
+}
+
+func debugLogVanillaPitch(ev soundEvent, mode string) {
+	if os.Getenv("GD_DEBUG_RNG_SOUND") == "" {
+		return
+	}
+	fmt.Printf("doomrand-sound side=gd event=%s mode=%s\n", soundEventDebugName(ev), mode)
+}
+
+func soundEventDebugName(ev soundEvent) string {
+	switch ev {
+	case soundEventItemUp:
+		return "ItemUp"
+	case soundEventTink:
+		return "Tink"
+	case soundEventPowerUp:
+		return "PowerUp"
+	case soundEventShootPistol:
+		return "ShootPistol"
+	case soundEventShootShotgun:
+		return "ShootShotgun"
+	case soundEventMonsterAttackClaw:
+		return "MonsterAttackClaw"
+	case soundEventMonsterAttackSgt:
+		return "MonsterAttackSgt"
+	case soundEventMonsterAttackSkull:
+		return "MonsterAttackSkull"
+	case soundEventMonsterAttackArchvile:
+		return "MonsterAttackArchvile"
+	case soundEventMonsterAttackMancubus:
+		return "MonsterAttackMancubus"
+	case soundEventMonsterSeePosit1:
+		return "MonsterSeePosit1"
+	case soundEventMonsterSeePosit2:
+		return "MonsterSeePosit2"
+	case soundEventMonsterSeePosit3:
+		return "MonsterSeePosit3"
+	case soundEventMonsterSeeImp1:
+		return "MonsterSeeImp1"
+	case soundEventMonsterSeeImp2:
+		return "MonsterSeeImp2"
+	case soundEventMonsterSeeDemon:
+		return "MonsterSeeDemon"
+	case soundEventMonsterSeeCaco:
+		return "MonsterSeeCaco"
+	case soundEventMonsterSeeBaron:
+		return "MonsterSeeBaron"
+	case soundEventMonsterSeeKnight:
+		return "MonsterSeeKnight"
+	case soundEventMonsterSeeSpider:
+		return "MonsterSeeSpider"
+	case soundEventMonsterSeeCyber:
+		return "MonsterSeeCyber"
+	case soundEventMonsterActivePosit:
+		return "MonsterActivePosit"
+	case soundEventMonsterActiveImp:
+		return "MonsterActiveImp"
+	case soundEventMonsterActiveDemon:
+		return "MonsterActiveDemon"
+	case soundEventMonsterActiveArachnotron:
+		return "MonsterActiveArachnotron"
+	case soundEventMonsterActiveArchvile:
+		return "MonsterActiveArchvile"
+	case soundEventMonsterActiveRevenant:
+		return "MonsterActiveRevenant"
+	default:
+		return fmt.Sprintf("soundEvent(%d)", ev)
+	}
 }
 
 func isMonsterVocalSound(ev soundEvent) bool {
@@ -242,6 +436,11 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.NoWay, true
 		}
 		return s.bank.SwitchOff, true
+	case soundEventTink:
+		if len(s.bank.Tink.Data) > 0 {
+			return s.bank.Tink, true
+		}
+		return s.bank.NoWay, true
 	case soundEventItemUp:
 		if len(s.bank.ItemUp.Data) > 0 {
 			return s.bank.ItemUp, true
@@ -399,6 +598,16 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.AttackSkull, true
 		}
 		return s.sampleForEvent(soundEventShootFireball)
+	case soundEventMonsterAttackArchvile:
+		if len(s.bank.AttackArchvile.Data) > 0 {
+			return s.bank.AttackArchvile, true
+		}
+		return s.sampleForEvent(soundEventBarrelExplode)
+	case soundEventMonsterAttackMancubus:
+		if len(s.bank.AttackMancubus.Data) > 0 {
+			return s.bank.AttackMancubus, true
+		}
+		return s.sampleForEvent(soundEventShootFireball)
 	case soundEventImpactFire:
 		if len(s.bank.ImpactFire.Data) > 0 {
 			return s.bank.ImpactFire, true
@@ -420,23 +629,35 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.BarrelExplode, true
 		}
 		return s.sampleForEvent(soundEventImpactRocket)
-	case soundEventMonsterSeePosit:
-		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
-			s.bank.SeePosit1,
-			s.bank.SeePosit2,
-			s.bank.SeePosit3,
-		); ok {
-			return sample, true
+	case soundEventMonsterSeePosit1:
+		if len(s.bank.SeePosit1.Data) > 0 {
+			return s.bank.SeePosit1, true
 		}
 		return s.sampleForEvent(soundEventMonsterActivePosit)
-	case soundEventMonsterSeeImp:
-		if sample, ok := pickFirstAvailable(soundVariantIndex(2),
-			s.bank.SeeBGSit1,
-			s.bank.SeeBGSit2,
-		); ok {
-			return sample, true
+	case soundEventMonsterSeePosit2:
+		if len(s.bank.SeePosit2.Data) > 0 {
+			return s.bank.SeePosit2, true
+		}
+		return s.sampleForEvent(soundEventMonsterSeePosit1)
+	case soundEventMonsterSeePosit3:
+		if len(s.bank.SeePosit3.Data) > 0 {
+			return s.bank.SeePosit3, true
+		}
+		return s.sampleForEvent(soundEventMonsterSeePosit1)
+	case soundEventMonsterSeeImp1:
+		if len(s.bank.SeeBGSit1.Data) > 0 {
+			return s.bank.SeeBGSit1, true
 		}
 		return s.sampleForEvent(soundEventMonsterActiveImp)
+	case soundEventMonsterSeeImp2:
+		if len(s.bank.SeeBGSit2.Data) > 0 {
+			return s.bank.SeeBGSit2, true
+		}
+		return s.sampleForEvent(soundEventMonsterSeeImp1)
+	case soundEventMonsterSeePosit:
+		return s.sampleForEvent(soundEventMonsterSeePosit1)
+	case soundEventMonsterSeeImp:
+		return s.sampleForEvent(soundEventMonsterSeeImp1)
 	case soundEventMonsterSeeDemon:
 		if len(s.bank.SeeSgtSit.Data) > 0 {
 			return s.bank.SeeSgtSit, true
@@ -547,53 +768,45 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.Oof, true
 		}
 		return s.bank.NoWay, true
-	case soundEventDeathZombie:
-		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
-			s.bank.DeathPodth1,
-			s.bank.DeathPodth2,
-			s.bank.DeathPodth3,
-		); ok {
-			return sample, true
+	case soundEventDeathPodth1:
+		if len(s.bank.DeathPodth1.Data) > 0 {
+			return s.bank.DeathPodth1, true
 		}
 		if len(s.bank.DeathZombie.Data) > 0 {
 			return s.bank.DeathZombie, true
 		}
 		return s.sampleForEvent(soundEventMonsterDeath)
-	case soundEventDeathShotgunGuy:
-		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
-			s.bank.DeathPodth1,
-			s.bank.DeathPodth2,
-			s.bank.DeathPodth3,
-		); ok {
-			return sample, true
+	case soundEventDeathPodth2:
+		if len(s.bank.DeathPodth2.Data) > 0 {
+			return s.bank.DeathPodth2, true
 		}
-		if len(s.bank.DeathShotgunGuy.Data) > 0 {
-			return s.bank.DeathShotgunGuy, true
+		return s.sampleForEvent(soundEventDeathPodth1)
+	case soundEventDeathPodth3:
+		if len(s.bank.DeathPodth3.Data) > 0 {
+			return s.bank.DeathPodth3, true
 		}
-		return s.sampleForEvent(soundEventDeathZombie)
-	case soundEventDeathChaingunner:
-		if sample, ok := pickFirstAvailable(soundVariantIndex(3),
-			s.bank.DeathPodth1,
-			s.bank.DeathPodth2,
-			s.bank.DeathPodth3,
-		); ok {
-			return sample, true
-		}
-		if len(s.bank.DeathChaingunner.Data) > 0 {
-			return s.bank.DeathChaingunner, true
-		}
-		return s.sampleForEvent(soundEventDeathZombie)
-	case soundEventDeathImp:
-		if sample, ok := pickFirstAvailable(soundVariantIndex(2),
-			s.bank.DeathBgdth1,
-			s.bank.DeathBgdth2,
-		); ok {
-			return sample, true
+		return s.sampleForEvent(soundEventDeathPodth1)
+	case soundEventDeathBgdth1:
+		if len(s.bank.DeathBgdth1.Data) > 0 {
+			return s.bank.DeathBgdth1, true
 		}
 		if len(s.bank.DeathImp.Data) > 0 {
 			return s.bank.DeathImp, true
 		}
 		return s.sampleForEvent(soundEventMonsterDeath)
+	case soundEventDeathBgdth2:
+		if len(s.bank.DeathBgdth2.Data) > 0 {
+			return s.bank.DeathBgdth2, true
+		}
+		return s.sampleForEvent(soundEventDeathBgdth1)
+	case soundEventDeathZombie:
+		return s.sampleForEvent(soundEventDeathPodth1)
+	case soundEventDeathShotgunGuy:
+		return s.sampleForEvent(soundEventDeathPodth2)
+	case soundEventDeathChaingunner:
+		return s.sampleForEvent(soundEventDeathPodth2)
+	case soundEventDeathImp:
+		return s.sampleForEvent(soundEventDeathBgdth1)
 	case soundEventDeathDemon:
 		if len(s.bank.DeathSgtDth.Data) > 0 {
 			return s.bank.DeathSgtDth, true

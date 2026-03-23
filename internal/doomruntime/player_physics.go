@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"os"
 	"slices"
+
+	"gddoom/internal/mapdata"
 )
 
 type slideIntercept struct {
 	frac int64
 	line int
+	ord  int
 }
 
 const doomMaxThingRadius = 32 * fracUnit
@@ -65,28 +68,153 @@ func (g *game) tickPlayerBody() {
 		return
 	}
 	g.xyMovement()
+	if !g.isDead {
+		g.processThingPickups()
+	}
 	g.zMovement()
 	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
 }
 
 func (g *game) tickGameplayWorld() {
+	g.platTickedThisTic = false
+	g.beginWorldTic()
 	g.tickThinkers()
-	g.tickWorldLogic()
+	g.finishWorldTic()
 }
 
 func (g *game) tickThinkers() {
 	g.tickPlayerBody()
+	g.tickMonsters()
+	g.tickSectorLightEffects()
+	g.tickBossBrainSpecials()
+	g.tickProjectiles()
+	g.tickProjectileImpacts()
 	g.tickFloors()
 	g.tickPlats()
 	g.tickCeilings()
 	g.tickDoors()
-	if !g.isDead {
-		g.processThingPickups()
+	g.tickDeferredProjectiles()
+	g.tickHitscanPuffs()
+}
+
+type worldThinkerKind uint8
+
+const (
+	worldThinkerNone worldThinkerKind = iota
+	worldThinkerThing
+	worldThinkerFloor
+	worldThinkerPlat
+	worldThinkerCeiling
+	worldThinkerDoor
+)
+
+type worldThinkerRef struct {
+	kind  worldThinkerKind
+	key   int
+	order int64
+}
+
+func (g *game) runOrderedWorldThinkers() {
+	if g != nil && g.m != nil {
+		g.ensureMonsterAIState()
 	}
-	g.tickBossBrainSpecials()
-	g.tickProjectiles()
-	g.tickProjectileImpacts()
-	g.tickMonsters()
+	for lastOrder := int64(0); ; {
+		next, ok := g.nextWorldThinkerAfter(lastOrder)
+		if !ok {
+			return
+		}
+		g.tickWorldThinker(next)
+		lastOrder = next.order
+	}
+}
+
+func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
+	best := worldThinkerRef{}
+	found := false
+	consider := func(kind worldThinkerKind, key int, order int64) {
+		if order <= lastOrder {
+			return
+		}
+		if !found || order < best.order {
+			best = worldThinkerRef{kind: kind, key: key, order: order}
+			found = true
+		}
+	}
+
+	if g != nil && g.m != nil {
+		for i, th := range g.m.Things {
+			if !g.thingHasWorldThinker(i, th) {
+				continue
+			}
+			order := int64(i + 1)
+			if i >= 0 && i < len(g.thingThinkerOrder) && g.thingThinkerOrder[i] > 0 {
+				order = g.thingThinkerOrder[i]
+			}
+			consider(worldThinkerThing, i, order)
+		}
+	}
+	for sec, ft := range g.floors {
+		if ft == nil {
+			continue
+		}
+		consider(worldThinkerFloor, sec, ft.order)
+	}
+	for sec, pt := range g.plats {
+		if pt == nil {
+			continue
+		}
+		consider(worldThinkerPlat, sec, pt.order)
+	}
+	for sec, ct := range g.ceilings {
+		if ct == nil {
+			continue
+		}
+		consider(worldThinkerCeiling, sec, ct.order)
+	}
+	for sec, d := range g.doors {
+		if d == nil {
+			continue
+		}
+		consider(worldThinkerDoor, sec, d.order)
+	}
+	return best, found
+}
+
+func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if i < len(g.thingCollected) && g.thingCollected[i] {
+		return false
+	}
+	return isBarrelThingType(th.Type) || isMonster(th.Type)
+}
+
+func (g *game) tickWorldThinker(ref worldThinkerRef) {
+	switch ref.kind {
+	case worldThinkerThing:
+		if g == nil || g.m == nil || ref.key < 0 || ref.key >= len(g.m.Things) {
+			return
+		}
+		g.tickThingThinker(ref.key, g.m.Things[ref.key])
+	case worldThinkerFloor:
+		if ft := g.floors[ref.key]; ft != nil && ft.order == ref.order {
+			g.tickFloor(ref.key, ft)
+		}
+	case worldThinkerPlat:
+		if pt := g.plats[ref.key]; pt != nil && pt.order == ref.order {
+			g.platTickedThisTic = true
+			g.tickPlat(ref.key, pt)
+		}
+	case worldThinkerCeiling:
+		if ct := g.ceilings[ref.key]; ct != nil && ct.order == ref.order {
+			g.tickCeiling(ref.key, ct)
+		}
+	case worldThinkerDoor:
+		if d := g.doors[ref.key]; d != nil && d.order == ref.order {
+			g.tickDoor(ref.key, d)
+		}
+	}
 }
 
 func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
@@ -95,8 +223,16 @@ func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 	g.updatePlayer(cmd)
 	g.tickPlayerViewHeight()
 	g.tickPlayerSpecialSector()
+	if cmd.weaponSlot != 0 {
+		g.selectWeaponSlot(cmd.weaponSlot)
+	}
 	if usePressed {
-		g.handleUse()
+		if !g.useButtonDown {
+			g.handleUse()
+			g.useButtonDown = true
+		}
+	} else {
+		g.useButtonDown = false
 	}
 	g.tickWeaponFire()
 	g.tickPlayerCounters()
@@ -108,6 +244,20 @@ func (g *game) tickPlayerSpecialSector() {
 		return
 	}
 	g.trackSecrets()
+	if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				sec := g.playerSector()
+				special := int16(-1)
+				if g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
+					special = g.m.Sectors[sec].Special
+				}
+				fmt.Printf("world-player-debug tic=%d world=%d sec=%d special=%d suit=%d health=%d\n",
+					g.demoTick-1, g.worldTic, sec, special, g.inventory.RadSuitTics, g.stats.Health)
+			}
+		}
+	}
 	g.applySectorHazardDamage()
 }
 
@@ -115,6 +265,7 @@ func (g *game) tickPlayerCounters() {
 	if g == nil {
 		return
 	}
+	g.tickPlayerMobjState()
 	if g.p.reactionTime > 0 {
 		g.p.reactionTime--
 	}
@@ -132,109 +283,163 @@ func (g *game) tickPlayerCounters() {
 	}
 }
 
-func (g *game) tickDoors() {
-	setDoorCeiling := func(sec int, z int64) {
-		if sec < 0 || sec >= len(g.sectorCeil) {
-			return
-		}
-		if g.sectorCeil[sec] == z {
-			return
-		}
-		g.sectorCeil[sec] = z
-		g.markDynamicSectorPlaneCacheDirty(sec)
-		if sec >= 0 && sec < len(g.m.Sectors) {
-			g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
+func (g *game) setPlayerMobjState(state, tics int) {
+	if g == nil {
+		return
+	}
+	g.playerMobjState = state
+	g.playerMobjTics = tics
+}
+
+func (g *game) clearPlayerPainState() {
+	if g == nil {
+		return
+	}
+	if g.playerMobjState != doomStatePlayerPain1 && g.playerMobjState != doomStatePlayerPain2 {
+		return
+	}
+	g.playerMobjState = 0
+	g.playerMobjTics = 0
+}
+
+func (g *game) tickPlayerMobjState() {
+	if g == nil || g.playerMobjTics <= 0 {
+		return
+	}
+	g.playerMobjTics--
+	if g.playerMobjTics != 0 {
+		return
+	}
+	switch g.playerMobjState {
+	case doomStatePlayerPain1:
+		g.setPlayerMobjState(doomStatePlayerPain2, 4)
+		g.emitSoundEvent(soundEventPain)
+	case doomStatePlayerPain2:
+		g.setPlayerMobjState(0, 0)
+	case doomStatePlayerAttack2:
+		g.setPlayerMobjState(doomStatePlayerAttack1, 12)
+	case doomStatePlayerAttack1:
+		g.setPlayerMobjState(0, 0)
+	default:
+		g.setPlayerMobjState(0, 0)
+	}
+}
+
+func (g *game) setDoorCeiling(sec int, z int64) {
+	if wantSec := os.Getenv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
+		if wantTic := os.Getenv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
+			d := g.doors[sec]
+			fmt.Printf("door-debug phase=set tic=%d world=%d sec=%d old=%d new=%d dir=%d typ=%d speed=%d top=%d count=%d\n",
+				g.demoTick-1, g.worldTic, sec, g.sectorCeil[sec], z, d.direction, d.typ, d.speed, d.topHeight, d.topCountdown)
 		}
 	}
-	doorWouldCrushPlayer := func(sec int, nextCeil int64) bool {
-		if g == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
-			return false
-		}
-		oldCeil := g.sectorCeil[sec]
-		if nextCeil >= oldCeil {
-			return false
-		}
-		oldMapCeil := int16(0)
-		if g.m != nil && sec < len(g.m.Sectors) {
-			oldMapCeil = g.m.Sectors[sec].CeilingHeight
-			g.m.Sectors[sec].CeilingHeight = int16(nextCeil >> fracBits)
-		}
-		g.sectorCeil[sec] = nextCeil
-		tmfloor, tmceil, _, ok := g.checkPositionFor(g.p.x, g.p.y, false)
-		g.sectorCeil[sec] = oldCeil
-		if g.m != nil && sec < len(g.m.Sectors) {
-			g.m.Sectors[sec].CeilingHeight = oldMapCeil
-		}
-		if !ok {
-			return true
-		}
-		if tmceil-tmfloor < playerHeight {
-			return true
-		}
-		playerTop := g.p.z + playerHeight
-		return tmceil-g.p.z < playerHeight || tmceil < playerTop
+	g.setSectorCeilingHeight(sec, z)
+}
+
+func (g *game) doorWouldCrushPlayer(sec int, nextCeil int64) bool {
+	if g == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return false
 	}
-	for sec, d := range g.doors {
-		switch d.direction {
-		case 0:
-			d.topCountdown--
-			if d.topCountdown <= 0 {
-				switch d.typ {
-				case doorBlazeRaise, doorNormal:
-					d.direction = -1
-					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-				case doorClose30ThenOpen:
-					d.direction = 1
-					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-				}
-			}
-		case 2:
-			d.topCountdown--
-			if d.topCountdown <= 0 && d.typ == doorRaiseIn5Mins {
+	oldCeil := g.sectorCeil[sec]
+	if nextCeil >= oldCeil {
+		return false
+	}
+	oldMapCeil := int16(0)
+	if g.m != nil && sec < len(g.m.Sectors) {
+		oldMapCeil = g.m.Sectors[sec].CeilingHeight
+		g.m.Sectors[sec].CeilingHeight = int16(nextCeil >> fracBits)
+	}
+	g.sectorCeil[sec] = nextCeil
+	tmfloor, tmceil, _, ok := g.checkPositionFor(g.p.x, g.p.y, false)
+	g.sectorCeil[sec] = oldCeil
+	if g.m != nil && sec < len(g.m.Sectors) {
+		g.m.Sectors[sec].CeilingHeight = oldMapCeil
+	}
+	if !ok {
+		return true
+	}
+	if tmceil-tmfloor < playerHeight {
+		return true
+	}
+	playerTop := g.p.z + playerHeight
+	return tmceil-g.p.z < playerHeight || tmceil < playerTop
+}
+
+func (g *game) tickDoor(sec int, d *doorThinker) {
+	if d == nil {
+		return
+	}
+	if wantSec := os.Getenv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
+		if wantTic := os.Getenv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
+			fmt.Printf("door-debug phase=enter tic=%d world=%d sec=%d ceil=%d dir=%d typ=%d speed=%d top=%d count=%d floor=%d\n",
+				g.demoTick-1, g.worldTic, sec, g.sectorCeil[sec], d.direction, d.typ, d.speed, d.topHeight, d.topCountdown, g.sectorFloor[sec])
+		}
+	}
+	switch d.direction {
+	case 0:
+		d.topCountdown--
+		if d.topCountdown <= 0 {
+			switch d.typ {
+			case doorBlazeRaise, doorNormal:
+				d.direction = -1
+				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+			case doorClose30ThenOpen:
 				d.direction = 1
-				d.typ = doorNormal
 				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 			}
-		case -1:
-			next := g.sectorCeil[sec] - d.speed
-			if doorWouldCrushPlayer(sec, next) {
-				switch d.typ {
-				case doorBlazeClose, doorClose:
-					// Vanilla close-only doors keep trying to close, but do not
-					// advance through blocking actors.
-				default:
-					d.direction = 1
-					g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
-				}
-				continue
-			}
-			if next <= g.sectorFloor[sec] {
-				setDoorCeiling(sec, g.sectorFloor[sec])
-				switch d.typ {
-				case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
-					delete(g.doors, sec)
-				case doorClose30ThenOpen:
-					d.direction = 0
-					d.topCountdown = 35 * 30
-				}
-			} else {
-				setDoorCeiling(sec, next)
-			}
-		case 1:
-			next := g.sectorCeil[sec] + d.speed
-			if next >= d.topHeight {
-				setDoorCeiling(sec, d.topHeight)
-				switch d.typ {
-				case doorBlazeRaise, doorNormal:
-					d.direction = 0
-					d.topCountdown = d.topWait
-				case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
-					delete(g.doors, sec)
-				}
-			} else {
-				setDoorCeiling(sec, next)
-			}
 		}
+	case 2:
+		d.topCountdown--
+		if d.topCountdown <= 0 && d.typ == doorRaiseIn5Mins {
+			d.direction = 1
+			d.typ = doorNormal
+			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+		}
+	case -1:
+		next := g.sectorCeil[sec] - d.speed
+		if g.doorWouldCrushPlayer(sec, next) {
+			switch d.typ {
+			case doorBlazeClose, doorClose:
+				// Vanilla close-only doors keep trying to close, but do not
+				// advance through blocking actors.
+			default:
+				d.direction = 1
+				g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+			}
+			return
+		}
+		if next < g.sectorFloor[sec] {
+			g.setDoorCeiling(sec, g.sectorFloor[sec])
+			switch d.typ {
+			case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
+				delete(g.doors, sec)
+			case doorClose30ThenOpen:
+				d.direction = 0
+				d.topCountdown = 35 * 30
+			}
+		} else {
+			g.setDoorCeiling(sec, next)
+		}
+	case 1:
+		next := g.sectorCeil[sec] + d.speed
+		if next > d.topHeight {
+			g.setDoorCeiling(sec, d.topHeight)
+			switch d.typ {
+			case doorBlazeRaise, doorNormal:
+				d.direction = 0
+				d.topCountdown = d.topWait
+			case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
+				delete(g.doors, sec)
+			}
+		} else {
+			g.setDoorCeiling(sec, next)
+		}
+	}
+}
+
+func (g *game) tickDoors() {
+	for sec, d := range g.doors {
+		g.tickDoor(sec, d)
 	}
 }
 
@@ -316,6 +521,7 @@ func (g *game) tryMove(x, y int64) bool {
 	g.p.ceilz = tmceil
 	g.p.x = x
 	g.p.y = y
+	g.refreshPlayerSubsectorCache(x, y)
 	return true
 }
 
@@ -371,28 +577,58 @@ func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int6
 }
 
 func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool) (int64, int64, int64, bool) {
+	if moverThingIdx >= 0 {
+		if moverThingIdx >= len(g.thingProbeSpecialLines) {
+			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
+		}
+		g.thingProbeSpecialLines[moverThingIdx] = g.thingProbeSpecialLines[moverThingIdx][:0]
+	}
 	tmboxTop := y + radius
 	tmboxBottom := y - radius
 	tmboxRight := x + radius
 	tmboxLeft := x - radius
 	probeEnabled := g.debugPlayerProbeActive()
+	monsterProbeEnabled := false
+	if moverIsMonster {
+		if want := os.Getenv("GD_DEBUG_MONSTER_PROBE"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if wantIdx == moverThingIdx && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+					monsterProbeEnabled = true
+				}
+			}
+		}
+	}
+	debugProbe := probeEnabled || monsterProbeEnabled
+	debugProbef := func(format string, args ...any) {
+		if !debugProbe {
+			return
+		}
+		msg := fmt.Sprintf(format, args...)
+		if monsterProbeEnabled && !probeEnabled {
+			fmt.Printf("monster-probe-debug tic=%d world=%d idx=%d msg=%s pos=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, moverThingIdx, msg, x, y)
+			return
+		}
+		g.debugPlayerProbe(msg, x, y)
+	}
 
 	sec := g.sectorAt(x, y)
 	if sec < 0 || sec >= len(g.m.Sectors) {
-		if probeEnabled {
-			g.debugPlayerProbe(fmt.Sprintf("sector invalid sec=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+		if debugProbe {
+			debugProbef("sector invalid sec=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 		}
 		return 0, 0, 0, false
 	}
 	tmfloor := g.sectorFloor[sec]
 	tmceil := g.sectorCeil[sec]
 	tmdrop := tmfloor
-	if probeEnabled {
-		g.debugPlayerProbe(fmt.Sprintf("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft), x, y)
+	if debugProbe {
+		debugProbef("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 	}
 
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
-		g.debugPlayerProbe("blocked by thing", x, y)
+		debugProbef("blocked by thing")
 		return 0, 0, 0, false
 	}
 
@@ -430,38 +666,47 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if ld.sideNum1 >= 0 && int(ld.sideNum1) < len(g.m.Sidedefs) {
 			backSec = int(g.m.Sidedefs[int(ld.sideNum1)].Sector)
 		}
-		if probeEnabled {
-			g.debugPlayerProbe(fmt.Sprintf("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3]), x, y)
+		if debugProbe {
+			debugProbef("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3])
+		}
+		if want := os.Getenv("GD_DEBUG_MONSTER_PROBE_LINES"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if moverThingIdx == wantIdx && (g.demoTick-1 == wantTic || g.worldTic == wantTic) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+					fmt.Printf("monster-probe-lines-debug tic=%d world=%d idx=%d line=%d special=%d front=%d back=%d\n",
+						g.demoTick-1, g.worldTic, moverThingIdx, ld.idx, g.lineSpecial[ld.idx], frontSec, backSec)
+				}
+			}
 		}
 
 		if ld.sideNum1 < 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if debugProbe {
+				debugProbef("block line=%d reason=onesided floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop)
 			}
 			return false
 		}
 		if (ld.flags & mlBlocking) != 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blocking floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if debugProbe {
+				debugProbef("block line=%d reason=blocking floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop)
 			}
 			return false
 		}
 		if blockMonsterLines && (ld.flags&mlBlockMonsters) != 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=blockmonsters floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop), x, y)
+			if debugProbe {
+				debugProbef("block line=%d reason=blockmonsters floor=%d ceil=%d drop=%d", ld.idx, tmfloor, tmceil, tmdrop)
 			}
 			return false
 		}
 
 		opentop, openbottom, lowfloor, openrange := g.lineOpening(ld)
-		if openrange <= 0 {
-			if probeEnabled {
-				g.debugPlayerProbe(fmt.Sprintf("block line=%d reason=openrange floor=%d ceil=%d drop=%d openbottom=%d opentop=%d", ld.idx, tmfloor, tmceil, tmdrop, openbottom, opentop), x, y)
+		if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
+			if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+				fmt.Printf("support-debug phase=line tic=%d world=%d idx=%d line=%d sec=%d front=%d back=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d tmfloor=%d tmceil=%d\n",
+					g.demoTick-1, g.worldTic, moverThingIdx, ld.idx, sec, frontSec, backSec, openbottom, opentop, openrange, lowfloor, tmfloor, tmceil)
 			}
-			return false
 		}
-		if probeEnabled {
-			g.debugPlayerProbe(fmt.Sprintf("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor), x, y)
+		if debugProbe {
+			debugProbef("open line=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d", ld.idx, openbottom, opentop, openrange, lowfloor)
 		}
 		if opentop < tmceil {
 			tmceil = opentop
@@ -471,6 +716,9 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 		if lowfloor < tmdrop {
 			tmdrop = lowfloor
+		}
+		if moverThingIdx >= 0 && moverThingIdx < len(g.thingProbeSpecialLines) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+			g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
 		}
 		return true
 	}
@@ -484,8 +732,8 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
 		for bx := xl; bx <= xh; bx++ {
 			for by := yl; by <= yh; by++ {
-				if probeEnabled {
-					g.debugPlayerProbe(fmt.Sprintf("scan block bx=%d by=%d", bx, by), x, y)
+				if debugProbe {
+					debugProbef("scan block bx=%d by=%d", bx, by)
 				}
 				if !g.blockLinesIterator(bx, by, iter) {
 					return 0, 0, 0, false
@@ -499,10 +747,23 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 			}
 		}
 	}
-	if probeEnabled {
-		g.debugPlayerProbe(fmt.Sprintf("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop), x, y)
+	if debugProbe {
+		debugProbef("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop)
+	}
+	if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
+		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+			fmt.Printf("support-debug phase=final tic=%d world=%d idx=%d x=%d y=%d sec=%d tmfloor=%d tmceil=%d tmdrop=%d ok=true radius=%d\n",
+				g.demoTick-1, g.worldTic, moverThingIdx, x, y, sec, tmfloor, tmceil, tmdrop, radius)
+		}
 	}
 	return tmfloor, tmceil, tmdrop, true
+}
+
+func (g *game) probeSpecialLinesForMover(idx int) []int {
+	if g == nil || idx < 0 || idx >= len(g.thingProbeSpecialLines) || len(g.thingProbeSpecialLines[idx]) == 0 {
+		return nil
+	}
+	return g.thingProbeSpecialLines[idx]
 }
 
 func (g *game) debugPlayerProbeActive() bool {
@@ -544,17 +805,48 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		if i == moverThingIdx {
 			return false
 		}
+		if i < len(g.thingCollected) && g.thingCollected[i] {
+			return false
+		}
+		if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
+			phase := 0
+			if i < len(g.thingStatePhase) {
+				phase = g.thingStatePhase[i]
+			}
+			if monsterCorpseBlocksMovement(th.Type, phase) {
+				tx, ty := g.thingPosFixed(i, th)
+				r := g.thingCurrentRadius(i, th)
+				if actorsOverlapXY(x, y, radius, tx, ty, r) {
+					if probeEnabled {
+						g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=corpse phase=%d", i, th.Type, tx, ty, r, phase), x, y)
+					}
+					return true
+				}
+			}
+			return false
+		}
 		if !g.thingBlocksInSession(i) {
 			return false
 		}
+		if probeEnabled {
+			tx, ty := g.thingPosFixed(i, th)
+			dx := abs(tx - x)
+			dy := abs(ty - y)
+			if dx < 64*fracUnit && dy < 64*fracUnit {
+				g.debugPlayerProbe(fmt.Sprintf("near thing=%d type=%d pos=(%d,%d) dx=%d dy=%d hp=%d collected=%t", i, th.Type, tx, ty, dx, dy, func() int {
+					if i < len(g.thingHP) {
+						return g.thingHP[i]
+					}
+					return 0
+				}(), i < len(g.thingCollected) && g.thingCollected[i]), x, y)
+			}
+		}
 		tx, ty := g.thingPosFixed(i, th)
 		if isMonster(th.Type) {
-			if i < 0 || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
-				return false
-			}
-			if actorsOverlapXY(x, y, radius, tx, ty, monsterRadius(th.Type)) {
+			r := g.thingCurrentRadius(i, th)
+			if actorsOverlapXY(x, y, radius, tx, ty, r) {
 				if probeEnabled {
-					g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, monsterRadius(th.Type)), x, y)
+					g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=monster", i, th.Type, tx, ty, r), x, y)
 				}
 				return true
 			}
@@ -563,35 +855,11 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 			return false
 		}
 		tx, ty = g.thingPosFixed(i, th)
-		if actorsOverlapXY(x, y, radius, tx, ty, thingTypeRadius(th.Type)) {
+		if actorsOverlapXY(x, y, radius, tx, ty, g.thingCurrentRadius(i, th)) {
 			if probeEnabled {
 				g.debugPlayerProbe(fmt.Sprintf("block thing=%d type=%d pos=(%d,%d) radius=%d kind=solid", i, th.Type, tx, ty, thingTypeRadius(th.Type)), x, y)
 			}
 			return true
-		}
-		return false
-	}
-
-	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
-		left := int((x - radius - g.bmapOriginX - doomMaxThingRadius) >> (fracBits + 7))
-		right := int((x + radius - g.bmapOriginX + doomMaxThingRadius) >> (fracBits + 7))
-		bottom := int((y - radius - g.bmapOriginY - doomMaxThingRadius) >> (fracBits + 7))
-		top := int((y + radius - g.bmapOriginY + doomMaxThingRadius) >> (fracBits + 7))
-		if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
-			g.rebuildThingBlockmap()
-		}
-		for by := bottom; by <= top; by++ {
-			for bx := left; bx <= right; bx++ {
-				if bx < 0 || by < 0 || bx >= g.bmapWidth || by >= g.bmapHeight {
-					continue
-				}
-				cell := by*g.bmapWidth + bx
-				for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
-					if visitThing(i) {
-						return true
-					}
-				}
-			}
 		}
 		return false
 	}
@@ -655,6 +923,23 @@ func thingTypeBlocksActorMovement(typ int16, moverIsMonster bool) bool {
 	return false
 }
 
+func monsterCorpseBlocksMovement(typ int16, phase int) bool {
+	fallPhase := -1
+	switch typ {
+	case 3004, 9:
+		fallPhase = 2
+	case 3001, 3002, 58, 3006:
+		fallPhase = 3
+	case 3005, 3003, 69:
+		fallPhase = 4
+	case 7:
+		fallPhase = 2
+	case 16:
+		fallPhase = 6
+	}
+	return fallPhase >= 0 && phase < fallPhase
+}
+
 func thingTypeRadius(typ int16) int64 {
 	if info, ok := demoTraceThingInfoForType(typ); ok && info.radius > 0 {
 		return info.radius
@@ -671,12 +956,7 @@ func (g *game) blockLinesIterator(x, y int, fn func(int) bool) bool {
 		return true
 	}
 	cell := g.m.BlockMap.Cells[idx]
-	start := 0
-	// Doom blocklists carry a leading 0 sentinel before linedef numbers.
-	if len(cell) > 0 && cell[0] == 0 {
-		start = 1
-	}
-	for _, lineWord := range cell[start:] {
+	for _, lineWord := range cell {
 		if !fn(int(lineWord)) {
 			return false
 		}
@@ -734,7 +1014,7 @@ func (g *game) boxOnLineSide(box [4]int64, ld physLine) int {
 }
 
 func (g *game) pointOnLineSide(x, y int64, line physLine) int {
-	return pointOnDivlineSide(x, y, divline{x: line.x1, y: line.y1, dx: line.dx, dy: line.dy})
+	return pointOnLineSide(x, y, line.x1, line.y1, line.dx, line.dy)
 }
 
 func (g *game) slideMove() {
@@ -781,7 +1061,11 @@ func (g *game) slideMove() {
 			}
 			return
 		}
-		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d bestFrac=%d", bestLine, bestFrac), g.p.x, g.p.y)
+		bestLineIdx := bestLine
+		if bestLine >= 0 && bestLine < len(g.lines) {
+			bestLineIdx = g.lines[bestLine].idx
+		}
+		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d lineIdx=%d bestFrac=%d", bestLine, bestLineIdx, bestFrac), g.p.x, g.p.y)
 
 		bestFracFixed := bestFrac
 		bestFracFixed -= 0x800
@@ -832,34 +1116,143 @@ func (g *game) debugPlayerMove(msg string, x, y int64) {
 func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 	intercepts := make([]slideIntercept, 0, 16)
 	trace := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
-	for i, ld := range g.lines {
-		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
-		if doomPointOnDivlineSide(ld.x1, ld.y1, trace) == doomPointOnDivlineSide(ld.x2, ld.y2, trace) {
-			continue
+	debug := os.Getenv("GD_DEBUG_SLIDE_CANDIDATES_TIC")
+	debugOn := debug == fmt.Sprint(g.demoTick-1) || debug == fmt.Sprint(g.worldTic)
+	appendLine := func(physIdx int) {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return
 		}
-		if doomPointOnDivlineSide(x1, y1, lineDL) == doomPointOnDivlineSide(x2, y2, lineDL) {
-			continue
+		if len(g.lineValid) < len(g.lines) {
+			g.lineValid = append(g.lineValid, make([]int, len(g.lines)-len(g.lineValid))...)
+		}
+		if g.lineValid[physIdx] == g.validCount {
+			return
+		}
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		s1, s2 := 0, 0
+		if trace.dx > 16*fracUnit || trace.dy > 16*fracUnit || trace.dx < -16*fracUnit || trace.dy < -16*fracUnit {
+			s1 = doomPointOnDivlineSide(ld.x1, ld.y1, trace)
+			s2 = doomPointOnDivlineSide(ld.x2, ld.y2, trace)
+		} else {
+			s1 = g.pointOnLineSide(trace.x, trace.y, ld)
+			s2 = g.pointOnLineSide(trace.x+trace.dx, trace.y+trace.dy, ld)
+		}
+		if s1 == s2 {
+			return
 		}
 		frac := interceptVector(trace, lineDL)
 		if frac < 0 || frac > fracUnit {
-			continue
+			return
 		}
-		intercepts = append(intercepts, slideIntercept{frac: frac, line: i})
+		if debugOn && (ld.idx == 0 || ld.idx == 245 || ld.idx == 250 || ld.idx == 252 || ld.idx == 253 || ld.idx == 271) {
+			fmt.Printf("slide-candidate-debug tic=%d world=%d line=%d frac=%d from=(%d,%d) to=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, ld.idx, frac, x1, y1, x2, y2)
+		}
+		intercepts = append(intercepts, slideIntercept{frac: frac, line: physIdx, ord: len(intercepts)})
 	}
-	slices.SortFunc(intercepts, func(a, b slideIntercept) int {
+	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		const (
+			mapBlockShift = fracBits + 7
+			mapBToFrac    = 7
+		)
+		sx, sy, ex, ey := x1, y1, x2, y2
+		if ((sx - g.bmapOriginX) & ((1 << mapBlockShift) - 1)) == 0 {
+			sx += fracUnit
+		}
+		if ((sy - g.bmapOriginY) & ((1 << mapBlockShift) - 1)) == 0 {
+			sy += fracUnit
+		}
+		rx1 := sx - g.bmapOriginX
+		ry1 := sy - g.bmapOriginY
+		rx2 := ex - g.bmapOriginX
+		ry2 := ey - g.bmapOriginY
+		xt1 := int(rx1 >> mapBlockShift)
+		yt1 := int(ry1 >> mapBlockShift)
+		xt2 := int(rx2 >> mapBlockShift)
+		yt2 := int(ry2 >> mapBlockShift)
+		mapxstep, mapystep := 0, 0
+		xstep, ystep := int64(256*fracUnit), int64(256*fracUnit)
+		partial := int64(fracUnit)
+		if xt2 > xt1 {
+			mapxstep = 1
+			partial = fracUnit - ((rx1 >> mapBToFrac) & (fracUnit - 1))
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		} else if xt2 < xt1 {
+			mapxstep = -1
+			partial = (rx1 >> mapBToFrac) & (fracUnit - 1)
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		}
+		yintercept := (ry1 >> mapBToFrac) + fixedMul(partial, ystep)
+		if yt2 > yt1 {
+			mapystep = 1
+			partial = fracUnit - ((ry1 >> mapBToFrac) & (fracUnit - 1))
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		} else if yt2 < yt1 {
+			mapystep = -1
+			partial = (ry1 >> mapBToFrac) & (fracUnit - 1)
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		}
+		xintercept := (rx1 >> mapBToFrac) + fixedMul(partial, xstep)
+		mapx, mapy := xt1, yt1
+		g.validCount++
+		for count := 0; count < 64; count++ {
+			_ = g.blockLinesIterator(mapx, mapy, func(lineIdx int) bool {
+				if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+					return true
+				}
+				appendLine(g.physForLine[lineIdx])
+				return true
+			})
+			if mapx == xt2 && mapy == yt2 {
+				break
+			}
+			if (yintercept >> fracBits) == int64(mapy) {
+				yintercept += ystep
+				mapx += mapxstep
+			} else if (xintercept >> fracBits) == int64(mapx) {
+				xintercept += xstep
+				mapy += mapystep
+			}
+		}
+	} else {
+		g.validCount++
+		for i := range g.lines {
+			appendLine(i)
+		}
+	}
+	slices.SortStableFunc(intercepts, func(a, b slideIntercept) int {
 		if a.frac < b.frac {
 			return -1
 		}
 		if a.frac > b.frac {
 			return 1
 		}
+		if a.ord < b.ord {
+			return -1
+		}
+		if a.ord > b.ord {
+			return 1
+		}
 		return 0
 	})
+	if debugOn {
+		limit := 8
+		if len(intercepts) < limit {
+			limit = len(intercepts)
+		}
+		for i := 0; i < limit; i++ {
+			ld := g.lines[intercepts[i].line]
+			fmt.Printf("slide-candidate-sorted tic=%d world=%d ord=%d line=%d frac=%d flags=0x%04x sides=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, i, ld.idx, intercepts[i].frac, ld.flags, ld.sideNum0, ld.sideNum1)
+		}
+	}
 
 	for _, it := range intercepts {
 		ld := g.lines[it.line]
 		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
-			if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
+			if doomPointOnDivlineSide(g.p.x, g.p.y, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}) == 1 {
 				continue
 			}
 			return it.frac, it.line, true
@@ -889,7 +1282,7 @@ func (g *game) hitSlideLine(ld physLine, tmxmove, tmymove int64) (int64, int64) 
 		return 0, 0
 	}
 	lineAngle := vectorToAngle(ld.dx, ld.dy)
-	if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
+	if doomPointOnDivlineSide(g.p.x, g.p.y, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}) == 1 {
 		lineAngle += statusAng180
 	}
 	moveAngle := vectorToAngle(tmxmove, tmymove)
@@ -958,4 +1351,45 @@ func (g *game) sectorAt(x, y int64) int {
 		side := pointOnDivlineSide(x, y, dl)
 		child = n.ChildID[side]
 	}
+}
+
+func (g *game) refreshPlayerSubsectorCache(x, y int64) {
+	if g == nil || g.m == nil {
+		return
+	}
+	ss := -1
+	if len(g.m.SubSectors) > 0 {
+		ss = g.subSectorAtFixed(x, y)
+	}
+	sec := -1
+	if ss >= 0 {
+		sec = g.sectorForSubSector(ss)
+	}
+	if sec < 0 {
+		sec = g.sectorAt(x, y)
+	}
+	g.p.subsector = ss
+	g.p.sector = sec
+}
+
+func (g *game) playerSector() int {
+	if g == nil || g.m == nil {
+		return -1
+	}
+	if g.p.sector >= 0 && g.p.sector < len(g.m.Sectors) {
+		return g.p.sector
+	}
+	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
+	return g.p.sector
+}
+
+func (g *game) playerSubsector() int {
+	if g == nil || g.m == nil {
+		return -1
+	}
+	if g.p.subsector >= 0 && g.p.subsector < len(g.m.SubSectors) {
+		return g.p.subsector
+	}
+	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
+	return g.p.subsector
 }

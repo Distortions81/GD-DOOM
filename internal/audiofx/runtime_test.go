@@ -38,6 +38,29 @@ func TestResampleMonoS16LinearIntoReusesBuffer(t *testing.T) {
 	}
 }
 
+func TestResampleMonoS16LinearQuantizedInto_ReusesBuffer(t *testing.T) {
+	src := []int16{-32768, 0, 32512}
+	dst := make([]int16, 0, 16)
+	allocs := testing.AllocsPerRun(1000, func() {
+		out := resampleMonoS16LinearQuantizedInto(dst[:0], src, 11025, 44100)
+		if len(out) != 12 {
+			t.Fatalf("len=%d want=12", len(out))
+		}
+		if out[0] != src[0] {
+			t.Fatalf("first=%d want=%d", out[0], src[0])
+		}
+		if out[1] == src[0] || out[1] == src[1] {
+			t.Fatalf("expected interpolated quantized sample, got %d", out[1])
+		}
+		if out[len(out)-1] != src[len(src)-1] {
+			t.Fatalf("last=%d want=%d", out[len(out)-1], src[len(src)-1])
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("allocs=%v want 0", allocs)
+	}
+}
+
 func TestResampleMonoS16PolyphaseIntoReusesBuffer(t *testing.T) {
 	src := []int16{-32768, 0, 32512}
 	dst := make([]int16, 0, 16)

@@ -58,6 +58,7 @@ func (g *game) grantIDFA() {
 	g.stats.Cells = maxCells
 	if g.stats.Health < 100 {
 		g.stats.Health = 100
+		g.syncPlayerMobjHealth()
 	}
 	if g.stats.Armor < 200 {
 		g.stats.Armor = 200

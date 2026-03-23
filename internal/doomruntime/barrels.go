@@ -1,8 +1,10 @@
 package doomruntime
 
 import (
+	"fmt"
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"os"
 )
 
 const (
@@ -24,7 +26,7 @@ var (
 )
 
 func isBarrelThingType(typ int16) bool {
-	return typ == barrelThingType
+	return typ == barrelThingType || typ == 30
 }
 
 func thingTypeIsShootable(typ int16) bool {
@@ -46,16 +48,38 @@ func shootableThingSpawnHealth(typ int16) int {
 }
 
 func (g *game) thingCurrentHeight(i int, th mapdata.Thing) int64 {
+	if g != nil && i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return 0
+	}
 	if info, ok := demoTraceThingInfoForType(th.Type); ok && info.height > 0 {
 		if isBarrelThingType(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			return info.height >> 2
+		}
+		if isMonster(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] && monsterLeavesCorpse(th.Type) {
 			return info.height >> 2
 		}
 		return info.height
 	}
 	if isMonster(th.Type) {
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && monsterLeavesCorpse(th.Type) {
+			return monsterHeight(th.Type) >> 2
+		}
 		return monsterHeight(th.Type)
 	}
 	return 16 * fracUnit
+}
+
+func (g *game) thingCurrentRadius(i int, th mapdata.Thing) int64 {
+	if g != nil && i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return 0
+	}
+	if info, ok := demoTraceThingInfoForType(th.Type); ok && info.radius > 0 {
+		return info.radius
+	}
+	if isMonster(th.Type) {
+		return monsterRadius(th.Type)
+	}
+	return 20 * fracUnit
 }
 
 func barrelRandomizedDeathStartTics() int {
@@ -74,6 +98,33 @@ func barrelTotalDeathTics(firstTics int) int {
 	return total
 }
 
+func (g *game) debugRadiusAttackEnabled(sx, sy int64) bool {
+	if g == nil {
+		return false
+	}
+	want := os.Getenv("GD_DEBUG_RADIUS_TIC")
+	if want == "" {
+		return false
+	}
+	var tic int
+	if _, err := fmt.Sscanf(want, "%d", &tic); err != nil {
+		return false
+	}
+	if g.demoTick-1 != tic && g.worldTic != tic {
+		return false
+	}
+	if pos := os.Getenv("GD_DEBUG_RADIUS_POS"); pos != "" {
+		var wantX, wantY int64
+		if _, err := fmt.Sscanf(pos, "%d,%d", &wantX, &wantY); err != nil {
+			return false
+		}
+		if sx != wantX || sy != wantY {
+			return false
+		}
+	}
+	return true
+}
+
 func (g *game) tickBarrel(i int, th mapdata.Thing) {
 	if g == nil || i < 0 || g.m == nil || i >= len(g.m.Things) {
 		return
@@ -81,6 +132,7 @@ func (g *game) tickBarrel(i int, th mapdata.Thing) {
 	if i < len(g.thingCollected) && g.thingCollected[i] {
 		return
 	}
+	g.tickMonsterMomentum(i, th)
 	if i < len(g.thingDead) && g.thingDead[i] {
 		g.tickBarrelDeathState(i, th)
 		return
@@ -149,23 +201,34 @@ func (g *game) tickBarrelDeathState(i int, th mapdata.Thing) {
 }
 
 func (g *game) damageShootableThing(thingIdx int, damage int) {
-	g.damageShootableThingFrom(thingIdx, damage, true, -1)
+	g.damageShootableThingFrom(thingIdx, damage, true, -1, 0, 0, false)
 }
 
-func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int) {
+func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
+	}
+	if want := os.Getenv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && os.Getenv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
+		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
+			rnd, prnd := doomrand.State()
+			fmt.Printf("barrel-damage-debug tic=%d world=%d idx=%d type=%d damage=%d hp_before=%d source_player=%t source_thing=%d rnd=%d prnd=%d\n",
+				g.demoTick-1, g.worldTic, thingIdx, g.m.Things[thingIdx].Type, damage, g.thingHP[thingIdx], sourcePlayer, sourceThing, rnd, prnd)
+		}
 	}
 	typ := g.m.Things[thingIdx].Type
 	switch {
 	case isMonster(typ):
-		g.damageMonsterFrom(thingIdx, damage, sourcePlayer, sourceThing)
+		g.damageMonsterFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	case isBarrelThingType(typ):
-		g.damageBarrel(thingIdx, damage)
+		g.damageBarrelFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	}
 }
 
 func (g *game) damageBarrel(thingIdx int, damage int) {
+	g.damageBarrelFrom(thingIdx, damage, true, -1, 0, 0, false)
+}
+
+func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -175,15 +238,38 @@ func (g *game) damageBarrel(thingIdx int, damage int) {
 	if g.thingDead[thingIdx] || g.thingHP[thingIdx] <= 0 {
 		return
 	}
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if g.thingHP[thingIdx] > 0 {
+		_ = doomrand.PRandom()
+		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
+			g.thingReactionTics[thingIdx] = 0
+		}
+		g.maybeRetargetMonsterAfterDamage(thingIdx, g.m.Things[thingIdx].Type, sourcePlayer, sourceThing)
 		return
 	}
-	g.thingHP[thingIdx] = 0
 	g.thingDead[thingIdx] = true
 	g.thingState[thingIdx] = monsterStateDeath
 	g.thingStatePhase[thingIdx] = 0
+	if want := os.Getenv("GD_DEBUG_BARREL_KILL_TIC"); want != "" {
+		var tic int
+		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
+			rnd, prnd := doomrand.State()
+			x, y := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+			fmt.Printf("gd-barrel-kill-debug tic=%d world=%d idx=%d pos=(%d,%d) tics_before=%d prnd_before=%d rnd_before=%d\n",
+				g.demoTick-1, g.worldTic, thingIdx, x, y, g.thingStateTics[thingIdx], prnd, rnd)
+		}
+	}
 	g.thingStateTics[thingIdx] = barrelRandomizedDeathStartTics()
+	if want := os.Getenv("GD_DEBUG_BARREL_KILL_TIC"); want != "" {
+		var tic int
+		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
+			rnd, prnd := doomrand.State()
+			x, y := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+			fmt.Printf("gd-barrel-kill-debug tic=%d world=%d idx=%d pos=(%d,%d) tics_after=%d prnd_after=%d rnd_after=%d\n",
+				g.demoTick-1, g.worldTic, thingIdx, x, y, g.thingStateTics[thingIdx], prnd, rnd)
+		}
+	}
 	g.thingDeathTics[thingIdx] = barrelTotalDeathTics(g.thingStateTics[thingIdx])
 }
 
@@ -195,16 +281,38 @@ func (g *game) radiusAttackFromThing(spotIdx int, damage int) {
 	sx, sy := g.thingPosFixed(spotIdx, spot)
 	sz, _, _ := g.thingSupportState(spotIdx, spot)
 	sheight := g.thingCurrentHeight(spotIdx, spot)
-	g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion")
+	sourcePlayer := false
+	sourceThing := -1
+	if spotIdx >= 0 && spotIdx < len(g.thingTargetPlayer) && g.thingTargetPlayer[spotIdx] {
+		sourcePlayer = true
+	} else if spotIdx >= 0 && spotIdx < len(g.thingTargetIdx) {
+		sourceThing = g.thingTargetIdx[spotIdx]
+	}
+	g.radiusAttackAt(sx, sy, sz, sheight, spotIdx, damage, "Explosion", sourcePlayer, sourceThing)
 }
 
-func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage int, msg string) {
+func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage int, msg string, sourcePlayer bool, sourceThing int) {
 	if g == nil || damage <= 0 {
 		return
 	}
+	debugRadius := g.debugRadiusAttackEnabled(sx, sy)
+	debugVisit := 0
 	dist := int64(damage)*fracUnit + doomMaxThingRadius
+	if g.m == nil {
+		return
+	}
 
+	seen := make([]bool, len(g.m.Things))
+	playerSeen := false
+	playerCell := -1
 	if !g.isDead && playerHeight > 0 {
+		playerCell = g.thingBlockmapCellFor(g.p.x, g.p.y)
+	}
+	visitPlayer := func() {
+		if playerSeen || g.isDead || playerHeight <= 0 || g.stats.Health <= 0 {
+			return
+		}
+		playerSeen = true
 		dx := abs(g.p.x - sx)
 		dy := abs(g.p.y - sy)
 		playerDist := dx
@@ -215,16 +323,31 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		if playerDist < 0 {
 			playerDist = 0
 		}
-		if playerDist < int64(damage) && g.actorHasLOS(g.p.x, g.p.y, g.p.z, playerHeight, sx, sy, sz, sheight) {
-			g.damagePlayerFrom(damage-int(playerDist), msg, sx, sy, true)
+		hasLOS := false
+		damageToPlayer := 0
+		if playerDist < int64(damage) {
+			hasLOS = g.actorHasLOS(g.p.x, g.p.y, g.p.z, playerHeight, sx, sy, sz, sheight)
+			if hasLOS {
+				damageToPlayer = damage - int(playerDist)
+			}
+		}
+		if debugRadius {
+			rndBefore, prndBefore := doomrand.State()
+			fmt.Printf("gd-radius-debug tic=%d world=%d visit=%d player dist=%d damage=%d los=%t health=%d armor=%d prnd_before=%d rnd_before=%d\n",
+				g.demoTick-1, g.worldTic, debugVisit, playerDist, damageToPlayer, hasLOS,
+				g.stats.Health, g.stats.Armor, prndBefore, rndBefore)
+		}
+		debugVisit++
+		if damageToPlayer <= 0 {
+			return
+		}
+		g.damagePlayerFrom(damageToPlayer, msg, sx, sy, true)
+		if debugRadius {
+			rndAfter, prndAfter := doomrand.State()
+			fmt.Printf("gd-radius-debug tic=%d world=%d player health_after=%d armor_after=%d prnd_after=%d rnd_after=%d\n",
+				g.demoTick-1, g.worldTic, g.stats.Health, g.stats.Armor, prndAfter, rndAfter)
 		}
 	}
-
-	if g.m == nil {
-		return
-	}
-
-	seen := make([]bool, len(g.m.Things))
 	visitThing := func(i int) {
 		if i < 0 || i >= len(g.m.Things) || seen[i] || i == ignoreThing {
 			return
@@ -260,18 +383,46 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		}
 		tz, _, _ := g.thingSupportState(i, th)
 		theight := g.thingCurrentHeight(i, th)
-		if !g.actorHasLOS(tx, ty, tz, theight, sx, sy, sz, sheight) {
+		hasLOS := g.actorHasLOS(tx, ty, tz, theight, sx, sy, sz, sheight)
+		if debugRadius {
+			rndBefore, prndBefore := doomrand.State()
+			fmt.Printf("gd-radius-debug tic=%d world=%d visit=%d idx=%d type=%d pos=(%d,%d,%d) dist=%d los=%t hp_before=%d state=%d tics=%d prnd_before=%d rnd_before=%d\n",
+				g.demoTick-1, g.worldTic, debugVisit, i, th.Type, tx, ty, tz, tdist, hasLOS,
+				g.thingHP[i], func() monsterThinkState {
+					if i < len(g.thingState) {
+						return g.thingState[i]
+					}
+					return 0
+				}(), func() int {
+					if i < len(g.thingStateTics) {
+						return g.thingStateTics[i]
+					}
+					return 0
+				}(), prndBefore, rndBefore)
+		}
+		debugVisit++
+		if !hasLOS {
 			return
 		}
-		g.damageShootableThing(i, damage-int(tdist))
+		rndBefore, prndBefore := doomrand.State()
+		g.damageShootableThingFrom(i, damage-int(tdist), sourcePlayer, sourceThing, sx, sy, true)
+		if debugRadius {
+			rndAfter, prndAfter := doomrand.State()
+			fmt.Printf("gd-radius-debug tic=%d world=%d idx=%d hp_after=%d dead=%t prnd_after=%d rnd_after=%d\n",
+				g.demoTick-1, g.worldTic, i, g.thingHP[i],
+				i < len(g.thingDead) && g.thingDead[i], prndAfter, rndAfter)
+			_ = rndBefore
+			_ = prndBefore
+		}
 	}
 
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		seen := make(map[int]struct{})
 		left := int((sx - dist - g.bmapOriginX) >> (fracBits + 7))
 		right := int((sx + dist - g.bmapOriginX) >> (fracBits + 7))
 		bottom := int((sy - dist - g.bmapOriginY) >> (fracBits + 7))
 		top := int((sy + dist - g.bmapOriginY) >> (fracBits + 7))
-		if len(g.thingBlockLinks) != g.bmapWidth*g.bmapHeight {
+		if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
 			g.rebuildThingBlockmap()
 		}
 		for by := bottom; by <= top; by++ {
@@ -280,13 +431,22 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 					continue
 				}
 				cell := by*g.bmapWidth + bx
-				for i := g.thingBlockLinks[cell]; i >= 0; i = g.thingBlockNext[i] {
+				if cell == playerCell {
+					visitPlayer()
+				}
+				cellThings := append([]int(nil), g.thingBlockCells[cell]...)
+				for _, i := range cellThings {
+					if _, ok := seen[i]; ok {
+						continue
+					}
+					seen[i] = struct{}{}
 					visitThing(i)
 				}
 			}
 		}
 		return
 	}
+	visitPlayer()
 	for i := range g.m.Things {
 		visitThing(i)
 	}

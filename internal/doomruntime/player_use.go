@@ -3,11 +3,26 @@ package doomruntime
 import (
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"strings"
 
 	"gddoom/internal/mapdata"
 )
+
+func (g *game) debugDoorActivate(format string, args ...any) {
+	if g == nil {
+		return
+	}
+	want := strings.TrimSpace(os.Getenv("GD_DEBUG_DOOR_ACTIVATE_TIC"))
+	if want == "" {
+		return
+	}
+	if want != fmt.Sprint(g.demoTick-1) && want != fmt.Sprint(g.worldTic) {
+		return
+	}
+	fmt.Printf("door-activate-debug tic=%d world=%d %s\n", g.demoTick-1, g.worldTic, fmt.Sprintf(format, args...))
+}
 
 func (g *game) handleUse() {
 	if g.isDead {
@@ -22,7 +37,6 @@ func (g *game) useLines() {
 	if tr == useTraceNone {
 		g.useText = "USE: no line"
 		g.useFlash = 35
-		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
 	if tr == useTraceBlocked {
@@ -38,7 +52,6 @@ func (g *game) useLines() {
 	if pi < 0 || pi >= len(g.lines) {
 		g.useText = "USE: no line"
 		g.useFlash = 35
-		g.emitSoundEvent(soundEventNoWay)
 		return
 	}
 	ld := g.lines[pi]
@@ -139,7 +152,6 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		if isPlayer {
 			g.useText = "USE: back side"
 			g.useFlash = 35
-			g.emitSoundEvent(soundEventNoWay)
 		}
 		return false
 	}
@@ -168,7 +180,6 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		if isPlayer {
 			g.useText = fmt.Sprintf("USE: unsupported special %d", special)
 			g.useFlash = 35
-			g.emitSoundEvent(soundEventNoWay)
 		}
 		return false
 	}
@@ -183,13 +194,13 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		if isPlayer {
 			g.useText = "USE: locked"
 			g.useFlash = 35
-			g.emitSoundEvent(soundEventNoWay)
+			g.emitSoundEvent(soundEventOof)
 		}
 		return false
 	}
 	activated := false
 	if info.Door != nil {
-		activated = g.activateDoorLine(lineIdx, info)
+		activated = g.activateDoorLine(lineIdx, info, isPlayer)
 	} else {
 		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, -1, true)
 		if activated && !info.Repeat && lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
@@ -213,7 +224,6 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 	} else if isPlayer {
 		g.useText = "USE: no change"
-		g.emitSoundEvent(soundEventNoWay)
 	}
 	if isPlayer {
 		g.useFlash = 35
@@ -263,6 +273,12 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		if special == 0 {
 			continue
 		}
+		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d special=%d prev=(%d,%d) cur=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, ld.idx, special, prevX, prevY, curX, curY)
+			}
+		}
 		info := mapdata.LookupLineSpecial(special)
 		if info.Trigger != mapdata.TriggerWalk {
 			continue
@@ -275,16 +291,40 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
 		endSide := g.pointOnLineSide(curX, curY, ld)
-		if !(startSide == 0 && endSide == 1) {
+		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d start=%d end=%d prevSS=%d curSS=%d\n",
+					g.demoTick-1, g.worldTic, ld.idx, startSide, endSide, prevSS, curSS)
+			}
+		}
+		if startSide == endSide {
 			continue
 		}
 		if _, ok := segmentIntersectFrac(prevX, prevY, curX, curY, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
+			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=no-intersect\n",
+						g.demoTick-1, g.worldTic, ld.idx)
+				}
+			}
 			continue
 		}
 		if (prevSS >= 0 || curSS >= 0) &&
 			!g.lineTouchesSubsector(ld.idx, prevSS) &&
 			!g.lineTouchesSubsector(ld.idx, curSS) {
+			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=subsector\n",
+						g.demoTick-1, g.worldTic, ld.idx)
+				}
+			}
 			continue
+		}
+		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d candidate repeat=%t\n",
+					g.demoTick-1, g.worldTic, ld.idx, info.Repeat)
+			}
 		}
 		if info.Exit != mapdata.ExitNone {
 			if isPlayer && g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk) {
@@ -299,7 +339,7 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			if isPlayer && !info.Door.CanActivate(g.inventory.keys()) {
 				continue
 			}
-			if g.activateDoorLine(ld.idx, info) {
+			if g.activateDoorLine(ld.idx, info, isPlayer) {
 				if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 					g.lineSpecial[ld.idx] = 0
 				}
@@ -359,14 +399,14 @@ func shouldPlaySwitchClick(info mapdata.LineSpecialInfo) bool {
 	return info.Trigger == mapdata.TriggerUse && lineSpecialSupported(info)
 }
 
-func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo) bool {
+func (g *game) activateDoorLine(lineIdx int, info mapdata.LineSpecialInfo, isPlayer bool) bool {
 	if info.Trigger == mapdata.TriggerManual {
-		return g.evVerticalDoor(lineIdx)
+		return g.evVerticalDoor(lineIdx, isPlayer)
 	}
 	return g.evDoDoorTagged(lineIdx, info)
 }
 
-func (g *game) evVerticalDoor(lineIdx int) bool {
+func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 	if lineIdx < 0 || lineIdx >= len(g.m.Linedefs) {
 		return false
 	}
@@ -381,19 +421,25 @@ func (g *game) evVerticalDoor(lineIdx int) bool {
 	}
 
 	if d := g.doors[sec]; d != nil {
+		g.debugDoorActivate("line=%d sec=%d special=%d active dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 		switch ld.Special {
 		case 1, 26, 27, 28, 117:
 			if d.direction == -1 {
 				d.direction = 1
 			} else {
+				if !isPlayer {
+					return true
+				}
 				d.direction = -1
 			}
 			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+			g.debugDoorActivate("line=%d sec=%d special=%d retoggle dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 			return true
 		}
 	}
 
 	d := &doorThinker{
+		order:      g.allocThinkerOrder(),
 		sector:    sec,
 		direction: 1,
 		speed:     vDoorSpeed,
@@ -421,6 +467,7 @@ func (g *game) evVerticalDoor(lineIdx int) bool {
 	}
 	g.doors[sec] = d
 	g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+	g.debugDoorActivate("line=%d sec=%d special=%d spawn dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 	return true
 }
 
@@ -449,9 +496,11 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 			continue
 		}
 		if g.doors[sec] != nil {
+			g.debugDoorActivate("tagged sec=%d action=%v already-active", sec, action)
 			continue
 		}
 		d := &doorThinker{
+			order:      g.allocThinkerOrder(),
 			sector:    sec,
 			topWait:   vDoorWaitTic,
 			speed:     vDoorSpeed,
@@ -490,6 +539,7 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 		}
 		g.doors[sec] = d
 		g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
+		g.debugDoorActivate("tagged sec=%d action=%v spawn dir=%d typ=%d", sec, action, d.direction, d.typ)
 		activated = true
 	}
 	return activated

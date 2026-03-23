@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"strconv"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -12,7 +13,7 @@ import (
 const (
 	monsterWakeRange     = 1024 * fracUnit
 	monsterMeleeRange    = 64 * fracUnit
-	monsterAttackRange   = 1024 * fracUnit
+	monsterAttackRange   = 2048 * fracUnit
 	monsterAttackTics    = 35
 	monsterBaseThreshold = 100
 
@@ -89,98 +90,274 @@ func (g *game) tickMonsters() {
 	}
 	g.ensureMonsterAIState()
 	for i, th := range g.m.Things {
-		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
-			continue
-		}
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+		g.tickThingThinker(i, th)
+	}
+}
+
+func (g *game) tickThingThinker(i int, th mapdata.Thing) {
+	if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+		return
+	}
+	if isBarrelThingType(th.Type) {
+		g.tickBarrel(i, th)
+		return
+	}
+	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		g.tickMonsterMomentum(i, th)
+		if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 			g.thingDeathTics[i]--
 		}
-		if isBarrelThingType(th.Type) {
-			g.tickBarrel(i, th)
-			continue
+		if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateDeath && g.thingStateTics[i] > 0 {
+			g.thingStateTics[i]--
+			if g.thingStateTics[i] == 0 && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+				xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+				frameTics := monsterDeathFrameTicsForMode(th.Type, xdeath)
+				nextPhase := 0
+				if i >= 0 && i < len(g.thingStatePhase) {
+					nextPhase = g.thingStatePhase[i] + 1
+				}
+				if nextPhase >= 0 && nextPhase < len(frameTics) {
+					if i >= 0 && i < len(g.thingStatePhase) {
+						g.thingStatePhase[i] = nextPhase
+					}
+					g.thingStateTics[i] = frameTics[nextPhase]
+					soundPhase := monsterDeathSoundActionPhase(th.Type)
+					if xdeath {
+						soundPhase = monsterXDeathSoundActionPhase(th.Type)
+					}
+					if nextPhase == soundPhase {
+						if want := os.Getenv("GD_DEBUG_DEATH_SOUND_TIC"); want != "" {
+							var wantTic int
+							if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+								px, py := g.thingPosFixed(i, th)
+								fmt.Printf("monster-deathsound-debug tic=%d world=%d idx=%d type=%d phase=%d state=%d tics=%d pos=(%d,%d)\n",
+									g.demoTick-1, g.worldTic, i, th.Type, nextPhase, g.thingState[i], g.thingStateTics[i], px, py)
+							}
+						}
+						px, py := g.thingPosFixed(i, th)
+						if xdeath {
+							g.emitSoundEventAt(soundEventMonsterDeath, px, py)
+						} else {
+							g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
+						}
+					}
+				}
+			}
 		}
-		if !isMonster(th.Type) || g.thingHP[i] <= 0 {
-			continue
+		g.debugThingState(i, th, "dead")
+		return
+	}
+	if !isMonster(th.Type) || g.thingHP[i] <= 0 {
+		return
+	}
+	g.debugMonsterTick(i, "start")
+	g.debugThingState(i, th, "live")
+	if th.Type == 88 {
+		return
+	}
+	g.tickMonsterMomentum(i, th)
+	tx, ty := g.thingPosFixed(i, th)
+	targetX, targetY := int64(0), int64(0)
+	dist := int64(0)
+	if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+		targetX, targetY = px, py
+		dist = doomApproxDistance(targetX-tx, targetY-ty)
+	}
+
+	resumedFromAttack := false
+	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
+		if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
+			return
 		}
-		if th.Type == 88 {
-			continue
+		resumedFromAttack = i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack
+	}
+	resumedFromPain := false
+	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+		g.thingPainTics[i]--
+		if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain && g.thingStateTics[i] > 0 {
+			g.thingStateTics[i]--
+			if g.thingStateTics[i] == 0 && g.thingPainTics[i] > 0 {
+				frameTics := monsterPainFrameTics(th.Type)
+				nextPhase := 0
+				if i >= 0 && i < len(g.thingStatePhase) {
+					nextPhase = g.thingStatePhase[i] + 1
+				}
+				if nextPhase >= 0 && nextPhase < len(frameTics) {
+					if i >= 0 && i < len(g.thingStatePhase) {
+						g.thingStatePhase[i] = nextPhase
+					}
+					g.thingStateTics[i] = frameTics[nextPhase]
+					if nextPhase == monsterPainActionPhase(th.Type) {
+						px, py := g.thingPosFixed(i, th)
+						g.emitSoundEventAt(monsterPainSoundEvent(th.Type), px, py)
+					}
+				}
+			}
 		}
+		if i >= 0 && i < len(g.thingAttackFireTics) {
+			g.thingAttackFireTics[i] = -1
+		}
+		if g.thingPainTics[i] > 0 {
+			return
+		}
+		g.resetMonsterIdleOrChaseState(i, th.Type)
+		resumedFromPain = true
+	}
+	if !resumedFromPain && !resumedFromAttack && i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
+		g.resetMonsterIdleOrChaseState(i, th.Type)
+	}
+
+	if !resumedFromPain && !resumedFromAttack && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
+		return
+	}
+	targetX, targetY = 0, 0
+	dist = 0
+	if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+		targetX, targetY = px, py
+		dist = doomApproxDistance(targetX-tx, targetY-ty)
+	}
+	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+		g.thingReactionTics[i]--
+	}
+	skipThresholdTick := i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStateAttack
+	if !skipThresholdTick && i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
 		if !g.monsterHasTarget(i) {
-			g.clearMonsterTargetState(i)
+			g.thingThreshold[i] = 0
+		} else {
+			g.thingThreshold[i]--
 		}
-		tx, ty := g.thingPosFixed(i, th)
-		targetX, targetY := int64(0), int64(0)
-		dist := int64(0)
+	}
+	g.monsterTurnTowardMoveDir(i)
+
+	if !g.monsterHasTarget(i) {
+		if !g.monsterRunLostTargetChaseState(i, th.Type, tx, ty) {
+			return
+		}
+		targetX, targetY = 0, 0
+		dist = 0
 		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
 			targetX, targetY = px, py
 			dist = doomApproxDistance(targetX-tx, targetY-ty)
 		}
-
-		if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
-			if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
-				continue
-			}
-		}
-		if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
-			g.thingPainTics[i]--
-			if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain {
-				g.thingStateTics[i] = g.thingPainTics[i]
-			}
-			if i >= 0 && i < len(g.thingAttackFireTics) {
-				g.thingAttackFireTics[i] = -1
-			}
-			continue
-		}
-		if i >= 0 && i < len(g.thingState) && (g.thingState[i] == monsterStatePain || g.thingState[i] == monsterStateAttack) {
-			g.resetMonsterIdleOrChaseState(i, th.Type)
-		}
-
-		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
-			continue
-		}
-		if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
-			g.thingReactionTics[i]--
-		}
-		if i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
-			if !g.monsterHasTarget(i) {
-				g.thingThreshold[i] = 0
-			} else {
-				g.thingThreshold[i]--
-			}
-		}
-
-		// Doom A_Chase: prevent consecutive missile attacks.
-		if g.thingJustAtk[i] {
-			g.thingJustAtk[i] = false
-			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
-			continue
-		}
 		g.monsterTurnTowardMoveDir(i)
-
-		if g.monsterCanMeleeTarget(i, th.Type, dist, tx, ty, targetX, targetY) {
-			g.faceMonsterToward(i, tx, ty, targetX, targetY)
-			if g.startMonsterAttackState(i, th.Type, false) {
-				continue
-			}
-		}
-
-		if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, th.Type, dist, tx, ty, targetX, targetY) {
-			g.faceMonsterToward(i, tx, ty, targetX, targetY)
-			if g.startMonsterAttackState(i, th.Type, true) {
-				continue
-			}
-		}
-		if th.Type == 64 && g.archvileTryRaiseCorpse(i) {
-			continue
-		}
-
-		g.thingMoveCount[i]--
-		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
-			g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
-		}
-		g.setMonsterThinkState(i, th.Type, monsterStateSee, g.monsterSeeStateTicsForPhase(i, th.Type))
-		g.emitMonsterActiveSound(i, th.Type, tx, ty)
 	}
+
+	if g.thingJustAtk[i] {
+		g.thingJustAtk[i] = false
+		g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
+		return
+	}
+
+	if g.monsterCanMeleeTarget(i, th.Type, dist, tx, ty, targetX, targetY) {
+		g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		if g.startMonsterAttackState(i, th.Type, false) {
+			return
+		}
+	}
+
+	if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, th.Type, dist, tx, ty, targetX, targetY) {
+		g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		if g.startMonsterAttackState(i, th.Type, true) {
+			return
+		}
+	}
+	if th.Type == 64 && g.archvileTryRaiseCorpse(i) {
+		return
+	}
+
+	g.thingMoveCount[i]--
+	if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, th.Type, g.thingMoveDir[i]) {
+		g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
+	}
+	g.setMonsterThinkState(i, th.Type, monsterStateSee, g.monsterSeeStateTicsForPhase(i, th.Type))
+	ax, ay := tx, ty
+	if i >= 0 && g.m != nil && i < len(g.m.Things) {
+		ax, ay = g.thingPosFixed(i, g.m.Things[i])
+	}
+	g.emitMonsterActiveSound(i, th.Type, ax, ay)
+	g.debugMonsterTick(i, "end")
+}
+
+func (g *game) debugThingState(i int, th mapdata.Thing, tag string) {
+	if g.worldTic != debugThingStateTic() || i != debugThingStateIdx() {
+		return
+	}
+	phase, state, tics := 0, 0, 0
+	hp, dead := 0, false
+	if i >= 0 && i < len(g.thingStatePhase) {
+		phase = g.thingStatePhase[i]
+	}
+	if i >= 0 && i < len(g.thingState) {
+		state = int(g.thingState[i])
+	}
+	if i >= 0 && i < len(g.thingStateTics) {
+		tics = g.thingStateTics[i]
+	}
+	if i >= 0 && i < len(g.thingHP) {
+		hp = g.thingHP[i]
+	}
+	if i >= 0 && i < len(g.thingDead) {
+		dead = g.thingDead[i]
+	}
+	x, y := g.thingPosFixed(i, th)
+	fmt.Fprintf(os.Stderr, "thing-debug tic=%d idx=%d tag=%s type=%d hp=%d dead=%t state=%d phase=%d tics=%d pos=(%d,%d)\n",
+		g.worldTic, i, tag, th.Type, hp, dead, state, phase, tics, x, y)
+}
+
+func debugThingStateIdx() int {
+	v := os.Getenv("GD_DEBUG_THING_IDX")
+	if v == "" {
+		return -1
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+func debugThingStateTic() int {
+	v := os.Getenv("GD_DEBUG_THING_TIC")
+	if v == "" {
+		return -1
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
+func (g *game) debugMonsterTick(i int, stage string) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_TICK") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_TICK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if wantIdx >= 0 && i != wantIdx {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	tx, ty := int64(0), int64(0)
+	if g.m != nil && i >= 0 && i < len(g.m.Things) {
+		tx, ty = g.thingPosFixed(i, g.m.Things[i])
+	}
+	targetIdx := -1
+	targetHP := 0
+	if i >= 0 && i < len(g.thingTargetIdx) {
+		targetIdx = g.thingTargetIdx[i]
+		if targetIdx >= 0 && targetIdx < len(g.thingHP) {
+			targetHP = g.thingHP[targetIdx]
+		}
+	}
+	fmt.Printf("monster-tick-debug tic=%d world=%d idx=%d type=%d stage=%s state=%d phase=%d statetics=%d movedir=%d movecount=%d threshold=%d reaction=%d justatk=%t targetPlayer=%t targetIdx=%d targetHP=%d pos=(%d,%d) angle=%d\n",
+		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, stage,
+		g.thingState[i], g.thingStatePhase[i], g.thingStateTics[i], g.thingMoveDir[i], g.thingMoveCount[i],
+		g.thingThreshold[i], g.thingReactionTics[i], g.thingJustAtk[i], g.thingTargetPlayer[i], targetIdx, targetHP, tx, ty, g.thingWorldAngle(i, g.m.Things[i]))
 }
 
 func (g *game) setMonsterThinkState(i int, typ int16, state monsterThinkState, tics int) {
@@ -206,16 +383,6 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 	}
 	switch g.thingState[i] {
 	case monsterStateSpawn:
-		if g.monsterHeardPlayer(i, tx, ty) || g.monsterLookForPlayer(i, false, tx, ty) {
-			g.thingAggro[i] = true
-			g.setMonsterTargetPlayer(i)
-			g.emitMonsterSeeSound(i, typ, tx, ty)
-			if i >= 0 && i < len(g.thingStatePhase) {
-				g.thingStatePhase[i] = 0
-			}
-			g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
-			return true
-		}
 		if i >= 0 && i < len(g.thingStatePhase) {
 			count := len(monsterSpawnFrameTics(typ))
 			if count < 1 {
@@ -223,16 +390,16 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 			}
 			g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
 		}
+		if g.monsterRunLookState(i, typ, tx, ty) {
+			return true
+		}
 		g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 		return false
 	case monsterStateSee:
 		if !g.monsterHasTarget(i) {
-			if g.monsterLookForPlayer(i, true, tx, ty) {
-				g.thingAggro[i] = true
-				g.setMonsterTargetPlayer(i)
+			if g.monsterRunLostTargetChaseState(i, typ, tx, ty) {
 				return true
 			}
-			g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 			return false
 		}
 		if i >= 0 && i < len(g.thingStatePhase) {
@@ -252,6 +419,41 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 	default:
 		return true
 	}
+}
+
+func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
+	if i < 0 {
+		return false
+	}
+	if i >= 0 && i < len(g.thingThreshold) {
+		g.thingThreshold[i] = 0
+	}
+	if _, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty); wake || g.monsterLookForPlayer(i, false, tx, ty) {
+		if i >= 0 && i < len(g.thingAggro) {
+			g.thingAggro[i] = true
+		}
+		g.emitMonsterSeeSound(i, typ, tx, ty)
+		if i >= 0 && i < len(g.thingStatePhase) {
+			g.thingStatePhase[i] = 0
+		}
+		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
+		return true
+	}
+	return false
+}
+
+func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) bool {
+	if i < 0 {
+		return false
+	}
+	if i >= 0 && i < len(g.thingStatePhase) {
+		g.thingStatePhase[i] = 0
+	}
+	if g.monsterRunLookState(i, typ, tx, ty) {
+		return true
+	}
+	g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
+	return false
 }
 
 func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
@@ -375,15 +577,32 @@ func (g *game) monsterHasLOSTarget(i int, typ int16, x, y int64) bool {
 	if g == nil || i < 0 {
 		return false
 	}
+	fromSector := -1
+	if g.m != nil && i < len(g.m.Things) {
+		fromSector = g.thingSectorCached(i, g.m.Things[i])
+	}
 	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		if g.sightRejected(fromSector, g.playerSector()) {
+			return false
+		}
 		return g.monsterHasLOSPlayerAt(i, typ, x, y)
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		if g.sightRejected(fromSector, g.playerSector()) {
+			return false
+		}
+		return g.monsterHasLOSPlayerAt(i, typ, x, y)
+	}
+	targetIdx, ok := g.monsterTargetThingIdx(i)
+	if !ok {
+		return false
+	}
+	if g.sightRejected(fromSector, g.thingSectorCached(targetIdx, g.m.Things[targetIdx])) {
+		return false
 	}
 	tx, ty, tz, height, _, ok := g.monsterTargetPos(i)
 	if !ok {
 		return false
-	}
-	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
-		return g.monsterHasLOSPlayerAt(i, typ, x, y)
 	}
 	z, _, _ := g.monsterSupportHeights(i, g.m.Things[i])
 	return g.actorHasLOS(x, y, z, monsterHeight(typ), tx, ty, tz, height)
@@ -424,7 +643,16 @@ func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
 	if ev < 0 {
 		return
 	}
-	consumeMonsterSeeSoundRandom(typ)
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=see-sound ev=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, ev, rnd, prnd, x, y)
+			}
+		}
+	}
 	if fullVolume {
 		g.emitSoundEvent(ev)
 		return
@@ -432,21 +660,23 @@ func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
 	g.emitSoundEventAt(ev, x, y)
 }
 
-func consumeMonsterSeeSoundRandom(typ int16) {
-	switch typ {
-	case 3004, 9, 65:
-		_ = doomrand.PRandom() % 3
-	case 3001, 3003, 69:
-		_ = doomrand.PRandom() % 2
-	}
-}
-
 func (g *game) emitMonsterActiveSound(i int, typ int16, x, y int64) {
 	ev := monsterActiveSoundEvent(typ)
 	if ev < 0 {
 		return
 	}
-	if !shouldEmitMonsterActiveSound(doomrand.PRandom()) {
+	roll := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=active-sound roll=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, roll, rnd, prnd, x, y)
+			}
+		}
+	}
+	if !shouldEmitMonsterActiveSound(roll) {
 		return
 	}
 	g.emitSoundEventAt(ev, x, y)
@@ -459,9 +689,19 @@ func shouldEmitMonsterActiveSound(r int) bool {
 func monsterSeeSoundEvent(typ int16) (soundEvent, bool) {
 	switch typ {
 	case 3004, 9, 65:
-		return soundEventMonsterSeePosit, false
+		switch doomrand.PRandom() % 3 {
+		case 1:
+			return soundEventMonsterSeePosit2, false
+		case 2:
+			return soundEventMonsterSeePosit3, false
+		default:
+			return soundEventMonsterSeePosit1, false
+		}
 	case 3001:
-		return soundEventMonsterSeeImp, false
+		if doomrand.PRandom()%2 != 0 {
+			return soundEventMonsterSeeImp2, false
+		}
+		return soundEventMonsterSeeImp1, false
 	case 3002, 58:
 		return soundEventMonsterSeeDemon, false
 	case 3005:
@@ -495,8 +735,10 @@ func monsterActiveSoundEvent(typ int16) soundEvent {
 		return soundEventMonsterActivePosit
 	case 3001:
 		return soundEventMonsterActiveImp
-	case 3002, 58, 3005, 3003, 69, 3006, 7, 16, 71, 67:
+	case 3002, 58, 3005, 3003, 69, 3006, 7, 16, 71:
 		return soundEventMonsterActiveDemon
+	case 67:
+		return soundEventMonsterActivePosit
 	case 68:
 		return soundEventMonsterActiveArachnotron
 	case 64:
@@ -513,6 +755,14 @@ func (g *game) ensureMonsterAIState() {
 		return
 	}
 	n := len(g.m.Things)
+	if len(g.thingAmbush) != n {
+		old := g.thingAmbush
+		g.thingAmbush = make([]bool, n)
+		copy(g.thingAmbush, old)
+		for i := len(old); i < n; i++ {
+			g.thingAmbush[i] = int(g.m.Things[i].Flags)&thingFlagAmbush != 0
+		}
+	}
 	if len(g.thingTargetPlayer) != n {
 		old := g.thingTargetPlayer
 		g.thingTargetPlayer = make([]bool, n)
@@ -643,6 +893,157 @@ func (g *game) ensureMonsterAIState() {
 		g.thingStatePhase = make([]int, n)
 		copy(g.thingStatePhase, old)
 	}
+	if len(g.thingXDeath) != n {
+		old := g.thingXDeath
+		g.thingXDeath = make([]bool, n)
+		copy(g.thingXDeath, old)
+	}
+	if len(g.thingMomX) != n {
+		old := g.thingMomX
+		g.thingMomX = make([]int64, n)
+		copy(g.thingMomX, old)
+	}
+	if len(g.thingMomY) != n {
+		old := g.thingMomY
+		g.thingMomY = make([]int64, n)
+		copy(g.thingMomY, old)
+	}
+	if len(g.thingMomZ) != n {
+		old := g.thingMomZ
+		g.thingMomZ = make([]int64, n)
+		copy(g.thingMomZ, old)
+	}
+}
+
+func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return
+	}
+	if i >= len(g.thingMomX) || i >= len(g.thingMomY) || i >= len(g.thingMomZ) {
+		return
+	}
+	momx := g.thingMomX[i]
+	momy := g.thingMomY[i]
+	momz := g.thingMomZ[i]
+	if momx == 0 && momy == 0 && momz == 0 {
+		return
+	}
+	momx = clamp(momx, -maxMove, maxMove)
+	momy = clamp(momy, -maxMove, maxMove)
+
+	z, _, _ := g.thingSupportState(i, th)
+	tx, ty := g.thingPosFixed(i, th)
+	nx := tx + momx
+	ny := ty + momy
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
+		prevX, prevY := tx, ty
+		g.setThingPosFixed(i, nx, ny)
+		g.setThingSupportState(i, z, tmfloor, tmceil)
+		g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
+	} else {
+		momx = 0
+		momy = 0
+	}
+
+	z, floorZ, ceilZ := g.thingSupportState(i, th)
+	if z > floorZ || momz != 0 {
+		g.thingMomX[i] = momx
+		g.thingMomY[i] = momy
+		g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
+		return
+	}
+	if g.corpseShouldSkipFriction(i, th, momx, momy) {
+		g.thingMomX[i] = momx
+		g.thingMomY[i] = momy
+		if z < floorZ {
+			g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
+		} else {
+			g.thingMomZ[i] = momz
+		}
+		return
+	}
+	if momx > -stopSpeed && momx < stopSpeed && momy > -stopSpeed && momy < stopSpeed {
+		g.thingMomX[i] = 0
+		g.thingMomY[i] = 0
+		g.thingMomZ[i] = 0
+		return
+	}
+	g.thingMomX[i] = fixedMul(momx, friction)
+	g.thingMomY[i] = fixedMul(momy, friction)
+	if z < floorZ {
+		g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
+		return
+	}
+	g.thingMomZ[i] = momz
+}
+
+func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, momz int64) int64 {
+	if g == nil {
+		return momz
+	}
+	z += momz
+	height := g.thingCurrentHeight(i, th)
+
+	if z <= floorZ {
+		if momz < 0 {
+			momz = 0
+		}
+		z = floorZ
+	} else if !monsterCanFloat(th.Type) {
+		if momz == 0 {
+			momz = -2 * fracUnit
+		} else {
+			momz -= fracUnit
+		}
+	}
+
+	if z+height > ceilZ {
+		if momz > 0 {
+			momz = 0
+		}
+		z = ceilZ - height
+	}
+
+	g.setThingSupportState(i, z, floorZ, ceilZ)
+	return momz
+}
+
+func (g *game) corpseShouldSkipFriction(i int, th mapdata.Thing, momx, momy int64) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	if i >= len(g.thingDead) || !g.thingDead[i] || !monsterLeavesCorpse(th.Type) {
+		return false
+	}
+	if momx <= fracUnit/4 && momx >= -fracUnit/4 && momy <= fracUnit/4 && momy >= -fracUnit/4 {
+		return false
+	}
+	if i >= len(g.thingFloorState) || i >= len(g.thingSupportValid) || !g.thingSupportValid[i] {
+		return false
+	}
+	sec := g.thingSectorCached(i, th)
+	if sec < 0 || sec >= len(g.sectorFloor) {
+		return false
+	}
+	return g.thingFloorState[i] != g.sectorFloor[sec]
+}
+
+func (g *game) setThingMomentum(i int, momx, momy, momz int64) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i >= len(g.thingMomX) {
+		g.thingMomX = append(g.thingMomX, make([]int64, i-len(g.thingMomX)+1)...)
+	}
+	if i >= len(g.thingMomY) {
+		g.thingMomY = append(g.thingMomY, make([]int64, i-len(g.thingMomY)+1)...)
+	}
+	if i >= len(g.thingMomZ) {
+		g.thingMomZ = append(g.thingMomZ, make([]int64, i-len(g.thingMomZ)+1)...)
+	}
+	g.thingMomX[i] = momx
+	g.thingMomY[i] = momy
+	g.thingMomZ[i] = momz
 }
 
 func monsterPainChance(typ int16) int {
@@ -696,6 +1097,18 @@ func monsterPainDurationTics(typ int16) int {
 	}
 }
 
+func monsterPainActionPhase(typ int16) int {
+	frameTics := monsterPainFrameTics(typ)
+	switch len(frameTics) {
+	case 0:
+		return -1
+	case 1:
+		return 0
+	default:
+		return 1
+	}
+}
+
 func (g *game) startMonsterAttackAnim(i int, typ int16) {
 	if i < 0 || i >= len(g.thingAttackTics) {
 		return
@@ -728,6 +1141,12 @@ func (g *game) startMonsterAttackAnim(i int, typ int16) {
 func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 	if i < 0 || g.m == nil || i >= len(g.m.Things) {
 		return false
+	}
+	if !missile {
+		if ev := monsterAttackStateEntrySoundEvent(typ); ev >= 0 {
+			tx, ty := g.thingPosFixed(i, g.m.Things[i])
+			g.emitSoundEventAt(ev, tx, ty)
+		}
 	}
 	g.startMonsterAttackAnim(i, typ)
 	if monsterUsesExplicitAttackFrames(typ) {
@@ -811,7 +1230,7 @@ func monsterAttackStateTotalTics(typ int16) int {
 	case 3004: // zombieman
 		return 26
 	case 9: // sergeant
-		return 24
+		return 30
 	case 3001: // imp
 		return 22
 	case 3002, 58: // demon/spectre
@@ -825,7 +1244,7 @@ func monsterAttackStateTotalTics(typ int16) int {
 	case 7: // spider mastermind (single volley cycle)
 		return 29
 	case 3006: // lost soul
-		return 10
+		return 12
 	default:
 		return 0
 	}
@@ -849,102 +1268,106 @@ func monsterAttackFrameDuration(typ int16, phase int) int {
 }
 
 func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, px, py, dist int64) {
+	faceX, faceY := px, py
+	if targetX, targetY, _, _, _, ok := g.monsterTargetPos(i); ok {
+		faceX, faceY = targetX, targetY
+	}
 	switch typ {
 	case 3004: // zombieman
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 9: // shotgun guy
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3001: // imp
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3002, 58: // demon/spectre
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3005: // cacodemon
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3003, 69: // baron/hell knight
 		switch phase {
 		case 0, 1:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 64: // arch-vile
 		switch phase {
 		case 0, 1, 2, 3, 4, 5, 6, 7, 8:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 9:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 66: // revenant missile
 		switch phase {
 		case 0, 1, 3:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 67: // mancubus
 		switch phase {
 		case 0, 2, 3, 5, 6, 8, 9:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1, 4, 7:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 71: // pain elemental
 		switch phase {
 		case 0, 1, 2:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 3:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 84: // wolf ss
 		switch phase {
 		case 0, 1, 3:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2, 4:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 68: // arachnotron
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 16: // cyberdemon
 		switch phase {
 		case 0, 2, 4:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1, 3, 5:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 7: // spider mastermind
 		switch phase {
 		case 0:
-			g.faceMonsterToward(i, tx, ty, px, py)
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1, 2:
 			_ = g.monsterAttack(i, typ, dist)
 		}
@@ -963,10 +1386,13 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 				nextPhase := g.thingAttackPhase[i] + 1
 				if nextPhase >= len(monsterAttackFrameTics(typ)) {
 					g.thingAttackTics[i] = 0
+					if i >= 0 && i < len(g.thingAttackFireTics) {
+						g.thingAttackFireTics[i] = -1
+					}
 					if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
 						g.resetMonsterIdleOrChaseState(i, typ)
 					}
-					return true
+					return false
 				}
 				g.thingAttackPhase[i] = nextPhase
 				g.thingStateTics[i] = monsterAttackFrameDuration(typ, nextPhase)
@@ -983,12 +1409,26 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 			g.thingAttackFireTics[i]--
 		}
 		if g.thingAttackFireTics[i] == 0 {
-			g.faceMonsterToward(i, tx, ty, px, py)
+			faceX, faceY := px, py
+			if targetX, targetY, _, _, _, ok := g.monsterTargetPos(i); ok {
+				faceX, faceY = targetX, targetY
+			}
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 			_ = g.monsterAttack(i, typ, dist)
 			g.thingAttackFireTics[i] = -1
 		}
 	}
 	g.thingAttackTics[i]--
+	if g.thingAttackTics[i] <= 0 {
+		g.thingAttackTics[i] = 0
+		if i >= 0 && i < len(g.thingAttackFireTics) {
+			g.thingAttackFireTics[i] = -1
+		}
+		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+			g.resetMonsterIdleOrChaseState(i, typ)
+		}
+		return false
+	}
 	if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateAttack {
 		g.thingStateTics[i] = g.thingAttackTics[i]
 	}
@@ -1181,7 +1621,18 @@ func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py i
 	if typ == 16 && d > 160 {
 		d = 160
 	}
-	return doomrand.PRandom() >= d
+	r := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=missilerange roll=%d dist=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, r, d, rnd, prnd, tx, ty)
+			}
+		}
+	}
+	return r >= d
 }
 
 func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) {
@@ -1220,7 +1671,18 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		}
 	}
 
-	if doomrand.PRandom() > 200 || abs(deltay) > abs(deltax) {
+	swapRoll := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=chase-swap roll=%d absdy=%d absdx=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, swapRoll, abs(deltay), abs(deltax), rnd, prnd, tx, ty)
+			}
+		}
+	}
+	if swapRoll > 200 || abs(deltay) > abs(deltax) {
 		d1, d2 = d2, d1
 		g.debugMonsterChase(i, fmt.Sprintf("swap d1=%d d2=%d", d1, d2))
 	}
@@ -1246,7 +1708,18 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		return
 	}
 
-	if (doomrand.PRandom() & 1) != 0 {
+	scanRoll := doomrand.PRandom()
+	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=chase-scan roll=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, typ, scanRoll, rnd, prnd, tx, ty)
+			}
+		}
+	}
+	if (scanRoll & 1) != 0 {
 		for dir := int(monsterDirEast); dir <= int(monsterDirSouthEast); dir++ {
 			d := monsterMoveDir(dir)
 			if d != turnaround && g.monsterTryWalk(i, typ, d) {
@@ -1283,6 +1756,20 @@ func (g *game) monsterTryWalk(i int, typ int16, dir monsterMoveDir) bool {
 	}
 	if i >= 0 && i < len(g.thingMoveCount) {
 		g.thingMoveCount[i] = doomrand.PRandom() & 15
+		if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+			var wantTic int
+			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+					rnd, prnd := doomrand.State()
+					tx, ty := int64(0), int64(0)
+					if g.m != nil && i >= 0 && i < len(g.m.Things) {
+						tx, ty = g.thingPosFixed(i, g.m.Things[i])
+					}
+					fmt.Printf("monster-rng-debug tic=%d world=%d idx=%d type=%d site=trywalk-movecount dir=%d movecount=%d rnd=%d prnd=%d pos=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, i, typ, dir, g.thingMoveCount[i], rnd, prnd, tx, ty)
+				}
+			}
+		}
 		g.debugMonsterChase(i, fmt.Sprintf("trywalk moved dir=%d movecount=%d", dir, g.thingMoveCount[i]))
 	}
 	return true
@@ -1350,10 +1837,36 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	nx := x + dx
 	ny := y + dy
 	g.debugMonsterMove(i, fmt.Sprintf("move dir=%d from=(%d,%d) to=(%d,%d)", dir, x, y, nx, ny))
-	tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
+	tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, nx, ny)
 	if !ok {
 		g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
-		return g.monsterUseBlockingSpecialLines(i, nx, ny)
+		lines := probeLines
+		if g == nil || os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES") == "" {
+			// no-op
+		} else {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES"), "%d:%d", &wantTic, &wantIdx); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || wantIdx == i) {
+					fmt.Printf("monster-move-lines-debug tic=%d world=%d idx=%d dir=%d lines=%v from=(%d,%d) to=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, i, dir, lines, x, y, nx, ny)
+				}
+			}
+		}
+		if len(lines) == 0 {
+			return false
+		}
+		if i >= 0 && i < len(g.thingMoveDir) {
+			// Doom P_Move clears movedir only when retrying touched special
+			// lines after a blocked move, so successful door-use leaves
+			// DI_NODIR but ordinary blocked movement preserves olddir.
+			g.thingMoveDir[i] = monsterDirNoDir
+		}
+		for _, lineIdx := range lines {
+			if g.useSpecialLineForActor(lineIdx, 0, false) {
+				return true
+			}
+		}
+		return false
 	}
 	prevX, prevY := x, y
 	g.setThingPosFixed(i, nx, ny)
@@ -1423,6 +1936,12 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		g.monsterHitscanAttack(i, typ, sx, sy, 3)
 		return true
 	}
+	if typ == 65 {
+		// Chaingunner uses Doom's A_CPosAttack, which starts sfx_shotgn.
+		g.emitSoundEventAt(soundEventShootShotgun, sx, sy)
+		g.monsterHitscanAttack(i, typ, sx, sy, 1)
+		return true
+	}
 	if typ == 84 {
 		// WolfSS uses the chaingunner-style single hitscan attack action.
 		g.emitSoundEventAt(soundEventShootShotgun, sx, sy)
@@ -1469,7 +1988,6 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		default:
 			return false
 		}
-		g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
 		return true
 	}
 	if typ == 71 {
@@ -1489,11 +2007,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		return true
 	}
 	if usesMonsterProjectile(typ) {
-		if g.spawnMonsterProjectile(i, typ) {
-			g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
-			return true
-		}
-		return false
+		return g.spawnMonsterProjectile(i, typ)
 	}
 	damage := monsterRangedDamage(typ)
 	if damage <= 0 {
@@ -1529,7 +2043,7 @@ func (g *game) damageMonsterTarget(i, damage int, msg string, attackerX, attacke
 		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true)
 		return
 	}
-	g.damageShootableThingFrom(targetIdx, damage, false, i)
+	g.damageShootableThingFrom(targetIdx, damage, false, i, attackerX, attackerY, true)
 }
 
 func (g *game) countActiveThingType(typ int16) int {
@@ -1611,6 +2125,9 @@ func (g *game) archvileTryRaiseCorpse(vileIdx int) bool {
 		if corpseIdx == vileIdx || corpseIdx >= len(g.thingDead) || !g.thingDead[corpseIdx] {
 			continue
 		}
+		if corpseIdx < len(g.thingXDeath) && g.thingXDeath[corpseIdx] {
+			continue
+		}
 		if corpseIdx < len(g.thingCollected) && g.thingCollected[corpseIdx] {
 			continue
 		}
@@ -1626,6 +2143,9 @@ func (g *game) archvileTryRaiseCorpse(vileIdx int) bool {
 		}
 		if corpseIdx < len(g.thingDead) {
 			g.thingDead[corpseIdx] = false
+		}
+		if corpseIdx < len(g.thingXDeath) {
+			g.thingXDeath[corpseIdx] = false
 		}
 		if corpseIdx < len(g.thingDeathTics) {
 			g.thingDeathTics[corpseIdx] = 0
@@ -1683,9 +2203,22 @@ func monsterMeleeAttackSoundEvent(typ int16) soundEvent {
 	case 3001, 3003, 69:
 		return soundEventMonsterAttackClaw
 	case 3002, 58:
-		return soundEventMonsterAttackSgt
+		return -1
 	case 3006:
 		return soundEventMonsterAttackSkull
+	default:
+		return -1
+	}
+}
+
+func monsterAttackStateEntrySoundEvent(typ int16) soundEvent {
+	switch typ {
+	case 3002, 58:
+		return soundEventMonsterAttackSgt
+	case 64:
+		return soundEventMonsterAttackArchvile
+	case 67:
+		return soundEventMonsterAttackMancubus
 	default:
 		return -1
 	}
@@ -1702,9 +2235,31 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 		slope = 0
 	}
 	for pellet := 0; pellet < pellets; pellet++ {
-		angle := addDoomAngleSpread(baseAngle, doomGunSpreadShift)
+		angle := addDoomAngleSpread(baseAngle, doomMonsterSpreadShift)
 		damage := 3 * (1 + doomrand.PRandom()%5)
+		if want := os.Getenv("GD_DEBUG_LINE_ATTACK"); want != "" {
+			var wantTic, wantIdx, wantPellet int
+			if _, err := fmt.Sscanf(want, "%d:%d:%d", &wantTic, &wantIdx, &wantPellet); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || i == wantIdx) && (wantPellet < 0 || pellet == wantPellet) {
+					g.debugLineAttackIntercepts(actor, angle, monsterAttackRange, slope)
+				}
+			}
+		}
 		outcome := g.lineAttackTrace(actor, angle, monsterAttackRange, slope, true)
+		if want := os.Getenv("GD_DEBUG_HITSCAN_ATTACK"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || i == wantIdx) {
+					rnd, prnd := doomrand.State()
+					fmt.Printf("hitscan-attack-debug tic=%d world=%d idx=%d type=%d actor=(%d,%d,%d) pellet=%d base_angle=%d angle=%d slope=%d damage=%d target_kind=%d target_idx=%d impact=(%d,%d,%d) puff=%t blood=%t\n",
+						g.demoTick-1, g.worldTic, i, typ, actor.x, actor.y, actor.shootZ, pellet, baseAngle, angle, slope, damage,
+						outcome.target.kind, outcome.target.idx, outcome.impactX, outcome.impactY, outcome.impactZ,
+						outcome.spawnPuff, outcome.spawnBlood)
+					fmt.Printf("hitscan-attack-rng-debug tic=%d world=%d idx=%d type=%d pellet=%d rnd=%d prnd=%d\n",
+						g.demoTick-1, g.worldTic, i, typ, pellet, rnd, prnd)
+				}
+			}
+		}
 		g.applyLineAttackOutcome(actor, outcome, damage)
 	}
 }
@@ -1871,6 +2426,64 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	if g == nil {
 		return false
 	}
+	if g.m == nil || len(g.m.Nodes) == 0 || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 {
+		return g.actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheight)
+	}
+	sightZStart := az + aheight - (aheight >> 2)
+	sight := losTrace{
+		trace:       divline{x: ax, y: ay, dx: bx - ax, dy: by - ay},
+		t2x:         bx,
+		t2y:         by,
+		sightZStart: sightZStart,
+		topSlope:    (bz + bheight) - sightZStart,
+		bottomSlope: bz - sightZStart,
+	}
+	g.validCount++
+	return g.crossBSPLOS(uint16(len(g.m.Nodes)-1), &sight)
+}
+
+type losTrace struct {
+	trace       divline
+	t2x         int64
+	t2y         int64
+	sightZStart int64
+	topSlope    int64
+	bottomSlope int64
+}
+
+func doomSightDivlineSide(x, y int64, line divline) int {
+	if line.dx == 0 {
+		if x == line.x {
+			return 2
+		}
+		if x <= line.x {
+			return b2i(line.dy > 0)
+		}
+		return b2i(line.dy < 0)
+	}
+	if line.dy == 0 {
+		if x == line.y {
+			return 2
+		}
+		if y <= line.y {
+			return b2i(line.dx < 0)
+		}
+		return b2i(line.dx > 0)
+	}
+	dx := x - line.x
+	dy := y - line.y
+	left := (line.dy >> fracBits) * (dx >> fracBits)
+	right := (dy >> fracBits) * (line.dx >> fracBits)
+	if right < left {
+		return 0
+	}
+	if left == right {
+		return 2
+	}
+	return 1
+}
+
+func (g *game) actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheight int64) bool {
 	dx := bx - ax
 	dy := by - ay
 	totalDist := math.Hypot(float64(dx), float64(dy))
@@ -1883,12 +2496,24 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	bottomSlope := float64(bz-sightZStart) / totalDist
 
 	intercepts := g.losInterceptScratch[:0]
+	trace := divline{x: ax, y: ay, dx: bx - ax, dy: by - ay}
 	for i, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(ax, ay, bx, by, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok || frac <= 0 || frac >= 1 {
+		s1 := doomSightDivlineSide(ld.x1, ld.y1, trace)
+		s2 := doomSightDivlineSide(ld.x2, ld.y2, trace)
+		if s1 == s2 {
 			continue
 		}
-		intercepts = insertInterceptOrdered(intercepts, intercept{frac: frac, line: i})
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		s1 = doomSightDivlineSide(trace.x, trace.y, lineDL)
+		s2 = doomSightDivlineSide(trace.x+trace.dx, trace.y+trace.dy, lineDL)
+		if s1 == s2 {
+			continue
+		}
+		frac := interceptVector(trace, lineDL)
+		if frac <= 0 || frac >= fracUnit {
+			continue
+		}
+		intercepts = insertInterceptOrdered(intercepts, intercept{frac: float64(frac) / float64(fracUnit), line: i})
 	}
 	g.losInterceptScratch = intercepts[:0]
 	if len(intercepts) == 0 {
@@ -1934,6 +2559,151 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	return true
 }
 
+func (g *game) crossBSPLOS(child uint16, sight *losTrace) bool {
+	if child&0x8000 != 0 {
+		ss := int(child & 0x7fff)
+		if ss < 0 || ss >= len(g.m.SubSectors) {
+			return false
+		}
+		return g.crossSubsectorLOS(ss, sight)
+	}
+	ni := int(child)
+	if ni < 0 || ni >= len(g.m.Nodes) {
+		return false
+	}
+	n := g.m.Nodes[ni]
+	partition := divline{
+		x:  int64(n.X) << fracBits,
+		y:  int64(n.Y) << fracBits,
+		dx: int64(n.DX) << fracBits,
+		dy: int64(n.DY) << fracBits,
+	}
+	side := doomSightDivlineSide(sight.trace.x, sight.trace.y, partition)
+	if side == 2 {
+		side = 0
+	}
+	if !g.crossBSPLOS(n.ChildID[side], sight) {
+		return false
+	}
+	if side == doomSightDivlineSide(sight.t2x, sight.t2y, partition) {
+		return true
+	}
+	return g.crossBSPLOS(n.ChildID[side^1], sight)
+}
+
+func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
+	if g == nil || g.m == nil || ss < 0 || ss >= len(g.m.SubSectors) {
+		return false
+	}
+	if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+		var wantTic, wantIdx int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				fmt.Printf("monster-look-debug tic=%d world=%d site=los-subsector ss=%d ax=%d ay=%d bx=%d by=%d\n",
+					g.demoTick-1, g.worldTic, ss, sight.trace.x, sight.trace.y, sight.t2x, sight.t2y)
+			}
+		}
+	}
+	sub := g.m.SubSectors[ss]
+	for off := 0; off < int(sub.SegCount); off++ {
+		segIdx := int(sub.FirstSeg) + off
+		if segIdx < 0 || segIdx >= len(g.m.Segs) {
+			continue
+		}
+		sg := g.m.Segs[segIdx]
+		lineIdx := int(sg.Linedef)
+		if lineIdx < 0 || lineIdx >= len(g.lines) || lineIdx >= len(g.m.Linedefs) {
+			continue
+		}
+		if lineIdx >= len(g.lineValid) {
+			g.lineValid = append(g.lineValid, make([]int, lineIdx-len(g.lineValid)+1)...)
+		}
+		if g.lineValid[lineIdx] == g.validCount {
+			continue
+		}
+		g.lineValid[lineIdx] = g.validCount
+		ld := g.lines[lineIdx]
+		s1 := doomSightDivlineSide(ld.x1, ld.y1, sight.trace)
+		s2 := doomSightDivlineSide(ld.x2, ld.y2, sight.trace)
+		if s1 == s2 {
+			continue
+		}
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		s1 = doomSightDivlineSide(sight.trace.x, sight.trace.y, lineDL)
+		s2 = doomSightDivlineSide(sight.t2x, sight.t2y, lineDL)
+		if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (lineIdx == 185 || ss == 39) {
+					fmt.Printf("monster-look-debug tic=%d world=%d site=los-line ss=%d line=%d s1=%d s2=%d v1=(%d,%d) v2=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, ss, lineIdx, s1, s2, ld.x1, ld.y1, ld.x2, ld.y2)
+				}
+			}
+		}
+		if s1 == s2 {
+			continue
+		}
+		if (ld.flags & mlTwoSided) == 0 {
+			g.debugMonsterLOSBlock("onesided", lineIdx, sight)
+			return false
+		}
+		front, back := g.segSectorIndices(segIdx)
+		if front < 0 || back < 0 || front >= len(g.sectorFloor) || back >= len(g.sectorFloor) || front >= len(g.sectorCeil) || back >= len(g.sectorCeil) {
+			g.debugMonsterLOSBlock("badsectors", lineIdx, sight)
+			return false
+		}
+		if g.sectorFloor[front] == g.sectorFloor[back] && g.sectorCeil[front] == g.sectorCeil[back] {
+			continue
+		}
+		openTop := g.sectorCeil[front]
+		if g.sectorCeil[back] < openTop {
+			openTop = g.sectorCeil[back]
+		}
+		openBottom := g.sectorFloor[front]
+		if g.sectorFloor[back] > openBottom {
+			openBottom = g.sectorFloor[back]
+		}
+		if openBottom >= openTop {
+			g.debugMonsterLOSBlock("closed", lineIdx, sight)
+			return false
+		}
+		frac := interceptVector(sight.trace, lineDL)
+		if frac <= 0 {
+			continue
+		}
+		if g.sectorFloor[front] != g.sectorFloor[back] {
+			if slope := fixedDiv(openBottom-sight.sightZStart, frac); slope > sight.bottomSlope {
+				sight.bottomSlope = slope
+			}
+		}
+		if g.sectorCeil[front] != g.sectorCeil[back] {
+			if slope := fixedDiv(openTop-sight.sightZStart, frac); slope < sight.topSlope {
+				sight.topSlope = slope
+			}
+		}
+		if sight.topSlope <= sight.bottomSlope {
+			g.debugMonsterLOSBlock("slope", lineIdx, sight)
+			return false
+		}
+	}
+	return true
+}
+
+func (g *game) debugMonsterLOSBlock(reason string, lineIdx int, sight *losTrace) {
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+		return
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+		return
+	}
+	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+		return
+	}
+	fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d reason=%s ax=%d ay=%d bx=%d by=%d\n",
+		g.demoTick-1, g.worldTic, lineIdx, reason, sight.trace.x, sight.trace.y, sight.t2x, sight.t2y)
+}
+
 func insertInterceptOrdered(intercepts []intercept, next intercept) []intercept {
 	idx := len(intercepts)
 	for idx > 0 && next.frac < intercepts[idx-1].frac {
@@ -1962,6 +2732,23 @@ func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 	if g == nil || g.m == nil || len(g.sectorFloor) == 0 {
 		return true
 	}
+	fromSector := g.sectorAt(x, y)
+	if i >= 0 && i < len(g.m.Things) {
+		fromSector = g.thingSectorCached(i, g.m.Things[i])
+	}
+	if g.sightRejected(fromSector, g.playerSector()) {
+		if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+			return false
+		}
+		var wantTic, wantIdx int
+		if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
+			if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+				fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=los-reject from=%d to=%d actor=(%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, fromSector, g.playerSector(), x, y)
+			}
+		}
+		return false
+	}
 	if typ == 0 {
 		typ = 3004
 	}
@@ -1978,7 +2765,26 @@ func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 			break
 		}
 	}
-	return g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
+	ok := g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
+	if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+		return ok
+	}
+	var wantTic, wantIdx int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
+		if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+			fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=los ok=%t actor=(%d,%d,%d) player=(%d,%d,%d)\n",
+				g.demoTick-1, g.worldTic, i, ok, x, y, z, g.p.x, g.p.y, g.p.z)
+		}
+	}
+	return ok
+}
+
+func (g *game) sightRejected(fromSector, toSector int) bool {
+	if g == nil || g.m == nil || g.m.RejectMatrix == nil {
+		return false
+	}
+	rejected, err := g.m.RejectMatrix.Rejects(fromSector, toSector)
+	return err == nil && rejected
 }
 
 func (g *game) monsterSupportHeights(i int, th mapdata.Thing) (int64, int64, int64) {
@@ -1986,17 +2792,23 @@ func (g *game) monsterSupportHeights(i int, th mapdata.Thing) (int64, int64, int
 }
 
 func (g *game) monsterHeardPlayer(i int, tx, ty int64) bool {
+	_, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty)
+	return wake
+}
+
+func (g *game) monsterAcquireSectorSoundTarget(i int, tx, ty int64) (hasSoundTarget bool, wake bool) {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
-		return false
+		return false, false
 	}
-	sec := g.sectorAt(tx, ty)
+	sec := g.thingSectorCached(i, g.m.Things[i])
 	if sec < 0 || sec >= len(g.sectorSoundTarget) || !g.sectorSoundTarget[sec] {
-		return false
+		return false, false
 	}
-	if int(g.m.Things[i].Flags)&thingFlagAmbush != 0 {
-		return g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty)
+	g.setMonsterTargetPlayer(i)
+	if i < len(g.thingAmbush) && g.thingAmbush[i] {
+		return true, g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty)
 	}
-	return true
+	return true, true
 }
 
 func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
@@ -2020,6 +2832,15 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 				return false
 			}
 			if !g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty) {
+				if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+					var wantTic, wantIdx int
+					if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+						if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+							fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=look los=0 look=%d allaround=%t tx=%d ty=%d player=(%d,%d)\n",
+								g.demoTick-1, g.worldTic, i, look, allAround, tx, ty, g.p.x, g.p.y)
+						}
+					}
+				}
 				look = (look + 1) & 3
 				continue
 			}
@@ -2046,6 +2867,15 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 			}
 			if i >= 0 && i < len(g.thingLastLook) {
 				g.thingLastLook[i] = look
+			}
+			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+				var wantTic, wantIdx int
+				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+					if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
+						fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=look acquired look=%d allaround=%t tx=%d ty=%d player=(%d,%d)\n",
+							g.demoTick-1, g.worldTic, i, look, allAround, tx, ty, g.p.x, g.p.y)
+					}
+				}
 			}
 			g.setMonsterTargetPlayer(i)
 			return true
@@ -2154,17 +2984,17 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	dy := int64(math.Sin(ang) * float64(step))
 	nx := x + dx
 	ny := y + dy
-	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
 		g.setThingPosFixed(i, nx, ny)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		return
 	}
-	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
 		g.setThingPosFixed(i, x+dx, y)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		return
 	}
-	if tmfloor, tmceil, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
+	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
 		g.setThingPosFixed(i, x, y+dy)
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	}
@@ -2180,6 +3010,9 @@ func (g *game) faceMonsterToward(i int, fromX, fromY, toX, toY int64) {
 	angle := doomPointToAngle2(fromX, fromY, toX, toY)
 	g.debugMonsterAngle(i, "face-target", angle)
 	g.setThingWorldAngle(i, angle)
+	if i >= 0 && i < len(g.thingAmbush) {
+		g.thingAmbush[i] = false
+	}
 }
 
 func (g *game) debugMonsterAngle(i int, src string, angle uint32) {
@@ -2234,33 +3067,34 @@ func (g *game) tryMoveProbe(x, y int64) bool {
 	return ok
 }
 
-func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, bool) {
+func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, []int, bool) {
 	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
-		return 0, 0, false
+		return 0, 0, nil, false
 	}
-	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, monsterRadius(typ), true, i, true)
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActor(x, y, thingTypeRadius(typ), true, i, true)
+	probeLines := append([]int(nil), g.probeSpecialLinesForMover(i)...)
 	g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) ok=%v floor=%d ceil=%d drop=%d", x, y, ok, tmfloor, tmceil, tmdrop))
 	if !ok {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
-	height := monsterHeight(typ)
+	height := g.thingCurrentHeight(i, g.m.Things[i])
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	if tmceil-tmfloor < height {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
 	if tmceil-z < height {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
 	if tmfloor-z > stepHeight {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
 	if !monsterCanDropOff(typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
-		return 0, 0, false
+		return 0, 0, probeLines, false
 	}
-	return tmfloor, tmceil, true
+	return tmfloor, tmceil, probeLines, true
 }
 
-func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {
+func (g *game) touchedSpecialLinesForMonsterMove(i int, x, y int64) []int {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return nil
 	}
@@ -2288,19 +3122,7 @@ func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {
 		if g.boxOnLineSide(box, ld) != -1 {
 			return
 		}
-		blocked := false
-		switch {
-		case ld.sideNum1 < 0:
-			blocked = true
-		case (ld.flags & mlBlocking) != 0:
-			blocked = true
-		case (ld.flags & mlBlockMonsters) != 0:
-			blocked = true
-		default:
-			_, _, _, openrange := g.lineOpening(ld)
-			blocked = openrange <= 0
-		}
-		if blocked && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+		if ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
 			lines = append(lines, ld.idx)
 		}
 	}
@@ -2332,7 +3154,7 @@ func (g *game) blockedSpecialLinesForMonsterMove(i int, x, y int64) []int {
 }
 
 func (g *game) monsterUseBlockingSpecialLines(i int, x, y int64) bool {
-	for _, lineIdx := range g.blockedSpecialLinesForMonsterMove(i, x, y) {
+	for _, lineIdx := range g.touchedSpecialLinesForMonsterMove(i, x, y) {
 		if g.useSpecialLineForActor(lineIdx, 0, false) {
 			return true
 		}

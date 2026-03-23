@@ -1,6 +1,10 @@
 package app
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/sound"
+)
 
 func TestPadDoomSoundSamples_PadsTo512With128(t *testing.T) {
 	src := []byte{1, 2, 3}
@@ -34,5 +38,33 @@ func TestPadDoomSoundSamples_AlreadyAlignedStillCopies(t *testing.T) {
 		if got[i] != src[i] {
 			t.Fatalf("byte %d = %d want %d", i, got[i], src[i])
 		}
+	}
+}
+
+func TestBuildAutomapSoundBank_FaithfulUsesFixed11025MixerRate(t *testing.T) {
+	report := sound.DigitalImportReport{
+		Sounds: []sound.DigitalSound{{
+			Name:       "DSPISTOL",
+			SampleRate: 22050,
+			Samples:    []byte{1, 2, 3, 4},
+		}},
+	}
+	bank := buildAutomapSoundBank(report, false)
+	if bank.ShootPistol.SampleRate != 11025 {
+		t.Fatalf("faithful sample rate=%d want=11025", bank.ShootPistol.SampleRate)
+	}
+}
+
+func TestBuildAutomapSoundBank_SourcePortPreservesLumpRate(t *testing.T) {
+	report := sound.DigitalImportReport{
+		Sounds: []sound.DigitalSound{{
+			Name:       "DSPISTOL",
+			SampleRate: 22050,
+			Samples:    []byte{1, 2, 3, 4},
+		}},
+	}
+	bank := buildAutomapSoundBank(report, true)
+	if bank.ShootPistol.SampleRate != 11025 {
+		t.Fatalf("source-port sample rate=%d want=11025", bank.ShootPistol.SampleRate)
 	}
 }

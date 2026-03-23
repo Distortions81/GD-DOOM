@@ -80,11 +80,13 @@ The repository includes helper scripts for extracting bundled demo data, running
 
 ```bash
 scripts/extract_wad_demo.py
+scripts/demo_trace_compare.sh
 scripts/demo_profile.sh --mem
 scripts/pprof_graphs.sh
 ```
 
 The extractor saves `DEMO1` from `DOOM1.WAD` to `demos/DOOM1-DEMO1.lmp`, which is the default input for the profiling script. The graph helper renders SVG call graphs from the newest CPU and memory profiles in `./profiles`.
+For demo desync work against the original Linux DOOM source tree in `../doom-source`, `scripts/demo_trace_compare.sh` cleans and rebuilds the local tools, runs the reference runtime with `-tracedemo`, runs GD-DOOM with `-trace-demo-state -demo-exit-on-death`, and compares the resulting tic traces with `cmd/demotracecmp`. It prefers a normal desktop run and only falls back to `xvfb-run` when no display is available.
 
 ## WebAssembly Build
 

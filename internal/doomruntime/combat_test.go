@@ -7,6 +7,60 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestInitThingCombatStateRandomizesMonsterSpawnTicsLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{0},
+		thingReactionTics: []int{0},
+		thingLastLook:     []int{0},
+		thingThinkWait:    []int{0},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{0},
+		thingStatePhase:   []int{0},
+	}
+
+	g.initThingCombatState()
+
+	if got := g.thingState[0]; got != monsterStateSpawn {
+		t.Fatalf("state=%v want=%v", got, monsterStateSpawn)
+	}
+	if got := g.thingStateTics[0]; got < 1 || got > 10 {
+		t.Fatalf("spawn tics=%d want in [1,10]", got)
+	}
+	if got := g.thingThinkWait[0]; got != g.thingStateTics[0]-1 {
+		t.Fatalf("think wait=%d want=%d", got, g.thingStateTics[0]-1)
+	}
+	if got := g.thingReactionTics[0]; got != 8 {
+		t.Fatalf("reaction=%d want=8", got)
+	}
+}
+
+func TestSpawnHitscanBloodUsesDoomZJitterAndPRandomCount(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+
+	_, p0 := doomrand.State()
+	g.spawnHitscanBlood(10, 20, 30, 8)
+	_, p1 := doomrand.State()
+
+	if got := len(g.hitscanPuffs); got != 1 {
+		t.Fatalf("blood effects=%d want=1", got)
+	}
+	if got := g.hitscanPuffs[0].kind; got != hitscanFxBlood {
+		t.Fatalf("effect kind=%d want=%d", got, hitscanFxBlood)
+	}
+	if got := prandDelta(p0, p1); got != 4 {
+		t.Fatalf("p-random calls=%d want=4 (z jitter pair + lastlook + tics)", got)
+	}
+	if got := g.hitscanPuffs[0].z; got == 30 {
+		t.Fatalf("blood z=%d want jittered from base z", got)
+	}
+}
+
 func TestMonsterDeathsSpawnVanillaDrops(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -117,6 +171,72 @@ func TestHandleFireConsumesAmmoAndDamages(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterFromPlayerAppliesDoomThrustMomentum(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 64, Y: 32}},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingMomX:      []int64{0},
+		thingMomY:      []int64{0},
+		thingMomZ:      []int64{0},
+		p:              player{x: 0, y: 0},
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
+
+	if g.thingMomX[0] == 0 || g.thingMomY[0] == 0 {
+		t.Fatalf("monster momentum=(%d,%d) want non-zero Doom thrust", g.thingMomX[0], g.thingMomY[0])
+	}
+	if g.thingMomX[0] <= 0 || g.thingMomY[0] <= 0 {
+		t.Fatalf("monster momentum=(%d,%d) want positive thrust away from player", g.thingMomX[0], g.thingMomY[0])
+	}
+}
+
+func TestDamageMonsterDeathPreservesNegativeHealthLikeDoom(t *testing.T) {
+	g := &game{
+		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 9}}},
+		thingHP:             []int{3},
+		thingAggro:          []bool{false},
+		thingReactionTics:   []int{8},
+		thingDead:           []bool{false},
+		thingDeathTics:      []int{0},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingState:          []monsterThinkState{monsterStateSpawn},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
+		thingX:              []int64{0},
+		thingY:              []int64{0},
+		thingAngleState:     []uint32{0},
+		soundQueue:          make([]soundEvent, 0, 2),
+	}
+	doomrand.Clear()
+	g.damageMonsterFrom(0, 8, true, -1, 0, 0, false)
+	if got := g.thingHP[0]; got != -5 {
+		t.Fatalf("hp=%d want=-5", got)
+	}
+	if !g.thingDead[0] {
+		t.Fatal("thing should be dead")
+	}
+}
+
+func TestAppendRuntimeThingInitializesReactionTimeLikeDoomSpawn(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{},
+	}
+	g.ensureMonsterAIState()
+	idx := g.appendRuntimeThing(mapdata.Thing{Type: 2001}, true)
+	if idx != 0 {
+		t.Fatalf("idx=%d want=0", idx)
+	}
+	if got := g.thingReactionTics[0]; got != 8 {
+		t.Fatalf("reactiontime=%d want=8", got)
+	}
+}
+
 func TestHandleFireNoAmmoFallsBackToFist(t *testing.T) {
 	g := &game{
 		stats:     playerStats{Bullets: 0},
@@ -191,6 +311,74 @@ func TestPistolRefireConsumesSpreadAndDamageRolls(t *testing.T) {
 	_, p1 := doomrand.State()
 	if d := prandDelta(p0, p1); d != 3 {
 		t.Fatalf("p-random calls=%d want=3 for refire pistol shot", d)
+	}
+}
+
+func TestOutOfAmmoShotgunAutoSwitchPreservesPistolRefire(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats: playerStats{
+			Bullets: 10,
+			Shells:  0,
+		},
+		inventory: playerInventory{
+			ReadyWeapon: weaponShotgun,
+			Weapons:     map[int16]bool{2001: true},
+		},
+	}
+
+	g.weaponPSpriteY = weaponTopY
+	g.setAttackHeld(true)
+	g.setWeaponPSpriteState(weaponStateShotgunAtk9, false)
+
+	if g.inventory.PendingWeapon != weaponPistol {
+		t.Fatalf("pending weapon=%v want pistol", g.inventory.PendingWeapon)
+	}
+	if g.weaponState != weaponStateShotgunDown {
+		t.Fatalf("weapon state=%v want shotgun down", g.weaponState)
+	}
+	if !g.weaponRefire {
+		t.Fatalf("weaponRefire=false want true after held-fire auto-switch")
+	}
+
+	for i := 0; i < 64 && g.inventory.ReadyWeapon != weaponPistol; i++ {
+		g.tickWeaponOverlay()
+	}
+	if g.inventory.ReadyWeapon != weaponPistol {
+		t.Fatalf("ready weapon=%v want pistol after lower/raise", g.inventory.ReadyWeapon)
+	}
+
+	_, p0 := doomrand.State()
+	for i := 0; i < 64 && g.stats.Bullets == 10; i++ {
+		g.tickWeaponFire()
+	}
+	if g.stats.Bullets != 9 {
+		t.Fatalf("bullets=%d want 9 after first pistol shot", g.stats.Bullets)
+	}
+	_, p1 := doomrand.State()
+	if d := prandDelta(p0, p1); d != 3 {
+		t.Fatalf("p-random calls=%d want=3 for first pistol shot after held-fire auto-switch", d)
+	}
+}
+
+func TestSetAttackHeldFalseDoesNotClearWeaponFlagsMidAttack(t *testing.T) {
+	g := &game{
+		weaponRefire:     true,
+		weaponAttackDown: true,
+		weaponState:      weaponStateShotgunAtk8,
+		weaponStateTics:  3,
+	}
+
+	g.setAttackHeld(false)
+
+	if g.statusAttackDown {
+		t.Fatal("statusAttackDown=true want false")
+	}
+	if !g.weaponRefire {
+		t.Fatal("weaponRefire=false want true during non-ready attack state")
+	}
+	if !g.weaponAttackDown {
+		t.Fatal("weaponAttackDown=false want true during non-ready attack state")
 	}
 }
 
@@ -493,7 +681,7 @@ func TestDamageMonsterFromMonsterRespectsThreshold(t *testing.T) {
 		thingPainTics:     []int{0, 0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 1)
+	g.damageMonsterFrom(0, 5, false, 1, 0, 0, false)
 
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("target changed despite threshold: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -520,7 +708,7 @@ func TestDamageMonsterFromArchvileVictimIgnoresThresholdForRetarget(t *testing.T
 		thingPainTics:     []int{0, 0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 1)
+	g.damageMonsterFrom(0, 5, false, 1, 0, 0, false)
 
 	if g.thingTargetPlayer[0] || g.thingTargetIdx[0] != 1 {
 		t.Fatalf("arch-vile victim should retarget attacker: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -547,7 +735,7 @@ func TestDamageMonsterFromArchvileSourceDoesNotRetarget(t *testing.T) {
 		thingPainTics:     []int{0, 0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 1)
+	g.damageMonsterFrom(0, 5, false, 1, 0, 0, false)
 
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("arch-vile source should not become target: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -570,7 +758,7 @@ func TestDamageMonsterFromSelfDoesNotRetarget(t *testing.T) {
 		thingPainTics:     []int{0},
 	}
 
-	g.damageMonsterFrom(0, 5, false, 0)
+	g.damageMonsterFrom(0, 5, false, 0, 0, 0, false)
 
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("self-damage should not retarget: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
@@ -595,10 +783,67 @@ func TestDamageMonsterFromSetsJustHitOnlyWhenPainTriggers(t *testing.T) {
 		thingPainTics:     []int{0},
 	}
 
-	g.damageMonsterFrom(0, 5, true, -1)
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
 
 	if g.thingJustHit[0] {
 		t.Fatal("just-hit should stay clear when pain does not trigger")
+	}
+}
+
+func TestDamageMonsterPainCancelsQueuedAttackStateLikeDoom(t *testing.T) {
+	findPainSeed := func(chance int) int {
+		for seed := 0; seed < 256; seed++ {
+			doomrand.SetState(0, seed)
+			if doomrand.PRandom() < chance {
+				return seed
+			}
+		}
+		t.Fatalf("no PRandom seed found for pain chance %d", chance)
+		return 0
+	}
+
+	seed := findPainSeed(monsterPainChance(9))
+	doomrand.SetState(0, seed)
+
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9, X: 0, Y: 0}},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{30},
+		thingAggro:          []bool{true},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{10},
+		thingAttackPhase:    []int{1},
+		thingAttackFireTics: []int{2},
+		thingJustAtk:        []bool{true},
+		thingJustHit:        []bool{false},
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStateTics:      []int{10},
+		thingStatePhase:     []int{0},
+		thingReactionTics:   []int{8},
+		soundQueue:          make([]soundEvent, 0, 2),
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
+
+	if g.thingPainTics[0] <= 0 {
+		t.Fatalf("pain tics=%d want > 0", g.thingPainTics[0])
+	}
+	if g.thingAttackTics[0] != 0 {
+		t.Fatalf("attack tics=%d want 0 after pain", g.thingAttackTics[0])
+	}
+	if g.thingAttackFireTics[0] != -1 {
+		t.Fatalf("attack fire tics=%d want -1 after pain", g.thingAttackFireTics[0])
+	}
+	if g.thingAttackPhase[0] != 0 {
+		t.Fatalf("attack phase=%d want 0 after pain", g.thingAttackPhase[0])
+	}
+	if !g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should remain set so the next chase tic honors Doom's just-attacked gate")
+	}
+	if g.thingState[0] != monsterStatePain {
+		t.Fatalf("state=%d want pain", g.thingState[0])
 	}
 }
 
@@ -688,6 +933,7 @@ func TestFistHitUsesPunchSound(t *testing.T) {
 func TestFireGunShotSpawnsHitscanPuffOnWallImpact(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
+		m: &mapdata.Map{},
 		lines: []physLine{
 			{
 				x1:       64 * fracUnit,
@@ -733,6 +979,118 @@ func TestFireGunShotSpawnsHitscanBloodOnMonsterHit(t *testing.T) {
 	}
 }
 
+func TestLineAttackInterceptsIncludeDeadCorpse(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3001, X: 64, Y: 0}},
+		},
+		thingCollected: make([]bool, 1),
+		thingHP:        []int{0},
+		thingDead:      []bool{true},
+		thingX:         []int64{64 * fracUnit},
+		thingY:         []int64{0},
+		lines: []physLine{{
+			x1:       128 * fracUnit,
+			y1:       -32 * fracUnit,
+			x2:       128 * fracUnit,
+			y2:       32 * fracUnit,
+			flags:    0,
+			sideNum1: -1,
+		}},
+		p: player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+	}
+
+	intercepts := g.collectLineAttackIntercepts(g.playerLineAttackActor(), g.p.angle, pistolRange)
+	foundCorpse := false
+	for _, in := range intercepts {
+		if in.isLine {
+			continue
+		}
+		if in.target.kind == lineAttackTargetThing && in.target.idx == 0 {
+			foundCorpse = true
+			break
+		}
+	}
+	if !foundCorpse {
+		t.Fatalf("intercepts=%+v want dead corpse target present", intercepts)
+	}
+}
+
+func TestAimLineAttackSkipsDeadCorpseAndTargetsLiveMonster(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 64, Y: 0},
+				{Type: 3004, X: 128, Y: 0},
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{0, 20},
+		thingDead:         []bool{true, false},
+		thingX:            []int64{64 * fracUnit, 128 * fracUnit},
+		thingY:            []int64{0, 0},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+		p:                 player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+	}
+
+	got := g.bulletSlopeForAim(g.p.angle, pistolRange)
+	trace := divline{x: g.p.x, y: g.p.y, dx: pistolRange, dy: 0}
+	frac, ok := lineAttackThingFrac(trace, g.thingX[1], g.thingY[1], thingTypeRadius(g.m.Things[1].Type))
+	if !ok {
+		t.Fatal("expected live monster to be aimable")
+	}
+	dist := fixedMul(pistolRange, frac)
+	wantTop := fixedDiv(monsterHeight(3004)-g.playerShootZ(), dist)
+	wantBottom := fixedDiv(-g.playerShootZ(), dist)
+	want := (wantTop + wantBottom) / 2
+
+	if diff := got - want; diff < -2 || diff > 2 {
+		t.Fatalf("slope=%d want≈%d when dead corpse is in front of live monster", got, want)
+	}
+}
+
+func TestDamageMonsterFatalThrustConsumesDoomForwardFallRandom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3001, X: 128, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{5},
+		thingDead:         []bool{false},
+		thingX:            []int64{128 * fracUnit},
+		thingY:            []int64{0},
+		thingZState:       []int64{128 * fracUnit},
+		thingFloorState:   []int64{128 * fracUnit},
+		thingCeilState:    []int64{256 * fracUnit},
+		thingSupportValid: []bool{true},
+		thingDeathTics:    []int{0},
+		thingMomX:         []int64{0},
+		thingMomY:         []int64{0},
+		thingMomZ:         []int64{0},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{0},
+		thingStatePhase:   []int{0},
+		thingPainTics:     []int{0},
+		thingAttackTics:   []int{0},
+		thingAttackFireTics: []int{
+			-1,
+		},
+		p: player{x: 0, y: 0, z: 0},
+	}
+
+	_, before := doomrand.State()
+	g.damageMonsterFrom(0, 10, true, -1, 0, 0, false)
+	_, after := doomrand.State()
+
+	if got := prandDelta(before, after); got != 2 {
+		t.Fatalf("prandom delta=%d want=2 (forward-fall check + death shorten)", got)
+	}
+}
+
 func TestHitscanPuffsExpire(t *testing.T) {
 	g := &game{}
 	g.spawnHitscanPuff(0, 0, 0)
@@ -744,6 +1102,60 @@ func TestHitscanPuffsExpire(t *testing.T) {
 	}
 	if len(g.hitscanPuffs) != 0 {
 		t.Fatalf("puffs=%d want=0 after expiry", len(g.hitscanPuffs))
+	}
+}
+
+func TestHitscanBloodAdvancesWithGravityLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
+	g.spawnHitscanBlood(0, 0, 0, 5)
+	if len(g.hitscanPuffs) != 1 {
+		t.Fatalf("blood effects=%d want=1", len(g.hitscanPuffs))
+	}
+	if got := g.hitscanPuffs[0].state; got != 92 {
+		t.Fatalf("initial blood state=%d want=92", got)
+	}
+	g.tickHitscanPuffs()
+	if got := g.hitscanPuffs[0].momz; got != fracUnit {
+		t.Fatalf("blood momz after thinker tick=%d want=%d", got, fracUnit)
+	}
+	if got := g.hitscanPuffs[0].state; got != 92 {
+		t.Fatalf("blood state after thinker tick=%d want=92", got)
+	}
+	if got := g.hitscanPuffs[0].tics; got < 1 || got > 7 {
+		t.Fatalf("blood tics after thinker tick=%d want within [1,7]", got)
+	}
+}
+
+func TestHitscanBloodClipsToFloorLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		hitscanPuffs: []hitscanPuff{{
+			x:     0,
+			y:     0,
+			z:     fracUnit / 2,
+			momz:  -8 * fracUnit,
+			tics:  4,
+			state: 91,
+			kind:  hitscanFxBlood,
+		}},
+	}
+	g.tickHitscanPuffs()
+	if got := g.hitscanPuffs[0].z; got != 0 {
+		t.Fatalf("blood z after floor clip=%d want=0", got)
+	}
+	if got := g.hitscanPuffs[0].momz; got != 0 {
+		t.Fatalf("blood momz after floor clip=%d want=0", got)
 	}
 }
 
@@ -869,12 +1281,75 @@ func TestMonsterHitscanAttackSpawnsPuffOnWallImpact(t *testing.T) {
 	}
 }
 
+func TestMonsterHitscanAttackUsesDoomMissileRange(t *testing.T) {
+	g := &game{
+		p: player{x: 1500 * fracUnit, y: 0, z: 0},
+	}
+	actor := lineAttackActor{
+		x:          0,
+		y:          0,
+		shootZ:     0,
+		targetMask: lineAttackMaskPlayer,
+	}
+
+	outcome := g.lineAttackTrace(actor, 0, monsterAttackRange, 0, false)
+
+	if outcome.target.kind != lineAttackTargetPlayer {
+		t.Fatalf("target kind=%d want player", outcome.target.kind)
+	}
+}
+
 func TestMonsterPainSoundEventMapping(t *testing.T) {
 	if got := monsterPainSoundEvent(3006); got != soundEventMonsterPainDemon {
 		t.Fatalf("lost soul pain event=%v want=%v", got, soundEventMonsterPainDemon)
 	}
 	if got := monsterPainSoundEvent(3001); got != soundEventMonsterPainHumanoid {
 		t.Fatalf("imp pain event=%v want=%v", got, soundEventMonsterPainHumanoid)
+	}
+}
+
+func TestPlayerAttackClearsPendingPainState(t *testing.T) {
+	g := &game{
+		playerMobjState: doomStatePlayerPain1,
+		playerMobjTics:  4,
+		stats:           playerStats{Bullets: 10},
+		soundQueue:      make([]soundEvent, 0, 2),
+		p:               player{angle: 0},
+	}
+	_ = g.firePistol(true)
+	if g.playerMobjState != doomStatePlayerAttack2 || g.playerMobjTics != 6 {
+		t.Fatalf("player mobj state/tics=%d/%d want=%d/6", g.playerMobjState, g.playerMobjTics, doomStatePlayerAttack2)
+	}
+}
+
+func TestDamageMonsterPainSoundStartsOnPainActionFrame(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9, X: 0, Y: 0}},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{30},
+		thingPainTics:       []int{0},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingAttackPhase:    []int{0},
+		thingJustHit:        []bool{false},
+		soundQueue:          make([]soundEvent, 0, 2),
+	}
+
+	doomrand.Clear()
+	g.damageMonsterFrom(0, 5, false, -1, 0, 0, false)
+	if len(g.soundQueue) != 0 {
+		t.Fatalf("pain sound should wait for A_Pain frame, queue=%v", g.soundQueue)
+	}
+	if g.thingPainTics[0] != 6 {
+		t.Fatalf("pain tics=%d want 6", g.thingPainTics[0])
+	}
+	if g.thingStateTics[0] != 3 {
+		t.Fatalf("state tics=%d want first pain frame 3", g.thingStateTics[0])
 	}
 }
 
@@ -909,37 +1384,57 @@ func TestMonsterDeathSoundEventMapping(t *testing.T) {
 	}
 }
 
-func TestDamageMonsterDelaysShotgunDeathSoundToScreamFrame(t *testing.T) {
-	g := &game{
-		m: &mapdata.Map{
-			Things: []mapdata.Thing{
-				{Type: 9, X: 0, Y: 0},
+func TestDamageMonsterDelaysFormerHumanDeathSoundToScreamFrame(t *testing.T) {
+	tests := []struct {
+		typ    int16
+		events []soundEvent
+	}{
+		{typ: 3004, events: []soundEvent{soundEventDeathPodth1, soundEventDeathPodth2, soundEventDeathPodth3}},
+		{typ: 9, events: []soundEvent{soundEventDeathPodth1, soundEventDeathPodth2, soundEventDeathPodth3}},
+		{typ: 65, events: []soundEvent{soundEventDeathPodth1, soundEventDeathPodth2, soundEventDeathPodth3}},
+		{typ: 84, events: []soundEvent{soundEventDeathWolfSS}},
+	}
+	for _, tc := range tests {
+		doomrand.Clear()
+		g := &game{
+			m: &mapdata.Map{
+				Things: []mapdata.Thing{
+					{Type: tc.typ, X: 0, Y: 0},
+				},
 			},
-		},
-		thingCollected: []bool{false},
-		thingHP:        []int{1},
-		thingDead:      []bool{false},
-		thingDeathTics: []int{0},
-		soundQueue:     make([]soundEvent, 0, 2),
-		delayedSfx:     make([]delayedSoundEvent, 0, 2),
-	}
-	g.damageMonster(0, 1)
-	if hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
-		t.Fatalf("death sound should be delayed; queue=%v", g.soundQueue)
-	}
-	if got := len(g.delayedSfx); got != 1 {
-		t.Fatalf("delayedSfx len=%d want=1", got)
-	}
-	for i := 0; i < 4; i++ {
-		g.tickDelayedSounds()
-		if hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
-			t.Fatalf("death sound fired early at tick %d", i+1)
+			thingCollected:  []bool{false},
+			thingHP:         []int{1},
+			thingDead:       []bool{false},
+			thingDeathTics:  []int{0},
+			thingState:      []monsterThinkState{monsterStateSee},
+			thingStateTics:  []int{0},
+			thingStatePhase: []int{0},
+			soundQueue:      make([]soundEvent, 0, 2),
+		}
+		g.damageMonster(0, 1)
+		if hasAnySoundEvent(g.soundQueue, tc.events...) {
+			t.Fatalf("type=%d death sound should be delayed; queue=%v", tc.typ, g.soundQueue)
+		}
+		for i := 0; i < 4; i++ {
+			g.tickMonsters()
+			if hasAnySoundEvent(g.soundQueue, tc.events...) {
+				t.Fatalf("type=%d death sound fired early at tick %d", tc.typ, i+1)
+			}
+		}
+		g.tickMonsters()
+		if !hasAnySoundEvent(g.soundQueue, tc.events...) {
+			t.Fatalf("type=%d queue=%v missing delayed humanoid death sound", tc.typ, g.soundQueue)
 		}
 	}
-	g.tickDelayedSounds()
-	if !hasSoundEvent(g.soundQueue, soundEventDeathShotgunGuy) {
-		t.Fatalf("queue=%v missing delayed shotgun death sound", g.soundQueue)
+}
+
+func hasAnySoundEvent(queue []soundEvent, want ...soundEvent) bool {
+	for _, ev := range want {
+		if hasSoundEvent(queue, ev) {
+			return true
+		}
 	}
+	return false
 }
 
 func hasSoundEvent(queue []soundEvent, want soundEvent) bool {

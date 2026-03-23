@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 )
 
 // Table is Doom's original 256-byte pseudo-random lookup table.
@@ -86,6 +87,7 @@ func (r *RNG) State() (rndIndex, prndIndex int) {
 }
 
 var global = New()
+var debugTic = -1
 
 // PRandom is the package-level Doom-compatible P_Random.
 func PRandom() int {
@@ -122,9 +124,19 @@ func State() (rndIndex, prndIndex int) {
 	return global.State()
 }
 
+// SetDebugTic updates the current gameplay tic used by optional RNG caller logging filters.
+func SetDebugTic(tic int) {
+	debugTic = tic
+}
+
 func debugLogCaller(kind string, rndIndex, prndIndex, value int) {
 	if os.Getenv("GD_DEBUG_RNG_CALLERS") == "" {
 		return
+	}
+	if want := os.Getenv("GD_DEBUG_RNG_TIC"); want != "" {
+		if tic, err := strconv.Atoi(want); err == nil && debugTic != tic {
+			return
+		}
 	}
 	for skip := 2; skip < 16; skip++ {
 		pc, file, line, ok := runtime.Caller(skip)

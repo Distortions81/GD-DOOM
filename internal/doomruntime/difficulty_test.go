@@ -59,10 +59,10 @@ func TestThingSpawnsForGameMode(t *testing.T) {
 func TestThingSpawnsInSession_ShowAllItemsOverridesFiltersForPickupsOnly(t *testing.T) {
 	pickup := mapdata.Thing{Type: 2008, Flags: thingFlagNotSingle}
 	monster := mapdata.Thing{Type: 3004, Flags: thingFlagNotSingle}
-	if !thingSpawnsInSession(pickup, 3, gameModeSingle, false, true) {
+	if !thingSpawnsInSession(pickup, 3, gameModeSingle, false, true, false) {
 		t.Fatal("pickup should spawn when show-all-items is enabled")
 	}
-	if thingSpawnsInSession(monster, 3, gameModeSingle, false, true) {
+	if thingSpawnsInSession(monster, 3, gameModeSingle, false, true, false) {
 		t.Fatal("monster should not bypass normal spawn filters when show-all-items is enabled")
 	}
 }
@@ -108,6 +108,25 @@ func TestApplyThingSpawnFiltering_ShowNoSkillItemsPreservesPickups(t *testing.T)
 	}
 	if !g.thingCollected[1] {
 		t.Fatal("no-skill monster should still be filtered")
+	}
+}
+
+func TestThingBlocksInSession_RespectsSkillFiltering(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 25, Flags: skillHardBits}, // solid object, hard only
+				{Type: 25, Flags: skillEasyBits}, // solid object, easy only
+			},
+		},
+		opts: Options{SkillLevel: 1, GameMode: gameModeSingle},
+	}
+	g.thingCollected = make([]bool, len(g.m.Things))
+	if g.thingBlocksInSession(0) {
+		t.Fatal("hard-only solid should not block on skill 1")
+	}
+	if !g.thingBlocksInSession(1) {
+		t.Fatal("easy-only solid should block on skill 1")
 	}
 }
 

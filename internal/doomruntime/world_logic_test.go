@@ -72,11 +72,26 @@ func TestHazardDamage_LastRadSuitTicStillProtects(t *testing.T) {
 func TestDamagePlayerFrom_BlockedByInvulnerabilityPowerup(t *testing.T) {
 	g := &game{
 		stats:     playerStats{Health: 100},
+		playerMobjHealth: 100,
 		inventory: playerInventory{InvulnTics: 10},
 	}
 	g.damagePlayerFrom(20, "ouch", 0, 0, false)
 	if g.stats.Health != 100 {
 		t.Fatalf("health=%d want=100", g.stats.Health)
+	}
+}
+
+func TestDamagePlayerFrom_ClampsPlayerHealthButNotMobjHealth(t *testing.T) {
+	g := &game{
+		stats:            playerStats{Health: 2},
+		playerMobjHealth: 2,
+	}
+	g.damagePlayerFrom(3, "ouch", 0, 0, false)
+	if g.stats.Health != 0 {
+		t.Fatalf("health=%d want=0", g.stats.Health)
+	}
+	if g.playerMobjHealth != -1 {
+		t.Fatalf("playerMobjHealth=%d want=-1", g.playerMobjHealth)
 	}
 }
 
@@ -131,6 +146,89 @@ func TestTrackSecrets_RequiresPlayerOnFloorAndClearsSectorSpecial(t *testing.T) 
 	}
 }
 
+func TestTrackSecrets_UsesCachedPlayerSectorLikeDoomMobj(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: 0}, {Special: 9}}},
+		p: player{
+			x:         0,
+			y:         0,
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    1,
+		},
+		secretFound:        make([]bool, 2),
+		hudMessagesEnabled: true,
+	}
+	g.trackSecrets()
+	if g.secretsFound != 1 {
+		t.Fatalf("secretsFound=%d want=1 from cached sector", g.secretsFound)
+	}
+	if !g.secretFound[1] {
+		t.Fatal("cached secret sector should be marked found")
+	}
+}
+
+func TestApplySectorHazardDamage_UsesCachedPlayerSectorLikeDoomMobj(t *testing.T) {
+	g := &game{
+		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 0}, {Special: 7}}},
+		sectorFloor: []int64{0, 0},
+		p: player{
+			x:         0,
+			y:         0,
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    1,
+		},
+		stats: playerStats{Health: 100},
+	}
+	g.applySectorHazardDamage()
+	if g.stats.Health != 95 {
+		t.Fatalf("health=%d want=95 from cached hazard sector", g.stats.Health)
+	}
+}
+
+func TestApplySectorHazardDamage_UsesSectorFloorNotLocalSupportFloor(t *testing.T) {
+	g := &game{
+		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 7}}},
+		sectorFloor: []int64{-24 * fracUnit},
+		p: player{
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    0,
+		},
+		stats: playerStats{Health: 100},
+	}
+	g.applySectorHazardDamage()
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want=100 when above sector floor", g.stats.Health)
+	}
+}
+
+func TestTrackSecrets_UsesSectorFloorNotLocalSupportFloor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: 9}}},
+		p: player{
+			z:         0,
+			floorz:    0,
+			subsector: 0,
+			sector:    0,
+		},
+		sectorFloor:         []int64{-24 * fracUnit},
+		secretFound:         make([]bool, 1),
+		hudMessagesEnabled:  true,
+	}
+	g.trackSecrets()
+	if g.secretsFound != 0 {
+		t.Fatalf("secretsFound=%d want=0 when above sector floor", g.secretsFound)
+	}
+	if g.m.Sectors[0].Special != 9 {
+		t.Fatalf("sector special=%d want=9 when above sector floor", g.m.Sectors[0].Special)
+	}
+}
+
 func TestPickupRadSuitSetsTimer(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()
@@ -170,6 +268,59 @@ func TestDamagePlayerSetsDeathStateAndFlash(t *testing.T) {
 	}
 	if got := g.soundQueue[0]; got != soundEventPlayerDeath {
 		t.Fatalf("sound event=%v want=%v", got, soundEventPlayerDeath)
+	}
+}
+
+func TestDamagePlayerFromConsumesPlayerPainChancePRandomAndStartsPainState(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:      playerStats{Health: 100},
+		soundQueue: make([]soundEvent, 0, 2),
+	}
+	_, before := doomrand.State()
+	g.damagePlayerFrom(2, "ouch", 0, 0, false)
+	_, after := doomrand.State()
+	if got := after - before; got != 1 {
+		t.Fatalf("prnd advanced by %d want=1", got)
+	}
+	if g.playerMobjState != doomStatePlayerPain1 || g.playerMobjTics != 4 {
+		t.Fatalf("player mobj state/tics=%d/%d want=%d/4", g.playerMobjState, g.playerMobjTics, doomStatePlayerPain1)
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue len=%d want=0 before A_Pain frame", got)
+	}
+}
+
+func TestDamagePlayerFromSkipsPainStateWhenPainChanceRollFails(t *testing.T) {
+	doomrand.SetState(0, 157) // next PRandom is table[158]=255
+	g := &game{
+		stats:      playerStats{Health: 100},
+		soundQueue: make([]soundEvent, 0, 2),
+	}
+	g.damagePlayerFrom(2, "ouch", 0, 0, false)
+	if g.playerMobjState != 0 || g.playerMobjTics != 0 {
+		t.Fatalf("player mobj state/tics=%d/%d want=0/0", g.playerMobjState, g.playerMobjTics)
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue len=%d want=0", got)
+	}
+}
+
+func TestTickPlayerCounters_EmitsPainSoundOnSecondPainFrame(t *testing.T) {
+	g := &game{
+		playerMobjState: doomStatePlayerPain1,
+		playerMobjTics:  1,
+		soundQueue:      make([]soundEvent, 0, 2),
+	}
+	g.tickPlayerCounters()
+	if g.playerMobjState != doomStatePlayerPain2 || g.playerMobjTics != 4 {
+		t.Fatalf("player mobj state/tics=%d/%d want=%d/4", g.playerMobjState, g.playerMobjTics, doomStatePlayerPain2)
+	}
+	if got := len(g.soundQueue); got != 1 {
+		t.Fatalf("soundQueue len=%d want=1", got)
+	}
+	if got := g.soundQueue[0]; got != soundEventPain {
+		t.Fatalf("sound=%v want=%v", got, soundEventPain)
 	}
 }
 

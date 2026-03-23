@@ -48,6 +48,353 @@ func TestUseSpecialLine_ActivatesRepeatPlatformButton(t *testing.T) {
 	}
 }
 
+func TestActivatePlatLine_DownWaitUpStayStartsActiveWithZeroCount(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 88, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{88},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.status != platStatusDown {
+		t.Fatalf("status=%v want %v", pt.status, platStatusDown)
+	}
+	if pt.oldStatus != platStatusInStasis {
+		t.Fatalf("oldStatus=%v want %v", pt.oldStatus, platStatusInStasis)
+	}
+	if pt.count != 0 {
+		t.Fatalf("count=%d want 0", pt.count)
+	}
+	if pt.wait != platWaitTics {
+		t.Fatalf("wait=%d want %d", pt.wait, platWaitTics)
+	}
+}
+
+func TestActivatePlatLine_DownWaitUpStayReusesStalePlatFieldsLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 88, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{88},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		platFree: []*platThinker{{
+			count:     platWaitTics,
+			oldStatus: platStatusInStasis,
+		}},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.status != platStatusDown {
+		t.Fatalf("status=%v want %v", pt.status, platStatusDown)
+	}
+	if pt.count != platWaitTics {
+		t.Fatalf("count=%d want stale %d from recycled plat", pt.count, platWaitTics)
+	}
+	if pt.oldStatus != platStatusInStasis {
+		t.Fatalf("oldStatus=%v want stale %v from recycled plat", pt.oldStatus, platStatusInStasis)
+	}
+}
+
+func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 88, Tag: 7, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+				{FloorHeight: -64, CeilingHeight: 128},
+			},
+		},
+		lineSpecial:       []uint16{88},
+		sectorFloor:       []int64{0, -64 * fracUnit},
+		sectorCeil:        []int64{128 * fracUnit, 128 * fracUnit},
+		platTickedThisTic: true,
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	if got, want := g.sectorFloor[0], int64(-4*fracUnit); got != want {
+		t.Fatalf("floor after same-tic plat activation=%d want %d", got, want)
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.status != platStatusDown {
+		t.Fatalf("status=%v want %v", pt.status, platStatusDown)
+	}
+	if pt.count != 0 {
+		t.Fatalf("count=%d want 0", pt.count)
+	}
+}
+
+func TestSetSectorCeilingHeight_DoesNotHeightClipNeighborSectorThings(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 72},
+				{FloorHeight: 0, CeilingHeight: 72},
+			},
+			Things: []mapdata.Thing{
+				{X: 96, Y: 64, Type: 3004},
+			},
+		},
+		sectorFloor:       []int64{0, 0},
+		sectorCeil:        []int64{72 * fracUnit, 72 * fracUnit},
+		sectorBBox:        []worldBBox{{minX: 0, minY: 0, maxX: 127, maxY: 127}, {minX: 160, minY: 0, maxX: 255, maxY: 127}},
+		bmapOriginX:       0,
+		bmapOriginY:       0,
+		bmapWidth:         2,
+		bmapHeight:        1,
+		thingCollected:    []bool{false},
+		thingX:            []int64{96 * fracUnit},
+		thingY:            []int64{64 * fracUnit},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{68 * fracUnit},
+		thingSupportValid: []bool{true},
+		p: player{
+			x:      96 * fracUnit,
+			y:      64 * fracUnit,
+			z:      0,
+			floorz: 0,
+			ceilz:  72 * fracUnit,
+		},
+	}
+	g.thingBlockCells = make([][]int, g.bmapWidth*g.bmapHeight)
+	g.rebuildThingBlockmap()
+
+	g.setSectorCeilingHeight(1, 71*fracUnit)
+
+	if got, want := g.thingCeilState[0], int64(68*fracUnit); got != want {
+		t.Fatalf("neighbor thing ceilingz=%d want %d", got, want)
+	}
+}
+
+func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 1, SideNum: [2]int16{0, 1}}},
+			Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		lineSpecial: []uint16{1},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+		lines: []physLine{{
+			idx:      0,
+			x1:       64 * fracUnit,
+			y1:       -64 * fracUnit,
+			x2:       64 * fracUnit,
+			y2:       64 * fracUnit,
+			dx:       0,
+			dy:       128 * fracUnit,
+			flags:    mlTwoSided,
+			special:  1,
+			sideNum0: 0,
+			sideNum1: 1,
+			bbox:     [4]int64{64 * fracUnit, -64 * fracUnit, 64 * fracUnit, 64 * fracUnit},
+			slope:    slopeVertical,
+		}},
+		p: player{x: 128 * fracUnit, y: 0, angle: doomAng180, floorz: 0, ceilz: 128 * fracUnit, subsector: -1, sector: 0, viewHeight: playerViewHeight},
+	}
+	g.physForLine = []int{0}
+	g.doors = map[int]*doorThinker{
+		1: {
+			sector:    1,
+			typ:       doorNormal,
+			direction: 1,
+			speed:     vDoorSpeed,
+			topWait:   vDoorWaitTic,
+			topHeight: 124 * fracUnit,
+		},
+	}
+	d := g.doors[1]
+
+	g.runGameplayTic(moveCmd{}, true, false)
+	if d.direction != -1 {
+		t.Fatalf("first use on active manual door direction=%d want=-1", d.direction)
+	}
+
+	g.runGameplayTic(moveCmd{}, true, false)
+	if d.direction != -1 {
+		t.Fatalf("held use should not retrigger active manual door, direction=%d want=-1", d.direction)
+	}
+
+	g.runGameplayTic(moveCmd{}, false, false)
+	g.runGameplayTic(moveCmd{}, true, false)
+	if d.direction != 1 {
+		t.Fatalf("use after release should retrigger active manual door, direction=%d want=1", d.direction)
+	}
+}
+
+func TestActivatePlatRaiseToNearestAndChangeClearsSectorDamageImmediately(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 62, Tag: 7, SideNum: [2]int16{0, -1}}},
+			Sidedefs: []mapdata.Sidedef{{Sector: 1}},
+			Sectors: []mapdata.Sector{
+				{Tag: 7, FloorHeight: 0, CeilingHeight: 128, Special: 7},
+				{FloorHeight: 0, CeilingHeight: 128, FloorPic: "FLOOR0_1"},
+			},
+		},
+		lineSpecial: []uint16{62},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatRaiseToNearestAndChange}) {
+		t.Fatal("activatePlatLine returned false")
+	}
+	if got := g.m.Sectors[0].Special; got != 0 {
+		t.Fatalf("sector special=%d want=0 immediately after activation", got)
+	}
+}
+
+func TestTickPlats_RaiseToNearestAndChangeRemovesAfterOvershootTick(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{31 * fracUnit},
+		sectorCeil:  []int64{128 * fracUnit},
+		plats: map[int]*platThinker{
+			0: {
+				sector: 0,
+				typ:    platTypeRaiseToNearestAndChange,
+				status: platStatusUp,
+				speed:  fracUnit,
+				high:   32 * fracUnit,
+			},
+		},
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; !ok {
+		t.Fatal("plat removed at exact destination; want one more tic like Doom")
+	}
+	if got, want := g.sectorFloor[0], int64(32*fracUnit); got != want {
+		t.Fatalf("floor after exact destination tic=%d want=%d", got, want)
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; ok {
+		t.Fatal("plat not removed on overshoot tic")
+	}
+}
+
+func TestTickPlats_DownWaitUpStayRemovesAfterOvershootTick(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{-1 * fracUnit},
+		sectorCeil:  []int64{128 * fracUnit},
+		plats: map[int]*platThinker{
+			0: {
+				sector: 0,
+				typ:    platTypeDownWaitUpStay,
+				status: platStatusUp,
+				speed:  fracUnit,
+				high:   0,
+				wait:   platWaitTics,
+			},
+		},
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; !ok {
+		t.Fatal("plat removed at exact destination; want one more tic like Doom")
+	}
+	if got, want := g.sectorFloor[0], int64(0); got != want {
+		t.Fatalf("floor after exact destination tic=%d want=%d", got, want)
+	}
+
+	g.tickPlats()
+	if _, ok := g.plats[0]; ok {
+		t.Fatal("downWaitUpStay plat not removed on overshoot tic")
+	}
+}
+
+func TestTickFloors_RemoveOnOvershootTicNotExactArrival(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		floors: map[int]*floorThinker{
+			0: {
+				direction:  -1,
+				speed:      8 * fracUnit,
+				destHeight: -16 * fracUnit,
+			},
+		},
+	}
+
+	g.tickFloors()
+	if got := g.sectorFloor[0]; got != -8*fracUnit {
+		t.Fatalf("first tick floor=%d want=%d", got, -8*fracUnit)
+	}
+	if _, ok := g.floors[0]; !ok {
+		t.Fatal("floor thinker removed too early after first step")
+	}
+
+	g.tickFloors()
+	if got := g.sectorFloor[0]; got != -16*fracUnit {
+		t.Fatalf("second tick floor=%d want=%d", got, -16*fracUnit)
+	}
+	if _, ok := g.floors[0]; !ok {
+		t.Fatal("floor thinker removed on exact-arrival tic")
+	}
+
+	g.tickFloors()
+	if got := g.sectorFloor[0]; got != -16*fracUnit {
+		t.Fatalf("overshoot tick floor=%d want=%d", got, -16*fracUnit)
+	}
+	if _, ok := g.floors[0]; ok {
+		t.Fatal("floor thinker not removed on overshoot tic")
+	}
+}
+
 func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -338,10 +685,27 @@ func TestUseSpecialLine_WalkOnlySpecialDoesNotReportUnsupported(t *testing.T) {
 func TestUseSpecialLine_ReportsUnsupportedSpecialNumber(t *testing.T) {
 	g := &game{
 		lineSpecial: []uint16{242},
+		soundQueue:  make([]soundEvent, 0, 1),
 	}
 	g.useSpecialLine(0, 0)
 	if g.useText != "USE: unsupported special 242" {
 		t.Fatalf("useText=%q want %q", g.useText, "USE: unsupported special 242")
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue=%v want empty", g.soundQueue)
+	}
+}
+
+func TestUseLines_NoLineDoesNotPlayNoWaySound(t *testing.T) {
+	g := &game{
+		soundQueue: make([]soundEvent, 0, 1),
+	}
+	g.useLines()
+	if g.useText != "USE: no line" {
+		t.Fatalf("useText=%q want %q", g.useText, "USE: no line")
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("soundQueue=%v want empty", g.soundQueue)
 	}
 }
 

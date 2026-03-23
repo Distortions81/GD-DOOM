@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"gddoom/internal/doomrand"
+	"gddoom/internal/mapdata"
 )
 
 type demoTraceWriter struct {
@@ -35,6 +36,13 @@ type demoTracePlayer struct {
 	MomZ          int64  `json:"momz"`
 	MOHealth      int    `json:"mo_health"`
 }
+
+const (
+	doomStatePlayerAttack1 = 154
+	doomStatePlayerAttack2 = 155
+	doomStatePlayerPain1   = 156
+	doomStatePlayerPain2   = 157
+)
 
 type demoTraceMobj struct {
 	Type         int    `json:"type"`
@@ -78,7 +86,7 @@ type demoTraceSpecial struct {
 	Speed         int64  `json:"speed,omitempty"`
 	Direction     int    `json:"direction,omitempty"`
 	TopWait       int    `json:"topwait,omitempty"`
-	TopCountdown  int    `json:"topcountdown,omitempty"`
+	TopCountdown  int    `json:"topcountdown"`
 	Crush         int    `json:"crush,omitempty"`
 	NewSpecial    int16  `json:"newspecial,omitempty"`
 	Texture       string `json:"texture,omitempty"`
@@ -123,9 +131,9 @@ func newDemoTraceWriter(opts Options, mapName string) *demoTraceWriter {
 		"episode":       opts.DemoScript.Header.Episode,
 		"map":           opts.DemoScript.Header.Map,
 		"deathmatch":    boolToInt(opts.GameMode == "deathmatch"),
-		"respawn":       boolToInt(opts.FastMonsters),
+		"respawn":       boolToInt(opts.RespawnMonsters),
 		"fast":          boolToInt(opts.FastMonsters),
-		"nomonsters":    0,
+		"nomonsters":    boolToInt(opts.NoMonsters),
 		"consoleplayer": max(opts.PlayerSlot-1, 0),
 		"playeringame": []int{
 			boolToInt(opts.DemoScript.Header.PlayerInGame[0]),
@@ -135,6 +143,51 @@ func newDemoTraceWriter(opts Options, mapName string) *demoTraceWriter {
 		},
 	})
 	return tw
+}
+
+func doomPlatType(t platType) int {
+	switch t {
+	case platTypePerpetualRaise:
+		return 0
+	case platTypeDownWaitUpStay:
+		return 1
+	case platTypeRaiseToNearestAndChange:
+		return 3
+	default:
+		return int(t)
+	}
+}
+
+func doomDoorType(t doorType) int {
+	switch t {
+	case doorNormal:
+		return 0
+	case doorClose30ThenOpen:
+		return 1
+	case doorClose:
+		return 2
+	case doorOpen:
+		return 3
+	case doorRaiseIn5Mins:
+		return 4
+	case doorBlazeRaise:
+		return 5
+	case doorBlazeOpen:
+		return 6
+	case doorBlazeClose:
+		return 7
+	default:
+		return int(t)
+	}
+}
+
+func doomPlatStatus(s platStatus) int {
+	switch s {
+	case platStatusInStasis:
+		return 16
+	default:
+		return int(s)
+	}
 }
 
 func demoTraceLabel(script *DemoScript) string {
@@ -175,16 +228,18 @@ func (g *game) writeDemoTraceTic() {
 	}
 
 	rndIndex, prndIndex := doomrand.State()
+	readyWeapon := g.inventory.ReadyWeapon
+	pendingWeaponID := g.inventory.PendingWeapon
 	pendingWeapon := demoTraceWeaponNoChange
-	if g.inventory.PendingWeapon != 0 {
-		pendingWeapon = demoTraceWeaponID(g.inventory.PendingWeapon)
+	if pendingWeaponID != 0 {
+		pendingWeapon = demoTraceWeaponID(pendingWeaponID)
 	}
 	player := demoTracePlayer{
 		PlayerState:   boolToInt(g.isDead),
 		Health:        g.stats.Health,
 		ArmorPoints:   g.stats.Armor,
 		ArmorType:     g.stats.ArmorType,
-		ReadyWeapon:   demoTraceWeaponID(g.inventory.ReadyWeapon),
+		ReadyWeapon:   demoTraceWeaponID(readyWeapon),
 		PendingWeapon: pendingWeapon,
 		MO:            1,
 		X:             g.p.x,
@@ -194,7 +249,7 @@ func (g *game) writeDemoTraceTic() {
 		MomX:          g.p.momx,
 		MomY:          g.p.momy,
 		MomZ:          g.p.momz,
-		MOHealth:      g.stats.Health,
+		MOHealth:      g.playerMobjHealth,
 	}
 
 	mobjs := g.demoTraceMobjs()
@@ -226,35 +281,44 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 	if g == nil {
 		return nil
 	}
-	out := make([]demoTraceMobj, 0, 1+len(g.m.Things)+len(g.projectiles))
-	out = append(out, demoTraceMobj{
-		Type:         0,
-		X:            g.p.x,
-		Y:            g.p.y,
-		Z:            g.p.z,
-		Angle:        g.p.angle,
-		MomX:         g.p.momx,
-		MomY:         g.p.momy,
-		MomZ:         g.p.momz,
-		FloorZ:       g.p.floorz,
-		CeilingZ:     g.p.ceilz,
-		Radius:       playerRadius,
-		Height:       playerHeight,
-		Tics:         0,
-		State:        0,
-		Flags:        0,
-		Health:       g.stats.Health,
-		Movedir:      0,
-		Movecount:    0,
-		ReactionTime: 0,
-		Threshold:    0,
-		LastLook:     0,
-		Subsector:    boolToInt(g.sectorAt(g.p.x, g.p.y) >= 0),
-		Sector:       g.sectorAt(g.p.x, g.p.y),
-		Player:       1,
-		Target:       0,
-		Tracer:       0,
-	})
+	type orderedDemoTraceMobj struct {
+		order int64
+		idx   int
+		mobj  demoTraceMobj
+	}
+	ordered := make([]orderedDemoTraceMobj, 0, 1+len(g.m.Things)+len(g.projectiles))
+	playerState, playerTics := g.demoTracePlayerMobjState()
+	ordered = append(ordered, orderedDemoTraceMobj{
+		order: 0,
+		idx:   -1,
+		mobj: demoTraceMobj{
+			Type:         0,
+			X:            g.p.x,
+			Y:            g.p.y,
+			Z:            g.p.z,
+			Angle:        g.p.angle,
+			MomX:         g.p.momx,
+			MomY:         g.p.momy,
+			MomZ:         g.p.momz,
+			FloorZ:       g.p.floorz,
+			CeilingZ:     g.p.ceilz,
+			Radius:       playerRadius,
+			Height:       playerHeight,
+			Tics:         playerTics,
+			State:        playerState,
+			Flags:        0,
+			Health:       g.playerMobjHealth,
+			Movedir:      0,
+			Movecount:    0,
+			ReactionTime: 0,
+			Threshold:    0,
+			LastLook:     0,
+			Subsector:    boolToInt(g.playerSubsector() >= 0),
+			Sector:       g.playerSector(),
+			Player:       1,
+			Target:       0,
+			Tracer:       0,
+		}})
 	for i, th := range g.m.Things {
 		if playerSlotFromThingType(th.Type) != 0 {
 			continue
@@ -275,198 +339,521 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			ceilZ = g.sectorCeil[sec]
 		}
 		radius, height := demoTraceThingBounds(th.Type)
+		if i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+			radius, height = 0, 0
+		}
 		if thingTypeIsShootable(th.Type) {
 			height = g.thingCurrentHeight(i, th)
 		}
-		target := 0
-		targetType := 0
-		if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
-			target = 1
-			targetType = 0
+		target, targetType := demoTraceThingTarget(g, i)
+		order := int64(i + 1)
+		if i >= 0 && i < len(g.thingThinkerOrder) && g.thingThinkerOrder[i] > 0 {
+			order = g.thingThinkerOrder[i]
 		}
-		out = append(out, demoTraceMobj{
-			Type:         demoTraceThingType(th.Type),
-			X:            x,
-			Y:            y,
-			Z:            z,
-			Angle:        g.thingWorldAngle(i, th),
-			MomX:         0,
-			MomY:         0,
-			MomZ:         0,
-			FloorZ:       floorZ,
-			CeilingZ:     ceilZ,
-			Radius:       radius,
-			Height:       height,
-			Tics:         demoTraceThingTics(g, i, th.Type),
-			State:        demoTraceThingState(g, i, th.Type),
-			Flags:        0,
-			Health:       demoTraceThingHealth(g, i, th.Type),
-			Movedir:      demoTraceThingMoveDir(g, i),
-			Movecount:    demoTraceThingMoveCount(g, i),
-			ReactionTime: demoTraceThingReaction(g, i),
-			Threshold:    demoTraceThingThreshold(g, i),
-			LastLook:     demoTraceThingLastLook(g, i),
-			Subsector:    boolToInt(sec >= 0),
-			Sector:       sec,
-			Player:       0,
-			Target:       target,
-			TargetType:   targetType,
-			Tracer:       0,
-			Kind:         demoTraceThingKind(th.Type),
-			Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),
-		})
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: order,
+			idx:   i,
+			mobj: demoTraceMobj{
+				Type:         demoTraceThingType(th.Type),
+				X:            x,
+				Y:            y,
+				Z:            z,
+				Angle:        g.thingWorldAngle(i, th),
+				MomX:         demoTraceThingMomX(g, i),
+				MomY:         demoTraceThingMomY(g, i),
+				MomZ:         demoTraceThingMomZ(g, i),
+				FloorZ:       floorZ,
+				CeilingZ:     ceilZ,
+				Radius:       radius,
+				Height:       height,
+				Tics:         demoTraceThingTics(g, i, th.Type),
+				State:        demoTraceThingState(g, i, th.Type),
+				Flags:        demoTraceThingFlags(g, i, th),
+				Health:       demoTraceThingHealth(g, i, th.Type),
+				Movedir:      demoTraceThingMoveDir(g, i),
+				Movecount:    demoTraceThingMoveCount(g, i),
+				ReactionTime: demoTraceThingReaction(g, i, th.Type),
+				Threshold:    demoTraceThingThreshold(g, i),
+				LastLook:     demoTraceThingLastLook(g, i),
+				Subsector:    boolToInt(sec >= 0),
+				Sector:       sec,
+				Player:       0,
+				Target:       target,
+				TargetType:   targetType,
+				Tracer:       0,
+				Kind:         demoTraceThingKind(th.Type),
+				Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),
+			}})
 	}
 	for _, p := range g.projectiles {
-		sec := g.sectorAt(p.x, p.y)
-		floorZ := g.thingFloorZ(p.x, p.y)
-		ceilZ := int64(0)
-		if sec >= 0 && sec < len(g.sectorCeil) {
-			ceilZ = g.sectorCeil[sec]
+		ss := -1
+		sec := -1
+		if g.m != nil && len(g.m.SubSectors) > 0 {
+			ss = g.subSectorAtFixed(p.x, p.y)
+			if ss >= 0 {
+				sec = g.sectorForSubSector(ss)
+			}
 		}
-		out = append(out, demoTraceMobj{
-			Type:         1000 + int(p.kind),
-			X:            p.x,
-			Y:            p.y,
-			Z:            p.z,
-			Angle:        0,
-			MomX:         p.vx,
-			MomY:         p.vy,
-			MomZ:         p.vz,
-			FloorZ:       floorZ,
-			CeilingZ:     ceilZ,
-			Radius:       p.radius,
-			Height:       p.height,
-			Tics:         p.ttl,
-			State:        -1,
-			Flags:        0,
-			Health:       1000,
-			Movedir:      0,
-			Movecount:    0,
-			ReactionTime: 0,
-			Threshold:    0,
-			LastLook:     0,
-			Subsector:    boolToInt(sec >= 0),
-			Sector:       sec,
-			Player:       0,
-			Target:       1,
-			TargetType:   int(p.sourceType),
-			Tracer:       0,
-			Kind:         "projectile",
+		if sec < 0 {
+			sec = g.sectorAt(p.x, p.y)
+		}
+		target := 0
+		targetType := 0
+		if p.sourcePlayer {
+			target = 1
+			targetType = 0
+		} else if p.sourceThing >= 0 && g.m != nil && p.sourceThing < len(g.m.Things) {
+			target = 1
+			targetType = demoTraceThingType(g.m.Things[p.sourceThing].Type)
+		}
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: p.order,
+			idx:   -1,
+			mobj: demoTraceMobj{
+				Type:         demoTraceProjectileType(p),
+				X:            p.x,
+				Y:            p.y,
+				Z:            p.z,
+				Angle:        p.angle,
+				MomX:         p.vx,
+				MomY:         p.vy,
+				MomZ:         p.vz,
+				FloorZ:       p.floorz,
+				CeilingZ:     p.ceilz,
+				Radius:       p.radius,
+				Height:       p.height,
+				Tics:         p.frameTics,
+				State:        demoTraceProjectileState(p),
+				Flags:        demoTraceProjectileFlags(p),
+				Health:       1000,
+				Movedir:      0,
+				Movecount:    0,
+				ReactionTime: 8,
+				Threshold:    0,
+				LastLook:     p.lastLook,
+				Subsector:    boolToInt(ss >= 0),
+				Sector:       sec,
+				Player:       0,
+				Target:       target,
+				TargetType:   targetType,
+				Tracer:       0,
+				Kind:         "projectile",
+			}})
+	}
+	for _, fx := range g.projectileImpacts {
+		ss := -1
+		sec := -1
+		if g.m != nil && len(g.m.SubSectors) > 0 {
+			ss = g.subSectorAtFixed(fx.x, fx.y)
+			if ss >= 0 {
+				sec = g.sectorForSubSector(ss)
+			}
+		}
+		if sec < 0 {
+			sec = g.sectorAt(fx.x, fx.y)
+		}
+		target := 0
+		targetType := 0
+		if fx.sourcePlayer {
+			target = 1
+			targetType = 0
+		} else if fx.sourceThing >= 0 && g.m != nil && fx.sourceThing < len(g.m.Things) {
+			target = 1
+			targetType = demoTraceThingType(g.m.Things[fx.sourceThing].Type)
+		}
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: fx.order,
+			idx:   -1,
+			mobj: demoTraceMobj{
+				Type:         demoTraceProjectileImpactType(fx.kind),
+				X:            fx.x,
+				Y:            fx.y,
+				Z:            fx.z,
+				Angle:        fx.angle,
+				MomX:         0,
+				MomY:         0,
+				MomZ:         0,
+				FloorZ:       fx.floorz,
+				CeilingZ:     fx.ceilz,
+				Radius:       demoTraceProjectileImpactRadius(fx.kind),
+				Height:       8 * fracUnit,
+				Tics:         fx.phaseTics,
+				State:        demoTraceProjectileImpactState(fx.kind, fx.phase),
+				Flags:        1552,
+				Health:       1000,
+				Movedir:      0,
+				Movecount:    0,
+				ReactionTime: 8,
+				Threshold:    0,
+				LastLook:     fx.lastLook,
+				Subsector:    boolToInt(ss >= 0),
+				Sector:       sec,
+				Player:       0,
+				Target:       target,
+				TargetType:   targetType,
+				Tracer:       0,
+			},
 		})
 	}
 	for _, p := range g.hitscanPuffs {
-		sec := g.sectorAt(p.x, p.y)
-		floorZ := g.thingFloorZ(p.x, p.y)
-		ceilZ := int64(0)
-		if sec >= 0 && sec < len(g.sectorCeil) {
-			ceilZ = g.sectorCeil[sec]
+		ss := -1
+		sec := -1
+		if g.m != nil && len(g.m.SubSectors) > 0 {
+			ss = g.subSectorAtFixed(p.x, p.y)
+			if ss >= 0 {
+				sec = g.sectorForSubSector(ss)
+			}
 		}
+		if sec < 0 {
+			sec = g.sectorAt(p.x, p.y)
+		}
+		floorZ := p.floorz
+		ceilZ := p.ceilz
 		mobjType := 37
 		flags := 528
 		if p.kind == hitscanFxBlood {
 			mobjType = 38
 			flags = 16
 		}
-		out = append(out, demoTraceMobj{
-			Type:         mobjType,
-			X:            p.x,
-			Y:            p.y,
-			Z:            p.z,
-			Angle:        0,
-			MomX:         0,
-			MomY:         0,
-			MomZ:         p.momz,
-			FloorZ:       floorZ,
-			CeilingZ:     ceilZ,
-			Radius:       20 * fracUnit,
-			Height:       16 * fracUnit,
-			Tics:         p.tics,
-			State:        p.state,
-			Flags:        flags,
-			Health:       1000,
-			Movedir:      0,
-			Movecount:    0,
-			ReactionTime: 8,
-			Threshold:    0,
-			LastLook:     0,
-			Subsector:    boolToInt(sec >= 0),
-			Sector:       sec,
-			Player:       0,
-			Target:       0,
-			TargetType:   0,
-			Tracer:       0,
-			TracerType:   0,
-		})
+		ordered = append(ordered, orderedDemoTraceMobj{
+			order: p.order,
+			idx:   -1,
+			mobj: demoTraceMobj{
+				Type:         mobjType,
+				X:            p.x,
+				Y:            p.y,
+				Z:            p.z,
+				Angle:        0,
+				MomX:         0,
+				MomY:         0,
+				MomZ:         p.momz,
+				FloorZ:       floorZ,
+				CeilingZ:     ceilZ,
+				Radius:       20 * fracUnit,
+				Height:       16 * fracUnit,
+				Tics:         p.tics,
+				State:        p.state,
+				Flags:        flags,
+				Health:       1000,
+				Movedir:      0,
+				Movecount:    0,
+				ReactionTime: 8,
+				Threshold:    0,
+				LastLook:     0,
+				Subsector:    boolToInt(ss >= 0),
+				Sector:       sec,
+				Player:       0,
+				Target:       0,
+				TargetType:   0,
+				Tracer:       0,
+				TracerType:   0,
+			}})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].order < ordered[j].order
+	})
+	out := make([]demoTraceMobj, 0, len(ordered))
+	for _, item := range ordered {
+		out = append(out, item.mobj)
+	}
+	if want := os.Getenv("GD_DEBUG_TRACE_MOBJ"); want != "" {
+		var wantTic, wantOrdinal int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantOrdinal); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+			for idx, item := range ordered {
+				if idx == wantOrdinal {
+					fmt.Printf("trace-mobj-debug tic=%d ordinal=%d order=%d idx=%d type=%d x=%d y=%d sector=%d kind=%s target=%d target_type=%d\n",
+						g.demoTick-1, idx, item.order, item.idx, item.mobj.Type, item.mobj.X, item.mobj.Y, item.mobj.Sector, item.mobj.Kind, item.mobj.Target, item.mobj.TargetType)
+				}
+			}
+		}
 	}
 	return out
 }
 
-func (g *game) demoTraceSpecials() []demoTraceSpecial {
+func demoTraceProjectileType(p projectile) int {
+	switch p.kind {
+	case projectileFireball:
+		if p.sourceType == 3003 || p.sourceType == 69 {
+			return 16 // MT_BRUISERSHOT
+		}
+		return 31 // MT_TROOPSHOT
+	case projectilePlasmaBall:
+		if p.sourceType == 68 {
+			return 36 // MT_ARACHPLAZ
+		}
+		return 32 // MT_HEADSHOT
+	case projectileBaronBall:
+		return 16 // MT_BRUISERSHOT
+	case projectileTracer:
+		return 6 // MT_TRACER
+	case projectileFatShot:
+		return 9 // MT_FATSHOT
+	case projectileRocket:
+		return 33 // MT_ROCKET
+	case projectilePlayerPlasma:
+		return 34 // MT_PLASMA
+	case projectileBFGBall:
+		return 35 // MT_BFG
+	default:
+		return 0
+	}
+}
+
+func demoTraceProjectileState(p projectile) int {
+	switch p.kind {
+	case projectileFireball:
+		if p.sourceType == 3003 || p.sourceType == 69 {
+			if p.frame&1 != 0 {
+				return 523 // S_BRBALL2
+			}
+			return 522 // S_BRBALL1
+		}
+		if p.frame&1 != 0 {
+			return 98 // S_TBALL2
+		}
+		return 97 // S_TBALL1
+	case projectilePlasmaBall:
+		if p.sourceType == 68 {
+			if p.frame&1 != 0 {
+				return 668 // S_ARACH_PLAZ2
+			}
+			return 667 // S_ARACH_PLAZ
+		}
+		if p.frame&1 != 0 {
+			return 103 // S_RBALL2
+		}
+		return 102 // S_RBALL1
+	case projectileBaronBall:
+		if p.frame&1 != 0 {
+			return 523 // S_BRBALL2
+		}
+		return 522 // S_BRBALL1
+	case projectileTracer:
+		if p.frame&1 != 0 {
+			return 317 // S_TRACER2
+		}
+		return 316 // S_TRACER
+	case projectileFatShot:
+		if p.frame&1 != 0 {
+			return 358 // S_FATSHOT2
+		}
+		return 357 // S_FATSHOT1
+	case projectileRocket:
+		return 114 // S_ROCKET
+	case projectilePlayerPlasma:
+		if p.frame&1 != 0 {
+			return 108 // S_PLASBALL2
+		}
+		return 107 // S_PLASBALL
+	case projectileBFGBall:
+		if p.frame&1 != 0 {
+			return 116 // S_BFGSHOT2
+		}
+		return 115 // S_BFGSHOT
+	default:
+		return -1
+	}
+}
+
+func demoTraceProjectileFlags(_ projectile) int {
+	return 67088
+}
+
+func demoTraceProjectileImpactType(kind projectileKind) int {
+	switch kind {
+	case projectileFireball:
+		return 31
+	case projectilePlasmaBall:
+		return 32
+	case projectileBaronBall:
+		return 16
+	case projectileTracer:
+		return 6
+	case projectileFatShot:
+		return 9
+	case projectileRocket:
+		return 33
+	case projectilePlayerPlasma:
+		return 34
+	case projectileBFGBall:
+		return 35
+	default:
+		return 0
+	}
+}
+
+func demoTraceProjectileImpactState(kind projectileKind, phase int) int {
+	switch kind {
+	case projectileFireball:
+		return []int{99, 100, 101}[clampDemoPhase(phase, 3)]
+	case projectilePlasmaBall:
+		return []int{104, 105, 106}[clampDemoPhase(phase, 3)]
+	case projectileBaronBall:
+		return []int{524, 525, 526}[clampDemoPhase(phase, 3)]
+	case projectileTracer:
+		return []int{318, 319, 320}[clampDemoPhase(phase, 3)]
+	case projectileFatShot:
+		return []int{359, 360, 361}[clampDemoPhase(phase, 3)]
+	case projectileRocket:
+		return []int{127, 128, 129}[clampDemoPhase(phase, 3)]
+	case projectilePlayerPlasma:
+		return []int{109, 110, 111}[clampDemoPhase(phase, 3)]
+	case projectileBFGBall:
+		return []int{117, 118, 119, 120, 121, 122}[clampDemoPhase(phase, 6)]
+	default:
+		return -1
+	}
+}
+
+func demoTraceProjectileImpactRadius(kind projectileKind) int64 {
+	switch kind {
+	case projectileRocket, projectileTracer:
+		return 11 * fracUnit
+	case projectilePlayerPlasma:
+		return 13 * fracUnit
+	case projectileBFGBall:
+		return 13 * fracUnit
+	default:
+		return 6 * fracUnit
+	}
+}
+
+func clampDemoPhase(phase, n int) int {
+	if phase < 0 {
+		return 0
+	}
+	if phase >= n {
+		return n - 1
+	}
+	return phase
+}
+
+func (g *game) demoTracePlayerMobjState() (state int, tics int) {
+	if g == nil {
+		return 0, 0
+	}
+	return g.playerMobjState, g.playerMobjTics
+}
+
+func demoTraceThingTarget(g *game, i int) (target int, targetType int) {
+	if g == nil || i < 0 {
+		return 0, 0
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		return 1, 0
+	}
+	if i < len(g.thingTargetIdx) {
+		idx := g.thingTargetIdx[i]
+		if idx >= 0 {
+			return 1, demoTraceThingType(g.m.Things[idx].Type)
+		}
+	}
+	return 0, 0
+}
+
+func (g *game) demoTraceSpecials() []map[string]any {
 	if g == nil {
 		return nil
 	}
-	out := make([]demoTraceSpecial, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
+	type orderedSpecial struct {
+		order int64
+		item  map[string]any
+	}
+	ordered := make([]orderedSpecial, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
 
 	doorKeys := sortedIntKeys(g.doors)
 	for _, sec := range doorKeys {
 		d := g.doors[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:         "door",
-			Sector:       sec,
-			Type:         int(d.typ),
-			TopHeight:    d.topHeight,
-			Speed:        d.speed,
-			Direction:    d.direction,
-			TopWait:      d.topWait,
-			TopCountdown: d.topCountdown,
-		})
+		entry := map[string]any{
+			"kind":         "door",
+			"sector":       sec,
+			"type":         doomDoorType(d.typ),
+			"topheight":    d.topHeight,
+			"speed":        d.speed,
+			"direction":    d.direction,
+			"topwait":      d.topWait,
+			"topcountdown": d.topCountdown,
+		}
+		if os.Getenv("GD_TRACE_DEBUG_DOOR_HEIGHT") != "" && sec >= 0 && sec < len(g.sectorCeil) {
+			entry["currentceil"] = g.sectorCeil[sec]
+		}
+		ordered = append(ordered, orderedSpecial{order: d.order, item: entry})
 	}
 	floorKeys := sortedIntKeys(g.floors)
 	for _, sec := range floorKeys {
 		f := g.floors[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:          "floor",
-			Sector:        sec,
-			Type:          f.direction,
-			Speed:         f.speed,
-			Direction:     f.direction,
-			FloorDest:     f.destHeight,
-			Texture:       f.finishFlat,
-			FinishSpecial: int16(f.finishSpecial),
-		})
+		ordered = append(ordered, orderedSpecial{order: f.order, item: map[string]any{
+			"kind":            "floor",
+			"sector":          sec,
+			"type":            f.typ,
+			"crush":           boolToInt(f.crush),
+			"speed":           f.speed,
+			"direction":       f.direction,
+			"floordestheight": f.destHeight,
+			"texture":         f.finishFlat,
+			"newspecial":      int16(f.finishSpecial),
+		}})
 	}
 	platKeys := sortedIntKeys(g.plats)
 	for _, sec := range platKeys {
 		p := g.plats[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:          "plat",
-			Sector:        sec,
-			Type:          int(p.typ),
-			Speed:         p.speed,
-			Low:           p.low,
-			High:          p.high,
-			Wait:          p.wait,
-			Count:         p.count,
-			Status:        int(p.status),
-			OldStatus:     int(p.oldStatus),
-			FinishSpecial: int16(p.finishSpecial),
-			Texture:       p.finishFlat,
-		})
+		tag := 0
+		if g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
+			tag = int(g.m.Sectors[sec].Tag)
+		}
+		item := map[string]any{
+			"kind":      "plat",
+			"sector":    sec,
+			"type":      doomPlatType(p.typ),
+			"speed":     p.speed,
+			"low":       p.low,
+			"high":      p.high,
+			"wait":      p.wait,
+			"count":     p.count,
+			"status":    doomPlatStatus(p.status),
+			"oldstatus": doomPlatStatus(p.oldStatus),
+			"crush":     0,
+			"tag":       tag,
+		}
+		if p.finishSpecial != 0 {
+			item["finishspecial"] = int16(p.finishSpecial)
+		}
+		if p.finishFlat != "" {
+			item["texture"] = p.finishFlat
+		}
+		ordered = append(ordered, orderedSpecial{order: p.order, item: item})
 	}
 	ceilingKeys := sortedIntKeys(g.ceilings)
 	for _, sec := range ceilingKeys {
 		c := g.ceilings[sec]
-		out = append(out, demoTraceSpecial{
-			Kind:         "ceiling",
-			Sector:       sec,
-			Action:       string(c.action),
-			Speed:        c.speed,
-			Direction:    c.direction,
-			TopHeight:    c.topHeight,
-			BottomHeight: c.bottomHeight,
-			Crush:        boolToInt(c.crush),
-			OldDirection: c.oldDirection,
-		})
+		ordered = append(ordered, orderedSpecial{order: c.order, item: map[string]any{
+			"kind":         "ceiling",
+			"sector":       sec,
+			"action":       string(c.action),
+			"speed":        c.speed,
+			"direction":    c.direction,
+			"topheight":    c.topHeight,
+			"bottomheight": c.bottomHeight,
+			"crush":        boolToInt(c.crush),
+			"olddirection": c.oldDirection,
+		}})
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		if ordered[i].order != ordered[j].order {
+			return ordered[i].order < ordered[j].order
+		}
+		ik, _ := ordered[i].item["kind"].(string)
+		jk, _ := ordered[j].item["kind"].(string)
+		if ik != jk {
+			return ik < jk
+		}
+		is, _ := ordered[i].item["sector"].(int)
+		js, _ := ordered[j].item["sector"].(int)
+		return is < js
+	})
+	out := make([]map[string]any, 0, len(ordered))
+	for _, entry := range ordered {
+		out = append(out, entry.item)
 	}
 	return out
 }
@@ -480,6 +867,19 @@ func demoTraceThingBounds(typ int16) (int64, int64) {
 	}
 	return 20 * fracUnit, 16 * fracUnit
 }
+
+const demoTraceStateGibs = 895
+
+const (
+	demoTraceFlagSpecial   = 0x00000001
+	demoTraceFlagSolid     = 0x00000002
+	demoTraceFlagShootable = 0x00000004
+	demoTraceFlagAmbush    = 0x00000020
+	demoTraceFlagDropoff   = 0x00000400
+	demoTraceFlagDropped   = 0x00020000
+	demoTraceFlagCorpse    = 0x00100000
+	demoTraceFlagCountKill = 0x00400000
+)
 
 func demoTraceThingHealth(g *game, i int, typ int16) int {
 	if thingTypeIsShootable(typ) && i >= 0 && i < len(g.thingHP) {
@@ -495,14 +895,20 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 	if i < 0 {
 		return 0
 	}
+	if i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return -1
+	}
 	if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
 		return g.thingStateTics[i]
 	}
+	if i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
+		if tics, ok := demoTraceMonsterPainStateTics(typ, g.thingPainTics[i]); ok {
+			return tics
+		}
+		return g.thingPainTics[i]
+	}
 	if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 		return g.thingDeathTics[i]
-	}
-	if i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
-		return g.thingPainTics[i]
 	}
 	if i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 		return g.thingAttackTics[i]
@@ -514,6 +920,9 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 }
 
 func demoTraceThingState(g *game, i int, typ int16) int {
+	if i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
+		return demoTraceStateGibs
+	}
 	if isBarrelThingType(typ) {
 		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 			phase := 0
@@ -537,6 +946,12 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 	if i >= 0 && i < len(g.thingState) {
 		switch g.thingState[i] {
 		case monsterStateDeath:
+			if i >= 0 && i < len(g.thingStatePhase) {
+				xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+				if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i], xdeath); ok {
+					return state
+				}
+			}
 			return 3
 		case monsterStatePain:
 			if i >= 0 && i < len(g.thingPainTics) {
@@ -569,6 +984,12 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		}
 	}
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+		if i >= 0 && i < len(g.thingStatePhase) {
+			xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
+			if state, ok := demoTraceMonsterDeathState(typ, g.thingStatePhase[i], xdeath); ok {
+				return state
+			}
+		}
 		return 3
 	}
 	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
@@ -581,6 +1002,54 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 		return 0
 	}
 	return -1
+}
+
+func demoTraceMonsterDeathState(typ int16, phase int, xdeath bool) (int, bool) {
+	base := 0
+	count := 0
+	if xdeath {
+		switch typ {
+		case 3004:
+			base, count = 194, 9
+		case 9:
+			base, count = 227, 9
+		case 65:
+			base, count = 429, 6
+		case 84:
+			base, count = 749, 9
+		default:
+			return 0, false
+		}
+	} else {
+		switch typ {
+		case 3004:
+			base, count = 189, 5
+		case 9:
+			base, count = 222, 5
+		case 3001:
+			base, count = 457, 5
+		case 3002, 58:
+			base, count = 490, 6
+		case 3005:
+			base, count = 510, 6
+		case 3003:
+			base, count = 542, 7
+		case 69:
+			base, count = 571, 7
+		case 3006:
+			base, count = 595, 6
+		case 7:
+			base, count = 621, 10
+		case 16:
+			base, count = 691, 9
+		default:
+			return 0, false
+		}
+	}
+	if phase < 0 || phase >= count {
+		return 0, false
+	}
+	return base + phase, true
 }
 
 func demoTraceMonsterSpawnState(typ int16, phase int) (int, bool) {
@@ -690,6 +1159,34 @@ func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
 	return base + len(frameTics) - 1, true
 }
 
+func demoTraceMonsterPainStateTics(typ int16, remaining int) (int, bool) {
+	frameTics := monsterPainFrameTics(typ)
+	if len(frameTics) == 0 || remaining <= 0 {
+		return 0, false
+	}
+	total := 0
+	for _, t := range frameTics {
+		if t > 0 {
+			total += t
+		}
+	}
+	elapsed := total - remaining
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	acc := 0
+	for _, t := range frameTics {
+		if t <= 0 {
+			continue
+		}
+		acc += t
+		if elapsed < acc {
+			return acc - elapsed, true
+		}
+	}
+	return 1, true
+}
+
 func demoTraceThingMoveDir(g *game, i int) int {
 	if i >= 0 && i < len(g.thingMoveDir) {
 		return int(g.thingMoveDir[i])
@@ -704,10 +1201,56 @@ func demoTraceThingMoveCount(g *game, i int) int {
 	return 0
 }
 
-func demoTraceThingReaction(g *game, i int) int {
+func demoTraceThingMomX(g *game, i int) int64 {
+	if i >= 0 && i < len(g.thingMomX) {
+		return g.thingMomX[i]
+	}
+	return 0
+}
+
+func demoTraceThingMomY(g *game, i int) int64 {
+	if i >= 0 && i < len(g.thingMomY) {
+		return g.thingMomY[i]
+	}
+	return 0
+}
+
+func demoTraceThingMomZ(g *game, i int) int64 {
+	if i >= 0 && i < len(g.thingMomZ) {
+		return g.thingMomZ[i]
+	}
+	return 0
+}
+
+func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
+	flags := 0
+	if int(th.Flags)&thingFlagAmbush != 0 {
+		flags |= demoTraceFlagAmbush
+	}
+	switch {
+	case isMonster(th.Type):
+		flags |= demoTraceFlagSolid | demoTraceFlagCountKill
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
+		} else {
+			flags |= demoTraceFlagShootable
+		}
+	case isPickupType(th.Type):
+		flags |= demoTraceFlagSpecial
+		if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
+			flags |= demoTraceFlagDropped
+		}
+	case isBarrelThingType(th.Type):
+		flags |= demoTraceFlagSolid | demoTraceFlagShootable
+	}
+	return flags
+}
+
+func demoTraceThingReaction(g *game, i int, typ int16) int {
 	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 		return g.thingReactionTics[i]
 	}
+	_ = typ
 	return 0
 }
 

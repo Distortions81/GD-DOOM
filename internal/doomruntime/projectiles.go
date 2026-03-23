@@ -1,8 +1,9 @@
 package doomruntime
 
 import (
+	"fmt"
 	"math"
-	"slices"
+	"os"
 
 	"gddoom/internal/doomrand"
 )
@@ -27,6 +28,8 @@ type projectile struct {
 	vx           int64
 	vy           int64
 	vz           int64
+	floorz       int64
+	ceilz        int64
 	radius       int64
 	height       int64
 	ttl          int
@@ -36,19 +39,33 @@ type projectile struct {
 	sourceType   int16
 	sourcePlayer bool
 	tracerPlayer bool
+	lastLook     int
+	frame        int
+	frameTics    int
 	angle        uint32
 	kind         projectileKind
+	order        int64
+	deferredTick bool
 }
 
 type projectileImpact struct {
-	x         int64
-	y         int64
-	z         int64
-	kind      projectileKind
-	tics      int
-	totalTics int
-	angle     uint32
-	sprayDone bool
+	x            int64
+	y            int64
+	z            int64
+	floorz       int64
+	ceilz        int64
+	kind         projectileKind
+	order        int64
+	sourceThing  int
+	sourceType   int16
+	sourcePlayer bool
+	lastLook     int
+	tics         int
+	totalTics    int
+	phase        int
+	phaseTics    int
+	angle        uint32
+	sprayDone    bool
 }
 
 func usesMonsterProjectile(typ int16) bool {
@@ -130,23 +147,6 @@ func monsterProjectileTTL(typ int16) int {
 	}
 }
 
-func monsterMuzzleOffsetZ(typ int16) int64 {
-	switch typ {
-	case 16:
-		return 72 * fracUnit
-	case 3003:
-		return 56 * fracUnit
-	case 66:
-		return 72 * fracUnit
-	case 67:
-		return 64 * fracUnit
-	case 68:
-		return 48 * fracUnit
-	default:
-		return 40 * fracUnit
-	}
-}
-
 func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	if g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) {
 		return false
@@ -156,32 +156,32 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	}
 	th := g.m.Things[thingIdx]
 	sx, sy := g.thingPosFixed(thingIdx, th)
-	baseZ, _, _ := g.thingSupportState(thingIdx, th)
-	sz := baseZ + monsterMuzzleOffsetZ(typ)
+	sourceZ, _, _ := g.thingSupportState(thingIdx, th)
+	sz := sourceZ + 32*fracUnit
 	tx, ty, tz, height, _, ok := g.monsterTargetPos(thingIdx)
 	if !ok {
 		return false
 	}
-	tz += height / 2
+	_ = height
+	kind := monsterProjectileKind(typ)
+	lastLook := doomrand.PRandom() & 3
 	aimAngle := g.monsterAimAngleToTarget(thingIdx, sx, sy)
 
 	dx := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineCosine(aimAngle))
 	dy := fixedMul(monsterProjectileSpeed(typ, g.fastMonstersActive()), doomFineSineAtAngle(aimAngle))
-	dz := tz - sz
-	dxy := hypotFixed(tx-sx, ty-sy)
-	if dxy <= 0 {
-		return false
-	}
-
 	speed := monsterProjectileSpeed(typ, g.fastMonstersActive())
 	vx := dx
 	vy := dy
-	vz := int64((float64(dz) / float64(dxy)) * float64(speed))
+	dist := doomApproxDistance(tx-sx, ty-sy) / speed
+	if dist < 1 {
+		dist = 1
+	}
+	vz := (tz - sourceZ) / dist
 	if vx == 0 && vy == 0 {
 		return false
 	}
 
-	g.projectiles = append(g.projectiles, projectile{
+	p := projectile{
 		x:            sx,
 		y:            sy,
 		z:            sz,
@@ -196,9 +196,19 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		sourceThing:  thingIdx,
 		sourceType:   typ,
 		tracerPlayer: typ == 66,
-		kind:         monsterProjectileKind(typ),
+		lastLook:     lastLook,
+		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(kind)),
+		kind:         kind,
 		angle:        aimAngle,
-	})
+		order:        g.allocThinkerOrder(),
+		deferredTick: true,
+	}
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	if !g.finishProjectileSpawn(&p) {
+		return false
+	}
+	g.projectiles = append(g.projectiles, p)
+	g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
 	return true
 }
 
@@ -212,9 +222,8 @@ func (g *game) spawnMonsterProjectileAngleOffset(thingIdx int, typ int16, angleO
 	}
 	p.angle += angleOffset
 	speed := monsterProjectileSpeed(typ, g.fastMonstersActive())
-	ang := angleToRadians(p.angle)
-	p.vx = int64(math.Cos(ang) * float64(speed))
-	p.vy = int64(math.Sin(ang) * float64(speed))
+	p.vx = fixedMul(speed, doomFineCosine(p.angle))
+	p.vy = fixedMul(speed, doomFineSineAtAngle(p.angle))
 	return true
 }
 
@@ -224,54 +233,110 @@ func (g *game) tickProjectiles() {
 	}
 	kept := g.projectiles[:0]
 	for _, p := range g.projectiles {
-		if p.ttl <= 0 {
+		if p.deferredTick {
+			kept = append(kept, p)
 			continue
 		}
-		ox, oy, oz := p.x, p.y, p.z
-		nx := ox + p.vx
-		ny := oy + p.vy
-		nz := oz + p.vz
-		thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
-		blocked, blockFrac, hx, hy, hz := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
-		if hitThing && (!blocked || thingHit.frac <= blockFrac) {
-			g.spawnProjectileImpact(p.kind, thingHit.x, thingHit.y, thingHit.z, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), thingHit.x, thingHit.y)
-			if dmg := projectileDamage(p); dmg > 0 && g.projectileCanDamageThing(p, thingHit.idx) {
-				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing)
-			}
-			g.projectileSplashDamage(p, thingHit.x, thingHit.y, thingHit.z)
-			continue
+		if next, keep := g.advanceProjectile(p); keep {
+			kept = append(kept, next)
 		}
-		if blocked {
-			g.spawnProjectileImpact(p.kind, hx, hy, hz, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), hx, hy)
-			g.projectileSplashDamage(p, hx, hy, hz)
-			continue
-		}
-		p.x = nx
-		p.y = ny
-		p.z = nz
-		g.tickProjectileSpecial(&p)
-		p.ttl--
-		if p.ttl <= 0 {
-			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-			g.projectileSplashDamage(p, p.x, p.y, p.z)
-			continue
-		}
-		if !p.sourcePlayer && g.projectileHitsPlayer(p) {
-			g.spawnProjectileImpact(p.kind, p.x, p.y, p.z, p.angle)
-			g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), p.x, p.y)
-			dmg := projectileDamage(p)
-			if dmg > 0 {
-				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.sourceX, p.sourceY, true)
-			}
-			g.projectileSplashDamage(p, p.x, p.y, p.z)
-			continue
-		}
-		kept = append(kept, p)
 	}
 	g.projectiles = kept
+}
+
+func (g *game) tickProjectileByOrder(order int64) {
+	if g == nil || len(g.projectiles) == 0 {
+		return
+	}
+	for i := range g.projectiles {
+		if g.projectiles[i].order != order || g.projectiles[i].deferredTick {
+			continue
+		}
+		p := g.projectiles[i]
+		if next, keep := g.advanceProjectile(p); keep {
+			g.projectiles[i] = next
+		} else {
+			g.projectiles = append(g.projectiles[:i], g.projectiles[i+1:]...)
+		}
+		return
+	}
+}
+
+func (g *game) tickDeferredProjectiles() {
+	if len(g.projectiles) == 0 {
+		return
+	}
+	kept := g.projectiles[:0]
+	for _, p := range g.projectiles {
+		if !p.deferredTick {
+			kept = append(kept, p)
+			continue
+		}
+		p.deferredTick = false
+		next, keep := g.advanceProjectile(p)
+		if keep {
+			kept = append(kept, next)
+		}
+	}
+	g.projectiles = kept
+}
+
+func (g *game) advanceProjectile(p projectile) (projectile, bool) {
+	if p.ttl <= 0 {
+		return projectile{}, false
+	}
+	ox, oy, oz := p.x, p.y, p.z
+	nx := ox + p.vx
+	ny := oy + p.vy
+	nz := oz + p.vz
+	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var tic int
+		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) && p.kind == projectileFireball {
+			fmt.Printf("projectile-debug tic=%d world=%d phase=advance from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitFrac=%f hitIdx=%d blocked=%t blockFrac=%f floor=%d ceil=%d\n",
+				g.demoTick-1, g.worldTic, ox, oy, oz, nx, ny, nz, hitThing, thingHit.frac, thingHit.idx, blocked, blockFrac, p.floorz, p.ceilz)
+		}
+	}
+	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
+		if thingHit.isPlayer {
+			if dmg := projectileDamage(p); dmg > 0 {
+				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
+			}
+		} else if g.projectileCanDamageThing(p, thingHit.idx) {
+			if dmg := projectileDamage(p); dmg > 0 {
+				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
+			}
+		}
+		g.explodeProjectileAt(p, ox, oy, oz)
+		return projectile{}, false
+	}
+	if blocked {
+		g.explodeProjectileAt(p, ox, oy, oz)
+		return projectile{}, false
+	}
+	p.x = nx
+	p.y = ny
+	p.floorz, p.ceilz = tmfloorz, tmceilingz
+	p.z = nz
+	if p.z <= p.floorz {
+		p.z = p.floorz
+		g.explodeProjectileAt(p, p.x, p.y, p.z)
+		return projectile{}, false
+	}
+	if p.z+p.height > p.ceilz {
+		p.z = p.ceilz - p.height
+		g.explodeProjectileAt(p, p.x, p.y, p.z)
+		return projectile{}, false
+	}
+	g.tickProjectileSpecial(&p)
+	g.tickProjectileAnim(&p)
+	p.ttl--
+	if p.ttl <= 0 {
+		g.explodeProjectileAt(p, p.x, p.y, p.z)
+		return projectile{}, false
+	}
+	return p, true
 }
 
 func sameMonsterSpecies(a, b int16) bool {
@@ -317,7 +382,23 @@ func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
 	if damage <= 0 {
 		return
 	}
-	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind))
+	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind), p.sourcePlayer, p.sourceThing)
+}
+
+func (g *game) explodeProjectileAt(p projectile, x, y, z int64) {
+	if g == nil {
+		return
+	}
+	if p.kind == projectileRocket {
+		idx := g.spawnProjectileImpactFromDeferredRandom(p, x, y, z)
+		g.projectileSplashDamage(p, x, y, z)
+		g.finalizeDeferredProjectileImpact(idx)
+		g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), x, y)
+		return
+	}
+	g.spawnProjectileImpactFrom(p, x, y, z)
+	g.emitSoundEventAt(projectileImpactSoundEvent(p.kind), x, y)
+	g.projectileSplashDamage(p, x, y, z)
 }
 
 func (g *game) spawnPlayerRocket() bool {
@@ -330,19 +411,18 @@ func (g *game) spawnPlayerRocket() bool {
 		rocketHeight = 8 * fracUnit
 		rocketTTL    = 10 * doomTicsPerSecond
 	)
-	ang := angleToRadians(g.p.angle)
-	vx := int64(math.Cos(ang) * float64(rocketSpeed))
-	vy := int64(math.Sin(ang) * float64(rocketSpeed))
+	angle, slope := g.playerMissileAim(g.p.angle, 1024*fracUnit)
+	vx := fixedMul(rocketSpeed, doomFineCosine(angle))
+	vy := fixedMul(rocketSpeed, doomFineSineAtAngle(angle))
 	if vx == 0 && vy == 0 {
 		return false
 	}
-	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
 	vz := fixedMul(rocketSpeed, slope)
-	launchOffset := playerRadius + rocketRadius + 4*fracUnit
-	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
-	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
-	sz := g.playerShootZ() - (rocketHeight >> 1)
-	g.projectiles = append(g.projectiles, projectile{
+	sx := g.p.x
+	sy := g.p.y
+	sz := g.p.z + 32*fracUnit
+	lastLook := doomrand.PRandom() & 3
+	p := projectile{
 		x:            sx,
 		y:            sy,
 		z:            sz,
@@ -357,9 +437,17 @@ func (g *game) spawnPlayerRocket() bool {
 		sourceThing:  -1,
 		sourceType:   16,
 		sourcePlayer: true,
+		lastLook:     lastLook,
+		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(projectileRocket)),
 		kind:         projectileRocket,
-		angle:        g.p.angle,
-	})
+		angle:        angle,
+		order:        g.allocThinkerOrder(),
+	}
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	if !g.finishProjectileSpawn(&p) {
+		return false
+	}
+	g.projectiles = append(g.projectiles, p)
 	return true
 }
 
@@ -396,19 +484,18 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 	if g == nil {
 		return false
 	}
-	ang := angleToRadians(g.p.angle)
-	vx := int64(math.Cos(ang) * float64(speed))
-	vy := int64(math.Sin(ang) * float64(speed))
+	angle, slope := g.playerMissileAim(g.p.angle, 1024*fracUnit)
+	vx := fixedMul(speed, doomFineCosine(angle))
+	vy := fixedMul(speed, doomFineSineAtAngle(angle))
 	if vx == 0 && vy == 0 {
 		return false
 	}
-	slope := g.bulletSlopeForAim(g.p.angle, 1024*fracUnit)
 	vz := fixedMul(speed, slope)
-	launchOffset := playerRadius + radius + 4*fracUnit
-	sx := g.p.x + int64(math.Cos(ang)*float64(launchOffset))
-	sy := g.p.y + int64(math.Sin(ang)*float64(launchOffset))
-	sz := g.playerShootZ() - (height >> 1)
-	g.projectiles = append(g.projectiles, projectile{
+	sx := g.p.x
+	sy := g.p.y
+	sz := g.p.z + 32*fracUnit
+	lastLook := doomrand.PRandom() & 3
+	p := projectile{
 		x:            sx,
 		y:            sy,
 		z:            sz,
@@ -423,9 +510,67 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		sourceThing:  -1,
 		sourceType:   0,
 		sourcePlayer: true,
+		lastLook:     lastLook,
+		frameTics:    randomizedMissileSpawnTics(projectileSpawnStateTics(kind)),
 		kind:         kind,
-		angle:        g.p.angle,
-	})
+		angle:        angle,
+		order:        g.allocThinkerOrder(),
+	}
+	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	if !g.finishProjectileSpawn(&p) {
+		return false
+	}
+	g.projectiles = append(g.projectiles, p)
+	return true
+}
+
+func (g *game) finishProjectileSpawn(p *projectile) bool {
+	if g == nil || p == nil {
+		return false
+	}
+	ox, oy, oz := p.x, p.y, p.z
+	nx := ox + (p.vx >> 1)
+	ny := oy + (p.vy >> 1)
+	nz := oz + (p.vz >> 1)
+	if len(g.sectorFloor) == 0 || len(g.sectorCeil) == 0 {
+		p.x = nx
+		p.y = ny
+		p.z = nz
+		return true
+	}
+	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
+	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
+	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
+		if thingHit.isPlayer {
+			if dmg := projectileDamage(*p); dmg > 0 {
+				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
+			}
+		} else if g.projectileCanDamageThing(*p, thingHit.idx) {
+			if dmg := projectileDamage(*p); dmg > 0 {
+				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
+			}
+		}
+		g.explodeProjectileAt(*p, ox, oy, oz)
+		return false
+	}
+	if blocked {
+		g.explodeProjectileAt(*p, ox, oy, oz)
+		return false
+	}
+	p.x = nx
+	p.y = ny
+	p.floorz, p.ceilz = tmfloorz, tmceilingz
+	p.z = nz
+	if p.z <= p.floorz {
+		p.z = p.floorz
+		g.explodeProjectileAt(*p, p.x, p.y, p.z)
+		return false
+	}
+	if p.z+p.height > p.ceilz {
+		p.z = p.ceilz - p.height
+		g.explodeProjectileAt(*p, p.x, p.y, p.z)
+		return false
+	}
 	return true
 }
 
@@ -448,7 +593,7 @@ func (g *game) applyBFGSpray(center uint32) {
 			damage += (doomrand.PRandom() & 7) + 1
 		}
 		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
-		g.damageShootableThingFrom(outcome.target.idx, damage, true, -1)
+		g.damageShootableThingFrom(outcome.target.idx, damage, true, -1, g.p.x, g.p.y, true)
 	}
 }
 
@@ -458,18 +603,30 @@ func (g *game) tickProjectileImpacts() {
 	}
 	keep := g.projectileImpacts[:0]
 	for _, fx := range g.projectileImpacts {
-		elapsed := fx.totalTics - fx.tics
-		if fx.kind == projectileBFGBall && !fx.sprayDone && elapsed >= 16 {
-			fx.sprayDone = true
-			g.applyBFGSpray(fx.angle)
-		}
-		fx.tics--
-		if fx.tics <= 0 {
+		if !g.advanceProjectileImpactTic(&fx) {
 			continue
 		}
 		keep = append(keep, fx)
 	}
 	g.projectileImpacts = keep
+}
+
+func (g *game) tickProjectileImpactByOrder(order int64) {
+	if g == nil || len(g.projectileImpacts) == 0 {
+		return
+	}
+	for i := range g.projectileImpacts {
+		if g.projectileImpacts[i].order != order {
+			continue
+		}
+		fx := g.projectileImpacts[i]
+		if g.advanceProjectileImpactTic(&fx) {
+			g.projectileImpacts[i] = fx
+		} else {
+			g.projectileImpacts = append(g.projectileImpacts[:i], g.projectileImpacts[i+1:]...)
+		}
+		return
+	}
 }
 
 func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle uint32) {
@@ -478,75 +635,455 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
 		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
 	}
-	// Doom timings:
-	// - Fireball families (BAL1/BAL2/BAL7): C/D/E at 6 tics each.
-	// - Rocket (MISL): B/C/D at 8/6/4 tics.
-	tics := 18
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-debug tic=%d world=%d phase=pre kind=%d pos=(%d,%d,%d) rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, kind, x, y, z, rnd, prnd)
+			}
+		}
+	}
+	first := randomizedStateTics(projectileImpactPhaseTics(kind, 0))
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-debug tic=%d world=%d phase=post kind=%d first=%d pos=(%d,%d,%d) rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, kind, first, x, y, z, rnd, prnd)
+			}
+		}
+	}
+	tics := first
+	for phase := 1; ; phase++ {
+		next := projectileImpactPhaseTics(kind, phase)
+		if next <= 0 {
+			break
+		}
+		tics += next
+	}
+	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind))
 	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
 		x:         x,
 		y:         y,
 		z:         z,
+		floorz:    floorz,
+		ceilz:     ceilz,
 		kind:      kind,
+		order:     g.allocThinkerOrder(),
 		tics:      tics,
 		totalTics: tics,
+		phaseTics: first,
 		angle:     angle,
 	})
 }
 
+func (g *game) spawnProjectileImpactDeferredRandom(kind projectileKind, x, y, z int64, angle uint32) int {
+	const maxImpacts = 64
+	if len(g.projectileImpacts) >= maxImpacts {
+		copy(g.projectileImpacts, g.projectileImpacts[1:])
+		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
+	}
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-deferred-debug tic=%d world=%d phase=spawn kind=%d pos=(%d,%d,%d) rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, kind, x, y, z, rnd, prnd)
+			}
+		}
+	}
+	first := projectileImpactPhaseTics(kind, 0)
+	tics := first
+	for phase := 1; ; phase++ {
+		next := projectileImpactPhaseTics(kind, phase)
+		if next <= 0 {
+			break
+		}
+		tics += next
+	}
+	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind))
+	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
+		x:         x,
+		y:         y,
+		z:         z,
+		floorz:    floorz,
+		ceilz:     ceilz,
+		kind:      kind,
+		order:     g.allocThinkerOrder(),
+		tics:      tics,
+		totalTics: tics,
+		phaseTics: first,
+		angle:     angle,
+	})
+	return len(g.projectileImpacts) - 1
+}
+
+func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
+	g.spawnProjectileImpact(p.kind, x, y, z, p.angle)
+	if len(g.projectileImpacts) == 0 {
+		return
+	}
+	fx := &g.projectileImpacts[len(g.projectileImpacts)-1]
+	if p.order > 0 {
+		// Doom keeps the same missile thinker when it enters its death states,
+		// so the exploded projectile must retain its original thinker order.
+		fx.order = p.order
+	}
+	fx.floorz = p.floorz
+	fx.ceilz = p.ceilz
+	fx.sourceThing = p.sourceThing
+	fx.sourceType = p.sourceType
+	fx.sourcePlayer = p.sourcePlayer
+	fx.lastLook = p.lastLook
+}
+
+func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int64) int {
+	idx := g.spawnProjectileImpactDeferredRandom(p.kind, x, y, z, p.angle)
+	if idx < 0 || idx >= len(g.projectileImpacts) {
+		return -1
+	}
+	fx := &g.projectileImpacts[idx]
+	if p.order > 0 {
+		fx.order = p.order
+	}
+	fx.floorz = p.floorz
+	fx.ceilz = p.ceilz
+	fx.sourceThing = p.sourceThing
+	fx.sourceType = p.sourceType
+	fx.sourcePlayer = p.sourcePlayer
+	fx.lastLook = p.lastLook
+	return idx
+}
+
+func (g *game) finalizeDeferredProjectileImpact(idx int) {
+	if g == nil || idx < 0 || idx >= len(g.projectileImpacts) {
+		return
+	}
+	fx := &g.projectileImpacts[idx]
+	base := projectileImpactPhaseTics(fx.kind, fx.phase)
+	if base <= 0 {
+		return
+	}
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-deferred-debug tic=%d world=%d phase=finalize-pre kind=%d base=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, fx.kind, base, rnd, prnd)
+			}
+		}
+	}
+	first := randomizedStateTics(base)
+	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var wantTic int
+		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				rnd, prnd := doomrand.State()
+				fmt.Printf("projectile-impact-deferred-debug tic=%d world=%d phase=finalize-post kind=%d first=%d rnd=%d prnd=%d\n",
+					g.demoTick-1, g.worldTic, fx.kind, first, rnd, prnd)
+			}
+		}
+	}
+	fx.tics -= base - first
+	fx.totalTics -= base - first
+	fx.phaseTics = first
+}
+
+func (g *game) advanceProjectileImpactTic(fx *projectileImpact) bool {
+	if fx == nil {
+		return false
+	}
+	fx.tics--
+	fx.phaseTics--
+	if fx.phaseTics <= 0 {
+		fx.phase++
+		next := projectileImpactPhaseTics(fx.kind, fx.phase)
+		if next <= 0 {
+			return false
+		}
+		fx.phaseTics = next
+		if fx.kind == projectileBFGBall && !fx.sprayDone && fx.phase == 2 {
+			fx.sprayDone = true
+			g.applyBFGSpray(fx.angle)
+		}
+	}
+	return fx.tics > 0
+}
+
+func projectileSpawnStateTics(kind projectileKind) int {
+	switch kind {
+	case projectileTracer:
+		return 2
+	case projectilePlayerPlasma:
+		return 6
+	case projectileRocket:
+		return 1
+	case projectileBFGBall:
+		return 4
+	default:
+		return 4
+	}
+}
+
+func projectileImpactPhaseTics(kind projectileKind, phase int) int {
+	switch kind {
+	case projectileBFGBall:
+		if phase >= 0 && phase <= 5 {
+			return 8
+		}
+	case projectileRocket, projectileFatShot, projectileTracer:
+		switch phase {
+		case 0:
+			return 8
+		case 1:
+			return 6
+		case 2:
+			return 4
+		}
+	case projectilePlayerPlasma:
+		if phase >= 0 && phase <= 4 {
+			return 4
+		}
+	default:
+		if phase >= 0 && phase <= 2 {
+			return 6
+		}
+	}
+	return 0
+}
+
+func randomizedStateTics(base int) int {
+	if base <= 1 {
+		return 1
+	}
+	tics := base - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		return 1
+	}
+	return tics
+}
+
+func randomizedMissileSpawnTics(base int) int {
+	if base < 1 {
+		base = 1
+	}
+	tics := base - (doomrand.PRandom() & 3)
+	if tics < 1 {
+		return 1
+	}
+	return tics
+}
+
+func (g *game) tickProjectileAnim(p *projectile) {
+	if p == nil {
+		return
+	}
+	p.frameTics--
+	if p.frameTics > 0 {
+		return
+	}
+	switch p.kind {
+	case projectileRocket:
+		p.frame = 0
+	default:
+		p.frame ^= 1
+	}
+	p.frameTics = projectileSpawnStateTics(p.kind)
+}
+
+func (g *game) projectileSupportStateAt(x, y, radius int64) (int64, int64) {
+	if g == nil || g.m == nil || len(g.sectorFloor) == 0 || len(g.sectorCeil) == 0 {
+		return 0, 0
+	}
+	if tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, false, -1, false); ok {
+		return tmfloor, tmceil
+	}
+	sec := g.sectorAt(x, y)
+	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return 0, 0
+	}
+	return g.sectorFloor[sec], g.sectorCeil[sec]
+}
+
+func (g *game) refreshProjectileSupportInSector(sec int) {
+	if g == nil || sec < 0 {
+		return
+	}
+	for i := range g.projectiles {
+		p := &g.projectiles[i]
+		if !g.actorTouchesSector(sec, p.x, p.y, p.radius) {
+			continue
+		}
+		p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	}
+	for i := range g.projectileImpacts {
+		fx := &g.projectileImpacts[i]
+		radius := demoTraceProjectileImpactRadius(fx.kind)
+		if !g.actorTouchesSector(sec, fx.x, fx.y, radius) {
+			continue
+		}
+		fx.floorz, fx.ceilz = g.projectileSupportStateAt(fx.x, fx.y, radius)
+	}
+}
+
 func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64) {
 	if g.m == nil {
-		return false, 1, nx, ny, nz
+		return false, 1, 0, 0, nz
 	}
 	sec := g.sectorAt(nx, ny)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
-		return true, 1, nx, ny, nz
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "bad-sector", 1, nx, ny, nz)
+		return true, 1, 0, 0, nz
 	}
-	if nz < g.sectorFloor[sec] || nz+p.height > g.sectorCeil[sec] {
-		return true, 1, nx, ny, nz
+	tmfloorz := g.sectorFloor[sec]
+	tmceilingz := g.sectorCeil[sec]
+	tmdropoffz := tmfloorz
+	tmbox := [4]int64{
+		ny + p.radius,
+		ny - p.radius,
+		nx + p.radius,
+		nx - p.radius,
 	}
-	intercepts := make([]intercept, 0, 8)
-	for i, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(ox, oy, nx, ny, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok {
-			continue
+	bestFrac := 2.0
+	bestX, bestY, bestZ := nx, ny, nz
+	processLine := func(physIdx int) bool {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return true
 		}
-		intercepts = append(intercepts, intercept{frac: frac, line: i})
-	}
-	slices.SortFunc(intercepts, func(a, b intercept) int {
-		if a.frac < b.frac {
-			return -1
+		if physIdx >= len(g.lineValid) {
+			g.lineValid = append(g.lineValid, make([]int, physIdx-len(g.lineValid)+1)...)
 		}
-		if a.frac > b.frac {
-			return 1
+		if g.lineValid[physIdx] == g.validCount {
+			return true
 		}
-		return 0
-	})
-
-	for _, it := range intercepts {
-		ld := g.lines[it.line]
-		hx := ox + int64(float64(nx-ox)*it.frac)
-		hy := oy + int64(float64(ny-oy)*it.frac)
-		hz := oz + int64(float64(nz-oz)*it.frac)
-		if ld.sideNum1 < 0 || (ld.flags&mlBlocking) != 0 {
-			return true, it.frac, hx, hy, hz
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		if tmbox[2] <= ld.bbox[3] || tmbox[3] >= ld.bbox[2] || tmbox[0] <= ld.bbox[1] || tmbox[1] >= ld.bbox[0] {
+			return true
+		}
+		if g.boxOnLineSide(tmbox, ld) != -1 {
+			return true
+		}
+		frac := 1.0
+		if f, ok := segmentIntersectFrac(ox, oy, nx, ny, ld.x1, ld.y1, ld.x2, ld.y2); ok {
+			frac = f
+		}
+		hx := ox + int64(float64(nx-ox)*frac)
+		hy := oy + int64(float64(ny-oy)*frac)
+		hz := oz
+		if ld.sideNum1 < 0 {
+			g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "onesided", frac, hx, hy, hz)
+			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
+			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
-		if openrange <= 0 {
-			return true, it.frac, hx, hy, hz
+		if g == nil || os.Getenv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+			// no-op
+		} else {
+			var tic int
+			if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
+				fmt.Printf("projectile-line-debug tic=%d world=%d line=%d opentop=%d openbottom=%d openrange=%d oz=%d height=%d\n",
+					g.demoTick-1, g.worldTic, ld.idx, opentop, openbottom, openrange, oz, p.height)
+			}
 		}
-		if hz < openbottom || hz+p.height > opentop {
-			return true, it.frac, hx, hy, hz
+		if opentop < tmceilingz {
+			tmceilingz = opentop
+		}
+		if openbottom > tmfloorz {
+			tmfloorz = openbottom
+		}
+		if lowfloor, ok := g.lineLowFloor(ld); ok && lowfloor < tmdropoffz {
+			tmdropoffz = lowfloor
+		}
+		return true
+	}
+	g.validCount++
+	iter := func(lineIdx int) bool {
+		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+			return true
+		}
+		return processLine(g.physForLine[lineIdx])
+	}
+	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		xl := int((tmbox[3] - g.bmapOriginX) >> (fracBits + 7))
+		xh := int((tmbox[2] - g.bmapOriginX) >> (fracBits + 7))
+		yl := int((tmbox[1] - g.bmapOriginY) >> (fracBits + 7))
+		yh := int((tmbox[0] - g.bmapOriginY) >> (fracBits + 7))
+		for bx := xl; bx <= xh; bx++ {
+			for by := yl; by <= yh; by++ {
+				if !g.blockLinesIterator(bx, by, iter) {
+					return true, bestFrac, bestX, bestY, bestZ
+				}
+			}
+		}
+	} else {
+		for i := range g.lines {
+			if !processLine(i) {
+				return true, bestFrac, bestX, bestY, bestZ
+			}
 		}
 	}
-	return false, 1, nx, ny, nz
+	if tmceilingz-tmfloorz < p.height {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "fit", 1, nx, ny, oz)
+		return true, 1, tmfloorz, tmceilingz, oz
+	}
+	if tmceilingz-oz < p.height {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "ceil", 1, nx, ny, oz)
+		return true, 1, tmfloorz, tmceilingz, oz
+	}
+	if tmfloorz-oz > 24*fracUnit {
+		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "step", 1, nx, ny, oz)
+		return true, 1, tmfloorz, tmceilingz, oz
+	}
+	_ = tmdropoffz
+	return false, 1, tmfloorz, tmceilingz, nz
+}
+
+func (g *game) lineLowFloor(ld physLine) (int64, bool) {
+	if g == nil {
+		return 0, false
+	}
+	if ld.sideNum0 < 0 || ld.sideNum1 < 0 || int(ld.sideNum0) >= len(g.m.Sidedefs) || int(ld.sideNum1) >= len(g.m.Sidedefs) {
+		return 0, false
+	}
+	s0 := int(g.m.Sidedefs[ld.sideNum0].Sector)
+	s1 := int(g.m.Sidedefs[ld.sideNum1].Sector)
+	if s0 < 0 || s1 < 0 || s0 >= len(g.sectorFloor) || s1 >= len(g.sectorFloor) {
+		return 0, false
+	}
+	if g.sectorFloor[s0] < g.sectorFloor[s1] {
+		return g.sectorFloor[s0], true
+	}
+	return g.sectorFloor[s1], true
+}
+
+func (g *game) debugProjectileBlock(p projectile, ox, oy, oz, nx, ny, nz int64, reason string, frac float64, hx, hy, hz int64) {
+	if g == nil || os.Getenv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+		return
+	}
+	var tic int
+	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err != nil {
+		return
+	}
+	if g.demoTick-1 != tic && g.worldTic != tic {
+		return
+	}
+	fmt.Printf("projectile-block-debug tic=%d world=%d reason=%s from=(%d,%d,%d) to=(%d,%d,%d) frac=%f hit=(%d,%d,%d)\n",
+		g.demoTick-1, g.worldTic, reason, ox, oy, oz, nx, ny, nz, frac, hx, hy, hz)
 }
 
 type projectileThingHit struct {
-	idx  int
-	frac float64
-	x    int64
-	y    int64
-	z    int64
+	idx      int
+	isPlayer bool
+	frac     float64
+	x        int64
+	y        int64
+	z        int64
 }
 
 func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, nx, ny, nz int64) (projectileThingHit, bool) {
@@ -588,29 +1125,29 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 		}
 		bestFrac = frac
 		best = projectileThingHit{
-			idx:  i,
-			frac: float64(frac) / float64(fracUnit),
-			x:    hx,
-			y:    hy,
-			z:    hz,
+			idx:      i,
+			isPlayer: false,
+			frac:     float64(frac) / float64(fracUnit),
+			x:        hx,
+			y:        hy,
+			z:        hz,
+		}
+	}
+	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && bestFrac > fracUnit && actorsOverlapXY(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
+		delta := nz - g.p.z
+		if delta <= playerHeight && delta+p.height >= 0 {
+			best = projectileThingHit{
+				idx:      -1,
+				isPlayer: true,
+				frac:     1,
+				x:        nx,
+				y:        ny,
+				z:        nz,
+			}
+			bestFrac = fracUnit
 		}
 	}
 	return best, bestFrac <= fracUnit
-}
-
-func (g *game) projectileHitsPlayer(p projectile) bool {
-	blockdist := playerRadius + p.radius
-	if abs(g.p.x-p.x) > blockdist || abs(g.p.y-p.y) > blockdist {
-		return false
-	}
-	delta := p.z - g.p.z
-	if delta > playerHeight {
-		return false
-	}
-	if delta+p.height < 0 {
-		return false
-	}
-	return true
 }
 
 func projectileHitMessage(kind projectileKind) string {
@@ -688,6 +1225,7 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 	if g.worldTic&3 != 0 {
 		return
 	}
+	g.spawnTracerSmokeTrail(p.x, p.y, p.z, p.vx, p.vy)
 	dx := g.p.x - p.x
 	dy := g.p.y - p.y
 	dxy := hypotFixed(dx, dy)

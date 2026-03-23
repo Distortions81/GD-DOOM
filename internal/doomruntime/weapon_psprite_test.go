@@ -3,6 +3,8 @@ package doomruntime
 import (
 	"math"
 	"testing"
+
+	"gddoom/internal/mapdata"
 )
 
 func TestWeaponReadySpriteName(t *testing.T) {
@@ -147,11 +149,14 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	if g.inventory.ReadyWeapon != weaponPistol {
 		t.Fatalf("ready weapon=%v want pistol until current attack finishes", g.inventory.ReadyWeapon)
 	}
-	for i := 0; i < 32; i++ {
+	for i := 0; i < 64 && g.inventory.ReadyWeapon != weaponShotgun; i++ {
 		g.tickWeaponOverlay()
 	}
-	if g.inventory.PendingWeapon != 0 || g.inventory.ReadyWeapon != weaponShotgun {
-		t.Fatalf("weapon switch should be in progress after attack: ready=%v pending=%v", g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+	if g.inventory.ReadyWeapon != weaponShotgun {
+		t.Fatalf("weapon switch should have selected shotgun after attack: ready=%v pending=%v", g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+	}
+	if g.inventory.PendingWeapon != weaponShotgun && g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want shotgun during raise or cleared after bring-up", g.inventory.PendingWeapon)
 	}
 	if g.weaponState != weaponStateShotgunUp && g.weaponState != weaponStateShotgunReady {
 		t.Fatalf("weapon state=%v want shotgun raise or ready", g.weaponState)
@@ -164,6 +169,81 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	}
 	if g.inventory.ReadyWeapon != weaponShotgun || g.weaponState != weaponStateShotgunReady || g.weaponFlashState != weaponStateNone {
 		t.Fatalf("weapon switch not applied after raise: ready=%v state=%v flash=%v", g.inventory.ReadyWeapon, g.weaponState, g.weaponFlashState)
+	}
+}
+
+func TestWeaponSwitchDoesNotFlipReadyWeaponUntilLowerCompletes(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			ReadyWeapon:   weaponPistol,
+			PendingWeapon: weaponShotgun,
+			Weapons:       map[int16]bool{2001: true},
+		},
+	}
+
+	g.weaponPSpriteY = weaponTopY
+	g.setWeaponPSpriteState(weaponStatePistolDown, false)
+	if g.inventory.ReadyWeapon != weaponPistol || g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("switch changed too early: ready=%v pending=%v", g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+	}
+	for i := 0; i < 32 && g.inventory.ReadyWeapon == weaponPistol; i++ {
+		prevY := g.weaponPSpriteY
+		prevReady, prevPending := g.inventory.ReadyWeapon, g.inventory.PendingWeapon
+		g.tickWeaponOverlay()
+		if prevY+weaponLowerSpeed < weaponBottomY && (g.inventory.ReadyWeapon != prevReady || g.inventory.PendingWeapon != prevPending) {
+			t.Fatalf("switch changed before lower completed: prevY=%d y=%d ready=%v pending=%v", prevY, g.weaponPSpriteY, g.inventory.ReadyWeapon, g.inventory.PendingWeapon)
+		}
+	}
+	if g.inventory.ReadyWeapon != weaponShotgun {
+		t.Fatalf("ready weapon=%v want shotgun after lower completed", g.inventory.ReadyWeapon)
+	}
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want cleared after bring-up starts", g.inventory.PendingWeapon)
+	}
+}
+
+func TestZeroTicRefireAmmoSwitchDoesNotLowerTwice(t *testing.T) {
+	g := &game{
+		stats: playerStats{Rockets: 0, Shells: 4},
+		inventory: playerInventory{
+			ReadyWeapon: weaponRocketLauncher,
+			Weapons: map[int16]bool{
+				2001: true,
+				2003: true,
+			},
+		},
+	}
+
+	g.weaponPSpriteY = 44
+	g.setWeaponPSpriteState(weaponStateRocketAtk3, false)
+
+	if g.weaponState != weaponStateRocketDown {
+		t.Fatalf("weapon state=%v want=%v", g.weaponState, weaponStateRocketDown)
+	}
+	if g.weaponPSpriteY != 50 {
+		t.Fatalf("weapon y=%d want=50 after single lower step", g.weaponPSpriteY)
+	}
+	if g.inventory.ReadyWeapon != weaponRocketLauncher {
+		t.Fatalf("ready weapon=%v want rocket launcher before lower completes", g.inventory.ReadyWeapon)
+	}
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun", g.inventory.PendingWeapon)
+	}
+}
+
+func TestNewGameStartsWeaponBringUpLikeVanilla(t *testing.T) {
+	g := newGame(&mapdata.Map{}, Options{})
+	if g.weaponState != weaponStatePistolUp {
+		t.Fatalf("weaponState=%v want pistol up", g.weaponState)
+	}
+	if g.weaponStateTics != 1 {
+		t.Fatalf("weaponStateTics=%d want 1", g.weaponStateTics)
+	}
+	if g.weaponPSpriteY != weaponBottomY-weaponRaiseSpeed {
+		t.Fatalf("weaponPSpriteY=%d want %d", g.weaponPSpriteY, weaponBottomY-weaponRaiseSpeed)
+	}
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want cleared after bring-up setup", g.inventory.PendingWeapon)
 	}
 }
 

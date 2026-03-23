@@ -118,6 +118,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDemo := ""
 	defaultRecordDemo := ""
 	defaultDemoExitOnDeath := false
+	defaultDemoStopAfterTics := 0
 	defaultNoVsync := false
 	defaultNoFPS := false
 	defaultNoAspectCorrection := false
@@ -299,6 +300,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.RecordDemo != nil {
 			defaultRecordDemo = *cfg.RecordDemo
 		}
+		if cfg.DemoStopAfterTics != nil {
+			defaultDemoStopAfterTics = *cfg.DemoStopAfterTics
+		}
 		if cfg.NoVsync != nil {
 			defaultNoVsync = *cfg.NoVsync
 		}
@@ -383,6 +387,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
 	demoExitOnDeath := fs.Bool("demo-exit-on-death", defaultDemoExitOnDeath, "during -demo playback, stop early when the player dies")
+	demoStopAfterTics := fs.Int("demo-stop-after-tics", defaultDemoStopAfterTics, "during -demo playback, stop after this many processed tics (0 disables)")
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
@@ -615,6 +620,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			importTextures:             *importTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
+			demoExitOnDeath:            *demoExitOnDeath,
+			demoStopAfterTics:          max(0, *demoStopAfterTics),
+			demoTracePath:              resolvedDemoTracePath,
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
@@ -924,6 +932,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicPatchBank:             musicPatchBank,
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
+			DemoStopAfterTics:          max(0, *demoStopAfterTics),
 			DemoTracePath:              resolvedDemoTracePath,
 			AttractDemos:               builtInAttractDemos(wf),
 		}
@@ -1015,9 +1024,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "resolve demo map: %v\n", err)
 				return 1
 			}
-			opts.SkillLevel = int(demo.Header.Skill) + 1
-			opts.FastMonsters = demo.Header.Fast
-			opts.GameMode = demoGameMode(demo)
+			applyDemoPlaybackHeader(&opts, demo)
 			fmt.Fprintf(stderr, "demo loaded: %s tics=%d\n", p, len(demo.Tics))
 		}
 		if selected == "" {
@@ -1054,6 +1061,109 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			return 1
 		}
 		return 0
+	}
+
+	if resolvedDemoTracePath != "" {
+		resolvedLineColorMode := *lineColorMode
+		if *sourcePortMode && !lineColorModeSet {
+			resolvedLineColorMode = "doom"
+		}
+		if *noCullClipping {
+			*wallOcclusion = false
+			*wallSpanReject = false
+			*wallSpanClip = false
+			*wallSliceOcclusion = false
+			*billboardClipping = false
+		}
+		buildCfg := renderBuildConfig{
+			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
+			mapExplicit:                mapExplicit,
+			width:                      *width,
+			height:                     *height,
+			zoom:                       *zoom,
+			detailLevel:                *detailLevel,
+			detailLevelExplicit:        detailLevelSet,
+			detailLevelFaithful:        configuredDetailLevelForMode(cfg, false),
+			detailLevelSourcePort:      configuredDetailLevelForMode(cfg, true),
+			gammaLevel:                 *gammaLevel,
+			debug:                      *debug,
+			debugEvents:                *debugEvents,
+			playerSlot:                 *playerSlot,
+			skillLevel:                 *skillLevel,
+			gameMode:                   resolvedGameMode,
+			showNoSkillItems:           *showNoSkillItems,
+			showAllItems:               *showAllItems,
+			mouseLook:                  *mouseLook,
+			mouseLookSpeed:             *mouseLookSpeed,
+			keyboardTurnSpeed:          *keyboardTurnSpeed,
+			musicVolume:                *musicVolume,
+			musPanMax:                  *musPanMax,
+			oplVolume:                  *oplVolume,
+			audioPreEmphasis:           *audioPreEmphasis,
+			opl3Backend:                resolvedOPL3Backend,
+			oplBankPath:                strings.TrimSpace(*oplBank),
+			sfxVolume:                  *sfxVolume,
+			fastMonsters:               *fastMonsters,
+			alwaysRun:                  *alwaysRun,
+			autoWeaponSwitch:           *autoWeaponSwitch,
+			cheatLevel:                 resolvedCheatLevel,
+			invuln:                     resolvedInvuln,
+			lineColorMode:              resolvedLineColorMode,
+			sourcePortMode:             *sourcePortMode,
+			sourcePortThingRenderMode:  *sourcePortThingRenderMode,
+			sourcePortThingBlendFrames: *sourcePortThingBlendFrames,
+			sourcePortSectorLighting:   *sourcePortSectorLighting,
+			doomLighting:               *doomLighting,
+			kageShader:                 *kageShader,
+			gpuSky:                     *gpuSky,
+			skyUpscaleMode:             *skyUpscale,
+			crtEffect:                  *crtEffect,
+			wallOcclusion:              *wallOcclusion,
+			wallSpanReject:             *wallSpanReject,
+			wallSpanClip:               *wallSpanClip,
+			wallSliceOcclusion:         *wallSliceOcclusion,
+			billboardClipping:          *billboardClipping,
+			rendererWorkers:            *rendererWorkers,
+			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
+			noVsync:                    *noVsync,
+			noFPS:                      *noFPS,
+			noAspectCorrection:         *noAspectCorrection,
+			allCheats:                  *allCheats,
+			startInMap:                 explicitMapStartInMap(*startInMap, mapExplicit),
+			importPCSpeaker:            *importPCSpeaker,
+			importTextures:             *importTextures,
+			demoPath:                   resolvedDemoPath,
+			recordDemoPath:             resolvedRecordDemoPath,
+			demoExitOnDeath:            *demoExitOnDeath,
+			demoStopAfterTics:          max(0, *demoStopAfterTics),
+			demoTracePath:              resolvedDemoTracePath,
+			pwadPaths:                  resolvedFilePaths,
+			configPath:                 configPath,
+		}
+		bundle, berr := buildRenderBundle(resolvedWADPath, buildCfg, stderr)
+		if berr != nil {
+			fmt.Fprintf(stderr, "build headless demo trace: %v\n", berr)
+			return 1
+		}
+		sess := doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+		defer sess.Close()
+		for tic := 0; tic < 1_000_000; tic++ {
+			uerr := sess.Update()
+			if uerr == nil {
+				continue
+			}
+			if errors.Is(uerr, ebiten.Termination) {
+				if err := sess.Err(); err != nil {
+					fmt.Fprintf(stderr, "headless demo trace: %v\n", err)
+					return 1
+				}
+				return 0
+			}
+			fmt.Fprintf(stderr, "headless demo trace update %d: %v\n", tic, uerr)
+			return 1
+		}
+		fmt.Fprintln(stderr, "headless demo trace did not terminate")
+		return 1
 	}
 
 	if p := resolvedDemoPath; p != "" && !*render {
@@ -1623,6 +1733,8 @@ type renderBuildConfig struct {
 	demoPath                   string
 	recordDemoPath             string
 	demoExitOnDeath            bool
+	demoStopAfterTics          int
+	demoTracePath              string
 	pwadPaths                  []string
 	configPath                 string
 }
@@ -1866,6 +1978,8 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		MusicPatchBank:             musicPatchBank,
 		RecordDemoPath:             cfg.recordDemoPath,
 		DemoExitOnDeath:            cfg.demoExitOnDeath,
+		DemoStopAfterTics:          cfg.demoStopAfterTics,
+		DemoTracePath:              cfg.demoTracePath,
 		AttractDemos:               builtInAttractDemos(wf),
 	}
 	opts.TitleMusicLoader = func() ([]byte, error) {
@@ -1949,9 +2063,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		if err != nil {
 			return nil, fmt.Errorf("resolve demo map: %w", err)
 		}
-		opts.SkillLevel = int(demo.Header.Skill) + 1
-		opts.FastMonsters = demo.Header.Fast
-		opts.GameMode = demoGameMode(demo)
+		applyDemoPlaybackHeader(&opts, demo)
 	}
 	if selected == "" {
 		selected, err = defaultStartMap(wf, cfg.pwadPaths)
@@ -2549,7 +2661,10 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 			data = padDoomSoundSamples(data)
 		}
 		return media.PCMSample{
-			SampleRate: int(s.SampleRate),
+			// Stock Doom's digital mixer treats SFX as fixed 11025 Hz raw data
+			// and ignores the per-lump DMX rate header. Keep the same base pitch
+			// semantics in both faithful and source-port playback paths.
+			SampleRate: 11025,
 			Data:       data,
 		}
 	}
@@ -2562,6 +2677,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		SwitchOn:            sample("DSSWTCHN"),
 		SwitchOff:           sample("DSSWTCHX"),
 		NoWay:               firstSample(sample("DSNOWAY"), sample("DSOOF")),
+		Tink:                sample("DSTINK"),
 		ItemUp:              sample("DSITEMUP"),
 		WeaponUp:            sample("DSWPNUP"),
 		PowerUp:             sample("DSGETPOW"),
@@ -2591,6 +2707,8 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		AttackClaw:          firstSample(sample("DSCLAW"), sample("DSFIRSHT")),
 		AttackSgt:           firstSample(sample("DSSGTATK"), sample("DSSHOTGN")),
 		AttackSkull:         firstSample(sample("DSSKLATK"), sample("DSFIRSHT")),
+		AttackArchvile:      firstSample(sample("DSVILATK"), sample("DSBAREXP")),
+		AttackMancubus:      firstSample(sample("DSMANATK"), sample("DSFIRSHT")),
 		ImpactFire:          firstSample(sample("DSFIRXPL"), sample("DSBAREXP")),
 		ImpactRocket:        firstSample(firstSample(sample("DSRXPLOD"), sample("DSRXPLO")), sample("DSBAREXP")),
 		BarrelExplode:       firstSample(sample("DSBAREXP"), sample("DSRXPLOD")),
@@ -3176,12 +3294,9 @@ func loadBuiltInDemos(wf *wad.File) []*demo.Script {
 	return out
 }
 
-func demoGameMode(script *demo.Script) string {
-	if script == nil {
-		return "single"
+func applyDemoPlaybackHeader(opts *runtimecfg.Options, script *demo.Script) {
+	if opts == nil || script == nil {
+		return
 	}
-	if script.Header.Deathmatch {
-		return "deathmatch"
-	}
-	return "single"
+	*opts = runtimecfg.PrepareDemoPlaybackOptions(*opts, script)
 }

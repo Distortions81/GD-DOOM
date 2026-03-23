@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"math"
-	"math/bits"
 )
 
 const (
@@ -17,6 +16,38 @@ type divline struct {
 	y  int64
 	dx int64
 	dy int64
+}
+
+func doomDivlineSideExact(x, y int64, line divline) int {
+	if line.dx == 0 {
+		if x == line.x {
+			return 2
+		}
+		if x <= line.x {
+			return b2i(line.dy > 0)
+		}
+		return b2i(line.dy < 0)
+	}
+	if line.dy == 0 {
+		if y == line.y {
+			return 2
+		}
+		if y <= line.y {
+			return b2i(line.dx < 0)
+		}
+		return b2i(line.dx > 0)
+	}
+	dx := x - line.x
+	dy := y - line.y
+	left := fixedMul(line.dy>>8, dx>>8)
+	right := fixedMul(dy>>8, line.dx>>8)
+	if right < left {
+		return 0
+	}
+	if left == right {
+		return 2
+	}
+	return 1
 }
 
 func doomPointOnDivlineSide(x, y int64, line divline) int {
@@ -85,6 +116,29 @@ func pointOnDivlineSide(x, y int64, line divline) int {
 	return 1
 }
 
+func pointOnLineSide(x, y, lineX, lineY, lineDX, lineDY int64) int {
+	if lineDX == 0 {
+		if x <= lineX {
+			return b2i(lineDY > 0)
+		}
+		return b2i(lineDY < 0)
+	}
+	if lineDY == 0 {
+		if y <= lineY {
+			return b2i(lineDX < 0)
+		}
+		return b2i(lineDX > 0)
+	}
+	dx := x - lineX
+	dy := y - lineY
+	left := fixedMul(lineDY>>fracBits, dx)
+	right := fixedMul(dy, lineDX>>fracBits)
+	if right < left {
+		return 0
+	}
+	return 1
+}
+
 func segmentIntersectFrac(ax, ay, bx, by, cx, cy, dx, dy int64) (float64, bool) {
 	x1, y1 := float64(ax), float64(ay)
 	x2, y2 := float64(bx), float64(by)
@@ -105,26 +159,24 @@ func segmentIntersectFrac(ax, ay, bx, by, cx, cy, dx, dy int64) (float64, bool) 
 func fixedDiv(a, b int64) int64 {
 	if b == 0 {
 		if a >= 0 {
-			return math.MaxInt64
+			return math.MaxInt32
 		}
-		return math.MinInt64
+		return math.MinInt32
 	}
-	neg := (a < 0) != (b < 0)
-	ua := uint64(abs(a))
-	ub := uint64(abs(b))
-	hi, lo := bits.Mul64(ua, fracUnit)
-	q, _ := bits.Div64(hi, lo, ub)
-	if q > uint64(math.MaxInt64) {
-		if neg {
-			return math.MinInt64
+	if (abs(a) >> 14) >= abs(b) {
+		if (a ^ b) < 0 {
+			return math.MinInt32
 		}
-		return math.MaxInt64
+		return math.MaxInt32
 	}
-	out := int64(q)
-	if neg {
-		return -out
+	c := (float64(a) / float64(b)) * fracUnit
+	if c >= 2147483648.0 || c < -2147483648.0 {
+		if (a ^ b) < 0 {
+			return math.MinInt32
+		}
+		return math.MaxInt32
 	}
-	return out
+	return int64(c)
 }
 
 func interceptVector(v2, v1 divline) int64 {

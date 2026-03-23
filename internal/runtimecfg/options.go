@@ -52,6 +52,8 @@ type Options struct {
 	OpenMenuOnFrontendStart    bool
 	SFXVolume                  float64
 	FastMonsters               bool
+	RespawnMonsters            bool
+	NoMonsters                 bool
 	AlwaysRun                  bool
 	AutoWeaponSwitch           bool
 	CheatLevel                 int
@@ -95,6 +97,7 @@ type Options struct {
 	AttractDemos               []*demo.Script
 	DemoQuitOnComplete         bool
 	DemoExitOnDeath            bool
+	DemoStopAfterTics          int
 	RecordDemoPath             string
 	DemoTracePath              string
 	TitleMusicLoader           func() ([]byte, error)

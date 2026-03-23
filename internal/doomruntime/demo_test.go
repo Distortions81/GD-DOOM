@@ -52,6 +52,43 @@ func TestParseDemoScriptAcceptsVersion109(t *testing.T) {
 	}
 }
 
+func TestParseDemoScriptParsesAllHeaderFields(t *testing.T) {
+	src := []byte{
+		demoVersion110, 4, 3, 7, 1, 1, 1, 1, 2,
+		1, 1, 0, 1,
+		25, 0, 0, 0,
+		demoMarker,
+	}
+	d, err := ParseDemoScript(src)
+	if err != nil {
+		t.Fatalf("parse demo: %v", err)
+	}
+	want := DemoHeader{
+		Version:       demoVersion110,
+		Skill:         4,
+		Episode:       3,
+		Map:           7,
+		Deathmatch:    true,
+		Respawn:       true,
+		Fast:          true,
+		NoMonsters:    true,
+		ConsolePlayer: 2,
+		PlayerInGame:  [4]bool{true, true, false, true},
+	}
+	if d.Header != want {
+		t.Fatalf("header=%+v want %+v", d.Header, want)
+	}
+}
+
+func TestDemoButtonWeaponSlotMatchesDoomButtonPacking(t *testing.T) {
+	if got := demoButtonWeaponSlot(demoButtonChange | (2 << demoButtonWeaponShift)); got != 3 {
+		t.Fatalf("weapon slot=%d want=3", got)
+	}
+	if got := demoButtonWeaponSlot(demoButtonAttack | demoButtonUse); got != 0 {
+		t.Fatalf("weapon slot without change bit=%d want=0", got)
+	}
+}
+
 func TestParseDemoScriptErrors(t *testing.T) {
 	cases := [][]byte{
 		nil,
@@ -116,6 +153,48 @@ func TestBuildRecordedDemo(t *testing.T) {
 	}
 }
 
+func TestNewGameDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
+	g := newGame(&mapdata.Map{}, Options{
+		SkillLevel:       5,
+		GameMode:         gameModeDeathmatch,
+		ShowNoSkillItems: true,
+		ShowAllItems:     true,
+		CheatLevel:       3,
+		Invulnerable:     true,
+		AllCheats:        true,
+		DemoScript: &DemoScript{
+			Header: DemoHeader{
+				Version:       demoVersion110,
+				Skill:         1,
+				Respawn:       true,
+				Fast:          true,
+				NoMonsters:    true,
+				ConsolePlayer: 0,
+				PlayerInGame:  [4]bool{true},
+			},
+			Tics: []DemoTic{{Forward: 25}},
+		},
+	})
+	if g == nil {
+		t.Fatal("expected game")
+	}
+	if got := g.opts.SkillLevel; got != 2 {
+		t.Fatalf("SkillLevel=%d want 2", got)
+	}
+	if got := g.opts.GameMode; got != gameModeSingle {
+		t.Fatalf("GameMode=%q want %q", got, gameModeSingle)
+	}
+	if !g.opts.FastMonsters || !g.opts.RespawnMonsters || !g.opts.NoMonsters {
+		t.Fatalf("demo header flags not applied: fast=%t respawn=%t nomonsters=%t", g.opts.FastMonsters, g.opts.RespawnMonsters, g.opts.NoMonsters)
+	}
+	if g.opts.ShowNoSkillItems || g.opts.ShowAllItems {
+		t.Fatalf("demo playback inherited item filter overrides: shownoskill=%t showall=%t", g.opts.ShowNoSkillItems, g.opts.ShowAllItems)
+	}
+	if g.cheatLevel != 0 || g.invulnerable || g.opts.AllCheats {
+		t.Fatalf("demo playback inherited cheats: cheat=%d invuln=%t allcheats=%t", g.cheatLevel, g.invulnerable, g.opts.AllCheats)
+	}
+}
+
 func TestDemoUpdateModeTerminatesAtEnd(t *testing.T) {
 	g := mustLoadE1M1GameForMapTextureTests(t)
 	g.opts.DemoScript = &DemoScript{
@@ -157,6 +236,38 @@ func TestDemoUpdateModeTerminatesOnDeathWhenConfigured(t *testing.T) {
 	err := g.Update()
 	if !errors.Is(err, ebiten.Termination) {
 		t.Fatalf("expected ebiten.Termination after player death, got %v", err)
+	}
+}
+
+func TestDemoUpdateModeTerminatesAfterConfiguredTicLimit(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.DemoScript = &DemoScript{
+		Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+		Tics: []DemoTic{
+			{Forward: 25},
+			{Forward: 25},
+			{Forward: 25},
+		},
+	}
+	g.opts.DemoQuitOnComplete = true
+	g.opts.DemoStopAfterTics = 2
+	startX := g.p.x
+	startY := g.p.y
+	if err := g.Update(); err != nil {
+		t.Fatalf("update 1: %v", err)
+	}
+	if err := g.Update(); err != nil {
+		t.Fatalf("update 2: %v", err)
+	}
+	if g.p.x == startX && g.p.y == startY {
+		t.Fatal("expected demo movement before tic limit")
+	}
+	err := g.Update()
+	if !errors.Is(err, ebiten.Termination) {
+		t.Fatalf("expected ebiten.Termination after tic limit, got %v", err)
+	}
+	if got := g.demoTick; got != 2 {
+		t.Fatalf("demoTick=%d want 2", got)
 	}
 }
 

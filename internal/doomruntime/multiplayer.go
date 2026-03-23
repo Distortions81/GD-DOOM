@@ -3,6 +3,7 @@ package doomruntime
 import "gddoom/internal/mapdata"
 
 type playerStart struct {
+	index int
 	slot  int
 	x     int64
 	y     int64
@@ -11,12 +12,13 @@ type playerStart struct {
 
 func collectPlayerStarts(m *mapdata.Map) []playerStart {
 	starts := make([]playerStart, 0, 4)
-	for _, t := range m.Things {
+	for i, t := range m.Things {
 		slot := playerSlotFromThingType(t.Type)
 		if slot == 0 {
 			continue
 		}
 		starts = append(starts, playerStart{
+			index: i,
 			slot:  slot,
 			x:     int64(t.X) << fracBits,
 			y:     int64(t.Y) << fracBits,

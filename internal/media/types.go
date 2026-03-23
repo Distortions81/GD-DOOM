@@ -198,6 +198,7 @@ type SoundBank struct {
 	SwitchOn            PCMSample
 	SwitchOff           PCMSample
 	NoWay               PCMSample
+	Tink                PCMSample
 	ItemUp              PCMSample
 	WeaponUp            PCMSample
 	PowerUp             PCMSample
@@ -227,6 +228,8 @@ type SoundBank struct {
 	AttackClaw          PCMSample
 	AttackSgt           PCMSample
 	AttackSkull         PCMSample
+	AttackArchvile      PCMSample
+	AttackMancubus      PCMSample
 	ImpactFire          PCMSample
 	ImpactRocket        PCMSample
 	BarrelExplode       PCMSample
