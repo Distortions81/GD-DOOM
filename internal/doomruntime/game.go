@@ -606,6 +606,7 @@ type game struct {
 	secretsTotal          int
 	sectorSoundTarget     []bool
 	isDead                bool
+	playerMobjHealth      int
 	damageFlashTic        int
 	bonusFlashTic         int
 	sectorLightFx         []sectorLightEffect

@@ -116,6 +116,26 @@ func TestDemoTraceThingReactionDoesNotFallBackToSpawnDefault(t *testing.T) {
 	}
 }
 
+func TestDemoTracePlayerMobjHealthUsesPlayerActorHealth(t *testing.T) {
+	g := &game{
+		stats:            playerStats{Health: 0},
+		playerMobjHealth: -1,
+		p: player{
+			subsector: 0,
+			sector:    0,
+		},
+		m: &mapdata.Map{},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if len(mobjs) == 0 {
+		t.Fatal("mobjs empty")
+	}
+	if got := mobjs[0].Health; got != -1 {
+		t.Fatalf("player mobj health=%d want=-1", got)
+	}
+}
+
 func TestDamageMonsterDeathPreservesExistingReactionTime(t *testing.T) {
 	g := &game{
 		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 3004}}},

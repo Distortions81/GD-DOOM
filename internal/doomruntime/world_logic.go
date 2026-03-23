@@ -447,6 +447,7 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		amount -= saved
 	}
 	g.stats.Health -= amount
+	g.playerMobjHealth -= amount
 	g.damageFlashTic = max(g.damageFlashTic, 8)
 	g.statusDamageCount += amount
 	if g.statusDamageCount > 100 {

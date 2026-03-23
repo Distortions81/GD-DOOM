@@ -249,7 +249,7 @@ func (g *game) writeDemoTraceTic() {
 		MomX:          g.p.momx,
 		MomY:          g.p.momy,
 		MomZ:          g.p.momz,
-		MOHealth:      g.stats.Health,
+		MOHealth:      g.playerMobjHealth,
 	}
 
 	mobjs := g.demoTraceMobjs()
@@ -307,7 +307,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Tics:         playerTics,
 			State:        playerState,
 			Flags:        0,
-			Health:       g.stats.Health,
+			Health:       g.playerMobjHealth,
 			Movedir:      0,
 			Movecount:    0,
 			ReactionTime: 0,

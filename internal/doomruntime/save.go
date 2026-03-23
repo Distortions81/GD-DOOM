@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	saveGameVersion = 12
+	saveGameVersion = 13
 	saveGamePrefix  = "dsg"
 )
 
@@ -125,6 +125,7 @@ type gameSaveState struct {
 	SecretsTotal         int
 	SectorSoundTarget    []bool
 	IsDead               bool
+	PlayerMobjHealth     int
 	DamageFlashTic       int
 	BonusFlashTic        int
 	SectorLightFx        []sectorLightEffectSaveState
@@ -518,6 +519,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		SecretsTotal:         g.secretsTotal,
 		SectorSoundTarget:    append([]bool(nil), g.sectorSoundTarget...),
 		IsDead:               g.isDead,
+		PlayerMobjHealth:     g.playerMobjHealth,
 		DamageFlashTic:       g.damageFlashTic,
 		BonusFlashTic:        g.bonusFlashTic,
 		SectorLightFx:        captureSectorLightEffects(g.sectorLightFx),
@@ -614,6 +616,10 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.secretsTotal = s.SecretsTotal
 	g.sectorSoundTarget = append([]bool(nil), s.SectorSoundTarget...)
 	g.isDead = s.IsDead
+	g.playerMobjHealth = s.PlayerMobjHealth
+	if g.playerMobjHealth == 0 && g.stats.Health != 0 {
+		g.playerMobjHealth = g.stats.Health
+	}
 	g.damageFlashTic = s.DamageFlashTic
 	g.bonusFlashTic = s.BonusFlashTic
 	g.sectorLightFx = restoreSectorLightEffects(s.SectorLightFx)

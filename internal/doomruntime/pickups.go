@@ -61,6 +61,7 @@ func (g *game) initPlayerState() {
 		Rockets:   0,
 		Cells:     0,
 	}
+	g.playerMobjHealth = g.stats.Health
 }
 
 func (g *game) captureLevelCarryover() playerLevelCarryover {
@@ -86,6 +87,7 @@ func (g *game) applyLevelCarryover(carry playerLevelCarryover) {
 		g.inventory.Weapons = cloneWeaponInventory(g.inventory.Weapons)
 	}
 	g.stats = carry.Stats
+	g.syncPlayerMobjHealth()
 	g.finishLevelForCarryover()
 	g.ensureWeaponDefaults()
 	g.inventory.PendingWeapon = 0
@@ -124,6 +126,13 @@ func cloneWeaponInventory(src map[int16]bool) map[int16]bool {
 		dst[k] = v
 	}
 	return dst
+}
+
+func (g *game) syncPlayerMobjHealth() {
+	if g == nil {
+		return
+	}
+	g.playerMobjHealth = g.stats.Health
 }
 
 func (pi playerInventory) keys() mapdata.KeyRing {
@@ -446,6 +455,7 @@ func (g *game) gainHealth(amount, cap int, msg string) (string, soundEvent, bool
 	if g.stats.Health == prev {
 		return "", 0, false
 	}
+	g.syncPlayerMobjHealth()
 	return msg, soundEventItemUp, true
 }
 
@@ -454,6 +464,7 @@ func (g *game) gainBonusHealth(amount, cap int, msg string) (string, soundEvent,
 	if g.stats.Health > cap {
 		g.stats.Health = cap
 	}
+	g.syncPlayerMobjHealth()
 	return msg, soundEventItemUp, true
 }
 

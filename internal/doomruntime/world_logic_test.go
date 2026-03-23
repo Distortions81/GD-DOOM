@@ -72,11 +72,26 @@ func TestHazardDamage_LastRadSuitTicStillProtects(t *testing.T) {
 func TestDamagePlayerFrom_BlockedByInvulnerabilityPowerup(t *testing.T) {
 	g := &game{
 		stats:     playerStats{Health: 100},
+		playerMobjHealth: 100,
 		inventory: playerInventory{InvulnTics: 10},
 	}
 	g.damagePlayerFrom(20, "ouch", 0, 0, false)
 	if g.stats.Health != 100 {
 		t.Fatalf("health=%d want=100", g.stats.Health)
+	}
+}
+
+func TestDamagePlayerFrom_ClampsPlayerHealthButNotMobjHealth(t *testing.T) {
+	g := &game{
+		stats:            playerStats{Health: 2},
+		playerMobjHealth: 2,
+	}
+	g.damagePlayerFrom(3, "ouch", 0, 0, false)
+	if g.stats.Health != 0 {
+		t.Fatalf("health=%d want=0", g.stats.Health)
+	}
+	if g.playerMobjHealth != -1 {
+		t.Fatalf("playerMobjHealth=%d want=-1", g.playerMobjHealth)
 	}
 }
 
