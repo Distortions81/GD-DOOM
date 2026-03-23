@@ -2398,7 +2398,7 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 		bottomSlope: bz - sightZStart,
 	}
 	g.validCount++
-	return g.crossBSPLOS(uint16(len(g.m.Nodes)-1), sight)
+	return g.crossBSPLOS(uint16(len(g.m.Nodes)-1), &sight)
 }
 
 type losTrace struct {
@@ -2421,7 +2421,7 @@ func doomSightDivlineSide(x, y int64, line divline) int {
 		return b2i(line.dy < 0)
 	}
 	if line.dy == 0 {
-		if y == line.y {
+		if x == line.y {
 			return 2
 		}
 		if y <= line.y {
@@ -2518,13 +2518,13 @@ func (g *game) actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheig
 	return true
 }
 
-func (g *game) crossBSPLOS(child uint16, sight losTrace) bool {
+func (g *game) crossBSPLOS(child uint16, sight *losTrace) bool {
 	if child&0x8000 != 0 {
 		ss := int(child & 0x7fff)
 		if ss < 0 || ss >= len(g.m.SubSectors) {
 			return false
 		}
-		return g.crossSubsectorLOS(ss, &sight)
+		return g.crossSubsectorLOS(ss, sight)
 	}
 	ni := int(child)
 	if ni < 0 || ni >= len(g.m.Nodes) {
@@ -2554,6 +2554,15 @@ func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
 	if g == nil || g.m == nil || ss < 0 || ss >= len(g.m.SubSectors) {
 		return false
 	}
+	if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+		var wantTic, wantIdx int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+				fmt.Printf("monster-look-debug tic=%d world=%d site=los-subsector ss=%d ax=%d ay=%d bx=%d by=%d\n",
+					g.demoTick-1, g.worldTic, ss, sight.trace.x, sight.trace.y, sight.t2x, sight.t2y)
+			}
+		}
+	}
 	sub := g.m.SubSectors[ss]
 	for off := 0; off < int(sub.SegCount); off++ {
 		segIdx := int(sub.FirstSeg) + off
@@ -2581,6 +2590,15 @@ func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
 		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
 		s1 = doomSightDivlineSide(sight.trace.x, sight.trace.y, lineDL)
 		s2 = doomSightDivlineSide(sight.t2x, sight.t2y, lineDL)
+		if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+			var wantTic, wantIdx int
+			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (lineIdx == 185 || ss == 39) {
+					fmt.Printf("monster-look-debug tic=%d world=%d site=los-line ss=%d line=%d s1=%d s2=%d v1=(%d,%d) v2=(%d,%d)\n",
+						g.demoTick-1, g.worldTic, ss, lineIdx, s1, s2, ld.x1, ld.y1, ld.x2, ld.y2)
+				}
+			}
+		}
 		if s1 == s2 {
 			continue
 		}
