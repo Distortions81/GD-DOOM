@@ -680,6 +680,36 @@ func TestTickThingThinker_ReacquiredPlayerAfterAttackReturnsImmediatelyLikeDoomA
 	if got, want := g.thingMoveCount[0], 0; got != want {
 		t.Fatalf("movecount=%d want=%d", got, want)
 	}
+	if len(g.soundQueue) != 0 {
+		t.Fatalf("reacquire from A_Chase should not emit seesound, queue=%v", g.soundQueue)
+	}
+}
+
+func TestMonsterAdvanceThinkState_SeeStateReloadsFrameTicsLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 9, X: 0, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{30},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStatePhase:   []int{0},
+		thingStateTics:    []int{1},
+		p:                 player{x: 64 * fracUnit, y: 0},
+	}
+
+	if !g.monsterAdvanceThinkState(0, 9, 0, 0, g.p.x, g.p.y, 64*fracUnit) {
+		t.Fatal("see state should remain active")
+	}
+	if got, want := g.thingStatePhase[0], 1; got != want {
+		t.Fatalf("phase=%d want=%d", got, want)
+	}
+	if got, want := g.thingStateTics[0], 3; got != want {
+		t.Fatalf("state tics=%d want=%d", got, want)
+	}
 }
 
 func TestMonsterAttack_FacesAndFiresAtDeadTargetPointerLikeDoom(t *testing.T) {
@@ -2851,16 +2881,14 @@ func TestLostTargetChaseRunsSpawnLookPath(t *testing.T) {
 	}
 
 	if !g.monsterRunLostTargetChaseState(0, 3004, g.thingX[0], g.thingY[0]) {
-		t.Fatal("lost-target chase should run the spawn/look path immediately")
+		t.Fatal("lost-target chase should reacquire the player immediately")
 	}
 
 	if !g.monsterHasTarget(0) || g.thingTargetPlayer[0] != true {
-		t.Fatal("monster should reacquire the player via the spawn/look path")
+		t.Fatal("monster should reacquire the player directly from A_Chase")
 	}
-	if !hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit1) &&
-		!hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit2) &&
-		!hasSoundEvent(g.soundQueue, soundEventMonsterSeePosit3) {
-		t.Fatalf("spawn/look reacquire should emit seesound, queue=%v", g.soundQueue)
+	if len(g.soundQueue) != 0 {
+		t.Fatalf("A_Chase reacquire should not emit seesound, queue=%v", g.soundQueue)
 	}
 	if g.thingState[0] != monsterStateSee {
 		t.Fatalf("state=%v want see after spawn/look reacquire", g.thingState[0])

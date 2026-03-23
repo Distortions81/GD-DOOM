@@ -403,6 +403,7 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 				count = 1
 			}
 			g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
+			g.thingStateTics[i] = g.monsterSeeStateTicsForPhase(i, typ)
 		}
 		return true
 	case monsterStateDeath:
@@ -441,11 +442,18 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) bo
 	if i < 0 {
 		return false
 	}
+	if g.monsterLookForPlayer(i, true, tx, ty) {
+		if i >= 0 && i < len(g.thingAggro) {
+			g.thingAggro[i] = true
+		}
+		if i >= 0 && i < len(g.thingStatePhase) {
+			g.thingStatePhase[i] = 0
+		}
+		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
+		return true
+	}
 	if i >= 0 && i < len(g.thingStatePhase) {
 		g.thingStatePhase[i] = 0
-	}
-	if g.monsterRunLookState(i, typ, tx, ty) {
-		return true
 	}
 	g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 	return false
