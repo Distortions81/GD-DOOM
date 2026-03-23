@@ -221,10 +221,6 @@ func (g *game) handleFire() {
 
 func (g *game) setAttackHeld(held bool) {
 	g.statusAttackDown = held
-	if !held {
-		g.weaponRefire = false
-		g.weaponAttackDown = false
-	}
 }
 
 func (g *game) tickWeaponFire() {

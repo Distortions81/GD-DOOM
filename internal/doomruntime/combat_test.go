@@ -361,6 +361,27 @@ func TestOutOfAmmoShotgunAutoSwitchPreservesPistolRefire(t *testing.T) {
 	}
 }
 
+func TestSetAttackHeldFalseDoesNotClearWeaponFlagsMidAttack(t *testing.T) {
+	g := &game{
+		weaponRefire:     true,
+		weaponAttackDown: true,
+		weaponState:      weaponStateShotgunAtk8,
+		weaponStateTics:  3,
+	}
+
+	g.setAttackHeld(false)
+
+	if g.statusAttackDown {
+		t.Fatal("statusAttackDown=true want false")
+	}
+	if !g.weaponRefire {
+		t.Fatal("weaponRefire=false want true during non-ready attack state")
+	}
+	if !g.weaponAttackDown {
+		t.Fatal("weaponAttackDown=false want true during non-ready attack state")
+	}
+}
+
 func TestShotgunConsumesSevenPelletRandomRolls(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
