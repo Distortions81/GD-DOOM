@@ -5,7 +5,6 @@ import (
 	"os"
 	"slices"
 
-	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 )
 
@@ -78,53 +77,24 @@ func (g *game) tickPlayerBody() {
 
 func (g *game) tickGameplayWorld() {
 	g.platTickedThisTic = false
+	g.beginWorldTic()
 	g.tickThinkers()
-	g.tickWorldLogic()
+	g.finishWorldTic()
 }
 
 func (g *game) tickThinkers() {
 	g.tickPlayerBody()
-	g.debugPhasePRandom("after-player")
 	g.tickMonsters()
-	g.debugPhasePRandom("after-monsters")
+	g.tickSectorLightEffects()
 	g.tickBossBrainSpecials()
-	g.debugPhasePRandom("after-bossbrain")
 	g.tickProjectiles()
-	g.debugPhasePRandom("after-projectiles")
 	g.tickProjectileImpacts()
-	g.debugPhasePRandom("after-projectile-impacts")
 	g.tickFloors()
-	g.debugPhasePRandom("after-floors")
 	g.tickPlats()
-	g.debugPhasePRandom("after-plats")
 	g.tickCeilings()
-	g.debugPhasePRandom("after-ceilings")
 	g.tickDoors()
-	g.debugPhasePRandom("after-doors")
 	g.tickDeferredProjectiles()
-	g.debugPhasePRandom("after-deferred-projectiles")
 	g.tickHitscanPuffs()
-	g.debugPhasePRandom("after-hitscan-puffs")
-}
-
-func (g *game) debugPhasePRandom(phase string) {
-	if g == nil {
-		return
-	}
-	want := os.Getenv("GD_DEBUG_TIC_PRND")
-	if want == "" {
-		return
-	}
-	var wantTic int
-	if _, err := fmt.Sscanf(want, "%d", &wantTic); err != nil {
-		return
-	}
-	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
-		return
-	}
-	rnd, prnd := doomrand.State()
-	fmt.Printf("phase-prnd-debug tic=%d world=%d phase=%s rnd=%d prnd=%d\n",
-		g.demoTick-1, g.worldTic, phase, rnd, prnd)
 }
 
 type worldThinkerKind uint8

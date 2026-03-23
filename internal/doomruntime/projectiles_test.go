@@ -511,6 +511,43 @@ func TestProjectileDoesNotHitSourceImp(t *testing.T) {
 	}
 }
 
+func TestProjectileSelectsPlayerAtDestinationDuringThingPass(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m:     &mapdata.Map{},
+		stats: playerStats{Health: 100},
+		p: player{
+			x:      16 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+	p := projectile{
+		x:      -32 * fracUnit,
+		y:      0,
+		z:      32 * fracUnit,
+		vx:     32 * fracUnit,
+		vy:     0,
+		vz:     0,
+		radius: monsterProjectileRadius(3001),
+		height: monsterProjectileHeight(3001),
+		kind:   projectileFireball,
+	}
+
+	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	if !ok {
+		t.Fatal("expected projectile to hit player at destination")
+	}
+	if !hit.isPlayer {
+		t.Fatalf("hit target=%+v want player", hit)
+	}
+	if hit.frac != 1 {
+		t.Fatalf("hit frac=%f want 1 for destination collision", hit.frac)
+	}
+}
+
 func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

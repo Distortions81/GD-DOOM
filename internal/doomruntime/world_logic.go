@@ -38,11 +38,13 @@ const (
 	sectorLightSlowDark     = 35
 )
 
-func (g *game) tickWorldLogic() {
+func (g *game) beginWorldTic() {
 	g.worldTic++
 	doomrand.SetDebugTic(g.worldTic)
 	g.ticDisplayText = formatTicDisplay(g.worldTic)
-	g.tickSectorLightEffects()
+}
+
+func (g *game) finishWorldTic() {
 	g.refreshSectorPlaneCacheLighting()
 }
 
