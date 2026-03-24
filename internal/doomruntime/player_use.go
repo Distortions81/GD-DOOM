@@ -163,7 +163,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 			return false
 		}
 		switch special {
-		case 1, 31, 117, 118:
+		case 1, 32, 33, 34:
 		default:
 			return false
 		}
@@ -190,7 +190,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 		return false
 	}
-	if info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {
+	if isPlayer && info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {
 		if isPlayer {
 			g.useText = "USE: locked"
 			g.useFlash = 35
@@ -401,6 +401,12 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		return false
 	}
 	ld := g.m.Linedefs[lineIdx]
+	if !isPlayer {
+		switch ld.Special {
+		case 26, 27, 28, 32, 33, 34:
+			return false
+		}
+	}
 	targets, err := g.m.DoorTargetSectors(lineIdx)
 	if err != nil || len(targets) == 0 {
 		return false
