@@ -2624,6 +2624,73 @@ func TestTickMonstersAttackExpiryResumesChaseSameTicLikeDoom(t *testing.T) {
 	}
 }
 
+func TestTickMonstersAttackExpiryLostTargetSpawnLookRunsNestedChaseLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 2048, Y: 0},
+				{Type: 3004, X: 2560, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 1024, Y: -64},
+				{X: 1024, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:      []bool{false, false},
+		thingHP:             []int{20, -4},
+		thingAggro:          []bool{true, false},
+		thingTargetPlayer:   []bool{false, false},
+		thingTargetIdx:      []int{1, -1},
+		thingPainTics:       []int{0, 0},
+		thingAttackTics:     []int{1, 0},
+		thingAttackFireTics: []int{-1, -1},
+		thingAttackPhase:    []int{2, 0},
+		thingReactionTics:   []int{0, 0},
+		thingMoveDir:        []monsterMoveDir{monsterDirSouthEast, monsterDirNoDir},
+		thingMoveCount:      []int{0, 0},
+		thingJustAtk:        []bool{true, false},
+		thingThreshold:      []int{monsterBaseThreshold, 0},
+		thingAngleState:     []uint32{2798540703, 0},
+		thingState:          []monsterThinkState{monsterStateAttack, monsterStateDeath},
+		thingStateTics:      []int{1, 1},
+		thingStatePhase:     []int{2, 0},
+		thingDead:           []bool{false, true},
+		thingZState:         []int64{0, 0},
+		thingFloorState:     []int64{0, 0},
+		thingCeilState:      []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid:   []bool{true, true},
+		thingLastLook:       []int{0, 0},
+		thingCooldown:       []int{0, 0},
+		sectorSoundTarget:   []bool{true},
+		p:                   player{x: 0, y: -128 * fracUnit, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+	}
+
+	g.initPhysics()
+	g.tickMonsters()
+
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target not reacquired to player: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+	if g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should clear after the nested chase entry")
+	}
+	if got := g.thingAngleState[0]; got != 3758096384 {
+		t.Fatalf("angle=%d want 3758096384 after the nested chase turn", got)
+	}
+	if got := g.thingMoveCount[0]; got < 0 || got > 15 {
+		t.Fatalf("movecount=%d want [0,15] after nested chase pick", got)
+	}
+}
+
 func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
@@ -2880,8 +2947,12 @@ func TestLostTargetChaseRunsSpawnLookPath(t *testing.T) {
 		p:                 player{x: 64 * fracUnit, y: 0, z: 0},
 	}
 
-	if !g.monsterRunLostTargetChaseState(0, 3004, g.thingX[0], g.thingY[0]) {
+	reacquired, continueChase := g.monsterRunLostTargetChaseState(0, 3004, g.thingX[0], g.thingY[0])
+	if !reacquired {
 		t.Fatal("lost-target chase should reacquire the player immediately")
+	}
+	if continueChase {
+		t.Fatal("direct A_Chase reacquire should return immediately")
 	}
 
 	if !g.monsterHasTarget(0) || g.thingTargetPlayer[0] != true {

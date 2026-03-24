@@ -230,10 +230,21 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	g.monsterTurnTowardMoveDir(i)
 
 	if !g.monsterHasTarget(i) {
-		if !g.monsterRunLostTargetChaseState(i, th.Type, tx, ty) {
+		reacquired, continueChase := g.monsterRunLostTargetChaseState(i, th.Type, tx, ty)
+		if !reacquired {
 			return
 		}
-		return
+		if !continueChase {
+			return
+		}
+		// Doom reaches this path via A_Chase -> spawnstate -> A_Look -> seestate,
+		// which immediately executes the newly-entered A_Chase once more.
+		g.monsterTurnTowardMoveDir(i)
+		targetX, targetY, dist = 0, 0, 0
+		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+			targetX, targetY = px, py
+			dist = doomApproxDistance(targetX-tx, targetY-ty)
+		}
 	}
 
 	if g.thingJustAtk[i] {
@@ -392,7 +403,7 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 	case monsterStateSee:
 		if !g.monsterHasTarget(i) {
 			g.monsterTurnTowardMoveDir(i)
-			if g.monsterRunLostTargetChaseState(i, typ, tx, ty) {
+			if reacquired, _ := g.monsterRunLostTargetChaseState(i, typ, tx, ty); reacquired {
 				return true
 			}
 			return false
@@ -438,9 +449,12 @@ func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
 	return false
 }
 
-func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) bool {
+func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (reacquired bool, continueChase bool) {
 	if i < 0 {
-		return false
+		return false, false
+	}
+	if i >= 0 && i < len(g.thingThreshold) {
+		g.thingThreshold[i] = 0
 	}
 	if g.monsterLookForPlayer(i, true, tx, ty) {
 		if i >= 0 && i < len(g.thingAggro) {
@@ -450,13 +464,16 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) bo
 			g.thingStatePhase[i] = 0
 		}
 		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
-		return true
+		return true, false
+	}
+	if g.monsterRunLookState(i, typ, tx, ty) {
+		return true, true
 	}
 	if i >= 0 && i < len(g.thingStatePhase) {
 		g.thingStatePhase[i] = 0
 	}
 	g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
-	return false
+	return false, false
 }
 
 func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
