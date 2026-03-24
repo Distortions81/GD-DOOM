@@ -627,6 +627,10 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		debugProbef("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 	}
 
+	if !moverIsMonster && moverThingIdx < 0 && !g.isDead {
+		g.processThingPickupsAt(x, y, g.p.z, radius, playerHeight)
+	}
+
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
 		debugProbef("blocked by thing")
 		return 0, 0, 0, false

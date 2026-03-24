@@ -158,6 +158,10 @@ func (pi playerInventory) keySummary() string {
 }
 
 func (g *game) processThingPickups() {
+	g.processThingPickupsAt(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight)
+}
+
+func (g *game) processThingPickupsAt(px, py, pz, pradius, pheight int64) {
 	if g.m == nil {
 		return
 	}
@@ -173,8 +177,8 @@ func (g *game) processThingPickups() {
 		}
 		tx, ty := g.thingPosFixed(i, th)
 		tz := g.thingFloorZ(tx, ty)
-		radius, height := pickupTouchBounds(th.Type)
-		if !canTouchPickup(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight, tx, ty, tz, radius, height) {
+		radius := g.thingCurrentRadius(i, th)
+		if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, radius) {
 			continue
 		}
 		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
@@ -210,15 +214,7 @@ func (g *game) thingFloorZCached(i int, th mapdata.Thing) int64 {
 	return g.sectorFloor[sec]
 }
 
-func pickupTouchBounds(typ int16) (radius int64, height int64) {
-	// Doom treats most specials as radius=20, height=16 for touch.
-	switch typ {
-	default:
-		return 20 * fracUnit, 16 * fracUnit
-	}
-}
-
-func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius, theight int64) bool {
+func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius int64) bool {
 	blockdist := pradius + tradius
 	if abs(px-tx) > blockdist || abs(py-ty) > blockdist {
 		return false

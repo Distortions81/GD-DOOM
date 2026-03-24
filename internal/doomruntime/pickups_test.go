@@ -250,11 +250,11 @@ func TestFilteredPickupDoesNotCollect(t *testing.T) {
 func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
 	px, py, pz := int64(0), int64(0), int64(0)
 	tx, ty, tz := int64(35*fracUnit), int64(0), int64(0)
-	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit, 16*fracUnit) {
+	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit) {
 		t.Fatal("expected touch within blockdist")
 	}
 	tx = 37 * fracUnit
-	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit, 16*fracUnit) {
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit) {
 		t.Fatal("expected no touch beyond blockdist")
 	}
 }
@@ -262,13 +262,13 @@ func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
 func TestCanTouchPickup_ZOverlap(t *testing.T) {
 	px, py, pz := int64(0), int64(0), int64(0)
 	tx, ty := int64(0), int64(0)
-	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, 57*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, 57*fracUnit, 20*fracUnit) {
 		t.Fatal("thing above player height should not touch")
 	}
-	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -9*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -9*fracUnit, 20*fracUnit) {
 		t.Fatal("thing too far below should not touch")
 	}
-	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -8*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -8*fracUnit, 20*fracUnit) {
 		t.Fatal("thing in lower overlap range should touch")
 	}
 }
@@ -382,6 +382,30 @@ func TestDroppedDuplicateShotgunQueuesShotgunWhenShellsRiseFromZero(t *testing.T
 	}
 	if g.inventory.PendingWeapon != weaponShotgun {
 		t.Fatalf("pending weapon=%v want shotgun after shells rise from zero", g.inventory.PendingWeapon)
+	}
+}
+
+func TestProcessThingPickupsAt_UsesProbePositionLikeDoomMoveChecks(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2001}},
+		},
+		autoWeaponSwitch: true,
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingDropped = []bool{true}
+	g.p.x = 0
+	g.p.y = 40 * fracUnit
+	g.p.z = 0
+
+	g.processThingPickupsAt(0, 36*fracUnit, g.p.z, playerRadius, playerHeight)
+
+	if !g.thingCollected[0] {
+		t.Fatal("pickup should be collected at the probed move position")
+	}
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun after probe pickup", g.inventory.PendingWeapon)
 	}
 }
 
