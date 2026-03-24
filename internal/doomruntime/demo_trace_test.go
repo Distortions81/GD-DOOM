@@ -635,3 +635,42 @@ func TestDemoTraceNonShootableCeilingThingUsesCachedSupportState(t *testing.T) {
 		t.Fatalf("ceilingz=%d want=%d", got, want)
 	}
 }
+
+func TestDemoTraceDroppedItemUsesCachedSupportState(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 2001}},
+		},
+		thingCollected: []bool{false},
+		thingDropped:   []bool{true},
+		thingX:         []int64{10 * fracUnit},
+		thingY:         []int64{20 * fracUnit},
+		thingZState:    []int64{57 * fracUnit},
+		thingFloorState: []int64{
+			57 * fracUnit,
+		},
+		thingCeilState: []int64{248 * fracUnit},
+		thingSupportValid: []bool{
+			true,
+		},
+		thingThinkerOrder: []int64{1},
+		thingSectorCache:  []int{0},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if got, want := len(mobjs), 2; got != want {
+		t.Fatalf("mobj count=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].Type, 77; got != want {
+		t.Fatalf("type=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].Z, int64(57*fracUnit); got != want {
+		t.Fatalf("z=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].FloorZ, int64(57*fracUnit); got != want {
+		t.Fatalf("floorz=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].CeilingZ, int64(248*fracUnit); got != want {
+		t.Fatalf("ceilingz=%d want=%d", got, want)
+	}
+}

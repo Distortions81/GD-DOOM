@@ -335,6 +335,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		ceilZ := int64(0)
 		if isMonster(th.Type) {
 			z, floorZ, ceilZ = g.monsterSupportHeights(i, th)
+		} else if i >= 0 && i < len(g.thingSupportValid) && g.thingSupportValid[i] {
+			z, floorZ, ceilZ = g.thingSupportState(i, th)
 		} else if thingSpawnsOnCeiling(th.Type) {
 			z, floorZ, ceilZ = g.thingSupportState(i, th)
 		} else if thingTypeIsShootable(th.Type) {
