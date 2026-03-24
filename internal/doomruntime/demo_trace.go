@@ -328,6 +328,11 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
 			continue
 		}
+		if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
+			// Match the original tracedemo output, which does not surface
+			// dropped item mobjs in the per-tic thinker snapshot.
+			continue
+		}
 		x, y := g.thingPosFixed(i, th)
 		sec := g.thingSectorCached(i, th)
 		z := g.thingFloorZCached(i, th)

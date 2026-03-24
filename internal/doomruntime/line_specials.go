@@ -482,6 +482,16 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 		g.setThingSupportState(i, z, tmfloor, tmceil)
 		return true
 	}
+	if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
+		if i < len(g.thingCollected) {
+			g.thingCollected[i] = true
+		}
+		g.updateThingBlockmapIndex(i)
+		return true
+	}
+	if !thingTypeIsShootable(th.Type) {
+		return true
+	}
 	return false
 }
 

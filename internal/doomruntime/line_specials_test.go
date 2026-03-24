@@ -293,6 +293,41 @@ func TestSetSectorCeilingHeight_DoesNotHeightClipNeighborSectorThings(t *testing
 	}
 }
 
+func TestHeightClipThing_RemovesDroppedItemsThatNoLongerFitLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 8},
+			},
+			Things: []mapdata.Thing{
+				{X: 32, Y: 32, Type: 2001},
+			},
+		},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{8 * fracUnit},
+		thingCollected:    []bool{false},
+		thingDropped:      []bool{true},
+		thingX:            []int64{32 * fracUnit},
+		thingY:            []int64{32 * fracUnit},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{8 * fracUnit},
+		thingSupportValid: []bool{true},
+		bmapWidth:         1,
+		bmapHeight:        1,
+		thingBlockCell:    []int{-1},
+		thingBlockCells:   make([][]int, 1),
+	}
+	g.rebuildThingBlockmap()
+
+	if !g.heightClipThing(0, g.m.Things[0]) {
+		t.Fatal("heightClipThing returned false for dropped item")
+	}
+	if !g.thingCollected[0] {
+		t.Fatal("dropped item should be removed when it no longer fits")
+	}
+}
+
 func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

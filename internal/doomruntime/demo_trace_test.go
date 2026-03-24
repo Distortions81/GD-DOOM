@@ -497,7 +497,7 @@ func TestDemoTraceMobjsFollowThinkerInsertionOrder(t *testing.T) {
 	}
 
 	mobjs := g.demoTraceMobjs()
-	if got, want := len(mobjs), 5; got != want {
+	if got, want := len(mobjs), 4; got != want {
 		t.Fatalf("mobj count=%d want=%d", got, want)
 	}
 	if got := mobjs[1].Type; got != 77 {
@@ -508,9 +508,6 @@ func TestDemoTraceMobjsFollowThinkerInsertionOrder(t *testing.T) {
 	}
 	if got := mobjs[3].Type; got != 38 {
 		t.Fatalf("mobjs[3].type=%d want=38", got)
-	}
-	if got := mobjs[4].Type; got != 63 {
-		t.Fatalf("mobjs[4].type=%d want=63", got)
 	}
 }
 
