@@ -1927,7 +1927,7 @@ func TestMonsterMoveInDir_DoesNotUseSecretDoor(t *testing.T) {
 	}
 }
 
-func TestMonsterMoveInDir_DoesNotUseLockedManualOpenDoor(t *testing.T) {
+func TestUseSpecialLineForActor_LockedManualOpenDoorCountsAsHandledButDoesNotActivate(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -1954,8 +1954,8 @@ func TestMonsterMoveInDir_DoesNotUseLockedManualOpenDoor(t *testing.T) {
 		thingDead:      []bool{false},
 	}
 	g.initPhysics()
-	if g.monsterMoveInDir(0, 3004, monsterDirEast) {
-		t.Fatal("monster move should not use locked manual open door")
+	if !g.useSpecialLineForActor(0, 0, false) {
+		t.Fatal("locked manual open door should count as a handled special for monsters")
 	}
 	if len(g.doors) != 0 {
 		t.Fatal("locked manual open door should not have been activated")

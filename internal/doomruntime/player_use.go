@@ -201,6 +201,15 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 	activated := false
 	if info.Door != nil {
 		activated = g.activateDoorLine(lineIdx, info, isPlayer)
+		if !activated && !isPlayer {
+			switch special {
+			case 32, 33, 34:
+				// Doom's P_UseSpecialLine returns true for these monster-allowed
+				// keyed manual door specials even though EV_VerticalDoor rejects
+				// non-player activators and does not start the door.
+				return true
+			}
+		}
 	} else {
 		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, -1, true)
 		if activated && !info.Repeat && lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
