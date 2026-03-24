@@ -1927,6 +1927,41 @@ func TestMonsterMoveInDir_DoesNotUseSecretDoor(t *testing.T) {
 	}
 }
 
+func TestMonsterMoveInDir_DoesNotUseLockedManualOpenDoor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -32, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 34, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingDead:      []bool{false},
+	}
+	g.initPhysics()
+	if g.monsterMoveInDir(0, 3004, monsterDirEast) {
+		t.Fatal("monster move should not use locked manual open door")
+	}
+	if len(g.doors) != 0 {
+		t.Fatal("locked manual open door should not have been activated")
+	}
+}
+
 func TestMonsterMoveInDir_TriggersWalkDoorRaise(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

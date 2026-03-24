@@ -163,7 +163,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 			return false
 		}
 		switch special {
-		case 1, 32, 33, 34:
+		case 1, 31, 117, 118:
 		default:
 			return false
 		}
@@ -429,7 +429,7 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 	}
 
 	d := &doorThinker{
-		order:      g.allocThinkerOrder(),
+		order:     g.allocThinkerOrder(),
 		sector:    sec,
 		direction: 1,
 		speed:     vDoorSpeed,
@@ -490,7 +490,7 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 			continue
 		}
 		d := &doorThinker{
-			order:      g.allocThinkerOrder(),
+			order:     g.allocThinkerOrder(),
 			sector:    sec,
 			topWait:   vDoorWaitTic,
 			speed:     vDoorSpeed,
