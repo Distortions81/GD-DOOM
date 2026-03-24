@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"strings"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -83,6 +84,23 @@ var (
 		-monsterDiagFrac,
 	}
 )
+
+func debugMonsterPosActive(tic int, x, y int64) bool {
+	want := strings.TrimSpace(os.Getenv("GD_DEBUG_MONSTER_POS"))
+	if want == "" {
+		return false
+	}
+	var wantTic int
+	var wantX, wantY int64
+	var wantRange int64
+	if _, err := fmt.Sscanf(want, "%d:%d:%d:%d", &wantTic, &wantX, &wantY, &wantRange); err == nil {
+		return tic == wantTic && abs(x-wantX) <= wantRange && abs(y-wantY) <= wantRange
+	}
+	if _, err := fmt.Sscanf(want, "%d:%d:%d", &wantTic, &wantX, &wantY); err != nil {
+		return false
+	}
+	return tic == wantTic && x == wantX && y == wantY
+}
 
 func (g *game) tickMonsters() {
 	if g.m == nil {
@@ -1744,6 +1762,10 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 		return
 	}
 	tx, ty := g.thingPosFixed(i, g.m.Things[i])
+	if debugMonsterPosActive(g.demoTick-1, tx, ty) || debugMonsterPosActive(g.worldTic, tx, ty) {
+		fmt.Printf("monster-pos-debug tic=%d world=%d stage=pick-start idx=%d type=%d pos=(%d,%d) target=(%d,%d) olddir=%d movecount=%d\n",
+			g.demoTick-1, g.worldTic, i, typ, tx, ty, targetX, targetY, g.thingMoveDir[i], g.thingMoveCount[i])
+	}
 	olddir := g.thingMoveDir[i]
 	if olddir > monsterDirNoDir {
 		olddir = monsterDirNoDir
@@ -1768,6 +1790,10 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 
 	if d1 != monsterDirNoDir && d2 != monsterDirNoDir {
 		diag := monsterDiags[(b2i(deltay < 0)<<1)+b2i(deltax > 0)]
+		if debugMonsterPosActive(g.demoTick-1, tx, ty) || debugMonsterPosActive(g.worldTic, tx, ty) {
+			fmt.Printf("monster-pos-debug tic=%d world=%d stage=pick-diag idx=%d type=%d pos=(%d,%d) diag=%d turnaround=%d d1=%d d2=%d deltas=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, i, typ, tx, ty, diag, turnaround, d1, d2, deltax, deltay)
+		}
 		g.debugMonsterChase(i, fmt.Sprintf("diag candidate=%d turnaround=%d", diag, turnaround))
 		if diag != turnaround && g.monsterTryWalk(i, typ, diag) {
 			g.debugMonsterChase(i, fmt.Sprintf("diag success dir=%d", diag))
@@ -1940,10 +1966,18 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	x, y := g.thingPosFixed(i, g.m.Things[i])
 	nx := x + dx
 	ny := y + dy
+	if debugMonsterPosActive(g.demoTick-1, x, y) || debugMonsterPosActive(g.worldTic, x, y) {
+		fmt.Printf("monster-pos-debug tic=%d world=%d stage=move-start idx=%d type=%d pos=(%d,%d) dir=%d step=(%d,%d) try=(%d,%d) movecount=%d\n",
+			g.demoTick-1, g.worldTic, i, typ, x, y, dir, dx, dy, nx, ny, g.thingMoveCount[i])
+	}
 	g.debugMonsterMove(i, fmt.Sprintf("move dir=%d from=(%d,%d) to=(%d,%d)", dir, x, y, nx, ny))
 	probe := g.probeMonsterMove(i, typ, nx, ny)
 	tmfloor, tmceil, probeLines, ok := probe.tmfloor, probe.tmceil, probe.probeLines, probe.ok
 	if !ok {
+		if debugMonsterPosActive(g.demoTick-1, x, y) || debugMonsterPosActive(g.worldTic, x, y) {
+			fmt.Printf("monster-pos-debug tic=%d world=%d stage=move-blocked idx=%d type=%d pos=(%d,%d) dir=%d checkPosOK=%t tmfloor=%d tmceil=%d lines=%v\n",
+				g.demoTick-1, g.worldTic, i, typ, x, y, dir, probe.checkPosOK, probe.tmfloor, probe.tmceil, probeLines)
+		}
 		if probe.checkPosOK && monsterCanFloat(typ) {
 			z, floorZ, ceilZ := g.thingSupportState(i, g.m.Things[i])
 			if z < probe.tmfloor {
@@ -1988,6 +2022,10 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 		return false
 	}
 	prevX, prevY := x, y
+	if debugMonsterPosActive(g.demoTick-1, x, y) || debugMonsterPosActive(g.worldTic, x, y) {
+		fmt.Printf("monster-pos-debug tic=%d world=%d stage=move-ok idx=%d type=%d pos=(%d,%d) dir=%d tmfloor=%d tmceil=%d\n",
+			g.demoTick-1, g.worldTic, i, typ, x, y, dir, tmfloor, tmceil)
+	}
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	g.setThingPosFixed(i, nx, ny)
 	if monsterCanFloat(typ) {
