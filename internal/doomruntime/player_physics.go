@@ -242,6 +242,9 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 }
 
 func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
+	// Plat same-tic activation only applies once the current world's plat phase
+	// has actually run; clear any stale latch from the previous tic first.
+	g.platTickedThisTic = false
 	g.currentMoveCmd = cmd
 	g.setAttackHeld(fireHeld)
 	g.updatePlayer(cmd)
@@ -649,10 +652,6 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	tmdrop := tmfloor
 	if debugProbe {
 		debugProbef("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
-	}
-
-	if !moverIsMonster && moverThingIdx < 0 && !g.isDead {
-		g.processThingPickupsAt(x, y, g.p.z, radius, playerHeight)
 	}
 
 	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {

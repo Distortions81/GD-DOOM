@@ -388,6 +388,53 @@ func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 	}
 }
 
+func TestUseSpecialLine_ClearsStalePlatTickLatchBeforeActivation(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 20, Tag: 7, SideNum: [2]int16{0, 1}},
+				{SideNum: [2]int16{2, 3}},
+				{SideNum: [2]int16{3, 4}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 3},
+				{Sector: 4},
+				{Sector: 0},
+				{Sector: 1},
+				{Sector: 2},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: -32, CeilingHeight: 128, Tag: 7},
+				{FloorHeight: -32, CeilingHeight: 128, Tag: 7},
+				{FloorHeight: 88, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128, FloorPic: "STARTAN3"},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		lineSpecial:       []uint16{20, 0, 0},
+		sectorFloor:       []int64{-32 * fracUnit, -32 * fracUnit, 88 * fracUnit, 0, 0},
+		sectorCeil:        []int64{128 * fracUnit, 128 * fracUnit, 128 * fracUnit, 128 * fracUnit, 128 * fracUnit},
+		platTickedThisTic: true,
+	}
+
+	g.platTickedThisTic = false
+	g.useSpecialLine(0, 0)
+
+	if got, want := g.sectorFloor[0], int64(-32*fracUnit); got != want {
+		t.Fatalf("sector 0 floor=%d want %d before world tick", got, want)
+	}
+	pt := g.plats[1]
+	if pt == nil {
+		t.Fatal("expected sector 1 plat thinker")
+	}
+	if got, want := pt.high, int64(88*fracUnit); got != want {
+		t.Fatalf("sector 1 plat high=%d want %d", got, want)
+	}
+	if got := g.lineSpecial[0]; got != 0 {
+		t.Fatalf("one-shot use special should be consumed, got %d", got)
+	}
+}
+
 func TestActivatePlatRaiseToNearestAndChangeClearsSectorDamageImmediately(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
