@@ -2924,6 +2924,9 @@ func (g *game) monsterAcquireSectorSoundTarget(i int, tx, ty int64) (hasSoundTar
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return false, false
 	}
+	if !g.monsterTargetAlive() {
+		return false, false
+	}
 	sec := g.thingSectorCached(i, g.m.Things[i])
 	if sec < 0 || sec >= len(g.sectorSoundTarget) || !g.sectorSoundTarget[sec] {
 		return false, false

@@ -196,6 +196,37 @@ func TestTickMonstersAmbushNoiseSetsTargetWithoutWakeWhenLOSBlocked(t *testing.T
 	}
 }
 
+func TestTickMonstersDeadPlayerDoesNotWakeFromSectorSoundTarget(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 2048, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		isDead:           true,
+		thingCollected:   []bool{false},
+		thingHP:          []int{20},
+		thingAggro:       []bool{false},
+		thingTargetPlayer: []bool{false},
+		thingTargetIdx:   []int{-1},
+		thingCooldown:    []int{0},
+		sectorSoundTarget: []bool{true},
+		stats:            playerStats{Health: 0},
+		p:                player{x: 1024 * fracUnit, y: 0},
+	}
+	g.initPhysics()
+	g.tickMonsters()
+	if g.thingAggro[0] {
+		t.Fatal("dead player should not wake monster from sector sound target")
+	}
+	if g.thingTargetPlayer[0] {
+		t.Fatal("dead player should not be reacquired from sector sound target")
+	}
+}
+
 func TestTickMonstersLostTargetFallsThroughSpawnLookSameTicLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
