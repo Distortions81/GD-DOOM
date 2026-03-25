@@ -176,7 +176,7 @@ func (g *game) processThingPickupsAt(px, py, pz, pradius, pheight int64) {
 			continue
 		}
 		tx, ty := g.thingPosFixed(i, th)
-		tz := g.thingFloorZ(tx, ty)
+		tz, _, _ := g.thingSupportState(i, th)
 		radius := g.thingCurrentRadius(i, th)
 		if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, radius) {
 			continue

@@ -11,7 +11,7 @@ DEMO_LUMP="demo1"
 DEMO_PATH="${ROOT_DIR}/demos/DOOM1-DEMO1.lmp"
 OUT_DIR="${ROOT_DIR}/tmp/demo-trace-compare"
 KEEP_GOING=0
-GDDOOM_FLAGS=(-demo-exit-on-death)
+GDDOOM_FLAGS=()
 USE_XVFB=auto
 STOP_AFTER_TICS=0
 

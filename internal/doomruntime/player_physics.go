@@ -15,9 +15,29 @@ type slideIntercept struct {
 }
 
 const doomMaxThingRadius = 32 * fracUnit
+const doomAng5 = doomAng90 / 18
+const doomAngNeg5 = ^uint32(doomAng5 - 1)
+
+func (g *game) tickDeadPlayerTurnTowardAttacker() {
+	if g == nil || !g.isDead || !g.statusHasAttacker {
+		return
+	}
+	angle := doomPointToAngle2(g.p.x, g.p.y, g.statusAttackerX, g.statusAttackerY)
+	delta := angle - g.p.angle
+	if delta < doomAng5 || delta > doomAngNeg5 {
+		g.p.angle = angle
+		return
+	}
+	if delta < doomAng180 {
+		g.p.angle += doomAng5
+		return
+	}
+	g.p.angle -= doomAng5
+}
 
 func (g *game) updatePlayer(cmd moveCmd) {
 	if g.isDead {
+		g.tickDeadPlayerTurnTowardAttacker()
 		return
 	}
 
@@ -62,9 +82,8 @@ func (g *game) tickPlayerBody() {
 	prevX := g.p.x
 	prevY := g.p.y
 	if g.isDead {
-		g.p.momx = 0
-		g.p.momy = 0
-		g.p.momz = 0
+		g.xyMovement()
+		g.zMovement()
 		return
 	}
 	g.xyMovement()

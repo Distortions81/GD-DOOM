@@ -402,6 +402,8 @@ func TestRunGameplayTicDeadStillTicksWorldLogic(t *testing.T) {
 		m:      &mapdata.Map{},
 		isDead: true,
 		p: player{
+			x:    0,
+			y:    0,
 			momx: 3 * fracUnit,
 			momy: -2 * fracUnit,
 		},
@@ -410,8 +412,27 @@ func TestRunGameplayTicDeadStillTicksWorldLogic(t *testing.T) {
 	if got := g.worldTic; got != 1 {
 		t.Fatalf("worldTic=%d want=1", got)
 	}
-	if g.p.momx != 0 || g.p.momy != 0 {
-		t.Fatalf("dead player momentum should clear, got momx=%d momy=%d", g.p.momx, g.p.momy)
+	if g.p.momx == 0 && g.p.momy == 0 {
+		t.Fatalf("dead player momentum should not be force-cleared, got momx=%d momy=%d", g.p.momx, g.p.momy)
+	}
+}
+
+func TestRunGameplayTicDeadTurnsTowardAttacker(t *testing.T) {
+	g := &game{
+		m:      &mapdata.Map{},
+		isDead: true,
+		p: player{
+			x:     0,
+			y:     0,
+			angle: doomAng5 * 2,
+		},
+		statusHasAttacker: true,
+		statusAttackerX:   64 * fracUnit,
+		statusAttackerY:   0,
+	}
+	g.runGameplayTic(moveCmd{}, false, false)
+	if got, want := g.p.angle, uint32(doomAng5); got != want {
+		t.Fatalf("angle=%d want=%d after one death turn tic", got, want)
 	}
 }
 

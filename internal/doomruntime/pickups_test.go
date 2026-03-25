@@ -409,6 +409,39 @@ func TestProcessThingPickupsAt_UsesProbePositionLikeDoomMoveChecks(t *testing.T)
 	}
 }
 
+func TestProcessThingPickupsAt_UsesRaisedDroppedPickupZ(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 48, CeilingHeight: 128},
+			},
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2001}},
+		},
+		autoWeaponSwitch: true,
+		sectorFloor:      []int64{48 * fracUnit},
+		sectorCeil:       []int64{128 * fracUnit},
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingDropped = []bool{true}
+	g.thingSupportValid = []bool{true}
+	g.thingZState = []int64{67 * fracUnit}
+	g.thingFloorState = []int64{67 * fracUnit}
+	g.thingCeilState = []int64{128 * fracUnit}
+	g.p.x = 0
+	g.p.y = 0
+	g.p.z = 67 * fracUnit
+
+	g.processThingPickupsAt(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight)
+
+	if !g.thingCollected[0] {
+		t.Fatal("raised dropped pickup should be collected using support z")
+	}
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun after raised pickup", g.inventory.PendingWeapon)
+	}
+}
+
 func TestProcessThingPickups_CollectsVanillaPowerupItems(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
