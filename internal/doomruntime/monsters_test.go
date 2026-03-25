@@ -261,6 +261,29 @@ func TestTickMonstersLostDeadPlayerStillConsumesChaseReactionTime(t *testing.T) 
 	}
 }
 
+func TestMonsterAttackTargetPos_PreservesDeadPlayerCorpseAim(t *testing.T) {
+	g := &game{
+		isDead: true,
+		p: player{
+			x: 123 * fracUnit,
+			y: -45 * fracUnit,
+			z: 7 * fracUnit,
+		},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+	}
+	x, y, z, height, radius, ok := g.monsterAttackTargetPos(0)
+	if !ok {
+		t.Fatal("dead player should remain aimable for queued monster attacks")
+	}
+	if x != g.p.x || y != g.p.y || z != g.p.z {
+		t.Fatalf("attack target pos=(%d,%d,%d) want player corpse (%d,%d,%d)", x, y, z, g.p.x, g.p.y, g.p.z)
+	}
+	if height != playerHeight || radius != playerRadius {
+		t.Fatalf("attack target size=(%d,%d) want (%d,%d)", height, radius, playerHeight, playerRadius)
+	}
+}
+
 func TestTickMonstersLostTargetFallsThroughSpawnLookSameTicLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

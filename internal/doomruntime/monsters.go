@@ -596,6 +596,19 @@ func (g *game) monsterTargetPos(i int) (x, y, z, height, radius int64, ok bool) 
 	return x, y, z, height, radius, true
 }
 
+func (g *game) monsterAttackTargetPos(i int) (x, y, z, height, radius int64, ok bool) {
+	if g == nil || i < 0 {
+		return 0, 0, 0, 0, 0, false
+	}
+	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+	}
+	return g.monsterTargetPos(i)
+}
+
 func (g *game) monsterHasLOSTarget(i int, typ int16, x, y int64) bool {
 	if g == nil || i < 0 {
 		return false
@@ -1324,7 +1337,7 @@ func monsterAttackFrameDuration(typ int16, phase int) int {
 
 func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, px, py, dist int64) {
 	faceX, faceY := px, py
-	if targetX, targetY, _, _, _, ok := g.monsterTargetPos(i); ok {
+	if targetX, targetY, _, _, _, ok := g.monsterAttackTargetPos(i); ok {
 		faceX, faceY = targetX, targetY
 	}
 	switch typ {
@@ -2146,7 +2159,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 }
 
 func (g *game) monsterAimAngleToTarget(i int, sx, sy int64) uint32 {
-	tx, ty, _, _, _, ok := g.monsterTargetPos(i)
+	tx, ty, _, _, _, ok := g.monsterAttackTargetPos(i)
 	if !ok {
 		return 0
 	}
