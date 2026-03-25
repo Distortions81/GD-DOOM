@@ -1733,12 +1733,12 @@ func (g *game) spawnMonsterDrop(thingIdx int, thingType int16) {
 	}
 	src := g.m.Things[thingIdx]
 	srcX, srcY := g.thingPosFixed(thingIdx, src)
-	g.appendRuntimeThing(mapdata.Thing{
+	idx := g.appendRuntimeThing(mapdata.Thing{
 		X:    int16(srcX >> fracBits),
 		Y:    int16(srcY >> fracBits),
 		Type: dropType,
 	}, true)
-	g.setThingPosFixed(len(g.m.Things)-1, srcX, srcY)
+	g.setThingPosFixed(idx, srcX, srcY)
 }
 
 func monsterPainSoundEvent(typ int16) soundEvent {

@@ -108,15 +108,11 @@ func (g *game) tickGameplayWorld() {
 
 func (g *game) tickThinkers() {
 	g.tickPlayerBody()
-	g.tickMonsters()
+	g.runOrderedWorldThinkers()
 	g.tickSectorLightEffects()
 	g.tickBossBrainSpecials()
 	g.tickProjectiles()
 	g.tickProjectileImpacts()
-	g.tickFloors()
-	g.tickPlats()
-	g.tickCeilings()
-	g.tickDoors()
 	g.tickDeferredProjectiles()
 	g.tickHitscanPuffs()
 }
@@ -525,6 +521,9 @@ func (g *game) xyMovement() {
 }
 
 func (g *game) tryMove(x, y int64) bool {
+	if !g.isDead {
+		g.processThingPickupsAt(x, y, g.p.z, playerRadius, playerHeight)
+	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
 	if !ok {
 		g.debugPlayerMove("tryMove blocked", x, y)
