@@ -402,6 +402,9 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 		return false
 	case monsterStateSee:
 		if !g.monsterHasTarget(i) {
+			if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+				g.thingReactionTics[i]--
+			}
 			g.monsterTurnTowardMoveDir(i)
 			if reacquired, _ := g.monsterRunLostTargetChaseState(i, typ, tx, ty); reacquired {
 				return true

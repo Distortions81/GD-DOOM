@@ -227,6 +227,40 @@ func TestTickMonstersDeadPlayerDoesNotWakeFromSectorSoundTarget(t *testing.T) {
 	}
 }
 
+func TestTickMonstersLostDeadPlayerStillConsumesChaseReactionTime(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 2048, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		isDead:            true,
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingMoveDir:      []monsterMoveDir{monsterDirSouthWest},
+		thingMoveCount:    []int{13},
+		thingReactionTics: []int{6},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{1},
+		thingStatePhase:   []int{3},
+		p:                 player{x: 0, y: 0},
+	}
+	g.initPhysics()
+	g.tickMonsters()
+	if got := g.thingReactionTics[0]; got != 5 {
+		t.Fatalf("reactiontime=%d want=5 after lost-target chase tic", got)
+	}
+	if got := g.thingState[0]; got != monsterStateSpawn {
+		t.Fatalf("state=%d want spawn after dead target loss", got)
+	}
+}
+
 func TestTickMonstersLostTargetFallsThroughSpawnLookSameTicLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
