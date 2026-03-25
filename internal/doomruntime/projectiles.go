@@ -1166,18 +1166,25 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 			z:        hz,
 		}
 	}
-	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && bestFrac > fracUnit && overlapsCircle(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
-		delta := nz - g.p.z
-		if delta <= playerHeight && delta+p.height >= 0 {
+	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && bestFrac > fracUnit {
+		playerFrac, ok := lineAttackThingFrac(trace, g.p.x, g.p.y, playerRadius+p.radius)
+		if !ok || playerFrac <= 0 || playerFrac > fracUnit {
+			if !actorsOverlapXY(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
+				return best, bestFrac <= fracUnit
+			}
+			playerFrac = fracUnit
+		}
+		playerZ := oz + fixedMul(nz-oz, playerFrac)
+		if playerZ <= g.p.z+playerHeight && playerZ+p.height >= g.p.z {
 			best = projectileThingHit{
 				idx:      -1,
 				isPlayer: true,
-				frac:     1,
-				x:        nx,
-				y:        ny,
-				z:        nz,
+				frac:     float64(playerFrac) / float64(fracUnit),
+				x:        ox + fixedMul(nx-ox, playerFrac),
+				y:        oy + fixedMul(ny-oy, playerFrac),
+				z:        playerZ,
 			}
-			bestFrac = fracUnit
+			bestFrac = playerFrac
 		}
 	}
 	return best, bestFrac <= fracUnit

@@ -590,6 +590,7 @@ func TestProjectileHitsThingOnDestinationBoxOverlapLikeDoomTryMove(t *testing.T)
 	}
 }
 
+
 func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
