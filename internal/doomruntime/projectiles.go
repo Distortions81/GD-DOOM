@@ -1090,6 +1090,12 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 	if g == nil || g.m == nil {
 		return projectileThingHit{}, false
 	}
+	overlapsCircle := func(ax, ay, aradius, bx, by, bradius int64) bool {
+		blockdist := aradius + bradius
+		dx := ax - bx
+		dy := ay - by
+		return dx*dx+dy*dy < blockdist*blockdist
+	}
 	trace := divline{x: ox, y: oy, dx: nx - ox, dy: ny - oy}
 	bestFrac := int64(fracUnit + 1)
 	best := projectileThingHit{}
@@ -1107,7 +1113,7 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 		radius := thingTypeRadius(th.Type) + p.radius
 		frac, ok := lineAttackThingFrac(trace, tx, ty, radius)
 		if !ok || frac <= 0 || frac > fracUnit {
-			if !actorsOverlapXY(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+			if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
 				continue
 			}
 			frac = fracUnit
@@ -1133,7 +1139,7 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 			z:        hz,
 		}
 	}
-	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && bestFrac > fracUnit && actorsOverlapXY(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
+	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && bestFrac > fracUnit && overlapsCircle(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
 		delta := nz - g.p.z
 		if delta <= playerHeight && delta+p.height >= 0 {
 			best = projectileThingHit{
