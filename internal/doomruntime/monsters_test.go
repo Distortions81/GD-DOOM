@@ -843,6 +843,51 @@ func TestMonsterAttack_FacesAndFiresAtDeadTargetPointerLikeDoom(t *testing.T) {
 	}
 }
 
+func TestMonsterAttack_FacesAndFiresAtDeadPlayerCorpseLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+			},
+		},
+		lines: []physLine{
+			{
+				x1:       128 * fracUnit,
+				y1:       -64 * fracUnit,
+				x2:       128 * fracUnit,
+				y2:       64 * fracUnit,
+				flags:    0,
+				sideNum1: -1,
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{30},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAngleState:   []uint32{degToAngle(180)},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		isDead:            true,
+		stats:             playerStats{Health: 0},
+		p:                 player{x: 64 * fracUnit, y: 32 * fracUnit, z: 0},
+	}
+
+	if !g.monsterAttack(0, 9, 128*fracUnit) {
+		t.Fatal("monster attack should still run with a dead player corpse target")
+	}
+	if got := len(g.hitscanPuffs); got == 0 {
+		t.Fatal("expected wall puff from attack through dead player corpse target")
+	}
+	if got, want := g.thingWorldAngle(0, g.m.Things[0]), doomPointToAngle2(0, 0, 64*fracUnit, 32*fracUnit); got != want {
+		t.Fatalf("angle=%d want=%d", got, want)
+	}
+}
+
 func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 	spawnTests := []struct {
 		typ      int16

@@ -781,6 +781,7 @@ type game struct {
 	statusAttackDown             bool
 	statusAttackerX              int64
 	statusAttackerY              int64
+	statusAttackerThing          int
 	statusHasAttacker            bool
 	statusOldWeapons             [9]bool
 	statusDamageCount            int

@@ -341,7 +341,7 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		if damageToPlayer <= 0 {
 			return
 		}
-		g.damagePlayerFrom(damageToPlayer, msg, sx, sy, true)
+		g.damagePlayerFrom(damageToPlayer, msg, sx, sy, true, -1)
 		if debugRadius {
 			rndAfter, prndAfter := doomrand.State()
 			fmt.Printf("gd-radius-debug tic=%d world=%d player health_after=%d armor_after=%d prnd_after=%d rnd_after=%d\n",

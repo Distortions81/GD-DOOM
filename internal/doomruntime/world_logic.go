@@ -407,10 +407,10 @@ func (g *game) playerSectorFloor(sec int) int64 {
 }
 
 func (g *game) damagePlayer(amount int, msg string) {
-	g.damagePlayerFrom(amount, msg, 0, 0, false)
+	g.damagePlayerFrom(amount, msg, 0, 0, false, -1)
 }
 
-func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int64, hasAttacker bool) {
+func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int64, hasAttacker bool, attackerThing int) {
 	const playerPainChance = 255
 
 	if amount <= 0 || g.stats.Health <= 0 || g.isDead {
@@ -457,6 +457,9 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 	if hasAttacker {
 		g.statusAttackerX = attackerX
 		g.statusAttackerY = attackerY
+		g.statusAttackerThing = attackerThing
+	} else {
+		g.statusAttackerThing = -1
 	}
 	if g.stats.Health < 0 {
 		g.stats.Health = 0

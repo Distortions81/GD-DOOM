@@ -301,7 +301,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
 		if thingHit.isPlayer {
 			if dmg := projectileDamage(p); dmg > 0 {
-				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
+				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true, p.sourceThing)
 			}
 		} else if g.projectileCanDamageThing(p, thingHit.idx) {
 			if dmg := projectileDamage(p); dmg > 0 {
@@ -543,7 +543,7 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
 		if thingHit.isPlayer {
 			if dmg := projectileDamage(*p); dmg > 0 {
-				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true)
+				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true, p.sourceThing)
 			}
 		} else if g.projectileCanDamageThing(*p, thingHit.idx) {
 			if dmg := projectileDamage(*p); dmg > 0 {

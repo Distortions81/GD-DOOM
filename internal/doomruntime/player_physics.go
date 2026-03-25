@@ -22,7 +22,12 @@ func (g *game) tickDeadPlayerTurnTowardAttacker() {
 	if g == nil || !g.isDead || !g.statusHasAttacker {
 		return
 	}
-	angle := doomPointToAngle2(g.p.x, g.p.y, g.statusAttackerX, g.statusAttackerY)
+	attackerX := g.statusAttackerX
+	attackerY := g.statusAttackerY
+	if g.m != nil && g.statusAttackerThing >= 0 && g.statusAttackerThing < len(g.m.Things) {
+		attackerX, attackerY = g.thingPosFixed(g.statusAttackerThing, g.m.Things[g.statusAttackerThing])
+	}
+	angle := doomPointToAngle2(g.p.x, g.p.y, attackerX, attackerY)
 	delta := angle - g.p.angle
 	if delta < doomAng5 || delta > doomAngNeg5 {
 		g.p.angle = angle

@@ -2044,7 +2044,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	if i >= 0 && g.m != nil && i < len(g.m.Things) {
 		sx, sy = g.thingPosFixed(i, g.m.Things[i])
 	}
-	targetX, targetY, _, _, _, ok := g.monsterTargetPos(i)
+	targetX, targetY, _, _, _, ok := g.monsterAttackTargetPos(i)
 	if !ok {
 		return false
 	}
@@ -2175,12 +2175,12 @@ func (g *game) damageMonsterTarget(i, damage int, msg string, attackerX, attacke
 		return
 	}
 	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i]) {
-		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true)
+		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true, i)
 		return
 	}
 	targetIdx, ok := g.monsterTargetThingIdx(i)
 	if !ok {
-		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true)
+		g.damagePlayerFrom(damage, msg, attackerX, attackerY, true, i)
 		return
 	}
 	g.damageShootableThingFrom(targetIdx, damage, false, i, attackerX, attackerY, true)

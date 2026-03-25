@@ -1184,7 +1184,7 @@ func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackO
 		return true
 	case lineAttackTargetPlayer:
 		if damage > 0 {
-			g.damagePlayerFrom(damage, "Monster shot you", actor.x, actor.y, true)
+			g.damagePlayerFrom(damage, "Monster shot you", actor.x, actor.y, true, actor.thingIdx)
 		}
 		return true
 	default:

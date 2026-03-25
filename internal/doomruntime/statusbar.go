@@ -338,6 +338,7 @@ func (g *game) initStatusFaceState() {
 	g.statusOldHealth = -1
 	g.statusLastAttack = -1
 	g.statusAttackDown = false
+	g.statusAttackerThing = -1
 	g.statusHasAttacker = false
 	g.statusDamageCount = 0
 	g.statusBonusCount = 0
@@ -368,7 +369,8 @@ func (g *game) tickStatusWidgets() {
 	if g.statusBonusCount > 0 {
 		g.statusBonusCount--
 	}
-	if g.statusDamageCount <= 0 {
+	if g.statusDamageCount <= 0 && !g.isDead {
+		g.statusAttackerThing = -1
 		g.statusHasAttacker = false
 	}
 }
