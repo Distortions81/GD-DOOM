@@ -546,6 +546,48 @@ func TestProjectileSelectsPlayerAtDestinationDuringThingPass(t *testing.T) {
 	if hit.frac != 1 {
 		t.Fatalf("hit frac=%f want 1 for destination collision", hit.frac)
 	}
+	if hit.x != p.x+p.vx || hit.y != p.y+p.vy || hit.z != p.z+p.vz {
+		t.Fatalf("impact=(%d,%d,%d) want destination (%d,%d,%d)", hit.x, hit.y, hit.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	}
+}
+
+func TestProjectileHitsThingOnDestinationBoxOverlapLikeDoomTryMove(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -86, Y: -75},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+	}
+	g.initPhysics()
+	g.setThingSupportState(0, 88*fracUnit, 0, 128*fracUnit)
+
+	p := projectile{
+		x:      -83 * fracUnit,
+		y:      -77 * fracUnit,
+		z:      120 * fracUnit,
+		vx:     -10 * fracUnit,
+		vy:     -1 * fracUnit,
+		vz:     0,
+		radius: monsterProjectileRadius(3001),
+		height: monsterProjectileHeight(3001),
+		sourceThing: -1,
+		kind:   projectileFireball,
+	}
+
+	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	if !ok {
+		t.Fatal("expected projectile to hit thing at destination overlap")
+	}
+	if hit.idx != 0 || hit.isPlayer {
+		t.Fatalf("hit=%+v want thing 0", hit)
+	}
+	if hit.x != p.x || hit.y != p.y || hit.z != p.z {
+		t.Fatalf("impact=(%d,%d,%d) want old position (%d,%d,%d)", hit.x, hit.y, hit.z, p.x, p.y, p.z)
+	}
 }
 
 func TestPlayerRocketSpawnsProjectile(t *testing.T) {

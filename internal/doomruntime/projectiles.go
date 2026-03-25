@@ -1110,22 +1110,49 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 			continue
 		}
 		tx, ty := g.thingPosFixed(i, th)
-		radius := thingTypeRadius(th.Type) + p.radius
-		frac, ok := lineAttackThingFrac(trace, tx, ty, radius)
-		if !ok || frac <= 0 || frac > fracUnit {
-			if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
-				continue
+		tz, _, _ := g.thingSupportState(i, th)
+		height := g.thingCurrentHeight(i, th)
+		var (
+			frac int64
+			hx   int64
+			hy   int64
+			hz   int64
+		)
+		if !p.sourcePlayer && isMonster(th.Type) {
+			if actorsOverlapXY(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) && oz <= tz+height && oz+p.height >= tz {
+				frac = fracUnit
+				hx, hy, hz = ox, oy, oz
+			} else {
+				radius := thingTypeRadius(th.Type) + p.radius
+				var ok bool
+				frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
+				if !ok || frac <= 0 || frac > fracUnit {
+					if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+						continue
+					}
+					frac = fracUnit
+				}
+				hx = ox + fixedMul(nx-ox, frac)
+				hy = oy + fixedMul(ny-oy, frac)
+				hz = oz + fixedMul(nz-oz, frac)
 			}
-			frac = fracUnit
+		} else {
+			radius := thingTypeRadius(th.Type) + p.radius
+			var ok bool
+			frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
+			if !ok || frac <= 0 || frac > fracUnit {
+				if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+					continue
+				}
+				frac = fracUnit
+			}
+			hx = ox + fixedMul(nx-ox, frac)
+			hy = oy + fixedMul(ny-oy, frac)
+			hz = oz + fixedMul(nz-oz, frac)
 		}
 		if frac >= bestFrac {
 			continue
 		}
-		hx := ox + fixedMul(nx-ox, frac)
-		hy := oy + fixedMul(ny-oy, frac)
-		hz := oz + fixedMul(nz-oz, frac)
-		tz, _, _ := g.thingSupportState(i, th)
-		height := g.thingCurrentHeight(i, th)
 		if hz > tz+height || hz+p.height < tz {
 			continue
 		}
