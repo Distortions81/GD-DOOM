@@ -410,7 +410,7 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 			}
 			g.monsterTurnTowardMoveDir(i)
 			if reacquired, _ := g.monsterRunLostTargetChaseState(i, typ, tx, ty); reacquired {
-				return false
+				return true
 			}
 			return false
 		}
@@ -470,7 +470,7 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 			g.thingStatePhase[i] = 0
 		}
 		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
-		return true, true
+		return true, false
 	}
 	if g.monsterRunLookState(i, typ, tx, ty) {
 		return true, false
