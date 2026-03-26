@@ -10884,33 +10884,33 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 func monsterAttackFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9:
-		return []byte{'E', 'F', 'E'}
+		return monsterAttackSeqEFE
 	case 65:
-		return []byte{'E', 'F', 'E', 'F'}
+		return monsterAttackSeqEFEF
 	case 3001:
-		return []byte{'E', 'F', 'G'}
+		return monsterAttackSeqEFG
 	case 3002, 58: // demon/spectre
-		return []byte{'E', 'F', 'G'}
+		return monsterAttackSeqEFG
 	case 3005:
-		return []byte{'B', 'C', 'D'}
+		return monsterAttackSeqBCD
 	case 3003, 69: // baron/knight
-		return []byte{'E', 'F', 'G'}
+		return monsterAttackSeqEFG
 	case 64: // arch-vile
-		return []byte{'G', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+		return monsterAttackSeqArchvile
 	case 66: // revenant missile
-		return []byte{'H', 'H', 'K', 'K'}
+		return monsterAttackSeqRevenant
 	case 67: // mancubus
-		return []byte{'G', 'H', 'I', 'G', 'H', 'I', 'G', 'H', 'I', 'G'}
+		return monsterAttackSeqMancubus
 	case 16:
-		return []byte{'E', 'F', 'E', 'F', 'E', 'F'}
+		return monsterAttackSeqCyber
 	case 7:
-		return []byte{'A', 'G', 'H', 'H'}
+		return monsterAttackSeqSpider
 	case 68: // arachnotron
-		return []byte{'A', 'G', 'H', 'H'}
+		return monsterAttackSeqSpider
 	case 71: // pain elemental
-		return []byte{'D', 'E', 'F', 'F'}
+		return monsterAttackSeqPain
 	case 84: // wolf ss
-		return []byte{'E', 'F', 'G', 'F', 'G', 'F'}
+		return monsterAttackSeqWolfSS
 	default:
 		return nil
 	}
@@ -10919,25 +10919,39 @@ func monsterAttackFrameSeq(typ int16) []byte {
 func monsterSpawnFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
-		return []byte{'A', 'B'}
+		return monsterSpawnSeqAB
 	case 3005:
-		return []byte{'A'}
+		return monsterSpawnSeqA
 	case 64, 66, 68, 16, 84:
-		return []byte{'A', 'B'}
+		return monsterSpawnSeqAB
 	case 67:
-		return []byte{'A', 'B'}
+		return monsterSpawnSeqAB
 	case 71:
-		return []byte{'A'}
+		return monsterSpawnSeqA
 	case 7:
-		return []byte{'A', 'B'}
+		return monsterSpawnSeqAB
 	default:
 		return nil
 	}
 }
 
 var (
+	monsterAttackSeqEFE        = []byte{'E', 'F', 'E'}
+	monsterAttackSeqEFEF       = []byte{'E', 'F', 'E', 'F'}
+	monsterAttackSeqEFG        = []byte{'E', 'F', 'G'}
+	monsterAttackSeqBCD        = []byte{'B', 'C', 'D'}
+	monsterAttackSeqArchvile   = []byte{'G', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+	monsterAttackSeqRevenant   = []byte{'H', 'H', 'K', 'K'}
+	monsterAttackSeqMancubus   = []byte{'G', 'H', 'I', 'G', 'H', 'I', 'G', 'H', 'I', 'G'}
+	monsterAttackSeqCyber      = []byte{'E', 'F', 'E', 'F', 'E', 'F'}
+	monsterAttackSeqSpider     = []byte{'A', 'G', 'H', 'H'}
+	monsterAttackSeqPain       = []byte{'D', 'E', 'F', 'F'}
+	monsterAttackSeqWolfSS     = []byte{'E', 'F', 'G', 'F', 'G', 'F'}
+	monsterSpawnSeqAB          = []byte{'A', 'B'}
+	monsterSpawnSeqA           = []byte{'A'}
 	monsterSpawnTicsAB         = []int{10, 10}
 	monsterSpawnTicsA          = []int{10}
+	monsterSpawnTicsMancubus   = []int{15, 15}
 	monsterAttackTicsZombieman = []int{10, 8, 8}
 	monsterAttackTicsShotgun   = []int{10, 10, 10}
 	monsterAttackTicsChaingun  = []int{10, 4, 4, 1}
@@ -10960,6 +10974,19 @@ var (
 	monsterSeeTics12x3         = []int{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
 	monsterSeeTics12x4         = []int{4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4}
 	monsterSeeTics6x3          = []int{3, 3, 3, 3, 3, 3}
+	monsterSeeSeqAABBCCDD      = []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
+	monsterSeeSeqA             = []byte{'A'}
+	monsterSeeSeq12            = []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}
+	monsterSeeSeq6             = []byte{'A', 'A', 'B', 'B', 'C', 'C'}
+	monsterPainSeqGG           = []byte{'G', 'G'}
+	monsterPainSeqHH           = []byte{'H', 'H'}
+	monsterPainSeqEE           = []byte{'E', 'E'}
+	monsterPainSeqEEF          = []byte{'E', 'E', 'F'}
+	monsterPainSeqQQ           = []byte{'Q', 'Q'}
+	monsterPainSeqLL           = []byte{'L', 'L'}
+	monsterPainSeqJJ           = []byte{'J', 'J'}
+	monsterPainSeqG            = []byte{'G'}
+	monsterPainSeqII           = []byte{'I', 'I'}
 	monsterPainTics33          = []int{3, 3}
 	monsterPainTics22          = []int{2, 2}
 	monsterPainTics336         = []int{3, 3, 6}
@@ -10991,7 +11018,7 @@ func monsterSpawnFrameTics(typ int16) []int {
 	case 64, 66, 68, 16, 84:
 		return monsterSpawnTicsAB
 	case 67:
-		return []int{15, 15}
+		return monsterSpawnTicsMancubus
 	case 71:
 		return monsterSpawnTicsA
 	case 7:
@@ -11004,17 +11031,17 @@ func monsterSpawnFrameTics(typ int16) []int {
 func monsterSeeFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
+		return monsterSeeSeqAABBCCDD
 	case 3005:
-		return []byte{'A'}
+		return monsterSeeSeqA
 	case 64, 66, 68:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}
+		return monsterSeeSeq12
 	case 67:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}
+		return monsterSeeSeq12
 	case 71:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C'}
+		return monsterSeeSeq6
 	case 84, 16, 7:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
+		return monsterSeeSeqAABBCCDD
 	default:
 		return nil
 	}
@@ -11108,35 +11135,35 @@ func monsterAttackAnimTotalTics(typ int16) int {
 func monsterPainFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004:
-		return []byte{'G', 'G'}
+		return monsterPainSeqGG
 	case 9, 65:
-		return []byte{'G', 'G'}
+		return monsterPainSeqGG
 	case 3001:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	case 3002, 58:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	case 3006:
-		return []byte{'E', 'E'}
+		return monsterPainSeqEE
 	case 3005:
-		return []byte{'E', 'E', 'F'}
+		return monsterPainSeqEEF
 	case 3003, 69:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	case 64:
-		return []byte{'Q', 'Q'}
+		return monsterPainSeqQQ
 	case 66:
-		return []byte{'L', 'L'}
+		return monsterPainSeqLL
 	case 67:
-		return []byte{'J', 'J'}
+		return monsterPainSeqJJ
 	case 16:
-		return []byte{'G'}
+		return monsterPainSeqG
 	case 7:
-		return []byte{'I', 'I'}
+		return monsterPainSeqII
 	case 68:
-		return []byte{'I', 'I'}
+		return monsterPainSeqII
 	case 71:
-		return []byte{'G', 'G'}
+		return monsterPainSeqGG
 	case 84:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	default:
 		return nil
 	}
@@ -11200,6 +11227,14 @@ var (
 	monsterDeathFrames8x7    = []byte{'I', 'J', 'K', 'L', 'M', 'N', 'O'}
 	monsterDeathFramesCyber  = []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
 	monsterDeathFramesSpider = []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'}
+	monsterDeathFramesArch   = []byte{'Q', 'R', 'S', 'T', 'U'}
+	monsterDeathFramesRev    = []byte{'L', 'M', 'N', 'O', 'P', 'Q'}
+	monsterDeathFramesManc   = []byte{'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'}
+	monsterDeathFramesArachn = []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+	monsterDeathFramesPain   = []byte{'H', 'I', 'J', 'K', 'L', 'M'}
+	monsterXDeathFrames5x9   = []byte{'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
+	monsterXDeathFrames5x6   = []byte{'O', 'P', 'Q', 'R', 'S', 'T'}
+	monsterXDeathFramesWolf  = []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'}
 )
 
 func monsterDeathFrameSeq(typ int16) []byte {
@@ -11221,21 +11256,21 @@ func monsterDeathFrameSeq(typ int16) []byte {
 	case 3003:
 		return monsterDeathFrames8x7
 	case 64:
-		return []byte{'Q', 'R', 'S', 'T', 'U'}
+		return monsterDeathFramesArch
 	case 66:
-		return []byte{'L', 'M', 'N', 'O', 'P', 'Q'}
+		return monsterDeathFramesRev
 	case 67:
-		return []byte{'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'}
+		return monsterDeathFramesManc
 	case 16:
 		return monsterDeathFramesCyber
 	case 7:
 		return monsterDeathFramesSpider
 	case 68:
-		return []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+		return monsterDeathFramesArachn
 	case 71:
-		return []byte{'H', 'I', 'J', 'K', 'L', 'M'}
+		return monsterDeathFramesPain
 	case 84:
-		return []byte{'I', 'J', 'K', 'L', 'M'}
+		return monsterDeathFramesImp
 	default:
 		return nil
 	}
@@ -11244,11 +11279,11 @@ func monsterDeathFrameSeq(typ int16) []byte {
 func monsterXDeathFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9:
-		return []byte{'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
+		return monsterXDeathFrames5x9
 	case 65:
-		return []byte{'O', 'P', 'Q', 'R', 'S', 'T'}
+		return monsterXDeathFrames5x6
 	case 84:
-		return []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'}
+		return monsterXDeathFramesWolf
 	default:
 		return nil
 	}

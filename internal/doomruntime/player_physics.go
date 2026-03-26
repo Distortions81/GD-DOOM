@@ -475,9 +475,12 @@ func (g *game) xyMovement() {
 	if g.p.momx == 0 && g.p.momy == 0 {
 		return
 	}
+	debugMove := g.debugPlayerMoveEnabled()
 	g.p.momx = clamp(g.p.momx, -maxMove, maxMove)
 	g.p.momy = clamp(g.p.momy, -maxMove, maxMove)
-	g.debugPlayerMove(fmt.Sprintf("xy start mom=(%d,%d)", g.p.momx, g.p.momy), g.p.x, g.p.y)
+	if debugMove {
+		g.debugPlayerMove(fmt.Sprintf("xy start mom=(%d,%d)", g.p.momx, g.p.momy), g.p.x, g.p.y)
+	}
 
 	xmove := g.p.momx
 	ymove := g.p.momy
@@ -486,13 +489,17 @@ func (g *game) xyMovement() {
 		if xmove > maxMove/2 || ymove > maxMove/2 {
 			ptryx = g.p.x + (xmove / 2)
 			ptryy = g.p.y + (ymove / 2)
-			g.debugPlayerMove(fmt.Sprintf("xy split step=(%d,%d) remain_before=(%d,%d)", ptryx, ptryy, xmove, ymove), ptryx, ptryy)
+			if debugMove {
+				g.debugPlayerMove(fmt.Sprintf("xy split step=(%d,%d) remain_before=(%d,%d)", ptryx, ptryy, xmove, ymove), ptryx, ptryy)
+			}
 			xmove >>= 1
 			ymove >>= 1
 		} else {
 			ptryx = g.p.x + xmove
 			ptryy = g.p.y + ymove
-			g.debugPlayerMove(fmt.Sprintf("xy final step=(%d,%d) remain=(%d,%d)", ptryx, ptryy, xmove, ymove), ptryx, ptryy)
+			if debugMove {
+				g.debugPlayerMove(fmt.Sprintf("xy final step=(%d,%d) remain=(%d,%d)", ptryx, ptryy, xmove, ymove), ptryx, ptryy)
+			}
 			xmove = 0
 			ymove = 0
 		}
@@ -517,7 +524,9 @@ func (g *game) xyMovement() {
 		g.p.momx = fixedMul(g.p.momx, friction)
 		g.p.momy = fixedMul(g.p.momy, friction)
 	}
-	g.debugPlayerMove(fmt.Sprintf("xy end pos=(%d,%d) mom=(%d,%d)", g.p.x, g.p.y, g.p.momx, g.p.momy), g.p.x, g.p.y)
+	if debugMove {
+		g.debugPlayerMove(fmt.Sprintf("xy end pos=(%d,%d) mom=(%d,%d)", g.p.x, g.p.y, g.p.momx, g.p.momy), g.p.x, g.p.y)
+	}
 }
 
 func (g *game) tryMove(x, y int64) bool {
@@ -1095,7 +1104,9 @@ func (g *game) slideMove() {
 		if bestLine >= 0 && bestLine < len(g.lines) {
 			bestLineIdx = g.lines[bestLine].idx
 		}
-		g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d lineIdx=%d bestFrac=%d", bestLine, bestLineIdx, bestFrac), g.p.x, g.p.y)
+		if g.debugPlayerMoveEnabled() {
+			g.debugPlayerMove(fmt.Sprintf("slideMove bestLine=%d lineIdx=%d bestFrac=%d", bestLine, bestLineIdx, bestFrac), g.p.x, g.p.y)
+		}
 
 		bestFracFixed := bestFrac
 		bestFracFixed -= 0x800
@@ -1141,6 +1152,10 @@ func (g *game) debugPlayerMove(msg string, x, y int64) {
 	}
 	fmt.Printf("player-move-debug tic=%d world=%d msg=%s from=(%d,%d) to=(%d,%d) angle=%d mom=(%d,%d)\n",
 		g.demoTick-1, g.worldTic, msg, g.p.x, g.p.y, x, y, g.p.angle, g.p.momx, g.p.momy)
+}
+
+func (g *game) debugPlayerMoveEnabled() bool {
+	return g != nil && os.Getenv("GD_DEBUG_PLAYER_MOVE_TIC") != ""
 }
 
 func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
