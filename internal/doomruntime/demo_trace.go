@@ -1156,7 +1156,7 @@ func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
 	case 69:
 		base = 569
 	case 3006:
-		base = 591
+		base = 593
 	case 7:
 		base = 619
 	case 16:

@@ -996,16 +996,32 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 
 	z, _, _ := g.thingSupportState(i, th)
 	tx, ty := g.thingPosFixed(i, th)
-	nx := tx + momx
-	ny := ty + momy
-	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
-		prevX, prevY := tx, ty
-		g.setThingPosFixed(i, nx, ny)
-		g.setThingSupportState(i, z, tmfloor, tmceil)
-		g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
-	} else {
+	xmove := momx
+	ymove := momy
+	for xmove != 0 || ymove != 0 {
+		nx, ny := tx, ty
+		if xmove > maxMove/2 || ymove > maxMove/2 {
+			nx += xmove >> 1
+			ny += ymove >> 1
+			xmove >>= 1
+			ymove >>= 1
+		} else {
+			nx += xmove
+			ny += ymove
+			xmove = 0
+			ymove = 0
+		}
+		if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
+			prevX, prevY := tx, ty
+			g.setThingPosFixed(i, nx, ny)
+			g.setThingSupportState(i, z, tmfloor, tmceil)
+			g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
+			tx, ty = nx, ny
+			continue
+		}
 		momx = 0
 		momy = 0
+		break
 	}
 
 	z, floorZ, ceilZ := g.thingSupportState(i, th)

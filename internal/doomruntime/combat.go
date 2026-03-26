@@ -1444,37 +1444,40 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
-			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
-				if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
-					// Doom only marks JUSTHIT when the pain state triggers.
-					g.thingJustHit[thingIdx] = true
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
-					// Doom P_SetMobjState(painstate) replaces any in-flight attack state.
-					g.thingAttackTics[thingIdx] = 0
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
-					g.thingAttackFireTics[thingIdx] = -1
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
-					g.thingAttackPhase[thingIdx] = 0
-				}
-				g.thingPainTics[thingIdx] = monsterPainDurationTics(thingType)
-				if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
-					g.thingState[thingIdx] = monsterStatePain
-					frameTics := monsterPainFrameTics(thingType)
-					if len(frameTics) > 0 {
-						g.thingStateTics[thingIdx] = frameTics[0]
-					} else {
-						g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+			if chance > 0 {
+				roll := doomrand.PRandom()
+				if chance >= 256 || roll < chance {
+					if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
+						// Doom only marks JUSTHIT when the pain state triggers.
+						g.thingJustHit[thingIdx] = true
 					}
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
-					g.thingStatePhase[thingIdx] = 0
-				}
-				if monsterPainActionPhase(thingType) == 0 {
-					tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
-					g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
+					if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
+						// Doom P_SetMobjState(painstate) replaces any in-flight attack state.
+						g.thingAttackTics[thingIdx] = 0
+					}
+					if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
+						g.thingAttackFireTics[thingIdx] = -1
+					}
+					if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
+						g.thingAttackPhase[thingIdx] = 0
+					}
+					g.thingPainTics[thingIdx] = monsterPainDurationTics(thingType)
+					if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
+						g.thingState[thingIdx] = monsterStatePain
+						frameTics := monsterPainFrameTics(thingType)
+						if len(frameTics) > 0 {
+							g.thingStateTics[thingIdx] = frameTics[0]
+						} else {
+							g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+						}
+					}
+					if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
+						g.thingStatePhase[thingIdx] = 0
+					}
+					if monsterPainActionPhase(thingType) == 0 {
+						tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+						g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
+					}
 				}
 			}
 		}
