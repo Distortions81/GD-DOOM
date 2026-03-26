@@ -2,6 +2,8 @@
 
 package app
 
+import "gddoom/internal/platformcfg"
+
 func isWASMBuild() bool {
-	return true
+	return platformcfg.IsWASMBuild()
 }

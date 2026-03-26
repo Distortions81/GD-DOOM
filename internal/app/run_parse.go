@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"sort"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -23,6 +24,7 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/platformcfg"
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/sound"
@@ -53,7 +55,29 @@ func shouldOpenIWADPicker(render, noExplicitWAD, forceWASMPicker bool, pickerCho
 	return render && pickerChoiceCount > 0 && (noExplicitWAD || forceWASMPicker)
 }
 
+func resolveForceWASMMode(args []string) bool {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == "-wasm-mode" {
+			return true
+		}
+		if !strings.HasPrefix(a, "-wasm-mode=") {
+			continue
+		}
+		v, err := strconv.ParseBool(strings.TrimPrefix(a, "-wasm-mode="))
+		if err != nil {
+			return false
+		}
+		return v
+	}
+	return false
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
+	prevForceWASMMode := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(resolveForceWASMMode(args))
+	defer platformcfg.SetForcedWASMMode(prevForceWASMMode)
+
 	configPath, configExplicit := resolveConfigPath(args)
 	cfg, err := loadConfig(configPath, configExplicit)
 	if err != nil {
@@ -399,6 +423,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
 	aniDump := fs.String("anidump", defaultAniDump, "dump animation sprite series for seed (example: SMGTA0)")
 	aniDumpDir := fs.String("anidump-dir", defaultAniDumpDir, "output directory for -anidump PNG dumps")
+	forceWASMMode := fs.Bool("wasm-mode", platformcfg.ForcedWASMMode(), "force js/wasm runtime behavior on native builds")
 
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -427,6 +452,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	_ = configFlag
+	platformcfg.SetForcedWASMMode(*forceWASMMode)
 	lineColorModeSet := configLineColorSet
 	allCheatsSet := false
 	cheatLevelSet := false

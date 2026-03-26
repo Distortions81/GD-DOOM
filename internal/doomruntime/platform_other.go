@@ -2,6 +2,8 @@
 
 package doomruntime
 
+import "gddoom/internal/platformcfg"
+
 func isWASMBuild() bool {
-	return false
+	return platformcfg.IsWASMBuild()
 }
