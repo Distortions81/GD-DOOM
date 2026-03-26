@@ -828,6 +828,7 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 	if g == nil || g.m == nil {
 		return false
 	}
+	const maxThingBlockRadius = 32 * fracUnit
 	probeEnabled := g.debugPlayerProbeActive()
 	if moverIsMonster && !g.isDead && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
 		if probeEnabled {
@@ -901,7 +902,34 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		return false
 	}
-
+	if g.bmapWidth > 0 && g.bmapHeight > 0 {
+		left := int((x - radius - g.bmapOriginX - maxThingBlockRadius) >> (fracBits + 7))
+		right := int((x + radius - g.bmapOriginX + maxThingBlockRadius) >> (fracBits + 7))
+		bottom := int((y - radius - g.bmapOriginY - maxThingBlockRadius) >> (fracBits + 7))
+		top := int((y + radius - g.bmapOriginY + maxThingBlockRadius) >> (fracBits + 7))
+		if left < 0 {
+			left = 0
+		}
+		if bottom < 0 {
+			bottom = 0
+		}
+		if right >= g.bmapWidth {
+			right = g.bmapWidth - 1
+		}
+		if top >= g.bmapHeight {
+			top = g.bmapHeight - 1
+		}
+		for by := bottom; by <= top; by++ {
+			for bx := left; bx <= right; bx++ {
+				if !g.blockThingsIterator(bx, by, func(i int) bool {
+					return !visitThing(i)
+				}) {
+					return true
+				}
+			}
+		}
+		return false
+	}
 	for i := range g.m.Things {
 		if visitThing(i) {
 			return true
@@ -983,6 +1011,25 @@ func thingTypeRadius(typ int16) int64 {
 		return info.radius
 	}
 	return 20 * fracUnit
+}
+
+func (g *game) blockThingsIterator(x, y int, fn func(int) bool) bool {
+	if g == nil || g.m == nil || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
+		return true
+	}
+	if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
+		g.rebuildThingBlockmap()
+	}
+	if x < 0 || y < 0 || x >= g.bmapWidth || y >= g.bmapHeight {
+		return true
+	}
+	cell := y*g.bmapWidth + x
+	for _, thingIdx := range g.thingBlockCells[cell] {
+		if !fn(thingIdx) {
+			return false
+		}
+	}
+	return true
 }
 
 func (g *game) blockLinesIterator(x, y int, fn func(int) bool) bool {

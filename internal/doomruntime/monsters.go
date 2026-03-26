@@ -1244,6 +1244,7 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 	if g == nil {
 		return lineAttackTarget{}, false
 	}
+	const maxThingBlockRadius = 32 * fracUnit
 	radius := monsterRadius(th.Type)
 	if g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius {
 		return lineAttackTarget{kind: lineAttackTargetPlayer}, true
@@ -1269,39 +1270,32 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 		}
 		return lineAttackTarget{kind: lineAttackTargetThing, idx: other}, true
 	}
-	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
-		tmboxTop := y + radius
-		tmboxBottom := y - radius
-		tmboxRight := x + radius
-		tmboxLeft := x - radius
-		xl := int((tmboxLeft - g.bmapOriginX) >> (fracBits + 7))
-		xh := int((tmboxRight - g.bmapOriginX) >> (fracBits + 7))
-		yl := int((tmboxBottom - g.bmapOriginY) >> (fracBits + 7))
-		yh := int((tmboxTop - g.bmapOriginY) >> (fracBits + 7))
-		if xl < 0 {
-			xl = 0
+	if g.bmapWidth > 0 && g.bmapHeight > 0 {
+		left := int((x - radius - g.bmapOriginX - maxThingBlockRadius) >> (fracBits + 7))
+		right := int((x + radius - g.bmapOriginX + maxThingBlockRadius) >> (fracBits + 7))
+		bottom := int((y - radius - g.bmapOriginY - maxThingBlockRadius) >> (fracBits + 7))
+		top := int((y + radius - g.bmapOriginY + maxThingBlockRadius) >> (fracBits + 7))
+		if left < 0 {
+			left = 0
 		}
-		if yl < 0 {
-			yl = 0
+		if bottom < 0 {
+			bottom = 0
 		}
-		if xh >= g.bmapWidth {
-			xh = g.bmapWidth - 1
+		if right >= g.bmapWidth {
+			right = g.bmapWidth - 1
 		}
-		if yh >= g.bmapHeight {
-			yh = g.bmapHeight - 1
+		if top >= g.bmapHeight {
+			top = g.bmapHeight - 1
 		}
-		for bx := xl; bx <= xh; bx++ {
-			for by := yl; by <= yh; by++ {
-				for other, oth := range g.m.Things {
-					ox, oy := g.thingPosFixed(other, oth)
-					thingBX := int((ox - g.bmapOriginX) >> (fracBits + 7))
-					thingBY := int((oy - g.bmapOriginY) >> (fracBits + 7))
-					if thingBX != bx || thingBY != by {
-						continue
-					}
-					if target, ok := visitThing(other); ok {
-						return target, true
-					}
+		for by := bottom; by <= top; by++ {
+			for bx := left; bx <= right; bx++ {
+				var hit lineAttackTarget
+				if !g.blockThingsIterator(bx, by, func(other int) bool {
+					var ok bool
+					hit, ok = visitThing(other)
+					return !ok
+				}) {
+					return hit, true
 				}
 			}
 		}
@@ -1326,7 +1320,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 			debugSkull = wantIdx == i && (g.demoTick-1 == wantTic || g.worldTic == wantTic)
 		}
 	}
-	if momx == 0 && momy == 0 && momz == 0 {
+	if momx == 0 && momy == 0 {
 		if debugSkull {
 			px, py := g.thingPosFixed(i, th)
 			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=zero-momentum pos=(%d,%d) mom=(%d,%d,%d)\n",
