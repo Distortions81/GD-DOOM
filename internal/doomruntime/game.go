@@ -1479,10 +1479,6 @@ func (g *game) precacheRenderAssets() {
 	if g == nil {
 		return
 	}
-	if isWASMBuild() {
-		g.precacheRenderAssetsWASM()
-		return
-	}
 	g.precacheMapTextureAssets()
 	g.precacheSpritePatchRenderData()
 	g.precacheThingSpriteExpansion()

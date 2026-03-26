@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 
 	"gddoom/internal/gameplay"
@@ -338,30 +337,6 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 		return
 	}
 	sg.capturePersistentSettings()
-	if isWASMBuild() {
-		sg.collectDemoRecord()
-		if sg.g != nil {
-			sg.g.clearPendingSoundState()
-			sg.g.clearSpritePatchCache()
-		}
-		sg.transition.ReleaseWorkingSet()
-		sg.g = nil
-		sg.rt = nil
-		sg.presentSurface = nil
-		sg.faithfulSurface = nil
-		sg.faithfulNearest = nil
-		sg.crtPost = nil
-		runtime.GC()
-
-		opts := sg.opts
-		applyOptionStateToOptions(&opts, gameplay.ApplyPersistentSettingsToOptions(sg.optionState(), sg.settings, music.MaxOutputGain))
-		g := sg.buildGame(next, opts)
-		sg.applyPersistentSettingsToGame(g)
-		sg.opts = opts
-		sg.g = g
-		sg.rt = g
-		return
-	}
 	result := gameplay.RebuildRuntime(gameplay.RebuildRequest[Options, *game]{
 		Next:           next,
 		Current:        sg.g,
