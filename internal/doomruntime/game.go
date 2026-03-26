@@ -532,6 +532,7 @@ type game struct {
 	thingCeilState        []int64
 	thingSupportValid     []bool
 	thingSkullFly         []bool
+	thingResumeChaseNow   []bool
 	thingBlockOrder       []int64
 	thingBlockCell        []int
 	thingBlockCells       [][]int
@@ -1210,6 +1211,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingCeilState = make([]int64, len(m.Things))
 	g.thingSupportValid = make([]bool, len(m.Things))
 	g.thingSkullFly = make([]bool, len(m.Things))
+	g.thingResumeChaseNow = make([]bool, len(m.Things))
 	g.thingBlockOrder = make([]int64, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
@@ -9093,7 +9095,6 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 func (g *game) spawnTeleportFog(x, y, z int64) {
 	const maxPuffs = 64
 	const teleportFogFrameTics = 6
-	const teleportFogFrames = 10
 	if len(g.hitscanPuffs) >= maxPuffs {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
@@ -9113,9 +9114,9 @@ func (g *game) spawnTeleportFog(x, y, z int64) {
 		floorz:   floorz,
 		ceilz:    ceilz,
 		lastLook: lastLook,
-		tics:     teleportFogFrameTics * teleportFogFrames,
-		totalTic: teleportFogFrameTics * teleportFogFrames,
-		state:    0,
+		tics:     teleportFogFrameTics,
+		totalTic: teleportFogFrameTics,
+		state:    130,
 		kind:     hitscanFxTeleport,
 		order:    g.allocThinkerOrder(),
 	})
@@ -9164,26 +9165,30 @@ func (g *game) hitscanEffectSpriteRef(p hitscanPuff) (*spriteRenderRef, bool) {
 	}
 	if p.kind == hitscanFxTeleport {
 		frame := 'A'
-		switch elapsed := p.totalTic - p.tics; {
-		case elapsed < 6:
+		switch p.state {
+		case 130:
 			frame = 'A'
-		case elapsed < 12:
+		case 131:
 			frame = 'B'
-		case elapsed < 18:
+		case 132:
+			frame = 'A'
+		case 133:
+			frame = 'B'
+		case 134:
 			frame = 'C'
-		case elapsed < 24:
+		case 135:
 			frame = 'D'
-		case elapsed < 30:
+		case 136:
 			frame = 'E'
-		case elapsed < 36:
+		case 137:
 			frame = 'F'
-		case elapsed < 42:
+		case 138:
 			frame = 'G'
-		case elapsed < 48:
+		case 139:
 			frame = 'H'
-		case elapsed < 54:
+		case 140:
 			frame = 'I'
-		default:
+		case 141:
 			frame = 'J'
 		}
 		return find(spriteFrameName("TFOG", byte(frame), '0'))
@@ -9283,6 +9288,11 @@ func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 			p.state, p.tics = 3, 4
 		case 3:
 			p.state, p.tics = 4, 4
+		}
+	} else if p.kind == hitscanFxTeleport && p.tics <= 0 {
+		if p.state >= 130 && p.state < 141 {
+			p.state++
+			p.tics = 6
 		}
 	}
 	return p.tics > 0

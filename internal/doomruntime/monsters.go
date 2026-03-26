@@ -155,11 +155,6 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	if th.Type == 88 {
 		return
 	}
-	if th.Type == 3006 && i >= 0 && i < len(g.thingSkullFly) && g.thingSkullFly[i] &&
-		i < len(g.thingState) && g.thingState[i] == monsterStateAttack &&
-		i < len(g.thingAttackPhase) && g.thingAttackPhase[i] >= 3 {
-		g.resetLostSoulCharge(i, th.Type)
-	}
 	g.tickMonsterMomentum(i, th)
 	tx, ty := g.thingPosFixed(i, th)
 	targetX, targetY := int64(0), int64(0)
@@ -170,6 +165,10 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	}
 
 	resumedFromAttack := false
+	if i >= 0 && i < len(g.thingResumeChaseNow) && g.thingResumeChaseNow[i] {
+		g.thingResumeChaseNow[i] = false
+		resumedFromAttack = true
+	}
 	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 		if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
 			return
@@ -964,6 +963,11 @@ func (g *game) ensureMonsterAIState() {
 		g.thingSkullFly = make([]bool, n)
 		copy(g.thingSkullFly, old)
 	}
+	if len(g.thingResumeChaseNow) != n {
+		old := g.thingResumeChaseNow
+		g.thingResumeChaseNow = make([]bool, n)
+		copy(g.thingResumeChaseNow, old)
+	}
 }
 
 func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
@@ -1149,12 +1153,25 @@ func (g *game) resetLostSoulCharge(i int, typ int16) {
 	if i < len(g.thingAttackPhase) {
 		g.thingAttackPhase[i] = 0
 	}
-	if i < len(g.thingJustAtk) {
-		g.thingJustAtk[i] = false
+	if i < len(g.thingStatePhase) {
+		g.thingStatePhase[i] = 0
 	}
-	g.resetMonsterIdleOrChaseState(i, typ)
-	if i < len(g.thingStateTics) {
-		g.thingStateTics[i] = 0
+	g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
+	tx, ty := int64(0), int64(0)
+	if g.m != nil && i < len(g.m.Things) {
+		tx, ty = g.thingPosFixed(i, g.m.Things[i])
+	}
+	if g.monsterRunLookState(i, typ, tx, ty) {
+		if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
+			g.thingStateTics[i]--
+		}
+		if i < len(g.thingResumeChaseNow) {
+			g.thingResumeChaseNow[i] = true
+		}
+		return
+	}
+	if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
+		g.thingStateTics[i]--
 	}
 }
 
@@ -1163,11 +1180,8 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 		return lineAttackTarget{}, false
 	}
 	radius := monsterRadius(th.Type)
-	height := g.thingCurrentHeight(i, th)
 	if g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius {
-		if z < g.p.z+playerHeight && z+height > g.p.z {
-			return lineAttackTarget{kind: lineAttackTargetPlayer}, true
-		}
+		return lineAttackTarget{kind: lineAttackTargetPlayer}, true
 	}
 	if g.m == nil {
 		return lineAttackTarget{}, false
@@ -1179,17 +1193,12 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 		if other < len(g.thingCollected) && g.thingCollected[other] {
 			continue
 		}
-		if !thingTypeIsShootable(oth.Type) {
+		if !thingTypeIsShootable(oth.Type) && !isPickupType(oth.Type) && !thingTypeBlocksActorMovement(oth.Type, true) {
 			continue
 		}
 		ox, oy := g.thingPosFixed(other, oth)
-		oradius := thingTypeRadius(oth.Type)
+		oradius := g.thingCurrentRadius(other, oth)
 		if abs(ox-x) >= radius+oradius || abs(oy-y) >= radius+oradius {
-			continue
-		}
-		oz, _, _ := g.thingSupportState(other, oth)
-		oheight := g.thingCurrentHeight(other, oth)
-		if z >= oz+oheight || z+height <= oz {
 			continue
 		}
 		return lineAttackTarget{kind: lineAttackTargetThing, idx: other}, true
@@ -1211,7 +1220,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 	xmove, ymove := momx, momy
 	for xmove != 0 || ymove != 0 {
 		stepX, stepY := xmove, ymove
-		if abs(stepX) > maxMove/2 || abs(stepY) > maxMove/2 {
+		if stepX > maxMove/2 || stepY > maxMove/2 {
 			stepX >>= 1
 			stepY >>= 1
 			xmove >>= 1
@@ -1227,16 +1236,16 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 			case lineAttackTargetPlayer:
 				g.damagePlayerFrom(damage, "Monster hit you", tx, ty, true, i)
 			case lineAttackTargetThing:
-				g.damageShootableThingFrom(target.idx, damage, false, i, tx, ty, true)
+				if target.idx >= 0 && target.idx < len(g.m.Things) && thingTypeIsShootable(g.m.Things[target.idx].Type) {
+					g.damageShootableThingFrom(target.idx, damage, false, i, tx, ty, true)
+				}
 			}
 			g.resetLostSoulCharge(i, th.Type)
 			return
 		}
 		tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny)
 		if !ok {
-			g.thingMomX[i] = 0
-			g.thingMomY[i] = 0
-			g.thingMomZ[i] = momz
+			g.resetLostSoulCharge(i, th.Type)
 			return
 		}
 		g.setThingPosFixed(i, nx, ny)
@@ -1699,6 +1708,11 @@ func (g *game) nextMonsterAttackLoopPhase(i int, typ int16, tx, ty int64) (int, 
 		// Doom's S_CPOS_ATK4 nextstate is always S_CPOS_ATK2; A_CPosRefire
 		// already decided on phase-entry whether to stay attacking.
 		return 1, true
+	case 3006:
+		if i >= 0 && i < len(g.thingSkullFly) && g.thingSkullFly[i] {
+			return 2, true
+		}
+		return 0, false
 	default:
 		return 0, false
 	}

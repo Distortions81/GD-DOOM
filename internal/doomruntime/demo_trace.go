@@ -523,18 +523,15 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			mobjType = 38
 			flags = 16
 		} else if p.kind == hitscanFxTeleport {
-			elapsed := p.totalTic - p.tics
-			if elapsed < 0 {
-				elapsed = 0
-			}
-			frame := elapsed / 6
-			if frame > 10 {
-				frame = 10
-			}
 			mobjType = 39
-			state = 130 + frame
-			tics = 6 - (elapsed % 6)
-			if tics <= 0 {
+			if p.state >= 130 {
+				state = p.state
+			} else {
+				state = 130
+			}
+			if p.tics > 0 {
+				tics = p.tics
+			} else {
 				tics = 6
 			}
 		}
