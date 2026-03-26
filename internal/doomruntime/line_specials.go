@@ -1132,12 +1132,6 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.setThingPosFixed(actorIdx, tx, ty)
 			g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
 			g.setThingWorldAngle(actorIdx, destAngle)
-			if actorIdx >= 0 && actorIdx < len(g.thingMoveDir) {
-				g.thingMoveDir[actorIdx] = monsterDirNoDir
-			}
-			if actorIdx >= 0 && actorIdx < len(g.thingMoveCount) {
-				g.thingMoveCount[actorIdx] = 0
-			}
 		}
 		g.spawnTeleportFog(actorX, actorY, actorZ)
 		g.spawnTeleportFog(destFogX, destFogY, tmfloor)

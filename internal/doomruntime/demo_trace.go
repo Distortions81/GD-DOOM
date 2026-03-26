@@ -517,9 +517,26 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		ceilZ := p.ceilz
 		mobjType := 37
 		flags := 528
+		state := p.state
+		tics := p.tics
 		if p.kind == hitscanFxBlood {
 			mobjType = 38
 			flags = 16
+		} else if p.kind == hitscanFxTeleport {
+			elapsed := p.totalTic - p.tics
+			if elapsed < 0 {
+				elapsed = 0
+			}
+			frame := elapsed / 6
+			if frame > 10 {
+				frame = 10
+			}
+			mobjType = 39
+			state = 130 + frame
+			tics = 6 - (elapsed % 6)
+			if tics <= 0 {
+				tics = 6
+			}
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: p.order,
@@ -537,8 +554,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				CeilingZ:     ceilZ,
 				Radius:       20 * fracUnit,
 				Height:       16 * fracUnit,
-				Tics:         p.tics,
-				State:        p.state,
+				Tics:         tics,
+				State:        state,
 				Flags:        flags,
 				Health:       1000,
 				Movedir:      0,

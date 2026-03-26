@@ -454,6 +454,9 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 
 func (g *game) gainHealth(amount, cap int, msg string) (string, soundEvent, bool) {
 	prev := g.stats.Health
+	if prev >= cap {
+		return "", 0, false
+	}
 	g.stats.Health += amount
 	if g.stats.Health > cap {
 		g.stats.Health = cap
@@ -476,6 +479,9 @@ func (g *game) gainBonusHealth(amount, cap int, msg string) (string, soundEvent,
 
 func (g *game) gainArmor(amount, cap int, msg string) (string, soundEvent, bool) {
 	prev := g.stats.Armor
+	if prev >= cap {
+		return "", 0, false
+	}
 	g.stats.Armor += amount
 	if g.stats.Armor > cap {
 		g.stats.Armor = cap

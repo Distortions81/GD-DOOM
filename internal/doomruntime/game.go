@@ -1332,7 +1332,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.thingAmbush[i] = int(th.Flags)&thingFlagAmbush != 0
 		g.thingX[i] = int64(th.X) << fracBits
 		g.thingY[i] = int64(th.Y) << fracBits
-		g.thingAngleState[i] = thingDegToWorldAngle(th.Angle)
+		g.thingAngleState[i] = thingSpawnAngle(th.Angle)
 		g.thingSectorCache[i] = g.sectorAt(g.thingX[i], g.thingY[i])
 		sec := g.thingSectorCache[i]
 		if sec >= 0 && sec < len(g.sectorFloor) {
@@ -9096,10 +9096,21 @@ func (g *game) spawnTeleportFog(x, y, z int64) {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
 	}
+	lastLook := doomrand.PRandom() & 3
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok && g != nil && g.m != nil {
+		floorz = g.thingFloorZ(x, y)
+		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
+	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
 		x:        x,
 		y:        y,
 		z:        z,
+		floorz:   floorz,
+		ceilz:    ceilz,
+		lastLook: lastLook,
 		tics:     teleportFogFrameTics * teleportFogFrames,
 		totalTic: teleportFogFrameTics * teleportFogFrames,
 		state:    0,

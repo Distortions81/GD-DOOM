@@ -206,16 +206,16 @@ func TestTickMonstersDeadPlayerDoesNotWakeFromSectorSoundTarget(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		isDead:           true,
-		thingCollected:   []bool{false},
-		thingHP:          []int{20},
-		thingAggro:       []bool{false},
+		isDead:            true,
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingAggro:        []bool{false},
 		thingTargetPlayer: []bool{false},
-		thingTargetIdx:   []int{-1},
-		thingCooldown:    []int{0},
+		thingTargetIdx:    []int{-1},
+		thingCooldown:     []int{0},
 		sectorSoundTarget: []bool{true},
-		stats:            playerStats{Health: 0},
-		p:                player{x: 1024 * fracUnit, y: 0},
+		stats:             playerStats{Health: 0},
+		p:                 player{x: 1024 * fracUnit, y: 0},
 	}
 	g.initPhysics()
 	g.tickMonsters()
@@ -2385,6 +2385,12 @@ func TestMonsterCheckMissileRangeUsesDoomDistanceChance(t *testing.T) {
 	// Second random byte is 109, which passes the same threshold.
 	if !g.monsterCheckMissileRange(0, 3004, dist, tx, ty, px, py) {
 		t.Fatal("second far-range missile check should pass by random chance")
+	}
+}
+
+func TestLostSoulIsNotClassifiedMeleeOnly(t *testing.T) {
+	if isMeleeOnlyMonster(3006) {
+		t.Fatal("lost soul should use missile-range gating like Doom charge attacks")
 	}
 }
 

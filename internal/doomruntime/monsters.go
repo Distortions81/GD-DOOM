@@ -2533,7 +2533,7 @@ func (g *game) fastMonstersActive() bool {
 
 func isMeleeOnlyMonster(typ int16) bool {
 	switch typ {
-	case 3002, 3006, 58:
+	case 3002, 58:
 		return true
 	default:
 		return false

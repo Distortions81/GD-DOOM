@@ -194,6 +194,50 @@ func TestProcessThingPickups_ConsumesArmorBonusAtCapLikeDoom(t *testing.T) {
 	}
 }
 
+func TestProcessThingPickups_DoesNotConsumeMedikitAboveCap(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2012, Flags: skillMediumBits}},
+		},
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.stats.Health = 102
+	g.syncPlayerMobjHealth()
+	g.thingCollected = make([]bool, len(g.m.Things))
+
+	g.processThingPickups()
+
+	if g.thingCollected[0] {
+		t.Fatal("medikit should not be consumed above the normal health cap")
+	}
+	if got := g.stats.Health; got != 102 {
+		t.Fatalf("health=%d want=102", got)
+	}
+}
+
+func TestProcessThingPickups_DoesNotConsumeArmorPickupAboveCap(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2018, Flags: skillMediumBits}},
+		},
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.stats.Armor = 150
+	g.stats.ArmorType = 2
+	g.thingCollected = make([]bool, len(g.m.Things))
+
+	g.processThingPickups()
+
+	if g.thingCollected[0] {
+		t.Fatal("armor pickup should not be consumed above its cap")
+	}
+	if got := g.stats.Armor; got != 150 {
+		t.Fatalf("armor=%d want=150", got)
+	}
+}
+
 func TestBackpackDoublesAmmoCap(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()
