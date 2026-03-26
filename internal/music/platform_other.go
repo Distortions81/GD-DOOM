@@ -1,5 +1,3 @@
-//go:build !js || !wasm
-
 package music
 
 func streamChunkFrames() int {

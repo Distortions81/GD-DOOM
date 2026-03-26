@@ -1,5 +1,3 @@
-//go:build !js || !wasm
-
 package audiofx
 
 func maxSpatialVoices() int {
