@@ -1251,22 +1251,66 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 	if g.m == nil {
 		return lineAttackTarget{}, false
 	}
-	for other, oth := range g.m.Things {
-		if other == i {
-			continue
+	visitThing := func(other int) (lineAttackTarget, bool) {
+		if other == i || other < 0 || other >= len(g.m.Things) {
+			return lineAttackTarget{}, false
 		}
+		oth := g.m.Things[other]
 		if other < len(g.thingCollected) && g.thingCollected[other] {
-			continue
+			return lineAttackTarget{}, false
 		}
 		if !thingTypeIsShootable(oth.Type) && !isPickupType(oth.Type) && !thingTypeBlocksActorMovement(oth.Type, true) {
-			continue
+			return lineAttackTarget{}, false
 		}
 		ox, oy := g.thingPosFixed(other, oth)
 		oradius := g.thingCurrentRadius(other, oth)
 		if abs(ox-x) >= radius+oradius || abs(oy-y) >= radius+oradius {
-			continue
+			return lineAttackTarget{}, false
 		}
 		return lineAttackTarget{kind: lineAttackTargetThing, idx: other}, true
+	}
+	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		tmboxTop := y + radius
+		tmboxBottom := y - radius
+		tmboxRight := x + radius
+		tmboxLeft := x - radius
+		xl := int((tmboxLeft - g.bmapOriginX) >> (fracBits + 7))
+		xh := int((tmboxRight - g.bmapOriginX) >> (fracBits + 7))
+		yl := int((tmboxBottom - g.bmapOriginY) >> (fracBits + 7))
+		yh := int((tmboxTop - g.bmapOriginY) >> (fracBits + 7))
+		if xl < 0 {
+			xl = 0
+		}
+		if yl < 0 {
+			yl = 0
+		}
+		if xh >= g.bmapWidth {
+			xh = g.bmapWidth - 1
+		}
+		if yh >= g.bmapHeight {
+			yh = g.bmapHeight - 1
+		}
+		for bx := xl; bx <= xh; bx++ {
+			for by := yl; by <= yh; by++ {
+				for other, oth := range g.m.Things {
+					ox, oy := g.thingPosFixed(other, oth)
+					thingBX := int((ox - g.bmapOriginX) >> (fracBits + 7))
+					thingBY := int((oy - g.bmapOriginY) >> (fracBits + 7))
+					if thingBX != bx || thingBY != by {
+						continue
+					}
+					if target, ok := visitThing(other); ok {
+						return target, true
+					}
+				}
+			}
+		}
+		return lineAttackTarget{}, false
+	}
+	for other := range g.m.Things {
+		if target, ok := visitThing(other); ok {
+			return target, true
+		}
 	}
 	return lineAttackTarget{}, false
 }
@@ -1275,7 +1319,19 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 	momx := clamp(g.thingMomX[i], -maxMove, maxMove)
 	momy := clamp(g.thingMomY[i], -maxMove, maxMove)
 	momz := g.thingMomZ[i]
-	if momx == 0 && momy == 0 {
+	debugSkull := false
+	if want := runtimeDebugEnv("GD_DEBUG_SKULL_FLY"); want != "" {
+		var wantTic, wantIdx int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
+			debugSkull = wantIdx == i && (g.demoTick-1 == wantTic || g.worldTic == wantTic)
+		}
+	}
+	if momx == 0 && momy == 0 && momz == 0 {
+		if debugSkull {
+			px, py := g.thingPosFixed(i, th)
+			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=zero-momentum pos=(%d,%d) mom=(%d,%d,%d)\n",
+				g.demoTick-1, g.worldTic, i, px, py, momx, momy, momz)
+		}
 		g.resetLostSoulCharge(i, th.Type)
 		return
 	}
@@ -1295,7 +1351,21 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 			ymove = 0
 		}
 		nx, ny := tx+stepX, ty+stepY
+		if debugSkull {
+			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=step from=(%d,%d,%d) to=(%d,%d,%d) step=(%d,%d) rem=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, i, tx, ty, z, nx, ny, z+momz, stepX, stepY, xmove, ymove)
+		}
 		if target, ok := g.lostSoulChargeTargetAt(i, th, nx, ny, z+momz); ok {
+			if debugSkull {
+				targetType := int16(0)
+				targetX, targetY := int64(0), int64(0)
+				if target.kind == lineAttackTargetThing && g.m != nil && target.idx >= 0 && target.idx < len(g.m.Things) {
+					targetType = g.m.Things[target.idx].Type
+					targetX, targetY = g.thingPosFixed(target.idx, g.m.Things[target.idx])
+				}
+				fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=hit-target kind=%d target=%d target_type=%d target_pos=(%d,%d) at=(%d,%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, target.kind, target.idx, targetType, targetX, targetY, nx, ny, z+momz)
+			}
 			damage := 3 * (1 + doomPRandomN(8))
 			switch target.kind {
 			case lineAttackTargetPlayer:
@@ -1310,11 +1380,19 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 		}
 		tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny)
 		if !ok {
+			if debugSkull {
+				fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=blocked at=(%d,%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, nx, ny, z+momz)
+			}
 			g.resetLostSoulCharge(i, th.Type)
 			return
 		}
 		g.setThingPosFixed(i, nx, ny)
 		g.setThingSupportState(i, z, tmfloor, tmceil)
+		if debugSkull {
+			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=move-ok pos=(%d,%d,%d) floor=%d ceil=%d\n",
+				g.demoTick-1, g.worldTic, i, nx, ny, z, tmfloor, tmceil)
+		}
 		tx, ty = nx, ny
 	}
 
@@ -1334,6 +1412,10 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 	g.thingMomX[i] = momx
 	g.thingMomY[i] = momy
 	g.thingMomZ[i] = momz
+	if debugSkull {
+		fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=finish pos=(%d,%d,%d) mom=(%d,%d,%d) floor=%d ceil=%d\n",
+			g.demoTick-1, g.worldTic, i, tx, ty, nz, momx, momy, momz, floorZ, ceilZ)
+	}
 }
 
 func monsterPainChance(typ int16) int {
