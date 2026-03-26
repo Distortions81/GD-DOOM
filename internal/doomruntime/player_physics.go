@@ -496,7 +496,7 @@ func (g *game) xyMovement() {
 			xmove = 0
 			ymove = 0
 		}
-		if !g.tryMove(ptryx, ptryy) {
+		if !g.tryMoveWithPickupProbe(ptryx, ptryy, true) {
 			g.slideMove()
 		}
 		if xmove == 0 && ymove == 0 {
@@ -521,8 +521,12 @@ func (g *game) xyMovement() {
 }
 
 func (g *game) tryMove(x, y int64) bool {
-	if !g.isDead {
-		g.processThingPickupsAt(x, y, g.p.z, playerRadius, playerHeight)
+	return g.tryMoveWithPickupProbe(x, y, false)
+}
+
+func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
+	if probePickup && !g.isDead {
+		g.processDroppedThingPickupsAt(x, y, g.p.z, playerRadius, playerHeight)
 	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
 	if !ok {

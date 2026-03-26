@@ -162,6 +162,14 @@ func (g *game) processThingPickups() {
 }
 
 func (g *game) processThingPickupsAt(px, py, pz, pradius, pheight int64) {
+	g.processThingPickupsAtFiltered(px, py, pz, pradius, pheight, false)
+}
+
+func (g *game) processDroppedThingPickupsAt(px, py, pz, pradius, pheight int64) {
+	g.processThingPickupsAtFiltered(px, py, pz, pradius, pheight, true)
+}
+
+func (g *game) processThingPickupsAtFiltered(px, py, pz, pradius, pheight int64, droppedOnly bool) {
 	if g.m == nil {
 		return
 	}
@@ -175,13 +183,16 @@ func (g *game) processThingPickupsAt(px, py, pz, pradius, pheight int64) {
 		if !isPickupType(th.Type) {
 			continue
 		}
+		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
+		if droppedOnly && !dropped {
+			continue
+		}
 		tx, ty := g.thingPosFixed(i, th)
 		tz, _, _ := g.thingSupportState(i, th)
 		radius := g.thingCurrentRadius(i, th)
 		if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, radius) {
 			continue
 		}
-		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
 		msg, ev, picked := g.applyPickup(th.Type, dropped)
 		if !picked {
 			continue
