@@ -19,7 +19,7 @@ if [[ ! -f "${WASM_EXEC_JS}" ]]; then
   exit 1
 fi
 
-use_wasm_opt=true
+use_wasm_opt=false
 case "${WASM_OPT_MODE}" in
   auto)
     if command -v wasm-opt >/dev/null 2>&1; then

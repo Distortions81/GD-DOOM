@@ -470,7 +470,7 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 			g.thingStatePhase[i] = 0
 		}
 		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
-		return true, false
+		return true, true
 	}
 	if g.monsterRunLookState(i, typ, tx, ty) {
 		return true, false
