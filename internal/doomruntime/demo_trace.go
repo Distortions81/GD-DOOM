@@ -1091,6 +1091,8 @@ func demoTraceMonsterSpawnState(typ int16, phase int) (int, bool) {
 		base, count = 442, 2
 	case 3002, 58:
 		base, count = 475, 2
+	case 3006:
+		base, count = 583, 2
 	case 3005:
 		base, count = 502, 1
 	case 3003:
@@ -1120,6 +1122,8 @@ func demoTraceMonsterSeeState(typ int16, phase int) (int, bool) {
 		base, count = 444, 8
 	case 3002, 58:
 		base, count = 477, 8
+	case 3006:
+		base, count = 587, 2
 	case 3005:
 		base, count = 503, 1
 	case 3003:
@@ -1155,7 +1159,7 @@ func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
 	case 69:
 		base = 569
 	case 3006:
-		base = 593
+		base = 591
 	case 7:
 		base = 619
 	case 16:

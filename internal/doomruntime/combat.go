@@ -1346,6 +1346,18 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 	}
 	thingType := g.m.Things[thingIdx].Type
+	if thingIdx < len(g.thingSkullFly) && g.thingSkullFly[thingIdx] {
+		g.thingSkullFly[thingIdx] = false
+		if thingIdx < len(g.thingMomX) {
+			g.thingMomX[thingIdx] = 0
+		}
+		if thingIdx < len(g.thingMomY) {
+			g.thingMomY[thingIdx] = 0
+		}
+		if thingIdx < len(g.thingMomZ) {
+			g.thingMomZ[thingIdx] = 0
+		}
+	}
 	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {

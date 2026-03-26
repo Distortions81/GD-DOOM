@@ -531,6 +531,7 @@ type game struct {
 	thingFloorState       []int64
 	thingCeilState        []int64
 	thingSupportValid     []bool
+	thingSkullFly         []bool
 	thingBlockOrder       []int64
 	thingBlockCell        []int
 	thingBlockCells       [][]int
@@ -1208,6 +1209,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingFloorState = make([]int64, len(m.Things))
 	g.thingCeilState = make([]int64, len(m.Things))
 	g.thingSupportValid = make([]bool, len(m.Things))
+	g.thingSkullFly = make([]bool, len(m.Things))
 	g.thingBlockOrder = make([]int64, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
@@ -10919,6 +10921,8 @@ func monsterAttackFrameSeq(typ int16) []byte {
 		return monsterAttackSeqEFG
 	case 3002, 58: // demon/spectre
 		return monsterAttackSeqEFG
+	case 3006:
+		return monsterAttackSeqLostSoul
 	case 3005:
 		return monsterAttackSeqBCD
 	case 3003, 69: // baron/knight
@@ -10967,6 +10971,7 @@ var (
 	monsterAttackSeqEFE        = []byte{'E', 'F', 'E'}
 	monsterAttackSeqEFEF       = []byte{'E', 'F', 'E', 'F'}
 	monsterAttackSeqEFG        = []byte{'E', 'F', 'G'}
+	monsterAttackSeqLostSoul   = []byte{'C', 'D', 'C', 'D'}
 	monsterAttackSeqBCD        = []byte{'B', 'C', 'D'}
 	monsterAttackSeqArchvile   = []byte{'G', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
 	monsterAttackSeqRevenant   = []byte{'H', 'H', 'K', 'K'}
@@ -10985,7 +10990,7 @@ var (
 	monsterAttackTicsChaingun  = []int{10, 4, 4, 1}
 	monsterAttackTicsImp       = []int{8, 8, 6}
 	monsterAttackTicsDemon     = []int{8, 8, 8}
-	monsterAttackTicsLostSoul  = []int{6, 6}
+	monsterAttackTicsLostSoul  = []int{10, 4, 4, 4}
 	monsterAttackTicsCaco      = []int{5, 5, 5}
 	monsterAttackTicsArchvile  = []int{0, 10, 8, 8, 8, 8, 8, 8, 8, 8, 20}
 	monsterAttackTicsRevenant  = []int{0, 10, 10, 10}
@@ -11002,8 +11007,10 @@ var (
 	monsterSeeTics12x3         = []int{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
 	monsterSeeTics12x4         = []int{4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4}
 	monsterSeeTics6x3          = []int{3, 3, 3, 3, 3, 3}
+	monsterSeeTicsLostSoul     = []int{6, 6}
 	monsterSeeSeqAABBCCDD      = []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
 	monsterSeeSeqA             = []byte{'A'}
+	monsterSeeSeqAB            = []byte{'A', 'B'}
 	monsterSeeSeq12            = []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}
 	monsterSeeSeq6             = []byte{'A', 'A', 'B', 'B', 'C', 'C'}
 	monsterPainSeqGG           = []byte{'G', 'G'}
@@ -11060,6 +11067,8 @@ func monsterSeeFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
 		return monsterSeeSeqAABBCCDD
+	case 3006:
+		return monsterSeeSeqAB
 	case 3005:
 		return monsterSeeSeqA
 	case 64, 66, 68:
@@ -11132,6 +11141,8 @@ func monsterSeeFrameTics(typ int16, fast bool) []int {
 		return monsterSeeTics3
 	case 3002, 58:
 		return monsterSeeTics2
+	case 3006:
+		return monsterSeeTicsLostSoul
 	case 3005:
 		return monsterPainTics33[:1]
 	case 64, 66:

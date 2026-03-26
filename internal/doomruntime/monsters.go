@@ -155,6 +155,11 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	if th.Type == 88 {
 		return
 	}
+	if th.Type == 3006 && i >= 0 && i < len(g.thingSkullFly) && g.thingSkullFly[i] &&
+		i < len(g.thingState) && g.thingState[i] == monsterStateAttack &&
+		i < len(g.thingAttackPhase) && g.thingAttackPhase[i] >= 3 {
+		g.resetLostSoulCharge(i, th.Type)
+	}
 	g.tickMonsterMomentum(i, th)
 	tx, ty := g.thingPosFixed(i, th)
 	targetX, targetY := int64(0), int64(0)
@@ -954,6 +959,11 @@ func (g *game) ensureMonsterAIState() {
 		g.thingMomZ = make([]int64, n)
 		copy(g.thingMomZ, old)
 	}
+	if len(g.thingSkullFly) != n {
+		old := g.thingSkullFly
+		g.thingSkullFly = make([]bool, n)
+		copy(g.thingSkullFly, old)
+	}
 }
 
 func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
@@ -961,6 +971,10 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 		return
 	}
 	if i >= len(g.thingMomX) || i >= len(g.thingMomY) || i >= len(g.thingMomZ) {
+		return
+	}
+	if i < len(g.thingSkullFly) && g.thingSkullFly[i] {
+		g.tickSkullFlyMomentum(i, th)
 		return
 	}
 	momx := g.thingMomX[i]
@@ -1105,6 +1119,144 @@ func (g *game) setThingMomentum(i int, momx, momy, momz int64) {
 	if i >= len(g.thingMomZ) {
 		g.thingMomZ = append(g.thingMomZ, make([]int64, i-len(g.thingMomZ)+1)...)
 	}
+	g.thingMomX[i] = momx
+	g.thingMomY[i] = momy
+	g.thingMomZ[i] = momz
+}
+
+func (g *game) resetLostSoulCharge(i int, typ int16) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i < len(g.thingSkullFly) {
+		g.thingSkullFly[i] = false
+	}
+	if i < len(g.thingMomX) {
+		g.thingMomX[i] = 0
+	}
+	if i < len(g.thingMomY) {
+		g.thingMomY[i] = 0
+	}
+	if i < len(g.thingMomZ) {
+		g.thingMomZ[i] = 0
+	}
+	if i < len(g.thingAttackTics) {
+		g.thingAttackTics[i] = 0
+	}
+	if i < len(g.thingAttackFireTics) {
+		g.thingAttackFireTics[i] = -1
+	}
+	if i < len(g.thingAttackPhase) {
+		g.thingAttackPhase[i] = 0
+	}
+	if i < len(g.thingJustAtk) {
+		g.thingJustAtk[i] = false
+	}
+	g.resetMonsterIdleOrChaseState(i, typ)
+	if i < len(g.thingStateTics) {
+		g.thingStateTics[i] = 0
+	}
+}
+
+func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (lineAttackTarget, bool) {
+	if g == nil {
+		return lineAttackTarget{}, false
+	}
+	radius := monsterRadius(th.Type)
+	height := g.thingCurrentHeight(i, th)
+	if g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius {
+		if z < g.p.z+playerHeight && z+height > g.p.z {
+			return lineAttackTarget{kind: lineAttackTargetPlayer}, true
+		}
+	}
+	if g.m == nil {
+		return lineAttackTarget{}, false
+	}
+	for other, oth := range g.m.Things {
+		if other == i {
+			continue
+		}
+		if other < len(g.thingCollected) && g.thingCollected[other] {
+			continue
+		}
+		if !thingTypeIsShootable(oth.Type) {
+			continue
+		}
+		ox, oy := g.thingPosFixed(other, oth)
+		oradius := thingTypeRadius(oth.Type)
+		if abs(ox-x) >= radius+oradius || abs(oy-y) >= radius+oradius {
+			continue
+		}
+		oz, _, _ := g.thingSupportState(other, oth)
+		oheight := g.thingCurrentHeight(other, oth)
+		if z >= oz+oheight || z+height <= oz {
+			continue
+		}
+		return lineAttackTarget{kind: lineAttackTargetThing, idx: other}, true
+	}
+	return lineAttackTarget{}, false
+}
+
+func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
+	momx := clamp(g.thingMomX[i], -maxMove, maxMove)
+	momy := clamp(g.thingMomY[i], -maxMove, maxMove)
+	momz := g.thingMomZ[i]
+	if momx == 0 && momy == 0 {
+		g.resetLostSoulCharge(i, th.Type)
+		return
+	}
+
+	tx, ty := g.thingPosFixed(i, th)
+	z, _, _ := g.thingSupportState(i, th)
+	xmove, ymove := momx, momy
+	for xmove != 0 || ymove != 0 {
+		stepX, stepY := xmove, ymove
+		if abs(stepX) > maxMove/2 || abs(stepY) > maxMove/2 {
+			stepX >>= 1
+			stepY >>= 1
+			xmove >>= 1
+			ymove >>= 1
+		} else {
+			xmove = 0
+			ymove = 0
+		}
+		nx, ny := tx+stepX, ty+stepY
+		if target, ok := g.lostSoulChargeTargetAt(i, th, nx, ny, z+momz); ok {
+			damage := 3 * (1 + doomPRandomN(8))
+			switch target.kind {
+			case lineAttackTargetPlayer:
+				g.damagePlayerFrom(damage, "Monster hit you", tx, ty, true, i)
+			case lineAttackTargetThing:
+				g.damageShootableThingFrom(target.idx, damage, false, i, tx, ty, true)
+			}
+			g.resetLostSoulCharge(i, th.Type)
+			return
+		}
+		tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny)
+		if !ok {
+			g.thingMomX[i] = 0
+			g.thingMomY[i] = 0
+			g.thingMomZ[i] = momz
+			return
+		}
+		g.setThingPosFixed(i, nx, ny)
+		g.setThingSupportState(i, z, tmfloor, tmceil)
+		tx, ty = nx, ny
+	}
+
+	_, floorZ, ceilZ := g.thingSupportState(i, th)
+	nz := z + momz
+	height := g.thingCurrentHeight(i, th)
+	if nz <= floorZ {
+		nz = floorZ
+		momz = -momz
+	} else if nz+height > ceilZ {
+		nz = ceilZ - height
+		if momz > 0 {
+			momz = -momz
+		}
+	}
+	g.setThingSupportState(i, nz, floorZ, ceilZ)
 	g.thingMomX[i] = momx
 	g.thingMomY[i] = momy
 	g.thingMomZ[i] = momz
@@ -1305,14 +1457,14 @@ func monsterAttackStateTotalTics(typ int16) int {
 		return 24
 	case 3005: // cacodemon
 		return 15
+	case 3006: // lost soul
+		return 22
 	case 3003, 69: // baron/knight
 		return 24
 	case 16: // cyberdemon
 		return 66
 	case 7: // spider mastermind (single volley cycle)
 		return 29
-	case 3006: // lost soul
-		return 12
 	default:
 		return 0
 	}
@@ -1320,7 +1472,7 @@ func monsterAttackStateTotalTics(typ int16) int {
 
 func monsterUsesExplicitAttackFrames(typ int16) bool {
 	switch typ {
-	case 3004, 9, 65, 3001, 3002, 58, 3005, 3003, 69, 7, 16, 64, 66, 67, 68, 71, 84: // core roster plus explicit advanced attacks
+	case 3004, 9, 65, 3001, 3002, 58, 3005, 3006, 3003, 69, 7, 16, 64, 66, 67, 68, 71, 84: // core roster plus explicit advanced attacks
 		return true
 	default:
 		return false
@@ -1394,6 +1546,13 @@ func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, p
 		case 0, 1:
 			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 2:
+			_ = g.monsterAttack(i, typ, dist)
+		}
+	case 3006: // lost soul
+		switch phase {
+		case 0:
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
+		case 1:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 3003, 69: // baron/hell knight
@@ -1477,6 +1636,10 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 					}
 				}
 				if nextPhase >= len(monsterAttackFrameTics(typ)) {
+					if typ == 3006 {
+						g.resetLostSoulCharge(i, typ)
+						return false
+					}
 					g.thingAttackTics[i] = 0
 					if i >= 0 && i < len(g.thingAttackFireTics) {
 						g.thingAttackFireTics[i] = -1
@@ -1572,6 +1735,10 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 	case 3002, 58:
 		if phase >= 0 && phase <= 2 {
 			return 485 + phase, true
+		}
+	case 3006:
+		if phase >= 0 && phase <= 3 {
+			return 589 + phase, true
 		}
 	case 3005:
 		if phase >= 0 && phase <= 2 {
@@ -2080,6 +2247,34 @@ func (g *game) monsterTurnTowardMoveDir(i int) {
 	g.setThingWorldAngle(i, angle)
 }
 
+func (g *game) startLostSoulCharge(i int) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	tx, ty, tz, theight, _, ok := g.monsterAttackTargetPos(i)
+	if !ok {
+		return false
+	}
+	sx, sy := g.thingPosFixed(i, g.m.Things[i])
+	sz, _, _ := g.thingSupportState(i, g.m.Things[i])
+	g.faceMonsterToward(i, sx, sy, tx, ty)
+	angle := g.thingWorldAngle(i, g.m.Things[i])
+	const skullSpeed = 20 * fracUnit
+	momx := fixedMul(skullSpeed, doomFineCosine(angle))
+	momy := fixedMul(skullSpeed, doomFineSineAtAngle(angle))
+	dist := doomApproxDistance(tx-sx, ty-sy) / skullSpeed
+	if dist < 1 {
+		dist = 1
+	}
+	momz := (tz + (theight >> 1) - sz) / dist
+	if i < len(g.thingSkullFly) {
+		g.thingSkullFly[i] = true
+	}
+	g.setThingMomentum(i, momx, momy, momz)
+	g.emitSoundEventAt(soundEventMonsterAttackSkull, sx, sy)
+	return true
+}
+
 func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	meleeOnly := isMeleeOnlyMonster(typ)
 	var sx, sy int64
@@ -2135,6 +2330,9 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		g.emitSoundEventAt(soundEventShootShotgun, sx, sy)
 		g.monsterHitscanAttack(i, typ, sx, sy, 3)
 		return true
+	}
+	if typ == 3006 {
+		return g.startLostSoulCharge(i)
 	}
 	if typ == 67 {
 		const (
@@ -2282,6 +2480,9 @@ func (g *game) spawnPainLostSoul(sourceIdx int, angle uint32) bool {
 	g.thingState[idx] = monsterStateSee
 	g.thingStatePhase[idx] = 0
 	g.thingStateTics[idx] = monsterSeeStateTics(3006, g.fastMonstersActive())
+	if idx < len(g.thingSkullFly) {
+		g.thingSkullFly[idx] = false
+	}
 	return true
 }
 
@@ -2542,7 +2743,7 @@ func isMeleeOnlyMonster(typ int16) bool {
 
 func monsterHasMeleeAttack(typ int16) bool {
 	switch typ {
-	case 3001, 3002, 3003, 3006, 58, 66, 69:
+	case 3001, 3002, 3003, 58, 66, 69:
 		return true
 	default:
 		return false
@@ -2553,8 +2754,6 @@ func monsterMeleeDamage(typ int16) int {
 	switch typ {
 	case 3002, 58: // demon/spectre
 		return 4 * (1 + doomPRandomN(10))
-	case 3006: // lost soul
-		return 3 * (1 + doomPRandomN(8))
 	case 3001: // imp
 		return 3 * (1 + doomPRandomN(8))
 	case 3003, 69: // baron/hell knight
