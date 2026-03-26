@@ -169,16 +169,8 @@ var doomQuitMessages = []string{
 
 func cloneMapForRestart(src *mapdata.Map) *mapdata.Map { return gameplay.CloneMapForRestart(src) }
 
-func clampSourcePortDetailLevelForPlatform(level int, wasm bool) int {
-	return level
-}
-
 func clampDetailLevelForMode(level int, sourcePort bool) int {
-	level = gameplay.ClampDetailLevel(level, sourcePort, len(detailPresets), len(sourcePortDetailDivisors))
-	if sourcePort {
-		level = clampSourcePortDetailLevelForPlatform(level, isWASMBuild())
-	}
-	return level
+	return gameplay.ClampDetailLevel(level, sourcePort, len(detailPresets), len(sourcePortDetailDivisors))
 }
 
 func normalizeRevealForMode(mode revealMode, sourcePort bool) revealMode {

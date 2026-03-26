@@ -1810,11 +1810,7 @@ func (g *game) cycleSourcePortDetailLevel() {
 	if len(sourcePortDetailDivisors) == 0 {
 		return
 	}
-	minLevel := clampSourcePortDetailLevelForPlatform(0, isWASMBuild())
 	g.detailLevel = (g.detailLevel + 1) % len(sourcePortDetailDivisors)
-	if g.detailLevel < minLevel {
-		g.detailLevel = minLevel
-	}
 	div := g.sourcePortDetailDivisor()
 	if div <= 1 {
 		g.setHUDMessage("Detail: 1x", 70)
