@@ -3,7 +3,6 @@ package doomruntime
 import (
 	"fmt"
 	"math"
-	"os"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -186,7 +185,7 @@ func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool 
 			ft.destHeight = g.sectorCeil[sec]
 		}
 		g.floors[sec] = ft
-		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
 			var wantSec int
 			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
 				fmt.Printf("sector-activate-debug tic=%d world=%d kind=tagged-floor sec=%d action=%v tag=%d dir=%d speed=%d dest=%d\n",
@@ -255,7 +254,7 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	if old == z {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_FLOOR_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_FLOOR_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 			fmt.Printf("floor-move-debug tic=%d world=%d sec=%d old=%d new=%d\n", g.demoTick-1, g.worldTic, sec, old, z)
@@ -290,7 +289,7 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 		return
 	}
 	left, right, bottom, top, ok := g.sectorBlockBox(sec)
-	if want := os.Getenv("GD_DEBUG_HEIGHTCLIP_SECTOR"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_HEIGHTCLIP_SECTOR"); want != "" {
 		var wantTic, wantSec, wantIdx int
 		if _, err := fmt.Sscanf(want, "%d:%d:%d", &wantTic, &wantSec, &wantIdx); err == nil && sec == wantSec && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 			cell := -1
@@ -486,7 +485,7 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 			z = tmceil - height
 		}
 	}
-	if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(i) {
+	if want := runtimeDebugEnv("GD_DEBUG_SUPPORT_TIC"); want != "" && runtimeDebugEnv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(i) {
 		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
 			fmt.Printf("support-debug phase=heightclip tic=%d world=%d idx=%d type=%d x=%d y=%d oldz=%d oldfloor=%d tmfloor=%d tmceil=%d newz=%d sec=%d\n",
 				g.demoTick-1, g.worldTic, i, th.Type, x, y, oldZ, oldFloorZ, tmfloor, tmceil, z, g.sectorAt(x, y))
@@ -777,7 +776,7 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 			ft.destHeight = g.sectorCeil[sec]
 		}
 		g.floors[sec] = ft
-		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
 			var wantSec int
 			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
 				fmt.Printf("sector-activate-debug tic=%d world=%d kind=floor sec=%d line=%d action=%v tag=%d dir=%d speed=%d dest=%d\n",
@@ -892,7 +891,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			continue
 		}
 		g.plats[sec] = pt
-		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
 			var wantSec int
 			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
 				fmt.Printf("sector-activate-debug tic=%d world=%d kind=plat sec=%d line=%d action=%v tag=%d status=%d speed=%d low=%d high=%d typ=%d\n",
@@ -1268,7 +1267,7 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 			continue
 		}
 		g.ceilings[sec] = ct
-		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
 			var wantSec int
 			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
 				fmt.Printf("sector-activate-debug tic=%d world=%d kind=ceiling sec=%d line=%d action=%v tag=%d dir=%d speed=%d top=%d bottom=%d\n",
@@ -1406,7 +1405,7 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 	if g == nil || ft == nil {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_SECTOR_MOVER"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_SECTOR_MOVER"); want != "" {
 		var wantTic, wantSec int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantSec); err == nil && sec == wantSec && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 			fmt.Printf("sector-mover-debug tic=%d world=%d kind=floor sec=%d cur=%d dir=%d speed=%d dest=%d order=%d\n",
@@ -1450,7 +1449,7 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 	if g == nil || pt == nil {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_SECTOR_MOVER"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_SECTOR_MOVER"); want != "" {
 		var wantTic, wantSec int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantSec); err == nil && sec == wantSec && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 			fmt.Printf("sector-mover-debug tic=%d world=%d kind=plat sec=%d cur=%d low=%d high=%d status=%d speed=%d wait=%d count=%d typ=%d order=%d\n",

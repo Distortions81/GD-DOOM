@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image"
 	"math"
-	"os"
 	"strings"
 
 	"gddoom/internal/render/scene"
@@ -267,7 +266,7 @@ func (g *game) tickWeaponPSprite(flash bool) {
 		return
 	}
 	if !flash {
-		if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+		if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_WEAPON_TIC")); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 				if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
@@ -320,7 +319,7 @@ func (g *game) bringUpWeapon() {
 	if next == weaponChainsaw {
 		g.emitSoundEvent(soundEventSawUp)
 	}
-	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_WEAPON_TIC")); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
@@ -374,7 +373,7 @@ func (g *game) setWeaponPSpriteState(state weaponPspriteState, flash bool) {
 		} else {
 			g.weaponState = state
 			g.weaponStateTics = def.tics
-			if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+			if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_WEAPON_TIC")); want != "" {
 				var wantTic int
 				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 					if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {

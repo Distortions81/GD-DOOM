@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"os"
 	"slices"
 
 	"gddoom/internal/mapdata"
@@ -267,7 +266,7 @@ func (g *game) tickPlayerSpecialSector() {
 		return
 	}
 	g.trackSecrets()
-	if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -349,8 +348,8 @@ func (g *game) tickPlayerMobjState() {
 }
 
 func (g *game) setDoorCeiling(sec int, z int64) {
-	if wantSec := os.Getenv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
-		if wantTic := os.Getenv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
+	if wantSec := runtimeDebugEnv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
+		if wantTic := runtimeDebugEnv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
 			d := g.doors[sec]
 			fmt.Printf("door-debug phase=set tic=%d world=%d sec=%d old=%d new=%d dir=%d typ=%d speed=%d top=%d count=%d\n",
 				g.demoTick-1, g.worldTic, sec, g.sectorCeil[sec], z, d.direction, d.typ, d.speed, d.topHeight, d.topCountdown)
@@ -392,8 +391,8 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 	if d == nil {
 		return
 	}
-	if wantSec := os.Getenv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
-		if wantTic := os.Getenv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
+	if wantSec := runtimeDebugEnv("GD_DEBUG_DOOR_SEC"); wantSec != "" && wantSec == fmt.Sprint(sec) {
+		if wantTic := runtimeDebugEnv("GD_DEBUG_DOOR_TIC"); wantTic == "" || wantTic == fmt.Sprint(g.demoTick-1) || wantTic == fmt.Sprint(g.worldTic) {
 			fmt.Printf("door-debug phase=enter tic=%d world=%d sec=%d ceil=%d dir=%d typ=%d speed=%d top=%d count=%d floor=%d\n",
 				g.demoTick-1, g.worldTic, sec, g.sectorCeil[sec], d.direction, d.typ, d.speed, d.topHeight, d.topCountdown, g.sectorFloor[sec])
 		}
@@ -629,7 +628,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	probeEnabled := g.debugPlayerProbeActive()
 	monsterProbeEnabled := false
 	if moverIsMonster {
-		if want := os.Getenv("GD_DEBUG_MONSTER_PROBE"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_PROBE"); want != "" {
 			var wantTic, wantIdx int
 			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 				if wantIdx == moverThingIdx && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
@@ -708,7 +707,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if debugProbe {
 			debugProbef("touch line=%d flags=0x%04x front=%d back=%d bbox=[%d %d %d %d]", ld.idx, ld.flags, frontSec, backSec, ld.bbox[0], ld.bbox[1], ld.bbox[2], ld.bbox[3])
 		}
-		if want := os.Getenv("GD_DEBUG_MONSTER_PROBE_LINES"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_PROBE_LINES"); want != "" {
 			var wantTic, wantIdx int
 			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 				if moverThingIdx == wantIdx && (g.demoTick-1 == wantTic || g.worldTic == wantTic) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
@@ -738,7 +737,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		}
 
 		opentop, openbottom, lowfloor, openrange := g.lineOpening(ld)
-		if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
+		if want := runtimeDebugEnv("GD_DEBUG_SUPPORT_TIC"); want != "" && runtimeDebugEnv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
 			if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
 				fmt.Printf("support-debug phase=line tic=%d world=%d idx=%d line=%d sec=%d front=%d back=%d openbottom=%d opentop=%d openrange=%d lowfloor=%d tmfloor=%d tmceil=%d\n",
 					g.demoTick-1, g.worldTic, moverThingIdx, ld.idx, sec, frontSec, backSec, openbottom, opentop, openrange, lowfloor, tmfloor, tmceil)
@@ -789,7 +788,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 	if debugProbe {
 		debugProbef("ok floor=%d ceil=%d drop=%d", tmfloor, tmceil, tmdrop)
 	}
-	if want := os.Getenv("GD_DEBUG_SUPPORT_TIC"); want != "" && os.Getenv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
+	if want := runtimeDebugEnv("GD_DEBUG_SUPPORT_TIC"); want != "" && runtimeDebugEnv("GD_DEBUG_SUPPORT_IDX") == fmt.Sprint(moverThingIdx) {
 		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
 			fmt.Printf("support-debug phase=final tic=%d world=%d idx=%d x=%d y=%d sec=%d tmfloor=%d tmceil=%d tmdrop=%d ok=true radius=%d\n",
 				g.demoTick-1, g.worldTic, moverThingIdx, x, y, sec, tmfloor, tmceil, tmdrop, radius)
@@ -1140,11 +1139,11 @@ func (g *game) slideMove() {
 }
 
 func (g *game) debugPlayerMove(msg string, x, y int64) {
-	if g == nil || os.Getenv("GD_DEBUG_PLAYER_MOVE_TIC") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_PLAYER_MOVE_TIC") == "" {
 		return
 	}
 	var want int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PLAYER_MOVE_TIC"), "%d", &want); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_PLAYER_MOVE_TIC"), "%d", &want); err != nil {
 		return
 	}
 	if g.demoTick-1 != want {
@@ -1155,13 +1154,13 @@ func (g *game) debugPlayerMove(msg string, x, y int64) {
 }
 
 func (g *game) debugPlayerMoveEnabled() bool {
-	return g != nil && os.Getenv("GD_DEBUG_PLAYER_MOVE_TIC") != ""
+	return g != nil && runtimeDebugEnv("GD_DEBUG_PLAYER_MOVE_TIC") != ""
 }
 
 func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 	intercepts := make([]slideIntercept, 0, 16)
 	trace := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
-	debug := os.Getenv("GD_DEBUG_SLIDE_CANDIDATES_TIC")
+	debug := runtimeDebugEnv("GD_DEBUG_SLIDE_CANDIDATES_TIC")
 	debugOn := debug == fmt.Sprint(g.demoTick-1) || debug == fmt.Sprint(g.worldTic)
 	appendLine := func(physIdx int) {
 		if physIdx < 0 || physIdx >= len(g.lines) {

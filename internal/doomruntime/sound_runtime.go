@@ -5,7 +5,6 @@ import (
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
 	"math"
-	"os"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
@@ -300,7 +299,7 @@ func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample, enabled bool) P
 }
 
 func debugLogVanillaPitch(ev soundEvent, mode string) {
-	if os.Getenv("GD_DEBUG_RNG_SOUND") == "" {
+	if runtimeDebugEnv("GD_DEBUG_RNG_SOUND") == "" {
 		return
 	}
 	fmt.Printf("doomrand-sound side=gd event=%s mode=%s\n", soundEventDebugName(ev), mode)

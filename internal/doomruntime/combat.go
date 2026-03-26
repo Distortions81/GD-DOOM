@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -256,7 +255,7 @@ func (g *game) weaponActionReady(state weaponPspriteState) {
 		g.weaponRefire = false
 	}
 	_, bobY := g.weaponBobDoom()
-	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_WEAPON_TIC")); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
@@ -504,7 +503,7 @@ func (g *game) fireShotgun() bool {
 	slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
 	hit := false
 	for i := 0; i < 7; i++ {
-		if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
 			var wantTic, wantPellet int
 			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
 				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantPellet < 0 || wantPellet == i) {
@@ -604,7 +603,7 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope int64, accurate bo
 		angle = addDoomAngleSpread(baseAngle, doomGunSpreadShift)
 	}
 	actor := g.playerLineAttackActor()
-	if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
 		var wantTic, wantPellet int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -618,7 +617,7 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope int64, accurate bo
 		}
 	}
 	outcome := g.lineAttackTrace(actor, angle, rng, slope, true)
-	if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
 		var wantTic, wantPellet int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
 			_ = wantPellet
@@ -1335,9 +1334,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	if g.thingHP[thingIdx] <= 0 {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
 		matchIdx := true
-		if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+		if wantIdx := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
 			matchIdx = wantIdx == fmt.Sprint(thingIdx)
 		}
 		if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
@@ -1468,9 +1467,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			}
 		}
 		g.maybeRetargetMonsterAfterDamage(thingIdx, thingType, sourcePlayer, sourceThing)
-		if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
 			matchIdx := true
-			if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+			if wantIdx := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
 				matchIdx = wantIdx == fmt.Sprint(thingIdx)
 			}
 			if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
@@ -1516,7 +1515,7 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	}
 	momx := fixedMul(thrust, doomFineCosine(angle))
 	momy := fixedMul(thrust, doomFineSineAtAngle(angle))
-	if want := os.Getenv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && os.Getenv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
+	if want := runtimeDebugEnv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && runtimeDebugEnv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
 		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
 			fmt.Printf("barrel-thrust-debug tic=%d world=%d idx=%d src=(%d,%d) target=(%d,%d) angle=%d thrust=%d add=(%d,%d) prev=(%d,%d)\n",
 				g.demoTick-1, g.worldTic, thingIdx, ix, iy, tx, ty, angle, thrust, momx, momy,
@@ -1534,9 +1533,9 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 				}())
 		}
 	}
-	if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
 		matchIdx := true
-		if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+		if wantIdx := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
 			matchIdx = wantIdx == fmt.Sprint(thingIdx)
 		}
 		if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {

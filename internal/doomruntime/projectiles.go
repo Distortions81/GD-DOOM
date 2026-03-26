@@ -3,7 +3,6 @@ package doomruntime
 import (
 	"fmt"
 	"math"
-	"os"
 
 	"gddoom/internal/doomrand"
 )
@@ -291,7 +290,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	nz := oz + p.vz
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
 	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
-	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) && p.kind == projectileFireball {
 			fmt.Printf("projectile-debug tic=%d world=%d phase=advance from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitFrac=%f hitIdx=%d blocked=%t blockFrac=%f floor=%d ceil=%d\n",
@@ -635,7 +634,7 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
 		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
 	}
-	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -646,7 +645,7 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		}
 	}
 	first := randomizedStateTics(projectileImpactPhaseTics(kind, 0))
-	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -686,7 +685,7 @@ func (g *game) spawnProjectileImpactDeferredRandom(kind projectileKind, x, y, z 
 		copy(g.projectileImpacts, g.projectileImpacts[1:])
 		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
 	}
-	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -768,7 +767,7 @@ func (g *game) finalizeDeferredProjectileImpact(idx int) {
 	if base <= 0 {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -779,7 +778,7 @@ func (g *game) finalizeDeferredProjectileImpact(idx int) {
 		}
 	}
 	first := randomizedStateTics(base)
-	if want := os.Getenv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -982,11 +981,11 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
-		if g == nil || os.Getenv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+		if g == nil || runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
 			// no-op
 		} else {
 			var tic int
-			if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
+			if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 				fmt.Printf("projectile-line-debug tic=%d world=%d line=%d opentop=%d openbottom=%d openrange=%d oz=%d height=%d\n",
 					g.demoTick-1, g.worldTic, ld.idx, opentop, openbottom, openrange, oz, p.height)
 			}
@@ -1063,11 +1062,11 @@ func (g *game) lineLowFloor(ld physLine) (int64, bool) {
 }
 
 func (g *game) debugProjectileBlock(p projectile, ox, oy, oz, nx, ny, nz int64, reason string, frac float64, hx, hy, hz int64) {
-	if g == nil || os.Getenv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
 		return
 	}
 	var tic int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"), "%d", &tic); err != nil {
 		return
 	}
 	if g.demoTick-1 != tic && g.worldTic != tic {

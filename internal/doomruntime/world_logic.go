@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"os"
 )
 
 import "gddoom/internal/doomrand"
@@ -166,7 +165,7 @@ func (g *game) tickSectorLightEffects() {
 				continue
 			}
 			roll := doomrand.PRandom()
-			if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+			if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 				var wantTic int
 				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -191,7 +190,7 @@ func (g *game) tickSectorLightEffects() {
 			if g.m.Sectors[sec].Light == fx.maxLight {
 				g.m.Sectors[sec].Light = fx.minLight
 				roll := doomrand.PRandom()
-				if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+				if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 					var wantTic int
 					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -205,7 +204,7 @@ func (g *game) tickSectorLightEffects() {
 			} else {
 				g.m.Sectors[sec].Light = fx.maxLight
 				roll := doomrand.PRandom()
-				if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+				if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 					var wantTic int
 					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -416,7 +415,7 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 	if amount <= 0 || g.stats.Health <= 0 || g.isDead {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_PLAYER_DAMAGE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PLAYER_DAMAGE_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil {
 			if g.demoTick-1 == tic || g.worldTic == tic {

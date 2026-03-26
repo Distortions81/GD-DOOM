@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
-	"os"
 )
 
 const (
@@ -102,7 +101,7 @@ func (g *game) debugRadiusAttackEnabled(sx, sy int64) bool {
 	if g == nil {
 		return false
 	}
-	want := os.Getenv("GD_DEBUG_RADIUS_TIC")
+	want := runtimeDebugEnv("GD_DEBUG_RADIUS_TIC")
 	if want == "" {
 		return false
 	}
@@ -113,7 +112,7 @@ func (g *game) debugRadiusAttackEnabled(sx, sy int64) bool {
 	if g.demoTick-1 != tic && g.worldTic != tic {
 		return false
 	}
-	if pos := os.Getenv("GD_DEBUG_RADIUS_POS"); pos != "" {
+	if pos := runtimeDebugEnv("GD_DEBUG_RADIUS_POS"); pos != "" {
 		var wantX, wantY int64
 		if _, err := fmt.Sscanf(pos, "%d,%d", &wantX, &wantY); err != nil {
 			return false
@@ -208,7 +207,7 @@ func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer b
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && os.Getenv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
+	if want := runtimeDebugEnv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && runtimeDebugEnv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
 		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
 			rnd, prnd := doomrand.State()
 			fmt.Printf("barrel-damage-debug tic=%d world=%d idx=%d type=%d damage=%d hp_before=%d source_player=%t source_thing=%d rnd=%d prnd=%d\n",
@@ -251,7 +250,7 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 	g.thingDead[thingIdx] = true
 	g.thingState[thingIdx] = monsterStateDeath
 	g.thingStatePhase[thingIdx] = 0
-	if want := os.Getenv("GD_DEBUG_BARREL_KILL_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_BARREL_KILL_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 			rnd, prnd := doomrand.State()
@@ -261,7 +260,7 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 		}
 	}
 	g.thingStateTics[thingIdx] = barrelRandomizedDeathStartTics()
-	if want := os.Getenv("GD_DEBUG_BARREL_KILL_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_BARREL_KILL_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 			rnd, prnd := doomrand.State()

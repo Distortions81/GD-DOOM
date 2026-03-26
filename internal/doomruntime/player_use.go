@@ -12,7 +12,7 @@ import (
 )
 
 func debugLineTriggerEnabled(lineIdx int) bool {
-	want := strings.TrimSpace(os.Getenv("GD_DEBUG_LINE_TRIGGER"))
+	want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_LINE_TRIGGER"))
 	if want == "" {
 		return false
 	}
@@ -32,7 +32,7 @@ func (g *game) debugDoorActivate(format string, args ...any) {
 	if g == nil {
 		return
 	}
-	want := strings.TrimSpace(os.Getenv("GD_DEBUG_DOOR_ACTIVATE_TIC"))
+	want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_DOOR_ACTIVATE_TIC"))
 	if want == "" {
 		return
 	}
@@ -322,7 +322,7 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-check line=%d prev=(%d,%d) cur=(%d,%d) player=%t special=%d\n",
 				g.demoTick-1, g.worldTic, ld.idx, prevX, prevY, curX, curY, isPlayer, special)
 		}
-		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d special=%d prev=(%d,%d) cur=(%d,%d)\n",
 					g.demoTick-1, g.worldTic, ld.idx, special, prevX, prevY, curX, curY)
@@ -340,7 +340,7 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
 		endSide := g.pointOnLineSide(curX, curY, ld)
-		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d start=%d end=%d prevSS=%d curSS=%d\n",
 					g.demoTick-1, g.worldTic, ld.idx, startSide, endSide, prevSS, curSS)
@@ -353,7 +353,7 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-cross line=%d start=%d end=%d player=%t special=%d\n",
 				g.demoTick-1, g.worldTic, ld.idx, startSide, endSide, isPlayer, special)
 		}
-		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d candidate repeat=%t\n",
 					g.demoTick-1, g.worldTic, ld.idx, info.Repeat)

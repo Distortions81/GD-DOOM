@@ -126,7 +126,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 						soundPhase = monsterXDeathSoundActionPhase(th.Type)
 					}
 					if nextPhase == soundPhase {
-						if want := os.Getenv("GD_DEBUG_DEATH_SOUND_TIC"); want != "" {
+						if want := runtimeDebugEnv("GD_DEBUG_DEATH_SOUND_TIC"); want != "" {
 							var wantTic int
 							if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 								px, py := g.thingPosFixed(i, th)
@@ -310,7 +310,7 @@ func (g *game) debugThingState(i int, th mapdata.Thing, tag string) {
 }
 
 func debugThingStateIdx() int {
-	v := os.Getenv("GD_DEBUG_THING_IDX")
+	v := runtimeDebugEnv("GD_DEBUG_THING_IDX")
 	if v == "" {
 		return -1
 	}
@@ -322,7 +322,7 @@ func debugThingStateIdx() int {
 }
 
 func debugThingStateTic() int {
-	v := os.Getenv("GD_DEBUG_THING_TIC")
+	v := runtimeDebugEnv("GD_DEBUG_THING_TIC")
 	if v == "" {
 		return -1
 	}
@@ -334,11 +334,11 @@ func debugThingStateTic() int {
 }
 
 func (g *game) debugMonsterTick(i int, stage string) {
-	if g == nil || os.Getenv("GD_DEBUG_MONSTER_TICK") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_TICK") == "" {
 		return
 	}
 	var wantTic, wantIdx int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_TICK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_TICK"), "%d:%d", &wantTic, &wantIdx); err != nil {
 		return
 	}
 	if wantIdx >= 0 && i != wantIdx {
@@ -679,7 +679,7 @@ func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
 	if ev < 0 {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -702,7 +702,7 @@ func (g *game) emitMonsterActiveSound(i int, typ int16, x, y int64) {
 		return
 	}
 	roll := doomrand.PRandom()
-	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -1742,7 +1742,7 @@ func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py i
 		d = 160
 	}
 	r := doomrand.PRandom()
-	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -1796,7 +1796,7 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 	}
 
 	swapRoll := doomrand.PRandom()
-	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -1841,7 +1841,7 @@ func (g *game) monsterPickNewChaseDir(i int, typ int16, targetX, targetY int64) 
 	}
 
 	scanRoll := doomrand.PRandom()
-	if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -1899,7 +1899,7 @@ func (g *game) monsterTryWalk(i int, typ int16, dir monsterMoveDir) bool {
 	}
 	if i >= 0 && i < len(g.thingMoveCount) {
 		g.thingMoveCount[i] = doomrand.PRandom() & 15
-		if want := os.Getenv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_RNG_TIC"); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -1921,11 +1921,11 @@ func (g *game) monsterTryWalk(i int, typ int16, dir monsterMoveDir) bool {
 }
 
 func (g *game) debugMonsterChase(i int, msg string) {
-	if g == nil || os.Getenv("GD_DEBUG_MONSTER_CHASE") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_CHASE") == "" {
 		return
 	}
 	var wantTic, wantIdx int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_CHASE"), "%d:%d", &wantTic, &wantIdx); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_CHASE"), "%d:%d", &wantTic, &wantIdx); err != nil {
 		return
 	}
 	if wantIdx >= 0 && i != wantIdx {
@@ -1943,15 +1943,15 @@ func (g *game) debugMonsterChase(i int, msg string) {
 }
 
 func (g *game) debugMonsterChaseEnabled() bool {
-	return g != nil && os.Getenv("GD_DEBUG_MONSTER_CHASE") != ""
+	return g != nil && runtimeDebugEnv("GD_DEBUG_MONSTER_CHASE") != ""
 }
 
 func (g *game) debugMonsterMove(i int, msg string) {
-	if g == nil || os.Getenv("GD_DEBUG_MONSTER_MOVE") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_MOVE") == "" {
 		return
 	}
 	var wantTic, wantIdx int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_MOVE"), "%d:%d", &wantTic, &wantIdx); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_MOVE"), "%d:%d", &wantTic, &wantIdx); err != nil {
 		return
 	}
 	if wantIdx >= 0 && i != wantIdx {
@@ -1969,7 +1969,7 @@ func (g *game) debugMonsterMove(i int, msg string) {
 }
 
 func (g *game) debugMonsterMoveEnabled() bool {
-	return g != nil && os.Getenv("GD_DEBUG_MONSTER_MOVE") != ""
+	return g != nil && runtimeDebugEnv("GD_DEBUG_MONSTER_MOVE") != ""
 }
 
 func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
@@ -2016,11 +2016,11 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 			g.debugMonsterMove(i, fmt.Sprintf("move blocked dir=%d", dir))
 		}
 		lines := probeLines
-		if g == nil || os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES") == "" {
+		if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_MOVE_LINES") == "" {
 			// no-op
 		} else {
 			var wantTic, wantIdx int
-			if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_MOVE_LINES"), "%d:%d", &wantTic, &wantIdx); err == nil {
+			if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_MOVE_LINES"), "%d:%d", &wantTic, &wantIdx); err == nil {
 				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || wantIdx == i) {
 					fmt.Printf("monster-move-lines-debug tic=%d world=%d idx=%d dir=%d lines=%v from=(%d,%d) to=(%d,%d)\n",
 						g.demoTick-1, g.worldTic, i, dir, lines, x, y, nx, ny)
@@ -2419,7 +2419,7 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 	for pellet := 0; pellet < pellets; pellet++ {
 		angle := addDoomAngleSpread(baseAngle, doomMonsterSpreadShift)
 		damage := 3 * (1 + doomrand.PRandom()%5)
-		if want := os.Getenv("GD_DEBUG_LINE_ATTACK"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_LINE_ATTACK"); want != "" {
 			var wantTic, wantIdx, wantPellet int
 			if _, err := fmt.Sscanf(want, "%d:%d:%d", &wantTic, &wantIdx, &wantPellet); err == nil {
 				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || i == wantIdx) && (wantPellet < 0 || pellet == wantPellet) {
@@ -2428,7 +2428,7 @@ func (g *game) monsterHitscanAttack(i int, typ int16, sx, sy int64, pellets int)
 			}
 		}
 		outcome := g.lineAttackTrace(actor, angle, monsterAttackRange, slope, true)
-		if want := os.Getenv("GD_DEBUG_HITSCAN_ATTACK"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_HITSCAN_ATTACK"); want != "" {
 			var wantTic, wantIdx int
 			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantIdx < 0 || i == wantIdx) {
@@ -2777,7 +2777,7 @@ func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
 	if g == nil || g.m == nil || ss < 0 || ss >= len(g.m.SubSectors) {
 		return false
 	}
-	if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"); want != "" {
 		var wantTic, wantIdx int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -2813,7 +2813,7 @@ func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
 		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
 		s1 = doomSightDivlineSide(sight.trace.x, sight.trace.y, lineDL)
 		s2 = doomSightDivlineSide(sight.t2x, sight.t2y, lineDL)
-		if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"); want != "" {
 			var wantTic, wantIdx int
 			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (lineIdx == 185 || ss == 39) {
@@ -2872,11 +2872,11 @@ func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
 }
 
 func (g *game) debugMonsterLOSBlock(reason string, lineIdx int, sight *losTrace) {
-	if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK") == "" {
 		return
 	}
 	var wantTic, wantIdx int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err != nil {
 		return
 	}
 	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
@@ -2919,11 +2919,11 @@ func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 		fromSector = g.thingSectorCached(i, g.m.Things[i])
 	}
 	if g.sightRejected(fromSector, g.playerSector()) {
-		if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+		if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK") == "" {
 			return false
 		}
 		var wantTic, wantIdx int
-		if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
+		if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
 			if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
 				fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=los-reject from=%d to=%d actor=(%d,%d)\n",
 					g.demoTick-1, g.worldTic, i, fromSector, g.playerSector(), x, y)
@@ -2948,11 +2948,11 @@ func (g *game) monsterHasLOSPlayerAt(i int, typ int16, x, y int64) bool {
 		}
 	}
 	ok := g.actorHasLOS(x, y, z, monsterHeight(typ), g.p.x, g.p.y, g.p.z, playerHeight)
-	if g == nil || os.Getenv("GD_DEBUG_MONSTER_LOOK") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK") == "" {
 		return ok
 	}
 	var wantTic, wantIdx int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err == nil {
 		if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
 			fmt.Printf("monster-look-debug tic=%d world=%d idx=%d site=los ok=%t actor=(%d,%d,%d) player=(%d,%d,%d)\n",
 				g.demoTick-1, g.worldTic, i, ok, x, y, z, g.p.x, g.p.y, g.p.z)
@@ -3017,7 +3017,7 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 				return false
 			}
 			if !g.monsterHasLOSPlayerAt(i, g.m.Things[i].Type, tx, ty) {
-				if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+				if want := runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"); want != "" {
 					var wantTic, wantIdx int
 					if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 						if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
@@ -3053,7 +3053,7 @@ func (g *game) monsterLookForPlayer(i int, allAround bool, tx, ty int64) bool {
 			if i >= 0 && i < len(g.thingLastLook) {
 				g.thingLastLook[i] = look
 			}
-			if want := os.Getenv("GD_DEBUG_MONSTER_LOOK"); want != "" {
+			if want := runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"); want != "" {
 				var wantTic, wantIdx int
 				if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
 					if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && wantIdx == i {
@@ -3216,11 +3216,11 @@ func (g *game) faceMonsterToward(i int, fromX, fromY, toX, toY int64) {
 }
 
 func (g *game) debugMonsterAngle(i int, src string, angle uint32) {
-	if g == nil || os.Getenv("GD_DEBUG_MONSTER_ANGLE") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_ANGLE") == "" {
 		return
 	}
 	var wantTic, wantIdx int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_ANGLE"), "%d:%d", &wantTic, &wantIdx); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_ANGLE"), "%d:%d", &wantTic, &wantIdx); err != nil {
 		return
 	}
 	if wantIdx >= 0 && i != wantIdx {
@@ -3238,11 +3238,11 @@ func (g *game) debugMonsterAngle(i int, src string, angle uint32) {
 }
 
 func (g *game) debugMonsterAttack(i int, src string, nextAttackTics int) {
-	if g == nil || os.Getenv("GD_DEBUG_MONSTER_ATTACK") == "" {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_MONSTER_ATTACK") == "" {
 		return
 	}
 	var wantTic, wantIdx int
-	if _, err := fmt.Sscanf(os.Getenv("GD_DEBUG_MONSTER_ATTACK"), "%d:%d", &wantTic, &wantIdx); err != nil {
+	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_ATTACK"), "%d:%d", &wantTic, &wantIdx); err != nil {
 		return
 	}
 	if wantIdx >= 0 && i != wantIdx {

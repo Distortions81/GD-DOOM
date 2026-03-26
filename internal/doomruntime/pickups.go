@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"gddoom/internal/mapdata"
@@ -371,7 +370,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.gainAmmoNoMsg("cells", 20)
 		return "Picked up a backpack", soundEventItemUp, true
 	case 2001, 2002, 2003, 2004, 2005, 2006, 82:
-		if want := strings.TrimSpace(os.Getenv("GD_DEBUG_PICKUP_TIC")); want != "" {
+		if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_PICKUP_TIC")); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 				fmt.Printf("pickup-debug tic=%d world=%d typ=%d dropped=%v owned_before=%v ready=%d pending=%d auto=%v bullets=%d shells=%d\n",

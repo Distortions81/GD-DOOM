@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"os"
 	"runtime"
 	"slices"
 	"strconv"
@@ -1109,6 +1108,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	// Doom clears both random streams in G_InitNew before setting up a fresh
 	// level, including demo playback. Without this, hidden bootstrap/frontend
 	// builds leak prior RNG state into attract demos and other new sessions.
+	loadRuntimeDebugEnvFromOS()
+	doomrand.LoadDebugEnvFromOS()
 	doomrand.Clear()
 	if opts.DemoScript != nil {
 		opts = runtimecfg.PrepareDemoPlaybackOptions(opts, opts.DemoScript)
@@ -1302,7 +1303,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if g.invulnerable {
 		g.setHUDMessage("IDDQD ON", 70)
 	}
-	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_PLAYER_PROBE_TIC")); want != "" {
+	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_PLAYER_PROBE_TIC")); want != "" {
 		if tic, err := strconv.Atoi(want); err == nil {
 			g.debugPlayerProbeEnabled = true
 			g.debugPlayerProbeTic = tic
@@ -1405,6 +1406,17 @@ func resizeSliceLen[T any](buf []T, n int) []T {
 	return buf
 }
 
+func resizeNestedSliceCap[T any](buf [][]T, n, innerCap int) [][]T {
+	buf = resizeSliceLen(buf, n)
+	if innerCap <= 0 {
+		return buf
+	}
+	for i := range buf {
+		buf[i] = reserveSliceCap(buf[i], innerCap)
+	}
+	return buf
+}
+
 func (g *game) reserveRenderScratch() {
 	if g == nil || g.m == nil {
 		return
@@ -1425,14 +1437,19 @@ func (g *game) reserveRenderScratch() {
 	billboardCap := max(monsterCount+otherThingCount+32, 64)
 	rowSpanCap := max(g.viewW/2, 64)
 	rowOccluderCap := max(min(billboardCap/8, 16), 4)
+	planeSpanCap := max(min(g.viewW/8, 128), 32)
+	sectorCap := max(len(g.m.Sectors), 64)
 
 	g.spriteTXScratch = reserveSliceCap(g.spriteTXScratch, max(g.viewW, 64))
 	g.spriteTYScratch = reserveSliceCap(g.spriteTYScratch, max(g.viewH, 64))
-	g.planeFBPackedScratch = reserveSliceCap(g.planeFBPackedScratch, max(len(g.m.Sectors), 64))
-	g.planeFlatTex32Scratch = reserveSliceCap(g.planeFlatTex32Scratch, max(len(g.m.Sectors), 64))
-	g.planeFlatTexIndexedScratch = reserveSliceCap(g.planeFlatTexIndexedScratch, max(len(g.m.Sectors), 64))
-	g.planeFlatReadyScratch = reserveSliceCap(g.planeFlatReadyScratch, max(len(g.m.Sectors), 64))
-	g.plane3DSpanScratch = reserveSliceCap(g.plane3DSpanScratch, max(len(g.m.Sectors), 64))
+	g.planeFBPackedScratch = reserveSliceCap(g.planeFBPackedScratch, sectorCap)
+	g.planeFlatTex32Scratch = reserveSliceCap(g.planeFlatTex32Scratch, sectorCap)
+	g.planeFlatTexIndexedScratch = reserveSliceCap(g.planeFlatTexIndexedScratch, sectorCap)
+	g.planeFlatReadyScratch = reserveSliceCap(g.planeFlatReadyScratch, sectorCap)
+	g.plane3DSpanScratch = resizeNestedSliceCap(g.plane3DSpanScratch, sectorCap, planeSpanCap)
+	g.plane3DSpanStartScratch = resizeNestedSliceCap(g.plane3DSpanStartScratch, sectorCap, max(g.viewH, 1))
+	g.plane3DSpanScratch = g.plane3DSpanScratch[:0]
+	g.plane3DSpanStartScratch = g.plane3DSpanStartScratch[:0]
 	g.puffItemsScratch = reserveSliceCap(g.puffItemsScratch, 64)
 	g.billboardQueueScratch = reserveSliceCap(g.billboardQueueScratch, billboardCap)
 	g.maskedMidSegsScratch = reserveSliceCap(g.maskedMidSegsScratch, wallSegCap/2)
@@ -3281,7 +3298,7 @@ func (g *game) profileLabel() string {
 }
 
 func (g *game) emitSoundEvent(ev soundEvent) {
-	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -3301,7 +3318,7 @@ func (g *game) emitSoundEvent(ev soundEvent) {
 }
 
 func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
-	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -3468,7 +3485,7 @@ func (g *game) flushSoundEvents() {
 		if idx >= 0 && idx < len(g.soundQueueOrigin) {
 			origin = g.soundQueueOrigin[idx]
 		}
-		if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -8955,7 +8972,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 4 - (doomrand.PRandom() & 3)
-	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_HITSCAN_FX"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -9001,7 +9018,7 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 8 - (doomrand.PRandom() & 3)
-	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_HITSCAN_FX"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -12017,9 +12034,7 @@ func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]int) {
 				g.plane3DSpanStartScratch[i] = make([]int, g.viewH)
 			} else {
 				g.plane3DSpanStartScratch[i] = g.plane3DSpanStartScratch[i][:g.viewH]
-				for j := range g.plane3DSpanStartScratch[i] {
-					g.plane3DSpanStartScratch[i][j] = 0
-				}
+				clear(g.plane3DSpanStartScratch[i])
 			}
 		}
 	}

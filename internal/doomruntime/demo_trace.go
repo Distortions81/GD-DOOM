@@ -562,7 +562,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 	for _, item := range ordered {
 		out = append(out, item.mobj)
 	}
-	if want := os.Getenv("GD_DEBUG_TRACE_MOBJ"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_TRACE_MOBJ"); want != "" {
 		var wantTic, wantOrdinal int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantOrdinal); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 			for idx, item := range ordered {
@@ -780,7 +780,7 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"topwait":      d.topWait,
 			"topcountdown": d.topCountdown,
 		}
-		if os.Getenv("GD_TRACE_DEBUG_DOOR_HEIGHT") != "" && sec >= 0 && sec < len(g.sectorCeil) {
+		if runtimeDebugEnv("GD_TRACE_DEBUG_DOOR_HEIGHT") != "" && sec >= 0 && sec < len(g.sectorCeil) {
 			entry["currentceil"] = g.sectorCeil[sec]
 		}
 		ordered = append(ordered, orderedSpecial{order: d.order, item: entry})
