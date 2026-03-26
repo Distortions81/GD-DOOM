@@ -1114,12 +1114,10 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		destFogX := tx + fixedMul(20*fracUnit, doomFineCosine(destAngle))
 		destFogY := ty + fixedMul(20*fracUnit, doomFineSineAtAngle(destAngle))
 		if isPlayer {
-			g.p.x = tx
-			g.p.y = ty
+			g.setPlayerPosFixed(tx, ty)
 			g.p.floorz = tmfloor
 			g.p.ceilz = tmceil
 			g.p.z = tmfloor
-			g.refreshPlayerSubsectorCache(tx, ty)
 			g.p.momz = 0
 			g.p.viewHeight = playerViewHeight
 			g.p.deltaViewHeight = 0

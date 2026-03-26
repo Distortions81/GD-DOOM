@@ -829,12 +829,16 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 		}
 		cell := mapy*g.bmapWidth + mapx
 		playerCell := -2
+		playerOrder := g.playerBlockOrder
+		if playerOrder <= 0 {
+			playerOrder = int64(g.localPlayerThingIndex + 1)
+		}
 		if !playerSeen && actor.targetMask&lineAttackMaskPlayer != 0 && !actor.isPlayer && !g.isDead {
 			playerCell = g.thingBlockmapCellFor(g.p.x, g.p.y)
 		}
 		playerInserted := false
 		for _, i := range g.thingBlockCells[cell] {
-			if !playerInserted && playerCell == cell && g.localPlayerThingIndex > i {
+			if !playerInserted && playerCell == cell && playerOrder > g.thingBlockOrder[i] {
 				appendPlayer()
 				playerInserted = true
 			}

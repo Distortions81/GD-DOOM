@@ -434,6 +434,7 @@ type game struct {
 	currentMoveCmd            moveCmd
 	localSlot                 int
 	localPlayerThingIndex     int
+	playerBlockOrder          int64
 	peerStarts                []playerStart
 
 	lines                  []physLine
@@ -1162,6 +1163,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		p:                     p,
 		localSlot:             localSlot,
 		localPlayerThingIndex: localPlayerThingIndex,
+		playerBlockOrder:      int64(localPlayerThingIndex + 1),
 		peerStarts:            nonLocalStarts(starts, localSlot),
 		cullLogBudget:         0,
 		floorDbgMode:          floorDebugTextured,
@@ -17955,6 +17957,16 @@ func (g *game) setThingPosFixed(i int, x, y int64) {
 	}
 	g.thingBlockOrder[i] = g.allocBlockmapOrder()
 	g.updateThingBlockmapIndex(i)
+}
+
+func (g *game) setPlayerPosFixed(x, y int64) {
+	if g == nil {
+		return
+	}
+	g.p.x = x
+	g.p.y = y
+	g.playerBlockOrder = g.allocBlockmapOrder()
+	g.refreshPlayerSubsectorCache(x, y)
 }
 
 func (g *game) thingBlockmapCellFor(x, y int64) int {

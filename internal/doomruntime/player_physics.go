@@ -557,9 +557,7 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 
 	g.p.floorz = tmfloor
 	g.p.ceilz = tmceil
-	g.p.x = x
-	g.p.y = y
-	g.refreshPlayerSubsectorCache(x, y)
+	g.setPlayerPosFixed(x, y)
 	return true
 }
 
@@ -990,20 +988,24 @@ func thingTypeBlocksActorMovement(typ int16, moverIsMonster bool) bool {
 }
 
 func monsterCorpseBlocksMovement(typ int16, phase int) bool {
-	fallPhase := -1
+	// Doom clears corpse solidity on the death-state action that runs A_Fall
+	// (or A_PainDie, which calls A_Fall for pain elementals).
+	clearSolidPhase := -1
 	switch typ {
-	case 3004, 9:
-		fallPhase = 2
-	case 3001, 3002, 58, 3006:
-		fallPhase = 3
-	case 3005, 3003, 69:
-		fallPhase = 4
-	case 7:
-		fallPhase = 2
+	case 3004, 9, 64, 65, 67, 84:
+		clearSolidPhase = 2
+	case 3001, 3002, 58, 66, 69, 3003, 3006:
+		clearSolidPhase = 3
+	case 3005, 71:
+		clearSolidPhase = 4
 	case 16:
-		fallPhase = 6
+		clearSolidPhase = 5
+	case 7:
+		clearSolidPhase = 1
+	case 68:
+		clearSolidPhase = 1
 	}
-	return fallPhase >= 0 && phase < fallPhase
+	return clearSolidPhase >= 0 && phase < clearSolidPhase
 }
 
 func thingTypeRadius(typ int16) int64 {

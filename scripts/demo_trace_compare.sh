@@ -15,6 +15,26 @@ GDDOOM_FLAGS=()
 USE_XVFB=auto
 STOP_AFTER_TICS=0
 
+trim_trace_on_player_death() {
+  local trace_path="$1"
+  local tmp_path
+
+  if [[ ! -f "${trace_path}" ]]; then
+    return
+  fi
+
+  tmp_path="$(mktemp "${trace_path}.trim.XXXXXX")"
+  awk '
+    {
+      print
+      if ($0 ~ /"kind":"tic"/ && $0 ~ /"player":\{"playerstate":1\b/) {
+        exit
+      }
+    }
+  ' "${trace_path}" >"${tmp_path}"
+  mv "${tmp_path}" "${trace_path}"
+}
+
 usage() {
   cat <<'EOF'
 Run the original DOOM source and GD-DOOM against the same demo, then compare traces.
@@ -175,6 +195,7 @@ env DOOMWADDIR="${REF_WAD_DIR}" \
   -tracedemo "${DEMO_LUMP}" \
   -tracefile "${REF_TRACE}" \
   >"${REF_LOG}" 2>&1
+trim_trace_on_player_death "${REF_TRACE}"
 
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"
 if [[ "${STOP_AFTER_TICS}" != "0" ]]; then
@@ -227,6 +248,7 @@ else
     "${GDDOOM_FLAGS[@]}" \
     >"${GD_LOG}" 2>&1
 fi
+trim_trace_on_player_death "${GD_TRACE}"
 
 echo "Comparing traces"
 set +e
