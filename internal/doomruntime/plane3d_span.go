@@ -7,11 +7,11 @@ import (
 )
 
 type plane3DKey struct {
-	height   int16
-	light    int16
-	flatID   uint16
-	sky      bool
-	floor    bool
+	height int16
+	light  int16
+	flatID uint16
+	sky    bool
+	floor  bool
 }
 
 type plane3DSpan struct {
@@ -19,6 +19,11 @@ type plane3DSpan struct {
 	x1  int
 	x2  int
 	key plane3DKey
+}
+
+type planeSpanWorkItem struct {
+	planeIdx int
+	span     plane3DSpan
 }
 
 type spanRange struct {

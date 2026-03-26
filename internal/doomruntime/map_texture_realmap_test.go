@@ -214,12 +214,12 @@ func findDOOM1WAD(t *testing.T) string {
 	candidates := []string{
 		"DOOMU.WAD",
 		"doomu.wad",
-		"DOOM2.WAD",
-		"doom2.wad",
 		"DOOM.WAD",
 		"doom.wad",
 		"DOOM1.WAD",
 		"doom1.wad",
+		"DOOM2.WAD",
+		"doom2.wad",
 	}
 	dir := wd
 	for i := 0; i < 8; i++ {

@@ -755,6 +755,7 @@ type game struct {
 	plane3DOrder                 []*plane3DVisplane
 	plane3DSpanScratch           [][]plane3DSpan
 	plane3DSpanStartScratch      [][]int
+	plane3DSpanWorkScratch       [][]planeSpanWorkItem
 	plane3DPool                  []*plane3DVisplane
 	plane3DPoolUsed              int
 	plane3DPoolViewW             int
@@ -2071,10 +2072,7 @@ func (g *game) updateDemoMode() error {
 			g.demoTrace = nil
 		}
 		g.reportDemoBench(script)
-		if g.opts.DemoQuitOnComplete {
-			return ebiten.Termination
-		}
-		return nil
+		return ebiten.Termination
 	}
 	if g.demoTick >= len(script.Tics) {
 		if g.demoTrace != nil {
@@ -2082,10 +2080,7 @@ func (g *game) updateDemoMode() error {
 			g.demoTrace = nil
 		}
 		g.reportDemoBench(script)
-		if g.opts.DemoQuitOnComplete {
-			return ebiten.Termination
-		}
-		return nil
+		return ebiten.Termination
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
@@ -4366,6 +4361,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 	}
 	col := g.maskedClipCols[x]
 	if len(col) == 0 {
+		if cap(col) == 0 {
+			col = make([]scene.MaskedClipSpan, 0, 4)
+		}
 		if x >= 0 && x < len(g.maskedClipLastDepthQ) {
 			g.maskedClipLastDepthQ[x] = sp.DepthQ
 		}
@@ -4376,6 +4374,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 		lastDepthQ := g.maskedClipLastDepthQ[x]
 		g.maskedClipLastDepthQ[x] = sp.DepthQ
 		if sp.DepthQ >= lastDepthQ {
+			if len(col) == cap(col) {
+				col = slices.Grow(col, 1)
+			}
 			g.maskedClipCols[x] = append(col, sp)
 			return
 		}
@@ -4389,6 +4390,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 			hi = mid
 		}
 		insertAt = lo
+	}
+	if len(col) == cap(col) {
+		col = slices.Grow(col, 1)
 	}
 	col = append(col, scene.MaskedClipSpan{})
 	copy(col[insertAt+1:], col[insertAt:])
@@ -7619,10 +7623,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		planeFlatTexIndexed[planeIdx] = indexed
 	}
 
-	type planeSpanWorkItem struct {
-		planeIdx int
-		span     plane3DSpan
-	}
 	renderPlaneSpan := func(planeIdx int, sp plane3DSpan, planeClipScratch []solidSpan) []solidSpan {
 		if sp.y < 0 || sp.y >= h {
 			return planeClipScratch
@@ -7712,7 +7712,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	}
 	stageStart = time.Now()
 	if workers, chunk, parallel := g.parallelWorkChunks(h); parallel && h >= 32 {
-		workByBand := make([][]planeSpanWorkItem, workers)
+		workByBand := g.ensurePlaneSpanWorkScratch(workers)
 		for planeIdx, spans := range spansByPlane {
 			for _, sp := range spans {
 				if sp.y < 0 || sp.y >= h {
@@ -8969,7 +8969,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		tics = 1
 	}
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
-	if !ok {
+	if !ok && g != nil && g.m != nil {
 		floorz = g.thingFloorZ(x, y)
 		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
 			ceilz = g.sectorCeil[sec]
@@ -9022,7 +9022,7 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		tics = 8
 	}
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
-	if !ok {
+	if !ok && g != nil && g.m != nil {
 		floorz = g.thingFloorZ(x, y)
 		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
 			ceilz = g.sectorCeil[sec]
@@ -11991,6 +11991,22 @@ func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]int) {
 	return g.plane3DSpanScratch, g.plane3DSpanStartScratch
 }
 
+func (g *game) ensurePlaneSpanWorkScratch(n int) [][]planeSpanWorkItem {
+	if n <= 0 {
+		g.plane3DSpanWorkScratch = g.plane3DSpanWorkScratch[:0]
+		return g.plane3DSpanWorkScratch
+	}
+	if cap(g.plane3DSpanWorkScratch) < n {
+		g.plane3DSpanWorkScratch = make([][]planeSpanWorkItem, n)
+	} else {
+		g.plane3DSpanWorkScratch = g.plane3DSpanWorkScratch[:n]
+	}
+	for i := range g.plane3DSpanWorkScratch {
+		g.plane3DSpanWorkScratch[i] = g.plane3DSpanWorkScratch[i][:0]
+	}
+	return g.plane3DSpanWorkScratch
+}
+
 func (g *game) acquirePlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane {
 	if g.plane3DPoolViewW != viewW {
 		g.plane3DPool = g.plane3DPool[:0]
@@ -14109,17 +14125,12 @@ func triangulateWorldPolygon(verts []worldPt) ([][3]int, bool) {
 			idx[i], idx[j] = idx[j], idx[i]
 		}
 	}
-	// Use constrained triangulation when available.
 	if cdtTris, ok := triangulateWorldPolygonCDT(indexedWorldPts(verts, idx)); ok && len(cdtTris) > 0 {
 		out := make([][3]int, 0, len(cdtTris))
 		for _, tri := range cdtTris {
 			out = append(out, [3]int{idx[tri[0]], idx[tri[1]], idx[tri[2]]})
 		}
 		return out, true
-	}
-	// In CDT-enabled builds, do not fall back to the legacy ear-clipping path.
-	if cdtTriangulationAvailable() {
-		return nil, false
 	}
 	out := make([][3]int, 0, len(idx)-2)
 	guard := 0
@@ -17957,7 +17968,7 @@ func (g *game) updateThingBlockmapIndex(i int) {
 }
 
 func (g *game) subsectorFloorCeilAt(x, y int64) (int64, int64, bool) {
-	if g == nil {
+	if g == nil || g.m == nil {
 		return 0, 0, false
 	}
 	sec := -1

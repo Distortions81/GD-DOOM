@@ -254,6 +254,48 @@ func TestStartGameFromFrontendClearsAttractDemoScript(t *testing.T) {
 	}
 }
 
+func TestAttractDemoCompletionAdvancesSequence(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	boot := cloneMapForRestart(base.m)
+	sg := &sessionGame{
+		bootMap: boot,
+		opts: Options{
+			SourcePortMode: base.opts.SourcePortMode,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{{
+				Path:   "DEMO1",
+				Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+				Tics:   []DemoTic{{Forward: 25}},
+			}},
+		},
+		g: base,
+	}
+
+	sg.startFrontend()
+	if !sg.advanceFrontendAttract() {
+		t.Fatal("advanceFrontendAttract() = false, want true")
+	}
+	if sg.g == nil || sg.g.opts.DemoScript == nil {
+		t.Fatal("expected attract demo to start")
+	}
+
+	if err := sg.Update(); err != nil {
+		t.Fatalf("update 1: %v", err)
+	}
+	if err := sg.Update(); err != nil {
+		t.Fatalf("update 2: %v", err)
+	}
+
+	if sg.g != nil && sg.g.opts.DemoScript != nil {
+		t.Fatal("expected attract demo to end and clear active demo playback")
+	}
+	if got := sg.frontend.AttractPage; got != "CREDIT" {
+		t.Fatalf("attractPage=%q want CREDIT", got)
+	}
+}
+
 func TestStartFrontendOpensMenuWhenConfiguredWithoutAttractDemos(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	boot := cloneMapForRestart(base.m)
