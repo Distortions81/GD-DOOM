@@ -176,34 +176,35 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		resumedFromAttack = i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack
 	}
 	resumedFromPain := false
-	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
-		g.thingPainTics[i]--
-		if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStatePain && g.thingStateTics[i] > 0 {
-			g.thingStateTics[i]--
-			if g.thingStateTics[i] == 0 && g.thingPainTics[i] > 0 {
-				frameTics := monsterPainFrameTics(th.Type)
-				nextPhase := 0
-				if i >= 0 && i < len(g.thingStatePhase) {
-					nextPhase = g.thingStatePhase[i] + 1
-				}
-				if nextPhase >= 0 && nextPhase < len(frameTics) {
-					if i >= 0 && i < len(g.thingStatePhase) {
-						g.thingStatePhase[i] = nextPhase
-					}
-					g.thingStateTics[i] = frameTics[nextPhase]
-					if nextPhase == monsterPainActionPhase(th.Type) {
-						px, py := g.thingPosFixed(i, th)
-						g.emitSoundEventAt(monsterPainSoundEvent(th.Type), px, py)
-					}
-				}
-			}
-		}
+	if i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStatePain {
 		if i >= 0 && i < len(g.thingAttackFireTics) {
 			g.thingAttackFireTics[i] = -1
 		}
-		if g.thingPainTics[i] > 0 {
+		if i >= 0 && i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
+			g.thingStateTics[i]--
+			g.syncMonsterPainTics(i, th.Type)
+			if g.thingStateTics[i] > 0 {
+				return
+			}
+		}
+		frameTics := monsterPainFrameTics(th.Type)
+		nextPhase := 0
+		if i >= 0 && i < len(g.thingStatePhase) {
+			nextPhase = g.thingStatePhase[i] + 1
+		}
+		if nextPhase >= 0 && nextPhase < len(frameTics) {
+			if i >= 0 && i < len(g.thingStatePhase) {
+				g.thingStatePhase[i] = nextPhase
+			}
+			g.thingStateTics[i] = frameTics[nextPhase]
+			g.syncMonsterPainTics(i, th.Type)
+			if nextPhase == monsterPainActionPhase(th.Type) {
+				px, py := g.thingPosFixed(i, th)
+				g.emitSoundEventAt(monsterPainSoundEvent(th.Type), px, py)
+			}
 			return
 		}
+		g.clearMonsterPainState(i)
 		g.resetMonsterIdleOrChaseState(i, th.Type)
 		resumedFromPain = true
 	}
@@ -241,8 +242,6 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		if !continueChase {
 			return
 		}
-		// Doom reaches this path via A_Chase -> spawnstate -> A_Look -> seestate,
-		// which immediately executes the newly-entered A_Chase once more.
 		g.monsterTurnTowardMoveDir(i)
 		targetX, targetY, dist = 0, 0, 0
 		if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
@@ -411,7 +410,7 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 			}
 			g.monsterTurnTowardMoveDir(i)
 			if reacquired, _ := g.monsterRunLostTargetChaseState(i, typ, tx, ty); reacquired {
-				return true
+				return false
 			}
 			return false
 		}
@@ -474,7 +473,7 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 		return true, false
 	}
 	if g.monsterRunLookState(i, typ, tx, ty) {
-		return true, true
+		return true, false
 	}
 	if i >= 0 && i < len(g.thingStatePhase) {
 		g.thingStatePhase[i] = 0
@@ -672,10 +671,60 @@ func (g *game) monsterSeeStateTicsForPhase(i int, typ int16) int {
 }
 
 func (g *game) resetMonsterIdleOrChaseState(i int, typ int16) {
+	g.clearMonsterPainState(i)
 	if i >= 0 && i < len(g.thingStatePhase) {
 		g.thingStatePhase[i] = 0
 	}
 	g.setMonsterThinkState(i, typ, g.monsterIdleOrChaseState(i), g.monsterIdleOrChaseTics(i, typ))
+}
+
+func monsterPainRemainingTics(typ int16, phase, stateTics int) int {
+	frameTics := monsterPainFrameTics(typ)
+	if len(frameTics) == 0 {
+		if stateTics > 0 {
+			return stateTics
+		}
+		return 0
+	}
+	if phase < 0 {
+		phase = 0
+	}
+	if phase >= len(frameTics) {
+		return 0
+	}
+	remaining := max(stateTics, 0)
+	for _, t := range frameTics[phase+1:] {
+		if t > 0 {
+			remaining += t
+		}
+	}
+	return remaining
+}
+
+func (g *game) syncMonsterPainTics(i int, typ int16) {
+	if g == nil || i < 0 || i >= len(g.thingPainTics) {
+		return
+	}
+	if i >= len(g.thingState) || g.thingState[i] != monsterStatePain {
+		g.thingPainTics[i] = 0
+		return
+	}
+	phase := 0
+	if i < len(g.thingStatePhase) {
+		phase = g.thingStatePhase[i]
+	}
+	stateTics := 0
+	if i < len(g.thingStateTics) {
+		stateTics = g.thingStateTics[i]
+	}
+	g.thingPainTics[i] = monsterPainRemainingTics(typ, phase, stateTics)
+}
+
+func (g *game) clearMonsterPainState(i int) {
+	if g == nil || i < 0 || i >= len(g.thingPainTics) {
+		return
+	}
+	g.thingPainTics[i] = 0
 }
 
 func (g *game) emitMonsterSeeSound(i int, typ int16, x, y int64) {
@@ -1291,7 +1340,7 @@ func monsterPainChance(typ int16) int {
 	switch typ {
 	case 3004: // zombieman
 		return 200
-	case 9: // shotgun guy
+	case 9, 65: // shotgun guy / chaingunner
 		return 170
 	case 3001: // imp
 		return 200

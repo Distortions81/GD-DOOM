@@ -2610,8 +2610,8 @@ func TestTickMonstersPainStatePausesThinker(t *testing.T) {
 	}
 	x0 := g.m.Things[0].X
 	g.tickMonsters()
-	if g.thingPainTics[0] != 2 {
-		t.Fatalf("pain tics=%d want=2", g.thingPainTics[0])
+	if g.thingPainTics[0] != 5 {
+		t.Fatalf("pain tics=%d want=5", g.thingPainTics[0])
 	}
 	if g.m.Things[0].X != x0 {
 		t.Fatalf("monster moved during pain state: x=%d start=%d", g.m.Things[0].X, x0)
@@ -2653,7 +2653,7 @@ func TestTickMonstersPainStateAdvancesToActionFrameAndEmitsPainSound(t *testing.
 	}
 }
 
-func TestTickMonstersPainExpiryResumesChaseStateSameTic(t *testing.T) {
+func TestTickMonstersPainFinalFrameResumesChaseStateSameTic(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -2665,7 +2665,7 @@ func TestTickMonstersPainExpiryResumesChaseStateSameTic(t *testing.T) {
 		thingAggro:          []bool{true},
 		thingTargetPlayer:   []bool{true},
 		thingTargetIdx:      []int{-1},
-		thingPainTics:       []int{1},
+		thingPainTics:       []int{3},
 		thingAttackTics:     []int{0},
 		thingAttackFireTics: []int{-1},
 		thingReactionTics:   []int{0},
@@ -2678,7 +2678,7 @@ func TestTickMonstersPainExpiryResumesChaseStateSameTic(t *testing.T) {
 		thingSupportValid:   []bool{true},
 		thingState:          []monsterThinkState{monsterStatePain},
 		thingStateTics:      []int{1},
-		thingStatePhase:     []int{0},
+		thingStatePhase:     []int{1},
 		p:                   player{x: -128 * fracUnit, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
 	}
 

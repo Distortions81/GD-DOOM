@@ -1474,6 +1474,7 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 					if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
 						g.thingStatePhase[thingIdx] = 0
 					}
+					g.syncMonsterPainTics(thingIdx, thingType)
 					if monsterPainActionPhase(thingType) == 0 {
 						tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
 						g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
@@ -1576,7 +1577,11 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	if thingIdx < len(g.thingMomY) {
 		momy += g.thingMomY[thingIdx]
 	}
-	g.setThingMomentum(thingIdx, momx, momy, 0)
+	momz := int64(0)
+	if thingIdx < len(g.thingMomZ) {
+		momz = g.thingMomZ[thingIdx]
+	}
+	g.setThingMomentum(thingIdx, momx, momy, momz)
 }
 
 func (g *game) damageInflictorPos(sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) (x, y, z int64, ok bool) {
