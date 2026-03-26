@@ -5,10 +5,28 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gddoom/internal/mapdata"
 )
+
+func debugLineTriggerEnabled(lineIdx int) bool {
+	want := strings.TrimSpace(os.Getenv("GD_DEBUG_LINE_TRIGGER"))
+	if want == "" {
+		return false
+	}
+	for _, part := range strings.Split(want, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(part); err == nil && n == lineIdx {
+			return true
+		}
+	}
+	return false
+}
 
 func (g *game) debugDoorActivate(format string, args ...any) {
 	if g == nil {
@@ -140,6 +158,10 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 }
 
 func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool {
+	if debugLineTriggerEnabled(lineIdx) {
+		fmt.Printf("line-trigger-debug tic=%d world=%d phase=use-enter line=%d side=%d player=%t special=%d\n",
+			g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, g.lineSpecial[lineIdx])
+	}
 	if g.isDead {
 		if isPlayer {
 			g.useText = "You are dead"
@@ -217,6 +239,10 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 	}
 	if activated {
+		if debugLineTriggerEnabled(lineIdx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=use-activate line=%d side=%d player=%t special=%d repeat=%t\n",
+				g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, special, info.Repeat)
+		}
 		if isPlayer {
 			if info.Door != nil {
 				g.useText = "USE: door active"
@@ -292,6 +318,10 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		if special == 0 {
 			continue
 		}
+		if debugLineTriggerEnabled(ld.idx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-check line=%d prev=(%d,%d) cur=(%d,%d) player=%t special=%d\n",
+				g.demoTick-1, g.worldTic, ld.idx, prevX, prevY, curX, curY, isPlayer, special)
+		}
 		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d special=%d prev=(%d,%d) cur=(%d,%d)\n",
@@ -318,6 +348,10 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		}
 		if startSide == endSide {
 			continue
+		}
+		if debugLineTriggerEnabled(ld.idx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-cross line=%d start=%d end=%d player=%t special=%d\n",
+				g.demoTick-1, g.worldTic, ld.idx, startSide, endSide, isPlayer, special)
 		}
 		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
@@ -347,6 +381,10 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			continue
 		}
 		if g.activateNonDoorLineSpecial(ld.idx, 0, info, actorIdx, isPlayer) {
+			if debugLineTriggerEnabled(ld.idx) {
+				fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-activate line=%d player=%t special=%d repeat=%t\n",
+					g.demoTick-1, g.worldTic, ld.idx, isPlayer, special, info.Repeat)
+			}
 			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 				g.lineSpecial[ld.idx] = 0
 			}

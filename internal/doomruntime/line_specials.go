@@ -186,6 +186,13 @@ func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool 
 			ft.destHeight = g.sectorCeil[sec]
 		}
 		g.floors[sec] = ft
+		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+			var wantSec int
+			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
+				fmt.Printf("sector-activate-debug tic=%d world=%d kind=tagged-floor sec=%d action=%v tag=%d dir=%d speed=%d dest=%d\n",
+					g.demoTick-1, g.worldTic, sec, action, tag, ft.direction, ft.speed, ft.destHeight)
+			}
+		}
 		activated = true
 	}
 	return activated
@@ -248,6 +255,12 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	if old == z {
 		return
 	}
+	if want := os.Getenv("GD_DEBUG_FLOOR_TIC"); want != "" {
+		var tic int
+		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
+			fmt.Printf("floor-move-debug tic=%d world=%d sec=%d old=%d new=%d\n", g.demoTick-1, g.worldTic, sec, old, z)
+		}
+	}
 	g.sectorFloor[sec] = z
 	g.markDynamicSectorPlaneCacheDirty(sec)
 	if sec < len(g.m.Sectors) {
@@ -277,6 +290,17 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 		return
 	}
 	left, right, bottom, top, ok := g.sectorBlockBox(sec)
+	if want := os.Getenv("GD_DEBUG_HEIGHTCLIP_SECTOR"); want != "" {
+		var wantTic, wantSec, wantIdx int
+		if _, err := fmt.Sscanf(want, "%d:%d:%d", &wantTic, &wantSec, &wantIdx); err == nil && sec == wantSec && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+			cell := -1
+			if wantIdx >= 0 && wantIdx < len(g.thingBlockCell) {
+				cell = g.thingBlockCell[wantIdx]
+			}
+			fmt.Printf("heightclip-sector-debug tic=%d world=%d sec=%d box=[l=%d r=%d b=%d t=%d] ok=%v idx=%d cell=%d pos=(%d,%d)\n",
+				g.demoTick-1, g.worldTic, sec, left, right, bottom, top, ok, wantIdx, cell, g.thingX[wantIdx], g.thingY[wantIdx])
+		}
+	}
 	if !ok {
 		return
 	}
@@ -675,7 +699,7 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 		if g.sectorHasActiveMover(sec) {
 			continue
 		}
-		ft := &floorThinker{sector: sec}
+		ft := &floorThinker{order: g.allocThinkerOrder(), sector: sec}
 		switch info.Action {
 		case mapdata.FloorRaise:
 			ft.typ = 3
@@ -753,6 +777,13 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 			ft.destHeight = g.sectorCeil[sec]
 		}
 		g.floors[sec] = ft
+		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+			var wantSec int
+			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
+				fmt.Printf("sector-activate-debug tic=%d world=%d kind=floor sec=%d line=%d action=%v tag=%d dir=%d speed=%d dest=%d\n",
+					g.demoTick-1, g.worldTic, sec, lineIdx, info.Action, g.m.Linedefs[lineIdx].Tag, ft.direction, ft.speed, ft.destHeight)
+			}
+		}
 		activated = true
 	}
 	return activated
@@ -861,6 +892,13 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			continue
 		}
 		g.plats[sec] = pt
+		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+			var wantSec int
+			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
+				fmt.Printf("sector-activate-debug tic=%d world=%d kind=plat sec=%d line=%d action=%v tag=%d status=%d speed=%d low=%d high=%d typ=%d\n",
+					g.demoTick-1, g.worldTic, sec, lineIdx, info.Action, g.m.Linedefs[lineIdx].Tag, pt.status, pt.speed, pt.low, pt.high, pt.typ)
+			}
+		}
 		if g.platTickedThisTic {
 			g.tickPlat(sec, pt)
 		}
@@ -1230,6 +1268,13 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 			continue
 		}
 		g.ceilings[sec] = ct
+		if want := os.Getenv("GD_DEBUG_SECTOR_ACTIVATE"); want != "" {
+			var wantSec int
+			if _, err := fmt.Sscanf(want, "%d", &wantSec); err == nil && sec == wantSec {
+				fmt.Printf("sector-activate-debug tic=%d world=%d kind=ceiling sec=%d line=%d action=%v tag=%d dir=%d speed=%d top=%d bottom=%d\n",
+					g.demoTick-1, g.worldTic, sec, lineIdx, info.Action, g.m.Linedefs[lineIdx].Tag, ct.direction, ct.speed, ct.topHeight, ct.bottomHeight)
+			}
+		}
 		activated = true
 	}
 	return activated
@@ -1361,6 +1406,13 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 	if g == nil || ft == nil {
 		return
 	}
+	if want := os.Getenv("GD_DEBUG_SECTOR_MOVER"); want != "" {
+		var wantTic, wantSec int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantSec); err == nil && sec == wantSec && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+			fmt.Printf("sector-mover-debug tic=%d world=%d kind=floor sec=%d cur=%d dir=%d speed=%d dest=%d order=%d\n",
+				g.demoTick-1, g.worldTic, sec, g.sectorFloor[sec], ft.direction, ft.speed, ft.destHeight, ft.order)
+		}
+	}
 	cur := g.sectorFloor[sec]
 	next := cur + int64(ft.direction)*ft.speed
 	done := false
@@ -1397,6 +1449,13 @@ func (g *game) tickPlats() {
 func (g *game) tickPlat(sec int, pt *platThinker) {
 	if g == nil || pt == nil {
 		return
+	}
+	if want := os.Getenv("GD_DEBUG_SECTOR_MOVER"); want != "" {
+		var wantTic, wantSec int
+		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantSec); err == nil && sec == wantSec && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
+			fmt.Printf("sector-mover-debug tic=%d world=%d kind=plat sec=%d cur=%d low=%d high=%d status=%d speed=%d wait=%d count=%d typ=%d order=%d\n",
+				g.demoTick-1, g.worldTic, sec, g.sectorFloor[sec], pt.low, pt.high, pt.status, pt.speed, pt.wait, pt.count, pt.typ, pt.order)
+		}
 	}
 	switch pt.status {
 	case platStatusUp:

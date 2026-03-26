@@ -590,6 +590,46 @@ func TestProjectileHitsThingOnDestinationBoxOverlapLikeDoomTryMove(t *testing.T)
 	}
 }
 
+func TestPlayerRocketHitsBarrelOnDestinationSquareOverlap(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 2035, X: -96, Y: 1200},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+	}
+	g.initPhysics()
+	g.setThingSupportState(0, 0, 0, 128*fracUnit)
+
+	p := projectile{
+		x:            -75 * fracUnit,
+		y:            1170 * fracUnit,
+		z:            32 * fracUnit,
+		vx:           -64800,
+		vy:           1309100,
+		vz:           0,
+		radius:       11 * fracUnit,
+		height:       8 * fracUnit,
+		sourceThing:  -1,
+		sourcePlayer: true,
+		kind:         projectileRocket,
+	}
+
+	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	if !ok {
+		t.Fatal("expected player rocket to hit barrel on destination square overlap")
+	}
+	if hit.idx != 0 || hit.isPlayer {
+		t.Fatalf("hit=%+v want barrel 0", hit)
+	}
+	if hit.frac != 1 {
+		t.Fatalf("hit frac=%f want 1 for destination overlap", hit.frac)
+	}
+}
+
 
 func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 	doomrand.Clear()

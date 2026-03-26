@@ -1096,6 +1096,18 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 		dy := ay - by
 		return dx*dx+dy*dy < blockdist*blockdist
 	}
+	overlapsSquare := func(ax, ay, aradius, bx, by, bradius int64) bool {
+		blockdist := aradius + bradius
+		dx := ax - bx
+		if dx < 0 {
+			dx = -dx
+		}
+		dy := ay - by
+		if dy < 0 {
+			dy = -dy
+		}
+		return dx < blockdist && dy < blockdist
+	}
 	trace := divline{x: ox, y: oy, dx: nx - ox, dy: ny - oy}
 	bestFrac := int64(fracUnit + 1)
 	best := projectileThingHit{}
@@ -1141,7 +1153,11 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 			var ok bool
 			frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
 			if !ok || frac <= 0 || frac > fracUnit {
-				if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+				overlapsAtDest := overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
+				if p.sourcePlayer && p.kind == projectileRocket {
+					overlapsAtDest = overlapsAtDest || overlapsSquare(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
+				}
+				if !overlapsAtDest {
 					continue
 				}
 				frac = fracUnit
