@@ -1333,6 +1333,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 	tx, ty := g.thingPosFixed(i, th)
 	z, _, _ := g.thingSupportState(i, th)
 	xmove, ymove := momx, momy
+	skullActive := i < len(g.thingSkullFly) && g.thingSkullFly[i]
 	for xmove != 0 || ymove != 0 {
 		stepX, stepY := xmove, ymove
 		if stepX > maxMove/2 || stepY > maxMove/2 {
@@ -1349,40 +1350,58 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=step from=(%d,%d,%d) to=(%d,%d,%d) step=(%d,%d) rem=(%d,%d)\n",
 				g.demoTick-1, g.worldTic, i, tx, ty, z, nx, ny, z+momz, stepX, stepY, xmove, ymove)
 		}
-		if target, ok := g.lostSoulChargeTargetAt(i, th, nx, ny, z+momz); ok {
-			if debugSkull {
-				targetType := int16(0)
-				targetX, targetY := int64(0), int64(0)
-				if target.kind == lineAttackTargetThing && g.m != nil && target.idx >= 0 && target.idx < len(g.m.Things) {
-					targetType = g.m.Things[target.idx].Type
-					targetX, targetY = g.thingPosFixed(target.idx, g.m.Things[target.idx])
+		var tmfloor, tmceil int64
+		moveOK := false
+		if skullActive {
+			probe := g.probeSkullFlyMove(i, th.Type, nx, ny)
+			if probe.hitTarget {
+				target := probe.target
+				if debugSkull {
+					targetType := int16(0)
+					targetX, targetY := int64(0), int64(0)
+					if target.kind == lineAttackTargetThing && g.m != nil && target.idx >= 0 && target.idx < len(g.m.Things) {
+						targetType = g.m.Things[target.idx].Type
+						targetX, targetY = g.thingPosFixed(target.idx, g.m.Things[target.idx])
+					}
+					fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=hit-target kind=%d target=%d target_type=%d target_pos=(%d,%d) at=(%d,%d,%d)\n",
+						g.demoTick-1, g.worldTic, i, target.kind, target.idx, targetType, targetX, targetY, nx, ny, z+momz)
 				}
-				fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=hit-target kind=%d target=%d target_type=%d target_pos=(%d,%d) at=(%d,%d,%d)\n",
-					g.demoTick-1, g.worldTic, i, target.kind, target.idx, targetType, targetX, targetY, nx, ny, z+momz)
-			}
-			damage := 3 * (1 + doomPRandomN(8))
-			switch target.kind {
-			case lineAttackTargetPlayer:
-				g.damagePlayerFrom(damage, "Monster hit you", tx, ty, true, i)
-			case lineAttackTargetThing:
-				if target.idx >= 0 && target.idx < len(g.m.Things) && thingTypeIsShootable(g.m.Things[target.idx].Type) {
-					g.damageShootableThingFrom(target.idx, damage, false, i, tx, ty, true)
+				damage := 3 * (1 + doomPRandomN(8))
+				switch target.kind {
+				case lineAttackTargetPlayer:
+					g.damagePlayerFrom(damage, "Monster hit you", tx, ty, true, i)
+				case lineAttackTargetThing:
+					if target.idx >= 0 && target.idx < len(g.m.Things) && thingTypeIsShootable(g.m.Things[target.idx].Type) {
+						g.damageShootableThingFrom(target.idx, damage, false, i, tx, ty, true)
+					}
 				}
+				g.resetLostSoulCharge(i, th.Type)
+				skullActive = false
+				momx = 0
+				momy = 0
+				momz = 0
+				continue
 			}
-			g.resetLostSoulCharge(i, th.Type)
-			return
+			tmfloor, tmceil, moveOK = probe.tmfloor, probe.tmceil, probe.ok
+		} else {
+			probe := g.probeMonsterMove(i, th.Type, nx, ny)
+			tmfloor, tmceil, moveOK = probe.tmfloor, probe.tmceil, probe.ok
 		}
-		tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny)
-		if !ok {
+		if !moveOK {
 			if debugSkull {
-				fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=blocked at=(%d,%d,%d)\n",
-					g.demoTick-1, g.worldTic, i, nx, ny, z+momz)
-			}
-			g.resetLostSoulCharge(i, th.Type)
-			return
+				fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=blocked-zero-xy at=(%d,%d,%d) mom_before=(%d,%d,%d)\n",
+					g.demoTick-1, g.worldTic, i, nx, ny, z+momz, g.thingMomX[i], g.thingMomY[i], g.thingMomZ[i])
+				}
+			g.thingMomX[i] = 0
+			g.thingMomY[i] = 0
+			momx = 0
+			momy = 0
+			continue
 		}
+		prevX, prevY := tx, ty
 		g.setThingPosFixed(i, nx, ny)
 		g.setThingSupportState(i, z, tmfloor, tmceil)
+		g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
 		if debugSkull {
 			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=move-ok pos=(%d,%d,%d) floor=%d ceil=%d\n",
 				g.demoTick-1, g.worldTic, i, nx, ny, z, tmfloor, tmceil)
@@ -3630,6 +3649,14 @@ type monsterMoveProbeResult struct {
 	ok         bool
 }
 
+type skullFlyProbeResult struct {
+	tmfloor   int64
+	tmceil    int64
+	target    lineAttackTarget
+	hitTarget bool
+	ok        bool
+}
+
 func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeResult {
 	if g.m == nil || len(g.m.Sectors) == 0 || i < 0 || i >= len(g.m.Things) {
 		return monsterMoveProbeResult{}
@@ -3662,6 +3689,166 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeRe
 func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, []int, bool) {
 	probe := g.probeMonsterMove(i, typ, x, y)
 	return probe.tmfloor, probe.tmceil, probe.probeLines, probe.ok
+}
+
+func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResult {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) || len(g.m.Sectors) == 0 {
+		return skullFlyProbeResult{}
+	}
+	const maxThingBlockRadius = 32 * fracUnit
+	radius := thingTypeRadius(typ)
+	tmboxTop := y + radius
+	tmboxBottom := y - radius
+	tmboxRight := x + radius
+	tmboxLeft := x - radius
+	sec := g.sectorAt(x, y)
+	if sec < 0 || sec >= len(g.m.Sectors) {
+		return skullFlyProbeResult{}
+	}
+	tmfloor := g.sectorFloor[sec]
+	tmceil := g.sectorCeil[sec]
+	tmdrop := tmfloor
+
+	if g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius {
+		return skullFlyProbeResult{target: lineAttackTarget{kind: lineAttackTargetPlayer}, hitTarget: true}
+	}
+
+	visitThing := func(other int) (lineAttackTarget, bool) {
+		if other == i || other < 0 || other >= len(g.m.Things) {
+			return lineAttackTarget{}, false
+		}
+		oth := g.m.Things[other]
+		if other < len(g.thingCollected) && g.thingCollected[other] {
+			return lineAttackTarget{}, false
+		}
+		if !thingTypeIsShootable(oth.Type) && !isPickupType(oth.Type) && !thingTypeBlocksActorMovement(oth.Type, true) {
+			return lineAttackTarget{}, false
+		}
+		ox, oy := g.thingPosFixed(other, oth)
+		oradius := g.thingCurrentRadius(other, oth)
+		if abs(ox-x) >= radius+oradius || abs(oy-y) >= radius+oradius {
+			return lineAttackTarget{}, false
+		}
+		return lineAttackTarget{kind: lineAttackTargetThing, idx: other}, true
+	}
+	if g.bmapWidth > 0 && g.bmapHeight > 0 {
+		left := int((tmboxLeft - g.bmapOriginX - maxThingBlockRadius) >> (fracBits + 7))
+		right := int((tmboxRight - g.bmapOriginX + maxThingBlockRadius) >> (fracBits + 7))
+		bottom := int((tmboxBottom - g.bmapOriginY - maxThingBlockRadius) >> (fracBits + 7))
+		top := int((tmboxTop - g.bmapOriginY + maxThingBlockRadius) >> (fracBits + 7))
+		if left < 0 {
+			left = 0
+		}
+		if bottom < 0 {
+			bottom = 0
+		}
+		if right >= g.bmapWidth {
+			right = g.bmapWidth - 1
+		}
+		if top >= g.bmapHeight {
+			top = g.bmapHeight - 1
+		}
+		for by := bottom; by <= top; by++ {
+			for bx := left; bx <= right; bx++ {
+				var hit lineAttackTarget
+				if !g.blockThingsIterator(bx, by, func(other int) bool {
+					var ok bool
+					hit, ok = visitThing(other)
+					return !ok
+				}) {
+					return skullFlyProbeResult{target: hit, hitTarget: true}
+				}
+			}
+		}
+	} else {
+		for other := range g.m.Things {
+			if hit, ok := visitThing(other); ok {
+				return skullFlyProbeResult{target: hit, hitTarget: true}
+			}
+		}
+	}
+
+	g.validCount++
+	xl := int((tmboxLeft - g.bmapOriginX) >> (fracBits + 7))
+	xh := int((tmboxRight - g.bmapOriginX) >> (fracBits + 7))
+	yl := int((tmboxBottom - g.bmapOriginY) >> (fracBits + 7))
+	yh := int((tmboxTop - g.bmapOriginY) >> (fracBits + 7))
+	processPhysLine := func(physIdx int) bool {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return true
+		}
+		if physIdx >= len(g.lineValid) {
+			g.lineValid = append(g.lineValid, make([]int, physIdx-len(g.lineValid)+1)...)
+		}
+		if g.lineValid[physIdx] == g.validCount {
+			return true
+		}
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		if tmboxRight <= ld.bbox[3] || tmboxLeft >= ld.bbox[2] || tmboxTop <= ld.bbox[1] || tmboxBottom >= ld.bbox[0] {
+			return true
+		}
+		box := [4]int64{tmboxTop, tmboxBottom, tmboxRight, tmboxLeft}
+		if g.boxOnLineSide(box, ld) != -1 {
+			return true
+		}
+		if ld.sideNum1 < 0 {
+			return false
+		}
+		if (ld.flags & mlBlocking) != 0 {
+			return false
+		}
+		if (ld.flags & mlBlockMonsters) != 0 {
+			return false
+		}
+		opentop, openbottom, lowfloor, _ := g.lineOpening(ld)
+		if opentop < tmceil {
+			tmceil = opentop
+		}
+		if openbottom > tmfloor {
+			tmfloor = openbottom
+		}
+		if lowfloor < tmdrop {
+			tmdrop = lowfloor
+		}
+		return true
+	}
+	iter := func(lineIdx int) bool {
+		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+			return true
+		}
+		return processPhysLine(g.physForLine[lineIdx])
+	}
+	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		for bx := xl; bx <= xh; bx++ {
+			for by := yl; by <= yh; by++ {
+				if !g.blockLinesIterator(bx, by, iter) {
+					return skullFlyProbeResult{}
+				}
+			}
+		}
+	} else {
+		for lineIdx := range g.lines {
+			if !processPhysLine(lineIdx) {
+				return skullFlyProbeResult{}
+			}
+		}
+	}
+	height := g.thingCurrentHeight(i, g.m.Things[i])
+	z, _, _ := g.thingSupportState(i, g.m.Things[i])
+	if tmceil-tmfloor < height {
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+	}
+	if tmceil-z < height {
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+	}
+	if tmfloor-z > stepHeight {
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+	}
+	if !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+	}
+	return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil, ok: true}
 }
 
 func (g *game) touchedSpecialLinesForMonsterMove(i int, x, y int64) []int {
