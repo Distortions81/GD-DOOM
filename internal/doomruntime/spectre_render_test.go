@@ -50,6 +50,8 @@ func TestWriteFuzzPixel_SourcePortUsesShadeLUTFallback(t *testing.T) {
 	doomColormapEnabled = false
 	doomColormapRows = 32
 	doomRowShadeMulLUT = make([]uint16, doomColormapRows)
+	doomRowShadeMulLUT[4] = 192
+	doomRowShadeMulLUT[5] = 160
 	doomRowShadeMulLUT[6] = 128
 
 	g := &game{
@@ -66,6 +68,35 @@ func TestWriteFuzzPixel_SourcePortUsesShadeLUTFallback(t *testing.T) {
 	g.writeFuzzPixel(1, 1, 5)
 	if got := g.wallPix32[5]; got == 0 || got == packRGBA(41, 51, 61) {
 		t.Fatalf("fuzz pixel=%08x want darkened transformed sample", got)
+	}
+}
+
+func TestShadePackedSpectreFuzz_SourcePortBiasesBrighterThanRowSix(t *testing.T) {
+	prevLighting := doomLightingEnabled
+	prevColormap := doomColormapEnabled
+	prevRows := doomColormapRows
+	prevLUT := doomRowShadeMulLUT
+	defer func() {
+		doomLightingEnabled = prevLighting
+		doomColormapEnabled = prevColormap
+		doomColormapRows = prevRows
+		doomRowShadeMulLUT = prevLUT
+	}()
+
+	doomLightingEnabled = true
+	doomColormapEnabled = false
+	doomColormapRows = 32
+	doomRowShadeMulLUT = make([]uint16, doomColormapRows)
+	doomRowShadeMulLUT[4] = 192
+	doomRowShadeMulLUT[5] = 160
+	doomRowShadeMulLUT[6] = 128
+
+	g := &game{opts: Options{SourcePortMode: true}}
+	src := packRGBA(160, 80, 40)
+	got := g.shadePackedSpectreFuzz(src)
+	want := shadePackedRGBA(src, 192)
+	if got != want {
+		t.Fatalf("spectre fuzz=%08x want=%08x", got, want)
 	}
 }
 

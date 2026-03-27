@@ -93,6 +93,9 @@ func (sg *sessionGame) drawSourcePortPresented(dst, src *ebiten.Image, sw, sh in
 	if dst == nil || src == nil {
 		return
 	}
+	if dst == src {
+		return
+	}
 	vw := max(src.Bounds().Dx(), 1)
 	vh := max(src.Bounds().Dy(), 1)
 	op := &ebiten.DrawImageOptions{}
