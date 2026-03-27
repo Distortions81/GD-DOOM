@@ -322,7 +322,7 @@ func TestRunParseLoadsGPUSkyFromConfig(t *testing.T) {
 	}
 }
 
-func TestRunParseSourcePortDefaultsEnableGPUSky(t *testing.T) {
+func TestRunParseSourcePortDefaultsDisableGPUSky(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer
 	wadPath := filepath.Join("..", "..", "DOOM1.WAD")

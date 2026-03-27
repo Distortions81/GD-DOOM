@@ -1,6 +1,10 @@
 package doomruntime
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/mapdata"
+)
 
 func TestClipRangeAgainstBillboardPlaneOccludersDepthAware(t *testing.T) {
 	occluders := []billboardPlaneOccluderSpan{
@@ -115,6 +119,50 @@ func TestAppendBillboardPlaneOccluderRowMaintainsOrder(t *testing.T) {
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("row[%d]=%+v want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFillUndrawnAreasWithSkySkipsBillboardOccluderEdges(t *testing.T) {
+	g := &game{
+		viewW:              6,
+		viewH:              1,
+		skyOutputW:         6,
+		skyOutputH:         1,
+		frameSkyFillActive: true,
+		frameSkyTex32:      []uint32{packRGBA(17, 34, 51)},
+		frameSkyTexW:       1,
+		frameSkyColU:       []int{0, 0, 0, 0, 0, 0},
+		frameSkyRowV:       []int{0},
+		wallPix32:          []uint32{1, 1, 1, 1, 1, 1},
+		frameCoverageBits:  make([]uint64, 1),
+		billboardPlaneOccluderRows: [][]billboardPlaneOccluderSpan{{
+			{L: 2, R: 3, DepthQ: 100},
+		}},
+		wallTexPtrs: map[string]*WallTexture{
+			"SKY1": {
+				Width:  1,
+				Height: 1,
+				RGBA:   []byte{17, 34, 51, 255},
+				RGBA32: []uint32{packRGBA(17, 34, 51)},
+			},
+		},
+		m: &mapdata.Map{Name: "E1M1"},
+	}
+	wallTop := []int{1, 1, 1, 1, 1, 1}
+	wallBottom := []int{-1, -1, -1, -1, -1, -1}
+
+	_ = g.fillUndrawnAreasWithSky(wallTop, wallBottom, 0, doomFocalLength(g.viewW))
+
+	sky := packRGBA(17, 34, 51)
+	for _, x := range []int{0, 1, 4, 5} {
+		if got := g.wallPix32[x]; got != sky {
+			t.Fatalf("x=%d sky fill=%#08x want %#08x", x, got, sky)
+		}
+	}
+	for _, x := range []int{2, 3} {
+		if got := g.wallPix32[x]; got != 1 {
+			t.Fatalf("x=%d occluder pixel overwritten=%#08x want %#08x", x, got, uint32(1))
 		}
 	}
 }

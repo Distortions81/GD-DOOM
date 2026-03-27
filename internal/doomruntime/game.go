@@ -694,6 +694,13 @@ type game struct {
 	wallLayer                    *ebiten.Image
 	wallPix                      []byte
 	wallPix32                    []uint32
+	frameSkyFillActive           bool
+	frameCoverageBits            []uint64
+	frameSkyLayerEnabled         bool
+	frameSkyTex32                []uint32
+	frameSkyTexW                 int
+	frameSkyColU                 []int
+	frameSkyRowV                 []int
 	cutoutCoverageBits           []uint64
 	wallW                        int
 	wallH                        int
@@ -2818,7 +2825,6 @@ func (g *game) Draw(screen *ebiten.Image) {
 	g.perfInDraw = true
 	defer func() { g.perfInDraw = false }()
 	defer g.finishPerfCounter(drawStart)
-	screen.Fill(bgColor)
 	if g.mode != viewMap {
 		debugPos := fmt.Sprintf(
 			"pos=(%.2f, %.2f) ang=%.1f",
@@ -3756,6 +3762,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
+	g.prepareFrameSkyState(camAng, focal)
+	g.clearFrameCoverage()
 
 	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
 	planesEnabled := len(g.opts.FlatBank) > 0
@@ -4133,6 +4141,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
 	g.addRenderStageDur(renderStageBillboards, time.Since(stageStart))
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
+	if g.fillUndrawnAreasWithSky(wallTop, wallBottom, camAng, focal) {
+		usedSkyLayer = true
+	}
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
 	}
@@ -4450,6 +4461,101 @@ func (g *game) clearCutoutCoverage() {
 		return
 	}
 	clear(g.cutoutCoverageBits)
+}
+
+func (g *game) clearFrameCoverage() {
+	if g == nil || !g.frameSkyFillActive || len(g.frameCoverageBits) == 0 {
+		return
+	}
+	clear(g.frameCoverageBits)
+}
+
+func (g *game) prepareFrameSkyState(camAng, focal float64) {
+	if g == nil {
+		return
+	}
+	g.frameSkyFillActive = false
+	g.frameSkyLayerEnabled = false
+	g.frameSkyTex32 = nil
+	g.frameSkyTexW = 0
+	g.frameSkyColU = nil
+	g.frameSkyRowV = nil
+	if g.viewW <= 0 || g.viewH <= 0 {
+		return
+	}
+	skyTexKey, skyTex, skyOK := g.runtimeSkyTextureEntryForMap(g.m.Name)
+	if !skyOK {
+		return
+	}
+	g.frameSkyFillActive = true
+	skyTexH := effectiveSkyTexHeight(skyTex)
+	skyColU, skyRowV := g.buildSkyLookupParallel(g.viewW, g.viewH, focal, camAng, skyTex.Width, skyTexH)
+	if len(skyColU) != g.viewW || len(skyRowV) != g.viewH {
+		return
+	}
+	skyTex32 := skyTex.RGBA32
+	if len(skyTex32) != skyTex.Width*skyTex.Height {
+		if len(skyTex.RGBA) != skyTex.Width*skyTex.Height*4 || len(skyTex.RGBA) < 4 {
+			return
+		}
+		skyTex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(skyTex.RGBA))), len(skyTex.RGBA)/4)
+	}
+	g.frameSkyTex32 = skyTex32
+	g.frameSkyTexW = skyTex.Width
+	g.frameSkyColU = skyColU
+	g.frameSkyRowV = skyRowV
+	g.frameSkyLayerEnabled = g.enableSkyLayerFrame(camAng, focal, skyTexKey, skyTex, skyTexH)
+}
+
+func (g *game) frameCoveredAtIndex(i int) bool {
+	if g == nil || !g.frameSkyFillActive || i < 0 {
+		return false
+	}
+	word := i >> 6
+	if word < 0 || word >= len(g.frameCoverageBits) {
+		return false
+	}
+	return (g.frameCoverageBits[word] & (uint64(1) << uint(i&63))) != 0
+}
+
+func (g *game) markFrameCoveredAtIndex(i int) {
+	if g == nil || !g.frameSkyFillActive || i < 0 {
+		return
+	}
+	word := i >> 6
+	if word < 0 || word >= len(g.frameCoverageBits) {
+		return
+	}
+	g.frameCoverageBits[word] |= uint64(1) << uint(i&63)
+}
+
+func (g *game) markFrameRowSpanCovered(row, x0, x1 int) {
+	if g == nil || !g.frameSkyFillActive || x0 > x1 || row < 0 || len(g.frameCoverageBits) == 0 {
+		return
+	}
+	i0 := row + x0
+	i1 := row + x1
+	word0 := i0 >> 6
+	word1 := i1 >> 6
+	if word0 == word1 {
+		width := x1 - x0 + 1
+		mask := ^uint64(0)
+		if width < 64 {
+			mask = (uint64(1) << uint(width)) - 1
+		}
+		g.frameCoverageBits[word0] |= mask << uint(i0&63)
+		return
+	}
+	g.frameCoverageBits[word0] |= ^uint64(0) << uint(i0&63)
+	for word := word0 + 1; word < word1; word++ {
+		g.frameCoverageBits[word] = ^uint64(0)
+	}
+	lastBits := (i1 & 63) + 1
+	lastMask := ^uint64(0)
+	if lastBits < 64 {
+		lastMask = (uint64(1) << uint(lastBits)) - 1
+	}
+	g.frameCoverageBits[word1] |= lastMask
 }
 
 func (g *game) cutoutCoveredAtIndex(i int) bool {
@@ -5286,6 +5392,7 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 				}
 			}
 			pix32[pixI] = dst
+			g.markFrameCoveredAtIndex(pixI)
 			g.markCutoutCoveredAtIndex(pixI)
 			pixI += rowStridePix
 			runTexVFixed += texVStepFixed
@@ -5416,6 +5523,7 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 					}
 					g.wallPix32[pixI] = dst
 				}
+				g.markFrameCoveredAtIndex(pixI)
 				g.markCutoutCoveredAtIndex(pixI)
 				pixI += rowStridePix
 				runTexVFixed += texVStepFixed
@@ -5475,6 +5583,7 @@ func drawMaskedColumnProjectedTexelSpans(g *game, x, baseY, drawY0, drawY1 int, 
 				g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
 			} else {
 				g.wallPix32[pixI] = dst
+				g.markFrameCoveredAtIndex(pixI)
 				g.markCutoutCoveredAtIndex(pixI)
 			}
 			pixI = nextPixI
@@ -6539,6 +6648,7 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 					} else {
 						i := row + x
 						g.writeWallPixel(i, dst)
+						g.markFrameCoveredAtIndex(i)
 						g.markCutoutCoveredAtIndex(i)
 					}
 				}
@@ -6566,6 +6676,7 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 				} else {
 					i := row + x
 					g.writeWallPixel(i, dst)
+					g.markFrameCoveredAtIndex(i)
 					g.markCutoutCoveredAtIndex(i)
 				}
 			}
@@ -6617,6 +6728,7 @@ func (g *game) drawBillboardRowOpaqueRuns(row, ty, tw, x0 int, txLUT []int, span
 					} else {
 						i0 := row + x
 						g.writeWallPixel(i0, dst)
+						g.markFrameCoveredAtIndex(i0)
 						g.markCutoutCoveredAtIndex(i0)
 					}
 					x = runEnd + 1
@@ -6642,6 +6754,7 @@ func (g *game) drawBillboardRowOpaqueRuns(row, ty, tw, x0 int, txLUT []int, span
 				} else {
 					i0 := row + x
 					g.writeWallPixel(i0, dst)
+					g.markFrameCoveredAtIndex(i0)
 					g.markCutoutCoveredAtIndex(i0)
 				}
 				x = runEnd + 1
@@ -6850,6 +6963,7 @@ func (g *game) fillCutoutRowSpan(row, x0, x1 int, value uint32) {
 		return
 	}
 	fillUint32Span(g.wallPix32[row+x0:row+x1+1], value)
+	g.markFrameRowSpanCovered(row, x0, x1)
 	g.markCutoutRowSpanCovered(row, x0, x1)
 }
 
@@ -6859,6 +6973,7 @@ func (g *game) fillCutoutColumnSpan(pixI, rowStridePix, count int, value uint32)
 	}
 	for i := 0; i < count; i++ {
 		g.wallPix32[pixI] = value
+		g.markFrameCoveredAtIndex(pixI)
 		g.markCutoutCoveredAtIndex(pixI)
 		pixI += rowStridePix
 	}
@@ -7574,46 +7689,16 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	g.addRenderStageDur(renderStagePlaneSpans, time.Since(stageStart))
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
-	planeFBPacked, planeFlatTex32, planeFlatTexIndexed, _ := g.ensurePlaneRenderScratch(len(planes))
-	skyTexKey := ""
-	var skyTex *WallTexture
-	skyTexOK := false
-	skyTex32 := []uint32(nil)
-	var skyColU []int
-	var skyRowV []int
-	if hasSky {
-		skyTexKey, skyTex, skyTexOK = g.runtimeSkyTextureEntryForMap(g.m.Name)
-		if skyTexOK {
-			camAng := math.Atan2(sa, ca)
-			skyTexH := effectiveSkyTexHeight(skyTex)
-			skyColU, skyRowV = g.buildSkyLookupParallel(w, h, focal, camAng, skyTex.Width, skyTexH)
-		}
-	}
-	skyTexReady := skyTexOK &&
-		len(skyColU) == w &&
-		len(skyRowV) == h
-	if skyTexReady {
-		skyTex32 = skyTex.RGBA32
-		if len(skyTex32) != skyTex.Width*skyTex.Height {
-			if len(skyTex.RGBA) != skyTex.Width*skyTex.Height*4 || len(skyTex.RGBA) < 4 {
-				skyTexReady = false
-			} else {
-				skyTex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(skyTex.RGBA))), len(skyTex.RGBA)/4)
-			}
-		}
-	}
-	skyLayerEnabled := false
-	if skyTexReady {
-		camAng := math.Atan2(sa, ca)
-		skyLayerEnabled = g.enableSkyLayerFrame(camAng, focal, skyTexKey, skyTex, effectiveSkyTexHeight(skyTex))
-	}
+	_, planeFlatTex32, planeFlatTexIndexed, _ := g.ensurePlaneRenderScratch(len(planes))
+	skyTexReady := hasSky &&
+		g.frameSkyFillActive &&
+		len(g.frameSkyColU) == w &&
+		len(g.frameSkyRowV) == h &&
+		len(g.frameSkyTex32) != 0 &&
+		g.frameSkyTexW > 0
+	skyLayerEnabled := skyTexReady && g.frameSkyLayerEnabled
 	for planeIdx, pl := range planes {
 		key := pl.key
-		fb := ceilFallback
-		if key.floor {
-			fb = floorFallback
-		}
-		planeFBPacked[planeIdx] = packRGBA(fb.R, fb.G, fb.B)
 		if key.sky {
 			continue
 		}
@@ -7645,7 +7730,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		}
 		pl := planes[planeIdx]
 		key := pl.key
-		fbPacked := planeFBPacked[planeIdx]
 		tex32 := planeFlatTex32[planeIdx]
 		texIndexed := planeFlatTexIndexed[planeIdx]
 		x1 := sp.x1
@@ -7676,32 +7760,30 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			if skyLayerEnabled {
 				for _, vis := range planeClipScratch {
 					clear(pix32[rowPix+vis.L : rowPix+vis.R+1])
+					g.markFrameRowSpanCovered(rowPix, vis.L, vis.R)
 				}
 				return planeClipScratch
 			}
 			if skyTexReady {
-				v := skyRowV[sp.y]
+				v := g.frameSkyRowV[sp.y]
 				for _, vis := range planeClipScratch {
 					pixI := rowPix + vis.L
 					x := vis.L
 					for ; x+1 <= vis.R; x += 2 {
-						u0 := skyColU[x]
-						u1 := skyColU[x+1]
-						ti0 := v*skyTex.Width + u0
-						ti1 := v*skyTex.Width + u1
-						pix32[pixI] = skyTex32[ti0]
-						pix32[pixI+1] = skyTex32[ti1]
+						u0 := g.frameSkyColU[x]
+						u1 := g.frameSkyColU[x+1]
+						ti0 := v*g.frameSkyTexW + u0
+						ti1 := v*g.frameSkyTexW + u1
+						pix32[pixI] = g.frameSkyTex32[ti0]
+						pix32[pixI+1] = g.frameSkyTex32[ti1]
 						pixI += 2
 					}
 					if x <= vis.R {
-						u := skyColU[x]
-						ti := v*skyTex.Width + u
-						pix32[pixI] = skyTex32[ti]
+						u := g.frameSkyColU[x]
+						ti := v*g.frameSkyTexW + u
+						pix32[pixI] = g.frameSkyTex32[ti]
 					}
-				}
-			} else {
-				for _, vis := range planeClipScratch {
-					fillPackedRun(pix32, rowPix+vis.L, vis.R-vis.L+1, fbPacked)
+					g.markFrameRowSpanCovered(rowPix, vis.L, vis.R)
 				}
 			}
 			return planeClipScratch
@@ -7720,10 +7802,12 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			}
 			for _, vis := range planeClipScratch {
 				g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, tex32, texIndexed, rowState)
+				g.markFrameRowSpanCovered(rowPix, vis.L, vis.R)
 			}
 			return planeClipScratch
 		}
 		g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, tex32, texIndexed, rowState)
+		g.markFrameRowSpanCovered(rowPix, x1, x2)
 		return planeClipScratch
 	}
 	stageStart = time.Now()
@@ -7767,6 +7851,77 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	g.addRenderStageDur(renderStagePlaneRaster, time.Since(stageStart))
 	if g.opts.Debug && g.debugAimSS >= 0 {
 		g.overlayDebugAimFloorOnPlanes(pix32, spansByPlane, planes, camX, camY, ca, sa, eyeZ, focal)
+	}
+	return skyLayerEnabled
+}
+
+func (g *game) fillUndrawnAreasWithSky(wallTop, wallBottom []int, camAng, focal float64) bool {
+	if g == nil || runtimeDebugEnv("GD_DISABLE_SKY_HOLE_FILL") != "" || !g.frameSkyFillActive || g.viewW <= 0 || g.viewH <= 0 || len(g.wallPix32) != g.viewW*g.viewH {
+		return false
+	}
+	w := g.viewW
+	h := g.viewH
+	if len(g.frameSkyColU) != w || len(g.frameSkyRowV) != h || len(g.frameSkyTex32) == 0 || g.frameSkyTexW <= 0 {
+		return false
+	}
+	skyLayerEnabled := g.frameSkyLayerEnabled
+	for y := 0; y < h; y++ {
+		row := y * w
+		v := g.frameSkyRowV[y]
+		rowOccluders := []billboardPlaneOccluderSpan(nil)
+		if y >= 0 && y < len(g.billboardPlaneOccluderRows) {
+			rowOccluders = g.billboardPlaneOccluderRows[y]
+		}
+		occIdx := 0
+		for x := 0; x < w; {
+			for occIdx < len(rowOccluders) && rowOccluders[occIdx].R < x {
+				occIdx++
+			}
+			covered := g.frameCoveredAtIndex(row + x)
+			if !covered && x < len(wallTop) && x < len(wallBottom) && y >= wallTop[x] && y <= wallBottom[x] {
+				covered = true
+			}
+			if !covered && occIdx < len(rowOccluders) {
+				occ := rowOccluders[occIdx]
+				if x >= occ.L && x <= occ.R {
+					covered = true
+				}
+			}
+			if covered {
+				x++
+				continue
+			}
+			runStart := x
+			for x++; x < w; x++ {
+				for occIdx < len(rowOccluders) && rowOccluders[occIdx].R < x {
+					occIdx++
+				}
+				covered = g.frameCoveredAtIndex(row + x)
+				if !covered && y >= wallTop[x] && y <= wallBottom[x] {
+					covered = true
+				}
+				if !covered && occIdx < len(rowOccluders) {
+					occ := rowOccluders[occIdx]
+					if x >= occ.L && x <= occ.R {
+						covered = true
+					}
+				}
+				if covered {
+					break
+				}
+			}
+			runEnd := x - 1
+			if skyLayerEnabled {
+				clear(g.wallPix32[row+runStart : row+runEnd+1])
+				continue
+			}
+			pixI := row + runStart
+			for sx := runStart; sx <= runEnd; sx++ {
+				u := g.frameSkyColU[sx]
+				g.wallPix32[pixI] = g.frameSkyTex32[v*g.frameSkyTexW+u]
+				pixI++
+			}
+		}
 	}
 	return skyLayerEnabled
 }
@@ -11964,6 +12119,9 @@ func (g *game) ensureWallLayer() {
 		g.wallPix32 = g.wallPix32[:0]
 	}
 	coverNeed := (g.viewW*g.viewH + 63) >> 6
+	if len(g.frameCoverageBits) != coverNeed {
+		g.frameCoverageBits = make([]uint64, coverNeed)
+	}
 	if len(g.cutoutCoverageBits) != coverNeed {
 		g.cutoutCoverageBits = make([]uint64, coverNeed)
 	}

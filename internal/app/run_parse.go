@@ -124,7 +124,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
-	defaultGPUSky := true
+	defaultGPUSky := false
 	defaultSkyUpscaleMode := "sharp"
 	defaultCRTEffect := false
 	defaultWallOcclusion := false
@@ -345,7 +345,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if defaultSourcePortMode {
 		if cfg == nil || cfg.GPUSky == nil {
-			defaultGPUSky = true
+			defaultGPUSky = false
 		}
 		if cfg == nil || cfg.SkyUpscaleMode == nil {
 			defaultSkyUpscaleMode = "sharp"
