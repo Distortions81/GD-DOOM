@@ -404,7 +404,6 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 				return "", 0, false
 			}
 		}
-		g.inventory.Weapons[typ] = true
 		setReadyWeapon := func(id weaponID) {
 			if !g.autoWeaponSwitch {
 				return
@@ -418,6 +417,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			} else {
 				g.gainAmmoNoMsg("shells", 8)
 			}
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponShotgun)
 			return "Picked up a shotgun", soundEventWeaponUp, true
 		case 2002:
@@ -426,25 +426,31 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			} else {
 				g.gainAmmoNoMsg("bullets", 20)
 			}
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponChaingun)
 			return "Picked up a chaingun", soundEventWeaponUp, true
 		case 2003:
 			g.gainAmmoNoMsg("rockets", 2)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponRocketLauncher)
 			return "Picked up a rocket launcher", soundEventWeaponUp, true
 		case 2004:
 			g.gainAmmoNoMsg("cells", 40)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponPlasma)
 			return "Picked up a plasma rifle", soundEventWeaponUp, true
 		case 2005:
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponChainsaw)
 			return "Picked up a chainsaw", soundEventWeaponUp, true
 		case 2006:
 			g.gainAmmoNoMsg("cells", 40)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponBFG)
 			return "Picked up a BFG9000", soundEventWeaponUp, true
 		case 82:
 			g.gainAmmoNoMsg("shells", 8)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponSuperShotgun)
 			return "You got the super shotgun!", soundEventWeaponUp, true
 		}

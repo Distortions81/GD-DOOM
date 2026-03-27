@@ -1878,10 +1878,6 @@ func (g *game) queueWeaponSwitch(id weaponID) bool {
 		return false
 	}
 	g.inventory.PendingWeapon = id
-	if g.weaponState == weaponStateNone {
-		g.bringUpWeapon()
-		return true
-	}
 	return true
 }
 

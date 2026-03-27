@@ -339,6 +339,9 @@ func TestWeaponPickupRespectsAutoSwitchToggle(t *testing.T) {
 	if g.inventory.ReadyWeapon != weaponPistol {
 		t.Fatalf("weapon=%v want=%v when auto switch disabled", g.inventory.ReadyWeapon, weaponPistol)
 	}
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want none when auto switch disabled", g.inventory.PendingWeapon)
+	}
 }
 
 func TestWeaponPickupAutoSwitchesWhenEnabled(t *testing.T) {
