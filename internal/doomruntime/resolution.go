@@ -14,8 +14,8 @@ const (
 	faithfulBufferH        = doomLogicalH * 2
 	faithfulAspectLogicalH = 240
 
-	wasmMaxLayoutW = 1280
-	wasmMaxLayoutH = 720
+	wasmMaxGameW = 1280
+	wasmMaxGameH = 720
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.
@@ -45,18 +45,18 @@ func normalizeRunDimensions(opts Options) (Options, int, int) {
 	return runtimecfg.NormalizeRunDimensions(opts)
 }
 
-func clampSourcePortLayoutSizeForPlatform(w, h int, wasm bool) (int, int) {
+func clampSourcePortGameSizeForPlatform(w, h int, wasm bool) (int, int) {
 	if !wasm {
 		return w, h
 	}
-	if w <= wasmMaxLayoutW && h <= wasmMaxLayoutH {
+	if w <= wasmMaxGameW && h <= wasmMaxGameH {
 		return w, h
 	}
 	if w <= 0 || h <= 0 {
-		return max(1, min(w, wasmMaxLayoutW)), max(1, min(h, wasmMaxLayoutH))
+		return max(1, min(w, wasmMaxGameW)), max(1, min(h, wasmMaxGameH))
 	}
-	scaleW := float64(wasmMaxLayoutW) / float64(w)
-	scaleH := float64(wasmMaxLayoutH) / float64(h)
+	scaleW := float64(wasmMaxGameW) / float64(w)
+	scaleH := float64(wasmMaxGameH) / float64(h)
 	scale := min(scaleW, scaleH)
 	if scale >= 1 {
 		return w, h

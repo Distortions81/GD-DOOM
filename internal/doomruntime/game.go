@@ -7732,18 +7732,18 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		if g.rowFullyOccludedByWallsFastDepthQ(rowState.depthQ, rowPix, x1, x2) {
 			return planeClipScratch
 		}
-			if len(rowOccluders) != 0 {
-				planeClipScratch = clipRangeAgainstBillboardPlaneOccluders(x1, x2, rowState.depthQ, rowOccluders, planeClipScratch)
-				if len(planeClipScratch) == 0 {
-					return planeClipScratch
-				}
-				for _, vis := range planeClipScratch {
-					g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, tex32, texIndexed, rowState)
-				}
+		if len(rowOccluders) != 0 {
+			planeClipScratch = clipRangeAgainstBillboardPlaneOccluders(x1, x2, rowState.depthQ, rowOccluders, planeClipScratch)
+			if len(planeClipScratch) == 0 {
 				return planeClipScratch
 			}
-			g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, tex32, texIndexed, rowState)
+			for _, vis := range planeClipScratch {
+				g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, tex32, texIndexed, rowState)
+			}
 			return planeClipScratch
+		}
+		g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, tex32, texIndexed, rowState)
+		return planeClipScratch
 	}
 	stageStart = time.Now()
 	if workers, chunk, parallel := g.parallelWorkChunks(h); parallel && h >= 32 {
@@ -11919,6 +11919,7 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if g.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
+		w, h = clampSourcePortGameSizeForPlatform(w, h, isWASMBuild())
 		if w != g.viewW || h != g.viewH {
 			g.viewW = w
 			g.viewH = h

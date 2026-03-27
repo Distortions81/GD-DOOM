@@ -64,21 +64,21 @@ func TestEnsurePositiveRenderSize(t *testing.T) {
 	}
 }
 
-func TestClampSourcePortLayoutSizeForWASM(t *testing.T) {
-	w, h := clampSourcePortLayoutSizeForPlatform(2560, 1440, true)
+func TestClampSourcePortGameSizeForWASM(t *testing.T) {
+	w, h := clampSourcePortGameSizeForPlatform(2560, 1440, true)
 	if w != 1280 || h != 720 {
-		t.Fatalf("layout=%dx%d want 1280x720", w, h)
+		t.Fatalf("game=%dx%d want 1280x720", w, h)
 	}
 }
 
-func TestClampSourcePortLayoutSizeForNativeLeavesSizeUnchanged(t *testing.T) {
-	w, h := clampSourcePortLayoutSizeForPlatform(2560, 1440, false)
+func TestClampSourcePortGameSizeForNativeLeavesSizeUnchanged(t *testing.T) {
+	w, h := clampSourcePortGameSizeForPlatform(2560, 1440, false)
 	if w != 2560 || h != 1440 {
-		t.Fatalf("layout=%dx%d want 2560x1440", w, h)
+		t.Fatalf("game=%dx%d want 2560x1440", w, h)
 	}
 }
 
-func TestSourcePortLayoutWASMClampDoesNotClampRenderView(t *testing.T) {
+func TestSourcePortLayoutWASMDoesNotClampLogicalSizeButClampsRenderView(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
@@ -97,13 +97,13 @@ func TestSourcePortLayoutWASMClampDoesNotClampRenderView(t *testing.T) {
 	}
 
 	layoutW, layoutH := sg.Layout(2560, 1440)
-	if layoutW != 1280 || layoutH != 720 {
-		t.Fatalf("layout=%dx%d want 1280x720", layoutW, layoutH)
+	if layoutW != 2560 || layoutH != 1440 {
+		t.Fatalf("layout=%dx%d want 2560x1440", layoutW, layoutH)
 	}
-	if sg.g.viewW != 2560 || sg.g.viewH != 1440 {
-		t.Fatalf("render view=%dx%d want 2560x1440", sg.g.viewW, sg.g.viewH)
+	if sg.g.viewW != 1280 || sg.g.viewH != 720 {
+		t.Fatalf("render view=%dx%d want 1280x720", sg.g.viewW, sg.g.viewH)
 	}
-	if sg.g.skyOutputW != 1280 || sg.g.skyOutputH != 720 {
-		t.Fatalf("sky output=%dx%d want 1280x720", sg.g.skyOutputW, sg.g.skyOutputH)
+	if sg.g.skyOutputW != 2560 || sg.g.skyOutputH != 1440 {
+		t.Fatalf("sky output=%dx%d want 2560x1440", sg.g.skyOutputW, sg.g.skyOutputH)
 	}
 }
