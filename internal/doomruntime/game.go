@@ -18554,11 +18554,7 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 	elapsed := now.Sub(g.fpsStamp)
 	if elapsed >= time.Second {
 		fps := float64(g.fpsFrames) / elapsed.Seconds()
-		if g.demoBenchmarkActive() && g.fpsFrames > 0 && g.renderAccum > 0 {
-			avgFrameNS := float64(g.renderAccum) / float64(g.fpsFrames) / float64(time.Nanosecond)
-			if avgFrameNS > 0 {
-				fps = 1e9 / avgFrameNS
-			}
+		if g.demoBenchmarkActive() {
 			g.benchLow1MS = float64(demoBenchLowFrameNS(g.demoBenchFrameNS, 0.99)) / float64(time.Millisecond)
 			g.benchLow01MS = float64(demoBenchLowFrameNS(g.demoBenchFrameNS, 0.999)) / float64(time.Millisecond)
 		} else {
