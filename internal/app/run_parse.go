@@ -74,6 +74,7 @@ func resolveForceWASMMode(args []string) bool {
 }
 
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
+	const maxCLIAppOPLVolume = 4.0
 	prevForceWASMMode := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(resolveForceWASMMode(args))
 	defer platformcfg.SetForcedWASMMode(prevForceWASMMode)
@@ -500,8 +501,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "invalid -mus-pan-max %.3f (must be between 0 and 1)\n", *musPanMax)
 		return 2
 	}
-	if *oplVolume < 0 || *oplVolume > music.MaxOutputGain {
-		fmt.Fprintf(stderr, "invalid -opl-volume %.3f (must be between 0 and %.1f)\n", *oplVolume, music.MaxOutputGain)
+	if *oplVolume < 0 || *oplVolume > maxCLIAppOPLVolume {
+		fmt.Fprintf(stderr, "invalid -opl-volume %.3f (must be between 0 and %.1f)\n", *oplVolume, maxCLIAppOPLVolume)
 		return 2
 	}
 	if *sfxVolume < 0 || *sfxVolume > 1 {

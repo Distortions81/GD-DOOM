@@ -63,7 +63,7 @@ func main() {
 		if fs == *sector || bs == *sector || targets {
 			v1 := m.Vertexes[ld.V1]
 			v2 := m.Vertexes[ld.V2]
-			fmt.Printf("line=%d special=%d name=%s trigger=%d tag=%d front=%d back=%d a=(%d,%d) b=(%d,%d)\n",
+			fmt.Printf("line=%d special=%d name=%s trigger=%s tag=%d front=%d back=%d a=(%d,%d) b=(%d,%d)\n",
 				i, ld.Special, info.Name, info.Trigger, ld.Tag, fs, bs, v1.X, v1.Y, v2.X, v2.Y)
 		}
 	}
