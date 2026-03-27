@@ -1454,16 +1454,13 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
 			g.thingReactionTics[thingIdx] = 0
 		}
-		if (thingIdx >= 0 && thingIdx < len(g.thingPainTics) && g.thingPainTics[thingIdx] > 0) ||
-			(thingIdx >= 0 && thingIdx < len(g.thingState) && g.thingState[thingIdx] == monsterStatePain) {
-			g.maybeRetargetMonsterAfterDamage(thingIdx, thingType, sourcePlayer, sourceThing)
-			return
-		}
+		alreadyInPain := (thingIdx >= 0 && thingIdx < len(g.thingPainTics) && g.thingPainTics[thingIdx] > 0) ||
+			(thingIdx >= 0 && thingIdx < len(g.thingState) && g.thingState[thingIdx] == monsterStatePain)
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 {
 				roll := doomrand.PRandom()
-				if chance >= 256 || roll < chance {
+				if (chance >= 256 || roll < chance) && !alreadyInPain {
 					if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
 						// Doom only marks JUSTHIT when the pain state triggers.
 						g.thingJustHit[thingIdx] = true

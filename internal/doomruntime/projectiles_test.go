@@ -701,6 +701,71 @@ func TestPlayerRocketUsesDoomFineAngleMomentum(t *testing.T) {
 	}
 }
 
+func TestMonsterProjectileSpawnPreservesHalfStepBeforeDeferredAdvance(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 0, Y: 0},
+				{Type: 3004, X: 128, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		thingHP:     []int{60, 100},
+		thingTargetIdx: []int{0, 0},
+		thingTargetPlayer: []bool{false, false},
+		stats:       playerStats{Health: 100},
+		p: player{
+			x:      128 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		projectiles: make([]projectile, 0, 1),
+	}
+	g.initPhysics()
+	g.setThingSupportState(0, 0, 0, 128*fracUnit)
+	g.setThingSupportState(1, 0, 0, 128*fracUnit)
+	g.thingTargetIdx[0] = 1
+	g.thingTargetPlayer[0] = false
+
+	if !g.spawnMonsterProjectile(0, 3001) {
+		t.Fatal("expected imp projectile to spawn")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	p := g.projectiles[0]
+	if !p.deferredTick {
+		t.Fatal("monster projectile should defer its thinker advance until later in the tic")
+	}
+	if p.x != p.sourceX+(p.vx>>1) || p.y != p.sourceY+(p.vy>>1) {
+		t.Fatalf("projectile position=(%d,%d) want half-step (%d,%d)", p.x, p.y, p.sourceX+(p.vx>>1), p.sourceY+(p.vy>>1))
+	}
+	wantZ := 32*fracUnit + (p.vz >> 1)
+	if p.z != wantZ {
+		t.Fatalf("projectile z=%d want=%d", p.z, wantZ)
+	}
+
+	g.tickDeferredProjectiles()
+
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count after deferred tick=%d want=1", got)
+	}
+	p = g.projectiles[0]
+	if p.deferredTick {
+		t.Fatal("projectile should no longer be deferred after deferred tick")
+	}
+	if p.x != p.sourceX+(p.vx>>1)+p.vx || p.y != p.sourceY+(p.vy>>1)+p.vy {
+		t.Fatalf("projectile position after deferred tick=(%d,%d) want (%d,%d)", p.x, p.y, p.sourceX+(p.vx>>1)+p.vx, p.sourceY+(p.vy>>1)+p.vy)
+	}
+}
+
 func TestPlayerRocketSpawnConsumesLastLookAndCheckMissileSpawnPRandom(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

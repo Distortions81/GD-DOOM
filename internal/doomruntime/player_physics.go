@@ -434,7 +434,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			g.setDoorCeiling(sec, g.sectorFloor[sec])
 			switch d.typ {
 			case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:
-				delete(g.doors, sec)
+				d.pendingRemove = true
 			case doorClose30ThenOpen:
 				d.direction = 0
 				d.topCountdown = 35 * 30
@@ -451,7 +451,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 				d.direction = 0
 				d.topCountdown = d.topWait
 			case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
-				delete(g.doors, sec)
+				d.pendingRemove = true
 			}
 		} else {
 			g.setDoorCeiling(sec, next)
@@ -459,7 +459,19 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 	}
 }
 
+func (g *game) prunePendingDoors() {
+	if g == nil || len(g.doors) == 0 {
+		return
+	}
+	for sec, d := range g.doors {
+		if d != nil && d.pendingRemove {
+			delete(g.doors, sec)
+		}
+	}
+}
+
 func (g *game) tickDoors() {
+	g.prunePendingDoors()
 	for sec, d := range g.doors {
 		g.tickDoor(sec, d)
 	}

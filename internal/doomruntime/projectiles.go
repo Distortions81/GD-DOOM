@@ -203,7 +203,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		deferredTick: true,
 	}
 	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
-	if !g.finishProjectileSpawn(&p, false) {
+	if !g.finishProjectileSpawn(&p, true) {
 		return false
 	}
 	g.projectiles = append(g.projectiles, p)
