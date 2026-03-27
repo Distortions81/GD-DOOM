@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -14,6 +15,8 @@ import (
 type demoTraceWriter struct {
 	path   string
 	file   *os.File
+	buf    *bufio.Writer
+	enc    *json.Encoder
 	closed bool
 }
 
@@ -114,7 +117,10 @@ func newDemoTraceWriter(opts Options, mapName string) *demoTraceWriter {
 		fmt.Printf("demo-trace-error path=%s err=%v\n", path, err)
 		return nil
 	}
-	tw := &demoTraceWriter{path: path, file: f}
+	buf := bufio.NewWriterSize(f, 64*1024)
+	enc := json.NewEncoder(buf)
+	enc.SetEscapeHTML(false)
+	tw := &demoTraceWriter{path: path, file: f, buf: buf, enc: enc}
 	tw.write(map[string]any{
 		"kind":       "meta",
 		"trace_path": path,
@@ -203,16 +209,17 @@ func demoTraceLabel(script *DemoScript) string {
 }
 
 func (tw *demoTraceWriter) write(v any) {
-	if tw == nil || tw.file == nil || tw.closed {
+	if tw == nil || tw.file == nil || tw.closed || tw.enc == nil {
 		return
 	}
-	data, err := json.Marshal(v)
+	err := tw.enc.Encode(v)
 	if err != nil {
 		fmt.Printf("demo-trace-error path=%s err=%v\n", tw.path, err)
 		return
 	}
-	_, _ = tw.file.Write(append(data, '\n'))
-	_ = tw.file.Sync()
+	if tw.buf != nil {
+		_ = tw.buf.Flush()
+	}
 }
 
 func (tw *demoTraceWriter) Close() {
@@ -220,7 +227,12 @@ func (tw *demoTraceWriter) Close() {
 		return
 	}
 	tw.closed = true
+	if tw.buf != nil {
+		_ = tw.buf.Flush()
+	}
 	_ = tw.file.Close()
+	tw.buf = nil
+	tw.enc = nil
 	tw.file = nil
 }
 

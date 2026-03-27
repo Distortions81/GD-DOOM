@@ -3413,7 +3413,7 @@ func maxMonsterVocalSoundsPerFlush() int {
 	if !isWASMBuild() {
 		return 0
 	}
-	return 4
+	return 6
 }
 
 func (g *game) clearPendingSoundState() {

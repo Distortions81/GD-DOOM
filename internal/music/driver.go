@@ -270,11 +270,34 @@ func (d *Driver) Render(events []Event) []int16 {
 
 // RenderMUS parses a MUS stream and renders it to signed 16-bit stereo PCM.
 func (d *Driver) RenderMUS(musData []byte) ([]int16, error) {
-	events, err := ParseMUS(musData)
+	if d == nil || d.synth == nil || d.sampleRate <= 0 {
+		return nil, nil
+	}
+	if d.ticRate <= 0 {
+		d.ticRate = defaultTicRate
+	}
+	if len(d.voices) == 0 {
+		d.voices = make([]voiceState, defaultVoices)
+		for i := range d.voices {
+			d.voices[i].synthCh = i
+		}
+	}
+	d.ensureVoiceLists()
+	var pcm []int16
+	err := walkMUS(musData, func(ev Event) error {
+		if ev.DeltaTics > 0 {
+			frames := int((uint64(ev.DeltaTics) * uint64(d.sampleRate)) / uint64(d.ticRate))
+			if frames > 0 {
+				pcm = append(pcm, d.generateStereoS16(frames)...)
+			}
+		}
+		d.applyEvent(ev)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	return d.Render(events), nil
+	return pcm, nil
 }
 
 // RenderMUSS16LE parses MUS and returns little-endian signed 16-bit stereo PCM bytes.
@@ -303,6 +326,10 @@ func PCMInt16ToBytesLEInto(dst []byte, samples []int16) []byte {
 		dst = make([]byte, need)
 	} else {
 		dst = dst[:need]
+	}
+	if nativeLittleEndian() {
+		copy(dst, pcmInt16ViewAsBytesLE(samples))
+		return dst
 	}
 	oi := 0
 	for _, s := range samples {

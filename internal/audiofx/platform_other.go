@@ -2,10 +2,18 @@
 
 package audiofx
 
+import "gddoom/internal/platformcfg"
+
 func maxSpatialVoices() int {
+	if platformcfg.IsWASMBuild() {
+		return 6
+	}
 	return 8
 }
 
 func maxMenuVoices() int {
+	if platformcfg.IsWASMBuild() {
+		return 6
+	}
 	return 8
 }

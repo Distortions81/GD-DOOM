@@ -295,8 +295,8 @@ func TestFlushSoundEvents_WASMLimitsMonsterVocalBurstWork(t *testing.T) {
 	}
 	g.flushSoundEvents()
 	rnd, prnd := doomrand.State()
-	if rnd != 4 || prnd != 0 {
-		t.Fatalf("rng state after wasm monster vocal burst=(%d,%d) want=(4,0)", rnd, prnd)
+	if rnd != 6 || prnd != 0 {
+		t.Fatalf("rng state after wasm monster vocal burst=(%d,%d) want=(6,0)", rnd, prnd)
 	}
 }
 

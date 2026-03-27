@@ -2,6 +2,7 @@ package music
 
 import (
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -87,6 +88,35 @@ func TestDriverRenderMUS(t *testing.T) {
 	}
 	if !nonZero {
 		t.Fatal("expected non-zero PCM from MUS render")
+	}
+}
+
+func TestDriverRenderMUSMatchesParsedRender(t *testing.T) {
+	mus := buildMUSTestLump([]byte{
+		0x40, 0, 0,
+		0x90,
+		0xBC, 110,
+		0x14,
+		0x00, 0x3C,
+		0x60,
+	})
+	parsed, err := ParseMUS(mus)
+	if err != nil {
+		t.Fatalf("ParseMUS() error: %v", err)
+	}
+
+	want := NewDriver(49716, nil)
+	want.Reset()
+	wantPCM := want.Render(parsed)
+
+	got := NewDriver(49716, nil)
+	got.Reset()
+	gotPCM, err := got.RenderMUS(mus)
+	if err != nil {
+		t.Fatalf("RenderMUS() error: %v", err)
+	}
+	if !reflect.DeepEqual(gotPCM, wantPCM) {
+		t.Fatalf("RenderMUS() PCM mismatch against parsed render")
 	}
 }
 

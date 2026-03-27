@@ -98,7 +98,15 @@ func (cp *ChunkPlayer) SetVolume(v float64) error {
 
 // EnqueueS16 sends interleaved stereo samples (s16) as a music chunk.
 func (cp *ChunkPlayer) EnqueueS16(samples []int16) error {
-	return cp.EnqueueBytesS16LE(PCMInt16ToBytesLE(samples))
+	if cp == nil {
+		return errors.New("music: nil chunk player")
+	}
+	if len(samples) == 0 {
+		return nil
+	}
+	b := cp.src.acquireChunk(len(samples) * 2)
+	b = PCMInt16ToBytesLEInto(b[:0], samples)
+	return cp.send(playerCmd{typ: cmdEnqueue, data: b})
 }
 
 // EnqueueBytesS16LE sends little-endian signed 16-bit stereo bytes.

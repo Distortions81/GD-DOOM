@@ -19,15 +19,14 @@ type musHeader struct {
 	reserved          uint16
 }
 
-// ParseMUS decodes a Doom MUS stream into driver Events.
-func ParseMUS(data []byte) ([]Event, error) {
+func walkMUS(data []byte, emit func(Event) error) error {
 	if len(data) < 16 {
-		return nil, fmt.Errorf("mus: data too short: %d", len(data))
+		return fmt.Errorf("mus: data too short: %d", len(data))
 	}
 	var h musHeader
 	copy(h.sig[:], data[:4])
 	if string(h.sig[:]) != musSig {
-		return nil, fmt.Errorf("mus: bad signature %q", string(h.sig[:]))
+		return fmt.Errorf("mus: bad signature %q", string(h.sig[:]))
 	}
 	h.scoreLen = binary.LittleEndian.Uint16(data[4:6])
 	h.scoreStart = binary.LittleEndian.Uint16(data[6:8])
@@ -38,7 +37,7 @@ func ParseMUS(data []byte) ([]Event, error) {
 
 	pos := int(h.scoreStart)
 	if pos < 0 || pos >= len(data) {
-		return nil, fmt.Errorf("mus: invalid score start %d", pos)
+		return fmt.Errorf("mus: invalid score start %d", pos)
 	}
 	scoreEnd := pos + int(h.scoreLen)
 	if int(h.scoreLen) > 0 && scoreEnd <= len(data) {
@@ -51,13 +50,12 @@ func ParseMUS(data []byte) ([]Event, error) {
 		vel[i] = 127
 	}
 	chMap := musChannelMap{}
-	var out []Event
 	var pendingDelta uint32
 
-	appendEvent := func(ev Event) {
+	appendEvent := func(ev Event) error {
 		ev.DeltaTics = pendingDelta
 		pendingDelta = 0
-		out = append(out, ev)
+		return emit(ev)
 	}
 
 	for pos < len(data) {
@@ -72,15 +70,17 @@ func ParseMUS(data []byte) ([]Event, error) {
 		switch musType {
 		case 0: // release note
 			if pos >= len(data) {
-				return nil, fmt.Errorf("mus: truncated note-off")
+				return fmt.Errorf("mus: truncated note-off")
 			}
 			ev.Type = EventNoteOff
 			ev.A = data[pos] & 0x7F
 			pos++
-			appendEvent(ev)
+			if err := appendEvent(ev); err != nil {
+				return err
+			}
 		case 1: // play note
 			if pos >= len(data) {
-				return nil, fmt.Errorf("mus: truncated note-on")
+				return fmt.Errorf("mus: truncated note-on")
 			}
 			n := data[pos]
 			pos++
@@ -88,16 +88,18 @@ func ParseMUS(data []byte) ([]Event, error) {
 			ev.A = n & 0x7F
 			if (n & 0x80) != 0 {
 				if pos >= len(data) {
-					return nil, fmt.Errorf("mus: truncated note-on velocity")
+					return fmt.Errorf("mus: truncated note-on velocity")
 				}
 				vel[ch] = data[pos] & 0x7F
 				pos++
 			}
 			ev.B = vel[ch]
-			appendEvent(ev)
+			if err := appendEvent(ev); err != nil {
+				return err
+			}
 		case 2: // pitch wheel
 			if pos >= len(data) {
-				return nil, fmt.Errorf("mus: truncated pitch bend")
+				return fmt.Errorf("mus: truncated pitch bend")
 			}
 			// MUS pitch wheel is an 8-bit value. The legacy conversion path
 			// expands this to the MIDI wheel range by multiplying by 64.
@@ -107,10 +109,12 @@ func ParseMUS(data []byte) ([]Event, error) {
 			ev.Type = EventPitchBend
 			ev.A = uint8(p & 0x7F)
 			ev.B = uint8((p >> 7) & 0x7F)
-			appendEvent(ev)
+			if err := appendEvent(ev); err != nil {
+				return err
+			}
 		case 3: // system event
 			if pos >= len(data) {
-				return nil, fmt.Errorf("mus: truncated system event")
+				return fmt.Errorf("mus: truncated system event")
 			}
 			sys := data[pos]
 			pos++
@@ -119,11 +123,13 @@ func ParseMUS(data []byte) ([]Event, error) {
 				ev.Type = EventControlChange
 				ev.A = cc
 				ev.B = 0
-				appendEvent(ev)
+				if err := appendEvent(ev); err != nil {
+					return err
+				}
 			}
 		case 4: // change controller
 			if pos+1 >= len(data) {
-				return nil, fmt.Errorf("mus: truncated controller")
+				return fmt.Errorf("mus: truncated controller")
 			}
 			ctrl := data[pos]
 			val := data[pos+1] & 0x7F
@@ -131,7 +137,9 @@ func ParseMUS(data []byte) ([]Event, error) {
 			if ctrl == 0 {
 				ev.Type = EventProgramChange
 				ev.A = val
-				appendEvent(ev)
+				if err := appendEvent(ev); err != nil {
+					return err
+				}
 				break
 			}
 			cc, ok := musControllerToMIDI(ctrl)
@@ -139,25 +147,41 @@ func ParseMUS(data []byte) ([]Event, error) {
 				ev.Type = EventControlChange
 				ev.A = cc
 				ev.B = val
-				appendEvent(ev)
+				if err := appendEvent(ev); err != nil {
+					return err
+				}
 			}
 		case 5: // end of measure (unused)
 			// no-op
 		case 6: // end of score
-			appendEvent(Event{Type: EventEnd, Channel: ch})
-			return out, nil
+			if err := appendEvent(Event{Type: EventEnd, Channel: ch}); err != nil {
+				return err
+			}
+			return nil
 		default:
-			return nil, fmt.Errorf("mus: unsupported event type %d", musType)
+			return fmt.Errorf("mus: unsupported event type %d", musType)
 		}
 
 		if last {
 			delta, n, err := readMUSVarLen(data[pos:])
 			if err != nil {
-				return nil, err
+				return err
 			}
 			pos += n
 			pendingDelta = delta
 		}
+	}
+	return nil
+}
+
+// ParseMUS decodes a Doom MUS stream into driver Events.
+func ParseMUS(data []byte) ([]Event, error) {
+	var out []Event
+	if err := walkMUS(data, func(ev Event) error {
+		out = append(out, ev)
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

@@ -3,9 +3,9 @@
 package audiofx
 
 func maxSpatialVoices() int {
-	return 4
+	return 6
 }
 
 func maxMenuVoices() int {
-	return 4
+	return 6
 }

@@ -58,3 +58,22 @@ func TestAddSpanInPlace(t *testing.T) {
 		t.Fatalf("unexpected inserted span: %+v", spans[1])
 	}
 }
+
+func TestAddSpanInPlaceAllocFreeWithCapacity(t *testing.T) {
+	spans := make([]ScreenSpan, 2, 4)
+	base0 := ScreenSpan{L: 10, R: 20}
+	base1 := ScreenSpan{L: 30, R: 40}
+
+	allocs := testing.AllocsPerRun(1000, func() {
+		spans[0] = base0
+		spans[1] = base1
+		work := spans[:2]
+		work = AddSpanInPlace(work, 24, 26)
+		if len(work) != 3 {
+			t.Fatalf("len=%d want=3", len(work))
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("AddSpanInPlace allocs=%v want 0", allocs)
+	}
+}

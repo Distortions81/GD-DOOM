@@ -97,3 +97,26 @@ func TestChunkPlayerResetPlaybackClearsQueuedBuffer(t *testing.T) {
 		t.Fatalf("enqueue after reset error: %v", err)
 	}
 }
+
+func TestChunkPlayerEnqueueS16EncodesLittleEndian(t *testing.T) {
+	cp := &ChunkPlayer{
+		src:  newPCMChunkBuffer(),
+		cmds: make(chan playerCmd, 1),
+		done: make(chan struct{}),
+	}
+	samples := []int16{0x1234, -2}
+	if err := cp.EnqueueS16(samples); err != nil {
+		t.Fatalf("EnqueueS16() error: %v", err)
+	}
+	cmd := <-cp.cmds
+	defer cp.src.releaseChunk(cmd.data)
+	if len(cmd.data) != 4 {
+		t.Fatalf("len=%d want=4", len(cmd.data))
+	}
+	if cmd.data[0] != 0x34 || cmd.data[1] != 0x12 {
+		t.Fatalf("first sample bytes=%02x %02x want=34 12", cmd.data[0], cmd.data[1])
+	}
+	if cmd.data[2] != 0xFE || cmd.data[3] != 0xFF {
+		t.Fatalf("second sample bytes=%02x %02x want=fe ff", cmd.data[2], cmd.data[3])
+	}
+}

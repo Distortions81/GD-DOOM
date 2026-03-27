@@ -3,6 +3,8 @@ package audiofx
 import (
 	"math"
 	"testing"
+
+	"gddoom/internal/platformcfg"
 )
 
 func TestPCMMonoU8ToMonoS16IntoReusesBuffer(t *testing.T) {
@@ -218,6 +220,19 @@ func TestApplySourcePortLowPassInto_StrongFilterReducesHighFrequencySwing(t *tes
 	}
 	if absInt(int(got[len(got)-1])) >= absInt(int(src[len(src)-1])) {
 		t.Fatalf("tail sample=%d want reduced swing from %d", got[len(got)-1], src[len(src)-1])
+	}
+}
+
+func TestForcedWASMVoiceCaps(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	if got := maxSpatialVoices(); got != 6 {
+		t.Fatalf("maxSpatialVoices()=%d want 6 in forced wasm mode", got)
+	}
+	if got := maxMenuVoices(); got != 6 {
+		t.Fatalf("maxMenuVoices()=%d want 6 in forced wasm mode", got)
 	}
 }
 
