@@ -23,6 +23,33 @@ func TestPCMMonoU8ToMonoS16IntoReusesBuffer(t *testing.T) {
 	}
 }
 
+func TestPCMMonoU8ToStereoS16LESpatialIntoReusesBuffer(t *testing.T) {
+	dst := make([]byte, 0, 16)
+	allocs := testing.AllocsPerRun(1000, func() {
+		out := PCMMonoU8ToStereoS16LESpatialInto(dst[:0], []byte{0, 128, 255}, 1, 0.5)
+		if len(out) != 12 {
+			t.Fatalf("len=%d want=12", len(out))
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("allocs=%v want 0", allocs)
+	}
+}
+
+func TestPCMMonoU8ToStereoS16LESpatialMatchesMonoConversion(t *testing.T) {
+	src := []byte{0, 64, 128, 255}
+	got := PCMMonoU8ToStereoS16LESpatial(src, 1, 0.5)
+	want := PCMMonoS16ToStereoS16LESpatial(PCMMonoU8ToMonoS16(src), 1, 0.5)
+	if len(got) != len(want) {
+		t.Fatalf("len=%d want=%d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%d want=%d", i, got[i], want[i])
+		}
+	}
+}
+
 func TestResampleMonoS16LinearIntoReusesBuffer(t *testing.T) {
 	src := []int16{-32768, 0, 32512}
 	dst := make([]int16, 0, 16)
@@ -196,11 +223,14 @@ func TestSourcePortStereoMix_RearSourcesAreQuieter(t *testing.T) {
 	}
 }
 
-func TestApplySourcePortLowPassInto_NoStrengthCopiesSignal(t *testing.T) {
+func TestApplySourcePortLowPassInto_NoStrengthReturnsSourceSlice(t *testing.T) {
 	src := []int16{1000, -1000, 2000, -2000}
 	got := applySourcePortLowPassInto(nil, src, 44100, 0, 0)
 	if len(got) != len(src) {
 		t.Fatalf("len=%d want=%d", len(got), len(src))
+	}
+	if &got[0] != &src[0] {
+		t.Fatal("expected source slice alias when filter strength is zero")
 	}
 	for i := range src {
 		if got[i] != src[i] {

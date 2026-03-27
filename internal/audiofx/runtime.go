@@ -445,18 +445,14 @@ func applySourcePortLowPassInto(dst, src []int16, sampleRate int, far, behind fl
 		return nil
 	}
 	if sampleRate <= 0 {
-		out := resizePCMInt16Buffer(dst, len(src))
-		copy(out, src)
-		return out
+		return src
 	}
 	strength := far
 	if behind > strength {
 		strength = behind
 	}
 	if strength <= 0 {
-		out := resizePCMInt16Buffer(dst, len(src))
-		copy(out, src)
-		return out
+		return src
 	}
 	cutoff := 7000.0 - 5000.0*strength
 	if cutoff < 2000 {
@@ -623,6 +619,22 @@ func PCMMonoS16ToStereoS16LESpatial(src []int16, leftGain, rightGain float64) []
 	return PCMMonoS16ToStereoS16LESpatialInto(nil, src, leftGain, rightGain)
 }
 
+func PCMMonoU8ToStereoS16LESpatialInto(dst []byte, src []byte, leftGain, rightGain float64) []byte {
+	out := resizePCMBuffer(dst, len(src)*4)
+	oi := 0
+	for _, u := range src {
+		base := (int16(u) - 128) << 8
+		left := int16(clampFloat(float64(base)*leftGain, -32768, 32767))
+		right := int16(clampFloat(float64(base)*rightGain, -32768, 32767))
+		out[oi] = byte(left)
+		out[oi+1] = byte(left >> 8)
+		out[oi+2] = byte(right)
+		out[oi+3] = byte(right >> 8)
+		oi += 4
+	}
+	return out
+}
+
 func PCMMonoS16ToStereoS16LESpatialInto(dst []byte, src []int16, leftGain, rightGain float64) []byte {
 	out := resizePCMBuffer(dst, len(src)*4)
 	oi := 0
@@ -639,7 +651,7 @@ func PCMMonoS16ToStereoS16LESpatialInto(dst []byte, src []int16, leftGain, right
 }
 
 func PCMMonoU8ToStereoS16LESpatial(src []byte, leftGain, rightGain float64) []byte {
-	return PCMMonoS16ToStereoS16LESpatial(PCMMonoU8ToMonoS16(src), leftGain, rightGain)
+	return PCMMonoU8ToStereoS16LESpatialInto(nil, src, leftGain, rightGain)
 }
 
 func PCMMonoU8ToStereoS16LEResampled(src []byte, srcRate, dstRate int) []byte {

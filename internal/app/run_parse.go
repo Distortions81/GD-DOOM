@@ -2835,9 +2835,7 @@ func padDoomSoundSamples(src []byte) []byte {
 	}
 	paddedLen := ((len(src) + (doomSoundMixBlock - 1)) / doomSoundMixBlock) * doomSoundMixBlock
 	if paddedLen == len(src) {
-		out := make([]byte, len(src))
-		copy(out, src)
-		return out
+		return src
 	}
 	out := make([]byte, paddedLen)
 	copy(out, src)

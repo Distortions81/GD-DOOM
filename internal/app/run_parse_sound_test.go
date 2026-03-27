@@ -23,7 +23,7 @@ func TestPadDoomSoundSamples_PadsTo512With128(t *testing.T) {
 	}
 }
 
-func TestPadDoomSoundSamples_AlreadyAlignedStillCopies(t *testing.T) {
+func TestPadDoomSoundSamples_AlreadyAlignedReturnsOriginalSlice(t *testing.T) {
 	src := make([]byte, 512)
 	for i := range src {
 		src[i] = byte(i)
@@ -32,8 +32,8 @@ func TestPadDoomSoundSamples_AlreadyAlignedStillCopies(t *testing.T) {
 	if len(got) != 512 {
 		t.Fatalf("len=%d want=512", len(got))
 	}
-	if &got[0] == &src[0] {
-		t.Fatal("expected copy, got aliased slice")
+	if &got[0] != &src[0] {
+		t.Fatal("expected original slice, got copy")
 	}
 	for i := range src {
 		if got[i] != src[i] {
