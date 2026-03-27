@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"runtime/trace"
 	"sort"
 	"strconv"
 	"strings"
@@ -140,6 +141,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultImportTextures := true
 	defaultCPUProfile := ""
 	defaultMemProfile := ""
+	defaultExecTrace := ""
 	defaultMemStats := false
 	defaultDemo := ""
 	defaultRecordDemo := ""
@@ -323,6 +325,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.MemProfile != nil {
 			defaultMemProfile = *cfg.MemProfile
 		}
+		if cfg.ExecTrace != nil {
+			defaultExecTrace = *cfg.ExecTrace
+		}
 		if cfg.Demo != nil {
 			defaultDemo = *cfg.Demo
 		}
@@ -413,6 +418,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
 	memProfile := fs.String("memprofile", defaultMemProfile, "write Go heap profile to file on exit")
+	execTrace := fs.String("exectrace", defaultExecTrace, "write Go execution trace to file")
 	memStats := fs.Bool("memstats", defaultMemStats, "log Go runtime memory stats at startup and exit")
 	demoPath := fs.String("demo", defaultDemo, "path to Doom v1.10 .lmp demo; runs demo benchmark and exits when demo ends")
 	recordDemoPath := fs.String("record-demo", defaultRecordDemo, "path to write Doom v1.10 .lmp demo recorded from live input")
@@ -555,6 +561,28 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	defer writeMemProfile()
+	stopExecTrace := func() {}
+	if strings.TrimSpace(*execTrace) != "" {
+		path := strings.TrimSpace(*execTrace)
+		f, terr := os.Create(path)
+		if terr != nil {
+			fmt.Fprintf(stderr, "open exec trace: %v\n", terr)
+			return 1
+		}
+		if terr := trace.Start(f); terr != nil {
+			f.Close()
+			fmt.Fprintf(stderr, "start exec trace: %v\n", terr)
+			return 1
+		}
+		fmt.Fprintf(stderr, "exec trace recording to %s\n", path)
+		stopExecTrace = func() {
+			trace.Stop()
+			if cerr := f.Close(); cerr != nil {
+				fmt.Fprintf(stderr, "close exec trace: %v\n", cerr)
+			}
+		}
+	}
+	defer stopExecTrace()
 	writeMemStats := func(stage string) {}
 	if *memStats {
 		writeMemStats = func(stage string) {

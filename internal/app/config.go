@@ -70,6 +70,7 @@ type fileConfig struct {
 	Details                    *bool    `toml:"details"`
 	CPUProfile                 *string  `toml:"cpu_profile"`
 	MemProfile                 *string  `toml:"mem_profile"`
+	ExecTrace                  *string  `toml:"exec_trace"`
 	Demo                       *string  `toml:"demo"`
 	RecordDemo                 *string  `toml:"record_demo"`
 	DemoStopAfterTics          *int     `toml:"demo_stop_after_tics"`
