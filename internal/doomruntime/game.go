@@ -691,6 +691,7 @@ type game struct {
 	billboardQueueCollect        bool
 	maskedMidSegsScratch         []maskedMidSeg
 	spriteTXScratch              []int
+	spriteTXRunEndScratch        []int
 	spriteTYScratch              []int
 	wallLayer                    *ebiten.Image
 	wallPix                      []byte
@@ -708,6 +709,7 @@ type game struct {
 	wallDepthBottomCol           []int
 	wallDepthClosedCol           []bool
 	maskedClipCols               [][]scene.MaskedClipSpan
+	maskedClipFirstDepthQ        []uint16
 	maskedClipLastDepthQ         []uint16
 	maskedSpanScratchA           []solidSpan
 	maskedSpanScratchB           []solidSpan
@@ -4401,6 +4403,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 		if cap(col) == 0 {
 			col = make([]scene.MaskedClipSpan, 0, 4)
 		}
+		if x >= 0 && x < len(g.maskedClipFirstDepthQ) {
+			g.maskedClipFirstDepthQ[x] = sp.DepthQ
+		}
 		if x >= 0 && x < len(g.maskedClipLastDepthQ) {
 			g.maskedClipLastDepthQ[x] = sp.DepthQ
 		}
@@ -4434,6 +4439,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 	col = append(col, scene.MaskedClipSpan{})
 	copy(col[insertAt+1:], col[insertAt:])
 	col[insertAt] = sp
+	if insertAt == 0 && x >= 0 && x < len(g.maskedClipFirstDepthQ) {
+		g.maskedClipFirstDepthQ[x] = sp.DepthQ
+	}
 	g.maskedClipCols[x] = col
 }
 
@@ -6414,6 +6422,37 @@ func (g *game) ensureSpriteTXScratch(n int) []int {
 	return g.spriteTXScratch
 }
 
+func (g *game) ensureSpriteTXRunEndScratch(n int) []int {
+	if n <= 0 {
+		return nil
+	}
+	if cap(g.spriteTXRunEndScratch) < n {
+		g.spriteTXRunEndScratch = make([]int, n)
+	} else {
+		g.spriteTXRunEndScratch = g.spriteTXRunEndScratch[:n]
+	}
+	return g.spriteTXRunEndScratch
+}
+
+func (g *game) buildSpriteTXRunEnds(txLUT []int) []int {
+	if len(txLUT) == 0 {
+		return nil
+	}
+	runEnds := g.ensureSpriteTXRunEndScratch(len(txLUT))
+	last := len(txLUT) - 1
+	runEnd := last
+	runEnds[last] = last
+	for i := last - 1; i >= 0; i-- {
+		if txLUT[i] == txLUT[i+1] {
+			runEnds[i] = runEnd
+			continue
+		}
+		runEnd = i
+		runEnds[i] = i
+	}
+	return runEnds
+}
+
 func (g *game) ensureSpriteTYScratch(n int) []int {
 	if n <= 0 {
 		return nil
@@ -6557,7 +6596,7 @@ func (g *game) cachedImpactShadeMul(i int, fullBright bool, lightMul uint32, dis
 	return shade
 }
 
-func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []solidSpan, tex *WallTexture, src32 []uint32, srcIndexed []byte, shadeMul uint32, shadeRow []uint32, fixedDOOMRow int) {
+func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT, txRunEndLUT []int, spans []solidSpan, tex *WallTexture, src32 []uint32, srcIndexed []byte, shadeMul uint32, shadeRow []uint32, fixedDOOMRow int) {
 	if tex == nil {
 		return
 	}
@@ -6566,7 +6605,7 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 		return
 	}
 	useIndexed := ty >= 0 && ty < tex.Height && len(srcIndexed) == tw*tex.Height
-	if g.drawBillboardRowOpaqueRuns(row, ty, tw, x0, txLUT, spans, tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow) {
+	if g.drawBillboardRowOpaqueRuns(row, ty, tw, x0, txLUT, txRunEndLUT, spans, tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow) {
 		return
 	}
 	srcMask := tex.OpaqueMask
@@ -6576,10 +6615,11 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 	for _, sp := range spans {
 		if useIndexed {
 			for x := sp.L; x <= sp.R; {
-				s0 := base + txLUT[x-x0]
-				runEnd := x
-				for runEnd+1 <= sp.R && txLUT[runEnd+1-x0] == txLUT[x-x0] {
-					runEnd++
+				lutIdx := x - x0
+				s0 := base + txLUT[lutIdx]
+				runEnd := txRunEndLUT[lutIdx] + x0
+				if runEnd > sp.R {
+					runEnd = sp.R
 				}
 				if srcMask[s0] != 0 {
 					dst := uint32(0)
@@ -6603,10 +6643,11 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 			continue
 		}
 		for x := sp.L; x <= sp.R; {
-			p0 := src32[base+txLUT[x-x0]]
-			runEnd := x
-			for runEnd+1 <= sp.R && txLUT[runEnd+1-x0] == txLUT[x-x0] {
-				runEnd++
+			lutIdx := x - x0
+			p0 := src32[base+txLUT[lutIdx]]
+			runEnd := txRunEndLUT[lutIdx] + x0
+			if runEnd > sp.R {
+				runEnd = sp.R
 			}
 			if ((p0 >> pixelAShift) & 0xFF) != 0 {
 				dst := uint32(0)
@@ -6630,7 +6671,7 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT []int, spans []s
 	}
 }
 
-func (g *game) drawBillboardRowOpaqueRuns(row, ty, tw, x0 int, txLUT []int, spans []solidSpan, tex *WallTexture, src32 []uint32, srcIndexed []byte, shadeMul uint32, shadeRow []uint32, fixedDOOMRow int) bool {
+func (g *game) drawBillboardRowOpaqueRuns(row, ty, tw, x0 int, txLUT, txRunEndLUT []int, spans []solidSpan, tex *WallTexture, src32 []uint32, srcIndexed []byte, shadeMul uint32, shadeRow []uint32, fixedDOOMRow int) bool {
 	if g == nil || tex == nil || ty < 0 || ty >= tex.Height || len(tex.OpaqueRowOffs) != tex.Height+1 || len(txLUT) == 0 {
 		return false
 	}
@@ -6655,10 +6696,11 @@ func (g *game) drawBillboardRowOpaqueRuns(row, ty, tw, x0 int, txLUT []int, span
 			}
 			if useIndexed {
 				for x := l; x <= r; {
-					s0 := base + txLUT[x-x0]
-					runEnd := x
-					for runEnd+1 <= r && txLUT[runEnd+1-x0] == txLUT[x-x0] {
-						runEnd++
+					lutIdx := x - x0
+					s0 := base + txLUT[lutIdx]
+					runEnd := txRunEndLUT[lutIdx] + x0
+					if runEnd > r {
+						runEnd = r
 					}
 					dst := uint32(0)
 					if useShadeRow {
@@ -6680,10 +6722,11 @@ func (g *game) drawBillboardRowOpaqueRuns(row, ty, tw, x0 int, txLUT []int, span
 				continue
 			}
 			for x := l; x <= r; {
-				p0 := src32[base+txLUT[x-x0]]
-				runEnd := x
-				for runEnd+1 <= r && txLUT[runEnd+1-x0] == txLUT[x-x0] {
-					runEnd++
+				lutIdx := x - x0
+				p0 := src32[base+txLUT[lutIdx]]
+				runEnd := txRunEndLUT[lutIdx] + x0
+				if runEnd > r {
+					runEnd = r
 				}
 				dst := uint32(0)
 				if fixedDOOMRow >= 0 {
@@ -7142,6 +7185,7 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		}
 		txLUT[x-x0] = tx
 	}
+	txRunEndLUT := g.buildSpriteTXRunEnds(txLUT)
 	tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
 	for y := y0; y <= y1; y++ {
 		ty := int((float64(y) + 0.5 - it.dstY) / scale)
@@ -7217,7 +7261,7 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 				continue
 			}
 		}
-		g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
+		g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, txRunEndLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
 	}
 }
 
@@ -7225,6 +7269,7 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 	if g == nil || it.tex == nil || x0 > x1 || y0 > y1 {
 		return false
 	}
+	txRunEndLUT := g.buildSpriteTXRunEnds(txLUT)
 	it.tex.EnsureOpaqueMask()
 	if len(it.tex.OpaqueMask) != tw*it.tex.Height {
 		return false
@@ -7297,7 +7342,7 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 					continue
 				}
 				used = true
-				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
+				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, txRunEndLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
 			}
 			tx0 = tx1 + 1
 		}
@@ -12072,6 +12117,9 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 	if len(g.maskedClipCols) != w {
 		g.maskedClipCols = make([][]scene.MaskedClipSpan, w)
 	}
+	if len(g.maskedClipFirstDepthQ) != w {
+		g.maskedClipFirstDepthQ = make([]uint16, w)
+	}
 	if len(g.maskedClipLastDepthQ) != w {
 		g.maskedClipLastDepthQ = make([]uint16, w)
 	}
@@ -12087,6 +12135,7 @@ func (g *game) ensure3DFrameBuffers() ([]int, []int, []int, []int) {
 		if len(g.maskedClipCols[i]) != 0 {
 			g.maskedClipCols[i] = g.maskedClipCols[i][:0]
 		}
+		g.maskedClipFirstDepthQ[i] = 0
 		g.maskedClipLastDepthQ[i] = 0
 	}
 	return g.wallTop3D, g.wallBottom3D, g.ceilingClip3D, g.floorClip3D
@@ -17907,8 +17956,12 @@ func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpa
 					}
 				}
 			}
-			if !occluded && x >= 0 && x < len(g.maskedClipCols) {
-				occluded = maskedClipColumnOccludesPointSorted(g.maskedClipCols[x], y, depthQ)
+			if !occluded {
+				if x >= 0 && x < len(g.maskedClipCols) {
+					if x < len(g.maskedClipFirstDepthQ) && g.maskedClipFirstDepthQ[x] != 0 && depthQ > g.maskedClipFirstDepthQ[x] {
+						occluded = maskedClipColumnOccludesPointSorted(g.maskedClipCols[x], y, depthQ)
+					}
+				}
 			}
 			if occluded {
 				if runStart >= 0 {

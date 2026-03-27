@@ -3,7 +3,7 @@
 package music
 
 func streamChunkFrames() int {
-	return 1024
+	return 2048
 }
 
 func streamLookaheadFrames() int {

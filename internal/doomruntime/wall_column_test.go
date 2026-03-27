@@ -363,7 +363,8 @@ func TestDrawBillboardRowSpans_OpaqueRunsSkipTransparentGap(t *testing.T) {
 		t.Fatal("expected rgba32 pixels")
 	}
 	txLUT := []int{0, 0, 1, 1, 2, 3}
-	g.drawBillboardRowSpans(0, 0, tex.Width, 0, txLUT, []solidSpan{{L: 0, R: 5}}, &tex, src32, nil, 256, nil, -1)
+	txRunEndLUT := g.buildSpriteTXRunEnds(txLUT)
+	g.drawBillboardRowSpans(0, 0, tex.Width, 0, txLUT, txRunEndLUT, []solidSpan{{L: 0, R: 5}}, &tex, src32, nil, 256, nil, -1)
 	if g.wallPix32[2] != 0 || g.wallPix32[3] != 0 {
 		t.Fatalf("transparent gap drawn: %v", g.wallPix32)
 	}
@@ -474,7 +475,9 @@ func TestDrawBillboardRowSpans_InvulnerabilityUsesFixedDOOMRow(t *testing.T) {
 		OpaqueMask: []byte{1},
 	}
 
-	g.drawBillboardRowSpans(0, 0, tex.Width, 0, []int{0}, []solidSpan{{L: 0, R: 0}}, &tex, nil, tex.Indexed, 32, nil, doomNumColorMaps)
+	txLUT := []int{0}
+	txRunEndLUT := g.buildSpriteTXRunEnds(txLUT)
+	g.drawBillboardRowSpans(0, 0, tex.Width, 0, txLUT, txRunEndLUT, []solidSpan{{L: 0, R: 0}}, &tex, nil, tex.Indexed, 32, nil, doomNumColorMaps)
 
 	if got := g.wallPix32[0]; got != 0xFACEB00C {
 		t.Fatalf("pix=%08x want fixed colormap row value", got)
