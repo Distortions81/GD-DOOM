@@ -106,6 +106,7 @@ CMD=(
   #-skill 5
   #-invuln
   -sourceport-mode
+  -detail-level 1
   -demo-exit-on-death
   #-no-vsync
   -width 1920
