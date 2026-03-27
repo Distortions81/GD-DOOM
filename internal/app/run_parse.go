@@ -596,6 +596,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		writeMemStats("start")
 		defer writeMemStats("end")
 	}
+	stopCPUProfile := func() {}
+	if strings.TrimSpace(*cpuProfile) != "" {
+		f, perr := os.Create(strings.TrimSpace(*cpuProfile))
+		if perr != nil {
+			fmt.Fprintf(stderr, "open cpu profile: %v\n", perr)
+			return 1
+		}
+		if perr := pprof.StartCPUProfile(f); perr != nil {
+			_ = f.Close()
+			fmt.Fprintf(stderr, "start cpu profile: %v\n", perr)
+			return 1
+		}
+		fmt.Fprintf(stderr, "cpu profile recording to %s\n", strings.TrimSpace(*cpuProfile))
+		stopCPUProfile = func() {
+			pprof.StopCPUProfile()
+			_ = f.Close()
+		}
+	}
+	defer stopCPUProfile()
 	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
 	forceWASMPicker := isWASMBuild() && *render
 	choices := detectAvailableIWADChoices(".")
@@ -890,26 +909,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
 
 	if *render {
-		stopCPUProfile := func() {}
-		if strings.TrimSpace(*cpuProfile) != "" {
-			f, perr := os.Create(strings.TrimSpace(*cpuProfile))
-			if perr != nil {
-				fmt.Fprintf(stderr, "open cpu profile: %v\n", perr)
-				return 1
-			}
-			if perr := pprof.StartCPUProfile(f); perr != nil {
-				_ = f.Close()
-				fmt.Fprintf(stderr, "start cpu profile: %v\n", perr)
-				return 1
-			}
-			fmt.Fprintf(stderr, "cpu profile recording to %s\n", strings.TrimSpace(*cpuProfile))
-			stopCPUProfile = func() {
-				pprof.StopCPUProfile()
-				_ = f.Close()
-			}
-		}
-		defer stopCPUProfile()
-
 		resolvedLineColorMode := *lineColorMode
 		// Source-port defaults unless user explicitly chose a color mode.
 		if *sourcePortMode && !lineColorModeSet {
@@ -1121,7 +1120,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 0
 	}
 
-	if resolvedDemoTracePath != "" {
+	if !*render && (resolvedDemoTracePath != "" || resolvedDemoPath != "") {
 		resolvedLineColorMode := *lineColorMode
 		if *sourcePortMode && !lineColorModeSet {
 			resolvedLineColorMode = "doom"
@@ -1201,7 +1200,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		bundle, berr := buildRenderBundle(resolvedWADPath, buildCfg, stderr)
 		if berr != nil {
-			fmt.Fprintf(stderr, "build headless demo trace: %v\n", berr)
+			fmt.Fprintf(stderr, "build headless demo run: %v\n", berr)
 			return 1
 		}
 		sess := doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
@@ -1213,15 +1212,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			if errors.Is(uerr, ebiten.Termination) {
 				if err := sess.Err(); err != nil {
-					fmt.Fprintf(stderr, "headless demo trace: %v\n", err)
+					fmt.Fprintf(stderr, "headless demo run: %v\n", err)
 					return 1
 				}
 				return 0
 			}
-			fmt.Fprintf(stderr, "headless demo trace update %d: %v\n", tic, uerr)
+			fmt.Fprintf(stderr, "headless demo run update %d: %v\n", tic, uerr)
 			return 1
 		}
-		fmt.Fprintln(stderr, "headless demo trace did not terminate")
+		fmt.Fprintln(stderr, "headless demo run did not terminate")
 		return 1
 	}
 
@@ -3096,12 +3095,12 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]media.WallTexture {
 		frames = append(frames, fr)
 	}
 	names := make([]string, 0, len(spritePrefixes)*len(frames)*8)
+	seen := make(map[string]struct{}, cap(names))
 	add := func(name string) {
-		for _, ex := range names {
-			if ex == name {
-				return
-			}
+		if _, ok := seen[name]; ok {
+			return
 		}
+		seen[name] = struct{}{}
 		names = append(names, name)
 	}
 	addExpandedSeed := func(seed string) {
