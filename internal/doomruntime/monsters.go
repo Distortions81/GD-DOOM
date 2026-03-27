@@ -216,6 +216,15 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		g.resetMonsterIdleOrChaseState(i, th.Type)
 	}
 
+	ranStateEntryAction := false
+	if resumedFromPain || resumedFromAttack {
+		if stop, ranChase := g.runMonsterIdleOrChaseEntryAction(i, th.Type, tx, ty); stop {
+			return
+		} else if ranChase {
+			ranStateEntryAction = true
+		}
+	}
+
 	if !resumedFromPain && !resumedFromAttack && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
 		return
 	}
@@ -225,20 +234,22 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		targetX, targetY = px, py
 		dist = doomApproxDistance(targetX-tx, targetY-ty)
 	}
-	if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+	if !ranStateEntryAction && i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 		g.thingReactionTics[i]--
 	}
 	skipThresholdTick := i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStateAttack
-	if !skipThresholdTick && i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+	if !ranStateEntryAction && !skipThresholdTick && i >= 0 && i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
 		if !g.monsterHasTarget(i) {
 			g.thingThreshold[i] = 0
 		} else {
 			g.thingThreshold[i]--
 		}
 	}
-	g.monsterTurnTowardMoveDir(i)
+	if !ranStateEntryAction {
+		g.monsterTurnTowardMoveDir(i)
+	}
 
-	if !g.monsterHasTarget(i) {
+	if !ranStateEntryAction && !g.monsterHasTarget(i) {
 		hadJustAtk := i >= 0 && i < len(g.thingJustAtk) && g.thingJustAtk[i]
 		reacquired, continueChase := g.monsterRunLostTargetChaseState(i, th.Type, tx, ty)
 		if !reacquired {
@@ -264,7 +275,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		}
 	}
 
-	if i >= 0 && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
+	if !ranStateEntryAction && i >= 0 && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
 		g.thingJustAtk[i] = false
 		g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
 		return
@@ -459,9 +470,6 @@ func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
 		if i >= 0 && i < len(g.thingAggro) {
 			g.thingAggro[i] = true
 		}
-		if i >= 0 && i < len(g.thingJustAtk) {
-			g.thingJustAtk[i] = false
-		}
 		g.emitMonsterSeeSound(i, typ, tx, ty)
 		if i >= 0 && i < len(g.thingStatePhase) {
 			g.thingStatePhase[i] = 0
@@ -483,9 +491,6 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 		if i >= 0 && i < len(g.thingAggro) {
 			g.thingAggro[i] = true
 		}
-		if i >= 0 && i < len(g.thingJustAtk) {
-			g.thingJustAtk[i] = false
-		}
 		if i >= 0 && i < len(g.thingStatePhase) {
 			g.thingStatePhase[i] = 0
 		}
@@ -493,7 +498,7 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 		return true, false
 	}
 	if g.monsterRunLookState(i, typ, tx, ty) {
-		return true, false
+		return true, true
 	}
 	if i >= 0 && i < len(g.thingStatePhase) {
 		g.thingStatePhase[i] = 0
@@ -699,6 +704,55 @@ func (g *game) resetMonsterIdleOrChaseState(i int, typ int16) {
 		g.thingStatePhase[i] = 0
 	}
 	g.setMonsterThinkState(i, typ, g.monsterIdleOrChaseState(i), g.monsterIdleOrChaseTics(i, typ))
+}
+
+func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64) (stop bool, ranChase bool) {
+	if g == nil || i < 0 || i >= len(g.thingState) {
+		return false, false
+	}
+	switch g.thingState[i] {
+	case monsterStateSpawn:
+		if g.monsterRunLookState(i, typ, tx, ty) {
+			return true, false
+		}
+		return true, false
+	case monsterStateSee:
+		for pass := 0; pass < 2; pass++ {
+			if i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+				g.thingReactionTics[i]--
+			}
+			if i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+				if !g.monsterHasTarget(i) {
+					g.thingThreshold[i] = 0
+				} else {
+					g.thingThreshold[i]--
+				}
+			}
+			g.monsterTurnTowardMoveDir(i)
+			if !g.monsterHasTarget(i) {
+				reacquired, continueChase := g.monsterRunLostTargetChaseState(i, typ, tx, ty)
+				if !reacquired || !continueChase {
+					return true, false
+				}
+				continue
+			}
+			if i < len(g.thingJustAtk) && g.thingJustAtk[i] {
+				g.thingJustAtk[i] = false
+				targetX, targetY := int64(0), int64(0)
+				if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+					targetX, targetY = px, py
+				}
+				if !g.fastMonstersActive() {
+					g.monsterPickNewChaseDir(i, typ, targetX, targetY)
+				}
+				return true, true
+			}
+			return false, true
+		}
+		return true, false
+	default:
+		return false, false
+	}
 }
 
 func monsterPainRemainingTics(typ int16, phase, stateTics int) int {
