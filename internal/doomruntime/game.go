@@ -523,7 +523,6 @@ type game struct {
 	thingCollected        []bool
 	thingDropped          []bool
 	thingThinkerOrder     []int64
-	worldThinkerScratch   []worldThinkerRef
 	thingX                []int64
 	thingY                []int64
 	thingMomX             []int64

@@ -137,18 +137,30 @@ func (g *game) runOrderedWorldThinkers() {
 	if g != nil && g.m != nil {
 		g.ensureMonsterAIState()
 	}
-	thinkers := g.collectWorldThinkers()
-	for _, thinker := range thinkers {
-		g.tickWorldThinker(thinker)
+	for lastOrder := int64(0); ; {
+		next, ok := g.nextWorldThinkerAfter(lastOrder)
+		if !ok {
+			return
+		}
+		g.tickWorldThinker(next)
+		lastOrder = next.order
 	}
 }
 
-func (g *game) collectWorldThinkers() []worldThinkerRef {
-	if g == nil {
-		return nil
+func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
+	best := worldThinkerRef{}
+	found := false
+	consider := func(kind worldThinkerKind, key int, order int64) {
+		if order <= lastOrder {
+			return
+		}
+		if !found || order < best.order {
+			best = worldThinkerRef{kind: kind, key: key, order: order}
+			found = true
+		}
 	}
-	thinkers := g.worldThinkerScratch[:0]
-	if g.m != nil {
+
+	if g != nil && g.m != nil {
 		for i, th := range g.m.Things {
 			if !g.thingHasWorldThinker(i, th) {
 				continue
@@ -157,45 +169,34 @@ func (g *game) collectWorldThinkers() []worldThinkerRef {
 			if i >= 0 && i < len(g.thingThinkerOrder) && g.thingThinkerOrder[i] > 0 {
 				order = g.thingThinkerOrder[i]
 			}
-			thinkers = append(thinkers, worldThinkerRef{kind: worldThinkerThing, key: i, order: order})
+			consider(worldThinkerThing, i, order)
 		}
 	}
 	for sec, ft := range g.floors {
 		if ft == nil {
 			continue
 		}
-		thinkers = append(thinkers, worldThinkerRef{kind: worldThinkerFloor, key: sec, order: ft.order})
+		consider(worldThinkerFloor, sec, ft.order)
 	}
 	for sec, pt := range g.plats {
 		if pt == nil {
 			continue
 		}
-		thinkers = append(thinkers, worldThinkerRef{kind: worldThinkerPlat, key: sec, order: pt.order})
+		consider(worldThinkerPlat, sec, pt.order)
 	}
 	for sec, ct := range g.ceilings {
 		if ct == nil {
 			continue
 		}
-		thinkers = append(thinkers, worldThinkerRef{kind: worldThinkerCeiling, key: sec, order: ct.order})
+		consider(worldThinkerCeiling, sec, ct.order)
 	}
 	for sec, d := range g.doors {
 		if d == nil {
 			continue
 		}
-		thinkers = append(thinkers, worldThinkerRef{kind: worldThinkerDoor, key: sec, order: d.order})
+		consider(worldThinkerDoor, sec, d.order)
 	}
-	slices.SortFunc(thinkers, func(a, b worldThinkerRef) int {
-		switch {
-		case a.order < b.order:
-			return -1
-		case a.order > b.order:
-			return 1
-		default:
-			return 0
-		}
-	})
-	g.worldThinkerScratch = thinkers
-	return thinkers
+	return best, found
 }
 
 func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
