@@ -3,6 +3,8 @@ package sound
 import (
 	"encoding/binary"
 	"testing"
+
+	"gddoom/internal/wad"
 )
 
 type lumpSpec struct {
@@ -12,10 +14,6 @@ type lumpSpec struct {
 
 func buildWADForSoundTests(t *testing.T, lumps []lumpSpec) []byte {
 	t.Helper()
-	const (
-		headerLen = 12
-		dirLen    = 16
-	)
 	fileDataLen := 0
 	for _, l := range lumps {
 		if len(l.name) > 8 {
@@ -23,16 +21,16 @@ func buildWADForSoundTests(t *testing.T, lumps []lumpSpec) []byte {
 		}
 		fileDataLen += len(l.data)
 	}
-	dirPos := headerLen + fileDataLen
-	buf := make([]byte, headerLen+fileDataLen+len(lumps)*dirLen)
+	dirPos := wad.HeaderSize + fileDataLen
+	buf := make([]byte, wad.HeaderSize+fileDataLen+len(lumps)*wad.DirectorySize)
 	copy(buf[0:4], []byte("IWAD"))
 	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(lumps)))
 	binary.LittleEndian.PutUint32(buf[8:12], uint32(dirPos))
 
-	writePos := headerLen
+	writePos := wad.HeaderSize
 	for i, l := range lumps {
 		copy(buf[writePos:], l.data)
-		entry := buf[dirPos+i*dirLen : dirPos+(i+1)*dirLen]
+		entry := buf[dirPos+i*wad.DirectorySize : dirPos+(i+1)*wad.DirectorySize]
 		binary.LittleEndian.PutUint32(entry[0:4], uint32(writePos))
 		binary.LittleEndian.PutUint32(entry[4:8], uint32(len(l.data)))
 		copy(entry[8:16], []byte(l.name))

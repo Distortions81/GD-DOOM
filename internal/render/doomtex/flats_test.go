@@ -8,9 +8,7 @@ import (
 
 func TestLoadFlatsIndexedSharesLumpView(t *testing.T) {
 	const (
-		headerLen   = 12
-		dirEntryLen = 16
-		flatName    = "FLAT1"
+		flatName = "FLAT1"
 	)
 	flat := make([]byte, doomFlatSize)
 	flat[0] = 0x11
@@ -24,19 +22,19 @@ func TestLoadFlatsIndexedSharesLumpView(t *testing.T) {
 		{name: flatName, data: flat},
 		{name: "F_END", data: endMarker},
 	}
-	dataLen := headerLen
+	dataLen := wad.HeaderSize
 	for _, l := range lumps {
 		dataLen += len(l.data)
 	}
 	dirPos := dataLen
-	buf := make([]byte, dirPos+len(lumps)*dirEntryLen)
+	buf := make([]byte, dirPos+len(lumps)*wad.DirectorySize)
 	copy(buf[0:4], []byte("IWAD"))
 	putU32LE(buf[4:8], uint32(len(lumps)))
 	putU32LE(buf[8:12], uint32(dirPos))
-	writePos := headerLen
+	writePos := wad.HeaderSize
 	for i, l := range lumps {
 		copy(buf[writePos:writePos+len(l.data)], l.data)
-		dir := buf[dirPos+i*dirEntryLen : dirPos+(i+1)*dirEntryLen]
+		dir := buf[dirPos+i*wad.DirectorySize : dirPos+(i+1)*wad.DirectorySize]
 		putU32LE(dir[0:4], uint32(writePos))
 		putU32LE(dir[4:8], uint32(len(l.data)))
 		copy(dir[8:16], []byte(l.name))

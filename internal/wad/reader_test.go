@@ -91,18 +91,16 @@ func minimalWAD(t *testing.T, ident, lumpName string, lumpData []byte) []byte {
 	if len(lumpName) > 8 {
 		t.Fatalf("lumpName too long: %q", lumpName)
 	}
-	const headerLen = 12
-	const dirEntryLen = 16
-	filePos := int32(headerLen)
-	dirPos := int32(headerLen + len(lumpData))
+	filePos := int32(HeaderSize)
+	dirPos := int32(HeaderSize + len(lumpData))
 
-	buf := make([]byte, headerLen+len(lumpData)+dirEntryLen)
+	buf := make([]byte, HeaderSize+len(lumpData)+DirectorySize)
 	copy(buf[0:4], []byte(ident))
 	binary.LittleEndian.PutUint32(buf[4:8], 1)
 	binary.LittleEndian.PutUint32(buf[8:12], uint32(dirPos))
 	copy(buf[filePos:], lumpData)
 
-	dir := buf[dirPos : dirPos+dirEntryLen]
+	dir := buf[dirPos : dirPos+DirectorySize]
 	binary.LittleEndian.PutUint32(dir[0:4], uint32(filePos))
 	binary.LittleEndian.PutUint32(dir[4:8], uint32(len(lumpData)))
 	copy(dir[8:16], []byte(lumpName))

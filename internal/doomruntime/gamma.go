@@ -7,6 +7,8 @@ import (
 
 const doomGammaLevels = 5
 
+const defaultGammaLevel = 0
+
 const gammaDisplayGamma = 2.2
 
 // Level 0 is true 1:1 gamma at 2.2. The remaining four steps cover a darker

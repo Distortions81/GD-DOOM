@@ -1149,7 +1149,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		opts:              opts,
 		bounds:            mapBounds(m),
 		paletteLUTEnabled: !opts.SourcePortMode,
-		gammaLevel:        0,
+		gammaLevel:        defaultGammaLevel,
 		crtEnabled:        opts.CRTEffect,
 		viewW:             opts.Width,
 		viewH:             opts.Height,

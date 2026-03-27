@@ -184,8 +184,6 @@ type wadLumpData struct {
 
 func buildTestWAD(t *testing.T, lumps []wadLumpData) []byte {
 	t.Helper()
-	const headerLen = 12
-	const dirEntryLen = 16
 	if len(lumps) == 0 {
 		t.Fatal("buildTestWAD requires at least one lump")
 	}
@@ -196,17 +194,17 @@ func buildTestWAD(t *testing.T, lumps []wadLumpData) []byte {
 		}
 		payloadSize += len(l.data)
 	}
-	dirPos := headerLen + payloadSize
-	total := headerLen + payloadSize + len(lumps)*dirEntryLen
+	dirPos := wad.HeaderSize + payloadSize
+	total := wad.HeaderSize + payloadSize + len(lumps)*wad.DirectorySize
 	buf := make([]byte, total)
 	copy(buf[0:4], []byte("IWAD"))
 	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(lumps)))
 	binary.LittleEndian.PutUint32(buf[8:12], uint32(dirPos))
 
-	writePos := headerLen
+	writePos := wad.HeaderSize
 	for i, l := range lumps {
 		copy(buf[writePos:writePos+len(l.data)], l.data)
-		dir := buf[dirPos+i*dirEntryLen : dirPos+(i+1)*dirEntryLen]
+		dir := buf[dirPos+i*wad.DirectorySize : dirPos+(i+1)*wad.DirectorySize]
 		binary.LittleEndian.PutUint32(dir[0:4], uint32(writePos))
 		binary.LittleEndian.PutUint32(dir[4:8], uint32(len(l.data)))
 		copy(dir[8:16], []byte(l.name))

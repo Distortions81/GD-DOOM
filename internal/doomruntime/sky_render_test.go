@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/scene"
 )
 
 func TestBuildSkyLookupParallel_SourcePortDetailDoesNotWarpSkyProjection(t *testing.T) {
@@ -49,6 +50,8 @@ func TestBuildSkyLookupParallel_SourcePortUsesOutputProjectionScale(t *testing.T
 	g.viewW, g.viewH = outW, outH
 	g.setSkyOutputSize(outW, outH)
 	hiCol, hiRow := g.buildSkyLookupParallel(outW, outH, doomFocalLength(outW), camAng, texW, texH)
+	hiCol = append([]int(nil), hiCol...)
+	hiRow = append([]int(nil), hiRow...)
 
 	// Detail: render at half resolution but keep presentation size identical.
 	loW := outW / 2
@@ -65,12 +68,14 @@ func TestBuildSkyLookupParallel_SourcePortUsesOutputProjectionScale(t *testing.T
 	}
 	// With 2x nearest upscaling, low-res samples should match odd output centers.
 	for x := 0; x < loW; x++ {
-		if got, want := hiCol[x*2+1], loCol[x]; got != want {
+		hiX := scene.ProjectedSampleIndex(x, loW, outW)
+		if got, want := hiCol[hiX], loCol[x]; got != want {
 			t.Fatalf("column lookup mismatch at x=%d: hi=%d low=%d", x, got, want)
 		}
 	}
 	for y := 0; y < loH; y++ {
-		if got, want := hiRow[y*2+1], loRow[y]; got != want {
+		hiY := scene.ProjectedSampleIndex(y, loH, outH)
+		if got, want := hiRow[hiY], loRow[y]; got != want {
 			t.Fatalf("row lookup mismatch at y=%d: hi=%d low=%d", y, got, want)
 		}
 	}

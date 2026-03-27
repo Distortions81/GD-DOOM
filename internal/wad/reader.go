@@ -12,6 +12,11 @@ const (
 	directorySize = 16
 )
 
+const (
+	HeaderSize    = headerSize
+	DirectorySize = directorySize
+)
+
 func Open(path string) (*File, error) {
 	if data, ok := embeddedDataForPath(path); ok {
 		return openData(path, data)
