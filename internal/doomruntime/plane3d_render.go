@@ -78,16 +78,47 @@ func stepsUntilTexelChangeFrac(frac, step int) int {
 }
 
 func fillPackedRun(dst []uint32, dstI, count int, packed uint32) {
+	if count <= 0 {
+		return
+	}
+	if count < 8 {
+		for ; count >= 4; count -= 4 {
+			dst[dstI] = packed
+			dst[dstI+1] = packed
+			dst[dstI+2] = packed
+			dst[dstI+3] = packed
+			dstI += 4
+		}
+		for ; count > 0; count-- {
+			dst[dstI] = packed
+			dstI++
+		}
+		return
+	}
+	run := dst[dstI : dstI+count]
+	run[0] = packed
+	filled := 1
+	for filled < len(run) {
+		n := filled
+		if remaining := len(run) - filled; n > remaining {
+			n = remaining
+		}
+		copy(run[filled:filled+n], run[:n])
+		filled += n
+	}
+}
+
+func fillPackedRunStride(dst []uint32, dstI, stride, count int, packed uint32) {
 	for ; count >= 4; count -= 4 {
 		dst[dstI] = packed
-		dst[dstI+1] = packed
-		dst[dstI+2] = packed
-		dst[dstI+3] = packed
-		dstI += 4
+		dst[dstI+stride] = packed
+		dst[dstI+stride*2] = packed
+		dst[dstI+stride*3] = packed
+		dstI += stride * 4
 	}
 	for ; count > 0; count-- {
 		dst[dstI] = packed
-		dstI++
+		dstI += stride
 	}
 }
 

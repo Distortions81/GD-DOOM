@@ -613,6 +613,50 @@ func TestAppendMaskedMidSegsToBillboardQueue_QuantizesSortDist(t *testing.T) {
 	}
 }
 
+func TestSortCutoutItemsFrontToBack_UsesDepthQAfterQuantizedDist(t *testing.T) {
+	g := &game{
+		maskedMidSegsScratch: []maskedMidSeg{
+			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 11.9, X0: 10, X1: 20}},
+			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 9.9, X0: 10, X1: 20}},
+		},
+	}
+
+	g.appendMaskedMidSegsToCutoutItems()
+	if len(g.billboardQueueScratch) != 2 {
+		t.Fatalf("queue len=%d want 2", len(g.billboardQueueScratch))
+	}
+	if g.billboardQueueScratch[0].dist != g.billboardQueueScratch[1].dist {
+		t.Fatalf("expected quantized tie, got %f and %f", g.billboardQueueScratch[0].dist, g.billboardQueueScratch[1].dist)
+	}
+
+	g.sortCutoutItemsFrontToBack()
+
+	if got := g.billboardQueueScratch[0].idx; got != 1 {
+		t.Fatalf("first idx=%d want nearer masked mid first", got)
+	}
+	if got := g.billboardQueueScratch[1].idx; got != 0 {
+		t.Fatalf("second idx=%d want farther masked mid second", got)
+	}
+}
+
+func TestSortCutoutItemsFrontToBack_UsesScreenBoundsBeforeKind(t *testing.T) {
+	g := &game{
+		billboardQueueScratch: []cutoutItem{
+			{dist: 16, depthQ: encodeDepthQ(16), kind: billboardQueueWorldThings, idx: 9, x0: 12, x1: 20, y0: 30, y1: 40},
+			{dist: 16, depthQ: encodeDepthQ(16), kind: billboardQueueMonsters, idx: 3, x0: 4, x1: 10, y0: 30, y1: 40},
+		},
+	}
+
+	g.sortCutoutItemsFrontToBack()
+
+	if got := g.billboardQueueScratch[0].x0; got != 4 {
+		t.Fatalf("first x0=%d want leftmost item first", got)
+	}
+	if got := g.billboardQueueScratch[1].x0; got != 12 {
+		t.Fatalf("second x0=%d want right item second", got)
+	}
+}
+
 func TestMaskedMidBillboardDepthGuess_UsesFartherEdge(t *testing.T) {
 	proj, status := scene.ProjectWallSegment(20, -2, 0, 80, 2, 1, 320, 160)
 	if status != scene.WallProjectionOK {

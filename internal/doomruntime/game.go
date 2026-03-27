@@ -7015,6 +7015,36 @@ func (g *game) sortCutoutItemsFrontToBack() {
 		if a.dist > b.dist {
 			return 1
 		}
+		if a.depthQ < b.depthQ {
+			return -1
+		}
+		if a.depthQ > b.depthQ {
+			return 1
+		}
+		if a.x0 < b.x0 {
+			return -1
+		}
+		if a.x0 > b.x0 {
+			return 1
+		}
+		if a.x1 < b.x1 {
+			return -1
+		}
+		if a.x1 > b.x1 {
+			return 1
+		}
+		if a.y0 < b.y0 {
+			return -1
+		}
+		if a.y0 > b.y0 {
+			return 1
+		}
+		if a.y1 < b.y1 {
+			return -1
+		}
+		if a.y1 > b.y1 {
+			return 1
+		}
 		if a.kind < b.kind {
 			return -1
 		}
@@ -7367,6 +7397,25 @@ func drawWallColumnTexturedIndexedLEColPow2Row(pix32 []uint32, pixI, rowStridePi
 		return
 	}
 	if texVStepFixed > -fracUnit && texVStepFixed < fracUnit {
+		if stepInt == 0 {
+			for count > 0 {
+				cur = ty & hmask
+				run := stepsUntilTexelChangeFrac(frac, stepFrac)
+				if run > count {
+					run = count
+				}
+				fillPackedRunStride(pix32, pixI, rowStridePix, run, rowData[colData[cur]])
+				pixI += rowStridePix * run
+				count -= run
+				if count <= 0 {
+					return
+				}
+				frac += run * stepFrac
+				ty += frac >> fracBits
+				frac &= fracMask
+			}
+			return
+		}
 		for count > 0 {
 			cur = ty & hmask
 			p := rowData[colData[cur]]
