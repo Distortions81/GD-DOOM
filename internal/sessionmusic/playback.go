@@ -64,7 +64,7 @@ func (p *Playback) PlayTitle(volume float64) {
 	if err != nil || len(data) == 0 {
 		return
 	}
-	p.ctl.PlayMUS(data)
+	p.ctl.PlayMUSOnce(data)
 }
 
 func (p *Playback) PlayMap(name mapdata.MapName, volume float64) {

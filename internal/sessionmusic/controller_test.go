@@ -44,7 +44,7 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 	}
 
 	var stream *music.StreamRenderer
-	first, err := nextLoopChunk(factory, &stream)
+	first, err := nextChunk(factory, &stream, true)
 	if err != nil {
 		t.Fatalf("first nextLoopChunk() error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 
 	doneSeen := false
 	for i := 0; i < 64; i++ {
-		_, err := nextLoopChunk(factory, &stream)
+		_, err := nextChunk(factory, &stream, true)
 		if err != nil {
 			t.Fatalf("nextLoopChunk() error: %v", err)
 		}
@@ -67,7 +67,7 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 		t.Fatal("stream never reached done state")
 	}
 
-	looped, err := nextLoopChunk(factory, &stream)
+	looped, err := nextChunk(factory, &stream, true)
 	if err != nil {
 		t.Fatalf("loop restart nextLoopChunk() error: %v", err)
 	}
@@ -76,6 +76,50 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 	}
 	if stream == nil {
 		t.Fatal("stream should be active again after loop restart")
+	}
+}
+
+func TestNextChunkStopsAtDoneWhenNotLooping(t *testing.T) {
+	driver, err := music.NewDriverWithBackend(44100, nil, sound.BackendAuto)
+	if err != nil {
+		t.Fatalf("NewDriverWithBackend() error: %v", err)
+	}
+	score := []byte{
+		0x40, 0, 0,
+		0x10, 60,
+		0x80, 60,
+		0x08,
+		0x60,
+	}
+	musData := buildMUSTestLump(score)
+	factory := func() (*music.StreamRenderer, error) {
+		return music.NewMUSStreamRenderer(driver, musData)
+	}
+
+	var stream *music.StreamRenderer
+	doneSeen := false
+	for i := 0; i < 64; i++ {
+		chunk, err := nextChunk(factory, &stream, false)
+		if err != nil {
+			t.Fatalf("nextChunk() error: %v", err)
+		}
+		if len(chunk) == 0 {
+			t.Fatal("expected non-empty chunk before stop")
+		}
+		if stream == nil {
+			doneSeen = true
+			break
+		}
+	}
+	if !doneSeen {
+		t.Fatal("non-looping stream never reached done state")
+	}
+	chunk, err := nextChunk(factory, &stream, false)
+	if err != nil {
+		t.Fatalf("post-done nextChunk() error: %v", err)
+	}
+	if len(chunk) == 0 {
+		t.Fatal("expected first chunk when explicitly started again")
 	}
 }
 

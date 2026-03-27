@@ -12055,7 +12055,6 @@ func (g *game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if g.opts.SourcePortMode {
 		w := max(outsideWidth, 1)
 		h := max(outsideHeight, 1)
-		w, h = clampSourcePortLayoutSizeForPlatform(w, h, isWASMBuild())
 		if w != g.viewW || h != g.viewH {
 			g.viewW = w
 			g.viewH = h

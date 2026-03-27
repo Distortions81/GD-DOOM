@@ -1,6 +1,10 @@
 package doomruntime
 
-import "testing"
+import (
+	"testing"
+
+	"gddoom/internal/platformcfg"
+)
 
 func TestDefaultCLIWindowSize(t *testing.T) {
 	w, h := DefaultCLIWindowSize()
@@ -71,5 +75,35 @@ func TestClampSourcePortLayoutSizeForNativeLeavesSizeUnchanged(t *testing.T) {
 	w, h := clampSourcePortLayoutSizeForPlatform(2560, 1440, false)
 	if w != 2560 || h != 1440 {
 		t.Fatalf("layout=%dx%d want 2560x1440", w, h)
+	}
+}
+
+func TestSourcePortLayoutWASMClampDoesNotClampRenderView(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	g := &game{
+		opts:       Options{SourcePortMode: true},
+		viewW:      1,
+		viewH:      1,
+		skyOutputW: 1,
+		skyOutputH: 1,
+	}
+	sg := &sessionGame{
+		opts: Options{SourcePortMode: true},
+		g:    g,
+		rt:   g,
+	}
+
+	layoutW, layoutH := sg.Layout(2560, 1440)
+	if layoutW != 1280 || layoutH != 720 {
+		t.Fatalf("layout=%dx%d want 1280x720", layoutW, layoutH)
+	}
+	if sg.g.viewW != 2560 || sg.g.viewH != 1440 {
+		t.Fatalf("render view=%dx%d want 2560x1440", sg.g.viewW, sg.g.viewH)
+	}
+	if sg.g.skyOutputW != 1280 || sg.g.skyOutputH != 720 {
+		t.Fatalf("sky output=%dx%d want 1280x720", sg.g.skyOutputW, sg.g.skyOutputH)
 	}
 }

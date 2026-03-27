@@ -506,11 +506,11 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		aspectH = doomLogicalH
 	}
 	if sg.opts.SourcePortMode {
-		w := max(outsideWidth, 1)
-		h := max(outsideHeight, 1)
-		w, h = clampSourcePortLayoutSizeForPlatform(w, h, isWASMBuild())
-		if sg.g.skyOutputW != w || sg.g.skyOutputH != h {
-			sg.rt.setSkyOutputSize(w, h)
+		layoutW := max(outsideWidth, 1)
+		layoutH := max(outsideHeight, 1)
+		layoutW, layoutH = clampSourcePortLayoutSizeForPlatform(layoutW, layoutH, isWASMBuild())
+		if sg.g.skyOutputW != layoutW || sg.g.skyOutputH != layoutH {
+			sg.rt.setSkyOutputSize(layoutW, layoutH)
 		}
 		// Sourceport mode renders/presents natively to the current window size,
 		// with detail level controlling internal divisor only.
@@ -518,12 +518,14 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		if div < 1 {
 			div = 1
 		}
-		rw := max(w/div, 1)
-		rh := max(h/div, 1)
+		renderW := max(outsideWidth, 1)
+		renderH := max(outsideHeight, 1)
+		rw := max(renderW/div, 1)
+		rh := max(renderH/div, 1)
 		if sg.g.viewW != rw || sg.g.viewH != rh {
 			sg.rt.Layout(rw, rh)
 		}
-		return w, h
+		return layoutW, layoutH
 	}
 	// Faithful mode renders game internals at 320x200 and presents at an
 	// fixed 640x400 logical buffer, with detail level selecting the internal

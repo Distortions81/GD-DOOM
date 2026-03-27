@@ -73,6 +73,14 @@ func (c *Controller) SetOutputGain(v float64) {
 }
 
 func (c *Controller) PlayMUS(data []byte) {
+	c.playMUS(data, true)
+}
+
+func (c *Controller) PlayMUSOnce(data []byte) {
+	c.playMUS(data, false)
+}
+
+func (c *Controller) playMUS(data []byte, loop bool) {
 	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
 		return
 	}
@@ -82,7 +90,7 @@ func (c *Controller) PlayMUS(data []byte) {
 		return music.NewMUSStreamRenderer(c.driver, data)
 	}
 	var stream *music.StreamRenderer
-	chunk, err := nextLoopChunk(factory, &stream)
+	chunk, err := nextChunk(factory, &stream, loop)
 	if err != nil || len(chunk) == 0 {
 		return
 	}
@@ -90,7 +98,7 @@ func (c *Controller) PlayMUS(data []byte) {
 	_ = player.Start()
 	stop := make(chan struct{})
 	c.stop = stop
-	go c.stream(player, stop, factory, stream)
+	go c.stream(player, stop, factory, stream, loop)
 }
 
 func (c *Controller) stopStream() {
@@ -101,7 +109,7 @@ func (c *Controller) stopStream() {
 	c.stop = nil
 }
 
-func nextLoopChunk(factory musStreamFactory, stream **music.StreamRenderer) ([]byte, error) {
+func nextChunk(factory musStreamFactory, stream **music.StreamRenderer, loop bool) ([]byte, error) {
 	if factory == nil || stream == nil {
 		return nil, nil
 	}
@@ -118,11 +126,14 @@ func nextLoopChunk(factory musStreamFactory, stream **music.StreamRenderer) ([]b
 	}
 	if done {
 		*stream = nil
+		if !loop {
+			return chunk, nil
+		}
 	}
 	return chunk, nil
 }
 
-func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer) {
+func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer, loop bool) {
 	if c == nil || player == nil || factory == nil {
 		return
 	}
@@ -144,12 +155,18 @@ func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, fac
 			case <-ticker.C:
 			}
 		}
-		chunk, err := nextLoopChunk(factory, &stream)
+		chunk, err := nextChunk(factory, &stream, loop)
 		if err != nil {
+			return
+		}
+		if stream == nil && len(chunk) == 0 {
 			return
 		}
 		if len(chunk) > 0 {
 			_ = player.EnqueueBytesS16LE(chunk)
+		}
+		if stream == nil && !loop {
+			return
 		}
 	}
 }
