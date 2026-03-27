@@ -467,6 +467,7 @@ type game struct {
 	sectorCeil             []int64
 	lineSpecial            []uint16
 	doors                  map[int]*doorThinker
+	recycledDoors          map[int]*doorThinker
 	floors                 map[int]*floorThinker
 	plats                  map[int]*platThinker
 	ceilings               map[int]*ceilingThinker

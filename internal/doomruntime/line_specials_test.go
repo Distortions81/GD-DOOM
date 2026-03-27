@@ -435,6 +435,58 @@ func TestUseSpecialLine_ClearsStalePlatTickLatchBeforeActivation(t *testing.T) {
 	}
 }
 
+func TestUseSpecialLine_ReusesDoorThinkerCountdownOnRespawn(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+	}
+	g.initPhysics()
+	g.doors[1] = &doorThinker{
+		sector:       1,
+		typ:          doorNormal,
+		direction:    0,
+		topHeight:    124 * fracUnit,
+		topWait:      vDoorWaitTic,
+		topCountdown: 16,
+		speed:        vDoorSpeed,
+	}
+
+	d := g.doors[1]
+	d.pendingRemove = true
+	g.prunePendingDoors()
+	if len(g.doors) != 0 {
+		t.Fatalf("doors remaining=%d want=0 after prune", len(g.doors))
+	}
+	if !g.useSpecialLineForActor(0, 0, true) {
+		t.Fatal("expected manual door reopen to spawn a new thinker")
+	}
+	d = g.doors[1]
+	if d == nil {
+		t.Fatal("expected respawned door thinker")
+	}
+	if d.direction != 1 {
+		t.Fatalf("respawned door direction=%d want=1", d.direction)
+	}
+	if d.topCountdown != 16 {
+		t.Fatalf("respawned door topcountdown=%d want=16", d.topCountdown)
+	}
+}
+
 func TestActivatePlatRaiseToNearestAndChangeClearsSectorDamageImmediately(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

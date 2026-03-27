@@ -465,6 +465,9 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 
 	if d := g.doors[sec]; d != nil {
 		g.debugDoorActivate("line=%d sec=%d special=%d active dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
+		if d.direction == 0 && d.topCountdown > 0 {
+			d.traceTopCountdown = d.topCountdown
+		}
 		switch ld.Special {
 		case 1, 26, 27, 28, 117:
 			if d.direction == -1 {
@@ -481,14 +484,11 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		}
 	}
 
-	d := &doorThinker{
-		order:     g.allocThinkerOrder(),
-		sector:    sec,
-		direction: 1,
-		speed:     vDoorSpeed,
-		topWait:   vDoorWaitTic,
-		topHeight: g.lowestSurroundingCeiling(sec) - 4*fracUnit,
-	}
+	d := g.allocDoorThinker(sec)
+	d.direction = 1
+	d.speed = vDoorSpeed
+	d.topWait = vDoorWaitTic
+	d.topHeight = g.lowestSurroundingCeiling(sec) - 4*fracUnit
 	if d.topHeight < g.sectorFloor[sec] {
 		d.topHeight = g.sectorFloor[sec]
 	}
@@ -542,13 +542,10 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 			g.debugDoorActivate("tagged sec=%d action=%v already-active", sec, action)
 			continue
 		}
-		d := &doorThinker{
-			order:     g.allocThinkerOrder(),
-			sector:    sec,
-			topWait:   vDoorWaitTic,
-			speed:     vDoorSpeed,
-			topHeight: g.lowestSurroundingCeiling(sec) - 4*fracUnit,
-		}
+		d := g.allocDoorThinker(sec)
+		d.topWait = vDoorWaitTic
+		d.speed = vDoorSpeed
+		d.topHeight = g.lowestSurroundingCeiling(sec) - 4*fracUnit
 		if d.topHeight < g.sectorFloor[sec] {
 			d.topHeight = g.sectorFloor[sec]
 		}

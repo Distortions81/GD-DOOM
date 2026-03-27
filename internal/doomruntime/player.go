@@ -123,6 +123,7 @@ type doorThinker struct {
 	topWait      int
 	topCountdown int
 	speed        int64
+	traceTopCountdown int
 	pendingRemove bool
 }
 

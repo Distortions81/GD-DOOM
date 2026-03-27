@@ -451,7 +451,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 				d.direction = 0
 				d.topCountdown = d.topWait
 			case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
-				d.pendingRemove = true
+				delete(g.doors, sec)
 			}
 		} else {
 			g.setDoorCeiling(sec, next)
@@ -463,8 +463,12 @@ func (g *game) prunePendingDoors() {
 	if g == nil || len(g.doors) == 0 {
 		return
 	}
+	if g.recycledDoors == nil {
+		g.recycledDoors = make(map[int]*doorThinker)
+	}
 	for sec, d := range g.doors {
 		if d != nil && d.pendingRemove {
+			g.recycledDoors[sec] = d
 			delete(g.doors, sec)
 		}
 	}
@@ -474,6 +478,25 @@ func (g *game) tickDoors() {
 	g.prunePendingDoors()
 	for sec, d := range g.doors {
 		g.tickDoor(sec, d)
+	}
+}
+
+func (g *game) allocDoorThinker(sec int) *doorThinker {
+	if g == nil {
+		return nil
+	}
+	if g.recycledDoors != nil {
+		if d := g.recycledDoors[sec]; d != nil {
+			delete(g.recycledDoors, sec)
+			d.order = g.allocThinkerOrder()
+			d.sector = sec
+			d.pendingRemove = false
+			return d
+		}
+	}
+	return &doorThinker{
+		order:  g.allocThinkerOrder(),
+		sector: sec,
 	}
 }
 

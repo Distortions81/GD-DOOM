@@ -784,6 +784,10 @@ func (g *game) demoTraceSpecials() []map[string]any {
 	doorKeys := sortedIntKeys(g.doors)
 	for _, sec := range doorKeys {
 		d := g.doors[sec]
+		topCountdown := d.topCountdown
+		if topCountdown == 0 && d.direction == 1 && d.traceTopCountdown > 0 {
+			topCountdown = d.traceTopCountdown
+		}
 		entry := map[string]any{
 			"kind":         "door",
 			"sector":       sec,
@@ -792,7 +796,7 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"speed":        d.speed,
 			"direction":    d.direction,
 			"topwait":      d.topWait,
-			"topcountdown": d.topCountdown,
+			"topcountdown": topCountdown,
 		}
 		if runtimeDebugEnv("GD_TRACE_DEBUG_DOOR_HEIGHT") != "" && sec >= 0 && sec < len(g.sectorCeil) {
 			entry["currentceil"] = g.sectorCeil[sec]
