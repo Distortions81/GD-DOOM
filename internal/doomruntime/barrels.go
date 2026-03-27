@@ -297,11 +297,10 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 	debugRadius := g.debugRadiusAttackEnabled(sx, sy)
 	debugVisit := 0
 	dist := int64(damage)*fracUnit + doomMaxThingRadius
-	if g.m == nil {
-		return
+	var seen []bool
+	if g.m != nil {
+		seen = make([]bool, len(g.m.Things))
 	}
-
-	seen := make([]bool, len(g.m.Things))
 	playerSeen := false
 	playerCell := -1
 	if !g.isDead && playerHeight > 0 {
@@ -413,6 +412,10 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 			_ = rndBefore
 			_ = prndBefore
 		}
+	}
+	if g.m == nil {
+		visitPlayer()
+		return
 	}
 
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {

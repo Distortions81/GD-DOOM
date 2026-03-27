@@ -300,13 +300,16 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 				g.demoTick-1, g.worldTic, sec, left, right, bottom, top, ok, wantIdx, cell, g.thingX[wantIdx], g.thingY[wantIdx])
 		}
 	}
-	if !ok {
-		return
+	playerTouches := false
+	if ok {
+		playerTouches = g.playerBlockCellInBox(left, right, bottom, top)
+	} else {
+		playerTouches = g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius)
 	}
-	if g.playerBlockCellInBox(left, right, bottom, top) {
+	if playerTouches {
 		g.heightClipPlayer(oldPlayerFloor)
 	}
-	if g.bmapWidth > 0 && g.bmapHeight > 0 && len(g.thingBlockCells) == g.bmapWidth*g.bmapHeight {
+	if ok && g.bmapWidth > 0 && g.bmapHeight > 0 && len(g.thingBlockCells) == g.bmapWidth*g.bmapHeight {
 		seen := make(map[int]struct{})
 		for bx := left; bx <= right; bx++ {
 			for by := bottom; by <= top; by++ {
@@ -329,6 +332,8 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 				}
 			}
 		}
+	} else {
+		g.heightClipThingsInSector(sec)
 	}
 	g.refreshProjectileSupportInSector(sec)
 }
@@ -1130,6 +1135,12 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.setThingPosFixed(actorIdx, tx, ty)
 			g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
 			g.setThingWorldAngle(actorIdx, destAngle)
+			if actorIdx >= 0 && actorIdx < len(g.thingMoveDir) {
+				g.thingMoveDir[actorIdx] = monsterDirNoDir
+			}
+			if actorIdx >= 0 && actorIdx < len(g.thingMoveCount) {
+				g.thingMoveCount[actorIdx] = 0
+			}
 		}
 		g.spawnTeleportFog(actorX, actorY, actorZ)
 		g.spawnTeleportFog(destFogX, destFogY, tmfloor)

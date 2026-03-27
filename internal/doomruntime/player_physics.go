@@ -430,7 +430,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			}
 			return
 		}
-		if next < g.sectorFloor[sec] {
+		if next <= g.sectorFloor[sec] {
 			g.setDoorCeiling(sec, g.sectorFloor[sec])
 			switch d.typ {
 			case doorBlazeRaise, doorBlazeClose, doorNormal, doorClose:

@@ -150,6 +150,10 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 		return
 	}
+	if !g.monsterTargetAlive() && (i >= len(g.thingTargetPlayer) || !g.thingTargetPlayer[i]) {
+		g.clearMonsterTargetState(i)
+		return
+	}
 	g.debugMonsterTick(i, "start")
 	g.debugThingState(i, th, "live")
 	if th.Type == 88 {
@@ -235,9 +239,16 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	g.monsterTurnTowardMoveDir(i)
 
 	if !g.monsterHasTarget(i) {
+		hadJustAtk := i >= 0 && i < len(g.thingJustAtk) && g.thingJustAtk[i]
 		reacquired, continueChase := g.monsterRunLostTargetChaseState(i, th.Type, tx, ty)
 		if !reacquired {
 			return
+		}
+		if resumedFromAttack && !hadJustAtk {
+			return
+		}
+		if !continueChase && (!resumedFromAttack || hadJustAtk) {
+			continueChase = true
 		}
 		if !continueChase {
 			return
@@ -248,9 +259,12 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 			targetX, targetY = px, py
 			dist = doomApproxDistance(targetX-tx, targetY-ty)
 		}
+		if hadJustAtk {
+			return
+		}
 	}
 
-	if g.thingJustAtk[i] {
+	if i >= 0 && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
 		g.thingJustAtk[i] = false
 		g.monsterPickNewChaseDir(i, th.Type, targetX, targetY)
 		return
@@ -445,6 +459,9 @@ func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
 		if i >= 0 && i < len(g.thingAggro) {
 			g.thingAggro[i] = true
 		}
+		if i >= 0 && i < len(g.thingJustAtk) {
+			g.thingJustAtk[i] = false
+		}
 		g.emitMonsterSeeSound(i, typ, tx, ty)
 		if i >= 0 && i < len(g.thingStatePhase) {
 			g.thingStatePhase[i] = 0
@@ -465,6 +482,9 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 	if g.monsterLookForPlayer(i, true, tx, ty) {
 		if i >= 0 && i < len(g.thingAggro) {
 			g.thingAggro[i] = true
+		}
+		if i >= 0 && i < len(g.thingJustAtk) {
+			g.thingJustAtk[i] = false
 		}
 		if i >= 0 && i < len(g.thingStatePhase) {
 			g.thingStatePhase[i] = 0
@@ -604,6 +624,9 @@ func (g *game) monsterAttackTargetPos(i int) (x, y, z, height, radius int64, ok 
 		return 0, 0, 0, 0, 0, false
 	}
 	if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) || (i < len(g.thingAggro) && g.thingAggro[i] && !g.thingTargetPlayer[i] && g.thingTargetIdx[i] < 0) {
+		if !g.monsterTargetAlive() {
+			return 0, 0, 0, 0, 0, false
+		}
 		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
@@ -1483,6 +1506,10 @@ func monsterPainDurationTics(typ int16) int {
 }
 
 func monsterPainActionPhase(typ int16) int {
+	switch typ {
+	case 3006:
+		return 0
+	}
 	frameTics := monsterPainFrameTics(typ)
 	switch len(frameTics) {
 	case 0:
@@ -3017,7 +3044,7 @@ func doomSightDivlineSide(x, y int64, line divline) int {
 		return b2i(line.dy < 0)
 	}
 	if line.dy == 0 {
-		if x == line.y {
+		if y == line.y {
 			return 2
 		}
 		if y <= line.y {
@@ -3058,7 +3085,13 @@ func (g *game) actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheig
 		if s1 == s2 {
 			continue
 		}
-		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		lineDX := ld.dx
+		lineDY := ld.dy
+		if lineDX == 0 && lineDY == 0 && (ld.x1 != ld.x2 || ld.y1 != ld.y2) {
+			lineDX = ld.x2 - ld.x1
+			lineDY = ld.y2 - ld.y1
+		}
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: lineDX, dy: lineDY}
 		s1 = doomSightDivlineSide(trace.x, trace.y, lineDL)
 		s2 = doomSightDivlineSide(trace.x+trace.dx, trace.y+trace.dy, lineDL)
 		if s1 == s2 {
@@ -3183,7 +3216,13 @@ func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
 		if s1 == s2 {
 			continue
 		}
-		lineDL := divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}
+		lineDX := ld.dx
+		lineDY := ld.dy
+		if lineDX == 0 && lineDY == 0 && (ld.x1 != ld.x2 || ld.y1 != ld.y2) {
+			lineDX = ld.x2 - ld.x1
+			lineDY = ld.y2 - ld.y1
+		}
+		lineDL := divline{x: ld.x1, y: ld.y1, dx: lineDX, dy: lineDY}
 		s1 = doomSightDivlineSide(sight.trace.x, sight.trace.y, lineDL)
 		s2 = doomSightDivlineSide(sight.t2x, sight.t2y, lineDL)
 		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"); want != "" {

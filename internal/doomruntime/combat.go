@@ -657,6 +657,14 @@ func (g *game) playerLineAttackActor() lineAttackActor {
 }
 
 func (g *game) monsterLineAttackActor(i int, typ int16) lineAttackActor {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return lineAttackActor{
+			isPlayer:   false,
+			thingIdx:   i,
+			shootZ:     8 * fracUnit,
+			targetMask: lineAttackMaskPlayer | lineAttackMaskShootables,
+		}
+	}
 	sx, sy := g.thingPosFixed(i, g.m.Things[i])
 	return lineAttackActor{
 		isPlayer:   false,
@@ -1446,6 +1454,11 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
 			g.thingReactionTics[thingIdx] = 0
 		}
+		if (thingIdx >= 0 && thingIdx < len(g.thingPainTics) && g.thingPainTics[thingIdx] > 0) ||
+			(thingIdx >= 0 && thingIdx < len(g.thingState) && g.thingState[thingIdx] == monsterStatePain) {
+			g.maybeRetargetMonsterAfterDamage(thingIdx, thingType, sourcePlayer, sourceThing)
+			return
+		}
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 {
@@ -1478,7 +1491,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 					if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
 						g.thingStatePhase[thingIdx] = 0
 					}
-					g.syncMonsterPainTics(thingIdx, thingType)
+					if thingIdx >= 0 && thingIdx < len(g.thingState) {
+						g.syncMonsterPainTics(thingIdx, thingType)
+					}
 					if monsterPainActionPhase(thingType) == 0 {
 						tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
 						g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
@@ -1782,13 +1797,13 @@ func monsterDeathSoundEvent(typ int16) soundEvent {
 	case 88:
 		return soundEventBossBrainDeath
 	case 3004:
-		return soundEventDeathPodth1
+		return soundEventDeathZombie
 	case 9:
-		return soundEventDeathPodth2
+		return soundEventDeathShotgunGuy
 	case 65:
-		return soundEventDeathPodth2
+		return soundEventDeathChaingunner
 	case 3001:
-		return soundEventDeathBgdth1
+		return soundEventDeathImp
 	case 3002, 58:
 		return soundEventDeathDemon
 	case 3005:
@@ -1843,7 +1858,7 @@ func monsterDeathSoundEventVariant(typ int16) soundEvent {
 
 func monsterDeathSoundActionPhase(typ int16) int {
 	switch typ {
-	case 7, 68:
+	case 7, 68, 88:
 		return 0
 	default:
 		return 1
@@ -1904,10 +1919,14 @@ func (g *game) ensureWeaponHasAmmo() {
 	}
 	switchTo := func(id weaponID) bool {
 		queued := g.queueWeaponSwitch(id)
-		if queued && g.weaponState != weaponStateNone {
-			g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
+		if !queued {
+			return false
 		}
-		return queued
+		if g.weaponState == weaponStateNone {
+			return g.applyPendingWeapon()
+		}
+		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
+		return true
 	}
 	if g.weaponOwned(weaponPlasma) && weaponAmmoCount(g.stats, ammoKindCells) >= 1 {
 		switchTo(weaponPlasma)
@@ -2017,20 +2036,6 @@ func (g *game) weaponOwned(id weaponID) bool {
 	}
 }
 
-func weaponCycleOrder() []weaponID {
-	return []weaponID{
-		weaponFist,
-		weaponChainsaw,
-		weaponPistol,
-		weaponShotgun,
-		weaponSuperShotgun,
-		weaponChaingun,
-		weaponRocketLauncher,
-		weaponPlasma,
-		weaponBFG,
-	}
-}
-
 func (g *game) cycleWeapon(step int) {
 	if step == 0 {
 		return
@@ -2062,7 +2067,24 @@ func (g *game) cycleWeapon(step int) {
 			continue
 		}
 		g.queueWeaponSwitch(next)
+		if g.weaponState == weaponStateNone {
+			g.applyPendingWeapon()
+		}
 		return
+	}
+}
+
+func weaponCycleOrder() []weaponID {
+	return []weaponID{
+		weaponFist,
+		weaponChainsaw,
+		weaponPistol,
+		weaponShotgun,
+		weaponSuperShotgun,
+		weaponChaingun,
+		weaponRocketLauncher,
+		weaponPlasma,
+		weaponBFG,
 	}
 }
 

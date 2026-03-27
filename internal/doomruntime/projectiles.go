@@ -203,7 +203,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		deferredTick: true,
 	}
 	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
-	if !g.finishProjectileSpawn(&p) {
+	if !g.finishProjectileSpawn(&p, false) {
 		return false
 	}
 	g.projectiles = append(g.projectiles, p)
@@ -443,7 +443,7 @@ func (g *game) spawnPlayerRocket() bool {
 		order:        g.allocThinkerOrder(),
 	}
 	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
-	if !g.finishProjectileSpawn(&p) {
+	if !g.finishProjectileSpawn(&p, true) {
 		return false
 	}
 	g.projectiles = append(g.projectiles, p)
@@ -516,14 +516,14 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		order:        g.allocThinkerOrder(),
 	}
 	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
-	if !g.finishProjectileSpawn(&p) {
+	if !g.finishProjectileSpawn(&p, true) {
 		return false
 	}
 	g.projectiles = append(g.projectiles, p)
 	return true
 }
 
-func (g *game) finishProjectileSpawn(p *projectile) bool {
+func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	if g == nil || p == nil {
 		return false
 	}
@@ -532,9 +532,11 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 	ny := oy + (p.vy >> 1)
 	nz := oz + (p.vz >> 1)
 	if len(g.sectorFloor) == 0 || len(g.sectorCeil) == 0 {
-		p.x = nx
-		p.y = ny
-		p.z = nz
+		if advance {
+			p.x = nx
+			p.y = ny
+			p.z = nz
+		}
 		return true
 	}
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
@@ -556,10 +558,12 @@ func (g *game) finishProjectileSpawn(p *projectile) bool {
 		g.explodeProjectileAt(*p, ox, oy, oz)
 		return false
 	}
-	p.x = nx
-	p.y = ny
 	p.floorz, p.ceilz = tmfloorz, tmceilingz
-	p.z = nz
+	if advance {
+		p.x = nx
+		p.y = ny
+		p.z = nz
+	}
 	if p.z <= p.floorz {
 		p.z = p.floorz
 		g.explodeProjectileAt(*p, p.x, p.y, p.z)
@@ -1086,7 +1090,7 @@ type projectileThingHit struct {
 }
 
 func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, nx, ny, nz int64) (projectileThingHit, bool) {
-	if g == nil || g.m == nil {
+	if g == nil {
 		return projectileThingHit{}, false
 	}
 	overlapsCircle := func(ax, ay, aradius, bx, by, bradius int64) bool {
@@ -1110,35 +1114,54 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 	trace := divline{x: ox, y: oy, dx: nx - ox, dy: ny - oy}
 	bestFrac := int64(fracUnit + 1)
 	best := projectileThingHit{}
-	for i, th := range g.m.Things {
-		if i == p.sourceThing {
-			continue
-		}
-		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
-			continue
-		}
-		if !thingTypeIsShootable(th.Type) || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
-			continue
-		}
-		tx, ty := g.thingPosFixed(i, th)
-		tz, _, _ := g.thingSupportState(i, th)
-		height := g.thingCurrentHeight(i, th)
-		var (
-			frac int64
-			hx   int64
-			hy   int64
-			hz   int64
-		)
-		if !p.sourcePlayer && isMonster(th.Type) {
-			if actorsOverlapXY(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) && oz <= tz+height && oz+p.height >= tz {
-				frac = fracUnit
-				hx, hy, hz = ox, oy, oz
+	if g.m != nil {
+		for i, th := range g.m.Things {
+			if i == p.sourceThing {
+				continue
+			}
+			if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
+				continue
+			}
+			if !thingTypeIsShootable(th.Type) || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
+				continue
+			}
+			tx, ty := g.thingPosFixed(i, th)
+			tz, _, _ := g.thingSupportState(i, th)
+			height := g.thingCurrentHeight(i, th)
+			var (
+				frac int64
+				hx   int64
+				hy   int64
+				hz   int64
+			)
+			if !p.sourcePlayer && isMonster(th.Type) {
+				if actorsOverlapXY(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) && oz <= tz+height && oz+p.height >= tz {
+					frac = fracUnit
+					hx, hy, hz = ox, oy, oz
+				} else {
+					radius := thingTypeRadius(th.Type) + p.radius
+					var ok bool
+					frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
+					if !ok || frac <= 0 || frac > fracUnit {
+						if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+							continue
+						}
+						frac = fracUnit
+					}
+					hx = ox + fixedMul(nx-ox, frac)
+					hy = oy + fixedMul(ny-oy, frac)
+					hz = oz + fixedMul(nz-oz, frac)
+				}
 			} else {
 				radius := thingTypeRadius(th.Type) + p.radius
 				var ok bool
 				frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
 				if !ok || frac <= 0 || frac > fracUnit {
-					if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+					overlapsAtDest := overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
+					if p.sourcePlayer && p.kind == projectileRocket {
+						overlapsAtDest = overlapsAtDest || overlapsSquare(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
+					}
+					if !overlapsAtDest {
 						continue
 					}
 					frac = fracUnit
@@ -1147,38 +1170,21 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 				hy = oy + fixedMul(ny-oy, frac)
 				hz = oz + fixedMul(nz-oz, frac)
 			}
-		} else {
-			radius := thingTypeRadius(th.Type) + p.radius
-			var ok bool
-			frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
-			if !ok || frac <= 0 || frac > fracUnit {
-				overlapsAtDest := overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
-				if p.sourcePlayer && p.kind == projectileRocket {
-					overlapsAtDest = overlapsAtDest || overlapsSquare(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
-				}
-				if !overlapsAtDest {
-					continue
-				}
-				frac = fracUnit
+			if frac >= bestFrac {
+				continue
 			}
-			hx = ox + fixedMul(nx-ox, frac)
-			hy = oy + fixedMul(ny-oy, frac)
-			hz = oz + fixedMul(nz-oz, frac)
-		}
-		if frac >= bestFrac {
-			continue
-		}
-		if hz > tz+height || hz+p.height < tz {
-			continue
-		}
-		bestFrac = frac
-		best = projectileThingHit{
-			idx:      i,
-			isPlayer: false,
-			frac:     float64(frac) / float64(fracUnit),
-			x:        hx,
-			y:        hy,
-			z:        hz,
+			if hz > tz+height || hz+p.height < tz {
+				continue
+			}
+			bestFrac = frac
+			best = projectileThingHit{
+				idx:      i,
+				isPlayer: false,
+				frac:     float64(frac) / float64(fracUnit),
+				x:        hx,
+				y:        hy,
+				z:        hz,
+			}
 		}
 	}
 	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && bestFrac > fracUnit {
