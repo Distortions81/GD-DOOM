@@ -37,6 +37,19 @@ func MaskedClipColumnOccludesPointSorted(spans []MaskedClipSpan, y int, depthQ u
 	if len(spans) == 0 {
 		return false
 	}
+	if depthQ <= spans[0].DepthQ {
+		return false
+	}
+	last := spans[len(spans)-1]
+	if depthQ > last.DepthQ {
+		if last.Closed {
+			return true
+		}
+		if last.HasOpen {
+			return y < int(last.OpenY0) || y > int(last.OpenY1)
+		}
+		return y >= int(last.Y0) && y <= int(last.Y1)
+	}
 	limit := sort.Search(len(spans), func(i int) bool {
 		return spans[i].DepthQ >= depthQ
 	})
