@@ -4,6 +4,8 @@ import (
 	"errors"
 
 	"github.com/hajimehoshi/ebiten/v2"
+
+	"gddoom/internal/platformcfg"
 )
 
 type Runtime interface {
@@ -93,11 +95,20 @@ func (g *Game) Err() error {
 }
 
 func Run(g *Game) error {
-	if err := ebiten.RunGame(g); err != nil {
+	if err := runGame(g); err != nil {
 		if errors.Is(err, ebiten.Termination) {
 			return g.Err()
 		}
 		return err
 	}
 	return g.Err()
+}
+
+func runGame(game ebiten.Game) error {
+	if !platformcfg.IsWASMBuild() {
+		return ebiten.RunGame(game)
+	}
+	return ebiten.RunGameWithOptions(game, &ebiten.RunGameOptions{
+		DisableHiDPI: true,
+	})
 }

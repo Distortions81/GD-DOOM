@@ -669,7 +669,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if forceWASMPicker {
 			picker.stage = pickerStageIWAD
 		}
-		if err := ebiten.RunGame(picker); err != nil && !errors.Is(err, ebiten.Termination) {
+		if err := runGameWithPlatformOptions(picker); err != nil && !errors.Is(err, ebiten.Termination) {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", err)
 			return 1
 		}
@@ -1274,6 +1274,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	return 0
+}
+
+func runGameWithPlatformOptions(game ebiten.Game) error {
+	if !platformcfg.IsWASMBuild() {
+		return ebiten.RunGame(game)
+	}
+	return ebiten.RunGameWithOptions(game, &ebiten.RunGameOptions{
+		DisableHiDPI: true,
+	})
 }
 
 func resolveWADOverlayPaths(value string) []string {

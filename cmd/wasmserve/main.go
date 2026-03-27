@@ -67,11 +67,21 @@ func newHandler(dir string) http.Handler {
 		}
 		path := filepath.Join(dir, name)
 		encoding := ""
-		if name == "gddoom.wasm" && acceptsGzip(r.Header.Get("Accept-Encoding")) {
-			gzPath := path + ".gz"
-			if _, err := os.Stat(gzPath); err == nil {
-				path = gzPath
-				encoding = "gzip"
+		if name == "gddoom.wasm" {
+			switch preferredWASMEncoding(r.Header.Get("Accept-Encoding")) {
+			case "br":
+				brPath := path + ".br"
+				if _, err := os.Stat(brPath); err == nil {
+					path = brPath
+					encoding = "br"
+				}
+			}
+			if encoding == "" && acceptsGzip(r.Header.Get("Accept-Encoding")) {
+				gzPath := path + ".gz"
+				if _, err := os.Stat(gzPath); err == nil {
+					path = gzPath
+					encoding = "gzip"
+				}
 			}
 		}
 		f, err := os.Open(path)
@@ -108,6 +118,20 @@ func newHandler(dir string) http.Handler {
 }
 
 func acceptsGzip(value string) bool {
+	return acceptsEncoding(value, "gzip")
+}
+
+func preferredWASMEncoding(value string) string {
+	if acceptsEncoding(value, "br") {
+		return "br"
+	}
+	if acceptsEncoding(value, "gzip") {
+		return "gzip"
+	}
+	return ""
+}
+
+func acceptsEncoding(value, want string) bool {
 	for _, part := range strings.Split(value, ",") {
 		token := strings.TrimSpace(part)
 		if token == "" {
@@ -115,7 +139,7 @@ func acceptsGzip(value string) bool {
 		}
 		segments := strings.Split(token, ";")
 		name := strings.TrimSpace(segments[0])
-		if !strings.EqualFold(name, "gzip") {
+		if !strings.EqualFold(name, want) {
 			continue
 		}
 		q := 1.0

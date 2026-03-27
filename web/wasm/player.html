@@ -141,12 +141,29 @@
       return new Uint8Array(await response.arrayBuffer());
     }
 
-    async function fetchWASMBytes(url) {
+    async function fetchWASMResponse(url) {
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) {
         throw new Error(`fetch failed for ${url}: ${response.status}`);
       }
-      return new Uint8Array(await response.arrayBuffer());
+      return response;
+    }
+
+    async function instantiateWASMStreaming(url) {
+      if (typeof WebAssembly.instantiateStreaming !== "function") {
+        throw new Error("instantiateStreaming is not supported");
+      }
+      const response = await fetchWASMResponse(url);
+      return WebAssembly.instantiateStreaming(response, go.importObject);
+    }
+
+    async function instantiateWASMFromBytes(url) {
+      const response = await fetchWASMResponse(url);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!hasWASMMagic(bytes)) {
+        throw new Error(`invalid wasm binary for ${url}`);
+      }
+      return WebAssembly.instantiate(bytes, go.importObject);
     }
 
     async function fetchCompressedWASMBytes(url) {
@@ -161,12 +178,13 @@
       return readStreamBytes(response.body.pipeThrough(ds));
     }
 
-    async function loadWASMBytes() {
+    async function instantiateWASM() {
       try {
-        const bytes = await fetchWASMBytes("./gddoom.wasm");
-        if (hasWASMMagic(bytes)) {
-          return bytes;
-        }
+        return await instantiateWASMStreaming("./gddoom.wasm");
+      } catch (err) {
+      }
+      try {
+        return await instantiateWASMFromBytes("./gddoom.wasm");
       } catch (err) {
       }
 
@@ -174,7 +192,7 @@
       if (!hasWASMMagic(bytes)) {
         throw new Error("gzip fallback did not produce a valid wasm binary");
       }
-      return bytes;
+      return WebAssembly.instantiate(bytes, go.importObject);
     }
 
     window.addEventListener("message", (event) => {
@@ -208,8 +226,7 @@
     });
     canvasObserver.observe(document.documentElement, { childList: true, subtree: true });
 
-    loadWASMBytes()
-      .then((bytes) => WebAssembly.instantiate(bytes, go.importObject))
+    instantiateWASM()
       .then((result) => {
         go.run(result.instance);
       });

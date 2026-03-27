@@ -80,6 +80,35 @@ func TestNewHandlerServesWASMGzipVariantWhenAccepted(t *testing.T) {
 	}
 }
 
+func TestNewHandlerPrefersWASMBrotliVariantWhenAccepted(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gddoom.wasm"), []byte("plain"), 0o644); err != nil {
+		t.Fatalf("write gddoom.wasm: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gddoom.wasm.gz"), []byte("gzip"), 0o644); err != nil {
+		t.Fatalf("write gddoom.wasm.gz: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "gddoom.wasm.br"), []byte("brotli"), 0o644); err != nil {
+		t.Fatalf("write gddoom.wasm.br: %v", err)
+	}
+
+	handler := newHandler(dir)
+	req := httptest.NewRequest(http.MethodGet, "/gddoom.wasm", nil)
+	req.Header.Set("Accept-Encoding", "gzip, br")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /gddoom.wasm: status=%d want=%d", rec.Code, http.StatusOK)
+	}
+	if got := rec.Header().Get("Content-Encoding"); got != "br" {
+		t.Fatalf("Content-Encoding=%q want br", got)
+	}
+	if body := rec.Body.String(); body != "brotli" {
+		t.Fatalf("body=%q want brotli", body)
+	}
+}
+
 func TestAcceptsGzip(t *testing.T) {
 	for _, tc := range []struct {
 		value string
@@ -93,6 +122,25 @@ func TestAcceptsGzip(t *testing.T) {
 	} {
 		if got := acceptsGzip(tc.value); got != tc.want {
 			t.Fatalf("acceptsGzip(%q)=%v want=%v", tc.value, got, tc.want)
+		}
+	}
+}
+
+func TestPreferredWASMEncoding(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  string
+	}{
+		{value: "", want: ""},
+		{value: "deflate", want: ""},
+		{value: "gzip", want: "gzip"},
+		{value: "br", want: "br"},
+		{value: "gzip, br", want: "br"},
+		{value: "br;q=0, gzip;q=0.8", want: "gzip"},
+		{value: "gzip;q=0, br;q=0", want: ""},
+	} {
+		if got := preferredWASMEncoding(tc.value); got != tc.want {
+			t.Fatalf("preferredWASMEncoding(%q)=%q want=%q", tc.value, got, tc.want)
 		}
 	}
 }

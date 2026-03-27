@@ -44,6 +44,7 @@ esac
 mkdir -p "${OUT_DIR}"
 chmod -f u+w \
   "${OUT_DIR}/gddoom.wasm" \
+  "${OUT_DIR}/gddoom.wasm.br" \
   "${OUT_DIR}/gddoom.wasm.gz" \
   "${OUT_DIR}/wasm_exec.js" \
   "${OUT_DIR}/index.html" \
@@ -52,6 +53,7 @@ chmod -f u+w \
   "${OUT_DIR}/server.go" 2>/dev/null || true
 rm -f \
   "${OUT_DIR}/gddoom.wasm" \
+  "${OUT_DIR}/gddoom.wasm.br" \
   "${OUT_DIR}/gddoom.wasm.gz" \
   "${OUT_DIR}/wasm_exec.js" \
   "${OUT_DIR}/index.html" \
@@ -80,6 +82,11 @@ cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"
 cp "${ROOT_DIR}/cmd/wasmserve/main.go" "${OUT_DIR}/server.go"
 
 gzip -c "${OUT_DIR}/gddoom.wasm" > "${OUT_DIR}/gddoom.wasm.gz"
+if command -v brotli >/dev/null 2>&1; then
+  brotli -f -q 11 -o "${OUT_DIR}/gddoom.wasm.br" "${OUT_DIR}/gddoom.wasm"
+else
+  echo "Skipping brotli compression (install brotli to produce gddoom.wasm.br)"
+fi
 
 echo "WASM build written to ${OUT_DIR}"
 echo "Run it with:"
