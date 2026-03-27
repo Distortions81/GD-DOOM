@@ -318,6 +318,25 @@ func TestDriverControlChangeRefreshesActiveVoiceRegisters(t *testing.T) {
 	}
 }
 
+func TestDriverRefreshChannelPitchAllocFree(t *testing.T) {
+	d := NewOutputDriver(nil)
+	synth := &captureSynth{writes: make([]synthRegWrite, 0, 64)}
+	d.synth = synth
+	d.Reset()
+	d.applyEvent(Event{Type: EventNoteOn, Channel: 0, A: 60, B: 100})
+	d.applyEvent(Event{Type: EventNoteOn, Channel: 1, A: 64, B: 100})
+	d.ch[0].pitchBend = 3
+	synth.writes = synth.writes[:0]
+
+	allocs := testing.AllocsPerRun(1000, func() {
+		synth.writes = synth.writes[:0]
+		d.refreshChannelPitch(0)
+	})
+	if allocs != 0 {
+		t.Fatalf("refreshChannelPitch allocs=%v want 0", allocs)
+	}
+}
+
 func TestDriverNoteOnProgramsOperatorsInChocolateOrder(t *testing.T) {
 	d := NewOutputDriver(nil)
 	synth := &captureSynth{}

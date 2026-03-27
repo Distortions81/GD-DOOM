@@ -109,18 +109,19 @@ type voiceState struct {
 }
 
 type Driver struct {
-	synth       sound.Synth
-	sampleRate  int
-	ticRate     int
-	musPanMax   float64
-	outputGain  float64
-	preEmphasis bool
-	preEmphPrev [2]float64
-	bank        PatchBank
-	ch          [16]channelState
-	voices      []voiceState
-	freeList    []int
-	allocList   []int
+	synth        sound.Synth
+	sampleRate   int
+	ticRate      int
+	musPanMax    float64
+	outputGain   float64
+	preEmphasis  bool
+	preEmphPrev  [2]float64
+	bank         PatchBank
+	ch           [16]channelState
+	voices       []voiceState
+	freeList     []int
+	allocList    []int
+	allocScratch []int
 }
 
 func NewDriver(sampleRate int, bank PatchBank) *Driver {
@@ -143,15 +144,16 @@ func NewDriverWithBackend(sampleRate int, bank PatchBank, backend sound.Backend)
 		return nil, err
 	}
 	d := &Driver{
-		synth:      synth,
-		sampleRate: sampleRate,
-		ticRate:    defaultTicRate,
-		musPanMax:  defaultMUSPanMax,
-		outputGain: DefaultOutputGain,
-		bank:       bank,
-		voices:     make([]voiceState, defaultVoices),
-		freeList:   make([]int, 0, defaultVoices),
-		allocList:  make([]int, 0, defaultVoices),
+		synth:        synth,
+		sampleRate:   sampleRate,
+		ticRate:      defaultTicRate,
+		musPanMax:    defaultMUSPanMax,
+		outputGain:   DefaultOutputGain,
+		bank:         bank,
+		voices:       make([]voiceState, defaultVoices),
+		freeList:     make([]int, 0, defaultVoices),
+		allocList:    make([]int, 0, defaultVoices),
+		allocScratch: make([]int, 0, defaultVoices),
 	}
 	for i := range d.voices {
 		d.voices[i].synthCh = i
@@ -395,18 +397,23 @@ func (d *Driver) noteOff(ch, note uint8) {
 }
 
 func (d *Driver) refreshChannelPitch(ch uint8) {
-	updated := make([]int, 0, len(d.allocList))
-	unchanged := make([]int, 0, len(d.allocList))
+	reordered := d.allocScratch[:0]
 	for _, vi := range d.allocList {
 		v := &d.voices[vi]
 		if !v.active || v.ch != ch {
-			unchanged = append(unchanged, vi)
+			reordered = append(reordered, vi)
+		}
+	}
+	for _, vi := range d.allocList {
+		v := &d.voices[vi]
+		if !v.active || v.ch != ch {
 			continue
 		}
 		v.freqWord = d.writeNote(v.synthCh, v.playNote, d.ch[ch&0x0F].pitchBend+v.fineTune, true)
-		updated = append(updated, vi)
+		reordered = append(reordered, vi)
 	}
-	d.allocList = append(unchanged, updated...)
+	d.allocScratch = d.allocList[:0]
+	d.allocList = reordered
 }
 
 func (d *Driver) refreshChannelVolume(ch uint8) {
