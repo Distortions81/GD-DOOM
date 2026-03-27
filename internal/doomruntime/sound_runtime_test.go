@@ -6,6 +6,7 @@ import (
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/platformcfg"
 )
 
 func TestDoorMoveEvent(t *testing.T) {
@@ -270,6 +271,32 @@ func TestFlushSoundEvents_ConsumesVanillaPitchRandomWhenPitchShiftEnabled(t *tes
 	rnd, prnd := doomrand.State()
 	if rnd != 1 || prnd != 0 {
 		t.Fatalf("rng state after flushing no-backend sound queue with pitch shift on=(%d,%d) want=(1,0)", rnd, prnd)
+	}
+}
+
+func TestFlushSoundEvents_WASMLimitsMonsterVocalBurstWork(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	const count = 6
+	queue := make([]soundEvent, count)
+	origins := make([]queuedSoundOrigin, count)
+	for i := range queue {
+		queue[i] = soundEventMonsterSeePosit3
+	}
+
+	doomrand.Clear()
+	g := &game{
+		soundQueue:       queue,
+		soundQueueOrigin: origins,
+		m:                &mapdata.Map{Name: "E1M5"},
+		snd:              &soundSystem{vanillaVolume: 15, pitchShift: true},
+	}
+	g.flushSoundEvents()
+	rnd, prnd := doomrand.State()
+	if rnd != 4 || prnd != 0 {
+		t.Fatalf("rng state after wasm monster vocal burst=(%d,%d) want=(4,0)", rnd, prnd)
 	}
 }
 

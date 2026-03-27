@@ -368,7 +368,12 @@ func soundEventDebugName(ev soundEvent) string {
 
 func isMonsterVocalSound(ev soundEvent) bool {
 	switch ev {
-	case soundEventMonsterSeePosit,
+	case soundEventMonsterSeePosit1,
+		soundEventMonsterSeePosit2,
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeeImp1,
+		soundEventMonsterSeeImp2,
+		soundEventMonsterSeePosit,
 		soundEventMonsterSeeImp,
 		soundEventMonsterSeeDemon,
 		soundEventMonsterSeeCaco,

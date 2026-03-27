@@ -3409,6 +3409,13 @@ func soundMapUsesFullClip(name mapdata.MapName) bool {
 	return false
 }
 
+func maxMonsterVocalSoundsPerFlush() int {
+	if !isWASMBuild() {
+		return 0
+	}
+	return 4
+}
+
 func (g *game) clearPendingSoundState() {
 	if g == nil {
 		return
@@ -3486,7 +3493,15 @@ func (g *game) applyThingSpawnFiltering() {
 }
 
 func (g *game) flushSoundEvents() {
+	monsterVocalBudget := maxMonsterVocalSoundsPerFlush()
+	monsterVocalCount := 0
 	for idx, ev := range g.soundQueue {
+		if monsterVocalBudget > 0 && isMonsterVocalSound(ev) {
+			if monsterVocalCount >= monsterVocalBudget {
+				continue
+			}
+			monsterVocalCount++
+		}
 		origin := queuedSoundOrigin{}
 		if idx >= 0 && idx < len(g.soundQueueOrigin) {
 			origin = g.soundQueueOrigin[idx]
@@ -5971,7 +5986,7 @@ func (g *game) shadePackedSpectreFuzz(src uint32) uint32 {
 	if !doomLightingEnabled {
 		return src | pixelOpaqueA
 	}
-	mul := doomShadeMulFromRow(6) + 18
+	mul := doomShadeMulFromRow(6)
 	if mul > 256 {
 		mul = 256
 	}
