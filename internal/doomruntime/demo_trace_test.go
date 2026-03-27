@@ -2,11 +2,14 @@ package doomruntime
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"gddoom/internal/mapdata"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
@@ -30,10 +33,13 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 		DemoTracePath: tracePath,
 	})
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		if err := g.Update(); err != nil {
 			t.Fatalf("update %d: %v", i, err)
 		}
+	}
+	if err := g.Update(); !errors.Is(err, ebiten.Termination) {
+		t.Fatalf("update 2: got %v want termination", err)
 	}
 
 	data, err := os.ReadFile(tracePath)
