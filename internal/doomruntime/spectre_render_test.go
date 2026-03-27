@@ -71,7 +71,7 @@ func TestWriteFuzzPixel_SourcePortUsesShadeLUTFallback(t *testing.T) {
 	}
 }
 
-func TestShadePackedSpectreFuzz_SourcePortBiasesBrighterThanRowSix(t *testing.T) {
+func TestShadePackedSpectreFuzz_SourcePortUsesRowSixFallback(t *testing.T) {
 	prevLighting := doomLightingEnabled
 	prevColormap := doomColormapEnabled
 	prevRows := doomColormapRows
@@ -94,7 +94,7 @@ func TestShadePackedSpectreFuzz_SourcePortBiasesBrighterThanRowSix(t *testing.T)
 	g := &game{opts: Options{SourcePortMode: true}}
 	src := packRGBA(160, 80, 40)
 	got := g.shadePackedSpectreFuzz(src)
-	want := shadePackedRGBA(src, 192)
+	want := shadePackedRGBA(src, 128)
 	if got != want {
 		t.Fatalf("spectre fuzz=%08x want=%08x", got, want)
 	}

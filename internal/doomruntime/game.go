@@ -299,8 +299,6 @@ const maskedMidSortBucket = 8.0
 
 const spriteMagnifyMinScale = 2.0
 
-const spectreFuzzSourcePortShadeRow = 4.0
-
 type maskedMidSeg struct {
 	scene.MaskedMidSeg
 	tex              *WallTexture
@@ -5875,10 +5873,7 @@ func (g *game) shadePackedSpectreFuzz(src uint32) uint32 {
 	if !doomLightingEnabled {
 		return src | pixelOpaqueA
 	}
-	// The palette remap used by DOS row 6 reads slightly brighter than a
-	// straight multiplicative darken. Bias the source-port fallback toward the
-	// neighboring brighter row to better match the reference look.
-	mul := doomShadeMulFromRowF(spectreFuzzSourcePortShadeRow)
+	mul := doomShadeMulFromRow(6)
 	if mul > 256 {
 		mul = 256
 	}
