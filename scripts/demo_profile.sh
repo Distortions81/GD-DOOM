@@ -111,7 +111,7 @@ CMD=(
   -width 1920
   -height 1080
   #-map "${MAP_NAME}"
-  #-demo "${DEMO_PATH}"
+  -demo "${DEMO_PATH}"
   -cpuprofile "${CPU_PROFILE}"
 )
 if [[ ${WITH_MEM} -eq 1 ]]; then
