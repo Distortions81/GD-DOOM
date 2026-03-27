@@ -520,6 +520,7 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		renderH := max(outsideHeight, 1)
 		rw := max(renderW/div, 1)
 		rh := max(renderH/div, 1)
+		rw, rh = clampSourcePortGameSizeForPlatform(rw, rh, isWASMBuild())
 		if sg.g.viewW != rw || sg.g.viewH != rh {
 			sg.rt.Layout(rw, rh)
 		}

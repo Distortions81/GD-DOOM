@@ -3,8 +3,60 @@ package doomruntime
 import (
 	"testing"
 
+	"gddoom/internal/gameplay"
 	"gddoom/internal/platformcfg"
+	"github.com/hajimehoshi/ebiten/v2"
 )
+
+type layoutCountRuntime struct {
+	layoutCalls int
+	viewW       int
+	viewH       int
+	skyOutputW  int
+	skyOutputH  int
+}
+
+func (r *layoutCountRuntime) Update() error      { return nil }
+func (r *layoutCountRuntime) Draw(*ebiten.Image) {}
+func (r *layoutCountRuntime) Layout(w, h int) (int, int) {
+	r.layoutCalls++
+	r.viewW = w
+	r.viewH = h
+	return w, h
+}
+func (r *layoutCountRuntime) sessionSignals() gameplay.SessionSignals {
+	return gameplay.SessionSignals{}
+}
+func (r *layoutCountRuntime) clearPendingSoundState() {}
+func (r *layoutCountRuntime) clearSpritePatchCache()  {}
+func (r *layoutCountRuntime) initSkyLayerShader()     {}
+func (r *layoutCountRuntime) setSkyOutputSize(w, h int) {
+	r.skyOutputW = w
+	r.skyOutputH = h
+}
+func (r *layoutCountRuntime) sessionAcknowledgeSaveGame()       {}
+func (r *layoutCountRuntime) sessionAcknowledgeLoadGame()       {}
+func (r *layoutCountRuntime) sessionSetQuitPromptActive(bool)   {}
+func (r *layoutCountRuntime) sessionAcknowledgeNewGameRequest() {}
+func (r *layoutCountRuntime) sessionAcknowledgeQuitPrompt()     {}
+func (r *layoutCountRuntime) sessionAcknowledgeReadThis()       {}
+func (r *layoutCountRuntime) sessionAcknowledgeLevelRestart()   {}
+func (r *layoutCountRuntime) sessionAcknowledgeMusicPlayer()    {}
+func (r *layoutCountRuntime) sessionAcknowledgeFrontendMenu()   {}
+func (r *layoutCountRuntime) sessionToggleHUDMessages() bool    { return false }
+func (r *layoutCountRuntime) sessionTogglePerfOverlay() bool    { return false }
+func (r *layoutCountRuntime) sessionCycleDetail() int           { return 0 }
+func (r *layoutCountRuntime) sessionMouseLookSpeed() float64    { return 0 }
+func (r *layoutCountRuntime) sessionSetMouseLookSpeed(float64)  {}
+func (r *layoutCountRuntime) sessionMusicVolume() float64       { return 0 }
+func (r *layoutCountRuntime) sessionSetMusicVolume(float64)     {}
+func (r *layoutCountRuntime) sessionSFXVolume() float64         { return 0 }
+func (r *layoutCountRuntime) sessionSetSFXVolume(float64)       {}
+func (r *layoutCountRuntime) sessionPublishRuntimeSettings()    {}
+func (r *layoutCountRuntime) sessionDrawHUTextAt(*ebiten.Image, string, float64, float64, float64, float64) {
+}
+func (r *layoutCountRuntime) sessionPlaySoundEvent(soundEvent) {}
+func (r *layoutCountRuntime) sessionTickSound()                {}
 
 func TestDefaultCLIWindowSize(t *testing.T) {
 	w, h := DefaultCLIWindowSize()
@@ -105,5 +157,38 @@ func TestSourcePortLayoutWASMDoesNotClampLogicalSizeButClampsRenderView(t *testi
 	}
 	if sg.g.skyOutputW != 2560 || sg.g.skyOutputH != 1440 {
 		t.Fatalf("sky output=%dx%d want 2560x1440", sg.g.skyOutputW, sg.g.skyOutputH)
+	}
+}
+
+func TestSourcePortLayoutWASMOversizeDoesNotRepeatedlyInvokeRuntimeLayout(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	rt := &layoutCountRuntime{
+		viewW:      1280,
+		viewH:      720,
+		skyOutputW: 2560,
+		skyOutputH: 1440,
+	}
+	g := &game{
+		opts:       Options{SourcePortMode: true},
+		viewW:      1280,
+		viewH:      720,
+		skyOutputW: 2560,
+		skyOutputH: 1440,
+	}
+	sg := &sessionGame{
+		opts: Options{SourcePortMode: true},
+		g:    g,
+		rt:   rt,
+	}
+
+	layoutW, layoutH := sg.Layout(2560, 1440)
+	if layoutW != 2560 || layoutH != 1440 {
+		t.Fatalf("layout=%dx%d want 2560x1440", layoutW, layoutH)
+	}
+	if rt.layoutCalls != 0 {
+		t.Fatalf("runtime Layout() calls=%d want 0", rt.layoutCalls)
 	}
 }
