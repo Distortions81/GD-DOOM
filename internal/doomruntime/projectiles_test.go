@@ -65,11 +65,18 @@ func TestImpProjectileSpawnsFromRuntimePosition(t *testing.T) {
 	if got := len(g.projectiles); got != 1 {
 		t.Fatalf("projectile count=%d want=1", got)
 	}
-	if got := g.projectiles[0].x; got != g.thingX[0] {
-		t.Fatalf("projectile x=%d want runtime x=%d", got, g.thingX[0])
+	p := g.projectiles[0]
+	if got := p.sourceX; got != g.thingX[0] {
+		t.Fatalf("projectile sourceX=%d want runtime x=%d", got, g.thingX[0])
 	}
-	if got := g.projectiles[0].y; got != g.thingY[0] {
-		t.Fatalf("projectile y=%d want runtime y=%d", got, g.thingY[0])
+	if got := p.sourceY; got != g.thingY[0] {
+		t.Fatalf("projectile sourceY=%d want runtime y=%d", got, g.thingY[0])
+	}
+	if got := p.x; got != g.thingX[0]+(p.vx>>1) {
+		t.Fatalf("projectile x=%d want half-step from runtime x=%d", got, g.thingX[0]+(p.vx>>1))
+	}
+	if got := p.y; got != g.thingY[0]+(p.vy>>1) {
+		t.Fatalf("projectile y=%d want half-step from runtime y=%d", got, g.thingY[0]+(p.vy>>1))
 	}
 }
 
@@ -566,16 +573,16 @@ func TestProjectileHitsThingOnDestinationBoxOverlapLikeDoomTryMove(t *testing.T)
 	g.setThingSupportState(0, 88*fracUnit, 0, 128*fracUnit)
 
 	p := projectile{
-		x:      -83 * fracUnit,
-		y:      -77 * fracUnit,
-		z:      120 * fracUnit,
-		vx:     -10 * fracUnit,
-		vy:     -1 * fracUnit,
-		vz:     0,
-		radius: monsterProjectileRadius(3001),
-		height: monsterProjectileHeight(3001),
+		x:           -83 * fracUnit,
+		y:           -77 * fracUnit,
+		z:           120 * fracUnit,
+		vx:          -10 * fracUnit,
+		vy:          -1 * fracUnit,
+		vz:          0,
+		radius:      monsterProjectileRadius(3001),
+		height:      monsterProjectileHeight(3001),
 		sourceThing: -1,
-		kind:   projectileFireball,
+		kind:        projectileFireball,
 	}
 
 	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
@@ -629,7 +636,6 @@ func TestPlayerRocketHitsBarrelOnDestinationSquareOverlap(t *testing.T) {
 		t.Fatalf("hit frac=%f want 1 for destination overlap", hit.frac)
 	}
 }
-
 
 func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 	doomrand.Clear()
@@ -713,12 +719,12 @@ func TestMonsterProjectileSpawnPreservesHalfStepBeforeDeferredAdvance(t *testing
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		sectorFloor: []int64{0},
-		sectorCeil:  []int64{128 * fracUnit},
-		thingHP:     []int{60, 100},
-		thingTargetIdx: []int{0, 0},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		thingHP:           []int{60, 100},
+		thingTargetIdx:    []int{0, 0},
 		thingTargetPlayer: []bool{false, false},
-		stats:       playerStats{Health: 100},
+		stats:             playerStats{Health: 100},
 		p: player{
 			x:      128 * fracUnit,
 			y:      0,
