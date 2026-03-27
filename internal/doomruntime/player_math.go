@@ -261,6 +261,10 @@ func thingDegToWorldAngle(deg int16) uint32 {
 	return degToAngle(int16(world))
 }
 
+func thingSpawnAngle(deg int16) uint32 {
+	return thingDegToWorldAngle((deg / 45) * 45)
+}
+
 func worldAngleToThingDeg(angle uint32) int16 {
 	deg := float64(angle) * (360.0 / 4294967296.0)
 	for deg < 0 {

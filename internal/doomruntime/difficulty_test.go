@@ -74,6 +74,7 @@ func TestApplyThingSpawnFilteringMarksUnavailableThings(t *testing.T) {
 				{Type: 2011, Flags: skillEasyBits},
 				{Type: 2011, Flags: skillHardBits | thingFlagNotSingle},
 				{Type: 1, Flags: 0}, // player start always available
+				{Type: 11, Flags: 0},
 			},
 		},
 		opts: Options{SkillLevel: 1, GameMode: gameModeSingle},
@@ -88,6 +89,22 @@ func TestApplyThingSpawnFilteringMarksUnavailableThings(t *testing.T) {
 	}
 	if g.thingCollected[2] {
 		t.Fatal("player start should not be filtered")
+	}
+	if !g.thingCollected[3] {
+		t.Fatal("deathmatch start should be filtered")
+	}
+}
+
+func TestThingSpawnsOnCeiling_UsesDoomSpawnCeilingSet(t *testing.T) {
+	for _, typ := range []int16{49, 50, 51, 52, 53, 59, 60, 61, 62, 63, 72, 73, 74, 75, 76, 77, 78} {
+		if !thingSpawnsOnCeiling(typ) {
+			t.Fatalf("type %d should spawn on ceiling", typ)
+		}
+	}
+	for _, typ := range []int16{9, 58, 64, 65, 71, 79, 2001} {
+		if thingSpawnsOnCeiling(typ) {
+			t.Fatalf("type %d should not spawn on ceiling", typ)
+		}
 	}
 }
 

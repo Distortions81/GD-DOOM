@@ -5,7 +5,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"os"
 	"runtime"
 	"slices"
 	"strconv"
@@ -435,6 +434,7 @@ type game struct {
 	currentMoveCmd            moveCmd
 	localSlot                 int
 	localPlayerThingIndex     int
+	playerBlockOrder          int64
 	peerStarts                []playerStart
 
 	lines                  []physLine
@@ -467,6 +467,7 @@ type game struct {
 	sectorCeil             []int64
 	lineSpecial            []uint16
 	doors                  map[int]*doorThinker
+	recycledDoors          map[int]*doorThinker
 	floors                 map[int]*floorThinker
 	plats                  map[int]*platThinker
 	ceilings               map[int]*ceilingThinker
@@ -532,6 +533,8 @@ type game struct {
 	thingFloorState       []int64
 	thingCeilState        []int64
 	thingSupportValid     []bool
+	thingSkullFly         []bool
+	thingResumeChaseNow   []bool
 	thingBlockOrder       []int64
 	thingBlockCell        []int
 	thingBlockCells       [][]int
@@ -545,6 +548,7 @@ type game struct {
 	thingMoveDir          []monsterMoveDir
 	thingMoveCount        []int
 	thingJustAtk          []bool
+	thingInFloat          []bool
 	thingJustHit          []bool
 	thingReactionTics     []int
 	thingWakeTics         []int
@@ -754,6 +758,7 @@ type game struct {
 	plane3DOrder                 []*plane3DVisplane
 	plane3DSpanScratch           [][]plane3DSpan
 	plane3DSpanStartScratch      [][]int
+	plane3DSpanWorkScratch       [][]planeSpanWorkItem
 	plane3DPool                  []*plane3DVisplane
 	plane3DPoolUsed              int
 	plane3DPoolViewW             int
@@ -780,6 +785,7 @@ type game struct {
 	statusAttackDown             bool
 	statusAttackerX              int64
 	statusAttackerY              int64
+	statusAttackerThing          int
 	statusHasAttacker            bool
 	statusOldWeapons             [9]bool
 	statusDamageCount            int
@@ -1106,6 +1112,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	// Doom clears both random streams in G_InitNew before setting up a fresh
 	// level, including demo playback. Without this, hidden bootstrap/frontend
 	// builds leak prior RNG state into attract demos and other new sessions.
+	loadRuntimeDebugEnvFromOS()
+	doomrand.LoadDebugEnvFromOS()
 	doomrand.Clear()
 	if opts.DemoScript != nil {
 		opts = runtimecfg.PrepareDemoPlaybackOptions(opts, opts.DemoScript)
@@ -1156,6 +1164,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		p:                     p,
 		localSlot:             localSlot,
 		localPlayerThingIndex: localPlayerThingIndex,
+		playerBlockOrder:      int64(localPlayerThingIndex + 1),
 		peerStarts:            nonLocalStarts(starts, localSlot),
 		cullLogBudget:         0,
 		floorDbgMode:          floorDebugTextured,
@@ -1204,6 +1213,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingFloorState = make([]int64, len(m.Things))
 	g.thingCeilState = make([]int64, len(m.Things))
 	g.thingSupportValid = make([]bool, len(m.Things))
+	g.thingSkullFly = make([]bool, len(m.Things))
+	g.thingResumeChaseNow = make([]bool, len(m.Things))
 	g.thingBlockOrder = make([]int64, len(m.Things))
 	g.thingBlockCell = make([]int, len(m.Things))
 	g.thingHP = make([]int, len(m.Things))
@@ -1218,6 +1229,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingMoveDir = make([]monsterMoveDir, len(m.Things))
 	g.thingMoveCount = make([]int, len(m.Things))
 	g.thingJustAtk = make([]bool, len(m.Things))
+	g.thingInFloat = make([]bool, len(m.Things))
 	g.thingJustHit = make([]bool, len(m.Things))
 	g.thingReactionTics = make([]int, len(m.Things))
 	g.thingWakeTics = make([]int, len(m.Things))
@@ -1278,7 +1290,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.playerViewZ = g.p.z + g.p.viewHeight
 	g.demoTrace = newDemoTraceWriter(opts, string(m.Name))
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume, opts.SourcePortMode)
+	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume, opts.SourcePortMode, opts.SFXPitchShift)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -1298,7 +1310,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if g.invulnerable {
 		g.setHUDMessage("IDDQD ON", 70)
 	}
-	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_PLAYER_PROBE_TIC")); want != "" {
+	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_PLAYER_PROBE_TIC")); want != "" {
 		if tic, err := strconv.Atoi(want); err == nil {
 			g.debugPlayerProbeEnabled = true
 			g.debugPlayerProbeTic = tic
@@ -1327,15 +1339,20 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.thingAmbush[i] = int(th.Flags)&thingFlagAmbush != 0
 		g.thingX[i] = int64(th.X) << fracBits
 		g.thingY[i] = int64(th.Y) << fracBits
-		g.thingAngleState[i] = thingDegToWorldAngle(th.Angle)
+		g.thingAngleState[i] = thingSpawnAngle(th.Angle)
 		g.thingSectorCache[i] = g.sectorAt(g.thingX[i], g.thingY[i])
 		sec := g.thingSectorCache[i]
 		if sec >= 0 && sec < len(g.sectorFloor) {
 			g.thingFloorState[i] = g.sectorFloor[sec]
-			g.thingZState[i] = g.thingFloorState[i]
 		}
 		if sec >= 0 && sec < len(g.sectorCeil) {
 			g.thingCeilState[i] = g.sectorCeil[sec]
+		}
+		g.thingZState[i] = g.thingFloorState[i]
+		if thingSpawnsOnCeiling(th.Type) && sec >= 0 && sec < len(g.sectorCeil) {
+			if info, ok := demoTraceThingInfoForType(th.Type); ok {
+				g.thingZState[i] = g.thingCeilState[i] - info.height
+			}
 		}
 		if sec >= 0 {
 			g.thingSupportValid[i] = true
@@ -1396,6 +1413,17 @@ func resizeSliceLen[T any](buf []T, n int) []T {
 	return buf
 }
 
+func resizeNestedSliceCap[T any](buf [][]T, n, innerCap int) [][]T {
+	buf = resizeSliceLen(buf, n)
+	if innerCap <= 0 {
+		return buf
+	}
+	for i := range buf {
+		buf[i] = reserveSliceCap(buf[i], innerCap)
+	}
+	return buf
+}
+
 func (g *game) reserveRenderScratch() {
 	if g == nil || g.m == nil {
 		return
@@ -1416,14 +1444,19 @@ func (g *game) reserveRenderScratch() {
 	billboardCap := max(monsterCount+otherThingCount+32, 64)
 	rowSpanCap := max(g.viewW/2, 64)
 	rowOccluderCap := max(min(billboardCap/8, 16), 4)
+	planeSpanCap := max(min(g.viewW/8, 128), 32)
+	sectorCap := max(len(g.m.Sectors), 64)
 
 	g.spriteTXScratch = reserveSliceCap(g.spriteTXScratch, max(g.viewW, 64))
 	g.spriteTYScratch = reserveSliceCap(g.spriteTYScratch, max(g.viewH, 64))
-	g.planeFBPackedScratch = reserveSliceCap(g.planeFBPackedScratch, max(len(g.m.Sectors), 64))
-	g.planeFlatTex32Scratch = reserveSliceCap(g.planeFlatTex32Scratch, max(len(g.m.Sectors), 64))
-	g.planeFlatTexIndexedScratch = reserveSliceCap(g.planeFlatTexIndexedScratch, max(len(g.m.Sectors), 64))
-	g.planeFlatReadyScratch = reserveSliceCap(g.planeFlatReadyScratch, max(len(g.m.Sectors), 64))
-	g.plane3DSpanScratch = reserveSliceCap(g.plane3DSpanScratch, max(len(g.m.Sectors), 64))
+	g.planeFBPackedScratch = reserveSliceCap(g.planeFBPackedScratch, sectorCap)
+	g.planeFlatTex32Scratch = reserveSliceCap(g.planeFlatTex32Scratch, sectorCap)
+	g.planeFlatTexIndexedScratch = reserveSliceCap(g.planeFlatTexIndexedScratch, sectorCap)
+	g.planeFlatReadyScratch = reserveSliceCap(g.planeFlatReadyScratch, sectorCap)
+	g.plane3DSpanScratch = resizeNestedSliceCap(g.plane3DSpanScratch, sectorCap, planeSpanCap)
+	g.plane3DSpanStartScratch = resizeNestedSliceCap(g.plane3DSpanStartScratch, sectorCap, max(g.viewH, 1))
+	g.plane3DSpanScratch = g.plane3DSpanScratch[:0]
+	g.plane3DSpanStartScratch = g.plane3DSpanStartScratch[:0]
 	g.puffItemsScratch = reserveSliceCap(g.puffItemsScratch, 64)
 	g.billboardQueueScratch = reserveSliceCap(g.billboardQueueScratch, billboardCap)
 	g.maskedMidSegsScratch = reserveSliceCap(g.maskedMidSegsScratch, wallSegCap/2)
@@ -1447,10 +1480,6 @@ func (g *game) reserveRenderScratch() {
 
 func (g *game) precacheRenderAssets() {
 	if g == nil {
-		return
-	}
-	if isWASMBuild() {
-		g.precacheRenderAssetsWASM()
 		return
 	}
 	g.precacheMapTextureAssets()
@@ -1784,11 +1813,7 @@ func (g *game) cycleSourcePortDetailLevel() {
 	if len(sourcePortDetailDivisors) == 0 {
 		return
 	}
-	minLevel := clampSourcePortDetailLevelForPlatform(0, isWASMBuild())
 	g.detailLevel = (g.detailLevel + 1) % len(sourcePortDetailDivisors)
-	if g.detailLevel < minLevel {
-		g.detailLevel = minLevel
-	}
 	div := g.sourcePortDetailDivisor()
 	if div <= 1 {
 		g.setHUDMessage("Detail: 1x", 70)
@@ -2063,10 +2088,7 @@ func (g *game) updateDemoMode() error {
 			g.demoTrace = nil
 		}
 		g.reportDemoBench(script)
-		if g.opts.DemoQuitOnComplete {
-			return ebiten.Termination
-		}
-		return nil
+		return ebiten.Termination
 	}
 	if g.demoTick >= len(script.Tics) {
 		if g.demoTrace != nil {
@@ -2074,10 +2096,7 @@ func (g *game) updateDemoMode() error {
 			g.demoTrace = nil
 		}
 		g.reportDemoBench(script)
-		if g.opts.DemoQuitOnComplete {
-			return ebiten.Termination
-		}
-		return nil
+		return ebiten.Termination
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
@@ -3278,7 +3297,7 @@ func (g *game) profileLabel() string {
 }
 
 func (g *game) emitSoundEvent(ev soundEvent) {
-	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -3298,7 +3317,7 @@ func (g *game) emitSoundEvent(ev soundEvent) {
 }
 
 func (g *game) emitSoundEventAt(ev soundEvent, x, y int64) {
-	if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -3465,7 +3484,7 @@ func (g *game) flushSoundEvents() {
 		if idx >= 0 && idx < len(g.soundQueueOrigin) {
 			origin = g.soundQueueOrigin[idx]
 		}
-		if want := os.Getenv("GD_DEBUG_SOUND_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -4358,6 +4377,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 	}
 	col := g.maskedClipCols[x]
 	if len(col) == 0 {
+		if cap(col) == 0 {
+			col = make([]scene.MaskedClipSpan, 0, 4)
+		}
 		if x >= 0 && x < len(g.maskedClipLastDepthQ) {
 			g.maskedClipLastDepthQ[x] = sp.DepthQ
 		}
@@ -4368,6 +4390,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 		lastDepthQ := g.maskedClipLastDepthQ[x]
 		g.maskedClipLastDepthQ[x] = sp.DepthQ
 		if sp.DepthQ >= lastDepthQ {
+			if len(col) == cap(col) {
+				col = slices.Grow(col, 1)
+			}
 			g.maskedClipCols[x] = append(col, sp)
 			return
 		}
@@ -4381,6 +4406,9 @@ func (g *game) appendMaskedClipSpan(x int, sp scene.MaskedClipSpan) {
 			hi = mid
 		}
 		insertAt = lo
+	}
+	if len(col) == cap(col) {
+		col = slices.Grow(col, 1)
 	}
 	col = append(col, scene.MaskedClipSpan{})
 	copy(col[insertAt+1:], col[insertAt:])
@@ -7611,10 +7639,6 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		planeFlatTexIndexed[planeIdx] = indexed
 	}
 
-	type planeSpanWorkItem struct {
-		planeIdx int
-		span     plane3DSpan
-	}
 	renderPlaneSpan := func(planeIdx int, sp plane3DSpan, planeClipScratch []solidSpan) []solidSpan {
 		if sp.y < 0 || sp.y >= h {
 			return planeClipScratch
@@ -7704,7 +7728,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	}
 	stageStart = time.Now()
 	if workers, chunk, parallel := g.parallelWorkChunks(h); parallel && h >= 32 {
-		workByBand := make([][]planeSpanWorkItem, workers)
+		workByBand := g.ensurePlaneSpanWorkScratch(workers)
 		for planeIdx, spans := range spansByPlane {
 			for _, sp := range spans {
 				if sp.y < 0 || sp.y >= h {
@@ -8947,7 +8971,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 4 - (doomrand.PRandom() & 3)
-	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_HITSCAN_FX"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -8961,7 +8985,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		tics = 1
 	}
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
-	if !ok {
+	if !ok && g != nil && g.m != nil {
 		floorz = g.thingFloorZ(x, y)
 		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
 			ceilz = g.sectorCeil[sec]
@@ -8993,7 +9017,7 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 8 - (doomrand.PRandom() & 3)
-	if want := os.Getenv("GD_DEBUG_HITSCAN_FX"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_HITSCAN_FX"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -9014,7 +9038,7 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		tics = 8
 	}
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
-	if !ok {
+	if !ok && g != nil && g.m != nil {
 		floorz = g.thingFloorZ(x, y)
 		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
 			ceilz = g.sectorCeil[sec]
@@ -9066,18 +9090,28 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 func (g *game) spawnTeleportFog(x, y, z int64) {
 	const maxPuffs = 64
 	const teleportFogFrameTics = 6
-	const teleportFogFrames = 10
 	if len(g.hitscanPuffs) >= maxPuffs {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
 		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
+	}
+	lastLook := doomrand.PRandom() & 3
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok && g != nil && g.m != nil {
+		floorz = g.thingFloorZ(x, y)
+		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
 	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
 		x:        x,
 		y:        y,
 		z:        z,
-		tics:     teleportFogFrameTics * teleportFogFrames,
-		totalTic: teleportFogFrameTics * teleportFogFrames,
-		state:    0,
+		floorz:   floorz,
+		ceilz:    ceilz,
+		lastLook: lastLook,
+		tics:     teleportFogFrameTics,
+		totalTic: teleportFogFrameTics,
+		state:    130,
 		kind:     hitscanFxTeleport,
 		order:    g.allocThinkerOrder(),
 	})
@@ -9126,26 +9160,30 @@ func (g *game) hitscanEffectSpriteRef(p hitscanPuff) (*spriteRenderRef, bool) {
 	}
 	if p.kind == hitscanFxTeleport {
 		frame := 'A'
-		switch elapsed := p.totalTic - p.tics; {
-		case elapsed < 6:
+		switch p.state {
+		case 130:
 			frame = 'A'
-		case elapsed < 12:
+		case 131:
 			frame = 'B'
-		case elapsed < 18:
+		case 132:
+			frame = 'A'
+		case 133:
+			frame = 'B'
+		case 134:
 			frame = 'C'
-		case elapsed < 24:
+		case 135:
 			frame = 'D'
-		case elapsed < 30:
+		case 136:
 			frame = 'E'
-		case elapsed < 36:
+		case 137:
 			frame = 'F'
-		case elapsed < 42:
+		case 138:
 			frame = 'G'
-		case elapsed < 48:
+		case 139:
 			frame = 'H'
-		case elapsed < 54:
+		case 140:
 			frame = 'I'
-		default:
+		case 141:
 			frame = 'J'
 		}
 		return find(spriteFrameName("TFOG", byte(frame), '0'))
@@ -9199,18 +9237,24 @@ func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 		return false
 	}
 	p.z += p.momz
-	if p.kind == hitscanFxBlood {
-		floorz := p.floorz
-		if p.z <= floorz {
-			if p.momz < 0 {
-				p.momz = 0
-			}
-			p.z = floorz
-		} else if p.momz == 0 {
+	if p.z <= p.floorz {
+		if p.momz < 0 {
+			p.momz = 0
+		}
+		p.z = p.floorz
+	} else if p.kind == hitscanFxBlood {
+		if p.momz == 0 {
 			p.momz = -2 * fracUnit
 		} else {
 			p.momz -= fracUnit
 		}
+	}
+	const hitscanEffectHeight = 16 * fracUnit
+	if p.z+hitscanEffectHeight > p.ceilz {
+		if p.momz > 0 {
+			p.momz = 0
+		}
+		p.z = p.ceilz - hitscanEffectHeight
 	}
 	p.tics--
 	if p.kind == hitscanFxPuff && p.tics <= 0 {
@@ -9239,6 +9283,11 @@ func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 			p.state, p.tics = 3, 4
 		case 3:
 			p.state, p.tics = 4, 4
+		}
+	} else if p.kind == hitscanFxTeleport && p.tics <= 0 {
+		if p.state >= 130 && p.state < 141 {
+			p.state++
+			p.tics = 6
 		}
 	}
 	return p.tics > 0
@@ -9413,9 +9462,9 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		floorZFixed := g.thingFloorZ(txFixed, tyFixed)
-		floorZ := float64(floorZFixed) / fracUnit
-		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
+		baseZFixed := g.monsterRenderBaseZ(i, th, txFixed, tyFixed)
+		baseZ := float64(baseZFixed) / fracUnit
+		yb := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focal
 		ref, flip, ok := g.monsterSpriteRefForView(i, th, g.worldTic, camX, camY)
 		if !ok || ref == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
@@ -9432,7 +9481,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			w = float64(ref.tex.Width) * scale
 		} else {
 			monsterH := monsterRenderHeight(th.Type)
-			yt := float64(viewH)/2 - ((floorZ+monsterH-eyeZ)/f)*focal
+			yt := float64(viewH)/2 - ((baseZ+monsterH-eyeZ)/f)*focal
 			if yb <= yt {
 				continue
 			}
@@ -9494,6 +9543,14 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			boundsOK:        true,
 		})
 	}
+}
+
+func (g *game) monsterRenderBaseZ(i int, th mapdata.Thing, x, y int64) int64 {
+	if monsterCanFloat(th.Type) && (i < 0 || i >= len(g.thingDead) || !g.thingDead[i]) {
+		z, _, _ := g.thingSupportState(i, th)
+		return z
+	}
+	return g.thingFloorZ(x, y)
 }
 
 func (g *game) drawShadowSpriteCutoutSourcePort(
@@ -10862,31 +10919,35 @@ func (g *game) monsterSpriteName(typ int16, tic int) string {
 func monsterAttackFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9:
-		return []byte{'E', 'F', 'E'}
+		return monsterAttackSeqEFE
+	case 65:
+		return monsterAttackSeqEFEF
 	case 3001:
-		return []byte{'E', 'F', 'G'}
+		return monsterAttackSeqEFG
 	case 3002, 58: // demon/spectre
-		return []byte{'E', 'F', 'G'}
+		return monsterAttackSeqEFG
+	case 3006:
+		return monsterAttackSeqLostSoul
 	case 3005:
-		return []byte{'B', 'C', 'D'}
+		return monsterAttackSeqBCD
 	case 3003, 69: // baron/knight
-		return []byte{'E', 'F', 'G'}
+		return monsterAttackSeqEFG
 	case 64: // arch-vile
-		return []byte{'G', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+		return monsterAttackSeqArchvile
 	case 66: // revenant missile
-		return []byte{'H', 'H', 'K', 'K'}
+		return monsterAttackSeqRevenant
 	case 67: // mancubus
-		return []byte{'G', 'H', 'I', 'G', 'H', 'I', 'G', 'H', 'I', 'G'}
+		return monsterAttackSeqMancubus
 	case 16:
-		return []byte{'E', 'F', 'E', 'F', 'E', 'F'}
+		return monsterAttackSeqCyber
 	case 7:
-		return []byte{'A', 'G', 'H', 'H'}
+		return monsterAttackSeqSpider
 	case 68: // arachnotron
-		return []byte{'A', 'G', 'H', 'H'}
+		return monsterAttackSeqSpider
 	case 71: // pain elemental
-		return []byte{'D', 'E', 'F', 'F'}
+		return monsterAttackSeqPain
 	case 84: // wolf ss
-		return []byte{'E', 'F', 'G', 'F', 'G', 'F'}
+		return monsterAttackSeqWolfSS
 	default:
 		return nil
 	}
@@ -10894,31 +10955,47 @@ func monsterAttackFrameSeq(typ int16) []byte {
 
 func monsterSpawnFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3003, 69:
-		return []byte{'A', 'B'}
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
+		return monsterSpawnSeqAB
 	case 3005:
-		return []byte{'A'}
+		return monsterSpawnSeqA
 	case 64, 66, 68, 16, 84:
-		return []byte{'A', 'B'}
+		return monsterSpawnSeqAB
 	case 67:
-		return []byte{'A', 'B'}
+		return monsterSpawnSeqAB
 	case 71:
-		return []byte{'A'}
+		return monsterSpawnSeqA
 	case 7:
-		return []byte{'A', 'B'}
+		return monsterSpawnSeqAB
 	default:
 		return nil
 	}
 }
 
 var (
+	monsterAttackSeqEFE        = []byte{'E', 'F', 'E'}
+	monsterAttackSeqEFEF       = []byte{'E', 'F', 'E', 'F'}
+	monsterAttackSeqEFG        = []byte{'E', 'F', 'G'}
+	monsterAttackSeqLostSoul   = []byte{'C', 'D', 'C', 'D'}
+	monsterAttackSeqBCD        = []byte{'B', 'C', 'D'}
+	monsterAttackSeqArchvile   = []byte{'G', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+	monsterAttackSeqRevenant   = []byte{'H', 'H', 'K', 'K'}
+	monsterAttackSeqMancubus   = []byte{'G', 'H', 'I', 'G', 'H', 'I', 'G', 'H', 'I', 'G'}
+	monsterAttackSeqCyber      = []byte{'E', 'F', 'E', 'F', 'E', 'F'}
+	monsterAttackSeqSpider     = []byte{'A', 'G', 'H', 'H'}
+	monsterAttackSeqPain       = []byte{'D', 'E', 'F', 'F'}
+	monsterAttackSeqWolfSS     = []byte{'E', 'F', 'G', 'F', 'G', 'F'}
+	monsterSpawnSeqAB          = []byte{'A', 'B'}
+	monsterSpawnSeqA           = []byte{'A'}
 	monsterSpawnTicsAB         = []int{10, 10}
 	monsterSpawnTicsA          = []int{10}
+	monsterSpawnTicsMancubus   = []int{15, 15}
 	monsterAttackTicsZombieman = []int{10, 8, 8}
 	monsterAttackTicsShotgun   = []int{10, 10, 10}
+	monsterAttackTicsChaingun  = []int{10, 4, 4, 1}
 	monsterAttackTicsImp       = []int{8, 8, 6}
 	monsterAttackTicsDemon     = []int{8, 8, 8}
-	monsterAttackTicsLostSoul  = []int{6, 6}
+	monsterAttackTicsLostSoul  = []int{10, 4, 4, 4}
 	monsterAttackTicsCaco      = []int{5, 5, 5}
 	monsterAttackTicsArchvile  = []int{0, 10, 8, 8, 8, 8, 8, 8, 8, 8, 20}
 	monsterAttackTicsRevenant  = []int{0, 10, 10, 10}
@@ -10935,6 +11012,21 @@ var (
 	monsterSeeTics12x3         = []int{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
 	monsterSeeTics12x4         = []int{4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4}
 	monsterSeeTics6x3          = []int{3, 3, 3, 3, 3, 3}
+	monsterSeeTicsLostSoul     = []int{6, 6}
+	monsterSeeSeqAABBCCDD      = []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
+	monsterSeeSeqA             = []byte{'A'}
+	monsterSeeSeqAB            = []byte{'A', 'B'}
+	monsterSeeSeq12            = []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}
+	monsterSeeSeq6             = []byte{'A', 'A', 'B', 'B', 'C', 'C'}
+	monsterPainSeqGG           = []byte{'G', 'G'}
+	monsterPainSeqHH           = []byte{'H', 'H'}
+	monsterPainSeqEE           = []byte{'E', 'E'}
+	monsterPainSeqEEF          = []byte{'E', 'E', 'F'}
+	monsterPainSeqQQ           = []byte{'Q', 'Q'}
+	monsterPainSeqLL           = []byte{'L', 'L'}
+	monsterPainSeqJJ           = []byte{'J', 'J'}
+	monsterPainSeqG            = []byte{'G'}
+	monsterPainSeqII           = []byte{'I', 'I'}
 	monsterPainTics33          = []int{3, 3}
 	monsterPainTics22          = []int{2, 2}
 	monsterPainTics336         = []int{3, 3, 6}
@@ -10959,14 +11051,14 @@ var (
 
 func monsterSpawnFrameTics(typ int16) []int {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3003, 69:
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
 		return monsterSpawnTicsAB
 	case 3005:
 		return monsterSpawnTicsA
 	case 64, 66, 68, 16, 84:
 		return monsterSpawnTicsAB
 	case 67:
-		return []int{15, 15}
+		return monsterSpawnTicsMancubus
 	case 71:
 		return monsterSpawnTicsA
 	case 7:
@@ -10978,18 +11070,20 @@ func monsterSpawnFrameTics(typ int16) []int {
 
 func monsterSeeFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 3001, 3002, 58, 3003, 69:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
+		return monsterSeeSeqAABBCCDD
+	case 3006:
+		return monsterSeeSeqAB
 	case 3005:
-		return []byte{'A'}
+		return monsterSeeSeqA
 	case 64, 66, 68:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}
+		return monsterSeeSeq12
 	case 67:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}
+		return monsterSeeSeq12
 	case 71:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C'}
+		return monsterSeeSeq6
 	case 84, 16, 7:
-		return []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}
+		return monsterSeeSeqAABBCCDD
 	default:
 		return nil
 	}
@@ -11001,6 +11095,8 @@ func monsterAttackFrameTics(typ int16) []int {
 		return monsterAttackTicsZombieman
 	case 9: // shotgun guy
 		return monsterAttackTicsShotgun
+	case 65: // chaingunner
+		return monsterAttackTicsChaingun
 	case 3001: // imp
 		return monsterAttackTicsImp
 	case 3002, 58: // demon/spectre
@@ -11040,7 +11136,7 @@ func monsterSeeFrameTics(typ int16, fast bool) []int {
 			tics = monsterSeeTics2
 		}
 		return tics
-	case 9:
+	case 9, 65:
 		tics := monsterSeeTics3
 		if fast {
 			tics = monsterSeeTics2
@@ -11050,6 +11146,8 @@ func monsterSeeFrameTics(typ int16, fast bool) []int {
 		return monsterSeeTics3
 	case 3002, 58:
 		return monsterSeeTics2
+	case 3006:
+		return monsterSeeTicsLostSoul
 	case 3005:
 		return monsterPainTics33[:1]
 	case 64, 66:
@@ -11081,35 +11179,35 @@ func monsterAttackAnimTotalTics(typ int16) int {
 func monsterPainFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004:
-		return []byte{'G', 'G'}
-	case 9:
-		return []byte{'G', 'G'}
+		return monsterPainSeqGG
+	case 9, 65:
+		return monsterPainSeqGG
 	case 3001:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	case 3002, 58:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	case 3006:
-		return []byte{'E', 'E'}
+		return monsterPainSeqEE
 	case 3005:
-		return []byte{'E', 'E', 'F'}
+		return monsterPainSeqEEF
 	case 3003, 69:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	case 64:
-		return []byte{'Q', 'Q'}
+		return monsterPainSeqQQ
 	case 66:
-		return []byte{'L', 'L'}
+		return monsterPainSeqLL
 	case 67:
-		return []byte{'J', 'J'}
+		return monsterPainSeqJJ
 	case 16:
-		return []byte{'G'}
+		return monsterPainSeqG
 	case 7:
-		return []byte{'I', 'I'}
+		return monsterPainSeqII
 	case 68:
-		return []byte{'I', 'I'}
+		return monsterPainSeqII
 	case 71:
-		return []byte{'G', 'G'}
+		return monsterPainSeqGG
 	case 84:
-		return []byte{'H', 'H'}
+		return monsterPainSeqHH
 	default:
 		return nil
 	}
@@ -11119,7 +11217,7 @@ func monsterPainFrameTics(typ int16) []int {
 	switch typ {
 	case 3004:
 		return monsterPainTics33
-	case 9:
+	case 9, 65:
 		return monsterPainTics33
 	case 3001:
 		return monsterPainTics22
@@ -11173,6 +11271,14 @@ var (
 	monsterDeathFrames8x7    = []byte{'I', 'J', 'K', 'L', 'M', 'N', 'O'}
 	monsterDeathFramesCyber  = []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
 	monsterDeathFramesSpider = []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'}
+	monsterDeathFramesArch   = []byte{'Q', 'R', 'S', 'T', 'U'}
+	monsterDeathFramesRev    = []byte{'L', 'M', 'N', 'O', 'P', 'Q'}
+	monsterDeathFramesManc   = []byte{'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'}
+	monsterDeathFramesArachn = []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+	monsterDeathFramesPain   = []byte{'H', 'I', 'J', 'K', 'L', 'M'}
+	monsterXDeathFrames5x9   = []byte{'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
+	monsterXDeathFrames5x6   = []byte{'O', 'P', 'Q', 'R', 'S', 'T'}
+	monsterXDeathFramesWolf  = []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'}
 )
 
 func monsterDeathFrameSeq(typ int16) []byte {
@@ -11194,21 +11300,21 @@ func monsterDeathFrameSeq(typ int16) []byte {
 	case 3003:
 		return monsterDeathFrames8x7
 	case 64:
-		return []byte{'Q', 'R', 'S', 'T', 'U'}
+		return monsterDeathFramesArch
 	case 66:
-		return []byte{'L', 'M', 'N', 'O', 'P', 'Q'}
+		return monsterDeathFramesRev
 	case 67:
-		return []byte{'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'}
+		return monsterDeathFramesManc
 	case 16:
 		return monsterDeathFramesCyber
 	case 7:
 		return monsterDeathFramesSpider
 	case 68:
-		return []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P'}
+		return monsterDeathFramesArachn
 	case 71:
-		return []byte{'H', 'I', 'J', 'K', 'L', 'M'}
+		return monsterDeathFramesPain
 	case 84:
-		return []byte{'I', 'J', 'K', 'L', 'M'}
+		return monsterDeathFramesImp
 	default:
 		return nil
 	}
@@ -11217,11 +11323,11 @@ func monsterDeathFrameSeq(typ int16) []byte {
 func monsterXDeathFrameSeq(typ int16) []byte {
 	switch typ {
 	case 3004, 9:
-		return []byte{'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
+		return monsterXDeathFrames5x9
 	case 65:
-		return []byte{'O', 'P', 'Q', 'R', 'S', 'T'}
+		return monsterXDeathFrames5x6
 	case 84:
-		return []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'}
+		return monsterXDeathFramesWolf
 	default:
 		return nil
 	}
@@ -11955,13 +12061,27 @@ func (g *game) ensurePlaneSpanScratch(n int) ([][]plane3DSpan, [][]int) {
 				g.plane3DSpanStartScratch[i] = make([]int, g.viewH)
 			} else {
 				g.plane3DSpanStartScratch[i] = g.plane3DSpanStartScratch[i][:g.viewH]
-				for j := range g.plane3DSpanStartScratch[i] {
-					g.plane3DSpanStartScratch[i][j] = 0
-				}
+				clear(g.plane3DSpanStartScratch[i])
 			}
 		}
 	}
 	return g.plane3DSpanScratch, g.plane3DSpanStartScratch
+}
+
+func (g *game) ensurePlaneSpanWorkScratch(n int) [][]planeSpanWorkItem {
+	if n <= 0 {
+		g.plane3DSpanWorkScratch = g.plane3DSpanWorkScratch[:0]
+		return g.plane3DSpanWorkScratch
+	}
+	if cap(g.plane3DSpanWorkScratch) < n {
+		g.plane3DSpanWorkScratch = make([][]planeSpanWorkItem, n)
+	} else {
+		g.plane3DSpanWorkScratch = g.plane3DSpanWorkScratch[:n]
+	}
+	for i := range g.plane3DSpanWorkScratch {
+		g.plane3DSpanWorkScratch[i] = g.plane3DSpanWorkScratch[i][:0]
+	}
+	return g.plane3DSpanWorkScratch
 }
 
 func (g *game) acquirePlane3DVisplane(key plane3DKey, start, stop, viewW int) *plane3DVisplane {
@@ -14082,17 +14202,12 @@ func triangulateWorldPolygon(verts []worldPt) ([][3]int, bool) {
 			idx[i], idx[j] = idx[j], idx[i]
 		}
 	}
-	// Use constrained triangulation when available.
 	if cdtTris, ok := triangulateWorldPolygonCDT(indexedWorldPts(verts, idx)); ok && len(cdtTris) > 0 {
 		out := make([][3]int, 0, len(cdtTris))
 		for _, tri := range cdtTris {
 			out = append(out, [3]int{idx[tri[0]], idx[tri[1]], idx[tri[2]]})
 		}
 		return out, true
-	}
-	// In CDT-enabled builds, do not fall back to the legacy ear-clipping path.
-	if cdtTriangulationAvailable() {
-		return nil, false
 	}
 	out := make([][3]int, 0, len(idx)-2)
 	guard := 0
@@ -17845,6 +17960,16 @@ func (g *game) setThingPosFixed(i int, x, y int64) {
 	g.updateThingBlockmapIndex(i)
 }
 
+func (g *game) setPlayerPosFixed(x, y int64) {
+	if g == nil {
+		return
+	}
+	g.p.x = x
+	g.p.y = y
+	g.playerBlockOrder = g.allocBlockmapOrder()
+	g.refreshPlayerSubsectorCache(x, y)
+}
+
 func (g *game) thingBlockmapCellFor(x, y int64) int {
 	if g == nil || g.bmapWidth <= 0 || g.bmapHeight <= 0 {
 		return -1
@@ -17930,7 +18055,7 @@ func (g *game) updateThingBlockmapIndex(i int) {
 }
 
 func (g *game) subsectorFloorCeilAt(x, y int64) (int64, int64, bool) {
-	if g == nil {
+	if g == nil || g.m == nil {
 		return 0, 0, false
 	}
 	sec := -1

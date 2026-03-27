@@ -231,6 +231,14 @@ func doomSoundSetForEvent(ev soundEvent) map[string]struct{} {
 		return set("sfx_bgdth1", "sfx_bgdth2")
 	case soundEventDeathBgdth2:
 		return set("sfx_bgdth1", "sfx_bgdth2")
+	case soundEventDeathZombie:
+		return set("sfx_podth1", "sfx_podth2", "sfx_podth3")
+	case soundEventDeathShotgunGuy:
+		return set("sfx_podth1", "sfx_podth2", "sfx_podth3")
+	case soundEventDeathChaingunner:
+		return set("sfx_podth1", "sfx_podth2", "sfx_podth3")
+	case soundEventDeathImp:
+		return set("sfx_bgdth1", "sfx_bgdth2")
 	case soundEventDeathDemon:
 		return set("sfx_sgtdth")
 	case soundEventDeathCaco:

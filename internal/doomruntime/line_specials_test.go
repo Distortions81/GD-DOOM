@@ -156,6 +156,93 @@ func TestActivatePlatLine_AfterPlatPhaseTicksImmediately(t *testing.T) {
 	}
 }
 
+func TestActivatePlatLine_BlazeDownWaitUpStayUsesBlazeTypeAndSpeed(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 120, Tag: 7}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{120},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
+
+	if !g.activatePlatLine(0, mapdata.PlatInfo{Action: mapdata.PlatBlazeDownWaitUpStay, UsesTag: true}) {
+		t.Fatal("expected plat activation")
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected plat thinker")
+	}
+	if pt.typ != platTypeBlazeDownWaitUpStay {
+		t.Fatalf("plat type=%v want %v", pt.typ, platTypeBlazeDownWaitUpStay)
+	}
+	if got, want := pt.speed, int64(8*platMoveSpeed); got != want {
+		t.Fatalf("speed=%d want %d", got, want)
+	}
+}
+
+func TestCheckWalkSpecialLines_PlayerTriggersBlazePlatWhenRadiusTouchesLineExtension(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 120, Tag: 2, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 96, CeilingHeight: 192, Tag: 2},
+				{FloorHeight: 160, CeilingHeight: 192},
+			},
+		},
+		lineSpecial: []uint16{120},
+		sectorFloor: []int64{96 * fracUnit, 160 * fracUnit},
+		sectorCeil:  []int64{192 * fracUnit, 192 * fracUnit},
+		lines: []physLine{{
+			idx:      0,
+			x1:       0,
+			y1:       64 * fracUnit,
+			x2:       0,
+			y2:       0,
+			dx:       0,
+			dy:       -64 * fracUnit,
+			bbox:     [4]int64{64 * fracUnit, 0, 0, 0},
+			slope:    slopeVertical,
+			special:  120,
+			tag:      2,
+			sideNum0: 0,
+			sideNum1: 1,
+		}},
+		p: player{
+			x:      4 * fracUnit,
+			y:      -9 * fracUnit,
+			z:      160 * fracUnit,
+			floorz: 160 * fracUnit,
+			ceilz:  192 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLines(4*fracUnit, -9*fracUnit, -9*fracUnit, -9*fracUnit)
+
+	if got, want := len(g.plats), 1; got != want {
+		t.Fatalf("plat count=%d want %d", got, want)
+	}
+	pt := g.plats[0]
+	if pt == nil {
+		t.Fatal("expected blaze plat thinker")
+	}
+	if pt.typ != platTypeBlazeDownWaitUpStay {
+		t.Fatalf("plat type=%v want %v", pt.typ, platTypeBlazeDownWaitUpStay)
+	}
+	if got := g.lineSpecial[0]; got != 120 {
+		t.Fatalf("repeat walk special consumed: got %d want 120", got)
+	}
+}
+
 func TestSetSectorCeilingHeight_DoesNotHeightClipNeighborSectorThings(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -203,6 +290,41 @@ func TestSetSectorCeilingHeight_DoesNotHeightClipNeighborSectorThings(t *testing
 
 	if got, want := g.thingCeilState[0], int64(68*fracUnit); got != want {
 		t.Fatalf("neighbor thing ceilingz=%d want %d", got, want)
+	}
+}
+
+func TestHeightClipThing_RemovesDroppedItemsThatNoLongerFitLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 8},
+			},
+			Things: []mapdata.Thing{
+				{X: 32, Y: 32, Type: 2001},
+			},
+		},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{8 * fracUnit},
+		thingCollected:    []bool{false},
+		thingDropped:      []bool{true},
+		thingX:            []int64{32 * fracUnit},
+		thingY:            []int64{32 * fracUnit},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{8 * fracUnit},
+		thingSupportValid: []bool{true},
+		bmapWidth:         1,
+		bmapHeight:        1,
+		thingBlockCell:    []int{-1},
+		thingBlockCells:   make([][]int, 1),
+	}
+	g.rebuildThingBlockmap()
+
+	if !g.heightClipThing(0, g.m.Things[0]) {
+		t.Fatal("heightClipThing returned false for dropped item")
+	}
+	if !g.thingCollected[0] {
+		t.Fatal("dropped item should be removed when it no longer fits")
 	}
 }
 
@@ -263,6 +385,105 @@ func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 	g.runGameplayTic(moveCmd{}, true, false)
 	if d.direction != 1 {
 		t.Fatalf("use after release should retrigger active manual door, direction=%d want=1", d.direction)
+	}
+}
+
+func TestUseSpecialLine_ClearsStalePlatTickLatchBeforeActivation(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Special: 20, Tag: 7, SideNum: [2]int16{0, 1}},
+				{SideNum: [2]int16{2, 3}},
+				{SideNum: [2]int16{3, 4}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 3},
+				{Sector: 4},
+				{Sector: 0},
+				{Sector: 1},
+				{Sector: 2},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: -32, CeilingHeight: 128, Tag: 7},
+				{FloorHeight: -32, CeilingHeight: 128, Tag: 7},
+				{FloorHeight: 88, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128, FloorPic: "STARTAN3"},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		lineSpecial:       []uint16{20, 0, 0},
+		sectorFloor:       []int64{-32 * fracUnit, -32 * fracUnit, 88 * fracUnit, 0, 0},
+		sectorCeil:        []int64{128 * fracUnit, 128 * fracUnit, 128 * fracUnit, 128 * fracUnit, 128 * fracUnit},
+		platTickedThisTic: true,
+	}
+
+	g.platTickedThisTic = false
+	g.useSpecialLine(0, 0)
+
+	if got, want := g.sectorFloor[0], int64(-32*fracUnit); got != want {
+		t.Fatalf("sector 0 floor=%d want %d before world tick", got, want)
+	}
+	pt := g.plats[1]
+	if pt == nil {
+		t.Fatal("expected sector 1 plat thinker")
+	}
+	if got, want := pt.high, int64(88*fracUnit); got != want {
+		t.Fatalf("sector 1 plat high=%d want %d", got, want)
+	}
+	if got := g.lineSpecial[0]; got != 0 {
+		t.Fatalf("one-shot use special should be consumed, got %d", got)
+	}
+}
+
+func TestUseSpecialLine_ReusesDoorThinkerCountdownOnRespawn(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Special: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+	}
+	g.initPhysics()
+	g.doors[1] = &doorThinker{
+		sector:       1,
+		typ:          doorNormal,
+		direction:    0,
+		topHeight:    124 * fracUnit,
+		topWait:      vDoorWaitTic,
+		topCountdown: 16,
+		speed:        vDoorSpeed,
+	}
+
+	d := g.doors[1]
+	d.pendingRemove = true
+	g.prunePendingDoors()
+	if len(g.doors) != 0 {
+		t.Fatalf("doors remaining=%d want=0 after prune", len(g.doors))
+	}
+	if !g.useSpecialLineForActor(0, 0, true) {
+		t.Fatal("expected manual door reopen to spawn a new thinker")
+	}
+	d = g.doors[1]
+	if d == nil {
+		t.Fatal("expected respawned door thinker")
+	}
+	if d.direction != 1 {
+		t.Fatalf("respawned door direction=%d want=1", d.direction)
+	}
+	if d.topCountdown != 16 {
+		t.Fatalf("respawned door topcountdown=%d want=16", d.topCountdown)
 	}
 }
 

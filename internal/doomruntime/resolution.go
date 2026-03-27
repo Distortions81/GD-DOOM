@@ -14,8 +14,8 @@ const (
 	faithfulBufferH        = doomLogicalH * 2
 	faithfulAspectLogicalH = 240
 
-	wasmMaxLayoutW = 1920
-	wasmMaxLayoutH = 1080
+	wasmMaxLayoutW = 1280
+	wasmMaxLayoutH = 720
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.
@@ -49,11 +49,19 @@ func clampSourcePortLayoutSizeForPlatform(w, h int, wasm bool) (int, int) {
 	if !wasm {
 		return w, h
 	}
-	if w > wasmMaxLayoutW {
-		w = wasmMaxLayoutW
+	if w <= wasmMaxLayoutW && h <= wasmMaxLayoutH {
+		return w, h
 	}
-	if h > wasmMaxLayoutH {
-		h = wasmMaxLayoutH
+	if w <= 0 || h <= 0 {
+		return max(1, min(w, wasmMaxLayoutW)), max(1, min(h, wasmMaxLayoutH))
 	}
+	scaleW := float64(wasmMaxLayoutW) / float64(w)
+	scaleH := float64(wasmMaxLayoutH) / float64(h)
+	scale := min(scaleW, scaleH)
+	if scale >= 1 {
+		return w, h
+	}
+	w = max(1, int(float64(w)*scale))
+	h = max(1, int(float64(h)*scale))
 	return w, h
 }

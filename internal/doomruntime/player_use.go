@@ -5,16 +5,34 @@ import (
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gddoom/internal/mapdata"
 )
 
+func debugLineTriggerEnabled(lineIdx int) bool {
+	want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_LINE_TRIGGER"))
+	if want == "" {
+		return false
+	}
+	for _, part := range strings.Split(want, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if n, err := strconv.Atoi(part); err == nil && n == lineIdx {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *game) debugDoorActivate(format string, args ...any) {
 	if g == nil {
 		return
 	}
-	want := strings.TrimSpace(os.Getenv("GD_DEBUG_DOOR_ACTIVATE_TIC"))
+	want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_DOOR_ACTIVATE_TIC"))
 	if want == "" {
 		return
 	}
@@ -140,6 +158,10 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 }
 
 func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool {
+	if debugLineTriggerEnabled(lineIdx) {
+		fmt.Printf("line-trigger-debug tic=%d world=%d phase=use-enter line=%d side=%d player=%t special=%d\n",
+			g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, g.lineSpecial[lineIdx])
+	}
 	if g.isDead {
 		if isPlayer {
 			g.useText = "You are dead"
@@ -190,7 +212,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 		return false
 	}
-	if info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {
+	if isPlayer && info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {
 		if isPlayer {
 			g.useText = "USE: locked"
 			g.useFlash = 35
@@ -201,6 +223,15 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 	activated := false
 	if info.Door != nil {
 		activated = g.activateDoorLine(lineIdx, info, isPlayer)
+		if !activated && !isPlayer {
+			switch special {
+			case 32, 33, 34:
+				// Doom's P_UseSpecialLine returns true for these monster-allowed
+				// keyed manual door specials even though EV_VerticalDoor rejects
+				// non-player activators and does not start the door.
+				return true
+			}
+		}
 	} else {
 		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, -1, true)
 		if activated && !info.Repeat && lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
@@ -208,6 +239,10 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 	}
 	if activated {
+		if debugLineTriggerEnabled(lineIdx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=use-activate line=%d side=%d player=%t special=%d repeat=%t\n",
+				g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, special, info.Repeat)
+		}
 		if isPlayer {
 			if info.Door != nil {
 				g.useText = "USE: door active"
@@ -233,7 +268,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 
 func walkSpecialAllowedForNonPlayer(special uint16) bool {
 	switch special {
-	case 4, 39, 88, 97, 125, 126:
+	case 4, 10, 39, 88, 97, 125, 126:
 		return true
 	default:
 		return false
@@ -247,6 +282,12 @@ func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
 func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, actorIdx int, isPlayer bool) {
 	if prevX == curX && prevY == curY {
 		return
+	}
+	radius := int64(0)
+	if isPlayer {
+		radius = playerRadius
+	} else if g != nil && g.m != nil && actorIdx >= 0 && actorIdx < len(g.m.Things) {
+		radius = monsterRadius(g.m.Things[actorIdx].Type)
 	}
 	prevSS := -1
 	curSS := -1
@@ -262,6 +303,10 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 	if minY > maxY {
 		minY, maxY = maxY, minY
 	}
+	minX -= radius
+	maxX += radius
+	minY -= radius
+	maxY += radius
 	for _, ld := range g.lines {
 		if ld.idx < 0 || ld.idx >= len(g.lineSpecial) {
 			continue
@@ -273,7 +318,11 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		if special == 0 {
 			continue
 		}
-		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+		if debugLineTriggerEnabled(ld.idx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-check line=%d prev=(%d,%d) cur=(%d,%d) player=%t special=%d\n",
+				g.demoTick-1, g.worldTic, ld.idx, prevX, prevY, curX, curY, isPlayer, special)
+		}
+		if want := runtimeDebugEnv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d special=%d prev=(%d,%d) cur=(%d,%d)\n",
 					g.demoTick-1, g.worldTic, ld.idx, special, prevX, prevY, curX, curY)
@@ -291,7 +340,7 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
 		endSide := g.pointOnLineSide(curX, curY, ld)
-		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d start=%d end=%d prevSS=%d curSS=%d\n",
 					g.demoTick-1, g.worldTic, ld.idx, startSide, endSide, prevSS, curSS)
@@ -300,27 +349,11 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		if startSide == endSide {
 			continue
 		}
-		if _, ok := segmentIntersectFrac(prevX, prevY, curX, curY, ld.x1, ld.y1, ld.x2, ld.y2); !ok {
-			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
-				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
-					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=no-intersect\n",
-						g.demoTick-1, g.worldTic, ld.idx)
-				}
-			}
-			continue
+		if debugLineTriggerEnabled(ld.idx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-cross line=%d start=%d end=%d player=%t special=%d\n",
+				g.demoTick-1, g.worldTic, ld.idx, startSide, endSide, isPlayer, special)
 		}
-		if (prevSS >= 0 || curSS >= 0) &&
-			!g.lineTouchesSubsector(ld.idx, prevSS) &&
-			!g.lineTouchesSubsector(ld.idx, curSS) {
-			if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
-				if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
-					fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d reject=subsector\n",
-						g.demoTick-1, g.worldTic, ld.idx)
-				}
-			}
-			continue
-		}
-		if want := os.Getenv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_WALK_SPECIAL_TIC"); want != "" {
 			if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
 				fmt.Fprintf(os.Stderr, "walk-special-debug tic=%d world=%d line=%d candidate repeat=%t\n",
 					g.demoTick-1, g.worldTic, ld.idx, info.Repeat)
@@ -348,6 +381,10 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			continue
 		}
 		if g.activateNonDoorLineSpecial(ld.idx, 0, info, actorIdx, isPlayer) {
+			if debugLineTriggerEnabled(ld.idx) {
+				fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-activate line=%d player=%t special=%d repeat=%t\n",
+					g.demoTick-1, g.worldTic, ld.idx, isPlayer, special, info.Repeat)
+			}
 			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 				g.lineSpecial[ld.idx] = 0
 			}
@@ -411,6 +448,12 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		return false
 	}
 	ld := g.m.Linedefs[lineIdx]
+	if !isPlayer {
+		switch ld.Special {
+		case 26, 27, 28, 32, 33, 34:
+			return false
+		}
+	}
 	targets, err := g.m.DoorTargetSectors(lineIdx)
 	if err != nil || len(targets) == 0 {
 		return false
@@ -422,6 +465,9 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 
 	if d := g.doors[sec]; d != nil {
 		g.debugDoorActivate("line=%d sec=%d special=%d active dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
+		if d.direction == 0 && d.topCountdown > 0 {
+			d.traceTopCountdown = d.topCountdown
+		}
 		switch ld.Special {
 		case 1, 26, 27, 28, 117:
 			if d.direction == -1 {
@@ -438,14 +484,11 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		}
 	}
 
-	d := &doorThinker{
-		order:      g.allocThinkerOrder(),
-		sector:    sec,
-		direction: 1,
-		speed:     vDoorSpeed,
-		topWait:   vDoorWaitTic,
-		topHeight: g.lowestSurroundingCeiling(sec) - 4*fracUnit,
-	}
+	d := g.allocDoorThinker(sec)
+	d.direction = 1
+	d.speed = vDoorSpeed
+	d.topWait = vDoorWaitTic
+	d.topHeight = g.lowestSurroundingCeiling(sec) - 4*fracUnit
 	if d.topHeight < g.sectorFloor[sec] {
 		d.topHeight = g.sectorFloor[sec]
 	}
@@ -499,13 +542,10 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 			g.debugDoorActivate("tagged sec=%d action=%v already-active", sec, action)
 			continue
 		}
-		d := &doorThinker{
-			order:      g.allocThinkerOrder(),
-			sector:    sec,
-			topWait:   vDoorWaitTic,
-			speed:     vDoorSpeed,
-			topHeight: g.lowestSurroundingCeiling(sec) - 4*fracUnit,
-		}
+		d := g.allocDoorThinker(sec)
+		d.topWait = vDoorWaitTic
+		d.speed = vDoorSpeed
+		d.topHeight = g.lowestSurroundingCeiling(sec) - 4*fracUnit
 		if d.topHeight < g.sectorFloor[sec] {
 			d.topHeight = g.sectorFloor[sec]
 		}

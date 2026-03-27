@@ -64,7 +64,7 @@ func TestSampleForEventSwitchSounds(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
-	s := newSoundSystem(SoundBank{}, 1, true)
+	s := newSoundSystem(SoundBank{}, 1, true, false)
 	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}
@@ -85,7 +85,7 @@ func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_DoesNotAdvancePRandom(t *testing.T) {
-	s := newSoundSystem(SoundBank{}, 1, true)
+	s := newSoundSystem(SoundBank{}, 1, true, false)
 	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}
@@ -98,13 +98,23 @@ func TestMonsterVocalPreDelaySamples_DoesNotAdvancePRandom(t *testing.T) {
 	}
 }
 
-func TestPlayEventSpatial_ConsumesVanillaPitchRandomWithoutBackend(t *testing.T) {
+func TestPlayEventSpatial_DefaultPitchShiftOffDoesNotConsumeVanillaPitchRandom(t *testing.T) {
 	doomrand.Clear()
 	s := &soundSystem{vanillaVolume: 15}
 	s.playEventSpatial(soundEventMonsterSeePosit3, queuedSoundOrigin{}, 0, 0, 0, false)
 	rnd, prnd := doomrand.State()
+	if rnd != 0 || prnd != 0 {
+		t.Fatalf("rng state after no-backend sound start with pitch shift off=(%d,%d) want=(0,0)", rnd, prnd)
+	}
+}
+
+func TestPlayEventSpatial_ConsumesVanillaPitchRandomWhenPitchShiftEnabled(t *testing.T) {
+	doomrand.Clear()
+	s := &soundSystem{vanillaVolume: 15, pitchShift: true}
+	s.playEventSpatial(soundEventMonsterSeePosit3, queuedSoundOrigin{}, 0, 0, 0, false)
+	rnd, prnd := doomrand.State()
 	if rnd != 1 || prnd != 0 {
-		t.Fatalf("rng state after no-backend sound start=(%d,%d) want=(1,0)", rnd, prnd)
+		t.Fatalf("rng state after no-backend sound start with pitch shift on=(%d,%d) want=(1,0)", rnd, prnd)
 	}
 }
 
@@ -230,7 +240,7 @@ func TestVanillaPitchModeForEvent_MatchesDoomSoundClasses(t *testing.T) {
 	}
 }
 
-func TestFlushSoundEvents_ConsumesVanillaPitchRandomWithoutBackend(t *testing.T) {
+func TestFlushSoundEvents_DefaultPitchShiftOffDoesNotConsumeVanillaPitchRandom(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
 		soundQueue:       []soundEvent{soundEventMonsterSeePosit3},
@@ -240,11 +250,26 @@ func TestFlushSoundEvents_ConsumesVanillaPitchRandomWithoutBackend(t *testing.T)
 	}
 	g.flushSoundEvents()
 	rnd, prnd := doomrand.State()
-	if rnd != 1 || prnd != 0 {
-		t.Fatalf("rng state after flushing no-backend sound queue=(%d,%d) want=(1,0)", rnd, prnd)
+	if rnd != 0 || prnd != 0 {
+		t.Fatalf("rng state after flushing no-backend sound queue with pitch shift off=(%d,%d) want=(0,0)", rnd, prnd)
 	}
 	if len(g.soundQueue) != 0 || len(g.soundQueueOrigin) != 0 {
 		t.Fatalf("sound queues not cleared: queue=%d origin=%d", len(g.soundQueue), len(g.soundQueueOrigin))
+	}
+}
+
+func TestFlushSoundEvents_ConsumesVanillaPitchRandomWhenPitchShiftEnabled(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		soundQueue:       []soundEvent{soundEventMonsterSeePosit3},
+		soundQueueOrigin: []queuedSoundOrigin{{}},
+		m:                &mapdata.Map{Name: "E1M5"},
+		snd:              &soundSystem{vanillaVolume: 15, pitchShift: true},
+	}
+	g.flushSoundEvents()
+	rnd, prnd := doomrand.State()
+	if rnd != 1 || prnd != 0 {
+		t.Fatalf("rng state after flushing no-backend sound queue with pitch shift on=(%d,%d) want=(1,0)", rnd, prnd)
 	}
 }
 

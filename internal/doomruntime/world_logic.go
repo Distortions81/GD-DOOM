@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"os"
 )
 
 import "gddoom/internal/doomrand"
@@ -39,6 +38,7 @@ const (
 )
 
 func (g *game) beginWorldTic() {
+	g.prunePendingDoors()
 	g.worldTic++
 	doomrand.SetDebugTic(g.worldTic)
 	g.ticDisplayText = formatTicDisplay(g.worldTic)
@@ -166,7 +166,7 @@ func (g *game) tickSectorLightEffects() {
 				continue
 			}
 			roll := doomrand.PRandom()
-			if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+			if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 				var wantTic int
 				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -191,7 +191,7 @@ func (g *game) tickSectorLightEffects() {
 			if g.m.Sectors[sec].Light == fx.maxLight {
 				g.m.Sectors[sec].Light = fx.minLight
 				roll := doomrand.PRandom()
-				if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+				if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 					var wantTic int
 					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -205,7 +205,7 @@ func (g *game) tickSectorLightEffects() {
 			} else {
 				g.m.Sectors[sec].Light = fx.maxLight
 				roll := doomrand.PRandom()
-				if want := os.Getenv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+				if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 					var wantTic int
 					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -407,16 +407,16 @@ func (g *game) playerSectorFloor(sec int) int64 {
 }
 
 func (g *game) damagePlayer(amount int, msg string) {
-	g.damagePlayerFrom(amount, msg, 0, 0, false)
+	g.damagePlayerFrom(amount, msg, 0, 0, false, -1)
 }
 
-func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int64, hasAttacker bool) {
+func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int64, hasAttacker bool, attackerThing int) {
 	const playerPainChance = 255
 
 	if amount <= 0 || g.stats.Health <= 0 || g.isDead {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_PLAYER_DAMAGE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PLAYER_DAMAGE_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil {
 			if g.demoTick-1 == tic || g.worldTic == tic {
@@ -457,12 +457,19 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 	if hasAttacker {
 		g.statusAttackerX = attackerX
 		g.statusAttackerY = attackerY
+		g.statusAttackerThing = attackerThing
+	} else {
+		g.statusAttackerThing = -1
 	}
 	if g.stats.Health < 0 {
 		g.stats.Health = 0
 	}
 	if g.stats.Health == 0 {
 		g.isDead = true
+		// Doom's P_KillMobj always shortens the death state's tics with
+		// `P_Random() & 3`, including the player path. We don't model the
+		// full player death mobj state here, but we must consume the RNG.
+		_ = doomrand.PRandom() & 3
 		msg = "You Died"
 		g.emitSoundEvent(soundEventPlayerDeath)
 	} else {

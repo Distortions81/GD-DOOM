@@ -5,21 +5,33 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"reflect"
 	"sort"
 )
 
+type compareConfig struct {
+	maxPlayerDistance float64
+	ignoreTransientFX bool
+}
+
 func main() {
 	fs := flag.NewFlagSet("demotracecmp", flag.ExitOnError)
 	leftPath := fs.String("left", "", "left trace JSONL")
 	rightPath := fs.String("right", "", "right trace JSONL")
+	maxPlayerDistance := fs.Float64("max-player-distance", 0, "compare only mobjs within this many map units of the player (0 disables)")
+	ignoreTransientFX := fs.Bool("ignore-transient-fx", false, "ignore transient FX/projectile mobjs during compare")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
 	if *leftPath == "" || *rightPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: demotracecmp -left <trace.jsonl> -right <trace.jsonl>")
+		fmt.Fprintln(os.Stderr, "usage: demotracecmp -left <trace.jsonl> -right <trace.jsonl> [-max-player-distance n] [-ignore-transient-fx]")
 		os.Exit(2)
+	}
+	cfg := compareConfig{
+		maxPlayerDistance: *maxPlayerDistance,
+		ignoreTransientFX: *ignoreTransientFX,
 	}
 
 	left, err := readJSONL(*leftPath)
@@ -51,6 +63,8 @@ func main() {
 			fmt.Fprintf(os.Stderr, "parse right line %d: %v\n", i+1, err)
 			os.Exit(1)
 		}
+		l = normalizeTraceObject(l, cfg)
+		r = normalizeTraceObject(r, cfg)
 		if path, lv, rv, ok := firstDiff("root", l, r); ok {
 			fmt.Printf("mismatch line=%d path=%s\n", i+1, path)
 			fmt.Printf("left=%s\n", marshalCompact(lv))
@@ -64,6 +78,82 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Printf("traces match lines=%d\n", len(left))
+}
+
+func normalizeTraceObject(v any, cfg compareConfig) any {
+	root, ok := v.(map[string]any)
+	if !ok {
+		return v
+	}
+	if cfg.maxPlayerDistance <= 0 && !cfg.ignoreTransientFX {
+		return v
+	}
+	mobjs, ok := root["mobjs"].([]any)
+	if !ok {
+		return v
+	}
+	playerX, playerY, havePlayer := playerPosForTrace(mobjs)
+	filtered := make([]any, 0, len(mobjs))
+	for _, item := range mobjs {
+		mobj, ok := item.(map[string]any)
+		if !ok {
+			filtered = append(filtered, item)
+			continue
+		}
+		if shouldDropMobj(mobj, havePlayer, playerX, playerY, cfg) {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	root["mobjs"] = filtered
+	root["mobj_count"] = float64(len(filtered))
+	return root
+}
+
+func playerPosForTrace(mobjs []any) (float64, float64, bool) {
+	for _, item := range mobjs {
+		mobj, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if numValue(mobj["player"]) == 1 {
+			return numValue(mobj["x"]), numValue(mobj["y"]), true
+		}
+	}
+	return 0, 0, false
+}
+
+func shouldDropMobj(mobj map[string]any, havePlayer bool, playerX, playerY float64, cfg compareConfig) bool {
+	if numValue(mobj["player"]) == 1 {
+		return false
+	}
+	if cfg.ignoreTransientFX && isTransientFXType(int(numValue(mobj["type"]))) {
+		return true
+	}
+	if cfg.maxPlayerDistance > 0 && havePlayer {
+		dx := (numValue(mobj["x"]) - playerX) / 65536.0
+		dy := (numValue(mobj["y"]) - playerY) / 65536.0
+		if math.Hypot(dx, dy) > cfg.maxPlayerDistance {
+			return true
+		}
+	}
+	return false
+}
+
+func numValue(v any) float64 {
+	if n, ok := v.(float64); ok {
+		return n
+	}
+	return 0
+}
+
+func isTransientFXType(typ int) bool {
+	switch typ {
+	case 6, 9, 16, 31, 32, 33, 34, 35, 36, 37, 38, 39:
+		return true
+	default:
+		return false
+	}
 }
 
 func readJSONL(path string) ([][]byte, error) {

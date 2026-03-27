@@ -88,6 +88,18 @@ func (r *RNG) State() (rndIndex, prndIndex int) {
 
 var global = New()
 var debugTic = -1
+var debugEnvCache = map[string]string{}
+
+func LoadDebugEnvFromOS() {
+	debugEnvCache = map[string]string{
+		"GD_DEBUG_RNG_CALLERS": os.Getenv("GD_DEBUG_RNG_CALLERS"),
+		"GD_DEBUG_RNG_TIC":     os.Getenv("GD_DEBUG_RNG_TIC"),
+	}
+}
+
+func debugEnv(key string) string {
+	return debugEnvCache[key]
+}
 
 // PRandom is the package-level Doom-compatible P_Random.
 func PRandom() int {
@@ -130,10 +142,10 @@ func SetDebugTic(tic int) {
 }
 
 func debugLogCaller(kind string, rndIndex, prndIndex, value int) {
-	if os.Getenv("GD_DEBUG_RNG_CALLERS") == "" {
+	if debugEnv("GD_DEBUG_RNG_CALLERS") == "" {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_RNG_TIC"); want != "" {
+	if want := debugEnv("GD_DEBUG_RNG_TIC"); want != "" {
 		if tic, err := strconv.Atoi(want); err == nil && debugTic != tic {
 			return
 		}

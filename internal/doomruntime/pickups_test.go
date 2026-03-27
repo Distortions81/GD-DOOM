@@ -194,6 +194,50 @@ func TestProcessThingPickups_ConsumesArmorBonusAtCapLikeDoom(t *testing.T) {
 	}
 }
 
+func TestProcessThingPickups_DoesNotConsumeMedikitAboveCap(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2012, Flags: skillMediumBits}},
+		},
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.stats.Health = 102
+	g.syncPlayerMobjHealth()
+	g.thingCollected = make([]bool, len(g.m.Things))
+
+	g.processThingPickups()
+
+	if g.thingCollected[0] {
+		t.Fatal("medikit should not be consumed above the normal health cap")
+	}
+	if got := g.stats.Health; got != 102 {
+		t.Fatalf("health=%d want=102", got)
+	}
+}
+
+func TestProcessThingPickups_DoesNotConsumeArmorPickupAboveCap(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2018, Flags: skillMediumBits}},
+		},
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.stats.Armor = 150
+	g.stats.ArmorType = 2
+	g.thingCollected = make([]bool, len(g.m.Things))
+
+	g.processThingPickups()
+
+	if g.thingCollected[0] {
+		t.Fatal("armor pickup should not be consumed above its cap")
+	}
+	if got := g.stats.Armor; got != 150 {
+		t.Fatalf("armor=%d want=150", got)
+	}
+}
+
 func TestBackpackDoublesAmmoCap(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()
@@ -250,11 +294,11 @@ func TestFilteredPickupDoesNotCollect(t *testing.T) {
 func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
 	px, py, pz := int64(0), int64(0), int64(0)
 	tx, ty, tz := int64(35*fracUnit), int64(0), int64(0)
-	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit, 16*fracUnit) {
+	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit) {
 		t.Fatal("expected touch within blockdist")
 	}
 	tx = 37 * fracUnit
-	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit, 16*fracUnit) {
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit) {
 		t.Fatal("expected no touch beyond blockdist")
 	}
 }
@@ -262,13 +306,13 @@ func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
 func TestCanTouchPickup_ZOverlap(t *testing.T) {
 	px, py, pz := int64(0), int64(0), int64(0)
 	tx, ty := int64(0), int64(0)
-	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, 57*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, 57*fracUnit, 20*fracUnit) {
 		t.Fatal("thing above player height should not touch")
 	}
-	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -9*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -9*fracUnit, 20*fracUnit) {
 		t.Fatal("thing too far below should not touch")
 	}
-	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -8*fracUnit, 20*fracUnit, 16*fracUnit) {
+	if !canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, -8*fracUnit, 20*fracUnit) {
 		t.Fatal("thing in lower overlap range should touch")
 	}
 }
@@ -294,6 +338,9 @@ func TestWeaponPickupRespectsAutoSwitchToggle(t *testing.T) {
 	}
 	if g.inventory.ReadyWeapon != weaponPistol {
 		t.Fatalf("weapon=%v want=%v when auto switch disabled", g.inventory.ReadyWeapon, weaponPistol)
+	}
+	if g.inventory.PendingWeapon != 0 {
+		t.Fatalf("pending weapon=%v want none when auto switch disabled", g.inventory.PendingWeapon)
 	}
 }
 
@@ -382,6 +429,63 @@ func TestDroppedDuplicateShotgunQueuesShotgunWhenShellsRiseFromZero(t *testing.T
 	}
 	if g.inventory.PendingWeapon != weaponShotgun {
 		t.Fatalf("pending weapon=%v want shotgun after shells rise from zero", g.inventory.PendingWeapon)
+	}
+}
+
+func TestProcessThingPickupsAt_UsesProbePositionLikeDoomMoveChecks(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2001}},
+		},
+		autoWeaponSwitch: true,
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingDropped = []bool{true}
+	g.p.x = 0
+	g.p.y = 40 * fracUnit
+	g.p.z = 0
+
+	g.processThingPickupsAt(0, 36*fracUnit, g.p.z, playerRadius, playerHeight)
+
+	if !g.thingCollected[0] {
+		t.Fatal("pickup should be collected at the probed move position")
+	}
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun after probe pickup", g.inventory.PendingWeapon)
+	}
+}
+
+func TestProcessThingPickupsAt_UsesRaisedDroppedPickupZ(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 48, CeilingHeight: 128},
+			},
+			Things: []mapdata.Thing{{X: 0, Y: 0, Type: 2001}},
+		},
+		autoWeaponSwitch: true,
+		sectorFloor:      []int64{48 * fracUnit},
+		sectorCeil:       []int64{128 * fracUnit},
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingDropped = []bool{true}
+	g.thingSupportValid = []bool{true}
+	g.thingZState = []int64{67 * fracUnit}
+	g.thingFloorState = []int64{67 * fracUnit}
+	g.thingCeilState = []int64{128 * fracUnit}
+	g.p.x = 0
+	g.p.y = 0
+	g.p.z = 67 * fracUnit
+
+	g.processThingPickupsAt(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight)
+
+	if !g.thingCollected[0] {
+		t.Fatal("raised dropped pickup should be collected using support z")
+	}
+	if g.inventory.PendingWeapon != weaponShotgun {
+		t.Fatalf("pending weapon=%v want shotgun after raised pickup", g.inventory.PendingWeapon)
 	}
 }
 

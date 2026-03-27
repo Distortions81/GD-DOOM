@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
@@ -256,7 +255,7 @@ func (g *game) weaponActionReady(state weaponPspriteState) {
 		g.weaponRefire = false
 	}
 	_, bobY := g.weaponBobDoom()
-	if want := strings.TrimSpace(os.Getenv("GD_DEBUG_WEAPON_TIC")); want != "" {
+	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_WEAPON_TIC")); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 			if g.demoTick-1 >= wantTic-2 && g.demoTick-1 <= wantTic+2 {
@@ -504,7 +503,7 @@ func (g *game) fireShotgun() bool {
 	slope := g.bulletSlopeForAim(g.p.angle, shotgunRange)
 	hit := false
 	for i := 0; i < 7; i++ {
-		if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
 			var wantTic, wantPellet int
 			if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
 				if (g.demoTick-1 == wantTic || g.worldTic == wantTic) && (wantPellet < 0 || wantPellet == i) {
@@ -604,7 +603,7 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope int64, accurate bo
 		angle = addDoomAngleSpread(baseAngle, doomGunSpreadShift)
 	}
 	actor := g.playerLineAttackActor()
-	if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
 		var wantTic, wantPellet int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
 			if g.demoTick-1 == wantTic || g.worldTic == wantTic {
@@ -618,7 +617,7 @@ func (g *game) fireGunShot(baseAngle uint32, rng int64, slope int64, accurate bo
 		}
 	}
 	outcome := g.lineAttackTrace(actor, angle, rng, slope, true)
-	if want := os.Getenv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_PLAYER_GUNSHOT"); want != "" {
 		var wantTic, wantPellet int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantPellet); err == nil {
 			_ = wantPellet
@@ -658,6 +657,14 @@ func (g *game) playerLineAttackActor() lineAttackActor {
 }
 
 func (g *game) monsterLineAttackActor(i int, typ int16) lineAttackActor {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return lineAttackActor{
+			isPlayer:   false,
+			thingIdx:   i,
+			shootZ:     8 * fracUnit,
+			targetMask: lineAttackMaskPlayer | lineAttackMaskShootables,
+		}
+	}
 	sx, sy := g.thingPosFixed(i, g.m.Things[i])
 	return lineAttackActor{
 		isPlayer:   false,
@@ -830,12 +837,16 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 		}
 		cell := mapy*g.bmapWidth + mapx
 		playerCell := -2
+		playerOrder := g.playerBlockOrder
+		if playerOrder <= 0 {
+			playerOrder = int64(g.localPlayerThingIndex + 1)
+		}
 		if !playerSeen && actor.targetMask&lineAttackMaskPlayer != 0 && !actor.isPlayer && !g.isDead {
 			playerCell = g.thingBlockmapCellFor(g.p.x, g.p.y)
 		}
 		playerInserted := false
 		for _, i := range g.thingBlockCells[cell] {
-			if !playerInserted && playerCell == cell && g.localPlayerThingIndex > i {
+			if !playerInserted && playerCell == cell && playerOrder > g.thingBlockOrder[i] {
 				appendPlayer()
 				playerInserted = true
 			}
@@ -1184,7 +1195,7 @@ func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackO
 		return true
 	case lineAttackTargetPlayer:
 		if damage > 0 {
-			g.damagePlayerFrom(damage, "Monster shot you", actor.x, actor.y, true)
+			g.damagePlayerFrom(damage, "Monster shot you", actor.x, actor.y, true, actor.thingIdx)
 		}
 		return true
 	default:
@@ -1335,9 +1346,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	if g.thingHP[thingIdx] <= 0 {
 		return
 	}
-	if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
 		matchIdx := true
-		if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+		if wantIdx := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
 			matchIdx = wantIdx == fmt.Sprint(thingIdx)
 		}
 		if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
@@ -1347,6 +1358,18 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 	}
 	thingType := g.m.Things[thingIdx].Type
+	if thingIdx < len(g.thingSkullFly) && g.thingSkullFly[thingIdx] {
+		g.thingSkullFly[thingIdx] = false
+		if thingIdx < len(g.thingMomX) {
+			g.thingMomX[thingIdx] = 0
+		}
+		if thingIdx < len(g.thingMomY) {
+			g.thingMomY[thingIdx] = 0
+		}
+		if thingIdx < len(g.thingMomZ) {
+			g.thingMomZ[thingIdx] = 0
+		}
+	}
 	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
@@ -1359,6 +1382,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingXDeath) {
 			g.thingXDeath[thingIdx] = xdeath
+		}
+		if thingIdx >= 0 && thingIdx < len(g.thingInFloat) {
+			g.thingInFloat[thingIdx] = false
 		}
 		if thingIdx >= 0 && thingIdx < len(g.thingDeathTics) {
 			deathTics := monsterDeathAnimTotalTicsForMode(thingType, xdeath)
@@ -1428,46 +1454,54 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
 			g.thingReactionTics[thingIdx] = 0
 		}
+		alreadyInPain := (thingIdx >= 0 && thingIdx < len(g.thingPainTics) && g.thingPainTics[thingIdx] > 0) ||
+			(thingIdx >= 0 && thingIdx < len(g.thingState) && g.thingState[thingIdx] == monsterStatePain)
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
-			if chance > 0 && (chance >= 256 || doomrand.PRandom() < chance) {
-				if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
-					// Doom only marks JUSTHIT when the pain state triggers.
-					g.thingJustHit[thingIdx] = true
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
-					// Doom P_SetMobjState(painstate) replaces any in-flight attack state.
-					g.thingAttackTics[thingIdx] = 0
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
-					g.thingAttackFireTics[thingIdx] = -1
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
-					g.thingAttackPhase[thingIdx] = 0
-				}
-				g.thingPainTics[thingIdx] = monsterPainDurationTics(thingType)
-				if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
-					g.thingState[thingIdx] = monsterStatePain
-					frameTics := monsterPainFrameTics(thingType)
-					if len(frameTics) > 0 {
-						g.thingStateTics[thingIdx] = frameTics[0]
-					} else {
-						g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+			if chance > 0 {
+				roll := doomrand.PRandom()
+				if (chance >= 256 || roll < chance) && !alreadyInPain {
+					if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
+						// Doom only marks JUSTHIT when the pain state triggers.
+						g.thingJustHit[thingIdx] = true
 					}
-				}
-				if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
-					g.thingStatePhase[thingIdx] = 0
-				}
-				if monsterPainActionPhase(thingType) == 0 {
-					tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
-					g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
+					if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
+						// Doom P_SetMobjState(painstate) replaces any in-flight attack state.
+						g.thingAttackTics[thingIdx] = 0
+					}
+					if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
+						g.thingAttackFireTics[thingIdx] = -1
+					}
+					if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
+						g.thingAttackPhase[thingIdx] = 0
+					}
+					g.thingPainTics[thingIdx] = monsterPainDurationTics(thingType)
+					if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
+						g.thingState[thingIdx] = monsterStatePain
+						frameTics := monsterPainFrameTics(thingType)
+						if len(frameTics) > 0 {
+							g.thingStateTics[thingIdx] = frameTics[0]
+						} else {
+							g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+						}
+					}
+					if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
+						g.thingStatePhase[thingIdx] = 0
+					}
+					if thingIdx >= 0 && thingIdx < len(g.thingState) {
+						g.syncMonsterPainTics(thingIdx, thingType)
+					}
+					if monsterPainActionPhase(thingType) == 0 {
+						tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+						g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
+					}
 				}
 			}
 		}
 		g.maybeRetargetMonsterAfterDamage(thingIdx, thingType, sourcePlayer, sourceThing)
-		if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+		if want := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
 			matchIdx := true
-			if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+			if wantIdx := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
 				matchIdx = wantIdx == fmt.Sprint(thingIdx)
 			}
 			if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
@@ -1513,7 +1547,7 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	}
 	momx := fixedMul(thrust, doomFineCosine(angle))
 	momy := fixedMul(thrust, doomFineSineAtAngle(angle))
-	if want := os.Getenv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && os.Getenv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
+	if want := runtimeDebugEnv("GD_DEBUG_BARREL_DAMAGE_TIC"); want != "" && runtimeDebugEnv("GD_DEBUG_BARREL_DAMAGE_IDX") == fmt.Sprint(thingIdx) {
 		if fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want {
 			fmt.Printf("barrel-thrust-debug tic=%d world=%d idx=%d src=(%d,%d) target=(%d,%d) angle=%d thrust=%d add=(%d,%d) prev=(%d,%d)\n",
 				g.demoTick-1, g.worldTic, thingIdx, ix, iy, tx, ty, angle, thrust, momx, momy,
@@ -1531,9 +1565,9 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 				}())
 		}
 	}
-	if want := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
+	if want := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_TIC"); want != "" {
 		matchIdx := true
-		if wantIdx := os.Getenv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
+		if wantIdx := runtimeDebugEnv("GD_DEBUG_MONSTER_DAMAGE_IDX"); wantIdx != "" {
 			matchIdx = wantIdx == fmt.Sprint(thingIdx)
 		}
 		if matchIdx && (fmt.Sprint(g.demoTick-1) == want || fmt.Sprint(g.worldTic) == want) {
@@ -1559,7 +1593,11 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	if thingIdx < len(g.thingMomY) {
 		momy += g.thingMomY[thingIdx]
 	}
-	g.setThingMomentum(thingIdx, momx, momy, 0)
+	momz := int64(0)
+	if thingIdx < len(g.thingMomZ) {
+		momz = g.thingMomZ[thingIdx]
+	}
+	g.setThingMomentum(thingIdx, momx, momy, momz)
 }
 
 func (g *game) damageInflictorPos(sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) (x, y, z int64, ok bool) {
@@ -1730,12 +1768,12 @@ func (g *game) spawnMonsterDrop(thingIdx int, thingType int16) {
 	}
 	src := g.m.Things[thingIdx]
 	srcX, srcY := g.thingPosFixed(thingIdx, src)
-	g.appendRuntimeThing(mapdata.Thing{
+	idx := g.appendRuntimeThing(mapdata.Thing{
 		X:    int16(srcX >> fracBits),
 		Y:    int16(srcY >> fracBits),
 		Type: dropType,
 	}, true)
-	g.setThingPosFixed(len(g.m.Things)-1, srcX, srcY)
+	g.setThingPosFixed(idx, srcX, srcY)
 }
 
 func monsterPainSoundEvent(typ int16) soundEvent {
@@ -1756,13 +1794,13 @@ func monsterDeathSoundEvent(typ int16) soundEvent {
 	case 88:
 		return soundEventBossBrainDeath
 	case 3004:
-		return soundEventDeathPodth1
+		return soundEventDeathZombie
 	case 9:
-		return soundEventDeathPodth2
+		return soundEventDeathShotgunGuy
 	case 65:
-		return soundEventDeathPodth2
+		return soundEventDeathChaingunner
 	case 3001:
-		return soundEventDeathBgdth1
+		return soundEventDeathImp
 	case 3002, 58:
 		return soundEventDeathDemon
 	case 3005:
@@ -1817,7 +1855,7 @@ func monsterDeathSoundEventVariant(typ int16) soundEvent {
 
 func monsterDeathSoundActionPhase(typ int16) int {
 	switch typ {
-	case 7, 68:
+	case 7, 68, 88:
 		return 0
 	default:
 		return 1
@@ -1852,10 +1890,6 @@ func (g *game) queueWeaponSwitch(id weaponID) bool {
 		return false
 	}
 	g.inventory.PendingWeapon = id
-	if g.weaponState == weaponStateNone {
-		g.bringUpWeapon()
-		return true
-	}
 	return true
 }
 
@@ -1882,10 +1916,14 @@ func (g *game) ensureWeaponHasAmmo() {
 	}
 	switchTo := func(id weaponID) bool {
 		queued := g.queueWeaponSwitch(id)
-		if queued && g.weaponState != weaponStateNone {
-			g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
+		if !queued {
+			return false
 		}
-		return queued
+		if g.weaponState == weaponStateNone {
+			return g.applyPendingWeapon()
+		}
+		g.setWeaponPSpriteState(weaponInfo(g.inventory.ReadyWeapon).downstate, false)
+		return true
 	}
 	if g.weaponOwned(weaponPlasma) && weaponAmmoCount(g.stats, ammoKindCells) >= 1 {
 		switchTo(weaponPlasma)
@@ -1995,20 +2033,6 @@ func (g *game) weaponOwned(id weaponID) bool {
 	}
 }
 
-func weaponCycleOrder() []weaponID {
-	return []weaponID{
-		weaponFist,
-		weaponChainsaw,
-		weaponPistol,
-		weaponShotgun,
-		weaponSuperShotgun,
-		weaponChaingun,
-		weaponRocketLauncher,
-		weaponPlasma,
-		weaponBFG,
-	}
-}
-
 func (g *game) cycleWeapon(step int) {
 	if step == 0 {
 		return
@@ -2040,7 +2064,24 @@ func (g *game) cycleWeapon(step int) {
 			continue
 		}
 		g.queueWeaponSwitch(next)
+		if g.weaponState == weaponStateNone {
+			g.applyPendingWeapon()
+		}
 		return
+	}
+}
+
+func weaponCycleOrder() []weaponID {
+	return []weaponID{
+		weaponFist,
+		weaponChainsaw,
+		weaponPistol,
+		weaponShotgun,
+		weaponSuperShotgun,
+		weaponChaingun,
+		weaponRocketLauncher,
+		weaponPlasma,
+		weaponBFG,
 	}
 }
 

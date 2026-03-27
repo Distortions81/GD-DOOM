@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"gddoom/internal/mapdata"
@@ -158,6 +157,18 @@ func (pi playerInventory) keySummary() string {
 }
 
 func (g *game) processThingPickups() {
+	g.processThingPickupsAt(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight)
+}
+
+func (g *game) processThingPickupsAt(px, py, pz, pradius, pheight int64) {
+	g.processThingPickupsAtFiltered(px, py, pz, pradius, pheight, false)
+}
+
+func (g *game) processDroppedThingPickupsAt(px, py, pz, pradius, pheight int64) {
+	g.processThingPickupsAtFiltered(px, py, pz, pradius, pheight, true)
+}
+
+func (g *game) processThingPickupsAtFiltered(px, py, pz, pradius, pheight int64, droppedOnly bool) {
 	if g.m == nil {
 		return
 	}
@@ -171,13 +182,16 @@ func (g *game) processThingPickups() {
 		if !isPickupType(th.Type) {
 			continue
 		}
-		tx, ty := g.thingPosFixed(i, th)
-		tz := g.thingFloorZ(tx, ty)
-		radius, height := pickupTouchBounds(th.Type)
-		if !canTouchPickup(g.p.x, g.p.y, g.p.z, playerRadius, playerHeight, tx, ty, tz, radius, height) {
+		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
+		if droppedOnly && !dropped {
 			continue
 		}
-		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
+		tx, ty := g.thingPosFixed(i, th)
+		tz, _, _ := g.thingSupportState(i, th)
+		radius := g.thingCurrentRadius(i, th)
+		if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, radius) {
+			continue
+		}
 		msg, ev, picked := g.applyPickup(th.Type, dropped)
 		if !picked {
 			continue
@@ -210,15 +224,7 @@ func (g *game) thingFloorZCached(i int, th mapdata.Thing) int64 {
 	return g.sectorFloor[sec]
 }
 
-func pickupTouchBounds(typ int16) (radius int64, height int64) {
-	// Doom treats most specials as radius=20, height=16 for touch.
-	switch typ {
-	default:
-		return 20 * fracUnit, 16 * fracUnit
-	}
-}
-
-func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius, theight int64) bool {
+func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius int64) bool {
 	blockdist := pradius + tradius
 	if abs(px-tx) > blockdist || abs(py-ty) > blockdist {
 		return false
@@ -364,7 +370,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.gainAmmoNoMsg("cells", 20)
 		return "Picked up a backpack", soundEventItemUp, true
 	case 2001, 2002, 2003, 2004, 2005, 2006, 82:
-		if want := strings.TrimSpace(os.Getenv("GD_DEBUG_PICKUP_TIC")); want != "" {
+		if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_PICKUP_TIC")); want != "" {
 			var wantTic int
 			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil && (g.demoTick-1 == wantTic || g.worldTic == wantTic) {
 				fmt.Printf("pickup-debug tic=%d world=%d typ=%d dropped=%v owned_before=%v ready=%d pending=%d auto=%v bullets=%d shells=%d\n",
@@ -398,7 +404,6 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 				return "", 0, false
 			}
 		}
-		g.inventory.Weapons[typ] = true
 		setReadyWeapon := func(id weaponID) {
 			if !g.autoWeaponSwitch {
 				return
@@ -412,6 +417,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			} else {
 				g.gainAmmoNoMsg("shells", 8)
 			}
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponShotgun)
 			return "Picked up a shotgun", soundEventWeaponUp, true
 		case 2002:
@@ -420,25 +426,31 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			} else {
 				g.gainAmmoNoMsg("bullets", 20)
 			}
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponChaingun)
 			return "Picked up a chaingun", soundEventWeaponUp, true
 		case 2003:
 			g.gainAmmoNoMsg("rockets", 2)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponRocketLauncher)
 			return "Picked up a rocket launcher", soundEventWeaponUp, true
 		case 2004:
 			g.gainAmmoNoMsg("cells", 40)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponPlasma)
 			return "Picked up a plasma rifle", soundEventWeaponUp, true
 		case 2005:
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponChainsaw)
 			return "Picked up a chainsaw", soundEventWeaponUp, true
 		case 2006:
 			g.gainAmmoNoMsg("cells", 40)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponBFG)
 			return "Picked up a BFG9000", soundEventWeaponUp, true
 		case 82:
 			g.gainAmmoNoMsg("shells", 8)
+			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponSuperShotgun)
 			return "You got the super shotgun!", soundEventWeaponUp, true
 		}
@@ -448,6 +460,9 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 
 func (g *game) gainHealth(amount, cap int, msg string) (string, soundEvent, bool) {
 	prev := g.stats.Health
+	if prev >= cap {
+		return "", 0, false
+	}
 	g.stats.Health += amount
 	if g.stats.Health > cap {
 		g.stats.Health = cap
@@ -470,6 +485,9 @@ func (g *game) gainBonusHealth(amount, cap int, msg string) (string, soundEvent,
 
 func (g *game) gainArmor(amount, cap int, msg string) (string, soundEvent, bool) {
 	prev := g.stats.Armor
+	if prev >= cap {
+		return "", 0, false
+	}
 	g.stats.Armor += amount
 	if g.stats.Armor > cap {
 		g.stats.Armor = cap

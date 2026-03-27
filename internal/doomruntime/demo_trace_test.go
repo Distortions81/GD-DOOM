@@ -2,11 +2,14 @@ package doomruntime
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
 
 	"gddoom/internal/mapdata"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
@@ -30,10 +33,13 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 		DemoTracePath: tracePath,
 	})
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		if err := g.Update(); err != nil {
 			t.Fatalf("update %d: %v", i, err)
 		}
+	}
+	if err := g.Update(); !errors.Is(err, ebiten.Termination) {
+		t.Fatalf("update 2: got %v want termination", err)
 	}
 
 	data, err := os.ReadFile(tracePath)
@@ -136,6 +142,29 @@ func TestDemoTracePlayerMobjHealthUsesPlayerActorHealth(t *testing.T) {
 	}
 }
 
+func TestDemoTraceSkipsDeathmatchStartsLikeDoomSource(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 1},
+				{Type: 11, X: 32, Y: 64},
+				{Type: 2001, X: 96, Y: 128},
+			},
+		},
+		thingCollected: []bool{false, false, false},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if len(mobjs) != 2 {
+		t.Fatalf("mobjs len=%d want=2", len(mobjs))
+	}
+	for i, m := range mobjs {
+		if i > 0 && m.Type == 11 {
+			t.Fatalf("deathmatch start leaked into demo trace: %+v", m)
+		}
+	}
+}
+
 func TestDamageMonsterDeathPreservesExistingReactionTime(t *testing.T) {
 	g := &game{
 		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 3004}}},
@@ -176,6 +205,18 @@ func TestDemoTraceThingFlagsMatchMonsterAndDroppedPickupDefaults(t *testing.T) {
 	dropped := mapdata.Thing{Type: 2007}
 	if got := demoTraceThingFlags(g, 2, dropped); got != 0x20001 {
 		t.Fatalf("dropped pickup flags=%#x want %#x", got, 0x20001)
+	}
+}
+
+func TestDemoTraceThingFlags_AddsFloatAndNoGravityForLiveFloatMonsters(t *testing.T) {
+	g := &game{thingDead: []bool{false, true}}
+	alive := mapdata.Thing{Type: 3005}
+	if got := demoTraceThingFlags(g, 0, alive); got != 0x404206 {
+		t.Fatalf("live caco flags=%#x want %#x", got, 0x404206)
+	}
+	dead := mapdata.Thing{Type: 3005}
+	if got := demoTraceThingFlags(g, 1, dead); got != 0x500402 {
+		t.Fatalf("dead caco flags=%#x want %#x", got, 0x500402)
 	}
 }
 
@@ -262,6 +303,34 @@ func TestDemoTraceDoorSpecialKeepsZeroValuedFields(t *testing.T) {
 	}
 	if !strings.Contains(s, `"topcountdown":0`) {
 		t.Fatalf("marshaled specials missing topcountdown zero field: %s", s)
+	}
+}
+
+func TestDemoTraceBlazePlatUsesDoomTypeFour(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{Tag: 2}},
+		},
+		plats: map[int]*platThinker{
+			0: {
+				sector:    0,
+				typ:       platTypeBlazeDownWaitUpStay,
+				status:    platStatusDown,
+				oldStatus: platStatusInStasis,
+				speed:     8 * platMoveSpeed,
+				low:       96 * fracUnit,
+				high:      160 * fracUnit,
+				wait:      platWaitTics,
+			},
+		},
+	}
+
+	specials := g.demoTraceSpecials()
+	if got, want := len(specials), 1; got != want {
+		t.Fatalf("special count=%d want=%d", got, want)
+	}
+	if got, want := specials[0]["type"], 4; got != want {
+		t.Fatalf("plat type=%v want=%d", got, want)
 	}
 }
 
@@ -516,6 +585,98 @@ func TestDemoTraceHitscanBloodUsesCachedSupportHeights(t *testing.T) {
 		t.Fatalf("floorz=%d want=%d", got, want)
 	}
 	if got, want := mobjs[1].CeilingZ, int64(52*fracUnit); got != want {
+		t.Fatalf("ceilingz=%d want=%d", got, want)
+	}
+}
+
+func TestDemoTraceHitscanPuffPreservesLastLook(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{},
+		hitscanPuffs: []hitscanPuff{
+			{x: 30, y: 0, z: 0, floorz: 0, ceilz: 52 * fracUnit, tics: 4, state: 93, kind: hitscanFxPuff, lastLook: 3, order: 1},
+		},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if got, want := len(mobjs), 2; got != want {
+		t.Fatalf("mobj count=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].LastLook, 3; got != want {
+		t.Fatalf("lastlook=%d want=%d", got, want)
+	}
+}
+
+func TestDemoTraceNonShootableCeilingThingUsesCachedSupportState(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 75}},
+		},
+		thingCollected:  []bool{false},
+		thingX:          []int64{10 * fracUnit},
+		thingY:          []int64{20 * fracUnit},
+		thingZState:     []int64{200 * fracUnit},
+		thingFloorState: []int64{184 * fracUnit},
+		thingCeilState:  []int64{264 * fracUnit},
+		thingSupportValid: []bool{
+			true,
+		},
+		thingThinkerOrder: []int64{1},
+		thingSectorCache:  []int{0},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if got, want := len(mobjs), 2; got != want {
+		t.Fatalf("mobj count=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].Type, 130; got != want {
+		t.Fatalf("type=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].Z, int64(200*fracUnit); got != want {
+		t.Fatalf("z=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].FloorZ, int64(184*fracUnit); got != want {
+		t.Fatalf("floorz=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].CeilingZ, int64(264*fracUnit); got != want {
+		t.Fatalf("ceilingz=%d want=%d", got, want)
+	}
+}
+
+func TestDemoTraceDroppedItemUsesCachedSupportState(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 2001}},
+		},
+		thingCollected: []bool{false},
+		thingDropped:   []bool{true},
+		thingX:         []int64{10 * fracUnit},
+		thingY:         []int64{20 * fracUnit},
+		thingZState:    []int64{57 * fracUnit},
+		thingFloorState: []int64{
+			57 * fracUnit,
+		},
+		thingCeilState: []int64{248 * fracUnit},
+		thingSupportValid: []bool{
+			true,
+		},
+		thingThinkerOrder: []int64{1},
+		thingSectorCache:  []int{0},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if got, want := len(mobjs), 2; got != want {
+		t.Fatalf("mobj count=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].Type, 77; got != want {
+		t.Fatalf("type=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].Z, int64(57*fracUnit); got != want {
+		t.Fatalf("z=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].FloorZ, int64(57*fracUnit); got != want {
+		t.Fatalf("floorz=%d want=%d", got, want)
+	}
+	if got, want := mobjs[1].CeilingZ, int64(248*fracUnit); got != want {
 		t.Fatalf("ceilingz=%d want=%d", got, want)
 	}
 }

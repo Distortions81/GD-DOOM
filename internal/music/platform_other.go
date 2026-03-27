@@ -1,5 +1,3 @@
-//go:build !js || !wasm
-
 package music
 
 func streamChunkFrames() int {
@@ -11,5 +9,5 @@ func streamLookaheadFrames() int {
 }
 
 func chunkPlayerCommandQueueCap() int {
-	return 64
+	return 16
 }

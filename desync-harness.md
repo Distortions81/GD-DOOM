@@ -16,8 +16,8 @@ This repo now has a repeatable demo-desync harness for comparing GD-DOOM against
 
 1. Cleans and rebuilds a local GD-DOOM trace binary.
 2. Cleans and rebuilds `cmd/demotracecmp`.
-3. Runs the original DOOM executable with `-tracedemo <demo lump> -tracefile <path>`.
-4. Runs GD-DOOM with `-demo <file> -trace-demo-state <path> -demo-exit-on-death`.
+3. Runs the original DOOM executable with `-tracedemo <demo lump> -tracefile <path>` against an isolated temp dir containing the selected IWAD.
+4. Runs GD-DOOM with `-demo <file> -trace-demo-state <path>`.
 5. Compares the resulting JSONL tic traces and stops at the first mismatch.
 
 The comparator already ignores a small set of known non-parity fields, so the reported mismatch is usually actionable.
@@ -32,6 +32,7 @@ The comparator already ignores a small set of known non-parity fields, so the re
 Notes:
 
 - The reference runtime already includes trace support via `-tracedemo` and `-tracefile`.
+- By default the harness symlinks the selected `--wad` into an isolated temp dir before launching the reference runtime, so extra IWADs in the repo root do not change which game data gets loaded.
 - GD-DOOM does not emit per-tic demo traces under `-render=false`.
 - The harness prefers a normal desktop run when `DISPLAY` is set.
 - If no display is available, the harness falls back to `xvfb-run`.
@@ -102,7 +103,7 @@ Artifacts from that verified run:
 
 The current `DEMO1` desync is not just a cosmetic field mismatch. At the first failing tic, the reference runtime has one more mobj than GD-DOOM while special counts still match.
 
-After fixing the earlier rocket splash and player-vs-barrel radius-order issue, the current first mismatch moved later. A current run with `-demo-exit-on-death` enabled reaches:
+After fixing the earlier rocket splash and player-vs-barrel radius-order issue, the current first mismatch moved later. A current run reached:
 
 ```text
 mismatch line=1860 path=root.mobjs[203].floorz

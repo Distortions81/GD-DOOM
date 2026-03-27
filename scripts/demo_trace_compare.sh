@@ -5,15 +5,35 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REFERENCE_BIN="${ROOT_DIR}/../doom-source/linuxdoom-1.10/linux/linuxxdoom"
 GDDOOM_BIN="${ROOT_DIR}/.tmp/gddoom-demotrace"
 TRACECMP_BIN="${ROOT_DIR}/.tmp/demotracecmp"
-WAD_DIR="${ROOT_DIR}"
+WAD_DIR=""
 WAD_PATH="${ROOT_DIR}/DOOM1.WAD"
 DEMO_LUMP="demo1"
 DEMO_PATH="${ROOT_DIR}/demos/DOOM1-DEMO1.lmp"
 OUT_DIR="${ROOT_DIR}/tmp/demo-trace-compare"
 KEEP_GOING=0
-GDDOOM_FLAGS=(-demo-exit-on-death)
+GDDOOM_FLAGS=()
 USE_XVFB=auto
 STOP_AFTER_TICS=0
+
+trim_trace_on_player_death() {
+  local trace_path="$1"
+  local tmp_path
+
+  if [[ ! -f "${trace_path}" ]]; then
+    return
+  fi
+
+  tmp_path="$(mktemp "${trace_path}.trim.XXXXXX")"
+  awk '
+    {
+      print
+      if ($0 ~ /"kind":"tic"/ && $0 ~ /"player":\{"playerstate":1\b/) {
+        exit
+      }
+    }
+  ' "${trace_path}" >"${tmp_path}"
+  mv "${tmp_path}" "${trace_path}"
+}
 
 usage() {
   cat <<'EOF'
@@ -24,7 +44,7 @@ Usage:
 
 Options:
   --wad-dir <path>    Directory exposed to the reference runtime as DOOMWADDIR
-                      (default: repo root)
+                      (default: isolated temp dir containing --wad)
   --wad <path>        IWAD path passed to GD-DOOM (default: ./DOOM1.WAD)
   --demo-lump <name>  Built-in demo lump name for the reference runtime
                       (default: demo1)
@@ -111,10 +131,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ ! -d "${WAD_DIR}" ]]; then
-  echo "WAD directory not found: ${WAD_DIR}" >&2
-  exit 1
-fi
 if [[ ! -f "${WAD_PATH}" ]]; then
   echo "WAD not found: ${WAD_PATH}" >&2
   exit 1
@@ -129,6 +145,25 @@ if [[ ! -x "${REFERENCE_BIN}" ]]; then
 fi
 mkdir -p "${OUT_DIR}"
 mkdir -p "${ROOT_DIR}/.tmp"
+
+REF_WAD_DIR=""
+cleanup() {
+  if [[ -n "${REF_WAD_DIR}" && -d "${REF_WAD_DIR}" ]]; then
+    rm -rf "${REF_WAD_DIR}"
+  fi
+}
+trap cleanup EXIT
+
+if [[ -n "${WAD_DIR}" ]]; then
+  if [[ ! -d "${WAD_DIR}" ]]; then
+    echo "WAD directory not found: ${WAD_DIR}" >&2
+    exit 1
+  fi
+  REF_WAD_DIR="${WAD_DIR}"
+else
+  REF_WAD_DIR="$(mktemp -d "${ROOT_DIR}/.tmp/refwad.XXXXXX")"
+  ln -sf "$(realpath "${WAD_PATH}")" "${REF_WAD_DIR}/$(basename "${WAD_PATH}")"
+fi
 
 echo "Building GD-DOOM trace binary: ${GDDOOM_BIN}"
 rm -f "${GDDOOM_BIN}"
@@ -155,11 +190,12 @@ CMP_LOG="${OUT_DIR}/compare.log"
 rm -f "${REF_TRACE}" "${REF_LOG}" "${GD_TRACE}" "${GD_LOG}" "${CMP_LOG}"
 
 echo "Tracing reference runtime: lump=${DEMO_LUMP}"
-env DOOMWADDIR="${WAD_DIR}" \
+env DOOMWADDIR="${REF_WAD_DIR}" \
   "${REFERENCE_BIN}" \
   -tracedemo "${DEMO_LUMP}" \
   -tracefile "${REF_TRACE}" \
   >"${REF_LOG}" 2>&1
+trim_trace_on_player_death "${REF_TRACE}"
 
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"
 if [[ "${STOP_AFTER_TICS}" != "0" ]]; then
@@ -212,6 +248,7 @@ else
     "${GDDOOM_FLAGS[@]}" \
     >"${GD_LOG}" 2>&1
 fi
+trim_trace_on_player_death "${GD_TRACE}"
 
 echo "Comparing traces"
 set +e

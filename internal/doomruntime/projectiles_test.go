@@ -546,7 +546,90 @@ func TestProjectileSelectsPlayerAtDestinationDuringThingPass(t *testing.T) {
 	if hit.frac != 1 {
 		t.Fatalf("hit frac=%f want 1 for destination collision", hit.frac)
 	}
+	if hit.x != p.x+p.vx || hit.y != p.y+p.vy || hit.z != p.z+p.vz {
+		t.Fatalf("impact=(%d,%d,%d) want destination (%d,%d,%d)", hit.x, hit.y, hit.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	}
 }
+
+func TestProjectileHitsThingOnDestinationBoxOverlapLikeDoomTryMove(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: -86, Y: -75},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+	}
+	g.initPhysics()
+	g.setThingSupportState(0, 88*fracUnit, 0, 128*fracUnit)
+
+	p := projectile{
+		x:      -83 * fracUnit,
+		y:      -77 * fracUnit,
+		z:      120 * fracUnit,
+		vx:     -10 * fracUnit,
+		vy:     -1 * fracUnit,
+		vz:     0,
+		radius: monsterProjectileRadius(3001),
+		height: monsterProjectileHeight(3001),
+		sourceThing: -1,
+		kind:   projectileFireball,
+	}
+
+	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	if !ok {
+		t.Fatal("expected projectile to hit thing at destination overlap")
+	}
+	if hit.idx != 0 || hit.isPlayer {
+		t.Fatalf("hit=%+v want thing 0", hit)
+	}
+	if hit.x != p.x || hit.y != p.y || hit.z != p.z {
+		t.Fatalf("impact=(%d,%d,%d) want old position (%d,%d,%d)", hit.x, hit.y, hit.z, p.x, p.y, p.z)
+	}
+}
+
+func TestPlayerRocketHitsBarrelOnDestinationSquareOverlap(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 2035, X: -96, Y: 1200},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+	}
+	g.initPhysics()
+	g.setThingSupportState(0, 0, 0, 128*fracUnit)
+
+	p := projectile{
+		x:            -75 * fracUnit,
+		y:            1170 * fracUnit,
+		z:            32 * fracUnit,
+		vx:           -64800,
+		vy:           1309100,
+		vz:           0,
+		radius:       11 * fracUnit,
+		height:       8 * fracUnit,
+		sourceThing:  -1,
+		sourcePlayer: true,
+		kind:         projectileRocket,
+	}
+
+	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	if !ok {
+		t.Fatal("expected player rocket to hit barrel on destination square overlap")
+	}
+	if hit.idx != 0 || hit.isPlayer {
+		t.Fatalf("hit=%+v want barrel 0", hit)
+	}
+	if hit.frac != 1 {
+		t.Fatalf("hit frac=%f want 1 for destination overlap", hit.frac)
+	}
+}
+
 
 func TestPlayerRocketSpawnsProjectile(t *testing.T) {
 	doomrand.Clear()
@@ -615,6 +698,71 @@ func TestPlayerRocketUsesDoomFineAngleMomentum(t *testing.T) {
 	p := g.projectiles[0]
 	if p.vx != -1124500 || p.vy != 673400 {
 		t.Fatalf("rocket momentum=(%d,%d) want=(-1124500,673400)", p.vx, p.vy)
+	}
+}
+
+func TestMonsterProjectileSpawnPreservesHalfStepBeforeDeferredAdvance(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 0, Y: 0},
+				{Type: 3004, X: 128, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		thingHP:     []int{60, 100},
+		thingTargetIdx: []int{0, 0},
+		thingTargetPlayer: []bool{false, false},
+		stats:       playerStats{Health: 100},
+		p: player{
+			x:      128 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		projectiles: make([]projectile, 0, 1),
+	}
+	g.initPhysics()
+	g.setThingSupportState(0, 0, 0, 128*fracUnit)
+	g.setThingSupportState(1, 0, 0, 128*fracUnit)
+	g.thingTargetIdx[0] = 1
+	g.thingTargetPlayer[0] = false
+
+	if !g.spawnMonsterProjectile(0, 3001) {
+		t.Fatal("expected imp projectile to spawn")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	p := g.projectiles[0]
+	if !p.deferredTick {
+		t.Fatal("monster projectile should defer its thinker advance until later in the tic")
+	}
+	if p.x != p.sourceX+(p.vx>>1) || p.y != p.sourceY+(p.vy>>1) {
+		t.Fatalf("projectile position=(%d,%d) want half-step (%d,%d)", p.x, p.y, p.sourceX+(p.vx>>1), p.sourceY+(p.vy>>1))
+	}
+	wantZ := 32*fracUnit + (p.vz >> 1)
+	if p.z != wantZ {
+		t.Fatalf("projectile z=%d want=%d", p.z, wantZ)
+	}
+
+	g.tickDeferredProjectiles()
+
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count after deferred tick=%d want=1", got)
+	}
+	p = g.projectiles[0]
+	if p.deferredTick {
+		t.Fatal("projectile should no longer be deferred after deferred tick")
+	}
+	if p.x != p.sourceX+(p.vx>>1)+p.vx || p.y != p.sourceY+(p.vy>>1)+p.vy {
+		t.Fatalf("projectile position after deferred tick=(%d,%d) want (%d,%d)", p.x, p.y, p.sourceX+(p.vx>>1)+p.vx, p.sourceY+(p.vy>>1)+p.vy)
 	}
 }
 

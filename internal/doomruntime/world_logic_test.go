@@ -75,7 +75,7 @@ func TestDamagePlayerFrom_BlockedByInvulnerabilityPowerup(t *testing.T) {
 		playerMobjHealth: 100,
 		inventory: playerInventory{InvulnTics: 10},
 	}
-	g.damagePlayerFrom(20, "ouch", 0, 0, false)
+	g.damagePlayerFrom(20, "ouch", 0, 0, false, -1)
 	if g.stats.Health != 100 {
 		t.Fatalf("health=%d want=100", g.stats.Health)
 	}
@@ -86,12 +86,33 @@ func TestDamagePlayerFrom_ClampsPlayerHealthButNotMobjHealth(t *testing.T) {
 		stats:            playerStats{Health: 2},
 		playerMobjHealth: 2,
 	}
-	g.damagePlayerFrom(3, "ouch", 0, 0, false)
+	g.damagePlayerFrom(3, "ouch", 0, 0, false, -1)
 	if g.stats.Health != 0 {
 		t.Fatalf("health=%d want=0", g.stats.Health)
 	}
 	if g.playerMobjHealth != -1 {
 		t.Fatalf("playerMobjHealth=%d want=-1", g.playerMobjHealth)
+	}
+}
+
+func TestDamagePlayerFrom_FatalHitConsumesDoomDeathTicRandom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		stats:            playerStats{Health: 5},
+		playerMobjHealth: 5,
+		soundQueue:       make([]soundEvent, 0, 2),
+	}
+	_, before := doomrand.State()
+	g.damagePlayerFrom(12, "ouch", 0, 0, false, -1)
+	_, after := doomrand.State()
+	if got := after - before; got != 1 {
+		t.Fatalf("prnd advanced by %d want=1 on fatal hit", got)
+	}
+	if !g.isDead {
+		t.Fatal("player should be dead after fatal hit")
+	}
+	if g.playerMobjState != 0 || g.playerMobjTics != 0 {
+		t.Fatalf("player mobj state/tics=%d/%d want=0/0 on fatal hit", g.playerMobjState, g.playerMobjTics)
 	}
 }
 
@@ -278,7 +299,7 @@ func TestDamagePlayerFromConsumesPlayerPainChancePRandomAndStartsPainState(t *te
 		soundQueue: make([]soundEvent, 0, 2),
 	}
 	_, before := doomrand.State()
-	g.damagePlayerFrom(2, "ouch", 0, 0, false)
+	g.damagePlayerFrom(2, "ouch", 0, 0, false, -1)
 	_, after := doomrand.State()
 	if got := after - before; got != 1 {
 		t.Fatalf("prnd advanced by %d want=1", got)
@@ -297,7 +318,7 @@ func TestDamagePlayerFromSkipsPainStateWhenPainChanceRollFails(t *testing.T) {
 		stats:      playerStats{Health: 100},
 		soundQueue: make([]soundEvent, 0, 2),
 	}
-	g.damagePlayerFrom(2, "ouch", 0, 0, false)
+	g.damagePlayerFrom(2, "ouch", 0, 0, false, -1)
 	if g.playerMobjState != 0 || g.playerMobjTics != 0 {
 		t.Fatalf("player mobj state/tics=%d/%d want=0/0", g.playerMobjState, g.playerMobjTics)
 	}
@@ -346,7 +367,7 @@ func TestDamagePlayerFromAppliesThrustFromAttacker(t *testing.T) {
 			y: 0,
 		},
 	}
-	g.damagePlayerFrom(8, "ouch", -64*fracUnit, 0, true)
+	g.damagePlayerFrom(8, "ouch", -64*fracUnit, 0, true, -1)
 	if g.p.momx <= 0 {
 		t.Fatalf("momx=%d want > 0 after left-side hit", g.p.momx)
 	}
@@ -381,6 +402,8 @@ func TestRunGameplayTicDeadStillTicksWorldLogic(t *testing.T) {
 		m:      &mapdata.Map{},
 		isDead: true,
 		p: player{
+			x:    0,
+			y:    0,
 			momx: 3 * fracUnit,
 			momy: -2 * fracUnit,
 		},
@@ -389,8 +412,87 @@ func TestRunGameplayTicDeadStillTicksWorldLogic(t *testing.T) {
 	if got := g.worldTic; got != 1 {
 		t.Fatalf("worldTic=%d want=1", got)
 	}
-	if g.p.momx != 0 || g.p.momy != 0 {
-		t.Fatalf("dead player momentum should clear, got momx=%d momy=%d", g.p.momx, g.p.momy)
+	if g.p.momx == 0 && g.p.momy == 0 {
+		t.Fatalf("dead player momentum should not be force-cleared, got momx=%d momy=%d", g.p.momx, g.p.momy)
+	}
+}
+
+func TestRunGameplayTicDeadTurnsTowardAttacker(t *testing.T) {
+	g := &game{
+		m:      &mapdata.Map{},
+		isDead: true,
+		p: player{
+			x:     0,
+			y:     0,
+			angle: doomAng5 * 2,
+		},
+		statusHasAttacker: true,
+		statusAttackerX:   64 * fracUnit,
+		statusAttackerY:   0,
+	}
+	g.runGameplayTic(moveCmd{}, false, false)
+	if got, want := g.p.angle, uint32(doomAng5); got != want {
+		t.Fatalf("angle=%d want=%d after one death turn tic", got, want)
+	}
+}
+
+func TestRunGameplayTicDeadKeepsTurningAfterDamageFlashExpires(t *testing.T) {
+	g := &game{
+		m:      &mapdata.Map{},
+		isDead: true,
+		p: player{
+			x:     0,
+			y:     0,
+			angle: doomAng5 * 3,
+		},
+		statusHasAttacker: true,
+		statusAttackerX:   64 * fracUnit,
+		statusAttackerY:   0,
+		statusDamageCount: 1,
+	}
+
+	g.runGameplayTic(moveCmd{}, false, false)
+	if got, want := g.p.angle, uint32(doomAng5*2); got != want {
+		t.Fatalf("angle=%d want=%d after first death turn tic", got, want)
+	}
+	if !g.statusHasAttacker {
+		t.Fatal("dead player should keep attacker latched after damage flash expires")
+	}
+
+	g.runGameplayTic(moveCmd{}, false, false)
+	if got, want := g.p.angle, uint32(doomAng5); got != want {
+		t.Fatalf("angle=%d want=%d after second death turn tic", got, want)
+	}
+}
+
+func TestRunGameplayTicDeadTracksMovingAttackerThing(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3001, X: 64, Y: 0}},
+		},
+		isDead: true,
+		p: player{
+			x:     0,
+			y:     0,
+			angle: doomAng5 * 3,
+		},
+		thingX:              []int64{64 * fracUnit},
+		thingY:              []int64{0},
+		statusHasAttacker:   true,
+		statusAttackerX:     64 * fracUnit,
+		statusAttackerY:     0,
+		statusAttackerThing: 0,
+	}
+
+	g.runGameplayTic(moveCmd{}, false, false)
+	if got, want := g.p.angle, uint32(doomAng5*2); got != want {
+		t.Fatalf("angle=%d want=%d after first death turn tic", got, want)
+	}
+
+	g.setThingPosFixed(0, 64*fracUnit, 64*fracUnit)
+	g.runGameplayTic(moveCmd{}, false, false)
+	if got, want := g.p.angle, uint32(doomAng5*3); got != want {
+		t.Fatalf("angle=%d want=%d after tracking moved attacker", got, want)
 	}
 }
 

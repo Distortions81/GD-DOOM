@@ -62,6 +62,9 @@ func thingSpawnsForSkill(t mapdata.Thing, skill int, showNoSkillItems bool) bool
 	if isPlayerStart(t.Type) {
 		return true
 	}
+	if isDeathmatchStart(t.Type) {
+		return false
+	}
 	bits := int(t.Flags) & skillMask
 	if bits == 0 {
 		if showNoSkillItems && isPickupType(t.Type) {
@@ -83,6 +86,9 @@ func thingSpawnsForSkill(t mapdata.Thing, skill int, showNoSkillItems bool) bool
 func thingSpawnsForGameMode(t mapdata.Thing, mode string) bool {
 	if isPlayerStart(t.Type) {
 		return true
+	}
+	if isDeathmatchStart(t.Type) {
+		return false
 	}
 	flags := int(t.Flags)
 	switch normalizeGameMode(mode) {
@@ -136,5 +142,9 @@ func (g *game) thingBlocksInSession(i int) bool {
 	if i < len(g.thingDropped) && g.thingDropped[i] {
 		return true
 	}
-	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters)
+	th := g.m.Things[i]
+	if _, ok := doomSolidMapThingTypes[th.Type]; ok && (int(th.Flags)&skillMask) == 0 {
+		return thingSpawnsForGameMode(th, g.opts.GameMode)
+	}
+	return thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters)
 }

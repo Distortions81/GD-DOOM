@@ -6,7 +6,6 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Distortions81/impsynth v0.1.2
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
-	github.com/pradeep-pyro/triangle v0.0.0-20181224021403-536c46311a99
 )
 
 require (

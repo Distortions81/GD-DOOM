@@ -5,7 +5,6 @@ import (
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
 	"math"
-	"os"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
@@ -115,6 +114,7 @@ type soundSystem struct {
 	player        *audiofx.SpatialPlayer
 	rand          uint32
 	vanillaVolume int
+	pitchShift    bool
 }
 
 type MenuSoundPlayer = audiofx.MenuPlayer
@@ -133,12 +133,13 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 	return audiofx.NewMenuPlayer(bank, volume)
 }
 
-func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool) *soundSystem {
+func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool, pitchShift bool) *soundSystem {
 	return &soundSystem{
 		bank:          bank,
 		player:        audiofx.NewSpatialPlayer(sfxVolume, sourcePort),
 		rand:          0x1f123bb5,
 		vanillaVolume: vanillaSFXVolume(sfxVolume),
+		pitchShift:    pitchShift,
 	}
 }
 
@@ -173,7 +174,7 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 	if !vanillaSoundWouldStart(s, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
 		return
 	}
-	pitch := vanillaPitchForEvent(ev)
+	pitch := vanillaPitchForEvent(ev, s != nil && s.pitchShift)
 	if s == nil || s.player == nil {
 		return
 	}
@@ -245,8 +246,11 @@ func vanillaPitchModeForEvent(ev soundEvent) vanillaPitchMode {
 	}
 }
 
-func vanillaPitchForEvent(ev soundEvent) int {
+func vanillaPitchForEvent(ev soundEvent, enabled bool) int {
 	pitch := 128
+	if !enabled {
+		return pitch
+	}
 	switch vanillaPitchModeForEvent(ev) {
 	case vanillaPitchSaw:
 		debugLogVanillaPitch(ev, "saw")
@@ -290,12 +294,12 @@ func doomPitchStep(pitch int) int {
 	return int(math.Pow(2.0, (float64(pitch)-128.0)/64.0) * 65536.0)
 }
 
-func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample) PCMSample {
-	return applyVanillaPitch(sample, vanillaPitchForEvent(ev))
+func vanillaPitchAdjustedSample(ev soundEvent, sample PCMSample, enabled bool) PCMSample {
+	return applyVanillaPitch(sample, vanillaPitchForEvent(ev, enabled))
 }
 
 func debugLogVanillaPitch(ev soundEvent, mode string) {
-	if os.Getenv("GD_DEBUG_RNG_SOUND") == "" {
+	if runtimeDebugEnv("GD_DEBUG_RNG_SOUND") == "" {
 		return
 	}
 	fmt.Printf("doomrand-sound side=gd event=%s mode=%s\n", soundEventDebugName(ev), mode)
