@@ -470,9 +470,11 @@ func (sg *sessionGame) applyFaithfulPalettePost(src *ebiten.Image) *ebiten.Image
 	}
 	op := &ebiten.DrawRectShaderOptions{}
 	op.Images[0] = src
-	op.Uniforms = map[string]any{
-		"Time": float32(sig.WorldTic) / float32(doomTicsPerSecond),
+	if sg.crtUniforms == nil {
+		sg.crtUniforms = make(map[string]any, 1)
 	}
+	sg.crtUniforms["Time"] = float32(sig.WorldTic) / float32(doomTicsPerSecond)
+	op.Uniforms = sg.crtUniforms
 	sg.crtPost.DrawRectShader(w, h, sg.crtShader, op)
 	return sg.crtPost
 }

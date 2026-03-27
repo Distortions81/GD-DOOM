@@ -88,6 +88,7 @@ type sessionGame struct {
 	faithfulNearest     *ebiten.Image
 	crtShader           *ebiten.Shader
 	crtPost             *ebiten.Image
+	crtUniforms         map[string]any
 	presentSurface      *ebiten.Image
 	bootSplashImage     *ebiten.Image
 	menuSfx             *sessionaudio.MenuController

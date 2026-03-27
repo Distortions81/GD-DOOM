@@ -76,7 +76,9 @@ func TestBuildSkyLookupParallel_SourcePortUsesOutputProjectionScale(t *testing.T
 	}
 }
 
-func TestSetSkyOutputSize_ResetsGPUSkyPipelineOnResize(t *testing.T) {
+func TestSetSkyOutputSize_InvalidatesGPUSkyProjectionStateOnResize(t *testing.T) {
+	colCache := make([]int, 3, 8)
+	rowCache := make([]int, 3, 9)
 	g := &game{
 		opts: Options{
 			SourcePortMode: true,
@@ -91,8 +93,8 @@ func TestSetSkyOutputSize_ResetsGPUSkyPipelineOnResize(t *testing.T) {
 		skyLayerProjDrawH:   400,
 		skyLayerProjSampleW: 640,
 		skyLayerProjSampleH: 400,
-		skyColUCache:        []int{1, 2, 3},
-		skyRowVCache:        []int{4, 5, 6},
+		skyColUCache:        colCache,
+		skyRowVCache:        rowCache,
 	}
 
 	g.setSkyOutputSize(1280, 800)
@@ -100,14 +102,17 @@ func TestSetSkyOutputSize_ResetsGPUSkyPipelineOnResize(t *testing.T) {
 	if g.skyOutputW != 1280 || g.skyOutputH != 800 {
 		t.Fatalf("sky output size=%dx%d want 1280x800", g.skyOutputW, g.skyOutputH)
 	}
-	if g.skyLayerTexKey != "" || g.skyLayerTexW != 0 || g.skyLayerTexH != 0 {
-		t.Fatalf("sky texture state not reset: key=%q size=%dx%d", g.skyLayerTexKey, g.skyLayerTexW, g.skyLayerTexH)
+	if g.skyLayerTexKey != "SKY1" || g.skyLayerTexW != 256 || g.skyLayerTexH != 128 {
+		t.Fatalf("sky texture state changed: key=%q size=%dx%d", g.skyLayerTexKey, g.skyLayerTexW, g.skyLayerTexH)
 	}
 	if g.skyLayerProjDrawW != 0 || g.skyLayerProjDrawH != 0 || g.skyLayerProjSampleW != 0 || g.skyLayerProjSampleH != 0 {
 		t.Fatalf("sky projection state not reset: draw=%dx%d sample=%dx%d", g.skyLayerProjDrawW, g.skyLayerProjDrawH, g.skyLayerProjSampleW, g.skyLayerProjSampleH)
 	}
-	if g.skyColUCache != nil || g.skyRowVCache != nil {
-		t.Fatal("sky lookup caches should be cleared on resize")
+	if g.skyColViewW != 0 || g.skyRowViewH != 0 {
+		t.Fatalf("sky cache metadata not reset: colViewW=%d rowViewH=%d", g.skyColViewW, g.skyRowViewH)
+	}
+	if cap(g.skyColUCache) != cap(colCache) || cap(g.skyRowVCache) != cap(rowCache) {
+		t.Fatal("sky lookup caches should retain backing capacity on resize")
 	}
 }
 

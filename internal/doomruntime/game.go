@@ -12291,23 +12291,16 @@ func (g *game) beginSkyLayerFrame() {
 
 func (g *game) resetSkyLayerPipeline(rebuildShader bool) {
 	g.skyLayerFrameActive = false
-	g.skyLayerTex = nil
-	g.skyLayerTexKey = ""
-	g.skyLayerTexW = 0
-	g.skyLayerTexH = 0
 
 	// Clear sky lookup caches so the next frame recomputes against current
-	// resolution/focal/texture parameters.
-	g.skyColUCache = nil
+	// resolution/focal/texture parameters. Keep backing storage so output-size
+	// jitter does not force fresh allocations on the next frame.
 	g.skyColViewW = 0
-	g.skyAngleOff = nil
 	g.skyAngleViewW = 0
 	g.skyAngleFocal = 0
-	g.skyRowVCache = nil
 	g.skyRowViewH = 0
 	g.skyRowTexH = 0
 	g.skyRowIScale = 0
-	g.skyRowDrawCache = nil
 	g.skyRowDrawH = 0
 	g.skyLayerProjDrawW = 0
 	g.skyLayerProjDrawH = 0
@@ -12334,10 +12327,6 @@ func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex *Wa
 	}
 	drawW, drawH, sampleW, sampleH := g.skyProjectionSize()
 	if g.skyLayerProjDrawW != drawW || g.skyLayerProjDrawH != drawH || g.skyLayerProjSampleW != sampleW || g.skyLayerProjSampleH != sampleH {
-		g.skyLayerTex = nil
-		g.skyLayerTexKey = ""
-		g.skyLayerTexW = 0
-		g.skyLayerTexH = 0
 		g.skyLayerProjDrawW = drawW
 		g.skyLayerProjDrawH = drawH
 		g.skyLayerProjSampleW = sampleW
@@ -12714,7 +12703,7 @@ func (g *game) ensureSkyColBuffer(viewW int) []int {
 		return nil
 	}
 	if len(g.skyColUCache) != viewW || g.skyColViewW != viewW {
-		g.skyColUCache = make([]int, viewW)
+		g.skyColUCache = resizeSliceLen(g.skyColUCache, viewW)
 		g.skyColViewW = viewW
 	}
 	return g.skyColUCache
@@ -12730,7 +12719,7 @@ func (g *game) ensureSkyAngleOffsets(viewW int, focal float64) []float64 {
 	if len(g.skyAngleOff) == viewW && g.skyAngleViewW == viewW && math.Abs(g.skyAngleFocal-focal) < 1e-9 {
 		return g.skyAngleOff
 	}
-	off := make([]float64, viewW)
+	off := resizeSliceLen(g.skyAngleOff, viewW)
 	cx := float64(viewW) * 0.5
 	for x := 0; x < viewW; x++ {
 		sampleX := float64(x) + 0.5
@@ -12750,7 +12739,7 @@ func (g *game) ensureSkyRowLookup(viewW, viewH, texH int) []int {
 	if len(g.skyRowVCache) == viewH && g.skyRowViewH == viewH && g.skyRowTexH == texH && math.Abs(g.skyRowIScale-iscale) < 1e-9 {
 		return g.skyRowVCache
 	}
-	row := make([]int, viewH)
+	row := resizeSliceLen(g.skyRowVCache, viewH)
 	cy := float64(viewH) * 0.5
 	textureMid := 100.0
 	for y := 0; y < viewH; y++ {
@@ -12769,7 +12758,7 @@ func (g *game) ensureSkyDrawRowBuffer(drawH int) []int {
 		return nil
 	}
 	if len(g.skyRowDrawCache) != drawH || g.skyRowDrawH != drawH {
-		g.skyRowDrawCache = make([]int, drawH)
+		g.skyRowDrawCache = resizeSliceLen(g.skyRowDrawCache, drawH)
 		g.skyRowDrawH = drawH
 	}
 	return g.skyRowDrawCache
