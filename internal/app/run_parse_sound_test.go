@@ -70,7 +70,7 @@ func TestBuildAutomapSoundBank_SourcePortPreservesLumpRate(t *testing.T) {
 	}
 }
 
-func TestBuildAutomapSoundBank_WASMSourcePortDefaultsToFaithfulAudio(t *testing.T) {
+func TestBuildAutomapSoundBank_WASMSourcePortAlsoPreparesSourcePortAudio(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
@@ -86,8 +86,8 @@ func TestBuildAutomapSoundBank_WASMSourcePortDefaultsToFaithfulAudio(t *testing.
 	if bank.ShootPistol.FaithfulPreparedRate != 44100 {
 		t.Fatalf("faithful prepared rate=%d want=44100", bank.ShootPistol.FaithfulPreparedRate)
 	}
-	if bank.ShootPistol.PreparedRate != 0 {
-		t.Fatalf("source-port prepared rate=%d want=0", bank.ShootPistol.PreparedRate)
+	if bank.ShootPistol.PreparedRate != 44100 {
+		t.Fatalf("source-port prepared rate=%d want=44100", bank.ShootPistol.PreparedRate)
 	}
 	if len(bank.ShootPistol.Data) != 512 {
 		t.Fatalf("sample len=%d want=512", len(bank.ShootPistol.Data))

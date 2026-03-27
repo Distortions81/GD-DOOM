@@ -1,15 +1,15 @@
-//go:build !js || !wasm
+//go:build js && wasm
 
 package music
 
 func streamChunkFrames() int {
-	return 1024
+	return 256
 }
 
 func streamLookaheadFrames() int {
-	return streamChunkFrames() * 6
+	return streamChunkFrames() * 2
 }
 
 func chunkPlayerCommandQueueCap() int {
-	return 16
+	return 4
 }

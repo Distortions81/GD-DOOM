@@ -2814,7 +2814,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
 	bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
-	if sourcePortAudioEnabled(sourcePortMode) {
+	if shouldPrepareSourcePortSoundBank(sourcePortMode) {
 		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
 	}
 	return bank
@@ -2822,6 +2822,10 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 
 func sourcePortAudioEnabled(sourcePortMode bool) bool {
 	return sourcePortMode && !isWASMBuild()
+}
+
+func shouldPrepareSourcePortSoundBank(sourcePortMode bool) bool {
+	return sourcePortMode
 }
 
 func padDoomSoundSamples(src []byte) []byte {
