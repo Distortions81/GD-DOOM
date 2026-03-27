@@ -696,6 +696,7 @@ type game struct {
 	wallPix32                    []uint32
 	frameSkyFillActive           bool
 	frameCoverageBits            []uint64
+	frameSkyCandidateBits        []uint64
 	frameSkyLayerEnabled         bool
 	frameSkyTex32                []uint32
 	frameSkyTexW                 int
@@ -1297,7 +1298,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.playerViewZ = g.p.z + g.p.viewHeight
 	g.demoTrace = newDemoTraceWriter(opts, string(m.Name))
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume, opts.SourcePortMode, opts.SFXPitchShift)
+	g.snd = newSoundSystem(opts.SoundBank, opts.SFXVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -4468,6 +4469,9 @@ func (g *game) clearFrameCoverage() {
 		return
 	}
 	clear(g.frameCoverageBits)
+	if len(g.frameSkyCandidateBits) != 0 {
+		clear(g.frameSkyCandidateBits)
+	}
 }
 
 func (g *game) prepareFrameSkyState(camAng, focal float64) {
@@ -4556,6 +4560,46 @@ func (g *game) markFrameRowSpanCovered(row, x0, x1 int) {
 		lastMask = (uint64(1) << uint(lastBits)) - 1
 	}
 	g.frameCoverageBits[word1] |= lastMask
+}
+
+func (g *game) frameSkyCandidateAtIndex(i int) bool {
+	if g == nil || !g.frameSkyFillActive || i < 0 {
+		return false
+	}
+	word := i >> 6
+	if word < 0 || word >= len(g.frameSkyCandidateBits) {
+		return false
+	}
+	return (g.frameSkyCandidateBits[word] & (uint64(1) << uint(i&63))) != 0
+}
+
+func (g *game) markFrameSkyCandidateRowSpan(row, x0, x1 int) {
+	if g == nil || !g.frameSkyFillActive || x0 > x1 || row < 0 || len(g.frameSkyCandidateBits) == 0 {
+		return
+	}
+	i0 := row + x0
+	i1 := row + x1
+	word0 := i0 >> 6
+	word1 := i1 >> 6
+	if word0 == word1 {
+		width := x1 - x0 + 1
+		mask := ^uint64(0)
+		if width < 64 {
+			mask = (uint64(1) << uint(width)) - 1
+		}
+		g.frameSkyCandidateBits[word0] |= mask << uint(i0&63)
+		return
+	}
+	g.frameSkyCandidateBits[word0] |= ^uint64(0) << uint(i0&63)
+	for word := word0 + 1; word < word1; word++ {
+		g.frameSkyCandidateBits[word] = ^uint64(0)
+	}
+	lastBits := (i1 & 63) + 1
+	lastMask := ^uint64(0)
+	if lastBits < 64 {
+		lastMask = (uint64(1) << uint(lastBits)) - 1
+	}
+	g.frameSkyCandidateBits[word1] |= lastMask
 }
 
 func (g *game) cutoutCoveredAtIndex(i int) bool {
@@ -7757,6 +7801,9 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			} else {
 				planeClipScratch = append(planeClipScratch[:0], solidSpan{L: x1, R: x2})
 			}
+			for _, vis := range planeClipScratch {
+				g.markFrameSkyCandidateRowSpan(rowPix, vis.L, vis.R)
+			}
 			if skyLayerEnabled {
 				for _, vis := range planeClipScratch {
 					clear(pix32[rowPix+vis.L : rowPix+vis.R+1])
@@ -7874,6 +7921,10 @@ func (g *game) fillUndrawnAreasWithSky(wallTop, wallBottom []int, camAng, focal 
 		}
 		occIdx := 0
 		for x := 0; x < w; {
+			if !g.frameSkyCandidateAtIndex(row + x) {
+				x++
+				continue
+			}
 			for occIdx < len(rowOccluders) && rowOccluders[occIdx].R < x {
 				occIdx++
 			}
@@ -7893,6 +7944,9 @@ func (g *game) fillUndrawnAreasWithSky(wallTop, wallBottom []int, camAng, focal 
 			}
 			runStart := x
 			for x++; x < w; x++ {
+				if !g.frameSkyCandidateAtIndex(row + x) {
+					break
+				}
 				for occIdx < len(rowOccluders) && rowOccluders[occIdx].R < x {
 					occIdx++
 				}
@@ -12121,6 +12175,9 @@ func (g *game) ensureWallLayer() {
 	if len(g.frameCoverageBits) != coverNeed {
 		g.frameCoverageBits = make([]uint64, coverNeed)
 	}
+	if len(g.frameSkyCandidateBits) != coverNeed {
+		g.frameSkyCandidateBits = make([]uint64, coverNeed)
+	}
 	if len(g.cutoutCoverageBits) != coverNeed {
 		g.cutoutCoverageBits = make([]uint64, coverNeed)
 	}
@@ -12544,11 +12601,25 @@ func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
 	return true
 }
 
+func sourcePortAudioEnabled(opts Options) bool {
+	return opts.SourcePortMode && !isWASMBuild()
+}
+
 func (g *game) rendererWorkerCount() int {
+	maxProcs := runtime.GOMAXPROCS(0)
+	if maxProcs <= 1 || isWASMBuild() {
+		return 1
+	}
 	if g != nil && g.opts.RendererWorkers > 0 {
+		if g.opts.RendererWorkers > maxProcs {
+			return maxProcs
+		}
 		return g.opts.RendererWorkers
 	}
 	if runtime.NumCPU() > 1 {
+		if maxProcs < 2 {
+			return maxProcs
+		}
 		return 2
 	}
 	return 1

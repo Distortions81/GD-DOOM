@@ -2692,7 +2692,7 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 			return media.PCMSample{}
 		}
 		data := s.Samples
-		if !sourcePortMode {
+		if !sourcePortAudioEnabled(sourcePortMode) {
 			// Doom pads digital sound payloads to the mixer block size with 128s
 			// before playback. Preserve that behavior for the faithful path.
 			data = padDoomSoundSamples(data)
@@ -2814,10 +2814,14 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		InterDone:           firstSample(sample("DSBAREXP"), sample("DSGETPOW")),
 	}
 	bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
-	if sourcePortMode {
+	if sourcePortAudioEnabled(sourcePortMode) {
 		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
 	}
 	return bank
+}
+
+func sourcePortAudioEnabled(sourcePortMode bool) bool {
+	return sourcePortMode && !isWASMBuild()
 }
 
 func padDoomSoundSamples(src []byte) []byte {

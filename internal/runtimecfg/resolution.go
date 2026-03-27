@@ -13,8 +13,8 @@ const (
 	faithfulDefaultWindowH = 960
 	faithfulAspectLogicalH = 240
 
-	wasmMaxWindowW = 1920
-	wasmMaxWindowH = 1080
+	wasmMaxWindowW = 1280
+	wasmMaxWindowH = 720
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.

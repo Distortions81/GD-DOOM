@@ -136,6 +136,9 @@ func TestFillUndrawnAreasWithSkySkipsBillboardOccluderEdges(t *testing.T) {
 		frameSkyRowV:       []int{0},
 		wallPix32:          []uint32{1, 1, 1, 1, 1, 1},
 		frameCoverageBits:  make([]uint64, 1),
+		frameSkyCandidateBits: []uint64{
+			(1 << 6) - 1,
+		},
 		billboardPlaneOccluderRows: [][]billboardPlaneOccluderSpan{{
 			{L: 2, R: 3, DepthQ: 100},
 		}},

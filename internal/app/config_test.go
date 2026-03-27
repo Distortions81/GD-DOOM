@@ -11,6 +11,7 @@ import (
 	"gddoom/internal/demo"
 	"gddoom/internal/doomsession"
 	"gddoom/internal/music"
+	"gddoom/internal/platformcfg"
 	"gddoom/internal/runtimecfg"
 )
 
@@ -351,6 +352,19 @@ func TestRunParseSourcePortDefaultsPreserveExplicitNearestSkyUpscale(t *testing.
 	}
 	if !strings.Contains(out.String(), "map=") {
 		t.Fatalf("stdout %q missing map output", out.String())
+	}
+}
+
+func TestSourcePortAudioEnabledDisablesSourcePortAudioOnWASM(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	if sourcePortAudioEnabled(true) {
+		t.Fatal("sourcePortAudioEnabled(true)=true want false on WASM")
+	}
+	if sourcePortAudioEnabled(false) {
+		t.Fatal("sourcePortAudioEnabled(false)=true want false")
 	}
 }
 
