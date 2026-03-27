@@ -434,7 +434,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	mapExplicit := flagProvided(args, "map") && strings.TrimSpace(*mapName) != ""
-	gpuSkyFlagSet := flagProvided(args, "gpu-sky")
 	skyUpscaleFlagSet := flagProvided(args, "sky-upscale")
 	wadFlagSet := flagProvided(args, "wad")
 	positionalWADSet := false
@@ -445,9 +444,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	if *sourcePortMode {
-		if !gpuSkyFlagSet && (cfg == nil || cfg.GPUSky == nil) {
-			*gpuSky = true
-		}
 		if !skyUpscaleFlagSet && (cfg == nil || cfg.SkyUpscaleMode == nil) {
 			*skyUpscale = "sharp"
 		}
