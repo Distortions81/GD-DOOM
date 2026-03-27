@@ -27,7 +27,7 @@ func ImportPCSpeakerSounds(f *wad.File) PCSpeakerImportReport {
 			continue
 		}
 		report.Found++
-		data, err := f.LumpData(l)
+		data, err := f.LumpDataView(l)
 		if err != nil {
 			report.Failed++
 			continue
@@ -58,7 +58,5 @@ func ParsePCSpeakerLump(name string, data []byte) (PCSpeakerSound, error) {
 	if len(data) != 4+count {
 		return PCSpeakerSound{}, fmt.Errorf("pcspeaker %s: size mismatch got=%d want=%d", name, len(data), 4+count)
 	}
-	tones := make([]byte, count)
-	copy(tones, data[4:])
-	return PCSpeakerSound{Name: name, Tones: tones}, nil
+	return PCSpeakerSound{Name: name, Tones: data[4:]}, nil
 }

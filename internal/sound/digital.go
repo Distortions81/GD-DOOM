@@ -29,7 +29,7 @@ func ImportDigitalSounds(f *wad.File) DigitalImportReport {
 			continue
 		}
 		report.Found++
-		data, err := f.LumpData(l)
+		data, err := f.LumpDataView(l)
 		if err != nil {
 			report.Failed++
 			continue
@@ -61,12 +61,10 @@ func ParseDigitalLump(name string, data []byte) (DigitalSound, error) {
 	if len(data) != 8+count {
 		return DigitalSound{}, fmt.Errorf("digital %s: size mismatch got=%d want=%d", name, len(data), 8+count)
 	}
-	samples := make([]byte, count)
-	copy(samples, data[8:])
 	return DigitalSound{
 		Name:       name,
 		Format:     format,
 		SampleRate: rate,
-		Samples:    samples,
+		Samples:    data[8:],
 	}, nil
 }

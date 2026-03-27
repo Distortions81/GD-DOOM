@@ -106,3 +106,32 @@ func TestBuildTextureIndexed_CompositesPatches(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildPatchIndexedViewSharesDecodedPatchSlices(t *testing.T) {
+	p := &decodedPatch{
+		width:  2,
+		height: 2,
+		index:  []uint8{1, 2, 3, 4},
+		opaque: []bool{true, true, true, true},
+	}
+	s := &Set{
+		patchCache:  map[string]*decodedPatch{"P1": p},
+		patchByName: map[string]wad.Lump{},
+	}
+
+	indexed, opaque, w, h, _, _, err := s.BuildPatchIndexedView("P1")
+	if err != nil {
+		t.Fatalf("BuildPatchIndexedView: %v", err)
+	}
+	if w != 2 || h != 2 {
+		t.Fatalf("size=%dx%d", w, h)
+	}
+	indexed[0] = 9
+	opaque[1] = false
+	if p.index[0] != 9 {
+		t.Fatalf("index view did not share backing slice")
+	}
+	if p.opaque[1] {
+		t.Fatalf("opaque view did not share backing slice")
+	}
+}

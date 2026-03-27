@@ -151,7 +151,7 @@ func wadHasXNOD(f *wad.File) bool {
 }
 
 func decodeThings(f *wad.File, l wad.Lump) ([]Thing, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +174,7 @@ func decodeThings(f *wad.File, l wad.Lump) ([]Thing, error) {
 }
 
 func decodeLinedefs(f *wad.File, l wad.Lump) ([]Linedef, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func decodeLinedefs(f *wad.File, l wad.Lump) ([]Linedef, error) {
 }
 
 func decodeSidedefs(f *wad.File, l wad.Lump) ([]Sidedef, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +222,7 @@ func decodeSidedefs(f *wad.File, l wad.Lump) ([]Sidedef, error) {
 }
 
 func decodeVertexes(f *wad.File, l wad.Lump) ([]Vertex, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func decodeVertexes(f *wad.File, l wad.Lump) ([]Vertex, error) {
 }
 
 func decodeSegs(f *wad.File, l wad.Lump) ([]Seg, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +266,7 @@ func decodeSegs(f *wad.File, l wad.Lump) ([]Seg, error) {
 }
 
 func decodeSubSectors(f *wad.File, l wad.Lump) ([]SubSector, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func decodeSubSectors(f *wad.File, l wad.Lump) ([]SubSector, error) {
 }
 
 func decodeNodes(f *wad.File, l wad.Lump) ([]Node, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +315,7 @@ func decodeNodes(f *wad.File, l wad.Lump) ([]Node, error) {
 }
 
 func decodeSectors(f *wad.File, l wad.Lump) ([]Sector, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}
@@ -340,11 +340,11 @@ func decodeSectors(f *wad.File, l wad.Lump) ([]Sector, error) {
 }
 
 func decodeReject(f *wad.File, l wad.Lump) ([]byte, error) {
-	return f.LumpData(l)
+	return f.LumpDataView(l)
 }
 
 func decodeBlockmap(f *wad.File, l wad.Lump) ([]int16, *BlockMap, error) {
-	data, err := f.LumpData(l)
+	data, err := f.LumpDataView(l)
 	if err != nil {
 		return nil, nil, err
 	}

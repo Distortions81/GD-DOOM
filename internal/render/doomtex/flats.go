@@ -19,13 +19,11 @@ func LoadFlatsIndexed(f *wad.File) (map[string][]byte, error) {
 			if l.Name == "" || l.Size != doomFlatSize {
 				continue
 			}
-			data, err := f.LumpData(l)
+			data, err := f.LumpDataView(l)
 			if err != nil || len(data) != doomFlatSize {
 				continue
 			}
-			flat := make([]byte, doomFlatSize)
-			copy(flat, data)
-			out[l.Name] = flat
+			out[l.Name] = data
 		}
 	}
 	return out, nil
@@ -39,7 +37,7 @@ func LoadFlatsRGBA(f *wad.File, palette int) (map[string][]byte, error) {
 	if !ok {
 		return nil, parseErrorf("missing PLAYPAL")
 	}
-	playpalData, err := f.LumpData(playpal)
+	playpalData, err := f.LumpDataView(playpal)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +61,7 @@ func LoadFlatsRGBA(f *wad.File, palette int) (map[string][]byte, error) {
 			if l.Name == "" || l.Size != doomFlatSize {
 				continue
 			}
-			data, err := f.LumpData(l)
+			data, err := f.LumpDataView(l)
 			if err != nil {
 				continue
 			}

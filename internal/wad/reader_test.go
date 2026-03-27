@@ -136,3 +136,37 @@ func TestOpenFilesPrefersLaterLumpsByName(t *testing.T) {
 		t.Fatalf("lump bytes = %#v, want patch data", data)
 	}
 }
+
+func TestLumpDataViewSharesBackingData(t *testing.T) {
+	f, err := OpenData("mem.wad", minimalWAD(t, "IWAD", "TEST", []byte{1, 2, 3}))
+	if err != nil {
+		t.Fatalf("OpenData() error = %v", err)
+	}
+	view, err := f.LumpDataView(f.Lumps[0])
+	if err != nil {
+		t.Fatalf("LumpDataView() error = %v", err)
+	}
+	view[1] = 9
+	view2, err := f.LumpDataView(f.Lumps[0])
+	if err != nil {
+		t.Fatalf("LumpDataView() second error = %v", err)
+	}
+	if view2[1] != 9 {
+		t.Fatalf("shared view byte=%d want=9", view2[1])
+	}
+	data, err := f.LumpData(f.Lumps[0])
+	if err != nil {
+		t.Fatalf("LumpData() error = %v", err)
+	}
+	if data[1] != 9 {
+		t.Fatalf("LumpData copy byte=%d want=9", data[1])
+	}
+	data[1] = 4
+	view3, err := f.LumpDataView(f.Lumps[0])
+	if err != nil {
+		t.Fatalf("LumpDataView() third error = %v", err)
+	}
+	if view3[1] != 9 {
+		t.Fatalf("LumpData copy should not detach backing view, got=%d want=9", view3[1])
+	}
+}

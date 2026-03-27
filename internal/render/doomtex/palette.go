@@ -10,7 +10,7 @@ func LoadPaletteRGBA(f *wad.File, palette int) ([]byte, error) {
 	if !ok {
 		return nil, parseErrorf("missing PLAYPAL")
 	}
-	playpalData, err := f.LumpData(playpal)
+	playpalData, err := f.LumpDataView(playpal)
 	if err != nil {
 		return nil, err
 	}

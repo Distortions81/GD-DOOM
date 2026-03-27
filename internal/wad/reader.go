@@ -160,6 +160,16 @@ func (f *File) LumpByName(name string) (Lump, bool) {
 }
 
 func (f *File) LumpData(l Lump) ([]byte, error) {
+	view, err := f.LumpDataView(l)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]byte, len(view))
+	copy(out, view)
+	return out, nil
+}
+
+func (f *File) LumpDataView(l Lump) ([]byte, error) {
 	src := f
 	if l.file != nil {
 		src = l.file
@@ -172,9 +182,7 @@ func (f *File) LumpData(l Lump) ([]byte, error) {
 	if start < 0 || start > len(src.data) || end < start || end > len(src.data) {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidLumpBounds, l.Name)
 	}
-	out := make([]byte, l.Size)
-	copy(out, src.data[start:end])
-	return out, nil
+	return src.data[start:end], nil
 }
 
 func normalizeName(b []byte) string {

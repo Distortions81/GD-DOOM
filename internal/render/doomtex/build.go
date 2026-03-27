@@ -82,7 +82,7 @@ func (s *Set) BuildRawPicRGBA(name string, palette int, width, height int) ([]by
 	if !ok {
 		return nil, 0, 0, parseErrorf("raw pic not found: %s", name)
 	}
-	data, err := s.wad.LumpData(l)
+	data, err := s.wad.LumpDataView(l)
 	if err != nil {
 		return nil, 0, 0, err
 	}
@@ -151,6 +151,17 @@ func (s *Set) BuildPatchIndexed(name string) ([]byte, []bool, int, int, int, int
 	return index, opaque, p.width, p.height, p.leftOffset, p.topOffset, nil
 }
 
+func (s *Set) BuildPatchIndexedView(name string) ([]byte, []bool, int, int, int, int, error) {
+	if s == nil {
+		return nil, nil, 0, 0, 0, 0, parseErrorf("nil texture set")
+	}
+	p, err := s.loadPatch(name)
+	if err != nil {
+		return nil, nil, 0, 0, 0, 0, err
+	}
+	return p.index, p.opaque, p.width, p.height, p.leftOffset, p.topOffset, nil
+}
+
 func (s *Set) loadPatch(name string) (*decodedPatch, error) {
 	key := normalizeName(name)
 	if p, ok := s.patchCache[key]; ok {
@@ -160,7 +171,7 @@ func (s *Set) loadPatch(name string) (*decodedPatch, error) {
 	if !ok {
 		return nil, parseErrorf("patch not found: %s", key)
 	}
-	data, err := s.wad.LumpData(l)
+	data, err := s.wad.LumpDataView(l)
 	if err != nil {
 		return nil, err
 	}

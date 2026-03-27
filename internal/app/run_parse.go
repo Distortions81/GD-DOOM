@@ -755,7 +755,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		doomPaletteRGBA = pal
 	}
 	if cmLump, ok := wf.LumpByName("COLORMAP"); ok {
-		if cmData, err := wf.LumpData(cmLump); err == nil && len(cmData) >= 256 {
+		if cmData, err := wf.LumpDataView(cmLump); err == nil && len(cmData) >= 256 {
 			doomColorMapRows = len(cmData) / 256
 			doomColorMap = cmData[:doomColorMapRows*256]
 		}
@@ -976,7 +976,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				if !ok {
 					continue
 				}
-				data, err := wf.LumpData(l)
+				data, err := wf.LumpDataView(l)
 				if err != nil {
 					return nil, err
 				}
@@ -996,7 +996,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			if !ok {
 				return nil, nil
 			}
-			data, err := wf.LumpData(l)
+			data, err := wf.LumpDataView(l)
 			if err != nil {
 				return nil, err
 			}
@@ -1016,7 +1016,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			if !ok {
 				return nil, nil
 			}
-			data, err := wf.LumpData(l)
+			data, err := wf.LumpDataView(l)
 			if err != nil {
 				return nil, err
 			}
@@ -1511,7 +1511,7 @@ func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD
 		if !ok {
 			return nil, nil
 		}
-		data, err := wf.LumpData(l)
+		data, err := wf.LumpDataView(l)
 		if err != nil {
 			return nil, err
 		}
@@ -1821,7 +1821,7 @@ func resolveMusicPatchBank(wf *wad.File, overridePath string, stderr io.Writer) 
 
 	if wf != nil {
 		if genmidiLump, ok := wf.LumpByName("GENMIDI"); ok {
-			if genmidiData, gerr := wf.LumpData(genmidiLump); gerr != nil {
+			if genmidiData, gerr := wf.LumpDataView(genmidiLump); gerr != nil {
 				if stderr != nil {
 					fmt.Fprintf(stderr, "music patch import warning: read GENMIDI: %v\n", gerr)
 				}
@@ -1881,7 +1881,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		doomPaletteRGBA = pal
 	}
 	if cmLump, ok := wf.LumpByName("COLORMAP"); ok {
-		if cmData, err := wf.LumpData(cmLump); err == nil && len(cmData) >= 256 {
+		if cmData, err := wf.LumpDataView(cmLump); err == nil && len(cmData) >= 256 {
 			doomColorMapRows = len(cmData) / 256
 			doomColorMap = cmData[:doomColorMapRows*256]
 		}
@@ -2022,7 +2022,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	opts.TitleMusicLoader = func() ([]byte, error) {
 		for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
 			if l, ok := wf.LumpByName(lump); ok {
-				data, err := wf.LumpData(l)
+				data, err := wf.LumpDataView(l)
 				if err != nil {
 					return nil, err
 				}
@@ -2043,7 +2043,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		if !ok {
 			return nil, nil
 		}
-		data, err := wf.LumpData(l)
+		data, err := wf.LumpDataView(l)
 		if err != nil {
 			return nil, err
 		}
@@ -2062,7 +2062,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		if !ok {
 			return nil, nil
 		}
-		data, err := wf.LumpData(l)
+		data, err := wf.LumpDataView(l)
 		if err != nil {
 			return nil, err
 		}
@@ -2931,7 +2931,7 @@ func buildStatusPatchBank(ts *doomtex.Set) map[string]media.WallTexture {
 		if _, ok := out[name]; ok {
 			continue
 		}
-		indexed, opaque, iw, ih, _, _, ierr := ts.BuildPatchIndexed(name)
+		indexed, opaque, iw, ih, _, _, ierr := ts.BuildPatchIndexedView(name)
 		rgba, w, h, ox, oy, err := ts.BuildPatchRGBA(name, 0)
 		if err != nil || w <= 0 || h <= 0 || len(rgba) != w*h*4 {
 			continue
@@ -3323,7 +3323,7 @@ func loadBuiltInDemos(wf *wad.File) []*demo.Script {
 		if !ok {
 			continue
 		}
-		data, err := wf.LumpData(lump)
+		data, err := wf.LumpDataView(lump)
 		if err != nil {
 			continue
 		}

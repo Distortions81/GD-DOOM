@@ -14,7 +14,7 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 	if !ok {
 		return nil, parseErrorf("missing PLAYPAL")
 	}
-	playpalData, err := f.LumpData(playpal)
+	playpalData, err := f.LumpDataView(playpal)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +27,7 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 	if !ok {
 		return nil, parseErrorf("missing PNAMES")
 	}
-	pnamesData, err := f.LumpData(pnamesLump)
+	pnamesData, err := f.LumpDataView(pnamesLump)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 
 	textures := make(map[string]TextureDef)
 	if l, ok := f.LumpByName("TEXTURE1"); ok {
-		data, err := f.LumpData(l)
+		data, err := f.LumpDataView(l)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +51,7 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 		}
 	}
 	if l, ok := f.LumpByName("TEXTURE2"); ok {
-		data, err := f.LumpData(l)
+		data, err := f.LumpDataView(l)
 		if err != nil {
 			return nil, err
 		}

@@ -29,6 +29,23 @@ func TestParsePCSpeakerLumpValid(t *testing.T) {
 	}
 }
 
+func TestParsePCSpeakerLumpSharesPayloadSlice(t *testing.T) {
+	data := make([]byte, 4+2)
+	binary.LittleEndian.PutUint16(data[0:2], 0)
+	binary.LittleEndian.PutUint16(data[2:4], 2)
+	data[4] = 0x20
+	data[5] = 0x30
+
+	s, err := ParsePCSpeakerLump("DPTONE", data)
+	if err != nil {
+		t.Fatalf("ParsePCSpeakerLump() error=%v", err)
+	}
+	data[4] = 0x55
+	if s.Tones[0] != 0x55 {
+		t.Fatalf("Tones[0]=%#x want shared payload %#x", s.Tones[0], byte(0x55))
+	}
+}
+
 func TestParsePCSpeakerLumpInvalidHeader(t *testing.T) {
 	data := []byte{1, 0, 1, 0, 0x20}
 	if _, err := ParsePCSpeakerLump("DPTONE", data); err == nil {
@@ -62,5 +79,33 @@ func TestImportPCSpeakerSounds(t *testing.T) {
 	r := ImportPCSpeakerSounds(f)
 	if r.Found != 2 || r.Decoded != 1 || r.Failed != 1 {
 		t.Fatalf("report=%+v", r)
+	}
+}
+
+func TestImportPCSpeakerSoundsSharesWADPayloadView(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "sound.wad")
+	data := buildWADForSoundTests(t, []lumpSpec{
+		{name: "DPGOOD", data: []byte{0, 0, 2, 0, 0x33, 0x44}},
+	})
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write wad: %v", err)
+	}
+	f, err := wad.Open(path)
+	if err != nil {
+		t.Fatalf("open wad: %v", err)
+	}
+
+	r := ImportPCSpeakerSounds(f)
+	if len(r.Sounds) != 1 {
+		t.Fatalf("decoded=%d want=1", len(r.Sounds))
+	}
+	view, err := f.LumpDataView(f.Lumps[0])
+	if err != nil {
+		t.Fatalf("LumpDataView() error: %v", err)
+	}
+	view[4] = 0x55
+	if r.Sounds[0].Tones[0] != 0x55 {
+		t.Fatalf("Tones[0]=%#x want shared payload %#x", r.Sounds[0].Tones[0], byte(0x55))
 	}
 }
