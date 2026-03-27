@@ -71,9 +71,9 @@ func TestHazardDamage_LastRadSuitTicStillProtects(t *testing.T) {
 
 func TestDamagePlayerFrom_BlockedByInvulnerabilityPowerup(t *testing.T) {
 	g := &game{
-		stats:     playerStats{Health: 100},
+		stats:            playerStats{Health: 100},
 		playerMobjHealth: 100,
-		inventory: playerInventory{InvulnTics: 10},
+		inventory:        playerInventory{InvulnTics: 10},
 	}
 	g.damagePlayerFrom(20, "ouch", 0, 0, false, -1)
 	if g.stats.Health != 100 {
@@ -237,9 +237,9 @@ func TestTrackSecrets_UsesSectorFloorNotLocalSupportFloor(t *testing.T) {
 			subsector: 0,
 			sector:    0,
 		},
-		sectorFloor:         []int64{-24 * fracUnit},
-		secretFound:         make([]bool, 1),
-		hudMessagesEnabled:  true,
+		sectorFloor:        []int64{-24 * fracUnit},
+		secretFound:        make([]bool, 1),
+		hudMessagesEnabled: true,
 	}
 	g.trackSecrets()
 	if g.secretsFound != 0 {
@@ -342,6 +342,19 @@ func TestTickPlayerCounters_EmitsPainSoundOnSecondPainFrame(t *testing.T) {
 	}
 	if got := g.soundQueue[0]; got != soundEventPain {
 		t.Fatalf("sound=%v want=%v", got, soundEventPain)
+	}
+}
+
+func TestTickPlayerCounters_IncrementsBerserkFadeCounter(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{
+			Strength:      true,
+			StrengthCount: 1,
+		},
+	}
+	g.tickPlayerCounters()
+	if g.inventory.StrengthCount != 2 {
+		t.Fatalf("strength count=%d want=2", g.inventory.StrengthCount)
 	}
 }
 

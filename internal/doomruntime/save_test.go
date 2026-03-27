@@ -47,6 +47,8 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	sg.g.stats.Health = 17
 	sg.g.stats.Armor = 88
 	sg.g.inventory.BlueKey = true
+	sg.g.inventory.Strength = true
+	sg.g.inventory.StrengthCount = 123
 	sg.g.inventory.ReadyWeapon = weaponShotgun
 	sg.g.inventory.Weapons[2003] = true
 	sg.g.worldTic = 321
@@ -163,6 +165,9 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 	if loaded.g.damageFlashTic != 7 {
 		t.Fatalf("damageFlashTic=%d want=7", loaded.g.damageFlashTic)
+	}
+	if !loaded.g.inventory.Strength || loaded.g.inventory.StrengthCount != 123 {
+		t.Fatalf("strength restore=%v/%d want true/123", loaded.g.inventory.Strength, loaded.g.inventory.StrengthCount)
 	}
 	if door := loaded.g.doors[0]; door == nil || door.typ != doorBlazeRaise || door.topHeight != 200*fracUnit {
 		t.Fatalf("door thinker not restored: %#v", door)

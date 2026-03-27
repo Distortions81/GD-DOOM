@@ -1,6 +1,7 @@
 package hud
 
 import (
+	"image/color"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -39,5 +40,42 @@ func TestDrawStatusBarWeaponSlotPositionsMatchDoomLayout(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("slot %d drawn at %v, want %v", i+2, got[i], want[i])
 		}
+	}
+}
+
+func TestFlashOverlayStateMatchesDoomPalettePriority(t *testing.T) {
+	stage, clr := flashOverlayState(0, 0, 0, 0)
+	if stage != 0 || clr != (color.RGBA{}) {
+		t.Fatalf("idle flash=%d %#v want 0 zero", stage, clr)
+	}
+
+	stage, clr = flashOverlayState(0, 6, 0, 0)
+	if stage != 1 || clr != (color.RGBA{R: 216, G: 188, B: 72}) {
+		t.Fatalf("bonus flash=%d %#v want 1 gold", stage, clr)
+	}
+
+	stage, clr = flashOverlayState(12, 6, 0, 0)
+	if stage != 2 || clr != (color.RGBA{R: 176, G: 32, B: 32}) {
+		t.Fatalf("damage priority flash=%d %#v want 2 red", stage, clr)
+	}
+
+	stage, clr = flashOverlayState(0, 0, 1, 0)
+	if stage != 2 || clr != (color.RGBA{R: 176, G: 32, B: 32}) {
+		t.Fatalf("berserk flash=%d %#v want 2 red", stage, clr)
+	}
+
+	stage, clr = flashOverlayState(0, 0, 12<<6, 0)
+	if stage != 0 || clr != (color.RGBA{}) {
+		t.Fatalf("expired berserk flash=%d %#v want 0 zero", stage, clr)
+	}
+
+	stage, clr = flashOverlayState(0, 0, 0, 5*32)
+	if stage != 1 || clr != (color.RGBA{R: 48, G: 160, B: 48}) {
+		t.Fatalf("radiation flash=%d %#v want 1 green", stage, clr)
+	}
+
+	stage, clr = flashOverlayState(0, 0, 0, 8)
+	if stage != 1 || clr != (color.RGBA{R: 48, G: 160, B: 48}) {
+		t.Fatalf("radiation blink flash=%d %#v want 1 green", stage, clr)
 	}
 }

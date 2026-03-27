@@ -11868,7 +11868,15 @@ func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) drawFlashOverlay(screen *ebiten.Image) {
-	hud.DrawFlashOverlay(screen, g.viewW, g.viewH, g.damageFlashTic, g.bonusFlashTic)
+	hud.DrawFlashOverlay(
+		screen,
+		g.viewW,
+		g.viewH,
+		g.statusDamageCount,
+		g.statusBonusCount,
+		g.inventory.StrengthCount,
+		g.inventory.RadSuitTics,
+	)
 }
 
 func (g *game) setSkyOutputSize(w, h int) {

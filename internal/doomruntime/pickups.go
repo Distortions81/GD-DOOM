@@ -13,6 +13,7 @@ type playerInventory struct {
 	YellowKey     bool
 	Backpack      bool
 	Strength      bool
+	StrengthCount int
 	InvulnTics    int
 	InvisTics     int
 	RadSuitTics   int
@@ -103,6 +104,7 @@ func (g *game) finishLevelForCarryover() {
 	g.inventory.RedKey = false
 	g.inventory.YellowKey = false
 	g.inventory.Strength = false
+	g.inventory.StrengthCount = 0
 	g.inventory.InvulnTics = 0
 	g.inventory.InvisTics = 0
 	g.inventory.RadSuitTics = 0
@@ -286,6 +288,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			g.stats.Health = 100
 		}
 		g.inventory.Strength = true
+		g.inventory.StrengthCount = 1
 		return "Berserk!", soundEventPowerUp, true
 	case 2015:
 		return g.gainBonusArmor(1, 200, "Picked up an armor bonus")

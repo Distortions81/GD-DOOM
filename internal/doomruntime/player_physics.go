@@ -294,6 +294,9 @@ func (g *game) tickPlayerCounters() {
 	if g.inventory.InvulnTics > 0 {
 		g.inventory.InvulnTics--
 	}
+	if g.inventory.Strength && g.inventory.StrengthCount > 0 && g.inventory.StrengthCount < 12<<6 {
+		g.inventory.StrengthCount++
+	}
 	if g.inventory.InvisTics > 0 {
 		g.inventory.InvisTics--
 	}

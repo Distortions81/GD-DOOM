@@ -176,14 +176,64 @@ func DrawDeathOverlay(screen *ebiten.Image, in DeathOverlayInputs, textWidth Tex
 	drawText(screen, msg2, x2, y+22*sy, sx, sy)
 }
 
-func DrawFlashOverlay(screen *ebiten.Image, viewW, viewH, damageFlashTic, bonusFlashTic int) {
-	if damageFlashTic > 0 {
-		a := uint8(40 + min(120, damageFlashTic*8))
-		ebitenutil.DrawRect(screen, 0, 0, float64(viewW), float64(viewH), color.RGBA{R: 180, G: 20, B: 20, A: a})
+func DrawFlashOverlay(screen *ebiten.Image, viewW, viewH, damageCount, bonusCount, strengthCount, radSuitTics int) {
+	stage, clr := flashOverlayState(damageCount, bonusCount, strengthCount, radSuitTics)
+	if stage <= 0 {
+		return
 	}
-	if bonusFlashTic > 0 {
-		a := uint8(20 + min(80, bonusFlashTic*6))
-		ebitenutil.DrawRect(screen, 0, 0, float64(viewW), float64(viewH), color.RGBA{R: 210, G: 190, B: 80, A: a})
+	a := flashOverlayAlpha(stage, clr)
+	if a == 0 {
+		return
+	}
+	ebitenutil.DrawRect(screen, 0, 0, float64(viewW), float64(viewH), color.RGBA{
+		R: clr.R,
+		G: clr.G,
+		B: clr.B,
+		A: a,
+	})
+}
+
+func flashOverlayState(damageCount, bonusCount, strengthCount, radSuitTics int) (int, color.RGBA) {
+	cnt := damageCount
+	if strengthCount > 0 {
+		berserk := 12 - (strengthCount >> 6)
+		if berserk > cnt {
+			cnt = berserk
+		}
+	}
+	if cnt > 0 {
+		stage := (cnt + 7) >> 3
+		if stage > 8 {
+			stage = 8
+		}
+		return stage, color.RGBA{R: 176, G: 32, B: 32}
+	}
+	if bonusCount > 0 {
+		stage := (bonusCount + 7) >> 3
+		if stage > 4 {
+			stage = 4
+		}
+		return stage, color.RGBA{R: 216, G: 188, B: 72}
+	}
+	if radSuitTics > 4*32 || radSuitTics&8 != 0 {
+		return 1, color.RGBA{R: 48, G: 160, B: 48}
+	}
+	return 0, color.RGBA{}
+}
+
+func flashOverlayAlpha(stage int, clr color.RGBA) uint8 {
+	if stage <= 0 {
+		return 0
+	}
+	switch clr {
+	case (color.RGBA{R: 176, G: 32, B: 32}):
+		return uint8(min(160, 18+stage*18))
+	case (color.RGBA{R: 216, G: 188, B: 72}):
+		return uint8(min(96, 12+stage*18))
+	case (color.RGBA{R: 48, G: 160, B: 48}):
+		return 56
+	default:
+		return 0
 	}
 }
 

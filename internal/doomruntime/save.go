@@ -162,6 +162,7 @@ type playerInventorySaveState struct {
 	YellowKey     bool
 	Backpack      bool
 	Strength      bool
+	StrengthCount int
 	InvulnTics    int
 	InvisTics     int
 	RadSuitTics   int
@@ -684,6 +685,7 @@ func capturePlayerInventorySaveState(inv playerInventory) playerInventorySaveSta
 		YellowKey:     inv.YellowKey,
 		Backpack:      inv.Backpack,
 		Strength:      inv.Strength,
+		StrengthCount: inv.StrengthCount,
 		InvulnTics:    inv.InvulnTics,
 		InvisTics:     inv.InvisTics,
 		RadSuitTics:   inv.RadSuitTics,
@@ -702,6 +704,7 @@ func restorePlayerInventorySaveState(s playerInventorySaveState) playerInventory
 		YellowKey:     s.YellowKey,
 		Backpack:      s.Backpack,
 		Strength:      s.Strength,
+		StrengthCount: s.StrengthCount,
 		InvulnTics:    s.InvulnTics,
 		InvisTics:     s.InvisTics,
 		RadSuitTics:   s.RadSuitTics,
