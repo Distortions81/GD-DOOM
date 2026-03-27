@@ -835,6 +835,20 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 	}
 }
 
+func (sg *sessionGame) drawFrontendPresented(screen *ebiten.Image) {
+	if screen == nil {
+		return
+	}
+	dw := max(screen.Bounds().Dx(), 1)
+	dh := max(screen.Bounds().Dy(), 1)
+	present := sg.ensurePresentSurface(dw, dh)
+	present.Clear()
+	sg.drawFrontend(present)
+	screen.Fill(color.Black)
+	screen.DrawImage(present, nil)
+	sg.transition.SetLastFrame(present)
+}
+
 func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox, oy float64) {
 	if sg == nil || screen == nil {
 		return

@@ -141,6 +141,13 @@ func (c *Controller) CaptureLastFrame(src *ebiten.Image) {
 	c.lastFrame.DrawImage(src, nil)
 }
 
+func (c *Controller) SetLastFrame(src *ebiten.Image) {
+	if c == nil || src == nil {
+		return
+	}
+	c.lastFrame = src
+}
+
 func (c *Controller) EnsureReady(width, height int, sourcePort bool, initCols, moveCols int, drawFrom func(*ebiten.Image), drawTo func(*ebiten.Image)) {
 	if c == nil || c.kind == KindNone || c.initialized || !c.pending {
 		return

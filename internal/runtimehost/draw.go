@@ -25,7 +25,6 @@ type Draw struct {
 
 	QuitPromptActive func() bool
 	DrawQuitPrompt   func(*ebiten.Image)
-	CaptureLastFrame func(*ebiten.Image)
 }
 
 func RunDraw(screen *ebiten.Image, d Draw) {
@@ -65,9 +64,6 @@ func RunDraw(screen *ebiten.Image, d Draw) {
 		if d.QuitPromptActive != nil && d.QuitPromptActive() && d.DrawQuitPrompt != nil {
 			d.DrawQuitPrompt(screen)
 		}
-		if d.CaptureLastFrame != nil {
-			d.CaptureLastFrame(screen)
-		}
 		return
 	}
 	if d.FrontendActive != nil && d.FrontendActive() {
@@ -77,9 +73,6 @@ func RunDraw(screen *ebiten.Image, d Draw) {
 		if d.QuitPromptActive != nil && d.QuitPromptActive() && d.DrawQuitPrompt != nil {
 			d.DrawQuitPrompt(screen)
 		}
-		if d.CaptureLastFrame != nil {
-			d.CaptureLastFrame(screen)
-		}
 		return
 	}
 	if d.FinaleActive != nil && d.FinaleActive() {
@@ -88,9 +81,6 @@ func RunDraw(screen *ebiten.Image, d Draw) {
 		}
 		if d.QuitPromptActive != nil && d.QuitPromptActive() && d.DrawQuitPrompt != nil {
 			d.DrawQuitPrompt(screen)
-		}
-		if d.CaptureLastFrame != nil {
-			d.CaptureLastFrame(screen)
 		}
 		return
 	}

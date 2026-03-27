@@ -325,17 +325,17 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		IntermissionActive: func() bool {
 			return sg.intermission.state.Active
 		},
-		DrawIntermission: sg.drawIntermission,
+		DrawIntermission: sg.drawIntermissionPresented,
 		FrontendActive: func() bool {
 			return sg.frontend.Active
 		},
 		DrawFrontend: func(screen *ebiten.Image) {
-			sg.drawFrontend(screen)
+			sg.drawFrontendPresented(screen)
 		},
 		FinaleActive: func() bool {
 			return sg.finale.Active
 		},
-		DrawFinale: sg.drawFinale,
+		DrawFinale: sg.drawFinalePresented,
 		DrawGameplay: func(screen *ebiten.Image) {
 			if sg.opts.SourcePortMode {
 				sg.drawGamePresented(screen, sg.g)
@@ -356,8 +356,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		QuitPromptActive: func() bool {
 			return sg.quitPrompt.Active
 		},
-		DrawQuitPrompt:   sg.drawQuitPrompt,
-		CaptureLastFrame: sg.transition.CaptureLastFrame,
+		DrawQuitPrompt: sg.drawQuitPrompt,
 	})
 }
 

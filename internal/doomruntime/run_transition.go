@@ -16,6 +16,18 @@ func newUnmanagedImage(w, h int) *ebiten.Image {
 	})
 }
 
+func (sg *sessionGame) ensurePresentSurface(width, height int) *ebiten.Image {
+	if sg == nil {
+		return nil
+	}
+	width = max(width, 1)
+	height = max(height, 1)
+	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != width || sg.presentSurface.Bounds().Dy() != height {
+		sg.presentSurface = newUnmanagedImage(width, height)
+	}
+	return sg.presentSurface
+}
+
 func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	if dst == nil || g == nil {
 		return
@@ -49,21 +61,19 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
 		}
 		sg.drawFaithfulPresented(dst, src)
-		sg.transition.CaptureLastFrame(src)
+		sg.transition.SetLastFrame(src)
 		return
 	}
-	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
-		sg.presentSurface = newUnmanagedImage(max(g.viewW, 1), max(g.viewH, 1))
-	}
-	sg.presentSurface.Fill(color.Black)
+	present := sg.ensurePresentSurface(g.viewW, g.viewH)
+	present.Fill(color.Black)
 	if g.mode != viewMap {
-		g.drawWalk3D(sg.presentSurface)
+		g.drawWalk3D(present)
 	} else {
-		g.Draw(sg.presentSurface)
+		g.Draw(present)
 	}
-	src := sg.presentSurface
+	src := present
 	if sg.palettePostEnabled() {
-		src = sg.applyFaithfulPalettePost(sg.presentSurface)
+		src = sg.applyFaithfulPalettePost(present)
 	}
 	ow := max(dst.Bounds().Dx(), 1)
 	oh := max(dst.Bounds().Dy(), 1)
@@ -76,7 +86,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		g.viewW = prevW
 		g.viewH = prevH
 	}
-	sg.transition.CaptureLastFrame(src)
+	sg.transition.SetLastFrame(src)
 }
 
 func (sg *sessionGame) drawSourcePortPresented(dst, src *ebiten.Image, sw, sh int) {

@@ -506,6 +506,20 @@ func (sg *sessionGame) drawIntermission(screen *ebiten.Image) {
 	}
 }
 
+func (sg *sessionGame) drawIntermissionPresented(screen *ebiten.Image) {
+	if screen == nil {
+		return
+	}
+	dw := max(screen.Bounds().Dx(), 1)
+	dh := max(screen.Bounds().Dy(), 1)
+	present := sg.ensurePresentSurface(dw, dh)
+	present.Clear()
+	sg.drawIntermission(present)
+	screen.Fill(color.Black)
+	screen.DrawImage(present, nil)
+	sg.transition.SetLastFrame(present)
+}
+
 func (sg *sessionGame) drawIntermissionStatsScreen(screen *ebiten.Image, scale, ox, oy float64, im *sessionIntermission) {
 	screen.Fill(color.Black)
 	sg.drawIntermissionBackdrop(screen, scale, ox, oy, im.state)
@@ -584,6 +598,20 @@ func (sg *sessionGame) drawFinale(screen *ebiten.Image) {
 	if (f.Tic/16)&1 == 0 {
 		sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO CONTINUE", 160, 174, scale, ox, oy, true)
 	}
+}
+
+func (sg *sessionGame) drawFinalePresented(screen *ebiten.Image) {
+	if screen == nil {
+		return
+	}
+	dw := max(screen.Bounds().Dx(), 1)
+	dh := max(screen.Bounds().Dy(), 1)
+	present := sg.ensurePresentSurface(dw, dh)
+	present.Clear()
+	sg.drawFinale(present)
+	screen.Fill(color.Black)
+	screen.DrawImage(present, nil)
+	sg.transition.SetLastFrame(present)
 }
 
 func (sg *sessionGame) drawIntermissionBackdrop(screen *ebiten.Image, scale, ox, oy float64, state intermissionState) {
