@@ -222,6 +222,7 @@
       const canvas = document.querySelector("canvas");
       if (canvas) {
         bindCanvas(canvas);
+        canvasObserver.disconnect();
       }
     });
     canvasObserver.observe(document.documentElement, { childList: true, subtree: true });
