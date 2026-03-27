@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Distortions81/impsynth v0.1.2
-	github.com/hajimehoshi/ebiten/v2 v2.9.8
+	github.com/hajimehoshi/ebiten/v2 v2.9.7
 )
 
 require (
