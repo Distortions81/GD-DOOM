@@ -270,19 +270,7 @@ func vanillaPitchForEvent(ev soundEvent, enabled bool) int {
 }
 
 func applyVanillaPitch(sample PCMSample, pitch int) PCMSample {
-	if sample.SampleRate <= 0 || len(sample.Data) == 0 {
-		return sample
-	}
-	if pitch == 128 {
-		return sample
-	}
-	adjusted := sample
-	adjusted.SampleRate = max(1, (sample.SampleRate*doomPitchStep(pitch))/65536)
-	adjusted.PreparedRate = 0
-	adjusted.PreparedMono = nil
-	adjusted.FaithfulPreparedRate = 0
-	adjusted.FaithfulPreparedMono = nil
-	return adjusted
+	return sample
 }
 
 func doomPitchStep(pitch int) int {

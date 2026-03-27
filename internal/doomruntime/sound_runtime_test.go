@@ -609,15 +609,24 @@ func TestPrepareSoundBankForFaithful_Precomputes44kMono(t *testing.T) {
 	}
 }
 
-func TestApplyVanillaPitch_UsesDoomExponentialStepTable(t *testing.T) {
-	s := PCMSample{SampleRate: 11025, Data: []byte{0, 64, 128, 255}}
-	got := applyVanillaPitch(s, 144)
-	want := (11025 * doomPitchStep(144)) / 65536
-	if got.SampleRate != want {
-		t.Fatalf("sample rate=%d want=%d", got.SampleRate, want)
+func TestApplyVanillaPitch_PreservesPreparedSamples(t *testing.T) {
+	s := PCMSample{
+		SampleRate:           11025,
+		Data:                 []byte{0, 64, 128, 255},
+		PreparedRate:         44100,
+		PreparedMono:         []int16{1, 2, 3},
+		FaithfulPreparedRate: 44100,
+		FaithfulPreparedMono: []int16{4, 5, 6},
 	}
-	if got.SampleRate == (11025*144)/128 {
-		t.Fatalf("sample rate=%d unexpectedly matches old linear scaling", got.SampleRate)
+	got := applyVanillaPitch(s, 144)
+	if got.SampleRate != s.SampleRate {
+		t.Fatalf("sample rate=%d want=%d", got.SampleRate, s.SampleRate)
+	}
+	if len(got.PreparedMono) != len(s.PreparedMono) || got.PreparedMono[0] != s.PreparedMono[0] {
+		t.Fatalf("prepared mono changed: got=%v want=%v", got.PreparedMono, s.PreparedMono)
+	}
+	if len(got.FaithfulPreparedMono) != len(s.FaithfulPreparedMono) || got.FaithfulPreparedMono[0] != s.FaithfulPreparedMono[0] {
+		t.Fatalf("faithful prepared mono changed: got=%v want=%v", got.FaithfulPreparedMono, s.FaithfulPreparedMono)
 	}
 }
 
