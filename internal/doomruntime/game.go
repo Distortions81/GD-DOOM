@@ -18275,6 +18275,7 @@ func (g *game) spriteFootprintClipYBounds(x, y, radius int64, viewH int, eyeZ, d
 	if !g.billboardClippingEnabled() {
 		return 0, viewH - 1, true
 	}
+	centerSec := g.sectorAt(x, y)
 	if radius < 0 {
 		radius = -radius
 	}
@@ -18297,7 +18298,12 @@ func (g *game) spriteFootprintClipYBounds(x, y, radius int64, viewH int, eyeZ, d
 		if radius == 0 && (off[0] != 0 || off[1] != 0) {
 			continue
 		}
-		floorZ, ceilZ, ok := g.subsectorFloorCeilAt(x+off[0], y+off[1])
+		sampleX := x + off[0]
+		sampleY := y + off[1]
+		if centerSec >= 0 && g.sectorAt(sampleX, sampleY) != centerSec {
+			continue
+		}
+		floorZ, ceilZ, ok := g.subsectorFloorCeilAt(sampleX, sampleY)
 		if !ok {
 			continue
 		}
