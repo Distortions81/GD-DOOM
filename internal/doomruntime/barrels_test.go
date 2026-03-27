@@ -227,6 +227,47 @@ func TestThingBlockmapRebuildPreservesNewestFirstOrder(t *testing.T) {
 	}
 }
 
+func TestThingBlockmapMovePreservesNewestFirstOrderAcrossCells(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: barrelThingType, X: 0, Y: 0},
+				{Type: barrelThingType, X: 0, Y: 0},
+				{Type: barrelThingType, X: 160, Y: 0},
+			},
+		},
+		thingX:          []int64{0, 0, 160 * fracUnit},
+		thingY:          []int64{0, 0, 0},
+		thingBlockOrder: []int64{1, 2, 3},
+		thingBlockCell:  []int{-1, -1, -1},
+		thingSectorCache: []int{
+			-1, -1, -1,
+		},
+		bmapOriginX:     0,
+		bmapOriginY:     0,
+		bmapWidth:       2,
+		bmapHeight:      1,
+		thingBlockCells: make([][]int, 2),
+	}
+
+	g.rebuildThingBlockmap()
+	if got, want := g.thingBlockCells[0], []int{1, 0}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("cell0 initial order=%v want=%v", got, want)
+	}
+	if got, want := g.thingBlockCells[1], []int{2}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("cell1 initial order=%v want=%v", got, want)
+	}
+
+	g.setThingPosFixed(0, 160*fracUnit, 0)
+
+	if got, want := g.thingBlockCells[0], []int{1}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("cell0 moved order=%v want=%v", got, want)
+	}
+	if got, want := g.thingBlockCells[1], []int{0, 2}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("cell1 moved order=%v want=%v", got, want)
+	}
+}
+
 func TestRadiusAttackDoesNotSkipLaterThingsWhenDropRebuildsCell(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

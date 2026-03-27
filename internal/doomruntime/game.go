@@ -18284,6 +18284,43 @@ func (g *game) rebuildThingBlockmap() {
 	}
 }
 
+func (g *game) removeThingFromBlockCell(cell, thingIdx int) bool {
+	if g == nil || cell < 0 || cell >= len(g.thingBlockCells) {
+		return false
+	}
+	items := g.thingBlockCells[cell]
+	for pos, idx := range items {
+		if idx != thingIdx {
+			continue
+		}
+		copy(items[pos:], items[pos+1:])
+		items = items[:len(items)-1]
+		g.thingBlockCells[cell] = items
+		return true
+	}
+	return false
+}
+
+func (g *game) insertThingIntoBlockCell(cell, thingIdx int) bool {
+	if g == nil || cell < 0 || cell >= len(g.thingBlockCells) || thingIdx < 0 {
+		return false
+	}
+	items := g.thingBlockCells[cell]
+	order := g.thingBlockOrder[thingIdx]
+	insertAt := len(items)
+	for pos, idx := range items {
+		if order > g.thingBlockOrder[idx] {
+			insertAt = pos
+			break
+		}
+	}
+	items = append(items, 0)
+	copy(items[insertAt+1:], items[insertAt:])
+	items[insertAt] = thingIdx
+	g.thingBlockCells[cell] = items
+	return true
+}
+
 func (g *game) setThingWorldAngle(i int, angle uint32) {
 	if g == nil || i < 0 {
 		return
@@ -18302,7 +18339,30 @@ func (g *game) updateThingBlockmapIndex(i int) {
 		g.rebuildThingBlockmap()
 		return
 	}
-	g.rebuildThingBlockmap()
+	oldCell := g.thingBlockCell[i]
+	x, y := g.thingPosFixed(i, g.m.Things[i])
+	newCell := g.thingBlockmapCellFor(x, y)
+	if oldCell == newCell {
+		if newCell < 0 {
+			g.thingBlockCell[i] = -1
+			return
+		}
+		if !g.removeThingFromBlockCell(newCell, i) || !g.insertThingIntoBlockCell(newCell, i) {
+			g.rebuildThingBlockmap()
+			return
+		}
+		g.thingBlockCell[i] = newCell
+		return
+	}
+	if oldCell >= 0 && oldCell < len(g.thingBlockCells) && !g.removeThingFromBlockCell(oldCell, i) {
+		g.rebuildThingBlockmap()
+		return
+	}
+	g.thingBlockCell[i] = newCell
+	if newCell >= 0 && !g.insertThingIntoBlockCell(newCell, i) {
+		g.rebuildThingBlockmap()
+		return
+	}
 }
 
 func (g *game) subsectorFloorCeilAt(x, y int64) (int64, int64, bool) {
