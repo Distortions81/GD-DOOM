@@ -752,7 +752,7 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 			g.monsterTurnTowardMoveDir(i)
 			if !g.monsterHasTarget(i) {
 				reacquired, continueChase := g.monsterRunLostTargetChaseState(i, typ, tx, ty)
-				if allowJustAttackedReacquire && typ == 3004 && reacquired && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
+				if allowJustAttackedReacquire && reacquired && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
 					continue
 				}
 				if !reacquired || !continueChase {

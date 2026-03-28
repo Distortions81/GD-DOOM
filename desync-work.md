@@ -1,6 +1,6 @@
 # Demo Desync Status
 
-Current stock-demo status after fixing `DOOM1 demo1` and `DOOM1 demo2`.
+Current stock-demo status after fixing all stock `DOOM1` demos.
 
 ## DOOM1
 
@@ -20,11 +20,10 @@ Current stock-demo status after fixing `DOOM1 demo1` and `DOOM1 demo2`.
 
 ### demo3
 
-- Status: desync
-- Current first mismatch: `line=402`
-- Path: `root.mobjs[266].floorz`
-- Reference: `3145728`
-- GD-DOOM: `3670016`
+- Status: clean
+- Result: `traces match lines=2134`
+- Fixed in: working tree
+- Notes: fixed resumed just-attacked lost-target chase parity for non-zombieman monsters, which removed the live `demo3` shotgun guy desync on `E1M7`.
 
 ## DOOM2
 

@@ -3014,78 +3014,88 @@ func TestTickMonstersAttackExpiryResumesChaseSameTicLikeDoom(t *testing.T) {
 }
 
 func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t *testing.T) {
-	g := &game{
-		m: &mapdata.Map{
-			Things: []mapdata.Thing{
-				{Type: 3004, X: 2048, Y: 0},
-				{Type: 3004, X: 2560, Y: 0},
-			},
-			Vertexes: []mapdata.Vertex{
-				{X: 1024, Y: -64},
-				{X: 1024, Y: 64},
-			},
-			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
-			},
-			Sidedefs: []mapdata.Sidedef{
-				{Sector: 0},
-			},
-			Sectors: []mapdata.Sector{
-				{FloorHeight: 0, CeilingHeight: 128},
-			},
-		},
-		thingCollected:      []bool{false, false},
-		thingHP:             []int{20, -4},
-		thingAggro:          []bool{true, false},
-		thingTargetPlayer:   []bool{false, false},
-		thingTargetIdx:      []int{1, -1},
-		thingPainTics:       []int{0, 0},
-		thingAttackTics:     []int{1, 0},
-		thingAttackFireTics: []int{-1, -1},
-		thingAttackPhase:    []int{2, 0},
-		thingReactionTics:   []int{0, 0},
-		thingMoveDir:        []monsterMoveDir{monsterDirSouthEast, monsterDirNoDir},
-		thingMoveCount:      []int{0, 0},
-		thingJustAtk:        []bool{true, false},
-		thingThreshold:      []int{monsterBaseThreshold, 0},
-		thingAngleState:     []uint32{2798540703, 0},
-		thingState:          []monsterThinkState{monsterStateAttack, monsterStateDeath},
-		thingStateTics:      []int{1, 1},
-		thingStatePhase:     []int{2, 0},
-		thingDead:           []bool{false, true},
-		thingZState:         []int64{0, 0},
-		thingFloorState:     []int64{0, 0},
-		thingCeilState:      []int64{128 * fracUnit, 128 * fracUnit},
-		thingSupportValid:   []bool{true, true},
-		thingLastLook:       []int{0, 0},
-		thingCooldown:       []int{0, 0},
-		sectorSoundTarget:   []bool{true},
-		p:                   player{x: 0, y: -128 * fracUnit, z: 0, floorz: 0, ceilz: 128 * fracUnit},
-	}
+	for _, tc := range []struct {
+		name string
+		typ  int16
+	}{
+		{name: "zombieman", typ: 3004},
+		{name: "shotgun_guy", typ: 9},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{
+				m: &mapdata.Map{
+					Things: []mapdata.Thing{
+						{Type: tc.typ, X: 2048, Y: 0},
+						{Type: tc.typ, X: 2560, Y: 0},
+					},
+					Vertexes: []mapdata.Vertex{
+						{X: 1024, Y: -64},
+						{X: 1024, Y: 64},
+					},
+					Linedefs: []mapdata.Linedef{
+						{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+					},
+					Sidedefs: []mapdata.Sidedef{
+						{Sector: 0},
+					},
+					Sectors: []mapdata.Sector{
+						{FloorHeight: 0, CeilingHeight: 128},
+					},
+				},
+				thingCollected:      []bool{false, false},
+				thingHP:             []int{20, -4},
+				thingAggro:          []bool{true, false},
+				thingTargetPlayer:   []bool{false, false},
+				thingTargetIdx:      []int{1, -1},
+				thingPainTics:       []int{0, 0},
+				thingAttackTics:     []int{1, 0},
+				thingAttackFireTics: []int{-1, -1},
+				thingAttackPhase:    []int{2, 0},
+				thingReactionTics:   []int{0, 0},
+				thingMoveDir:        []monsterMoveDir{monsterDirSouthEast, monsterDirNoDir},
+				thingMoveCount:      []int{0, 0},
+				thingJustAtk:        []bool{true, false},
+				thingThreshold:      []int{monsterBaseThreshold, 0},
+				thingAngleState:     []uint32{2798540703, 0},
+				thingState:          []monsterThinkState{monsterStateAttack, monsterStateDeath},
+				thingStateTics:      []int{1, 1},
+				thingStatePhase:     []int{2, 0},
+				thingDead:           []bool{false, true},
+				thingZState:         []int64{0, 0},
+				thingFloorState:     []int64{0, 0},
+				thingCeilState:      []int64{128 * fracUnit, 128 * fracUnit},
+				thingSupportValid:   []bool{true, true},
+				thingLastLook:       []int{0, 0},
+				thingCooldown:       []int{0, 0},
+				sectorSoundTarget:   []bool{true},
+				p:                   player{x: 0, y: -128 * fracUnit, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+			}
 
-	g.initPhysics()
-	g.tickMonsters()
+			g.initPhysics()
+			g.tickMonsters()
 
-	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
-		t.Fatalf("target should switch to the player through same-tic A_Look: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
-	}
-	if g.thingJustAtk[0] {
-		t.Fatal("thingJustAtk should clear after the resumed chase honors Doom's just-attacked gate")
-	}
-	if g.thingState[0] != monsterStateSee {
-		t.Fatalf("state=%d want see after same-tic chase resume", g.thingState[0])
-	}
-	if g.thingStatePhase[0] != 0 {
-		t.Fatalf("phase=%d want 0 after same-tic chase resume", g.thingStatePhase[0])
-	}
-	if want := monsterSeeStateTicsAtPhase(3004, 0, false); g.thingStateTics[0] != want {
-		t.Fatalf("state tics=%d want %d after same-tic chase resume", g.thingStateTics[0], want)
-	}
-	if got := g.thingMoveCount[0]; got < 0 || got > 15 {
-		t.Fatalf("movecount=%d want [0,15] after just-attacked chase pick", got)
-	}
-	if got := g.thingAngleState[0]; got == 2798540703 || got == 3221225472 {
-		t.Fatalf("angle=%d want a new post-reacquire chase turn", got)
+			if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+				t.Fatalf("target should switch to the player through same-tic A_Look: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+			}
+			if g.thingJustAtk[0] {
+				t.Fatal("thingJustAtk should clear after the resumed chase honors Doom's just-attacked gate")
+			}
+			if g.thingState[0] != monsterStateSee {
+				t.Fatalf("state=%d want see after same-tic chase resume", g.thingState[0])
+			}
+			if g.thingStatePhase[0] != 0 {
+				t.Fatalf("phase=%d want 0 after same-tic chase resume", g.thingStatePhase[0])
+			}
+			if want := monsterSeeStateTicsAtPhase(tc.typ, 0, false); g.thingStateTics[0] != want {
+				t.Fatalf("state tics=%d want %d after same-tic chase resume", g.thingStateTics[0], want)
+			}
+			if got := g.thingMoveCount[0]; got < 0 || got > 15 {
+				t.Fatalf("movecount=%d want [0,15] after just-attacked chase pick", got)
+			}
+			if got := g.thingAngleState[0]; got == 2798540703 || got == 3221225472 {
+				t.Fatalf("angle=%d want a new post-reacquire chase turn", got)
+			}
+		})
 	}
 }
 

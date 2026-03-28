@@ -57,7 +57,7 @@ var frontendOptionsTextLabels = [...]string{
 	"FPS",
 	"MOUSE SENSITIVITY",
 	"EFFECTS VOLUME",
-	"MUSIC",
+	"MUSIC OPTIONS",
 }
 
 var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6}
