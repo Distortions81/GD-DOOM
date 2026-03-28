@@ -884,11 +884,58 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 	if got := len(g.hitscanPuffs); got != 2 {
 		t.Fatalf("teleport fog count=%d want=2", got)
 	}
-	if got, want := g.hitscanPuffs[0].z, g.sectorFloor[0]; got != want {
+	if got, want := g.hitscanPuffs[0].z, int64(0); got != want {
 		t.Fatalf("source teleport fog z=%d want=%d", got, want)
 	}
 	if got := len(g.soundQueue); got != 2 {
 		t.Fatalf("teleport sound count=%d want=2", got)
+	}
+}
+
+func TestTeleportSourceFogUsesActorZ(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 128, Y: 64, Angle: 90, Type: 14},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 1},
+			},
+		},
+		lineSpecial: []uint16{97},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      8 * fracUnit,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLinesForActor(-32*fracUnit, 0, 32*fracUnit, 0, 0, true)
+
+	if got, want := len(g.hitscanPuffs), 2; got != want {
+		t.Fatalf("teleport fog count=%d want=%d", got, want)
+	}
+	if got, want := g.hitscanPuffs[0].z, int64(8*fracUnit); got != want {
+		t.Fatalf("source teleport fog z=%d want=%d", got, want)
 	}
 }
 

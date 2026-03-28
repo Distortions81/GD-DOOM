@@ -6,28 +6,27 @@ import (
 	"testing"
 
 	"gddoom/internal/music"
-	"gddoom/internal/sound"
 )
 
 func TestEffectiveSynthGainUsesImpSynthRatio(t *testing.T) {
 	want := 3.5 * impSynthGainRatio
-	if got := effectiveSynthGain(sound.BackendImpSynth, 3.5); got != want {
+	if got := effectiveSynthGain(music.BackendImpSynth, 3.5); got != want {
 		t.Fatalf("effectiveSynthGain(impsynth)=%.2f want %.2f", got, want)
 	}
 }
 
 func TestEffectiveSynthGainUsesDefaultForAuto(t *testing.T) {
 	want := 2.25
-	if sound.DefaultBackend() == sound.BackendImpSynth {
+	if music.DefaultBackend() == music.BackendImpSynth {
 		want *= impSynthGainRatio
 	}
-	if got := effectiveSynthGain(sound.BackendAuto, 2.25); got != want {
+	if got := effectiveSynthGain(music.BackendAuto, 2.25); got != want {
 		t.Fatalf("effectiveSynthGain(auto)=%.2f want %.2f", got, want)
 	}
 }
 
 func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
-	driver, err := music.NewDriverWithBackend(44100, nil, sound.BackendAuto)
+	driver, err := music.NewDriverWithBackend(44100, nil, music.BackendAuto)
 	if err != nil {
 		t.Fatalf("NewDriverWithBackend() error: %v", err)
 	}
@@ -80,7 +79,7 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 }
 
 func TestNextChunkStopsAtDoneWhenNotLooping(t *testing.T) {
-	driver, err := music.NewDriverWithBackend(44100, nil, sound.BackendAuto)
+	driver, err := music.NewDriverWithBackend(44100, nil, music.BackendAuto)
 	if err != nil {
 		t.Fatalf("NewDriverWithBackend() error: %v", err)
 	}

@@ -437,50 +437,50 @@ type game struct {
 	playerBlockOrder          int64
 	peerStarts                []playerStart
 
-	lines                  []physLine
-	mapVisibleLines        []mapview.Line
-	lineValid              []int
-	validCount             int
+	lines                   []physLine
+	mapVisibleLines         []mapview.Line
+	lineValid               []int
+	validCount              int
 	playerProbeSpecialLines []int
-	thingProbeSpecialLines [][]int
-	bmapOriginX            int64
-	bmapOriginY            int64
-	bmapWidth              int
-	bmapHeight             int
-	physForLine            []int
-	renderSeen             []int
-	renderEpoch            int
-	visibleBuf             []int
-	mapLineVisibility      mapview.VisibilityState
-	bspOccBuf              []solidSpan
-	visibleSectorSeen      []int
-	visibleSubSectorSeen   []int
-	visibleEpoch           int
-	nodeChildRangeEpoch    []int
-	nodeChildRangeL        []int
-	nodeChildRangeR        []int
-	nodeChildRangeOK       []uint8
-	thingSectorCache       []int
-	sectorLineAdj          [][]automapSectorLine
-	mapLines               mapview.LineCacheState
-	useSpecialSegScratch   []mapview.Segment
-	sectorFloor            []int64
-	sectorCeil             []int64
-	lineSpecial            []uint16
-	doors                  map[int]*doorThinker
-	recycledDoors          map[int]*doorThinker
-	floors                 map[int]*floorThinker
-	plats                  map[int]*platThinker
-	ceilings               map[int]*ceilingThinker
-	useFlash               int
-	useText                string
-	hudMessagesEnabled     bool
-	turnHeld               int
-	snd                    *soundSystem
-	soundQueue             []soundEvent
-	soundQueueOrigin       []queuedSoundOrigin
-	delayedSfx             []delayedSoundEvent
-	delayedSwitchReverts   []delayedSwitchTexture
+	thingProbeSpecialLines  [][]int
+	bmapOriginX             int64
+	bmapOriginY             int64
+	bmapWidth               int
+	bmapHeight              int
+	physForLine             []int
+	renderSeen              []int
+	renderEpoch             int
+	visibleBuf              []int
+	mapLineVisibility       mapview.VisibilityState
+	bspOccBuf               []solidSpan
+	visibleSectorSeen       []int
+	visibleSubSectorSeen    []int
+	visibleEpoch            int
+	nodeChildRangeEpoch     []int
+	nodeChildRangeL         []int
+	nodeChildRangeR         []int
+	nodeChildRangeOK        []uint8
+	thingSectorCache        []int
+	sectorLineAdj           [][]automapSectorLine
+	mapLines                mapview.LineCacheState
+	useSpecialSegScratch    []mapview.Segment
+	sectorFloor             []int64
+	sectorCeil              []int64
+	lineSpecial             []uint16
+	doors                   map[int]*doorThinker
+	recycledDoors           map[int]*doorThinker
+	floors                  map[int]*floorThinker
+	plats                   map[int]*platThinker
+	ceilings                map[int]*ceilingThinker
+	useFlash                int
+	useText                 string
+	hudMessagesEnabled      bool
+	turnHeld                int
+	snd                     *soundSystem
+	soundQueue              []soundEvent
+	soundQueueOrigin        []queuedSoundOrigin
+	delayedSfx              []delayedSoundEvent
+	delayedSwitchReverts    []delayedSwitchTexture
 
 	prevPX    int64
 	prevPY    int64
@@ -1895,19 +1895,21 @@ func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
 
 func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 	return RuntimeSettings{
-		DetailLevel:      g.detailLevel,
-		GammaLevel:       g.gammaLevel,
-		MusicVolume:      g.opts.MusicVolume,
-		MUSPanMax:        g.opts.MUSPanMax,
-		OPLVolume:        g.opts.OPLVolume,
-		SFXVolume:        g.opts.SFXVolume,
-		HUDMessages:      g.hudMessagesEnabled,
-		MouseLook:        g.opts.MouseLook,
-		AlwaysRun:        g.alwaysRun,
-		AutoWeaponSwitch: g.autoWeaponSwitch,
-		LineColorMode:    g.opts.LineColorMode,
-		ThingRenderMode:  g.opts.SourcePortThingRenderMode,
-		CRTEffect:        g.crtEnabled,
+		DetailLevel:        g.detailLevel,
+		GammaLevel:         g.gammaLevel,
+		MusicVolume:        g.opts.MusicVolume,
+		MUSPanMax:          g.opts.MUSPanMax,
+		OPLVolume:          g.opts.OPLVolume,
+		MusicBackend:       string(g.opts.MusicBackend),
+		MusicSoundFontPath: g.opts.MusicSoundFontPath,
+		SFXVolume:          g.opts.SFXVolume,
+		HUDMessages:        g.hudMessagesEnabled,
+		MouseLook:          g.opts.MouseLook,
+		AlwaysRun:          g.alwaysRun,
+		AutoWeaponSwitch:   g.autoWeaponSwitch,
+		LineColorMode:      g.opts.LineColorMode,
+		ThingRenderMode:    g.opts.SourcePortThingRenderMode,
+		CRTEffect:          g.crtEnabled,
 	}
 }
 
@@ -3257,12 +3259,6 @@ func (g *game) adjustPauseOption(dir int) {
 			}
 			g.publishRuntimeSettingsIfChanged()
 		}
-	case 6:
-		next := clampVolume(g.opts.MusicVolume + float64(dir)*0.1)
-		if next != g.opts.MusicVolume {
-			g.opts.MusicVolume = next
-			g.publishRuntimeSettingsIfChanged()
-		}
 	}
 }
 
@@ -3313,13 +3309,6 @@ func (g *game) cyclePauseOption() {
 			g.snd.setSFXVolume(next)
 		}
 		g.publishRuntimeSettingsIfChanged()
-	case 6:
-		next := clampVolume(g.opts.MusicVolume + 0.1)
-		if next == g.opts.MusicVolume {
-			next = 0
-		}
-		g.opts.MusicVolume = next
-		g.publishRuntimeSettingsIfChanged()
 	}
 }
 
@@ -3350,7 +3339,7 @@ func (g *game) activatePauseOptionsItem() {
 	if g == nil {
 		return
 	}
-	if g.pauseMenuOptionsOn == frontendOptionsRowMusicPlayer {
+	if g.pauseMenuOptionsOn == frontendOptionsRowMusic {
 		g.musicPlayerRequested = true
 		g.pauseMenuActive = false
 		g.paused = false
@@ -18665,14 +18654,8 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawText(formatFloat2(g.opts.MouseLookSpeed), menuX+215, menuY+4*lineHeight+2, 1.2)
 		drawText("EFFECTS VOLUME", menuX, menuY+5*lineHeight+2, 1.2)
 		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), menuX+215, menuY+5*lineHeight+2, 1.2)
-		drawText("MUSIC VOLUME", menuX, menuY+6*lineHeight+2, 1.2)
-		drawText(formatInt(frontendVolumeDot(g.opts.MusicVolume)), menuX+215, menuY+6*lineHeight+2, 1.2)
-		drawText("MUSIC PLAYER", menuX, menuY+7*lineHeight+2, 1.2)
-		playerLabel := "OPEN"
-		if len(g.opts.MusicPlayerCatalog) == 0 || g.opts.MusicPlayerTrackLoader == nil {
-			playerLabel = "N/A"
-		}
-		drawText(playerLabel, menuX+215, menuY+7*lineHeight+2, 1.2)
+		drawText("MUSIC", menuX, menuY+6*lineHeight+2, 1.2)
+		drawText("OPEN", menuX+215, menuY+6*lineHeight+2, 1.2)
 		drawSkull(g.pauseOptionsSkullX(menuX), menuY+g.pauseMenuOptionsOn*lineHeight)
 	case pauseMenuModeSound:
 		const menuX = 80

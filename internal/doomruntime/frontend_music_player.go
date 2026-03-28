@@ -7,11 +7,17 @@ import (
 )
 
 const (
-	frontendOptionsRowMusicPlayer = 7
+	frontendOptionsRowMusic       = 6
+	frontendMusicMenuRowVolume    = 0
+	frontendMusicMenuRowSynth     = 1
+	frontendMusicMenuRowSoundFont = 2
+	frontendMusicMenuRowPlayer    = 3
+	frontendMusicMenuRowCount     = 4
 	frontendMusicPlayerRowWAD     = 0
 	frontendMusicPlayerRowGroup   = 1
 	frontendMusicPlayerRowTrack   = 2
-	frontendMusicPlayerRowCount   = 3
+	frontendMusicPlayerRowBack    = 3
+	frontendMusicPlayerRowCount   = 4
 )
 
 type frontendMusicPlayerState struct {
@@ -75,23 +81,55 @@ func (sg *sessionGame) frontendMusicPlayerOpen() bool {
 	if !sg.frontendMusicPlayerAvailable() {
 		return false
 	}
-	sg.musicPlayer = frontendMusicPlayerState{}
+	sg.musicPlayer = frontendMusicPlayerState{Row: frontendMusicPlayerRowTrack}
+	sg.frontendMusicPlayerSyncToCurrentSource()
 	sg.frontend.Mode = frontendModeMusicPlayer
 	sg.frontend.MenuActive = false
 	sg.frontendMusicPlayerClamp()
 	return true
 }
 
+func (sg *sessionGame) frontendMusicPlayerSyncToCurrentSource() bool {
+	if sg == nil || len(sg.opts.MusicPlayerCatalog) == 0 {
+		return false
+	}
+	match := func(track runtimecfg.MusicPlayerTrack, wadKey string) bool {
+		switch sg.currentMusicSource.kind {
+		case musicPlaybackSourcePlayer:
+			return strings.EqualFold(strings.TrimSpace(wadKey), strings.TrimSpace(sg.currentMusicSource.wadKey)) &&
+				strings.EqualFold(strings.TrimSpace(track.LumpName), strings.TrimSpace(sg.currentMusicSource.lumpName))
+		case musicPlaybackSourceMap:
+			return track.MapName != "" && track.MapName == sg.currentMusicSource.mapName
+		default:
+			return false
+		}
+	}
+	for wi := range sg.opts.MusicPlayerCatalog {
+		wad := &sg.opts.MusicPlayerCatalog[wi]
+		for ei := range wad.Episodes {
+			ep := &wad.Episodes[ei]
+			for ti := range ep.Tracks {
+				if !match(ep.Tracks[ti], wad.Key) {
+					continue
+				}
+				sg.musicPlayer.WADOn = wi
+				sg.musicPlayer.EpisodeOn = ei
+				sg.musicPlayer.TrackOn = ti
+				sg.musicPlayer.Row = frontendMusicPlayerRowTrack
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (sg *sessionGame) frontendMusicPlayerClose() {
 	if sg == nil {
 		return
 	}
-	if sg.frontend.InGame {
-		sg.frontend = frontendState{}
-		return
-	}
-	sg.frontend.Mode = frontendModeOptions
-	sg.frontend.OptionsOn = frontendOptionsRowMusicPlayer
+	sg.frontend.Mode = frontendModeSound
+	sg.frontend.SoundOn = frontendMusicMenuRowPlayer
+	sg.frontend.MenuActive = false
 }
 
 func (sg *sessionGame) frontendMusicPlayerWAD() *runtimecfg.MusicPlayerWAD {
@@ -162,7 +200,14 @@ func (sg *sessionGame) frontendMusicPlayerAdjust(dir int) bool {
 }
 
 func (sg *sessionGame) frontendMusicPlayerPlaySelected() bool {
-	if sg == nil || sg.musicCtl == nil || sg.opts.MusicPlayerTrackLoader == nil {
+	if sg == nil {
+		return false
+	}
+	if sg.musicPlayer.Row == frontendMusicPlayerRowBack {
+		sg.frontendMusicPlayerClose()
+		return true
+	}
+	if sg.musicCtl == nil || sg.opts.MusicPlayerTrackLoader == nil {
 		return false
 	}
 	wad := sg.frontendMusicPlayerWAD()
@@ -180,6 +225,13 @@ func (sg *sessionGame) frontendMusicPlayerPlaySelected() bool {
 		return false
 	}
 	sg.musicCtl.PlayData(data, clampVolume(sg.opts.MusicVolume))
+	sg.currentMusicSource = musicPlaybackSource{
+		kind:       musicPlaybackSourcePlayer,
+		wadKey:     wad.Key,
+		lumpName:   track.LumpName,
+		levelLabel: track.Label,
+		musicName:  track.MusicName,
+	}
 	sg.setNowPlayingLevel(track.Label, string(track.MapName))
 	sg.setNowPlayingMusic(track.MusicName, track.LumpName)
 	return true

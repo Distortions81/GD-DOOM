@@ -1392,7 +1392,7 @@ func TestDemoTraceMonsterAttackStateMatchesDoomStateNumbers(t *testing.T) {
 		{3005, 504, 3},
 		{3003, 538, 3},
 		{69, 567, 3},
-		{3006, 590, 4},
+		{3006, 589, 4},
 		{64, 256, 11},
 		{66, 336, 6},
 		{67, 377, 10},
@@ -1430,7 +1430,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{3005, 502, 1},
 		{3003, 528, 2},
 		{69, 557, 2},
-		{3006, 586, 2},
+		{3006, 585, 2},
 		{64, 240, 2},
 		{66, 320, 2},
 		{67, 361, 2},
@@ -1466,7 +1466,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{3005, 503, 1},
 		{3003, 530, 8},
 		{69, 559, 8},
-		{3006, 588, 2},
+		{3006, 587, 2},
 		{64, 244, 12},
 		{66, 324, 12},
 		{67, 365, 12},
@@ -1509,8 +1509,8 @@ func TestDemoTraceMonsterPainStateMatchesDoomStateNumbers(t *testing.T) {
 		{3005, 6, 509},
 		{3003, 4, 541},
 		{69, 4, 570},
-		{3006, 6, 591},
-		{3006, 3, 592},
+		{3006, 6, 593},
+		{3006, 3, 594},
 		{64, 10, 268},
 		{64, 5, 269},
 		{66, 10, 344},
@@ -3013,7 +3013,7 @@ func TestTickMonstersAttackExpiryResumesChaseSameTicLikeDoom(t *testing.T) {
 	}
 }
 
-func TestTickMonstersAttackExpiryLostTargetReacquireStopsBeforeJustAttackedGate(t *testing.T) {
+func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -3069,23 +3069,23 @@ func TestTickMonstersAttackExpiryLostTargetReacquireStopsBeforeJustAttackedGate(
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("target should switch to the player through same-tic A_Look: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
 	}
-	if !g.thingJustAtk[0] {
-		t.Fatal("thingJustAtk should remain set when A_Chase returns immediately after reacquire")
+	if g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should clear after the resumed chase honors Doom's just-attacked gate")
 	}
 	if g.thingState[0] != monsterStateSee {
-		t.Fatalf("state=%d want see after same-tic attack expiry reacquire", g.thingState[0])
+		t.Fatalf("state=%d want see after same-tic chase resume", g.thingState[0])
 	}
 	if g.thingStatePhase[0] != 0 {
-		t.Fatalf("phase=%d want 0 after same-tic attack expiry reacquire", g.thingStatePhase[0])
+		t.Fatalf("phase=%d want 0 after same-tic chase resume", g.thingStatePhase[0])
 	}
 	if want := monsterSeeStateTicsAtPhase(3004, 0, false); g.thingStateTics[0] != want {
-		t.Fatalf("state tics=%d want %d after same-tic attack expiry reacquire", g.thingStateTics[0], want)
+		t.Fatalf("state tics=%d want %d after same-tic chase resume", g.thingStateTics[0], want)
 	}
-	if got, want := g.thingMoveCount[0], 0; got != want {
-		t.Fatalf("movecount=%d want=%d when A_Chase returns before just-attacked gate", got, want)
+	if got := g.thingMoveCount[0]; got < 0 || got > 15 {
+		t.Fatalf("movecount=%d want [0,15] after just-attacked chase pick", got)
 	}
-	if got := g.thingAngleState[0]; got == 2798540703 {
-		t.Fatalf("angle=%d want a pre-return turn toward the retained move direction", got)
+	if got := g.thingAngleState[0]; got == 2798540703 || got == 3221225472 {
+		t.Fatalf("angle=%d want a new post-reacquire chase turn", got)
 	}
 }
 
@@ -3120,7 +3120,7 @@ func TestRunMonsterIdleOrChaseEntryAction_PainResumeLostTargetStopsAfterReacquir
 		p:                 player{x: -128 * fracUnit, y: 0, z: 0},
 	}
 
-	stop, ranChase := g.runMonsterIdleOrChaseEntryAction(0, 9, 0, 0)
+	stop, ranChase := g.runMonsterIdleOrChaseEntryAction(0, 9, 0, 0, false)
 	if !stop || ranChase {
 		t.Fatalf("stop=%v ranChase=%v want stop=true ranChase=false", stop, ranChase)
 	}

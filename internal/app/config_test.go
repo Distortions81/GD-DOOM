@@ -76,7 +76,7 @@ func TestRunParseLoadsSFXPitchShiftFromConfig(t *testing.T) {
 func TestRunParseLoadsOPL3BackendFromConfig(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")
-	cfg := []byte("map = \"E1M2\"\nrender = false\nopl3_backend = \"impsynth\"\n")
+	cfg := []byte("map = \"E1M2\"\nrender = false\nmusic_backend = \"impsynth\"\n")
 	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -89,6 +89,22 @@ func TestRunParseLoadsOPL3BackendFromConfig(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "map=E1M2 ") {
 		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
+	}
+}
+
+func TestLoadConfigParsesSoundFontPath(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("soundfont = \"fonts/example.sf2\"\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.SoundFont == nil || *loaded.SoundFont != "fonts/example.sf2" {
+		t.Fatalf("soundfont=%v want fonts/example.sf2", loaded.SoundFont)
 	}
 }
 
@@ -712,8 +728,20 @@ func TestRunParseRejectsInvalidOPL3Backend(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
 	}
-	if !strings.Contains(errb.String(), "invalid -opl3-backend") {
-		t.Fatalf("stderr %q does not mention invalid opl3 backend", errb.String())
+	if !strings.Contains(errb.String(), "invalid music backend") {
+		t.Fatalf("stderr %q does not mention invalid music backend", errb.String())
+	}
+}
+
+func TestRunParseRejectsMeltySynthWithoutSoundFont(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-music-backend", "meltysynth", "-render=false"}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "requires a SoundFont") {
+		t.Fatalf("stderr %q does not mention missing SoundFont", errb.String())
 	}
 }
 
@@ -721,17 +749,19 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "config.toml")
 	in := doomsession.RuntimeSettings{
-		DetailLevel:      2,
-		GammaLevel:       5,
-		MusicVolume:      1.0,
-		MUSPanMax:        0.8,
-		OPLVolume:        2.0,
-		SFXVolume:        0.25,
-		MouseLook:        false,
-		AlwaysRun:        true,
-		AutoWeaponSwitch: false,
-		LineColorMode:    "doom",
-		CRTEffect:        true,
+		DetailLevel:        2,
+		GammaLevel:         5,
+		MusicVolume:        1.0,
+		MUSPanMax:          0.8,
+		OPLVolume:          2.0,
+		MusicBackend:       "meltysynth",
+		MusicSoundFontPath: "soundfonts/sc55.sf2",
+		SFXVolume:          0.25,
+		MouseLook:          false,
+		AlwaysRun:          true,
+		AutoWeaponSwitch:   false,
+		LineColorMode:      "doom",
+		CRTEffect:          true,
 	}
 	if err := saveRuntimeSettings(cfgPath, in, true); err != nil {
 		t.Fatalf("saveRuntimeSettings() error: %v", err)
@@ -754,6 +784,12 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.OPLVolume == nil || *cfg.OPLVolume != in.OPLVolume {
 		t.Fatalf("opl_volume=%v want %v", cfg.OPLVolume, in.OPLVolume)
+	}
+	if cfg.MusicBackend == nil || *cfg.MusicBackend != in.MusicBackend {
+		t.Fatalf("music_backend=%v want %v", cfg.MusicBackend, in.MusicBackend)
+	}
+	if cfg.SoundFont == nil || *cfg.SoundFont != in.MusicSoundFontPath {
+		t.Fatalf("soundfont=%v want %v", cfg.SoundFont, in.MusicSoundFontPath)
 	}
 	if cfg.SFXVolume == nil || *cfg.SFXVolume != in.SFXVolume {
 		t.Fatalf("sfx_volume=%v want %v", cfg.SFXVolume, in.SFXVolume)

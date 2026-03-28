@@ -25,6 +25,7 @@ type Frontend struct {
 	Mode             FrontendMode
 	Active           bool
 	InGame           bool
+	Attract          bool
 	MenuActive       bool
 	ItemOn           int
 	OptionsOn        int
@@ -67,6 +68,7 @@ type FrontendConfig struct {
 	ReadThisPageCount int
 	EpisodeChoices    []int
 	OptionRows        []int
+	MusicMenuCount    int
 	MainMenuCount     int
 	SkillMenuCount    int
 	StatusTics        int
@@ -82,6 +84,9 @@ type FrontendResult struct {
 	ChangeMouse      int
 	ChangeMusic      int
 	ChangeSFX        int
+	ChangeSynth      int
+	ChangeSoundFont  int
+	OpenMusicPlayer  bool
 	StartGameSkill   int
 	RequestLoadGame  bool
 	RequestSaveGame  bool
@@ -430,39 +435,72 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 		return result
 	case FrontendModeSound:
 		if input.Escape {
+			if state.Attract {
+				result.State.Mode = FrontendModeTitle
+				result.State.MenuActive = false
+				result.Sound = FrontendSoundBack
+				return result
+			}
 			result.State.Mode = FrontendModeOptions
+			if len(cfg.OptionRows) > 0 {
+				result.State.OptionsOn = cfg.OptionRows[len(cfg.OptionRows)-1]
+			}
 			result.Sound = FrontendSoundBack
 			return result
 		}
 		if input.Up || input.Down {
-			result.State.SoundOn ^= 1
+			dir := -1
+			if input.Down {
+				dir = 1
+			}
+			n := max(cfg.MusicMenuCount, 1)
+			result.State.SoundOn = (state.SoundOn + dir + n) % n
 			result.Sound = FrontendSoundMove
 		}
 		if input.Left {
-			if state.SoundOn == 0 {
-				result.ChangeSFX = -1
-			} else {
+			switch state.SoundOn {
+			case 0:
 				result.ChangeMusic = -1
+			case 1:
+				result.ChangeSynth = -1
+			case 2:
+				result.ChangeSoundFont = -1
 			}
 		}
 		if input.Right {
-			if state.SoundOn == 0 {
-				result.ChangeSFX = 1
-			} else {
+			switch state.SoundOn {
+			case 0:
 				result.ChangeMusic = 1
+			case 1:
+				result.ChangeSynth = 1
+			case 2:
+				result.ChangeSoundFont = 1
+			case 3:
+				result.OpenMusicPlayer = true
 			}
 		}
 		if input.Select {
-			if state.SoundOn == 0 {
-				result.ChangeSFX = 1
-			} else {
+			switch state.SoundOn {
+			case 0:
 				result.ChangeMusic = 1
+			case 1:
+				result.ChangeSynth = 1
+			case 2:
+				result.ChangeSoundFont = 1
+			case 3:
+				result.OpenMusicPlayer = true
 			}
 			result.Sound = FrontendSoundConfirm
 		}
 		return result
 	case FrontendModeOptions:
 		if input.Escape {
+			if state.Attract {
+				result.State.Mode = FrontendModeTitle
+				result.State.MenuActive = false
+				result.Sound = FrontendSoundBack
+				return result
+			}
 			result.State.Mode = FrontendModeTitle
 			result.State.MenuActive = true
 			result.Sound = FrontendSoundBack
@@ -525,13 +563,20 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeSFX = 1
 				result.Sound = FrontendSoundConfirm
 			case 6:
-				result.ChangeMusic = 1
+				result.State.Mode = FrontendModeSound
+				result.State.SoundOn = 0
 				result.Sound = FrontendSoundConfirm
 			}
 		}
 		return result
 	case FrontendModeEpisode:
 		if input.Escape {
+			if state.Attract {
+				result.State.Mode = FrontendModeTitle
+				result.State.MenuActive = false
+				result.Sound = FrontendSoundBack
+				return result
+			}
 			result.State.Mode = FrontendModeTitle
 			result.State.MenuActive = true
 			result.Sound = FrontendSoundBack
@@ -562,6 +607,12 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 		return result
 	case FrontendModeSkill:
 		if input.Escape {
+			if state.Attract {
+				result.State.Mode = FrontendModeTitle
+				result.State.MenuActive = false
+				result.Sound = FrontendSoundBack
+				return result
+			}
 			if len(cfg.EpisodeChoices) > 1 {
 				result.State.Mode = FrontendModeEpisode
 			} else {

@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"gddoom/internal/music"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionaudio"
@@ -156,6 +157,7 @@ func (sg *sessionGame) playTitleMusic() {
 	if sg == nil || sg.musicCtl == nil {
 		return
 	}
+	sg.currentMusicSource = musicPlaybackSource{kind: musicPlaybackSourceTitle}
 	sg.musicCtl.PlayTitle(clampVolume(sg.opts.MusicVolume))
 	sg.setNowPlayingLevel("")
 	sg.setNowPlayingMusic("Title Screen")
@@ -606,15 +608,6 @@ func (sg *sessionGame) tickFrontend() error {
 		Select: inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter),
 		Skip:   anyIntermissionSkipInput(),
 	}
-	if sg.frontend.Mode == frontendModeOptions && sg.frontend.OptionsOn == frontendOptionsRowMusicPlayer && input.Select {
-		if sg.frontendMusicPlayerOpen() {
-			sg.playMenuConfirmSound()
-		} else {
-			sg.frontendStatus("NO MUSIC CATALOG", doomTicsPerSecond*2)
-			sg.playMenuBackSound()
-		}
-		return nil
-	}
 	result := sessionflow.StepFrontend(
 		sessionflow.Frontend(sg.frontend),
 		input,
@@ -622,6 +615,7 @@ func (sg *sessionGame) tickFrontend() error {
 			ReadThisPageCount: len(sg.readThisPageNames()),
 			EpisodeChoices:    sg.availableFrontendEpisodeChoices(),
 			OptionRows:        frontendOptionsSelectableRows[:],
+			MusicMenuCount:    frontendMusicMenuRowCount,
 			MainMenuCount:     len(frontendMainMenuNames),
 			SkillMenuCount:    len(frontendSkillMenuNames),
 			StatusTics:        doomTicsPerSecond,
@@ -678,6 +672,26 @@ func (sg *sessionGame) tickFrontend() error {
 			sg.frontendCycleMusicVolume()
 		} else {
 			sg.frontendChangeMusicVolume(result.ChangeMusic)
+		}
+	}
+	if result.ChangeSynth != 0 {
+		if err := sg.frontendChangeMusicBackend(result.ChangeSynth); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeSoundFont != 0 {
+		if err := sg.frontendChangeMusicSoundFont(result.ChangeSoundFont); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.OpenMusicPlayer {
+		if sg.frontendMusicPlayerOpen() {
+			sg.playMenuConfirmSound()
+		} else {
+			sg.frontendStatus("NO MUSIC CATALOG", doomTicsPerSecond*2)
+			sg.playMenuBackSound()
 		}
 	}
 	if result.ChangeSFX != 0 {
@@ -944,14 +958,8 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.rt.sessionDrawHUTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "EFFECTS VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "MUSIC VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "MUSIC PLAYER", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	playerLabel := "OPEN"
-	if !sg.frontendMusicPlayerAvailable() {
-		playerLabel = "N/A"
-	}
-	sg.rt.sessionDrawHUTextAt(screen, playerLabel, ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "MUSIC", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
 }
 
@@ -971,7 +979,7 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	wad := sg.frontendMusicPlayerWAD()
 	episode := sg.frontendMusicPlayerEpisode()
 	track := sg.frontendMusicPlayerTrack()
-	values := [frontendMusicPlayerRowCount]string{"-", "-", "-"}
+	values := [frontendMusicPlayerRowCount]string{"-", "-", "-", "BACK"}
 	if wad != nil {
 		values[frontendMusicPlayerRowWAD] = strings.ToUpper(strings.TrimSpace(wad.Label))
 	}
@@ -981,10 +989,12 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	if track != nil {
 		values[frontendMusicPlayerRowTrack] = strings.ToUpper(strings.TrimSpace(track.Label))
 	}
-	labels := [frontendMusicPlayerRowCount]string{"WAD", "GROUP", "TRACK"}
+	labels := [frontendMusicPlayerRowCount]string{"WAD", "GROUP", "TRACK", ""}
 	for i, label := range labels {
 		y := menuY + i*lineHeight + 2
-		sg.rt.sessionDrawHUTextAt(screen, label, ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+		if strings.TrimSpace(label) != "" {
+			sg.rt.sessionDrawHUTextAt(screen, label, ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+		}
 		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+valueX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 	}
 	sg.rt.sessionDrawHUTextAt(screen, "CURRENTLY PLAYING", ox+float64(menuX)*scale, oy+float64(116)*scale, scale*1.0, scale*1.0)
@@ -1001,19 +1011,84 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 		return
 	}
 	sig := sg.g.sessionSignals()
-	const menuX = 80
-	const menuY = 64
+	const menuX = 24
+	const menuY = 44
 	const lineHeight = 16
-	_ = sg.drawMenuPatch(screen, "M_SVOL", 60, 38, scale, ox, oy, false)
-	_ = sg.drawMenuPatch(screen, "M_SFXVOL", menuX, menuY, scale, ox, oy, false)
-	_ = sg.drawMenuPatch(screen, "M_MUSVOL", menuX, menuY+2*lineHeight, scale, ox, oy, false)
-	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(235)*scale, oy+float64(menuY+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.MusicVolume)), ox+float64(235)*scale, oy+float64(menuY+2*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	skullY := menuY
-	if sg.frontend.SoundOn != 0 {
-		skullY += 2 * lineHeight
+	backLabel := "BACK: ESC"
+	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
+	sg.rt.sessionDrawHUTextAt(screen, "MUSIC", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
+	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
+	labels := [frontendMusicMenuRowCount]string{"VOLUME", "SYNTH", "SOUNDFONT", "PLAYER"}
+	values := [frontendMusicMenuRowCount]string{
+		formatInt(sessionflow.VolumeDot(sig.MusicVolume)),
+		musicBackendLabel(sg.opts.MusicBackend),
+		musicSoundFontLabel(sg.musicSelectedSoundFontPath()),
+		"CHANGE SONG",
 	}
-	sg.drawMenuSkull(screen, menuX-32, skullY, scale, ox, oy)
+	if !sg.frontendMusicPlayerAvailable() {
+		values[frontendMusicMenuRowPlayer] = "N/A"
+	}
+	disabledSoundFont := music.ResolveBackend(sg.opts.MusicBackend) != music.BackendMeltySynth
+	for i := 0; i < frontendMusicMenuRowCount; i++ {
+		y := menuY + i*lineHeight + 2
+		alpha := 1.0
+		if i == frontendMusicMenuRowSoundFont && disabledSoundFont {
+			alpha = 0.4
+		}
+		sg.drawFrontendHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2, alpha)
+		sg.drawFrontendHUTextAt(screen, values[i], ox+float64(menuX+170)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2, alpha)
+	}
+	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(156)*scale, scale*1.0, scale*1.0)
+	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
+		sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
+	}
+	sg.drawMenuSkull(screen, menuX-18, menuY+sg.frontend.SoundOn*lineHeight, scale, ox, oy)
+}
+
+func (sg *sessionGame) drawFrontendHUTextAt(screen *ebiten.Image, text string, x, y, sx, sy, alpha float64) {
+	if sg == nil || sg.g == nil || alpha >= 0.999 {
+		if sg != nil && sg.rt != nil {
+			sg.rt.sessionDrawHUTextAt(screen, text, x, y, sx, sy)
+		}
+		return
+	}
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if len(sg.g.opts.MessageFontBank) == 0 {
+		sg.rt.sessionDrawHUTextAt(screen, text, x, y, sx, sy)
+		return
+	}
+	px := x
+	py := y
+	lineAdvance := 9 * sy
+	for _, ch := range text {
+		if ch == '\n' {
+			px = x
+			py += lineAdvance
+			continue
+		}
+		uc := ch
+		if uc >= 'a' && uc <= 'z' {
+			uc -= 'a' - 'A'
+		}
+		if uc == ' ' || uc < huFontStart || uc > huFontEnd {
+			px += 4 * sx
+			continue
+		}
+		img, w, _, ox, oy, ok := sg.g.messageFontGlyph(uc)
+		if !ok {
+			px += 4 * sx
+			continue
+		}
+		op := &ebiten.DrawImageOptions{}
+		op.Filter = ebiten.FilterNearest
+		op.ColorScale.ScaleAlpha(float32(alpha))
+		op.GeoM.Scale(sx, sy)
+		op.GeoM.Translate(px-float64(ox)*sx, py-float64(oy)*sy)
+		screen.DrawImage(img, op)
+		px += float64(w) * sx
+	}
 }
 
 func (sg *sessionGame) drawFrontendThermo(screen *ebiten.Image, x, y, width, dot int, scale, ox, oy float64) {

@@ -109,8 +109,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMUSPanMax := 0.8
 	defaultOPLVolume := 2.25
 	defaultAudioPreEmphasis := false
-	defaultOPL3Backend := sound.DefaultBackend().String()
+	defaultMusicBackend := music.DefaultBackend().String()
 	defaultOPLBankPath := ""
+	defaultSoundFontPath := ""
+	if isWASMBuild() {
+		defaultSoundFontPath = music.DefaultEmbeddedSoundFontPath()
+	}
 	defaultSFXVolume := 0.5
 	defaultSFXPitchShift := false
 	defaultFastMonsters := false
@@ -221,11 +225,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.AudioPreEmphasis != nil {
 			defaultAudioPreEmphasis = *cfg.AudioPreEmphasis
 		}
-		if cfg.OPL3Backend != nil {
-			defaultOPL3Backend = *cfg.OPL3Backend
+		if cfg.MusicBackend != nil {
+			defaultMusicBackend = *cfg.MusicBackend
+		} else if cfg.OPL3Backend != nil {
+			defaultMusicBackend = *cfg.OPL3Backend
 		}
 		if cfg.OPLBank != nil {
 			defaultOPLBankPath = *cfg.OPLBank
+		}
+		if cfg.SoundFont != nil {
+			defaultSoundFontPath = *cfg.SoundFont
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
@@ -385,8 +394,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
 	oplVolume := fs.Float64("opl-volume", defaultOPLVolume, "FM synth output gain (0..4; default 2.0)")
 	audioPreEmphasis := fs.Bool("audio-preemphasis", defaultAudioPreEmphasis, "enable FM music pre-emphasis filter")
-	opl3Backend := fs.String("opl3-backend", defaultOPL3Backend, "FM synth backend (auto|impsynth)")
+	musicBackend := fs.String("music-backend", defaultMusicBackend, "music synth backend (auto|impsynth|meltysynth)")
+	opl3Backend := fs.String("opl3-backend", defaultMusicBackend, "legacy alias for -music-backend")
 	oplBank := fs.String("opl-bank", defaultOPLBankPath, "path to external patch bank (.op2/GENMIDI bytes) overriding WAD GENMIDI")
+	soundFont := fs.String("soundfont", defaultSoundFontPath, "path to external SoundFont (.sf2) used by the meltysynth music backend")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	sfxPitchShift := fs.Bool("sfx-pitch-shift", defaultSFXPitchShift, "enable Doom-style random sound pitch shifting")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
@@ -515,13 +526,21 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "invalid -renderer-workers %d (must be >= 0)\n", *rendererWorkers)
 		return 2
 	}
-	resolvedOPL3Backend, err := sound.ParseBackend(*opl3Backend)
+	resolvedMusicBackendInput := strings.TrimSpace(*musicBackend)
+	if flagProvided(args, "opl3-backend") && !flagProvided(args, "music-backend") {
+		resolvedMusicBackendInput = strings.TrimSpace(*opl3Backend)
+	}
+	resolvedMusicBackend, err := music.ParseBackend(resolvedMusicBackendInput)
 	if err != nil {
-		fmt.Fprintf(stderr, "invalid -opl3-backend %q: %v\n", *opl3Backend, err)
+		fmt.Fprintf(stderr, "invalid music backend %q: %v\n", resolvedMusicBackendInput, err)
 		return 2
 	}
-	if err := sound.ValidateBackend(resolvedOPL3Backend); err != nil {
-		fmt.Fprintf(stderr, "invalid -opl3-backend %q: %v\n", *opl3Backend, err)
+	if err := music.ValidateBackend(resolvedMusicBackend); err != nil {
+		fmt.Fprintf(stderr, "invalid music backend %q: %v\n", resolvedMusicBackendInput, err)
+		return 2
+	}
+	if music.ResolveBackend(resolvedMusicBackend) == music.BackendMeltySynth && strings.TrimSpace(*soundFont) == "" {
+		fmt.Fprintln(stderr, "invalid -soundfont \"\": meltysynth backend requires a SoundFont (.sf2)")
 		return 2
 	}
 	if *allCheats && allCheatsSet && !cheatLevelSet {
@@ -661,8 +680,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			musPanMax:                  *musPanMax,
 			oplVolume:                  *oplVolume,
 			audioPreEmphasis:           *audioPreEmphasis,
-			opl3Backend:                resolvedOPL3Backend,
+			musicBackend:               resolvedMusicBackend,
 			oplBankPath:                strings.TrimSpace(*oplBank),
+			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  *sfxVolume,
 			sfxPitchShift:              *sfxPitchShift,
 			fastMonsters:               *fastMonsters,
@@ -764,9 +784,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wadHash := hashWADStackSHA1(wadPaths)
 	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
+	musicSoundFontChoices := detectAvailableSoundFonts("soundfonts")
 	musicPatchBank, err := resolveMusicPatchBank(wf, strings.TrimSpace(*oplBank), stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "music patch import error: %v\n", err)
+		return 1
+	}
+	musicSoundFont, err := resolveMusicSoundFont(resolvedMusicBackend, strings.TrimSpace(*soundFont), stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "music soundfont import error: %v\n", err)
 		return 1
 	}
 	if *importPCSpeaker {
@@ -942,7 +968,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MUSPanMax:                  *musPanMax,
 			OPLVolume:                  *oplVolume,
 			AudioPreEmphasis:           *audioPreEmphasis,
-			OPL3Backend:                resolvedOPL3Backend,
+			MusicBackend:               resolvedMusicBackend,
 			OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 			SFXVolume:                  *sfxVolume,
 			SFXPitchShift:              *sfxPitchShift,
@@ -987,6 +1013,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			IntermissionPatchBank:      intermissionPatchBank,
 			SoundBank:                  soundBank,
 			MusicPatchBank:             musicPatchBank,
+			MusicSoundFontPath:         strings.TrimSpace(*soundFont),
+			MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
+			MusicSoundFont:             musicSoundFont,
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
 			DemoStopAfterTics:          max(0, *demoStopAfterTics),
@@ -1157,8 +1186,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			musPanMax:                  *musPanMax,
 			oplVolume:                  *oplVolume,
 			audioPreEmphasis:           *audioPreEmphasis,
-			opl3Backend:                resolvedOPL3Backend,
+			musicBackend:               resolvedMusicBackend,
 			oplBankPath:                strings.TrimSpace(*oplBank),
+			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  *sfxVolume,
 			sfxPitchShift:              *sfxPitchShift,
 			fastMonsters:               *fastMonsters,
@@ -1681,6 +1711,37 @@ func resolvePathCaseInsensitive(path string) (string, bool) {
 	return "", false
 }
 
+func detectAvailableSoundFonts(dir string) []string {
+	out := append([]string(nil), music.EmbeddedSoundFontChoices()...)
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := strings.TrimSpace(entry.Name())
+			if !strings.HasSuffix(strings.ToLower(name), ".sf2") {
+				continue
+			}
+			out = append(out, filepath.Join(dir, name))
+		}
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		return nil
+	}
+	dedup := out[:0]
+	var prev string
+	for _, path := range out {
+		if prev != "" && strings.EqualFold(prev, path) {
+			continue
+		}
+		dedup = append(dedup, path)
+		prev = path
+	}
+	return dedup
+}
+
 type iwadChoice struct {
 	Path  string
 	Label string
@@ -1765,8 +1826,9 @@ type renderBuildConfig struct {
 	musPanMax                  float64
 	oplVolume                  float64
 	audioPreEmphasis           bool
-	opl3Backend                sound.Backend
+	musicBackend               music.Backend
 	oplBankPath                string
+	soundFontPath              string
 	sfxVolume                  float64
 	sfxPitchShift              bool
 	fastMonsters               bool
@@ -1879,6 +1941,24 @@ func resolveMusicPatchBank(wf *wad.File, overridePath string, stderr io.Writer) 
 	return nil, nil
 }
 
+func resolveMusicSoundFont(backend music.Backend, path string, stderr io.Writer) (*music.SoundFontBank, error) {
+	if music.ResolveBackend(backend) != music.BackendMeltySynth {
+		return nil, nil
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("meltysynth backend requires a SoundFont (.sf2)")
+	}
+	bank, err := music.ParseSoundFontFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if stderr != nil {
+		fmt.Fprintf(stderr, "music soundfont import: source=%s\n", path)
+	}
+	return bank, nil
+}
+
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
 	wf, wadPaths, err := openWADStack(resolvedWADPath, cfg.pwadPaths)
 	if err != nil {
@@ -1886,7 +1966,12 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	}
 	wadHash := hashWADStackSHA1(wadPaths)
 	dsr := sound.ImportDigitalSounds(wf)
+	musicSoundFontChoices := detectAvailableSoundFonts("soundfonts")
 	musicPatchBank, err := resolveMusicPatchBank(wf, cfg.oplBankPath, stderr)
+	if err != nil {
+		return nil, err
+	}
+	musicSoundFont, err := resolveMusicSoundFont(cfg.musicBackend, cfg.soundFontPath, stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -2000,7 +2085,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		MUSPanMax:                  cfg.musPanMax,
 		OPLVolume:                  cfg.oplVolume,
 		AudioPreEmphasis:           cfg.audioPreEmphasis,
-		OPL3Backend:                cfg.opl3Backend,
+		MusicBackend:               cfg.musicBackend,
 		OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 		SFXVolume:                  cfg.sfxVolume,
 		SFXPitchShift:              cfg.sfxPitchShift,
@@ -2045,6 +2130,9 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		IntermissionPatchBank:      intermissionPatchBank,
 		SoundBank:                  soundBank,
 		MusicPatchBank:             musicPatchBank,
+		MusicSoundFontPath:         cfg.soundFontPath,
+		MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
+		MusicSoundFont:             musicSoundFont,
 		RecordDemoPath:             cfg.recordDemoPath,
 		DemoExitOnDeath:            cfg.demoExitOnDeath,
 		DemoStopAfterTics:          cfg.demoStopAfterTics,

@@ -1,19 +1,21 @@
 package gameplay
 
 type RuntimeSettings struct {
-	DetailLevel      int
-	GammaLevel       int
-	MusicVolume      float64
-	MUSPanMax        float64
-	OPLVolume        float64
-	SFXVolume        float64
-	HUDMessages      bool
-	MouseLook        bool
-	AlwaysRun        bool
-	AutoWeaponSwitch bool
-	LineColorMode    string
-	ThingRenderMode  string
-	CRTEffect        bool
+	DetailLevel        int
+	GammaLevel         int
+	MusicVolume        float64
+	MUSPanMax          float64
+	OPLVolume          float64
+	MusicBackend       string
+	MusicSoundFontPath string
+	SFXVolume          float64
+	HUDMessages        bool
+	MouseLook          bool
+	AlwaysRun          bool
+	AutoWeaponSwitch   bool
+	LineColorMode      string
+	ThingRenderMode    string
+	CRTEffect          bool
 }
 
 type MusicAction int

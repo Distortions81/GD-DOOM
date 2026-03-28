@@ -33,6 +33,7 @@ GD-DOOM is not just a renderer or file parser. The project aims to cover the ful
 
 - Loads original Doom data directly, including stacked IWAD plus PWAD configurations.
 - Runs as a desktop Ebiten application with walk view, automap, menus, help screens, and pause/quit flows.
+- Supports Doom MUS playback through either the built-in OPL3 path (`impsynth`) or `go-meltysynth` with external SoundFonts.
 - Supports faithful defaults alongside optional source-port conveniences such as mouselook and expanded automap behavior.
 - Includes Doom v1.10 demo playback, demo recording, and JSONL state tracing for investigation and benchmarking.
 - Provides profiling helpers and benchmark-oriented workflows for runtime and rendering work.
@@ -64,6 +65,22 @@ For the current command-line interface, run:
 ```bash
 go run ./cmd/gddoom -h
 ```
+
+## Music Backends
+
+GD-DOOM supports two music synth paths:
+
+- `impsynth`: the default OPL3-style backend used for Doom's FM music path.
+- `meltysynth`: a SoundFont-based backend powered by [`go-meltysynth`](https://github.com/sinshu/go-meltysynth).
+
+Examples:
+
+```bash
+go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=impsynth
+go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/SC55.sf2
+```
+
+The frontend options menu has a dedicated Music submenu where you can change music volume, switch between OPL3 and MeltySynth, pick a SoundFont from `./soundfonts`, and open the music player.
 
 ## Current Feature Coverage
 
@@ -105,3 +122,5 @@ WASM_OPT=1 WASM_OPT_LEVEL=-O3 scripts/build_wasm.sh
 
 `WASM_OPT=1` makes `wasm-opt` required. If you leave `WASM_OPT` unset, the script uses `auto` mode and skips optimization when Binaryen is not installed.
 The optimizer currently defaults to `WASM_OPT_FEATURES=--all-features` so Binaryen can accept Go's post-MVP wasm output; override that env var if you need a stricter feature set.
+
+For js/wasm builds, GD-DOOM embeds both `sc55.sf2` and `windows-gm.sf2`, and uses `sc55.sf2` as the default SoundFont for the `meltysynth` backend, so browser builds do not need filesystem access to a separate `.sf2` file.

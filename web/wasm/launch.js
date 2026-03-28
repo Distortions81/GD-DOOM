@@ -4,6 +4,13 @@ const shell = document.getElementById("game-shell");
 let splashDismissed = false;
 let pendingReload = false;
 
+function isInteractiveTarget(target) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+  return Boolean(target.closest("a, button, input, select, textarea, summary, [role='button'], [tabindex]"));
+}
+
 function hideSplash() {
   if (splashDismissed || !splash) {
     return;
@@ -37,12 +44,18 @@ function claimFocusAndStart() {
 
 if (splash) {
   splash.addEventListener("click", (event) => {
+    if (isInteractiveTarget(event.target)) {
+      return;
+    }
     event.preventDefault();
     claimFocusAndStart();
   });
 }
 
 window.addEventListener("keydown", (event) => {
+  if (isInteractiveTarget(event.target)) {
+    return;
+  }
   if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") {
     return;
   }

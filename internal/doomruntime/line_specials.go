@@ -1197,11 +1197,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.setThingWorldAngle(actorIdx, destAngle)
 			g.snapThingRenderState(actorIdx)
 		}
-		sourceFogZ := g.thingFloorZ(actorX, actorY)
-		if floorz, _, ok := g.subsectorFloorCeilAt(actorX, actorY); ok {
-			sourceFogZ = floorz
-		}
-		g.spawnTeleportFog(actorX, actorY, sourceFogZ)
+		g.spawnTeleportFog(actorX, actorY, actorZ)
 		g.spawnTeleportFog(destFogX, destFogY, tmfloor)
 		g.emitSoundEventAt(soundEventTeleport, actorX, actorY)
 		g.emitSoundEventAt(soundEventTeleport, destFogX, destFogY)
