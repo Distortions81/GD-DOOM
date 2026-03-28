@@ -50,6 +50,46 @@
     .overlay[hidden] {
       display: none;
     }
+    .utilitybar {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 4;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    .wad-button {
+      padding: 10px 14px;
+      border: 2px solid #ffc24b;
+      background: rgba(24, 8, 8, 0.92);
+      color: #fff0c9;
+      font: 700 13px/1 monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+    }
+    .wad-button:hover,
+    .wad-button:focus-visible {
+      background: rgba(52, 14, 10, 0.96);
+      border-color: #ffe49b;
+      outline: none;
+    }
+    .wad-status {
+      max-width: min(320px, calc(100vw - 32px));
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 194, 75, 0.65);
+      background: rgba(0, 0, 0, 0.82);
+      color: #f0d5a6;
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: right;
+    }
+    .wad-status:empty {
+      display: none;
+    }
     .card {
       width: min(560px, 100%);
       padding: 28px 24px 22px;
@@ -175,6 +215,11 @@
   </style>
 </head>
 <body>
+  <div class="utilitybar" aria-label="Browser WAD controls">
+    <button id="local-wad-button" class="wad-button" type="button">Load Local WAD</button>
+    <input id="local-wad-input" type="file" accept=".wad,.WAD" multiple hidden>
+    <div id="local-wad-status" class="wad-status" aria-live="polite"></div>
+  </div>
   <iframe
     id="game-shell"
     class="shell"
@@ -189,6 +234,7 @@
       <p class="subtitle">WASM Alpha</p>
       <p class="prompt">Click To Play</p>
       <p class="hint">The click page stays here until the game frame is focused.</p>
+      <p class="hint">Use Load Local WAD to add browser-selected WAD files to the picker.</p>
       <a class="repo-link" href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View GitHub Repo</a>
       <p class="controls">
         <span class="controls-title">Controls</span>

@@ -16,5 +16,8 @@ func embeddedDataForPath(path string) ([]byte, bool) {
 	if base == "DOOM1.WAD" && len(embeddedDOOM1WAD) > 0 {
 		return embeddedDOOM1WAD, true
 	}
+	if data, ok := browserLocalWADDataForPath(path); ok {
+		return data, true
+	}
 	return nil, false
 }

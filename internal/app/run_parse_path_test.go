@@ -210,3 +210,28 @@ func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
 		t.Fatalf("default synth=%d want=1", game.synth)
 	}
 }
+
+func TestApplyPickerSynthSetsMeltySynthVolumeAndBackend(t *testing.T) {
+	cfg := renderBuildConfig{
+		musicBackend: music.BackendImpSynth,
+		musicVolume:  1.0,
+	}
+
+	got := applyPickerSynth(cfg, 1)
+
+	if got.musicBackend != music.BackendMeltySynth {
+		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
+	}
+	if got.musicVolume != 0.7 {
+		t.Fatalf("musicVolume=%v want 0.7", got.musicVolume)
+	}
+}
+
+func TestSoundFontDefaultRankPrefersSC55(t *testing.T) {
+	if got := soundFontDefaultRank("soundfonts/sc55.sf2"); got != 0 {
+		t.Fatalf("rank(sc55)=%d want 0", got)
+	}
+	if got := soundFontDefaultRank("soundfonts/windows-gm.sf2"); got != 1 {
+		t.Fatalf("rank(windows-gm)=%d want 1", got)
+	}
+}

@@ -1728,7 +1728,14 @@ func detectAvailableSoundFonts(dir string) []string {
 			out = append(out, filepath.Join(dir, name))
 		}
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool {
+		pi := soundFontDefaultRank(out[i])
+		pj := soundFontDefaultRank(out[j])
+		if pi != pj {
+			return pi < pj
+		}
+		return strings.ToUpper(out[i]) < strings.ToUpper(out[j])
+	})
 	if len(out) == 0 {
 		return nil
 	}
@@ -1744,6 +1751,16 @@ func detectAvailableSoundFonts(dir string) []string {
 	return dedup
 }
 
+func soundFontDefaultRank(path string) int {
+	base := strings.ToLower(strings.TrimSpace(filepath.Base(path)))
+	switch base {
+	case "sc55.sf2":
+		return 0
+	default:
+		return 1
+	}
+}
+
 type iwadChoice struct {
 	Path  string
 	Label string
@@ -1756,7 +1773,9 @@ type knownIWADChoice struct {
 
 func detectAvailableIWADChoices(dir string) []iwadChoice {
 	known := knownIWADChoices()
-	out := make([]iwadChoice, 0, len(known))
+	browserPaths := wad.BrowserLocalWADPaths()
+	out := make([]iwadChoice, 0, len(known)+len(browserPaths))
+	usedBrowser := make(map[string]struct{}, len(browserPaths))
 	for _, k := range known {
 		for _, candidate := range k.Paths {
 			if p, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
@@ -1776,9 +1795,44 @@ func detectAvailableIWADChoices(dir string) []iwadChoice {
 				goto nextKnownIWAD
 			}
 		}
+		for _, path := range browserPaths {
+			if !browserWADMatchesKnownChoice(path, k) {
+				continue
+			}
+			out = append(out, iwadChoice{
+				Path:  path,
+				Label: k.Label,
+			})
+			usedBrowser[strings.ToUpper(strings.TrimSpace(path))] = struct{}{}
+			goto nextKnownIWAD
+		}
 	nextKnownIWAD:
 	}
+	for _, path := range browserPaths {
+		key := strings.ToUpper(strings.TrimSpace(path))
+		if _, ok := usedBrowser[key]; ok {
+			continue
+		}
+		label := "LOCAL WAD"
+		if wf, err := wad.Open(path); err == nil && strings.EqualFold(wf.Header.Identification, "PWAD") {
+			label = "LOCAL PWAD"
+		}
+		out = append(out, iwadChoice{
+			Path:  path,
+			Label: label,
+		})
+	}
 	return out
+}
+
+func browserWADMatchesKnownChoice(path string, choice knownIWADChoice) bool {
+	base := strings.ToUpper(filepath.Base(strings.TrimSpace(path)))
+	for _, candidate := range choice.Paths {
+		if strings.EqualFold(candidate, base) {
+			return true
+		}
+	}
+	return false
 }
 
 func knownIWADChoices() []knownIWADChoice {
@@ -1896,8 +1950,8 @@ type pickerSynthOption struct {
 }
 
 var pickerSynths = [...]pickerSynthOption{
-	{label: "OPL - IMPSYNTH", description: "CLASSIC FM SYNTH", backend: music.BackendImpSynth},
-	{label: "MIDI - MELTYSYNTH", description: "SOUNDFONT MIDI", backend: music.BackendMeltySynth},
+	{label: "OPL - IMPSYNTH", description: "ADLIB / SOUNDBLASTER 16", backend: music.BackendImpSynth},
+	{label: "MIDI - MELTYSYNTH", description: "MIDI SYNTHSIZER: SC-55", backend: music.BackendMeltySynth},
 }
 
 type pickerStage int
@@ -2296,6 +2350,7 @@ func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
 	option := pickerSynths[synthIndex]
 	cfg.musicBackend = option.backend
 	if music.ResolveBackend(option.backend) == music.BackendMeltySynth && strings.TrimSpace(cfg.soundFontPath) == "" {
+		cfg.musicVolume = 0.7
 		if choices := detectAvailableSoundFonts("soundfonts"); len(choices) > 0 {
 			cfg.soundFontPath = choices[0]
 		}

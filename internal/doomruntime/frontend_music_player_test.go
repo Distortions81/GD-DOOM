@@ -206,6 +206,18 @@ func TestFrontendMusicPlayerCloseReturnsToMusicSubmenuWhenOpenedInGame(t *testin
 	}
 }
 
+func TestFrontendMusicPlayerMoveRowSkipsSongInfoRow(t *testing.T) {
+	sg := &sessionGame{}
+	sg.musicPlayer.Row = frontendMusicPlayerRowTrack
+
+	if !sg.frontendMusicPlayerMoveRow(1) {
+		t.Fatal("move row should succeed")
+	}
+	if sg.musicPlayer.Row != frontendMusicPlayerRowWAD {
+		t.Fatalf("row=%d want wad row wrap", sg.musicPlayer.Row)
+	}
+}
+
 func TestRestartCurrentMusicPlaybackUsesTrackedPlayerSong(t *testing.T) {
 	var gotWAD string
 	var gotLump string
@@ -252,19 +264,15 @@ func TestRestartCurrentMusicPlaybackUsesTrackedPlayerSong(t *testing.T) {
 	}
 }
 
-func TestFrontendMusicPlayerSelectBackReturnsToMusicMenu(t *testing.T) {
+func TestFrontendMusicPlayerPlaySelectedWithoutTrackLoaderFails(t *testing.T) {
 	sg := &sessionGame{
 		frontend: frontendState{Active: true, Mode: frontendModeMusicPlayer},
 	}
-	sg.musicPlayer.Row = frontendMusicPlayerRowBack
 
-	if !sg.frontendMusicPlayerPlaySelected() {
-		t.Fatal("expected BACK row to close the music player")
+	if sg.frontendMusicPlayerPlaySelected() {
+		t.Fatal("expected play selected to fail without music loader")
 	}
-	if sg.frontend.Mode != frontendModeSound {
-		t.Fatalf("mode=%d want music submenu", sg.frontend.Mode)
-	}
-	if sg.frontend.SoundOn != frontendMusicMenuRowPlayer {
-		t.Fatalf("soundOn=%d want player row", sg.frontend.SoundOn)
+	if sg.frontend.Mode != frontendModeMusicPlayer {
+		t.Fatalf("mode=%d want music player to remain open", sg.frontend.Mode)
 	}
 }

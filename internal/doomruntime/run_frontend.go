@@ -979,7 +979,7 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	wad := sg.frontendMusicPlayerWAD()
 	episode := sg.frontendMusicPlayerEpisode()
 	track := sg.frontendMusicPlayerTrack()
-	values := [frontendMusicPlayerRowCount]string{"-", "-", "-", "BACK"}
+	values := [frontendMusicPlayerRowCount]string{"-", "-", "-"}
 	if wad != nil {
 		values[frontendMusicPlayerRowWAD] = strings.ToUpper(strings.TrimSpace(wad.Label))
 	}
@@ -989,7 +989,7 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 	if track != nil {
 		values[frontendMusicPlayerRowTrack] = strings.ToUpper(strings.TrimSpace(track.Label))
 	}
-	labels := [frontendMusicPlayerRowCount]string{"WAD", "GROUP", "TRACK", ""}
+	labels := [frontendMusicPlayerRowCount]string{"WAD", "GROUP", "TRACK"}
 	for i, label := range labels {
 		y := menuY + i*lineHeight + 2
 		if strings.TrimSpace(label) != "" {
@@ -997,6 +997,16 @@ func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, 
 		}
 		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+valueX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 	}
+	songLabel := "-"
+	if track != nil {
+		songLabel = strings.ToUpper(strings.TrimSpace(track.MusicName))
+		if songLabel == "" {
+			songLabel = strings.ToUpper(strings.TrimSpace(track.Label))
+		}
+	}
+	songY := menuY + frontendMusicPlayerInfoRowSong*lineHeight + 2
+	sg.rt.sessionDrawHUTextAt(screen, "SONG", ox+float64(menuX)*scale, oy+float64(songY)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, songLabel, ox+float64(menuX+valueX)*scale, oy+float64(songY)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "CURRENTLY PLAYING", ox+float64(menuX)*scale, oy+float64(116)*scale, scale*1.0, scale*1.0)
 	sg.rt.sessionDrawHUTextAt(screen, sg.nowPlayingMusicLabel(), ox+float64(menuX)*scale, oy+float64(128)*scale, scale*1.0, scale*1.0)
 	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER PLAY", ox+float64(menuX)*scale, oy+float64(160)*scale, scale*1.0, scale*1.0)
