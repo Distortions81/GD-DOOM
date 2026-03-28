@@ -408,16 +408,23 @@ func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
 	g.spritePatchImg = sg.spritePatchImages
 	g.messageFontImg = sg.messageFontImages
 	g.flatImgCache = sg.flatImages
-	sg.prewarmSharedRenderCaches(g)
+	sg.prewarmMapAssetCaches(g)
 	return g
 }
 
-func (sg *sessionGame) prewarmSharedRenderCaches(g *game) {
-	if sg == nil || g == nil {
+func (sg *sessionGame) prewarmWADAssetCaches() {
+	if sg == nil {
 		return
 	}
+	if sg.bootSplashImage == nil {
+		p := sg.opts.BootSplash
+		if p.Width > 0 && p.Height > 0 && len(p.RGBA) == p.Width*p.Height*4 {
+			sg.bootSplashImage = newUnmanagedImage(p.Width, p.Height)
+			sg.bootSplashImage.WritePixels(p.RGBA)
+		}
+	}
 	if len(sg.menuPatchImages) == 0 {
-		for key, p := range g.opts.MenuPatchBank {
+		for key, p := range sg.opts.MenuPatchBank {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
@@ -427,7 +434,7 @@ func (sg *sessionGame) prewarmSharedRenderCaches(g *game) {
 		}
 	}
 	if len(sg.intermissionImages) == 0 {
-		for key, p := range g.opts.IntermissionPatchBank {
+		for key, p := range sg.opts.IntermissionPatchBank {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
@@ -437,7 +444,7 @@ func (sg *sessionGame) prewarmSharedRenderCaches(g *game) {
 		}
 	}
 	if len(sg.statusPatchImages) == 0 {
-		for key, p := range g.opts.StatusPatchBank {
+		for key, p := range sg.opts.StatusPatchBank {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
@@ -447,7 +454,7 @@ func (sg *sessionGame) prewarmSharedRenderCaches(g *game) {
 		}
 	}
 	if len(sg.messageFontImages) == 0 {
-		for ch, p := range g.opts.MessageFontBank {
+		for ch, p := range sg.opts.MessageFontBank {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
@@ -457,7 +464,7 @@ func (sg *sessionGame) prewarmSharedRenderCaches(g *game) {
 		}
 	}
 	if len(sg.spritePatchImages) == 0 {
-		for key, p := range g.opts.SpritePatchBank {
+		for key, p := range sg.opts.SpritePatchBank {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
@@ -465,6 +472,12 @@ func (sg *sessionGame) prewarmSharedRenderCaches(g *game) {
 			img.WritePixels(p.RGBA)
 			sg.spritePatchImages[key] = img
 		}
+	}
+}
+
+func (sg *sessionGame) prewarmMapAssetCaches(g *game) {
+	if sg == nil || g == nil {
+		return
 	}
 	if len(sg.flatImages) == 0 {
 		g.precacheMapTextureAssets()
@@ -596,6 +609,7 @@ func (sg *sessionGame) initSession() {
 	if sg == nil {
 		return
 	}
+	sg.prewarmWADAssetCaches()
 	runtimehost.RunBootstrap(runtimehost.Bootstrap{
 		BuildRuntime: func() {
 			sg.g = sg.buildGame(sg.bootMap, sg.opts)
