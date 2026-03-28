@@ -17,9 +17,9 @@ Example compare run once `DOOM2.WAD` is available in the repo root:
 ```bash
 scripts/demo_trace_compare.sh \
   --wad ./DOOM2.WAD \
-  --demo-lump map28uvmax \
+  --demo-lump m28uvmax \
   --demo ./demos/doom2-uvmax-late/DOOM2-MAP28-UVMAX.lmp \
   --out ./tmp/compare-map28
 ```
 
-The compare harness now stages the selected `--demo` for the reference runtime as `<demo-lump>.lmp`, so external DSDA demos work without any extra manual setup.
+Use an 8-character-or-shorter `--demo-lump` name because the original Linux DOOM runtime rejects longer lump bases. The compare harness stages the selected `--demo` for the reference runtime as `<demo-lump>.lmp`, so external DSDA demos work without any extra manual setup.

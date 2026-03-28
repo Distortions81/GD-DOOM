@@ -12,6 +12,7 @@ import (
 const (
 	pistolRange            = 2048 * fracUnit
 	shotgunRange           = 2048 * fracUnit
+	doomBulletSlopeRange   = 1024 * fracUnit
 	bulletTargetRadius     = 20 * fracUnit
 	doomGunSpreadShift     = 18
 	doomMonsterSpreadShift = 20
@@ -90,6 +91,11 @@ func (g *game) initThingCombatState() {
 			if slot == g.localSlot {
 				_ = doomrand.PRandom() & 3
 			}
+			continue
+		}
+		// Vanilla P_SpawnMapThing records deathmatch starts but never spawns them,
+		// so they must not consume spawn RNG during map init.
+		if isDeathmatchStart(th.Type) {
 			continue
 		}
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
@@ -1204,6 +1210,9 @@ func (g *game) applyLineAttackOutcome(actor lineAttackActor, outcome lineAttackO
 }
 
 func (g *game) bulletSlopeForAim(baseAngle uint32, rng int64) int64 {
+	if rng <= 0 || rng > doomBulletSlopeRange {
+		rng = doomBulletSlopeRange
+	}
 	_, slope := g.playerMissileAim(baseAngle, rng)
 	return slope
 }

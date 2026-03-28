@@ -238,6 +238,35 @@ func TestProcessThingPickups_DoesNotConsumeArmorPickupAboveCap(t *testing.T) {
 	}
 }
 
+func TestRunGameplayTic_StationaryPlayerDoesNotCollectNearbyPickup(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{X: 32, Y: 0, Type: 2014, Flags: skillMediumBits}},
+		},
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+	}
+	g.initPlayerState()
+	g.thingCollected = make([]bool, len(g.m.Things))
+	g.thingSectorCache = []int{0}
+	g.thingSupportValid = []bool{true}
+	g.thingFloorState = []int64{0}
+	g.thingCeilState = []int64{128 * fracUnit}
+	g.thingZState = []int64{0}
+	g.sectorFloor = []int64{0}
+	g.sectorCeil = []int64{128 * fracUnit}
+	g.p.floorz = 0
+	g.p.ceilz = 128 * fracUnit
+
+	g.runGameplayTic(moveCmd{}, false, false)
+
+	if g.thingCollected[0] {
+		t.Fatal("nearby pickup should not be collected without player movement")
+	}
+	if got := g.stats.Health; got != 100 {
+		t.Fatalf("health=%d want=100", got)
+	}
+}
+
 func TestBackpackDoublesAmmoCap(t *testing.T) {
 	g := &game{}
 	g.initPlayerState()

@@ -236,7 +236,7 @@ func (tw *demoTraceWriter) Close() {
 	tw.file = nil
 }
 
-func (g *game) writeDemoTraceTic() {
+func (g *game) writeDemoTraceTic(gametic int) {
 	if g == nil || g.demoTrace == nil {
 		return
 	}
@@ -270,7 +270,7 @@ func (g *game) writeDemoTraceTic() {
 	specials := g.demoTraceSpecials()
 	g.demoTrace.write(map[string]any{
 		"kind":            "tic",
-		"gametic":         g.demoTick - 1,
+		"gametic":         gametic,
 		"rndindex":        rndIndex,
 		"prndindex":       prndIndex,
 		"gamestate":       0,
@@ -324,7 +324,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Health:       g.playerMobjHealth,
 			Movedir:      0,
 			Movecount:    0,
-			ReactionTime: 0,
+			ReactionTime: g.p.reactionTime,
 			Threshold:    0,
 			LastLook:     0,
 			Subsector:    boolToInt(g.playerSubsector() >= 0),

@@ -789,6 +789,7 @@ type game struct {
 	demoTick                     int
 	demoDoneReported             bool
 	demoBenchStarted             bool
+	demoTraceInitialWritten      bool
 	statusFaceIndex              int
 	statusFaceCount              int
 	statusFacePriority           int
@@ -2120,6 +2121,37 @@ func (g *game) updateDemoMode() error {
 		g.demoStartRnd, g.demoStartPRnd = doomrand.State()
 		g.demoRNGCaptured = true
 	}
+	if g.demoTrace != nil && !g.demoTraceInitialWritten {
+		if g.demoTick >= len(script.Tics) {
+			g.demoTrace.Close()
+			g.demoTrace = nil
+			g.reportDemoBench(script)
+			return ebiten.Termination
+		}
+		tc := script.Tics[g.demoTick]
+		g.demoTick++
+		buttons := tc.Buttons
+		if buttons&demoButtonSpecial != 0 {
+			buttons = 0
+		}
+		cmd := moveCmd{
+			forward:    int64(tc.Forward),
+			side:       int64(tc.Side),
+			turnRaw:    int64(tc.AngleTurn) << 16,
+			weaponSlot: demoButtonWeaponSlot(buttons),
+		}
+		usePressed := buttons&demoButtonUse != 0
+		fireHeld := buttons&demoButtonAttack != 0
+		g.runGameplayTic(cmd, usePressed, fireHeld)
+		g.discoverLinesAroundPlayer()
+		g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+		g.tickDelayedSounds()
+		g.flushSoundEvents()
+		g.tickStatusWidgets()
+		g.writeDemoTraceTic(0)
+		g.demoTraceInitialWritten = true
+		return nil
+	}
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
 		return ebiten.Termination
@@ -2161,8 +2193,7 @@ func (g *game) updateDemoMode() error {
 	// Doom starts gameplay-triggered sounds during the gameplay pass, before ST_Ticker.
 	g.flushSoundEvents()
 	g.tickStatusWidgets()
-	// Doom trace snapshots are written after gameplay and status-bar updates.
-	g.writeDemoTraceTic()
+	g.writeDemoTraceTic(g.demoTick - 1)
 	if g.useFlash > 0 {
 		g.useFlash--
 	}

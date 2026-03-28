@@ -85,13 +85,17 @@ func (g *game) updatePlayer(cmd moveCmd) {
 func (g *game) tickPlayerBody() {
 	prevX := g.p.x
 	prevY := g.p.y
+	prevMomX := g.p.momx
+	prevMomY := g.p.momy
 	if g.isDead {
 		g.xyMovement()
 		g.zMovement()
 		return
 	}
 	g.xyMovement()
-	if !g.isDead {
+	movedThisTic := g.p.x != prevX || g.p.y != prevY
+	hadMomentum := prevMomX != 0 || prevMomY != 0
+	if !g.isDead && (movedThisTic || hadMomentum) {
 		g.processThingPickups()
 	}
 	g.zMovement()

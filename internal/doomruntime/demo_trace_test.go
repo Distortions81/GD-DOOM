@@ -63,11 +63,11 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 		t.Fatalf("tic payload missing state arrays: %s", lines[2])
 	}
 	var tic map[string]any
-	if err := json.Unmarshal([]byte(lines[2]), &tic); err != nil {
+	if err := json.Unmarshal([]byte(lines[3]), &tic); err != nil {
 		t.Fatalf("unmarshal tic: %v", err)
 	}
-	if got := int(tic["rndindex"].(float64)); got != 1 {
-		t.Fatalf("rndindex=%d want=1", got)
+	if got := int(tic["rndindex"].(float64)); got != 2 {
+		t.Fatalf("rndindex=%d want=2", got)
 	}
 }
 
@@ -366,7 +366,7 @@ func TestDemoTraceTicKeepsZeroValuedDoorFields(t *testing.T) {
 		},
 	}
 
-	g.writeDemoTraceTic()
+	g.writeDemoTraceTic(0)
 
 	data, err := os.ReadFile(tracePath)
 	if err != nil {
@@ -404,7 +404,7 @@ func TestDemoTraceUsesCurrentWeaponsAtWriteTime(t *testing.T) {
 	g.inventory.ReadyWeapon = weaponShotgun
 	g.inventory.PendingWeapon = 0
 
-	g.writeDemoTraceTic()
+	g.writeDemoTraceTic(0)
 
 	data, err := os.ReadFile(tracePath)
 	if err != nil {

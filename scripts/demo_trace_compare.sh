@@ -131,6 +131,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+OUT_DIR="$(realpath -m "${OUT_DIR}")"
+
 if [[ ! -f "${WAD_PATH}" ]]; then
   echo "WAD not found: ${WAD_PATH}" >&2
   exit 1
@@ -141,6 +143,10 @@ if [[ ! -f "${DEMO_PATH}" ]]; then
 fi
 if [[ ! -x "${REFERENCE_BIN}" ]]; then
   echo "Reference runtime not found or not executable: ${REFERENCE_BIN}" >&2
+  exit 1
+fi
+if [[ ${#DEMO_LUMP} -gt 8 ]]; then
+  echo "Demo lump name must be 8 characters or fewer for the reference runtime: ${DEMO_LUMP}" >&2
   exit 1
 fi
 mkdir -p "${OUT_DIR}"

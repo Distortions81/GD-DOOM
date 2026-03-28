@@ -39,6 +39,54 @@ func TestInitThingCombatStateRandomizesMonsterSpawnTicsLikeDoom(t *testing.T) {
 	}
 }
 
+func TestInitThingCombatStateDeathmatchStartDoesNotShiftSpawnRNG(t *testing.T) {
+	doomrand.Clear()
+	withDMStart := &game{
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle},
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 11, Flags: skillEasyBits | skillMediumBits | skillHardBits},
+				{Type: 69, Flags: skillMediumBits},
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{0, 0},
+		thingReactionTics: []int{0, 0},
+		thingLastLook:     []int{0, 0},
+		thingThinkWait:    []int{0, 0},
+		thingState:        []monsterThinkState{monsterStateSee, monsterStateSee},
+		thingStateTics:    []int{0, 0},
+		thingStatePhase:   []int{0, 0},
+	}
+	withDMStart.initThingCombatState()
+
+	doomrand.Clear()
+	monsterOnly := &game{
+		opts: Options{SkillLevel: 3, GameMode: gameModeSingle},
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 69, Flags: skillMediumBits},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{0},
+		thingReactionTics: []int{0},
+		thingLastLook:     []int{0},
+		thingThinkWait:    []int{0},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{0},
+		thingStatePhase:   []int{0},
+	}
+	monsterOnly.initThingCombatState()
+
+	if got, want := withDMStart.thingLastLook[1], monsterOnly.thingLastLook[0]; got != want {
+		t.Fatalf("monster lastlook=%d want %d with ignored deathmatch start", got, want)
+	}
+	if got, want := withDMStart.thingStateTics[1], monsterOnly.thingStateTics[0]; got != want {
+		t.Fatalf("monster spawn tics=%d want %d with ignored deathmatch start", got, want)
+	}
+}
+
 func TestSpawnHitscanBloodUsesDoomZJitterAndPRandomCount(t *testing.T) {
 	doomrand.Clear()
 	g := &game{}
@@ -1049,6 +1097,28 @@ func TestAimLineAttackSkipsDeadCorpseAndTargetsLiveMonster(t *testing.T) {
 
 	if diff := got - want; diff < -2 || diff > 2 {
 		t.Fatalf("slope=%d want≈%d when dead corpse is in front of live monster", got, want)
+	}
+}
+
+func TestBulletSlopeForAimUsesVanillaAimRange(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 1500, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{20},
+		thingDead:         []bool{false},
+		thingX:            []int64{1500 * fracUnit},
+		thingY:            []int64{0},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		p:                 player{x: 0, y: 0, z: 0, angle: degToAngle(0)},
+	}
+
+	if got := g.bulletSlopeForAim(g.p.angle, pistolRange); got != 0 {
+		t.Fatalf("slope=%d want=0 for target beyond Doom bullet autoaim range", got)
 	}
 }
 
