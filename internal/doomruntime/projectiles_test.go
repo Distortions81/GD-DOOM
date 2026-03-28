@@ -38,6 +38,35 @@ func TestImpAttackSpawnsProjectile(t *testing.T) {
 	}
 }
 
+func TestImpAttackUsesMissileOutsideVanillaMeleeRange(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001, X: 61, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{60},
+		thingAggro:     []bool{true},
+		thingCooldown:  []int{0},
+		soundQueue:     make([]soundEvent, 0, 2),
+		stats:          playerStats{Health: 100},
+		p:              player{x: 0, y: 0, z: 0},
+		projectiles:    make([]projectile, 0, 2),
+	}
+	dist := doomApproxDistance(g.p.x-(61*fracUnit), g.p.y)
+	if !g.monsterAttack(0, 3001, dist) {
+		t.Fatal("imp attack should spawn a projectile just outside vanilla melee range")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	if g.stats.Health != 100 {
+		t.Fatalf("health=%d want=100 (imp should not melee at 61 units)", g.stats.Health)
+	}
+}
+
 func TestHellKnightAttackSpawnsBaronProjectile(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

@@ -250,7 +250,7 @@ func TestMonsterDropUsesPointSupportWhenAvailable(t *testing.T) {
 	}
 }
 
-func TestMonsterDropUsesSourceSectorHeights(t *testing.T) {
+func TestMonsterDropFallsBackToCachedSectorHeights(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{

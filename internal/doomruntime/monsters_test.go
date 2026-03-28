@@ -3089,6 +3089,52 @@ func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t
 	}
 }
 
+func TestRunMonsterIdleOrChaseEntryAction_PainResumeLostTargetStopsAfterReacquire(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+				{Type: 9, X: 64, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingX:            []int64{0, 64 * fracUnit},
+		thingY:            []int64{0, 0},
+		thingSectorCache:  []int{0, 0},
+		thingHP:           []int{7, -2},
+		thingState:        []monsterThinkState{monsterStateSee, monsterStateDeath},
+		thingStateTics:    []int{3, 1},
+		thingStatePhase:   []int{1, 0},
+		thingMoveDir:      []monsterMoveDir{monsterDirWest, monsterDirNoDir},
+		thingMoveCount:    []int{0, 0},
+		thingThreshold:    []int{94, 0},
+		thingJustAtk:      []bool{true, false},
+		thingTargetIdx:    []int{1, -1},
+		thingTargetPlayer: []bool{false, false},
+		thingDead:         []bool{false, true},
+		sectorSoundTarget: []bool{true},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		p:                 player{x: -128 * fracUnit, y: 0, z: 0},
+	}
+
+	stop, ranChase := g.runMonsterIdleOrChaseEntryAction(0, 9, 0, 0, false)
+	if !stop || ranChase {
+		t.Fatalf("stop=%v ranChase=%v want stop=true ranChase=false", stop, ranChase)
+	}
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target should switch to player: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+	if !g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should remain set when pain-resume reacquire stops before just-attacked chase")
+	}
+	if got := g.thingMoveCount[0]; got != 0 {
+		t.Fatalf("movecount=%d want 0 when no same-tic chase step occurs", got)
+	}
+}
+
 func TestAdvanceMonsterAttackPhaseEndsInSeeState(t *testing.T) {
 	g := &game{
 		thingState:          []monsterThinkState{monsterStateAttack},

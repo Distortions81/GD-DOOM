@@ -1779,13 +1779,13 @@ func (g *game) spawnMonsterDrop(thingIdx int, thingType int16) {
 	src := g.m.Things[thingIdx]
 	srcX, srcY := g.thingPosFixed(thingIdx, src)
 	srcFloorZ, srcCeilZ, ok := int64(0), int64(0), false
-	if sec := g.thingSectorCached(thingIdx, src); sec >= 0 && sec < len(g.sectorFloor) && sec < len(g.sectorCeil) {
-		srcFloorZ = g.sectorFloor[sec]
-		srcCeilZ = g.sectorCeil[sec]
-		ok = true
-	}
+	srcFloorZ, srcCeilZ, ok = g.subsectorFloorCeilAt(srcX, srcY)
 	if !ok {
-		srcFloorZ, srcCeilZ, ok = g.subsectorFloorCeilAt(srcX, srcY)
+		if sec := g.thingSectorCached(thingIdx, src); sec >= 0 && sec < len(g.sectorFloor) && sec < len(g.sectorCeil) {
+			srcFloorZ = g.sectorFloor[sec]
+			srcCeilZ = g.sectorCeil[sec]
+			ok = true
+		}
 	}
 	if !ok {
 		_, srcFloorZ, srcCeilZ = g.thingSupportState(thingIdx, src)
