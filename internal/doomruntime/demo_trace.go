@@ -45,6 +45,10 @@ const (
 	doomStatePlayerAttack2 = 155
 	doomStatePlayerPain1   = 156
 	doomStatePlayerPain2   = 157
+	doomStatePlayerIdle1   = 150
+	doomStatePlayerIdle2   = 151
+	demoTraceFlagPlayer    = 0x02000000
+	demoTraceFlagNoClip    = 0x00000008
 )
 
 type demoTraceMobj struct {
@@ -320,7 +324,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			Height:       playerHeight,
 			Tics:         playerTics,
 			State:        playerState,
-			Flags:        0,
+			Flags:        g.demoTracePlayerMobjFlags(),
 			Health:       g.playerMobjHealth,
 			Movedir:      0,
 			Movecount:    0,
@@ -764,7 +768,23 @@ func (g *game) demoTracePlayerMobjState() (state int, tics int) {
 	if g == nil {
 		return 0, 0
 	}
-	return g.playerMobjState, g.playerMobjTics
+	if g.playerMobjState != 0 && g.playerMobjTics > 0 {
+		return g.playerMobjState, g.playerMobjTics
+	}
+	if (g.worldTic & 1) == 0 {
+		return doomStatePlayerIdle1, 1
+	}
+	return doomStatePlayerIdle2, 4
+}
+
+func (g *game) demoTracePlayerMobjFlags() int {
+	flags := demoTraceFlagSolid | demoTraceFlagShootable
+	flags |= demoTraceFlagPlayer
+	if g != nil && g.isDead {
+		flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
+		flags &^= demoTraceFlagShootable
+	}
+	return flags
 }
 
 func demoTraceThingTarget(g *game, i int) (target int, targetType int) {

@@ -866,6 +866,21 @@ func TestUpdatePlayer_DoesNotApplyThrustWhileTeleportFrozen(t *testing.T) {
 	}
 }
 
+func TestUpdatePlayer_DoesNotTurnWhileTeleportFrozen(t *testing.T) {
+	g := &game{
+		p: player{
+			angle:        0xE0000000,
+			reactionTime: 1,
+		},
+	}
+
+	g.updatePlayer(moveCmd{turnRaw: -(1 << 24)})
+
+	if got, want := g.p.angle, uint32(0xE0000000); got != want {
+		t.Fatalf("player angle=%#x want %#x", got, want)
+	}
+}
+
 func TestTickPlayerCounters_DecrementsReactionTime(t *testing.T) {
 	g := &game{
 		p: player{reactionTime: 2},

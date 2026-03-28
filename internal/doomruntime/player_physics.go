@@ -45,6 +45,11 @@ func (g *game) updatePlayer(cmd moveCmd) {
 		return
 	}
 
+	if g.p.reactionTime > 0 {
+		g.turnHeld = 0
+		return
+	}
+
 	if cmd.turnRaw != 0 {
 		g.p.angle += uint32(cmd.turnRaw)
 	}
@@ -74,10 +79,10 @@ func (g *game) updatePlayer(cmd moveCmd) {
 	}
 
 	onground := g.p.z <= g.p.floorz
-	if cmd.forward != 0 && onground && g.p.reactionTime == 0 {
+	if cmd.forward != 0 && onground {
 		g.thrust(g.p.angle, cmd.forward*2048)
 	}
-	if cmd.side != 0 && onground && g.p.reactionTime == 0 {
+	if cmd.side != 0 && onground {
 		g.thrust(g.p.angle-0x40000000, cmd.side*2048)
 	}
 }

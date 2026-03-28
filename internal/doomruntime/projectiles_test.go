@@ -38,6 +38,36 @@ func TestImpAttackSpawnsProjectile(t *testing.T) {
 	}
 }
 
+func TestHellKnightAttackSpawnsBaronProjectile(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 69, X: 128, Y: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{500},
+		thingAggro:     []bool{true},
+		soundQueue:     make([]soundEvent, 0, 2),
+		stats:          playerStats{Health: 100},
+		p:              player{x: 0, y: 0, z: 0},
+		projectiles:    make([]projectile, 0, 2),
+	}
+	if !g.monsterAttack(0, 69, 256*fracUnit) {
+		t.Fatal("hell knight attack should spawn a projectile")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	if got := g.projectiles[0].kind; got != projectileBaronBall {
+		t.Fatalf("projectile kind=%v want=%v", got, projectileBaronBall)
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventShootFireball) {
+		t.Fatalf("soundQueue=%v missing %v", g.soundQueue, soundEventShootFireball)
+	}
+}
+
 func TestImpProjectileSpawnsFromRuntimePosition(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
@@ -279,6 +309,43 @@ func TestMancubusAttackPhaseFacesTargetOnVolleyFrames(t *testing.T) {
 	}
 	if got := len(g.projectiles); got != 2 {
 		t.Fatalf("projectiles=%d want=2", got)
+	}
+}
+
+func TestMancubusAttackPhase4SecondProjectileUsesDoubleNegativeSpread(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 67, X: 128, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{600},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackPhase:  []int{4},
+		thingAngleState:   []uint32{degToAngle(180)},
+		thingX:            []int64{128 * fracUnit},
+		thingY:            []int64{0},
+		projectiles:       make([]projectile, 0, 2),
+		soundQueue:        make([]soundEvent, 0, 2),
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 64 * fracUnit, z: 0},
+	}
+
+	tx, ty := g.thingPosFixed(0, g.m.Things[0])
+	dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+	g.runMonsterAttackPhaseEntry(0, 67, 4, tx, ty, g.p.x, g.p.y, dist)
+
+	if got := len(g.projectiles); got != 2 {
+		t.Fatalf("projectiles=%d want=2", got)
+	}
+	base := doomPointToAngle2(tx, ty, g.p.x, g.p.y)
+	if got := g.projectiles[0].angle; got != base {
+		t.Fatalf("projectile[0] angle=%d want=%d", got, base)
+	}
+	if got, want := g.projectiles[1].angle, base-2*0x08000000; got != want {
+		t.Fatalf("projectile[1] angle=%d want=%d", got, want)
 	}
 }
 

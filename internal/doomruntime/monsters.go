@@ -2612,18 +2612,18 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		switch phase {
 		case 1:
 			g.setThingWorldAngle(i, g.thingWorldAngle(i, g.m.Things[i])+fatSpread)
-			if !g.spawnMonsterProjectileAngleOffset(i, typ, fatSpread) {
+			if !g.spawnMonsterProjectile(i, typ) {
 				return false
 			}
-			if !g.spawnMonsterProjectile(i, typ) {
+			if !g.spawnMonsterProjectileAngleOffset(i, typ, fatSpread) {
 				return false
 			}
 		case 4:
 			g.setThingWorldAngle(i, g.thingWorldAngle(i, g.m.Things[i])-fatSpread)
-			if !g.spawnMonsterProjectileAngleOffset(i, typ, ^fatSpread+1) {
+			if !g.spawnMonsterProjectile(i, typ) {
 				return false
 			}
-			if !g.spawnMonsterProjectile(i, typ) {
+			if !g.spawnMonsterProjectileAngleOffset(i, typ, ^(fatSpread*2)+1) {
 				return false
 			}
 		case 7:

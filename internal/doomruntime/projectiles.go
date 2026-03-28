@@ -72,7 +72,7 @@ type projectileImpact struct {
 
 func usesMonsterProjectile(typ int16) bool {
 	switch typ {
-	case 3001, 3005, 3003, 16, 66, 67, 68:
+	case 3001, 3005, 3003, 69, 16, 66, 67, 68:
 		return true
 	default:
 		return false
@@ -84,7 +84,7 @@ func monsterProjectileKind(typ int16) projectileKind {
 	case 3005, 68:
 		// Cacodemon shot uses BAL2 in vanilla Doom.
 		return projectilePlasmaBall
-	case 3003:
+	case 3003, 69:
 		return projectileBaronBall
 	case 66:
 		return projectileTracer
@@ -103,7 +103,7 @@ func monsterProjectileSpeed(typ int16, fast bool) int64 {
 		scale = 2
 	}
 	switch typ {
-	case 3003:
+	case 3003, 69:
 		return 15 * fracUnit * scale
 	case 66, 67, 16:
 		return 20 * fracUnit * scale
@@ -556,6 +556,14 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	}
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
 	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
+	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+		var tic int
+		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
+			fmt.Printf("projectile-spawn-debug tic=%d world=%d sourceThing=%d sourceType=%d kind=%d from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitIdx=%d hitFrac=%f blocked=%t blockFrac=%f floor=%d ceil=%d\n",
+				g.demoTick-1, g.worldTic, p.sourceThing, p.sourceType, p.kind, ox, oy, oz, nx, ny, nz,
+				hitThing, thingHit.idx, thingHit.frac, blocked, blockFrac, tmfloorz, tmceilingz)
+		}
+	}
 	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
 		if thingHit.isPlayer {
 			if dmg := projectileDamage(*p); dmg > 0 {
@@ -1274,7 +1282,7 @@ func projectileLaunchSoundEvent(typ int16) soundEvent {
 	switch typ {
 	case 16:
 		return soundEventShootRocket
-	case 3001, 3003, 3005, 66, 67, 68:
+	case 3001, 3003, 69, 3005, 66, 67, 68:
 		return soundEventShootFireball
 	default:
 		return soundEventShootPistol
