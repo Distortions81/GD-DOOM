@@ -56,7 +56,14 @@ func (c *Controller) Queue(kind Kind, holdTics int) {
 }
 
 func (c *Controller) Clear() {
-	*c = Controller{}
+	if c == nil {
+		return
+	}
+	c.kind = KindNone
+	c.pending = false
+	c.initialized = false
+	c.holdTics = 0
+	c.y = nil
 }
 
 func (c *Controller) ReleaseWorkingSet() {

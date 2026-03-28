@@ -209,6 +209,13 @@ func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
 }
 
 func (sg *sessionGame) queueTransition(kind transitionKind, holdTics int) {
+	if sg == nil {
+		return
+	}
+	if sg.opts.DemoScript != nil || (sg.g != nil && sg.g.sessionSignals().DemoActive) {
+		sg.transition.Clear()
+		return
+	}
 	sg.transition.Queue(kind, holdTics)
 }
 
@@ -225,6 +232,12 @@ func (sg *sessionGame) shouldShowBootSplash() bool {
 }
 
 func (sg *sessionGame) transitionActive() bool {
+	if sg == nil {
+		return false
+	}
+	if sg.opts.DemoScript != nil || (sg.g != nil && sg.g.sessionSignals().DemoActive) {
+		return false
+	}
 	return sg.transition.Active()
 }
 
