@@ -1468,7 +1468,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 			if debugSkull {
 				fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=blocked-zero-xy at=(%d,%d,%d) mom_before=(%d,%d,%d)\n",
 					g.demoTick-1, g.worldTic, i, nx, ny, z+momz, g.thingMomX[i], g.thingMomY[i], g.thingMomZ[i])
-				}
+			}
 			g.thingMomX[i] = 0
 			g.thingMomY[i] = 0
 			momx = 0
