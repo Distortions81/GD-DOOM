@@ -147,7 +147,11 @@ mkdir -p "${OUT_DIR}"
 mkdir -p "${ROOT_DIR}/.tmp"
 
 REF_WAD_DIR=""
+REF_RUN_DIR=""
 cleanup() {
+  if [[ -n "${REF_RUN_DIR}" && -d "${REF_RUN_DIR}" ]]; then
+    rm -rf "${REF_RUN_DIR}"
+  fi
   if [[ -n "${REF_WAD_DIR}" && -d "${REF_WAD_DIR}" ]]; then
     rm -rf "${REF_WAD_DIR}"
   fi
@@ -164,6 +168,9 @@ else
   REF_WAD_DIR="$(mktemp -d "${ROOT_DIR}/.tmp/refwad.XXXXXX")"
   ln -sf "$(realpath "${WAD_PATH}")" "${REF_WAD_DIR}/$(basename "${WAD_PATH}")"
 fi
+
+REF_RUN_DIR="$(mktemp -d "${ROOT_DIR}/.tmp/refdemo.XXXXXX")"
+ln -sf "$(realpath "${DEMO_PATH}")" "${REF_RUN_DIR}/${DEMO_LUMP}.lmp"
 
 echo "Building GD-DOOM trace binary: ${GDDOOM_BIN}"
 rm -f "${GDDOOM_BIN}"
@@ -190,11 +197,14 @@ CMP_LOG="${OUT_DIR}/compare.log"
 rm -f "${REF_TRACE}" "${REF_LOG}" "${GD_TRACE}" "${GD_LOG}" "${CMP_LOG}"
 
 echo "Tracing reference runtime: lump=${DEMO_LUMP}"
-env DOOMWADDIR="${REF_WAD_DIR}" \
-  "${REFERENCE_BIN}" \
-  -tracedemo "${DEMO_LUMP}" \
-  -tracefile "${REF_TRACE}" \
-  >"${REF_LOG}" 2>&1
+(
+  cd "${REF_RUN_DIR}"
+  env DOOMWADDIR="${REF_WAD_DIR}" \
+    "${REFERENCE_BIN}" \
+    -tracedemo "${DEMO_LUMP}" \
+    -tracefile "${REF_TRACE}" \
+    >"${REF_LOG}" 2>&1
+)
 trim_trace_on_player_death "${REF_TRACE}"
 
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"
