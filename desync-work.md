@@ -8,6 +8,7 @@ Current stock-demo status after fixing `DOOM1 demo1`.
 
 - Status: clean
 - Result: `traces match lines=5026`
+- Fixed in: `79ea1c5`
 - Notes: fixed a same-tic lost-target reacquire / `JUSTATTACKED` chase parity issue on `E1M5`.
 
 ### demo2
