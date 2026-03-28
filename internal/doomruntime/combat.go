@@ -1778,7 +1778,10 @@ func (g *game) spawnMonsterDrop(thingIdx int, thingType int16) {
 	}
 	src := g.m.Things[thingIdx]
 	srcX, srcY := g.thingPosFixed(thingIdx, src)
-	_, srcFloorZ, srcCeilZ := g.thingSupportState(thingIdx, src)
+	srcFloorZ, srcCeilZ, ok := g.subsectorFloorCeilAt(srcX, srcY)
+	if !ok {
+		_, srcFloorZ, srcCeilZ = g.thingSupportState(thingIdx, src)
+	}
 	idx := g.appendRuntimeThing(mapdata.Thing{
 		X:    int16(srcX >> fracBits),
 		Y:    int16(srcY >> fracBits),

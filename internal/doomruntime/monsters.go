@@ -1790,9 +1790,7 @@ func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, p
 				if i >= 0 && i < len(g.thingAttackFireTics) {
 					g.thingAttackFireTics[i] = -1
 				}
-				if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
-					g.resetMonsterIdleOrChaseState(i, typ)
-				}
+				g.resetMonsterPostAttackState(i, typ)
 			}
 		case 1, 2:
 			_ = g.monsterAttack(i, typ, dist)
@@ -1932,9 +1930,7 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 		if i >= 0 && i < len(g.thingAttackFireTics) {
 			g.thingAttackFireTics[i] = -1
 		}
-		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
-			g.resetMonsterIdleOrChaseState(i, typ)
-		}
+		g.resetMonsterPostAttackState(i, typ)
 		return false
 	}
 	if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateAttack {
@@ -1963,9 +1959,7 @@ func (g *game) advanceMonsterAttackPhase(i int, typ int16, tx, ty, px, py, dist 
 		if i >= 0 && i < len(g.thingAttackFireTics) {
 			g.thingAttackFireTics[i] = -1
 		}
-		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
-			g.resetMonsterIdleOrChaseState(i, typ)
-		}
+		g.resetMonsterPostAttackState(i, typ)
 		return false
 	}
 	if i >= 0 && i < len(g.thingAttackPhase) {
@@ -2005,6 +1999,17 @@ func (g *game) nextMonsterAttackLoopPhase(i int, typ int16, tx, ty int64) (int, 
 	default:
 		return 0, false
 	}
+}
+
+func (g *game) resetMonsterPostAttackState(i int, typ int16) {
+	if g == nil || i < 0 {
+		return
+	}
+	g.clearMonsterPainState(i)
+	if i >= 0 && i < len(g.thingStatePhase) {
+		g.thingStatePhase[i] = 0
+	}
+	g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
 }
 
 func (g *game) chaingunnerRefireKeepsAttack(i int, typ int16, tx, ty int64) bool {

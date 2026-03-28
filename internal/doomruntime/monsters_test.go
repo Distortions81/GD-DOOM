@@ -3089,6 +3089,30 @@ func TestTickMonstersAttackExpiryLostTargetReturnsToSpawnLikeDoom(t *testing.T) 
 	}
 }
 
+func TestAdvanceMonsterAttackPhaseEndsInSeeState(t *testing.T) {
+	g := &game{
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStateTics:      []int{1},
+		thingStatePhase:     []int{2},
+		thingAttackTics:     []int{26},
+		thingAttackPhase:    []int{2},
+		thingAttackFireTics: []int{-1},
+	}
+
+	if advanced := g.advanceMonsterAttackPhase(0, 3004, 0, 0, 0, 0, 0); advanced {
+		t.Fatal("advanceMonsterAttackPhase returned true, want false at end of zombieman attack")
+	}
+	if got := g.thingState[0]; got != monsterStateSee {
+		t.Fatalf("state=%v want=%v", got, monsterStateSee)
+	}
+	if got := g.thingStatePhase[0]; got != 0 {
+		t.Fatalf("phase=%d want=0", got)
+	}
+	if want := monsterSeeStateTicsAtPhase(3004, 0, false); g.thingStateTics[0] != want {
+		t.Fatalf("state tics=%d want=%d", g.thingStateTics[0], want)
+	}
+}
+
 func TestImpProjectileAttackHasDoomWindup(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

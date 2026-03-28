@@ -214,6 +214,42 @@ func TestMonsterDropUsesSourceSupportFloor(t *testing.T) {
 	}
 }
 
+func TestMonsterDropUsesPointSupportWhenAvailable(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.ensureMonsterAIState()
+
+	x := int64(g.m.Things[0].X) << fracBits
+	y := int64(g.m.Things[0].Y) << fracBits
+	floorZ, ceilZ, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok {
+		t.Fatal("expected point support from E1M1 geometry")
+	}
+
+	idx := g.appendRuntimeThing(mapdata.Thing{
+		Type: 9,
+		X:    int16(x >> fracBits),
+		Y:    int16(y >> fracBits),
+	}, false)
+	g.setThingPosFixed(idx, x, y)
+	g.setThingSupportState(idx, floorZ+64*fracUnit, floorZ+64*fracUnit, ceilZ-64*fracUnit)
+
+	g.spawnMonsterDrop(idx, 9)
+
+	dropIdx := len(g.m.Things) - 1
+	if got := g.m.Things[dropIdx].Type; got != 2001 {
+		t.Fatalf("drop type=%d want=2001", got)
+	}
+	if got := g.thingZState[dropIdx]; got != floorZ {
+		t.Fatalf("drop z=%d want=%d", got, floorZ)
+	}
+	if got := g.thingFloorState[dropIdx]; got != floorZ {
+		t.Fatalf("drop floor=%d want=%d", got, floorZ)
+	}
+	if got := g.thingCeilState[dropIdx]; got != ceilZ {
+		t.Fatalf("drop ceil=%d want=%d", got, ceilZ)
+	}
+}
+
 func TestPickHitscanMonsterTarget(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
