@@ -250,6 +250,51 @@ func TestMonsterDropUsesPointSupportWhenAvailable(t *testing.T) {
 	}
 }
 
+func TestMonsterDropUsesSourceSectorHeights(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 96, CeilingHeight: 232},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingDropped:      []bool{false},
+		thingHP:           []int{1},
+		thingDead:         []bool{false},
+		thingDeathTics:    []int{0},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingZState:       []int64{96 * fracUnit},
+		thingFloorState:   []int64{96 * fracUnit},
+		thingCeilState:    []int64{176 * fracUnit},
+		thingSupportValid: []bool{true},
+		thingSectorCache:  []int{0},
+		sectorFloor:       []int64{96 * fracUnit},
+		sectorCeil:        []int64{232 * fracUnit},
+	}
+
+	g.damageMonster(0, 1)
+
+	if got, want := len(g.m.Things), 2; got != want {
+		t.Fatalf("thing count=%d want=%d", got, want)
+	}
+	if got := g.m.Things[1].Type; got != 2007 {
+		t.Fatalf("drop type=%d want=2007", got)
+	}
+	if got := g.thingZState[1]; got != 96*fracUnit {
+		t.Fatalf("drop z=%d want=%d", got, 96*fracUnit)
+	}
+	if got := g.thingFloorState[1]; got != 96*fracUnit {
+		t.Fatalf("drop floor=%d want=%d", got, 96*fracUnit)
+	}
+	if got := g.thingCeilState[1]; got != 232*fracUnit {
+		t.Fatalf("drop ceil=%d want=%d", got, 232*fracUnit)
+	}
+}
+
 func TestPickHitscanMonsterTarget(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

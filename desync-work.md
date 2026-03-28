@@ -14,10 +14,11 @@ Current stock-demo status after fixing `DOOM1 demo1`.
 ### demo2
 
 - Status: desync
-- Current first mismatch: `line=1726`
-- Path: `root.mobjs[294].ceilingz`
-- Reference: `15204352`
-- GD-DOOM: `11534336`
+- Current first mismatch: `line=3756`
+- Path: `root.mobjs[238].angle`
+- Reference: `536870912`
+- GD-DOOM: `1073741824`
+- Notes: fixed the earlier dropped-clip support/ceiling mismatch at `line=1726`.
 
 ### demo3
 
