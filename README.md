@@ -111,4 +111,4 @@ WASM_OPT=1 WASM_OPT_LEVEL=-O3 scripts/build_wasm.sh
 `WASM_OPT=1` makes `wasm-opt` required. If you leave `WASM_OPT` unset, the script uses `auto` mode and skips optimization when Binaryen is not installed.
 The optimizer currently defaults to `WASM_OPT_FEATURES=--all-features` so Binaryen can accept Go's post-MVP wasm output; override that env var if you need a stricter feature set.
 
-For js/wasm builds, GD-DOOM embeds both `sc55.sf2` and `windows-gm.sf2`, and uses `sc55.sf2` as the default SoundFont for the `meltysynth` backend, so browser builds do not need filesystem access to a separate `.sf2` file.
+For js/wasm builds, GD-DOOM embeds `sc55.sf2` and uses it as the default SoundFont for the `meltysynth` backend, so browser builds do not need filesystem access to a separate `.sf2` file.

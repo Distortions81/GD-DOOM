@@ -722,8 +722,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
-		picker, perr := newIWADPickerGame(pickerChoices, func(path string, profile pickerProfile) (*renderBundle, error) {
-			return buildRenderBundle(resolveIWADAliasPath(path), applyPickerProfile(buildCfg, profile), stderr)
+		picker, perr := newIWADPickerGame(pickerChoices, resolvedMusicBackend, func(path string, profile pickerProfile, synthIndex int) (*renderBundle, error) {
+			cfg := applyPickerProfile(buildCfg, profile)
+			cfg = applyPickerSynth(cfg, synthIndex)
+			return buildRenderBundle(resolveIWADAliasPath(path), cfg, stderr)
 		})
 		if perr != nil {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", perr)
@@ -1887,11 +1889,23 @@ var pickerProfiles = [...]pickerProfileOption{
 	{label: "FAITHFUL", description: "CLASSIC DOOM - PIXELATED / RETRO", sourcePortMode: false},
 }
 
+type pickerSynthOption struct {
+	label       string
+	description string
+	backend     music.Backend
+}
+
+var pickerSynths = [...]pickerSynthOption{
+	{label: "OPL - IMPSYNTH", description: "CLASSIC FM SYNTH", backend: music.BackendImpSynth},
+	{label: "MIDI - MELTYSYNTH", description: "SOUNDFONT MIDI", backend: music.BackendMeltySynth},
+}
+
 type pickerStage int
 
 const (
 	pickerStageIWAD pickerStage = iota
 	pickerStageProfile
+	pickerStageSynth
 )
 
 type renderBundle struct {
@@ -2265,10 +2279,35 @@ func applyPickerProfile(cfg renderBuildConfig, profile pickerProfile) renderBuil
 	return cfg
 }
 
+func pickerSynthIndexForBackend(backend music.Backend) int {
+	resolved := music.ResolveBackend(backend)
+	for i, option := range pickerSynths {
+		if music.ResolveBackend(option.backend) == resolved {
+			return i
+		}
+	}
+	return 0
+}
+
+func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
+	if synthIndex < 0 || synthIndex >= len(pickerSynths) {
+		synthIndex = 0
+	}
+	option := pickerSynths[synthIndex]
+	cfg.musicBackend = option.backend
+	if music.ResolveBackend(option.backend) == music.BackendMeltySynth && strings.TrimSpace(cfg.soundFontPath) == "" {
+		if choices := detectAvailableSoundFonts("soundfonts"); len(choices) > 0 {
+			cfg.soundFontPath = choices[0]
+		}
+	}
+	return cfg
+}
+
 type iwadPickerGame struct {
 	choices      []iwadChoice
 	selected     int
 	profile      pickerProfile
+	synth        int
 	stage        pickerStage
 	confirmArmed bool
 	status       string
@@ -2279,13 +2318,13 @@ type iwadPickerGame struct {
 	fontBank     map[rune]media.WallTexture
 	fontImg      map[rune]*ebiten.Image
 	sfx          *audiofx.MenuPlayer
-	load         func(string, pickerProfile) (*renderBundle, error)
+	load         func(string, pickerProfile, int) (*renderBundle, error)
 	session      *doomsession.Session
 	err          error
 }
 
-func newIWADPickerGame(choices []iwadChoice, load func(string, pickerProfile) (*renderBundle, error)) (*iwadPickerGame, error) {
-	game := &iwadPickerGame{choices: choices, load: load}
+func newIWADPickerGame(choices []iwadChoice, initialBackend music.Backend, load func(string, pickerProfile, int) (*renderBundle, error)) (*iwadPickerGame, error) {
+	game := &iwadPickerGame{choices: choices, load: load, synth: pickerSynthIndexForBackend(initialBackend)}
 	if len(choices) <= 1 {
 		game.stage = pickerStageProfile
 	}
@@ -2362,7 +2401,11 @@ func (g *iwadPickerGame) Update() error {
 		g.confirmArmed = !pickerConfirmHeld()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		if g.stage == pickerStageProfile {
+		if g.stage == pickerStageSynth {
+			g.stage = pickerStageProfile
+			g.confirmArmed = false
+			g.playPickerBackSound()
+		} else if g.stage == pickerStageProfile {
 			g.stage = pickerStageIWAD
 			g.confirmArmed = false
 			g.playPickerBackSound()
@@ -2388,12 +2431,33 @@ func (g *iwadPickerGame) Update() error {
 			}
 		}
 		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+			g.playPickerConfirmSound()
+			g.stage = pickerStageSynth
+			g.confirmArmed = false
+			return nil
+		}
+	case pickerStageSynth:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			prev := g.synth
+			g.synth = (g.synth + len(pickerSynths) - 1) % len(pickerSynths)
+			if g.synth != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			prev := g.synth
+			g.synth = (g.synth + 1) % len(pickerSynths)
+			if g.synth != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
 			if g.load == nil {
 				g.err = fmt.Errorf("iwad loader unavailable")
 				return ebiten.Termination
 			}
 			g.playPickerConfirmSound()
-			bundle, err := g.load(g.choices[g.selected].Path, g.profile)
+			bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.synth)
 			if err != nil {
 				g.status = err.Error()
 				return nil
@@ -2463,6 +2527,24 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			g.drawPickerTextScaled(screen, profile.label, titleX, rowY, 2)
 			g.drawPickerText(screen, profile.description, titleX, rowY+22)
 		}
+	case pickerStageSynth:
+		titleWidth := 0
+		descWidth := 0
+		for _, synth := range pickerSynths {
+			titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, 2))
+			descWidth = max(descWidth, g.pickerTextWidth(synth.description))
+		}
+		contentWidth := max(titleWidth, descWidth)
+		titleX := sw/2 - contentWidth/2
+		synthY := sh - 112
+		for i, synth := range pickerSynths {
+			rowY := synthY + i*52
+			if i == g.synth {
+				g.drawPickerSkull(screen, titleX, rowY+4)
+			}
+			g.drawPickerTextScaled(screen, synth.label, titleX, rowY, 2)
+			g.drawPickerText(screen, synth.description, titleX, rowY+22)
+		}
 	default:
 		labelTexts := make([]string, len(g.choices))
 		fileTexts := make([]string, len(g.choices))
@@ -2492,7 +2574,11 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	if strings.TrimSpace(g.status) != "" {
 		g.drawPickerTextCentered(screen, strings.ToUpper(g.status), sw/2, sh-52)
 	}
-	g.drawPickerTextCentered(screen, "UP/DOWN    ESC - BACK    ENTER - NEXT", sw/2, sh-12)
+	footer := "UP/DOWN    ESC - BACK    ENTER - NEXT"
+	if g.stage == pickerStageSynth {
+		footer = "UP/DOWN    ESC - BACK    ENTER - PLAY"
+	}
+	g.drawPickerTextCentered(screen, footer, sw/2, sh-12)
 }
 
 func (g *iwadPickerGame) Layout(outsideWidth, outsideHeight int) (int, int) {

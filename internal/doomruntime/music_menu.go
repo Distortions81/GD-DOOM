@@ -35,9 +35,9 @@ type musicPlaybackSource struct {
 func musicBackendLabel(backend music.Backend) string {
 	switch music.ResolveBackend(backend) {
 	case music.BackendMeltySynth:
-		return "MELTYSYNTH"
+		return "MIDI - MELTYSYNTH"
 	default:
-		return "OPL3"
+		return "OPL - IMPSYNTH"
 	}
 }
 
