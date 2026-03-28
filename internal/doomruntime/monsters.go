@@ -258,9 +258,6 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		if resumedFromAttack && !hadJustAtk {
 			return
 		}
-		if !continueChase && (!resumedFromAttack || hadJustAtk) {
-			continueChase = true
-		}
 		if !continueChase {
 			return
 		}
@@ -501,24 +498,28 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 		if i >= 0 && i < len(g.thingAggro) {
 			g.thingAggro[i] = true
 		}
-		if i >= 0 && i < len(g.thingStatePhase) {
-			g.thingStatePhase[i] = 0
+		// Direct lost-target reacquire happens from A_Chase, so vanilla keeps the
+		// current see-frame progression instead of restarting the walk animation.
+		if i < len(g.thingState) && g.thingState[i] != monsterStateSee {
+			if i >= 0 && i < len(g.thingStatePhase) {
+				g.thingStatePhase[i] = 0
+			}
+			g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
 		}
-		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
 		return true, false
-	}
-	if g.monsterRunLookState(i, typ, tx, ty) {
-		return true, true
 	}
 	if i >= 0 && i < len(g.thingStatePhase) {
 		g.thingStatePhase[i] = 0
 	}
 	g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
+	if g.monsterRunLookState(i, typ, tx, ty) {
+		return true, false
+	}
 	return false, false
 }
 
 func (g *game) monsterIdleOrChaseState(i int) monsterThinkState {
-	if i >= 0 && i < len(g.thingAggro) && g.thingAggro[i] {
+	if g.monsterHasTarget(i) || (i >= 0 && i < len(g.thingAggro) && g.thingAggro[i]) {
 		return monsterStateSee
 	}
 	return monsterStateSpawn
@@ -1632,6 +1633,9 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 		tx, ty := g.thingPosFixed(i, g.m.Things[i])
 		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
 		g.runMonsterAttackPhaseEntry(i, typ, 0, tx, ty, g.p.x, g.p.y, dist)
+		if !g.advanceZeroTicMonsterAttackFrames(i, typ, tx, ty, g.p.x, g.p.y, dist) {
+			return false
+		}
 		if missile && i >= 0 && i < len(g.thingJustAtk) {
 			g.thingJustAtk[i] = true
 		}
@@ -1889,30 +1893,10 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 		if i >= 0 && i < len(g.thingStateTics) {
 			g.thingStateTics[i]--
 			if g.thingStateTics[i] <= 0 {
-				nextPhase := g.thingAttackPhase[i] + 1
-				if nextPhase >= len(monsterAttackFrameTics(typ)) {
-					if loopPhase, loop := g.nextMonsterAttackLoopPhase(i, typ, tx, ty); loop {
-						nextPhase = loopPhase
-					}
-				}
-				if nextPhase >= len(monsterAttackFrameTics(typ)) {
-					if typ == 3006 {
-						g.resetLostSoulCharge(i, typ)
-						return false
-					}
-					g.thingAttackTics[i] = 0
-					if i >= 0 && i < len(g.thingAttackFireTics) {
-						g.thingAttackFireTics[i] = -1
-					}
-					if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
-						g.resetMonsterIdleOrChaseState(i, typ)
-					}
+				if !g.advanceMonsterAttackPhase(i, typ, tx, ty, px, py, dist) {
 					return false
 				}
-				g.thingAttackPhase[i] = nextPhase
-				g.thingStateTics[i] = monsterAttackFrameDuration(typ, nextPhase)
-				g.runMonsterAttackPhaseEntry(i, typ, nextPhase, tx, ty, px, py, dist)
-				if i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack {
+				if !g.advanceZeroTicMonsterAttackFrames(i, typ, tx, ty, px, py, dist) {
 					return false
 				}
 			}
@@ -1953,6 +1937,54 @@ func (g *game) tickMonsterAttackState(i int, typ int16, tx, ty, px, py, dist int
 	return true
 }
 
+func (g *game) advanceMonsterAttackPhase(i int, typ int16, tx, ty, px, py, dist int64) bool {
+	phase := 0
+	if i >= 0 && i < len(g.thingAttackPhase) {
+		phase = g.thingAttackPhase[i]
+	}
+	nextPhase := phase + 1
+	if nextPhase >= len(monsterAttackFrameTics(typ)) {
+		if loopPhase, loop := g.nextMonsterAttackLoopPhase(i, typ, tx, ty); loop {
+			nextPhase = loopPhase
+		}
+	}
+	if nextPhase >= len(monsterAttackFrameTics(typ)) {
+		if typ == 3006 {
+			g.resetLostSoulCharge(i, typ)
+			return false
+		}
+		g.thingAttackTics[i] = 0
+		if i >= 0 && i < len(g.thingAttackFireTics) {
+			g.thingAttackFireTics[i] = -1
+		}
+		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
+			g.resetMonsterIdleOrChaseState(i, typ)
+		}
+		return false
+	}
+	if i >= 0 && i < len(g.thingAttackPhase) {
+		g.thingAttackPhase[i] = nextPhase
+	}
+	if i >= 0 && i < len(g.thingStateTics) {
+		g.thingStateTics[i] = monsterAttackFrameDuration(typ, nextPhase)
+	}
+	g.runMonsterAttackPhaseEntry(i, typ, nextPhase, tx, ty, px, py, dist)
+	if i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack {
+		return false
+	}
+	return true
+}
+
+func (g *game) advanceZeroTicMonsterAttackFrames(i int, typ int16, tx, ty, px, py, dist int64) bool {
+	for i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStateAttack &&
+		i < len(g.thingStateTics) && g.thingStateTics[i] <= 0 {
+		if !g.advanceMonsterAttackPhase(i, typ, tx, ty, px, py, dist) {
+			return false
+		}
+	}
+	return i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStateAttack
+}
+
 func (g *game) nextMonsterAttackLoopPhase(i int, typ int16, tx, ty int64) (int, bool) {
 	switch typ {
 	case 65:
@@ -1987,15 +2019,15 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 		}
 	case 9:
 		if phase >= 0 && phase <= 2 {
-			return 217 + phase, true
+			return 218 + phase, true
 		}
 	case 65:
 		if phase >= 0 && phase <= 3 {
-			return 592 + phase, true
+			return 416 + phase, true
 		}
 	case 3001:
 		if phase >= 0 && phase <= 2 {
-			return 452 + phase, true
+			return 453 + phase, true
 		}
 	case 3002, 58:
 		if phase >= 0 && phase <= 2 {
@@ -2003,7 +2035,7 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 		}
 	case 3006:
 		if phase >= 0 && phase <= 3 {
-			return 589 + phase, true
+			return 590 + phase, true
 		}
 	case 3005:
 		if phase >= 0 && phase <= 2 {
@@ -2011,11 +2043,43 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 		}
 	case 3003:
 		if phase >= 0 && phase <= 2 {
-			return 537 + phase, true
+			return 538 + phase, true
 		}
 	case 69:
 		if phase >= 0 && phase <= 2 {
-			return 566 + phase, true
+			return 567 + phase, true
+		}
+	case 64:
+		if phase >= 0 && phase <= 10 {
+			return 256 + phase, true
+		}
+	case 66:
+		if phase >= 0 && phase <= 5 {
+			return 336 + phase, true
+		}
+	case 67:
+		if phase >= 0 && phase <= 9 {
+			return 377 + phase, true
+		}
+	case 68:
+		if phase >= 0 && phase <= 3 {
+			return 648 + phase, true
+		}
+	case 71:
+		if phase >= 0 && phase <= 3 {
+			return 709 + phase, true
+		}
+	case 16:
+		if phase >= 0 && phase <= 5 {
+			return 685 + phase, true
+		}
+	case 7:
+		if phase >= 0 && phase <= 3 {
+			return 616 + phase, true
+		}
+	case 84:
+		if phase >= 0 && phase <= 2 {
+			return 737 + phase, true
 		}
 	}
 	return 0, false
