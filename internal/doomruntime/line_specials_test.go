@@ -835,14 +835,17 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 	if g.m.Things[0].X != 128 || g.m.Things[0].Y != 64 {
 		t.Fatalf("monster teleported to (%d,%d), want (%d,%d)", g.m.Things[0].X, g.m.Things[0].Y, 128, 64)
 	}
-	if g.thingMoveDir[0] != monsterDirNoDir || g.thingMoveCount[0] != 0 {
-		t.Fatalf("monster move state=%v/%d want nodir/0", g.thingMoveDir[0], g.thingMoveCount[0])
+	if g.thingMoveDir[0] != monsterDirEast || g.thingMoveCount[0] != 7 {
+		t.Fatalf("monster move state=%v/%d want east/7", g.thingMoveDir[0], g.thingMoveCount[0])
 	}
 	if g.p.reactionTime != 0 {
 		t.Fatalf("player reactionTime=%d want 0", g.p.reactionTime)
 	}
 	if got := len(g.hitscanPuffs); got != 2 {
 		t.Fatalf("teleport fog count=%d want=2", got)
+	}
+	if got, want := g.hitscanPuffs[0].z, g.sectorFloor[0]; got != want {
+		t.Fatalf("source teleport fog z=%d want=%d", got, want)
 	}
 	if got := len(g.soundQueue); got != 2 {
 		t.Fatalf("teleport sound count=%d want=2", got)

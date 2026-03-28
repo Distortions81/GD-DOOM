@@ -1144,14 +1144,12 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
 			g.setThingWorldAngle(actorIdx, destAngle)
 			g.snapThingRenderState(actorIdx)
-			if actorIdx >= 0 && actorIdx < len(g.thingMoveDir) {
-				g.thingMoveDir[actorIdx] = monsterDirNoDir
-			}
-			if actorIdx >= 0 && actorIdx < len(g.thingMoveCount) {
-				g.thingMoveCount[actorIdx] = 0
-			}
 		}
-		g.spawnTeleportFog(actorX, actorY, actorZ)
+		sourceFogZ := g.thingFloorZ(actorX, actorY)
+		if floorz, _, ok := g.subsectorFloorCeilAt(actorX, actorY); ok {
+			sourceFogZ = floorz
+		}
+		g.spawnTeleportFog(actorX, actorY, sourceFogZ)
 		g.spawnTeleportFog(destFogX, destFogY, tmfloor)
 		g.emitSoundEventAt(soundEventTeleport, actorX, actorY)
 		g.emitSoundEventAt(soundEventTeleport, destFogX, destFogY)
