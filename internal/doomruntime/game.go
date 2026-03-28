@@ -11137,7 +11137,7 @@ func monsterAttackFrameSeq(typ int16) []byte {
 
 func monsterSpawnFrameSeq(typ int16) []byte {
 	switch typ {
-	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69, 3006:
 		return monsterSpawnSeqAB
 	case 3005:
 		return monsterSpawnSeqA
@@ -11233,7 +11233,7 @@ var (
 
 func monsterSpawnFrameTics(typ int16) []int {
 	switch typ {
-	case 3004, 9, 65, 3001, 3002, 58, 3003, 69:
+	case 3004, 9, 65, 3001, 3002, 58, 3003, 69, 3006:
 		return monsterSpawnTicsAB
 	case 3005:
 		return monsterSpawnTicsA

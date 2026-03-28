@@ -2418,7 +2418,7 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	probe := g.probeMonsterMove(i, typ, nx, ny)
 	tmfloor, tmceil, probeLines, ok := probe.tmfloor, probe.tmceil, probe.probeLines, probe.ok
 	if !ok {
-		if probe.checkPosOK && monsterCanFloat(typ) {
+		if probe.floatOK && monsterCanFloat(typ) {
 			z, floorZ, ceilZ := g.thingSupportState(i, g.m.Things[i])
 			if z < probe.tmfloor {
 				z += 4 * fracUnit
@@ -3739,6 +3739,7 @@ type monsterMoveProbeResult struct {
 	tmdrop     int64
 	probeLines []int
 	checkPosOK bool
+	floatOK    bool
 	ok         bool
 }
 
@@ -3767,16 +3768,17 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeRe
 	if tmceil-tmfloor < height {
 		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
 	}
+	floatOK := true
 	if tmceil-z < height {
-		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK}
 	}
 	if tmfloor-z > stepHeight {
-		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK}
 	}
 	if !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
-		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true}
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK}
 	}
-	return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, ok: true}
+	return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines, checkPosOK: true, floatOK: floatOK, ok: true}
 }
 
 func (g *game) tryMoveProbeMonster(i int, typ int16, x, y int64) (int64, int64, []int, bool) {

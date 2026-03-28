@@ -900,6 +900,7 @@ func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 		{3001, []byte{'A', 'B'}, []int{10, 10}},
 		{3002, []byte{'A', 'B'}, []int{10, 10}},
 		{58, []byte{'A', 'B'}, []int{10, 10}},
+		{3006, []byte{'A', 'B'}, []int{10, 10}},
 		{3005, []byte{'A'}, []int{10}},
 		{3003, []byte{'A', 'B'}, []int{10, 10}},
 		{69, []byte{'A', 'B'}, []int{10, 10}},
@@ -2022,6 +2023,51 @@ func TestMonsterMoveInDir_OrdinaryBlockedMovePreservesMoveDir(t *testing.T) {
 	}
 	if got := g.thingMoveDir[0]; got != monsterDirNorthEast {
 		t.Fatalf("blocked move should preserve old movedir, got %d", got)
+	}
+}
+
+func TestMonsterMoveInDir_FloatingMonsterDoesNotFloatAdjustWithoutHeadroom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3006, X: -24, Y: 0},
+			},
+			Vertexes: []mapdata.Vertex{
+				{X: 0, Y: -64},
+				{X: 0, Y: 64},
+			},
+			Linedefs: []mapdata.Linedef{
+				{V1: 0, V2: 1, Flags: mlTwoSided, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 0},
+			},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{100},
+		thingDead:      []bool{false},
+		thingMoveDir:   []monsterMoveDir{monsterDirEast},
+	}
+	g.initPhysics()
+	startX, startY := g.thingPosFixed(0, g.m.Things[0])
+	startZ, startFloorZ, startCeilZ := g.thingSupportState(0, g.m.Things[0])
+
+	if g.monsterMoveInDir(0, 3006, monsterDirEast) {
+		t.Fatal("floating monster move should fail when the destination has no headroom")
+	}
+	if got := g.thingMoveDir[0]; got != monsterDirEast {
+		t.Fatalf("blocked float move should preserve old movedir, got %d", got)
+	}
+	if gotX, gotY := g.thingPosFixed(0, g.m.Things[0]); gotX != startX || gotY != startY {
+		t.Fatalf("blocked float move changed position to (%d,%d) want (%d,%d)", gotX, gotY, startX, startY)
+	}
+	if gotZ, gotFloorZ, gotCeilZ := g.thingSupportState(0, g.m.Things[0]); gotZ != startZ || gotFloorZ != startFloorZ || gotCeilZ != startCeilZ {
+		t.Fatalf("blocked float move changed support state to z=%d floor=%d ceil=%d want z=%d floor=%d ceil=%d", gotZ, gotFloorZ, gotCeilZ, startZ, startFloorZ, startCeilZ)
 	}
 }
 
