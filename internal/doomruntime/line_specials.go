@@ -1052,7 +1052,15 @@ func (g *game) activateLightLine(lineIdx int, info mapdata.LightInfo) bool {
 }
 
 func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.TeleportInfo, actorIdx int, isPlayer bool) bool {
+	if debugLineTriggerEnabled(lineIdx) {
+		fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-enter line=%d side=%d player=%t uses_tag=%t monster_only=%t\n",
+			g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, info.UsesTag, info.MonsterOnly)
+	}
 	if side == 1 || !info.UsesTag {
+		if debugLineTriggerEnabled(lineIdx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-reject line=%d side=%d player=%t\n",
+				g.demoTick-1, g.worldTic, lineIdx, side, isPlayer)
+		}
 		return false
 	}
 	if info.MonsterOnly && isPlayer {

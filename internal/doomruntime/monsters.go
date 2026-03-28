@@ -372,7 +372,7 @@ func (g *game) debugMonsterTick(i int, stage string) {
 	if wantIdx >= 0 && i != wantIdx {
 		return
 	}
-	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+	if wantTic >= 0 && g.demoTick-1 != wantTic && g.worldTic != wantTic {
 		return
 	}
 	tx, ty := int64(0), int64(0)
@@ -387,9 +387,19 @@ func (g *game) debugMonsterTick(i int, stage string) {
 			targetHP = g.thingHP[targetIdx]
 		}
 	}
-	fmt.Printf("monster-tick-debug tic=%d world=%d idx=%d type=%d stage=%s state=%d phase=%d statetics=%d movedir=%d movecount=%d threshold=%d reaction=%d justatk=%t targetPlayer=%t targetIdx=%d targetHP=%d pos=(%d,%d) angle=%d\n",
+	attackPhase, attackTics, fireTics := 0, 0, 0
+	if i >= 0 && i < len(g.thingAttackPhase) {
+		attackPhase = g.thingAttackPhase[i]
+	}
+	if i >= 0 && i < len(g.thingAttackTics) {
+		attackTics = g.thingAttackTics[i]
+	}
+	if i >= 0 && i < len(g.thingAttackFireTics) {
+		fireTics = g.thingAttackFireTics[i]
+	}
+	fmt.Printf("monster-tick-debug tic=%d world=%d idx=%d type=%d stage=%s state=%d phase=%d statetics=%d attackphase=%d attacktics=%d firetics=%d movedir=%d movecount=%d threshold=%d reaction=%d justatk=%t targetPlayer=%t targetIdx=%d targetHP=%d pos=(%d,%d) angle=%d\n",
 		g.demoTick-1, g.worldTic, i, g.m.Things[i].Type, stage,
-		g.thingState[i], g.thingStatePhase[i], g.thingStateTics[i], g.thingMoveDir[i], g.thingMoveCount[i],
+		g.thingState[i], g.thingStatePhase[i], g.thingStateTics[i], attackPhase, attackTics, fireTics, g.thingMoveDir[i], g.thingMoveCount[i],
 		g.thingThreshold[i], g.thingReactionTics[i], g.thingJustAtk[i], g.thingTargetPlayer[i], targetIdx, targetHP, tx, ty, g.thingWorldAngle(i, g.m.Things[i]))
 }
 
@@ -2353,7 +2363,7 @@ func (g *game) debugMonsterChase(i int, msg string) {
 	if wantIdx >= 0 && i != wantIdx {
 		return
 	}
-	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+	if wantTic >= 0 && g.demoTick-1 != wantTic && g.worldTic != wantTic {
 		return
 	}
 	tx, ty := int64(0), int64(0)
@@ -2379,7 +2389,7 @@ func (g *game) debugMonsterMove(i int, msg string) {
 	if wantIdx >= 0 && i != wantIdx {
 		return
 	}
-	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+	if wantTic >= 0 && g.demoTick-1 != wantTic && g.worldTic != wantTic {
 		return
 	}
 	tx, ty := int64(0), int64(0)
@@ -2598,19 +2608,22 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		if i >= 0 && i < len(g.thingAttackPhase) {
 			phase = g.thingAttackPhase[i]
 		}
+		g.faceMonsterToward(i, sx, sy, targetX, targetY)
 		switch phase {
 		case 1:
+			g.setThingWorldAngle(i, g.thingWorldAngle(i, g.m.Things[i])+fatSpread)
 			if !g.spawnMonsterProjectileAngleOffset(i, typ, fatSpread) {
 				return false
 			}
-			if !g.spawnMonsterProjectileAngleOffset(i, typ, fatSpread*2) {
+			if !g.spawnMonsterProjectile(i, typ) {
 				return false
 			}
 		case 4:
+			g.setThingWorldAngle(i, g.thingWorldAngle(i, g.m.Things[i])-fatSpread)
 			if !g.spawnMonsterProjectileAngleOffset(i, typ, ^fatSpread+1) {
 				return false
 			}
-			if !g.spawnMonsterProjectileAngleOffset(i, typ, ^(fatSpread*2)+1) {
+			if !g.spawnMonsterProjectile(i, typ) {
 				return false
 			}
 		case 7:
@@ -3345,7 +3358,7 @@ func (g *game) debugMonsterLOSBlock(reason string, lineIdx int, sight *losTrace)
 	if _, err := fmt.Sscanf(runtimeDebugEnv("GD_DEBUG_MONSTER_LOOK"), "%d:%d", &wantTic, &wantIdx); err != nil {
 		return
 	}
-	if g.demoTick-1 != wantTic && g.worldTic != wantTic {
+	if wantTic >= 0 && g.demoTick-1 != wantTic && g.worldTic != wantTic {
 		return
 	}
 	fmt.Printf("monster-look-debug tic=%d world=%d site=los-block line=%d reason=%s ax=%d ay=%d bx=%d by=%d\n",

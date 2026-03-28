@@ -246,6 +246,42 @@ func TestMancubusAttackSpawnsSixProjectilesAcrossThreeVolleys(t *testing.T) {
 	}
 }
 
+func TestMancubusAttackPhaseFacesTargetOnVolleyFrames(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 67, X: 128, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{600},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackPhase:  []int{1},
+		thingAngleState: []uint32{
+			degToAngle(180),
+		},
+		thingX: []int64{128 * fracUnit},
+		thingY: []int64{0},
+		projectiles: make([]projectile, 0, 2),
+		soundQueue:  make([]soundEvent, 0, 2),
+		stats:       playerStats{Health: 100},
+		p:           player{x: 0, y: 64 * fracUnit, z: 0},
+	}
+
+	tx, ty := g.thingPosFixed(0, g.m.Things[0])
+	dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+	g.runMonsterAttackPhaseEntry(0, 67, 1, tx, ty, g.p.x, g.p.y, dist)
+
+	want := doomPointToAngle2(tx, ty, g.p.x, g.p.y) + 0x08000000
+	if got := g.thingWorldAngle(0, g.m.Things[0]); got != want {
+		t.Fatalf("angle=%d want=%d", got, want)
+	}
+	if got := len(g.projectiles); got != 2 {
+		t.Fatalf("projectiles=%d want=2", got)
+	}
+}
+
 func TestProjectileImpactSoundEventMatchesVanillaProjectileDeathsounds(t *testing.T) {
 	if got := projectileImpactSoundEvent(projectileRocket); got != soundEventBarrelExplode {
 		t.Fatalf("rocket impact sound=%v want %v", got, soundEventBarrelExplode)

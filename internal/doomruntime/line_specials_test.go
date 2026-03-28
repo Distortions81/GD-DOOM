@@ -730,6 +730,56 @@ func TestCheckWalkSpecialLines_DoesNotTriggerRemoteTeleport(t *testing.T) {
 	}
 }
 
+func TestCheckWalkSpecialLines_DoesNotTriggerTeleportFromBackSide(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 128, Y: 64, Angle: 90, Type: 14},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 7},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{97},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:      32 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLines(32*fracUnit, 0, -32*fracUnit, 0)
+
+	if g.p.x != 32*fracUnit || g.p.y != 0 {
+		t.Fatalf("player unexpectedly teleported to (%d,%d)", g.p.x, g.p.y)
+	}
+	if got := len(g.hitscanPuffs); got != 0 {
+		t.Fatalf("teleport fog count=%d want=0", got)
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("teleport sound count=%d want=0", got)
+	}
+}
+
 func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

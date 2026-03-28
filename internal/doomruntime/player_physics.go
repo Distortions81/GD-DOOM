@@ -99,7 +99,6 @@ func (g *game) tickPlayerBody() {
 		g.processThingPickups()
 	}
 	g.zMovement()
-	g.checkWalkSpecialLines(prevX, prevY, g.p.x, g.p.y)
 }
 
 func (g *game) tickGameplayWorld() {
@@ -578,6 +577,8 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 	if probePickup && !g.isDead {
 		g.processDroppedThingPickupsAt(x, y, g.p.z, playerRadius, playerHeight)
 	}
+	prevX := g.p.x
+	prevY := g.p.y
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
 	if !ok {
 		g.debugPlayerMove("tryMove blocked", x, y)
@@ -600,6 +601,7 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 	g.p.floorz = tmfloor
 	g.p.ceilz = tmceil
 	g.setPlayerPosFixed(x, y)
+	g.checkWalkSpecialLinesWithCandidates(prevX, prevY, x, y, g.probeSpecialLinesForPlayer())
 	return true
 }
 
@@ -660,6 +662,8 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
 		}
 		g.thingProbeSpecialLines[moverThingIdx] = g.thingProbeSpecialLines[moverThingIdx][:0]
+	} else {
+		g.playerProbeSpecialLines = g.playerProbeSpecialLines[:0]
 	}
 	tmboxTop := y + radius
 	tmboxBottom := y - radius
@@ -795,8 +799,12 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		if lowfloor < tmdrop {
 			tmdrop = lowfloor
 		}
-		if moverThingIdx >= 0 && moverThingIdx < len(g.thingProbeSpecialLines) && ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
-			g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
+		if ld.idx >= 0 && ld.idx < len(g.lineSpecial) && g.lineSpecial[ld.idx] != 0 {
+			if moverThingIdx >= 0 && moverThingIdx < len(g.thingProbeSpecialLines) {
+				g.thingProbeSpecialLines[moverThingIdx] = append(g.thingProbeSpecialLines[moverThingIdx], ld.idx)
+			} else {
+				g.playerProbeSpecialLines = append(g.playerProbeSpecialLines, ld.idx)
+			}
 		}
 		return true
 	}
@@ -842,6 +850,13 @@ func (g *game) probeSpecialLinesForMover(idx int) []int {
 		return nil
 	}
 	return g.thingProbeSpecialLines[idx]
+}
+
+func (g *game) probeSpecialLinesForPlayer() []int {
+	if g == nil || len(g.playerProbeSpecialLines) == 0 {
+		return nil
+	}
+	return g.playerProbeSpecialLines
 }
 
 func (g *game) debugPlayerProbeActive() bool {

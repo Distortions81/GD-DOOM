@@ -441,6 +441,7 @@ type game struct {
 	mapVisibleLines        []mapview.Line
 	lineValid              []int
 	validCount             int
+	playerProbeSpecialLines []int
 	thingProbeSpecialLines [][]int
 	bmapOriginX            int64
 	bmapOriginY            int64
