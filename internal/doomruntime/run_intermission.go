@@ -512,7 +512,7 @@ func (sg *sessionGame) drawIntermissionPresented(screen *ebiten.Image) {
 	}
 	dw := max(screen.Bounds().Dx(), 1)
 	dh := max(screen.Bounds().Dy(), 1)
-	present := sg.ensurePresentSurface(dw, dh)
+	present := sg.ensureFrontendSurface(dw, dh)
 	present.Clear()
 	sg.drawIntermission(present)
 	screen.Fill(color.Black)
@@ -606,7 +606,7 @@ func (sg *sessionGame) drawFinalePresented(screen *ebiten.Image) {
 	}
 	dw := max(screen.Bounds().Dx(), 1)
 	dh := max(screen.Bounds().Dy(), 1)
-	present := sg.ensurePresentSurface(dw, dh)
+	present := sg.ensureFrontendSurface(dw, dh)
 	present.Clear()
 	sg.drawFinale(present)
 	screen.Fill(color.Black)

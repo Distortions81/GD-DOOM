@@ -714,23 +714,19 @@ func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
 		dw := max(dst.Bounds().Dx(), 1)
 		dh := max(dst.Bounds().Dy(), 1)
 		dst.Fill(color.Black)
-		if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != dw || sg.presentSurface.Bounds().Dy() != dh {
-			sg.presentSurface = newUnmanagedImage(dw, dh)
-		}
-		sg.presentSurface.Clear()
-		sg.drawFrontend(sg.presentSurface)
-		sg.drawSourcePortPresented(dst, sg.presentSurface, dw, dh)
+		present := sg.ensureFrontendSurface(dw, dh)
+		present.Clear()
+		sg.drawFrontend(present)
+		sg.drawSourcePortPresented(dst, present, dw, dh)
 		return
 	}
 	dw := max(dst.Bounds().Dx(), 1)
 	dh := max(dst.Bounds().Dy(), 1)
-	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != dw || sg.presentSurface.Bounds().Dy() != dh {
-		sg.presentSurface = newUnmanagedImage(dw, dh)
-	}
-	sg.presentSurface.Clear()
-	sg.drawFrontend(sg.presentSurface)
+	present := sg.ensureFrontendSurface(dw, dh)
+	present.Clear()
+	sg.drawFrontend(present)
 	dst.Fill(color.Black)
-	dst.DrawImage(sg.presentSurface, nil)
+	dst.DrawImage(present, nil)
 }
 
 func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
@@ -841,7 +837,7 @@ func (sg *sessionGame) drawFrontendPresented(screen *ebiten.Image) {
 	}
 	dw := max(screen.Bounds().Dx(), 1)
 	dh := max(screen.Bounds().Dy(), 1)
-	present := sg.ensurePresentSurface(dw, dh)
+	present := sg.ensureFrontendSurface(dw, dh)
 	present.Clear()
 	sg.drawFrontend(present)
 	screen.Fill(color.Black)

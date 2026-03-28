@@ -344,11 +344,9 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 				}
 				return
 			}
-			if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != sw || sg.presentSurface.Bounds().Dy() != sh {
-				sg.presentSurface = newUnmanagedImage(sw, sh)
-			}
-			sg.drawGamePresented(sg.presentSurface, sg.g)
-			screen.DrawImage(sg.presentSurface, nil)
+			present := sg.ensureFrontendSurface(sw, sh)
+			sg.drawGamePresented(present, sg.g)
+			screen.DrawImage(present, nil)
 			if sg.quitPrompt.Active {
 				sg.drawQuitPrompt(screen)
 			}

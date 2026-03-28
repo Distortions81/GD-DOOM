@@ -16,16 +16,28 @@ func newUnmanagedImage(w, h int) *ebiten.Image {
 	})
 }
 
-func (sg *sessionGame) ensurePresentSurface(width, height int) *ebiten.Image {
+func (sg *sessionGame) ensureGameplaySurface(width, height int) *ebiten.Image {
 	if sg == nil {
 		return nil
 	}
 	width = max(width, 1)
 	height = max(height, 1)
-	if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != width || sg.presentSurface.Bounds().Dy() != height {
-		sg.presentSurface = newUnmanagedImage(width, height)
+	if sg.gameplaySurface == nil || sg.gameplaySurface.Bounds().Dx() != width || sg.gameplaySurface.Bounds().Dy() != height {
+		sg.gameplaySurface = newUnmanagedImage(width, height)
 	}
-	return sg.presentSurface
+	return sg.gameplaySurface
+}
+
+func (sg *sessionGame) ensureFrontendSurface(width, height int) *ebiten.Image {
+	if sg == nil {
+		return nil
+	}
+	width = max(width, 1)
+	height = max(height, 1)
+	if sg.frontendSurface == nil || sg.frontendSurface.Bounds().Dx() != width || sg.frontendSurface.Bounds().Dy() != height {
+		sg.frontendSurface = newUnmanagedImage(width, height)
+	}
+	return sg.frontendSurface
 }
 
 func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
@@ -64,7 +76,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		sg.transition.SetLastFrame(src)
 		return
 	}
-	present := sg.ensurePresentSurface(g.viewW, g.viewH)
+	present := sg.ensureGameplaySurface(g.viewW, g.viewH)
 	present.Fill(color.Black)
 	if g.mode != viewMap {
 		g.drawWalk3D(present)
@@ -151,13 +163,11 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 		return
 	}
 	if sg.opts.SourcePortMode {
-		if sg.presentSurface == nil || sg.presentSurface.Bounds().Dx() != g.viewW || sg.presentSurface.Bounds().Dy() != g.viewH {
-			sg.presentSurface = newUnmanagedImage(max(g.viewW, 1), max(g.viewH, 1))
-		}
-		g.Draw(sg.presentSurface)
-		src := sg.presentSurface
+		present := sg.ensureGameplaySurface(g.viewW, g.viewH)
+		g.Draw(present)
+		src := present
 		if sg.palettePostEnabled() {
-			src = sg.applyFaithfulPalettePost(sg.presentSurface)
+			src = sg.applyFaithfulPalettePost(present)
 		}
 		dw := max(dst.Bounds().Dx(), 1)
 		dh := max(dst.Bounds().Dy(), 1)

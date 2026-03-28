@@ -89,7 +89,8 @@ type sessionGame struct {
 	crtShader           *ebiten.Shader
 	crtPost             *ebiten.Image
 	crtUniforms         map[string]any
-	presentSurface      *ebiten.Image
+	gameplaySurface     *ebiten.Image
+	frontendSurface     *ebiten.Image
 	bootSplashImage     *ebiten.Image
 	menuPatchImages     map[string]*ebiten.Image
 	intermissionImages  map[string]*ebiten.Image
