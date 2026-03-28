@@ -580,6 +580,21 @@ func TestSelectWeaponSlot3PrefersSuperShotgunWhenBothOwned(t *testing.T) {
 	}
 }
 
+func TestSelectWeaponSlot3PrefersSuperShotgunFromNonShotgunReadyWeaponOnCommercialMaps(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Name: "MAP01"},
+		inventory: playerInventory{
+			ReadyWeapon: weaponChaingun,
+			Weapons:     map[int16]bool{2001: true, 82: true, 2002: true},
+		},
+	}
+	advanceWeaponToReady(g)
+	g.selectWeaponSlot(3)
+	if g.inventory.PendingWeapon != weaponSuperShotgun {
+		t.Fatalf("pending weapon=%v want=%v", g.inventory.PendingWeapon, weaponSuperShotgun)
+	}
+}
+
 func TestBossDeath_MAP07MancubusLowersTag666Floor(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -892,6 +907,55 @@ func TestDamageMonsterPainCancelsQueuedAttackStateLikeDoom(t *testing.T) {
 	}
 	if g.thingState[0] != monsterStatePain {
 		t.Fatalf("state=%d want pain", g.thingState[0])
+	}
+}
+
+func TestDamageMonsterCanRestartPainWhileAlreadyInPainLikeDoom(t *testing.T) {
+	findPainSeed := func(chance int) int {
+		for seed := 0; seed < 256; seed++ {
+			doomrand.SetState(0, seed)
+			if doomrand.PRandom() < chance {
+				return seed
+			}
+		}
+		t.Fatalf("no PRandom seed found for pain chance %d", chance)
+		return 0
+	}
+
+	seed := findPainSeed(monsterPainChance(65))
+	doomrand.SetState(0, seed)
+
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 65, X: 0, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{30},
+		thingAggro:        []bool{true},
+		thingPainTics:     []int{2},
+		thingJustHit:      []bool{false},
+		thingState:        []monsterThinkState{monsterStatePain},
+		thingStateTics:    []int{1},
+		thingStatePhase:   []int{1},
+		thingReactionTics: []int{8},
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
+
+	if g.thingState[0] != monsterStatePain {
+		t.Fatalf("state=%d want pain", g.thingState[0])
+	}
+	if g.thingStatePhase[0] != 0 {
+		t.Fatalf("pain phase=%d want 0 after restart", g.thingStatePhase[0])
+	}
+	if g.thingStateTics[0] != 3 {
+		t.Fatalf("state tics=%d want first pain frame 3 after restart", g.thingStateTics[0])
+	}
+	if g.thingPainTics[0] != 6 {
+		t.Fatalf("pain tics=%d want full restarted pain duration 6", g.thingPainTics[0])
+	}
+	if !g.thingJustHit[0] {
+		t.Fatal("just-hit should be set when pain restarts")
 	}
 }
 
@@ -1557,29 +1621,38 @@ func countSoundEvent(queue []soundEvent, want soundEvent) int {
 	return n
 }
 
-func TestDamageMonsterPainSoundOnlyOnPainEntry(t *testing.T) {
+func TestDamageMonsterLostSoulPainSoundFiresOnPainActionFrame(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
 				{Type: 3006, X: 0, Y: 0},
 			},
 		},
+		thingCollected:      []bool{false},
 		thingHP:             []int{100},
 		thingAggro:          []bool{false},
 		thingJustHit:        []bool{false},
 		thingPainTics:       []int{0},
+		thingTargetPlayer:   []bool{true},
+		thingTargetIdx:      []int{-1},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
 		thingDead:           []bool{false},
 		thingDeathTics:      []int{0},
 		thingAttackTics:     []int{0},
 		thingAttackFireTics: []int{0},
+		stats:               playerStats{Health: 100},
 		soundQueue:          make([]soundEvent, 0, 8),
 	}
 	g.damageMonster(0, 1)
-	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 1 {
-		t.Fatalf("demon pain count after first pain=%d want=1 queue=%v", got, g.soundQueue)
+	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 0 {
+		t.Fatalf("lost soul pain count on pain entry=%d want=0 queue=%v", got, g.soundQueue)
 	}
-	g.damageMonster(0, 1)
+	for i := 0; i < 3; i++ {
+		g.tickMonsters()
+	}
 	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 1 {
-		t.Fatalf("demon pain count while already in pain=%d want=1 queue=%v", got, g.soundQueue)
+		t.Fatalf("lost soul pain count on pain action frame=%d want=1 queue=%v", got, g.soundQueue)
 	}
 }

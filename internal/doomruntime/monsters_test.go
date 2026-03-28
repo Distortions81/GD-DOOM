@@ -295,6 +295,52 @@ func TestMonsterAttackTargetPos_PreservesDeadPlayerCorpseAim(t *testing.T) {
 	}
 }
 
+func TestTickMonstersPainKeepsNonPlayerTargetAfterPlayerDeath(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 0, Y: 0},
+				{Type: 3001, X: 128, Y: 0},
+			},
+		},
+		isDead:            true,
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{126, 20},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{false, false},
+		thingTargetIdx:    []int{1, -1},
+		thingThreshold:    []int{monsterBaseThreshold, 0},
+		thingPainTics:     []int{5, 0},
+		thingState:        []monsterThinkState{monsterStatePain, monsterStateSee},
+		thingStateTics:    []int{2, 1},
+		thingStatePhase:   []int{0, 0},
+		thingMoveDir:      []monsterMoveDir{monsterDirNorth, monsterDirNoDir},
+		thingMoveCount:    []int{13, 0},
+		thingX:            []int64{0, 128 * fracUnit},
+		thingY:            []int64{0, 0},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+		p:                 player{x: 0, y: 0, z: 0},
+	}
+
+	g.tickMonsters()
+
+	if g.thingTargetPlayer[0] {
+		t.Fatal("paining monster should keep non-player target after player death")
+	}
+	if got := g.thingTargetIdx[0]; got != 1 {
+		t.Fatalf("target idx=%d want 1", got)
+	}
+	if got := g.thingThreshold[0]; got != monsterBaseThreshold {
+		t.Fatalf("threshold=%d want %d", got, monsterBaseThreshold)
+	}
+	if got := g.thingState[0]; got != monsterStatePain {
+		t.Fatalf("state=%d want pain", got)
+	}
+}
+
 func TestTickMonstersLostTargetReturnsToSpawnStateLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -1340,7 +1386,7 @@ func TestDemoTraceMonsterAttackStateMatchesDoomStateNumbers(t *testing.T) {
 		{3004, 184, 3},
 		{9, 218, 3},
 		{65, 416, 4},
-		{3001, 453, 3},
+		{3001, 452, 3},
 		{3002, 485, 3},
 		{58, 485, 3},
 		{3005, 504, 3},
@@ -1378,7 +1424,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{3004, 174, 2},
 		{9, 208, 2},
 		{65, 406, 2},
-		{3001, 443, 2},
+		{3001, 442, 2},
 		{3002, 475, 2},
 		{58, 475, 2},
 		{3005, 502, 1},
@@ -1414,7 +1460,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{3004, 176, 8},
 		{9, 210, 8},
 		{65, 408, 8},
-		{3001, 445, 8},
+		{3001, 444, 8},
 		{3002, 477, 8},
 		{58, 477, 8},
 		{3005, 503, 1},
@@ -1455,8 +1501,8 @@ func TestDemoTraceMonsterPainStateMatchesDoomStateNumbers(t *testing.T) {
 		{9, 2, 222},
 		{65, 6, 420},
 		{65, 3, 421},
-		{3001, 4, 456},
-		{3001, 2, 457},
+		{3001, 4, 455},
+		{3001, 2, 456},
 		{3002, 4, 488},
 		{3005, 12, 507},
 		{3005, 9, 508},

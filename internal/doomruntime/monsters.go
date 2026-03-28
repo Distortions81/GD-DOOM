@@ -150,7 +150,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 		return
 	}
-	if !g.monsterTargetAlive() && (i >= len(g.thingTargetPlayer) || !g.thingTargetPlayer[i]) {
+	if !g.monsterTargetAlive() && !g.monsterHasExplicitTarget(i) {
 		g.clearMonsterTargetState(i)
 		return
 	}
@@ -605,6 +605,16 @@ func (g *game) monsterHasTarget(i int) bool {
 		return idx < len(g.thingHP) && g.thingHP[idx] > 0 && (idx >= len(g.thingCollected) || !g.thingCollected[idx])
 	}
 	return false
+}
+
+func (g *game) monsterHasExplicitTarget(i int) bool {
+	if g == nil || i < 0 {
+		return false
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		return true
+	}
+	return i < len(g.thingTargetIdx) && g.thingTargetIdx[i] >= 0
 }
 
 func (g *game) monsterTargetPos(i int) (x, y, z, height, radius int64, ok bool) {
@@ -1571,10 +1581,6 @@ func monsterPainDurationTics(typ int16) int {
 }
 
 func monsterPainActionPhase(typ int16) int {
-	switch typ {
-	case 3006:
-		return 0
-	}
 	frameTics := monsterPainFrameTics(typ)
 	switch len(frameTics) {
 	case 0:
@@ -2027,7 +2033,7 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 		}
 	case 3001:
 		if phase >= 0 && phase <= 2 {
-			return 453 + phase, true
+			return 452 + phase, true
 		}
 	case 3002, 58:
 		if phase >= 0 && phase <= 2 {
