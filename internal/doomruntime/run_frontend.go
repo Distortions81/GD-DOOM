@@ -958,7 +958,7 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.rt.sessionDrawHUTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "EFFECTS VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "MUSIC", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "MUSIC OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
 }
