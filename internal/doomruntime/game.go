@@ -607,6 +607,9 @@ type game struct {
 	spectreFuzzCoarseX    int
 	spectreFuzzCoarseY    int
 	spectreFuzzCoarseSet  bool
+	spectreFuzzSamplePix  []uint32
+	spectreFuzzSampleTic  int
+	spectreFuzzSampleInit bool
 	playerViewZ           int64
 	secretFound           []bool
 	secretsFound          int
@@ -5983,11 +5986,34 @@ func (g *game) writeFuzzPixel(x, y, i int) {
 	if srcI < 0 || srcI >= len(g.wallPix32) {
 		srcI = i
 	}
+	srcPix := g.updateSpectreFuzzSource()
 	src := g.wallPix32[srcI]
+	if srcPix != nil && srcI >= 0 && srcI < len(srcPix) {
+		src = srcPix[srcI]
+	}
 	if src == 0 {
 		src = packRGBA(0, 0, 0)
 	}
 	g.writeWallPixel(i, g.shadePackedSpectreFuzz(src))
+}
+
+func (g *game) updateSpectreFuzzSource() []uint32 {
+	if g == nil || len(g.wallPix32) == 0 {
+		return nil
+	}
+	if !g.opts.SourcePortMode {
+		return g.wallPix32
+	}
+	if g.spectreFuzzSampleInit && g.spectreFuzzSampleTic == g.worldTic && len(g.spectreFuzzSamplePix) == len(g.wallPix32) {
+		return g.spectreFuzzSamplePix
+	}
+	if len(g.spectreFuzzSamplePix) != len(g.wallPix32) {
+		g.spectreFuzzSamplePix = make([]uint32, len(g.wallPix32))
+	}
+	copy(g.spectreFuzzSamplePix, g.wallPix32)
+	g.spectreFuzzSampleTic = g.worldTic
+	g.spectreFuzzSampleInit = true
+	return g.spectreFuzzSamplePix
 }
 
 func (g *game) beginSourcePortSpectreFuzzFrame(now time.Time) {
