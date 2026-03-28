@@ -174,6 +174,46 @@ func TestMonsterDropPreservesRuntimeFixedPosition(t *testing.T) {
 	}
 }
 
+func TestMonsterDropUsesSourceSupportFloor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingDropped:      []bool{false},
+		thingHP:           []int{1},
+		thingDead:         []bool{false},
+		thingDeathTics:    []int{0},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingZState:       []int64{208 * fracUnit},
+		thingFloorState:   []int64{208 * fracUnit},
+		thingCeilState:    []int64{320 * fracUnit},
+		thingSupportValid: []bool{true},
+		thingSectorCache:  []int{0},
+	}
+
+	g.damageMonster(0, 1)
+
+	if got, want := len(g.m.Things), 2; got != want {
+		t.Fatalf("thing count=%d want=%d", got, want)
+	}
+	if got := g.m.Things[1].Type; got != 2001 {
+		t.Fatalf("drop type=%d want=2001", got)
+	}
+	if got := g.thingZState[1]; got != 208*fracUnit {
+		t.Fatalf("drop z=%d want=%d", got, 208*fracUnit)
+	}
+	if got := g.thingFloorState[1]; got != 208*fracUnit {
+		t.Fatalf("drop floor=%d want=%d", got, 208*fracUnit)
+	}
+	if got := g.thingCeilState[1]; got != 320*fracUnit {
+		t.Fatalf("drop ceil=%d want=%d", got, 320*fracUnit)
+	}
+}
+
 func TestPickHitscanMonsterTarget(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
