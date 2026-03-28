@@ -4185,6 +4185,15 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.clearCutoutCoverage()
 	stageStart = time.Now()
 	for _, it := range g.billboardQueueScratch {
+		if it.shadow {
+			continue
+		}
+		g.drawCutoutItem(it, focal)
+	}
+	for _, it := range g.billboardQueueScratch {
+		if !it.shadow {
+			continue
+		}
 		g.drawCutoutItem(it, focal)
 	}
 	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
