@@ -757,16 +757,18 @@ func (sg *sessionGame) drawIntermissionPatch(screen *ebiten.Image, name string, 
 }
 
 func (sg *sessionGame) intermissionPatch(name string) (*ebiten.Image, WallTexture, bool) {
-	if sg == nil || sg.g == nil {
+	if sg == nil {
 		return nil, WallTexture{}, false
 	}
 	key := strings.ToUpper(strings.TrimSpace(name))
-	p, ok := sg.g.opts.IntermissionPatchBank[key]
-	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+	p, ok := sg.opts.IntermissionPatchBank[key]
+	if !ok {
 		return nil, WallTexture{}, false
 	}
-	img := ebiten.NewImage(p.Width, p.Height)
-	img.WritePixels(p.RGBA)
+	img, ok := sg.cachedPatchImage(&sg.intermissionImages, key, p)
+	if !ok {
+		return nil, WallTexture{}, false
+	}
 	return img, p, true
 }
 

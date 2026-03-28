@@ -170,6 +170,7 @@ func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool
 	if img, ok := g.statusPatchImg[key]; ok {
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
+	g.debugImageAlloc("status-patch:"+key, p.Width, p.Height)
 	img := ebiten.NewImage(p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.statusPatchImg[key] = img
@@ -279,6 +280,7 @@ func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, boo
 	if img, ok := g.messageFontImg[ch]; ok {
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
+	g.debugImageAlloc(fmt.Sprintf("message-font:%d", ch), p.Width, p.Height)
 	img := ebiten.NewImage(p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.messageFontImg[ch] = img

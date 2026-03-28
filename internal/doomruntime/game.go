@@ -1392,6 +1392,35 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	return g
 }
 
+func (g *game) debugImageAlloc(tag string, w, h int) {
+	if g == nil {
+		return
+	}
+	want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_IMAGE_ALLOC_RANGE"))
+	if want == "" {
+		return
+	}
+	start := 0
+	end := 0
+	if _, err := fmt.Sscanf(want, "%d:%d", &start, &end); err != nil {
+		if _, err := fmt.Sscanf(want, "%d", &start); err != nil {
+			return
+		}
+		end = start
+	}
+	if end < start {
+		start, end = end, start
+	}
+	tic := g.worldTic
+	if g.demoTick > tic {
+		tic = g.demoTick
+	}
+	if tic < start || tic > end {
+		return
+	}
+	fmt.Printf("image-alloc tag=%s world_tic=%d demo_tic=%d size=%dx%d\n", tag, g.worldTic, g.demoTick, w, h)
+}
+
 func (g *game) clearSpritePatchCache() {
 	if g == nil {
 		return
@@ -17418,6 +17447,7 @@ func (g *game) flatImageResolvedKey(key string) (*ebiten.Image, bool) {
 	if !ok || len(rgba) != 64*64*4 {
 		return nil, false
 	}
+	g.debugImageAlloc("flat:"+key, 64, 64)
 	img := ebiten.NewImage(64, 64)
 	g.writePixelsTimed(img, rgba)
 	g.flatImgCache[key] = img
@@ -18489,6 +18519,7 @@ func (g *game) menuPatch(name string) (*ebiten.Image, int, int, int, int, bool) 
 	if img, ok := g.menuPatchImg[key]; ok {
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
+	g.debugImageAlloc("menu-patch:"+key, p.Width, p.Height)
 	img := ebiten.NewImage(p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.menuPatchImg[key] = img

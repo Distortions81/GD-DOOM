@@ -91,6 +91,12 @@ type sessionGame struct {
 	crtUniforms         map[string]any
 	presentSurface      *ebiten.Image
 	bootSplashImage     *ebiten.Image
+	menuPatchImages     map[string]*ebiten.Image
+	intermissionImages  map[string]*ebiten.Image
+	statusPatchImages   map[string]*ebiten.Image
+	spritePatchImages   map[string]*ebiten.Image
+	messageFontImages   map[rune]*ebiten.Image
+	flatImages          map[string]*ebiten.Image
 	menuSfx             *sessionaudio.MenuController
 	finalScreenDrawOp   ebiten.DrawImageOptions
 	transition          sessiontransition.Controller
@@ -375,7 +381,94 @@ func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
 	if factory == nil {
 		factory = newGame
 	}
-	return gameplay.BuildRuntime(factory, m, opts)
+	g := gameplay.BuildRuntime(factory, m, opts)
+	if g == nil {
+		return nil
+	}
+	if sg.menuPatchImages == nil {
+		sg.menuPatchImages = make(map[string]*ebiten.Image, 32)
+	}
+	if sg.intermissionImages == nil {
+		sg.intermissionImages = make(map[string]*ebiten.Image, 96)
+	}
+	if sg.statusPatchImages == nil {
+		sg.statusPatchImages = make(map[string]*ebiten.Image, 96)
+	}
+	if sg.spritePatchImages == nil {
+		sg.spritePatchImages = make(map[string]*ebiten.Image, 256)
+	}
+	if sg.messageFontImages == nil {
+		sg.messageFontImages = make(map[rune]*ebiten.Image, 96)
+	}
+	if sg.flatImages == nil {
+		sg.flatImages = make(map[string]*ebiten.Image, 64)
+	}
+	g.menuPatchImg = sg.menuPatchImages
+	g.statusPatchImg = sg.statusPatchImages
+	g.spritePatchImg = sg.spritePatchImages
+	g.messageFontImg = sg.messageFontImages
+	g.flatImgCache = sg.flatImages
+	sg.prewarmSharedRenderCaches(g)
+	return g
+}
+
+func (sg *sessionGame) prewarmSharedRenderCaches(g *game) {
+	if sg == nil || g == nil {
+		return
+	}
+	if len(sg.menuPatchImages) == 0 {
+		for key, p := range g.opts.MenuPatchBank {
+			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+				continue
+			}
+			img := ebiten.NewImage(p.Width, p.Height)
+			img.WritePixels(p.RGBA)
+			sg.menuPatchImages[key] = img
+		}
+	}
+	if len(sg.intermissionImages) == 0 {
+		for key, p := range g.opts.IntermissionPatchBank {
+			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+				continue
+			}
+			img := ebiten.NewImage(p.Width, p.Height)
+			img.WritePixels(p.RGBA)
+			sg.intermissionImages[key] = img
+		}
+	}
+	if len(sg.statusPatchImages) == 0 {
+		for key, p := range g.opts.StatusPatchBank {
+			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+				continue
+			}
+			img := ebiten.NewImage(p.Width, p.Height)
+			img.WritePixels(p.RGBA)
+			sg.statusPatchImages[key] = img
+		}
+	}
+	if len(sg.messageFontImages) == 0 {
+		for ch, p := range g.opts.MessageFontBank {
+			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+				continue
+			}
+			img := ebiten.NewImage(p.Width, p.Height)
+			img.WritePixels(p.RGBA)
+			sg.messageFontImages[ch] = img
+		}
+	}
+	if len(sg.spritePatchImages) == 0 {
+		for key, p := range g.opts.SpritePatchBank {
+			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
+				continue
+			}
+			img := ebiten.NewImage(p.Width, p.Height)
+			img.WritePixels(p.RGBA)
+			sg.spritePatchImages[key] = img
+		}
+	}
+	if len(sg.flatImages) == 0 {
+		g.precacheMapTextureAssets()
+	}
 }
 
 func (sg *sessionGame) optionState() gameplay.OptionState {
