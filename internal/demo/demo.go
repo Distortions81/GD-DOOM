@@ -94,11 +94,10 @@ func Parse(data []byte) (*Script, error) {
 		return nil, fmt.Errorf("unsupported demo version %d", h.Version)
 	}
 	tics := make([]Tic, 0, maxInt(1, (len(data)-HeaderSize-1)/4))
+	foundMarker := false
 	for i := HeaderSize; i < len(data); {
 		if data[i] == Marker {
-			if i != len(data)-1 {
-				return nil, fmt.Errorf("trailing bytes after demo marker")
-			}
+			foundMarker = true
 			break
 		}
 		if i+4 > len(data) {
@@ -115,7 +114,7 @@ func Parse(data []byte) (*Script, error) {
 	if len(tics) == 0 {
 		return nil, fmt.Errorf("demo has no tics")
 	}
-	if data[len(data)-1] != Marker {
+	if !foundMarker {
 		return nil, fmt.Errorf("missing demo marker")
 	}
 	return &Script{Header: h, Tics: tics}, nil
