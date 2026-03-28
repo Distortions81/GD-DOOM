@@ -218,7 +218,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 
 	ranStateEntryAction := false
 	if resumedFromPain || resumedFromAttack {
-		if stop, ranChase := g.runMonsterIdleOrChaseEntryAction(i, th.Type, tx, ty, resumedFromAttack); stop {
+		if stop, ranChase := g.runMonsterIdleOrChaseEntryAction(i, th.Type, tx, ty); stop {
 			return
 		} else if ranChase {
 			ranStateEntryAction = true
@@ -727,7 +727,7 @@ func (g *game) resetMonsterIdleOrChaseState(i int, typ int16) {
 	g.setMonsterThinkState(i, typ, g.monsterIdleOrChaseState(i), g.monsterIdleOrChaseTics(i, typ))
 }
 
-func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, allowJustAttackedReacquire bool) (stop bool, ranChase bool) {
+func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64) (stop bool, ranChase bool) {
 	if g == nil || i < 0 || i >= len(g.thingState) {
 		return false, false
 	}
@@ -752,9 +752,6 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 			g.monsterTurnTowardMoveDir(i)
 			if !g.monsterHasTarget(i) {
 				reacquired, continueChase := g.monsterRunLostTargetChaseState(i, typ, tx, ty)
-				if allowJustAttackedReacquire && reacquired && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
-					continue
-				}
 				if !reacquired || !continueChase {
 					return true, false
 				}
