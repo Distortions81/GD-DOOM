@@ -616,6 +616,46 @@ func TestTickFloors_RemoveOnOvershootTicNotExactArrival(t *testing.T) {
 	}
 }
 
+func TestTickPlat_UpwardBlockedByPlayerReversesLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 60}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{60 * fracUnit},
+		plats: map[int]*platThinker{
+			0: {
+				status: platStatusUp,
+				speed:  8 * fracUnit,
+				high:   40 * fracUnit,
+				wait:   platWaitTics,
+			},
+		},
+		p: player{
+			x:      32 * fracUnit,
+			y:      32 * fracUnit,
+			z:      0,
+			floorz: 0,
+			ceilz:  60 * fracUnit,
+		},
+	}
+
+	g.tickPlat(0, g.plats[0])
+
+	if got, want := g.sectorFloor[0], int64(0); got != want {
+		t.Fatalf("floor after blocked lift tick=%d want=%d", got, want)
+	}
+	if got, want := g.p.z, int64(0); got != want {
+		t.Fatalf("player z after blocked lift tick=%d want=%d", got, want)
+	}
+	if got, want := g.plats[0].status, platStatusDown; got != want {
+		t.Fatalf("plat status=%v want %v", got, want)
+	}
+	if got, want := g.plats[0].count, platWaitTics; got != want {
+		t.Fatalf("plat count=%d want %d", got, want)
+	}
+}
+
 func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

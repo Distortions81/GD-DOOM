@@ -268,6 +268,58 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	g.heightClipAroundSector(sec, oldPlayerFloor)
 }
 
+func (g *game) sectorMoveWouldBlockLiveActor(sec int, newFloor, newCeil int64) bool {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return false
+	}
+	oldFloor := g.sectorFloor[sec]
+	oldCeil := g.sectorCeil[sec]
+	oldPlayerZ := g.p.z
+	oldPlayerFloor := g.p.floorz
+	oldPlayerCeil := g.p.ceilz
+	g.sectorFloor[sec] = newFloor
+	g.sectorCeil[sec] = newCeil
+	defer func() {
+		g.sectorFloor[sec] = oldFloor
+		g.sectorCeil[sec] = oldCeil
+		g.p.z = oldPlayerZ
+		g.p.floorz = oldPlayerFloor
+		g.p.ceilz = oldPlayerCeil
+	}()
+
+	if g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius) && !g.heightClipPlayer(oldPlayerFloor) {
+		return true
+	}
+	for i, th := range g.m.Things {
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			continue
+		}
+		if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
+			continue
+		}
+		if !thingTypeIsShootable(th.Type) || !g.thingTouchesSector(sec, i, th) {
+			continue
+		}
+		oldZ, oldThingFloor, oldThingCeil := g.thingSupportState(i, th)
+		oldValid := i >= 0 && i < len(g.thingSupportValid) && g.thingSupportValid[i]
+		if !g.heightClipThing(i, th) {
+			g.setThingSupportState(i, oldZ, oldThingFloor, oldThingCeil)
+			if i >= 0 && i < len(g.thingSupportValid) {
+				g.thingSupportValid[i] = oldValid
+			}
+			return true
+		}
+		g.setThingSupportState(i, oldZ, oldThingFloor, oldThingCeil)
+		if i >= 0 && i < len(g.thingSupportValid) {
+			g.thingSupportValid[i] = oldValid
+		}
+	}
+	return false
+}
+
 func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	if g == nil || sec < 0 || sec >= len(g.sectorCeil) {
 		return
@@ -1469,6 +1521,11 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 	switch pt.status {
 	case platStatusUp:
 		next := g.sectorFloor[sec] + pt.speed
+		if next <= pt.high && g.sectorMoveWouldBlockLiveActor(sec, next, g.sectorCeil[sec]) {
+			pt.count = pt.wait
+			pt.status = platStatusDown
+			return
+		}
 		if next > pt.high {
 			next = pt.high
 			g.setSectorFloorHeight(sec, next)
