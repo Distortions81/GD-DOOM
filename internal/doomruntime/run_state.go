@@ -416,6 +416,24 @@ func (sg *sessionGame) prewarmWADAssetCaches() {
 	if sg == nil {
 		return
 	}
+	if sg.menuPatchImages == nil {
+		sg.menuPatchImages = make(map[string]*ebiten.Image, 32)
+	}
+	if sg.intermissionImages == nil {
+		sg.intermissionImages = make(map[string]*ebiten.Image, 96)
+	}
+	if sg.statusPatchImages == nil {
+		sg.statusPatchImages = make(map[string]*ebiten.Image, 96)
+	}
+	if sg.spritePatchImages == nil {
+		sg.spritePatchImages = make(map[string]*ebiten.Image, 256)
+	}
+	if sg.messageFontImages == nil {
+		sg.messageFontImages = make(map[rune]*ebiten.Image, 96)
+	}
+	if sg.flatImages == nil {
+		sg.flatImages = make(map[string]*ebiten.Image, 64)
+	}
 	if sg.bootSplashImage == nil {
 		p := sg.opts.BootSplash
 		if p.Width > 0 && p.Height > 0 && len(p.RGBA) == p.Width*p.Height*4 {
@@ -428,7 +446,7 @@ func (sg *sessionGame) prewarmWADAssetCaches() {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
-			img := ebiten.NewImage(p.Width, p.Height)
+			img := newDebugImage("prewarm:menu:"+key, p.Width, p.Height)
 			img.WritePixels(p.RGBA)
 			sg.menuPatchImages[key] = img
 		}
@@ -438,7 +456,7 @@ func (sg *sessionGame) prewarmWADAssetCaches() {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
-			img := ebiten.NewImage(p.Width, p.Height)
+			img := newDebugImage("prewarm:intermission:"+key, p.Width, p.Height)
 			img.WritePixels(p.RGBA)
 			sg.intermissionImages[key] = img
 		}
@@ -448,7 +466,7 @@ func (sg *sessionGame) prewarmWADAssetCaches() {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
-			img := ebiten.NewImage(p.Width, p.Height)
+			img := newDebugImage("prewarm:status:"+key, p.Width, p.Height)
 			img.WritePixels(p.RGBA)
 			sg.statusPatchImages[key] = img
 		}
@@ -458,7 +476,7 @@ func (sg *sessionGame) prewarmWADAssetCaches() {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
-			img := ebiten.NewImage(p.Width, p.Height)
+			img := newDebugImage("prewarm:font:"+string(ch), p.Width, p.Height)
 			img.WritePixels(p.RGBA)
 			sg.messageFontImages[ch] = img
 		}
@@ -468,7 +486,7 @@ func (sg *sessionGame) prewarmWADAssetCaches() {
 			if p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 				continue
 			}
-			img := ebiten.NewImage(p.Width, p.Height)
+			img := newDebugImage("prewarm:sprite:"+key, p.Width, p.Height)
 			img.WritePixels(p.RGBA)
 			sg.spritePatchImages[key] = img
 		}

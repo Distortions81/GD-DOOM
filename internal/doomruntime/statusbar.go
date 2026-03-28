@@ -73,7 +73,7 @@ func (g *game) ensureStatusBarCache(state statusBarCacheState) {
 	w := doomLogicalW
 	h := doomLogicalH - int(statusBarLogicalY)
 	if g.statusBarCacheImg == nil || g.statusBarCacheImg.Bounds().Dx() != w || g.statusBarCacheImg.Bounds().Dy() != h {
-		g.statusBarCacheImg = ebiten.NewImage(w, h)
+		g.statusBarCacheImg = newDebugImage("statusbar:cache", w, h)
 		g.statusBarCacheValid = false
 	}
 	if g.statusBarCacheValid && g.statusBarCacheState == state {
@@ -171,7 +171,7 @@ func (g *game) statusPatch(name string) (*ebiten.Image, int, int, int, int, bool
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
 	g.debugImageAlloc("status-patch:"+key, p.Width, p.Height)
-	img := ebiten.NewImage(p.Width, p.Height)
+	img := newDebugImage("statusbar:patch:"+key, p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.statusPatchImg[key] = img
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
@@ -281,7 +281,7 @@ func (g *game) messageFontGlyph(ch rune) (*ebiten.Image, int, int, int, int, boo
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
 	g.debugImageAlloc(fmt.Sprintf("message-font:%d", ch), p.Width, p.Height)
-	img := ebiten.NewImage(p.Width, p.Height)
+	img := newDebugImage("statusbar:font:"+string(ch), p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.messageFontImg[ch] = img
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true

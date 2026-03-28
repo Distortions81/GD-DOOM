@@ -2207,21 +2207,21 @@ func newIWADPickerGame(choices []iwadChoice, load func(string, pickerProfile) (*
 			game.sfx = audiofx.NewMenuPlayer(buildAutomapSoundBank(sound.ImportDigitalSounds(wf), false), 0.5)
 			if ts, err := doomtex.LoadFromWAD(wf); err == nil {
 				if rgba, w, h, err := ts.BuildTextureRGBA("WALL24_1", 0); err == nil && w > 0 && h > 0 && len(rgba) == w*h*4 {
-					img := ebiten.NewImage(w, h)
+					img := newDebugImage("picker:bg", w, h)
 					img.WritePixels(rgba)
 					game.bg = img
 				}
 				if bank := buildMenuPatchBank(ts); bank != nil {
 					game.menuImg = make(map[string]*ebiten.Image, 3)
 					if patch, ok := bank["M_DOOM"]; ok && patch.Width > 0 && patch.Height > 0 && len(patch.RGBA) == patch.Width*patch.Height*4 {
-						img := ebiten.NewImage(patch.Width, patch.Height)
+						img := newDebugImage("picker:menu:M_DOOM", patch.Width, patch.Height)
 						img.WritePixels(patch.RGBA)
 						game.logo = img
 						game.menuImg["M_DOOM"] = img
 					}
 					for _, name := range []string{"M_SKULL1", "M_SKULL2"} {
 						if patch, ok := bank[name]; ok && patch.Width > 0 && patch.Height > 0 && len(patch.RGBA) == patch.Width*patch.Height*4 {
-							img := ebiten.NewImage(patch.Width, patch.Height)
+							img := newDebugImage("picker:menu:"+name, patch.Width, patch.Height)
 							img.WritePixels(patch.RGBA)
 							game.menuImg[name] = img
 						}
@@ -2509,7 +2509,7 @@ func (g *iwadPickerGame) pickerFontGlyph(ch rune) (*ebiten.Image, int, int, int,
 	if img, ok := g.fontImg[ch]; ok {
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
-	img := ebiten.NewImage(p.Width, p.Height)
+	img := newDebugImage("picker:font:"+string(ch), p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.fontImg[ch] = img
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true

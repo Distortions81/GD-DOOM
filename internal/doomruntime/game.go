@@ -12086,7 +12086,7 @@ func (g *game) screenToWorld(sx, sy float64) (float64, float64) {
 func (g *game) ensureMapFloorLayer() {
 	need := g.viewW * g.viewH * 4
 	if g.mapFloorLayer == nil || g.mapFloorW != g.viewW || g.mapFloorH != g.viewH || len(g.mapFloorPix) != need {
-		g.mapFloorLayer = ebiten.NewImageWithOptions(image.Rect(0, 0, g.viewW, g.viewH), &ebiten.NewImageOptions{
+		g.mapFloorLayer = newDebugImageWithOptions("framebuffer:map-floor", image.Rect(0, 0, g.viewW, g.viewH), &ebiten.NewImageOptions{
 			Unmanaged: true,
 		})
 		g.mapFloorPix = make([]byte, need)
@@ -12098,7 +12098,7 @@ func (g *game) ensureMapFloorLayer() {
 func (g *game) ensureWallLayer() {
 	need := g.viewW * g.viewH * 4
 	if g.wallLayer == nil || g.wallW != g.viewW || g.wallH != g.viewH || len(g.wallPix) != need {
-		g.wallLayer = ebiten.NewImageWithOptions(image.Rect(0, 0, g.viewW, g.viewH), &ebiten.NewImageOptions{
+		g.wallLayer = newDebugImageWithOptions("framebuffer:wall", image.Rect(0, 0, g.viewW, g.viewH), &ebiten.NewImageOptions{
 			Unmanaged: true,
 		})
 		g.wallPix = make([]byte, need)
@@ -12465,7 +12465,7 @@ func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex *Wa
 		g.skyLayerProjSampleH = sampleH
 	}
 	if g.skyLayerTex == nil || g.skyLayerTexKey != texKey || g.skyLayerTexW != tex.Width || g.skyLayerTexH != tex.Height {
-		img := ebiten.NewImage(tex.Width, tex.Height)
+		img := newDebugImage("sky:"+texKey, tex.Width, tex.Height)
 		img.WritePixels(tex.RGBA)
 		g.skyLayerTex = img
 		g.skyLayerTexKey = texKey
@@ -16245,7 +16245,7 @@ func (g *game) buildMapFloorWorldLayer() bool {
 		return false
 	}
 
-	layer := ebiten.NewImage(w, h)
+	layer := newDebugImage("map-floor-world", w, h)
 	pix := make([]byte, w*h*4)
 
 	minX := g.bounds.minX
@@ -17448,7 +17448,7 @@ func (g *game) flatImageResolvedKey(key string) (*ebiten.Image, bool) {
 		return nil, false
 	}
 	g.debugImageAlloc("flat:"+key, 64, 64)
-	img := ebiten.NewImage(64, 64)
+	img := newDebugImage("flat:"+key, 64, 64)
 	g.writePixelsTimed(img, rgba)
 	g.flatImgCache[key] = img
 	return img, true
@@ -18520,7 +18520,7 @@ func (g *game) menuPatch(name string) (*ebiten.Image, int, int, int, int, bool) 
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
 	g.debugImageAlloc("menu-patch:"+key, p.Width, p.Height)
-	img := ebiten.NewImage(p.Width, p.Height)
+	img := newDebugImage("menu-patch:"+key, p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.menuPatchImg[key] = img
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true

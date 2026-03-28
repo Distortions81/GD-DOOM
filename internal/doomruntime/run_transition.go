@@ -11,7 +11,7 @@ import (
 )
 
 func newUnmanagedImage(w, h int) *ebiten.Image {
-	return ebiten.NewImageWithOptions(image.Rect(0, 0, w, h), &ebiten.NewImageOptions{
+	return newDebugImageWithOptions("transition:unmanaged", image.Rect(0, 0, w, h), &ebiten.NewImageOptions{
 		Unmanaged: true,
 	})
 }

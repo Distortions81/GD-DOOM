@@ -1252,7 +1252,7 @@ func (sg *sessionGame) cachedPatchImage(cache *map[string]*ebiten.Image, key str
 	if img := (*cache)[key]; img != nil {
 		return img, true
 	}
-	img := ebiten.NewImage(p.Width, p.Height)
+	img := newDebugImage("frontend:menu:"+key, p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	(*cache)[key] = img
 	return img, true

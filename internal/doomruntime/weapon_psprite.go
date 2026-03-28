@@ -554,7 +554,7 @@ func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
 	g.debugImageAlloc("sprite-patch:"+key, p.Width, p.Height)
-	img := ebiten.NewImage(p.Width, p.Height)
+	img := newDebugImage("sprite-patch:"+key, p.Width, p.Height)
 	img.WritePixels(p.RGBA)
 	g.spritePatchImg[key] = img
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
