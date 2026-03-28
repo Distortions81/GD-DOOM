@@ -227,6 +227,26 @@ func TestApplyPickerSynthSetsMeltySynthVolumeAndBackend(t *testing.T) {
 	}
 }
 
+func TestApplyPickerSynthKeepsMeltySynthVolumeOverrideWhenSoundFontAlreadySet(t *testing.T) {
+	cfg := renderBuildConfig{
+		musicBackend:  music.BackendImpSynth,
+		musicVolume:   1.0,
+		soundFontPath: "soundfonts/sc55.sf2",
+	}
+
+	got := applyPickerSynth(cfg, 1)
+
+	if got.musicBackend != music.BackendMeltySynth {
+		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
+	}
+	if got.musicVolume != 0.7 {
+		t.Fatalf("musicVolume=%v want 0.7", got.musicVolume)
+	}
+	if got.soundFontPath != "soundfonts/sc55.sf2" {
+		t.Fatalf("soundFontPath=%q want soundfonts/sc55.sf2", got.soundFontPath)
+	}
+}
+
 func TestSoundFontDefaultRankPrefersSC55(t *testing.T) {
 	if got := soundFontDefaultRank("soundfonts/sc55.sf2"); got != 0 {
 		t.Fatalf("rank(sc55)=%d want 0", got)

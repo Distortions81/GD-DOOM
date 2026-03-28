@@ -79,14 +79,7 @@ func browserLocalWADDataForPath(path string) ([]byte, bool) {
 }
 
 func browserLocalWADStore() js.Value {
-	root := js.Global()
-	parent := root.Get("parent")
-	if !parent.IsUndefined() && !parent.IsNull() {
-		if store := parent.Get("__gddoomLocalWADs"); !store.IsUndefined() && !store.IsNull() {
-			return store
-		}
-	}
-	return root.Get("__gddoomLocalWADs")
+	return js.Global().Get("__gddoomLocalWADs")
 }
 
 func browserLocalWADPath(entry js.Value) string {

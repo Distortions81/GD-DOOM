@@ -1786,15 +1786,6 @@ func detectAvailableIWADChoices(dir string) []iwadChoice {
 				goto nextKnownIWAD
 			}
 		}
-		for _, candidate := range k.Paths {
-			if _, ok := wad.EmbeddedDataForPath(candidate); ok {
-				out = append(out, iwadChoice{
-					Path:  candidate,
-					Label: k.Label,
-				})
-				goto nextKnownIWAD
-			}
-		}
 		for _, path := range browserPaths {
 			if !browserWADMatchesKnownChoice(path, k) {
 				continue
@@ -1805,6 +1796,15 @@ func detectAvailableIWADChoices(dir string) []iwadChoice {
 			})
 			usedBrowser[strings.ToUpper(strings.TrimSpace(path))] = struct{}{}
 			goto nextKnownIWAD
+		}
+		for _, candidate := range k.Paths {
+			if _, ok := wad.EmbeddedDataForPath(candidate); ok {
+				out = append(out, iwadChoice{
+					Path:  candidate,
+					Label: k.Label,
+				})
+				goto nextKnownIWAD
+			}
 		}
 	nextKnownIWAD:
 	}
@@ -2349,10 +2349,12 @@ func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
 	}
 	option := pickerSynths[synthIndex]
 	cfg.musicBackend = option.backend
-	if music.ResolveBackend(option.backend) == music.BackendMeltySynth && strings.TrimSpace(cfg.soundFontPath) == "" {
+	if music.ResolveBackend(option.backend) == music.BackendMeltySynth {
 		cfg.musicVolume = 0.7
-		if choices := detectAvailableSoundFonts("soundfonts"); len(choices) > 0 {
-			cfg.soundFontPath = choices[0]
+		if strings.TrimSpace(cfg.soundFontPath) == "" {
+			if choices := detectAvailableSoundFonts("soundfonts"); len(choices) > 0 {
+				cfg.soundFontPath = choices[0]
+			}
 		}
 	}
 	return cfg
@@ -2518,6 +2520,7 @@ func (g *iwadPickerGame) Update() error {
 				return nil
 			}
 			g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+			notifyBrowserSessionStarted()
 			return nil
 		}
 	default:

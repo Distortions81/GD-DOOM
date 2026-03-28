@@ -60,6 +60,9 @@
       align-items: flex-end;
       gap: 8px;
     }
+    .utilitybar[hidden] {
+      display: none;
+    }
     .wad-button {
       padding: 10px 14px;
       border: 2px solid #ffc24b;
@@ -216,7 +219,7 @@
 </head>
 <body>
   <div class="utilitybar" aria-label="Browser WAD controls">
-    <button id="local-wad-button" class="wad-button" type="button">Load Local WAD</button>
+    <button id="local-wad-button" class="wad-button" type="button">Load IWAD File</button>
     <input id="local-wad-input" type="file" accept=".wad,.WAD" multiple hidden>
     <div id="local-wad-status" class="wad-status" aria-live="polite"></div>
   </div>
@@ -234,7 +237,7 @@
       <p class="subtitle">WASM Alpha</p>
       <p class="prompt">Click To Play</p>
       <p class="hint">The click page stays here until the game frame is focused.</p>
-      <p class="hint">Use Load Local WAD to add browser-selected WAD files to the picker.</p>
+      <p class="hint">Use Load IWAD File to add a browser-selected IWAD file to the picker.</p>
       <a class="repo-link" href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View GitHub Repo</a>
       <p class="controls">
         <span class="controls-title">Controls</span>
