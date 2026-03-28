@@ -1,17 +1,14 @@
 # Demo Desync Status
 
-Current stock-demo status as of the latest sweep and `DOOM1 demo1` follow-up.
+Current stock-demo status after fixing `DOOM1 demo1`.
 
 ## DOOM1
 
 ### demo1
 
-- Status: desync
-- Current first mismatch: `line=2525`
-- Path: `root.mobjs[23].angle`
-- Reference: `3758096384`
-- GD-DOOM: `3221225472`
-- Notes: the earlier dropped-shotgun support-state mismatch at `line=2440` is fixed. Current investigation is on a zombieman chase/retarget divergence on `E1M5`.
+- Status: clean
+- Result: `traces match lines=5026`
+- Notes: fixed a same-tic lost-target reacquire / `JUSTATTACKED` chase parity issue on `E1M5`.
 
 ### demo2
 

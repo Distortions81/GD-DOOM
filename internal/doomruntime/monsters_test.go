@@ -3013,7 +3013,7 @@ func TestTickMonstersAttackExpiryResumesChaseSameTicLikeDoom(t *testing.T) {
 	}
 }
 
-func TestTickMonstersAttackExpiryLostTargetReturnsToSpawnLikeDoom(t *testing.T) {
+func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -3069,23 +3069,23 @@ func TestTickMonstersAttackExpiryLostTargetReturnsToSpawnLikeDoom(t *testing.T) 
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
 		t.Fatalf("target should switch to the player through same-tic A_Look: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
 	}
-	if !g.thingJustAtk[0] {
-		t.Fatal("thingJustAtk should remain set when lost-target chase returns before JUSTATTACKED handling")
-	}
-	if got := g.thingAngleState[0]; got != 3221225472 {
-		t.Fatalf("angle=%d want 3221225472 after the lost-target chase turn", got)
+	if g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should clear after the resumed chase honors Doom's just-attacked gate")
 	}
 	if g.thingState[0] != monsterStateSee {
-		t.Fatalf("state=%d want see after same-tic spawn look wake", g.thingState[0])
+		t.Fatalf("state=%d want see after same-tic chase resume", g.thingState[0])
 	}
 	if g.thingStatePhase[0] != 0 {
-		t.Fatalf("phase=%d want 0 after same-tic wake", g.thingStatePhase[0])
+		t.Fatalf("phase=%d want 0 after same-tic chase resume", g.thingStatePhase[0])
 	}
 	if want := monsterSeeStateTicsAtPhase(3004, 0, false); g.thingStateTics[0] != want {
-		t.Fatalf("state tics=%d want %d after same-tic wake", g.thingStateTics[0], want)
+		t.Fatalf("state tics=%d want %d after same-tic chase resume", g.thingStateTics[0], want)
 	}
-	if got := g.thingMoveCount[0]; got != 0 {
-		t.Fatalf("movecount=%d want 0 when no chase move occurs", got)
+	if got := g.thingMoveCount[0]; got < 0 || got > 15 {
+		t.Fatalf("movecount=%d want [0,15] after just-attacked chase pick", got)
+	}
+	if got := g.thingAngleState[0]; got == 2798540703 || got == 3221225472 {
+		t.Fatalf("angle=%d want a new post-reacquire chase turn", got)
 	}
 }
 
