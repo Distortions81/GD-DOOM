@@ -1,6 +1,6 @@
 # Demo Desync Status
 
-Current stock-demo status after fixing `DOOM1 demo1`.
+Current stock-demo status after fixing `DOOM1 demo1` and `DOOM1 demo2`.
 
 ## DOOM1
 
@@ -13,12 +13,10 @@ Current stock-demo status after fixing `DOOM1 demo1`.
 
 ### demo2
 
-- Status: desync
-- Current first mismatch: `line=3756`
-- Path: `root.mobjs[238].angle`
-- Reference: `536870912`
-- GD-DOOM: `1073741824`
-- Notes: fixed the earlier dropped-clip support/ceiling mismatch at `line=1726`.
+- Status: clean
+- Result: `traces match lines=3836`
+- Fixed in: `3ab5506`, `9570e96`
+- Notes: fixed the dropped-clip support parity issue first, then the remaining drop/chase parity causing the late target mismatch.
 
 ### demo3
 

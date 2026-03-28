@@ -17,24 +17,13 @@ License: GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from
 
 ## Status
 
-GD-DOOM is still alpha. Core runtime systems are in place, but full parity remains in progress, especially around weapon completeness, monster edge cases, and deterministic demo compatibility.
-
-## Purpose And Scope
-
-GD-DOOM is not just a renderer or file parser. The project aims to cover the full path from WAD ingestion to interactive play:
-
-- WAD loading for IWAD and PWAD stacks, including overlay behavior and strict map validation.
-- Runtime gameplay systems such as pickups, doors, hazardous sectors, combat foundations, key progression, save/load, and level transitions.
-- Multiple presentation modes, including a more faithful Doom-style profile and a more permissive source-port-oriented mode.
-- Audio, music, frontend screens, automap, and session flow needed for a usable end-to-end runtime.
-- Demo playback, live recording, tracing, and profiling workflows useful for regression work and performance analysis.
+GD-DOOM is still alpha. Core runtime systems are in place, but full parity remains in progress, monster edge cases, and deterministic demo compatibility.
 
 ## Highlights
 
 - Loads original Doom data directly, including stacked IWAD plus PWAD configurations.
 - Runs as a desktop Ebiten application with walk view, automap, menus, help screens, and pause/quit flows.
 - Supports Doom MUS playback through either the built-in OPL3 path (`impsynth`) or `go-meltysynth` with external SoundFonts.
-- Supports faithful defaults alongside optional source-port conveniences such as mouselook and expanded automap behavior.
 - Includes Doom v1.10 demo playback, demo recording, and JSONL state tracing for investigation and benchmarking.
 - Provides profiling helpers and benchmark-oriented workflows for runtime and rendering work.
 
@@ -56,7 +45,6 @@ PWAD overlays:
 go run ./cmd/gddoom -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
 ```
 
-By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles walk/map.
 If `-map` is omitted, GD-DOOM starts on the first valid map it finds, preferring the last PWAD overlay in the stack when overlays are present.
 If `-wad` is omitted and the working directory contains one local known IWAD, GD-DOOM uses it automatically; if multiple known IWADs are present during render startup, it opens an in-game picker.
 
