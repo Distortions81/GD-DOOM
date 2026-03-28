@@ -76,6 +76,31 @@ func TestMonsterSpriteNameForViewUsesAttackFrames(t *testing.T) {
 	}
 }
 
+func TestThingRenderPosFixedInterpolatesMonsterPosition(t *testing.T) {
+	g := &game{
+		prevThingX:        []int64{0},
+		prevThingY:        []int64{0},
+		prevThingZ:        []int64{0},
+		thingX:            []int64{128 * fracUnit},
+		thingY:            []int64{64 * fracUnit},
+		thingZState:       []int64{32 * fracUnit},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+	}
+	th := mapdata.Thing{Type: 3001}
+	x, y, z := g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(64*fracUnit); got != want {
+		t.Fatalf("x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(32*fracUnit); got != want {
+		t.Fatalf("y=%d want=%d", got, want)
+	}
+	if got, want := z, int64(16*fracUnit); got != want {
+		t.Fatalf("z=%d want=%d", got, want)
+	}
+}
+
 func TestMonsterSpriteNameForViewUsesPainFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{

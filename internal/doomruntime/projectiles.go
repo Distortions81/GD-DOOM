@@ -24,6 +24,9 @@ type projectile struct {
 	x            int64
 	y            int64
 	z            int64
+	prevX        int64
+	prevY        int64
+	prevZ        int64
 	vx           int64
 	vy           int64
 	vz           int64
@@ -184,6 +187,9 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		x:            sx,
 		y:            sy,
 		z:            sz,
+		prevX:        sx,
+		prevY:        sy,
+		prevZ:        sz,
 		vx:           vx,
 		vy:           vy,
 		vz:           vz,
@@ -318,6 +324,9 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	p.y = ny
 	p.floorz, p.ceilz = tmfloorz, tmceilingz
 	p.z = nz
+	p.prevX = ox
+	p.prevY = oy
+	p.prevZ = oz
 	if p.z <= p.floorz {
 		p.z = p.floorz
 		g.explodeProjectileAt(p, p.x, p.y, p.z)
@@ -425,6 +434,9 @@ func (g *game) spawnPlayerRocket() bool {
 		x:            sx,
 		y:            sy,
 		z:            sz,
+		prevX:        sx,
+		prevY:        sy,
+		prevZ:        sz,
 		vx:           vx,
 		vy:           vy,
 		vz:           vz,
@@ -498,6 +510,9 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		x:            sx,
 		y:            sy,
 		z:            sz,
+		prevX:        sx,
+		prevY:        sy,
+		prevZ:        sz,
 		vx:           vx,
 		vy:           vy,
 		vz:           vz,

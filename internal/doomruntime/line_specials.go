@@ -1135,6 +1135,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.setThingPosFixed(actorIdx, tx, ty)
 			g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
 			g.setThingWorldAngle(actorIdx, destAngle)
+			g.snapThingRenderState(actorIdx)
 			if actorIdx >= 0 && actorIdx < len(g.thingMoveDir) {
 				g.thingMoveDir[actorIdx] = monsterDirNoDir
 			}

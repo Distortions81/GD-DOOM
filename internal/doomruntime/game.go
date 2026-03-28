@@ -523,6 +523,9 @@ type game struct {
 	thingCollected        []bool
 	thingDropped          []bool
 	thingThinkerOrder     []int64
+	prevThingX            []int64
+	prevThingY            []int64
+	prevThingZ            []int64
 	thingX                []int64
 	thingY                []int64
 	thingMomX             []int64
@@ -8556,15 +8559,17 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
+	alpha := g.renderAlpha
 	for pi, p := range g.projectiles {
-		px := float64(p.x)/fracUnit - camX
-		py := float64(p.y)/fracUnit - camY
+		rx, ry, rz := g.projectileRenderPosFixed(p, alpha)
+		px := float64(rx)/fracUnit - camX
+		py := float64(ry)/fracUnit - camY
 		f := px*ca + py*sa
 		s := -px*sa + py*ca
 		if f <= near {
 			continue
 		}
-		sec := g.sectorAt(p.x, p.y)
+		sec := g.sectorAt(rx, ry)
 		clipTop := 0
 		clipBottom := viewH - 1
 		clipRadius := p.radius
@@ -8572,7 +8577,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			clipRadius = 8 * fracUnit
 		}
 		var clipOK bool
-		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(rx, ry, clipRadius, viewH, eyeZ, f, focal)
 		if !clipOK {
 			continue
 		}
@@ -8581,7 +8586,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		yb := float64(viewH)/2 - ((float64(p.z)/fracUnit-eyeZ)/f)*focal
+		yb := float64(viewH)/2 - ((float64(rz)/fracUnit-eyeZ)/f)*focal
 		ref, ok := g.projectileSpriteRef(p.kind, p.frame)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
@@ -9556,6 +9561,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 	ca := math.Cos(camAng)
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
+	alpha := g.renderAlpha
 	for i, th := range g.m.Things {
 		if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 			continue
@@ -9566,7 +9572,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 		if !g.monsterVisibleAfterDeath(i, th.Type) {
 			continue
 		}
-		txFixed, tyFixed := g.thingPosFixed(i, th)
+		txFixed, tyFixed, baseZFixed := g.thingRenderPosFixed(i, th, alpha)
 		tx := float64(txFixed)/fracUnit - camX
 		ty := float64(tyFixed)/fracUnit - camY
 		f := tx*ca + ty*sa
@@ -9575,7 +9581,6 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		baseZFixed := g.monsterRenderBaseZ(i, th, txFixed, tyFixed)
 		baseZ := float64(baseZFixed) / fracUnit
 		yb := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focal
 		ref, flip, ok := g.monsterSpriteRefForView(i, th, g.worldTic, camX, camY)
@@ -17602,6 +17607,8 @@ func (g *game) capturePrevState() {
 	g.prevPX = g.p.x
 	g.prevPY = g.p.y
 	g.prevAngle = g.p.angle
+	g.capturePrevThingRenderState()
+	g.capturePrevProjectileRenderState()
 }
 
 func (g *game) syncRenderState() {
@@ -17613,6 +17620,35 @@ func (g *game) syncRenderState() {
 	g.renderAlpha = 1
 	g.debugAimSS = debugFixedSubsector
 	g.lastUpdate = time.Now()
+}
+
+func (g *game) capturePrevThingRenderState() {
+	if g == nil {
+		return
+	}
+	if len(g.prevThingX) != len(g.thingX) {
+		g.prevThingX = make([]int64, len(g.thingX))
+	}
+	copy(g.prevThingX, g.thingX)
+	if len(g.prevThingY) != len(g.thingY) {
+		g.prevThingY = make([]int64, len(g.thingY))
+	}
+	copy(g.prevThingY, g.thingY)
+	if len(g.prevThingZ) != len(g.thingZState) {
+		g.prevThingZ = make([]int64, len(g.thingZState))
+	}
+	copy(g.prevThingZ, g.thingZState)
+}
+
+func (g *game) capturePrevProjectileRenderState() {
+	if g == nil {
+		return
+	}
+	for i := range g.projectiles {
+		g.projectiles[i].prevX = g.projectiles[i].x
+		g.projectiles[i].prevY = g.projectiles[i].y
+		g.projectiles[i].prevZ = g.projectiles[i].z
+	}
 }
 
 func (g *game) prepareRenderState() {
@@ -17659,6 +17695,17 @@ func (g *game) interpAlpha() float64 {
 
 func lerp(a, b, t float64) float64 {
 	return a + (b-a)*t
+}
+
+func lerpFixed(a, b int64, t float64) int64 {
+	return int64(math.Round(lerp(float64(a), float64(b), t)))
+}
+
+func (g *game) projectileRenderPosFixed(p projectile, alpha float64) (int64, int64, int64) {
+	if g == nil || alpha >= 1 {
+		return p.x, p.y, p.z
+	}
+	return lerpFixed(p.prevX, p.x, alpha), lerpFixed(p.prevY, p.y, alpha), lerpFixed(p.prevZ, p.z, alpha)
 }
 
 func lerpAngle(a, b uint32, t float64) uint32 {
@@ -18007,6 +18054,24 @@ func (g *game) thingSectorCached(i int, th mapdata.Thing) int {
 	return g.sectorAt(x, y)
 }
 
+func (g *game) thingRenderPosFixed(i int, th mapdata.Thing, alpha float64) (int64, int64, int64) {
+	x, y := g.thingPosFixed(i, th)
+	z, _, _ := g.thingSupportState(i, th)
+	if g == nil || alpha >= 1 || i < 0 {
+		return x, y, z
+	}
+	if i < len(g.prevThingX) {
+		x = lerpFixed(g.prevThingX[i], x, alpha)
+	}
+	if i < len(g.prevThingY) {
+		y = lerpFixed(g.prevThingY[i], y, alpha)
+	}
+	if i < len(g.prevThingZ) {
+		z = lerpFixed(g.prevThingZ[i], z, alpha)
+	}
+	return x, y, z
+}
+
 func (g *game) thingPosFixed(i int, th mapdata.Thing) (int64, int64) {
 	if i >= 0 && i < len(g.thingX) && i < len(g.thingY) {
 		return g.thingX[i], g.thingY[i]
@@ -18090,6 +18155,30 @@ func (g *game) setThingPosFixed(i int, x, y int64) {
 	}
 	g.thingBlockOrder[i] = g.allocBlockmapOrder()
 	g.updateThingBlockmapIndex(i)
+}
+
+func (g *game) snapThingRenderState(i int) {
+	if g == nil || i < 0 {
+		return
+	}
+	if i < len(g.thingX) {
+		if i >= len(g.prevThingX) {
+			g.prevThingX = append(g.prevThingX, make([]int64, i-len(g.prevThingX)+1)...)
+		}
+		g.prevThingX[i] = g.thingX[i]
+	}
+	if i < len(g.thingY) {
+		if i >= len(g.prevThingY) {
+			g.prevThingY = append(g.prevThingY, make([]int64, i-len(g.prevThingY)+1)...)
+		}
+		g.prevThingY[i] = g.thingY[i]
+	}
+	if i < len(g.thingZState) {
+		if i >= len(g.prevThingZ) {
+			g.prevThingZ = append(g.prevThingZ, make([]int64, i-len(g.prevThingZ)+1)...)
+		}
+		g.prevThingZ[i] = g.thingZState[i]
+	}
 }
 
 func (g *game) setPlayerPosFixed(x, y int64) {

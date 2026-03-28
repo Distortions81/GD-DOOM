@@ -129,3 +129,25 @@ func TestProjectileImpactSpriteName_DoomTimings(t *testing.T) {
 		t.Fatalf("rocket impact end=%q want MISLD0", got)
 	}
 }
+
+func TestProjectileRenderPosFixedInterpolatesPosition(t *testing.T) {
+	g := &game{}
+	p := projectile{
+		x:     96 * fracUnit,
+		y:     48 * fracUnit,
+		z:     24 * fracUnit,
+		prevX: 32 * fracUnit,
+		prevY: 16 * fracUnit,
+		prevZ: 8 * fracUnit,
+	}
+	x, y, z := g.projectileRenderPosFixed(p, 0.5)
+	if got, want := x, int64(64*fracUnit); got != want {
+		t.Fatalf("x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(32*fracUnit); got != want {
+		t.Fatalf("y=%d want=%d", got, want)
+	}
+	if got, want := z, int64(16*fracUnit); got != want {
+		t.Fatalf("z=%d want=%d", got, want)
+	}
+}
