@@ -276,10 +276,18 @@ func walkSpecialAllowedForNonPlayer(special uint16) bool {
 }
 
 func (g *game) checkWalkSpecialLines(prevX, prevY, curX, curY int64) {
-	g.checkWalkSpecialLinesForActor(prevX, prevY, curX, curY, -1, true)
+	g.checkWalkSpecialLinesWithCandidates(prevX, prevY, curX, curY, nil)
 }
 
 func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, actorIdx int, isPlayer bool) {
+	g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, curX, curY, actorIdx, isPlayer, nil)
+}
+
+func (g *game) checkWalkSpecialLinesWithCandidates(prevX, prevY, curX, curY int64, candidateLineIdxs []int) {
+	g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, curX, curY, -1, true, candidateLineIdxs)
+}
+
+func (g *game) checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, curX, curY int64, actorIdx int, isPlayer bool, candidateLineIdxs []int) {
 	if prevX == curX && prevY == curY {
 		return
 	}
@@ -307,16 +315,16 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 	maxX += radius
 	minY -= radius
 	maxY += radius
-	for _, ld := range g.lines {
+	visit := func(ld physLine) bool {
 		if ld.idx < 0 || ld.idx >= len(g.lineSpecial) {
-			continue
+			return false
 		}
 		if maxX < ld.bbox[3] || minX > ld.bbox[2] || maxY < ld.bbox[1] || minY > ld.bbox[0] {
-			continue
+			return false
 		}
 		special := g.lineSpecial[ld.idx]
 		if special == 0 {
-			continue
+			return false
 		}
 		if debugLineTriggerEnabled(ld.idx) {
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-check line=%d prev=(%d,%d) cur=(%d,%d) player=%t special=%d\n",
@@ -330,13 +338,13 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		}
 		info := mapdata.LookupLineSpecial(special)
 		if info.Trigger != mapdata.TriggerWalk {
-			continue
+			return false
 		}
 		if !lineSpecialSupported(info) {
-			continue
+			return false
 		}
 		if !isPlayer && !walkSpecialAllowedForNonPlayer(special) {
-			continue
+			return false
 		}
 		startSide := g.pointOnLineSide(prevX, prevY, ld)
 		endSide := g.pointOnLineSide(curX, curY, ld)
@@ -347,7 +355,7 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			}
 		}
 		if startSide == endSide {
-			continue
+			return false
 		}
 		if debugLineTriggerEnabled(ld.idx) {
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-cross line=%d start=%d end=%d player=%t special=%d\n",
@@ -361,26 +369,26 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 		}
 		if info.Exit != mapdata.ExitNone {
 			if isPlayer && g.handleExitSpecial(ld.idx, special, mapdata.TriggerWalk) {
-				return
+				return true
 			}
-			continue
+			return false
 		}
 		if info.Door != nil {
 			if !isPlayer && !info.Door.CanActivate(mapdata.KeyRing{}) {
-				continue
+				return false
 			}
 			if isPlayer && !info.Door.CanActivate(g.inventory.keys()) {
-				continue
+				return false
 			}
 			if g.activateDoorLine(ld.idx, info, isPlayer) {
 				if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 					g.lineSpecial[ld.idx] = 0
 				}
-				return
+				return true
 			}
-			continue
+			return false
 		}
-		if g.activateNonDoorLineSpecial(ld.idx, 0, info, actorIdx, isPlayer) {
+		if g.activateNonDoorLineSpecial(ld.idx, startSide, info, actorIdx, isPlayer) {
 			if debugLineTriggerEnabled(ld.idx) {
 				fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-activate line=%d player=%t special=%d repeat=%t\n",
 					g.demoTick-1, g.worldTic, ld.idx, isPlayer, special, info.Repeat)
@@ -388,6 +396,27 @@ func (g *game) checkWalkSpecialLinesForActor(prevX, prevY, curX, curY int64, act
 			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
 				g.lineSpecial[ld.idx] = 0
 			}
+			return true
+		}
+		return false
+	}
+	if len(candidateLineIdxs) != 0 {
+		for _, lineIdx := range candidateLineIdxs {
+			if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+				continue
+			}
+			physIdx := g.physForLine[lineIdx]
+			if physIdx < 0 || physIdx >= len(g.lines) {
+				continue
+			}
+			if visit(g.lines[physIdx]) {
+				return
+			}
+		}
+		return
+	}
+	for _, ld := range g.lines {
+		if visit(ld) {
 			return
 		}
 	}

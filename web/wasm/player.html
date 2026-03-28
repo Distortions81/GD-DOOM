@@ -58,10 +58,32 @@
   <script src="./wasm_exec.js"></script>
   <script>
     const go = new Go();
-    go.argv = ["gddoom", "-opl3-backend=impsynth"];
+    go.argv = ["gddoom", "-music-backend=impsynth"];
     const notice = document.getElementById("notice");
     let boundCanvas = null;
     let reloadScheduled = false;
+
+    function copyLocalWADsFromParent() {
+      if (!window.parent || window.parent === window) {
+        return;
+      }
+      const parentStore = window.parent.__gddoomLocalWADs;
+      if (!Array.isArray(parentStore)) {
+        return;
+      }
+      window.__gddoomLocalWADs = parentStore.map((entry) => {
+        const sourceBytes = entry ? entry.bytes : null;
+        let bytes = new Uint8Array(0);
+        if (sourceBytes && typeof sourceBytes.length === "number") {
+          bytes = new Uint8Array(sourceBytes);
+        }
+        return {
+          path: String(entry && entry.path ? entry.path : ""),
+          name: String(entry && entry.name ? entry.name : ""),
+          bytes,
+        };
+      });
+    }
 
     function showNotice(text) {
       if (!notice) {
@@ -226,6 +248,8 @@
       }
     });
     canvasObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+    copyLocalWADsFromParent();
 
     instantiateWASM()
       .then((result) => {

@@ -268,6 +268,58 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	g.heightClipAroundSector(sec, oldPlayerFloor)
 }
 
+func (g *game) sectorMoveWouldBlockLiveActor(sec int, newFloor, newCeil int64) bool {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return false
+	}
+	oldFloor := g.sectorFloor[sec]
+	oldCeil := g.sectorCeil[sec]
+	oldPlayerZ := g.p.z
+	oldPlayerFloor := g.p.floorz
+	oldPlayerCeil := g.p.ceilz
+	g.sectorFloor[sec] = newFloor
+	g.sectorCeil[sec] = newCeil
+	defer func() {
+		g.sectorFloor[sec] = oldFloor
+		g.sectorCeil[sec] = oldCeil
+		g.p.z = oldPlayerZ
+		g.p.floorz = oldPlayerFloor
+		g.p.ceilz = oldPlayerCeil
+	}()
+
+	if g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius) && !g.heightClipPlayer(oldPlayerFloor) {
+		return true
+	}
+	for i, th := range g.m.Things {
+		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
+			continue
+		}
+		if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
+			continue
+		}
+		if !thingTypeIsShootable(th.Type) || !g.thingTouchesSector(sec, i, th) {
+			continue
+		}
+		oldZ, oldThingFloor, oldThingCeil := g.thingSupportState(i, th)
+		oldValid := i >= 0 && i < len(g.thingSupportValid) && g.thingSupportValid[i]
+		if !g.heightClipThing(i, th) {
+			g.setThingSupportState(i, oldZ, oldThingFloor, oldThingCeil)
+			if i >= 0 && i < len(g.thingSupportValid) {
+				g.thingSupportValid[i] = oldValid
+			}
+			return true
+		}
+		g.setThingSupportState(i, oldZ, oldThingFloor, oldThingCeil)
+		if i >= 0 && i < len(g.thingSupportValid) {
+			g.thingSupportValid[i] = oldValid
+		}
+	}
+	return false
+}
+
 func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	if g == nil || sec < 0 || sec >= len(g.sectorCeil) {
 		return
@@ -1052,7 +1104,15 @@ func (g *game) activateLightLine(lineIdx int, info mapdata.LightInfo) bool {
 }
 
 func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.TeleportInfo, actorIdx int, isPlayer bool) bool {
+	if debugLineTriggerEnabled(lineIdx) {
+		fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-enter line=%d side=%d player=%t uses_tag=%t monster_only=%t\n",
+			g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, info.UsesTag, info.MonsterOnly)
+	}
 	if side == 1 || !info.UsesTag {
+		if debugLineTriggerEnabled(lineIdx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-reject line=%d side=%d player=%t\n",
+				g.demoTick-1, g.worldTic, lineIdx, side, isPlayer)
+		}
 		return false
 	}
 	if info.MonsterOnly && isPlayer {
@@ -1136,12 +1196,6 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
 			g.setThingWorldAngle(actorIdx, destAngle)
 			g.snapThingRenderState(actorIdx)
-			if actorIdx >= 0 && actorIdx < len(g.thingMoveDir) {
-				g.thingMoveDir[actorIdx] = monsterDirNoDir
-			}
-			if actorIdx >= 0 && actorIdx < len(g.thingMoveCount) {
-				g.thingMoveCount[actorIdx] = 0
-			}
 		}
 		g.spawnTeleportFog(actorX, actorY, actorZ)
 		g.spawnTeleportFog(destFogX, destFogY, tmfloor)
@@ -1463,6 +1517,11 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 	switch pt.status {
 	case platStatusUp:
 		next := g.sectorFloor[sec] + pt.speed
+		if next <= pt.high && g.sectorMoveWouldBlockLiveActor(sec, next, g.sectorCeil[sec]) {
+			pt.count = pt.wait
+			pt.status = platStatusDown
+			return
+		}
 		if next > pt.high {
 			next = pt.high
 			g.setSectorFloorHeight(sec, next)

@@ -174,6 +174,127 @@ func TestMonsterDropPreservesRuntimeFixedPosition(t *testing.T) {
 	}
 }
 
+func TestMonsterDropUsesSourceSupportFloor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 9, X: 0, Y: 0},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingDropped:      []bool{false},
+		thingHP:           []int{1},
+		thingDead:         []bool{false},
+		thingDeathTics:    []int{0},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingZState:       []int64{208 * fracUnit},
+		thingFloorState:   []int64{208 * fracUnit},
+		thingCeilState:    []int64{320 * fracUnit},
+		thingSupportValid: []bool{true},
+		thingSectorCache:  []int{0},
+	}
+
+	g.damageMonster(0, 1)
+
+	if got, want := len(g.m.Things), 2; got != want {
+		t.Fatalf("thing count=%d want=%d", got, want)
+	}
+	if got := g.m.Things[1].Type; got != 2001 {
+		t.Fatalf("drop type=%d want=2001", got)
+	}
+	if got := g.thingZState[1]; got != 208*fracUnit {
+		t.Fatalf("drop z=%d want=%d", got, 208*fracUnit)
+	}
+	if got := g.thingFloorState[1]; got != 208*fracUnit {
+		t.Fatalf("drop floor=%d want=%d", got, 208*fracUnit)
+	}
+	if got := g.thingCeilState[1]; got != 320*fracUnit {
+		t.Fatalf("drop ceil=%d want=%d", got, 320*fracUnit)
+	}
+}
+
+func TestMonsterDropUsesPointSupportWhenAvailable(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.ensureMonsterAIState()
+
+	x := int64(g.m.Things[0].X) << fracBits
+	y := int64(g.m.Things[0].Y) << fracBits
+	floorZ, ceilZ, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok {
+		t.Fatal("expected point support from E1M1 geometry")
+	}
+
+	idx := g.appendRuntimeThing(mapdata.Thing{
+		Type: 9,
+		X:    int16(x >> fracBits),
+		Y:    int16(y >> fracBits),
+	}, false)
+	g.setThingPosFixed(idx, x, y)
+	g.setThingSupportState(idx, floorZ+64*fracUnit, floorZ+64*fracUnit, ceilZ-64*fracUnit)
+
+	g.spawnMonsterDrop(idx, 9)
+
+	dropIdx := len(g.m.Things) - 1
+	if got := g.m.Things[dropIdx].Type; got != 2001 {
+		t.Fatalf("drop type=%d want=2001", got)
+	}
+	if got := g.thingZState[dropIdx]; got != floorZ {
+		t.Fatalf("drop z=%d want=%d", got, floorZ)
+	}
+	if got := g.thingFloorState[dropIdx]; got != floorZ {
+		t.Fatalf("drop floor=%d want=%d", got, floorZ)
+	}
+	if got := g.thingCeilState[dropIdx]; got != ceilZ {
+		t.Fatalf("drop ceil=%d want=%d", got, ceilZ)
+	}
+}
+
+func TestMonsterDropFallsBackToCachedSectorHeights(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3004, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 96, CeilingHeight: 232},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingDropped:      []bool{false},
+		thingHP:           []int{1},
+		thingDead:         []bool{false},
+		thingDeathTics:    []int{0},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingZState:       []int64{96 * fracUnit},
+		thingFloorState:   []int64{96 * fracUnit},
+		thingCeilState:    []int64{176 * fracUnit},
+		thingSupportValid: []bool{true},
+		thingSectorCache:  []int{0},
+		sectorFloor:       []int64{96 * fracUnit},
+		sectorCeil:        []int64{232 * fracUnit},
+	}
+
+	g.damageMonster(0, 1)
+
+	if got, want := len(g.m.Things), 2; got != want {
+		t.Fatalf("thing count=%d want=%d", got, want)
+	}
+	if got := g.m.Things[1].Type; got != 2007 {
+		t.Fatalf("drop type=%d want=2007", got)
+	}
+	if got := g.thingZState[1]; got != 96*fracUnit {
+		t.Fatalf("drop z=%d want=%d", got, 96*fracUnit)
+	}
+	if got := g.thingFloorState[1]; got != 96*fracUnit {
+		t.Fatalf("drop floor=%d want=%d", got, 96*fracUnit)
+	}
+	if got := g.thingCeilState[1]; got != 232*fracUnit {
+		t.Fatalf("drop ceil=%d want=%d", got, 232*fracUnit)
+	}
+}
+
 func TestPickHitscanMonsterTarget(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -580,6 +701,21 @@ func TestSelectWeaponSlot3PrefersSuperShotgunWhenBothOwned(t *testing.T) {
 	}
 }
 
+func TestSelectWeaponSlot3PrefersSuperShotgunFromNonShotgunReadyWeaponOnCommercialMaps(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Name: "MAP01"},
+		inventory: playerInventory{
+			ReadyWeapon: weaponChaingun,
+			Weapons:     map[int16]bool{2001: true, 82: true, 2002: true},
+		},
+	}
+	advanceWeaponToReady(g)
+	g.selectWeaponSlot(3)
+	if g.inventory.PendingWeapon != weaponSuperShotgun {
+		t.Fatalf("pending weapon=%v want=%v", g.inventory.PendingWeapon, weaponSuperShotgun)
+	}
+}
+
 func TestBossDeath_MAP07MancubusLowersTag666Floor(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -892,6 +1028,55 @@ func TestDamageMonsterPainCancelsQueuedAttackStateLikeDoom(t *testing.T) {
 	}
 	if g.thingState[0] != monsterStatePain {
 		t.Fatalf("state=%d want pain", g.thingState[0])
+	}
+}
+
+func TestDamageMonsterCanRestartPainWhileAlreadyInPainLikeDoom(t *testing.T) {
+	findPainSeed := func(chance int) int {
+		for seed := 0; seed < 256; seed++ {
+			doomrand.SetState(0, seed)
+			if doomrand.PRandom() < chance {
+				return seed
+			}
+		}
+		t.Fatalf("no PRandom seed found for pain chance %d", chance)
+		return 0
+	}
+
+	seed := findPainSeed(monsterPainChance(65))
+	doomrand.SetState(0, seed)
+
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 65, X: 0, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{30},
+		thingAggro:        []bool{true},
+		thingPainTics:     []int{2},
+		thingJustHit:      []bool{false},
+		thingState:        []monsterThinkState{monsterStatePain},
+		thingStateTics:    []int{1},
+		thingStatePhase:   []int{1},
+		thingReactionTics: []int{8},
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
+
+	if g.thingState[0] != monsterStatePain {
+		t.Fatalf("state=%d want pain", g.thingState[0])
+	}
+	if g.thingStatePhase[0] != 0 {
+		t.Fatalf("pain phase=%d want 0 after restart", g.thingStatePhase[0])
+	}
+	if g.thingStateTics[0] != 3 {
+		t.Fatalf("state tics=%d want first pain frame 3 after restart", g.thingStateTics[0])
+	}
+	if g.thingPainTics[0] != 6 {
+		t.Fatalf("pain tics=%d want full restarted pain duration 6", g.thingPainTics[0])
+	}
+	if !g.thingJustHit[0] {
+		t.Fatal("just-hit should be set when pain restarts")
 	}
 }
 
@@ -1557,29 +1742,38 @@ func countSoundEvent(queue []soundEvent, want soundEvent) int {
 	return n
 }
 
-func TestDamageMonsterPainSoundOnlyOnPainEntry(t *testing.T) {
+func TestDamageMonsterLostSoulPainSoundFiresOnPainActionFrame(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
 				{Type: 3006, X: 0, Y: 0},
 			},
 		},
+		thingCollected:      []bool{false},
 		thingHP:             []int{100},
 		thingAggro:          []bool{false},
 		thingJustHit:        []bool{false},
 		thingPainTics:       []int{0},
+		thingTargetPlayer:   []bool{true},
+		thingTargetIdx:      []int{-1},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
 		thingDead:           []bool{false},
 		thingDeathTics:      []int{0},
 		thingAttackTics:     []int{0},
 		thingAttackFireTics: []int{0},
+		stats:               playerStats{Health: 100},
 		soundQueue:          make([]soundEvent, 0, 8),
 	}
 	g.damageMonster(0, 1)
-	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 1 {
-		t.Fatalf("demon pain count after first pain=%d want=1 queue=%v", got, g.soundQueue)
+	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 0 {
+		t.Fatalf("lost soul pain count on pain entry=%d want=0 queue=%v", got, g.soundQueue)
 	}
-	g.damageMonster(0, 1)
+	for i := 0; i < 3; i++ {
+		g.tickMonsters()
+	}
 	if got := countSoundEvent(g.soundQueue, soundEventMonsterPainDemon); got != 1 {
-		t.Fatalf("demon pain count while already in pain=%d want=1 queue=%v", got, g.soundQueue)
+		t.Fatalf("lost soul pain count on pain action frame=%d want=1 queue=%v", got, g.soundQueue)
 	}
 }

@@ -3,7 +3,6 @@ package sessionmusic
 import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
-	"gddoom/internal/sound"
 )
 
 type Playback struct {
@@ -13,8 +12,8 @@ type Playback struct {
 	intermissionLoader func(commercial bool) ([]byte, error)
 }
 
-func NewPlayback(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank, mapLoader func(string) ([]byte, error), titleLoader func() ([]byte, error), intermissionLoader func(bool) ([]byte, error)) (*Playback, error) {
-	ctl, err := New(volume, musPanMax, oplVolume, preEmphasis, backend, bank)
+func NewPlayback(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, mapLoader func(string) ([]byte, error), titleLoader func() ([]byte, error), intermissionLoader func(bool) ([]byte, error)) (*Playback, error) {
+	ctl, err := New(volume, musPanMax, oplVolume, preEmphasis, backend, bank, soundFont)
 	if err != nil {
 		return nil, err
 	}

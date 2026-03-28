@@ -17,23 +17,13 @@ License: GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from
 
 ## Status
 
-GD-DOOM is still alpha. Core runtime systems are in place, but full parity remains in progress, especially around weapon completeness, monster edge cases, and deterministic demo compatibility.
-
-## Purpose And Scope
-
-GD-DOOM is not just a renderer or file parser. The project aims to cover the full path from WAD ingestion to interactive play:
-
-- WAD loading for IWAD and PWAD stacks, including overlay behavior and strict map validation.
-- Runtime gameplay systems such as pickups, doors, hazardous sectors, combat foundations, key progression, save/load, and level transitions.
-- Multiple presentation modes, including a more faithful Doom-style profile and a more permissive source-port-oriented mode.
-- Audio, music, frontend screens, automap, and session flow needed for a usable end-to-end runtime.
-- Demo playback, live recording, tracing, and profiling workflows useful for regression work and performance analysis.
+GD-DOOM is still alpha. Core runtime systems are in place, but full parity remains in progress, monster edge cases, and deterministic demo compatibility.
 
 ## Highlights
 
 - Loads original Doom data directly, including stacked IWAD plus PWAD configurations.
 - Runs as a desktop Ebiten application with walk view, automap, menus, help screens, and pause/quit flows.
-- Supports faithful defaults alongside optional source-port conveniences such as mouselook and expanded automap behavior.
+- Supports Doom MUS playback through either the built-in OPL3 path (`impsynth`) or `go-meltysynth` with external SoundFonts.
 - Includes Doom v1.10 demo playback, demo recording, and JSONL state tracing for investigation and benchmarking.
 - Provides profiling helpers and benchmark-oriented workflows for runtime and rendering work.
 
@@ -55,7 +45,6 @@ PWAD overlays:
 go run ./cmd/gddoom -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
 ```
 
-By default it starts in walk mode (`-start-in-map=false`), and `TAB` toggles walk/map.
 If `-map` is omitted, GD-DOOM starts on the first valid map it finds, preferring the last PWAD overlay in the stack when overlays are present.
 If `-wad` is omitted and the working directory contains one local known IWAD, GD-DOOM uses it automatically; if multiple known IWADs are present during render startup, it opens an in-game picker.
 
@@ -64,6 +53,22 @@ For the current command-line interface, run:
 ```bash
 go run ./cmd/gddoom -h
 ```
+
+## Music Backends
+
+GD-DOOM supports two music synth paths:
+
+- `impsynth`: the default OPL3-style backend used for Doom's FM music path.
+- `meltysynth`: a SoundFont-based backend powered by [`go-meltysynth`](https://github.com/sinshu/go-meltysynth).
+
+Examples:
+
+```bash
+go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=impsynth
+go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/SC55.sf2
+```
+
+The frontend options menu has a dedicated Music submenu where you can change music volume, switch between OPL3 and MeltySynth, pick a SoundFont from `./soundfonts`, and open the music player.
 
 ## Current Feature Coverage
 
@@ -105,3 +110,5 @@ WASM_OPT=1 WASM_OPT_LEVEL=-O3 scripts/build_wasm.sh
 
 `WASM_OPT=1` makes `wasm-opt` required. If you leave `WASM_OPT` unset, the script uses `auto` mode and skips optimization when Binaryen is not installed.
 The optimizer currently defaults to `WASM_OPT_FEATURES=--all-features` so Binaryen can accept Go's post-MVP wasm output; override that env var if you need a stricter feature set.
+
+For js/wasm builds, GD-DOOM embeds `sc55.sf2` and uses it as the default SoundFont for the `meltysynth` backend, so browser builds do not need filesystem access to a separate `.sf2` file.

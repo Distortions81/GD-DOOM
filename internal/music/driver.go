@@ -1,8 +1,10 @@
 package music
 
 import (
-	"gddoom/internal/sound"
+	"fmt"
 	"math"
+
+	"gddoom/internal/sound"
 )
 
 const (
@@ -124,22 +126,50 @@ type Driver struct {
 	allocScratch []int
 }
 
+func (d *Driver) ApplyEvent(ev Event) {
+	d.applyEvent(ev)
+}
+
+func (d *Driver) GenerateStereoS16(frames int) []int16 {
+	return d.generateStereoS16(frames)
+}
+
+func (d *Driver) SampleRate() int {
+	if d == nil || d.sampleRate <= 0 {
+		return OutputSampleRate
+	}
+	return d.sampleRate
+}
+
+func (d *Driver) TicRate() int {
+	if d == nil || d.ticRate <= 0 {
+		return defaultTicRate
+	}
+	return d.ticRate
+}
+
 func NewDriver(sampleRate int, bank PatchBank) *Driver {
-	d, err := NewDriverWithBackend(sampleRate, bank, sound.BackendAuto)
+	d, err := NewDriverWithBackend(sampleRate, bank, BackendAuto)
 	if err != nil {
 		return nil
 	}
 	return d
 }
 
-func NewDriverWithBackend(sampleRate int, bank PatchBank, backend sound.Backend) (*Driver, error) {
+func NewDriverWithBackend(sampleRate int, bank PatchBank, backend Backend) (*Driver, error) {
 	if sampleRate <= 0 {
 		sampleRate = OutputSampleRate
 	}
 	if bank == nil {
 		bank = DefaultPatchBank{}
 	}
-	synth, err := sound.NewSynthWithBackend(sampleRate, backend)
+	if err := ValidateBackend(backend); err != nil {
+		return nil, err
+	}
+	if ResolveBackend(backend) != BackendImpSynth {
+		return nil, fmt.Errorf("music: backend %q does not use the OPL driver", backend)
+	}
+	synth, err := sound.NewSynthWithBackend(sampleRate, sound.BackendImpSynth)
 	if err != nil {
 		return nil, err
 	}
@@ -170,14 +200,14 @@ func NewDriverWithBackend(sampleRate int, bank PatchBank, backend sound.Backend)
 }
 
 func NewOutputDriver(bank PatchBank) *Driver {
-	d, err := NewDriverWithBackend(OutputSampleRate, bank, sound.BackendAuto)
+	d, err := NewDriverWithBackend(OutputSampleRate, bank, BackendAuto)
 	if err != nil {
 		return nil
 	}
 	return d
 }
 
-func NewOutputDriverWithBackend(bank PatchBank, backend sound.Backend) (*Driver, error) {
+func NewOutputDriverWithBackend(bank PatchBank, backend Backend) (*Driver, error) {
 	return NewDriverWithBackend(OutputSampleRate, bank, backend)
 }
 

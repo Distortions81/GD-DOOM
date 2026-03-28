@@ -57,11 +57,10 @@ var frontendOptionsTextLabels = [...]string{
 	"FPS",
 	"MOUSE SENSITIVITY",
 	"EFFECTS VOLUME",
-	"MUSIC VOLUME",
-	"MUSIC PLAYER",
+	"MUSIC OPTIONS",
 }
 
-var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6, 7}
+var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6}
 
 func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (*session.Game, runtimehost.Meta) {
 	sg := runtimehost.Init(runtimehost.Initializer[*sessionGame]{
@@ -190,6 +189,7 @@ func (sg *sessionGame) Update() error {
 				sg.frontend = frontendState{
 					Active:     true,
 					InGame:     true,
+					Attract:    sig.DemoActive,
 					Mode:       frontendModeTitle,
 					MenuActive: true,
 				}
@@ -197,12 +197,7 @@ func (sg *sessionGame) Update() error {
 			}
 			if sig.MusicPlayer {
 				sg.rt.sessionAcknowledgeMusicPlayer()
-				sg.frontend = frontendState{Active: true, InGame: true, MenuActive: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowMusicPlayer}
-				if sg.frontendMusicPlayerOpen() {
-					return true, nil
-				}
-				sg.frontendStatus("NO MUSIC CATALOG", doomTicsPerSecond*2)
-				sg.frontend = frontendState{}
+				sg.frontend = frontendState{Active: true, InGame: true, MenuActive: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowMusic}
 				return true, nil
 			}
 			return runtimehost.HandleProgress(

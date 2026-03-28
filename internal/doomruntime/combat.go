@@ -1463,13 +1463,11 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
 			g.thingReactionTics[thingIdx] = 0
 		}
-		alreadyInPain := (thingIdx >= 0 && thingIdx < len(g.thingPainTics) && g.thingPainTics[thingIdx] > 0) ||
-			(thingIdx >= 0 && thingIdx < len(g.thingState) && g.thingState[thingIdx] == monsterStatePain)
 		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 {
 				roll := doomrand.PRandom()
-				if (chance >= 256 || roll < chance) && !alreadyInPain {
+				if chance >= 256 || roll < chance {
 					if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
 						// Doom only marks JUSTHIT when the pain state triggers.
 						g.thingJustHit[thingIdx] = true
@@ -1780,12 +1778,25 @@ func (g *game) spawnMonsterDrop(thingIdx int, thingType int16) {
 	}
 	src := g.m.Things[thingIdx]
 	srcX, srcY := g.thingPosFixed(thingIdx, src)
+	srcFloorZ, srcCeilZ, ok := int64(0), int64(0), false
+	srcFloorZ, srcCeilZ, ok = g.subsectorFloorCeilAt(srcX, srcY)
+	if !ok {
+		if sec := g.thingSectorCached(thingIdx, src); sec >= 0 && sec < len(g.sectorFloor) && sec < len(g.sectorCeil) {
+			srcFloorZ = g.sectorFloor[sec]
+			srcCeilZ = g.sectorCeil[sec]
+			ok = true
+		}
+	}
+	if !ok {
+		_, srcFloorZ, srcCeilZ = g.thingSupportState(thingIdx, src)
+	}
 	idx := g.appendRuntimeThing(mapdata.Thing{
 		X:    int16(srcX >> fracBits),
 		Y:    int16(srcY >> fracBits),
 		Type: dropType,
 	}, true)
 	g.setThingPosFixed(idx, srcX, srcY)
+	g.setThingSupportState(idx, srcFloorZ, srcFloorZ, srcCeilZ)
 }
 
 func monsterPainSoundEvent(typ int16) soundEvent {
@@ -1993,7 +2004,7 @@ func (g *game) selectWeaponSlot(slot int) {
 	case 2:
 		next = weaponPistol
 	case 3:
-		if g.weaponOwned(weaponSuperShotgun) && g.inventory.ReadyWeapon == weaponShotgun {
+		if g.weaponOwned(weaponSuperShotgun) && g.inventory.ReadyWeapon != weaponSuperShotgun {
 			next = weaponSuperShotgun
 		} else if g.weaponOwned(weaponShotgun) {
 			next = weaponShotgun

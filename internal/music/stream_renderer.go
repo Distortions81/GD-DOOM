@@ -17,7 +17,7 @@ func DefaultStreamLookahead() int {
 
 // StreamRenderer incrementally renders parsed events into fixed-size PCM chunks.
 type StreamRenderer struct {
-	driver  *Driver
+	driver  eventRenderer
 	events  []Event
 	idx     int
 	wait    int
@@ -27,7 +27,7 @@ type StreamRenderer struct {
 	byteBuf []byte
 }
 
-func NewMUSStreamRenderer(driver *Driver, musData []byte) (*StreamRenderer, error) {
+func NewMUSStreamRenderer(driver eventRenderer, musData []byte) (*StreamRenderer, error) {
 	if driver == nil {
 		return nil, errNilStreamDriver
 	}
@@ -69,7 +69,7 @@ func (sr *StreamRenderer) NextChunkS16LE(maxFrames int) (chunk []byte, done bool
 				n = need
 			}
 			if n > 0 {
-				out = append(out, sr.driver.generateStereoS16(n)...)
+				out = append(out, sr.driver.GenerateStereoS16(n)...)
 				sr.wait -= n
 			}
 			if sr.wait > 0 {
@@ -82,13 +82,13 @@ func (sr *StreamRenderer) NextChunkS16LE(maxFrames int) (chunk []byte, done bool
 		}
 		ev := sr.events[sr.idx]
 		if !sr.waited && ev.DeltaTics > 0 {
-			sr.wait = int((uint64(ev.DeltaTics) * uint64(sr.driver.sampleRate)) / uint64(sr.driver.ticRate))
+			sr.wait = int((uint64(ev.DeltaTics) * uint64(sr.driver.SampleRate())) / uint64(sr.driver.TicRate()))
 			sr.waited = true
 			if sr.wait > 0 {
 				continue
 			}
 		}
-		sr.driver.applyEvent(ev)
+		sr.driver.ApplyEvent(ev)
 		sr.idx++
 		sr.waited = false
 		if ev.Type == EventEnd {

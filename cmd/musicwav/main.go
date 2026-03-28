@@ -12,7 +12,6 @@ import (
 	"unsafe"
 
 	"gddoom/internal/music"
-	"gddoom/internal/sound"
 	"gddoom/internal/wad"
 )
 
@@ -199,13 +198,13 @@ func parseableMusicLumps(wf *wad.File) ([]string, error) {
 func renderPCM(bank music.PatchBank, musData []byte, mode exportMode) ([]int16, error) {
 	switch mode {
 	case exportModeImpSynth:
-		return renderBackendPCM(bank, musData, sound.BackendImpSynth, "impsynth")
+		return renderBackendPCM(bank, musData, music.BackendImpSynth, "impsynth")
 	default:
 		return nil, fmt.Errorf("unsupported export mode %q", mode)
 	}
 }
 
-func renderBackendPCM(bank music.PatchBank, musData []byte, backend sound.Backend, label string) ([]int16, error) {
+func renderBackendPCM(bank music.PatchBank, musData []byte, backend music.Backend, label string) ([]int16, error) {
 	driver, err := music.NewOutputDriverWithBackend(bank, backend)
 	if err != nil {
 		return nil, fmt.Errorf("new %s driver: %w", label, err)

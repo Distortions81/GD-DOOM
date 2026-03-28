@@ -6,7 +6,6 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
-	"gddoom/internal/sound"
 )
 
 type MusicPlayerTrack struct {
@@ -48,7 +47,7 @@ type Options struct {
 	MUSPanMax                  float64
 	OPLVolume                  float64
 	AudioPreEmphasis           bool
-	OPL3Backend                sound.Backend
+	MusicBackend               music.Backend
 	OpenMenuOnFrontendStart    bool
 	SFXVolume                  float64
 	SFXPitchShift              bool
@@ -111,5 +110,8 @@ type Options struct {
 	DemoMapLoader              func(demo *demo.Script) (*mapdata.Map, error)
 	Episodes                   []int
 	MusicPatchBank             music.PatchBank
+	MusicSoundFontPath         string
+	MusicSoundFontChoices      []string
+	MusicSoundFont             *music.SoundFontBank
 	OnRuntimeSettingsChanged   func(gameplay.RuntimeSettings)
 }

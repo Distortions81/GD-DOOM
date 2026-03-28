@@ -106,6 +106,7 @@ type sessionGame struct {
 	frontend            frontendState
 	frontendMenuPending bool
 	musicPlayer         frontendMusicPlayerState
+	currentMusicSource  musicPlaybackSource
 	nowPlayingLevel     string
 	nowPlayingMusic     string
 	quitPrompt          quitPromptState
@@ -308,6 +309,10 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	sg.opts.MusicVolume = sg.settings.MusicVolume
 	sg.opts.OPLVolume = sg.settings.OPLVolume
 	sg.opts.SFXVolume = sg.settings.SFXVolume
+	if backend, err := music.ParseBackend(s.MusicBackend); err == nil {
+		sg.opts.MusicBackend = backend
+	}
+	sg.opts.MusicSoundFontPath = strings.TrimSpace(s.MusicSoundFontPath)
 	if sg.menuSfx != nil {
 		sg.menuSfx.SetVolume(sg.settings.SFXVolume)
 	}
@@ -329,6 +334,32 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 		if sg.musicCtl != nil {
 			sg.musicCtl.SetVolume(sg.settings.MusicVolume)
 		}
+	}
+}
+
+func (sg *sessionGame) runtimeSettingsSnapshot() RuntimeSettings {
+	if sg == nil {
+		return RuntimeSettings{}
+	}
+	if sg.g != nil {
+		return sg.g.runtimeSettingsSnapshot()
+	}
+	return RuntimeSettings{
+		DetailLevel:        sg.settings.DetailLevel,
+		GammaLevel:         sg.settings.GammaLevel,
+		MusicVolume:        sg.opts.MusicVolume,
+		MUSPanMax:          sg.opts.MUSPanMax,
+		OPLVolume:          sg.opts.OPLVolume,
+		MusicBackend:       string(sg.opts.MusicBackend),
+		MusicSoundFontPath: sg.opts.MusicSoundFontPath,
+		SFXVolume:          sg.opts.SFXVolume,
+		HUDMessages:        sg.settings.HUDMessages,
+		MouseLook:          sg.opts.MouseLook,
+		AlwaysRun:          sg.opts.AlwaysRun,
+		AutoWeaponSwitch:   sg.opts.AutoWeaponSwitch,
+		LineColorMode:      sg.opts.LineColorMode,
+		ThingRenderMode:    sg.opts.SourcePortThingRenderMode,
+		CRTEffect:          sg.settings.CRTEnabled && sg.opts.KageShader,
 	}
 }
 
@@ -566,8 +597,9 @@ func (sg *sessionGame) initMusicPlayback() {
 		sg.opts.MUSPanMax,
 		sg.opts.OPLVolume,
 		sg.opts.AudioPreEmphasis,
-		sg.opts.OPL3Backend,
+		sg.opts.MusicBackend,
 		sg.opts.MusicPatchBank,
+		sg.opts.MusicSoundFont,
 		sg.opts.MapMusicLoader,
 		sg.opts.TitleMusicLoader,
 		sg.opts.IntermissionMusicLoader,
@@ -600,8 +632,14 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 		return
 	}
 	sg.musicCtl.PlayMap(name, clampVolume(sg.opts.MusicVolume))
+	sg.currentMusicSource = musicPlaybackSource{
+		kind:    musicPlaybackSourceMap,
+		mapName: name,
+	}
 	if sg.opts.MapMusicInfo != nil {
 		levelLabel, musicName := sg.opts.MapMusicInfo(string(name))
+		sg.currentMusicSource.levelLabel = levelLabel
+		sg.currentMusicSource.musicName = musicName
 		sg.setNowPlayingLevel(levelLabel, string(name))
 		sg.setNowPlayingMusic(musicName, string(name))
 	}

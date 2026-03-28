@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"gddoom/internal/music"
 )
 
 func TestResolveIWADAliasPathResolvesRequestedPathCaseInsensitively(t *testing.T) {
@@ -137,13 +139,16 @@ func TestPickerDefaultsPreferSourcePortAndFirstNonSharewareIWAD(t *testing.T) {
 	game, err := newIWADPickerGame([]iwadChoice{
 		{Path: "/tmp/doom.wad", Label: "The Ultimate DOOM"},
 		{Path: "/tmp/doom2.wad", Label: "DOOM II: Hell on Earth"},
-	}, nil)
+	}, music.BackendImpSynth, nil)
 	if err != nil {
 		t.Fatalf("newIWADPickerGame() error: %v", err)
 	}
 
 	if game.profile != pickerProfileSourcePort {
 		t.Fatalf("default profile=%v want sourceport", game.profile)
+	}
+	if game.synth != 0 {
+		t.Fatalf("default synth=%d want=0", game.synth)
 	}
 	if game.selected != 0 {
 		t.Fatalf("default selected=%d want=0", game.selected)
@@ -179,7 +184,7 @@ func TestShouldOpenIWADPickerRequiresChoicesAndRender(t *testing.T) {
 func TestWASMPickerStartsAtIWADStageEvenWithSingleChoice(t *testing.T) {
 	game, err := newIWADPickerGame([]iwadChoice{
 		{Path: "/tmp/doom1.wad", Label: "DOOM Shareware"},
-	}, nil)
+	}, music.BackendImpSynth, nil)
 	if err != nil {
 		t.Fatalf("newIWADPickerGame() error: %v", err)
 	}
@@ -191,5 +196,62 @@ func TestWASMPickerStartsAtIWADStageEvenWithSingleChoice(t *testing.T) {
 	game.stage = pickerStageIWAD
 	if got := game.stage; got != pickerStageIWAD {
 		t.Fatalf("forced single-choice stage=%v want iwad", got)
+	}
+}
+
+func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
+	game, err := newIWADPickerGame([]iwadChoice{
+		{Path: "/tmp/doom1.wad", Label: "DOOM Shareware"},
+	}, music.BackendMeltySynth, nil)
+	if err != nil {
+		t.Fatalf("newIWADPickerGame() error: %v", err)
+	}
+	if game.synth != 1 {
+		t.Fatalf("default synth=%d want=1", game.synth)
+	}
+}
+
+func TestApplyPickerSynthSetsMeltySynthVolumeAndBackend(t *testing.T) {
+	cfg := renderBuildConfig{
+		musicBackend: music.BackendImpSynth,
+		musicVolume:  1.0,
+	}
+
+	got := applyPickerSynth(cfg, 1)
+
+	if got.musicBackend != music.BackendMeltySynth {
+		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
+	}
+	if got.musicVolume != 0.7 {
+		t.Fatalf("musicVolume=%v want 0.7", got.musicVolume)
+	}
+}
+
+func TestApplyPickerSynthKeepsMeltySynthVolumeOverrideWhenSoundFontAlreadySet(t *testing.T) {
+	cfg := renderBuildConfig{
+		musicBackend:  music.BackendImpSynth,
+		musicVolume:   1.0,
+		soundFontPath: "soundfonts/sc55.sf2",
+	}
+
+	got := applyPickerSynth(cfg, 1)
+
+	if got.musicBackend != music.BackendMeltySynth {
+		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
+	}
+	if got.musicVolume != 0.7 {
+		t.Fatalf("musicVolume=%v want 0.7", got.musicVolume)
+	}
+	if got.soundFontPath != "soundfonts/sc55.sf2" {
+		t.Fatalf("soundFontPath=%q want soundfonts/sc55.sf2", got.soundFontPath)
+	}
+}
+
+func TestSoundFontDefaultRankPrefersSC55(t *testing.T) {
+	if got := soundFontDefaultRank("soundfonts/sc55.sf2"); got != 0 {
+		t.Fatalf("rank(sc55)=%d want 0", got)
+	}
+	if got := soundFontDefaultRank("soundfonts/windows-gm.sf2"); got != 1 {
+		t.Fatalf("rank(windows-gm)=%d want 1", got)
 	}
 }

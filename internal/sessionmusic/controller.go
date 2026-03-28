@@ -4,29 +4,38 @@ import (
 	"time"
 
 	"gddoom/internal/music"
-	"gddoom/internal/sound"
 )
 
 type Controller struct {
 	player  *music.ChunkPlayer
-	driver  *music.Driver
-	backend sound.Backend
+	driver  musicEventDriver
+	backend music.Backend
 	stop    chan struct{}
 }
 
 type musStreamFactory func() (*music.StreamRenderer, error)
+type musicEventDriver interface {
+	Reset()
+	ApplyEvent(music.Event)
+	GenerateStereoS16(int) []int16
+	SampleRate() int
+	TicRate() int
+	SetMUSPanMax(float64)
+	SetOutputGain(float64)
+	SetPreEmphasis(bool)
+}
 
 const (
 	impSynthGainRatio = 1.0
 )
 
-func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend sound.Backend, bank music.PatchBank) (*Controller, error) {
+func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank) (*Controller, error) {
 	player, err := music.NewChunkPlayer()
 	if err != nil {
 		return nil, err
 	}
 	_ = player.SetVolume(volume)
-	driver, err := music.NewDriverWithBackend(player.SampleRate(), bank, backend)
+	driver, err := newMusicDriver(player.SampleRate(), backend, bank, soundFont)
 	if err != nil {
 		_ = player.Close()
 		return nil, err
@@ -39,6 +48,17 @@ func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool,
 		driver:  driver,
 		backend: backend,
 	}, nil
+}
+
+func newMusicDriver(sampleRate int, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank) (musicEventDriver, error) {
+	switch music.ResolveBackend(backend) {
+	case music.BackendImpSynth:
+		return music.NewDriverWithBackend(sampleRate, bank, music.ResolveBackend(backend))
+	case music.BackendMeltySynth:
+		return music.NewMeltySynthDriver(sampleRate, soundFont)
+	default:
+		return music.NewDriverWithBackend(sampleRate, bank, music.BackendImpSynth)
+	}
 }
 
 func (c *Controller) Close() {
@@ -171,16 +191,14 @@ func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, fac
 	}
 }
 
-func effectiveSynthGain(backend sound.Backend, gain float64) float64 {
-	if backend == sound.BackendAuto {
-		backend = sound.DefaultBackend()
-	}
+func effectiveSynthGain(backend music.Backend, gain float64) float64 {
+	backend = music.ResolveBackend(backend)
 	return gain * synthGainRatio(backend)
 }
 
-func synthGainRatio(backend sound.Backend) float64 {
+func synthGainRatio(backend music.Backend) float64 {
 	switch backend {
-	case sound.BackendImpSynth:
+	case music.BackendImpSynth:
 		return impSynthGainRatio
 	default:
 		return 1.0

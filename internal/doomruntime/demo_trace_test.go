@@ -142,6 +142,35 @@ func TestDemoTracePlayerMobjHealthUsesPlayerActorHealth(t *testing.T) {
 	}
 }
 
+func TestDemoTracePlayerMobjUsesIdleStateFallbackAndFlags(t *testing.T) {
+	g := &game{
+		playerMobjHealth: 100,
+		worldTic:         124,
+		p: player{
+			x:      1,
+			y:      2,
+			z:      3,
+			floorz: 3,
+			ceilz:  128 * fracUnit,
+		},
+		m: &mapdata.Map{},
+	}
+
+	mobjs := g.demoTraceMobjs()
+	if len(mobjs) == 0 {
+		t.Fatal("mobjs empty")
+	}
+	if got, want := mobjs[0].State, doomStatePlayerIdle1; got != want {
+		t.Fatalf("player mobj state=%d want=%d", got, want)
+	}
+	if got, want := mobjs[0].Tics, 1; got != want {
+		t.Fatalf("player mobj tics=%d want=%d", got, want)
+	}
+	if got, want := mobjs[0].Flags, 0x02000006; got != want {
+		t.Fatalf("player mobj flags=%#x want %#x", got, want)
+	}
+}
+
 func TestDemoTraceSkipsDeathmatchStartsLikeDoomSource(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

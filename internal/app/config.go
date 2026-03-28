@@ -37,7 +37,9 @@ type fileConfig struct {
 	OPLVolume                  *float64 `toml:"opl_volume"`
 	AudioPreEmphasis           *bool    `toml:"audio_preemphasis"`
 	OPL3Backend                *string  `toml:"opl3_backend"`
+	MusicBackend               *string  `toml:"music_backend"`
 	OPLBank                    *string  `toml:"opl_bank"`
+	SoundFont                  *string  `toml:"soundfont"`
 	SFXVolume                  *float64 `toml:"sfx_volume"`
 	SFXPitchShift              *bool    `toml:"sfx_pitch_shift"`
 	FastMonsters               *bool    `toml:"fast_monsters"`
@@ -161,6 +163,8 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	cfg.MusicVolume = floatPtr(s.MusicVolume)
 	cfg.MUSPanMax = floatPtr(s.MUSPanMax)
 	cfg.OPLVolume = floatPtr(s.OPLVolume)
+	cfg.MusicBackend = strPtr(strings.TrimSpace(s.MusicBackend))
+	cfg.SoundFont = strPtr(strings.TrimSpace(s.MusicSoundFontPath))
 	cfg.SFXVolume = floatPtr(s.SFXVolume)
 	cfg.MouseLook = boolPtr(s.MouseLook)
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)

@@ -109,8 +109,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultMUSPanMax := 0.8
 	defaultOPLVolume := 2.25
 	defaultAudioPreEmphasis := false
-	defaultOPL3Backend := sound.DefaultBackend().String()
+	defaultMusicBackend := music.DefaultBackend().String()
 	defaultOPLBankPath := ""
+	defaultSoundFontPath := ""
+	if isWASMBuild() {
+		defaultSoundFontPath = music.DefaultEmbeddedSoundFontPath()
+	}
 	defaultSFXVolume := 0.5
 	defaultSFXPitchShift := false
 	defaultFastMonsters := false
@@ -221,11 +225,16 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.AudioPreEmphasis != nil {
 			defaultAudioPreEmphasis = *cfg.AudioPreEmphasis
 		}
-		if cfg.OPL3Backend != nil {
-			defaultOPL3Backend = *cfg.OPL3Backend
+		if cfg.MusicBackend != nil {
+			defaultMusicBackend = *cfg.MusicBackend
+		} else if cfg.OPL3Backend != nil {
+			defaultMusicBackend = *cfg.OPL3Backend
 		}
 		if cfg.OPLBank != nil {
 			defaultOPLBankPath = *cfg.OPLBank
+		}
+		if cfg.SoundFont != nil {
+			defaultSoundFontPath = *cfg.SoundFont
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
@@ -385,8 +394,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
 	oplVolume := fs.Float64("opl-volume", defaultOPLVolume, "FM synth output gain (0..4; default 2.0)")
 	audioPreEmphasis := fs.Bool("audio-preemphasis", defaultAudioPreEmphasis, "enable FM music pre-emphasis filter")
-	opl3Backend := fs.String("opl3-backend", defaultOPL3Backend, "FM synth backend (auto|impsynth)")
+	musicBackend := fs.String("music-backend", defaultMusicBackend, "music synth backend (auto|impsynth|meltysynth)")
+	opl3Backend := fs.String("opl3-backend", defaultMusicBackend, "legacy alias for -music-backend")
 	oplBank := fs.String("opl-bank", defaultOPLBankPath, "path to external patch bank (.op2/GENMIDI bytes) overriding WAD GENMIDI")
+	soundFont := fs.String("soundfont", defaultSoundFontPath, "path to external SoundFont (.sf2) used by the meltysynth music backend")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	sfxPitchShift := fs.Bool("sfx-pitch-shift", defaultSFXPitchShift, "enable Doom-style random sound pitch shifting")
 	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
@@ -515,13 +526,21 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "invalid -renderer-workers %d (must be >= 0)\n", *rendererWorkers)
 		return 2
 	}
-	resolvedOPL3Backend, err := sound.ParseBackend(*opl3Backend)
+	resolvedMusicBackendInput := strings.TrimSpace(*musicBackend)
+	if flagProvided(args, "opl3-backend") && !flagProvided(args, "music-backend") {
+		resolvedMusicBackendInput = strings.TrimSpace(*opl3Backend)
+	}
+	resolvedMusicBackend, err := music.ParseBackend(resolvedMusicBackendInput)
 	if err != nil {
-		fmt.Fprintf(stderr, "invalid -opl3-backend %q: %v\n", *opl3Backend, err)
+		fmt.Fprintf(stderr, "invalid music backend %q: %v\n", resolvedMusicBackendInput, err)
 		return 2
 	}
-	if err := sound.ValidateBackend(resolvedOPL3Backend); err != nil {
-		fmt.Fprintf(stderr, "invalid -opl3-backend %q: %v\n", *opl3Backend, err)
+	if err := music.ValidateBackend(resolvedMusicBackend); err != nil {
+		fmt.Fprintf(stderr, "invalid music backend %q: %v\n", resolvedMusicBackendInput, err)
+		return 2
+	}
+	if music.ResolveBackend(resolvedMusicBackend) == music.BackendMeltySynth && strings.TrimSpace(*soundFont) == "" {
+		fmt.Fprintln(stderr, "invalid -soundfont \"\": meltysynth backend requires a SoundFont (.sf2)")
 		return 2
 	}
 	if *allCheats && allCheatsSet && !cheatLevelSet {
@@ -661,8 +680,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			musPanMax:                  *musPanMax,
 			oplVolume:                  *oplVolume,
 			audioPreEmphasis:           *audioPreEmphasis,
-			opl3Backend:                resolvedOPL3Backend,
+			musicBackend:               resolvedMusicBackend,
 			oplBankPath:                strings.TrimSpace(*oplBank),
+			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  *sfxVolume,
 			sfxPitchShift:              *sfxPitchShift,
 			fastMonsters:               *fastMonsters,
@@ -702,8 +722,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
-		picker, perr := newIWADPickerGame(pickerChoices, func(path string, profile pickerProfile) (*renderBundle, error) {
-			return buildRenderBundle(resolveIWADAliasPath(path), applyPickerProfile(buildCfg, profile), stderr)
+		picker, perr := newIWADPickerGame(pickerChoices, resolvedMusicBackend, func(path string, profile pickerProfile, synthIndex int) (*renderBundle, error) {
+			cfg := applyPickerProfile(buildCfg, profile)
+			cfg = applyPickerSynth(cfg, synthIndex)
+			return buildRenderBundle(resolveIWADAliasPath(path), cfg, stderr)
 		})
 		if perr != nil {
 			fmt.Fprintf(stderr, "iwad picker: %v\n", perr)
@@ -764,9 +786,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	wadHash := hashWADStackSHA1(wadPaths)
 	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
+	musicSoundFontChoices := detectAvailableSoundFonts("soundfonts")
 	musicPatchBank, err := resolveMusicPatchBank(wf, strings.TrimSpace(*oplBank), stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "music patch import error: %v\n", err)
+		return 1
+	}
+	musicSoundFont, err := resolveMusicSoundFont(resolvedMusicBackend, strings.TrimSpace(*soundFont), stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "music soundfont import error: %v\n", err)
 		return 1
 	}
 	if *importPCSpeaker {
@@ -942,7 +970,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MUSPanMax:                  *musPanMax,
 			OPLVolume:                  *oplVolume,
 			AudioPreEmphasis:           *audioPreEmphasis,
-			OPL3Backend:                resolvedOPL3Backend,
+			MusicBackend:               resolvedMusicBackend,
 			OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 			SFXVolume:                  *sfxVolume,
 			SFXPitchShift:              *sfxPitchShift,
@@ -987,6 +1015,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			IntermissionPatchBank:      intermissionPatchBank,
 			SoundBank:                  soundBank,
 			MusicPatchBank:             musicPatchBank,
+			MusicSoundFontPath:         strings.TrimSpace(*soundFont),
+			MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
+			MusicSoundFont:             musicSoundFont,
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
 			DemoStopAfterTics:          max(0, *demoStopAfterTics),
@@ -1157,8 +1188,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			musPanMax:                  *musPanMax,
 			oplVolume:                  *oplVolume,
 			audioPreEmphasis:           *audioPreEmphasis,
-			opl3Backend:                resolvedOPL3Backend,
+			musicBackend:               resolvedMusicBackend,
 			oplBankPath:                strings.TrimSpace(*oplBank),
+			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  *sfxVolume,
 			sfxPitchShift:              *sfxPitchShift,
 			fastMonsters:               *fastMonsters,
@@ -1681,6 +1713,54 @@ func resolvePathCaseInsensitive(path string) (string, bool) {
 	return "", false
 }
 
+func detectAvailableSoundFonts(dir string) []string {
+	out := append([]string(nil), music.EmbeddedSoundFontChoices()...)
+	entries, err := os.ReadDir(dir)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			name := strings.TrimSpace(entry.Name())
+			if !strings.HasSuffix(strings.ToLower(name), ".sf2") {
+				continue
+			}
+			out = append(out, filepath.Join(dir, name))
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		pi := soundFontDefaultRank(out[i])
+		pj := soundFontDefaultRank(out[j])
+		if pi != pj {
+			return pi < pj
+		}
+		return strings.ToUpper(out[i]) < strings.ToUpper(out[j])
+	})
+	if len(out) == 0 {
+		return nil
+	}
+	dedup := out[:0]
+	var prev string
+	for _, path := range out {
+		if prev != "" && strings.EqualFold(prev, path) {
+			continue
+		}
+		dedup = append(dedup, path)
+		prev = path
+	}
+	return dedup
+}
+
+func soundFontDefaultRank(path string) int {
+	base := strings.ToLower(strings.TrimSpace(filepath.Base(path)))
+	switch base {
+	case "sc55.sf2":
+		return 0
+	default:
+		return 1
+	}
+}
+
 type iwadChoice struct {
 	Path  string
 	Label string
@@ -1693,7 +1773,9 @@ type knownIWADChoice struct {
 
 func detectAvailableIWADChoices(dir string) []iwadChoice {
 	known := knownIWADChoices()
-	out := make([]iwadChoice, 0, len(known))
+	browserPaths := wad.BrowserLocalWADPaths()
+	out := make([]iwadChoice, 0, len(known)+len(browserPaths))
+	usedBrowser := make(map[string]struct{}, len(browserPaths))
 	for _, k := range known {
 		for _, candidate := range k.Paths {
 			if p, ok := resolvePathCaseInsensitive(filepath.Join(dir, candidate)); ok {
@@ -1703,6 +1785,17 @@ func detectAvailableIWADChoices(dir string) []iwadChoice {
 				})
 				goto nextKnownIWAD
 			}
+		}
+		for _, path := range browserPaths {
+			if !browserWADMatchesKnownChoice(path, k) {
+				continue
+			}
+			out = append(out, iwadChoice{
+				Path:  path,
+				Label: k.Label,
+			})
+			usedBrowser[strings.ToUpper(strings.TrimSpace(path))] = struct{}{}
+			goto nextKnownIWAD
 		}
 		for _, candidate := range k.Paths {
 			if _, ok := wad.EmbeddedDataForPath(candidate); ok {
@@ -1715,7 +1808,31 @@ func detectAvailableIWADChoices(dir string) []iwadChoice {
 		}
 	nextKnownIWAD:
 	}
+	for _, path := range browserPaths {
+		key := strings.ToUpper(strings.TrimSpace(path))
+		if _, ok := usedBrowser[key]; ok {
+			continue
+		}
+		label := "LOCAL WAD"
+		if wf, err := wad.Open(path); err == nil && strings.EqualFold(wf.Header.Identification, "PWAD") {
+			label = "LOCAL PWAD"
+		}
+		out = append(out, iwadChoice{
+			Path:  path,
+			Label: label,
+		})
+	}
 	return out
+}
+
+func browserWADMatchesKnownChoice(path string, choice knownIWADChoice) bool {
+	base := strings.ToUpper(filepath.Base(strings.TrimSpace(path)))
+	for _, candidate := range choice.Paths {
+		if strings.EqualFold(candidate, base) {
+			return true
+		}
+	}
+	return false
 }
 
 func knownIWADChoices() []knownIWADChoice {
@@ -1765,8 +1882,9 @@ type renderBuildConfig struct {
 	musPanMax                  float64
 	oplVolume                  float64
 	audioPreEmphasis           bool
-	opl3Backend                sound.Backend
+	musicBackend               music.Backend
 	oplBankPath                string
+	soundFontPath              string
 	sfxVolume                  float64
 	sfxPitchShift              bool
 	fastMonsters               bool
@@ -1825,11 +1943,23 @@ var pickerProfiles = [...]pickerProfileOption{
 	{label: "FAITHFUL", description: "CLASSIC DOOM - PIXELATED / RETRO", sourcePortMode: false},
 }
 
+type pickerSynthOption struct {
+	label       string
+	description string
+	backend     music.Backend
+}
+
+var pickerSynths = [...]pickerSynthOption{
+	{label: "OPL - IMPSYNTH", description: "ADLIB / SOUNDBLASTER 16", backend: music.BackendImpSynth},
+	{label: "MIDI - MELTYSYNTH", description: "MIDI SYNTHSIZER: SC-55", backend: music.BackendMeltySynth},
+}
+
 type pickerStage int
 
 const (
 	pickerStageIWAD pickerStage = iota
 	pickerStageProfile
+	pickerStageSynth
 )
 
 type renderBundle struct {
@@ -1879,6 +2009,24 @@ func resolveMusicPatchBank(wf *wad.File, overridePath string, stderr io.Writer) 
 	return nil, nil
 }
 
+func resolveMusicSoundFont(backend music.Backend, path string, stderr io.Writer) (*music.SoundFontBank, error) {
+	if music.ResolveBackend(backend) != music.BackendMeltySynth {
+		return nil, nil
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil, fmt.Errorf("meltysynth backend requires a SoundFont (.sf2)")
+	}
+	bank, err := music.ParseSoundFontFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if stderr != nil {
+		fmt.Fprintf(stderr, "music soundfont import: source=%s\n", path)
+	}
+	return bank, nil
+}
+
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {
 	wf, wadPaths, err := openWADStack(resolvedWADPath, cfg.pwadPaths)
 	if err != nil {
@@ -1886,7 +2034,12 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	}
 	wadHash := hashWADStackSHA1(wadPaths)
 	dsr := sound.ImportDigitalSounds(wf)
+	musicSoundFontChoices := detectAvailableSoundFonts("soundfonts")
 	musicPatchBank, err := resolveMusicPatchBank(wf, cfg.oplBankPath, stderr)
+	if err != nil {
+		return nil, err
+	}
+	musicSoundFont, err := resolveMusicSoundFont(cfg.musicBackend, cfg.soundFontPath, stderr)
 	if err != nil {
 		return nil, err
 	}
@@ -2000,7 +2153,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		MUSPanMax:                  cfg.musPanMax,
 		OPLVolume:                  cfg.oplVolume,
 		AudioPreEmphasis:           cfg.audioPreEmphasis,
-		OPL3Backend:                cfg.opl3Backend,
+		MusicBackend:               cfg.musicBackend,
 		OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 		SFXVolume:                  cfg.sfxVolume,
 		SFXPitchShift:              cfg.sfxPitchShift,
@@ -2045,6 +2198,9 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		IntermissionPatchBank:      intermissionPatchBank,
 		SoundBank:                  soundBank,
 		MusicPatchBank:             musicPatchBank,
+		MusicSoundFontPath:         cfg.soundFontPath,
+		MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
+		MusicSoundFont:             musicSoundFont,
 		RecordDemoPath:             cfg.recordDemoPath,
 		DemoExitOnDeath:            cfg.demoExitOnDeath,
 		DemoStopAfterTics:          cfg.demoStopAfterTics,
@@ -2177,10 +2333,38 @@ func applyPickerProfile(cfg renderBuildConfig, profile pickerProfile) renderBuil
 	return cfg
 }
 
+func pickerSynthIndexForBackend(backend music.Backend) int {
+	resolved := music.ResolveBackend(backend)
+	for i, option := range pickerSynths {
+		if music.ResolveBackend(option.backend) == resolved {
+			return i
+		}
+	}
+	return 0
+}
+
+func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
+	if synthIndex < 0 || synthIndex >= len(pickerSynths) {
+		synthIndex = 0
+	}
+	option := pickerSynths[synthIndex]
+	cfg.musicBackend = option.backend
+	if music.ResolveBackend(option.backend) == music.BackendMeltySynth {
+		cfg.musicVolume = 0.7
+		if strings.TrimSpace(cfg.soundFontPath) == "" {
+			if choices := detectAvailableSoundFonts("soundfonts"); len(choices) > 0 {
+				cfg.soundFontPath = choices[0]
+			}
+		}
+	}
+	return cfg
+}
+
 type iwadPickerGame struct {
 	choices      []iwadChoice
 	selected     int
 	profile      pickerProfile
+	synth        int
 	stage        pickerStage
 	confirmArmed bool
 	status       string
@@ -2191,13 +2375,13 @@ type iwadPickerGame struct {
 	fontBank     map[rune]media.WallTexture
 	fontImg      map[rune]*ebiten.Image
 	sfx          *audiofx.MenuPlayer
-	load         func(string, pickerProfile) (*renderBundle, error)
+	load         func(string, pickerProfile, int) (*renderBundle, error)
 	session      *doomsession.Session
 	err          error
 }
 
-func newIWADPickerGame(choices []iwadChoice, load func(string, pickerProfile) (*renderBundle, error)) (*iwadPickerGame, error) {
-	game := &iwadPickerGame{choices: choices, load: load}
+func newIWADPickerGame(choices []iwadChoice, initialBackend music.Backend, load func(string, pickerProfile, int) (*renderBundle, error)) (*iwadPickerGame, error) {
+	game := &iwadPickerGame{choices: choices, load: load, synth: pickerSynthIndexForBackend(initialBackend)}
 	if len(choices) <= 1 {
 		game.stage = pickerStageProfile
 	}
@@ -2274,7 +2458,11 @@ func (g *iwadPickerGame) Update() error {
 		g.confirmArmed = !pickerConfirmHeld()
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		if g.stage == pickerStageProfile {
+		if g.stage == pickerStageSynth {
+			g.stage = pickerStageProfile
+			g.confirmArmed = false
+			g.playPickerBackSound()
+		} else if g.stage == pickerStageProfile {
 			g.stage = pickerStageIWAD
 			g.confirmArmed = false
 			g.playPickerBackSound()
@@ -2300,17 +2488,39 @@ func (g *iwadPickerGame) Update() error {
 			}
 		}
 		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+			g.playPickerConfirmSound()
+			g.stage = pickerStageSynth
+			g.confirmArmed = false
+			return nil
+		}
+	case pickerStageSynth:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			prev := g.synth
+			g.synth = (g.synth + len(pickerSynths) - 1) % len(pickerSynths)
+			if g.synth != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			prev := g.synth
+			g.synth = (g.synth + 1) % len(pickerSynths)
+			if g.synth != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
 			if g.load == nil {
 				g.err = fmt.Errorf("iwad loader unavailable")
 				return ebiten.Termination
 			}
 			g.playPickerConfirmSound()
-			bundle, err := g.load(g.choices[g.selected].Path, g.profile)
+			bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.synth)
 			if err != nil {
 				g.status = err.Error()
 				return nil
 			}
 			g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+			notifyBrowserSessionStarted()
 			return nil
 		}
 	default:
@@ -2375,6 +2585,24 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			g.drawPickerTextScaled(screen, profile.label, titleX, rowY, 2)
 			g.drawPickerText(screen, profile.description, titleX, rowY+22)
 		}
+	case pickerStageSynth:
+		titleWidth := 0
+		descWidth := 0
+		for _, synth := range pickerSynths {
+			titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, 2))
+			descWidth = max(descWidth, g.pickerTextWidth(synth.description))
+		}
+		contentWidth := max(titleWidth, descWidth)
+		titleX := sw/2 - contentWidth/2
+		synthY := sh - 112
+		for i, synth := range pickerSynths {
+			rowY := synthY + i*52
+			if i == g.synth {
+				g.drawPickerSkull(screen, titleX, rowY+4)
+			}
+			g.drawPickerTextScaled(screen, synth.label, titleX, rowY, 2)
+			g.drawPickerText(screen, synth.description, titleX, rowY+22)
+		}
 	default:
 		labelTexts := make([]string, len(g.choices))
 		fileTexts := make([]string, len(g.choices))
@@ -2404,7 +2632,11 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	if strings.TrimSpace(g.status) != "" {
 		g.drawPickerTextCentered(screen, strings.ToUpper(g.status), sw/2, sh-52)
 	}
-	g.drawPickerTextCentered(screen, "UP/DOWN    ESC - BACK    ENTER - NEXT", sw/2, sh-12)
+	footer := "UP/DOWN    ESC - BACK    ENTER - NEXT"
+	if g.stage == pickerStageSynth {
+		footer = "UP/DOWN    ESC - BACK    ENTER - PLAY"
+	}
+	g.drawPickerTextCentered(screen, footer, sw/2, sh-12)
 }
 
 func (g *iwadPickerGame) Layout(outsideWidth, outsideHeight int) (int, int) {

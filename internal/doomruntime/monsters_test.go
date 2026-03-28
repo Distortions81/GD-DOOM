@@ -121,6 +121,17 @@ func TestTickMonstersWakesWhenPlayerBehindButClose(t *testing.T) {
 	}
 }
 
+func TestMonsterIdleOrChaseStateUsesLiveTargetEvenWithoutAggro(t *testing.T) {
+	g := &game{
+		thingAggro:        []bool{false},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+	}
+	if got := g.monsterIdleOrChaseState(0); got != monsterStateSee {
+		t.Fatalf("monsterIdleOrChaseState=%d want %d", got, monsterStateSee)
+	}
+}
+
 func TestTickMonstersWakesByNoiseWithoutLOSForNonAmbush(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -284,7 +295,53 @@ func TestMonsterAttackTargetPos_PreservesDeadPlayerCorpseAim(t *testing.T) {
 	}
 }
 
-func TestTickMonstersLostTargetFallsThroughSpawnLookSameTicLikeDoom(t *testing.T) {
+func TestTickMonstersPainKeepsNonPlayerTargetAfterPlayerDeath(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 0, Y: 0},
+				{Type: 3001, X: 128, Y: 0},
+			},
+		},
+		isDead:            true,
+		thingCollected:    []bool{false, false},
+		thingHP:           []int{126, 20},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{false, false},
+		thingTargetIdx:    []int{1, -1},
+		thingThreshold:    []int{monsterBaseThreshold, 0},
+		thingPainTics:     []int{5, 0},
+		thingState:        []monsterThinkState{monsterStatePain, monsterStateSee},
+		thingStateTics:    []int{2, 1},
+		thingStatePhase:   []int{0, 0},
+		thingMoveDir:      []monsterMoveDir{monsterDirNorth, monsterDirNoDir},
+		thingMoveCount:    []int{13, 0},
+		thingX:            []int64{0, 128 * fracUnit},
+		thingY:            []int64{0, 0},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+		p:                 player{x: 0, y: 0, z: 0},
+	}
+
+	g.tickMonsters()
+
+	if g.thingTargetPlayer[0] {
+		t.Fatal("paining monster should keep non-player target after player death")
+	}
+	if got := g.thingTargetIdx[0]; got != 1 {
+		t.Fatalf("target idx=%d want 1", got)
+	}
+	if got := g.thingThreshold[0]; got != monsterBaseThreshold {
+		t.Fatalf("threshold=%d want %d", got, monsterBaseThreshold)
+	}
+	if got := g.thingState[0]; got != monsterStatePain {
+		t.Fatalf("state=%d want pain", got)
+	}
+}
+
+func TestTickMonstersLostTargetReturnsToSpawnStateLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -325,26 +382,26 @@ func TestTickMonstersLostTargetFallsThroughSpawnLookSameTicLikeDoom(t *testing.T
 	}
 	g.initPhysics()
 	g.tickMonsters()
-	if !g.thingTargetPlayer[0] {
-		t.Fatal("monster should reacquire the player on the same tic it loses a dead target")
-	}
-	if g.thingTargetIdx[0] != -1 {
-		t.Fatalf("target idx=%d want -1 after reacquiring player", g.thingTargetIdx[0])
-	}
 	if g.thingThreshold[0] != 0 {
 		t.Fatalf("threshold=%d want 0 after lost-target chase fallback", g.thingThreshold[0])
 	}
+	if !g.thingTargetPlayer[0] {
+		t.Fatal("monster should reacquire the player through same-tic A_Look from spawn state")
+	}
+	if g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target idx=%d want player target after same-tic A_Look", g.thingTargetIdx[0])
+	}
 	if g.thingState[0] != monsterStateSee {
-		t.Fatalf("state=%d want see after spawn look reacquires player", g.thingState[0])
+		t.Fatalf("state=%d want see after same-tic spawn look wake", g.thingState[0])
 	}
 	if g.thingStatePhase[0] != 0 {
-		t.Fatalf("phase=%d want 0 after entering see state from spawn look", g.thingStatePhase[0])
+		t.Fatalf("phase=%d want 0 after same-tic wake to see state", g.thingStatePhase[0])
 	}
 	if want := monsterSeeStateTicsAtPhase(3002, 0, false); g.thingStateTics[0] != want {
 		t.Fatalf("state tics=%d want %d", g.thingStateTics[0], want)
 	}
 	if len(g.soundQueue) == 0 {
-		t.Fatalf("reacquire should emit seesound, queue=%v", g.soundQueue)
+		t.Fatal("same-tic A_Look wake should emit seesound")
 	}
 }
 
@@ -602,6 +659,37 @@ func TestTickMonsterAttackState_ChaingunnerRefireLoopIgnoresFixedAttackCounter(t
 	}
 	if got := g.thingAttackTics[0]; got <= 0 {
 		t.Fatalf("attack tics=%d want > 0 while attack loop remains active", got)
+	}
+}
+
+func TestStartMonsterAttackState_RevenantSkipsZeroTicStartupFrameLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 66, X: 64, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{300},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackTics:   []int{0},
+		thingAttackPhase:  []int{0},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{0},
+		thingAngleState:   []uint32{0},
+		thingX:            []int64{64 * fracUnit},
+		thingY:            []int64{0},
+		p:                 player{x: 0, y: 0, z: 0},
+	}
+
+	if !g.startMonsterAttackState(0, 66, true) {
+		t.Fatal("expected revenant attack state to start")
+	}
+	if got := g.thingAttackPhase[0]; got != 1 {
+		t.Fatalf("attack phase=%d want 1 after zero-tic startup frame", got)
+	}
+	if got := g.thingStateTics[0]; got != 10 {
+		t.Fatalf("state tics=%d want 10 for revenant missile windup", got)
 	}
 }
 
@@ -1293,18 +1381,29 @@ func TestDemoTraceMonsterAttackStateMatchesDoomStateNumbers(t *testing.T) {
 	tests := []struct {
 		typ  int16
 		base int
+		len  int
 	}{
-		{3004, 184},
-		{9, 217},
-		{3001, 452},
-		{3002, 485},
-		{58, 485},
-		{3005, 504},
-		{3003, 537},
-		{69, 566},
+		{3004, 184, 3},
+		{9, 218, 3},
+		{65, 416, 4},
+		{3001, 452, 3},
+		{3002, 485, 3},
+		{58, 485, 3},
+		{3005, 504, 3},
+		{3003, 538, 3},
+		{69, 567, 3},
+		{3006, 589, 4},
+		{64, 256, 11},
+		{66, 336, 6},
+		{67, 377, 10},
+		{68, 648, 4},
+		{71, 709, 4},
+		{16, 685, 6},
+		{7, 616, 4},
+		{84, 737, 3},
 	}
 	for _, tt := range tests {
-		for phase := 0; phase < 3; phase++ {
+		for phase := 0; phase < tt.len; phase++ {
 			got, ok := demoTraceMonsterAttackState(tt.typ, phase)
 			if !ok {
 				t.Fatalf("type %d phase %d returned no state", tt.typ, phase)
@@ -1323,13 +1422,23 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		len  int
 	}{
 		{3004, 174, 2},
-		{9, 207, 2},
+		{9, 208, 2},
+		{65, 406, 2},
 		{3001, 442, 2},
 		{3002, 475, 2},
 		{58, 475, 2},
 		{3005, 502, 1},
-		{3003, 527, 2},
-		{69, 556, 2},
+		{3003, 528, 2},
+		{69, 557, 2},
+		{3006, 585, 2},
+		{64, 240, 2},
+		{66, 320, 2},
+		{67, 361, 2},
+		{68, 632, 1},
+		{71, 702, 1},
+		{16, 674, 1},
+		{7, 600, 2},
+		{84, 727, 2},
 	}
 	for _, tt := range spawnTests {
 		for phase := 0; phase < tt.len; phase++ {
@@ -1349,13 +1458,23 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		len  int
 	}{
 		{3004, 176, 8},
-		{9, 209, 8},
+		{9, 210, 8},
+		{65, 408, 8},
 		{3001, 444, 8},
 		{3002, 477, 8},
 		{58, 477, 8},
 		{3005, 503, 1},
-		{3003, 529, 8},
-		{69, 558, 8},
+		{3003, 530, 8},
+		{69, 559, 8},
+		{3006, 587, 2},
+		{64, 244, 12},
+		{66, 324, 12},
+		{67, 365, 12},
+		{68, 636, 2},
+		{71, 703, 1},
+		{16, 677, 8},
+		{7, 604, 4},
+		{84, 729, 8},
 	}
 	for _, tt := range seeTests {
 		for phase := 0; phase < tt.len; phase++ {
@@ -1378,19 +1497,34 @@ func TestDemoTraceMonsterPainStateMatchesDoomStateNumbers(t *testing.T) {
 	}{
 		{3004, 6, 187},
 		{3004, 3, 188},
-		{9, 4, 220},
-		{9, 2, 221},
+		{9, 4, 221},
+		{9, 2, 222},
+		{65, 6, 420},
+		{65, 3, 421},
 		{3001, 4, 455},
 		{3001, 2, 456},
 		{3002, 4, 488},
 		{3005, 12, 507},
 		{3005, 9, 508},
 		{3005, 6, 509},
-		{3003, 4, 540},
-		{69, 4, 569},
+		{3003, 4, 541},
+		{69, 4, 570},
 		{3006, 6, 593},
-		{7, 6, 619},
-		{16, 10, 690},
+		{3006, 3, 594},
+		{64, 10, 268},
+		{64, 5, 269},
+		{66, 10, 344},
+		{66, 5, 345},
+		{67, 10, 387},
+		{67, 2, 388},
+		{68, 10, 652},
+		{68, 2, 653},
+		{71, 12, 713},
+		{71, 6, 714},
+		{7, 6, 620},
+		{16, 10, 688},
+		{84, 6, 743},
+		{84, 3, 744},
 	}
 	for _, tt := range tests {
 		got, ok := demoTraceMonsterPainState(tt.typ, tt.remaining)
@@ -2879,70 +3013,159 @@ func TestTickMonstersAttackExpiryResumesChaseSameTicLikeDoom(t *testing.T) {
 	}
 }
 
-func TestTickMonstersAttackExpiryLostTargetSpawnLookRunsNestedChaseLikeDoom(t *testing.T) {
+func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		typ  int16
+	}{
+		{name: "zombieman", typ: 3004},
+		{name: "shotgun_guy", typ: 9},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{
+				m: &mapdata.Map{
+					Things: []mapdata.Thing{
+						{Type: tc.typ, X: 2048, Y: 0},
+						{Type: tc.typ, X: 2560, Y: 0},
+					},
+					Vertexes: []mapdata.Vertex{
+						{X: 1024, Y: -64},
+						{X: 1024, Y: 64},
+					},
+					Linedefs: []mapdata.Linedef{
+						{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
+					},
+					Sidedefs: []mapdata.Sidedef{
+						{Sector: 0},
+					},
+					Sectors: []mapdata.Sector{
+						{FloorHeight: 0, CeilingHeight: 128},
+					},
+				},
+				thingCollected:      []bool{false, false},
+				thingHP:             []int{20, -4},
+				thingAggro:          []bool{true, false},
+				thingTargetPlayer:   []bool{false, false},
+				thingTargetIdx:      []int{1, -1},
+				thingPainTics:       []int{0, 0},
+				thingAttackTics:     []int{1, 0},
+				thingAttackFireTics: []int{-1, -1},
+				thingAttackPhase:    []int{2, 0},
+				thingReactionTics:   []int{0, 0},
+				thingMoveDir:        []monsterMoveDir{monsterDirSouthEast, monsterDirNoDir},
+				thingMoveCount:      []int{0, 0},
+				thingJustAtk:        []bool{true, false},
+				thingThreshold:      []int{monsterBaseThreshold, 0},
+				thingAngleState:     []uint32{2798540703, 0},
+				thingState:          []monsterThinkState{monsterStateAttack, monsterStateDeath},
+				thingStateTics:      []int{1, 1},
+				thingStatePhase:     []int{2, 0},
+				thingDead:           []bool{false, true},
+				thingZState:         []int64{0, 0},
+				thingFloorState:     []int64{0, 0},
+				thingCeilState:      []int64{128 * fracUnit, 128 * fracUnit},
+				thingSupportValid:   []bool{true, true},
+				thingLastLook:       []int{0, 0},
+				thingCooldown:       []int{0, 0},
+				sectorSoundTarget:   []bool{true},
+				p:                   player{x: 0, y: -128 * fracUnit, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+			}
+
+			g.initPhysics()
+			g.tickMonsters()
+
+			if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+				t.Fatalf("target should switch to the player through same-tic A_Look: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+			}
+			if g.thingJustAtk[0] {
+				t.Fatal("thingJustAtk should clear after the resumed chase honors Doom's just-attacked gate")
+			}
+			if g.thingState[0] != monsterStateSee {
+				t.Fatalf("state=%d want see after same-tic chase resume", g.thingState[0])
+			}
+			if g.thingStatePhase[0] != 0 {
+				t.Fatalf("phase=%d want 0 after same-tic chase resume", g.thingStatePhase[0])
+			}
+			if want := monsterSeeStateTicsAtPhase(tc.typ, 0, false); g.thingStateTics[0] != want {
+				t.Fatalf("state tics=%d want %d after same-tic chase resume", g.thingStateTics[0], want)
+			}
+			if got := g.thingMoveCount[0]; got < 0 || got > 15 {
+				t.Fatalf("movecount=%d want [0,15] after just-attacked chase pick", got)
+			}
+			if got := g.thingAngleState[0]; got == 2798540703 || got == 3221225472 {
+				t.Fatalf("angle=%d want a new post-reacquire chase turn", got)
+			}
+		})
+	}
+}
+
+func TestRunMonsterIdleOrChaseEntryAction_PainResumeLostTargetStopsAfterReacquire(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{Type: 3004, X: 2048, Y: 0},
-				{Type: 3004, X: 2560, Y: 0},
-			},
-			Vertexes: []mapdata.Vertex{
-				{X: 1024, Y: -64},
-				{X: 1024, Y: 64},
-			},
-			Linedefs: []mapdata.Linedef{
-				{V1: 0, V2: 1, Flags: mlBlocking, SideNum: [2]int16{0, -1}},
-			},
-			Sidedefs: []mapdata.Sidedef{
-				{Sector: 0},
+				{Type: 9, X: 0, Y: 0},
+				{Type: 9, X: 64, Y: 0},
 			},
 			Sectors: []mapdata.Sector{
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		thingCollected:      []bool{false, false},
-		thingHP:             []int{20, -4},
-		thingAggro:          []bool{true, false},
-		thingTargetPlayer:   []bool{false, false},
-		thingTargetIdx:      []int{1, -1},
-		thingPainTics:       []int{0, 0},
-		thingAttackTics:     []int{1, 0},
-		thingAttackFireTics: []int{-1, -1},
-		thingAttackPhase:    []int{2, 0},
-		thingReactionTics:   []int{0, 0},
-		thingMoveDir:        []monsterMoveDir{monsterDirSouthEast, monsterDirNoDir},
-		thingMoveCount:      []int{0, 0},
-		thingJustAtk:        []bool{true, false},
-		thingThreshold:      []int{monsterBaseThreshold, 0},
-		thingAngleState:     []uint32{2798540703, 0},
-		thingState:          []monsterThinkState{monsterStateAttack, monsterStateDeath},
-		thingStateTics:      []int{1, 1},
-		thingStatePhase:     []int{2, 0},
-		thingDead:           []bool{false, true},
-		thingZState:         []int64{0, 0},
-		thingFloorState:     []int64{0, 0},
-		thingCeilState:      []int64{128 * fracUnit, 128 * fracUnit},
-		thingSupportValid:   []bool{true, true},
-		thingLastLook:       []int{0, 0},
-		thingCooldown:       []int{0, 0},
-		sectorSoundTarget:   []bool{true},
-		p:                   player{x: 0, y: -128 * fracUnit, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+		thingX:            []int64{0, 64 * fracUnit},
+		thingY:            []int64{0, 0},
+		thingSectorCache:  []int{0, 0},
+		thingHP:           []int{7, -2},
+		thingState:        []monsterThinkState{monsterStateSee, monsterStateDeath},
+		thingStateTics:    []int{3, 1},
+		thingStatePhase:   []int{1, 0},
+		thingMoveDir:      []monsterMoveDir{monsterDirWest, monsterDirNoDir},
+		thingMoveCount:    []int{0, 0},
+		thingThreshold:    []int{94, 0},
+		thingJustAtk:      []bool{true, false},
+		thingTargetIdx:    []int{1, -1},
+		thingTargetPlayer: []bool{false, false},
+		thingDead:         []bool{false, true},
+		sectorSoundTarget: []bool{true},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		p:                 player{x: -128 * fracUnit, y: 0, z: 0},
 	}
 
-	g.initPhysics()
-	g.tickMonsters()
-
+	stop, ranChase := g.runMonsterIdleOrChaseEntryAction(0, 9, 0, 0, false)
+	if !stop || ranChase {
+		t.Fatalf("stop=%v ranChase=%v want stop=true ranChase=false", stop, ranChase)
+	}
 	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
-		t.Fatalf("target not reacquired to player: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+		t.Fatalf("target should switch to player: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
 	}
-	if g.thingJustAtk[0] {
-		t.Fatal("thingJustAtk should clear after the nested chase entry")
+	if !g.thingJustAtk[0] {
+		t.Fatal("thingJustAtk should remain set when pain-resume reacquire stops before just-attacked chase")
 	}
-	if got := g.thingAngleState[0]; got != 3758096384 {
-		t.Fatalf("angle=%d want 3758096384 after the nested chase turn", got)
+	if got := g.thingMoveCount[0]; got != 0 {
+		t.Fatalf("movecount=%d want 0 when no same-tic chase step occurs", got)
 	}
-	if got := g.thingMoveCount[0]; got < 0 || got > 15 {
-		t.Fatalf("movecount=%d want [0,15] after nested chase pick", got)
+}
+
+func TestAdvanceMonsterAttackPhaseEndsInSeeState(t *testing.T) {
+	g := &game{
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStateTics:      []int{1},
+		thingStatePhase:     []int{2},
+		thingAttackTics:     []int{26},
+		thingAttackPhase:    []int{2},
+		thingAttackFireTics: []int{-1},
+	}
+
+	if advanced := g.advanceMonsterAttackPhase(0, 3004, 0, 0, 0, 0, 0); advanced {
+		t.Fatal("advanceMonsterAttackPhase returned true, want false at end of zombieman attack")
+	}
+	if got := g.thingState[0]; got != monsterStateSee {
+		t.Fatalf("state=%v want=%v", got, monsterStateSee)
+	}
+	if got := g.thingStatePhase[0]; got != 0 {
+		t.Fatalf("phase=%d want=0", got)
+	}
+	if want := monsterSeeStateTicsAtPhase(3004, 0, false); g.thingStateTics[0] != want {
+		t.Fatalf("state tics=%d want=%d", g.thingStateTics[0], want)
 	}
 }
 
@@ -3189,6 +3412,7 @@ func TestLostTargetChaseRunsSpawnLookPath(t *testing.T) {
 		thingHP:           []int{20, -4},
 		thingState:        []monsterThinkState{monsterStateSee, monsterStateDeath},
 		thingStateTics:    []int{1, 1},
+		thingStatePhase:   []int{3, 0},
 		thingMoveDir:      []monsterMoveDir{monsterDirSouthWest, monsterDirNoDir},
 		thingMoveCount:    []int{0, 0},
 		thingThreshold:    []int{10, 0},
@@ -3218,5 +3442,11 @@ func TestLostTargetChaseRunsSpawnLookPath(t *testing.T) {
 	}
 	if g.thingState[0] != monsterStateSee {
 		t.Fatalf("state=%v want see after spawn/look reacquire", g.thingState[0])
+	}
+	if g.thingStatePhase[0] != 3 {
+		t.Fatalf("phase=%d want 3 after direct chase reacquire", g.thingStatePhase[0])
+	}
+	if g.thingStateTics[0] != 1 {
+		t.Fatalf("state tics=%d want 1 after direct chase reacquire", g.thingStateTics[0])
 	}
 }

@@ -59,7 +59,7 @@ func TestPauseMusicPlayerOptionRequestsFrontendHandOff(t *testing.T) {
 		pauseMenuActive:    true,
 		paused:             true,
 		pauseMenuMode:      pauseMenuModeOptions,
-		pauseMenuOptionsOn: frontendOptionsRowMusicPlayer,
+		pauseMenuOptionsOn: frontendOptionsRowMusic,
 	}
 
 	g.activatePauseOptionsItem()

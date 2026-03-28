@@ -616,6 +616,46 @@ func TestTickFloors_RemoveOnOvershootTicNotExactArrival(t *testing.T) {
 	}
 }
 
+func TestTickPlat_UpwardBlockedByPlayerReversesLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 60}},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{60 * fracUnit},
+		plats: map[int]*platThinker{
+			0: {
+				status: platStatusUp,
+				speed:  8 * fracUnit,
+				high:   40 * fracUnit,
+				wait:   platWaitTics,
+			},
+		},
+		p: player{
+			x:      32 * fracUnit,
+			y:      32 * fracUnit,
+			z:      0,
+			floorz: 0,
+			ceilz:  60 * fracUnit,
+		},
+	}
+
+	g.tickPlat(0, g.plats[0])
+
+	if got, want := g.sectorFloor[0], int64(0); got != want {
+		t.Fatalf("floor after blocked lift tick=%d want=%d", got, want)
+	}
+	if got, want := g.p.z, int64(0); got != want {
+		t.Fatalf("player z after blocked lift tick=%d want=%d", got, want)
+	}
+	if got, want := g.plats[0].status, platStatusDown; got != want {
+		t.Fatalf("plat status=%v want %v", got, want)
+	}
+	if got, want := g.plats[0].count, platWaitTics; got != want {
+		t.Fatalf("plat count=%d want %d", got, want)
+	}
+}
+
 func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -730,6 +770,56 @@ func TestCheckWalkSpecialLines_DoesNotTriggerRemoteTeleport(t *testing.T) {
 	}
 }
 
+func TestCheckWalkSpecialLines_DoesNotTriggerTeleportFromBackSide(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 128, Y: 64, Angle: 90, Type: 14},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 7},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{97},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:      32 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLines(32*fracUnit, 0, -32*fracUnit, 0)
+
+	if g.p.x != 32*fracUnit || g.p.y != 0 {
+		t.Fatalf("player unexpectedly teleported to (%d,%d)", g.p.x, g.p.y)
+	}
+	if got := len(g.hitscanPuffs); got != 0 {
+		t.Fatalf("teleport fog count=%d want=0", got)
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("teleport sound count=%d want=0", got)
+	}
+}
+
 func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -785,8 +875,8 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 	if g.m.Things[0].X != 128 || g.m.Things[0].Y != 64 {
 		t.Fatalf("monster teleported to (%d,%d), want (%d,%d)", g.m.Things[0].X, g.m.Things[0].Y, 128, 64)
 	}
-	if g.thingMoveDir[0] != monsterDirNoDir || g.thingMoveCount[0] != 0 {
-		t.Fatalf("monster move state=%v/%d want nodir/0", g.thingMoveDir[0], g.thingMoveCount[0])
+	if g.thingMoveDir[0] != monsterDirEast || g.thingMoveCount[0] != 7 {
+		t.Fatalf("monster move state=%v/%d want east/7", g.thingMoveDir[0], g.thingMoveCount[0])
 	}
 	if g.p.reactionTime != 0 {
 		t.Fatalf("player reactionTime=%d want 0", g.p.reactionTime)
@@ -794,8 +884,58 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 	if got := len(g.hitscanPuffs); got != 2 {
 		t.Fatalf("teleport fog count=%d want=2", got)
 	}
+	if got, want := g.hitscanPuffs[0].z, int64(0); got != want {
+		t.Fatalf("source teleport fog z=%d want=%d", got, want)
+	}
 	if got := len(g.soundQueue); got != 2 {
 		t.Fatalf("teleport sound count=%d want=2", got)
+	}
+}
+
+func TestTeleportSourceFogUsesActorZ(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 128, Y: 64, Angle: 90, Type: 14},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 1},
+			},
+		},
+		lineSpecial: []uint16{97},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:      0,
+			y:      0,
+			z:      8 * fracUnit,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLinesForActor(-32*fracUnit, 0, 32*fracUnit, 0, 0, true)
+
+	if got, want := len(g.hitscanPuffs), 2; got != want {
+		t.Fatalf("teleport fog count=%d want=%d", got, want)
+	}
+	if got, want := g.hitscanPuffs[0].z, int64(8*fracUnit); got != want {
+		t.Fatalf("source teleport fog z=%d want=%d", got, want)
 	}
 }
 
@@ -813,6 +953,21 @@ func TestUpdatePlayer_DoesNotApplyThrustWhileTeleportFrozen(t *testing.T) {
 
 	if g.p.momx != 0 || g.p.momy != 0 {
 		t.Fatalf("player momentum=(%d,%d) want (0,0)", g.p.momx, g.p.momy)
+	}
+}
+
+func TestUpdatePlayer_DoesNotTurnWhileTeleportFrozen(t *testing.T) {
+	g := &game{
+		p: player{
+			angle:        0xE0000000,
+			reactionTime: 1,
+		},
+	}
+
+	g.updatePlayer(moveCmd{turnRaw: -(1 << 24)})
+
+	if got, want := g.p.angle, uint32(0xE0000000); got != want {
+		t.Fatalf("player angle=%#x want %#x", got, want)
 	}
 }
 
