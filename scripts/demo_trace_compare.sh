@@ -201,6 +201,7 @@ echo "Tracing reference runtime: lump=${DEMO_LUMP}"
   cd "${REF_RUN_DIR}"
   env DOOMWADDIR="${REF_WAD_DIR}" \
     "${REFERENCE_BIN}" \
+    -playdemo "${DEMO_LUMP}" \
     -tracedemo "${DEMO_LUMP}" \
     -tracefile "${REF_TRACE}" \
     >"${REF_LOG}" 2>&1
