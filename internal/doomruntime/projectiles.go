@@ -98,18 +98,29 @@ func monsterProjectileKind(typ int16) projectileKind {
 }
 
 func monsterProjectileSpeed(typ int16, fast bool) int64 {
-	scale := int64(1)
-	if fast {
-		scale = 2
-	}
 	switch typ {
 	case 3003, 69:
-		return 15 * fracUnit * scale
+		if fast {
+			return 20 * fracUnit
+		}
+		return 15 * fracUnit
 	case 66, 67, 16:
+		scale := int64(1)
+		if fast {
+			scale = 2
+		}
 		return 20 * fracUnit * scale
 	case 68:
+		scale := int64(1)
+		if fast {
+			scale = 2
+		}
 		return 25 * fracUnit * scale
 	default:
+		scale := int64(1)
+		if fast {
+			scale = 2
+		}
 		return 10 * fracUnit * scale
 	}
 }

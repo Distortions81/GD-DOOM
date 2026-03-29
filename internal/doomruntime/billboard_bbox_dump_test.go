@@ -450,6 +450,8 @@ func buildBillboardSpritePatchBankForTest(t *testing.T, ts *doomtex.Set) map[str
 		for fr := byte('A'); fr <= byte('Z'); fr++ {
 			add(fmt.Sprintf("%s%c0", pfx, fr))
 			add(fmt.Sprintf("%s%c1", pfx, fr))
+			add(fmt.Sprintf("%s%c1%c5", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c5%c1", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c2%c8", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c8%c2", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c3%c7", pfx, fr, fr))
@@ -464,6 +466,8 @@ func buildBillboardSpritePatchBankForTest(t *testing.T, ts *doomtex.Set) map[str
 		for fr := byte('A'); fr <= byte('E'); fr++ {
 			add(fmt.Sprintf("%s%c0", pfx, fr))
 			add(fmt.Sprintf("%s%c1", pfx, fr))
+			add(fmt.Sprintf("%s%c1%c5", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c5%c1", pfx, fr, fr))
 		}
 	}
 	for fr := byte('F'); fr <= byte('H'); fr++ {

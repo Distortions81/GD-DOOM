@@ -61,6 +61,23 @@ func TestProjectileSpriteName_SelectsAvailableFrame(t *testing.T) {
 	}
 }
 
+func TestProjectileSpriteName_UsesOneFivePairsForBaronBall(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"BAL7A1A5": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"BAL7B1B5": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			},
+		},
+	}
+	if got := g.projectileSpriteName(projectileBaronBall, 0); got != "BAL7A1A5" {
+		t.Fatalf("baron frame 0 sprite=%q want BAL7A1A5", got)
+	}
+	if got := g.projectileSpriteName(projectileBaronBall, 6); got != "BAL7B1B5" {
+		t.Fatalf("baron frame 1 sprite=%q want BAL7B1B5", got)
+	}
+}
+
 func TestProjectileImpactSpriteName_DoomTimings(t *testing.T) {
 	g := &game{
 		opts: Options{

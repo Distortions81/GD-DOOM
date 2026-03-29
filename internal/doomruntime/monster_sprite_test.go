@@ -36,6 +36,20 @@ func TestMonsterSpriteRotFramePrefersPairAndFlip(t *testing.T) {
 	}
 }
 
+func TestMonsterSpriteRotFrameSupportsOneFivePairs(t *testing.T) {
+	g := &game{opts: Options{SpritePatchBank: map[string]WallTexture{
+		"BAL7A1A5": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+	}}}
+	name, flip, ok := g.monsterSpriteRotFrame("BAL7", 'A', 1)
+	if !ok || name != "BAL7A1A5" || flip {
+		t.Fatalf("rot1 got name=%q flip=%t ok=%t", name, flip, ok)
+	}
+	name, flip, ok = g.monsterSpriteRotFrame("BAL7", 'A', 5)
+	if !ok || name != "BAL7A1A5" || !flip {
+		t.Fatalf("rot5 got name=%q flip=%t ok=%t", name, flip, ok)
+	}
+}
+
 func TestMonsterSpriteNameForViewUsesRotation(t *testing.T) {
 	g := &game{opts: Options{SpritePatchBank: map[string]WallTexture{
 		"TROOA1":   {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
@@ -184,6 +198,42 @@ func TestMonsterDeathFrameSeq_SpectreMatchesDemon(t *testing.T) {
 	}
 	if got, want := monsterDeathAnimTotalTics(58), monsterDeathAnimTotalTics(3002); got != want {
 		t.Fatalf("spectre death total=%d want demon %d", got, want)
+	}
+}
+
+func TestMonsterDeathFrameSeq_HellKnightMatchesBaron(t *testing.T) {
+	if got, want := string(monsterDeathFrameSeq(69)), string(monsterDeathFrameSeq(3003)); got != want {
+		t.Fatalf("hell knight death seq=%q want baron %q", got, want)
+	}
+	if got, want := len(monsterDeathFrameTics(69)), len(monsterDeathFrameTics(3003)); got != want {
+		t.Fatalf("hell knight death tics len=%d want baron %d", got, want)
+	}
+	if got, want := monsterDeathAnimTotalTics(69), monsterDeathAnimTotalTics(3003); got != want {
+		t.Fatalf("hell knight death total=%d want baron %d", got, want)
+	}
+	if got, want := monsterDeathSoundDelayTics(69), 8; got != want {
+		t.Fatalf("hell knight death sound delay=%d want=%d", got, want)
+	}
+}
+
+func TestMonsterSpriteNameForView_HellKnightUsesDeathFrame(t *testing.T) {
+	g := &game{
+		opts: Options{SpritePatchBank: map[string]WallTexture{
+			"BOS2I0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			"BOS2O0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+		}},
+		thingDead:      []bool{true},
+		thingDeathTics: []int{monsterDeathAnimTotalTics(69)},
+	}
+	th := mapdata.Thing{Type: 69, X: 0, Y: 0, Angle: 0}
+	name, _ := g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "BOS2I0" {
+		t.Fatalf("hell knight death start got=%q want=BOS2I0", name)
+	}
+	g.thingDeathTics[0] = 0
+	name, _ = g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "BOS2O0" {
+		t.Fatalf("hell knight death end got=%q want=BOS2O0", name)
 	}
 }
 

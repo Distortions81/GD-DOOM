@@ -3498,6 +3498,8 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]media.WallTexture {
 		for _, fr := range frames {
 			add(fmt.Sprintf("%s%c0", pfx, fr))
 			add(fmt.Sprintf("%s%c1", pfx, fr))
+			add(fmt.Sprintf("%s%c1%c5", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c5%c1", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c2%c8", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c8%c2", pfx, fr, fr))
 			add(fmt.Sprintf("%s%c3%c7", pfx, fr, fr))
@@ -3521,6 +3523,8 @@ func buildMonsterSpriteBank(ts *doomtex.Set) map[string]media.WallTexture {
 		for fr := byte('A'); fr <= byte('E'); fr++ {
 			add(fmt.Sprintf("%s%c0", pfx, fr))
 			add(fmt.Sprintf("%s%c1", pfx, fr))
+			add(fmt.Sprintf("%s%c1%c5", pfx, fr, fr))
+			add(fmt.Sprintf("%s%c5%c1", pfx, fr, fr))
 		}
 	}
 	for fr := byte('E'); fr <= byte('F'); fr++ {

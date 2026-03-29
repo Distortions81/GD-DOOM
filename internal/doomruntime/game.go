@@ -11500,7 +11500,7 @@ func monsterDeathFrameSeq(typ int16) []byte {
 		return monsterDeathFramesLost
 	case 3005:
 		return monsterDeathFrames8x6
-	case 3003:
+	case 3003, 69:
 		return monsterDeathFrames8x7
 	case 64:
 		return monsterDeathFramesArch
@@ -11552,7 +11552,7 @@ func monsterDeathFrameTics(typ int16) []int {
 		return monsterDeathTicsLostSoul
 	case 3005:
 		return monsterDeathTics8x6
-	case 3003:
+	case 3003, 69:
 		return monsterDeathTics8x7
 	case 64:
 		return monsterDeathTics7x5
@@ -11613,7 +11613,7 @@ func monsterDeathSoundDelayTics(typ int16) int {
 	switch typ {
 	case 3004, 9, 65, 84:
 		return 5
-	case 3001, 3002, 58, 3003, 3005:
+	case 3001, 3002, 58, 3003, 69, 3005:
 		return 8
 	case 3006:
 		return 6
@@ -11875,10 +11875,12 @@ func (g *game) monsterSpriteRotFrame(prefix string, frame byte, rot int) (string
 	if g.spritePatchExists(name) {
 		return name, false, true
 	}
-	if rot == 1 {
-		return "", false, false
-	}
 	opp := 10 - rot
+	if rot == 1 {
+		opp = 5
+	} else if rot == 5 {
+		opp = 1
+	}
 	oppDigit := byte('0' + opp)
 	// Doom paired-rotation patch, e.g. TROOA2A8.
 	pairA := spriteFramePairName(prefix, frame, rotDigit, oppDigit)
@@ -12018,7 +12020,7 @@ func monsterRenderHeight(typ int16) float64 {
 		return 56
 	case 3005:
 		return 56
-	case 3003:
+	case 3003, 69:
 		return 64
 	case 16:
 		return 110

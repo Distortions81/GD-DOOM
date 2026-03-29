@@ -97,6 +97,18 @@ func TestHellKnightAttackSpawnsBaronProjectile(t *testing.T) {
 	}
 }
 
+func TestBaronProjectileSpeedMatchesDoomSourceFastMode(t *testing.T) {
+	if got := monsterProjectileSpeed(3003, false); got != 15*fracUnit {
+		t.Fatalf("normal speed=%d want=%d", got, 15*fracUnit)
+	}
+	if got := monsterProjectileSpeed(3003, true); got != 20*fracUnit {
+		t.Fatalf("fast speed=%d want=%d", got, 20*fracUnit)
+	}
+	if got := monsterProjectileSpeed(69, true); got != 20*fracUnit {
+		t.Fatalf("knight fast speed=%d want=%d", got, 20*fracUnit)
+	}
+}
+
 func TestImpProjectileSpawnsFromRuntimePosition(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
