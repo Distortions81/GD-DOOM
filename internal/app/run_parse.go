@@ -1773,7 +1773,7 @@ func soundFontDefaultRank(path string) int {
 		return 0
 	case "sgm-hq.sf2":
 		return 1
-	case "windows-gm.sf2":
+	case "general-midi.sf2":
 		return 2
 	default:
 		return 3
@@ -1971,8 +1971,9 @@ type pickerSynthOption struct {
 
 var pickerSynths = [...]pickerSynthOption{
 	{label: "OPL - IMPSYNTH", description: "ADLIB / SOUNDBLASTER 16", backend: music.BackendImpSynth},
-	{label: "MIDI - MELTYSYNTH", description: "MIDI SYNTHSIZER: SC-55", backend: music.BackendMeltySynth, soundFont: "soundfonts/sc55.sf2"},
-	{label: "SGM-HQ", description: "SGM - High Quality", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
+	{label: "MIDI - GENERAL MIDI", description: "GENERAL MIDI", backend: music.BackendMeltySynth, soundFont: "soundfonts/general-midi.sf2"},
+	{label: "MIDI - SC55-HQ", description: "ROLAND SC-55 HQ", backend: music.BackendMeltySynth, soundFont: "soundfonts/SC55-HQ.sf2"},
+	{label: "MIDI - SGM-HQ", description: "SGM - HIGH QUALITY", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
 }
 
 type pickerStage int
@@ -2639,9 +2640,9 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			}
 			contentWidth := max(titleWidth, descWidth)
 			titleX := sw/2 - contentWidth/2
-			profileY := pickerOptionBlockY(sh, len(pickerProfiles))
+			profileY, rowStep := pickerOptionBlockLayout(sh, len(pickerProfiles))
 			for i, profile := range pickerProfiles {
-				rowY := profileY + i*52
+				rowY := profileY + i*rowStep
 				if i == int(g.profile) {
 					g.drawPickerSkull(screen, titleX, rowY+4)
 				}
@@ -2659,9 +2660,9 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			}
 			contentWidth := max(titleWidth, descWidth)
 			titleX := sw/2 - contentWidth/2
-			synthY := pickerOptionBlockY(sh, len(pickerSynths))
+			synthY, rowStep := pickerOptionBlockLayout(sh, len(pickerSynths))
 			for i, synth := range pickerSynths {
-				rowY := synthY + i*52
+				rowY := synthY + i*rowStep
 				if i == g.synth {
 					g.drawPickerSkull(screen, titleX, rowY+4)
 				}
@@ -2716,14 +2717,6 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			g.drawPickerTextCentered(screen, line, sw/2, startY+i*lineHeight)
 		}
 	}
-	footer := "UP/DOWN    ESC - BACK    ENTER - NEXT"
-	if g.stage == pickerStageSynth {
-		footer = "UP/DOWN    ESC - BACK    ENTER - PLAY"
-	}
-	if loadingSoundFont {
-		footer = ""
-	}
-	g.drawPickerTextCentered(screen, footer, sw/2, sh-12)
 }
 
 func (g *iwadPickerGame) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -2883,10 +2876,14 @@ func pickerSoundFontDownloadStatus(path string) string {
 	if total > 0 {
 		sizeLine += " / " + humanDownloadSize(total)
 	}
-	if sizeLine == "" {
-		return "DOWNLOADING\nSGM-HQ SOUNDFONT"
+	label := strings.ToUpper(strings.TrimSpace(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))))
+	if label == "" {
+		label = "SOUNDFONT"
 	}
-	return "DOWNLOADING\nSGM-HQ SOUNDFONT\n" + sizeLine
+	if sizeLine == "" {
+		return "DOWNLOADING\n" + label + " SOUNDFONT"
+	}
+	return "DOWNLOADING\n" + label + " SOUNDFONT\n" + sizeLine
 }
 
 func humanDownloadSize(n int64) string {
@@ -2911,12 +2908,31 @@ func humanDownloadSize(n int64) string {
 	return fmt.Sprintf("%.1f %s", value, suffix)
 }
 
-func pickerOptionBlockY(screenH int, rows int) int {
+func pickerOptionBlockLayout(screenH int, rows int) (startY int, rowStep int) {
 	if rows < 1 {
 		rows = 1
 	}
-	y := screenH - 64 - rows*52
-	return max(y, 24)
+	const (
+		entryH         = 34
+		preferredStep  = 52
+		minCompactStep = 38
+		verticalPad    = 52
+	)
+	rowStep = preferredStep
+	if rows > 1 {
+		maxTotalH := screenH - verticalPad
+		totalH := entryH + (rows-1)*rowStep
+		if totalH > maxTotalH {
+			fitStep := (maxTotalH - entryH) / (rows - 1)
+			rowStep = max(minCompactStep, fitStep)
+		}
+	}
+	totalH := entryH + (rows-1)*rowStep
+	startY = (screenH-totalH)/2 + 8
+	if startY < 24 {
+		startY = 24
+	}
+	return startY, rowStep
 }
 
 func (g *iwadPickerGame) drawPickerTextScaled(screen *ebiten.Image, text string, x, y, scale int) {

@@ -411,12 +411,7 @@ func (sg *sessionGame) maybeStartIntermissionMusic() {
 		return
 	}
 	sg.intermission.state.StartMusic = false
-	sg.musicCtl.PlayIntermission(sg.intermission.state.Commercial, clampVolume(sg.opts.MusicVolume))
-	sg.currentMusicSource = musicPlaybackSource{
-		kind:       musicPlaybackSourceIntermission,
-		commercial: sg.intermission.state.Commercial,
-	}
-	sg.setNowPlayingLevel("")
+	sg.playIntermissionMusic(sg.intermission.state.Commercial)
 	if sg.intermission.state.Commercial {
 		sg.currentMusicSource.musicName = "Doom II Intermission"
 		sg.setNowPlayingMusic("Doom II Intermission")

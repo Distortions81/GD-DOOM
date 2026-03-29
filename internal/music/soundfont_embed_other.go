@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const browserSC55HQSoundFontPath = "soundfonts/SC55-HQ.sf2"
+const browserSC55HQSoundFontURL = "https://m45sci.xyz/u/dist/GD-DOOM/SC55-HQ.sf2"
 const browserSGMHQSoundFontPath = "soundfonts/SGM-HQ.sf2"
 const browserSGMHQSoundFontURL = "https://m45sci.xyz/u/dist/GD-DOOM/SGM-HQ.sf2"
 
@@ -37,7 +39,7 @@ func EmbeddedSoundFontChoices() []string {
 }
 
 func BrowserSoundFontChoices() []string {
-	return []string{browserSGMHQSoundFontPath}
+	return []string{browserSC55HQSoundFontPath, browserSGMHQSoundFontPath}
 }
 
 func BrowserSGMHQSoundFontPath() string {
@@ -137,8 +139,8 @@ func EnsureSoundFontAvailable(path string) error {
 }
 
 func SoundFontDownloadURL(path string) string {
-	if isNativeDownloadableSoundFont(resolveNativeSoundFontPath(path)) {
-		return browserSGMHQSoundFontURL
+	if url, ok := nativeDownloadableSoundFontURL(resolveNativeSoundFontPath(path)); ok {
+		return url
 	}
 	return ""
 }
@@ -146,7 +148,10 @@ func SoundFontDownloadURL(path string) string {
 func resolveNativeSoundFontPath(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return browserSGMHQSoundFontPath
+		return browserSC55HQSoundFontPath
+	}
+	if strings.EqualFold(filepath.Base(path), "sc55-hq.sf2") && filepath.Base(path) == path {
+		return browserSC55HQSoundFontPath
 	}
 	if strings.EqualFold(filepath.Base(path), "sgm-hq.sf2") {
 		if filepath.Base(path) == path {
@@ -157,7 +162,8 @@ func resolveNativeSoundFontPath(path string) string {
 }
 
 func isNativeDownloadableSoundFont(path string) bool {
-	return strings.EqualFold(filepath.Base(strings.TrimSpace(path)), "sgm-hq.sf2")
+	_, ok := nativeDownloadableSoundFontURL(path)
+	return ok
 }
 
 func nativeSoundFontKey(path string) string {
@@ -169,7 +175,11 @@ func downloadNativeSoundFont(path string, key string) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return fmt.Errorf("create soundfont dir: %w", err)
 		}
-		req, err := http.NewRequest(http.MethodGet, browserSGMHQSoundFontURL, nil)
+		url, ok := nativeDownloadableSoundFontURL(path)
+		if !ok {
+			return fmt.Errorf("download soundfont: no url for %s", path)
+		}
+		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			return fmt.Errorf("build soundfont request: %w", err)
 		}
@@ -242,4 +252,15 @@ func downloadNativeSoundFont(path string, key string) {
 		load.err = err
 	}
 	nativeSoundFontLoadsMu.Unlock()
+}
+
+func nativeDownloadableSoundFontURL(path string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(filepath.Base(path))) {
+	case "sc55-hq.sf2":
+		return browserSC55HQSoundFontURL, true
+	case "sgm-hq.sf2":
+		return browserSGMHQSoundFontURL, true
+	default:
+		return "", false
+	}
 }

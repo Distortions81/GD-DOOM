@@ -3,27 +3,26 @@
 package music
 
 import (
-	_ "embed"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall/js"
+
+	"gddoom/soundfonts"
 )
 
-const embeddedSC55SoundFontPath = "soundfonts/sc55.sf2"
-const browserSGMHQSoundFontPath = "SGM-HQ.sf2"
-const browserSGMHQSoundFontURL = "./SGM-HQ.sf2"
-
-//go:embed sc55.sf2
-var embeddedSC55SoundFont []byte
+const browserSC55HQSoundFontPath = "soundfonts/SC55-HQ.sf2"
+const browserSC55HQSoundFontURL = "https://m45sci.xyz/u/dist/GD-DOOM/SC55-HQ.sf2"
+const browserSGMHQSoundFontPath = "soundfonts/SGM-HQ.sf2"
+const browserSGMHQSoundFontURL = "https://m45sci.xyz/u/dist/GD-DOOM/SGM-HQ.sf2"
 
 func embeddedSoundFontDataForPath(path string) ([]byte, bool) {
 	path = strings.TrimSpace(path)
-	base := strings.ToLower(filepath.Base(path))
-	if base == "sc55.sf2" && len(embeddedSC55SoundFont) > 0 {
-		return embeddedSC55SoundFont, true
+	if data, ok := soundfonts.EmbeddedDataForPath(path); ok {
+		return data, true
 	}
+	base := strings.ToLower(filepath.Base(path))
 	if base == "sgm-hq.sf2" {
 		return browserCachedSoundFontBytes(base)
 	}
@@ -31,18 +30,11 @@ func embeddedSoundFontDataForPath(path string) ([]byte, bool) {
 }
 
 func EmbeddedSoundFontChoices() []string {
-	out := make([]string, 0, 1)
-	if len(embeddedSC55SoundFont) > 0 {
-		out = append(out, embeddedSC55SoundFontPath)
-	}
-	if len(out) == 0 {
-		return nil
-	}
-	return out
+	return soundfonts.EmbeddedChoices()
 }
 
 func BrowserSoundFontChoices() []string {
-	return []string{browserSGMHQSoundFontPath}
+	return []string{browserSC55HQSoundFontPath, browserSGMHQSoundFontPath}
 }
 
 func BrowserSGMHQSoundFontPath() string {
@@ -66,26 +58,28 @@ type browserSoundFontLoad struct {
 var browserSoundFontLoads = map[string]*browserSoundFontLoad{}
 
 func DefaultEmbeddedSoundFontPath() string {
-	if len(embeddedSC55SoundFont) > 0 {
-		return embeddedSC55SoundFontPath
+	if choices := soundfonts.EmbeddedChoices(); len(choices) > 0 {
+		return choices[0]
 	}
 	return ""
 }
 
 func ensureBrowserSoundFontLoaded(path string) error {
 	base := strings.ToLower(filepath.Base(strings.TrimSpace(path)))
-	if base != "sgm-hq.sf2" {
+	url, ok := browserDownloadableSoundFontURL(base)
+	if !ok {
 		return nil
 	}
 	if _, ok := browserCachedSoundFontBytes(base); ok {
 		return nil
 	}
-	return browserFetchAndCacheSoundFont(base, browserSGMHQSoundFontURL)
+	return browserFetchAndCacheSoundFont(base, url)
 }
 
 func StartBrowserSoundFontLoad(path string) bool {
 	base := strings.ToLower(filepath.Base(strings.TrimSpace(path)))
-	if base != "sgm-hq.sf2" {
+	url, ok := browserDownloadableSoundFontURL(base)
+	if !ok {
 		return false
 	}
 	if _, ok := browserCachedSoundFontBytes(base); ok {
@@ -114,12 +108,12 @@ func StartBrowserSoundFontLoad(path string) bool {
 	load.load = js.FuncOf(func(this js.Value, args []js.Value) any {
 		status := xhr.Get("status").Int()
 		if status < 200 || status >= 300 {
-			finishBrowserSoundFontLoad(base, jsErrorString("fetch soundfont", browserSGMHQSoundFontURL, status))
+			finishBrowserSoundFontLoad(base, jsErrorString("fetch soundfont", url, status))
 			return nil
 		}
 		bytesVal := js.Global().Get("Uint8Array").New(xhr.Get("response"))
 		if bytesVal.Get("length").Int() <= 0 {
-			finishBrowserSoundFontLoad(base, jsErrorString("fetch soundfont", browserSGMHQSoundFontURL, 0))
+			finishBrowserSoundFontLoad(base, jsErrorString("fetch soundfont", url, 0))
 			return nil
 		}
 		load.received = int64(bytesVal.Get("length").Int())
@@ -130,14 +124,14 @@ func StartBrowserSoundFontLoad(path string) bool {
 	})
 	load.loadSet = true
 	load.fail = js.FuncOf(func(this js.Value, args []js.Value) any {
-		finishBrowserSoundFontLoad(base, jsErrorString("fetch soundfont", browserSGMHQSoundFontURL, xhr.Get("status").Int()))
+		finishBrowserSoundFontLoad(base, jsErrorString("fetch soundfont", url, xhr.Get("status").Int()))
 		return nil
 	})
 	load.failSet = true
 	xhr.Set("onprogress", load.progress)
 	xhr.Set("onload", load.load)
 	xhr.Set("onerror", load.fail)
-	xhr.Call("open", "GET", browserSGMHQSoundFontURL, true)
+	xhr.Call("open", "GET", url, true)
 	xhr.Call("send")
 	return true
 }
@@ -265,10 +259,21 @@ func (e jsErrorText) Error() string {
 }
 
 func SoundFontDownloadURL(path string) string {
-	if strings.EqualFold(strings.TrimSpace(filepath.Base(path)), "sgm-hq.sf2") {
-		return browserSGMHQSoundFontURL
+	if url, ok := browserDownloadableSoundFontURL(strings.ToLower(strings.TrimSpace(filepath.Base(path)))); ok {
+		return url
 	}
 	return ""
+}
+
+func browserDownloadableSoundFontURL(base string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(base)) {
+	case "sc55-hq.sf2":
+		return browserSC55HQSoundFontURL, true
+	case "sgm-hq.sf2":
+		return browserSGMHQSoundFontURL, true
+	default:
+		return "", false
+	}
 }
 
 func EnsureSoundFontAvailable(path string) error {

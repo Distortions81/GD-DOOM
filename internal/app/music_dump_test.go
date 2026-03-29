@@ -18,8 +18,61 @@ func TestDumpMusicRendererLabel(t *testing.T) {
 	if got := dumpMusicRendererLabel("soundfonts/SC55.sf2"); got != "MIDI-SC55" {
 		t.Fatalf("label=%q want %q", got, "MIDI-SC55")
 	}
-	if got := dumpMusicRendererLabel("soundfonts/windows-gm.sf2"); got != "MIDI-WINDOWS-GM" {
-		t.Fatalf("label=%q want %q", got, "MIDI-WINDOWS-GM")
+	if got := dumpMusicRendererLabel("soundfonts/general-midi.sf2"); got != "MIDI-GENERAL-MIDI" {
+		t.Fatalf("label=%q want %q", got, "MIDI-GENERAL-MIDI")
+	}
+}
+
+func TestDetectDumpMusicTargetsSkipsSharewareDuringAutoDetect(t *testing.T) {
+	td := t.TempDir()
+	prevWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(td); err != nil {
+		t.Fatalf("chdir tempdir: %v", err)
+	}
+	defer func() {
+		_ = os.Chdir(prevWD)
+	}()
+
+	for _, name := range []string{"doom1.wad", "doomu.wad", "doom2.wad"} {
+		if err := os.WriteFile(filepath.Join(td, name), []byte("wad"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	targets, err := detectDumpMusicTargets("", false, nil)
+	if err != nil {
+		t.Fatalf("detectDumpMusicTargets() error: %v", err)
+	}
+	if len(targets) != 2 {
+		t.Fatalf("len(targets)=%d want 2", len(targets))
+	}
+	if got := filepath.Base(targets[0].path); got != "doomu.wad" {
+		t.Fatalf("targets[0].path=%q want %q", got, "doomu.wad")
+	}
+	if got := filepath.Base(targets[1].path); got != "doom2.wad" {
+		t.Fatalf("targets[1].path=%q want %q", got, "doom2.wad")
+	}
+}
+
+func TestDetectDumpMusicTargetsKeepsExplicitSharewareWAD(t *testing.T) {
+	td := t.TempDir()
+	wadPath := filepath.Join(td, "doom1.wad")
+	if err := os.WriteFile(wadPath, []byte("wad"), 0o644); err != nil {
+		t.Fatalf("write wad: %v", err)
+	}
+
+	targets, err := detectDumpMusicTargets(wadPath, true, nil)
+	if err != nil {
+		t.Fatalf("detectDumpMusicTargets() error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("len(targets)=%d want 1", len(targets))
+	}
+	if targets[0].path != wadPath {
+		t.Fatalf("target path=%q want %q", targets[0].path, wadPath)
 	}
 }
 

@@ -231,10 +231,10 @@ func TestApplyPickerSynthKeepsSoundFontWhenAlreadySet(t *testing.T) {
 	cfg := renderBuildConfig{
 		musicBackend:  music.BackendImpSynth,
 		musicVolume:   1.0,
-		soundFontPath: "soundfonts/sc55.sf2",
+		soundFontPath: "soundfonts/SC55-HQ.sf2",
 	}
 
-	got := applyPickerSynth(cfg, 1)
+	got := applyPickerSynth(cfg, 2)
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -242,12 +242,12 @@ func TestApplyPickerSynthKeepsSoundFontWhenAlreadySet(t *testing.T) {
 	if got.musicVolume != 1.0 {
 		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
 	}
-	if got.soundFontPath != "soundfonts/sc55.sf2" {
-		t.Fatalf("soundFontPath=%q want soundfonts/sc55.sf2", got.soundFontPath)
+	if got.soundFontPath != "soundfonts/SC55-HQ.sf2" {
+		t.Fatalf("soundFontPath=%q want %q", got.soundFontPath, "soundfonts/SC55-HQ.sf2")
 	}
 }
 
-func TestApplyPickerSynthSGMHQSetsSoundFontPath(t *testing.T) {
+func TestApplyPickerSynthMeltySynthSetsHQSoundFontPath(t *testing.T) {
 	cfg := renderBuildConfig{
 		musicBackend: music.BackendImpSynth,
 		musicVolume:  1.0,
@@ -261,8 +261,46 @@ func TestApplyPickerSynthSGMHQSetsSoundFontPath(t *testing.T) {
 	if got.musicVolume != 1.0 {
 		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
 	}
+	if got.soundFontPath != "soundfonts/SC55-HQ.sf2" {
+		t.Fatalf("soundFontPath=%q want %q", got.soundFontPath, "soundfonts/SC55-HQ.sf2")
+	}
+}
+
+func TestApplyPickerSynthSGMHQSetsSoundFontPath(t *testing.T) {
+	cfg := renderBuildConfig{
+		musicBackend: music.BackendImpSynth,
+		musicVolume:  1.0,
+	}
+
+	got := applyPickerSynth(cfg, 3)
+
+	if got.musicBackend != music.BackendMeltySynth {
+		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
+	}
+	if got.musicVolume != 1.0 {
+		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
+	}
 	if got.soundFontPath != music.BrowserSGMHQSoundFontPath() {
 		t.Fatalf("soundFontPath=%q want %q", got.soundFontPath, music.BrowserSGMHQSoundFontPath())
+	}
+}
+
+func TestApplyPickerSynthGeneralMIDISetsSoundFontPath(t *testing.T) {
+	cfg := renderBuildConfig{
+		musicBackend: music.BackendImpSynth,
+		musicVolume:  1.0,
+	}
+
+	got := applyPickerSynth(cfg, 1)
+
+	if got.musicBackend != music.BackendMeltySynth {
+		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
+	}
+	if got.musicVolume != 1.0 {
+		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
+	}
+	if got.soundFontPath != "soundfonts/general-midi.sf2" {
+		t.Fatalf("soundFontPath=%q want %q", got.soundFontPath, "soundfonts/general-midi.sf2")
 	}
 }
 
@@ -273,7 +311,7 @@ func TestSoundFontDefaultRankPrefersSC55(t *testing.T) {
 	if got := soundFontDefaultRank("SGM-HQ.sf2"); got != 1 {
 		t.Fatalf("rank(sgm-hq)=%d want 1", got)
 	}
-	if got := soundFontDefaultRank("soundfonts/windows-gm.sf2"); got != 2 {
-		t.Fatalf("rank(windows-gm)=%d want 2", got)
+	if got := soundFontDefaultRank("soundfonts/general-midi.sf2"); got != 2 {
+		t.Fatalf("rank(general-midi)=%d want 2", got)
 	}
 }

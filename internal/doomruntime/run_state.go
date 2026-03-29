@@ -105,6 +105,8 @@ type sessionGame struct {
 	finale              sessionFinale
 	frontend            frontendState
 	frontendMenuPending bool
+	startupMusicLocked  bool
+	startupMusicPending musicPlaybackSource
 	musicPlayer         frontendMusicPlayerState
 	currentMusicSource  musicPlaybackSource
 	nowPlayingLevel     string
@@ -631,6 +633,13 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 	if sg == nil || sg.musicCtl == nil {
 		return
 	}
+	if sg.startupMusicLocked {
+		sg.startupMusicPending = musicPlaybackSource{
+			kind:    musicPlaybackSourceMap,
+			mapName: name,
+		}
+		return
+	}
 	sg.musicCtl.PlayMap(name, clampVolume(sg.opts.MusicVolume))
 	sg.currentMusicSource = musicPlaybackSource{
 		kind:    musicPlaybackSourceMap,
@@ -642,6 +651,43 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 		sg.currentMusicSource.musicName = musicName
 		sg.setNowPlayingLevel(levelLabel, string(name))
 		sg.setNowPlayingMusic(musicName, string(name))
+	}
+}
+
+func (sg *sessionGame) playIntermissionMusic(commercial bool) {
+	if sg == nil || sg.musicCtl == nil {
+		return
+	}
+	if sg.startupMusicLocked {
+		sg.startupMusicPending = musicPlaybackSource{
+			kind:       musicPlaybackSourceIntermission,
+			commercial: commercial,
+		}
+		return
+	}
+	sg.musicCtl.PlayIntermission(commercial, clampVolume(sg.opts.MusicVolume))
+	sg.currentMusicSource = musicPlaybackSource{
+		kind:       musicPlaybackSourceIntermission,
+		commercial: commercial,
+	}
+	sg.setNowPlayingLevel("")
+	sg.setNowPlayingMusic("Intermission")
+}
+
+func (sg *sessionGame) releaseStartupMusicIfReady() {
+	if sg == nil || !sg.startupMusicLocked || sg.transitionActive() {
+		return
+	}
+	pending := sg.startupMusicPending
+	sg.startupMusicLocked = false
+	sg.startupMusicPending = musicPlaybackSource{}
+	switch pending.kind {
+	case musicPlaybackSourceTitle:
+		sg.playTitleMusic()
+	case musicPlaybackSourceMap:
+		sg.playMusicForMap(pending.mapName)
+	case musicPlaybackSourceIntermission:
+		sg.playIntermissionMusic(pending.commercial)
 	}
 }
 
@@ -667,6 +713,8 @@ func (sg *sessionGame) initSession() {
 		return
 	}
 	sg.prewarmWADAssetCaches()
+	sg.startupMusicLocked = sg.shouldShowBootSplash()
+	sg.startupMusicPending = musicPlaybackSource{}
 	runtimehost.RunBootstrap(runtimehost.Bootstrap{
 		BuildRuntime: func() {
 			sg.g = sg.buildGame(sg.bootMap, sg.opts)

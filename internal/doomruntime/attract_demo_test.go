@@ -5,6 +5,7 @@ import (
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/sessionmusic"
 )
 
 func TestStartFrontendBeginsOnTitlePicAttractPage(t *testing.T) {
@@ -42,6 +43,57 @@ func TestStartFrontendBeginsOnTitlePicAttractPage(t *testing.T) {
 	}
 	if sg.g != nil && sg.g.opts.DemoScript != nil {
 		t.Fatal("title page should not immediately start demo playback")
+	}
+}
+
+func TestStartFrontendQueuesTitleMusicWhileStartupLocked(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	boot := cloneMapForRestart(base.m)
+	sg := &sessionGame{
+		bootMap:            boot,
+		startupMusicLocked: true,
+		musicCtl:           &sessionmusic.Playback{},
+		opts: Options{
+			SourcePortMode: base.opts.SourcePortMode,
+			DemoMapLoader: func(demo *DemoScript) (*mapdata.Map, error) {
+				return cloneMapForRestart(boot), nil
+			},
+			AttractDemos: []*DemoScript{{
+				Path:   "DEMO1",
+				Header: DemoHeader{Version: demoVersion110, Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+				Tics:   []DemoTic{{Forward: 25}},
+			}},
+		},
+		g: base,
+	}
+
+	sg.startFrontend()
+
+	if got := sg.startupMusicPending.kind; got != musicPlaybackSourceTitle {
+		t.Fatalf("startupMusicPending.kind=%d want title", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("currentMusicSource.kind=%d want none while startup locked", got)
+	}
+}
+
+func TestReleaseStartupMusicStartsQueuedTitleAfterBoot(t *testing.T) {
+	sg := &sessionGame{
+		startupMusicLocked:  true,
+		startupMusicPending: musicPlaybackSource{kind: musicPlaybackSourceTitle},
+		musicCtl:            &sessionmusic.Playback{},
+	}
+
+	sg.releaseStartupMusicIfReady()
+
+	if sg.startupMusicLocked {
+		t.Fatal("startupMusicLocked should be cleared")
+	}
+	if got := sg.startupMusicPending.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("startupMusicPending.kind=%d want none", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceTitle {
+		t.Fatalf("currentMusicSource.kind=%d want title", got)
 	}
 }
 

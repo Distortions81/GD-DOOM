@@ -157,6 +157,10 @@ func (sg *sessionGame) playTitleMusic() {
 	if sg == nil || sg.musicCtl == nil {
 		return
 	}
+	if sg.startupMusicLocked {
+		sg.startupMusicPending = musicPlaybackSource{kind: musicPlaybackSourceTitle}
+		return
+	}
 	sg.currentMusicSource = musicPlaybackSource{kind: musicPlaybackSourceTitle}
 	sg.musicCtl.PlayTitle(clampVolume(sg.opts.MusicVolume))
 	sg.setNowPlayingLevel("")

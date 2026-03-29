@@ -118,6 +118,7 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 }
 
 func (sg *sessionGame) Update() error {
+	sg.releaseStartupMusicIfReady()
 	err := runtimehost.RunUpdate(runtimehost.Update{
 		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },
 		HandleQuitPrompt:    sg.handleQuitPromptInput,

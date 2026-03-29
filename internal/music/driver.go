@@ -282,12 +282,13 @@ func (d *Driver) Render(events []Event) []int16 {
 		}
 	}
 	d.ensureVoiceLists()
-	var pcm []int16
+	pcm := make([]int16, estimatedPCMBytesForEvents(events, d.sampleRate, d.ticRate)/2)
+	n := 0
 	for _, ev := range events {
 		if ev.DeltaTics > 0 {
 			frames := int((uint64(ev.DeltaTics) * uint64(d.sampleRate)) / uint64(d.ticRate))
 			if frames > 0 {
-				pcm = append(pcm, d.generateStereoS16(frames)...)
+				n += copy(pcm[n:], d.generateStereoS16(frames))
 			}
 		}
 		d.applyEvent(ev)
@@ -295,7 +296,7 @@ func (d *Driver) Render(events []Event) []int16 {
 			break
 		}
 	}
-	return pcm
+	return pcm[:n]
 }
 
 // RenderMUS parses a MUS stream and renders it to signed 16-bit stereo PCM.
@@ -324,17 +325,18 @@ func (d *Driver) RenderParsedMUS(parsed *ParsedMUS) ([]int16, error) {
 		}
 	}
 	d.ensureVoiceLists()
-	pcm := make([]int16, 0, estimatedPCMBytesForEvents(parsed.events, d.sampleRate, d.ticRate)/2)
+	pcm := make([]int16, estimatedPCMBytesForEvents(parsed.events, d.sampleRate, d.ticRate)/2)
+	n := 0
 	for _, ev := range parsed.events {
 		if ev.DeltaTics > 0 {
 			frames := int((uint64(ev.DeltaTics) * uint64(d.sampleRate)) / uint64(d.ticRate))
 			if frames > 0 {
-				pcm = append(pcm, d.generateStereoS16(frames)...)
+				n += copy(pcm[n:], d.generateStereoS16(frames))
 			}
 		}
 		d.applyEvent(ev)
 	}
-	return pcm, nil
+	return pcm[:n], nil
 }
 
 // RenderMUSS16LE parses MUS and returns little-endian signed 16-bit stereo PCM bytes.

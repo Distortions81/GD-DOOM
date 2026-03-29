@@ -92,10 +92,6 @@ func (d *MeltySynthDriver) GenerateStereoS16(frames int) []int16 {
 	} else {
 		d.left = d.left[:frames]
 		d.right = d.right[:frames]
-		for i := range d.left {
-			d.left[i] = 0
-			d.right[i] = 0
-		}
 	}
 	d.synth.Render(d.left, d.right)
 	need := frames * 2

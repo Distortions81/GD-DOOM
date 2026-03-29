@@ -261,6 +261,9 @@ func detectDumpMusicTargets(resolvedWADPath string, wadExplicit bool, pwadPaths 
 	out := make([]dumpMusicTarget, 0, len(choices))
 	seen := make(map[string]struct{}, len(choices))
 	for _, choice := range choices {
+		if dumpMusicShouldSkipIWADChoice(choice) {
+			continue
+		}
 		path := strings.TrimSpace(resolveIWADAliasPath(choice.Path))
 		if path == "" {
 			continue
@@ -280,6 +283,10 @@ func detectDumpMusicTargets(resolvedWADPath string, wadExplicit bool, pwadPaths 
 		return nil, fmt.Errorf("no IWADs found")
 	}
 	return out, nil
+}
+
+func dumpMusicShouldSkipIWADChoice(choice iwadChoice) bool {
+	return strings.EqualFold(strings.TrimSpace(choice.Label), "DOOM Shareware")
 }
 
 func detectDumpMusicRenderers(explicitSoundFont string, stderr io.Writer) ([]dumpMusicRenderer, error) {
