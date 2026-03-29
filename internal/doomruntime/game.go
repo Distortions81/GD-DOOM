@@ -5201,6 +5201,23 @@ func cacheFloorSpriteItemGeometry(sx, yb, h float64, tex *WallTexture, clipTop, 
 	return scale, dstX, dstY, x0, x1, y0, y1, ok
 }
 
+func cacheOriginSpriteItemGeometry(sx, sy, scale float64, tex *WallTexture, clipTop, clipBottom, viewW, viewH int) (dstW, dstH, dstX, dstY float64, x0, x1, y0, y1 int, ok bool) {
+	if tex == nil {
+		return 0, 0, 0, 0, 0, 0, 0, 0, false
+	}
+	th := tex.Height
+	tw := tex.Width
+	if th <= 0 || tw <= 0 || scale <= 0 {
+		return 0, 0, 0, 0, 0, 0, 0, 0, false
+	}
+	dstW = float64(tw) * scale
+	dstH = float64(th) * scale
+	dstX = sx - float64(tex.OffsetX)*scale
+	dstY = sy - float64(tex.OffsetY)*scale
+	x0, x1, y0, y1, ok = scene.ClampedSpriteBounds(dstX, dstY, dstW, dstH, clipTop, clipBottom, viewW, viewH)
+	return dstW, dstH, dstX, dstY, x0, x1, y0, y1, ok
+}
+
 func floorSpriteTop(dstH, yb float64) float64 {
 	return scene.FloorSpriteTop(dstH, yb)
 }
@@ -9667,40 +9684,27 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		baseZ := float64(baseZFixed) / fracUnit
-		yb := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focal
 		ref, flip, ok := g.monsterSpriteRefForView(i, th, g.worldTic, camX, camY)
 		if !ok || ref == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
-			continue
-		}
-		h := 0.0
-		w := 0.0
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-			// Doom-like corpse projection: use sprite-native scale instead of standing actor height.
-			scale := focal / f
-			if scale <= 0 {
-				continue
-			}
-			h = float64(ref.tex.Height) * scale
-			w = float64(ref.tex.Width) * scale
-		} else {
-			monsterH := monsterRenderHeight(th.Type)
-			yt := float64(viewH)/2 - ((baseZ+monsterH-eyeZ)/f)*focal
-			if yb <= yt {
-				continue
-			}
-			h = yb - yt
-			w = math.Max(6, math.Min(120, h*0.45))
-		}
-		if h <= 0 || w <= 0 {
-			continue
-		}
-		xPad := w/2 + 8
-		if sx+xPad < 0 || sx-xPad > float64(viewW) {
 			continue
 		}
 		clipRadius := monsterSpriteClipRadius(th.Type)
 		clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focal)
 		if !clipOK {
+			continue
+		}
+		scale := focal / f
+		if scale <= 0 {
+			continue
+		}
+		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focal
+		w, h, dstX, dstY, x0, x1, y0, y1, boundsOK := cacheOriginSpriteItemGeometry(sx, sy, scale, ref.tex, clipTop, clipBottom, viewW, viewH)
+		if h <= 0 || w <= 0 {
+			continue
+		}
+		xPad := w/2 + 8
+		yPad := h + 4
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
 			continue
 		}
 		sec := g.thingSectorCached(i, th)
@@ -9709,7 +9713,6 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			lightMul = g.sectorLightMulCached(sec)
 		}
 		depthQ := encodeDepthQ(f)
-		scale, dstX, dstY, x0, x1, y0, y1, boundsOK := cacheFloorSpriteItemGeometry(sx, yb, h, ref.tex, clipTop, clipBottom, viewW, viewH)
 		shadeMul := g.cachedThingShadeMul(i, ref.fullBright, lightMul, f, near)
 		if !boundsOK {
 			continue
@@ -11245,7 +11248,7 @@ var (
 	monsterDeathTicsLostSoul   = []int{6, 6, 6, 6, 6, 6}
 	monsterDeathTics8x6        = []int{8, 8, 8, 8, 8, 8}
 	monsterDeathTics8x7        = []int{8, 8, 8, 8, 8, 8, 8}
-	monsterDeathTics7x5        = []int{7, 7, 7, 7, 7}
+	monsterDeathTicsArch       = []int{7, 7, 7, 7, 7, 7, 7, 5, 5, -1}
 	monsterDeathTics7x6        = []int{7, 7, 7, 7, 7, 7}
 	monsterDeathTics6x10       = []int{6, 6, 6, 6, 6, 6, 6, 6, 6, -1}
 	monsterDeathTicsCyber      = []int{10, 10, 10, 10, 10, 10, 10, 10, 30}
@@ -11474,7 +11477,7 @@ var (
 	monsterDeathFrames8x7    = []byte{'I', 'J', 'K', 'L', 'M', 'N', 'O'}
 	monsterDeathFramesCyber  = []byte{'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'}
 	monsterDeathFramesSpider = []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S'}
-	monsterDeathFramesArch   = []byte{'Q', 'R', 'S', 'T', 'U'}
+	monsterDeathFramesArch   = []byte{'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'}
 	monsterDeathFramesRev    = []byte{'L', 'M', 'N', 'O', 'P', 'Q'}
 	monsterDeathFramesManc   = []byte{'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T'}
 	monsterDeathFramesArachn = []byte{'J', 'K', 'L', 'M', 'N', 'O', 'P'}
@@ -11555,7 +11558,7 @@ func monsterDeathFrameTics(typ int16) []int {
 	case 3003, 69:
 		return monsterDeathTics8x7
 	case 64:
-		return monsterDeathTics7x5
+		return monsterDeathTicsArch
 	case 66:
 		return monsterDeathTics7x6
 	case 67:
@@ -11617,6 +11620,12 @@ func monsterDeathSoundDelayTics(typ int16) int {
 		return 8
 	case 3006:
 		return 6
+	case 64:
+		return 7
+	case 67:
+		return 6
+	case 71:
+		return 8
 	case 16:
 		return 10
 	case 7:
@@ -17733,6 +17742,9 @@ func (g *game) capturePrevProjectileRenderState() {
 		return
 	}
 	for i := range g.projectiles {
+		if g.projectiles[i].spawnPrev {
+			continue
+		}
 		g.projectiles[i].prevX = g.projectiles[i].x
 		g.projectiles[i].prevY = g.projectiles[i].y
 		g.projectiles[i].prevZ = g.projectiles[i].z

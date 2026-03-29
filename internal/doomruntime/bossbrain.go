@@ -213,8 +213,8 @@ func (g *game) resolveBossCube(cube bossSpawnCube) {
 	g.thingAggro[idx] = true
 	g.thingReactionTics[idx] = 0
 	g.thingState[idx] = monsterStateSee
-	g.thingStatePhase[idx] = 0
-	g.thingStateTics[idx] = monsterSeeStateTics(typ, g.fastMonstersActive())
+	g.thingStatePhase[idx] = monsterSeeStartPhase(typ)
+	g.thingStateTics[idx] = monsterSeeStateTicsAtPhase(typ, g.thingStatePhase[idx], g.fastMonstersActive())
 	if idx < len(g.thingMoveDir) {
 		g.thingMoveDir[idx] = monsterDirNoDir
 	}

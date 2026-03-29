@@ -1105,7 +1105,7 @@ func demoTraceMonsterDeathState(typ int16, phase int, xdeath bool) (int, bool) {
 		case 67:
 			base, count = 389, 10
 		case 68:
-			base, count = 654, 5
+			base, count = 654, 7
 		case 71:
 			base, count = 715, 6
 		case 7:
@@ -1200,7 +1200,10 @@ func demoTraceMonsterSeeState(typ int16, phase int) (int, bool) {
 	case 67:
 		base, count = 365, 12
 	case 68:
-		base, count = 636, 2
+		if phase < 0 {
+			return 636, true
+		}
+		base, count = 637, 12
 	case 71:
 		base, count = 703, 1
 	case 16:

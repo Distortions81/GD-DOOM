@@ -2142,7 +2142,7 @@ func (g *game) isCommercialWeaponSet() bool {
 }
 
 func (g *game) handleBossDeath(thingIdx int, thingType int16) {
-	if g == nil || g.m == nil || !g.monsterTargetAlive() {
+	if g == nil || g.m == nil || !g.anyPlayerAlive() {
 		return
 	}
 	name := strings.ToUpper(strings.TrimSpace(string(g.m.Name)))
@@ -2192,6 +2192,10 @@ func (g *game) handleBossDeath(thingIdx int, thingType int16) {
 	case episode == 4 && slot == 8 && thingType == 7:
 		_ = g.activateTaggedFloor(666, mapdata.FloorLowerToLowest)
 	}
+}
+
+func (g *game) anyPlayerAlive() bool {
+	return g != nil && g.stats.Health > 0
 }
 
 func angleToThing(sx, sy, tx, ty int64) uint32 {

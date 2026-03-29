@@ -1470,7 +1470,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{64, 244, 12},
 		{66, 324, 12},
 		{67, 365, 12},
-		{68, 636, 2},
+		{68, 637, 12},
 		{71, 703, 1},
 		{16, 677, 8},
 		{7, 604, 4},
@@ -1485,6 +1485,58 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 			if want := tt.base + phase; got != want {
 				t.Fatalf("type %d see phase %d state=%d want=%d", tt.typ, phase, got, want)
 			}
+		}
+	}
+	if got, ok := demoTraceMonsterSeeState(68, -1); !ok || got != 636 {
+		t.Fatalf("type 68 see phase -1 state=%d ok=%t want=636,true", got, ok)
+	}
+}
+
+func TestArachnotronSeeStateStartsWithSightFrameLikeDoomSource(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 68, X: 64, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingAggro:        []bool{true},
+		thingHP:           []int{500},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStatePhase:   []int{monsterSeeStartPhase(68)},
+		thingStateTics:    []int{1},
+		p:                 player{x: 0, y: 0},
+		stats:             playerStats{Health: 100},
+	}
+
+	if got := g.thingStatePhase[0]; got != -1 {
+		t.Fatalf("initial phase=%d want=-1", got)
+	}
+	if got := monsterSeeStateTicsAtPhase(68, g.thingStatePhase[0], false); got != 20 {
+		t.Fatalf("sight frame tics=%d want=20", got)
+	}
+
+	tx, ty := g.thingPosFixed(0, g.m.Things[0])
+	dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
+	if !g.monsterAdvanceThinkState(0, 68, tx, ty, g.p.x, g.p.y, dist) {
+		t.Fatal("arachnotron should stay in see state")
+	}
+	if got := g.thingStatePhase[0]; got != 0 {
+		t.Fatalf("phase after S_BSPI_SIGHT=%d want=0", got)
+	}
+	if got := g.thingStateTics[0]; got != 3 {
+		t.Fatalf("tics after S_BSPI_SIGHT=%d want=3", got)
+	}
+}
+
+func TestDemoTraceMonsterDeathState_ArachnotronMatchesDoomStateNumbers(t *testing.T) {
+	for phase := 0; phase < 7; phase++ {
+		got, ok := demoTraceMonsterDeathState(68, phase, false)
+		if !ok {
+			t.Fatalf("type 68 death phase %d returned no state", phase)
+		}
+		if want := 654 + phase; got != want {
+			t.Fatalf("type 68 death phase %d state=%d want=%d", phase, got, want)
 		}
 	}
 }
@@ -2565,6 +2617,35 @@ func TestMonsterCheckMissileRangeUsesDoomDistanceChance(t *testing.T) {
 	// Second random byte is 109, which passes the same threshold.
 	if !g.monsterCheckMissileRange(0, 3004, dist, tx, ty, px, py) {
 		t.Fatal("second far-range missile check should pass by random chance")
+	}
+}
+
+func TestMonsterCheckMissileRange_CyberdemonCapsDistanceAt160(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+	tx := int64(5000 * fracUnit)
+	ty := int64(0)
+	px := int64(0)
+	py := int64(0)
+	dist := int64(5000 * fracUnit)
+
+	offset := -1
+	wantRoll := -1
+	for i := 0; i < 256; i++ {
+		v := doomrand.PRandomOffset(i)
+		if v >= 160 && v < 200 {
+			offset = i
+			wantRoll = v
+			break
+		}
+	}
+	if offset < 0 {
+		t.Fatal("no Doom RNG value found in [160,200)")
+	}
+	doomrand.SetState(0, offset)
+
+	if got := g.monsterCheckMissileRange(0, 16, dist, tx, ty, px, py); !got {
+		t.Fatalf("cyber missile-range check should pass with capped threshold 160 and roll %d", wantRoll)
 	}
 }
 

@@ -69,6 +69,17 @@ func TestMonsterSpriteNameForViewUsesRotation(t *testing.T) {
 	}
 }
 
+func TestMonsterSpriteNameForView_CyberdemonUsesOneFivePairRotation(t *testing.T) {
+	g := &game{opts: Options{SpritePatchBank: map[string]WallTexture{
+		"CYBRA1A5": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+	}}}
+	th := mapdata.Thing{Type: 16, X: 0, Y: 0, Angle: 0}
+	name, flip := g.monsterSpriteNameForView(0, th, 0, -100, 0)
+	if name != "CYBRA1A5" || !flip {
+		t.Fatalf("back got name=%q flip=%t want CYBRA1A5 flipped", name, flip)
+	}
+}
+
 func TestMonsterSpriteNameForViewUsesAttackFrames(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{
@@ -216,6 +227,30 @@ func TestMonsterDeathFrameSeq_HellKnightMatchesBaron(t *testing.T) {
 	}
 }
 
+func TestMonsterDeathFrameSeq_ArchvileMatchesDoomSource(t *testing.T) {
+	if got, want := string(monsterDeathFrameSeq(64)), "QRSTUVWXYZ"; got != want {
+		t.Fatalf("arch-vile death seq=%q want=%q", got, want)
+	}
+	if got, want := monsterDeathFrameTics(64), []int{7, 7, 7, 7, 7, 7, 7, 5, 5, -1}; len(got) != len(want) {
+		t.Fatalf("arch-vile death tics len=%d want=%d", len(got), len(want))
+	} else {
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("arch-vile death tics[%d]=%d want=%d", i, got[i], want[i])
+			}
+		}
+	}
+	if got, want := monsterDeathSoundDelayTics(64), 7; got != want {
+		t.Fatalf("arch-vile death sound delay=%d want=%d", got, want)
+	}
+	if got, want := monsterDeathSoundDelayTics(67), 6; got != want {
+		t.Fatalf("mancubus death sound delay=%d want=%d", got, want)
+	}
+	if got, want := monsterDeathSoundDelayTics(71), 8; got != want {
+		t.Fatalf("pain elemental death sound delay=%d want=%d", got, want)
+	}
+}
+
 func TestMonsterSpriteNameForView_HellKnightUsesDeathFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{
@@ -264,6 +299,38 @@ func TestMonsterRenderBaseZ_UsesActualZForLiveFloatMonsters(t *testing.T) {
 	}
 	if got := g.monsterRenderBaseZ(1, g.m.Things[1], 0, 0); got != 0 {
 		t.Fatalf("chaingunner render base z=%d want=0", got)
+	}
+}
+
+func TestCacheOriginSpriteItemGeometry_UsesPatchOffsetsLikeDoom(t *testing.T) {
+	tex := &WallTexture{Width: 40, Height: 56, OffsetX: 18, OffsetY: 52}
+	w, h, dstX, dstY, x0, x1, y0, y1, ok := cacheOriginSpriteItemGeometry(160, 100, 2, tex, 0, 199, 320, 200)
+	if !ok {
+		t.Fatal("cacheOriginSpriteItemGeometry returned not ok")
+	}
+	if got, want := w, 80.0; got != want {
+		t.Fatalf("width=%v want=%v", got, want)
+	}
+	if got, want := h, 112.0; got != want {
+		t.Fatalf("height=%v want=%v", got, want)
+	}
+	if got, want := dstX, 124.0; got != want {
+		t.Fatalf("dstX=%v want=%v", got, want)
+	}
+	if got, want := dstY, -4.0; got != want {
+		t.Fatalf("dstY=%v want=%v", got, want)
+	}
+	if got, want := x0, 124; got != want {
+		t.Fatalf("x0=%d want=%d", got, want)
+	}
+	if got, want := x1, 203; got != want {
+		t.Fatalf("x1=%d want=%d", got, want)
+	}
+	if got, want := y0, 0; got != want {
+		t.Fatalf("y0=%d want=%d", got, want)
+	}
+	if got, want := y1, 107; got != want {
+		t.Fatalf("y1=%d want=%d", got, want)
 	}
 }
 

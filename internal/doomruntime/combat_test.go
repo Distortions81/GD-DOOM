@@ -813,6 +813,83 @@ func TestBossDeath_E2M8CyberdemonRequestsExit(t *testing.T) {
 	}
 }
 
+func TestBossDeath_E1M8BaronsLowerTag666Floor(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Name:   "E1M8",
+			Things: []mapdata.Thing{{Type: 3003, X: 0, Y: 0}, {Type: 3003, X: 64, Y: 0}},
+			Sectors: []mapdata.Sector{
+				{Tag: 666, FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:      []bool{false, false},
+		thingHP:             []int{1, 1000},
+		thingAggro:          []bool{false, false},
+		thingJustHit:        []bool{false, false},
+		thingDead:           []bool{false, false},
+		thingDeathTics:      []int{0, 0},
+		thingPainTics:       []int{0, 0},
+		thingAttackTics:     []int{0, 0},
+		thingAttackFireTics: []int{-1, -1},
+		thingState:          []monsterThinkState{monsterStateSee, monsterStateSee},
+		thingStateTics:      []int{0, 0},
+		thingStatePhase:     []int{0, 0},
+		sectorFloor:         []int64{0},
+		sectorCeil:          []int64{128 * fracUnit},
+		stats:               playerStats{Health: 100},
+		p:                   player{x: 0, y: 0},
+	}
+
+	g.damageMonster(0, 10)
+	if g.floors != nil && len(g.floors) > 0 && g.floors[0] != nil {
+		t.Fatal("E1M8 should wait until the final baron dies")
+	}
+
+	g.damageMonster(1, 2000)
+	if g.floors == nil || g.floors[0] == nil {
+		t.Fatal("E1M8 final baron death should activate tag 666 floor")
+	}
+	if g.floors[0].direction != -1 {
+		t.Fatalf("floor direction=%d want -1", g.floors[0].direction)
+	}
+}
+
+func TestBossDeath_E1M8StillTriggersWhenDeadMonsterTargetWouldBlockIt(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Name:   "E1M8",
+			Things: []mapdata.Thing{{Type: 3003, X: 0, Y: 0}},
+			Sectors: []mapdata.Sector{
+				{Tag: 666, FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{1},
+		thingAggro:          []bool{true},
+		thingTargetPlayer:   []bool{false},
+		thingTargetIdx:      []int{-1},
+		thingJustHit:        []bool{false},
+		thingDead:           []bool{false},
+		thingDeathTics:      []int{0},
+		thingPainTics:       []int{0},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		thingStatePhase:     []int{0},
+		sectorFloor:         []int64{0},
+		sectorCeil:          []int64{128 * fracUnit},
+		stats:               playerStats{Health: 100},
+		isDead:              true,
+		p:                   player{x: 0, y: 0},
+	}
+
+	g.damageMonster(0, 10)
+	if g.floors == nil || g.floors[0] == nil {
+		t.Fatal("E1M8 baron death should still activate tag 666 when a player is alive")
+	}
+}
+
 func TestBossDeath_E4M6CyberdemonOpensTag666Door(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

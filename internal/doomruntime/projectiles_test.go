@@ -185,6 +185,110 @@ func TestArachnotronAttackSpawnsProjectileAfterWindup(t *testing.T) {
 	}
 }
 
+func TestMonsterProjectileRenderStartsAtSpawnPointOnFirstFrame(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3005, X: 96, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{400},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingX:            []int64{96 * fracUnit},
+		thingY:            []int64{0},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0, z: 0},
+		projectiles:       make([]projectile, 0, 1),
+	}
+
+	if !g.spawnMonsterProjectile(0, 3005) {
+		t.Fatal("expected cacodemon projectile to spawn")
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want=1", got)
+	}
+	p := g.projectiles[0]
+	if p.prevX == p.x && p.prevY == p.y && p.prevZ == p.z {
+		t.Fatalf("spawn prev unexpectedly matches current=(%d,%d,%d)", p.x, p.y, p.z)
+	}
+	if rx, ry, rz := g.projectileRenderPosFixed(p, 0.25); rx == p.x && ry == p.y && rz == p.z {
+		t.Fatalf("render pos unexpectedly matches current=(%d,%d,%d)", rx, ry, rz)
+	}
+}
+
+func TestBaronProjectileRenderStartsFromVisualMuzzleOffset(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3003, X: 96, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{1000},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingX:            []int64{96 * fracUnit},
+		thingY:            []int64{0},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: 0, y: 0, z: 0},
+		projectiles:       make([]projectile, 0, 1),
+	}
+	if !g.spawnMonsterProjectile(0, 3003) {
+		t.Fatal("expected baron projectile to spawn")
+	}
+	p := g.projectiles[0]
+	if p.prevX == p.x && p.prevY == p.y {
+		t.Fatalf("baron muzzle offset missing prev=(%d,%d) cur=(%d,%d)", p.prevX, p.prevY, p.x, p.y)
+	}
+}
+
+func TestArachnotronAttackRefiresLikeDoomSource(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 68, X: 96, Y: 0}},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{500},
+		thingAggro:          []bool{true},
+		thingMoveDir:        []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount:      []int{0},
+		thingJustAtk:        []bool{false},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		projectiles:         make([]projectile, 0, 4),
+		stats:               playerStats{Health: 100},
+		p:                   player{x: 0, y: 0, z: 0},
+	}
+	if !g.startMonsterAttackState(0, 68, true) {
+		t.Fatal("expected arachnotron attack state to start")
+	}
+	for i := 0; i < 29; i++ {
+		g.tickMonsters()
+	}
+	if got := len(g.projectiles); got != 2 {
+		t.Fatalf("projectiles=%d want=2 after first arachnotron cycle", got)
+	}
+	for i := 0; i < 9; i++ {
+		g.tickMonsters()
+	}
+	if got := len(g.projectiles); got != 3 {
+		t.Fatalf("projectiles=%d want=3 after arachnotron refire", got)
+	}
+}
+
 func TestCyberdemonAttackSpawnsThreeRockets(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
@@ -218,6 +322,59 @@ func TestCyberdemonAttackSpawnsThreeRockets(t *testing.T) {
 		if p.kind != projectileRocket {
 			t.Fatalf("projectile %d kind=%v want=%v", i, p.kind, projectileRocket)
 		}
+	}
+}
+
+func TestSpiderMastermindAttackRefiresLikeDoomSource(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 7, X: 128, Y: 0}},
+		},
+		thingCollected:      []bool{false},
+		thingHP:             []int{3000},
+		thingAggro:          []bool{true},
+		thingMoveDir:        []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount:      []int{0},
+		thingJustAtk:        []bool{false},
+		thingAttackTics:     []int{0},
+		thingAttackFireTics: []int{-1},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStateTics:      []int{0},
+		projectiles:         make([]projectile, 0, 8),
+		soundQueue:          make([]soundEvent, 0, 8),
+		stats:               playerStats{Health: 100},
+		p:                   player{x: 0, y: 0, z: 0},
+	}
+	if !g.startMonsterAttackState(0, 7, true) {
+		t.Fatal("expected spider mastermind attack state to start")
+	}
+	for i := 0; i < 29; i++ {
+		g.tickMonsters()
+	}
+	shots := 0
+	for _, ev := range g.soundQueue {
+		if ev == soundEventShootShotgun {
+			shots++
+		}
+	}
+	if shots != 3 {
+		t.Fatalf("shot sounds=%d want=3 after first spider cycle plus refire", shots)
+	}
+	if got := g.thingState[0]; got != monsterStateAttack {
+		t.Fatalf("state=%v want attack after spider refire cycle", got)
+	}
+	for i := 0; i < 9; i++ {
+		g.tickMonsters()
+	}
+	shots = 0
+	for _, ev := range g.soundQueue {
+		if ev == soundEventShootShotgun {
+			shots++
+		}
+	}
+	if shots != 5 {
+		t.Fatalf("shot sounds=%d want=5 after spider refire", shots)
 	}
 }
 

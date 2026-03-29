@@ -411,6 +411,16 @@ func (g *game) setMonsterThinkState(i int, typ int16, state monsterThinkState, t
 	g.thingStateTics[i] = tics
 }
 
+func monsterSeeStartPhase(typ int16) int {
+	switch typ {
+	case 68:
+		// Doom enters S_BSPI_SIGHT before the Arachnotron loops RUN1..RUN12.
+		return -1
+	default:
+		return 0
+	}
+}
+
 func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist int64) bool {
 	if i < 0 || i >= len(g.thingState) || i >= len(g.thingStateTics) {
 		return true
@@ -451,7 +461,11 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 			if count < 1 {
 				count = 1
 			}
-			g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
+			if typ == 68 && g.thingStatePhase[i] < 0 {
+				g.thingStatePhase[i] = 0
+			} else {
+				g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
+			}
 			g.thingStateTics[i] = g.monsterSeeStateTicsForPhase(i, typ)
 		}
 		return true
@@ -479,7 +493,7 @@ func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
 		}
 		g.emitMonsterSeeSound(i, typ, tx, ty)
 		if i >= 0 && i < len(g.thingStatePhase) {
-			g.thingStatePhase[i] = 0
+			g.thingStatePhase[i] = monsterSeeStartPhase(typ)
 		}
 		g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
 		return true
@@ -1874,6 +1888,17 @@ func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, p
 			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1:
 			_ = g.monsterAttack(i, typ, dist)
+		case 3:
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
+			if !g.spiderRefireKeepsAttack(i, typ, tx, ty) {
+				if i >= 0 && i < len(g.thingAttackTics) {
+					g.thingAttackTics[i] = 0
+				}
+				if i >= 0 && i < len(g.thingAttackFireTics) {
+					g.thingAttackFireTics[i] = -1
+				}
+				g.resetMonsterPostAttackState(i, typ)
+			}
 		}
 	case 16: // cyberdemon
 		switch phase {
@@ -1888,6 +1913,17 @@ func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, p
 			g.faceMonsterToward(i, tx, ty, faceX, faceY)
 		case 1, 2:
 			_ = g.monsterAttack(i, typ, dist)
+		case 3:
+			g.faceMonsterToward(i, tx, ty, faceX, faceY)
+			if !g.spiderRefireKeepsAttack(i, typ, tx, ty) {
+				if i >= 0 && i < len(g.thingAttackTics) {
+					g.thingAttackTics[i] = 0
+				}
+				if i >= 0 && i < len(g.thingAttackFireTics) {
+					g.thingAttackFireTics[i] = -1
+				}
+				g.resetMonsterPostAttackState(i, typ)
+			}
 		}
 	}
 }
@@ -1999,6 +2035,9 @@ func (g *game) nextMonsterAttackLoopPhase(i int, typ int16, tx, ty int64) (int, 
 			return 2, true
 		}
 		return 0, false
+	case 7, 68:
+		// Doom's S_SPID_ATK4 and S_BSPI_ATK4 both nextstate back to ATK2.
+		return 1, true
 	default:
 		return 0, false
 	}
@@ -2010,13 +2049,25 @@ func (g *game) resetMonsterPostAttackState(i int, typ int16) {
 	}
 	g.clearMonsterPainState(i)
 	if i >= 0 && i < len(g.thingStatePhase) {
-		g.thingStatePhase[i] = 0
+		g.thingStatePhase[i] = monsterSeeStartPhase(typ)
 	}
 	g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
 }
 
 func (g *game) chaingunnerRefireKeepsAttack(i int, typ int16, tx, ty int64) bool {
 	if doomrand.PRandom() < 40 {
+		return true
+	}
+	if !g.monsterHasTarget(i) {
+		return false
+	}
+	return g.monsterHasLOSTarget(i, typ, tx, ty)
+}
+
+func (g *game) spiderRefireKeepsAttack(i int, typ int16, tx, ty int64) bool {
+	// Doom A_SpidRefire keeps attacking on low rolls and only leaves the
+	// attack loop when the roll fails and the target is gone or out of sight.
+	if doomrand.PRandom() < 10 {
 		return true
 	}
 	if !g.monsterHasTarget(i) {
@@ -2129,6 +2180,9 @@ func monsterSpawnStateTics(typ int16) int {
 }
 
 func monsterSeeStateTicsAtPhase(typ int16, phase int, fast bool) int {
+	if typ == 68 && phase < 0 {
+		return 20
+	}
 	tics := monsterSeeFrameTics(typ, fast)
 	if len(tics) == 0 {
 		switch typ {

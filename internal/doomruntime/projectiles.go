@@ -48,6 +48,7 @@ type projectile struct {
 	kind         projectileKind
 	order        int64
 	deferredTick bool
+	spawnPrev    bool
 }
 
 type projectileImpact struct {
@@ -158,6 +159,38 @@ func monsterProjectileTTL(typ int16) int {
 	default:
 		return 8 * doomTicsPerSecond
 	}
+}
+
+func monsterProjectileVisualMuzzleOffset(typ int16) (forward, right, up int64, ok bool) {
+	switch typ {
+	case 3001:
+		return 16 * fracUnit, 8 * fracUnit, 0, true
+	case 3005:
+		return 18 * fracUnit, 0, 6 * fracUnit, true
+	case 3003, 69:
+		return 18 * fracUnit, 10 * fracUnit, 0, true
+	case 66:
+		return 18 * fracUnit, 8 * fracUnit, 6 * fracUnit, true
+	case 67:
+		return 18 * fracUnit, 12 * fracUnit, 0, true
+	case 68:
+		return 20 * fracUnit, 0, 8 * fracUnit, true
+	case 16:
+		return 24 * fracUnit, 0, 16 * fracUnit, true
+	default:
+		return 0, 0, 0, false
+	}
+}
+
+func projectileVisualMuzzlePos(sx, sy, sz int64, angle uint32, typ int16) (int64, int64, int64, bool) {
+	forward, right, up, ok := monsterProjectileVisualMuzzleOffset(typ)
+	if !ok {
+		return 0, 0, 0, false
+	}
+	x := sx + fixedMul(forward, doomFineCosine(angle)) + fixedMul(right, doomFineCosine(angle-degToAngle(90)))
+	y := sy + fixedMul(forward, doomFineSineAtAngle(angle)) + fixedMul(right, doomFineSineAtAngle(angle-degToAngle(90)))
+	z := sz + up
+	return x, y, z, true
 }
 
 func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
@@ -338,6 +371,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	p.prevX = ox
 	p.prevY = oy
 	p.prevZ = oz
+	p.spawnPrev = false
 	if p.z <= p.floorz {
 		p.z = p.floorz
 		g.explodeProjectileAt(p, p.x, p.y, p.z)
@@ -553,6 +587,21 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	if g == nil || p == nil {
 		return false
 	}
+	setInitialRenderPrev := func(ox, oy, oz int64) {
+		if !p.sourcePlayer {
+			if mx, my, mz, ok := projectileVisualMuzzlePos(ox, oy, oz, p.angle, p.sourceType); ok {
+				p.prevX = mx
+				p.prevY = my
+				p.prevZ = mz
+				p.spawnPrev = true
+				return
+			}
+		}
+		p.prevX = p.x
+		p.prevY = p.y
+		p.prevZ = p.z
+		p.spawnPrev = false
+	}
 	ox, oy, oz := p.x, p.y, p.z
 	nx := ox + (p.vx >> 1)
 	ny := oy + (p.vy >> 1)
@@ -563,6 +612,7 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 			p.y = ny
 			p.z = nz
 		}
+		setInitialRenderPrev(ox, oy, oz)
 		return true
 	}
 	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
@@ -598,6 +648,9 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 		p.y = ny
 		p.z = nz
 	}
+	// Use a render-only muzzle point for the first interpolated frame so
+	// monster fireballs visibly leave the hand/mouth rather than the center.
+	setInitialRenderPrev(ox, oy, oz)
 	if p.z <= p.floorz {
 		p.z = p.floorz
 		g.explodeProjectileAt(*p, p.x, p.y, p.z)
