@@ -1,0 +1,121 @@
+name: Release Builds
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            label: Linux x86_64
+            binary_name: gddoom
+            archive_name: GD-DOOM-linux-x86_64.zip
+            ldflags: -s -w
+          - runner: windows-latest
+            goos: windows
+            goarch: amd64
+            label: Windows x86_64
+            binary_name: gddoom.exe
+            archive_name: GD-DOOM-windows-x86_64.zip
+            ldflags: -s -w -H=windowsgui
+          - runner: macos-13
+            goos: darwin
+            goarch: amd64
+            label: macOS Intel
+            binary_name: gddoom
+            archive_name: GD-DOOM-macos-intel.zip
+            ldflags: -s -w
+          - runner: macos-14
+            goos: darwin
+            goarch: arm64
+            label: macOS Apple Silicon
+            binary_name: gddoom
+            archive_name: GD-DOOM-macos-apple-silicon.zip
+            ldflags: -s -w
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2-dev \
+            libgl1-mesa-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxrandr-dev \
+            libxxf86vm-dev
+
+      - name: Build package
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          BINARY_NAME: ${{ matrix.binary_name }}
+          LDFLAGS: ${{ matrix.ldflags }}
+          ARCHIVE_NAME: ${{ matrix.archive_name }}
+        run: |
+          set -euo pipefail
+
+          pkg_dir="dist/package"
+          rm -rf "$pkg_dir"
+          mkdir -p "$pkg_dir/soundfonts"
+
+          go build -trimpath -ldflags "$LDFLAGS" -o "$pkg_dir/$BINARY_NAME" .
+
+          cp DOOM1.WAD "$pkg_dir/"
+          cp soundfonts/general-midi.sf2 "$pkg_dir/soundfonts/"
+          cp README.md LICENSE NOTICE "$pkg_dir/"
+
+          python - <<'PY'
+          import os
+          import zipfile
+          from pathlib import Path
+
+          package_root = Path("dist/package")
+          archive_path = Path("dist") / os.environ["ARCHIVE_NAME"]
+          archive_root = Path("GD-DOOM")
+
+          with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+              for path in sorted(package_root.rglob("*")):
+                  if path.is_file():
+                      zf.write(path, arcname=archive_root / path.relative_to(package_root))
+          PY
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive_name }}
+          path: dist/${{ matrix.archive_name }}
+          if-no-files-found: error
+
+      - name: Upload release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/${{ matrix.archive_name }}
+          fail_on_unmatched_files: true

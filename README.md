@@ -59,6 +59,8 @@ For the current command-line interface, run:
 go run ./cmd/gddoom -h
 ```
 
+Tagged GitHub releases now publish desktop bundles for Linux, Windows, macOS Intel, and macOS Apple Silicon. Each release archive includes the platform binary, the tracked `DOOM1.WAD`, and `soundfonts/general-midi.sf2`.
+
 ## Music Backends
 
 GD-DOOM supports two music synth paths:
