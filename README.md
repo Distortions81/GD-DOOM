@@ -1,5 +1,10 @@
 # GD-DOOM
 
+[![Go CI](https://github.com/Distortions81/GD-DOOM/actions/workflows/ci.yml/badge.svg)](https://github.com/Distortions81/GD-DOOM/actions/workflows/ci.yml)
+[![Go Vulncheck](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml/badge.svg)](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Distortions81/GD-DOOM)](https://goreportcard.com/report/github.com/Distortions81/GD-DOOM)
+[![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/blob/main/LICENSE)
+
 <p align="center">
   "Modern / Source Port" mode depicted below
   <img src="e1m1.png" alt="E1M1 screenshot" width="900">
