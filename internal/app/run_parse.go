@@ -156,6 +156,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultNoAspectCorrection := false
 	defaultAniDump := ""
 	defaultAniDumpDir := "anidump"
+	defaultDumpMusic := false
+	defaultDumpMusicDir := "out/music-dump"
 	defaultConfigPath := configPath
 	configLineColorSet := false
 	if cfg != nil {
@@ -441,6 +443,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
 	aniDump := fs.String("anidump", defaultAniDump, "dump animation sprite series for seed (example: SMGTA0)")
 	aniDumpDir := fs.String("anidump-dir", defaultAniDumpDir, "output directory for -anidump PNG dumps")
+	dumpMusic := fs.Bool("dump-music", defaultDumpMusic, "render music WAV exports for detected IWADs or the selected -wad")
+	dumpMusicDir := fs.String("dump-music-dir", defaultDumpMusicDir, "output directory for -dump-music WAV exports")
 	forceWASMMode := fs.Bool("wasm-mode", platformcfg.ForcedWASMMode(), "force js/wasm runtime behavior on native builds")
 
 	if err := fs.Parse(args); err != nil {
@@ -553,6 +557,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	resolvedRecordDemoPath := strings.TrimSpace(*recordDemoPath)
 	resolvedDemoTracePath := strings.TrimSpace(*demoTracePath)
 	resolvedFilePaths := resolveWADOverlayPaths(*filePaths)
+	resolvedWADPath := resolveIWADAliasPath(*wadPath)
 	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
 		fmt.Fprintln(stderr, "-demo and -record-demo are mutually exclusive")
 		return 2
@@ -560,6 +565,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if resolvedDemoTracePath != "" && resolvedDemoPath == "" {
 		fmt.Fprintln(stderr, "-trace-demo-state requires -demo")
 		return 2
+	}
+	if *dumpMusic {
+		if err := dumpMusicWAVs(strings.TrimSpace(*dumpMusicDir), resolvedWADPath, wadFlagSet || positionalWADSet, resolvedFilePaths, strings.TrimSpace(*soundFont), stdout, stderr); err != nil {
+			fmt.Fprintf(stderr, "dump music: %v\n", err)
+			return 1
+		}
+		return 0
 	}
 	writeMemProfile := func() {}
 	if strings.TrimSpace(*memProfile) != "" {
@@ -777,7 +789,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "-wad is required")
 		return 2
 	}
-	resolvedWADPath := resolveIWADAliasPath(*wadPath)
 	wf, wadPaths, err := openWADStack(resolvedWADPath, resolvedFilePaths)
 	if err != nil {
 		fmt.Fprintf(stderr, "open wad: %v\n", err)
