@@ -6,6 +6,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,8 +44,14 @@ func TestDumpMusicTracksForWADUsesMapAndOtherMusicNames(t *testing.T) {
 	if got := tracks[0].fileBase; got != "MAP01-running-from-evil" {
 		t.Fatalf("tracks[0].fileBase=%q want %q", got, "MAP01-running-from-evil")
 	}
+	if got := tracks[0].label; got != "MAP01 - Entryway | Running from Evil | D_RUNNIN" {
+		t.Fatalf("tracks[0].label=%q", got)
+	}
 	if got := tracks[1].fileBase; got != "D_DM2INT-doom-ii-intermission" {
 		t.Fatalf("tracks[1].fileBase=%q want %q", got, "D_DM2INT-doom-ii-intermission")
+	}
+	if got := tracks[1].label; got != "Doom II Intermission | D_DM2INT" {
+		t.Fatalf("tracks[1].label=%q", got)
 	}
 }
 
@@ -91,6 +98,19 @@ func TestRunParseDumpMusicWritesOPLWav(t *testing.T) {
 	if _, err := os.Stat(wavPath); err != nil {
 		t.Fatalf("stat wav: %v", err)
 	}
+	coverPath := filepath.Join(outDir, "MUSIC", "OPL", "MAP01-running-from-evil.png")
+	cf, err := os.Open(coverPath)
+	if err != nil {
+		t.Fatalf("open cover: %v", err)
+	}
+	defer cf.Close()
+	cover, err := png.Decode(cf)
+	if err != nil {
+		t.Fatalf("decode cover: %v", err)
+	}
+	if b := cover.Bounds(); b.Dx() != 1920 || b.Dy() != 1080 {
+		t.Fatalf("cover size=%dx%d want 1920x1080", b.Dx(), b.Dy())
+	}
 	splashPath := filepath.Join(outDir, "MUSIC", "splash.png")
 	f, err := os.Open(splashPath)
 	if err != nil {
@@ -103,6 +123,14 @@ func TestRunParseDumpMusicWritesOPLWav(t *testing.T) {
 	}
 	if b := img.Bounds(); b.Dx() != 1920 || b.Dy() != 1080 {
 		t.Fatalf("splash size=%dx%d want 1920x1080", b.Dx(), b.Dy())
+	}
+	tracksPath := filepath.Join(outDir, "MUSIC", "tracks.txt")
+	data, err := os.ReadFile(tracksPath)
+	if err != nil {
+		t.Fatalf("read tracks.txt: %v", err)
+	}
+	if got := strings.TrimSpace(string(data)); got != "MAP01 - Entryway | Running from Evil | D_RUNNIN" {
+		t.Fatalf("tracks.txt=%q", got)
 	}
 	if stdout.Len() == 0 {
 		t.Fatal("expected dump-music progress on stdout")

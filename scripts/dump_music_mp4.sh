@@ -15,7 +15,10 @@ usage() {
   cat <<'EOF'
 Convert dumped music WAV files to YouTube-friendly 1920x1080 MP4 videos.
 
-Each video uses the WAD-level splash.png as a static image:
+Each video uses the per-track PNG when present:
+  <dump>/<WAD>/<RENDERER>/<track>.png
+
+Fallback:
   <dump>/<WAD>/splash.png
 
 WAV input examples:
@@ -39,7 +42,8 @@ Notes:
   - Requires ffmpeg in PATH.
   - Preserves relative folder structure.
   - Writes .mp4 files alongside the .wav files unless --out is set.
-  - Expects splash.png inside each WAD root folder.
+  - Uses per-track PNGs when available.
+  - Falls back to splash.png inside each WAD root folder.
 
 Examples:
   scripts/dump_music_mp4.sh
@@ -107,9 +111,15 @@ for src in "${WAV_FILES[@]}"; do
     continue
   fi
 
+  cover="${src%.*}.png"
   splash="${IN_DIR}/${wad_name}/splash.png"
-  if [[ ! -f "${splash}" ]]; then
-    echo "Skipping ${rel}: missing splash ${splash}" >&2
+  image_path=""
+  if [[ -f "${cover}" ]]; then
+    image_path="${cover}"
+  elif [[ -f "${splash}" ]]; then
+    image_path="${splash}"
+  else
+    echo "Skipping ${rel}: missing cover ${cover} and splash ${splash}" >&2
     continue
   fi
 
@@ -119,7 +129,7 @@ for src in "${WAV_FILES[@]}"; do
 
   echo "mp4 ${rel} -> ${dst}"
   ffmpeg -v error -y \
-    -loop 1 -framerate "${FPS}" -i "${splash}" \
+    -loop 1 -framerate "${FPS}" -i "${image_path}" \
     -i "${src}" \
     -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p" \
     -c:v "${VIDEO_CODEC}" -preset "${PRESET}" -crf "${CRF}" \

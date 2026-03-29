@@ -40,6 +40,9 @@ type dumpMusicRenderer struct {
 type dumpMusicTrack struct {
 	lumpName string
 	fileBase string
+	label    string
+	level    string
+	music    string
 }
 
 type dumpMusicJob struct {
@@ -96,6 +99,22 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 				return fmt.Errorf("write splash %s: %w", splashPath, err)
 			}
 		}
+		if err := writeDumpMusicTracksManifest(filepath.Join(wadOut, "tracks.txt"), tracks); err != nil {
+			return fmt.Errorf("write tracks manifest for %s: %w", target.path, err)
+		}
+		var (
+			splashTex media.WallTexture
+			fontBank  map[rune]media.WallTexture
+		)
+		if texSet, err := doomtex.LoadFromWAD(wf); err == nil {
+			splashTex = buildBootSplashTexture(texSet)
+			fontBank = buildMessageFontBank(texSet)
+		}
+		if splashTex.Width == 0 || splashTex.Height == 0 || len(splashTex.RGBA) != splashTex.Width*splashTex.Height*4 {
+			if splash, ok := resolveDumpBootSplashTexture(wf); ok {
+				splashTex = splash
+			}
+		}
 		patchBank, err := resolveMusicPatchBank(wf, "", nil)
 		if err != nil {
 			return fmt.Errorf("resolve music patch bank for %s: %w", target.path, err)
@@ -138,6 +157,11 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 				}
 				if err := writePCM16StereoWAV(job.outPath, music.OutputSampleRate, pcm); err != nil {
 					errCh <- fmt.Errorf("write %s: %w", job.outPath, err)
+					return
+				}
+				coverPath := strings.TrimSuffix(job.outPath, filepath.Ext(job.outPath)) + ".png"
+				if err := writeDumpTrackCoverPNG(coverPath, splashTex, fontBank, job.track); err != nil {
+					errCh <- fmt.Errorf("write %s: %w", coverPath, err)
 					return
 				}
 				if stdout != nil {
@@ -279,6 +303,9 @@ func dumpMusicTracksForWAD(wf *wad.File) ([]dumpMusicTrack, error) {
 		out = append(out, dumpMusicTrack{
 			lumpName: lump,
 			fileBase: base,
+			label:    dumpMusicTrackLabel(track),
+			level:    dumpMusicTrackLevel(track),
+			music:    dumpMusicTrackMusic(track),
 		})
 		return nil
 	}
@@ -302,6 +329,127 @@ func dumpMusicTrackBase(track runtimecfg.MusicPlayerTrack) string {
 		return prefix
 	}
 	return prefix + "-" + suffix
+}
+
+func dumpMusicTrackLabel(track runtimecfg.MusicPlayerTrack) string {
+	label := dumpMusicTrackLevel(track)
+	musicName := dumpMusicTrackMusic(track)
+	lump := strings.ToUpper(strings.TrimSpace(track.LumpName))
+	if label != "" && musicName != "" && strings.EqualFold(label, musicName) {
+		musicName = ""
+	}
+	if label != "" && musicName != "" {
+		return fmt.Sprintf("%s | %s | %s", label, musicName, lump)
+	}
+	if label != "" && lump != "" {
+		return fmt.Sprintf("%s | %s", label, lump)
+	}
+	if musicName != "" && lump != "" {
+		return fmt.Sprintf("%s | %s", musicName, lump)
+	}
+	if label != "" {
+		return label
+	}
+	if musicName != "" {
+		return musicName
+	}
+	return lump
+}
+
+func dumpMusicTrackLevel(track runtimecfg.MusicPlayerTrack) string {
+	label := strings.TrimSpace(track.Label)
+	if label != "" {
+		return label
+	}
+	lump := strings.ToUpper(strings.TrimSpace(track.LumpName))
+	return lump
+}
+
+func dumpMusicTrackMusic(track runtimecfg.MusicPlayerTrack) string {
+	musicName := strings.TrimSpace(track.MusicName)
+	if musicName != "" {
+		return musicName
+	}
+	lump := strings.ToUpper(strings.TrimSpace(track.LumpName))
+	return lump
+}
+
+func writeDumpMusicTracksManifest(path string, tracks []dumpMusicTrack) error {
+	var b strings.Builder
+	for _, track := range tracks {
+		line := strings.TrimSpace(track.label)
+		if line == "" {
+			line = strings.ToUpper(strings.TrimSpace(track.lumpName))
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+func writeDumpTrackCoverPNG(path string, splash media.WallTexture, fontBank map[rune]media.WallTexture, track dumpMusicTrack) error {
+	img, err := renderDumpTrackCover(splash, fontBank, track)
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, img)
+}
+
+func renderDumpTrackCover(splash media.WallTexture, fontBank map[rune]media.WallTexture, track dumpMusicTrack) (*image.RGBA, error) {
+	img, err := buildBootSplashImage(splash)
+	if err != nil {
+		return nil, err
+	}
+	if len(fontBank) == 0 {
+		return img, nil
+	}
+	line1 := strings.ToUpper(strings.TrimSpace(track.level))
+	line2 := strings.ToUpper(strings.TrimSpace(track.music))
+	if line1 == "" && line2 == "" {
+		return img, nil
+	}
+	scale := 4
+	spaceW := 8 * scale
+	line1W := measureDumpFontLine(fontBank, line1, scale, spaceW)
+	line2W := measureDumpFontLine(fontBank, line2, scale, spaceW)
+	boxPadX := 48
+	boxPadY := 28
+	lineGap := 28
+	textH1 := dumpFontLineHeight(fontBank, line1, scale)
+	textH2 := dumpFontLineHeight(fontBank, line2, scale)
+	textH := textH1
+	if textH2 > 0 {
+		textH += lineGap + textH2
+	}
+	textW := line1W
+	if line2W > textW {
+		textW = line2W
+	}
+	boxW := textW + boxPadX*2
+	boxH := textH + boxPadY*2
+	x0 := (img.Bounds().Dx() - boxW) / 2
+	y0 := img.Bounds().Dy() - boxH - 72
+	if x0 < 24 {
+		x0 = 24
+	}
+	if y0 < 24 {
+		y0 = 24
+	}
+	drawFilledRectRGBA(img, image.Rect(x0, y0, x0+boxW, y0+boxH), color.RGBA{0, 0, 0, 192})
+	y := y0 + boxPadY
+	if line1 != "" {
+		drawDumpFontLineCentered(img, fontBank, line1, y, scale)
+		y += textH1 + lineGap
+	}
+	if line2 != "" {
+		drawDumpFontLineCentered(img, fontBank, line2, y, scale)
+	}
+	return img, nil
 }
 
 func dumpMusicPCM(bank music.PatchBank, renderer dumpMusicRenderer, musData []byte) ([]int16, error) {
@@ -469,8 +617,21 @@ func writePCM16StereoWAV(path string, sampleRate int, pcm []int16) error {
 }
 
 func writeBootSplashPNG(path string, splash media.WallTexture) error {
+	dst, err := buildBootSplashImage(splash)
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, dst)
+}
+
+func buildBootSplashImage(splash media.WallTexture) (*image.RGBA, error) {
 	if splash.Width <= 0 || splash.Height <= 0 || len(splash.RGBA) != splash.Width*splash.Height*4 {
-		return fmt.Errorf("invalid splash texture")
+		return nil, fmt.Errorf("invalid splash texture")
 	}
 	const (
 		outW = 1920
@@ -493,13 +654,7 @@ func writeBootSplashPNG(path string, splash media.WallTexture) error {
 			dst.SetRGBA(offsetX+x, y, src.RGBAAt(sx, sy))
 		}
 	}
-
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return png.Encode(f, dst)
+	return dst, nil
 }
 
 func fillRGBA(img *image.RGBA, c color.RGBA) {
@@ -516,6 +671,132 @@ func fillRGBA(img *image.RGBA, c color.RGBA) {
 			img.Pix[i+3] = c.A
 		}
 	}
+}
+
+func measureDumpFontLine(fontBank map[rune]media.WallTexture, line string, scale int, spaceW int) int {
+	if scale <= 0 {
+		scale = 1
+	}
+	w := 0
+	for _, ch := range line {
+		if ch >= 'a' && ch <= 'z' {
+			ch -= 'a' - 'A'
+		}
+		if ch == ' ' {
+			w += 4 * scale
+			continue
+		}
+		glyph, ok := fontBank[ch]
+		if !ok || glyph.Width <= 0 || glyph.Height <= 0 {
+			w += 4 * scale
+			continue
+		}
+		w += glyph.Width * scale
+	}
+	return w
+}
+
+func dumpFontLineHeight(fontBank map[rune]media.WallTexture, line string, scale int) int {
+	if scale <= 0 {
+		scale = 1
+	}
+	h := 0
+	for _, ch := range line {
+		glyph, ok := fontBank[ch]
+		if !ok || glyph.Width <= 0 || glyph.Height <= 0 {
+			continue
+		}
+		gh := glyph.Height * scale
+		if gh > h {
+			h = gh
+		}
+	}
+	if h == 0 {
+		h = 12 * scale
+	}
+	return h
+}
+
+func drawDumpFontLineCentered(dst *image.RGBA, fontBank map[rune]media.WallTexture, line string, y int, scale int) {
+	if dst == nil {
+		return
+	}
+	spaceW := 8 * scale
+	lineW := measureDumpFontLine(fontBank, line, scale, spaceW)
+	x := (dst.Bounds().Dx() - lineW) / 2
+	drawDumpFontLine(dst, fontBank, line, x, y, scale, spaceW)
+}
+
+func drawDumpFontLine(dst *image.RGBA, fontBank map[rune]media.WallTexture, line string, x int, y int, scale int, spaceW int) {
+	for _, ch := range line {
+		if ch >= 'a' && ch <= 'z' {
+			ch -= 'a' - 'A'
+		}
+		if ch == ' ' {
+			x += 4 * scale
+			continue
+		}
+		glyph, ok := fontBank[ch]
+		if !ok || glyph.Width <= 0 || glyph.Height <= 0 || len(glyph.RGBA) != glyph.Width*glyph.Height*4 {
+			x += 4 * scale
+			continue
+		}
+		drawGlyphRGBA(dst, glyph, x, y, scale)
+		x += glyph.Width * scale
+	}
+}
+
+func drawGlyphRGBA(dst *image.RGBA, glyph media.WallTexture, dx int, dy int, scale int) {
+	if dst == nil || scale <= 0 {
+		return
+	}
+	for sy := 0; sy < glyph.Height; sy++ {
+		for sx := 0; sx < glyph.Width; sx++ {
+			srcIdx := (sy*glyph.Width + sx) * 4
+			if srcIdx+3 >= len(glyph.RGBA) || glyph.RGBA[srcIdx+3] == 0 {
+				continue
+			}
+			for oy := 0; oy < scale; oy++ {
+				py := dy - glyph.OffsetY*scale + sy*scale + oy
+				if py < 0 || py >= dst.Bounds().Dy() {
+					continue
+				}
+				for ox := 0; ox < scale; ox++ {
+					px := dx - glyph.OffsetX*scale + sx*scale + ox
+					if px < 0 || px >= dst.Bounds().Dx() {
+						continue
+					}
+					dstIdx := py*dst.Stride + px*4
+					copy(dst.Pix[dstIdx:dstIdx+4], glyph.RGBA[srcIdx:srcIdx+4])
+				}
+			}
+		}
+	}
+}
+
+func drawFilledRectRGBA(dst *image.RGBA, rect image.Rectangle, c color.RGBA) {
+	if dst == nil {
+		return
+	}
+	rect = rect.Intersect(dst.Bounds())
+	if rect.Empty() {
+		return
+	}
+	for y := rect.Min.Y; y < rect.Max.Y; y++ {
+		row := y * dst.Stride
+		for x := rect.Min.X; x < rect.Max.X; x++ {
+			i := row + x*4
+			dst.Pix[i] = blendChannel(dst.Pix[i], c.R, c.A)
+			dst.Pix[i+1] = blendChannel(dst.Pix[i+1], c.G, c.A)
+			dst.Pix[i+2] = blendChannel(dst.Pix[i+2], c.B, c.A)
+			dst.Pix[i+3] = 255
+		}
+	}
+}
+
+func blendChannel(dst uint8, src uint8, alpha uint8) uint8 {
+	a := int(alpha)
+	return uint8((int(dst)*(255-a) + int(src)*a) / 255)
 }
 
 func resolveDumpBootSplashTexture(wf *wad.File) (media.WallTexture, bool) {
