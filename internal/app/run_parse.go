@@ -2368,7 +2368,6 @@ func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
 	option := pickerSynths[synthIndex]
 	cfg.musicBackend = option.backend
 	if music.ResolveBackend(option.backend) == music.BackendMeltySynth {
-		cfg.musicVolume = 0.7
 		if strings.TrimSpace(option.soundFont) != "" {
 			cfg.soundFontPath = option.soundFont
 		} else if strings.TrimSpace(cfg.soundFontPath) == "" {
@@ -2389,6 +2388,7 @@ type iwadPickerGame struct {
 	confirmArmed bool
 	status       string
 	loadingPath  string
+	statusUntil  int
 	tic          int
 	bg           *ebiten.Image
 	logo         *ebiten.Image
@@ -2485,17 +2485,28 @@ func (g *iwadPickerGame) Update() error {
 			g.status = err.Error()
 			return nil
 		}
+		g.status = "DONE, STARTING."
+		g.statusUntil = g.tic + 20
+		return nil
+	}
+	g.tic++
+	if strings.TrimSpace(g.status) == "DONE, STARTING." && g.statusUntil > 0 && g.tic >= g.statusUntil {
+		if g.load == nil {
+			g.err = fmt.Errorf("iwad loader unavailable")
+			return ebiten.Termination
+		}
 		bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.synth)
 		if err != nil {
 			g.status = err.Error()
+			g.statusUntil = 0
 			return nil
 		}
 		g.status = ""
+		g.statusUntil = 0
 		g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
 		notifyBrowserSessionStarted()
 		return nil
 	}
-	g.tic++
 	if !g.confirmArmed {
 		g.confirmArmed = !pickerConfirmHeld()
 	}
@@ -2613,7 +2624,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		g.drawPickerTextCentered(screen, "SELECT GAME", sw/2, 20)
 	}
 	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
-	loadingSoundFont := strings.TrimSpace(g.loadingPath) != ""
+	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || (strings.TrimSpace(g.status) == "DONE, STARTING." && g.statusUntil > 0)
 	switch g.stage {
 	case pickerStageProfile:
 		if !loadingSoundFont {

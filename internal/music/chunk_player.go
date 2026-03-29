@@ -1,6 +1,7 @@
 package music
 
 import (
+	"encoding/binary"
 	"errors"
 	"io"
 	"sync"
@@ -197,13 +198,18 @@ func (cp *ChunkPlayer) run() {
 }
 
 type pcmChunkBuffer struct {
-	mu        sync.Mutex
-	cond      *sync.Cond
-	chunks    [][]byte
-	chunkPool sync.Pool
-	off       int
-	closed    bool
-	bytes     int
+	mu             sync.Mutex
+	cond           *sync.Cond
+	chunks         [][]byte
+	chunkPool      sync.Pool
+	off            int
+	closed         bool
+	bytes          int
+	starving       bool
+	lastL          int16
+	lastR          int16
+	fadeOutPending bool
+	fadeInPending  bool
 }
 
 func newPCMChunkBuffer() *pcmChunkBuffer {
@@ -238,6 +244,11 @@ func (b *pcmChunkBuffer) Enqueue(chunk []byte) {
 	}
 	b.mu.Lock()
 	if !b.closed {
+		if b.starving || b.fadeInPending {
+			applyFadeInLE(chunk, starvationFadeFrames())
+			b.starving = false
+			b.fadeInPending = false
+		}
 		b.chunks = append(b.chunks, chunk)
 		b.bytes += len(chunk)
 		b.cond.Signal()
@@ -253,6 +264,11 @@ func (b *pcmChunkBuffer) Clear() {
 	b.chunks = b.chunks[:0]
 	b.off = 0
 	b.bytes = 0
+	b.starving = false
+	b.fadeOutPending = false
+	b.fadeInPending = false
+	b.lastL = 0
+	b.lastR = 0
 	b.mu.Unlock()
 }
 
@@ -267,8 +283,11 @@ func (b *pcmChunkBuffer) Read(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for {
-		for len(b.chunks) == 0 && !b.closed {
-			b.cond.Wait()
+		if len(b.chunks) == 0 && !b.closed {
+			n := b.fillStarvationAudio(p)
+			if n > 0 {
+				return n, nil
+			}
 		}
 		if len(b.chunks) == 0 && b.closed {
 			return 0, io.EOF
@@ -291,6 +310,7 @@ func (b *pcmChunkBuffer) Read(p []byte) (int, error) {
 			b.chunks = b.chunks[1:]
 			b.off = 0
 		}
+		b.captureLastSamples(p[:n])
 		return n, nil
 	}
 }
@@ -300,4 +320,83 @@ func (b *pcmChunkBuffer) BufferedBytes() int {
 	n := b.bytes
 	b.mu.Unlock()
 	return n
+}
+
+func (b *pcmChunkBuffer) fillStarvationAudio(p []byte) int {
+	if len(p) < 4 {
+		return 0
+	}
+	frames := len(p) / 4
+	if frames <= 0 {
+		return 0
+	}
+	if !b.starving {
+		b.starving = true
+		b.fadeInPending = true
+		if b.lastL != 0 || b.lastR != 0 {
+			n := writeFadeOutLE(p[:frames*4], b.lastL, b.lastR, starvationFadeFrames())
+			b.lastL = 0
+			b.lastR = 0
+			b.fadeOutPending = false
+			return n
+		}
+	}
+	clear(p[:frames*4])
+	return frames * 4
+}
+
+func (b *pcmChunkBuffer) captureLastSamples(p []byte) {
+	if len(p) < 4 {
+		return
+	}
+	last := len(p) - 4
+	b.lastL = int16(binary.LittleEndian.Uint16(p[last:]))
+	b.lastR = int16(binary.LittleEndian.Uint16(p[last+2:]))
+}
+
+func starvationFadeFrames() int {
+	return 128
+}
+
+func writeFadeOutLE(dst []byte, startL, startR int16, frames int) int {
+	if frames <= 0 {
+		return 0
+	}
+	avail := len(dst) / 4
+	if avail <= 0 {
+		return 0
+	}
+	if frames > avail {
+		frames = avail
+	}
+	for i := 0; i < frames; i++ {
+		remain := frames - i - 1
+		l := int16((int32(startL) * int32(remain)) / int32(frames))
+		r := int16((int32(startR) * int32(remain)) / int32(frames))
+		binary.LittleEndian.PutUint16(dst[i*4:], uint16(l))
+		binary.LittleEndian.PutUint16(dst[i*4+2:], uint16(r))
+	}
+	return frames * 4
+}
+
+func applyFadeInLE(chunk []byte, frames int) {
+	if frames <= 0 {
+		return
+	}
+	avail := len(chunk) / 4
+	if avail <= 0 {
+		return
+	}
+	if frames > avail {
+		frames = avail
+	}
+	for i := 0; i < frames; i++ {
+		scaleNum := i + 1
+		l := int16(binary.LittleEndian.Uint16(chunk[i*4:]))
+		r := int16(binary.LittleEndian.Uint16(chunk[i*4+2:]))
+		l = int16((int32(l) * int32(scaleNum)) / int32(frames))
+		r = int16((int32(r) * int32(scaleNum)) / int32(frames))
+		binary.LittleEndian.PutUint16(chunk[i*4:], uint16(l))
+		binary.LittleEndian.PutUint16(chunk[i*4+2:], uint16(r))
+	}
 }

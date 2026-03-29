@@ -211,7 +211,7 @@ func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
 	}
 }
 
-func TestApplyPickerSynthSetsMeltySynthVolumeAndBackend(t *testing.T) {
+func TestApplyPickerSynthSetsMeltySynthBackendAndPreservesVolume(t *testing.T) {
 	cfg := renderBuildConfig{
 		musicBackend: music.BackendImpSynth,
 		musicVolume:  1.0,
@@ -222,12 +222,12 @@ func TestApplyPickerSynthSetsMeltySynthVolumeAndBackend(t *testing.T) {
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
 	}
-	if got.musicVolume != 0.7 {
-		t.Fatalf("musicVolume=%v want 0.7", got.musicVolume)
+	if got.musicVolume != 1.0 {
+		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
 	}
 }
 
-func TestApplyPickerSynthKeepsMeltySynthVolumeOverrideWhenSoundFontAlreadySet(t *testing.T) {
+func TestApplyPickerSynthKeepsSoundFontWhenAlreadySet(t *testing.T) {
 	cfg := renderBuildConfig{
 		musicBackend:  music.BackendImpSynth,
 		musicVolume:   1.0,
@@ -239,8 +239,8 @@ func TestApplyPickerSynthKeepsMeltySynthVolumeOverrideWhenSoundFontAlreadySet(t 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
 	}
-	if got.musicVolume != 0.7 {
-		t.Fatalf("musicVolume=%v want 0.7", got.musicVolume)
+	if got.musicVolume != 1.0 {
+		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
 	}
 	if got.soundFontPath != "soundfonts/sc55.sf2" {
 		t.Fatalf("soundFontPath=%q want soundfonts/sc55.sf2", got.soundFontPath)
@@ -258,8 +258,8 @@ func TestApplyPickerSynthSGMHQSetsSoundFontPath(t *testing.T) {
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
 	}
-	if got.musicVolume != 0.7 {
-		t.Fatalf("musicVolume=%v want 0.7", got.musicVolume)
+	if got.musicVolume != 1.0 {
+		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
 	}
 	if got.soundFontPath != music.BrowserSGMHQSoundFontPath() {
 		t.Fatalf("soundFontPath=%q want %q", got.soundFontPath, music.BrowserSGMHQSoundFontPath())

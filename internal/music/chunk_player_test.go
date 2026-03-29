@@ -1,6 +1,9 @@
 package music
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
 func TestPCMInt16ToBytesLE(t *testing.T) {
 	in := []int16{0x1234, -2, 0, 32767, -32768}
@@ -119,4 +122,58 @@ func TestChunkPlayerEnqueueS16EncodesLittleEndian(t *testing.T) {
 	if cmd.data[2] != 0xFE || cmd.data[3] != 0xFF {
 		t.Fatalf("second sample bytes=%02x %02x want=fe ff", cmd.data[2], cmd.data[3])
 	}
+}
+
+func TestPCMChunkBufferAppliesStarvationFadeOutAndFadeIn(t *testing.T) {
+	b := newPCMChunkBuffer()
+	src := make([]byte, 8)
+	putI16LE(src[0:], 1000)
+	putI16LE(src[2:], -1000)
+	putI16LE(src[4:], 2000)
+	putI16LE(src[6:], -2000)
+	b.Enqueue(src)
+
+	readBuf := make([]byte, len(src))
+	n, err := b.Read(readBuf)
+	if err != nil || n != len(src) {
+		t.Fatalf("initial Read n=%d err=%v", n, err)
+	}
+
+	starve := make([]byte, starvationFadeFrames()*4)
+	n, err = b.Read(starve)
+	if err != nil || n != len(starve) {
+		t.Fatalf("starvation Read n=%d err=%v", n, err)
+	}
+	firstL := int16(binary.LittleEndian.Uint16(starve[0:]))
+	lastL := int16(binary.LittleEndian.Uint16(starve[len(starve)-4:]))
+	if firstL == 0 {
+		t.Fatal("expected starvation fade-out to start above zero")
+	}
+	if lastL != 0 {
+		t.Fatalf("expected starvation fade-out to end at zero, got %d", lastL)
+	}
+
+	recover := make([]byte, starvationFadeFrames()*4)
+	for i := 0; i < starvationFadeFrames(); i++ {
+		putI16LE(recover[i*4:], 4000)
+		putI16LE(recover[i*4+2:], -4000)
+	}
+	b.Enqueue(recover)
+
+	n, err = b.Read(recover)
+	if err != nil || n != len(recover) {
+		t.Fatalf("recovery Read n=%d err=%v", n, err)
+	}
+	firstRecovered := int16(binary.LittleEndian.Uint16(recover[0:]))
+	lastRecovered := int16(binary.LittleEndian.Uint16(recover[len(recover)-4:]))
+	if firstRecovered <= 0 || firstRecovered >= 4000 {
+		t.Fatalf("expected fade-in on first recovery sample, got %d", firstRecovered)
+	}
+	if lastRecovered != 4000 {
+		t.Fatalf("expected fade-in to reach full scale, got %d", lastRecovered)
+	}
+}
+
+func putI16LE(dst []byte, v int16) {
+	binary.LittleEndian.PutUint16(dst, uint16(v))
 }
