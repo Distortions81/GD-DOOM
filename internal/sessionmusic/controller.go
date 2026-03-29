@@ -104,17 +104,19 @@ func (c *Controller) playMUS(data []byte, loop bool) {
 	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
 		return
 	}
+	const bytesPerFrame = 4
 	player := c.player
 	c.StopAndClear()
 	factory := func() (*music.StreamRenderer, error) {
 		return music.NewMUSStreamRenderer(c.driver, data)
 	}
 	var stream *music.StreamRenderer
-	chunk, err := nextChunk(factory, &stream, loop)
-	if err != nil || len(chunk) == 0 {
+	if err := prefillStream(player, factory, &stream, loop, music.DefaultStreamLookahead()*bytesPerFrame); err != nil {
 		return
 	}
-	_ = player.EnqueueBytesS16LE(chunk)
+	if player.BufferedBytes() == 0 {
+		return
+	}
 	_ = player.Start()
 	stop := make(chan struct{})
 	c.stop = stop
@@ -151,6 +153,40 @@ func nextChunk(factory musStreamFactory, stream **music.StreamRenderer, loop boo
 		}
 	}
 	return chunk, nil
+}
+
+func prefillStream(player *music.ChunkPlayer, factory musStreamFactory, stream **music.StreamRenderer, loop bool, targetBytes int) error {
+	if player == nil || factory == nil || stream == nil {
+		return nil
+	}
+	if targetBytes < 0 {
+		targetBytes = 0
+	}
+	for player.BufferedBytes() < targetBytes {
+		chunk, err := nextChunk(factory, stream, loop)
+		if err != nil {
+			return err
+		}
+		if len(chunk) > 0 {
+			_ = player.EnqueueBytesS16LE(chunk)
+		}
+		if *stream == nil {
+			break
+		}
+		if len(chunk) == 0 {
+			break
+		}
+	}
+	if targetBytes == 0 && player.BufferedBytes() == 0 {
+		chunk, err := nextChunk(factory, stream, loop)
+		if err != nil {
+			return err
+		}
+		if len(chunk) > 0 {
+			_ = player.EnqueueBytesS16LE(chunk)
+		}
+	}
+	return nil
 }
 
 func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer, loop bool) {

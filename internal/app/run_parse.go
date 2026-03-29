@@ -2683,19 +2683,21 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	}
 	if strings.TrimSpace(g.status) != "" {
 		lines := strings.Split(strings.ToUpper(g.status), "\n")
+		lineHeight := 14
+		startY := sh - 52 - ((len(lines) - 1) * lineHeight / 2)
 		if loadingSoundFont {
 			maxWidth := 0
 			for _, line := range lines {
 				maxWidth = max(maxWidth, g.pickerTextWidth(line))
 			}
 			panelW := maxWidth + 36
-			panelH := len(lines)*14 + 24
+			panelH := len(lines)*lineHeight + 24
 			panelX := (sw - panelW) / 2
-			panelY := sh - 72 - panelH/2
+			textTop := startY
+			textBottom := startY + (len(lines)-1)*lineHeight
+			panelY := (textTop+textBottom)/2 - panelH/2
 			ebitenutil.DrawRect(screen, float64(panelX), float64(panelY), float64(panelW), float64(panelH), color.RGBA{A: 192})
 		}
-		lineHeight := 14
-		startY := sh - 52 - ((len(lines) - 1) * lineHeight / 2)
 		for i, line := range lines {
 			g.drawPickerTextCentered(screen, line, sw/2, startY+i*lineHeight)
 		}
