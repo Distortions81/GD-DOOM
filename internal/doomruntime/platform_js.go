@@ -13,7 +13,7 @@ func isWASMBuild() bool {
 }
 
 func yieldWASMRenderTime(elapsed time.Duration) {
-	const frameBudget = 15 * time.Millisecond
+	const frameBudget = 14 * time.Millisecond
 	const minYield = 1 * time.Millisecond
 	sleep := minYield
 	if elapsed < frameBudget {
