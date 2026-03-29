@@ -25,12 +25,12 @@ Fallback:
   <dump>/<WAD>/splash.png
 
 WAV input examples:
-  <dump>/DOOM2/OPL/MAP01-running-from-evil.wav
-  <dump>/DOOM2/MIDI-SC55/MAP01-running-from-evil.wav
+  <dump>/DOOM2/OPL/OPL-MAP01-Running from Evil.wav
+  <dump>/DOOM2/MIDI-SC55/MIDI-SC55-MAP01-Running from Evil.wav
 
 Output examples:
-  <dump>/DOOM2/OPL/MAP01-running-from-evil.mp4
-  <dump>/DOOM2/MIDI-SC55/MAP01-running-from-evil.mp4
+  <dump>/DOOM2/OPL/OPL-MAP01-Running from Evil.mp4
+  <dump>/DOOM2/MIDI-SC55/MIDI-SC55-MAP01-Running from Evil.mp4
 
 Usage:
   scripts/dump_music_mp4.sh [options]

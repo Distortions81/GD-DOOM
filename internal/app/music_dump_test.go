@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"image/png"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,17 +63,60 @@ func TestDumpMusicTracksForWADUsesMapAndOtherMusicNames(t *testing.T) {
 	if len(tracks) != 2 {
 		t.Fatalf("len(tracks)=%d want 2", len(tracks))
 	}
-	if got := tracks[0].fileBase; got != "MAP01-running-from-evil" {
-		t.Fatalf("tracks[0].fileBase=%q want %q", got, "MAP01-running-from-evil")
+	if got := tracks[0].fileBase; got != "MAP01-Running from Evil" {
+		t.Fatalf("tracks[0].fileBase=%q want %q", got, "MAP01-Running from Evil")
 	}
 	if got := tracks[0].label; got != "MAP01 - Entryway | Running from Evil | D_RUNNIN" {
 		t.Fatalf("tracks[0].label=%q", got)
 	}
-	if got := tracks[1].fileBase; got != "D_DM2INT-doom-ii-intermission" {
-		t.Fatalf("tracks[1].fileBase=%q want %q", got, "D_DM2INT-doom-ii-intermission")
+	if got := tracks[1].fileBase; got != "Doom II Intermission" {
+		t.Fatalf("tracks[1].fileBase=%q want %q", got, "Doom II Intermission")
 	}
 	if got := tracks[1].label; got != "Other | Doom II Intermission | D_DM2INT" {
 		t.Fatalf("tracks[1].label=%q", got)
+	}
+}
+
+func TestMusicDumpFilenamePartKeepsReadableTitles(t *testing.T) {
+	if got := musicDumpFilenamePart("At Doom's Gate"); got != "At Dooms Gate" {
+		t.Fatalf("musicDumpFilenamePart=%q want %q", got, "At Dooms Gate")
+	}
+	if got := musicDumpFilenamePart("'O' of Destruction!"); got != "O of Destruction" {
+		t.Fatalf("musicDumpFilenamePart=%q want %q", got, "O of Destruction")
+	}
+}
+
+func TestNormalizeDumpMusicPCMTargetsThreeDBPad(t *testing.T) {
+	in := []int16{1000, -2000, 4000, -8000}
+	got := normalizeDumpMusicPCM(in, dumpMusicNormalizePadDB)
+	if len(got) != len(in) {
+		t.Fatalf("len(got)=%d want %d", len(got), len(in))
+	}
+	if &got[0] == &in[0] {
+		t.Fatal("expected normalized PCM to allocate a new slice")
+	}
+	wantPeak := int(math.Round(32767.0 * math.Pow(10, -dumpMusicNormalizePadDB/20.0)))
+	if peak := dumpMusicPeakAbsSample(got); peak != wantPeak {
+		t.Fatalf("peak=%d want %d", peak, wantPeak)
+	}
+}
+
+func TestNormalizeDumpMusicPCMSilenceIsUnchanged(t *testing.T) {
+	in := []int16{0, 0, 0, 0}
+	got := normalizeDumpMusicPCM(in, dumpMusicNormalizePadDB)
+	if len(got) != len(in) {
+		t.Fatalf("len(got)=%d want %d", len(got), len(in))
+	}
+	for i := range got {
+		if got[i] != 0 {
+			t.Fatalf("got[%d]=%d want 0", i, got[i])
+		}
+	}
+}
+
+func TestDumpMusicPeakAbsSampleHandlesMinInt16(t *testing.T) {
+	if got := dumpMusicPeakAbsSample([]int16{-32768, 120, -10}); got != 32768 {
+		t.Fatalf("peak=%d want 32768", got)
 	}
 }
 
@@ -115,11 +159,11 @@ func TestRunParseDumpMusicWritesOPLWav(t *testing.T) {
 		t.Fatalf("RunParse() code=%d stderr=%q", code, stderr.String())
 	}
 
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "MAP01-running-from-evil.wav")
+	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
 	if _, err := os.Stat(wavPath); err != nil {
 		t.Fatalf("stat wav: %v", err)
 	}
-	coverPath := filepath.Join(outDir, "MUSIC", "OPL", "MAP01-running-from-evil.png")
+	coverPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.png")
 	cf, err := os.Open(coverPath)
 	if err != nil {
 		t.Fatalf("open cover: %v", err)
@@ -181,7 +225,7 @@ func TestRunParseDumpMusicSkipsExistingNonZeroWav(t *testing.T) {
 		t.Fatalf("write wad: %v", err)
 	}
 
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "MAP01-running-from-evil.wav")
+	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
 	if err := os.MkdirAll(filepath.Dir(wavPath), 0o755); err != nil {
 		t.Fatalf("mkdir wav dir: %v", err)
 	}
@@ -208,7 +252,7 @@ func TestRunParseDumpMusicSkipsExistingNonZeroWav(t *testing.T) {
 	if !bytes.Equal(got, want) {
 		t.Fatalf("wav was rewritten, got=%q want=%q", got, want)
 	}
-	if strings.Contains(stdout.String(), "track=D_RUNNIN") {
+	if strings.Contains(stdout.String(), "renderer=OPL track=D_RUNNIN") {
 		t.Fatalf("stdout should not report skipped track, got %q", stdout.String())
 	}
 }
@@ -241,7 +285,7 @@ func TestRunParseDumpMusicRewritesZeroByteWav(t *testing.T) {
 		t.Fatalf("write wad: %v", err)
 	}
 
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "MAP01-running-from-evil.wav")
+	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
 	if err := os.MkdirAll(filepath.Dir(wavPath), 0o755); err != nil {
 		t.Fatalf("mkdir wav dir: %v", err)
 	}
@@ -267,7 +311,7 @@ func TestRunParseDumpMusicRewritesZeroByteWav(t *testing.T) {
 	if info.Size() == 0 {
 		t.Fatal("expected zero-byte wav to be regenerated")
 	}
-	if !strings.Contains(stdout.String(), "track=D_RUNNIN") {
+	if !strings.Contains(stdout.String(), "renderer=OPL track=D_RUNNIN") {
 		t.Fatalf("stdout should report regenerated track, got %q", stdout.String())
 	}
 }

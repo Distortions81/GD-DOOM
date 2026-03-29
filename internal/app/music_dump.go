@@ -8,6 +8,7 @@ import (
 	"image/color"
 	"image/png"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -57,6 +58,8 @@ type dumpMusicJob struct {
 	musData  []byte
 	outPath  string
 }
+
+const dumpMusicNormalizePadDB = 3.0
 
 func dumpMusicOutputExists(path string) (bool, error) {
 	info, err := os.Stat(path)
@@ -146,7 +149,7 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 				return fmt.Errorf("create renderer output directory: %w", err)
 			}
 			for _, track := range tracks {
-				outPath := filepath.Join(renderOut, track.fileBase+".wav")
+				outPath := filepath.Join(renderOut, dumpMusicOutputBase(renderer, track)+".wav")
 				exists, err := dumpMusicOutputExists(outPath)
 				if err != nil {
 					return fmt.Errorf("stat %s: %w", outPath, err)
@@ -196,6 +199,7 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 					errCh <- fmt.Errorf("render %s with %s for %s: %w", job.track.lumpName, job.renderer.label, job.target.path, err)
 					return
 				}
+				pcm = normalizeDumpMusicPCM(pcm, dumpMusicNormalizePadDB)
 				if err := writePCM16StereoWAV(job.outPath, music.OutputSampleRate, pcm); err != nil {
 					errCh <- fmt.Errorf("write %s: %w", job.outPath, err)
 					return
@@ -374,15 +378,40 @@ func dumpMusicTracksForWAD(wf *wad.File) ([]dumpMusicTrack, error) {
 }
 
 func dumpMusicTrackBase(track runtimecfg.MusicPlayerTrack) string {
-	prefix := strings.ToUpper(strings.TrimSpace(string(track.MapName)))
-	if prefix == "" {
-		prefix = strings.ToUpper(strings.TrimSpace(track.LumpName))
+	parts := make([]string, 0, 2)
+	if mapName := strings.ToUpper(strings.TrimSpace(string(track.MapName))); mapName != "" {
+		parts = append(parts, mapName)
 	}
-	suffix := musicDumpSlug(track.MusicName)
-	if suffix == "" {
-		return prefix
+	if musicName := musicDumpFilenamePart(track.MusicName); musicName != "" {
+		parts = append(parts, musicName)
 	}
-	return prefix + "-" + suffix
+	if len(parts) == 0 {
+		if label := musicDumpFilenamePart(track.Label); label != "" && !strings.EqualFold(label, "Other") {
+			parts = append(parts, label)
+		}
+	}
+	if len(parts) == 0 {
+		lump := strings.ToUpper(strings.TrimSpace(track.LumpName))
+		lump = strings.TrimPrefix(lump, "D_")
+		if lump != "" {
+			parts = append(parts, lump)
+		}
+	}
+	return strings.Join(parts, "-")
+}
+
+func dumpMusicOutputBase(renderer dumpMusicRenderer, track dumpMusicTrack) string {
+	parts := make([]string, 0, 2)
+	if rendererLabel := strings.TrimSpace(renderer.label); rendererLabel != "" {
+		parts = append(parts, rendererLabel)
+	}
+	if trackBase := strings.TrimSpace(track.fileBase); trackBase != "" {
+		parts = append(parts, trackBase)
+	}
+	if len(parts) == 0 {
+		return "track"
+	}
+	return strings.Join(parts, "-")
 }
 
 func dumpMusicTrackLabel(track runtimecfg.MusicPlayerTrack) string {
@@ -576,6 +605,51 @@ func pcmBytesToInt16LE(chunk []byte) []int16 {
 	return out
 }
 
+func normalizeDumpMusicPCM(pcm []int16, padDB float64) []int16 {
+	if len(pcm) == 0 {
+		return pcm
+	}
+	peak := dumpMusicPeakAbsSample(pcm)
+	if peak == 0 {
+		return pcm
+	}
+	targetPeak := int(math.Round(32767.0 * math.Pow(10, -padDB/20.0)))
+	if targetPeak < 1 {
+		targetPeak = 1
+	}
+	scale := float64(targetPeak) / float64(peak)
+	if math.Abs(scale-1.0) < 1e-9 {
+		return pcm
+	}
+	out := make([]int16, len(pcm))
+	for i, sample := range pcm {
+		scaled := math.Round(float64(sample) * scale)
+		switch {
+		case scaled > 32767:
+			out[i] = 32767
+		case scaled < -32768:
+			out[i] = -32768
+		default:
+			out[i] = int16(scaled)
+		}
+	}
+	return out
+}
+
+func dumpMusicPeakAbsSample(pcm []int16) int {
+	peak := 0
+	for _, sample := range pcm {
+		v := int(sample)
+		if v < 0 {
+			v = -v
+		}
+		if v > peak {
+			peak = v
+		}
+	}
+	return peak
+}
+
 func dumpMusicWADLabel(path string) string {
 	base := strings.TrimSpace(filepath.Base(path))
 	if base == "" {
@@ -616,26 +690,36 @@ func dumpMusicRendererDisplayName(soundFontPath string) string {
 	return base
 }
 
-func musicDumpSlug(name string) string {
-	name = strings.ToLower(strings.TrimSpace(name))
+func musicDumpFilenamePart(name string) string {
+	name = strings.TrimSpace(name)
 	if name == "" {
 		return ""
 	}
 	var b strings.Builder
-	lastDash := false
+	lastSep := false
 	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+		switch {
+		case r == '\'' || r == '’':
+			continue
+		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
 			b.WriteRune(r)
-			lastDash = false
-			continue
+			lastSep = false
+		case r == ' ' || r == '-' || r == '_' || r == '(' || r == ')':
+			if lastSep {
+				continue
+			}
+			b.WriteByte(' ')
+			lastSep = true
+		default:
+			if lastSep {
+				continue
+			}
+			b.WriteByte(' ')
+			lastSep = true
 		}
-		if lastDash {
-			continue
-		}
-		b.WriteByte('-')
-		lastDash = true
 	}
-	out := strings.Trim(b.String(), "-")
+	out := strings.TrimSpace(b.String())
+	out = strings.Join(strings.Fields(out), " ")
 	return out
 }
 
