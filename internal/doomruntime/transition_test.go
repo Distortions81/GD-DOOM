@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gddoom/internal/media"
+	"gddoom/internal/sessionmusic"
 )
 
 func TestTransitionSurfaceSizeFaithfulUsesLogicalRenderSize(t *testing.T) {
@@ -61,5 +62,27 @@ func TestShouldShowBootSplashAllowsFrontendMenuStartup(t *testing.T) {
 	}
 	if !sg.shouldShowBootSplash() {
 		t.Fatal("shouldShowBootSplash() = false, want true for frontend menu startup")
+	}
+}
+
+func TestPlayMusicForMapDefersUntilLevelTransitionCompletes(t *testing.T) {
+	sg := &sessionGame{
+		musicCtl: &sessionmusic.Playback{},
+	}
+	sg.queueTransition(transitionLevel, 0)
+	sg.playMusicForMap("MAP01")
+	if got := sg.transitionMusicPending.kind; got != musicPlaybackSourceMap {
+		t.Fatalf("transitionMusicPending.kind=%d want map", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("currentMusicSource.kind=%d want none while level transition is active", got)
+	}
+	sg.transition.Clear()
+	sg.releaseTransitionMusicIfReady()
+	if got := sg.transitionMusicPending.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("transitionMusicPending.kind=%d want none after transition", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceMap {
+		t.Fatalf("currentMusicSource.kind=%d want map after transition", got)
 	}
 }

@@ -119,6 +119,7 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 
 func (sg *sessionGame) Update() error {
 	sg.releaseStartupMusicIfReady()
+	sg.releaseTransitionMusicIfReady()
 	err := runtimehost.RunUpdate(runtimehost.Update{
 		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },
 		HandleQuitPrompt:    sg.handleQuitPromptInput,
@@ -221,10 +222,10 @@ func (sg *sessionGame) Update() error {
 						sig = sg.rt.sessionSignals()
 						sg.current = sig.MapName
 						sg.currentTemplate = cloneMapForRestart(sg.g.m)
+						sg.queueTransition(transitionLevel, 0)
 						sg.playMusicForMap(sg.current)
 						sg.announceMapMusic(sg.current)
 						ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
-						sg.queueTransition(transitionLevel, 0)
 						sg.rt.sessionAcknowledgeNewGameRequest()
 						return nil
 					},
@@ -261,10 +262,10 @@ func (sg *sessionGame) Update() error {
 						sg.rt.sessionAcknowledgeLevelRestart()
 						sg.levelCarryover = nil
 						sg.rebuildGameWithPersistentSettings(restartMap)
+						sg.queueTransition(transitionLevel, 0)
 						sg.playMusicForMap(sg.rt.sessionSignals().MapName)
 						sg.announceMapMusic(sg.rt.sessionSignals().MapName)
 						ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
-						sg.queueTransition(transitionLevel, 0)
 						return nil
 					},
 				},

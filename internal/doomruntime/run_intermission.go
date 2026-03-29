@@ -477,11 +477,11 @@ func (sg *sessionGame) finishIntermission() {
 		sg.g.applyLevelCarryover(*sg.levelCarryover)
 		sg.levelCarryover = nil
 	}
+	sg.queueTransition(transitionLevel, 0)
 	sg.playMusicForMap(im.nextMap.Name)
 	sg.announceMapMusic(im.nextMap.Name)
 	ebiten.SetWindowTitle(runtimehost.WindowTitle(im.nextMap.Name))
 	sg.intermission = sessionIntermission{}
-	sg.queueTransition(transitionLevel, 0)
 }
 
 func (sg *sessionGame) drawIntermission(screen *ebiten.Image) {

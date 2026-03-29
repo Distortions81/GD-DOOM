@@ -109,6 +109,7 @@ type sessionGame struct {
 	startupMusicLocked      bool
 	startupMusicVisualReady bool
 	startupMusicPending     musicPlaybackSource
+	transitionMusicPending  musicPlaybackSource
 	musicPlayer             frontendMusicPlayerState
 	currentMusicSource      musicPlaybackSource
 	nowPlayingLevel         string
@@ -633,6 +634,7 @@ func (sg *sessionGame) stopAndClearMusic() {
 		return
 	}
 	sg.musicCtl.StopAndClear()
+	sg.transitionMusicPending = musicPlaybackSource{}
 	sg.setNowPlayingLevel("")
 	sg.setNowPlayingMusic("")
 }
@@ -643,6 +645,13 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 	}
 	if sg.startupMusicLocked {
 		sg.startupMusicPending = musicPlaybackSource{
+			kind:    musicPlaybackSourceMap,
+			mapName: name,
+		}
+		return
+	}
+	if sg.transitionActive() && sg.transition.Kind() == transitionLevel {
+		sg.transitionMusicPending = musicPlaybackSource{
 			kind:    musicPlaybackSourceMap,
 			mapName: name,
 		}
@@ -680,6 +689,21 @@ func (sg *sessionGame) playIntermissionMusic(commercial bool) {
 	}
 	sg.setNowPlayingLevel("")
 	sg.setNowPlayingMusic("Intermission")
+}
+
+func (sg *sessionGame) releaseTransitionMusicIfReady() {
+	if sg == nil || sg.transitionActive() {
+		return
+	}
+	pending := sg.transitionMusicPending
+	if pending.kind == musicPlaybackSourceNone {
+		return
+	}
+	sg.transitionMusicPending = musicPlaybackSource{}
+	switch pending.kind {
+	case musicPlaybackSourceMap:
+		sg.playMusicForMap(pending.mapName)
+	}
 }
 
 func (sg *sessionGame) releaseStartupMusicIfReady() {

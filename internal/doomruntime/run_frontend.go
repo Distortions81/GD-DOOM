@@ -291,10 +291,10 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.rt = sg.g
 	sg.current = sg.g.sessionSignals().MapName
 	sg.currentTemplate = cloneMapForRestart(sg.g.m)
+	sg.queueTransition(transitionLevel, 0)
 	sg.playMusicForMap(sg.current)
 	sg.announceMapMusic(sg.current)
 	ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
-	sg.queueTransition(transitionLevel, 0)
 }
 
 func (sg *sessionGame) availableFrontendEpisodeChoices() []int {
