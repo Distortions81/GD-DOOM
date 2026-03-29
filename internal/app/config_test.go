@@ -385,6 +385,23 @@ func TestSourcePortAudioEnabledDisablesSourcePortAudioOnWASM(t *testing.T) {
 	}
 }
 
+func TestRunParseDefaultsDisableVsyncOnWASM(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{"-wad", wadPath, "-render=false"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=") {
+		t.Fatalf("stdout %q missing map output", out.String())
+	}
+}
+
 func TestLoadConfigParsesSkyUpscaleMode(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")

@@ -28,6 +28,9 @@ type oscillator struct {
 	sampleRateRatio  float32
 	looping          bool
 	position_fp      int64
+	lastPitchChange  float32
+	lastPitchRatioFP int64
+	hasLastPitch     bool
 }
 
 func newOscillator(s *Synthesizer) *oscillator {
@@ -57,6 +60,7 @@ func (o *oscillator) start(data []int16, loopMode int32, sampleRate int32, start
 	}
 
 	o.position_fp = int64(start) << fracBits
+	o.hasLastPitch = false
 }
 
 func (o *oscillator) release() {
@@ -67,13 +71,17 @@ func (o *oscillator) release() {
 
 func (o *oscillator) process(block []float32, pitch float32) bool {
 	pitchChange := o.pitchChangeScale*(pitch-float32(o.rootKey)) + o.tune
-	pitchRatio := float64(o.sampleRateRatio) * math.Pow(float64(2), float64(pitchChange)/float64(12))
-	return o.fillBlock(block, pitchRatio)
+	if o.hasLastPitch && pitchChange == o.lastPitchChange {
+		return o.fillBlock(block, o.lastPitchRatioFP)
+	}
+	pitchRatioFP := int64(float64(fracUnit) * (float64(o.sampleRateRatio) * math.Exp2(float64(pitchChange)/12)))
+	o.lastPitchChange = pitchChange
+	o.lastPitchRatioFP = pitchRatioFP
+	o.hasLastPitch = true
+	return o.fillBlock(block, pitchRatioFP)
 }
 
-func (o *oscillator) fillBlock(block []float32, pitchRatio float64) bool {
-	pitchRatio_fp := int64(float64(fracUnit) * pitchRatio)
-
+func (o *oscillator) fillBlock(block []float32, pitchRatio_fp int64) bool {
 	if o.looping {
 		return o.fillBlock_Continuous(block, pitchRatio_fp)
 	} else {

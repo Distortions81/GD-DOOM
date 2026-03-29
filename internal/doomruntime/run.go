@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
+	"time"
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
@@ -287,6 +288,7 @@ func (sg *sessionGame) Update() error {
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
+	drawStart := time.Now()
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	tw, th := sg.transitionSurfaceSize(sw, sh)
@@ -351,6 +353,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		},
 		DrawQuitPrompt: sg.drawQuitPrompt,
 	})
+	yieldWASMRenderTime(time.Since(drawStart))
 }
 
 func (sg *sessionGame) handleGameplayTermination() error {

@@ -22,6 +22,16 @@ type channel struct {
 	fineTune       int16
 
 	pitchBend float32
+
+	cachedModulation float32
+	cachedVolume     float32
+	cachedPan        float32
+	cachedExpression float32
+	cachedReverbSend float32
+	cachedChorusSend float32
+	cachedTune       float32
+	cachedPitchBend  float32
+	cachedBendRange  float32
 }
 
 func newChannel(s *Synthesizer, isPercussionChannel bool) *channel {
@@ -59,6 +69,7 @@ func (ch *channel) reset() {
 	ch.fineTune = 8192
 
 	ch.pitchBend = 0
+	ch.updateDerived()
 }
 
 func (ch *channel) resetAllControllers() {
@@ -69,6 +80,7 @@ func (ch *channel) resetAllControllers() {
 	ch.rpn = -1
 
 	ch.pitchBend = 0
+	ch.updateDerived()
 }
 
 func (ch *channel) setBank(value int32) {
@@ -85,34 +97,42 @@ func (ch *channel) setPatch(value int32) {
 
 func (ch *channel) setModulationCoarse(value int32) {
 	ch.modulation = int16((int32(ch.modulation) & 0x7F) | (value << 7))
+	ch.cachedModulation = (float32(50) / float32(16383)) * float32(ch.modulation)
 }
 
 func (ch *channel) setModulationFine(value int32) {
 	ch.modulation = int16((int32(ch.modulation) & 0xFF80) | value)
+	ch.cachedModulation = (float32(50) / float32(16383)) * float32(ch.modulation)
 }
 
 func (ch *channel) setVolumeCoarse(value int32) {
 	ch.volume = int16((int32(ch.volume) & 0x7F) | (value << 7))
+	ch.cachedVolume = (float32(1) / float32(16383)) * float32(ch.volume)
 }
 
 func (ch *channel) setVolumeFine(value int32) {
 	ch.volume = int16((int32(ch.volume) & 0xFF80) | value)
+	ch.cachedVolume = (float32(1) / float32(16383)) * float32(ch.volume)
 }
 
 func (ch *channel) setPanCoarse(value int32) {
 	ch.pan = int16((int32(ch.pan) & 0x7F) | (value << 7))
+	ch.cachedPan = (float32(100)/float32(16383))*float32(ch.pan) - 50
 }
 
 func (ch *channel) setPanFine(value int32) {
 	ch.pan = int16((int32(ch.pan) & 0xFF80) | value)
+	ch.cachedPan = (float32(100)/float32(16383))*float32(ch.pan) - 50
 }
 
 func (ch *channel) setExpressionCoarse(value int32) {
 	ch.expression = int16((int32(ch.expression) & 0x7F) | (value << 7))
+	ch.cachedExpression = (float32(1) / float32(16383)) * float32(ch.expression)
 }
 
 func (ch *channel) setExpressionFine(value int32) {
 	ch.expression = int16((int32(ch.expression) & 0xFF80) | value)
+	ch.cachedExpression = (float32(1) / float32(16383)) * float32(ch.expression)
 }
 
 func (ch *channel) setHoldPedal(value int32) {
@@ -121,10 +141,12 @@ func (ch *channel) setHoldPedal(value int32) {
 
 func (ch *channel) setReverbSend(value int32) {
 	ch.reverbSend = byte(value)
+	ch.cachedReverbSend = (float32(1) / float32(127)) * float32(ch.reverbSend)
 }
 
 func (ch *channel) setChorusSend(value int32) {
 	ch.chorusSend = byte(value)
+	ch.cachedChorusSend = (float32(1) / float32(127)) * float32(ch.chorusSend)
 }
 
 func (ch *channel) setRpnCoarse(value int32) {
@@ -139,10 +161,14 @@ func (ch *channel) dataEntryCoarse(value int32) {
 	switch ch.rpn {
 	case 0:
 		ch.pitchBendRange = int16((int32(ch.pitchBendRange) & 0x7F) | (value << 7))
+		ch.cachedBendRange = float32(ch.pitchBendRange>>7) + 0.01*float32(ch.pitchBendRange&0x7F)
+		ch.cachedPitchBend = ch.cachedBendRange * ch.pitchBend
 	case 1:
 		ch.fineTune = int16((int32(ch.fineTune) & 0x7F) | (value << 7))
+		ch.cachedTune = float32(ch.coarseTune) + (float32(1)/float32(8192))*float32(ch.fineTune-8192)
 	case 2:
 		ch.coarseTune = int16(value - 64)
+		ch.cachedTune = float32(ch.coarseTune) + (float32(1)/float32(8192))*float32(ch.fineTune-8192)
 	}
 }
 
@@ -150,47 +176,63 @@ func (ch *channel) dataEntryFine(value int32) {
 	switch ch.rpn {
 	case 0:
 		ch.pitchBendRange = int16((int32(ch.pitchBendRange) & 0xFF80) | value)
+		ch.cachedBendRange = float32(ch.pitchBendRange>>7) + 0.01*float32(ch.pitchBendRange&0x7F)
+		ch.cachedPitchBend = ch.cachedBendRange * ch.pitchBend
 	case 1:
 		ch.fineTune = int16((int32(ch.fineTune) & 0xFF80) | value)
+		ch.cachedTune = float32(ch.coarseTune) + (float32(1)/float32(8192))*float32(ch.fineTune-8192)
 	}
 }
 
 func (ch *channel) setPitchBend(value1 int32, value2 int32) {
 	ch.pitchBend = (float32(1) / float32(8192)) * float32((value1|(value2<<7))-8192)
+	ch.cachedPitchBend = ch.cachedBendRange * ch.pitchBend
 }
 
 func (ch *channel) getModulation() float32 {
-	return (float32(50) / float32(16383)) * float32(ch.modulation)
+	return ch.cachedModulation
 }
 
 func (ch *channel) getVolume() float32 {
-	return (float32(1) / float32(16383)) * float32(ch.volume)
+	return ch.cachedVolume
 }
 
 func (ch *channel) getPan() float32 {
-	return (float32(100)/float32(16383))*float32(ch.pan) - 50
+	return ch.cachedPan
 }
 
 func (ch *channel) getExpression() float32 {
-	return (float32(1) / float32(16383)) * float32(ch.expression)
+	return ch.cachedExpression
 }
 
 func (ch *channel) getReverbSend() float32 {
-	return (float32(1) / float32(127)) * float32(ch.reverbSend)
+	return ch.cachedReverbSend
 }
 
 func (ch *channel) getChorusSend() float32 {
-	return (float32(1) / float32(127)) * float32(ch.chorusSend)
+	return ch.cachedChorusSend
 }
 
 func (ch *channel) getPitchBendRange() float32 {
-	return float32(ch.pitchBendRange>>7) + 0.01*float32(ch.pitchBendRange&0x7F)
+	return ch.cachedBendRange
 }
 
 func (ch *channel) getTune() float32 {
-	return float32(ch.coarseTune) + (float32(1)/float32(8192))*float32(ch.fineTune-8192)
+	return ch.cachedTune
 }
 
 func (ch *channel) getPitchBend() float32 {
-	return ch.getPitchBendRange() * ch.pitchBend
+	return ch.cachedPitchBend
+}
+
+func (ch *channel) updateDerived() {
+	ch.cachedModulation = (float32(50) / float32(16383)) * float32(ch.modulation)
+	ch.cachedVolume = (float32(1) / float32(16383)) * float32(ch.volume)
+	ch.cachedPan = (float32(100)/float32(16383))*float32(ch.pan) - 50
+	ch.cachedExpression = (float32(1) / float32(16383)) * float32(ch.expression)
+	ch.cachedReverbSend = (float32(1) / float32(127)) * float32(ch.reverbSend)
+	ch.cachedChorusSend = (float32(1) / float32(127)) * float32(ch.chorusSend)
+	ch.cachedBendRange = float32(ch.pitchBendRange>>7) + 0.01*float32(ch.pitchBendRange&0x7F)
+	ch.cachedTune = float32(ch.coarseTune) + (float32(1)/float32(8192))*float32(ch.fineTune-8192)
+	ch.cachedPitchBend = ch.cachedBendRange * ch.pitchBend
 }

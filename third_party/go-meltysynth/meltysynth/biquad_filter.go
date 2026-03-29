@@ -9,6 +9,9 @@ var resonancePeakOffset = float32(1 - 1/math.Sqrt(2))
 type biQuadFilter struct {
 	synthesizer *Synthesizer
 	active      bool
+	hasConfig   bool
+	lastCutoff  float32
+	lastQ       float32
 	a0          float32
 	a1          float32
 	a2          float32
@@ -35,10 +38,19 @@ func (bf *biQuadFilter) clearBuffer() {
 
 func (bf *biQuadFilter) setLowPassFilter(cutoffFrequency float32, resonance float32) {
 	if cutoffFrequency >= 0.499*float32(bf.synthesizer.SampleRate) {
+		bf.hasConfig = true
+		bf.lastCutoff = cutoffFrequency
+		bf.lastQ = resonance
 		bf.active = false
 		return
 	}
+	if bf.hasConfig && bf.active && cutoffFrequency == bf.lastCutoff && resonance == bf.lastQ {
+		return
+	}
 	bf.active = true
+	bf.hasConfig = true
+	bf.lastCutoff = cutoffFrequency
+	bf.lastQ = resonance
 
 	// This equation gives the Q value which makes the desired resonance peak.
 	// The error of the resultant peak height is less than 3%.

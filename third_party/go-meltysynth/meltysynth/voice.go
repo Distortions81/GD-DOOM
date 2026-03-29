@@ -3,10 +3,34 @@ package meltysynth
 import "math"
 
 const (
-	voice_Playing          int32 = 0
-	voice_ReleaseRequested int32 = 1
-	voice_Released         int32 = 2
+	voice_Playing          int32   = 0
+	voice_ReleaseRequested int32   = 1
+	voice_Released         int32   = 2
+	panLookupScale         int     = 100
+	panLookupScaleF        float32 = 100
+	panLookupSize          int     = 100*panLookupScale + 1
 )
+
+var panLookupLeft [panLookupSize]float32
+var panLookupRight [panLookupSize]float32
+
+func init() {
+	for i := 0; i < panLookupSize; i++ {
+		pan := float32(i) / panLookupScaleF
+		angle := float32(math.Pi/200) * pan
+		switch {
+		case angle <= 0:
+			panLookupLeft[i] = 1
+			panLookupRight[i] = 0
+		case angle >= halfPi:
+			panLookupLeft[i] = 0
+			panLookupRight[i] = 1
+		default:
+			panLookupLeft[i] = float32(math.Cos(float64(angle)))
+			panLookupRight[i] = float32(math.Sin(float64(angle)))
+		}
+	}
+}
 
 type voice struct {
 	synthesizer *Synthesizer
@@ -202,18 +226,10 @@ func (v *voice) process() bool {
 		mixGain *= calcDecibelsToLinear(decibels)
 	}
 
-	angle := float32(math.Pi/200) * (channelInfo.getPan() + v.instrumentPan + 50)
-	switch {
-	case angle <= 0:
-		v.currentMixGainLeft = mixGain
-		v.currentMixGainRight = 0
-	case angle >= halfPi:
-		v.currentMixGainLeft = 0
-		v.currentMixGainRight = mixGain
-	default:
-		v.currentMixGainLeft = mixGain * float32(math.Cos(float64(angle)))
-		v.currentMixGainRight = mixGain * float32(math.Sin(float64(angle)))
-	}
+	pan := calcClamp(channelInfo.getPan()+v.instrumentPan+50, 0, 100)
+	panIndex := int(pan*panLookupScaleF + 0.5)
+	v.currentMixGainLeft = mixGain * panLookupLeft[panIndex]
+	v.currentMixGainRight = mixGain * panLookupRight[panIndex]
 
 	v.currentReverbSend = calcClamp(channelInfo.getReverbSend()+v.instrumentReverb, 0, 1)
 	v.currentChorusSend = calcClamp(channelInfo.getChorusSend()+v.instrumentChorus, 0, 1)

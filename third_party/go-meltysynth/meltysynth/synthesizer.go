@@ -329,7 +329,10 @@ func (s *Synthesizer) Render(left []float32, right []float32) {
 
 		srcRem := s.BlockSize - s.blockRead
 		dstRem := int32(length - wrote)
-		rem := int32(math.Min(float64(srcRem), float64(dstRem)))
+		rem := srcRem
+		if dstRem < rem {
+			rem = dstRem
+		}
 
 		for i := int32(0); i < rem; i++ {
 			left[wrote+i] = s.blockLeft[s.blockRead+i]
@@ -343,9 +346,8 @@ func (s *Synthesizer) Render(left []float32, right []float32) {
 
 func (s *Synthesizer) renderBlock() {
 	blockSize := int(s.BlockSize)
-	activeVoiceCount := int(s.voices.activeVoiceCount)
-
 	s.voices.process()
+	activeVoiceCount := int(s.voices.activeVoiceCount)
 
 	for i := 0; i < blockSize; i++ {
 		s.blockLeft[i] = 0
