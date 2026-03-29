@@ -122,6 +122,7 @@ func StartFrontend() Frontend {
 		Active:     true,
 		Mode:       FrontendModeTitle,
 		MenuActive: false,
+		SkillOn:    2,
 		AttractSeq: -1,
 	}
 }

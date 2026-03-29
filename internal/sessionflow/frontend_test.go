@@ -2,6 +2,13 @@ package sessionflow
 
 import "testing"
 
+func TestStartFrontendDefaultsToMediumSkill(t *testing.T) {
+	got := StartFrontend()
+	if got.SkillOn != 2 {
+		t.Fatalf("SkillOn=%d want 2", got.SkillOn)
+	}
+}
+
 func TestStepFrontendMainMenuLoadSaveBindings(t *testing.T) {
 	cfg := FrontendConfig{
 		MainMenuCount: 6,
