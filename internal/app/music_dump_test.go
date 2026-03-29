@@ -19,6 +19,24 @@ func TestDumpMusicRendererLabel(t *testing.T) {
 	}
 }
 
+func TestDumpTrackCoverLines(t *testing.T) {
+	got := dumpTrackCoverLines(dumpMusicTrack{
+		version: "The Ultimate DOOM",
+		level:   "E1M1 - Hangar",
+		music:   "At Doom's Gate",
+		synth:   "SC55",
+	})
+	want := []string{
+		"THE ULTIMATE DOOM",
+		"E1M1 - HANGAR",
+		"AT DOOM'S GATE",
+		"SC55",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("lines=%q want %q", got, want)
+	}
+}
+
 func TestDumpMusicTracksForWADUsesMapAndOtherMusicNames(t *testing.T) {
 	td := t.TempDir()
 	path := filepath.Join(td, "music.wad")
@@ -50,7 +68,7 @@ func TestDumpMusicTracksForWADUsesMapAndOtherMusicNames(t *testing.T) {
 	if got := tracks[1].fileBase; got != "D_DM2INT-doom-ii-intermission" {
 		t.Fatalf("tracks[1].fileBase=%q want %q", got, "D_DM2INT-doom-ii-intermission")
 	}
-	if got := tracks[1].label; got != "Doom II Intermission | D_DM2INT" {
+	if got := tracks[1].label; got != "Other | Doom II Intermission | D_DM2INT" {
 		t.Fatalf("tracks[1].label=%q", got)
 	}
 }

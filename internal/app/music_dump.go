@@ -25,16 +25,18 @@ import (
 )
 
 type dumpMusicTarget struct {
-	label     string
-	path      string
-	pwadPaths []string
+	label       string
+	displayName string
+	path        string
+	pwadPaths   []string
 }
 
 type dumpMusicRenderer struct {
-	label     string
-	backend   music.Backend
-	fontPath  string
-	soundFont *music.SoundFontBank
+	label       string
+	displayName string
+	backend     music.Backend
+	fontPath    string
+	soundFont   *music.SoundFontBank
 }
 
 type dumpMusicTrack struct {
@@ -43,6 +45,8 @@ type dumpMusicTrack struct {
 	label    string
 	level    string
 	music    string
+	version  string
+	synth    string
 }
 
 type dumpMusicJob struct {
@@ -137,9 +141,17 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 				jobs = append(jobs, dumpMusicJob{
 					target:   target,
 					renderer: renderer,
-					track:    track,
-					musData:  musData,
-					outPath:  filepath.Join(renderOut, track.fileBase+".wav"),
+					track: dumpMusicTrack{
+						lumpName: track.lumpName,
+						fileBase: track.fileBase,
+						label:    track.label,
+						level:    track.level,
+						music:    track.music,
+						version:  target.displayName,
+						synth:    renderer.displayName,
+					},
+					musData: musData,
+					outPath: filepath.Join(renderOut, track.fileBase+".wav"),
 				})
 			}
 		}
@@ -188,9 +200,10 @@ func detectDumpMusicTargets(resolvedWADPath string, wadExplicit bool, pwadPaths 
 			return nil, fmt.Errorf("-wad is required when exporting a specific WAD")
 		}
 		return []dumpMusicTarget{{
-			label:     dumpMusicWADLabel(resolvedWADPath),
-			path:      resolvedWADPath,
-			pwadPaths: append([]string(nil), pwadPaths...),
+			label:       dumpMusicWADLabel(resolvedWADPath),
+			displayName: dumpMusicWADDisplayName(resolvedWADPath),
+			path:        resolvedWADPath,
+			pwadPaths:   append([]string(nil), pwadPaths...),
 		}}, nil
 	}
 	choices := detectAvailableIWADChoices(".")
@@ -199,8 +212,9 @@ func detectDumpMusicTargets(resolvedWADPath string, wadExplicit bool, pwadPaths 
 			return nil, fmt.Errorf("no IWADs found")
 		}
 		return []dumpMusicTarget{{
-			label: dumpMusicWADLabel(resolvedWADPath),
-			path:  resolvedWADPath,
+			label:       dumpMusicWADLabel(resolvedWADPath),
+			displayName: dumpMusicWADDisplayName(resolvedWADPath),
+			path:        resolvedWADPath,
 		}}, nil
 	}
 	out := make([]dumpMusicTarget, 0, len(choices))
@@ -216,8 +230,9 @@ func detectDumpMusicTargets(resolvedWADPath string, wadExplicit bool, pwadPaths 
 		}
 		seen[key] = struct{}{}
 		out = append(out, dumpMusicTarget{
-			label: dumpMusicWADLabel(path),
-			path:  path,
+			label:       dumpMusicWADLabel(path),
+			displayName: strings.TrimSpace(choice.Label),
+			path:        path,
 		})
 	}
 	if len(out) == 0 {
@@ -228,8 +243,9 @@ func detectDumpMusicTargets(resolvedWADPath string, wadExplicit bool, pwadPaths 
 
 func detectDumpMusicRenderers(explicitSoundFont string, stderr io.Writer) ([]dumpMusicRenderer, error) {
 	renderers := []dumpMusicRenderer{{
-		label:   "OPL",
-		backend: music.BackendImpSynth,
+		label:       "OPL",
+		displayName: "OPL",
+		backend:     music.BackendImpSynth,
 	}}
 	paths := detectAvailableSoundFonts("soundfonts")
 	if explicitSoundFont != "" {
@@ -260,10 +276,11 @@ func detectDumpMusicRenderers(explicitSoundFont string, stderr io.Writer) ([]dum
 			continue
 		}
 		renderers = append(renderers, dumpMusicRenderer{
-			label:     dumpMusicRendererLabel(path),
-			backend:   music.BackendMeltySynth,
-			fontPath:  path,
-			soundFont: sf,
+			label:       dumpMusicRendererLabel(path),
+			displayName: dumpMusicRendererDisplayName(path),
+			backend:     music.BackendMeltySynth,
+			fontPath:    path,
+			soundFont:   sf,
 		})
 	}
 	return renderers, nil
@@ -358,6 +375,10 @@ func dumpMusicTrackLabel(track runtimecfg.MusicPlayerTrack) string {
 
 func dumpMusicTrackLevel(track runtimecfg.MusicPlayerTrack) string {
 	label := strings.TrimSpace(track.Label)
+	musicName := strings.TrimSpace(track.MusicName)
+	if label != "" && musicName != "" && strings.EqualFold(label, musicName) {
+		return "Other"
+	}
 	if label != "" {
 		return label
 	}
@@ -408,27 +429,29 @@ func renderDumpTrackCover(splash media.WallTexture, fontBank map[rune]media.Wall
 	if len(fontBank) == 0 {
 		return img, nil
 	}
-	line1 := strings.ToUpper(strings.TrimSpace(track.level))
-	line2 := strings.ToUpper(strings.TrimSpace(track.music))
-	if line1 == "" && line2 == "" {
+	lines := dumpTrackCoverLines(track)
+	if len(lines) == 0 {
 		return img, nil
 	}
 	scale := 4
 	spaceW := 8 * scale
-	line1W := measureDumpFontLine(fontBank, line1, scale, spaceW)
-	line2W := measureDumpFontLine(fontBank, line2, scale, spaceW)
 	boxPadX := 48
 	boxPadY := 28
-	lineGap := 28
-	textH1 := dumpFontLineHeight(fontBank, line1, scale)
-	textH2 := dumpFontLineHeight(fontBank, line2, scale)
-	textH := textH1
-	if textH2 > 0 {
-		textH += lineGap + textH2
-	}
-	textW := line1W
-	if line2W > textW {
-		textW = line2W
+	lineGap := 18
+	textW := 0
+	textH := 0
+	lineHeights := make([]int, 0, len(lines))
+	for i, line := range lines {
+		w := measureDumpFontLine(fontBank, line, scale, spaceW)
+		if w > textW {
+			textW = w
+		}
+		h := dumpFontLineHeight(fontBank, line, scale)
+		lineHeights = append(lineHeights, h)
+		textH += h
+		if i > 0 {
+			textH += lineGap
+		}
 	}
 	boxW := textW + boxPadX*2
 	boxH := textH + boxPadY*2
@@ -442,14 +465,31 @@ func renderDumpTrackCover(splash media.WallTexture, fontBank map[rune]media.Wall
 	}
 	drawFilledRectRGBA(img, image.Rect(x0, y0, x0+boxW, y0+boxH), color.RGBA{0, 0, 0, 192})
 	y := y0 + boxPadY
-	if line1 != "" {
-		drawDumpFontLineCentered(img, fontBank, line1, y, scale)
-		y += textH1 + lineGap
-	}
-	if line2 != "" {
-		drawDumpFontLineCentered(img, fontBank, line2, y, scale)
+	for i, line := range lines {
+		drawDumpFontLineCentered(img, fontBank, line, y, scale)
+		y += lineHeights[i] + lineGap
 	}
 	return img, nil
+}
+
+func dumpTrackCoverLines(track dumpMusicTrack) []string {
+	return appendNonEmptyUpper(make([]string, 0, 4),
+		track.version,
+		track.level,
+		track.music,
+		track.synth,
+	)
+}
+
+func appendNonEmptyUpper(dst []string, values ...string) []string {
+	for _, v := range values {
+		v = strings.ToUpper(strings.TrimSpace(v))
+		if v == "" {
+			continue
+		}
+		dst = append(dst, v)
+	}
+	return dst
 }
 
 func dumpMusicPCM(bank music.PatchBank, renderer dumpMusicRenderer, musData []byte) ([]int16, error) {
@@ -512,6 +552,13 @@ func dumpMusicWADLabel(path string) string {
 	return base
 }
 
+func dumpMusicWADDisplayName(path string) string {
+	if choice, ok := knownIWADChoiceForPath(path); ok {
+		return strings.TrimSpace(choice.Label)
+	}
+	return dumpMusicWADLabel(path)
+}
+
 func dumpMusicRendererLabel(soundFontPath string) string {
 	base := strings.TrimSpace(filepath.Base(soundFontPath))
 	base = strings.TrimSuffix(base, filepath.Ext(base))
@@ -520,6 +567,16 @@ func dumpMusicRendererLabel(soundFontPath string) string {
 		base = "SOUNDFONT"
 	}
 	return "MIDI-" + base
+}
+
+func dumpMusicRendererDisplayName(soundFontPath string) string {
+	base := strings.TrimSpace(filepath.Base(soundFontPath))
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	base = strings.TrimSpace(base)
+	if base == "" {
+		base = "SoundFont"
+	}
+	return base
 }
 
 func musicDumpSlug(name string) string {
