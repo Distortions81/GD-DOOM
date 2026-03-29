@@ -50,6 +50,10 @@ func (d *MeltySynthDriver) Reset() {
 	if d == nil || d.soundFont == nil || d.soundFont.font == nil {
 		return
 	}
+	if d.synth != nil && d.synth.SoundFont == d.soundFont.font && int(d.synth.SampleRate) == d.sampleRate {
+		d.synth.Reset()
+		return
+	}
 	settings := meltysynth.NewSynthesizerSettings(int32(d.sampleRate))
 	synth, err := meltysynth.NewSynthesizer(d.soundFont.font, settings)
 	if err != nil {
@@ -134,23 +138,15 @@ func (d *MeltySynthDriver) SetOutputGain(gain float64) {
 func (d *MeltySynthDriver) SetPreEmphasis(bool) {}
 
 func (d *MeltySynthDriver) RenderMUSS16LE(musData []byte) ([]byte, error) {
-	stream, err := NewMUSStreamRenderer(d, musData)
+	parsed, err := ParseMUSData(musData)
 	if err != nil {
 		return nil, err
 	}
-	var pcm []byte
-	for {
-		chunk, done, err := stream.NextChunkS16LE(DefaultStreamChunkFrames())
-		if err != nil {
-			return nil, err
-		}
-		if len(chunk) > 0 {
-			pcm = append(pcm, chunk...)
-		}
-		if done {
-			return pcm, nil
-		}
-	}
+	return d.RenderParsedMUSS16LE(parsed)
+}
+
+func (d *MeltySynthDriver) RenderParsedMUSS16LE(parsed *ParsedMUS) ([]byte, error) {
+	return renderParsedMUSS16LE(d, parsed)
 }
 
 func float32ToS16(v float32) int16 {

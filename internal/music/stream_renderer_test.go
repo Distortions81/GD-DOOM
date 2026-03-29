@@ -36,3 +36,45 @@ func TestStreamRendererChunksUntilDone(t *testing.T) {
 		t.Fatal("expected non-empty chunked PCM")
 	}
 }
+
+func TestParsedMUSStreamRendererMatchesMUSStreamRenderer(t *testing.T) {
+	direct := NewOutputDriver(nil)
+	parsedDriver := NewOutputDriver(nil)
+	score := []byte{
+		0x40, 0, 0,
+		0x10, 60,
+		0x80, 60,
+		0x08,
+		0x60,
+	}
+	mus := buildMUSTestLump(score)
+	parsed, err := ParseMUSData(mus)
+	if err != nil {
+		t.Fatalf("ParseMUSData() error: %v", err)
+	}
+	a, err := NewMUSStreamRenderer(direct, mus)
+	if err != nil {
+		t.Fatalf("NewMUSStreamRenderer() error: %v", err)
+	}
+	b, err := NewParsedMUSStreamRenderer(parsedDriver, parsed)
+	if err != nil {
+		t.Fatalf("NewParsedMUSStreamRenderer() error: %v", err)
+	}
+	for i := 0; i < 64; i++ {
+		chunkA, doneA, err := a.NextChunkS16LE(256)
+		if err != nil {
+			t.Fatalf("direct NextChunkS16LE() error: %v", err)
+		}
+		chunkB, doneB, err := b.NextChunkS16LE(256)
+		if err != nil {
+			t.Fatalf("parsed NextChunkS16LE() error: %v", err)
+		}
+		if string(chunkA) != string(chunkB) || doneA != doneB {
+			t.Fatalf("chunk mismatch iter=%d doneA=%v doneB=%v lenA=%d lenB=%d", i, doneA, doneB, len(chunkA), len(chunkB))
+		}
+		if doneA {
+			return
+		}
+	}
+	t.Fatal("stream did not finish")
+}

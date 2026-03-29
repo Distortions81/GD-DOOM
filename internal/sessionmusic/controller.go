@@ -24,6 +24,7 @@ type musicEventDriver interface {
 	SetOutputGain(float64)
 	SetPreEmphasis(bool)
 	RenderMUSS16LE([]byte) ([]byte, error)
+	RenderParsedMUSS16LE(*music.ParsedMUS) ([]byte, error)
 }
 
 const (
@@ -105,11 +106,15 @@ func (c *Controller) playMUS(data []byte, loop bool) {
 	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
 		return
 	}
+	parsed, err := music.ParseMUSData(data)
+	if err != nil || parsed == nil {
+		return
+	}
 	const bytesPerFrame = 4
 	player := c.player
 	c.StopAndClear()
 	factory := func() (*music.StreamRenderer, error) {
-		return music.NewMUSStreamRenderer(c.driver, data)
+		return music.NewParsedMUSStreamRenderer(c.driver, parsed)
 	}
 	var stream *music.StreamRenderer
 	if err := prefillStream(player, factory, &stream, loop, music.DefaultStreamLookahead()*bytesPerFrame); err != nil {
@@ -128,9 +133,13 @@ func (c *Controller) playMUSOnce(data []byte) {
 	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
 		return
 	}
+	parsed, err := music.ParseMUSData(data)
+	if err != nil || parsed == nil {
+		return
+	}
 	player := c.player
 	c.StopAndClear()
-	pcm, err := c.driver.RenderMUSS16LE(data)
+	pcm, err := c.driver.RenderParsedMUSS16LE(parsed)
 	if err != nil || len(pcm) == 0 {
 		return
 	}

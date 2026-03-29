@@ -19,6 +19,11 @@ type musHeader struct {
 	reserved          uint16
 }
 
+type ParsedMUS struct {
+	events            []Event
+	estimatedPCMBytes int
+}
+
 func walkMUS(data []byte, emit func(Event) error) error {
 	if len(data) < 16 {
 		return fmt.Errorf("mus: data too short: %d", len(data))
@@ -176,14 +181,47 @@ func walkMUS(data []byte, emit func(Event) error) error {
 
 // ParseMUS decodes a Doom MUS stream into driver Events.
 func ParseMUS(data []byte) ([]Event, error) {
-	var out []Event
+	parsed, err := ParseMUSData(data)
+	if err != nil {
+		return nil, err
+	}
+	return append([]Event(nil), parsed.events...), nil
+}
+
+func ParseMUSData(data []byte) (*ParsedMUS, error) {
+	out := make([]Event, 0, musEventCapacity(data))
 	if err := walkMUS(data, func(ev Event) error {
 		out = append(out, ev)
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	return out, nil
+	return &ParsedMUS{
+		events:            out,
+		estimatedPCMBytes: estimatedPCMBytesForEvents(out, OutputSampleRate, defaultTicRate),
+	}, nil
+}
+
+func musEventCapacity(data []byte) int {
+	if len(data) < 16 {
+		return 0
+	}
+	if string(data[:4]) != musSig {
+		return 0
+	}
+	scoreLen := int(binary.LittleEndian.Uint16(data[4:6]))
+	if scoreLen <= 0 {
+		return 0
+	}
+	scoreStart := int(binary.LittleEndian.Uint16(data[6:8]))
+	if scoreStart < 0 || scoreStart >= len(data) {
+		return 0
+	}
+	rem := len(data) - scoreStart
+	if scoreLen > rem {
+		scoreLen = rem
+	}
+	return scoreLen
 }
 
 func readMUSVarLen(data []byte) (uint32, int, error) {
