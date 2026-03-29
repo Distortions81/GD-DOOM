@@ -2613,42 +2613,47 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		g.drawPickerTextCentered(screen, "SELECT GAME", sw/2, 20)
 	}
 	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	loadingSoundFont := strings.TrimSpace(g.loadingPath) != ""
 	switch g.stage {
 	case pickerStageProfile:
-		titleWidth := 0
-		descWidth := 0
-		for _, profile := range pickerProfiles {
-			titleWidth = max(titleWidth, g.pickerTextWidthScaled(profile.label, 2))
-			descWidth = max(descWidth, g.pickerTextWidth(profile.description))
-		}
-		contentWidth := max(titleWidth, descWidth)
-		titleX := sw/2 - contentWidth/2
-		profileY := pickerOptionBlockY(sh, len(pickerProfiles))
-		for i, profile := range pickerProfiles {
-			rowY := profileY + i*52
-			if i == int(g.profile) {
-				g.drawPickerSkull(screen, titleX, rowY+4)
+		if !loadingSoundFont {
+			titleWidth := 0
+			descWidth := 0
+			for _, profile := range pickerProfiles {
+				titleWidth = max(titleWidth, g.pickerTextWidthScaled(profile.label, 2))
+				descWidth = max(descWidth, g.pickerTextWidth(profile.description))
 			}
-			g.drawPickerTextScaled(screen, profile.label, titleX, rowY, 2)
-			g.drawPickerText(screen, profile.description, titleX, rowY+22)
+			contentWidth := max(titleWidth, descWidth)
+			titleX := sw/2 - contentWidth/2
+			profileY := pickerOptionBlockY(sh, len(pickerProfiles))
+			for i, profile := range pickerProfiles {
+				rowY := profileY + i*52
+				if i == int(g.profile) {
+					g.drawPickerSkull(screen, titleX, rowY+4)
+				}
+				g.drawPickerTextScaled(screen, profile.label, titleX, rowY, 2)
+				g.drawPickerText(screen, profile.description, titleX, rowY+22)
+			}
 		}
 	case pickerStageSynth:
-		titleWidth := 0
-		descWidth := 0
-		for _, synth := range pickerSynths {
-			titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, 2))
-			descWidth = max(descWidth, g.pickerTextWidth(synth.description))
-		}
-		contentWidth := max(titleWidth, descWidth)
-		titleX := sw/2 - contentWidth/2
-		synthY := pickerOptionBlockY(sh, len(pickerSynths))
-		for i, synth := range pickerSynths {
-			rowY := synthY + i*52
-			if i == g.synth {
-				g.drawPickerSkull(screen, titleX, rowY+4)
+		if !loadingSoundFont {
+			titleWidth := 0
+			descWidth := 0
+			for _, synth := range pickerSynths {
+				titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, 2))
+				descWidth = max(descWidth, g.pickerTextWidth(synth.description))
 			}
-			g.drawPickerTextScaled(screen, synth.label, titleX, rowY, 2)
-			g.drawPickerText(screen, synth.description, titleX, rowY+22)
+			contentWidth := max(titleWidth, descWidth)
+			titleX := sw/2 - contentWidth/2
+			synthY := pickerOptionBlockY(sh, len(pickerSynths))
+			for i, synth := range pickerSynths {
+				rowY := synthY + i*52
+				if i == g.synth {
+					g.drawPickerSkull(screen, titleX, rowY+4)
+				}
+				g.drawPickerTextScaled(screen, synth.label, titleX, rowY, 2)
+				g.drawPickerText(screen, synth.description, titleX, rowY+22)
+			}
 		}
 	default:
 		labelTexts := make([]string, len(g.choices))
@@ -2678,6 +2683,17 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	}
 	if strings.TrimSpace(g.status) != "" {
 		lines := strings.Split(strings.ToUpper(g.status), "\n")
+		if loadingSoundFont {
+			maxWidth := 0
+			for _, line := range lines {
+				maxWidth = max(maxWidth, g.pickerTextWidth(line))
+			}
+			panelW := maxWidth + 36
+			panelH := len(lines)*14 + 24
+			panelX := (sw - panelW) / 2
+			panelY := sh - 72 - panelH/2
+			ebitenutil.DrawRect(screen, float64(panelX), float64(panelY), float64(panelW), float64(panelH), color.RGBA{A: 192})
+		}
 		lineHeight := 14
 		startY := sh - 52 - ((len(lines) - 1) * lineHeight / 2)
 		for i, line := range lines {
@@ -2687,6 +2703,9 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	footer := "UP/DOWN    ESC - BACK    ENTER - NEXT"
 	if g.stage == pickerStageSynth {
 		footer = "UP/DOWN    ESC - BACK    ENTER - PLAY"
+	}
+	if loadingSoundFont {
+		footer = ""
 	}
 	g.drawPickerTextCentered(screen, footer, sw/2, sh-12)
 }

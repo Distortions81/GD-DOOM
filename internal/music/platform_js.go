@@ -3,13 +3,13 @@
 package music
 
 func streamChunkFrames() int {
-	return 1024
+	return 1260
 }
 
 func streamLookaheadFrames() int {
-	return 8192
+	return streamChunkFrames() * 12
 }
 
 func chunkPlayerCommandQueueCap() int {
-	return 16
+	return 32
 }
