@@ -85,9 +85,21 @@ jobs:
           rm -rf "$pkg_dir"
           mkdir -p "$pkg_dir/soundfonts"
 
+          wad_path=""
+          for candidate in DOOM1.WAD internal/wad/DOOM1.WAD; do
+            if [ -f "$candidate" ]; then
+              wad_path="$candidate"
+              break
+            fi
+          done
+          if [ -z "$wad_path" ]; then
+            echo "tracked DOOM1.WAD not found in expected locations" >&2
+            exit 1
+          fi
+
           go build -trimpath -ldflags "$LDFLAGS" -o "$pkg_dir/$BINARY_NAME" .
 
-          cp DOOM1.WAD "$pkg_dir/"
+          cp "$wad_path" "$pkg_dir/DOOM1.WAD"
           cp soundfonts/general-midi.sf2 "$pkg_dir/soundfonts/"
           cp README.md LICENSE NOTICE "$pkg_dir/"
 
