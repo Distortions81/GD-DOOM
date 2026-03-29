@@ -7,7 +7,7 @@ func streamChunkFrames() int {
 }
 
 func streamLookaheadFrames() int {
-	return streamChunkFrames() * 12
+	return streamChunkFrames() * 18
 }
 
 func chunkPlayerCommandQueueCap() int {

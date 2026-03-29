@@ -15,6 +15,7 @@ type eventRenderer interface {
 	SetMUSPanMax(float64)
 	SetOutputGain(float64)
 	SetPreEmphasis(bool)
+	RenderMUSS16LE(musData []byte) ([]byte, error)
 }
 
 type MeltySynthDriver struct {
@@ -131,6 +132,26 @@ func (d *MeltySynthDriver) SetOutputGain(gain float64) {
 }
 
 func (d *MeltySynthDriver) SetPreEmphasis(bool) {}
+
+func (d *MeltySynthDriver) RenderMUSS16LE(musData []byte) ([]byte, error) {
+	stream, err := NewMUSStreamRenderer(d, musData)
+	if err != nil {
+		return nil, err
+	}
+	var pcm []byte
+	for {
+		chunk, done, err := stream.NextChunkS16LE(DefaultStreamChunkFrames())
+		if err != nil {
+			return nil, err
+		}
+		if len(chunk) > 0 {
+			pcm = append(pcm, chunk...)
+		}
+		if done {
+			return pcm, nil
+		}
+	}
+}
 
 func float32ToS16(v float32) int16 {
 	if v > 1 {

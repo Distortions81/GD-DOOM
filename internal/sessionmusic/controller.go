@@ -23,6 +23,7 @@ type musicEventDriver interface {
 	SetMUSPanMax(float64)
 	SetOutputGain(float64)
 	SetPreEmphasis(bool)
+	RenderMUSS16LE([]byte) ([]byte, error)
 }
 
 const (
@@ -97,7 +98,7 @@ func (c *Controller) PlayMUS(data []byte) {
 }
 
 func (c *Controller) PlayMUSOnce(data []byte) {
-	c.playMUS(data, false)
+	c.playMUSOnce(data)
 }
 
 func (c *Controller) playMUS(data []byte, loop bool) {
@@ -121,6 +122,20 @@ func (c *Controller) playMUS(data []byte, loop bool) {
 	stop := make(chan struct{})
 	c.stop = stop
 	go c.stream(player, stop, factory, stream, loop)
+}
+
+func (c *Controller) playMUSOnce(data []byte) {
+	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
+		return
+	}
+	player := c.player
+	c.StopAndClear()
+	pcm, err := c.driver.RenderMUSS16LE(data)
+	if err != nil || len(pcm) == 0 {
+		return
+	}
+	_ = player.EnqueueBytesS16LE(pcm)
+	_ = player.Start()
 }
 
 func (c *Controller) stopStream() {
