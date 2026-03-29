@@ -13,6 +13,9 @@ type SoundFontBank struct {
 }
 
 func ParseSoundFontFile(path string) (*SoundFontBank, error) {
+	if err := EnsureSoundFontAvailable(path); err != nil {
+		return nil, err
+	}
 	if data, ok := embeddedSoundFontDataForPath(path); ok {
 		font, err := meltysynth.NewSoundFont(bytes.NewReader(data))
 		if err != nil {

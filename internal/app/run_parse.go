@@ -1726,6 +1726,7 @@ func resolvePathCaseInsensitive(path string) (string, bool) {
 
 func detectAvailableSoundFonts(dir string) []string {
 	out := append([]string(nil), music.EmbeddedSoundFontChoices()...)
+	out = append(out, music.BrowserSoundFontChoices()...)
 	entries, err := os.ReadDir(dir)
 	if err == nil {
 		for _, entry := range entries {
@@ -1767,8 +1768,12 @@ func soundFontDefaultRank(path string) int {
 	switch base {
 	case "sc55.sf2":
 		return 0
-	default:
+	case "sgm-hq.sf2":
 		return 1
+	case "windows-gm.sf2":
+		return 2
+	default:
+		return 3
 	}
 }
 
@@ -1958,11 +1963,13 @@ type pickerSynthOption struct {
 	label       string
 	description string
 	backend     music.Backend
+	soundFont   string
 }
 
 var pickerSynths = [...]pickerSynthOption{
 	{label: "OPL - IMPSYNTH", description: "ADLIB / SOUNDBLASTER 16", backend: music.BackendImpSynth},
-	{label: "MIDI - MELTYSYNTH", description: "MIDI SYNTHSIZER: SC-55", backend: music.BackendMeltySynth},
+	{label: "MIDI - MELTYSYNTH", description: "MIDI SYNTHSIZER: SC-55", backend: music.BackendMeltySynth, soundFont: "soundfonts/sc55.sf2"},
+	{label: "SGM-HQ", description: "SGM - High Quality", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
 }
 
 type pickerStage int
@@ -2362,7 +2369,9 @@ func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
 	cfg.musicBackend = option.backend
 	if music.ResolveBackend(option.backend) == music.BackendMeltySynth {
 		cfg.musicVolume = 0.7
-		if strings.TrimSpace(cfg.soundFontPath) == "" {
+		if strings.TrimSpace(option.soundFont) != "" {
+			cfg.soundFontPath = option.soundFont
+		} else if strings.TrimSpace(cfg.soundFontPath) == "" {
 			if choices := detectAvailableSoundFonts("soundfonts"); len(choices) > 0 {
 				cfg.soundFontPath = choices[0]
 			}
@@ -2379,6 +2388,7 @@ type iwadPickerGame struct {
 	stage        pickerStage
 	confirmArmed bool
 	status       string
+	loadingPath  string
 	tic          int
 	bg           *ebiten.Image
 	logo         *ebiten.Image
@@ -2464,6 +2474,27 @@ func (g *iwadPickerGame) Update() error {
 		g.err = fmt.Errorf("no IWADs available")
 		return ebiten.Termination
 	}
+	if strings.TrimSpace(g.loadingPath) != "" {
+		if music.BrowserSoundFontLoadPending(g.loadingPath) {
+			g.status = pickerSoundFontDownloadStatus(g.loadingPath)
+			return nil
+		}
+		path := g.loadingPath
+		g.loadingPath = ""
+		if err := music.BrowserSoundFontLoadError(path); err != nil {
+			g.status = err.Error()
+			return nil
+		}
+		bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.synth)
+		if err != nil {
+			g.status = err.Error()
+			return nil
+		}
+		g.status = ""
+		g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+		notifyBrowserSessionStarted()
+		return nil
+	}
 	g.tic++
 	if !g.confirmArmed {
 		g.confirmArmed = !pickerConfirmHeld()
@@ -2525,6 +2556,11 @@ func (g *iwadPickerGame) Update() error {
 				return ebiten.Termination
 			}
 			g.playPickerConfirmSound()
+			if soundFontPath := strings.TrimSpace(pickerSynths[g.synth].soundFont); soundFontPath != "" && music.StartBrowserSoundFontLoad(soundFontPath) {
+				g.loadingPath = soundFontPath
+				g.status = pickerSoundFontDownloadStatus(soundFontPath)
+				return nil
+			}
 			bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.synth)
 			if err != nil {
 				g.status = err.Error()
@@ -2587,7 +2623,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		}
 		contentWidth := max(titleWidth, descWidth)
 		titleX := sw/2 - contentWidth/2
-		profileY := sh - 112
+		profileY := pickerOptionBlockY(sh, len(pickerProfiles))
 		for i, profile := range pickerProfiles {
 			rowY := profileY + i*52
 			if i == int(g.profile) {
@@ -2605,7 +2641,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		}
 		contentWidth := max(titleWidth, descWidth)
 		titleX := sw/2 - contentWidth/2
-		synthY := sh - 112
+		synthY := pickerOptionBlockY(sh, len(pickerSynths))
 		for i, synth := range pickerSynths {
 			rowY := synthY + i*52
 			if i == g.synth {
@@ -2641,7 +2677,12 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		}
 	}
 	if strings.TrimSpace(g.status) != "" {
-		g.drawPickerTextCentered(screen, strings.ToUpper(g.status), sw/2, sh-52)
+		lines := strings.Split(strings.ToUpper(g.status), "\n")
+		lineHeight := 14
+		startY := sh - 52 - ((len(lines) - 1) * lineHeight / 2)
+		for i, line := range lines {
+			g.drawPickerTextCentered(screen, line, sw/2, startY+i*lineHeight)
+		}
 	}
 	footer := "UP/DOWN    ESC - BACK    ENTER - NEXT"
 	if g.stage == pickerStageSynth {
@@ -2799,6 +2840,48 @@ func (g *iwadPickerGame) drawPickerTextCenteredScaled(screen *ebiten.Image, text
 
 func (g *iwadPickerGame) drawPickerText(screen *ebiten.Image, text string, x, y int) {
 	g.drawPickerTextScaled(screen, text, x, y, 1)
+}
+
+func pickerSoundFontDownloadStatus(path string) string {
+	received, total := music.BrowserSoundFontLoadProgress(path)
+	sizeLine := humanDownloadSize(received)
+	if total > 0 {
+		sizeLine += " / " + humanDownloadSize(total)
+	}
+	if sizeLine == "" {
+		return "DOWNLOADING\nSGM-HQ SOUNDFONT"
+	}
+	return "DOWNLOADING\nSGM-HQ SOUNDFONT\n" + sizeLine
+}
+
+func humanDownloadSize(n int64) string {
+	if n <= 0 {
+		return ""
+	}
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div := int64(unit)
+	exp := 0
+	for v := n / unit; v >= unit && exp < 5; v /= unit {
+		div *= unit
+		exp++
+	}
+	value := float64(n) / float64(div)
+	suffix := [...]string{"KB", "MB", "GB", "TB", "PB", "EB"}[exp]
+	if value >= 10 {
+		return fmt.Sprintf("%.0f %s", value, suffix)
+	}
+	return fmt.Sprintf("%.1f %s", value, suffix)
+}
+
+func pickerOptionBlockY(screenH int, rows int) int {
+	if rows < 1 {
+		rows = 1
+	}
+	y := screenH - 64 - rows*52
+	return max(y, 24)
 }
 
 func (g *iwadPickerGame) drawPickerTextScaled(screen *ebiten.Image, text string, x, y, scale int) {
