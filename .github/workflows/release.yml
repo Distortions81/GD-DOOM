@@ -31,7 +31,7 @@ jobs:
             binary_name: gddoom.exe
             archive_name: GD-DOOM-windows-x86_64.zip
             ldflags: -s -w -H=windowsgui
-          - runner: macos-13
+          - runner: macos-15-intel
             goos: darwin
             goarch: amd64
             label: macOS Intel
