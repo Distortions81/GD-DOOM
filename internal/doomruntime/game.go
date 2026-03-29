@@ -567,6 +567,7 @@ type game struct {
 	thingAttackFireTics   []int
 	thingPainTics         []int
 	thingThinkWait        []int
+	thingDoomState        []int
 	thingState            []monsterThinkState
 	thingStateTics        []int
 	thingStatePhase       []int
@@ -1265,6 +1266,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	}
 	g.thingPainTics = make([]int, len(m.Things))
 	g.thingThinkWait = make([]int, len(m.Things))
+	g.thingDoomState = make([]int, len(m.Things))
+	for i := range g.thingDoomState {
+		g.thingDoomState[i] = -1
+	}
 	g.thingState = make([]monsterThinkState, len(m.Things))
 	g.thingStateTics = make([]int, len(m.Things))
 	g.thingStatePhase = make([]int, len(m.Things))
@@ -11676,6 +11681,11 @@ func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 				}
 			}
 			return seq[len(seq)-1]
+		}
+	}
+	if monsterUsesExactDoomStateMachine(th.Type) && i >= 0 && i < len(g.thingDoomState) {
+		if frame, ok := monsterDoomStateFrameLetter(g.thingDoomState[i]); ok {
+			return frame
 		}
 	}
 	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {

@@ -27,7 +27,7 @@ trim_trace_on_player_death() {
   awk '
     {
       print
-      if ($0 ~ /"kind":"tic"/ && $0 ~ /"player":\{"playerstate":1\b/) {
+      if ($0 ~ /"kind":"tic"/ && $0 ~ /"player":\{"playerstate":1([,}])/) {
         exit
       }
     }

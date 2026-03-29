@@ -96,6 +96,7 @@ type gameSaveState struct {
 	ThingAttackFireTics  []int
 	ThingPainTics        []int
 	ThingThinkWait       []int
+	ThingDoomState       []int
 	ThingState           []uint8
 	ThingStateTics       []int
 	ThingStatePhase      []int
@@ -491,6 +492,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingAttackFireTics:  append([]int(nil), g.thingAttackFireTics...),
 		ThingPainTics:        append([]int(nil), g.thingPainTics...),
 		ThingThinkWait:       append([]int(nil), g.thingThinkWait...),
+		ThingDoomState:       append([]int(nil), g.thingDoomState...),
 		ThingState:           cloneMonsterThinkStateSlice(g.thingState),
 		ThingStateTics:       append([]int(nil), g.thingStateTics...),
 		ThingStatePhase:      append([]int(nil), g.thingStatePhase...),
@@ -588,6 +590,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingAttackFireTics = append([]int(nil), s.ThingAttackFireTics...)
 	g.thingPainTics = append([]int(nil), s.ThingPainTics...)
 	g.thingThinkWait = append([]int(nil), s.ThingThinkWait...)
+	g.thingDoomState = append([]int(nil), s.ThingDoomState...)
 	g.thingState = restoreMonsterThinkStateSlice(s.ThingState)
 	g.thingStateTics = append([]int(nil), s.ThingStateTics...)
 	g.thingStatePhase = append([]int(nil), s.ThingStatePhase...)

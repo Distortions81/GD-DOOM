@@ -218,6 +218,22 @@ func TestDamageMonsterDeathPreservesExistingReactionTime(t *testing.T) {
 	}
 }
 
+func TestDemoTraceThingState_UsesExactDoomHitscannerState(t *testing.T) {
+	g := &game{
+		m:              &mapdata.Map{Things: []mapdata.Thing{{Type: 9}}},
+		thingDead:      []bool{false},
+		thingDoomState: []int{219},
+		thingStateTics: []int{7},
+	}
+
+	if got := demoTraceThingState(g, 0, 9); got != 219 {
+		t.Fatalf("state=%d want 219", got)
+	}
+	if got := demoTraceThingTics(g, 0, 9); got != 7 {
+		t.Fatalf("tics=%d want 7", got)
+	}
+}
+
 func TestDemoTraceThingFlagsMatchMonsterAndDroppedPickupDefaults(t *testing.T) {
 	g := &game{
 		thingDead:    []bool{false, true, false},
@@ -246,6 +262,18 @@ func TestDemoTraceThingFlags_AddsFloatAndNoGravityForLiveFloatMonsters(t *testin
 	dead := mapdata.Thing{Type: 3005}
 	if got := demoTraceThingFlags(g, 1, dead); got != 0x500402 {
 		t.Fatalf("dead caco flags=%#x want %#x", got, 0x500402)
+	}
+}
+
+func TestDemoTraceThingFlags_AddsJustHitAndJustAttacked(t *testing.T) {
+	g := &game{
+		thingDead:    []bool{false},
+		thingJustHit: []bool{true},
+		thingJustAtk: []bool{true},
+	}
+	alive := mapdata.Thing{Type: 3004}
+	if got := demoTraceThingFlags(g, 0, alive); got != 0x4000c6 {
+		t.Fatalf("alive monster flags=%#x want %#x", got, 0x4000c6)
 	}
 }
 

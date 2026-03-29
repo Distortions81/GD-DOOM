@@ -931,6 +931,8 @@ const (
 	demoTraceFlagSolid     = 0x00000002
 	demoTraceFlagShootable = 0x00000004
 	demoTraceFlagAmbush    = 0x00000020
+	demoTraceFlagJustHit   = 0x00000040
+	demoTraceFlagJustAtk   = 0x00000080
 	demoTraceFlagNoGravity = 0x00000200
 	demoTraceFlagDropoff   = 0x00000400
 	demoTraceFlagFloat     = 0x00004000
@@ -955,6 +957,11 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 	}
 	if i < len(g.thingGibbed) && g.thingGibbed[i] {
 		return -1
+	}
+	if monsterUsesExactDoomStateMachine(typ) && i < len(g.thingDead) && !g.thingDead[i] &&
+		i < len(g.thingDoomState) && g.thingDoomState[i] != noDoomMonsterState &&
+		i < len(g.thingStateTics) {
+		return g.thingStateTics[i]
 	}
 	if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
 		return g.thingStateTics[i]
@@ -1000,6 +1007,10 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 			phase = g.thingStatePhase[i] & 1
 		}
 		return barrelStateBAR1 + phase
+	}
+	if monsterUsesExactDoomStateMachine(typ) && i >= 0 && i < len(g.thingDead) && !g.thingDead[i] &&
+		i < len(g.thingDoomState) && g.thingDoomState[i] != noDoomMonsterState {
+		return g.thingDoomState[i]
 	}
 	if i >= 0 && i < len(g.thingState) {
 		switch g.thingState[i] {
@@ -1359,6 +1370,12 @@ func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
 	switch {
 	case isMonster(th.Type):
 		flags |= demoTraceFlagSolid | demoTraceFlagCountKill
+		if i >= 0 && i < len(g.thingJustHit) && g.thingJustHit[i] {
+			flags |= demoTraceFlagJustHit
+		}
+		if i >= 0 && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
+			flags |= demoTraceFlagJustAtk
+		}
 		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 			flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
 		} else {

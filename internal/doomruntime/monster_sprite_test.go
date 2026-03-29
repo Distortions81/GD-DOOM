@@ -101,6 +101,21 @@ func TestMonsterSpriteNameForViewUsesAttackFrames(t *testing.T) {
 	}
 }
 
+func TestMonsterSpriteNameForViewUsesExactDoomHitscannerFrame(t *testing.T) {
+	g := &game{
+		opts: Options{SpritePatchBank: map[string]WallTexture{
+			"SPOSF1": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+		}},
+		thingDoomState: []int{219},
+	}
+	th := mapdata.Thing{Type: 9, X: 0, Y: 0, Angle: 0}
+
+	name, _ := g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "SPOSF1" {
+		t.Fatalf("state 219 got=%q want=SPOSF1", name)
+	}
+}
+
 func TestThingRenderPosFixedInterpolatesMonsterPosition(t *testing.T) {
 	g := &game{
 		prevThingX:        []int64{0},

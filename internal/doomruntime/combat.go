@@ -122,6 +122,9 @@ func (g *game) initThingCombatState() {
 					g.thingState[i] = monsterStateSpawn
 					g.thingStateTics[i] = spawnTics
 				}
+				if i >= 0 && i < len(g.thingDoomState) && monsterUsesExactDoomStateMachine(th.Type) {
+					g.thingDoomState[i] = monsterInitialDoomState(th.Type)
+				}
 				if i >= 0 && i < len(g.thingStatePhase) {
 					g.thingStatePhase[i] = 0
 				}
@@ -147,6 +150,9 @@ func (g *game) initThingCombatState() {
 					g.thingStateTics[i] = barrelSpawnStateTics[0]
 				}
 			}
+		}
+		if i >= 0 && i < len(g.thingDoomState) && monsterUsesExactDoomStateMachine(th.Type) {
+			g.thingDoomState[i] = monsterInitialDoomState(th.Type)
 		}
 		if i >= 0 && i < len(g.thingStatePhase) {
 			g.thingStatePhase[i] = 0
@@ -1438,6 +1444,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
 			g.thingStatePhase[thingIdx] = 0
 		}
+		if thingIdx >= 0 && thingIdx < len(g.thingDoomState) {
+			g.thingDoomState[thingIdx] = noDoomMonsterState
+		}
 		tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
 		if xdeath {
 			if monsterXDeathSoundActionPhase(thingType) == 0 {
@@ -1472,35 +1481,45 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 						// Doom only marks JUSTHIT when the pain state triggers.
 						g.thingJustHit[thingIdx] = true
 					}
-					if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
-						// Doom P_SetMobjState(painstate) replaces any in-flight attack state.
-						g.thingAttackTics[thingIdx] = 0
-					}
-					if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
-						g.thingAttackFireTics[thingIdx] = -1
-					}
-					if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
-						g.thingAttackPhase[thingIdx] = 0
-					}
-					g.thingPainTics[thingIdx] = monsterPainDurationTics(thingType)
-					if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
-						g.thingState[thingIdx] = monsterStatePain
-						frameTics := monsterPainFrameTics(thingType)
-						if len(frameTics) > 0 {
-							g.thingStateTics[thingIdx] = frameTics[0]
-						} else {
-							g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+					if monsterUsesExactDoomStateMachine(thingType) {
+						g.setExactDoomMonsterState(thingIdx, thingType, monsterDoomPainState(thingType))
+						if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
+							g.thingAttackFireTics[thingIdx] = -1
 						}
-					}
-					if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
-						g.thingStatePhase[thingIdx] = 0
-					}
-					if thingIdx >= 0 && thingIdx < len(g.thingState) {
-						g.syncMonsterPainTics(thingIdx, thingType)
-					}
-					if monsterPainActionPhase(thingType) == 0 {
-						tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
-						g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
+						if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
+							g.thingAttackTics[thingIdx] = 0
+						}
+					} else {
+						if thingIdx >= 0 && thingIdx < len(g.thingAttackTics) {
+							// Doom P_SetMobjState(painstate) replaces any in-flight attack state.
+							g.thingAttackTics[thingIdx] = 0
+						}
+						if thingIdx >= 0 && thingIdx < len(g.thingAttackFireTics) {
+							g.thingAttackFireTics[thingIdx] = -1
+						}
+						if thingIdx >= 0 && thingIdx < len(g.thingAttackPhase) {
+							g.thingAttackPhase[thingIdx] = 0
+						}
+						g.thingPainTics[thingIdx] = monsterPainDurationTics(thingType)
+						if thingIdx >= 0 && thingIdx < len(g.thingState) && thingIdx < len(g.thingStateTics) {
+							g.thingState[thingIdx] = monsterStatePain
+							frameTics := monsterPainFrameTics(thingType)
+							if len(frameTics) > 0 {
+								g.thingStateTics[thingIdx] = frameTics[0]
+							} else {
+								g.thingStateTics[thingIdx] = g.thingPainTics[thingIdx]
+							}
+						}
+						if thingIdx >= 0 && thingIdx < len(g.thingStatePhase) {
+							g.thingStatePhase[thingIdx] = 0
+						}
+						if thingIdx >= 0 && thingIdx < len(g.thingState) {
+							g.syncMonsterPainTics(thingIdx, thingType)
+						}
+						if monsterPainActionPhase(thingType) == 0 {
+							tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
+							g.emitSoundEventAt(monsterPainSoundEvent(thingType), tx, ty)
+						}
 					}
 				}
 			}

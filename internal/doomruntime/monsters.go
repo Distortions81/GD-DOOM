@@ -24,6 +24,14 @@ type monsterMoveDir uint8
 
 type monsterThinkState uint8
 
+type doomMonsterAction uint8
+
+type doomMonsterStateDef struct {
+	tics   int
+	next   int
+	action doomMonsterAction
+}
+
 const (
 	monsterDirEast monsterMoveDir = iota
 	monsterDirNorthEast
@@ -43,6 +51,20 @@ const (
 	monsterStateAttack
 	monsterStateDeath
 )
+
+const (
+	doomMonsterActionNone doomMonsterAction = iota
+	doomMonsterActionLook
+	doomMonsterActionChase
+	doomMonsterActionFaceTarget
+	doomMonsterActionPosAttack
+	doomMonsterActionSPosAttack
+	doomMonsterActionCPosAttack
+	doomMonsterActionCPosRefire
+	doomMonsterActionPain
+)
+
+const noDoomMonsterState = -1
 
 var (
 	monsterOpposite = [9]monsterMoveDir{
@@ -83,6 +105,278 @@ var (
 		-monsterDiagFrac,
 	}
 )
+
+func monsterUsesExactDoomStateMachine(typ int16) bool {
+	switch typ {
+	case 3004, 9, 65:
+		return true
+	default:
+		return false
+	}
+}
+
+func monsterInitialDoomState(typ int16) int {
+	switch typ {
+	case 3004:
+		return 174
+	case 9:
+		return 208
+	case 65:
+		return 406
+	default:
+		return noDoomMonsterState
+	}
+}
+
+func monsterDoomSeeState(typ int16) int {
+	switch typ {
+	case 3004:
+		return 176
+	case 9:
+		return 210
+	case 65:
+		return 408
+	default:
+		return noDoomMonsterState
+	}
+}
+
+func monsterDoomPainState(typ int16) int {
+	switch typ {
+	case 3004:
+		return 187
+	case 9:
+		return 221
+	case 65:
+		return 420
+	default:
+		return noDoomMonsterState
+	}
+}
+
+func monsterDoomMissileState(typ int16) int {
+	switch typ {
+	case 3004:
+		return 184
+	case 9:
+		return 218
+	case 65:
+		return 416
+	default:
+		return noDoomMonsterState
+	}
+}
+
+func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
+	switch state {
+	case 174:
+		return doomMonsterStateDef{tics: 10, next: 175, action: doomMonsterActionLook}, true
+	case 175:
+		return doomMonsterStateDef{tics: 10, next: 174, action: doomMonsterActionLook}, true
+	case 176:
+		return doomMonsterStateDef{tics: 4, next: 177, action: doomMonsterActionChase}, true
+	case 177:
+		return doomMonsterStateDef{tics: 4, next: 178, action: doomMonsterActionChase}, true
+	case 178:
+		return doomMonsterStateDef{tics: 4, next: 179, action: doomMonsterActionChase}, true
+	case 179:
+		return doomMonsterStateDef{tics: 4, next: 180, action: doomMonsterActionChase}, true
+	case 180:
+		return doomMonsterStateDef{tics: 4, next: 181, action: doomMonsterActionChase}, true
+	case 181:
+		return doomMonsterStateDef{tics: 4, next: 182, action: doomMonsterActionChase}, true
+	case 182:
+		return doomMonsterStateDef{tics: 4, next: 183, action: doomMonsterActionChase}, true
+	case 183:
+		return doomMonsterStateDef{tics: 4, next: 176, action: doomMonsterActionChase}, true
+	case 184:
+		return doomMonsterStateDef{tics: 10, next: 185, action: doomMonsterActionFaceTarget}, true
+	case 185:
+		return doomMonsterStateDef{tics: 8, next: 186, action: doomMonsterActionPosAttack}, true
+	case 186:
+		return doomMonsterStateDef{tics: 8, next: 176, action: doomMonsterActionNone}, true
+	case 187:
+		return doomMonsterStateDef{tics: 3, next: 188, action: doomMonsterActionNone}, true
+	case 188:
+		return doomMonsterStateDef{tics: 3, next: 176, action: doomMonsterActionPain}, true
+	case 208:
+		return doomMonsterStateDef{tics: 10, next: 209, action: doomMonsterActionLook}, true
+	case 209:
+		return doomMonsterStateDef{tics: 10, next: 208, action: doomMonsterActionLook}, true
+	case 210:
+		return doomMonsterStateDef{tics: 3, next: 211, action: doomMonsterActionChase}, true
+	case 211:
+		return doomMonsterStateDef{tics: 3, next: 212, action: doomMonsterActionChase}, true
+	case 212:
+		return doomMonsterStateDef{tics: 3, next: 213, action: doomMonsterActionChase}, true
+	case 213:
+		return doomMonsterStateDef{tics: 3, next: 214, action: doomMonsterActionChase}, true
+	case 214:
+		return doomMonsterStateDef{tics: 3, next: 215, action: doomMonsterActionChase}, true
+	case 215:
+		return doomMonsterStateDef{tics: 3, next: 216, action: doomMonsterActionChase}, true
+	case 216:
+		return doomMonsterStateDef{tics: 3, next: 217, action: doomMonsterActionChase}, true
+	case 217:
+		return doomMonsterStateDef{tics: 3, next: 210, action: doomMonsterActionChase}, true
+	case 218:
+		return doomMonsterStateDef{tics: 10, next: 219, action: doomMonsterActionFaceTarget}, true
+	case 219:
+		return doomMonsterStateDef{tics: 10, next: 220, action: doomMonsterActionSPosAttack}, true
+	case 220:
+		return doomMonsterStateDef{tics: 10, next: 210, action: doomMonsterActionNone}, true
+	case 221:
+		return doomMonsterStateDef{tics: 3, next: 222, action: doomMonsterActionNone}, true
+	case 222:
+		return doomMonsterStateDef{tics: 3, next: 210, action: doomMonsterActionPain}, true
+	case 406:
+		return doomMonsterStateDef{tics: 10, next: 407, action: doomMonsterActionLook}, true
+	case 407:
+		return doomMonsterStateDef{tics: 10, next: 406, action: doomMonsterActionLook}, true
+	case 408:
+		return doomMonsterStateDef{tics: 3, next: 409, action: doomMonsterActionChase}, true
+	case 409:
+		return doomMonsterStateDef{tics: 3, next: 410, action: doomMonsterActionChase}, true
+	case 410:
+		return doomMonsterStateDef{tics: 3, next: 411, action: doomMonsterActionChase}, true
+	case 411:
+		return doomMonsterStateDef{tics: 3, next: 412, action: doomMonsterActionChase}, true
+	case 412:
+		return doomMonsterStateDef{tics: 3, next: 413, action: doomMonsterActionChase}, true
+	case 413:
+		return doomMonsterStateDef{tics: 3, next: 414, action: doomMonsterActionChase}, true
+	case 414:
+		return doomMonsterStateDef{tics: 3, next: 415, action: doomMonsterActionChase}, true
+	case 415:
+		return doomMonsterStateDef{tics: 3, next: 408, action: doomMonsterActionChase}, true
+	case 416:
+		return doomMonsterStateDef{tics: 10, next: 417, action: doomMonsterActionFaceTarget}, true
+	case 417:
+		return doomMonsterStateDef{tics: 4, next: 418, action: doomMonsterActionCPosAttack}, true
+	case 418:
+		return doomMonsterStateDef{tics: 4, next: 419, action: doomMonsterActionCPosAttack}, true
+	case 419:
+		return doomMonsterStateDef{tics: 1, next: 417, action: doomMonsterActionCPosRefire}, true
+	case 420:
+		return doomMonsterStateDef{tics: 3, next: 421, action: doomMonsterActionNone}, true
+	case 421:
+		return doomMonsterStateDef{tics: 3, next: 408, action: doomMonsterActionPain}, true
+	default:
+		return doomMonsterStateDef{}, false
+	}
+}
+
+func monsterDoomStateFrameLetter(state int) (byte, bool) {
+	switch state {
+	case 174, 176, 177, 208, 210, 211, 406, 408, 409:
+		return 'A', true
+	case 175, 209, 407:
+		return 'B', true
+	case 178, 179, 212, 213, 410, 411:
+		return 'B', true
+	case 180, 181, 214, 215, 412, 413:
+		return 'C', true
+	case 182, 183, 216, 217, 414, 415:
+		return 'D', true
+	case 184, 186, 218, 220, 416:
+		return 'E', true
+	case 185, 219, 417:
+		return 'F', true
+	case 187, 188, 221, 222, 420, 421:
+		return 'G', true
+	case 418:
+		return 'E', true
+	case 419:
+		return 'F', true
+	default:
+		return 0, false
+	}
+}
+
+func monsterDoomCompatState(typ int16, state int) (monsterThinkState, int, int) {
+	switch typ {
+	case 3004:
+		switch {
+		case state >= 174 && state <= 175:
+			return monsterStateSpawn, state - 174, 0
+		case state >= 176 && state <= 183:
+			return monsterStateSee, state - 176, 0
+		case state >= 184 && state <= 186:
+			return monsterStateAttack, 0, state - 184
+		case state >= 187 && state <= 188:
+			return monsterStatePain, state - 187, 0
+		}
+	case 9:
+		switch {
+		case state >= 208 && state <= 209:
+			return monsterStateSpawn, state - 208, 0
+		case state >= 210 && state <= 217:
+			return monsterStateSee, state - 210, 0
+		case state >= 218 && state <= 220:
+			return monsterStateAttack, 0, state - 218
+		case state >= 221 && state <= 222:
+			return monsterStatePain, state - 221, 0
+		}
+	case 65:
+		switch {
+		case state >= 406 && state <= 407:
+			return monsterStateSpawn, state - 406, 0
+		case state >= 408 && state <= 415:
+			return monsterStateSee, state - 408, 0
+		case state >= 416 && state <= 419:
+			return monsterStateAttack, 0, state - 416
+		case state >= 420 && state <= 421:
+			return monsterStatePain, state - 420, 0
+		}
+	}
+	return monsterStateSee, 0, 0
+}
+
+func monsterDoomAttackRemainingTics(state int) int {
+	switch state {
+	case 184:
+		return 26
+	case 185:
+		return 16
+	case 186:
+		return 8
+	case 218:
+		return 30
+	case 219:
+		return 20
+	case 220:
+		return 10
+	case 416:
+		return 19
+	case 417:
+		return 9
+	case 418:
+		return 5
+	case 419:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func monsterDoomPainRemainingTics(state int) int {
+	switch state {
+	case 187:
+		return 6
+	case 188:
+		return 3
+	case 221:
+		return 6
+	case 222:
+		return 3
+	case 420:
+		return 6
+	case 421:
+		return 3
+	default:
+		return 0
+	}
+}
 
 func (g *game) tickMonsters() {
 	if g.m == nil {
@@ -148,6 +442,14 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		return
 	}
 	if !isMonster(th.Type) || g.thingHP[i] <= 0 {
+		return
+	}
+	if monsterUsesExactDoomStateMachine(th.Type) {
+		g.debugMonsterTick(i, "start")
+		g.debugThingState(i, th, "live")
+		g.tickMonsterMomentum(i, th)
+		g.tickExactDoomMonster(i, th)
+		g.debugMonsterTick(i, "end")
 		return
 	}
 	if !g.monsterTargetAlive() && !g.monsterHasExplicitTarget(i) {
@@ -767,7 +1069,7 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 			if !g.monsterHasTarget(i) {
 				reacquired, continueChase := g.monsterRunLostTargetChaseState(i, typ, tx, ty)
 				if allowJustAttackedReacquire && reacquired && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
-					continue
+					return true, false
 				}
 				if !reacquired || !continueChase {
 					return true, false
@@ -1084,6 +1386,14 @@ func (g *game) ensureMonsterAIState() {
 		g.thingThinkWait = make([]int, n)
 		copy(g.thingThinkWait, old)
 	}
+	if len(g.thingDoomState) != n {
+		old := g.thingDoomState
+		g.thingDoomState = make([]int, n)
+		for i := range g.thingDoomState {
+			g.thingDoomState[i] = -1
+		}
+		copy(g.thingDoomState, old)
+	}
 	if len(g.thingState) != n {
 		old := g.thingState
 		g.thingState = make([]monsterThinkState, n)
@@ -1132,6 +1442,208 @@ func (g *game) ensureMonsterAIState() {
 		g.thingResumeChaseNow = make([]bool, n)
 		copy(g.thingResumeChaseNow, old)
 	}
+}
+
+func (g *game) syncExactDoomMonsterCompatState(i int, typ int16) {
+	if g == nil || i < 0 || i >= len(g.thingDoomState) {
+		return
+	}
+	state := g.thingDoomState[i]
+	if state < 0 {
+		return
+	}
+	compatState, compatPhase, attackPhase := monsterDoomCompatState(typ, state)
+	if i < len(g.thingState) {
+		g.thingState[i] = compatState
+	}
+	if i < len(g.thingStatePhase) {
+		g.thingStatePhase[i] = compatPhase
+	}
+	if i < len(g.thingAttackPhase) {
+		g.thingAttackPhase[i] = attackPhase
+	}
+	if i < len(g.thingAttackTics) {
+		if compatState == monsterStateAttack {
+			g.thingAttackTics[i] = monsterDoomAttackRemainingTics(state)
+		} else {
+			g.thingAttackTics[i] = 0
+		}
+	}
+	if i < len(g.thingPainTics) {
+		if compatState == monsterStatePain {
+			g.thingPainTics[i] = monsterDoomPainRemainingTics(state)
+		} else {
+			g.thingPainTics[i] = 0
+		}
+	}
+	if i < len(g.thingAttackFireTics) && compatState != monsterStateAttack {
+		g.thingAttackFireTics[i] = -1
+	}
+}
+
+func (g *game) setExactDoomMonsterState(i int, typ int16, state int) {
+	g.setExactDoomMonsterStateDepth(i, typ, state, 0)
+}
+
+func (g *game) setExactDoomMonsterStateDepth(i int, typ int16, state int, depth int) {
+	if g == nil || i < 0 || depth > 16 {
+		return
+	}
+	def, ok := monsterDoomStateDef(state)
+	if !ok {
+		if i < len(g.thingDoomState) {
+			g.thingDoomState[i] = noDoomMonsterState
+		}
+		return
+	}
+	if i < len(g.thingDoomState) {
+		g.thingDoomState[i] = state
+	}
+	if i < len(g.thingStateTics) {
+		g.thingStateTics[i] = def.tics
+	}
+	g.syncExactDoomMonsterCompatState(i, typ)
+	g.runExactDoomMonsterAction(i, typ, state, def.action, depth)
+}
+
+func (g *game) runExactDoomMonsterAction(i int, typ int16, state int, action doomMonsterAction, depth int) {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return
+	}
+	tx, ty := g.thingPosFixed(i, g.m.Things[i])
+	targetX, targetY := int64(0), int64(0)
+	dist := int64(0)
+	if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+		targetX, targetY = px, py
+		dist = doomApproxDistance(targetX-tx, targetY-ty)
+	}
+	switch action {
+	case doomMonsterActionLook:
+		if _, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty); wake || g.monsterLookForPlayer(i, false, tx, ty) {
+			if i < len(g.thingAggro) {
+				g.thingAggro[i] = true
+			}
+			g.emitMonsterSeeSound(i, typ, tx, ty)
+			g.setExactDoomMonsterStateDepth(i, typ, monsterDoomSeeState(typ), depth+1)
+		}
+	case doomMonsterActionChase:
+		g.runExactDoomMonsterChaseAction(i, typ, tx, ty, targetX, targetY, dist, depth)
+	case doomMonsterActionFaceTarget:
+		if targetX != 0 || targetY != 0 || g.monsterHasTarget(i) {
+			g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		}
+	case doomMonsterActionPosAttack:
+		_ = g.monsterAttack(i, typ, dist)
+	case doomMonsterActionSPosAttack:
+		_ = g.monsterAttack(i, typ, dist)
+	case doomMonsterActionCPosAttack:
+		_ = g.monsterAttack(i, typ, dist)
+	case doomMonsterActionCPosRefire:
+		g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		if !g.chaingunnerRefireKeepsAttack(i, typ, tx, ty) {
+			g.setExactDoomMonsterStateDepth(i, typ, monsterDoomSeeState(typ), depth+1)
+		}
+	case doomMonsterActionPain:
+		g.emitSoundEventAt(monsterPainSoundEvent(typ), tx, ty)
+	}
+}
+
+func (g *game) runExactDoomMonsterChaseAction(i int, typ int16, tx, ty, targetX, targetY, dist int64, depth int) {
+	if g == nil {
+		return
+	}
+	if i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
+		g.thingReactionTics[i]--
+	}
+	if i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+		if !g.monsterHasTarget(i) {
+			g.thingThreshold[i] = 0
+		} else {
+			g.thingThreshold[i]--
+		}
+	}
+	g.monsterTurnTowardMoveDir(i)
+	if !g.monsterHasTarget(i) {
+		if g.monsterLookForPlayer(i, true, tx, ty) {
+			if i < len(g.thingAggro) {
+				g.thingAggro[i] = true
+			}
+			return
+		}
+		g.setExactDoomMonsterStateDepth(i, typ, monsterInitialDoomState(typ), depth+1)
+		return
+	}
+	if i < len(g.thingJustAtk) && g.thingJustAtk[i] {
+		g.thingJustAtk[i] = false
+		if !g.fastMonstersActive() {
+			g.monsterPickNewChaseDir(i, typ, targetX, targetY)
+		}
+		return
+	}
+	if g.monsterCanMeleeTarget(i, typ, dist, tx, ty, targetX, targetY) {
+		return
+	}
+	if g.monsterCanTryMissileNow(i) && g.monsterCheckMissileRange(i, typ, dist, tx, ty, targetX, targetY) {
+		g.setExactDoomMonsterStateDepth(i, typ, monsterDoomMissileState(typ), depth+1)
+		if i < len(g.thingJustAtk) {
+			g.thingJustAtk[i] = true
+		}
+		return
+	}
+	if i < len(g.thingMoveCount) {
+		g.thingMoveCount[i]--
+		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, typ, g.thingMoveDir[i]) {
+			g.monsterPickNewChaseDir(i, typ, targetX, targetY)
+		}
+	}
+	ax, ay := tx, ty
+	if g.m != nil && i < len(g.m.Things) {
+		ax, ay = g.thingPosFixed(i, g.m.Things[i])
+	}
+	g.emitMonsterActiveSound(i, typ, ax, ay)
+}
+
+func (g *game) tickExactDoomMonster(i int, th mapdata.Thing) bool {
+	if !monsterUsesExactDoomStateMachine(th.Type) {
+		return false
+	}
+	if i < 0 || i >= len(g.thingDoomState) {
+		return true
+	}
+	if g.thingDoomState[i] == noDoomMonsterState {
+		state := monsterInitialDoomState(th.Type)
+		if state != noDoomMonsterState {
+			if i < len(g.thingStateTics) && g.thingStateTics[i] <= 0 {
+				// Test fixtures often construct monsters without running full spawn
+				// initialization. Treat that as "run the spawn state's action now"
+				// while real map spawns still enter with positive randomized tics.
+				g.setExactDoomMonsterState(i, th.Type, state)
+				return true
+			}
+			g.thingDoomState[i] = state
+			g.syncExactDoomMonsterCompatState(i, th.Type)
+		}
+	}
+	if i < len(g.thingStateTics) && g.thingStateTics[i] == 0 {
+		def, ok := monsterDoomStateDef(g.thingDoomState[i])
+		if ok {
+			g.thingStateTics[i] = def.tics
+		}
+	}
+	if i >= len(g.thingStateTics) {
+		return true
+	}
+	if g.thingStateTics[i] != -1 {
+		g.thingStateTics[i]--
+		if g.thingStateTics[i] == 0 {
+			def, ok := monsterDoomStateDef(g.thingDoomState[i])
+			if ok {
+				g.setExactDoomMonsterState(i, th.Type, def.next)
+			}
+		}
+	}
+	g.syncExactDoomMonsterCompatState(i, th.Type)
+	return true
 }
 
 func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {

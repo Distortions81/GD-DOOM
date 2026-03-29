@@ -3094,7 +3094,7 @@ func TestTickMonstersAttackExpiryResumesChaseSameTicLikeDoom(t *testing.T) {
 	}
 }
 
-func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t *testing.T) {
+func TestTickMonstersAttackExpiryLostTargetReacquireStopsBeforeJustAttackedChase(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		typ  int16
@@ -3159,7 +3159,7 @@ func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t
 				t.Fatalf("target should switch to the player through same-tic A_Look: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
 			}
 			if g.thingJustAtk[0] {
-				t.Fatal("thingJustAtk should clear after the resumed chase honors Doom's just-attacked gate")
+				t.Fatal("thingJustAtk should clear after same-tic A_Look enters seestate and runs the Doom just-attacked chase gate")
 			}
 			if g.thingState[0] != monsterStateSee {
 				t.Fatalf("state=%d want see after same-tic chase resume", g.thingState[0])
@@ -3171,10 +3171,10 @@ func TestTickMonstersAttackExpiryLostTargetReacquireContinuesJustAttackedChase(t
 				t.Fatalf("state tics=%d want %d after same-tic chase resume", g.thingStateTics[0], want)
 			}
 			if got := g.thingMoveCount[0]; got < 0 || got > 15 {
-				t.Fatalf("movecount=%d want [0,15] after just-attacked chase pick", got)
+				t.Fatalf("movecount=%d want [0,15] after the Doom just-attacked chase gate picks a new dir", got)
 			}
-			if got := g.thingAngleState[0]; got == 2798540703 || got == 3221225472 {
-				t.Fatalf("angle=%d want a new post-reacquire chase turn", got)
+			if got := g.thingAngleState[0]; got == 2798540703 {
+				t.Fatalf("angle=%d should change after same-tic A_Look -> A_Chase resume", got)
 			}
 		})
 	}
