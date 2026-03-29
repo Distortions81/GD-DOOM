@@ -13,6 +13,5 @@ func isWASMBuild() bool {
 }
 
 func yieldWASMRenderTime(time.Time) {
-	const minYield = 1 * time.Millisecond
-	time.Sleep(minYield)
+	time.Sleep(time.Microsecond)
 }

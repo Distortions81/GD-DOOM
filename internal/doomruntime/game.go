@@ -507,7 +507,6 @@ type game struct {
 	benchLow01MS     float64
 	frameUpload      time.Duration
 	perfInDraw       bool
-	interpAutoOff    bool
 	simTickScale     float64
 	simTickAccum     float64
 	edgeInputPass    bool
@@ -17764,7 +17763,7 @@ func (g *game) capturePrevProjectileRenderState() {
 func (g *game) prepareRenderState() {
 	g.beginSourcePortSpectreFuzzFrame(time.Now())
 	alpha := g.interpAlpha()
-	if !g.opts.SourcePortMode || g.interpAutoOff {
+	if !g.opts.SourcePortMode {
 		alpha = 1
 	}
 	if g.simTickScale > 1.0 {
@@ -18809,7 +18808,6 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 			g.benchLow01MS = 0
 		}
 		g.fpsDisplay = fps
-		g.updateInterpolationPerfState(fps)
 		if g.fpsFrames > 0 {
 			g.renderMSAvg = float64(g.renderAccum) / float64(time.Millisecond) / float64(g.fpsFrames)
 			for i := range g.renderStageAccum {
@@ -18836,28 +18834,6 @@ func (g *game) addRenderStageDur(stage renderStage, dur time.Duration) {
 		return
 	}
 	g.renderStageAccum[stage] += dur
-}
-
-func (g *game) updateInterpolationPerfState(fps float64) {
-	if !g.opts.SourcePortMode {
-		g.interpAutoOff = false
-		return
-	}
-	const disableAtFPS = float64(doomTicsPerSecond)
-	const reenableAtFPS = disableAtFPS + 5.0
-	if g.interpAutoOff {
-		if fps > reenableAtFPS {
-			g.interpAutoOff = false
-			// Snap interpolation state when re-enabling to avoid one-frame pops.
-			g.syncRenderState()
-		}
-		return
-	}
-	if fps <= disableAtFPS {
-		g.interpAutoOff = true
-		// Snap interpolation state when disabling to avoid one-frame pops.
-		g.syncRenderState()
-	}
 }
 
 func (g *game) writePixelsTimed(img *ebiten.Image, pix []byte) {

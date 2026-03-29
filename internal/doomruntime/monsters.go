@@ -62,6 +62,7 @@ const (
 	doomMonsterActionCPosAttack
 	doomMonsterActionCPosRefire
 	doomMonsterActionPain
+	doomMonsterActionSkullAttack
 )
 
 const noDoomMonsterState = -1
@@ -108,7 +109,7 @@ var (
 
 func monsterUsesExactDoomStateMachine(typ int16) bool {
 	switch typ {
-	case 3004, 9, 65:
+	case 3004, 9, 65, 3006:
 		return true
 	default:
 		return false
@@ -123,6 +124,8 @@ func monsterInitialDoomState(typ int16) int {
 		return 208
 	case 65:
 		return 406
+	case 3006:
+		return 721
 	default:
 		return noDoomMonsterState
 	}
@@ -136,6 +139,8 @@ func monsterDoomSeeState(typ int16) int {
 		return 210
 	case 65:
 		return 408
+	case 3006:
+		return 723
 	default:
 		return noDoomMonsterState
 	}
@@ -149,6 +154,8 @@ func monsterDoomPainState(typ int16) int {
 		return 221
 	case 65:
 		return 420
+	case 3006:
+		return 729
 	default:
 		return noDoomMonsterState
 	}
@@ -162,6 +169,8 @@ func monsterDoomMissileState(typ int16) int {
 		return 218
 	case 65:
 		return 416
+	case 3006:
+		return 725
 	default:
 		return noDoomMonsterState
 	}
@@ -261,6 +270,26 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 		return doomMonsterStateDef{tics: 3, next: 421, action: doomMonsterActionNone}, true
 	case 421:
 		return doomMonsterStateDef{tics: 3, next: 408, action: doomMonsterActionPain}, true
+	case 721:
+		return doomMonsterStateDef{tics: 10, next: 722, action: doomMonsterActionLook}, true
+	case 722:
+		return doomMonsterStateDef{tics: 10, next: 721, action: doomMonsterActionLook}, true
+	case 723:
+		return doomMonsterStateDef{tics: 6, next: 724, action: doomMonsterActionChase}, true
+	case 724:
+		return doomMonsterStateDef{tics: 6, next: 723, action: doomMonsterActionChase}, true
+	case 725:
+		return doomMonsterStateDef{tics: 10, next: 726, action: doomMonsterActionFaceTarget}, true
+	case 726:
+		return doomMonsterStateDef{tics: 4, next: 727, action: doomMonsterActionSkullAttack}, true
+	case 727:
+		return doomMonsterStateDef{tics: 4, next: 728, action: doomMonsterActionNone}, true
+	case 728:
+		return doomMonsterStateDef{tics: 4, next: 727, action: doomMonsterActionNone}, true
+	case 729:
+		return doomMonsterStateDef{tics: 3, next: 730, action: doomMonsterActionNone}, true
+	case 730:
+		return doomMonsterStateDef{tics: 3, next: 723, action: doomMonsterActionPain}, true
 	default:
 		return doomMonsterStateDef{}, false
 	}
@@ -268,10 +297,16 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 
 func monsterDoomStateFrameLetter(state int) (byte, bool) {
 	switch state {
-	case 174, 176, 177, 208, 210, 211, 406, 408, 409:
+	case 174, 176, 177, 208, 210, 211, 406, 408, 409, 721, 723:
 		return 'A', true
-	case 175, 209, 407:
+	case 175, 209, 407, 722, 724:
 		return 'B', true
+	case 725, 727:
+		return 'C', true
+	case 726, 728:
+		return 'D', true
+	case 729, 730:
+		return 'E', true
 	case 178, 179, 212, 213, 410, 411:
 		return 'B', true
 	case 180, 181, 214, 215, 412, 413:
@@ -328,6 +363,17 @@ func monsterDoomCompatState(typ int16, state int) (monsterThinkState, int, int) 
 		case state >= 420 && state <= 421:
 			return monsterStatePain, state - 420, 0
 		}
+	case 3006:
+		switch {
+		case state >= 721 && state <= 722:
+			return monsterStateSpawn, state - 721, 0
+		case state >= 723 && state <= 724:
+			return monsterStateSee, state - 723, 0
+		case state >= 725 && state <= 728:
+			return monsterStateAttack, 0, state - 725
+		case state >= 729 && state <= 730:
+			return monsterStatePain, state - 729, 0
+		}
 	}
 	return monsterStateSee, 0, 0
 }
@@ -354,6 +400,14 @@ func monsterDoomAttackRemainingTics(state int) int {
 		return 5
 	case 419:
 		return 1
+	case 725:
+		return 22
+	case 726:
+		return 12
+	case 727:
+		return 8
+	case 728:
+		return 4
 	default:
 		return 0
 	}
@@ -372,6 +426,10 @@ func monsterDoomPainRemainingTics(state int) int {
 	case 420:
 		return 6
 	case 421:
+		return 3
+	case 729:
+		return 6
+	case 730:
 		return 3
 	default:
 		return 0
@@ -1545,6 +1603,8 @@ func (g *game) runExactDoomMonsterAction(i int, typ int16, state int, action doo
 		}
 	case doomMonsterActionPain:
 		g.emitSoundEventAt(monsterPainSoundEvent(typ), tx, ty)
+	case doomMonsterActionSkullAttack:
+		_ = g.monsterAttack(i, typ, dist)
 	}
 }
 
@@ -1844,6 +1904,13 @@ func (g *game) resetLostSoulCharge(i int, typ int16) {
 	}
 	if i < len(g.thingAttackPhase) {
 		g.thingAttackPhase[i] = 0
+	}
+	if i < len(g.thingResumeChaseNow) {
+		g.thingResumeChaseNow[i] = false
+	}
+	if monsterUsesExactDoomStateMachine(typ) {
+		g.setExactDoomMonsterState(i, typ, monsterInitialDoomState(typ))
+		return
 	}
 	if i < len(g.thingStatePhase) {
 		g.thingStatePhase[i] = 0

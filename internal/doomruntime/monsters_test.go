@@ -272,6 +272,52 @@ func TestTickMonstersLostDeadPlayerStillConsumesChaseReactionTime(t *testing.T) 
 	}
 }
 
+func TestTickSkullFlyMomentum_ResetUsesExactDoomSpawnState(t *testing.T) {
+	g := &game{
+		isDead: true,
+		stats:  playerStats{Health: 0},
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3006, X: 0, Y: 0}},
+		},
+		thingHP:             []int{100},
+		thingCollected:      []bool{false},
+		thingDead:           []bool{false},
+		thingDoomState:      []int{727},
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStatePhase:     []int{0},
+		thingStateTics:      []int{4},
+		thingAttackTics:     []int{8},
+		thingAttackPhase:    []int{2},
+		thingAttackFireTics: []int{-1},
+		thingSkullFly:       []bool{true},
+		thingMomX:           []int64{0},
+		thingMomY:           []int64{0},
+		thingMomZ:           []int64{3 * fracUnit},
+		thingFloorState:     []int64{0},
+		thingCeilState:      []int64{128 * fracUnit},
+		thingSupportValid:   []bool{true},
+		thingResumeChaseNow: []bool{true},
+	}
+
+	g.tickSkullFlyMomentum(0, g.m.Things[0])
+
+	if g.thingSkullFly[0] {
+		t.Fatal("skull fly flag should clear on zero xy momentum")
+	}
+	if got := g.thingDoomState[0]; got != 721 {
+		t.Fatalf("doom state=%d want 721", got)
+	}
+	if got := g.thingState[0]; got != monsterStateSpawn {
+		t.Fatalf("compat state=%d want spawn", got)
+	}
+	if got := g.thingStateTics[0]; got != 10 {
+		t.Fatalf("state tics=%d want 10", got)
+	}
+	if g.thingResumeChaseNow[0] {
+		t.Fatal("exact lost soul reset should not schedule synthetic resume-chase")
+	}
+}
+
 func TestMonsterAttackTargetPos_PreservesDeadPlayerCorpseAim(t *testing.T) {
 	g := &game{
 		isDead: true,

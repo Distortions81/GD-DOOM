@@ -234,6 +234,22 @@ func TestDemoTraceThingState_UsesExactDoomHitscannerState(t *testing.T) {
 	}
 }
 
+func TestDemoTraceThingState_UsesExactDoomLostSoulState(t *testing.T) {
+	g := &game{
+		m:              &mapdata.Map{Things: []mapdata.Thing{{Type: 3006}}},
+		thingDead:      []bool{false},
+		thingDoomState: []int{726},
+		thingStateTics: []int{4},
+	}
+
+	if got := demoTraceThingState(g, 0, 3006); got != 726 {
+		t.Fatalf("state=%d want 726", got)
+	}
+	if got := demoTraceThingTics(g, 0, 3006); got != 4 {
+		t.Fatalf("tics=%d want 4", got)
+	}
+}
+
 func TestDemoTraceThingFlagsMatchMonsterAndDroppedPickupDefaults(t *testing.T) {
 	g := &game{
 		thingDead:    []bool{false, true, false},
