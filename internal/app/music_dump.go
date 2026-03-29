@@ -58,6 +58,20 @@ type dumpMusicJob struct {
 	outPath  string
 }
 
+func dumpMusicOutputExists(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if info.IsDir() {
+		return false, nil
+	}
+	return info.Size() > 0, nil
+}
+
 func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwadPaths []string, explicitSoundFont string, stdout io.Writer, stderr io.Writer) error {
 	outDir = strings.TrimSpace(outDir)
 	if outDir == "" {
@@ -132,6 +146,14 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 				return fmt.Errorf("create renderer output directory: %w", err)
 			}
 			for _, track := range tracks {
+				outPath := filepath.Join(renderOut, track.fileBase+".wav")
+				exists, err := dumpMusicOutputExists(outPath)
+				if err != nil {
+					return fmt.Errorf("stat %s: %w", outPath, err)
+				}
+				if exists {
+					continue
+				}
 				lump, ok := wf.LumpByName(track.lumpName)
 				if !ok {
 					return fmt.Errorf("missing lump %s in %s", track.lumpName, target.path)
@@ -153,7 +175,7 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 						synth:    renderer.displayName,
 					},
 					musData: musData,
-					outPath: filepath.Join(renderOut, track.fileBase+".wav"),
+					outPath: outPath,
 				})
 			}
 		}

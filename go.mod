@@ -9,6 +9,8 @@ require (
 	github.com/sinshu/go-meltysynth v0.0.0-20230205031334-05d311382fc4
 )
 
+replace github.com/sinshu/go-meltysynth => ./third_party/go-meltysynth
+
 require (
 	github.com/ebitengine/gomobile v0.0.0-20260211053922-3d992dae95d1 // indirect
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
