@@ -156,27 +156,34 @@ func (c *Controller) stopStream() {
 }
 
 func nextChunk(factory musStreamFactory, stream **music.StreamRenderer, loop bool) ([]byte, error) {
+	return nextChunkFrames(factory, stream, loop, music.DefaultStreamChunkFrames())
+}
+
+func nextChunkFrames(factory musStreamFactory, stream **music.StreamRenderer, loop bool, frames int) ([]byte, error) {
 	if factory == nil || stream == nil {
 		return nil, nil
 	}
-	if *stream == nil {
-		next, err := factory()
+	for {
+		if *stream == nil {
+			next, err := factory()
+			if err != nil {
+				return nil, err
+			}
+			*stream = next
+		}
+		chunk, done, err := (*stream).NextChunkS16LE(frames)
 		if err != nil {
 			return nil, err
 		}
-		*stream = next
-	}
-	chunk, done, err := (*stream).NextChunkS16LE(music.DefaultStreamChunkFrames())
-	if err != nil {
-		return nil, err
-	}
-	if done {
-		*stream = nil
-		if !loop {
-			return chunk, nil
+		if done {
+			*stream = nil
+			if !loop || len(chunk) > 0 {
+				return chunk, nil
+			}
+			continue
 		}
+		return chunk, nil
 	}
-	return chunk, nil
 }
 
 func prefillStream(player *music.ChunkPlayer, factory musStreamFactory, stream **music.StreamRenderer, loop bool, targetBytes int) error {

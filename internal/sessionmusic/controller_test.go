@@ -122,6 +122,42 @@ func TestNextChunkStopsAtDoneWhenNotLooping(t *testing.T) {
 	}
 }
 
+func TestNextChunkFramesLoopsAcrossExactChunkBoundary(t *testing.T) {
+	driver, err := music.NewDriverWithBackend(44100, nil, music.BackendAuto)
+	if err != nil {
+		t.Fatalf("NewDriverWithBackend() error: %v", err)
+	}
+	score := []byte{
+		0x90, 60, 0x04,
+		0x80, 60, 0x00,
+		0x60,
+	}
+	musData := buildMUSTestLump(score)
+	factory := func() (*music.StreamRenderer, error) {
+		return music.NewMUSStreamRenderer(driver, musData)
+	}
+
+	var stream *music.StreamRenderer
+	first, err := nextChunkFrames(factory, &stream, true, 1260)
+	if err != nil {
+		t.Fatalf("first nextChunkFrames() error: %v", err)
+	}
+	if len(first) == 0 {
+		t.Fatal("expected initial chunk")
+	}
+
+	looped, err := nextChunkFrames(factory, &stream, true, 1260)
+	if err != nil {
+		t.Fatalf("loop boundary nextChunkFrames() error: %v", err)
+	}
+	if len(looped) == 0 {
+		t.Fatal("expected chunk after exact-boundary loop restart")
+	}
+	if stream == nil {
+		t.Fatal("stream should remain active after exact-boundary loop restart")
+	}
+}
+
 func buildMUSTestLump(score []byte) []byte {
 	var b bytes.Buffer
 	b.WriteString("MUS\x1a")
