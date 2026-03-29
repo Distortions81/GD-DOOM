@@ -23,7 +23,7 @@ func embeddedSoundFontDataForPath(path string) ([]byte, bool) {
 		return data, true
 	}
 	base := strings.ToLower(filepath.Base(path))
-	if base == "sgm-hq.sf2" {
+	if base == "sc55-hq.sf2" || base == "sgm-hq.sf2" {
 		return browserCachedSoundFontBytes(base)
 	}
 	return nil, false

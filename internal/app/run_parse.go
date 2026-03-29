@@ -1970,10 +1970,10 @@ type pickerSynthOption struct {
 }
 
 var pickerSynths = [...]pickerSynthOption{
-	{label: "OPL - IMPSYNTH", description: "ADLIB / SOUNDBLASTER 16", backend: music.BackendImpSynth},
-	{label: "MIDI - GENERAL MIDI", description: "GENERAL MIDI", backend: music.BackendMeltySynth, soundFont: "soundfonts/general-midi.sf2"},
-	{label: "MIDI - SC55-HQ", description: "ROLAND SC-55 HQ", backend: music.BackendMeltySynth, soundFont: "soundfonts/SC55-HQ.sf2"},
-	{label: "MIDI - SGM-HQ", description: "SGM - HIGH QUALITY", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
+	{label: "OPL - ADLIB / SB16", backend: music.BackendImpSynth},
+	{label: "MIDI - GENERAL MIDI", backend: music.BackendMeltySynth, soundFont: "soundfonts/general-midi.sf2"},
+	{label: "MIDI - SC55-HQ", backend: music.BackendMeltySynth, soundFont: "soundfonts/SC55-HQ.sf2"},
+	{label: "MIDI - SGM-HQ", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
 }
 
 type pickerStage int
@@ -2656,7 +2656,9 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			descWidth := 0
 			for _, synth := range pickerSynths {
 				titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, 2))
-				descWidth = max(descWidth, g.pickerTextWidth(synth.description))
+				if strings.TrimSpace(synth.description) != "" {
+					descWidth = max(descWidth, g.pickerTextWidth(synth.description))
+				}
 			}
 			contentWidth := max(titleWidth, descWidth)
 			titleX := sw/2 - contentWidth/2
@@ -2667,7 +2669,9 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 					g.drawPickerSkull(screen, titleX, rowY+4)
 				}
 				g.drawPickerTextScaled(screen, synth.label, titleX, rowY, 2)
-				g.drawPickerText(screen, synth.description, titleX, rowY+22)
+				if strings.TrimSpace(synth.description) != "" {
+					g.drawPickerText(screen, synth.description, titleX, rowY+22)
+				}
 			}
 		}
 	default:
