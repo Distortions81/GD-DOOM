@@ -25,6 +25,7 @@ type playerCmd struct {
 	typ  playerCmdType
 	data []byte
 	vol  float64
+	done chan struct{}
 }
 
 // ChunkPlayer plays queued 44.1kHz s16 stereo chunks on a dedicated goroutine.
@@ -81,7 +82,7 @@ func (cp *ChunkPlayer) ClearBuffer() error {
 }
 
 func (cp *ChunkPlayer) ResetPlayback() error {
-	return cp.send(playerCmd{typ: cmdReset})
+	return cp.sendAndWait(playerCmd{typ: cmdReset, done: make(chan struct{})})
 }
 
 func (cp *ChunkPlayer) SetVolume(v float64) error {
@@ -157,6 +158,16 @@ func (cp *ChunkPlayer) send(cmd playerCmd) error {
 	}
 }
 
+func (cp *ChunkPlayer) sendAndWait(cmd playerCmd) error {
+	if err := cp.send(cmd); err != nil {
+		return err
+	}
+	if cmd.done != nil {
+		<-cmd.done
+	}
+	return nil
+}
+
 func (cp *ChunkPlayer) run() {
 	defer close(cp.done)
 	playing := false
@@ -192,7 +203,13 @@ func (cp *ChunkPlayer) run() {
 			cp.player.Pause()
 			cp.src.Close()
 			_ = cp.player.Close()
+			if cmd.done != nil {
+				close(cmd.done)
+			}
 			return
+		}
+		if cmd.done != nil {
+			close(cmd.done)
 		}
 	}
 }

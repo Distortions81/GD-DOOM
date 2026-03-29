@@ -354,6 +354,9 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		},
 		DrawQuitPrompt: sg.drawQuitPrompt,
 	})
+	if sg.startupMusicLocked && !sg.transitionActive() {
+		sg.startupMusicVisualReady = true
+	}
 	yieldWASMRenderTime(drawStart)
 }
 

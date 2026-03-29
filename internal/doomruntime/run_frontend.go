@@ -595,6 +595,13 @@ func (sg *sessionGame) tickFrontend() error {
 		sg.frontend.MenuActive = true
 		sg.frontendMenuPending = false
 	}
+	if handled, err := sg.tickPendingFrontendMusicConfig(); handled {
+		if err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+		return nil
+	}
 	if sg.frontend.Mode == frontendModeMusicPlayer {
 		return sg.tickFrontendMusicPlayer()
 	}

@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -196,6 +197,66 @@ func (sg *sessionGame) applyMusicConfig(backend music.Backend, soundFontPath str
 	return nil
 }
 
+func frontendMusicSoundFontDownloadStatus(path string) string {
+	label := musicSoundFontLabel(path)
+	received, total := music.BrowserSoundFontLoadProgress(path)
+	switch {
+	case total > 0 && received > 0:
+		pct := int((received * 100) / total)
+		if pct < 0 {
+			pct = 0
+		}
+		if pct > 100 {
+			pct = 100
+		}
+		return fmt.Sprintf("DOWNLOADING %s %d%%", label, pct)
+	case received > 0:
+		return fmt.Sprintf("DOWNLOADING %s", label)
+	default:
+		return fmt.Sprintf("DOWNLOADING %s", label)
+	}
+}
+
+func (sg *sessionGame) queueFrontendMusicConfigDownload(backend music.Backend, soundFontPath string) {
+	if sg == nil {
+		return
+	}
+	sg.frontendMusicConfig = frontendMusicConfigPending{
+		active:        true,
+		backend:       backend,
+		soundFontPath: strings.TrimSpace(soundFontPath),
+	}
+	sg.frontend.Status = frontendMusicSoundFontDownloadStatus(soundFontPath)
+	sg.frontend.StatusTic = 0
+}
+
+func (sg *sessionGame) tickPendingFrontendMusicConfig() (bool, error) {
+	if sg == nil || !sg.frontendMusicConfig.active {
+		return false, nil
+	}
+	path := strings.TrimSpace(sg.frontendMusicConfig.soundFontPath)
+	if music.BrowserSoundFontLoadPending(path) {
+		sg.frontend.Status = frontendMusicSoundFontDownloadStatus(path)
+		sg.frontend.StatusTic = 0
+		return true, nil
+	}
+	backend := sg.frontendMusicConfig.backend
+	sg.frontendMusicConfig = frontendMusicConfigPending{}
+	if err := music.BrowserSoundFontLoadError(path); err != nil {
+		return true, err
+	}
+	bank, err := music.ParseSoundFontFile(path)
+	if err != nil {
+		return true, err
+	}
+	if err := sg.applyMusicConfig(backend, path, bank); err != nil {
+		return true, err
+	}
+	sg.frontend.Status = ""
+	sg.frontend.StatusTic = 0
+	return true, nil
+}
+
 func (sg *sessionGame) frontendChangeMusicBackend(dir int) error {
 	if sg == nil || dir == 0 {
 		return nil
@@ -209,6 +270,10 @@ func (sg *sessionGame) frontendChangeMusicBackend(dir int) error {
 		path := sg.musicSelectedSoundFontPath()
 		if strings.TrimSpace(path) == "" {
 			return errNoMusicSoundFonts
+		}
+		if music.StartBrowserSoundFontLoad(path) {
+			sg.queueFrontendMusicConfigDownload(next, path)
+			return nil
 		}
 		bank, err := music.ParseSoundFontFile(path)
 		if err != nil {
@@ -236,6 +301,10 @@ func (sg *sessionGame) frontendChangeMusicSoundFont(dir int) error {
 	}
 	idx = wrapMusicPlayerIndex(idx, dir, len(choices))
 	path := choices[idx]
+	if music.StartBrowserSoundFontLoad(path) {
+		sg.queueFrontendMusicConfigDownload(sg.opts.MusicBackend, path)
+		return nil
+	}
 	bank, err := music.ParseSoundFontFile(path)
 	if err != nil {
 		return err

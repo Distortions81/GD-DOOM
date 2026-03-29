@@ -70,49 +70,57 @@ const (
 )
 
 type sessionGame struct {
-	g                   *game
-	rt                  sessionRuntime
-	gameFactory         gameplay.RuntimeFactory[Options, *game]
-	bootMap             *mapdata.Map
-	current             mapdata.MapName
-	currentTemplate     *mapdata.Map
-	opts                Options
-	demoRecord          []DemoTic
-	settings            gameplay.PersistentSettings
-	nextMap             NextMapFunc
-	err                 error
-	musicCtl            *sessionmusic.Playback
-	secretVisited       bool
-	levelCarryover      *playerLevelCarryover
-	faithfulSurface     *ebiten.Image
-	faithfulNearest     *ebiten.Image
-	crtShader           *ebiten.Shader
-	crtPost             *ebiten.Image
-	crtUniforms         map[string]any
-	gameplaySurface     *ebiten.Image
-	frontendSurface     *ebiten.Image
-	bootSplashImage     *ebiten.Image
-	menuPatchImages     map[string]*ebiten.Image
-	intermissionImages  map[string]*ebiten.Image
-	statusPatchImages   map[string]*ebiten.Image
-	spritePatchImages   map[string]*ebiten.Image
-	messageFontImages   map[rune]*ebiten.Image
-	flatImages          map[string]*ebiten.Image
-	menuSfx             *sessionaudio.MenuController
-	finalScreenDrawOp   ebiten.DrawImageOptions
-	transition          sessiontransition.Controller
-	intermission        sessionIntermission
-	finale              sessionFinale
-	frontend            frontendState
-	frontendMenuPending bool
-	startupMusicLocked  bool
-	startupMusicPending musicPlaybackSource
-	musicPlayer         frontendMusicPlayerState
-	currentMusicSource  musicPlaybackSource
-	nowPlayingLevel     string
-	nowPlayingMusic     string
-	quitPrompt          quitPromptState
-	quitMessageSeq      int
+	g                       *game
+	rt                      sessionRuntime
+	gameFactory             gameplay.RuntimeFactory[Options, *game]
+	bootMap                 *mapdata.Map
+	current                 mapdata.MapName
+	currentTemplate         *mapdata.Map
+	opts                    Options
+	demoRecord              []DemoTic
+	settings                gameplay.PersistentSettings
+	nextMap                 NextMapFunc
+	err                     error
+	musicCtl                *sessionmusic.Playback
+	secretVisited           bool
+	levelCarryover          *playerLevelCarryover
+	faithfulSurface         *ebiten.Image
+	faithfulNearest         *ebiten.Image
+	crtShader               *ebiten.Shader
+	crtPost                 *ebiten.Image
+	crtUniforms             map[string]any
+	gameplaySurface         *ebiten.Image
+	frontendSurface         *ebiten.Image
+	bootSplashImage         *ebiten.Image
+	menuPatchImages         map[string]*ebiten.Image
+	intermissionImages      map[string]*ebiten.Image
+	statusPatchImages       map[string]*ebiten.Image
+	spritePatchImages       map[string]*ebiten.Image
+	messageFontImages       map[rune]*ebiten.Image
+	flatImages              map[string]*ebiten.Image
+	menuSfx                 *sessionaudio.MenuController
+	finalScreenDrawOp       ebiten.DrawImageOptions
+	transition              sessiontransition.Controller
+	intermission            sessionIntermission
+	finale                  sessionFinale
+	frontend                frontendState
+	frontendMenuPending     bool
+	frontendMusicConfig     frontendMusicConfigPending
+	startupMusicLocked      bool
+	startupMusicVisualReady bool
+	startupMusicPending     musicPlaybackSource
+	musicPlayer             frontendMusicPlayerState
+	currentMusicSource      musicPlaybackSource
+	nowPlayingLevel         string
+	nowPlayingMusic         string
+	quitPrompt              quitPromptState
+	quitMessageSeq          int
+}
+
+type frontendMusicConfigPending struct {
+	active        bool
+	backend       music.Backend
+	soundFontPath string
 }
 
 type sessionRuntime interface {
@@ -675,11 +683,12 @@ func (sg *sessionGame) playIntermissionMusic(commercial bool) {
 }
 
 func (sg *sessionGame) releaseStartupMusicIfReady() {
-	if sg == nil || !sg.startupMusicLocked || sg.transitionActive() {
+	if sg == nil || !sg.startupMusicLocked || sg.transitionActive() || !sg.startupMusicVisualReady {
 		return
 	}
 	pending := sg.startupMusicPending
 	sg.startupMusicLocked = false
+	sg.startupMusicVisualReady = false
 	sg.startupMusicPending = musicPlaybackSource{}
 	switch pending.kind {
 	case musicPlaybackSourceTitle:
@@ -714,6 +723,7 @@ func (sg *sessionGame) initSession() {
 	}
 	sg.prewarmWADAssetCaches()
 	sg.startupMusicLocked = sg.shouldShowBootSplash()
+	sg.startupMusicVisualReady = false
 	sg.startupMusicPending = musicPlaybackSource{}
 	runtimehost.RunBootstrap(runtimehost.Bootstrap{
 		BuildRuntime: func() {

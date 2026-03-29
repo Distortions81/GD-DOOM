@@ -79,9 +79,10 @@ func TestStartFrontendQueuesTitleMusicWhileStartupLocked(t *testing.T) {
 
 func TestReleaseStartupMusicStartsQueuedTitleAfterBoot(t *testing.T) {
 	sg := &sessionGame{
-		startupMusicLocked:  true,
-		startupMusicPending: musicPlaybackSource{kind: musicPlaybackSourceTitle},
-		musicCtl:            &sessionmusic.Playback{},
+		startupMusicLocked:      true,
+		startupMusicVisualReady: true,
+		startupMusicPending:     musicPlaybackSource{kind: musicPlaybackSourceTitle},
+		musicCtl:                &sessionmusic.Playback{},
 	}
 
 	sg.releaseStartupMusicIfReady()
@@ -94,6 +95,23 @@ func TestReleaseStartupMusicStartsQueuedTitleAfterBoot(t *testing.T) {
 	}
 	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceTitle {
 		t.Fatalf("currentMusicSource.kind=%d want title", got)
+	}
+}
+
+func TestReleaseStartupMusicWaitsForBootFrame(t *testing.T) {
+	sg := &sessionGame{
+		startupMusicLocked:  true,
+		startupMusicPending: musicPlaybackSource{kind: musicPlaybackSourceTitle},
+		musicCtl:            &sessionmusic.Playback{},
+	}
+
+	sg.releaseStartupMusicIfReady()
+
+	if !sg.startupMusicLocked {
+		t.Fatal("startupMusicLocked should remain set before a boot frame is drawn")
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("currentMusicSource.kind=%d want none before a boot frame is drawn", got)
 	}
 }
 
