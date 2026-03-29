@@ -10,14 +10,18 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"gddoom/internal/media"
 	"gddoom/internal/music"
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/wad"
+
+	"github.com/remeh/sizedwaitgroup"
 )
 
 type dumpMusicTarget struct {
@@ -38,6 +42,14 @@ type dumpMusicTrack struct {
 	fileBase string
 }
 
+type dumpMusicJob struct {
+	target   dumpMusicTarget
+	renderer dumpMusicRenderer
+	track    dumpMusicTrack
+	musData  []byte
+	outPath  string
+}
+
 func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwadPaths []string, explicitSoundFont string, stdout io.Writer, stderr io.Writer) error {
 	outDir = strings.TrimSpace(outDir)
 	if outDir == "" {
@@ -54,6 +66,11 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)
 	}
+	workerLimit := runtime.NumCPU()
+	if workerLimit < 1 {
+		workerLimit = 1
+	}
+	var outputMu sync.Mutex
 	for _, target := range targets {
 		wf, _, err := openWADStack(target.path, target.pwadPaths)
 		if err != nil {
@@ -83,6 +100,7 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 		if err != nil {
 			return fmt.Errorf("resolve music patch bank for %s: %w", target.path, err)
 		}
+		jobs := make([]dumpMusicJob, 0, len(renderers)*len(tracks))
 		for _, renderer := range renderers {
 			renderOut := filepath.Join(wadOut, renderer.label)
 			if err := os.MkdirAll(renderOut, 0o755); err != nil {
@@ -97,17 +115,43 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 				if err != nil {
 					return fmt.Errorf("read %s from %s: %w", track.lumpName, target.path, err)
 				}
-				pcm, err := dumpMusicPCM(patchBank, renderer, musData)
+				jobs = append(jobs, dumpMusicJob{
+					target:   target,
+					renderer: renderer,
+					track:    track,
+					musData:  musData,
+					outPath:  filepath.Join(renderOut, track.fileBase+".wav"),
+				})
+			}
+		}
+		swg := sizedwaitgroup.New(workerLimit)
+		errCh := make(chan error, len(jobs))
+		for _, job := range jobs {
+			job := job
+			swg.Add()
+			go func() {
+				defer swg.Done()
+				pcm, err := dumpMusicPCM(patchBank, job.renderer, job.musData)
 				if err != nil {
-					return fmt.Errorf("render %s with %s for %s: %w", track.lumpName, renderer.label, target.path, err)
+					errCh <- fmt.Errorf("render %s with %s for %s: %w", job.track.lumpName, job.renderer.label, job.target.path, err)
+					return
 				}
-				outPath := filepath.Join(renderOut, track.fileBase+".wav")
-				if err := writePCM16StereoWAV(outPath, music.OutputSampleRate, pcm); err != nil {
-					return fmt.Errorf("write %s: %w", outPath, err)
+				if err := writePCM16StereoWAV(job.outPath, music.OutputSampleRate, pcm); err != nil {
+					errCh <- fmt.Errorf("write %s: %w", job.outPath, err)
+					return
 				}
 				if stdout != nil {
-					fmt.Fprintf(stdout, "dump-music wad=%s renderer=%s track=%s out=%s\n", target.label, renderer.label, track.lumpName, outPath)
+					outputMu.Lock()
+					fmt.Fprintf(stdout, "dump-music wad=%s renderer=%s track=%s out=%s\n", job.target.label, job.renderer.label, job.track.lumpName, job.outPath)
+					outputMu.Unlock()
 				}
+			}()
+		}
+		swg.Wait()
+		close(errCh)
+		for err := range errCh {
+			if err != nil {
+				return err
 			}
 		}
 	}
