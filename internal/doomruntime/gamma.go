@@ -7,7 +7,7 @@ import (
 
 const doomGammaLevels = 5
 
-const defaultGammaLevel = 0
+const defaultGammaLevel = 2
 
 const gammaDisplayGamma = 2.2
 

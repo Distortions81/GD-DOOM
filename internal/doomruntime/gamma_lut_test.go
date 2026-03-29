@@ -76,9 +76,12 @@ func TestGammaTableContainsIdentityStep(t *testing.T) {
 	}
 }
 
-func TestNewGameDefaultsToGammaTwo(t *testing.T) {
+func TestNewGameDefaultsToGammaTwoPointFour(t *testing.T) {
 	g := newGame(&mapdata.Map{}, Options{})
 	if g.gammaLevel != defaultGammaLevel {
 		t.Fatalf("default gammaLevel=%d want %d", g.gammaLevel, defaultGammaLevel)
+	}
+	if got := gammaTargetLevels[g.gammaLevel]; got != 2.4 {
+		t.Fatalf("default gamma target=%.1f want 2.4", got)
 	}
 }
