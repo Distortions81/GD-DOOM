@@ -353,7 +353,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		},
 		DrawQuitPrompt: sg.drawQuitPrompt,
 	})
-	yieldWASMRenderTime(time.Since(drawStart))
+	yieldWASMRenderTime(drawStart)
 }
 
 func (sg *sessionGame) handleGameplayTermination() error {

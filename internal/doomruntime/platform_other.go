@@ -12,4 +12,4 @@ func isWASMBuild() bool {
 	return platformcfg.IsWASMBuild()
 }
 
-func yieldWASMRenderTime(time.Duration) {}
+func yieldWASMRenderTime(time.Time) {}
