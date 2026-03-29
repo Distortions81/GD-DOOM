@@ -2489,7 +2489,7 @@ func (g *iwadPickerGame) Update() error {
 			return nil
 		}
 		g.status = "DONE, STARTING."
-		g.statusUntil = g.tic + 20
+		g.statusUntil = g.tic + 1
 		return nil
 	}
 	g.tic++
