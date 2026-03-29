@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -78,6 +79,7 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 		workerLimit = 1
 	}
 	var outputMu sync.Mutex
+	var meltySynthMu sync.Mutex
 	for _, target := range targets {
 		wf, _, err := openWADStack(target.path, target.pwadPaths)
 		if err != nil {
@@ -162,7 +164,12 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 			swg.Add()
 			go func() {
 				defer swg.Done()
-				pcm, err := dumpMusicPCM(patchBank, job.renderer, job.musData)
+				defer func() {
+					if r := recover(); r != nil {
+						errCh <- fmt.Errorf("panic while rendering %s with %s for %s: %v\n%s", job.track.lumpName, job.renderer.label, job.target.path, r, debug.Stack())
+					}
+				}()
+				pcm, err := dumpMusicPCMConcurrentSafe(patchBank, job.renderer, job.musData, &meltySynthMu)
 				if err != nil {
 					errCh <- fmt.Errorf("render %s with %s for %s: %w", job.track.lumpName, job.renderer.label, job.target.path, err)
 					return
@@ -192,6 +199,14 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 		}
 	}
 	return nil
+}
+
+func dumpMusicPCMConcurrentSafe(bank music.PatchBank, renderer dumpMusicRenderer, musData []byte, meltySynthMu *sync.Mutex) ([]int16, error) {
+	if music.ResolveBackend(renderer.backend) == music.BackendMeltySynth && meltySynthMu != nil {
+		meltySynthMu.Lock()
+		defer meltySynthMu.Unlock()
+	}
+	return dumpMusicPCM(bank, renderer, musData)
 }
 
 func detectDumpMusicTargets(resolvedWADPath string, wadExplicit bool, pwadPaths []string) ([]dumpMusicTarget, error) {
