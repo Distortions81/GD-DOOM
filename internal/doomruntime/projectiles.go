@@ -335,39 +335,62 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		return projectile{}, false
 	}
 	ox, oy, oz := p.x, p.y, p.z
-	nx := ox + p.vx
-	ny := oy + p.vy
-	nz := oz + p.vz
-	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(p, ox, oy, oz, nx, ny, nz)
-	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(p, ox, oy, oz, nx, ny, nz)
-	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
-		var tic int
-		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) && p.kind == projectileFireball {
-			fmt.Printf("projectile-debug tic=%d world=%d phase=advance from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitFrac=%f hitIdx=%d blocked=%t blockFrac=%f floor=%d ceil=%d\n",
-				g.demoTick-1, g.worldTic, ox, oy, oz, nx, ny, nz, hitThing, thingHit.frac, thingHit.idx, blocked, blockFrac, p.floorz, p.ceilz)
+	xmove := p.vx
+	ymove := p.vy
+	if xmove > doomMaxMove {
+		xmove = doomMaxMove
+	} else if xmove < -doomMaxMove {
+		xmove = -doomMaxMove
+	}
+	if ymove > doomMaxMove {
+		ymove = doomMaxMove
+	} else if ymove < -doomMaxMove {
+		ymove = -doomMaxMove
+	}
+	for xmove != 0 || ymove != 0 {
+		var nx, ny int64
+		if abs(xmove) > doomMaxMove/2 || abs(ymove) > doomMaxMove/2 {
+			nx = p.x + xmove/2
+			ny = p.y + ymove/2
+			xmove >>= 1
+			ymove >>= 1
+		} else {
+			nx = p.x + xmove
+			ny = p.y + ymove
+			xmove = 0
+			ymove = 0
 		}
-	}
-	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
-		if thingHit.isPlayer {
-			if dmg := projectileDamage(p); dmg > 0 {
-				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true, p.sourceThing)
-			}
-		} else if g.projectileCanDamageThing(p, thingHit.idx) {
-			if dmg := projectileDamage(p); dmg > 0 {
-				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
+		thingHit, hitThing := g.projectileThingHitAtPosition(p, nx, ny, p.z)
+		blocked, _, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(p, p.x, p.y, p.z, nx, ny, p.z)
+		if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
+			var tic int
+			if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) && p.kind == projectileFireball {
+				fmt.Printf("projectile-debug tic=%d world=%d phase=xy from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitIdx=%d blocked=%t floor=%d ceil=%d\n",
+					g.demoTick-1, g.worldTic, p.x, p.y, p.z, nx, ny, p.z, hitThing, thingHit.idx, blocked, tmfloorz, tmceilingz)
 			}
 		}
-		g.explodeProjectileAt(p, ox, oy, oz)
-		return projectile{}, false
+		if hitThing {
+			if thingHit.isPlayer {
+				if dmg := projectileDamage(p); dmg > 0 {
+					g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.x, p.y, true, p.sourceThing)
+				}
+			} else if thingHit.damage {
+				if dmg := projectileDamage(p); dmg > 0 {
+					g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, p.x, p.y, true)
+				}
+			}
+			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			return projectile{}, false
+		}
+		if blocked {
+			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			return projectile{}, false
+		}
+		p.x = nx
+		p.y = ny
+		p.floorz, p.ceilz = tmfloorz, tmceilingz
 	}
-	if blocked {
-		g.explodeProjectileAt(p, ox, oy, oz)
-		return projectile{}, false
-	}
-	p.x = nx
-	p.y = ny
-	p.floorz, p.ceilz = tmfloorz, tmceilingz
-	p.z = nz
+	p.z += p.vz
 	p.prevX = ox
 	p.prevY = oy
 	p.prevZ = oz
@@ -615,22 +638,22 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 		setInitialRenderPrev(ox, oy, oz)
 		return true
 	}
-	thingHit, hitThing := g.projectileHitsShootableThingAlongPath(*p, ox, oy, oz, nx, ny, nz)
-	blocked, blockFrac, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
+	thingHit, hitThing := g.projectileThingHitAtPosition(*p, nx, ny, oz)
+	blocked, _, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, oz)
 	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 			fmt.Printf("projectile-spawn-debug tic=%d world=%d sourceThing=%d sourceType=%d kind=%d from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitIdx=%d hitFrac=%f blocked=%t blockFrac=%f floor=%d ceil=%d\n",
-				g.demoTick-1, g.worldTic, p.sourceThing, p.sourceType, p.kind, ox, oy, oz, nx, ny, nz,
-				hitThing, thingHit.idx, thingHit.frac, blocked, blockFrac, tmfloorz, tmceilingz)
+				g.demoTick-1, g.worldTic, p.sourceThing, p.sourceType, p.kind, ox, oy, oz, nx, ny, oz,
+				hitThing, thingHit.idx, thingHit.frac, blocked, 1.0, tmfloorz, tmceilingz)
 		}
 	}
-	if hitThing && (!blocked || thingHit.frac <= blockFrac) {
+	if hitThing {
 		if thingHit.isPlayer {
 			if dmg := projectileDamage(*p); dmg > 0 {
 				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true, p.sourceThing)
 			}
-		} else if g.projectileCanDamageThing(*p, thingHit.idx) {
+		} else if thingHit.damage {
 			if dmg := projectileDamage(*p); dmg > 0 {
 				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
 			}
@@ -1174,17 +1197,14 @@ type projectileThingHit struct {
 	x        int64
 	y        int64
 	z        int64
+	damage   bool
 }
 
-func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, nx, ny, nz int64) (projectileThingHit, bool) {
+const doomMaxMove = 30 * fracUnit
+
+func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (projectileThingHit, bool) {
 	if g == nil {
 		return projectileThingHit{}, false
-	}
-	overlapsCircle := func(ax, ay, aradius, bx, by, bradius int64) bool {
-		blockdist := aradius + bradius
-		dx := ax - bx
-		dy := ay - by
-		return dx*dx+dy*dy < blockdist*blockdist
 	}
 	overlapsSquare := func(ax, ay, aradius, bx, by, bradius int64) bool {
 		blockdist := aradius + bradius
@@ -1198,9 +1218,6 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 		}
 		return dx < blockdist && dy < blockdist
 	}
-	trace := divline{x: ox, y: oy, dx: nx - ox, dy: ny - oy}
-	bestFrac := int64(fracUnit + 1)
-	best := projectileThingHit{}
 	if g.m != nil {
 		for i, th := range g.m.Things {
 			if i == p.sourceThing {
@@ -1213,89 +1230,40 @@ func (g *game) projectileHitsShootableThingAlongPath(p projectile, ox, oy, oz, n
 				continue
 			}
 			tx, ty := g.thingPosFixed(i, th)
+			if !overlapsSquare(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+				continue
+			}
 			tz, _, _ := g.thingSupportState(i, th)
 			height := g.thingCurrentHeight(i, th)
-			var (
-				frac int64
-				hx   int64
-				hy   int64
-				hz   int64
-			)
-			if !p.sourcePlayer && isMonster(th.Type) {
-				if actorsOverlapXY(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) && oz <= tz+height && oz+p.height >= tz {
-					frac = fracUnit
-					hx, hy, hz = ox, oy, oz
-				} else {
-					radius := thingTypeRadius(th.Type) + p.radius
-					var ok bool
-					frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
-					if !ok || frac <= 0 || frac > fracUnit {
-						if !overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
-							continue
-						}
-						frac = fracUnit
-					}
-					hx = ox + fixedMul(nx-ox, frac)
-					hy = oy + fixedMul(ny-oy, frac)
-					hz = oz + fixedMul(nz-oz, frac)
-				}
-			} else {
-				radius := thingTypeRadius(th.Type) + p.radius
-				var ok bool
-				frac, ok = lineAttackThingFrac(trace, tx, ty, radius)
-				if !ok || frac <= 0 || frac > fracUnit {
-					overlapsAtDest := overlapsCircle(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
-					if p.sourcePlayer && p.kind == projectileRocket {
-						overlapsAtDest = overlapsAtDest || overlapsSquare(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type))
-					}
-					if !overlapsAtDest {
-						continue
-					}
-					frac = fracUnit
-				}
-				hx = ox + fixedMul(nx-ox, frac)
-				hy = oy + fixedMul(ny-oy, frac)
-				hz = oz + fixedMul(nz-oz, frac)
-			}
-			if frac >= bestFrac {
+			if z > tz+height || z+p.height < tz {
 				continue
 			}
-			if hz > tz+height || hz+p.height < tz {
-				continue
-			}
-			bestFrac = frac
-			best = projectileThingHit{
+			hit := projectileThingHit{
 				idx:      i,
 				isPlayer: false,
-				frac:     float64(frac) / float64(fracUnit),
-				x:        hx,
-				y:        hy,
-				z:        hz,
+				frac:     1,
+				x:        nx,
+				y:        ny,
+				z:        z,
+				damage:   g.projectileCanDamageThing(p, i),
 			}
+			return hit, true
 		}
 	}
-	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && bestFrac > fracUnit {
-		playerFrac, ok := lineAttackThingFrac(trace, g.p.x, g.p.y, playerRadius+p.radius)
-		if !ok || playerFrac <= 0 || playerFrac > fracUnit {
-			if !actorsOverlapXY(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
-				return best, bestFrac <= fracUnit
-			}
-			playerFrac = fracUnit
-		}
-		playerZ := oz + fixedMul(nz-oz, playerFrac)
-		if playerZ <= g.p.z+playerHeight && playerZ+p.height >= g.p.z {
-			best = projectileThingHit{
+	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && overlapsSquare(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
+		if z <= g.p.z+playerHeight && z+p.height >= g.p.z {
+			return projectileThingHit{
 				idx:      -1,
 				isPlayer: true,
-				frac:     float64(playerFrac) / float64(fracUnit),
-				x:        ox + fixedMul(nx-ox, playerFrac),
-				y:        oy + fixedMul(ny-oy, playerFrac),
-				z:        playerZ,
-			}
-			bestFrac = playerFrac
+				frac:     1,
+				x:        nx,
+				y:        ny,
+				z:        z,
+				damage:   true,
+			}, true
 		}
 	}
-	return best, bestFrac <= fracUnit
+	return projectileThingHit{}, false
 }
 
 func projectileHitMessage(kind projectileKind) string {

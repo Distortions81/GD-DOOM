@@ -227,7 +227,9 @@ type bossSpawnCubeSaveState struct {
 	VY        int64
 	VZ        int64
 	TargetIdx int
-	TicsLeft  int
+	StateTics int
+	StateStep int
+	Reaction  int
 }
 
 type bossSpawnFireSaveState struct {
@@ -951,7 +953,9 @@ func captureBossSpawnCubes(src []bossSpawnCube) []bossSpawnCubeSaveState {
 			VY:        cube.vy,
 			VZ:        cube.vz,
 			TargetIdx: cube.targetIdx,
-			TicsLeft:  cube.ticsLeft,
+			StateTics: cube.stateTics,
+			StateStep: cube.stateStep,
+			Reaction:  cube.reaction,
 		}
 	}
 	return dst
@@ -971,7 +975,9 @@ func restoreBossSpawnCubes(src []bossSpawnCubeSaveState) []bossSpawnCube {
 			vy:        cube.VY,
 			vz:        cube.VZ,
 			targetIdx: cube.TargetIdx,
-			ticsLeft:  cube.TicsLeft,
+			stateTics: cube.StateTics,
+			stateStep: cube.StateStep,
+			reaction:  cube.Reaction,
 		}
 	}
 	return dst

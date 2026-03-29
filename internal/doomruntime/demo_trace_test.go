@@ -238,15 +238,31 @@ func TestDemoTraceThingState_UsesExactDoomLostSoulState(t *testing.T) {
 	g := &game{
 		m:              &mapdata.Map{Things: []mapdata.Thing{{Type: 3006}}},
 		thingDead:      []bool{false},
-		thingDoomState: []int{726},
+		thingDoomState: []int{590},
 		thingStateTics: []int{4},
 	}
 
-	if got := demoTraceThingState(g, 0, 3006); got != 726 {
-		t.Fatalf("state=%d want 726", got)
+	if got := demoTraceThingState(g, 0, 3006); got != 590 {
+		t.Fatalf("state=%d want 590", got)
 	}
 	if got := demoTraceThingTics(g, 0, 3006); got != 4 {
 		t.Fatalf("tics=%d want 4", got)
+	}
+}
+
+func TestDemoTraceThingState_UsesExactDoomCacodemonState(t *testing.T) {
+	g := &game{
+		m:              &mapdata.Map{Things: []mapdata.Thing{{Type: 3005}}},
+		thingDead:      []bool{false},
+		thingDoomState: []int{505},
+		thingStateTics: []int{5},
+	}
+
+	if got := demoTraceThingState(g, 0, 3005); got != 505 {
+		t.Fatalf("state=%d want 505", got)
+	}
+	if got := demoTraceThingTics(g, 0, 3005); got != 5 {
+		t.Fatalf("tics=%d want 5", got)
 	}
 }
 

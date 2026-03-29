@@ -290,6 +290,7 @@ func TestTickSkullFlyMomentum_ResetUsesExactDoomSpawnState(t *testing.T) {
 		thingAttackPhase:    []int{2},
 		thingAttackFireTics: []int{-1},
 		thingSkullFly:       []bool{true},
+		thingThreshold:      []int{96},
 		thingMomX:           []int64{0},
 		thingMomY:           []int64{0},
 		thingMomZ:           []int64{3 * fracUnit},
@@ -304,8 +305,8 @@ func TestTickSkullFlyMomentum_ResetUsesExactDoomSpawnState(t *testing.T) {
 	if g.thingSkullFly[0] {
 		t.Fatal("skull fly flag should clear on zero xy momentum")
 	}
-	if got := g.thingDoomState[0]; got != 721 {
-		t.Fatalf("doom state=%d want 721", got)
+	if got := g.thingDoomState[0]; got != 585 {
+		t.Fatalf("doom state=%d want 585", got)
 	}
 	if got := g.thingState[0]; got != monsterStateSpawn {
 		t.Fatalf("compat state=%d want spawn", got)
@@ -313,8 +314,161 @@ func TestTickSkullFlyMomentum_ResetUsesExactDoomSpawnState(t *testing.T) {
 	if got := g.thingStateTics[0]; got != 10 {
 		t.Fatalf("state tics=%d want 10", got)
 	}
+	if got := g.thingThreshold[0]; got != 0 {
+		t.Fatalf("threshold=%d want 0 after A_Look reset", got)
+	}
 	if g.thingResumeChaseNow[0] {
 		t.Fatal("exact lost soul reset should not schedule synthetic resume-chase")
+	}
+}
+
+func TestSetExactDoomMonsterState_CacodemonHeadAttackFiresFromState642(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things:  []mapdata.Thing{{Type: 3005, X: 256, Y: 0}},
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		thingCollected:      []bool{false},
+		thingDead:           []bool{false},
+		thingHP:             []int{400},
+		thingTargetPlayer:   []bool{true},
+		thingTargetIdx:      []int{-1},
+		thingAggro:          []bool{true},
+		thingAngleState:     []uint32{0},
+		thingDoomState:      []int{503},
+		thingState:          []monsterThinkState{monsterStateSee},
+		thingStatePhase:     []int{0},
+		thingStateTics:      []int{3},
+		thingAttackTics:     []int{0},
+		thingAttackPhase:    []int{0},
+		thingAttackFireTics: []int{-1},
+		thingZState:         []int64{0},
+		thingFloorState:     []int64{0},
+		thingCeilState:      []int64{128 * fracUnit},
+		thingSupportValid:   []bool{true},
+		thingX:              []int64{256 * fracUnit},
+		thingY:              []int64{0},
+		thingSectorCache:    []int{0},
+		thingBlockCell:      []int{-1},
+		sectorFloor:         []int64{0},
+		sectorCeil:          []int64{128 * fracUnit},
+		p:                   player{x: 0, y: 0, z: 0},
+		playerMobjHealth:    100,
+		stats:               playerStats{Health: 100},
+	}
+
+	g.setExactDoomMonsterState(0, 3005, 506)
+
+	if got := g.thingDoomState[0]; got != 506 {
+		t.Fatalf("doom state=%d want 506", got)
+	}
+	if got := g.thingAttackPhase[0]; got != 2 {
+		t.Fatalf("attack phase=%d want 2", got)
+	}
+	if got := len(g.projectiles); got != 1 {
+		t.Fatalf("projectile count=%d want 1 after A_HeadAttack", got)
+	}
+	if got := g.projectiles[0].sourceType; got != 3005 {
+		t.Fatalf("spawned projectile sourceType=%d want 3005", got)
+	}
+}
+
+func TestLostSoulChargeTargetAt_IgnoresMapThingsThatDoNotSpawnThisSession(t *testing.T) {
+	g := &game{
+		isDead: true,
+		stats:  playerStats{Health: 0},
+		opts: Options{
+			SkillLevel: 3,
+			GameMode:   gameModeSingle,
+		},
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3006, X: 0, Y: 0, Flags: skillMediumBits},
+				{Type: 2049, X: 0, Y: 0, Flags: 0}, // shell box with no skill bits; Doom does not spawn it
+			},
+		},
+		thingCollected: []bool{false, false},
+		thingDead:      []bool{false, false},
+	}
+	g.initPhysics()
+
+	if got, ok := g.lostSoulChargeTargetAt(0, g.m.Things[0], 0, 0, 0); ok {
+		t.Fatalf("hit target=%+v want none for non-spawned pickup", got)
+	}
+}
+
+func TestTickSkullFlyMomentum_CeilingClipClearsReflectedMomZLikeDoom(t *testing.T) {
+	g := &game{
+		isDead: true,
+		stats:  playerStats{Health: 0},
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3006, X: 0, Y: 0}},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: -88, CeilingHeight: -32},
+			},
+		},
+		thingCollected:    []bool{false},
+		thingSkullFly:     []bool{true},
+		thingMomX:         []int64{20 * fracUnit},
+		thingMomY:         []int64{0},
+		thingMomZ:         []int64{415061},
+		thingZState:       []int64{-88 * fracUnit},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingFloorState:   []int64{-88 * fracUnit},
+		thingCeilState:    []int64{-32 * fracUnit},
+		thingSupportValid: []bool{true},
+		sectorFloor:       []int64{-88 * fracUnit},
+		sectorCeil:        []int64{-32 * fracUnit},
+	}
+	g.initPhysics()
+
+	g.tickSkullFlyMomentum(0, g.m.Things[0])
+
+	if got := g.thingMomZ[0]; got != 0 {
+		t.Fatalf("momz=%d want=0 after skull ceiling clip", got)
+	}
+}
+
+func TestTickSkullFlyMomentum_DoesNotSplitLargeNegativeMomentumLikeDoom(t *testing.T) {
+	g := &game{
+		isDead: true,
+		stats:  playerStats{Health: 0},
+		opts: Options{
+			SkillLevel: 3,
+			GameMode:   gameModeSingle,
+		},
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3006, X: 300, Y: 300, Flags: skillMediumBits},
+				{Type: 2049, X: 250, Y: 250, Flags: skillMediumBits},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:    []bool{false, false},
+		thingDead:         []bool{false, false},
+		thingHP:           []int{100, 0},
+		thingSkullFly:     []bool{true, false},
+		thingMomX:         []int64{-20 * fracUnit, 0},
+		thingMomY:         []int64{-20 * fracUnit, 0},
+		thingMomZ:         []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+	}
+	g.initPhysics()
+
+	startX, startY := g.thingPosFixed(0, g.m.Things[0])
+	g.tickSkullFlyMomentum(0, g.m.Things[0])
+	gotX, gotY := g.thingPosFixed(0, g.m.Things[0])
+
+	if gotX != startX || gotY != startY {
+		t.Fatalf("skull position=(%d,%d) want unchanged at (%d,%d) after full-step collision", gotX, gotY, startX, startY)
+	}
+	if g.thingSkullFly[0] {
+		t.Fatal("skull fly flag should clear after colliding on the unsplit negative step")
 	}
 }
 

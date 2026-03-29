@@ -162,6 +162,80 @@ func TestBossCubeResolvesIntoSpawnedMonster(t *testing.T) {
 	}
 }
 
+func TestBossCubeSpawnUsesDoomSpawnActionCadence(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 89, X: 0, Y: 0},
+				{Type: 87, X: 0, Y: 120},
+			},
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
+		},
+		opts:                Options{SkillLevel: 3},
+		thingCollected:      []bool{false, false},
+		thingX:              []int64{0, 0},
+		thingY:              []int64{0, 120 * fracUnit},
+		thingZState:         []int64{0, 0},
+		thingFloorState:     []int64{0, 0},
+		thingCeilState:      []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid:   []bool{true, true},
+		thingSectorCache:    []int{0, 0},
+		thingBlockCell:      []int{-1, -1},
+		thingHP:             []int{1000, 1000},
+		thingAggro:          []bool{false, false},
+		thingCooldown:       []int{0, 0},
+		thingMoveDir:        []monsterMoveDir{monsterDirNoDir, monsterDirNoDir},
+		thingMoveCount:      []int{0, 0},
+		thingJustAtk:        []bool{false, false},
+		thingJustHit:        []bool{false, false},
+		thingReactionTics:   []int{0, 0},
+		thingWakeTics:       []int{0, 0},
+		thingLastLook:       []int{0, 0},
+		thingDead:           []bool{false, false},
+		thingDeathTics:      []int{0, 0},
+		thingAttackTics:     []int{0, 0},
+		thingAttackPhase:    []int{0, 0},
+		thingAttackFireTics: []int{-1, -1},
+		thingPainTics:       []int{0, 0},
+		thingThinkWait:      []int{0, 0},
+		thingState:          []monsterThinkState{monsterStateSpawn, monsterStateSpawn},
+		thingStateTics:      []int{0, 0},
+		thingStatePhase:     []int{0, 0},
+		thingWorldAnimRef:   []thingAnimRefState{{}, {}},
+		sectorFloor:         []int64{0},
+		sectorCeil:          []int64{128 * fracUnit},
+	}
+
+	if !g.spawnBossCube(0, 1) {
+		t.Fatal("spawnBossCube should succeed")
+	}
+	if got := len(g.bossSpawnCubes); got != 1 {
+		t.Fatalf("cube count=%d want=1", got)
+	}
+	if got := g.bossSpawnCubes[0].reaction; got != 3 {
+		t.Fatalf("reaction after initial A_SpawnSound=%d want=3", got)
+	}
+
+	for tick := 0; tick < 8; tick++ {
+		g.tickBossSpawnCubes()
+	}
+	if got := len(g.bossSpawnCubes); got != 1 {
+		t.Fatalf("cube count after 8 ticks=%d want=1", got)
+	}
+	if got := len(g.m.Things); got != 2 {
+		t.Fatalf("thing count after 8 ticks=%d want=2", got)
+	}
+
+	g.tickBossSpawnCubes()
+	if got := len(g.bossSpawnCubes); got != 0 {
+		t.Fatalf("cube count after 9 ticks=%d want=0", got)
+	}
+	if got := len(g.m.Things); got != 3 {
+		t.Fatalf("thing count after resolve=%d want=3", got)
+	}
+}
+
 func TestBossBrainDeathRequestsExit(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

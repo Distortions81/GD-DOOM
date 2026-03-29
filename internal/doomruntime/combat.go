@@ -1067,26 +1067,22 @@ func (g *game) lineAttackTrace(actor lineAttackActor, angle uint32, distance, sl
 			}
 			hitLine := (ld.flags & mlTwoSided) == 0
 			if !hitLine {
-				opentop, openbottom, _, openrange := g.lineOpening(ld)
-				if openrange <= 0 {
-					hitLine = true
-				} else {
-					dist := fixedMul(distance, in.frac)
-					if dist <= 0 {
-						continue
+				opentop, openbottom, _, _ := g.lineOpening(ld)
+				dist := fixedMul(distance, in.frac)
+				if dist <= 0 {
+					continue
+				}
+				front, back := g.physLineSectors(ld)
+				if front >= 0 && back >= 0 && g.sectorFloor[front] != g.sectorFloor[back] {
+					openSlope := fixedDiv(openbottom-actor.shootZ, dist)
+					if openSlope > slope {
+						hitLine = true
 					}
-					front, back := g.physLineSectors(ld)
-					if front >= 0 && back >= 0 && g.sectorFloor[front] != g.sectorFloor[back] {
-						openSlope := fixedDiv(openbottom-actor.shootZ, dist)
-						if openSlope > slope {
-							hitLine = true
-						}
-					}
-					if !hitLine && front >= 0 && back >= 0 && g.sectorCeil[front] != g.sectorCeil[back] {
-						openSlope := fixedDiv(opentop-actor.shootZ, dist)
-						if openSlope < slope {
-							hitLine = true
-						}
+				}
+				if !hitLine && front >= 0 && back >= 0 && g.sectorCeil[front] != g.sectorCeil[back] {
+					openSlope := fixedDiv(opentop-actor.shootZ, dist)
+					if openSlope < slope {
+						hitLine = true
 					}
 				}
 			}
@@ -1164,8 +1160,10 @@ func (g *game) debugLineAttackIntercepts(actor lineAttackActor, angle uint32, di
 		}
 		if in.isLine {
 			ld := g.lines[in.line]
-			fmt.Printf("line-attack-debug intercept=%d frac=%d kind=line line=%d special=%d flags=%d\n",
-				idx, in.frac, ld.idx, ld.special, ld.flags)
+			front, back := g.physLineSectors(ld)
+			opentop, openbottom, lowfloor, openrange := g.lineOpening(ld)
+			fmt.Printf("line-attack-debug intercept=%d frac=%d kind=line line=%d special=%d flags=%d front=%d back=%d opentop=%d openbottom=%d lowfloor=%d openrange=%d\n",
+				idx, in.frac, ld.idx, ld.special, ld.flags, front, back, opentop, openbottom, lowfloor, openrange)
 			continue
 		}
 		x, y, z, height, radius, noBlood, shootable, ok := g.lineAttackTargetState(in.target)

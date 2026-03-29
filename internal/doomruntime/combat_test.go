@@ -1662,6 +1662,58 @@ func TestMonsterHitscanAttackUsesDoomMissileRange(t *testing.T) {
 	}
 }
 
+func TestLineAttackTraceSkipsZeroOpenrangeTwoSidedLineLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 0},
+			},
+		},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 0},
+		lines: []physLine{
+			{
+				idx:      0,
+				x1:       64 * fracUnit,
+				y1:       -64 * fracUnit,
+				x2:       64 * fracUnit,
+				y2:       64 * fracUnit,
+				dx:       0,
+				dy:       128 * fracUnit,
+				flags:    mlTwoSided,
+				sideNum0: 0,
+				sideNum1: 1,
+			},
+			{
+				idx:      1,
+				x1:       96 * fracUnit,
+				y1:       -64 * fracUnit,
+				x2:       96 * fracUnit,
+				y2:       64 * fracUnit,
+				dx:       0,
+				dy:       128 * fracUnit,
+				sideNum0: 0,
+				sideNum1: -1,
+			},
+		},
+	}
+	actor := lineAttackActor{x: 0, y: 0, shootZ: 64 * fracUnit}
+
+	outcome := g.lineAttackTrace(actor, 0, 128*fracUnit, -fracUnit, false)
+
+	if !outcome.spawnPuff {
+		t.Fatal("expected wall puff impact")
+	}
+	if outcome.impactX <= 80*fracUnit {
+		t.Fatalf("impactX=%d want beyond zero-openrange line", outcome.impactX)
+	}
+}
+
 func TestMonsterPainSoundEventMapping(t *testing.T) {
 	if got := monsterPainSoundEvent(3006); got != soundEventMonsterPainDemon {
 		t.Fatalf("lost soul pain event=%v want=%v", got, soundEventMonsterPainDemon)

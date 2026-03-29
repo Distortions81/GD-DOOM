@@ -328,6 +328,53 @@ func TestHeightClipThing_RemovesDroppedItemsThatNoLongerFitLikeDoom(t *testing.T
 	}
 }
 
+func TestTeleportDestinationDoesNotEnterBlockmapOrHeightClipLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{FloorHeight: -72, CeilingHeight: 0},
+			},
+			Things: []mapdata.Thing{
+				{X: 32, Y: 32, Type: teleportThingType},
+			},
+		},
+		sectorFloor:       []int64{-72 * fracUnit},
+		sectorCeil:        []int64{0},
+		thingCollected:    []bool{false},
+		thingX:            []int64{32 * fracUnit},
+		thingY:            []int64{32 * fracUnit},
+		thingZState:       []int64{-72 * fracUnit},
+		thingFloorState:   []int64{-72 * fracUnit},
+		thingCeilState:    []int64{0},
+		thingSupportValid: []bool{true},
+		bmapOriginX:       0,
+		bmapOriginY:       0,
+		bmapWidth:         1,
+		bmapHeight:        1,
+		thingBlockCell:    []int{-1},
+		thingBlockCells:   make([][]int, 1),
+	}
+	g.rebuildThingBlockmap()
+
+	if got := g.thingBlockCell[0]; got != -1 {
+		t.Fatalf("teleport destination block cell=%d want -1", got)
+	}
+	if got := len(g.thingBlockCells[0]); got != 0 {
+		t.Fatalf("teleport destination block cell population=%d want 0", got)
+	}
+
+	g.sectorFloor[0] = -76 * fracUnit
+	if !g.heightClipThing(0, g.m.Things[0]) {
+		t.Fatal("heightClipThing returned false for teleport destination")
+	}
+	if got := g.thingFloorState[0]; got != -72*fracUnit {
+		t.Fatalf("teleport destination floorz=%d want unchanged %d", got, -72*fracUnit)
+	}
+	if got := g.thingZState[0]; got != -72*fracUnit {
+		t.Fatalf("teleport destination z=%d want unchanged %d", got, -72*fracUnit)
+	}
+}
+
 func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -858,6 +905,9 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 		thingAngleState:   []uint32{0, thingDegToWorldAngle(90)},
 		thingMoveDir:      []monsterMoveDir{monsterDirEast, monsterDirNoDir},
 		thingMoveCount:    []int{7, 0},
+		thingMomX:         []int64{5 * fracUnit, 0},
+		thingMomY:         []int64{3 * fracUnit, 0},
+		thingMomZ:         []int64{2 * fracUnit, 0},
 		p: player{
 			x:      320 * fracUnit,
 			y:      320 * fracUnit,
@@ -877,6 +927,9 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 	}
 	if g.thingMoveDir[0] != monsterDirEast || g.thingMoveCount[0] != 7 {
 		t.Fatalf("monster move state=%v/%d want east/7", g.thingMoveDir[0], g.thingMoveCount[0])
+	}
+	if g.thingMomX[0] != 0 || g.thingMomY[0] != 0 || g.thingMomZ[0] != 0 {
+		t.Fatalf("monster momentum=(%d,%d,%d) want (0,0,0)", g.thingMomX[0], g.thingMomY[0], g.thingMomZ[0])
 	}
 	if g.p.reactionTime != 0 {
 		t.Fatalf("player reactionTime=%d want 0", g.p.reactionTime)

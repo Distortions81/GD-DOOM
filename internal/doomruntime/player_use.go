@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -91,23 +90,28 @@ const (
 func (g *game) peekUseTargetLine() (int, useTraceResult) {
 	px := g.p.x
 	py := g.p.y
-	ang := angleToRadians(g.p.angle)
-	fx := int64(math.Cos(ang) * useRange)
-	fy := int64(math.Sin(ang) * useRange)
-	x2 := px + fx
-	y2 := py + fy
+	x2 := px + int64(useRange>>fracBits)*doomFineCosine(g.p.angle)
+	y2 := py + int64(useRange>>fracBits)*doomFineSineAtAngle(g.p.angle)
 
-	intercepts := make([]intercept, 0, 16)
-	for _, ld := range g.lines {
-		frac, ok := segmentIntersectFrac(px, py, x2, y2, ld.x1, ld.y1, ld.x2, ld.y2)
-		if !ok {
-			continue
+	debugUse := false
+	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_USE_TIC")); want != "" {
+		if want == fmt.Sprint(g.demoTick-1) || want == fmt.Sprint(g.worldTic) {
+			debugUse = true
 		}
-		intercepts = append(intercepts, intercept{frac: frac, line: ld.idx})
 	}
-	sortUseIntercepts(intercepts, g.lineSpecial)
+	intercepts := g.collectUseLineIntercepts(px, py, x2, y2)
+	if debugUse {
+		fmt.Printf("use-debug tic=%d world=%d start=(%d,%d) end=(%d,%d) angle=%d intercepts=%d\n",
+			g.demoTick-1, g.worldTic, px, py, x2, y2, g.p.angle, len(intercepts))
+	}
 
 	for _, in := range intercepts {
+		if in.frac > fracUnit {
+			if debugUse {
+				fmt.Printf("use-debug tic=%d world=%d stop-frac=%d over-range\n", g.demoTick-1, g.worldTic, in.frac)
+			}
+			return -1, useTraceNone
+		}
 		pi := -1
 		if in.line >= 0 && in.line < len(g.physForLine) {
 			pi = g.physForLine[in.line]
@@ -117,6 +121,11 @@ func (g *game) peekUseTargetLine() (int, useTraceResult) {
 		}
 		ld := g.lines[pi]
 		special := g.lineSpecial[ld.idx]
+		if debugUse {
+			_, _, _, openrange := g.lineOpening(ld)
+			fmt.Printf("use-debug tic=%d world=%d line=%d frac=%d special=%d openrange=%d twosided=%t\n",
+				g.demoTick-1, g.worldTic, ld.idx, in.frac, special, openrange, ld.sideNum1 >= 0)
+		}
 		if special == 0 {
 			_, _, _, openrange := g.lineOpening(ld)
 			if openrange <= 0 {
@@ -129,28 +138,138 @@ func (g *game) peekUseTargetLine() (int, useTraceResult) {
 	return -1, useTraceNone
 }
 
-func sortUseIntercepts(intercepts []intercept, lineSpecial []uint16) {
-	const eps = 1e-6
-	sort.SliceStable(intercepts, func(i, j int) bool {
-		di := intercepts[i]
-		dj := intercepts[j]
-		if math.Abs(di.frac-dj.frac) <= eps {
-			si := uint16(0)
-			if di.line >= 0 && di.line < len(lineSpecial) {
-				si = lineSpecial[di.line]
-			}
-			sj := uint16(0)
-			if dj.line >= 0 && dj.line < len(lineSpecial) {
-				sj = lineSpecial[dj.line]
-			}
-			if (si != 0) != (sj != 0) {
-				return si != 0
-			}
-			// Keep tie behavior deterministic for equal-distance hits.
-			return di.line < dj.line
+type useLineIntercept struct {
+	frac  int64
+	order int
+	line  int
+}
+
+func (g *game) collectUseLineIntercepts(x1, y1, x2, y2 int64) []useLineIntercept {
+	if g == nil {
+		return nil
+	}
+	if len(g.lineValid) < len(g.lines) {
+		g.lineValid = append(g.lineValid, make([]int, len(g.lines)-len(g.lineValid))...)
+	}
+	trace := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
+	intercepts := make([]useLineIntercept, 0, 16)
+	order := 0
+
+	appendLine := func(physIdx int) {
+		if physIdx < 0 || physIdx >= len(g.lines) {
+			return
 		}
-		return di.frac < dj.frac
+		if g.lineValid[physIdx] == g.validCount {
+			return
+		}
+		g.lineValid[physIdx] = g.validCount
+		ld := g.lines[physIdx]
+		var s1, s2 int
+		if trace.dx > 16*fracUnit || trace.dy > 16*fracUnit || trace.dx < -16*fracUnit || trace.dy < -16*fracUnit {
+			s1 = doomPointOnDivlineSide(ld.x1, ld.y1, trace)
+			s2 = doomPointOnDivlineSide(ld.x2, ld.y2, trace)
+		} else {
+			s1 = g.pointOnLineSide(trace.x, trace.y, ld)
+			s2 = g.pointOnLineSide(trace.x+trace.dx, trace.y+trace.dy, ld)
+		}
+		if s1 == s2 {
+			return
+		}
+		frac := interceptVector(trace, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy})
+		if frac < 0 {
+			return
+		}
+		intercepts = append(intercepts, useLineIntercept{frac: frac, order: order, line: ld.idx})
+		order++
+	}
+
+	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		const (
+			mapBlockShift = fracBits + 7
+			mapBToFrac    = 7
+		)
+		sx := x1
+		sy := y1
+		ex := x2
+		ey := y2
+		if ((sx - g.bmapOriginX) & ((1 << mapBlockShift) - 1)) == 0 {
+			sx += fracUnit
+		}
+		if ((sy - g.bmapOriginY) & ((1 << mapBlockShift) - 1)) == 0 {
+			sy += fracUnit
+		}
+
+		rx1 := sx - g.bmapOriginX
+		ry1 := sy - g.bmapOriginY
+		rx2 := ex - g.bmapOriginX
+		ry2 := ey - g.bmapOriginY
+
+		xt1 := int(rx1 >> mapBlockShift)
+		yt1 := int(ry1 >> mapBlockShift)
+		xt2 := int(rx2 >> mapBlockShift)
+		yt2 := int(ry2 >> mapBlockShift)
+
+		mapxstep, mapystep := 0, 0
+		xstep, ystep := int64(256*fracUnit), int64(256*fracUnit)
+		partial := int64(fracUnit)
+
+		if xt2 > xt1 {
+			mapxstep = 1
+			partial = fracUnit - ((rx1 >> mapBToFrac) & (fracUnit - 1))
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		} else if xt2 < xt1 {
+			mapxstep = -1
+			partial = (rx1 >> mapBToFrac) & (fracUnit - 1)
+			ystep = fixedDiv(ry2-ry1, abs(rx2-rx1))
+		}
+		yintercept := (ry1 >> mapBToFrac) + fixedMul(partial, ystep)
+
+		if yt2 > yt1 {
+			mapystep = 1
+			partial = fracUnit - ((ry1 >> mapBToFrac) & (fracUnit - 1))
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		} else if yt2 < yt1 {
+			mapystep = -1
+			partial = (ry1 >> mapBToFrac) & (fracUnit - 1)
+			xstep = fixedDiv(rx2-rx1, abs(ry2-ry1))
+		}
+		xintercept := (rx1 >> mapBToFrac) + fixedMul(partial, xstep)
+
+		mapx, mapy := xt1, yt1
+		g.validCount++
+		for count := 0; count < 64; count++ {
+			_ = g.blockLinesIterator(mapx, mapy, func(lineIdx int) bool {
+				if lineIdx < 0 || lineIdx >= len(g.physForLine) {
+					return true
+				}
+				appendLine(g.physForLine[lineIdx])
+				return true
+			})
+			if mapx == xt2 && mapy == yt2 {
+				break
+			}
+			if (yintercept >> fracBits) == int64(mapy) {
+				yintercept += ystep
+				mapx += mapxstep
+			} else if (xintercept >> fracBits) == int64(mapx) {
+				xintercept += xstep
+				mapy += mapystep
+			}
+		}
+	} else {
+		g.validCount++
+		for physIdx := range g.lines {
+			appendLine(physIdx)
+		}
+	}
+
+	sort.SliceStable(intercepts, func(i, j int) bool {
+		if intercepts[i].frac == intercepts[j].frac {
+			return intercepts[i].order < intercepts[j].order
+		}
+		return intercepts[i].frac < intercepts[j].frac
 	})
+	return intercepts
 }
 
 func (g *game) useSpecialLine(lineIdx int, side int) {

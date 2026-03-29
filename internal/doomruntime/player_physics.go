@@ -662,6 +662,10 @@ func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int6
 }
 
 func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool) (int64, int64, int64, bool) {
+	return g.checkPositionForActorWithThingPolicy(x, y, radius, blockMonsterLines, moverThingIdx, moverIsMonster, false)
+}
+
+func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool, skipThingBlock bool) (int64, int64, int64, bool) {
 	if moverThingIdx >= 0 {
 		if moverThingIdx >= len(g.thingProbeSpecialLines) {
 			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
@@ -714,7 +718,7 @@ func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool,
 		debugProbef("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 	}
 
-	if g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
+	if !skipThingBlock && g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
 		debugProbef("blocked by thing")
 		return 0, 0, 0, false
 	}

@@ -503,6 +503,9 @@ func (g *game) heightClipThingsInSector(sec int) {
 		return
 	}
 	for i, th := range g.m.Things {
+		if !thingTypeUsesBlockmap(th.Type) {
+			continue
+		}
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
 			continue
 		}
@@ -516,6 +519,9 @@ func (g *game) heightClipThingsInSector(sec int) {
 func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return false
+	}
+	if !thingTypeUsesBlockmap(th.Type) {
+		return true
 	}
 	if i < len(g.thingGibbed) && g.thingGibbed[i] && i < len(g.thingGibTick) && g.thingGibTick[i] == g.worldTic {
 		return true
@@ -1195,6 +1201,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.setThingPosFixed(actorIdx, tx, ty)
 			g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
 			g.setThingWorldAngle(actorIdx, destAngle)
+			g.setThingMomentum(actorIdx, 0, 0, 0)
 			g.snapThingRenderState(actorIdx)
 		}
 		g.spawnTeleportFog(actorX, actorY, actorZ)

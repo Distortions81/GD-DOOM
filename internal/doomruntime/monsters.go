@@ -63,6 +63,7 @@ const (
 	doomMonsterActionCPosRefire
 	doomMonsterActionPain
 	doomMonsterActionSkullAttack
+	doomMonsterActionHeadAttack
 )
 
 const noDoomMonsterState = -1
@@ -109,7 +110,7 @@ var (
 
 func monsterUsesExactDoomStateMachine(typ int16) bool {
 	switch typ {
-	case 3004, 9, 65, 3006:
+	case 3004, 9, 65, 3005, 3006:
 		return true
 	default:
 		return false
@@ -124,8 +125,10 @@ func monsterInitialDoomState(typ int16) int {
 		return 208
 	case 65:
 		return 406
+	case 3005:
+		return 502
 	case 3006:
-		return 721
+		return 585
 	default:
 		return noDoomMonsterState
 	}
@@ -139,8 +142,10 @@ func monsterDoomSeeState(typ int16) int {
 		return 210
 	case 65:
 		return 408
+	case 3005:
+		return 503
 	case 3006:
-		return 723
+		return 587
 	default:
 		return noDoomMonsterState
 	}
@@ -154,8 +159,10 @@ func monsterDoomPainState(typ int16) int {
 		return 221
 	case 65:
 		return 420
+	case 3005:
+		return 507
 	case 3006:
-		return 729
+		return 593
 	default:
 		return noDoomMonsterState
 	}
@@ -169,8 +176,10 @@ func monsterDoomMissileState(typ int16) int {
 		return 218
 	case 65:
 		return 416
+	case 3005:
+		return 504
 	case 3006:
-		return 725
+		return 589
 	default:
 		return noDoomMonsterState
 	}
@@ -270,26 +279,42 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 		return doomMonsterStateDef{tics: 3, next: 421, action: doomMonsterActionNone}, true
 	case 421:
 		return doomMonsterStateDef{tics: 3, next: 408, action: doomMonsterActionPain}, true
-	case 721:
-		return doomMonsterStateDef{tics: 10, next: 722, action: doomMonsterActionLook}, true
-	case 722:
-		return doomMonsterStateDef{tics: 10, next: 721, action: doomMonsterActionLook}, true
-	case 723:
-		return doomMonsterStateDef{tics: 6, next: 724, action: doomMonsterActionChase}, true
-	case 724:
-		return doomMonsterStateDef{tics: 6, next: 723, action: doomMonsterActionChase}, true
-	case 725:
-		return doomMonsterStateDef{tics: 10, next: 726, action: doomMonsterActionFaceTarget}, true
-	case 726:
-		return doomMonsterStateDef{tics: 4, next: 727, action: doomMonsterActionSkullAttack}, true
-	case 727:
-		return doomMonsterStateDef{tics: 4, next: 728, action: doomMonsterActionNone}, true
-	case 728:
-		return doomMonsterStateDef{tics: 4, next: 727, action: doomMonsterActionNone}, true
-	case 729:
-		return doomMonsterStateDef{tics: 3, next: 730, action: doomMonsterActionNone}, true
-	case 730:
-		return doomMonsterStateDef{tics: 3, next: 723, action: doomMonsterActionPain}, true
+	case 502:
+		return doomMonsterStateDef{tics: 10, next: 502, action: doomMonsterActionLook}, true
+	case 503:
+		return doomMonsterStateDef{tics: 3, next: 503, action: doomMonsterActionChase}, true
+	case 504:
+		return doomMonsterStateDef{tics: 5, next: 505, action: doomMonsterActionFaceTarget}, true
+	case 505:
+		return doomMonsterStateDef{tics: 5, next: 506, action: doomMonsterActionFaceTarget}, true
+	case 506:
+		return doomMonsterStateDef{tics: 5, next: 503, action: doomMonsterActionHeadAttack}, true
+	case 507:
+		return doomMonsterStateDef{tics: 3, next: 508, action: doomMonsterActionNone}, true
+	case 508:
+		return doomMonsterStateDef{tics: 3, next: 509, action: doomMonsterActionPain}, true
+	case 509:
+		return doomMonsterStateDef{tics: 6, next: 503, action: doomMonsterActionNone}, true
+	case 585:
+		return doomMonsterStateDef{tics: 10, next: 586, action: doomMonsterActionLook}, true
+	case 586:
+		return doomMonsterStateDef{tics: 10, next: 585, action: doomMonsterActionLook}, true
+	case 587:
+		return doomMonsterStateDef{tics: 6, next: 588, action: doomMonsterActionChase}, true
+	case 588:
+		return doomMonsterStateDef{tics: 6, next: 587, action: doomMonsterActionChase}, true
+	case 589:
+		return doomMonsterStateDef{tics: 10, next: 590, action: doomMonsterActionFaceTarget}, true
+	case 590:
+		return doomMonsterStateDef{tics: 4, next: 591, action: doomMonsterActionSkullAttack}, true
+	case 591:
+		return doomMonsterStateDef{tics: 4, next: 592, action: doomMonsterActionNone}, true
+	case 592:
+		return doomMonsterStateDef{tics: 4, next: 591, action: doomMonsterActionNone}, true
+	case 593:
+		return doomMonsterStateDef{tics: 3, next: 594, action: doomMonsterActionNone}, true
+	case 594:
+		return doomMonsterStateDef{tics: 3, next: 587, action: doomMonsterActionPain}, true
 	default:
 		return doomMonsterStateDef{}, false
 	}
@@ -297,15 +322,25 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 
 func monsterDoomStateFrameLetter(state int) (byte, bool) {
 	switch state {
-	case 174, 176, 177, 208, 210, 211, 406, 408, 409, 721, 723:
+	case 174, 176, 177, 208, 210, 211, 406, 408, 409, 502, 503, 585, 587:
 		return 'A', true
-	case 175, 209, 407, 722, 724:
+	case 504:
 		return 'B', true
-	case 725, 727:
+	case 505:
 		return 'C', true
-	case 726, 728:
+	case 506:
 		return 'D', true
-	case 729, 730:
+	case 507, 508:
+		return 'E', true
+	case 509:
+		return 'F', true
+	case 175, 209, 407, 586, 588:
+		return 'B', true
+	case 589, 591:
+		return 'C', true
+	case 590, 592:
+		return 'D', true
+	case 593, 594:
 		return 'E', true
 	case 178, 179, 212, 213, 410, 411:
 		return 'B', true
@@ -363,16 +398,27 @@ func monsterDoomCompatState(typ int16, state int) (monsterThinkState, int, int) 
 		case state >= 420 && state <= 421:
 			return monsterStatePain, state - 420, 0
 		}
+	case 3005:
+		switch {
+		case state == 502:
+			return monsterStateSpawn, 0, 0
+		case state == 503:
+			return monsterStateSee, 0, 0
+		case state >= 504 && state <= 506:
+			return monsterStateAttack, 0, state - 504
+		case state >= 507 && state <= 509:
+			return monsterStatePain, state - 507, 0
+		}
 	case 3006:
 		switch {
-		case state >= 721 && state <= 722:
-			return monsterStateSpawn, state - 721, 0
-		case state >= 723 && state <= 724:
-			return monsterStateSee, state - 723, 0
-		case state >= 725 && state <= 728:
-			return monsterStateAttack, 0, state - 725
-		case state >= 729 && state <= 730:
-			return monsterStatePain, state - 729, 0
+		case state >= 585 && state <= 586:
+			return monsterStateSpawn, state - 585, 0
+		case state >= 587 && state <= 588:
+			return monsterStateSee, state - 587, 0
+		case state >= 589 && state <= 592:
+			return monsterStateAttack, 0, state - 589
+		case state >= 593 && state <= 594:
+			return monsterStatePain, state - 593, 0
 		}
 	}
 	return monsterStateSee, 0, 0
@@ -400,13 +446,19 @@ func monsterDoomAttackRemainingTics(state int) int {
 		return 5
 	case 419:
 		return 1
-	case 725:
+	case 504:
+		return 15
+	case 505:
+		return 10
+	case 506:
+		return 5
+	case 589:
 		return 22
-	case 726:
+	case 590:
 		return 12
-	case 727:
+	case 591:
 		return 8
-	case 728:
+	case 592:
 		return 4
 	default:
 		return 0
@@ -427,9 +479,15 @@ func monsterDoomPainRemainingTics(state int) int {
 		return 6
 	case 421:
 		return 3
-	case 729:
+	case 507:
+		return 12
+	case 508:
+		return 9
+	case 509:
 		return 6
-	case 730:
+	case 593:
+		return 6
+	case 594:
 		return 3
 	default:
 		return 0
@@ -1577,6 +1635,9 @@ func (g *game) runExactDoomMonsterAction(i int, typ int16, state int, action doo
 	}
 	switch action {
 	case doomMonsterActionLook:
+		if i < len(g.thingThreshold) {
+			g.thingThreshold[i] = 0
+		}
 		if _, wake := g.monsterAcquireSectorSoundTarget(i, tx, ty); wake || g.monsterLookForPlayer(i, false, tx, ty) {
 			if i < len(g.thingAggro) {
 				g.thingAggro[i] = true
@@ -1604,6 +1665,11 @@ func (g *game) runExactDoomMonsterAction(i int, typ int16, state int, action doo
 	case doomMonsterActionPain:
 		g.emitSoundEventAt(monsterPainSoundEvent(typ), tx, ty)
 	case doomMonsterActionSkullAttack:
+		_ = g.monsterAttack(i, typ, dist)
+	case doomMonsterActionHeadAttack:
+		if targetX != 0 || targetY != 0 || g.monsterHasTarget(i) {
+			g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		}
 		_ = g.monsterAttack(i, typ, dist)
 	}
 }
@@ -1752,7 +1818,14 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 			g.setThingPosFixed(i, nx, ny)
 			g.setThingSupportState(i, z, tmfloor, tmceil)
 			g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
-			tx, ty = nx, ny
+			tx, ty = g.thingPosFixed(i, th)
+			z, _, _ = g.thingSupportState(i, th)
+			if tx != nx || ty != ny || g.thingMomX[i] != momx || g.thingMomY[i] != momy {
+				momx = g.thingMomX[i]
+				momy = g.thingMomY[i]
+				xmove = 0
+				ymove = 0
+			}
 			continue
 		}
 		momx = 0
@@ -1950,10 +2023,10 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 		if other == i || other < 0 || other >= len(g.m.Things) {
 			return lineAttackTarget{}, false
 		}
-		oth := g.m.Things[other]
-		if other < len(g.thingCollected) && g.thingCollected[other] {
+		if !g.thingActiveInSession(other) {
 			return lineAttackTarget{}, false
 		}
+		oth := g.m.Things[other]
 		if !thingTypeIsShootable(oth.Type) && !isPickupType(oth.Type) && !thingTypeBlocksActorMovement(oth.Type, true) {
 			return lineAttackTarget{}, false
 		}
@@ -2074,6 +2147,10 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 				momx = 0
 				momy = 0
 				momz = 0
+				if g.m != nil && i >= 0 && i < len(g.m.Things) {
+					tx, ty = g.thingPosFixed(i, g.m.Things[i])
+					z, _, _ = g.thingSupportState(i, g.m.Things[i])
+				}
 				continue
 			}
 			tmfloor, tmceil, moveOK = probe.tmfloor, probe.tmceil, probe.ok
@@ -2100,18 +2177,33 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=move-ok pos=(%d,%d,%d) floor=%d ceil=%d\n",
 				g.demoTick-1, g.worldTic, i, nx, ny, z, tmfloor, tmceil)
 		}
-		tx, ty = nx, ny
+		tx, ty = g.thingPosFixed(i, th)
+		z, _, _ = g.thingSupportState(i, th)
+		if tx != nx || ty != ny || g.thingMomX[i] != momx || g.thingMomY[i] != momy {
+			momx = g.thingMomX[i]
+			momy = g.thingMomY[i]
+			xmove = 0
+			ymove = 0
+		}
 	}
 
 	_, floorZ, ceilZ := g.thingSupportState(i, th)
 	nz := z + momz
 	height := g.thingCurrentHeight(i, th)
 	if nz <= floorZ {
+		if skullActive {
+			momz = -momz
+		}
+		if momz < 0 {
+			momz = 0
+		}
 		nz = floorZ
-		momz = -momz
 	} else if nz+height > ceilZ {
-		nz = ceilZ - height
 		if momz > 0 {
+			momz = 0
+		}
+		nz = ceilZ - height
+		if skullActive {
 			momz = -momz
 		}
 	}
@@ -4516,17 +4608,6 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 	}
 	const maxThingBlockRadius = 32 * fracUnit
 	radius := thingTypeRadius(typ)
-	tmboxTop := y + radius
-	tmboxBottom := y - radius
-	tmboxRight := x + radius
-	tmboxLeft := x - radius
-	sec := g.sectorAt(x, y)
-	if sec < 0 || sec >= len(g.m.Sectors) {
-		return skullFlyProbeResult{}
-	}
-	tmfloor := g.sectorFloor[sec]
-	tmceil := g.sectorCeil[sec]
-	tmdrop := tmfloor
 
 	if g.stats.Health > 0 && g.playerMobjHealth > 0 && abs(g.p.x-x) < radius+playerRadius && abs(g.p.y-y) < radius+playerRadius {
 		return skullFlyProbeResult{target: lineAttackTarget{kind: lineAttackTargetPlayer}, hitTarget: true}
@@ -4536,10 +4617,10 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 		if other == i || other < 0 || other >= len(g.m.Things) {
 			return lineAttackTarget{}, false
 		}
-		oth := g.m.Things[other]
-		if other < len(g.thingCollected) && g.thingCollected[other] {
+		if !g.thingActiveInSession(other) {
 			return lineAttackTarget{}, false
 		}
+		oth := g.m.Things[other]
 		if !thingTypeIsShootable(oth.Type) && !isPickupType(oth.Type) && !thingTypeBlocksActorMovement(oth.Type, true) {
 			return lineAttackTarget{}, false
 		}
@@ -4550,6 +4631,10 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 		}
 		return lineAttackTarget{kind: lineAttackTargetThing, idx: other}, true
 	}
+	tmboxTop := y + radius
+	tmboxBottom := y - radius
+	tmboxRight := x + radius
+	tmboxLeft := x - radius
 	if g.bmapWidth > 0 && g.bmapHeight > 0 {
 		left := int((tmboxLeft - g.bmapOriginX - maxThingBlockRadius) >> (fracBits + 7))
 		right := int((tmboxRight - g.bmapOriginX + maxThingBlockRadius) >> (fracBits + 7))
@@ -4586,72 +4671,9 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 			}
 		}
 	}
-
-	g.validCount++
-	xl := int((tmboxLeft - g.bmapOriginX) >> (fracBits + 7))
-	xh := int((tmboxRight - g.bmapOriginX) >> (fracBits + 7))
-	yl := int((tmboxBottom - g.bmapOriginY) >> (fracBits + 7))
-	yh := int((tmboxTop - g.bmapOriginY) >> (fracBits + 7))
-	processPhysLine := func(physIdx int) bool {
-		if physIdx < 0 || physIdx >= len(g.lines) {
-			return true
-		}
-		if physIdx >= len(g.lineValid) {
-			g.lineValid = append(g.lineValid, make([]int, physIdx-len(g.lineValid)+1)...)
-		}
-		if g.lineValid[physIdx] == g.validCount {
-			return true
-		}
-		g.lineValid[physIdx] = g.validCount
-		ld := g.lines[physIdx]
-		if tmboxRight <= ld.bbox[3] || tmboxLeft >= ld.bbox[2] || tmboxTop <= ld.bbox[1] || tmboxBottom >= ld.bbox[0] {
-			return true
-		}
-		box := [4]int64{tmboxTop, tmboxBottom, tmboxRight, tmboxLeft}
-		if g.boxOnLineSide(box, ld) != -1 {
-			return true
-		}
-		if ld.sideNum1 < 0 {
-			return false
-		}
-		if (ld.flags & mlBlocking) != 0 {
-			return false
-		}
-		if (ld.flags & mlBlockMonsters) != 0 {
-			return false
-		}
-		opentop, openbottom, lowfloor, _ := g.lineOpening(ld)
-		if opentop < tmceil {
-			tmceil = opentop
-		}
-		if openbottom > tmfloor {
-			tmfloor = openbottom
-		}
-		if lowfloor < tmdrop {
-			tmdrop = lowfloor
-		}
-		return true
-	}
-	iter := func(lineIdx int) bool {
-		if lineIdx < 0 || lineIdx >= len(g.physForLine) {
-			return true
-		}
-		return processPhysLine(g.physForLine[lineIdx])
-	}
-	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
-		for bx := xl; bx <= xh; bx++ {
-			for by := yl; by <= yh; by++ {
-				if !g.blockLinesIterator(bx, by, iter) {
-					return skullFlyProbeResult{}
-				}
-			}
-		}
-	} else {
-		for lineIdx := range g.lines {
-			if !processPhysLine(lineIdx) {
-				return skullFlyProbeResult{}
-			}
-		}
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActorWithThingPolicy(x, y, radius, true, i, true, true)
+	if !ok {
+		return skullFlyProbeResult{}
 	}
 	height := g.thingCurrentHeight(i, g.m.Things[i])
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])

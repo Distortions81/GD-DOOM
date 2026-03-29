@@ -813,7 +813,7 @@ func TestProjectileDoesNotHitSourceImp(t *testing.T) {
 		t.Fatalf("projectile count=%d want=1", got)
 	}
 	p := g.projectiles[0]
-	_, hit := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	_, hit := g.projectileThingHitAtPosition(p, p.x+p.vx, p.y+p.vy, p.z)
 	if hit {
 		t.Fatal("projectile should not select the source imp as a hit target")
 	}
@@ -844,7 +844,7 @@ func TestProjectileSelectsPlayerAtDestinationDuringThingPass(t *testing.T) {
 		kind:   projectileFireball,
 	}
 
-	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	hit, ok := g.projectileThingHitAtPosition(p, p.x+p.vx, p.y+p.vy, p.z)
 	if !ok {
 		t.Fatal("expected projectile to hit player at destination")
 	}
@@ -854,8 +854,8 @@ func TestProjectileSelectsPlayerAtDestinationDuringThingPass(t *testing.T) {
 	if hit.frac != 1 {
 		t.Fatalf("hit frac=%f want 1 for destination collision", hit.frac)
 	}
-	if hit.x != p.x+p.vx || hit.y != p.y+p.vy || hit.z != p.z+p.vz {
-		t.Fatalf("impact=(%d,%d,%d) want destination (%d,%d,%d)", hit.x, hit.y, hit.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	if hit.x != p.x+p.vx || hit.y != p.y+p.vy || hit.z != p.z {
+		t.Fatalf("impact=(%d,%d,%d) want destination/current-z (%d,%d,%d)", hit.x, hit.y, hit.z, p.x+p.vx, p.y+p.vy, p.z)
 	}
 }
 
@@ -886,15 +886,46 @@ func TestProjectileHitsThingOnDestinationBoxOverlapLikeDoomTryMove(t *testing.T)
 		kind:        projectileFireball,
 	}
 
-	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	hit, ok := g.projectileThingHitAtPosition(p, p.x+p.vx, p.y+p.vy, p.z)
 	if !ok {
 		t.Fatal("expected projectile to hit thing at destination overlap")
 	}
 	if hit.idx != 0 || hit.isPlayer {
 		t.Fatalf("hit=%+v want thing 0", hit)
 	}
-	if hit.x != p.x || hit.y != p.y || hit.z != p.z {
-		t.Fatalf("impact=(%d,%d,%d) want old position (%d,%d,%d)", hit.x, hit.y, hit.z, p.x, p.y, p.z)
+	if hit.x != p.x+p.vx || hit.y != p.y+p.vy || hit.z != p.z {
+		t.Fatalf("impact=(%d,%d,%d) want destination/current-z (%d,%d,%d)", hit.x, hit.y, hit.z, p.x+p.vx, p.y+p.vy, p.z)
+	}
+}
+
+func TestProjectileThingHitAtPositionUsesCurrentZLikeDoomXYMove(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m:     &mapdata.Map{},
+		stats: playerStats{Health: 100},
+		p: player{
+			x:      20 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+	}
+	p := projectile{
+		x:      0,
+		y:      0,
+		z:      65 * fracUnit,
+		vx:     25 * fracUnit,
+		vy:     0,
+		vz:     -40 * fracUnit,
+		radius: monsterProjectileRadius(3005),
+		height: monsterProjectileHeight(3005),
+		kind:   projectilePlasmaBall,
+	}
+	if _, ok := g.projectileThingHitAtPosition(p, p.x+p.vx, p.y+p.vy, p.z); ok {
+		t.Fatal("projectile XY collision should use current z, not swept z")
 	}
 }
 
@@ -926,7 +957,7 @@ func TestPlayerRocketHitsBarrelOnDestinationSquareOverlap(t *testing.T) {
 		kind:         projectileRocket,
 	}
 
-	hit, ok := g.projectileHitsShootableThingAlongPath(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	hit, ok := g.projectileThingHitAtPosition(p, p.x+p.vx, p.y+p.vy, p.z)
 	if !ok {
 		t.Fatal("expected player rocket to hit barrel on destination square overlap")
 	}

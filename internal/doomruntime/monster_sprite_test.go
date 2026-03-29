@@ -116,6 +116,21 @@ func TestMonsterSpriteNameForViewUsesExactDoomHitscannerFrame(t *testing.T) {
 	}
 }
 
+func TestMonsterSpriteNameForViewUsesExactDoomCacodemonFrame(t *testing.T) {
+	g := &game{
+		opts: Options{SpritePatchBank: map[string]WallTexture{
+			"HEADC1": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+		}},
+		thingDoomState: []int{505},
+	}
+	th := mapdata.Thing{Type: 3005, X: 0, Y: 0, Angle: 0}
+
+	name, _ := g.monsterSpriteNameForView(0, th, 0, 100, 0)
+	if name != "HEADC1" {
+		t.Fatalf("state 505 got=%q want=HEADC1", name)
+	}
+}
+
 func TestThingRenderPosFixedInterpolatesMonsterPosition(t *testing.T) {
 	g := &game{
 		prevThingX:        []int64{0},

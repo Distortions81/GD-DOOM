@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REFERENCE_BIN="${ROOT_DIR}/../doom-source/linuxdoom-1.10/linux/linuxxdoom"
 GDDOOM_BIN="${ROOT_DIR}/.tmp/gddoom-demotrace"
 TRACECMP_BIN="${ROOT_DIR}/.tmp/demotracecmp"
+REUSE_GDDOOM_BIN=0
 WAD_DIR=""
 WAD_PATH="${ROOT_DIR}/DOOM1.WAD"
 DEMO_LUMP="demo1"
@@ -68,6 +69,23 @@ Examples:
 EOF
 }
 
+go_sources_newer_than_bin() {
+  local bin_path="$1"
+  local search_root="$2"
+
+  if [[ ! -x "${bin_path}" ]]; then
+    return 0
+  fi
+
+  if find "${search_root}" -type f \
+    \( -name '*.go' -o -name 'go.mod' -o -name 'go.sum' \) \
+    -newer "${bin_path}" -print -quit | grep -q .; then
+    return 0
+  fi
+
+  return 1
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --wad-dir)
@@ -96,6 +114,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --gd-bin)
       GDDOOM_BIN="$2"
+      REUSE_GDDOOM_BIN=1
       shift 2
       ;;
     --headless)
@@ -178,21 +197,31 @@ fi
 REF_RUN_DIR="$(mktemp -d "${ROOT_DIR}/.tmp/refdemo.XXXXXX")"
 ln -sf "$(realpath "${DEMO_PATH}")" "${REF_RUN_DIR}/${DEMO_LUMP}.lmp"
 
-echo "Building GD-DOOM trace binary: ${GDDOOM_BIN}"
-rm -f "${GDDOOM_BIN}"
-(
-  cd "${ROOT_DIR}"
-  go clean
-  go build -o "${GDDOOM_BIN}" .
-)
+echo "Preparing GD-DOOM trace binary: ${GDDOOM_BIN}"
+if [[ "${REUSE_GDDOOM_BIN}" == "1" ]]; then
+  if [[ ! -x "${GDDOOM_BIN}" ]]; then
+    echo "GD-DOOM binary not found or not executable: ${GDDOOM_BIN}" >&2
+    exit 1
+  fi
+  echo "Reusing GD-DOOM trace binary: ${GDDOOM_BIN}"
+elif go_sources_newer_than_bin "${GDDOOM_BIN}" "${ROOT_DIR}"; then
+  (
+    cd "${ROOT_DIR}"
+    go build -o "${GDDOOM_BIN}" .
+  )
+else
+  echo "Reusing cached GD-DOOM trace binary: ${GDDOOM_BIN}"
+fi
 
-echo "Building trace comparator: ${TRACECMP_BIN}"
-rm -f "${TRACECMP_BIN}"
-(
-  cd "${ROOT_DIR}"
-  go clean ./cmd/demotracecmp
-  go build -o "${TRACECMP_BIN}" ./cmd/demotracecmp
-)
+if go_sources_newer_than_bin "${TRACECMP_BIN}" "${ROOT_DIR}"; then
+  echo "Building trace comparator: ${TRACECMP_BIN}"
+  (
+    cd "${ROOT_DIR}"
+    go build -o "${TRACECMP_BIN}" ./cmd/demotracecmp
+  )
+else
+  echo "Reusing cached trace comparator: ${TRACECMP_BIN}"
+fi
 
 REF_TRACE="${OUT_DIR}/reference-${DEMO_LUMP}.jsonl"
 REF_LOG="${OUT_DIR}/reference-${DEMO_LUMP}.log"

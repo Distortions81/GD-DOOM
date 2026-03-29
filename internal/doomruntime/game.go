@@ -16120,7 +16120,7 @@ func (g *game) subSectorAtFixed(x, y int64) int {
 			dx: int64(n.DX) << fracBits,
 			dy: int64(n.DY) << fracBits,
 		}
-		side := pointOnDivlineSide(x, y, dl)
+		side := doomPointOnDivlineSide(x, y, dl)
 		child = n.ChildID[side]
 	}
 }
@@ -18339,6 +18339,9 @@ func (g *game) rebuildThingBlockmap() {
 		}
 	}
 	for i, th := range g.m.Things {
+		if !thingTypeUsesBlockmap(th.Type) {
+			continue
+		}
 		x, y := g.thingPosFixed(i, th)
 		cell := g.thingBlockmapCellFor(x, y)
 		g.thingBlockCell[i] = cell
@@ -18398,6 +18401,17 @@ func (g *game) insertThingIntoBlockCell(cell, thingIdx int) bool {
 	items[insertAt] = thingIdx
 	g.thingBlockCells[cell] = items
 	return true
+}
+
+func thingTypeUsesBlockmap(typ int16) bool {
+	switch typ {
+	case teleportThingType:
+		// doom-source marks MT_TELEPORTMAN MF_NOBLOCKMAP, so it never enters
+		// blocklinks and is skipped by sector height clipping.
+		return false
+	default:
+		return true
+	}
 }
 
 func (g *game) setThingWorldAngle(i int, angle uint32) {

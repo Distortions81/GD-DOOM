@@ -13,7 +13,9 @@ type bossSpawnCube struct {
 	vy        int64
 	vz        int64
 	targetIdx int
-	ticsLeft  int
+	stateTics int
+	stateStep int
+	reaction  int
 }
 
 type bossSpawnFire struct {
@@ -111,12 +113,17 @@ func (g *game) spawnBossCube(spawnerIdx, targetIdx int) bool {
 	vx := fixedMul(speed, fixedDiv(dx, dist))
 	vy := fixedMul(speed, fixedDiv(dy, dist))
 	vz := fixedMul(speed, fixedDiv(dz, dist))
-	tics := int(dist / speed)
-	if tics < 1 {
-		tics = 1
+	reaction := 1
+	if vy != 0 {
+		reaction = int(((ty - sy) / vy) / 3)
+	} else if speed > 0 {
+		reaction = int((dist / speed) / 3)
+	}
+	if reaction < 1 {
+		reaction = 1
 	}
 	g.emitSoundEventAt(soundEventBossBrainCube, sx, sy)
-	g.bossSpawnCubes = append(g.bossSpawnCubes, bossSpawnCube{
+	cube := bossSpawnCube{
 		x:         sx,
 		y:         sy,
 		z:         sz,
@@ -124,8 +131,13 @@ func (g *game) spawnBossCube(spawnerIdx, targetIdx int) bool {
 		vy:        vy,
 		vz:        vz,
 		targetIdx: targetIdx,
-		ticsLeft:  tics,
-	})
+		stateTics: 3,
+		stateStep: 0,
+		reaction:  reaction,
+	}
+	if g.bossCubeRunSpawnAction(&cube) {
+		g.bossSpawnCubes = append(g.bossSpawnCubes, cube)
+	}
 	return true
 }
 
@@ -138,14 +150,31 @@ func (g *game) tickBossSpawnCubes() {
 		cube.x += cube.vx
 		cube.y += cube.vy
 		cube.z += cube.vz
-		cube.ticsLeft--
-		if cube.ticsLeft <= 0 {
-			g.resolveBossCube(cube)
-			continue
+		if cube.stateTics > 0 {
+			cube.stateTics--
+		}
+		if cube.stateTics == 0 {
+			cube.stateStep = (cube.stateStep + 1) & 3
+			cube.stateTics = 3
+			if !g.bossCubeRunSpawnAction(&cube) {
+				continue
+			}
 		}
 		dst = append(dst, cube)
 	}
 	g.bossSpawnCubes = dst
+}
+
+func (g *game) bossCubeRunSpawnAction(cube *bossSpawnCube) bool {
+	if g == nil || cube == nil {
+		return false
+	}
+	cube.reaction--
+	if cube.reaction != 0 {
+		return true
+	}
+	g.resolveBossCube(*cube)
+	return false
 }
 
 func (g *game) tickBossSpawnFires() {
