@@ -519,7 +519,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		}
 		if i >= 0 && i < len(g.thingStateTics) && g.thingState[i] == monsterStateDeath && g.thingStateTics[i] > 0 {
 			g.thingStateTics[i]--
-			if g.thingStateTics[i] == 0 && i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
+			if g.thingStateTics[i] == 0 {
 				xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
 				frameTics := monsterDeathFrameTicsForMode(th.Type, xdeath)
 				nextPhase := 0
@@ -551,6 +551,11 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 							g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
 						}
 					}
+				} else if !monsterLeavesCorpse(th.Type) {
+					g.thingDeathTics[i] = 0
+					g.thingCollected[i] = true
+					g.debugThingState(i, th, "dead-removed")
+					return
 				}
 			}
 		}
@@ -1813,11 +1818,11 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 			xmove = 0
 			ymove = 0
 		}
-		if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
+		if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, th.Type, nx, ny); ok {
 			prevX, prevY := tx, ty
 			g.setThingPosFixed(i, nx, ny)
 			g.setThingSupportState(i, z, tmfloor, tmceil)
-			g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
+			g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, nx, ny, i, false, probeLines)
 			tx, ty = g.thingPosFixed(i, th)
 			z, _, _ = g.thingSupportState(i, th)
 			if tx != nx || ty != ny || g.thingMomX[i] != momx || g.thingMomY[i] != momy {
@@ -1869,7 +1874,13 @@ func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, m
 	if g == nil {
 		return momz
 	}
-	canFloat := monsterCanFloat(th.Type) && !(i >= 0 && i < len(g.thingDead) && g.thingDead[i])
+	dead := i >= 0 && i < len(g.thingDead) && g.thingDead[i]
+	canFloat := monsterCanFloat(th.Type) && !dead
+	noGravity := !dead && monsterCanFloat(th.Type)
+	if dead && th.Type == 3006 {
+		// Doom's P_KillMobj preserves MF_NOGRAVITY for MT_SKULL only.
+		noGravity = true
+	}
 	z += momz
 	height := g.thingCurrentHeight(i, th)
 	if canFloat && g.monsterHasTarget(i) {
@@ -1896,7 +1907,7 @@ func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, m
 			momz = 0
 		}
 		z = floorZ
-	} else if !canFloat {
+	} else if !noGravity {
 		if momz == 0 {
 			momz = -2 * fracUnit
 		} else {
@@ -2119,6 +2130,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 		}
 		var tmfloor, tmceil int64
 		moveOK := false
+		var probeLines []int
 		if skullActive {
 			probe := g.probeSkullFlyMove(i, th.Type, nx, ny)
 			if probe.hitTarget {
@@ -2154,9 +2166,11 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 				continue
 			}
 			tmfloor, tmceil, moveOK = probe.tmfloor, probe.tmceil, probe.ok
+			probeLines = probe.probeLines
 		} else {
 			probe := g.probeMonsterMove(i, th.Type, nx, ny)
 			tmfloor, tmceil, moveOK = probe.tmfloor, probe.tmceil, probe.ok
+			probeLines = probe.probeLines
 		}
 		if !moveOK {
 			if debugSkull {
@@ -2172,7 +2186,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 		prevX, prevY := tx, ty
 		g.setThingPosFixed(i, nx, ny)
 		g.setThingSupportState(i, z, tmfloor, tmceil)
-		g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
+		g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, nx, ny, i, false, probeLines)
 		if debugSkull {
 			fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=move-ok pos=(%d,%d,%d) floor=%d ceil=%d\n",
 				g.demoTick-1, g.worldTic, i, nx, ny, z, tmfloor, tmceil)
@@ -3289,7 +3303,7 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	} else {
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	}
-	g.checkWalkSpecialLinesForActor(prevX, prevY, nx, ny, i, false)
+	g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, nx, ny, i, false, probeLines)
 	if debugMove {
 		g.debugMonsterMove(i, fmt.Sprintf("move success dir=%d", dir))
 	}
@@ -4451,7 +4465,8 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	dy := int64(math.Sin(ang) * float64(step))
 	nx := x + dx
 	ny := y + dy
-	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
+	if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
+		prevX, prevY := x, y
 		g.setThingPosFixed(i, nx, ny)
 		if monsterCanFloat(typ) {
 			z, _, _ := g.thingSupportState(i, g.m.Things[i])
@@ -4459,9 +4474,11 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 		} else {
 			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		}
+		g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, nx, ny, i, false, probeLines)
 		return
 	}
-	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
+	if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
+		prevX, prevY := x, y
 		g.setThingPosFixed(i, x+dx, y)
 		if monsterCanFloat(typ) {
 			z, _, _ := g.thingSupportState(i, g.m.Things[i])
@@ -4469,9 +4486,11 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 		} else {
 			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		}
+		g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, x+dx, y, i, false, probeLines)
 		return
 	}
-	if tmfloor, tmceil, _, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
+	if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
+		prevX, prevY := x, y
 		g.setThingPosFixed(i, x, y+dy)
 		if monsterCanFloat(typ) {
 			z, _, _ := g.thingSupportState(i, g.m.Things[i])
@@ -4479,6 +4498,7 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 		} else {
 			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 		}
+		g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, x, y+dy, i, false, probeLines)
 	}
 }
 
@@ -4560,11 +4580,12 @@ type monsterMoveProbeResult struct {
 }
 
 type skullFlyProbeResult struct {
-	tmfloor   int64
-	tmceil    int64
-	target    lineAttackTarget
-	hitTarget bool
-	ok        bool
+	tmfloor    int64
+	tmceil     int64
+	probeLines []int
+	target     lineAttackTarget
+	hitTarget  bool
+	ok         bool
 }
 
 func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeResult {
@@ -4572,7 +4593,7 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeRe
 		return monsterMoveProbeResult{}
 	}
 	tmfloor, tmceil, tmdrop, checkPosOK := g.checkPositionForActor(x, y, thingTypeRadius(typ), true, i, true)
-	probeLines := append([]int(nil), g.probeSpecialLinesForMover(i)...)
+	probeLines := append([]int{}, g.probeSpecialLinesForMover(i)...)
 	if g.debugMonsterMoveEnabled() {
 		g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) checkpos=%v floor=%d ceil=%d drop=%d", x, y, checkPosOK, tmfloor, tmceil, tmdrop))
 	}
@@ -4672,24 +4693,25 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 		}
 	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActorWithThingPolicy(x, y, radius, true, i, true, true)
+	probeLines := append([]int{}, g.probeSpecialLinesForMover(i)...)
 	if !ok {
-		return skullFlyProbeResult{}
+		return skullFlyProbeResult{probeLines: probeLines}
 	}
 	height := g.thingCurrentHeight(i, g.m.Things[i])
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	if tmceil-tmfloor < height {
-		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil, probeLines: probeLines}
 	}
 	if tmceil-z < height {
-		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil, probeLines: probeLines}
 	}
 	if tmfloor-z > stepHeight {
-		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil, probeLines: probeLines}
 	}
 	if !g.thingCanDropOff(i, typ) && !monsterCanFloat(typ) && tmfloor-tmdrop > stepHeight {
-		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil}
+		return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil, probeLines: probeLines}
 	}
-	return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil, ok: true}
+	return skullFlyProbeResult{tmfloor: tmfloor, tmceil: tmceil, probeLines: probeLines, ok: true}
 }
 
 func (g *game) touchedSpecialLinesForMonsterMove(i int, x, y int64) []int {

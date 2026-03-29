@@ -958,6 +958,56 @@ func TestTickMonsterZMovement_DeadFloatMonsterFallsLikeDoom(t *testing.T) {
 	}
 }
 
+func TestTickMonsterZMovement_DeadLostSoulKeepsNoGravityLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3006, X: 0, Y: 0}},
+		},
+		thingDead:         []bool{true},
+		thingInFloat:      []bool{false},
+		thingZState:       []int64{144 * fracUnit},
+		thingFloorState:   []int64{128 * fracUnit},
+		thingCeilState:    []int64{256 * fracUnit},
+		thingSupportValid: []bool{true},
+	}
+	momz := g.tickMonsterZMovement(0, g.m.Things[0], 144*fracUnit, 128*fracUnit, 256*fracUnit, 0)
+	if got := momz; got != 0 {
+		t.Fatalf("momz=%d want=0 for dead lost soul", got)
+	}
+	z, floorZ, ceilZ := g.thingSupportState(0, g.m.Things[0])
+	if z != 144*fracUnit || floorZ != 128*fracUnit || ceilZ != 256*fracUnit {
+		t.Fatalf("support=(%d,%d,%d) want=(%d,%d,%d)", z, floorZ, ceilZ, 144*fracUnit, 128*fracUnit, 256*fracUnit)
+	}
+}
+
+func TestTickThingThinker_DeadLostSoulRemovesOnFinalDeathFrameLikeDoom(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3006, X: 0, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingDead:         []bool{true},
+		thingHP:           []int{-12},
+		thingState:        []monsterThinkState{monsterStateDeath},
+		thingStatePhase:   []int{5},
+		thingStateTics:    []int{1},
+		thingDeathTics:    []int{1},
+		thingSupportValid: []bool{true},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingZState:       []int64{0},
+	}
+
+	g.tickThingThinker(0, g.m.Things[0])
+
+	if !g.thingCollected[0] {
+		t.Fatal("lost soul should be removed on final death frame")
+	}
+	if got := g.thingDeathTics[0]; got != 0 {
+		t.Fatalf("death tics=%d want=0", got)
+	}
+}
+
 func TestProbeMonsterMove_DeadCorpseCanDropOffLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

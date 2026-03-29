@@ -945,6 +945,125 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 	}
 }
 
+func TestCheckWalkSpecialLinesForActorWithCandidates_IgnoresRemoteTeleportLine(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 32, Y: 0, Angle: 0, Type: 3005},
+				{X: 128, Y: 64, Angle: 90, Type: 14},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 7},
+				{Special: 0, Tag: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{97, 0},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+			{
+				idx:   1,
+				x1:    256 * fracUnit,
+				y1:    64 * fracUnit,
+				x2:    256 * fracUnit,
+				y2:    -64 * fracUnit,
+				dx:    0,
+				dy:    -128 * fracUnit,
+				slope: slopeVertical,
+			},
+		},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		thingX:            []int64{32 * fracUnit, 128 * fracUnit},
+		thingY:            []int64{0, 64 * fracUnit},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+		thingAngleState:   []uint32{0, thingDegToWorldAngle(90)},
+	}
+
+	g.checkWalkSpecialLinesForActorWithCandidates(-32*fracUnit, 0, 32*fracUnit, 0, 0, false, []int{1})
+
+	if got, want := g.m.Things[0].X, int16(32); got != want {
+		t.Fatalf("monster x=%d want %d", got, want)
+	}
+	if got, want := g.m.Things[0].Y, int16(0); got != want {
+		t.Fatalf("monster y=%d want %d", got, want)
+	}
+	if got := len(g.hitscanPuffs); got != 0 {
+		t.Fatalf("teleport fog count=%d want=0", got)
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("teleport sound count=%d want=0", got)
+	}
+}
+
+func TestCheckWalkSpecialLinesForActorWithCandidates_EmptyCandidateSetDoesNotFallbackToFullScan(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 32, Y: 0, Angle: 0, Type: 3005},
+				{X: 128, Y: 64, Angle: 90, Type: 14},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 7},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{97},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+		},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		thingX:            []int64{32 * fracUnit, 128 * fracUnit},
+		thingY:            []int64{0, 64 * fracUnit},
+		thingZState:       []int64{0, 0},
+		thingFloorState:   []int64{0, 0},
+		thingCeilState:    []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid: []bool{true, true},
+		thingAngleState:   []uint32{0, thingDegToWorldAngle(90)},
+	}
+
+	g.checkWalkSpecialLinesForActorWithCandidates(-32*fracUnit, 0, 32*fracUnit, 0, 0, false, []int{})
+
+	if got, want := g.m.Things[0].X, int16(32); got != want {
+		t.Fatalf("monster x=%d want %d", got, want)
+	}
+	if got, want := g.m.Things[0].Y, int16(0); got != want {
+		t.Fatalf("monster y=%d want %d", got, want)
+	}
+	if got := len(g.hitscanPuffs); got != 0 {
+		t.Fatalf("teleport fog count=%d want=0", got)
+	}
+	if got := len(g.soundQueue); got != 0 {
+		t.Fatalf("teleport sound count=%d want=0", got)
+	}
+}
+
 func TestTeleportSourceFogUsesActorZ(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

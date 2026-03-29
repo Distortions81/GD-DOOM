@@ -1,6 +1,6 @@
 # Demo Desync Status
 
-Current stock-demo status after moving zombieman, shotgun guy, and chaingunner onto an exact Doom-style state-machine path modeled on `P_MobjThinker` / `P_SetMobjState` in `../doom-source/linuxdoom-1.10/p_mobj.c` and the corresponding `info.c` state tables and `p_enemy.c` actions.
+Current stock-demo status after the recent `doom-source` parity work on monster walk-special handling and lost-soul death behavior.
 
 ## DOOM1
 
@@ -21,8 +21,8 @@ Current stock-demo status after moving zombieman, shotgun guy, and chaingunner o
 
 - Status: clean
 - Result: `traces match lines=2079`
-- Fixed in: working tree
-- Notes: the earlier zombie chase/state mismatch was resolved by the exact-state-machine refactor for hitscanners.
+- Fixed in: `2adb2c6`
+- Notes: still clean after the later `DOOM2-DEMO3` fixes.
 
 ## DOOM2
 
@@ -35,30 +35,31 @@ Current stock-demo status after moving zombieman, shotgun guy, and chaingunner o
 
 - Status: clean
 - Result: `traces match lines=1949`
-- Fixed in: working tree
-- Notes: still clean after replacing the old helper-driven hitscanner flow with exact Doom state transitions.
+- Fixed in: `2adb2c6`
+- Notes: still clean after the current monster walk-special and lost-soul death fixes.
 
 ### demo3
 
 - Status: desync
-- Current first mismatch: `line=1022`
-- Path: `root.mobjs[268].ceilingz`
-- Reference: `-3670016`
-- GD-DOOM: `-8388608`
-- Notes: this first mismatch is transient FX (`type 37`). With transient FX ignored, the next real mismatch is `line=1260`, `root.mobjs[8].momz`, where a lost soul has `0` in reference vs `-415061` in GD-DOOM.
+- Current first mismatch: `line=1811`
+- Path: `root.mobjs[84].movecount`
+- Reference: `2`
+- GD-DOOM: `0`
+- Notes:
+- Earlier blockers now fixed in the working tree:
+- false Cacodemon teleport on MAP26 line `555` caused by monster walk-special full-scan fallback instead of Doom `spechit` candidates
+- dead lost soul gravity mismatch caused by clearing effective `MF_NOGRAVITY` on `MT_SKULL` deaths
+- dead lost soul linger mismatch caused by removing non-corpse deaths one tic late instead of on final-frame expiry
+- Current remaining lead is later and narrower: a monster chase / `movecount` divergence, not teleport or lost-soul death cleanup.
 
 ## Next Issue
 
 Highest-signal next runtime issue to investigate:
 
-- extend the exact Doom state-machine treatment beyond hitscanners
-- next likely family: projectile attackers, starting with imp / projectile-driven `A_Chase` and missile-state transitions
-- reason: the hitscanner slice now matches again, and further demo work should follow `../doom-source` state execution order instead of adding more helper-level parity patches
+- identify `root.mobjs[84]` at `DOOM2-DEMO3` `line=1811` / `gametic≈1810` and compare its `movecount` / chase progression directly against `../doom-source`
+- likely code area: ordinary monster chase movement ordering in `monsters.go`, especially the exact point where `movecount` is decremented/reset around successful `P_Move`-style movement
+- reason: the current first mismatch is now a pure chase-state scalar mismatch after removing the earlier teleport and lost-soul death parity bugs
 
-Secondary issue after that:
+Secondary lead:
 
-- `DOOM2-DEMO3` non-FX first gameplay mismatch at `line=1260`, `root.mobjs[8].momz`
-- actor: lost soul
-- reference `momz=0`
-- GD-DOOM `momz=-415061`
-- implication: likely lost soul / skull-fly vertical momentum parity in `p_mobj.c` / `A_SkullAttack` related paths, separate from the hitscanner state-machine work.
+- once the `movecount` divergence is identified, rerun `DOOM2-DEMO3` to see whether the next issue stays in chase logic or shifts to another actor family
