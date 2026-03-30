@@ -12,6 +12,6 @@ func isWASMBuild() bool {
 	return platformcfg.IsWASMBuild()
 }
 
-func yieldWASMRenderTime(time.Time) {
-	time.Sleep(time.Millisecond)
+func yieldWASMRenderTime() {
+	time.Sleep(time.Microsecond)
 }

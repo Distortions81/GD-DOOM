@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"image/color"
 	"strings"
-	"time"
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
@@ -290,7 +289,7 @@ func (sg *sessionGame) Update() error {
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
-	drawStart := time.Now()
+	yieldWASMRenderTime()
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	tw, th := sg.transitionSurfaceSize(sw, sh)
@@ -358,7 +357,6 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	if sg.startupMusicLocked && !sg.transitionActive() {
 		sg.startupMusicVisualReady = true
 	}
-	yieldWASMRenderTime(drawStart)
 }
 
 func (sg *sessionGame) handleGameplayTermination() error {
