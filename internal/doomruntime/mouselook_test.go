@@ -39,7 +39,7 @@ func TestLiveMouseLookRenderActiveIgnoresDemoPlayback(t *testing.T) {
 	g := &game{
 		mode: viewWalk,
 		opts: Options{
-			MouseLook: true,
+			MouseLook:  true,
 			DemoScript: &DemoScript{},
 		},
 		mouseLookSet: true,
@@ -71,6 +71,33 @@ func TestLiveMouseLookRenderActiveRequiresUnsuppressedWalkMouselook(t *testing.T
 	}
 }
 
+func TestLiveMouseLookRenderActiveStopsForMenus(t *testing.T) {
+	g := &game{
+		mode: viewWalk,
+		opts: Options{
+			MouseLook: true,
+		},
+		mouseLookSet: true,
+	}
+	if !g.liveMouseLookRenderActive() {
+		t.Fatal("expected live gameplay mouse yaw override to be active")
+	}
+	g.pauseMenuActive = true
+	if g.liveMouseLookRenderActive() {
+		t.Fatal("pause menu should block live render-time mouse yaw")
+	}
+	g.pauseMenuActive = false
+	g.quitPromptActive = true
+	if g.liveMouseLookRenderActive() {
+		t.Fatal("quit prompt should block live render-time mouse yaw")
+	}
+	g.quitPromptActive = false
+	g.frontendActive = true
+	if g.liveMouseLookRenderActive() {
+		t.Fatal("frontend overlay should block live render-time mouse yaw")
+	}
+}
+
 func TestRenderAngleWithCursorAppliesCurrentMouseDelta(t *testing.T) {
 	g := &game{
 		mode:       viewWalk,
@@ -86,5 +113,24 @@ func TestRenderAngleWithCursorAppliesCurrentMouseDelta(t *testing.T) {
 	want := uint32(int64(base) + g.mouseLookTurnRaw(12))
 	if got != want {
 		t.Fatalf("render angle=%d want=%d", got, want)
+	}
+}
+
+func TestBaseRenderCameraAngleUsesCommittedAngleForLiveMouseLook(t *testing.T) {
+	g := &game{
+		mode: viewWalk,
+		p: player{
+			angle: 300,
+		},
+		prevPrevAngle: 100,
+		prevAngle:     200,
+		opts: Options{
+			MouseLook:       true,
+			SmoothCameraYaw: true,
+		},
+		mouseLookSet: true,
+	}
+	if got := g.baseRenderCameraAngle(0.5); got != g.p.angle {
+		t.Fatalf("base render angle=%d want committed angle=%d", got, g.p.angle)
 	}
 }

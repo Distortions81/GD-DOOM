@@ -297,6 +297,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		Prepare: func() {
 			if sg.rt != nil {
 				sg.rt.sessionSetQuitPromptActive(sg.quitPrompt.Active)
+				sg.rt.sessionSetFrontendActive(sg.frontend.Active && sg.frontend.InGame)
 			}
 		},
 		HasGame: func() bool {

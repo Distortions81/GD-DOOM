@@ -136,6 +136,7 @@ type sessionRuntime interface {
 	sessionAcknowledgeSaveGame()
 	sessionAcknowledgeLoadGame()
 	sessionSetQuitPromptActive(bool)
+	sessionSetFrontendActive(bool)
 	sessionAcknowledgeNewGameRequest()
 	sessionAcknowledgeQuitPrompt()
 	sessionAcknowledgeReadThis()

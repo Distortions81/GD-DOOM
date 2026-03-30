@@ -65,6 +65,13 @@ func (g *game) sessionSetQuitPromptActive(active bool) {
 	g.quitPromptActive = active
 }
 
+func (g *game) sessionSetFrontendActive(active bool) {
+	if g == nil {
+		return
+	}
+	g.frontendActive = active
+}
+
 func (g *game) sessionAcknowledgeNewGameRequest() {
 	if g == nil {
 		return

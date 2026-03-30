@@ -430,6 +430,7 @@ type game struct {
 	pauseMenuStatusTics       int
 	musicPlayerRequested      bool
 	frontendMenuRequested     bool
+	frontendActive            bool
 	saveGameRequested         bool
 	loadGameRequested         bool
 	quitPromptRequested       bool
@@ -2633,7 +2634,10 @@ func (g *game) updateWalkMode() {
 
 	if g.opts.MouseLook {
 		mx, _ := ebiten.CursorPosition()
-		if g.mouseLookSuppressTicks > 0 {
+		if g.mouseLookBlocked() {
+			g.lastMouseX = mx
+			g.mouseLookSet = true
+		} else if g.mouseLookSuppressTicks > 0 {
 			g.mouseLookSuppressTicks--
 		} else if g.mouseLookSet {
 			dx := mx - g.lastMouseX
@@ -2661,6 +2665,10 @@ func (g *game) mapRotationActive() bool {
 		return false
 	}
 	return true
+}
+
+func (g *game) mouseLookBlocked() bool {
+	return g != nil && (g.pauseMenuActive || g.quitPromptActive || g.frontendActive || g.frontendMenuRequested || g.readThisRequested || g.musicPlayerRequested)
 }
 
 func (g *game) currentRunSpeed() int {
@@ -18500,10 +18508,7 @@ func (g *game) renderCameraAngle(alpha float64) uint32 {
 	if g == nil {
 		return 0
 	}
-	angle := lerpAngle(g.prevAngle, g.p.angle, alpha)
-	if g.opts.SmoothCameraYaw {
-		angle = interpolateCameraAngle(g.prevPrevAngle, g.prevAngle, g.p.angle, alpha)
-	}
+	angle := g.baseRenderCameraAngle(alpha)
 	if !g.liveMouseLookRenderActive() {
 		return angle
 	}
@@ -18516,8 +18521,25 @@ func (g *game) liveMouseLookRenderActive() bool {
 		g.opts.DemoScript == nil &&
 		g.mode == viewWalk &&
 		g.opts.MouseLook &&
+		!g.mouseLookBlocked() &&
 		g.mouseLookSet &&
 		g.mouseLookSuppressTicks <= 0
+}
+
+func (g *game) baseRenderCameraAngle(alpha float64) uint32 {
+	if g == nil {
+		return 0
+	}
+	if g.liveMouseLookRenderActive() {
+		// Live mouselook gameplay should render from the latest committed player
+		// yaw and only use the current cursor for the residual render-time delta.
+		return g.p.angle
+	}
+	angle := lerpAngle(g.prevAngle, g.p.angle, alpha)
+	if g.opts.SmoothCameraYaw {
+		angle = interpolateCameraAngle(g.prevPrevAngle, g.prevAngle, g.p.angle, alpha)
+	}
+	return angle
 }
 
 func (g *game) renderAngleWithCursor(base uint32, cursorX int) uint32 {
