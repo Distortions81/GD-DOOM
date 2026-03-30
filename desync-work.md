@@ -29,7 +29,8 @@ Current stock-demo status after the recent `doom-source` parity work on monster 
 ### demo1
 
 - Status: clean
-- Result: `traces match lines=1205`
+- Result: `traces match lines=1063`
+- Notes: fixed a real hitscan parity bug at `gametic 791`. A shotgun pellet was incorrectly seeing an imp through a blocking line because `doomPointOnDivlineSide` did not match Doom's shifted fixed-point side test in `PIT_AddThingIntercepts`. The fresh rerun is now fully trace-clean.
 
 ### demo2
 
@@ -47,6 +48,7 @@ Current stock-demo status after the recent `doom-source` parity work on monster 
 - GD-DOOM: `244`
 - Notes:
 - Earlier blockers now fixed in the working tree:
+- `sector 74` blaze-close door linger is fixed; the remaining mismatch is no longer a door thinker lifetime issue
 - false Cacodemon teleport on MAP26 line `555` caused by monster walk-special full-scan fallback instead of Doom `spechit` candidates
 - dead lost soul gravity mismatch caused by clearing effective `MF_NOGRAVITY` on `MT_SKULL` deaths
 - dead lost soul linger mismatch caused by removing non-corpse deaths one tic late instead of on final-frame expiry
@@ -55,12 +57,11 @@ Current stock-demo status after the recent `doom-source` parity work on monster 
 - resumed-from-attack `A_Chase` reacquire now takes the `MF_JUSTATTACKED` chase-dir branch on the same tic when Doom does
 - Mancubus demo-trace state numbers now match Doom's actual `S_FATT_*` enum values (`RUN1=364`, `ATK1=376`, `PAIN=386`, `DIE1=388`)
 - lost-soul skull-fly zero-XY handling now falls through to the same-tic normal Z/support path, and `resetLostSoulCharge` now clears `thingInFloat`
-- the later sector-74 blaze-close door linger was a stale full-trace artifact after cleanup; a clean rerun now matches the reference through that window
 - Current remaining lead is a single missing decorative mobj:
 - reference keeps green torch `type=45` at `x=33554432`, `y=46137344`, `z=-4718592` through `gametic 2805`
 - GD-DOOM still has it at `gametic 2800` and drops it at `gametic 2801`
 - trace debug maps that torch to map thing `idx=64` in sector `65`
-- Fresh replay against the archived reference logs still looks gameplay-clean by eye; no new stock-demo desyncs were observed during the rerun.
+- Fresh full reruns against regenerated `doom-source` traces now leave only this decorative mismatch; `DOOM2 demo1` and `DOOM2 demo2` are clean.
 
 ## Next Issue
 

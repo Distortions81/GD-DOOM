@@ -71,8 +71,8 @@ func doomPointOnDivlineSide(x, y int64, line divline) int {
 		}
 		return 0
 	}
-	left := fixedMul(line.dy>>fracBits, dx)
-	right := fixedMul(dy, line.dx>>fracBits)
+	left := fixedMul(line.dy>>8, dx>>8)
+	right := fixedMul(dy>>8, line.dx>>8)
 	if right < left {
 		return 0
 	}
