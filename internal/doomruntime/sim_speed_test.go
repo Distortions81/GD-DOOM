@@ -1,6 +1,9 @@
 package doomruntime
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestConsumeSimTicks_SupportsSlowAndFastRates(t *testing.T) {
 	g := &game{simTickScale: 0.5}
@@ -35,5 +38,28 @@ func TestSetSimTickScale_Clamps(t *testing.T) {
 	g.setSimTickScale(9.0)
 	if g.simTickScale != 8.0 {
 		t.Fatalf("max clamp: got=%0.2f want=8.00", g.simTickScale)
+	}
+}
+
+func TestInterpAlpha_UsesMeasuredSimInterval(t *testing.T) {
+	g := &game{
+		lastUpdate:      time.Now().Add(-25 * time.Millisecond),
+		lastSimInterval: 50 * time.Millisecond,
+		simTickScale:    1.0,
+	}
+
+	if got := g.interpAlpha(); got < 0.45 || got > 0.55 {
+		t.Fatalf("measured interval alpha: got=%0.3f want about 0.5", got)
+	}
+}
+
+func TestInterpAlpha_FallsBackToConfiguredTickRate(t *testing.T) {
+	g := &game{
+		lastUpdate:   time.Now().Add(-14 * time.Millisecond),
+		simTickScale: 2.0,
+	}
+
+	if got := g.interpAlpha(); got < 0.9 || got > 1.0 {
+		t.Fatalf("fallback alpha: got=%0.3f want close to 1", got)
 	}
 }

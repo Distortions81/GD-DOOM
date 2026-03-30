@@ -18190,14 +18190,20 @@ func (g *game) interpAlpha() float64 {
 		return 1
 	}
 	dt := time.Since(g.lastUpdate).Seconds()
-	ticRate := float64(doomTicsPerSecond)
-	if g.simTickScale > 0 {
-		ticRate *= g.simTickScale
+	step := 0.0
+	if g.lastSimInterval > 0 {
+		step = g.lastSimInterval.Seconds()
 	}
-	if ticRate < 1e-6 {
-		ticRate = doomTicsPerSecond
+	if step < 1e-6 {
+		ticRate := float64(doomTicsPerSecond)
+		if g.simTickScale > 0 {
+			ticRate *= g.simTickScale
+		}
+		if ticRate < 1e-6 {
+			ticRate = doomTicsPerSecond
+		}
+		step = 1.0 / ticRate
 	}
-	step := 1.0 / ticRate
 	a := dt / step
 	if a < 0 {
 		return 0
