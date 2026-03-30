@@ -611,7 +611,7 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		return false
 	}
 
-	if d := g.doors[sec]; d != nil {
+	if d := g.activeDoorThinker(sec); d != nil {
 		g.debugDoorActivate("line=%d sec=%d special=%d active dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 		if d.direction == 0 && d.topCountdown > 0 {
 			d.traceTopCountdown = d.topCountdown
@@ -686,7 +686,7 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 		if sec < 0 || sec >= len(g.sectorCeil) {
 			continue
 		}
-		if g.doors[sec] != nil {
+		if g.activeDoorThinker(sec) != nil {
 			g.debugDoorActivate("tagged sec=%d action=%v already-active", sec, action)
 			continue
 		}

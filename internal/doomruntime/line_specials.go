@@ -216,7 +216,7 @@ func (g *game) sectorHasActiveMover(sec int) bool {
 	if sec < 0 {
 		return false
 	}
-	return (g.doors != nil && g.doors[sec] != nil) ||
+	return (g.activeDoorThinker(sec) != nil) ||
 		(g.floors != nil && g.floors[sec] != nil) ||
 		(g.plats != nil && g.plats[sec] != nil) ||
 		(g.ceilings != nil && g.ceilings[sec] != nil)

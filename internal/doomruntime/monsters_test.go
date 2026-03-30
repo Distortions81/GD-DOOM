@@ -2647,6 +2647,7 @@ func TestMonsterMoveInDir_TriggersWalkDoorRaise(t *testing.T) {
 		p:              player{x: -128 * fracUnit, y: 0},
 	}
 	g.initPhysics()
+	g.physForLine = []int{0, 1}
 	if !g.monsterMoveInDir(0, 3004, monsterDirEast) {
 		t.Fatal("monster should move across walk door line")
 	}

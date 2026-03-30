@@ -6,9 +6,9 @@ Current stock-demo status after the recent `doom-source` parity work on monster 
 
 ### demo1
 
-- Status: playback terminates cleanly
-- Result: direct playback exits at `tics=4973` with `player_dead=true`
-- Notes: the full JSON trace compare for this demo is still expensive enough to be awkward for iteration, but the runtime now completes headless demo playback cleanly with `-demo-exit-on-death`.
+- Status: clean
+- Result: `traces match lines=4973`
+- Notes: fixed the sector-71 normal-door thinker lifetime mismatch at `gametic 306`; the close-complete path now defers thinker retirement by one prune cycle, while open-only door completions still remove immediately.
 
 ### demo2
 
@@ -41,25 +41,35 @@ Current stock-demo status after the recent `doom-source` parity work on monster 
 ### demo3
 
 - Status: desync
-- Current first mismatch: `line=1811`
-- Path: `root.mobjs[84].movecount`
-- Reference: `2`
-- GD-DOOM: `0`
+- Current first mismatch: `line=2802` (`gametic 2801`)
+- Path: `root.mobj_count`
+- Reference: `245`
+- GD-DOOM: `244`
 - Notes:
 - Earlier blockers now fixed in the working tree:
 - false Cacodemon teleport on MAP26 line `555` caused by monster walk-special full-scan fallback instead of Doom `spechit` candidates
 - dead lost soul gravity mismatch caused by clearing effective `MF_NOGRAVITY` on `MT_SKULL` deaths
 - dead lost soul linger mismatch caused by removing non-corpse deaths one tic late instead of on final-frame expiry
-- Current remaining lead is later and narrower: a monster chase / `movecount` divergence, not teleport or lost-soul death cleanup.
+- Mancubus chase / post-attack reacquire divergence at `gametic≈1810` is now fixed:
+- dead-target cleanup for removed non-corpse thinkers now clears or reassigns monster explicit targets
+- resumed-from-attack `A_Chase` reacquire now takes the `MF_JUSTATTACKED` chase-dir branch on the same tic when Doom does
+- Mancubus demo-trace state numbers now match Doom's actual `S_FATT_*` enum values (`RUN1=364`, `ATK1=376`, `PAIN=386`, `DIE1=388`)
+- lost-soul skull-fly zero-XY handling now falls through to the same-tic normal Z/support path, and `resetLostSoulCharge` now clears `thingInFloat`
+- the later sector-74 blaze-close door linger was a stale full-trace artifact after cleanup; a clean rerun now matches the reference through that window
+- Current remaining lead is a single missing decorative mobj:
+- reference keeps green torch `type=45` at `x=33554432`, `y=46137344`, `z=-4718592` through `gametic 2805`
+- GD-DOOM still has it at `gametic 2800` and drops it at `gametic 2801`
+- trace debug maps that torch to map thing `idx=64` in sector `65`
+- Fresh replay against the archived reference logs still looks gameplay-clean by eye; no new stock-demo desyncs were observed during the rerun.
 
 ## Next Issue
 
 Highest-signal next runtime issue to investigate:
 
-- identify `root.mobjs[84]` at `DOOM2-DEMO3` `line=1811` / `gametic≈1810` and compare its `movecount` / chase progression directly against `../doom-source`
-- likely code area: ordinary monster chase movement ordering in `monsters.go`, especially the exact point where `movecount` is decremented/reset around successful `P_Move`-style movement
-- reason: the current first mismatch is now a pure chase-state scalar mismatch after removing the earlier teleport and lost-soul death parity bugs
+- identify what path marks decorative thing `idx=64` as removed one tic early during the sector-65 movement around `gametic 2801`
+- likely code area: generic thing support / height-clipping or any path that flips `thingCollected[idx]` for non-shootable decorations during moving-sector updates
+- reason: the first remaining mismatch is no longer monster AI or door timing; it is a single object-lifecycle divergence on a static map thing
 
 Secondary lead:
 
-- once the `movecount` divergence is identified, rerun `DOOM2-DEMO3` to see whether the next issue stays in chase logic or shifts to another actor family
+- confirm whether Doom keeps the torch as a normal decorative thinker while the local runtime is incorrectly treating it as removed, collected, or clipped out of the trace

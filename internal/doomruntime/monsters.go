@@ -552,6 +552,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 						}
 					}
 				} else if !monsterLeavesCorpse(th.Type) {
+					g.clearMonsterTargetsForRemovedThing(i)
 					g.thingDeathTics[i] = 0
 					g.thingCollected[i] = true
 					g.debugThingState(i, th, "dead-removed")
@@ -990,6 +991,31 @@ func (g *game) clearMonsterTargetState(i int) {
 	}
 }
 
+func (g *game) clearMonsterTargetsForRemovedThing(targetIdx int) {
+	if g == nil || g.m == nil || targetIdx < 0 {
+		return
+	}
+	for i, th := range g.m.Things {
+		if i == targetIdx || !isMonster(th.Type) {
+			continue
+		}
+		if i >= len(g.thingTargetPlayer) || i >= len(g.thingTargetIdx) {
+			continue
+		}
+		if g.thingTargetPlayer[i] || g.thingTargetIdx[i] != targetIdx {
+			continue
+		}
+		tx, ty := g.thingPosFixed(i, th)
+		if g.monsterLookForPlayer(i, true, tx, ty) {
+			if i < len(g.thingAggro) {
+				g.thingAggro[i] = true
+			}
+			continue
+		}
+		g.clearMonsterTargetState(i)
+	}
+}
+
 func (g *game) setMonsterTargetPlayer(i int) {
 	if g == nil || i < 0 {
 		return
@@ -1190,7 +1216,7 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 			if !g.monsterHasTarget(i) {
 				reacquired, continueChase := g.monsterRunLostTargetChaseState(i, typ, tx, ty)
 				if allowJustAttackedReacquire && reacquired && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
-					return true, false
+					continue
 				}
 				if !reacquired || !continueChase {
 					return true, false
@@ -1785,8 +1811,9 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 		return
 	}
 	if i < len(g.thingSkullFly) && g.thingSkullFly[i] {
-		g.tickSkullFlyMomentum(i, th)
-		return
+		if g.tickSkullFlyMomentum(i, th) {
+			return
+		}
 	}
 	momx := g.thingMomX[i]
 	momy := g.thingMomY[i]
@@ -1980,6 +2007,9 @@ func (g *game) resetLostSoulCharge(i int, typ int16) {
 	if i < len(g.thingMomZ) {
 		g.thingMomZ[i] = 0
 	}
+	if i < len(g.thingInFloat) {
+		g.thingInFloat[i] = false
+	}
 	if i < len(g.thingAttackTics) {
 		g.thingAttackTics[i] = 0
 	}
@@ -2087,7 +2117,7 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 	return lineAttackTarget{}, false
 }
 
-func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
+func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 	momx := clamp(g.thingMomX[i], -maxMove, maxMove)
 	momy := clamp(g.thingMomY[i], -maxMove, maxMove)
 	momz := g.thingMomZ[i]
@@ -2105,7 +2135,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 				g.demoTick-1, g.worldTic, i, px, py, momx, momy, momz)
 		}
 		g.resetLostSoulCharge(i, th.Type)
-		return
+		return false
 	}
 
 	tx, ty := g.thingPosFixed(i, th)
@@ -2229,6 +2259,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) {
 		fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=finish pos=(%d,%d,%d) mom=(%d,%d,%d) floor=%d ceil=%d\n",
 			g.demoTick-1, g.worldTic, i, tx, ty, nz, momx, momy, momz, floorZ, ceilZ)
 	}
+	return true
 }
 
 func monsterPainChance(typ int16) int {
