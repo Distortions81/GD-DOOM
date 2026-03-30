@@ -858,9 +858,9 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		}
 		if sessionflow.ShowAttractBeginPrompt(sg.frontend) {
 			const prompt = "ESC to begin"
-			textScale := scale * 1.2
+			textScale := scale * 1
 			x := (float64(screen.Bounds().Dx()) - float64(sg.g.huTextWidth(prompt))*textScale) * 0.5
-			y := float64(screen.Bounds().Dy()) - 16*textScale
+			y := oy + 16*scale
 			sg.rt.sessionDrawHUTextAt(screen, prompt, x, y, textScale, textScale)
 		}
 	}
