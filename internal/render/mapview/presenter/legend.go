@@ -97,7 +97,7 @@ type LegendInputs struct {
 }
 
 func ShouldDrawThings(iddt int) bool {
-	return iddt >= 2
+	return true
 }
 
 func DrawThingGlyph(screen *ebiten.Image, style ThingStyle, sx, sy float64, angleDeg int16, size float64, antiAlias bool) {

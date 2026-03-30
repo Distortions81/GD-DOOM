@@ -162,8 +162,8 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 	if dst.opts.SFXVolume != 1 {
 		t.Fatalf("sfx volume clamp failed: got %.2f want 1", dst.opts.SFXVolume)
 	}
-	if dst.parity.reveal != revealAllMap {
-		t.Fatalf("reveal default for sourceport should be allmap, got %d", dst.parity.reveal)
+	if dst.parity.reveal != revealNormal {
+		t.Fatalf("reveal default for sourceport should be normal, got %d", dst.parity.reveal)
 	}
 	if dst.parity.iddt != 2 {
 		t.Fatalf("iddt clamp failed: got %d want 2", dst.parity.iddt)

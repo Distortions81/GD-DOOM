@@ -1400,10 +1400,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
 	g.delayedSwitchReverts = make([]delayedSwitchTexture, 0, 4)
 	g.switchTextureBlends = make([]switchTextureBlend, 0, 4)
-	if g.opts.SourcePortMode {
-		// Source-port defaults: reveal full map style and heading-follow at startup.
-		g.parity.reveal = revealAllMap
-	}
 	if g.opts.AllCheats {
 		// Backward compatible legacy switch.
 		if g.cheatLevel < 3 {
@@ -4255,6 +4251,9 @@ func (g *game) drawThings(screen *ebiten.Image) {
 	items := make([]mapview.ThingDrawItem, 0, len(g.m.Things))
 	for i, th := range g.m.Things {
 		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		if !g.automapThingRevealed(i, th) {
 			continue
 		}
 		fx, fy := g.thingPosFixed(i, th)
@@ -14162,6 +14161,9 @@ func (g *game) ensureMapFloorLoopSetsBuilt() {
 func (g *game) mapFloorLoopSetsForView() []mapview.FloorLoopSet {
 	out := make([]mapview.FloorLoopSet, len(g.mapFloorLoopSets))
 	for sec, set := range g.mapFloorLoopSets {
+		if !g.automapSectorRevealed(sec) {
+			continue
+		}
 		rings := make([][]mapview.WorldPt, 0, len(set.rings))
 		for _, ring := range set.rings {
 			if len(ring) == 0 {
@@ -14184,6 +14186,46 @@ func (g *game) mapFloorLoopSetsForView() []mapview.FloorLoopSet {
 		}
 	}
 	return out
+}
+
+func (g *game) automapSectorRevealed(sec int) bool {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) {
+		return false
+	}
+	if g.automapRevealAll() {
+		return true
+	}
+	if sec < 0 || sec >= len(g.sectorLineAdj) {
+		return false
+	}
+	for _, entry := range g.sectorLineAdj[sec] {
+		if entry.line < 0 || entry.line >= len(g.m.Linedefs) {
+			continue
+		}
+		ld := g.m.Linedefs[entry.line]
+		if ld.Flags&lineNeverSee != 0 {
+			continue
+		}
+		if ld.Flags&mlMapped != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *game) automapThingRevealed(i int, th mapdata.Thing) bool {
+	if g == nil {
+		return false
+	}
+	if g.automapRevealAll() {
+		return true
+	}
+	sec := g.thingSectorCached(i, th)
+	if sec < 0 {
+		x, y := g.thingPosFixed(i, th)
+		sec = g.sectorAt(x, y)
+	}
+	return g.automapSectorRevealed(sec)
 }
 
 func (g *game) mapFloorShadeMuls() []uint32 {
