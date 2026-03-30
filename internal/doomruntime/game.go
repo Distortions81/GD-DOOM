@@ -1048,18 +1048,20 @@ type worldTri struct {
 }
 
 type sectorPlaneCacheEntry struct {
-	tris      []worldTri
-	dynamic   bool
-	lastFloor int64
-	lastCeil  int64
-	dirty     bool
-	lightKind sectorLightEffectKind
-	light     int16
-	lightMul  uint8
-	texID     string
-	tex       *ebiten.Image
-	flatRGBA  []byte
-	texTick   int
+	tris         []worldTri
+	dynamic      bool
+	lastFloor    int64
+	lastCeil     int64
+	dirty        bool
+	lightKind    sectorLightEffectKind
+	prevLight    int16
+	light        int16
+	prevLightMul uint8
+	lightMul     uint8
+	texID        string
+	tex          *ebiten.Image
+	flatRGBA     []byte
+	texTick      int
 }
 
 type renderStage int
@@ -15403,15 +15405,17 @@ func (g *game) initSectorPlaneLevelCache() {
 		light, lightMul, lightKind, _ := g.sectorLightingSnapshot(sec)
 		dyn := sec < len(g.dynamicSectorMask) && g.dynamicSectorMask[sec]
 		g.sectorPlaneCache[sec] = sectorPlaneCacheEntry{
-			tris:      append([]worldTri(nil), g.sectorPlaneTris[sec]...),
-			dynamic:   dyn,
-			lastFloor: floor,
-			lastCeil:  ceil,
-			dirty:     false,
-			light:     light,
-			lightMul:  lightMul,
-			lightKind: lightKind,
-			texTick:   -1,
+			tris:         append([]worldTri(nil), g.sectorPlaneTris[sec]...),
+			dynamic:      dyn,
+			lastFloor:    floor,
+			lastCeil:     ceil,
+			dirty:        false,
+			prevLight:    light,
+			light:        light,
+			prevLightMul: lightMul,
+			lightMul:     lightMul,
+			lightKind:    lightKind,
+			texTick:      -1,
 		}
 	}
 	g.sectorLightCacheTick = g.worldTic
@@ -15530,7 +15534,7 @@ func (g *game) sectorLightLevelCached(sec int) int16 {
 		g.ensureSectorPlaneCacheLightingFresh()
 	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
-		return g.sectorPlaneCache[sec].light
+		return g.interpolateSectorLight(g.sectorPlaneCache[sec].prevLight, g.sectorPlaneCache[sec].light)
 	}
 	if g != nil && g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
 		return g.m.Sectors[sec].Light
@@ -15546,7 +15550,7 @@ func (g *game) sectorLightMulCached(sec int) uint32 {
 		g.ensureSectorPlaneCacheLightingFresh()
 	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
-		return uint32(g.sectorPlaneCache[sec].lightMul)
+		return uint32(g.interpolateSectorLightMul(g.sectorPlaneCache[sec].prevLightMul, g.sectorPlaneCache[sec].lightMul))
 	}
 	return uint32(sectorLightMul(g.sectorLightLevelCached(sec)))
 }
@@ -15559,6 +15563,48 @@ func (g *game) sectorLightKindCached(sec int) sectorLightEffectKind {
 		return g.sectorPlaneCache[sec].lightKind
 	}
 	return sectorLightEffectNone
+}
+
+func (g *game) interpolateSectorLight(prev, curr int16) int16 {
+	if g == nil || !g.opts.SourcePortMode {
+		return curr
+	}
+	alpha := g.renderAlpha
+	if alpha <= 0 {
+		return prev
+	}
+	if alpha >= 1 {
+		return curr
+	}
+	light := int(math.Round(lerp(float64(prev), float64(curr), alpha)))
+	if light < 0 {
+		light = 0
+	}
+	if light > 255 {
+		light = 255
+	}
+	return int16(light)
+}
+
+func (g *game) interpolateSectorLightMul(prev, curr uint8) uint8 {
+	if g == nil || !g.opts.SourcePortMode {
+		return curr
+	}
+	alpha := g.renderAlpha
+	if alpha <= 0 {
+		return prev
+	}
+	if alpha >= 1 {
+		return curr
+	}
+	mul := int(math.Round(lerp(float64(prev), float64(curr), alpha)))
+	if mul < 0 {
+		mul = 0
+	}
+	if mul > 255 {
+		mul = 255
+	}
+	return uint8(mul)
 }
 
 func triangleInsideSectorLoops(t worldTri, sec int, loopSets []sectorLoopSet) bool {
@@ -17713,6 +17759,7 @@ func (g *game) capturePrevState() {
 	g.prevPX = g.p.x
 	g.prevPY = g.p.y
 	g.prevAngle = g.p.angle
+	g.capturePrevSectorLightState()
 	g.capturePrevThingRenderState()
 	g.capturePrevProjectileRenderState()
 }
@@ -17726,6 +17773,16 @@ func (g *game) syncRenderState() {
 	g.renderAlpha = 1
 	g.debugAimSS = debugFixedSubsector
 	g.lastUpdate = time.Now()
+}
+
+func (g *game) capturePrevSectorLightState() {
+	if g == nil {
+		return
+	}
+	for sec := range g.sectorPlaneCache {
+		g.sectorPlaneCache[sec].prevLight = g.sectorPlaneCache[sec].light
+		g.sectorPlaneCache[sec].prevLightMul = g.sectorPlaneCache[sec].lightMul
+	}
 }
 
 func (g *game) capturePrevThingRenderState() {

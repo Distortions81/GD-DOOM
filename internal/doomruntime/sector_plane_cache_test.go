@@ -163,3 +163,48 @@ func TestPlane3DKeyForSector_UsesCachedLight(t *testing.T) {
 		t.Fatalf("plane key light=%d want=160", key.light)
 	}
 }
+
+func TestSectorLightLevelCached_InterpolatesInSourcePortMode(t *testing.T) {
+	g := &game{
+		opts: Options{SourcePortMode: true},
+		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			prevLight: 96,
+			light:     160,
+		}},
+		renderAlpha: 0.5,
+	}
+
+	if got := g.sectorLightLevelCached(0); got != 128 {
+		t.Fatalf("interpolated light=%d want=128", got)
+	}
+}
+
+func TestSectorLightMulCached_InterpolatesInSourcePortMode(t *testing.T) {
+	g := &game{
+		opts: Options{SourcePortMode: true},
+		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			prevLightMul: 96,
+			lightMul:     160,
+		}},
+		renderAlpha: 0.5,
+	}
+
+	if got := g.sectorLightMulCached(0); got != 128 {
+		t.Fatalf("interpolated light mul=%d want=128", got)
+	}
+}
+
+func TestSectorLightLevelCached_DoesNotInterpolateOutsideSourcePortMode(t *testing.T) {
+	g := &game{
+		opts: Options{SourcePortMode: false},
+		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			prevLight: 96,
+			light:     160,
+		}},
+		renderAlpha: 0.5,
+	}
+
+	if got := g.sectorLightLevelCached(0); got != 160 {
+		t.Fatalf("classic mode light=%d want=160", got)
+	}
+}
