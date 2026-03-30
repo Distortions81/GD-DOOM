@@ -299,6 +299,13 @@ const maskedMidSortBucket = 8.0
 
 const spriteMagnifyMinScale = 2.0
 
+const (
+	// 360 means the blend spans the full normalized interval for that category.
+	wallFloorAnimShutterAngle = 360.0
+	switchTextureShutterAngle = 360.0
+	weaponSpriteShutterAngle  = 360.0
+)
+
 type maskedMidSeg struct {
 	scene.MaskedMidSeg
 	tex              wallTextureBlendSample
@@ -596,6 +603,9 @@ type game struct {
 	weaponRefire          bool
 	weaponAttackDown      bool
 	useButtonDown         bool
+	prevWeaponState       weaponPspriteState
+	prevWeaponFlashState  weaponPspriteState
+	prevWeaponPSpriteY    int
 	weaponState           weaponPspriteState
 	weaponStateTics       int
 	weaponFlashState      weaponPspriteState
@@ -1775,11 +1785,12 @@ func (g *game) switchTextureBlendFor(sidedef int, slot switchTextureSlot, curren
 		if elapsed >= float64(frames) {
 			return textureBlendSample{fromKey: blend.to}
 		}
-		alpha := uint8(math.Round((elapsed / float64(frames)) * 255))
-		if alpha == 0 {
+		alpha := applyBlendShutter(elapsed/float64(frames), switchTextureShutterAngle)
+		alphaU8 := uint8(math.Round(alpha * 255))
+		if alphaU8 == 0 {
 			return textureBlendSample{fromKey: blend.from, toKey: blend.to}
 		}
-		return textureBlendSample{fromKey: blend.from, toKey: blend.to, alpha: alpha}
+		return textureBlendSample{fromKey: blend.from, toKey: blend.to, alpha: alphaU8}
 	}
 	return textureBlendSample{}
 }
@@ -18013,6 +18024,10 @@ func (g *game) textureBlendSample(name string, refs map[string]textureAnimRef) t
 	if alpha <= 0 {
 		return out
 	}
+	alpha = applyBlendShutter(alpha, wallFloorAnimShutterAngle)
+	if alpha <= 0 {
+		return out
+	}
 	nextIdx := (idx + 1) % len(ref.frames)
 	out.toKey = ref.frames[nextIdx]
 	out.alpha = uint8(math.Round(alpha * 255))
@@ -18070,6 +18085,7 @@ func (g *game) capturePrevState() {
 	g.prevPX = g.p.x
 	g.prevPY = g.p.y
 	g.prevAngle = g.p.angle
+	g.capturePrevWeaponRenderState()
 	g.capturePrevSectorLightState()
 	g.capturePrevThingRenderState()
 	g.capturePrevProjectileRenderState()
@@ -18084,6 +18100,15 @@ func (g *game) syncRenderState() {
 	g.renderAlpha = 1
 	g.debugAimSS = debugFixedSubsector
 	g.lastUpdate = time.Now()
+}
+
+func (g *game) capturePrevWeaponRenderState() {
+	if g == nil {
+		return
+	}
+	g.prevWeaponState = g.weaponState
+	g.prevWeaponFlashState = g.weaponFlashState
+	g.prevWeaponPSpriteY = g.weaponPSpriteY
 }
 
 func (g *game) capturePrevSectorLightState() {
@@ -18172,6 +18197,31 @@ func (g *game) interpAlpha() float64 {
 
 func lerp(a, b, t float64) float64 {
 	return a + (b-a)*t
+}
+
+func applyBlendShutter(alpha, shutterAngle float64) float64 {
+	if alpha <= 0 {
+		return 0
+	}
+	if alpha >= 1 {
+		return 1
+	}
+	if shutterAngle <= 0 {
+		return 1
+	}
+	window := shutterAngle / 360.0
+	if window >= 1 {
+		return alpha
+	}
+	start := (1 - window) * 0.5
+	end := 1 - start
+	if alpha <= start {
+		return 0
+	}
+	if alpha >= end {
+		return 1
+	}
+	return (alpha - start) / window
 }
 
 func lerpFixed(a, b int64, t float64) int64 {

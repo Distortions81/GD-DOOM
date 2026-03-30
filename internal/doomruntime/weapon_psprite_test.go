@@ -265,6 +265,27 @@ func TestSpritePatch_FallsBackToBasePatchForMissingBlendToken(t *testing.T) {
 	}
 }
 
+func TestSpritePatch_MaterializesBlendedPatchToken(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"BON1A0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{0, 0, 0, 255}},
+				"BON1B0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{200, 100, 50, 255}},
+			},
+		},
+	}
+	_, w, h, _, _, ok := g.spritePatch("BON1A0>BON1B0#128/255")
+	if !ok {
+		t.Fatal("spritePatch should materialize blended patch")
+	}
+	if w != 1 || h != 1 {
+		t.Fatalf("got w=%d h=%d want 1x1", w, h)
+	}
+	if img := g.spritePatchImg["BON1A0>BON1B0#128/255"]; img == nil {
+		t.Fatal("expected blended patch cached under token key")
+	}
+}
+
 func TestWeaponOverlayAnchorUsesDoomCenterX(t *testing.T) {
 	rectW := 640
 	scale := float64(rectW) / doomLogicalW
@@ -281,5 +302,67 @@ func TestWeaponOverlayYUsesViewportCenter(t *testing.T) {
 	got := float64(rectH)/2 - (100.5-32.0)*scale
 	if math.Abs(got-31.0) > 1e-9 {
 		t.Fatalf("faithful overlay y=%v want 31", got)
+	}
+}
+
+func TestRenderWeaponOverlayState_InterpolatesSourcePortPsprite(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SourcePortMode: true,
+			SpritePatchBank: map[string]WallTexture{
+				"PISGA0": {Width: 1, Height: 1, RGBA: []byte{1, 2, 3, 4}},
+				"PISGB0": {Width: 1, Height: 1, RGBA: []byte{5, 6, 7, 8}},
+				"PISFA0": {Width: 1, Height: 1, RGBA: []byte{9, 10, 11, 12}},
+			},
+		},
+		prevWeaponState:      weaponStatePistolReady,
+		weaponState:          weaponStatePistolAtk2,
+		prevWeaponFlashState: weaponStateNone,
+		weaponFlashState:     weaponStatePistolFlash,
+		prevWeaponPSpriteY:   32,
+		weaponPSpriteY:       40,
+		renderAlpha:          0.5,
+	}
+
+	name, prevName, flash, prevFlash, y, alpha := g.renderWeaponOverlayState()
+	if name != "PISGB0" || prevName != "PISGA0" {
+		t.Fatalf("weapon names got current=%q prev=%q want PISGB0/PISGA0", name, prevName)
+	}
+	if flash != "PISFA0" || prevFlash != "" {
+		t.Fatalf("flash names got current=%q prev=%q want PISFA0/empty", flash, prevFlash)
+	}
+	if y != 36 {
+		t.Fatalf("interpolated y=%v want 36", y)
+	}
+	if alpha != 0.5 {
+		t.Fatalf("alpha=%v want 0.5", alpha)
+	}
+}
+
+func TestRenderWeaponOverlayState_DoesNotInterpolateClassicMode(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SourcePortMode: false,
+			SpritePatchBank: map[string]WallTexture{
+				"PISGA0": {Width: 1, Height: 1, RGBA: []byte{1, 2, 3, 4}},
+				"PISGB0": {Width: 1, Height: 1, RGBA: []byte{5, 6, 7, 8}},
+			},
+		},
+		prevWeaponState:    weaponStatePistolReady,
+		weaponState:        weaponStatePistolAtk2,
+		prevWeaponPSpriteY: 32,
+		weaponPSpriteY:     40,
+		renderAlpha:        0.5,
+	}
+
+	name, prevName, _, _, y, alpha := g.renderWeaponOverlayState()
+	if name != "PISGB0" || prevName != "" {
+		t.Fatalf("classic names got current=%q prev=%q want PISGB0/empty", name, prevName)
+	}
+	if y != 40 {
+		t.Fatalf("classic y=%v want 40", y)
+	}
+	if alpha != 1 {
+		t.Fatalf("classic alpha=%v want 1", alpha)
 	}
 }
