@@ -586,6 +586,13 @@ func TestCacheOriginSpriteItemGeometry_UsesPatchOffsetsLikeDoom(t *testing.T) {
 	}
 }
 
+func TestSpriteClipBottomWithPatchOverhang_PreservesRowsBelowOrigin(t *testing.T) {
+	tex := &WallTexture{Width: 41, Height: 57, OffsetY: 52}
+	if got, want := spriteClipBottomWithPatchOverhang(100, tex, 2, 200), 110; got != want {
+		t.Fatalf("clipBottom=%d want=%d", got, want)
+	}
+}
+
 func TestMonsterSpriteNameForView_SpectreUsesDeathFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{

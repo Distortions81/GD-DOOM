@@ -5672,6 +5672,21 @@ func cacheOriginSpriteItemGeometry(sx, sy, scale float64, tex *WallTexture, clip
 	return dstW, dstH, dstX, dstY, x0, x1, y0, y1, ok
 }
 
+func spriteClipBottomWithPatchOverhang(clipBottom int, tex *WallTexture, scale float64, viewH int) int {
+	if tex == nil || scale <= 0 || viewH <= 0 {
+		return clipBottom
+	}
+	overhang := tex.Height - tex.OffsetY
+	if overhang <= 0 {
+		return clipBottom
+	}
+	clipBottom += int(math.Ceil(float64(overhang) * scale))
+	if clipBottom >= viewH {
+		clipBottom = viewH - 1
+	}
+	return clipBottom
+}
+
 func floorSpriteTop(dstH, yb float64) float64 {
 	return scene.FloorSpriteTop(dstH, yb)
 }
@@ -10248,6 +10263,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 		if scale <= 0 {
 			continue
 		}
+		clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scale, viewH)
 		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focal
 		w, h, dstX, dstY, x0, x1, y0, y1, boundsOK := cacheOriginSpriteItemGeometry(sx, sy, scale, ref.tex, clipTop, clipBottom, viewW, viewH)
 		if h <= 0 || w <= 0 {
@@ -10328,6 +10344,7 @@ func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref 
 	if scale <= 0 {
 		return
 	}
+	clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scale, g.viewH)
 	sx := float64(g.viewW)/2 - (s/f)*focal
 	baseZ := float64(baseZFixed) / fracUnit
 	sy := float64(g.viewH)/2 - ((baseZ-eyeZ)/f)*focal
