@@ -158,7 +158,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDemoStopAfterTics := 0
 	defaultNoVsync := false
 	if isWASMBuild() {
-		//defaultNoVsync = true
+		defaultNoVsync = true
 	}
 	defaultNoFPS := false
 	defaultShowTPS := false
