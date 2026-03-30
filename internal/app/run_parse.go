@@ -126,6 +126,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultSourcePortMode := false
 	defaultSourcePortThingRenderMode := "sprites"
 	defaultSourcePortThingBlendFrames := false
+	defaultZombiemanThinkerBlend := true
+	defaultDebugMonsterThinkerBlend := false
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
@@ -414,6 +416,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	sourcePortThingRenderMode := fs.String("sourceport-thing-render-mode", defaultSourcePortThingRenderMode, "sourceport automap thing rendering (glyphs|items|sprites)")
 	sourcePortThingBlendFrames := fs.Bool("sourceport-thing-blend-frames", defaultSourcePortThingBlendFrames, "allow blended sub-tic thing sprite frames on the automap")
+	zombiemanThinkerBlend := fs.Bool("zombieman-thinker-blend", defaultZombiemanThinkerBlend, "spread prime monster walk-step rendering across their thinker chase states")
+	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
 	sourcePortSectorLighting := fs.Bool("sourceport-sector-lighting", defaultSourcePortSectorLighting, "show classic sector lighting while in sourceport mode")
 	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
 	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
@@ -997,6 +1001,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SourcePortMode:             *sourcePortMode,
 			SourcePortThingRenderMode:  *sourcePortThingRenderMode,
 			SourcePortThingBlendFrames: *sourcePortThingBlendFrames,
+			ZombiemanThinkerBlend:      *zombiemanThinkerBlend,
+			DebugMonsterThinkerBlend:   *debugMonsterThinkerBlend,
 			SourcePortSectorLighting:   *sourcePortSectorLighting,
 			DisableDoomLighting:        !*doomLighting,
 			KageShader:                 *kageShader,

@@ -156,6 +156,105 @@ func TestThingRenderPosFixedInterpolatesMonsterPosition(t *testing.T) {
 	}
 }
 
+func TestThingRenderPosFixed_UsesZombiemanChaseStateBlend(t *testing.T) {
+	g := &game{
+		opts:                  Options{ZombiemanThinkerBlend: true},
+		thingRenderBlendFromX: []int64{0},
+		thingRenderBlendFromY: []int64{0},
+		thingRenderBlendTics:  []int{4},
+		thingX:                []int64{128 * fracUnit},
+		thingY:                []int64{64 * fracUnit},
+		thingZState:           []int64{0},
+		thingFloorState:       []int64{0},
+		thingCeilState:        []int64{128 * fracUnit},
+		thingSupportValid:     []bool{true},
+		thingDoomState:        []int{176},
+		thingStateTics:        []int{4},
+	}
+	th := mapdata.Thing{Type: 3004}
+
+	x, y, _ := g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(16*fracUnit); got != want {
+		t.Fatalf("x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(8*fracUnit); got != want {
+		t.Fatalf("y=%d want=%d", got, want)
+	}
+
+	g.thingStateTics[0] = 2
+	x, y, _ = g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(80*fracUnit); got != want {
+		t.Fatalf("late x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(40*fracUnit); got != want {
+		t.Fatalf("late y=%d want=%d", got, want)
+	}
+}
+
+func TestThingRenderPosFixed_DisabledZombiemanChaseBlendFallsBackToPrevInterpolation(t *testing.T) {
+	g := &game{
+		opts:                  Options{ZombiemanThinkerBlend: false},
+		prevThingX:            []int64{0},
+		prevThingY:            []int64{0},
+		prevThingZ:            []int64{0},
+		thingRenderBlendFromX: []int64{0},
+		thingRenderBlendFromY: []int64{0},
+		thingRenderBlendTics:  []int{4},
+		thingX:                []int64{128 * fracUnit},
+		thingY:                []int64{64 * fracUnit},
+		thingZState:           []int64{0},
+		thingFloorState:       []int64{0},
+		thingCeilState:        []int64{128 * fracUnit},
+		thingSupportValid:     []bool{true},
+		thingDoomState:        []int{176},
+		thingStateTics:        []int{4},
+	}
+	th := mapdata.Thing{Type: 3004}
+
+	x, y, _ := g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(64*fracUnit); got != want {
+		t.Fatalf("x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(32*fracUnit); got != want {
+		t.Fatalf("y=%d want=%d", got, want)
+	}
+}
+
+func TestThingRenderPosFixed_UsesLostSoulChaseStateBlend(t *testing.T) {
+	g := &game{
+		opts:                  Options{ZombiemanThinkerBlend: true},
+		thingRenderBlendFromX: []int64{0},
+		thingRenderBlendFromY: []int64{0},
+		thingRenderBlendTics:  []int{6},
+		thingX:                []int64{120 * fracUnit},
+		thingY:                []int64{60 * fracUnit},
+		thingZState:           []int64{0},
+		thingFloorState:       []int64{0},
+		thingCeilState:        []int64{128 * fracUnit},
+		thingSupportValid:     []bool{true},
+		thingDoomState:        []int{587},
+		thingStateTics:        []int{6},
+	}
+	th := mapdata.Thing{Type: 3006}
+
+	x, y, _ := g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(10*fracUnit); got != want {
+		t.Fatalf("x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(5*fracUnit); got != want {
+		t.Fatalf("y=%d want=%d", got, want)
+	}
+
+	g.thingStateTics[0] = 3
+	x, y, _ = g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(70*fracUnit); got != want {
+		t.Fatalf("late x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(35*fracUnit); got != want {
+		t.Fatalf("late y=%d want=%d", got, want)
+	}
+}
+
 func TestMonsterSpriteNameForViewUsesPainFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{

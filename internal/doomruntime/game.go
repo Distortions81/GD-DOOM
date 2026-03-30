@@ -262,6 +262,7 @@ type cutoutItem struct {
 	opaqueRectStart int
 	opaqueRectCount int
 	boundsOK        bool
+	debugOverlay    bool
 }
 
 type billboardQueueItem = cutoutItem
@@ -535,6 +536,9 @@ type game struct {
 	prevThingX            []int64
 	prevThingY            []int64
 	prevThingZ            []int64
+	thingRenderBlendFromX []int64
+	thingRenderBlendFromY []int64
+	thingRenderBlendTics  []int
 	thingX                []int64
 	thingY                []int64
 	thingMomX             []int64
@@ -4365,10 +4369,19 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if it.shadow {
 			continue
 		}
+		if it.debugOverlay {
+			continue
+		}
 		g.drawCutoutItem(it, focal)
 	}
 	for _, it := range g.billboardQueueScratch {
-		if !it.shadow {
+		if !it.shadow || it.debugOverlay {
+			continue
+		}
+		g.drawCutoutItem(it, focal)
+	}
+	for _, it := range g.billboardQueueScratch {
+		if !it.debugOverlay {
 			continue
 		}
 		g.drawCutoutItem(it, focal)
@@ -7476,10 +7489,10 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		return
 	}
 	projectedOpaque := g.projectedOpaqueRectScratch[it.opaqueRectStart : it.opaqueRectStart+it.opaqueRectCount]
-	if len(projectedOpaque) > 0 && g.projectedOpaqueRectsFullyCoveredByCutout(projectedOpaque) {
+	if !it.debugOverlay && len(projectedOpaque) > 0 && g.projectedOpaqueRectsFullyCoveredByCutout(projectedOpaque) {
 		return
 	}
-	if (len(projectedOpaque) > 0 && g.projectedOpaqueRectsFullyOccluded(projectedOpaque, it.depthQ)) ||
+	if (!it.debugOverlay && len(projectedOpaque) > 0 && g.projectedOpaqueRectsFullyOccluded(projectedOpaque, it.depthQ)) ||
 		g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, it.depthQ) {
 		return
 	}
@@ -7560,7 +7573,7 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 	for y := y0; y <= y1; y++ {
 		ty := tyLUT[y-y0]
 		row := y * viewW
-		if len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(it.depthQ, row, x0, x1) {
+		if !it.debugOverlay && len(it.clipSpans) == 0 && x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(it.depthQ, row, x0, x1) {
 			continue
 		}
 		rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, it.depthQ, it.clipSpans, g.solidClipScratch[:0])
@@ -7587,7 +7600,49 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 				continue
 			}
 		}
+		if it.debugOverlay {
+			g.drawBillboardRowSpansDebugRed(row, ty, tw, x0, txLUT, txRunEndLUT, rowSpans, it.tex, src32, srcIndexed)
+			continue
+		}
 		g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, txRunEndLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
+	}
+}
+
+func (g *game) drawBillboardRowSpansDebugRed(row, ty, tw, x0 int, txLUT, txRunEndLUT []int, spans []solidSpan, tex *WallTexture, src32 []uint32, srcIndexed []byte) {
+	if g == nil || tex == nil {
+		return
+	}
+	useIndexed := ty >= 0 && ty < tex.Height && len(srcIndexed) == tw*tex.Height
+	base := ty * tw
+	mask := tex.OpaqueMask
+	if useIndexed && len(mask) != tw*tex.Height {
+		tex.EnsureOpaqueMask()
+		mask = tex.OpaqueMask
+	}
+	red := packRGBA(255, 0, 0)
+	for _, sp := range spans {
+		for x := sp.L; x <= sp.R; {
+			lutIdx := x - x0
+			srcIdx := base + txLUT[lutIdx]
+			runEnd := txRunEndLUT[lutIdx] + x0
+			if runEnd > sp.R {
+				runEnd = sp.R
+			}
+			opaque := false
+			if useIndexed {
+				opaque = len(mask) == tw*tex.Height && mask[srcIdx] != 0
+			} else {
+				opaque = ((src32[srcIdx] >> pixelAShift) & 0xFF) != 0
+			}
+			if opaque {
+				if runEnd > x {
+					g.fillCutoutRowSpan(row, x, runEnd, red)
+				} else {
+					g.writeWallPixel(row+x, red)
+				}
+			}
+			x = runEnd + 1
+		}
 	}
 }
 
@@ -9935,7 +9990,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
-		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
+		item := cutoutItem{
 			dist:            f,
 			depthQ:          depthQ,
 			kind:            billboardQueueMonsters,
@@ -9957,8 +10012,67 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			opaqueRectStart: opaqueRectStart,
 			opaqueRectCount: opaqueRectCount,
 			boundsOK:        true,
-		})
+		}
+		g.billboardQueueScratch = append(g.billboardQueueScratch, item)
+		if g.opts.DebugMonsterThinkerBlend {
+			g.appendMonsterThinkerDebugCutoutItem(i, th, ref, flip, camX, camY, ca, sa, eyeZ, focal, near)
+		}
 	}
+}
+
+func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref *spriteRenderRef, flip bool, camX, camY, ca, sa, eyeZ, focal, near float64) {
+	if g == nil || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
+		return
+	}
+	txFixed, tyFixed := g.thingPosFixed(i, th)
+	baseZFixed := g.monsterRenderBaseZ(i, th, txFixed, tyFixed)
+	tx := float64(txFixed)/fracUnit - camX
+	ty := float64(tyFixed)/fracUnit - camY
+	f := tx*ca + ty*sa
+	s := -tx*sa + ty*ca
+	if f <= near {
+		return
+	}
+	clipRadius := monsterSpriteClipRadius(th.Type)
+	clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, g.viewH, eyeZ, f, focal)
+	if !clipOK {
+		return
+	}
+	scale := focal / f
+	if scale <= 0 {
+		return
+	}
+	sx := float64(g.viewW)/2 - (s/f)*focal
+	baseZ := float64(baseZFixed) / fracUnit
+	sy := float64(g.viewH)/2 - ((baseZ-eyeZ)/f)*focal
+	w, h, dstX, dstY, x0, x1, y0, y1, boundsOK := cacheOriginSpriteItemGeometry(sx, sy, scale, ref.tex, clipTop, clipBottom, g.viewW, g.viewH)
+	if !boundsOK || h <= 0 || w <= 0 {
+		return
+	}
+	opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, clipTop, clipBottom, g.viewW, g.viewH)
+	g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
+		dist:            f,
+		depthQ:          encodeDepthQ(f),
+		kind:            billboardQueueMonsters,
+		x0:              x0,
+		x1:              x1,
+		y0:              y0,
+		y1:              y1,
+		shadeMul:        256,
+		tex:             ref.tex,
+		flip:            flip,
+		clipTop:         clipTop,
+		clipBottom:      clipBottom,
+		dstX:            dstX,
+		dstY:            dstY,
+		scale:           scale,
+		opaque:          ref.opaque,
+		hasOpaque:       ref.hasOpaque,
+		opaqueRectStart: opaqueRectStart,
+		opaqueRectCount: opaqueRectCount,
+		boundsOK:        true,
+		debugOverlay:    true,
+	})
 }
 
 func (g *game) monsterRenderBaseZ(i int, th mapdata.Thing, x, y int64) int64 {
@@ -18606,6 +18720,15 @@ func (g *game) thingRenderPosFixed(i int, th mapdata.Thing, alpha float64) (int6
 	if g == nil || alpha >= 1 || i < 0 {
 		return x, y, z
 	}
+	if blendAlpha, ok := g.thingRenderBlendAlpha(i, th, alpha); ok {
+		if i < len(g.thingRenderBlendFromX) {
+			x = lerpFixed(g.thingRenderBlendFromX[i], x, blendAlpha)
+		}
+		if i < len(g.thingRenderBlendFromY) {
+			y = lerpFixed(g.thingRenderBlendFromY[i], y, blendAlpha)
+		}
+		return x, y, z
+	}
 	if i < len(g.prevThingX) {
 		x = lerpFixed(g.prevThingX[i], x, alpha)
 	}
@@ -18616,6 +18739,78 @@ func (g *game) thingRenderPosFixed(i int, th mapdata.Thing, alpha float64) (int6
 		z = lerpFixed(g.prevThingZ[i], z, alpha)
 	}
 	return x, y, z
+}
+
+func (g *game) thingRenderBlendAlpha(i int, th mapdata.Thing, alpha float64) (float64, bool) {
+	if g == nil || !g.opts.ZombiemanThinkerBlend || i < 0 {
+		return 0, false
+	}
+	if i >= len(g.thingRenderBlendTics) || g.thingRenderBlendTics[i] <= 1 {
+		return 0, false
+	}
+	if i >= len(g.thingStateTics) || i >= len(g.thingDoomState) {
+		return 0, false
+	}
+	total, ok := thingThinkerBlendProfile(th.Type, g.thingDoomState[i])
+	if !ok {
+		return 0, false
+	}
+	remaining := g.thingStateTics[i]
+	if g.thingRenderBlendTics[i] != total || remaining < 1 || remaining > total {
+		return 0, false
+	}
+	blendAlpha := (float64(total-remaining) + alpha) / float64(total)
+	if blendAlpha < 0 {
+		blendAlpha = 0
+	}
+	if blendAlpha > 1 {
+		blendAlpha = 1
+	}
+	return blendAlpha, true
+}
+
+func thingThinkerBlendProfile(typ int16, state int) (int, bool) {
+	switch typ {
+	case 3004:
+		if state >= 176 && state <= 183 {
+			return 4, true
+		}
+	case 9:
+		if state >= 210 && state <= 217 {
+			return 3, true
+		}
+	case 65:
+		if state >= 408 && state <= 415 {
+			return 3, true
+		}
+	case 3005:
+		if state == 503 {
+			return 3, true
+		}
+	case 3006:
+		if state == 587 || state == 588 {
+			return 6, true
+		}
+	}
+	return 0, false
+}
+
+func (g *game) startThingRenderBlend(i int, fromX, fromY int64, totalTics int) {
+	if g == nil || i < 0 || totalTics <= 1 {
+		return
+	}
+	if i >= len(g.thingRenderBlendFromX) {
+		g.thingRenderBlendFromX = append(g.thingRenderBlendFromX, make([]int64, i-len(g.thingRenderBlendFromX)+1)...)
+	}
+	if i >= len(g.thingRenderBlendFromY) {
+		g.thingRenderBlendFromY = append(g.thingRenderBlendFromY, make([]int64, i-len(g.thingRenderBlendFromY)+1)...)
+	}
+	if i >= len(g.thingRenderBlendTics) {
+		g.thingRenderBlendTics = append(g.thingRenderBlendTics, make([]int, i-len(g.thingRenderBlendTics)+1)...)
+	}
+	g.thingRenderBlendFromX[i] = fromX
+	g.thingRenderBlendFromY[i] = fromY
+	g.thingRenderBlendTics[i] = totalTics
 }
 
 func (g *game) thingPosFixed(i int, th mapdata.Thing) (int64, int64) {

@@ -62,6 +62,8 @@ type Options struct {
 	SourcePortMode             bool
 	SourcePortThingRenderMode  string
 	SourcePortThingBlendFrames bool
+	ZombiemanThinkerBlend      bool
+	DebugMonsterThinkerBlend   bool
 	SourcePortSectorLighting   bool
 	DisableDoomLighting        bool
 	KageShader                 bool
