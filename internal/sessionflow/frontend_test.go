@@ -80,3 +80,18 @@ func TestStepFrontendOptionsEscapeClosesAttractMenu(t *testing.T) {
 		t.Fatal("expected attract menu to close on escape")
 	}
 }
+
+func TestShowAttractBeginPrompt(t *testing.T) {
+	if !ShowAttractBeginPrompt(Frontend{Active: true, Mode: FrontendModeTitle}) {
+		t.Fatal("expected prompt during frontend attract when menu is closed")
+	}
+	if ShowAttractBeginPrompt(Frontend{Active: true, Mode: FrontendModeTitle, MenuActive: true}) {
+		t.Fatal("did not expect prompt while menu is open")
+	}
+	if ShowAttractBeginPrompt(Frontend{Active: true, InGame: true, Mode: FrontendModeTitle}) {
+		t.Fatal("did not expect prompt for in-game frontend")
+	}
+	if ShowAttractBeginPrompt(Frontend{Active: true, Mode: FrontendModeOptions}) {
+		t.Fatal("did not expect prompt outside title frontend mode")
+	}
+}

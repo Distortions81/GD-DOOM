@@ -257,6 +257,10 @@ func CloseReadThis(state Frontend) Frontend {
 	return state
 }
 
+func ShowAttractBeginPrompt(state Frontend) bool {
+	return state.Active && !state.InGame && !state.MenuActive && state.Mode == FrontendModeTitle
+}
+
 func NextSelectableOptionRow(rows []int, cur, dir int) int {
 	if len(rows) == 0 {
 		return 0
