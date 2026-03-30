@@ -49,16 +49,6 @@ func TestBackendStreamChunkSettings(t *testing.T) {
 		t.Fatalf("meltysynth lookahead=%d want=%d", got, DefaultStreamLookahead())
 	}
 
-	if streamChunkFrames() == 1260 {
-		if got := DefaultStreamChunkFramesForBackend(BackendImpSynth); got != 630 {
-			t.Fatalf("impsynth wasm chunk=%d want=630", got)
-		}
-		if got := DefaultStreamLookaheadForBackend(BackendImpSynth); got != 630*36 {
-			t.Fatalf("impsynth wasm lookahead=%d want=%d", got, 630*36)
-		}
-		return
-	}
-
 	if got := DefaultStreamChunkFramesForBackend(BackendImpSynth); got != DefaultStreamChunkFrames() {
 		t.Fatalf("impsynth chunk=%d want=%d", got, DefaultStreamChunkFrames())
 	}
