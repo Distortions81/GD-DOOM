@@ -946,6 +946,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	flatBank := map[string][]byte(nil)
 	flatBankIndexed := map[string][]byte(nil)
+	wallTextureAnimSequences := map[string][]string(nil)
+	flatTextureAnimSequences := map[string][]string(nil)
 	fb, ferr := doomtex.LoadFlatsRGBA(wf, 0)
 	if ferr != nil {
 		fmt.Fprintf(stderr, "flat import failed: %v\n", ferr)
@@ -957,6 +959,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if ferr == nil {
 		flatBankIndexed = fbi
 	}
+	if texSet != nil {
+		wallTextureAnimSequences = doomtex.LoadWallTextureAnimSequences(texSet, doomtex.DoomWallAnimDefs)
+	}
+	flatTextureAnimSequences = doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
 
@@ -1031,6 +1037,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			FlatBank:                   flatBank,
 			FlatBankIndexed:            flatBankIndexed,
 			WallTexBank:                wallTexBank,
+			WallTextureAnimSequences:   wallTextureAnimSequences,
+			FlatTextureAnimSequences:   flatTextureAnimSequences,
 			BootSplash:                 bootSplash,
 			DoomPaletteRGBA:            doomPaletteRGBA,
 			DoomColorMap:               doomColorMap,
@@ -2160,12 +2168,18 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	}
 	flatBank := map[string][]byte(nil)
 	flatBankIndexed := map[string][]byte(nil)
+	wallTextureAnimSequences := map[string][]string(nil)
+	flatTextureAnimSequences := map[string][]string(nil)
 	if fb, ferr := doomtex.LoadFlatsRGBA(wf, 0); ferr == nil {
 		flatBank = fb
 	}
 	if fbi, ferr := doomtex.LoadFlatsIndexed(wf); ferr == nil {
 		flatBankIndexed = fbi
 	}
+	if texSet != nil {
+		wallTextureAnimSequences = doomtex.LoadWallTextureAnimSequences(texSet, doomtex.DoomWallAnimDefs)
+	}
+	flatTextureAnimSequences = doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(cfg.selectedMap)))
 	opts := doomsession.Options{
 		Width:                      cfg.width,
@@ -2222,6 +2236,8 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		FlatBank:                   flatBank,
 		FlatBankIndexed:            flatBankIndexed,
 		WallTexBank:                wallTexBank,
+		WallTextureAnimSequences:   wallTextureAnimSequences,
+		FlatTextureAnimSequences:   flatTextureAnimSequences,
 		BootSplash:                 bootSplash,
 		DoomPaletteRGBA:            doomPaletteRGBA,
 		DoomColorMap:               doomColorMap,

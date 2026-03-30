@@ -702,6 +702,8 @@ type game struct {
 	spritePatchResolvedCache     map[string]WallTexture
 	wallTexStore                 []WallTexture
 	wallTexPtrs                  map[string]*WallTexture
+	wallTextureAnimRefs          map[string]textureAnimRef
+	flatTextureAnimRefs          map[string]textureAnimRef
 	flatNameToID                 map[string]uint16
 	flatIDToName                 []string
 	planeFlatCache32Scratch      [][]uint32
@@ -1274,6 +1276,14 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.spritePatchStore, g.spritePatchPtrs = buildTexturePointerCache(opts.SpritePatchBank)
 	g.spritePatchResolvedCache = make(map[string]WallTexture, 256)
 	g.wallTexStore, g.wallTexPtrs = buildTexturePointerCache(opts.WallTexBank)
+	g.wallTextureAnimRefs = buildTextureAnimRefsFromSequences(opts.WallTextureAnimSequences)
+	if len(g.wallTextureAnimRefs) == 0 {
+		g.wallTextureAnimRefs = defaultWallTextureAnimRefs
+	}
+	g.flatTextureAnimRefs = buildTextureAnimRefsFromSequences(opts.FlatTextureAnimSequences)
+	if len(g.flatTextureAnimRefs) == 0 {
+		g.flatTextureAnimRefs = defaultFlatTextureAnimRefs
+	}
 	g.detailLevel = defaultDetailLevelForMode(g.viewW, g.viewH, opts.SourcePortMode)
 	if opts.InitialDetailLevel >= 0 {
 		g.detailLevel = clampDetailLevelForMode(opts.InitialDetailLevel, opts.SourcePortMode)
@@ -1657,13 +1667,13 @@ func (g *game) collectMapTextureUsage() ([]string, []string) {
 	flatKeys := make([]string, 0, len(flatSeen))
 	wallKeys := make([]string, 0, len(wallSeen))
 	for _, sec := range g.m.Sectors {
-		flatKeys = appendUniqueTextureKeys(flatKeys, flatSeen, flatTextureAnimRefs, sec.FloorPic)
-		flatKeys = appendUniqueTextureKeys(flatKeys, flatSeen, flatTextureAnimRefs, sec.CeilingPic)
+		flatKeys = appendUniqueTextureKeys(flatKeys, flatSeen, g.flatTextureAnimRefs, sec.FloorPic)
+		flatKeys = appendUniqueTextureKeys(flatKeys, flatSeen, g.flatTextureAnimRefs, sec.CeilingPic)
 	}
 	for _, side := range g.m.Sidedefs {
-		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, wallTextureAnimRefs, side.Mid)
-		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, wallTextureAnimRefs, side.Top)
-		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, wallTextureAnimRefs, side.Bottom)
+		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, g.wallTextureAnimRefs, side.Mid)
+		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, g.wallTextureAnimRefs, side.Top)
+		wallKeys = appendUniqueTextureKeys(wallKeys, wallSeen, g.wallTextureAnimRefs, side.Bottom)
 	}
 	return flatKeys, wallKeys
 }
@@ -13027,6 +13037,7 @@ func (g *game) ensurePlane3DForRangeCached(key plane3DKey, start, stop, viewW in
 
 func (g *game) wallTexture(name string) (*WallTexture, bool) {
 	key, _ := g.resolveAnimatedWallSample(name)
+	key = g.resolveAnimatedWallFrameAvailable(name, key, 1)
 	tex, ok := g.wallTexturePtrResolvedKey(key)
 	if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 		return nil, false
@@ -13038,13 +13049,18 @@ func (g *game) wallTextureBlend(name string, sidedef int, slot switchTextureSlot
 	if blend, ok := g.switchTextureBlendSample(sidedef, slot, name); ok {
 		return blend, true
 	}
-	sample := g.textureBlendSample(name, wallTextureAnimRefs)
+	sample := g.textureBlendSample(name, g.wallTextureAnimRefs)
+	sample.fromKey = g.resolveAnimatedWallFrameAvailable(name, sample.fromKey, 1)
 	from, ok := g.wallTexturePtrResolvedKey(sample.fromKey)
 	if !ok || from == nil || from.Width <= 0 || from.Height <= 0 || len(from.RGBA) != from.Width*from.Height*4 {
 		return wallTextureBlendSample{}, false
 	}
 	out := wallTextureBlendSample{from: from}
 	if sample.alpha == 0 || sample.toKey == "" {
+		return out, true
+	}
+	sample.toKey = g.resolveAnimatedWallFrameAvailable(name, sample.toKey, 1)
+	if sample.toKey == "" || sample.toKey == sample.fromKey {
 		return out, true
 	}
 	to, ok := g.wallTexturePtrResolvedKey(sample.toKey)
@@ -13367,6 +13383,48 @@ func (g *game) buildWallSegPrepassParallel(visible []int, camX, camY, ca, sa, fo
 		}
 	}
 	return out
+}
+
+func (g *game) resolveAnimatedWallFrameAvailable(name, preferred string, dir int) string {
+	key := normalizeFlatName(name)
+	if key == "" {
+		return ""
+	}
+	ref, ok := g.wallTextureAnimRefs[key]
+	if !ok || len(ref.frames) < 2 {
+		if _, ok := g.wallTexturePtrResolvedKey(preferred); ok {
+			return preferred
+		}
+		if _, ok := g.wallTexturePtrResolvedKey(key); ok {
+			return key
+		}
+		return preferred
+	}
+	start := 0
+	preferred = normalizeFlatName(preferred)
+	for i, frame := range ref.frames {
+		if frame == preferred {
+			start = i
+			break
+		}
+	}
+	if dir == 0 {
+		dir = 1
+	}
+	for n := 0; n < len(ref.frames); n++ {
+		idx := (start + dir*n) % len(ref.frames)
+		if idx < 0 {
+			idx += len(ref.frames)
+		}
+		frame := ref.frames[idx]
+		if _, ok := g.wallTexturePtrResolvedKey(frame); ok {
+			return frame
+		}
+	}
+	if _, ok := g.wallTexturePtrResolvedKey(key); ok {
+		return key
+	}
+	return preferred
 }
 
 func (g *game) buildWallSegPrepassSingle(si int, camX, camY, ca, sa, focal, near float64) wallSegPrepass {
@@ -18270,7 +18328,7 @@ func (g *game) flatRGBA(name string) ([]byte, bool) {
 }
 
 func (g *game) flatTextureBlend(name string) (flatTextureBlendSample, bool) {
-	sample := g.textureBlendSample(name, flatTextureAnimRefs)
+	sample := g.textureBlendSample(name, g.flatTextureAnimRefs)
 	fromRGBA, ok := g.flatRGBAResolvedKey(sample.fromKey)
 	if !ok || len(fromRGBA) != 64*64*4 {
 		return flatTextureBlendSample{}, false
@@ -18332,7 +18390,7 @@ type textureAnimRef struct {
 	index  int
 }
 
-var wallTextureAnimRefs = buildTextureAnimRefs([][]string{
+var defaultWallTextureAnimRefs = buildTextureAnimRefs([][]string{
 	{"BLODGR1", "BLODGR2", "BLODGR3", "BLODGR4"},
 	{"SLADRIP1", "SLADRIP2", "SLADRIP3"},
 	{"BLODRIP1", "BLODRIP2", "BLODRIP3", "BLODRIP4"},
@@ -18348,7 +18406,7 @@ var wallTextureAnimRefs = buildTextureAnimRefs([][]string{
 	{"DBRAIN1", "DBRAIN2", "DBRAIN3", "DBRAIN4"},
 })
 
-var flatTextureAnimRefs = buildTextureAnimRefs([][]string{
+var defaultFlatTextureAnimRefs = buildTextureAnimRefs([][]string{
 	{"NUKAGE1", "NUKAGE2", "NUKAGE3"},
 	{"FWATER1", "FWATER2", "FWATER3", "FWATER4"},
 	{"SWATER1", "SWATER2", "SWATER3", "SWATER4"},
@@ -18385,6 +18443,35 @@ func buildTextureAnimRefs(seqs [][]string) map[string]textureAnimRef {
 	return refs
 }
 
+func buildTextureAnimRefsFromSequences(seqs map[string][]string) map[string]textureAnimRef {
+	if len(seqs) == 0 {
+		return nil
+	}
+	refs := make(map[string]textureAnimRef, len(seqs))
+	for key, frames := range seqs {
+		normKey := normalizeFlatName(key)
+		if normKey == "" || len(frames) < 2 {
+			continue
+		}
+		normFrames := make([]string, 0, len(frames))
+		for _, frame := range frames {
+			frame = normalizeFlatName(frame)
+			if frame == "" {
+				continue
+			}
+			normFrames = append(normFrames, frame)
+		}
+		if len(normFrames) < 2 {
+			continue
+		}
+		refs[normKey] = textureAnimRef{frames: normFrames}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	return refs
+}
+
 func (g *game) resolveAnimatedWallName(name string) string {
 	key, _ := g.resolveAnimatedWallSample(name)
 	return key
@@ -18396,12 +18483,12 @@ func (g *game) resolveAnimatedFlatName(name string) string {
 }
 
 func (g *game) resolveAnimatedWallSample(name string) (string, bool) {
-	sample := g.textureBlendSample(name, wallTextureAnimRefs)
+	sample := g.textureBlendSample(name, g.wallTextureAnimRefs)
 	return sample.fromKey, sample.alpha != 0 && sample.toKey != ""
 }
 
 func (g *game) resolveAnimatedFlatSample(name string) (string, bool) {
-	sample := g.textureBlendSample(name, flatTextureAnimRefs)
+	sample := g.textureBlendSample(name, g.flatTextureAnimRefs)
 	return sample.fromKey, sample.alpha != 0 && sample.toKey != ""
 }
 

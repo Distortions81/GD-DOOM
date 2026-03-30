@@ -37,6 +37,8 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 	}
 
 	textures := make(map[string]TextureDef)
+	textureOrder := make([]string, 0, 512)
+	textureIndex := make(map[string]int, 512)
 	if l, ok := f.LumpByName("TEXTURE1"); ok {
 		data, err := f.LumpDataView(l)
 		if err != nil {
@@ -47,6 +49,10 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 			return nil, err
 		}
 		for _, td := range list {
+			if _, exists := textureIndex[td.Name]; !exists {
+				textureIndex[td.Name] = len(textureOrder)
+				textureOrder = append(textureOrder, td.Name)
+			}
 			textures[td.Name] = td
 		}
 	}
@@ -60,6 +66,10 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 			return nil, err
 		}
 		for _, td := range list {
+			if _, exists := textureIndex[td.Name]; !exists {
+				textureIndex[td.Name] = len(textureOrder)
+				textureOrder = append(textureOrder, td.Name)
+			}
 			textures[td.Name] = td
 		}
 	}
@@ -79,6 +89,8 @@ func LoadFromWAD(f *wad.File) (*Set, error) {
 		wad:         f,
 		palettes:    palettes,
 		textures:    textures,
+		textureOrder: textureOrder,
+		textureIndex: textureIndex,
 		patchByName: patchByName,
 		patchCache:  make(map[string]*decodedPatch),
 	}, nil

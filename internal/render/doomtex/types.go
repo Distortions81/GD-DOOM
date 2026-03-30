@@ -24,6 +24,8 @@ type Set struct {
 	wad         *wad.File
 	palettes    [][256][3]uint8
 	textures    map[string]TextureDef
+	textureOrder []string
+	textureIndex map[string]int
 	patchByName map[string]wad.Lump
 	patchCache  map[string]*decodedPatch
 }
@@ -39,6 +41,10 @@ type decodedPatch struct {
 
 func (s *Set) TextureNames() []string {
 	out := make([]string, 0, len(s.textures))
+	if len(s.textureOrder) != 0 {
+		out = append(out, s.textureOrder...)
+		return out
+	}
 	for n := range s.textures {
 		out = append(out, n)
 	}
@@ -69,6 +75,14 @@ func (s *Set) PaletteRGBA(palette int) ([]byte, error) {
 func (s *Set) Texture(name string) (TextureDef, bool) {
 	t, ok := s.textures[normalizeName(name)]
 	return t, ok
+}
+
+func (s *Set) TextureIndex(name string) (int, bool) {
+	if s == nil || len(s.textureIndex) == 0 {
+		return 0, false
+	}
+	i, ok := s.textureIndex[normalizeName(name)]
+	return i, ok
 }
 
 func normalizeName(name string) string {

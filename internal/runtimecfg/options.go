@@ -86,6 +86,8 @@ type Options struct {
 	FlatBank                   map[string][]byte
 	FlatBankIndexed            map[string][]byte
 	WallTexBank                map[string]media.WallTexture
+	WallTextureAnimSequences   map[string][]string
+	FlatTextureAnimSequences   map[string][]string
 	BootSplash                 media.WallTexture
 	DoomPaletteRGBA            []byte
 	DoomColorMap               []byte
