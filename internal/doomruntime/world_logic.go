@@ -349,7 +349,6 @@ func (g *game) trackSecrets() {
 	g.secretFound[sec] = true
 	g.secretsFound++
 	g.m.Sectors[sec].Special = 0
-	g.setHUDMessage("A secret is revealed!", 35)
 }
 
 func (g *game) applySectorHazardDamage() {
@@ -429,7 +428,6 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 		g.applyPlayerDamageThrust(amount, attackerX, attackerY)
 	}
 	if g.playerInvulnerable() {
-		g.setHUDMessage("Invulnerability absorbed damage", 8)
 		return
 	}
 	if g.stats.ArmorType != 0 && g.stats.Armor > 0 {

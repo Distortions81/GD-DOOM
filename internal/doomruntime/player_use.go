@@ -276,6 +276,31 @@ func (g *game) useSpecialLine(lineIdx int, side int) {
 	_ = g.useSpecialLineForActor(lineIdx, side, true)
 }
 
+func doomLockedDoorMessage(info mapdata.LineSpecialInfo) string {
+	if info.Door == nil {
+		return ""
+	}
+	switch info.Door.Key {
+	case mapdata.KeyBlue:
+		if info.Door.UsesTag {
+			return "You need a blue key to activate this object"
+		}
+		return "You need a blue key to open this door"
+	case mapdata.KeyRed:
+		if info.Door.UsesTag {
+			return "You need a red key to activate this object"
+		}
+		return "You need a red key to open this door"
+	case mapdata.KeyYellow:
+		if info.Door.UsesTag {
+			return "You need a yellow key to activate this object"
+		}
+		return "You need a yellow key to open this door"
+	default:
+		return ""
+	}
+}
+
 func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool {
 	if debugLineTriggerEnabled(lineIdx) {
 		fmt.Printf("line-trigger-debug tic=%d world=%d phase=use-enter line=%d side=%d player=%t special=%d\n",
@@ -333,7 +358,7 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 	}
 	if isPlayer && info.Door != nil && !info.Door.CanActivate(g.inventory.keys()) {
 		if isPlayer {
-			g.useText = "USE: locked"
+			g.useText = doomLockedDoorMessage(info)
 			g.useFlash = 35
 			g.emitSoundEvent(soundEventOof)
 		}

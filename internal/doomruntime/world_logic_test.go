@@ -162,8 +162,8 @@ func TestTrackSecrets_RequiresPlayerOnFloorAndClearsSectorSpecial(t *testing.T) 
 	if g.m.Sectors[0].Special != 0 {
 		t.Fatalf("sector special=%d want=0 after finding secret", g.m.Sectors[0].Special)
 	}
-	if got := g.useText; got != "A secret is revealed!" {
-		t.Fatalf("message=%q want=%q", got, "A secret is revealed!")
+	if got := g.useText; got != "" {
+		t.Fatalf("message=%q want empty", got)
 	}
 }
 

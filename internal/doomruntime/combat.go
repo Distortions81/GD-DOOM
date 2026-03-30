@@ -1453,7 +1453,6 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		} else if monsterDeathSoundActionPhase(thingType) == 0 {
 			g.emitSoundEventAt(monsterDeathSoundEventVariant(thingType), tx, ty)
 		}
-		g.setHUDMessage("Monster killed", 15)
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
 		g.spawnMonsterDrop(thingIdx, thingType)
 		if thingType == 71 {
@@ -1545,7 +1544,6 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 					g.demoTick-1, g.worldTic, thingIdx, targetPlayer, targetIdx, threshold, g.thingHP[thingIdx])
 			}
 		}
-		g.setHUDMessage("Hit", 8)
 	}
 }
 

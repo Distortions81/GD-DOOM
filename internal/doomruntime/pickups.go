@@ -264,17 +264,21 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	switch typ {
 	case 5, 40:
 		g.inventory.BlueKey = true
-		return "Picked up a blue key", soundEventItemUp, true
+		return "Picked up a blue keycard.", soundEventItemUp, true
 	case 13, 38:
 		g.inventory.RedKey = true
-		return "Picked up a red key", soundEventItemUp, true
+		return "Picked up a red keycard.", soundEventItemUp, true
 	case 6, 39:
 		g.inventory.YellowKey = true
-		return "Picked up a yellow key", soundEventItemUp, true
+		return "Picked up a yellow keycard.", soundEventItemUp, true
 	case 2011:
 		return g.gainHealth(10, 100, "Picked up a stimpack")
 	case 2012:
-		return g.gainHealth(25, 100, "Picked up a medikit")
+		msg := "Picked up a medikit."
+		if g.stats.Health < 25 {
+			msg = "Picked up a medikit that you REALLY need!"
+		}
+		return g.gainHealth(25, 100, msg)
 	case 2013:
 		msg, _, ok := g.gainHealth(100, 200, "Picked up a soulsphere")
 		if !ok {
@@ -311,22 +315,22 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		return "Invulnerability!", soundEventPowerUp, true
 	case 2024:
 		g.inventory.InvisTics = 60 * doomTicsPerSecond
-		return "Partial invisibility", soundEventPowerUp, true
+		return "Partial Invisibility", soundEventPowerUp, true
 	case 2025:
 		tics := 60 * doomTicsPerSecond
 		if g.inventory.RadSuitTics < tics {
 			g.inventory.RadSuitTics = tics
 		}
-		return "Picked up a radiation suit", soundEventPowerUp, true
+		return "Radiation Shielding Suit", soundEventPowerUp, true
 	case 2026:
 		if g.inventory.AllMap {
 			return "", 0, false
 		}
 		g.inventory.AllMap = true
-		return "Computer area map", soundEventPowerUp, true
+		return "Computer Area Map", soundEventPowerUp, true
 	case 2045:
 		g.inventory.LightAmpTics = 120 * doomTicsPerSecond
-		return "Light amplification visor", soundEventPowerUp, true
+		return "Light Amplification Visor", soundEventPowerUp, true
 	case 83:
 		changed := false
 		if g.stats.Health != 200 {
@@ -371,7 +375,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.gainAmmoNoMsg("shells", 4)
 		g.gainAmmoNoMsg("rockets", 1)
 		g.gainAmmoNoMsg("cells", 20)
-		return "Picked up a backpack", soundEventItemUp, true
+		return "Picked up a backpack full of ammo!", soundEventItemUp, true
 	case 2001, 2002, 2003, 2004, 2005, 2006, 82:
 		if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_PICKUP_TIC")); want != "" {
 			var wantTic int
@@ -441,11 +445,11 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			g.gainAmmoNoMsg("cells", 40)
 			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponPlasma)
-			return "Picked up a plasma rifle", soundEventWeaponUp, true
+			return "You got the plasma gun!", soundEventWeaponUp, true
 		case 2005:
 			g.inventory.Weapons[typ] = true
 			setReadyWeapon(weaponChainsaw)
-			return "Picked up a chainsaw", soundEventWeaponUp, true
+			return "A chainsaw!  Find some meat!", soundEventWeaponUp, true
 		case 2006:
 			g.gainAmmoNoMsg("cells", 40)
 			g.inventory.Weapons[typ] = true

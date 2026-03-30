@@ -18,8 +18,8 @@ func TestUseSpecialLineLockedWithoutKeyAndUnlocksWithPickup(t *testing.T) {
 	g.thingCollected = make([]bool, len(g.m.Things))
 
 	g.useSpecialLine(0, 0)
-	if g.useText != "USE: locked" {
-		t.Fatalf("useText=%q want locked", g.useText)
+	if g.useText != "You need a blue key to open this door" {
+		t.Fatalf("useText=%q want exact Doom blue door prompt", g.useText)
 	}
 	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventOof {
 		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventOof)
@@ -28,6 +28,71 @@ func TestUseSpecialLineLockedWithoutKeyAndUnlocksWithPickup(t *testing.T) {
 	g.processThingPickups()
 	if !g.inventory.BlueKey {
 		t.Fatal("blue key should be picked up")
+	}
+}
+
+func TestUseSpecialLineLockedBlueObjectUsesExactDoomPrompt(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{{Special: 99, Tag: 7}},
+			Sectors:  []mapdata.Sector{{Tag: 7, FloorHeight: 0, CeilingHeight: 128}},
+		},
+		lineSpecial: []uint16{99},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		soundQueue:  make([]soundEvent, 0, 2),
+	}
+	g.initPlayerState()
+
+	g.useSpecialLine(0, 0)
+
+	if g.useText != "You need a blue key to activate this object" {
+		t.Fatalf("useText=%q want exact Doom blue object prompt", g.useText)
+	}
+	if got := len(g.soundQueue); got != 1 || g.soundQueue[0] != soundEventOof {
+		t.Fatalf("soundQueue=%v want [%v]", g.soundQueue, soundEventOof)
+	}
+}
+
+func TestApplyPickup_UsesDoomWording(t *testing.T) {
+	g := &game{}
+	g.initPlayerState()
+
+	tests := []struct {
+		typ  int16
+		want string
+	}{
+		{typ: 5, want: "Picked up a blue keycard."},
+		{typ: 2025, want: "Radiation Shielding Suit"},
+		{typ: 2026, want: "Computer Area Map"},
+		{typ: 2045, want: "Light Amplification Visor"},
+		{typ: 8, want: "Picked up a backpack full of ammo!"},
+		{typ: 2004, want: "You got the plasma gun!"},
+		{typ: 2005, want: "A chainsaw!  Find some meat!"},
+	}
+	for _, tc := range tests {
+		got, _, ok := g.applyPickup(tc.typ, false)
+		if !ok {
+			t.Fatalf("applyPickup(%d) not applied", tc.typ)
+		}
+		if got != tc.want {
+			t.Fatalf("applyPickup(%d)=%q want=%q", tc.typ, got, tc.want)
+		}
+	}
+}
+
+func TestApplyPickup_MedikitUsesNeedVariantBelow25Health(t *testing.T) {
+	g := &game{}
+	g.initPlayerState()
+	g.stats.Health = 10
+	g.syncPlayerMobjHealth()
+
+	got, _, ok := g.applyPickup(2012, false)
+	if !ok {
+		t.Fatal("medikit pickup should apply")
+	}
+	if got != "Picked up a medikit that you REALLY need!" {
+		t.Fatalf("medikit message=%q want need variant", got)
 	}
 }
 
