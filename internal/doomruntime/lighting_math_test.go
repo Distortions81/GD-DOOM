@@ -173,6 +173,40 @@ func TestDoomShadeMulFromRowFInterpolatesBetweenRows(t *testing.T) {
 	}
 }
 
+func TestDoomWallLightRowFInterpolatesBetweenLightBuckets(t *testing.T) {
+	resetLightingMathState(t)
+	prev := doomColormapRows
+	defer func() { doomColormapRows = prev }()
+	doomColormapRows = 32
+
+	r0 := doomWallLightRowF(104, 0, 256, 160)
+	r1 := doomWallLightRowF(112, 0, 256, 160)
+	rf := doomWallLightRowF(108, 0, 256, 160)
+	if rf == r0 || rf == r1 {
+		t.Fatalf("expected interpolated wall row between buckets, got r0=%v rf=%v r1=%v", r0, rf, r1)
+	}
+	if !(r0 > rf && rf > r1) {
+		t.Fatalf("expected monotonic wall row interpolation, got r0=%v rf=%v r1=%v", r0, rf, r1)
+	}
+}
+
+func TestDoomPlaneLightRowFInterpolatesBetweenLightBuckets(t *testing.T) {
+	resetLightingMathState(t)
+	prev := doomColormapRows
+	defer func() { doomColormapRows = prev }()
+	doomColormapRows = 32
+
+	r0 := doomPlaneLightRowF(104, 256)
+	r1 := doomPlaneLightRowF(112, 256)
+	rf := doomPlaneLightRowF(108, 256)
+	if rf == r0 || rf == r1 {
+		t.Fatalf("expected interpolated plane row between buckets, got r0=%v rf=%v r1=%v", r0, rf, r1)
+	}
+	if !(r0 > rf && rf > r1) {
+		t.Fatalf("expected monotonic plane row interpolation, got r0=%v rf=%v r1=%v", r0, rf, r1)
+	}
+}
+
 func TestMaskedMidShade_UsesConstantSectorShade(t *testing.T) {
 	resetLightingMathState(t)
 	prevRows := doomColormapRows

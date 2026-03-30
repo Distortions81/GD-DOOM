@@ -243,3 +243,36 @@ func TestSectorLightMulCached_DoesNotInterpolateWithoutAnimatedEffect(t *testing
 		t.Fatalf("static light mul=%d want=160", got)
 	}
 }
+
+func TestSectorsLightDifferForRender_UsesInterpolatedCachedLight(t *testing.T) {
+	prevSectorLighting := doomSectorLighting
+	doomSectorLighting = true
+	t.Cleanup(func() { doomSectorLighting = prevSectorLighting })
+
+	g := &game{
+		opts: Options{SourcePortMode: true},
+		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{
+				{Light: 160},
+				{Light: 96},
+			},
+		},
+		sectorPlaneCache: []sectorPlaneCacheEntry{
+			{
+				lightKind: sectorLightEffectGlow,
+				prevLight: 96,
+				light:     160,
+			},
+			{
+				lightKind: sectorLightEffectGlow,
+				prevLight: 96,
+				light:     160,
+			},
+		},
+		renderAlpha: 0.5,
+	}
+
+	if got := g.sectorsLightDifferForRender(0, 1, &g.m.Sectors[0], &g.m.Sectors[1]); got {
+		t.Fatal("expected identical interpolated render lights despite different raw sector lights")
+	}
+}

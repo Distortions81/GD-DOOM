@@ -128,7 +128,7 @@ func (g *game) buildFloorVisplaneMarks() {
 		key := floorPlaneKey{
 			flat:   g.resolveAnimatedFlatName(sec.FloorPic),
 			floorH: sec.FloorHeight,
-			light:  sec.Light,
+			light:  g.sectorLightForRender(secIdx, &sec),
 		}
 		minX, maxX, ok := floorPolygonXRange(screenPoly, g.viewW)
 		if !ok {

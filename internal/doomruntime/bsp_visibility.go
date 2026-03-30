@@ -202,5 +202,5 @@ func (g *game) segPortalSplitPseudo3D(segIdx int) bool {
 		front.CeilingHeight != back.CeilingHeight ||
 		normalizeFlatName(front.FloorPic) != normalizeFlatName(back.FloorPic) ||
 		normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
-		(front.Light != back.Light && doomSectorLighting)
+		g.sectorsLightDifferForRender(frontSectorIdx, backSectorIdx, front, back)
 }

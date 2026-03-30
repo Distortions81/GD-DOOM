@@ -4563,6 +4563,13 @@ func (g *game) sectorLightForRender(secIdx int, sec *mapdata.Sector) int16 {
 	return 160
 }
 
+func (g *game) sectorsLightDifferForRender(frontSectorIdx, backSectorIdx int, front, back *mapdata.Sector) bool {
+	if !doomSectorLighting {
+		return false
+	}
+	return g.sectorLightForRender(frontSectorIdx, front) != g.sectorLightForRender(backSectorIdx, back)
+}
+
 func classifyWallPortal(front, back *mapdata.Sector, eyeZ, frontFloor, frontCeil, backFloor, backCeil float64) scene.WallPortalState {
 	return (*game)(nil).classifyWallPortalCached(-1, front, back, -1, eyeZ, frontFloor, frontCeil, backFloor, backCeil)
 }
@@ -7516,7 +7523,8 @@ func (g *game) maskedMidShade(light int16) (int, int) {
 	if g != nil && !g.opts.SourcePortMode {
 		shadeMul = doomShadeMulFromRow(doomRow)
 	} else {
-		shadeMul = doomShadeMulFromRowF(float64(doomRow))
+		rowF := doomStartMapF(doomClampLightNumF(float64(light) / float64(1<<doomLightSegShift)))
+		shadeMul = doomShadeMulFromRowF(rowF)
 	}
 	g.maskedMidShadeTick[li] = stamp
 	g.maskedMidShadeKey[li] = cacheKey
@@ -13320,7 +13328,7 @@ func (g *game) segPortalSplitAtTick(segIdx int, cacheOK bool, frontSectorIdx, ba
 		front.CeilingHeight != back.CeilingHeight ||
 		normalizeFlatName(front.FloorPic) != normalizeFlatName(back.FloorPic) ||
 		normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
-		(front.Light != back.Light && doomSectorLighting)
+		g.sectorsLightDifferForRender(frontSectorIdx, backSectorIdx, front, back)
 	if cacheOK && segIdx >= 0 && segIdx < len(g.wallSegStaticCache) {
 		c := &g.wallSegStaticCache[segIdx]
 		c.lightTickValid = true
@@ -13572,12 +13580,31 @@ func doomClampLightNum(lightNum int) int {
 	return lightNum
 }
 
+func doomClampLightNumF(lightNum float64) float64 {
+	if lightNum < 0 {
+		return 0
+	}
+	maxLight := float64(doomLightLevels - 1)
+	if lightNum > maxLight {
+		return maxLight
+	}
+	return lightNum
+}
+
 func doomStartMap(lightNum int) int {
 	rows := doomShadeRows()
 	if rows <= 0 {
 		rows = doomNumColorMaps
 	}
 	return ((doomLightLevels - 1 - lightNum) * 2 * rows) / doomLightLevels
+}
+
+func doomStartMapF(lightNum float64) float64 {
+	rows := doomShadeRows()
+	if rows <= 0 {
+		rows = doomNumColorMaps
+	}
+	return ((float64(doomLightLevels-1) - lightNum) * 2 * float64(rows)) / float64(doomLightLevels)
 }
 
 func doomClampColorMapRow(row int) int {
@@ -13602,10 +13629,21 @@ func doomWallLightRowF(light int16, lightBias int, depth, focal float64) float64
 	if !doomSectorLighting {
 		light = 255
 	}
-	lightNum := doomClampLightNum((int(light) >> doomLightSegShift) + lightBias)
-	startMap := doomStartMap(lightNum)
+	lightNum := doomClampLightNumF(float64(light)/float64(1<<doomLightSegShift) + float64(lightBias))
+	startMap := doomStartMapF(lightNum)
+	rows := doomShadeRows()
+	if rows <= 0 {
+		return 0
+	}
 	if depth <= 0 || focal <= 0 {
-		return float64(doomClampColorMapRow(startMap))
+		if startMap < 0 {
+			return 0
+		}
+		maxRow := float64(rows - 1)
+		if startMap > maxRow {
+			return maxRow
+		}
+		return startMap
 	}
 	// Doom wall index ~= (rw_scale >> LIGHTSCALESHIFT), with rw_scale in 16.16.
 	lightScale := (focal / depth) * 16.0
@@ -13620,10 +13658,6 @@ func doomWallLightRowF(light int16, lightBias int, depth, focal float64) float64
 	}
 	row := float64(startMap) - (lightScale / float64(doomDistMap))
 	if row < 0 {
-		return 0
-	}
-	rows := doomShadeRows()
-	if rows <= 0 {
 		return 0
 	}
 	maxRow := float64(rows - 1)
@@ -13641,10 +13675,21 @@ func doomPlaneLightRowF(light int16, depth float64) float64 {
 	if !doomSectorLighting {
 		light = 255
 	}
-	lightNum := doomClampLightNum(int(light) >> doomLightSegShift)
-	startMap := doomStartMap(lightNum)
+	lightNum := doomClampLightNumF(float64(light) / float64(1<<doomLightSegShift))
+	startMap := doomStartMapF(lightNum)
+	rows := doomShadeRows()
+	if rows <= 0 {
+		return 0
+	}
 	if depth <= 0 {
-		return float64(doomClampColorMapRow(startMap))
+		if startMap < 0 {
+			return 0
+		}
+		maxRow := float64(rows - 1)
+		if startMap > maxRow {
+			return maxRow
+		}
+		return startMap
 	}
 	// Doom plane index ~= distance >> LIGHTZSHIFT with 16.16 fixed distance.
 	lightZ := depth / 16.0
@@ -13658,10 +13703,6 @@ func doomPlaneLightRowF(light int16, depth float64) float64 {
 	scale := (float64(doomLogicalW) / 2.0) / (lightZ + 1.0)
 	row := float64(startMap) - (scale / float64(doomDistMap))
 	if row < 0 {
-		return 0
-	}
-	rows := doomShadeRows()
-	if rows <= 0 {
 		return 0
 	}
 	maxRow := float64(rows - 1)
@@ -15464,7 +15505,7 @@ func (g *game) cachedSegPortalSplit(frontSectorIdx, backSectorIdx int) (bool, bo
 		front.CeilingHeight != back.CeilingHeight ||
 		normalizeFlatName(front.FloorPic) != normalizeFlatName(back.FloorPic) ||
 		normalizeFlatName(front.CeilingPic) != normalizeFlatName(back.CeilingPic) ||
-		(front.Light != back.Light && doomSectorLighting)
+		g.sectorsLightDifferForRender(frontSectorIdx, backSectorIdx, front, back)
 	return true, portalSplit
 }
 
