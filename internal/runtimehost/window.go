@@ -15,7 +15,7 @@ const (
 )
 
 func WindowTitle(name mapdata.MapName) string {
-	return fmt.Sprintf("GD-DOOM Automap - %s", name)
+	return fmt.Sprintf("GD-DOOM - %s", name)
 }
 
 func ConfigureInitialHost(opts runtimecfg.Options, windowW, windowH int, name mapdata.MapName) {
