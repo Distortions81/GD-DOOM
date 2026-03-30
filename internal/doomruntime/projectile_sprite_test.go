@@ -168,3 +168,59 @@ func TestProjectileRenderPosFixedInterpolatesPosition(t *testing.T) {
 		t.Fatalf("z=%d want=%d", got, want)
 	}
 }
+
+func TestPrecacheProjectileSpriteRefs_WarmsProjectileAndEffectCaches(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"MISLA0": {Width: 1, Height: 1, RGBA: []byte{1, 2, 3, 255}},
+				"MISLB0": {Width: 1, Height: 1, RGBA: []byte{4, 5, 6, 255}},
+				"MISLC0": {Width: 1, Height: 1, RGBA: []byte{7, 8, 9, 255}},
+				"MISLD0": {Width: 1, Height: 1, RGBA: []byte{10, 11, 12, 255}},
+				"BAL1A0": {Width: 1, Height: 1, RGBA: []byte{13, 14, 15, 255}},
+				"BAL1B0": {Width: 1, Height: 1, RGBA: []byte{16, 17, 18, 255}},
+				"BAL1C0": {Width: 1, Height: 1, RGBA: []byte{19, 20, 21, 255}},
+				"BAL1D0": {Width: 1, Height: 1, RGBA: []byte{22, 23, 24, 255}},
+				"BAL1E0": {Width: 1, Height: 1, RGBA: []byte{25, 26, 27, 255}},
+				"PUFFA0": {Width: 1, Height: 1, RGBA: []byte{28, 29, 30, 255}},
+				"PUFFB0": {Width: 1, Height: 1, RGBA: []byte{31, 32, 33, 255}},
+				"PUFFC0": {Width: 1, Height: 1, RGBA: []byte{34, 35, 36, 255}},
+				"PUFFD0": {Width: 1, Height: 1, RGBA: []byte{37, 38, 39, 255}},
+				"BLUDA0": {Width: 1, Height: 1, RGBA: []byte{40, 41, 42, 255}},
+				"BLUDB0": {Width: 1, Height: 1, RGBA: []byte{43, 44, 45, 255}},
+				"BLUDC0": {Width: 1, Height: 1, RGBA: []byte{46, 47, 48, 255}},
+				"TFOGA0": {Width: 1, Height: 1, RGBA: []byte{49, 50, 51, 255}},
+				"TFOGB0": {Width: 1, Height: 1, RGBA: []byte{52, 53, 54, 255}},
+				"TFOGC0": {Width: 1, Height: 1, RGBA: []byte{55, 56, 57, 255}},
+				"TFOGD0": {Width: 1, Height: 1, RGBA: []byte{58, 59, 60, 255}},
+				"TFOGE0": {Width: 1, Height: 1, RGBA: []byte{61, 62, 63, 255}},
+				"TFOGF0": {Width: 1, Height: 1, RGBA: []byte{64, 65, 66, 255}},
+				"TFOGG0": {Width: 1, Height: 1, RGBA: []byte{67, 68, 69, 255}},
+				"TFOGH0": {Width: 1, Height: 1, RGBA: []byte{70, 71, 72, 255}},
+				"TFOGI0": {Width: 1, Height: 1, RGBA: []byte{73, 74, 75, 255}},
+				"TFOGJ0": {Width: 1, Height: 1, RGBA: []byte{76, 77, 78, 255}},
+				"BOSFA0": {Width: 1, Height: 1, RGBA: []byte{79, 80, 81, 255}},
+				"BOSFB0": {Width: 1, Height: 1, RGBA: []byte{82, 83, 84, 255}},
+				"BOSFC0": {Width: 1, Height: 1, RGBA: []byte{85, 86, 87, 255}},
+				"BOSFD0": {Width: 1, Height: 1, RGBA: []byte{88, 89, 90, 255}},
+				"FIREA0": {Width: 1, Height: 1, RGBA: []byte{91, 92, 93, 255}},
+				"FIREB0": {Width: 1, Height: 1, RGBA: []byte{94, 95, 96, 255}},
+				"FIREC0": {Width: 1, Height: 1, RGBA: []byte{97, 98, 99, 255}},
+				"FIRED0": {Width: 1, Height: 1, RGBA: []byte{100, 101, 102, 255}},
+				"FIREE0": {Width: 1, Height: 1, RGBA: []byte{103, 104, 105, 255}},
+				"FIREF0": {Width: 1, Height: 1, RGBA: []byte{106, 107, 108, 255}},
+				"FIREG0": {Width: 1, Height: 1, RGBA: []byte{109, 110, 111, 255}},
+				"FIREH0": {Width: 1, Height: 1, RGBA: []byte{112, 113, 114, 255}},
+			},
+		},
+	}
+	g.spritePatchStore, g.spritePatchPtrs = buildTexturePointerCache(g.opts.SpritePatchBank)
+
+	g.precacheProjectileSpriteRefs()
+
+	for _, name := range []string{"MISLA0", "MISLC0", "PUFFA0", "BLUDA0", "TFOGJ0", "BOSFD0", "FIREH0"} {
+		if ref := g.spriteRenderRefCache[name]; ref == nil {
+			t.Fatalf("expected spriteRenderRefCache[%q] to be warmed", name)
+		}
+	}
+}

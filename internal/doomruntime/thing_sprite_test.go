@@ -315,6 +315,42 @@ func TestRuntimeWorldThingSpriteRef_CachesStaticThingRef(t *testing.T) {
 	}
 }
 
+func TestPrecacheWorldThingSpriteRefs_WarmsMapThingCaches(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 2014},
+				{Type: 2035},
+			},
+		},
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"BON1A0": {Width: 1, Height: 1, RGBA: []byte{1, 2, 3, 255}},
+				"BON1B0": {Width: 1, Height: 1, RGBA: []byte{4, 5, 6, 255}},
+				"BON1C0": {Width: 1, Height: 1, RGBA: []byte{7, 8, 9, 255}},
+				"BON1D0": {Width: 1, Height: 1, RGBA: []byte{10, 11, 12, 255}},
+				"BAR1A0": {Width: 1, Height: 1, RGBA: []byte{13, 14, 15, 255}},
+				"BAR1B0": {Width: 1, Height: 1, RGBA: []byte{16, 17, 18, 255}},
+				"BEXPA0": {Width: 1, Height: 1, RGBA: []byte{19, 20, 21, 255}},
+				"BEXPB0": {Width: 1, Height: 1, RGBA: []byte{22, 23, 24, 255}},
+				"BEXPC0": {Width: 1, Height: 1, RGBA: []byte{25, 26, 27, 255}},
+				"BEXPD0": {Width: 1, Height: 1, RGBA: []byte{28, 29, 30, 255}},
+				"BEXPE0": {Width: 1, Height: 1, RGBA: []byte{31, 32, 33, 255}},
+			},
+		},
+	}
+	g.spritePatchStore, g.spritePatchPtrs = buildTexturePointerCache(g.opts.SpritePatchBank)
+	g.initThingRenderState()
+
+	g.precacheWorldThingSpriteRefs()
+
+	for _, name := range []string{"BON1A0", "BON1B0", "BON1C0", "BON1D0", "BAR1A0", "BEXPD0"} {
+		if ref := g.spriteRenderRefCache[name]; ref == nil {
+			t.Fatalf("expected spriteRenderRefCache[%q] to be warmed", name)
+		}
+	}
+}
+
 func TestWorldThingSpriteName_SmallGreenTorchDiscreteTiming(t *testing.T) {
 	g := &game{
 		opts: Options{

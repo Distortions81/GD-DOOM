@@ -485,6 +485,53 @@ func TestMonsterSpritePrefixCoversAllMonsterTypes(t *testing.T) {
 	}
 }
 
+func TestPrecacheMonsterSpriteRefs_WarmsCachesForMapMonsters(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3001},
+			},
+		},
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"TROOA1":   {Width: 1, Height: 1, RGBA: []byte{1, 2, 3, 255}},
+				"TROOA2A8": {Width: 1, Height: 1, RGBA: []byte{4, 5, 6, 255}},
+				"TROOB1":   {Width: 1, Height: 1, RGBA: []byte{7, 8, 9, 255}},
+				"TROOC1":   {Width: 1, Height: 1, RGBA: []byte{10, 11, 12, 255}},
+				"TROOD1":   {Width: 1, Height: 1, RGBA: []byte{13, 14, 15, 255}},
+				"TROOE1":   {Width: 1, Height: 1, RGBA: []byte{16, 17, 18, 255}},
+				"TROOF1":   {Width: 1, Height: 1, RGBA: []byte{19, 20, 21, 255}},
+				"TROOG1":   {Width: 1, Height: 1, RGBA: []byte{22, 23, 24, 255}},
+				"TROOH1":   {Width: 1, Height: 1, RGBA: []byte{25, 26, 27, 255}},
+				"TROOI1":   {Width: 1, Height: 1, RGBA: []byte{28, 29, 30, 255}},
+				"TROOJ1":   {Width: 1, Height: 1, RGBA: []byte{31, 32, 33, 255}},
+				"TROOK1":   {Width: 1, Height: 1, RGBA: []byte{34, 35, 36, 255}},
+				"TROOL1":   {Width: 1, Height: 1, RGBA: []byte{37, 38, 39, 255}},
+				"TROOM1":   {Width: 1, Height: 1, RGBA: []byte{40, 41, 42, 255}},
+			},
+		},
+	}
+	g.spritePatchStore, g.spritePatchPtrs = buildTexturePointerCache(g.opts.SpritePatchBank)
+
+	g.precacheMonsterSpriteRefs()
+
+	if ref := g.spriteRenderRefCache["TROOA2A8"]; ref == nil {
+		t.Fatal("expected spriteRenderRefCache to be warmed for monster rotation patch")
+	}
+	key := monsterFrameRenderKey{prefix: "TROO", frame: 'A', rot: 2}
+	entry, ok := g.monsterFrameRenderCache[key]
+	if !ok || entry.ref == nil {
+		t.Fatalf("expected monsterFrameRenderCache[%+v] to be warmed", key)
+	}
+	if entry.flip {
+		t.Fatalf("monsterFrameRenderCache[%+v] flip=%v want false", key, entry.flip)
+	}
+	deathKey := monsterFrameRenderKey{prefix: "TROO", frame: 'I', rot: 0}
+	if _, ok := g.monsterFrameRenderCache[deathKey]; !ok {
+		t.Fatalf("expected death frame cache entry for %+v", deathKey)
+	}
+}
+
 func TestMonsterRenderBaseZ_UsesActualZForLiveFloatMonsters(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

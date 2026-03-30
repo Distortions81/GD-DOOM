@@ -310,6 +310,58 @@ func TestSpritePatch_MaterializesCompositeBlendToken(t *testing.T) {
 	}
 }
 
+func TestPrecacheWeaponSpritePatches_WarmsCompositeCache(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"PISGA0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{10, 20, 30, 255}},
+				"PISGB0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{40, 50, 60, 255}},
+				"PISGC0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{70, 80, 90, 255}},
+				"PISFA0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{100, 110, 120, 255}},
+			},
+		},
+	}
+
+	g.precacheWeaponSpritePatches()
+
+	if g.spritePatchResolvedCache == nil {
+		t.Fatal("expected resolved sprite patch cache to be initialized")
+	}
+	if _, ok := g.spritePatchResolvedCache["PISGA0+PISFA0"]; !ok {
+		t.Fatal("expected composite psprite patch to be resolved during precache")
+	}
+	if g.spritePatchImg == nil || g.spritePatchImg["PISGA0+PISFA0"] == nil {
+		t.Fatal("expected composite psprite image to be materialized during precache")
+	}
+	if _, ok := g.spritePatchResolvedCache["PISGA0>PISGB0+PISFA0#1/8"]; !ok {
+		t.Fatal("expected pistol animation blend token to be materialized during precache")
+	}
+	if g.spritePatchImg["PISGA0>PISGB0+PISFA0#1/8"] == nil {
+		t.Fatal("expected pistol animation blend image to be cached during precache")
+	}
+}
+
+func TestQuantizeWeaponBlendAlpha(t *testing.T) {
+	tests := []struct {
+		in   float64
+		want float64
+	}{
+		{in: -0.1, want: 0},
+		{in: 0, want: 0},
+		{in: 0.06, want: 0},
+		{in: 0.10, want: 0.125},
+		{in: 0.49, want: 0.5},
+		{in: 0.74, want: 0.75},
+		{in: 1, want: 1},
+		{in: 1.2, want: 1},
+	}
+	for _, tc := range tests {
+		if got := quantizeWeaponBlendAlpha(tc.in); got != tc.want {
+			t.Fatalf("quantizeWeaponBlendAlpha(%v)=%v want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestWeaponOverlayAnchorUsesDoomCenterX(t *testing.T) {
 	rectW := 640
 	scale := float64(rectW) / doomLogicalW

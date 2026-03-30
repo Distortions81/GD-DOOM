@@ -18,6 +18,7 @@ const (
 	weaponLowerSpeed = 6
 	weaponTopY       = 32
 	weaponBottomY    = 128
+	weaponBlendSteps = 8
 )
 
 type weaponPspriteState int
@@ -630,16 +631,33 @@ func (g *game) resolveSpritePatchTexture(name string) (string, WallTexture, bool
 	if tex, ok := g.opts.SpritePatchBank[key]; ok && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
 		return key, tex, true
 	}
+	if g.spritePatchResolvedCache != nil {
+		if tex, ok := g.spritePatchResolvedCache[key]; ok && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+			return key, tex, true
+		}
+	}
 	if tex, ok := g.blendedSpritePatch(key); ok {
+		g.cacheResolvedSpritePatch(key, tex)
 		return key, tex, true
 	}
 	if tex, ok := g.compositeSpritePatch(key); ok {
+		g.cacheResolvedSpritePatch(key, tex)
 		return key, tex, true
 	}
 	if base := fallbackSpritePatchKey(key); base != "" {
 		return g.resolveSpritePatchTexture(base)
 	}
 	return "", WallTexture{}, false
+}
+
+func (g *game) cacheResolvedSpritePatch(key string, tex WallTexture) {
+	if g == nil || key == "" || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
+		return
+	}
+	if g.spritePatchResolvedCache == nil {
+		g.spritePatchResolvedCache = make(map[string]WallTexture, 256)
+	}
+	g.spritePatchResolvedCache[key] = tex
 }
 
 func blendWallTexture(from, to WallTexture, alpha float64) (WallTexture, bool) {
@@ -855,6 +873,14 @@ func drawSpritePatchClipped(screen, img *ebiten.Image, x, y, sx, sy float64, ox,
 	return drawSpritePatchClippedAlpha(screen, img, x, y, sx, sy, ox, oy, clipW, clipH, 1)
 }
 
+func (g *game) drawSpritePatchAlpha(screen *ebiten.Image, name string, x, y, sx, sy, alpha float64) bool {
+	img, _, _, ox, oy, ok := g.spritePatch(name)
+	if !ok {
+		return false
+	}
+	return drawSpritePatchClippedAlpha(screen, img, x, y, sx, sy, ox, oy, screen.Bounds().Dx(), screen.Bounds().Dy(), alpha)
+}
+
 func drawSpritePatchClippedAlpha(screen, img *ebiten.Image, x, y, sx, sy float64, ox, oy, clipW, clipH int, alpha float64) bool {
 	if screen == nil || img == nil || sx <= 0 || sy <= 0 || clipW <= 0 || clipH <= 0 {
 		return false
@@ -893,6 +919,19 @@ func drawSpritePatchClippedAlpha(screen, img *ebiten.Image, x, y, sx, sy float64
 	return true
 }
 
+func quantizeWeaponBlendAlpha(alpha float64) float64 {
+	if alpha <= 0 {
+		return 0
+	}
+	if alpha >= 1 {
+		return 1
+	}
+	if weaponBlendSteps <= 1 {
+		return alpha
+	}
+	return math.Round(alpha*weaponBlendSteps) / weaponBlendSteps
+}
+
 func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 	if g == nil || g.mode != viewWalk || g.isDead {
 		return
@@ -928,11 +967,237 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 		y = float64(rect.Dy())/2 - (doomBaseYCenter-logicalY)*scale
 	}
 	if prevComposite != "" && currComposite != "" && alpha > 0 && alpha < 1 {
-		blendName := fmt.Sprintf("%s>%s#%d/255", prevComposite, currComposite, int(math.Round(alpha*255)))
+		alpha = quantizeWeaponBlendAlpha(alpha)
+		if alpha <= 0 {
+			_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scale)
+			return
+		}
+		if alpha >= 1 {
+			_ = g.drawSpritePatch(target, currComposite, x, y, scale, scale)
+			return
+		}
+		blendName := fmt.Sprintf("%s>%s#%d/%d", prevComposite, currComposite, int(math.Round(alpha*weaponBlendSteps)), weaponBlendSteps)
 		_ = g.drawSpritePatch(target, blendName, x, y, scale, scale)
 	} else if currComposite != "" {
 		_ = g.drawSpritePatch(target, currComposite, x, y, scale, scale)
 	} else if prevComposite != "" {
 		_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scale)
+	}
+}
+
+func (g *game) precacheWeaponSpritePatches() {
+	if g == nil {
+		return
+	}
+	for id := range weaponDefs {
+		baseStates, flashStates := collectWeaponPrecacheStates(id)
+		baseSprites := weaponPrecacheSpriteNames(g.weaponSpriteNameForState, baseStates)
+		flashSprites := weaponPrecacheSpriteNames(g.weaponFlashSpriteNameForState, flashStates)
+		for base := range baseSprites {
+			_, _, _, _, _, _ = g.spritePatch(base)
+		}
+		for flash := range flashSprites {
+			_, _, _, _, _, _ = g.spritePatch(flash)
+		}
+		for base := range baseSprites {
+			for flash := range flashSprites {
+				composite := weaponCompositePatchToken(base, flash)
+				if composite == "" {
+					continue
+				}
+				_, _, _, _, _, _ = g.spritePatch(composite)
+			}
+		}
+		for _, edge := range weaponPrecacheEdges(g.weaponSpriteNameForState, baseStates) {
+			g.precacheWeaponBlendVariants(edge.from, edge.to, flashSprites)
+		}
+		for _, edge := range weaponPrecacheEdges(g.weaponFlashSpriteNameForState, flashStates) {
+			for base := range baseSprites {
+				g.precacheWeaponBlendPair(weaponCompositePatchToken(base, edge.from), weaponCompositePatchToken(base, edge.to))
+			}
+		}
+		for _, edge := range weaponPrecacheActionFlashEdges(id) {
+			for flash := range edge.toFlashes {
+				g.precacheWeaponBlendPair(weaponCompositePatchToken(edge.from, edge.fromFlash), weaponCompositePatchToken(edge.to, flash))
+			}
+		}
+	}
+}
+
+type weaponPrecacheEdge struct {
+	from string
+	to   string
+}
+
+type weaponPrecacheActionEdge struct {
+	from      string
+	to        string
+	fromFlash string
+	toFlashes map[string]struct{}
+}
+
+func collectWeaponPrecacheStates(id weaponID) ([]weaponPspriteState, []weaponPspriteState) {
+	def := weaponInfo(id)
+	base := collectWeaponStateChain(def.readystate, def.upstate, def.downstate, def.atkstate)
+	flash := collectWeaponStateChain(def.flashstate)
+	return base, flash
+}
+
+func collectWeaponStateChain(roots ...weaponPspriteState) []weaponPspriteState {
+	seen := make(map[weaponPspriteState]struct{}, len(roots)*4)
+	out := make([]weaponPspriteState, 0, len(roots)*4)
+	for _, root := range roots {
+		for state := root; state != weaponStateNone; {
+			if _, ok := seen[state]; ok {
+				break
+			}
+			def, ok := weaponPspriteDefs[state]
+			if !ok {
+				break
+			}
+			seen[state] = struct{}{}
+			out = append(out, state)
+			next := def.next
+			if next == state {
+				break
+			}
+			state = next
+		}
+	}
+	return out
+}
+
+func weaponPrecacheSpriteNames(resolve func(weaponPspriteState) string, states []weaponPspriteState) map[string]struct{} {
+	out := make(map[string]struct{}, len(states)+1)
+	out[""] = struct{}{}
+	for _, state := range states {
+		if name := resolve(state); name != "" {
+			out[name] = struct{}{}
+		}
+	}
+	return out
+}
+
+func weaponPrecacheEdges(resolve func(weaponPspriteState) string, states []weaponPspriteState) []weaponPrecacheEdge {
+	out := make([]weaponPrecacheEdge, 0, len(states))
+	seen := make(map[weaponPrecacheEdge]struct{}, len(states))
+	for _, state := range states {
+		def, ok := weaponPspriteDefs[state]
+		if !ok || def.next == weaponStateNone || def.next == state {
+			continue
+		}
+		from := resolve(state)
+		to := resolve(def.next)
+		if from == "" || to == "" || from == to {
+			continue
+		}
+		edge := weaponPrecacheEdge{from: from, to: to}
+		if _, ok := seen[edge]; ok {
+			continue
+		}
+		seen[edge] = struct{}{}
+		out = append(out, edge)
+	}
+	return out
+}
+
+func weaponActionStartsFlash(action weaponPspriteAction) bool {
+	switch action {
+	case weaponPspriteActionGunFlash,
+		weaponPspriteActionFirePistol,
+		weaponPspriteActionFireShotgun,
+		weaponPspriteActionFireSuperShotgun,
+		weaponPspriteActionFireChaingun,
+		weaponPspriteActionFirePlasma,
+		weaponPspriteActionFireBFG:
+		return true
+	default:
+		return false
+	}
+}
+
+func weaponFlashVariantsForState(id weaponID, state weaponPspriteState) map[string]struct{} {
+	out := make(map[string]struct{}, 2)
+	def := weaponInfo(id)
+	if def.flashstate != weaponStateNone {
+		if name := weaponPspriteDefs[def.flashstate].sprite; name != "" {
+			out[name] = struct{}{}
+		}
+	}
+	switch state {
+	case weaponStateChaingunAtk2:
+		if name := weaponPspriteDefs[weaponStateChaingunFlash2].sprite; name != "" {
+			out[name] = struct{}{}
+		}
+	case weaponStatePlasmaAtk1:
+		if name := weaponPspriteDefs[weaponStatePlasmaFlash2].sprite; name != "" {
+			out[name] = struct{}{}
+		}
+	}
+	return out
+}
+
+func weaponPrecacheActionFlashEdges(id weaponID) []weaponPrecacheActionEdge {
+	baseStates, _ := collectWeaponPrecacheStates(id)
+	out := make([]weaponPrecacheActionEdge, 0, len(baseStates)+1)
+	seen := make(map[weaponPrecacheEdge]struct{}, len(baseStates)+1)
+	appendEdge := func(fromState, toState weaponPspriteState) {
+		if toState == weaponStateNone {
+			return
+		}
+		toDef, ok := weaponPspriteDefs[toState]
+		if !ok || !weaponActionStartsFlash(toDef.action) {
+			return
+		}
+		from := weaponPspriteDefs[fromState].sprite
+		to := toDef.sprite
+		if from == "" || to == "" {
+			return
+		}
+		key := weaponPrecacheEdge{from: from, to: to}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		flashes := weaponFlashVariantsForState(id, toState)
+		if len(flashes) == 0 {
+			return
+		}
+		seen[key] = struct{}{}
+		out = append(out, weaponPrecacheActionEdge{from: from, to: to, fromFlash: "", toFlashes: flashes})
+	}
+	for _, state := range baseStates {
+		def, ok := weaponPspriteDefs[state]
+		if !ok || def.next == weaponStateNone {
+			continue
+		}
+		appendEdge(state, def.next)
+	}
+	def := weaponInfo(id)
+	if def.readystate != weaponStateNone && def.atkstate != weaponStateNone {
+		appendEdge(def.readystate, def.atkstate)
+	}
+	return out
+}
+
+func (g *game) precacheWeaponBlendVariants(from, to string, flashes map[string]struct{}) {
+	if from == "" || to == "" {
+		return
+	}
+	if len(flashes) == 0 {
+		g.precacheWeaponBlendPair(from, to)
+		return
+	}
+	for flash := range flashes {
+		g.precacheWeaponBlendPair(weaponCompositePatchToken(from, flash), weaponCompositePatchToken(to, flash))
+	}
+}
+
+func (g *game) precacheWeaponBlendPair(from, to string) {
+	if g == nil || from == "" || to == "" || from == to {
+		return
+	}
+	for step := 1; step < weaponBlendSteps; step++ {
+		key := fmt.Sprintf("%s>%s#%d/%d", from, to, step, weaponBlendSteps)
+		_, _, _, _, _, _ = g.spritePatch(key)
 	}
 }

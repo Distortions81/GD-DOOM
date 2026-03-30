@@ -696,6 +696,7 @@ type game struct {
 	worldThingAnimRefCache       map[int16]thingAnimRefState
 	spritePatchStore             []WallTexture
 	spritePatchPtrs              map[string]*WallTexture
+	spritePatchResolvedCache     map[string]WallTexture
 	wallTexStore                 []WallTexture
 	wallTexPtrs                  map[string]*WallTexture
 	flatNameToID                 map[string]uint16
@@ -1257,6 +1258,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.monsterFrameRenderCache = make(map[monsterFrameRenderKey]monsterFrameRenderEntry, 512)
 	g.worldThingAnimRefCache = make(map[int16]thingAnimRefState, 128)
 	g.spritePatchStore, g.spritePatchPtrs = buildTexturePointerCache(opts.SpritePatchBank)
+	g.spritePatchResolvedCache = make(map[string]WallTexture, 256)
 	g.wallTexStore, g.wallTexPtrs = buildTexturePointerCache(opts.WallTexBank)
 	g.detailLevel = defaultDetailLevelForMode(g.viewW, g.viewH, opts.SourcePortMode)
 	if opts.InitialDetailLevel >= 0 {
@@ -1489,6 +1491,7 @@ func (g *game) clearSpritePatchCache() {
 	if g == nil {
 		return
 	}
+	g.spritePatchResolvedCache = nil
 	g.spritePatchImg = nil
 	g.statusPatchImg = nil
 	g.messageFontImg = nil
@@ -1588,6 +1591,10 @@ func (g *game) precacheRenderAssets() {
 	g.precacheMapTextureAssets()
 	g.precacheSpritePatchRenderData()
 	g.precacheThingSpriteExpansion()
+	g.precacheWeaponSpritePatches()
+	g.precacheMonsterSpriteRefs()
+	g.precacheWorldThingSpriteRefs()
+	g.precacheProjectileSpriteRefs()
 }
 
 func (g *game) precacheRenderAssetsWASM() {
@@ -1853,6 +1860,153 @@ func (g *game) precacheThingSpriteExpansion() {
 		if name != "" {
 			g.expandThingSpriteFrames(name)
 		}
+	}
+}
+
+func (g *game) precacheMonsterSpriteRefs() {
+	if g == nil || g.m == nil || len(g.m.Things) == 0 {
+		return
+	}
+	seenTypes := make(map[int16]struct{}, len(g.m.Things))
+	for _, th := range g.m.Things {
+		if !isMonster(th.Type) {
+			continue
+		}
+		if _, seen := seenTypes[th.Type]; seen {
+			continue
+		}
+		seenTypes[th.Type] = struct{}{}
+		g.precacheMonsterSpriteRefsForType(th.Type)
+	}
+}
+
+func (g *game) precacheMonsterSpriteRefsForType(typ int16) {
+	if g == nil {
+		return
+	}
+	prefix, ok := monsterSpritePrefix(typ)
+	if !ok || prefix == "" {
+		if name := g.monsterSpriteName(typ, 0); name != "" {
+			g.spriteRenderRef(name)
+		}
+		return
+	}
+	frames := monsterFrameLettersForPrecache(typ)
+	for _, frame := range frames {
+		if frame < 'A' || frame > 'Z' {
+			continue
+		}
+		g.monsterFrameRenderRef(prefix, frame, 0)
+		for rot := 1; rot <= 8; rot++ {
+			g.monsterFrameRenderRefRot(prefix, frame, rot)
+		}
+	}
+	if name := g.monsterSpriteName(typ, 0); name != "" {
+		g.spriteRenderRef(name)
+	}
+}
+
+func monsterFrameLettersForPrecache(typ int16) []byte {
+	seen := make(map[byte]struct{}, 32)
+	out := make([]byte, 0, 32)
+	appendFrames := func(seq []byte) {
+		for _, frame := range seq {
+			if frame < 'A' || frame > 'Z' {
+				continue
+			}
+			if _, ok := seen[frame]; ok {
+				continue
+			}
+			seen[frame] = struct{}{}
+			out = append(out, frame)
+		}
+	}
+	appendFrames(monsterSpawnFrameSeq(typ))
+	appendFrames(monsterSeeFrameSeq(typ))
+	appendFrames(monsterAttackFrameSeq(typ))
+	appendFrames(monsterPainFrameSeq(typ))
+	appendFrames(monsterDeathFrameSeq(typ))
+	appendFrames(monsterXDeathFrameSeq(typ))
+	return out
+}
+
+func (g *game) precacheWorldThingSpriteRefs() {
+	if g == nil || g.m == nil || len(g.m.Things) == 0 {
+		return
+	}
+	for i, th := range g.m.Things {
+		if isMonster(th.Type) || isPlayerStart(th.Type) {
+			continue
+		}
+		if isBarrelThingType(th.Type) {
+			for _, name := range barrelSpawnSprites {
+				g.spriteRenderRef(name)
+			}
+			for _, name := range barrelDeathSprites {
+				g.spriteRenderRef(name)
+			}
+			continue
+		}
+		anim := thingAnimRefState{}
+		if i >= 0 && i < len(g.thingWorldAnimRef) {
+			anim = g.thingWorldAnimRef[i]
+		} else {
+			anim = g.buildThingWorldAnimRef(th)
+		}
+		if anim.staticRef != nil {
+			g.spriteRenderRef(anim.staticRef.key)
+		}
+		for _, ref := range anim.refs {
+			if ref == nil || ref.key == "" {
+				continue
+			}
+			g.spriteRenderRef(ref.key)
+		}
+		if name := g.worldThingSpriteNameScaled(th.Type, 0, 1); name != "" {
+			g.spriteRenderRef(name)
+		}
+	}
+}
+
+func (g *game) precacheProjectileSpriteRefs() {
+	if g == nil {
+		return
+	}
+	for kind := projectileFireball; kind <= projectileBFGBall; kind++ {
+		for frame := 0; frame < 2; frame++ {
+			g.projectileSpriteRef(kind, frame)
+		}
+		for phase := 0; ; phase++ {
+			if projectileImpactPhaseTics(kind, phase) <= 0 {
+				break
+			}
+			g.projectileImpactSpriteRef(kind, phase)
+		}
+	}
+	for _, p := range []hitscanPuff{
+		{kind: hitscanFxPuff, tics: 6},
+		{kind: hitscanFxPuff, tics: 4},
+		{kind: hitscanFxPuff, tics: 2},
+		{kind: hitscanFxPuff, tics: 1},
+		{kind: hitscanFxBlood, tics: 7},
+		{kind: hitscanFxBlood, tics: 5},
+		{kind: hitscanFxBlood, tics: 1},
+		{kind: hitscanFxSmoke, state: 0},
+		{kind: hitscanFxSmoke, state: 1},
+		{kind: hitscanFxSmoke, state: 2},
+		{kind: hitscanFxSmoke, state: 3},
+		{kind: hitscanFxSmoke, state: 4},
+	} {
+		g.hitscanEffectSpriteRef(p)
+	}
+	for state := 130; state <= 141; state++ {
+		g.hitscanEffectSpriteRef(hitscanPuff{kind: hitscanFxTeleport, state: state})
+	}
+	for tic := 0; tic < 12; tic++ {
+		g.bossCubeSpriteRef(tic)
+	}
+	for elapsed := 0; elapsed < 32; elapsed += 4 {
+		g.bossSpawnFireSpriteRef(elapsed)
 	}
 }
 
