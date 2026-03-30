@@ -28,6 +28,7 @@ import (
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/runtimecfg"
+	"gddoom/internal/session"
 	"gddoom/internal/sound"
 	"gddoom/internal/wad"
 
@@ -2414,6 +2415,7 @@ type iwadPickerGame struct {
 	sfx          *audiofx.MenuPlayer
 	load         func(string, pickerProfile, int) (*renderBundle, error)
 	session      *doomsession.Session
+	sessionGame  *session.Game
 	err          error
 }
 
@@ -2483,8 +2485,8 @@ func pickerAssetWADPath(choices []iwadChoice) string {
 }
 
 func (g *iwadPickerGame) Update() error {
-	if g.session != nil {
-		return g.session.Update()
+	if g.sessionGame != nil {
+		return g.sessionGame.Update()
 	}
 	if len(g.choices) == 0 {
 		g.err = fmt.Errorf("no IWADs available")
@@ -2520,6 +2522,7 @@ func (g *iwadPickerGame) Update() error {
 		g.status = ""
 		g.statusUntil = 0
 		g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+		g.sessionGame = session.New(g.session)
 		notifyBrowserSessionStarted()
 		return nil
 	}
@@ -2594,6 +2597,7 @@ func (g *iwadPickerGame) Update() error {
 				return nil
 			}
 			g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
+			g.sessionGame = session.New(g.session)
 			notifyBrowserSessionStarted()
 			return nil
 		}
@@ -2623,8 +2627,8 @@ func (g *iwadPickerGame) Update() error {
 }
 
 func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
-	if g.session != nil {
-		g.session.Draw(screen)
+	if g.sessionGame != nil {
+		g.sessionGame.Draw(screen)
 		return
 	}
 	sw := max(screen.Bounds().Dx(), 1)
@@ -2736,15 +2740,15 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 }
 
 func (g *iwadPickerGame) Layout(outsideWidth, outsideHeight int) (int, int) {
-	if g.session != nil {
-		return g.session.Layout(outsideWidth, outsideHeight)
+	if g.sessionGame != nil {
+		return g.sessionGame.Layout(outsideWidth, outsideHeight)
 	}
 	return 320, 200
 }
 
 func (g *iwadPickerGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
-	if g.session != nil {
-		g.session.DrawFinalScreen(screen, offscreen, geoM)
+	if g.sessionGame != nil {
+		g.sessionGame.DrawFinalScreen(screen, offscreen, geoM)
 		return
 	}
 	if screen == nil || offscreen == nil {
@@ -2773,7 +2777,9 @@ func (g *iwadPickerGame) Close() {
 	if g.sfx != nil {
 		g.sfx.StopAll()
 	}
-	if g.session != nil {
+	if g.sessionGame != nil {
+		g.sessionGame.Close()
+	} else if g.session != nil {
 		g.session.Close()
 	}
 }
