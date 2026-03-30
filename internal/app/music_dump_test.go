@@ -15,8 +15,8 @@ import (
 )
 
 func TestDumpMusicRendererLabel(t *testing.T) {
-	if got := dumpMusicRendererLabel("soundfonts/SC55.sf2"); got != "MIDI-SC55" {
-		t.Fatalf("label=%q want %q", got, "MIDI-SC55")
+	if got := dumpMusicRendererLabel("soundfonts/SC55-HQ.sf2"); got != "MIDI-SC55-HQ" {
+		t.Fatalf("label=%q want %q", got, "MIDI-SC55-HQ")
 	}
 	if got := dumpMusicRendererLabel("soundfonts/general-midi.sf2"); got != "MIDI-GENERAL-MIDI" {
 		t.Fatalf("label=%q want %q", got, "MIDI-GENERAL-MIDI")
@@ -369,12 +369,12 @@ func TestRunParseDumpMusicRewritesZeroByteWav(t *testing.T) {
 	}
 }
 
-func TestDumpMusicPCMConcurrentSafeRendersSC55Doom2Intermission(t *testing.T) {
+func TestDumpMusicPCMConcurrentSafeRendersGeneralMIDIDoom2Intermission(t *testing.T) {
 	const (
 		lumpName = "D_DDTBLU"
 	)
 	wadPath := filepath.Join("..", "..", "DOOM2.WAD")
-	soundFontPath := filepath.Join("..", "..", "soundfonts", "SC55.sf2")
+	soundFontPath := filepath.Join("..", "..", "soundfonts", "general-midi.sf2")
 	if _, err := os.Stat(wadPath); err != nil {
 		t.Skipf("missing %s: %v", wadPath, err)
 	}
@@ -405,14 +405,14 @@ func TestDumpMusicPCMConcurrentSafeRendersSC55Doom2Intermission(t *testing.T) {
 
 	var meltySynthMu sync.Mutex
 	pcm, err := dumpMusicPCMConcurrentSafe(patchBank, dumpMusicRenderer{
-		label:       "MIDI-SC55",
-		displayName: "SC-55",
+		label:       "MIDI-GENERAL-MIDI",
+		displayName: "General MIDI",
 		backend:     music.BackendMeltySynth,
 		fontPath:    soundFontPath,
 		soundFont:   sf,
 	}, musData, &meltySynthMu)
 	if err != nil {
-		t.Fatalf("render %s with SC55: %v", lumpName, err)
+		t.Fatalf("render %s with general-midi: %v", lumpName, err)
 	}
 	if len(pcm) == 0 {
 		t.Fatalf("render %s produced no PCM", lumpName)

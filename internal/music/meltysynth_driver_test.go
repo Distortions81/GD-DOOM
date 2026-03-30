@@ -6,7 +6,7 @@ import (
 )
 
 func TestMeltySynthDriverResetReusesSynth(t *testing.T) {
-	sf, err := ParseSoundFontFile(filepath.Join("..", "..", "soundfonts", "SC55.sf2"))
+	sf, err := ParseSoundFontFile(filepath.Join("..", "..", "soundfonts", "general-midi.sf2"))
 	if err != nil {
 		t.Fatalf("ParseSoundFontFile() error: %v", err)
 	}

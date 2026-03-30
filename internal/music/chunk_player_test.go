@@ -41,6 +41,32 @@ func TestDefaultStreamChunkSettings(t *testing.T) {
 	}
 }
 
+func TestBackendStreamChunkSettings(t *testing.T) {
+	if got := DefaultStreamChunkFramesForBackend(BackendMeltySynth); got != DefaultStreamChunkFrames() {
+		t.Fatalf("meltysynth chunk=%d want=%d", got, DefaultStreamChunkFrames())
+	}
+	if got := DefaultStreamLookaheadForBackend(BackendMeltySynth); got != DefaultStreamLookahead() {
+		t.Fatalf("meltysynth lookahead=%d want=%d", got, DefaultStreamLookahead())
+	}
+
+	if streamChunkFrames() == 1260 {
+		if got := DefaultStreamChunkFramesForBackend(BackendImpSynth); got != 630 {
+			t.Fatalf("impsynth wasm chunk=%d want=630", got)
+		}
+		if got := DefaultStreamLookaheadForBackend(BackendImpSynth); got != 630*36 {
+			t.Fatalf("impsynth wasm lookahead=%d want=%d", got, 630*36)
+		}
+		return
+	}
+
+	if got := DefaultStreamChunkFramesForBackend(BackendImpSynth); got != DefaultStreamChunkFrames() {
+		t.Fatalf("impsynth chunk=%d want=%d", got, DefaultStreamChunkFrames())
+	}
+	if got := DefaultStreamLookaheadForBackend(BackendImpSynth); got != DefaultStreamLookahead() {
+		t.Fatalf("impsynth lookahead=%d want=%d", got, DefaultStreamLookahead())
+	}
+}
+
 func TestPCMChunkBufferReadClear(t *testing.T) {
 	b := newPCMChunkBuffer()
 	b.Enqueue([]byte{1, 2, 3, 4})

@@ -18,7 +18,7 @@ var (
 func benchmarkSoundFont(b *testing.B) *SoundFontBank {
 	b.Helper()
 	benchmarkMeltySoundFontOnce.Do(func() {
-		benchmarkMeltySoundFont, benchmarkMeltySoundFontErr = ParseSoundFontFile(filepath.Join("..", "..", "soundfonts", "SC55.sf2"))
+		benchmarkMeltySoundFont, benchmarkMeltySoundFontErr = ParseSoundFontFile(filepath.Join("..", "..", "soundfonts", "general-midi.sf2"))
 	})
 	if benchmarkMeltySoundFontErr != nil {
 		b.Fatalf("ParseSoundFontFile() error: %v", benchmarkMeltySoundFontErr)

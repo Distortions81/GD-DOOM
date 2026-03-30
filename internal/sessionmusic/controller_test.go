@@ -43,7 +43,7 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 	}
 
 	var stream *music.StreamRenderer
-	first, err := nextChunk(factory, &stream, true)
+	first, err := nextChunk(factory, &stream, true, music.DefaultStreamChunkFrames())
 	if err != nil {
 		t.Fatalf("first nextLoopChunk() error: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 
 	doneSeen := false
 	for i := 0; i < 64; i++ {
-		_, err := nextChunk(factory, &stream, true)
+		_, err := nextChunk(factory, &stream, true, music.DefaultStreamChunkFrames())
 		if err != nil {
 			t.Fatalf("nextLoopChunk() error: %v", err)
 		}
@@ -66,7 +66,7 @@ func TestNextLoopChunkRestartsAfterDone(t *testing.T) {
 		t.Fatal("stream never reached done state")
 	}
 
-	looped, err := nextChunk(factory, &stream, true)
+	looped, err := nextChunk(factory, &stream, true, music.DefaultStreamChunkFrames())
 	if err != nil {
 		t.Fatalf("loop restart nextLoopChunk() error: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestNextChunkStopsAtDoneWhenNotLooping(t *testing.T) {
 	var stream *music.StreamRenderer
 	doneSeen := false
 	for i := 0; i < 64; i++ {
-		chunk, err := nextChunk(factory, &stream, false)
+		chunk, err := nextChunk(factory, &stream, false, music.DefaultStreamChunkFrames())
 		if err != nil {
 			t.Fatalf("nextChunk() error: %v", err)
 		}
@@ -113,7 +113,7 @@ func TestNextChunkStopsAtDoneWhenNotLooping(t *testing.T) {
 	if !doneSeen {
 		t.Fatal("non-looping stream never reached done state")
 	}
-	chunk, err := nextChunk(factory, &stream, false)
+	chunk, err := nextChunk(factory, &stream, false, music.DefaultStreamChunkFrames())
 	if err != nil {
 		t.Fatalf("post-done nextChunk() error: %v", err)
 	}

@@ -499,10 +499,10 @@ type game struct {
 	renderPY    float64
 	renderAngle uint32
 	renderAlpha float64
+	renderStamp time.Time
 	debugAimSS  int
 
 	lastUpdate       time.Time
-	lastSimInterval  time.Duration
 	fpsFrames        int
 	fpsStamp         time.Time
 	fpsDisplay       float64
@@ -619,8 +619,6 @@ type game struct {
 	stats                 playerStats
 	worldTic              int
 	spectreFuzzPos        int
-	spectreFuzzAccum      float64
-	spectreFuzzStamp      time.Time
 	spectreFuzzCoarseX    int
 	spectreFuzzCoarseY    int
 	spectreFuzzCoarseSet  bool
@@ -3151,9 +3149,13 @@ func (g *game) updateWalkScreenSize() {
 }
 
 func (g *game) drawWalk3D(screen *ebiten.Image) {
+	now := g.renderStamp
+	if now.IsZero() {
+		now = time.Now()
+	}
 	rect := g.walkRenderViewportRect()
 	if rect.Dx() >= g.viewW && rect.Dy() >= g.viewH && rect.Min.X == 0 && rect.Min.Y == 0 {
-		g.prepareRenderState()
+		g.prepareRenderStateAt(now)
 		g.drawDoomBasic3D(screen)
 		return
 	}
@@ -3162,7 +3164,7 @@ func (g *game) drawWalk3D(screen *ebiten.Image) {
 	sub := screen.SubImage(rect).(*ebiten.Image)
 	g.viewW = rect.Dx()
 	g.viewH = rect.Dy()
-	g.prepareRenderState()
+	g.prepareRenderStateAt(now)
 	g.drawDoomBasic3D(sub)
 	g.viewW = fullW
 	g.viewH = fullH
@@ -3191,6 +3193,7 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 
 func (g *game) Draw(screen *ebiten.Image) {
 	drawStart := time.Now()
+	g.renderStamp = drawStart
 	if g.opts.DemoScript != nil {
 		g.demoBenchDraws++
 	}
@@ -6459,21 +6462,21 @@ func (g *game) updateSpectreFuzzSource() []uint32 {
 	return g.spectreFuzzSamplePix
 }
 
-func (g *game) beginSourcePortSpectreFuzzFrame(now time.Time) {
+func (g *game) beginSourcePortSpectreFuzzFrame(alpha float64) {
 	if g == nil || !g.opts.SourcePortMode || len(doomFuzzOffsets) == 0 {
 		return
 	}
-	if g.spectreFuzzStamp.IsZero() {
-		g.spectreFuzzStamp = now
+	if alpha < 0 {
+		alpha = 0
 	}
-	dt := now.Sub(g.spectreFuzzStamp).Seconds()
-	g.spectreFuzzStamp = now
-	g.spectreFuzzAccum += dt * float64(doomTicsPerSecond)
-	steps := int(g.spectreFuzzAccum)
-	if steps > 0 {
-		g.spectreFuzzAccum -= float64(steps)
-		g.spectreFuzzPos = (g.spectreFuzzPos + steps) % len(doomFuzzOffsets)
+	if alpha > 1 {
+		alpha = 1
 	}
+	phase := g.worldTic
+	if alpha >= 1 {
+		phase++
+	}
+	g.spectreFuzzPos = phase % len(doomFuzzOffsets)
 	g.spectreFuzzCoarseSet = false
 }
 
@@ -10458,7 +10461,7 @@ func (g *game) worldThingAnimTickUnits() (tickUnits int, unitsPerTic int) {
 		return tickUnits, unitsPerTic
 	}
 	unitsPerTic = sourcePortThingAnimSubsteps
-	alpha := g.interpAlpha()
+	alpha := g.renderAlpha
 	sub := int(alpha * float64(unitsPerTic))
 	if sub < 0 {
 		sub = 0
@@ -18468,8 +18471,11 @@ func (g *game) capturePrevProjectileRenderState() {
 }
 
 func (g *game) prepareRenderState() {
-	g.beginSourcePortSpectreFuzzFrame(time.Now())
-	alpha := g.interpAlpha()
+	g.prepareRenderStateAt(time.Now())
+}
+
+func (g *game) prepareRenderStateAt(now time.Time) {
+	alpha := g.interpAlphaAt(now)
 	if !g.opts.SourcePortMode {
 		alpha = 1
 	}
@@ -18483,6 +18489,7 @@ func (g *game) prepareRenderState() {
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
 	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
 	g.renderAlpha = alpha
+	g.beginSourcePortSpectreFuzzFrame(alpha)
 	g.debugAimSS = debugFixedSubsector
 }
 
@@ -18490,33 +18497,30 @@ func (g *game) markSimUpdate(now time.Time) {
 	if g == nil {
 		return
 	}
-	if !g.lastUpdate.IsZero() {
-		if dt := now.Sub(g.lastUpdate); dt > 0 {
-			g.lastSimInterval = dt
-		}
-	}
 	g.lastUpdate = now
 }
 
+func (g *game) expectedSimStepSeconds() float64 {
+	ticRate := float64(doomTicsPerSecond)
+	if g != nil && g.simTickScale > 0 {
+		ticRate *= g.simTickScale
+	}
+	if ticRate < 1e-6 {
+		ticRate = doomTicsPerSecond
+	}
+	return 1.0 / ticRate
+}
+
 func (g *game) interpAlpha() float64 {
+	return g.interpAlphaAt(time.Now())
+}
+
+func (g *game) interpAlphaAt(now time.Time) float64 {
 	if g.lastUpdate.IsZero() {
 		return 1
 	}
-	dt := time.Since(g.lastUpdate).Seconds()
-	step := 0.0
-	if g.lastSimInterval > 0 {
-		step = g.lastSimInterval.Seconds()
-	}
-	if step < 1e-6 {
-		ticRate := float64(doomTicsPerSecond)
-		if g.simTickScale > 0 {
-			ticRate *= g.simTickScale
-		}
-		if ticRate < 1e-6 {
-			ticRate = doomTicsPerSecond
-		}
-		step = 1.0 / ticRate
-	}
+	dt := now.Sub(g.lastUpdate).Seconds()
+	step := g.expectedSimStepSeconds()
 	a := dt / step
 	if a < 0 {
 		return 0

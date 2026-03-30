@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"testing"
-	"time"
 
 	"gddoom/internal/mapdata"
 )
@@ -102,18 +101,14 @@ func TestShadePackedSpectreFuzz_SourcePortUsesRowSixFallback(t *testing.T) {
 
 func TestBeginSourcePortSpectreFuzzFrame_AdvancesAtDoomRate(t *testing.T) {
 	g := &game{opts: Options{SourcePortMode: true}}
-	start := time.Unix(100, 0)
-	g.beginSourcePortSpectreFuzzFrame(start)
+	g.beginSourcePortSpectreFuzzFrame(0)
 	if got := g.spectreFuzzPos; got != 0 {
 		t.Fatalf("initial fuzz pos=%d want 0", got)
 	}
-	g.beginSourcePortSpectreFuzzFrame(start.Add(10 * time.Millisecond))
-	if got := g.spectreFuzzPos; got != 0 {
-		t.Fatalf("fuzz pos after short frame=%d want 0", got)
-	}
-	g.beginSourcePortSpectreFuzzFrame(start.Add(30 * time.Millisecond))
+	g.worldTic = 1
+	g.beginSourcePortSpectreFuzzFrame(0.3)
 	if got := g.spectreFuzzPos; got != 1 {
-		t.Fatalf("fuzz pos after ~1 tic=%d want 1", got)
+		t.Fatalf("fuzz pos after 1 tic=%d want 1", got)
 	}
 }
 

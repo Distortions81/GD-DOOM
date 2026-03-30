@@ -41,15 +41,26 @@ func TestSetSimTickScale_Clamps(t *testing.T) {
 	}
 }
 
-func TestInterpAlpha_UsesMeasuredSimInterval(t *testing.T) {
+func TestInterpAlpha_UsesExpectedTickRate(t *testing.T) {
 	g := &game{
-		lastUpdate:      time.Now().Add(-25 * time.Millisecond),
-		lastSimInterval: 50 * time.Millisecond,
-		simTickScale:    1.0,
+		lastUpdate:   time.Now().Add(-time.Second / (2 * doomTicsPerSecond)),
+		simTickScale: 1.0,
 	}
 
 	if got := g.interpAlpha(); got < 0.45 || got > 0.55 {
-		t.Fatalf("measured interval alpha: got=%0.3f want about 0.5", got)
+		t.Fatalf("expected interval alpha: got=%0.3f want about 0.5", got)
+	}
+}
+
+func TestInterpAlphaAt_UsesProvidedTimestamp(t *testing.T) {
+	now := time.Unix(123, 0)
+	g := &game{
+		lastUpdate:   now.Add(-time.Second / (2 * doomTicsPerSecond)),
+		simTickScale: 1.0,
+	}
+
+	if got := g.interpAlphaAt(now); got < 0.45 || got > 0.55 {
+		t.Fatalf("explicit-time alpha: got=%0.3f want about 0.5", got)
 	}
 }
 

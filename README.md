@@ -72,7 +72,7 @@ Examples:
 
 ```bash
 go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=impsynth
-go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/SC55.sf2
+go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/general-midi.sf2
 ```
 
 The frontend options menu has a dedicated Music submenu where you can change music volume, switch between OPL3 and MeltySynth, pick a SoundFont from `./soundfonts`, and open the music player.

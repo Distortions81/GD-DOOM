@@ -47,6 +47,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	var drawStart time.Time
 	if g.mode != viewMap {
 		drawStart = time.Now()
+		g.renderStamp = drawStart
 		if g.opts.DemoScript != nil {
 			g.demoBenchDraws++
 		}
