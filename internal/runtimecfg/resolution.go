@@ -12,9 +12,6 @@ const (
 	faithfulDefaultWindowW = 1280
 	faithfulDefaultWindowH = 960
 	faithfulAspectLogicalH = 240
-
-	wasmMaxWindowW = 1280
-	wasmMaxWindowH = 720
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.
@@ -43,15 +40,7 @@ func ensurePositiveRenderSize(opts *Options) {
 }
 
 func clampSourcePortWindowSizeForPlatform(w, h int, wasm bool) (int, int) {
-	if !wasm {
-		return w, h
-	}
-	if w > wasmMaxWindowW {
-		w = wasmMaxWindowW
-	}
-	if h > wasmMaxWindowH {
-		h = wasmMaxWindowH
-	}
+	_ = wasm
 	return w, h
 }
 

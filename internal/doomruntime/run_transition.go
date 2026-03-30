@@ -77,6 +77,19 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		sg.transition.SetLastFrame(src)
 		return
 	}
+	if sg.canDrawSourcePortDirect(dst, g) {
+		dst.Fill(color.Black)
+		if g.mode != viewMap {
+			g.drawWalk3D(dst)
+		} else {
+			g.Draw(dst)
+		}
+		if g.mode != viewMap {
+			g.drawWalkOverlays(dst)
+		}
+		sg.transition.SetLastFrame(dst)
+		return
+	}
 	present := sg.ensureGameplaySurface(g.viewW, g.viewH)
 	present.Fill(color.Black)
 	if g.mode != viewMap {
@@ -100,6 +113,20 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		g.viewH = prevH
 	}
 	sg.transition.SetLastFrame(src)
+}
+
+func (sg *sessionGame) canDrawSourcePortDirect(dst *ebiten.Image, g *game) bool {
+	if sg == nil || dst == nil || g == nil {
+		return false
+	}
+	if !sg.opts.SourcePortMode {
+		return false
+	}
+	if sg.palettePostEnabled() {
+		return false
+	}
+	return max(dst.Bounds().Dx(), 1) == max(g.viewW, 1) &&
+		max(dst.Bounds().Dy(), 1) == max(g.viewH, 1)
 }
 
 func (sg *sessionGame) drawSourcePortPresented(dst, src *ebiten.Image, sw, sh int) {
