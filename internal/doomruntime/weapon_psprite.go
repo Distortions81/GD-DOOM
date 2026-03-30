@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"math"
 	"strings"
+	"time"
 
 	"gddoom/internal/render/scene"
 
@@ -509,7 +510,7 @@ func (g *game) renderWeaponOverlayState() (string, string, string, string, float
 	if g == nil {
 		return "", "", "", "", 0, 0
 	}
-	alpha := g.renderAlpha
+	alpha := g.weaponRenderAlpha()
 	if !g.opts.SourcePortMode {
 		alpha = 1
 	}
@@ -533,6 +534,37 @@ func (g *game) renderWeaponOverlayState() (string, string, string, string, float
 		prevFlash = ""
 	}
 	return currName, prevName, currFlash, prevFlash, y, alpha
+}
+
+func (g *game) weaponRenderAlpha() float64 {
+	if g == nil {
+		return 1
+	}
+	alpha := g.renderAlpha
+	if g.lastUpdate.IsZero() {
+		return alpha
+	}
+	step := g.lastSimInterval.Seconds()
+	if step <= 1e-6 {
+		ticRate := float64(doomTicsPerSecond)
+		if g.simTickScale > 0 {
+			ticRate *= g.simTickScale
+		}
+		if ticRate > 1e-6 {
+			step = 1.0 / ticRate
+		}
+	}
+	if step <= 1e-6 {
+		return alpha
+	}
+	a := time.Since(g.lastUpdate).Seconds() / step
+	if a < 0 {
+		return 0
+	}
+	if a > 1 {
+		return 1
+	}
+	return a
 }
 
 func abs64(v int64) int64 {

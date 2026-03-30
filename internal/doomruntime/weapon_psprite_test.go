@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"math"
 	"testing"
+	"time"
 
 	"gddoom/internal/mapdata"
 )
@@ -417,5 +418,17 @@ func TestRenderWeaponOverlayState_DoesNotInterpolateClassicMode(t *testing.T) {
 	}
 	if alpha != 1 {
 		t.Fatalf("classic alpha=%v want 1", alpha)
+	}
+}
+
+func TestWeaponRenderAlpha_UsesMeasuredSimInterval(t *testing.T) {
+	g := &game{
+		renderAlpha:     0.2,
+		lastUpdate:      time.Now().Add(-40 * time.Millisecond),
+		lastSimInterval: 80 * time.Millisecond,
+	}
+	alpha := g.weaponRenderAlpha()
+	if math.Abs(alpha-0.5) > 0.1 {
+		t.Fatalf("weapon alpha=%v want near 0.5 from measured 40ms/80ms interval", alpha)
 	}
 }

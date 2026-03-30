@@ -302,7 +302,7 @@ const spriteMagnifyMinScale = 2.0
 const (
 	// 360 means the blend spans the full normalized interval for that category.
 	wallFloorAnimShutterAngle = 360.0
-	switchTextureShutterAngle = 360.0
+	switchTextureShutterAngle = 180.0
 	weaponSpriteShutterAngle  = 360.0
 )
 
@@ -501,6 +501,7 @@ type game struct {
 	debugAimSS  int
 
 	lastUpdate       time.Time
+	lastSimInterval  time.Duration
 	fpsFrames        int
 	fpsStamp         time.Time
 	fpsDisplay       float64
@@ -2214,7 +2215,7 @@ func (g *game) Update() error {
 		g.tickDelayedSounds()
 		g.tickDelayedSwitchReverts()
 		g.flushSoundEvents()
-		g.lastUpdate = time.Now()
+		g.markSimUpdate(time.Now())
 	}
 	g.edgeInputPass = false
 	g.publishRuntimeSettingsIfChanged()
@@ -2352,7 +2353,7 @@ func (g *game) updateDemoMode() error {
 		g.bonusFlashTic--
 	}
 	g.tickDelayedSwitchReverts()
-	g.lastUpdate = time.Now()
+	g.markSimUpdate(time.Now())
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
 		return ebiten.Termination
@@ -18099,7 +18100,7 @@ func (g *game) syncRenderState() {
 	g.renderAngle = g.p.angle
 	g.renderAlpha = 1
 	g.debugAimSS = debugFixedSubsector
-	g.lastUpdate = time.Now()
+	g.markSimUpdate(time.Now())
 }
 
 func (g *game) capturePrevWeaponRenderState() {
@@ -18170,6 +18171,18 @@ func (g *game) prepareRenderState() {
 	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
 	g.renderAlpha = alpha
 	g.debugAimSS = debugFixedSubsector
+}
+
+func (g *game) markSimUpdate(now time.Time) {
+	if g == nil {
+		return
+	}
+	if !g.lastUpdate.IsZero() {
+		if dt := now.Sub(g.lastUpdate); dt > 0 {
+			g.lastSimInterval = dt
+		}
+	}
+	g.lastUpdate = now
 }
 
 func (g *game) interpAlpha() float64 {
