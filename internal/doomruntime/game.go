@@ -11612,7 +11612,9 @@ func monsterSeeFrameSeq(typ int16) []byte {
 		return monsterSeeSeq12
 	case 71:
 		return monsterSeeSeq6
-	case 84, 16, 7:
+	case 7:
+		return monsterSeeSeq12
+	case 84, 16:
 		return monsterSeeSeqAABBCCDD
 	default:
 		return nil
@@ -11688,7 +11690,9 @@ func monsterSeeFrameTics(typ int16, fast bool) []int {
 		return monsterSeeTics12x3
 	case 71:
 		return monsterSeeTics6x3
-	case 84, 16, 7:
+	case 7:
+		return monsterSeeTics12x3
+	case 84, 16:
 		return monsterSeeTics3
 	default:
 		return nil
@@ -12358,7 +12362,7 @@ func monsterRenderHeight(typ int16) float64 {
 		return 56
 	case 3005:
 		return 56
-	case 3003, 69:
+	case 3003, 69, 67, 68:
 		return 64
 	case 16:
 		return 110
