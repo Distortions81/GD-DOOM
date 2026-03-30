@@ -441,6 +441,21 @@ func TestMonsterDeathFrameSeq_ArchvileMatchesDoomSource(t *testing.T) {
 	}
 }
 
+func TestMonsterSeeFrameSeq_SpiderMastermindMatchesDoomSource(t *testing.T) {
+	if got, want := string(monsterSeeFrameSeq(7)), "AABBCCDDEEFF"; got != want {
+		t.Fatalf("spider mastermind see seq=%q want=%q", got, want)
+	}
+	if got, want := monsterSeeFrameTics(7, false), []int{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}; len(got) != len(want) {
+		t.Fatalf("spider mastermind see tics len=%d want=%d", len(got), len(want))
+	} else {
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("spider mastermind see tics[%d]=%d want=%d", i, got[i], want[i])
+			}
+		}
+	}
+}
+
 func TestMonsterSpriteNameForView_HellKnightUsesDeathFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{

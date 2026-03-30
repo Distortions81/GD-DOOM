@@ -1723,7 +1723,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{68, 637, 12},
 		{71, 703, 1},
 		{16, 677, 8},
-		{7, 604, 4},
+		{7, 604, 12},
 		{84, 729, 8},
 	}
 	for _, tt := range seeTests {
@@ -1817,7 +1817,7 @@ func TestDemoTraceMonsterPainStateMatchesDoomStateNumbers(t *testing.T) {
 		{64, 5, 269},
 		{66, 10, 344},
 		{66, 5, 345},
-		{67, 10, 387},
+		{67, 6, 387},
 		{67, 2, 388},
 		{68, 10, 652},
 		{68, 2, 653},
