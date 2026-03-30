@@ -559,6 +559,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.hudMessagesEnabled = s.HUDMessagesEnabled
 	g.prevPX = s.PrevPX
 	g.prevPY = s.PrevPY
+	g.prevPrevAngle = s.PrevAngle
 	g.prevAngle = s.PrevAngle
 	g.playerViewZ = s.PlayerViewZ
 	g.thingCollected = append([]bool(nil), s.ThingCollected...)

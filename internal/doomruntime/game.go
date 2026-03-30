@@ -491,9 +491,10 @@ type game struct {
 	delayedSwitchReverts    []delayedSwitchTexture
 	switchTextureBlends     []switchTextureBlend
 
-	prevPX    int64
-	prevPY    int64
-	prevAngle uint32
+	prevPX        int64
+	prevPY        int64
+	prevPrevAngle uint32
+	prevAngle     uint32
 
 	renderPX    float64
 	renderPY    float64
@@ -18401,6 +18402,7 @@ func (g *game) capturePrevState() {
 	g.State.CapturePrev()
 	g.prevPX = g.p.x
 	g.prevPY = g.p.y
+	g.prevPrevAngle = g.prevAngle
 	g.prevAngle = g.p.angle
 	g.capturePrevWeaponRenderState()
 	g.capturePrevSectorLightState()
@@ -18413,6 +18415,7 @@ func (g *game) syncRenderState() {
 	g.State.SyncRender()
 	g.renderPX = float64(g.p.x) / fracUnit
 	g.renderPY = float64(g.p.y) / fracUnit
+	g.prevPrevAngle = g.p.angle
 	g.renderAngle = g.p.angle
 	g.renderAlpha = 1
 	g.debugAimSS = debugFixedSubsector
@@ -18487,7 +18490,7 @@ func (g *game) prepareRenderStateAt(now time.Time) {
 	g.State.PrepareRender(alpha)
 	g.renderPX = lerp(float64(g.prevPX)/fracUnit, float64(g.p.x)/fracUnit, alpha)
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
-	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
+	g.renderAngle = interpolateCameraAngle(g.prevPrevAngle, g.prevAngle, g.p.angle, alpha)
 	g.renderAlpha = alpha
 	g.beginSourcePortSpectreFuzzFrame(alpha)
 	g.debugAimSS = debugFixedSubsector
@@ -18575,6 +18578,55 @@ func lerpAngle(a, b uint32, t float64) uint32 {
 	d := int64(int32(b - a))
 	v := float64(int64(a)) + float64(d)*t
 	return uint32(int64(v))
+}
+
+func shortestAngleDelta(a, b uint32) float64 {
+	return float64(int64(int32(b - a)))
+}
+
+func cubicHermite(y0, y1, m0, m1, t float64) float64 {
+	t2 := t * t
+	t3 := t2 * t
+	h00 := 2*t3 - 3*t2 + 1
+	h10 := t3 - 2*t2 + t
+	h01 := -2*t3 + 3*t2
+	h11 := t3 - t2
+	return h00*y0 + h10*m0 + h01*y1 + h11*m1
+}
+
+func interpolateCameraAngle(prevPrev, prev, curr uint32, t float64) uint32 {
+	if t <= 0 {
+		return prev
+	}
+	if t >= 1 {
+		return curr
+	}
+
+	delta := shortestAngleDelta(prev, curr)
+	if delta == 0 {
+		return prev
+	}
+
+	prevDelta := shortestAngleDelta(prevPrev, prev)
+	if prevDelta*delta < 0 {
+		return lerpAngle(prev, curr, t)
+	}
+
+	// Use a clamped Hermite curve so constant-speed turns stay linear, while
+	// changes in mouse-turn rate blend without the hard tick boundary.
+	limit := 3 * math.Abs(delta)
+	if math.Abs(prevDelta) > limit {
+		prevDelta = math.Copysign(limit, prevDelta)
+	}
+
+	offset := cubicHermite(0, delta, prevDelta, delta, t)
+	if delta > 0 {
+		offset = math.Max(0, math.Min(delta, offset))
+	} else {
+		offset = math.Max(delta, math.Min(0, offset))
+	}
+
+	return uint32(int64(float64(int64(prev)) + offset))
 }
 
 func (g *game) linedefDecision(ld mapdata.Linedef) linepolicy.Decision {
