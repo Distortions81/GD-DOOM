@@ -120,7 +120,7 @@ func ensureBrowserSoundFontLoaded(path string) error {
 		}
 	}
 	for BrowserSoundFontLoadPending(path) {
-		time.Sleep(time.Microsecond)
+		time.Sleep(time.Millisecond)
 	}
 	if err := BrowserSoundFontLoadError(path); err != nil {
 		return err
