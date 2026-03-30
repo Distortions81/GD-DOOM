@@ -18490,13 +18490,45 @@ func (g *game) prepareRenderStateAt(now time.Time) {
 	g.State.PrepareRender(alpha)
 	g.renderPX = lerp(float64(g.prevPX)/fracUnit, float64(g.p.x)/fracUnit, alpha)
 	g.renderPY = lerp(float64(g.prevPY)/fracUnit, float64(g.p.y)/fracUnit, alpha)
-	g.renderAngle = lerpAngle(g.prevAngle, g.p.angle, alpha)
-	if g.opts.SmoothCameraYaw {
-		g.renderAngle = interpolateCameraAngle(g.prevPrevAngle, g.prevAngle, g.p.angle, alpha)
-	}
+	g.renderAngle = g.renderCameraAngle(alpha)
 	g.renderAlpha = alpha
 	g.beginSourcePortSpectreFuzzFrame(alpha)
 	g.debugAimSS = debugFixedSubsector
+}
+
+func (g *game) renderCameraAngle(alpha float64) uint32 {
+	if g == nil {
+		return 0
+	}
+	angle := lerpAngle(g.prevAngle, g.p.angle, alpha)
+	if g.opts.SmoothCameraYaw {
+		angle = interpolateCameraAngle(g.prevPrevAngle, g.prevAngle, g.p.angle, alpha)
+	}
+	if !g.liveMouseLookRenderActive() {
+		return angle
+	}
+	mx, _ := ebiten.CursorPosition()
+	return g.renderAngleWithCursor(angle, mx)
+}
+
+func (g *game) liveMouseLookRenderActive() bool {
+	return g != nil &&
+		g.opts.DemoScript == nil &&
+		g.mode == viewWalk &&
+		g.opts.MouseLook &&
+		g.mouseLookSet &&
+		g.mouseLookSuppressTicks <= 0
+}
+
+func (g *game) renderAngleWithCursor(base uint32, cursorX int) uint32 {
+	if g == nil || !g.liveMouseLookRenderActive() {
+		return base
+	}
+	dx := cursorX - g.lastMouseX
+	if dx == 0 {
+		return base
+	}
+	return uint32(int64(base) + g.mouseLookTurnRaw(dx))
 }
 
 func (g *game) markSimUpdate(now time.Time) {
@@ -18614,7 +18646,7 @@ func interpolateCameraAngle(prevPrev, prev, curr uint32, t float64) uint32 {
 	// Use a clamped Hermite curve so constant-speed turns stay linear, while
 	// changes in mouse-turn rate blend without the hard tick boundary, even
 	// through small reversal flicks.
-	limit := 3 * math.Abs(delta)
+	limit := 5 * math.Abs(delta)
 	if math.Abs(prevDelta) > limit {
 		prevDelta = math.Copysign(limit, prevDelta)
 	}

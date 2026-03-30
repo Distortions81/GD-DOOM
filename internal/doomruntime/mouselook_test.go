@@ -34,3 +34,57 @@ func TestMouseLookTurnRawWithWidthPreservesDirectionAndMinimumStep(t *testing.T)
 		t.Fatalf("-tiny dx got=%d want=+1", got)
 	}
 }
+
+func TestLiveMouseLookRenderActiveIgnoresDemoPlayback(t *testing.T) {
+	g := &game{
+		mode: viewWalk,
+		opts: Options{
+			MouseLook: true,
+			DemoScript: &DemoScript{},
+		},
+		mouseLookSet: true,
+	}
+	if g.liveMouseLookRenderActive() {
+		t.Fatal("demo playback should not use live render-time mouse yaw")
+	}
+}
+
+func TestLiveMouseLookRenderActiveRequiresUnsuppressedWalkMouselook(t *testing.T) {
+	g := &game{
+		mode: viewWalk,
+		opts: Options{
+			MouseLook: true,
+		},
+		mouseLookSet: true,
+	}
+	if !g.liveMouseLookRenderActive() {
+		t.Fatal("expected live gameplay mouse yaw override to be active")
+	}
+	g.mouseLookSuppressTicks = 1
+	if g.liveMouseLookRenderActive() {
+		t.Fatal("suppressed mouselook should not affect render yaw")
+	}
+	g.mouseLookSuppressTicks = 0
+	g.mode = viewMap
+	if g.liveMouseLookRenderActive() {
+		t.Fatal("non-walk view should not use live render-time mouse yaw")
+	}
+}
+
+func TestRenderAngleWithCursorAppliesCurrentMouseDelta(t *testing.T) {
+	g := &game{
+		mode:       viewWalk,
+		lastMouseX: 100,
+		opts: Options{
+			MouseLook:      true,
+			MouseLookSpeed: 1.0,
+		},
+		mouseLookSet: true,
+	}
+	base := uint32(123 << 16)
+	got := g.renderAngleWithCursor(base, 112)
+	want := uint32(int64(base) + g.mouseLookTurnRaw(12))
+	if got != want {
+		t.Fatalf("render angle=%d want=%d", got, want)
+	}
+}
