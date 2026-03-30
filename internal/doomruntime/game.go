@@ -303,7 +303,7 @@ const (
 	// 360 means the blend spans the full normalized interval for that category.
 	wallFloorAnimShutterAngle = 360.0
 	switchTextureShutterAngle = 180.0
-	weaponSpriteShutterAngle  = 180.0
+	weaponSpriteShutterAngle  = 360.0
 )
 
 type maskedMidSeg struct {
