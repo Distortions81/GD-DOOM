@@ -41,7 +41,7 @@ func (g *game) beginWorldTic() {
 	g.prunePendingDoors()
 	g.worldTic++
 	doomrand.SetDebugTic(g.worldTic)
-	g.ticDisplayText = formatTicDisplay(g.worldTic)
+	g.ticDisplayText = formatTicDisplay(g.worldTic, g.ticRateDisplay)
 }
 
 func (g *game) finishWorldTic() {

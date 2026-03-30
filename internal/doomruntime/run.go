@@ -13,6 +13,7 @@ import (
 	"gddoom/internal/sessionaudio"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 var frontendMainMenuNames = [...]string{
@@ -62,7 +63,7 @@ var frontendOptionsTextLabels = [...]string{
 
 var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6}
 
-func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (*session.Game, runtimehost.Meta) {
+func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (session.Runtime, runtimehost.Meta) {
 	sg := runtimehost.Init(runtimehost.Initializer[*sessionGame]{
 		Base: func() *sessionGame {
 			return &sessionGame{
@@ -128,7 +129,7 @@ func (sg *sessionGame) Update() error {
 		TransitionIsBootHolding: func() bool {
 			return sg.transition.Kind() == transitionBoot && sg.transition.HoldTics() > 0
 		},
-		SkipRequested:      anyIntermissionSkipInput,
+		SkipRequested:      sg.anyIntermissionSkipInput,
 		SkipTransitionHold: sg.transition.SkipHold,
 		TickTransition:     sg.tickTransition,
 		FinaleActive: func() bool {
@@ -188,6 +189,7 @@ func (sg *sessionGame) Update() error {
 			}
 			if sig.FrontendMenu {
 				sg.rt.sessionAcknowledgeFrontendMenu()
+				sg.consumeFrontendOpenInput()
 				sg.frontend = frontendState{
 					Active:     true,
 					InGame:     true,
@@ -378,6 +380,132 @@ func (sg *sessionGame) handleGameplayTermination() error {
 	}
 	sg.startIntermission(next, nextName, sig.SecretLevelExit)
 	return nil
+}
+
+func (sg *sessionGame) SampleInput() {
+	if sg == nil {
+		return
+	}
+	if sg.shouldSampleRuntimeInput() && sg.rt != nil {
+		sg.rt.SampleInput()
+	}
+	if !sg.shouldSampleSessionInput() {
+		sg.clearSampledInput()
+		return
+	}
+	sg.input.justPressedKeys = addPressCounts(sg.input.justPressedKeys, inpututil.AppendJustPressedKeys(nil))
+	sg.input.justPressedMouseButtons = addPressCounts(
+		sg.input.justPressedMouseButtons,
+		justPressedMouseButtons(),
+	)
+}
+
+func (sg *sessionGame) clearSampledInput() {
+	if sg == nil {
+		return
+	}
+	sg.input = sessionInputSnapshot{}
+}
+
+func (sg *sessionGame) keyJustPressed(key ebiten.Key) bool {
+	if sg == nil {
+		return inpututil.IsKeyJustPressed(key)
+	}
+	return consumePress(sg.input.justPressedKeys, key)
+}
+
+func (sg *sessionGame) skipInputTriggered() bool {
+	return sg.keyJustPressed(ebiten.KeySpace) ||
+		sg.keyJustPressed(ebiten.KeyEnter) ||
+		sg.keyJustPressed(ebiten.KeyKPEnter) ||
+		sg.keyJustPressed(ebiten.KeyEscape) ||
+		sg.mouseJustPressed(ebiten.MouseButtonLeft) ||
+		sg.mouseJustPressed(ebiten.MouseButtonRight) ||
+		sg.mouseJustPressed(ebiten.MouseButtonMiddle) ||
+		sg.mouseJustPressed(ebiten.MouseButton3) ||
+		sg.mouseJustPressed(ebiten.MouseButton4)
+}
+
+func (sg *sessionGame) mouseJustPressed(button ebiten.MouseButton) bool {
+	if sg == nil {
+		return inpututil.IsMouseButtonJustPressed(button)
+	}
+	return consumePress(sg.input.justPressedMouseButtons, button)
+}
+
+func justPressedMouseButtons() []ebiten.MouseButton {
+	buttons := [...]ebiten.MouseButton{
+		ebiten.MouseButtonLeft,
+		ebiten.MouseButtonRight,
+		ebiten.MouseButtonMiddle,
+		ebiten.MouseButton3,
+		ebiten.MouseButton4,
+	}
+	dst := make([]ebiten.MouseButton, 0, len(buttons))
+	for _, button := range buttons {
+		if inpututil.IsMouseButtonJustPressed(button) {
+			dst = append(dst, button)
+		}
+	}
+	return dst
+}
+
+func addPressCounts[T comparable](dst map[T]int, items []T) map[T]int {
+	if len(items) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[T]int, len(items))
+	}
+	for _, item := range items {
+		dst[item]++
+	}
+	return dst
+}
+
+func consumePress[T comparable](counts map[T]int, key T) bool {
+	if len(counts) == 0 {
+		return false
+	}
+	v := counts[key]
+	if v <= 0 {
+		return false
+	}
+	if v == 1 {
+		delete(counts, key)
+	} else {
+		counts[key] = v - 1
+	}
+	return true
+}
+
+func (sg *sessionGame) consumeFrontendOpenInput() {
+	if sg == nil {
+		return
+	}
+	consumePress(sg.input.justPressedKeys, ebiten.KeyEscape)
+}
+
+func (sg *sessionGame) shouldSampleRuntimeInput() bool {
+	if sg == nil {
+		return false
+	}
+	return !sg.quitPrompt.Active &&
+		!sg.transitionActive() &&
+		!sg.finale.Active &&
+		!sg.frontend.Active &&
+		!sg.intermission.state.Active
+}
+
+func (sg *sessionGame) shouldSampleSessionInput() bool {
+	if sg == nil {
+		return false
+	}
+	return sg.quitPrompt.Active ||
+		sg.transitionActive() ||
+		sg.finale.Active ||
+		sg.frontend.Active ||
+		sg.intermission.state.Active
 }
 
 func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {

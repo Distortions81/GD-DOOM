@@ -20,8 +20,20 @@ type Options = runtimecfg.Options
 type RuntimeSettings = gameplay.RuntimeSettings
 type DemoTic = demo.Tic
 
+type runtimeGame interface {
+	session.Runtime
+}
+
+type hostFrameSampler interface {
+	SampleInput()
+}
+
+type finalScreenDrawer interface {
+	DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM)
+}
+
 type Session struct {
-	game *session.Game
+	game runtimeGame
 	meta runtimehost.Meta
 }
 
@@ -68,6 +80,15 @@ func (s *Session) Update() error {
 	return s.game.Update()
 }
 
+func (s *Session) SampleInput() {
+	if s == nil || s.game == nil {
+		return
+	}
+	if sampler, ok := s.game.(hostFrameSampler); ok {
+		sampler.SampleInput()
+	}
+}
+
 func (s *Session) Draw(screen *ebiten.Image) {
 	if s == nil || s.game == nil {
 		return
@@ -92,7 +113,11 @@ func (s *Session) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.I
 	if s == nil || s.game == nil {
 		return
 	}
-	s.game.DrawFinalScreen(screen, offscreen, geoM)
+	drawer, ok := s.game.(finalScreenDrawer)
+	if !ok {
+		return
+	}
+	drawer.DrawFinalScreen(screen, offscreen, geoM)
 }
 
 func (s *Session) Close() {

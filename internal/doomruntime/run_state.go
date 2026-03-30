@@ -116,6 +116,7 @@ type sessionGame struct {
 	nowPlayingMusic         string
 	quitPrompt              quitPromptState
 	quitMessageSeq          int
+	input                   sessionInputSnapshot
 }
 
 type frontendMusicConfigPending struct {
@@ -124,7 +125,13 @@ type frontendMusicConfigPending struct {
 	soundFontPath string
 }
 
+type sessionInputSnapshot struct {
+	justPressedKeys         map[ebiten.Key]int
+	justPressedMouseButtons map[ebiten.MouseButton]int
+}
+
 type sessionRuntime interface {
+	SampleInput()
 	Update() error
 	Draw(*ebiten.Image)
 	Layout(int, int) (int, int)

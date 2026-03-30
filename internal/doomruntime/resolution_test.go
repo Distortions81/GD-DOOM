@@ -16,6 +16,7 @@ type layoutCountRuntime struct {
 	skyOutputH  int
 }
 
+func (r *layoutCountRuntime) SampleInput()       {}
 func (r *layoutCountRuntime) Update() error      { return nil }
 func (r *layoutCountRuntime) Draw(*ebiten.Image) {}
 func (r *layoutCountRuntime) Layout(w, h int) (int, int) {

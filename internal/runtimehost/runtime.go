@@ -15,9 +15,8 @@ type Accessors struct {
 	StartMapName        func() mapdata.MapName
 }
 
-func NewGame(runtime session.Runtime, accessors Accessors) (*session.Game, Meta) {
-	game := session.New(runtime)
-	return game, Meta{
+func NewGame(runtime session.Runtime, accessors Accessors) (session.Runtime, Meta) {
+	return runtime, Meta{
 		Close:               accessors.Close,
 		Err:                 accessors.Err,
 		EffectiveDemoRecord: accessors.EffectiveDemoRecord,

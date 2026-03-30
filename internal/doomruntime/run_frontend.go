@@ -14,7 +14,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const frontendMainMenuTitle = "GD-DOOM [ALPHA]"
@@ -211,10 +210,10 @@ func (sg *sessionGame) handleQuitPromptInput() error {
 	if sg == nil || !sg.quitPrompt.Active {
 		return nil
 	}
-	confirm := inpututil.IsKeyJustPressed(ebiten.KeyY)
-	cancel := inpututil.IsKeyJustPressed(ebiten.KeyN) ||
-		inpututil.IsKeyJustPressed(ebiten.KeyEscape) ||
-		inpututil.IsKeyJustPressed(ebiten.KeySpace)
+	confirm := sg.keyJustPressed(ebiten.KeyY)
+	cancel := sg.keyJustPressed(ebiten.KeyN) ||
+		sg.keyJustPressed(ebiten.KeyEscape) ||
+		sg.keyJustPressed(ebiten.KeySpace)
 	if confirm {
 		sg.playQuitPromptSound()
 	}
@@ -233,7 +232,7 @@ func (sg *sessionGame) anyQuitPromptTrigger() bool {
 	if sg == nil {
 		return false
 	}
-	return inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10)
+	return sg.keyJustPressed(ebiten.KeyF4) || sg.keyJustPressed(ebiten.KeyF10)
 }
 
 func (sg *sessionGame) nextQuitPromptLines() []string {
@@ -381,31 +380,31 @@ func (sg *sessionGame) tickFrontendMusicPlayer() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if sg.keyJustPressed(ebiten.KeyEscape) {
 		sg.frontendMusicPlayerClose()
 		sg.playMenuBackSound()
 		return nil
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+	if sg.keyJustPressed(ebiten.KeyArrowUp) {
 		if sg.frontendMusicPlayerMoveRow(-1) {
 			sg.playMenuMoveSound()
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+	if sg.keyJustPressed(ebiten.KeyArrowDown) {
 		if sg.frontendMusicPlayerMoveRow(1) {
 			sg.playMenuMoveSound()
 		}
 	}
 	dir := 0
-	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+	if sg.keyJustPressed(ebiten.KeyArrowLeft) {
 		dir = -1
-	} else if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+	} else if sg.keyJustPressed(ebiten.KeyArrowRight) {
 		dir = 1
 	}
 	if dir != 0 && sg.frontendMusicPlayerAdjust(dir) {
 		sg.playMenuMoveSound()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+	if sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) {
 		if sg.frontendMusicPlayerPlaySelected() {
 			sg.playMenuConfirmSound()
 		} else {
@@ -611,13 +610,13 @@ func (sg *sessionGame) tickFrontend() error {
 		_ = sg.advanceFrontendAttract()
 	}
 	input := sessionflow.FrontendInput{
-		Escape: inpututil.IsKeyJustPressed(ebiten.KeyEscape),
-		Up:     inpututil.IsKeyJustPressed(ebiten.KeyArrowUp),
-		Down:   inpututil.IsKeyJustPressed(ebiten.KeyArrowDown),
-		Left:   inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft),
-		Right:  inpututil.IsKeyJustPressed(ebiten.KeyArrowRight),
-		Select: inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter),
-		Skip:   anyIntermissionSkipInput(),
+		Escape: sg.keyJustPressed(ebiten.KeyEscape),
+		Up:     sg.keyJustPressed(ebiten.KeyArrowUp),
+		Down:   sg.keyJustPressed(ebiten.KeyArrowDown),
+		Left:   sg.keyJustPressed(ebiten.KeyArrowLeft),
+		Right:  sg.keyJustPressed(ebiten.KeyArrowRight),
+		Select: sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter),
+		Skip:   sg.anyIntermissionSkipInput(),
 	}
 	result := sessionflow.StepFrontend(
 		sessionflow.Frontend(sg.frontend),

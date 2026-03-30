@@ -429,6 +429,7 @@ type PerfInputs struct {
 	HUDScale   float64
 	FPSDisplay string
 	TicDisplay string
+	HostDisplay string
 	BenchLine  string
 }
 
@@ -451,6 +452,11 @@ func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFun
 	if w2 := textWidth(in.TicDisplay); w2 > w {
 		w = w2
 	}
+	if strings.TrimSpace(in.HostDisplay) != "" {
+		if w2 := textWidth(in.HostDisplay); w2 > w {
+			w = w2
+		}
+	}
 	if strings.TrimSpace(in.BenchLine) != "" {
 		if w2 := textWidth(in.BenchLine); w2 > w {
 			w = w2
@@ -463,8 +469,15 @@ func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFun
 	}
 	drawText(screen, in.FPSDisplay, float64(x), 10*sy, sx, sy)
 	drawText(screen, in.TicDisplay, float64(x), 20*sy, sx, sy)
+	if strings.TrimSpace(in.HostDisplay) != "" {
+		drawText(screen, in.HostDisplay, float64(x), 30*sy, sx, sy)
+	}
 	if strings.TrimSpace(in.BenchLine) != "" {
-		drawText(screen, in.BenchLine, float64(x), 30*sy, sx, sy)
+		y := 30 * sy
+		if strings.TrimSpace(in.HostDisplay) != "" {
+			y = 40 * sy
+		}
+		drawText(screen, in.BenchLine, float64(x), y, sx, sy)
 	}
 }
 

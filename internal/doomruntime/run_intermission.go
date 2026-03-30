@@ -11,7 +11,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const (
@@ -194,7 +193,7 @@ func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.Map
 }
 
 func (sg *sessionGame) tickIntermission() bool {
-	return sg.tickIntermissionAdvance(anyIntermissionSkipInput())
+	return sg.tickIntermissionAdvance(sg.anyIntermissionSkipInput())
 }
 
 func (sg *sessionGame) tickIntermissionAdvance(skipPressed bool) bool {
@@ -436,7 +435,7 @@ func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) 
 }
 
 func (sg *sessionGame) tickFinale() bool {
-	return sg.tickFinaleAdvance(anyIntermissionSkipInput())
+	return sg.tickFinaleAdvance(sg.anyIntermissionSkipInput())
 }
 
 func (sg *sessionGame) tickFinaleAdvance(skipPressed bool) bool {
@@ -1033,15 +1032,9 @@ func episodeFinaleScreen(current mapdata.MapName, secret bool) (string, bool) {
 	return sessionflow.EpisodeFinaleScreen(current, secret)
 }
 
-func anyIntermissionSkipInput() bool {
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) ||
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonRight) ||
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonMiddle) ||
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3) ||
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4) {
-		return true
+func (sg *sessionGame) anyIntermissionSkipInput() bool {
+	if sg == nil {
+		return false
 	}
-	var keys []ebiten.Key
-	keys = inpututil.AppendJustPressedKeys(keys)
-	return len(keys) > 0
+	return sg.skipInputTriggered()
 }

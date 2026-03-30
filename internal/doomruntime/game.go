@@ -514,6 +514,7 @@ type game struct {
 	renderStageAccum [renderStageCount]time.Duration
 	renderStageMS    [renderStageCount]float64
 	renderStageText  string
+	ticRateDisplay   float64
 	ticDisplayText   string
 	benchLow1MS      float64
 	benchLow01MS     float64
@@ -523,6 +524,7 @@ type game struct {
 	simTickAccum     float64
 	edgeInputPass    bool
 	pendingUse       bool
+	input            gameInputSnapshot
 
 	lastMouseX             int
 	mouseLookSet           bool
@@ -620,6 +622,7 @@ type game struct {
 	weaponPSpriteY        int
 	stats                 playerStats
 	worldTic              int
+	worldTicSample        int
 	spectreFuzzPos        int
 	spectreFuzzCoarseX    int
 	spectreFuzzCoarseY    int
@@ -832,6 +835,17 @@ type game struct {
 	demoRNGCaptured              bool
 	demoTrace                    *demoTraceWriter
 	demoRecord                   []DemoTic
+}
+
+type gameInputSnapshot struct {
+	pressedKeys            map[ebiten.Key]struct{}
+	justPressedKeys        map[ebiten.Key]struct{}
+	mouseLeftHeld          bool
+	mouseWheel3JustPressed bool
+	mouseWheel4JustPressed bool
+	wheelY                 float64
+	cursorX                int
+	mouseTurnRawAccum      int64
 }
 
 type savedMapView struct {
@@ -1452,7 +1466,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.mouseLookSuppressTicks = detailMouseSuppressTicks
 	}
 	g.fpsDisplayText = formatFPSDisplay(g.fpsDisplay, g.renderMSAvg)
-	g.ticDisplayText = formatTicDisplay(g.worldTic)
+	g.ticDisplayText = formatTicDisplay(g.worldTic, g.ticRateDisplay)
 	g.runtimeSettingsSeen = true
 	g.runtimeSettingsLast = g.runtimeSettingsSnapshot()
 	return g
@@ -2274,22 +2288,23 @@ func applyRuntimeCursorMode(captured bool) {
 }
 
 func (g *game) Update() error {
+	defer g.clearSampledInput()
 	if g.levelExitRequested {
 		return ebiten.Termination
 	}
 	if g.opts.DemoScript != nil {
 		return g.updateDemoMode()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF4) || inpututil.IsKeyJustPressed(ebiten.KeyF10) {
+	if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
 		g.quitPromptRequested = true
 		return nil
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.keyJustPressed(ebiten.KeyEscape) {
 		g.frontendMenuRequested = true
 		ebiten.SetCursorMode(ebiten.CursorModeVisible)
 		return nil
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+	if g.keyJustPressed(ebiten.KeyTab) {
 		if g.mode == viewWalk {
 			g.mode = viewMap
 			g.setHUDMessage("Automap Opened", 35)
@@ -2301,7 +2316,7 @@ func (g *game) Update() error {
 			g.setHUDMessage("Automap Closed", 35)
 		}
 	}
-	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyR) {
+	if g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyR) {
 		g.rotateView = !g.rotateView
 		if g.rotateView {
 			g.setHUDMessage("Heading-Up ON", 70)
@@ -2309,7 +2324,7 @@ func (g *game) Update() error {
 			g.setHUDMessage("Heading-Up OFF", 70)
 		}
 	}
-	if g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyBackslash) {
+	if g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyBackslash) {
 		g.opts.MouseLook = !g.opts.MouseLook
 		if g.opts.MouseLook {
 			g.setHUDMessage("Mouse Look ON", 70)
@@ -2320,29 +2335,29 @@ func (g *game) Update() error {
 			g.mouseLookSet = false
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+	if g.keyJustPressed(ebiten.KeyF1) {
 		g.readThisRequested = true
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyComma) {
+	if g.keyJustPressed(ebiten.KeyComma) {
 		g.setSimTickScale(g.simTickScale - 0.1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
+	if g.keyJustPressed(ebiten.KeyPeriod) {
 		g.setSimTickScale(g.simTickScale + 0.1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeySlash) {
+	if g.keyJustPressed(ebiten.KeySlash) {
 		g.setSimTickScale(1.0)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyE) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+	if g.keyJustPressed(ebiten.KeyE) || g.keyJustPressed(ebiten.KeySpace) {
 		g.pendingUse = true
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF5) {
+	if g.keyJustPressed(ebiten.KeyF5) {
 		if g.opts.SourcePortMode {
 			g.cycleSourcePortDetailLevel()
 		} else {
 			g.cycleDetailLevel()
 		}
 	}
-	if g.isDead && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+	if g.isDead && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter)) {
 		g.requestLevelRestart()
 	}
 	ticks := g.consumeSimTicks()
@@ -2587,38 +2602,38 @@ func (g *game) updateWalkMode() {
 	g.updateParityControls()
 	g.updateWeaponHotkeys(true)
 	g.updateWalkScreenSize()
-	ctrlHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight)
-	if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
+	ctrlHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight)
+	if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketRight) {
 		g.adjustHUDScale(1)
 	}
-	if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
+	if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketLeft) {
 		g.adjustHUDScale(-1)
 	}
 	cmd := moveCmd{}
 	usePressed := false
 	firePressed := false
 	speed := g.currentRunSpeed()
-	strafeMod := ebiten.IsKeyPressed(ebiten.KeyAltLeft) || ebiten.IsKeyPressed(ebiten.KeyAltRight)
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+	strafeMod := g.keyHeld(ebiten.KeyAltLeft) || g.keyHeld(ebiten.KeyAltRight)
+	if g.keyHeld(ebiten.KeyW) || g.keyHeld(ebiten.KeyArrowUp) {
 		cmd.forward += forwardMove[speed]
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
+	if g.keyHeld(ebiten.KeyS) || g.keyHeld(ebiten.KeyArrowDown) {
 		cmd.forward -= forwardMove[speed]
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyA) {
+	if g.keyHeld(ebiten.KeyA) {
 		cmd.side -= sideMove[speed]
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) {
+	if g.keyHeld(ebiten.KeyD) {
 		cmd.side += sideMove[speed]
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
+	if g.keyHeld(ebiten.KeyArrowLeft) {
 		if strafeMod {
 			cmd.side -= sideMove[speed]
 		} else {
 			cmd.turn += 1
 		}
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
+	if g.keyHeld(ebiten.KeyArrowRight) {
 		if strafeMod {
 			cmd.side += sideMove[speed]
 		} else {
@@ -2629,23 +2644,15 @@ func (g *game) updateWalkMode() {
 		usePressed = true
 		g.pendingUse = false
 	}
-	fireHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	fireHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight) || g.mouseHeld(ebiten.MouseButtonLeft)
 	firePressed = fireHeld
 
 	if g.opts.MouseLook {
-		mx, _ := ebiten.CursorPosition()
-		if g.mouseLookBlocked() {
-			g.lastMouseX = mx
-			g.mouseLookSet = true
-		} else if g.mouseLookSuppressTicks > 0 {
+		if g.mouseLookSuppressTicks > 0 {
 			g.mouseLookSuppressTicks--
-		} else if g.mouseLookSet {
-			dx := mx - g.lastMouseX
-			// Keep vanilla-feeling turn quantization while using modern mouse-look default.
-			cmd.turnRaw += g.mouseLookTurnRaw(dx)
 		}
-		g.lastMouseX = mx
-		g.mouseLookSet = true
+		cmd.turnRaw += g.input.mouseTurnRawAccum
+		g.input.mouseTurnRawAccum = 0
 	} else {
 		g.mouseLookSet = false
 	}
@@ -2671,8 +2678,115 @@ func (g *game) mouseLookBlocked() bool {
 	return g != nil && (g.pauseMenuActive || g.quitPromptActive || g.frontendActive || g.frontendMenuRequested || g.readThisRequested || g.musicPlayerRequested)
 }
 
+func (g *game) SampleInput() {
+	if g == nil {
+		return
+	}
+	g.input.pressedKeys = addPressedKeys(g.input.pressedKeys, inpututil.AppendPressedKeys(nil))
+	g.input.justPressedKeys = addPressedKeys(g.input.justPressedKeys, inpututil.AppendJustPressedKeys(nil))
+	g.input.mouseLeftHeld = g.input.mouseLeftHeld || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	g.input.mouseWheel3JustPressed = g.input.mouseWheel3JustPressed || inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3)
+	g.input.mouseWheel4JustPressed = g.input.mouseWheel4JustPressed || inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
+
+	_, wheelY := ebiten.Wheel()
+	g.input.wheelY += wheelY
+	mx, _ := ebiten.CursorPosition()
+	g.input.cursorX = mx
+
+	if !g.opts.MouseLook {
+		g.mouseLookSet = false
+		g.input.mouseTurnRawAccum = 0
+		return
+	}
+	if g.mouseLookBlocked() || g.mouseLookSuppressTicks > 0 {
+		g.lastMouseX = mx
+		g.mouseLookSet = true
+		return
+	}
+	if g.mouseLookSet {
+		g.input.mouseTurnRawAccum += g.mouseLookTurnRaw(mx - g.lastMouseX)
+	}
+	g.lastMouseX = mx
+	g.mouseLookSet = true
+}
+
+func (g *game) clearSampledInput() {
+	if g == nil {
+		return
+	}
+	g.input = gameInputSnapshot{}
+}
+
+func (g *game) keyHeld(key ebiten.Key) bool {
+	if g == nil {
+		return ebiten.IsKeyPressed(key)
+	}
+	_, ok := g.input.pressedKeys[key]
+	return ok
+}
+
+func (g *game) keyJustPressed(key ebiten.Key) bool {
+	if g == nil {
+		return inpututil.IsKeyJustPressed(key)
+	}
+	_, ok := g.input.justPressedKeys[key]
+	return ok
+}
+
+func (g *game) mouseHeld(button ebiten.MouseButton) bool {
+	if g == nil {
+		return ebiten.IsMouseButtonPressed(button)
+	}
+	switch button {
+	case ebiten.MouseButtonLeft:
+		return g.input.mouseLeftHeld
+	default:
+		return ebiten.IsMouseButtonPressed(button)
+	}
+}
+
+func (g *game) mouseJustPressed(button ebiten.MouseButton) bool {
+	if g == nil {
+		return inpututil.IsMouseButtonJustPressed(button)
+	}
+	switch button {
+	case ebiten.MouseButton3:
+		return g.input.mouseWheel3JustPressed
+	case ebiten.MouseButton4:
+		return g.input.mouseWheel4JustPressed
+	default:
+		return inpututil.IsMouseButtonJustPressed(button)
+	}
+}
+
+func addPressedKeys(dst map[ebiten.Key]struct{}, keys []ebiten.Key) map[ebiten.Key]struct{} {
+	if len(keys) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[ebiten.Key]struct{}, len(keys))
+	}
+	for _, key := range keys {
+		dst[key] = struct{}{}
+	}
+	return dst
+}
+
+func addPressedMouseButtons(dst map[ebiten.MouseButton]struct{}, buttons []ebiten.MouseButton) map[ebiten.MouseButton]struct{} {
+	if len(buttons) == 0 {
+		return dst
+	}
+	if dst == nil {
+		dst = make(map[ebiten.MouseButton]struct{}, len(buttons))
+	}
+	for _, button := range buttons {
+		dst[button] = struct{}{}
+	}
+	return dst
+}
+
 func (g *game) currentRunSpeed() int {
-	runHeld := ebiten.IsKeyPressed(ebiten.KeyShiftLeft) || ebiten.IsKeyPressed(ebiten.KeyShiftRight)
+	runHeld := g.keyHeld(ebiten.KeyShiftLeft) || g.keyHeld(ebiten.KeyShiftRight)
 	runActive := g.alwaysRun
 	if runHeld {
 		runActive = !runActive
@@ -2743,52 +2857,51 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 	if !g.edgeInputPass {
 		return
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key1) {
+	if g.keyJustPressed(ebiten.Key1) {
 		g.selectWeaponSlot(1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key2) {
+	if g.keyJustPressed(ebiten.Key2) {
 		g.selectWeaponSlot(2)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key3) {
+	if g.keyJustPressed(ebiten.Key3) {
 		g.selectWeaponSlot(3)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key4) {
+	if g.keyJustPressed(ebiten.Key4) {
 		g.selectWeaponSlot(4)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key5) {
+	if g.keyJustPressed(ebiten.Key5) {
 		g.selectWeaponSlot(5)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key6) {
+	if g.keyJustPressed(ebiten.Key6) {
 		g.selectWeaponSlot(6)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.Key7) {
+	if g.keyJustPressed(ebiten.Key7) {
 		g.selectWeaponSlot(7)
 	}
 	if !allowCycleInput {
 		return
 	}
-	ctrlHeld := ebiten.IsKeyPressed(ebiten.KeyControlLeft) || ebiten.IsKeyPressed(ebiten.KeyControlRight)
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) ||
-		inpututil.IsKeyJustPressed(ebiten.KeyPageDown) ||
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4) {
-		if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketRight) {
+	ctrlHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight)
+	if g.keyJustPressed(ebiten.KeyBracketRight) ||
+		g.keyJustPressed(ebiten.KeyPageDown) ||
+		g.mouseJustPressed(ebiten.MouseButton4) {
+		if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketRight) {
 			return
 		}
 		g.cycleWeapon(1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) ||
-		inpututil.IsKeyJustPressed(ebiten.KeyPageUp) ||
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3) {
-		if ctrlHeld && inpututil.IsKeyJustPressed(ebiten.KeyBracketLeft) {
+	if g.keyJustPressed(ebiten.KeyBracketLeft) ||
+		g.keyJustPressed(ebiten.KeyPageUp) ||
+		g.mouseJustPressed(ebiten.MouseButton3) {
+		if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketLeft) {
 			return
 		}
 		g.cycleWeapon(-1)
 	}
-	_, wheelY := ebiten.Wheel()
-	if wheelY < 0 {
+	if g.input.wheelY < 0 {
 		g.cycleWeapon(1)
 	}
-	if wheelY > 0 {
+	if g.input.wheelY > 0 {
 		g.cycleWeapon(-1)
 	}
 }
@@ -2797,7 +2910,7 @@ func (g *game) updateParityControls() {
 	if !g.edgeInputPass {
 		return
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyCapsLock) {
+	if g.keyJustPressed(ebiten.KeyCapsLock) {
 		g.alwaysRun = !g.alwaysRun
 		if g.alwaysRun {
 			g.setHUDMessage("Always Run ON", 70)
@@ -2805,7 +2918,7 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Always Run OFF", 70)
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyF12) {
+	if g.keyJustPressed(ebiten.KeyF12) {
 		g.autoWeaponSwitch = !g.autoWeaponSwitch
 		if g.autoWeaponSwitch {
 			g.setHUDMessage("Auto Weapon Switch ON", 70)
@@ -2813,7 +2926,7 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Auto Weapon Switch OFF", 70)
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
+	if g.keyJustPressed(ebiten.KeyG) {
 		g.showGrid = !g.showGrid
 		if g.showGrid {
 			g.setHUDMessage("Grid ON", 70)
@@ -2822,19 +2935,19 @@ func (g *game) updateParityControls() {
 		}
 	}
 	if !g.opts.SourcePortMode {
-		if inpututil.IsKeyJustPressed(ebiten.KeyF2) {
+		if g.keyJustPressed(ebiten.KeyF2) {
 			g.saveGameRequested = true
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF3) {
+		if g.keyJustPressed(ebiten.KeyF3) {
 			g.loadGameRequested = true
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+		if g.keyJustPressed(ebiten.KeyF6) {
 			g.setHUDMessage("Quicksave not wired yet", 70)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+		if g.keyJustPressed(ebiten.KeyF7) {
 			g.setHUDMessage("End game flow not wired yet", 70)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+		if g.keyJustPressed(ebiten.KeyF8) {
 			g.hudMessagesEnabled = !g.hudMessagesEnabled
 			if g.hudMessagesEnabled {
 				g.setHUDMessage("Messages ON", 70)
@@ -2843,15 +2956,15 @@ func (g *game) updateParityControls() {
 				g.useFlash = 70
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF9) {
+		if g.keyJustPressed(ebiten.KeyF9) {
 			g.setHUDMessage("Quickload not wired yet", 70)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
+		if g.keyJustPressed(ebiten.KeyF11) {
 			g.cycleGammaLevel()
 		}
 	}
 	if g.opts.SourcePortMode {
-		if inpututil.IsKeyJustPressed(ebiten.KeyO) {
+		if g.keyJustPressed(ebiten.KeyO) {
 			if g.parity.reveal == revealNormal {
 				g.parity.reveal = revealAllMap
 				g.setHUDMessage("Allmap ON", 70)
@@ -2860,15 +2973,15 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Allmap OFF", 70)
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyI) {
+		if g.keyJustPressed(ebiten.KeyI) {
 			g.parity.iddt = (g.parity.iddt + 1) % 3
 			g.setHUDMessage(fmt.Sprintf("IDDT %d", g.parity.iddt), 70)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyL) {
+		if g.keyJustPressed(ebiten.KeyL) {
 			g.opts.LineColorMode = toggledLineColorMode(g.opts.LineColorMode)
 			g.setHUDMessage(fmt.Sprintf("Line Colors: %s", g.opts.LineColorMode), 70)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyV) {
+		if g.keyJustPressed(ebiten.KeyV) {
 			g.showLegend = !g.showLegend
 			if g.showLegend {
 				g.setHUDMessage("Thing Legend ON", 70)
@@ -2876,20 +2989,20 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Thing Legend OFF", 70)
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyT) {
+		if g.keyJustPressed(ebiten.KeyT) {
 			g.opts.SourcePortThingRenderMode = cycleSourcePortThingRenderMode(g.opts.SourcePortThingRenderMode)
 			g.setHUDMessage(fmt.Sprintf("Thing Render: %s", sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode)), 70)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF11) {
+		if g.keyJustPressed(ebiten.KeyF11) {
 			g.cycleGammaLevel()
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+		if g.keyJustPressed(ebiten.KeyF6) {
 			g.setHUDMessage("Palette shader removed", 70)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF7) {
+		if g.keyJustPressed(ebiten.KeyF7) {
 			g.cycleGammaLevel()
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyF8) {
+		if g.keyJustPressed(ebiten.KeyF8) {
 			if !g.opts.KageShader {
 				g.setHUDMessage("Kage shader disabled (-kage-shader)", 70)
 				return
@@ -2928,14 +3041,13 @@ func (g *game) cycleGammaLevel() {
 func (g *game) updateZoom() {
 	zoomStep := 1.03
 	step := 0.0
-	if ebiten.IsKeyPressed(ebiten.KeyEqual) || ebiten.IsKeyPressed(ebiten.KeyKPAdd) {
+	if g.keyHeld(ebiten.KeyEqual) || g.keyHeld(ebiten.KeyKPAdd) {
 		step = zoomStep
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyMinus) || ebiten.IsKeyPressed(ebiten.KeyKPSubtract) {
+	if g.keyHeld(ebiten.KeyMinus) || g.keyHeld(ebiten.KeyKPSubtract) {
 		step = -zoomStep
 	}
-	_, wheelY := ebiten.Wheel()
-	g.State.AdjustZoom(step, wheelY)
+	g.State.AdjustZoom(step, g.input.wheelY)
 }
 
 func defaultScreenBlocks(opts Options) int {
@@ -3149,10 +3261,10 @@ func (g *game) updateWalkScreenSize() {
 	if g == nil {
 		return
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEqual) || inpututil.IsKeyJustPressed(ebiten.KeyKPAdd) {
+	if g.keyJustPressed(ebiten.KeyEqual) || g.keyJustPressed(ebiten.KeyKPAdd) {
 		g.adjustScreenBlocks(1)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyMinus) || inpututil.IsKeyJustPressed(ebiten.KeyKPSubtract) {
+	if g.keyJustPressed(ebiten.KeyMinus) || g.keyJustPressed(ebiten.KeyKPSubtract) {
 		g.adjustScreenBlocks(-1)
 	}
 }
@@ -3371,7 +3483,7 @@ func (g *game) tickPauseMenu() {
 			g.pauseMenuStatus = ""
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if g.keyJustPressed(ebiten.KeyEscape) {
 		if g.pauseMenuMode != pauseMenuModeRoot {
 			g.pauseMenuMode = pauseMenuModeRoot
 			return
@@ -3381,53 +3493,53 @@ func (g *game) tickPauseMenu() {
 	}
 	switch g.pauseMenuMode {
 	case pauseMenuModeOptions:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		if g.keyJustPressed(ebiten.KeyArrowUp) {
 			g.pauseMenuOptionsOn = frontendNextSelectableOptionRow(g.pauseMenuOptionsOn, -1)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		if g.keyJustPressed(ebiten.KeyArrowDown) {
 			g.pauseMenuOptionsOn = frontendNextSelectableOptionRow(g.pauseMenuOptionsOn, 1)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if g.keyJustPressed(ebiten.KeyArrowLeft) {
 			g.adjustPauseOption(-1)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if g.keyJustPressed(ebiten.KeyArrowRight) {
 			g.adjustPauseOption(1)
 		}
 	case pauseMenuModeSound:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		if g.keyJustPressed(ebiten.KeyArrowUp) || g.keyJustPressed(ebiten.KeyArrowDown) {
 			g.pauseMenuSoundOn ^= 1
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if g.keyJustPressed(ebiten.KeyArrowLeft) {
 			g.adjustPauseSound(-1)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if g.keyJustPressed(ebiten.KeyArrowRight) {
 			g.adjustPauseSound(1)
 		}
 	case pauseMenuModeEpisode:
 		if n := len(g.availableEpisodeChoices()); n > 0 {
-			if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			if g.keyJustPressed(ebiten.KeyArrowUp) {
 				g.pauseMenuEpisodeOn = (g.pauseMenuEpisodeOn + n - 1) % n
 			}
-			if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			if g.keyJustPressed(ebiten.KeyArrowDown) {
 				g.pauseMenuEpisodeOn = (g.pauseMenuEpisodeOn + 1) % n
 			}
 		}
 	case pauseMenuModeSkill:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		if g.keyJustPressed(ebiten.KeyArrowUp) {
 			g.pauseMenuSkillOn = (g.pauseMenuSkillOn + len(frontendSkillMenuNames) - 1) % len(frontendSkillMenuNames)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		if g.keyJustPressed(ebiten.KeyArrowDown) {
 			g.pauseMenuSkillOn = (g.pauseMenuSkillOn + 1) % len(frontendSkillMenuNames)
 		}
 	default:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		if g.keyJustPressed(ebiten.KeyArrowUp) {
 			g.pauseMenuItemOn = (g.pauseMenuItemOn + len(inGamePauseMenuNames) - 1) % len(inGamePauseMenuNames)
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		if g.keyJustPressed(ebiten.KeyArrowDown) {
 			g.pauseMenuItemOn = (g.pauseMenuItemOn + 1) % len(inGamePauseMenuNames)
 		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter) {
+	if g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter) {
 		g.activatePauseMenuItem()
 	}
 }
@@ -19735,6 +19847,8 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 	elapsed := now.Sub(g.fpsStamp)
 	if elapsed >= time.Second {
 		fps := float64(g.fpsFrames) / elapsed.Seconds()
+		g.ticRateDisplay = float64(g.worldTic-g.worldTicSample) / elapsed.Seconds()
+		g.worldTicSample = g.worldTic
 		if g.demoBenchmarkActive() {
 			g.benchLow1MS = float64(demoBenchLowFrameNS(g.demoBenchFrameNS, 0.99)) / float64(time.Millisecond)
 			g.benchLow01MS = float64(demoBenchLowFrameNS(g.demoBenchFrameNS, 0.999)) / float64(time.Millisecond)
@@ -19757,6 +19871,7 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 			}
 		}
 		g.fpsDisplayText = formatFPSDisplay(g.fpsDisplay, g.renderMSAvg)
+		g.ticDisplayText = formatTicDisplay(g.worldTic, g.ticRateDisplay)
 		g.renderStageText = formatRenderStageDisplay(g.renderStageMS)
 		g.fpsFrames = 0
 		g.renderAccum = 0
@@ -19791,7 +19906,11 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 		HUDScale:   g.hudScaleValue(),
 		FPSDisplay: g.fpsDisplayText,
 		TicDisplay: g.ticDisplayText,
-		BenchLine:  benchDisplay,
+		HostDisplay: formatHostDisplay(
+			ebiten.ActualTPS(),
+			ebiten.ActualFPS(),
+		),
+		BenchLine: benchDisplay,
 	}, g.huTextWidth, g.drawHUTextAt)
 }
 
@@ -19807,8 +19926,13 @@ func formatInt(v int) string {
 	return strconv.Itoa(v)
 }
 
-func formatTicDisplay(tic int) string {
-	return "tic " + strconv.Itoa(tic)
+func formatTicDisplay(tic int, rate float64) string {
+	var b []byte
+	b = append(b, 't', 'i', 'c', ' ')
+	b = strconv.AppendInt(b, int64(tic), 10)
+	b = append(b, ' ', '|', ' ', 't', 'p', 's', ' ')
+	b = strconv.AppendFloat(b, rate, 'f', 2, 64)
+	return string(b)
 }
 
 func formatFPSDisplay(fps, renderMS float64) string {
@@ -19817,6 +19941,15 @@ func formatFPSDisplay(fps, renderMS float64) string {
 	b = append(b, ',', ' ')
 	b = strconv.AppendFloat(b, renderMS, 'f', 2, 64)
 	b = append(b, 'm', 's')
+	return string(b)
+}
+
+func formatHostDisplay(actualTPS, actualFPS float64) string {
+	var b []byte
+	b = append(b, 'e', 'b', 'i', ' ')
+	b = strconv.AppendFloat(b, actualTPS, 'f', 2, 64)
+	b = append(b, ' ', 't', 'p', 's', ' ', '|', ' ', 'f', 'p', 's', ' ')
+	b = strconv.AppendFloat(b, actualFPS, 'f', 2, 64)
 	return string(b)
 }
 

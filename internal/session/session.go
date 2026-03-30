@@ -14,6 +14,10 @@ type Runtime interface {
 	Layout(outsideWidth, outsideHeight int) (int, int)
 }
 
+type hostFrameSampler interface {
+	SampleInput()
+}
+
 type finalScreenDrawer interface {
 	DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM)
 }
@@ -27,19 +31,33 @@ type errProvider interface {
 }
 
 type Game struct {
-	runtime Runtime
+	runtime             Runtime
+	hostUpdateRemainder int
 }
 
 func New(runtime Runtime) *Game {
-	return &Game{runtime: runtime}
+	return &Game{
+		runtime:             runtime,
+		hostUpdateRemainder: hostUpdatesPerTick - 1,
+	}
 }
 
 func (g *Game) Update() error {
 	if g == nil || g.runtime == nil {
 		return ebiten.Termination
 	}
+	if s, ok := g.runtime.(hostFrameSampler); ok {
+		s.SampleInput()
+	}
+	g.hostUpdateRemainder++
+	if g.hostUpdateRemainder < hostUpdatesPerTick {
+		return nil
+	}
+	g.hostUpdateRemainder = 0
 	return g.runtime.Update()
 }
+
+const hostUpdatesPerTick = 4
 
 func (g *Game) Draw(screen *ebiten.Image) {
 	if g == nil || g.runtime == nil {

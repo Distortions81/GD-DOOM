@@ -9,15 +9,19 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-const doomTicsPerSecond = 35
+const (
+	doomTicsPerSecond = 35
+	hostTPS           = doomTicsPerSecond * 4
+)
 
 func WindowTitle(name mapdata.MapName) string {
 	return fmt.Sprintf("GD-DOOM Automap - %s", name)
 }
 
 func ConfigureInitialHost(opts runtimecfg.Options, windowW, windowH int, name mapdata.MapName) {
-	ebiten.SetTPS(doomTicsPerSecond)
 	ebiten.SetVsyncEnabled(!opts.NoVsync)
+	ebiten.SetTPS(hostTPS)
+
 	if opts.SourcePortMode {
 		ebiten.SetWindowSize(opts.Width, opts.Height)
 		ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)

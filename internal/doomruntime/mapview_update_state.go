@@ -4,37 +4,34 @@ import (
 	"gddoom/internal/render/mapview"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 func (g *game) buildMapViewInputState() mapview.InputState {
-	mx, _ := ebiten.CursorPosition()
-	_, wheelY := ebiten.Wheel()
 	return mapview.InputState{
-		ToggleFollowPressed: inpututil.IsKeyJustPressed(ebiten.KeyF),
-		ToggleBigMapPressed: (g.opts.SourcePortMode && inpututil.IsKeyJustPressed(ebiten.KeyB)) ||
-			inpututil.IsKeyJustPressed(ebiten.Key0) ||
-			inpututil.IsKeyJustPressed(ebiten.KeyKP0),
-		AddMarkPressed:    inpututil.IsKeyJustPressed(ebiten.KeyM),
-		ClearMarksPressed: inpututil.IsKeyJustPressed(ebiten.KeyC),
-		ResetViewPressed:  inpututil.IsKeyJustPressed(ebiten.KeyHome),
-		ZoomInHeld:        ebiten.IsKeyPressed(ebiten.KeyEqual) || ebiten.IsKeyPressed(ebiten.KeyKPAdd),
-		ZoomOutHeld:       ebiten.IsKeyPressed(ebiten.KeyMinus) || ebiten.IsKeyPressed(ebiten.KeyKPSubtract),
-		WheelY:            wheelY,
-		MoveForwardHeld:   ebiten.IsKeyPressed(ebiten.KeyW),
-		MoveBackwardHeld:  ebiten.IsKeyPressed(ebiten.KeyS),
-		MoveLeftHeld:      ebiten.IsKeyPressed(ebiten.KeyA),
-		MoveRightHeld:     ebiten.IsKeyPressed(ebiten.KeyD),
-		TurnLeftHeld:      ebiten.IsKeyPressed(ebiten.KeyQ),
-		TurnRightHeld:     ebiten.IsKeyPressed(ebiten.KeyE),
-		PanUpHeld:         ebiten.IsKeyPressed(ebiten.KeyArrowUp),
-		PanDownHeld:       ebiten.IsKeyPressed(ebiten.KeyArrowDown),
-		PanLeftHeld:       ebiten.IsKeyPressed(ebiten.KeyArrowLeft),
-		PanRightHeld:      ebiten.IsKeyPressed(ebiten.KeyArrowRight),
-		FireHeld: ebiten.IsKeyPressed(ebiten.KeyControlLeft) ||
-			ebiten.IsKeyPressed(ebiten.KeyControlRight) ||
-			ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft),
-		CursorX: mx,
+		ToggleFollowPressed: g.keyJustPressed(ebiten.KeyF),
+		ToggleBigMapPressed: (g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyB)) ||
+			g.keyJustPressed(ebiten.Key0) ||
+			g.keyJustPressed(ebiten.KeyKP0),
+		AddMarkPressed:    g.keyJustPressed(ebiten.KeyM),
+		ClearMarksPressed: g.keyJustPressed(ebiten.KeyC),
+		ResetViewPressed:  g.keyJustPressed(ebiten.KeyHome),
+		ZoomInHeld:        g.keyHeld(ebiten.KeyEqual) || g.keyHeld(ebiten.KeyKPAdd),
+		ZoomOutHeld:       g.keyHeld(ebiten.KeyMinus) || g.keyHeld(ebiten.KeyKPSubtract),
+		WheelY:            g.input.wheelY,
+		MoveForwardHeld:   g.keyHeld(ebiten.KeyW),
+		MoveBackwardHeld:  g.keyHeld(ebiten.KeyS),
+		MoveLeftHeld:      g.keyHeld(ebiten.KeyA),
+		MoveRightHeld:     g.keyHeld(ebiten.KeyD),
+		TurnLeftHeld:      g.keyHeld(ebiten.KeyQ),
+		TurnRightHeld:     g.keyHeld(ebiten.KeyE),
+		PanUpHeld:         g.keyHeld(ebiten.KeyArrowUp),
+		PanDownHeld:       g.keyHeld(ebiten.KeyArrowDown),
+		PanLeftHeld:       g.keyHeld(ebiten.KeyArrowLeft),
+		PanRightHeld:      g.keyHeld(ebiten.KeyArrowRight),
+		FireHeld: g.keyHeld(ebiten.KeyControlLeft) ||
+			g.keyHeld(ebiten.KeyControlRight) ||
+			g.mouseHeld(ebiten.MouseButtonLeft),
+		CursorX: g.input.cursorX,
 	}
 }
 
