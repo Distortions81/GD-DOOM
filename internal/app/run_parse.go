@@ -160,6 +160,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		//defaultNoVsync = true
 	}
 	defaultNoFPS := false
+	defaultShowTPS := false
 	defaultNoAspectCorrection := false
 	defaultAniDump := ""
 	defaultAniDumpDir := "anidump"
@@ -453,6 +454,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
+	showTPS := fs.Bool("show-tps", defaultShowTPS, "show tick/TPS host timing lines in the perf overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
 	aniDump := fs.String("anidump", defaultAniDump, "dump animation sprite series for seed (example: SMGTA0)")
 	aniDumpDir := fs.String("anidump-dir", defaultAniDumpDir, "output directory for -anidump PNG dumps")
@@ -1031,6 +1033,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,
+			ShowTPS:                    *showTPS,
 			DisableAspectCorrection:    *noAspectCorrection,
 			AllCheats:                  *allCheats,
 			StartInMapMode:             explicitMapStartInMap(*startInMap, mapExplicit),
@@ -1252,6 +1255,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
 			noFPS:                      *noFPS,
+			showTPS:                    *showTPS,
 			noAspectCorrection:         *noAspectCorrection,
 			allCheats:                  *allCheats,
 			startInMap:                 explicitMapStartInMap(*startInMap, mapExplicit),
@@ -1951,6 +1955,7 @@ type renderBuildConfig struct {
 	textureAnimCrossfadeFrames int
 	noVsync                    bool
 	noFPS                      bool
+	showTPS                    bool
 	noAspectCorrection         bool
 	allCheats                  bool
 	startInMap                 bool
@@ -2230,6 +2235,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		TextureAnimCrossfadeFrames: cfg.textureAnimCrossfadeFrames,
 		NoVsync:                    cfg.noVsync,
 		NoFPS:                      cfg.noFPS,
+		ShowTPS:                    cfg.showTPS,
 		DisableAspectCorrection:    cfg.noAspectCorrection,
 		AllCheats:                  cfg.allCheats,
 		StartInMapMode:             explicitMapStartInMap(cfg.startInMap, cfg.mapExplicit),

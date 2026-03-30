@@ -658,7 +658,7 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 		}
 		return
 	}
-	if sg.transitionActive() && sg.transition.Kind() == transitionLevel {
+	if sg.transitionActive() {
 		sg.transitionMusicPending = musicPlaybackSource{
 			kind:    musicPlaybackSourceMap,
 			mapName: name,
@@ -690,6 +690,13 @@ func (sg *sessionGame) playIntermissionMusic(commercial bool) {
 		}
 		return
 	}
+	if sg.transitionActive() {
+		sg.transitionMusicPending = musicPlaybackSource{
+			kind:       musicPlaybackSourceIntermission,
+			commercial: commercial,
+		}
+		return
+	}
 	sg.musicCtl.PlayIntermission(commercial, clampVolume(sg.opts.MusicVolume))
 	sg.currentMusicSource = musicPlaybackSource{
 		kind:       musicPlaybackSourceIntermission,
@@ -709,8 +716,12 @@ func (sg *sessionGame) releaseTransitionMusicIfReady() {
 	}
 	sg.transitionMusicPending = musicPlaybackSource{}
 	switch pending.kind {
+	case musicPlaybackSourceTitle:
+		sg.playTitleMusic()
 	case musicPlaybackSourceMap:
 		sg.playMusicForMap(pending.mapName)
+	case musicPlaybackSourceIntermission:
+		sg.playIntermissionMusic(pending.commercial)
 	}
 }
 

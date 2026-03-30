@@ -3,6 +3,7 @@ package music
 import (
 	"encoding/binary"
 	"testing"
+	"time"
 )
 
 func TestPCMInt16ToBytesLE(t *testing.T) {
@@ -187,6 +188,39 @@ func TestPCMChunkBufferAppliesStarvationFadeOutAndFadeIn(t *testing.T) {
 	}
 	if lastRecovered != 4000 {
 		t.Fatalf("expected fade-in to reach full scale, got %d", lastRecovered)
+	}
+}
+
+func TestPCMChunkBufferBlockingPrefillWaitsForQueuedAudio(t *testing.T) {
+	b := newPCMChunkBuffer()
+	b.SetBlockingPrefill(4)
+
+	readDone := make(chan []byte, 1)
+	go func() {
+		buf := make([]byte, 4)
+		n, err := b.Read(buf)
+		if err != nil {
+			readDone <- nil
+			return
+		}
+		readDone <- append([]byte(nil), buf[:n]...)
+	}()
+
+	select {
+	case <-readDone:
+		t.Fatal("Read returned before prefill target was queued")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	b.Enqueue([]byte{1, 2, 3, 4})
+
+	select {
+	case got := <-readDone:
+		if len(got) != 4 || got[0] != 1 || got[1] != 2 || got[2] != 3 || got[3] != 4 {
+			t.Fatalf("Read got %v want [1 2 3 4]", got)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("Read did not resume after prefill target was queued")
 	}
 }
 

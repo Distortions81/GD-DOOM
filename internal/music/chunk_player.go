@@ -18,6 +18,7 @@ const (
 	cmdReset
 	cmdEnqueue
 	cmdSetVolume
+	cmdSync
 	cmdClose
 )
 
@@ -96,6 +97,24 @@ func (cp *ChunkPlayer) SetVolume(v float64) error {
 		v = 1
 	}
 	return cp.send(playerCmd{typ: cmdSetVolume, vol: v})
+}
+
+func (cp *ChunkPlayer) Sync() error {
+	return cp.sendAndWait(playerCmd{typ: cmdSync, done: make(chan struct{})})
+}
+
+func (cp *ChunkPlayer) SetBlockingPrefill(targetBytes int) {
+	if cp == nil || cp.src == nil {
+		return
+	}
+	cp.src.SetBlockingPrefill(targetBytes)
+}
+
+func (cp *ChunkPlayer) DisableBlockingPrefill() {
+	if cp == nil || cp.src == nil {
+		return
+	}
+	cp.src.DisableBlockingPrefill()
 }
 
 // EnqueueS16 sends interleaved stereo samples (s16) as a music chunk.
@@ -199,6 +218,7 @@ func (cp *ChunkPlayer) run() {
 		case cmdSetVolume:
 			cp.volume = cmd.vol
 			cp.player.SetVolume(cmd.vol)
+		case cmdSync:
 		case cmdClose:
 			cp.player.Pause()
 			cp.src.Close()
@@ -222,6 +242,9 @@ type pcmChunkBuffer struct {
 	off            int
 	closed         bool
 	bytes          int
+	prefillBytes   int
+	blockOnStarve  bool
+	refillPending  bool
 	starving       bool
 	lastL          int16
 	lastR          int16
@@ -268,7 +291,10 @@ func (b *pcmChunkBuffer) Enqueue(chunk []byte) {
 		}
 		b.chunks = append(b.chunks, chunk)
 		b.bytes += len(chunk)
-		b.cond.Signal()
+		if !b.blockOnStarve || b.bytes >= b.prefillBytes {
+			b.refillPending = false
+		}
+		b.cond.Broadcast()
 	}
 	b.mu.Unlock()
 }
@@ -281,11 +307,36 @@ func (b *pcmChunkBuffer) Clear() {
 	b.chunks = b.chunks[:0]
 	b.off = 0
 	b.bytes = 0
+	b.prefillBytes = 0
+	b.blockOnStarve = false
+	b.refillPending = false
 	b.starving = false
 	b.fadeOutPending = false
 	b.fadeInPending = false
 	b.lastL = 0
 	b.lastR = 0
+	b.cond.Broadcast()
+	b.mu.Unlock()
+}
+
+func (b *pcmChunkBuffer) SetBlockingPrefill(targetBytes int) {
+	b.mu.Lock()
+	if targetBytes < 0 {
+		targetBytes = 0
+	}
+	b.prefillBytes = targetBytes
+	b.blockOnStarve = true
+	b.refillPending = b.bytes < b.prefillBytes
+	b.cond.Broadcast()
+	b.mu.Unlock()
+}
+
+func (b *pcmChunkBuffer) DisableBlockingPrefill() {
+	b.mu.Lock()
+	b.prefillBytes = 0
+	b.blockOnStarve = false
+	b.refillPending = false
+	b.cond.Broadcast()
 	b.mu.Unlock()
 }
 
@@ -300,6 +351,20 @@ func (b *pcmChunkBuffer) Read(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for {
+		if !b.closed && b.blockOnStarve {
+			target := b.prefillBytes
+			if target < 0 {
+				target = 0
+			}
+			if b.refillPending || len(b.chunks) == 0 {
+				if len(b.chunks) == 0 || b.bytes < target {
+					b.refillPending = true
+					b.cond.Wait()
+					continue
+				}
+				b.refillPending = false
+			}
+		}
 		if len(b.chunks) == 0 && !b.closed {
 			n := b.fillStarvationAudio(p)
 			if n > 0 {

@@ -80,6 +80,7 @@ type Options struct {
 	TextureAnimCrossfadeFrames int
 	NoVsync                    bool
 	NoFPS                      bool
+	ShowTPS                    bool
 	DisableAspectCorrection    bool
 	AllCheats                  bool
 	StartInMapMode             bool

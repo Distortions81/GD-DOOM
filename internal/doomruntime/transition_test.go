@@ -86,3 +86,47 @@ func TestPlayMusicForMapDefersUntilLevelTransitionCompletes(t *testing.T) {
 		t.Fatalf("currentMusicSource.kind=%d want map after transition", got)
 	}
 }
+
+func TestPlayTitleMusicDefersUntilTransitionCompletes(t *testing.T) {
+	sg := &sessionGame{
+		musicCtl: &sessionmusic.Playback{},
+	}
+	sg.queueTransition(transitionBoot, 0)
+	sg.playTitleMusic()
+	if got := sg.transitionMusicPending.kind; got != musicPlaybackSourceTitle {
+		t.Fatalf("transitionMusicPending.kind=%d want title", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("currentMusicSource.kind=%d want none while transition is active", got)
+	}
+	sg.transition.Clear()
+	sg.releaseTransitionMusicIfReady()
+	if got := sg.transitionMusicPending.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("transitionMusicPending.kind=%d want none after transition", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceTitle {
+		t.Fatalf("currentMusicSource.kind=%d want title after transition", got)
+	}
+}
+
+func TestPlayIntermissionMusicDefersUntilTransitionCompletes(t *testing.T) {
+	sg := &sessionGame{
+		musicCtl: &sessionmusic.Playback{},
+	}
+	sg.queueTransition(transitionBoot, 0)
+	sg.playIntermissionMusic(true)
+	if got := sg.transitionMusicPending.kind; got != musicPlaybackSourceIntermission {
+		t.Fatalf("transitionMusicPending.kind=%d want intermission", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("currentMusicSource.kind=%d want none while transition is active", got)
+	}
+	sg.transition.Clear()
+	sg.releaseTransitionMusicIfReady()
+	if got := sg.transitionMusicPending.kind; got != musicPlaybackSourceNone {
+		t.Fatalf("transitionMusicPending.kind=%d want none after transition", got)
+	}
+	if got := sg.currentMusicSource.kind; got != musicPlaybackSourceIntermission {
+		t.Fatalf("currentMusicSource.kind=%d want intermission after transition", got)
+	}
+}

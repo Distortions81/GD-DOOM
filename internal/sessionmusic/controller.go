@@ -113,22 +113,31 @@ func (c *Controller) playMUS(data []byte, loop bool) {
 	const bytesPerFrame = 4
 	chunkFrames := music.DefaultStreamChunkFramesForBackend(c.backend)
 	lookaheadFrames := music.DefaultStreamLookaheadForBackend(c.backend)
+	targetBytes := startupPrefillBytes(lookaheadFrames * bytesPerFrame)
 	player := c.player
 	c.StopAndClear()
+	player.SetBlockingPrefill(targetBytes)
 	factory := func() (*music.StreamRenderer, error) {
 		return music.NewParsedMUSStreamRenderer(c.driver, parsed)
 	}
 	var stream *music.StreamRenderer
-	if err := prefillStream(player, factory, &stream, loop, chunkFrames, lookaheadFrames*bytesPerFrame); err != nil {
+	buffered, err := prefillStream(player, factory, &stream, loop, chunkFrames, targetBytes)
+	if err != nil {
 		return
 	}
-	if player.BufferedBytes() == 0 {
+	if err := player.Sync(); err != nil {
 		return
 	}
-	_ = player.Start()
+	if buffered == 0 {
+		return
+	}
+	started := buffered >= targetBytes
+	if started {
+		_ = player.Start()
+	}
 	stop := make(chan struct{})
 	c.stop = stop
-	go c.stream(player, stop, factory, stream, loop)
+	go c.stream(player, stop, factory, stream, loop, buffered, started)
 }
 
 func (c *Controller) playMUSOnce(data []byte) {
@@ -141,11 +150,15 @@ func (c *Controller) playMUSOnce(data []byte) {
 	}
 	player := c.player
 	c.StopAndClear()
+	player.DisableBlockingPrefill()
 	pcm, err := c.driver.RenderParsedMUSS16LE(parsed)
 	if err != nil || len(pcm) == 0 {
 		return
 	}
 	_ = player.EnqueueBytesS16LE(pcm)
+	if err := player.Sync(); err != nil {
+		return
+	}
 	_ = player.Start()
 }
 
@@ -188,20 +201,22 @@ func nextChunkFrames(factory musStreamFactory, stream **music.StreamRenderer, lo
 	}
 }
 
-func prefillStream(player *music.ChunkPlayer, factory musStreamFactory, stream **music.StreamRenderer, loop bool, chunkFrames int, targetBytes int) error {
+func prefillStream(player *music.ChunkPlayer, factory musStreamFactory, stream **music.StreamRenderer, loop bool, chunkFrames int, targetBytes int) (int, error) {
 	if player == nil || factory == nil || stream == nil {
-		return nil
+		return 0, nil
 	}
 	if targetBytes < 0 {
 		targetBytes = 0
 	}
-	for player.BufferedBytes() < targetBytes {
+	buffered := 0
+	for buffered < targetBytes {
 		chunk, err := nextChunk(factory, stream, loop, chunkFrames)
 		if err != nil {
-			return err
+			return buffered, err
 		}
 		if len(chunk) > 0 {
 			_ = player.EnqueueBytesS16LE(chunk)
+			buffered += len(chunk)
 		}
 		if *stream == nil {
 			break
@@ -210,19 +225,27 @@ func prefillStream(player *music.ChunkPlayer, factory musStreamFactory, stream *
 			break
 		}
 	}
-	if targetBytes == 0 && player.BufferedBytes() == 0 {
+	if targetBytes == 0 && buffered == 0 {
 		chunk, err := nextChunk(factory, stream, loop, chunkFrames)
 		if err != nil {
-			return err
+			return buffered, err
 		}
 		if len(chunk) > 0 {
 			_ = player.EnqueueBytesS16LE(chunk)
+			buffered += len(chunk)
 		}
 	}
-	return nil
+	return buffered, nil
 }
 
-func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer, loop bool) {
+func startupPrefillBytes(lookaheadBytes int) int {
+	if lookaheadBytes <= 0 {
+		return 0
+	}
+	return lookaheadBytes
+}
+
+func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer, loop bool, buffered int, started bool) {
 	if c == nil || player == nil || factory == nil {
 		return
 	}
@@ -230,6 +253,7 @@ func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, fac
 	const checkPeriod = 12 * time.Millisecond
 	chunkFrames := music.DefaultStreamChunkFramesForBackend(c.backend)
 	lookaheadBytes := music.DefaultStreamLookaheadForBackend(c.backend) * bytesPerFrame
+	targetBytes := startupPrefillBytes(lookaheadBytes)
 	ticker := time.NewTicker(checkPeriod)
 	defer ticker.Stop()
 	for {
@@ -237,6 +261,49 @@ func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, fac
 		case <-stop:
 			return
 		default:
+		}
+		if !started {
+			if buffered < targetBytes {
+				chunk, err := nextChunk(factory, &stream, loop, chunkFrames)
+				if err != nil {
+					return
+				}
+				if stream == nil && len(chunk) == 0 {
+					if buffered == 0 {
+						return
+					}
+				}
+				if len(chunk) > 0 {
+					_ = player.EnqueueBytesS16LE(chunk)
+					buffered += len(chunk)
+				}
+				if buffered < targetBytes {
+					select {
+					case <-stop:
+						return
+					case <-ticker.C:
+					}
+					continue
+				}
+			}
+			if err := player.Sync(); err != nil {
+				return
+			}
+			if buffered == 0 {
+				return
+			}
+			_ = player.Start()
+			started = true
+			continue
+		}
+		buffered = player.BufferedBytes()
+		if buffered == 0 {
+			_ = player.Stop()
+			if err := player.Sync(); err != nil {
+				return
+			}
+			started = false
+			continue
 		}
 		for player.BufferedBytes() >= lookaheadBytes {
 			select {
@@ -254,6 +321,7 @@ func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, fac
 		}
 		if len(chunk) > 0 {
 			_ = player.EnqueueBytesS16LE(chunk)
+			buffered += len(chunk)
 		}
 		if stream == nil && !loop {
 			return

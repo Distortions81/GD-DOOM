@@ -20003,19 +20003,29 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 	if g.demoBenchmarkActive() {
 		benchDisplay = formatBenchDisplay(g.benchLow1MS, g.benchLow01MS)
 	}
+	ticDisplay, hostDisplay := perfOverlayTimingDisplays(
+		g.opts.ShowTPS,
+		g.ticDisplayText,
+		ebiten.ActualTPS(),
+		ebiten.ActualFPS(),
+	)
 	hud.DrawPerfOverlay(screen, hud.PerfInputs{
-		ViewW:      g.viewW,
-		ViewH:      g.viewH,
-		SourcePort: g.hudUsesLogicalLayout(),
-		HUDScale:   g.hudScaleValue(),
-		FPSDisplay: g.fpsDisplayText,
-		TicDisplay: g.ticDisplayText,
-		HostDisplay: formatHostDisplay(
-			ebiten.ActualTPS(),
-			ebiten.ActualFPS(),
-		),
-		BenchLine: benchDisplay,
+		ViewW:       g.viewW,
+		ViewH:       g.viewH,
+		SourcePort:  g.hudUsesLogicalLayout(),
+		HUDScale:    g.hudScaleValue(),
+		FPSDisplay:  g.fpsDisplayText,
+		TicDisplay:  ticDisplay,
+		HostDisplay: hostDisplay,
+		BenchLine:   benchDisplay,
 	}, g.huTextWidth, g.drawHUTextAt)
+}
+
+func perfOverlayTimingDisplays(showTPS bool, ticDisplay string, actualTPS, actualFPS float64) (string, string) {
+	if !showTPS {
+		return "", ""
+	}
+	return ticDisplay, formatHostDisplay(actualTPS, actualFPS)
 }
 
 func (g *game) demoBenchmarkActive() bool {

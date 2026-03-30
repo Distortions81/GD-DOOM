@@ -160,6 +160,10 @@ func (sg *sessionGame) playTitleMusic() {
 		sg.startupMusicPending = musicPlaybackSource{kind: musicPlaybackSourceTitle}
 		return
 	}
+	if sg.transitionActive() {
+		sg.transitionMusicPending = musicPlaybackSource{kind: musicPlaybackSourceTitle}
+		return
+	}
 	sg.currentMusicSource = musicPlaybackSource{kind: musicPlaybackSourceTitle}
 	sg.musicCtl.PlayTitle(clampVolume(sg.opts.MusicVolume))
 	sg.setNowPlayingLevel("")
