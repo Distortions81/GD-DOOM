@@ -99,3 +99,52 @@ func TestAnimateSwitchTextureRepeatRefreshesSameLineEntry(t *testing.T) {
 		t.Fatalf("revert timer=%d want=%d", got, switchResetTics)
 	}
 }
+
+func TestAnimateSwitchTexture_StartsOneShotBlend(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SourcePortMode:             true,
+			TextureAnimCrossfadeFrames: 5,
+		},
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{SideNum: [2]int16{0, -1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Mid: "SW1BRCOM"},
+			},
+		},
+	}
+
+	g.animateSwitchTexture(0, 0, false)
+	got := g.switchTextureBlendFor(0, switchTextureSlotMid, "SW2BRCOM")
+	if got.fromKey != "SW1BRCOM" || got.toKey != "SW2BRCOM" {
+		t.Fatalf("switch blend=%+v want SW1BRCOM->SW2BRCOM", got)
+	}
+}
+
+func TestTickDelayedSwitchReverts_StartsReturnBlend(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SourcePortMode:             true,
+			TextureAnimCrossfadeFrames: 5,
+		},
+		worldTic: 10,
+		m: &mapdata.Map{
+			Sidedefs: []mapdata.Sidedef{
+				{Mid: "SW2BRCOM"},
+			},
+		},
+		delayedSwitchReverts: []delayedSwitchTexture{{
+			sidedef: 0,
+			mid:     "SW1BRCOM",
+			tics:    1,
+		}},
+	}
+
+	g.tickDelayedSwitchReverts()
+	got := g.switchTextureBlendFor(0, switchTextureSlotMid, "SW1BRCOM")
+	if got.fromKey != "SW2BRCOM" || got.toKey != "SW1BRCOM" {
+		t.Fatalf("revert blend=%+v want SW2BRCOM->SW1BRCOM", got)
+	}
+}

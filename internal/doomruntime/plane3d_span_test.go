@@ -89,7 +89,7 @@ func TestDrawPlaneTexturedSpanAtDepth_ZeroShadeSkipsTextureRead(t *testing.T) {
 	g := &game{}
 	state := planeRowRenderState{defaultShade: 0}
 
-	g.drawPlaneTexturedSpanAtDepth(pix, 0, 1, 4, plane3DKey{}, nil, nil, state)
+	g.drawPlaneTexturedSpanAtDepth(pix, 0, 1, 4, plane3DKey{}, flatTextureBlendSample{}, state)
 
 	want := []uint32{1, pixelOpaqueA, pixelOpaqueA, pixelOpaqueA, pixelOpaqueA, 6}
 	if !reflect.DeepEqual(pix, want) {
@@ -107,9 +107,7 @@ func TestDrawPlaneTexturedSpanAtDepth_RequiresIndexedFlat(t *testing.T) {
 		stepWXFixed:    fracUnit,
 	}
 
-	g.drawPlaneTexturedSpanAtDepth(pix, 0, 1, 4, plane3DKey{}, []uint32{
-		0xFF010203, 0xFF040506, 0xFF070809, 0xFF0A0B0C,
-	}, nil, state)
+	g.drawPlaneTexturedSpanAtDepth(pix, 0, 1, 4, plane3DKey{}, flatTextureBlendSample{}, state)
 
 	want := []uint32{1, 2, 3, 4, 5, 6}
 	if !reflect.DeepEqual(pix, want) {

@@ -76,7 +76,7 @@ func TestDrawBasicWallColumnTextured_ZeroShadeSkipsTextureRead(t *testing.T) {
 	}
 
 	tex := WallTexture{Width: 64, Height: 64}
-	g.drawBasicWallColumnTextured(1, 1, 3, 64, 0, 0, 160, &tex, 0, 0)
+	g.drawBasicWallColumnTextured(1, 1, 3, 64, 0, 0, 160, wallTextureBlendSample{from: &tex}, 0, 0)
 
 	for y := 0; y < g.viewH; y++ {
 		for x := 0; x < g.viewW; x++ {
@@ -109,7 +109,7 @@ func TestDrawBasicWallColumnTextured_RequiresIndexedData(t *testing.T) {
 		},
 	}
 
-	g.drawBasicWallColumnTextured(0, 0, 1, 64, 0, 1, 64, &tex, 256, 0)
+	g.drawBasicWallColumnTextured(0, 0, 1, 64, 0, 1, 64, wallTextureBlendSample{from: &tex}, 256, 0)
 
 	want := []uint32{0x11111111, 0x22222222}
 	if !reflect.DeepEqual(g.wallPix32, want) {
@@ -147,7 +147,7 @@ func TestDrawBasicWallColumnTexturedMasked_UsesIndexedShadeRow(t *testing.T) {
 		OpaqueMask:      []byte{1, 1, 0, 1},
 	}
 
-	g.drawBasicWallColumnTexturedMasked(0, 0, 3, 64, 0, 2, 64, &tex, 256, 0)
+	g.drawBasicWallColumnTexturedMasked(0, 0, 3, 64, 0, 2, 64, wallTextureBlendSample{from: &tex}, 256, 0)
 
 	want := []uint32{row[1], row[2], 0, row[4]}
 	if !reflect.DeepEqual(g.wallPix32, want) {
@@ -299,7 +299,7 @@ func TestDrawBasicWallColumnTexturedMasked_FallbackUsesVisibleSpans(t *testing.T
 		OpaqueMask:      []byte{1, 1, 1, 1, 1, 1},
 	}
 
-	g.drawBasicWallColumnTexturedMasked(0, 0, 5, 64, 0, 3, 64, &tex, 256, 0)
+	g.drawBasicWallColumnTexturedMasked(0, 0, 5, 64, 0, 3, 64, wallTextureBlendSample{from: &tex}, 256, 0)
 
 	want := []uint32{row[1], row[2], 0, 0, row[5], row[6]}
 	if !reflect.DeepEqual(g.wallPix32, want) {
@@ -334,7 +334,7 @@ func TestDrawBasicWallColumnTexturedMasked_FastRejectsCoveredVisibleSpans(t *tes
 		OpaqueMask:      []byte{1, 1, 1, 1, 1, 1},
 	}
 
-	g.drawBasicWallColumnTexturedMasked(0, 0, 5, 64, 0, 3, 64, &tex, 256, 0)
+	g.drawBasicWallColumnTexturedMasked(0, 0, 5, 64, 0, 3, 64, wallTextureBlendSample{from: &tex}, 256, 0)
 
 	for i, got := range g.wallPix32 {
 		if got != 0xDEADBEEF {
@@ -407,7 +407,7 @@ func TestDrawBasicWallColumn_InvulnerabilityUsesInverseColormap(t *testing.T) {
 
 	wallTop := []int{1}
 	wallBottom := []int{-1}
-	g.drawBasicWallColumn(wallTop, wallBottom, 0, 0, 0, 64, 160, 0, 0, 0, 64, &tex)
+	g.drawBasicWallColumn(wallTop, wallBottom, 0, 0, 0, 64, 160, 0, 0, 0, 64, wallTextureBlendSample{from: &tex})
 
 	if got := g.wallPix32[0]; got != 0xDEADBEEF {
 		t.Fatalf("pix=%08x want inverse colormap row value", got)
@@ -448,7 +448,7 @@ func TestDrawBasicWallColumn_InvulnerabilityUsesInverseColormapInSourcePortMode(
 
 	wallTop := []int{1}
 	wallBottom := []int{-1}
-	g.drawBasicWallColumn(wallTop, wallBottom, 0, 0, 0, 64, 160, 0, 0, 0, 64, &tex)
+	g.drawBasicWallColumn(wallTop, wallBottom, 0, 0, 0, 64, 160, 0, 0, 0, 64, wallTextureBlendSample{from: &tex})
 
 	if got := g.wallPix32[0]; got != 0xFEEDBEEF {
 		t.Fatalf("pix=%08x want inverse colormap row value in sourceport mode", got)

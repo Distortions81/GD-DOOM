@@ -277,7 +277,7 @@ func (g *game) planeRowRenderState(y int, key plane3DKey, eyeZ, camX, camY, ca, 
 	return state, true
 }
 
-func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, key plane3DKey, tex32 []uint32, texIndexed []byte, state planeRowRenderState) {
+func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, key plane3DKey, sample flatTextureBlendSample, state planeRowRenderState) {
 	xOff := int64(x1)
 	stepper := planeTexStepper{
 		uFixed:     state.rowBaseWXFixed + xOff*state.stepWXFixed,
@@ -289,6 +289,30 @@ func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, 
 	pixI := rowPix + x1
 	if !doomColormapEnabled && state.defaultShade == 0 {
 		fillPackedRun(pix32, pixI, count, pixelOpaqueA)
+		return
+	}
+	texIndexed := sample.fromIndexed
+	if sample.alpha != 0 && len(sample.toIndexed) == 64*64 {
+		for ; count > 0; count-- {
+			texIdx := stepper.texelIndex()
+			var p0, p1 uint32
+			if state.defaultRow >= doomNumColorMaps || doomColormapEnabled {
+				p0 = shadePaletteIndexDOOMRow(sample.fromIndexed[texIdx], state.defaultRow)
+				p1 = shadePaletteIndexDOOMRow(sample.toIndexed[texIdx], state.defaultRow)
+			} else {
+				shade := state.defaultShade
+				if fullbrightNoLighting {
+					shade = 256
+				} else if shade > 256 {
+					shade = 256
+				}
+				p0 = shadePaletteIndexPacked(sample.fromIndexed[texIdx], shade)
+				p1 = shadePaletteIndexPacked(sample.toIndexed[texIdx], shade)
+			}
+			pix32[pixI] = blendPackedRGBA(p0, p1, sample.alpha)
+			stepper.advance(1)
+			pixI++
+		}
 		return
 	}
 	if state.defaultRow >= doomNumColorMaps || doomColormapEnabled {

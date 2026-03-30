@@ -883,14 +883,17 @@ func (g *game) animateSwitchTexture(lineIdx, side int, repeat bool) {
 	origTop, origBottom, origMid := sd.Top, sd.Bottom, sd.Mid
 	changed := false
 	if next, ok := toggleSwitchTexture(sd.Top); ok {
+		g.beginSwitchTextureBlend(sideDefIdx, switchTextureSlotTop, sd.Top, next)
 		sd.Top = next
 		changed = true
 	}
 	if next, ok := toggleSwitchTexture(sd.Bottom); ok {
+		g.beginSwitchTextureBlend(sideDefIdx, switchTextureSlotBottom, sd.Bottom, next)
 		sd.Bottom = next
 		changed = true
 	}
 	if next, ok := toggleSwitchTexture(sd.Mid); ok {
+		g.beginSwitchTextureBlend(sideDefIdx, switchTextureSlotMid, sd.Mid, next)
 		sd.Mid = next
 		changed = true
 	}

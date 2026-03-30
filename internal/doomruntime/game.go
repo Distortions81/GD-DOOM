@@ -301,7 +301,7 @@ const spriteMagnifyMinScale = 2.0
 
 type maskedMidSeg struct {
 	scene.MaskedMidSeg
-	tex              *WallTexture
+	tex              wallTextureBlendSample
 	light            int16
 	occlusionY0      int16
 	occlusionY1      int16
@@ -481,6 +481,7 @@ type game struct {
 	soundQueueOrigin        []queuedSoundOrigin
 	delayedSfx              []delayedSoundEvent
 	delayedSwitchReverts    []delayedSwitchTexture
+	switchTextureBlends     []switchTextureBlend
 
 	prevPX    int64
 	prevPY    int64
@@ -848,6 +849,42 @@ type delayedSwitchTexture struct {
 	bottom  string
 	mid     string
 	tics    int
+}
+
+type switchTextureSlot uint8
+
+const (
+	switchTextureSlotTop switchTextureSlot = iota
+	switchTextureSlotBottom
+	switchTextureSlotMid
+)
+
+type switchTextureBlend struct {
+	sidedef  int
+	slot     switchTextureSlot
+	from     string
+	to       string
+	startTic int
+}
+
+type textureBlendSample struct {
+	fromKey string
+	toKey   string
+	alpha   uint8
+}
+
+type wallTextureBlendSample struct {
+	from  *WallTexture
+	to    *WallTexture
+	alpha uint8
+}
+
+type flatTextureBlendSample struct {
+	fromRGBA    []byte
+	toRGBA      []byte
+	fromIndexed []byte
+	toIndexed   []byte
+	alpha       uint8
 }
 
 type automapQueueNode struct {
@@ -1316,6 +1353,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
 	g.delayedSwitchReverts = make([]delayedSwitchTexture, 0, 4)
+	g.switchTextureBlends = make([]switchTextureBlend, 0, 4)
 	if g.opts.SourcePortMode {
 		// Source-port defaults: reveal full map style and heading-follow at startup.
 		g.parity.reveal = revealAllMap
@@ -1678,7 +1716,7 @@ func (g *game) flatNameByID(id uint16) string {
 }
 
 func (g *game) flatIDForName(name string) uint16 {
-	return g.flatIDForResolvedName(g.resolveAnimatedFlatName(name))
+	return g.flatIDForResolvedName(normalizeFlatName(name))
 }
 
 func (g *game) flatRGBAResolvedID(id uint16) ([]byte, bool) {
@@ -1687,6 +1725,85 @@ func (g *game) flatRGBAResolvedID(id uint16) ([]byte, bool) {
 
 func (g *game) flatIndexedResolvedID(id uint16) ([]byte, bool) {
 	return g.flatIndexedResolvedKey(g.flatNameByID(id))
+}
+
+func (g *game) beginSwitchTextureBlend(sidedef int, slot switchTextureSlot, from, to string) {
+	if g == nil || !g.opts.SourcePortMode || g.opts.TextureAnimCrossfadeFrames <= 0 {
+		return
+	}
+	from = normalizeFlatName(from)
+	to = normalizeFlatName(to)
+	if from == "" || to == "" || from == to {
+		return
+	}
+	for i := range g.switchTextureBlends {
+		if g.switchTextureBlends[i].sidedef != sidedef || g.switchTextureBlends[i].slot != slot {
+			continue
+		}
+		g.switchTextureBlends[i].from = from
+		g.switchTextureBlends[i].to = to
+		g.switchTextureBlends[i].startTic = g.worldTic
+		return
+	}
+	g.switchTextureBlends = append(g.switchTextureBlends, switchTextureBlend{
+		sidedef:  sidedef,
+		slot:     slot,
+		from:     from,
+		to:       to,
+		startTic: g.worldTic,
+	})
+}
+
+func (g *game) switchTextureBlendFor(sidedef int, slot switchTextureSlot, current string) textureBlendSample {
+	if g == nil || !g.opts.SourcePortMode || g.opts.TextureAnimCrossfadeFrames <= 0 || sidedef < 0 {
+		return textureBlendSample{}
+	}
+	current = normalizeFlatName(current)
+	if current == "" {
+		return textureBlendSample{}
+	}
+	frames := g.opts.TextureAnimCrossfadeFrames
+	for i := range g.switchTextureBlends {
+		blend := g.switchTextureBlends[i]
+		if blend.sidedef != sidedef || blend.slot != slot || blend.to != current {
+			continue
+		}
+		elapsed := float64(g.worldTic-blend.startTic) + g.renderAlpha
+		if elapsed <= 0 {
+			return textureBlendSample{fromKey: blend.from, toKey: blend.to}
+		}
+		if elapsed >= float64(frames) {
+			return textureBlendSample{fromKey: blend.to}
+		}
+		alpha := uint8(math.Round((elapsed / float64(frames)) * 255))
+		if alpha == 0 {
+			return textureBlendSample{fromKey: blend.from, toKey: blend.to}
+		}
+		return textureBlendSample{fromKey: blend.from, toKey: blend.to, alpha: alpha}
+	}
+	return textureBlendSample{}
+}
+
+func (g *game) switchTextureBlendSample(sidedef int, slot switchTextureSlot, current string) (wallTextureBlendSample, bool) {
+	sample := g.switchTextureBlendFor(sidedef, slot, current)
+	if sample.fromKey == "" {
+		return wallTextureBlendSample{}, false
+	}
+	from, ok := g.wallTexturePtr(sample.fromKey)
+	if !ok || from == nil || from.Width <= 0 || from.Height <= 0 || len(from.RGBA) != from.Width*from.Height*4 {
+		return wallTextureBlendSample{}, false
+	}
+	out := wallTextureBlendSample{from: from}
+	if sample.alpha == 0 || sample.toKey == "" {
+		return out, true
+	}
+	to, ok := g.wallTexturePtr(sample.toKey)
+	if !ok || to == nil || to.Width != from.Width || to.Height != from.Height || len(to.RGBA) != len(from.RGBA) {
+		return out, true
+	}
+	out.to = to
+	out.alpha = sample.alpha
+	return out, true
 }
 
 func (g *game) precacheSpritePatchRenderData() {
@@ -1756,6 +1873,17 @@ func (g *game) wallTexturePtr(name string) (*WallTexture, bool) {
 		return nil, false
 	}
 	key, _ := g.resolveAnimatedWallSample(name)
+	return g.wallTexturePtrResolvedKey(key)
+}
+
+func (g *game) wallTexturePtrResolvedKey(key string) (*WallTexture, bool) {
+	if g == nil {
+		return nil, false
+	}
+	g.ensureTexturePointerCaches()
+	if len(g.wallTexPtrs) == 0 {
+		return nil, false
+	}
 	if key == "" || key == "-" {
 		return nil, false
 	}
@@ -3522,9 +3650,19 @@ func (g *game) tickDelayedSwitchReverts() {
 		s.tics--
 		if s.tics <= 0 {
 			if s.sidedef >= 0 && s.sidedef < len(g.m.Sidedefs) {
-				g.m.Sidedefs[s.sidedef].Top = s.top
-				g.m.Sidedefs[s.sidedef].Bottom = s.bottom
-				g.m.Sidedefs[s.sidedef].Mid = s.mid
+				sd := &g.m.Sidedefs[s.sidedef]
+				if sd.Top != s.top {
+					g.beginSwitchTextureBlend(s.sidedef, switchTextureSlotTop, sd.Top, s.top)
+					sd.Top = s.top
+				}
+				if sd.Bottom != s.bottom {
+					g.beginSwitchTextureBlend(s.sidedef, switchTextureSlotBottom, sd.Bottom, s.bottom)
+					sd.Bottom = s.bottom
+				}
+				if sd.Mid != s.mid {
+					g.beginSwitchTextureBlend(s.sidedef, switchTextureSlotMid, sd.Mid, s.mid)
+					sd.Mid = s.mid
+				}
 			}
 			continue
 		}
@@ -3905,9 +4043,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 			g.logWallCull(si, "OCCLUDED", pp.prepass.LogZ1, pp.prepass.LogZ2, pp.prepass.LogX1, pp.prepass.LogX2)
 			continue
 		}
-		var midTex *WallTexture
-		var topTex *WallTexture
-		var botTex *WallTexture
+		var midTex wallTextureBlendSample
+		var topTex wallTextureBlendSample
+		var botTex wallTextureBlendSample
 		hasMidTex := false
 		hasTopTex := false
 		hasBotTex := false
@@ -3918,28 +4056,28 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if frontSideDef != nil {
 			texUOffset += float64(frontSideDef.TextureOffset)
 			rowOffset := float64(frontSideDef.RowOffset)
-			midTex, hasMidTex = g.wallTexture(frontSideDef.Mid)
-			if hasMidTex && midTex != nil {
+			midTex, hasMidTex = g.wallTextureBlend(frontSideDef.Mid, pp.frontSideDefIdx, switchTextureSlotMid)
+			if hasMidTex && midTex.from != nil {
 				if back != nil {
 					if (ld.Flags & mlDontPegBottom) != 0 {
-						midTexMid = math.Max(frontFloor, backFloor) + float64(midTex.Height) - eyeZ
+						midTexMid = math.Max(frontFloor, backFloor) + float64(midTex.from.Height) - eyeZ
 					} else {
 						midTexMid = math.Min(frontCeil, backCeil) - eyeZ
 					}
 				} else if (ld.Flags & mlDontPegBottom) != 0 {
-					midTexMid = frontFloor + float64(midTex.Height) - eyeZ
+					midTexMid = frontFloor + float64(midTex.from.Height) - eyeZ
 				} else {
 					midTexMid = frontCeil - eyeZ
 				}
 				midTexMid += rowOffset
 			}
 			if topWall {
-				topTex, hasTopTex = g.wallTexture(frontSideDef.Top)
-				if hasTopTex && topTex != nil {
+				topTex, hasTopTex = g.wallTextureBlend(frontSideDef.Top, pp.frontSideDefIdx, switchTextureSlotTop)
+				if hasTopTex && topTex.from != nil {
 					if (ld.Flags & mlDontPegTop) != 0 {
 						topTexMid = frontCeil - eyeZ
 					} else if back != nil {
-						topTexMid = backCeil + float64(topTex.Height) - eyeZ
+						topTexMid = backCeil + float64(topTex.from.Height) - eyeZ
 					} else {
 						topTexMid = frontCeil - eyeZ
 					}
@@ -3947,8 +4085,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				}
 			}
 			if bottomWall {
-				botTex, hasBotTex = g.wallTexture(frontSideDef.Bottom)
-				if hasBotTex && botTex != nil {
+				botTex, hasBotTex = g.wallTextureBlend(frontSideDef.Bottom, pp.frontSideDefIdx, switchTextureSlotBottom)
+				if hasBotTex && botTex.from != nil {
 					if (ld.Flags & mlDontPegBottom) != 0 {
 						botTexMid = frontCeil - eyeZ
 					} else if back != nil {
@@ -4054,7 +4192,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						texName = frontSideDef.Mid
 					}
 					// Closed two-sided doors often have upper/lower textures but no middle texture.
-					if back != nil && tex == nil {
+					if back != nil && tex.from == nil {
 						if topWall && hasTopTex {
 							tex = topTex
 							texMid = topTexMid
@@ -4069,7 +4207,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 							}
 						}
 					}
-					if tex == nil {
+					if tex.from == nil {
 						if texName != "" && texName != "-" {
 							panic("missing required solid wall texture: " + texName)
 						}
@@ -4088,7 +4226,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						mid = floorClip[x] - 1
 					}
 					if mid >= yl {
-						if topTex == nil {
+						if topTex.from == nil {
 							name := ""
 							if frontSideDef != nil {
 								name = frontSideDef.Top
@@ -4113,7 +4251,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 						mid = ceilingClip[x] + 1
 					}
 					if mid <= yh {
-						if botTex == nil {
+						if botTex.from == nil {
 							name := ""
 							if frontSideDef != nil {
 								name = frontSideDef.Bottom
@@ -4341,7 +4479,7 @@ func (g *game) plane3DKeyForSectorCached(secIdx int, sec *mapdata.Sector, floor 
 	return key
 }
 
-func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, depth float64, sectorLight int16, lightBias int, texU, texMid, focal float64, tex *WallTexture) {
+func (g *game) drawBasicWallColumn(wallTop, wallBottom []int, x, y0, y1 int, depth float64, sectorLight int16, lightBias int, texU, texMid, focal float64, tex wallTextureBlendSample) {
 	if x < 0 || x >= g.viewW || y0 > y1 {
 		return
 	}
@@ -5243,10 +5381,11 @@ func puffItemScreenBounds(it projectedPuffItem, focal float64, viewW, viewH int)
 	return scene.SpritePatchBoundsFromScale(it.sx, it.sy, scale, it.spriteTex.Width, it.spriteTex.Height, it.spriteTex.OffsetX, it.spriteTex.OffsetY, it.clipTop, it.clipBottom, viewW, viewH)
 }
 
-func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, focal float64, tex *WallTexture, shadeMul, doomRow int) {
-	if tex == nil {
+func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, focal float64, tex wallTextureBlendSample, shadeMul, doomRow int) {
+	if tex.from == nil {
 		return
 	}
+	base := tex.from
 	rowStridePix := g.viewW
 	pixI := y0*rowStridePix + x
 	pix32 := g.wallPix32
@@ -5257,30 +5396,34 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		}
 		return
 	}
-	texIndexed := tex.Indexed
-	texIndexedCol := tex.IndexedColMajor
-	indexedReady := len(texIndexed) == tex.Width*tex.Height
+	texIndexed := base.Indexed
+	texIndexedCol := base.IndexedColMajor
+	indexedReady := len(texIndexed) == base.Width*base.Height
 	if !indexedReady {
 		return
 	}
 	txi := int(floorFixed(texU) >> fracBits)
 	tx := 0
-	if tex.Width > 0 && (tex.Width&(tex.Width-1)) == 0 {
-		tx = txi & (tex.Width - 1)
+	if base.Width > 0 && (base.Width&(base.Width-1)) == 0 {
+		tx = txi & (base.Width - 1)
 	} else {
-		tx = wrapIndex(txi, tex.Width)
+		tx = wrapIndex(txi, base.Width)
 	}
 	rowScale := depth / focal
 	cy := float64(g.viewH) * 0.5
 	texV := texMid - ((cy - (float64(y0) + 0.5)) * rowScale)
 	texVFixed := floorFixed(texV)
 	texVStepFixed := floorFixed(rowScale)
-	pow2H := tex.Height > 0 && (tex.Height&(tex.Height-1)) == 0
-	hmask := tex.Height - 1
-	colBase := tx * tex.Height
+	pow2H := base.Height > 0 && (base.Height&(base.Height-1)) == 0
+	hmask := base.Height - 1
+	colBase := tx * base.Height
+	if tex.alpha != 0 && tex.to != nil && tex.to.Width == base.Width && tex.to.Height == base.Height && len(tex.to.Indexed) == len(texIndexed) {
+		g.drawBasicWallColumnTexturedBlended(x, y0, y1, texU, texMid, depth, focal, base, tex.to, tex.alpha, shadeMul, doomRow)
+		return
+	}
 	// Dominant hot path: little-endian packed output + pretransposed column-major texture + pow2 height.
-	if pixelLittleEndian && pow2H && len(texIndexedCol) == tex.Width*tex.Height {
-		col := texIndexedCol[colBase : colBase+tex.Height]
+	if pixelLittleEndian && pow2H && len(texIndexedCol) == base.Width*base.Height {
+		col := texIndexedCol[colBase : colBase+base.Height]
 		if doomRow >= doomNumColorMaps || doomColormapEnabled {
 			rows := doomColormapRowCount()
 			if rows <= 0 || len(doomColormapRGBA) < rows*256 {
@@ -5305,7 +5448,7 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	if pow2H {
 		for y := y0; y <= y1; y++ {
 			ty := int((texVFixed >> fracBits) & int64(hmask))
-			ti := ty*tex.Width + tx
+			ti := ty*base.Width + tx
 			if doomRow >= doomNumColorMaps || doomColormapEnabled {
 				pix32[pixI] = shadePaletteIndexDOOMRow(texIndexed[ti], doomRow)
 			} else {
@@ -5317,8 +5460,8 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		return
 	}
 	for y := y0; y <= y1; y++ {
-		ty := wrapIndex(int(texVFixed>>fracBits), tex.Height)
-		ti := ty*tex.Width + tx
+		ty := wrapIndex(int(texVFixed>>fracBits), base.Height)
+		ti := ty*base.Width + tx
 		if doomRow >= doomNumColorMaps || doomColormapEnabled {
 			pix32[pixI] = shadePaletteIndexDOOMRow(texIndexed[ti], doomRow)
 		} else {
@@ -5329,10 +5472,40 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	}
 }
 
-func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, texMid, focal float64, tex *WallTexture, shadeMul, doomRow int) {
-	if tex == nil {
+func (g *game) drawBasicWallColumnTexturedBlended(x, y0, y1 int, texU, texMid, depth, focal float64, from, to *WallTexture, alpha uint8, shadeMul, doomRow int) {
+	if from == nil || to == nil || from.Width <= 0 || from.Height <= 0 || to.Width != from.Width || to.Height != from.Height {
 		return
 	}
+	rowStridePix := g.viewW
+	pixI := y0*rowStridePix + x
+	txi := int(floorFixed(texU) >> fracBits)
+	tx := wrapIndex(txi, from.Width)
+	rowScale := depth / focal
+	cy := float64(g.viewH) * 0.5
+	texVFixed := floorFixed(texMid - ((cy - (float64(y0) + 0.5)) * rowScale))
+	texVStepFixed := floorFixed(rowScale)
+	for y := y0; y <= y1; y++ {
+		ty := wrapIndex(int(texVFixed>>fracBits), from.Height)
+		ti := ty*from.Width + tx
+		var p0, p1 uint32
+		if doomRow >= doomNumColorMaps || doomColormapEnabled {
+			p0 = shadePaletteIndexDOOMRow(from.Indexed[ti], doomRow)
+			p1 = shadePaletteIndexDOOMRow(to.Indexed[ti], doomRow)
+		} else {
+			p0 = shadePaletteIndexPacked(from.Indexed[ti], uint32(shadeMul))
+			p1 = shadePaletteIndexPacked(to.Indexed[ti], uint32(shadeMul))
+		}
+		g.wallPix32[pixI] = blendPackedRGBA(p0, p1, alpha)
+		pixI += rowStridePix
+		texVFixed += texVStepFixed
+	}
+}
+
+func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, texMid, focal float64, tex wallTextureBlendSample, shadeMul, doomRow int) {
+	if tex.from == nil {
+		return
+	}
+	base := tex.from
 	if x < 0 || x >= g.viewW || y0 > y1 {
 		return
 	}
@@ -5342,27 +5515,30 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	if y1 >= g.viewH {
 		y1 = g.viewH - 1
 	}
-	if y0 > y1 || tex.Width <= 0 || tex.Height <= 0 {
+	if y0 > y1 || base.Width <= 0 || base.Height <= 0 {
 		return
 	}
 	rowStridePix := g.viewW
 	pixI := y0*rowStridePix + x
 	pix32 := g.wallPix32
-	tex.EnsureOpaqueMask()
-	maskReady := len(tex.OpaqueMask) == tex.Width*tex.Height
-	texIndexed := tex.Indexed
-	texIndexedCol := tex.IndexedColMajor
+	base.EnsureOpaqueMask()
+	maskReady := len(base.OpaqueMask) == base.Width*base.Height
+	if tex.to != nil {
+		tex.to.EnsureOpaqueMask()
+	}
+	texIndexed := base.Indexed
+	texIndexedCol := base.IndexedColMajor
 	packedRow := maskedWallShadePackedRow(shadeMul, doomRow)
-	indexedReady := len(packedRow) == 256 && len(texIndexed) == tex.Width*tex.Height
+	indexedReady := len(packedRow) == 256 && len(texIndexed) == base.Width*base.Height
 	if !indexedReady {
 		return
 	}
 	txi := int(floorFixed(texU) >> fracBits)
 	tx := 0
-	if tex.Width > 0 && (tex.Width&(tex.Width-1)) == 0 {
-		tx = txi & (tex.Width - 1)
+	if base.Width > 0 && (base.Width&(base.Width-1)) == 0 {
+		tx = txi & (base.Width - 1)
 	} else {
-		tx = wrapIndex(txi, tex.Width)
+		tx = wrapIndex(txi, base.Width)
 	}
 	rowScale := depth / focal
 	cy := float64(g.viewH) * 0.5
@@ -5370,9 +5546,9 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	texVFixed := floorFixed(texV)
 	texVStepFixed := floorFixed(rowScale)
 	depthQ := encodeDepthQ(depth)
-	if len(tex.OpaqueColumnTop) == tex.Width && len(tex.OpaqueColumnBot) == tex.Width {
+	if len(base.OpaqueColumnTop) == base.Width && len(base.OpaqueColumnBot) == base.Width {
 		var ok bool
-		y0, y1, texVFixed, ok = trimMaskedColumnToOpaqueBounds(y0, y1, texVFixed, texVStepFixed, tex.Height, int(tex.OpaqueColumnTop[tx]), int(tex.OpaqueColumnBot[tx]))
+		y0, y1, texVFixed, ok = trimMaskedColumnToOpaqueBounds(y0, y1, texVFixed, texVStepFixed, base.Height, int(base.OpaqueColumnTop[tx]), int(base.OpaqueColumnBot[tx]))
 		if !ok {
 			return
 		}
@@ -5384,13 +5560,13 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 	if g.cutoutColumnVisibleSpansFullyCovered(x, rowStridePix, visible) {
 		return
 	}
-	if len(tex.OpaqueRunOffs) == tex.Width+1 && tx >= 0 && tx < tex.Width && len(tex.OpaqueRuns) >= int(tex.OpaqueRunOffs[tx+1]) {
-		if drawMaskedColumnOpaqueRuns(g, x, y0, y1, texVFixed, texVStepFixed, tex, tx, nil, depthQ, shadeMul, doomRow, visible) {
+	if len(base.OpaqueRunOffs) == base.Width+1 && tx >= 0 && tx < base.Width && len(base.OpaqueRuns) >= int(base.OpaqueRunOffs[tx+1]) && tex.alpha == 0 {
+		if drawMaskedColumnOpaqueRuns(g, x, y0, y1, texVFixed, texVStepFixed, base, tx, nil, depthQ, shadeMul, doomRow, visible) {
 			return
 		}
 	}
-	colBase := tx * tex.Height
-	useIndexedCol := len(texIndexedCol) == tex.Width*tex.Height
+	colBase := tx * base.Height
+	useIndexedCol := len(texIndexedCol) == base.Width*base.Height
 	repeatTexelRows := texVStepFixed*2 <= fracUnit
 	for _, vis := range visible {
 		if vis.L > vis.R {
@@ -5399,9 +5575,13 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 		pixI = vis.L*rowStridePix + x
 		runTexVFixed := texVFixed + int64(vis.L-y0)*texVStepFixed
 		for y := vis.L; y <= vis.R; y++ {
-			ty := wrapIndex(int(runTexVFixed>>fracBits), tex.Height)
-			ti := ty*tex.Width + tx
-			if !maskReady || tex.OpaqueMask[ti] == 0 {
+			ty := wrapIndex(int(runTexVFixed>>fracBits), base.Height)
+			ti := ty*base.Width + tx
+			opaque := maskReady && base.OpaqueMask[ti] != 0
+			if tex.alpha != 0 && tex.to != nil && len(tex.to.OpaqueMask) == len(base.OpaqueMask) && tex.to.OpaqueMask[ti] != 0 {
+				opaque = true
+			}
+			if !opaque {
 				pixI += rowStridePix
 				runTexVFixed += texVStepFixed
 				continue
@@ -5412,7 +5592,11 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 				continue
 			}
 			dst := uint32(0)
-			if useIndexedCol {
+			if tex.alpha != 0 && tex.to != nil && tex.to.Width == base.Width && tex.to.Height == base.Height && len(tex.to.Indexed) == len(texIndexed) {
+				p0 := packedRow[texIndexed[ti]]
+				p1 := packedRow[tex.to.Indexed[ti]]
+				dst = blendPackedRGBA(p0, p1, tex.alpha)
+			} else if useIndexedCol {
 				dst = packedRow[texIndexedCol[colBase+ty]]
 			} else {
 				dst = packedRow[texIndexed[ti]]
@@ -5420,7 +5604,7 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 			if repeatTexelRows {
 				runLen := 1
 				nextTexVFixed := runTexVFixed + texVStepFixed
-				for y+runLen <= vis.R && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
+				for y+runLen <= vis.R && wrapIndex(int(nextTexVFixed>>fracBits), base.Height) == ty {
 					nextPixI := pixI + runLen*rowStridePix
 					if g.cutoutCoveredAtIndex(nextPixI) {
 						break
@@ -5807,6 +5991,26 @@ func packRGBA(r, g, b uint8) uint32 {
 		(uint32(r) << pixelRShift) |
 		(uint32(g) << pixelGShift) |
 		(uint32(b) << pixelBShift)
+}
+
+func blendPackedRGBA(a, b uint32, alpha uint8) uint32 {
+	if alpha == 0 {
+		return a | pixelOpaqueA
+	}
+	if alpha == 255 {
+		return b | pixelOpaqueA
+	}
+	inv := uint32(255 - alpha)
+	r0 := (a >> pixelRShift) & 0xFF
+	g0 := (a >> pixelGShift) & 0xFF
+	b0 := (a >> pixelBShift) & 0xFF
+	r1 := (b >> pixelRShift) & 0xFF
+	g1 := (b >> pixelGShift) & 0xFF
+	b1 := (b >> pixelBShift) & 0xFF
+	r := (r0*inv + r1*uint32(alpha) + 127) / 255
+	g := (g0*inv + g1*uint32(alpha) + 127) / 255
+	bl := (b0*inv + b1*uint32(alpha) + 127) / 255
+	return pixelOpaqueA | (r << pixelRShift) | (g << pixelGShift) | (bl << pixelBShift)
 }
 
 func encodeDepthQ(depth float64) uint16 {
@@ -6872,7 +7076,7 @@ func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
 }
 
 func (g *game) drawMaskedMidSeg(ms maskedMidSeg, focal float64, shadeMul uint32, doomRow int) {
-	if ms.tex == nil || ms.tex.Width <= 0 || ms.tex.Height <= 0 {
+	if ms.tex.from == nil || ms.tex.from.Width <= 0 || ms.tex.from.Height <= 0 {
 		return
 	}
 	halfH := float64(g.viewH) * 0.5
@@ -7834,7 +8038,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 	g.addRenderStageDur(renderStagePlaneSpans, time.Since(stageStart))
 	cx := float64(w) * 0.5
 	cy := float64(h) * 0.5
-	_, planeFlatTex32, planeFlatTexIndexed, _ := g.ensurePlaneRenderScratch(len(planes))
+	planeFlatSamples := make([]flatTextureBlendSample, len(planes))
 	skyTexReady := hasSky &&
 		len(g.frameSkyColU) == w &&
 		len(g.frameSkyRowV) == h &&
@@ -7850,22 +8054,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		if flatID < 0 || flatID >= len(g.planeFlatCache32Scratch) {
 			panic("plane flat cache index out of range")
 		}
-		tex32 := g.planeFlatCache32Scratch[flatID]
-		if len(tex32) == 0 {
-			tex, _ := g.flatRGBAResolvedID(key.flatID)
-			if len(tex) != 64*64*4 {
-				panic("missing or invalid plane flat texture")
-			}
-			tex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(tex))), len(tex)/4)
-			g.planeFlatCache32Scratch[flatID] = tex32
+		sample, ok := g.flatTextureBlend(g.flatNameByID(key.flatID))
+		if !ok || len(sample.fromRGBA) != 64*64*4 || len(sample.fromIndexed) != 64*64 {
+			panic("missing or invalid plane flat texture")
 		}
-		indexed := g.planeFlatCacheIndexedScratch[flatID]
-		if len(indexed) == 0 {
-			indexed, _ = g.flatIndexedResolvedID(key.flatID)
-			g.planeFlatCacheIndexedScratch[flatID] = indexed
-		}
-		planeFlatTex32[planeIdx] = tex32
-		planeFlatTexIndexed[planeIdx] = indexed
+		planeFlatSamples[planeIdx] = sample
 	}
 
 	renderPlaneSpan := func(planeIdx int, sp plane3DSpan, planeClipScratch []solidSpan) []solidSpan {
@@ -7874,8 +8067,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		}
 		pl := planes[planeIdx]
 		key := pl.key
-		tex32 := planeFlatTex32[planeIdx]
-		texIndexed := planeFlatTexIndexed[planeIdx]
+		sample := planeFlatSamples[planeIdx]
 		x1 := sp.x1
 		x2 := sp.x2
 		if x1 < 0 {
@@ -7943,11 +8135,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				return planeClipScratch
 			}
 			for _, vis := range planeClipScratch {
-				g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, tex32, texIndexed, rowState)
+				g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, sample, rowState)
 			}
 			return planeClipScratch
 		}
-		g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, tex32, texIndexed, rowState)
+		g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, sample, rowState)
 		return planeClipScratch
 	}
 	stageStart = time.Now()
@@ -8389,13 +8581,13 @@ func (g *game) drawDoomBasicTexturedCeilingClipped(screen *ebiten.Image, camX, c
 					pix[i+1] = ceilFallback.G
 					pix[i+2] = ceilFallback.B
 					pix[i+3] = 255
-				} else if tex, ok := g.flatRGBA(name); ok {
+				} else if tex, ok := g.flatTextureBlend(name); ok {
 					u := int(math.Floor(wx)) & 63
 					v := int(math.Floor(wy)) & 63
-					ti := (v*64 + u) * 4
-					pix[i+0] = tex[ti+0]
-					pix[i+1] = tex[ti+1]
-					pix[i+2] = tex[ti+2]
+					p := sampleFlatBlendPacked(tex, u, v)
+					pix[i+0] = uint8((p >> pixelRShift) & 0xFF)
+					pix[i+1] = uint8((p >> pixelGShift) & 0xFF)
+					pix[i+2] = uint8((p >> pixelBShift) & 0xFF)
 					pix[i+3] = 255
 				} else {
 					pix[i+0] = ceilFallback.R
@@ -8456,13 +8648,13 @@ func (g *game) drawDoomBasicTexturedFloorClipped(screen *ebiten.Image, camX, cam
 				continue
 			}
 			if sec >= 0 && sec < len(g.m.Sectors) {
-				if tex, ok := g.flatRGBA(g.m.Sectors[sec].FloorPic); ok {
+				if tex, ok := g.flatTextureBlend(g.m.Sectors[sec].FloorPic); ok {
 					u := int(math.Floor(wx)) & 63
 					v := int(math.Floor(wy)) & 63
-					ti := (v*64 + u) * 4
-					pix[i+0] = tex[ti+0]
-					pix[i+1] = tex[ti+1]
-					pix[i+2] = tex[ti+2]
+					p := sampleFlatBlendPacked(tex, u, v)
+					pix[i+0] = uint8((p >> pixelRShift) & 0xFF)
+					pix[i+1] = uint8((p >> pixelGShift) & 0xFF)
+					pix[i+2] = uint8((p >> pixelBShift) & 0xFF)
 					pix[i+3] = 255
 				} else {
 					pix[i+0] = floorFallback.R
@@ -12402,11 +12594,33 @@ func (g *game) ensurePlane3DForRangeCached(key plane3DKey, start, stop, viewW in
 
 func (g *game) wallTexture(name string) (*WallTexture, bool) {
 	key, _ := g.resolveAnimatedWallSample(name)
-	tex, ok := g.wallTexturePtr(key)
+	tex, ok := g.wallTexturePtrResolvedKey(key)
 	if !ok || tex.Width <= 0 || tex.Height <= 0 || len(tex.RGBA) != tex.Width*tex.Height*4 {
 		return nil, false
 	}
 	return tex, true
+}
+
+func (g *game) wallTextureBlend(name string, sidedef int, slot switchTextureSlot) (wallTextureBlendSample, bool) {
+	if blend, ok := g.switchTextureBlendSample(sidedef, slot, name); ok {
+		return blend, true
+	}
+	sample := g.textureBlendSample(name, wallTextureAnimRefs)
+	from, ok := g.wallTexturePtrResolvedKey(sample.fromKey)
+	if !ok || from == nil || from.Width <= 0 || from.Height <= 0 || len(from.RGBA) != from.Width*from.Height*4 {
+		return wallTextureBlendSample{}, false
+	}
+	out := wallTextureBlendSample{from: from}
+	if sample.alpha == 0 || sample.toKey == "" {
+		return out, true
+	}
+	to, ok := g.wallTexturePtrResolvedKey(sample.toKey)
+	if !ok || to == nil || to.Width != from.Width || to.Height != from.Height || len(to.RGBA) != len(from.RGBA) {
+		return out, true
+	}
+	out.to = to
+	out.alpha = sample.alpha
+	return out, true
 }
 
 func skyTextureForMap(mapName mapdata.MapName, wallTexBank map[string]WallTexture) (*WallTexture, bool) {
@@ -15534,7 +15748,11 @@ func (g *game) sectorLightLevelCached(sec int) int16 {
 		g.ensureSectorPlaneCacheLightingFresh()
 	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
-		return g.interpolateSectorLight(g.sectorPlaneCache[sec].prevLight, g.sectorPlaneCache[sec].light)
+		entry := g.sectorPlaneCache[sec]
+		if entry.lightKind == sectorLightEffectNone {
+			return entry.light
+		}
+		return g.interpolateSectorLight(entry.prevLight, entry.light)
 	}
 	if g != nil && g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
 		return g.m.Sectors[sec].Light
@@ -15550,7 +15768,11 @@ func (g *game) sectorLightMulCached(sec int) uint32 {
 		g.ensureSectorPlaneCacheLightingFresh()
 	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
-		return uint32(g.interpolateSectorLightMul(g.sectorPlaneCache[sec].prevLightMul, g.sectorPlaneCache[sec].lightMul))
+		entry := g.sectorPlaneCache[sec]
+		if entry.lightKind == sectorLightEffectNone {
+			return uint32(entry.lightMul)
+		}
+		return uint32(g.interpolateSectorLightMul(entry.prevLightMul, entry.lightMul))
 	}
 	return uint32(sectorLightMul(g.sectorLightLevelCached(sec)))
 }
@@ -16387,7 +16609,7 @@ func (g *game) buildMapFloorWorldLayer() bool {
 			continue
 		}
 
-		tex, texOK := g.flatRGBA(g.m.Sectors[sec].FloorPic)
+		tex, texOK := g.flatTextureBlend(g.m.Sectors[sec].FloorPic)
 		minPX := int(math.Floor((set.bbox.minX - minX) / step))
 		maxPX := int(math.Ceil((set.bbox.maxX - minX) / step))
 		minPY := int(math.Floor((maxY - set.bbox.maxY) / step))
@@ -16420,10 +16642,10 @@ func (g *game) buildMapFloorWorldLayer() bool {
 				if texOK {
 					u := int(math.Floor(wx)) & 63
 					v := int(math.Floor(wy)) & 63
-					ti := (v*64 + u) * 4
-					pix[i+0] = tex[ti+0]
-					pix[i+1] = tex[ti+1]
-					pix[i+2] = tex[ti+2]
+					p := sampleFlatBlendPacked(tex, u, v)
+					pix[i+0] = uint8((p >> pixelRShift) & 0xFF)
+					pix[i+1] = uint8((p >> pixelGShift) & 0xFF)
+					pix[i+2] = uint8((p >> pixelBShift) & 0xFF)
 					pix[i+3] = 255
 					stats.markedCols++
 				} else {
@@ -17581,6 +17803,46 @@ func (g *game) flatRGBA(name string) ([]byte, bool) {
 	return g.flatRGBAResolvedKey(key)
 }
 
+func (g *game) flatTextureBlend(name string) (flatTextureBlendSample, bool) {
+	sample := g.textureBlendSample(name, flatTextureAnimRefs)
+	fromRGBA, ok := g.flatRGBAResolvedKey(sample.fromKey)
+	if !ok || len(fromRGBA) != 64*64*4 {
+		return flatTextureBlendSample{}, false
+	}
+	out := flatTextureBlendSample{fromRGBA: fromRGBA}
+	if fromIndexed, ok := g.flatIndexedResolvedKey(sample.fromKey); ok && len(fromIndexed) == 64*64 {
+		out.fromIndexed = fromIndexed
+	}
+	if sample.alpha == 0 || sample.toKey == "" {
+		return out, true
+	}
+	toRGBA, ok := g.flatRGBAResolvedKey(sample.toKey)
+	if !ok || len(toRGBA) != len(fromRGBA) {
+		return out, true
+	}
+	out.toRGBA = toRGBA
+	if toIndexed, ok := g.flatIndexedResolvedKey(sample.toKey); ok && len(toIndexed) == 64*64 {
+		out.toIndexed = toIndexed
+	} else {
+		out.toRGBA = nil
+	}
+	out.alpha = sample.alpha
+	return out, true
+}
+
+func sampleFlatBlendPacked(sample flatTextureBlendSample, u, v int) uint32 {
+	ti := ((v & 63) * 64 * 4) + ((u & 63) * 4)
+	if ti < 0 || ti+3 >= len(sample.fromRGBA) {
+		return pixelOpaqueA
+	}
+	p0 := packRGBA(sample.fromRGBA[ti+0], sample.fromRGBA[ti+1], sample.fromRGBA[ti+2])
+	if sample.alpha == 0 || len(sample.toRGBA) != len(sample.fromRGBA) {
+		return p0
+	}
+	p1 := packRGBA(sample.toRGBA[ti+0], sample.toRGBA[ti+1], sample.toRGBA[ti+2])
+	return blendPackedRGBA(p0, p1, sample.alpha)
+}
+
 func (g *game) flatRGBAResolvedKey(key string) ([]byte, bool) {
 	rgba, ok := g.opts.FlatBank[key]
 	if !ok || len(rgba) != 64*64*4 {
@@ -17649,8 +17911,9 @@ func buildTextureAnimRefs(seqs [][]string) map[string]textureAnimRef {
 		for i, frame := range frames {
 			refs[frame] = textureAnimRef{
 				frames: frames,
-				index:  i,
+				index:  0,
 			}
+			_ = i
 		}
 	}
 	return refs
@@ -17667,11 +17930,13 @@ func (g *game) resolveAnimatedFlatName(name string) string {
 }
 
 func (g *game) resolveAnimatedWallSample(name string) (string, bool) {
-	return g.resolveAnimatedTextureSample(name, g.worldTic, wallTextureAnimRefs)
+	sample := g.textureBlendSample(name, wallTextureAnimRefs)
+	return sample.fromKey, sample.alpha != 0 && sample.toKey != ""
 }
 
 func (g *game) resolveAnimatedFlatSample(name string) (string, bool) {
-	return g.resolveAnimatedTextureSample(name, g.worldTic, flatTextureAnimRefs)
+	sample := g.textureBlendSample(name, flatTextureAnimRefs)
+	return sample.fromKey, sample.alpha != 0 && sample.toKey != ""
 }
 
 func resolveAnimatedTextureName(name string, worldTic int, refs map[string]textureAnimRef) string {
@@ -17706,6 +17971,52 @@ func (g *game) resolveAnimatedTextureSample(name string, worldTic int, refs map[
 		idx += len(ref.frames)
 	}
 	return ref.frames[idx], false
+}
+
+func (g *game) textureBlendSample(name string, refs map[string]textureAnimRef) textureBlendSample {
+	key := normalizeFlatName(name)
+	if key == "" {
+		return textureBlendSample{}
+	}
+	ref, ok := refs[key]
+	if !ok || len(ref.frames) < 2 {
+		return textureBlendSample{fromKey: key}
+	}
+	pos := float64(g.worldTic)
+	if g != nil && g.opts.SourcePortMode {
+		pos += g.renderAlpha
+	}
+	if pos < 0 {
+		pos = 0
+	}
+	frameSpan := float64(textureAnimTics)
+	if frameSpan < 1 {
+		frameSpan = 1
+	}
+	frameTick := int(math.Floor(pos / frameSpan))
+	idx := (ref.index + frameTick) % len(ref.frames)
+	if idx < 0 {
+		idx += len(ref.frames)
+	}
+	out := textureBlendSample{fromKey: ref.frames[idx]}
+	if g == nil || !g.opts.SourcePortMode {
+		return out
+	}
+	if g.opts.TextureAnimCrossfadeFrames <= 0 {
+		return out
+	}
+	framePhase := math.Mod(pos, frameSpan)
+	if framePhase < 0 {
+		framePhase += frameSpan
+	}
+	alpha := framePhase / frameSpan
+	if alpha <= 0 {
+		return out
+	}
+	nextIdx := (idx + 1) % len(ref.frames)
+	out.toKey = ref.frames[nextIdx]
+	out.alpha = uint8(math.Round(alpha * 255))
+	return out
 }
 
 func (g *game) textureAnimTick() int {

@@ -168,6 +168,7 @@ func TestSectorLightLevelCached_InterpolatesInSourcePortMode(t *testing.T) {
 	g := &game{
 		opts: Options{SourcePortMode: true},
 		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			lightKind: sectorLightEffectStrobe,
 			prevLight: 96,
 			light:     160,
 		}},
@@ -183,6 +184,7 @@ func TestSectorLightMulCached_InterpolatesInSourcePortMode(t *testing.T) {
 	g := &game{
 		opts: Options{SourcePortMode: true},
 		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			lightKind:    sectorLightEffectStrobe,
 			prevLightMul: 96,
 			lightMul:     160,
 		}},
@@ -198,6 +200,7 @@ func TestSectorLightLevelCached_DoesNotInterpolateOutsideSourcePortMode(t *testi
 	g := &game{
 		opts: Options{SourcePortMode: false},
 		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			lightKind: sectorLightEffectStrobe,
 			prevLight: 96,
 			light:     160,
 		}},
@@ -206,5 +209,37 @@ func TestSectorLightLevelCached_DoesNotInterpolateOutsideSourcePortMode(t *testi
 
 	if got := g.sectorLightLevelCached(0); got != 160 {
 		t.Fatalf("classic mode light=%d want=160", got)
+	}
+}
+
+func TestSectorLightLevelCached_DoesNotInterpolateWithoutAnimatedEffect(t *testing.T) {
+	g := &game{
+		opts: Options{SourcePortMode: true},
+		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			lightKind: sectorLightEffectNone,
+			prevLight: 96,
+			light:     160,
+		}},
+		renderAlpha: 0.5,
+	}
+
+	if got := g.sectorLightLevelCached(0); got != 160 {
+		t.Fatalf("static light=%d want=160", got)
+	}
+}
+
+func TestSectorLightMulCached_DoesNotInterpolateWithoutAnimatedEffect(t *testing.T) {
+	g := &game{
+		opts: Options{SourcePortMode: true},
+		sectorPlaneCache: []sectorPlaneCacheEntry{{
+			lightKind:    sectorLightEffectNone,
+			prevLightMul: 96,
+			lightMul:     160,
+		}},
+		renderAlpha: 0.5,
+	}
+
+	if got := g.sectorLightMulCached(0); got != 160 {
+		t.Fatalf("static light mul=%d want=160", got)
 	}
 }
