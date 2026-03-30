@@ -18508,49 +18508,11 @@ func (g *game) renderCameraAngle(alpha float64) uint32 {
 	if g == nil {
 		return 0
 	}
-	angle := g.baseRenderCameraAngle(alpha)
-	if !g.liveMouseLookRenderActive() {
-		return angle
-	}
-	mx, _ := ebiten.CursorPosition()
-	return g.renderAngleWithCursor(angle, mx)
-}
-
-func (g *game) liveMouseLookRenderActive() bool {
-	return g != nil &&
-		g.opts.DemoScript == nil &&
-		g.mode == viewWalk &&
-		g.opts.MouseLook &&
-		!g.mouseLookBlocked() &&
-		g.mouseLookSet &&
-		g.mouseLookSuppressTicks <= 0
-}
-
-func (g *game) baseRenderCameraAngle(alpha float64) uint32 {
-	if g == nil {
-		return 0
-	}
-	if g.liveMouseLookRenderActive() {
-		// Live mouselook gameplay should render from the latest committed player
-		// yaw and only use the current cursor for the residual render-time delta.
-		return g.p.angle
-	}
 	angle := lerpAngle(g.prevAngle, g.p.angle, alpha)
 	if g.opts.SmoothCameraYaw {
 		angle = interpolateCameraAngle(g.prevPrevAngle, g.prevAngle, g.p.angle, alpha)
 	}
 	return angle
-}
-
-func (g *game) renderAngleWithCursor(base uint32, cursorX int) uint32 {
-	if g == nil || !g.liveMouseLookRenderActive() {
-		return base
-	}
-	dx := cursorX - g.lastMouseX
-	if dx == 0 {
-		return base
-	}
-	return uint32(int64(base) + g.mouseLookTurnRaw(dx))
 }
 
 func (g *game) markSimUpdate(now time.Time) {
