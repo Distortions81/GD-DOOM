@@ -22,6 +22,7 @@ type fileConfig struct {
 	Height                     *int     `toml:"height"`
 	DetailLevelFaithful        *int     `toml:"detail_level_faithful"`
 	DetailLevelSourcePort      *int     `toml:"detail_level_sourceport"`
+	AutoDetail                 *bool    `toml:"auto_detail"`
 	GammaLevel                 *int     `toml:"gamma_level"`
 	Zoom                       *float64 `toml:"zoom"`
 	Player                     *int     `toml:"player"`
@@ -160,6 +161,7 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	} else {
 		cfg.DetailLevelFaithful = intPtr(s.DetailLevel)
 	}
+	cfg.AutoDetail = boolPtr(s.AutoDetail)
 	cfg.GammaLevel = intPtr(s.GammaLevel)
 	cfg.MusicVolume = floatPtr(s.MusicVolume)
 	cfg.MUSPanMax = floatPtr(s.MUSPanMax)

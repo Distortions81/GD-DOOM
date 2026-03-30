@@ -31,6 +31,7 @@ type Options struct {
 	Height                     int
 	StartZoom                  float64
 	InitialDetailLevel         int
+	AutoDetail                 bool
 	InitialGammaLevel          int
 	WADHash                    string
 	Debug                      bool

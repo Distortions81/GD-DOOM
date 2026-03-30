@@ -97,6 +97,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultWidth, defaultHeight := doomsession.DefaultCLIWindowSize()
 	defaultZoom := 0.0
 	defaultDetailLevel := -1
+	defaultAutoDetail := true
 	defaultGammaLevel := -1
 	defaultPlayer := 1
 	defaultSkill := 3
@@ -369,6 +370,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			defaultNoAspectCorrection = *cfg.NoAspectCorrection
 		}
 		defaultDetailLevel = configuredDetailLevelForMode(cfg, defaultSourcePortMode)
+		if cfg.AutoDetail != nil {
+			defaultAutoDetail = *cfg.AutoDetail
+		}
 	}
 	if defaultSourcePortMode {
 		if cfg == nil || cfg.GPUSky == nil {
@@ -394,6 +398,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	height := fs.Int("height", defaultHeight, "render window height")
 	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
 	detailLevel := fs.Int("detail-level", defaultDetailLevel, "startup detail level (-1 keeps mode default)")
+	autoDetail := fs.Bool("auto-detail", defaultAutoDetail, "detail level AUTO adjusts to target 60 FPS")
 	gammaLevel := fs.Int("gamma-level", defaultGammaLevel, "startup gamma level (-1 keeps mode default)")
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
@@ -690,6 +695,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			zoom:                       *zoom,
 			detailLevel:                *detailLevel,
 			detailLevelExplicit:        detailLevelSet,
+			autoDetail:                 *autoDetail,
 			detailLevelFaithful:        configuredDetailLevelForMode(cfg, false),
 			detailLevelSourcePort:      configuredDetailLevelForMode(cfg, true),
 			gammaLevel:                 *gammaLevel,
@@ -986,6 +992,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			Height:                     *height,
 			StartZoom:                  *zoom,
 			InitialDetailLevel:         *detailLevel,
+			AutoDetail:                 *autoDetail,
 			InitialGammaLevel:          *gammaLevel,
 			WADHash:                    wadHash,
 			Debug:                      *debug,
@@ -1209,6 +1216,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			zoom:                       *zoom,
 			detailLevel:                *detailLevel,
 			detailLevelExplicit:        detailLevelSet,
+			autoDetail:                 *autoDetail,
 			detailLevelFaithful:        configuredDetailLevelForMode(cfg, false),
 			detailLevelSourcePort:      configuredDetailLevelForMode(cfg, true),
 			gammaLevel:                 *gammaLevel,
@@ -1909,6 +1917,7 @@ type renderBuildConfig struct {
 	zoom                       float64
 	detailLevel                int
 	detailLevelExplicit        bool
+	autoDetail                 bool
 	detailLevelFaithful        int
 	detailLevelSourcePort      int
 	gammaLevel                 int
@@ -2191,6 +2200,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		Height:                     cfg.height,
 		StartZoom:                  cfg.zoom,
 		InitialDetailLevel:         cfg.detailLevel,
+		AutoDetail:                 cfg.autoDetail,
 		InitialGammaLevel:          cfg.gammaLevel,
 		WADHash:                    wadHash,
 		Debug:                      cfg.debug,

@@ -228,6 +228,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 	g := sg.g
 	sg.settings = gameplay.PersistentSettings{
 		DetailLevel:      g.detailLevel,
+		AutoDetail:       g.autoDetailEnabled,
 		RotateView:       g.rotateView,
 		MouseLook:        g.opts.MouseLook,
 		MouseLookSpeed:   g.opts.MouseLookSpeed,
@@ -269,6 +270,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 		int(revealAllMap),
 	)
 	g.detailLevel = applied.DetailLevel
+	g.autoDetailEnabled = applied.AutoDetail
 	g.rotateView = applied.RotateView
 	g.opts.MouseLook = applied.MouseLook
 	g.opts.MouseLookSpeed = applied.MouseLookSpeed
@@ -314,6 +316,7 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	)
 	next := result.Settings
 	sg.settings.DetailLevel = next.DetailLevel
+	sg.settings.AutoDetail = next.AutoDetail
 	sg.settings.MouseLook = next.MouseLook
 	sg.settings.MusicVolume = next.MusicVolume
 	sg.settings.OPLVolume = next.OPLVolume
@@ -365,6 +368,7 @@ func (sg *sessionGame) runtimeSettingsSnapshot() RuntimeSettings {
 	}
 	return RuntimeSettings{
 		DetailLevel:        sg.settings.DetailLevel,
+		AutoDetail:         sg.settings.AutoDetail,
 		GammaLevel:         sg.settings.GammaLevel,
 		MusicVolume:        sg.opts.MusicVolume,
 		MUSPanMax:          sg.opts.MUSPanMax,

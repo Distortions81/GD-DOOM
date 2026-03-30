@@ -2,6 +2,7 @@ package gameplay
 
 type RuntimeSettings struct {
 	DetailLevel        int
+	AutoDetail         bool
 	GammaLevel         int
 	MusicVolume        float64
 	MUSPanMax          float64
@@ -35,6 +36,7 @@ type RuntimeSettingsResult struct {
 func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort bool, faithfulLevels, sourcePortLevels, gammaLevels int, maxOPLGain float64) RuntimeSettingsResult {
 	next := cur
 	next.DetailLevel = ClampDetailLevel(s.DetailLevel, sourcePort, faithfulLevels, sourcePortLevels)
+	next.AutoDetail = s.AutoDetail
 	next.MouseLook = s.MouseLook
 	next.MusicVolume = ClampVolume(s.MusicVolume)
 	next.OPLVolume = ClampOPLVolume(s.OPLVolume, maxOPLGain)

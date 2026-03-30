@@ -796,6 +796,7 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	cfgPath := filepath.Join(td, "config.toml")
 	in := doomsession.RuntimeSettings{
 		DetailLevel:        2,
+		AutoDetail:         true,
 		GammaLevel:         5,
 		MusicVolume:        1.0,
 		MUSPanMax:          0.8,
@@ -821,6 +822,9 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.GammaLevel == nil || *cfg.GammaLevel != in.GammaLevel {
 		t.Fatalf("gamma_level=%v want %d", cfg.GammaLevel, in.GammaLevel)
+	}
+	if cfg.AutoDetail == nil || *cfg.AutoDetail != in.AutoDetail {
+		t.Fatalf("auto_detail=%v want %v", cfg.AutoDetail, in.AutoDetail)
 	}
 	if cfg.MusicVolume == nil || *cfg.MusicVolume != in.MusicVolume {
 		t.Fatalf("music_volume=%v want %v", cfg.MusicVolume, in.MusicVolume)

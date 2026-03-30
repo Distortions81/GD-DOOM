@@ -773,6 +773,10 @@ type game struct {
 	floorPlaneOrd                []*floorVisplane
 	floorSpans                   []floorSpan
 	detailLevel                  int
+	autoDetailEnabled            bool
+	autoDetailCooldown           int
+	autoDetailLowSamples         int
+	autoDetailHighSamples        int
 	runtimeSettingsSeen          bool
 	runtimeSettingsLast          RuntimeSettings
 	subSectorPolySrc             []uint8
@@ -1288,6 +1292,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	if opts.InitialDetailLevel >= 0 {
 		g.detailLevel = clampDetailLevelForMode(opts.InitialDetailLevel, opts.SourcePortMode)
 	}
+	g.autoDetailEnabled = opts.AutoDetail
 	if opts.InitialGammaLevel > 0 {
 		g.gammaLevel = clampGamma(opts.InitialGammaLevel)
 	}
@@ -2101,6 +2106,9 @@ func (g *game) initSkyLayerShader() {
 
 func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
 	if sourcePort {
+		if isWASMBuild() && len(sourcePortDetailDivisors) > 2 {
+			return 2
+		}
 		if len(sourcePortDetailDivisors) > 1 {
 			return 1
 		}
@@ -2133,17 +2141,156 @@ func faithfulDetailPresetSize(level int) (int, int) {
 	return detailPresets[level][0], detailPresets[level][1]
 }
 
+func (g *game) setDetailLevel(level int) bool {
+	if g == nil {
+		return false
+	}
+	level = clampDetailLevelForMode(level, g.opts.SourcePortMode)
+	if level == g.detailLevel {
+		return false
+	}
+	g.detailLevel = level
+	if g.opts.SourcePortMode {
+		// Detail ratio changes rewire sourceport internal resolution, so force a
+		// clean sky projection/image state before the next frame.
+		g.resetSkyLayerPipeline(false)
+	} else {
+		w, h := faithfulDetailPresetSize(g.detailLevel)
+		if g.viewW != w || g.viewH != h {
+			g.viewW = w
+			g.viewH = h
+			_, _, worldW, worldH := boundsViewMetrics(g.bounds)
+			g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
+		}
+	}
+	g.mouseLookSet = false
+	g.mouseLookSuppressTicks = detailMouseSuppressTicks
+	g.syncRenderState()
+	return true
+}
+
+func (g *game) detailHUDLabel() string {
+	if g == nil {
+		return ""
+	}
+	if g.autoDetailEnabled {
+		return "AUTO"
+	}
+	if g.opts.SourcePortMode {
+		div := g.sourcePortDetailDivisor()
+		if div <= 1 {
+			return "1x"
+		}
+		return fmt.Sprintf("1/%dx", div)
+	}
+	switch {
+	case g.lowDetailMode():
+		return "LOW"
+	case g.detailLevel == len(detailPresets)-1:
+		return "EXTRA HIGH"
+	default:
+		return "HIGH"
+	}
+}
+
+func (g *game) detailLevelLabelFor(level int) string {
+	if g == nil {
+		return ""
+	}
+	level = clampDetailLevelForMode(level, g.opts.SourcePortMode)
+	if g.opts.SourcePortMode {
+		div := 1
+		if level >= 0 && level < len(sourcePortDetailDivisors) {
+			div = sourcePortDetailDivisors[level]
+		}
+		if div <= 1 {
+			return "1x"
+		}
+		return fmt.Sprintf("1/%dx", div)
+	}
+	switch {
+	case level == 1:
+		return "LOW"
+	case level == len(detailPresets)-1:
+		return "EXTRA HIGH"
+	default:
+		return "HIGH"
+	}
+}
+
+func (g *game) applyAutoDetailSample(fps, renderMS float64) {
+	if g == nil || !g.autoDetailEnabled {
+		return
+	}
+	if g.mode != viewWalk {
+		return
+	}
+	if g.autoDetailCooldown > 0 {
+		g.autoDetailCooldown--
+		return
+	}
+	const (
+		targetFPS            = 60.0
+		lowFPS               = targetFPS - 3.0
+		veryLowFPS           = targetFPS - 10.0
+		highFPS              = targetFPS + 6.0
+		highRenderMS         = 1000.0 / targetFPS
+		extraHeadroomRender  = 13.5
+		lowSamplesToDrop     = 2
+		highSamplesToRecover = 4
+		cooldownSamples      = 3
+	)
+	if fps < veryLowFPS || renderMS > highRenderMS {
+		g.autoDetailLowSamples++
+		g.autoDetailHighSamples = 0
+	} else if fps >= highFPS && renderMS <= extraHeadroomRender {
+		g.autoDetailHighSamples++
+		g.autoDetailLowSamples = 0
+	} else if fps < lowFPS {
+		g.autoDetailLowSamples++
+		g.autoDetailHighSamples = 0
+	} else {
+		g.autoDetailLowSamples = 0
+		g.autoDetailHighSamples = 0
+	}
+	if g.autoDetailLowSamples >= lowSamplesToDrop {
+		next := clampDetailLevelForMode(g.detailLevel+1, g.opts.SourcePortMode)
+		if g.setDetailLevel(next) {
+			g.setHUDMessage(fmt.Sprintf("Detail: AUTO DOWN -> %s", g.detailLevelLabelFor(next)), 70)
+			g.autoDetailCooldown = cooldownSamples
+		}
+		g.autoDetailLowSamples = 0
+		g.autoDetailHighSamples = 0
+		return
+	}
+	if g.autoDetailHighSamples >= highSamplesToRecover {
+		next := clampDetailLevelForMode(g.detailLevel-1, g.opts.SourcePortMode)
+		if g.setDetailLevel(next) {
+			g.setHUDMessage(fmt.Sprintf("Detail: AUTO UP -> %s", g.detailLevelLabelFor(next)), 70)
+			g.autoDetailCooldown = cooldownSamples
+		}
+		g.autoDetailLowSamples = 0
+		g.autoDetailHighSamples = 0
+	}
+}
+
 func (g *game) cycleDetailLevel() {
 	if len(detailPresets) == 0 {
 		return
 	}
+	g.autoDetailEnabled = false
+	g.autoDetailCooldown = 0
+	g.autoDetailLowSamples = 0
+	g.autoDetailHighSamples = 0
+	next := g.detailLevel
 	if len(detailPresets) > 1 {
-		if g.detailLevel == 0 {
-			g.detailLevel = 1
+		if next == 0 {
+			next = 1
 		} else {
-			g.detailLevel = 0
+			next = 0
 		}
 	}
+	_ = g.setDetailLevel(next)
 	label := "HIGH"
 	switch {
 	case g.lowDetailMode():
@@ -2151,19 +2298,7 @@ func (g *game) cycleDetailLevel() {
 	case g.detailLevel == len(detailPresets)-1:
 		label = "EXTRA HIGH"
 	}
-	w, h := faithfulDetailPresetSize(g.detailLevel)
-	if g.viewW != w || g.viewH != h {
-		g.viewW = w
-		g.viewH = h
-		_, _, worldW, worldH := boundsViewMetrics(g.bounds)
-		g.State.Refit(worldW, worldH, g.viewW, g.viewH, doomInitialZoomMul)
-	}
 	g.setHUDMessage(fmt.Sprintf("Detail: %s", label), 70)
-	// Avoid a large turn delta on the next walk-mode update after viewport size changes.
-	g.mouseLookSet = false
-	g.mouseLookSuppressTicks = detailMouseSuppressTicks
-	// Keep interpolation state aligned to current state to prevent one-frame render pops.
-	g.syncRenderState()
 }
 
 func (g *game) sourcePortDetailDivisor() int {
@@ -2185,18 +2320,13 @@ func (g *game) cycleSourcePortDetailLevel() {
 	if len(sourcePortDetailDivisors) == 0 {
 		return
 	}
-	g.detailLevel = (g.detailLevel + 1) % len(sourcePortDetailDivisors)
-	div := g.sourcePortDetailDivisor()
-	if div <= 1 {
-		g.setHUDMessage("Detail: 1x", 70)
-	} else {
-		g.setHUDMessage(fmt.Sprintf("Detail: 1/%dx", div), 70)
-	}
-	// Detail ratio changes rewire sourceport internal resolution, so force a
-	// clean sky projection/image state before the next frame.
-	g.resetSkyLayerPipeline(false)
-	g.mouseLookSet = false
-	g.mouseLookSuppressTicks = detailMouseSuppressTicks
+	g.autoDetailEnabled = false
+	g.autoDetailCooldown = 0
+	g.autoDetailLowSamples = 0
+	g.autoDetailHighSamples = 0
+	next := (g.detailLevel + 1) % len(sourcePortDetailDivisors)
+	_ = g.setDetailLevel(next)
+	g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailHUDLabel()), 70)
 }
 
 func (g *game) mouseLookTurnRaw(dx int) int64 {
@@ -2224,6 +2354,7 @@ func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
 func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 	return RuntimeSettings{
 		DetailLevel:        g.detailLevel,
+		AutoDetail:         g.autoDetailEnabled,
 		GammaLevel:         g.gammaLevel,
 		MusicVolume:        g.opts.MusicVolume,
 		MUSPanMax:          g.opts.MUSPanMax,
@@ -19977,6 +20108,7 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 		g.fpsDisplayText = formatFPSDisplay(g.fpsDisplay, g.renderMSAvg)
 		g.ticDisplayText = formatTicDisplay(g.worldTic, g.ticRateDisplay)
 		g.renderStageText = formatRenderStageDisplay(g.renderStageMS)
+		g.applyAutoDetailSample(g.fpsDisplay, g.renderMSAvg)
 		g.fpsFrames = 0
 		g.renderAccum = 0
 		g.fpsStamp = now

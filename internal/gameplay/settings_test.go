@@ -6,6 +6,7 @@ func TestApplyRuntimeSettingsFaithfulForcesParityLineMode(t *testing.T) {
 	cur := PersistentSettings{LineColorMode: "doom", ThingRenderMode: "sprites", MusicVolume: 0.5}
 	got := ApplyRuntimeSettings(cur, RuntimeSettings{
 		DetailLevel:      99,
+		AutoDetail:       true,
 		GammaLevel:       99,
 		MusicVolume:      2,
 		OPLVolume:        9,
@@ -20,6 +21,9 @@ func TestApplyRuntimeSettingsFaithfulForcesParityLineMode(t *testing.T) {
 
 	if got.Settings.DetailLevel != 2 {
 		t.Fatalf("detail=%d want 2", got.Settings.DetailLevel)
+	}
+	if !got.Settings.AutoDetail {
+		t.Fatal("autoDetail should be preserved")
 	}
 	if got.Settings.GammaLevel != 6 {
 		t.Fatalf("gamma=%d want 6", got.Settings.GammaLevel)

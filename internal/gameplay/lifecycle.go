@@ -4,6 +4,7 @@ import "gddoom/internal/mapdata"
 
 type PersistentSettings struct {
 	DetailLevel      int
+	AutoDetail       bool
 	RotateView       bool
 	MouseLook        bool
 	MouseLookSpeed   float64
@@ -25,6 +26,7 @@ type PersistentSettings struct {
 
 type AppliedPersistentSettings struct {
 	DetailLevel      int
+	AutoDetail       bool
 	RotateView       bool
 	MouseLook        bool
 	MouseLookSpeed   float64
@@ -47,6 +49,7 @@ type AppliedPersistentSettings struct {
 func ApplyPersistentSettings(s PersistentSettings, sourcePort bool, faithfulLevels, sourcePortLevels, gammaLevels int, maxOPLGain float64, kageShader, hasPalette bool, normalReveal, allMapReveal int) AppliedPersistentSettings {
 	return AppliedPersistentSettings{
 		DetailLevel:      ClampDetailLevel(s.DetailLevel, sourcePort, faithfulLevels, sourcePortLevels),
+		AutoDetail:       s.AutoDetail,
 		RotateView:       s.RotateView,
 		MouseLook:        s.MouseLook,
 		MouseLookSpeed:   s.MouseLookSpeed,
