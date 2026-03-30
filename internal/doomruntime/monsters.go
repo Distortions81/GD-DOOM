@@ -3335,7 +3335,12 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	}
 	if g.opts.ZombiemanThinkerBlend && i >= 0 && i < len(g.thingDoomState) {
-		if totalTics, ok := thingThinkerBlendProfile(typ, g.thingDoomState[i]); ok {
+		if totalTics, ok := thingThinkerBlendProfileExact(typ, g.thingDoomState[i]); ok {
+			g.startThingRenderBlend(i, prevX, prevY, totalTics)
+		}
+	}
+	if g.opts.ZombiemanThinkerBlend {
+		if totalTics, ok := thingThinkerBlendProfileGeneric(g, i, typ); ok {
 			g.startThingRenderBlend(i, prevX, prevY, totalTics)
 		}
 	}

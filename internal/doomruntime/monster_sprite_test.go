@@ -255,6 +255,67 @@ func TestThingRenderPosFixed_UsesLostSoulChaseStateBlend(t *testing.T) {
 	}
 }
 
+func TestThingRenderPosFixed_UsesImpChaseStateBlend(t *testing.T) {
+	g := &game{
+		opts:                  Options{ZombiemanThinkerBlend: true},
+		thingRenderBlendFromX: []int64{0},
+		thingRenderBlendFromY: []int64{0},
+		thingRenderBlendTics:  []int{3},
+		thingX:                []int64{90 * fracUnit},
+		thingY:                []int64{45 * fracUnit},
+		thingZState:           []int64{0},
+		thingFloorState:       []int64{0},
+		thingCeilState:        []int64{128 * fracUnit},
+		thingSupportValid:     []bool{true},
+		thingState:            []monsterThinkState{monsterStateSee},
+		thingStateTics:        []int{3},
+	}
+	th := mapdata.Thing{Type: 3001}
+
+	x, y, _ := g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(15*fracUnit); got != want {
+		t.Fatalf("x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(45*fracUnit/6); got != want {
+		t.Fatalf("y=%d want=%d", got, want)
+	}
+}
+
+func TestThingRenderPosFixed_UsesDemonChaseStateBlend(t *testing.T) {
+	g := &game{
+		opts:                  Options{ZombiemanThinkerBlend: true},
+		thingRenderBlendFromX: []int64{0},
+		thingRenderBlendFromY: []int64{0},
+		thingRenderBlendTics:  []int{2},
+		thingX:                []int64{80 * fracUnit},
+		thingY:                []int64{40 * fracUnit},
+		thingZState:           []int64{0},
+		thingFloorState:       []int64{0},
+		thingCeilState:        []int64{128 * fracUnit},
+		thingSupportValid:     []bool{true},
+		thingState:            []monsterThinkState{monsterStateSee},
+		thingStateTics:        []int{2},
+	}
+	th := mapdata.Thing{Type: 3002}
+
+	x, y, _ := g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(20*fracUnit); got != want {
+		t.Fatalf("x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(10*fracUnit); got != want {
+		t.Fatalf("y=%d want=%d", got, want)
+	}
+
+	th.Type = 58
+	x, y, _ = g.thingRenderPosFixed(0, th, 0.5)
+	if got, want := x, int64(20*fracUnit); got != want {
+		t.Fatalf("spectre x=%d want=%d", got, want)
+	}
+	if got, want := y, int64(10*fracUnit); got != want {
+		t.Fatalf("spectre y=%d want=%d", got, want)
+	}
+}
+
 func TestMonsterSpriteNameForViewUsesPainFrame(t *testing.T) {
 	g := &game{
 		opts: Options{SpritePatchBank: map[string]WallTexture{

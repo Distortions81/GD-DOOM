@@ -18748,10 +18748,16 @@ func (g *game) thingRenderBlendAlpha(i int, th mapdata.Thing, alpha float64) (fl
 	if i >= len(g.thingRenderBlendTics) || g.thingRenderBlendTics[i] <= 1 {
 		return 0, false
 	}
-	if i >= len(g.thingStateTics) || i >= len(g.thingDoomState) {
+	if i >= len(g.thingStateTics) {
 		return 0, false
 	}
-	total, ok := thingThinkerBlendProfile(th.Type, g.thingDoomState[i])
+	total, ok := 0, false
+	if i < len(g.thingDoomState) {
+		total, ok = thingThinkerBlendProfileExact(th.Type, g.thingDoomState[i])
+	}
+	if !ok {
+		total, ok = thingThinkerBlendProfileGeneric(g, i, th.Type)
+	}
 	if !ok {
 		return 0, false
 	}
@@ -18769,7 +18775,7 @@ func (g *game) thingRenderBlendAlpha(i int, th mapdata.Thing, alpha float64) (fl
 	return blendAlpha, true
 }
 
-func thingThinkerBlendProfile(typ int16, state int) (int, bool) {
+func thingThinkerBlendProfileExact(typ int16, state int) (int, bool) {
 	switch typ {
 	case 3004:
 		if state >= 176 && state <= 183 {
@@ -18793,6 +18799,18 @@ func thingThinkerBlendProfile(typ int16, state int) (int, bool) {
 		}
 	}
 	return 0, false
+}
+
+func thingThinkerBlendProfileGeneric(g *game, i int, typ int16) (int, bool) {
+	if g == nil || i < 0 || i >= len(g.thingState) || g.thingState[i] != monsterStateSee {
+		return 0, false
+	}
+	switch typ {
+	case 3001, 3002, 58:
+		return g.monsterSeeStateTicsForPhase(i, typ), true
+	default:
+		return 0, false
+	}
 }
 
 func (g *game) startThingRenderBlend(i int, fromX, fromY int64, totalTics int) {
