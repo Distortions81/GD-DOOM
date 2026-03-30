@@ -256,7 +256,6 @@ if [[ "${USE_XVFB}" == "yes" ]]; then
     "${GDDOOM_BIN}" \
     -wad "${WAD_PATH}" \
     -demo "${DEMO_PATH}" \
-    -demo-exit-on-death \
     -trace-demo-state "${GD_TRACE}" \
     -no-vsync \
     "${GDDOOM_FLAGS[@]}" \
@@ -269,7 +268,6 @@ elif [[ "${USE_XVFB}" == "no" ]]; then
   "${GDDOOM_BIN}" \
     -wad "${WAD_PATH}" \
     -demo "${DEMO_PATH}" \
-    -demo-exit-on-death \
     -trace-demo-state "${GD_TRACE}" \
     -no-vsync \
     "${GDDOOM_FLAGS[@]}" \
@@ -278,7 +276,6 @@ elif [[ -n "${DISPLAY:-}" ]]; then
   "${GDDOOM_BIN}" \
     -wad "${WAD_PATH}" \
     -demo "${DEMO_PATH}" \
-    -demo-exit-on-death \
     -trace-demo-state "${GD_TRACE}" \
     -no-vsync \
     "${GDDOOM_FLAGS[@]}" \
@@ -292,7 +289,6 @@ else
     "${GDDOOM_BIN}" \
     -wad "${WAD_PATH}" \
     -demo "${DEMO_PATH}" \
-    -demo-exit-on-death \
     -trace-demo-state "${GD_TRACE}" \
     -no-vsync \
     "${GDDOOM_FLAGS[@]}" \

@@ -34,6 +34,7 @@ Notes:
 - The reference runtime already includes trace support via `-tracedemo` and `-tracefile`.
 - By default the harness symlinks the selected `--wad` into an isolated temp dir before launching the reference runtime, so extra IWADs in the repo root do not change which game data gets loaded.
 - GD-DOOM does not emit per-tic demo traces under `-render=false`.
+- The harness intentionally does not pass `-demo-exit-on-death`; for parity compares it traces the full demo rather than stopping on the first death tic.
 - The harness prefers a normal desktop run when `DISPLAY` is set.
 - If no display is available, the harness falls back to `xvfb-run`.
 - Use `--headless` to force `xvfb-run`, or `--no-headless` to require a desktop display.

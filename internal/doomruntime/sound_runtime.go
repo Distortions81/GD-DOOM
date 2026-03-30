@@ -134,9 +134,13 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 }
 
 func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool, pitchShift bool) *soundSystem {
+	var player *audiofx.SpatialPlayer
+	if clampVolume(sfxVolume) > 0 {
+		player = audiofx.NewSpatialPlayer(sfxVolume, sourcePort)
+	}
 	return &soundSystem{
 		bank:          bank,
-		player:        audiofx.NewSpatialPlayer(sfxVolume, sourcePort),
+		player:        player,
 		rand:          0x1f123bb5,
 		vanillaVolume: vanillaSFXVolume(sfxVolume),
 		pitchShift:    pitchShift,

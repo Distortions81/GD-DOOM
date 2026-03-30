@@ -600,7 +600,7 @@ func (sg *sessionGame) restartMapForRespawn() *mapdata.Map {
 }
 
 func (sg *sessionGame) initMusicPlayback() {
-	if sg == nil || (sg.opts.MapMusicLoader == nil && sg.opts.TitleMusicLoader == nil) {
+	if sg == nil || clampVolume(sg.opts.MusicVolume) <= 0 || (sg.opts.MapMusicLoader == nil && sg.opts.TitleMusicLoader == nil) {
 		return
 	}
 	ctl, err := sessionmusic.NewPlayback(
