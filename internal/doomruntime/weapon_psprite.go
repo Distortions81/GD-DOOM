@@ -528,10 +528,8 @@ func (g *game) renderWeaponOverlayState() (string, string, string, string, float
 		return currName, "", currFlash, "", float64(g.weaponPSpriteY), 1
 	}
 	y := lerp(float64(g.prevWeaponPSpriteY), float64(g.weaponPSpriteY), alpha)
-	if prevName == currName {
+	if prevName == currName && prevFlash == currFlash {
 		prevName = ""
-	}
-	if prevFlash == currFlash {
 		prevFlash = ""
 	}
 	return currName, prevName, currFlash, prevFlash, y, alpha
@@ -575,60 +573,46 @@ func (g *game) weaponBobDoom() (int, int) {
 
 func (g *game) spritePatch(name string) (*ebiten.Image, int, int, int, int, bool) {
 	key := strings.ToUpper(strings.TrimSpace(name))
-	p, ok := g.opts.SpritePatchBank[key]
-	if (!ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4) && g != nil {
-		if blended, okBlend := g.blendedSpritePatch(key); okBlend {
-			p = blended
-			ok = true
-		}
-	}
-	if (!ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4) && g != nil {
-		if base := fallbackSpritePatchKey(key); base != "" {
-			if tex, okBase := g.opts.SpritePatchBank[base]; okBase && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
-				key = base
-				p = tex
-				ok = true
-			}
-		}
-	}
+	resolvedKey, p, ok := g.resolveSpritePatchTexture(key)
 	if !ok || p.Width <= 0 || p.Height <= 0 || len(p.RGBA) != p.Width*p.Height*4 {
 		return nil, 0, 0, 0, 0, false
 	}
 	if g.spritePatchImg == nil {
 		g.spritePatchImg = make(map[string]*ebiten.Image, 256)
 	}
-	if img, ok := g.spritePatchImg[key]; ok {
+	if img, ok := g.spritePatchImg[resolvedKey]; ok {
 		return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 	}
-	g.debugImageAlloc("sprite-patch:"+key, p.Width, p.Height)
-	img := newDebugImage("sprite-patch:"+key, p.Width, p.Height)
+	g.debugImageAlloc("sprite-patch:"+resolvedKey, p.Width, p.Height)
+	img := newDebugImage("sprite-patch:"+resolvedKey, p.Width, p.Height)
 	img.WritePixels(p.RGBA)
-	g.spritePatchImg[key] = img
+	g.spritePatchImg[resolvedKey] = img
 	return img, p.Width, p.Height, p.OffsetX, p.OffsetY, true
 }
 
-func (g *game) blendedSpritePatch(key string) (WallTexture, bool) {
-	if g == nil {
+func (g *game) resolveSpritePatchTexture(name string) (string, WallTexture, bool) {
+	key := strings.ToUpper(strings.TrimSpace(name))
+	if key == "" || g == nil {
+		return "", WallTexture{}, false
+	}
+	if tex, ok := g.opts.SpritePatchBank[key]; ok && tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
+		return key, tex, true
+	}
+	if tex, ok := g.blendedSpritePatch(key); ok {
+		return key, tex, true
+	}
+	if tex, ok := g.compositeSpritePatch(key); ok {
+		return key, tex, true
+	}
+	if base := fallbackSpritePatchKey(key); base != "" {
+		return g.resolveSpritePatchTexture(base)
+	}
+	return "", WallTexture{}, false
+}
+
+func blendWallTexture(from, to WallTexture, alpha float64) (WallTexture, bool) {
+	if from.Width <= 0 || from.Height <= 0 || to.Width <= 0 || to.Height <= 0 {
 		return WallTexture{}, false
-	}
-	fromKey, toKey, numer, denom, ok := parseBlendSpritePatchKey(key)
-	if !ok || denom <= 0 || numer <= 0 {
-		return WallTexture{}, false
-	}
-	from, okFrom := g.opts.SpritePatchBank[fromKey]
-	to, okTo := g.opts.SpritePatchBank[toKey]
-	if !okFrom || !okTo || from.Width <= 0 || from.Height <= 0 || to.Width <= 0 || to.Height <= 0 {
-		return WallTexture{}, false
-	}
-	if len(from.RGBA) != from.Width*from.Height*4 || len(to.RGBA) != to.Width*to.Height*4 {
-		return WallTexture{}, false
-	}
-	alpha := float64(numer) / float64(denom)
-	if alpha <= 0 {
-		return from, true
-	}
-	if alpha >= 1 {
-		return to, true
 	}
 	left := min(-from.OffsetX, -to.OffsetX)
 	top := min(-from.OffsetY, -to.OffsetY)
@@ -671,6 +655,99 @@ func (g *game) blendedSpritePatch(key string) (WallTexture, bool) {
 	}, true
 }
 
+func (g *game) blendedSpritePatch(key string) (WallTexture, bool) {
+	if g == nil {
+		return WallTexture{}, false
+	}
+	fromKey, toKey, numer, denom, ok := parseBlendSpritePatchKey(key)
+	if !ok || denom <= 0 || numer <= 0 {
+		return WallTexture{}, false
+	}
+	_, from, okFrom := g.resolveSpritePatchTexture(fromKey)
+	_, to, okTo := g.resolveSpritePatchTexture(toKey)
+	if !okFrom || !okTo {
+		return WallTexture{}, false
+	}
+	alpha := float64(numer) / float64(denom)
+	if alpha <= 0 {
+		return from, true
+	}
+	if alpha >= 1 {
+		return to, true
+	}
+	return blendWallTexture(from, to, alpha)
+}
+
+func (g *game) compositeSpritePatch(key string) (WallTexture, bool) {
+	baseKey, overlayKey, ok := parseCompositeSpritePatchKey(key)
+	if !ok {
+		return WallTexture{}, false
+	}
+	_, base, okBase := g.resolveSpritePatchTexture(baseKey)
+	if !okBase {
+		return WallTexture{}, false
+	}
+	if overlayKey == "" {
+		return base, true
+	}
+	_, overlay, okOverlay := g.resolveSpritePatchTexture(overlayKey)
+	if !okOverlay {
+		return base, true
+	}
+	return compositeWallTextures(base, overlay)
+}
+
+func compositeWallTextures(base, overlay WallTexture) (WallTexture, bool) {
+	left := min(-base.OffsetX, -overlay.OffsetX)
+	top := min(-base.OffsetY, -overlay.OffsetY)
+	right := max(base.Width-base.OffsetX, overlay.Width-overlay.OffsetX)
+	bottom := max(base.Height-base.OffsetY, overlay.Height-overlay.OffsetY)
+	w := right - left
+	h := bottom - top
+	if w <= 0 || h <= 0 {
+		return WallTexture{}, false
+	}
+	rgba := make([]byte, w*h*4)
+	sample := func(tex WallTexture, x, y int) color.NRGBA {
+		tx := x + tex.OffsetX
+		ty := y + tex.OffsetY
+		if tx < 0 || tx >= tex.Width || ty < 0 || ty >= tex.Height {
+			return color.NRGBA{}
+		}
+		i := (ty*tex.Width + tx) * 4
+		return color.NRGBA{R: tex.RGBA[i], G: tex.RGBA[i+1], B: tex.RGBA[i+2], A: tex.RGBA[i+3]}
+	}
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			lx := x + left
+			ly := y + top
+			c0 := sample(base, lx, ly)
+			c1 := sample(overlay, lx, ly)
+			a1 := float64(c1.A) / 255.0
+			a0 := float64(c0.A) / 255.0
+			outA := a1 + a0*(1-a1)
+			i := (y*w + x) * 4
+			if outA <= 0 {
+				continue
+			}
+			r := (float64(c1.R)*a1 + float64(c0.R)*a0*(1-a1)) / outA
+			g := (float64(c1.G)*a1 + float64(c0.G)*a0*(1-a1)) / outA
+			b := (float64(c1.B)*a1 + float64(c0.B)*a0*(1-a1)) / outA
+			rgba[i+0] = uint8(math.Round(r))
+			rgba[i+1] = uint8(math.Round(g))
+			rgba[i+2] = uint8(math.Round(b))
+			rgba[i+3] = uint8(math.Round(outA * 255))
+		}
+	}
+	return WallTexture{
+		Width:   w,
+		Height:  h,
+		OffsetX: -left,
+		OffsetY: -top,
+		RGBA:    rgba,
+	}, true
+}
+
 func parseBlendSpritePatchKey(key string) (from, to string, numer, denom int, ok bool) {
 	gt := strings.IndexByte(key, '>')
 	hash := strings.IndexByte(key, '#')
@@ -693,6 +770,29 @@ func parseBlendSpritePatchKey(key string) (from, to string, numer, denom int, ok
 		numer = denom
 	}
 	return from, to, numer, denom, denom > 0
+}
+
+func parseCompositeSpritePatchKey(key string) (base, overlay string, ok bool) {
+	plus := strings.IndexByte(key, '+')
+	if plus <= 0 {
+		return "", "", false
+	}
+	base = strings.TrimSpace(key[:plus])
+	overlay = strings.TrimSpace(key[plus+1:])
+	if base == "" {
+		return "", "", false
+	}
+	return base, overlay, true
+}
+
+func weaponCompositePatchToken(base, flash string) string {
+	if base == "" {
+		return flash
+	}
+	if flash == "" {
+		return base
+	}
+	return base + "+" + flash
 }
 
 func fallbackSpritePatchKey(key string) string {
@@ -766,7 +866,9 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 		return
 	}
 	name, prevName, flash, prevFlash, logicalY, alpha := g.renderWeaponOverlayState()
-	if name == "" && prevName == "" {
+	currComposite := weaponCompositePatchToken(name, flash)
+	prevComposite := weaponCompositePatchToken(prevName, prevFlash)
+	if currComposite == "" && prevComposite == "" {
 		return
 	}
 	if logicalY == 0 {
@@ -793,16 +895,12 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 		const doomBaseYCenter = 100.5
 		y = float64(rect.Dy())/2 - (doomBaseYCenter-logicalY)*scale
 	}
-	if prevName != "" && name != "" && alpha > 0 && alpha < 1 {
-		blendName := fmt.Sprintf("%s>%s#%d/255", prevName, name, int(math.Round(alpha*255)))
+	if prevComposite != "" && currComposite != "" && alpha > 0 && alpha < 1 {
+		blendName := fmt.Sprintf("%s>%s#%d/255", prevComposite, currComposite, int(math.Round(alpha*255)))
 		_ = g.drawSpritePatch(target, blendName, x, y, scale, scale)
-	} else if name != "" {
-		_ = g.drawSpritePatch(target, name, x, y, scale, scale)
-	}
-	if prevFlash != "" && flash != "" && alpha > 0 && alpha < 1 {
-		blendName := fmt.Sprintf("%s>%s#%d/255", prevFlash, flash, int(math.Round(alpha*255)))
-		_ = g.drawSpritePatch(target, blendName, x, y, scale, scale)
-	} else if flash != "" {
-		_ = g.drawSpritePatch(target, flash, x, y, scale, scale)
+	} else if currComposite != "" {
+		_ = g.drawSpritePatch(target, currComposite, x, y, scale, scale)
+	} else if prevComposite != "" {
+		_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scale)
 	}
 }

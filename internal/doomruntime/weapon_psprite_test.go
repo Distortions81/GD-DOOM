@@ -286,6 +286,29 @@ func TestSpritePatch_MaterializesBlendedPatchToken(t *testing.T) {
 	}
 }
 
+func TestSpritePatch_MaterializesCompositeBlendToken(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"PISGA0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{10, 20, 30, 255}},
+				"PISGB0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{110, 120, 130, 255}},
+				"PISFA0": {Width: 1, Height: 1, OffsetX: 0, OffsetY: 0, RGBA: []byte{200, 210, 220, 255}},
+			},
+		},
+	}
+	key := "PISGA0>PISGB0+PISFA0#128/255"
+	_, w, h, _, _, ok := g.spritePatch(key)
+	if !ok {
+		t.Fatal("spritePatch should materialize blended composite patch")
+	}
+	if w != 1 || h != 1 {
+		t.Fatalf("got w=%d h=%d want 1x1", w, h)
+	}
+	if img := g.spritePatchImg[key]; img == nil {
+		t.Fatal("expected composite blended patch cached under token key")
+	}
+}
+
 func TestWeaponOverlayAnchorUsesDoomCenterX(t *testing.T) {
 	rectW := 640
 	scale := float64(rectW) / doomLogicalW
@@ -333,6 +356,36 @@ func TestRenderWeaponOverlayState_InterpolatesSourcePortPsprite(t *testing.T) {
 	}
 	if y != 36 {
 		t.Fatalf("interpolated y=%v want 36", y)
+	}
+	if alpha != 0.5 {
+		t.Fatalf("alpha=%v want 0.5", alpha)
+	}
+}
+
+func TestRenderWeaponOverlayState_KeepsPrevBaseWhenOnlyFlashChanges(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SourcePortMode: true,
+			SpritePatchBank: map[string]WallTexture{
+				"PISGA0": {Width: 1, Height: 1, RGBA: []byte{1, 2, 3, 255}},
+				"PISFA0": {Width: 1, Height: 1, RGBA: []byte{9, 10, 11, 255}},
+			},
+		},
+		prevWeaponState:      weaponStatePistolReady,
+		weaponState:          weaponStatePistolAtk1,
+		prevWeaponFlashState: weaponStateNone,
+		weaponFlashState:     weaponStatePistolFlash,
+		prevWeaponPSpriteY:   32,
+		weaponPSpriteY:       32,
+		renderAlpha:          0.5,
+	}
+
+	name, prevName, flash, prevFlash, _, alpha := g.renderWeaponOverlayState()
+	if name != "PISGA0" || prevName != "PISGA0" {
+		t.Fatalf("weapon names got current=%q prev=%q want PISGA0/PISGA0", name, prevName)
+	}
+	if flash != "PISFA0" || prevFlash != "" {
+		t.Fatalf("flash names got current=%q prev=%q want PISFA0/empty", flash, prevFlash)
 	}
 	if alpha != 0.5 {
 		t.Fatalf("alpha=%v want 0.5", alpha)
