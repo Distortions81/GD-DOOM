@@ -34,15 +34,18 @@ func TestInterpolateCameraAngle_SmoothsAcceleration(t *testing.T) {
 	}
 }
 
-func TestInterpolateCameraAngle_FallsBackToLinearOnTurnReversal(t *testing.T) {
+func TestInterpolateCameraAngle_SmoothsTurnReversal(t *testing.T) {
 	prevPrev := uint32(0)
 	prev := uint32(10)
 	curr := uint32(0)
 
 	got := interpolateCameraAngle(prevPrev, prev, curr, 0.5)
 	want := lerpAngle(prev, curr, 0.5)
-	if got != want {
-		t.Fatalf("got=%d want=%d", got, want)
+	if got <= curr || got >= prev {
+		t.Fatalf("got=%d want strictly between curr=%d and prev=%d", got, curr, prev)
+	}
+	if got <= want {
+		t.Fatalf("got=%d want greater than linear midpoint=%d for smoother reversal", got, want)
 	}
 }
 

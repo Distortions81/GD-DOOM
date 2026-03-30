@@ -30,6 +30,7 @@ type fileConfig struct {
 	ShowNoSkillItems           *bool    `toml:"show_no_skill_items"`
 	ShowAllItems               *bool    `toml:"show_all_items"`
 	MouseLook                  *bool    `toml:"mouselook"`
+	SmoothCameraYaw            *bool    `toml:"smooth_camera_yaw"`
 	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
 	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
 	MusicVolume                *float64 `toml:"music_volume"`

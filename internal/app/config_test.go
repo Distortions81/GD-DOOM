@@ -678,6 +678,35 @@ func TestRunParseRejectsInvalidMouseLookSpeed(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesSmoothCameraYaw(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("smooth_camera_yaw = false\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.SmoothCameraYaw == nil || *loaded.SmoothCameraYaw {
+		t.Fatalf("smooth_camera_yaw=%v want false", loaded.SmoothCameraYaw)
+	}
+}
+
+func TestRunParseAcceptsSmoothCameraYawFlag(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{"-wad", wadPath, "-render=false", "-smooth-camera-yaw=false"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=") {
+		t.Fatalf("stdout %q does not show successful parse output", out.String())
+	}
+}
+
 func TestRunParseRejectsInvalidMusicVolume(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer

@@ -103,6 +103,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultShowNoSkillItems := false
 	defaultShowAllItems := false
 	defaultMouseLook := true
+	defaultSmoothCameraYaw := true
 	defaultMouseLookSpeed := 0.5
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 1.0
@@ -213,6 +214,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.MouseLook != nil {
 			defaultMouseLook = *cfg.MouseLook
+		}
+		if cfg.SmoothCameraYaw != nil {
+			defaultSmoothCameraYaw = *cfg.SmoothCameraYaw
 		}
 		if cfg.MouseLookSpeed != nil {
 			defaultMouseLookSpeed = *cfg.MouseLookSpeed
@@ -395,6 +399,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	showNoSkillItems := fs.Bool("show-no-skill-items", defaultShowNoSkillItems, "show pickup items that have no skill bits set")
 	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
+	smoothCameraYaw := fs.Bool("smooth-camera-yaw", defaultSmoothCameraYaw, "smooth interpolated player camera yaw between sim ticks")
 	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
 	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
@@ -982,6 +987,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			ShowNoSkillItems:           *showNoSkillItems,
 			ShowAllItems:               *showAllItems,
 			MouseLook:                  *mouseLook,
+			SmoothCameraYaw:            *smoothCameraYaw,
 			MouseLookSpeed:             *mouseLookSpeed,
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
 			MusicVolume:                *musicVolume,

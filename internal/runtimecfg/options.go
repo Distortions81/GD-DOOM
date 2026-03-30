@@ -41,6 +41,7 @@ type Options struct {
 	ShowNoSkillItems           bool
 	ShowAllItems               bool
 	MouseLook                  bool
+	SmoothCameraYaw            bool
 	MouseLookSpeed             float64
 	KeyboardTurnSpeed          float64
 	MusicVolume                float64
