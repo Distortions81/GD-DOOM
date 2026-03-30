@@ -2218,6 +2218,37 @@ func (g *game) detailLevelLabelFor(level int) string {
 	}
 }
 
+func (g *game) estimatedRenderMSForDetailLevel(level int, renderMS float64) float64 {
+	if g == nil || renderMS <= 0 {
+		return renderMS
+	}
+	level = clampDetailLevelForMode(level, g.opts.SourcePortMode)
+	cur := clampDetailLevelForMode(g.detailLevel, g.opts.SourcePortMode)
+	if level == cur {
+		return renderMS
+	}
+	scale := 1.0
+	if g.opts.SourcePortMode {
+		curDiv := max(g.sourcePortDetailDivisor(), 1)
+		nextDiv := 1
+		if level >= 0 && level < len(sourcePortDetailDivisors) {
+			nextDiv = max(sourcePortDetailDivisors[level], 1)
+		}
+		scale = math.Pow(float64(curDiv)/float64(nextDiv), 2)
+	} else {
+		curW, curH := faithfulDetailPresetSize(cur)
+		nextW, nextH := faithfulDetailPresetSize(level)
+		curPixels := max(curW*curH, 1)
+		nextPixels := max(nextW*nextH, 1)
+		scale = float64(nextPixels) / float64(curPixels)
+		if cur == 1 && level == 0 {
+			// Low detail reuses the same buffer size but doubles columns.
+			scale = 2.0
+		}
+	}
+	return renderMS * scale
+}
+
 func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 	if g == nil || !g.autoDetailEnabled {
 		return
@@ -2233,17 +2264,18 @@ func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 		targetFPS            = 60.0
 		lowFPS               = targetFPS - 3.0
 		veryLowFPS           = targetFPS - 10.0
-		highFPS              = targetFPS + 6.0
 		highRenderMS         = 1000.0 / targetFPS
-		extraHeadroomRender  = 13.5
+		raiseRenderTargetMS  = 8.0
 		lowSamplesToDrop     = 2
 		highSamplesToRecover = 4
 		cooldownSamples      = 3
 	)
+	nextHigherDetail := clampDetailLevelForMode(g.detailLevel-1, g.opts.SourcePortMode)
+	projectedHigherRenderMS := g.estimatedRenderMSForDetailLevel(nextHigherDetail, renderMS)
 	if fps < veryLowFPS || renderMS > highRenderMS {
 		g.autoDetailLowSamples++
 		g.autoDetailHighSamples = 0
-	} else if fps >= highFPS && renderMS <= extraHeadroomRender {
+	} else if nextHigherDetail != g.detailLevel && fps >= lowFPS && renderMS < raiseRenderTargetMS && projectedHigherRenderMS < raiseRenderTargetMS {
 		g.autoDetailHighSamples++
 		g.autoDetailLowSamples = 0
 	} else if fps < lowFPS {
@@ -2278,16 +2310,22 @@ func (g *game) cycleDetailLevel() {
 	if len(detailPresets) == 0 {
 		return
 	}
-	g.autoDetailEnabled = false
 	g.autoDetailCooldown = 0
 	g.autoDetailLowSamples = 0
 	g.autoDetailHighSamples = 0
+	if g.autoDetailEnabled {
+		g.autoDetailEnabled = false
+		g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailLevelLabelFor(g.detailLevel)), 70)
+		return
+	}
 	next := g.detailLevel
 	if len(detailPresets) > 1 {
 		if next == 0 {
 			next = 1
 		} else {
-			next = 0
+			g.autoDetailEnabled = true
+			g.setHUDMessage("Detail: AUTO", 70)
+			return
 		}
 	}
 	_ = g.setDetailLevel(next)
@@ -2320,11 +2358,20 @@ func (g *game) cycleSourcePortDetailLevel() {
 	if len(sourcePortDetailDivisors) == 0 {
 		return
 	}
-	g.autoDetailEnabled = false
 	g.autoDetailCooldown = 0
 	g.autoDetailLowSamples = 0
 	g.autoDetailHighSamples = 0
+	if g.autoDetailEnabled {
+		g.autoDetailEnabled = false
+		g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailLevelLabelFor(g.detailLevel)), 70)
+		return
+	}
 	next := (g.detailLevel + 1) % len(sourcePortDetailDivisors)
+	if next == 0 {
+		g.autoDetailEnabled = true
+		g.setHUDMessage("Detail: AUTO", 70)
+		return
+	}
 	_ = g.setDetailLevel(next)
 	g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailHUDLabel()), 70)
 }

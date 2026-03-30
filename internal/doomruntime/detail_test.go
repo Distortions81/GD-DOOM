@@ -50,6 +50,13 @@ func TestDetailLevelLabelForSourcePort(t *testing.T) {
 	}
 }
 
+func TestEstimatedRenderMSForDetailLevelSourcePort(t *testing.T) {
+	g := &game{opts: Options{SourcePortMode: true}, detailLevel: 2}
+	if got := g.estimatedRenderMSForDetailLevel(1, 3.0); got != 6.75 {
+		t.Fatalf("estimatedRenderMSForDetailLevel()=%v want 6.75", got)
+	}
+}
+
 func TestCycleDetailLevelFaithfulTogglesHighLow(t *testing.T) {
 	g := &game{
 		State: mapview.ViewState{
@@ -62,18 +69,62 @@ func TestCycleDetailLevelFaithfulTogglesHighLow(t *testing.T) {
 		bounds: bounds{
 			minX: 0, minY: 0, maxX: 1024, maxY: 1024,
 		},
-		autoDetailEnabled: true,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	g.cycleDetailLevel()
+	if g.autoDetailEnabled {
+		t.Fatal("first manual detail cycle should disable auto detail")
+	}
+	if g.viewW != 320 || g.viewH != 200 || g.detailLevel != 0 {
+		t.Fatalf("after 1 cycle got %dx%d level=%d", g.viewW, g.viewH, g.detailLevel)
+	}
+	if g.useText != "Detail: HIGH" {
+		t.Fatalf("after 1 cycle useText=%q want Detail: HIGH", g.useText)
 	}
 	g.cycleDetailLevel()
 	if g.viewW != 320 || g.viewH != 200 || g.detailLevel != 1 {
-		t.Fatalf("after 1 cycle got %dx%d level=%d", g.viewW, g.viewH, g.detailLevel)
+		t.Fatalf("after 2 cycles got %dx%d level=%d", g.viewW, g.viewH, g.detailLevel)
 	}
-	if g.autoDetailEnabled {
-		t.Fatal("manual detail cycle should disable auto detail")
+	if g.useText != "Detail: LOW" {
+		t.Fatalf("after 2 cycles useText=%q want Detail: LOW", g.useText)
 	}
 	g.cycleDetailLevel()
-	if g.viewW != 320 || g.viewH != 200 || g.detailLevel != 0 {
-		t.Fatalf("after 2 cycles got %dx%d level=%d", g.viewW, g.viewH, g.detailLevel)
+	if !g.autoDetailEnabled {
+		t.Fatal("third detail cycle should return to auto detail")
+	}
+	if g.useText != "Detail: AUTO" {
+		t.Fatalf("after 3 cycles useText=%q want Detail: AUTO", g.useText)
+	}
+}
+
+func TestCycleSourcePortDetailLevelIncludesAuto(t *testing.T) {
+	g := &game{
+		opts:               Options{SourcePortMode: true},
+		detailLevel:        2,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	g.cycleSourcePortDetailLevel()
+	if g.autoDetailEnabled {
+		t.Fatal("first source-port cycle should disable auto detail")
+	}
+	if g.useText != "Detail: 1/3x" {
+		t.Fatalf("after 1 cycle useText=%q want Detail: 1/3x", g.useText)
+	}
+	g.cycleSourcePortDetailLevel()
+	if g.detailLevel != 3 {
+		t.Fatalf("after 2 cycles detail=%d want 3", g.detailLevel)
+	}
+	if g.useText != "Detail: 1/4x" {
+		t.Fatalf("after 2 cycles useText=%q want Detail: 1/4x", g.useText)
+	}
+	g.cycleSourcePortDetailLevel()
+	if !g.autoDetailEnabled {
+		t.Fatal("third source-port cycle should return to auto detail")
+	}
+	if g.useText != "Detail: AUTO" {
+		t.Fatalf("after 3 cycles useText=%q want Detail: AUTO", g.useText)
 	}
 }
 
@@ -110,13 +161,51 @@ func TestApplyAutoDetailSampleRaisesDetailAfterHeadroom(t *testing.T) {
 		hudMessagesEnabled: true,
 	}
 	for i := 0; i < 4; i++ {
-		g.applyAutoDetailSample(70, 12.0)
+		g.applyAutoDetailSample(70, 3.0)
 	}
 	if g.detailLevel != 1 {
 		t.Fatalf("detail after high-FPS samples=%d want 1", g.detailLevel)
 	}
 	if g.useText != "Detail: AUTO UP -> 1/2x" {
 		t.Fatalf("useText=%q want auto up message", g.useText)
+	}
+}
+
+func TestApplyAutoDetailSampleRaisesDetailAtVsyncCappedFPS(t *testing.T) {
+	g := &game{
+		opts:               Options{SourcePortMode: true},
+		mode:               viewWalk,
+		detailLevel:        2,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	for i := 0; i < 4; i++ {
+		g.applyAutoDetailSample(60.0, 3.0)
+	}
+	if g.detailLevel != 1 {
+		t.Fatalf("detail after vsync-capped samples=%d want 1", g.detailLevel)
+	}
+	if g.useText != "Detail: AUTO UP -> 1/2x" {
+		t.Fatalf("useText=%q want auto up message", g.useText)
+	}
+}
+
+func TestApplyAutoDetailSampleDoesNotRaiseWhenProjectedRenderExceedsBudget(t *testing.T) {
+	g := &game{
+		opts:               Options{SourcePortMode: true},
+		mode:               viewWalk,
+		detailLevel:        2,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	for i := 0; i < 4; i++ {
+		g.applyAutoDetailSample(60.0, 4.0)
+	}
+	if g.detailLevel != 2 {
+		t.Fatalf("detail after over-budget projected samples=%d want 2", g.detailLevel)
+	}
+	if g.useText != "" {
+		t.Fatalf("useText=%q want empty when no raise occurs", g.useText)
 	}
 }
 
