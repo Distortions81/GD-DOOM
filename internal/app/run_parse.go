@@ -75,13 +75,30 @@ func resolveForceWASMMode(args []string) bool {
 	return false
 }
 
+func normalizePositionalWADArg(args []string) ([]string, bool) {
+	if flagProvided(args, "wad") {
+		return args, false
+	}
+	normalized := append([]string(nil), args...)
+	if len(normalized) == 0 {
+		return normalized, false
+	}
+	arg := normalized[0]
+	if arg == "--" || strings.TrimSpace(arg) == "" || strings.HasPrefix(arg, "-") {
+		return normalized, false
+	}
+	normalized[0] = "-wad=" + arg
+	return normalized, true
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	const maxCLIAppOPLVolume = 4.0
+	normalizedArgs, positionalWADNormalized := normalizePositionalWADArg(args)
 	prevForceWASMMode := platformcfg.ForcedWASMMode()
-	platformcfg.SetForcedWASMMode(resolveForceWASMMode(args))
+	platformcfg.SetForcedWASMMode(resolveForceWASMMode(normalizedArgs))
 	defer platformcfg.SetForcedWASMMode(prevForceWASMMode)
 
-	configPath, configExplicit := resolveConfigPath(args)
+	configPath, configExplicit := resolveConfigPath(normalizedArgs)
 	cfg, err := loadConfig(configPath, configExplicit)
 	if err != nil {
 		fmt.Fprintf(stderr, "config error: %v\n", err)
@@ -366,17 +383,17 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	dumpMusicDir := fs.String("dump-music-dir", defaultDumpMusicDir, "output directory for -dump-music WAV exports")
 	forceWASMMode := fs.Bool("wasm-mode", platformcfg.ForcedWASMMode(), "force js/wasm runtime behavior on native builds")
 
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(normalizedArgs); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
 		fmt.Fprintf(stderr, "flag error: %v\n", err)
 		return 2
 	}
-	mapExplicit := flagProvided(args, "map") && strings.TrimSpace(*mapName) != ""
-	skyUpscaleFlagSet := flagProvided(args, "sky-upscale")
-	wadFlagSet := flagProvided(args, "wad")
-	positionalWADSet := false
+	mapExplicit := flagProvided(normalizedArgs, "map") && strings.TrimSpace(*mapName) != ""
+	skyUpscaleFlagSet := flagProvided(normalizedArgs, "sky-upscale")
+	wadFlagSet := flagProvided(normalizedArgs, "wad")
+	positionalWADSet := positionalWADNormalized
 	if !wadFlagSet && fs.NArg() > 0 {
 		if path := strings.TrimSpace(fs.Arg(0)); path != "" {
 			*wadPath = path
@@ -404,7 +421,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			invulnSet = true
 		}
 	})
-	detailLevelSet := flagProvided(args, "detail-level")
+	detailLevelSet := flagProvided(normalizedArgs, "detail-level")
 	if !detailLevelSet {
 		*detailLevel = configuredDetailLevelForMode(cfg, *sourcePortMode)
 	}

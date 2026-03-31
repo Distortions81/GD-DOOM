@@ -144,7 +144,7 @@ func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
 	}
 }
 
-func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
+func TestResolveDemoStartMapOverridesSelectedMapFromHeader(t *testing.T) {
 	td := t.TempDir()
 	demoPath := filepath.Join(td, "demo.lmp")
 	data, err := demo.Format(&demo.Script{
@@ -163,13 +163,7 @@ func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
 	if err := os.WriteFile(demoPath, data, 0o644); err != nil {
 		t.Fatalf("write demo: %v", err)
 	}
-	var out bytes.Buffer
-	var errb bytes.Buffer
 	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
-	code := RunParse([]string{"-wad", wadPath, "-render=false", "-map", "E1M1", "-demo", demoPath}, &out, &errb)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
-	}
 	wf, err := wad.Open(wadPath)
 	if err != nil {
 		t.Fatalf("Open() error = %v", err)

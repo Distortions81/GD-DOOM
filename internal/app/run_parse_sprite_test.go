@@ -221,8 +221,15 @@ func findRepoRootOrSkip(t *testing.T) string {
 	}
 	dir := wd
 	for i := 0; i < 8; i++ {
-		if st, err := os.Stat(filepath.Join(dir, "doom-source", "linuxdoom-1.10", "info.c")); err == nil && !st.IsDir() {
-			return dir
+		infoPath := filepath.Join(dir, "doom-source", "linuxdoom-1.10", "info.c")
+		goModPath := filepath.Join(dir, "go.mod")
+		runtimePath := filepath.Join(dir, "internal", "doomruntime", "game.go")
+		if info, err := os.Stat(infoPath); err == nil && !info.IsDir() {
+			if gomod, err := os.Stat(goModPath); err == nil && !gomod.IsDir() {
+				if runtime, err := os.Stat(runtimePath); err == nil && !runtime.IsDir() {
+					return dir
+				}
+			}
 		}
 		next := filepath.Dir(dir)
 		if next == dir {
