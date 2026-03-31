@@ -24,10 +24,8 @@ type fileConfig struct {
 	DetailLevelSourcePort      *int     `toml:"detail_level_sourceport"`
 	AutoDetail                 *bool    `toml:"auto_detail"`
 	GammaLevel                 *int     `toml:"gamma_level"`
-	Zoom                       *float64 `toml:"zoom"`
 	Player                     *int     `toml:"player"`
 	Skill                      *int     `toml:"skill"`
-	GameMode                   *string  `toml:"game_mode"`
 	ShowNoSkillItems           *bool    `toml:"show_no_skill_items"`
 	ShowAllItems               *bool    `toml:"show_all_items"`
 	MouseLook                  *bool    `toml:"mouselook"`
@@ -36,40 +34,20 @@ type fileConfig struct {
 	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
 	MusicVolume                *float64 `toml:"music_volume"`
 	MUSPanMax                  *float64 `toml:"mus_pan_max"`
-	OPLVolume                  *float64 `toml:"opl_volume"`
-	AudioPreEmphasis           *bool    `toml:"audio_preemphasis"`
-	OPL3Backend                *string  `toml:"opl3_backend"`
 	MusicBackend               *string  `toml:"music_backend"`
-	OPLBank                    *string  `toml:"opl_bank"`
 	SoundFont                  *string  `toml:"soundfont"`
 	SFXVolume                  *float64 `toml:"sfx_volume"`
-	SFXPitchShift              *bool    `toml:"sfx_pitch_shift"`
-	FastMonsters               *bool    `toml:"fast_monsters"`
 	AlwaysRun                  *bool    `toml:"always_run"`
 	AutoWeaponSwitch           *bool    `toml:"auto_weapon_switch"`
 	CheatLevel                 *int     `toml:"cheat_level"`
 	Invulnerable               *bool    `toml:"invulnerable"`
-	ImportTextures             *bool    `toml:"import_textures"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
-	SourcePortThingRenderMode  *string  `toml:"sourceport_thing_render_mode"`
-	SourcePortThingBlendFrames *bool    `toml:"sourceport_thing_blend_frames"`
-	SourcePortItemSprites      *bool    `toml:"sourceport_item_sprites"`
-	SourcePortSectorLighting   *bool    `toml:"sourceport_sector_lighting"`
-	DoomLighting               *bool    `toml:"doom_lighting"`
-	KageShader                 *bool    `toml:"kage_shader"`
 	GPUSky                     *bool    `toml:"gpu_sky"`
 	SkyUpscaleMode             *string  `toml:"sky_upscale"`
 	CRTEffect                  *bool    `toml:"crt_effect"`
-	WallOcclusion              *bool    `toml:"wall_occlusion"`
-	WallSpanReject             *bool    `toml:"wall_span_reject"`
-	WallSpanClip               *bool    `toml:"wall_span_clip"`
-	WallSliceOcclusion         *bool    `toml:"wall_slice_occlusion"`
-	BillboardClipping          *bool    `toml:"billboard_clipping"`
 	RendererWorkers            *int     `toml:"renderer_workers"`
 	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
 	AllCheats                  *bool    `toml:"all_cheats"`
-	StartInMap                 *bool    `toml:"start_in_map"`
-	ImportPCSpeaker            *bool    `toml:"import_pcspeaker"`
 	Details                    *bool    `toml:"details"`
 	CPUProfile                 *string  `toml:"cpu_profile"`
 	MemProfile                 *string  `toml:"mem_profile"`
@@ -164,7 +142,6 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	cfg.GammaLevel = intPtr(s.GammaLevel)
 	cfg.MusicVolume = floatPtr(s.MusicVolume)
 	cfg.MUSPanMax = floatPtr(s.MUSPanMax)
-	cfg.OPLVolume = floatPtr(s.OPLVolume)
 	cfg.MusicBackend = strPtr(strings.TrimSpace(s.MusicBackend))
 	cfg.SoundFont = strPtr(strings.TrimSpace(s.MusicSoundFontPath))
 	cfg.SFXVolume = floatPtr(s.SFXVolume)
