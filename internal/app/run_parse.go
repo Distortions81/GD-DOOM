@@ -192,9 +192,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.Height != nil {
 			defaultHeight = *cfg.Height
 		}
-		if cfg.Zoom != nil {
-			defaultZoom = *cfg.Zoom
-		}
 		if cfg.GammaLevel != nil {
 			defaultGammaLevel = *cfg.GammaLevel
 		}
@@ -203,9 +200,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.Skill != nil {
 			defaultSkill = *cfg.Skill
-		}
-		if cfg.GameMode != nil {
-			defaultGameMode = *cfg.GameMode
 		}
 		if cfg.ShowNoSkillItems != nil {
 			defaultShowNoSkillItems = *cfg.ShowNoSkillItems
@@ -231,31 +225,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.MUSPanMax != nil {
 			defaultMUSPanMax = *cfg.MUSPanMax
 		}
-		if cfg.OPLVolume != nil {
-			defaultOPLVolume = *cfg.OPLVolume
-		}
-		if cfg.AudioPreEmphasis != nil {
-			defaultAudioPreEmphasis = *cfg.AudioPreEmphasis
-		}
 		if cfg.MusicBackend != nil {
 			defaultMusicBackend = *cfg.MusicBackend
-		} else if cfg.OPL3Backend != nil {
-			defaultMusicBackend = *cfg.OPL3Backend
-		}
-		if cfg.OPLBank != nil {
-			defaultOPLBankPath = *cfg.OPLBank
 		}
 		if cfg.SoundFont != nil {
 			defaultSoundFontPath = *cfg.SoundFont
 		}
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
-		}
-		if cfg.SFXPitchShift != nil {
-			defaultSFXPitchShift = *cfg.SFXPitchShift
-		}
-		if cfg.FastMonsters != nil {
-			defaultFastMonsters = *cfg.FastMonsters
 		}
 		if cfg.AlwaysRun != nil {
 			defaultAlwaysRun = *cfg.AlwaysRun
@@ -272,28 +249,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
-		if cfg.SourcePortThingRenderMode != nil {
-			defaultSourcePortThingRenderMode = *cfg.SourcePortThingRenderMode
-		}
-		if cfg.SourcePortThingBlendFrames != nil {
-			defaultSourcePortThingBlendFrames = *cfg.SourcePortThingBlendFrames
-		}
-		if cfg.SourcePortItemSprites != nil {
-			if *cfg.SourcePortItemSprites {
-				defaultSourcePortThingRenderMode = "items"
-			} else {
-				defaultSourcePortThingRenderMode = "glyphs"
-			}
-		}
-		if cfg.SourcePortSectorLighting != nil {
-			defaultSourcePortSectorLighting = *cfg.SourcePortSectorLighting
-		}
-		if cfg.DoomLighting != nil {
-			defaultDoomLighting = *cfg.DoomLighting
-		}
-		if cfg.KageShader != nil {
-			defaultKageShader = *cfg.KageShader
-		}
 		if cfg.GPUSky != nil {
 			defaultGPUSky = *cfg.GPUSky
 		}
@@ -303,21 +258,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.CRTEffect != nil {
 			defaultCRTEffect = *cfg.CRTEffect
 		}
-		if cfg.WallOcclusion != nil {
-			defaultWallOcclusion = *cfg.WallOcclusion
-		}
-		if cfg.WallSpanReject != nil {
-			defaultWallSpanReject = *cfg.WallSpanReject
-		}
-		if cfg.WallSpanClip != nil {
-			defaultWallSpanClip = *cfg.WallSpanClip
-		}
-		if cfg.WallSliceOcclusion != nil {
-			defaultWallSliceOcclusion = *cfg.WallSliceOcclusion
-		}
-		if cfg.BillboardClipping != nil {
-			defaultBillboardClipping = *cfg.BillboardClipping
-		}
 		if cfg.RendererWorkers != nil {
 			defaultRendererWorkers = *cfg.RendererWorkers
 		}
@@ -326,15 +266,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.AllCheats != nil {
 			defaultAllCheats = *cfg.AllCheats
-		}
-		if cfg.StartInMap != nil {
-			defaultStartInMap = *cfg.StartInMap
-		}
-		if cfg.ImportPCSpeaker != nil {
-			defaultImportPCSpeaker = *cfg.ImportPCSpeaker
-		}
-		if cfg.ImportTextures != nil {
-			defaultImportTextures = *cfg.ImportTextures
 		}
 		if cfg.CPUProfile != nil {
 			defaultCPUProfile = *cfg.CPUProfile
@@ -390,13 +321,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	debugEvents := fs.Bool("debug-events", defaultDebugEvents, "enable gameplay event logs like teleports and level restarts")
 	width := fs.Int("width", defaultWidth, "render window width")
 	height := fs.Int("height", defaultHeight, "render window height")
-	zoom := fs.Float64("zoom", defaultZoom, "starting zoom (>0 overrides Doom-style startup zoom)")
 	detailLevel := fs.Int("detail-level", defaultDetailLevel, "startup detail level (-1 keeps mode default)")
 	autoDetail := fs.Bool("auto-detail", defaultAutoDetail, "detail level AUTO adjusts to target 60 FPS")
 	gammaLevel := fs.Int("gamma-level", defaultGammaLevel, "startup gamma level (-1 keeps mode default)")
 	playerSlot := fs.Int("player", defaultPlayer, "player start slot (1-4)")
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
-	gameMode := fs.String("game-mode", defaultGameMode, "thing spawn game mode (single|coop|deathmatch)")
 	showNoSkillItems := fs.Bool("show-no-skill-items", defaultShowNoSkillItems, "show pickup items that have no skill bits set")
 	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
@@ -405,42 +334,21 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
 	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
-	oplVolume := fs.Float64("opl-volume", defaultOPLVolume, "FM synth output gain (0..4; default 2.0)")
-	audioPreEmphasis := fs.Bool("audio-preemphasis", defaultAudioPreEmphasis, "enable FM music pre-emphasis filter")
 	musicBackend := fs.String("music-backend", defaultMusicBackend, "music synth backend (auto|impsynth|meltysynth)")
-	opl3Backend := fs.String("opl3-backend", defaultMusicBackend, "legacy alias for -music-backend")
-	oplBank := fs.String("opl-bank", defaultOPLBankPath, "path to external patch bank (.op2/GENMIDI bytes) overriding WAD GENMIDI")
 	soundFont := fs.String("soundfont", defaultSoundFontPath, "path to external SoundFont (.sf2) used by the meltysynth music backend")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
-	sfxPitchShift := fs.Bool("sfx-pitch-shift", defaultSFXPitchShift, "enable Doom-style random sound pitch shifting")
-	fastMonsters := fs.Bool("fastmonsters", defaultFastMonsters, "enable fast monsters (-fast style)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
-	sourcePortThingRenderMode := fs.String("sourceport-thing-render-mode", defaultSourcePortThingRenderMode, "sourceport automap thing rendering (glyphs|items|sprites)")
-	sourcePortThingBlendFrames := fs.Bool("sourceport-thing-blend-frames", defaultSourcePortThingBlendFrames, "allow blended sub-tic thing sprite frames on the automap")
-	zombiemanThinkerBlend := fs.Bool("zombieman-thinker-blend", defaultZombiemanThinkerBlend, "spread prime monster walk-step rendering across their thinker chase states")
 	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
-	sourcePortSectorLighting := fs.Bool("sourceport-sector-lighting", defaultSourcePortSectorLighting, "show classic sector lighting while in sourceport mode")
-	doomLighting := fs.Bool("doom-lighting", defaultDoomLighting, "enable Doom lighting math/colormap shading")
-	kageShader := fs.Bool("kage-shader", defaultKageShader, "enable Kage postprocess shaders (palette/gamma/crt)")
 	gpuSky := fs.Bool("gpu-sky", defaultGPUSky, "enable experimental GPU sky path in sourceport mode (default off)")
 	skyUpscale := fs.String("sky-upscale", defaultSkyUpscaleMode, "GPU sky upscale mode (nearest|sharp)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
-	wallOcclusion := fs.Bool("wall-occlusion", defaultWallOcclusion, "enable coarse wall-span occlusion for wall traversal")
-	wallSpanReject := fs.Bool("wall-span-reject", defaultWallSpanReject, "enable early solid-span wall rejection")
-	wallSpanClip := fs.Bool("wall-span-clip", defaultWallSpanClip, "clip solid wall x-ranges against coarse wall spans")
-	wallSliceOcclusion := fs.Bool("wall-slice-occlusion", defaultWallSliceOcclusion, "enable wall-slice triangle/bbox occlusion checks")
-	billboardClipping := fs.Bool("billboard-clipping", defaultBillboardClipping, "enable sprite/thing/projectile/puff clipping and occlusion")
 	rendererWorkers := fs.Int("renderer-workers", defaultRendererWorkers, "renderer worker count (0 uses built-in default policy)")
-	noCullClipping := fs.Bool("no-cull-clipping", false, "disable wall occlusion and billboard clipping together")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
-	startInMap := fs.Bool("start-in-map", defaultStartInMap, "start with automap open")
-	importPCSpeaker := fs.Bool("import-pcspeaker", defaultImportPCSpeaker, "import Doom PC speaker sounds (DP* lumps) at startup")
-	importTextures := fs.Bool("import-textures", defaultImportTextures, "parse Doom texture data and build wall textures for doom-basic 3D renderer")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
 	memProfile := fs.String("memprofile", defaultMemProfile, "write Go heap profile to file on exit")
 	execTrace := fs.String("exectrace", defaultExecTrace, "write Go execution trace to file")
@@ -452,10 +360,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
-	showTPS := fs.Bool("show-tps", defaultShowTPS, "show tick/TPS host timing lines in the perf overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
 	aniDump := fs.String("anidump", defaultAniDump, "dump animation sprite series for seed (example: SMGTA0)")
-	aniDumpDir := fs.String("anidump-dir", defaultAniDumpDir, "output directory for -anidump PNG dumps")
 	dumpMusic := fs.Bool("dump-music", defaultDumpMusic, "render music WAV exports for detected IWADs or the selected -wad")
 	dumpMusicDir := fs.String("dump-music-dir", defaultDumpMusicDir, "output directory for -dump-music WAV exports")
 	forceWASMMode := fs.Bool("wasm-mode", platformcfg.ForcedWASMMode(), "force js/wasm runtime behavior on native builds")
@@ -504,12 +410,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	resolvedCheatLevel := *cheatLevel
 	resolvedInvuln := *invuln
-	resolvedGameMode := strings.ToLower(strings.TrimSpace(*gameMode))
+	resolvedGameMode := strings.ToLower(strings.TrimSpace(defaultGameMode))
 	switch resolvedGameMode {
 	case "single", "coop", "deathmatch":
 	default:
-		fmt.Fprintf(stderr, "invalid -game-mode %q (want single|coop|deathmatch)\n", *gameMode)
-		return 2
+		resolvedGameMode = "single"
 	}
 	if *keyboardTurnSpeed <= 0 {
 		fmt.Fprintf(stderr, "invalid -keyboard-turn-speed %.3f (must be > 0)\n", *keyboardTurnSpeed)
@@ -527,10 +432,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "invalid -mus-pan-max %.3f (must be between 0 and 1)\n", *musPanMax)
 		return 2
 	}
-	if *oplVolume < 0 || *oplVolume > maxCLIAppOPLVolume {
-		fmt.Fprintf(stderr, "invalid -opl-volume %.3f (must be between 0 and %.1f)\n", *oplVolume, maxCLIAppOPLVolume)
-		return 2
-	}
 	if *sfxVolume < 0 || *sfxVolume > 1 {
 		fmt.Fprintf(stderr, "invalid -sfx-volume %.3f (must be between 0 and 1)\n", *sfxVolume)
 		return 2
@@ -540,9 +441,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	resolvedMusicBackendInput := strings.TrimSpace(*musicBackend)
-	if flagProvided(args, "opl3-backend") && !flagProvided(args, "music-backend") {
-		resolvedMusicBackendInput = strings.TrimSpace(*opl3Backend)
-	}
 	resolvedMusicBackend, err := music.ParseBackend(resolvedMusicBackendInput)
 	if err != nil {
 		fmt.Fprintf(stderr, "invalid music backend %q: %v\n", resolvedMusicBackendInput, err)
@@ -665,19 +563,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	if shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
-		if *noCullClipping {
-			*wallOcclusion = false
-			*wallSpanReject = false
-			*wallSpanClip = false
-			*wallSliceOcclusion = false
-			*billboardClipping = false
-		}
 		buildCfg := renderBuildConfig{
 			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
 			mapExplicit:                mapExplicit,
 			width:                      *width,
 			height:                     *height,
-			zoom:                       *zoom,
+			zoom:                       defaultZoom,
 			detailLevel:                *detailLevel,
 			detailLevelExplicit:        detailLevelSet,
 			autoDetail:                 *autoDetail,
@@ -696,41 +587,41 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                *musicVolume,
 			musPanMax:                  *musPanMax,
-			oplVolume:                  *oplVolume,
-			audioPreEmphasis:           *audioPreEmphasis,
+			oplVolume:                  defaultOPLVolume,
+			audioPreEmphasis:           defaultAudioPreEmphasis,
 			musicBackend:               resolvedMusicBackend,
-			oplBankPath:                strings.TrimSpace(*oplBank),
+			oplBankPath:                defaultOPLBankPath,
 			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  *sfxVolume,
-			sfxPitchShift:              *sfxPitchShift,
-			fastMonsters:               *fastMonsters,
+			sfxPitchShift:              defaultSFXPitchShift,
+			fastMonsters:               defaultFastMonsters,
 			alwaysRun:                  *alwaysRun,
 			autoWeaponSwitch:           *autoWeaponSwitch,
 			cheatLevel:                 resolvedCheatLevel,
 			invuln:                     resolvedInvuln,
 			sourcePortMode:             *sourcePortMode,
-			sourcePortThingRenderMode:  *sourcePortThingRenderMode,
-			sourcePortThingBlendFrames: *sourcePortThingBlendFrames,
-			sourcePortSectorLighting:   *sourcePortSectorLighting,
-			doomLighting:               *doomLighting,
-			kageShader:                 *kageShader,
+			sourcePortThingRenderMode:  defaultSourcePortThingRenderMode,
+			sourcePortThingBlendFrames: defaultSourcePortThingBlendFrames,
+			sourcePortSectorLighting:   defaultSourcePortSectorLighting,
+			doomLighting:               defaultDoomLighting,
+			kageShader:                 defaultKageShader,
 			gpuSky:                     *gpuSky,
 			skyUpscaleMode:             *skyUpscale,
 			crtEffect:                  *crtEffect,
-			wallOcclusion:              *wallOcclusion,
-			wallSpanReject:             *wallSpanReject,
-			wallSpanClip:               *wallSpanClip,
-			wallSliceOcclusion:         *wallSliceOcclusion,
-			billboardClipping:          *billboardClipping,
+			wallOcclusion:              defaultWallOcclusion,
+			wallSpanReject:             defaultWallSpanReject,
+			wallSpanClip:               defaultWallSpanClip,
+			wallSliceOcclusion:         defaultWallSliceOcclusion,
+			billboardClipping:          defaultBillboardClipping,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
 			noFPS:                      *noFPS,
 			noAspectCorrection:         *noAspectCorrection,
 			allCheats:                  *allCheats,
-			startInMap:                 *startInMap,
-			importPCSpeaker:            *importPCSpeaker,
-			importTextures:             *importTextures,
+			startInMap:                 defaultStartInMap,
+			importPCSpeaker:            defaultImportPCSpeaker,
+			importTextures:             defaultImportTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
 			demoExitOnDeath:            *demoExitOnDeath,
@@ -803,7 +694,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
 	musicSoundFontChoices := detectAvailableSoundFonts("soundfonts")
-	musicPatchBank, err := resolveMusicPatchBank(wf, strings.TrimSpace(*oplBank), stderr)
+	musicPatchBank, err := resolveMusicPatchBank(wf, defaultOPLBankPath, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "music patch import error: %v\n", err)
 		return 1
@@ -813,7 +704,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "music soundfont import error: %v\n", err)
 		return 1
 	}
-	if *importPCSpeaker {
+	if defaultImportPCSpeaker {
 		dpr := sound.ImportPCSpeakerSounds(wf)
 		fmt.Fprintf(stderr, "sound import: dp(found=%d decoded=%d failed=%d) ds(found=%d decoded=%d failed=%d)\n",
 			dpr.Found, dpr.Decoded, dpr.Failed,
@@ -847,7 +738,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			doomColorMap = cmData[:doomColorMapRows*256]
 		}
 	}
-	if *importTextures {
+	if defaultImportTextures {
 		ts, terr := doomtex.LoadFromWAD(wf)
 		if terr != nil {
 			fmt.Fprintf(stderr, "texture import failed: %v\n", terr)
@@ -925,11 +816,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "monster sprite import: patches=%d\n", len(spritePatchBank))
 		}
 		if strings.TrimSpace(*aniDump) != "" {
-			if derr := dumpSpriteAnimationSeries(*aniDumpDir, *aniDump, spritePatchBank); derr != nil {
+			if derr := dumpSpriteAnimationSeries(defaultAniDumpDir, *aniDump, spritePatchBank); derr != nil {
 				fmt.Fprintf(stderr, "anidump error: %v\n", derr)
 				return 1
 			}
-			fmt.Fprintf(stderr, "anidump: seed=%s dir=%s\n", strings.ToUpper(strings.TrimSpace(*aniDump)), strings.TrimSpace(*aniDumpDir))
+			fmt.Fprintf(stderr, "anidump: seed=%s dir=%s\n", strings.ToUpper(strings.TrimSpace(*aniDump)), defaultAniDumpDir)
 		}
 		intermissionPatchBank = buildIntermissionPatchBank(texSet)
 		if len(intermissionPatchBank) > 0 {
@@ -959,17 +850,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
 
 	if *render {
-		if *noCullClipping {
-			*wallOcclusion = false
-			*wallSpanReject = false
-			*wallSpanClip = false
-			*wallSliceOcclusion = false
-			*billboardClipping = false
-		}
 		opts := doomsession.Options{
 			Width:                      *width,
 			Height:                     *height,
-			StartZoom:                  *zoom,
+			StartZoom:                  defaultZoom,
 			InitialDetailLevel:         *detailLevel,
 			AutoDetail:                 *autoDetail,
 			InitialGammaLevel:          *gammaLevel,
@@ -987,41 +871,41 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
 			MusicVolume:                *musicVolume,
 			MUSPanMax:                  *musPanMax,
-			OPLVolume:                  *oplVolume,
-			AudioPreEmphasis:           *audioPreEmphasis,
+			OPLVolume:                  defaultOPLVolume,
+			AudioPreEmphasis:           defaultAudioPreEmphasis,
 			MusicBackend:               resolvedMusicBackend,
 			OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 			SFXVolume:                  *sfxVolume,
-			SFXPitchShift:              *sfxPitchShift,
-			FastMonsters:               *fastMonsters,
+			SFXPitchShift:              defaultSFXPitchShift,
+			FastMonsters:               defaultFastMonsters,
 			AlwaysRun:                  *alwaysRun,
 			AutoWeaponSwitch:           *autoWeaponSwitch,
 			CheatLevel:                 resolvedCheatLevel,
 			Invulnerable:               resolvedInvuln,
 			SourcePortMode:             *sourcePortMode,
-			SourcePortThingRenderMode:  *sourcePortThingRenderMode,
-			SourcePortThingBlendFrames: *sourcePortThingBlendFrames,
-			ZombiemanThinkerBlend:      *zombiemanThinkerBlend,
+			SourcePortThingRenderMode:  defaultSourcePortThingRenderMode,
+			SourcePortThingBlendFrames: defaultSourcePortThingBlendFrames,
+			ZombiemanThinkerBlend:      defaultZombiemanThinkerBlend,
 			DebugMonsterThinkerBlend:   *debugMonsterThinkerBlend,
-			SourcePortSectorLighting:   *sourcePortSectorLighting,
-			DisableDoomLighting:        !*doomLighting,
-			KageShader:                 *kageShader,
+			SourcePortSectorLighting:   defaultSourcePortSectorLighting,
+			DisableDoomLighting:        !defaultDoomLighting,
+			KageShader:                 defaultKageShader,
 			GPUSky:                     *gpuSky,
 			SkyUpscaleMode:             *skyUpscale,
 			CRTEffect:                  *crtEffect,
-			DisableWallOcclusion:       !*wallOcclusion,
-			DisableWallSpanReject:      !*wallSpanReject,
-			DisableWallSpanClip:        !*wallSpanClip,
-			DisableWallSliceOcclusion:  !*wallSliceOcclusion,
-			DisableBillboardClipping:   !*billboardClipping,
+			DisableWallOcclusion:       !defaultWallOcclusion,
+			DisableWallSpanReject:      !defaultWallSpanReject,
+			DisableWallSpanClip:        !defaultWallSpanClip,
+			DisableWallSliceOcclusion:  !defaultWallSliceOcclusion,
+			DisableBillboardClipping:   !defaultBillboardClipping,
 			RendererWorkers:            *rendererWorkers,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
 			NoFPS:                      *noFPS,
-			ShowTPS:                    *showTPS,
+			ShowTPS:                    defaultShowTPS,
 			DisableAspectCorrection:    *noAspectCorrection,
 			AllCheats:                  *allCheats,
-			StartInMapMode:             explicitMapStartInMap(*startInMap, mapExplicit),
+			StartInMapMode:             explicitMapStartInMap(defaultStartInMap, mapExplicit),
 			FlatBank:                   flatBank,
 			FlatBankIndexed:            flatBankIndexed,
 			WallTexBank:                wallTexBank,
@@ -1175,19 +1059,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if !*render && (resolvedDemoTracePath != "" || resolvedDemoPath != "") {
-		if *noCullClipping {
-			*wallOcclusion = false
-			*wallSpanReject = false
-			*wallSpanClip = false
-			*wallSliceOcclusion = false
-			*billboardClipping = false
-		}
 		buildCfg := renderBuildConfig{
 			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
 			mapExplicit:                mapExplicit,
 			width:                      *width,
 			height:                     *height,
-			zoom:                       *zoom,
+			zoom:                       defaultZoom,
 			detailLevel:                *detailLevel,
 			detailLevelExplicit:        detailLevelSet,
 			autoDetail:                 *autoDetail,
@@ -1206,42 +1083,42 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                0,
 			musPanMax:                  *musPanMax,
-			oplVolume:                  *oplVolume,
-			audioPreEmphasis:           *audioPreEmphasis,
+			oplVolume:                  defaultOPLVolume,
+			audioPreEmphasis:           defaultAudioPreEmphasis,
 			musicBackend:               resolvedMusicBackend,
-			oplBankPath:                strings.TrimSpace(*oplBank),
+			oplBankPath:                defaultOPLBankPath,
 			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  0,
-			sfxPitchShift:              *sfxPitchShift,
-			fastMonsters:               *fastMonsters,
+			sfxPitchShift:              defaultSFXPitchShift,
+			fastMonsters:               defaultFastMonsters,
 			alwaysRun:                  *alwaysRun,
 			autoWeaponSwitch:           *autoWeaponSwitch,
 			cheatLevel:                 resolvedCheatLevel,
 			invuln:                     resolvedInvuln,
 			sourcePortMode:             *sourcePortMode,
-			sourcePortThingRenderMode:  *sourcePortThingRenderMode,
-			sourcePortThingBlendFrames: *sourcePortThingBlendFrames,
-			sourcePortSectorLighting:   *sourcePortSectorLighting,
-			doomLighting:               *doomLighting,
-			kageShader:                 *kageShader,
+			sourcePortThingRenderMode:  defaultSourcePortThingRenderMode,
+			sourcePortThingBlendFrames: defaultSourcePortThingBlendFrames,
+			sourcePortSectorLighting:   defaultSourcePortSectorLighting,
+			doomLighting:               defaultDoomLighting,
+			kageShader:                 defaultKageShader,
 			gpuSky:                     *gpuSky,
 			skyUpscaleMode:             *skyUpscale,
 			crtEffect:                  *crtEffect,
-			wallOcclusion:              *wallOcclusion,
-			wallSpanReject:             *wallSpanReject,
-			wallSpanClip:               *wallSpanClip,
-			wallSliceOcclusion:         *wallSliceOcclusion,
-			billboardClipping:          *billboardClipping,
+			wallOcclusion:              defaultWallOcclusion,
+			wallSpanReject:             defaultWallSpanReject,
+			wallSpanClip:               defaultWallSpanClip,
+			wallSliceOcclusion:         defaultWallSliceOcclusion,
+			billboardClipping:          defaultBillboardClipping,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
 			noFPS:                      *noFPS,
-			showTPS:                    *showTPS,
+			showTPS:                    defaultShowTPS,
 			noAspectCorrection:         *noAspectCorrection,
 			allCheats:                  *allCheats,
-			startInMap:                 explicitMapStartInMap(*startInMap, mapExplicit),
-			importPCSpeaker:            *importPCSpeaker,
-			importTextures:             *importTextures,
+			startInMap:                 explicitMapStartInMap(defaultStartInMap, mapExplicit),
+			importPCSpeaker:            defaultImportPCSpeaker,
+			importTextures:             defaultImportTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
 			demoExitOnDeath:            *demoExitOnDeath,
