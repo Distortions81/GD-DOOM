@@ -16463,6 +16463,9 @@ func (g *game) sectorLightLevelCached(sec int) int16 {
 	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
 		entry := g.sectorPlaneCache[sec]
+		if !g.sectorLightCacheValid && entry.light == 0 && entry.prevLight == 0 && g.m != nil && sec < len(g.m.Sectors) {
+			return g.m.Sectors[sec].Light
+		}
 		if entry.lightKind == sectorLightEffectNone {
 			return entry.light
 		}
@@ -16483,6 +16486,9 @@ func (g *game) sectorLightMulCached(sec int) uint32 {
 	}
 	if g != nil && sec >= 0 && sec < len(g.sectorPlaneCache) {
 		entry := g.sectorPlaneCache[sec]
+		if !g.sectorLightCacheValid && entry.lightMul == 0 && entry.prevLightMul == 0 && g.m != nil && sec < len(g.m.Sectors) {
+			return uint32(sectorLightMul(g.m.Sectors[sec].Light))
+		}
 		if entry.lightKind == sectorLightEffectNone {
 			return uint32(entry.lightMul)
 		}

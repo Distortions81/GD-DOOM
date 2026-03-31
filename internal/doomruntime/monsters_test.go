@@ -1284,7 +1284,7 @@ func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 		{68, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}, []int{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}},
 		{16, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
 		{71, false, []byte{'A', 'A', 'B', 'B', 'C', 'C'}, []int{3, 3, 3, 3, 3, 3}},
-		{7, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
+		{7, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D', 'E', 'E', 'F', 'F'}, []int{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}},
 		{84, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
 	}
 	for _, tt := range seeTests {

@@ -403,7 +403,7 @@ func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 			bbox:     [4]int64{64 * fracUnit, -64 * fracUnit, 64 * fracUnit, 64 * fracUnit},
 			slope:    slopeVertical,
 		}},
-		p: player{x: 128 * fracUnit, y: 0, angle: doomAng180, floorz: 0, ceilz: 128 * fracUnit, subsector: -1, sector: 0, viewHeight: playerViewHeight},
+		p: player{x: 120 * fracUnit, y: 0, angle: doomAng180, floorz: 0, ceilz: 128 * fracUnit, subsector: -1, sector: 0, viewHeight: playerViewHeight},
 	}
 	g.physForLine = []int{0}
 	g.doors = map[int]*doorThinker{

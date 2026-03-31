@@ -494,6 +494,73 @@ func monsterDoomPainRemainingTics(state int) int {
 	}
 }
 
+func monsterCompatToDoomState(typ int16, state monsterThinkState, phase, attackPhase int) int {
+	if phase < 0 {
+		phase = 0
+	}
+	if attackPhase < 0 {
+		attackPhase = 0
+	}
+	switch typ {
+	case 3004:
+		switch state {
+		case monsterStateSpawn:
+			return 174 + min(phase, 1)
+		case monsterStateSee:
+			return 176 + min(phase, 7)
+		case monsterStateAttack:
+			return 184 + min(attackPhase, 2)
+		case monsterStatePain:
+			return 187 + min(phase, 1)
+		}
+	case 9:
+		switch state {
+		case monsterStateSpawn:
+			return 208 + min(phase, 1)
+		case monsterStateSee:
+			return 210 + min(phase, 7)
+		case monsterStateAttack:
+			return 218 + min(attackPhase, 2)
+		case monsterStatePain:
+			return 221 + min(phase, 1)
+		}
+	case 65:
+		switch state {
+		case monsterStateSpawn:
+			return 406 + min(phase, 1)
+		case monsterStateSee:
+			return 408 + min(phase, 7)
+		case monsterStateAttack:
+			return 416 + min(attackPhase, 3)
+		case monsterStatePain:
+			return 420 + min(phase, 1)
+		}
+	case 3005:
+		switch state {
+		case monsterStateSpawn:
+			return 502
+		case monsterStateSee:
+			return 503
+		case monsterStateAttack:
+			return 504 + min(attackPhase, 2)
+		case monsterStatePain:
+			return 507 + min(phase, 2)
+		}
+	case 3006:
+		switch state {
+		case monsterStateSpawn:
+			return 585 + min(phase, 1)
+		case monsterStateSee:
+			return 587 + min(phase, 1)
+		case monsterStateAttack:
+			return 589 + min(attackPhase, 3)
+		case monsterStatePain:
+			return 593 + min(phase, 1)
+		}
+	}
+	return noDoomMonsterState
+}
+
 func (g *game) tickMonsters() {
 	if g.m == nil {
 		return
@@ -505,6 +572,9 @@ func (g *game) tickMonsters() {
 }
 
 func (g *game) tickThingThinker(i int, th mapdata.Thing) {
+	if g != nil && g.m != nil {
+		g.ensureMonsterAIState()
+	}
 	if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 		return
 	}
@@ -566,16 +636,16 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 	if !isMonster(th.Type) || g.thingHP[i] <= 0 {
 		return
 	}
+	if !g.monsterTargetAlive() && !g.monsterHasExplicitTarget(i) {
+		g.clearMonsterTargetState(i)
+		return
+	}
 	if monsterUsesExactDoomStateMachine(th.Type) {
 		g.debugMonsterTick(i, "start")
 		g.debugThingState(i, th, "live")
 		g.tickMonsterMomentum(i, th)
 		g.tickExactDoomMonster(i, th)
 		g.debugMonsterTick(i, "end")
-		return
-	}
-	if !g.monsterTargetAlive() && !g.monsterHasExplicitTarget(i) {
-		g.clearMonsterTargetState(i)
 		return
 	}
 	g.debugMonsterTick(i, "start")
@@ -1612,6 +1682,9 @@ func (g *game) syncExactDoomMonsterCompatState(i int, typ int16) {
 	if i < len(g.thingAttackTics) {
 		if compatState == monsterStateAttack {
 			g.thingAttackTics[i] = monsterDoomAttackRemainingTics(state)
+			if def, ok := monsterDoomStateDef(state); ok && i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
+				g.thingAttackTics[i] += g.thingStateTics[i] - def.tics
+			}
 		} else {
 			g.thingAttackTics[i] = 0
 		}
@@ -1619,6 +1692,9 @@ func (g *game) syncExactDoomMonsterCompatState(i int, typ int16) {
 	if i < len(g.thingPainTics) {
 		if compatState == monsterStatePain {
 			g.thingPainTics[i] = monsterDoomPainRemainingTics(state)
+			if def, ok := monsterDoomStateDef(state); ok && i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
+				g.thingPainTics[i] += g.thingStateTics[i] - def.tics
+			}
 		} else {
 			g.thingPainTics[i] = 0
 		}
@@ -1768,7 +1844,22 @@ func (g *game) tickExactDoomMonster(i int, th mapdata.Thing) bool {
 		return true
 	}
 	if g.thingDoomState[i] == noDoomMonsterState {
-		state := monsterInitialDoomState(th.Type)
+		compatState := monsterStateSpawn
+		if i < len(g.thingState) {
+			compatState = g.thingState[i]
+		}
+		compatPhase := 0
+		if i < len(g.thingStatePhase) {
+			compatPhase = g.thingStatePhase[i]
+		}
+		attackPhase := 0
+		if i < len(g.thingAttackPhase) {
+			attackPhase = g.thingAttackPhase[i]
+		}
+		state := monsterCompatToDoomState(th.Type, compatState, compatPhase, attackPhase)
+		if state == noDoomMonsterState {
+			state = monsterInitialDoomState(th.Type)
+		}
 		if state != noDoomMonsterState {
 			if i < len(g.thingStateTics) && g.thingStateTics[i] <= 0 {
 				// Test fixtures often construct monsters without running full spawn
@@ -4634,7 +4725,10 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeRe
 		return monsterMoveProbeResult{}
 	}
 	tmfloor, tmceil, tmdrop, checkPosOK := g.checkPositionForActor(x, y, thingTypeRadius(typ), true, i, true)
-	probeLines := append([]int{}, g.probeSpecialLinesForMover(i)...)
+	var probeLines []int
+	if base := g.probeSpecialLinesForMover(i); len(base) > 0 {
+		probeLines = append([]int(nil), base...)
+	}
 	if g.debugMonsterMoveEnabled() {
 		g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) checkpos=%v floor=%d ceil=%d drop=%d", x, y, checkPosOK, tmfloor, tmceil, tmdrop))
 	}

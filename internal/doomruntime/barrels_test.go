@@ -351,6 +351,7 @@ func TestProjectileHitsBarrel(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{{Type: barrelThingType, X: 0, Y: 0}},
+			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
 		},
 		thingCollected:  []bool{false},
 		thingHP:         []int{1},
@@ -359,6 +360,11 @@ func TestProjectileHitsBarrel(t *testing.T) {
 		thingStateTics:  []int{6},
 		thingStatePhase: []int{0},
 		thingDeathTics:  []int{0},
+		thingSectorCache: []int{
+			0,
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
 		projectiles: []projectile{
 			{
 				x:           -30 * fracUnit,

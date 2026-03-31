@@ -2,18 +2,31 @@
 
 Current stock-demo status after the recent `doom-source` parity work on monster walk-special handling and lost-soul death behavior.
 
+Fresh no-render playback rerun on `2026-03-30`:
+
+- `DOOM1 demo1`: completed, `tics=5026`, `map=E1M5`, `player_dead=true`
+- `DOOM1 demo2`: completed, `tics=3836`, `map=E1M3`, `player_dead=true`
+- `DOOM1 demo3`: completed, `tics=2134`, `map=E1M7`, `player_dead=true`
+- `DOOM2 demo1`: completed, `tics=1205`, `map=MAP11`, `player_dead=true`
+- `DOOM2 demo2`: completed, `tics=2001`, `map=MAP05`, `player_dead=true`
+- `DOOM2 demo3`: completed, `tics=4471`, `map=MAP26`, `player_dead=true`
+
+Those fresh runs used GD-DOOM's `-render=false` demo path only. The trace-compare sections below still reflect the latest full `doom-source` comparison runs, not a same-turn full retrace of all six demos.
+
 ## DOOM1
 
 ### demo1
 
 - Status: clean
 - Result: `traces match lines=4973`
+- Fresh no-render replay: `completed tics=5026 map=E1M5`
 - Notes: fixed the sector-71 normal-door thinker lifetime mismatch at `gametic 306`; the close-complete path now defers thinker retirement by one prune cycle, while open-only door completions still remove immediately.
 
 ### demo2
 
 - Status: clean
 - Result: `traces match lines=3778`
+- Fresh no-render replay: `completed tics=3836 map=E1M3`
 - Fixed in: `3ab5506`, `9570e96`
 - Notes: still clean after the current chase/harness changes.
 
@@ -21,6 +34,7 @@ Current stock-demo status after the recent `doom-source` parity work on monster 
 
 - Status: clean
 - Result: `traces match lines=2079`
+- Fresh no-render replay: `completed tics=2134 map=E1M7`
 - Fixed in: `2adb2c6`
 - Notes: still clean after the later `DOOM2-DEMO3` fixes.
 
@@ -30,18 +44,21 @@ Current stock-demo status after the recent `doom-source` parity work on monster 
 
 - Status: clean
 - Result: `traces match lines=1063`
+- Fresh no-render replay: `completed tics=1205 map=MAP11`
 - Notes: fixed a real hitscan parity bug at `gametic 791`. A shotgun pellet was incorrectly seeing an imp through a blocking line because `doomPointOnDivlineSide` did not match Doom's shifted fixed-point side test in `PIT_AddThingIntercepts`. The fresh rerun is now fully trace-clean.
 
 ### demo2
 
 - Status: clean
 - Result: `traces match lines=1949`
+- Fresh no-render replay: `completed tics=2001 map=MAP05`
 - Fixed in: `2adb2c6`
 - Notes: still clean after the current monster walk-special and lost-soul death fixes.
 
 ### demo3
 
 - Status: desync
+- Fresh no-render replay: `completed tics=4471 map=MAP26`
 - Current first mismatch: `line=2802` (`gametic 2801`)
 - Path: `root.mobj_count`
 - Reference: `245`

@@ -1356,6 +1356,7 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	if g.m == nil || thingIdx >= len(g.m.Things) {
 		return
 	}
+	g.ensureMonsterAIState()
 	if g.thingHP[thingIdx] <= 0 {
 		return
 	}

@@ -545,11 +545,14 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, curX, c
 		return false
 	}
 	if candidateLineIdxs != nil {
-		for _, lineIdx := range candidateLineIdxs {
-			if lineIdx < 0 || lineIdx >= len(g.physForLine) {
-				continue
+		for _, candidate := range candidateLineIdxs {
+			physIdx := -1
+			switch {
+			case candidate >= 0 && candidate < len(g.lines):
+				physIdx = candidate
+			case candidate >= 0 && candidate < len(g.physForLine):
+				physIdx = g.physForLine[candidate]
 			}
-			physIdx := g.physForLine[lineIdx]
 			if physIdx < 0 || physIdx >= len(g.lines) {
 				continue
 			}
