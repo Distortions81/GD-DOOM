@@ -92,6 +92,7 @@ func (g *game) tickPlayerBody() {
 	prevY := g.p.y
 	prevMomX := g.p.momx
 	prevMomY := g.p.momy
+	g.p.teleportedThisTic = false
 	if g.isDead {
 		g.xyMovement()
 		g.zMovement()
@@ -100,7 +101,7 @@ func (g *game) tickPlayerBody() {
 	g.xyMovement()
 	movedThisTic := g.p.x != prevX || g.p.y != prevY
 	hadMomentum := prevMomX != 0 || prevMomY != 0
-	if !g.isDead && (movedThisTic || hadMomentum) {
+	if !g.isDead && !g.p.teleportedThisTic && (movedThisTic || hadMomentum) {
 		g.processThingPickups()
 	}
 	g.zMovement()
@@ -759,7 +760,7 @@ func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMon
 
 	if !skipThingBlock && g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
 		debugProbef("blocked by thing")
-		return 0, 0, 0, false
+		return tmfloor, tmceil, tmdrop, false
 	}
 
 	g.validCount++
@@ -870,14 +871,14 @@ func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMon
 					debugProbef("scan block bx=%d by=%d", bx, by)
 				}
 				if !g.blockLinesIterator(bx, by, iter) {
-					return 0, 0, 0, false
+					return tmfloor, tmceil, tmdrop, false
 				}
 			}
 		}
 	} else {
 		for i := range g.lines {
 			if !processPhysLine(i) {
-				return 0, 0, 0, false
+				return tmfloor, tmceil, tmdrop, false
 			}
 		}
 	}

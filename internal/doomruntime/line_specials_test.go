@@ -817,6 +817,55 @@ func TestCheckWalkSpecialLines_DoesNotTriggerRemoteTeleport(t *testing.T) {
 	}
 }
 
+func TestCheckWalkSpecialLines_PlayerTeleportSuppressesSameTicPickupSweep(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 128, Y: 64, Angle: 90, Type: teleportThingType},
+				{X: 128, Y: 32, Type: 2014, Flags: skillMediumBits},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 7},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial:    []uint16{97},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		opts:        Options{SkillLevel: 3, GameMode: gameModeSingle, ShowNoSkillItems: false},
+		p: player{
+			x:      -32 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+
+	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit {
+		t.Fatalf("player teleported to (%d,%d), want (%d,%d)", g.p.x, g.p.y, 128*fracUnit, 64*fracUnit)
+	}
+	if !g.p.teleportedThisTic {
+		t.Fatal("player teleport should suppress same-tic post-move pickup sweep")
+	}
+}
+
 func TestCheckWalkSpecialLines_DoesNotTriggerTeleportFromBackSide(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

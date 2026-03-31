@@ -1196,6 +1196,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			g.p.momx = 0
 			g.p.momy = 0
 			g.p.reactionTime = 18
+			g.p.teleportedThisTic = true
 			g.p.angle = destAngle
 		} else {
 			g.setThingPosFixed(actorIdx, tx, ty)
