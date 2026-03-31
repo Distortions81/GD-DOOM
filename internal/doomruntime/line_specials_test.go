@@ -1064,6 +1064,35 @@ func TestCheckWalkSpecialLinesForActorWithCandidates_EmptyCandidateSetDoesNotFal
 	}
 }
 
+func TestProbeMonsterMove_UsesEmptySpecialLineSetWithoutFallback(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 0, Y: 0, Type: 3005},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+	}
+
+	probe := g.probeMonsterMove(0, 3005, 8*fracUnit, 0)
+	if probe.probeLines == nil {
+		t.Fatal("probe special lines should be an explicit empty slice")
+	}
+	if got := len(probe.probeLines); got != 0 {
+		t.Fatalf("probe special line count=%d want 0", got)
+	}
+}
+
 func TestTeleportSourceFogUsesActorZ(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

@@ -4725,9 +4725,9 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) monsterMoveProbeRe
 		return monsterMoveProbeResult{}
 	}
 	tmfloor, tmceil, tmdrop, checkPosOK := g.checkPositionForActor(x, y, thingTypeRadius(typ), true, i, true)
-	var probeLines []int
+	probeLines := make([]int, 0)
 	if base := g.probeSpecialLinesForMover(i); len(base) > 0 {
-		probeLines = append([]int(nil), base...)
+		probeLines = append(probeLines, base...)
 	}
 	if g.debugMonsterMoveEnabled() {
 		g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) checkpos=%v floor=%d ceil=%d drop=%d", x, y, checkPosOK, tmfloor, tmceil, tmdrop))
@@ -4828,7 +4828,10 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 		}
 	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionForActorWithThingPolicy(x, y, radius, true, i, true, true)
-	probeLines := append([]int{}, g.probeSpecialLinesForMover(i)...)
+	probeLines := make([]int, 0)
+	if base := g.probeSpecialLinesForMover(i); len(base) > 0 {
+		probeLines = append(probeLines, base...)
+	}
 	if !ok {
 		return skullFlyProbeResult{probeLines: probeLines}
 	}

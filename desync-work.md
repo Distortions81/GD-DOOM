@@ -59,10 +59,8 @@ Those fresh runs used GD-DOOM's `-render=false` demo path only. The trace-compar
 
 - Status: desync
 - Fresh no-render replay: `completed tics=4471 map=MAP26`
-- Current first mismatch: `line=2802` (`gametic 2801`)
-- Path: `root.mobj_count`
-- Reference: `245`
-- GD-DOOM: `244`
+- Earlier note about a missing sector-65 green torch at `gametic 2801` was stale.
+- Fresh 2026-03-30 trace debugging on the current tree found a different earlier issue first.
 - Notes:
 - Earlier blockers now fixed in the working tree:
 - `sector 74` blaze-close door linger is fixed; the remaining mismatch is no longer a door thinker lifetime issue
@@ -74,20 +72,21 @@ Those fresh runs used GD-DOOM's `-render=false` demo path only. The trace-compar
 - resumed-from-attack `A_Chase` reacquire now takes the `MF_JUSTATTACKED` chase-dir branch on the same tic when Doom does
 - Mancubus demo-trace state numbers now match Doom's actual `S_FATT_*` enum values (`RUN1=364`, `ATK1=376`, `PAIN=386`, `DIE1=388`)
 - lost-soul skull-fly zero-XY handling now falls through to the same-tic normal Z/support path, and `resetLostSoulCharge` now clears `thingInFloat`
-- Current remaining lead is a single missing decorative mobj:
-- reference keeps green torch `type=45` at `x=33554432`, `y=46137344`, `z=-4718592` through `gametic 2805`
-- GD-DOOM still has it at `gametic 2800` and drops it at `gametic 2801`
-- trace debug maps that torch to map thing `idx=64` in sector `65`
-- Fresh full reruns against regenerated `doom-source` traces now leave only this decorative mismatch; `DOOM2 demo1` and `DOOM2 demo2` are clean.
+- Fresh current lead and fix:
+- fresh short compare/debug run found a false teleport for Cacodemon `actor_idx=151` on MAP26 line `555` at `tic=1539` (`gametic 1538`)
+- the actor's successful move probe touched no special lines on the second step, but GD-DOOM passed `nil` candidates and `checkWalkSpecialLinesForActorWithCandidates` fell back to a full line scan
+- that full-scan path incorrectly crossed repeat teleport line `555`, spawning two `MT_TFOG` mobjs and moving the Cacodemon into sector `78`; Doom keeps the actor in sector `79` there
+- fixed locally by making monster move probes and skull-fly probes return an explicit empty candidate slice instead of `nil`, preserving the "no fallback to full scan" contract already covered by unit tests
+- targeted rebuilt debug rerun confirms the bogus line-555 teleport no longer fires in the `1538-1540` window
+- full fresh end-to-end `doom-source` compare for the entire demo is still pending after this fix; `DOOM2 demo1` and `DOOM2 demo2` remain clean in the latest recorded full compares
 
 ## Next Issue
 
 Highest-signal next runtime issue to investigate:
 
-- identify what path marks decorative thing `idx=64` as removed one tic early during the sector-65 movement around `gametic 2801`
-- likely code area: generic thing support / height-clipping or any path that flips `thingCollected[idx]` for non-shootable decorations during moving-sector updates
-- reason: the first remaining mismatch is no longer monster AI or door timing; it is a single object-lifecycle divergence on a static map thing
+- rerun the full reference compare for `DOOM2 demo3` after the line-555 teleport candidate fix to locate the next real first mismatch
+- reason: the previously documented sector-65 decoration mismatch was stale, and the fresh current first actionable issue was an earlier monster teleport false positive that is now fixed locally
 
 Secondary lead:
 
-- confirm whether Doom keeps the torch as a normal decorative thinker while the local runtime is incorrectly treating it as removed, collected, or clipped out of the trace
+- if another MAP26 desync remains after the fresh full compare, re-check whether it is still in the teleporter room cluster or whether the first mismatch has moved elsewhere in the run
