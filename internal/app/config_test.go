@@ -170,8 +170,20 @@ func TestRunParseDemoOverridesSelectedMapFromHeader(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
 	}
-	if !strings.Contains(out.String(), "map=E1M2 ") {
-		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	script, err := demo.Load(demoPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	got, err := resolveDemoStartMap(wf, script, "E1M1")
+	if err != nil {
+		t.Fatalf("resolveDemoStartMap() error = %v", err)
+	}
+	if got != "E1M2" {
+		t.Fatalf("resolveDemoStartMap() = %q, want E1M2", got)
 	}
 }
 

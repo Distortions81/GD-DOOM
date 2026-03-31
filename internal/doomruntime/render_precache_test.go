@@ -8,6 +8,12 @@ import (
 
 func TestCollectMapTextureUsageExpandsAnimatedRefs(t *testing.T) {
 	g := &game{
+		flatTextureAnimRefs: buildTextureAnimRefsFromSequences(map[string][]string{
+			"NUKAGE1": {"NUKAGE1", "NUKAGE2", "NUKAGE3"},
+		}),
+		wallTextureAnimRefs: buildTextureAnimRefsFromSequences(map[string][]string{
+			"BLODGR1": {"BLODGR1", "BLODGR2", "BLODGR3", "BLODGR4"},
+		}),
 		m: &mapdata.Map{
 			Sectors: []mapdata.Sector{
 				{FloorPic: "NUKAGE1", CeilingPic: "F_SKY1"},

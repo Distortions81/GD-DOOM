@@ -436,6 +436,9 @@ func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
 	if g == nil {
 		return nil
 	}
+	if sg.headlessDemoPlayback() {
+		return g
+	}
 	if sg.menuPatchImages == nil {
 		sg.menuPatchImages = make(map[string]*ebiten.Image, 32)
 	}
@@ -465,6 +468,9 @@ func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
 
 func (sg *sessionGame) prewarmWADAssetCaches() {
 	if sg == nil {
+		return
+	}
+	if sg.headlessDemoPlayback() {
 		return
 	}
 	if sg.menuPatchImages == nil {
@@ -770,7 +776,9 @@ func (sg *sessionGame) initSession() {
 		BuildRuntime: func() {
 			sg.g = sg.buildGame(sg.bootMap, sg.opts)
 			sg.rt = sg.g
-			sg.g.initSkyLayerShader()
+			if !sg.headlessDemoPlayback() {
+				sg.g.initSkyLayerShader()
+			}
 		},
 		InitMusicPlayback:     sg.initMusicPlayback,
 		ShouldStartInFrontend: sg.shouldStartInFrontend,

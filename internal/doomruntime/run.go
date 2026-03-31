@@ -87,7 +87,9 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 				}
 			},
 			func(sg *sessionGame) {
-				sg.menuSfx = sessionaudio.NewMenuController(opts.SoundBank, opts.SFXVolume)
+				if !sg.headlessDemoPlayback() {
+					sg.menuSfx = sessionaudio.NewMenuController(opts.SoundBank, opts.SFXVolume)
+				}
 			},
 		},
 		Start: func(sg *sessionGame) {
@@ -115,6 +117,13 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 			return sg.bootMap.Name
 		},
 	})
+}
+
+func (sg *sessionGame) headlessDemoPlayback() bool {
+	if sg == nil {
+		return false
+	}
+	return sg.opts.DemoScript != nil && sg.opts.DemoQuitOnComplete
 }
 
 func (sg *sessionGame) Update() error {
@@ -548,6 +557,9 @@ func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebi
 }
 
 func (sg *sessionGame) initFaithfulPalettePost() {
+	if sg == nil || sg.headlessDemoPlayback() {
+		return
+	}
 	if !sg.opts.KageShader {
 		return
 	}

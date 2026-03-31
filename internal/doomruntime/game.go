@@ -1465,7 +1465,9 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.State.SetZoom(opts.StartZoom)
 	}
 	g.reserveRenderScratch()
-	g.precacheRenderAssets()
+	if !(opts.DemoScript != nil && opts.DemoQuitOnComplete) {
+		g.precacheRenderAssets()
+	}
 	g.syncRenderState()
 	if g.mode == viewWalk {
 		// Avoid startup cursor-capture deltas rotating the initial spawn heading.
@@ -19188,16 +19190,16 @@ func (g *game) mapLineStateKey() mapview.LineCacheKey {
 	view := g.State.Snapshot()
 	cacheState := view.CacheState(g.viewport())
 	return mapview.LineCacheKey{
-		CamX:          cacheState.CamX,
-		CamY:          cacheState.CamY,
-		Zoom:          cacheState.Zoom,
-		Angle:         cacheState.Angle,
-		RotateView:    cacheState.Rotate,
-		ViewW:         cacheState.ViewWidth,
-		ViewH:         cacheState.ViewHeight,
-		Reveal:    int(g.parity.reveal),
-		IDDT:      g.parity.iddt,
-		MappedRev: g.mapLines.Revision(),
+		CamX:       cacheState.CamX,
+		CamY:       cacheState.CamY,
+		Zoom:       cacheState.Zoom,
+		Angle:      cacheState.Angle,
+		RotateView: cacheState.Rotate,
+		ViewW:      cacheState.ViewWidth,
+		ViewH:      cacheState.ViewHeight,
+		Reveal:     int(g.parity.reveal),
+		IDDT:       g.parity.iddt,
+		MappedRev:  g.mapLines.Revision(),
 	}
 }
 
