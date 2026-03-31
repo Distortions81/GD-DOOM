@@ -10,15 +10,6 @@ import (
 	"gddoom/internal/render/mapview/presenter"
 )
 
-func TestToggledLineColorMode(t *testing.T) {
-	if got := toggledLineColorMode("doom"); got != "parity" {
-		t.Fatalf("toggle doom => %q, want parity", got)
-	}
-	if got := toggledLineColorMode("parity"); got != "doom" {
-		t.Fatalf("toggle parity => %q, want doom", got)
-	}
-}
-
 func TestToggleBigMapRoundTrip(t *testing.T) {
 	g := &game{
 		State: mapview.ViewState{

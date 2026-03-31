@@ -7,9 +7,8 @@ import (
 	"gddoom/internal/render/mapview/linepolicy"
 )
 
-func TestLinedefDecisionUsesParityStateAndLineColorMode(t *testing.T) {
+func TestLinedefDecisionUsesParityState(t *testing.T) {
 	g := &game{
-		opts:   Options{LineColorMode: "parity"},
 		parity: automapParityState{reveal: revealAllMap, iddt: 0},
 		m: &mapdata.Map{
 			Sectors:  []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
@@ -35,7 +34,6 @@ func TestLinedefDecisionUsesParityStateAndLineColorMode(t *testing.T) {
 
 func TestLinedefDecisionPseudo3DIgnoresMappedGate(t *testing.T) {
 	g := &game{
-		opts:   Options{LineColorMode: "parity"},
 		parity: automapParityState{reveal: revealNormal, iddt: 0},
 		m: &mapdata.Map{
 			Sectors:  []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},

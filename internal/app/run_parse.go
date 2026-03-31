@@ -125,7 +125,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultAutoWeaponSwitch := true
 	defaultCheatLevel := 0
 	defaultInvuln := false
-	defaultLineColorMode := "parity"
 	defaultSourcePortMode := false
 	defaultSourcePortThingRenderMode := "sprites"
 	defaultSourcePortThingBlendFrames := false
@@ -168,7 +167,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultDumpMusic := false
 	defaultDumpMusicDir := "out/music-dump"
 	defaultConfigPath := configPath
-	configLineColorSet := false
 	if cfg != nil {
 		if cfg.Wad != nil {
 			defaultWAD = *cfg.Wad
@@ -270,10 +268,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.Invulnerable != nil {
 			defaultInvuln = *cfg.Invulnerable
-		}
-		if cfg.LineColorMode != nil {
-			defaultLineColorMode = *cfg.LineColorMode
-			configLineColorSet = true
 		}
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
@@ -424,7 +418,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
-	lineColorMode := fs.String("line-color-mode", defaultLineColorMode, "line color mode for automap")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	sourcePortThingRenderMode := fs.String("sourceport-thing-render-mode", defaultSourcePortThingRenderMode, "sourceport automap thing rendering (glyphs|items|sprites)")
 	sourcePortThingBlendFrames := fs.Bool("sourceport-thing-blend-frames", defaultSourcePortThingBlendFrames, "allow blended sub-tic thing sprite frames on the automap")
@@ -491,14 +484,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	_ = configFlag
 	platformcfg.SetForcedWASMMode(*forceWASMMode)
-	lineColorModeSet := configLineColorSet
 	allCheatsSet := false
 	cheatLevelSet := false
 	invulnSet := false
 	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "line-color-mode" {
-			lineColorModeSet = true
-		}
 		if f.Name == "all-cheats" {
 			allCheatsSet = true
 		}
@@ -676,10 +665,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	if shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
-		resolvedLineColorMode := *lineColorMode
-		if *sourcePortMode && !lineColorModeSet {
-			resolvedLineColorMode = "doom"
-		}
 		if *noCullClipping {
 			*wallOcclusion = false
 			*wallSpanReject = false
@@ -723,7 +708,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			autoWeaponSwitch:           *autoWeaponSwitch,
 			cheatLevel:                 resolvedCheatLevel,
 			invuln:                     resolvedInvuln,
-			lineColorMode:              resolvedLineColorMode,
 			sourcePortMode:             *sourcePortMode,
 			sourcePortThingRenderMode:  *sourcePortThingRenderMode,
 			sourcePortThingBlendFrames: *sourcePortThingBlendFrames,
@@ -975,11 +959,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
 
 	if *render {
-		resolvedLineColorMode := *lineColorMode
-		// Source-port defaults unless user explicitly chose a color mode.
-		if *sourcePortMode && !lineColorModeSet {
-			resolvedLineColorMode = "doom"
-		}
 		if *noCullClipping {
 			*wallOcclusion = false
 			*wallSpanReject = false
@@ -1019,7 +998,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			AutoWeaponSwitch:           *autoWeaponSwitch,
 			CheatLevel:                 resolvedCheatLevel,
 			Invulnerable:               resolvedInvuln,
-			LineColorMode:              resolvedLineColorMode,
 			SourcePortMode:             *sourcePortMode,
 			SourcePortThingRenderMode:  *sourcePortThingRenderMode,
 			SourcePortThingBlendFrames: *sourcePortThingBlendFrames,
@@ -1197,10 +1175,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if !*render && (resolvedDemoTracePath != "" || resolvedDemoPath != "") {
-		resolvedLineColorMode := *lineColorMode
-		if *sourcePortMode && !lineColorModeSet {
-			resolvedLineColorMode = "doom"
-		}
 		if *noCullClipping {
 			*wallOcclusion = false
 			*wallSpanReject = false
@@ -1244,7 +1218,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			autoWeaponSwitch:           *autoWeaponSwitch,
 			cheatLevel:                 resolvedCheatLevel,
 			invuln:                     resolvedInvuln,
-			lineColorMode:              resolvedLineColorMode,
 			sourcePortMode:             *sourcePortMode,
 			sourcePortThingRenderMode:  *sourcePortThingRenderMode,
 			sourcePortThingBlendFrames: *sourcePortThingBlendFrames,
@@ -1945,7 +1918,6 @@ type renderBuildConfig struct {
 	autoWeaponSwitch           bool
 	cheatLevel                 int
 	invuln                     bool
-	lineColorMode              string
 	sourcePortMode             bool
 	sourcePortThingRenderMode  string
 	sourcePortThingBlendFrames bool
@@ -2226,7 +2198,6 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		AutoWeaponSwitch:           cfg.autoWeaponSwitch,
 		CheatLevel:                 cfg.cheatLevel,
 		Invulnerable:               cfg.invuln,
-		LineColorMode:              cfg.lineColorMode,
 		SourcePortMode:             cfg.sourcePortMode,
 		SourcePortThingRenderMode:  cfg.sourcePortThingRenderMode,
 		SourcePortThingBlendFrames: cfg.sourcePortThingBlendFrames,
@@ -2387,9 +2358,6 @@ func applyPickerProfile(cfg renderBuildConfig, profile pickerProfile) renderBuil
 		cfg.sourcePortMode = true
 		if !cfg.detailLevelExplicit {
 			cfg.detailLevel = cfg.detailLevelSourcePort
-		}
-		if strings.TrimSpace(cfg.lineColorMode) == "" || strings.EqualFold(cfg.lineColorMode, "default") {
-			cfg.lineColorMode = "doom"
 		}
 	case pickerProfileFaithful:
 		cfg.sourcePortMode = false

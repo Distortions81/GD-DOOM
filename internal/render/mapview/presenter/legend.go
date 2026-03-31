@@ -93,7 +93,6 @@ type LegendInputs struct {
 	AntiAlias            bool
 	SourcePortMode       bool
 	SourcePortThingLabel string
-	LineColorMode        string
 }
 
 func ShouldDrawThings(iddt int) bool {
@@ -151,9 +150,7 @@ func DrawThingLegend(screen *ebiten.Image, in LegendInputs, colors LegendColors)
 		{label: "teleporter", clr: colors.WallTeleport},
 		{label: "use switch/button", clr: colors.WallUse},
 	}
-	if in.LineColorMode == "parity" {
-		lineEntries = append(lineEntries, lineLegendEntry{label: "unrevealed (allmap)", clr: colors.WallHidden})
-	}
+	lineEntries = append(lineEntries, lineLegendEntry{label: "unrevealed (allmap)", clr: colors.WallHidden})
 
 	maxLen := len("THING LEGEND")
 	for _, e := range entries {

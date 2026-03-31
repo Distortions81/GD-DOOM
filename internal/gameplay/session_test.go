@@ -17,7 +17,6 @@ func TestApplyPersistentSettingsToOptions(t *testing.T) {
 		SFXVolume:        -1,
 		AlwaysRun:        true,
 		AutoWeaponSwitch: false,
-		LineColorMode:    "doom",
 		ThingRenderMode:  "sprites",
 	}, 4)
 
@@ -30,7 +29,7 @@ func TestApplyPersistentSettingsToOptions(t *testing.T) {
 	if !got.AlwaysRun || got.AutoWeaponSwitch {
 		t.Fatal("run/weapon-switch flags mismatch")
 	}
-	if got.LineColorMode != "doom" || got.ThingRenderMode != "sprites" {
+	if got.ThingRenderMode != "sprites" {
 		t.Fatalf("render settings mismatch: %+v", got)
 	}
 }
@@ -54,11 +53,10 @@ func TestPrepareRebuild(t *testing.T) {
 	state, remaining := PrepareRebuild(
 		[]demo.Tic{{Forward: 10}},
 		[]demo.Tic{{Forward: 20}},
-		OptionState{LineColorMode: "custom"},
+		OptionState{},
 		PersistentSettings{
 			MouseLook:       true,
 			MusicVolume:     2,
-			LineColorMode:   "doom",
 			ThingRenderMode: "sprites",
 		},
 		4,
@@ -73,7 +71,7 @@ func TestPrepareRebuild(t *testing.T) {
 	if !state.Options.MouseLook || state.Options.MusicVolume != 1 {
 		t.Fatalf("options=%+v", state.Options)
 	}
-	if state.Options.LineColorMode != "doom" || state.Options.ThingRenderMode != "sprites" {
+	if state.Options.ThingRenderMode != "sprites" {
 		t.Fatalf("options=%+v", state.Options)
 	}
 }
@@ -151,7 +149,6 @@ func TestApplyPersistentSettingsNormalizesForRuntime(t *testing.T) {
 		MusicVolume:      2,
 		OPLVolume:        9,
 		SFXVolume:        -1,
-		LineColorMode:    "doom",
 		ThingRenderMode:  "glyphs",
 		PaletteLUT:       true,
 		GammaLevel:       99,

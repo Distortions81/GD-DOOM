@@ -13,7 +13,6 @@ type OptionState struct {
 	SFXVolume        float64
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
-	LineColorMode    string
 	ThingRenderMode  string
 }
 
@@ -25,7 +24,6 @@ func ApplyPersistentSettingsToOptions(cur OptionState, s PersistentSettings, max
 	cur.SFXVolume = ClampVolume(s.SFXVolume)
 	cur.AlwaysRun = s.AlwaysRun
 	cur.AutoWeaponSwitch = s.AutoWeaponSwitch
-	cur.LineColorMode = s.LineColorMode
 	cur.ThingRenderMode = s.ThingRenderMode
 	return cur
 }

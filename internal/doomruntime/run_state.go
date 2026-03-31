@@ -238,7 +238,6 @@ func (sg *sessionGame) capturePersistentSettings() {
 		HUDMessages:      g.hudMessagesEnabled,
 		AlwaysRun:        g.alwaysRun,
 		AutoWeaponSwitch: g.autoWeaponSwitch,
-		LineColorMode:    g.opts.LineColorMode,
 		ThingRenderMode:  g.opts.SourcePortThingRenderMode,
 		ShowLegend:       g.showLegend,
 		PaletteLUT:       g.paletteLUTEnabled,
@@ -289,7 +288,6 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.alwaysRun = applied.AlwaysRun
 	g.autoWeaponSwitch = applied.AutoWeaponSwitch
 	g.hudMessagesEnabled = applied.HUDMessages
-	g.opts.LineColorMode = applied.LineColorMode
 	g.opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(applied.ThingRenderMode, g.opts.SourcePortMode)
 	g.showLegend = applied.ShowLegend
 	g.paletteLUTEnabled = applied.PaletteLUT
@@ -324,7 +322,6 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	sg.settings.HUDMessages = next.HUDMessages
 	sg.settings.AlwaysRun = next.AlwaysRun
 	sg.settings.AutoWeaponSwitch = next.AutoWeaponSwitch
-	sg.settings.LineColorMode = next.LineColorMode
 	sg.settings.ThingRenderMode = normalizeSourcePortThingRenderMode(next.ThingRenderMode, sg.opts.SourcePortMode)
 	sg.settings.GammaLevel = next.GammaLevel
 	sg.settings.CRTEnabled = next.CRTEnabled && sg.opts.KageShader
@@ -380,7 +377,6 @@ func (sg *sessionGame) runtimeSettingsSnapshot() RuntimeSettings {
 		MouseLook:          sg.opts.MouseLook,
 		AlwaysRun:          sg.opts.AlwaysRun,
 		AutoWeaponSwitch:   sg.opts.AutoWeaponSwitch,
-		LineColorMode:      sg.opts.LineColorMode,
 		ThingRenderMode:    sg.opts.SourcePortThingRenderMode,
 		CRTEffect:          sg.settings.CRTEnabled && sg.opts.KageShader,
 	}
@@ -569,7 +565,6 @@ func (sg *sessionGame) optionState() gameplay.OptionState {
 		SFXVolume:        sg.opts.SFXVolume,
 		AlwaysRun:        sg.opts.AlwaysRun,
 		AutoWeaponSwitch: sg.opts.AutoWeaponSwitch,
-		LineColorMode:    sg.opts.LineColorMode,
 		ThingRenderMode:  sg.opts.SourcePortThingRenderMode,
 	}
 }
@@ -585,7 +580,6 @@ func applyOptionStateToOptions(opts *Options, state gameplay.OptionState) {
 	opts.SFXVolume = state.SFXVolume
 	opts.AlwaysRun = state.AlwaysRun
 	opts.AutoWeaponSwitch = state.AutoWeaponSwitch
-	opts.LineColorMode = state.LineColorMode
 	opts.SourcePortThingRenderMode = state.ThingRenderMode
 }
 

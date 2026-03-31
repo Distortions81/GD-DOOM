@@ -169,7 +169,7 @@ func (g *game) segScreenRange(si int, px, py int64, ca, sa, near, focal float64)
 func (g *game) linedefDecisionPseudo3D(ld mapdata.Linedef) linepolicy.Decision {
 	front, back := g.lineSectors(ld)
 	st := linepolicy.Pseudo3DStateFromAutomap(g.automapRevealAll(), g.parity.iddt)
-	return linepolicy.ParityDecision(ld, front, back, st, "doom")
+	return linepolicy.ParityDecision(ld, front, back, st)
 }
 
 func (g *game) segPortalSplitPseudo3D(segIdx int) bool {

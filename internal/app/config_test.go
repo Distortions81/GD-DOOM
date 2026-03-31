@@ -807,7 +807,6 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		MouseLook:          false,
 		AlwaysRun:          true,
 		AutoWeaponSwitch:   false,
-		LineColorMode:      "doom",
 		CRTEffect:          true,
 	}
 	if err := saveRuntimeSettings(cfgPath, in, true); err != nil {
@@ -852,9 +851,6 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.AutoWeaponSwitch == nil || *cfg.AutoWeaponSwitch != in.AutoWeaponSwitch {
 		t.Fatalf("auto_weapon_switch=%v want %v", cfg.AutoWeaponSwitch, in.AutoWeaponSwitch)
-	}
-	if cfg.LineColorMode == nil || *cfg.LineColorMode != in.LineColorMode {
-		t.Fatalf("line_color_mode=%v want %v", cfg.LineColorMode, in.LineColorMode)
 	}
 	if cfg.CRTEffect == nil || *cfg.CRTEffect != in.CRTEffect {
 		t.Fatalf("crt_effect=%v want %v", cfg.CRTEffect, in.CRTEffect)

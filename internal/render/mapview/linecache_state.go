@@ -21,7 +21,6 @@ type LineCacheKey struct {
 	ViewH         int
 	Reveal        int
 	IDDT          int
-	LineColorMode string
 	MappedRev     uint32
 }
 

@@ -2,8 +2,8 @@ package gameplay
 
 import "testing"
 
-func TestApplyRuntimeSettingsFaithfulForcesParityLineMode(t *testing.T) {
-	cur := PersistentSettings{LineColorMode: "doom", ThingRenderMode: "sprites", MusicVolume: 0.5}
+func TestApplyRuntimeSettingsPreservesThingMode(t *testing.T) {
+	cur := PersistentSettings{ThingRenderMode: "sprites", MusicVolume: 0.5}
 	got := ApplyRuntimeSettings(cur, RuntimeSettings{
 		DetailLevel:      99,
 		AutoDetail:       true,
@@ -14,7 +14,6 @@ func TestApplyRuntimeSettingsFaithfulForcesParityLineMode(t *testing.T) {
 		MouseLook:        true,
 		AlwaysRun:        true,
 		AutoWeaponSwitch: false,
-		LineColorMode:    "custom",
 		ThingRenderMode:  "glyphs",
 		CRTEffect:        true,
 	}, false, 3, 5, 7, 4)
@@ -37,9 +36,6 @@ func TestApplyRuntimeSettingsFaithfulForcesParityLineMode(t *testing.T) {
 	if got.Settings.SFXVolume != 0 {
 		t.Fatalf("sfx=%v want 0", got.Settings.SFXVolume)
 	}
-	if got.Settings.LineColorMode != "parity" {
-		t.Fatalf("lineColorMode=%q want parity", got.Settings.LineColorMode)
-	}
 	if got.Settings.ThingRenderMode != "glyphs" {
 		t.Fatalf("thingRenderMode=%q want glyphs", got.Settings.ThingRenderMode)
 	}
@@ -51,12 +47,12 @@ func TestApplyRuntimeSettingsFaithfulForcesParityLineMode(t *testing.T) {
 	}
 }
 
-func TestApplyRuntimeSettingsSourcePortKeepsRequestedLineMode(t *testing.T) {
+func TestApplyRuntimeSettingsSourcePortKeepsRequestedThingMode(t *testing.T) {
 	got := ApplyRuntimeSettings(PersistentSettings{}, RuntimeSettings{
-		LineColorMode: "doom",
+		ThingRenderMode: "sprites",
 	}, true, 3, 5, 7, 4)
-	if got.Settings.LineColorMode != "doom" {
-		t.Fatalf("lineColorMode=%q want doom", got.Settings.LineColorMode)
+	if got.Settings.ThingRenderMode != "sprites" {
+		t.Fatalf("thingRenderMode=%q want sprites", got.Settings.ThingRenderMode)
 	}
 }
 

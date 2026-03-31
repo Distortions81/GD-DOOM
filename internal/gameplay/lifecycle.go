@@ -14,7 +14,6 @@ type PersistentSettings struct {
 	HUDMessages      bool
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
-	LineColorMode    string
 	ThingRenderMode  string
 	ShowLegend       bool
 	PaletteLUT       bool
@@ -36,7 +35,6 @@ type AppliedPersistentSettings struct {
 	HUDMessages      bool
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
-	LineColorMode    string
 	ThingRenderMode  string
 	ShowLegend       bool
 	PaletteLUT       bool
@@ -59,7 +57,6 @@ func ApplyPersistentSettings(s PersistentSettings, sourcePort bool, faithfulLeve
 		HUDMessages:      s.HUDMessages,
 		AlwaysRun:        s.AlwaysRun,
 		AutoWeaponSwitch: s.AutoWeaponSwitch,
-		LineColorMode:    s.LineColorMode,
 		ThingRenderMode:  s.ThingRenderMode,
 		ShowLegend:       s.ShowLegend,
 		PaletteLUT:       s.PaletteLUT && kageShader && hasPalette,

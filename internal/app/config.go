@@ -50,7 +50,6 @@ type fileConfig struct {
 	CheatLevel                 *int     `toml:"cheat_level"`
 	Invulnerable               *bool    `toml:"invulnerable"`
 	ImportTextures             *bool    `toml:"import_textures"`
-	LineColorMode              *string  `toml:"line_color_mode"`
 	SourcePortMode             *bool    `toml:"sourceport_mode"`
 	SourcePortThingRenderMode  *string  `toml:"sourceport_thing_render_mode"`
 	SourcePortThingBlendFrames *bool    `toml:"sourceport_thing_blend_frames"`
@@ -172,7 +171,6 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	cfg.MouseLook = boolPtr(s.MouseLook)
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)
 	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
-	cfg.LineColorMode = strPtr(s.LineColorMode)
 	cfg.CRTEffect = boolPtr(s.CRTEffect)
 	return writeConfigAtomic(path, cfg)
 }

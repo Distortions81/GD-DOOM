@@ -16,7 +16,6 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 				MouseLook:                 false,
 				MusicVolume:               0.9,
 				SFXVolume:                 0.5,
-				LineColorMode:             "doom",
 				SourcePortThingRenderMode: "sprites",
 				KageShader:                true,
 				DoomPaletteRGBA:           pal,
@@ -41,7 +40,6 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 			SFXVolume:                 0.66,
 			AlwaysRun:                 false,
 			AutoWeaponSwitch:          true,
-			LineColorMode:             "parity",
 			SourcePortThingRenderMode: "glyphs",
 			KageShader:                true,
 			DoomPaletteRGBA:           pal,
@@ -65,9 +63,6 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	}
 	if sg.opts.AutoWeaponSwitch {
 		t.Fatal("options auto-weapon-switch should be persisted as OFF")
-	}
-	if sg.opts.LineColorMode != "doom" {
-		t.Fatalf("options line color mode=%q want doom", sg.opts.LineColorMode)
 	}
 	if sg.opts.SourcePortThingRenderMode != "sprites" {
 		t.Fatalf("options thing render mode=%q want sprites", sg.opts.SourcePortThingRenderMode)
@@ -94,9 +89,6 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	}
 	if !dst.alwaysRun || dst.autoWeaponSwitch {
 		t.Fatal("always-run/auto-weapon-switch persistence mismatch")
-	}
-	if dst.opts.LineColorMode != "doom" {
-		t.Fatalf("lineColorMode=%q want doom", dst.opts.LineColorMode)
 	}
 	if dst.opts.SourcePortThingRenderMode != "sprites" {
 		t.Fatalf("thingRenderMode=%q want sprites", dst.opts.SourcePortThingRenderMode)
@@ -132,7 +124,7 @@ func TestSessionPersistentSettingsApplyClampsInvalidValues(t *testing.T) {
 			GammaLevel:  99,
 			MusicVolume: -1,
 			SFXVolume:   2,
-			Reveal:      99,
+			Reveal:      int(revealNormal),
 			IDDT:        99,
 			PaletteLUT:  true,
 			CRTEnabled:  true,

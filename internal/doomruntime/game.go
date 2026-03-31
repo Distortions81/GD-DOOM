@@ -1217,10 +1217,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	opts.MusicVolume = clampVolume(opts.MusicVolume)
 	opts.SFXVolume = clampVolume(opts.SFXVolume)
 	opts.OPLVolume = clampOPLVolume(opts.OPLVolume)
-	if !opts.SourcePortMode {
-		// Doom mode keeps strict parity color semantics.
-		opts.LineColorMode = "parity"
-	}
 	opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(opts.SourcePortThingRenderMode, opts.SourcePortMode)
 	opts.SkyUpscaleMode = normalizeSkyUpscaleMode(opts.SkyUpscaleMode, opts.SourcePortMode)
 	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
@@ -2409,7 +2405,6 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		MouseLook:          g.opts.MouseLook,
 		AlwaysRun:          g.alwaysRun,
 		AutoWeaponSwitch:   g.autoWeaponSwitch,
-		LineColorMode:      g.opts.LineColorMode,
 		ThingRenderMode:    g.opts.SourcePortThingRenderMode,
 		CRTEffect:          g.crtEnabled,
 	}
@@ -3125,12 +3120,6 @@ func (g *game) updateParityControls() {
 		if g.keyJustPressed(ebiten.KeyF3) {
 			g.loadGameRequested = true
 		}
-		if g.keyJustPressed(ebiten.KeyF6) {
-			g.setHUDMessage("Quicksave not wired yet", 70)
-		}
-		if g.keyJustPressed(ebiten.KeyF7) {
-			g.setHUDMessage("End game flow not wired yet", 70)
-		}
 		if g.keyJustPressed(ebiten.KeyF8) {
 			g.hudMessagesEnabled = !g.hudMessagesEnabled
 			if g.hudMessagesEnabled {
@@ -3139,9 +3128,6 @@ func (g *game) updateParityControls() {
 				g.useText = "Messages OFF"
 				g.useFlash = 70
 			}
-		}
-		if g.keyJustPressed(ebiten.KeyF9) {
-			g.setHUDMessage("Quickload not wired yet", 70)
 		}
 		if g.keyJustPressed(ebiten.KeyF11) {
 			g.cycleGammaLevel()
@@ -3161,10 +3147,6 @@ func (g *game) updateParityControls() {
 			g.parity.iddt = (g.parity.iddt + 1) % 3
 			g.setHUDMessage(fmt.Sprintf("IDDT %d", g.parity.iddt), 70)
 		}
-		if g.keyJustPressed(ebiten.KeyL) {
-			g.opts.LineColorMode = toggledLineColorMode(g.opts.LineColorMode)
-			g.setHUDMessage(fmt.Sprintf("Line Colors: %s", g.opts.LineColorMode), 70)
-		}
 		if g.keyJustPressed(ebiten.KeyV) {
 			g.showLegend = !g.showLegend
 			if g.showLegend {
@@ -3178,12 +3160,6 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage(fmt.Sprintf("Thing Render: %s", sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode)), 70)
 		}
 		if g.keyJustPressed(ebiten.KeyF11) {
-			g.cycleGammaLevel()
-		}
-		if g.keyJustPressed(ebiten.KeyF6) {
-			g.setHUDMessage("Palette shader removed", 70)
-		}
-		if g.keyJustPressed(ebiten.KeyF7) {
 			g.cycleGammaLevel()
 		}
 		if g.keyJustPressed(ebiten.KeyF8) {
@@ -3569,7 +3545,6 @@ func (g *game) Draw(screen *ebiten.Image) {
 					AntiAlias:            g.mapVectorAntiAlias(),
 					SourcePortMode:       g.opts.SourcePortMode,
 					SourcePortThingLabel: sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode),
-					LineColorMode:        g.opts.LineColorMode,
 				}, presenter.LegendColors{
 					ThingPlayer:  presenter.ThingPlayerColor,
 					ThingMonster: presenter.ThingMonsterColor,
@@ -4203,13 +4178,6 @@ func (g *game) flushSoundEvents() {
 	}
 	g.soundQueue = g.soundQueue[:0]
 	g.soundQueueOrigin = g.soundQueueOrigin[:0]
-}
-
-func toggledLineColorMode(mode string) string {
-	if mode == "parity" {
-		return "doom"
-	}
-	return "parity"
 }
 
 func (g *game) mapVectorAntiAlias() bool {
@@ -19084,7 +19052,7 @@ func interpolateCameraAngle(prevPrev, prev, curr uint32, t float64) uint32 {
 func (g *game) linedefDecision(ld mapdata.Linedef) linepolicy.Decision {
 	front, back := g.lineSectors(ld)
 	st := linepolicy.StateForAutomap(g.automapRevealAll(), g.parity.iddt)
-	return linepolicy.ParityDecision(ld, front, back, st, g.opts.LineColorMode)
+	return linepolicy.ParityDecision(ld, front, back, st)
 }
 
 func (g *game) lineSectors(ld mapdata.Linedef) (*mapdata.Sector, *mapdata.Sector) {
@@ -19227,10 +19195,9 @@ func (g *game) mapLineStateKey() mapview.LineCacheKey {
 		RotateView:    cacheState.Rotate,
 		ViewW:         cacheState.ViewWidth,
 		ViewH:         cacheState.ViewHeight,
-		Reveal:        int(g.parity.reveal),
-		IDDT:          g.parity.iddt,
-		LineColorMode: g.opts.LineColorMode,
-		MappedRev:     g.mapLines.Revision(),
+		Reveal:    int(g.parity.reveal),
+		IDDT:      g.parity.iddt,
+		MappedRev: g.mapLines.Revision(),
 	}
 }
 

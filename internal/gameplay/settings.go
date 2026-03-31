@@ -14,7 +14,6 @@ type RuntimeSettings struct {
 	MouseLook          bool
 	AlwaysRun          bool
 	AutoWeaponSwitch   bool
-	LineColorMode      string
 	ThingRenderMode    string
 	CRTEffect          bool
 }
@@ -44,11 +43,6 @@ func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort 
 	next.HUDMessages = s.HUDMessages
 	next.AlwaysRun = s.AlwaysRun
 	next.AutoWeaponSwitch = s.AutoWeaponSwitch
-	if !sourcePort {
-		next.LineColorMode = "parity"
-	} else {
-		next.LineColorMode = s.LineColorMode
-	}
 	next.ThingRenderMode = s.ThingRenderMode
 	next.GammaLevel = ClampGamma(s.GammaLevel, gammaLevels)
 	next.CRTEnabled = s.CRTEffect

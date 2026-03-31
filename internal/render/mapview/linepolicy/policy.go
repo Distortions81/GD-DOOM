@@ -2,7 +2,6 @@ package linepolicy
 
 import (
 	"image/color"
-	"strings"
 
 	"gddoom/internal/mapdata"
 )
@@ -73,11 +72,10 @@ func Pseudo3DStateFromAutomap(revealAllMap bool, iddt int) State {
 	return st
 }
 
-func ParityDecision(ld mapdata.Linedef, front, back *mapdata.Sector, st State, lineColorMode string) Decision {
+func ParityDecision(ld mapdata.Linedef, front, back *mapdata.Sector, st State) Decision {
 	isCheat := st.IDDT > 0
 	mapped := ld.Flags&0x0100 != 0
 	neverSee := ld.Flags&0x0080 != 0
-	strictParityColor := strings.EqualFold(strings.TrimSpace(lineColorMode), "parity")
 
 	if !isCheat {
 		if st.Reveal == RevealNormal {
@@ -89,7 +87,7 @@ func ParityDecision(ld mapdata.Linedef, front, back *mapdata.Sector, st State, l
 			if neverSee {
 				return Decision{}
 			}
-			if strictParityColor && !mapped {
+			if !mapped {
 				return Decision{
 					Visible:    true,
 					Appearance: AppearanceUnrevealed,

@@ -60,7 +60,6 @@ type Options struct {
 	AutoWeaponSwitch           bool
 	CheatLevel                 int
 	Invulnerable               bool
-	LineColorMode              string
 	SourcePortMode             bool
 	SourcePortThingRenderMode  string
 	SourcePortThingBlendFrames bool
