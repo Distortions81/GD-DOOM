@@ -1,3 +1,5 @@
+# Info: see desync-harness.md
+
 # Demo Desync Status
 
 Current stock-demo status after the recent `doom-source` parity work on monster walk-special handling and lost-soul death behavior.
