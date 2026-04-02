@@ -1,5 +1,23 @@
 # Info: see desync-harness.md
 
+## Quick Run Commands
+
+No-render replay (just check it completes):
+```bash
+.tmp/gddoom-demotrace -wad DOOM2.WAD -render=false -demo ./demos/DOOM2-DEMO3.lmp
+```
+
+Full trace compare against doom-source (slow, finds first mismatch):
+```bash
+scripts/demo_trace_compare.sh --wad DOOM2.WAD --demo-lump demo3 --demo ./demos/DOOM2-DEMO3.lmp --out /tmp/d2demo3-compare
+```
+
+With debug env vars:
+```bash
+env GD_DEBUG_FLOOR_TIC=3215 scripts/demo_trace_compare.sh --wad DOOM2.WAD --demo-lump demo3 --demo ./demos/DOOM2-DEMO3.lmp --out /tmp/d2demo3-debug
+```
+Debug output lands in `/tmp/d2demo3-debug/gddoom-DOOM2-DEMO3.lmp.log`.
+
 # Demo Desync Status
 
 Current stock-demo status after the recent `doom-source` parity work on monster walk-special handling and lost-soul death behavior.
