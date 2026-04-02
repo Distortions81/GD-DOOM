@@ -69,12 +69,14 @@ Those fresh runs used GD-DOOM's `-render=false` demo path only. The trace-compar
   - Ref reports `state=880 (S_MGUN), tics=-1`; GD-DOOM reports `state=4, tics=8` from spawn onward
   - At `gametic 3244` Doom removes it (player walks within pickup range, ~33 map units); GD-DOOM never removes it
 
-- Hypothesis: GD-DOOM's `appendRuntimeThing` (runtime drop path) initializes the drop with `thingState=monsterStateSpawn, thingStateTics=0`. The trace emission falls through `demoTraceMonsterSpawnState` (type 2002 has no case), returning the fallback `4` with `tics=8` (reaction time). This state mismatch is a symptom, not the cause.
-- The real bug is that **the dropped chaingun is never collected**. Doom removes pickups via `P_TouchSpecialThing` when the player bbox overlaps the pickup. GD-DOOM's player-pickup touch logic is apparently not triggering for this runtime-dropped item — likely because dropped things appended via `appendRuntimeThing` are not being considered for player pickup collision, or the pickup's bbox/position state is not set correctly after the drop lands.
+- Root cause identified: `canTouchPickup` in `pickups.go:229-242` applies a Z range check that Doom does not
+- In Doom's `PIT_CheckThing` (`p_map.c`), the z overhead/underneath guard only applies to **missiles**; for `MF_SPECIAL` pickups the only test is `abs(thing->x - tmx) >= blockdist || abs(thing->y - tmy) >= blockdist` (XY only)
+- GD-DOOM adds `delta := tz - pz; if delta > pheight` and `if delta < -8*fracUnit` z guards in `canTouchPickup`
+- At gametic 3244 the player floor is at -248 units (sector 37, lowered platform) and the dropped chaingun sits at z=8 units — 256 units delta, greater than `playerHeight=56` — so GD-DOOM's z check rejects the touch every tic
+- Doom ignores z entirely for pickup collection and removes it the moment XY blockdist is satisfied
+- Fix: remove or skip the z check in `canTouchPickup` for the pickup path, matching Doom's XY-only `MF_SPECIAL` touch test
 
 ## Next Issue
 
-- Investigate why the player does not collect the dropped `MT_CHAINGUN` (sector 37) at `gametic 3244`
-- Check `appendRuntimeThing` initialization: verify the thing's position, floor-z, sector, and blockmap index are set correctly after drop
-- Check GD-DOOM's player-pickup touch path: confirm it iterates over runtime-appended things in the same blockmap cells as the player, not just map-load things
-- The trace state difference (`state=4` vs `state=880`) is a secondary symptom of GD-DOOM using a generic `monsterStateSpawn` fallback for pickup things; the primary bug is the missed collection
+- Fix `canTouchPickup` in `pickups.go` to drop the z range check, matching Doom's `PIT_CheckThing` behavior for `MF_SPECIAL` items
+- After the fix, rerun the full compare to find the next mismatch
