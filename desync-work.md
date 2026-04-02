@@ -69,13 +69,14 @@ Those fresh runs used GD-DOOM's `-render=false` demo path only. The trace-compar
   - Ref reports `state=880 (S_MGUN), tics=-1`; GD-DOOM reports `state=4, tics=8` from spawn onward
   - At `gametic 3244` Doom removes it (player walks within pickup range, ~33 map units); GD-DOOM never removes it
 
-- Root cause: `canTouchPickup` in `pickups.go:229-242` has the correct z check structure — it mirrors Doom's `P_TouchSpecialThing` (`delta > toucher->height || delta < -8*FRACUNIT`). The check itself is not wrong.
-- The actual bug is that GD-DOOM's **player z is wrong** at gametic 3244: player floorz is reported as -248 units while the dropped chaingun sits at z=8 units in the same sector 37 — 256 unit delta, far beyond `playerHeight=56`
-- In Doom the player z would be at or near the sector floor (8 units), making the delta ~0 and the z check pass; in GD-DOOM the player is 256 units below the sector floor it is supposedly standing on
-- This points to a **player Z / floor-tracking bug**: the player's z or floorz is not being updated to the sector's current floor height, likely because sector 37's floor is a moving floor (lift/platform) and GD-DOOM is not updating the player's z as the floor moves
+- Root cause: `canTouchPickup` z check is correct — it mirrors Doom's `P_TouchSpecialThing` guard. The z check is not the bug.
+- Traced the actual divergence: the dropped chaingun's `thingZState` in GD-DOOM stays at +8 units from drop (gt=326) all the way to gt=3215. In Doom, at gt=3244 the chaingun `z=-244` — it has been **riding the sector floor down** as a moving floor descends.
+- GD-DOOM never updates the chaingun's `thingZState` as the sector floor moves. The floor under the chaingun in sector 37 descends from -8 to -244 over the course of the demo, but `heightClipAroundSector` is not firing for the chaingun's position, so it is left at +8 the entire time.
+- At gt=3216 GD-DOOM marks the chaingun as collected via `heightClipThing` → the dropped-item crush path (`thingCollected[i] = true` when `tmceil - tmfloor < thingHeight`). That is also wrong behavior — Doom removes crushed dropped items via `P_RemoveMobj`, not by marking them collected.
+- The floor at the chaingun's XY in sector 37 is a moving platform. `heightClipAroundSector` for that sector is either not being called, or the chaingun's blockmap cell falls outside the sector's block box so it is skipped.
 
 ## Next Issue
 
-- Investigate why player z is -248 units when standing on sector 37 floor at +8 units at `gametic 3244`
-- Likely a moving-floor (lift/platform) tracking bug: sector 37 floor moves and the player z does not follow it up
-- Check how GD-DOOM updates player z when the floor under the player changes mid-tic
+- Investigate why `heightClipAroundSector` does not update the dropped chaingun's `thingZState` as sector 37's floor descends
+- Check whether the chaingun's blockmap cell is inside `sectorBlockBox(37)` and whether `heightClipThing` is ever called for it during the floor's descent
+- Separately: the crushed-dropped-item path in `heightClipThing` marks the item `collected` instead of removing it — this should use removal, not collection, to match `P_ChangeSector` / `PIT_ChangeSector` behavior
