@@ -228,7 +228,17 @@ func (g *game) thingFloorZCached(i int, th mapdata.Thing) int64 {
 
 func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius int64) bool {
 	blockdist := pradius + tradius
-	return abs(px-tx) <= blockdist && abs(py-ty) <= blockdist
+	if abs(px-tx) > blockdist || abs(py-ty) > blockdist {
+		return false
+	}
+	delta := tz - pz
+	if delta > pheight {
+		return false
+	}
+	if delta < -8*fracUnit {
+		return false
+	}
+	return true
 }
 
 func isPickupType(typ int16) bool {

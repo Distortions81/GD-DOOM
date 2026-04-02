@@ -69,14 +69,13 @@ Those fresh runs used GD-DOOM's `-render=false` demo path only. The trace-compar
   - Ref reports `state=880 (S_MGUN), tics=-1`; GD-DOOM reports `state=4, tics=8` from spawn onward
   - At `gametic 3244` Doom removes it (player walks within pickup range, ~33 map units); GD-DOOM never removes it
 
-- Root cause identified: `canTouchPickup` in `pickups.go:229-242` applies a Z range check that Doom does not
-- In Doom's `PIT_CheckThing` (`p_map.c`), the z overhead/underneath guard only applies to **missiles**; for `MF_SPECIAL` pickups the only test is `abs(thing->x - tmx) >= blockdist || abs(thing->y - tmy) >= blockdist` (XY only)
-- GD-DOOM adds `delta := tz - pz; if delta > pheight` and `if delta < -8*fracUnit` z guards in `canTouchPickup`
-- At gametic 3244 the player floor is at -248 units (sector 37, lowered platform) and the dropped chaingun sits at z=8 units — 256 units delta, greater than `playerHeight=56` — so GD-DOOM's z check rejects the touch every tic
-- Doom ignores z entirely for pickup collection and removes it the moment XY blockdist is satisfied
-- Fix: remove or skip the z check in `canTouchPickup` for the pickup path, matching Doom's XY-only `MF_SPECIAL` touch test
+- Root cause: `canTouchPickup` in `pickups.go:229-242` has the correct z check structure — it mirrors Doom's `P_TouchSpecialThing` (`delta > toucher->height || delta < -8*FRACUNIT`). The check itself is not wrong.
+- The actual bug is that GD-DOOM's **player z is wrong** at gametic 3244: player floorz is reported as -248 units while the dropped chaingun sits at z=8 units in the same sector 37 — 256 unit delta, far beyond `playerHeight=56`
+- In Doom the player z would be at or near the sector floor (8 units), making the delta ~0 and the z check pass; in GD-DOOM the player is 256 units below the sector floor it is supposedly standing on
+- This points to a **player Z / floor-tracking bug**: the player's z or floorz is not being updated to the sector's current floor height, likely because sector 37's floor is a moving floor (lift/platform) and GD-DOOM is not updating the player's z as the floor moves
 
 ## Next Issue
 
-- Fix `canTouchPickup` in `pickups.go` to drop the z range check, matching Doom's `PIT_CheckThing` behavior for `MF_SPECIAL` items
-- After the fix, rerun the full compare to find the next mismatch
+- Investigate why player z is -248 units when standing on sector 37 floor at +8 units at `gametic 3244`
+- Likely a moving-floor (lift/platform) tracking bug: sector 37 floor moves and the player z does not follow it up
+- Check how GD-DOOM updates player z when the floor under the player changes mid-tic
