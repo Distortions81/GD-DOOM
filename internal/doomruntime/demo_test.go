@@ -329,7 +329,7 @@ func TestFreezeDemoRecordIsNoopWhenNotRecording(t *testing.T) {
 func TestRecordDemoTicEncodesWeaponSlot(t *testing.T) {
 	g := minimalRecordingGame(t)
 	g.demoWeaponSlot = 3 // player pressed key 3 (shotgun slot, 0-based index 2)
-	g.recordDemoTic(moveCmd{}, false, false)
+	g.recordDemoTic(moveCmd{}, false, false, 0)
 	if len(g.demoRecord) != 1 {
 		t.Fatalf("expected 1 tic, got %d", len(g.demoRecord))
 	}
@@ -349,7 +349,7 @@ func TestRecordDemoTicEncodesWeaponSlot(t *testing.T) {
 func TestRecordDemoTicClearsWeaponSlotEvenWhenNotRecording(t *testing.T) {
 	g := &game{opts: Options{}} // no RecordDemoPath
 	g.demoWeaponSlot = 2
-	g.recordDemoTic(moveCmd{}, false, false)
+	g.recordDemoTic(moveCmd{}, false, false, 0)
 	// slot is not consumed when not recording — that's fine; it will be
 	// overwritten next tic. No assertion needed; just must not panic.
 }

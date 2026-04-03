@@ -80,6 +80,7 @@ type sessionGame struct {
 	demoRecord              []DemoTic
 	frozenDemoPath          string         // set by freezeDemoRecord; cleared opts.RecordDemoPath stops new tics
 	demoRecordingMap        mapdata.MapName // map name when recording started (for demo header)
+	demoFlushTics           int            // tic count at last flush to disk
 	settings                gameplay.PersistentSettings
 	nextMap                 NextMapFunc
 	err                     error

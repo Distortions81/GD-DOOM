@@ -1,6 +1,8 @@
 package doomruntime
 
 import (
+	"strings"
+
 	"gddoom/internal/render/mapview"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -84,20 +86,22 @@ func (g *game) applyMapViewUpdateResult(result mapview.UpdateResult) {
 	g.lastMouseX = result.LastMouseX
 	g.mouseLookSet = result.MouseLookSet
 	g.mouseLookSuppressTicks = result.MouseLookSuppressTicks
-	g.runGameplayTic(moveCmd{
+	cmd := moveCmd{
 		forward: result.Command.Forward,
 		side:    result.Command.Side,
 		turn:    result.Command.Turn,
 		turnRaw: result.Command.TurnRaw,
 		run:     result.Command.Run,
-	}, result.ConsumePendingUse, result.FireHeld)
-	g.recordDemoTic(moveCmd{
-		forward: result.Command.Forward,
-		side:    result.Command.Side,
-		turn:    result.Command.Turn,
-		turnRaw: result.Command.TurnRaw,
-		run:     result.Command.Run,
-	}, result.ConsumePendingUse, result.FirePressed)
+	}
+	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
+		cmd.forward = int64(int8(clampDemoMove(cmd.forward)))
+		cmd.side = int64(int8(clampDemoMove(cmd.side)))
+		angleturn16 := int16(cmd.turnRaw >> 16)
+		cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
+	}
+	angleBefore := g.p.angle
+	g.runGameplayTic(cmd, result.ConsumePendingUse, result.FireHeld)
+	g.recordDemoTic(cmd, result.ConsumePendingUse, result.FirePressed, angleBefore)
 	g.discoverLinesAroundPlayer()
 	if result.SyncCameraToPlayer {
 		g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)

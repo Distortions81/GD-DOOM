@@ -2840,8 +2840,20 @@ func (g *game) updateWalkMode() {
 	}
 
 	cmd.run = speed == 1
+	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
+		// Quantize cmd to demo format precision before running gameplay,
+		// matching vanilla's G_WriteDemoTiccmd -> G_ReadDemoTiccmd round-trip.
+		// forward/side: stored as signed byte (int8).
+		// angleturn: stored as (angleturn+128)>>8 byte, read back as byte<<8.
+		// So angleturn loses its bottom 8 bits with +128 rounding.
+		cmd.forward = int64(int8(clampDemoMove(cmd.forward)))
+		cmd.side = int64(int8(clampDemoMove(cmd.side)))
+		angleturn16 := int16(cmd.turnRaw >> 16)
+		cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
+	}
+	angleBefore := g.p.angle
 	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.recordDemoTic(cmd, usePressed, firePressed)
+	g.recordDemoTic(cmd, usePressed, firePressed, angleBefore)
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 }
@@ -2979,7 +2991,7 @@ func (g *game) currentRunSpeed() int {
 	return 0
 }
 
-func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
+func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool, angleBefore uint32) {
 	if g.opts.DemoScript != nil || strings.TrimSpace(g.opts.RecordDemoPath) == "" {
 		return
 	}
@@ -2997,7 +3009,7 @@ func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
 	g.demoRecord = append(g.demoRecord, DemoTic{
 		Forward:   clampDemoMove(cmd.forward),
 		Side:      clampDemoMove(cmd.side),
-		AngleTurn: g.demoAngleTurn(cmd),
+		AngleTurn: int16((g.p.angle - angleBefore) >> 16),
 		Buttons:   buttons,
 	})
 }
