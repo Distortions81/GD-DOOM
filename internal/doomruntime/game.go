@@ -7594,9 +7594,24 @@ func (g *game) ensureMaskedMidSegScratch(n int) []maskedMidSeg {
 }
 
 func (g *game) drawMaskedMidSeg(ms maskedMidSeg, focal float64, shadeMul uint32, doomRow int) {
+	g.drawMaskedMidSegRange(ms, ms.X0, ms.X1, focal, shadeMul, doomRow)
+}
+
+func (g *game) drawMaskedMidSegRange(ms maskedMidSeg, x0, x1 int, focal float64, shadeMul uint32, doomRow int) {
 	if ms.tex.from == nil || ms.tex.from.Width <= 0 || ms.tex.from.Height <= 0 {
 		return
 	}
+	if x0 < ms.X0 {
+		x0 = ms.X0
+	}
+	if x1 > ms.X1 {
+		x1 = ms.X1
+	}
+	if x0 > x1 {
+		return
+	}
+	ms.X0 = x0
+	ms.X1 = x1
 	halfH := float64(g.viewH) * 0.5
 	if g.maskedMidSegFullyOccluded(ms, focal, halfH) {
 		return
@@ -7950,7 +7965,7 @@ func (g *game) drawCutoutItem(it cutoutItem, focal float64) {
 		g.drawSpriteCutoutItem(it)
 	case billboardQueueMaskedMids:
 		if it.idx >= 0 && it.idx < len(g.maskedMidSegsScratch) {
-			g.drawMaskedMidSeg(g.maskedMidSegsScratch[it.idx], focal, it.shadeMul, it.doomRow)
+			g.drawMaskedMidSegRange(g.maskedMidSegsScratch[it.idx], it.x0, it.x1, focal, it.shadeMul, it.doomRow)
 		}
 	}
 }
@@ -8230,23 +8245,70 @@ func (g *game) appendMaskedMidSegsToCutoutItems() {
 		return
 	}
 	for i := range g.maskedMidSegsScratch {
-		shadeMul, doomRow := g.maskedMidShade(g.maskedMidSegsScratch[i].light)
-		item := cutoutItem{
-			dist:     quantizeMaskedMidSortDist(g.maskedMidSegsScratch[i].Dist),
-			depthQ:   encodeDepthQ(g.maskedMidSegsScratch[i].Dist),
-			kind:     billboardQueueMaskedMids,
-			idx:      i,
-			x0:       g.maskedMidSegsScratch[i].X0,
-			x1:       g.maskedMidSegsScratch[i].X1,
-			shadeMul: uint32(shadeMul),
-			doomRow:  doomRow,
-		}
-		g.billboardQueueScratch = append(g.billboardQueueScratch, item)
+		g.appendMaskedMidSegToCutoutItems(i, g.maskedMidSegsScratch[i])
 	}
 }
 
 func (g *game) appendMaskedMidSegsToBillboardQueue() {
 	g.appendMaskedMidSegsToCutoutItems()
+}
+
+func (g *game) appendMaskedMidSegToCutoutItems(idx int, ms maskedMidSeg) {
+	if g == nil || ms.tex.from == nil || ms.X0 > ms.X1 {
+		return
+	}
+	const maskedMidSortTexelGroup = 16
+	shadeMul, doomRow := g.maskedMidShade(ms.light)
+	stepper := scene.NewWallProjectionStepper(ms.Projection, ms.X0)
+	runX0 := -1
+	runTX := 0
+	flush := func(x0, x1 int) {
+		if x0 > x1 {
+			return
+		}
+		dist, ok := maskedMidBillboardDepthGuess(ms.Projection, x0, x1)
+		if !ok {
+			return
+		}
+		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
+			dist:     quantizeMaskedMidSortDist(dist),
+			depthQ:   encodeDepthQ(dist),
+			kind:     billboardQueueMaskedMids,
+			idx:      idx,
+			x0:       x0,
+			x1:       x1,
+			shadeMul: uint32(shadeMul),
+			doomRow:  doomRow,
+		})
+	}
+	for x := ms.X0; x <= ms.X1; x++ {
+		_, texU, ok := stepper.Sample()
+		stepper.Next()
+		if !ok {
+			if runX0 >= 0 {
+				flush(runX0, x-1)
+				runX0 = -1
+			}
+			continue
+		}
+		tx := maskedMidTextureColumn(*ms.tex.from, texU+ms.TexUOff)
+		if maskedMidSortTexelGroup > 1 {
+			tx /= maskedMidSortTexelGroup
+		}
+		if runX0 < 0 {
+			runX0 = x
+			runTX = tx
+			continue
+		}
+		if tx != runTX {
+			flush(runX0, x-1)
+			runX0 = x
+			runTX = tx
+		}
+	}
+	if runX0 >= 0 {
+		flush(runX0, ms.X1)
+	}
 }
 
 func quantizeMaskedMidSortDist(dist float64) float64 {

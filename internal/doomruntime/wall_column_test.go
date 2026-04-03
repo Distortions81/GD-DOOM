@@ -598,8 +598,24 @@ func TestAppendMaskedClipSpan_MaintainsSortedOrder(t *testing.T) {
 func TestAppendMaskedMidSegsToBillboardQueue_QuantizesSortDist(t *testing.T) {
 	g := &game{
 		maskedMidSegsScratch: []maskedMidSeg{
-			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 9.9}},
-			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 14.1}},
+			{
+				MaskedMidSeg: scene.MaskedMidSeg{
+					Projection: scene.WallProjection{SX1: 0, SX2: 1, InvDepth1: 1.0 / 9.9, InvDepth2: 1.0 / 9.9},
+					Dist:       9.9,
+					X0:         0,
+					X1:         1,
+				},
+				tex: wallTextureBlendSample{from: &WallTexture{Width: 1, Height: 1}},
+			},
+			{
+				MaskedMidSeg: scene.MaskedMidSeg{
+					Projection: scene.WallProjection{SX1: 0, SX2: 1, InvDepth1: 1.0 / 14.1, InvDepth2: 1.0 / 14.1},
+					Dist:       14.1,
+					X0:         0,
+					X1:         1,
+				},
+				tex: wallTextureBlendSample{from: &WallTexture{Width: 1, Height: 1}},
+			},
 		},
 	}
 
@@ -619,8 +635,24 @@ func TestAppendMaskedMidSegsToBillboardQueue_QuantizesSortDist(t *testing.T) {
 func TestSortCutoutItemsFrontToBack_UsesDepthQAfterQuantizedDist(t *testing.T) {
 	g := &game{
 		maskedMidSegsScratch: []maskedMidSeg{
-			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 11.9, X0: 10, X1: 20}},
-			{MaskedMidSeg: scene.MaskedMidSeg{Dist: 9.9, X0: 10, X1: 20}},
+			{
+				MaskedMidSeg: scene.MaskedMidSeg{
+					Projection: scene.WallProjection{SX1: 10, SX2: 20, InvDepth1: 1.0 / 11.9, InvDepth2: 1.0 / 11.9},
+					Dist:       11.9,
+					X0:         10,
+					X1:         20,
+				},
+				tex: wallTextureBlendSample{from: &WallTexture{Width: 1, Height: 1}},
+			},
+			{
+				MaskedMidSeg: scene.MaskedMidSeg{
+					Projection: scene.WallProjection{SX1: 10, SX2: 20, InvDepth1: 1.0 / 9.9, InvDepth2: 1.0 / 9.9},
+					Dist:       9.9,
+					X0:         10,
+					X1:         20,
+				},
+				tex: wallTextureBlendSample{from: &WallTexture{Width: 1, Height: 1}},
+			},
 		},
 	}
 
@@ -639,6 +671,40 @@ func TestSortCutoutItemsFrontToBack_UsesDepthQAfterQuantizedDist(t *testing.T) {
 	}
 	if got := g.billboardQueueScratch[1].idx; got != 0 {
 		t.Fatalf("second idx=%d want farther masked mid second", got)
+	}
+}
+
+func TestAppendMaskedMidSegsToCutoutItems_SplitsAtTextureColumns(t *testing.T) {
+	g := &game{
+		maskedMidSegsScratch: []maskedMidSeg{
+			{
+				MaskedMidSeg: scene.MaskedMidSeg{
+					Projection: scene.WallProjection{
+						SX1:         0,
+						SX2:         7,
+						InvDepth1:   1.0 / 12.0,
+						InvDepth2:   1.0 / 12.0,
+						UOverDepth1: 0,
+						UOverDepth2: 8.0 / 12.0,
+					},
+					X0: 0,
+					X1: 7,
+				},
+				tex: wallTextureBlendSample{from: &WallTexture{Width: 8, Height: 1}},
+			},
+		},
+	}
+
+	g.appendMaskedMidSegsToCutoutItems()
+
+	if len(g.billboardQueueScratch) != 2 {
+		t.Fatalf("queue len=%d want 2", len(g.billboardQueueScratch))
+	}
+	for i, want := range []struct{ x0, x1 int }{{0, 3}, {4, 7}} {
+		got := g.billboardQueueScratch[i]
+		if got.x0 != want.x0 || got.x1 != want.x1 {
+			t.Fatalf("item %d range=(%d,%d) want (%d,%d)", i, got.x0, got.x1, want.x0, want.x1)
+		}
 	}
 }
 
