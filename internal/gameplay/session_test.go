@@ -11,6 +11,7 @@ import (
 func TestApplyPersistentSettingsToOptions(t *testing.T) {
 	got := ApplyPersistentSettingsToOptions(OptionState{}, PersistentSettings{
 		MouseLook:        true,
+		MouseInvert:      true,
 		MouseLookSpeed:   2.5,
 		MusicVolume:      2,
 		OPLVolume:        9,
@@ -20,7 +21,7 @@ func TestApplyPersistentSettingsToOptions(t *testing.T) {
 		ThingRenderMode:  "sprites",
 	}, 4)
 
-	if !got.MouseLook || got.MouseLookSpeed != 2.5 {
+	if !got.MouseLook || !got.MouseInvert || got.MouseLookSpeed != 2.5 {
 		t.Fatal("mouse settings were not applied")
 	}
 	if got.MusicVolume != 1 || got.OPLVolume != 4 || got.SFXVolume != 0 {

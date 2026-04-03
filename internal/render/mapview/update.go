@@ -46,6 +46,7 @@ type UpdateState struct {
 	SideMove               int64
 	PendingUse             bool
 	MouseLookEnabled       bool
+	MouseInvert            bool
 	MouseLookSpeed         float64
 	RenderWidth            int
 	LastMouseX             int
@@ -121,7 +122,7 @@ func Update(input InputState, state UpdateState) UpdateResult {
 	}
 	if state.MouseLookEnabled {
 		cmd.TurnRaw, result.LastMouseX, result.MouseLookSet, result.MouseLookSuppressTicks =
-			mouseLookTurnRaw(input.CursorX, state.MouseLookSpeed, state.RenderWidth, state.LastMouseX, state.MouseLookSet, state.MouseLookSuppressTicks)
+			mouseLookTurnRaw(input.CursorX, state.MouseLookSpeed, state.RenderWidth, state.MouseInvert, state.LastMouseX, state.MouseLookSet, state.MouseLookSuppressTicks)
 	} else {
 		result.MouseLookSet = false
 	}
@@ -182,7 +183,7 @@ func nextZoom(current, fitZoom float64, input InputState) float64 {
 	return zoom
 }
 
-func mouseLookTurnRaw(cursorX int, speed float64, renderWidth, lastMouseX int, mouseLookSet bool, suppressTicks int) (turnRaw int64, nextLastMouseX int, nextMouseLookSet bool, nextSuppressTicks int) {
+func mouseLookTurnRaw(cursorX int, speed float64, renderWidth int, invertHorizontal bool, lastMouseX int, mouseLookSet bool, suppressTicks int) (turnRaw int64, nextLastMouseX int, nextMouseLookSet bool, nextSuppressTicks int) {
 	nextLastMouseX = lastMouseX
 	nextMouseLookSet = mouseLookSet
 	nextSuppressTicks = suppressTicks
@@ -199,10 +200,10 @@ func mouseLookTurnRaw(cursorX int, speed float64, renderWidth, lastMouseX int, m
 	}
 	dx := cursorX - nextLastMouseX
 	nextLastMouseX = cursorX
-	return mouseLookTurnRawWithWidth(dx, speed, renderWidth), nextLastMouseX, nextMouseLookSet, nextSuppressTicks
+	return mouseLookTurnRawWithWidth(dx, speed, renderWidth, invertHorizontal), nextLastMouseX, nextMouseLookSet, nextSuppressTicks
 }
 
-func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
+func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int, invertHorizontal bool) int64 {
 	if dx == 0 {
 		return 0
 	}
@@ -215,6 +216,9 @@ func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
 		} else {
 			raw = -1
 		}
+	}
+	if invertHorizontal {
+		return raw
 	}
 	return -raw
 }

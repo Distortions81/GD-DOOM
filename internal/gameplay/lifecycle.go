@@ -7,6 +7,7 @@ type PersistentSettings struct {
 	AutoDetail       bool
 	RotateView       bool
 	MouseLook        bool
+	MouseInvert      bool
 	MouseLookSpeed   float64
 	MusicVolume      float64
 	OPLVolume        float64
@@ -28,6 +29,7 @@ type AppliedPersistentSettings struct {
 	AutoDetail       bool
 	RotateView       bool
 	MouseLook        bool
+	MouseInvert      bool
 	MouseLookSpeed   float64
 	MusicVolume      float64
 	OPLVolume        float64
@@ -50,6 +52,7 @@ func ApplyPersistentSettings(s PersistentSettings, sourcePort bool, faithfulLeve
 		AutoDetail:       s.AutoDetail,
 		RotateView:       s.RotateView,
 		MouseLook:        s.MouseLook,
+		MouseInvert:      s.MouseInvert,
 		MouseLookSpeed:   s.MouseLookSpeed,
 		MusicVolume:      ClampVolume(s.MusicVolume),
 		OPLVolume:        ClampOPLVolume(s.OPLVolume, maxOPLGain),

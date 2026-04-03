@@ -2372,10 +2372,10 @@ func (g *game) cycleSourcePortDetailLevel() {
 }
 
 func (g *game) mouseLookTurnRaw(dx int) int64 {
-	return mouseLookTurnRawWithWidth(dx, g.opts.MouseLookSpeed, g.viewW)
+	return mouseLookTurnRawWithWidth(dx, g.opts.MouseLookSpeed, g.viewW, g.opts.MouseInvert)
 }
 
-func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
+func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int, invertHorizontal bool) int64 {
 	if dx == 0 {
 		return 0
 	}
@@ -2388,6 +2388,9 @@ func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int) int64 {
 		} else {
 			raw = -1
 		}
+	}
+	if invertHorizontal {
+		return raw
 	}
 	// Positive mouse delta should turn right (decrease world angle).
 	return -raw
@@ -2406,6 +2409,7 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		SFXVolume:          g.opts.SFXVolume,
 		HUDMessages:        g.hudMessagesEnabled,
 		MouseLook:          g.opts.MouseLook,
+		MouseInvert:        g.opts.MouseInvert,
 		AlwaysRun:          g.alwaysRun,
 		AutoWeaponSwitch:   g.autoWeaponSwitch,
 		ThingRenderMode:    g.opts.SourcePortThingRenderMode,

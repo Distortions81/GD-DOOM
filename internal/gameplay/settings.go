@@ -12,6 +12,7 @@ type RuntimeSettings struct {
 	SFXVolume          float64
 	HUDMessages        bool
 	MouseLook          bool
+	MouseInvert        bool
 	AlwaysRun          bool
 	AutoWeaponSwitch   bool
 	ThingRenderMode    string
@@ -37,6 +38,7 @@ func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort 
 	next.DetailLevel = ClampDetailLevel(s.DetailLevel, sourcePort, faithfulLevels, sourcePortLevels)
 	next.AutoDetail = s.AutoDetail
 	next.MouseLook = s.MouseLook
+	next.MouseInvert = s.MouseInvert
 	next.MusicVolume = ClampVolume(s.MusicVolume)
 	next.OPLVolume = ClampOPLVolume(s.OPLVolume, maxOPLGain)
 	next.SFXVolume = ClampVolume(s.SFXVolume)

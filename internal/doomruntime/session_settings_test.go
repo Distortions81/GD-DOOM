@@ -14,6 +14,7 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 			opts: Options{
 				SourcePortMode:            true,
 				MouseLook:                 false,
+				MouseInvert:               true,
 				MusicVolume:               0.9,
 				SFXVolume:                 0.5,
 				SourcePortThingRenderMode: "sprites",
@@ -36,6 +37,7 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 		opts: Options{
 			SourcePortMode:            true,
 			MouseLook:                 true,
+			MouseInvert:               false,
 			MusicVolume:               0.9,
 			SFXVolume:                 0.66,
 			AlwaysRun:                 false,
@@ -51,6 +53,9 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 
 	if sg.opts.MouseLook {
 		t.Fatal("options mouselook should be persisted as OFF")
+	}
+	if !sg.opts.MouseInvert {
+		t.Fatal("options mouse invert should be persisted as ON")
 	}
 	if sg.opts.MusicVolume != 0.9 {
 		t.Fatalf("options music volume=%.2f want 0.9", sg.opts.MusicVolume)
@@ -89,6 +94,9 @@ func TestSessionPersistentSettingsCaptureAndApply(t *testing.T) {
 	}
 	if !dst.alwaysRun || dst.autoWeaponSwitch {
 		t.Fatal("always-run/auto-weapon-switch persistence mismatch")
+	}
+	if !dst.opts.MouseInvert {
+		t.Fatal("mouse invert should be persisted as ON")
 	}
 	if dst.opts.SourcePortThingRenderMode != "sprites" {
 		t.Fatalf("thingRenderMode=%q want sprites", dst.opts.SourcePortThingRenderMode)

@@ -29,6 +29,8 @@ type fileConfig struct {
 	ShowNoSkillItems           *bool    `toml:"show_no_skill_items"`
 	ShowAllItems               *bool    `toml:"show_all_items"`
 	MouseLook                  *bool    `toml:"mouselook"`
+	MouseInvert                *bool    `toml:"mouse_invert"`
+	MouseInvertHorizontal      *bool    `toml:"mouse_invert_horizontal"`
 	SmoothCameraYaw            *bool    `toml:"smooth_camera_yaw"`
 	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
 	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
@@ -146,6 +148,7 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	cfg.SoundFont = strPtr(strings.TrimSpace(s.MusicSoundFontPath))
 	cfg.SFXVolume = floatPtr(s.SFXVolume)
 	cfg.MouseLook = boolPtr(s.MouseLook)
+	cfg.MouseInvert = boolPtr(s.MouseInvert)
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)
 	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
 	cfg.CRTEffect = boolPtr(s.CRTEffect)

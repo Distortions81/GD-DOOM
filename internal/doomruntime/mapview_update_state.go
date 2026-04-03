@@ -51,6 +51,7 @@ func (g *game) buildMapViewUpdateState() mapview.UpdateState {
 		SideMove:               sideMove[speed],
 		PendingUse:             g.pendingUse,
 		MouseLookEnabled:       g.opts.SourcePortMode && g.opts.MouseLook,
+		MouseInvert:            g.opts.MouseInvert,
 		MouseLookSpeed:         g.opts.MouseLookSpeed,
 		RenderWidth:            g.viewW,
 		LastMouseX:             g.lastMouseX,

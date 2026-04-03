@@ -101,31 +101,6 @@ func TestExplicitMapStartInMap(t *testing.T) {
 	}
 }
 
-func TestRunParseUsesPositionalWADArgument(t *testing.T) {
-	var out bytes.Buffer
-	var errb bytes.Buffer
-	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
-	code := RunParse([]string{wadPath, "-render=false"}, &out, &errb)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
-	}
-	if strings.Contains(errb.String(), "open wad:") {
-		t.Fatalf("stderr %q unexpectedly contains wad open error", errb.String())
-	}
-}
-
-func TestRunParseTreatsPositionalWADAsExplicitAndSkipsPicker(t *testing.T) {
-	var out bytes.Buffer
-	var errb bytes.Buffer
-	code := RunParse([]string{"missing-from-cli.wad", "-render=false"}, &out, &errb)
-	if code != 1 {
-		t.Fatalf("RunParse() code=%d want=1 stderr=%q", code, errb.String())
-	}
-	if !strings.Contains(errb.String(), "open wad:") {
-		t.Fatalf("stderr %q does not contain open wad error", errb.String())
-	}
-}
-
 func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer
@@ -545,6 +520,38 @@ func TestLoadConfigParsesSmoothCameraYaw(t *testing.T) {
 	}
 }
 
+func TestLoadConfigParsesMouseInvert(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("mouse_invert = true\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.MouseInvert == nil || !*loaded.MouseInvert {
+		t.Fatalf("mouse_invert=%v want true", loaded.MouseInvert)
+	}
+}
+
+func TestLoadConfigParsesLegacyMouseInvertHorizontal(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "cfg.toml")
+	cfg := []byte("mouse_invert_horizontal = true\n")
+	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if loaded.MouseInvertHorizontal == nil || !*loaded.MouseInvertHorizontal {
+		t.Fatalf("mouse_invert_horizontal=%v want true", loaded.MouseInvertHorizontal)
+	}
+}
+
 func TestRunParseAcceptsSmoothCameraYawFlag(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer
@@ -631,6 +638,7 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		MusicSoundFontPath: "soundfonts/sc55.sf2",
 		SFXVolume:          0.25,
 		MouseLook:          false,
+		MouseInvert:        true,
 		AlwaysRun:          true,
 		AutoWeaponSwitch:   false,
 		CRTEffect:          true,
@@ -668,6 +676,9 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.MouseLook == nil || *cfg.MouseLook != in.MouseLook {
 		t.Fatalf("mouselook=%v want %v", cfg.MouseLook, in.MouseLook)
+	}
+	if cfg.MouseInvert == nil || *cfg.MouseInvert != in.MouseInvert {
+		t.Fatalf("mouse_invert=%v want %v", cfg.MouseInvert, in.MouseInvert)
 	}
 	if cfg.AlwaysRun == nil || *cfg.AlwaysRun != in.AlwaysRun {
 		t.Fatalf("always_run=%v want %v", cfg.AlwaysRun, in.AlwaysRun)

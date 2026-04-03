@@ -78,9 +78,9 @@ type sessionGame struct {
 	currentTemplate         *mapdata.Map
 	opts                    Options
 	demoRecord              []DemoTic
-	frozenDemoPath          string         // set by freezeDemoRecord; cleared opts.RecordDemoPath stops new tics
+	frozenDemoPath          string          // set by freezeDemoRecord; cleared opts.RecordDemoPath stops new tics
 	demoRecordingMap        mapdata.MapName // map name when recording started (for demo header)
-	demoFlushTics           int            // tic count at last flush to disk
+	demoFlushTics           int             // tic count at last flush to disk
 	settings                gameplay.PersistentSettings
 	nextMap                 NextMapFunc
 	err                     error
@@ -234,6 +234,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 		AutoDetail:       g.autoDetailEnabled,
 		RotateView:       g.rotateView,
 		MouseLook:        g.opts.MouseLook,
+		MouseInvert:      g.opts.MouseInvert,
 		MouseLookSpeed:   g.opts.MouseLookSpeed,
 		MusicVolume:      g.opts.MusicVolume,
 		OPLVolume:        g.opts.OPLVolume,
@@ -275,6 +276,7 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.autoDetailEnabled = applied.AutoDetail
 	g.rotateView = applied.RotateView
 	g.opts.MouseLook = applied.MouseLook
+	g.opts.MouseInvert = applied.MouseInvert
 	g.opts.MouseLookSpeed = applied.MouseLookSpeed
 	g.opts.MusicVolume = applied.MusicVolume
 	g.opts.OPLVolume = applied.OPLVolume
@@ -319,6 +321,7 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	sg.settings.DetailLevel = next.DetailLevel
 	sg.settings.AutoDetail = next.AutoDetail
 	sg.settings.MouseLook = next.MouseLook
+	sg.settings.MouseInvert = next.MouseInvert
 	sg.settings.MusicVolume = next.MusicVolume
 	sg.settings.OPLVolume = next.OPLVolume
 	sg.settings.SFXVolume = next.SFXVolume
@@ -378,6 +381,7 @@ func (sg *sessionGame) runtimeSettingsSnapshot() RuntimeSettings {
 		SFXVolume:          sg.opts.SFXVolume,
 		HUDMessages:        sg.settings.HUDMessages,
 		MouseLook:          sg.opts.MouseLook,
+		MouseInvert:        sg.opts.MouseInvert,
 		AlwaysRun:          sg.opts.AlwaysRun,
 		AutoWeaponSwitch:   sg.opts.AutoWeaponSwitch,
 		ThingRenderMode:    sg.opts.SourcePortThingRenderMode,
@@ -568,6 +572,7 @@ func (sg *sessionGame) optionState() gameplay.OptionState {
 	}
 	return gameplay.OptionState{
 		MouseLook:        sg.opts.MouseLook,
+		MouseInvert:      sg.opts.MouseInvert,
 		MouseLookSpeed:   sg.opts.MouseLookSpeed,
 		MusicVolume:      sg.opts.MusicVolume,
 		OPLVolume:        sg.opts.OPLVolume,
@@ -583,6 +588,7 @@ func applyOptionStateToOptions(opts *Options, state gameplay.OptionState) {
 		return
 	}
 	opts.MouseLook = state.MouseLook
+	opts.MouseInvert = state.MouseInvert
 	opts.MouseLookSpeed = state.MouseLookSpeed
 	opts.MusicVolume = state.MusicVolume
 	opts.OPLVolume = state.OPLVolume

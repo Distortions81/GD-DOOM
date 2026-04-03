@@ -12,6 +12,7 @@ func TestApplyRuntimeSettingsPreservesThingMode(t *testing.T) {
 		OPLVolume:        9,
 		SFXVolume:        -1,
 		MouseLook:        true,
+		MouseInvert:      true,
 		AlwaysRun:        true,
 		AutoWeaponSwitch: false,
 		ThingRenderMode:  "glyphs",
@@ -39,7 +40,7 @@ func TestApplyRuntimeSettingsPreservesThingMode(t *testing.T) {
 	if got.Settings.ThingRenderMode != "glyphs" {
 		t.Fatalf("thingRenderMode=%q want glyphs", got.Settings.ThingRenderMode)
 	}
-	if !got.Settings.MouseLook || !got.Settings.AlwaysRun || got.Settings.AutoWeaponSwitch || !got.Settings.CRTEnabled {
+	if !got.Settings.MouseLook || !got.Settings.MouseInvert || !got.Settings.AlwaysRun || got.Settings.AutoWeaponSwitch || !got.Settings.CRTEnabled {
 		t.Fatal("runtime settings did not persist expected flags")
 	}
 	if got.MusicAction != MusicActionUpdateVolume {

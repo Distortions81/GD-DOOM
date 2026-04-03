@@ -75,25 +75,9 @@ func resolveForceWASMMode(args []string) bool {
 	return false
 }
 
-func normalizePositionalWADArg(args []string) ([]string, bool) {
-	if flagProvided(args, "wad") {
-		return args, false
-	}
-	normalized := append([]string(nil), args...)
-	if len(normalized) == 0 {
-		return normalized, false
-	}
-	arg := normalized[0]
-	if arg == "--" || strings.TrimSpace(arg) == "" || strings.HasPrefix(arg, "-") {
-		return normalized, false
-	}
-	normalized[0] = "-wad=" + arg
-	return normalized, true
-}
-
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	const maxCLIAppOPLVolume = 4.0
-	normalizedArgs, positionalWADNormalized := normalizePositionalWADArg(args)
+	normalizedArgs := args
 	prevForceWASMMode := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(resolveForceWASMMode(normalizedArgs))
 	defer platformcfg.SetForcedWASMMode(prevForceWASMMode)
@@ -122,6 +106,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultShowNoSkillItems := false
 	defaultShowAllItems := false
 	defaultMouseLook := true
+	defaultMouseInvert := false
 	defaultSmoothCameraYaw := true
 	defaultMouseLookSpeed := 0.5
 	defaultKeyboardTurnSpeed := 1.0
@@ -226,6 +211,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.MouseLook != nil {
 			defaultMouseLook = *cfg.MouseLook
+		}
+		if cfg.MouseInvert != nil {
+			defaultMouseInvert = *cfg.MouseInvert
+		} else if cfg.MouseInvertHorizontal != nil {
+			defaultMouseInvert = *cfg.MouseInvertHorizontal
 		}
 		if cfg.SmoothCameraYaw != nil {
 			defaultSmoothCameraYaw = *cfg.SmoothCameraYaw
@@ -346,6 +336,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	showNoSkillItems := fs.Bool("show-no-skill-items", defaultShowNoSkillItems, "show pickup items that have no skill bits set")
 	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
+	mouseInvert := fs.Bool("mouse-invert", defaultMouseInvert, "invert mouse movement")
 	smoothCameraYaw := fs.Bool("smooth-camera-yaw", defaultSmoothCameraYaw, "smooth interpolated player camera yaw between sim ticks")
 	mouseLookSpeed := fs.Float64("mouselook-speed", defaultMouseLookSpeed, "mouse turn speed multiplier (>0)")
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
@@ -393,13 +384,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	mapExplicit := flagProvided(normalizedArgs, "map") && strings.TrimSpace(*mapName) != ""
 	skyUpscaleFlagSet := flagProvided(normalizedArgs, "sky-upscale")
 	wadFlagSet := flagProvided(normalizedArgs, "wad")
-	positionalWADSet := positionalWADNormalized
-	if !wadFlagSet && fs.NArg() > 0 {
-		if path := strings.TrimSpace(fs.Arg(0)); path != "" {
-			*wadPath = path
-			positionalWADSet = true
-		}
-	}
 	if *sourcePortMode {
 		if !skyUpscaleFlagSet && (cfg == nil || cfg.SkyUpscaleMode == nil) {
 			*skyUpscale = "sharp"
@@ -491,7 +475,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	if *dumpMusic {
-		if err := dumpMusicWAVs(strings.TrimSpace(*dumpMusicDir), resolvedWADPath, wadFlagSet || positionalWADSet, resolvedFilePaths, strings.TrimSpace(*soundFont), stdout, stderr); err != nil {
+		if err := dumpMusicWAVs(strings.TrimSpace(*dumpMusicDir), resolvedWADPath, wadFlagSet, resolvedFilePaths, strings.TrimSpace(*soundFont), stdout, stderr); err != nil {
 			fmt.Fprintf(stderr, "dump music: %v\n", err)
 			return 1
 		}
@@ -570,7 +554,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 	}
 	defer stopCPUProfile()
-	noExplicitWAD := !wadFlagSet && !positionalWADSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
+	noExplicitWAD := !wadFlagSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
 	forceWASMPicker := isWASMBuild() && *render
 	choices := detectAvailableIWADChoices(".")
 	pickerChoices := choices
@@ -885,6 +869,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			ShowNoSkillItems:           *showNoSkillItems,
 			ShowAllItems:               *showAllItems,
 			MouseLook:                  *mouseLook,
+			MouseInvert:                *mouseInvert,
 			SmoothCameraYaw:            *smoothCameraYaw,
 			MouseLookSpeed:             *mouseLookSpeed,
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
@@ -1098,6 +1083,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			showNoSkillItems:           *showNoSkillItems,
 			showAllItems:               *showAllItems,
 			mouseLook:                  *mouseLook,
+			mouseInvert:                *mouseInvert,
 			mouseLookSpeed:             *mouseLookSpeed,
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                0,
@@ -1798,6 +1784,7 @@ type renderBuildConfig struct {
 	showNoSkillItems           bool
 	showAllItems               bool
 	mouseLook                  bool
+	mouseInvert                bool
 	mouseLookSpeed             float64
 	keyboardTurnSpeed          float64
 	musicVolume                float64
@@ -2079,6 +2066,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		ShowNoSkillItems:           cfg.showNoSkillItems,
 		ShowAllItems:               cfg.showAllItems,
 		MouseLook:                  cfg.mouseLook,
+		MouseInvert:                cfg.mouseInvert,
 		MouseLookSpeed:             cfg.mouseLookSpeed,
 		KeyboardTurnSpeed:          cfg.keyboardTurnSpeed,
 		MusicVolume:                cfg.musicVolume,
