@@ -78,6 +78,8 @@ type sessionGame struct {
 	currentTemplate         *mapdata.Map
 	opts                    Options
 	demoRecord              []DemoTic
+	frozenDemoPath          string         // set by freezeDemoRecord; cleared opts.RecordDemoPath stops new tics
+	demoRecordingMap        mapdata.MapName // map name when recording started (for demo header)
 	settings                gameplay.PersistentSettings
 	nextMap                 NextMapFunc
 	err                     error
@@ -593,7 +595,26 @@ func (sg *sessionGame) collectDemoRecord() {
 	if sg == nil || sg.g == nil || len(sg.g.demoRecord) == 0 {
 		return
 	}
+	if sg.demoRecordingMap == "" && sg.g.m != nil {
+		sg.demoRecordingMap = sg.g.m.Name
+	}
 	sg.demoRecord, sg.g.demoRecord = gameplay.CollectDemoRecord(sg.demoRecord, sg.g.demoRecord)
+}
+
+// freezeDemoRecord finalizes demo recording at a vanilla-parity stop point
+// (level exit or player death). It flushes any pending tics and clears
+// RecordDemoPath on both the session and the active game so that subsequent
+// map rebuilds do not append new tics.
+func (sg *sessionGame) freezeDemoRecord() {
+	if sg == nil || strings.TrimSpace(sg.opts.RecordDemoPath) == "" {
+		return
+	}
+	sg.collectDemoRecord()
+	sg.frozenDemoPath = sg.opts.RecordDemoPath
+	sg.opts.RecordDemoPath = ""
+	if sg.g != nil {
+		sg.g.opts.RecordDemoPath = ""
+	}
 }
 
 func (sg *sessionGame) effectiveDemoRecord() []DemoTic {

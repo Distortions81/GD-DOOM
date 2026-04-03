@@ -51,9 +51,11 @@ func Run(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 			skill = 0
 		}
 		demoRec, derr := demo.BuildRecorded(sess.StartMapName(), demo.RecordingOptions{
-			Skill:        skill,
-			Deathmatch:   strings.EqualFold(opts.GameMode, "deathmatch"),
-			FastMonsters: opts.FastMonsters,
+			Skill:           skill,
+			Deathmatch:      strings.EqualFold(opts.GameMode, "deathmatch"),
+			FastMonsters:    opts.FastMonsters,
+			RespawnMonsters: opts.RespawnMonsters,
+			NoMonsters:      opts.NoMonsters,
 		}, rec)
 		if derr != nil {
 			return fmt.Errorf("build demo recording: %w", derr)

@@ -841,6 +841,7 @@ type game struct {
 	demoRNGCaptured              bool
 	demoTrace                    *demoTraceWriter
 	demoRecord                   []DemoTic
+	demoWeaponSlot               int // weapon slot key pressed this tic (1-based, 0 = none); consumed by recordDemoTic
 }
 
 type gameInputSnapshot struct {
@@ -2989,6 +2990,10 @@ func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool) {
 	if firePressed {
 		buttons |= demoButtonAttack
 	}
+	if slot := g.demoWeaponSlot; slot != 0 {
+		buttons |= demoButtonChange | byte((slot-1)<<demoButtonWeaponShift)
+		g.demoWeaponSlot = 0
+	}
 	g.demoRecord = append(g.demoRecord, DemoTic{
 		Forward:   clampDemoMove(cmd.forward),
 		Side:      clampDemoMove(cmd.side),
@@ -3040,24 +3045,31 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 	}
 	if g.keyJustPressed(ebiten.Key1) {
 		g.selectWeaponSlot(1)
+		g.demoWeaponSlot = 1
 	}
 	if g.keyJustPressed(ebiten.Key2) {
 		g.selectWeaponSlot(2)
+		g.demoWeaponSlot = 2
 	}
 	if g.keyJustPressed(ebiten.Key3) {
 		g.selectWeaponSlot(3)
+		g.demoWeaponSlot = 3
 	}
 	if g.keyJustPressed(ebiten.Key4) {
 		g.selectWeaponSlot(4)
+		g.demoWeaponSlot = 4
 	}
 	if g.keyJustPressed(ebiten.Key5) {
 		g.selectWeaponSlot(5)
+		g.demoWeaponSlot = 5
 	}
 	if g.keyJustPressed(ebiten.Key6) {
 		g.selectWeaponSlot(6)
+		g.demoWeaponSlot = 6
 	}
 	if g.keyJustPressed(ebiten.Key7) {
 		g.selectWeaponSlot(7)
+		g.demoWeaponSlot = 7
 	}
 	if !allowCycleInput {
 		return
@@ -3471,6 +3483,9 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 	}
 	if g.opts.SourcePortMode && !g.opts.NoFPS {
 		g.drawPerfOverlay(screen)
+	}
+	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
+		hud.DrawRecordingIndicator(screen, g.viewW, g.viewH, g.huTextWidth, g.drawHUTextAt)
 	}
 }
 

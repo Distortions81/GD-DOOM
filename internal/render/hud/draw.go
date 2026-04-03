@@ -8,6 +8,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 const (
@@ -513,4 +514,24 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// DrawRecordingIndicator draws a red circle + "REC" label in the top-right
+// corner of the screen to indicate that a demo is being recorded.
+func DrawRecordingIndicator(screen *ebiten.Image, viewW, viewH int, textWidth TextWidthFunc, drawText TextDrawer) {
+	const (
+		margin   = 6.0
+		radius   = 5.0
+		fontSize = 1.0
+		label    = "REC"
+	)
+	cx := float32(viewW) - margin - radius
+	cy := float32(margin) + radius
+	vector.DrawFilledCircle(screen, cx, cy, radius, color.RGBA{R: 220, G: 30, B: 30, A: 255}, true)
+	if drawText != nil && textWidth != nil {
+		tw := float64(textWidth(label)) * fontSize
+		tx := float64(cx) - radius - 2 - tw
+		ty := float64(cy) - 4*fontSize
+		drawText(screen, label, tx, ty, fontSize, fontSize)
+	}
 }

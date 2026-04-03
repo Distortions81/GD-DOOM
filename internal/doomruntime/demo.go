@@ -47,8 +47,10 @@ func BuildRecordedDemo(mapName mapdata.MapName, opts Options, tics []DemoTic) (*
 		skill = 0
 	}
 	return demo.BuildRecorded(mapName, demo.RecordingOptions{
-		Skill:        skill,
-		Deathmatch:   normalizeGameMode(opts.GameMode) == gameModeDeathmatch,
-		FastMonsters: opts.FastMonsters,
+		Skill:           skill,
+		Deathmatch:      normalizeGameMode(opts.GameMode) == gameModeDeathmatch,
+		FastMonsters:    opts.FastMonsters,
+		RespawnMonsters: opts.RespawnMonsters,
+		NoMonsters:      opts.NoMonsters,
 	}, tics)
 }

@@ -137,6 +137,7 @@ var (
 )
 
 func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.MapName, secretExit bool) {
+	sg.freezeDemoRecord()
 	sg.stopAndClearMusic()
 	if sg.g != nil {
 		carry := sg.g.captureLevelCarryover()

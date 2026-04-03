@@ -108,9 +108,16 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 		},
 		EffectiveDemoRecord: sg.effectiveDemoRecord,
 		Options: func() Options {
-			return sg.opts
+			opts := sg.opts
+			if strings.TrimSpace(opts.RecordDemoPath) == "" && strings.TrimSpace(sg.frozenDemoPath) != "" {
+				opts.RecordDemoPath = sg.frozenDemoPath
+			}
+			return opts
 		},
 		StartMapName: func() mapdata.MapName {
+			if sg.demoRecordingMap != "" {
+				return sg.demoRecordingMap
+			}
 			if sg.bootMap == nil {
 				return ""
 			}
@@ -250,6 +257,7 @@ func (sg *sessionGame) Update() error {
 						return nil
 					},
 					OnRestart: func() error {
+						sg.freezeDemoRecord()
 						restartMap := sg.restartMapForRespawn()
 						if sg.opts.DebugEvents {
 							if restartMap != nil {
@@ -377,6 +385,7 @@ func (sg *sessionGame) handleGameplayTermination() error {
 		return runtimehost.ErrTerminate
 	}
 	if sg.startEpisodeFinale(sg.current, sig.SecretLevelExit) {
+		sg.freezeDemoRecord()
 		return nil
 	}
 	if sg.nextMap == nil {

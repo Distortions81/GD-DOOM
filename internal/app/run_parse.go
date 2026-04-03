@@ -675,9 +675,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				skill = 0
 			}
 			demoRec, derr := demo.BuildRecorded(picker.Session().StartMapName(), demo.RecordingOptions{
-				Skill:        skill,
-				Deathmatch:   strings.EqualFold(opts.GameMode, "deathmatch"),
-				FastMonsters: opts.FastMonsters,
+				Skill:           skill,
+				Deathmatch:      strings.EqualFold(opts.GameMode, "deathmatch"),
+				FastMonsters:    opts.FastMonsters,
+				RespawnMonsters: opts.RespawnMonsters,
+				NoMonsters:      opts.NoMonsters,
 			}, rec)
 			if derr != nil {
 				fmt.Fprintf(stderr, "build demo recording: %v\n", derr)

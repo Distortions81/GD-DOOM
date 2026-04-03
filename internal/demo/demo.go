@@ -51,9 +51,11 @@ type Script struct {
 }
 
 type RecordingOptions struct {
-	Skill        int
-	Deathmatch   bool
-	FastMonsters bool
+	Skill           int
+	Deathmatch      bool
+	FastMonsters    bool
+	RespawnMonsters bool
+	NoMonsters      bool
 }
 
 func Load(path string) (*Script, error) {
@@ -187,8 +189,9 @@ func HeaderForRecording(mapName mapdata.MapName, opts RecordingOptions) (Header,
 		Episode:       byte(episode),
 		Map:           byte(slot),
 		Deathmatch:    opts.Deathmatch,
+		Respawn:       opts.RespawnMonsters,
 		Fast:          opts.FastMonsters,
-		NoMonsters:    false,
+		NoMonsters:    opts.NoMonsters,
 		ConsolePlayer: 0,
 	}
 	header.PlayerInGame[0] = true

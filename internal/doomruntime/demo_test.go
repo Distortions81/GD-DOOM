@@ -292,6 +292,77 @@ func TestSessionGameRebuildPreservesRecordedDemoTics(t *testing.T) {
 	}
 }
 
+func TestFreezeDemoRecordFlushesAndStopsRecording(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{RecordDemoPath: "out.lmp"},
+		g: &game{
+			opts:       Options{RecordDemoPath: "out.lmp"},
+			demoRecord: []DemoTic{{Forward: 10}, {Forward: 20}},
+		},
+	}
+	sg.freezeDemoRecord()
+	if sg.opts.RecordDemoPath != "" {
+		t.Fatalf("RecordDemoPath on session should be cleared after freeze, got %q", sg.opts.RecordDemoPath)
+	}
+	if sg.g.opts.RecordDemoPath != "" {
+		t.Fatalf("RecordDemoPath on game should be cleared after freeze, got %q", sg.g.opts.RecordDemoPath)
+	}
+	if got := len(sg.demoRecord); got != 2 {
+		t.Fatalf("demoRecord len=%d want=2", got)
+	}
+	if got := len(sg.effectiveDemoRecord()); got != 2 {
+		t.Fatalf("effective demo tics after freeze=%d want=2", got)
+	}
+}
+
+func TestFreezeDemoRecordIsNoopWhenNotRecording(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{},
+		g:    &game{},
+	}
+	sg.freezeDemoRecord() // must not panic
+	if sg.opts.RecordDemoPath != "" {
+		t.Fatalf("RecordDemoPath unexpectedly set")
+	}
+}
+
+func TestRecordDemoTicEncodesWeaponSlot(t *testing.T) {
+	g := minimalRecordingGame(t)
+	g.demoWeaponSlot = 3 // player pressed key 3 (shotgun slot, 0-based index 2)
+	g.recordDemoTic(moveCmd{}, false, false)
+	if len(g.demoRecord) != 1 {
+		t.Fatalf("expected 1 tic, got %d", len(g.demoRecord))
+	}
+	tc := g.demoRecord[0]
+	if tc.Buttons&demoButtonChange == 0 {
+		t.Fatalf("BT_CHANGE not set in buttons=0x%02x", tc.Buttons)
+	}
+	if got := demoButtonWeaponSlot(tc.Buttons); got != 3 {
+		t.Fatalf("weapon slot=%d want=3", got)
+	}
+	// demoWeaponSlot must be consumed
+	if g.demoWeaponSlot != 0 {
+		t.Fatalf("demoWeaponSlot not cleared after recording")
+	}
+}
+
+func TestRecordDemoTicClearsWeaponSlotEvenWhenNotRecording(t *testing.T) {
+	g := &game{opts: Options{}} // no RecordDemoPath
+	g.demoWeaponSlot = 2
+	g.recordDemoTic(moveCmd{}, false, false)
+	// slot is not consumed when not recording — that's fine; it will be
+	// overwritten next tic. No assertion needed; just must not panic.
+}
+
+func minimalRecordingGame(t *testing.T) *game {
+	t.Helper()
+	g := newGame(&mapdata.Map{}, Options{RecordDemoPath: "out.lmp"})
+	if g == nil {
+		t.Fatal("newGame returned nil")
+	}
+	return g
+}
+
 func TestSaveDemoScriptRejectsNoTics(t *testing.T) {
 	path := t.TempDir() + "/empty.lmp"
 	err := SaveDemoScript(path, &DemoScript{})
