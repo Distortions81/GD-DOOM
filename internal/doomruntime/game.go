@@ -2620,6 +2620,11 @@ func (g *game) updateDemoMode() error {
 	if script == nil {
 		return nil
 	}
+	if len(g.input.justPressedKeys) > 0 {
+		g.frontendMenuRequested = true
+		ebiten.SetCursorMode(ebiten.CursorModeVisible)
+		return nil
+	}
 	g.capturePrevState()
 	if !g.demoBenchStarted {
 		g.demoBenchStarted = true

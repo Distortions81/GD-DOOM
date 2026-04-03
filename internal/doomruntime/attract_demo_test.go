@@ -6,6 +6,8 @@ import (
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/sessionmusic"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestStartFrontendBeginsOnTitlePicAttractPage(t *testing.T) {
@@ -254,6 +256,32 @@ func TestAttractDemoPlaybackIgnoresLaunchGameplayOverrides(t *testing.T) {
 	}
 	if sg.g.cheatLevel != 0 || sg.g.invulnerable || sg.g.opts.AllCheats {
 		t.Fatalf("demo playback inherited cheats: cheat=%d invuln=%t allcheats=%t", sg.g.cheatLevel, sg.g.invulnerable, sg.g.opts.AllCheats)
+	}
+}
+
+func TestAttractDemoAnyKeyRequestsFrontendMenu(t *testing.T) {
+	g := &game{
+		opts: Options{
+			DemoScript: &DemoScript{
+				Header: DemoHeader{Version: demoVersion110, PlayerInGame: [4]bool{true}},
+				Tics:   []DemoTic{{Forward: 25}},
+			},
+		},
+		input: gameInputSnapshot{
+			justPressedKeys: map[ebiten.Key]struct{}{
+				ebiten.KeyA: {},
+			},
+		},
+	}
+
+	if err := g.updateDemoMode(); err != nil {
+		t.Fatalf("updateDemoMode() error = %v", err)
+	}
+	if !g.frontendMenuRequested {
+		t.Fatal("expected attract demo key press to request frontend menu")
+	}
+	if got := g.demoTick; got != 0 {
+		t.Fatalf("demoTick=%d want 0 when menu opens before demo advances", got)
 	}
 }
 

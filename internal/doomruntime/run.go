@@ -506,7 +506,7 @@ func (sg *sessionGame) consumeFrontendOpenInput() {
 	if sg == nil {
 		return
 	}
-	consumePress(sg.input.justPressedKeys, ebiten.KeyEscape)
+	sg.input.justPressedKeys = nil
 }
 
 func (sg *sessionGame) shouldSampleRuntimeInput() bool {

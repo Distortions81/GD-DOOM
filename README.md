@@ -13,25 +13,25 @@
   Browser build: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
 </p>
 
-GD-DOOM is a Go-based Doom runtime that plays original Doom data with two presentation modes:
+GD-DOOM is a Go-based Doom runtime and source port project for original Doom data. It supports native desktop play and a WebAssembly build, loads IWAD and PWAD content, and can play or record Doom v1.10 demos.
 
-- `Faithful` mode stays closer to DOS Doom behavior and presentation.
-- `Source Port` mode enables higher-fidelity rendering, interpolation, smoother animation, and expanded music playback.
+It currently exposes two presentation styles:
 
-It loads original IWAD data, supports PWAD overlays, can play or record Doom v1.10 demos, and ships with native and browser build paths.
+- `Faithful` mode stays closer to classic DOS Doom behavior and presentation.
+- `Source Port` mode enables smoother camera motion, higher-fidelity rendering and more.
 
-License: GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and derivative of id Software's DOOM source release. See [LICENSE](/home/dist/github/GD-DOOM/LICENSE) and [NOTICE](/home/dist/github/GD-DOOM/NOTICE).
+GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and derivative of id Software's DOOM source release. See [LICENSE](/home/dist/github/GD-DOOM/LICENSE) and [NOTICE](/home/dist/github/GD-DOOM/NOTICE).
 
 ## Highlights
 
 ### Rendering
 
-- Two runtime modes: `Faithful` and `Source Port`.
-- 32-bit RGBA output instead of vanilla Doom's indexed framebuffer presentation.
-- Higher-resolution presentation for walls, sprites, HUD, and automap.
+- `Faithful` and `Source Port` runtime modes.
+- 32-bit RGBA rendering instead of a vanilla indexed framebuffer presentation.
+- Higher-resolution walls, sprites, HUD, and automap output.
 - Interpolated camera movement, yaw, and thing motion between 35 Hz simulation tics.
 - Textured lit floors and ceilings, optional GPU sky path, and optional CRT postprocess effect.
-- Texture animation crossfades, blended weapon psprite transitions, and broader multi-frame sprite presentation for pickups and decorations.
+- Texture animation crossfades, smoother weapon transitions, and broader multi-frame sprite presentation.
 - Integrated automap with follow mode, rotate mode, big-map view, grid, and map marks.
 
 ### Audio
@@ -40,23 +40,23 @@ License: GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from
 - `meltysynth` backend for SoundFont-backed General MIDI playback.
 - Separate music and SFX volume controls.
 - Stereo MUS playback with adjustable pan width.
-- In-game music menu and browser/player flow for WAD, episode, and map-organized tracks.
+- In-game music menu and browser/player music flow.
 
-### Data And Runtime
+### Runtime
 
 - Direct IWAD loading with optional PWAD overlays.
 - Automatic IWAD selection when one known base WAD is present.
 - In-game IWAD picker when multiple known IWADs are available.
-- Save/load support integrated into the runtime flow.
-- Demo playback, demo recording, and demo trace export support.
-- Config-file support on native builds through `config.toml`.
+- Save/load support integrated into runtime flow.
+- Demo playback, demo recording, and per-tic demo trace export.
+- Native config-file support through `config.toml`.
 
 ## Requirements
 
 - Go `1.26.1` or newer
-- A Doom IWAD such as `DOOM.WAD`, `DOOM2.WAD`, `TNT.WAD`, `PLUTONIA.WAD`, or `DOOM1.WAD`
+- A Doom IWAD such as `DOOM.WAD`, `DOOM1.WAD`, `DOOM2.WAD`, `TNT.WAD`, or `PLUTONIA.WAD`
 
-On Linux, native builds also need the usual Ebiten desktop dependencies for X11/OpenGL/audio. Tagged GitHub releases avoid that setup by shipping prebuilt desktop bundles.
+On Linux, native builds also need the usual Ebiten desktop dependencies for X11, OpenGL, and audio.
 
 ## Quick Start
 
@@ -66,7 +66,7 @@ Run from the repository root:
 go run . -wad DOOM1.WAD
 ```
 
-The dedicated desktop command works too:
+The dedicated desktop entrypoint is equivalent:
 
 ```bash
 go run ./cmd/gddoom -wad DOOM1.WAD
@@ -84,23 +84,27 @@ PWAD overlays are comma-separated:
 go run . -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
 ```
 
-If `-wad` is omitted and the working directory contains one known IWAD, GD-DOOM uses it automatically. If several known IWADs are present, the runtime can open an in-game picker.
+If `-wad` is omitted and the working directory contains one known IWAD, GD-DOOM uses it automatically. If multiple known IWADs are present, the runtime can open an in-game picker.
 
 ## Common Options
+
+Print all flags:
 
 ```bash
 go run . -help
 ```
 
-Useful flags:
+Frequently used options:
 
 - `-sourceport-mode` enables Source Port defaults.
-- `-music-backend=impsynth|meltysynth|auto` selects the music synth backend.
+- `-music-backend=auto|impsynth|meltysynth` selects the music backend.
 - `-soundfont=PATH` selects an external `.sf2` file for `meltysynth`.
 - `-map=E1M1` or `-map=MAP01` starts on a specific map.
 - `-record-demo=out.lmp` records a Doom v1.10 demo from live play.
-- `-demo=path/to/demo.lmp` plays back a Doom v1.10 demo.
+- `-demo=path/to/demo.lmp` plays back a Doom v1.10 demo and exits when playback ends.
+- `-trace-demo-state=path.jsonl` exports per-tic demo state during `-demo` playback.
 - `-config=config.toml` reads and persists native runtime settings.
+- `-dump-music` renders WAV exports for detected IWAD music.
 
 Examples:
 
@@ -110,18 +114,50 @@ go run . -wad DOOM1.WAD -music-backend=impsynth
 go run . -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/general-midi.sf2
 go run . -wad DOOM2.WAD -map=MAP01 -record-demo=output.lmp
 go run . -wad DOOM1.WAD -demo=demos/DOOM1-DEMO1.lmp
+go run . -wad DOOM1.WAD -dump-music
+go run . -wad DOOM1.WAD -cheat-level=3
+go run . -wad DOOM1.WAD -all-cheats
 ```
 
-## Releases
+## Cheats
 
-Tagged releases publish desktop bundles for:
+Startup cheats:
 
-- Linux x86_64
-- Windows x86_64
-- macOS Intel
-- macOS Apple Silicon
+- `-cheat-level=1` enables full automap reveal with `IDDT 2`.
+- `-cheat-level=2` applies the above plus `IDFA`.
+- `-cheat-level=3` applies the above plus `IDKFA` and invulnerability.
+- `-invuln` starts with invulnerability enabled.
+- `-all-cheats` is the alias for full startup cheats.
 
-Each release archive includes the platform binary, `DOOM1.WAD`, `soundfonts/general-midi.sf2`, the README, and license files.
+Typed in-game cheats:
+
+- `iddqd` toggles invulnerability.
+- `idfa` grants weapons, ammo, and armor.
+- `idkfa` grants weapons, ammo, armor, and keys.
+- `iddt` cycles automap reveal and thing display states.
+- `idclip` toggles no-clip.
+- `idspispopd` also toggles no-clip.
+- `idmypos` prints the current player angle and coordinates.
+- `idchoppers` grants chainsaw + invulnerability tick behavior matching classic Doom.
+- `idclev##` warps to a map such as `idclev11` or `idclev23`.
+- `idmus##` changes music when the current WAD supports that track selection.
+- `idbehold` shows the power-up cheat prompt.
+- `idbeholdv`, `idbeholds`, `idbeholdi`, `idbeholdr`, `idbeholda`, and `idbeholdl` toggle the matching power-up effect.
+
+## Controls
+
+Default desktop controls are:
+
+- Menus: `Arrow Keys` + `Enter`, `Esc` to go back.
+- Game: `WASD` or arrow keys to move, mouse to turn.
+- Fire: `Ctrl` or left mouse button.
+- Use / open: `E` or `Space`.
+- Run modifier: `Shift`.
+- Strafe modifier: `Alt`.
+- Automap: `Tab`.
+- Help: `F1`.
+
+There are additional runtime shortcuts for features like detail level, gamma, screenshots, and automap behavior.
 
 ## WebAssembly Build
 
@@ -131,7 +167,11 @@ Build the browser version:
 ./scripts/build_wasm.sh
 ```
 
-That script writes the app to `build/wasm`. It expects `DOOM1.WAD` at the repository root and uses `wasm-opt` automatically when available.
+The script writes output to `build/wasm`, copies the web assets, and produces `gddoom.wasm.gz`. It requires:
+
+- `DOOM1.WAD` at the repository root
+- `wasm_exec.js` from your local Go toolchain
+- optional `wasm-opt` on `PATH` for automatic optimization
 
 Serve the generated app:
 
@@ -139,25 +179,26 @@ Serve the generated app:
 go run ./cmd/wasmserve
 ```
 
-Or from inside `build/wasm`:
+By default `cmd/wasmserve` serves the current directory if it already contains the built app; otherwise it falls back to `build/wasm` and listens on `:8000`.
+
+You can also serve a specific output directory:
 
 ```bash
-cd build/wasm
-go run ./server.go
+go run ./cmd/wasmserve -dir build/wasm -addr :8000
 ```
 
-The web UI can also load browser-selected `.wad` files through its local IWAD picker flow.
+The browser UI can load user-selected `.wad` files through its local IWAD picker flow.
 
 ## Development
 
-Run tests:
+Run the test suite:
 
 ```bash
 go test ./...
 ```
 
-Additional utilities live under `cmd/` and `scripts/`, including helpers for WAD inspection, map analysis, WASM serving, demo tracing, and music export.
+Useful helper commands and tools live under [`cmd/`](/home/dist/github/GD-DOOM/cmd) and [`scripts/`](/home/dist/github/GD-DOOM/scripts), including utilities for WAD inspection, map analysis, demo tracing, music export, and WASM serving.
 
 ## Status
 
-GD-DOOM is still alpha. It is playable and already covers a broad set of Doom runtime features, but vanilla parity work and edge-case cleanup are still in progress.
+GD-DOOM is still alpha. It is already playable and covers a broad set of Doom runtime features, but vanilla parity work and edge-case cleanup are still in progress.

@@ -857,10 +857,22 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			sg.drawIntermissionText(screen, msg, 160, 178, scale, ox, oy, true)
 		}
 		if sessionflow.ShowAttractBeginPrompt(sg.frontend) {
-			const prompt = "ESC to begin"
+			const prompt = "PRESS ANY KEY TO START"
 			textScale := scale * 1
-			x := (float64(screen.Bounds().Dx()) - float64(sg.g.huTextWidth(prompt))*textScale) * 0.5
+			promptW := float64(sg.g.huTextWidth(prompt)) * textScale
+			promptH := 9.0 * textScale
+			x := (float64(screen.Bounds().Dx()) - promptW) * 0.5
 			y := oy + 16*scale
+			padX := 8.0 * scale
+			padY := 4.0 * scale
+			ebitenutil.DrawRect(
+				screen,
+				x-padX,
+				y-padY,
+				promptW+padX*2,
+				promptH+padY*2,
+				color.RGBA{A: 144},
+			)
 			sg.rt.sessionDrawHUTextAt(screen, prompt, x, y, textScale, textScale)
 		}
 	}
