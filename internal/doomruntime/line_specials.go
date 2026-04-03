@@ -388,6 +388,14 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 		g.heightClipThingsInSector(sec)
 	}
 	g.refreshProjectileSupportInSector(sec)
+	// After all z-states are updated (heightClipPlayer + heightClipThing), run
+	// pickup detection. Doom's P_ChangeSector -> P_ThingHeightClip(player) ->
+	// P_CheckPosition(player) triggers PIT_CheckThing -> P_TouchSpecialThing
+	// for nearby items using the just-updated player z. Items' z values are also
+	// updated by P_ThingHeightClip before PIT_CheckThing fires.
+	if playerTouches && !g.isDead {
+		g.processThingPickups()
+	}
 }
 
 func (g *game) sectorBlockBox(sec int) (left, right, bottom, top int, ok bool) {
@@ -529,14 +537,33 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 	x, y := g.thingPosFixed(i, th)
 	radius := g.thingCurrentRadius(i, th)
 	oldZ, oldFloorZ, oldCeilZ := g.thingSupportState(i, th)
-	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, isMonster(th.Type), i, isMonster(th.Type))
-	if !ok {
+	// In Doom, P_ThingHeightClip calls P_CheckPosition which seeds tmfloorz
+	// from the subsector floor. If anything solid (including the player) overlaps
+	// the thing's XY bbox, PIT_CheckThing returns false and P_CheckPosition returns
+	// false before the line loop runs, leaving tmfloorz at the subsector floor.
+	// Mirror that: if the player overlaps this thing's XY, skip checkPositionForActor
+	// and use subsectorFloorCeilAt directly so line openings don't raise tmfloor.
+	var tmfloor, tmceil int64
+	playerOverlaps := !isMonster(th.Type) && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius)
+	if playerOverlaps {
 		if floorZ, ceilZ, found := g.subsectorFloorCeilAt(x, y); found {
 			tmfloor = floorZ
 			tmceil = ceilZ
 		} else {
 			tmfloor = oldFloorZ
 			tmceil = oldCeilZ
+		}
+	} else {
+		var ok bool
+		tmfloor, tmceil, _, ok = g.checkPositionForActor(x, y, radius, isMonster(th.Type), i, isMonster(th.Type))
+		if !ok {
+			if floorZ, ceilZ, found := g.subsectorFloorCeilAt(x, y); found {
+				tmfloor = floorZ
+				tmceil = ceilZ
+			} else {
+				tmfloor = oldFloorZ
+				tmceil = oldCeilZ
+			}
 		}
 	}
 	z := oldZ
