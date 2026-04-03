@@ -1,8 +1,10 @@
 package doomruntime
 
 import (
+	"fmt"
 	"strings"
 
+	"gddoom/internal/mapdata"
 	"gddoom/internal/runtimecfg"
 )
 
@@ -156,6 +158,170 @@ func (sg *sessionGame) frontendMusicPlayerTrack() *runtimecfg.MusicPlayerTrack {
 	}
 	sg.frontendMusicPlayerClamp()
 	return &ep.Tracks[sg.musicPlayer.TrackOn]
+}
+
+func (sg *sessionGame) currentMusicCatalogWAD() *runtimecfg.MusicPlayerWAD {
+	if sg == nil || len(sg.opts.MusicPlayerCatalog) == 0 {
+		return nil
+	}
+	return &sg.opts.MusicPlayerCatalog[0]
+}
+
+func (sg *sessionGame) findCurrentCatalogTrackByMap(name mapdata.MapName) (*runtimecfg.MusicPlayerTrack, string) {
+	wad := sg.currentMusicCatalogWAD()
+	if wad == nil {
+		return nil, ""
+	}
+	for ei := range wad.Episodes {
+		ep := &wad.Episodes[ei]
+		for ti := range ep.Tracks {
+			track := &ep.Tracks[ti]
+			if track.MapName == name {
+				return track, wad.Key
+			}
+		}
+	}
+	return nil, wad.Key
+}
+
+func (sg *sessionGame) findCurrentCatalogTrackByLump(lumpName string) (*runtimecfg.MusicPlayerTrack, string) {
+	wad := sg.currentMusicCatalogWAD()
+	if wad == nil {
+		return nil, ""
+	}
+	lumpName = strings.TrimSpace(lumpName)
+	for ei := range wad.Episodes {
+		ep := &wad.Episodes[ei]
+		for ti := range ep.Tracks {
+			track := &ep.Tracks[ti]
+			if strings.EqualFold(strings.TrimSpace(track.LumpName), lumpName) {
+				return track, wad.Key
+			}
+		}
+	}
+	return nil, wad.Key
+}
+
+func (sg *sessionGame) resolveIDMUSSelection(currentMapName, code string) (mapdata.MapName, string, bool) {
+	currentMapName = strings.ToUpper(strings.TrimSpace(currentMapName))
+	code = strings.TrimSpace(code)
+	if len(code) != 2 || code[0] < '0' || code[0] > '9' || code[1] < '0' || code[1] > '9' {
+		return "", "", false
+	}
+	if strings.HasPrefix(currentMapName, "MAP") {
+		n := int(code[0]-'0')*10 + int(code[1]-'0')
+		switch {
+		case n == 0:
+			return "", "", true
+		case n >= 1 && n <= 32:
+			return mapdata.MapName(fmt.Sprintf("MAP%02d", n)), "", true
+		case n == 33:
+			return "", "D_READ_M", true
+		case n == 34:
+			return "", "D_DM2TTL", true
+		case n == 35:
+			return "", "D_DM2INT", true
+		default:
+			return "", "", false
+		}
+	}
+	if len(currentMapName) == 4 && currentMapName[0] == 'E' && currentMapName[2] == 'M' {
+		if code[0] < '1' || code[0] > '9' || code[1] < '1' || code[1] > '9' {
+			return "", "", false
+		}
+		return mapdata.MapName(fmt.Sprintf("E%cM%c", code[0], code[1])), "", true
+	}
+	return "", "", false
+}
+
+func (sg *sessionGame) playCheatMusic(currentMapName string, code string) (bool, error) {
+	if sg == nil || sg.musicCtl == nil || clampVolume(sg.opts.MusicVolume) <= 0 {
+		return false, nil
+	}
+	targetMap, targetLump, ok := sg.resolveIDMUSSelection(currentMapName, code)
+	if !ok {
+		return false, nil
+	}
+	if targetMap == "" && targetLump == "" {
+		sg.stopAndClearMusic()
+		return true, nil
+	}
+	var (
+		data       []byte
+		err        error
+		levelLabel string
+		musicName  string
+	)
+	if targetMap != "" {
+		if track, wadKey := sg.findCurrentCatalogTrackByMap(targetMap); track != nil && sg.opts.MusicPlayerTrackLoader != nil {
+			data, err = sg.opts.MusicPlayerTrackLoader(wadKey, track.LumpName)
+			if err != nil {
+				return false, err
+			}
+			if len(data) == 0 {
+				return false, nil
+			}
+			targetLump = track.LumpName
+			levelLabel = track.Label
+			musicName = track.MusicName
+		} else if sg.opts.MapMusicLoader != nil {
+			data, err = sg.opts.MapMusicLoader(string(targetMap))
+			if err != nil {
+				return false, err
+			}
+			if len(data) == 0 {
+				return false, nil
+			}
+			if sg.opts.MapMusicInfo != nil {
+				levelLabel, musicName = sg.opts.MapMusicInfo(string(targetMap))
+			}
+		}
+	} else if sg.opts.MusicPlayerTrackLoader != nil {
+		if track, wadKey := sg.findCurrentCatalogTrackByLump(targetLump); track != nil {
+			data, err = sg.opts.MusicPlayerTrackLoader(wadKey, track.LumpName)
+			if err != nil {
+				return false, err
+			}
+			if len(data) == 0 {
+				return false, nil
+			}
+			levelLabel = track.Label
+			musicName = track.MusicName
+		}
+	}
+	if len(data) == 0 {
+		return false, nil
+	}
+	sg.musicCtl.PlayData(data, clampVolume(sg.opts.MusicVolume))
+	sg.currentMusicSource = musicPlaybackSource{
+		kind:       musicPlaybackSourcePlayer,
+		mapName:    targetMap,
+		wadKey:     firstNonEmpty(sg.currentMusicCatalogWADKey(), sg.currentMusicSource.wadKey),
+		lumpName:   targetLump,
+		levelLabel: levelLabel,
+		musicName:  musicName,
+	}
+	sg.setNowPlayingLevel(levelLabel, string(targetMap))
+	sg.setNowPlayingMusic(musicName, targetLump)
+	return true, nil
+}
+
+func (sg *sessionGame) currentMusicCatalogWADKey() string {
+	wad := sg.currentMusicCatalogWAD()
+	if wad == nil {
+		return ""
+	}
+	return strings.TrimSpace(wad.Key)
+}
+
+func firstNonEmpty(candidates ...string) string {
+	for _, candidate := range candidates {
+		candidate = strings.TrimSpace(candidate)
+		if candidate != "" {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func (sg *sessionGame) frontendMusicPlayerMoveRow(dir int) bool {

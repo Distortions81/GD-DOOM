@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	saveGameVersion = 13
+	saveGameVersion = 14
 	saveGamePrefix  = "dsg"
 )
 
@@ -109,6 +109,7 @@ type gameSaveState struct {
 	HitscanPuffs         []hitscanPuffSaveState
 	CheatLevel           int
 	Invulnerable         bool
+	NoClip               bool
 	Inventory            playerInventorySaveState
 	AlwaysRun            bool
 	AutoWeaponSwitch     bool
@@ -507,6 +508,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		HitscanPuffs:         captureHitscanPuffs(g.hitscanPuffs),
 		CheatLevel:           g.cheatLevel,
 		Invulnerable:         g.invulnerable,
+		NoClip:               g.noClip,
 		Inventory:            capturePlayerInventorySaveState(g.inventory),
 		AlwaysRun:            g.alwaysRun,
 		AutoWeaponSwitch:     g.autoWeaponSwitch,
@@ -606,6 +608,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.hitscanPuffs = restoreHitscanPuffs(s.HitscanPuffs)
 	g.cheatLevel = normalizeCheatLevel(s.CheatLevel)
 	g.invulnerable = s.Invulnerable
+	g.noClip = s.NoClip
 	g.inventory = restorePlayerInventorySaveState(s.Inventory)
 	g.alwaysRun = s.AlwaysRun
 	g.autoWeaponSwitch = s.AutoWeaponSwitch

@@ -87,6 +87,11 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 				}
 			},
 			func(sg *sessionGame) {
+				sg.opts.PlayCheatMusic = func(currentMapName string, code string) (bool, error) {
+					return sg.playCheatMusic(currentMapName, code)
+				}
+			},
+			func(sg *sessionGame) {
 				if !sg.headlessDemoPlayback() {
 					sg.menuSfx = sessionaudio.NewMenuController(opts.SoundBank, opts.SFXVolume)
 				}

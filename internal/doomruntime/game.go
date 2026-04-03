@@ -606,6 +606,7 @@ type game struct {
 	platFree              []*platThinker
 	cheatLevel            int
 	invulnerable          bool
+	noClip                bool
 	inventory             playerInventory
 	alwaysRun             bool
 	autoWeaponSwitch      bool
@@ -842,11 +843,13 @@ type game struct {
 	demoTrace                    *demoTraceWriter
 	demoRecord                   []DemoTic
 	demoWeaponSlot               int // weapon slot key pressed this tic (1-based, 0 = none); consumed by recordDemoTic
+	typedCheatBuffer             string
 }
 
 type gameInputSnapshot struct {
 	pressedKeys            map[ebiten.Key]struct{}
 	justPressedKeys        map[ebiten.Key]struct{}
+	inputChars             []rune
 	mouseLeftHeld          bool
 	mouseWheel3JustPressed bool
 	mouseWheel4JustPressed bool
@@ -2879,6 +2882,10 @@ func (g *game) SampleInput() {
 	}
 	g.input.pressedKeys = addPressedKeys(g.input.pressedKeys, inpututil.AppendPressedKeys(nil))
 	g.input.justPressedKeys = addPressedKeys(g.input.justPressedKeys, inpututil.AppendJustPressedKeys(nil))
+	g.input.inputChars = ebiten.AppendInputChars(g.input.inputChars[:0])
+	if len(g.input.inputChars) > 0 {
+		g.consumeTypedCheatInput()
+	}
 	g.input.mouseLeftHeld = g.input.mouseLeftHeld || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
 	g.input.mouseWheel3JustPressed = g.input.mouseWheel3JustPressed || inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3)
 	g.input.mouseWheel4JustPressed = g.input.mouseWheel4JustPressed || inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
@@ -3116,6 +3123,7 @@ func (g *game) updateParityControls() {
 	if !g.edgeInputPass {
 		return
 	}
+	textInputActive := len(g.input.inputChars) > 0
 	if g.keyJustPressed(ebiten.KeyCapsLock) {
 		g.alwaysRun = !g.alwaysRun
 		if g.alwaysRun {
@@ -3161,7 +3169,7 @@ func (g *game) updateParityControls() {
 		}
 	}
 	if g.opts.SourcePortMode {
-		if g.keyJustPressed(ebiten.KeyO) {
+		if !textInputActive && g.keyJustPressed(ebiten.KeyO) {
 			if g.parity.reveal == revealNormal {
 				g.parity.reveal = revealAllMap
 				g.setHUDMessage("Allmap ON", 70)
@@ -3170,11 +3178,11 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Allmap OFF", 70)
 			}
 		}
-		if g.keyJustPressed(ebiten.KeyI) {
+		if !textInputActive && g.keyJustPressed(ebiten.KeyI) {
 			g.parity.iddt = (g.parity.iddt + 1) % 3
 			g.setHUDMessage(fmt.Sprintf("IDDT %d", g.parity.iddt), 70)
 		}
-		if g.keyJustPressed(ebiten.KeyV) {
+		if !textInputActive && g.keyJustPressed(ebiten.KeyV) {
 			g.showLegend = !g.showLegend
 			if g.showLegend {
 				g.setHUDMessage("Thing Legend ON", 70)
@@ -3182,7 +3190,7 @@ func (g *game) updateParityControls() {
 				g.setHUDMessage("Thing Legend OFF", 70)
 			}
 		}
-		if g.keyJustPressed(ebiten.KeyT) {
+		if !textInputActive && g.keyJustPressed(ebiten.KeyT) {
 			g.opts.SourcePortThingRenderMode = cycleSourcePortThingRenderMode(g.opts.SourcePortThingRenderMode)
 			g.setHUDMessage(fmt.Sprintf("Thing Render: %s", sourcePortThingRenderModeLabel(g.opts.SourcePortThingRenderMode)), 70)
 		}

@@ -674,6 +674,7 @@ func (sg *sessionGame) stopAndClearMusic() {
 		return
 	}
 	sg.musicCtl.StopAndClear()
+	sg.currentMusicSource = musicPlaybackSource{}
 	sg.transitionMusicPending = musicPlaybackSource{}
 	sg.setNowPlayingLevel("")
 	sg.setNowPlayingMusic("")

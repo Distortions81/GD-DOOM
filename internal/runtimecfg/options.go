@@ -111,6 +111,7 @@ type Options struct {
 	MapMusicLoader             func(mapName string) ([]byte, error)
 	MapMusicInfo               func(mapName string) (levelLabel string, musicName string)
 	IntermissionMusicLoader    func(commercial bool) ([]byte, error)
+	PlayCheatMusic             func(currentMapName string, code string) (bool, error)
 	MusicPlayerCatalog         []MusicPlayerWAD
 	MusicPlayerTrackLoader     func(wadKey string, lumpName string) ([]byte, error)
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)

@@ -624,6 +624,22 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 	}
 	prevX := g.p.x
 	prevY := g.p.y
+	if g != nil && g.noClip {
+		sec := g.sectorAt(x, y)
+		if sec < 0 || g.m == nil || sec >= len(g.m.Sectors) {
+			g.debugPlayerMove("tryMove noclip invalid sector", x, y)
+			return false
+		}
+		g.setPlayerPosFixed(x, y)
+		if sec >= 0 && sec < len(g.sectorFloor) {
+			g.p.floorz = g.sectorFloor[sec]
+		}
+		if sec >= 0 && sec < len(g.sectorCeil) {
+			g.p.ceilz = g.sectorCeil[sec]
+		}
+		g.checkWalkSpecialLines(prevX, prevY, x, y)
+		return true
+	}
 	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
 	if !ok {
 		g.debugPlayerMove("tryMove blocked", x, y)

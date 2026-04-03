@@ -68,3 +68,71 @@ func TestCheckPositionForActor_BlockedByThingPreservesSectorPlanes(t *testing.T)
 		t.Fatalf("blocked probe planes=(%d,%d,%d) want (%d,%d,%d)", floor, ceil, drop, -8*fracUnit, 96*fracUnit, -8*fracUnit)
 	}
 }
+
+func TestTryMoveWithPickupProbe_NoClipCrossesBlockingLine(t *testing.T) {
+	g := &game{
+		noClip: true,
+		m: &mapdata.Map{
+			Linedefs: []mapdata.Linedef{
+				{Flags: mlBlocking, SideNum: [2]int16{0, 1}},
+			},
+			Sidedefs: []mapdata.Sidedef{
+				{Sector: 0},
+				{Sector: 1},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+			SubSectors: []mapdata.SubSector{
+				{SegCount: 1, FirstSeg: 0},
+				{SegCount: 1, FirstSeg: 1},
+			},
+			Segs: []mapdata.Seg{
+				{Linedef: 0, Direction: 0},
+				{Linedef: 0, Direction: 1},
+			},
+			Nodes: []mapdata.Node{
+				{DX: 0, DY: 128, ChildID: [2]uint16{0x8001, 0x8000}},
+			},
+		},
+		subSectorSec: []int{0, 1},
+		lines: []physLine{
+			{
+				idx:      0,
+				x1:       0,
+				y1:       -64 * fracUnit,
+				x2:       0,
+				y2:       64 * fracUnit,
+				dx:       0,
+				dy:       128 * fracUnit,
+				bbox:     [4]int64{64 * fracUnit, -64 * fracUnit, 0, 0},
+				slope:    slopeVertical,
+				flags:    mlBlocking,
+				sideNum0: 0,
+				sideNum1: 1,
+			},
+		},
+		lineSpecial: []uint16{0},
+		sectorFloor: []int64{0, 0},
+		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
+		p: player{
+			x:      -32 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+			sector: 0,
+		},
+	}
+
+	if !g.tryMove(32*fracUnit, 0) {
+		t.Fatal("noclip move should cross blocking line")
+	}
+	if got, want := g.p.x, int64(32*fracUnit); got != want {
+		t.Fatalf("player x=%d want %d", got, want)
+	}
+	if got, want := g.playerSector(), 1; got != want {
+		t.Fatalf("player sector=%d want %d", got, want)
+	}
+}

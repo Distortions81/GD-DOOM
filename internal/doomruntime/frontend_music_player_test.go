@@ -184,6 +184,144 @@ func TestFrontendMusicPlayerPlaySelectedLoadsTrack(t *testing.T) {
 	}
 }
 
+func TestPlayCheatMusic_CommercialMapTrack(t *testing.T) {
+	var gotWAD string
+	var gotLump string
+	sg := &sessionGame{
+		opts: Options{
+			MusicVolume: 0.8,
+			MusicPlayerCatalog: []runtimecfg.MusicPlayerWAD{
+				{
+					Key:   "doom2.wad",
+					Label: "DOOM II",
+					Episodes: []runtimecfg.MusicPlayerEpisode{
+						{
+							Label: "MAPS",
+							Tracks: []runtimecfg.MusicPlayerTrack{
+								{MapName: "MAP15", Label: "MAP15 - Industrial Zone", LumpName: "D_RUNNI2", MusicName: "Waiting for Romero to Play"},
+							},
+						},
+					},
+				},
+			},
+			MusicPlayerTrackLoader: func(wadKey string, lumpName string) ([]byte, error) {
+				gotWAD = wadKey
+				gotLump = lumpName
+				return []byte{1, 2, 3}, nil
+			},
+		},
+		musicCtl: &sessionmusic.Playback{},
+	}
+
+	ok, err := sg.playCheatMusic("MAP01", "15")
+	if err != nil {
+		t.Fatalf("playCheatMusic err=%v", err)
+	}
+	if !ok {
+		t.Fatal("playCheatMusic should succeed")
+	}
+	if gotWAD != "doom2.wad" || gotLump != "D_RUNNI2" {
+		t.Fatalf("loader called with wad=%q lump=%q want doom2.wad/D_RUNNI2", gotWAD, gotLump)
+	}
+	if sg.currentMusicSource.kind != musicPlaybackSourcePlayer || sg.currentMusicSource.mapName != "MAP15" || sg.currentMusicSource.lumpName != "D_RUNNI2" {
+		t.Fatalf("currentMusicSource=%+v", sg.currentMusicSource)
+	}
+	if sg.nowPlayingLevel != "MAP15 - Industrial Zone" {
+		t.Fatalf("nowPlayingLevel=%q want MAP15 - Industrial Zone", sg.nowPlayingLevel)
+	}
+	if sg.nowPlayingMusic != "Waiting for Romero to Play" {
+		t.Fatalf("nowPlayingMusic=%q want Waiting for Romero to Play", sg.nowPlayingMusic)
+	}
+}
+
+func TestPlayCheatMusic_CommercialSpecialTrack(t *testing.T) {
+	var gotWAD string
+	var gotLump string
+	sg := &sessionGame{
+		opts: Options{
+			MusicVolume: 0.8,
+			MusicPlayerCatalog: []runtimecfg.MusicPlayerWAD{
+				{
+					Key:   "doom2.wad",
+					Label: "DOOM II",
+					Episodes: []runtimecfg.MusicPlayerEpisode{
+						{
+							Label: "OTHER MUSIC",
+							Tracks: []runtimecfg.MusicPlayerTrack{
+								{Label: "Read This", LumpName: "D_READ_M", MusicName: "Read This"},
+							},
+						},
+					},
+				},
+			},
+			MusicPlayerTrackLoader: func(wadKey string, lumpName string) ([]byte, error) {
+				gotWAD = wadKey
+				gotLump = lumpName
+				return []byte{4, 5, 6}, nil
+			},
+		},
+		musicCtl: &sessionmusic.Playback{},
+	}
+
+	ok, err := sg.playCheatMusic("MAP01", "33")
+	if err != nil {
+		t.Fatalf("playCheatMusic err=%v", err)
+	}
+	if !ok {
+		t.Fatal("playCheatMusic should succeed")
+	}
+	if gotWAD != "doom2.wad" || gotLump != "D_READ_M" {
+		t.Fatalf("loader called with wad=%q lump=%q want doom2.wad/D_READ_M", gotWAD, gotLump)
+	}
+	if sg.currentMusicSource.lumpName != "D_READ_M" {
+		t.Fatalf("lumpName=%q want D_READ_M", sg.currentMusicSource.lumpName)
+	}
+}
+
+func TestPlayCheatMusic_ZeroStopsPlayback(t *testing.T) {
+	sg := &sessionGame{
+		opts:     Options{MusicVolume: 0.8},
+		musicCtl: &sessionmusic.Playback{},
+		currentMusicSource: musicPlaybackSource{
+			kind:       musicPlaybackSourcePlayer,
+			lumpName:   "D_RUNNIN",
+			levelLabel: "MAP01 - Entryway",
+			musicName:  "Running from Evil",
+		},
+	}
+	sg.setNowPlayingLevel("MAP01 - Entryway")
+	sg.setNowPlayingMusic("Running from Evil")
+
+	ok, err := sg.playCheatMusic("MAP01", "00")
+	if err != nil {
+		t.Fatalf("playCheatMusic err=%v", err)
+	}
+	if !ok {
+		t.Fatal("playCheatMusic should succeed")
+	}
+	if sg.currentMusicSource.kind != musicPlaybackSourceNone {
+		t.Fatalf("currentMusicSource.kind=%d want none", sg.currentMusicSource.kind)
+	}
+	if sg.nowPlayingLevel != "" || sg.nowPlayingMusic != "" {
+		t.Fatalf("nowPlaying cleared = (%q,%q) want empty", sg.nowPlayingLevel, sg.nowPlayingMusic)
+	}
+}
+
+func TestPlayCheatMusic_EpisodeRejectsZeroDigits(t *testing.T) {
+	sg := &sessionGame{
+		opts:     Options{MusicVolume: 0.8},
+		musicCtl: &sessionmusic.Playback{},
+	}
+
+	ok, err := sg.playCheatMusic("E1M1", "00")
+	if err != nil {
+		t.Fatalf("playCheatMusic err=%v", err)
+	}
+	if ok {
+		t.Fatal("playCheatMusic should reject E0M0")
+	}
+}
+
 func TestFrontendMusicPlayerCloseReturnsToMusicSubmenuWhenOpenedInGame(t *testing.T) {
 	sg := &sessionGame{
 		frontend: frontendState{
