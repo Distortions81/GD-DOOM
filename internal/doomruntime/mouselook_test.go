@@ -43,3 +43,11 @@ func TestMouseLookTurnRawWithWidthSupportsHorizontalInvert(t *testing.T) {
 		t.Fatalf("inverted -dx got=%d want negative", got)
 	}
 }
+
+func TestMouseLookTurnRawScaledTracksPresentationScale(t *testing.T) {
+	base := mouseLookTurnRawScaled(10, 1.0, 1.0, false)
+	scaled := mouseLookTurnRawScaled(10, 1.0, 6.0, false)
+	if scaled != base*6 {
+		t.Fatalf("scaled turn=%d want=%d", scaled, base*6)
+	}
+}

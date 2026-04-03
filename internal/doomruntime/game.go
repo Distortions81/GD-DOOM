@@ -527,6 +527,7 @@ type game struct {
 	input            gameInputSnapshot
 
 	lastMouseX             int
+	mouseInputScaleX       float64
 	mouseLookSet           bool
 	mouseLookSuppressTicks int
 
@@ -2375,16 +2376,27 @@ func (g *game) cycleSourcePortDetailLevel() {
 }
 
 func (g *game) mouseLookTurnRaw(dx int) int64 {
-	return mouseLookTurnRawWithWidth(dx, g.opts.MouseLookSpeed, g.viewW, g.opts.MouseInvert)
+	scaleX := g.mouseInputScaleX
+	if scaleX <= 0 {
+		scaleX = 1
+	}
+	return mouseLookTurnRawScaled(dx, g.opts.MouseLookSpeed, scaleX, g.opts.MouseInvert)
 }
 
 func mouseLookTurnRawWithWidth(dx int, speed float64, renderW int, invertHorizontal bool) int64 {
+	_ = renderW
+	return mouseLookTurnRawScaled(dx, speed, 1, invertHorizontal)
+}
+
+func mouseLookTurnRawScaled(dx int, speed float64, scaleX float64, invertHorizontal bool) int64 {
 	if dx == 0 {
 		return 0
 	}
 	base := float64(40 << 16)
-	_ = renderW
-	raw := int64(math.Round(float64(dx) * base * speed))
+	if scaleX <= 0 {
+		scaleX = 1
+	}
+	raw := int64(math.Round(float64(dx) * scaleX * base * speed))
 	if raw == 0 {
 		if dx > 0 {
 			raw = 1

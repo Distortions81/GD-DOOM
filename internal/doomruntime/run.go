@@ -680,6 +680,7 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg.opts.SourcePortMode {
 		layoutW := max(outsideWidth, 1)
 		layoutH := max(outsideHeight, 1)
+		sg.g.mouseInputScaleX = float64(layoutW) / float64(max(layoutW, 1))
 		if sg.g.skyOutputW != layoutW || sg.g.skyOutputH != layoutH {
 			sg.rt.setSkyOutputSize(layoutW, layoutH)
 		}
@@ -703,6 +704,7 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	// fixed 640x400 logical buffer, with detail level selecting the internal
 	// game buffer size and final-screen presentation applying aspect correction.
 	rw, rh := faithfulDetailPresetSize(sg.g.detailLevel)
+	sg.g.mouseInputScaleX = float64(max(outsideWidth, 1)) / float64(faithfulBufferW)
 	sg.rt.Layout(rw, rh)
 	_ = aspectH
 	return faithfulBufferW, faithfulBufferH
