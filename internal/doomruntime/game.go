@@ -2793,7 +2793,6 @@ func (g *game) updateWalkMode() {
 	}
 	cmd := moveCmd{}
 	usePressed := false
-	firePressed := false
 	speed := g.currentRunSpeed()
 	strafeMod := g.keyHeld(ebiten.KeyAltLeft) || g.keyHeld(ebiten.KeyAltRight)
 	if g.keyHeld(ebiten.KeyW) || g.keyHeld(ebiten.KeyArrowUp) {
@@ -2827,7 +2826,6 @@ func (g *game) updateWalkMode() {
 		g.pendingUse = false
 	}
 	fireHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight) || g.mouseHeld(ebiten.MouseButtonLeft)
-	firePressed = fireHeld
 
 	if g.opts.MouseLook {
 		if g.mouseLookSuppressTicks > 0 {
@@ -2851,9 +2849,8 @@ func (g *game) updateWalkMode() {
 		angleturn16 := int16(cmd.turnRaw >> 16)
 		cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
 	}
-	angleBefore := g.p.angle
 	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.recordDemoTic(cmd, usePressed, firePressed, angleBefore)
+	g.recordDemoTic(cmd, usePressed, fireHeld)
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 }
@@ -2991,7 +2988,7 @@ func (g *game) currentRunSpeed() int {
 	return 0
 }
 
-func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool, angleBefore uint32) {
+func (g *game) recordDemoTic(cmd moveCmd, usePressed, fireHeld bool) {
 	if g.opts.DemoScript != nil || strings.TrimSpace(g.opts.RecordDemoPath) == "" {
 		return
 	}
@@ -2999,7 +2996,7 @@ func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool, angleBef
 	if usePressed {
 		buttons |= demoButtonUse
 	}
-	if firePressed {
+	if fireHeld {
 		buttons |= demoButtonAttack
 	}
 	if slot := g.demoWeaponSlot; slot != 0 {
@@ -3009,7 +3006,7 @@ func (g *game) recordDemoTic(cmd moveCmd, usePressed, firePressed bool, angleBef
 	g.demoRecord = append(g.demoRecord, DemoTic{
 		Forward:   clampDemoMove(cmd.forward),
 		Side:      clampDemoMove(cmd.side),
-		AngleTurn: int16((g.p.angle - angleBefore) >> 16),
+		AngleTurn: g.demoAngleTurn(cmd),
 		Buttons:   buttons,
 	})
 }

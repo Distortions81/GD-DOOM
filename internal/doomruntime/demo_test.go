@@ -329,7 +329,7 @@ func TestFreezeDemoRecordIsNoopWhenNotRecording(t *testing.T) {
 func TestRecordDemoTicEncodesWeaponSlot(t *testing.T) {
 	g := minimalRecordingGame(t)
 	g.demoWeaponSlot = 3 // player pressed key 3 (shotgun slot, 0-based index 2)
-	g.recordDemoTic(moveCmd{}, false, false, 0)
+	g.recordDemoTic(moveCmd{}, false, false)
 	if len(g.demoRecord) != 1 {
 		t.Fatalf("expected 1 tic, got %d", len(g.demoRecord))
 	}
@@ -349,9 +349,33 @@ func TestRecordDemoTicEncodesWeaponSlot(t *testing.T) {
 func TestRecordDemoTicClearsWeaponSlotEvenWhenNotRecording(t *testing.T) {
 	g := &game{opts: Options{}} // no RecordDemoPath
 	g.demoWeaponSlot = 2
-	g.recordDemoTic(moveCmd{}, false, false, 0)
+	g.recordDemoTic(moveCmd{}, false, false)
 	// slot is not consumed when not recording — that's fine; it will be
 	// overwritten next tic. No assertion needed; just must not panic.
+}
+
+func TestRecordDemoTicUsesHeldFireBit(t *testing.T) {
+	g := minimalRecordingGame(t)
+	g.recordDemoTic(moveCmd{}, false, true)
+	if len(g.demoRecord) != 1 {
+		t.Fatalf("expected 1 tic, got %d", len(g.demoRecord))
+	}
+	if g.demoRecord[0].Buttons&demoButtonAttack == 0 {
+		t.Fatalf("BT_ATTACK not set in buttons=0x%02x", g.demoRecord[0].Buttons)
+	}
+}
+
+func TestRecordDemoTicUsesCommandAngleTurn(t *testing.T) {
+	g := minimalRecordingGame(t)
+	g.turnHeld = slowTurnTics
+	cmd := moveCmd{turn: 1}
+	g.recordDemoTic(cmd, false, false)
+	if len(g.demoRecord) != 1 {
+		t.Fatalf("expected 1 tic, got %d", len(g.demoRecord))
+	}
+	if got, want := g.demoRecord[0].AngleTurn, g.demoAngleTurn(cmd); got != want {
+		t.Fatalf("AngleTurn=%d want %d", got, want)
+	}
 }
 
 func minimalRecordingGame(t *testing.T) *game {

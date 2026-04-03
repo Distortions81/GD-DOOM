@@ -99,9 +99,8 @@ func (g *game) applyMapViewUpdateResult(result mapview.UpdateResult) {
 		angleturn16 := int16(cmd.turnRaw >> 16)
 		cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
 	}
-	angleBefore := g.p.angle
 	g.runGameplayTic(cmd, result.ConsumePendingUse, result.FireHeld)
-	g.recordDemoTic(cmd, result.ConsumePendingUse, result.FirePressed, angleBefore)
+	g.recordDemoTic(cmd, result.ConsumePendingUse, result.FireHeld)
 	g.discoverLinesAroundPlayer()
 	if result.SyncCameraToPlayer {
 		g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
