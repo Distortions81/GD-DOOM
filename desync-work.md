@@ -41,4 +41,10 @@ All three demos: **clean** (traces match, no mismatch).
 
 ## Next Issue
 
-Investigate the z drift on `mobjs[6]` near tic=4296: ref=-136 units, gd=-132 units.
+**Monster z-movement miss on state transition** (`gametic=4296`, type=18 zombie, sector 6):
+
+- Both ref and GD start tic=4295 with `z=-132, momz=-8` (identical)
+- At tic=4296: ref `z=-136` (moved by -4), GD `z=-132` (no change), both `momz=0` after
+- State transitions 590→587 (`A_Fall`) during this tic
+- Root cause: `checkPositionForActor` for the zombie returns `ok=true` and the line loop raises `tmfloor` above the true subsector floor, causing `tickMonsterZMovement` to snap `z = floorZ` instead of letting the monster fall
+- Note: using `subsectorFloorCeilAt` unconditionally in `heightClipThing` fixes this but breaks monster step-up logic (monsters walk up ledges that are too large). Needs a targeted fix that only applies when the thing is actually blocked.

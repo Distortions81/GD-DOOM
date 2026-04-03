@@ -541,8 +541,8 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 	// from the subsector floor. If anything solid (including the player) overlaps
 	// the thing's XY bbox, PIT_CheckThing returns false and P_CheckPosition returns
 	// false before the line loop runs, leaving tmfloorz at the subsector floor.
-	// Mirror that: if the player overlaps this thing's XY, skip checkPositionForActor
-	// and use subsectorFloorCeilAt directly so line openings don't raise tmfloor.
+	// Mirror that: if the player overlaps this non-monster thing's XY, skip
+	// checkPositionForActor and use subsectorFloorCeilAt directly.
 	var tmfloor, tmceil int64
 	playerOverlaps := !isMonster(th.Type) && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius)
 	if playerOverlaps {
