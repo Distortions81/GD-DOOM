@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"gddoom/internal/gameplay"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 type demoActiveRuntime struct {
@@ -70,5 +71,21 @@ func TestOpenFrontendMenuFromSignalUsesPauseMenuForGameplay(t *testing.T) {
 	}
 	if !sg.frontend.InGame {
 		t.Fatal("expected in-game pause menu for gameplay frontend menu")
+	}
+}
+
+func TestSkipInputTriggeredConsumesAnyKeyboardKey(t *testing.T) {
+	sg := &sessionGame{
+		input: sessionInputSnapshot{
+			justPressedKeys: map[ebiten.Key]int{
+				ebiten.KeyA: 1,
+			},
+		},
+	}
+	if !sg.skipInputTriggered() {
+		t.Fatal("skipInputTriggered() = false, want true for arbitrary keyboard key")
+	}
+	if len(sg.input.justPressedKeys) != 0 {
+		t.Fatal("expected arbitrary keyboard key skip to consume pending keypresses")
 	}
 }

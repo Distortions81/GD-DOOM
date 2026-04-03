@@ -445,11 +445,16 @@ func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
 	}
 }
 
+func (sg *sessionGame) consumeAnyKeyPress() bool {
+	if sg == nil || len(sg.input.justPressedKeys) == 0 {
+		return false
+	}
+	sg.input.justPressedKeys = nil
+	return true
+}
+
 func (sg *sessionGame) skipInputTriggered() bool {
-	return sg.keyJustPressed(ebiten.KeySpace) ||
-		sg.keyJustPressed(ebiten.KeyEnter) ||
-		sg.keyJustPressed(ebiten.KeyKPEnter) ||
-		sg.keyJustPressed(ebiten.KeyEscape) ||
+	return sg.consumeAnyKeyPress() ||
 		sg.mouseJustPressed(ebiten.MouseButtonLeft) ||
 		sg.mouseJustPressed(ebiten.MouseButtonRight) ||
 		sg.mouseJustPressed(ebiten.MouseButtonMiddle) ||
