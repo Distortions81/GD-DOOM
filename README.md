@@ -6,105 +6,158 @@
 [![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/blob/main/LICENSE)
 
 <p align="center">
-  "Modern / Source Port" mode depicted below
   <img src="e1m1.png" alt="E1M1 screenshot" width="900">
   <br>
-  Play the shareware version: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
-  
-  A "Faithful" mode that strives to be the same as the DOS version is available as well via menu selection.
+  Source Port mode shown above.
+  <br>
+  Browser build: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
 </p>
 
-GD-DOOM plays original Doom data with two presentation targets: a `Faithful` mode that stays closer to vanilla Doom behavior and a `Source Port` mode that enables additional rendering, interpolation, and music features.
+GD-DOOM is a Go-based Doom runtime that plays original Doom data with two presentation modes:
+
+- `Faithful` mode stays closer to DOS Doom behavior and presentation.
+- `Source Port` mode enables higher-fidelity rendering, interpolation, smoother animation, and expanded music playback.
+
+It loads original IWAD data, supports PWAD overlays, can play or record Doom v1.10 demos, and ships with native and browser build paths.
 
 License: GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and derivative of id Software's DOOM source release. See [LICENSE](/home/dist/github/GD-DOOM/LICENSE) and [NOTICE](/home/dist/github/GD-DOOM/NOTICE).
 
-## GD-DOOM Over Vanilla DOOM
+## Highlights
 
-### Rendering Features
+### Rendering
 
-- 32-bit RGBA output replaces vanilla Doom's indexed framebuffer presentation.
-- Internal rendering is not locked to vanilla Doom's low display resolution, so walls, sprites, HUD, and automap lines can be presented sharply on modern displays.
-- `Faithful` mode keeps Doom colormap-based shading and gamma-table behavior closer to vanilla. `Source Port` mode keeps Doom-style distance-light math but does not remap through the colormap table.
-- Animated light specials such as fire flicker, light flash, strobe, and glow are supported, and in source-port mode those light changes can fade between tics instead of stepping instantly once per tic.
-- Floors and ceilings are rendered as textured lit surfaces using the current sector light level, rather than inheriting vanilla Doom's more limited plane presentation.
-- Camera position and camera yaw interpolate between simulation tics instead of drawing only the raw 35 Hz simulation step.
-- Thing rendering interpolates previous and current X/Y/Z state, so monsters, pickups, decorations, and projectiles move more smoothly on screen.
-- Certain monster movement states also use thinker-position blending over the state's tic window, so some monster AI movement is spread across multiple render steps instead of jumping from one thinker result to the next.
-- Mouse-driven turning is supported in walk view.
-- Animated wall and flat textures can crossfade between frames in source-port mode instead of switching abruptly every 8 tics.
-- Many map things use explicit multi-frame sprite sequences, including keys, bonuses, lights, torches, gore decorations, and pickups.
-- Weapon psprites can generate blended intermediate patch frames instead of only showing the discrete vanilla frame transitions.
-- Source-port mode supports a separate GPU sky path.
-- HUD and status-bar presentation can be scaled independently for modern displays.
-- Walk view and automap are integrated with pause and front-end overlays.
-- Doom-style aspect correction and gamma handling are preserved, with an optional CRT postprocess effect.
+- Two runtime modes: `Faithful` and `Source Port`.
+- 32-bit RGBA output instead of vanilla Doom's indexed framebuffer presentation.
+- Higher-resolution presentation for walls, sprites, HUD, and automap.
+- Interpolated camera movement, yaw, and thing motion between 35 Hz simulation tics.
+- Textured lit floors and ceilings, optional GPU sky path, and optional CRT postprocess effect.
+- Texture animation crossfades, blended weapon psprite transitions, and broader multi-frame sprite presentation for pickups and decorations.
+- Integrated automap with follow mode, rotate mode, big-map view, grid, and map marks.
 
-### Sound And Music Features
+### Audio
 
-- Two distinct music styles are available: OPL-style synthesis for a sound closer to classic Doom hardware, and SoundFont-backed General MIDI for a fuller, richer, more instrument-like soundtrack.
-- Music is rendered as stereo 16-bit PCM with MUS pan handling, so tracks can feel wider and less flat than a simple centered playback path.
-- Pan range can be tightened toward center or left fully wide.
-- Music and sound effects are mixed separately.
-- The runtime supports higher-quality MIDI-style playback through SoundFonts where available instead of limiting the experience to a single classic synth character.
-- In-game music controls can switch playback backend and volume.
-- A dedicated Music submenu and music player can browse tracks by WAD, episode, and map grouping.
-- Browser and desktop builds can use bundled or detected SoundFonts where available.
+- `impsynth` backend for an OPL-style classic Doom feel.
+- `meltysynth` backend for SoundFont-backed General MIDI playback.
+- Separate music and SFX volume controls.
+- Stereo MUS playback with adjustable pan width.
+- In-game music menu and browser/player flow for WAD, episode, and map-organized tracks.
 
-### Map And Game Data Features
+### Data And Runtime
 
-- Original Doom data loads directly, including IWAD plus PWAD combinations.
-- When multiple data sources are loaded, GD-DOOM can pick valid maps from that combined content and honor PWAD map replacements.
-- If several known base WADs are available, GD-DOOM can present an in-game IWAD picker.
-- Save/load support is integrated into the runtime flow.
-- Episode, skill, help/read-this, pause, and related menu flows are integrated into the runtime presentation.
-- Demo playback and recording are available alongside normal play.
-- The automap supports follow mode, heading-up rotation, optional grid overlay, thing legend display, big-map view, and player map marks, while still staying recognizably Doom.
+- Direct IWAD loading with optional PWAD overlays.
+- Automatic IWAD selection when one known base WAD is present.
+- In-game IWAD picker when multiple known IWADs are available.
+- Save/load support integrated into the runtime flow.
+- Demo playback, demo recording, and demo trace export support.
+- Config-file support on native builds through `config.toml`.
 
-### Performance And Polish
+## Requirements
 
-- Detail scaling and optional auto-detail can lower render cost when frame time rises.
-- Render-side precaching warms map textures, sprite patch data, monster refs, projectile refs, world-thing animation refs, and weapon blend assets before they are needed on screen.
-- Wall rendering uses occlusion, span rejection, span clipping, and slice occlusion to skip covered work.
-- Billboard and masked rendering use row and column clipping against wall depth and masked clip buffers, reducing hidden sprite work.
+- Go `1.26.1` or newer
+- A Doom IWAD such as `DOOM.WAD`, `DOOM2.WAD`, `TNT.WAD`, `PLUTONIA.WAD`, or `DOOM1.WAD`
+
+On Linux, native builds also need the usual Ebiten desktop dependencies for X11/OpenGL/audio. Tagged GitHub releases avoid that setup by shipping prebuilt desktop bundles.
 
 ## Quick Start
 
-Requirements:
-- Go 1.22+
-- A Doom base WAD such as `DOOM.WAD`, `DOOM2.WAD`, `TNT.WAD`, `PLUTONIA.WAD`, or `DOOM1.WAD`
+Run from the repository root:
 
-Run:
+```bash
+go run . -wad DOOM1.WAD
+```
+
+The dedicated desktop command works too:
 
 ```bash
 go run ./cmd/gddoom -wad DOOM1.WAD
 ```
 
-PWAD overlays:
+You can also pass the IWAD as the first positional argument:
 
 ```bash
-go run ./cmd/gddoom -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
+go run . DOOM1.WAD
 ```
 
-If `-wad` is omitted and the working directory contains one known IWAD, GD-DOOM uses it automatically. If several known IWADs are present, it can open an in-game picker.
+PWAD overlays are comma-separated:
 
-Tagged GitHub releases now publish desktop bundles for Linux, Windows, macOS Intel, and macOS Apple Silicon. Each release archive includes the platform binary, the tracked `DOOM1.WAD`, and `soundfonts/general-midi.sf2`.
+```bash
+go run . -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
+```
 
-## Music
+If `-wad` is omitted and the working directory contains one known IWAD, GD-DOOM uses it automatically. If several known IWADs are present, the runtime can open an in-game picker.
 
-GD-DOOM supports two music styles:
+## Common Options
 
-- `impsynth` for a classic OPL-style Doom feel.
-- `meltysynth` for richer SoundFont-based General MIDI playback.
+```bash
+go run . -help
+```
+
+Useful flags:
+
+- `-sourceport-mode` enables Source Port defaults.
+- `-music-backend=impsynth|meltysynth|auto` selects the music synth backend.
+- `-soundfont=PATH` selects an external `.sf2` file for `meltysynth`.
+- `-map=E1M1` or `-map=MAP01` starts on a specific map.
+- `-record-demo=out.lmp` records a Doom v1.10 demo from live play.
+- `-demo=path/to/demo.lmp` plays back a Doom v1.10 demo.
+- `-config=config.toml` reads and persists native runtime settings.
 
 Examples:
 
 ```bash
-go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=impsynth
-go run ./cmd/gddoom -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/general-midi.sf2
+go run . -wad DOOM1.WAD -sourceport-mode
+go run . -wad DOOM1.WAD -music-backend=impsynth
+go run . -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/general-midi.sf2
+go run . -wad DOOM2.WAD -map=MAP01 -record-demo=output.lmp
+go run . -wad DOOM1.WAD -demo=demos/DOOM1-DEMO1.lmp
 ```
 
-The frontend options menu has a dedicated Music submenu where you can change music volume, switch between OPL3 and MeltySynth, pick a SoundFont from `./soundfonts`, and open the music player.
+## Releases
 
-## Notes
+Tagged releases publish desktop bundles for:
 
-GD-DOOM is still alpha. It is playable, but full vanilla parity is still in progress and some edge cases remain.
+- Linux x86_64
+- Windows x86_64
+- macOS Intel
+- macOS Apple Silicon
+
+Each release archive includes the platform binary, `DOOM1.WAD`, `soundfonts/general-midi.sf2`, the README, and license files.
+
+## WebAssembly Build
+
+Build the browser version:
+
+```bash
+./scripts/build_wasm.sh
+```
+
+That script writes the app to `build/wasm`. It expects `DOOM1.WAD` at the repository root and uses `wasm-opt` automatically when available.
+
+Serve the generated app:
+
+```bash
+go run ./cmd/wasmserve
+```
+
+Or from inside `build/wasm`:
+
+```bash
+cd build/wasm
+go run ./server.go
+```
+
+The web UI can also load browser-selected `.wad` files through its local IWAD picker flow.
+
+## Development
+
+Run tests:
+
+```bash
+go test ./...
+```
+
+Additional utilities live under `cmd/` and `scripts/`, including helpers for WAD inspection, map analysis, WASM serving, demo tracing, and music export.
+
+## Status
+
+GD-DOOM is still alpha. It is playable and already covers a broad set of Doom runtime features, but vanilla parity work and edge-case cleanup are still in progress.
