@@ -41,10 +41,11 @@ All three demos: **clean** (traces match, no mismatch).
 
 ## Next Issue
 
-**Monster z-movement miss on state transition** (`gametic=4296`, type=18 zombie, sector 6):
+**z drift on `mobjs[6]`** (`gametic=4296`):
 
-- Both ref and GD start tic=4295 with `z=-132, momz=-8` (identical)
-- At tic=4296: ref `z=-136` (moved by -4), GD `z=-132` (no change), both `momz=0` after
-- State transitions 590→587 (`A_Fall`) during this tic
-- Root cause: `checkPositionForActor` for the zombie returns `ok=true` and the line loop raises `tmfloor` above the true subsector floor, causing `tickMonsterZMovement` to snap `z = floorZ` instead of letting the monster fall
-- Note: using `subsectorFloorCeilAt` unconditionally in `heightClipThing` fixes this but breaks monster step-up logic (monsters walk up ledges that are too large). Needs a targeted fix that only applies when the thing is actually blocked.
+- First mismatch: `line=4297 path=root.mobjs[6].z ref=-8912896 gd=-8650752` (delta = 4 units)
+- Pattern: z drifts by 4 units per tick starting at tic=4297 (one tick behind)
+- Context: player jumps down a large ledge into area with exploding barrels and a mancubus; a lost soul that was chasing the player follows it down
+- Doom: lost souls descend via float logic in `P_ZMovement` (`MF_FLOAT`, `MF_NOGRAVITY`), not gravity — `z -= FLOATSPEED` when close enough to target below
+- Suspect: `tickMonsterZMovement` not being called or float logic not triggering for the lost soul in GD-DOOM when momx/momy/momz are all zero
+- Key path: `tickMonsterMomentum` → if `momx==momy==momz==0` and `z != floorZ` → calls `tickMonsterZMovement`; if stored `floorZ == z`, the call is skipped entirely

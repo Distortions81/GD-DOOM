@@ -69,6 +69,12 @@ func main() {
 			fmt.Printf("mismatch line=%d path=%s\n", i+1, path)
 			fmt.Printf("left=%s\n", marshalCompact(lv))
 			fmt.Printf("right=%s\n", marshalCompact(rv))
+			if lm, rm, idx, ok := mobjForPath(path, l, r); ok {
+				fmt.Printf("left_mobj[%d] type=%d x=%d y=%d z=%d\n", idx,
+					int(numValue(lm["type"])), int(numValue(lm["x"])), int(numValue(lm["y"])), int(numValue(lm["z"])))
+				fmt.Printf("right_mobj[%d] type=%d x=%d y=%d z=%d\n", idx,
+					int(numValue(rm["type"])), int(numValue(rm["x"])), int(numValue(rm["y"])), int(numValue(rm["z"])))
+			}
 			os.Exit(1)
 		}
 	}
@@ -386,6 +392,41 @@ func unionKeys(left, right map[string]any) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// mobjForPath extracts the mobj objects from both sides when path is inside root.mobjs[N].
+func mobjForPath(path string, l, r any) (lm, rm map[string]any, idx int, ok bool) {
+	const prefix = "root.mobjs["
+	if len(path) <= len(prefix) || path[:len(prefix)] != prefix {
+		return nil, nil, 0, false
+	}
+	rest := path[len(prefix):]
+	n := 0
+	for n < len(rest) && rest[n] >= '0' && rest[n] <= '9' {
+		n++
+	}
+	if n == 0 {
+		return nil, nil, 0, false
+	}
+	for _, c := range rest[:n] {
+		idx = idx*10 + int(c-'0')
+	}
+	lroot, lok := l.(map[string]any)
+	rroot, rok := r.(map[string]any)
+	if !lok || !rok {
+		return nil, nil, 0, false
+	}
+	lmobjs, lok := lroot["mobjs"].([]any)
+	rmobjs, rok := rroot["mobjs"].([]any)
+	if !lok || !rok || idx >= len(lmobjs) || idx >= len(rmobjs) {
+		return nil, nil, 0, false
+	}
+	lm, lok = lmobjs[idx].(map[string]any)
+	rm, rok = rmobjs[idx].(map[string]any)
+	if !lok || !rok {
+		return nil, nil, 0, false
+	}
+	return lm, rm, idx, true
 }
 
 func marshalCompact(v any) string {
