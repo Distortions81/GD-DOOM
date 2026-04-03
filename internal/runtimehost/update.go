@@ -71,6 +71,15 @@ func RunUpdate(u Update) error {
 					return err
 				}
 			}
+			if u.HandleRuntimeProgress != nil {
+				handled, err := u.HandleRuntimeProgress()
+				if err != nil {
+					return err
+				}
+				if handled {
+					return nil
+				}
+			}
 		}
 		if u.TickFrontend != nil {
 			return u.TickFrontend()

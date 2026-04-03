@@ -56,3 +56,39 @@ func TestRunUpdateFinaleRequestsTermination(t *testing.T) {
 		t.Fatalf("RunUpdate() error = %v, want ErrTerminate", err)
 	}
 }
+
+func TestRunUpdateHandlesRuntimeProgressDuringFrontendDemo(t *testing.T) {
+	updateCalled := false
+	progressCalled := false
+	tickFrontendCalled := false
+
+	err := RunUpdate(Update{
+		FrontendActive: func() bool { return true },
+		DemoActive:     func() bool { return true },
+		UpdateRuntimeForDemo: func() error {
+			updateCalled = true
+			return nil
+		},
+		HandleRuntimeProgress: func() (bool, error) {
+			progressCalled = true
+			return true, nil
+		},
+		TickFrontend: func() error {
+			tickFrontendCalled = true
+			return nil
+		},
+	})
+
+	if err != nil {
+		t.Fatalf("RunUpdate() error = %v", err)
+	}
+	if !updateCalled {
+		t.Fatal("expected demo runtime update")
+	}
+	if !progressCalled {
+		t.Fatal("expected runtime progress handling during frontend demo")
+	}
+	if tickFrontendCalled {
+		t.Fatal("expected handled frontend-demo progress to short-circuit before TickFrontend")
+	}
+}

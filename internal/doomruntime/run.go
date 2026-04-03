@@ -211,13 +211,7 @@ func (sg *sessionGame) Update() error {
 			if sig.FrontendMenu {
 				sg.rt.sessionAcknowledgeFrontendMenu()
 				sg.consumeFrontendOpenInput()
-				sg.frontend = frontendState{
-					Active:     true,
-					InGame:     true,
-					Attract:    sig.DemoActive,
-					Mode:       frontendModeTitle,
-					MenuActive: true,
-				}
+				sg.openFrontendMenuFromSignal(sig)
 				return true, nil
 			}
 			if sig.MusicPlayer {
@@ -437,6 +431,20 @@ func (sg *sessionGame) keyJustPressed(key ebiten.Key) bool {
 	return consumePress(sg.input.justPressedKeys, key)
 }
 
+func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
+	if sg == nil {
+		return
+	}
+	inGame := !sig.DemoActive
+	sg.frontend = frontendState{
+		Active:     true,
+		InGame:     inGame,
+		Attract:    sig.DemoActive,
+		Mode:       frontendModeTitle,
+		MenuActive: true,
+	}
+}
+
 func (sg *sessionGame) skipInputTriggered() bool {
 	return sg.keyJustPressed(ebiten.KeySpace) ||
 		sg.keyJustPressed(ebiten.KeyEnter) ||
@@ -513,10 +521,14 @@ func (sg *sessionGame) shouldSampleRuntimeInput() bool {
 	if sg == nil {
 		return false
 	}
+	frontendBlocksRuntimeInput := sg.frontend.Active
+	if frontendBlocksRuntimeInput && sg.rt != nil && sg.rt.sessionSignals().DemoActive && !sg.frontend.MenuActive {
+		frontendBlocksRuntimeInput = false
+	}
 	return !sg.quitPrompt.Active &&
 		!sg.transitionActive() &&
 		!sg.finale.Active &&
-		!sg.frontend.Active &&
+		!frontendBlocksRuntimeInput &&
 		!sg.intermission.state.Active
 }
 
