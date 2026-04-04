@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	saveGameVersion = 16
+	saveGameVersion = 17
 	saveGamePrefix  = "dsg"
-	keyframeVersion = 3
+	keyframeVersion = 4
 	saveGameDirName = "saves"
 )
 
@@ -67,6 +67,7 @@ type gameSaveState struct {
 	PlayerViewZ          int64
 	ThingCollected       []bool
 	ThingDropped         []bool
+	ThingThinkerOrder    []int64
 	ThingX               []int64
 	ThingY               []int64
 	ThingMomX            []int64
@@ -97,6 +98,7 @@ type gameSaveState struct {
 	ThingInFloat         []bool
 	ThingGibbed          []bool
 	ThingGibTick         []int
+	ThingXDeath          []bool
 	ThingDeathTics       []int
 	ThingAttackTics      []int
 	ThingAttackPhase     []int
@@ -500,6 +502,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		PlayerViewZ:          g.playerViewZ,
 		ThingCollected:       append([]bool(nil), g.thingCollected...),
 		ThingDropped:         append([]bool(nil), g.thingDropped...),
+		ThingThinkerOrder:    append([]int64(nil), g.thingThinkerOrder...),
 		ThingX:               append([]int64(nil), g.thingX...),
 		ThingY:               append([]int64(nil), g.thingY...),
 		ThingMomX:            append([]int64(nil), g.thingMomX...),
@@ -530,6 +533,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingInFloat:         append([]bool(nil), g.thingInFloat...),
 		ThingGibbed:          append([]bool(nil), g.thingGibbed...),
 		ThingGibTick:         append([]int(nil), g.thingGibTick...),
+		ThingXDeath:          append([]bool(nil), g.thingXDeath...),
 		ThingDeathTics:       append([]int(nil), g.thingDeathTics...),
 		ThingAttackTics:      append([]int(nil), g.thingAttackTics...),
 		ThingAttackPhase:     append([]int(nil), g.thingAttackPhase...),
@@ -613,6 +617,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.playerViewZ = s.PlayerViewZ
 	g.thingCollected = append([]bool(nil), s.ThingCollected...)
 	g.thingDropped = append([]bool(nil), s.ThingDropped...)
+	g.thingThinkerOrder = append([]int64(nil), s.ThingThinkerOrder...)
 	g.thingX = append([]int64(nil), s.ThingX...)
 	g.thingY = append([]int64(nil), s.ThingY...)
 	g.thingMomX = append([]int64(nil), s.ThingMomX...)
@@ -643,6 +648,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingInFloat = append([]bool(nil), s.ThingInFloat...)
 	g.thingGibbed = append([]bool(nil), s.ThingGibbed...)
 	g.thingGibTick = append([]int(nil), s.ThingGibTick...)
+	g.thingXDeath = append([]bool(nil), s.ThingXDeath...)
 	g.thingDeathTics = append([]int(nil), s.ThingDeathTics...)
 	g.thingAttackTics = append([]int(nil), s.ThingAttackTics...)
 	g.thingAttackPhase = append([]int(nil), s.ThingAttackPhase...)

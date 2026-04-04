@@ -25,6 +25,7 @@ type liveRuntimeRoundTripState struct {
 	BonusFlashTic     int
 	ThingCollected    []bool
 	ThingDropped      []bool
+	ThingThinkerOrder []int64
 	ThingX            []int64
 	ThingY            []int64
 	ThingMomX         []int64
@@ -101,6 +102,7 @@ func captureLiveRuntimeRoundTripState(g *game) liveRuntimeRoundTripState {
 		BonusFlashTic:      g.bonusFlashTic,
 		ThingCollected:     append([]bool(nil), g.thingCollected...),
 		ThingDropped:       append([]bool(nil), g.thingDropped...),
+		ThingThinkerOrder:  append([]int64(nil), g.thingThinkerOrder...),
 		ThingX:             append([]int64(nil), g.thingX...),
 		ThingY:             append([]int64(nil), g.thingY...),
 		ThingMomX:          append([]int64(nil), g.thingMomX...),
@@ -232,6 +234,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	sg.g.inventory.Weapons[2003] = true
 	sg.g.worldTic = 321
 	sg.g.thingCollected[1] = true
+	sg.g.thingThinkerOrder[1] = 444
 	sg.g.thingHP[1] = 12
 	sg.g.thingMomX[1] = 3 * fracUnit
 	sg.g.thingMomY[1] = -2 * fracUnit
@@ -240,6 +243,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	sg.g.thingResumeChaseNow[1] = true
 	sg.g.thingAmbush[1] = true
 	sg.g.thingInFloat[1] = true
+	sg.g.thingXDeath[1] = true
 	sg.g.secretFound[0] = true
 	sg.g.secretsFound = 1
 	sg.g.playerBlockOrder = 777
@@ -373,8 +377,14 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	if loaded.g.thingMomX[1] != 3*fracUnit || loaded.g.thingMomY[1] != -2*fracUnit || loaded.g.thingMomZ[1] != fracUnit {
 		t.Fatalf("thing momentum=(%d,%d,%d) want=(%d,%d,%d)", loaded.g.thingMomX[1], loaded.g.thingMomY[1], loaded.g.thingMomZ[1], 3*fracUnit, -2*fracUnit, fracUnit)
 	}
+	if loaded.g.thingThinkerOrder[1] != 444 {
+		t.Fatalf("thing thinker order=%d want=444", loaded.g.thingThinkerOrder[1])
+	}
 	if !loaded.g.thingSkullFly[1] || !loaded.g.thingResumeChaseNow[1] || !loaded.g.thingAmbush[1] || !loaded.g.thingInFloat[1] {
 		t.Fatalf("thing flags not restored: skull=%t resume=%t ambush=%t float=%t", loaded.g.thingSkullFly[1], loaded.g.thingResumeChaseNow[1], loaded.g.thingAmbush[1], loaded.g.thingInFloat[1])
+	}
+	if !loaded.g.thingXDeath[1] {
+		t.Fatal("thing xdeath flag not restored")
 	}
 	if !loaded.g.secretFound[0] || loaded.g.secretsFound != 1 {
 		t.Fatalf("secret state not restored: found=%v count=%d", loaded.g.secretFound, loaded.g.secretsFound)
@@ -415,6 +425,123 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	gotRnd, gotPRnd := doomrand.State()
 	if gotRnd != wantRnd || gotPRnd != wantPRnd {
 		t.Fatalf("rng=(%d,%d) want=(%d,%d)", gotRnd, gotPRnd, wantRnd, wantPRnd)
+	}
+}
+
+func TestSaveLoadRoundTrip_PreservesRuntimeThingThinkerOrder(t *testing.T) {
+	slot := 96
+	path := saveGamePath(slot)
+	_ = os.Remove(path)
+	defer os.Remove(path)
+
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+		},
+		Sectors: []mapdata.Sector{
+			{FloorHeight: 0, CeilingHeight: 128},
+		},
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+
+	idx := sg.g.appendRuntimeThing(mapdata.Thing{Type: 3004, X: 64, Y: 0}, false)
+	if idx < 0 {
+		t.Fatal("appendRuntimeThing() failed")
+	}
+	wantOrder := sg.g.thingThinkerOrder[idx]
+	if wantOrder <= 1 {
+		t.Fatalf("runtime thinker order=%d want >1", wantOrder)
+	}
+
+	if err := sg.SaveGameToSlot(slot); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	loaded := &sessionGame{
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	if err := loaded.LoadGameFromSlot(slot); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	if got := loaded.g.thingThinkerOrder[idx]; got != wantOrder {
+		t.Fatalf("thingThinkerOrder[%d]=%d want=%d", idx, got, wantOrder)
+	}
+}
+
+func TestSaveLoadRoundTrip_PreservesXDeathFlag(t *testing.T) {
+	slot := 95
+	path := saveGamePath(slot)
+	_ = os.Remove(path)
+	defer os.Remove(path)
+
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+			{Type: 3004, X: 64, Y: 0},
+		},
+		Sectors: []mapdata.Sector{
+			{FloorHeight: 0, CeilingHeight: 128},
+		},
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+
+	spawnHP := monsterSpawnHealth(3004)
+	sg.g.thingHP[1] = spawnHP
+	sg.g.damageMonster(1, spawnHP*2+1)
+	if !sg.g.thingDead[1] || !sg.g.thingXDeath[1] {
+		t.Fatalf("precondition failed: dead=%t xdeath=%t", sg.g.thingDead[1], sg.g.thingXDeath[1])
+	}
+
+	if err := sg.SaveGameToSlot(slot); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	loaded := &sessionGame{
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	if err := loaded.LoadGameFromSlot(slot); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	if !loaded.g.thingDead[1] || !loaded.g.thingXDeath[1] {
+		t.Fatalf("xdeath restore failed: dead=%t xdeath=%t", loaded.g.thingDead[1], loaded.g.thingXDeath[1])
 	}
 }
 

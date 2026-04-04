@@ -413,6 +413,9 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	if err := w.boolSlice(v.ThingDropped); err != nil {
 		return err
 	}
+	if err := w.i64Slice(v.ThingThinkerOrder); err != nil {
+		return err
+	}
 	if err := w.i64Slice(v.ThingX); err != nil {
 		return err
 	}
@@ -501,6 +504,9 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 		return err
 	}
 	if err := w.intSlice(v.ThingGibTick); err != nil {
+		return err
+	}
+	if err := w.boolSlice(v.ThingXDeath); err != nil {
 		return err
 	}
 	if err := w.intSlice(v.ThingDeathTics); err != nil {
@@ -1505,6 +1511,9 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	if v.ThingDropped, err = readBoolSlice(r); err != nil {
 		return v, err
 	}
+	if v.ThingThinkerOrder, err = readI64Slice(r); err != nil {
+		return v, err
+	}
 	if v.ThingX, err = readI64Slice(r); err != nil {
 		return v, err
 	}
@@ -1593,6 +1602,9 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 		return v, err
 	}
 	if v.ThingGibTick, err = readIntSlice(r); err != nil {
+		return v, err
+	}
+	if v.ThingXDeath, err = readBoolSlice(r); err != nil {
 		return v, err
 	}
 	if v.ThingDeathTics, err = readIntSlice(r); err != nil {
