@@ -41,6 +41,7 @@ GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and der
 - Separate music and SFX volume controls.
 - Stereo MUS playback with adjustable pan width.
 - In-game music menu and browser/player music flow.
+- Experimental Linux PulseAudio capture scaffold for upcoming relay voice/audio input work.
 
 ### Runtime
 
