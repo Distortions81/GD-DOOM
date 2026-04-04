@@ -121,7 +121,17 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 
 	loaded := &sessionGame{
-		opts: Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
 	}
 	if err := loaded.LoadGameFromSlot(slot); err != nil {
 		t.Fatalf("load failed: %v", err)
@@ -195,6 +205,42 @@ func TestLoadGameRejectsUnknownHeader(t *testing.T) {
 	}
 }
 
+func TestLoadGameRejectsBadChecksum(t *testing.T) {
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+		},
+	}
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+	data, err := sg.marshalSaveGame("Checksum")
+	if err != nil {
+		t.Fatalf("marshalSaveGame() error = %v", err)
+	}
+	data[len(data)-1] ^= 0xff
+
+	loaded := &sessionGame{
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	err = loaded.unmarshalSaveGame(data)
+	if !errors.Is(err, errBadSaveChecksum) {
+		t.Fatalf("err=%v want=%v", err, errBadSaveChecksum)
+	}
+}
+
 func TestNetplayKeyframeRoundTrip(t *testing.T) {
 	base := &mapdata.Map{
 		Name: "MAP01",
@@ -224,7 +270,17 @@ func TestNetplayKeyframeRoundTrip(t *testing.T) {
 	}
 
 	loaded := &sessionGame{
-		opts: Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
 	}
 	if err := loaded.unmarshalNetplayKeyframe(data); err != nil {
 		t.Fatalf("unmarshalNetplayKeyframe() error = %v", err)

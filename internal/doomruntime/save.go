@@ -1,8 +1,6 @@
 package doomruntime
 
 import (
-	"bytes"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -29,19 +27,18 @@ var (
 	errNoSavedGame         = errors.New("no saved game")
 	errSaveGameWebOnly     = errors.New("not available")
 	errBadSaveMagic        = errors.New("invalid save format")
+	errBadSaveChecksum     = errors.New("invalid save checksum")
 )
 
 var saveGameMagic = []byte("GDDOOMSAVE\x00")
 var keyframeMagic = []byte("GDDOOMKEY\x00")
 
 type saveFile struct {
-	Version         int
-	Description     string
-	Current         mapdata.MapName
-	CurrentMap      *mapdata.Map
-	CurrentTemplate *mapdata.Map
-	RNG             saveRNGState
-	Game            gameSaveState
+	Version     int
+	Description string
+	Current     mapdata.MapName
+	RNG         saveRNGState
+	Game        gameSaveState
 }
 
 type saveRNGState struct {
@@ -314,12 +311,6 @@ type delayedSwitchTextureSaveState struct {
 	Tics    int
 }
 
-func init() {
-	gob.Register(&mapdata.Map{})
-	gob.Register(&mapdata.RejectMatrix{})
-	gob.Register(&mapdata.BlockMap{})
-}
-
 func saveGamePath(slot int) string {
 	name := fmt.Sprintf("%s%d.%s", saveGamePrefix, slot, saveGamePrefix)
 	if slot == 1 {
@@ -375,11 +366,9 @@ func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
 	}
 	rndIndex, prndIndex := doomrand.State()
 	file := saveFile{
-		Version:         saveGameVersion,
-		Description:     description,
-		Current:         sg.current,
-		CurrentMap:      cloneMapForRestart(sg.g.m),
-		CurrentTemplate: cloneMapForRestart(sg.currentTemplate),
+		Version:     saveGameVersion,
+		Description: description,
+		Current:     sg.current,
 		RNG: saveRNGState{
 			MenuIndex: rndIndex,
 			PlayIndex: prndIndex,
@@ -399,11 +388,9 @@ func (sg *sessionGame) marshalNetplayKeyframe() ([]byte, error) {
 	}
 	rndIndex, prndIndex := doomrand.State()
 	file := saveFile{
-		Version:         keyframeVersion,
-		Description:     "Netplay Keyframe",
-		Current:         sg.current,
-		CurrentMap:      cloneMapForRestart(sg.g.m),
-		CurrentTemplate: cloneMapForRestart(sg.currentTemplate),
+		Version:     keyframeVersion,
+		Description: "Netplay Keyframe",
+		Current:     sg.current,
 		RNG: saveRNGState{
 			MenuIndex: rndIndex,
 			PlayIndex: prndIndex,
@@ -417,35 +404,22 @@ func (sg *sessionGame) unmarshalNetplayKeyframe(data []byte) error {
 	return sg.unmarshalSnapshot(data, keyframeMagic, keyframeVersion)
 }
 
-func encodeSnapshot(magic []byte, file saveFile) ([]byte, error) {
-	var buf bytes.Buffer
-	if _, err := buf.Write(magic); err != nil {
-		return nil, err
-	}
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(file); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
 func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int) error {
 	if sg == nil {
 		return errNoSavedGame
 	}
-	if len(data) < len(magic) || !bytes.Equal(data[:len(magic)], magic) {
-		return errBadSaveMagic
-	}
-	var file saveFile
-	dec := gob.NewDecoder(bytes.NewReader(data[len(magic):]))
-	if err := dec.Decode(&file); err != nil {
+	file, err := decodeSnapshot(data, magic)
+	if err != nil {
 		return err
 	}
 	if file.Version != version {
 		return fmt.Errorf("incompatible save version: %d", file.Version)
 	}
-	if file.CurrentMap == nil {
-		return fmt.Errorf("save missing map data")
+	if sg.opts.NewGameLoader == nil {
+		return fmt.Errorf("save load requires NewGameLoader")
+	}
+	if strings.TrimSpace(string(file.Current)) == "" {
+		return fmt.Errorf("save missing current map")
 	}
 
 	sg.stopAndClearMusic()
@@ -454,7 +428,13 @@ func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int)
 		sg.g.clearSpritePatchCache()
 	}
 
-	loadedMap := cloneMapForRestart(file.CurrentMap)
+	loadedMap, err := sg.opts.NewGameLoader(string(file.Current))
+	if err != nil {
+		return fmt.Errorf("load saved map %s: %w", file.Current, err)
+	}
+	if loadedMap == nil {
+		return fmt.Errorf("load saved map %s: nil map", file.Current)
+	}
 	g := sg.buildGame(loadedMap, sg.opts)
 	restoreGameSaveState(g, file.Game)
 	doomrand.SetState(file.RNG.MenuIndex, file.RNG.PlayIndex)
@@ -469,10 +449,7 @@ func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int)
 	if sg.current == "" && g.m != nil {
 		sg.current = g.m.Name
 	}
-	sg.currentTemplate = cloneMapForRestart(file.CurrentTemplate)
-	if sg.currentTemplate == nil {
-		sg.currentTemplate = cloneMapForRestart(g.m)
-	}
+	sg.currentTemplate = cloneMapForRestart(g.m)
 	sg.levelCarryover = nil
 	sg.secretVisited = false
 	sg.playMusicForMap(sg.current)

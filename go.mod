@@ -18,6 +18,8 @@ require (
 	github.com/ebitengine/oto/v3 v3.4.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/jezek/xgb v1.3.0 // indirect
+	github.com/klauspost/cpuid/v2 v2.0.12 // indirect
+	github.com/zeebo/blake3 v0.2.4 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
 )

@@ -40,6 +40,13 @@ type Session struct {
 func Run(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
 	sess := New(m, opts, nextMap)
 	defer sess.Close()
+	return RunSession(sess)
+}
+
+func RunSession(sess *Session) error {
+	if sess == nil {
+		return fmt.Errorf("session is nil")
+	}
 	if err := session.Run(session.New(sess)); err != nil {
 		return fmt.Errorf("run ebiten automap: %w", err)
 	}

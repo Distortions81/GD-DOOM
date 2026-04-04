@@ -202,3 +202,12 @@ func TestFrameRoundTripBinary(t *testing.T) {
 		t.Fatalf("payload=%v want=%v", gotPayload, payload)
 	}
 }
+
+func TestPackDemoTicMatchesDemoFormatRounding(t *testing.T) {
+	tc := demo.Tic{Forward: 1, Side: -2, AngleTurn: 129, Buttons: demo.ButtonUse}
+	got := packDemoTic(tc)
+	want := []byte{1, 0xfe, 1, demo.ButtonUse}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("packDemoTic()=%v want=%v", got, want)
+	}
+}

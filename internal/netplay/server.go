@@ -28,11 +28,19 @@ type relaySession struct {
 	viewers         map[*relayViewer]struct{}
 	lastKeyframe    []byte
 	lastKeyframeTic uint32
+	backlog         []bufferedFrame
 }
 
 type relayViewer struct {
 	conn net.Conn
 }
+
+type bufferedFrame struct {
+	header  frameHeader
+	payload []byte
+}
+
+const maxBufferedRelayFrames = 35 * 60 * 5
 
 func ListenServer(addr string) (*Server, error) {
 	ln, err := net.Listen("tcp", addr)
@@ -204,6 +212,13 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 			return
 		}
 	}
+	for _, frame := range s.backlogFrames(sess) {
+		if err := writeFrame(conn, frame.header, frame.payload); err != nil {
+			s.removeViewer(sess, viewer)
+			_ = conn.Close()
+			return
+		}
+	}
 
 	// Viewers are currently read-only and do not send steady-state frames.
 	var one [1]byte
@@ -222,6 +237,16 @@ func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []
 	if header.Type == frameTypeKeyframe {
 		sess.lastKeyframeTic = header.Tic
 		sess.lastKeyframe = append(sess.lastKeyframe[:0], payload...)
+		sess.backlog = sess.backlog[:0]
+	} else if header.Type == frameTypeTicBatch {
+		sess.backlog = append(sess.backlog, bufferedFrame{
+			header:  header,
+			payload: append([]byte(nil), payload...),
+		})
+		if len(sess.backlog) > maxBufferedRelayFrames {
+			copy(sess.backlog, sess.backlog[len(sess.backlog)-maxBufferedRelayFrames:])
+			sess.backlog = sess.backlog[:maxBufferedRelayFrames]
+		}
 	}
 	viewers := make([]*relayViewer, 0, len(sess.viewers))
 	for viewer := range sess.viewers {
@@ -247,6 +272,25 @@ func (s *Server) latestKeyframe(sess *relaySession) ([]byte, uint32, bool) {
 		return nil, 0, false
 	}
 	return append([]byte(nil), sess.lastKeyframe...), sess.lastKeyframeTic, true
+}
+
+func (s *Server) backlogFrames(sess *relaySession) []bufferedFrame {
+	if s == nil || sess == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cur := s.sessions[sess.id]; cur != sess || len(sess.backlog) == 0 {
+		return nil
+	}
+	out := make([]bufferedFrame, len(sess.backlog))
+	for i, frame := range sess.backlog {
+		out[i] = bufferedFrame{
+			header:  frame.header,
+			payload: append([]byte(nil), frame.payload...),
+		}
+	}
+	return out
 }
 
 func (s *Server) removeViewer(sess *relaySession, viewer *relayViewer) {

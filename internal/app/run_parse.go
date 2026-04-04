@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	"gddoom/internal/audiofx"
@@ -127,6 +128,26 @@ func normalizeWatchAddr(addr string) string {
 		return addr
 	}
 	return addr + ":" + strconv.Itoa(defaultNetplayPort)
+}
+
+func awaitWatchKeyframe(v *netplay.Viewer, timeout time.Duration) (netplay.Keyframe, bool, error) {
+	if v == nil {
+		return netplay.Keyframe{}, false, nil
+	}
+	deadline := time.Now().Add(timeout)
+	for {
+		kf, ok, err := v.PollKeyframe()
+		if err != nil {
+			return netplay.Keyframe{}, false, err
+		}
+		if ok {
+			return kf, true, nil
+		}
+		if time.Now().After(deadline) {
+			return netplay.Keyframe{}, false, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
@@ -1178,7 +1199,37 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return nm, next, nil
 		}
-		rerr := doomsession.Run(m, opts, nextMap)
+		sess := doomsession.New(m, opts, nextMap)
+		defer sess.Close()
+		if watchSession != nil {
+			fmt.Fprintln(stderr, "watch: awaiting keyframe")
+			kf, ok, kerr := awaitWatchKeyframe(watchSession, 2*time.Second)
+			if kerr != nil {
+				fmt.Fprintf(stderr, "watch: %v\n", kerr)
+				return 1
+			}
+			if ok && len(kf.Blob) > 0 {
+				if err := sess.LoadKeyframe(kf.Blob); err != nil {
+					fmt.Fprintf(stderr, "watch: apply keyframe: %v\n", err)
+					return 1
+				}
+				fmt.Fprintf(stderr, "watch: keyframe loaded tic=%d\n", kf.Tic)
+			}
+		}
+		if resolvedBroadcastAddr != "" {
+			if blob, err := sess.CaptureKeyframe(); err == nil && len(blob) > 0 {
+				if sink, ok := opts.LiveTicSink.(*netplay.RelayBroadcaster); ok {
+					if err := sink.BroadcastKeyframe(0, blob); err != nil {
+						fmt.Fprintf(stderr, "broadcast: keyframe: %v\n", err)
+						return 1
+					}
+				}
+			} else if err != nil {
+				fmt.Fprintf(stderr, "broadcast: capture keyframe: %v\n", err)
+				return 1
+			}
+		}
+		rerr := doomsession.RunSession(sess)
 		if rerr != nil {
 			fmt.Fprintf(stderr, "render map %s: %v\n", selected, rerr)
 			return 1

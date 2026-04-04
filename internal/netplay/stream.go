@@ -502,7 +502,7 @@ func packDemoTic(tc demo.Tic) []byte {
 	return []byte{
 		byte(tc.Forward),
 		byte(tc.Side),
-		byte(uint16(tc.AngleTurn) >> 8),
+		byte((uint16(tc.AngleTurn) + 128) >> 8),
 		tc.Buttons,
 	}
 }
