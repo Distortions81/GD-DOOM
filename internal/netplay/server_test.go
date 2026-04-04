@@ -189,6 +189,66 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 	}
 }
 
+func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	bconn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatalf("dial broadcaster: %v", err)
+	}
+	defer bconn.Close()
+	if err := writeHello(bconn, helloRoleBroadcaster, 0, 92, SessionConfig{MapName: "E1M1"}); err != nil {
+		t.Fatalf("writeHello broadcaster: %v", err)
+	}
+	if _, _, _, _, err := readHello(bconn); err != nil {
+		t.Fatalf("readHello broadcaster ack: %v", err)
+	}
+	if err := writeFrame(bconn, frameHeader{Type: frameTypeKeyframe, Tic: 0}, []byte{1}); err != nil {
+		t.Fatalf("write initial keyframe: %v", err)
+	}
+
+	vconn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatalf("dial viewer: %v", err)
+	}
+	defer vconn.Close()
+	if err := writeHello(vconn, helloRoleViewer, 0, 92, SessionConfig{}); err != nil {
+		t.Fatalf("writeHello viewer: %v", err)
+	}
+	if _, _, _, _, err := readHello(vconn); err != nil {
+		t.Fatalf("readHello viewer response: %v", err)
+	}
+	if _, _, err := readFrame(vconn); err != nil {
+		t.Fatalf("read join keyframe: %v", err)
+	}
+
+	if err := writeFrame(bconn, frameHeader{Type: frameTypeKeyframe, Tic: 175}, []byte{2}); err != nil {
+		t.Fatalf("write periodic keyframe: %v", err)
+	}
+	tc := demo.Tic{Forward: 25, AngleTurn: 512}
+	payload := make([]byte, ticBatchOverhead+4)
+	payload[0] = 1
+	copy(payload[ticBatchOverhead:], packDemoTic(tc))
+	if err := writeFrame(bconn, frameHeader{Type: frameTypeTicBatch, Tic: 176}, payload); err != nil {
+		t.Fatalf("write tic batch: %v", err)
+	}
+
+	header, gotPayload, err := readFrame(vconn)
+	if err != nil {
+		t.Fatalf("read forwarded frame: %v", err)
+	}
+	if header.Type != frameTypeTicBatch || header.Tic != 176 {
+		t.Fatalf("header=%+v want type=%d tic=176", header, frameTypeTicBatch)
+	}
+	if got := unpackDemoTic(gotPayload[ticBatchOverhead : ticBatchOverhead+4]); got != tc {
+		t.Fatalf("tic=%+v want %+v", got, tc)
+	}
+}
+
 func TestRelayServerAssignsSessionIDToBroadcaster(t *testing.T) {
 	srv, err := ListenServer("127.0.0.1:0")
 	if err != nil {

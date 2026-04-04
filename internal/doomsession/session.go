@@ -32,9 +32,16 @@ type finalScreenDrawer interface {
 	DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM)
 }
 
+type keyframeSink interface {
+	BroadcastKeyframe(tic uint32, blob []byte) error
+}
+
+const periodicKeyframeIntervalTics = 35 * 5
+
 type Session struct {
-	game runtimeGame
-	meta runtimehost.Meta
+	game                    runtimeGame
+	meta                    runtimehost.Meta
+	lastPeriodicKeyframeTic uint32
 }
 
 func Run(m *mapdata.Map, opts Options, nextMap NextMapFunc) error {
@@ -86,7 +93,13 @@ func (s *Session) Update() error {
 	if s == nil || s.game == nil {
 		return ebiten.Termination
 	}
-	return s.game.Update()
+	if err := s.game.Update(); err != nil {
+		return err
+	}
+	if err := s.emitPeriodicKeyframe(); err != nil {
+		return fmt.Errorf("broadcast keyframe: %w", err)
+	}
+	return nil
 }
 
 func (s *Session) SampleInput() {
@@ -176,4 +189,35 @@ func (s *Session) LoadKeyframe(data []byte) error {
 		return nil
 	}
 	return s.meta.LoadKeyframe(data)
+}
+
+func (s *Session) emitPeriodicKeyframe() error {
+	if s == nil || s.meta.Options == nil || s.meta.CurrentWorldTic == nil || s.meta.CaptureKeyframe == nil {
+		return nil
+	}
+	opts := s.meta.Options()
+	sink, ok := opts.LiveTicSink.(keyframeSink)
+	if !ok || sink == nil {
+		return nil
+	}
+	tic := s.meta.CurrentWorldTic()
+	if tic <= 0 || tic%periodicKeyframeIntervalTics != 0 {
+		return nil
+	}
+	tic32 := uint32(tic)
+	if s.lastPeriodicKeyframeTic == tic32 {
+		return nil
+	}
+	blob, err := s.meta.CaptureKeyframe()
+	if err != nil {
+		return err
+	}
+	if len(blob) == 0 {
+		return nil
+	}
+	if err := sink.BroadcastKeyframe(tic32, blob); err != nil {
+		return err
+	}
+	s.lastPeriodicKeyframeTic = tic32
+	return nil
 }

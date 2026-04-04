@@ -12,6 +12,7 @@ func (g *game) sessionSignals() gameplay.SessionSignals {
 	}
 	sig := gameplay.SessionSignals{
 		DemoActive:       g.opts.DemoScript != nil,
+		WatchActive:      g.opts.LiveTicSource != nil,
 		FrontendMenu:     g.frontendMenuRequested,
 		SaveGame:         g.saveGameRequested,
 		LoadGame:         g.loadGameRequested,

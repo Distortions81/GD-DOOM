@@ -8,9 +8,11 @@ This document describes the intended binary protocol for relay-backed `broadcast
 
 Current state:
 
-- `broadcast` and `watch` exist as a direct TCP host-to-viewer path
-- transport is currently implementation-first rather than final-form
-- the feature works as an early watch-only slice, not yet as a relay-backed public system
+- `broadcast` and `watch` use a basic TCP relay path
+- transport is binary and demo-style for live tics
+- broadcaster sends keyframes, server stores the latest keyframe plus following tics
+- viewers currently apply a keyframe on join and then consume replayed/live tics
+- the feature works as an early watch-only slice, not yet as a full public browser-facing system
 
 This document describes the intended direction from that starting point.
 
@@ -73,7 +75,7 @@ The broadcaster connects to a server and publishes:
 
 - session identity and compatibility metadata
 - compact demo-style tics
-- periodic keyframes for random access
+- periodic keyframes for join and future random access
 - optional music/audio/assets
 
 Viewers connect to the server and can:
@@ -90,7 +92,7 @@ The protocol should also leave room for future richer spectator systems built on
 The server stores:
 
 - a rolling tic buffer for the last `X` seconds
-- keyframes, typically one per second
+- the latest keyframe plus the tic backlog after it
 - optional cached assets keyed by hash
 - public session metadata for discovery pages
 - viewer counts and session duration
@@ -231,15 +233,19 @@ This batch covers tics `1050..1084`.
 
 ## Keyframe Strategy
 
-The server should retain keyframes, typically one every second.
+Current implementation:
 
-At `35` tics per second, that means a keyframe every `35` tics.
+- broadcaster captures and sends keyframes
+- server stores the latest keyframe and subsequent tic backlog
+- broadcaster currently emits a keyframe every `5` seconds
+- at `35` tics per second, that means every `175` tics
+- viewers apply a keyframe on join, then replay buffered/live tics after it
 
-Keyframes are not sent continuously to viewers. They are sent on:
+Keyframes are not currently applied continuously by active viewers. They are sent to viewers on:
 
 - initial watch start
 - late join
-- seek/scrub
+- future seek/scrub
 
 This keeps live viewer bandwidth low while preserving fast random access.
 
@@ -626,7 +632,7 @@ When broadcast starts:
 2. broadcaster sends `hello`
 3. broadcaster publishes session metadata
 4. broadcaster streams tic batches
-5. broadcaster uploads periodic keyframes
+5. broadcaster uploads periodic keyframes, currently every `175` tics / `5` seconds
 6. broadcaster updates live state such as map/song/viewer-visible metadata
 
 This replaces direct host-to-viewer discovery for public sessions.
@@ -681,10 +687,10 @@ Server retention should be based on:
 Server stores:
 
 - tics continuously
-- keyframes periodically
+- the latest keyframe plus the tics after it
 - optional assets by hash
 
-Keyframes should exist server-side for fast seek/join, but should only be sent to viewers when needed.
+Current behavior is enough for join-from-latest-keyframe. Future seek/scrub should extend this to multiple retained keyframes.
 
 This same mechanism should support spectator late-join in richer stream/session formats.
 
@@ -939,7 +945,7 @@ Features:
 
 - server-retained keyframes
 - dynamic-state-only keyframe blobs
-- keyframe cadence, e.g. 1 Hz
+- current keyframe cadence: `5` seconds / `175` tics
 - join from nearest keyframe plus tic catch-up
 
 Success criteria:

@@ -69,6 +69,7 @@ type RuntimeFactory[Opts any, T any] func(*mapdata.Map, Opts) T
 
 type SessionSignals struct {
 	DemoActive       bool
+	WatchActive      bool
 	FrontendMenu     bool
 	SaveGame         bool
 	LoadGame         bool

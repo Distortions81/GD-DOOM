@@ -238,6 +238,8 @@ func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []
 		sess.lastKeyframeTic = header.Tic
 		sess.lastKeyframe = append(sess.lastKeyframe[:0], payload...)
 		sess.backlog = sess.backlog[:0]
+		s.mu.Unlock()
+		return
 	} else if header.Type == frameTypeTicBatch {
 		sess.backlog = append(sess.backlog, bufferedFrame{
 			header:  header,

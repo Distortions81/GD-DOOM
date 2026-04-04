@@ -128,6 +128,12 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 			}
 			return sg.bootMap.Name
 		},
+		CurrentWorldTic: func() int {
+			if sg.g == nil {
+				return 0
+			}
+			return sg.g.sessionSignals().WorldTic
+		},
 		CaptureKeyframe: sg.marshalNetplayKeyframe,
 		LoadKeyframe:    sg.unmarshalNetplayKeyframe,
 	})
@@ -138,6 +144,10 @@ func (sg *sessionGame) headlessDemoPlayback() bool {
 		return false
 	}
 	return sg.opts.DemoScript != nil && sg.opts.DemoQuitOnComplete
+}
+
+func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
+	return sig.DemoActive || sig.WatchActive
 }
 
 func (sg *sessionGame) Update() error {
@@ -163,7 +173,7 @@ func (sg *sessionGame) Update() error {
 			return sg.frontend.Active
 		},
 		DemoActive: func() bool {
-			return sg.rt != nil && sg.rt.sessionSignals().DemoActive
+			return sg.rt != nil && frontendShouldUpdateRuntime(sg.rt.sessionSignals())
 		},
 		UpdateRuntimeForDemo: func() error {
 			err := sg.rt.Update()
