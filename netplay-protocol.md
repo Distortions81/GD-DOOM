@@ -1,6 +1,8 @@
-# Netplay Relay Protocol Draft
+# GDSF Relay Protocol Draft
 
 This document describes the intended binary protocol for relay-backed `broadcast` / `watch`.
+
+`GDSF` stands for `Go Doom Stream Format`.
 
 ## Preface
 
@@ -11,6 +13,16 @@ Current state:
 - the feature works as an early watch-only slice, not yet as a relay-backed public system
 
 This document describes the intended direction from that starting point.
+
+This protocol is specifically for streaming, relay, watch, and spectator use cases.
+
+Full multiplayer should use a separate protocol family with:
+
+- its own magic
+- its own default port
+- its own packet semantics
+
+That separation keeps the stream/watch protocol optimized for viewing and retention while leaving the multiplayer protocol free to optimize for interactive play.
 
 The next architectural step is to split the system into three explicit roles:
 
@@ -31,7 +43,7 @@ The first practical steps toward that model are:
 3. introduce a relay server that can accept a single broadcaster and one or more viewers
 4. move viewers onto server-mediated session lookup and streaming
 
-The initial relay rollout does not need to solve full multiplayer immediately. The first goal is a solid watch pipeline:
+The initial relay rollout does not need to solve multiplayer immediately. The first goal is a solid watch pipeline:
 
 - broadcaster -> server -> viewer
 
@@ -41,7 +53,6 @@ Once that path is stable, the same architecture can expand to:
 - late join via keyframes
 - seek/scrub
 - spectators
-- multiplayer players
 
 The design goals are:
 
@@ -50,7 +61,7 @@ The design goals are:
 - server-side rolling retention
 - public broadcast discovery
 - browser-based viewing via WASM
-- clean evolution path to multiplayer
+- clean evolution path to richer spectator systems
 - spectator support
 - spectator camera flexibility
 - optional audio and asset side channels
@@ -74,7 +85,7 @@ Viewers connect to the server and can:
 
 Public viewers should also be able to watch from a browser via a WASM client over WebSocket.
 
-The protocol should also leave room for future interactive multiplayer players and non-interactive spectators.
+The protocol should also leave room for future richer spectator systems built on the same watch/relay foundation.
 
 The server stores:
 
@@ -83,7 +94,7 @@ The server stores:
 - optional cached assets keyed by hash
 - public session metadata for discovery pages
 - viewer counts and session duration
-- active player/spectator role information
+- active spectator role information
 
 ## Transport Model
 
@@ -106,11 +117,10 @@ The first packet on a connection is `hello`.
 
 It should contain:
 
-- `magic[4] = "GDNP"`
+- `magic[4] = "GDSF"`
 - `version[1]`
 - `role[1]`
   - broadcaster
-  - player
   - spectator
   - browser spectator
   - viewer
@@ -131,7 +141,7 @@ It should also contain initial session metadata:
 - OPL bank name + hash + size
 - current song identity
 - capability flags for keyframes, audio, and asset relay
-- capability flags for multiplayer and spectator camera control
+- capability flags for spectator camera control
 
 This packet answers:
 
@@ -179,10 +189,8 @@ Suggested frame type ids:
 - `33` = `asset_chunk`
 - `34` = `asset_complete`
 
-Future multiplayer/spectator control frames can extend this set, for example:
+Future stream/spectator control frames can extend this set, for example:
 
-- `48` = `player_input`
-- `49` = `player_state`
 - `50` = `spectator_view`
 
 Exact ids are flexible, but gameplay, audio, and asset families should remain clearly separated.
@@ -439,7 +447,7 @@ At minimum the design should allow:
 
 - broadcaster music stream
 - broadcaster voice stream
-- per-player multiplayer voice stream
+- future participant voice streams in richer session types
 
 Suggested metadata for an audio stream:
 
@@ -457,7 +465,7 @@ Suggested metadata for an audio stream:
 - frame duration
 - human-readable label
 
-This allows the same side-channel mechanism to support both one-to-many broadcast audio and future multiplayer voice chat.
+This allows the same side-channel mechanism to support both one-to-many broadcast audio and future richer-session voice use cases.
 
 ## Asset Relay
 
@@ -526,10 +534,10 @@ The directory page should show:
 - music backend
 - soundfont / OPL bank summary
 
-For multiplayer-capable sessions it should also show:
+For richer spectator sessions it may also show:
 
-- active player count
-- whether the session is spectator-only or interactive
+- whether camera men are present
+- whether a director feed is active
 
 The directory should distinguish between public and private sessions.
 
@@ -607,6 +615,8 @@ For spectator mode, the client should also support:
 - following a selected player
 - switching viewed players
 - free-roam camera mode
+- following camera men
+- following a director feed
 
 ## Broadcaster Publish Flow
 
@@ -621,13 +631,11 @@ When broadcast starts:
 
 This replaces direct host-to-viewer discovery for public sessions.
 
-For future multiplayer sessions:
+For future richer spectator sessions:
 
-- the host/broadcaster remains the authoritative publisher
-- players connect as interactive clients
+- the broadcaster remains the authoritative publisher
 - spectators connect as read-only viewers
-
-The spectator data path should remain compatible with `watch`.
+- camera men and directors are special spectator roles in this protocol family
 
 ## Web/API Surface
 
@@ -654,7 +662,7 @@ The HTTP API should be sufficient for the public listing page to show:
 - IWAD class
 - PWADs
 - soundfont / backend information
-- active player count
+- camera-man / director presence when applicable
 
 This should remain framework-light. The preferred implementation is:
 
@@ -678,27 +686,21 @@ Server stores:
 
 Keyframes should exist server-side for fast seek/join, but should only be sent to viewers when needed.
 
-This same mechanism should support spectator late-join in multiplayer sessions.
+This same mechanism should support spectator late-join in richer stream/session formats.
 
-## Multiplayer Evolution
+## Spectator Evolution
 
-The current protocol is centered on broadcaster-to-viewer streaming, but it should evolve cleanly into multiplayer.
+The current protocol is centered on broadcaster-to-viewer streaming, but it should evolve cleanly into richer spectator systems.
 
 Long-term session roles:
 
 - broadcaster / host
-- player
 - spectator
 
 Spectator-capable sessions should also leave room for spectator sub-roles:
 
 - camera man
 - director
-
-The compatibility rule should remain:
-
-- players affect simulation
-- spectators do not
 
 Spectators should use the same core sync path as `watch`:
 
@@ -1031,32 +1033,30 @@ Success criteria:
 
 Goals:
 
-- extend the relay model beyond watch-only sessions
-- support interactive players and passive spectators together
+- define a separate multiplayer protocol family
+- keep `GDSF` focused on stream/watch/spectator use cases
 
 Features:
 
-- player role in protocol
-- spectator role in protocol
-- active player slot tracking
-- player input transport
-- player state/session metadata
-- spectator compatibility with multiplayer sessions
+- separate multiplayer magic
+- separate multiplayer default port
+- separate multiplayer packet semantics
+- documented boundary between stream protocol and multiplayer protocol
 
 Success criteria:
 
-- players can join through the server
-- spectators can watch the same session using the existing keyframe/tic path
+- stream/watch protocol remains cleanly scoped
+- multiplayer can be developed without distorting `GDSF`
 
 ### Stage 10: Multiplayer Voice and Production Features
 
 Goals:
 
-- round out the social and broadcast side of multiplayer sessions
+- round out adjacent protocol families and produced spectator experiences
 
 Features:
 
-- multiplayer per-player voice via Opus
+- multiplayer voice via the separate multiplayer protocol family
 - camera man audio if desired
 - director production metadata
 - improved browser session UI
@@ -1064,8 +1064,29 @@ Features:
 
 Success criteria:
 
-- multiplayer sessions have voice support
+- adjacent protocol families have voice support where appropriate
 - broadcast-style produced spectator experiences are possible
+
+### Stage 11: Joinable Broadcasts
+
+Goals:
+
+- support broadcasts that remain publicly viewable while also allowing invited or permitted players to join live
+- bridge the stream/watch world and the future multiplayer protocol world without collapsing them into one protocol
+
+Features:
+
+- broadcaster-controlled joinable-broadcast mode
+- `GDSF` session metadata indicating that live player joining is allowed
+- link from a public broadcast session to an associated multiplayer session
+- viewers continue to use `GDSF`
+- active players use the separate multiplayer protocol
+
+Success criteria:
+
+- a session can be publicly broadcast and watched through `GDSF`
+- selected players can join the same event through the separate multiplayer protocol
+- stream/watch protocol remains cleanly scoped even in hybrid sessions
 
 ## Summary
 
