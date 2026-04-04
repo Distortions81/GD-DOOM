@@ -33,6 +33,16 @@ var (
 var saveGameMagic = []byte("GDDOOMSAVE\x00")
 var keyframeMagic = []byte("GDDOOMKEY\x00")
 
+const saveMandatoryApplyKeyframeFlag byte = 1
+
+type saveKeyframeSink interface {
+	BroadcastKeyframe(tic uint32, blob []byte) error
+}
+
+type saveMandatoryKeyframeSink interface {
+	BroadcastKeyframeWithFlags(tic uint32, blob []byte, flags byte) error
+}
+
 type saveFile struct {
 	Version     int
 	Description string
@@ -384,7 +394,13 @@ func (sg *sessionGame) LoadGameFromSlot(slot int) error {
 		}
 		return err
 	}
-	return sg.unmarshalSaveGame(data)
+	if err := sg.unmarshalSaveGame(data); err != nil {
+		return err
+	}
+	if err := sg.broadcastMandatoryRuntimeKeyframe(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
@@ -433,6 +449,40 @@ func (sg *sessionGame) marshalNetplayKeyframe() ([]byte, error) {
 
 func (sg *sessionGame) unmarshalNetplayKeyframe(data []byte) error {
 	return sg.unmarshalSnapshot(data, keyframeMagic, keyframeVersion)
+}
+
+func (sg *sessionGame) broadcastMandatoryRuntimeKeyframe() error {
+	if sg == nil || sg.g == nil {
+		return nil
+	}
+	var (
+		mandatorySink saveMandatoryKeyframeSink
+		regularSink   saveKeyframeSink
+	)
+	if sg.opts.LiveTicSink != nil {
+		mandatorySink, _ = sg.opts.LiveTicSink.(saveMandatoryKeyframeSink)
+		regularSink, _ = sg.opts.LiveTicSink.(saveKeyframeSink)
+	}
+	if mandatorySink == nil && regularSink == nil {
+		return nil
+	}
+	blob, err := sg.marshalNetplayKeyframe()
+	if err != nil {
+		return fmt.Errorf("capture loaded keyframe: %w", err)
+	}
+	if len(blob) == 0 {
+		return nil
+	}
+	if mandatorySink != nil {
+		if err := mandatorySink.BroadcastKeyframeWithFlags(uint32(sg.g.worldTic), blob, saveMandatoryApplyKeyframeFlag); err != nil {
+			return fmt.Errorf("broadcast mandatory keyframe: %w", err)
+		}
+		return nil
+	}
+	if err := regularSink.BroadcastKeyframe(uint32(sg.g.worldTic), blob); err != nil {
+		return fmt.Errorf("broadcast mandatory keyframe: %w", err)
+	}
+	return nil
 }
 
 func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int) error {

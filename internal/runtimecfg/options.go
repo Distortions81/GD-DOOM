@@ -30,6 +30,16 @@ type LiveTicSource interface {
 	PollTic() (demo.Tic, bool, error)
 }
 
+type RuntimeKeyframe struct {
+	Tic            uint32
+	Blob           []byte
+	MandatoryApply bool
+}
+
+type LiveRuntimeKeyframeSource interface {
+	PollRuntimeKeyframe() (RuntimeKeyframe, bool, error)
+}
+
 type LiveTicSink interface {
 	BroadcastTic(demo.Tic) error
 }

@@ -128,11 +128,76 @@ func TestRelayViewerReceivesKeyframe(t *testing.T) {
 			if !bytes.Equal(kf.Blob, []byte{9, 8, 7}) {
 				t.Fatalf("keyframe blob=%v want=%v", kf.Blob, []byte{9, 8, 7})
 			}
+			if kf.MandatoryApply {
+				t.Fatal("join keyframe marked mandatory, want false")
+			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for keyframe")
+}
+
+func TestRelayViewerMandatoryKeyframeDrainsQueuedTics(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{MapName: "E1M1"})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	v, err := DialRelayViewer(srv.Addr(), b.SessionID(), "")
+	if err != nil {
+		t.Fatalf("DialRelayViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	stale := demo.Tic{Forward: 10}
+	if err := b.BroadcastTic(stale); err != nil {
+		t.Fatalf("BroadcastTic(stale) error = %v", err)
+	}
+	time.Sleep(50 * time.Millisecond)
+	if err := b.BroadcastKeyframeWithFlags(99, []byte{1, 2, 3}, keyframeFlagMandatoryApply); err != nil {
+		t.Fatalf("BroadcastKeyframeWithFlags() error = %v", err)
+	}
+	want := demo.Tic{Forward: 25, Buttons: demo.ButtonUse}
+	if err := b.BroadcastTic(want); err != nil {
+		t.Fatalf("BroadcastTic(want) error = %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		kf, ok, err := v.PollKeyframe()
+		if err != nil && err != io.EOF {
+			t.Fatalf("PollKeyframe() error = %v", err)
+		}
+		if ok {
+			if !kf.MandatoryApply {
+				t.Fatal("mandatory keyframe flag missing")
+			}
+			if kf.Tic != 99 {
+				t.Fatalf("keyframe tic=%d want=99", kf.Tic)
+			}
+			got, ok, err := readViewerTic(t, v)
+			if err != nil {
+				t.Fatalf("readViewerTic() error = %v", err)
+			}
+			if !ok {
+				t.Fatal("timed out waiting for tic after mandatory keyframe")
+			}
+			if got != want {
+				t.Fatalf("PollTic() = %+v want %+v", got, want)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for mandatory keyframe")
 }
 
 func TestRelayViewerReceivesIntermissionAdvance(t *testing.T) {

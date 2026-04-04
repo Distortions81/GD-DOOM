@@ -4,11 +4,15 @@ import (
 	"testing"
 
 	"gddoom/internal/demo"
+	"gddoom/internal/runtimecfg"
 )
 
 type testLiveTicSink struct {
 	tics                []demo.Tic
 	intermissionAdvance int
+	keyframeTics        []uint32
+	keyframeFlags       []byte
+	keyframes           [][]byte
 }
 
 func (s *testLiveTicSink) BroadcastTic(tc demo.Tic) error {
@@ -21,10 +25,21 @@ func (s *testLiveTicSink) BroadcastIntermissionAdvance() error {
 	return nil
 }
 
+func (s *testLiveTicSink) BroadcastKeyframe(tic uint32, blob []byte) error {
+	return s.BroadcastKeyframeWithFlags(tic, blob, 0)
+}
+
+func (s *testLiveTicSink) BroadcastKeyframeWithFlags(tic uint32, blob []byte, flags byte) error {
+	s.keyframeTics = append(s.keyframeTics, tic)
+	s.keyframeFlags = append(s.keyframeFlags, flags)
+	s.keyframes = append(s.keyframes, append([]byte(nil), blob...))
+	return nil
+}
+
 type testLiveTicSource struct {
 	tics                []demo.Tic
 	intermissionAdvance int
-	keyframes           [][]byte
+	keyframes           []runtimecfg.RuntimeKeyframe
 }
 
 func (s *testLiveTicSource) PollTic() (demo.Tic, bool, error) {
@@ -44,13 +59,13 @@ func (s *testLiveTicSource) PollIntermissionAdvance() (bool, error) {
 	return true, nil
 }
 
-func (s *testLiveTicSource) PollRuntimeKeyframe() (uint32, []byte, bool, error) {
+func (s *testLiveTicSource) PollRuntimeKeyframe() (runtimecfg.RuntimeKeyframe, bool, error) {
 	if len(s.keyframes) == 0 {
-		return 0, nil, false, nil
+		return runtimecfg.RuntimeKeyframe{}, false, nil
 	}
-	blob := s.keyframes[0]
+	kf := s.keyframes[0]
 	s.keyframes = s.keyframes[1:]
-	return 0, blob, true, nil
+	return kf, true, nil
 }
 
 func TestUpdateBroadcastModeAdvancesWorldAndEmitsTic(t *testing.T) {

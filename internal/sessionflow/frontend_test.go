@@ -34,6 +34,31 @@ func TestStepFrontendMainMenuLoadSaveBindings(t *testing.T) {
 	}
 }
 
+func TestStepFrontendMainMenuSelectableRowsSkipsDisabledItems(t *testing.T) {
+	cfg := FrontendConfig{
+		MainMenuCount: 6,
+		MainMenuRows:  []int{1, 4, 5},
+	}
+
+	up := StepFrontend(
+		Frontend{Active: true, InGame: true, Mode: FrontendModeTitle, MenuActive: true, ItemOn: 1},
+		FrontendInput{Up: true},
+		cfg,
+	)
+	if got := up.State.ItemOn; got != 5 {
+		t.Fatalf("up itemOn=%d want 5", got)
+	}
+
+	down := StepFrontend(
+		Frontend{Active: true, InGame: true, Mode: FrontendModeTitle, MenuActive: true, ItemOn: 1},
+		FrontendInput{Down: true},
+		cfg,
+	)
+	if got := down.State.ItemOn; got != 4 {
+		t.Fatalf("down itemOn=%d want 4", got)
+	}
+}
+
 func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	cfg := FrontendConfig{
 		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6},

@@ -74,6 +74,16 @@ func TestOpenFrontendMenuFromSignalUsesPauseMenuForGameplay(t *testing.T) {
 	}
 }
 
+func TestOpenFrontendMenuFromSignalUsesFirstSelectableItemForWatch(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{LiveTicSource: &testLiveTicSource{}},
+	}
+	sg.openFrontendMenuFromSignal(gameplay.SessionSignals{DemoActive: false})
+	if got := sg.frontend.ItemOn; got != frontendWatchMenuSelectableRows[0] {
+		t.Fatalf("ItemOn=%d want=%d", got, frontendWatchMenuSelectableRows[0])
+	}
+}
+
 func TestFrontendShouldUpdateRuntimeForWatch(t *testing.T) {
 	if !frontendShouldUpdateRuntime(gameplay.SessionSignals{WatchActive: true}) {
 		t.Fatal("frontendShouldUpdateRuntime() = false, want true for watch mode")

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gddoom/internal/demo"
+	"gddoom/internal/runtimecfg"
 )
 
 const (
@@ -43,6 +44,10 @@ const (
 	ticBatchOverhead = 4
 )
 
+const (
+	keyframeFlagMandatoryApply byte = 1 << iota
+)
+
 type SessionConfig struct {
 	WADHash          string
 	MapName          string
@@ -68,8 +73,9 @@ type frameHeader struct {
 }
 
 type Keyframe struct {
-	Tic  uint32
-	Blob []byte
+	Tic            uint32
+	Blob           []byte
+	MandatoryApply bool
 }
 
 type RelayBroadcaster struct {
@@ -139,11 +145,16 @@ func (b *RelayBroadcaster) BroadcastTic(tc demo.Tic) error {
 }
 
 func (b *RelayBroadcaster) BroadcastKeyframe(tic uint32, blob []byte) error {
+	return b.BroadcastKeyframeWithFlags(tic, blob, 0)
+}
+
+func (b *RelayBroadcaster) BroadcastKeyframeWithFlags(tic uint32, blob []byte, flags byte) error {
 	if b == nil {
 		return nil
 	}
 	return writeFrame(b.conn, frameHeader{
 		Type:   frameTypeKeyframe,
+		Flags:  flags,
 		Length: uint32(len(blob)),
 		Tic:    tic,
 	}, blob)
@@ -342,6 +353,18 @@ func (v *Viewer) PollKeyframe() (Keyframe, bool, error) {
 	}
 }
 
+func (v *Viewer) PollRuntimeKeyframe() (runtimecfg.RuntimeKeyframe, bool, error) {
+	kf, ok, err := v.PollKeyframe()
+	if !ok || err != nil {
+		return runtimecfg.RuntimeKeyframe{}, ok, err
+	}
+	return runtimecfg.RuntimeKeyframe{
+		Tic:            kf.Tic,
+		Blob:           kf.Blob,
+		MandatoryApply: kf.MandatoryApply,
+	}, true, nil
+}
+
 func (v *Viewer) PollIntermissionAdvance() (bool, error) {
 	if v == nil {
 		return false, nil
@@ -386,7 +409,15 @@ func (v *Viewer) readLoop() {
 		}
 		switch header.Type {
 		case frameTypeKeyframe:
-			v.keyframes <- Keyframe{Tic: header.Tic, Blob: append([]byte(nil), payload...)}
+			mandatory := header.Flags&keyframeFlagMandatoryApply != 0
+			if mandatory {
+				v.drainPendingTics()
+			}
+			v.keyframes <- Keyframe{
+				Tic:            header.Tic,
+				Blob:           append([]byte(nil), payload...),
+				MandatoryApply: mandatory,
+			}
 		case frameTypeTicBatch:
 			if err := v.consumeTicBatch(payload); err != nil {
 				v.setErr(err)
@@ -400,6 +431,19 @@ func (v *Viewer) readLoop() {
 			v.advance <- struct{}{}
 		default:
 			v.setErr(fmt.Errorf("unexpected broadcast frame type %d", header.Type))
+			return
+		}
+	}
+}
+
+func (v *Viewer) drainPendingTics() {
+	if v == nil {
+		return
+	}
+	for {
+		select {
+		case <-v.tics:
+		default:
 			return
 		}
 	}

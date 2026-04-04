@@ -196,6 +196,9 @@ func (sg *sessionGame) Update() error {
 		TickIntermission:   sg.tickIntermission,
 		FinishIntermission: sg.finishIntermission,
 		UpdateRuntime: func() error {
+			if err := sg.applyMandatoryWatchKeyframes(); err != nil {
+				return err
+			}
 			return sg.rt.Update()
 		},
 		HandleRuntimeProgress: func() (bool, error) {
@@ -250,6 +253,9 @@ func (sg *sessionGame) Update() error {
 						sig = sg.rt.sessionSignals()
 						sg.current = sig.MapName
 						sg.currentTemplate = cloneMapForRestart(sg.g.m)
+						if err := sg.broadcastMandatoryRuntimeKeyframe(); err != nil {
+							return err
+						}
 						sg.queueTransition(transitionLevel, 0)
 						sg.playMusicForMap(sg.current)
 						sg.announceMapMusic(sg.current)
@@ -448,12 +454,17 @@ func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
 		return
 	}
 	inGame := !sig.DemoActive
+	itemOn := 0
+	if inGame && sg.frontendWatchMode() {
+		itemOn = frontendWatchMenuSelectableRows[0]
+	}
 	sg.frontend = frontendState{
 		Active:     true,
 		InGame:     inGame,
 		Attract:    sig.DemoActive,
 		Mode:       frontendModeTitle,
 		MenuActive: true,
+		ItemOn:     itemOn,
 	}
 }
 

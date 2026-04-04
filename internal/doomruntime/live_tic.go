@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"gddoom/internal/demo"
+	"gddoom/internal/runtimecfg"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -123,6 +124,37 @@ func (g *game) updateWatchMode() error {
 	}
 	if processed {
 		g.publishRuntimeSettingsIfChanged()
+	}
+	return nil
+}
+
+func (sg *sessionGame) applyMandatoryWatchKeyframes() error {
+	if sg == nil || sg.opts.LiveTicSource == nil {
+		return nil
+	}
+	src, ok := sg.opts.LiveTicSource.(runtimecfg.LiveRuntimeKeyframeSource)
+	if !ok || src == nil {
+		return nil
+	}
+	applied := false
+	for i := 0; i < 8; i++ {
+		kf, ok, err := src.PollRuntimeKeyframe()
+		if err != nil {
+			return fmt.Errorf("watch keyframe: %w", err)
+		}
+		if !ok {
+			break
+		}
+		if !kf.MandatoryApply {
+			continue
+		}
+		if err := sg.unmarshalNetplayKeyframe(kf.Blob); err != nil {
+			return fmt.Errorf("apply watch keyframe: %w", err)
+		}
+		applied = true
+	}
+	if applied && sg.g != nil {
+		sg.g.clearPendingSoundState()
 	}
 	return nil
 }

@@ -21,14 +21,15 @@ type Server struct {
 }
 
 type relaySession struct {
-	id              uint64
-	cfg             SessionConfig
-	server          *Server
-	src             net.Conn
-	viewers         map[*relayViewer]struct{}
-	lastKeyframe    []byte
-	lastKeyframeTic uint32
-	backlog         []bufferedFrame
+	id                uint64
+	cfg               SessionConfig
+	server            *Server
+	src               net.Conn
+	viewers           map[*relayViewer]struct{}
+	lastKeyframe      []byte
+	lastKeyframeFlags byte
+	lastKeyframeTic   uint32
+	backlog           []bufferedFrame
 }
 
 type relayViewer struct {
@@ -227,6 +228,7 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 	if ok {
 		if err := writeFrame(conn, frameHeader{
 			Type:   frameTypeKeyframe,
+			Flags:  sess.lastKeyframeFlags,
 			Length: uint32(len(keyframe)),
 			Tic:    tic,
 		}, keyframe); err != nil {
@@ -262,10 +264,13 @@ func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []
 	s.mu.Lock()
 	if header.Type == frameTypeKeyframe {
 		sess.lastKeyframeTic = header.Tic
+		sess.lastKeyframeFlags = header.Flags
 		sess.lastKeyframe = append(sess.lastKeyframe[:0], payload...)
 		sess.backlog = sess.backlog[:0]
-		s.mu.Unlock()
-		return
+		if header.Flags&keyframeFlagMandatoryApply == 0 {
+			s.mu.Unlock()
+			return
+		}
 	} else if header.Type == frameTypeTicBatch {
 		sess.backlog = append(sess.backlog, bufferedFrame{
 			header:  header,

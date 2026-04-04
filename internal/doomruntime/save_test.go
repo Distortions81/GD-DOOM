@@ -14,153 +14,153 @@ import (
 )
 
 type liveRuntimeRoundTripState struct {
-	Player            player
-	Inventory         playerInventorySaveState
-	Stats             playerStats
-	WorldTic          int
-	IsDead            bool
-	PlayerMobjHealth  int
-	PlayerViewZ       int64
-	DamageFlashTic    int
-	BonusFlashTic     int
-	ThingCollected    []bool
-	ThingDropped      []bool
-	ThingThinkerOrder []int64
-	ThingX            []int64
-	ThingY            []int64
-	ThingMomX         []int64
-	ThingMomY         []int64
-	ThingMomZ         []int64
-	ThingAngleState   []uint32
-	ThingZState       []int64
-	ThingFloorState   []int64
-	ThingCeilState    []int64
-	ThingSupportValid []bool
-	ThingSectorCache  []int
-	ThingBlockOrder   []int64
-	ThingBlockCell    []int
-	ThingHP           []int
-	ThingAggro        []bool
-	ThingAmbush       []bool
-	ThingTargetPlayer []bool
-	ThingTargetIdx    []int
-	ThingThreshold    []int
-	ThingCooldown     []int
-	ThingMoveDir      []uint8
-	ThingMoveCount    []int
-	ThingJustAtk      []bool
-	ThingInFloat      []bool
-	ThingJustHit      []bool
-	ThingReactionTics []int
-	ThingWakeTics     []int
-	ThingLastLook     []int
-	ThingDead         []bool
-	ThingGibbed       []bool
-	ThingGibTick      []int
-	ThingXDeath       []bool
-	ThingDeathTics    []int
-	ThingAttackTics   []int
-	ThingAttackPhase  []int
+	Player              player
+	Inventory           playerInventorySaveState
+	Stats               playerStats
+	WorldTic            int
+	IsDead              bool
+	PlayerMobjHealth    int
+	PlayerViewZ         int64
+	DamageFlashTic      int
+	BonusFlashTic       int
+	ThingCollected      []bool
+	ThingDropped        []bool
+	ThingThinkerOrder   []int64
+	ThingX              []int64
+	ThingY              []int64
+	ThingMomX           []int64
+	ThingMomY           []int64
+	ThingMomZ           []int64
+	ThingAngleState     []uint32
+	ThingZState         []int64
+	ThingFloorState     []int64
+	ThingCeilState      []int64
+	ThingSupportValid   []bool
+	ThingSectorCache    []int
+	ThingBlockOrder     []int64
+	ThingBlockCell      []int
+	ThingHP             []int
+	ThingAggro          []bool
+	ThingAmbush         []bool
+	ThingTargetPlayer   []bool
+	ThingTargetIdx      []int
+	ThingThreshold      []int
+	ThingCooldown       []int
+	ThingMoveDir        []uint8
+	ThingMoveCount      []int
+	ThingJustAtk        []bool
+	ThingInFloat        []bool
+	ThingJustHit        []bool
+	ThingReactionTics   []int
+	ThingWakeTics       []int
+	ThingLastLook       []int
+	ThingDead           []bool
+	ThingGibbed         []bool
+	ThingGibTick        []int
+	ThingXDeath         []bool
+	ThingDeathTics      []int
+	ThingAttackTics     []int
+	ThingAttackPhase    []int
 	ThingAttackFireTics []int
-	ThingPainTics     []int
-	ThingThinkWait    []int
-	ThingDoomState    []int
-	ThingState        []monsterThinkState
-	ThingStateTics    []int
-	ThingStatePhase   []int
-	PlayerBlockOrder  int64
-	NextThinkerOrder  int64
-	NextBlockmapOrder int64
-	SecretFound       []bool
-	SecretsFound      int
-	SecretsTotal      int
-	SectorSoundTarget []bool
-	SectorLightFx     []sectorLightEffectSaveState
-	SectorFloor       []int64
-	SectorCeil        []int64
-	LineSpecial       []uint16
-	Sidedefs          []mapdata.Sidedef
-	Sectors           []mapdata.Sector
-	Things            []mapdata.Thing
-	Doors             map[int]doorThinkerSaveState
-	Floors            map[int]floorThinkerSaveState
-	Plats             map[int]platThinkerSaveState
-	Ceilings          map[int]ceilingThinkerSaveState
-	DelayedSwitches   []delayedSwitchTextureSaveState
+	ThingPainTics       []int
+	ThingThinkWait      []int
+	ThingDoomState      []int
+	ThingState          []monsterThinkState
+	ThingStateTics      []int
+	ThingStatePhase     []int
+	PlayerBlockOrder    int64
+	NextThinkerOrder    int64
+	NextBlockmapOrder   int64
+	SecretFound         []bool
+	SecretsFound        int
+	SecretsTotal        int
+	SectorSoundTarget   []bool
+	SectorLightFx       []sectorLightEffectSaveState
+	SectorFloor         []int64
+	SectorCeil          []int64
+	LineSpecial         []uint16
+	Sidedefs            []mapdata.Sidedef
+	Sectors             []mapdata.Sector
+	Things              []mapdata.Thing
+	Doors               map[int]doorThinkerSaveState
+	Floors              map[int]floorThinkerSaveState
+	Plats               map[int]platThinkerSaveState
+	Ceilings            map[int]ceilingThinkerSaveState
+	DelayedSwitches     []delayedSwitchTextureSaveState
 }
 
 func captureLiveRuntimeRoundTripState(g *game) liveRuntimeRoundTripState {
 	s := liveRuntimeRoundTripState{
-		Player:             g.p,
-		Inventory:          capturePlayerInventorySaveState(g.inventory),
-		Stats:              g.stats,
-		WorldTic:           g.worldTic,
-		IsDead:             g.isDead,
-		PlayerMobjHealth:   g.playerMobjHealth,
-		PlayerViewZ:        g.playerViewZ,
-		DamageFlashTic:     g.damageFlashTic,
-		BonusFlashTic:      g.bonusFlashTic,
-		ThingCollected:     append([]bool(nil), g.thingCollected...),
-		ThingDropped:       append([]bool(nil), g.thingDropped...),
-		ThingThinkerOrder:  append([]int64(nil), g.thingThinkerOrder...),
-		ThingX:             append([]int64(nil), g.thingX...),
-		ThingY:             append([]int64(nil), g.thingY...),
-		ThingMomX:          append([]int64(nil), g.thingMomX...),
-		ThingMomY:          append([]int64(nil), g.thingMomY...),
-		ThingMomZ:          append([]int64(nil), g.thingMomZ...),
-		ThingAngleState:    append([]uint32(nil), g.thingAngleState...),
-		ThingZState:        append([]int64(nil), g.thingZState...),
-		ThingFloorState:    append([]int64(nil), g.thingFloorState...),
-		ThingCeilState:     append([]int64(nil), g.thingCeilState...),
-		ThingSupportValid:  append([]bool(nil), g.thingSupportValid...),
-		ThingSectorCache:   append([]int(nil), g.thingSectorCache...),
-		ThingBlockOrder:    append([]int64(nil), g.thingBlockOrder...),
-		ThingBlockCell:     append([]int(nil), g.thingBlockCell...),
-		ThingHP:            append([]int(nil), g.thingHP...),
-		ThingAggro:         append([]bool(nil), g.thingAggro...),
-		ThingAmbush:        append([]bool(nil), g.thingAmbush...),
-		ThingTargetPlayer:  append([]bool(nil), g.thingTargetPlayer...),
-		ThingTargetIdx:     append([]int(nil), g.thingTargetIdx...),
-		ThingThreshold:     append([]int(nil), g.thingThreshold...),
-		ThingCooldown:      append([]int(nil), g.thingCooldown...),
-		ThingMoveDir:       cloneMonsterMoveDirSlice(g.thingMoveDir),
-		ThingMoveCount:     append([]int(nil), g.thingMoveCount...),
-		ThingJustAtk:       append([]bool(nil), g.thingJustAtk...),
-		ThingInFloat:       append([]bool(nil), g.thingInFloat...),
-		ThingJustHit:       append([]bool(nil), g.thingJustHit...),
-		ThingReactionTics:  append([]int(nil), g.thingReactionTics...),
-		ThingWakeTics:      append([]int(nil), g.thingWakeTics...),
-		ThingLastLook:      append([]int(nil), g.thingLastLook...),
-		ThingDead:          append([]bool(nil), g.thingDead...),
-		ThingGibbed:        append([]bool(nil), g.thingGibbed...),
-		ThingGibTick:       append([]int(nil), g.thingGibTick...),
-		ThingXDeath:        append([]bool(nil), g.thingXDeath...),
-		ThingDeathTics:     append([]int(nil), g.thingDeathTics...),
-		ThingAttackTics:    append([]int(nil), g.thingAttackTics...),
-		ThingAttackPhase:   append([]int(nil), g.thingAttackPhase...),
+		Player:              g.p,
+		Inventory:           capturePlayerInventorySaveState(g.inventory),
+		Stats:               g.stats,
+		WorldTic:            g.worldTic,
+		IsDead:              g.isDead,
+		PlayerMobjHealth:    g.playerMobjHealth,
+		PlayerViewZ:         g.playerViewZ,
+		DamageFlashTic:      g.damageFlashTic,
+		BonusFlashTic:       g.bonusFlashTic,
+		ThingCollected:      append([]bool(nil), g.thingCollected...),
+		ThingDropped:        append([]bool(nil), g.thingDropped...),
+		ThingThinkerOrder:   append([]int64(nil), g.thingThinkerOrder...),
+		ThingX:              append([]int64(nil), g.thingX...),
+		ThingY:              append([]int64(nil), g.thingY...),
+		ThingMomX:           append([]int64(nil), g.thingMomX...),
+		ThingMomY:           append([]int64(nil), g.thingMomY...),
+		ThingMomZ:           append([]int64(nil), g.thingMomZ...),
+		ThingAngleState:     append([]uint32(nil), g.thingAngleState...),
+		ThingZState:         append([]int64(nil), g.thingZState...),
+		ThingFloorState:     append([]int64(nil), g.thingFloorState...),
+		ThingCeilState:      append([]int64(nil), g.thingCeilState...),
+		ThingSupportValid:   append([]bool(nil), g.thingSupportValid...),
+		ThingSectorCache:    append([]int(nil), g.thingSectorCache...),
+		ThingBlockOrder:     append([]int64(nil), g.thingBlockOrder...),
+		ThingBlockCell:      append([]int(nil), g.thingBlockCell...),
+		ThingHP:             append([]int(nil), g.thingHP...),
+		ThingAggro:          append([]bool(nil), g.thingAggro...),
+		ThingAmbush:         append([]bool(nil), g.thingAmbush...),
+		ThingTargetPlayer:   append([]bool(nil), g.thingTargetPlayer...),
+		ThingTargetIdx:      append([]int(nil), g.thingTargetIdx...),
+		ThingThreshold:      append([]int(nil), g.thingThreshold...),
+		ThingCooldown:       append([]int(nil), g.thingCooldown...),
+		ThingMoveDir:        cloneMonsterMoveDirSlice(g.thingMoveDir),
+		ThingMoveCount:      append([]int(nil), g.thingMoveCount...),
+		ThingJustAtk:        append([]bool(nil), g.thingJustAtk...),
+		ThingInFloat:        append([]bool(nil), g.thingInFloat...),
+		ThingJustHit:        append([]bool(nil), g.thingJustHit...),
+		ThingReactionTics:   append([]int(nil), g.thingReactionTics...),
+		ThingWakeTics:       append([]int(nil), g.thingWakeTics...),
+		ThingLastLook:       append([]int(nil), g.thingLastLook...),
+		ThingDead:           append([]bool(nil), g.thingDead...),
+		ThingGibbed:         append([]bool(nil), g.thingGibbed...),
+		ThingGibTick:        append([]int(nil), g.thingGibTick...),
+		ThingXDeath:         append([]bool(nil), g.thingXDeath...),
+		ThingDeathTics:      append([]int(nil), g.thingDeathTics...),
+		ThingAttackTics:     append([]int(nil), g.thingAttackTics...),
+		ThingAttackPhase:    append([]int(nil), g.thingAttackPhase...),
 		ThingAttackFireTics: append([]int(nil), g.thingAttackFireTics...),
-		ThingPainTics:      append([]int(nil), g.thingPainTics...),
-		ThingThinkWait:     append([]int(nil), g.thingThinkWait...),
-		ThingDoomState:     append([]int(nil), g.thingDoomState...),
-		ThingState:         append([]monsterThinkState(nil), g.thingState...),
-		ThingStateTics:     append([]int(nil), g.thingStateTics...),
-		ThingStatePhase:    append([]int(nil), g.thingStatePhase...),
-		PlayerBlockOrder:   g.playerBlockOrder,
-		NextThinkerOrder:   g.nextThinkerOrder,
-		NextBlockmapOrder:  g.nextBlockmapOrder,
-		SecretFound:        append([]bool(nil), g.secretFound...),
-		SecretsFound:       g.secretsFound,
-		SecretsTotal:       g.secretsTotal,
-		SectorSoundTarget:  append([]bool(nil), g.sectorSoundTarget...),
-		SectorLightFx:      captureSectorLightEffects(g.sectorLightFx),
-		SectorFloor:        append([]int64(nil), g.sectorFloor...),
-		SectorCeil:         append([]int64(nil), g.sectorCeil...),
-		LineSpecial:        append([]uint16(nil), g.lineSpecial...),
-		Doors:              captureDoorThinkers(g.doors),
-		Floors:             captureFloorThinkers(g.floors),
-		Plats:              capturePlatThinkers(g.plats),
-		Ceilings:           captureCeilingThinkers(g.ceilings),
-		DelayedSwitches:    captureDelayedSwitchTextures(g.delayedSwitchReverts),
+		ThingPainTics:       append([]int(nil), g.thingPainTics...),
+		ThingThinkWait:      append([]int(nil), g.thingThinkWait...),
+		ThingDoomState:      append([]int(nil), g.thingDoomState...),
+		ThingState:          append([]monsterThinkState(nil), g.thingState...),
+		ThingStateTics:      append([]int(nil), g.thingStateTics...),
+		ThingStatePhase:     append([]int(nil), g.thingStatePhase...),
+		PlayerBlockOrder:    g.playerBlockOrder,
+		NextThinkerOrder:    g.nextThinkerOrder,
+		NextBlockmapOrder:   g.nextBlockmapOrder,
+		SecretFound:         append([]bool(nil), g.secretFound...),
+		SecretsFound:        g.secretsFound,
+		SecretsTotal:        g.secretsTotal,
+		SectorSoundTarget:   append([]bool(nil), g.sectorSoundTarget...),
+		SectorLightFx:       captureSectorLightEffects(g.sectorLightFx),
+		SectorFloor:         append([]int64(nil), g.sectorFloor...),
+		SectorCeil:          append([]int64(nil), g.sectorCeil...),
+		LineSpecial:         append([]uint16(nil), g.lineSpecial...),
+		Doors:               captureDoorThinkers(g.doors),
+		Floors:              captureFloorThinkers(g.floors),
+		Plats:               capturePlatThinkers(g.plats),
+		Ceilings:            captureCeilingThinkers(g.ceilings),
+		DelayedSwitches:     captureDelayedSwitchTextures(g.delayedSwitchReverts),
 	}
 	if g != nil && g.m != nil {
 		s.Sidedefs = append([]mapdata.Sidedef(nil), g.m.Sidedefs...)
@@ -604,6 +604,88 @@ func TestLoadGameRestoresSavedSessionGameplayOptionsForPickups(t *testing.T) {
 
 	if !loaded.g.inventory.BlueKey {
 		t.Fatal("blue key not collected after load with restored gameplay options")
+	}
+}
+
+func TestLoadGameBroadcastsImmediateKeyframeWhenLiveSinkPresent(t *testing.T) {
+	slot := 92
+	path := saveGamePath(slot)
+	_ = os.Remove(path)
+	defer os.Remove(path)
+
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+			{Type: 5, X: 24, Y: 0, Flags: skillMediumBits},
+		},
+		Sectors: []mapdata.Sector{
+			{FloorHeight: 0, CeilingHeight: 128},
+		},
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1, SkillLevel: 3, GameMode: gameModeSingle},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+	sg.g.worldTic = 123
+
+	if err := sg.SaveGameToSlot(slot); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	sink := &testLiveTicSink{}
+	loaded := &sessionGame{
+		opts: Options{
+			Width:       doomLogicalW,
+			Height:      doomLogicalH,
+			PlayerSlot:  1,
+			SkillLevel:  3,
+			GameMode:    gameModeSingle,
+			LiveTicSink: sink,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	if err := loaded.LoadGameFromSlot(slot); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	if got := len(sink.keyframes); got != 1 {
+		t.Fatalf("broadcast keyframes=%d want=1", got)
+	}
+	if got, want := sink.keyframeTics[0], uint32(123); got != want {
+		t.Fatalf("broadcast keyframe tic=%d want=%d", got, want)
+	}
+	if got, want := sink.keyframeFlags[0], byte(1); got != want {
+		t.Fatalf("broadcast keyframe flags=%d want=%d", got, want)
+	}
+
+	replayed := &sessionGame{
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected keyframe map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	if err := replayed.unmarshalNetplayKeyframe(sink.keyframes[0]); err != nil {
+		t.Fatalf("unmarshalNetplayKeyframe() error = %v", err)
+	}
+	if got, want := replayed.g.worldTic, 123; got != want {
+		t.Fatalf("replayed worldTic=%d want=%d", got, want)
 	}
 }
 

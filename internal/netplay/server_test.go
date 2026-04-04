@@ -249,6 +249,60 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 	}
 }
 
+func TestRelayServerForwardsMandatoryKeyframesToActiveViewer(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	bconn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatalf("dial broadcaster: %v", err)
+	}
+	defer bconn.Close()
+	if err := writeHello(bconn, helloRoleBroadcaster, 0, 93, SessionConfig{MapName: "E1M1"}); err != nil {
+		t.Fatalf("writeHello broadcaster: %v", err)
+	}
+	if _, _, _, _, err := readHello(bconn); err != nil {
+		t.Fatalf("readHello broadcaster ack: %v", err)
+	}
+	if err := writeFrame(bconn, frameHeader{Type: frameTypeKeyframe, Tic: 0}, []byte{1}); err != nil {
+		t.Fatalf("write initial keyframe: %v", err)
+	}
+
+	vconn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatalf("dial viewer: %v", err)
+	}
+	defer vconn.Close()
+	if err := writeHello(vconn, helloRoleViewer, 0, 93, SessionConfig{}); err != nil {
+		t.Fatalf("writeHello viewer: %v", err)
+	}
+	if _, _, _, _, err := readHello(vconn); err != nil {
+		t.Fatalf("readHello viewer response: %v", err)
+	}
+	if _, _, err := readFrame(vconn); err != nil {
+		t.Fatalf("read join keyframe: %v", err)
+	}
+
+	keyframe := []byte{9, 8, 7}
+	if err := writeFrame(bconn, frameHeader{Type: frameTypeKeyframe, Flags: keyframeFlagMandatoryApply, Tic: 200}, keyframe); err != nil {
+		t.Fatalf("write mandatory keyframe: %v", err)
+	}
+
+	header, payload, err := readFrame(vconn)
+	if err != nil {
+		t.Fatalf("read forwarded keyframe: %v", err)
+	}
+	if header.Type != frameTypeKeyframe || header.Tic != 200 || header.Flags != keyframeFlagMandatoryApply {
+		t.Fatalf("header=%+v want type=%d tic=200 flags=%d", header, frameTypeKeyframe, keyframeFlagMandatoryApply)
+	}
+	if string(payload) != string(keyframe) {
+		t.Fatalf("payload=%v want=%v", payload, keyframe)
+	}
+}
+
 func TestRelayServerAssignsSessionIDToBroadcaster(t *testing.T) {
 	srv, err := ListenServer("127.0.0.1:0")
 	if err != nil {
