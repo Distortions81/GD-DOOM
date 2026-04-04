@@ -153,6 +153,7 @@ type Options struct {
 	Episodes                   []int
 	LiveTicSource              LiveTicSource
 	LiveTicSink                LiveTicSink
+	WatchStartupBufferTics     int
 	NetBandwidthMeter          NetBandwidthMeter
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string

@@ -6,6 +6,8 @@ import (
 
 	"gddoom/internal/demo"
 	"gddoom/internal/runtimecfg"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 type testLiveTicSink struct {
@@ -127,6 +129,7 @@ func TestUpdateWatchModeConsumesLiveTicAndAdvancesWorld(t *testing.T) {
 
 func TestUpdateWatchModePacesInitialBufferedBatch(t *testing.T) {
 	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.WatchStartupBufferTics = 3
 	g.opts.LiveTicSource = &testLiveTicSource{
 		tics: []demo.Tic{
 			{Forward: 1},
@@ -145,6 +148,71 @@ func TestUpdateWatchModePacesInitialBufferedBatch(t *testing.T) {
 	src := g.opts.LiveTicSource.(*testLiveTicSource)
 	if got := len(src.tics); got != 3 {
 		t.Fatalf("remaining queued tics=%d want=3", got)
+	}
+}
+
+func TestUpdateWatchModeWaitsForStartupBuffer(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.WatchStartupBufferTics = 3
+	g.opts.LiveTicSource = &testLiveTicSource{
+		tics: []demo.Tic{
+			{Forward: 1},
+			{Forward: 2},
+		},
+	}
+
+	if err := g.Update(); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if g.worldTic != 0 {
+		t.Fatalf("worldTic=%d want=0", g.worldTic)
+	}
+	src := g.opts.LiveTicSource.(*testLiveTicSource)
+	if got := len(src.tics); got != 2 {
+		t.Fatalf("remaining queued tics=%d want=2", got)
+	}
+}
+
+func TestUpdateWatchModeLowLatencySkipsStartupBuffer(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.WatchStartupBufferTics = 0
+	g.opts.LiveTicSource = &testLiveTicSource{
+		tics: []demo.Tic{
+			{Forward: 1},
+			{Forward: 2},
+		},
+	}
+
+	if err := g.Update(); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if g.worldTic != 1 {
+		t.Fatalf("worldTic=%d want=1", g.worldTic)
+	}
+	src := g.opts.LiveTicSource.(*testLiveTicSource)
+	if got := len(src.tics); got != 1 {
+		t.Fatalf("remaining queued tics=%d want=1", got)
+	}
+}
+
+func TestUpdateWatchModeAppliesLocalDetailAndGammaWithoutQueuedTics(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	startDetail := g.detailLevel
+	startGamma := g.gammaLevel
+	g.opts.LiveTicSource = &testLiveTicSource{}
+	g.input.justPressedKeys = map[ebiten.Key]struct{}{
+		ebiten.KeyF5:  {},
+		ebiten.KeyF11: {},
+	}
+
+	if err := g.Update(); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if g.detailLevel == startDetail {
+		t.Fatalf("detailLevel=%d want change from %d", g.detailLevel, startDetail)
+	}
+	if g.gammaLevel == startGamma {
+		t.Fatalf("gammaLevel=%d want change from %d", g.gammaLevel, startGamma)
 	}
 }
 

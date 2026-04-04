@@ -93,6 +93,13 @@ func netBandwidthMeterFromViewer(v *netplay.Viewer) runtimecfg.NetBandwidthMeter
 	return v
 }
 
+func watchStartupBufferTics(lowLatency bool) int {
+	if lowLatency {
+		return 0
+	}
+	return 3
+}
+
 func normalizeNetplayShorthandArgs(args []string) []string {
 	if len(args) == 0 {
 		return nil
@@ -1069,6 +1076,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
 			MusicSoundFont:             musicSoundFont,
 			LiveTicSource:              liveTicSourceFromViewer(watchSession),
+			WatchStartupBufferTics:     watchStartupBufferTics(*lowLatency),
 			NetBandwidthMeter:          netBandwidthMeterFromViewer(watchSession),
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,

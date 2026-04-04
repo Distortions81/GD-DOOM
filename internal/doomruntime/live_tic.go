@@ -115,6 +115,16 @@ func (g *game) updateWatchMode() error {
 			g.setHUDMessage("Automap Closed", 35)
 		}
 	}
+	g.edgeInputPass = true
+	g.updateParityControls()
+	if g.keyJustPressed(ebiten.KeyF5) {
+		if g.opts.SourcePortMode {
+			g.cycleSourcePortDetailLevel()
+		} else {
+			g.cycleDetailLevel()
+		}
+	}
+	g.edgeInputPass = false
 	ticDur := time.Second / doomTicsPerSecond
 	if g.watchTickStamp.IsZero() {
 		g.watchTickStamp = now
@@ -124,7 +134,14 @@ func (g *game) updateWatchMode() error {
 
 	budget := 0
 	if g.worldTic == 0 {
-		budget = 1
+		startupBuffer := max(0, g.opts.WatchStartupBufferTics)
+		if startupBuffer == 0 {
+			budget = 1
+		} else if src, ok := g.opts.LiveTicSource.(runtimecfg.LiveTicBufferedSource); ok && src != nil {
+			if src.PendingTics() >= startupBuffer {
+				budget = 1
+			}
+		}
 	}
 	for g.watchTickAccum >= ticDur {
 		g.watchTickAccum -= ticDur
@@ -146,7 +163,6 @@ func (g *game) updateWatchMode() error {
 	if budget > 8 {
 		budget = 8
 	}
-	processed := false
 	for i := 0; i < budget; i++ {
 		tc, ok, err := g.opts.LiveTicSource.PollTic()
 		if err != nil {
@@ -155,13 +171,10 @@ func (g *game) updateWatchMode() error {
 		if !ok {
 			break
 		}
-		processed = true
 		g.capturePrevState()
 		g.stepGameplayFromDemoTic(tc)
 	}
-	if processed {
-		g.publishRuntimeSettingsIfChanged()
-	}
+	g.publishRuntimeSettingsIfChanged()
 	return nil
 }
 
