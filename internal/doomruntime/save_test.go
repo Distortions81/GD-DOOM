@@ -8,6 +8,7 @@ import (
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/wad"
 )
 
 func TestSaveLoadRoundTrip(t *testing.T) {
@@ -238,6 +239,57 @@ func TestLoadGameRejectsBadChecksum(t *testing.T) {
 	err = loaded.unmarshalSaveGame(data)
 	if !errors.Is(err, errBadSaveChecksum) {
 		t.Fatalf("err=%v want=%v", err, errBadSaveChecksum)
+	}
+}
+
+func TestLoadGameRefreshesPlayerSectorCache(t *testing.T) {
+	wadPath := findLocalWADOrSkip(t, "DOOM.WAD", "doom.wad", "DOOM1.WAD", "doom1.wad")
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+	base, err := mapdata.LoadMap(wf, "E1M1")
+	if err != nil {
+		t.Fatalf("load E1M1: %v", err)
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+	wantSector := sg.g.sectorAt(sg.g.p.x, sg.g.p.y)
+	if wantSector < 0 || len(base.Sectors) < 2 {
+		t.Fatalf("invalid initial sector=%d sectors=%d", wantSector, len(base.Sectors))
+	}
+	sg.g.p.sector = (wantSector + 1) % len(base.Sectors)
+	sg.g.p.subsector = -1
+
+	data, err := sg.marshalSaveGame("test")
+	if err != nil {
+		t.Fatalf("marshalSaveGame() error = %v", err)
+	}
+
+	loaded := &sessionGame{
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	if err := loaded.unmarshalSaveGame(data); err != nil {
+		t.Fatalf("unmarshalSaveGame() error = %v", err)
+	}
+	if got := loaded.g.playerSector(); got != wantSector {
+		t.Fatalf("playerSector()=%d want=%d", got, wantSector)
 	}
 }
 

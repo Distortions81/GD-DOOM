@@ -564,6 +564,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 		return
 	}
 	g.p = restorePlayerSaveState(s.Player)
+	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
 	g.State = s.View
 	g.mode = viewMode(s.Mode)
 	g.rotateView = s.RotateView

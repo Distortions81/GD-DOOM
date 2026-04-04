@@ -2825,16 +2825,10 @@ func (g *game) updateWalkMode() {
 	}
 
 	cmd.run = speed == 1
-	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
+	if strings.TrimSpace(g.opts.RecordDemoPath) != "" || g.opts.LiveTicSink != nil {
 		// Quantize cmd to demo format precision before running gameplay,
 		// matching vanilla's G_WriteDemoTiccmd -> G_ReadDemoTiccmd round-trip.
-		// forward/side: stored as signed byte (int8).
-		// angleturn: stored as (angleturn+128)>>8 byte, read back as byte<<8.
-		// So angleturn loses its bottom 8 bits with +128 rounding.
-		cmd.forward = int64(int8(clampDemoMove(cmd.forward)))
-		cmd.side = int64(int8(clampDemoMove(cmd.side)))
-		angleturn16 := int16(cmd.turnRaw >> 16)
-		cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
+		cmd = quantizeMoveCmdToDemo(cmd)
 	}
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.recordDemoTic(cmd, usePressed, fireHeld)
@@ -2981,6 +2975,14 @@ func (g *game) currentRunSpeed() int {
 
 func (g *game) recordDemoTic(cmd moveCmd, usePressed, fireHeld bool) {
 	g.recordGameplayTic(cmd, usePressed, fireHeld)
+}
+
+func quantizeMoveCmdToDemo(cmd moveCmd) moveCmd {
+	cmd.forward = int64(int8(clampDemoMove(cmd.forward)))
+	cmd.side = int64(int8(clampDemoMove(cmd.side)))
+	angleturn16 := int16(cmd.turnRaw >> 16)
+	cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
+	return cmd
 }
 
 func (g *game) demoAngleTurn(cmd moveCmd) int16 {

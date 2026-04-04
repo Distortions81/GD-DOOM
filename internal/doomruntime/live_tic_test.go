@@ -44,6 +44,28 @@ func TestUpdateBroadcastModeAdvancesWorldAndEmitsTic(t *testing.T) {
 	}
 }
 
+func TestUpdateBroadcastModeQuantizesLocalTurnLikeDemo(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	sink := &testLiveTicSink{}
+	g.opts.LiveTicSink = sink
+	g.opts.MouseLook = true
+	g.input.mouseTurnRawAccum = 129 << 16
+	startAngle := g.p.angle
+
+	if err := g.Update(); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if got, want := g.p.angle-startAngle, uint32(256<<16); got != want {
+		t.Fatalf("angle delta=0x%08x want=0x%08x", got, want)
+	}
+	if got := len(sink.tics); got != 1 {
+		t.Fatalf("broadcast tic count=%d want=1", got)
+	}
+	if got, want := sink.tics[0].AngleTurn, int16(256); got != want {
+		t.Fatalf("broadcast AngleTurn=%d want=%d", got, want)
+	}
+}
+
 func TestUpdateWatchModeConsumesLiveTicAndAdvancesWorld(t *testing.T) {
 	g := mustLoadE1M1GameForMapTextureTests(t)
 	g.opts.LiveTicSource = &testLiveTicSource{
