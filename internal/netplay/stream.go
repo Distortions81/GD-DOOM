@@ -1,9 +1,8 @@
 package netplay
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -13,175 +12,125 @@ import (
 	"gddoom/internal/demo"
 )
 
-const protocolVersion = 1
+const (
+	protocolVersion byte = 1
+	protocolMagic        = "GDSF"
+
+	helloRoleBroadcaster byte = 1
+	helloRoleViewer      byte = 2
+	helloRoleServer      byte = 3
+
+	frameTypeTicBatch byte = 4
+)
+
+const (
+	sessionFlagShowNoSkillItems uint16 = 1 << iota
+	sessionFlagShowAllItems
+	sessionFlagFastMonsters
+	sessionFlagRespawnMonsters
+	sessionFlagNoMonsters
+	sessionFlagAutoWeaponSwitch
+	sessionFlagInvulnerable
+	sessionFlagSourcePortMode
+)
+
+const (
+	frameHeaderSize  = 12
+	ticBatchOverhead = 4
+)
 
 type SessionConfig struct {
-	WADHash          string `json:"wad_hash"`
-	MapName          string `json:"map"`
-	PlayerSlot       int    `json:"player_slot"`
-	SkillLevel       int    `json:"skill_level"`
-	GameMode         string `json:"game_mode"`
-	ShowNoSkillItems bool   `json:"show_no_skill_items"`
-	ShowAllItems     bool   `json:"show_all_items"`
-	FastMonsters     bool   `json:"fast_monsters"`
-	RespawnMonsters  bool   `json:"respawn_monsters"`
-	NoMonsters       bool   `json:"no_monsters"`
-	AutoWeaponSwitch bool   `json:"auto_weapon_switch"`
-	CheatLevel       int    `json:"cheat_level"`
-	Invulnerable     bool   `json:"invulnerable"`
-	SourcePortMode   bool   `json:"source_port_mode"`
+	WADHash          string
+	MapName          string
+	PlayerSlot       int
+	SkillLevel       int
+	GameMode         string
+	ShowNoSkillItems bool
+	ShowAllItems     bool
+	FastMonsters     bool
+	RespawnMonsters  bool
+	NoMonsters       bool
+	AutoWeaponSwitch bool
+	CheatLevel       int
+	Invulnerable     bool
+	SourcePortMode   bool
 }
 
-type packet struct {
-	Type     string         `json:"type"`
-	Protocol int            `json:"protocol,omitempty"`
-	Session  *SessionConfig `json:"session,omitempty"`
-	Tic      *demo.Tic      `json:"tic,omitempty"`
+type frameHeader struct {
+	Type   byte
+	Flags  byte
+	Length uint32
+	Tic    uint32
 }
 
-type broadcasterClient struct {
-	conn net.Conn
-	enc  *json.Encoder
+type RelayBroadcaster struct {
+	conn      net.Conn
+	sessionID uint64
+
+	mu     sync.Mutex
+	closed bool
 }
 
-type Broadcaster struct {
-	listener net.Listener
-	session  SessionConfig
-
-	mu         sync.Mutex
-	clients    map[int]broadcasterClient
-	nextClient int
-
-	firstViewer chan struct{}
-	firstOnce   sync.Once
-	closeOnce   sync.Once
-	closed      chan struct{}
-	wg          sync.WaitGroup
-}
-
-func Listen(addr string, session SessionConfig) (*Broadcaster, error) {
+func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) (*RelayBroadcaster, error) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
-		return nil, fmt.Errorf("broadcast address is required")
+		return nil, fmt.Errorf("broadcast relay address is required")
 	}
-	ln, err := net.Listen("tcp", addr)
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("listen %s: %w", addr, err)
+		return nil, fmt.Errorf("dial relay %s: %w", addr, err)
 	}
-	b := &Broadcaster{
-		listener:    ln,
-		session:     session,
-		clients:     make(map[int]broadcasterClient),
-		firstViewer: make(chan struct{}),
-		closed:      make(chan struct{}),
+	if tcp, ok := conn.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
 	}
-	b.wg.Add(1)
-	go b.acceptLoop(ln)
-	return b, nil
+	if err := writeHello(conn, helloRoleBroadcaster, 0, sessionID, session); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("write relay hello: %w", err)
+	}
+	role, _, assignedID, _, err := readHello(conn)
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("read relay hello ack: %w", err)
+	}
+	if role != helloRoleServer {
+		_ = conn.Close()
+		return nil, fmt.Errorf("unexpected relay hello ack role %d", role)
+	}
+	return &RelayBroadcaster{conn: conn, sessionID: assignedID}, nil
 }
 
-func (b *Broadcaster) Addr() string {
-	if b == nil || b.listener == nil {
-		return ""
-	}
-	return b.listener.Addr().String()
-}
-
-func (b *Broadcaster) WaitForViewer(ctx context.Context) error {
+func (b *RelayBroadcaster) SessionID() uint64 {
 	if b == nil {
-		return fmt.Errorf("broadcaster is nil")
+		return 0
 	}
-	select {
-	case <-b.firstViewer:
-		return nil
-	case <-b.closed:
-		return io.ErrClosedPipe
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	return b.sessionID
 }
 
-func (b *Broadcaster) StopAccepting() error {
-	if b == nil || b.listener == nil {
-		return nil
-	}
-	err := b.listener.Close()
-	b.listener = nil
-	return err
-}
-
-func (b *Broadcaster) BroadcastTic(tc demo.Tic) error {
+func (b *RelayBroadcaster) BroadcastTic(tc demo.Tic) error {
 	if b == nil {
 		return nil
 	}
-	msg := packet{Type: "tic", Tic: &tc}
+	payload := make([]byte, ticBatchOverhead+4)
+	binary.LittleEndian.PutUint16(payload[0:2], 1)
+	copy(payload[ticBatchOverhead:], packDemoTic(tc))
+	return writeFrame(b.conn, frameHeader{
+		Type:   frameTypeTicBatch,
+		Length: uint32(len(payload)),
+	}, payload)
+}
+
+func (b *RelayBroadcaster) Close() error {
+	if b == nil {
+		return nil
+	}
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	for id, client := range b.clients {
-		if err := client.enc.Encode(msg); err != nil {
-			_ = client.conn.Close()
-			delete(b.clients, id)
-		}
-	}
-	return nil
-}
-
-func (b *Broadcaster) Close() error {
-	if b == nil {
+	if b.closed {
+		b.mu.Unlock()
 		return nil
 	}
-	var err error
-	b.closeOnce.Do(func() {
-		close(b.closed)
-		if b.listener != nil {
-			err = b.listener.Close()
-			b.listener = nil
-		}
-		b.mu.Lock()
-		for id, client := range b.clients {
-			_ = client.conn.Close()
-			delete(b.clients, id)
-		}
-		b.mu.Unlock()
-		b.wg.Wait()
-	})
-	return err
-}
-
-func (b *Broadcaster) acceptLoop(ln net.Listener) {
-	defer b.wg.Done()
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				return
-			}
-			select {
-			case <-b.closed:
-				return
-			default:
-				continue
-			}
-		}
-		if tcp, ok := conn.(*net.TCPConn); ok {
-			_ = tcp.SetNoDelay(true)
-		}
-		client := broadcasterClient{conn: conn, enc: json.NewEncoder(conn)}
-		if err := client.enc.Encode(packet{
-			Type:     "hello",
-			Protocol: protocolVersion,
-			Session:  &b.session,
-		}); err != nil {
-			_ = conn.Close()
-			continue
-		}
-		b.mu.Lock()
-		id := b.nextClient
-		b.nextClient++
-		b.clients[id] = client
-		b.mu.Unlock()
-		b.firstOnce.Do(func() { close(b.firstViewer) })
-	}
+	b.closed = true
+	b.mu.Unlock()
+	return b.conn.Close()
 }
 
 type Viewer struct {
@@ -195,47 +144,49 @@ type Viewer struct {
 	wg     sync.WaitGroup
 }
 
-func Dial(addr string, localWADHash string) (*Viewer, error) {
+func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewer, error) {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
-		return nil, fmt.Errorf("watch address is required")
+		return nil, fmt.Errorf("watch relay address is required")
+	}
+	if sessionID == 0 {
+		return nil, fmt.Errorf("watch session id is required")
 	}
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, err)
+		return nil, fmt.Errorf("dial relay %s: %w", addr, err)
 	}
 	if tcp, ok := conn.(*net.TCPConn); ok {
 		_ = tcp.SetNoDelay(true)
 	}
-	dec := json.NewDecoder(conn)
-	var hello packet
-	if err := dec.Decode(&hello); err != nil {
+	if err := writeHello(conn, helloRoleViewer, 0, sessionID, SessionConfig{}); err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("read broadcast hello: %w", err)
+		return nil, fmt.Errorf("write relay hello: %w", err)
 	}
-	if hello.Type != "hello" {
+	role, _, resolvedID, session, err := readHello(conn)
+	if err != nil {
 		_ = conn.Close()
-		return nil, fmt.Errorf("unexpected broadcast packet %q", hello.Type)
+		return nil, fmt.Errorf("read relay session hello: %w", err)
 	}
-	if hello.Protocol != protocolVersion {
+	if role != helloRoleBroadcaster {
 		_ = conn.Close()
-		return nil, fmt.Errorf("unsupported broadcast protocol %d", hello.Protocol)
+		return nil, fmt.Errorf("unexpected relay session role %d", role)
 	}
-	if hello.Session == nil {
+	if resolvedID != sessionID {
 		_ = conn.Close()
-		return nil, fmt.Errorf("broadcast hello missing session config")
+		return nil, fmt.Errorf("relay session mismatch: requested=%d got=%d", sessionID, resolvedID)
 	}
-	if localWADHash != "" && hello.Session.WADHash != "" && hello.Session.WADHash != localWADHash {
+	if localWADHash != "" && session.WADHash != "" && session.WADHash != localWADHash {
 		_ = conn.Close()
-		return nil, fmt.Errorf("broadcast WAD hash mismatch: local=%s host=%s", localWADHash, hello.Session.WADHash)
+		return nil, fmt.Errorf("broadcast WAD hash mismatch: local=%s host=%s", localWADHash, session.WADHash)
 	}
 	v := &Viewer{
 		conn:    conn,
-		session: *hello.Session,
+		session: session,
 		tics:    make(chan demo.Tic, 256),
 	}
 	v.wg.Add(1)
-	go v.readLoop(dec)
+	go v.readLoop()
 	return v, nil
 }
 
@@ -277,21 +228,42 @@ func (v *Viewer) Close() error {
 	return err
 }
 
-func (v *Viewer) readLoop(dec *json.Decoder) {
+func (v *Viewer) readLoop() {
 	defer v.wg.Done()
 	defer close(v.tics)
 	for {
-		var msg packet
-		if err := dec.Decode(&msg); err != nil {
+		header, payload, err := readFrame(v.conn)
+		if err != nil {
 			v.setErr(err)
 			return
 		}
-		if msg.Type != "tic" || msg.Tic == nil {
-			v.setErr(fmt.Errorf("unexpected broadcast packet %q", msg.Type))
+		switch header.Type {
+		case frameTypeTicBatch:
+			if err := v.consumeTicBatch(payload); err != nil {
+				v.setErr(err)
+				return
+			}
+		default:
+			v.setErr(fmt.Errorf("unexpected broadcast frame type %d", header.Type))
 			return
 		}
-		v.tics <- *msg.Tic
 	}
+}
+
+func (v *Viewer) consumeTicBatch(payload []byte) error {
+	if len(payload) < ticBatchOverhead {
+		return fmt.Errorf("tic batch payload too short")
+	}
+	count := int(binary.LittleEndian.Uint16(payload[0:2]))
+	want := ticBatchOverhead + count*4
+	if len(payload) != want {
+		return fmt.Errorf("tic batch payload len=%d want=%d", len(payload), want)
+	}
+	for i := 0; i < count; i++ {
+		offset := ticBatchOverhead + i*4
+		v.tics <- unpackDemoTic(payload[offset : offset+4])
+	}
+	return nil
 }
 
 func (v *Viewer) readErr() error {
@@ -305,5 +277,215 @@ func (v *Viewer) setErr(err error) {
 	defer v.mu.Unlock()
 	if v.err == nil {
 		v.err = err
+	}
+}
+
+func writeHello(w io.Writer, role byte, flags uint16, sessionID uint64, session SessionConfig) error {
+	payload, err := marshalSessionConfig(session)
+	if err != nil {
+		return err
+	}
+	var header [20]byte
+	copy(header[:4], protocolMagic)
+	header[4] = protocolVersion
+	header[5] = role
+	binary.LittleEndian.PutUint16(header[6:8], flags)
+	binary.LittleEndian.PutUint64(header[8:16], sessionID)
+	binary.LittleEndian.PutUint32(header[16:20], uint32(len(payload)))
+	if _, err := w.Write(header[:]); err != nil {
+		return err
+	}
+	_, err = w.Write(payload)
+	return err
+}
+
+func readHello(r io.Reader) (role byte, flags uint16, sessionID uint64, session SessionConfig, err error) {
+	var header [20]byte
+	if _, err = io.ReadFull(r, header[:]); err != nil {
+		return 0, 0, 0, SessionConfig{}, err
+	}
+	if string(header[:4]) != protocolMagic {
+		return 0, 0, 0, SessionConfig{}, fmt.Errorf("unexpected hello magic %q", string(header[:4]))
+	}
+	if header[4] != protocolVersion {
+		return 0, 0, 0, SessionConfig{}, fmt.Errorf("unsupported broadcast protocol %d", header[4])
+	}
+	role = header[5]
+	flags = binary.LittleEndian.Uint16(header[6:8])
+	sessionID = binary.LittleEndian.Uint64(header[8:16])
+	payloadLen := binary.LittleEndian.Uint32(header[16:20])
+	payload := make([]byte, payloadLen)
+	if _, err = io.ReadFull(r, payload); err != nil {
+		return 0, 0, 0, SessionConfig{}, err
+	}
+	session, err = unmarshalSessionConfig(payload)
+	return role, flags, sessionID, session, err
+}
+
+func writeFrame(w io.Writer, header frameHeader, payload []byte) error {
+	var buf [frameHeaderSize]byte
+	buf[0] = header.Type
+	buf[1] = header.Flags
+	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(payload)))
+	binary.LittleEndian.PutUint32(buf[8:12], header.Tic)
+	if _, err := w.Write(buf[:]); err != nil {
+		return err
+	}
+	if len(payload) == 0 {
+		return nil
+	}
+	_, err := w.Write(payload)
+	return err
+}
+
+func readFrame(r io.Reader) (frameHeader, []byte, error) {
+	var buf [frameHeaderSize]byte
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return frameHeader{}, nil, err
+	}
+	header := frameHeader{
+		Type:   buf[0],
+		Flags:  buf[1],
+		Length: binary.LittleEndian.Uint32(buf[4:8]),
+		Tic:    binary.LittleEndian.Uint32(buf[8:12]),
+	}
+	payload := make([]byte, header.Length)
+	if _, err := io.ReadFull(r, payload); err != nil {
+		return frameHeader{}, nil, err
+	}
+	return header, payload, nil
+}
+
+func marshalSessionConfig(session SessionConfig) ([]byte, error) {
+	var buf bytes.Buffer
+	putString := func(s string) error {
+		if len(s) > 0xFFFF {
+			return fmt.Errorf("session string too long")
+		}
+		var hdr [2]byte
+		binary.LittleEndian.PutUint16(hdr[:], uint16(len(s)))
+		if _, err := buf.Write(hdr[:]); err != nil {
+			return err
+		}
+		_, err := buf.WriteString(s)
+		return err
+	}
+	if err := putString(strings.TrimSpace(session.WADHash)); err != nil {
+		return nil, err
+	}
+	if err := putString(strings.TrimSpace(session.MapName)); err != nil {
+		return nil, err
+	}
+	if err := putString(strings.TrimSpace(session.GameMode)); err != nil {
+		return nil, err
+	}
+	buf.WriteByte(byte(clampUint8(session.PlayerSlot)))
+	buf.WriteByte(byte(clampUint8(session.SkillLevel)))
+	buf.WriteByte(byte(clampUint8(session.CheatLevel)))
+	buf.WriteByte(0)
+	var flags uint16
+	if session.ShowNoSkillItems {
+		flags |= sessionFlagShowNoSkillItems
+	}
+	if session.ShowAllItems {
+		flags |= sessionFlagShowAllItems
+	}
+	if session.FastMonsters {
+		flags |= sessionFlagFastMonsters
+	}
+	if session.RespawnMonsters {
+		flags |= sessionFlagRespawnMonsters
+	}
+	if session.NoMonsters {
+		flags |= sessionFlagNoMonsters
+	}
+	if session.AutoWeaponSwitch {
+		flags |= sessionFlagAutoWeaponSwitch
+	}
+	if session.Invulnerable {
+		flags |= sessionFlagInvulnerable
+	}
+	if session.SourcePortMode {
+		flags |= sessionFlagSourcePortMode
+	}
+	var flagBuf [2]byte
+	binary.LittleEndian.PutUint16(flagBuf[:], flags)
+	if _, err := buf.Write(flagBuf[:]); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func unmarshalSessionConfig(payload []byte) (SessionConfig, error) {
+	var session SessionConfig
+	readString := func(data []byte, off *int) (string, error) {
+		if len(data)-*off < 2 {
+			return "", fmt.Errorf("session payload truncated")
+		}
+		n := int(binary.LittleEndian.Uint16(data[*off : *off+2]))
+		*off += 2
+		if len(data)-*off < n {
+			return "", fmt.Errorf("session payload truncated")
+		}
+		s := string(data[*off : *off+n])
+		*off += n
+		return s, nil
+	}
+	offset := 0
+	var err error
+	if session.WADHash, err = readString(payload, &offset); err != nil {
+		return SessionConfig{}, err
+	}
+	if session.MapName, err = readString(payload, &offset); err != nil {
+		return SessionConfig{}, err
+	}
+	if session.GameMode, err = readString(payload, &offset); err != nil {
+		return SessionConfig{}, err
+	}
+	if len(payload)-offset < 6 {
+		return SessionConfig{}, fmt.Errorf("session payload truncated")
+	}
+	session.PlayerSlot = int(payload[offset])
+	session.SkillLevel = int(payload[offset+1])
+	session.CheatLevel = int(payload[offset+2])
+	offset += 4
+	flags := binary.LittleEndian.Uint16(payload[offset : offset+2])
+	session.ShowNoSkillItems = flags&sessionFlagShowNoSkillItems != 0
+	session.ShowAllItems = flags&sessionFlagShowAllItems != 0
+	session.FastMonsters = flags&sessionFlagFastMonsters != 0
+	session.RespawnMonsters = flags&sessionFlagRespawnMonsters != 0
+	session.NoMonsters = flags&sessionFlagNoMonsters != 0
+	session.AutoWeaponSwitch = flags&sessionFlagAutoWeaponSwitch != 0
+	session.Invulnerable = flags&sessionFlagInvulnerable != 0
+	session.SourcePortMode = flags&sessionFlagSourcePortMode != 0
+	return session, nil
+}
+
+func packDemoTic(tc demo.Tic) []byte {
+	return []byte{
+		byte(tc.Forward),
+		byte(tc.Side),
+		byte(uint16(tc.AngleTurn) >> 8),
+		tc.Buttons,
+	}
+}
+
+func unpackDemoTic(data []byte) demo.Tic {
+	return demo.Tic{
+		Forward:   int8(data[0]),
+		Side:      int8(data[1]),
+		AngleTurn: int16(uint16(data[2]) << 8),
+		Buttons:   data[3],
+	}
+}
+
+func clampUint8(v int) int {
+	switch {
+	case v < 0:
+		return 0
+	case v > 0xFF:
+		return 0xFF
+	default:
+		return v
 	}
 }

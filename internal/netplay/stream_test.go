@@ -1,7 +1,7 @@
 package netplay
 
 import (
-	"context"
+	"bytes"
 	"io"
 	"testing"
 	"time"
@@ -9,8 +9,30 @@ import (
 	"gddoom/internal/demo"
 )
 
-func TestBroadcastWatchRoundTrip(t *testing.T) {
-	b, err := Listen("127.0.0.1:0", SessionConfig{
+func readViewerTic(t *testing.T, v *Viewer) (demo.Tic, bool, error) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok, err := v.PollTic()
+		if err != nil && err != io.EOF {
+			return demo.Tic{}, false, err
+		}
+		if ok {
+			return got, true, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return demo.Tic{}, false, nil
+}
+
+func TestRelayBroadcastWatchRoundTrip(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{
 		WADHash:          "abc123",
 		MapName:          "E1M1",
 		PlayerSlot:       1,
@@ -19,21 +41,15 @@ func TestBroadcastWatchRoundTrip(t *testing.T) {
 		AutoWeaponSwitch: true,
 	})
 	if err != nil {
-		t.Fatalf("Listen() error = %v", err)
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
 	}
 	defer b.Close()
 
-	v, err := Dial(b.Addr(), "abc123")
+	v, err := DialRelayViewer(srv.Addr(), b.SessionID(), "abc123")
 	if err != nil {
-		t.Fatalf("Dial() error = %v", err)
+		t.Fatalf("DialRelayViewer() error = %v", err)
 	}
 	defer v.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := b.WaitForViewer(ctx); err != nil {
-		t.Fatalf("WaitForViewer() error = %v", err)
-	}
 
 	if got := v.Session().MapName; got != "E1M1" {
 		t.Fatalf("Session().MapName = %q want %q", got, "E1M1")
@@ -47,55 +63,100 @@ func TestBroadcastWatchRoundTrip(t *testing.T) {
 		t.Fatalf("BroadcastTic() error = %v", err)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		got, ok, err := v.PollTic()
-		if err != nil && err != io.EOF {
-			t.Fatalf("PollTic() error = %v", err)
-		}
-		if ok {
-			if got != want {
-				t.Fatalf("PollTic() = %+v want %+v", got, want)
-			}
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("timed out waiting for tic")
-}
-
-func TestWatchRejectsWADHashMismatch(t *testing.T) {
-	b, err := Listen("127.0.0.1:0", SessionConfig{WADHash: "host"})
+	got, ok, err := readViewerTic(t, v)
 	if err != nil {
-		t.Fatalf("Listen() error = %v", err)
+		t.Fatalf("PollTic() error = %v", err)
 	}
-	defer b.Close()
-
-	if _, err := Dial(b.Addr(), "local"); err == nil {
-		t.Fatal("Dial() error = nil want mismatch")
+	if !ok {
+		t.Fatal("timed out waiting for tic")
+	}
+	if got != want {
+		t.Fatalf("PollTic() = %+v want %+v", got, want)
 	}
 }
 
-func TestBroadcasterStopAcceptingAfterFirstViewer(t *testing.T) {
-	b, err := Listen("127.0.0.1:0", SessionConfig{})
+func TestRelayWatchRejectsWADHashMismatch(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
 	if err != nil {
-		t.Fatalf("Listen() error = %v", err)
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{WADHash: "host"})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
 	}
 	defer b.Close()
 
-	v, err := Dial(b.Addr(), "")
-	if err != nil {
-		t.Fatalf("Dial() error = %v", err)
+	if _, err := DialRelayViewer(srv.Addr(), b.SessionID(), "local"); err == nil {
+		t.Fatal("DialRelayViewer() error = nil want mismatch")
 	}
-	defer v.Close()
+}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	if err := b.WaitForViewer(ctx); err != nil {
-		t.Fatalf("WaitForViewer() error = %v", err)
+func TestHelloRoundTripBinary(t *testing.T) {
+	var buf bytes.Buffer
+	want := SessionConfig{
+		WADHash:          "abc123",
+		MapName:          "E1M1",
+		PlayerSlot:       1,
+		SkillLevel:       3,
+		GameMode:         "single",
+		ShowNoSkillItems: true,
+		FastMonsters:     true,
+		AutoWeaponSwitch: true,
+		CheatLevel:       2,
+		Invulnerable:     true,
+		SourcePortMode:   true,
 	}
-	if err := b.StopAccepting(); err != nil {
-		t.Fatalf("StopAccepting() error = %v", err)
+	if err := writeHello(&buf, helloRoleBroadcaster, 7, 42, want); err != nil {
+		t.Fatalf("writeHello() error = %v", err)
 	}
-	time.Sleep(20 * time.Millisecond)
+	role, flags, sessionID, got, err := readHello(&buf)
+	if err != nil {
+		t.Fatalf("readHello() error = %v", err)
+	}
+	if role != helloRoleBroadcaster {
+		t.Fatalf("role=%d want=%d", role, helloRoleBroadcaster)
+	}
+	if flags != 7 {
+		t.Fatalf("flags=%d want=7", flags)
+	}
+	if sessionID != 42 {
+		t.Fatalf("sessionID=%d want=42", sessionID)
+	}
+	if got != want {
+		t.Fatalf("session=%+v want %+v", got, want)
+	}
+}
+
+func TestReadHelloRejectsBadMagic(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString("NOPE")
+	buf.Write([]byte{protocolVersion, helloRoleBroadcaster, 0, 0})
+	buf.Write(make([]byte, 12))
+	if _, _, _, _, err := readHello(&buf); err == nil {
+		t.Fatal("readHello() error = nil want bad magic")
+	}
+}
+
+func TestFrameRoundTripBinary(t *testing.T) {
+	var buf bytes.Buffer
+	header := frameHeader{Type: frameTypeTicBatch, Flags: 3, Tic: 99}
+	payload := []byte{1, 0, 0, 0, 25, 0, 2, demo.ButtonUse}
+	if err := writeFrame(&buf, header, payload); err != nil {
+		t.Fatalf("writeFrame() error = %v", err)
+	}
+	gotHeader, gotPayload, err := readFrame(&buf)
+	if err != nil {
+		t.Fatalf("readFrame() error = %v", err)
+	}
+	if gotHeader.Type != header.Type || gotHeader.Flags != header.Flags || gotHeader.Tic != header.Tic {
+		t.Fatalf("header=%+v want %+v", gotHeader, header)
+	}
+	if gotHeader.Length != uint32(len(payload)) {
+		t.Fatalf("length=%d want=%d", gotHeader.Length, len(payload))
+	}
+	if !bytes.Equal(gotPayload, payload) {
+		t.Fatalf("payload=%v want=%v", gotPayload, payload)
+	}
 }

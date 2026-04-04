@@ -116,8 +116,8 @@ func TestNormalizeNetplayShorthandArgsAddsDefaultEndpoints(t *testing.T) {
 }
 
 func TestNormalizeBroadcastAddrDefaultsToDoomPort(t *testing.T) {
-	if got := normalizeBroadcastAddr(""); got != ":6670" {
-		t.Fatalf("normalizeBroadcastAddr(\"\") = %q want %q", got, ":6670")
+	if got := normalizeBroadcastAddr(""); got != "127.0.0.1:6670" {
+		t.Fatalf("normalizeBroadcastAddr(\"\") = %q want %q", got, "127.0.0.1:6670")
 	}
 	if got := normalizeBroadcastAddr("192.168.0.10"); got != "192.168.0.10:6670" {
 		t.Fatalf("normalizeBroadcastAddr(host) = %q want %q", got, "192.168.0.10:6670")
@@ -206,6 +206,7 @@ func TestRunParseRejectsWatchDuringDemoPlayback(t *testing.T) {
 	code := RunParse([]string{
 		"-wad", wadPath,
 		"-watch", "127.0.0.1:5035",
+		"-watch-session", "1",
 		"-demo", "bench.demo",
 	}, &out, &errb)
 	if code != 2 {
@@ -223,6 +224,7 @@ func TestRunParseBareWatchUsesLoopbackDefault(t *testing.T) {
 	code := RunParse([]string{
 		"-wad", wadPath,
 		"-watch",
+		"-watch-session", "1",
 		"-demo", "bench.demo",
 	}, &out, &errb)
 	if code != 2 {
@@ -230,6 +232,22 @@ func TestRunParseBareWatchUsesLoopbackDefault(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "do not support demo playback") {
 		t.Fatalf("stderr %q does not mention demo restriction", errb.String())
+	}
+}
+
+func TestRunParseWatchRequiresSessionID(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{
+		"-wad", wadPath,
+		"-watch", "127.0.0.1:6670",
+	}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "-watch requires -watch-session") {
+		t.Fatalf("stderr %q does not mention watch-session requirement", errb.String())
 	}
 }
 

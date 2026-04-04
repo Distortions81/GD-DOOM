@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"crypto/sha1"
 	"errors"
 	"flag"
@@ -111,7 +110,7 @@ func normalizeNetplayShorthandArgs(args []string) []string {
 func normalizeBroadcastAddr(addr string) string {
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
-		return fmt.Sprintf(":%d", defaultNetplayPort)
+		return "127.0.0.1:" + strconv.Itoa(defaultNetplayPort)
 	}
 	if strings.Contains(addr, ":") {
 		return addr
@@ -421,8 +420,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoExitOnDeath := fs.Bool("demo-exit-on-death", defaultDemoExitOnDeath, "during -demo playback, stop early when the player dies")
 	demoStopAfterTics := fs.Int("demo-stop-after-tics", defaultDemoStopAfterTics, "during -demo playback, stop after this many processed tics (0 disables)")
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
-	broadcastAddr := fs.String("broadcast", "", "listen for TCP view-only watchers on addr (default port 6670; bare -broadcast listens on all interfaces)")
-	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to host addr (default 127.0.0.1:6670; bare -watch uses localhost)")
+	broadcastAddr := fs.String("broadcast", "", "publish to GDSF relay at addr (default 127.0.0.1:6670; bare -broadcast uses localhost)")
+	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to relay addr (default 127.0.0.1:6670; bare -watch uses localhost)")
+	watchSessionID := fs.Uint64("watch-session", 0, "session id to watch from relay when using -watch")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -540,6 +540,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if resolvedBroadcastAddr != "" && resolvedWatchAddr != "" {
 		fmt.Fprintln(stderr, "-broadcast and -watch are mutually exclusive")
+		return 2
+	}
+	if resolvedWatchAddr != "" && *watchSessionID == 0 {
+		fmt.Fprintln(stderr, "-watch requires -watch-session")
 		return 2
 	}
 	if networkActive && !*render {
@@ -790,7 +794,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if resolvedWatchAddr != "" {
 		fmt.Fprintf(stderr, "watch: connecting to %s\n", resolvedWatchAddr)
-		watcher, werr := netplay.Dial(resolvedWatchAddr, wadHash)
+		watcher, werr := netplay.DialRelayViewer(resolvedWatchAddr, *watchSessionID, wadHash)
 		if werr != nil {
 			fmt.Fprintf(stderr, "watch: %v\n", werr)
 			return 1
@@ -1148,20 +1152,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if resolvedBroadcastAddr != "" {
 			sessionCfg := broadcastSessionConfig(selected, opts)
-			host, berr := netplay.Listen(resolvedBroadcastAddr, sessionCfg)
+			host, berr := netplay.DialRelayBroadcaster(resolvedBroadcastAddr, 0, sessionCfg)
 			if berr != nil {
 				fmt.Fprintf(stderr, "broadcast: %v\n", berr)
 				return 1
 			}
 			defer host.Close()
-			fmt.Fprintf(stderr, "broadcast: listening on %s\n", host.Addr())
-			fmt.Fprintf(stderr, "broadcast: waiting for watcher\n")
-			if err := host.WaitForViewer(context.Background()); err != nil {
-				fmt.Fprintf(stderr, "broadcast: %v\n", err)
-				return 1
-			}
-			fmt.Fprintf(stderr, "broadcast: watcher connected\n")
-			_ = host.StopAccepting()
+			fmt.Fprintf(stderr, "broadcast: publishing to relay %s\n", resolvedBroadcastAddr)
+			fmt.Fprintf(stderr, "broadcast: session id %d\n", host.SessionID())
 			opts.LiveTicSink = host
 		}
 		nextMap := func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error) {
