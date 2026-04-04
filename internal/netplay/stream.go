@@ -8,6 +8,8 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"gddoom/internal/demo"
 )
@@ -72,6 +74,7 @@ type Keyframe struct {
 type RelayBroadcaster struct {
 	conn      net.Conn
 	sessionID uint64
+	meter     *bandwidthMeter
 
 	mu     sync.Mutex
 	closed bool
@@ -82,27 +85,29 @@ func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) 
 	if addr == "" {
 		return nil, fmt.Errorf("broadcast relay address is required")
 	}
-	conn, err := net.Dial("tcp", addr)
+	rawConn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial relay %s: %w", addr, err)
 	}
-	if tcp, ok := conn.(*net.TCPConn); ok {
+	if tcp, ok := rawConn.(*net.TCPConn); ok {
 		_ = tcp.SetNoDelay(true)
 	}
+	meter := newBandwidthMeter()
+	conn := &countingConn{Conn: rawConn, meter: meter}
 	if err := writeHello(conn, helloRoleBroadcaster, 0, sessionID, session); err != nil {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("write relay hello: %w", err)
 	}
 	role, _, assignedID, _, err := readHello(conn)
 	if err != nil {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("read relay hello ack: %w", err)
 	}
 	if role != helloRoleServer {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("unexpected relay hello ack role %d", role)
 	}
-	return &RelayBroadcaster{conn: conn, sessionID: assignedID}, nil
+	return &RelayBroadcaster{conn: conn, sessionID: assignedID, meter: meter}, nil
 }
 
 func (b *RelayBroadcaster) SessionID() uint64 {
@@ -110,6 +115,13 @@ func (b *RelayBroadcaster) SessionID() uint64 {
 		return 0
 	}
 	return b.sessionID
+}
+
+func (b *RelayBroadcaster) BandwidthStats() (float64, float64) {
+	if b == nil || b.meter == nil {
+		return 0, 0
+	}
+	return b.meter.stats()
 }
 
 func (b *RelayBroadcaster) BroadcastTic(tc demo.Tic) error {
@@ -155,11 +167,75 @@ type Viewer struct {
 	session   SessionConfig
 	tics      chan demo.Tic
 	keyframes chan Keyframe
+	meter     *bandwidthMeter
 
 	mu     sync.Mutex
 	err    error
 	closed bool
 	wg     sync.WaitGroup
+}
+
+type countingConn struct {
+	net.Conn
+	meter *bandwidthMeter
+}
+
+func (c *countingConn) Read(p []byte) (int, error) {
+	n, err := c.Conn.Read(p)
+	if c.meter != nil && n > 0 {
+		c.meter.downloadBytes.Add(uint64(n))
+	}
+	return n, err
+}
+
+func (c *countingConn) Write(p []byte) (int, error) {
+	n, err := c.Conn.Write(p)
+	if c.meter != nil && n > 0 {
+		c.meter.uploadBytes.Add(uint64(n))
+	}
+	return n, err
+}
+
+type bandwidthMeter struct {
+	uploadBytes   atomic.Uint64
+	downloadBytes atomic.Uint64
+
+	mu           sync.Mutex
+	lastSampleAt time.Time
+	lastUpload   uint64
+	lastDownload uint64
+	uploadPerSec float64
+	downPerSec   float64
+}
+
+func newBandwidthMeter() *bandwidthMeter {
+	return &bandwidthMeter{lastSampleAt: time.Now()}
+}
+
+func (m *bandwidthMeter) stats() (float64, float64) {
+	if m == nil {
+		return 0, 0
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	now := time.Now()
+	if m.lastSampleAt.IsZero() {
+		m.lastSampleAt = now
+		m.lastUpload = m.uploadBytes.Load()
+		m.lastDownload = m.downloadBytes.Load()
+		return m.uploadPerSec, m.downPerSec
+	}
+	if elapsed := now.Sub(m.lastSampleAt); elapsed >= time.Second {
+		up := m.uploadBytes.Load()
+		down := m.downloadBytes.Load()
+		secs := elapsed.Seconds()
+		m.uploadPerSec = float64(up-m.lastUpload) / secs
+		m.downPerSec = float64(down-m.lastDownload) / secs
+		m.lastSampleAt = now
+		m.lastUpload = up
+		m.lastDownload = down
+	}
+	return m.uploadPerSec, m.downPerSec
 }
 
 func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewer, error) {
@@ -170,32 +246,34 @@ func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewe
 	if sessionID == 0 {
 		return nil, fmt.Errorf("watch session id is required")
 	}
-	conn, err := net.Dial("tcp", addr)
+	rawConn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial relay %s: %w", addr, err)
 	}
-	if tcp, ok := conn.(*net.TCPConn); ok {
+	if tcp, ok := rawConn.(*net.TCPConn); ok {
 		_ = tcp.SetNoDelay(true)
 	}
+	meter := newBandwidthMeter()
+	conn := &countingConn{Conn: rawConn, meter: meter}
 	if err := writeHello(conn, helloRoleViewer, 0, sessionID, SessionConfig{}); err != nil {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("write relay hello: %w", err)
 	}
 	role, _, resolvedID, session, err := readHello(conn)
 	if err != nil {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("read relay session hello: %w", err)
 	}
 	if role != helloRoleBroadcaster {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("unexpected relay session role %d", role)
 	}
 	if resolvedID != sessionID {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("relay session mismatch: requested=%d got=%d", sessionID, resolvedID)
 	}
 	if localWADHash != "" && session.WADHash != "" && session.WADHash != localWADHash {
-		_ = conn.Close()
+		_ = rawConn.Close()
 		return nil, fmt.Errorf("broadcast WAD hash mismatch: local=%s host=%s", localWADHash, session.WADHash)
 	}
 	v := &Viewer{
@@ -203,10 +281,18 @@ func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewe
 		session:   session,
 		tics:      make(chan demo.Tic, 256),
 		keyframes: make(chan Keyframe, 4),
+		meter:     meter,
 	}
 	v.wg.Add(1)
 	go v.readLoop()
 	return v, nil
+}
+
+func (v *Viewer) BandwidthStats() (float64, float64) {
+	if v == nil || v.meter == nil {
+		return 0, 0
+	}
+	return v.meter.stats()
 }
 
 func (v *Viewer) Session() SessionConfig {

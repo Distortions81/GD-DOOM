@@ -34,6 +34,10 @@ type LiveTicSink interface {
 	BroadcastTic(demo.Tic) error
 }
 
+type NetBandwidthMeter interface {
+	BandwidthStats() (uploadBytesPerSec, downloadBytesPerSec float64)
+}
+
 type Options struct {
 	Width                      int
 	Height                     int
@@ -127,6 +131,7 @@ type Options struct {
 	Episodes                   []int
 	LiveTicSource              LiveTicSource
 	LiveTicSink                LiveTicSink
+	NetBandwidthMeter          NetBandwidthMeter
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string
 	MusicSoundFontChoices      []string

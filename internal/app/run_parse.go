@@ -86,6 +86,13 @@ func liveTicSourceFromViewer(v *netplay.Viewer) runtimecfg.LiveTicSource {
 	return v
 }
 
+func netBandwidthMeterFromViewer(v *netplay.Viewer) runtimecfg.NetBandwidthMeter {
+	if v == nil {
+		return nil
+	}
+	return v
+}
+
 func normalizeNetplayShorthandArgs(args []string) []string {
 	if len(args) == 0 {
 		return nil
@@ -1062,6 +1069,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
 			MusicSoundFont:             musicSoundFont,
 			LiveTicSource:              liveTicSourceFromViewer(watchSession),
+			NetBandwidthMeter:          netBandwidthMeterFromViewer(watchSession),
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
 			DemoStopAfterTics:          max(0, *demoStopAfterTics),
@@ -1182,6 +1190,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			fmt.Fprintf(stderr, "broadcast: publishing to relay %s\n", resolvedBroadcastAddr)
 			fmt.Fprintf(stderr, "broadcast: session id %d\n", host.SessionID())
 			opts.LiveTicSink = host
+			opts.NetBandwidthMeter = host
 		}
 		nextMap := func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error) {
 			next, nerr := mapdata.NextMapName(wf, current, secret)

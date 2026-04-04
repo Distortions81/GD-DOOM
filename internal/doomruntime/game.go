@@ -23,6 +23,7 @@ import (
 	"gddoom/internal/render/scene"
 	"gddoom/internal/runtimecfg"
 
+	"github.com/dustin/go-humanize"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -3468,6 +3469,7 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 	if g.opts.SourcePortMode && !g.opts.NoFPS {
 		g.drawPerfOverlay(screen)
 	}
+	g.drawNetBandwidth(screen)
 	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
 		hud.DrawRecordingIndicator(screen, g.viewW, g.viewH, g.huTextWidth, g.drawHUTextAt)
 	}
@@ -3573,6 +3575,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 			if state.ShowPerf {
 				g.drawPerfOverlay(screen)
 			}
+			g.drawNetBandwidth(screen)
 		},
 	})
 }
@@ -20276,6 +20279,28 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 		HostDisplay: hostDisplay,
 		BenchLine:   benchDisplay,
 	}, g.huTextWidth, g.drawHUTextAt)
+}
+
+func (g *game) drawNetBandwidth(screen *ebiten.Image) {
+	if g == nil || g.opts.NetBandwidthMeter == nil || screen == nil {
+		return
+	}
+	up, down := g.opts.NetBandwidthMeter.BandwidthStats()
+	value := down
+	if g.opts.LiveTicSink != nil && g.opts.LiveTicSource == nil {
+		value = up
+	}
+	if value <= 0 {
+		return
+	}
+	label := humanize.SIWithDigits(value, 2, "B/s")
+	bounds := screen.Bounds()
+	x := 8
+	y := bounds.Dy() - 16
+	if y < 0 {
+		y = 0
+	}
+	ebitenutil.DebugPrintAt(screen, label, x, y)
 }
 
 func perfOverlayTimingDisplays(showTPS bool, ticDisplay string, actualTPS, actualFPS float64) (string, string) {
