@@ -184,6 +184,13 @@ func (s *Session) CaptureKeyframe() ([]byte, error) {
 	return s.meta.CaptureKeyframe()
 }
 
+func (s *Session) CurrentWorldTic() int {
+	if s == nil || s.meta.CurrentWorldTic == nil {
+		return 0
+	}
+	return s.meta.CurrentWorldTic()
+}
+
 func (s *Session) LoadKeyframe(data []byte) error {
 	if s == nil || s.meta.LoadKeyframe == nil {
 		return nil

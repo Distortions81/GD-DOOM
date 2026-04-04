@@ -8,7 +8,7 @@ func TestPulseArgsDefaults(t *testing.T) {
 	got := pulseArgs((PulseConfig{}).normalized())
 	want := []string{
 		"--raw",
-		"--rate=44100",
+		"--rate=48000",
 		"--channels=1",
 		"--format=s16le",
 		"--latency-msec=20",

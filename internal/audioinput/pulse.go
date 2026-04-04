@@ -6,8 +6,8 @@ import (
 )
 
 const (
-	captureChunkHz           = 35
-	defaultPulseSampleRate   = 44100
+	defaultFrameDurationMS   = 20
+	defaultPulseSampleRate   = 48000
 	defaultPulseChannels     = 1
 	defaultPulseFormat       = "s16le"
 	defaultPulseLatencyMilli = 20
@@ -43,8 +43,8 @@ func (c PulseConfig) validate() error {
 	if c.SampleRate <= 0 {
 		return fmt.Errorf("pulse sample rate must be > 0")
 	}
-	if c.SampleRate%captureChunkHz != 0 {
-		return fmt.Errorf("pulse sample rate %d must divide evenly into %d Hz chunks", c.SampleRate, captureChunkHz)
+	if (c.SampleRate*defaultFrameDurationMS)%1000 != 0 {
+		return fmt.Errorf("pulse sample rate %d must divide evenly into %d ms frames", c.SampleRate, defaultFrameDurationMS)
 	}
 	if c.Channels <= 0 {
 		return fmt.Errorf("pulse channels must be > 0")
@@ -60,8 +60,8 @@ func (c PulseConfig) validate() error {
 	}
 }
 
-func (c PulseConfig) samplesPerChunk() int {
-	return c.SampleRate / captureChunkHz
+func (c PulseConfig) samplesPerFrame() int {
+	return c.SampleRate * defaultFrameDurationMS / 1000
 }
 
 func (c PulseConfig) bytesPerSample() int {
@@ -73,6 +73,6 @@ func (c PulseConfig) bytesPerSample() int {
 	}
 }
 
-func (c PulseConfig) bytesPerChunk() int {
-	return c.samplesPerChunk() * c.Channels * c.bytesPerSample()
+func (c PulseConfig) bytesPerFrame() int {
+	return c.samplesPerFrame() * c.Channels * c.bytesPerSample()
 }

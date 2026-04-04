@@ -32,19 +32,19 @@ func TestPulseConfigValidateRejectsBadSampleRate(t *testing.T) {
 	}
 }
 
-func TestPulseConfigValidateRejectsNonEven35HzChunkRate(t *testing.T) {
-	err := (PulseConfig{SampleRate: 48000, Channels: 1, Format: "s16le", LatencyMillis: 20}).validate()
+func TestPulseConfigValidateRejectsNonEven20MSFrameRate(t *testing.T) {
+	err := (PulseConfig{SampleRate: 44117, Channels: 1, Format: "s16le", LatencyMillis: 20}).validate()
 	if err == nil {
-		t.Fatal("validate() error = nil want uneven 35 Hz chunk rate")
+		t.Fatal("validate() error = nil want uneven 20 ms frame rate")
 	}
 }
 
 func TestPulseConfigChunkSizingAtDefaults(t *testing.T) {
 	got := (PulseConfig{}).normalized()
-	if got.samplesPerChunk() != 1260 {
-		t.Fatalf("samplesPerChunk=%d want=1260", got.samplesPerChunk())
+	if got.samplesPerFrame() != 960 {
+		t.Fatalf("samplesPerFrame=%d want=960", got.samplesPerFrame())
 	}
-	if got.bytesPerChunk() != 2520 {
-		t.Fatalf("bytesPerChunk=%d want=2520", got.bytesPerChunk())
+	if got.bytesPerFrame() != 1920 {
+		t.Fatalf("bytesPerFrame=%d want=1920", got.bytesPerFrame())
 	}
 }

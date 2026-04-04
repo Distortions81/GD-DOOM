@@ -26,6 +26,38 @@ func readViewerTic(t *testing.T, v *Viewer) (demo.Tic, bool, error) {
 	return demo.Tic{}, false, nil
 }
 
+func readAudioConfig(t *testing.T, v *AudioViewer) (AudioConfig, bool, error) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok, err := v.PollAudioConfig()
+		if err != nil && err != io.EOF {
+			return AudioConfig{}, false, err
+		}
+		if ok {
+			return got, true, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return AudioConfig{}, false, nil
+}
+
+func readAudioChunk(t *testing.T, v *AudioViewer) (AudioChunk, bool, error) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok, err := v.PollAudioChunk()
+		if err != nil && err != io.EOF {
+			return AudioChunk{}, false, err
+		}
+		if ok {
+			return got, true, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return AudioChunk{}, false, nil
+}
+
 func TestRelayBroadcastWatchRoundTrip(t *testing.T) {
 	srv, err := ListenServer("127.0.0.1:0")
 	if err != nil {
@@ -384,6 +416,77 @@ func TestRelayViewerReceivesIntermissionAdvance(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for intermission advance")
+}
+
+func TestRelayAudioRoundTrip(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{
+		WADHash: "abc123",
+		MapName: "E1M1",
+	})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	ab, err := DialRelayAudioBroadcaster(srv.Addr(), b.SessionID())
+	if err != nil {
+		t.Fatalf("DialRelayAudioBroadcaster() error = %v", err)
+	}
+	defer ab.Close()
+
+	v, err := DialRelayAudioViewer(srv.Addr(), b.SessionID(), "abc123")
+	if err != nil {
+		t.Fatalf("DialRelayAudioViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	wantCfg := AudioConfig{
+		Codec:        audioCodecOpus,
+		SampleRate:   48000,
+		Channels:     1,
+		FrameSamples: 960,
+		Bitrate:      20000,
+	}
+	if err := ab.BroadcastAudioConfig(wantCfg); err != nil {
+		t.Fatalf("BroadcastAudioConfig() error = %v", err)
+	}
+
+	wantChunk := AudioChunk{
+		GameTic:     77,
+		StartSample: 960 * 4,
+		Payload:     []byte{1, 2, 3, 4, 5},
+	}
+	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {
+		t.Fatalf("BroadcastAudioChunk() error = %v", err)
+	}
+
+	gotCfg, ok, err := readAudioConfig(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioConfig() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for audio config")
+	}
+	if gotCfg != wantCfg {
+		t.Fatalf("PollAudioConfig() = %+v want %+v", gotCfg, wantCfg)
+	}
+
+	gotChunk, ok, err := readAudioChunk(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioChunk() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for audio chunk")
+	}
+	if gotChunk.GameTic != wantChunk.GameTic || gotChunk.StartSample != wantChunk.StartSample || !bytes.Equal(gotChunk.Payload, wantChunk.Payload) {
+		t.Fatalf("PollAudioChunk() = %+v want %+v", gotChunk, wantChunk)
+	}
 }
 
 func TestHelloRoundTripBinary(t *testing.T) {

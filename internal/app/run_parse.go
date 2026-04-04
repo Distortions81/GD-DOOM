@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/sha1"
 	"errors"
 	"flag"
@@ -31,6 +32,7 @@ import (
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/session"
+	"gddoom/internal/sessionvoice"
 	"gddoom/internal/sound"
 	"gddoom/internal/wad"
 
@@ -459,6 +461,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to relay addr (default 127.0.0.1:6670; bare -watch uses localhost)")
 	watchSessionID := fs.Uint64("watch-session", 0, "session id to watch from relay when using -watch")
 	lowLatency := fs.Bool("low-latency", false, "disable streamer-side netplay tic batching and flush every tic immediately")
+	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
+	micDevice := fs.String("mic-device", "", "PulseAudio capture device name for -mic")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -815,6 +819,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	wadHash := hashWADStackSHA1(wadPaths)
 	var watchSession *netplay.Viewer
+	var watchAudioSession *netplay.AudioViewer
 	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
 	musicSoundFontChoices := detectAvailableSoundFonts("soundfonts")
@@ -837,6 +842,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		defer watcher.Close()
 		watchSession = watcher
+		audioWatcher, aerr := netplay.DialRelayAudioViewer(resolvedWatchAddr, *watchSessionID, wadHash)
+		if aerr != nil {
+			fmt.Fprintf(stderr, "watch audio: %v\n", aerr)
+			return 1
+		}
+		defer audioWatcher.Close()
+		watchAudioSession = audioWatcher
 		cfg := watcher.Session()
 		*playerSlot = cfg.PlayerSlot
 		*skillLevel = cfg.SkillLevel
@@ -1219,6 +1231,14 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		sess := doomsession.New(m, opts, nextMap)
 		defer sess.Close()
+		if watchAudioSession != nil {
+			player, perr := sessionvoice.StartViewer(context.Background(), watchAudioSession)
+			if perr != nil {
+				fmt.Fprintf(stderr, "watch audio: %v\n", perr)
+				return 1
+			}
+			defer player.Close()
+		}
 		if watchSession != nil {
 			fmt.Fprintln(stderr, "watch: awaiting keyframe")
 			kf, ok, kerr := awaitWatchKeyframe(watchSession, 2*time.Second)
@@ -1246,6 +1266,27 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "broadcast: capture keyframe: %v\n", err)
 				return 1
 			}
+		}
+		if *mic {
+			if resolvedBroadcastAddr == "" {
+				fmt.Fprintln(stderr, "-mic requires -broadcast")
+				return 2
+			}
+			audioHost, aerr := netplay.DialRelayAudioBroadcaster(resolvedBroadcastAddr, sess.Options().LiveTicSink.(*netplay.RelayBroadcaster).SessionID())
+			if aerr != nil {
+				fmt.Fprintf(stderr, "broadcast audio: %v\n", aerr)
+				return 1
+			}
+			defer audioHost.Close()
+			streamer, serr := sessionvoice.StartPulseBroadcaster(context.Background(), audioHost, strings.TrimSpace(*micDevice), func() uint32 {
+				return uint32(max(0, sess.CurrentWorldTic()))
+			})
+			if serr != nil {
+				fmt.Fprintf(stderr, "broadcast audio: %v\n", serr)
+				return 1
+			}
+			defer streamer.Close()
+			fmt.Fprintf(stderr, "broadcast audio: publishing microphone stream\n")
 		}
 		rerr := doomsession.RunSession(sess)
 		if rerr != nil {

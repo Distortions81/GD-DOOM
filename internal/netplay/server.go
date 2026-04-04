@@ -25,11 +25,15 @@ type relaySession struct {
 	cfg               SessionConfig
 	server            *Server
 	src               net.Conn
+	audioSrc          net.Conn
 	viewers           map[*relayViewer]struct{}
+	audioViewers      map[*relayViewer]struct{}
 	lastKeyframe      []byte
 	lastKeyframeFlags byte
 	lastKeyframeTic   uint32
 	backlog           []bufferedFrame
+	lastAudioConfig   []byte
+	audioBacklog      []bufferedFrame
 }
 
 type relayViewer struct {
@@ -125,12 +129,24 @@ func (s *Server) handleConn(conn net.Conn) {
 	switch role {
 	case helloRoleBroadcaster:
 		s.handleBroadcaster(conn, sessionID, sessionCfg)
+	case helloRoleAudioBroadcaster:
+		if sessionID == 0 {
+			_ = conn.Close()
+			return
+		}
+		s.handleAudioBroadcaster(conn, sessionID)
 	case helloRoleViewer:
 		if sessionID == 0 {
 			_ = conn.Close()
 			return
 		}
 		s.handleViewer(conn, sessionID)
+	case helloRoleAudioViewer:
+		if sessionID == 0 {
+			_ = conn.Close()
+			return
+		}
+		s.handleAudioViewer(conn, sessionID)
 	default:
 		_ = conn.Close()
 	}
@@ -152,6 +168,7 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 		server:  s,
 		src:     conn,
 		viewers: make(map[*relayViewer]struct{}),
+		audioViewers: make(map[*relayViewer]struct{}),
 	}
 	s.sessions[sessionID] = sess
 	s.mu.Unlock()
@@ -169,6 +186,38 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 			return
 		}
 		s.forwardFrame(sess, header, payload)
+	}
+}
+
+func (s *Server) handleAudioBroadcaster(conn net.Conn, sessionID uint64) {
+	s.mu.Lock()
+	sess := s.sessions[sessionID]
+	if sess == nil || sess.audioSrc != nil {
+		s.mu.Unlock()
+		_ = conn.Close()
+		return
+	}
+	sess.audioSrc = conn
+	cfg := sess.cfg
+	s.mu.Unlock()
+	defer s.closeAudioSource(sess)
+	if err := writeHello(conn, helloRoleServer, 0, sessionID, cfg); err != nil {
+		return
+	}
+	for {
+		header, payload, err := readFrame(conn)
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				// ignore: audio source teardown handles disconnection
+			}
+			return
+		}
+		switch header.Type {
+		case frameTypeAudioConfig, frameTypeAudioChunk:
+			s.forwardAudioFrame(sess, header, payload)
+		default:
+			return
+		}
 	}
 }
 
@@ -260,6 +309,74 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 	}
 }
 
+func (s *Server) handleAudioViewer(conn net.Conn, sessionID uint64) {
+	s.mu.Lock()
+	sess := s.sessions[sessionID]
+	if sess == nil {
+		s.mu.Unlock()
+		_ = conn.Close()
+		return
+	}
+	viewer := &relayViewer{conn: conn}
+	cfg := sess.cfg
+	var (
+		audioConfig []byte
+		backlog     []bufferedFrame
+	)
+	viewer.mu.Lock()
+	sess.audioViewers[viewer] = struct{}{}
+	if len(sess.lastAudioConfig) > 0 {
+		audioConfig = append([]byte(nil), sess.lastAudioConfig...)
+	}
+	if len(sess.audioBacklog) > 0 {
+		backlog = make([]bufferedFrame, len(sess.audioBacklog))
+		for i, frame := range sess.audioBacklog {
+			backlog[i] = bufferedFrame{
+				header:  frame.header,
+				payload: append([]byte(nil), frame.payload...),
+			}
+		}
+	}
+	s.mu.Unlock()
+
+	if err := writeHello(conn, helloRoleAudioBroadcaster, 0, sessionID, cfg); err != nil {
+		viewer.mu.Unlock()
+		s.removeAudioViewer(sess, viewer)
+		_ = conn.Close()
+		return
+	}
+	if len(audioConfig) > 0 {
+		if err := writeFrame(conn, frameHeader{
+			Type:   frameTypeAudioConfig,
+			Length: uint32(len(audioConfig)),
+		}, audioConfig); err != nil {
+			viewer.mu.Unlock()
+			s.removeAudioViewer(sess, viewer)
+			_ = conn.Close()
+			return
+		}
+	}
+	for _, frame := range backlog {
+		if err := writeFrame(conn, frame.header, frame.payload); err != nil {
+			viewer.mu.Unlock()
+			s.removeAudioViewer(sess, viewer)
+			_ = conn.Close()
+			return
+		}
+	}
+	viewer.mu.Unlock()
+
+	var one [1]byte
+	for {
+		_, err := conn.Read(one[:])
+		if err != nil {
+			s.removeAudioViewer(sess, viewer)
+			_ = conn.Close()
+			return
+		}
+	}
+}
+
 func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []byte) {
 	s.mu.Lock()
 	if header.Type == frameTypeKeyframe {
@@ -290,6 +407,36 @@ func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []
 	for _, viewer := range viewers {
 		if err := viewer.writeFrame(header, payload); err != nil {
 			s.removeViewer(sess, viewer)
+			_ = viewer.conn.Close()
+		}
+	}
+}
+
+func (s *Server) forwardAudioFrame(sess *relaySession, header frameHeader, payload []byte) {
+	s.mu.Lock()
+	switch header.Type {
+	case frameTypeAudioConfig:
+		sess.lastAudioConfig = append(sess.lastAudioConfig[:0], payload...)
+		sess.audioBacklog = sess.audioBacklog[:0]
+	case frameTypeAudioChunk:
+		sess.audioBacklog = append(sess.audioBacklog, bufferedFrame{
+			header:  header,
+			payload: append([]byte(nil), payload...),
+		})
+		if len(sess.audioBacklog) > maxBufferedAudioFrames {
+			copy(sess.audioBacklog, sess.audioBacklog[len(sess.audioBacklog)-maxBufferedAudioFrames:])
+			sess.audioBacklog = sess.audioBacklog[:maxBufferedAudioFrames]
+		}
+	}
+	viewers := make([]*relayViewer, 0, len(sess.audioViewers))
+	for viewer := range sess.audioViewers {
+		viewers = append(viewers, viewer)
+	}
+	s.mu.Unlock()
+
+	for _, viewer := range viewers {
+		if err := viewer.writeFrame(header, payload); err != nil {
+			s.removeAudioViewer(sess, viewer)
 			_ = viewer.conn.Close()
 		}
 	}
@@ -346,6 +493,46 @@ func (s *Server) removeViewer(sess *relaySession, viewer *relayViewer) {
 	}
 }
 
+func (s *Server) removeAudioViewer(sess *relaySession, viewer *relayViewer) {
+	if s == nil || sess == nil || viewer == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cur := s.sessions[sess.id]; cur == sess {
+		delete(sess.audioViewers, viewer)
+	}
+}
+
+func (s *Server) closeAudioSource(sess *relaySession) {
+	if s == nil || sess == nil {
+		return
+	}
+	s.mu.Lock()
+	cur := s.sessions[sess.id]
+	if cur != sess || sess.audioSrc == nil {
+		s.mu.Unlock()
+		return
+	}
+	src := sess.audioSrc
+	sess.audioSrc = nil
+	viewers := make([]*relayViewer, 0, len(sess.audioViewers))
+	for viewer := range sess.audioViewers {
+		viewers = append(viewers, viewer)
+	}
+	sess.audioViewers = make(map[*relayViewer]struct{})
+	sess.lastAudioConfig = nil
+	sess.audioBacklog = nil
+	s.mu.Unlock()
+
+	if src != nil {
+		_ = src.Close()
+	}
+	for _, viewer := range viewers {
+		_ = viewer.conn.Close()
+	}
+}
+
 func (s *Server) closeSession(sess *relaySession) {
 	if s == nil || sess == nil {
 		return
@@ -361,13 +548,24 @@ func (s *Server) closeSession(sess *relaySession) {
 	for viewer := range sess.viewers {
 		viewers = append(viewers, viewer)
 	}
+	audioViewers := make([]*relayViewer, 0, len(sess.audioViewers))
+	for viewer := range sess.audioViewers {
+		audioViewers = append(audioViewers, viewer)
+	}
 	src := sess.src
+	audioSrc := sess.audioSrc
 	s.mu.Unlock()
 
 	if src != nil {
 		_ = src.Close()
 	}
+	if audioSrc != nil {
+		_ = audioSrc.Close()
+	}
 	for _, viewer := range viewers {
+		_ = viewer.conn.Close()
+	}
+	for _, viewer := range audioViewers {
 		_ = viewer.conn.Close()
 	}
 }
