@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	saveGameVersion = 17
+	saveGameVersion = 18
 	saveGamePrefix  = "dsg"
-	keyframeVersion = 4
+	keyframeVersion = 5
 	saveGameDirName = "saves"
 )
 
@@ -47,6 +47,7 @@ type saveRNGState struct {
 }
 
 type gameSaveState struct {
+	Session              sessionSaveState
 	Player               playerSaveState
 	View                 mapview.ViewState
 	Mode                 int
@@ -143,6 +144,7 @@ type gameSaveState struct {
 	DamageFlashTic       int
 	BonusFlashTic        int
 	SectorLightFx        []sectorLightEffectSaveState
+	Things               []mapdata.Thing
 	Sidedefs             []mapdata.Sidedef
 	Sectors              []mapdata.Sector
 	SectorFloor          []int64
@@ -153,6 +155,17 @@ type gameSaveState struct {
 	Plats                map[int]platThinkerSaveState
 	Ceilings             map[int]ceilingThinkerSaveState
 	DelayedSwitchReverts []delayedSwitchTextureSaveState
+}
+
+type sessionSaveState struct {
+	PlayerSlot       int
+	SkillLevel       int
+	GameMode         string
+	ShowNoSkillItems bool
+	ShowAllItems     bool
+	FastMonsters     bool
+	RespawnMonsters  bool
+	NoMonsters       bool
 }
 
 type playerSaveState struct {
@@ -439,6 +452,7 @@ func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int)
 	if strings.TrimSpace(string(file.Current)) == "" {
 		return fmt.Errorf("save missing current map")
 	}
+	applySavedSessionOptions(&sg.opts, file.Game.Session)
 
 	sg.stopAndClearMusic()
 	if sg.g != nil {
@@ -477,11 +491,41 @@ func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int)
 	return nil
 }
 
+func applySavedSessionOptions(dst *Options, s sessionSaveState) {
+	if dst == nil {
+		return
+	}
+	if s.PlayerSlot != 0 {
+		dst.PlayerSlot = s.PlayerSlot
+	}
+	if s.SkillLevel != 0 {
+		dst.SkillLevel = s.SkillLevel
+	}
+	if strings.TrimSpace(s.GameMode) != "" {
+		dst.GameMode = s.GameMode
+	}
+	dst.ShowNoSkillItems = s.ShowNoSkillItems
+	dst.ShowAllItems = s.ShowAllItems
+	dst.FastMonsters = s.FastMonsters
+	dst.RespawnMonsters = s.RespawnMonsters
+	dst.NoMonsters = s.NoMonsters
+}
+
 func captureGameSaveState(g *game) gameSaveState {
 	if g == nil {
 		return gameSaveState{}
 	}
 	return gameSaveState{
+		Session: sessionSaveState{
+			PlayerSlot:       g.opts.PlayerSlot,
+			SkillLevel:       g.opts.SkillLevel,
+			GameMode:         g.opts.GameMode,
+			ShowNoSkillItems: g.opts.ShowNoSkillItems,
+			ShowAllItems:     g.opts.ShowAllItems,
+			FastMonsters:     g.opts.FastMonsters,
+			RespawnMonsters:  g.opts.RespawnMonsters,
+			NoMonsters:       g.opts.NoMonsters,
+		},
 		Player:               capturePlayerSaveState(g.p),
 		View:                 g.State,
 		Mode:                 int(g.mode),
@@ -578,6 +622,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		DamageFlashTic:       g.damageFlashTic,
 		BonusFlashTic:        g.bonusFlashTic,
 		SectorLightFx:        captureSectorLightEffects(g.sectorLightFx),
+		Things:               append([]mapdata.Thing(nil), g.m.Things...),
 		Sidedefs:             append([]mapdata.Sidedef(nil), g.m.Sidedefs...),
 		Sectors:              append([]mapdata.Sector(nil), g.m.Sectors...),
 		SectorFloor:          append([]int64(nil), g.sectorFloor...),
@@ -595,6 +640,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	if g == nil {
 		return
 	}
+	applySavedSessionOptions(&g.opts, s.Session)
 	g.p = restorePlayerSaveState(s.Player)
 	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
 	g.State = s.View
@@ -696,6 +742,9 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.damageFlashTic = s.DamageFlashTic
 	g.bonusFlashTic = s.BonusFlashTic
 	g.sectorLightFx = restoreSectorLightEffects(s.SectorLightFx)
+	if len(s.Things) > 0 {
+		g.m.Things = append([]mapdata.Thing(nil), s.Things...)
+	}
 	if len(s.Sidedefs) > 0 {
 		g.m.Sidedefs = append([]mapdata.Sidedef(nil), s.Sidedefs...)
 	}

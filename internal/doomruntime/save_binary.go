@@ -380,6 +380,19 @@ func (w saveBinaryWriter) mapData(v *mapdata.Map) error {
 }
 
 func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
+	for _, n := range []int{v.Session.PlayerSlot, v.Session.SkillLevel} {
+		if err := w.int(n); err != nil {
+			return err
+		}
+	}
+	if err := w.str(v.Session.GameMode); err != nil {
+		return err
+	}
+	for _, b := range []bool{v.Session.ShowNoSkillItems, v.Session.ShowAllItems, v.Session.FastMonsters, v.Session.RespawnMonsters, v.Session.NoMonsters} {
+		if err := w.bool(b); err != nil {
+			return err
+		}
+	}
 	if err := w.playerSaveState(v.Player); err != nil {
 		return err
 	}
@@ -589,6 +602,16 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	}
 	if err := w.sectorLightEffectSlice(v.SectorLightFx); err != nil {
 		return err
+	}
+	if err := w.u32(uint32(len(v.Things))); err != nil {
+		return err
+	}
+	for _, it := range v.Things {
+		for _, n := range []int16{it.X, it.Y, it.Angle, it.Type, it.Flags} {
+			if err := w.i16(n); err != nil {
+				return err
+			}
+		}
 	}
 	if err := w.u32(uint32(len(v.Sidedefs))); err != nil {
 		return err
@@ -1478,6 +1501,20 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	var v gameSaveState
 	var err error
+	if v.Session.PlayerSlot, err = r.int(); err != nil {
+		return v, err
+	}
+	if v.Session.SkillLevel, err = r.int(); err != nil {
+		return v, err
+	}
+	if v.Session.GameMode, err = r.str(); err != nil {
+		return v, err
+	}
+	for _, dst := range []*bool{&v.Session.ShowNoSkillItems, &v.Session.ShowAllItems, &v.Session.FastMonsters, &v.Session.RespawnMonsters, &v.Session.NoMonsters} {
+		if *dst, err = r.bool(); err != nil {
+			return v, err
+		}
+	}
 	if v.Player, err = r.playerSaveState(); err != nil {
 		return v, err
 	}
@@ -1690,6 +1727,27 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 		return v, err
 	}
 	if v.SectorLightFx, err = readSlice(r, r.sectorLightEffect); err != nil {
+		return v, err
+	}
+	if v.Things, err = readSlice(r, func() (mapdata.Thing, error) {
+		var it mapdata.Thing
+		if it.X, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.Y, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.Angle, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.Type, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.Flags, err = r.i16(); err != nil {
+			return it, err
+		}
+		return it, nil
+	}); err != nil {
 		return v, err
 	}
 	if v.Sidedefs, err = readSlice(r, func() (mapdata.Sidedef, error) {

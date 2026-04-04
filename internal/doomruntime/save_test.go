@@ -545,6 +545,136 @@ func TestSaveLoadRoundTrip_PreservesXDeathFlag(t *testing.T) {
 	}
 }
 
+func TestLoadGameRestoresSavedSessionGameplayOptionsForPickups(t *testing.T) {
+	slot := 94
+	path := saveGamePath(slot)
+	_ = os.Remove(path)
+	defer os.Remove(path)
+
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+			{Type: 5, X: 24, Y: 0, Flags: skillMediumBits},
+		},
+		Sectors: []mapdata.Sector{
+			{FloorHeight: 0, CeilingHeight: 128},
+		},
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1, SkillLevel: 3, GameMode: gameModeSingle},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+
+	if err := sg.SaveGameToSlot(slot); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	loaded := &sessionGame{
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			SkillLevel: 1,
+			GameMode:   gameModeSingle,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	if err := loaded.LoadGameFromSlot(slot); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	if got := loaded.g.opts.SkillLevel; got != 3 {
+		t.Fatalf("loaded skill=%d want=3 from save", got)
+	}
+	if !loaded.g.thingActiveInSession(1) {
+		t.Fatal("pickup should be active after restoring saved gameplay options")
+	}
+
+	loaded.g.runGameplayTic(moveCmd{forward: forwardMove[1]}, false, false)
+
+	if !loaded.g.inventory.BlueKey {
+		t.Fatal("blue key not collected after load with restored gameplay options")
+	}
+}
+
+func TestSaveLoadRoundTrip_PreservesRuntimeAddedPickupThings(t *testing.T) {
+	slot := 93
+	path := saveGamePath(slot)
+	_ = os.Remove(path)
+	defer os.Remove(path)
+
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+		},
+		Sectors: []mapdata.Sector{
+			{FloorHeight: 0, CeilingHeight: 128},
+		},
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1, SkillLevel: 3, GameMode: gameModeSingle},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+
+	idx := sg.g.appendRuntimeThing(mapdata.Thing{Type: 5, X: 24, Y: 0, Flags: skillMediumBits}, true)
+	if idx < 0 {
+		t.Fatal("appendRuntimeThing() failed")
+	}
+	sg.g.setThingPosFixed(idx, 24*fracUnit, 0)
+	sg.g.setThingSupportState(idx, 0, 0, 128*fracUnit)
+
+	if err := sg.SaveGameToSlot(slot); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	loaded := &sessionGame{
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			SkillLevel: 3,
+			GameMode:   gameModeSingle,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	if err := loaded.LoadGameFromSlot(slot); err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	if got, want := len(loaded.g.m.Things), len(loaded.g.thingCollected); got != want {
+		t.Fatalf("thing count mismatch after load: len(m.Things)=%d len(thingCollected)=%d", got, want)
+	}
+	if got, want := len(loaded.g.m.Things), len(loaded.g.thingDropped); got != want {
+		t.Fatalf("thing count mismatch after load: len(m.Things)=%d len(thingDropped)=%d", got, want)
+	}
+
+	loaded.g.runGameplayTic(moveCmd{forward: forwardMove[1]}, false, false)
+
+	if !loaded.g.inventory.BlueKey {
+		t.Fatal("runtime-added key not collected after save/load")
+	}
+}
+
 func TestLoadGameRejectsUnknownHeader(t *testing.T) {
 	sg := &sessionGame{}
 	err := sg.unmarshalSaveGame([]byte("not-a-gddoom-save"))
