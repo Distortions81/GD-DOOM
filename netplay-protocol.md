@@ -16,6 +16,35 @@ Current state:
 
 This document describes the intended direction from that starting point.
 
+## Current Commands
+
+Current local TCP relay flow:
+
+Server:
+
+```bash
+go run ./cmd/gdsfrelay -listen :6670
+```
+
+Broadcaster:
+
+```bash
+go run . -wad DOOM1.WAD -broadcast
+```
+
+Viewer:
+
+```bash
+go run . -wad DOOM1.WAD -watch -watch-session <session-id>
+```
+
+Notes:
+
+- bare `-broadcast` publishes to `127.0.0.1:6670`
+- bare `-watch` connects to `127.0.0.1:6670`
+- the broadcaster prints the assigned session id on startup
+- the viewer currently joins from the latest relay-held keyframe and then consumes replayed/live tics
+
 This protocol is specifically for streaming, relay, watch, and spectator use cases.
 
 Full multiplayer should use a separate protocol family with:
