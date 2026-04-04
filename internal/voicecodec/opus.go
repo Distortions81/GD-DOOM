@@ -8,6 +8,7 @@ import (
 
 const (
 	CodecOpus           byte = 1
+	CodecPCM16Mono      byte = 2
 	SampleRate               = 48000
 	Channels                 = 1
 	FrameDurationMillis      = 20

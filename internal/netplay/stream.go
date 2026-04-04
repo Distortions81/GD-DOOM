@@ -59,6 +59,7 @@ const (
 
 const (
 	audioCodecOpus       byte = 1
+	audioCodecPCM16Mono  byte = 2
 	maxBufferedAudioFrames     = 50 * 2
 )
 

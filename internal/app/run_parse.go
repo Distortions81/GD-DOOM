@@ -1232,7 +1232,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		sess := doomsession.New(m, opts, nextMap)
 		defer sess.Close()
 		if watchAudioSession != nil {
-			player, perr := sessionvoice.StartViewer(context.Background(), watchAudioSession)
+			player, perr := sessionvoice.StartViewer(context.Background(), watchAudioSession, func() uint32 {
+				return uint32(max(0, sess.CurrentWorldTic()))
+			})
 			if perr != nil {
 				fmt.Fprintf(stderr, "watch audio: %v\n", perr)
 				return 1
