@@ -199,6 +199,19 @@ func TestRunParseRejectsBroadcastWithoutRender(t *testing.T) {
 	}
 }
 
+func TestRunParseHelpIncludesLowLatencyFlag(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-help"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d want=0 stderr=%q", code, errb.String())
+	}
+	helpText := out.String() + errb.String()
+	if !strings.Contains(helpText, "-low-latency") {
+		t.Fatalf("help output does not mention -low-latency: %q", helpText)
+	}
+}
+
 func TestRunParseRejectsWatchDuringDemoPlayback(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer

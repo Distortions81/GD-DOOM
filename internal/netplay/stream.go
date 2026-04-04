@@ -42,6 +42,7 @@ const (
 const (
 	frameHeaderSize  = 12
 	ticBatchOverhead = 4
+	ticBatchSize     = 4
 )
 
 const (
@@ -83,8 +84,10 @@ type RelayBroadcaster struct {
 	sessionID uint64
 	meter     *bandwidthMeter
 
-	mu     sync.Mutex
-	closed bool
+	mu           sync.Mutex
+	closed       bool
+	pendingTic   []demo.Tic
+	ticBatchSize int
 }
 
 func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) (*RelayBroadcaster, error) {
@@ -114,7 +117,13 @@ func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) 
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("unexpected relay hello ack role %d", role)
 	}
-	return &RelayBroadcaster{conn: conn, sessionID: assignedID, meter: meter}, nil
+	return &RelayBroadcaster{
+		conn:         conn,
+		sessionID:    assignedID,
+		meter:        meter,
+		pendingTic:   make([]demo.Tic, 0, ticBatchSize),
+		ticBatchSize: ticBatchSize,
+	}, nil
 }
 
 func (b *RelayBroadcaster) SessionID() uint64 {
@@ -131,17 +140,36 @@ func (b *RelayBroadcaster) BandwidthStats() (float64, float64) {
 	return b.meter.stats()
 }
 
+func (b *RelayBroadcaster) SetLowLatency(enabled bool) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if enabled {
+		b.ticBatchSize = 1
+	} else {
+		b.ticBatchSize = ticBatchSize
+	}
+	if len(b.pendingTic) >= b.ticBatchSize {
+		_ = b.flushPendingTicsLocked()
+	}
+}
+
 func (b *RelayBroadcaster) BroadcastTic(tc demo.Tic) error {
 	if b == nil {
 		return nil
 	}
-	payload := make([]byte, ticBatchOverhead+4)
-	binary.LittleEndian.PutUint16(payload[0:2], 1)
-	copy(payload[ticBatchOverhead:], packDemoTic(tc))
-	return writeFrame(b.conn, frameHeader{
-		Type:   frameTypeTicBatch,
-		Length: uint32(len(payload)),
-	}, payload)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return net.ErrClosed
+	}
+	b.pendingTic = append(b.pendingTic, tc)
+	if len(b.pendingTic) < b.ticBatchSize {
+		return nil
+	}
+	return b.flushPendingTicsLocked()
 }
 
 func (b *RelayBroadcaster) BroadcastKeyframe(tic uint32, blob []byte) error {
@@ -151,6 +179,14 @@ func (b *RelayBroadcaster) BroadcastKeyframe(tic uint32, blob []byte) error {
 func (b *RelayBroadcaster) BroadcastKeyframeWithFlags(tic uint32, blob []byte, flags byte) error {
 	if b == nil {
 		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return net.ErrClosed
+	}
+	if err := b.flushPendingTicsLocked(); err != nil {
+		return err
 	}
 	return writeFrame(b.conn, frameHeader{
 		Type:   frameTypeKeyframe,
@@ -163,6 +199,14 @@ func (b *RelayBroadcaster) BroadcastKeyframeWithFlags(tic uint32, blob []byte, f
 func (b *RelayBroadcaster) BroadcastIntermissionAdvance() error {
 	if b == nil {
 		return nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return net.ErrClosed
+	}
+	if err := b.flushPendingTicsLocked(); err != nil {
+		return err
 	}
 	return writeFrame(b.conn, frameHeader{Type: frameTypeIntermissionAdvance}, nil)
 }
@@ -177,8 +221,33 @@ func (b *RelayBroadcaster) Close() error {
 		return nil
 	}
 	b.closed = true
+	err := b.flushPendingTicsLocked()
 	b.mu.Unlock()
-	return b.conn.Close()
+	closeErr := b.conn.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
+func (b *RelayBroadcaster) flushPendingTicsLocked() error {
+	if b == nil || len(b.pendingTic) == 0 {
+		return nil
+	}
+	payload := make([]byte, ticBatchOverhead+len(b.pendingTic)*4)
+	binary.LittleEndian.PutUint16(payload[0:2], uint16(len(b.pendingTic)))
+	for i, tc := range b.pendingTic {
+		copy(payload[ticBatchOverhead+i*4:], packDemoTic(tc))
+	}
+	err := writeFrame(b.conn, frameHeader{
+		Type:   frameTypeTicBatch,
+		Length: uint32(len(payload)),
+	}, payload)
+	if err != nil {
+		return err
+	}
+	b.pendingTic = b.pendingTic[:0]
+	return nil
 }
 
 type Viewer struct {

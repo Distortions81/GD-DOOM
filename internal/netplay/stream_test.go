@@ -58,20 +58,29 @@ func TestRelayBroadcastWatchRoundTrip(t *testing.T) {
 		t.Fatalf("Session().GameMode = %q want %q", got, "single")
 	}
 
-	want := demo.Tic{Forward: 25, Side: -5, AngleTurn: 512, Buttons: demo.ButtonAttack | demo.ButtonUse}
-	if err := b.BroadcastTic(want); err != nil {
-		t.Fatalf("BroadcastTic() error = %v", err)
+	want := []demo.Tic{
+		{Forward: 25, Side: -5, AngleTurn: 512, Buttons: demo.ButtonAttack | demo.ButtonUse},
+		{Forward: 10},
+		{Side: -7},
+		{Buttons: demo.ButtonUse},
+	}
+	for i, tc := range want {
+		if err := b.BroadcastTic(tc); err != nil {
+			t.Fatalf("BroadcastTic(%d) error = %v", i, err)
+		}
 	}
 
-	got, ok, err := readViewerTic(t, v)
-	if err != nil {
-		t.Fatalf("PollTic() error = %v", err)
-	}
-	if !ok {
-		t.Fatal("timed out waiting for tic")
-	}
-	if got != want {
-		t.Fatalf("PollTic() = %+v want %+v", got, want)
+	for i, tc := range want {
+		got, ok, err := readViewerTic(t, v)
+		if err != nil {
+			t.Fatalf("PollTic(%d) error = %v", i, err)
+		}
+		if !ok {
+			t.Fatalf("timed out waiting for tic %d", i)
+		}
+		if got != tc {
+			t.Fatalf("PollTic(%d) = %+v want %+v", i, got, tc)
+		}
 	}
 }
 
@@ -165,9 +174,16 @@ func TestRelayViewerMandatoryKeyframeDrainsQueuedTics(t *testing.T) {
 	if err := b.BroadcastKeyframeWithFlags(99, []byte{1, 2, 3}, keyframeFlagMandatoryApply); err != nil {
 		t.Fatalf("BroadcastKeyframeWithFlags() error = %v", err)
 	}
-	want := demo.Tic{Forward: 25, Buttons: demo.ButtonUse}
-	if err := b.BroadcastTic(want); err != nil {
-		t.Fatalf("BroadcastTic(want) error = %v", err)
+	want := []demo.Tic{
+		{Forward: 25, Buttons: demo.ButtonUse},
+		{Forward: 26},
+		{Forward: 27},
+		{Forward: 28},
+	}
+	for i, tc := range want {
+		if err := b.BroadcastTic(tc); err != nil {
+			t.Fatalf("BroadcastTic(want[%d]) error = %v", i, err)
+		}
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -190,14 +206,90 @@ func TestRelayViewerMandatoryKeyframeDrainsQueuedTics(t *testing.T) {
 			if !ok {
 				t.Fatal("timed out waiting for tic after mandatory keyframe")
 			}
-			if got != want {
-				t.Fatalf("PollTic() = %+v want %+v", got, want)
+			if got != want[0] {
+				t.Fatalf("PollTic() = %+v want %+v", got, want[0])
 			}
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for mandatory keyframe")
+}
+
+func TestRelayBroadcasterFlushesPartialTicBatchBeforeKeyframe(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{MapName: "E1M1"})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	v, err := DialRelayViewer(srv.Addr(), b.SessionID(), "")
+	if err != nil {
+		t.Fatalf("DialRelayViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	want := demo.Tic{Forward: 7, Buttons: demo.ButtonAttack}
+	if err := b.BroadcastTic(want); err != nil {
+		t.Fatalf("BroadcastTic() error = %v", err)
+	}
+	if err := b.BroadcastKeyframe(12, []byte{1, 2, 3}); err != nil {
+		t.Fatalf("BroadcastKeyframe() error = %v", err)
+	}
+
+	got, ok, err := readViewerTic(t, v)
+	if err != nil {
+		t.Fatalf("PollTic() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for flushed tic")
+	}
+	if got != want {
+		t.Fatalf("PollTic() = %+v want %+v", got, want)
+	}
+}
+
+func TestRelayBroadcasterLowLatencyFlushesEveryTic(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{MapName: "E1M1"})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	b.SetLowLatency(true)
+	defer b.Close()
+
+	v, err := DialRelayViewer(srv.Addr(), b.SessionID(), "")
+	if err != nil {
+		t.Fatalf("DialRelayViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	want := demo.Tic{Forward: 13, Buttons: demo.ButtonUse}
+	if err := b.BroadcastTic(want); err != nil {
+		t.Fatalf("BroadcastTic() error = %v", err)
+	}
+
+	got, ok, err := readViewerTic(t, v)
+	if err != nil {
+		t.Fatalf("PollTic() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for immediate low-latency tic")
+	}
+	if got != want {
+		t.Fatalf("PollTic() = %+v want %+v", got, want)
+	}
 }
 
 func TestRelayViewerReceivesIntermissionAdvance(t *testing.T) {

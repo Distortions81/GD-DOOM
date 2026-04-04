@@ -451,6 +451,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	broadcastAddr := fs.String("broadcast", "", "publish to GDSF relay at addr (default 127.0.0.1:6670; bare -broadcast uses localhost)")
 	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to relay addr (default 127.0.0.1:6670; bare -watch uses localhost)")
 	watchSessionID := fs.Uint64("watch-session", 0, "session id to watch from relay when using -watch")
+	lowLatency := fs.Bool("low-latency", false, "disable streamer-side netplay tic batching and flush every tic immediately")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -1185,6 +1186,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "broadcast: %v\n", berr)
 				return 1
 			}
+			host.SetLowLatency(*lowLatency)
 			defer host.Close()
 			fmt.Fprintf(stderr, "broadcast: publishing to relay %s\n", resolvedBroadcastAddr)
 			fmt.Fprintf(stderr, "broadcast: session id %d\n", host.SessionID())
