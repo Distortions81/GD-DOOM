@@ -419,6 +419,15 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	if err := w.i64Slice(v.ThingY); err != nil {
 		return err
 	}
+	if err := w.i64Slice(v.ThingMomX); err != nil {
+		return err
+	}
+	if err := w.i64Slice(v.ThingMomY); err != nil {
+		return err
+	}
+	if err := w.i64Slice(v.ThingMomZ); err != nil {
+		return err
+	}
 	if err := w.u32Slice(v.ThingAngleState); err != nil {
 		return err
 	}
@@ -464,6 +473,12 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	if err := w.boolSlice(v.ThingJustHit); err != nil {
 		return err
 	}
+	if err := w.boolSlice(v.ThingSkullFly); err != nil {
+		return err
+	}
+	if err := w.boolSlice(v.ThingResumeChaseNow); err != nil {
+		return err
+	}
 	if err := w.intSlice(v.ThingReactionTics); err != nil {
 		return err
 	}
@@ -474,6 +489,12 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 		return err
 	}
 	if err := w.boolSlice(v.ThingDead); err != nil {
+		return err
+	}
+	if err := w.boolSlice(v.ThingAmbush); err != nil {
+		return err
+	}
+	if err := w.boolSlice(v.ThingInFloat); err != nil {
 		return err
 	}
 	if err := w.boolSlice(v.ThingGibbed); err != nil {
@@ -549,6 +570,11 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	if err := w.playerStats(v.Stats); err != nil {
 		return err
 	}
+	for _, n := range []int64{v.PlayerBlockOrder, v.NextThinkerOrder, v.NextBlockmapOrder} {
+		if err := w.i64(n); err != nil {
+			return err
+		}
+	}
 	if err := w.boolSlice(v.SecretFound); err != nil {
 		return err
 	}
@@ -557,6 +583,51 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	}
 	if err := w.sectorLightEffectSlice(v.SectorLightFx); err != nil {
 		return err
+	}
+	if err := w.u32(uint32(len(v.Sidedefs))); err != nil {
+		return err
+	}
+	for _, it := range v.Sidedefs {
+		if err := w.i16(it.TextureOffset); err != nil {
+			return err
+		}
+		if err := w.i16(it.RowOffset); err != nil {
+			return err
+		}
+		for _, s := range []string{it.Top, it.Bottom, it.Mid} {
+			if err := w.str(s); err != nil {
+				return err
+			}
+		}
+		if err := w.u16(it.Sector); err != nil {
+			return err
+		}
+	}
+	if err := w.u32(uint32(len(v.Sectors))); err != nil {
+		return err
+	}
+	for _, it := range v.Sectors {
+		if err := w.i16(it.FloorHeight); err != nil {
+			return err
+		}
+		if err := w.i16(it.CeilingHeight); err != nil {
+			return err
+		}
+		if err := w.str(it.FloorPic); err != nil {
+			return err
+		}
+		if err := w.str(it.CeilingPic); err != nil {
+			return err
+		}
+		if err := w.i16(it.Light); err != nil {
+			return err
+		}
+		if err := w.i16(it.Special); err != nil {
+			return err
+		}
+		if err := w.i16(it.Tag); err != nil {
+			return err
+		}
 	}
 	if err := w.i64Slice(v.SectorFloor); err != nil {
 		return err
@@ -829,6 +900,9 @@ func (w saveBinaryWriter) doorThinkerMap(v map[int]doorThinkerSaveState) error {
 		if err := w.int(key); err != nil {
 			return err
 		}
+		if err := w.i64(it.Order); err != nil {
+			return err
+		}
 		for _, n := range []int{it.Sector, it.Type, it.Direction, it.TopWait, it.TopCountdown} {
 			if err := w.int(n); err != nil {
 				return err
@@ -850,6 +924,9 @@ func (w saveBinaryWriter) floorThinkerMap(v map[int]floorThinkerSaveState) error
 	for _, key := range keys {
 		it := v[key]
 		if err := w.int(key); err != nil {
+			return err
+		}
+		if err := w.i64(it.Order); err != nil {
 			return err
 		}
 		for _, n := range []int{it.Sector, it.Direction} {
@@ -882,6 +959,9 @@ func (w saveBinaryWriter) platThinkerMap(v map[int]platThinkerSaveState) error {
 	for _, key := range keys {
 		it := v[key]
 		if err := w.int(key); err != nil {
+			return err
+		}
+		if err := w.i64(it.Order); err != nil {
 			return err
 		}
 		if err := w.int(it.Sector); err != nil {
@@ -919,6 +999,9 @@ func (w saveBinaryWriter) ceilingThinkerMap(v map[int]ceilingThinkerSaveState) e
 	for _, key := range keys {
 		it := v[key]
 		if err := w.int(key); err != nil {
+			return err
+		}
+		if err := w.i64(it.Order); err != nil {
 			return err
 		}
 		for _, n := range []int{it.Sector, it.Direction, it.OldDirection} {
@@ -1428,6 +1511,15 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	if v.ThingY, err = readI64Slice(r); err != nil {
 		return v, err
 	}
+	if v.ThingMomX, err = readI64Slice(r); err != nil {
+		return v, err
+	}
+	if v.ThingMomY, err = readI64Slice(r); err != nil {
+		return v, err
+	}
+	if v.ThingMomZ, err = readI64Slice(r); err != nil {
+		return v, err
+	}
 	if v.ThingAngleState, err = readU32Slice(r); err != nil {
 		return v, err
 	}
@@ -1473,6 +1565,12 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	if v.ThingJustHit, err = readBoolSlice(r); err != nil {
 		return v, err
 	}
+	if v.ThingSkullFly, err = readBoolSlice(r); err != nil {
+		return v, err
+	}
+	if v.ThingResumeChaseNow, err = readBoolSlice(r); err != nil {
+		return v, err
+	}
 	if v.ThingReactionTics, err = readIntSlice(r); err != nil {
 		return v, err
 	}
@@ -1483,6 +1581,12 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 		return v, err
 	}
 	if v.ThingDead, err = readBoolSlice(r); err != nil {
+		return v, err
+	}
+	if v.ThingAmbush, err = readBoolSlice(r); err != nil {
+		return v, err
+	}
+	if v.ThingInFloat, err = readBoolSlice(r); err != nil {
 		return v, err
 	}
 	if v.ThingGibbed, err = readBoolSlice(r); err != nil {
@@ -1558,6 +1662,15 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	if v.Stats, err = r.playerStats(); err != nil {
 		return v, err
 	}
+	if v.PlayerBlockOrder, err = r.i64(); err != nil {
+		return v, err
+	}
+	if v.NextThinkerOrder, err = r.i64(); err != nil {
+		return v, err
+	}
+	if v.NextBlockmapOrder, err = r.i64(); err != nil {
+		return v, err
+	}
 	if v.SecretFound, err = readBoolSlice(r); err != nil {
 		return v, err
 	}
@@ -1565,6 +1678,57 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 		return v, err
 	}
 	if v.SectorLightFx, err = readSlice(r, r.sectorLightEffect); err != nil {
+		return v, err
+	}
+	if v.Sidedefs, err = readSlice(r, func() (mapdata.Sidedef, error) {
+		var it mapdata.Sidedef
+		if it.TextureOffset, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.RowOffset, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.Top, err = r.str(); err != nil {
+			return it, err
+		}
+		if it.Bottom, err = r.str(); err != nil {
+			return it, err
+		}
+		if it.Mid, err = r.str(); err != nil {
+			return it, err
+		}
+		if it.Sector, err = r.u16(); err != nil {
+			return it, err
+		}
+		return it, nil
+	}); err != nil {
+		return v, err
+	}
+	if v.Sectors, err = readSlice(r, func() (mapdata.Sector, error) {
+		var it mapdata.Sector
+		if it.FloorHeight, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.CeilingHeight, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.FloorPic, err = r.str(); err != nil {
+			return it, err
+		}
+		if it.CeilingPic, err = r.str(); err != nil {
+			return it, err
+		}
+		if it.Light, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.Special, err = r.i16(); err != nil {
+			return it, err
+		}
+		if it.Tag, err = r.i16(); err != nil {
+			return it, err
+		}
+		return it, nil
+	}); err != nil {
 		return v, err
 	}
 	if v.SectorFloor, err = readI64Slice(r); err != nil {
@@ -1744,6 +1908,9 @@ func (r saveBinaryReader) doorThinkerMap() (map[int]doorThinkerSaveState, error)
 			return nil, err
 		}
 		var v doorThinkerSaveState
+		if v.Order, err = r.i64(); err != nil {
+			return nil, err
+		}
 		for _, dst := range []*int{&v.Sector, &v.Type, &v.Direction, &v.TopWait, &v.TopCountdown} {
 			if *dst, err = r.int(); err != nil {
 				return nil, err
@@ -1771,6 +1938,9 @@ func (r saveBinaryReader) floorThinkerMap() (map[int]floorThinkerSaveState, erro
 			return nil, err
 		}
 		var v floorThinkerSaveState
+		if v.Order, err = r.i64(); err != nil {
+			return nil, err
+		}
 		if v.Sector, err = r.int(); err != nil {
 			return nil, err
 		}
@@ -1808,6 +1978,9 @@ func (r saveBinaryReader) platThinkerMap() (map[int]platThinkerSaveState, error)
 			return nil, err
 		}
 		var v platThinkerSaveState
+		if v.Order, err = r.i64(); err != nil {
+			return nil, err
+		}
 		if v.Sector, err = r.int(); err != nil {
 			return nil, err
 		}
@@ -1857,6 +2030,9 @@ func (r saveBinaryReader) ceilingThinkerMap() (map[int]ceilingThinkerSaveState, 
 			return nil, err
 		}
 		var v ceilingThinkerSaveState
+		if v.Order, err = r.i64(); err != nil {
+			return nil, err
+		}
 		if v.Sector, err = r.int(); err != nil {
 			return nil, err
 		}

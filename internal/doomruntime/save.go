@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	saveGameVersion = 14
+	saveGameVersion = 16
 	saveGamePrefix  = "dsg"
-	keyframeVersion = 1
+	keyframeVersion = 3
 	saveGameDirName = "saves"
 )
 
@@ -69,6 +69,9 @@ type gameSaveState struct {
 	ThingDropped         []bool
 	ThingX               []int64
 	ThingY               []int64
+	ThingMomX            []int64
+	ThingMomY            []int64
+	ThingMomZ            []int64
 	ThingAngleState      []uint32
 	ThingZState          []int64
 	ThingFloorState      []int64
@@ -84,10 +87,14 @@ type gameSaveState struct {
 	ThingMoveCount       []int
 	ThingJustAtk         []bool
 	ThingJustHit         []bool
+	ThingSkullFly        []bool
+	ThingResumeChaseNow  []bool
 	ThingReactionTics    []int
 	ThingWakeTics        []int
 	ThingLastLook        []int
 	ThingDead            []bool
+	ThingAmbush          []bool
+	ThingInFloat         []bool
 	ThingGibbed          []bool
 	ThingGibTick         []int
 	ThingDeathTics       []int
@@ -122,6 +129,9 @@ type gameSaveState struct {
 	WeaponPSpriteY       int
 	Stats                playerStats
 	WorldTic             int
+	PlayerBlockOrder     int64
+	NextThinkerOrder     int64
+	NextBlockmapOrder    int64
 	SecretFound          []bool
 	SecretsFound         int
 	SecretsTotal         int
@@ -131,6 +141,8 @@ type gameSaveState struct {
 	DamageFlashTic       int
 	BonusFlashTic        int
 	SectorLightFx        []sectorLightEffectSaveState
+	Sidedefs             []mapdata.Sidedef
+	Sectors              []mapdata.Sector
 	SectorFloor          []int64
 	SectorCeil           []int64
 	LineSpecial          []uint16
@@ -176,6 +188,7 @@ type playerInventorySaveState struct {
 }
 
 type doorThinkerSaveState struct {
+	Order        int64
 	Sector       int
 	Type         int
 	Direction    int
@@ -186,6 +199,7 @@ type doorThinkerSaveState struct {
 }
 
 type floorThinkerSaveState struct {
+	Order         int64
 	Sector        int
 	Direction     int
 	Speed         int64
@@ -196,6 +210,7 @@ type floorThinkerSaveState struct {
 }
 
 type platThinkerSaveState struct {
+	Order         int64
 	Sector        int
 	Type          uint8
 	Status        uint8
@@ -210,6 +225,7 @@ type platThinkerSaveState struct {
 }
 
 type ceilingThinkerSaveState struct {
+	Order        int64
 	Sector       int
 	Action       mapdata.CeilingAction
 	Direction    int
@@ -486,6 +502,9 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingDropped:         append([]bool(nil), g.thingDropped...),
 		ThingX:               append([]int64(nil), g.thingX...),
 		ThingY:               append([]int64(nil), g.thingY...),
+		ThingMomX:            append([]int64(nil), g.thingMomX...),
+		ThingMomY:            append([]int64(nil), g.thingMomY...),
+		ThingMomZ:            append([]int64(nil), g.thingMomZ...),
 		ThingAngleState:      append([]uint32(nil), g.thingAngleState...),
 		ThingZState:          append([]int64(nil), g.thingZState...),
 		ThingFloorState:      append([]int64(nil), g.thingFloorState...),
@@ -501,10 +520,14 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingMoveCount:       append([]int(nil), g.thingMoveCount...),
 		ThingJustAtk:         append([]bool(nil), g.thingJustAtk...),
 		ThingJustHit:         append([]bool(nil), g.thingJustHit...),
+		ThingSkullFly:        append([]bool(nil), g.thingSkullFly...),
+		ThingResumeChaseNow:  append([]bool(nil), g.thingResumeChaseNow...),
 		ThingReactionTics:    append([]int(nil), g.thingReactionTics...),
 		ThingWakeTics:        append([]int(nil), g.thingWakeTics...),
 		ThingLastLook:        append([]int(nil), g.thingLastLook...),
 		ThingDead:            append([]bool(nil), g.thingDead...),
+		ThingAmbush:          append([]bool(nil), g.thingAmbush...),
+		ThingInFloat:         append([]bool(nil), g.thingInFloat...),
 		ThingGibbed:          append([]bool(nil), g.thingGibbed...),
 		ThingGibTick:         append([]int(nil), g.thingGibTick...),
 		ThingDeathTics:       append([]int(nil), g.thingDeathTics...),
@@ -539,6 +562,9 @@ func captureGameSaveState(g *game) gameSaveState {
 		WeaponPSpriteY:       g.weaponPSpriteY,
 		Stats:                g.stats,
 		WorldTic:             g.worldTic,
+		PlayerBlockOrder:     g.playerBlockOrder,
+		NextThinkerOrder:     g.nextThinkerOrder,
+		NextBlockmapOrder:    g.nextBlockmapOrder,
 		SecretFound:          append([]bool(nil), g.secretFound...),
 		SecretsFound:         g.secretsFound,
 		SecretsTotal:         g.secretsTotal,
@@ -548,6 +574,8 @@ func captureGameSaveState(g *game) gameSaveState {
 		DamageFlashTic:       g.damageFlashTic,
 		BonusFlashTic:        g.bonusFlashTic,
 		SectorLightFx:        captureSectorLightEffects(g.sectorLightFx),
+		Sidedefs:             append([]mapdata.Sidedef(nil), g.m.Sidedefs...),
+		Sectors:              append([]mapdata.Sector(nil), g.m.Sectors...),
 		SectorFloor:          append([]int64(nil), g.sectorFloor...),
 		SectorCeil:           append([]int64(nil), g.sectorCeil...),
 		LineSpecial:          append([]uint16(nil), g.lineSpecial...),
@@ -587,6 +615,9 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingDropped = append([]bool(nil), s.ThingDropped...)
 	g.thingX = append([]int64(nil), s.ThingX...)
 	g.thingY = append([]int64(nil), s.ThingY...)
+	g.thingMomX = append([]int64(nil), s.ThingMomX...)
+	g.thingMomY = append([]int64(nil), s.ThingMomY...)
+	g.thingMomZ = append([]int64(nil), s.ThingMomZ...)
 	g.thingAngleState = append([]uint32(nil), s.ThingAngleState...)
 	g.thingZState = append([]int64(nil), s.ThingZState...)
 	g.thingFloorState = append([]int64(nil), s.ThingFloorState...)
@@ -602,10 +633,14 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingMoveCount = append([]int(nil), s.ThingMoveCount...)
 	g.thingJustAtk = append([]bool(nil), s.ThingJustAtk...)
 	g.thingJustHit = append([]bool(nil), s.ThingJustHit...)
+	g.thingSkullFly = append([]bool(nil), s.ThingSkullFly...)
+	g.thingResumeChaseNow = append([]bool(nil), s.ThingResumeChaseNow...)
 	g.thingReactionTics = append([]int(nil), s.ThingReactionTics...)
 	g.thingWakeTics = append([]int(nil), s.ThingWakeTics...)
 	g.thingLastLook = append([]int(nil), s.ThingLastLook...)
 	g.thingDead = append([]bool(nil), s.ThingDead...)
+	g.thingAmbush = append([]bool(nil), s.ThingAmbush...)
+	g.thingInFloat = append([]bool(nil), s.ThingInFloat...)
 	g.thingGibbed = append([]bool(nil), s.ThingGibbed...)
 	g.thingGibTick = append([]int(nil), s.ThingGibTick...)
 	g.thingDeathTics = append([]int(nil), s.ThingDeathTics...)
@@ -640,6 +675,9 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.weaponPSpriteY = s.WeaponPSpriteY
 	g.stats = s.Stats
 	g.worldTic = s.WorldTic
+	g.playerBlockOrder = s.PlayerBlockOrder
+	g.nextThinkerOrder = s.NextThinkerOrder
+	g.nextBlockmapOrder = s.NextBlockmapOrder
 	g.secretFound = append([]bool(nil), s.SecretFound...)
 	g.secretsFound = s.SecretsFound
 	g.secretsTotal = s.SecretsTotal
@@ -652,14 +690,33 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.damageFlashTic = s.DamageFlashTic
 	g.bonusFlashTic = s.BonusFlashTic
 	g.sectorLightFx = restoreSectorLightEffects(s.SectorLightFx)
+	if len(s.Sidedefs) > 0 {
+		g.m.Sidedefs = append([]mapdata.Sidedef(nil), s.Sidedefs...)
+	}
+	if len(s.Sectors) > 0 {
+		g.m.Sectors = append([]mapdata.Sector(nil), s.Sectors...)
+	}
 	g.sectorFloor = append([]int64(nil), s.SectorFloor...)
 	g.sectorCeil = append([]int64(nil), s.SectorCeil...)
+	for sec := range g.m.Sectors {
+		if sec < len(g.sectorFloor) {
+			g.m.Sectors[sec].FloorHeight = int16(g.sectorFloor[sec] >> fracBits)
+		}
+		if sec < len(g.sectorCeil) {
+			g.m.Sectors[sec].CeilingHeight = int16(g.sectorCeil[sec] >> fracBits)
+		}
+	}
 	g.lineSpecial = append([]uint16(nil), s.LineSpecial...)
 	g.doors = restoreDoorThinkers(s.Doors)
 	g.floors = restoreFloorThinkers(s.Floors)
 	g.plats = restorePlatThinkers(s.Plats)
 	g.ceilings = restoreCeilingThinkers(s.Ceilings)
 	g.delayedSwitchReverts = restoreDelayedSwitchTextures(s.DelayedSwitchReverts)
+	g.thingSectorCache = make([]int, len(g.m.Things))
+	for i, th := range g.m.Things {
+		x, y := g.thingPosFixed(i, th)
+		g.thingSectorCache[i] = g.sectorAt(x, y)
+	}
 	g.State.SyncRender()
 	g.rebuildThingBlockmap()
 	g.ensureWeaponDefaults()
@@ -798,6 +855,7 @@ func captureDoorThinkers(src map[int]*doorThinker) map[int]doorThinkerSaveState 
 			continue
 		}
 		dst[key] = doorThinkerSaveState{
+			Order:        thinker.order,
 			Sector:       thinker.sector,
 			Type:         int(thinker.typ),
 			Direction:    thinker.direction,
@@ -817,6 +875,7 @@ func restoreDoorThinkers(src map[int]doorThinkerSaveState) map[int]*doorThinker 
 	dst := make(map[int]*doorThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &doorThinker{
+			order:        thinker.Order,
 			sector:       thinker.Sector,
 			typ:          doorType(thinker.Type),
 			direction:    thinker.Direction,
@@ -839,6 +898,7 @@ func captureFloorThinkers(src map[int]*floorThinker) map[int]floorThinkerSaveSta
 			continue
 		}
 		dst[key] = floorThinkerSaveState{
+			Order:         thinker.order,
 			Sector:        thinker.sector,
 			Direction:     thinker.direction,
 			Speed:         thinker.speed,
@@ -858,6 +918,7 @@ func restoreFloorThinkers(src map[int]floorThinkerSaveState) map[int]*floorThink
 	dst := make(map[int]*floorThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &floorThinker{
+			order:         thinker.Order,
 			sector:        thinker.Sector,
 			direction:     thinker.Direction,
 			speed:         thinker.Speed,
@@ -880,6 +941,7 @@ func capturePlatThinkers(src map[int]*platThinker) map[int]platThinkerSaveState 
 			continue
 		}
 		dst[key] = platThinkerSaveState{
+			Order:         thinker.order,
 			Sector:        thinker.sector,
 			Type:          uint8(thinker.typ),
 			Status:        uint8(thinker.status),
@@ -903,6 +965,7 @@ func restorePlatThinkers(src map[int]platThinkerSaveState) map[int]*platThinker 
 	dst := make(map[int]*platThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &platThinker{
+			order:         thinker.Order,
 			sector:        thinker.Sector,
 			typ:           platType(thinker.Type),
 			status:        platStatus(thinker.Status),
@@ -929,6 +992,7 @@ func captureCeilingThinkers(src map[int]*ceilingThinker) map[int]ceilingThinkerS
 			continue
 		}
 		dst[key] = ceilingThinkerSaveState{
+			Order:        thinker.order,
 			Sector:       thinker.sector,
 			Action:       thinker.action,
 			Direction:    thinker.direction,
@@ -949,6 +1013,7 @@ func restoreCeilingThinkers(src map[int]ceilingThinkerSaveState) map[int]*ceilin
 	dst := make(map[int]*ceilingThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &ceilingThinker{
+			order:        thinker.Order,
 			sector:       thinker.Sector,
 			action:       thinker.Action,
 			direction:    thinker.Direction,

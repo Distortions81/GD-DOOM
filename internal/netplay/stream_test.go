@@ -135,6 +135,43 @@ func TestRelayViewerReceivesKeyframe(t *testing.T) {
 	t.Fatal("timed out waiting for keyframe")
 }
 
+func TestRelayViewerReceivesIntermissionAdvance(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{MapName: "E1M1"})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	v, err := DialRelayViewer(srv.Addr(), b.SessionID(), "")
+	if err != nil {
+		t.Fatalf("DialRelayViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	if err := b.BroadcastIntermissionAdvance(); err != nil {
+		t.Fatalf("BroadcastIntermissionAdvance() error = %v", err)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		ok, err := v.PollIntermissionAdvance()
+		if err != nil && err != io.EOF {
+			t.Fatalf("PollIntermissionAdvance() error = %v", err)
+		}
+		if ok {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for intermission advance")
+}
+
 func TestHelloRoundTripBinary(t *testing.T) {
 	var buf bytes.Buffer
 	want := SessionConfig{

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 	"gddoom/internal/sessionflow"
 
@@ -1037,5 +1038,23 @@ func (sg *sessionGame) anyIntermissionSkipInput() bool {
 	if sg == nil {
 		return false
 	}
-	return sg.skipInputTriggered()
+	watchMode := sg.opts.LiveTicSource != nil && sg.opts.LiveTicSink == nil
+	if !watchMode {
+		local := sg.skipInputTriggered()
+		if local && sg.intermission.state.Active {
+			if sink, ok := sg.opts.LiveTicSink.(runtimecfg.LiveIntermissionAdvanceSink); ok && sink != nil {
+				_ = sink.BroadcastIntermissionAdvance()
+			}
+			return true
+		}
+	}
+	if sg.intermission.state.Active {
+		if src, ok := sg.opts.LiveTicSource.(runtimecfg.LiveIntermissionAdvanceSource); ok && src != nil {
+			advance, err := src.PollIntermissionAdvance()
+			if err == nil && advance {
+				return true
+			}
+		}
+	}
+	return false
 }

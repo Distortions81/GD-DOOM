@@ -7,7 +7,8 @@ import (
 )
 
 type testLiveTicSink struct {
-	tics []demo.Tic
+	tics                []demo.Tic
+	intermissionAdvance int
 }
 
 func (s *testLiveTicSink) BroadcastTic(tc demo.Tic) error {
@@ -15,8 +16,15 @@ func (s *testLiveTicSink) BroadcastTic(tc demo.Tic) error {
 	return nil
 }
 
+func (s *testLiveTicSink) BroadcastIntermissionAdvance() error {
+	s.intermissionAdvance++
+	return nil
+}
+
 type testLiveTicSource struct {
-	tics []demo.Tic
+	tics                []demo.Tic
+	intermissionAdvance int
+	keyframes           [][]byte
 }
 
 func (s *testLiveTicSource) PollTic() (demo.Tic, bool, error) {
@@ -26,6 +34,23 @@ func (s *testLiveTicSource) PollTic() (demo.Tic, bool, error) {
 	tc := s.tics[0]
 	s.tics = s.tics[1:]
 	return tc, true, nil
+}
+
+func (s *testLiveTicSource) PollIntermissionAdvance() (bool, error) {
+	if s.intermissionAdvance <= 0 {
+		return false, nil
+	}
+	s.intermissionAdvance--
+	return true, nil
+}
+
+func (s *testLiveTicSource) PollRuntimeKeyframe() (uint32, []byte, bool, error) {
+	if len(s.keyframes) == 0 {
+		return 0, nil, false, nil
+	}
+	blob := s.keyframes[0]
+	s.keyframes = s.keyframes[1:]
+	return 0, blob, true, nil
 }
 
 func TestUpdateBroadcastModeAdvancesWorldAndEmitsTic(t *testing.T) {

@@ -22,8 +22,9 @@ const (
 	helloRoleViewer      byte = 2
 	helloRoleServer      byte = 3
 
-	frameTypeKeyframe byte = 1
-	frameTypeTicBatch byte = 4
+	frameTypeKeyframe            byte = 1
+	frameTypeTicBatch            byte = 4
+	frameTypeIntermissionAdvance byte = 8
 )
 
 const (
@@ -148,6 +149,13 @@ func (b *RelayBroadcaster) BroadcastKeyframe(tic uint32, blob []byte) error {
 	}, blob)
 }
 
+func (b *RelayBroadcaster) BroadcastIntermissionAdvance() error {
+	if b == nil {
+		return nil
+	}
+	return writeFrame(b.conn, frameHeader{Type: frameTypeIntermissionAdvance}, nil)
+}
+
 func (b *RelayBroadcaster) Close() error {
 	if b == nil {
 		return nil
@@ -167,6 +175,7 @@ type Viewer struct {
 	session   SessionConfig
 	tics      chan demo.Tic
 	keyframes chan Keyframe
+	advance   chan struct{}
 	meter     *bandwidthMeter
 
 	mu     sync.Mutex
@@ -281,6 +290,7 @@ func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewe
 		session:   session,
 		tics:      make(chan demo.Tic, 256),
 		keyframes: make(chan Keyframe, 4),
+		advance:   make(chan struct{}, 8),
 		meter:     meter,
 	}
 	v.wg.Add(1)
@@ -332,6 +342,21 @@ func (v *Viewer) PollKeyframe() (Keyframe, bool, error) {
 	}
 }
 
+func (v *Viewer) PollIntermissionAdvance() (bool, error) {
+	if v == nil {
+		return false, nil
+	}
+	select {
+	case _, ok := <-v.advance:
+		if ok {
+			return true, nil
+		}
+		return false, v.readErr()
+	default:
+		return false, v.readErr()
+	}
+}
+
 func (v *Viewer) Close() error {
 	if v == nil {
 		return nil
@@ -352,6 +377,7 @@ func (v *Viewer) readLoop() {
 	defer v.wg.Done()
 	defer close(v.tics)
 	defer close(v.keyframes)
+	defer close(v.advance)
 	for {
 		header, payload, err := readFrame(v.conn)
 		if err != nil {
@@ -366,6 +392,12 @@ func (v *Viewer) readLoop() {
 				v.setErr(err)
 				return
 			}
+		case frameTypeIntermissionAdvance:
+			if len(payload) != 0 {
+				v.setErr(fmt.Errorf("intermission advance payload len=%d want=0", len(payload)))
+				return
+			}
+			v.advance <- struct{}{}
 		default:
 			v.setErr(fmt.Errorf("unexpected broadcast frame type %d", header.Type))
 			return

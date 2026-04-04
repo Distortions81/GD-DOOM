@@ -33,6 +33,7 @@ type relaySession struct {
 
 type relayViewer struct {
 	conn net.Conn
+	mu   sync.Mutex
 }
 
 type bufferedFrame struct {
@@ -192,33 +193,58 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 		return
 	}
 	viewer := &relayViewer{conn: conn}
-	sess.viewers[viewer] = struct{}{}
 	cfg := sess.cfg
+	var (
+		keyframe []byte
+		tic      uint32
+		ok       bool
+		backlog  []bufferedFrame
+	)
+	viewer.mu.Lock()
+	sess.viewers[viewer] = struct{}{}
+	if len(sess.lastKeyframe) > 0 {
+		keyframe = append([]byte(nil), sess.lastKeyframe...)
+		tic = sess.lastKeyframeTic
+		ok = true
+	}
+	if len(sess.backlog) > 0 {
+		backlog = make([]bufferedFrame, len(sess.backlog))
+		for i, frame := range sess.backlog {
+			backlog[i] = bufferedFrame{
+				header:  frame.header,
+				payload: append([]byte(nil), frame.payload...),
+			}
+		}
+	}
 	s.mu.Unlock()
 
 	if err := writeHello(conn, helloRoleBroadcaster, 0, sessionID, cfg); err != nil {
+		viewer.mu.Unlock()
 		s.removeViewer(sess, viewer)
 		_ = conn.Close()
 		return
 	}
-	if keyframe, tic, ok := s.latestKeyframe(sess); ok {
+	if ok {
 		if err := writeFrame(conn, frameHeader{
 			Type:   frameTypeKeyframe,
 			Length: uint32(len(keyframe)),
 			Tic:    tic,
 		}, keyframe); err != nil {
+			viewer.mu.Unlock()
 			s.removeViewer(sess, viewer)
 			_ = conn.Close()
 			return
 		}
 	}
-	for _, frame := range s.backlogFrames(sess) {
+	for _, frame := range backlog {
 		if err := writeFrame(conn, frame.header, frame.payload); err != nil {
+			viewer.mu.Unlock()
 			s.removeViewer(sess, viewer)
 			_ = conn.Close()
 			return
 		}
 	}
+	viewer.mu.Unlock()
 
 	// Viewers are currently read-only and do not send steady-state frames.
 	var one [1]byte
@@ -257,11 +283,20 @@ func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []
 	s.mu.Unlock()
 
 	for _, viewer := range viewers {
-		if err := writeFrame(viewer.conn, header, payload); err != nil {
+		if err := viewer.writeFrame(header, payload); err != nil {
 			s.removeViewer(sess, viewer)
 			_ = viewer.conn.Close()
 		}
 	}
+}
+
+func (v *relayViewer) writeFrame(header frameHeader, payload []byte) error {
+	if v == nil {
+		return nil
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return writeFrame(v.conn, header, payload)
 }
 
 func (s *Server) latestKeyframe(sess *relaySession) ([]byte, uint32, bool) {

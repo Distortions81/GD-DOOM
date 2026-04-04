@@ -34,6 +34,14 @@ type LiveTicSink interface {
 	BroadcastTic(demo.Tic) error
 }
 
+type LiveIntermissionAdvanceSource interface {
+	PollIntermissionAdvance() (bool, error)
+}
+
+type LiveIntermissionAdvanceSink interface {
+	BroadcastIntermissionAdvance() error
+}
+
 type NetBandwidthMeter interface {
 	BandwidthStats() (uploadBytesPerSec, downloadBytesPerSec float64)
 }

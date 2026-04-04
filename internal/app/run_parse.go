@@ -839,7 +839,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		*autoWeaponSwitch = cfg.AutoWeaponSwitch
 		resolvedCheatLevel = cfg.CheatLevel
 		resolvedInvuln = cfg.Invulnerable
-		*sourcePortMode = cfg.SourcePortMode
 		fmt.Fprintf(stderr, "watch: connected map=%s player=%d mode=%s\n", cfg.MapName, cfg.PlayerSlot, cfg.GameMode)
 	}
 	if defaultImportPCSpeaker {
