@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"testing"
+	"time"
 
 	"gddoom/internal/demo"
 	"gddoom/internal/runtimecfg"
@@ -49,6 +50,10 @@ func (s *testLiveTicSource) PollTic() (demo.Tic, bool, error) {
 	tc := s.tics[0]
 	s.tics = s.tics[1:]
 	return tc, true, nil
+}
+
+func (s *testLiveTicSource) PendingTics() int {
+	return len(s.tics)
 }
 
 func (s *testLiveTicSource) PollIntermissionAdvance() (bool, error) {
@@ -117,5 +122,55 @@ func TestUpdateWatchModeConsumesLiveTicAndAdvancesWorld(t *testing.T) {
 	}
 	if g.worldTic != 1 {
 		t.Fatalf("worldTic=%d want=1", g.worldTic)
+	}
+}
+
+func TestUpdateWatchModePacesInitialBufferedBatch(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.LiveTicSource = &testLiveTicSource{
+		tics: []demo.Tic{
+			{Forward: 1},
+			{Forward: 2},
+			{Forward: 3},
+			{Forward: 4},
+		},
+	}
+
+	if err := g.Update(); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if g.worldTic != 1 {
+		t.Fatalf("worldTic=%d want=1", g.worldTic)
+	}
+	src := g.opts.LiveTicSource.(*testLiveTicSource)
+	if got := len(src.tics); got != 3 {
+		t.Fatalf("remaining queued tics=%d want=3", got)
+	}
+}
+
+func TestUpdateWatchModeCatchesUpWhenBacklogGrows(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.LiveTicSource = &testLiveTicSource{
+		tics: []demo.Tic{
+			{Forward: 1},
+			{Forward: 2},
+			{Forward: 3},
+			{Forward: 4},
+			{Forward: 5},
+			{Forward: 6},
+		},
+	}
+	g.worldTic = 1
+	g.watchTickStamp = time.Now().Add(-(time.Second / doomTicsPerSecond))
+
+	if err := g.Update(); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if g.worldTic != 5 {
+		t.Fatalf("worldTic=%d want=5", g.worldTic)
+	}
+	src := g.opts.LiveTicSource.(*testLiveTicSource)
+	if got := len(src.tics); got != 2 {
+		t.Fatalf("remaining queued tics=%d want=2", got)
 	}
 }

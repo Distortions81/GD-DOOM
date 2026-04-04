@@ -3,6 +3,7 @@ package netplay
 import (
 	"bytes"
 	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -145,6 +146,62 @@ func TestRelayViewerReceivesKeyframe(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for keyframe")
+}
+
+func TestRelayViewerReceivesLegacyRawKeyframe(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	bconn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatalf("dial broadcaster: %v", err)
+	}
+	defer bconn.Close()
+	if err := writeHello(bconn, helloRoleBroadcaster, 0, 0, SessionConfig{MapName: "E1M1"}); err != nil {
+		t.Fatalf("writeHello broadcaster: %v", err)
+	}
+	_, _, sessionID, _, err := readHello(bconn)
+	if err != nil {
+		t.Fatalf("readHello broadcaster ack: %v", err)
+	}
+
+	want := []byte{9, 8, 7}
+	if err := writeFrame(bconn, frameHeader{
+		Type:   frameTypeKeyframe,
+		Flags:  0,
+		Length: uint32(len(want)),
+		Tic:    35,
+	}, want); err != nil {
+		t.Fatalf("writeFrame(keyframe) error = %v", err)
+	}
+
+	v, err := DialRelayViewer(srv.Addr(), sessionID, "")
+	if err != nil {
+		t.Fatalf("DialRelayViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		kf, ok, err := v.PollKeyframe()
+		if err != nil && err != io.EOF {
+			t.Fatalf("PollKeyframe() error = %v", err)
+		}
+		if ok {
+			if kf.Tic != 35 {
+				t.Fatalf("keyframe tic=%d want=35", kf.Tic)
+			}
+			if !bytes.Equal(kf.Blob, want) {
+				t.Fatalf("keyframe blob=%v want=%v", kf.Blob, want)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for legacy raw keyframe")
 }
 
 func TestRelayViewerMandatoryKeyframeDrainsQueuedTics(t *testing.T) {

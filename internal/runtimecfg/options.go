@@ -30,6 +30,10 @@ type LiveTicSource interface {
 	PollTic() (demo.Tic, bool, error)
 }
 
+type LiveTicBufferedSource interface {
+	PendingTics() int
+}
+
 type RuntimeKeyframe struct {
 	Tic            uint32
 	Blob           []byte

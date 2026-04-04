@@ -523,6 +523,8 @@ type game struct {
 	perfInDraw       bool
 	simTickScale     float64
 	simTickAccum     float64
+	watchTickStamp   time.Time
+	watchTickAccum   time.Duration
 	edgeInputPass    bool
 	pendingUse       bool
 	input            gameInputSnapshot

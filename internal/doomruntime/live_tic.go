@@ -11,6 +11,11 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+const (
+	watchTargetBufferedTics = 2
+	watchMaxCatchUpTics     = 4
+)
+
 func demoTicCommand(tc DemoTic) (moveCmd, bool, bool) {
 	buttons := tc.Buttons
 	if buttons&demoButtonSpecial != 0 {
@@ -89,6 +94,7 @@ func (g *game) updateWatchMode() error {
 	if g == nil {
 		return nil
 	}
+	now := time.Now()
 	if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
 		g.quitPromptRequested = true
 		return nil
@@ -109,8 +115,39 @@ func (g *game) updateWatchMode() error {
 			g.setHUDMessage("Automap Closed", 35)
 		}
 	}
+	ticDur := time.Second / doomTicsPerSecond
+	if g.watchTickStamp.IsZero() {
+		g.watchTickStamp = now
+	}
+	g.watchTickAccum += now.Sub(g.watchTickStamp)
+	g.watchTickStamp = now
+
+	budget := 0
+	if g.worldTic == 0 {
+		budget = 1
+	}
+	for g.watchTickAccum >= ticDur {
+		g.watchTickAccum -= ticDur
+		budget++
+	}
+	if g.worldTic > 0 {
+		if src, ok := g.opts.LiveTicSource.(runtimecfg.LiveTicBufferedSource); ok && src != nil {
+			if pending := src.PendingTics(); pending > watchTargetBufferedTics {
+				catchUp := pending - watchTargetBufferedTics
+				if catchUp > watchMaxCatchUpTics {
+					catchUp = watchMaxCatchUpTics
+				}
+				if catchUp > budget {
+					budget = catchUp
+				}
+			}
+		}
+	}
+	if budget > 8 {
+		budget = 8
+	}
 	processed := false
-	for i := 0; i < 8; i++ {
+	for i := 0; i < budget; i++ {
 		tc, ok, err := g.opts.LiveTicSource.PollTic()
 		if err != nil {
 			return fmt.Errorf("watch stream: %w", err)

@@ -13,6 +13,8 @@ import (
 
 	"gddoom/internal/demo"
 	"gddoom/internal/runtimecfg"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 const (
@@ -47,6 +49,17 @@ const (
 
 const (
 	keyframeFlagMandatoryApply byte = 1 << iota
+	keyframeFlagZstdCompressed
+)
+
+var (
+	keyframeZstdEncOnce sync.Once
+	keyframeZstdEnc     *zstd.Encoder
+	keyframeZstdEncErr  error
+
+	keyframeZstdDecOnce sync.Once
+	keyframeZstdDec     *zstd.Decoder
+	keyframeZstdDecErr  error
 )
 
 type SessionConfig struct {
@@ -188,12 +201,16 @@ func (b *RelayBroadcaster) BroadcastKeyframeWithFlags(tic uint32, blob []byte, f
 	if err := b.flushPendingTicsLocked(); err != nil {
 		return err
 	}
+	payload, err := compressKeyframe(blob)
+	if err != nil {
+		return fmt.Errorf("compress keyframe: %w", err)
+	}
 	return writeFrame(b.conn, frameHeader{
 		Type:   frameTypeKeyframe,
-		Flags:  flags,
-		Length: uint32(len(blob)),
+		Flags:  flags | keyframeFlagZstdCompressed,
+		Length: uint32(len(payload)),
 		Tic:    tic,
-	}, blob)
+	}, payload)
 }
 
 func (b *RelayBroadcaster) BroadcastIntermissionAdvance() error {
@@ -407,6 +424,13 @@ func (v *Viewer) PollTic() (demo.Tic, bool, error) {
 	}
 }
 
+func (v *Viewer) PendingTics() int {
+	if v == nil {
+		return 0
+	}
+	return len(v.tics)
+}
+
 func (v *Viewer) PollKeyframe() (Keyframe, bool, error) {
 	if v == nil {
 		return Keyframe{}, false, nil
@@ -479,6 +503,13 @@ func (v *Viewer) readLoop() {
 		switch header.Type {
 		case frameTypeKeyframe:
 			mandatory := header.Flags&keyframeFlagMandatoryApply != 0
+			if header.Flags&keyframeFlagZstdCompressed != 0 {
+				payload, err = decompressKeyframe(payload)
+				if err != nil {
+					v.setErr(fmt.Errorf("decompress keyframe: %w", err))
+					return
+				}
+			}
 			if mandatory {
 				v.drainPendingTics()
 			}
@@ -532,6 +563,36 @@ func (v *Viewer) consumeTicBatch(payload []byte) error {
 		v.tics <- unpackDemoTic(payload[offset : offset+4])
 	}
 	return nil
+}
+
+func compressKeyframe(src []byte) ([]byte, error) {
+	enc, err := keyframeEncoder()
+	if err != nil {
+		return nil, err
+	}
+	return enc.EncodeAll(src, nil), nil
+}
+
+func decompressKeyframe(src []byte) ([]byte, error) {
+	dec, err := keyframeDecoder()
+	if err != nil {
+		return nil, err
+	}
+	return dec.DecodeAll(src, nil)
+}
+
+func keyframeEncoder() (*zstd.Encoder, error) {
+	keyframeZstdEncOnce.Do(func() {
+		keyframeZstdEnc, keyframeZstdEncErr = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedDefault))
+	})
+	return keyframeZstdEnc, keyframeZstdEncErr
+}
+
+func keyframeDecoder() (*zstd.Decoder, error) {
+	keyframeZstdDecOnce.Do(func() {
+		keyframeZstdDec, keyframeZstdDecErr = zstd.NewReader(nil)
+	})
+	return keyframeZstdDec, keyframeZstdDecErr
 }
 
 func (v *Viewer) readErr() error {
