@@ -2,6 +2,47 @@
 
 This document describes the intended binary protocol for relay-backed `broadcast` / `watch`.
 
+## Preface
+
+Current state:
+
+- `broadcast` and `watch` exist as a direct TCP host-to-viewer path
+- transport is currently implementation-first rather than final-form
+- the feature works as an early watch-only slice, not yet as a relay-backed public system
+
+This document describes the intended direction from that starting point.
+
+The next architectural step is to split the system into three explicit roles:
+
+- broadcaster
+- server
+- viewer
+
+In that model:
+
+- the broadcaster publishes gameplay state to the server
+- the server retains and relays session data
+- viewers connect to the server rather than directly to the broadcaster
+
+The first practical steps toward that model are:
+
+1. replace the current direct stream format with the intended binary protocol
+2. preserve demo-style compact tic transport
+3. introduce a relay server that can accept a single broadcaster and one or more viewers
+4. move viewers onto server-mediated session lookup and streaming
+
+The initial relay rollout does not need to solve full multiplayer immediately. The first goal is a solid watch pipeline:
+
+- broadcaster -> server -> viewer
+
+Once that path is stable, the same architecture can expand to:
+
+- browser viewers
+- late join via keyframes
+- seek/scrub
+- spectators
+- multiplayer players
+
 The design goals are:
 
 - demo-style compact tic transport
@@ -810,6 +851,221 @@ After that:
 2. optional audio side channel
 3. spectator camera selection
 4. multiplayer player roles
+
+## Development Stages
+
+The project should be built in deliberate stages so each milestone is usable on its own.
+
+### Stage 1: Binary Broadcast Baseline
+
+Goals:
+
+- replace JSON tic transport with binary framing
+- keep demo-style compact tic payloads
+- preserve current host-to-viewer watch behavior
+
+Features:
+
+- binary `hello`
+- binary `tic_batch`
+- protocol versioning
+- content identity in handshake
+- direct broadcaster-to-viewer watch path
+
+Success criteria:
+
+- current `broadcast` / `watch` flow works with binary transport
+- tic bandwidth drops to demo-like levels
+
+### Stage 2: Relay Server Core
+
+Goals:
+
+- move from direct connections to a central relay
+- make broadcasters publish automatically to the server
+- make sessions discoverable by id
+
+Features:
+
+- relay server process
+- session registry
+- broadcaster auto-publish
+- viewer connect by session id
+- rolling tic buffer
+- basic rate limiting
+
+Success criteria:
+
+- broadcaster can publish to server
+- viewer can connect through server and watch live
+
+### Stage 3: Public Directory and Browser Viewing
+
+Goals:
+
+- expose public sessions on the web
+- make one-click browser viewing work
+
+Features:
+
+- Go web server handlers
+- `html/template` broadcast list
+- `html/template` watch page
+- WASM viewer bootstrap
+- WebSocket watch transport
+- session metadata listing:
+  - viewers
+  - duration
+  - IWAD class
+  - PWAD summary
+  - soundfont/backend
+
+Success criteria:
+
+- user can open `/broadcasts`
+- user can click `Watch`
+- browser launches the WASM viewer and joins the live session
+
+### Stage 4: Keyframes and Late Join
+
+Goals:
+
+- allow late join without requiring map-start alignment
+- support initial seek/scrub foundation
+
+Features:
+
+- server-retained keyframes
+- dynamic-state-only keyframe blobs
+- keyframe cadence, e.g. 1 Hz
+- join from nearest keyframe plus tic catch-up
+
+Success criteria:
+
+- a viewer can join mid-session and catch up to live
+- start time is fast enough for public viewing
+
+### Stage 5: Seek and Scrub
+
+Goals:
+
+- make retained sessions navigable
+- support replay-like viewing within the retention window
+
+Features:
+
+- `seek` frame
+- `stream_state` retained range reporting
+- keyframe lookup by tic
+- tic replay from keyframe to target
+- watch page scrub UI
+
+Success criteria:
+
+- viewer can seek to a tic in the retained window
+- viewer can return to live tail cleanly
+
+### Stage 6: Asset Relay
+
+Goals:
+
+- reproduce broadcaster presentation more faithfully
+- avoid repeated manual asset setup on viewers
+
+Features:
+
+- asset offer/chunk/complete frames
+- server-side asset cache by hash
+- soundfont (`.sf2`) transfer
+- OPL bank transfer
+- optional non-commercial music asset transfer
+
+Success criteria:
+
+- viewer can receive missing soundfont/bank assets from the relay
+- watch startup still works even before assets finish downloading
+
+### Stage 7: Audio Side Channel
+
+Goals:
+
+- add optional synchronized audio alongside gameplay
+- support broadcaster music and voice
+
+Features:
+
+- `pion/opus` integration
+- `audio_config`
+- `audio_chunk`
+- broadcaster music stream
+- broadcaster voice stream
+- browser/native playback support
+
+Success criteria:
+
+- a viewer can optionally hear broadcaster audio while watching
+- gameplay sync remains independent of audio delivery
+
+### Stage 8: Spectator Camera System
+
+Goals:
+
+- make spectator viewing more flexible and useful
+- support authored shots and detached camera work
+
+Features:
+
+- player-follow spectator mode
+- free-roam spectator mode
+- switch viewed player
+- camera man role
+- director role
+- director-selected program feed
+
+Success criteria:
+
+- a spectator can follow players or roam freely
+- spectators can choose to follow a director feed
+
+### Stage 9: Multiplayer Foundation
+
+Goals:
+
+- extend the relay model beyond watch-only sessions
+- support interactive players and passive spectators together
+
+Features:
+
+- player role in protocol
+- spectator role in protocol
+- active player slot tracking
+- player input transport
+- player state/session metadata
+- spectator compatibility with multiplayer sessions
+
+Success criteria:
+
+- players can join through the server
+- spectators can watch the same session using the existing keyframe/tic path
+
+### Stage 10: Multiplayer Voice and Production Features
+
+Goals:
+
+- round out the social and broadcast side of multiplayer sessions
+
+Features:
+
+- multiplayer per-player voice via Opus
+- camera man audio if desired
+- director production metadata
+- improved browser session UI
+- optional session archive/export tooling
+
+Success criteria:
+
+- multiplayer sessions have voice support
+- broadcast-style produced spectator experiences are possible
 
 ## Summary
 
