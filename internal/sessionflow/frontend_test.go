@@ -59,6 +59,13 @@ func TestStepFrontendMainMenuSelectableRowsSkipsDisabledItems(t *testing.T) {
 	}
 }
 
+func TestNewGameStartMapUsesEpisodeOneForSingleEpisodeCustomLoader(t *testing.T) {
+	got := NewGameStartMap("E1M3", []int{1}, 0, true)
+	if got != "E1M1" {
+		t.Fatalf("NewGameStartMap()=%q want %q", got, "E1M1")
+	}
+}
+
 func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	cfg := FrontendConfig{
 		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6},

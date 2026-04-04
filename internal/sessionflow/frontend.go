@@ -228,7 +228,7 @@ func NewGameStartMap(bootMap mapdata.MapName, episodeChoices []int, selectedEpis
 		return string(bootMap)
 	}
 	startMap := "MAP01"
-	if len(episodeChoices) > 1 {
+	if len(episodeChoices) > 0 {
 		ep := selectedEpisode
 		if ep == 0 {
 			ep = episodeChoices[0]

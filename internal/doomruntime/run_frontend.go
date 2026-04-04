@@ -296,6 +296,10 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.rt = sg.g
 	sg.current = sg.g.sessionSignals().MapName
 	sg.currentTemplate = cloneMapForRestart(sg.g.m)
+	if err := sg.broadcastMandatoryRuntimeKeyframe(); err != nil {
+		sg.err = err
+		return
+	}
 	sg.queueTransition(transitionLevel, 0)
 	sg.playMusicForMap(sg.current)
 	sg.announceMapMusic(sg.current)
