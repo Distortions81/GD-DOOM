@@ -26,6 +26,14 @@ type MusicPlayerWAD struct {
 	Episodes []MusicPlayerEpisode
 }
 
+type LiveTicSource interface {
+	PollTic() (demo.Tic, bool, error)
+}
+
+type LiveTicSink interface {
+	BroadcastTic(demo.Tic) error
+}
+
 type Options struct {
 	Width                      int
 	Height                     int
@@ -117,6 +125,8 @@ type Options struct {
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)
 	DemoMapLoader              func(demo *demo.Script) (*mapdata.Map, error)
 	Episodes                   []int
+	LiveTicSource              LiveTicSource
+	LiveTicSink                LiveTicSink
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string
 	MusicSoundFontChoices      []string

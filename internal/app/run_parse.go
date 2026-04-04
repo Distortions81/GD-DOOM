@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/sha1"
 	"errors"
 	"flag"
@@ -25,6 +26,7 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/netplay"
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/render/doomtex"
 	"gddoom/internal/runtimecfg"
@@ -75,9 +77,62 @@ func resolveForceWASMMode(args []string) bool {
 	return false
 }
 
+const defaultNetplayPort = 6670
+
+func liveTicSourceFromViewer(v *netplay.Viewer) runtimecfg.LiveTicSource {
+	if v == nil {
+		return nil
+	}
+	return v
+}
+
+func normalizeNetplayShorthandArgs(args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(args)+2)
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		out = append(out, a)
+		switch a {
+		case "-broadcast":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				out = append(out, "")
+			}
+		case "-watch":
+			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "-") {
+				out = append(out, "")
+			}
+		}
+	}
+	return out
+}
+
+func normalizeBroadcastAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return fmt.Sprintf(":%d", defaultNetplayPort)
+	}
+	if strings.Contains(addr, ":") {
+		return addr
+	}
+	return addr + ":" + strconv.Itoa(defaultNetplayPort)
+}
+
+func normalizeWatchAddr(addr string) string {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return "127.0.0.1:" + strconv.Itoa(defaultNetplayPort)
+	}
+	if strings.Contains(addr, ":") {
+		return addr
+	}
+	return addr + ":" + strconv.Itoa(defaultNetplayPort)
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	const maxCLIAppOPLVolume = 4.0
-	normalizedArgs := args
+	normalizedArgs := normalizeNetplayShorthandArgs(args)
 	prevForceWASMMode := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(resolveForceWASMMode(normalizedArgs))
 	defer platformcfg.SetForcedWASMMode(prevForceWASMMode)
@@ -366,6 +421,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	demoExitOnDeath := fs.Bool("demo-exit-on-death", defaultDemoExitOnDeath, "during -demo playback, stop early when the player dies")
 	demoStopAfterTics := fs.Int("demo-stop-after-tics", defaultDemoStopAfterTics, "during -demo playback, stop after this many processed tics (0 disables)")
 	demoTracePath := fs.String("trace-demo-state", "", "write per-tic GD-DOOM demo state JSONL for -demo playback")
+	broadcastAddr := fs.String("broadcast", "", "listen for TCP view-only watchers on addr (default port 6670; bare -broadcast listens on all interfaces)")
+	watchAddr := fs.String("watch", "", "connect as a TCP view-only watcher to host addr (default 127.0.0.1:6670; bare -watch uses localhost)")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -384,6 +441,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	mapExplicit := flagProvided(normalizedArgs, "map") && strings.TrimSpace(*mapName) != ""
 	skyUpscaleFlagSet := flagProvided(normalizedArgs, "sky-upscale")
 	wadFlagSet := flagProvided(normalizedArgs, "wad")
+	broadcastFlagSet := flagProvided(normalizedArgs, "broadcast")
+	watchFlagSet := flagProvided(normalizedArgs, "watch")
 	if *sourcePortMode {
 		if !skyUpscaleFlagSet && (cfg == nil || cfg.SkyUpscaleMode == nil) {
 			*skyUpscale = "sharp"
@@ -464,10 +523,31 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	resolvedDemoPath := strings.TrimSpace(*demoPath)
 	resolvedRecordDemoPath := strings.TrimSpace(*recordDemoPath)
 	resolvedDemoTracePath := strings.TrimSpace(*demoTracePath)
+	resolvedBroadcastAddr := ""
+	if broadcastFlagSet {
+		resolvedBroadcastAddr = normalizeBroadcastAddr(*broadcastAddr)
+	}
+	resolvedWatchAddr := ""
+	if watchFlagSet {
+		resolvedWatchAddr = normalizeWatchAddr(*watchAddr)
+	}
+	networkActive := broadcastFlagSet || watchFlagSet
 	resolvedFilePaths := resolveWADOverlayPaths(*filePaths)
 	resolvedWADPath := resolveIWADAliasPath(*wadPath)
 	if resolvedDemoPath != "" && resolvedRecordDemoPath != "" {
 		fmt.Fprintln(stderr, "-demo and -record-demo are mutually exclusive")
+		return 2
+	}
+	if resolvedBroadcastAddr != "" && resolvedWatchAddr != "" {
+		fmt.Fprintln(stderr, "-broadcast and -watch are mutually exclusive")
+		return 2
+	}
+	if networkActive && !*render {
+		fmt.Fprintln(stderr, "-broadcast and -watch require render=true")
+		return 2
+	}
+	if networkActive && (resolvedDemoPath != "" || resolvedRecordDemoPath != "" || resolvedDemoTracePath != "") {
+		fmt.Fprintln(stderr, "-broadcast and -watch do not support demo playback, demo recording, or demo tracing")
 		return 2
 	}
 	if resolvedDemoTracePath != "" && resolvedDemoPath == "" {
@@ -563,7 +643,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			pickerChoices = []iwadChoice{fallback}
 		}
 	}
-	if shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
+	if !networkActive && shouldOpenIWADPicker(*render, noExplicitWAD, forceWASMPicker, len(pickerChoices)) {
 		buildCfg := renderBuildConfig{
 			selectedMap:                strings.ToUpper(strings.TrimSpace(*mapName)),
 			mapExplicit:                mapExplicit,
@@ -694,6 +774,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 1
 	}
 	wadHash := hashWADStackSHA1(wadPaths)
+	var watchSession *netplay.Viewer
 	soundBank := media.SoundBank{}
 	dsr := sound.ImportDigitalSounds(wf)
 	musicSoundFontChoices := detectAvailableSoundFonts("soundfonts")
@@ -706,6 +787,28 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	if err != nil {
 		fmt.Fprintf(stderr, "music soundfont import error: %v\n", err)
 		return 1
+	}
+	if resolvedWatchAddr != "" {
+		fmt.Fprintf(stderr, "watch: connecting to %s\n", resolvedWatchAddr)
+		watcher, werr := netplay.Dial(resolvedWatchAddr, wadHash)
+		if werr != nil {
+			fmt.Fprintf(stderr, "watch: %v\n", werr)
+			return 1
+		}
+		defer watcher.Close()
+		watchSession = watcher
+		cfg := watcher.Session()
+		*playerSlot = cfg.PlayerSlot
+		*skillLevel = cfg.SkillLevel
+		resolvedGameMode = cfg.GameMode
+		*showNoSkillItems = cfg.ShowNoSkillItems
+		*showAllItems = cfg.ShowAllItems
+		defaultFastMonsters = cfg.FastMonsters
+		*autoWeaponSwitch = cfg.AutoWeaponSwitch
+		resolvedCheatLevel = cfg.CheatLevel
+		resolvedInvuln = cfg.Invulnerable
+		*sourcePortMode = cfg.SourcePortMode
+		fmt.Fprintf(stderr, "watch: connected map=%s player=%d mode=%s\n", cfg.MapName, cfg.PlayerSlot, cfg.GameMode)
 	}
 	if defaultImportPCSpeaker {
 		dpr := sound.ImportPCSpeakerSounds(wf)
@@ -851,6 +954,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	flatTextureAnimSequences = doomtex.LoadFlatAnimSequences(wf, doomtex.DoomFlatAnimDefs)
 
 	selected := mapdata.MapName(strings.ToUpper(strings.TrimSpace(*mapName)))
+	if watchSession != nil {
+		cfg := watchSession.Session()
+		selected = mapdata.MapName(strings.ToUpper(strings.TrimSpace(cfg.MapName)))
+	}
 
 	if *render {
 		opts := doomsession.Options{
@@ -909,7 +1016,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			ShowTPS:                    defaultShowTPS,
 			DisableAspectCorrection:    *noAspectCorrection,
 			AllCheats:                  *allCheats,
-			StartInMapMode:             explicitMapStartInMap(defaultStartInMap, mapExplicit),
+			StartInMapMode:             networkActive || explicitMapStartInMap(defaultStartInMap, mapExplicit),
 			FlatBank:                   flatBank,
 			FlatBankIndexed:            flatBankIndexed,
 			WallTexBank:                wallTexBank,
@@ -929,6 +1036,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicSoundFontPath:         strings.TrimSpace(*soundFont),
 			MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
 			MusicSoundFont:             musicSoundFont,
+			LiveTicSource:              liveTicSourceFromViewer(watchSession),
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
 			DemoStopAfterTics:          max(0, *demoStopAfterTics),
@@ -1037,6 +1145,24 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if lerr != nil {
 			fmt.Fprintf(stderr, "load map %s: %v\n", selected, lerr)
 			return 1
+		}
+		if resolvedBroadcastAddr != "" {
+			sessionCfg := broadcastSessionConfig(selected, opts)
+			host, berr := netplay.Listen(resolvedBroadcastAddr, sessionCfg)
+			if berr != nil {
+				fmt.Fprintf(stderr, "broadcast: %v\n", berr)
+				return 1
+			}
+			defer host.Close()
+			fmt.Fprintf(stderr, "broadcast: listening on %s\n", host.Addr())
+			fmt.Fprintf(stderr, "broadcast: waiting for watcher\n")
+			if err := host.WaitForViewer(context.Background()); err != nil {
+				fmt.Fprintf(stderr, "broadcast: %v\n", err)
+				return 1
+			}
+			fmt.Fprintf(stderr, "broadcast: watcher connected\n")
+			_ = host.StopAccepting()
+			opts.LiveTicSink = host
 		}
 		nextMap := func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error) {
 			next, nerr := mapdata.NextMapName(wf, current, secret)
@@ -1937,6 +2063,25 @@ func resolveMusicSoundFont(backend music.Backend, path string, stderr io.Writer)
 		fmt.Fprintf(stderr, "music soundfont import: source=%s\n", path)
 	}
 	return bank, nil
+}
+
+func broadcastSessionConfig(mapName mapdata.MapName, opts doomsession.Options) netplay.SessionConfig {
+	return netplay.SessionConfig{
+		WADHash:          opts.WADHash,
+		MapName:          string(mapName),
+		PlayerSlot:       opts.PlayerSlot,
+		SkillLevel:       opts.SkillLevel,
+		GameMode:         opts.GameMode,
+		ShowNoSkillItems: opts.ShowNoSkillItems,
+		ShowAllItems:     opts.ShowAllItems,
+		FastMonsters:     opts.FastMonsters,
+		RespawnMonsters:  opts.RespawnMonsters,
+		NoMonsters:       opts.NoMonsters,
+		AutoWeaponSwitch: opts.AutoWeaponSwitch,
+		CheatLevel:       opts.CheatLevel,
+		Invulnerable:     opts.Invulnerable,
+		SourcePortMode:   opts.SourcePortMode,
+	}
 }
 
 func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.Writer) (*renderBundle, error) {

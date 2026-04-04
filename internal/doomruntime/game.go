@@ -2496,6 +2496,9 @@ func (g *game) Update() error {
 	if g.opts.DemoScript != nil {
 		return g.updateDemoMode()
 	}
+	if g.opts.LiveTicSource != nil {
+		return g.updateWatchMode()
+	}
 	if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
 		g.quitPromptRequested = true
 		return nil
@@ -2658,18 +2661,7 @@ func (g *game) updateDemoMode() error {
 		}
 		tc := script.Tics[g.demoTick]
 		g.demoTick++
-		buttons := tc.Buttons
-		if buttons&demoButtonSpecial != 0 {
-			buttons = 0
-		}
-		cmd := moveCmd{
-			forward:    int64(tc.Forward),
-			side:       int64(tc.Side),
-			turnRaw:    int64(tc.AngleTurn) << 16,
-			weaponSlot: demoButtonWeaponSlot(buttons),
-		}
-		usePressed := buttons&demoButtonUse != 0
-		fireHeld := buttons&demoButtonAttack != 0
+		cmd, usePressed, fireHeld := demoTicCommand(tc)
 		g.runGameplayTic(cmd, usePressed, fireHeld)
 		g.discoverLinesAroundPlayer()
 		g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
@@ -2702,37 +2694,8 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	buttons := tc.Buttons
-	if buttons&demoButtonSpecial != 0 {
-		buttons = 0
-	}
-	cmd := moveCmd{
-		forward:    int64(tc.Forward),
-		side:       int64(tc.Side),
-		turnRaw:    int64(tc.AngleTurn) << 16,
-		weaponSlot: demoButtonWeaponSlot(buttons),
-	}
-	usePressed := buttons&demoButtonUse != 0
-	fireHeld := buttons&demoButtonAttack != 0
-	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.discoverLinesAroundPlayer()
-	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
-	g.tickDelayedSounds()
-	// Doom starts gameplay-triggered sounds during the gameplay pass, before ST_Ticker.
-	g.flushSoundEvents()
-	g.tickStatusWidgets()
+	g.stepGameplayFromDemoTic(tc)
 	g.writeDemoTraceTic(g.demoTick - 1)
-	if g.useFlash > 0 {
-		g.useFlash--
-	}
-	if g.damageFlashTic > 0 {
-		g.damageFlashTic--
-	}
-	if g.bonusFlashTic > 0 {
-		g.bonusFlashTic--
-	}
-	g.tickDelayedSwitchReverts()
-	g.markSimUpdate(time.Now())
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
 		return ebiten.Termination
@@ -3017,26 +2980,7 @@ func (g *game) currentRunSpeed() int {
 }
 
 func (g *game) recordDemoTic(cmd moveCmd, usePressed, fireHeld bool) {
-	if g.opts.DemoScript != nil || strings.TrimSpace(g.opts.RecordDemoPath) == "" {
-		return
-	}
-	buttons := byte(0)
-	if usePressed {
-		buttons |= demoButtonUse
-	}
-	if fireHeld {
-		buttons |= demoButtonAttack
-	}
-	if slot := g.demoWeaponSlot; slot != 0 {
-		buttons |= demoButtonChange | byte((slot-1)<<demoButtonWeaponShift)
-		g.demoWeaponSlot = 0
-	}
-	g.demoRecord = append(g.demoRecord, DemoTic{
-		Forward:   clampDemoMove(cmd.forward),
-		Side:      clampDemoMove(cmd.side),
-		AngleTurn: g.demoAngleTurn(cmd),
-		Buttons:   buttons,
-	})
+	g.recordGameplayTic(cmd, usePressed, fireHeld)
 }
 
 func (g *game) demoAngleTurn(cmd moveCmd) int16 {
