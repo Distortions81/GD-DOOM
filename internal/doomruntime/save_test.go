@@ -194,3 +194,51 @@ func TestLoadGameRejectsUnknownHeader(t *testing.T) {
 		t.Fatalf("err=%v want=%v", err, errBadSaveMagic)
 	}
 }
+
+func TestNetplayKeyframeRoundTrip(t *testing.T) {
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+			{Type: 3004, X: 64, Y: 0},
+		},
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts:            Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+	sg.g.worldTic = 777
+	sg.g.p.x = 42 * fracUnit
+	sg.g.inventory.BlueKey = true
+
+	data, err := sg.marshalNetplayKeyframe()
+	if err != nil {
+		t.Fatalf("marshalNetplayKeyframe() error = %v", err)
+	}
+	if !bytes.HasPrefix(data, keyframeMagic) {
+		t.Fatalf("keyframe missing magic prefix: %q", data[:min(len(data), len(keyframeMagic))])
+	}
+
+	loaded := &sessionGame{
+		opts: Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1},
+	}
+	if err := loaded.unmarshalNetplayKeyframe(data); err != nil {
+		t.Fatalf("unmarshalNetplayKeyframe() error = %v", err)
+	}
+	if loaded.g == nil {
+		t.Fatal("loaded keyframe game is nil")
+	}
+	if loaded.g.worldTic != 777 {
+		t.Fatalf("worldTic=%d want=777", loaded.g.worldTic)
+	}
+	if loaded.g.p.x != 42*fracUnit {
+		t.Fatalf("player x=%d want=%d", loaded.g.p.x, 42*fracUnit)
+	}
+	if !loaded.g.inventory.BlueKey {
+		t.Fatal("blue key not restored")
+	}
+}

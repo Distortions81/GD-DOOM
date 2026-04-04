@@ -724,11 +724,15 @@ func (sg *sessionGame) tickFrontend() error {
 	if result.RequestLoadGame {
 		if err := sg.LoadGameFromSlot(1); err != nil {
 			sg.frontendStatus("LOAD FAILED", doomTicsPerSecond*2)
+		} else {
+			sg.frontendStatus("GAME LOADED", doomTicsPerSecond*2)
 		}
 	}
 	if result.RequestSaveGame {
 		if err := sg.SaveGameToSlot(1); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+		} else {
+			sg.frontendStatus("GAME SAVED", doomTicsPerSecond*2)
 		}
 	}
 	return nil

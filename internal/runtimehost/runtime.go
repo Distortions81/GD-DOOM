@@ -13,6 +13,8 @@ type Accessors struct {
 	EffectiveDemoRecord func() []demo.Tic
 	Options             func() runtimecfg.Options
 	StartMapName        func() mapdata.MapName
+	CaptureKeyframe     func() ([]byte, error)
+	LoadKeyframe        func([]byte) error
 }
 
 func NewGame(runtime session.Runtime, accessors Accessors) (session.Runtime, Meta) {
@@ -22,5 +24,7 @@ func NewGame(runtime session.Runtime, accessors Accessors) (session.Runtime, Met
 		EffectiveDemoRecord: accessors.EffectiveDemoRecord,
 		Options:             accessors.Options,
 		StartMapName:        accessors.StartMapName,
+		CaptureKeyframe:     accessors.CaptureKeyframe,
+		LoadKeyframe:        accessors.LoadKeyframe,
 	}
 }

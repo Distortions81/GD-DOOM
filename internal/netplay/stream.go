@@ -20,6 +20,7 @@ const (
 	helloRoleViewer      byte = 2
 	helloRoleServer      byte = 3
 
+	frameTypeKeyframe byte = 1
 	frameTypeTicBatch byte = 4
 )
 
@@ -61,6 +62,11 @@ type frameHeader struct {
 	Flags  byte
 	Length uint32
 	Tic    uint32
+}
+
+type Keyframe struct {
+	Tic  uint32
+	Blob []byte
 }
 
 type RelayBroadcaster struct {
@@ -119,6 +125,17 @@ func (b *RelayBroadcaster) BroadcastTic(tc demo.Tic) error {
 	}, payload)
 }
 
+func (b *RelayBroadcaster) BroadcastKeyframe(tic uint32, blob []byte) error {
+	if b == nil {
+		return nil
+	}
+	return writeFrame(b.conn, frameHeader{
+		Type:   frameTypeKeyframe,
+		Length: uint32(len(blob)),
+		Tic:    tic,
+	}, blob)
+}
+
 func (b *RelayBroadcaster) Close() error {
 	if b == nil {
 		return nil
@@ -134,9 +151,10 @@ func (b *RelayBroadcaster) Close() error {
 }
 
 type Viewer struct {
-	conn    net.Conn
-	session SessionConfig
-	tics    chan demo.Tic
+	conn      net.Conn
+	session   SessionConfig
+	tics      chan demo.Tic
+	keyframes chan Keyframe
 
 	mu     sync.Mutex
 	err    error
@@ -181,9 +199,10 @@ func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewe
 		return nil, fmt.Errorf("broadcast WAD hash mismatch: local=%s host=%s", localWADHash, session.WADHash)
 	}
 	v := &Viewer{
-		conn:    conn,
-		session: session,
-		tics:    make(chan demo.Tic, 256),
+		conn:      conn,
+		session:   session,
+		tics:      make(chan demo.Tic, 256),
+		keyframes: make(chan Keyframe, 4),
 	}
 	v.wg.Add(1)
 	go v.readLoop()
@@ -212,6 +231,21 @@ func (v *Viewer) PollTic() (demo.Tic, bool, error) {
 	}
 }
 
+func (v *Viewer) PollKeyframe() (Keyframe, bool, error) {
+	if v == nil {
+		return Keyframe{}, false, nil
+	}
+	select {
+	case kf, ok := <-v.keyframes:
+		if ok {
+			return kf, true, nil
+		}
+		return Keyframe{}, false, v.readErr()
+	default:
+		return Keyframe{}, false, v.readErr()
+	}
+}
+
 func (v *Viewer) Close() error {
 	if v == nil {
 		return nil
@@ -231,6 +265,7 @@ func (v *Viewer) Close() error {
 func (v *Viewer) readLoop() {
 	defer v.wg.Done()
 	defer close(v.tics)
+	defer close(v.keyframes)
 	for {
 		header, payload, err := readFrame(v.conn)
 		if err != nil {
@@ -238,6 +273,8 @@ func (v *Viewer) readLoop() {
 			return
 		}
 		switch header.Type {
+		case frameTypeKeyframe:
+			v.keyframes <- Keyframe{Tic: header.Tic, Blob: append([]byte(nil), payload...)}
 		case frameTypeTicBatch:
 			if err := v.consumeTicBatch(payload); err != nil {
 				v.setErr(err)

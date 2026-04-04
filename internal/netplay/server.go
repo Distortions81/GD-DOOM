@@ -21,11 +21,13 @@ type Server struct {
 }
 
 type relaySession struct {
-	id      uint64
-	cfg     SessionConfig
-	server  *Server
-	src     net.Conn
-	viewers map[*relayViewer]struct{}
+	id              uint64
+	cfg             SessionConfig
+	server          *Server
+	src             net.Conn
+	viewers         map[*relayViewer]struct{}
+	lastKeyframe    []byte
+	lastKeyframeTic uint32
 }
 
 type relayViewer struct {
@@ -191,6 +193,17 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 		_ = conn.Close()
 		return
 	}
+	if keyframe, tic, ok := s.latestKeyframe(sess); ok {
+		if err := writeFrame(conn, frameHeader{
+			Type:   frameTypeKeyframe,
+			Length: uint32(len(keyframe)),
+			Tic:    tic,
+		}, keyframe); err != nil {
+			s.removeViewer(sess, viewer)
+			_ = conn.Close()
+			return
+		}
+	}
 
 	// Viewers are currently read-only and do not send steady-state frames.
 	var one [1]byte
@@ -206,6 +219,10 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 
 func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []byte) {
 	s.mu.Lock()
+	if header.Type == frameTypeKeyframe {
+		sess.lastKeyframeTic = header.Tic
+		sess.lastKeyframe = append(sess.lastKeyframe[:0], payload...)
+	}
 	viewers := make([]*relayViewer, 0, len(sess.viewers))
 	for viewer := range sess.viewers {
 		viewers = append(viewers, viewer)
@@ -218,6 +235,18 @@ func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []
 			_ = viewer.conn.Close()
 		}
 	}
+}
+
+func (s *Server) latestKeyframe(sess *relaySession) ([]byte, uint32, bool) {
+	if s == nil || sess == nil {
+		return nil, 0, false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cur := s.sessions[sess.id]; cur != sess || len(sess.lastKeyframe) == 0 {
+		return nil, 0, false
+	}
+	return append([]byte(nil), sess.lastKeyframe...), sess.lastKeyframeTic, true
 }
 
 func (s *Server) removeViewer(sess *relaySession, viewer *relayViewer) {

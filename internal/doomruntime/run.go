@@ -128,6 +128,8 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 			}
 			return sg.bootMap.Name
 		},
+		CaptureKeyframe: sg.marshalNetplayKeyframe,
+		LoadKeyframe:    sg.unmarshalNetplayKeyframe,
 	})
 }
 

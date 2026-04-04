@@ -87,6 +87,53 @@ func TestRelayServerForwardsBroadcastFramesToViewer(t *testing.T) {
 	}
 }
 
+func TestRelayServerReplaysLatestKeyframeToNewViewer(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	bconn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatalf("dial broadcaster: %v", err)
+	}
+	defer bconn.Close()
+	if err := writeHello(bconn, helloRoleBroadcaster, 0, 88, SessionConfig{MapName: "E1M1"}); err != nil {
+		t.Fatalf("writeHello broadcaster: %v", err)
+	}
+	if _, _, _, _, err := readHello(bconn); err != nil {
+		t.Fatalf("readHello broadcaster ack: %v", err)
+	}
+
+	keyframe := []byte{1, 2, 3, 4}
+	if err := writeFrame(bconn, frameHeader{Type: frameTypeKeyframe, Tic: 35}, keyframe); err != nil {
+		t.Fatalf("writeFrame keyframe: %v", err)
+	}
+
+	vconn, err := net.Dial("tcp", srv.Addr())
+	if err != nil {
+		t.Fatalf("dial viewer: %v", err)
+	}
+	defer vconn.Close()
+	if err := writeHello(vconn, helloRoleViewer, 0, 88, SessionConfig{}); err != nil {
+		t.Fatalf("writeHello viewer: %v", err)
+	}
+	if _, _, _, _, err := readHello(vconn); err != nil {
+		t.Fatalf("readHello viewer response: %v", err)
+	}
+	header, payload, err := readFrame(vconn)
+	if err != nil {
+		t.Fatalf("readFrame keyframe: %v", err)
+	}
+	if header.Type != frameTypeKeyframe || header.Tic != 35 {
+		t.Fatalf("header=%+v want type=%d tic=35", header, frameTypeKeyframe)
+	}
+	if string(payload) != string(keyframe) {
+		t.Fatalf("payload=%v want=%v", payload, keyframe)
+	}
+}
+
 func TestRelayServerAssignsSessionIDToBroadcaster(t *testing.T) {
 	srv, err := ListenServer("127.0.0.1:0")
 	if err != nil {

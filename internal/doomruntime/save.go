@@ -20,16 +20,19 @@ import (
 const (
 	saveGameVersion = 14
 	saveGamePrefix  = "dsg"
+	keyframeVersion = 1
+	saveGameDirName = "saves"
 )
 
 var (
 	errSaveGameUnavailable = errors.New("save game unavailable")
 	errNoSavedGame         = errors.New("no saved game")
-	errSaveGameWebOnly     = errors.New("not available for web")
+	errSaveGameWebOnly     = errors.New("not available")
 	errBadSaveMagic        = errors.New("invalid save format")
 )
 
 var saveGameMagic = []byte("GDDOOMSAVE\x00")
+var keyframeMagic = []byte("GDDOOMKEY\x00")
 
 type saveFile struct {
 	Version         int
@@ -319,7 +322,10 @@ func init() {
 
 func saveGamePath(slot int) string {
 	name := fmt.Sprintf("%s%d.%s", saveGamePrefix, slot, saveGamePrefix)
-	return filepath.Join(os.TempDir(), name)
+	if slot == 1 {
+		name = "quicksave.dsg"
+	}
+	return filepath.Join(saveGameDirName, name)
 }
 
 func (sg *sessionGame) SaveGameToSlot(slot int) error {
@@ -335,6 +341,9 @@ func (sg *sessionGame) SaveGameToSlot(slot int) error {
 	data, err := sg.marshalSaveGame(fmt.Sprintf("Slot %d", slot))
 	if err != nil {
 		return err
+	}
+	if err := os.MkdirAll(saveGameDirName, 0o755); err != nil {
+		return fmt.Errorf("create save dir: %w", err)
 	}
 	return os.WriteFile(saveGamePath(slot), data, 0o644)
 }
@@ -377,8 +386,40 @@ func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
 		},
 		Game: captureGameSaveState(sg.g),
 	}
+	return encodeSnapshot(saveGameMagic, file)
+}
+
+func (sg *sessionGame) unmarshalSaveGame(data []byte) error {
+	return sg.unmarshalSnapshot(data, saveGameMagic, saveGameVersion)
+}
+
+func (sg *sessionGame) marshalNetplayKeyframe() ([]byte, error) {
+	if sg == nil || sg.g == nil || sg.g.m == nil {
+		return nil, errSaveGameUnavailable
+	}
+	rndIndex, prndIndex := doomrand.State()
+	file := saveFile{
+		Version:         keyframeVersion,
+		Description:     "Netplay Keyframe",
+		Current:         sg.current,
+		CurrentMap:      cloneMapForRestart(sg.g.m),
+		CurrentTemplate: cloneMapForRestart(sg.currentTemplate),
+		RNG: saveRNGState{
+			MenuIndex: rndIndex,
+			PlayIndex: prndIndex,
+		},
+		Game: captureGameSaveState(sg.g),
+	}
+	return encodeSnapshot(keyframeMagic, file)
+}
+
+func (sg *sessionGame) unmarshalNetplayKeyframe(data []byte) error {
+	return sg.unmarshalSnapshot(data, keyframeMagic, keyframeVersion)
+}
+
+func encodeSnapshot(magic []byte, file saveFile) ([]byte, error) {
 	var buf bytes.Buffer
-	if _, err := buf.Write(saveGameMagic); err != nil {
+	if _, err := buf.Write(magic); err != nil {
 		return nil, err
 	}
 	enc := gob.NewEncoder(&buf)
@@ -388,19 +429,19 @@ func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (sg *sessionGame) unmarshalSaveGame(data []byte) error {
+func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int) error {
 	if sg == nil {
 		return errNoSavedGame
 	}
-	if len(data) < len(saveGameMagic) || !bytes.Equal(data[:len(saveGameMagic)], saveGameMagic) {
+	if len(data) < len(magic) || !bytes.Equal(data[:len(magic)], magic) {
 		return errBadSaveMagic
 	}
 	var file saveFile
-	dec := gob.NewDecoder(bytes.NewReader(data[len(saveGameMagic):]))
+	dec := gob.NewDecoder(bytes.NewReader(data[len(magic):]))
 	if err := dec.Decode(&file); err != nil {
 		return err
 	}
-	if file.Version != saveGameVersion {
+	if file.Version != version {
 		return fmt.Errorf("incompatible save version: %d", file.Version)
 	}
 	if file.CurrentMap == nil {

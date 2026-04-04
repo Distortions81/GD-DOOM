@@ -93,6 +93,48 @@ func TestRelayWatchRejectsWADHashMismatch(t *testing.T) {
 	}
 }
 
+func TestRelayViewerReceivesKeyframe(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{MapName: "E1M1"})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+	if err := b.BroadcastKeyframe(35, []byte{9, 8, 7}); err != nil {
+		t.Fatalf("BroadcastKeyframe() error = %v", err)
+	}
+
+	v, err := DialRelayViewer(srv.Addr(), b.SessionID(), "")
+	if err != nil {
+		t.Fatalf("DialRelayViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		kf, ok, err := v.PollKeyframe()
+		if err != nil && err != io.EOF {
+			t.Fatalf("PollKeyframe() error = %v", err)
+		}
+		if ok {
+			if kf.Tic != 35 {
+				t.Fatalf("keyframe tic=%d want=35", kf.Tic)
+			}
+			if !bytes.Equal(kf.Blob, []byte{9, 8, 7}) {
+				t.Fatalf("keyframe blob=%v want=%v", kf.Blob, []byte{9, 8, 7})
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for keyframe")
+}
+
 func TestHelloRoundTripBinary(t *testing.T) {
 	var buf bytes.Buffer
 	want := SessionConfig{

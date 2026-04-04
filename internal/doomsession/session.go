@@ -156,3 +156,17 @@ func (s *Session) StartMapName() mapdata.MapName {
 	}
 	return s.meta.StartMapName()
 }
+
+func (s *Session) CaptureKeyframe() ([]byte, error) {
+	if s == nil || s.meta.CaptureKeyframe == nil {
+		return nil, nil
+	}
+	return s.meta.CaptureKeyframe()
+}
+
+func (s *Session) LoadKeyframe(data []byte) error {
+	if s == nil || s.meta.LoadKeyframe == nil {
+		return nil
+	}
+	return s.meta.LoadKeyframe(data)
+}
