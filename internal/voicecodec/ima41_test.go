@@ -19,7 +19,7 @@ func TestIMA41RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
 	}
-	if got, want := len(first), IMA41PacketBytes+4; got != want {
+	if got, want := len(first), IMA41PacketBytes+ima41SeedHeaderBytes; got != want {
 		t.Fatalf("first packet len=%d want=%d", got, want)
 	}
 
@@ -70,7 +70,7 @@ func TestIMA41ResetProducesSeededPacket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
 	}
-	if got, want := len(packet), IMA41PacketBytes+4; got != want {
+	if got, want := len(packet), IMA41PacketBytes+ima41SeedHeaderBytes; got != want {
 		t.Fatalf("seed packet len=%d want=%d", got, want)
 	}
 
@@ -87,7 +87,7 @@ func TestIMA41ResetProducesSeededPacket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode() after reset error = %v", err)
 	}
-	if got, want := len(packet), IMA41PacketBytes+4; got != want {
+	if got, want := len(packet), IMA41PacketBytes+ima41SeedHeaderBytes; got != want {
 		t.Fatalf("reset packet len=%d want=%d", got, want)
 	}
 }

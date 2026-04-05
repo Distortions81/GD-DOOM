@@ -3,8 +3,8 @@ package voicecodec
 import "fmt"
 
 var imaIndexTable = [16]int{
-	-1, -1, -1, -1, 2, 4, 6, 8,
-	-1, -1, -1, -1, 2, 4, 6, 8,
+	-1, -1, -1, 0, 1, 3, 5, 7,
+	-1, -1, -1, 0, 1, 3, 5, 7,
 }
 
 var imaStepTable = [89]int{
@@ -21,6 +21,7 @@ var imaStepTable = [89]int{
 
 type IMA41Encoder struct {
 	predictor int16
+	prevDelta int16
 	stepIndex int
 	needSeed  bool
 	frames    int
@@ -28,10 +29,11 @@ type IMA41Encoder struct {
 
 type IMA41Decoder struct {
 	predictor int16
+	prevDelta int16
 	stepIndex int
 }
 
-const ima41SeedHeaderBytes = 4
+const ima41SeedHeaderBytes = 6
 const ima41ResyncIntervalFrames = 50
 
 func NewIMA41Encoder() *IMA41Encoder {
@@ -49,6 +51,7 @@ func (e *IMA41Encoder) Reset() {
 		return
 	}
 	e.predictor = 0
+	e.prevDelta = 0
 	e.stepIndex = 0
 	e.needSeed = true
 	e.frames = 0
@@ -59,6 +62,7 @@ func (d *IMA41Decoder) Reset() {
 		return
 	}
 	d.predictor = 0
+	d.prevDelta = 0
 	d.stepIndex = 0
 }
 
@@ -76,8 +80,9 @@ func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
 	if seeded {
 		out = make([]byte, ima41SeedHeaderBytes+len(frame)/2)
 		putI16LE(out[0:2], e.predictor)
-		out[2] = byte(e.stepIndex)
-		out[3] = 0
+		putI16LE(out[2:4], e.prevDelta)
+		out[4] = byte(e.stepIndex)
+		out[5] = 0
 		write = ima41SeedHeaderBytes
 	}
 	for i := 0; i < len(frame); i += 2 {
@@ -100,7 +105,8 @@ func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
 	case IMA41PacketBytes:
 	case ima41SeedHeaderBytes + IMA41PacketBytes:
 		d.predictor = getI16LE(packet[0:2])
-		d.stepIndex = int(packet[2])
+		d.prevDelta = getI16LE(packet[2:4])
+		d.stepIndex = int(packet[4])
 		if d.stepIndex < 0 || d.stepIndex >= len(imaStepTable) {
 			return nil, fmt.Errorf("ima 4:1 step index out of range: %d", d.stepIndex)
 		}
@@ -129,7 +135,8 @@ func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
 
 func (e *IMA41Encoder) encodeNibble(sample int16) byte {
 	step := imaStepTable[e.stepIndex]
-	diff := int(sample) - int(e.predictor)
+	base := int(e.predictedSample())
+	diff := int(sample) - base
 	code := byte(0)
 	if diff < 0 {
 		code |= 0x08
@@ -172,13 +179,15 @@ func (d *IMA41Decoder) decodeNibble(code byte) int16 {
 }
 
 func (e *IMA41Encoder) applyDelta(code byte, delta int) {
-	predictor := int(e.predictor)
+	last := int(e.predictor)
+	predictor := int(e.predictedSample())
 	if code&0x08 != 0 {
 		predictor -= delta
 	} else {
 		predictor += delta
 	}
 	e.predictor = clamp16(predictor)
+	e.prevDelta = clamp16(int(e.predictor) - last)
 	e.stepIndex += imaIndexTable[code&0x0f]
 	if e.stepIndex < 0 {
 		e.stepIndex = 0
@@ -189,13 +198,15 @@ func (e *IMA41Encoder) applyDelta(code byte, delta int) {
 }
 
 func (d *IMA41Decoder) applyDelta(code byte, delta int) {
-	predictor := int(d.predictor)
+	last := int(d.predictor)
+	predictor := int(d.predictedSample())
 	if code&0x08 != 0 {
 		predictor -= delta
 	} else {
 		predictor += delta
 	}
 	d.predictor = clamp16(predictor)
+	d.prevDelta = clamp16(int(d.predictor) - last)
 	d.stepIndex += imaIndexTable[code&0x0f]
 	if d.stepIndex < 0 {
 		d.stepIndex = 0
@@ -213,6 +224,18 @@ func clamp16(v int) int16 {
 		return 32767
 	}
 	return int16(v)
+}
+
+func (e *IMA41Encoder) predictedSample() int16 {
+	return predictedIMA41Sample(e.predictor, e.prevDelta)
+}
+
+func (d *IMA41Decoder) predictedSample() int16 {
+	return predictedIMA41Sample(d.predictor, d.prevDelta)
+}
+
+func predictedIMA41Sample(current, prevDelta int16) int16 {
+	return clamp16(int(current) + (int(prevDelta)*3)/4)
 }
 
 func putI16LE(dst []byte, v int16) {
