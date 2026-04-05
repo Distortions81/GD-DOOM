@@ -23,6 +23,11 @@ const (
 	agcGateFloorRatio   = 1.05
 	agcGateOpenRatio    = 2.2
 	agcGateMinGain      = 0.0
+	agcGateAttack       = 0.55
+	agcGateRelease      = 0.25
+	agcGateSilentGain   = 0.08
+	agcGateGroupSamples = 80
+	agcGateLookahead    = 2
 	agcLowPassCutoffHz  = 4000.0
 	agcHighPassCutoffHz = 120.0
 )
@@ -37,6 +42,7 @@ type micAGC struct {
 	havePrevBand bool
 	voiceHold    int
 	frameCount   int
+	gateGain     float64
 	lastLogGain  float64
 	lastLogGate  float64
 	lastLogVoice bool
@@ -46,9 +52,10 @@ type micAGC struct {
 func newMicAGC() *micAGC {
 	return &micAGC{
 		gain:        1,
+		gateGain:    0,
 		noiseRMSAvg: agcVoiceRMSFloor * 0.5,
 		lastLogGain: 1,
-		lastLogGate: 1,
+		lastLogGate: 0,
 		logEnabled:  os.Getenv("GD_DOOM_VOICE_AGC_LOG") != "",
 	}
 }
@@ -62,13 +69,19 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 	var sumSq float64
 	var peak float64
 	zeroCrossings := 0
-	for _, sample := range pcm {
+	groupRMS := make([]float64, groupCount(len(pcm), agcGateGroupSamples))
+	groupSumSq := make([]float64, len(groupRMS))
+	groupLens := make([]int, len(groupRMS))
+	for i, sample := range pcm {
 		x := float64(sample)
 		a.lpState += lpAlpha * (x - a.lpState)
 		a.lowState += lowAlpha * (a.lpState - a.lowState)
 		band := a.lpState - a.lowState
 		absBand := math.Abs(band)
 		sumSq += band * band
+		group := i / agcGateGroupSamples
+		groupSumSq[group] += band * band
+		groupLens[group]++
 		if absBand > peak {
 			peak = absBand
 		}
@@ -77,6 +90,11 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 		}
 		a.prevBand = band
 		a.havePrevBand = true
+	}
+	for i := range groupRMS {
+		if groupLens[i] > 0 {
+			groupRMS[i] = math.Sqrt(groupSumSq[i] / float64(groupLens[i]))
+		}
 	}
 	rms := math.Sqrt(sumSq / float64(len(pcm)))
 	crest := 0.0
@@ -115,7 +133,24 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 		a.gain += (1 - a.gain) * agcIdleReturn
 	}
 	a.gain = clampFloat(a.gain, agcMinGain, agcMaxGain)
-	gateGain := gateGainForFrame(rawVoiced, a.voiceHold, rms, max(a.noiseRMSAvg, 1))
+	noiseAvg := max(a.noiseRMSAvg, 1)
+	targetGate := gateGainForFrame(rawVoiced, a.voiceHold, rms, noiseAvg)
+	groupGates := make([]float64, len(groupRMS))
+	if targetGate == 0 && rms == 0 {
+		a.gateGain = 0
+	} else {
+		desiredGates := desiredGateByGroup(a.gateGain, targetGate, rawVoiced, groupRMS, noiseAvg)
+		for i := range desiredGates {
+			if desiredGates[i] > a.gateGain {
+				a.gateGain += (desiredGates[i] - a.gateGain) * agcGateAttack
+			} else {
+				a.gateGain += (desiredGates[i] - a.gateGain) * agcGateRelease
+			}
+			a.gateGain = clampFloat(a.gateGain, agcGateMinGain, 1)
+			groupGates[i] = a.gateGain
+		}
+	}
+	gateGain := a.gateGain
 	a.frameCount++
 	if a.shouldLog(voiced, gateGain) {
 		fmt.Printf("mic-agc frame=%d voiced=%t hold=%d rms=%.1f voice_avg=%.1f noise=%.1f peak=%.1f gain=%.3f gate=%.3f\n",
@@ -124,8 +159,27 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 		a.lastLogGate = gateGain
 		a.lastLogVoice = voiced
 	}
+	if !rawVoiced && a.voiceHold <= 0 && gateGain <= agcGateSilentGain {
+		a.gateGain = 0
+		clear(pcm)
+		return true
+	}
+	silent := true
 	for i, sample := range pcm {
-		v := int(math.Round(float64(sample) * a.gain * gateGain))
+		group := i / agcGateGroupSamples
+		groupGate := gateGain
+		if len(groupGates) > 0 {
+			groupGate = groupGates[group]
+			if next := group + 1; next < len(groupGates) && groupLens[group] > 1 {
+				pos := i - group*agcGateGroupSamples
+				t := float64(pos) / float64(groupLens[group]-1)
+				groupGate += (groupGates[next] - groupGate) * t
+			}
+		}
+		if groupGate > 0 {
+			silent = false
+		}
+		v := int(math.Round(float64(sample) * a.gain * groupGate))
 		switch {
 		case v > math.MaxInt16:
 			pcm[i] = math.MaxInt16
@@ -135,7 +189,7 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 			pcm[i] = int16(v)
 		}
 	}
-	return gateGain == 0
+	return silent
 }
 
 func onePoleAlpha(cutoffHz float64, sampleRate int) float64 {
@@ -155,6 +209,13 @@ func clampFloat(v, lo, hi float64) float64 {
 		return hi
 	}
 	return v
+}
+
+func groupCount(samples, groupSize int) int {
+	if samples <= 0 || groupSize <= 0 {
+		return 0
+	}
+	return (samples + groupSize - 1) / groupSize
 }
 
 func (a *micAGC) shouldLog(voiced bool, gateGain float64) bool {
@@ -212,4 +273,41 @@ func gateGainForFrame(rawVoiced bool, voiceHold int, rms, noiseAvg float64) floa
 		blend = 1
 	}
 	return knee + (1-knee)*blend
+}
+
+func desiredGateByGroup(startGate, targetGate float64, rawVoiced bool, groupRMS []float64, noiseAvg float64) []float64 {
+	if len(groupRMS) == 0 {
+		return nil
+	}
+	out := make([]float64, len(groupRMS))
+	for i := range out {
+		out[i] = targetGate
+	}
+	if !rawVoiced || targetGate <= startGate {
+		return out
+	}
+	onsetThreshold := max(agcVoiceRMSFloor, noiseAvg*agcVoiceNoiseRatio)
+	onset := 0
+	for i, rms := range groupRMS {
+		if rms >= onsetThreshold {
+			onset = i
+			break
+		}
+	}
+	rampStart := onset - agcGateLookahead
+	if rampStart < 0 {
+		rampStart = 0
+	}
+	for i := 0; i < rampStart; i++ {
+		out[i] = startGate
+	}
+	span := onset - rampStart + 1
+	if span < 1 {
+		span = 1
+	}
+	for i := rampStart; i <= onset && i < len(out); i++ {
+		x := float64(i-rampStart+1) / float64(span+1)
+		out[i] = startGate + (targetGate-startGate)*x
+	}
+	return out
 }

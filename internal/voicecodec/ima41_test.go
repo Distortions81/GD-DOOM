@@ -9,13 +9,13 @@ func TestIMA41RoundTrip(t *testing.T) {
 	enc := NewIMA41Encoder()
 	dec := NewIMA41Decoder()
 
-	pcm := make([]int16, FrameSamples*2)
+	pcm := make([]int16, PacketSamples*2)
 	for i := range pcm {
 		v := math.Sin(2 * math.Pi * 440 * float64(i) / SampleRate)
 		pcm[i] = int16(v * 12000)
 	}
 
-	first, err := enc.Encode(pcm[:FrameSamples])
+	first, err := enc.Encode(pcm[:PacketSamples])
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
 	}
@@ -23,7 +23,7 @@ func TestIMA41RoundTrip(t *testing.T) {
 		t.Fatalf("first packet len=%d want=%d", got, want)
 	}
 
-	second, err := enc.Encode(pcm[FrameSamples:])
+	second, err := enc.Encode(pcm[PacketSamples:])
 	if err != nil {
 		t.Fatalf("Encode() second frame error = %v", err)
 	}
@@ -35,8 +35,8 @@ func TestIMA41RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode() first frame error = %v", err)
 	}
-	if len(out) != FrameSamples {
-		t.Fatalf("decoded samples=%d want=%d", len(out), FrameSamples)
+	if len(out) != PacketSamples {
+		t.Fatalf("decoded samples=%d want=%d", len(out), PacketSamples)
 	}
 	nonZero := false
 	var totalErr float64
@@ -57,14 +57,14 @@ func TestIMA41RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode() second frame error = %v", err)
 	}
-	if len(out) != FrameSamples {
-		t.Fatalf("decoded second-frame samples=%d want=%d", len(out), FrameSamples)
+	if len(out) != PacketSamples {
+		t.Fatalf("decoded second-frame samples=%d want=%d", len(out), PacketSamples)
 	}
 }
 
 func TestIMA41ResetProducesSeededPacket(t *testing.T) {
 	enc := NewIMA41Encoder()
-	pcm := make([]int16, FrameSamples)
+	pcm := make([]int16, PacketSamples)
 
 	packet, err := enc.Encode(pcm)
 	if err != nil {
@@ -95,13 +95,13 @@ func TestIMA41ResetProducesSeededPacket(t *testing.T) {
 func TestIMA41SeededPacketIncludesExpandedPredictorState(t *testing.T) {
 	enc := NewIMA41Encoder()
 	dec := NewIMA41Decoder()
-	pcm := make([]int16, FrameSamples*3)
+	pcm := make([]int16, PacketSamples*3)
 	for i := range pcm {
 		v := math.Sin(2 * math.Pi * 220 * float64(i) / SampleRate)
 		pcm[i] = int16(v * 10000)
 	}
 
-	first, err := enc.Encode(pcm[:FrameSamples])
+	first, err := enc.Encode(pcm[:PacketSamples])
 	if err != nil {
 		t.Fatalf("Encode() first error = %v", err)
 	}
@@ -109,7 +109,7 @@ func TestIMA41SeededPacketIncludesExpandedPredictorState(t *testing.T) {
 		t.Fatalf("Decode() first error = %v", err)
 	}
 
-	second, err := enc.Encode(pcm[FrameSamples : 2*FrameSamples])
+	second, err := enc.Encode(pcm[PacketSamples : 2*PacketSamples])
 	if err != nil {
 		t.Fatalf("Encode() second error = %v", err)
 	}
@@ -119,7 +119,7 @@ func TestIMA41SeededPacketIncludesExpandedPredictorState(t *testing.T) {
 
 	enc.Reset()
 	dec.Reset()
-	seeded, err := enc.Encode(pcm[2*FrameSamples:])
+	seeded, err := enc.Encode(pcm[2*PacketSamples:])
 	if err != nil {
 		t.Fatalf("Encode() seeded error = %v", err)
 	}

@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	audioStartupBufferFrames  = 5
-	audioTargetBufferedFrames = 6
-	audioResetBufferedFrames  = 12
+	audioStartupBufferFrames  = 1
+	audioTargetBufferedFrames = 2
+	audioResetBufferedFrames  = 4
 	audioPlayerBuffer         = 40 * time.Millisecond
 	audioFadeSamples          = 512
 )
@@ -51,7 +51,7 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		Codec:        netplayAudioCodecIMA4To1(),
 		SampleRate:   voicecodec.SampleRate,
 		Channels:     voicecodec.Channels,
-		FrameSamples: voicecodec.FrameSamples,
+		FrameSamples: voicecodec.PacketSamples,
 		Bitrate:      voicecodec.SampleRate * voicecodec.Channels * 4,
 	}); err != nil {
 		cancel()
@@ -67,30 +67,39 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		defer reader.Close()
 		frameBytes := voicecodec.FrameSamples * voicecodec.Channels * 2
 		raw := make([]byte, frameBytes)
-		pcm := make([]int16, voicecodec.FrameSamples*voicecodec.Channels)
+		framePCM := make([]int16, voicecodec.FrameSamples*voicecodec.Channels)
+		packetPCM := make([]int16, voicecodec.PacketSamples*voicecodec.Channels)
 		hpf := newHighPassFilter(50, voicecodec.SampleRate)
 		agc := newMicAGC()
 		var startSample uint64
 		for {
-			if _, err := io.ReadFull(reader, raw); err != nil {
-				if ctx.Err() != nil || err == io.EOF || err == io.ErrClosedPipe {
-					vs.done <- nil
+			allSilent := true
+			for packetFrame := 0; packetFrame < voicecodec.PacketFrames; packetFrame++ {
+				if _, err := io.ReadFull(reader, raw); err != nil {
+					if ctx.Err() != nil || err == io.EOF || err == io.ErrClosedPipe {
+						vs.done <- nil
+						return
+					}
+					vs.done <- err
 					return
 				}
-				vs.done <- err
-				return
+				for i := range framePCM {
+					framePCM[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
+				}
+				hpf.ProcessInt16(framePCM)
+				silence := agc.ProcessFrame(framePCM, voicecodec.SampleRate)
+				if !silence {
+					allSilent = false
+				}
+				base := packetFrame * len(framePCM)
+				copy(packetPCM[base:base+len(framePCM)], framePCM)
 			}
-			for i := range pcm {
-				pcm[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
-			}
-			hpf.ProcessInt16(pcm)
-			silence := agc.ProcessFrame(pcm, voicecodec.SampleRate)
 			var payload []byte
-			if silence {
+			if allSilent {
 				encoder.Reset()
 				payload = nil
 			} else {
-				packet, err := encoder.Encode(pcm)
+				packet, err := encoder.Encode(packetPCM)
 				if err != nil {
 					vs.done <- err
 					return
@@ -104,13 +113,13 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			if err := broadcaster.BroadcastAudioChunk(netplay.AudioChunk{
 				GameTic:     tic,
 				StartSample: startSample,
-				Silence:     silence,
+				Silence:     allSilent,
 				Payload:     payload,
 			}); err != nil {
 				vs.done <- err
 				return
 			}
-			startSample += uint64(voicecodec.FrameSamples)
+			startSample += uint64(voicecodec.PacketSamples)
 		}
 	}()
 	return vs, nil
@@ -243,7 +252,7 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			p.done <- fmt.Errorf("unsupported audio codec %d", current.Codec)
 			return
 		}
-		if haveStartSample && chunk.StartSample != lastStartSample+uint64(voicecodec.FrameSamples) {
+		if haveStartSample && chunk.StartSample != lastStartSample+uint64(current.FrameSamples) {
 			decoder.Reset()
 			p.source.Reset()
 		}
@@ -295,16 +304,16 @@ func newStreamSource(playbackRate int) *streamSource {
 	if playbackRate <= 0 {
 		playbackRate = 44100
 	}
-	samplesPerFrame := (playbackRate*voicecodec.FrameDurationMillis + 999) / 1000
-	if samplesPerFrame < 1 {
-		samplesPerFrame = 1
+	samplesPerPacket := (playbackRate*voicecodec.PacketDurationMillis + 999) / 1000
+	if samplesPerPacket < 1 {
+		samplesPerPacket = 1
 	}
-	bytesPerFrame := samplesPerFrame * 4
+	bytesPerPacket := samplesPerPacket * 4
 	return &streamSource{
 		needFadeIn:          true,
-		startupBytes:        audioStartupBufferFrames * bytesPerFrame,
-		targetBufferedBytes: audioTargetBufferedFrames * bytesPerFrame,
-		resetBufferedBytes:  audioResetBufferedFrames * bytesPerFrame,
+		startupBytes:        audioStartupBufferFrames * bytesPerPacket,
+		targetBufferedBytes: audioTargetBufferedFrames * bytesPerPacket,
+		resetBufferedBytes:  audioResetBufferedFrames * bytesPerPacket,
 	}
 }
 

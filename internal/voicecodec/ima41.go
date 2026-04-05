@@ -71,18 +71,18 @@ func (d *IMA41Decoder) Reset() {
 }
 
 func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
-	if len(pcm) < FrameSamples*Channels {
-		return nil, fmt.Errorf("pcm samples=%d want at least %d", len(pcm), FrameSamples*Channels)
+	if len(pcm) < PacketSamples*Channels {
+		return nil, fmt.Errorf("pcm samples=%d want at least %d", len(pcm), PacketSamples*Channels)
 	}
-	frame := pcm[:FrameSamples*Channels]
-	if len(frame) == 0 {
+	packet := pcm[:PacketSamples*Channels]
+	if len(packet) == 0 {
 		return nil, nil
 	}
 	seeded := e.needSeed || e.frames%ima41ResyncIntervalFrames == 0
-	out := make([]byte, len(frame)/2)
+	out := make([]byte, len(packet)/2)
 	write := 0
 	if seeded {
-		out = make([]byte, ima41SeedHeaderBytes+len(frame)/2)
+		out = make([]byte, ima41SeedHeaderBytes+len(packet)/2)
 		putI16LE(out[0:2], e.predictor)
 		putI16LE(out[2:4], e.prevDelta)
 		putI16LE(out[4:6], e.prevDelta2)
@@ -90,17 +90,17 @@ func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
 		out[7] = 0
 		write = ima41SeedHeaderBytes
 	}
-	for i := 0; i < len(frame); i += 2 {
-		lo := e.encodeNibble(frame[i])
+	for i := 0; i < len(packet); i += 2 {
+		lo := e.encodeNibble(packet[i])
 		hi := byte(0)
-		if i+1 < len(frame) {
-			hi = e.encodeNibble(frame[i+1])
+		if i+1 < len(packet) {
+			hi = e.encodeNibble(packet[i+1])
 		}
 		out[write] = lo | (hi << 4)
 		write++
 	}
 	e.needSeed = false
-	e.frames++
+	e.frames += PacketFrames
 	return out, nil
 }
 
@@ -120,7 +120,7 @@ func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
 	default:
 		return nil, fmt.Errorf("ima 4:1 packet len=%d want=%d or %d", len(packet), IMA41PacketBytes, ima41SeedHeaderBytes+IMA41PacketBytes)
 	}
-	out := make([]int16, FrameSamples*Channels)
+	out := make([]int16, PacketSamples*Channels)
 	write := 0
 	for _, b := range payload {
 		if write < len(out) {
