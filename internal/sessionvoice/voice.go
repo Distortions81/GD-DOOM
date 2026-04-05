@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	audioStartupBufferFrames = 4
-	audioTargetBufferedFrames = 5
-	audioResetBufferedFrames  = 10
-	audioPlayerBuffer         = 30 * time.Millisecond
-	audioFadeSamples         = 256
+	audioStartupBufferFrames = 5
+	audioTargetBufferedFrames = 6
+	audioResetBufferedFrames  = 12
+	audioPlayerBuffer         = 40 * time.Millisecond
+	audioFadeSamples         = 512
 )
 
 type VoiceStreamer struct {
@@ -377,6 +377,7 @@ func (s *streamSource) resetBufferedAudioLocked() {
 	if s.resetBufferedBytes <= 0 || len(s.buf) <= s.resetBufferedBytes {
 		return
 	}
+	before := len(s.buf)
 	keep := s.targetBufferedBytes
 	if keep < s.startupBytes {
 		keep = s.startupBytes
@@ -395,6 +396,9 @@ func (s *streamSource) resetBufferedAudioLocked() {
 		return
 	}
 	start := len(s.buf) - keep
+	dropped := start / 4
+	kept := keep / 4
+	fmt.Printf("voice-skip buffered=%d_samples dropped=%d_samples kept=%d_samples\n", before/4, dropped, kept)
 	s.fade = buildFadeOutStereo16(s.lastSample, audioFadeSamples)
 	copy(s.buf, s.buf[start:])
 	s.buf = s.buf[:keep]
