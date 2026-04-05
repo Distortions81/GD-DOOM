@@ -19,32 +19,32 @@ func TestPulseConfigNormalizedDefaults(t *testing.T) {
 }
 
 func TestPulseConfigValidateRejectsUnsupportedFormat(t *testing.T) {
-	err := (PulseConfig{SampleRate: 48000, Channels: 1, Format: "f32le", LatencyMillis: 20}).validate()
+	err := (PulseConfig{SampleRate: 48000, Channels: 1, Format: "f32le", LatencyMillis: 30}).validate()
 	if err == nil {
 		t.Fatal("validate() error = nil want unsupported format")
 	}
 }
 
 func TestPulseConfigValidateRejectsBadSampleRate(t *testing.T) {
-	err := (PulseConfig{SampleRate: 0, Channels: 1, Format: "s16le", LatencyMillis: 20}).validate()
+	err := (PulseConfig{SampleRate: 0, Channels: 1, Format: "s16le", LatencyMillis: 30}).validate()
 	if err == nil {
 		t.Fatal("validate() error = nil want bad sample rate")
 	}
 }
 
-func TestPulseConfigValidateRejectsNonEven20MSFrameRate(t *testing.T) {
-	err := (PulseConfig{SampleRate: 44117, Channels: 1, Format: "s16le", LatencyMillis: 20}).validate()
+func TestPulseConfigValidateRejectsNonEven30MSFrameRate(t *testing.T) {
+	err := (PulseConfig{SampleRate: 44117, Channels: 1, Format: "s16le", LatencyMillis: 30}).validate()
 	if err == nil {
-		t.Fatal("validate() error = nil want uneven 20 ms frame rate")
+		t.Fatal("validate() error = nil want uneven 30 ms frame rate")
 	}
 }
 
 func TestPulseConfigChunkSizingAtDefaults(t *testing.T) {
 	got := (PulseConfig{}).normalized()
-	if got.samplesPerFrame() != 960 {
-		t.Fatalf("samplesPerFrame=%d want=960", got.samplesPerFrame())
+	if got.samplesPerFrame() != 1440 {
+		t.Fatalf("samplesPerFrame=%d want=1440", got.samplesPerFrame())
 	}
-	if got.bytesPerFrame() != 1920 {
-		t.Fatalf("bytesPerFrame=%d want=1920", got.bytesPerFrame())
+	if got.bytesPerFrame() != 2880 {
+		t.Fatalf("bytesPerFrame=%d want=2880", got.bytesPerFrame())
 	}
 }

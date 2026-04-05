@@ -6,8 +6,8 @@ const (
 	CaptureSampleRate         = 48000
 	SampleRate                = 24000
 	Channels                  = 1
-	FrameDurationMillis       = 10
-	PacketFrames              = 3
+	FrameDurationMillis       = 30
+	PacketFrames              = 1
 	CaptureFrameSamples       = CaptureSampleRate * FrameDurationMillis / 1000
 	FrameSamples              = SampleRate * FrameDurationMillis / 1000
 	PacketSamples             = FrameSamples * PacketFrames

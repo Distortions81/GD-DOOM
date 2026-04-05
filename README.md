@@ -198,9 +198,24 @@ Run the test suite:
 go test ./...
 ```
 
-Voice debugging:
+## Environment Variables
 
-- Set `GD_DOOM_VOICE_AGC_LOG=1` to print rate-limited AGC diagnostics to stdout while broadcasting voice.
+All current GD-DOOM environment toggles use the `GD_DOOM_` prefix. Any non-empty value enables the behavior.
+
+- `GD_DOOM_NET_BANDWIDTH_OVERLAY` shows the in-game network bandwidth overlay.
+- `GD_DOOM_VOICE_SYNC_OVERLAY` adds the voice sync offset to the bandwidth overlay when voice sync data is available.
+- `GD_DOOM_VOICE_AGC_LOG` prints rate-limited voice AGC diagnostics to stdout while broadcasting voice.
+
+Examples:
+
+```bash
+GD_DOOM_NET_BANDWIDTH_OVERLAY=1 go run . -wad DOOM1.WAD
+GD_DOOM_NET_BANDWIDTH_OVERLAY=1 GD_DOOM_VOICE_SYNC_OVERLAY=1 go run . -wad DOOM1.WAD
+GD_DOOM_VOICE_AGC_LOG=1 go run . -wad DOOM1.WAD
+```
+
+Voice runtime notes:
+
 - Viewer skip-ahead recovery logs remain on by default as `voice-skip ...` lines so audio catch-up is visible without extra flags.
 
 Useful helper commands and tools live under [`cmd/`](/home/dist/github/GD-DOOM/cmd) and [`scripts/`](/home/dist/github/GD-DOOM/scripts), including utilities for WAD inspection, map analysis, demo tracing, music export, and WASM serving.

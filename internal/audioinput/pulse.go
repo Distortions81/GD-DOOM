@@ -6,11 +6,11 @@ import (
 )
 
 const (
-	defaultFrameDurationMS   = 20
+	defaultFrameDurationMS   = 30
 	defaultPulseSampleRate   = 48000
 	defaultPulseChannels     = 1
 	defaultPulseFormat       = "s16le"
-	defaultPulseLatencyMilli = 20
+	defaultPulseLatencyMilli = 30
 )
 
 type PulseConfig struct {

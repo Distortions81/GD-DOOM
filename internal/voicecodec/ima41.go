@@ -143,6 +143,14 @@ func IsIMA41SeededPacket(packet []byte) bool {
 	return len(packet) == ima41SeedHeaderBytes+IMA41PacketBytes
 }
 
+func isIMA41SeedHeader(header []byte) bool {
+	if len(header) < ima41SeedHeaderBytes {
+		return false
+	}
+	stepIndex := int(header[6])
+	return stepIndex >= 0 && stepIndex < len(imaStepTable) && header[7] == 0
+}
+
 func (e *IMA41Encoder) encodeNibble(sample int16) byte {
 	step := imaStepTable[e.stepIndex]
 	base := int(e.predictedSample())

@@ -2,6 +2,7 @@ package netplay
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"io"
 	"net"
@@ -23,7 +24,7 @@ func TestRelayServerForwardsBroadcastFramesToViewer(t *testing.T) {
 		t.Fatalf("dial broadcaster: %v", err)
 	}
 	defer bconn.Close()
-	if err := writeHello(bconn, helloRoleBroadcaster, 0, 99, SessionConfig{
+	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 99, SessionConfig{
 		WADHash:  "abc123",
 		MapName:  "E1M1",
 		GameMode: "single",
@@ -46,7 +47,7 @@ func TestRelayServerForwardsBroadcastFramesToViewer(t *testing.T) {
 		t.Fatalf("dial viewer: %v", err)
 	}
 	defer vconn.Close()
-	if err := writeHello(vconn, helloRoleViewer, 0, 99, SessionConfig{}); err != nil {
+	if err := writeHello(vconn, helloRoleViewer, helloFlagGameplayCompactV1, 99, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello viewer: %v", err)
 	}
 
@@ -66,7 +67,7 @@ func TestRelayServerForwardsBroadcastFramesToViewer(t *testing.T) {
 
 	tc := demo.Tic{Forward: 25, Side: -5, AngleTurn: 512, Buttons: demo.ButtonUse}
 	payload := make([]byte, ticBatchOverhead+4)
-	payload[0] = 1
+	binary.LittleEndian.PutUint16(payload[0:2], 1)
 	copy(payload[ticBatchOverhead:], packDemoTic(tc))
 	if err := writeFrame(bconn, frameHeader{Type: frameTypeTicBatch, Tic: 7}, payload); err != nil {
 		t.Fatalf("writeFrame broadcaster: %v", err)
@@ -76,8 +77,8 @@ func TestRelayServerForwardsBroadcastFramesToViewer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readFrame viewer: %v", err)
 	}
-	if header.Type != frameTypeTicBatch || header.Tic != 7 {
-		t.Fatalf("header=%+v want type=%d tic=7", header, frameTypeTicBatch)
+	if header.Type != frameTypeTicBatch {
+		t.Fatalf("header=%+v want type=%d", header, frameTypeTicBatch)
 	}
 	if len(gotPayload) != len(payload) {
 		t.Fatalf("payload len=%d want=%d", len(gotPayload), len(payload))
@@ -99,7 +100,7 @@ func TestRelayServerReplaysLatestKeyframeToNewViewer(t *testing.T) {
 		t.Fatalf("dial broadcaster: %v", err)
 	}
 	defer bconn.Close()
-	if err := writeHello(bconn, helloRoleBroadcaster, 0, 88, SessionConfig{MapName: "E1M1"}); err != nil {
+	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 88, SessionConfig{MapName: "E1M1"}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
 	}
 	if _, _, _, _, err := readHello(bconn); err != nil {
@@ -116,7 +117,7 @@ func TestRelayServerReplaysLatestKeyframeToNewViewer(t *testing.T) {
 		t.Fatalf("dial viewer: %v", err)
 	}
 	defer vconn.Close()
-	if err := writeHello(vconn, helloRoleViewer, 0, 88, SessionConfig{}); err != nil {
+	if err := writeHello(vconn, helloRoleViewer, helloFlagGameplayCompactV1, 88, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello viewer: %v", err)
 	}
 	if _, _, _, _, err := readHello(vconn); err != nil {
@@ -146,7 +147,7 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 		t.Fatalf("dial broadcaster: %v", err)
 	}
 	defer bconn.Close()
-	if err := writeHello(bconn, helloRoleBroadcaster, 0, 91, SessionConfig{MapName: "E1M1"}); err != nil {
+	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 91, SessionConfig{MapName: "E1M1"}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
 	}
 	if _, _, _, _, err := readHello(bconn); err != nil {
@@ -157,7 +158,7 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 	}
 	tc := demo.Tic{Forward: 25, AngleTurn: 512}
 	payload := make([]byte, ticBatchOverhead+4)
-	payload[0] = 1
+	binary.LittleEndian.PutUint16(payload[0:2], 1)
 	copy(payload[ticBatchOverhead:], packDemoTic(tc))
 	if err := writeFrame(bconn, frameHeader{Type: frameTypeTicBatch, Tic: 1}, payload); err != nil {
 		t.Fatalf("write tic batch: %v", err)
@@ -168,7 +169,7 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 		t.Fatalf("dial viewer: %v", err)
 	}
 	defer vconn.Close()
-	if err := writeHello(vconn, helloRoleViewer, 0, 91, SessionConfig{}); err != nil {
+	if err := writeHello(vconn, helloRoleViewer, helloFlagGameplayCompactV1, 91, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello viewer: %v", err)
 	}
 	if _, _, _, _, err := readHello(vconn); err != nil {
@@ -181,8 +182,8 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read replayed tic batch: %v", err)
 	}
-	if header.Type != frameTypeTicBatch || header.Tic != 1 {
-		t.Fatalf("header=%+v want type=%d tic=1", header, frameTypeTicBatch)
+	if header.Type != frameTypeTicBatch {
+		t.Fatalf("header=%+v want type=%d", header, frameTypeTicBatch)
 	}
 	if got := unpackDemoTic(gotPayload[ticBatchOverhead : ticBatchOverhead+4]); got != tc {
 		t.Fatalf("tic=%+v want %+v", got, tc)
@@ -201,7 +202,7 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 		t.Fatalf("dial broadcaster: %v", err)
 	}
 	defer bconn.Close()
-	if err := writeHello(bconn, helloRoleBroadcaster, 0, 92, SessionConfig{MapName: "E1M1"}); err != nil {
+	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 92, SessionConfig{MapName: "E1M1"}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
 	}
 	if _, _, _, _, err := readHello(bconn); err != nil {
@@ -216,7 +217,7 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 		t.Fatalf("dial viewer: %v", err)
 	}
 	defer vconn.Close()
-	if err := writeHello(vconn, helloRoleViewer, 0, 92, SessionConfig{}); err != nil {
+	if err := writeHello(vconn, helloRoleViewer, helloFlagGameplayCompactV1, 92, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello viewer: %v", err)
 	}
 	if _, _, _, _, err := readHello(vconn); err != nil {
@@ -231,7 +232,7 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 	}
 	tc := demo.Tic{Forward: 25, AngleTurn: 512}
 	payload := make([]byte, ticBatchOverhead+4)
-	payload[0] = 1
+	binary.LittleEndian.PutUint16(payload[0:2], 1)
 	copy(payload[ticBatchOverhead:], packDemoTic(tc))
 	if err := writeFrame(bconn, frameHeader{Type: frameTypeTicBatch, Tic: 176}, payload); err != nil {
 		t.Fatalf("write tic batch: %v", err)
@@ -241,8 +242,8 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 	if err != nil {
 		t.Fatalf("read forwarded frame: %v", err)
 	}
-	if header.Type != frameTypeTicBatch || header.Tic != 176 {
-		t.Fatalf("header=%+v want type=%d tic=176", header, frameTypeTicBatch)
+	if header.Type != frameTypeTicBatch {
+		t.Fatalf("header=%+v want type=%d", header, frameTypeTicBatch)
 	}
 	if got := unpackDemoTic(gotPayload[ticBatchOverhead : ticBatchOverhead+4]); got != tc {
 		t.Fatalf("tic=%+v want %+v", got, tc)
@@ -261,7 +262,7 @@ func TestRelayServerForwardsMandatoryKeyframesToActiveViewer(t *testing.T) {
 		t.Fatalf("dial broadcaster: %v", err)
 	}
 	defer bconn.Close()
-	if err := writeHello(bconn, helloRoleBroadcaster, 0, 93, SessionConfig{MapName: "E1M1"}); err != nil {
+	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 93, SessionConfig{MapName: "E1M1"}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
 	}
 	if _, _, _, _, err := readHello(bconn); err != nil {
@@ -276,7 +277,7 @@ func TestRelayServerForwardsMandatoryKeyframesToActiveViewer(t *testing.T) {
 		t.Fatalf("dial viewer: %v", err)
 	}
 	defer vconn.Close()
-	if err := writeHello(vconn, helloRoleViewer, 0, 93, SessionConfig{}); err != nil {
+	if err := writeHello(vconn, helloRoleViewer, helloFlagGameplayCompactV1, 93, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello viewer: %v", err)
 	}
 	if _, _, _, _, err := readHello(vconn); err != nil {
@@ -315,7 +316,7 @@ func TestRelayServerAssignsSessionIDToBroadcaster(t *testing.T) {
 		t.Fatalf("dial broadcaster: %v", err)
 	}
 	defer conn.Close()
-	if err := writeHello(conn, helloRoleBroadcaster, 0, 0, SessionConfig{MapName: "E1M1"}); err != nil {
+	if err := writeHello(conn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 0, SessionConfig{MapName: "E1M1"}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
 	}
 	role, _, sessionID, session, err := readHello(conn)
@@ -345,7 +346,7 @@ func TestRelayServerRejectsViewerForMissingSession(t *testing.T) {
 		t.Fatalf("dial viewer: %v", err)
 	}
 	defer conn.Close()
-	if err := writeHello(conn, helloRoleViewer, 0, 123, SessionConfig{}); err != nil {
+	if err := writeHello(conn, helloRoleViewer, helloFlagGameplayCompactV1, 123, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello viewer: %v", err)
 	}
 
@@ -372,7 +373,7 @@ func TestRelayServerClosesViewerWhenBroadcasterDisconnects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial broadcaster: %v", err)
 	}
-	if err := writeHello(bconn, helloRoleBroadcaster, 0, 77, SessionConfig{}); err != nil {
+	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 77, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
 	}
 
@@ -381,7 +382,7 @@ func TestRelayServerClosesViewerWhenBroadcasterDisconnects(t *testing.T) {
 		t.Fatalf("dial viewer: %v", err)
 	}
 	defer vconn.Close()
-	if err := writeHello(vconn, helloRoleViewer, 0, 77, SessionConfig{}); err != nil {
+	if err := writeHello(vconn, helloRoleViewer, helloFlagGameplayCompactV1, 77, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello viewer: %v", err)
 	}
 	if _, _, _, _, err := readHello(vconn); err != nil {

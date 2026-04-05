@@ -11,7 +11,7 @@ func TestPulseArgsDefaults(t *testing.T) {
 		"--rate=48000",
 		"--channels=1",
 		"--format=s16le",
-		"--latency-msec=20",
+		"--latency-msec=30",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("arg count=%d want=%d (%v)", len(got), len(want), got)

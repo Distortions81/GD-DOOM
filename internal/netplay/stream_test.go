@@ -10,6 +10,18 @@ import (
 	"gddoom/internal/demo"
 )
 
+func pcmPayload(frameSamples, channels int) []byte {
+	return make([]byte, frameSamples*channels*2)
+}
+
+func imaPayload(frameSamples, channels int, seeded bool) []byte {
+	n := frameSamples * channels / 2
+	if seeded {
+		n += audioIMASeedHeaderBytes
+	}
+	return make([]byte, n)
+}
+
 func readViewerTic(t *testing.T, v *Viewer) (demo.Tic, bool, error) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -192,7 +204,7 @@ func TestRelayViewerReceivesLegacyRawKeyframe(t *testing.T) {
 		t.Fatalf("dial broadcaster: %v", err)
 	}
 	defer bconn.Close()
-	if err := writeHello(bconn, helloRoleBroadcaster, 0, 0, SessionConfig{MapName: "E1M1"}); err != nil {
+	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 0, SessionConfig{MapName: "E1M1"}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
 	}
 	_, _, sessionID, _, err := readHello(bconn)
@@ -458,9 +470,8 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 	}
 
 	wantChunk := AudioChunk{
-		GameTic:     77,
 		StartSample: 0,
-		Payload:     []byte{1, 2, 3, 4, 5},
+		Payload:     imaPayload(wantCfg.FrameSamples, wantCfg.Channels, true),
 	}
 	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {
 		t.Fatalf("BroadcastAudioChunk() error = %v", err)
@@ -484,7 +495,7 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("timed out waiting for audio chunk")
 	}
-	if gotChunk.GameTic != wantChunk.GameTic || gotChunk.StartSample != wantChunk.StartSample || gotChunk.Silence != wantChunk.Silence || !bytes.Equal(gotChunk.Payload, wantChunk.Payload) {
+	if gotChunk.StartSample != wantChunk.StartSample || gotChunk.Silence != wantChunk.Silence || !bytes.Equal(gotChunk.Payload, wantChunk.Payload) {
 		t.Fatalf("PollAudioChunk() = %+v want %+v", gotChunk, wantChunk)
 	}
 }
@@ -527,7 +538,6 @@ func TestRelayAudioSilenceChunkRoundTrip(t *testing.T) {
 		t.Fatalf("BroadcastAudioConfig() error = %v", err)
 	}
 	wantChunk := AudioChunk{
-		GameTic:     88,
 		StartSample: 0,
 		Silence:     true,
 	}
@@ -547,7 +557,7 @@ func TestRelayAudioSilenceChunkRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("timed out waiting for audio chunk")
 	}
-	if gotChunk.GameTic != wantChunk.GameTic || gotChunk.StartSample != wantChunk.StartSample || !gotChunk.Silence || len(gotChunk.Payload) != 0 {
+	if gotChunk.StartSample != wantChunk.StartSample || !gotChunk.Silence || len(gotChunk.Payload) != 0 {
 		t.Fatalf("PollAudioChunk() = %+v want silence chunk %+v", gotChunk, wantChunk)
 	}
 }
@@ -590,7 +600,7 @@ func TestRelayAudioChunkStartSampleAdvancesByConfiguredFrameSize(t *testing.T) {
 	if err := ab.BroadcastAudioConfig(cfg); err != nil {
 		t.Fatalf("BroadcastAudioConfig() error = %v", err)
 	}
-	if err := ab.BroadcastAudioChunk(AudioChunk{Payload: []byte{1, 2}}); err != nil {
+	if err := ab.BroadcastAudioChunk(AudioChunk{Payload: pcmPayload(cfg.FrameSamples, cfg.Channels)}); err != nil {
 		t.Fatalf("BroadcastAudioChunk() first error = %v", err)
 	}
 	if err := ab.BroadcastAudioChunk(AudioChunk{Silence: true}); err != nil {
@@ -660,9 +670,8 @@ func TestRelayAudioLateJoinDoesNotReceiveStaleChunks(t *testing.T) {
 		t.Fatalf("BroadcastAudioConfig() error = %v", err)
 	}
 	if err := ab.BroadcastAudioChunk(AudioChunk{
-		GameTic:     77,
 		StartSample: 0,
-		Payload:     []byte{1, 2, 3, 4},
+		Payload:     pcmPayload(wantCfg.FrameSamples, wantCfg.Channels),
 	}); err != nil {
 		t.Fatalf("BroadcastAudioChunk() error = %v", err)
 	}
@@ -740,8 +749,8 @@ func TestReadHelloRejectsBadMagic(t *testing.T) {
 
 func TestFrameRoundTripBinary(t *testing.T) {
 	var buf bytes.Buffer
-	header := frameHeader{Type: frameTypeTicBatch, Flags: 3, Tic: 99}
-	payload := []byte{1, 0, 0, 0, 25, 0, 2, demo.ButtonUse}
+	header := frameHeader{Type: frameTypeTicBatch}
+	payload := []byte{1, 0, 25, 0, 2, demo.ButtonUse}
 	if err := writeFrame(&buf, header, payload); err != nil {
 		t.Fatalf("writeFrame() error = %v", err)
 	}
@@ -749,7 +758,7 @@ func TestFrameRoundTripBinary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readFrame() error = %v", err)
 	}
-	if gotHeader.Type != header.Type || gotHeader.Flags != header.Flags || gotHeader.Tic != header.Tic {
+	if gotHeader.Type != header.Type || gotHeader.Flags != 0 || gotHeader.Tic != 0 {
 		t.Fatalf("header=%+v want %+v", gotHeader, header)
 	}
 	if gotHeader.Length != uint32(len(payload)) {

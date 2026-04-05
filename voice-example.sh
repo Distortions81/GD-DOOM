@@ -12,6 +12,27 @@ command -v ffmpeg >/dev/null || { echo "need ffmpeg" >&2; exit 1; }
 SRC_MOD=""
 PLAYER_PID=""
 
+replace_existing_source() {
+    local mods
+    mods="$(
+        pactl list short modules |
+            awk -v source_name="$SOURCE_NAME" '
+                $2 == "module-pipe-source" && index($0, "source_name=" source_name) > 0 { print $1 }
+            '
+    )"
+
+    if [[ -z "$mods" ]]; then
+        return 1
+    fi
+
+    echo "replacing existing source: $SOURCE_NAME"
+    while IFS= read -r mod; do
+        [[ -n "$mod" ]] || continue
+        pactl unload-module "$mod" >/dev/null 2>&1 || true
+    done <<< "$mods"
+    return 0
+}
+
 cleanup() {
     local ec=$?
 
@@ -30,8 +51,10 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if pactl list short sources | awk '{print $2}' | grep -Fxq "$SOURCE_NAME"; then
-    echo "source exists: $SOURCE_NAME" >&2
-    exit 1
+    if ! replace_existing_source; then
+        echo "source exists and is not a replaceable pipe source: $SOURCE_NAME" >&2
+        exit 1
+    fi
 fi
 
 mkfifo "$PIPE"

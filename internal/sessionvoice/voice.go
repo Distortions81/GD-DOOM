@@ -72,47 +72,34 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		frameBytes := voicecodec.CaptureFrameSamples * voicecodec.Channels * 2
 		raw := make([]byte, frameBytes)
 		framePCM := make([]int16, voicecodec.CaptureFrameSamples*voicecodec.Channels)
-		packetPCM := make([]int16, voicecodec.FrameSamples*voicecodec.PacketFrames*voicecodec.Channels)
 		hpf := newHighPassFilter(50, voicecodec.CaptureSampleRate)
 		lpf := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
 		agc := newMicAGC()
 		var startSample uint64
 		for {
-			allSilent := true
-			for packetFrame := 0; packetFrame < voicecodec.PacketFrames; packetFrame++ {
-				if _, err := io.ReadFull(reader, raw); err != nil {
-					if ctx.Err() != nil || err == io.EOF || err == io.ErrClosedPipe {
-						vs.done <- nil
-						return
-					}
-					vs.done <- err
+			if _, err := io.ReadFull(reader, raw); err != nil {
+				if ctx.Err() != nil || err == io.EOF || err == io.ErrClosedPipe {
+					vs.done <- nil
 					return
 				}
-				for i := range framePCM {
-					framePCM[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
-				}
-				hpf.ProcessInt16(framePCM)
-				lpf.ProcessInt16(framePCM)
-				silence := agc.ProcessFrame(framePCM, voicecodec.CaptureSampleRate)
-				if !silence {
-					allSilent = false
-				}
-				down := resampleMonoLinear(framePCM, voicecodec.CaptureSampleRate, voicecodec.SampleRate)
-				base := packetFrame * len(down)
-				copy(packetPCM[base:base+len(down)], down)
+				vs.done <- err
+				return
 			}
-			var payload []byte
+			for i := range framePCM {
+				framePCM[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
+			}
+			hpf.ProcessInt16(framePCM)
+			lpf.ProcessInt16(framePCM)
+			allSilent := agc.ProcessFrame(framePCM, voicecodec.CaptureSampleRate)
 			if allSilent {
 				encoder.Reset()
 			} else {
-				packet, err := encoder.Encode(packetPCM)
+				down := resampleMonoLinear(framePCM, voicecodec.CaptureSampleRate, voicecodec.SampleRate)
+				payload, err := encoder.Encode(down)
 				if err != nil {
 					vs.done <- err
 					return
 				}
-				payload = packet
-			}
-			if !allSilent {
 				tic := uint32(0)
 				if worldTic != nil {
 					tic = worldTic()
@@ -349,10 +336,6 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 		}
 		pcm = resampleMonoLinear(pcm, current.SampleRate, playbackRate)
 		p.source.Write(stereoBytesFromMonoPCM(pcm))
-		p.mu.Lock()
-		p.haveChunkTic = true
-		p.lastChunkTic = chunk.GameTic
-		p.mu.Unlock()
 		lastStartSample = chunk.StartSample
 		haveStartSample = true
 	}

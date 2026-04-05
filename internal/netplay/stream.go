@@ -35,6 +35,11 @@ const (
 )
 
 const (
+	helloFlagGameplayCompactV1 uint16 = 1 << 14
+	helloFlagAudioCompactV1    uint16 = 1 << 15
+)
+
+const (
 	sessionFlagShowNoSkillItems uint16 = 1 << iota
 	sessionFlagShowAllItems
 	sessionFlagFastMonsters
@@ -46,8 +51,8 @@ const (
 )
 
 const (
-	frameHeaderSize  = 12
-	ticBatchOverhead = 4
+	frameHeaderSize  = 10
+	ticBatchOverhead = 2
 	ticBatchSize     = 4
 )
 
@@ -58,12 +63,25 @@ const (
 
 const (
 	audioChunkFlagSilence byte = 1 << iota
+	audioChunkFlagSeeded
 )
 
 const (
 	audioCodecIMA4To1     byte = 1
 	audioCodecPCM16Mono   byte = 2
 	audioViewerChunkQueue      = 24
+)
+
+const (
+	audioRecordTypeConfig   byte = 0x80
+	audioConfigPayloadLen        = 13
+	audioChunkHeaderSize         = 1
+	audioIMASeedHeaderBytes      = 8
+)
+
+const (
+	gameplayRecordTicBatchBase byte = 0x40
+	gameplayRecordTicBatchMax       = 63
 )
 
 var (
@@ -137,9 +155,9 @@ type AudioBroadcaster struct {
 	sessionID uint64
 	meter     *bandwidthMeter
 
-	mu                sync.Mutex
-	closed            bool
-	audioFrameSamples int
+	mu          sync.Mutex
+	closed      bool
+	audioConfig AudioConfig
 }
 
 func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) (*RelayBroadcaster, error) {
@@ -156,11 +174,11 @@ func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) 
 	}
 	meter := newBandwidthMeter()
 	conn := &countingConn{Conn: rawConn, meter: meter}
-	if err := writeHello(conn, helloRoleBroadcaster, 0, sessionID, session); err != nil {
+	if err := writeHello(conn, helloRoleBroadcaster, helloFlagGameplayCompactV1, sessionID, session); err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("write relay hello: %w", err)
 	}
-	role, _, assignedID, _, err := readHello(conn)
+	role, flags, assignedID, _, err := readHello(conn)
 	if err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("read relay hello ack: %w", err)
@@ -168,6 +186,10 @@ func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) 
 	if role != helloRoleServer {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("unexpected relay hello ack role %d", role)
+	}
+	if flags&helloFlagGameplayCompactV1 == 0 {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("relay hello ack missing compact gameplay flag")
 	}
 	return &RelayBroadcaster{
 		conn:         conn,
@@ -239,11 +261,11 @@ func DialRelayAudioBroadcaster(addr string, sessionID uint64) (*AudioBroadcaster
 	}
 	meter := newBandwidthMeter()
 	conn := &countingConn{Conn: rawConn, meter: meter}
-	if err := writeHello(conn, helloRoleAudioBroadcaster, 0, sessionID, SessionConfig{}); err != nil {
+	if err := writeHello(conn, helloRoleAudioBroadcaster, helloFlagAudioCompactV1, sessionID, SessionConfig{}); err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("write audio relay hello: %w", err)
 	}
-	role, _, assignedID, _, err := readHello(conn)
+	role, flags, assignedID, _, err := readHello(conn)
 	if err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("read audio relay hello ack: %w", err)
@@ -251,6 +273,10 @@ func DialRelayAudioBroadcaster(addr string, sessionID uint64) (*AudioBroadcaster
 	if role != helloRoleServer {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("unexpected audio relay hello ack role %d", role)
+	}
+	if flags&helloFlagAudioCompactV1 == 0 {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("audio relay hello ack missing compact transport flag")
 	}
 	return &AudioBroadcaster{
 		conn:      conn,
@@ -331,39 +357,23 @@ func (b *AudioBroadcaster) BroadcastAudioConfig(cfg AudioConfig) error {
 	if b.closed {
 		return net.ErrClosed
 	}
-	b.audioFrameSamples = cfg.FrameSamples
-	return writeFrame(b.conn, frameHeader{
-		Type:   frameTypeAudioConfig,
-		Length: uint32(len(payload)),
-	}, payload)
+	b.audioConfig = cfg
+	return writeAudioConfigRecord(b.conn, payload)
 }
 
 func (b *AudioBroadcaster) BroadcastAudioChunk(chunk AudioChunk) error {
 	if b == nil {
 		return nil
 	}
-	if b.audioFrameSamples <= 0 {
+	if b.audioConfig.FrameSamples <= 0 {
 		return fmt.Errorf("audio frame samples are not configured")
-	}
-	var payload []byte
-	if !chunk.Silence {
-		payload = append([]byte(nil), chunk.Payload...)
-	}
-	var flags byte
-	if chunk.Silence {
-		flags |= audioChunkFlagSilence
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
 		return net.ErrClosed
 	}
-	return writeFrame(b.conn, frameHeader{
-		Type:   frameTypeAudioChunk,
-		Flags:  flags,
-		Length: uint32(len(payload)),
-		Tic:    chunk.GameTic,
-	}, payload)
+	return writeAudioChunkRecord(b.conn, b.audioConfig, chunk)
 }
 
 func (b *RelayBroadcaster) Close() error {
@@ -526,11 +536,11 @@ func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewe
 	}
 	meter := newBandwidthMeter()
 	conn := &countingConn{Conn: rawConn, meter: meter}
-	if err := writeHello(conn, helloRoleViewer, 0, sessionID, SessionConfig{}); err != nil {
+	if err := writeHello(conn, helloRoleViewer, helloFlagGameplayCompactV1, sessionID, SessionConfig{}); err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("write relay hello: %w", err)
 	}
-	role, _, resolvedID, session, err := readHello(conn)
+	role, flags, resolvedID, session, err := readHello(conn)
 	if err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("read relay session hello: %w", err)
@@ -538,6 +548,10 @@ func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewe
 	if role != helloRoleBroadcaster {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("unexpected relay session role %d", role)
+	}
+	if flags&helloFlagGameplayCompactV1 == 0 {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("relay session hello missing compact gameplay flag")
 	}
 	if resolvedID != sessionID {
 		_ = rawConn.Close()
@@ -577,11 +591,11 @@ func DialRelayAudioViewer(addr string, sessionID uint64, localWADHash string) (*
 	}
 	meter := newBandwidthMeter()
 	conn := &countingConn{Conn: rawConn, meter: meter}
-	if err := writeHello(conn, helloRoleAudioViewer, 0, sessionID, SessionConfig{}); err != nil {
+	if err := writeHello(conn, helloRoleAudioViewer, helloFlagAudioCompactV1, sessionID, SessionConfig{}); err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("write audio relay hello: %w", err)
 	}
-	role, _, resolvedID, session, err := readHello(conn)
+	role, flags, resolvedID, session, err := readHello(conn)
 	if err != nil {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("read audio relay session hello: %w", err)
@@ -593,6 +607,10 @@ func DialRelayAudioViewer(addr string, sessionID uint64, localWADHash string) (*
 	if resolvedID != sessionID {
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("audio relay session mismatch: requested=%d got=%d", sessionID, resolvedID)
+	}
+	if flags&helloFlagAudioCompactV1 == 0 {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("audio relay session hello missing compact transport flag")
 	}
 	if localWADHash != "" && session.WADHash != "" && session.WADHash != localWADHash {
 		_ = rawConn.Close()
@@ -816,38 +834,28 @@ func (v *AudioViewer) readLoop() {
 	defer close(v.configs)
 	defer close(v.chunks)
 	frameSamples := 0
+	currentCfg := AudioConfig{}
 	var nextStartSample uint64
 	for {
-		header, payload, err := readFrame(v.conn)
+		kind, cfg, chunk, err := readAudioRecord(v.conn, currentCfg)
 		if err != nil {
 			v.setErr(err)
 			return
 		}
-		switch header.Type {
-		case frameTypeAudioConfig:
-			cfg, err := unmarshalAudioConfig(payload)
-			if err != nil {
-				v.setErr(err)
-				return
-			}
+		switch kind {
+		case audioRecordTypeConfig:
 			frameSamples = cfg.FrameSamples
+			currentCfg = cfg
 			nextStartSample = 0
 			v.configs <- cfg
-		case frameTypeAudioChunk:
+		default:
 			if frameSamples <= 0 {
 				v.setErr(fmt.Errorf("audio chunk received before config"))
 				return
 			}
-			v.chunks <- AudioChunk{
-				GameTic:     header.Tic,
-				StartSample: nextStartSample,
-				Silence:     header.Flags&audioChunkFlagSilence != 0,
-				Payload:     append([]byte(nil), payload...),
-			}
+			chunk.StartSample = nextStartSample
+			v.chunks <- chunk
 			nextStartSample += uint64(frameSamples)
-		default:
-			v.setErr(fmt.Errorf("unexpected audio frame type %d", header.Type))
-			return
 		}
 	}
 }
@@ -927,25 +935,25 @@ func marshalAudioConfig(cfg AudioConfig) ([]byte, error) {
 	if cfg.Bitrate < 0 {
 		return nil, fmt.Errorf("audio bitrate must be >= 0")
 	}
-	payload := make([]byte, 16)
+	payload := make([]byte, audioConfigPayloadLen)
 	payload[0] = cfg.Codec
-	binary.LittleEndian.PutUint32(payload[4:8], uint32(cfg.SampleRate))
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(cfg.Channels))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(cfg.FrameSamples))
-	binary.LittleEndian.PutUint32(payload[12:16], uint32(cfg.Bitrate))
+	binary.LittleEndian.PutUint32(payload[1:5], uint32(cfg.SampleRate))
+	binary.LittleEndian.PutUint16(payload[5:7], uint16(cfg.Channels))
+	binary.LittleEndian.PutUint16(payload[7:9], uint16(cfg.FrameSamples))
+	binary.LittleEndian.PutUint32(payload[9:13], uint32(cfg.Bitrate))
 	return payload, nil
 }
 
 func unmarshalAudioConfig(payload []byte) (AudioConfig, error) {
-	if len(payload) != 16 {
-		return AudioConfig{}, fmt.Errorf("audio config payload len=%d want=16", len(payload))
+	if len(payload) != audioConfigPayloadLen {
+		return AudioConfig{}, fmt.Errorf("audio config payload len=%d want=%d", len(payload), audioConfigPayloadLen)
 	}
 	cfg := AudioConfig{
 		Codec:        payload[0],
-		SampleRate:   int(binary.LittleEndian.Uint32(payload[4:8])),
-		Channels:     int(binary.LittleEndian.Uint16(payload[8:10])),
-		FrameSamples: int(binary.LittleEndian.Uint16(payload[10:12])),
-		Bitrate:      int(binary.LittleEndian.Uint32(payload[12:16])),
+		SampleRate:   int(binary.LittleEndian.Uint32(payload[1:5])),
+		Channels:     int(binary.LittleEndian.Uint16(payload[5:7])),
+		FrameSamples: int(binary.LittleEndian.Uint16(payload[7:9])),
+		Bitrate:      int(binary.LittleEndian.Uint32(payload[9:13])),
 	}
 	if cfg.Codec == 0 {
 		return AudioConfig{}, fmt.Errorf("audio codec is required")
@@ -954,6 +962,116 @@ func unmarshalAudioConfig(payload []byte) (AudioConfig, error) {
 		return AudioConfig{}, fmt.Errorf("audio config invalid")
 	}
 	return cfg, nil
+}
+
+func writeAudioConfigRecord(w io.Writer, payload []byte) error {
+	if len(payload) != audioConfigPayloadLen {
+		return fmt.Errorf("audio config payload len=%d want=%d", len(payload), audioConfigPayloadLen)
+	}
+	var buf [1 + audioConfigPayloadLen]byte
+	buf[0] = audioRecordTypeConfig
+	copy(buf[1:], payload)
+	_, err := w.Write(buf[:])
+	return err
+}
+
+func writeAudioChunkRecord(w io.Writer, cfg AudioConfig, chunk AudioChunk) error {
+	flags, err := audioChunkWireFlags(cfg, chunk)
+	if err != nil {
+		return err
+	}
+	var header [audioChunkHeaderSize]byte
+	header[0] = flags
+	if _, err := w.Write(header[:]); err != nil {
+		return err
+	}
+	if chunk.Silence || len(chunk.Payload) == 0 {
+		return nil
+	}
+	_, err = w.Write(chunk.Payload)
+	return err
+}
+
+func readAudioRecord(r io.Reader, currentCfg AudioConfig) (kind byte, cfg AudioConfig, chunk AudioChunk, err error) {
+	var tag [1]byte
+	if _, err = io.ReadFull(r, tag[:]); err != nil {
+		return 0, AudioConfig{}, AudioChunk{}, err
+	}
+	if tag[0] == audioRecordTypeConfig {
+		payload := make([]byte, audioConfigPayloadLen)
+		if _, err = io.ReadFull(r, payload); err != nil {
+			return 0, AudioConfig{}, AudioChunk{}, err
+		}
+		cfg, err = unmarshalAudioConfig(payload)
+		return audioRecordTypeConfig, cfg, AudioChunk{}, err
+	}
+	if currentCfg.Codec == 0 {
+		return 0, AudioConfig{}, AudioChunk{}, fmt.Errorf("audio chunk received before config")
+	}
+	payloadLen, err := audioChunkPayloadLen(currentCfg, tag[0])
+	if err != nil {
+		return 0, AudioConfig{}, AudioChunk{}, err
+	}
+	payload := make([]byte, payloadLen)
+	if _, err = io.ReadFull(r, payload); err != nil {
+		return 0, AudioConfig{}, AudioChunk{}, err
+	}
+	return tag[0], AudioConfig{}, AudioChunk{
+		Silence: tag[0]&audioChunkFlagSilence != 0,
+		Payload: payload,
+	}, nil
+}
+
+func audioChunkWireFlags(cfg AudioConfig, chunk AudioChunk) (byte, error) {
+	if cfg.Codec == 0 || cfg.FrameSamples <= 0 || cfg.Channels <= 0 {
+		return 0, fmt.Errorf("audio config is required for chunk encoding")
+	}
+	var flags byte
+	if chunk.Silence {
+		if len(chunk.Payload) != 0 {
+			return 0, fmt.Errorf("silent audio chunk payload len=%d want=0", len(chunk.Payload))
+		}
+		flags |= audioChunkFlagSilence
+		return flags, nil
+	}
+	switch cfg.Codec {
+	case audioCodecPCM16Mono:
+		want := cfg.FrameSamples * cfg.Channels * 2
+		if len(chunk.Payload) != want {
+			return 0, fmt.Errorf("raw pcm payload len=%d want=%d", len(chunk.Payload), want)
+		}
+	case audioCodecIMA4To1:
+		deltaLen := cfg.FrameSamples * cfg.Channels / 2
+		seededLen := deltaLen + audioIMASeedHeaderBytes
+		switch len(chunk.Payload) {
+		case deltaLen:
+		case seededLen:
+			flags |= audioChunkFlagSeeded
+		default:
+			return 0, fmt.Errorf("ima payload len=%d want=%d or %d", len(chunk.Payload), deltaLen, seededLen)
+		}
+	default:
+		return 0, fmt.Errorf("unsupported audio codec %d", cfg.Codec)
+	}
+	return flags, nil
+}
+
+func audioChunkPayloadLen(cfg AudioConfig, flags byte) (int, error) {
+	if flags&audioChunkFlagSilence != 0 {
+		return 0, nil
+	}
+	switch cfg.Codec {
+	case audioCodecPCM16Mono:
+		return cfg.FrameSamples * cfg.Channels * 2, nil
+	case audioCodecIMA4To1:
+		n := cfg.FrameSamples * cfg.Channels / 2
+		if flags&audioChunkFlagSeeded != 0 {
+			n += audioIMASeedHeaderBytes
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("unsupported audio codec %d", cfg.Codec)
+	}
 }
 
 func (v *Viewer) readErr() error {
@@ -1027,37 +1145,90 @@ func readHello(r io.Reader) (role byte, flags uint16, sessionID uint64, session 
 }
 
 func writeFrame(w io.Writer, header frameHeader, payload []byte) error {
-	var buf [frameHeaderSize]byte
-	buf[0] = header.Type
-	buf[1] = header.Flags
-	binary.LittleEndian.PutUint32(buf[4:8], uint32(len(payload)))
-	binary.LittleEndian.PutUint32(buf[8:12], header.Tic)
-	if _, err := w.Write(buf[:]); err != nil {
+	switch header.Type {
+	case frameTypeKeyframe:
+		var buf [frameHeaderSize]byte
+		buf[0] = header.Type
+		buf[1] = header.Flags
+		binary.LittleEndian.PutUint32(buf[2:6], uint32(len(payload)))
+		binary.LittleEndian.PutUint32(buf[6:10], header.Tic)
+		if _, err := w.Write(buf[:]); err != nil {
+			return err
+		}
+		if len(payload) == 0 {
+			return nil
+		}
+		_, err := w.Write(payload)
 		return err
+	case frameTypeTicBatch:
+		if len(payload) < ticBatchOverhead {
+			return fmt.Errorf("tic batch payload too short")
+		}
+		count := int(binary.LittleEndian.Uint16(payload[0:2]))
+		want := ticBatchOverhead + count*ticBatchSize
+		if len(payload) != want {
+			return fmt.Errorf("tic batch payload len=%d want=%d", len(payload), want)
+		}
+		if count <= 0 || count > gameplayRecordTicBatchMax {
+			return fmt.Errorf("tic batch count=%d want 1..%d", count, gameplayRecordTicBatchMax)
+		}
+		if _, err := w.Write([]byte{gameplayRecordTicBatchBase | byte(count)}); err != nil {
+			return err
+		}
+		_, err := w.Write(payload[ticBatchOverhead:])
+		return err
+	case frameTypeIntermissionAdvance:
+		if len(payload) != 0 {
+			return fmt.Errorf("intermission advance payload len=%d want=0", len(payload))
+		}
+		_, err := w.Write([]byte{frameTypeIntermissionAdvance})
+		return err
+	default:
+		return fmt.Errorf("unsupported gameplay frame type %d", header.Type)
 	}
-	if len(payload) == 0 {
-		return nil
-	}
-	_, err := w.Write(payload)
-	return err
 }
 
 func readFrame(r io.Reader) (frameHeader, []byte, error) {
-	var buf [frameHeaderSize]byte
-	if _, err := io.ReadFull(r, buf[:]); err != nil {
+	var kind [1]byte
+	if _, err := io.ReadFull(r, kind[:]); err != nil {
 		return frameHeader{}, nil, err
 	}
-	header := frameHeader{
-		Type:   buf[0],
-		Flags:  buf[1],
-		Length: binary.LittleEndian.Uint32(buf[4:8]),
-		Tic:    binary.LittleEndian.Uint32(buf[8:12]),
+	switch {
+	case kind[0] == frameTypeKeyframe:
+		var buf [frameHeaderSize - 1]byte
+		if _, err := io.ReadFull(r, buf[:]); err != nil {
+			return frameHeader{}, nil, err
+		}
+		header := frameHeader{
+			Type:   frameTypeKeyframe,
+			Flags:  buf[0],
+			Length: binary.LittleEndian.Uint32(buf[1:5]),
+			Tic:    binary.LittleEndian.Uint32(buf[5:9]),
+		}
+		payload := make([]byte, header.Length)
+		if _, err := io.ReadFull(r, payload); err != nil {
+			return frameHeader{}, nil, err
+		}
+		return header, payload, nil
+	case kind[0]&0xC0 == gameplayRecordTicBatchBase:
+		count := int(kind[0] & 0x3F)
+		if count <= 0 {
+			return frameHeader{}, nil, fmt.Errorf("tic batch count=%d want >0", count)
+		}
+		payload := make([]byte, ticBatchOverhead+count*ticBatchSize)
+		binary.LittleEndian.PutUint16(payload[0:2], uint16(count))
+		if _, err := io.ReadFull(r, payload[2:]); err != nil {
+			return frameHeader{}, nil, err
+		}
+		return frameHeader{
+			Type:   frameTypeTicBatch,
+			Length: uint32(len(payload)),
+		}, payload, nil
+	case kind[0] == frameTypeIntermissionAdvance:
+		return frameHeader{Type: frameTypeIntermissionAdvance}, nil, nil
+	default:
+		return frameHeader{}, nil, fmt.Errorf("unexpected broadcast frame type %d", kind[0])
 	}
-	payload := make([]byte, header.Length)
-	if _, err := io.ReadFull(r, payload); err != nil {
-		return frameHeader{}, nil, err
-	}
-	return header, payload, nil
 }
 
 func marshalSessionConfig(session SessionConfig) ([]byte, error) {

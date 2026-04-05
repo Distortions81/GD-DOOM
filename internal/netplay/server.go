@@ -120,38 +120,42 @@ func (s *Server) acceptLoop() {
 
 func (s *Server) handleConn(conn net.Conn) {
 	defer s.wg.Done()
-	role, _, sessionID, sessionCfg, err := readHello(conn)
+	role, flags, sessionID, sessionCfg, err := readHello(conn)
 	if err != nil {
 		_ = conn.Close()
 		return
 	}
 	switch role {
 	case helloRoleBroadcaster:
-		s.handleBroadcaster(conn, sessionID, sessionCfg)
+		s.handleBroadcaster(conn, sessionID, sessionCfg, flags)
 	case helloRoleAudioBroadcaster:
 		if sessionID == 0 {
 			_ = conn.Close()
 			return
 		}
-		s.handleAudioBroadcaster(conn, sessionID)
+		s.handleAudioBroadcaster(conn, sessionID, flags)
 	case helloRoleViewer:
 		if sessionID == 0 {
 			_ = conn.Close()
 			return
 		}
-		s.handleViewer(conn, sessionID)
+		s.handleViewer(conn, sessionID, flags)
 	case helloRoleAudioViewer:
 		if sessionID == 0 {
 			_ = conn.Close()
 			return
 		}
-		s.handleAudioViewer(conn, sessionID)
+		s.handleAudioViewer(conn, sessionID, flags)
 	default:
 		_ = conn.Close()
 	}
 }
 
-func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionConfig) {
+func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionConfig, flags uint16) {
+	if flags&helloFlagGameplayCompactV1 == 0 {
+		_ = conn.Close()
+		return
+	}
 	s.mu.Lock()
 	if sessionID == 0 {
 		sessionID = s.nextSessionIDLocked()
@@ -162,17 +166,17 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 		return
 	}
 	sess := &relaySession{
-		id:      sessionID,
-		cfg:     cfg,
-		server:  s,
-		src:     conn,
-		viewers: make(map[*relayViewer]struct{}),
+		id:           sessionID,
+		cfg:          cfg,
+		server:       s,
+		src:          conn,
+		viewers:      make(map[*relayViewer]struct{}),
 		audioViewers: make(map[*relayViewer]struct{}),
 	}
 	s.sessions[sessionID] = sess
 	s.mu.Unlock()
 	defer s.closeSession(sess)
-	if err := writeHello(conn, helloRoleServer, 0, sessionID, cfg); err != nil {
+	if err := writeHello(conn, helloRoleServer, helloFlagGameplayCompactV1, sessionID, cfg); err != nil {
 		return
 	}
 
@@ -188,7 +192,11 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 	}
 }
 
-func (s *Server) handleAudioBroadcaster(conn net.Conn, sessionID uint64) {
+func (s *Server) handleAudioBroadcaster(conn net.Conn, sessionID uint64, flags uint16) {
+	if flags&helloFlagAudioCompactV1 == 0 {
+		_ = conn.Close()
+		return
+	}
 	s.mu.Lock()
 	sess := s.sessions[sessionID]
 	if sess == nil || sess.audioSrc != nil {
@@ -200,22 +208,24 @@ func (s *Server) handleAudioBroadcaster(conn net.Conn, sessionID uint64) {
 	cfg := sess.cfg
 	s.mu.Unlock()
 	defer s.closeAudioSource(sess)
-	if err := writeHello(conn, helloRoleServer, 0, sessionID, cfg); err != nil {
+	if err := writeHello(conn, helloRoleServer, helloFlagAudioCompactV1, sessionID, cfg); err != nil {
 		return
 	}
+	currentCfg := AudioConfig{}
 	for {
-		header, payload, err := readFrame(conn)
+		kind, nextCfg, chunk, err := readAudioRecord(conn, currentCfg)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				// ignore: audio source teardown handles disconnection
 			}
 			return
 		}
-		switch header.Type {
-		case frameTypeAudioConfig, frameTypeAudioChunk:
-			s.forwardAudioFrame(sess, header, payload)
+		switch kind {
+		case audioRecordTypeConfig:
+			currentCfg = nextCfg
+			s.forwardAudioConfig(sess, nextCfg)
 		default:
-			return
+			s.forwardAudioChunk(sess, currentCfg, chunk)
 		}
 	}
 }
@@ -233,7 +243,11 @@ func (s *Server) nextSessionIDLocked() uint64 {
 	}
 }
 
-func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
+func (s *Server) handleViewer(conn net.Conn, sessionID uint64, flags uint16) {
+	if flags&helloFlagGameplayCompactV1 == 0 {
+		_ = conn.Close()
+		return
+	}
 	s.mu.Lock()
 	sess := s.sessions[sessionID]
 	if sess == nil {
@@ -267,7 +281,7 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 	}
 	s.mu.Unlock()
 
-	if err := writeHello(conn, helloRoleBroadcaster, 0, sessionID, cfg); err != nil {
+	if err := writeHello(conn, helloRoleBroadcaster, helloFlagGameplayCompactV1, sessionID, cfg); err != nil {
 		viewer.mu.Unlock()
 		s.removeViewer(sess, viewer)
 		_ = conn.Close()
@@ -308,7 +322,11 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64) {
 	}
 }
 
-func (s *Server) handleAudioViewer(conn net.Conn, sessionID uint64) {
+func (s *Server) handleAudioViewer(conn net.Conn, sessionID uint64, flags uint16) {
+	if flags&helloFlagAudioCompactV1 == 0 {
+		_ = conn.Close()
+		return
+	}
 	s.mu.Lock()
 	sess := s.sessions[sessionID]
 	if sess == nil {
@@ -328,17 +346,14 @@ func (s *Server) handleAudioViewer(conn net.Conn, sessionID uint64) {
 	}
 	s.mu.Unlock()
 
-	if err := writeHello(conn, helloRoleAudioBroadcaster, 0, sessionID, cfg); err != nil {
+	if err := writeHello(conn, helloRoleAudioBroadcaster, helloFlagAudioCompactV1, sessionID, cfg); err != nil {
 		viewer.mu.Unlock()
 		s.removeAudioViewer(sess, viewer)
 		_ = conn.Close()
 		return
 	}
 	if len(audioConfig) > 0 {
-		if err := writeFrame(conn, frameHeader{
-			Type:   frameTypeAudioConfig,
-			Length: uint32(len(audioConfig)),
-		}, audioConfig); err != nil {
+		if err := writeAudioConfigRecord(conn, audioConfig); err != nil {
 			viewer.mu.Unlock()
 			s.removeAudioViewer(sess, viewer)
 			_ = conn.Close()
@@ -393,12 +408,13 @@ func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []
 	}
 }
 
-func (s *Server) forwardAudioFrame(sess *relaySession, header frameHeader, payload []byte) {
-	s.mu.Lock()
-	switch header.Type {
-	case frameTypeAudioConfig:
-		sess.lastAudioConfig = append(sess.lastAudioConfig[:0], payload...)
+func (s *Server) forwardAudioConfig(sess *relaySession, cfg AudioConfig) {
+	payload, err := marshalAudioConfig(cfg)
+	if err != nil {
+		return
 	}
+	s.mu.Lock()
+	sess.lastAudioConfig = append(sess.lastAudioConfig[:0], payload...)
 	viewers := make([]*relayViewer, 0, len(sess.audioViewers))
 	for viewer := range sess.audioViewers {
 		viewers = append(viewers, viewer)
@@ -406,7 +422,23 @@ func (s *Server) forwardAudioFrame(sess *relaySession, header frameHeader, paylo
 	s.mu.Unlock()
 
 	for _, viewer := range viewers {
-		if err := viewer.writeFrame(header, payload); err != nil {
+		if err := viewer.writeAudioConfig(payload); err != nil {
+			s.removeAudioViewer(sess, viewer)
+			_ = viewer.conn.Close()
+		}
+	}
+}
+
+func (s *Server) forwardAudioChunk(sess *relaySession, cfg AudioConfig, chunk AudioChunk) {
+	s.mu.Lock()
+	viewers := make([]*relayViewer, 0, len(sess.audioViewers))
+	for viewer := range sess.audioViewers {
+		viewers = append(viewers, viewer)
+	}
+	s.mu.Unlock()
+
+	for _, viewer := range viewers {
+		if err := viewer.writeAudioChunk(cfg, chunk); err != nil {
 			s.removeAudioViewer(sess, viewer)
 			_ = viewer.conn.Close()
 		}
@@ -420,6 +452,24 @@ func (v *relayViewer) writeFrame(header frameHeader, payload []byte) error {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return writeFrame(v.conn, header, payload)
+}
+
+func (v *relayViewer) writeAudioConfig(payload []byte) error {
+	if v == nil {
+		return nil
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return writeAudioConfigRecord(v.conn, payload)
+}
+
+func (v *relayViewer) writeAudioChunk(cfg AudioConfig, chunk AudioChunk) error {
+	if v == nil {
+		return nil
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return writeAudioChunkRecord(v.conn, cfg, chunk)
 }
 
 func (s *Server) latestKeyframe(sess *relaySession) ([]byte, uint32, bool) {
