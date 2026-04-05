@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math"
 	"sync"
 	"time"
 
@@ -141,12 +142,17 @@ func (s *VoiceStreamer) Close() error {
 }
 
 type VoicePlayer struct {
-	viewer     *netplay.AudioViewer
-	cancel     context.CancelFunc
-	done       chan error
-	player     *audio.Player
-	source     *streamSource
-	currentTic func() uint32
+	viewer       *netplay.AudioViewer
+	cancel       context.CancelFunc
+	done         chan error
+	player       *audio.Player
+	source       *streamSource
+	currentTic   func() uint32
+	playbackRate int
+
+	mu           sync.RWMutex
+	haveChunkTic bool
+	lastChunkTic uint32
 }
 
 func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic func() uint32) (*VoicePlayer, error) {
@@ -170,15 +176,39 @@ func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic
 
 	runCtx, cancel := context.WithCancel(parent)
 	vp := &VoicePlayer{
-		viewer:     viewer,
-		cancel:     cancel,
-		done:       make(chan error, 1),
-		player:     player,
-		source:     stream,
-		currentTic: currentTic,
+		viewer:       viewer,
+		cancel:       cancel,
+		done:         make(chan error, 1),
+		player:       player,
+		source:       stream,
+		currentTic:   currentTic,
+		playbackRate: playbackRate,
 	}
 	go vp.run(runCtx, playbackRate)
 	return vp, nil
+}
+
+func (p *VoicePlayer) VoiceSyncOffsetMillis() (int, bool) {
+	if p == nil || p.source == nil || p.playbackRate <= 0 {
+		return 0, false
+	}
+	bufferedMillis := p.source.BufferedMillis(p.playbackRate)
+	p.mu.RLock()
+	haveChunkTic := p.haveChunkTic
+	lastChunkTic := p.lastChunkTic
+	p.mu.RUnlock()
+	if !haveChunkTic {
+		return 0, false
+	}
+	if bufferedMillis <= 0 {
+		return 0, false
+	}
+	currentTic := uint32(0)
+	if p.currentTic != nil {
+		currentTic = p.currentTic()
+	}
+	ticDeltaMillis := int(math.Round(float64(int64(currentTic)-int64(lastChunkTic)) * (1000.0 / 35.0)))
+	return ticDeltaMillis + bufferedMillis, true
 }
 
 func (p *VoicePlayer) Close() error {
@@ -281,6 +311,10 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 		}
 		pcm = resampleMonoLinear(pcm, current.SampleRate, playbackRate)
 		p.source.Write(stereoBytesFromMonoPCM(pcm))
+		p.mu.Lock()
+		p.haveChunkTic = true
+		p.lastChunkTic = chunk.GameTic
+		p.mu.Unlock()
 		lastStartSample = chunk.StartSample
 		haveStartSample = true
 	}
@@ -398,6 +432,20 @@ func (s *streamSource) Reset() {
 	s.buf = s.buf[:0]
 	s.started = false
 	s.needFadeIn = true
+}
+
+func (s *streamSource) BufferedMillis(playbackRate int) int {
+	if s == nil || playbackRate <= 0 {
+		return 0
+	}
+	s.mu.Lock()
+	bytes := len(s.buf) + len(s.fade)
+	s.mu.Unlock()
+	if bytes <= 0 {
+		return 0
+	}
+	samples := bytes / 4
+	return int(math.Round(float64(samples) * 1000 / float64(playbackRate)))
 }
 
 func (s *streamSource) resetBufferedAudioLocked() {

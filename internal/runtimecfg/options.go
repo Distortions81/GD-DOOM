@@ -60,6 +60,10 @@ type NetBandwidthMeter interface {
 	BandwidthStats() (uploadBytesPerSec, downloadBytesPerSec float64)
 }
 
+type VoiceSyncMeter interface {
+	VoiceSyncOffsetMillis() (millis int, ok bool)
+}
+
 type Options struct {
 	Width                      int
 	Height                     int
@@ -156,6 +160,7 @@ type Options struct {
 	WatchStartupBufferTics     int
 	NetBandwidthMeter          NetBandwidthMeter
 	VoiceBandwidthMeter        NetBandwidthMeter
+	VoiceSyncMeter             VoiceSyncMeter
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string
 	MusicSoundFontChoices      []string

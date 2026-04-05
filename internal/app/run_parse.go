@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 
@@ -100,6 +101,33 @@ func voiceBandwidthMeterFromViewer(v *netplay.AudioViewer) runtimecfg.NetBandwid
 		return nil
 	}
 	return v
+}
+
+type voiceSyncMeter struct {
+	mu    sync.RWMutex
+	meter runtimecfg.VoiceSyncMeter
+}
+
+func (m *voiceSyncMeter) Set(v runtimecfg.VoiceSyncMeter) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	m.meter = v
+	m.mu.Unlock()
+}
+
+func (m *voiceSyncMeter) VoiceSyncOffsetMillis() (int, bool) {
+	if m == nil {
+		return 0, false
+	}
+	m.mu.RLock()
+	v := m.meter
+	m.mu.RUnlock()
+	if v == nil {
+		return 0, false
+	}
+	return v.VoiceSyncOffsetMillis()
 }
 
 func watchStartupBufferTics(lowLatency bool) int {
@@ -1018,6 +1046,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 
 	if *render {
+		var voiceSync *voiceSyncMeter
+		if watchAudioSession != nil {
+			voiceSync = &voiceSyncMeter{}
+		}
 		opts := doomsession.Options{
 			Width:                      *width,
 			Height:                     *height,
@@ -1098,6 +1130,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			WatchStartupBufferTics:     watchStartupBufferTics(*lowLatency),
 			NetBandwidthMeter:          netBandwidthMeterFromViewer(watchSession),
 			VoiceBandwidthMeter:        voiceBandwidthMeterFromViewer(watchAudioSession),
+			VoiceSyncMeter:             voiceSync,
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
 			DemoStopAfterTics:          max(0, *demoStopAfterTics),
@@ -1265,6 +1298,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			if perr != nil {
 				fmt.Fprintf(stderr, "watch audio: %v\n", perr)
 				return 1
+			}
+			if voiceSync != nil {
+				voiceSync.Set(player)
 			}
 			defer player.Close()
 		}

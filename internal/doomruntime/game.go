@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
 	"runtime"
 	"slices"
 	"strconv"
@@ -20287,7 +20288,7 @@ func (g *game) drawNetBandwidth(screen *ebiten.Image) {
 	if g == nil || screen == nil {
 		return
 	}
-	label := formatNetBandwidthLabel(g.opts.NetBandwidthMeter, g.opts.VoiceBandwidthMeter, g.opts.LiveTicSink != nil && g.opts.LiveTicSource == nil)
+	label := formatNetBandwidthLabel(g.opts.NetBandwidthMeter, g.opts.VoiceBandwidthMeter, g.opts.VoiceSyncMeter, g.opts.LiveTicSink != nil && g.opts.LiveTicSource == nil)
 	if label == "" {
 		return
 	}
@@ -20300,7 +20301,7 @@ func (g *game) drawNetBandwidth(screen *ebiten.Image) {
 	ebitenutil.DebugPrintAt(screen, label, x, y)
 }
 
-func formatNetBandwidthLabel(gameMeter, voiceMeter runtimecfg.NetBandwidthMeter, preferUpload bool) string {
+func formatNetBandwidthLabel(gameMeter, voiceMeter runtimecfg.NetBandwidthMeter, voiceSync runtimecfg.VoiceSyncMeter, preferUpload bool) string {
 	var parts []string
 	if value := bandwidthMeterValue(gameMeter, preferUpload); value > 0 {
 		parts = append(parts, "game "+humanize.SIWithDigits(value, 2, "B/s"))
@@ -20308,7 +20309,16 @@ func formatNetBandwidthLabel(gameMeter, voiceMeter runtimecfg.NetBandwidthMeter,
 	if value := bandwidthMeterValue(voiceMeter, preferUpload); value > 0 {
 		parts = append(parts, "voice "+humanize.SIWithDigits(value, 2, "B/s"))
 	}
+	if voiceSync != nil && voiceSyncOverlayEnabled() {
+		if offsetMillis, ok := voiceSync.VoiceSyncOffsetMillis(); ok {
+			parts = append(parts, "sync "+formatSignedMillis(offsetMillis))
+		}
+	}
 	return strings.Join(parts, "  ")
+}
+
+func voiceSyncOverlayEnabled() bool {
+	return strings.TrimSpace(os.Getenv("GD_DOOM_VOICE_SYNC_OVERLAY")) != ""
 }
 
 func bandwidthMeterValue(m runtimecfg.NetBandwidthMeter, preferUpload bool) float64 {
@@ -20320,6 +20330,13 @@ func bandwidthMeterValue(m runtimecfg.NetBandwidthMeter, preferUpload bool) floa
 		return up
 	}
 	return down
+}
+
+func formatSignedMillis(v int) string {
+	if v >= 0 {
+		return "+" + strconv.Itoa(v) + "ms"
+	}
+	return strconv.Itoa(v) + "ms"
 }
 
 func perfOverlayTimingDisplays(showTPS bool, ticDisplay string, actualTPS, actualFPS float64) (string, string) {
