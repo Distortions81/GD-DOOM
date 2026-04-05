@@ -95,6 +95,13 @@ func netBandwidthMeterFromViewer(v *netplay.Viewer) runtimecfg.NetBandwidthMeter
 	return v
 }
 
+func voiceBandwidthMeterFromViewer(v *netplay.AudioViewer) runtimecfg.NetBandwidthMeter {
+	if v == nil {
+		return nil
+	}
+	return v
+}
+
 func watchStartupBufferTics(lowLatency bool) int {
 	if lowLatency {
 		return 0
@@ -1090,6 +1097,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			LiveTicSource:              liveTicSourceFromViewer(watchSession),
 			WatchStartupBufferTics:     watchStartupBufferTics(*lowLatency),
 			NetBandwidthMeter:          netBandwidthMeterFromViewer(watchSession),
+			VoiceBandwidthMeter:        voiceBandwidthMeterFromViewer(watchAudioSession),
 			RecordDemoPath:             resolvedRecordDemoPath,
 			DemoExitOnDeath:            *demoExitOnDeath,
 			DemoStopAfterTics:          max(0, *demoStopAfterTics),
@@ -1213,6 +1221,25 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			opts.LiveTicSink = host
 			opts.NetBandwidthMeter = host
 		}
+		var audioHost *netplay.AudioBroadcaster
+		if *mic {
+			if resolvedBroadcastAddr == "" {
+				fmt.Fprintln(stderr, "-mic requires -broadcast")
+				return 2
+			}
+			host, ok := opts.LiveTicSink.(*netplay.RelayBroadcaster)
+			if !ok || host == nil {
+				fmt.Fprintln(stderr, "broadcast audio: game relay host is unavailable")
+				return 1
+			}
+			audioHost, err = netplay.DialRelayAudioBroadcaster(resolvedBroadcastAddr, host.SessionID())
+			if err != nil {
+				fmt.Fprintf(stderr, "broadcast audio: %v\n", err)
+				return 1
+			}
+			defer audioHost.Close()
+			opts.VoiceBandwidthMeter = audioHost
+		}
 		nextMap := func(current mapdata.MapName, secret bool) (*mapdata.Map, mapdata.MapName, error) {
 			next, nerr := mapdata.NextMapName(wf, current, secret)
 			if nerr != nil {
@@ -1270,16 +1297,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 		}
 		if *mic {
-			if resolvedBroadcastAddr == "" {
-				fmt.Fprintln(stderr, "-mic requires -broadcast")
-				return 2
-			}
-			audioHost, aerr := netplay.DialRelayAudioBroadcaster(resolvedBroadcastAddr, sess.Options().LiveTicSink.(*netplay.RelayBroadcaster).SessionID())
-			if aerr != nil {
-				fmt.Fprintf(stderr, "broadcast audio: %v\n", aerr)
-				return 1
-			}
-			defer audioHost.Close()
 			streamer, serr := sessionvoice.StartPulseBroadcaster(context.Background(), audioHost, strings.TrimSpace(*micDevice), func() uint32 {
 				return uint32(max(0, sess.CurrentWorldTic()))
 			})

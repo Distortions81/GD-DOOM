@@ -20284,18 +20284,13 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 }
 
 func (g *game) drawNetBandwidth(screen *ebiten.Image) {
-	if g == nil || g.opts.NetBandwidthMeter == nil || screen == nil {
+	if g == nil || screen == nil {
 		return
 	}
-	up, down := g.opts.NetBandwidthMeter.BandwidthStats()
-	value := down
-	if g.opts.LiveTicSink != nil && g.opts.LiveTicSource == nil {
-		value = up
-	}
-	if value <= 0 {
+	label := formatNetBandwidthLabel(g.opts.NetBandwidthMeter, g.opts.VoiceBandwidthMeter, g.opts.LiveTicSink != nil && g.opts.LiveTicSource == nil)
+	if label == "" {
 		return
 	}
-	label := humanize.SIWithDigits(value, 2, "B/s")
 	bounds := screen.Bounds()
 	x := 8
 	y := bounds.Dy() - 16
@@ -20303,6 +20298,28 @@ func (g *game) drawNetBandwidth(screen *ebiten.Image) {
 		y = 0
 	}
 	ebitenutil.DebugPrintAt(screen, label, x, y)
+}
+
+func formatNetBandwidthLabel(gameMeter, voiceMeter runtimecfg.NetBandwidthMeter, preferUpload bool) string {
+	var parts []string
+	if value := bandwidthMeterValue(gameMeter, preferUpload); value > 0 {
+		parts = append(parts, "game "+humanize.SIWithDigits(value, 2, "B/s"))
+	}
+	if value := bandwidthMeterValue(voiceMeter, preferUpload); value > 0 {
+		parts = append(parts, "voice "+humanize.SIWithDigits(value, 2, "B/s"))
+	}
+	return strings.Join(parts, "  ")
+}
+
+func bandwidthMeterValue(m runtimecfg.NetBandwidthMeter, preferUpload bool) float64 {
+	if m == nil {
+		return 0
+	}
+	up, down := m.BandwidthStats()
+	if preferUpload {
+		return up
+	}
+	return down
 }
 
 func perfOverlayTimingDisplays(showTPS bool, ticDisplay string, actualTPS, actualFPS float64) (string, string) {

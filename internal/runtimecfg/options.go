@@ -155,6 +155,7 @@ type Options struct {
 	LiveTicSink                LiveTicSink
 	WatchStartupBufferTics     int
 	NetBandwidthMeter          NetBandwidthMeter
+	VoiceBandwidthMeter        NetBandwidthMeter
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string
 	MusicSoundFontChoices      []string

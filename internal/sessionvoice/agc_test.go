@@ -43,6 +43,21 @@ func TestMicAGCBoostsVoiceLikeFrame(t *testing.T) {
 	}
 }
 
+func TestMicAGCBoostsQuietVoiceLikeFrame(t *testing.T) {
+	agc := newMicAGC()
+	frame := sineFrame(220, 500)
+	before := rmsInt16(frame)
+	for range 30 {
+		buf := append([]int16(nil), frame...)
+		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		frame = buf
+	}
+	after := rmsInt16(frame)
+	if after <= before*2.0 {
+		t.Fatalf("quiet voice rms after=%.1f want > %.1f", after, before*2.0)
+	}
+}
+
 func TestMicAGCDoesNotPumpLowLevelNoiseUpAggressively(t *testing.T) {
 	agc := newMicAGC()
 	frame := make([]int16, voicecodec.FrameSamples)
@@ -81,6 +96,21 @@ func TestMicAGCBoundsPeakLevelForHotInput(t *testing.T) {
 	}
 	if peak > int16(agcPeakLimit)+512 {
 		t.Fatalf("peak after=%d want <= %d", peak, int16(agcPeakLimit)+512)
+	}
+}
+
+func TestMicAGCAllowsHigherGainForQuietSpeech(t *testing.T) {
+	agc := newMicAGC()
+	frame := sineFrame(220, 450)
+	for range 40 {
+		buf := append([]int16(nil), frame...)
+		agc.ProcessFrame(buf, voicecodec.SampleRate)
+	}
+	if agc.gain <= 6.0 {
+		t.Fatalf("gain after quiet speech=%.2f want > 6.0", agc.gain)
+	}
+	if agc.gain > agcMaxGain {
+		t.Fatalf("gain after quiet speech=%.2f want <= %.2f", agc.gain, agcMaxGain)
 	}
 }
 
