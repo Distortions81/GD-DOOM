@@ -18,11 +18,13 @@ import (
 )
 
 const (
-	audioStartupBufferFrames  = 1
-	audioTargetBufferedFrames = 2
-	audioResetBufferedFrames  = 4
+	audioStartupBufferFrames  = 2
+	audioTargetBufferedFrames = 3
+	audioTrimBufferedFrames   = 4
+	audioResetBufferedFrames  = 6
 	audioPlayerBuffer         = 40 * time.Millisecond
 	audioFadeSamples          = 512
+	audioCatchupFadeSamples   = 1024
 )
 
 type VoiceStreamer struct {
@@ -329,6 +331,7 @@ type streamSource struct {
 	started             bool
 	startupBytes        int
 	targetBufferedBytes int
+	trimBufferedBytes   int
 	resetBufferedBytes  int
 
 	lastSample [4]byte
@@ -348,6 +351,7 @@ func newStreamSource(playbackRate int) *streamSource {
 		needFadeIn:          true,
 		startupBytes:        audioStartupBufferFrames * bytesPerPacket,
 		targetBufferedBytes: audioTargetBufferedFrames * bytesPerPacket,
+		trimBufferedBytes:   audioTrimBufferedFrames * bytesPerPacket,
 		resetBufferedBytes:  audioResetBufferedFrames * bytesPerPacket,
 	}
 }
@@ -429,7 +433,7 @@ func (s *streamSource) Close() {
 func (s *streamSource) Reset() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.fade = buildFadeOutStereo16(s.lastSample, audioFadeSamples)
+	s.fade = buildFadeOutStereo16(s.lastSample, audioCatchupFadeSamples)
 	s.buf = s.buf[:0]
 	s.started = false
 	s.needFadeIn = true
@@ -454,7 +458,10 @@ func (s *streamSource) resetBufferedAudioLocked() {
 		return
 	}
 	before := len(s.buf)
-	keep := s.targetBufferedBytes
+	keep := s.trimBufferedBytes
+	if keep <= 0 {
+		keep = s.targetBufferedBytes
+	}
 	if keep < s.startupBytes {
 		keep = s.startupBytes
 	}
@@ -475,10 +482,10 @@ func (s *streamSource) resetBufferedAudioLocked() {
 	dropped := start / 4
 	kept := keep / 4
 	fmt.Printf("voice-skip buffered=%d_samples dropped=%d_samples kept=%d_samples\n", before/4, dropped, kept)
-	s.fade = buildFadeOutStereo16(s.lastSample, audioFadeSamples)
+	s.fade = buildFadeOutStereo16(s.lastSample, audioCatchupFadeSamples)
 	copy(s.buf, s.buf[start:])
 	s.buf = s.buf[:keep]
-	applyFadeInStereo16(s.buf, audioFadeSamples)
+	applyFadeInStereo16(s.buf, audioCatchupFadeSamples)
 }
 
 func stereoBytesFromMonoPCM(src []int16) []byte {

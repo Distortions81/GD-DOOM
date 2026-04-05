@@ -52,7 +52,7 @@ func TestStreamSourceResetProducesFadeAndThenSilence(t *testing.T) {
 	}
 
 	src.Reset()
-	fade := make([]byte, audioFadeSamples*4)
+	fade := make([]byte, audioCatchupFadeSamples*4)
 	if _, err := src.Read(fade); err != nil {
 		t.Fatalf("fade Read() error = %v", err)
 	}
@@ -80,10 +80,13 @@ func TestStreamSourceResetsLargeBacklogToNewestTail(t *testing.T) {
 	if _, err := src.Read(warm); err != nil {
 		t.Fatalf("warm Read() error = %v", err)
 	}
-	for range audioResetBufferedFrames/audioStartupBufferFrames + 1 {
+	for range audioResetBufferedFrames/audioStartupBufferFrames + 2 {
 		src.Write(frame)
+		if len(src.fade) > 0 {
+			break
+		}
 	}
-	if got, wantMax := len(src.buf), src.resetBufferedBytes; got > wantMax {
+	if got, wantMax := len(src.buf), src.trimBufferedBytes; got > wantMax {
 		t.Fatalf("buffered bytes=%d want <= %d", got, wantMax)
 	}
 	if len(src.fade) == 0 {
