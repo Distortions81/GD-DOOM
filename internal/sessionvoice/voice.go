@@ -19,7 +19,7 @@ import (
 
 const (
 	audioStartupBufferFrames  = 2
-	audioTargetBufferedFrames = 3
+	audioTargetBufferedFrames = 2
 	audioTrimBufferedFrames   = 4
 	audioResetBufferedFrames  = 5
 	audioPlayerBuffer         = 40 * time.Millisecond
