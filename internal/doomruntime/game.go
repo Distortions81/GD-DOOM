@@ -20288,26 +20288,23 @@ func (g *game) drawNetBandwidth(screen *ebiten.Image) {
 	if g == nil || screen == nil {
 		return
 	}
+	if !netBandwidthOverlayEnabled() {
+		return
+	}
 	label := formatNetBandwidthLabel(g.opts.NetBandwidthMeter, g.opts.VoiceBandwidthMeter, g.opts.VoiceSyncMeter, g.opts.LiveTicSink != nil && g.opts.LiveTicSource == nil)
 	if label == "" {
 		return
 	}
-	bounds := screen.Bounds()
 	x := 8
-	y := bounds.Dy() - 16
-	if y < 0 {
-		y = 0
-	}
+	y := 8
 	ebitenutil.DebugPrintAt(screen, label, x, y)
 }
 
 func formatNetBandwidthLabel(gameMeter, voiceMeter runtimecfg.NetBandwidthMeter, voiceSync runtimecfg.VoiceSyncMeter, preferUpload bool) string {
 	var parts []string
-	if value := bandwidthMeterValue(gameMeter, preferUpload); value > 0 {
-		parts = append(parts, "game "+humanize.SIWithDigits(value, 2, "B/s"))
-	}
-	if value := bandwidthMeterValue(voiceMeter, preferUpload); value > 0 {
-		parts = append(parts, "voice "+humanize.SIWithDigits(value, 2, "B/s"))
+	total := bandwidthMeterValue(gameMeter, preferUpload) + bandwidthMeterValue(voiceMeter, preferUpload)
+	if total > 0 {
+		parts = append(parts, formatCompactBandwidth(total))
 	}
 	if voiceSync != nil && voiceSyncOverlayEnabled() {
 		if offsetMillis, ok := voiceSync.VoiceSyncOffsetMillis(); ok {
@@ -20321,6 +20318,10 @@ func voiceSyncOverlayEnabled() bool {
 	return strings.TrimSpace(os.Getenv("GD_DOOM_VOICE_SYNC_OVERLAY")) != ""
 }
 
+func netBandwidthOverlayEnabled() bool {
+	return strings.TrimSpace(os.Getenv("GD_DOOM_NET_BANDWIDTH_OVERLAY")) != ""
+}
+
 func bandwidthMeterValue(m runtimecfg.NetBandwidthMeter, preferUpload bool) float64 {
 	if m == nil {
 		return 0
@@ -20330,6 +20331,10 @@ func bandwidthMeterValue(m runtimecfg.NetBandwidthMeter, preferUpload bool) floa
 		return up
 	}
 	return down
+}
+
+func formatCompactBandwidth(v float64) string {
+	return strings.ReplaceAll(humanize.SIWithDigits(v, 2, "B/s"), " ", "")
 }
 
 func formatSignedMillis(v int) string {

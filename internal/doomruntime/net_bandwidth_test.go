@@ -27,7 +27,7 @@ func TestFormatNetBandwidthLabelUsesDownloadForWatch(t *testing.T) {
 		nil,
 		false,
 	)
-	if label != "game 1.53 kB/s  voice 4.09 kB/s" {
+	if label != "5.63kB/s" {
 		t.Fatalf("label=%q", label)
 	}
 }
@@ -39,7 +39,7 @@ func TestFormatNetBandwidthLabelUsesUploadForBroadcast(t *testing.T) {
 		nil,
 		true,
 	)
-	if label != "game 2.5 kB/s  voice 7.5 kB/s" {
+	if label != "10kB/s" {
 		t.Fatalf("label=%q", label)
 	}
 }
@@ -51,7 +51,7 @@ func TestFormatNetBandwidthLabelOmitsEmptyMeters(t *testing.T) {
 		nil,
 		false,
 	)
-	if label != "game 1.02 kB/s" {
+	if label != "1.02kB/s" {
 		t.Fatalf("label=%q", label)
 	}
 }
@@ -64,7 +64,7 @@ func TestFormatNetBandwidthLabelIncludesVoiceSyncOffset(t *testing.T) {
 		stubVoiceSyncMeter{millis: 86, ok: true},
 		false,
 	)
-	if label != "voice 4.09 kB/s  sync +86ms" {
+	if label != "4.09kB/s  sync +86ms" {
 		t.Fatalf("label=%q", label)
 	}
 }
@@ -76,7 +76,20 @@ func TestFormatNetBandwidthLabelOmitsVoiceSyncOffsetWithoutEnv(t *testing.T) {
 		stubVoiceSyncMeter{millis: 86, ok: true},
 		false,
 	)
-	if label != "voice 4.09 kB/s" {
+	if label != "4.09kB/s" {
 		t.Fatalf("label=%q", label)
+	}
+}
+
+func TestNetBandwidthOverlayEnabled(t *testing.T) {
+	t.Setenv("GD_DOOM_NET_BANDWIDTH_OVERLAY", "1")
+	if !netBandwidthOverlayEnabled() {
+		t.Fatal("netBandwidthOverlayEnabled() = false want true")
+	}
+}
+
+func TestNetBandwidthOverlayDisabledByDefault(t *testing.T) {
+	if netBandwidthOverlayEnabled() {
+		t.Fatal("netBandwidthOverlayEnabled() = true want false")
 	}
 }
