@@ -97,7 +97,6 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			var payload []byte
 			if allSilent {
 				encoder.Reset()
-				payload = nil
 			} else {
 				packet, err := encoder.Encode(packetPCM)
 				if err != nil {
@@ -106,18 +105,19 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 				}
 				payload = packet
 			}
-			tic := uint32(0)
-			if worldTic != nil {
-				tic = worldTic()
-			}
-			if err := broadcaster.BroadcastAudioChunk(netplay.AudioChunk{
-				GameTic:     tic,
-				StartSample: startSample,
-				Silence:     allSilent,
-				Payload:     payload,
-			}); err != nil {
-				vs.done <- err
-				return
+			if !allSilent {
+				tic := uint32(0)
+				if worldTic != nil {
+					tic = worldTic()
+				}
+				if err := broadcaster.BroadcastAudioChunk(netplay.AudioChunk{
+					GameTic:     tic,
+					StartSample: startSample,
+					Payload:     payload,
+				}); err != nil {
+					vs.done <- err
+					return
+				}
 			}
 			startSample += uint64(voicecodec.PacketSamples)
 		}

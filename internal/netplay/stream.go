@@ -46,10 +46,9 @@ const (
 )
 
 const (
-	frameHeaderSize    = 12
-	ticBatchOverhead   = 4
-	ticBatchSize       = 4
-	audioChunkOverhead = 4
+	frameHeaderSize  = 12
+	ticBatchOverhead = 4
+	ticBatchSize     = 4
 )
 
 const (
@@ -343,25 +342,12 @@ func (b *AudioBroadcaster) BroadcastAudioChunk(chunk AudioChunk) error {
 	if b == nil {
 		return nil
 	}
-	payloadLen := audioChunkOverhead + len(chunk.Payload)
-	if chunk.Silence {
-		payloadLen = audioChunkOverhead
-	}
-	payload := make([]byte, payloadLen)
-	frameSamples := b.audioFrameSamples
-	if frameSamples <= 0 {
+	if b.audioFrameSamples <= 0 {
 		return fmt.Errorf("audio frame samples are not configured")
 	}
-	if chunk.StartSample%uint64(frameSamples) != 0 {
-		return fmt.Errorf("audio start sample %d is not aligned to frame samples %d", chunk.StartSample, frameSamples)
-	}
-	frameIndex := chunk.StartSample / uint64(frameSamples)
-	if frameIndex > uint64(^uint32(0)) {
-		return fmt.Errorf("audio frame index %d exceeds uint32 range", frameIndex)
-	}
-	binary.LittleEndian.PutUint32(payload[:audioChunkOverhead], uint32(frameIndex))
+	var payload []byte
 	if !chunk.Silence {
-		copy(payload[audioChunkOverhead:], chunk.Payload)
+		payload = append([]byte(nil), chunk.Payload...)
 	}
 	var flags byte
 	if chunk.Silence {
@@ -830,6 +816,7 @@ func (v *AudioViewer) readLoop() {
 	defer close(v.configs)
 	defer close(v.chunks)
 	frameSamples := 0
+	var nextStartSample uint64
 	for {
 		header, payload, err := readFrame(v.conn)
 		if err != nil {
@@ -844,23 +831,20 @@ func (v *AudioViewer) readLoop() {
 				return
 			}
 			frameSamples = cfg.FrameSamples
+			nextStartSample = 0
 			v.configs <- cfg
 		case frameTypeAudioChunk:
-			if len(payload) < audioChunkOverhead {
-				v.setErr(fmt.Errorf("audio chunk payload too short"))
-				return
-			}
 			if frameSamples <= 0 {
 				v.setErr(fmt.Errorf("audio chunk received before config"))
 				return
 			}
-			frameIndex := uint64(binary.LittleEndian.Uint32(payload[:audioChunkOverhead]))
 			v.chunks <- AudioChunk{
 				GameTic:     header.Tic,
-				StartSample: frameIndex * uint64(frameSamples),
+				StartSample: nextStartSample,
 				Silence:     header.Flags&audioChunkFlagSilence != 0,
-				Payload:     append([]byte(nil), payload[audioChunkOverhead:]...),
+				Payload:     append([]byte(nil), payload...),
 			}
+			nextStartSample += uint64(frameSamples)
 		default:
 			v.setErr(fmt.Errorf("unexpected audio frame type %d", header.Type))
 			return
