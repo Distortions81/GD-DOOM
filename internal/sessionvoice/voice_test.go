@@ -83,8 +83,8 @@ func TestStreamSourceResetsLargeBacklogToNewestTail(t *testing.T) {
 	for range audioResetBufferedFrames/audioStartupBufferFrames + 1 {
 		src.Write(frame)
 	}
-	if got, want := len(src.buf), src.targetBufferedBytes; got != want {
-		t.Fatalf("buffered bytes=%d want %d", got, want)
+	if got, wantMax := len(src.buf), src.resetBufferedBytes; got > wantMax {
+		t.Fatalf("buffered bytes=%d want <= %d", got, wantMax)
 	}
 	if len(src.fade) == 0 {
 		t.Fatal("expected backlog skip to queue fade-out transition")

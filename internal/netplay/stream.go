@@ -58,9 +58,9 @@ const (
 )
 
 const (
-	audioCodecOpus       byte = 1
-	audioCodecPCM16Mono  byte = 2
-	maxBufferedAudioFrames     = 50 * 2
+	audioCodecOpus      byte = 1
+	audioCodecPCM16Mono byte = 2
+	audioViewerChunkQueue     = 24
 )
 
 var (
@@ -587,7 +587,7 @@ func DialRelayAudioViewer(addr string, sessionID uint64, localWADHash string) (*
 		conn:    conn,
 		session: session,
 		configs: make(chan AudioConfig, 2),
-		chunks:  make(chan AudioChunk, 128),
+		chunks:  make(chan AudioChunk, audioViewerChunkQueue),
 		meter:   meter,
 	}
 	v.wg.Add(1)

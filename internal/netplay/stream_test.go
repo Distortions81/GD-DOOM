@@ -489,6 +489,71 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRelayAudioLateJoinDoesNotReceiveStaleChunks(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{
+		WADHash: "abc123",
+		MapName: "E1M1",
+	})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	ab, err := DialRelayAudioBroadcaster(srv.Addr(), b.SessionID())
+	if err != nil {
+		t.Fatalf("DialRelayAudioBroadcaster() error = %v", err)
+	}
+	defer ab.Close()
+
+	wantCfg := AudioConfig{
+		Codec:        audioCodecPCM16Mono,
+		SampleRate:   48000,
+		Channels:     1,
+		FrameSamples: 480,
+		Bitrate:      768000,
+	}
+	if err := ab.BroadcastAudioConfig(wantCfg); err != nil {
+		t.Fatalf("BroadcastAudioConfig() error = %v", err)
+	}
+	if err := ab.BroadcastAudioChunk(AudioChunk{
+		GameTic:     77,
+		StartSample: 0,
+		Payload:     []byte{1, 2, 3, 4},
+	}); err != nil {
+		t.Fatalf("BroadcastAudioChunk() error = %v", err)
+	}
+
+	v, err := DialRelayAudioViewer(srv.Addr(), b.SessionID(), "abc123")
+	if err != nil {
+		t.Fatalf("DialRelayAudioViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	gotCfg, ok, err := readAudioConfig(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioConfig() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for audio config")
+	}
+	if gotCfg != wantCfg {
+		t.Fatalf("PollAudioConfig() = %+v want %+v", gotCfg, wantCfg)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	if got, ok, err := v.PollAudioChunk(); err != nil && err != io.EOF {
+		t.Fatalf("PollAudioChunk() error = %v", err)
+	} else if ok {
+		t.Fatalf("PollAudioChunk() = %+v want no stale chunk", got)
+	}
+}
+
 func TestHelloRoundTripBinary(t *testing.T) {
 	var buf bytes.Buffer
 	want := SessionConfig{

@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	audioStartupBufferFrames = 3
-	audioTargetBufferedFrames = 4
-	audioResetBufferedFrames  = 8
+	audioStartupBufferFrames = 4
+	audioTargetBufferedFrames = 5
+	audioResetBufferedFrames  = 10
+	audioPlayerBuffer         = 30 * time.Millisecond
 	audioFadeSamples         = 256
 )
 
@@ -141,6 +142,7 @@ func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic
 		stream.Close()
 		return nil, err
 	}
+	player.SetBufferSize(audioPlayerBuffer)
 	player.SetVolume(1)
 	player.Play()
 

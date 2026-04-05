@@ -33,7 +33,6 @@ type relaySession struct {
 	lastKeyframeTic   uint32
 	backlog           []bufferedFrame
 	lastAudioConfig   []byte
-	audioBacklog      []bufferedFrame
 }
 
 type relayViewer struct {
@@ -321,21 +320,11 @@ func (s *Server) handleAudioViewer(conn net.Conn, sessionID uint64) {
 	cfg := sess.cfg
 	var (
 		audioConfig []byte
-		backlog     []bufferedFrame
 	)
 	viewer.mu.Lock()
 	sess.audioViewers[viewer] = struct{}{}
 	if len(sess.lastAudioConfig) > 0 {
 		audioConfig = append([]byte(nil), sess.lastAudioConfig...)
-	}
-	if len(sess.audioBacklog) > 0 {
-		backlog = make([]bufferedFrame, len(sess.audioBacklog))
-		for i, frame := range sess.audioBacklog {
-			backlog[i] = bufferedFrame{
-				header:  frame.header,
-				payload: append([]byte(nil), frame.payload...),
-			}
-		}
 	}
 	s.mu.Unlock()
 
@@ -350,14 +339,6 @@ func (s *Server) handleAudioViewer(conn net.Conn, sessionID uint64) {
 			Type:   frameTypeAudioConfig,
 			Length: uint32(len(audioConfig)),
 		}, audioConfig); err != nil {
-			viewer.mu.Unlock()
-			s.removeAudioViewer(sess, viewer)
-			_ = conn.Close()
-			return
-		}
-	}
-	for _, frame := range backlog {
-		if err := writeFrame(conn, frame.header, frame.payload); err != nil {
 			viewer.mu.Unlock()
 			s.removeAudioViewer(sess, viewer)
 			_ = conn.Close()
@@ -417,16 +398,6 @@ func (s *Server) forwardAudioFrame(sess *relaySession, header frameHeader, paylo
 	switch header.Type {
 	case frameTypeAudioConfig:
 		sess.lastAudioConfig = append(sess.lastAudioConfig[:0], payload...)
-		sess.audioBacklog = sess.audioBacklog[:0]
-	case frameTypeAudioChunk:
-		sess.audioBacklog = append(sess.audioBacklog, bufferedFrame{
-			header:  header,
-			payload: append([]byte(nil), payload...),
-		})
-		if len(sess.audioBacklog) > maxBufferedAudioFrames {
-			copy(sess.audioBacklog, sess.audioBacklog[len(sess.audioBacklog)-maxBufferedAudioFrames:])
-			sess.audioBacklog = sess.audioBacklog[:maxBufferedAudioFrames]
-		}
 	}
 	viewers := make([]*relayViewer, 0, len(sess.audioViewers))
 	for viewer := range sess.audioViewers {
@@ -522,7 +493,6 @@ func (s *Server) closeAudioSource(sess *relaySession) {
 	}
 	sess.audioViewers = make(map[*relayViewer]struct{})
 	sess.lastAudioConfig = nil
-	sess.audioBacklog = nil
 	s.mu.Unlock()
 
 	if src != nil {
