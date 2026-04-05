@@ -19,8 +19,8 @@ import (
 
 const (
 	audioStartupBufferFrames  = 2
-	audioTargetBufferedFrames = 2
-	audioTrimBufferedFrames   = 3
+	audioTargetBufferedFrames = 3
+	audioTrimBufferedFrames   = 4
 	audioResetBufferedFrames  = 5
 	audioPlayerBuffer         = 40 * time.Millisecond
 	audioFadeSamples          = 512
@@ -156,6 +156,12 @@ type VoicePlayer struct {
 	mu           sync.RWMutex
 	haveChunkTic bool
 	lastChunkTic uint32
+	syncSamples  []voiceSyncSample
+}
+
+type voiceSyncSample struct {
+	at     time.Time
+	millis int
 }
 
 func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic func() uint32) (*VoicePlayer, error) {
@@ -196,10 +202,10 @@ func (p *VoicePlayer) VoiceSyncOffsetMillis() (int, bool) {
 		return 0, false
 	}
 	bufferedMillis := p.source.BufferedMillis(p.playbackRate)
-	p.mu.RLock()
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	haveChunkTic := p.haveChunkTic
 	lastChunkTic := p.lastChunkTic
-	p.mu.RUnlock()
 	if !haveChunkTic {
 		return 0, false
 	}
@@ -211,7 +217,27 @@ func (p *VoicePlayer) VoiceSyncOffsetMillis() (int, bool) {
 		currentTic = p.currentTic()
 	}
 	ticDeltaMillis := int(math.Round(float64(int64(currentTic)-int64(lastChunkTic)) * (1000.0 / 35.0)))
-	return ticDeltaMillis + bufferedMillis, true
+	offset := ticDeltaMillis + bufferedMillis + voicecodec.PacketDurationMillis + int(audioPlayerBuffer/time.Millisecond)
+	now := time.Now()
+	p.syncSamples = append(p.syncSamples, voiceSyncSample{at: now, millis: offset})
+	cutoff := now.Add(-1 * time.Second)
+	keep := 0
+	for _, sample := range p.syncSamples {
+		if sample.at.Before(cutoff) {
+			continue
+		}
+		p.syncSamples[keep] = sample
+		keep++
+	}
+	p.syncSamples = p.syncSamples[:keep]
+	if len(p.syncSamples) == 0 {
+		return 0, false
+	}
+	sum := 0
+	for _, sample := range p.syncSamples {
+		sum += sample.millis
+	}
+	return int(math.Round(float64(sum) / float64(len(p.syncSamples)))), true
 }
 
 func (p *VoicePlayer) Close() error {
