@@ -1,6 +1,10 @@
 package sessionvoice
 
-import "math"
+import (
+	"math"
+
+	"gddoom/internal/voicecodec"
+)
 
 type highPassFilter struct {
 	alpha float64
@@ -77,6 +81,32 @@ func decimateBy2LowPass(src []int16, f1, f2 *lowPassFilter) []int16 {
 		write++
 	}
 	return out
+}
+
+func downsampleCaptureToVoice(src []int16, filters ...*lowPassFilter) []int16 {
+	if len(src) == 0 {
+		return nil
+	}
+	if voiceSampleRatesAreExactHalf() {
+		work := append([]int16(nil), src...)
+		for _, f := range filters {
+			if f != nil {
+				f.ProcessInt16(work)
+			}
+		}
+		out := make([]int16, (len(work)+1)/2)
+		write := 0
+		for i := 0; i < len(work); i += 2 {
+			out[write] = work[i]
+			write++
+		}
+		return out
+	}
+	return resampleMonoLinear(src, voicecodec.CaptureSampleRate, voicecodec.SampleRate)
+}
+
+func voiceSampleRatesAreExactHalf() bool {
+	return voicecodec.CaptureSampleRate == voicecodec.SampleRate*2
 }
 
 func clampFilterSample(v float64) int16 {

@@ -25,7 +25,7 @@ const (
 	audioPlayerBuffer         = 40 * time.Millisecond
 	audioFadeSamples          = 512
 	audioCatchupFadeSamples   = 1024
-	audioDownsampleLowPassHz  = 12000.0
+	audioDownsampleLowPassHz  = 9000.0
 )
 
 type VoiceStreamer struct {
@@ -73,7 +73,9 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		raw := make([]byte, frameBytes)
 		framePCM := make([]int16, voicecodec.CaptureFrameSamples*voicecodec.Channels)
 		hpf := newHighPassFilter(50, voicecodec.CaptureSampleRate)
-		lpf := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
+		lpf1 := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
+		lpf2 := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
+		lpf3 := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
 		agc := newMicAGC()
 		var startSample uint64
 		for {
@@ -89,12 +91,11 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 				framePCM[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
 			}
 			hpf.ProcessInt16(framePCM)
-			lpf.ProcessInt16(framePCM)
 			allSilent := agc.ProcessFrame(framePCM, voicecodec.CaptureSampleRate)
 			if allSilent {
 				encoder.Reset()
 			} else {
-				down := resampleMonoLinear(framePCM, voicecodec.CaptureSampleRate, voicecodec.SampleRate)
+				down := downsampleCaptureToVoice(framePCM, lpf1, lpf2, lpf3)
 				payload, err := encoder.Encode(down)
 				if err != nil {
 					vs.done <- err

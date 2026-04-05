@@ -45,3 +45,30 @@ func TestResampleMonoLinearDownTo32kUsesExpectedLength(t *testing.T) {
 		t.Fatalf("len(out)=%d want %d", len(out), want)
 	}
 }
+
+func TestDownsampleCaptureToVoiceSuppressesNearNyquistEnergy(t *testing.T) {
+	voiceBand := makeSine(4000, 12000)
+	highBand := makeSine(14000, 12000)
+
+	voiceOut := downsampleCaptureToVoice(
+		voiceBand,
+		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+	)
+	highOut := downsampleCaptureToVoice(
+		highBand,
+		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+	)
+
+	voiceRMS := rmsInt16(voiceOut)
+	highRMS := rmsInt16(highOut)
+	if len(voiceOut) != len(voiceBand)/2 {
+		t.Fatalf("len(voiceOut)=%d want=%d", len(voiceOut), len(voiceBand)/2)
+	}
+	if highRMS >= voiceRMS*0.45 {
+		t.Fatalf("high-band rms after downsample=%.1f want < %.1f", highRMS, voiceRMS*0.45)
+	}
+}
