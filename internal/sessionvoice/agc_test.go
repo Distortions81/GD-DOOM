@@ -64,3 +64,22 @@ func TestMicAGCDoesNotPumpLowLevelNoiseUpAggressively(t *testing.T) {
 		t.Fatalf("noise rms after=%.1f want <= %.1f", after, base*2.0)
 	}
 }
+
+func TestMicAGCBoundsPeakLevelForHotInput(t *testing.T) {
+	agc := newMicAGC()
+	frame := sineFrame(220, 30000)
+	for range 8 {
+		buf := append([]int16(nil), frame...)
+		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		frame = buf
+	}
+	var peak int16
+	for _, s := range frame {
+		if abs := int16(math.Abs(float64(s))); abs > peak {
+			peak = abs
+		}
+	}
+	if peak > int16(agcPeakLimit)+512 {
+		t.Fatalf("peak after=%d want <= %d", peak, int16(agcPeakLimit)+512)
+	}
+}

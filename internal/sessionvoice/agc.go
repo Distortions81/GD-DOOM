@@ -4,21 +4,25 @@ import "math"
 
 const (
 	agcTargetRMS        = 9000.0
+	agcPeakLimit        = 26000.0
 	agcMinGain          = 0.5
 	agcMaxGain          = 6.0
 	agcVoiceRMSFloor    = 350.0
-	agcAttack           = 0.08
-	agcRelease          = 0.02
-	agcIdleReturn       = 0.01
+	agcAverageSmoothing = 0.01
+	agcGainAttack       = 0.01
+	agcGainRelease      = 0.06
+	agcGainDeadband     = 0.2
+	agcIdleReturn       = 0.005
 	agcLowPassCutoffHz  = 4000.0
 	agcHighPassCutoffHz = 120.0
 )
 
 type micAGC struct {
-	gain        float64
-	lpState     float64
-	lowState    float64
-	prevBand    float64
+	gain         float64
+	voiceRMSAvg  float64
+	lpState      float64
+	lowState     float64
+	prevBand     float64
 	havePrevBand bool
 }
 
@@ -58,12 +62,19 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) {
 	}
 	voiced := rms >= agcVoiceRMSFloor && zeroCrossings >= 4 && zeroCrossings <= 160 && crest <= 12
 	if voiced {
-		target := clampFloat(agcTargetRMS/max(rms, 1), agcMinGain, agcMaxGain)
-		rate := agcRelease
-		if target > a.gain {
-			rate = agcAttack
+		if a.voiceRMSAvg <= 0 {
+			a.voiceRMSAvg = rms
+		} else {
+			a.voiceRMSAvg += (rms - a.voiceRMSAvg) * agcAverageSmoothing
 		}
-		a.gain += (target - a.gain) * rate
+		target := clampFloat(agcTargetRMS/max(a.voiceRMSAvg, 1), agcMinGain, agcMaxGain)
+		if peak > 0 && peak*a.gain > agcPeakLimit {
+			a.gain = clampFloat(agcPeakLimit/peak, agcMinGain, agcMaxGain)
+		} else if target > a.gain+agcGainDeadband {
+			a.gain += (target - a.gain) * agcGainAttack
+		} else if target < a.gain-agcGainDeadband {
+			a.gain += (target - a.gain) * agcGainRelease
+		}
 	} else {
 		a.gain += (1 - a.gain) * agcIdleReturn
 	}
@@ -99,4 +110,3 @@ func clampFloat(v, lo, hi float64) float64 {
 	}
 	return v
 }
-
