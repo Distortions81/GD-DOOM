@@ -91,3 +91,42 @@ func TestIMA41ResetProducesSeededPacket(t *testing.T) {
 		t.Fatalf("reset packet len=%d want=%d", got, want)
 	}
 }
+
+func TestIMA41SeededPacketIncludesExpandedPredictorState(t *testing.T) {
+	enc := NewIMA41Encoder()
+	dec := NewIMA41Decoder()
+	pcm := make([]int16, FrameSamples*3)
+	for i := range pcm {
+		v := math.Sin(2 * math.Pi * 220 * float64(i) / SampleRate)
+		pcm[i] = int16(v * 10000)
+	}
+
+	first, err := enc.Encode(pcm[:FrameSamples])
+	if err != nil {
+		t.Fatalf("Encode() first error = %v", err)
+	}
+	if _, err := dec.Decode(first); err != nil {
+		t.Fatalf("Decode() first error = %v", err)
+	}
+
+	second, err := enc.Encode(pcm[FrameSamples : 2*FrameSamples])
+	if err != nil {
+		t.Fatalf("Encode() second error = %v", err)
+	}
+	if _, err := dec.Decode(second); err != nil {
+		t.Fatalf("Decode() second error = %v", err)
+	}
+
+	enc.Reset()
+	dec.Reset()
+	seeded, err := enc.Encode(pcm[2*FrameSamples:])
+	if err != nil {
+		t.Fatalf("Encode() seeded error = %v", err)
+	}
+	if got, want := len(seeded), IMA41PacketBytes+ima41SeedHeaderBytes; got != want {
+		t.Fatalf("seeded packet len=%d want=%d", got, want)
+	}
+	if _, err := dec.Decode(seeded); err != nil {
+		t.Fatalf("Decode() seeded error = %v", err)
+	}
+}

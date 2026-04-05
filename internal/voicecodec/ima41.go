@@ -20,20 +20,22 @@ var imaStepTable = [89]int{
 }
 
 type IMA41Encoder struct {
-	predictor int16
-	prevDelta int16
-	stepIndex int
-	needSeed  bool
-	frames    int
+	predictor  int16
+	prevDelta  int16
+	prevDelta2 int16
+	stepIndex  int
+	needSeed   bool
+	frames     int
 }
 
 type IMA41Decoder struct {
-	predictor int16
-	prevDelta int16
-	stepIndex int
+	predictor  int16
+	prevDelta  int16
+	prevDelta2 int16
+	stepIndex  int
 }
 
-const ima41SeedHeaderBytes = 6
+const ima41SeedHeaderBytes = 8
 const ima41ResyncIntervalFrames = 50
 
 func NewIMA41Encoder() *IMA41Encoder {
@@ -52,6 +54,7 @@ func (e *IMA41Encoder) Reset() {
 	}
 	e.predictor = 0
 	e.prevDelta = 0
+	e.prevDelta2 = 0
 	e.stepIndex = 0
 	e.needSeed = true
 	e.frames = 0
@@ -63,6 +66,7 @@ func (d *IMA41Decoder) Reset() {
 	}
 	d.predictor = 0
 	d.prevDelta = 0
+	d.prevDelta2 = 0
 	d.stepIndex = 0
 }
 
@@ -81,8 +85,9 @@ func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
 		out = make([]byte, ima41SeedHeaderBytes+len(frame)/2)
 		putI16LE(out[0:2], e.predictor)
 		putI16LE(out[2:4], e.prevDelta)
-		out[4] = byte(e.stepIndex)
-		out[5] = 0
+		putI16LE(out[4:6], e.prevDelta2)
+		out[6] = byte(e.stepIndex)
+		out[7] = 0
 		write = ima41SeedHeaderBytes
 	}
 	for i := 0; i < len(frame); i += 2 {
@@ -106,7 +111,8 @@ func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
 	case ima41SeedHeaderBytes + IMA41PacketBytes:
 		d.predictor = getI16LE(packet[0:2])
 		d.prevDelta = getI16LE(packet[2:4])
-		d.stepIndex = int(packet[4])
+		d.prevDelta2 = getI16LE(packet[4:6])
+		d.stepIndex = int(packet[6])
 		if d.stepIndex < 0 || d.stepIndex >= len(imaStepTable) {
 			return nil, fmt.Errorf("ima 4:1 step index out of range: %d", d.stepIndex)
 		}
@@ -187,7 +193,9 @@ func (e *IMA41Encoder) applyDelta(code byte, delta int) {
 		predictor += delta
 	}
 	e.predictor = clamp16(predictor)
-	e.prevDelta = clamp16(int(e.predictor) - last)
+	newDelta := clamp16(int(e.predictor) - last)
+	e.prevDelta2 = e.prevDelta
+	e.prevDelta = newDelta
 	e.stepIndex += imaIndexTable[code&0x0f]
 	if e.stepIndex < 0 {
 		e.stepIndex = 0
@@ -206,7 +214,9 @@ func (d *IMA41Decoder) applyDelta(code byte, delta int) {
 		predictor += delta
 	}
 	d.predictor = clamp16(predictor)
-	d.prevDelta = clamp16(int(d.predictor) - last)
+	newDelta := clamp16(int(d.predictor) - last)
+	d.prevDelta2 = d.prevDelta
+	d.prevDelta = newDelta
 	d.stepIndex += imaIndexTable[code&0x0f]
 	if d.stepIndex < 0 {
 		d.stepIndex = 0
@@ -227,15 +237,17 @@ func clamp16(v int) int16 {
 }
 
 func (e *IMA41Encoder) predictedSample() int16 {
-	return predictedIMA41Sample(e.predictor, e.prevDelta)
+	return predictedIMA41Sample(e.predictor, e.prevDelta, e.prevDelta2)
 }
 
 func (d *IMA41Decoder) predictedSample() int16 {
-	return predictedIMA41Sample(d.predictor, d.prevDelta)
+	return predictedIMA41Sample(d.predictor, d.prevDelta, d.prevDelta2)
 }
 
-func predictedIMA41Sample(current, prevDelta int16) int16 {
-	return clamp16(int(current) + (int(prevDelta)*3)/4)
+func predictedIMA41Sample(current, prevDelta, prevDelta2 int16) int16 {
+	// Two-slope predictor tuned for voiced speech: follow sustained direction,
+	// but damp sudden changes so fricatives and transients do not overshoot as hard.
+	return clamp16(int(current) + int(prevDelta) + (int(prevDelta)-int(prevDelta2))/4)
 }
 
 func putI16LE(dst []byte, v int16) {

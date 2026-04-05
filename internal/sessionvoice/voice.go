@@ -68,6 +68,7 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		frameBytes := voicecodec.FrameSamples * voicecodec.Channels * 2
 		raw := make([]byte, frameBytes)
 		pcm := make([]int16, voicecodec.FrameSamples*voicecodec.Channels)
+		hpf := newHighPassFilter(50, voicecodec.SampleRate)
 		agc := newMicAGC()
 		var startSample uint64
 		for {
@@ -82,6 +83,7 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			for i := range pcm {
 				pcm[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
 			}
+			hpf.ProcessInt16(pcm)
 			silence := agc.ProcessFrame(pcm, voicecodec.SampleRate)
 			var payload []byte
 			if silence {
