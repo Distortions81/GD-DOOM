@@ -85,6 +85,7 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			silence := agc.ProcessFrame(pcm, voicecodec.SampleRate)
 			var payload []byte
 			if silence {
+				encoder.Reset()
 				payload = nil
 			} else {
 				packet, err := encoder.Encode(pcm)
@@ -196,6 +197,7 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 	defer p.source.Close()
 
 	var current netplay.AudioConfig
+	decoder := voicecodec.NewIMA41Decoder()
 	var lastStartSample uint64
 	haveStartSample := false
 	for {
@@ -213,6 +215,10 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			p.done <- err
 			return
 		} else if ok {
+			if cfg != current {
+				decoder.Reset()
+				haveStartSample = false
+			}
 			current = cfg
 		}
 		chunk, ok, err := p.viewer.PollAudioChunk()
@@ -236,10 +242,12 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			return
 		}
 		if haveStartSample && chunk.StartSample != lastStartSample+uint64(voicecodec.FrameSamples) {
+			decoder.Reset()
 			p.source.Reset()
 		}
 		var pcm []int16
 		if chunk.Silence {
+			decoder.Reset()
 			pcm = make([]int16, current.FrameSamples*current.Channels)
 		} else {
 			switch current.Codec {
@@ -253,7 +261,6 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 					pcm[i] = int16(binary.LittleEndian.Uint16(chunk.Payload[i*2 : i*2+2]))
 				}
 			case netplayAudioCodecIMA4To1():
-				decoder := voicecodec.NewIMA41Decoder()
 				pcm, err = decoder.Decode(chunk.Payload)
 				if err != nil {
 					p.done <- err

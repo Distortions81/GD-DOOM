@@ -450,7 +450,7 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 		Codec:        audioCodecIMA4To1,
 		SampleRate:   48000,
 		Channels:     1,
-		FrameSamples: 960,
+		FrameSamples: 480,
 		Bitrate:      192000,
 	}
 	if err := ab.BroadcastAudioConfig(wantCfg); err != nil {
@@ -459,7 +459,7 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 
 	wantChunk := AudioChunk{
 		GameTic:     77,
-		StartSample: 960 * 4,
+		StartSample: 480 * 4,
 		Payload:     []byte{1, 2, 3, 4, 5},
 	}
 	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {
@@ -521,14 +521,14 @@ func TestRelayAudioSilenceChunkRoundTrip(t *testing.T) {
 		Codec:        audioCodecPCM16Mono,
 		SampleRate:   48000,
 		Channels:     1,
-		FrameSamples: 960,
+		FrameSamples: 480,
 		Bitrate:      768000,
 	}); err != nil {
 		t.Fatalf("BroadcastAudioConfig() error = %v", err)
 	}
 	wantChunk := AudioChunk{
 		GameTic:     88,
-		StartSample: 960 * 7,
+		StartSample: 480 * 7,
 		Silence:     true,
 	}
 	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {

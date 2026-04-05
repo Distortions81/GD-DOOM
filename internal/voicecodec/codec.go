@@ -5,6 +5,7 @@ const (
 	CodecPCM16Mono      byte = 2
 	SampleRate               = 48000
 	Channels                 = 1
-	FrameDurationMillis      = 20
+	FrameDurationMillis      = 10
 	FrameSamples             = SampleRate * FrameDurationMillis / 1000
+	IMA41PacketBytes         = FrameSamples * Channels / 2
 )

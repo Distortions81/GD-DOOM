@@ -22,6 +22,8 @@ var imaStepTable = [89]int{
 type IMA41Encoder struct {
 	predictor int16
 	stepIndex int
+	needSeed  bool
+	frames    int
 }
 
 type IMA41Decoder struct {
@@ -29,12 +31,35 @@ type IMA41Decoder struct {
 	stepIndex int
 }
 
+const ima41SeedHeaderBytes = 4
+const ima41ResyncIntervalFrames = 50
+
 func NewIMA41Encoder() *IMA41Encoder {
-	return &IMA41Encoder{}
+	enc := &IMA41Encoder{}
+	enc.Reset()
+	return enc
 }
 
 func NewIMA41Decoder() *IMA41Decoder {
 	return &IMA41Decoder{}
+}
+
+func (e *IMA41Encoder) Reset() {
+	if e == nil {
+		return
+	}
+	e.predictor = 0
+	e.stepIndex = 0
+	e.needSeed = true
+	e.frames = 0
+}
+
+func (d *IMA41Decoder) Reset() {
+	if d == nil {
+		return
+	}
+	d.predictor = 0
+	d.stepIndex = 0
 }
 
 func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
@@ -45,12 +70,17 @@ func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
 	if len(frame) == 0 {
 		return nil, nil
 	}
-	out := make([]byte, 4+(len(frame)-1+1)/2)
-	putI16LE(out[0:2], e.predictor)
-	out[2] = byte(e.stepIndex)
-	out[3] = 0
-	write := 4
-	for i := 1; i < len(frame); i += 2 {
+	seeded := e.needSeed || e.frames%ima41ResyncIntervalFrames == 0
+	out := make([]byte, len(frame)/2)
+	write := 0
+	if seeded {
+		out = make([]byte, ima41SeedHeaderBytes+len(frame)/2)
+		putI16LE(out[0:2], e.predictor)
+		out[2] = byte(e.stepIndex)
+		out[3] = 0
+		write = ima41SeedHeaderBytes
+	}
+	for i := 0; i < len(frame); i += 2 {
 		lo := e.encodeNibble(frame[i])
 		hi := byte(0)
 		if i+1 < len(frame) {
@@ -59,22 +89,28 @@ func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
 		out[write] = lo | (hi << 4)
 		write++
 	}
+	e.needSeed = false
+	e.frames++
 	return out, nil
 }
 
 func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
-	if len(packet) < 4 {
-		return nil, fmt.Errorf("ima 4:1 packet too small: %d", len(packet))
-	}
-	d.predictor = getI16LE(packet[0:2])
-	d.stepIndex = int(packet[2])
-	if d.stepIndex < 0 || d.stepIndex >= len(imaStepTable) {
-		return nil, fmt.Errorf("ima 4:1 step index out of range: %d", d.stepIndex)
+	payload := packet
+	switch len(packet) {
+	case IMA41PacketBytes:
+	case ima41SeedHeaderBytes + IMA41PacketBytes:
+		d.predictor = getI16LE(packet[0:2])
+		d.stepIndex = int(packet[2])
+		if d.stepIndex < 0 || d.stepIndex >= len(imaStepTable) {
+			return nil, fmt.Errorf("ima 4:1 step index out of range: %d", d.stepIndex)
+		}
+		payload = packet[ima41SeedHeaderBytes:]
+	default:
+		return nil, fmt.Errorf("ima 4:1 packet len=%d want=%d or %d", len(packet), IMA41PacketBytes, ima41SeedHeaderBytes+IMA41PacketBytes)
 	}
 	out := make([]int16, FrameSamples*Channels)
-	out[0] = d.predictor
-	write := 1
-	for _, b := range packet[4:] {
+	write := 0
+	for _, b := range payload {
 		if write < len(out) {
 			out[write] = d.decodeNibble(b & 0x0f)
 			write++
