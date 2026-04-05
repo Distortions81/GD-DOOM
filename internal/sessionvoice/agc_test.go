@@ -83,3 +83,39 @@ func TestMicAGCBoundsPeakLevelForHotInput(t *testing.T) {
 		t.Fatalf("peak after=%d want <= %d", peak, int16(agcPeakLimit)+512)
 	}
 }
+
+func TestMicAGCSoftNoiseKneeReducesNearFloorNoise(t *testing.T) {
+	agc := newMicAGC()
+	noise := make([]int16, voicecodec.FrameSamples)
+	for i := range noise {
+		if i%2 == 0 {
+			noise[i] = 40
+		} else {
+			noise[i] = -40
+		}
+	}
+	for range 80 {
+		buf := append([]int16(nil), noise...)
+		agc.ProcessFrame(buf, voicecodec.SampleRate)
+	}
+	test := append([]int16(nil), noise...)
+	before := rmsInt16(test)
+	agc.ProcessFrame(test, voicecodec.SampleRate)
+	after := rmsInt16(test)
+	if after >= before {
+		t.Fatalf("soft knee noise rms after=%.1f want < %.1f", after, before)
+	}
+}
+
+func TestGateGainForFrameStartsReducingDuringVoiceHold(t *testing.T) {
+	noiseAvg := 100.0
+	rms := 80.0
+	knee := softGateGain(rms, noiseAvg)
+	got := gateGainForFrame(false, agcVoiceHoldFrames/2, rms, noiseAvg)
+	if got >= 1 {
+		t.Fatalf("gateGainForFrame()=%0.3f want < 1", got)
+	}
+	if got <= knee {
+		t.Fatalf("gateGainForFrame()=%0.3f want > knee %0.3f", got, knee)
+	}
+}
