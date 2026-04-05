@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	audioLateDropTics        = 2
-	audioStartupBufferFrames = 2
-	audioFadeSamples       = 256
+	audioStartupBufferFrames = 3
+	audioTargetBufferedFrames = 4
+	audioResetBufferedFrames  = 8
+	audioFadeSamples         = 256
 )
 
 type VoiceStreamer struct {
@@ -133,7 +134,8 @@ func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic
 	if ctx == nil {
 		return nil, fmt.Errorf("shared audio context is unavailable")
 	}
-	stream := newStreamSource()
+	playbackRate := ctx.SampleRate()
+	stream := newStreamSource(playbackRate)
 	player, err := ctx.NewPlayer(stream)
 	if err != nil {
 		stream.Close()
@@ -151,7 +153,7 @@ func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic
 		source: stream,
 		currentTic: currentTic,
 	}
-	go vp.run(runCtx, ctx.SampleRate())
+	go vp.run(runCtx, playbackRate)
 	return vp, nil
 }
 
@@ -221,11 +223,6 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			p.done <- fmt.Errorf("unsupported audio codec %d", current.Codec)
 			return
 		}
-		if p.currentTic != nil && chunk.GameTic+audioLateDropTics < p.currentTic() {
-			p.source.Reset()
-			haveStartSample = false
-			continue
-		}
 		if haveStartSample && chunk.StartSample != lastStartSample+uint64(voicecodec.FrameSamples) {
 			p.source.Reset()
 		}
@@ -261,18 +258,34 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 }
 
 type streamSource struct {
-	mu     sync.Mutex
-	buf    []byte
-	fade   []byte
-	closed bool
-	started bool
+	mu               sync.Mutex
+	buf              []byte
+	fade             []byte
+	closed           bool
+	started          bool
+	startupBytes     int
+	targetBufferedBytes int
+	resetBufferedBytes int
 
 	lastSample [4]byte
 	needFadeIn bool
 }
 
-func newStreamSource() *streamSource {
-	return &streamSource{needFadeIn: true}
+func newStreamSource(playbackRate int) *streamSource {
+	if playbackRate <= 0 {
+		playbackRate = 44100
+	}
+	samplesPerFrame := (playbackRate*voicecodec.FrameDurationMillis + 999) / 1000
+	if samplesPerFrame < 1 {
+		samplesPerFrame = 1
+	}
+	bytesPerFrame := samplesPerFrame * 4
+	return &streamSource{
+		needFadeIn:         true,
+		startupBytes:       audioStartupBufferFrames * bytesPerFrame,
+		targetBufferedBytes: audioTargetBufferedFrames * bytesPerFrame,
+		resetBufferedBytes:  audioResetBufferedFrames * bytesPerFrame,
+	}
 }
 
 func (s *streamSource) Read(p []byte) (int, error) {
@@ -285,13 +298,10 @@ func (s *streamSource) Read(p []byte) (int, error) {
 		n := copy(p, s.fade)
 		copy(s.fade, s.fade[n:])
 		s.fade = s.fade[:len(s.fade)-n]
-		if n < len(p) {
-			clear(p[n:])
-		}
-		return len(p), nil
+		return n, nil
 	}
 	if !s.started {
-		if len(s.buf) < audioStartupBufferFrames*voicecodec.FrameSamples*4 {
+		if len(s.buf) < s.startupBytes {
 			if s.closed {
 				return 0, io.EOF
 			}
@@ -324,14 +334,10 @@ func (s *streamSource) Read(p []byte) (int, error) {
 	if n >= 4 {
 		copy(s.lastSample[:], p[n-4:n])
 	}
-	if n < len(p) {
-		clear(p[n:])
-		s.needFadeIn = true
-	}
 	if len(s.buf) == 0 && n == 0 && s.closed {
 		return 0, io.EOF
 	}
-	return len(p), nil
+	return n, nil
 }
 
 func (s *streamSource) Write(p []byte) {
@@ -346,6 +352,7 @@ func (s *streamSource) Write(p []byte) {
 		s.needFadeIn = false
 	}
 	s.buf = append(s.buf, data...)
+	s.resetBufferedAudioLocked()
 	s.mu.Unlock()
 }
 
@@ -362,6 +369,34 @@ func (s *streamSource) Reset() {
 	s.buf = s.buf[:0]
 	s.started = false
 	s.needFadeIn = true
+}
+
+func (s *streamSource) resetBufferedAudioLocked() {
+	if s.resetBufferedBytes <= 0 || len(s.buf) <= s.resetBufferedBytes {
+		return
+	}
+	keep := s.targetBufferedBytes
+	if keep < s.startupBytes {
+		keep = s.startupBytes
+	}
+	if keep <= 0 {
+		keep = 4
+	}
+	if keep > len(s.buf) {
+		keep = len(s.buf)
+	}
+	keep -= keep % 4
+	if keep <= 0 {
+		s.buf = s.buf[:0]
+		s.started = false
+		s.needFadeIn = true
+		return
+	}
+	start := len(s.buf) - keep
+	s.fade = buildFadeOutStereo16(s.lastSample, audioFadeSamples)
+	copy(s.buf, s.buf[start:])
+	s.buf = s.buf[:keep]
+	applyFadeInStereo16(s.buf, audioFadeSamples)
 }
 
 func stereoBytesFromMonoPCM(src []int16) []byte {

@@ -3,12 +3,12 @@ package sessionvoice
 import (
 	"encoding/binary"
 	"testing"
-
-	"gddoom/internal/voicecodec"
 )
 
+const testPlaybackRate = 44100
+
 func TestStreamSourceWaitsForStartupBuffer(t *testing.T) {
-	src := newStreamSource()
+	src := newStreamSource(testPlaybackRate)
 	out := make([]byte, 16)
 	n, err := src.Read(out)
 	if err != nil {
@@ -23,7 +23,7 @@ func TestStreamSourceWaitsForStartupBuffer(t *testing.T) {
 		}
 	}
 
-	frame := make([]byte, voicecodec.FrameSamples*4)
+	frame := make([]byte, src.startupBytes)
 	for range audioStartupBufferFrames {
 		src.Write(frame)
 	}
@@ -37,8 +37,8 @@ func TestStreamSourceWaitsForStartupBuffer(t *testing.T) {
 }
 
 func TestStreamSourceResetProducesFadeAndThenSilence(t *testing.T) {
-	src := newStreamSource()
-	frame := make([]byte, voicecodec.FrameSamples*4)
+	src := newStreamSource(testPlaybackRate)
+	frame := make([]byte, src.startupBytes)
 	for i := 0; i < len(frame); i += 4 {
 		binary.LittleEndian.PutUint16(frame[i:i+2], uint16(12000))
 		binary.LittleEndian.PutUint16(frame[i+2:i+4], uint16(12000))
@@ -63,5 +63,34 @@ func TestStreamSourceResetProducesFadeAndThenSilence(t *testing.T) {
 	}
 	if last != 0 {
 		t.Fatalf("fade should end at zero, got %d", last)
+	}
+}
+
+func TestStreamSourceResetsLargeBacklogToNewestTail(t *testing.T) {
+	src := newStreamSource(testPlaybackRate)
+	frame := make([]byte, src.startupBytes)
+	for i := 0; i < len(frame); i += 4 {
+		binary.LittleEndian.PutUint16(frame[i:i+2], uint16(4000))
+		binary.LittleEndian.PutUint16(frame[i+2:i+4], uint16(4000))
+	}
+	for range audioStartupBufferFrames {
+		src.Write(frame)
+	}
+	warm := make([]byte, src.startupBytes)
+	if _, err := src.Read(warm); err != nil {
+		t.Fatalf("warm Read() error = %v", err)
+	}
+	for range audioResetBufferedFrames/audioStartupBufferFrames + 1 {
+		src.Write(frame)
+	}
+	if got, want := len(src.buf), src.targetBufferedBytes; got != want {
+		t.Fatalf("buffered bytes=%d want %d", got, want)
+	}
+	if len(src.fade) == 0 {
+		t.Fatal("expected backlog skip to queue fade-out transition")
+	}
+	first := int16(binary.LittleEndian.Uint16(src.buf[0:2]))
+	if first == 4000 {
+		t.Fatal("expected kept tail to be faded in after backlog skip")
 	}
 }
