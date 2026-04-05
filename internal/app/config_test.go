@@ -11,6 +11,7 @@ import (
 	"gddoom/internal/demo"
 	"gddoom/internal/doomsession"
 	"gddoom/internal/music"
+	"gddoom/internal/netplay"
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/wad"
@@ -101,6 +102,51 @@ func TestExplicitMapStartInMap(t *testing.T) {
 	}
 }
 
+func TestNormalizeNetplayShorthandArgsAddsDefaultEndpoints(t *testing.T) {
+	got := normalizeNetplayShorthandArgs([]string{"-broadcast", "-watch"})
+	want := []string{"-broadcast", "", "-watch", ""}
+	if len(got) != len(want) {
+		t.Fatalf("len=%d want=%d got=%v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("arg %d = %q want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestNormalizeBroadcastAddrDefaultsToDoomPort(t *testing.T) {
+	if got := normalizeBroadcastAddr(""); got != "127.0.0.1:6670" {
+		t.Fatalf("normalizeBroadcastAddr(\"\") = %q want %q", got, "127.0.0.1:6670")
+	}
+	if got := normalizeBroadcastAddr("192.168.0.10"); got != "192.168.0.10:6670" {
+		t.Fatalf("normalizeBroadcastAddr(host) = %q want %q", got, "192.168.0.10:6670")
+	}
+}
+
+func TestNormalizeWatchAddrDefaultsToLoopbackAndDoomPort(t *testing.T) {
+	if got := normalizeWatchAddr(""); got != "127.0.0.1:6670" {
+		t.Fatalf("normalizeWatchAddr(\"\") = %q want %q", got, "127.0.0.1:6670")
+	}
+	if got := normalizeWatchAddr("doomhost"); got != "doomhost:6670" {
+		t.Fatalf("normalizeWatchAddr(host) = %q want %q", got, "doomhost:6670")
+	}
+}
+
+func TestLiveTicSourceFromViewerNilPointerReturnsNilInterface(t *testing.T) {
+	var viewer *netplay.Viewer
+	if got := liveTicSourceFromViewer(viewer); got != nil {
+		t.Fatalf("liveTicSourceFromViewer(nil) = %#v want nil", got)
+	}
+}
+
+func TestLiveTicSourceFromViewerNonNilPointerReturnsInterface(t *testing.T) {
+	viewer := &netplay.Viewer{}
+	if got := liveTicSourceFromViewer(viewer); got == nil {
+		t.Fatal("liveTicSourceFromViewer(non-nil) = nil want interface value")
+	}
+}
+
 func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
 	var out bytes.Buffer
 	var errb bytes.Buffer
@@ -116,6 +162,105 @@ func TestRunParseRejectsDemoAndRecordDemoTogether(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "mutually exclusive") {
 		t.Fatalf("stderr %q does not mention mutual exclusion", errb.String())
+	}
+}
+
+func TestRunParseRejectsBroadcastAndWatchTogether(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{
+		"-wad", wadPath,
+		"-broadcast", ":5035",
+		"-watch", "127.0.0.1:5035",
+	}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "mutually exclusive") {
+		t.Fatalf("stderr %q does not mention mutual exclusion", errb.String())
+	}
+}
+
+func TestRunParseRejectsBroadcastWithoutRender(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{
+		"-wad", wadPath,
+		"-render=false",
+		"-broadcast", ":5035",
+	}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "require render=true") {
+		t.Fatalf("stderr %q does not mention render requirement", errb.String())
+	}
+}
+
+func TestRunParseHelpIncludesLowLatencyFlag(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	code := RunParse([]string{"-help"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d want=0 stderr=%q", code, errb.String())
+	}
+	helpText := out.String() + errb.String()
+	if !strings.Contains(helpText, "-low-latency") {
+		t.Fatalf("help output does not mention -low-latency: %q", helpText)
+	}
+}
+
+func TestRunParseRejectsWatchDuringDemoPlayback(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{
+		"-wad", wadPath,
+		"-watch", "127.0.0.1:5035",
+		"-watch-session", "1",
+		"-demo", "bench.demo",
+	}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "do not support demo playback") {
+		t.Fatalf("stderr %q does not mention demo restriction", errb.String())
+	}
+}
+
+func TestRunParseBareWatchUsesLoopbackDefault(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{
+		"-wad", wadPath,
+		"-watch",
+		"-watch-session", "1",
+		"-demo", "bench.demo",
+	}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "do not support demo playback") {
+		t.Fatalf("stderr %q does not mention demo restriction", errb.String())
+	}
+}
+
+func TestRunParseWatchRequiresSessionID(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{
+		"-wad", wadPath,
+		"-watch", "127.0.0.1:6670",
+	}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("RunParse() code=%d want=2 stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "-watch requires -watch-session") {
+		t.Fatalf("stderr %q does not mention watch-session requirement", errb.String())
 	}
 }
 

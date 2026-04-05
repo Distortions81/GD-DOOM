@@ -14,4 +14,7 @@ type Meta struct {
 	EffectiveDemoRecord func() []demo.Tic
 	Options             func() runtimecfg.Options
 	StartMapName        func() mapdata.MapName
+	CurrentWorldTic     func() int
+	CaptureKeyframe     func() ([]byte, error)
+	LoadKeyframe        func([]byte) error
 }

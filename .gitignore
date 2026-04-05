@@ -16,3 +16,5 @@ profiles/*.trace
 DOOM.WAD
 soundfonts/*-HQ.sf2
 tmp
+saves/*.dsg
+sample.wav

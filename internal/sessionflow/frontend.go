@@ -70,6 +70,7 @@ type FrontendConfig struct {
 	OptionRows        []int
 	MusicMenuCount    int
 	MainMenuCount     int
+	MainMenuRows      []int
 	SkillMenuCount    int
 	StatusTics        int
 }
@@ -227,7 +228,7 @@ func NewGameStartMap(bootMap mapdata.MapName, episodeChoices []int, selectedEpis
 		return string(bootMap)
 	}
 	startMap := "MAP01"
-	if len(episodeChoices) > 1 {
+	if len(episodeChoices) > 0 {
 		ep := selectedEpisode
 		if ep == 0 {
 			ep = episodeChoices[0]
@@ -662,11 +663,19 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			return result
 		}
 		if input.Up && cfg.MainMenuCount > 0 {
-			result.State.ItemOn = (state.ItemOn + cfg.MainMenuCount - 1) % cfg.MainMenuCount
+			if len(cfg.MainMenuRows) > 0 {
+				result.State.ItemOn = NextSelectableOptionRow(cfg.MainMenuRows, state.ItemOn, -1)
+			} else {
+				result.State.ItemOn = (state.ItemOn + cfg.MainMenuCount - 1) % cfg.MainMenuCount
+			}
 			result.Sound = FrontendSoundMove
 		}
 		if input.Down && cfg.MainMenuCount > 0 {
-			result.State.ItemOn = (state.ItemOn + 1) % cfg.MainMenuCount
+			if len(cfg.MainMenuRows) > 0 {
+				result.State.ItemOn = NextSelectableOptionRow(cfg.MainMenuRows, result.State.ItemOn, 1)
+			} else {
+				result.State.ItemOn = (state.ItemOn + 1) % cfg.MainMenuCount
+			}
 			result.Sound = FrontendSoundMove
 		}
 		if input.Select {

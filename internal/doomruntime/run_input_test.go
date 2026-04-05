@@ -74,6 +74,34 @@ func TestOpenFrontendMenuFromSignalUsesPauseMenuForGameplay(t *testing.T) {
 	}
 }
 
+func TestOpenFrontendMenuFromSignalUsesFirstSelectableItemForWatch(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{LiveTicSource: &testLiveTicSource{}},
+	}
+	sg.openFrontendMenuFromSignal(gameplay.SessionSignals{DemoActive: false})
+	if got := sg.frontend.ItemOn; got != frontendWatchMenuSelectableRows[0] {
+		t.Fatalf("ItemOn=%d want=%d", got, frontendWatchMenuSelectableRows[0])
+	}
+}
+
+func TestFrontendShouldUpdateRuntimeForWatch(t *testing.T) {
+	if !frontendShouldUpdateRuntime(gameplay.SessionSignals{WatchActive: true}) {
+		t.Fatal("frontendShouldUpdateRuntime() = false, want true for watch mode")
+	}
+}
+
+func TestFrontendShouldUpdateRuntimeForDemo(t *testing.T) {
+	if !frontendShouldUpdateRuntime(gameplay.SessionSignals{DemoActive: true}) {
+		t.Fatal("frontendShouldUpdateRuntime() = false, want true for demo mode")
+	}
+}
+
+func TestFrontendShouldNotUpdateRuntimeForPlainGameplayMenu(t *testing.T) {
+	if frontendShouldUpdateRuntime(gameplay.SessionSignals{}) {
+		t.Fatal("frontendShouldUpdateRuntime() = true, want false for plain gameplay menu")
+	}
+}
+
 func TestSkipInputTriggeredConsumesAnyKeyboardKey(t *testing.T) {
 	sg := &sessionGame{
 		input: sessionInputSnapshot{

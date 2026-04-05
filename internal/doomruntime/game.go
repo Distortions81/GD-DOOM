@@ -5,6 +5,7 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
 	"runtime"
 	"slices"
 	"strconv"
@@ -23,6 +24,7 @@ import (
 	"gddoom/internal/render/scene"
 	"gddoom/internal/runtimecfg"
 
+	"github.com/dustin/go-humanize"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -522,6 +524,8 @@ type game struct {
 	perfInDraw       bool
 	simTickScale     float64
 	simTickAccum     float64
+	watchTickStamp   time.Time
+	watchTickAccum   time.Duration
 	edgeInputPass    bool
 	pendingUse       bool
 	input            gameInputSnapshot
@@ -2496,6 +2500,9 @@ func (g *game) Update() error {
 	if g.opts.DemoScript != nil {
 		return g.updateDemoMode()
 	}
+	if g.opts.LiveTicSource != nil {
+		return g.updateWatchMode()
+	}
 	if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
 		g.quitPromptRequested = true
 		return nil
@@ -2658,18 +2665,7 @@ func (g *game) updateDemoMode() error {
 		}
 		tc := script.Tics[g.demoTick]
 		g.demoTick++
-		buttons := tc.Buttons
-		if buttons&demoButtonSpecial != 0 {
-			buttons = 0
-		}
-		cmd := moveCmd{
-			forward:    int64(tc.Forward),
-			side:       int64(tc.Side),
-			turnRaw:    int64(tc.AngleTurn) << 16,
-			weaponSlot: demoButtonWeaponSlot(buttons),
-		}
-		usePressed := buttons&demoButtonUse != 0
-		fireHeld := buttons&demoButtonAttack != 0
+		cmd, usePressed, fireHeld := demoTicCommand(tc)
 		g.runGameplayTic(cmd, usePressed, fireHeld)
 		g.discoverLinesAroundPlayer()
 		g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
@@ -2702,37 +2698,8 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	buttons := tc.Buttons
-	if buttons&demoButtonSpecial != 0 {
-		buttons = 0
-	}
-	cmd := moveCmd{
-		forward:    int64(tc.Forward),
-		side:       int64(tc.Side),
-		turnRaw:    int64(tc.AngleTurn) << 16,
-		weaponSlot: demoButtonWeaponSlot(buttons),
-	}
-	usePressed := buttons&demoButtonUse != 0
-	fireHeld := buttons&demoButtonAttack != 0
-	g.runGameplayTic(cmd, usePressed, fireHeld)
-	g.discoverLinesAroundPlayer()
-	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
-	g.tickDelayedSounds()
-	// Doom starts gameplay-triggered sounds during the gameplay pass, before ST_Ticker.
-	g.flushSoundEvents()
-	g.tickStatusWidgets()
+	g.stepGameplayFromDemoTic(tc)
 	g.writeDemoTraceTic(g.demoTick - 1)
-	if g.useFlash > 0 {
-		g.useFlash--
-	}
-	if g.damageFlashTic > 0 {
-		g.damageFlashTic--
-	}
-	if g.bonusFlashTic > 0 {
-		g.bonusFlashTic--
-	}
-	g.tickDelayedSwitchReverts()
-	g.markSimUpdate(time.Now())
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
 		return ebiten.Termination
@@ -2862,16 +2829,10 @@ func (g *game) updateWalkMode() {
 	}
 
 	cmd.run = speed == 1
-	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
+	if strings.TrimSpace(g.opts.RecordDemoPath) != "" || g.opts.LiveTicSink != nil {
 		// Quantize cmd to demo format precision before running gameplay,
 		// matching vanilla's G_WriteDemoTiccmd -> G_ReadDemoTiccmd round-trip.
-		// forward/side: stored as signed byte (int8).
-		// angleturn: stored as (angleturn+128)>>8 byte, read back as byte<<8.
-		// So angleturn loses its bottom 8 bits with +128 rounding.
-		cmd.forward = int64(int8(clampDemoMove(cmd.forward)))
-		cmd.side = int64(int8(clampDemoMove(cmd.side)))
-		angleturn16 := int16(cmd.turnRaw >> 16)
-		cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
+		cmd = quantizeMoveCmdToDemo(cmd)
 	}
 	g.runGameplayTic(cmd, usePressed, fireHeld)
 	g.recordDemoTic(cmd, usePressed, fireHeld)
@@ -3017,26 +2978,15 @@ func (g *game) currentRunSpeed() int {
 }
 
 func (g *game) recordDemoTic(cmd moveCmd, usePressed, fireHeld bool) {
-	if g.opts.DemoScript != nil || strings.TrimSpace(g.opts.RecordDemoPath) == "" {
-		return
-	}
-	buttons := byte(0)
-	if usePressed {
-		buttons |= demoButtonUse
-	}
-	if fireHeld {
-		buttons |= demoButtonAttack
-	}
-	if slot := g.demoWeaponSlot; slot != 0 {
-		buttons |= demoButtonChange | byte((slot-1)<<demoButtonWeaponShift)
-		g.demoWeaponSlot = 0
-	}
-	g.demoRecord = append(g.demoRecord, DemoTic{
-		Forward:   clampDemoMove(cmd.forward),
-		Side:      clampDemoMove(cmd.side),
-		AngleTurn: g.demoAngleTurn(cmd),
-		Buttons:   buttons,
-	})
+	g.recordGameplayTic(cmd, usePressed, fireHeld)
+}
+
+func quantizeMoveCmdToDemo(cmd moveCmd) moveCmd {
+	cmd.forward = int64(int8(clampDemoMove(cmd.forward)))
+	cmd.side = int64(int8(clampDemoMove(cmd.side)))
+	angleturn16 := int16(cmd.turnRaw >> 16)
+	cmd.turnRaw = int64(int16(((int32(angleturn16)+128)>>8)<<8)) << 16
+	return cmd
 }
 
 func (g *game) demoAngleTurn(cmd moveCmd) int16 {
@@ -3522,6 +3472,7 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 	if g.opts.SourcePortMode && !g.opts.NoFPS {
 		g.drawPerfOverlay(screen)
 	}
+	g.drawNetBandwidth(screen)
 	if strings.TrimSpace(g.opts.RecordDemoPath) != "" {
 		hud.DrawRecordingIndicator(screen, g.viewW, g.viewH, g.huTextWidth, g.drawHUTextAt)
 	}
@@ -3627,6 +3578,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 			if state.ShowPerf {
 				g.drawPerfOverlay(screen)
 			}
+			g.drawNetBandwidth(screen)
 		},
 	})
 }
@@ -20330,6 +20282,66 @@ func (g *game) drawPerfOverlay(screen *ebiten.Image) {
 		HostDisplay: hostDisplay,
 		BenchLine:   benchDisplay,
 	}, g.huTextWidth, g.drawHUTextAt)
+}
+
+func (g *game) drawNetBandwidth(screen *ebiten.Image) {
+	if g == nil || screen == nil {
+		return
+	}
+	if !netBandwidthOverlayEnabled() {
+		return
+	}
+	label := formatNetBandwidthLabel(g.opts.NetBandwidthMeter, g.opts.VoiceBandwidthMeter, g.opts.VoiceSyncMeter, g.opts.LiveTicSink != nil && g.opts.LiveTicSource == nil)
+	if label == "" {
+		return
+	}
+	x := 8
+	y := 8
+	ebitenutil.DebugPrintAt(screen, label, x, y)
+}
+
+func formatNetBandwidthLabel(gameMeter, voiceMeter runtimecfg.NetBandwidthMeter, voiceSync runtimecfg.VoiceSyncMeter, preferUpload bool) string {
+	var parts []string
+	total := bandwidthMeterValue(gameMeter, preferUpload) + bandwidthMeterValue(voiceMeter, preferUpload)
+	if total > 0 {
+		parts = append(parts, formatCompactBandwidth(total))
+	}
+	if voiceSync != nil && voiceSyncOverlayEnabled() {
+		if offsetMillis, ok := voiceSync.VoiceSyncOffsetMillis(); ok {
+			parts = append(parts, "sync "+formatSignedMillis(offsetMillis))
+		}
+	}
+	return strings.Join(parts, "  ")
+}
+
+func voiceSyncOverlayEnabled() bool {
+	return strings.TrimSpace(os.Getenv("GD_DOOM_VOICE_SYNC_OVERLAY")) != ""
+}
+
+func netBandwidthOverlayEnabled() bool {
+	return strings.TrimSpace(os.Getenv("GD_DOOM_NET_BANDWIDTH_OVERLAY")) != ""
+}
+
+func bandwidthMeterValue(m runtimecfg.NetBandwidthMeter, preferUpload bool) float64 {
+	if m == nil {
+		return 0
+	}
+	up, down := m.BandwidthStats()
+	if preferUpload {
+		return up
+	}
+	return down
+}
+
+func formatCompactBandwidth(v float64) string {
+	return strings.ReplaceAll(humanize.SIWithDigits(v, 2, "B/s"), " ", "")
+}
+
+func formatSignedMillis(v int) string {
+	if v >= 0 {
+		return "+" + strconv.Itoa(v) + "ms"
+	}
+	return strconv.Itoa(v) + "ms"
 }
 
 func perfOverlayTimingDisplays(showTPS bool, ticDisplay string, actualTPS, actualFPS float64) (string, string) {

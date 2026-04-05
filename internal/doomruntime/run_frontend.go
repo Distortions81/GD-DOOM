@@ -18,6 +18,8 @@ import (
 
 const frontendMainMenuTitle = "GD-DOOM [ALPHA]"
 
+var frontendWatchMenuSelectableRows = []int{1, 4, 5}
+
 func (sg *sessionGame) shouldStartInFrontend() bool {
 	if sg == nil {
 		return false
@@ -294,6 +296,10 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.rt = sg.g
 	sg.current = sg.g.sessionSignals().MapName
 	sg.currentTemplate = cloneMapForRestart(sg.g.m)
+	if err := sg.broadcastMandatoryRuntimeKeyframe(); err != nil {
+		sg.err = err
+		return
+	}
 	sg.queueTransition(transitionLevel, 0)
 	sg.playMusicForMap(sg.current)
 	sg.announceMapMusic(sg.current)
@@ -631,6 +637,7 @@ func (sg *sessionGame) tickFrontend() error {
 			OptionRows:        frontendOptionsSelectableRows[:],
 			MusicMenuCount:    frontendMusicMenuRowCount,
 			MainMenuCount:     len(frontendMainMenuNames),
+			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
 			SkillMenuCount:    len(frontendSkillMenuNames),
 			StatusTics:        doomTicsPerSecond,
 		},
@@ -724,11 +731,15 @@ func (sg *sessionGame) tickFrontend() error {
 	if result.RequestLoadGame {
 		if err := sg.LoadGameFromSlot(1); err != nil {
 			sg.frontendStatus("LOAD FAILED", doomTicsPerSecond*2)
+		} else {
+			sg.frontendStatus("GAME LOADED", doomTicsPerSecond*2)
 		}
 	}
 	if result.RequestSaveGame {
 		if err := sg.SaveGameToSlot(1); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+		} else {
+			sg.frontendStatus("GAME SAVED", doomTicsPerSecond*2)
 		}
 	}
 	return nil
@@ -843,7 +854,11 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			if sg.frontend.InGame {
 				_ = sg.drawMenuPatch(screen, "M_PAUSE", 126, 4, scale, ox, oy, false)
 				for i, name := range inGamePauseMenuNames {
-					_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
+					alpha := 1.0
+					if sg.frontendMenuItemDisabled(i) {
+						alpha = 0.4
+					}
+					_ = sg.drawMenuPatchAlpha(screen, name, 97, 64+i*16, scale, ox, oy, false, alpha)
 				}
 			} else {
 				sg.drawFrontendMainMenuTitle(screen, scale, ox, oy)
@@ -1322,6 +1337,10 @@ func (sg *sessionGame) drawMenuSkull(screen *ebiten.Image, x, y int, scale, ox, 
 }
 
 func (sg *sessionGame) drawMenuPatch(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64, centered bool) bool {
+	return sg.drawMenuPatchAlpha(screen, name, x, y, scale, ox, oy, centered, 1.0)
+}
+
+func (sg *sessionGame) drawMenuPatchAlpha(screen *ebiten.Image, name string, x, y int, scale, ox, oy float64, centered bool, alpha float64) bool {
 	img, p, ok := sg.menuPatch(name)
 	if !ok {
 		return false
@@ -1336,8 +1355,32 @@ func (sg *sessionGame) drawMenuPatch(screen *ebiten.Image, name string, x, y int
 	op.Filter = ebiten.FilterNearest
 	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(px-float64(p.OffsetX)*scale, py-float64(p.OffsetY)*scale)
+	op.ColorScale.ScaleAlpha(float32(alpha))
 	screen.DrawImage(img, op)
 	return true
+}
+
+func (sg *sessionGame) frontendWatchMode() bool {
+	return sg != nil && sg.opts.LiveTicSource != nil && sg.opts.LiveTicSink == nil
+}
+
+func (sg *sessionGame) frontendMainMenuSelectableRows() []int {
+	if sg != nil && sg.frontend.InGame && sg.frontendWatchMode() {
+		return frontendWatchMenuSelectableRows
+	}
+	return nil
+}
+
+func (sg *sessionGame) frontendMenuItemDisabled(item int) bool {
+	if sg == nil || !sg.frontend.InGame || !sg.frontendWatchMode() {
+		return false
+	}
+	switch item {
+	case 0, 2, 3:
+		return true
+	default:
+		return false
+	}
 }
 
 func (sg *sessionGame) menuPatch(name string) (*ebiten.Image, WallTexture, bool) {

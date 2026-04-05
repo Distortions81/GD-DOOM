@@ -26,6 +26,44 @@ type MusicPlayerWAD struct {
 	Episodes []MusicPlayerEpisode
 }
 
+type LiveTicSource interface {
+	PollTic() (demo.Tic, bool, error)
+}
+
+type LiveTicBufferedSource interface {
+	PendingTics() int
+}
+
+type RuntimeKeyframe struct {
+	Tic            uint32
+	Blob           []byte
+	MandatoryApply bool
+}
+
+type LiveRuntimeKeyframeSource interface {
+	PollRuntimeKeyframe() (RuntimeKeyframe, bool, error)
+}
+
+type LiveTicSink interface {
+	BroadcastTic(demo.Tic) error
+}
+
+type LiveIntermissionAdvanceSource interface {
+	PollIntermissionAdvance() (bool, error)
+}
+
+type LiveIntermissionAdvanceSink interface {
+	BroadcastIntermissionAdvance() error
+}
+
+type NetBandwidthMeter interface {
+	BandwidthStats() (uploadBytesPerSec, downloadBytesPerSec float64)
+}
+
+type VoiceSyncMeter interface {
+	VoiceSyncOffsetMillis() (millis int, ok bool)
+}
+
 type Options struct {
 	Width                      int
 	Height                     int
@@ -117,6 +155,12 @@ type Options struct {
 	NewGameLoader              func(mapName string) (*mapdata.Map, error)
 	DemoMapLoader              func(demo *demo.Script) (*mapdata.Map, error)
 	Episodes                   []int
+	LiveTicSource              LiveTicSource
+	LiveTicSink                LiveTicSink
+	WatchStartupBufferTics     int
+	NetBandwidthMeter          NetBandwidthMeter
+	VoiceBandwidthMeter        NetBandwidthMeter
+	VoiceSyncMeter             VoiceSyncMeter
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string
 	MusicSoundFontChoices      []string

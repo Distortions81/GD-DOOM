@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"gddoom/internal/mapdata"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestEpisodeMapSlot(t *testing.T) {
@@ -134,6 +136,63 @@ func TestTickIntermissionCommercialSkipsShowNext(t *testing.T) {
 	}
 	if !done {
 		t.Fatal("commercial intermission did not complete")
+	}
+}
+
+func TestAnyIntermissionSkipInputBroadcastsRelayAdvance(t *testing.T) {
+	sink := &testLiveTicSink{}
+	sg := &sessionGame{
+		opts: Options{LiveTicSink: sink},
+		intermission: sessionIntermission{
+			state: intermissionState{Active: true},
+		},
+		input: sessionInputSnapshot{
+			justPressedKeys: map[ebiten.Key]int{ebiten.KeySpace: 1},
+		},
+	}
+
+	if !sg.anyIntermissionSkipInput() {
+		t.Fatal("anyIntermissionSkipInput() = false want true")
+	}
+	if sink.intermissionAdvance != 1 {
+		t.Fatalf("intermissionAdvance=%d want=1", sink.intermissionAdvance)
+	}
+}
+
+func TestAnyIntermissionSkipInputConsumesRelayAdvance(t *testing.T) {
+	src := &testLiveTicSource{intermissionAdvance: 1}
+	sg := &sessionGame{
+		opts: Options{LiveTicSource: src},
+		intermission: sessionIntermission{
+			state: intermissionState{Active: true},
+		},
+	}
+
+	if !sg.anyIntermissionSkipInput() {
+		t.Fatal("anyIntermissionSkipInput() = false want true")
+	}
+	if src.intermissionAdvance != 0 {
+		t.Fatalf("intermissionAdvance=%d want=0", src.intermissionAdvance)
+	}
+}
+
+func TestAnyIntermissionSkipInputIgnoresLocalViewerInput(t *testing.T) {
+	src := &testLiveTicSource{}
+	sg := &sessionGame{
+		opts: Options{LiveTicSource: src},
+		intermission: sessionIntermission{
+			state: intermissionState{Active: true},
+		},
+		input: sessionInputSnapshot{
+			justPressedKeys: map[ebiten.Key]int{ebiten.KeySpace: 1},
+		},
+	}
+
+	if sg.anyIntermissionSkipInput() {
+		t.Fatal("anyIntermissionSkipInput() = true want false for local viewer skip")
+	}
+	if len(sg.input.justPressedKeys) != 1 {
+		t.Fatal("viewer local skip input should not be consumed")
 	}
 }
 

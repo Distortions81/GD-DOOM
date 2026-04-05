@@ -1,8 +1,6 @@
 package doomruntime
 
 import (
-	"bytes"
-	"encoding/gob"
 	"errors"
 	"fmt"
 	"os"
@@ -18,27 +16,39 @@ import (
 )
 
 const (
-	saveGameVersion = 14
+	saveGameVersion = 18
 	saveGamePrefix  = "dsg"
+	keyframeVersion = 5
+	saveGameDirName = "saves"
 )
 
 var (
 	errSaveGameUnavailable = errors.New("save game unavailable")
 	errNoSavedGame         = errors.New("no saved game")
-	errSaveGameWebOnly     = errors.New("not available for web")
+	errSaveGameWebOnly     = errors.New("not available")
 	errBadSaveMagic        = errors.New("invalid save format")
+	errBadSaveChecksum     = errors.New("invalid save checksum")
 )
 
 var saveGameMagic = []byte("GDDOOMSAVE\x00")
+var keyframeMagic = []byte("GDDOOMKEY\x00")
+
+const saveMandatoryApplyKeyframeFlag byte = 1
+
+type saveKeyframeSink interface {
+	BroadcastKeyframe(tic uint32, blob []byte) error
+}
+
+type saveMandatoryKeyframeSink interface {
+	BroadcastKeyframeWithFlags(tic uint32, blob []byte, flags byte) error
+}
 
 type saveFile struct {
-	Version         int
-	Description     string
-	Current         mapdata.MapName
-	CurrentMap      *mapdata.Map
-	CurrentTemplate *mapdata.Map
-	RNG             saveRNGState
-	Game            gameSaveState
+	Version     int
+	Description string
+	Current     mapdata.MapName
+	RNG         saveRNGState
+	Game        gameSaveState
 }
 
 type saveRNGState struct {
@@ -47,6 +57,7 @@ type saveRNGState struct {
 }
 
 type gameSaveState struct {
+	Session              sessionSaveState
 	Player               playerSaveState
 	View                 mapview.ViewState
 	Mode                 int
@@ -67,8 +78,12 @@ type gameSaveState struct {
 	PlayerViewZ          int64
 	ThingCollected       []bool
 	ThingDropped         []bool
+	ThingThinkerOrder    []int64
 	ThingX               []int64
 	ThingY               []int64
+	ThingMomX            []int64
+	ThingMomY            []int64
+	ThingMomZ            []int64
 	ThingAngleState      []uint32
 	ThingZState          []int64
 	ThingFloorState      []int64
@@ -84,12 +99,17 @@ type gameSaveState struct {
 	ThingMoveCount       []int
 	ThingJustAtk         []bool
 	ThingJustHit         []bool
+	ThingSkullFly        []bool
+	ThingResumeChaseNow  []bool
 	ThingReactionTics    []int
 	ThingWakeTics        []int
 	ThingLastLook        []int
 	ThingDead            []bool
+	ThingAmbush          []bool
+	ThingInFloat         []bool
 	ThingGibbed          []bool
 	ThingGibTick         []int
+	ThingXDeath          []bool
 	ThingDeathTics       []int
 	ThingAttackTics      []int
 	ThingAttackPhase     []int
@@ -122,6 +142,9 @@ type gameSaveState struct {
 	WeaponPSpriteY       int
 	Stats                playerStats
 	WorldTic             int
+	PlayerBlockOrder     int64
+	NextThinkerOrder     int64
+	NextBlockmapOrder    int64
 	SecretFound          []bool
 	SecretsFound         int
 	SecretsTotal         int
@@ -131,6 +154,9 @@ type gameSaveState struct {
 	DamageFlashTic       int
 	BonusFlashTic        int
 	SectorLightFx        []sectorLightEffectSaveState
+	Things               []mapdata.Thing
+	Sidedefs             []mapdata.Sidedef
+	Sectors              []mapdata.Sector
 	SectorFloor          []int64
 	SectorCeil           []int64
 	LineSpecial          []uint16
@@ -139,6 +165,17 @@ type gameSaveState struct {
 	Plats                map[int]platThinkerSaveState
 	Ceilings             map[int]ceilingThinkerSaveState
 	DelayedSwitchReverts []delayedSwitchTextureSaveState
+}
+
+type sessionSaveState struct {
+	PlayerSlot       int
+	SkillLevel       int
+	GameMode         string
+	ShowNoSkillItems bool
+	ShowAllItems     bool
+	FastMonsters     bool
+	RespawnMonsters  bool
+	NoMonsters       bool
 }
 
 type playerSaveState struct {
@@ -176,6 +213,7 @@ type playerInventorySaveState struct {
 }
 
 type doorThinkerSaveState struct {
+	Order        int64
 	Sector       int
 	Type         int
 	Direction    int
@@ -186,6 +224,7 @@ type doorThinkerSaveState struct {
 }
 
 type floorThinkerSaveState struct {
+	Order         int64
 	Sector        int
 	Direction     int
 	Speed         int64
@@ -196,6 +235,7 @@ type floorThinkerSaveState struct {
 }
 
 type platThinkerSaveState struct {
+	Order         int64
 	Sector        int
 	Type          uint8
 	Status        uint8
@@ -210,6 +250,7 @@ type platThinkerSaveState struct {
 }
 
 type ceilingThinkerSaveState struct {
+	Order        int64
 	Sector       int
 	Action       mapdata.CeilingAction
 	Direction    int
@@ -311,15 +352,12 @@ type delayedSwitchTextureSaveState struct {
 	Tics    int
 }
 
-func init() {
-	gob.Register(&mapdata.Map{})
-	gob.Register(&mapdata.RejectMatrix{})
-	gob.Register(&mapdata.BlockMap{})
-}
-
 func saveGamePath(slot int) string {
 	name := fmt.Sprintf("%s%d.%s", saveGamePrefix, slot, saveGamePrefix)
-	return filepath.Join(os.TempDir(), name)
+	if slot == 1 {
+		name = "quicksave.dsg"
+	}
+	return filepath.Join(saveGameDirName, name)
 }
 
 func (sg *sessionGame) SaveGameToSlot(slot int) error {
@@ -335,6 +373,9 @@ func (sg *sessionGame) SaveGameToSlot(slot int) error {
 	data, err := sg.marshalSaveGame(fmt.Sprintf("Slot %d", slot))
 	if err != nil {
 		return err
+	}
+	if err := os.MkdirAll(saveGameDirName, 0o755); err != nil {
+		return fmt.Errorf("create save dir: %w", err)
 	}
 	return os.WriteFile(saveGamePath(slot), data, 0o644)
 }
@@ -353,7 +394,13 @@ func (sg *sessionGame) LoadGameFromSlot(slot int) error {
 		}
 		return err
 	}
-	return sg.unmarshalSaveGame(data)
+	if err := sg.unmarshalSaveGame(data); err != nil {
+		return err
+	}
+	if err := sg.broadcastMandatoryRuntimeKeyframe(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
@@ -366,46 +413,96 @@ func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
 	}
 	rndIndex, prndIndex := doomrand.State()
 	file := saveFile{
-		Version:         saveGameVersion,
-		Description:     description,
-		Current:         sg.current,
-		CurrentMap:      cloneMapForRestart(sg.g.m),
-		CurrentTemplate: cloneMapForRestart(sg.currentTemplate),
+		Version:     saveGameVersion,
+		Description: description,
+		Current:     sg.current,
 		RNG: saveRNGState{
 			MenuIndex: rndIndex,
 			PlayIndex: prndIndex,
 		},
 		Game: captureGameSaveState(sg.g),
 	}
-	var buf bytes.Buffer
-	if _, err := buf.Write(saveGameMagic); err != nil {
-		return nil, err
-	}
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(file); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return encodeSnapshot(saveGameMagic, file)
 }
 
 func (sg *sessionGame) unmarshalSaveGame(data []byte) error {
+	return sg.unmarshalSnapshot(data, saveGameMagic, saveGameVersion)
+}
+
+func (sg *sessionGame) marshalNetplayKeyframe() ([]byte, error) {
+	if sg == nil || sg.g == nil || sg.g.m == nil {
+		return nil, errSaveGameUnavailable
+	}
+	rndIndex, prndIndex := doomrand.State()
+	file := saveFile{
+		Version:     keyframeVersion,
+		Description: "Netplay Keyframe",
+		Current:     sg.current,
+		RNG: saveRNGState{
+			MenuIndex: rndIndex,
+			PlayIndex: prndIndex,
+		},
+		Game: captureGameSaveState(sg.g),
+	}
+	return encodeSnapshot(keyframeMagic, file)
+}
+
+func (sg *sessionGame) unmarshalNetplayKeyframe(data []byte) error {
+	return sg.unmarshalSnapshot(data, keyframeMagic, keyframeVersion)
+}
+
+func (sg *sessionGame) broadcastMandatoryRuntimeKeyframe() error {
+	if sg == nil || sg.g == nil {
+		return nil
+	}
+	var (
+		mandatorySink saveMandatoryKeyframeSink
+		regularSink   saveKeyframeSink
+	)
+	if sg.opts.LiveTicSink != nil {
+		mandatorySink, _ = sg.opts.LiveTicSink.(saveMandatoryKeyframeSink)
+		regularSink, _ = sg.opts.LiveTicSink.(saveKeyframeSink)
+	}
+	if mandatorySink == nil && regularSink == nil {
+		return nil
+	}
+	blob, err := sg.marshalNetplayKeyframe()
+	if err != nil {
+		return fmt.Errorf("capture loaded keyframe: %w", err)
+	}
+	if len(blob) == 0 {
+		return nil
+	}
+	if mandatorySink != nil {
+		if err := mandatorySink.BroadcastKeyframeWithFlags(uint32(sg.g.worldTic), blob, saveMandatoryApplyKeyframeFlag); err != nil {
+			return fmt.Errorf("broadcast mandatory keyframe: %w", err)
+		}
+		return nil
+	}
+	if err := regularSink.BroadcastKeyframe(uint32(sg.g.worldTic), blob); err != nil {
+		return fmt.Errorf("broadcast mandatory keyframe: %w", err)
+	}
+	return nil
+}
+
+func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int) error {
 	if sg == nil {
 		return errNoSavedGame
 	}
-	if len(data) < len(saveGameMagic) || !bytes.Equal(data[:len(saveGameMagic)], saveGameMagic) {
-		return errBadSaveMagic
-	}
-	var file saveFile
-	dec := gob.NewDecoder(bytes.NewReader(data[len(saveGameMagic):]))
-	if err := dec.Decode(&file); err != nil {
+	file, err := decodeSnapshot(data, magic)
+	if err != nil {
 		return err
 	}
-	if file.Version != saveGameVersion {
+	if file.Version != version {
 		return fmt.Errorf("incompatible save version: %d", file.Version)
 	}
-	if file.CurrentMap == nil {
-		return fmt.Errorf("save missing map data")
+	if sg.opts.NewGameLoader == nil {
+		return fmt.Errorf("save load requires NewGameLoader")
 	}
+	if strings.TrimSpace(string(file.Current)) == "" {
+		return fmt.Errorf("save missing current map")
+	}
+	applySavedSessionOptions(&sg.opts, file.Game.Session)
 
 	sg.stopAndClearMusic()
 	if sg.g != nil {
@@ -413,7 +510,13 @@ func (sg *sessionGame) unmarshalSaveGame(data []byte) error {
 		sg.g.clearSpritePatchCache()
 	}
 
-	loadedMap := cloneMapForRestart(file.CurrentMap)
+	loadedMap, err := sg.opts.NewGameLoader(string(file.Current))
+	if err != nil {
+		return fmt.Errorf("load saved map %s: %w", file.Current, err)
+	}
+	if loadedMap == nil {
+		return fmt.Errorf("load saved map %s: nil map", file.Current)
+	}
 	g := sg.buildGame(loadedMap, sg.opts)
 	restoreGameSaveState(g, file.Game)
 	doomrand.SetState(file.RNG.MenuIndex, file.RNG.PlayIndex)
@@ -428,10 +531,7 @@ func (sg *sessionGame) unmarshalSaveGame(data []byte) error {
 	if sg.current == "" && g.m != nil {
 		sg.current = g.m.Name
 	}
-	sg.currentTemplate = cloneMapForRestart(file.CurrentTemplate)
-	if sg.currentTemplate == nil {
-		sg.currentTemplate = cloneMapForRestart(g.m)
-	}
+	sg.currentTemplate = cloneMapForRestart(g.m)
 	sg.levelCarryover = nil
 	sg.secretVisited = false
 	sg.playMusicForMap(sg.current)
@@ -441,11 +541,41 @@ func (sg *sessionGame) unmarshalSaveGame(data []byte) error {
 	return nil
 }
 
+func applySavedSessionOptions(dst *Options, s sessionSaveState) {
+	if dst == nil {
+		return
+	}
+	if s.PlayerSlot != 0 {
+		dst.PlayerSlot = s.PlayerSlot
+	}
+	if s.SkillLevel != 0 {
+		dst.SkillLevel = s.SkillLevel
+	}
+	if strings.TrimSpace(s.GameMode) != "" {
+		dst.GameMode = s.GameMode
+	}
+	dst.ShowNoSkillItems = s.ShowNoSkillItems
+	dst.ShowAllItems = s.ShowAllItems
+	dst.FastMonsters = s.FastMonsters
+	dst.RespawnMonsters = s.RespawnMonsters
+	dst.NoMonsters = s.NoMonsters
+}
+
 func captureGameSaveState(g *game) gameSaveState {
 	if g == nil {
 		return gameSaveState{}
 	}
 	return gameSaveState{
+		Session: sessionSaveState{
+			PlayerSlot:       g.opts.PlayerSlot,
+			SkillLevel:       g.opts.SkillLevel,
+			GameMode:         g.opts.GameMode,
+			ShowNoSkillItems: g.opts.ShowNoSkillItems,
+			ShowAllItems:     g.opts.ShowAllItems,
+			FastMonsters:     g.opts.FastMonsters,
+			RespawnMonsters:  g.opts.RespawnMonsters,
+			NoMonsters:       g.opts.NoMonsters,
+		},
 		Player:               capturePlayerSaveState(g.p),
 		View:                 g.State,
 		Mode:                 int(g.mode),
@@ -466,8 +596,12 @@ func captureGameSaveState(g *game) gameSaveState {
 		PlayerViewZ:          g.playerViewZ,
 		ThingCollected:       append([]bool(nil), g.thingCollected...),
 		ThingDropped:         append([]bool(nil), g.thingDropped...),
+		ThingThinkerOrder:    append([]int64(nil), g.thingThinkerOrder...),
 		ThingX:               append([]int64(nil), g.thingX...),
 		ThingY:               append([]int64(nil), g.thingY...),
+		ThingMomX:            append([]int64(nil), g.thingMomX...),
+		ThingMomY:            append([]int64(nil), g.thingMomY...),
+		ThingMomZ:            append([]int64(nil), g.thingMomZ...),
 		ThingAngleState:      append([]uint32(nil), g.thingAngleState...),
 		ThingZState:          append([]int64(nil), g.thingZState...),
 		ThingFloorState:      append([]int64(nil), g.thingFloorState...),
@@ -483,12 +617,17 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingMoveCount:       append([]int(nil), g.thingMoveCount...),
 		ThingJustAtk:         append([]bool(nil), g.thingJustAtk...),
 		ThingJustHit:         append([]bool(nil), g.thingJustHit...),
+		ThingSkullFly:        append([]bool(nil), g.thingSkullFly...),
+		ThingResumeChaseNow:  append([]bool(nil), g.thingResumeChaseNow...),
 		ThingReactionTics:    append([]int(nil), g.thingReactionTics...),
 		ThingWakeTics:        append([]int(nil), g.thingWakeTics...),
 		ThingLastLook:        append([]int(nil), g.thingLastLook...),
 		ThingDead:            append([]bool(nil), g.thingDead...),
+		ThingAmbush:          append([]bool(nil), g.thingAmbush...),
+		ThingInFloat:         append([]bool(nil), g.thingInFloat...),
 		ThingGibbed:          append([]bool(nil), g.thingGibbed...),
 		ThingGibTick:         append([]int(nil), g.thingGibTick...),
+		ThingXDeath:          append([]bool(nil), g.thingXDeath...),
 		ThingDeathTics:       append([]int(nil), g.thingDeathTics...),
 		ThingAttackTics:      append([]int(nil), g.thingAttackTics...),
 		ThingAttackPhase:     append([]int(nil), g.thingAttackPhase...),
@@ -521,6 +660,9 @@ func captureGameSaveState(g *game) gameSaveState {
 		WeaponPSpriteY:       g.weaponPSpriteY,
 		Stats:                g.stats,
 		WorldTic:             g.worldTic,
+		PlayerBlockOrder:     g.playerBlockOrder,
+		NextThinkerOrder:     g.nextThinkerOrder,
+		NextBlockmapOrder:    g.nextBlockmapOrder,
 		SecretFound:          append([]bool(nil), g.secretFound...),
 		SecretsFound:         g.secretsFound,
 		SecretsTotal:         g.secretsTotal,
@@ -530,6 +672,9 @@ func captureGameSaveState(g *game) gameSaveState {
 		DamageFlashTic:       g.damageFlashTic,
 		BonusFlashTic:        g.bonusFlashTic,
 		SectorLightFx:        captureSectorLightEffects(g.sectorLightFx),
+		Things:               append([]mapdata.Thing(nil), g.m.Things...),
+		Sidedefs:             append([]mapdata.Sidedef(nil), g.m.Sidedefs...),
+		Sectors:              append([]mapdata.Sector(nil), g.m.Sectors...),
 		SectorFloor:          append([]int64(nil), g.sectorFloor...),
 		SectorCeil:           append([]int64(nil), g.sectorCeil...),
 		LineSpecial:          append([]uint16(nil), g.lineSpecial...),
@@ -545,7 +690,9 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	if g == nil {
 		return
 	}
+	applySavedSessionOptions(&g.opts, s.Session)
 	g.p = restorePlayerSaveState(s.Player)
+	g.refreshPlayerSubsectorCache(g.p.x, g.p.y)
 	g.State = s.View
 	g.mode = viewMode(s.Mode)
 	g.rotateView = s.RotateView
@@ -566,8 +713,12 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.playerViewZ = s.PlayerViewZ
 	g.thingCollected = append([]bool(nil), s.ThingCollected...)
 	g.thingDropped = append([]bool(nil), s.ThingDropped...)
+	g.thingThinkerOrder = append([]int64(nil), s.ThingThinkerOrder...)
 	g.thingX = append([]int64(nil), s.ThingX...)
 	g.thingY = append([]int64(nil), s.ThingY...)
+	g.thingMomX = append([]int64(nil), s.ThingMomX...)
+	g.thingMomY = append([]int64(nil), s.ThingMomY...)
+	g.thingMomZ = append([]int64(nil), s.ThingMomZ...)
 	g.thingAngleState = append([]uint32(nil), s.ThingAngleState...)
 	g.thingZState = append([]int64(nil), s.ThingZState...)
 	g.thingFloorState = append([]int64(nil), s.ThingFloorState...)
@@ -583,12 +734,17 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingMoveCount = append([]int(nil), s.ThingMoveCount...)
 	g.thingJustAtk = append([]bool(nil), s.ThingJustAtk...)
 	g.thingJustHit = append([]bool(nil), s.ThingJustHit...)
+	g.thingSkullFly = append([]bool(nil), s.ThingSkullFly...)
+	g.thingResumeChaseNow = append([]bool(nil), s.ThingResumeChaseNow...)
 	g.thingReactionTics = append([]int(nil), s.ThingReactionTics...)
 	g.thingWakeTics = append([]int(nil), s.ThingWakeTics...)
 	g.thingLastLook = append([]int(nil), s.ThingLastLook...)
 	g.thingDead = append([]bool(nil), s.ThingDead...)
+	g.thingAmbush = append([]bool(nil), s.ThingAmbush...)
+	g.thingInFloat = append([]bool(nil), s.ThingInFloat...)
 	g.thingGibbed = append([]bool(nil), s.ThingGibbed...)
 	g.thingGibTick = append([]int(nil), s.ThingGibTick...)
+	g.thingXDeath = append([]bool(nil), s.ThingXDeath...)
 	g.thingDeathTics = append([]int(nil), s.ThingDeathTics...)
 	g.thingAttackTics = append([]int(nil), s.ThingAttackTics...)
 	g.thingAttackPhase = append([]int(nil), s.ThingAttackPhase...)
@@ -621,6 +777,9 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.weaponPSpriteY = s.WeaponPSpriteY
 	g.stats = s.Stats
 	g.worldTic = s.WorldTic
+	g.playerBlockOrder = s.PlayerBlockOrder
+	g.nextThinkerOrder = s.NextThinkerOrder
+	g.nextBlockmapOrder = s.NextBlockmapOrder
 	g.secretFound = append([]bool(nil), s.SecretFound...)
 	g.secretsFound = s.SecretsFound
 	g.secretsTotal = s.SecretsTotal
@@ -633,14 +792,36 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.damageFlashTic = s.DamageFlashTic
 	g.bonusFlashTic = s.BonusFlashTic
 	g.sectorLightFx = restoreSectorLightEffects(s.SectorLightFx)
+	if len(s.Things) > 0 {
+		g.m.Things = append([]mapdata.Thing(nil), s.Things...)
+	}
+	if len(s.Sidedefs) > 0 {
+		g.m.Sidedefs = append([]mapdata.Sidedef(nil), s.Sidedefs...)
+	}
+	if len(s.Sectors) > 0 {
+		g.m.Sectors = append([]mapdata.Sector(nil), s.Sectors...)
+	}
 	g.sectorFloor = append([]int64(nil), s.SectorFloor...)
 	g.sectorCeil = append([]int64(nil), s.SectorCeil...)
+	for sec := range g.m.Sectors {
+		if sec < len(g.sectorFloor) {
+			g.m.Sectors[sec].FloorHeight = int16(g.sectorFloor[sec] >> fracBits)
+		}
+		if sec < len(g.sectorCeil) {
+			g.m.Sectors[sec].CeilingHeight = int16(g.sectorCeil[sec] >> fracBits)
+		}
+	}
 	g.lineSpecial = append([]uint16(nil), s.LineSpecial...)
 	g.doors = restoreDoorThinkers(s.Doors)
 	g.floors = restoreFloorThinkers(s.Floors)
 	g.plats = restorePlatThinkers(s.Plats)
 	g.ceilings = restoreCeilingThinkers(s.Ceilings)
 	g.delayedSwitchReverts = restoreDelayedSwitchTextures(s.DelayedSwitchReverts)
+	g.thingSectorCache = make([]int, len(g.m.Things))
+	for i, th := range g.m.Things {
+		x, y := g.thingPosFixed(i, th)
+		g.thingSectorCache[i] = g.sectorAt(x, y)
+	}
 	g.State.SyncRender()
 	g.rebuildThingBlockmap()
 	g.ensureWeaponDefaults()
@@ -779,6 +960,7 @@ func captureDoorThinkers(src map[int]*doorThinker) map[int]doorThinkerSaveState 
 			continue
 		}
 		dst[key] = doorThinkerSaveState{
+			Order:        thinker.order,
 			Sector:       thinker.sector,
 			Type:         int(thinker.typ),
 			Direction:    thinker.direction,
@@ -798,6 +980,7 @@ func restoreDoorThinkers(src map[int]doorThinkerSaveState) map[int]*doorThinker 
 	dst := make(map[int]*doorThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &doorThinker{
+			order:        thinker.Order,
 			sector:       thinker.Sector,
 			typ:          doorType(thinker.Type),
 			direction:    thinker.Direction,
@@ -820,6 +1003,7 @@ func captureFloorThinkers(src map[int]*floorThinker) map[int]floorThinkerSaveSta
 			continue
 		}
 		dst[key] = floorThinkerSaveState{
+			Order:         thinker.order,
 			Sector:        thinker.sector,
 			Direction:     thinker.direction,
 			Speed:         thinker.speed,
@@ -839,6 +1023,7 @@ func restoreFloorThinkers(src map[int]floorThinkerSaveState) map[int]*floorThink
 	dst := make(map[int]*floorThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &floorThinker{
+			order:         thinker.Order,
 			sector:        thinker.Sector,
 			direction:     thinker.Direction,
 			speed:         thinker.Speed,
@@ -861,6 +1046,7 @@ func capturePlatThinkers(src map[int]*platThinker) map[int]platThinkerSaveState 
 			continue
 		}
 		dst[key] = platThinkerSaveState{
+			Order:         thinker.order,
 			Sector:        thinker.sector,
 			Type:          uint8(thinker.typ),
 			Status:        uint8(thinker.status),
@@ -884,6 +1070,7 @@ func restorePlatThinkers(src map[int]platThinkerSaveState) map[int]*platThinker 
 	dst := make(map[int]*platThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &platThinker{
+			order:         thinker.Order,
 			sector:        thinker.Sector,
 			typ:           platType(thinker.Type),
 			status:        platStatus(thinker.Status),
@@ -910,6 +1097,7 @@ func captureCeilingThinkers(src map[int]*ceilingThinker) map[int]ceilingThinkerS
 			continue
 		}
 		dst[key] = ceilingThinkerSaveState{
+			Order:        thinker.order,
 			Sector:       thinker.sector,
 			Action:       thinker.action,
 			Direction:    thinker.direction,
@@ -930,6 +1118,7 @@ func restoreCeilingThinkers(src map[int]ceilingThinkerSaveState) map[int]*ceilin
 	dst := make(map[int]*ceilingThinker, len(src))
 	for key, thinker := range src {
 		dst[key] = &ceilingThinker{
+			order:        thinker.Order,
 			sector:       thinker.Sector,
 			action:       thinker.Action,
 			direction:    thinker.Direction,

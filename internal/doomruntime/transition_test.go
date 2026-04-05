@@ -65,6 +65,38 @@ func TestShouldShowBootSplashAllowsFrontendMenuStartup(t *testing.T) {
 	}
 }
 
+func TestShouldShowBootSplashDisabledForBroadcastMode(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{
+			BootSplash: media.WallTexture{
+				Width:  1,
+				Height: 1,
+				RGBA:   []byte{0, 0, 0, 255},
+			},
+			LiveTicSink: &testLiveTicSink{},
+		},
+	}
+	if sg.shouldShowBootSplash() {
+		t.Fatal("shouldShowBootSplash() = true, want false for broadcast mode")
+	}
+}
+
+func TestShouldShowBootSplashDisabledForWatchMode(t *testing.T) {
+	sg := &sessionGame{
+		opts: Options{
+			BootSplash: media.WallTexture{
+				Width:  1,
+				Height: 1,
+				RGBA:   []byte{0, 0, 0, 255},
+			},
+			LiveTicSource: &testLiveTicSource{},
+		},
+	}
+	if sg.shouldShowBootSplash() {
+		t.Fatal("shouldShowBootSplash() = true, want false for watch mode")
+	}
+}
+
 func TestPlayMusicForMapDefersUntilLevelTransitionCompletes(t *testing.T) {
 	sg := &sessionGame{
 		musicCtl: &sessionmusic.Playback{},
