@@ -34,7 +34,7 @@ func TestMicAGCBoostsVoiceLikeFrame(t *testing.T) {
 	before := rmsInt16(frame)
 	for range 20 {
 		buf := append([]int16(nil), frame...)
-		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
 		frame = buf
 	}
 	after := rmsInt16(frame)
@@ -49,7 +49,7 @@ func TestMicAGCBoostsQuietVoiceLikeFrame(t *testing.T) {
 	before := rmsInt16(frame)
 	for range 30 {
 		buf := append([]int16(nil), frame...)
-		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
 		frame = buf
 	}
 	after := rmsInt16(frame)
@@ -71,7 +71,7 @@ func TestMicAGCDoesNotPumpLowLevelNoiseUpAggressively(t *testing.T) {
 	base := rmsInt16(frame)
 	for range 60 {
 		buf := append([]int16(nil), frame...)
-		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
 		frame = buf
 	}
 	after := rmsInt16(frame)
@@ -85,7 +85,7 @@ func TestMicAGCBoundsPeakLevelForHotInput(t *testing.T) {
 	frame := sineFrame(220, 30000)
 	for range 8 {
 		buf := append([]int16(nil), frame...)
-		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
 		frame = buf
 	}
 	var peak int16
@@ -104,7 +104,7 @@ func TestMicAGCAllowsHigherGainForQuietSpeech(t *testing.T) {
 	frame := sineFrame(220, 450)
 	for range 40 {
 		buf := append([]int16(nil), frame...)
-		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
 	}
 	if agc.gain <= 6.0 {
 		t.Fatalf("gain after quiet speech=%.2f want > 6.0", agc.gain)
@@ -126,14 +126,28 @@ func TestMicAGCSoftNoiseKneeReducesNearFloorNoise(t *testing.T) {
 	}
 	for range 80 {
 		buf := append([]int16(nil), noise...)
-		agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
 	}
 	test := append([]int16(nil), noise...)
 	before := rmsInt16(test)
-	agc.ProcessFrame(test, voicecodec.SampleRate)
+	_ = agc.ProcessFrame(test, voicecodec.SampleRate)
 	after := rmsInt16(test)
 	if after >= before {
 		t.Fatalf("soft knee noise rms after=%.1f want < %.1f", after, before)
+	}
+}
+
+func TestMicAGCMarksFullyGatedFrameAsSilence(t *testing.T) {
+	agc := newMicAGC()
+	frame := make([]int16, voicecodec.FrameSamples)
+	silence := agc.ProcessFrame(frame, voicecodec.SampleRate)
+	if !silence {
+		t.Fatal("ProcessFrame() silence=false want true for fully gated frame")
+	}
+	for i, sample := range frame {
+		if sample != 0 {
+			t.Fatalf("frame[%d]=%d want 0", i, sample)
+		}
 	}
 }
 

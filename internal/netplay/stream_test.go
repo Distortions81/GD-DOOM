@@ -484,8 +484,71 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatal("timed out waiting for audio chunk")
 	}
-	if gotChunk.GameTic != wantChunk.GameTic || gotChunk.StartSample != wantChunk.StartSample || !bytes.Equal(gotChunk.Payload, wantChunk.Payload) {
+	if gotChunk.GameTic != wantChunk.GameTic || gotChunk.StartSample != wantChunk.StartSample || gotChunk.Silence != wantChunk.Silence || !bytes.Equal(gotChunk.Payload, wantChunk.Payload) {
 		t.Fatalf("PollAudioChunk() = %+v want %+v", gotChunk, wantChunk)
+	}
+}
+
+func TestRelayAudioSilenceChunkRoundTrip(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{
+		WADHash: "abc123",
+		MapName: "E1M1",
+	})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	ab, err := DialRelayAudioBroadcaster(srv.Addr(), b.SessionID())
+	if err != nil {
+		t.Fatalf("DialRelayAudioBroadcaster() error = %v", err)
+	}
+	defer ab.Close()
+
+	v, err := DialRelayAudioViewer(srv.Addr(), b.SessionID(), "abc123")
+	if err != nil {
+		t.Fatalf("DialRelayAudioViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	if err := ab.BroadcastAudioConfig(AudioConfig{
+		Codec:        audioCodecPCM16Mono,
+		SampleRate:   48000,
+		Channels:     1,
+		FrameSamples: 960,
+		Bitrate:      768000,
+	}); err != nil {
+		t.Fatalf("BroadcastAudioConfig() error = %v", err)
+	}
+	wantChunk := AudioChunk{
+		GameTic:     88,
+		StartSample: 960 * 7,
+		Silence:     true,
+	}
+	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {
+		t.Fatalf("BroadcastAudioChunk() error = %v", err)
+	}
+
+	if _, ok, err := readAudioConfig(t, v); err != nil {
+		t.Fatalf("PollAudioConfig() error = %v", err)
+	} else if !ok {
+		t.Fatal("timed out waiting for audio config")
+	}
+	gotChunk, ok, err := readAudioChunk(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioChunk() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for audio chunk")
+	}
+	if gotChunk.GameTic != wantChunk.GameTic || gotChunk.StartSample != wantChunk.StartSample || !gotChunk.Silence || len(gotChunk.Payload) != 0 {
+		t.Fatalf("PollAudioChunk() = %+v want silence chunk %+v", gotChunk, wantChunk)
 	}
 }
 

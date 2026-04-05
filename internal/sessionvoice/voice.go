@@ -81,9 +81,15 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			for i := range pcm {
 				pcm[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
 			}
-			agc.ProcessFrame(pcm, voicecodec.SampleRate)
-			for i, sample := range pcm {
-				binary.LittleEndian.PutUint16(raw[i*2:i*2+2], uint16(sample))
+			silence := agc.ProcessFrame(pcm, voicecodec.SampleRate)
+			payload := append([]byte(nil), raw...)
+			if silence {
+				payload = nil
+			} else {
+				for i, sample := range pcm {
+					binary.LittleEndian.PutUint16(raw[i*2:i*2+2], uint16(sample))
+				}
+				payload = append(payload[:0], raw...)
 			}
 			tic := uint32(0)
 			if worldTic != nil {
@@ -92,7 +98,8 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			if err := broadcaster.BroadcastAudioChunk(netplay.AudioChunk{
 				GameTic:     tic,
 				StartSample: startSample,
-				Payload:     append([]byte(nil), raw...),
+				Silence:     silence,
+				Payload:     payload,
 			}); err != nil {
 				vs.done <- err
 				return
@@ -229,27 +236,31 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			p.source.Reset()
 		}
 		var pcm []int16
-		switch current.Codec {
-		case netplayAudioCodecPCM16Mono():
-			if len(chunk.Payload)%2 != 0 {
-				p.done <- fmt.Errorf("raw pcm payload len=%d must be even", len(chunk.Payload))
-				return
-			}
-			pcm = make([]int16, len(chunk.Payload)/2)
-			for i := range pcm {
-				pcm[i] = int16(binary.LittleEndian.Uint16(chunk.Payload[i*2 : i*2+2]))
-			}
-		case netplayAudioCodecOpus():
-			decoder, err := voicecodec.NewOpusDecoder()
-			if err != nil {
-				p.done <- err
-				return
-			}
-			pcm, err = decoder.Decode(chunk.Payload)
-			_ = decoder.Close()
-			if err != nil {
-				p.done <- err
-				return
+		if chunk.Silence {
+			pcm = make([]int16, current.FrameSamples*current.Channels)
+		} else {
+			switch current.Codec {
+			case netplayAudioCodecPCM16Mono():
+				if len(chunk.Payload)%2 != 0 {
+					p.done <- fmt.Errorf("raw pcm payload len=%d must be even", len(chunk.Payload))
+					return
+				}
+				pcm = make([]int16, len(chunk.Payload)/2)
+				for i := range pcm {
+					pcm[i] = int16(binary.LittleEndian.Uint16(chunk.Payload[i*2 : i*2+2]))
+				}
+			case netplayAudioCodecOpus():
+				decoder, err := voicecodec.NewOpusDecoder()
+				if err != nil {
+					p.done <- err
+					return
+				}
+				pcm, err = decoder.Decode(chunk.Payload)
+				_ = decoder.Close()
+				if err != nil {
+					p.done <- err
+					return
+				}
 			}
 		}
 		pcm = resampleMonoLinear(pcm, current.SampleRate, playbackRate)

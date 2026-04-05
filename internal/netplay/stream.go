@@ -58,6 +58,10 @@ const (
 )
 
 const (
+	audioChunkFlagSilence byte = 1 << iota
+)
+
+const (
 	audioCodecOpus      byte = 1
 	audioCodecPCM16Mono byte = 2
 	audioViewerChunkQueue     = 24
@@ -114,6 +118,7 @@ type AudioConfig struct {
 type AudioChunk struct {
 	GameTic     uint32
 	StartSample uint64
+	Silence     bool
 	Payload     []byte
 }
 
@@ -336,9 +341,19 @@ func (b *AudioBroadcaster) BroadcastAudioChunk(chunk AudioChunk) error {
 	if b == nil {
 		return nil
 	}
-	payload := make([]byte, audioChunkOverhead+len(chunk.Payload))
+	payloadLen := audioChunkOverhead + len(chunk.Payload)
+	if chunk.Silence {
+		payloadLen = audioChunkOverhead
+	}
+	payload := make([]byte, payloadLen)
 	binary.LittleEndian.PutUint64(payload[:audioChunkOverhead], chunk.StartSample)
-	copy(payload[audioChunkOverhead:], chunk.Payload)
+	if !chunk.Silence {
+		copy(payload[audioChunkOverhead:], chunk.Payload)
+	}
+	var flags byte
+	if chunk.Silence {
+		flags |= audioChunkFlagSilence
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
@@ -346,6 +361,7 @@ func (b *AudioBroadcaster) BroadcastAudioChunk(chunk AudioChunk) error {
 	}
 	return writeFrame(b.conn, frameHeader{
 		Type:   frameTypeAudioChunk,
+		Flags:  flags,
 		Length: uint32(len(payload)),
 		Tic:    chunk.GameTic,
 	}, payload)
@@ -822,6 +838,7 @@ func (v *AudioViewer) readLoop() {
 			v.chunks <- AudioChunk{
 				GameTic:     header.Tic,
 				StartSample: binary.LittleEndian.Uint64(payload[:audioChunkOverhead]),
+				Silence:     header.Flags&audioChunkFlagSilence != 0,
 				Payload:     append([]byte(nil), payload[audioChunkOverhead:]...),
 			}
 		default:

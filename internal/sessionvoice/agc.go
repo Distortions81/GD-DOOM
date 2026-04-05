@@ -53,9 +53,9 @@ func newMicAGC() *micAGC {
 	}
 }
 
-func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) {
+func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 	if a == nil || len(pcm) == 0 || sampleRate <= 0 {
-		return
+		return false
 	}
 	lpAlpha := onePoleAlpha(agcLowPassCutoffHz, sampleRate)
 	lowAlpha := onePoleAlpha(agcHighPassCutoffHz, sampleRate)
@@ -135,6 +135,7 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) {
 			pcm[i] = int16(v)
 		}
 	}
+	return gateGain == 0
 }
 
 func onePoleAlpha(cutoffHz float64, sampleRate int) float64 {
