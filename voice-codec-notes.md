@@ -33,9 +33,4 @@ Implemented:
 
 Remaining ideas:
 
-- [ ] lower sample-rate voice mode such as 24 kHz or 16 kHz
-- [ ] stronger encode-side low-pass for narrowband or wideband speech shaping
-- [ ] comfort noise during silence
 - [ ] mu-law companding ahead of ADPCM
-- [ ] repeatable listening/evaluation harnesses for codec tuning
-- [ ] explicit A/V sync control beyond rough buffer tuning and optional overlay readout
