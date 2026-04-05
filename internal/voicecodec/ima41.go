@@ -139,6 +139,10 @@ func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
 	return out, nil
 }
 
+func IsIMA41SeededPacket(packet []byte) bool {
+	return len(packet) == ima41SeedHeaderBytes+IMA41PacketBytes
+}
+
 func (e *IMA41Encoder) encodeNibble(sample int16) byte {
 	step := imaStepTable[e.stepIndex]
 	base := int(e.predictedSample())

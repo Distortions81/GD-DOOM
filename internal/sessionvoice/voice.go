@@ -331,6 +331,12 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 					pcm[i] = int16(binary.LittleEndian.Uint16(chunk.Payload[i*2 : i*2+2]))
 				}
 			case netplayAudioCodecIMA4To1():
+				if !haveStartSample && !voicecodec.IsIMA41SeededPacket(chunk.Payload) {
+					// Late-join playback can begin mid-stream on an unseeded ADPCM packet.
+					// Skip that first packet and wait for the next seeded packet to avoid
+					// predictor startup warble.
+					continue
+				}
 				pcm, err = decoder.Decode(chunk.Payload)
 				if err != nil {
 					p.done <- err
