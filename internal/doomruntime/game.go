@@ -2318,28 +2318,17 @@ func (g *game) cycleDetailLevel() {
 	g.autoDetailHighSamples = 0
 	if g.autoDetailEnabled {
 		g.autoDetailEnabled = false
-		g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailLevelLabelFor(g.detailLevel)), 70)
-		return
 	}
-	next := g.detailLevel
+	next := 0
 	if len(detailPresets) > 1 {
-		if next == 0 {
-			next = 1
+		if g.lowDetailMode() {
+			next = 0
 		} else {
-			g.autoDetailEnabled = true
-			g.setHUDMessage("Detail: AUTO", 70)
-			return
+			next = 1
 		}
 	}
 	_ = g.setDetailLevel(next)
-	label := "HIGH"
-	switch {
-	case g.lowDetailMode():
-		label = "LOW"
-	case g.detailLevel == len(detailPresets)-1:
-		label = "EXTRA HIGH"
-	}
-	g.setHUDMessage(fmt.Sprintf("Detail: %s", label), 70)
+	g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailHUDLabel()), 70)
 }
 
 func (g *game) sourcePortDetailDivisor() int {

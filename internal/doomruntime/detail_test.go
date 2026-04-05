@@ -65,7 +65,7 @@ func TestCycleDetailLevelFaithfulTogglesHighLow(t *testing.T) {
 		},
 		viewW:       320,
 		viewH:       200,
-		detailLevel: 0,
+		detailLevel: 1,
 		bounds: bounds{
 			minX: 0, minY: 0, maxX: 1024, maxY: 1024,
 		},
@@ -90,11 +90,14 @@ func TestCycleDetailLevelFaithfulTogglesHighLow(t *testing.T) {
 		t.Fatalf("after 2 cycles useText=%q want Detail: LOW", g.useText)
 	}
 	g.cycleDetailLevel()
-	if !g.autoDetailEnabled {
-		t.Fatal("third detail cycle should return to auto detail")
+	if g.autoDetailEnabled {
+		t.Fatal("faithful detail cycle should not return to auto detail")
 	}
-	if g.useText != "Detail: AUTO" {
-		t.Fatalf("after 3 cycles useText=%q want Detail: AUTO", g.useText)
+	if g.viewW != 320 || g.viewH != 200 || g.detailLevel != 0 {
+		t.Fatalf("after 3 cycles got %dx%d level=%d", g.viewW, g.viewH, g.detailLevel)
+	}
+	if g.useText != "Detail: HIGH" {
+		t.Fatalf("after 3 cycles useText=%q want Detail: HIGH", g.useText)
 	}
 }
 
