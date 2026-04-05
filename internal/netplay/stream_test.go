@@ -447,11 +447,11 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 	defer v.Close()
 
 	wantCfg := AudioConfig{
-		Codec:        audioCodecOpus,
+		Codec:        audioCodecIMA4To1,
 		SampleRate:   48000,
 		Channels:     1,
 		FrameSamples: 960,
-		Bitrate:      20000,
+		Bitrate:      192000,
 	}
 	if err := ab.BroadcastAudioConfig(wantCfg); err != nil {
 		t.Fatalf("BroadcastAudioConfig() error = %v", err)

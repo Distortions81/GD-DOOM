@@ -21,9 +21,9 @@ const (
 	protocolVersion byte = 1
 	protocolMagic        = "GDSF"
 
-	helloRoleBroadcaster byte = 1
-	helloRoleViewer      byte = 2
-	helloRoleServer      byte = 3
+	helloRoleBroadcaster      byte = 1
+	helloRoleViewer           byte = 2
+	helloRoleServer           byte = 3
 	helloRoleAudioBroadcaster byte = 4
 	helloRoleAudioViewer      byte = 5
 
@@ -46,9 +46,9 @@ const (
 )
 
 const (
-	frameHeaderSize  = 12
-	ticBatchOverhead = 4
-	ticBatchSize     = 4
+	frameHeaderSize    = 12
+	ticBatchOverhead   = 4
+	ticBatchSize       = 4
 	audioChunkOverhead = 8
 )
 
@@ -62,9 +62,9 @@ const (
 )
 
 const (
-	audioCodecOpus      byte = 1
-	audioCodecPCM16Mono byte = 2
-	audioViewerChunkQueue     = 24
+	audioCodecIMA4To1     byte = 1
+	audioCodecPCM16Mono   byte = 2
+	audioViewerChunkQueue      = 24
 )
 
 var (
@@ -909,7 +909,7 @@ func keyframeDecoder() (*zstd.Decoder, error) {
 
 func marshalAudioConfig(cfg AudioConfig) ([]byte, error) {
 	if cfg.Codec == 0 {
-		cfg.Codec = audioCodecOpus
+		cfg.Codec = audioCodecIMA4To1
 	}
 	if cfg.SampleRate <= 0 {
 		return nil, fmt.Errorf("audio sample rate must be > 0")

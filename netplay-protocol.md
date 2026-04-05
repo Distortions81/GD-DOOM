@@ -422,7 +422,7 @@ If compressed audio is supported, keep it on a separate side channel within the 
 - `audio_config`
 - `audio_chunk`
 
-The planned codec implementation should use [`pion/opus`](https://github.com/pion/opus).
+The default compressed transport can use the built-in 4:1 IMA-style mono codec.
 
 This should be the default path for:
 
@@ -440,7 +440,7 @@ Suggested `audio_config` fields:
 
 Suggested codec values:
 
-- `opus`
+- `ima4:1`
 
 Suggested stream classes:
 
@@ -461,18 +461,18 @@ Audio should be tied to a timing base that is compatible with both:
 
 Viewers should be able to ignore audio and still watch normally.
 
-## Opus Plan
+## Audio Codec Plan
 
-The current plan is to standardize on `pion/opus` for compressed realtime audio.
+The current plan is to standardize on the built-in 4:1 IMA-style codec for compressed realtime audio.
 
 Reasons:
 
-- suitable for speech and music
-- compact enough for relay fanout
-- works well for browser/native streaming scenarios
-- provides a unified path for broadcast audio and multiplayer voice
+- simple fixed-size packets
+- 4:1 compression from 16-bit mono PCM
+- no external codec dependency
+- works for relay fanout and browser/native streaming
 
-The protocol should treat Opus streams as optional side channels and should not mix them into gameplay/keyframe transport.
+The protocol should treat audio streams as optional side channels and should not mix them into gameplay/keyframe transport.
 
 ## Audio Stream Roles
 
@@ -1031,7 +1031,7 @@ Goals:
 
 Features:
 
-- `pion/opus` integration
+- built-in `ima4:1` integration
 - `audio_config`
 - `audio_chunk`
 - broadcaster music stream

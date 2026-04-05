@@ -5,18 +5,9 @@ import (
 	"testing"
 )
 
-func TestOpusRoundTrip(t *testing.T) {
-	enc, err := NewOpusEncoder()
-	if err != nil {
-		t.Fatalf("NewOpusEncoder() error = %v", err)
-	}
-	defer enc.Close()
-
-	dec, err := NewOpusDecoder()
-	if err != nil {
-		t.Fatalf("NewOpusDecoder() error = %v", err)
-	}
-	defer dec.Close()
+func TestIMA41RoundTrip(t *testing.T) {
+	enc := NewIMA41Encoder()
+	dec := NewIMA41Decoder()
 
 	pcm := make([]int16, FrameSamples)
 	for i := range pcm {
@@ -28,8 +19,8 @@ func TestOpusRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Encode() error = %v", err)
 	}
-	if len(packet) == 0 {
-		t.Fatal("Encode() returned empty packet")
+	if got, want := len(packet), 4+(FrameSamples-1+1)/2; got != want {
+		t.Fatalf("packet len=%d want=%d", got, want)
 	}
 
 	out, err := dec.Decode(packet)
@@ -40,13 +31,17 @@ func TestOpusRoundTrip(t *testing.T) {
 		t.Fatalf("decoded samples=%d want=%d", len(out), FrameSamples)
 	}
 	nonZero := false
-	for _, sample := range out {
-		if sample != 0 {
+	var totalErr float64
+	for i := range out {
+		if out[i] != 0 {
 			nonZero = true
-			break
 		}
+		totalErr += math.Abs(float64(out[i]) - float64(pcm[i]))
 	}
 	if !nonZero {
 		t.Fatal("decoded output is silent")
+	}
+	if avgErr := totalErr / float64(len(out)); avgErr > 2500 {
+		t.Fatalf("average absolute error=%0.2f too large", avgErr)
 	}
 }

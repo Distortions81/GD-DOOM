@@ -7,7 +7,6 @@ require (
 	github.com/Distortions81/impsynth v0.1.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
-	github.com/kazzmir/opus-go v1.3.0
 	github.com/klauspost/compress v1.18.5
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/sinshu/go-meltysynth v0.1.2

@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	audioStartupBufferFrames = 5
+	audioStartupBufferFrames  = 5
 	audioTargetBufferedFrames = 6
 	audioResetBufferedFrames  = 12
 	audioPlayerBuffer         = 40 * time.Millisecond
-	audioFadeSamples         = 512
+	audioFadeSamples          = 512
 )
 
 type VoiceStreamer struct {
@@ -46,12 +46,13 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		cancel()
 		return nil, err
 	}
+	encoder := voicecodec.NewIMA41Encoder()
 	if err := broadcaster.BroadcastAudioConfig(netplay.AudioConfig{
-		Codec:        netplayAudioCodecPCM16Mono(),
+		Codec:        netplayAudioCodecIMA4To1(),
 		SampleRate:   voicecodec.SampleRate,
 		Channels:     voicecodec.Channels,
 		FrameSamples: voicecodec.FrameSamples,
-		Bitrate:      voicecodec.SampleRate * voicecodec.Channels * 16,
+		Bitrate:      voicecodec.SampleRate * voicecodec.Channels * 4,
 	}); err != nil {
 		cancel()
 		_ = reader.Close()
@@ -82,14 +83,16 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 				pcm[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
 			}
 			silence := agc.ProcessFrame(pcm, voicecodec.SampleRate)
-			payload := append([]byte(nil), raw...)
+			var payload []byte
 			if silence {
 				payload = nil
 			} else {
-				for i, sample := range pcm {
-					binary.LittleEndian.PutUint16(raw[i*2:i*2+2], uint16(sample))
+				packet, err := encoder.Encode(pcm)
+				if err != nil {
+					vs.done <- err
+					return
 				}
-				payload = append(payload[:0], raw...)
+				payload = packet
 			}
 			tic := uint32(0)
 			if worldTic != nil {
@@ -126,11 +129,11 @@ func (s *VoiceStreamer) Close() error {
 }
 
 type VoicePlayer struct {
-	viewer *netplay.AudioViewer
-	cancel context.CancelFunc
-	done   chan error
-	player *audio.Player
-	source *streamSource
+	viewer     *netplay.AudioViewer
+	cancel     context.CancelFunc
+	done       chan error
+	player     *audio.Player
+	source     *streamSource
 	currentTic func() uint32
 }
 
@@ -155,11 +158,11 @@ func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic
 
 	runCtx, cancel := context.WithCancel(parent)
 	vp := &VoicePlayer{
-		viewer: viewer,
-		cancel: cancel,
-		done:   make(chan error, 1),
-		player: player,
-		source: stream,
+		viewer:     viewer,
+		cancel:     cancel,
+		done:       make(chan error, 1),
+		player:     player,
+		source:     stream,
 		currentTic: currentTic,
 	}
 	go vp.run(runCtx, playbackRate)
@@ -228,7 +231,7 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 		if current.Codec == 0 {
 			continue
 		}
-		if current.Codec != netplayAudioCodecOpus() && current.Codec != netplayAudioCodecPCM16Mono() {
+		if current.Codec != netplayAudioCodecIMA4To1() && current.Codec != netplayAudioCodecPCM16Mono() {
 			p.done <- fmt.Errorf("unsupported audio codec %d", current.Codec)
 			return
 		}
@@ -249,14 +252,9 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 				for i := range pcm {
 					pcm[i] = int16(binary.LittleEndian.Uint16(chunk.Payload[i*2 : i*2+2]))
 				}
-			case netplayAudioCodecOpus():
-				decoder, err := voicecodec.NewOpusDecoder()
-				if err != nil {
-					p.done <- err
-					return
-				}
+			case netplayAudioCodecIMA4To1():
+				decoder := voicecodec.NewIMA41Decoder()
 				pcm, err = decoder.Decode(chunk.Payload)
-				_ = decoder.Close()
 				if err != nil {
 					p.done <- err
 					return
@@ -271,14 +269,14 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 }
 
 type streamSource struct {
-	mu               sync.Mutex
-	buf              []byte
-	fade             []byte
-	closed           bool
-	started          bool
-	startupBytes     int
+	mu                  sync.Mutex
+	buf                 []byte
+	fade                []byte
+	closed              bool
+	started             bool
+	startupBytes        int
 	targetBufferedBytes int
-	resetBufferedBytes int
+	resetBufferedBytes  int
 
 	lastSample [4]byte
 	needFadeIn bool
@@ -294,8 +292,8 @@ func newStreamSource(playbackRate int) *streamSource {
 	}
 	bytesPerFrame := samplesPerFrame * 4
 	return &streamSource{
-		needFadeIn:         true,
-		startupBytes:       audioStartupBufferFrames * bytesPerFrame,
+		needFadeIn:          true,
+		startupBytes:        audioStartupBufferFrames * bytesPerFrame,
 		targetBufferedBytes: audioTargetBufferedFrames * bytesPerFrame,
 		resetBufferedBytes:  audioResetBufferedFrames * bytesPerFrame,
 	}
@@ -457,8 +455,8 @@ func resampleMonoLinear(src []int16, fromRate, toRate int) []int16 {
 	return out
 }
 
-func netplayAudioCodecOpus() byte {
-	return voicecodec.CodecOpus
+func netplayAudioCodecIMA4To1() byte {
+	return voicecodec.CodecIMA4To1
 }
 
 func netplayAudioCodecPCM16Mono() byte {
