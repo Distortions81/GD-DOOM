@@ -37,7 +37,7 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 	ctx, cancel := context.WithCancel(parent)
 	cfg := audioinput.PulseConfig{
 		Device:        device,
-		SampleRate:    voicecodec.SampleRate,
+		SampleRate:    voicecodec.CaptureSampleRate,
 		Channels:      voicecodec.Channels,
 		Format:        "s16le",
 		LatencyMillis: voicecodec.FrameDurationMillis,
@@ -66,11 +66,11 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 	go func() {
 		defer close(vs.done)
 		defer reader.Close()
-		frameBytes := voicecodec.FrameSamples * voicecodec.Channels * 2
+		frameBytes := voicecodec.CaptureFrameSamples * voicecodec.Channels * 2
 		raw := make([]byte, frameBytes)
-		framePCM := make([]int16, voicecodec.FrameSamples*voicecodec.Channels)
-		packetPCM := make([]int16, voicecodec.PacketSamples*voicecodec.Channels)
-		hpf := newHighPassFilter(50, voicecodec.SampleRate)
+		framePCM := make([]int16, voicecodec.CaptureFrameSamples*voicecodec.Channels)
+		packetPCM := make([]int16, voicecodec.FrameSamples*voicecodec.PacketFrames*voicecodec.Channels)
+		hpf := newHighPassFilter(50, voicecodec.CaptureSampleRate)
 		agc := newMicAGC()
 		var startSample uint64
 		for {
@@ -88,12 +88,13 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 					framePCM[i] = int16(binary.LittleEndian.Uint16(raw[i*2 : i*2+2]))
 				}
 				hpf.ProcessInt16(framePCM)
-				silence := agc.ProcessFrame(framePCM, voicecodec.SampleRate)
+				silence := agc.ProcessFrame(framePCM, voicecodec.CaptureSampleRate)
 				if !silence {
 					allSilent = false
 				}
-				base := packetFrame * len(framePCM)
-				copy(packetPCM[base:base+len(framePCM)], framePCM)
+				down := resampleMonoLinear(framePCM, voicecodec.CaptureSampleRate, voicecodec.SampleRate)
+				base := packetFrame * len(down)
+				copy(packetPCM[base:base+len(down)], down)
 			}
 			var payload []byte
 			if allSilent {

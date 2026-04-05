@@ -20,9 +20,9 @@ func rmsInt16(pcm []int16) float64 {
 }
 
 func sineFrame(freq float64, amp int16) []int16 {
-	out := make([]int16, voicecodec.FrameSamples)
+	out := make([]int16, voicecodec.CaptureFrameSamples)
 	for i := range out {
-		v := math.Sin(2 * math.Pi * freq * float64(i) / float64(voicecodec.SampleRate))
+		v := math.Sin(2 * math.Pi * freq * float64(i) / float64(voicecodec.CaptureSampleRate))
 		out[i] = int16(v * float64(amp))
 	}
 	return out
@@ -34,7 +34,7 @@ func TestMicAGCBoostsVoiceLikeFrame(t *testing.T) {
 	before := rmsInt16(frame)
 	for range 20 {
 		buf := append([]int16(nil), frame...)
-		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.CaptureSampleRate)
 		frame = buf
 	}
 	after := rmsInt16(frame)
@@ -49,7 +49,7 @@ func TestMicAGCBoostsQuietVoiceLikeFrame(t *testing.T) {
 	before := rmsInt16(frame)
 	for range 30 {
 		buf := append([]int16(nil), frame...)
-		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.CaptureSampleRate)
 		frame = buf
 	}
 	after := rmsInt16(frame)
@@ -60,7 +60,7 @@ func TestMicAGCBoostsQuietVoiceLikeFrame(t *testing.T) {
 
 func TestMicAGCDoesNotPumpLowLevelNoiseUpAggressively(t *testing.T) {
 	agc := newMicAGC()
-	frame := make([]int16, voicecodec.FrameSamples)
+	frame := make([]int16, voicecodec.CaptureFrameSamples)
 	for i := range frame {
 		if i%2 == 0 {
 			frame[i] = 18
@@ -71,7 +71,7 @@ func TestMicAGCDoesNotPumpLowLevelNoiseUpAggressively(t *testing.T) {
 	base := rmsInt16(frame)
 	for range 60 {
 		buf := append([]int16(nil), frame...)
-		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.CaptureSampleRate)
 		frame = buf
 	}
 	after := rmsInt16(frame)
@@ -85,7 +85,7 @@ func TestMicAGCBoundsPeakLevelForHotInput(t *testing.T) {
 	frame := sineFrame(220, 30000)
 	for range 8 {
 		buf := append([]int16(nil), frame...)
-		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.CaptureSampleRate)
 		frame = buf
 	}
 	var peak int16
@@ -104,7 +104,7 @@ func TestMicAGCAllowsHigherGainForQuietSpeech(t *testing.T) {
 	frame := sineFrame(220, 450)
 	for range 40 {
 		buf := append([]int16(nil), frame...)
-		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.CaptureSampleRate)
 	}
 	if agc.gain <= 6.0 {
 		t.Fatalf("gain after quiet speech=%.2f want > 6.0", agc.gain)
@@ -116,7 +116,7 @@ func TestMicAGCAllowsHigherGainForQuietSpeech(t *testing.T) {
 
 func TestMicAGCSoftNoiseKneeReducesNearFloorNoise(t *testing.T) {
 	agc := newMicAGC()
-	noise := make([]int16, voicecodec.FrameSamples)
+	noise := make([]int16, voicecodec.CaptureFrameSamples)
 	for i := range noise {
 		if i%2 == 0 {
 			noise[i] = 40
@@ -126,11 +126,11 @@ func TestMicAGCSoftNoiseKneeReducesNearFloorNoise(t *testing.T) {
 	}
 	for range 80 {
 		buf := append([]int16(nil), noise...)
-		_ = agc.ProcessFrame(buf, voicecodec.SampleRate)
+		_ = agc.ProcessFrame(buf, voicecodec.CaptureSampleRate)
 	}
 	test := append([]int16(nil), noise...)
 	before := rmsInt16(test)
-	_ = agc.ProcessFrame(test, voicecodec.SampleRate)
+	_ = agc.ProcessFrame(test, voicecodec.CaptureSampleRate)
 	after := rmsInt16(test)
 	if after >= before {
 		t.Fatalf("soft knee noise rms after=%.1f want < %.1f", after, before)
@@ -139,7 +139,7 @@ func TestMicAGCSoftNoiseKneeReducesNearFloorNoise(t *testing.T) {
 
 func TestMicAGCLowLevelNoiseEventuallyBecomesSilence(t *testing.T) {
 	agc := newMicAGC()
-	noise := make([]int16, voicecodec.FrameSamples)
+	noise := make([]int16, voicecodec.CaptureFrameSamples)
 	for i := range noise {
 		if i%2 == 0 {
 			noise[i] = 40
@@ -150,7 +150,7 @@ func TestMicAGCLowLevelNoiseEventuallyBecomesSilence(t *testing.T) {
 	silence := false
 	for range 80 {
 		buf := append([]int16(nil), noise...)
-		silence = agc.ProcessFrame(buf, voicecodec.SampleRate)
+		silence = agc.ProcessFrame(buf, voicecodec.CaptureSampleRate)
 		if silence {
 			for i, sample := range buf {
 				if sample != 0 {
@@ -167,8 +167,8 @@ func TestMicAGCLowLevelNoiseEventuallyBecomesSilence(t *testing.T) {
 
 func TestMicAGCMarksFullyGatedFrameAsSilence(t *testing.T) {
 	agc := newMicAGC()
-	frame := make([]int16, voicecodec.FrameSamples)
-	silence := agc.ProcessFrame(frame, voicecodec.SampleRate)
+	frame := make([]int16, voicecodec.CaptureFrameSamples)
+	silence := agc.ProcessFrame(frame, voicecodec.CaptureSampleRate)
 	if !silence {
 		t.Fatal("ProcessFrame() silence=false want true for fully gated frame")
 	}
