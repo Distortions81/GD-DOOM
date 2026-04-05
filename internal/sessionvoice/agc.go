@@ -3,6 +3,7 @@ package sessionvoice
 import (
 	"fmt"
 	"math"
+	"os"
 )
 
 const (
@@ -39,6 +40,7 @@ type micAGC struct {
 	lastLogGain  float64
 	lastLogGate  float64
 	lastLogVoice bool
+	logEnabled   bool
 }
 
 func newMicAGC() *micAGC {
@@ -47,6 +49,7 @@ func newMicAGC() *micAGC {
 		noiseRMSAvg: agcVoiceRMSFloor * 0.5,
 		lastLogGain: 1,
 		lastLogGate: 1,
+		logEnabled:  os.Getenv("GD_DOOM_VOICE_AGC_LOG") != "",
 	}
 }
 
@@ -155,6 +158,9 @@ func clampFloat(v, lo, hi float64) float64 {
 
 func (a *micAGC) shouldLog(voiced bool, gateGain float64) bool {
 	if a == nil {
+		return false
+	}
+	if !a.logEnabled {
 		return false
 	}
 	if a.frameCount <= 12 {

@@ -198,6 +198,11 @@ Run the test suite:
 go test ./...
 ```
 
+Voice debugging:
+
+- Set `GD_DOOM_VOICE_AGC_LOG=1` to print rate-limited AGC diagnostics to stdout while broadcasting voice.
+- Viewer skip-ahead recovery logs remain on by default as `voice-skip ...` lines so audio catch-up is visible without extra flags.
+
 Useful helper commands and tools live under [`cmd/`](/home/dist/github/GD-DOOM/cmd) and [`scripts/`](/home/dist/github/GD-DOOM/scripts), including utilities for WAD inspection, map analysis, demo tracing, music export, and WASM serving.
 
 ## Status
