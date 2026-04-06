@@ -25,6 +25,7 @@ type relaySession struct {
 	cfg               SessionConfig
 	server            *Server
 	src               net.Conn
+	srcViewer         *relayViewer // broadcaster conn wrapped for chat writes
 	audioSrc          net.Conn
 	viewers           map[*relayViewer]struct{}
 	audioViewers      map[*relayViewer]struct{}
@@ -170,6 +171,7 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 		cfg:          cfg,
 		server:       s,
 		src:          conn,
+		srcViewer:    &relayViewer{conn: conn},
 		viewers:      make(map[*relayViewer]struct{}),
 		audioViewers: make(map[*relayViewer]struct{}),
 	}
@@ -188,7 +190,11 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 			}
 			return
 		}
-		s.forwardFrame(sess, header, payload)
+		if header.Type == frameTypeChat {
+			s.forwardChat(sess, sess.srcViewer, header, payload)
+		} else {
+			s.forwardFrame(sess, header, payload)
+		}
 	}
 }
 
@@ -310,14 +316,16 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64, flags uint16) {
 	}
 	viewer.mu.Unlock()
 
-	// Viewers are currently read-only and do not send steady-state frames.
-	var one [1]byte
+	// Viewers can send chat messages.
 	for {
-		_, err := conn.Read(one[:])
+		header, payload, err := readFrame(conn)
 		if err != nil {
 			s.removeViewer(sess, viewer)
 			_ = conn.Close()
 			return
+		}
+		if header.Type == frameTypeChat {
+			s.forwardChat(sess, viewer, header, payload)
 		}
 	}
 }
@@ -443,6 +451,36 @@ func (s *Server) forwardAudioChunk(sess *relaySession, cfg AudioConfig, chunk Au
 			_ = viewer.conn.Close()
 		}
 	}
+}
+
+// forwardChat relays a chat frame to all session members except the sender.
+func (s *Server) forwardChat(sess *relaySession, sender *relayViewer, header frameHeader, payload []byte) {
+	s.mu.Lock()
+	all := make([]*relayViewer, 0, 1+len(sess.viewers))
+	if sess.srcViewer != sender {
+		all = append(all, sess.srcViewer)
+	}
+	for v := range sess.viewers {
+		if v != sender {
+			all = append(all, v)
+		}
+	}
+	s.mu.Unlock()
+
+	for _, v := range all {
+		if err := v.writeChat(header, payload); err != nil {
+			if v == sess.srcViewer {
+				s.closeSession(sess)
+			} else {
+				s.removeViewer(sess, v)
+				_ = v.conn.Close()
+			}
+		}
+	}
+}
+
+func (v *relayViewer) writeChat(header frameHeader, payload []byte) error {
+	return v.writeFrame(header, payload)
 }
 
 func (v *relayViewer) writeFrame(header frameHeader, payload []byte) error {

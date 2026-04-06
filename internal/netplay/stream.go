@@ -32,6 +32,7 @@ const (
 	frameTypeIntermissionAdvance byte = 8
 	frameTypeAudioConfig         byte = 16
 	frameTypeAudioChunk          byte = 17
+	frameTypeChat                byte = 32
 )
 
 const (
@@ -139,15 +140,28 @@ type AudioChunk struct {
 	Payload     []byte
 }
 
+type ChatMessage struct {
+	Name string
+	Text string
+}
+
+const (
+	chatMaxNameLen = 128
+	chatMaxTextLen = 512
+)
+
 type RelayBroadcaster struct {
 	conn      net.Conn
 	sessionID uint64
 	meter     *bandwidthMeter
+	chats     chan ChatMessage
 
 	mu           sync.Mutex
 	closed       bool
+	err          error
 	pendingTic   []demo.Tic
 	ticBatchSize int
+	wg           sync.WaitGroup
 }
 
 type AudioBroadcaster struct {
@@ -191,13 +205,17 @@ func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) 
 		_ = rawConn.Close()
 		return nil, fmt.Errorf("relay hello ack missing compact gameplay flag")
 	}
-	return &RelayBroadcaster{
+	b := &RelayBroadcaster{
 		conn:         conn,
 		sessionID:    assignedID,
 		meter:        meter,
+		chats:        make(chan ChatMessage, 32),
 		pendingTic:   make([]demo.Tic, 0, ticBatchSize),
 		ticBatchSize: ticBatchSize,
-	}, nil
+	}
+	b.wg.Add(1)
+	go b.readLoop()
+	return b, nil
 }
 
 func (b *RelayBroadcaster) SessionID() uint64 {
@@ -376,6 +394,67 @@ func (b *AudioBroadcaster) BroadcastAudioChunk(chunk AudioChunk) error {
 	return writeAudioChunkRecord(b.conn, b.audioConfig, chunk)
 }
 
+func (b *RelayBroadcaster) readLoop() {
+	defer b.wg.Done()
+	defer close(b.chats)
+	for {
+		header, payload, err := readFrame(b.conn)
+		if err != nil {
+			b.mu.Lock()
+			if b.err == nil {
+				b.err = err
+			}
+			b.mu.Unlock()
+			return
+		}
+		if header.Type != frameTypeChat {
+			continue
+		}
+		msg, err := readChatFrame(bytes.NewReader(payload))
+		if err != nil {
+			continue
+		}
+		select {
+		case b.chats <- msg:
+		default:
+		}
+	}
+}
+
+func (b *RelayBroadcaster) SendChat(msg ChatMessage) error {
+	if b == nil {
+		return nil
+	}
+	payload := marshalChatPayload(msg)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed {
+		return net.ErrClosed
+	}
+	return writeFrame(b.conn, frameHeader{Type: frameTypeChat}, payload)
+}
+
+func (b *RelayBroadcaster) PollChat() (ChatMessage, bool, error) {
+	if b == nil {
+		return ChatMessage{}, false, nil
+	}
+	select {
+	case msg, ok := <-b.chats:
+		if ok {
+			return msg, true, nil
+		}
+		b.mu.Lock()
+		err := b.err
+		b.mu.Unlock()
+		return ChatMessage{}, false, err
+	default:
+		b.mu.Lock()
+		err := b.err
+		b.mu.Unlock()
+		return ChatMessage{}, false, err
+	}
+}
+
 func (b *RelayBroadcaster) Close() error {
 	if b == nil {
 		return nil
@@ -389,6 +468,7 @@ func (b *RelayBroadcaster) Close() error {
 	err := b.flushPendingTicsLocked()
 	b.mu.Unlock()
 	closeErr := b.conn.Close()
+	b.wg.Wait()
 	if err != nil {
 		return err
 	}
@@ -435,6 +515,7 @@ type Viewer struct {
 	tics      chan demo.Tic
 	keyframes chan Keyframe
 	advance   chan struct{}
+	chats     chan ChatMessage
 	meter     *bandwidthMeter
 
 	mu     sync.Mutex
@@ -567,6 +648,7 @@ func DialRelayViewer(addr string, sessionID uint64, localWADHash string) (*Viewe
 		tics:      make(chan demo.Tic, 256),
 		keyframes: make(chan Keyframe, 4),
 		advance:   make(chan struct{}, 8),
+		chats:     make(chan ChatMessage, 32),
 		meter:     meter,
 	}
 	v.wg.Add(1)
@@ -750,6 +832,34 @@ func (v *AudioViewer) PollAudioChunk() (AudioChunk, bool, error) {
 	}
 }
 
+func (v *Viewer) SendChat(msg ChatMessage) error {
+	if v == nil {
+		return nil
+	}
+	payload := marshalChatPayload(msg)
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closed {
+		return fmt.Errorf("viewer closed")
+	}
+	return writeFrame(v.conn, frameHeader{Type: frameTypeChat}, payload)
+}
+
+func (v *Viewer) PollChat() (ChatMessage, bool, error) {
+	if v == nil {
+		return ChatMessage{}, false, nil
+	}
+	select {
+	case msg, ok := <-v.chats:
+		if ok {
+			return msg, true, nil
+		}
+		return ChatMessage{}, false, v.readErr()
+	default:
+		return ChatMessage{}, false, v.readErr()
+	}
+}
+
 func (v *Viewer) Close() error {
 	if v == nil {
 		return nil
@@ -787,6 +897,7 @@ func (v *Viewer) readLoop() {
 	defer close(v.tics)
 	defer close(v.keyframes)
 	defer close(v.advance)
+	defer close(v.chats)
 	for {
 		header, payload, err := readFrame(v.conn)
 		if err != nil {
@@ -822,6 +933,16 @@ func (v *Viewer) readLoop() {
 				return
 			}
 			v.advance <- struct{}{}
+		case frameTypeChat:
+			msg, err := readChatFrame(bytes.NewReader(payload))
+			if err != nil {
+				v.setErr(fmt.Errorf("read chat frame: %w", err))
+				return
+			}
+			select {
+			case v.chats <- msg:
+			default:
+			}
 		default:
 			v.setErr(fmt.Errorf("unexpected broadcast frame type %d", header.Type))
 			return
@@ -1183,6 +1304,12 @@ func writeFrame(w io.Writer, header frameHeader, payload []byte) error {
 		}
 		_, err := w.Write([]byte{frameTypeIntermissionAdvance})
 		return err
+	case frameTypeChat:
+		if _, err := w.Write([]byte{frameTypeChat}); err != nil {
+			return err
+		}
+		_, err := w.Write(payload)
+		return err
 	default:
 		return fmt.Errorf("unsupported gameplay frame type %d", header.Type)
 	}
@@ -1226,9 +1353,71 @@ func readFrame(r io.Reader) (frameHeader, []byte, error) {
 		}, payload, nil
 	case kind[0] == frameTypeIntermissionAdvance:
 		return frameHeader{Type: frameTypeIntermissionAdvance}, nil, nil
+	case kind[0] == frameTypeChat:
+		// 1 byte name_len + 2 byte text_len + 1 byte reserved = 4 bytes header
+		var hdr [4]byte
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			return frameHeader{}, nil, err
+		}
+		nameLen := int(hdr[0])
+		textLen := int(binary.LittleEndian.Uint16(hdr[1:3]))
+		if nameLen > chatMaxNameLen || textLen > chatMaxTextLen {
+			return frameHeader{}, nil, fmt.Errorf("chat frame lengths out of range name=%d text=%d", nameLen, textLen)
+		}
+		body := make([]byte, 4+nameLen+textLen)
+		copy(body, hdr[:])
+		if nameLen+textLen > 0 {
+			if _, err := io.ReadFull(r, body[4:]); err != nil {
+				return frameHeader{}, nil, err
+			}
+		}
+		return frameHeader{Type: frameTypeChat}, body, nil
 	default:
 		return frameHeader{}, nil, fmt.Errorf("unexpected broadcast frame type %d", kind[0])
 	}
+}
+
+// marshalChatPayload encodes a ChatMessage into the payload bytes used by writeFrame/readFrame.
+// Format: [1 name_len][2 text_len LE][1 reserved][name...][text...]
+func marshalChatPayload(msg ChatMessage) []byte {
+	name := []byte(msg.Name)
+	text := []byte(msg.Text)
+	if len(name) > chatMaxNameLen {
+		name = name[:chatMaxNameLen]
+	}
+	if len(text) > chatMaxTextLen {
+		text = text[:chatMaxTextLen]
+	}
+	buf := make([]byte, 4+len(name)+len(text))
+	buf[0] = byte(len(name))
+	binary.LittleEndian.PutUint16(buf[1:3], uint16(len(text)))
+	buf[3] = 0 // reserved
+	copy(buf[4:], name)
+	copy(buf[4+len(name):], text)
+	return buf
+}
+
+func readChatFrame(r io.Reader) (ChatMessage, error) {
+	var hdr [4]byte
+	if _, err := io.ReadFull(r, hdr[:]); err != nil {
+		return ChatMessage{}, err
+	}
+	nameLen := int(hdr[0])
+	textLen := int(binary.LittleEndian.Uint16(hdr[1:3]))
+	// hdr[3] reserved
+	if nameLen > chatMaxNameLen || textLen > chatMaxTextLen {
+		return ChatMessage{}, fmt.Errorf("chat frame lengths out of range name=%d text=%d", nameLen, textLen)
+	}
+	buf := make([]byte, nameLen+textLen)
+	if len(buf) > 0 {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return ChatMessage{}, err
+		}
+	}
+	return ChatMessage{
+		Name: string(buf[:nameLen]),
+		Text: string(buf[nameLen:]),
+	}, nil
 }
 
 func marshalSessionConfig(session SessionConfig) ([]byte, error) {
