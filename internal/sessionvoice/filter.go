@@ -83,11 +83,11 @@ func decimateBy2LowPass(src []int16, f1, f2 *lowPassFilter) []int16 {
 	return out
 }
 
-func downsampleCaptureToVoice(src []int16, filters ...*lowPassFilter) []int16 {
+func downsampleCaptureToVoice(src []int16, targetSampleRate int, filters ...*lowPassFilter) []int16 {
 	if len(src) == 0 {
 		return nil
 	}
-	if voiceSampleRatesAreExactHalf() {
+	if voiceSampleRatesAreExactHalf(targetSampleRate) {
 		work := append([]int16(nil), src...)
 		for _, f := range filters {
 			if f != nil {
@@ -102,11 +102,11 @@ func downsampleCaptureToVoice(src []int16, filters ...*lowPassFilter) []int16 {
 		}
 		return out
 	}
-	return resampleMonoLinear(src, voicecodec.CaptureSampleRate, voicecodec.SampleRate)
+	return resampleMonoLinear(src, voicecodec.CaptureSampleRate, targetSampleRate)
 }
 
-func voiceSampleRatesAreExactHalf() bool {
-	return voicecodec.CaptureSampleRate == voicecodec.SampleRate*2
+func voiceSampleRatesAreExactHalf(targetSampleRate int) bool {
+	return targetSampleRate > 0 && voicecodec.CaptureSampleRate == targetSampleRate*2
 }
 
 func clampFilterSample(v float64) int16 {

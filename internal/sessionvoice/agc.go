@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sync"
 )
 
 const (
@@ -28,11 +29,16 @@ const (
 	agcGateSilentGain   = 0.08
 	agcGateGroupSamples = 80
 	agcGateLookahead    = 2
+	agcGateSpeechGroups = 3
 	agcLowPassCutoffHz  = 4000.0
 	agcHighPassCutoffHz = 120.0
 )
 
 type micAGC struct {
+	mu           sync.RWMutex
+	enabled      bool
+	gateEnabled  bool
+	gateScale    float64
 	gain         float64
 	voiceRMSAvg  float64
 	noiseRMSAvg  float64
@@ -43,6 +49,7 @@ type micAGC struct {
 	voiceHold    int
 	frameCount   int
 	gateGain     float64
+	gateActive   bool
 	lastLogGain  float64
 	lastLogGate  float64
 	lastLogVoice bool
@@ -52,6 +59,9 @@ type micAGC struct {
 func newMicAGC() *micAGC {
 	return &micAGC{
 		gain:        1,
+		enabled:     true,
+		gateEnabled: true,
+		gateScale:   1,
 		gateGain:    0,
 		noiseRMSAvg: agcVoiceRMSFloor * 0.5,
 		lastLogGain: 1,
@@ -60,10 +70,56 @@ func newMicAGC() *micAGC {
 	}
 }
 
+func (a *micAGC) SetEnabled(enabled bool) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	a.enabled = enabled
+	a.mu.Unlock()
+}
+
+func (a *micAGC) SetGate(enabled bool, threshold float64) {
+	if a == nil {
+		return
+	}
+	if threshold <= 0 {
+		threshold = 1
+	}
+	a.mu.Lock()
+	a.gateEnabled = enabled
+	a.gateScale = threshold
+	a.mu.Unlock()
+}
+
+func (a *micAGC) GateActive() bool {
+	if a == nil {
+		return false
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.gateActive
+}
+
+func (a *micAGC) config() (agcEnabled bool, gateEnabled bool, scale float64) {
+	if a == nil {
+		return true, true, 1
+	}
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	agcEnabled = a.enabled
+	gateEnabled = a.gateEnabled
+	if a.gateScale <= 0 {
+		return agcEnabled, gateEnabled, 1
+	}
+	return agcEnabled, gateEnabled, a.gateScale
+}
+
 func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 	if a == nil || len(pcm) == 0 || sampleRate <= 0 {
 		return false
 	}
+	agcEnabled, gateEnabled, gateScale := a.config()
 	lpAlpha := onePoleAlpha(agcLowPassCutoffHz, sampleRate)
 	lowAlpha := onePoleAlpha(agcHighPassCutoffHz, sampleRate)
 	var sumSq float64
@@ -110,36 +166,52 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 		a.voiceHold--
 	}
 	voiced := rawVoiced || a.voiceHold > 0
-	if voiced {
-		if a.voiceRMSAvg <= 0 {
-			a.voiceRMSAvg = rms
+	if agcEnabled {
+		if voiced {
+			if a.voiceRMSAvg <= 0 {
+				a.voiceRMSAvg = rms
+			} else {
+				a.voiceRMSAvg += (rms - a.voiceRMSAvg) * agcAverageSmoothing
+			}
+			target := clampFloat(agcTargetRMS/max(a.voiceRMSAvg, 1), agcMinGain, agcMaxGain)
+			if peak > 0 && peak*a.gain > agcPeakLimit {
+				a.gain = clampFloat(agcPeakLimit/peak, agcMinGain, agcMaxGain)
+			} else if target > a.gain+agcGainDeadband {
+				a.gain += (target - a.gain) * agcGainAttack
+			} else if target < a.gain-agcGainDeadband {
+				a.gain += (target - a.gain) * agcGainRelease
+			}
 		} else {
-			a.voiceRMSAvg += (rms - a.voiceRMSAvg) * agcAverageSmoothing
+			if a.noiseRMSAvg <= 0 {
+				a.noiseRMSAvg = rms
+			} else {
+				a.noiseRMSAvg += (rms - a.noiseRMSAvg) * agcNoiseSmoothing
+			}
+			a.gain += (1 - a.gain) * agcIdleReturn
 		}
-		target := clampFloat(agcTargetRMS/max(a.voiceRMSAvg, 1), agcMinGain, agcMaxGain)
-		if peak > 0 && peak*a.gain > agcPeakLimit {
-			a.gain = clampFloat(agcPeakLimit/peak, agcMinGain, agcMaxGain)
-		} else if target > a.gain+agcGainDeadband {
-			a.gain += (target - a.gain) * agcGainAttack
-		} else if target < a.gain-agcGainDeadband {
-			a.gain += (target - a.gain) * agcGainRelease
-		}
+		a.gain = clampFloat(a.gain, agcMinGain, agcMaxGain)
 	} else {
-		if a.noiseRMSAvg <= 0 {
-			a.noiseRMSAvg = rms
-		} else {
-			a.noiseRMSAvg += (rms - a.noiseRMSAvg) * agcNoiseSmoothing
+		a.gain = 1
+		if !voiced {
+			if a.noiseRMSAvg <= 0 {
+				a.noiseRMSAvg = rms
+			} else {
+				a.noiseRMSAvg += (rms - a.noiseRMSAvg) * agcNoiseSmoothing
+			}
 		}
-		a.gain += (1 - a.gain) * agcIdleReturn
 	}
-	a.gain = clampFloat(a.gain, agcMinGain, agcMaxGain)
 	noiseAvg := max(a.noiseRMSAvg, 1)
-	targetGate := gateGainForFrame(rawVoiced, a.voiceHold, rms, noiseAvg)
+	targetGate := gateGainForFrame(rawVoiced, a.voiceHold, rms, noiseAvg, gateEnabled, gateScale)
 	groupGates := make([]float64, len(groupRMS))
-	if targetGate == 0 && rms == 0 {
+	if !gateEnabled {
+		a.gateGain = 1
+		for i := range groupGates {
+			groupGates[i] = 1
+		}
+	} else if targetGate == 0 && rms == 0 {
 		a.gateGain = 0
 	} else {
-		desiredGates := desiredGateByGroup(a.gateGain, targetGate, rawVoiced, groupRMS, noiseAvg)
+		desiredGates := desiredGateByGroup(a.gateGain, targetGate, rawVoiced, groupRMS, noiseAvg, gateEnabled, gateScale)
 		for i := range desiredGates {
 			if desiredGates[i] > a.gateGain {
 				a.gateGain += (desiredGates[i] - a.gateGain) * agcGateAttack
@@ -151,6 +223,9 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 		}
 	}
 	gateGain := a.gateGain
+	a.mu.Lock()
+	a.gateActive = gateEnabled && gateGain < 0.999
+	a.mu.Unlock()
 	a.frameCount++
 	if a.shouldLog(voiced, gateGain) {
 		fmt.Printf("mic-agc frame=%d voiced=%t hold=%d rms=%.1f voice_avg=%.1f noise=%.1f peak=%.1f gain=%.3f gate=%.3f\n",
@@ -161,6 +236,9 @@ func (a *micAGC) ProcessFrame(pcm []int16, sampleRate int) bool {
 	}
 	if !rawVoiced && a.voiceHold <= 0 && gateGain <= agcGateSilentGain {
 		a.gateGain = 0
+		a.mu.Lock()
+		a.gateActive = gateEnabled
+		a.mu.Unlock()
 		clear(pcm)
 		return true
 	}
@@ -240,10 +318,13 @@ func (a *micAGC) shouldLog(voiced bool, gateGain float64) bool {
 	return a.frameCount%50 == 0
 }
 
-func softGateGain(rms, noiseAvg float64) float64 {
+func softGateGain(rms, noiseAvg, scale float64) float64 {
+	if scale <= 0 {
+		scale = 1
+	}
 	noiseAvg = max(noiseAvg, 1)
-	floor := noiseAvg * agcGateFloorRatio
-	open := noiseAvg * agcGateOpenRatio
+	floor := noiseAvg * agcGateFloorRatio * scale
+	open := noiseAvg * agcGateOpenRatio * scale
 	if open <= floor {
 		return 1
 	}
@@ -258,11 +339,14 @@ func softGateGain(rms, noiseAvg float64) float64 {
 	return agcGateMinGain + (1-agcGateMinGain)*x
 }
 
-func gateGainForFrame(rawVoiced bool, voiceHold int, rms, noiseAvg float64) float64 {
+func gateGainForFrame(rawVoiced bool, voiceHold int, rms, noiseAvg float64, enabled bool, scale float64) float64 {
+	if !enabled {
+		return 1
+	}
 	if rawVoiced {
 		return 1
 	}
-	knee := softGateGain(rms, noiseAvg)
+	knee := softGateGain(rms, noiseAvg, scale)
 	if voiceHold <= 0 || agcVoiceHoldFrames <= 0 {
 		return knee
 	}
@@ -275,7 +359,7 @@ func gateGainForFrame(rawVoiced bool, voiceHold int, rms, noiseAvg float64) floa
 	return knee + (1-knee)*blend
 }
 
-func desiredGateByGroup(startGate, targetGate float64, rawVoiced bool, groupRMS []float64, noiseAvg float64) []float64 {
+func desiredGateByGroup(startGate, targetGate float64, rawVoiced bool, groupRMS []float64, noiseAvg float64, enabled bool, scale float64) []float64 {
 	if len(groupRMS) == 0 {
 		return nil
 	}
@@ -286,13 +370,19 @@ func desiredGateByGroup(startGate, targetGate float64, rawVoiced bool, groupRMS 
 	if !rawVoiced || targetGate <= startGate {
 		return out
 	}
-	onsetThreshold := max(agcVoiceRMSFloor, noiseAvg*agcVoiceNoiseRatio)
-	onset := 0
-	for i, rms := range groupRMS {
-		if rms >= onsetThreshold {
-			onset = i
-			break
+	if !enabled {
+		return out
+	}
+	if scale <= 0 {
+		scale = 1
+	}
+	onsetThreshold := max(agcVoiceRMSFloor*scale, noiseAvg*agcVoiceNoiseRatio*scale)
+	onset, ok := sustainedSpeechOnset(groupRMS, onsetThreshold, agcGateSpeechGroups)
+	if !ok {
+		for i := range out {
+			out[i] = startGate
 		}
+		return out
 	}
 	rampStart := onset - agcGateLookahead
 	if rampStart < 0 {
@@ -310,4 +400,35 @@ func desiredGateByGroup(startGate, targetGate float64, rawVoiced bool, groupRMS 
 		out[i] = startGate + (targetGate-startGate)*x
 	}
 	return out
+}
+
+func sustainedSpeechOnset(groupRMS []float64, threshold float64, minGroups int) (int, bool) {
+	if len(groupRMS) == 0 {
+		return 0, false
+	}
+	if minGroups <= 1 {
+		for i, rms := range groupRMS {
+			if rms >= threshold {
+				return i, true
+			}
+		}
+		return 0, false
+	}
+	runStart := -1
+	runLen := 0
+	for i, rms := range groupRMS {
+		if rms >= threshold {
+			if runLen == 0 {
+				runStart = i
+			}
+			runLen++
+			if runLen >= minGroups {
+				return runStart, true
+			}
+			continue
+		}
+		runStart = -1
+		runLen = 0
+	}
+	return 0, false
 }

@@ -191,23 +191,35 @@ Current audio stream behavior:
 - voiced chunks are sent with compact headers
 - fully silent voice frames are not sent at all by the voice sender
 
-### AudioConfig Record
+### AudioFormat Record
 
 Binary layout:
 
 - `record_type[1] = 0x80`
 - `codec[1]`
+- `sample_rate_choice[1]`
 - `sample_rate[4]`
 - `channels[2]`
-- `frame_samples[2]`
+- `packet_duration_ms[2]`
+- `packet_samples[2]`
 - `bitrate[4]`
 
-Total record size: `14` bytes.
+Total record size: `17` bytes.
 
 Current codec ids:
 
 - `1`: `ima4_to_1`
 - `2`: `pcm16_mono`
+
+Current sample rate choice ids:
+
+- `0`: `custom`
+- `1`: `16000`
+- `2`: `24000`
+- `3`: `32000`
+- `4`: `48000`
+
+The broadcaster may send a new `AudioFormat` record after the stream has already started. When that happens, subsequent audio chunks use the new format immediately.
 
 ### AudioChunk Record
 
@@ -233,15 +245,15 @@ Flag rules:
 
 ### Audio Payload Length Rules
 
-Payload length is implied by the negotiated `AudioConfig` and the chunk flags.
+Payload length is implied by the current `AudioFormat` and the chunk flags.
 
 For `pcm16_mono`:
 
-- payload bytes = `frame_samples * channels * 2`
+- payload bytes = `packet_samples * channels * 2`
 
 For `ima4_to_1`:
 
-- delta payload bytes = `frame_samples * channels / 2`
+- delta payload bytes = `packet_samples * channels / 2`
 - seeded payload bytes = delta bytes + `8`
 
 If the payload length does not match the implied length, the record is invalid.
@@ -251,12 +263,12 @@ If the payload length does not match the implied length, the record is invalid.
 Current voice path values:
 
 - capture rate: `48000`
-- encoded rate: `24000`
+- encoded rate: `48000`
 - channels: `1`
 - frame duration: `30 ms`
-- frame samples after resample: `720`
-- voiced delta payload: `360` bytes
-- voiced seeded payload: `368` bytes
+- packet samples after resample: `1440`
+- voiced delta payload: `720` bytes
+- voiced seeded payload: `728` bytes
 - compact audio chunk header: `1` byte
 
 Current silence policy:

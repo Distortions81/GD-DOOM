@@ -51,6 +51,7 @@ const (
 	frontendModeReadThis                 = sessionflow.FrontendModeReadThis
 	frontendModeOptions                  = sessionflow.FrontendModeOptions
 	frontendModeSound                    = sessionflow.FrontendModeSound
+	frontendModeVoice                    = sessionflow.FrontendModeVoice
 	frontendModeEpisode                  = sessionflow.FrontendModeEpisode
 	frontendModeSkill                    = sessionflow.FrontendModeSkill
 	frontendModeMusicPlayer frontendMode = 100

@@ -17,6 +17,7 @@ const (
 	FrontendModeReadThis
 	FrontendModeOptions
 	FrontendModeSound
+	FrontendModeVoice
 	FrontendModeEpisode
 	FrontendModeSkill
 )
@@ -30,6 +31,7 @@ type Frontend struct {
 	ItemOn           int
 	OptionsOn        int
 	SoundOn          int
+	VoiceOn          int
 	EpisodeOn        int
 	SelectedEpisode  int
 	SkillOn          int
@@ -69,6 +71,7 @@ type FrontendConfig struct {
 	EpisodeChoices    []int
 	OptionRows        []int
 	MusicMenuCount    int
+	VoiceMenuCount    int
 	MainMenuCount     int
 	MainMenuRows      []int
 	SkillMenuCount    int
@@ -76,24 +79,29 @@ type FrontendConfig struct {
 }
 
 type FrontendResult struct {
-	State            Frontend
-	Sound            FrontendSound
-	AdvanceAttract   bool
-	ChangeMessages   bool
-	ChangePerf       bool
-	ChangeDetail     bool
-	ChangeMouse      int
-	ChangeMusic      int
-	ChangeSFX        int
-	ChangeSynth      int
-	ChangeSoundFont  int
-	OpenMusicPlayer  bool
-	StartGameSkill   int
-	RequestLoadGame  bool
-	RequestSaveGame  bool
-	RequestQuit      bool
-	StatusMessage    string
-	StatusMessageTic int
+	State                    Frontend
+	Sound                    FrontendSound
+	AdvanceAttract           bool
+	ChangeMessages           bool
+	ChangePerf               bool
+	ChangeDetail             bool
+	ChangeMouse              int
+	ChangeMusic              int
+	ChangeSFX                int
+	ChangeSynth              int
+	ChangeSoundFont          int
+	ChangeVoiceCodec         int
+	ChangeVoiceRate          int
+	ChangeVoiceAGC           bool
+	ChangeVoiceGate          bool
+	ChangeVoiceGateThreshold int
+	OpenMusicPlayer          bool
+	StartGameSkill           int
+	RequestLoadGame          bool
+	RequestSaveGame          bool
+	RequestQuit              bool
+	StatusMessage            string
+	StatusMessageTic         int
 }
 
 type AttractActionKind int
@@ -499,6 +507,74 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			result.Sound = FrontendSoundConfirm
 		}
 		return result
+	case FrontendModeVoice:
+		if input.Escape {
+			if state.Attract {
+				result.State.Mode = FrontendModeTitle
+				result.State.MenuActive = false
+				result.Sound = FrontendSoundBack
+				return result
+			}
+			result.State.Mode = FrontendModeOptions
+			if len(cfg.OptionRows) > 0 {
+				result.State.OptionsOn = cfg.OptionRows[len(cfg.OptionRows)-1]
+			}
+			result.Sound = FrontendSoundBack
+			return result
+		}
+		if input.Up || input.Down {
+			dir := -1
+			if input.Down {
+				dir = 1
+			}
+			n := max(cfg.VoiceMenuCount, 1)
+			result.State.VoiceOn = (state.VoiceOn + dir + n) % n
+			result.Sound = FrontendSoundMove
+		}
+		if input.Left {
+			switch state.VoiceOn {
+			case 0:
+				result.ChangeVoiceCodec = -1
+			case 1:
+				result.ChangeVoiceRate = -1
+			case 2:
+				result.ChangeVoiceAGC = true
+			case 3:
+				result.ChangeVoiceGate = true
+			case 4:
+				result.ChangeVoiceGateThreshold = -1
+			}
+		}
+		if input.Right {
+			switch state.VoiceOn {
+			case 0:
+				result.ChangeVoiceCodec = 1
+			case 1:
+				result.ChangeVoiceRate = 1
+			case 2:
+				result.ChangeVoiceAGC = true
+			case 3:
+				result.ChangeVoiceGate = true
+			case 4:
+				result.ChangeVoiceGateThreshold = 1
+			}
+		}
+		if input.Select {
+			switch state.VoiceOn {
+			case 0:
+				result.ChangeVoiceCodec = 1
+			case 1:
+				result.ChangeVoiceRate = 1
+			case 2:
+				result.ChangeVoiceAGC = true
+			case 3:
+				result.ChangeVoiceGate = true
+			case 4:
+				result.ChangeVoiceGateThreshold = 1
+			}
+			result.Sound = FrontendSoundConfirm
+		}
+		return result
 	case FrontendModeOptions:
 		if input.Escape {
 			if state.Attract {
@@ -571,6 +647,10 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			case 6:
 				result.State.Mode = FrontendModeSound
 				result.State.SoundOn = 0
+				result.Sound = FrontendSoundConfirm
+			case 7:
+				result.State.Mode = FrontendModeVoice
+				result.State.VoiceOn = 0
 				result.Sound = FrontendSoundConfirm
 			}
 		}

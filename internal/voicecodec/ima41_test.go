@@ -6,8 +6,8 @@ import (
 )
 
 func TestIMA41RoundTrip(t *testing.T) {
-	enc := NewIMA41Encoder()
-	dec := NewIMA41Decoder()
+	enc := NewIMA41Encoder(PacketSamples)
+	dec := NewIMA41Decoder(PacketSamples)
 
 	pcm := make([]int16, PacketSamples*2)
 	for i := range pcm {
@@ -63,7 +63,7 @@ func TestIMA41RoundTrip(t *testing.T) {
 }
 
 func TestIMA41ResetProducesSeededPacket(t *testing.T) {
-	enc := NewIMA41Encoder()
+	enc := NewIMA41Encoder(PacketSamples)
 	pcm := make([]int16, PacketSamples)
 
 	packet, err := enc.Encode(pcm)
@@ -93,8 +93,8 @@ func TestIMA41ResetProducesSeededPacket(t *testing.T) {
 }
 
 func TestIMA41SeededPacketIncludesExpandedPredictorState(t *testing.T) {
-	enc := NewIMA41Encoder()
-	dec := NewIMA41Decoder()
+	enc := NewIMA41Encoder(PacketSamples)
+	dec := NewIMA41Decoder(PacketSamples)
 	pcm := make([]int16, PacketSamples*3)
 	for i := range pcm {
 		v := math.Sin(2 * math.Pi * 220 * float64(i) / SampleRate)
@@ -128,5 +128,32 @@ func TestIMA41SeededPacketIncludesExpandedPredictorState(t *testing.T) {
 	}
 	if _, err := dec.Decode(seeded); err != nil {
 		t.Fatalf("Decode() seeded error = %v", err)
+	}
+}
+
+func TestIMA41RoundTripWithNonDefaultPacketSamples(t *testing.T) {
+	const packetSamples = 480
+	enc := NewIMA41Encoder(packetSamples)
+	dec := NewIMA41Decoder(packetSamples)
+
+	pcm := make([]int16, packetSamples)
+	for i := range pcm {
+		v := math.Sin(2 * math.Pi * 330 * float64(i) / 16000.0)
+		pcm[i] = int16(v * 9000)
+	}
+
+	packet, err := enc.Encode(pcm)
+	if err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if !IsIMA41SeededPacketFor(packet, packetSamples) {
+		t.Fatalf("packet len=%d should be seeded for %d samples", len(packet), packetSamples)
+	}
+	out, err := dec.Decode(packet)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(out) != packetSamples {
+		t.Fatalf("decoded samples=%d want=%d", len(out), packetSamples)
 	}
 }

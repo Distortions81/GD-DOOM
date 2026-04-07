@@ -20,32 +20,76 @@ var imaStepTable = [89]int{
 }
 
 type IMA41Encoder struct {
-	predictor  int16
-	prevDelta  int16
-	prevDelta2 int16
-	stepIndex  int
-	needSeed   bool
-	frames     int
+	predictor     int16
+	prevDelta     int16
+	prevDelta2    int16
+	stepIndex     int
+	needSeed      bool
+	frames        int
+	packetSamples int
 }
 
 type IMA41Decoder struct {
-	predictor  int16
-	prevDelta  int16
-	prevDelta2 int16
-	stepIndex  int
+	predictor     int16
+	prevDelta     int16
+	prevDelta2    int16
+	stepIndex     int
+	packetSamples int
 }
 
 const ima41SeedHeaderBytes = 8
 const ima41ResyncIntervalFrames = 50
 
-func NewIMA41Encoder() *IMA41Encoder {
-	enc := &IMA41Encoder{}
+func NewIMA41Encoder(packetSamples int) *IMA41Encoder {
+	if packetSamples <= 0 {
+		packetSamples = PacketSamples
+	}
+	enc := &IMA41Encoder{packetSamples: packetSamples}
 	enc.Reset()
 	return enc
 }
 
-func NewIMA41Decoder() *IMA41Decoder {
-	return &IMA41Decoder{}
+func NewIMA41Decoder(packetSamples int) *IMA41Decoder {
+	if packetSamples <= 0 {
+		packetSamples = PacketSamples
+	}
+	return &IMA41Decoder{packetSamples: packetSamples}
+}
+
+func (e *IMA41Encoder) PacketSamples() int {
+	if e == nil || e.packetSamples <= 0 {
+		return PacketSamples
+	}
+	return e.packetSamples
+}
+
+func (d *IMA41Decoder) PacketSamples() int {
+	if d == nil || d.packetSamples <= 0 {
+		return PacketSamples
+	}
+	return d.packetSamples
+}
+
+func (e *IMA41Encoder) SetPacketSamples(packetSamples int) {
+	if e == nil {
+		return
+	}
+	if packetSamples <= 0 {
+		packetSamples = PacketSamples
+	}
+	e.packetSamples = packetSamples
+	e.Reset()
+}
+
+func (d *IMA41Decoder) SetPacketSamples(packetSamples int) {
+	if d == nil {
+		return
+	}
+	if packetSamples <= 0 {
+		packetSamples = PacketSamples
+	}
+	d.packetSamples = packetSamples
+	d.Reset()
 }
 
 func (e *IMA41Encoder) Reset() {
@@ -71,10 +115,11 @@ func (d *IMA41Decoder) Reset() {
 }
 
 func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
-	if len(pcm) < PacketSamples*Channels {
-		return nil, fmt.Errorf("pcm samples=%d want at least %d", len(pcm), PacketSamples*Channels)
+	packetSamples := e.PacketSamples()
+	if len(pcm) < packetSamples*Channels {
+		return nil, fmt.Errorf("pcm samples=%d want at least %d", len(pcm), packetSamples*Channels)
 	}
-	packet := pcm[:PacketSamples*Channels]
+	packet := pcm[:packetSamples*Channels]
 	if len(packet) == 0 {
 		return nil, nil
 	}
@@ -105,10 +150,12 @@ func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
 }
 
 func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
+	packetSamples := d.PacketSamples()
+	packetBytes := packetSamples * Channels / 2
 	payload := packet
 	switch len(packet) {
-	case IMA41PacketBytes:
-	case ima41SeedHeaderBytes + IMA41PacketBytes:
+	case packetBytes:
+	case ima41SeedHeaderBytes + packetBytes:
 		d.predictor = getI16LE(packet[0:2])
 		d.prevDelta = getI16LE(packet[2:4])
 		d.prevDelta2 = getI16LE(packet[4:6])
@@ -118,9 +165,9 @@ func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
 		}
 		payload = packet[ima41SeedHeaderBytes:]
 	default:
-		return nil, fmt.Errorf("ima 4:1 packet len=%d want=%d or %d", len(packet), IMA41PacketBytes, ima41SeedHeaderBytes+IMA41PacketBytes)
+		return nil, fmt.Errorf("ima 4:1 packet len=%d want=%d or %d", len(packet), packetBytes, ima41SeedHeaderBytes+packetBytes)
 	}
-	out := make([]int16, PacketSamples*Channels)
+	out := make([]int16, packetSamples*Channels)
 	write := 0
 	for _, b := range payload {
 		if write < len(out) {
@@ -140,7 +187,14 @@ func (d *IMA41Decoder) Decode(packet []byte) ([]int16, error) {
 }
 
 func IsIMA41SeededPacket(packet []byte) bool {
-	return len(packet) == ima41SeedHeaderBytes+IMA41PacketBytes
+	return IsIMA41SeededPacketFor(packet, PacketSamples)
+}
+
+func IsIMA41SeededPacketFor(packet []byte, packetSamples int) bool {
+	if packetSamples <= 0 {
+		packetSamples = PacketSamples
+	}
+	return len(packet) == ima41SeedHeaderBytes+(packetSamples*Channels/2)
 }
 
 func isIMA41SeedHeader(header []byte) bool {

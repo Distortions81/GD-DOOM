@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"gddoom/internal/audiofx"
@@ -25,15 +27,130 @@ const (
 	audioPlayerBuffer         = 40 * time.Millisecond
 	audioFadeSamples          = 512
 	audioCatchupFadeSamples   = 1024
-	audioDownsampleLowPassHz  = 9000.0
 )
 
-type VoiceStreamer struct {
-	cancel context.CancelFunc
-	done   chan error
+type BroadcasterOptions struct {
+	DownsampleLowPassHz float64
+	Codec               string
+	SampleRate          int
+	AGCEnabled          bool
+	GateEnabled         bool
+	GateThreshold       float64
 }
 
-func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBroadcaster, device string, worldTic func() uint32) (*VoiceStreamer, error) {
+type VoiceStreamer struct {
+	cancel  context.CancelFunc
+	done    chan error
+	updates chan netplay.AudioFormat
+	agc     *micAGC
+	level   atomic.Uint64
+	gated   atomic.Bool
+}
+
+func defaultAudioFormat() netplay.AudioFormat {
+	return netplay.AudioFormat{
+		Codec:                netplayAudioCodecIMA4To1(),
+		SampleRateChoice:     byte(voicecodec.DefaultSampleRateChoice()),
+		SampleRate:           voicecodec.SampleRate,
+		Channels:             voicecodec.Channels,
+		PacketDurationMillis: voicecodec.PacketDurationMillis,
+		PacketSamples:        voicecodec.PacketSamples,
+		Bitrate:              voicecodec.SampleRate * voicecodec.Channels * 4,
+	}
+}
+
+func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, error) {
+	format := defaultAudioFormat()
+	switch codec := strings.TrimSpace(strings.ToLower(opts.Codec)); codec {
+	case "", "ima", "ima4", "ima4_to_1", "adpcm":
+		format.Codec = netplayAudioCodecIMA4To1()
+	case "pcm", "pcm16", "pcm16_mono":
+		format.Codec = netplayAudioCodecPCM16Mono()
+	default:
+		return netplay.AudioFormat{}, fmt.Errorf("unsupported mic codec %q", opts.Codec)
+	}
+	if opts.SampleRate > 0 {
+		format.SampleRate = opts.SampleRate
+		format.SampleRateChoice = byte(voicecodec.SampleRateChoiceFromRate(opts.SampleRate))
+	}
+	packetSamples, err := voicecodec.PacketSamplesFor(format.SampleRate, format.PacketDurationMillis)
+	if err != nil {
+		return netplay.AudioFormat{}, err
+	}
+	format.PacketSamples = packetSamples
+	switch format.Codec {
+	case netplayAudioCodecIMA4To1():
+		format.Bitrate = format.SampleRate * format.Channels * 4
+	case netplayAudioCodecPCM16Mono():
+		format.Bitrate = format.SampleRate * format.Channels * 16
+	}
+	return format, nil
+}
+
+func ResolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, error) {
+	return resolveBroadcasterFormat(opts)
+}
+
+func (s *VoiceStreamer) UpdateFormat(format netplay.AudioFormat) error {
+	if s == nil {
+		return nil
+	}
+	if s.updates == nil {
+		return fmt.Errorf("voice streamer is not running")
+	}
+	select {
+	case s.updates <- format:
+		return nil
+	default:
+		return fmt.Errorf("voice format update is already pending")
+	}
+}
+
+func (s *VoiceStreamer) SetSampleRateChoice(choice voicecodec.SampleRateChoice) error {
+	format := defaultAudioFormat()
+	format.SampleRateChoice = byte(choice)
+	format.SampleRate = choice.SampleRate()
+	if format.SampleRate <= 0 {
+		return fmt.Errorf("sample rate choice %d is not supported", choice)
+	}
+	packetSamples, err := voicecodec.PacketSamplesFor(format.SampleRate, format.PacketDurationMillis)
+	if err != nil {
+		return err
+	}
+	format.PacketSamples = packetSamples
+	format.Bitrate = format.SampleRate * format.Channels * 4
+	return s.UpdateFormat(format)
+}
+
+func (s *VoiceStreamer) UpdateGate(enabled bool, threshold float64) {
+	if s == nil || s.agc == nil {
+		return
+	}
+	s.agc.SetGate(enabled, threshold)
+}
+
+func (s *VoiceStreamer) UpdateAGC(enabled bool) {
+	if s == nil || s.agc == nil {
+		return
+	}
+	s.agc.SetEnabled(enabled)
+}
+
+func (s *VoiceStreamer) InputLevel() float64 {
+	if s == nil {
+		return 0
+	}
+	return math.Float64frombits(s.level.Load())
+}
+
+func (s *VoiceStreamer) InputGateActive() bool {
+	if s == nil {
+		return false
+	}
+	return s.gated.Load()
+}
+
+func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBroadcaster, device string, opts BroadcasterOptions, worldTic func() uint32) (*VoiceStreamer, error) {
 	if broadcaster == nil {
 		return nil, fmt.Errorf("audio broadcaster is required")
 	}
@@ -50,35 +167,56 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		cancel()
 		return nil, err
 	}
-	encoder := voicecodec.NewIMA41Encoder()
-	if err := broadcaster.BroadcastAudioConfig(netplay.AudioConfig{
-		Codec:        netplayAudioCodecIMA4To1(),
-		SampleRate:   voicecodec.SampleRate,
-		Channels:     voicecodec.Channels,
-		FrameSamples: voicecodec.PacketSamples,
-		Bitrate:      voicecodec.SampleRate * voicecodec.Channels * 4,
-	}); err != nil {
+	format, err := resolveBroadcasterFormat(opts)
+	if err != nil {
+		cancel()
+		_ = reader.Close()
+		return nil, err
+	}
+	if err := broadcaster.BroadcastAudioFormat(format); err != nil {
 		cancel()
 		_ = reader.Close()
 		return nil, err
 	}
 	vs := &VoiceStreamer{
-		cancel: cancel,
-		done:   make(chan error, 1),
+		cancel:  cancel,
+		done:    make(chan error, 1),
+		updates: make(chan netplay.AudioFormat, 1),
 	}
 	go func() {
 		defer close(vs.done)
 		defer reader.Close()
+		currentFormat := format
+		encoder := voicecodec.NewIMA41Encoder(currentFormat.PacketSamples)
 		frameBytes := voicecodec.CaptureFrameSamples * voicecodec.Channels * 2
 		raw := make([]byte, frameBytes)
 		framePCM := make([]int16, voicecodec.CaptureFrameSamples*voicecodec.Channels)
 		hpf := newHighPassFilter(50, voicecodec.CaptureSampleRate)
-		lpf1 := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
-		lpf2 := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
-		lpf3 := newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate)
+		var lowPassFilters []*lowPassFilter
+		if opts.DownsampleLowPassHz > 0 {
+			lowPassFilters = []*lowPassFilter{
+				newLowPassFilter(opts.DownsampleLowPassHz, voicecodec.CaptureSampleRate),
+				newLowPassFilter(opts.DownsampleLowPassHz, voicecodec.CaptureSampleRate),
+				newLowPassFilter(opts.DownsampleLowPassHz, voicecodec.CaptureSampleRate),
+			}
+		}
 		agc := newMicAGC()
+		agc.SetEnabled(opts.AGCEnabled)
+		agc.SetGate(opts.GateEnabled, opts.GateThreshold)
+		vs.agc = agc
 		var startSample uint64
 		for {
+			select {
+			case next := <-vs.updates:
+				if err := broadcaster.BroadcastAudioFormat(next); err != nil {
+					vs.done <- err
+					return
+				}
+				currentFormat = next
+				encoder.SetPacketSamples(currentFormat.PacketSamples)
+				startSample = 0
+			default:
+			}
 			if _, err := io.ReadFull(reader, raw); err != nil {
 				if ctx.Err() != nil || err == io.EOF || err == io.ErrClosedPipe {
 					vs.done <- nil
@@ -92,11 +230,22 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			}
 			hpf.ProcessInt16(framePCM)
 			allSilent := agc.ProcessFrame(framePCM, voicecodec.CaptureSampleRate)
+			vs.level.Store(math.Float64bits(micLevel(framePCM)))
+			vs.gated.Store(agc.GateActive())
 			if allSilent {
 				encoder.Reset()
 			} else {
-				down := downsampleCaptureToVoice(framePCM, lpf1, lpf2, lpf3)
-				payload, err := encoder.Encode(down)
+				down := downsampleCaptureToVoice(framePCM, currentFormat.SampleRate, lowPassFilters...)
+				var payload []byte
+				switch currentFormat.Codec {
+				case netplayAudioCodecIMA4To1():
+					payload, err = encoder.Encode(down)
+				case netplayAudioCodecPCM16Mono():
+					payload = monoPCMBytes(down)
+				default:
+					vs.done <- fmt.Errorf("unsupported audio codec %d", currentFormat.Codec)
+					return
+				}
 				if err != nil {
 					vs.done <- err
 					return
@@ -114,7 +263,7 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 					return
 				}
 			}
-			startSample += uint64(voicecodec.PacketSamples)
+			startSample += uint64(currentFormat.PacketSamples)
 		}
 	}()
 	return vs, nil
@@ -257,8 +406,8 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 	defer close(p.done)
 	defer p.source.Close()
 
-	var current netplay.AudioConfig
-	decoder := voicecodec.NewIMA41Decoder()
+	var current netplay.AudioFormat
+	decoder := voicecodec.NewIMA41Decoder(voicecodec.PacketSamples)
 	var lastStartSample uint64
 	haveStartSample := false
 	for {
@@ -268,7 +417,7 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			return
 		default:
 		}
-		if cfg, ok, err := p.viewer.PollAudioConfig(); err != nil {
+		if format, ok, err := p.viewer.PollAudioFormat(); err != nil {
 			if ctx.Err() != nil {
 				p.done <- nil
 				return
@@ -276,11 +425,11 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			p.done <- err
 			return
 		} else if ok {
-			if cfg != current {
-				decoder.Reset()
+			if format != current {
+				decoder.SetPacketSamples(format.PacketSamples)
 				haveStartSample = false
 			}
-			current = cfg
+			current = format
 		}
 		chunk, ok, err := p.viewer.PollAudioChunk()
 		if err != nil {
@@ -302,14 +451,14 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			p.done <- fmt.Errorf("unsupported audio codec %d", current.Codec)
 			return
 		}
-		if haveStartSample && chunk.StartSample != lastStartSample+uint64(current.FrameSamples) {
+		if haveStartSample && chunk.StartSample != lastStartSample+uint64(current.PacketSamples) {
 			decoder.Reset()
 			p.source.Reset()
 		}
 		var pcm []int16
 		if chunk.Silence {
 			decoder.Reset()
-			pcm = make([]int16, current.FrameSamples*current.Channels)
+			pcm = make([]int16, current.PacketSamples*current.Channels)
 		} else {
 			switch current.Codec {
 			case netplayAudioCodecPCM16Mono():
@@ -322,7 +471,7 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 					pcm[i] = int16(binary.LittleEndian.Uint16(chunk.Payload[i*2 : i*2+2]))
 				}
 			case netplayAudioCodecIMA4To1():
-				if !haveStartSample && !voicecodec.IsIMA41SeededPacket(chunk.Payload) {
+				if !haveStartSample && !voicecodec.IsIMA41SeededPacketFor(chunk.Payload, current.PacketSamples) {
 					// Late-join playback can begin mid-stream on an unseeded ADPCM packet.
 					// Skip that first packet and wait for the next seeded packet to avoid
 					// predictor startup warble.
@@ -515,6 +664,35 @@ func stereoBytesFromMonoPCM(src []int16) []byte {
 		binary.LittleEndian.PutUint16(out[base+2:base+4], uint16(sample))
 	}
 	return out
+}
+
+func monoPCMBytes(src []int16) []byte {
+	out := make([]byte, len(src)*2)
+	for i, sample := range src {
+		base := i * 2
+		binary.LittleEndian.PutUint16(out[base:base+2], uint16(sample))
+	}
+	return out
+}
+
+func micLevel(src []int16) float64 {
+	if len(src) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, sample := range src {
+		v := float64(sample)
+		sum += v * v
+	}
+	rms := math.Sqrt(sum / float64(len(src)))
+	level := rms / 32767.0
+	if level < 0 {
+		return 0
+	}
+	if level > 1 {
+		return 1
+	}
+	return level
 }
 
 func resampleMonoLinear(src []int16, fromRate, toRate int) []int16 {

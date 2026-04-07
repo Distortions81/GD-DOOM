@@ -68,7 +68,7 @@ func TestNewGameStartMapUsesEpisodeOneForSingleEpisodeCustomLoader(t *testing.T)
 
 func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	cfg := FrontendConfig{
-		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6},
+		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6, 7},
 		MusicMenuCount: 4,
 	}
 	got := StepFrontend(
@@ -81,6 +81,24 @@ func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	}
 	if got.State.SoundOn != 0 {
 		t.Fatalf("soundOn=%d want 0", got.State.SoundOn)
+	}
+}
+
+func TestStepFrontendOptionsSelectVoiceOpensVoiceSubmenu(t *testing.T) {
+	cfg := FrontendConfig{
+		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6, 7},
+		VoiceMenuCount: 2,
+	}
+	got := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 7},
+		FrontendInput{Select: true},
+		cfg,
+	)
+	if got.State.Mode != FrontendModeVoice {
+		t.Fatalf("mode=%v want voice submenu", got.State.Mode)
+	}
+	if got.State.VoiceOn != 0 {
+		t.Fatalf("voiceOn=%d want 0", got.State.VoiceOn)
 	}
 }
 
@@ -98,7 +116,7 @@ func TestStepFrontendMusicSubmenuSelectPlayerRequestsOpen(t *testing.T) {
 
 func TestStepFrontendOptionsEscapeClosesAttractMenu(t *testing.T) {
 	cfg := FrontendConfig{
-		OptionRows: []int{0, 1, 2, 3, 4, 5, 6},
+		OptionRows: []int{0, 1, 2, 3, 4, 5, 6, 7},
 	}
 	got := StepFrontend(
 		Frontend{Active: true, Attract: true, Mode: FrontendModeOptions, MenuActive: true, OptionsOn: 2},

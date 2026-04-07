@@ -182,8 +182,8 @@ func TestMicAGCMarksFullyGatedFrameAsSilence(t *testing.T) {
 func TestGateGainForFrameStartsReducingDuringVoiceHold(t *testing.T) {
 	noiseAvg := 100.0
 	rms := 80.0
-	knee := softGateGain(rms, noiseAvg)
-	got := gateGainForFrame(false, agcVoiceHoldFrames/2, rms, noiseAvg)
+	knee := softGateGain(rms, noiseAvg, 1)
+	got := gateGainForFrame(false, agcVoiceHoldFrames/2, rms, noiseAvg, true, 1)
 	if got >= 1 {
 		t.Fatalf("gateGainForFrame()=%0.3f want < 1", got)
 	}
@@ -197,7 +197,7 @@ func TestMicAGCGateReleaseIsSmoothedAcrossFrames(t *testing.T) {
 	agc.gateGain = 1
 	rms := 80.0
 	noiseAvg := 100.0
-	target := gateGainForFrame(false, 0, rms, noiseAvg)
+	target := gateGainForFrame(false, 0, rms, noiseAvg, true, 1)
 	if target != 0 {
 		t.Fatalf("gate target=%0.3f want 0", target)
 	}
@@ -210,7 +210,7 @@ func TestMicAGCGateReleaseIsSmoothedAcrossFrames(t *testing.T) {
 func TestMicAGCGateAttackIsSmoothedAcrossFrames(t *testing.T) {
 	agc := newMicAGC()
 	agc.gateGain = 0
-	target := gateGainForFrame(true, 0, 300, 100)
+	target := gateGainForFrame(true, 0, 300, 100, true, 1)
 	if target != 1 {
 		t.Fatalf("gate target=%0.3f want 1", target)
 	}
@@ -220,11 +220,34 @@ func TestMicAGCGateAttackIsSmoothedAcrossFrames(t *testing.T) {
 	}
 }
 
+func TestGateGainForFrameDisabledGateStaysOpen(t *testing.T) {
+	if got := gateGainForFrame(false, 0, 10, 100, false, 1); got != 1 {
+		t.Fatalf("gateGainForFrame()=%0.3f want 1 when disabled", got)
+	}
+}
+
+func TestMicAGCDisabledLeavesFrameUnchanged(t *testing.T) {
+	agc := newMicAGC()
+	agc.SetEnabled(false)
+	agc.SetGate(false, 1)
+	frame := sineFrame(220, 1200)
+	before := append([]int16(nil), frame...)
+	silence := agc.ProcessFrame(frame, voicecodec.CaptureSampleRate)
+	if silence {
+		t.Fatal("ProcessFrame() silence=true want false when agc disabled")
+	}
+	for i := range frame {
+		if frame[i] != before[i] {
+			t.Fatalf("frame[%d]=%d want %d with agc disabled", i, frame[i], before[i])
+		}
+	}
+}
+
 func TestDesiredGateByGroupUsesLookaheadBeforeOnset(t *testing.T) {
 	startGate := 0.0
 	targetGate := 1.0
 	groupRMS := []float64{20, 30, 250, 260, 240}
-	got := desiredGateByGroup(startGate, targetGate, true, groupRMS, 100)
+	got := desiredGateByGroup(startGate, targetGate, true, groupRMS, 100, true, 1)
 	if len(got) != len(groupRMS) {
 		t.Fatalf("len(got)=%d want %d", len(got), len(groupRMS))
 	}
@@ -239,5 +262,17 @@ func TestDesiredGateByGroupUsesLookaheadBeforeOnset(t *testing.T) {
 	}
 	if got[3] != targetGate || got[4] != targetGate {
 		t.Fatalf("tail gates=%v want fully open after onset", got[3:])
+	}
+}
+
+func TestDesiredGateByGroupRejectsBriefSpike(t *testing.T) {
+	startGate := 0.0
+	targetGate := 1.0
+	groupRMS := []float64{20, 30, 260, 30, 20}
+	got := desiredGateByGroup(startGate, targetGate, true, groupRMS, 100, true, 1)
+	for i, gate := range got {
+		if gate != startGate {
+			t.Fatalf("got[%d]=%0.3f want %0.3f for brief spike", i, gate, startGate)
+		}
 	}
 }

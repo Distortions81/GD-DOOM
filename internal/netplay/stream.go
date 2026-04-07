@@ -13,6 +13,7 @@ import (
 
 	"gddoom/internal/demo"
 	"gddoom/internal/runtimecfg"
+	"gddoom/internal/voicecodec"
 
 	"github.com/klauspost/compress/zstd"
 )
@@ -74,8 +75,8 @@ const (
 )
 
 const (
-	audioRecordTypeConfig   byte = 0x80
-	audioConfigPayloadLen        = 13
+	audioRecordTypeFormat   byte = 0x80
+	audioFormatPayloadLen        = 16
 	audioChunkHeaderSize         = 1
 	audioIMASeedHeaderBytes      = 8
 )
@@ -125,12 +126,14 @@ type Keyframe struct {
 	MandatoryApply bool
 }
 
-type AudioConfig struct {
-	Codec        byte
-	SampleRate   int
-	Channels     int
-	FrameSamples int
-	Bitrate      int
+type AudioFormat struct {
+	Codec                byte
+	SampleRateChoice     byte
+	SampleRate           int
+	Channels             int
+	PacketDurationMillis int
+	PacketSamples        int
+	Bitrate              int
 }
 
 type AudioChunk struct {
@@ -171,7 +174,7 @@ type AudioBroadcaster struct {
 
 	mu          sync.Mutex
 	closed      bool
-	audioConfig AudioConfig
+	audioFormat AudioFormat
 }
 
 func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) (*RelayBroadcaster, error) {
@@ -362,11 +365,15 @@ func (b *RelayBroadcaster) BroadcastIntermissionAdvance() error {
 	return writeFrame(b.conn, frameHeader{Type: frameTypeIntermissionAdvance}, nil)
 }
 
-func (b *AudioBroadcaster) BroadcastAudioConfig(cfg AudioConfig) error {
+func (b *AudioBroadcaster) BroadcastAudioFormat(format AudioFormat) error {
 	if b == nil {
 		return nil
 	}
-	payload, err := marshalAudioConfig(cfg)
+	format, err := normalizeAudioFormat(format)
+	if err != nil {
+		return err
+	}
+	payload, err := marshalAudioFormat(format)
 	if err != nil {
 		return err
 	}
@@ -375,23 +382,27 @@ func (b *AudioBroadcaster) BroadcastAudioConfig(cfg AudioConfig) error {
 	if b.closed {
 		return net.ErrClosed
 	}
-	b.audioConfig = cfg
-	return writeAudioConfigRecord(b.conn, payload)
+	b.audioFormat = format
+	return writeAudioFormatRecord(b.conn, payload)
+}
+
+func (b *AudioBroadcaster) BroadcastAudioConfig(cfg AudioFormat) error {
+	return b.BroadcastAudioFormat(cfg)
 }
 
 func (b *AudioBroadcaster) BroadcastAudioChunk(chunk AudioChunk) error {
 	if b == nil {
 		return nil
 	}
-	if b.audioConfig.FrameSamples <= 0 {
-		return fmt.Errorf("audio frame samples are not configured")
-	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
 		return net.ErrClosed
 	}
-	return writeAudioChunkRecord(b.conn, b.audioConfig, chunk)
+	if b.audioFormat.PacketSamples <= 0 {
+		return fmt.Errorf("audio packet samples are not configured")
+	}
+	return writeAudioChunkRecord(b.conn, b.audioFormat, chunk)
 }
 
 func (b *RelayBroadcaster) readLoop() {
@@ -527,7 +538,7 @@ type Viewer struct {
 type AudioViewer struct {
 	conn    net.Conn
 	session SessionConfig
-	configs chan AudioConfig
+	formats chan AudioFormat
 	chunks  chan AudioChunk
 	meter   *bandwidthMeter
 
@@ -701,7 +712,7 @@ func DialRelayAudioViewer(addr string, sessionID uint64, localWADHash string) (*
 	v := &AudioViewer{
 		conn:    conn,
 		session: session,
-		configs: make(chan AudioConfig, 2),
+		formats: make(chan AudioFormat, 4),
 		chunks:  make(chan AudioChunk, audioViewerChunkQueue),
 		meter:   meter,
 	}
@@ -802,19 +813,23 @@ func (v *Viewer) PollIntermissionAdvance() (bool, error) {
 	}
 }
 
-func (v *AudioViewer) PollAudioConfig() (AudioConfig, bool, error) {
+func (v *AudioViewer) PollAudioFormat() (AudioFormat, bool, error) {
 	if v == nil {
-		return AudioConfig{}, false, nil
+		return AudioFormat{}, false, nil
 	}
 	select {
-	case cfg, ok := <-v.configs:
+	case format, ok := <-v.formats:
 		if ok {
-			return cfg, true, nil
+			return format, true, nil
 		}
-		return AudioConfig{}, false, v.readErr()
+		return AudioFormat{}, false, v.readErr()
 	default:
-		return AudioConfig{}, false, v.readErr()
+		return AudioFormat{}, false, v.readErr()
 	}
+}
+
+func (v *AudioViewer) PollAudioConfig() (AudioFormat, bool, error) {
+	return v.PollAudioFormat()
 }
 
 func (v *AudioViewer) PollAudioChunk() (AudioChunk, bool, error) {
@@ -952,31 +967,31 @@ func (v *Viewer) readLoop() {
 
 func (v *AudioViewer) readLoop() {
 	defer v.wg.Done()
-	defer close(v.configs)
+	defer close(v.formats)
 	defer close(v.chunks)
-	frameSamples := 0
-	currentCfg := AudioConfig{}
+	packetSamples := 0
+	currentFormat := AudioFormat{}
 	var nextStartSample uint64
 	for {
-		kind, cfg, chunk, err := readAudioRecord(v.conn, currentCfg)
+		kind, format, chunk, err := readAudioRecord(v.conn, currentFormat)
 		if err != nil {
 			v.setErr(err)
 			return
 		}
 		switch kind {
-		case audioRecordTypeConfig:
-			frameSamples = cfg.FrameSamples
-			currentCfg = cfg
+		case audioRecordTypeFormat:
+			packetSamples = format.PacketSamples
+			currentFormat = format
 			nextStartSample = 0
-			v.configs <- cfg
+			v.formats <- format
 		default:
-			if frameSamples <= 0 {
-				v.setErr(fmt.Errorf("audio chunk received before config"))
+			if packetSamples <= 0 {
+				v.setErr(fmt.Errorf("audio chunk received before format"))
 				return
 			}
 			chunk.StartSample = nextStartSample
 			v.chunks <- chunk
-			nextStartSample += uint64(frameSamples)
+			nextStartSample += uint64(packetSamples)
 		}
 	}
 }
@@ -1040,64 +1055,84 @@ func keyframeDecoder() (*zstd.Decoder, error) {
 	return keyframeZstdDec, keyframeZstdDecErr
 }
 
-func marshalAudioConfig(cfg AudioConfig) ([]byte, error) {
-	if cfg.Codec == 0 {
-		cfg.Codec = audioCodecIMA4To1
+func normalizeAudioFormat(format AudioFormat) (AudioFormat, error) {
+	if format.Codec == 0 {
+		format.Codec = audioCodecIMA4To1
 	}
-	if cfg.SampleRate <= 0 {
-		return nil, fmt.Errorf("audio sample rate must be > 0")
+	if format.Codec != audioCodecIMA4To1 && format.Codec != audioCodecPCM16Mono {
+		return AudioFormat{}, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
-	if cfg.Channels <= 0 {
-		return nil, fmt.Errorf("audio channels must be > 0")
+	rate, err := voicecodec.ResolveSampleRate(voicecodec.SampleRateChoice(format.SampleRateChoice), format.SampleRate)
+	if err != nil {
+		return AudioFormat{}, err
 	}
-	if cfg.FrameSamples <= 0 {
-		return nil, fmt.Errorf("audio frame samples must be > 0")
+	format.SampleRate = rate
+	if format.Channels <= 0 {
+		return AudioFormat{}, fmt.Errorf("audio channels must be > 0")
 	}
-	if cfg.Bitrate < 0 {
-		return nil, fmt.Errorf("audio bitrate must be >= 0")
+	if format.PacketDurationMillis <= 0 {
+		return AudioFormat{}, fmt.Errorf("audio packet duration must be > 0")
 	}
-	payload := make([]byte, audioConfigPayloadLen)
-	payload[0] = cfg.Codec
-	binary.LittleEndian.PutUint32(payload[1:5], uint32(cfg.SampleRate))
-	binary.LittleEndian.PutUint16(payload[5:7], uint16(cfg.Channels))
-	binary.LittleEndian.PutUint16(payload[7:9], uint16(cfg.FrameSamples))
-	binary.LittleEndian.PutUint32(payload[9:13], uint32(cfg.Bitrate))
+	expectedPacketSamples, err := voicecodec.PacketSamplesFor(format.SampleRate, format.PacketDurationMillis)
+	if err != nil {
+		return AudioFormat{}, err
+	}
+	if format.PacketSamples <= 0 {
+		format.PacketSamples = expectedPacketSamples
+	}
+	if format.PacketSamples != expectedPacketSamples {
+		return AudioFormat{}, fmt.Errorf("audio packet samples=%d want=%d", format.PacketSamples, expectedPacketSamples)
+	}
+	if format.Bitrate < 0 {
+		return AudioFormat{}, fmt.Errorf("audio bitrate must be >= 0")
+	}
+	return format, nil
+}
+
+func marshalAudioFormat(format AudioFormat) ([]byte, error) {
+	format, err := normalizeAudioFormat(format)
+	if err != nil {
+		return nil, err
+	}
+	payload := make([]byte, audioFormatPayloadLen)
+	payload[0] = format.Codec
+	payload[1] = format.SampleRateChoice
+	binary.LittleEndian.PutUint32(payload[2:6], uint32(format.SampleRate))
+	binary.LittleEndian.PutUint16(payload[6:8], uint16(format.Channels))
+	binary.LittleEndian.PutUint16(payload[8:10], uint16(format.PacketDurationMillis))
+	binary.LittleEndian.PutUint16(payload[10:12], uint16(format.PacketSamples))
+	binary.LittleEndian.PutUint32(payload[12:16], uint32(format.Bitrate))
 	return payload, nil
 }
 
-func unmarshalAudioConfig(payload []byte) (AudioConfig, error) {
-	if len(payload) != audioConfigPayloadLen {
-		return AudioConfig{}, fmt.Errorf("audio config payload len=%d want=%d", len(payload), audioConfigPayloadLen)
+func unmarshalAudioFormat(payload []byte) (AudioFormat, error) {
+	if len(payload) != audioFormatPayloadLen {
+		return AudioFormat{}, fmt.Errorf("audio format payload len=%d want=%d", len(payload), audioFormatPayloadLen)
 	}
-	cfg := AudioConfig{
-		Codec:        payload[0],
-		SampleRate:   int(binary.LittleEndian.Uint32(payload[1:5])),
-		Channels:     int(binary.LittleEndian.Uint16(payload[5:7])),
-		FrameSamples: int(binary.LittleEndian.Uint16(payload[7:9])),
-		Bitrate:      int(binary.LittleEndian.Uint32(payload[9:13])),
-	}
-	if cfg.Codec == 0 {
-		return AudioConfig{}, fmt.Errorf("audio codec is required")
-	}
-	if cfg.SampleRate <= 0 || cfg.Channels <= 0 || cfg.FrameSamples <= 0 {
-		return AudioConfig{}, fmt.Errorf("audio config invalid")
-	}
-	return cfg, nil
+	return normalizeAudioFormat(AudioFormat{
+		Codec:                payload[0],
+		SampleRateChoice:     payload[1],
+		SampleRate:           int(binary.LittleEndian.Uint32(payload[2:6])),
+		Channels:             int(binary.LittleEndian.Uint16(payload[6:8])),
+		PacketDurationMillis: int(binary.LittleEndian.Uint16(payload[8:10])),
+		PacketSamples:        int(binary.LittleEndian.Uint16(payload[10:12])),
+		Bitrate:              int(binary.LittleEndian.Uint32(payload[12:16])),
+	})
 }
 
-func writeAudioConfigRecord(w io.Writer, payload []byte) error {
-	if len(payload) != audioConfigPayloadLen {
-		return fmt.Errorf("audio config payload len=%d want=%d", len(payload), audioConfigPayloadLen)
+func writeAudioFormatRecord(w io.Writer, payload []byte) error {
+	if len(payload) != audioFormatPayloadLen {
+		return fmt.Errorf("audio format payload len=%d want=%d", len(payload), audioFormatPayloadLen)
 	}
-	var buf [1 + audioConfigPayloadLen]byte
-	buf[0] = audioRecordTypeConfig
+	var buf [1 + audioFormatPayloadLen]byte
+	buf[0] = audioRecordTypeFormat
 	copy(buf[1:], payload)
 	_, err := w.Write(buf[:])
 	return err
 }
 
-func writeAudioChunkRecord(w io.Writer, cfg AudioConfig, chunk AudioChunk) error {
-	flags, err := audioChunkWireFlags(cfg, chunk)
+func writeAudioChunkRecord(w io.Writer, format AudioFormat, chunk AudioChunk) error {
+	flags, err := audioChunkWireFlags(format, chunk)
 	if err != nil {
 		return err
 	}
@@ -1113,38 +1148,38 @@ func writeAudioChunkRecord(w io.Writer, cfg AudioConfig, chunk AudioChunk) error
 	return err
 }
 
-func readAudioRecord(r io.Reader, currentCfg AudioConfig) (kind byte, cfg AudioConfig, chunk AudioChunk, err error) {
+func readAudioRecord(r io.Reader, currentFormat AudioFormat) (kind byte, format AudioFormat, chunk AudioChunk, err error) {
 	var tag [1]byte
 	if _, err = io.ReadFull(r, tag[:]); err != nil {
-		return 0, AudioConfig{}, AudioChunk{}, err
+		return 0, AudioFormat{}, AudioChunk{}, err
 	}
-	if tag[0] == audioRecordTypeConfig {
-		payload := make([]byte, audioConfigPayloadLen)
+	if tag[0] == audioRecordTypeFormat {
+		payload := make([]byte, audioFormatPayloadLen)
 		if _, err = io.ReadFull(r, payload); err != nil {
-			return 0, AudioConfig{}, AudioChunk{}, err
+			return 0, AudioFormat{}, AudioChunk{}, err
 		}
-		cfg, err = unmarshalAudioConfig(payload)
-		return audioRecordTypeConfig, cfg, AudioChunk{}, err
+		format, err = unmarshalAudioFormat(payload)
+		return audioRecordTypeFormat, format, AudioChunk{}, err
 	}
-	if currentCfg.Codec == 0 {
-		return 0, AudioConfig{}, AudioChunk{}, fmt.Errorf("audio chunk received before config")
+	if currentFormat.Codec == 0 {
+		return 0, AudioFormat{}, AudioChunk{}, fmt.Errorf("audio chunk received before format")
 	}
-	payloadLen, err := audioChunkPayloadLen(currentCfg, tag[0])
+	payloadLen, err := audioChunkPayloadLen(currentFormat, tag[0])
 	if err != nil {
-		return 0, AudioConfig{}, AudioChunk{}, err
+		return 0, AudioFormat{}, AudioChunk{}, err
 	}
 	payload := make([]byte, payloadLen)
 	if _, err = io.ReadFull(r, payload); err != nil {
-		return 0, AudioConfig{}, AudioChunk{}, err
+		return 0, AudioFormat{}, AudioChunk{}, err
 	}
-	return tag[0], AudioConfig{}, AudioChunk{
+	return tag[0], AudioFormat{}, AudioChunk{
 		Silence: tag[0]&audioChunkFlagSilence != 0,
 		Payload: payload,
 	}, nil
 }
 
-func audioChunkWireFlags(cfg AudioConfig, chunk AudioChunk) (byte, error) {
-	if cfg.Codec == 0 || cfg.FrameSamples <= 0 || cfg.Channels <= 0 {
+func audioChunkWireFlags(format AudioFormat, chunk AudioChunk) (byte, error) {
+	if format.Codec == 0 || format.PacketSamples <= 0 || format.Channels <= 0 {
 		return 0, fmt.Errorf("audio config is required for chunk encoding")
 	}
 	var flags byte
@@ -1155,14 +1190,14 @@ func audioChunkWireFlags(cfg AudioConfig, chunk AudioChunk) (byte, error) {
 		flags |= audioChunkFlagSilence
 		return flags, nil
 	}
-	switch cfg.Codec {
+	switch format.Codec {
 	case audioCodecPCM16Mono:
-		want := cfg.FrameSamples * cfg.Channels * 2
+		want := format.PacketSamples * format.Channels * 2
 		if len(chunk.Payload) != want {
 			return 0, fmt.Errorf("raw pcm payload len=%d want=%d", len(chunk.Payload), want)
 		}
 	case audioCodecIMA4To1:
-		deltaLen := cfg.FrameSamples * cfg.Channels / 2
+		deltaLen := format.PacketSamples * format.Channels / 2
 		seededLen := deltaLen + audioIMASeedHeaderBytes
 		switch len(chunk.Payload) {
 		case deltaLen:
@@ -1172,26 +1207,26 @@ func audioChunkWireFlags(cfg AudioConfig, chunk AudioChunk) (byte, error) {
 			return 0, fmt.Errorf("ima payload len=%d want=%d or %d", len(chunk.Payload), deltaLen, seededLen)
 		}
 	default:
-		return 0, fmt.Errorf("unsupported audio codec %d", cfg.Codec)
+		return 0, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
 	return flags, nil
 }
 
-func audioChunkPayloadLen(cfg AudioConfig, flags byte) (int, error) {
+func audioChunkPayloadLen(format AudioFormat, flags byte) (int, error) {
 	if flags&audioChunkFlagSilence != 0 {
 		return 0, nil
 	}
-	switch cfg.Codec {
+	switch format.Codec {
 	case audioCodecPCM16Mono:
-		return cfg.FrameSamples * cfg.Channels * 2, nil
+		return format.PacketSamples * format.Channels * 2, nil
 	case audioCodecIMA4To1:
-		n := cfg.FrameSamples * cfg.Channels / 2
+		n := format.PacketSamples * format.Channels / 2
 		if flags&audioChunkFlagSeeded != 0 {
 			n += audioIMASeedHeaderBytes
 		}
 		return n, nil
 	default:
-		return 0, fmt.Errorf("unsupported audio codec %d", cfg.Codec)
+		return 0, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
 }
 

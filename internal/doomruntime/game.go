@@ -423,6 +423,7 @@ type game struct {
 	pauseMenuItemOn           int
 	pauseMenuOptionsOn        int
 	pauseMenuSoundOn          int
+	pauseMenuVoiceOn          int
 	pauseMenuEpisodeOn        int
 	pauseMenuSelectedEpisode  int
 	pauseMenuSkillOn          int
@@ -3585,6 +3586,7 @@ const (
 	pauseMenuModeRoot = iota
 	pauseMenuModeOptions
 	pauseMenuModeSound
+	pauseMenuModeVoice
 	pauseMenuModeEpisode
 	pauseMenuModeSkill
 )
@@ -3607,6 +3609,7 @@ func (g *game) togglePauseMenu() {
 		g.pauseMenuItemOn = 0
 		g.pauseMenuOptionsOn = frontendOptionsSelectableRows[0]
 		g.pauseMenuSoundOn = 0
+		g.pauseMenuVoiceOn = 0
 		g.pauseMenuEpisodeOn = 0
 		g.pauseMenuSkillOn = max(0, normalizeSkillLevel(g.opts.SkillLevel)-1)
 	} else {
@@ -3670,6 +3673,16 @@ func (g *game) tickPauseMenu() {
 		if g.keyJustPressed(ebiten.KeyArrowRight) {
 			g.adjustPauseSound(1)
 		}
+	case pauseMenuModeVoice:
+		if g.keyJustPressed(ebiten.KeyArrowUp) || g.keyJustPressed(ebiten.KeyArrowDown) {
+			g.pauseMenuVoiceOn ^= 1
+		}
+		if g.keyJustPressed(ebiten.KeyArrowLeft) {
+			g.adjustPauseVoice(-1)
+		}
+		if g.keyJustPressed(ebiten.KeyArrowRight) {
+			g.adjustPauseVoice(1)
+		}
 	case pauseMenuModeEpisode:
 		if n := len(g.availableEpisodeChoices()); n > 0 {
 			if g.keyJustPressed(ebiten.KeyArrowUp) {
@@ -3709,6 +3722,9 @@ func (g *game) activatePauseMenuItem() {
 		return
 	case pauseMenuModeSound:
 		g.adjustPauseSound(1)
+		return
+	case pauseMenuModeVoice:
+		g.adjustPauseVoice(1)
 		return
 	case pauseMenuModeEpisode:
 		episodes := g.availableEpisodeChoices()
@@ -3918,6 +3934,104 @@ func (g *game) adjustPauseSound(dir int) {
 	}
 }
 
+func (g *game) adjustPauseVoice(dir int) {
+	if g == nil || dir == 0 {
+		return
+	}
+	switch g.pauseMenuVoiceOn {
+	case frontendVoiceMenuRowCodec:
+		cur := voiceCodecChoiceIndex(g.opts.VoiceCodec)
+		n := len(frontendVoiceCodecChoices)
+		next := (cur + dir + n) % n
+		if g.opts.OnVoiceSettingsChanged != nil {
+			nextSettings := runtimecfg.VoiceSettings{
+				Codec:         frontendVoiceCodecChoices[next],
+				SampleRate:    g.opts.VoiceSampleRate,
+				AGCEnabled:    g.opts.VoiceAGCEnabled,
+				GateEnabled:   g.opts.VoiceGateEnabled,
+				GateThreshold: g.opts.VoiceGateThreshold,
+			}
+			if nextSettings.SampleRate <= 0 {
+				nextSettings.SampleRate = frontendVoiceSampleRateChoices[len(frontendVoiceSampleRateChoices)-1]
+			}
+			if err := g.opts.OnVoiceSettingsChanged(nextSettings); err != nil {
+				g.pauseMenuStatus = strings.ToUpper(err.Error())
+				g.pauseMenuStatusTics = doomTicsPerSecond * 2
+				return
+			}
+		}
+		g.opts.VoiceCodec = frontendVoiceCodecChoices[next]
+	case frontendVoiceMenuRowSampleRate:
+		cur := voiceSampleRateChoiceIndex(g.opts.VoiceSampleRate)
+		n := len(frontendVoiceSampleRateChoices)
+		next := (cur + dir + n) % n
+		if g.opts.OnVoiceSettingsChanged != nil {
+			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
+				Codec:         g.opts.VoiceCodec,
+				SampleRate:    frontendVoiceSampleRateChoices[next],
+				AGCEnabled:    g.opts.VoiceAGCEnabled,
+				GateEnabled:   g.opts.VoiceGateEnabled,
+				GateThreshold: g.opts.VoiceGateThreshold,
+			}); err != nil {
+				g.pauseMenuStatus = strings.ToUpper(err.Error())
+				g.pauseMenuStatusTics = doomTicsPerSecond * 2
+				return
+			}
+		}
+		g.opts.VoiceSampleRate = frontendVoiceSampleRateChoices[next]
+	case frontendVoiceMenuRowAGC:
+		next := !g.opts.VoiceAGCEnabled
+		if g.opts.OnVoiceSettingsChanged != nil {
+			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
+				Codec:         g.opts.VoiceCodec,
+				SampleRate:    g.opts.VoiceSampleRate,
+				AGCEnabled:    next,
+				GateEnabled:   g.opts.VoiceGateEnabled,
+				GateThreshold: g.opts.VoiceGateThreshold,
+			}); err != nil {
+				g.pauseMenuStatus = strings.ToUpper(err.Error())
+				g.pauseMenuStatusTics = doomTicsPerSecond * 2
+				return
+			}
+		}
+		g.opts.VoiceAGCEnabled = next
+	case frontendVoiceMenuRowGate:
+		next := !g.opts.VoiceGateEnabled
+		if g.opts.OnVoiceSettingsChanged != nil {
+			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
+				Codec:         g.opts.VoiceCodec,
+				SampleRate:    g.opts.VoiceSampleRate,
+				AGCEnabled:    g.opts.VoiceAGCEnabled,
+				GateEnabled:   next,
+				GateThreshold: g.opts.VoiceGateThreshold,
+			}); err != nil {
+				g.pauseMenuStatus = strings.ToUpper(err.Error())
+				g.pauseMenuStatusTics = doomTicsPerSecond * 2
+				return
+			}
+		}
+		g.opts.VoiceGateEnabled = next
+	case frontendVoiceMenuRowGateThresh:
+		cur := voiceGateThresholdChoiceIndex(g.opts.VoiceGateThreshold)
+		n := len(frontendVoiceGateThresholdChoices)
+		next := (cur + dir + n) % n
+		if g.opts.OnVoiceSettingsChanged != nil {
+			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
+				Codec:         g.opts.VoiceCodec,
+				SampleRate:    g.opts.VoiceSampleRate,
+				AGCEnabled:    g.opts.VoiceAGCEnabled,
+				GateEnabled:   g.opts.VoiceGateEnabled,
+				GateThreshold: frontendVoiceGateThresholdChoices[next],
+			}); err != nil {
+				g.pauseMenuStatus = strings.ToUpper(err.Error())
+				g.pauseMenuStatusTics = doomTicsPerSecond * 2
+				return
+			}
+		}
+		g.opts.VoiceGateThreshold = frontendVoiceGateThresholdChoices[next]
+	}
+}
+
 func (g *game) activatePauseOptionsItem() {
 	if g == nil {
 		return
@@ -3927,6 +4041,13 @@ func (g *game) activatePauseOptionsItem() {
 		g.pauseMenuActive = false
 		g.paused = false
 		g.pauseMenuMode = pauseMenuModeRoot
+		g.pauseMenuStatus = ""
+		g.pauseMenuStatusTics = 0
+		return
+	}
+	if g.pauseMenuOptionsOn == frontendOptionsRowVoice {
+		g.pauseMenuMode = pauseMenuModeVoice
+		g.pauseMenuVoiceOn = frontendVoiceMenuRowCodec
 		g.pauseMenuStatus = ""
 		g.pauseMenuStatusTics = 0
 		return
@@ -20042,6 +20163,9 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 	drawText := func(text string, x, y, textScale float64) {
 		g.drawHUTextAt(screen, text, ox+x*scale, oy+y*scale, scale*textScale, scale*textScale)
 	}
+	drawRect := func(x, y, w, h int, clr color.Color) {
+		ebitenutil.DrawRect(screen, ox+float64(x)*scale, oy+float64(y)*scale, float64(w)*scale, float64(h)*scale, clr)
+	}
 	drawSkull := func(x, y int) {
 		name := "M_SKULL1"
 		if g.pauseMenuWhichSkull != 0 {
@@ -20081,6 +20205,8 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), menuX+215, menuY+5*lineHeight+2, 1.2)
 		drawText("MUSIC", menuX, menuY+6*lineHeight+2, 1.2)
 		drawText("OPEN", menuX+215, menuY+6*lineHeight+2, 1.2)
+		drawText("VOICE OPTIONS", menuX, menuY+7*lineHeight+2, 1.2)
+		drawText("OPEN", menuX+215, menuY+7*lineHeight+2, 1.2)
 		drawSkull(g.pauseOptionsSkullX(menuX), menuY+g.pauseMenuOptionsOn*lineHeight)
 	case pauseMenuModeSound:
 		const menuX = 80
@@ -20096,6 +20222,65 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 			skullY += 2 * lineHeight
 		}
 		drawSkull(menuX-32, skullY)
+	case pauseMenuModeVoice:
+		const menuX = 24
+		const menuY = 44
+		const lineHeight = 16
+		backLabel := "BACK: ESC"
+		backX := 320 - 8 - int(math.Ceil(float64(g.huTextWidth(backLabel))*1.2))
+		drawText("VOICE", menuX, 18, 1.4)
+		drawText(backLabel, float64(backX), 18, 1.2)
+		drawText("CODEC", menuX, menuY+2, 1.2)
+		drawText(voiceCodecMenuLabel(g.opts.VoiceCodec), menuX+170, menuY+2, 1.2)
+		drawText("SAMPLE RATE", menuX, menuY+lineHeight+2, 1.2)
+		drawText(voiceSampleRateMenuLabel(g.opts.VoiceSampleRate), menuX+170, menuY+lineHeight+2, 1.2)
+		drawText("AUTOMATIC VOLUME", menuX, menuY+2*lineHeight+2, 1.2)
+		drawText(voiceAGCLabel(g.opts.VoiceAGCEnabled), menuX+170, menuY+2*lineHeight+2, 1.2)
+		drawText("NOISE GATE", menuX, menuY+3*lineHeight+2, 1.2)
+		drawText(voiceGateLabel(g.opts.VoiceGateEnabled), menuX+170, menuY+3*lineHeight+2, 1.2)
+		drawText("GATE STRENGTH", menuX, menuY+4*lineHeight+2, 1.2)
+		drawText(voiceGateThresholdLabel(g.opts.VoiceGateThreshold), menuX+170, menuY+4*lineHeight+2, 1.2)
+		drawText("MIC METER", menuX, 128, 1.0)
+		const meterDots = 12
+		level := 0.0
+		if g.opts.VoiceInputLevel != nil {
+			level = g.opts.VoiceInputLevel()
+			if level < 0 {
+				level = 0
+			}
+			if level > 1 {
+				level = 1
+			}
+		}
+		gateActive := false
+		if g.opts.VoiceInputGateActive != nil {
+			gateActive = g.opts.VoiceInputGateActive()
+		}
+		const barX = menuX + 86
+		const barY = 124
+		const barW = 108
+		const barH = 10
+		frame := color.RGBA{R: 160, G: 32, B: 24, A: 255}
+		if gateActive {
+			frame = color.RGBA{R: 112, G: 112, B: 112, A: 255}
+		}
+		drawRect(barX, barY, barW, barH, frame)
+		drawRect(barX+1, barY+1, barW-2, barH-2, color.RGBA{R: 8, G: 8, B: 8, A: 255})
+		fillW := int(math.Round(float64(barW-2) * level))
+		if fillW > 0 {
+			fill := color.RGBA{R: 172, G: 124, B: 48, A: 255}
+			if gateActive {
+				fill = color.RGBA{R: 112, G: 112, B: 112, A: 255}
+			}
+			drawRect(barX+1, barY+1, fillW, barH-2, fill)
+		}
+		deviceLabel := "USES SYSTEM DEFAULT INPUT"
+		if strings.TrimSpace(g.opts.VoiceInputDevice) != "" {
+			deviceLabel = "INPUT: " + strings.ToUpper(strings.TrimSpace(g.opts.VoiceInputDevice))
+		}
+		drawText(deviceLabel, menuX, 140, 1.0)
+		drawText("LEFT/RIGHT CHANGE  ENTER SELECT", menuX, 156, 1.0)
+		drawSkull(menuX-32, menuY+g.pauseMenuVoiceOn*lineHeight)
 	case pauseMenuModeEpisode:
 		drawPatch("M_NEWG", 96, 14)
 		drawPatch("M_EPISOD", 54, 38)

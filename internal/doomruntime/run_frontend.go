@@ -636,6 +636,7 @@ func (sg *sessionGame) tickFrontend() error {
 			EpisodeChoices:    sg.availableFrontendEpisodeChoices(),
 			OptionRows:        frontendOptionsSelectableRows[:],
 			MusicMenuCount:    frontendMusicMenuRowCount,
+			VoiceMenuCount:    frontendVoiceMenuRowCount,
 			MainMenuCount:     len(frontendMainMenuNames),
 			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
 			SkillMenuCount:    len(frontendSkillMenuNames),
@@ -703,6 +704,36 @@ func (sg *sessionGame) tickFrontend() error {
 	}
 	if result.ChangeSoundFont != 0 {
 		if err := sg.frontendChangeMusicSoundFont(result.ChangeSoundFont); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeVoiceCodec != 0 {
+		if err := sg.frontendChangeVoiceCodec(result.ChangeVoiceCodec); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeVoiceRate != 0 {
+		if err := sg.frontendChangeVoiceSampleRate(result.ChangeVoiceRate); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeVoiceAGC {
+		if err := sg.frontendToggleVoiceAGC(); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeVoiceGate {
+		if err := sg.frontendToggleVoiceGate(); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeVoiceGateThreshold != 0 {
+		if err := sg.frontendChangeVoiceGateThreshold(result.ChangeVoiceGateThreshold); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
 			sg.playMenuBackSound()
 		}
@@ -803,6 +834,13 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			return
 		}
 		sg.drawFrontendSoundMenu(screen, scale, ox, oy)
+		return
+	case frontendModeVoice:
+		sg.drawFrontendBackdrop(screen, true)
+		if sg.quitPrompt.Active {
+			return
+		}
+		sg.drawFrontendVoiceMenu(screen, scale, ox, oy)
 		return
 	case frontendModeOptions:
 		sg.drawFrontendBackdrop(screen, true)
@@ -1008,7 +1046,44 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "MUSIC OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
+}
+
+func (sg *sessionGame) drawFrontendVoiceMenu(screen *ebiten.Image, scale, ox, oy float64) {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	const menuX = 24
+	const menuY = 44
+	const lineHeight = 16
+	backLabel := "BACK: ESC"
+	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
+	sg.rt.sessionDrawHUTextAt(screen, "VOICE", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
+	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
+	labels := [frontendVoiceMenuRowCount]string{"CODEC", "SAMPLE RATE"}
+	values := [frontendVoiceMenuRowCount]string{
+		sg.voiceCodecLabel(),
+		sg.voiceSampleRateLabel(),
+		sg.voiceAGCLabel(),
+		sg.voiceGateLabel(),
+		sg.voiceGateThresholdLabel(),
+	}
+	labels = [frontendVoiceMenuRowCount]string{"CODEC", "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD"}
+	for i := 0; i < frontendVoiceMenuRowCount; i++ {
+		y := menuY + i*lineHeight + 2
+		sg.rt.sessionDrawHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+170)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
+	}
+	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputLevelLabel(), ox+float64(menuX)*scale, oy+float64(128)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendLevelBar(screen, menuX+86, 124, 108, 10, sg.voiceInputLevel(), sg.voiceInputGateActive(), scale, ox, oy)
+	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputDeviceLabel(), ox+float64(menuX)*scale, oy+float64(140)*scale, scale*1.0, scale*1.0)
+	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(156)*scale, scale*1.0, scale*1.0)
+	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
+		sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
+	}
+	sg.drawMenuSkull(screen, menuX-18, menuY+sg.frontend.VoiceOn*lineHeight, scale, ox, oy)
 }
 
 func (sg *sessionGame) drawFrontendMusicPlayerMenu(screen *ebiten.Image, scale, ox, oy float64) {
@@ -1170,6 +1245,40 @@ func (sg *sessionGame) drawFrontendThermo(screen *ebiten.Image, x, y, width, dot
 	}
 	_ = sg.drawMenuPatch(screen, "M_THERMR", x+8+width*8, y, scale, ox, oy, false)
 	_ = sg.drawMenuPatch(screen, "M_THERMO", x+8+dot*8, y, scale, ox, oy, false)
+}
+
+func (sg *sessionGame) drawFrontendLevelBar(screen *ebiten.Image, x, y, width, height int, level float64, gateActive bool, scale, ox, oy float64) {
+	if screen == nil {
+		return
+	}
+	if level < 0 {
+		level = 0
+	}
+	if level > 1 {
+		level = 1
+	}
+	bx := ox + float64(x)*scale
+	by := oy + float64(y)*scale
+	bw := float64(width) * scale
+	bh := float64(height) * scale
+	border := math.Max(scale, 1)
+	ebitenutil.DrawRect(screen, bx, by, bw, bh, color.RGBA{R: 36, G: 24, B: 12, A: 255})
+	frame := color.RGBA{R: 160, G: 32, B: 24, A: 255}
+	if gateActive {
+		frame = color.RGBA{R: 112, G: 112, B: 112, A: 255}
+	}
+	ebitenutil.DrawRect(screen, bx, by, bw, bh, frame)
+	innerW := math.Max(bw-2*border, 0)
+	innerH := math.Max(bh-2*border, 0)
+	ebitenutil.DrawRect(screen, bx+border, by+border, innerW, innerH, color.RGBA{R: 8, G: 8, B: 8, A: 255})
+	fillW := math.Round(innerW * level)
+	if fillW > 0 {
+		fill := color.RGBA{R: 172, G: 124, B: 48, A: 255}
+		if gateActive {
+			fill = color.RGBA{R: 112, G: 112, B: 112, A: 255}
+		}
+		ebitenutil.DrawRect(screen, bx+border, by+border, fillW, innerH, fill)
+	}
 }
 
 func (sg *sessionGame) frontendMouseSensitivityLayout(menuX int, label string) (thermoX, thermoCount, valueX int) {

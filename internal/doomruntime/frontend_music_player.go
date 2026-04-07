@@ -10,11 +10,18 @@ import (
 
 const (
 	frontendOptionsRowMusic        = 6
+	frontendOptionsRowVoice        = 7
 	frontendMusicMenuRowVolume     = 0
 	frontendMusicMenuRowSynth      = 1
 	frontendMusicMenuRowSoundFont  = 2
 	frontendMusicMenuRowPlayer     = 3
 	frontendMusicMenuRowCount      = 4
+	frontendVoiceMenuRowCodec      = 0
+	frontendVoiceMenuRowSampleRate = 1
+	frontendVoiceMenuRowAGC        = 2
+	frontendVoiceMenuRowGate       = 3
+	frontendVoiceMenuRowGateThresh = 4
+	frontendVoiceMenuRowCount      = 5
 	frontendMusicPlayerRowWAD      = 0
 	frontendMusicPlayerRowGroup    = 1
 	frontendMusicPlayerRowTrack    = 2

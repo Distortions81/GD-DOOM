@@ -498,6 +498,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	lowLatency := fs.Bool("low-latency", false, "disable streamer-side netplay tic batching and flush every tic immediately")
 	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
 	micDevice := fs.String("mic-device", "", "PulseAudio capture device name for -mic")
+	micCodec := fs.String("mic-codec", "ima", "microphone wire codec (ima|pcm)")
+	micSampleRate := fs.Int("mic-sample-rate", 0, "microphone wire sample rate in Hz (0 uses default)")
+	micAGC := fs.Bool("mic-agc", true, "enable microphone automatic gain control")
+	micGate := fs.Bool("mic-gate", true, "enable microphone noise gate")
+	micGateThreshold := fs.Float64("mic-gate-threshold", 1.0, "microphone gate threshold multiplier (>0, higher is stricter)")
+	micLowPassHz := fs.Float64("mic-lowpass-hz", 0, "optional microphone downsample low-pass cutoff in Hz (<=0 disables)")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -1047,6 +1053,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 
 	if *render {
 		var voiceSync *voiceSyncMeter
+		var voiceStreamer *sessionvoice.VoiceStreamer
 		if watchAudioSession != nil {
 			voiceSync = &voiceSyncMeter{}
 		}
@@ -1128,6 +1135,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicSoundFont:             musicSoundFont,
 			LiveTicSource:              liveTicSourceFromViewer(watchSession),
 			WatchStartupBufferTics:     watchStartupBufferTics(*lowLatency),
+			VoiceCodec:                 *micCodec,
+			VoiceSampleRate:            *micSampleRate,
+			VoiceAGCEnabled:            *micAGC,
+			VoiceGateEnabled:           *micGate,
+			VoiceGateThreshold:         *micGateThreshold,
+			VoiceInputDevice:           strings.TrimSpace(*micDevice),
 			NetBandwidthMeter:          netBandwidthMeterFromViewer(watchSession),
 			VoiceBandwidthMeter:        voiceBandwidthMeterFromViewer(watchAudioSession),
 			VoiceSyncMeter:             voiceSync,
@@ -1136,6 +1149,47 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DemoStopAfterTics:          max(0, *demoStopAfterTics),
 			DemoTracePath:              resolvedDemoTracePath,
 			AttractDemos:               builtInAttractDemos(wf),
+		}
+		opts.OnVoiceSettingsChanged = func(s runtimecfg.VoiceSettings) error {
+			if voiceStreamer == nil {
+				return nil
+			}
+			format, err := sessionvoice.ResolveBroadcasterFormat(sessionvoice.BroadcasterOptions{
+				DownsampleLowPassHz: *micLowPassHz,
+				Codec:               s.Codec,
+				SampleRate:          s.SampleRate,
+				AGCEnabled:          s.AGCEnabled,
+				GateEnabled:         s.GateEnabled,
+				GateThreshold:       s.GateThreshold,
+			})
+			if err != nil {
+				return err
+			}
+			if s.Codec != opts.VoiceCodec || s.SampleRate != opts.VoiceSampleRate {
+				if err := voiceStreamer.UpdateFormat(format); err != nil {
+					return err
+				}
+			}
+			voiceStreamer.UpdateAGC(s.AGCEnabled)
+			voiceStreamer.UpdateGate(s.GateEnabled, s.GateThreshold)
+			opts.VoiceCodec = s.Codec
+			opts.VoiceSampleRate = s.SampleRate
+			opts.VoiceAGCEnabled = s.AGCEnabled
+			opts.VoiceGateEnabled = s.GateEnabled
+			opts.VoiceGateThreshold = s.GateThreshold
+			return nil
+		}
+		opts.VoiceInputLevel = func() float64 {
+			if voiceStreamer == nil {
+				return 0
+			}
+			return voiceStreamer.InputLevel()
+		}
+		opts.VoiceInputGateActive = func() bool {
+			if voiceStreamer == nil {
+				return false
+			}
+			return voiceStreamer.InputGateActive()
 		}
 		opts.TitleMusicLoader = func() ([]byte, error) {
 			for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
@@ -1333,15 +1387,38 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 		}
 		if *mic {
-			streamer, serr := sessionvoice.StartPulseBroadcaster(context.Background(), audioHost, strings.TrimSpace(*micDevice), func() uint32 {
-				return uint32(max(0, sess.CurrentWorldTic()))
-			})
+			streamer, serr := sessionvoice.StartPulseBroadcaster(
+				context.Background(),
+				audioHost,
+				strings.TrimSpace(*micDevice),
+				sessionvoice.BroadcasterOptions{
+					DownsampleLowPassHz: *micLowPassHz,
+					Codec:               *micCodec,
+					SampleRate:          *micSampleRate,
+					AGCEnabled:          *micAGC,
+					GateEnabled:         *micGate,
+					GateThreshold:       *micGateThreshold,
+				},
+				func() uint32 {
+					return uint32(max(0, sess.CurrentWorldTic()))
+				},
+			)
 			if serr != nil {
 				fmt.Fprintf(stderr, "broadcast audio: %v\n", serr)
 				return 1
 			}
+			voiceStreamer = streamer
 			defer streamer.Close()
-			fmt.Fprintf(stderr, "broadcast audio: publishing microphone stream\n")
+			msg := fmt.Sprintf("broadcast audio: publishing microphone stream codec=%s sample_rate=", strings.TrimSpace(*micCodec))
+			if *micSampleRate > 0 {
+				msg += strconv.Itoa(*micSampleRate)
+			} else {
+				msg += "default"
+			}
+			if *micLowPassHz > 0 {
+				msg += fmt.Sprintf(" low-pass=%.0f Hz", *micLowPassHz)
+			}
+			fmt.Fprintln(stderr, msg)
 		}
 		rerr := doomsession.RunSession(sess)
 		if rerr != nil {

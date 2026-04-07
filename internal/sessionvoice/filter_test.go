@@ -47,20 +47,23 @@ func TestResampleMonoLinearDownTo32kUsesExpectedLength(t *testing.T) {
 }
 
 func TestDownsampleCaptureToVoiceSuppressesNearNyquistEnergy(t *testing.T) {
+	const cutoffHz = 16000.0
 	voiceBand := makeSine(4000, 12000)
 	highBand := makeSine(14000, 12000)
 
 	voiceOut := downsampleCaptureToVoice(
 		voiceBand,
-		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
-		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
-		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+		24000,
+		newLowPassFilter(cutoffHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(cutoffHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(cutoffHz, voicecodec.CaptureSampleRate),
 	)
 	highOut := downsampleCaptureToVoice(
 		highBand,
-		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
-		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
-		newLowPassFilter(audioDownsampleLowPassHz, voicecodec.CaptureSampleRate),
+		24000,
+		newLowPassFilter(cutoffHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(cutoffHz, voicecodec.CaptureSampleRate),
+		newLowPassFilter(cutoffHz, voicecodec.CaptureSampleRate),
 	)
 
 	voiceRMS := rmsInt16(voiceOut)

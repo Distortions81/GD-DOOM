@@ -64,6 +64,14 @@ type VoiceSyncMeter interface {
 	VoiceSyncOffsetMillis() (millis int, ok bool)
 }
 
+type VoiceSettings struct {
+	Codec         string
+	SampleRate    int
+	AGCEnabled    bool
+	GateEnabled   bool
+	GateThreshold float64
+}
+
 type Options struct {
 	Width                      int
 	Height                     int
@@ -161,6 +169,15 @@ type Options struct {
 	NetBandwidthMeter          NetBandwidthMeter
 	VoiceBandwidthMeter        NetBandwidthMeter
 	VoiceSyncMeter             VoiceSyncMeter
+	VoiceCodec                 string
+	VoiceSampleRate            int
+	VoiceAGCEnabled            bool
+	VoiceGateEnabled           bool
+	VoiceGateThreshold         float64
+	VoiceInputDevice           string
+	VoiceInputLevel            func() float64
+	VoiceInputGateActive       func() bool
+	OnVoiceSettingsChanged     func(VoiceSettings) error
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string
 	MusicSoundFontChoices      []string

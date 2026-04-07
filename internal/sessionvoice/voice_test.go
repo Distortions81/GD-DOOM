@@ -3,6 +3,8 @@ package sessionvoice
 import (
 	"encoding/binary"
 	"testing"
+
+	"gddoom/internal/voicecodec"
 )
 
 const testPlaybackRate = 44100
@@ -95,5 +97,43 @@ func TestStreamSourceResetsLargeBacklogToNewestTail(t *testing.T) {
 	first := int16(binary.LittleEndian.Uint16(src.buf[0:2]))
 	if first == 4000 {
 		t.Fatal("expected kept tail to be faded in after backlog skip")
+	}
+}
+
+func TestResolveBroadcasterFormatDefaults(t *testing.T) {
+	got, err := resolveBroadcasterFormat(BroadcasterOptions{})
+	if err != nil {
+		t.Fatalf("resolveBroadcasterFormat() error = %v", err)
+	}
+	if got.Codec != voicecodec.CodecIMA4To1 {
+		t.Fatalf("codec=%d want %d", got.Codec, voicecodec.CodecIMA4To1)
+	}
+	if got.SampleRate != voicecodec.SampleRate {
+		t.Fatalf("sample rate=%d want %d", got.SampleRate, voicecodec.SampleRate)
+	}
+}
+
+func TestResolveBroadcasterFormatHonorsPCMAndSampleRate(t *testing.T) {
+	got, err := resolveBroadcasterFormat(BroadcasterOptions{
+		Codec:      "pcm",
+		SampleRate: 16000,
+	})
+	if err != nil {
+		t.Fatalf("resolveBroadcasterFormat() error = %v", err)
+	}
+	if got.Codec != voicecodec.CodecPCM16Mono {
+		t.Fatalf("codec=%d want %d", got.Codec, voicecodec.CodecPCM16Mono)
+	}
+	if got.SampleRate != 16000 {
+		t.Fatalf("sample rate=%d want 16000", got.SampleRate)
+	}
+	if got.PacketSamples != 480 {
+		t.Fatalf("packet samples=%d want 480", got.PacketSamples)
+	}
+}
+
+func TestResolveBroadcasterFormatRejectsBadCodec(t *testing.T) {
+	if _, err := resolveBroadcasterFormat(BroadcasterOptions{Codec: "nope"}); err == nil {
+		t.Fatal("expected codec error")
 	}
 }
