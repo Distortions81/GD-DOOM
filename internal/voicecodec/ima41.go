@@ -27,6 +27,7 @@ type IMA41Encoder struct {
 	needSeed      bool
 	frames        int
 	packetSamples int
+	lowPass       lowPassFilter
 }
 
 type IMA41Decoder struct {
@@ -53,7 +54,9 @@ func NewIMA41Decoder(packetSamples int) *IMA41Decoder {
 	if packetSamples <= 0 {
 		packetSamples = PacketSamples
 	}
-	return &IMA41Decoder{packetSamples: packetSamples}
+	dec := &IMA41Decoder{packetSamples: packetSamples}
+	dec.Reset()
+	return dec
 }
 
 func (e *IMA41Encoder) PacketSamples() int {
@@ -102,6 +105,8 @@ func (e *IMA41Encoder) Reset() {
 	e.stepIndex = 0
 	e.needSeed = true
 	e.frames = 0
+	e.lowPass = newLowPassFilter(encoderLowPassCutoffHz, encoderSampleRate(e.packetSamples))
+	e.lowPass.Reset()
 }
 
 func (d *IMA41Decoder) Reset() {
@@ -136,10 +141,10 @@ func (e *IMA41Encoder) Encode(pcm []int16) ([]byte, error) {
 		write = ima41SeedHeaderBytes
 	}
 	for i := 0; i < len(packet); i += 2 {
-		lo := e.encodeNibble(packet[i])
+		lo := e.encodeNibble(e.lowPass.ProcessSample(packet[i]))
 		hi := byte(0)
 		if i+1 < len(packet) {
-			hi = e.encodeNibble(packet[i+1])
+			hi = e.encodeNibble(e.lowPass.ProcessSample(packet[i+1]))
 		}
 		out[write] = lo | (hi << 4)
 		write++
