@@ -9,7 +9,7 @@ import (
 
 const (
 	agcTargetRMS        = 9000.0 * 0.7079457843841379
-	agcPeakLimit        = 18407.0
+	agcPeakLimit        = 20000.0
 	agcMinGain          = 0.5
 	agcMaxGain          = 10.0
 	agcVoiceRMSFloor    = 220.0
