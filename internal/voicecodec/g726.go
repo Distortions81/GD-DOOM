@@ -3,19 +3,19 @@ package voicecodec
 import (
 	"fmt"
 
-	"github.com/lkmio/g726"
+	"github.com/Distortions81/g726"
 )
 
 type G726Encoder struct {
 	packetSamples int
 	bitsPerSample int
-	state         *g726.G726_state
+	state         *g726.Encoder
 }
 
 type G726Decoder struct {
 	packetSamples int
 	bitsPerSample int
-	state         *g726.G726_state
+	state         *g726.Decoder
 }
 
 func NewG726Encoder(packetSamples, bitsPerSample int) *G726Encoder {
@@ -114,14 +114,24 @@ func (e *G726Encoder) Reset() {
 	if e == nil {
 		return
 	}
-	e.state = g726.G726_init_state(g726RateForBits(e.BitsPerSample()))
+	state, err := g726.NewEncoder(g726.BitsPerSample(e.BitsPerSample()))
+	if err != nil {
+		e.state = nil
+		return
+	}
+	e.state = state
 }
 
 func (d *G726Decoder) Reset() {
 	if d == nil {
 		return
 	}
-	d.state = g726.G726_init_state(g726RateForBits(d.BitsPerSample()))
+	state, err := g726.NewDecoder(g726.BitsPerSample(d.BitsPerSample()))
+	if err != nil {
+		d.state = nil
+		return
+	}
+	d.state = state
 }
 
 func (e *G726Encoder) Encode(pcm []int16) ([]byte, error) {
@@ -155,17 +165,4 @@ func (d *G726Decoder) Decode(packet []byte) ([]int16, error) {
 		return nil, fmt.Errorf("g726 decoded samples=%d want=%d", len(out), packetSamples*Channels)
 	}
 	return out, nil
-}
-
-func g726RateForBits(bitsPerSample int) g726.G726Rate {
-	switch NormalizeG726BitsPerSample(bitsPerSample) {
-	case 2:
-		return g726.G726Rate16kbps
-	case 3:
-		return g726.G726Rate24kbps
-	case 5:
-		return g726.G726Rate40kbps
-	default:
-		return g726.G726Rate32kbps
-	}
 }

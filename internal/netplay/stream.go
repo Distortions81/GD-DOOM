@@ -65,21 +65,18 @@ const (
 
 const (
 	audioChunkFlagSilence byte = 1 << iota
-	audioChunkFlagSeeded
 )
 
 const (
-	audioCodecIMA4To1     byte = 1
 	audioCodecPCM16Mono   byte = 2
 	audioCodecG72632      byte = 3
 	audioViewerChunkQueue      = 24
 )
 
 const (
-	audioRecordTypeFormat   byte = 0x80
-	audioFormatPayloadLen        = 17
-	audioChunkHeaderSize         = 1
-	audioIMASeedHeaderBytes      = 8
+	audioRecordTypeFormat byte = 0x80
+	audioFormatPayloadLen      = 17
+	audioChunkHeaderSize       = 1
 )
 
 const (
@@ -1067,9 +1064,9 @@ func keyframeDecoder() (*zstd.Decoder, error) {
 
 func normalizeAudioFormat(format AudioFormat) (AudioFormat, error) {
 	if format.Codec == 0 {
-		format.Codec = audioCodecIMA4To1
+		format.Codec = audioCodecG72632
 	}
-	if format.Codec != audioCodecIMA4To1 && format.Codec != audioCodecPCM16Mono && format.Codec != audioCodecG72632 {
+	if format.Codec != audioCodecPCM16Mono && format.Codec != audioCodecG72632 {
 		return AudioFormat{}, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
 	rate, err := voicecodec.ResolveSampleRate(voicecodec.SampleRateChoice(format.SampleRateChoice), format.SampleRate)
@@ -1097,10 +1094,6 @@ func normalizeAudioFormat(format AudioFormat) (AudioFormat, error) {
 		return AudioFormat{}, fmt.Errorf("audio bitrate must be >= 0")
 	}
 	switch format.Codec {
-	case audioCodecIMA4To1:
-		if format.BitsPerSample == 0 {
-			format.BitsPerSample = 4
-		}
 	case audioCodecPCM16Mono:
 		if format.BitsPerSample == 0 {
 			format.BitsPerSample = 16
@@ -1220,16 +1213,6 @@ func audioChunkWireFlags(format AudioFormat, chunk AudioChunk) (byte, error) {
 		if len(chunk.Payload) != want {
 			return 0, fmt.Errorf("raw pcm payload len=%d want=%d", len(chunk.Payload), want)
 		}
-	case audioCodecIMA4To1:
-		deltaLen := format.PacketSamples * format.Channels / 2
-		seededLen := deltaLen + audioIMASeedHeaderBytes
-		switch len(chunk.Payload) {
-		case deltaLen:
-		case seededLen:
-			flags |= audioChunkFlagSeeded
-		default:
-			return 0, fmt.Errorf("ima payload len=%d want=%d or %d", len(chunk.Payload), deltaLen, seededLen)
-		}
 	case audioCodecG72632:
 		want, err := voicecodec.G726PacketBytes(format.PacketSamples, format.Channels, int(format.BitsPerSample))
 		if err != nil {
@@ -1251,12 +1234,6 @@ func audioChunkPayloadLen(format AudioFormat, flags byte) (int, error) {
 	switch format.Codec {
 	case audioCodecPCM16Mono:
 		return format.PacketSamples * format.Channels * 2, nil
-	case audioCodecIMA4To1:
-		n := format.PacketSamples * format.Channels / 2
-		if flags&audioChunkFlagSeeded != 0 {
-			n += audioIMASeedHeaderBytes
-		}
-		return n, nil
 	case audioCodecG72632:
 		return voicecodec.G726PacketBytes(format.PacketSamples, format.Channels, int(format.BitsPerSample))
 	default:

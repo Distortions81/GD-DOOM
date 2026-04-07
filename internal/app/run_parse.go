@@ -498,7 +498,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	lowLatency := fs.Bool("low-latency", false, "disable streamer-side netplay tic batching and flush every tic immediately")
 	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
 	micDevice := fs.String("mic-device", "", "PulseAudio capture device name for -mic")
-	micCodec := fs.String("mic-codec", "g726", "microphone wire codec (ima|g726|pcm)")
+	micCodec := fs.String("mic-codec", "g726", "microphone wire codec (g726|pcm)")
 	micSampleRate := fs.Int("mic-sample-rate", 24000, "microphone wire sample rate in Hz (0 uses default)")
 	micAGC := fs.Bool("mic-agc", true, "enable microphone automatic gain control")
 	micGate := fs.Bool("mic-gate", true, "enable microphone noise gate")

@@ -70,8 +70,6 @@ func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, err
 	g726Bits := voicecodec.NormalizeG726BitsPerSample(opts.G726BitsPerSample)
 	switch codec := strings.TrimSpace(strings.ToLower(opts.Codec)); codec {
 	case "":
-	case "ima", "ima4", "ima4_to_1", "adpcm":
-		format.Codec = netplayAudioCodecIMA4To1()
 	case "g726", "g726_32", "g72632":
 		format.Codec = netplayAudioCodecG72632()
 	case "pcm", "pcm16", "pcm16_mono":
@@ -89,9 +87,6 @@ func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, err
 	}
 	format.PacketSamples = packetSamples
 	switch format.Codec {
-	case netplayAudioCodecIMA4To1():
-		format.BitsPerSample = 4
-		format.Bitrate = format.SampleRate * format.Channels * 4
 	case netplayAudioCodecG72632():
 		format.BitsPerSample = byte(g726Bits)
 		format.Bitrate = voicecodec.G726Bitrate(format.SampleRate, format.Channels, g726Bits)
@@ -202,7 +197,6 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		defer close(vs.done)
 		defer reader.Close()
 		currentFormat := format
-		encoder := voicecodec.NewIMA41Encoder(currentFormat.PacketSamples)
 		g726Bits := voicecodec.NormalizeG726BitsPerSample(int(currentFormat.BitsPerSample))
 		g726Encoder := voicecodec.NewG726Encoder(currentFormat.PacketSamples, g726Bits)
 		frameBytes := voicecodec.CaptureFrameSamples * voicecodec.Channels * 2
@@ -221,7 +215,6 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 					continue
 				}
 				currentFormat = next
-				encoder.SetPacketSamples(currentFormat.PacketSamples)
 				g726Bits = voicecodec.NormalizeG726BitsPerSample(int(currentFormat.BitsPerSample))
 				g726Encoder.SetPacketSamples(currentFormat.PacketSamples)
 				g726Encoder.SetBitsPerSample(g726Bits)
@@ -243,15 +236,10 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			allSilent := agc.ProcessFrame(framePCM, voicecodec.CaptureSampleRate)
 			vs.level.Store(math.Float64bits(micLevel(framePCM)))
 			vs.gated.Store(agc.GateActive())
-			if allSilent {
-				encoder.Reset()
-				g726Encoder.Reset()
-			} else {
+			if !allSilent {
 				down := downsampleCaptureToVoice(framePCM, currentFormat.SampleRate)
 				var payload []byte
 				switch currentFormat.Codec {
-				case netplayAudioCodecIMA4To1():
-					payload, err = encoder.Encode(down)
 				case netplayAudioCodecG72632():
 					payload, err = g726Encoder.Encode(down)
 				case netplayAudioCodecPCM16Mono():
@@ -262,8 +250,6 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 				}
 				if err != nil {
 					switch currentFormat.Codec {
-					case netplayAudioCodecIMA4To1():
-						encoder.Reset()
 					case netplayAudioCodecG72632():
 						g726Encoder.Reset()
 					}
@@ -280,8 +266,6 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 					Payload:     payload,
 				}); err != nil {
 					switch currentFormat.Codec {
-					case netplayAudioCodecIMA4To1():
-						encoder.Reset()
 					case netplayAudioCodecG72632():
 						g726Encoder.Reset()
 					}
@@ -433,7 +417,6 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 	defer p.source.Close()
 
 	var current netplay.AudioFormat
-	decoder := voicecodec.NewIMA41Decoder(voicecodec.PacketSamples)
 	g726Decoder := voicecodec.NewG726Decoder(voicecodec.PacketSamples, 4)
 	var lastStartSample uint64
 	haveStartSample := false
@@ -453,13 +436,11 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			return
 		} else if ok {
 			if format != current {
-				decoder.SetPacketSamples(format.PacketSamples)
 				g726Decoder.Reset()
 				if format.Codec == netplayAudioCodecG72632() {
 					g726Decoder.SetBitsPerSample(int(format.BitsPerSample))
 				}
 				g726Decoder.SetPacketSamples(format.PacketSamples)
-				decoder.Reset()
 				p.source.Reset()
 				haveStartSample = false
 			}
@@ -481,19 +462,16 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 		if current.Codec == 0 {
 			continue
 		}
-		if current.Codec != netplayAudioCodecIMA4To1() && current.Codec != netplayAudioCodecG72632() && current.Codec != netplayAudioCodecPCM16Mono() {
+		if current.Codec != netplayAudioCodecG72632() && current.Codec != netplayAudioCodecPCM16Mono() {
 			p.done <- fmt.Errorf("unsupported audio codec %d", current.Codec)
 			return
 		}
 		if haveStartSample && chunk.StartSample != lastStartSample+uint64(current.PacketSamples) {
-			decoder.Reset()
 			g726Decoder.Reset()
 			p.source.Reset()
 		}
 		var pcm []int16
 		if chunk.Silence {
-			decoder.Reset()
-			g726Decoder.Reset()
 			pcm = make([]int16, current.PacketSamples*current.Channels)
 		} else {
 			switch current.Codec {
@@ -506,20 +484,6 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 				for i := range pcm {
 					pcm[i] = int16(binary.LittleEndian.Uint16(chunk.Payload[i*2 : i*2+2]))
 				}
-			case netplayAudioCodecIMA4To1():
-				if !haveStartSample && !voicecodec.IsIMA41SeededPacketFor(chunk.Payload, current.PacketSamples) {
-					// Late-join playback can begin mid-stream on an unseeded ADPCM packet.
-					// Skip that first packet and wait for the next seeded packet to avoid
-					// predictor startup warble.
-					continue
-				}
-				pcm, err = decoder.Decode(chunk.Payload)
-				if err != nil {
-					decoder.Reset()
-					p.source.Reset()
-					haveStartSample = false
-					continue
-				}
 			case netplayAudioCodecG72632():
 				pcm, err = g726Decoder.Decode(chunk.Payload)
 				if err != nil {
@@ -531,6 +495,11 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			}
 		}
 		pcm = resampleMonoLinear(pcm, current.SampleRate, playbackRate)
+		if !haveStartSample {
+			// Fresh decoder state is noticeably rough on the first packet at lower G.726 bitrates.
+			// Ease that startup transient in instead of sending the discontinuity straight to output.
+			applyFadeInMono16(pcm, max(1, playbackRate/200))
+		}
 		p.source.Write(stereoBytesFromMonoPCM(pcm))
 		lastStartSample = chunk.StartSample
 		haveStartSample = true
@@ -780,16 +749,24 @@ func resampleMonoLinear(src []int16, fromRate, toRate int) []int16 {
 	return out
 }
 
-func netplayAudioCodecIMA4To1() byte {
-	return voicecodec.CodecIMA4To1
-}
-
 func netplayAudioCodecPCM16Mono() byte {
 	return voicecodec.CodecPCM16Mono
 }
 
 func netplayAudioCodecG72632() byte {
 	return voicecodec.CodecG72632
+}
+
+func applyFadeInMono16(pcm []int16, samples int) {
+	if samples <= 0 || len(pcm) == 0 {
+		return
+	}
+	if len(pcm) < samples {
+		samples = len(pcm)
+	}
+	for i := 0; i < samples; i++ {
+		pcm[i] = int16(int(pcm[i]) * (i + 1) / samples)
+	}
 }
 
 func applyFadeInStereo16(p []byte, samples int) {

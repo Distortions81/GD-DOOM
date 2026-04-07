@@ -208,8 +208,8 @@ Total record size: `17` bytes.
 
 Current codec ids:
 
-- `1`: `ima4_to_1`
 - `2`: `pcm16_mono`
+- `3`: `g726_32`
 
 Current sample rate choice ids:
 
@@ -233,15 +233,11 @@ Header size before payload: `1` byte.
 Current audio chunk flags:
 
 - bit `0`: `silence`
-- bit `1`: `seeded`
 
 Flag rules:
 
 - `silence`:
   - payload length must be `0`
-- `seeded`:
-  - only meaningful for `ima4_to_1`
-  - indicates presence of the ADPCM seed header
 
 ### Audio Payload Length Rules
 
@@ -251,10 +247,9 @@ For `pcm16_mono`:
 
 - payload bytes = `packet_samples * channels * 2`
 
-For `ima4_to_1`:
+For `g726_32`:
 
-- delta payload bytes = `packet_samples * channels / 2`
-- seeded payload bytes = delta bytes + `8`
+- payload bytes = `packet_samples * channels * 4 / 8`
 
 If the payload length does not match the implied length, the record is invalid.
 
@@ -263,12 +258,11 @@ If the payload length does not match the implied length, the record is invalid.
 Current voice path values:
 
 - capture rate: `48000`
-- encoded rate: `48000`
+- default encoded rate: `24000`
 - channels: `1`
 - frame duration: `30 ms`
-- packet samples after resample: `1440`
-- voiced delta payload: `720` bytes
-- voiced seeded payload: `728` bytes
+- default packet samples after resample: `720`
+- default voiced payload: `360` bytes
 - compact audio chunk header: `1` byte
 
 Current silence policy:

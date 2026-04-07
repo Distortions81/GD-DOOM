@@ -9,7 +9,7 @@ import (
 	"gddoom/internal/runtimecfg"
 )
 
-var frontendVoiceCodecChoices = [...]string{"ima", "g726", "pcm"}
+var frontendVoiceCodecChoices = [...]string{"g726", "pcm"}
 var frontendVoiceG726BitsChoices = [...]int{2, 3, 4, 5}
 var frontendVoiceSampleRateChoices = [...]int{16000, 24000, 32000, 48000}
 var frontendVoiceGateThresholdChoices = [...]float64{
@@ -24,7 +24,7 @@ func voiceCodecMenuLabel(codec string) string {
 	case "pcm", "pcm16", "pcm16_mono":
 		return "WAV"
 	default:
-		return "IMA VOICE"
+		return "G.726"
 	}
 }
 
@@ -35,7 +35,7 @@ func normalizeVoiceCodecChoice(codec string) string {
 	case "pcm", "pcm16", "pcm16_mono":
 		return "pcm"
 	default:
-		return "ima"
+		return "g726"
 	}
 }
 

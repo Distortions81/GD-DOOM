@@ -15,14 +15,6 @@ func pcmPayload(frameSamples, channels int) []byte {
 	return make([]byte, frameSamples*channels*2)
 }
 
-func imaPayload(frameSamples, channels int, seeded bool) []byte {
-	n := frameSamples * channels / 2
-	if seeded {
-		n += audioIMASeedHeaderBytes
-	}
-	return make([]byte, n)
-}
-
 func g726Payload(frameSamples, channels int) []byte {
 	n, err := voicecodec.G726PacketBytes(frameSamples, channels, 4)
 	if err != nil {
@@ -476,7 +468,7 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 	defer v.Close()
 
 	wantCfg := AudioFormat{
-		Codec:                audioCodecIMA4To1,
+		Codec:                audioCodecG72632,
 		BitsPerSample:        4,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice48000),
 		SampleRate:           48000,
@@ -491,7 +483,7 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 
 	wantChunk := AudioChunk{
 		StartSample: 0,
-		Payload:     imaPayload(wantCfg.PacketSamples, wantCfg.Channels, true),
+		Payload:     g726Payload(wantCfg.PacketSamples, wantCfg.Channels),
 	}
 	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {
 		t.Fatalf("BroadcastAudioChunk() error = %v", err)
@@ -833,7 +825,7 @@ func TestRelayAudioFormatChangeResetsChunkSequence(t *testing.T) {
 	defer v.Close()
 
 	firstFormat := AudioFormat{
-		Codec:                audioCodecIMA4To1,
+		Codec:                audioCodecG72632,
 		BitsPerSample:        4,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
 		SampleRate:           24000,
@@ -855,7 +847,7 @@ func TestRelayAudioFormatChangeResetsChunkSequence(t *testing.T) {
 	if err := ab.BroadcastAudioFormat(firstFormat); err != nil {
 		t.Fatalf("BroadcastAudioFormat() first error = %v", err)
 	}
-	if err := ab.BroadcastAudioChunk(AudioChunk{Payload: imaPayload(firstFormat.PacketSamples, firstFormat.Channels, true)}); err != nil {
+	if err := ab.BroadcastAudioChunk(AudioChunk{Payload: g726Payload(firstFormat.PacketSamples, firstFormat.Channels)}); err != nil {
 		t.Fatalf("BroadcastAudioChunk() first error = %v", err)
 	}
 	if err := ab.BroadcastAudioFormat(secondFormat); err != nil {
@@ -927,7 +919,7 @@ func TestRelayAudioFormatChangeDropsQueuedOldChunks(t *testing.T) {
 	defer v.Close()
 
 	firstFormat := AudioFormat{
-		Codec:                audioCodecIMA4To1,
+		Codec:                audioCodecG72632,
 		BitsPerSample:        4,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
 		SampleRate:           24000,
@@ -950,7 +942,7 @@ func TestRelayAudioFormatChangeDropsQueuedOldChunks(t *testing.T) {
 		t.Fatalf("BroadcastAudioFormat() first error = %v", err)
 	}
 	for i := 0; i < 3; i++ {
-		if err := ab.BroadcastAudioChunk(AudioChunk{Payload: imaPayload(firstFormat.PacketSamples, firstFormat.Channels, true)}); err != nil {
+		if err := ab.BroadcastAudioChunk(AudioChunk{Payload: g726Payload(firstFormat.PacketSamples, firstFormat.Channels)}); err != nil {
 			t.Fatalf("BroadcastAudioChunk() stale %d error = %v", i, err)
 		}
 	}
