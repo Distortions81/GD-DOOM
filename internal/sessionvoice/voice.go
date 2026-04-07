@@ -48,15 +48,20 @@ type VoiceStreamer struct {
 }
 
 func defaultAudioFormat() netplay.AudioFormat {
+	const defaultVoiceSampleRate = 24000
+	packetSamples, err := voicecodec.PacketSamplesFor(defaultVoiceSampleRate, voicecodec.PacketDurationMillis)
+	if err != nil {
+		packetSamples = 720
+	}
 	return netplay.AudioFormat{
-		Codec:                netplayAudioCodecIMA4To1(),
+		Codec:                netplayAudioCodecG72632(),
 		BitsPerSample:        4,
-		SampleRateChoice:     byte(voicecodec.DefaultSampleRateChoice()),
-		SampleRate:           voicecodec.SampleRate,
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
+		SampleRate:           defaultVoiceSampleRate,
 		Channels:             voicecodec.Channels,
 		PacketDurationMillis: voicecodec.PacketDurationMillis,
-		PacketSamples:        voicecodec.PacketSamples,
-		Bitrate:              voicecodec.SampleRate * voicecodec.Channels * 4,
+		PacketSamples:        packetSamples,
+		Bitrate:              voicecodec.G726Bitrate(defaultVoiceSampleRate, voicecodec.Channels, 4),
 	}
 }
 
@@ -64,7 +69,8 @@ func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, err
 	format := defaultAudioFormat()
 	g726Bits := voicecodec.NormalizeG726BitsPerSample(opts.G726BitsPerSample)
 	switch codec := strings.TrimSpace(strings.ToLower(opts.Codec)); codec {
-	case "", "ima", "ima4", "ima4_to_1", "adpcm":
+	case "":
+	case "ima", "ima4", "ima4_to_1", "adpcm":
 		format.Codec = netplayAudioCodecIMA4To1()
 	case "g726", "g726_32", "g72632":
 		format.Codec = netplayAudioCodecG72632()
