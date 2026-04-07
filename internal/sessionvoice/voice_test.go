@@ -2,6 +2,7 @@ package sessionvoice
 
 import (
 	"encoding/binary"
+	"fmt"
 	"testing"
 
 	"gddoom/internal/voicecodec"
@@ -209,5 +210,117 @@ func TestResolveBroadcasterFormatHonorsG726BitDepth(t *testing.T) {
 func TestResolveBroadcasterFormatRejectsBadCodec(t *testing.T) {
 	if _, err := resolveBroadcasterFormat(BroadcasterOptions{Codec: "nope"}); err == nil {
 		t.Fatal("expected codec error")
+	}
+}
+
+func TestVoiceDecodePlaybackFrameAccountingStaysBalanced(t *testing.T) {
+	testCases := []struct {
+		name                string
+		sampleRate          int
+		packetDurationMilli int
+		packets             int
+	}{
+		{name: "silk_48k_20ms", sampleRate: 48000, packetDurationMilli: voicecodec.SilkPacketDurationMillis, packets: 200},
+		{name: "pcm_16k_30ms", sampleRate: 16000, packetDurationMilli: voicecodec.PacketDurationMillis, packets: 200},
+		{name: "pcm_24k_30ms", sampleRate: 24000, packetDurationMilli: voicecodec.PacketDurationMillis, packets: 200},
+		{name: "pcm_32k_30ms", sampleRate: 32000, packetDurationMilli: voicecodec.PacketDurationMillis, packets: 200},
+		{name: "pcm_48k_30ms", sampleRate: 48000, packetDurationMilli: voicecodec.PacketDurationMillis, packets: 200},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			packetSamples, err := voicecodec.PacketSamplesFor(tc.sampleRate, tc.packetDurationMilli)
+			if err != nil {
+				t.Fatalf("PacketSamplesFor() error = %v", err)
+			}
+
+			src := newStreamSource(testPlaybackRate)
+			playbackPacketSamples, err := voicecodec.PacketSamplesFor(testPlaybackRate, tc.packetDurationMilli)
+			if err != nil {
+				t.Fatalf("PacketSamplesFor(playback) error = %v", err)
+			}
+			packetBytes := playbackPacketSamples * 4
+			readBuf := make([]byte, packetBytes)
+			var totalQueuedFrames int
+			var totalPlayedFrames int
+			started := false
+			for packet := range tc.packets {
+				pcm := make([]int16, packetSamples)
+				for i := range pcm {
+					pcm[i] = int16(((packet+1)*(i+17))%20000 - 10000)
+				}
+				resampled := resampleMonoLinear(pcm, tc.sampleRate, testPlaybackRate)
+				if len(resampled) != playbackPacketSamples {
+					t.Fatalf("resampled len=%d want=%d", len(resampled), playbackPacketSamples)
+				}
+				totalQueuedFrames += len(resampled)
+				src.Write(stereoBytesFromMonoPCM(resampled))
+				if !started && len(src.buf) >= src.startupBytes {
+					started = true
+				}
+				if !started {
+					continue
+				}
+				n, err := src.Read(readBuf)
+				if err != nil {
+					t.Fatalf("Read() error = %v", err)
+				}
+				if n%4 != 0 {
+					t.Fatalf("Read() bytes=%d must be divisible by 4", n)
+				}
+				totalPlayedFrames += n / 4
+			}
+
+			for len(src.buf) > 0 {
+				n, err := src.Read(readBuf)
+				if err != nil {
+					t.Fatalf("Read() drain error = %v", err)
+				}
+				if n%4 != 0 {
+					t.Fatalf("Read() drain bytes=%d must be divisible by 4", n)
+				}
+				totalPlayedFrames += n / 4
+			}
+
+			deltaFrames := totalQueuedFrames - totalPlayedFrames
+			if deltaFrames != 0 {
+				t.Fatalf("deltaFrames=%d queued=%d played=%d", deltaFrames, totalQueuedFrames, totalPlayedFrames)
+			}
+			if got := src.BufferedMillis(testPlaybackRate); got != 0 {
+				t.Fatalf("BufferedMillis()=%d want 0", got)
+			}
+		})
+	}
+}
+
+func TestResampleMonoLinearPacketLengthMatchesPlaybackDuration(t *testing.T) {
+	testCases := []struct {
+		sampleRate          int
+		packetDurationMilli int
+	}{
+		{sampleRate: 16000, packetDurationMilli: voicecodec.PacketDurationMillis},
+		{sampleRate: 24000, packetDurationMilli: voicecodec.PacketDurationMillis},
+		{sampleRate: 32000, packetDurationMilli: voicecodec.PacketDurationMillis},
+		{sampleRate: 48000, packetDurationMilli: voicecodec.PacketDurationMillis},
+		{sampleRate: 48000, packetDurationMilli: voicecodec.SilkPacketDurationMillis},
+	}
+
+	for _, tc := range testCases {
+		name := fmt.Sprintf("%dhz_%dms", tc.sampleRate, tc.packetDurationMilli)
+		t.Run(name, func(t *testing.T) {
+			packetSamples, err := voicecodec.PacketSamplesFor(tc.sampleRate, tc.packetDurationMilli)
+			if err != nil {
+				t.Fatalf("PacketSamplesFor() error = %v", err)
+			}
+
+			got := len(resampleMonoLinear(make([]int16, packetSamples), tc.sampleRate, testPlaybackRate))
+			want, err := voicecodec.PacketSamplesFor(testPlaybackRate, tc.packetDurationMilli)
+			if err != nil {
+				t.Fatalf("PacketSamplesFor(playback) error = %v", err)
+			}
+			if got != want {
+				t.Fatalf("resampled len=%d want=%d", got, want)
+			}
+		})
 	}
 }
