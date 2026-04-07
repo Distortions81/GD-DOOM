@@ -48,26 +48,30 @@ type VoiceStreamer struct {
 }
 
 func defaultAudioFormat() netplay.AudioFormat {
-	const defaultVoiceSampleRate = 24000
+	const defaultVoiceSampleRate = 32000
+	const defaultVoiceBitsPerSample = 3
 	packetSamples, err := voicecodec.PacketSamplesFor(defaultVoiceSampleRate, voicecodec.PacketDurationMillis)
 	if err != nil {
-		packetSamples = 720
+		packetSamples = 960
 	}
 	return netplay.AudioFormat{
 		Codec:                netplayAudioCodecG72632(),
-		BitsPerSample:        4,
-		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
+		BitsPerSample:        defaultVoiceBitsPerSample,
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice32000),
 		SampleRate:           defaultVoiceSampleRate,
 		Channels:             voicecodec.Channels,
 		PacketDurationMillis: voicecodec.PacketDurationMillis,
 		PacketSamples:        packetSamples,
-		Bitrate:              voicecodec.G726Bitrate(defaultVoiceSampleRate, voicecodec.Channels, 4),
+		Bitrate:              voicecodec.G726Bitrate(defaultVoiceSampleRate, voicecodec.Channels, defaultVoiceBitsPerSample),
 	}
 }
 
 func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, error) {
 	format := defaultAudioFormat()
-	g726Bits := voicecodec.NormalizeG726BitsPerSample(opts.G726BitsPerSample)
+	g726Bits := int(format.BitsPerSample)
+	if opts.G726BitsPerSample > 0 {
+		g726Bits = voicecodec.NormalizeG726BitsPerSample(opts.G726BitsPerSample)
+	}
 	switch codec := strings.TrimSpace(strings.ToLower(opts.Codec)); codec {
 	case "":
 	case "g726", "g726_32", "g72632":

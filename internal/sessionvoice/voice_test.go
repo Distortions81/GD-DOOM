@@ -117,11 +117,11 @@ func TestResolveBroadcasterFormatDefaults(t *testing.T) {
 	if got.Codec != voicecodec.CodecG72632 {
 		t.Fatalf("codec=%d want %d", got.Codec, voicecodec.CodecG72632)
 	}
-	if got.BitsPerSample != 4 {
-		t.Fatalf("bits/sample=%d want 4", got.BitsPerSample)
+	if got.BitsPerSample != 3 {
+		t.Fatalf("bits/sample=%d want 3", got.BitsPerSample)
 	}
-	if got.SampleRate != 24000 {
-		t.Fatalf("sample rate=%d want 24000", got.SampleRate)
+	if got.SampleRate != 32000 {
+		t.Fatalf("sample rate=%d want 32000", got.SampleRate)
 	}
 }
 

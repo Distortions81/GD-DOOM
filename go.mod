@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/Distortions81/g726 v0.0.3
+	github.com/Distortions81/g726 v0.0.7
 	github.com/Distortions81/impsynth v0.1.2
 	github.com/dustin/go-humanize v1.0.1
 	github.com/hajimehoshi/ebiten/v2 v2.9.9

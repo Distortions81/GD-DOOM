@@ -12,6 +12,12 @@ import (
 var frontendVoiceCodecChoices = [...]string{"g726", "pcm"}
 var frontendVoiceG726BitsChoices = [...]int{2, 3, 4, 5}
 var frontendVoiceSampleRateChoices = [...]int{16000, 24000, 32000, 48000}
+
+const (
+	defaultFrontendVoiceG726Bits   = 3
+	defaultFrontendVoiceSampleRate = 32000
+)
+
 var frontendVoiceGateThresholdChoices = [...]float64{
 	0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.65, 0.80,
 	1.00, 1.25, 1.50, 1.75, 2.00, 2.50, 3.00, 3.50, 4.00,
@@ -41,7 +47,7 @@ func normalizeVoiceCodecChoice(codec string) string {
 
 func voiceSampleRateMenuLabel(sampleRate int) string {
 	if sampleRate <= 0 {
-		sampleRate = frontendVoiceSampleRateChoices[len(frontendVoiceSampleRateChoices)-1]
+		sampleRate = defaultFrontendVoiceSampleRate
 	}
 	if sampleRate%1000 == 0 {
 		return strconv.Itoa(sampleRate/1000) + "k"
@@ -110,7 +116,7 @@ func clampVoiceG726Bits(bits int) int {
 	case 2, 3, 4, 5:
 		return bits
 	default:
-		return 4
+		return defaultFrontendVoiceG726Bits
 	}
 }
 
@@ -144,7 +150,7 @@ func (sg *sessionGame) voiceSampleRateLabel() string {
 
 func (sg *sessionGame) voiceG726BitsLabel() string {
 	if sg == nil {
-		return voiceG726BitsLabel(4)
+		return voiceG726BitsLabel(defaultFrontendVoiceG726Bits)
 	}
 	return voiceG726BitsLabel(sg.opts.VoiceG726BitsPerSample)
 }
@@ -287,7 +293,7 @@ func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, sa
 		GateThreshold: gateThreshold,
 	}
 	if next.SampleRate <= 0 {
-		next.SampleRate = frontendVoiceSampleRateChoices[len(frontendVoiceSampleRateChoices)-1]
+		next.SampleRate = defaultFrontendVoiceSampleRate
 	}
 	if next.GateThreshold <= 0 {
 		next.GateThreshold = 1

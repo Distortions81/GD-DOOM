@@ -258,10 +258,10 @@ If the payload length does not match the implied length, the record is invalid.
 Current voice path values:
 
 - capture rate: `48000`
-- default encoded rate: `24000`
+- default encoded rate: `32000`
 - channels: `1`
 - frame duration: `30 ms`
-- default packet samples after resample: `720`
+- default packet samples after resample: `960`
 - default voiced payload: `360` bytes
 - compact audio chunk header: `1` byte
 

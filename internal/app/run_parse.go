@@ -499,7 +499,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
 	micDevice := fs.String("mic-device", "", "PulseAudio capture device name for -mic")
 	micCodec := fs.String("mic-codec", "g726", "microphone wire codec (g726|pcm)")
-	micSampleRate := fs.Int("mic-sample-rate", 24000, "microphone wire sample rate in Hz (0 uses default)")
+	micSampleRate := fs.Int("mic-sample-rate", 32000, "microphone wire sample rate in Hz (0 uses default)")
 	micAGC := fs.Bool("mic-agc", true, "enable microphone automatic gain control")
 	micGate := fs.Bool("mic-gate", true, "enable microphone noise gate")
 	micGateThreshold := fs.Float64("mic-gate-threshold", 1.0, "microphone gate threshold multiplier (>0, higher is stricter)")
@@ -1135,7 +1135,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			LiveTicSource:              liveTicSourceFromViewer(watchSession),
 			WatchStartupBufferTics:     watchStartupBufferTics(*lowLatency),
 			VoiceCodec:                 *micCodec,
-			VoiceG726BitsPerSample:     4,
+			VoiceG726BitsPerSample:     3,
 			VoiceSampleRate:            *micSampleRate,
 			VoiceAGCEnabled:            *micAGC,
 			VoiceGateEnabled:           *micGate,
@@ -1394,7 +1394,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				strings.TrimSpace(*micDevice),
 				sessionvoice.BroadcasterOptions{
 					Codec:             *micCodec,
-					G726BitsPerSample: 4,
+					G726BitsPerSample: 3,
 					SampleRate:        *micSampleRate,
 					AGCEnabled:        *micAGC,
 					GateEnabled:       *micGate,

@@ -3953,7 +3953,7 @@ func (g *game) adjustPauseVoice(dir int) {
 				GateThreshold: g.opts.VoiceGateThreshold,
 			}
 			if nextSettings.SampleRate <= 0 {
-				nextSettings.SampleRate = frontendVoiceSampleRateChoices[len(frontendVoiceSampleRateChoices)-1]
+				nextSettings.SampleRate = defaultFrontendVoiceSampleRate
 			}
 			if err := g.opts.OnVoiceSettingsChanged(nextSettings); err != nil {
 				g.pauseMenuStatus = strings.ToUpper(err.Error())
