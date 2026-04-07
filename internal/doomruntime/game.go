@@ -20259,10 +20259,6 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawText(backLabel, float64(backX), 18, 1.2)
 		labels := []string{"CODEC"}
 		values := []string{voiceCodecMenuLabel(g.opts.VoiceCodec)}
-		if normalizeVoiceCodecChoice(g.opts.VoiceCodec) == "g726" {
-			labels = append(labels, "BITS/SAMPLE")
-			values = append(values, voiceG726BitsLabel(g.opts.VoiceG726BitsPerSample))
-		}
 		labels = append(labels, "SAMPLE RATE", "AUTOMATIC VOLUME", "NOISE GATE", "GATE STRENGTH")
 		values = append(values, voiceSampleRateMenuLabel(g.opts.VoiceSampleRate), voiceAGCLabel(g.opts.VoiceAGCEnabled), voiceGateLabel(g.opts.VoiceGateEnabled), voiceGateThresholdLabel(g.opts.VoiceGateThreshold))
 		for i := 0; i < len(labels); i++ {

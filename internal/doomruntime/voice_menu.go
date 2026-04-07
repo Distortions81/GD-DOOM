@@ -125,10 +125,7 @@ func voiceG726BitsChoiceIndex(bits int) int {
 }
 
 func voiceMenuRowCount(codec string) int {
-	if normalizeVoiceCodecChoice(codec) == "g726" {
-		return frontendVoiceMenuRowCount
-	}
-	return frontendVoiceMenuRowCount - 1
+	return frontendVoiceMenuRowCount
 }
 
 func (sg *sessionGame) voiceCodecLabel() string {

@@ -1070,10 +1070,6 @@ func (sg *sessionGame) drawFrontendVoiceMenu(screen *ebiten.Image, scale, ox, oy
 	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
 	labels := []string{"CODEC"}
 	values := []string{sg.voiceCodecLabel()}
-	if normalizeVoiceCodecChoice(sg.opts.VoiceCodec) == "g726" {
-		labels = append(labels, "BITS/SAMPLE")
-		values = append(values, sg.voiceG726BitsLabel())
-	}
 	labels = append(labels, "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD")
 	values = append(values, sg.voiceSampleRateLabel(), sg.voiceAGCLabel(), sg.voiceGateLabel(), sg.voiceGateThresholdLabel())
 	for i := 0; i < len(labels); i++ {
