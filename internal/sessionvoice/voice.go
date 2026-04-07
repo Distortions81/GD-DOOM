@@ -497,6 +497,7 @@ type streamSource struct {
 	fade                []byte
 	closed              bool
 	started             bool
+	fadedOut            bool
 	startupBytes        int
 	targetBufferedBytes int
 	trimBufferedBytes   int
@@ -550,18 +551,23 @@ func (s *streamSource) Read(p []byte) (int, error) {
 		if s.closed {
 			return 0, io.EOF
 		}
-		s.fade = buildFadeOutStereo16(s.lastSample, audioFadeSamples)
-		if len(s.fade) > 0 {
-			n := copy(p, s.fade)
-			copy(s.fade, s.fade[n:])
-			s.fade = s.fade[:len(s.fade)-n]
-			if n < len(p) {
-				clear(p[n:])
+		if !s.fadedOut {
+			s.fade = buildFadeOutStereo16(s.lastSample, audioFadeSamples)
+			s.fadedOut = true
+			if len(s.fade) > 0 {
+				n := copy(p, s.fade)
+				copy(s.fade, s.fade[n:])
+				s.fade = s.fade[:len(s.fade)-n]
+				if n < len(p) {
+					clear(p[n:])
+				}
+			} else {
+				clear(p)
 			}
-		} else {
-			clear(p)
+			s.needFadeIn = true
+			return len(p), nil
 		}
-		s.needFadeIn = true
+		clear(p)
 		return len(p), nil
 	}
 	n := copy(p, s.buf)
@@ -587,6 +593,7 @@ func (s *streamSource) Write(p []byte) {
 		applyFadeInStereo16(data, audioFadeSamples)
 		s.needFadeIn = false
 	}
+	s.fadedOut = false
 	s.buf = append(s.buf, data...)
 	s.resetBufferedAudioLocked()
 	s.mu.Unlock()
@@ -604,6 +611,7 @@ func (s *streamSource) Reset() {
 	s.fade = buildFadeOutStereo16(s.lastSample, audioCatchupFadeSamples)
 	s.buf = s.buf[:0]
 	s.started = false
+	s.fadedOut = false
 	s.needFadeIn = true
 }
 

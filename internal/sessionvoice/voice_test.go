@@ -66,6 +66,15 @@ func TestStreamSourceResetProducesFadeAndThenSilence(t *testing.T) {
 	if last != 0 {
 		t.Fatalf("fade should end at zero, got %d", last)
 	}
+	silence := make([]byte, 32)
+	if _, err := src.Read(silence); err != nil {
+		t.Fatalf("silence Read() error = %v", err)
+	}
+	for i, b := range silence {
+		if b != 0 {
+			t.Fatalf("silence[%d]=%d want 0 after one fade-out", i, b)
+		}
+	}
 }
 
 func TestStreamSourceResetsLargeBacklogToNewestTail(t *testing.T) {
