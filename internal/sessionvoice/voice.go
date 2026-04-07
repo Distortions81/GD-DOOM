@@ -30,12 +30,11 @@ const (
 )
 
 type BroadcasterOptions struct {
-	DownsampleLowPassHz float64
-	Codec               string
-	SampleRate          int
-	AGCEnabled          bool
-	GateEnabled         bool
-	GateThreshold       float64
+	Codec         string
+	SampleRate    int
+	AGCEnabled    bool
+	GateEnabled   bool
+	GateThreshold float64
 }
 
 type VoiceStreamer struct {
@@ -192,14 +191,6 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		raw := make([]byte, frameBytes)
 		framePCM := make([]int16, voicecodec.CaptureFrameSamples*voicecodec.Channels)
 		hpf := newHighPassFilter(50, voicecodec.CaptureSampleRate)
-		var lowPassFilters []*lowPassFilter
-		if opts.DownsampleLowPassHz > 0 {
-			lowPassFilters = []*lowPassFilter{
-				newLowPassFilter(opts.DownsampleLowPassHz, voicecodec.CaptureSampleRate),
-				newLowPassFilter(opts.DownsampleLowPassHz, voicecodec.CaptureSampleRate),
-				newLowPassFilter(opts.DownsampleLowPassHz, voicecodec.CaptureSampleRate),
-			}
-		}
 		agc := newMicAGC()
 		agc.SetEnabled(opts.AGCEnabled)
 		agc.SetGate(opts.GateEnabled, opts.GateThreshold)
@@ -235,7 +226,7 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			if allSilent {
 				encoder.Reset()
 			} else {
-				down := downsampleCaptureToVoice(framePCM, currentFormat.SampleRate, lowPassFilters...)
+				down := downsampleCaptureToVoice(framePCM, currentFormat.SampleRate)
 				var payload []byte
 				switch currentFormat.Codec {
 				case netplayAudioCodecIMA4To1():

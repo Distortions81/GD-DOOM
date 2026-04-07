@@ -503,7 +503,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	micAGC := fs.Bool("mic-agc", true, "enable microphone automatic gain control")
 	micGate := fs.Bool("mic-gate", true, "enable microphone noise gate")
 	micGateThreshold := fs.Float64("mic-gate-threshold", 1.0, "microphone gate threshold multiplier (>0, higher is stricter)")
-	micLowPassHz := fs.Float64("mic-lowpass-hz", 0, "optional microphone downsample low-pass cutoff in Hz (<=0 disables)")
 	noVsync := fs.Bool("no-vsync", defaultNoVsync, "disable vsync and uncap draw FPS")
 	noFPS := fs.Bool("nofps", defaultNoFPS, "hide FPS/MS overlay")
 	noAspectCorrection := fs.Bool("no-aspect-correction", defaultNoAspectCorrection, "disable Doom-style 4:3 aspect correction")
@@ -1155,12 +1154,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				return nil
 			}
 			format, err := sessionvoice.ResolveBroadcasterFormat(sessionvoice.BroadcasterOptions{
-				DownsampleLowPassHz: *micLowPassHz,
-				Codec:               s.Codec,
-				SampleRate:          s.SampleRate,
-				AGCEnabled:          s.AGCEnabled,
-				GateEnabled:         s.GateEnabled,
-				GateThreshold:       s.GateThreshold,
+				Codec:         s.Codec,
+				SampleRate:    s.SampleRate,
+				AGCEnabled:    s.AGCEnabled,
+				GateEnabled:   s.GateEnabled,
+				GateThreshold: s.GateThreshold,
 			})
 			if err != nil {
 				return err
@@ -1392,12 +1390,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				audioHost,
 				strings.TrimSpace(*micDevice),
 				sessionvoice.BroadcasterOptions{
-					DownsampleLowPassHz: *micLowPassHz,
-					Codec:               *micCodec,
-					SampleRate:          *micSampleRate,
-					AGCEnabled:          *micAGC,
-					GateEnabled:         *micGate,
-					GateThreshold:       *micGateThreshold,
+					Codec:         *micCodec,
+					SampleRate:    *micSampleRate,
+					AGCEnabled:    *micAGC,
+					GateEnabled:   *micGate,
+					GateThreshold: *micGateThreshold,
 				},
 				func() uint32 {
 					return uint32(max(0, sess.CurrentWorldTic()))
@@ -1414,9 +1411,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				msg += strconv.Itoa(*micSampleRate)
 			} else {
 				msg += "default"
-			}
-			if *micLowPassHz > 0 {
-				msg += fmt.Sprintf(" low-pass=%.0f Hz", *micLowPassHz)
 			}
 			fmt.Fprintln(stderr, msg)
 		}
