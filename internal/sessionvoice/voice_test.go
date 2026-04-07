@@ -120,11 +120,11 @@ func TestResolveBroadcasterFormatDefaults(t *testing.T) {
 	if got.BitsPerSample != 0 {
 		t.Fatalf("bits/sample=%d want 0", got.BitsPerSample)
 	}
-	if got.SampleRate != 24000 {
-		t.Fatalf("sample rate=%d want 24000", got.SampleRate)
+	if got.SampleRate != 48000 {
+		t.Fatalf("sample rate=%d want 48000", got.SampleRate)
 	}
-	if got.PacketSamples != 480 {
-		t.Fatalf("packet samples=%d want 480", got.PacketSamples)
+	if got.PacketSamples != 960 {
+		t.Fatalf("packet samples=%d want 960", got.PacketSamples)
 	}
 }
 

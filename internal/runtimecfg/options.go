@@ -67,6 +67,7 @@ type VoiceSyncMeter interface {
 type VoiceSettings struct {
 	Codec         string
 	G726Bits      int
+	Bitrate       int
 	SampleRate    int
 	AGCEnabled    bool
 	GateEnabled   bool
@@ -172,6 +173,7 @@ type Options struct {
 	VoiceSyncMeter             VoiceSyncMeter
 	VoiceCodec                 string
 	VoiceG726BitsPerSample     int
+	VoiceBitrate               int
 	VoiceSampleRate            int
 	VoiceAGCEnabled            bool
 	VoiceGateEnabled           bool

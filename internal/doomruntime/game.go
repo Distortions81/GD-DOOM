@@ -3675,7 +3675,12 @@ func (g *game) tickPauseMenu() {
 		}
 	case pauseMenuModeVoice:
 		if g.keyJustPressed(ebiten.KeyArrowUp) || g.keyJustPressed(ebiten.KeyArrowDown) {
-			g.pauseMenuVoiceOn ^= 1
+			dir := -1
+			if g.keyJustPressed(ebiten.KeyArrowDown) {
+				dir = 1
+			}
+			n := max(frontendVoiceMenuRowCount, 1)
+			g.pauseMenuVoiceOn = (g.pauseMenuVoiceOn + dir + n) % n
 		}
 		if g.keyJustPressed(ebiten.KeyArrowLeft) {
 			g.adjustPauseVoice(-1)
@@ -3939,51 +3944,57 @@ func (g *game) adjustPauseVoice(dir int) {
 		return
 	}
 	switch g.pauseMenuVoiceOn {
-	case frontendVoiceMenuRowCodec:
-		cur := voiceCodecChoiceIndex(g.opts.VoiceCodec)
-		n := len(frontendVoiceCodecChoices)
-		next := (cur + dir + n) % n
-		if g.opts.OnVoiceSettingsChanged != nil {
-			nextSettings := runtimecfg.VoiceSettings{
-				Codec:         frontendVoiceCodecChoices[next],
-				G726Bits:      g.opts.VoiceG726BitsPerSample,
-				SampleRate:    g.opts.VoiceSampleRate,
-				AGCEnabled:    g.opts.VoiceAGCEnabled,
-				GateEnabled:   g.opts.VoiceGateEnabled,
-				GateThreshold: g.opts.VoiceGateThreshold,
-			}
-			if nextSettings.SampleRate <= 0 {
-				nextSettings.SampleRate = defaultFrontendVoiceSampleRate
-			}
-			if err := g.opts.OnVoiceSettingsChanged(nextSettings); err != nil {
-				g.pauseMenuStatus = strings.ToUpper(err.Error())
-				g.pauseMenuStatusTics = doomTicsPerSecond * 2
-				return
-			}
-		}
-		g.opts.VoiceCodec = frontendVoiceCodecChoices[next]
-	case frontendVoiceMenuRowG726Bits:
-		if normalizeVoiceCodecChoice(g.opts.VoiceCodec) != "g726" {
+	case frontendVoiceMenuRowPreset:
+		if err := (&sessionGame{opts: g.opts, g: g}).frontendChangeVoicePreset(dir); err != nil {
+			g.pauseMenuStatus = strings.ToUpper(err.Error())
+			g.pauseMenuStatusTics = doomTicsPerSecond * 2
 			return
 		}
-		cur := voiceG726BitsChoiceIndex(g.opts.VoiceG726BitsPerSample)
-		n := len(frontendVoiceG726BitsChoices)
-		next := (cur + dir + n) % n
-		if g.opts.OnVoiceSettingsChanged != nil {
-			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
-				Codec:         g.opts.VoiceCodec,
-				G726Bits:      frontendVoiceG726BitsChoices[next],
-				SampleRate:    g.opts.VoiceSampleRate,
-				AGCEnabled:    g.opts.VoiceAGCEnabled,
-				GateEnabled:   g.opts.VoiceGateEnabled,
-				GateThreshold: g.opts.VoiceGateThreshold,
-			}); err != nil {
-				g.pauseMenuStatus = strings.ToUpper(err.Error())
-				g.pauseMenuStatusTics = doomTicsPerSecond * 2
-				return
+	case frontendVoiceMenuRowG726Bits:
+		switch normalizeVoiceCodecChoice(g.opts.VoiceCodec) {
+		case "silk":
+			cur := voiceBitrateChoiceIndex(g.opts.VoiceBitrate)
+			n := len(frontendVoiceBitrateChoices)
+			next := (cur + dir + n) % n
+			if g.opts.OnVoiceSettingsChanged != nil {
+				if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
+					Codec:         g.opts.VoiceCodec,
+					G726Bits:      g.opts.VoiceG726BitsPerSample,
+					Bitrate:       frontendVoiceBitrateChoices[next],
+					SampleRate:    g.opts.VoiceSampleRate,
+					AGCEnabled:    g.opts.VoiceAGCEnabled,
+					GateEnabled:   g.opts.VoiceGateEnabled,
+					GateThreshold: g.opts.VoiceGateThreshold,
+				}); err != nil {
+					g.pauseMenuStatus = strings.ToUpper(err.Error())
+					g.pauseMenuStatusTics = doomTicsPerSecond * 2
+					return
+				}
 			}
+			g.opts.VoiceBitrate = frontendVoiceBitrateChoices[next]
+		case "g726":
+			cur := voiceG726BitsChoiceIndex(g.opts.VoiceG726BitsPerSample)
+			n := len(frontendVoiceG726BitsChoices)
+			next := (cur + dir + n) % n
+			if g.opts.OnVoiceSettingsChanged != nil {
+				if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
+					Codec:         g.opts.VoiceCodec,
+					G726Bits:      frontendVoiceG726BitsChoices[next],
+					Bitrate:       g.opts.VoiceBitrate,
+					SampleRate:    g.opts.VoiceSampleRate,
+					AGCEnabled:    g.opts.VoiceAGCEnabled,
+					GateEnabled:   g.opts.VoiceGateEnabled,
+					GateThreshold: g.opts.VoiceGateThreshold,
+				}); err != nil {
+					g.pauseMenuStatus = strings.ToUpper(err.Error())
+					g.pauseMenuStatusTics = doomTicsPerSecond * 2
+					return
+				}
+			}
+			g.opts.VoiceG726BitsPerSample = frontendVoiceG726BitsChoices[next]
+		default:
+			return
 		}
-		g.opts.VoiceG726BitsPerSample = frontendVoiceG726BitsChoices[next]
 	case frontendVoiceMenuRowSampleRate:
 		cur := voiceSampleRateChoiceIndex(g.opts.VoiceSampleRate)
 		n := len(frontendVoiceSampleRateChoices)
@@ -3992,6 +4003,7 @@ func (g *game) adjustPauseVoice(dir int) {
 			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
 				Codec:         g.opts.VoiceCodec,
 				G726Bits:      g.opts.VoiceG726BitsPerSample,
+				Bitrate:       g.opts.VoiceBitrate,
 				SampleRate:    frontendVoiceSampleRateChoices[next],
 				AGCEnabled:    g.opts.VoiceAGCEnabled,
 				GateEnabled:   g.opts.VoiceGateEnabled,
@@ -4009,6 +4021,7 @@ func (g *game) adjustPauseVoice(dir int) {
 			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
 				Codec:         g.opts.VoiceCodec,
 				G726Bits:      g.opts.VoiceG726BitsPerSample,
+				Bitrate:       g.opts.VoiceBitrate,
 				SampleRate:    g.opts.VoiceSampleRate,
 				AGCEnabled:    next,
 				GateEnabled:   g.opts.VoiceGateEnabled,
@@ -4026,6 +4039,7 @@ func (g *game) adjustPauseVoice(dir int) {
 			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
 				Codec:         g.opts.VoiceCodec,
 				G726Bits:      g.opts.VoiceG726BitsPerSample,
+				Bitrate:       g.opts.VoiceBitrate,
 				SampleRate:    g.opts.VoiceSampleRate,
 				AGCEnabled:    g.opts.VoiceAGCEnabled,
 				GateEnabled:   next,
@@ -4045,6 +4059,7 @@ func (g *game) adjustPauseVoice(dir int) {
 			if err := g.opts.OnVoiceSettingsChanged(runtimecfg.VoiceSettings{
 				Codec:         g.opts.VoiceCodec,
 				G726Bits:      g.opts.VoiceG726BitsPerSample,
+				Bitrate:       g.opts.VoiceBitrate,
 				SampleRate:    g.opts.VoiceSampleRate,
 				AGCEnabled:    g.opts.VoiceAGCEnabled,
 				GateEnabled:   g.opts.VoiceGateEnabled,
@@ -4074,7 +4089,7 @@ func (g *game) activatePauseOptionsItem() {
 	}
 	if g.pauseMenuOptionsOn == frontendOptionsRowVoice {
 		g.pauseMenuMode = pauseMenuModeVoice
-		g.pauseMenuVoiceOn = frontendVoiceMenuRowCodec
+		g.pauseMenuVoiceOn = frontendVoiceMenuRowPreset
 		g.pauseMenuStatus = ""
 		g.pauseMenuStatusTics = 0
 		return
@@ -20257,10 +20272,10 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		backX := 320 - 8 - int(math.Ceil(float64(g.huTextWidth(backLabel))*1.2))
 		drawText("VOICE", menuX, 18, 1.4)
 		drawText(backLabel, float64(backX), 18, 1.2)
-		labels := []string{"CODEC"}
-		values := []string{voiceCodecMenuLabel(g.opts.VoiceCodec)}
-		labels = append(labels, "BITS/SAMPLE", "SAMPLE RATE", "AUTOMATIC VOLUME", "NOISE GATE", "GATE STRENGTH")
-		values = append(values, voiceG726BitsLabel(g.opts.VoiceG726BitsPerSample), voiceSampleRateMenuLabel(g.opts.VoiceSampleRate), voiceAGCLabel(g.opts.VoiceAGCEnabled), voiceGateLabel(g.opts.VoiceGateEnabled), voiceGateThresholdLabel(g.opts.VoiceGateThreshold))
+		labels := []string{"PRESET"}
+		values := []string{(&sessionGame{opts: g.opts}).voicePresetLabel()}
+		labels = append(labels, voiceCodecDetailMenuLabel(g.opts.VoiceCodec), "SAMPLE RATE", "AUTOMATIC VOLUME", "NOISE GATE", "GATE STRENGTH")
+		values = append(values, (&sessionGame{opts: g.opts}).voiceCodecDetailLabel(), voiceSampleRateMenuLabel(g.opts.VoiceSampleRate), voiceAGCLabel(g.opts.VoiceAGCEnabled), voiceGateLabel(g.opts.VoiceGateEnabled), voiceGateThresholdLabel(g.opts.VoiceGateThreshold))
 		for i := 0; i < len(labels); i++ {
 			y := float64(menuY + i*lineHeight + 2)
 			drawText(labels[i], menuX, y, 1.2)

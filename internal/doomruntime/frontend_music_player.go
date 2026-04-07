@@ -16,7 +16,7 @@ const (
 	frontendMusicMenuRowSoundFont  = 2
 	frontendMusicMenuRowPlayer     = 3
 	frontendMusicMenuRowCount      = 4
-	frontendVoiceMenuRowCodec      = 0
+	frontendVoiceMenuRowPreset     = 0
 	frontendVoiceMenuRowG726Bits   = 1
 	frontendVoiceMenuRowSampleRate = 2
 	frontendVoiceMenuRowAGC        = 3

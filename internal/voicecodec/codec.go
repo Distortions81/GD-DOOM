@@ -28,7 +28,7 @@ const (
 	G72632FrameBytes              = FrameSamples * Channels / 2
 	G72632PacketBytes             = PacketSamples * Channels / 2
 	SilkPacketDurationMillis      = 20
-	SilkDefaultBitrate            = 25000
+	SilkDefaultBitrate            = 64000
 )
 
 func NormalizeG726BitsPerSample(bits int) int {

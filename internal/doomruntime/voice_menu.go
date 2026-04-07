@@ -7,15 +7,19 @@ import (
 	"strings"
 
 	"gddoom/internal/runtimecfg"
+	"gddoom/internal/voicecodec"
 )
 
-var frontendVoiceCodecChoices = [...]string{"silk", "g726", "pcm"}
+var frontendVoiceCodecChoices = [...]string{"silk", "g726"}
 var frontendVoiceG726BitsChoices = [...]int{2, 3, 4, 5}
+var frontendVoiceBitrateChoices = [...]int{8000, 12000, 16000, 20000, 25000, 30000, 40000, 50000, 64000, 80000}
 var frontendVoiceSampleRateChoices = [...]int{16000, 24000, 32000, 48000}
+var frontendVoicePresetChoices = [...]string{"high", "medium", "low"}
 
 const (
 	defaultFrontendVoiceG726Bits   = 3
-	defaultFrontendVoiceSampleRate = 24000
+	defaultFrontendVoiceBitrate    = voicecodec.SilkDefaultBitrate
+	defaultFrontendVoiceSampleRate = 48000
 )
 
 var frontendVoiceGateThresholdChoices = [...]float64{
@@ -33,6 +37,48 @@ func voiceCodecMenuLabel(codec string) string {
 		return "WAV"
 	default:
 		return "SILK"
+	}
+}
+
+func voicePresetLabel(preset string) string {
+	switch strings.TrimSpace(strings.ToLower(preset)) {
+	case "high":
+		return "HIGH"
+	case "medium", "med":
+		return "MEDIUM"
+	case "low":
+		return "LOW"
+	default:
+		return "CUSTOM"
+	}
+}
+
+func voicePresetChoiceIndex(preset string) int {
+	switch strings.TrimSpace(strings.ToLower(preset)) {
+	case "high":
+		return 0
+	case "medium", "med":
+		return 1
+	case "low":
+		return 2
+	default:
+		return 0
+	}
+}
+
+func detectVoicePreset(codec string, bitrate, sampleRate int) string {
+	if normalizeVoiceCodecChoice(codec) != "silk" {
+		return "custom"
+	}
+	switch {
+	case bitrate == 64000 && sampleRate == 48000:
+		return "high"
+	case bitrate == 40000 && sampleRate == 32000:
+		return "medium"
+	case bitrate == 25000 && sampleRate == 24000:
+		return "low"
+	default:
+		return "custom"
 	}
 }
 
@@ -54,13 +100,59 @@ func voiceSampleRateMenuLabel(sampleRate int) string {
 		sampleRate = defaultFrontendVoiceSampleRate
 	}
 	if sampleRate%1000 == 0 {
-		return strconv.Itoa(sampleRate/1000) + "k"
+		return strconv.Itoa(sampleRate/1000) + " kHz"
 	}
 	return strconv.Itoa(sampleRate)
 }
 
 func voiceG726BitsLabel(bits int) string {
 	return fmt.Sprintf("%d BITS/SAMPLE", clampVoiceG726Bits(bits))
+}
+
+func clampVoiceBitrate(bitrate int) int {
+	if bitrate <= frontendVoiceBitrateChoices[0] {
+		return frontendVoiceBitrateChoices[0]
+	}
+	if bitrate >= frontendVoiceBitrateChoices[len(frontendVoiceBitrateChoices)-1] {
+		return frontendVoiceBitrateChoices[len(frontendVoiceBitrateChoices)-1]
+	}
+	for _, choice := range frontendVoiceBitrateChoices {
+		if choice == bitrate {
+			return bitrate
+		}
+	}
+	return defaultFrontendVoiceBitrate
+}
+
+func voiceBitrateChoiceIndex(bitrate int) int {
+	bitrate = clampVoiceBitrate(bitrate)
+	for i, choice := range frontendVoiceBitrateChoices {
+		if choice == bitrate {
+			return i
+		}
+	}
+	return 0
+}
+
+func voiceBitrateLabel(bitrate int) string {
+	bitrate = clampVoiceBitrate(bitrate)
+	if bitrate%1000 == 0 {
+		return strconv.Itoa(bitrate/1000) + " KBPS"
+	}
+	return strconv.Itoa(bitrate) + " BPS"
+}
+
+func voiceCodecDetailMenuLabel(codec string) string {
+	switch normalizeVoiceCodecChoice(codec) {
+	case "silk":
+		return "BITRATE"
+	case "g726":
+		return "BITS/SAMPLE"
+	case "pcm":
+		return "FORMAT"
+	default:
+		return "BITRATE"
+	}
 }
 
 func voiceGateLabel(enabled bool) string {
@@ -159,6 +251,29 @@ func (sg *sessionGame) voiceG726BitsLabel() string {
 	return voiceG726BitsLabel(sg.opts.VoiceG726BitsPerSample)
 }
 
+func (sg *sessionGame) voiceCodecDetailLabel() string {
+	if sg == nil {
+		return voiceBitrateLabel(defaultFrontendVoiceBitrate)
+	}
+	switch normalizeVoiceCodecChoice(sg.opts.VoiceCodec) {
+	case "silk":
+		return voiceBitrateLabel(sg.opts.VoiceBitrate)
+	case "g726":
+		return voiceG726BitsLabel(sg.opts.VoiceG726BitsPerSample)
+	case "pcm":
+		return "FIXED 16-BIT"
+	default:
+		return voiceBitrateLabel(defaultFrontendVoiceBitrate)
+	}
+}
+
+func (sg *sessionGame) voicePresetLabel() string {
+	if sg == nil {
+		return voicePresetLabel("high")
+	}
+	return voicePresetLabel(detectVoicePreset(sg.opts.VoiceCodec, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate))
+}
+
 func (sg *sessionGame) voiceGateLabel() string {
 	if sg == nil {
 		return voiceGateLabel(true)
@@ -227,7 +342,34 @@ func (sg *sessionGame) voiceInputGateActive() bool {
 }
 
 func (sg *sessionGame) applyVoiceSettings(codec string, sampleRate int) error {
-	return sg.applyVoiceAdvancedSettings(codec, sg.opts.VoiceG726BitsPerSample, sampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	return sg.applyVoiceAdvancedSettings(codec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+}
+
+func (sg *sessionGame) frontendChangeVoicePreset(dir int) error {
+	if sg == nil || dir == 0 {
+		return nil
+	}
+	curPreset := detectVoicePreset(sg.opts.VoiceCodec, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate)
+	cur := voicePresetChoiceIndex(curPreset)
+	if curPreset == "custom" {
+		if dir < 0 {
+			cur = len(frontendVoicePresetChoices) - 1
+		} else {
+			cur = 0
+		}
+	}
+	n := len(frontendVoicePresetChoices)
+	next := (cur + dir + n) % n
+	switch frontendVoicePresetChoices[next] {
+	case "high":
+		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 64000, 48000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	case "medium":
+		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 40000, 32000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	case "low":
+		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 25000, 24000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	default:
+		return nil
+	}
 }
 
 func (sg *sessionGame) frontendChangeVoiceCodec(dir int) error {
@@ -254,24 +396,34 @@ func (sg *sessionGame) frontendChangeVoiceG726Bits(dir int) error {
 	if sg == nil || dir == 0 {
 		return nil
 	}
-	cur := voiceG726BitsChoiceIndex(sg.opts.VoiceG726BitsPerSample)
-	n := len(frontendVoiceG726BitsChoices)
-	next := (cur + dir + n) % n
-	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, frontendVoiceG726BitsChoices[next], sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	switch normalizeVoiceCodecChoice(sg.opts.VoiceCodec) {
+	case "silk":
+		cur := voiceBitrateChoiceIndex(sg.opts.VoiceBitrate)
+		n := len(frontendVoiceBitrateChoices)
+		next := (cur + dir + n) % n
+		return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, frontendVoiceBitrateChoices[next], sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	case "g726":
+		cur := voiceG726BitsChoiceIndex(sg.opts.VoiceG726BitsPerSample)
+		n := len(frontendVoiceG726BitsChoices)
+		next := (cur + dir + n) % n
+		return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, frontendVoiceG726BitsChoices[next], sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	default:
+		return nil
+	}
 }
 
 func (sg *sessionGame) frontendToggleVoiceGate() error {
 	if sg == nil {
 		return nil
 	}
-	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, !sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, !sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
 }
 
 func (sg *sessionGame) frontendToggleVoiceAGC() error {
 	if sg == nil {
 		return nil
 	}
-	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceSampleRate, !sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, !sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
 }
 
 func (sg *sessionGame) frontendChangeVoiceGateThreshold(dir int) error {
@@ -281,16 +433,17 @@ func (sg *sessionGame) frontendChangeVoiceGateThreshold(dir int) error {
 	cur := voiceGateThresholdChoiceIndex(sg.opts.VoiceGateThreshold)
 	n := len(frontendVoiceGateThresholdChoices)
 	next := (cur + dir + n) % n
-	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, frontendVoiceGateThresholdChoices[next])
+	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, frontendVoiceGateThresholdChoices[next])
 }
 
-func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, sampleRate int, agcEnabled bool, gateEnabled bool, gateThreshold float64) error {
+func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, bitrate int, sampleRate int, agcEnabled bool, gateEnabled bool, gateThreshold float64) error {
 	if sg == nil {
 		return nil
 	}
 	next := runtimecfg.VoiceSettings{
 		Codec:         normalizeVoiceCodecChoice(codec),
 		G726Bits:      clampVoiceG726Bits(g726Bits),
+		Bitrate:       clampVoiceBitrate(bitrate),
 		SampleRate:    sampleRate,
 		AGCEnabled:    agcEnabled,
 		GateEnabled:   gateEnabled,
@@ -309,6 +462,7 @@ func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, sa
 	}
 	sg.opts.VoiceCodec = next.Codec
 	sg.opts.VoiceG726BitsPerSample = next.G726Bits
+	sg.opts.VoiceBitrate = next.Bitrate
 	sg.opts.VoiceSampleRate = next.SampleRate
 	sg.opts.VoiceAGCEnabled = next.AGCEnabled
 	sg.opts.VoiceGateEnabled = next.GateEnabled
@@ -316,6 +470,7 @@ func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, sa
 	if sg.g != nil {
 		sg.g.opts.VoiceCodec = next.Codec
 		sg.g.opts.VoiceG726BitsPerSample = next.G726Bits
+		sg.g.opts.VoiceBitrate = next.Bitrate
 		sg.g.opts.VoiceSampleRate = next.SampleRate
 		sg.g.opts.VoiceAGCEnabled = next.AGCEnabled
 		sg.g.opts.VoiceGateEnabled = next.GateEnabled

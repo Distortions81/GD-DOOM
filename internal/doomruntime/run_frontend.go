@@ -714,6 +714,12 @@ func (sg *sessionGame) tickFrontend() error {
 			sg.playMenuBackSound()
 		}
 	}
+	if result.ChangeVoicePreset != 0 {
+		if err := sg.frontendChangeVoicePreset(result.ChangeVoicePreset); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
 	if result.ChangeVoiceG726Bits != 0 {
 		if err := sg.frontendChangeVoiceG726Bits(result.ChangeVoiceG726Bits); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
@@ -1068,10 +1074,10 @@ func (sg *sessionGame) drawFrontendVoiceMenu(screen *ebiten.Image, scale, ox, oy
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
 	sg.rt.sessionDrawHUTextAt(screen, "VOICE", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
 	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
-	labels := []string{"CODEC"}
-	values := []string{sg.voiceCodecLabel()}
-	labels = append(labels, "BITS/SAMPLE", "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD")
-	values = append(values, sg.voiceG726BitsLabel(), sg.voiceSampleRateLabel(), sg.voiceAGCLabel(), sg.voiceGateLabel(), sg.voiceGateThresholdLabel())
+	labels := []string{"PRESET"}
+	values := []string{sg.voicePresetLabel()}
+	labels = append(labels, voiceCodecDetailMenuLabel(sg.opts.VoiceCodec), "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD")
+	values = append(values, sg.voiceCodecDetailLabel(), sg.voiceSampleRateLabel(), sg.voiceAGCLabel(), sg.voiceGateLabel(), sg.voiceGateThresholdLabel())
 	for i := 0; i < len(labels); i++ {
 		y := menuY + i*lineHeight + 2
 		sg.rt.sessionDrawHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)

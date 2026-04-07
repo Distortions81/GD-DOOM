@@ -32,6 +32,7 @@ const (
 type BroadcasterOptions struct {
 	Codec             string
 	G726BitsPerSample int
+	Bitrate           int
 	SampleRate        int
 	AGCEnabled        bool
 	GateEnabled       bool
@@ -48,7 +49,7 @@ type VoiceStreamer struct {
 }
 
 func defaultAudioFormat() netplay.AudioFormat {
-	const defaultVoiceSampleRate = 24000
+	const defaultVoiceSampleRate = 48000
 	packetSamples, err := voicecodec.PacketSamplesFor(defaultVoiceSampleRate, voicecodec.SilkPacketDurationMillis)
 	if err != nil {
 		packetSamples = 480
@@ -56,7 +57,7 @@ func defaultAudioFormat() netplay.AudioFormat {
 	return netplay.AudioFormat{
 		Codec:                netplayAudioCodecSilkV3(),
 		BitsPerSample:        0,
-		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice48000),
 		SampleRate:           defaultVoiceSampleRate,
 		Channels:             voicecodec.Channels,
 		PacketDurationMillis: voicecodec.SilkPacketDurationMillis,
@@ -98,6 +99,9 @@ func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, err
 	case netplayAudioCodecSilkV3():
 		format.BitsPerSample = 0
 		format.Bitrate = voicecodec.SilkDefaultBitrate
+		if opts.Bitrate > 0 {
+			format.Bitrate = opts.Bitrate
+		}
 	case netplayAudioCodecG72632():
 		format.BitsPerSample = byte(g726Bits)
 		format.Bitrate = voicecodec.G726Bitrate(format.SampleRate, format.Channels, g726Bits)

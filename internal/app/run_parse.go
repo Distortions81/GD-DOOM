@@ -35,6 +35,7 @@ import (
 	"gddoom/internal/session"
 	"gddoom/internal/sessionvoice"
 	"gddoom/internal/sound"
+	"gddoom/internal/voicecodec"
 	"gddoom/internal/wad"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -499,7 +500,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
 	micDevice := fs.String("mic-device", "", "PulseAudio capture device name for -mic")
 	micCodec := fs.String("mic-codec", "silk", "microphone wire codec (silk|g726|pcm)")
-	micSampleRate := fs.Int("mic-sample-rate", 24000, "microphone wire sample rate in Hz (0 uses default)")
+	micSampleRate := fs.Int("mic-sample-rate", 48000, "microphone wire sample rate in Hz (0 uses default)")
 	micAGC := fs.Bool("mic-agc", true, "enable microphone automatic gain control")
 	micGate := fs.Bool("mic-gate", true, "enable microphone noise gate")
 	micGateThreshold := fs.Float64("mic-gate-threshold", 1.0, "microphone gate threshold multiplier (>0, higher is stricter)")
@@ -1136,6 +1137,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			WatchStartupBufferTics:     watchStartupBufferTics(*lowLatency),
 			VoiceCodec:                 *micCodec,
 			VoiceG726BitsPerSample:     3,
+			VoiceBitrate:               voicecodec.SilkDefaultBitrate,
 			VoiceSampleRate:            *micSampleRate,
 			VoiceAGCEnabled:            *micAGC,
 			VoiceGateEnabled:           *micGate,
@@ -1157,6 +1159,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			format, err := sessionvoice.ResolveBroadcasterFormat(sessionvoice.BroadcasterOptions{
 				Codec:             s.Codec,
 				G726BitsPerSample: s.G726Bits,
+				Bitrate:           s.Bitrate,
 				SampleRate:        s.SampleRate,
 				AGCEnabled:        s.AGCEnabled,
 				GateEnabled:       s.GateEnabled,
@@ -1165,7 +1168,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			if err != nil {
 				return err
 			}
-			if s.Codec != opts.VoiceCodec || s.SampleRate != opts.VoiceSampleRate || s.G726Bits != opts.VoiceG726BitsPerSample {
+			if s.Codec != opts.VoiceCodec || s.SampleRate != opts.VoiceSampleRate || s.G726Bits != opts.VoiceG726BitsPerSample || s.Bitrate != opts.VoiceBitrate {
 				if err := voiceStreamer.UpdateFormat(format); err != nil {
 					return err
 				}
@@ -1174,6 +1177,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			voiceStreamer.UpdateGate(s.GateEnabled, s.GateThreshold)
 			opts.VoiceCodec = s.Codec
 			opts.VoiceG726BitsPerSample = s.G726Bits
+			opts.VoiceBitrate = s.Bitrate
 			opts.VoiceSampleRate = s.SampleRate
 			opts.VoiceAGCEnabled = s.AGCEnabled
 			opts.VoiceGateEnabled = s.GateEnabled
@@ -1395,6 +1399,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				sessionvoice.BroadcasterOptions{
 					Codec:             *micCodec,
 					G726BitsPerSample: 3,
+					Bitrate:           voicecodec.SilkDefaultBitrate,
 					SampleRate:        *micSampleRate,
 					AGCEnabled:        *micAGC,
 					GateEnabled:       *micGate,
