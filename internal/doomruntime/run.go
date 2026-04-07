@@ -59,7 +59,7 @@ var frontendOptionsTextLabels = [...]string{
 	"MOUSE SENSITIVITY",
 	"EFFECTS VOLUME",
 	"MUSIC OPTIONS",
-	"VOICE OPTIONS",
+	"KEY BINDINGS",
 }
 
 var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6, 7}
@@ -448,6 +448,13 @@ func (sg *sessionGame) keyJustPressed(key ebiten.Key) bool {
 		return inpututil.IsKeyJustPressed(key)
 	}
 	return consumePress(sg.input.justPressedKeys, key)
+}
+
+func (sg *sessionGame) bindingJustPressed(action bindingAction) bool {
+	if sg == nil {
+		return false
+	}
+	return bindingPressedCounts(sg.input.justPressedKeys, bindingValue(sg.opts.InputBindings, action))
 }
 
 func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {

@@ -104,6 +104,7 @@ type FrontendResult struct {
 	RequestQuit              bool
 	StatusMessage            string
 	StatusMessageTic         int
+	OpenKeybinds             bool
 }
 
 type AttractActionKind int
@@ -657,8 +658,7 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.State.SoundOn = 0
 				result.Sound = FrontendSoundConfirm
 			case 7:
-				result.State.Mode = FrontendModeVoice
-				result.State.VoiceOn = 0
+				result.OpenKeybinds = true
 				result.Sound = FrontendSoundConfirm
 			}
 		}

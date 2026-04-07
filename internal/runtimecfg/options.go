@@ -144,6 +144,7 @@ type Options struct {
 	NoFPS                      bool
 	ShowTPS                    bool
 	DisableAspectCorrection    bool
+	InputBindings              InputBindings
 	AllCheats                  bool
 	StartInMapMode             bool
 	FlatBank                   map[string][]byte
@@ -200,4 +201,5 @@ type Options struct {
 	MusicSoundFontChoices      []string
 	MusicSoundFont             *music.SoundFontBank
 	OnRuntimeSettingsChanged   func(gameplay.RuntimeSettings)
+	OnInputBindingsChanged     func(InputBindings)
 }

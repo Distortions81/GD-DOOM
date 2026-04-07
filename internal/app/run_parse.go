@@ -291,6 +291,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultNoFPS := false
 	defaultShowTPS := false
 	defaultNoAspectCorrection := false
+	defaultInputBindings := runtimecfg.DefaultInputBindings()
 	defaultAniDump := ""
 	defaultAniDumpDir := "anidump"
 	defaultDumpMusic := false
@@ -373,6 +374,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		}
 		if cfg.AutoWeaponSwitch != nil {
 			defaultAutoWeaponSwitch = *cfg.AutoWeaponSwitch
+		}
+		if cfg.Keybinds != nil {
+			defaultInputBindings = runtimecfg.NormalizeInputBindings(*cfg.Keybinds)
 		}
 		if cfg.CheatLevel != nil {
 			defaultCheatLevel = *cfg.CheatLevel
@@ -749,6 +753,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			showNoSkillItems:           *showNoSkillItems,
 			showAllItems:               *showAllItems,
 			mouseLook:                  *mouseLook,
+			mouseInvert:                *mouseInvert,
 			mouseLookSpeed:             *mouseLookSpeed,
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                *musicVolume,
@@ -793,6 +798,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			demoExitOnDeath:            *demoExitOnDeath,
 			demoStopAfterTics:          max(0, *demoStopAfterTics),
 			demoTracePath:              resolvedDemoTracePath,
+			inputBindings:              defaultInputBindings,
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
@@ -1112,6 +1118,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			NoFPS:                      *noFPS,
 			ShowTPS:                    defaultShowTPS,
 			DisableAspectCorrection:    *noAspectCorrection,
+			InputBindings:              defaultInputBindings,
 			AllCheats:                  *allCheats,
 			StartInMapMode:             networkActive || explicitMapStartInMap(defaultStartInMap, mapExplicit),
 			FlatBank:                   flatBank,
@@ -1267,6 +1274,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			path := configPath
 			opts.OnRuntimeSettingsChanged = func(s doomsession.RuntimeSettings) {
 				if err := saveRuntimeSettings(path, s, opts.SourcePortMode); err != nil {
+					fmt.Fprintf(stderr, "config save warning: %v\n", err)
+				}
+			}
+			opts.OnInputBindingsChanged = func(b runtimecfg.InputBindings) {
+				if err := saveInputBindings(path, b); err != nil {
 					fmt.Fprintf(stderr, "config save warning: %v\n", err)
 				}
 			}
@@ -1498,6 +1510,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			demoExitOnDeath:            *demoExitOnDeath,
 			demoStopAfterTics:          max(0, *demoStopAfterTics),
 			demoTracePath:              resolvedDemoTracePath,
+			inputBindings:              defaultInputBindings,
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
@@ -2199,6 +2212,7 @@ type renderBuildConfig struct {
 	demoExitOnDeath            bool
 	demoStopAfterTics          int
 	demoTracePath              string
+	inputBindings              runtimecfg.InputBindings
 	pwadPaths                  []string
 	configPath                 string
 }
@@ -2490,6 +2504,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		NoFPS:                      cfg.noFPS,
 		ShowTPS:                    cfg.showTPS,
 		DisableAspectCorrection:    cfg.noAspectCorrection,
+		InputBindings:              cfg.inputBindings,
 		AllCheats:                  cfg.allCheats,
 		StartInMapMode:             explicitMapStartInMap(cfg.startInMap, cfg.mapExplicit),
 		FlatBank:                   flatBank,
@@ -2585,6 +2600,9 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		path := cfg.configPath
 		opts.OnRuntimeSettingsChanged = func(s doomsession.RuntimeSettings) {
 			_ = saveRuntimeSettings(path, s, opts.SourcePortMode)
+		}
+		opts.OnInputBindingsChanged = func(b runtimecfg.InputBindings) {
+			_ = saveInputBindings(path, b)
 		}
 	}
 	if p := cfg.demoPath; p != "" {

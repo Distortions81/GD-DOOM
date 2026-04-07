@@ -55,6 +55,7 @@ const (
 	frontendModeEpisode                  = sessionflow.FrontendModeEpisode
 	frontendModeSkill                    = sessionflow.FrontendModeSkill
 	frontendModeMusicPlayer frontendMode = 100
+	frontendModeKeybinds    frontendMode = 101
 )
 
 type frontendState = sessionflow.Frontend
@@ -110,6 +111,9 @@ type sessionGame struct {
 	frontend                frontendState
 	frontendMenuPending     bool
 	frontendMusicConfig     frontendMusicConfigPending
+	frontendKeybindRow      int
+	frontendKeybindSlot     int
+	frontendKeybindCapture  bool
 	startupMusicLocked      bool
 	startupMusicVisualReady bool
 	startupMusicPending     musicPlaybackSource

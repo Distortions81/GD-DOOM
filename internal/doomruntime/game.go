@@ -427,6 +427,9 @@ type game struct {
 	pauseMenuEpisodeOn        int
 	pauseMenuSelectedEpisode  int
 	pauseMenuSkillOn          int
+	pauseMenuKeybindRow       int
+	pauseMenuKeybindSlot      int
+	pauseMenuKeybindCapture   bool
 	pauseMenuSkullAnimCounter int
 	pauseMenuWhichSkull       int
 	pauseMenuStatus           string
@@ -1232,6 +1235,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	opts.MusicVolume = clampVolume(opts.MusicVolume)
 	opts.SFXVolume = clampVolume(opts.SFXVolume)
 	opts.OPLVolume = clampOPLVolume(opts.OPLVolume)
+	opts.InputBindings = runtimecfg.NormalizeInputBindings(opts.InputBindings)
 	opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(opts.SourcePortThingRenderMode, opts.SourcePortMode)
 	opts.SkyUpscaleMode = normalizeSkyUpscaleMode(opts.SkyUpscaleMode, opts.SourcePortMode)
 	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
@@ -2444,6 +2448,16 @@ func (g *game) publishRuntimeSettingsIfChanged() {
 	g.opts.OnRuntimeSettingsChanged(cur)
 }
 
+func (g *game) publishInputBindingsChanged() {
+	if g == nil {
+		return
+	}
+	g.opts.InputBindings = runtimecfg.NormalizeInputBindings(g.opts.InputBindings)
+	if g.opts.OnInputBindingsChanged != nil {
+		g.opts.OnInputBindingsChanged(g.opts.InputBindings)
+	}
+}
+
 func wasmPointerLockGestureActive() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyW) ||
 		ebiten.IsKeyPressed(ebiten.KeyA) ||
@@ -2513,6 +2527,18 @@ func (g *game) Update() error {
 			ebiten.SetCursorMode(ebiten.CursorModeVisible)
 			return nil
 		}
+		if g.bindingJustPressed(bindingAutomap) {
+			if g.mode == viewWalk {
+				g.mode = viewMap
+				g.setHUDMessage("Automap Opened", 35)
+			} else {
+				g.mode = viewWalk
+				// Reset mouse baseline when entering walk mode to avoid turn spikes.
+				g.mouseLookSet = false
+				g.mouseLookSuppressTicks = detailMouseSuppressTicks
+				g.setHUDMessage("Automap Closed", 35)
+			}
+		}
 		if g.keyJustPressed(ebiten.KeyTab) {
 			if g.mode == viewWalk {
 				g.mode = viewMap
@@ -2556,7 +2582,7 @@ func (g *game) Update() error {
 		if g.keyJustPressed(ebiten.KeySlash) {
 			g.setSimTickScale(1.0)
 		}
-		if g.keyJustPressed(ebiten.KeyE) || g.keyJustPressed(ebiten.KeySpace) {
+		if g.bindingJustPressed(bindingUse) {
 			g.pendingUse = true
 		}
 		if g.keyJustPressed(ebiten.KeyF5) {
@@ -2794,27 +2820,27 @@ func (g *game) updateWalkMode() {
 			g.adjustHUDScale(-1)
 		}
 		speed = g.currentRunSpeed()
-		strafeMod := g.keyHeld(ebiten.KeyAltLeft) || g.keyHeld(ebiten.KeyAltRight)
-		if g.keyHeld(ebiten.KeyW) || g.keyHeld(ebiten.KeyArrowUp) {
+		strafeMod := g.bindingHeld(bindingStrafeModifier)
+		if g.bindingHeld(bindingMoveForward) {
 			cmd.forward += forwardMove[speed]
 		}
-		if g.keyHeld(ebiten.KeyS) || g.keyHeld(ebiten.KeyArrowDown) {
+		if g.bindingHeld(bindingMoveBackward) {
 			cmd.forward -= forwardMove[speed]
 		}
-		if g.keyHeld(ebiten.KeyA) {
+		if g.bindingHeld(bindingStrafeLeft) {
 			cmd.side -= sideMove[speed]
 		}
-		if g.keyHeld(ebiten.KeyD) {
+		if g.bindingHeld(bindingStrafeRight) {
 			cmd.side += sideMove[speed]
 		}
-		if g.keyHeld(ebiten.KeyArrowLeft) {
+		if g.bindingHeld(bindingTurnLeft) {
 			if strafeMod {
 				cmd.side -= sideMove[speed]
 			} else {
 				cmd.turn += 1
 			}
 		}
-		if g.keyHeld(ebiten.KeyArrowRight) {
+		if g.bindingHeld(bindingTurnRight) {
 			if strafeMod {
 				cmd.side += sideMove[speed]
 			} else {
@@ -2825,7 +2851,7 @@ func (g *game) updateWalkMode() {
 			usePressed = true
 			g.pendingUse = false
 		}
-		fireHeld = g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight) || g.mouseHeld(ebiten.MouseButtonLeft)
+		fireHeld = g.bindingHeld(bindingFire) || g.mouseHeld(ebiten.MouseButtonLeft)
 		if g.opts.MouseLook {
 			if g.mouseLookSuppressTicks > 0 {
 				g.mouseLookSuppressTicks--
@@ -2925,6 +2951,26 @@ func (g *game) keyJustPressed(key ebiten.Key) bool {
 	return ok
 }
 
+func (g *game) bindingHeld(action bindingAction) bool {
+	if g == nil {
+		return false
+	}
+	binds := bindingValue(g.opts.InputBindings, action)
+	for _, name := range binds {
+		if key, ok := bindingKeyFromName(name); ok && g.keyHeld(key) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *game) bindingJustPressed(action bindingAction) bool {
+	if g == nil {
+		return false
+	}
+	return bindingPressed(g.input.justPressedKeys, bindingValue(g.opts.InputBindings, action))
+}
+
 func (g *game) mouseHeld(button ebiten.MouseButton) bool {
 	if g == nil {
 		return ebiten.IsMouseButtonPressed(button)
@@ -2978,7 +3024,7 @@ func addPressedMouseButtons(dst map[ebiten.MouseButton]struct{}, buttons []ebite
 }
 
 func (g *game) currentRunSpeed() int {
-	runHeld := g.keyHeld(ebiten.KeyShiftLeft) || g.keyHeld(ebiten.KeyShiftRight)
+	runHeld := g.bindingHeld(bindingRunModifier)
 	runActive := g.alwaysRun
 	if runHeld {
 		runActive = !runActive
@@ -3042,31 +3088,31 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 	if !g.edgeInputPass {
 		return
 	}
-	if g.keyJustPressed(ebiten.Key1) {
+	if g.bindingJustPressed(bindingWeapon1) {
 		g.selectWeaponSlot(1)
 		g.demoWeaponSlot = 1
 	}
-	if g.keyJustPressed(ebiten.Key2) {
+	if g.bindingJustPressed(bindingWeapon2) {
 		g.selectWeaponSlot(2)
 		g.demoWeaponSlot = 2
 	}
-	if g.keyJustPressed(ebiten.Key3) {
+	if g.bindingJustPressed(bindingWeapon3) {
 		g.selectWeaponSlot(3)
 		g.demoWeaponSlot = 3
 	}
-	if g.keyJustPressed(ebiten.Key4) {
+	if g.bindingJustPressed(bindingWeapon4) {
 		g.selectWeaponSlot(4)
 		g.demoWeaponSlot = 4
 	}
-	if g.keyJustPressed(ebiten.Key5) {
+	if g.bindingJustPressed(bindingWeapon5) {
 		g.selectWeaponSlot(5)
 		g.demoWeaponSlot = 5
 	}
-	if g.keyJustPressed(ebiten.Key6) {
+	if g.bindingJustPressed(bindingWeapon6) {
 		g.selectWeaponSlot(6)
 		g.demoWeaponSlot = 6
 	}
-	if g.keyJustPressed(ebiten.Key7) {
+	if g.bindingJustPressed(bindingWeapon7) {
 		g.selectWeaponSlot(7)
 		g.demoWeaponSlot = 7
 	}
@@ -3074,18 +3120,16 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 		return
 	}
 	ctrlHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight)
-	if g.keyJustPressed(ebiten.KeyBracketRight) ||
-		g.keyJustPressed(ebiten.KeyPageDown) ||
+	if g.bindingJustPressed(bindingWeaponNext) ||
 		g.mouseJustPressed(ebiten.MouseButton4) {
-		if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketRight) {
+		if ctrlHeld && bindingsContain(bindingValue(g.opts.InputBindings, bindingWeaponNext), ebiten.KeyBracketRight) && g.keyJustPressed(ebiten.KeyBracketRight) {
 			return
 		}
 		g.cycleWeapon(1)
 	}
-	if g.keyJustPressed(ebiten.KeyBracketLeft) ||
-		g.keyJustPressed(ebiten.KeyPageUp) ||
+	if g.bindingJustPressed(bindingWeaponPrev) ||
 		g.mouseJustPressed(ebiten.MouseButton3) {
-		if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketLeft) {
+		if ctrlHeld && bindingsContain(bindingValue(g.opts.InputBindings, bindingWeaponPrev), ebiten.KeyBracketLeft) && g.keyJustPressed(ebiten.KeyBracketLeft) {
 			return
 		}
 		g.cycleWeapon(-1)
@@ -3613,6 +3657,7 @@ const (
 	pauseMenuModeVoice
 	pauseMenuModeEpisode
 	pauseMenuModeSkill
+	pauseMenuModeKeybinds
 )
 
 var inGameEpisodeMenuNames = map[int]string{
@@ -3636,6 +3681,9 @@ func (g *game) togglePauseMenu() {
 		g.pauseMenuVoiceOn = 0
 		g.pauseMenuEpisodeOn = 0
 		g.pauseMenuSkillOn = max(0, normalizeSkillLevel(g.opts.SkillLevel)-1)
+		g.pauseMenuKeybindRow = 0
+		g.pauseMenuKeybindSlot = 0
+		g.pauseMenuKeybindCapture = false
 	} else {
 		g.pauseMenuMode = pauseMenuModeRoot
 	}
@@ -3728,6 +3776,8 @@ func (g *game) tickPauseMenu() {
 		if g.keyJustPressed(ebiten.KeyArrowDown) {
 			g.pauseMenuSkillOn = (g.pauseMenuSkillOn + 1) % len(frontendSkillMenuNames)
 		}
+	case pauseMenuModeKeybinds:
+		g.tickPauseKeybindMenu()
 	default:
 		if g.keyJustPressed(ebiten.KeyArrowUp) {
 			g.pauseMenuItemOn = (g.pauseMenuItemOn + len(inGamePauseMenuNames) - 1) % len(inGamePauseMenuNames)
@@ -3937,6 +3987,8 @@ func (g *game) cyclePauseOption() {
 			g.snd.setSFXVolume(next)
 		}
 		g.publishRuntimeSettingsIfChanged()
+	case frontendOptionsRowKeybinds:
+		g.pauseMenuMode = pauseMenuModeKeybinds
 	}
 }
 
@@ -4111,11 +4163,8 @@ func (g *game) activatePauseOptionsItem() {
 		g.pauseMenuStatusTics = 0
 		return
 	}
-	if g.pauseMenuOptionsOn == frontendOptionsRowVoice {
-		g.pauseMenuMode = pauseMenuModeVoice
-		g.pauseMenuVoiceOn = frontendVoiceMenuRowPreset
-		g.pauseMenuStatus = ""
-		g.pauseMenuStatusTics = 0
+	if g.pauseMenuOptionsOn == frontendOptionsRowKeybinds {
+		g.pauseMenuMode = pauseMenuModeKeybinds
 		return
 	}
 	g.cyclePauseOption()
@@ -20271,7 +20320,7 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), menuX+215, menuY+5*lineHeight+2, 1.2)
 		drawText("MUSIC", menuX, menuY+6*lineHeight+2, 1.2)
 		drawText("OPEN", menuX+215, menuY+6*lineHeight+2, 1.2)
-		drawText("VOICE OPTIONS", menuX, menuY+7*lineHeight+2, 1.2)
+		drawText("KEY BINDINGS", menuX, menuY+7*lineHeight+2, 1.2)
 		drawText("OPEN", menuX+215, menuY+7*lineHeight+2, 1.2)
 		drawSkull(g.pauseOptionsSkullX(menuX), menuY+g.pauseMenuOptionsOn*lineHeight)
 	case pauseMenuModeSound:
@@ -20368,6 +20417,8 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 			drawPatch(name, 48, float64(63+i*16))
 		}
 		drawSkull(16, 63+g.pauseMenuSkillOn*16)
+	case pauseMenuModeKeybinds:
+		g.drawPauseKeybindMenu(screen, drawText, drawSkull)
 	default:
 		drawPatch("M_PAUSE", 126, 4)
 		drawPatch("M_DOOM", 94, 2)

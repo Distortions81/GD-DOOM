@@ -860,6 +860,31 @@ func TestSaveRuntimeSettingsWritesFaithfulDetailSeparately(t *testing.T) {
 	}
 }
 
+func TestSaveInputBindingsWritesKeybindTable(t *testing.T) {
+	td := t.TempDir()
+	cfgPath := filepath.Join(td, "config.toml")
+	in := runtimecfg.InputBindings{
+		MoveForward: runtimecfg.KeyBinding{"I", "UP"},
+		Use:         runtimecfg.KeyBinding{"SPACE", "E"},
+	}
+	if err := saveInputBindings(cfgPath, in); err != nil {
+		t.Fatalf("saveInputBindings() error: %v", err)
+	}
+	cfg, err := loadConfig(cfgPath, true)
+	if err != nil {
+		t.Fatalf("loadConfig() error: %v", err)
+	}
+	if cfg.Keybinds == nil {
+		t.Fatal("expected keybinds table to be written")
+	}
+	if got := cfg.Keybinds.MoveForward; got != (runtimecfg.KeyBinding{"I", "UP"}) {
+		t.Fatalf("move_forward=%v want [I UP]", got)
+	}
+	if got := cfg.Keybinds.Use; got != (runtimecfg.KeyBinding{"SPACE", "E"}) {
+		t.Fatalf("use=%v want [SPACE E]", got)
+	}
+}
+
 func TestConfiguredDetailLevelForModeUsesModeSpecificOnly(t *testing.T) {
 	cfg := &fileConfig{
 		DetailLevelFaithful:   intPtr(1),

@@ -614,6 +614,9 @@ func (sg *sessionGame) tickFrontend() error {
 	if sg.frontend.Mode == frontendModeMusicPlayer {
 		return sg.tickFrontendMusicPlayer()
 	}
+	if sg.frontend.Mode == frontendModeKeybinds {
+		return sg.tickFrontendKeybindMenu()
+	}
 	var advanceAttract bool
 	sg.frontend, advanceAttract = sessionflow.AdvanceFrontendFrame(sessionflow.Frontend(sg.frontend), menuSkullBlinkTics)
 	if advanceAttract {
@@ -758,6 +761,9 @@ func (sg *sessionGame) tickFrontend() error {
 			sg.playMenuBackSound()
 		}
 	}
+	if result.OpenKeybinds {
+		sg.openFrontendKeybindMenu()
+	}
 	if result.ChangeSFX != 0 {
 		if input.Select {
 			sg.frontendCycleSFXVolume()
@@ -867,6 +873,13 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			return
 		}
 		sg.drawFrontendMusicPlayerMenu(screen, scale, ox, oy)
+		return
+	case frontendModeKeybinds:
+		sg.drawFrontendBackdrop(screen, true)
+		if sg.quitPrompt.Active {
+			return
+		}
+		sg.drawFrontendKeybindMenu(screen, scale, ox, oy)
 		return
 	case frontendModeEpisode:
 		sg.drawFrontendBackdrop(screen, true)
@@ -1058,7 +1071,7 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "MUSIC OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
 }

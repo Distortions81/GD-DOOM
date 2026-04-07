@@ -8,58 +8,60 @@ import (
 	"strings"
 
 	"gddoom/internal/doomsession"
+	"gddoom/internal/runtimecfg"
 
 	"github.com/BurntSushi/toml"
 )
 
 type fileConfig struct {
-	Wad                        *string  `toml:"wad"`
-	Map                        *string  `toml:"map"`
-	Render                     *bool    `toml:"render"`
-	Debug                      *bool    `toml:"debug"`
-	DebugEvents                *bool    `toml:"debug_events"`
-	Width                      *int     `toml:"width"`
-	Height                     *int     `toml:"height"`
-	DetailLevelFaithful        *int     `toml:"detail_level_faithful"`
-	DetailLevelSourcePort      *int     `toml:"detail_level_sourceport"`
-	AutoDetail                 *bool    `toml:"auto_detail"`
-	GammaLevel                 *int     `toml:"gamma_level"`
-	Player                     *int     `toml:"player"`
-	Skill                      *int     `toml:"skill"`
-	ShowNoSkillItems           *bool    `toml:"show_no_skill_items"`
-	ShowAllItems               *bool    `toml:"show_all_items"`
-	MouseLook                  *bool    `toml:"mouselook"`
-	MouseInvert                *bool    `toml:"mouse_invert"`
-	MouseInvertHorizontal      *bool    `toml:"mouse_invert_horizontal"`
-	SmoothCameraYaw            *bool    `toml:"smooth_camera_yaw"`
-	MouseLookSpeed             *float64 `toml:"mouselook_speed"`
-	KeyboardTurnSpeed          *float64 `toml:"keyboard_turn_speed"`
-	MusicVolume                *float64 `toml:"music_volume"`
-	MUSPanMax                  *float64 `toml:"mus_pan_max"`
-	MusicBackend               *string  `toml:"music_backend"`
-	SoundFont                  *string  `toml:"soundfont"`
-	SFXVolume                  *float64 `toml:"sfx_volume"`
-	AlwaysRun                  *bool    `toml:"always_run"`
-	AutoWeaponSwitch           *bool    `toml:"auto_weapon_switch"`
-	CheatLevel                 *int     `toml:"cheat_level"`
-	Invulnerable               *bool    `toml:"invulnerable"`
-	SourcePortMode             *bool    `toml:"sourceport_mode"`
-	GPUSky                     *bool    `toml:"gpu_sky"`
-	SkyUpscaleMode             *string  `toml:"sky_upscale"`
-	CRTEffect                  *bool    `toml:"crt_effect"`
-	RendererWorkers            *int     `toml:"renderer_workers"`
-	TextureAnimCrossfadeFrames *int     `toml:"texture_anim_crossfade_frames"`
-	AllCheats                  *bool    `toml:"all_cheats"`
-	Details                    *bool    `toml:"details"`
-	CPUProfile                 *string  `toml:"cpu_profile"`
-	MemProfile                 *string  `toml:"mem_profile"`
-	ExecTrace                  *string  `toml:"exec_trace"`
-	Demo                       *string  `toml:"demo"`
-	RecordDemo                 *string  `toml:"record_demo"`
-	DemoStopAfterTics          *int     `toml:"demo_stop_after_tics"`
-	NoVsync                    *bool    `toml:"no_vsync"`
-	NoFPS                      *bool    `toml:"no_fps"`
-	NoAspectCorrection         *bool    `toml:"no_aspect_correction"`
+	Wad                        *string                   `toml:"wad"`
+	Map                        *string                   `toml:"map"`
+	Render                     *bool                     `toml:"render"`
+	Debug                      *bool                     `toml:"debug"`
+	DebugEvents                *bool                     `toml:"debug_events"`
+	Width                      *int                      `toml:"width"`
+	Height                     *int                      `toml:"height"`
+	DetailLevelFaithful        *int                      `toml:"detail_level_faithful"`
+	DetailLevelSourcePort      *int                      `toml:"detail_level_sourceport"`
+	AutoDetail                 *bool                     `toml:"auto_detail"`
+	GammaLevel                 *int                      `toml:"gamma_level"`
+	Player                     *int                      `toml:"player"`
+	Skill                      *int                      `toml:"skill"`
+	ShowNoSkillItems           *bool                     `toml:"show_no_skill_items"`
+	ShowAllItems               *bool                     `toml:"show_all_items"`
+	MouseLook                  *bool                     `toml:"mouselook"`
+	MouseInvert                *bool                     `toml:"mouse_invert"`
+	MouseInvertHorizontal      *bool                     `toml:"mouse_invert_horizontal"`
+	SmoothCameraYaw            *bool                     `toml:"smooth_camera_yaw"`
+	MouseLookSpeed             *float64                  `toml:"mouselook_speed"`
+	KeyboardTurnSpeed          *float64                  `toml:"keyboard_turn_speed"`
+	MusicVolume                *float64                  `toml:"music_volume"`
+	MUSPanMax                  *float64                  `toml:"mus_pan_max"`
+	MusicBackend               *string                   `toml:"music_backend"`
+	SoundFont                  *string                   `toml:"soundfont"`
+	SFXVolume                  *float64                  `toml:"sfx_volume"`
+	AlwaysRun                  *bool                     `toml:"always_run"`
+	AutoWeaponSwitch           *bool                     `toml:"auto_weapon_switch"`
+	CheatLevel                 *int                      `toml:"cheat_level"`
+	Invulnerable               *bool                     `toml:"invulnerable"`
+	SourcePortMode             *bool                     `toml:"sourceport_mode"`
+	GPUSky                     *bool                     `toml:"gpu_sky"`
+	SkyUpscaleMode             *string                   `toml:"sky_upscale"`
+	CRTEffect                  *bool                     `toml:"crt_effect"`
+	RendererWorkers            *int                      `toml:"renderer_workers"`
+	TextureAnimCrossfadeFrames *int                      `toml:"texture_anim_crossfade_frames"`
+	AllCheats                  *bool                     `toml:"all_cheats"`
+	Details                    *bool                     `toml:"details"`
+	CPUProfile                 *string                   `toml:"cpu_profile"`
+	MemProfile                 *string                   `toml:"mem_profile"`
+	ExecTrace                  *string                   `toml:"exec_trace"`
+	Demo                       *string                   `toml:"demo"`
+	RecordDemo                 *string                   `toml:"record_demo"`
+	DemoStopAfterTics          *int                      `toml:"demo_stop_after_tics"`
+	NoVsync                    *bool                     `toml:"no_vsync"`
+	NoFPS                      *bool                     `toml:"no_fps"`
+	NoAspectCorrection         *bool                     `toml:"no_aspect_correction"`
+	Keybinds                   *runtimecfg.InputBindings `toml:"keybinds"`
 }
 
 func resolveConfigPath(args []string) (path string, explicit bool) {
@@ -152,6 +154,24 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)
 	cfg.AutoWeaponSwitch = boolPtr(s.AutoWeaponSwitch)
 	cfg.CRTEffect = boolPtr(s.CRTEffect)
+	return writeConfigAtomic(path, cfg)
+}
+
+func saveInputBindings(path string, binds runtimecfg.InputBindings) error {
+	if strings.TrimSpace(path) == "" {
+		return nil
+	}
+	if !configFileAccessSupported() {
+		return nil
+	}
+	cfg := &fileConfig{}
+	if loaded, err := loadConfig(path, false); err == nil && loaded != nil {
+		cfg = loaded
+	} else if err != nil {
+		return err
+	}
+	normalized := runtimecfg.NormalizeInputBindings(binds)
+	cfg.Keybinds = &normalized
 	return writeConfigAtomic(path, cfg)
 }
 
