@@ -7,7 +7,7 @@ import (
 
 const (
 	defaultFrameDurationMS   = 30
-	defaultPulseSampleRate   = 48000
+	defaultPulseSampleRate   = 32000
 	defaultPulseChannels     = 1
 	defaultPulseFormat       = "s16le"
 	defaultPulseLatencyMilli = 30
