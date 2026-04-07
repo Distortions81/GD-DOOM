@@ -48,21 +48,20 @@ type VoiceStreamer struct {
 }
 
 func defaultAudioFormat() netplay.AudioFormat {
-	const defaultVoiceSampleRate = 32000
-	const defaultVoiceBitsPerSample = 3
-	packetSamples, err := voicecodec.PacketSamplesFor(defaultVoiceSampleRate, voicecodec.PacketDurationMillis)
+	const defaultVoiceSampleRate = 24000
+	packetSamples, err := voicecodec.PacketSamplesFor(defaultVoiceSampleRate, voicecodec.SilkPacketDurationMillis)
 	if err != nil {
-		packetSamples = 960
+		packetSamples = 480
 	}
 	return netplay.AudioFormat{
-		Codec:                netplayAudioCodecG72632(),
-		BitsPerSample:        defaultVoiceBitsPerSample,
-		SampleRateChoice:     byte(voicecodec.SampleRateChoice32000),
+		Codec:                netplayAudioCodecSilkV3(),
+		BitsPerSample:        0,
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
 		SampleRate:           defaultVoiceSampleRate,
 		Channels:             voicecodec.Channels,
-		PacketDurationMillis: voicecodec.PacketDurationMillis,
+		PacketDurationMillis: voicecodec.SilkPacketDurationMillis,
 		PacketSamples:        packetSamples,
-		Bitrate:              voicecodec.G726Bitrate(defaultVoiceSampleRate, voicecodec.Channels, defaultVoiceBitsPerSample),
+		Bitrate:              voicecodec.SilkDefaultBitrate,
 	}
 }
 
@@ -74,10 +73,15 @@ func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, err
 	}
 	switch codec := strings.TrimSpace(strings.ToLower(opts.Codec)); codec {
 	case "":
+	case "silk", "silk_v3", "silkv3":
+		format.Codec = netplayAudioCodecSilkV3()
+		format.PacketDurationMillis = voicecodec.SilkPacketDurationMillis
 	case "g726", "g726_32", "g72632":
 		format.Codec = netplayAudioCodecG72632()
+		format.PacketDurationMillis = voicecodec.PacketDurationMillis
 	case "pcm", "pcm16", "pcm16_mono":
 		format.Codec = netplayAudioCodecPCM16Mono()
+		format.PacketDurationMillis = voicecodec.PacketDurationMillis
 	default:
 		return netplay.AudioFormat{}, fmt.Errorf("unsupported mic codec %q", opts.Codec)
 	}
@@ -91,6 +95,9 @@ func resolveBroadcasterFormat(opts BroadcasterOptions) (netplay.AudioFormat, err
 	}
 	format.PacketSamples = packetSamples
 	switch format.Codec {
+	case netplayAudioCodecSilkV3():
+		format.BitsPerSample = 0
+		format.Bitrate = voicecodec.SilkDefaultBitrate
 	case netplayAudioCodecG72632():
 		format.BitsPerSample = byte(g726Bits)
 		format.Bitrate = voicecodec.G726Bitrate(format.SampleRate, format.Channels, g726Bits)
@@ -132,7 +139,14 @@ func (s *VoiceStreamer) SetSampleRateChoice(choice voicecodec.SampleRateChoice) 
 		return err
 	}
 	format.PacketSamples = packetSamples
-	format.Bitrate = format.SampleRate * format.Channels * 4
+	switch format.Codec {
+	case netplayAudioCodecSilkV3():
+		format.Bitrate = voicecodec.SilkDefaultBitrate
+	case netplayAudioCodecG72632():
+		format.Bitrate = format.SampleRate * format.Channels * 4
+	case netplayAudioCodecPCM16Mono():
+		format.Bitrate = format.SampleRate * format.Channels * 16
+	}
 	return s.UpdateFormat(format)
 }
 
@@ -203,9 +217,11 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 		currentFormat := format
 		g726Bits := voicecodec.NormalizeG726BitsPerSample(int(currentFormat.BitsPerSample))
 		g726Encoder := voicecodec.NewG726Encoder(currentFormat.PacketSamples, g726Bits)
+		silkEncoder := voicecodec.NewSilkEncoder(currentFormat.SampleRate, currentFormat.PacketDurationMillis, currentFormat.Bitrate)
 		frameBytes := voicecodec.CaptureFrameSamples * voicecodec.Channels * 2
 		raw := make([]byte, frameBytes)
 		framePCM := make([]int16, voicecodec.CaptureFrameSamples*voicecodec.Channels)
+		pendingPCM := make([]int16, 0, voicecodec.CaptureFrameSamples*voicecodec.Channels)
 		hpf := newHighPassFilter(50, voicecodec.CaptureSampleRate)
 		agc := newMicAGC()
 		agc.SetEnabled(opts.AGCEnabled)
@@ -222,6 +238,13 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 				g726Bits = voicecodec.NormalizeG726BitsPerSample(int(currentFormat.BitsPerSample))
 				g726Encoder.SetPacketSamples(currentFormat.PacketSamples)
 				g726Encoder.SetBitsPerSample(g726Bits)
+				silkEncoder.SetSampleRate(currentFormat.SampleRate)
+				silkEncoder.SetPacketDurationMillis(currentFormat.PacketDurationMillis)
+				silkEncoder.SetBitrate(currentFormat.Bitrate)
+				if currentFormat.Codec == netplayAudioCodecSilkV3() {
+					_ = silkEncoder.Reset()
+				}
+				pendingPCM = pendingPCM[:0]
 				startSample = 0
 			default:
 			}
@@ -240,20 +263,34 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			allSilent := agc.ProcessFrame(framePCM, voicecodec.CaptureSampleRate)
 			vs.level.Store(math.Float64bits(micLevel(framePCM)))
 			vs.gated.Store(agc.GateActive())
-			if !allSilent {
-				down := downsampleCaptureToVoice(framePCM, currentFormat.SampleRate)
+			if allSilent && len(pendingPCM) == 0 {
+				continue
+			}
+			pendingPCM = append(pendingPCM, downsampleCaptureToVoice(framePCM, currentFormat.SampleRate)...)
+			packetSamples := currentFormat.PacketSamples * currentFormat.Channels
+			for len(pendingPCM) >= packetSamples {
+				packetPCM := append([]int16(nil), pendingPCM[:packetSamples]...)
+				pendingPCM = pendingPCM[packetSamples:]
+				if pcmSilent(packetPCM) {
+					startSample += uint64(currentFormat.PacketSamples)
+					continue
+				}
 				var payload []byte
 				switch currentFormat.Codec {
+				case netplayAudioCodecSilkV3():
+					payload, err = silkEncoder.Encode(packetPCM)
 				case netplayAudioCodecG72632():
-					payload, err = g726Encoder.Encode(down)
+					payload, err = g726Encoder.Encode(packetPCM)
 				case netplayAudioCodecPCM16Mono():
-					payload = monoPCMBytes(down)
+					payload = monoPCMBytes(packetPCM)
 				default:
 					vs.done <- fmt.Errorf("unsupported audio codec %d", currentFormat.Codec)
 					return
 				}
 				if err != nil {
 					switch currentFormat.Codec {
+					case netplayAudioCodecSilkV3():
+						_ = silkEncoder.Reset()
 					case netplayAudioCodecG72632():
 						g726Encoder.Reset()
 					}
@@ -270,14 +307,16 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 					Payload:     payload,
 				}); err != nil {
 					switch currentFormat.Codec {
+					case netplayAudioCodecSilkV3():
+						_ = silkEncoder.Reset()
 					case netplayAudioCodecG72632():
 						g726Encoder.Reset()
 					}
 					startSample += uint64(currentFormat.PacketSamples)
 					continue
 				}
+				startSample += uint64(currentFormat.PacketSamples)
 			}
-			startSample += uint64(currentFormat.PacketSamples)
 		}
 	}()
 	return vs, nil
@@ -311,6 +350,7 @@ type VoicePlayer struct {
 	haveChunkTic bool
 	lastChunkTic uint32
 	syncSamples  []voiceSyncSample
+	packetMillis int
 }
 
 type voiceSyncSample struct {
@@ -360,6 +400,7 @@ func (p *VoicePlayer) VoiceSyncOffsetMillis() (int, bool) {
 	defer p.mu.Unlock()
 	haveChunkTic := p.haveChunkTic
 	lastChunkTic := p.lastChunkTic
+	packetMillis := p.packetMillis
 	if !haveChunkTic {
 		return 0, false
 	}
@@ -371,7 +412,10 @@ func (p *VoicePlayer) VoiceSyncOffsetMillis() (int, bool) {
 		currentTic = p.currentTic()
 	}
 	ticDeltaMillis := int(math.Round(float64(int64(currentTic)-int64(lastChunkTic)) * (1000.0 / 35.0)))
-	offset := ticDeltaMillis + bufferedMillis + voicecodec.PacketDurationMillis + int(audioPlayerBuffer/time.Millisecond)
+	if packetMillis <= 0 {
+		packetMillis = voicecodec.PacketDurationMillis
+	}
+	offset := ticDeltaMillis + bufferedMillis + packetMillis + int(audioPlayerBuffer/time.Millisecond)
 	now := time.Now()
 	p.syncSamples = append(p.syncSamples, voiceSyncSample{at: now, millis: offset})
 	cutoff := now.Add(-1 * time.Second)
@@ -422,6 +466,7 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 
 	var current netplay.AudioFormat
 	g726Decoder := voicecodec.NewG726Decoder(voicecodec.PacketSamples, 4)
+	silkDecoder := voicecodec.NewSilkDecoder(voicecodec.SampleRate)
 	var lastStartSample uint64
 	haveStartSample := false
 	for {
@@ -445,6 +490,13 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 					g726Decoder.SetBitsPerSample(int(format.BitsPerSample))
 				}
 				g726Decoder.SetPacketSamples(format.PacketSamples)
+				silkDecoder.SetSampleRate(format.SampleRate)
+				if format.Codec == netplayAudioCodecSilkV3() {
+					_ = silkDecoder.Reset()
+				}
+				p.mu.Lock()
+				p.packetMillis = format.PacketDurationMillis
+				p.mu.Unlock()
 				p.source.Reset()
 				haveStartSample = false
 			}
@@ -466,12 +518,15 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 		if current.Codec == 0 {
 			continue
 		}
-		if current.Codec != netplayAudioCodecG72632() && current.Codec != netplayAudioCodecPCM16Mono() {
+		if current.Codec != netplayAudioCodecSilkV3() && current.Codec != netplayAudioCodecG72632() && current.Codec != netplayAudioCodecPCM16Mono() {
 			p.done <- fmt.Errorf("unsupported audio codec %d", current.Codec)
 			return
 		}
 		if haveStartSample && chunk.StartSample != lastStartSample+uint64(current.PacketSamples) {
 			g726Decoder.Reset()
+			if current.Codec == netplayAudioCodecSilkV3() {
+				_ = silkDecoder.Reset()
+			}
 			p.source.Reset()
 		}
 		var pcm []int16
@@ -479,6 +534,14 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 			pcm = make([]int16, current.PacketSamples*current.Channels)
 		} else {
 			switch current.Codec {
+			case netplayAudioCodecSilkV3():
+				pcm, err = silkDecoder.Decode(chunk.Payload)
+				if err != nil {
+					_ = silkDecoder.Reset()
+					p.source.Reset()
+					haveStartSample = false
+					continue
+				}
 			case netplayAudioCodecPCM16Mono():
 				if len(chunk.Payload)%2 != 0 {
 					p.done <- fmt.Errorf("raw pcm payload len=%d must be even", len(chunk.Payload))
@@ -759,6 +822,19 @@ func netplayAudioCodecPCM16Mono() byte {
 
 func netplayAudioCodecG72632() byte {
 	return voicecodec.CodecG72632
+}
+
+func netplayAudioCodecSilkV3() byte {
+	return voicecodec.CodecSilkV3
+}
+
+func pcmSilent(src []int16) bool {
+	for _, sample := range src {
+		if sample != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func applyFadeInMono16(pcm []int16, samples int) {

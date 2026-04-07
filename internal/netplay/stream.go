@@ -70,6 +70,7 @@ const (
 const (
 	audioCodecPCM16Mono   byte = 2
 	audioCodecG72632      byte = 3
+	audioCodecSilkV3      byte = 4
 	audioViewerChunkQueue      = 24
 )
 
@@ -77,6 +78,7 @@ const (
 	audioRecordTypeFormat byte = 0x80
 	audioFormatPayloadLen      = 17
 	audioChunkHeaderSize       = 1
+	audioChunkVarLenSize       = 2
 )
 
 const (
@@ -1064,9 +1066,9 @@ func keyframeDecoder() (*zstd.Decoder, error) {
 
 func normalizeAudioFormat(format AudioFormat) (AudioFormat, error) {
 	if format.Codec == 0 {
-		format.Codec = audioCodecG72632
+		format.Codec = audioCodecSilkV3
 	}
-	if format.Codec != audioCodecPCM16Mono && format.Codec != audioCodecG72632 {
+	if format.Codec != audioCodecPCM16Mono && format.Codec != audioCodecG72632 && format.Codec != audioCodecSilkV3 {
 		return AudioFormat{}, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
 	rate, err := voicecodec.ResolveSampleRate(voicecodec.SampleRateChoice(format.SampleRateChoice), format.SampleRate)
@@ -1100,6 +1102,8 @@ func normalizeAudioFormat(format AudioFormat) (AudioFormat, error) {
 		}
 	case audioCodecG72632:
 		format.BitsPerSample = byte(voicecodec.NormalizeG726BitsPerSample(int(format.BitsPerSample)))
+	case audioCodecSilkV3:
+		format.BitsPerSample = 0
 	}
 	return format, nil
 }
@@ -1158,6 +1162,13 @@ func writeAudioChunkRecord(w io.Writer, format AudioFormat, chunk AudioChunk) er
 	if _, err := w.Write(header[:]); err != nil {
 		return err
 	}
+	if audioCodecUsesVariablePayload(format.Codec) && !chunk.Silence {
+		var lenBuf [audioChunkVarLenSize]byte
+		binary.LittleEndian.PutUint16(lenBuf[:], uint16(len(chunk.Payload)))
+		if _, err := w.Write(lenBuf[:]); err != nil {
+			return err
+		}
+	}
 	if chunk.Silence || len(chunk.Payload) == 0 {
 		return nil
 	}
@@ -1181,9 +1192,20 @@ func readAudioRecord(r io.Reader, currentFormat AudioFormat) (kind byte, format 
 	if currentFormat.Codec == 0 {
 		return 0, AudioFormat{}, AudioChunk{}, fmt.Errorf("audio chunk received before format")
 	}
-	payloadLen, err := audioChunkPayloadLen(currentFormat, tag[0])
-	if err != nil {
-		return 0, AudioFormat{}, AudioChunk{}, err
+	payloadLen := 0
+	if tag[0]&audioChunkFlagSilence == 0 {
+		if audioCodecUsesVariablePayload(currentFormat.Codec) {
+			var lenBuf [audioChunkVarLenSize]byte
+			if _, err = io.ReadFull(r, lenBuf[:]); err != nil {
+				return 0, AudioFormat{}, AudioChunk{}, err
+			}
+			payloadLen = int(binary.LittleEndian.Uint16(lenBuf[:]))
+		} else {
+			payloadLen, err = audioChunkPayloadLen(currentFormat, tag[0])
+			if err != nil {
+				return 0, AudioFormat{}, AudioChunk{}, err
+			}
+		}
 	}
 	payload := make([]byte, payloadLen)
 	if _, err = io.ReadFull(r, payload); err != nil {
@@ -1221,6 +1243,13 @@ func audioChunkWireFlags(format AudioFormat, chunk AudioChunk) (byte, error) {
 		if len(chunk.Payload) != want {
 			return 0, fmt.Errorf("g726 payload len=%d want=%d", len(chunk.Payload), want)
 		}
+	case audioCodecSilkV3:
+		if len(chunk.Payload) == 0 {
+			return 0, fmt.Errorf("silk payload must not be empty")
+		}
+		if len(chunk.Payload) > 0xffff {
+			return 0, fmt.Errorf("silk payload len=%d exceeds %d", len(chunk.Payload), 0xffff)
+		}
 	default:
 		return 0, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
@@ -1239,6 +1268,10 @@ func audioChunkPayloadLen(format AudioFormat, flags byte) (int, error) {
 	default:
 		return 0, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
+}
+
+func audioCodecUsesVariablePayload(codec byte) bool {
+	return codec == audioCodecSilkV3
 }
 
 func (v *Viewer) readErr() error {

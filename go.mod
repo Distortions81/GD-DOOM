@@ -11,6 +11,7 @@ require (
 	github.com/klauspost/compress v1.18.5
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/sinshu/go-meltysynth v0.1.2
+	github.com/youthlin/silk v0.0.4
 	github.com/zeebo/blake3 v0.2.4
 )
 

@@ -13,19 +13,22 @@ const (
 )
 
 const (
-	CodecPCM16Mono       byte = 2
-	CodecG72632          byte = 3
-	CaptureSampleRate         = 48000
-	SampleRate                = 48000
-	Channels                  = 1
-	FrameDurationMillis       = 30
-	PacketFrames              = 1
-	CaptureFrameSamples       = CaptureSampleRate * FrameDurationMillis / 1000
-	FrameSamples              = SampleRate * FrameDurationMillis / 1000
-	PacketSamples             = FrameSamples * PacketFrames
-	PacketDurationMillis      = FrameDurationMillis * PacketFrames
-	G72632FrameBytes          = FrameSamples * Channels / 2
-	G72632PacketBytes         = PacketSamples * Channels / 2
+	CodecPCM16Mono           byte = 2
+	CodecG72632              byte = 3
+	CodecSilkV3              byte = 4
+	CaptureSampleRate             = 48000
+	SampleRate                    = 48000
+	Channels                      = 1
+	FrameDurationMillis           = 30
+	PacketFrames                  = 1
+	CaptureFrameSamples           = CaptureSampleRate * FrameDurationMillis / 1000
+	FrameSamples                  = SampleRate * FrameDurationMillis / 1000
+	PacketSamples                 = FrameSamples * PacketFrames
+	PacketDurationMillis          = FrameDurationMillis * PacketFrames
+	G72632FrameBytes              = FrameSamples * Channels / 2
+	G72632PacketBytes             = PacketSamples * Channels / 2
+	SilkPacketDurationMillis      = 20
+	SilkDefaultBitrate            = 25000
 )
 
 func NormalizeG726BitsPerSample(bits int) int {

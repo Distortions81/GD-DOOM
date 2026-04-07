@@ -114,14 +114,39 @@ func TestResolveBroadcasterFormatDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveBroadcasterFormat() error = %v", err)
 	}
-	if got.Codec != voicecodec.CodecG72632 {
-		t.Fatalf("codec=%d want %d", got.Codec, voicecodec.CodecG72632)
+	if got.Codec != voicecodec.CodecSilkV3 {
+		t.Fatalf("codec=%d want %d", got.Codec, voicecodec.CodecSilkV3)
 	}
-	if got.BitsPerSample != 3 {
-		t.Fatalf("bits/sample=%d want 3", got.BitsPerSample)
+	if got.BitsPerSample != 0 {
+		t.Fatalf("bits/sample=%d want 0", got.BitsPerSample)
 	}
-	if got.SampleRate != 32000 {
-		t.Fatalf("sample rate=%d want 32000", got.SampleRate)
+	if got.SampleRate != 24000 {
+		t.Fatalf("sample rate=%d want 24000", got.SampleRate)
+	}
+	if got.PacketSamples != 480 {
+		t.Fatalf("packet samples=%d want 480", got.PacketSamples)
+	}
+}
+
+func TestResolveBroadcasterFormatHonorsSilkAndSampleRate(t *testing.T) {
+	got, err := resolveBroadcasterFormat(BroadcasterOptions{
+		Codec:      "silk",
+		SampleRate: 48000,
+	})
+	if err != nil {
+		t.Fatalf("resolveBroadcasterFormat() error = %v", err)
+	}
+	if got.Codec != voicecodec.CodecSilkV3 {
+		t.Fatalf("codec=%d want %d", got.Codec, voicecodec.CodecSilkV3)
+	}
+	if got.SampleRate != 48000 {
+		t.Fatalf("sample rate=%d want 48000", got.SampleRate)
+	}
+	if got.PacketSamples != 960 {
+		t.Fatalf("packet samples=%d want 960", got.PacketSamples)
+	}
+	if got.Bitrate != voicecodec.SilkDefaultBitrate {
+		t.Fatalf("bitrate=%d want %d", got.Bitrate, voicecodec.SilkDefaultBitrate)
 	}
 }
 

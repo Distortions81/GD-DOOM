@@ -9,13 +9,13 @@ import (
 	"gddoom/internal/runtimecfg"
 )
 
-var frontendVoiceCodecChoices = [...]string{"g726", "pcm"}
+var frontendVoiceCodecChoices = [...]string{"silk", "g726", "pcm"}
 var frontendVoiceG726BitsChoices = [...]int{2, 3, 4, 5}
 var frontendVoiceSampleRateChoices = [...]int{16000, 24000, 32000, 48000}
 
 const (
 	defaultFrontendVoiceG726Bits   = 3
-	defaultFrontendVoiceSampleRate = 32000
+	defaultFrontendVoiceSampleRate = 24000
 )
 
 var frontendVoiceGateThresholdChoices = [...]float64{
@@ -25,23 +25,27 @@ var frontendVoiceGateThresholdChoices = [...]float64{
 
 func voiceCodecMenuLabel(codec string) string {
 	switch strings.TrimSpace(strings.ToLower(codec)) {
+	case "silk", "silk_v3", "silkv3":
+		return "SILK"
 	case "g726", "g726_32", "g72632":
 		return "G.726"
 	case "pcm", "pcm16", "pcm16_mono":
 		return "WAV"
 	default:
-		return "G.726"
+		return "SILK"
 	}
 }
 
 func normalizeVoiceCodecChoice(codec string) string {
 	switch strings.TrimSpace(strings.ToLower(codec)) {
+	case "silk", "silk_v3", "silkv3":
+		return "silk"
 	case "g726", "g726_32", "g72632":
 		return "g726"
 	case "pcm", "pcm16", "pcm16_mono":
 		return "pcm"
 	default:
-		return "g726"
+		return "silk"
 	}
 }
 
