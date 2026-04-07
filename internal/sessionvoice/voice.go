@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -22,8 +23,8 @@ import (
 const (
 	audioStartupBufferFrames  = 2
 	audioTargetBufferedFrames = 2
-	audioTrimBufferedFrames   = 4
-	audioResetBufferedFrames  = 5
+	audioTrimBufferedFrames   = 5
+	audioResetBufferedFrames  = 7
 	audioPlayerBuffer         = 40 * time.Millisecond
 	audioFadeSamples          = 512
 	audioCatchupFadeSamples   = 1024
@@ -391,6 +392,7 @@ func StartViewer(parent context.Context, viewer *netplay.AudioViewer, currentTic
 		currentTic:   currentTic,
 		playbackRate: playbackRate,
 	}
+	stream.SetPacketDurationMillis(voicecodec.SilkPacketDurationMillis, playbackRate)
 	go vp.run(runCtx, playbackRate)
 	return vp, nil
 }
@@ -501,6 +503,7 @@ func (p *VoicePlayer) run(ctx context.Context, playbackRate int) {
 				p.mu.Lock()
 				p.packetMillis = format.PacketDurationMillis
 				p.mu.Unlock()
+				p.source.SetPacketDurationMillis(format.PacketDurationMillis, playbackRate)
 				p.source.Reset()
 				haveStartSample = false
 			}
@@ -589,26 +592,55 @@ type streamSource struct {
 	trimBufferedBytes   int
 	resetBufferedBytes  int
 
+	totalQueuedFrames int64
+	totalReadFrames   int64
+	totalDroppedFrames int64
+	maxDeltaFrames    int64
+	logEnabled        bool
+	lastLogAt         time.Time
+
 	lastSample [4]byte
 	needFadeIn bool
+	hasPlayed  bool
 }
 
 func newStreamSource(playbackRate int) *streamSource {
 	if playbackRate <= 0 {
 		playbackRate = 44100
 	}
-	samplesPerPacket := (playbackRate*voicecodec.PacketDurationMillis + 999) / 1000
+	s := &streamSource{
+		needFadeIn: true,
+		logEnabled: strings.TrimSpace(os.Getenv("GD_DOOM_VOICE_BUFFER_LOG")) != "",
+	}
+	s.setPacketDurationMillisLocked(voicecodec.PacketDurationMillis, playbackRate)
+	return s
+}
+
+func (s *streamSource) SetPacketDurationMillis(packetDurationMillis, playbackRate int) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.setPacketDurationMillisLocked(packetDurationMillis, playbackRate)
+}
+
+func (s *streamSource) setPacketDurationMillisLocked(packetDurationMillis, playbackRate int) {
+	if playbackRate <= 0 {
+		playbackRate = 44100
+	}
+	if packetDurationMillis <= 0 {
+		packetDurationMillis = voicecodec.PacketDurationMillis
+	}
+	samplesPerPacket := (playbackRate*packetDurationMillis + 999) / 1000
 	if samplesPerPacket < 1 {
 		samplesPerPacket = 1
 	}
 	bytesPerPacket := samplesPerPacket * 4
-	return &streamSource{
-		needFadeIn:          true,
-		startupBytes:        audioStartupBufferFrames * bytesPerPacket,
-		targetBufferedBytes: audioTargetBufferedFrames * bytesPerPacket,
-		trimBufferedBytes:   audioTrimBufferedFrames * bytesPerPacket,
-		resetBufferedBytes:  audioResetBufferedFrames * bytesPerPacket,
-	}
+	s.startupBytes = audioStartupBufferFrames * bytesPerPacket
+	s.targetBufferedBytes = audioTargetBufferedFrames * bytesPerPacket
+	s.trimBufferedBytes = audioTrimBufferedFrames * bytesPerPacket
+	s.resetBufferedBytes = audioResetBufferedFrames * bytesPerPacket
 }
 
 func (s *streamSource) Read(p []byte) (int, error) {
@@ -659,6 +691,11 @@ func (s *streamSource) Read(p []byte) (int, error) {
 	n := copy(p, s.buf)
 	copy(s.buf, s.buf[n:])
 	s.buf = s.buf[:len(s.buf)-n]
+	if n > 0 {
+		s.totalReadFrames += int64(n / 4)
+		s.hasPlayed = true
+		s.logBufferStatsLocked("read")
+	}
 	if n >= 4 {
 		copy(s.lastSample[:], p[n-4:n])
 	}
@@ -681,7 +718,10 @@ func (s *streamSource) Write(p []byte) {
 	}
 	s.fadedOut = false
 	s.buf = append(s.buf, data...)
+	s.trimPrestartBufferLocked()
+	s.totalQueuedFrames += int64(len(data) / 4)
 	s.resetBufferedAudioLocked()
+	s.logBufferStatsLocked("write")
 	s.mu.Unlock()
 }
 
@@ -716,6 +756,9 @@ func (s *streamSource) BufferedMillis(playbackRate int) int {
 }
 
 func (s *streamSource) resetBufferedAudioLocked() {
+	if !s.hasPlayed {
+		return
+	}
 	if s.resetBufferedBytes <= 0 || len(s.buf) <= s.resetBufferedBytes {
 		return
 	}
@@ -743,11 +786,46 @@ func (s *streamSource) resetBufferedAudioLocked() {
 	start := len(s.buf) - keep
 	dropped := start / 4
 	kept := keep / 4
+	s.totalDroppedFrames += int64(dropped)
 	fmt.Printf("voice-skip buffered=%d_samples dropped=%d_samples kept=%d_samples\n", before/4, dropped, kept)
 	s.fade = buildFadeOutStereo16(s.lastSample, audioCatchupFadeSamples)
 	copy(s.buf, s.buf[start:])
 	s.buf = s.buf[:keep]
 	applyFadeInStereo16(s.buf, audioCatchupFadeSamples)
+	s.logBufferStatsLocked("skip")
+}
+
+func (s *streamSource) trimPrestartBufferLocked() {
+	if s.started || s.startupBytes <= 0 || len(s.buf) <= s.startupBytes {
+		return
+	}
+	keep := s.startupBytes - (s.startupBytes % 4)
+	if keep <= 0 {
+		s.buf = s.buf[:0]
+		return
+	}
+	start := len(s.buf) - keep
+	s.totalDroppedFrames += int64(start / 4)
+	copy(s.buf, s.buf[start:])
+	s.buf = s.buf[:keep]
+}
+
+func (s *streamSource) logBufferStatsLocked(reason string) {
+	if !s.logEnabled {
+		return
+	}
+	delta := s.totalQueuedFrames - s.totalReadFrames
+	effectiveDelta := delta - s.totalDroppedFrames
+	if delta > s.maxDeltaFrames {
+		s.maxDeltaFrames = delta
+	}
+	now := time.Now()
+	if reason != "skip" && !s.lastLogAt.IsZero() && now.Sub(s.lastLogAt) < 250*time.Millisecond {
+		return
+	}
+	s.lastLogAt = now
+	fmt.Printf("voice-buffer reason=%s queued=%d_samples played=%d_samples dropped=%d_samples delta=%d_samples effective_delta=%d_samples max_delta=%d_samples buffered=%d_samples\n",
+		reason, s.totalQueuedFrames, s.totalReadFrames, s.totalDroppedFrames, delta, effectiveDelta, s.maxDeltaFrames, len(s.buf)/4)
 }
 
 func stereoBytesFromMonoPCM(src []int16) []byte {

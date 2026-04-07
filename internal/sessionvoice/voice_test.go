@@ -110,6 +110,85 @@ func TestStreamSourceResetsLargeBacklogToNewestTail(t *testing.T) {
 	}
 }
 
+func TestStreamSourcePacketDurationAffectsThresholds(t *testing.T) {
+	src := newStreamSource(testPlaybackRate)
+
+	src.SetPacketDurationMillis(voicecodec.SilkPacketDurationMillis, testPlaybackRate)
+	silkSamples := (testPlaybackRate*voicecodec.SilkPacketDurationMillis + 999) / 1000
+	silkBytes := silkSamples * 4
+	if src.startupBytes != audioStartupBufferFrames*silkBytes {
+		t.Fatalf("silk startupBytes=%d want=%d", src.startupBytes, audioStartupBufferFrames*silkBytes)
+	}
+	if src.trimBufferedBytes != audioTrimBufferedFrames*silkBytes {
+		t.Fatalf("silk trimBufferedBytes=%d want=%d", src.trimBufferedBytes, audioTrimBufferedFrames*silkBytes)
+	}
+	if src.resetBufferedBytes != audioResetBufferedFrames*silkBytes {
+		t.Fatalf("silk resetBufferedBytes=%d want=%d", src.resetBufferedBytes, audioResetBufferedFrames*silkBytes)
+	}
+
+	src.SetPacketDurationMillis(voicecodec.PacketDurationMillis, testPlaybackRate)
+	pcmSamples := (testPlaybackRate*voicecodec.PacketDurationMillis + 999) / 1000
+	pcmBytes := pcmSamples * 4
+	if src.startupBytes != audioStartupBufferFrames*pcmBytes {
+		t.Fatalf("pcm startupBytes=%d want=%d", src.startupBytes, audioStartupBufferFrames*pcmBytes)
+	}
+	if src.trimBufferedBytes != audioTrimBufferedFrames*pcmBytes {
+		t.Fatalf("pcm trimBufferedBytes=%d want=%d", src.trimBufferedBytes, audioTrimBufferedFrames*pcmBytes)
+	}
+	if src.resetBufferedBytes != audioResetBufferedFrames*pcmBytes {
+		t.Fatalf("pcm resetBufferedBytes=%d want=%d", src.resetBufferedBytes, audioResetBufferedFrames*pcmBytes)
+	}
+}
+
+func TestStreamSourceKeepsOnlyLatestStartupWindowBeforePlaybackStarts(t *testing.T) {
+	src := newStreamSource(testPlaybackRate)
+	frame := make([]byte, src.startupBytes/2)
+	for i := 0; i < len(frame); i += 4 {
+		binary.LittleEndian.PutUint16(frame[i:i+2], uint16(5000))
+		binary.LittleEndian.PutUint16(frame[i+2:i+4], uint16(5000))
+	}
+
+	for range 8 {
+		src.Write(frame)
+	}
+
+	if src.started {
+		t.Fatal("stream should not be marked started before any read")
+	}
+	if got := len(src.buf); got != src.startupBytes {
+		t.Fatalf("prestart buffered bytes=%d want=%d", got, src.startupBytes)
+	}
+	if len(src.fade) != 0 {
+		t.Fatal("prestart trim should not queue fade data")
+	}
+	if src.totalDroppedFrames == 0 {
+		t.Fatal("expected prestart trim to drop stale buffered audio")
+	}
+}
+
+func TestStreamSourceDoesNotSkipUntilBufferedAudioHasActuallyPlayed(t *testing.T) {
+	src := newStreamSource(testPlaybackRate)
+	frame := make([]byte, src.startupBytes/2)
+	for i := 0; i < len(frame); i += 4 {
+		binary.LittleEndian.PutUint16(frame[i:i+2], uint16(4000))
+		binary.LittleEndian.PutUint16(frame[i+2:i+4], uint16(4000))
+	}
+
+	out := make([]byte, 32)
+	if _, err := src.Read(out); err != nil {
+		t.Fatalf("prestart Read() error = %v", err)
+	}
+	for range 8 {
+		src.Write(frame)
+	}
+	if len(src.fade) != 0 {
+		t.Fatal("preplayback writes should not trigger skip fade")
+	}
+	if got := len(src.buf); got != src.startupBytes {
+		t.Fatalf("preplayback buffered bytes=%d want=%d", got, src.startupBytes)
+	}
+}
+
 func TestResolveBroadcasterFormatDefaults(t *testing.T) {
 	got, err := resolveBroadcasterFormat(BroadcasterOptions{})
 	if err != nil {
