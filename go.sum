@@ -10,6 +10,8 @@ github.com/Distortions81/g726 v0.0.6 h1:1dMaA9PTYo/7ogG2OtUwc8Vz9KAXgomGbAAXrUkL
 github.com/Distortions81/g726 v0.0.6/go.mod h1:SeN9q4LT+BWjyk7Ob1VtatcNBEALGdE6vth+a+7zDpo=
 github.com/Distortions81/g726 v0.0.7 h1:G+VEPopVmJZhPbCtXT0peXdCS8J9vekftOUXOAUefhs=
 github.com/Distortions81/g726 v0.0.7/go.mod h1:SeN9q4LT+BWjyk7Ob1VtatcNBEALGdE6vth+a+7zDpo=
+github.com/Distortions81/g726 v0.0.8 h1:VWLxEuvXkocaZllq/2OYIqf2adqfC63wwwryTQrw3yY=
+github.com/Distortions81/g726 v0.0.8/go.mod h1:SeN9q4LT+BWjyk7Ob1VtatcNBEALGdE6vth+a+7zDpo=
 github.com/Distortions81/go-meltysynth v0.1.2 h1:SvAgWvJdHZr6YBygDx4/lIpkkCRroFgnYUBhVpGsO9E=
 github.com/Distortions81/go-meltysynth v0.1.2/go.mod h1:Afi/YpLztHvWSbiLFi6RgtxLLwmIiRmd/q7f3Ymed2g=
 github.com/Distortions81/impsynth v0.1.2 h1:IuRoWA6A/r4cjGjx3EfynciTnugfOrdWrZWFTNjxxH4=
