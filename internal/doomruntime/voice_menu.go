@@ -22,9 +22,9 @@ func voiceCodecMenuLabel(codec string) string {
 	case "g726", "g726_32", "g72632":
 		return "G.726"
 	case "pcm", "pcm16", "pcm16_mono":
-		return "LOSSLESS"
+		return "WAV"
 	default:
-		return "IMA ADPCM"
+		return "IMA VOICE"
 	}
 }
 
