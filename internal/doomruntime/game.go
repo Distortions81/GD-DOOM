@@ -490,6 +490,8 @@ type game struct {
 	chatComposeOpen         bool
 	chatCompose             []rune
 	chatHistory             []chatHistoryEntry
+	chatSentTimes           []time.Time
+	chatRecentSent          []string
 	turnHeld                int
 	snd                     *soundSystem
 	soundQueue              []soundEvent

@@ -55,6 +55,38 @@ func readViewerTic(t *testing.T, v *Viewer) (demo.Tic, bool, error) {
 	return demo.Tic{}, false, nil
 }
 
+func readViewerChat(t *testing.T, v *Viewer) (ChatMessage, bool, error) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok, err := v.PollChat()
+		if err != nil && err != io.EOF {
+			return ChatMessage{}, false, err
+		}
+		if ok {
+			return got, true, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return ChatMessage{}, false, nil
+}
+
+func readBroadcasterChat(t *testing.T, b *RelayBroadcaster) (ChatMessage, bool, error) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		got, ok, err := b.PollChat()
+		if err != nil && err != io.EOF {
+			return ChatMessage{}, false, err
+		}
+		if ok {
+			return got, true, nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return ChatMessage{}, false, nil
+}
+
 func readAudioConfig(t *testing.T, v *AudioViewer) (AudioFormat, bool, error) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -263,6 +295,77 @@ func TestRelayViewerReceivesLegacyRawKeyframe(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("timed out waiting for legacy raw keyframe")
+}
+
+func TestRelayViewerAllowChatMessageRejectsDuplicate(t *testing.T) {
+	v := &relayViewer{
+		chatRecent: []string{"hello"},
+	}
+	if v.allowChatMessage(ChatMessage{Text: "hello"}, time.Now()) {
+		t.Fatal("allowChatMessage duplicate = true want false")
+	}
+}
+
+func TestRelayViewerAllowChatMessageRejectsBurst(t *testing.T) {
+	now := time.Now()
+	v := &relayViewer{
+		chatTimes: []time.Time{
+			now.Add(-1 * time.Second),
+			now.Add(-2 * time.Second),
+			now.Add(-3 * time.Second),
+			now.Add(-4 * time.Second),
+		},
+	}
+	if v.allowChatMessage(ChatMessage{Text: "fresh"}, now) {
+		t.Fatal("allowChatMessage burst = true want false")
+	}
+}
+
+func TestRelayChatReturnsToSenderAndOtherViewers(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{MapName: "E1M1"})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	v, err := DialRelayViewer(srv.Addr(), b.SessionID(), "")
+	if err != nil {
+		t.Fatalf("DialRelayViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	msg := ChatMessage{Name: "P1", Text: "hello"}
+	if err := b.SendChat(msg); err != nil {
+		t.Fatalf("SendChat() error = %v", err)
+	}
+
+	gotHost, ok, err := readBroadcasterChat(t, b)
+	if err != nil {
+		t.Fatalf("readBroadcasterChat() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("readBroadcasterChat() ok=false want true")
+	}
+	if gotHost != msg {
+		t.Fatalf("readBroadcasterChat() = %+v want %+v", gotHost, msg)
+	}
+
+	gotViewer, ok, err := readViewerChat(t, v)
+	if err != nil {
+		t.Fatalf("readViewerChat() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("readViewerChat() ok=false want true")
+	}
+	if gotViewer != msg {
+		t.Fatalf("readViewerChat() = %+v want %+v", gotViewer, msg)
+	}
 }
 
 func TestRelayViewerMandatoryKeyframeDrainsQueuedTics(t *testing.T) {

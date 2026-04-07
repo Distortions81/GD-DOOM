@@ -1,11 +1,14 @@
 package netplay
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
+	"time"
 )
 
 type Server struct {
@@ -39,6 +42,10 @@ type relaySession struct {
 type relayViewer struct {
 	conn net.Conn
 	mu   sync.Mutex
+
+	chatMu     sync.Mutex
+	chatTimes  []time.Time
+	chatRecent []string
 }
 
 type bufferedFrame struct {
@@ -47,6 +54,12 @@ type bufferedFrame struct {
 }
 
 const maxBufferedRelayFrames = 35 * 60 * 5
+
+const (
+	relayChatRecentRejectLines = 8
+	relayChatThrottleWindow    = 8 * time.Second
+	relayChatThrottleBurst     = 4
+)
 
 func ListenServer(addr string) (*Server, error) {
 	ln, err := net.Listen("tcp", addr)
@@ -453,17 +466,19 @@ func (s *Server) forwardAudioChunk(sess *relaySession, format AudioFormat, chunk
 	}
 }
 
-// forwardChat relays a chat frame to all session members except the sender.
+// forwardChat relays a chat frame to all session members, including the sender.
 func (s *Server) forwardChat(sess *relaySession, sender *relayViewer, header frameHeader, payload []byte) {
+	if sender != nil {
+		msg, err := readChatFrame(bytes.NewReader(payload))
+		if err != nil || !sender.allowChatMessage(msg, time.Now()) {
+			return
+		}
+	}
 	s.mu.Lock()
 	all := make([]*relayViewer, 0, 1+len(sess.viewers))
-	if sess.srcViewer != sender {
-		all = append(all, sess.srcViewer)
-	}
+	all = append(all, sess.srcViewer)
 	for v := range sess.viewers {
-		if v != sender {
-			all = append(all, v)
-		}
+		all = append(all, v)
 	}
 	s.mu.Unlock()
 
@@ -477,6 +492,40 @@ func (s *Server) forwardChat(sess *relaySession, sender *relayViewer, header fra
 			}
 		}
 	}
+}
+
+func (v *relayViewer) allowChatMessage(msg ChatMessage, now time.Time) bool {
+	if v == nil {
+		return false
+	}
+	text := strings.TrimSpace(strings.Join(strings.Fields(msg.Text), " "))
+	if text == "" {
+		return false
+	}
+	v.chatMu.Lock()
+	defer v.chatMu.Unlock()
+	for _, recent := range v.chatRecent {
+		if recent == text {
+			return false
+		}
+	}
+	cutoff := now.Add(-relayChatThrottleWindow)
+	kept := v.chatTimes[:0]
+	for _, ts := range v.chatTimes {
+		if !ts.Before(cutoff) {
+			kept = append(kept, ts)
+		}
+	}
+	v.chatTimes = kept
+	if len(v.chatTimes) >= relayChatThrottleBurst {
+		return false
+	}
+	v.chatTimes = append(v.chatTimes, now)
+	v.chatRecent = append(v.chatRecent, text)
+	if len(v.chatRecent) > relayChatRecentRejectLines {
+		v.chatRecent = append([]string(nil), v.chatRecent[len(v.chatRecent)-relayChatRecentRejectLines:]...)
+	}
+	return true
 }
 
 func (v *relayViewer) writeChat(header frameHeader, payload []byte) error {

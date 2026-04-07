@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"gddoom/internal/runtimecfg"
 
@@ -14,6 +15,9 @@ const (
 	chatHistoryMaxEntries = 6
 	chatHistoryTTL        = 35 * 10
 	chatPollPerUpdateMax  = 8
+	chatRecentRejectLines = 8
+	chatThrottleWindow    = 8
+	chatThrottleBurst     = 4
 	chatMarginX           = 6
 	chatMarginY           = 6
 	chatLineAdvance       = 10
@@ -134,6 +138,10 @@ func (g *game) handleChatComposeInput() {
 	if text == "" {
 		return
 	}
+	if ok, reason := g.allowOutgoingChat(text, time.Now()); !ok {
+		g.setHUDMessage(reason, 70)
+		return
+	}
 	msg := runtimecfg.ChatMessage{
 		Name: g.chatLocalName(),
 		Text: text,
@@ -142,7 +150,38 @@ func (g *game) handleChatComposeInput() {
 		g.setHUDMessage(strings.ToUpper(err.Error()), 70)
 		return
 	}
-	g.appendChatHistory(msg.Name, msg.Text)
+}
+
+func (g *game) allowOutgoingChat(text string, now time.Time) (bool, string) {
+	if g == nil {
+		return false, "CHAT OFFLINE"
+	}
+	text = normalizeChatText(text)
+	if text == "" {
+		return false, "CHAT EMPTY"
+	}
+	for _, recent := range g.chatRecentSent {
+		if recent == text {
+			return false, "CHAT DUPLICATE"
+		}
+	}
+	cutoff := now.Add(-chatThrottleWindow * time.Second)
+	keptTimes := g.chatSentTimes[:0]
+	for _, ts := range g.chatSentTimes {
+		if !ts.Before(cutoff) {
+			keptTimes = append(keptTimes, ts)
+		}
+	}
+	g.chatSentTimes = keptTimes
+	if len(g.chatSentTimes) >= chatThrottleBurst {
+		return false, "CHAT THROTTLED"
+	}
+	g.chatSentTimes = append(g.chatSentTimes, now)
+	g.chatRecentSent = append(g.chatRecentSent, text)
+	if len(g.chatRecentSent) > chatRecentRejectLines {
+		g.chatRecentSent = append([]string(nil), g.chatRecentSent[len(g.chatRecentSent)-chatRecentRejectLines:]...)
+	}
+	return true, ""
 }
 
 func (g *game) pollChatMessages() error {
@@ -202,7 +241,7 @@ func (g *game) drawChatOverlay(screen *ebiten.Image) {
 	if g == nil || screen == nil || (!g.chatComposeOpen && len(g.chatHistory) == 0) {
 		return
 	}
-	maxWidth := max(80, g.viewW-chatMarginX*2-chatWrapPadding)
+	maxWidth := max(80, min(g.viewW-chatMarginX*2-chatWrapPadding, g.viewW/2))
 	lines := make([]string, 0, len(g.chatHistory))
 	for _, entry := range g.chatHistory {
 		lines = append(lines, g.wrapChatText(entry.Text, maxWidth, "", "  ")...)
@@ -221,7 +260,7 @@ func (g *game) drawChatOverlay(screen *ebiten.Image) {
 		y += chatLineAdvance
 	}
 	if g.chatComposeOpen {
-		promptWidth := max(80, min(g.viewW-chatMarginX*2-chatWrapPadding, g.viewW/2))
+		promptWidth := max(80, g.viewW-chatMarginX*2-chatWrapPadding)
 		promptLines := g.wrapChatText("SAY: "+string(g.chatCompose)+"_", promptWidth, "", "     ")
 		y := float64(g.viewH - chatMarginY - chatLineAdvance*(len(promptLines)))
 		if y < 0 {

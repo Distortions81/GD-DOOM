@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"testing"
+	"time"
 
 	"gddoom/internal/demo"
 	"gddoom/internal/runtimecfg"
@@ -62,11 +63,8 @@ func TestHandleChatComposeInputSendsAndEchoes(t *testing.T) {
 	if got := endpoint.sent[0].Text; got != "hello world" {
 		t.Fatalf("sent text=%q want hello world", got)
 	}
-	if len(g.chatHistory) != 1 {
-		t.Fatalf("history count=%d want 1", len(g.chatHistory))
-	}
-	if got := g.chatHistory[0].Text; got != "P2: hello world" {
-		t.Fatalf("history text=%q want %q", got, "P2: hello world")
+	if len(g.chatHistory) != 0 {
+		t.Fatalf("history count=%d want 0", len(g.chatHistory))
 	}
 }
 
@@ -93,5 +91,29 @@ func TestPollChatMessagesAppendsHistory(t *testing.T) {
 	}
 	if got := g.chatHistory[1].Text; got != "P3: second" {
 		t.Fatalf("history[1]=%q want %q", got, "P3: second")
+	}
+}
+
+func TestAllowOutgoingChatRejectsDuplicate(t *testing.T) {
+	g := &game{
+		chatRecentSent: []string{"hello"},
+	}
+	if ok, reason := g.allowOutgoingChat("hello", time.Now()); ok || reason != "CHAT DUPLICATE" {
+		t.Fatalf("allowOutgoingChat duplicate = (%t, %q) want (false, %q)", ok, reason, "CHAT DUPLICATE")
+	}
+}
+
+func TestAllowOutgoingChatRejectsBurst(t *testing.T) {
+	now := time.Now()
+	g := &game{
+		chatSentTimes: []time.Time{
+			now.Add(-1 * time.Second),
+			now.Add(-2 * time.Second),
+			now.Add(-3 * time.Second),
+			now.Add(-4 * time.Second),
+		},
+	}
+	if ok, reason := g.allowOutgoingChat("fresh", now); ok || reason != "CHAT THROTTLED" {
+		t.Fatalf("allowOutgoingChat burst = (%t, %q) want (false, %q)", ok, reason, "CHAT THROTTLED")
 	}
 }
