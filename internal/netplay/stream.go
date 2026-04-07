@@ -467,6 +467,21 @@ func (b *RelayBroadcaster) PollChat() (ChatMessage, bool, error) {
 	}
 }
 
+func (b *RelayBroadcaster) SendRuntimeChat(msg runtimecfg.ChatMessage) error {
+	if b == nil {
+		return nil
+	}
+	return b.SendChat(ChatMessage{Name: msg.Name, Text: msg.Text})
+}
+
+func (b *RelayBroadcaster) PollRuntimeChat() (runtimecfg.ChatMessage, bool, error) {
+	if b == nil {
+		return runtimecfg.ChatMessage{}, false, nil
+	}
+	msg, ok, err := b.PollChat()
+	return runtimecfg.ChatMessage{Name: msg.Name, Text: msg.Text}, ok, err
+}
+
 func (b *RelayBroadcaster) Close() error {
 	if b == nil {
 		return nil
@@ -874,6 +889,21 @@ func (v *Viewer) PollChat() (ChatMessage, bool, error) {
 	default:
 		return ChatMessage{}, false, v.readErr()
 	}
+}
+
+func (v *Viewer) SendRuntimeChat(msg runtimecfg.ChatMessage) error {
+	if v == nil {
+		return nil
+	}
+	return v.SendChat(ChatMessage{Name: msg.Name, Text: msg.Text})
+}
+
+func (v *Viewer) PollRuntimeChat() (runtimecfg.ChatMessage, bool, error) {
+	if v == nil {
+		return runtimecfg.ChatMessage{}, false, nil
+	}
+	msg, ok, err := v.PollChat()
+	return runtimecfg.ChatMessage{Name: msg.Name, Text: msg.Text}, ok, err
 }
 
 func (v *Viewer) Close() error {

@@ -30,6 +30,11 @@ type LiveTicSource interface {
 	PollTic() (demo.Tic, bool, error)
 }
 
+type ChatMessage struct {
+	Name string
+	Text string
+}
+
 type LiveTicBufferedSource interface {
 	PendingTics() int
 }
@@ -46,6 +51,14 @@ type LiveRuntimeKeyframeSource interface {
 
 type LiveTicSink interface {
 	BroadcastTic(demo.Tic) error
+}
+
+type LiveChatSource interface {
+	PollRuntimeChat() (ChatMessage, bool, error)
+}
+
+type LiveChatSink interface {
+	SendRuntimeChat(ChatMessage) error
 }
 
 type LiveIntermissionAdvanceSource interface {

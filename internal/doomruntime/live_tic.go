@@ -80,6 +80,7 @@ func (g *game) stepGameplayFromDemoTic(tc DemoTic) {
 	if g.useFlash > 0 {
 		g.useFlash--
 	}
+	g.tickChatHistory()
 	if g.damageFlashTic > 0 {
 		g.damageFlashTic--
 	}
@@ -95,36 +96,43 @@ func (g *game) updateWatchMode() error {
 		return nil
 	}
 	now := time.Now()
-	if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
-		g.quitPromptRequested = true
-		return nil
+	if err := g.pollChatMessages(); err != nil {
+		return fmt.Errorf("watch chat stream: %w", err)
 	}
-	if g.keyJustPressed(ebiten.KeyEscape) {
-		g.frontendMenuRequested = true
-		ebiten.SetCursorMode(ebiten.CursorModeVisible)
-		return nil
-	}
-	if g.keyJustPressed(ebiten.KeyTab) {
-		if g.mode == viewWalk {
-			g.mode = viewMap
-			g.setHUDMessage("Automap Opened", 35)
-		} else {
-			g.mode = viewWalk
-			g.mouseLookSet = false
-			g.mouseLookSuppressTicks = detailMouseSuppressTicks
-			g.setHUDMessage("Automap Closed", 35)
+	if g.handleChatInput() {
+		// Chat compose owns Enter/Escape/T while it is active.
+	} else {
+		if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
+			g.quitPromptRequested = true
+			return nil
 		}
-	}
-	g.edgeInputPass = true
-	g.updateParityControls()
-	if g.keyJustPressed(ebiten.KeyF5) {
-		if g.opts.SourcePortMode {
-			g.cycleSourcePortDetailLevel()
-		} else {
-			g.cycleDetailLevel()
+		if g.keyJustPressed(ebiten.KeyEscape) {
+			g.frontendMenuRequested = true
+			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+			return nil
 		}
+		if g.keyJustPressed(ebiten.KeyTab) {
+			if g.mode == viewWalk {
+				g.mode = viewMap
+				g.setHUDMessage("Automap Opened", 35)
+			} else {
+				g.mode = viewWalk
+				g.mouseLookSet = false
+				g.mouseLookSuppressTicks = detailMouseSuppressTicks
+				g.setHUDMessage("Automap Closed", 35)
+			}
+		}
+		g.edgeInputPass = true
+		g.updateParityControls()
+		if g.keyJustPressed(ebiten.KeyF5) {
+			if g.opts.SourcePortMode {
+				g.cycleSourcePortDetailLevel()
+			} else {
+				g.cycleDetailLevel()
+			}
+		}
+		g.edgeInputPass = false
 	}
-	g.edgeInputPass = false
 	ticDur := time.Second / doomTicsPerSecond
 	if g.watchTickStamp.IsZero() {
 		g.watchTickStamp = now

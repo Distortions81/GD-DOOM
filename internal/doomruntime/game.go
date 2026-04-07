@@ -487,6 +487,9 @@ type game struct {
 	useFlash                int
 	useText                 string
 	hudMessagesEnabled      bool
+	chatComposeOpen         bool
+	chatCompose             []rune
+	chatHistory             []chatHistoryEntry
 	turnHeld                int
 	snd                     *soundSystem
 	soundQueue              []soundEvent
@@ -2493,70 +2496,77 @@ func (g *game) Update() error {
 	if g.opts.LiveTicSource != nil {
 		return g.updateWatchMode()
 	}
-	if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
-		g.quitPromptRequested = true
-		return nil
+	if err := g.pollChatMessages(); err != nil {
+		return fmt.Errorf("chat stream: %w", err)
 	}
-	if g.keyJustPressed(ebiten.KeyEscape) {
-		g.frontendMenuRequested = true
-		ebiten.SetCursorMode(ebiten.CursorModeVisible)
-		return nil
-	}
-	if g.keyJustPressed(ebiten.KeyTab) {
-		if g.mode == viewWalk {
-			g.mode = viewMap
-			g.setHUDMessage("Automap Opened", 35)
-		} else {
-			g.mode = viewWalk
-			// Reset mouse baseline when entering walk mode to avoid turn spikes.
-			g.mouseLookSet = false
-			g.mouseLookSuppressTicks = detailMouseSuppressTicks
-			g.setHUDMessage("Automap Closed", 35)
+	if g.handleChatInput() {
+		// Chat compose owns Enter/Escape/T while it is active.
+	} else {
+		if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
+			g.quitPromptRequested = true
+			return nil
 		}
-	}
-	if g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyR) {
-		g.rotateView = !g.rotateView
-		if g.rotateView {
-			g.setHUDMessage("Heading-Up ON", 70)
-		} else {
-			g.setHUDMessage("Heading-Up OFF", 70)
+		if g.keyJustPressed(ebiten.KeyEscape) {
+			g.frontendMenuRequested = true
+			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+			return nil
 		}
-	}
-	if g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyBackslash) {
-		g.opts.MouseLook = !g.opts.MouseLook
-		if g.opts.MouseLook {
-			g.setHUDMessage("Mouse Look ON", 70)
-			g.mouseLookSet = false
-			g.mouseLookSuppressTicks = detailMouseSuppressTicks
-		} else {
-			g.setHUDMessage("Mouse Look OFF", 70)
-			g.mouseLookSet = false
+		if g.keyJustPressed(ebiten.KeyTab) {
+			if g.mode == viewWalk {
+				g.mode = viewMap
+				g.setHUDMessage("Automap Opened", 35)
+			} else {
+				g.mode = viewWalk
+				// Reset mouse baseline when entering walk mode to avoid turn spikes.
+				g.mouseLookSet = false
+				g.mouseLookSuppressTicks = detailMouseSuppressTicks
+				g.setHUDMessage("Automap Closed", 35)
+			}
 		}
-	}
-	if g.keyJustPressed(ebiten.KeyF1) {
-		g.readThisRequested = true
-	}
-	if g.keyJustPressed(ebiten.KeyComma) {
-		g.setSimTickScale(g.simTickScale - 0.1)
-	}
-	if g.keyJustPressed(ebiten.KeyPeriod) {
-		g.setSimTickScale(g.simTickScale + 0.1)
-	}
-	if g.keyJustPressed(ebiten.KeySlash) {
-		g.setSimTickScale(1.0)
-	}
-	if g.keyJustPressed(ebiten.KeyE) || g.keyJustPressed(ebiten.KeySpace) {
-		g.pendingUse = true
-	}
-	if g.keyJustPressed(ebiten.KeyF5) {
-		if g.opts.SourcePortMode {
-			g.cycleSourcePortDetailLevel()
-		} else {
-			g.cycleDetailLevel()
+		if g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyR) {
+			g.rotateView = !g.rotateView
+			if g.rotateView {
+				g.setHUDMessage("Heading-Up ON", 70)
+			} else {
+				g.setHUDMessage("Heading-Up OFF", 70)
+			}
 		}
-	}
-	if g.isDead && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter)) {
-		g.requestLevelRestart()
+		if g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyBackslash) {
+			g.opts.MouseLook = !g.opts.MouseLook
+			if g.opts.MouseLook {
+				g.setHUDMessage("Mouse Look ON", 70)
+				g.mouseLookSet = false
+				g.mouseLookSuppressTicks = detailMouseSuppressTicks
+			} else {
+				g.setHUDMessage("Mouse Look OFF", 70)
+				g.mouseLookSet = false
+			}
+		}
+		if g.keyJustPressed(ebiten.KeyF1) {
+			g.readThisRequested = true
+		}
+		if g.keyJustPressed(ebiten.KeyComma) {
+			g.setSimTickScale(g.simTickScale - 0.1)
+		}
+		if g.keyJustPressed(ebiten.KeyPeriod) {
+			g.setSimTickScale(g.simTickScale + 0.1)
+		}
+		if g.keyJustPressed(ebiten.KeySlash) {
+			g.setSimTickScale(1.0)
+		}
+		if g.keyJustPressed(ebiten.KeyE) || g.keyJustPressed(ebiten.KeySpace) {
+			g.pendingUse = true
+		}
+		if g.keyJustPressed(ebiten.KeyF5) {
+			if g.opts.SourcePortMode {
+				g.cycleSourcePortDetailLevel()
+			} else {
+				g.cycleDetailLevel()
+			}
+		}
+		if g.isDead && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter)) {
+			g.requestLevelRestart()
+		}
 	}
 	ticks := g.consumeSimTicks()
 	for i := 0; i < ticks; i++ {
@@ -2577,6 +2587,7 @@ func (g *game) Update() error {
 		if g.useFlash > 0 {
 			g.useFlash--
 		}
+		g.tickChatHistory()
 		if g.damageFlashTic > 0 {
 			g.damageFlashTic--
 		}
@@ -2753,6 +2764,9 @@ func (g *game) requestLevelRestart() {
 }
 
 func (g *game) updateMapMode() {
+	if g.chatComposeOpen {
+		return
+	}
 	g.updateParityControls()
 	g.updateWeaponHotkeys(false)
 	input := g.buildMapViewInputState()
@@ -2762,61 +2776,67 @@ func (g *game) updateMapMode() {
 }
 
 func (g *game) updateWalkMode() {
-	g.updateParityControls()
-	g.updateWeaponHotkeys(true)
-	g.updateWalkScreenSize()
-	ctrlHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight)
-	if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketRight) {
-		g.adjustHUDScale(1)
-	}
-	if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketLeft) {
-		g.adjustHUDScale(-1)
-	}
 	cmd := moveCmd{}
 	usePressed := false
-	speed := g.currentRunSpeed()
-	strafeMod := g.keyHeld(ebiten.KeyAltLeft) || g.keyHeld(ebiten.KeyAltRight)
-	if g.keyHeld(ebiten.KeyW) || g.keyHeld(ebiten.KeyArrowUp) {
-		cmd.forward += forwardMove[speed]
-	}
-	if g.keyHeld(ebiten.KeyS) || g.keyHeld(ebiten.KeyArrowDown) {
-		cmd.forward -= forwardMove[speed]
-	}
-	if g.keyHeld(ebiten.KeyA) {
-		cmd.side -= sideMove[speed]
-	}
-	if g.keyHeld(ebiten.KeyD) {
-		cmd.side += sideMove[speed]
-	}
-	if g.keyHeld(ebiten.KeyArrowLeft) {
-		if strafeMod {
+	fireHeld := false
+	speed := 0
+	if !g.chatComposeOpen {
+		g.updateParityControls()
+		g.updateWeaponHotkeys(true)
+		g.updateWalkScreenSize()
+		ctrlHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight)
+		if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketRight) {
+			g.adjustHUDScale(1)
+		}
+		if ctrlHeld && g.keyJustPressed(ebiten.KeyBracketLeft) {
+			g.adjustHUDScale(-1)
+		}
+		speed = g.currentRunSpeed()
+		strafeMod := g.keyHeld(ebiten.KeyAltLeft) || g.keyHeld(ebiten.KeyAltRight)
+		if g.keyHeld(ebiten.KeyW) || g.keyHeld(ebiten.KeyArrowUp) {
+			cmd.forward += forwardMove[speed]
+		}
+		if g.keyHeld(ebiten.KeyS) || g.keyHeld(ebiten.KeyArrowDown) {
+			cmd.forward -= forwardMove[speed]
+		}
+		if g.keyHeld(ebiten.KeyA) {
 			cmd.side -= sideMove[speed]
-		} else {
-			cmd.turn += 1
 		}
-	}
-	if g.keyHeld(ebiten.KeyArrowRight) {
-		if strafeMod {
+		if g.keyHeld(ebiten.KeyD) {
 			cmd.side += sideMove[speed]
+		}
+		if g.keyHeld(ebiten.KeyArrowLeft) {
+			if strafeMod {
+				cmd.side -= sideMove[speed]
+			} else {
+				cmd.turn += 1
+			}
+		}
+		if g.keyHeld(ebiten.KeyArrowRight) {
+			if strafeMod {
+				cmd.side += sideMove[speed]
+			} else {
+				cmd.turn -= 1
+			}
+		}
+		if g.edgeInputPass && g.pendingUse {
+			usePressed = true
+			g.pendingUse = false
+		}
+		fireHeld = g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight) || g.mouseHeld(ebiten.MouseButtonLeft)
+		if g.opts.MouseLook {
+			if g.mouseLookSuppressTicks > 0 {
+				g.mouseLookSuppressTicks--
+			}
+			cmd.turnRaw += g.input.mouseTurnRawAccum
 		} else {
-			cmd.turn -= 1
+			g.mouseLookSet = false
 		}
-	}
-	if g.edgeInputPass && g.pendingUse {
-		usePressed = true
-		g.pendingUse = false
-	}
-	fireHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight) || g.mouseHeld(ebiten.MouseButtonLeft)
-
-	if g.opts.MouseLook {
-		if g.mouseLookSuppressTicks > 0 {
-			g.mouseLookSuppressTicks--
-		}
-		cmd.turnRaw += g.input.mouseTurnRawAccum
-		g.input.mouseTurnRawAccum = 0
 	} else {
+		g.pendingUse = false
 		g.mouseLookSet = false
 	}
+	g.input.mouseTurnRawAccum = 0
 
 	cmd.run = speed == 1
 	if strings.TrimSpace(g.opts.RecordDemoPath) != "" || g.opts.LiveTicSink != nil {
@@ -2851,7 +2871,7 @@ func (g *game) SampleInput() {
 	g.input.pressedKeys = addPressedKeys(g.input.pressedKeys, inpututil.AppendPressedKeys(nil))
 	g.input.justPressedKeys = addPressedKeys(g.input.justPressedKeys, inpututil.AppendJustPressedKeys(nil))
 	g.input.inputChars = ebiten.AppendInputChars(g.input.inputChars[:0])
-	if len(g.input.inputChars) > 0 {
+	if len(g.input.inputChars) > 0 && !g.chatComposeOpen {
 		g.consumeTypedCheatInput()
 	}
 	g.input.mouseLeftHeld = g.input.mouseLeftHeld || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
@@ -3080,7 +3100,7 @@ func (g *game) updateParityControls() {
 	if !g.edgeInputPass {
 		return
 	}
-	textInputActive := len(g.input.inputChars) > 0
+	textInputActive := g.chatComposeOpen || len(g.input.inputChars) > 0
 	if g.keyJustPressed(ebiten.KeyCapsLock) {
 		g.alwaysRun = !g.alwaysRun
 		if g.alwaysRun {
@@ -3456,6 +3476,7 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 	if g.useFlash > 0 {
 		g.drawHUDMessage(screen, g.useText, 0, 0)
 	}
+	g.drawChatOverlay(screen)
 	if g.paused {
 		g.drawPauseOverlay(screen)
 	}
@@ -3558,6 +3579,7 @@ func (g *game) Draw(screen *ebiten.Image) {
 			if state.ShowHUDMessage {
 				g.drawHUDMessage(screen, state.HUDMessage, 0, 0)
 			}
+			g.drawChatOverlay(screen)
 			if state.IsDead {
 				g.drawDeathOverlay(screen)
 			}
