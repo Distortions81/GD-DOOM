@@ -498,7 +498,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	lowLatency := fs.Bool("low-latency", false, "disable streamer-side netplay tic batching and flush every tic immediately")
 	mic := fs.Bool("mic", false, "capture microphone audio and publish it on the relay audio stream (broadcast mode only)")
 	micDevice := fs.String("mic-device", "", "PulseAudio capture device name for -mic")
-	micCodec := fs.String("mic-codec", "ima", "microphone wire codec (ima|pcm)")
+	micCodec := fs.String("mic-codec", "ima", "microphone wire codec (ima|g726|pcm)")
 	micSampleRate := fs.Int("mic-sample-rate", 0, "microphone wire sample rate in Hz (0 uses default)")
 	micAGC := fs.Bool("mic-agc", true, "enable microphone automatic gain control")
 	micGate := fs.Bool("mic-gate", true, "enable microphone noise gate")
@@ -1135,6 +1135,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			LiveTicSource:              liveTicSourceFromViewer(watchSession),
 			WatchStartupBufferTics:     watchStartupBufferTics(*lowLatency),
 			VoiceCodec:                 *micCodec,
+			VoiceG726BitsPerSample:     4,
 			VoiceSampleRate:            *micSampleRate,
 			VoiceAGCEnabled:            *micAGC,
 			VoiceGateEnabled:           *micGate,
@@ -1154,16 +1155,17 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				return nil
 			}
 			format, err := sessionvoice.ResolveBroadcasterFormat(sessionvoice.BroadcasterOptions{
-				Codec:         s.Codec,
-				SampleRate:    s.SampleRate,
-				AGCEnabled:    s.AGCEnabled,
-				GateEnabled:   s.GateEnabled,
-				GateThreshold: s.GateThreshold,
+				Codec:             s.Codec,
+				G726BitsPerSample: s.G726Bits,
+				SampleRate:        s.SampleRate,
+				AGCEnabled:        s.AGCEnabled,
+				GateEnabled:       s.GateEnabled,
+				GateThreshold:     s.GateThreshold,
 			})
 			if err != nil {
 				return err
 			}
-			if s.Codec != opts.VoiceCodec || s.SampleRate != opts.VoiceSampleRate {
+			if s.Codec != opts.VoiceCodec || s.SampleRate != opts.VoiceSampleRate || s.G726Bits != opts.VoiceG726BitsPerSample {
 				if err := voiceStreamer.UpdateFormat(format); err != nil {
 					return err
 				}
@@ -1171,6 +1173,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			voiceStreamer.UpdateAGC(s.AGCEnabled)
 			voiceStreamer.UpdateGate(s.GateEnabled, s.GateThreshold)
 			opts.VoiceCodec = s.Codec
+			opts.VoiceG726BitsPerSample = s.G726Bits
 			opts.VoiceSampleRate = s.SampleRate
 			opts.VoiceAGCEnabled = s.AGCEnabled
 			opts.VoiceGateEnabled = s.GateEnabled
@@ -1390,11 +1393,12 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				audioHost,
 				strings.TrimSpace(*micDevice),
 				sessionvoice.BroadcasterOptions{
-					Codec:         *micCodec,
-					SampleRate:    *micSampleRate,
-					AGCEnabled:    *micAGC,
-					GateEnabled:   *micGate,
-					GateThreshold: *micGateThreshold,
+					Codec:             *micCodec,
+					G726BitsPerSample: 4,
+					SampleRate:        *micSampleRate,
+					AGCEnabled:        *micAGC,
+					GateEnabled:       *micGate,
+					GateThreshold:     *micGateThreshold,
 				},
 				func() uint32 {
 					return uint32(max(0, sess.CurrentWorldTic()))

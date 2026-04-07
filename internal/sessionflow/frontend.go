@@ -91,6 +91,7 @@ type FrontendResult struct {
 	ChangeSynth              int
 	ChangeSoundFont          int
 	ChangeVoiceCodec         int
+	ChangeVoiceG726Bits      int
 	ChangeVoiceRate          int
 	ChangeVoiceAGC           bool
 	ChangeVoiceGate          bool
@@ -536,12 +537,30 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			case 0:
 				result.ChangeVoiceCodec = -1
 			case 1:
-				result.ChangeVoiceRate = -1
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceG726Bits = -1
+				} else {
+					result.ChangeVoiceRate = -1
+				}
 			case 2:
-				result.ChangeVoiceAGC = true
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceRate = -1
+				} else {
+					result.ChangeVoiceAGC = true
+				}
 			case 3:
-				result.ChangeVoiceGate = true
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceAGC = true
+				} else {
+					result.ChangeVoiceGate = true
+				}
 			case 4:
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceGate = true
+				} else {
+					result.ChangeVoiceGateThreshold = -1
+				}
+			case 5:
 				result.ChangeVoiceGateThreshold = -1
 			}
 		}
@@ -550,12 +569,30 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			case 0:
 				result.ChangeVoiceCodec = 1
 			case 1:
-				result.ChangeVoiceRate = 1
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceG726Bits = 1
+				} else {
+					result.ChangeVoiceRate = 1
+				}
 			case 2:
-				result.ChangeVoiceAGC = true
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceRate = 1
+				} else {
+					result.ChangeVoiceAGC = true
+				}
 			case 3:
-				result.ChangeVoiceGate = true
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceAGC = true
+				} else {
+					result.ChangeVoiceGate = true
+				}
 			case 4:
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceGate = true
+				} else {
+					result.ChangeVoiceGateThreshold = 1
+				}
+			case 5:
 				result.ChangeVoiceGateThreshold = 1
 			}
 		}
@@ -564,12 +601,30 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			case 0:
 				result.ChangeVoiceCodec = 1
 			case 1:
-				result.ChangeVoiceRate = 1
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceG726Bits = 1
+				} else {
+					result.ChangeVoiceRate = 1
+				}
 			case 2:
-				result.ChangeVoiceAGC = true
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceRate = 1
+				} else {
+					result.ChangeVoiceAGC = true
+				}
 			case 3:
-				result.ChangeVoiceGate = true
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceAGC = true
+				} else {
+					result.ChangeVoiceGate = true
+				}
 			case 4:
+				if cfg.VoiceMenuCount >= 6 {
+					result.ChangeVoiceGate = true
+				} else {
+					result.ChangeVoiceGateThreshold = 1
+				}
+			case 5:
 				result.ChangeVoiceGateThreshold = 1
 			}
 			result.Sound = FrontendSoundConfirm

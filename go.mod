@@ -8,6 +8,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
 	github.com/klauspost/compress v1.18.5
+	github.com/lkmio/g726 v0.1.3
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/sinshu/go-meltysynth v0.1.2
 	github.com/zeebo/blake3 v0.2.4

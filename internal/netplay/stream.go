@@ -71,12 +71,13 @@ const (
 const (
 	audioCodecIMA4To1     byte = 1
 	audioCodecPCM16Mono   byte = 2
+	audioCodecG72632      byte = 3
 	audioViewerChunkQueue      = 24
 )
 
 const (
 	audioRecordTypeFormat   byte = 0x80
-	audioFormatPayloadLen        = 16
+	audioFormatPayloadLen        = 17
 	audioChunkHeaderSize         = 1
 	audioIMASeedHeaderBytes      = 8
 )
@@ -128,6 +129,7 @@ type Keyframe struct {
 
 type AudioFormat struct {
 	Codec                byte
+	BitsPerSample        byte
 	SampleRateChoice     byte
 	SampleRate           int
 	Channels             int
@@ -980,6 +982,14 @@ func (v *AudioViewer) readLoop() {
 		}
 		switch kind {
 		case audioRecordTypeFormat:
+			for {
+				select {
+				case <-v.chunks:
+				default:
+					goto drainedChunks
+				}
+			}
+		drainedChunks:
 			packetSamples = format.PacketSamples
 			currentFormat = format
 			nextStartSample = 0
@@ -1059,7 +1069,7 @@ func normalizeAudioFormat(format AudioFormat) (AudioFormat, error) {
 	if format.Codec == 0 {
 		format.Codec = audioCodecIMA4To1
 	}
-	if format.Codec != audioCodecIMA4To1 && format.Codec != audioCodecPCM16Mono {
+	if format.Codec != audioCodecIMA4To1 && format.Codec != audioCodecPCM16Mono && format.Codec != audioCodecG72632 {
 		return AudioFormat{}, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
 	rate, err := voicecodec.ResolveSampleRate(voicecodec.SampleRateChoice(format.SampleRateChoice), format.SampleRate)
@@ -1086,6 +1096,18 @@ func normalizeAudioFormat(format AudioFormat) (AudioFormat, error) {
 	if format.Bitrate < 0 {
 		return AudioFormat{}, fmt.Errorf("audio bitrate must be >= 0")
 	}
+	switch format.Codec {
+	case audioCodecIMA4To1:
+		if format.BitsPerSample == 0 {
+			format.BitsPerSample = 4
+		}
+	case audioCodecPCM16Mono:
+		if format.BitsPerSample == 0 {
+			format.BitsPerSample = 16
+		}
+	case audioCodecG72632:
+		format.BitsPerSample = byte(voicecodec.NormalizeG726BitsPerSample(int(format.BitsPerSample)))
+	}
 	return format, nil
 }
 
@@ -1096,12 +1118,13 @@ func marshalAudioFormat(format AudioFormat) ([]byte, error) {
 	}
 	payload := make([]byte, audioFormatPayloadLen)
 	payload[0] = format.Codec
-	payload[1] = format.SampleRateChoice
-	binary.LittleEndian.PutUint32(payload[2:6], uint32(format.SampleRate))
-	binary.LittleEndian.PutUint16(payload[6:8], uint16(format.Channels))
-	binary.LittleEndian.PutUint16(payload[8:10], uint16(format.PacketDurationMillis))
-	binary.LittleEndian.PutUint16(payload[10:12], uint16(format.PacketSamples))
-	binary.LittleEndian.PutUint32(payload[12:16], uint32(format.Bitrate))
+	payload[1] = format.BitsPerSample
+	payload[2] = format.SampleRateChoice
+	binary.LittleEndian.PutUint32(payload[3:7], uint32(format.SampleRate))
+	binary.LittleEndian.PutUint16(payload[7:9], uint16(format.Channels))
+	binary.LittleEndian.PutUint16(payload[9:11], uint16(format.PacketDurationMillis))
+	binary.LittleEndian.PutUint16(payload[11:13], uint16(format.PacketSamples))
+	binary.LittleEndian.PutUint32(payload[13:17], uint32(format.Bitrate))
 	return payload, nil
 }
 
@@ -1111,12 +1134,13 @@ func unmarshalAudioFormat(payload []byte) (AudioFormat, error) {
 	}
 	return normalizeAudioFormat(AudioFormat{
 		Codec:                payload[0],
-		SampleRateChoice:     payload[1],
-		SampleRate:           int(binary.LittleEndian.Uint32(payload[2:6])),
-		Channels:             int(binary.LittleEndian.Uint16(payload[6:8])),
-		PacketDurationMillis: int(binary.LittleEndian.Uint16(payload[8:10])),
-		PacketSamples:        int(binary.LittleEndian.Uint16(payload[10:12])),
-		Bitrate:              int(binary.LittleEndian.Uint32(payload[12:16])),
+		BitsPerSample:        payload[1],
+		SampleRateChoice:     payload[2],
+		SampleRate:           int(binary.LittleEndian.Uint32(payload[3:7])),
+		Channels:             int(binary.LittleEndian.Uint16(payload[7:9])),
+		PacketDurationMillis: int(binary.LittleEndian.Uint16(payload[9:11])),
+		PacketSamples:        int(binary.LittleEndian.Uint16(payload[11:13])),
+		Bitrate:              int(binary.LittleEndian.Uint32(payload[13:17])),
 	})
 }
 
@@ -1206,6 +1230,14 @@ func audioChunkWireFlags(format AudioFormat, chunk AudioChunk) (byte, error) {
 		default:
 			return 0, fmt.Errorf("ima payload len=%d want=%d or %d", len(chunk.Payload), deltaLen, seededLen)
 		}
+	case audioCodecG72632:
+		want, err := voicecodec.G726PacketBytes(format.PacketSamples, format.Channels, int(format.BitsPerSample))
+		if err != nil {
+			return 0, err
+		}
+		if len(chunk.Payload) != want {
+			return 0, fmt.Errorf("g726 payload len=%d want=%d", len(chunk.Payload), want)
+		}
 	default:
 		return 0, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}
@@ -1225,6 +1257,8 @@ func audioChunkPayloadLen(format AudioFormat, flags byte) (int, error) {
 			n += audioIMASeedHeaderBytes
 		}
 		return n, nil
+	case audioCodecG72632:
+		return voicecodec.G726PacketBytes(format.PacketSamples, format.Channels, int(format.BitsPerSample))
 	default:
 		return 0, fmt.Errorf("unsupported audio codec %d", format.Codec)
 	}

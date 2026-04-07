@@ -636,7 +636,7 @@ func (sg *sessionGame) tickFrontend() error {
 			EpisodeChoices:    sg.availableFrontendEpisodeChoices(),
 			OptionRows:        frontendOptionsSelectableRows[:],
 			MusicMenuCount:    frontendMusicMenuRowCount,
-			VoiceMenuCount:    frontendVoiceMenuRowCount,
+			VoiceMenuCount:    voiceMenuRowCount(sg.opts.VoiceCodec),
 			MainMenuCount:     len(frontendMainMenuNames),
 			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
 			SkillMenuCount:    len(frontendSkillMenuNames),
@@ -710,6 +710,12 @@ func (sg *sessionGame) tickFrontend() error {
 	}
 	if result.ChangeVoiceCodec != 0 {
 		if err := sg.frontendChangeVoiceCodec(result.ChangeVoiceCodec); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeVoiceG726Bits != 0 {
+		if err := sg.frontendChangeVoiceG726Bits(result.ChangeVoiceG726Bits); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
 			sg.playMenuBackSound()
 		}
@@ -1062,26 +1068,26 @@ func (sg *sessionGame) drawFrontendVoiceMenu(screen *ebiten.Image, scale, ox, oy
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
 	sg.rt.sessionDrawHUTextAt(screen, "VOICE", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
 	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
-	labels := [frontendVoiceMenuRowCount]string{"CODEC", "SAMPLE RATE"}
-	values := [frontendVoiceMenuRowCount]string{
-		sg.voiceCodecLabel(),
-		sg.voiceSampleRateLabel(),
-		sg.voiceAGCLabel(),
-		sg.voiceGateLabel(),
-		sg.voiceGateThresholdLabel(),
+	labels := []string{"CODEC"}
+	values := []string{sg.voiceCodecLabel()}
+	if normalizeVoiceCodecChoice(sg.opts.VoiceCodec) == "g726" {
+		labels = append(labels, "BITS/SAMPLE")
+		values = append(values, sg.voiceG726BitsLabel())
 	}
-	labels = [frontendVoiceMenuRowCount]string{"CODEC", "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD"}
-	for i := 0; i < frontendVoiceMenuRowCount; i++ {
+	labels = append(labels, "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD")
+	values = append(values, sg.voiceSampleRateLabel(), sg.voiceAGCLabel(), sg.voiceGateLabel(), sg.voiceGateThresholdLabel())
+	for i := 0; i < len(labels); i++ {
 		y := menuY + i*lineHeight + 2
 		sg.rt.sessionDrawHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 		sg.rt.sessionDrawHUTextAt(screen, values[i], ox+float64(menuX+170)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
 	}
-	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputLevelLabel(), ox+float64(menuX)*scale, oy+float64(128)*scale, scale*1.0, scale*1.0)
-	sg.drawFrontendLevelBar(screen, menuX+86, 124, 108, 10, sg.voiceInputLevel(), sg.voiceInputGateActive(), scale, ox, oy)
-	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputDeviceLabel(), ox+float64(menuX)*scale, oy+float64(140)*scale, scale*1.0, scale*1.0)
-	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(156)*scale, scale*1.0, scale*1.0)
+	infoY := menuY + len(labels)*lineHeight + 12
+	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputLevelLabel(), ox+float64(menuX)*scale, oy+float64(infoY)*scale, scale*1.0, scale*1.0)
+	sg.drawFrontendLevelBar(screen, menuX+86, infoY-4, 108, 10, sg.voiceInputLevel(), sg.voiceInputGateActive(), scale, ox, oy)
+	sg.rt.sessionDrawHUTextAt(screen, sg.voiceInputDeviceLabel(), ox+float64(menuX)*scale, oy+float64(infoY+12)*scale, scale*1.0, scale*1.0)
+	sg.rt.sessionDrawHUTextAt(screen, "LEFT/RIGHT CHANGE  ENTER SELECT", ox+float64(menuX)*scale, oy+float64(infoY+28)*scale, scale*1.0, scale*1.0)
 	if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
-		sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
+		sg.drawIntermissionText(screen, msg, 160, infoY+54, scale, ox, oy, true)
 	}
 	sg.drawMenuSkull(screen, menuX-18, menuY+sg.frontend.VoiceOn*lineHeight, scale, ox, oy)
 }

@@ -23,6 +23,22 @@ func imaPayload(frameSamples, channels int, seeded bool) []byte {
 	return make([]byte, n)
 }
 
+func g726Payload(frameSamples, channels int) []byte {
+	n, err := voicecodec.G726PacketBytes(frameSamples, channels, 4)
+	if err != nil {
+		panic(err)
+	}
+	return make([]byte, n)
+}
+
+func g726PayloadBits(frameSamples, channels, bits int) []byte {
+	n, err := voicecodec.G726PacketBytes(frameSamples, channels, bits)
+	if err != nil {
+		panic(err)
+	}
+	return make([]byte, n)
+}
+
 func readViewerTic(t *testing.T, v *Viewer) (demo.Tic, bool, error) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -461,6 +477,7 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 
 	wantCfg := AudioFormat{
 		Codec:                audioCodecIMA4To1,
+		BitsPerSample:        4,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice48000),
 		SampleRate:           48000,
 		Channels:             1,
@@ -503,6 +520,147 @@ func TestRelayAudioRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRelayAudioG726RoundTrip(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{
+		WADHash: "abc123",
+		MapName: "E1M1",
+	})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	ab, err := DialRelayAudioBroadcaster(srv.Addr(), b.SessionID())
+	if err != nil {
+		t.Fatalf("DialRelayAudioBroadcaster() error = %v", err)
+	}
+	defer ab.Close()
+
+	v, err := DialRelayAudioViewer(srv.Addr(), b.SessionID(), "abc123")
+	if err != nil {
+		t.Fatalf("DialRelayAudioViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	wantCfg := AudioFormat{
+		Codec:                audioCodecG72632,
+		BitsPerSample:        4,
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice16000),
+		SampleRate:           16000,
+		Channels:             1,
+		PacketDurationMillis: 30,
+		PacketSamples:        480,
+		Bitrate:              64000,
+	}
+	if err := ab.BroadcastAudioConfig(wantCfg); err != nil {
+		t.Fatalf("BroadcastAudioConfig() error = %v", err)
+	}
+
+	wantChunk := AudioChunk{
+		StartSample: 0,
+		Payload:     g726Payload(wantCfg.PacketSamples, wantCfg.Channels),
+	}
+	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {
+		t.Fatalf("BroadcastAudioChunk() error = %v", err)
+	}
+
+	gotCfg, ok, err := readAudioConfig(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioConfig() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for audio config")
+	}
+	if gotCfg != wantCfg {
+		t.Fatalf("PollAudioConfig() = %+v want %+v", gotCfg, wantCfg)
+	}
+
+	gotChunk, ok, err := readAudioChunk(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioChunk() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for audio chunk")
+	}
+	if gotChunk.StartSample != wantChunk.StartSample || gotChunk.Silence != wantChunk.Silence || !bytes.Equal(gotChunk.Payload, wantChunk.Payload) {
+		t.Fatalf("PollAudioChunk() = %+v want %+v", gotChunk, wantChunk)
+	}
+}
+
+func TestRelayAudioG72624RoundTrip(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{
+		WADHash: "abc123",
+		MapName: "E1M1",
+	})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	ab, err := DialRelayAudioBroadcaster(srv.Addr(), b.SessionID())
+	if err != nil {
+		t.Fatalf("DialRelayAudioBroadcaster() error = %v", err)
+	}
+	defer ab.Close()
+
+	v, err := DialRelayAudioViewer(srv.Addr(), b.SessionID(), "abc123")
+	if err != nil {
+		t.Fatalf("DialRelayAudioViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	wantCfg := AudioFormat{
+		Codec:                audioCodecG72632,
+		BitsPerSample:        3,
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice16000),
+		SampleRate:           16000,
+		Channels:             1,
+		PacketDurationMillis: 30,
+		PacketSamples:        480,
+		Bitrate:              48000,
+	}
+	if err := ab.BroadcastAudioConfig(wantCfg); err != nil {
+		t.Fatalf("BroadcastAudioConfig() error = %v", err)
+	}
+
+	wantChunk := AudioChunk{
+		StartSample: 0,
+		Payload:     g726PayloadBits(wantCfg.PacketSamples, wantCfg.Channels, 3),
+	}
+	if err := ab.BroadcastAudioChunk(wantChunk); err != nil {
+		t.Fatalf("BroadcastAudioChunk() error = %v", err)
+	}
+
+	if _, ok, err := readAudioConfig(t, v); err != nil {
+		t.Fatalf("PollAudioConfig() error = %v", err)
+	} else if !ok {
+		t.Fatal("timed out waiting for audio config")
+	}
+
+	gotChunk, ok, err := readAudioChunk(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioChunk() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for audio chunk")
+	}
+	if !bytes.Equal(gotChunk.Payload, wantChunk.Payload) {
+		t.Fatalf("PollAudioChunk() payload len=%d want %d", len(gotChunk.Payload), len(wantChunk.Payload))
+	}
+}
+
 func TestRelayAudioSilenceChunkRoundTrip(t *testing.T) {
 	srv, err := ListenServer("127.0.0.1:0")
 	if err != nil {
@@ -533,6 +691,7 @@ func TestRelayAudioSilenceChunkRoundTrip(t *testing.T) {
 
 	if err := ab.BroadcastAudioConfig(AudioFormat{
 		Codec:                audioCodecPCM16Mono,
+		BitsPerSample:        16,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice48000),
 		SampleRate:           48000,
 		Channels:             1,
@@ -597,6 +756,7 @@ func TestRelayAudioChunkStartSampleAdvancesByConfiguredFrameSize(t *testing.T) {
 
 	cfg := AudioFormat{
 		Codec:                audioCodecPCM16Mono,
+		BitsPerSample:        16,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice48000),
 		SampleRate:           48000,
 		Channels:             1,
@@ -674,6 +834,7 @@ func TestRelayAudioFormatChangeResetsChunkSequence(t *testing.T) {
 
 	firstFormat := AudioFormat{
 		Codec:                audioCodecIMA4To1,
+		BitsPerSample:        4,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
 		SampleRate:           24000,
 		Channels:             1,
@@ -683,6 +844,7 @@ func TestRelayAudioFormatChangeResetsChunkSequence(t *testing.T) {
 	}
 	secondFormat := AudioFormat{
 		Codec:                audioCodecPCM16Mono,
+		BitsPerSample:        16,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice16000),
 		SampleRate:           16000,
 		Channels:             1,
@@ -713,16 +875,6 @@ func TestRelayAudioFormatChangeResetsChunkSequence(t *testing.T) {
 	if gotFirstFormat != firstFormat {
 		t.Fatalf("first format=%+v want %+v", gotFirstFormat, firstFormat)
 	}
-	firstChunk, ok, err := readAudioChunk(t, v)
-	if err != nil {
-		t.Fatalf("PollAudioChunk() first error = %v", err)
-	}
-	if !ok {
-		t.Fatal("timed out waiting for first audio chunk")
-	}
-	if firstChunk.StartSample != 0 {
-		t.Fatalf("first chunk start sample=%d want 0", firstChunk.StartSample)
-	}
 
 	gotSecondFormat, ok, err := readAudioConfig(t, v)
 	if err != nil {
@@ -743,6 +895,97 @@ func TestRelayAudioFormatChangeResetsChunkSequence(t *testing.T) {
 	}
 	if secondChunk.StartSample != 0 {
 		t.Fatalf("second chunk start sample=%d want 0 after format change", secondChunk.StartSample)
+	}
+}
+
+func TestRelayAudioFormatChangeDropsQueuedOldChunks(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer() error = %v", err)
+	}
+	defer srv.Close()
+
+	b, err := DialRelayBroadcaster(srv.Addr(), 0, SessionConfig{
+		WADHash: "abc123",
+		MapName: "E1M1",
+	})
+	if err != nil {
+		t.Fatalf("DialRelayBroadcaster() error = %v", err)
+	}
+	defer b.Close()
+
+	ab, err := DialRelayAudioBroadcaster(srv.Addr(), b.SessionID())
+	if err != nil {
+		t.Fatalf("DialRelayAudioBroadcaster() error = %v", err)
+	}
+	defer ab.Close()
+
+	v, err := DialRelayAudioViewer(srv.Addr(), b.SessionID(), "abc123")
+	if err != nil {
+		t.Fatalf("DialRelayAudioViewer() error = %v", err)
+	}
+	defer v.Close()
+
+	firstFormat := AudioFormat{
+		Codec:                audioCodecIMA4To1,
+		BitsPerSample:        4,
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice24000),
+		SampleRate:           24000,
+		Channels:             1,
+		PacketDurationMillis: 30,
+		PacketSamples:        720,
+		Bitrate:              96000,
+	}
+	secondFormat := AudioFormat{
+		Codec:                audioCodecPCM16Mono,
+		BitsPerSample:        16,
+		SampleRateChoice:     byte(voicecodec.SampleRateChoice16000),
+		SampleRate:           16000,
+		Channels:             1,
+		PacketDurationMillis: 30,
+		PacketSamples:        480,
+		Bitrate:              256000,
+	}
+	if err := ab.BroadcastAudioFormat(firstFormat); err != nil {
+		t.Fatalf("BroadcastAudioFormat() first error = %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := ab.BroadcastAudioChunk(AudioChunk{Payload: imaPayload(firstFormat.PacketSamples, firstFormat.Channels, true)}); err != nil {
+			t.Fatalf("BroadcastAudioChunk() stale %d error = %v", i, err)
+		}
+	}
+	if err := ab.BroadcastAudioFormat(secondFormat); err != nil {
+		t.Fatalf("BroadcastAudioFormat() second error = %v", err)
+	}
+	if err := ab.BroadcastAudioChunk(AudioChunk{Payload: pcmPayload(secondFormat.PacketSamples, secondFormat.Channels)}); err != nil {
+		t.Fatalf("BroadcastAudioChunk() second error = %v", err)
+	}
+
+	if _, ok, err := readAudioConfig(t, v); err != nil {
+		t.Fatalf("PollAudioFormat() first error = %v", err)
+	} else if !ok {
+		t.Fatal("timed out waiting for first audio format")
+	}
+	if gotSecondFormat, ok, err := readAudioConfig(t, v); err != nil {
+		t.Fatalf("PollAudioFormat() second error = %v", err)
+	} else if !ok {
+		t.Fatal("timed out waiting for second audio format")
+	} else if gotSecondFormat != secondFormat {
+		t.Fatalf("second format=%+v want %+v", gotSecondFormat, secondFormat)
+	}
+
+	secondChunk, ok, err := readAudioChunk(t, v)
+	if err != nil {
+		t.Fatalf("PollAudioChunk() second error = %v", err)
+	}
+	if !ok {
+		t.Fatal("timed out waiting for second audio chunk")
+	}
+	if secondChunk.StartSample != 0 {
+		t.Fatalf("chunk start sample=%d want 0 after dropping stale queued chunks", secondChunk.StartSample)
+	}
+	if got, want := len(secondChunk.Payload), secondFormat.PacketSamples*secondFormat.Channels*2; got != want {
+		t.Fatalf("chunk payload len=%d want %d", got, want)
 	}
 }
 
@@ -770,6 +1013,7 @@ func TestRelayAudioLateJoinDoesNotReceiveStaleChunks(t *testing.T) {
 
 	wantCfg := AudioFormat{
 		Codec:                audioCodecPCM16Mono,
+		BitsPerSample:        16,
 		SampleRateChoice:     byte(voicecodec.SampleRateChoice48000),
 		SampleRate:           48000,
 		Channels:             1,

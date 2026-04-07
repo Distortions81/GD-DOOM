@@ -141,6 +141,43 @@ func TestResolveBroadcasterFormatHonorsPCMAndSampleRate(t *testing.T) {
 	}
 }
 
+func TestResolveBroadcasterFormatHonorsG726AndSampleRate(t *testing.T) {
+	got, err := resolveBroadcasterFormat(BroadcasterOptions{
+		Codec:             "g726",
+		G726BitsPerSample: 4,
+		SampleRate:        16000,
+	})
+	if err != nil {
+		t.Fatalf("resolveBroadcasterFormat() error = %v", err)
+	}
+	if got.Codec != voicecodec.CodecG72632 {
+		t.Fatalf("codec=%d want %d", got.Codec, voicecodec.CodecG72632)
+	}
+	if got.SampleRate != 16000 {
+		t.Fatalf("sample rate=%d want 16000", got.SampleRate)
+	}
+	if got.PacketSamples != 480 {
+		t.Fatalf("packet samples=%d want 480", got.PacketSamples)
+	}
+	if got.Bitrate != 16000*4 {
+		t.Fatalf("bitrate=%d want %d", got.Bitrate, 16000*4)
+	}
+}
+
+func TestResolveBroadcasterFormatHonorsG726BitDepth(t *testing.T) {
+	got, err := resolveBroadcasterFormat(BroadcasterOptions{
+		Codec:             "g726",
+		G726BitsPerSample: 2,
+		SampleRate:        16000,
+	})
+	if err != nil {
+		t.Fatalf("resolveBroadcasterFormat() error = %v", err)
+	}
+	if got.Bitrate != 16000*2 {
+		t.Fatalf("bitrate=%d want %d", got.Bitrate, 16000*2)
+	}
+}
+
 func TestResolveBroadcasterFormatRejectsBadCodec(t *testing.T) {
 	if _, err := resolveBroadcasterFormat(BroadcasterOptions{Codec: "nope"}); err == nil {
 		t.Fatal("expected codec error")
