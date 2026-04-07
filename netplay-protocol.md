@@ -10,6 +10,7 @@ This protocol currently covers relay-backed:
 
 - gameplay broadcast
 - gameplay watch/view
+- gameplay chat
 - audio broadcast
 - audio watch/view
 
@@ -120,8 +121,7 @@ Current gameplay frame types:
 - `1`: `keyframe`
 - `4`: `tic_batch`
 - `8`: `intermission_advance`
-
-Current audio frame type ids also exist in code (`16`, `17`) but are not used on the compact negotiated audio connection.
+- `32`: `chat`
 
 ### Keyframe
 
@@ -179,6 +179,28 @@ Binary layout:
 
 Total size: `1` byte.
 
+### Chat
+
+Binary layout:
+
+- `type[1] = 32`
+- `name_len[1]`
+- `text_len[2]`
+- `reserved[1]`
+- `name[name_len]`
+- `text[text_len]`
+
+Field limits:
+
+- `name_len <= 128`
+- `text_len <= 512`
+
+Current relay behavior:
+
+- gameplay viewers can send chat frames upstream to the relay
+- gameplay broadcasters can also send chat frames on the gameplay socket
+- the relay forwards chat to all other gameplay participants in the same session
+
 ## Audio Connection
 
 When `audio_compact_v1` is present in `hello.flags`, the dedicated audio socket does not use the generic gameplay frame header.
@@ -197,6 +219,7 @@ Binary layout:
 
 - `record_type[1] = 0x80`
 - `codec[1]`
+- `bits_per_sample[1]`
 - `sample_rate_choice[1]`
 - `sample_rate[4]`
 - `channels[2]`
@@ -204,12 +227,19 @@ Binary layout:
 - `packet_samples[2]`
 - `bitrate[4]`
 
-Total record size: `17` bytes.
+Total record size: `18` bytes, including `record_type`.
 
 Current codec ids:
 
 - `2`: `pcm16_mono`
 - `3`: `g726_32`
+- `4`: `silk_v3`
+
+Current `bits_per_sample` usage:
+
+- `pcm16_mono`: usually `16`
+- `g726_32`: normalized to `2..5` in the current implementation
+- `silk_v3`: `0`
 
 Current sample rate choice ids:
 
@@ -226,9 +256,13 @@ The broadcaster may send a new `AudioFormat` record after the stream has already
 Binary layout:
 
 - `flags[1]`
+- `payload_len[2]`, only for codecs with variable payload size
 - `payload[n]`
 
-Header size before payload: `1` byte.
+Header size before payload:
+
+- fixed-size codecs: `1` byte
+- variable-size codecs: `3` bytes
 
 Current audio chunk flags:
 
@@ -249,7 +283,13 @@ For `pcm16_mono`:
 
 For `g726_32`:
 
-- payload bytes = `packet_samples * channels * 4 / 8`
+- payload bytes = `packet_samples * channels * bits_per_sample / 8`
+
+For `silk_v3`:
+
+- payload length is transmitted explicitly as `payload_len[2]`
+- payload must be non-empty for non-silent chunks
+- maximum payload length is `65535` bytes
 
 If the payload length does not match the implied length, the record is invalid.
 
@@ -258,12 +298,12 @@ If the payload length does not match the implied length, the record is invalid.
 Current voice path values:
 
 - capture rate: `48000`
-- default encoded rate: `32000`
+- default encoded rate: `48000`
 - channels: `1`
-- frame duration: `30 ms`
+- default SILK packet duration: `20 ms`
 - default packet samples after resample: `960`
-- default voiced payload: `360` bytes
-- compact audio chunk header: `1` byte
+- default SILK bitrate: `64000`
+- compact audio chunk header: `1` byte for fixed-size codecs, `3` bytes for SILK
 
 Current silence policy:
 
@@ -287,6 +327,7 @@ The relay server:
   - session `hello`
   - latest retained keyframe, if any
   - retained backlog after that keyframe
+- does not retain chat history for late joiners
 
 ### Audio
 
@@ -295,11 +336,11 @@ The relay server:
 - accepts one audio broadcaster per session
 - accepts multiple audio viewers
 - stores:
-  - latest `AudioConfig`
+  - latest `AudioFormat`
 - does not retain audio chunks for late joiners
 - sends to late audio joiners:
   - session `hello`
-  - latest `AudioConfig`, if any
+  - latest `AudioFormat`, if any
 
 ## Current API Surface
 
@@ -321,10 +362,17 @@ Current gameplay send/receive methods:
 
 Current audio send/receive methods:
 
+- `BroadcastAudioFormat`
 - `BroadcastAudioConfig`
 - `BroadcastAudioChunk`
+- `PollAudioFormat`
 - `PollAudioConfig`
 - `PollAudioChunk`
+
+Current gameplay chat methods:
+
+- `SendChat`
+- `PollChat`
 
 ## Invalid Data Handling
 
@@ -332,7 +380,7 @@ Current parser expectations:
 
 - bad hello magic or version aborts the connection
 - unsupported role aborts the connection
-- audio chunk before audio config aborts the audio connection
+- audio chunk before audio format aborts the audio connection
 - mismatched implied audio payload size aborts the audio connection
 - unexpected gameplay frame type aborts the gameplay connection
 

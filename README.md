@@ -50,6 +50,7 @@ GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and der
 - In-game IWAD picker when multiple known IWADs are available.
 - Save/load support integrated into runtime flow.
 - Demo playback, demo recording, and per-tic demo trace export.
+- Relay-backed gameplay broadcast/watch sessions with optional microphone voice streaming.
 - Native config-file support through `config.toml`.
 
 ## Requirements
@@ -104,6 +105,11 @@ Frequently used options:
 - `-record-demo=out.lmp` records a Doom v1.10 demo from live play.
 - `-demo=path/to/demo.lmp` plays back a Doom v1.10 demo and exits when playback ends.
 - `-trace-demo-state=path.jsonl` exports per-tic demo state during `-demo` playback.
+- `-broadcast[=ADDR]` publishes gameplay to a GDSF relay, defaulting to `127.0.0.1:6670`.
+- `-watch[=ADDR] -watch-session=N` joins a relay session as a viewer.
+- `-low-latency` disables streamer-side tic batching for relay broadcast.
+- `-mic` publishes microphone audio on the relay audio stream when broadcasting.
+- `-mic-codec=silk|g726|pcm` selects the microphone wire codec.
 - `-config=config.toml` reads and persists native runtime settings.
 - `-dump-music` renders WAV exports for detected IWAD music.
 
@@ -116,9 +122,47 @@ go run . -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/genera
 go run . -wad DOOM2.WAD -map=MAP01 -record-demo=output.lmp
 go run . -wad DOOM1.WAD -demo=demos/DOOM1-DEMO1.lmp
 go run . -wad DOOM1.WAD -dump-music
+go run . -wad DOOM1.WAD -broadcast
+go run . -wad DOOM1.WAD -broadcast -mic -mic-codec=silk
+go run . -wad DOOM1.WAD -watch -watch-session=1
 go run . -wad DOOM1.WAD -cheat-level=3
 go run . -wad DOOM1.WAD -all-cheats
 ```
+
+## Relay Watch / Voice
+
+Run the relay server:
+
+```bash
+go run ./cmd/gdsfrelay
+```
+
+Broadcast a session to the default local relay:
+
+```bash
+go run . -wad DOOM1.WAD -broadcast
+```
+
+The broadcaster prints the assigned session id on startup. View from another instance with the same IWAD/PWAD stack:
+
+```bash
+go run . -wad DOOM1.WAD -watch -watch-session=1
+```
+
+Optional voice broadcast is available on native Linux builds through PulseAudio capture:
+
+```bash
+go run . -wad DOOM1.WAD -broadcast -mic
+go run . -wad DOOM1.WAD -broadcast -mic -mic-codec=silk
+```
+
+Notes:
+
+- `-broadcast` and `-watch` are mutually exclusive.
+- `-watch` also connects to the paired relay audio stream automatically.
+- `-low-latency` flushes each gameplay tic immediately instead of batching.
+- Current microphone codecs are `silk`, `g726`, and `pcm`.
+- The wire format is documented in [`netplay-protocol.md`](/home/dist/github/GD-DOOM/netplay-protocol.md).
 
 ## Cheats
 
