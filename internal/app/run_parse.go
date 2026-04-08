@@ -275,6 +275,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultAllCheats := false
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
+	defaultPCSpeakerMode := false
 	defaultImportTextures := true
 	defaultCPUProfile := ""
 	defaultMemProfile := ""
@@ -387,6 +388,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SourcePortMode != nil {
 			defaultSourcePortMode = *cfg.SourcePortMode
 		}
+		if cfg.PCSpeaker != nil {
+			defaultPCSpeakerMode = *cfg.PCSpeaker
+		}
 		if cfg.GPUSky != nil {
 			defaultGPUSky = *cfg.GPUSky
 		}
@@ -476,6 +480,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	musicBackend := fs.String("music-backend", defaultMusicBackend, "music synth backend (auto|impsynth|meltysynth)")
 	soundFont := fs.String("soundfont", defaultSoundFontPath, "path to external SoundFont (.sf2) used by the meltysynth music backend")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
+	pcSpeaker := fs.Bool("pc-speaker", defaultPCSpeakerMode, "render DP* PC speaker lumps to PCM and use them in place of DS* digital sounds")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
@@ -792,6 +797,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			allCheats:                  *allCheats,
 			startInMap:                 defaultStartInMap,
 			importPCSpeaker:            defaultImportPCSpeaker,
+			pcSpeaker:                  *pcSpeaker,
 			importTextures:             defaultImportTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
@@ -908,8 +914,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		resolvedInvuln = cfg.Invulnerable
 		fmt.Fprintf(stderr, "watch: connected map=%s player=%d mode=%s\n", cfg.MapName, cfg.PlayerSlot, cfg.GameMode)
 	}
+	var dpr sound.PCSpeakerImportReport
 	if defaultImportPCSpeaker {
-		dpr := sound.ImportPCSpeakerSounds(wf)
+		dpr = sound.ImportPCSpeakerSounds(wf)
 		fmt.Fprintf(stderr, "sound import: dp(found=%d decoded=%d failed=%d) ds(found=%d decoded=%d failed=%d)\n",
 			dpr.Found, dpr.Decoded, dpr.Failed,
 			dsr.Found, dsr.Decoded, dsr.Failed,
@@ -920,6 +927,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		)
 	}
 	soundBank = buildAutomapSoundBank(dsr, *sourcePortMode)
+	var pcSpeakerBank map[string][]sound.PCSpeakerTone
+	if *pcSpeaker && len(dpr.Sounds) > 0 {
+		pcSpeakerBank = buildPCSpeakerBank(dpr)
+	}
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
@@ -1136,6 +1147,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SpritePatchBank:            spritePatchBank,
 			IntermissionPatchBank:      intermissionPatchBank,
 			SoundBank:                  soundBank,
+			PCSpeakerBank:              pcSpeakerBank,
 			MusicPatchBank:             musicPatchBank,
 			MusicSoundFontPath:         strings.TrimSpace(*soundFont),
 			MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
@@ -1514,6 +1526,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			allCheats:                  *allCheats,
 			startInMap:                 explicitMapStartInMap(defaultStartInMap, mapExplicit),
 			importPCSpeaker:            defaultImportPCSpeaker,
+			pcSpeaker:                  *pcSpeaker,
 			importTextures:             defaultImportTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
@@ -2216,6 +2229,7 @@ type renderBuildConfig struct {
 	allCheats                  bool
 	startInMap                 bool
 	importPCSpeaker            bool
+	pcSpeaker                  bool
 	importTextures             bool
 	demoPath                   string
 	recordDemoPath             string
@@ -2367,14 +2381,19 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	if err != nil {
 		return nil, err
 	}
+	var dpr sound.PCSpeakerImportReport
 	if cfg.importPCSpeaker {
-		dpr := sound.ImportPCSpeakerSounds(wf)
+		dpr = sound.ImportPCSpeakerSounds(wf)
 		fmt.Fprintf(stderr, "sound import: dp(found=%d decoded=%d failed=%d) ds(found=%d decoded=%d failed=%d)\n",
 			dpr.Found, dpr.Decoded, dpr.Failed, dsr.Found, dsr.Decoded, dsr.Failed)
 	} else {
 		fmt.Fprintf(stderr, "sound import: ds(found=%d decoded=%d failed=%d)\n", dsr.Found, dsr.Decoded, dsr.Failed)
 	}
 	soundBank := buildAutomapSoundBank(dsr, cfg.sourcePortMode)
+	var pcSpeakerBank map[string][]sound.PCSpeakerTone
+	if cfg.pcSpeaker && len(dpr.Sounds) > 0 {
+		pcSpeakerBank = buildPCSpeakerBank(dpr)
+	}
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
@@ -2532,6 +2551,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		SpritePatchBank:            spritePatchBank,
 		IntermissionPatchBank:      intermissionPatchBank,
 		SoundBank:                  soundBank,
+		PCSpeakerBank:              pcSpeakerBank,
 		MusicPatchBank:             musicPatchBank,
 		MusicSoundFontPath:         cfg.soundFontPath,
 		MusicSoundFontChoices:      append([]string(nil), musicSoundFontChoices...),
@@ -3547,6 +3567,21 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 	bank = audiofx.PrepareSoundBankForFaithful(bank, music.OutputSampleRate)
 	if shouldPrepareSourcePortSoundBank(sourcePortMode) {
 		bank = audiofx.PrepareSoundBankForSourcePort(bank, music.OutputSampleRate)
+	}
+	return bank
+}
+
+// buildPCSpeakerBank converts DP* lumps into the compact tone-sequence map
+// used by the streaming PCSpeakerPlayer.  Keys are DS* names (DP→DS prefix).
+func buildPCSpeakerBank(dpr sound.PCSpeakerImportReport) map[string][]sound.PCSpeakerTone {
+	bank := make(map[string][]sound.PCSpeakerTone, len(dpr.Sounds))
+	for _, s := range dpr.Sounds {
+		seq := sound.BuildToneSequence(s)
+		if len(seq) == 0 {
+			continue
+		}
+		dsName := "DS" + s.Name[2:] // DPPISTOL → DSPISTOL
+		bank[dsName] = seq
 	}
 	return bank
 }

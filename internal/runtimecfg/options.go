@@ -6,6 +6,7 @@ import (
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
 	"gddoom/internal/music"
+	"gddoom/internal/sound"
 )
 
 type MusicPlayerTrack struct {
@@ -163,6 +164,7 @@ type Options struct {
 	SpritePatchBank            map[string]media.WallTexture
 	IntermissionPatchBank      map[string]media.WallTexture
 	SoundBank                  media.SoundBank
+	PCSpeakerBank              map[string][]sound.PCSpeakerTone
 	DemoScript                 *demo.Script
 	AttractDemos               []*demo.Script
 	DemoQuitOnComplete         bool

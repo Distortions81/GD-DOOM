@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gddoom/internal/audiofx"
 	"gddoom/internal/doomrand"
+	"gddoom/internal/sound"
 	"math"
 
 	"github.com/hajimehoshi/ebiten/v2/audio"
@@ -112,6 +113,8 @@ const (
 type soundSystem struct {
 	bank          SoundBank
 	player        *audiofx.SpatialPlayer
+	pcSpeaker     *audiofx.PCSpeakerPlayer
+	pcSpeakerBank map[string][]sound.PCSpeakerTone
 	rand          uint32
 	vanillaVolume int
 	pitchShift    bool
@@ -133,14 +136,21 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 	return audiofx.NewMenuPlayer(bank, volume)
 }
 
-func newSoundSystem(bank SoundBank, sfxVolume float64, sourcePort bool, pitchShift bool) *soundSystem {
+func newSoundSystem(bank SoundBank, pcSpeakerBank map[string][]sound.PCSpeakerTone, sfxVolume float64, sourcePort bool, pitchShift bool) *soundSystem {
 	var player *audiofx.SpatialPlayer
+	var pcSpeaker *audiofx.PCSpeakerPlayer
 	if clampVolume(sfxVolume) > 0 {
-		player = audiofx.NewSpatialPlayer(sfxVolume, sourcePort)
+		if len(pcSpeakerBank) > 0 {
+			pcSpeaker = audiofx.NewPCSpeakerPlayer(sfxVolume)
+		} else {
+			player = audiofx.NewSpatialPlayer(sfxVolume, sourcePort)
+		}
 	}
 	return &soundSystem{
 		bank:          bank,
 		player:        player,
+		pcSpeaker:     pcSpeaker,
+		pcSpeakerBank: pcSpeakerBank,
 		rand:          0x1f123bb5,
 		vanillaVolume: vanillaSFXVolume(sfxVolume),
 		pitchShift:    pitchShift,
@@ -168,6 +178,9 @@ func (s *soundSystem) setSFXVolume(v float64) {
 	if s.player != nil {
 		s.player.SetVolume(v)
 	}
+	if s.pcSpeaker != nil {
+		s.pcSpeaker.SetVolume(v)
+	}
 }
 
 func (s *soundSystem) playEvent(ev soundEvent) {
@@ -178,8 +191,22 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 	if !vanillaSoundWouldStart(s, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
 		return
 	}
-	pitch := vanillaPitchForEvent(ev, s != nil && s.pitchShift)
-	if s == nil || s.player == nil {
+	if s == nil {
+		return
+	}
+	// PC speaker mode: single channel, priority-based interruption.
+	if s.pcSpeaker != nil {
+		if dsName, ok := soundEventDSName(ev); ok {
+			if seq, ok := s.pcSpeakerBank[dsName]; ok && len(seq) > 0 {
+				if pcSpeakerShouldInterrupt(ev, origin, s, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
+					s.pcSpeaker.Play(seq)
+				}
+			}
+		}
+		return
+	}
+	pitch := vanillaPitchForEvent(ev, s.pitchShift)
+	if s.player == nil {
 		return
 	}
 	audioOrigin := audiofx.SpatialOrigin{
@@ -193,6 +220,35 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 	}
 	sample = applyVanillaPitch(sample, pitch)
 	s.player.PlaySampleSpatialDelayed(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev))
+}
+
+// pcSpeakerShouldInterrupt returns true if ev has sufficient priority to
+// interrupt whatever is currently playing.  Player sounds always win;
+// world sounds must be within clipping distance.
+func pcSpeakerShouldInterrupt(ev soundEvent, origin queuedSoundOrigin, s *soundSystem, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
+	if isPlayerSound(ev) {
+		return true
+	}
+	if !origin.positioned {
+		return true
+	}
+	_, _, ok := doomAdjustSoundParams(listenerX, listenerY, listenerAngle, origin.x, origin.y, s.vanillaVolume, mapUsesFullClip)
+	return ok
+}
+
+func isPlayerSound(ev soundEvent) bool {
+	switch ev {
+	case soundEventPain, soundEventOof, soundEventPlayerDeath,
+		soundEventShootPistol, soundEventShootShotgun, soundEventShootSuperShotgun,
+		soundEventShootPlasma, soundEventShootBFG, soundEventPunch,
+		soundEventShootRocket, soundEventSawUp, soundEventSawIdle,
+		soundEventSawFull, soundEventSawHit, soundEventShotgunOpen,
+		soundEventShotgunLoad, soundEventShotgunClose,
+		soundEventItemUp, soundEventWeaponUp, soundEventPowerUp,
+		soundEventNoWay, soundEventTeleport:
+		return true
+	}
+	return false
 }
 
 func (s *soundSystem) nextRandByte() int {
@@ -402,6 +458,192 @@ func isMonsterVocalSound(ev soundEvent) bool {
 	default:
 		return false
 	}
+}
+
+// soundEventDSName returns the primary DS* lump name for a sound event so that
+// the pc-speaker bank (keyed by DS name) can be looked up.
+func soundEventDSName(ev soundEvent) (string, bool) {
+	switch ev {
+	case soundEventDoorOpen:
+		return "DSDOROPN", true
+	case soundEventDoorClose:
+		return "DSDORCLS", true
+	case soundEventBlazeOpen:
+		return "DSBDOPN", true
+	case soundEventBlazeClose:
+		return "DSBDCLS", true
+	case soundEventSwitchOn, soundEventSwitchOff:
+		return "DSSWTCHN", true
+	case soundEventSwitchExit:
+		return "DSSWTCHX", true
+	case soundEventNoWay:
+		return "DSNOWAY", true
+	case soundEventTink:
+		return "DSTINK", true
+	case soundEventItemUp:
+		return "DSITEMUP", true
+	case soundEventWeaponUp:
+		return "DSWPNUP", true
+	case soundEventPowerUp:
+		return "DSGETPOW", true
+	case soundEventTeleport:
+		return "DSTELEPT", true
+	case soundEventBossBrainSpit:
+		return "DSBOSPIT", true
+	case soundEventBossBrainCube:
+		return "DSBOSCUB", true
+	case soundEventBossBrainAwake:
+		return "DSBOSSIT", true
+	case soundEventBossBrainPain:
+		return "DSBOSPN", true
+	case soundEventBossBrainDeath:
+		return "DSBOSDTH", true
+	case soundEventOof:
+		return "DSOOF", true
+	case soundEventPain:
+		return "DSPLPAIN", true
+	case soundEventShootPistol:
+		return "DSPISTOL", true
+	case soundEventShootShotgun:
+		return "DSSHOTGN", true
+	case soundEventShootSuperShotgun:
+		return "DSDSHTGN", true
+	case soundEventShootPlasma:
+		return "DSPLASMA", true
+	case soundEventShootBFG:
+		return "DSBFG", true
+	case soundEventPunch:
+		return "DSPUNCH", true
+	case soundEventShootFireball:
+		return "DSFIRSHT", true
+	case soundEventShootRocket:
+		return "DSRLAUNC", true
+	case soundEventSawUp:
+		return "DSSAWUP", true
+	case soundEventSawIdle:
+		return "DSSAWIDL", true
+	case soundEventSawFull:
+		return "DSSAWFUL", true
+	case soundEventSawHit:
+		return "DSSAWHIT", true
+	case soundEventShotgunOpen:
+		return "DSDBOPN", true
+	case soundEventShotgunLoad:
+		return "DSDBLOAD", true
+	case soundEventShotgunClose:
+		return "DSDBCLS", true
+	case soundEventMonsterAttackClaw:
+		return "DSCLAW", true
+	case soundEventMonsterAttackSgt:
+		return "DSSGTATK", true
+	case soundEventMonsterAttackSkull:
+		return "DSSKLATK", true
+	case soundEventMonsterAttackArchvile:
+		return "DSVILATK", true
+	case soundEventMonsterAttackMancubus:
+		return "DSMANATK", true
+	case soundEventImpactFire:
+		return "DSFIRXPL", true
+	case soundEventImpactRocket:
+		return "DSRXPLOD", true
+	case soundEventBarrelExplode:
+		return "DSBAREXP", true
+	case soundEventMonsterSeePosit1:
+		return "DSPOSIT1", true
+	case soundEventMonsterSeePosit2:
+		return "DSPOSIT2", true
+	case soundEventMonsterSeePosit3:
+		return "DSPOSIT3", true
+	case soundEventMonsterSeeCaco:
+		return "DSCACSIT", true
+	case soundEventMonsterSeeBaron:
+		return "DSBRSSIT", true
+	case soundEventMonsterSeeKnight:
+		return "DSKNTSIT", true
+	case soundEventMonsterSeeSpider:
+		return "DSPISIT", true
+	case soundEventMonsterSeeArachnotron:
+		return "DSBSPSIT", true
+	case soundEventMonsterSeeCyber:
+		return "DSCYBSIT", true
+	case soundEventMonsterSeePainElemental:
+		return "DSPESIT", true
+	case soundEventMonsterSeeWolfSS:
+		return "DSSSSIT", true
+	case soundEventMonsterSeeArchvile:
+		return "DSVILSIT", true
+	case soundEventMonsterSeeRevenant:
+		return "DSSKESIT", true
+	case soundEventMonsterActivePosit:
+		return "DSPOSACT", true
+	case soundEventMonsterActiveImp:
+		return "DSBGACT", true
+	case soundEventMonsterActiveDemon:
+		return "DSDMACT", true
+	case soundEventMonsterActiveArachnotron:
+		return "DSBSPACT", true
+	case soundEventMonsterActiveArchvile:
+		return "DSVILACT", true
+	case soundEventMonsterActiveRevenant:
+		return "DSSKEACT", true
+	case soundEventMonsterPainHumanoid:
+		return "DSPOPAIN", true
+	case soundEventMonsterPainDemon:
+		return "DSDMPAIN", true
+	case soundEventDeathPodth1:
+		return "DSPODTH1", true
+	case soundEventDeathPodth2:
+		return "DSPODTH2", true
+	case soundEventDeathPodth3:
+		return "DSPODTH3", true
+	case soundEventDeathBgdth1:
+		return "DSBGDTH1", true
+	case soundEventDeathBgdth2:
+		return "DSBGDTH2", true
+	case soundEventDeathZombie:
+		return "DSPODTH1", true
+	case soundEventDeathShotgunGuy:
+		return "DSPODTH2", true
+	case soundEventDeathChaingunner:
+		return "DSPODTH2", true
+	case soundEventDeathImp:
+		return "DSBGDTH1", true
+	case soundEventDeathDemon:
+		return "DSSGTDTH", true
+	case soundEventDeathCaco:
+		return "DSCACDTH", true
+	case soundEventDeathBaron:
+		return "DSBRSDTH", true
+	case soundEventDeathKnight:
+		return "DSKNTDTH", true
+	case soundEventDeathCyber:
+		return "DSCYBDTH", true
+	case soundEventDeathSpider:
+		return "DSSPIDTH", true
+	case soundEventDeathArachnotron:
+		return "DSBSPDTH", true
+	case soundEventDeathLostSoul:
+		return "DSFIRXPL", true
+	case soundEventDeathMancubus:
+		return "DSMANDTH", true
+	case soundEventDeathRevenant:
+		return "DSSKEDTH", true
+	case soundEventDeathPainElemental:
+		return "DSPEDTH", true
+	case soundEventDeathWolfSS:
+		return "DSSDTH", true
+	case soundEventDeathArchvile:
+		return "DSVILDTH", true
+	case soundEventMonsterDeath:
+		return "DSBGDTH1", true
+	case soundEventPlayerDeath:
+		return "DSPLDETH", true
+	case soundEventIntermissionTick:
+		return "DSPISTOL", true
+	case soundEventIntermissionDone:
+		return "DSBAREXP", true
+	}
+	return "", false
 }
 
 func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {

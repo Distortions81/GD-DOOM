@@ -575,7 +575,7 @@ func (sg *sessionGame) frontendChangeSFXVolume(dir int) {
 	sg.rt.sessionSetSFXVolume(next)
 	sg.opts.SFXVolume = next
 	sg.settings.SFXVolume = next
-	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, next)
+	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, sg.opts.PCSpeakerBank, next)
 	sg.rt.sessionPublishRuntimeSettings()
 	sg.playMenuMoveSound()
 }
@@ -592,7 +592,7 @@ func (sg *sessionGame) frontendCycleSFXVolume() {
 	sg.rt.sessionSetSFXVolume(next)
 	sg.opts.SFXVolume = next
 	sg.settings.SFXVolume = next
-	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, next)
+	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, sg.opts.PCSpeakerBank, next)
 	sg.rt.sessionPublishRuntimeSettings()
 	sg.playMenuMoveSound()
 }

@@ -82,6 +82,57 @@ func TestImportPCSpeakerSounds(t *testing.T) {
 	}
 }
 
+func TestBuildToneSequenceSilence(t *testing.T) {
+	s := PCSpeakerSound{Name: "DPTEST", Tones: []byte{0, 0, 0}}
+	seq := BuildToneSequence(s)
+	if len(seq) != 3 {
+		t.Fatalf("len=%d want=3", len(seq))
+	}
+	for i, tone := range seq {
+		if tone.Active {
+			t.Fatalf("seq[%d].Active=true, want false for silence", i)
+		}
+	}
+}
+
+func TestBuildToneSequenceLength(t *testing.T) {
+	tones := []byte{10, 20, 30}
+	s := PCSpeakerSound{Name: "DPTEST", Tones: tones}
+	seq := BuildToneSequence(s)
+	if len(seq) != len(tones) {
+		t.Fatalf("len=%d want=%d", len(seq), len(tones))
+	}
+}
+
+func TestBuildToneSequenceActive(t *testing.T) {
+	s := PCSpeakerSound{Name: "DPTEST", Tones: []byte{0, 60, 0}}
+	seq := BuildToneSequence(s)
+	if seq[0].Active {
+		t.Fatal("seq[0] should be silent")
+	}
+	if !seq[1].Active {
+		t.Fatal("seq[1] should be active")
+	}
+	if seq[1].ToneValue != 60 {
+		t.Fatalf("seq[1].ToneValue=%d want=60", seq[1].ToneValue)
+	}
+	if seq[2].Active {
+		t.Fatal("seq[2] should be silent")
+	}
+}
+
+func TestBuildToneSequenceToneFrequency(t *testing.T) {
+	tone := PCSpeakerTone{Active: true, ToneValue: 60}
+	want := float64(pcSpeakerPITHz) / float64(60*60)
+	if got := tone.ToneFrequency(); got != want {
+		t.Fatalf("ToneFrequency()=%f want=%f", got, want)
+	}
+	silent := PCSpeakerTone{Active: false, ToneValue: 60}
+	if got := silent.ToneFrequency(); got != 0 {
+		t.Fatalf("silent ToneFrequency()=%f want=0", got)
+	}
+}
+
 func TestImportPCSpeakerSoundsSharesWADPayloadView(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "sound.wad")
