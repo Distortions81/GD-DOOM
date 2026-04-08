@@ -3173,7 +3173,7 @@ func (g *game) updateParityControls() {
 			g.setHUDMessage("Grid OFF", 70)
 		}
 	}
-	if !g.opts.SourcePortMode {
+	if !g.opts.SourcePortMode && g.opts.LiveTicSource == nil {
 		if g.keyJustPressed(ebiten.KeyF2) {
 			g.saveGameRequested = true
 		}

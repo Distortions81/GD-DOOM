@@ -17,6 +17,16 @@ var frontendVoiceSampleRateChoices = [...]int{16000, 24000, 32000, 48000}
 var frontendVoicePresetChoices = [...]string{"high", "medium", "low"}
 
 const (
+	frontendVoiceMenuRowPreset     = 0
+	frontendVoiceMenuRowG726Bits   = 1
+	frontendVoiceMenuRowSampleRate = 2
+	frontendVoiceMenuRowAGC        = 3
+	frontendVoiceMenuRowGate       = 4
+	frontendVoiceMenuRowGateThresh = 5
+	frontendVoiceMenuRowCount      = 6
+)
+
+const (
 	defaultFrontendVoiceG726Bits   = 3
 	defaultFrontendVoiceBitrate    = voicecodec.SilkDefaultBitrate
 	defaultFrontendVoiceSampleRate = 48000

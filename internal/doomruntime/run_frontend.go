@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"gddoom/internal/gameplay"
-	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
@@ -645,8 +644,6 @@ func (sg *sessionGame) tickFrontend() error {
 			ReadThisPageCount: len(sg.readThisPageNames()),
 			EpisodeChoices:    sg.availableFrontendEpisodeChoices(),
 			OptionRows:        frontendOptionsSelectableRows[:],
-			MusicMenuCount:    frontendMusicMenuRowCount,
-			VoiceMenuCount:    voiceMenuRowCount(sg.opts.VoiceCodec),
 			SoundMenuCount:    frontendSoundMenuRowCount,
 			MainMenuCount:     len(frontendMainMenuNames),
 			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
