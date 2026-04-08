@@ -68,7 +68,7 @@ func TestNewGameStartMapUsesEpisodeOneForSingleEpisodeCustomLoader(t *testing.T)
 
 func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	cfg := FrontendConfig{
-		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6},
+		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6, 7},
 		SoundMenuCount: 5,
 	}
 	got := StepFrontend(
@@ -84,12 +84,62 @@ func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	}
 }
 
-func TestStepFrontendOptionsSelectKeybindsOpensKeybindMenu(t *testing.T) {
+func TestStepFrontendOptionsSelectVoiceOpensVoiceMenu(t *testing.T) {
 	cfg := FrontendConfig{
-		OptionRows: []int{0, 1, 2, 3, 4, 5, 6},
+		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6, 7},
+		VoiceMenuCount: 7,
 	}
 	got := StepFrontend(
 		Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 6},
+		FrontendInput{Select: true},
+		cfg,
+	)
+	if got.State.Mode != FrontendModeVoice {
+		t.Fatalf("mode=%v want voice submenu", got.State.Mode)
+	}
+	if got.State.VoiceOn != 0 {
+		t.Fatalf("voiceOn=%d want 0", got.State.VoiceOn)
+	}
+}
+
+func TestStepFrontendVoiceMenuNavigatesAllRows(t *testing.T) {
+	cfg := FrontendConfig{VoiceMenuCount: 7}
+	got := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeVoice, VoiceOn: 0},
+		FrontendInput{Down: true},
+		cfg,
+	)
+	if got.State.VoiceOn != 1 {
+		t.Fatalf("voiceOn=%d want 1", got.State.VoiceOn)
+	}
+	got = StepFrontend(
+		got.State,
+		FrontendInput{Up: true},
+		cfg,
+	)
+	if got.State.VoiceOn != 0 {
+		t.Fatalf("voiceOn=%d want 0 after moving back up", got.State.VoiceOn)
+	}
+}
+
+func TestStepFrontendVoiceMenuSelectPushToTalk(t *testing.T) {
+	cfg := FrontendConfig{VoiceMenuCount: 7}
+	got := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeVoice, VoiceOn: 6},
+		FrontendInput{Select: true},
+		cfg,
+	)
+	if !got.ChangeVoicePushToTalk {
+		t.Fatal("expected push-to-talk toggle request")
+	}
+}
+
+func TestStepFrontendOptionsSelectKeybindsOpensKeybindMenu(t *testing.T) {
+	cfg := FrontendConfig{
+		OptionRows: []int{0, 1, 2, 3, 4, 5, 6, 7},
+	}
+	got := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 7},
 		FrontendInput{Select: true},
 		cfg,
 	)

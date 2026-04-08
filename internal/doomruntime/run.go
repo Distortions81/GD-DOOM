@@ -58,10 +58,11 @@ var frontendOptionsTextLabels = [...]string{
 	"FPS",
 	"MOUSE SENSITIVITY",
 	"SOUND OPTIONS",
+	"VOICE OPTIONS",
 	"KEY BINDINGS",
 }
 
-var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6}
+var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6, 7}
 
 func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (session.Runtime, runtimehost.Meta) {
 	sg := runtimehost.Init(runtimehost.Initializer[*sessionGame]{
@@ -89,6 +90,11 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 			func(sg *sessionGame) {
 				sg.opts.PlayCheatMusic = func(currentMapName string, code string) (bool, error) {
 					return sg.playCheatMusic(currentMapName, code)
+				}
+			},
+			func(sg *sessionGame) {
+				sg.opts.VoiceTransmitActive = func() bool {
+					return sg.voiceTransmitHeld.Load()
 				}
 			},
 			func(sg *sessionGame) {
@@ -429,6 +435,11 @@ func (sg *sessionGame) SampleInput() {
 	}
 	if sg.shouldSampleRuntimeInput() && sg.rt != nil {
 		sg.rt.SampleInput()
+	}
+	if sg.g != nil && sg.shouldSampleRuntimeInput() {
+		sg.voiceTransmitHeld.Store(sg.g.bindingHeld(bindingVoice))
+	} else {
+		sg.voiceTransmitHeld.Store(false)
 	}
 	if !sg.shouldSampleSessionInput() {
 		sg.clearSampledInput()

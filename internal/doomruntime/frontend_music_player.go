@@ -10,7 +10,8 @@ import (
 
 const (
 	frontendOptionsRowSound        = 5
-	frontendOptionsRowKeybinds     = 6
+	frontendOptionsRowVoice        = 6
+	frontendOptionsRowKeybinds     = 7
 	frontendSoundMenuRowSFX        = 0
 	frontendSoundMenuRowMusic      = 1
 	frontendSoundMenuRowSynth      = 2

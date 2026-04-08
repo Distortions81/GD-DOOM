@@ -23,7 +23,8 @@ const (
 	frontendVoiceMenuRowAGC        = 3
 	frontendVoiceMenuRowGate       = 4
 	frontendVoiceMenuRowGateThresh = 5
-	frontendVoiceMenuRowCount      = 6
+	frontendVoiceMenuRowPushToTalk = 6
+	frontendVoiceMenuRowCount      = 7
 )
 
 const (
@@ -288,7 +289,14 @@ func (sg *sessionGame) voiceGateLabel() string {
 	if sg == nil {
 		return voiceGateLabel(true)
 	}
-	return voiceGateLabel(sg.opts.VoiceGateEnabled)
+	return voiceGateLabel(sg.opts.VoiceGateEnabled && !sg.opts.VoicePushToTalkEnabled)
+}
+
+func (sg *sessionGame) voicePushToTalkLabel() string {
+	if sg == nil {
+		return voiceGateLabel(false)
+	}
+	return voiceGateLabel(sg.opts.VoicePushToTalkEnabled)
 }
 
 func (sg *sessionGame) voiceAGCLabel() string {
@@ -352,7 +360,7 @@ func (sg *sessionGame) voiceInputGateActive() bool {
 }
 
 func (sg *sessionGame) applyVoiceSettings(codec string, sampleRate int) error {
-	return sg.applyVoiceAdvancedSettings(codec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	return sg.applyVoiceAdvancedSettings(codec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 }
 
 func (sg *sessionGame) frontendChangeVoicePreset(dir int) error {
@@ -372,11 +380,11 @@ func (sg *sessionGame) frontendChangeVoicePreset(dir int) error {
 	next := (cur + dir + n) % n
 	switch frontendVoicePresetChoices[next] {
 	case "high":
-		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 64000, 48000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 64000, 48000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 	case "medium":
-		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 40000, 32000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 40000, 32000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 	case "low":
-		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 25000, 24000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+		return sg.applyVoiceAdvancedSettings("silk", sg.opts.VoiceG726BitsPerSample, 25000, 24000, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 	default:
 		return nil
 	}
@@ -411,12 +419,12 @@ func (sg *sessionGame) frontendChangeVoiceG726Bits(dir int) error {
 		cur := voiceBitrateChoiceIndex(sg.opts.VoiceBitrate)
 		n := len(frontendVoiceBitrateChoices)
 		next := (cur + dir + n) % n
-		return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, frontendVoiceBitrateChoices[next], sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+		return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, frontendVoiceBitrateChoices[next], sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 	case "g726":
 		cur := voiceG726BitsChoiceIndex(sg.opts.VoiceG726BitsPerSample)
 		n := len(frontendVoiceG726BitsChoices)
 		next := (cur + dir + n) % n
-		return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, frontendVoiceG726BitsChoices[next], sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+		return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, frontendVoiceG726BitsChoices[next], sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 	default:
 		return nil
 	}
@@ -426,14 +434,14 @@ func (sg *sessionGame) frontendToggleVoiceGate() error {
 	if sg == nil {
 		return nil
 	}
-	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, !sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, !sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 }
 
 func (sg *sessionGame) frontendToggleVoiceAGC() error {
 	if sg == nil {
 		return nil
 	}
-	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, !sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoiceGateThreshold)
+	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, !sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, sg.opts.VoiceGateThreshold)
 }
 
 func (sg *sessionGame) frontendChangeVoiceGateThreshold(dir int) error {
@@ -443,21 +451,30 @@ func (sg *sessionGame) frontendChangeVoiceGateThreshold(dir int) error {
 	cur := voiceGateThresholdChoiceIndex(sg.opts.VoiceGateThreshold)
 	n := len(frontendVoiceGateThresholdChoices)
 	next := (cur + dir + n) % n
-	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, frontendVoiceGateThresholdChoices[next])
+	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, sg.opts.VoicePushToTalkEnabled, frontendVoiceGateThresholdChoices[next])
 }
 
-func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, bitrate int, sampleRate int, agcEnabled bool, gateEnabled bool, gateThreshold float64) error {
+func (sg *sessionGame) frontendToggleVoicePushToTalk() error {
+	if sg == nil {
+		return nil
+	}
+	next := !sg.opts.VoicePushToTalkEnabled
+	return sg.applyVoiceAdvancedSettings(sg.opts.VoiceCodec, sg.opts.VoiceG726BitsPerSample, sg.opts.VoiceBitrate, sg.opts.VoiceSampleRate, sg.opts.VoiceAGCEnabled, sg.opts.VoiceGateEnabled, next, sg.opts.VoiceGateThreshold)
+}
+
+func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, bitrate int, sampleRate int, agcEnabled bool, gateEnabled bool, pushToTalkEnabled bool, gateThreshold float64) error {
 	if sg == nil {
 		return nil
 	}
 	next := runtimecfg.VoiceSettings{
-		Codec:         normalizeVoiceCodecChoice(codec),
-		G726Bits:      clampVoiceG726Bits(g726Bits),
-		Bitrate:       clampVoiceBitrate(bitrate),
-		SampleRate:    sampleRate,
-		AGCEnabled:    agcEnabled,
-		GateEnabled:   gateEnabled,
-		GateThreshold: gateThreshold,
+		Codec:             normalizeVoiceCodecChoice(codec),
+		G726Bits:          clampVoiceG726Bits(g726Bits),
+		Bitrate:           clampVoiceBitrate(bitrate),
+		SampleRate:        sampleRate,
+		AGCEnabled:        agcEnabled,
+		PushToTalkEnabled: pushToTalkEnabled,
+		GateEnabled:       gateEnabled,
+		GateThreshold:     gateThreshold,
 	}
 	if next.SampleRate <= 0 {
 		next.SampleRate = defaultFrontendVoiceSampleRate
@@ -475,6 +492,7 @@ func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, bi
 	sg.opts.VoiceBitrate = next.Bitrate
 	sg.opts.VoiceSampleRate = next.SampleRate
 	sg.opts.VoiceAGCEnabled = next.AGCEnabled
+	sg.opts.VoicePushToTalkEnabled = next.PushToTalkEnabled
 	sg.opts.VoiceGateEnabled = next.GateEnabled
 	sg.opts.VoiceGateThreshold = next.GateThreshold
 	if sg.g != nil {
@@ -483,6 +501,7 @@ func (sg *sessionGame) applyVoiceAdvancedSettings(codec string, g726Bits int, bi
 		sg.g.opts.VoiceBitrate = next.Bitrate
 		sg.g.opts.VoiceSampleRate = next.SampleRate
 		sg.g.opts.VoiceAGCEnabled = next.AGCEnabled
+		sg.g.opts.VoicePushToTalkEnabled = next.PushToTalkEnabled
 		sg.g.opts.VoiceGateEnabled = next.GateEnabled
 		sg.g.opts.VoiceGateThreshold = next.GateThreshold
 	}

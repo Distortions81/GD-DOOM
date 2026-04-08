@@ -98,6 +98,7 @@ type FrontendResult struct {
 	ChangeVoiceAGC           bool
 	ChangeVoiceGate          bool
 	ChangeVoiceGateThreshold int
+	ChangeVoicePushToTalk    bool
 	OpenMusicPlayer          bool
 	StartGameSkill           int
 	RequestLoadGame          bool
@@ -555,6 +556,8 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeVoiceGate = true
 			case 5:
 				result.ChangeVoiceGateThreshold = -1
+			case 6:
+				result.ChangeVoicePushToTalk = true
 			}
 		}
 		if input.Right {
@@ -571,6 +574,8 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeVoiceGate = true
 			case 5:
 				result.ChangeVoiceGateThreshold = 1
+			case 6:
+				result.ChangeVoicePushToTalk = true
 			}
 		}
 		if input.Select {
@@ -587,6 +592,8 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeVoiceGate = true
 			case 5:
 				result.ChangeVoiceGateThreshold = 1
+			case 6:
+				result.ChangeVoicePushToTalk = true
 			}
 			result.Sound = FrontendSoundConfirm
 		}
@@ -654,6 +661,10 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.State.SoundOn = 0
 				result.Sound = FrontendSoundConfirm
 			case 6:
+				result.State.Mode = FrontendModeVoice
+				result.State.VoiceOn = 0
+				result.Sound = FrontendSoundConfirm
+			case 7:
 				result.OpenKeybinds = true
 				result.Sound = FrontendSoundConfirm
 			}

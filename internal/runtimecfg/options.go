@@ -78,13 +78,14 @@ type VoiceSyncMeter interface {
 }
 
 type VoiceSettings struct {
-	Codec         string
-	G726Bits      int
-	Bitrate       int
-	SampleRate    int
-	AGCEnabled    bool
-	GateEnabled   bool
-	GateThreshold float64
+	Codec             string
+	G726Bits          int
+	Bitrate           int
+	SampleRate        int
+	AGCEnabled        bool
+	PushToTalkEnabled bool
+	GateEnabled       bool
+	GateThreshold     float64
 }
 
 type Options struct {
@@ -190,11 +191,13 @@ type Options struct {
 	VoiceBitrate               int
 	VoiceSampleRate            int
 	VoiceAGCEnabled            bool
+	VoicePushToTalkEnabled     bool
 	VoiceGateEnabled           bool
 	VoiceGateThreshold         float64
 	VoiceInputDevice           string
 	VoiceInputLevel            func() float64
 	VoiceInputGateActive       func() bool
+	VoiceTransmitActive        func() bool
 	OnVoiceSettingsChanged     func(VoiceSettings) error
 	MusicPatchBank             music.PatchBank
 	MusicSoundFontPath         string

@@ -71,3 +71,37 @@ func TestPauseSoundOptionOpensSoundSubmenu(t *testing.T) {
 		t.Fatal("expected pause menu to remain active")
 	}
 }
+
+func TestPauseVoiceOptionOpensVoiceSubmenu(t *testing.T) {
+	g := &game{
+		pauseMenuActive:    true,
+		paused:             true,
+		pauseMenuMode:      pauseMenuModeOptions,
+		pauseMenuOptionsOn: frontendOptionsRowVoice,
+	}
+
+	g.activatePauseOptionsItem()
+
+	if g.pauseMenuMode != pauseMenuModeVoice {
+		t.Fatal("expected voice submenu to open")
+	}
+	if !g.pauseMenuActive || !g.paused {
+		t.Fatal("expected pause menu to remain active")
+	}
+}
+
+func TestPauseVoicePushToTalkOptionTogglesSetting(t *testing.T) {
+	g := &game{
+		pauseMenuActive:  true,
+		paused:           true,
+		pauseMenuMode:    pauseMenuModeVoice,
+		pauseMenuVoiceOn: frontendVoiceMenuRowPushToTalk,
+		opts:             Options{VoicePushToTalkEnabled: false},
+	}
+
+	g.adjustPauseVoice(1)
+
+	if !g.opts.VoicePushToTalkEnabled {
+		t.Fatal("expected push-to-talk to toggle on")
+	}
+}

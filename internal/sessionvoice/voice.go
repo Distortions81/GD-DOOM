@@ -38,6 +38,7 @@ type BroadcasterOptions struct {
 	AGCEnabled        bool
 	GateEnabled       bool
 	GateThreshold     float64
+	TransmitEnabled   func() bool
 }
 
 type VoiceStreamer struct {
@@ -273,10 +274,18 @@ func StartPulseBroadcaster(parent context.Context, broadcaster *netplay.AudioBro
 			}
 			pendingPCM = append(pendingPCM, downsampleCaptureToVoice(framePCM, currentFormat.SampleRate)...)
 			packetSamples := currentFormat.PacketSamples * currentFormat.Channels
+			transmit := true
+			if opts.TransmitEnabled != nil {
+				transmit = opts.TransmitEnabled()
+			}
 			for len(pendingPCM) >= packetSamples {
 				packetPCM := append([]int16(nil), pendingPCM[:packetSamples]...)
 				pendingPCM = pendingPCM[packetSamples:]
 				if pcmSilent(packetPCM) {
+					startSample += uint64(currentFormat.PacketSamples)
+					continue
+				}
+				if !transmit {
 					startSample += uint64(currentFormat.PacketSamples)
 					continue
 				}
@@ -592,12 +601,12 @@ type streamSource struct {
 	trimBufferedBytes   int
 	resetBufferedBytes  int
 
-	totalQueuedFrames int64
-	totalReadFrames   int64
+	totalQueuedFrames  int64
+	totalReadFrames    int64
 	totalDroppedFrames int64
-	maxDeltaFrames    int64
-	logEnabled        bool
-	lastLogAt         time.Time
+	maxDeltaFrames     int64
+	logEnabled         bool
+	lastLogAt          time.Time
 
 	lastSample [4]byte
 	needFadeIn bool

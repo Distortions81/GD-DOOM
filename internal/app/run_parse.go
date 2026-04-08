@@ -1181,12 +1181,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 				}
 			}
 			voiceStreamer.UpdateAGC(s.AGCEnabled)
-			voiceStreamer.UpdateGate(s.GateEnabled, s.GateThreshold)
+			voiceStreamer.UpdateGate(s.GateEnabled && !s.PushToTalkEnabled, s.GateThreshold)
 			opts.VoiceCodec = s.Codec
 			opts.VoiceG726BitsPerSample = s.G726Bits
 			opts.VoiceBitrate = s.Bitrate
 			opts.VoiceSampleRate = s.SampleRate
 			opts.VoiceAGCEnabled = s.AGCEnabled
+			opts.VoicePushToTalkEnabled = s.PushToTalkEnabled
 			opts.VoiceGateEnabled = s.GateEnabled
 			opts.VoiceGateThreshold = s.GateThreshold
 			return nil
@@ -1416,6 +1417,15 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 					AGCEnabled:        *micAGC,
 					GateEnabled:       *micGate,
 					GateThreshold:     *micGateThreshold,
+					TransmitEnabled: func() bool {
+						if !sess.Options().VoicePushToTalkEnabled {
+							return true
+						}
+						if sess.Options().VoiceTransmitActive == nil {
+							return false
+						}
+						return sess.Options().VoiceTransmitActive()
+					},
 				},
 				func() uint32 {
 					return uint32(max(0, sess.CurrentWorldTic()))

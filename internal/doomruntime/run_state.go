@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
@@ -125,6 +126,7 @@ type sessionGame struct {
 	quitPrompt              quitPromptState
 	quitMessageSeq          int
 	input                   sessionInputSnapshot
+	voiceTransmitHeld       atomic.Bool
 }
 
 type frontendMusicConfigPending struct {

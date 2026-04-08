@@ -644,6 +644,7 @@ func (sg *sessionGame) tickFrontend() error {
 			ReadThisPageCount: len(sg.readThisPageNames()),
 			EpisodeChoices:    sg.availableFrontendEpisodeChoices(),
 			OptionRows:        frontendOptionsSelectableRows[:],
+			VoiceMenuCount:    frontendVoiceMenuRowCount,
 			SoundMenuCount:    frontendSoundMenuRowCount,
 			MainMenuCount:     len(frontendMainMenuNames),
 			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
@@ -754,6 +755,12 @@ func (sg *sessionGame) tickFrontend() error {
 	}
 	if result.ChangeVoiceGateThreshold != 0 {
 		if err := sg.frontendChangeVoiceGateThreshold(result.ChangeVoiceGateThreshold); err != nil {
+			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
+			sg.playMenuBackSound()
+		}
+	}
+	if result.ChangeVoicePushToTalk {
+		if err := sg.frontendToggleVoicePushToTalk(); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
 			sg.playMenuBackSound()
 		}
@@ -1074,8 +1081,10 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.rt.sessionDrawHUTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "SOUND OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "VOICE OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
 }
 
@@ -1092,8 +1101,8 @@ func (sg *sessionGame) drawFrontendVoiceMenu(screen *ebiten.Image, scale, ox, oy
 	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
 	labels := []string{"PRESET"}
 	values := []string{sg.voicePresetLabel()}
-	labels = append(labels, voiceCodecDetailMenuLabel(sg.opts.VoiceCodec), "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD")
-	values = append(values, sg.voiceCodecDetailLabel(), sg.voiceSampleRateLabel(), sg.voiceAGCLabel(), sg.voiceGateLabel(), sg.voiceGateThresholdLabel())
+	labels = append(labels, voiceCodecDetailMenuLabel(sg.opts.VoiceCodec), "SAMPLE RATE", "AUTO-VOLUME", "NOISE GATE", "GATE THRESHOLD", "PUSH-TO-TALK")
+	values = append(values, sg.voiceCodecDetailLabel(), sg.voiceSampleRateLabel(), sg.voiceAGCLabel(), sg.voiceGateLabel(), sg.voiceGateThresholdLabel(), sg.voicePushToTalkLabel())
 	for i := 0; i < len(labels); i++ {
 		y := menuY + i*lineHeight + 2
 		sg.rt.sessionDrawHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2)
