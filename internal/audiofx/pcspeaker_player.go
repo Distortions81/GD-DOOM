@@ -28,6 +28,69 @@ type ebitenPlayer interface {
 	Close() error
 }
 
+// caseReverb is a small Schroeder reverb tuned for a 5150-sized metal PC case
+// (~40×17×18 cm).  Four comb filters in parallel feed two allpass stages.
+// All delay lines are sized for 44100 Hz.
+type caseReverb struct {
+	// Comb filter delay lines and read positions.
+	// Delay lengths chosen from case dimensions + small primes to decorrelate:
+	//   40cm → ~102 smp, 35cm → ~90 smp, 28cm → ~72 smp, 23cm → ~59 smp
+	comb    [4][128]float64 // longest comb needs 102 samples
+	combPos [4]int
+	combLen [4]int
+	combFB  [4]float64 // feedback gain (controls RT60)
+
+	// Allpass stages (Schroeder): decorrelate and smear the tail.
+	ap    [2][64]float64
+	apPos [2]int
+	apLen [2]int
+	apG   [2]float64 // allpass gain ≈ 0.7
+}
+
+func newCaseReverb() caseReverb {
+	r := caseReverb{}
+	// Comb delays (samples at 44100 Hz) and feedback.
+	// RT60 ≈ -3·delay/(log10(fb)·rate) — targeting ~25ms.
+	r.combLen = [4]int{102, 90, 72, 59}
+	r.combFB = [4]float64{0.86, 0.84, 0.82, 0.80}
+	// Allpass delays and gain.
+	r.apLen = [2]int{47, 23}
+	r.apG = [2]float64{0.7, 0.7}
+	return r
+}
+
+func (r *caseReverb) process(in float64) float64 {
+	// Four parallel comb filters.
+	out := 0.0
+	for i := 0; i < 4; i++ {
+		delayed := r.comb[i][r.combPos[i]]
+		r.comb[i][r.combPos[i]] = in + delayed*r.combFB[i]
+		r.combPos[i]++
+		if r.combPos[i] >= r.combLen[i] {
+			r.combPos[i] = 0
+		}
+		out += delayed
+	}
+	out *= 0.25 // normalise comb sum
+
+	// Two series allpass filters.
+	for i := 0; i < 2; i++ {
+		delayed := r.ap[i][r.apPos[i]]
+		v := out + delayed*(-r.apG[i])
+		r.ap[i][r.apPos[i]] = out + delayed*r.apG[i]
+		r.apPos[i]++
+		if r.apPos[i] >= r.apLen[i] {
+			r.apPos[i] = 0
+		}
+		out = v + delayed*r.apG[i]
+	}
+	return out
+}
+
+func (r *caseReverb) reset() {
+	*r = newCaseReverb()
+}
+
 // pcSpeakerSource is an io.ReadSeeker that streams stereo s16 LE PCM by
 // simulating the PC speaker physics from a compact []PCSpeakerTone sequence.
 type pcSpeakerSource struct {
@@ -47,46 +110,56 @@ type pcSpeakerSource struct {
 	rcPrev float64
 	rcOut  float64
 
-	// Acoustic short-circuit high-pass state (~400 Hz, no enclosure)
+	// Acoustic short-circuit high-pass state (~1909 Hz, no enclosure)
 	hpPrev float64
 	hpOut  float64
+
+	// Case reverb: Schroeder reverb tuned for a 5150-sized metal enclosure.
+	reverb caseReverb
 }
 
 // Physical speaker model constants — derived from real PC speaker hardware.
 //
 // Circuit: 8253 PIT → 75475 Darlington driver → 33Ω series resistor
-//          (with 0.01µF cap to GND before resistor) → 57mm/8Ω speaker, 0.25W
+//
+//	(with 0.01µF cap to GND before resistor) → 57mm/8Ω speaker, 0.25W
 //
 // Speaker geometry:
-//   Diameter = 2.25 inches = 57.15mm
-//   Radius   = 1.125 inches = 0.028575m  (effective piston radius)
+//
+//	Diameter = 2.25 inches = 57.15mm
+//	Radius   = 1.125 inches = 0.028575m  (effective piston radius)
 //
 // 75475 open-collector output: Vce_sat ≈ 1V when sinking.
 // Drive voltage: 5V - 1V = 4V
 //
 // RC high-pass (0.01µF cap to GND before 33Ω resistor):
-//   f_c = 1/(2π·R·C) = 1/(2π · 33 · 0.00000001) ≈ 482 Hz
+//
+//	f_c = 1/(2π·R·C) = 1/(2π · 33 · 0.00000001) ≈ 482 Hz
 //
 // Current and power at high frequency (cap fully charged):
-//   I      = 4V / (33Ω + 8Ω) = 97.6mA
-//   V_coil = 0.0976 × 8Ω    = 0.78V
-//   P_coil = 0.0976² × 8    = 0.076W  (within 0.25W rating)
-//   Force  = Bl × I ≈ 0.5 T·m × 0.0976 = 0.049N
-//   Accel  = F/m ≈ 0.049 / 0.002kg     = 24.4 m/s²
+//
+//	I      = 4V / (33Ω + 8Ω) = 97.6mA
+//	V_coil = 0.0976 × 8Ω    = 0.78V
+//	P_coil = 0.0976² × 8    = 0.076W  (within 0.25W rating)
+//	Force  = Bl × I ≈ 0.5 T·m × 0.0976 = 0.049N
+//	Accel  = F/m ≈ 0.049 / 0.002kg     = 24.4 m/s²
 //
 // Acoustic short-circuit (no enclosure/baffle — piston in free air):
-//   f_sc = c / (2π·a) = 343 / (2π · 0.028575) ≈ 1909 Hz
-//   Bass below ~1.9 kHz is cancelled by front/back wave interference.
+//
+//	f_sc = c / (2π·a) = 343 / (2π · 0.028575) ≈ 1909 Hz
+//	Bass below ~1.9 kHz is cancelled by front/back wave interference.
 //
 // 57mm cone mechanical resonance: Fs ≈ 500 Hz, Q ≈ 0.8
 //
 // Integration at sample rate; k and d are dimensionless-per-sample:
-//   k = (2π·500/44100)² ≈ 0.00508
-//   d = √k / Q          ≈ 0.0891
+//
+//	k = (2π·500/44100)² ≈ 0.00508
+//	d = √k / Q          ≈ 0.0891
 //
 // Signal chain:
-//   PIT square wave → RC HP (482 Hz) → mechanical model → velocity output
-//   → acoustic short-circuit HP (1909 Hz) → int16
+//
+//	PIT square wave → RC HP (482 Hz) → mechanical model → velocity output
+//	→ acoustic short-circuit HP (1909 Hz) → int16
 const (
 	// Speaker physical dimensions.
 	spkDiameterInches = 2.25
@@ -97,10 +170,11 @@ const (
 	spkSpeedOfSound   = 343.0
 	spkAcousticCutoff = spkSpeedOfSound / (2 * math.Pi * spkRadiusMetres) // ≈ 1909 Hz
 
-	spkK     = 0.00508  // stiffness: (2π·500/44100)²
-	spkD     = 0.0891   // damping: Q≈0.8, no enclosure
-	spkDrive = 0.00176  // 97.6mA × Bl(0.5) / mass(0.002) normalised per-sample
-	spkGain  = 8000000.0 // velocity → int16 range; high gain compensates acoustic short-circuit HP attenuation
+	spkK     = 0.00508   // stiffness: (2π·500/44100)²
+	spkD     = 0.0891    // damping: Q≈0.8, no enclosure
+	spkDrive = 0.00176   // 97.6mA × Bl(0.5) / mass(0.002) normalised per-sample
+	spkGain      = 4000000.0 // velocity → int16 range; high gain compensates acoustic short-circuit HP attenuation
+	spkReverbMix = 0.8       // wet mix for case reverb (0=dry, 1=full wet)
 
 	// RC high-pass: 33Ω + 0.01µF → f_c ≈ 482 Hz
 	// alpha = exp(-2π·482/44100) ≈ 0.9336
@@ -112,6 +186,7 @@ const (
 // Also models the lack of enclosure/baffle: speaker operated in free air inside
 // a metal PC case, so bass cancels via front/back wave interference below ~1.9 kHz.
 var spkHPAlpha = math.Exp(-2 * math.Pi * spkAcousticCutoff / 44100)
+
 
 func (s *pcSpeakerSource) totalSamples() int {
 	if s.rate <= 0 || len(s.seq) == 0 {
@@ -196,7 +271,9 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 		s.hpPrev = rawVel
 		s.hpOut = hpOut
 
-		raw := hpOut
+		// Case reverb: mix dry + wet for small metal enclosure.
+		wet := s.reverb.process(hpOut)
+		raw := hpOut + wet*spkReverbMix
 		if raw > math.MaxInt16 {
 			raw = math.MaxInt16
 		} else if raw < math.MinInt16 {
@@ -238,6 +315,7 @@ func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 	s.rcOut = 0
 	s.hpPrev = 0
 	s.hpOut = 0
+	s.reverb.reset()
 	return abs, nil
 }
 
@@ -254,6 +332,7 @@ func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.rcOut = 0
 	s.hpPrev = 0
 	s.hpOut = 0
+	s.reverb.reset()
 }
 
 // NewPCSpeakerPlayer creates a player. Returns nil if the audio context is unavailable.
@@ -262,7 +341,7 @@ func NewPCSpeakerPlayer(volume float64) *PCSpeakerPlayer {
 	if ctx == nil {
 		return nil
 	}
-	src := &pcSpeakerSource{}
+	src := &pcSpeakerSource{reverb: newCaseReverb()}
 	ap, err := ctx.NewPlayer(src)
 	if err != nil {
 		return nil
