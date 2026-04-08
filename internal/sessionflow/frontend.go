@@ -72,6 +72,7 @@ type FrontendConfig struct {
 	OptionRows        []int
 	MusicMenuCount    int
 	VoiceMenuCount    int
+	SoundMenuCount    int
 	MainMenuCount     int
 	MainMenuRows      []int
 	SkillMenuCount    int
@@ -470,41 +471,47 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			if input.Down {
 				dir = 1
 			}
-			n := max(cfg.MusicMenuCount, 1)
+			n := max(cfg.SoundMenuCount, 1)
 			result.State.SoundOn = (state.SoundOn + dir + n) % n
 			result.Sound = FrontendSoundMove
 		}
 		if input.Left {
 			switch state.SoundOn {
 			case 0:
-				result.ChangeMusic = -1
+				result.ChangeSFX = -1
 			case 1:
-				result.ChangeSynth = -1
+				result.ChangeMusic = -1
 			case 2:
+				result.ChangeSynth = -1
+			case 3:
 				result.ChangeSoundFont = -1
 			}
 		}
 		if input.Right {
 			switch state.SoundOn {
 			case 0:
-				result.ChangeMusic = 1
+				result.ChangeSFX = 1
 			case 1:
-				result.ChangeSynth = 1
+				result.ChangeMusic = 1
 			case 2:
-				result.ChangeSoundFont = 1
+				result.ChangeSynth = 1
 			case 3:
+				result.ChangeSoundFont = 1
+			case 4:
 				result.OpenMusicPlayer = true
 			}
 		}
 		if input.Select {
 			switch state.SoundOn {
 			case 0:
-				result.ChangeMusic = 1
+				result.ChangeSFX = 1
 			case 1:
-				result.ChangeSynth = 1
+				result.ChangeMusic = 1
 			case 2:
-				result.ChangeSoundFont = 1
+				result.ChangeSynth = 1
 			case 3:
+				result.ChangeSoundFont = 1
+			case 4:
 				result.OpenMusicPlayer = true
 			}
 			result.Sound = FrontendSoundConfirm
@@ -613,10 +620,6 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeDetail = true
 			case 4:
 				result.ChangeMouse = -1
-			case 5:
-				result.ChangeSFX = -1
-			case 6:
-				result.ChangeMusic = -1
 			}
 		}
 		if input.Right {
@@ -627,10 +630,6 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeDetail = true
 			case 4:
 				result.ChangeMouse = 1
-			case 5:
-				result.ChangeSFX = 1
-			case 6:
-				result.ChangeMusic = 1
 			}
 		}
 		if input.Select {
@@ -651,13 +650,10 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.ChangeMouse = 1
 				result.Sound = FrontendSoundConfirm
 			case 5:
-				result.ChangeSFX = 1
-				result.Sound = FrontendSoundConfirm
-			case 6:
 				result.State.Mode = FrontendModeSound
 				result.State.SoundOn = 0
 				result.Sound = FrontendSoundConfirm
-			case 7:
+			case 6:
 				result.OpenKeybinds = true
 				result.Sound = FrontendSoundConfirm
 			}

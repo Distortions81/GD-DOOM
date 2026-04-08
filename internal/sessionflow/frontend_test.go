@@ -68,11 +68,11 @@ func TestNewGameStartMapUsesEpisodeOneForSingleEpisodeCustomLoader(t *testing.T)
 
 func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	cfg := FrontendConfig{
-		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6, 7},
-		MusicMenuCount: 4,
+		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6},
+		SoundMenuCount: 5,
 	}
 	got := StepFrontend(
-		Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 6},
+		Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 5},
 		FrontendInput{Select: true},
 		cfg,
 	)
@@ -84,28 +84,24 @@ func TestStepFrontendOptionsSelectMusicOpensMusicSubmenu(t *testing.T) {
 	}
 }
 
-func TestStepFrontendOptionsSelectVoiceOpensVoiceSubmenu(t *testing.T) {
+func TestStepFrontendOptionsSelectKeybindsOpensKeybindMenu(t *testing.T) {
 	cfg := FrontendConfig{
-		OptionRows:     []int{0, 1, 2, 3, 4, 5, 6, 7},
-		VoiceMenuCount: 2,
+		OptionRows: []int{0, 1, 2, 3, 4, 5, 6},
 	}
 	got := StepFrontend(
-		Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 7},
+		Frontend{Active: true, Mode: FrontendModeOptions, OptionsOn: 6},
 		FrontendInput{Select: true},
 		cfg,
 	)
-	if got.State.Mode != FrontendModeVoice {
-		t.Fatalf("mode=%v want voice submenu", got.State.Mode)
-	}
-	if got.State.VoiceOn != 0 {
-		t.Fatalf("voiceOn=%d want 0", got.State.VoiceOn)
+	if !got.OpenKeybinds {
+		t.Fatal("expected keybind menu open request")
 	}
 }
 
 func TestStepFrontendMusicSubmenuSelectPlayerRequestsOpen(t *testing.T) {
-	cfg := FrontendConfig{MusicMenuCount: 4}
+	cfg := FrontendConfig{SoundMenuCount: 5}
 	got := StepFrontend(
-		Frontend{Active: true, Mode: FrontendModeSound, SoundOn: 3},
+		Frontend{Active: true, Mode: FrontendModeSound, SoundOn: 4},
 		FrontendInput{Select: true},
 		cfg,
 	)

@@ -57,12 +57,11 @@ var frontendOptionsTextLabels = [...]string{
 	"HUD SIZE",
 	"FPS",
 	"MOUSE SENSITIVITY",
-	"EFFECTS VOLUME",
-	"MUSIC OPTIONS",
+	"SOUND OPTIONS",
 	"KEY BINDINGS",
 }
 
-var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6, 7}
+var frontendOptionsSelectableRows = [...]int{0, 1, 2, 3, 4, 5, 6}
 
 func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (session.Runtime, runtimehost.Meta) {
 	sg := runtimehost.Init(runtimehost.Initializer[*sessionGame]{
@@ -230,9 +229,15 @@ func (sg *sessionGame) Update() error {
 				sg.openFrontendMenuFromSignal(sig)
 				return true, nil
 			}
+			if sig.SoundMenu {
+				sg.rt.sessionAcknowledgeSoundMenu()
+				sg.consumeFrontendOpenInput()
+				sg.openFrontendSoundMenuFromSignal(sig)
+				return true, nil
+			}
 			if sig.MusicPlayer {
 				sg.rt.sessionAcknowledgeMusicPlayer()
-				sg.frontend = frontendState{Active: true, InGame: true, MenuActive: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowMusic}
+				sg.frontend = frontendState{Active: true, InGame: true, MenuActive: true, Mode: frontendModeSound, SoundOn: frontendSoundMenuRowPlayer}
 				return true, nil
 			}
 			return runtimehost.HandleProgress(
@@ -474,6 +479,21 @@ func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
 		Mode:       frontendModeTitle,
 		MenuActive: true,
 		ItemOn:     itemOn,
+	}
+}
+
+func (sg *sessionGame) openFrontendSoundMenuFromSignal(sig gameplay.SessionSignals) {
+	if sg == nil {
+		return
+	}
+	inGame := !sig.DemoActive
+	sg.frontend = frontendState{
+		Active:     true,
+		InGame:     inGame,
+		Attract:    sig.DemoActive,
+		Mode:       frontendModeSound,
+		MenuActive: true,
+		SoundOn:    frontendSoundMenuRowSFX,
 	}
 }
 

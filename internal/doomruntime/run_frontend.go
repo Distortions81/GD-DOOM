@@ -6,6 +6,8 @@ import (
 	"math"
 	"strings"
 
+	"gddoom/internal/gameplay"
+	"gddoom/internal/mapdata"
 	"gddoom/internal/music"
 	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
@@ -238,7 +240,7 @@ func (sg *sessionGame) anyQuitPromptTrigger() bool {
 	if sg == nil {
 		return false
 	}
-	return sg.keyJustPressed(ebiten.KeyF4) || sg.keyJustPressed(ebiten.KeyF10)
+	return sg.keyJustPressed(ebiten.KeyF10)
 }
 
 func (sg *sessionGame) nextQuitPromptLines() []string {
@@ -611,6 +613,11 @@ func (sg *sessionGame) tickFrontend() error {
 		}
 		return nil
 	}
+	if sg.keyJustPressed(ebiten.KeyF4) {
+		sg.openFrontendSoundMenuFromSignal(gameplay.SessionSignals{DemoActive: !sg.frontend.InGame})
+		sg.playMenuConfirmSound()
+		return nil
+	}
 	if sg.frontend.Mode == frontendModeMusicPlayer {
 		return sg.tickFrontendMusicPlayer()
 	}
@@ -640,6 +647,7 @@ func (sg *sessionGame) tickFrontend() error {
 			OptionRows:        frontendOptionsSelectableRows[:],
 			MusicMenuCount:    frontendMusicMenuRowCount,
 			VoiceMenuCount:    voiceMenuRowCount(sg.opts.VoiceCodec),
+			SoundMenuCount:    frontendSoundMenuRowCount,
 			MainMenuCount:     len(frontendMainMenuNames),
 			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
 			SkillMenuCount:    len(frontendSkillMenuNames),
@@ -1067,12 +1075,10 @@ func (sg *sessionGame) drawFrontendOptionsMenu(screen *ebiten.Image, scale, ox, 
 	sg.rt.sessionDrawHUTextAt(screen, "MOUSE SENSITIVITY", ox+float64(menuX)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	optionsSkullX := sg.frontendOptionsSkullX(menuX)
 	sg.rt.sessionDrawHUTextAt(screen, formatFloat2(sig.MouseLookSpeed), ox+float64(menuX+215)*scale, oy+float64(menuY+4*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "EFFECTS VOLUME", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, formatInt(sessionflow.VolumeDot(sig.SFXVolume)), ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "MUSIC OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "SOUND OPTIONS", ox+float64(menuX)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+5*lineHeight+2)*scale, scale*1.2, scale*1.2)
+	sg.rt.sessionDrawHUTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+6*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "KEY BINDINGS", ox+float64(menuX)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
-	sg.rt.sessionDrawHUTextAt(screen, "OPEN", ox+float64(menuX+215)*scale, oy+float64(menuY+7*lineHeight+2)*scale, scale*1.2, scale*1.2)
 	sg.drawMenuSkull(screen, optionsSkullX, menuY+sg.frontend.OptionsOn*lineHeight, scale, ox, oy)
 }
 
@@ -1170,23 +1176,24 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 	const lineHeight = 16
 	backLabel := "BACK: ESC"
 	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*1.2))
-	sg.rt.sessionDrawHUTextAt(screen, "MUSIC", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
+	sg.rt.sessionDrawHUTextAt(screen, "SOUND", ox+float64(menuX)*scale, oy+float64(18)*scale, scale*1.4, scale*1.4)
 	sg.rt.sessionDrawHUTextAt(screen, backLabel, ox+float64(backX)*scale, oy+float64(18)*scale, scale*1.2, scale*1.2)
-	labels := [frontendMusicMenuRowCount]string{"VOLUME", "SYNTH", "SOUNDFONT", "PLAYER"}
-	values := [frontendMusicMenuRowCount]string{
+	labels := [frontendSoundMenuRowCount]string{"EFFECTS", "MUSIC", "SYNTH", "SOUNDFONT", "PLAYER"}
+	values := [frontendSoundMenuRowCount]string{
+		formatInt(sessionflow.VolumeDot(sig.SFXVolume)),
 		formatInt(sessionflow.VolumeDot(sig.MusicVolume)),
 		musicBackendLabel(sg.opts.MusicBackend),
 		musicSoundFontLabel(sg.musicSelectedSoundFontPath()),
 		"CHANGE SONG",
 	}
 	if !sg.frontendMusicPlayerAvailable() {
-		values[frontendMusicMenuRowPlayer] = "N/A"
+		values[frontendSoundMenuRowPlayer] = "N/A"
 	}
 	disabledSoundFont := music.ResolveBackend(sg.opts.MusicBackend) != music.BackendMeltySynth
-	for i := 0; i < frontendMusicMenuRowCount; i++ {
+	for i := 0; i < frontendSoundMenuRowCount; i++ {
 		y := menuY + i*lineHeight + 2
 		alpha := 1.0
-		if i == frontendMusicMenuRowSoundFont && disabledSoundFont {
+		if i == frontendSoundMenuRowSoundFont && disabledSoundFont {
 			alpha = 0.4
 		}
 		sg.drawFrontendHUTextAt(screen, labels[i], ox+float64(menuX)*scale, oy+float64(y)*scale, scale*1.2, scale*1.2, alpha)

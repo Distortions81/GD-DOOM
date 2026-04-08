@@ -46,7 +46,7 @@ func TestFrontendMusicPlayerOpenAndAdjustSelection(t *testing.T) {
 			},
 			MusicPlayerTrackLoader: func(wadKey string, lumpName string) ([]byte, error) { return nil, nil },
 		},
-		frontend: frontendState{Active: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowMusic},
+		frontend: frontendState{Active: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowSound},
 	}
 
 	if !sg.frontendMusicPlayerOpen() {
@@ -120,7 +120,7 @@ func TestFrontendMusicPlayerOpenStartsAtCurrentSong(t *testing.T) {
 			kind:    musicPlaybackSourceMap,
 			mapName: "MAP01",
 		},
-		frontend: frontendState{Active: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowMusic},
+		frontend: frontendState{Active: true, Mode: frontendModeOptions, OptionsOn: frontendOptionsRowSound},
 	}
 
 	if !sg.frontendMusicPlayerOpen() {
@@ -339,7 +339,7 @@ func TestFrontendMusicPlayerCloseReturnsToMusicSubmenuWhenOpenedInGame(t *testin
 	if sg.frontend.Mode != frontendModeSound {
 		t.Fatalf("mode=%d want music submenu", sg.frontend.Mode)
 	}
-	if sg.frontend.SoundOn != frontendMusicMenuRowPlayer {
+	if sg.frontend.SoundOn != frontendSoundMenuRowPlayer {
 		t.Fatalf("soundOn=%d want player row", sg.frontend.SoundOn)
 	}
 }

@@ -9,20 +9,14 @@ import (
 )
 
 const (
-	frontendOptionsRowMusic        = 6
-	frontendOptionsRowKeybinds     = 7
-	frontendMusicMenuRowVolume     = 0
-	frontendMusicMenuRowSynth      = 1
-	frontendMusicMenuRowSoundFont  = 2
-	frontendMusicMenuRowPlayer     = 3
-	frontendMusicMenuRowCount      = 4
-	frontendVoiceMenuRowPreset     = 0
-	frontendVoiceMenuRowG726Bits   = 1
-	frontendVoiceMenuRowSampleRate = 2
-	frontendVoiceMenuRowAGC        = 3
-	frontendVoiceMenuRowGate       = 4
-	frontendVoiceMenuRowGateThresh = 5
-	frontendVoiceMenuRowCount      = 6
+	frontendOptionsRowSound        = 5
+	frontendOptionsRowKeybinds     = 6
+	frontendSoundMenuRowSFX        = 0
+	frontendSoundMenuRowMusic      = 1
+	frontendSoundMenuRowSynth      = 2
+	frontendSoundMenuRowSoundFont  = 3
+	frontendSoundMenuRowPlayer     = 4
+	frontendSoundMenuRowCount      = 5
 	frontendMusicPlayerRowWAD      = 0
 	frontendMusicPlayerRowGroup    = 1
 	frontendMusicPlayerRowTrack    = 2
@@ -138,7 +132,7 @@ func (sg *sessionGame) frontendMusicPlayerClose() {
 		return
 	}
 	sg.frontend.Mode = frontendModeSound
-	sg.frontend.SoundOn = frontendMusicMenuRowPlayer
+	sg.frontend.SoundOn = frontendSoundMenuRowPlayer
 	sg.frontend.MenuActive = false
 }
 

@@ -54,20 +54,20 @@ func TestPauseMessagesOptionTogglesOnAdjustAndCycle(t *testing.T) {
 	}
 }
 
-func TestPauseMusicPlayerOptionRequestsFrontendHandOff(t *testing.T) {
+func TestPauseSoundOptionOpensSoundSubmenu(t *testing.T) {
 	g := &game{
 		pauseMenuActive:    true,
 		paused:             true,
 		pauseMenuMode:      pauseMenuModeOptions,
-		pauseMenuOptionsOn: frontendOptionsRowMusic,
+		pauseMenuOptionsOn: frontendOptionsRowSound,
 	}
 
 	g.activatePauseOptionsItem()
 
-	if !g.musicPlayerRequested {
-		t.Fatal("expected music player request to be raised")
+	if g.pauseMenuMode != pauseMenuModeSound {
+		t.Fatal("expected sound submenu to open")
 	}
-	if g.pauseMenuActive || g.paused {
-		t.Fatal("expected pause menu to close before frontend handoff")
+	if !g.pauseMenuActive || !g.paused {
+		t.Fatal("expected pause menu to remain active")
 	}
 }

@@ -84,6 +84,42 @@ func TestOpenFrontendMenuFromSignalUsesFirstSelectableItemForWatch(t *testing.T)
 	}
 }
 
+func TestOpenFrontendSoundMenuFromSignalStartsAtSoundSubmenu(t *testing.T) {
+	sg := &sessionGame{}
+	sg.openFrontendSoundMenuFromSignal(gameplay.SessionSignals{DemoActive: false})
+	if !sg.frontend.Active || !sg.frontend.MenuActive {
+		t.Fatal("expected frontend sound menu to open")
+	}
+	if sg.frontend.Mode != frontendModeSound {
+		t.Fatalf("mode=%d want=%d", sg.frontend.Mode, frontendModeSound)
+	}
+	if sg.frontend.SoundOn != frontendSoundMenuRowSFX {
+		t.Fatalf("soundOn=%d want=%d", sg.frontend.SoundOn, frontendSoundMenuRowSFX)
+	}
+}
+
+func TestWatchModeDisablesSaveLoadHotkeys(t *testing.T) {
+	g := &game{
+		opts: Options{LiveTicSource: &testLiveTicSource{}},
+		input: gameInputSnapshot{
+			justPressedKeys: map[ebiten.Key]struct{}{
+				ebiten.KeyF2: {},
+				ebiten.KeyF3: {},
+			},
+		},
+	}
+
+	g.edgeInputPass = true
+	g.updateParityControls()
+
+	if g.saveGameRequested {
+		t.Fatal("saveGameRequested should stay false in watch mode")
+	}
+	if g.loadGameRequested {
+		t.Fatal("loadGameRequested should stay false in watch mode")
+	}
+}
+
 func TestFrontendShouldUpdateRuntimeForWatch(t *testing.T) {
 	if !frontendShouldUpdateRuntime(gameplay.SessionSignals{WatchActive: true}) {
 		t.Fatal("frontendShouldUpdateRuntime() = false, want true for watch mode")

@@ -436,6 +436,7 @@ type game struct {
 	pauseMenuStatusTics       int
 	musicPlayerRequested      bool
 	frontendMenuRequested     bool
+	soundMenuRequested        bool
 	frontendActive            bool
 	saveGameRequested         bool
 	loadGameRequested         bool
@@ -2517,7 +2518,11 @@ func (g *game) Update() error {
 	if g.handleChatInput() {
 		// Chat compose owns Enter/Escape/T while it is active.
 	} else {
-		if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
+		if g.keyJustPressed(ebiten.KeyF4) {
+			g.soundMenuRequested = true
+			return nil
+		}
+		if g.keyJustPressed(ebiten.KeyF10) {
 			g.quitPromptRequested = true
 			return nil
 		}
@@ -2889,7 +2894,7 @@ func (g *game) mapRotationActive() bool {
 }
 
 func (g *game) mouseLookBlocked() bool {
-	return g != nil && (g.pauseMenuActive || g.quitPromptActive || g.frontendActive || g.frontendMenuRequested || g.readThisRequested || g.musicPlayerRequested)
+	return g != nil && (g.pauseMenuActive || g.quitPromptActive || g.frontendActive || g.frontendMenuRequested || g.soundMenuRequested || g.readThisRequested || g.musicPlayerRequested)
 }
 
 func (g *game) SampleInput() {
@@ -3925,15 +3930,6 @@ func (g *game) adjustPauseOption(dir int) {
 			g.opts.MouseLookSpeed = next
 			g.publishRuntimeSettingsIfChanged()
 		}
-	case 5:
-		next := clampVolume(g.opts.SFXVolume + float64(dir)*0.1)
-		if next != g.opts.SFXVolume {
-			g.opts.SFXVolume = next
-			if g.snd != nil {
-				g.snd.setSFXVolume(next)
-			}
-			g.publishRuntimeSettingsIfChanged()
-		}
 	}
 }
 
@@ -3974,16 +3970,8 @@ func (g *game) cyclePauseOption() {
 		}
 		g.opts.MouseLookSpeed = next
 		g.publishRuntimeSettingsIfChanged()
-	case 5:
-		next := clampVolume(g.opts.SFXVolume + 0.1)
-		if next == g.opts.SFXVolume {
-			next = 0
-		}
-		g.opts.SFXVolume = next
-		if g.snd != nil {
-			g.snd.setSFXVolume(next)
-		}
-		g.publishRuntimeSettingsIfChanged()
+	case frontendOptionsRowSound:
+		g.pauseMenuMode = pauseMenuModeSound
 	case frontendOptionsRowKeybinds:
 		g.pauseMenuMode = pauseMenuModeKeybinds
 	}
@@ -4151,13 +4139,8 @@ func (g *game) activatePauseOptionsItem() {
 	if g == nil {
 		return
 	}
-	if g.pauseMenuOptionsOn == frontendOptionsRowMusic {
-		g.musicPlayerRequested = true
-		g.pauseMenuActive = false
-		g.paused = false
-		g.pauseMenuMode = pauseMenuModeRoot
-		g.pauseMenuStatus = ""
-		g.pauseMenuStatusTics = 0
+	if g.pauseMenuOptionsOn == frontendOptionsRowSound {
+		g.pauseMenuMode = pauseMenuModeSound
 		return
 	}
 	if g.pauseMenuOptionsOn == frontendOptionsRowKeybinds {
@@ -20313,12 +20296,10 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawText(fpsLabel, menuX+215, menuY+3*lineHeight+2, 1.2)
 		drawText("MOUSE SENSITIVITY", menuX, menuY+4*lineHeight+2, 1.2)
 		drawText(formatFloat2(g.opts.MouseLookSpeed), menuX+215, menuY+4*lineHeight+2, 1.2)
-		drawText("EFFECTS VOLUME", menuX, menuY+5*lineHeight+2, 1.2)
-		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), menuX+215, menuY+5*lineHeight+2, 1.2)
-		drawText("MUSIC", menuX, menuY+6*lineHeight+2, 1.2)
+		drawText("SOUND OPTIONS", menuX, menuY+5*lineHeight+2, 1.2)
+		drawText("OPEN", menuX+215, menuY+5*lineHeight+2, 1.2)
+		drawText("KEY BINDINGS", menuX, menuY+6*lineHeight+2, 1.2)
 		drawText("OPEN", menuX+215, menuY+6*lineHeight+2, 1.2)
-		drawText("KEY BINDINGS", menuX, menuY+7*lineHeight+2, 1.2)
-		drawText("OPEN", menuX+215, menuY+7*lineHeight+2, 1.2)
 		drawSkull(g.pauseOptionsSkullX(menuX), menuY+g.pauseMenuOptionsOn*lineHeight)
 	case pauseMenuModeSound:
 		const menuX = 80

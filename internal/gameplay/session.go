@@ -71,6 +71,7 @@ type SessionSignals struct {
 	DemoActive       bool
 	WatchActive      bool
 	FrontendMenu     bool
+	SoundMenu        bool
 	SaveGame         bool
 	LoadGame         bool
 	NewGameMap       *mapdata.Map

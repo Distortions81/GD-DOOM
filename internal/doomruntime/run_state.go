@@ -158,6 +158,7 @@ type sessionRuntime interface {
 	sessionAcknowledgeLevelRestart()
 	sessionAcknowledgeMusicPlayer()
 	sessionAcknowledgeFrontendMenu()
+	sessionAcknowledgeSoundMenu()
 	sessionToggleHUDMessages() bool
 	sessionTogglePerfOverlay() bool
 	sessionCycleDetail() int

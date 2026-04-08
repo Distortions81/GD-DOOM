@@ -14,6 +14,7 @@ func (g *game) sessionSignals() gameplay.SessionSignals {
 		DemoActive:       g.opts.DemoScript != nil,
 		WatchActive:      g.opts.LiveTicSource != nil,
 		FrontendMenu:     g.frontendMenuRequested,
+		SoundMenu:        g.soundMenuRequested,
 		SaveGame:         g.saveGameRequested,
 		LoadGame:         g.loadGameRequested,
 		NewGameMap:       g.newGameRequestedMap,
@@ -114,6 +115,13 @@ func (g *game) sessionAcknowledgeFrontendMenu() {
 		return
 	}
 	g.frontendMenuRequested = false
+}
+
+func (g *game) sessionAcknowledgeSoundMenu() {
+	if g == nil {
+		return
+	}
+	g.soundMenuRequested = false
 }
 
 func (g *game) sessionToggleHUDMessages() bool {

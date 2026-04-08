@@ -45,6 +45,7 @@ func (r *layoutCountRuntime) sessionAcknowledgeReadThis()       {}
 func (r *layoutCountRuntime) sessionAcknowledgeLevelRestart()   {}
 func (r *layoutCountRuntime) sessionAcknowledgeMusicPlayer()    {}
 func (r *layoutCountRuntime) sessionAcknowledgeFrontendMenu()   {}
+func (r *layoutCountRuntime) sessionAcknowledgeSoundMenu()      {}
 func (r *layoutCountRuntime) sessionToggleHUDMessages() bool    { return false }
 func (r *layoutCountRuntime) sessionTogglePerfOverlay() bool    { return false }
 func (r *layoutCountRuntime) sessionCycleDetail() int           { return 0 }

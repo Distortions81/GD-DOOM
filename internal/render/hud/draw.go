@@ -358,10 +358,6 @@ func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch Pat
 		if drawText != nil {
 			textAt(label, float64(optionsMenuX+215), 103, 1.2)
 		}
-		if drawText != nil {
-			textAt(fmt.Sprintf("%d", in.SFXVolumeDot), float64(optionsMenuX+215), 119, 1.2)
-			textAt(fmt.Sprintf("%d", in.MusicVolumeDot), float64(optionsMenuX+215), 135, 1.2)
-		}
 	case PauseModeSound:
 		patchAt("M_SVOL", 60, 38)
 		patchAt(in.SoundMenuSFXLabel, 80, 64)
@@ -424,14 +420,14 @@ func DrawPauseOverlay(screen *ebiten.Image, in PauseOverlayInputs, drawPatch Pat
 }
 
 type PerfInputs struct {
-	ViewW      int
-	ViewH      int
-	SourcePort bool
-	HUDScale   float64
-	FPSDisplay string
-	TicDisplay string
+	ViewW       int
+	ViewH       int
+	SourcePort  bool
+	HUDScale    float64
+	FPSDisplay  string
+	TicDisplay  string
 	HostDisplay string
-	BenchLine  string
+	BenchLine   string
 }
 
 func DrawPerfOverlay(screen *ebiten.Image, in PerfInputs, textWidth TextWidthFunc, drawText TextDrawer) {

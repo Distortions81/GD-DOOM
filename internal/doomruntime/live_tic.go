@@ -102,7 +102,11 @@ func (g *game) updateWatchMode() error {
 	if g.handleChatInput() {
 		// Chat compose owns Enter/Escape/T while it is active.
 	} else {
-		if g.keyJustPressed(ebiten.KeyF4) || g.keyJustPressed(ebiten.KeyF10) {
+		if g.keyJustPressed(ebiten.KeyF4) {
+			g.soundMenuRequested = true
+			return nil
+		}
+		if g.keyJustPressed(ebiten.KeyF10) {
 			g.quitPromptRequested = true
 			return nil
 		}
