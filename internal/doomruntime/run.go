@@ -454,7 +454,8 @@ func (sg *sessionGame) bindingJustPressed(action bindingAction) bool {
 	if sg == nil {
 		return false
 	}
-	return bindingPressedCounts(sg.input.justPressedKeys, bindingValue(sg.opts.InputBindings, action))
+	binds := bindingValue(sg.opts.InputBindings, action)
+	return bindingPressedCounts(sg.input.justPressedKeys, binds) || bindingMousePressedCounts(sg.input.justPressedMouseButtons, binds)
 }
 
 func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {

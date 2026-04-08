@@ -37,11 +37,11 @@ func DefaultInputBindings() InputBindings {
 	out.TurnRight = KeyBinding{"RIGHT", ""}
 	out.StrafeModifier = KeyBinding{"LALT", "RALT"}
 	out.RunModifier = KeyBinding{"LSHIFT", "RSHIFT"}
-	out.Fire = KeyBinding{"LCTRL", "RCTRL"}
+	out.Fire = KeyBinding{"LCTRL", "MB1"}
 	out.Use = KeyBinding{"SPACE", "E"}
 	out.Automap = KeyBinding{"TAB", ""}
-	out.WeaponPrev = KeyBinding{"PAGEUP", "["}
-	out.WeaponNext = KeyBinding{"PAGEDOWN", "]"}
+	out.WeaponPrev = KeyBinding{"PAGEUP", "MB4"}
+	out.WeaponNext = KeyBinding{"PAGEDOWN", "MB5"}
 	out.Weapon1 = KeyBinding{"1", ""}
 	out.Weapon2 = KeyBinding{"2", ""}
 	out.Weapon3 = KeyBinding{"3", ""}

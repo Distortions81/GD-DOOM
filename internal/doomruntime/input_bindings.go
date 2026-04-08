@@ -68,6 +68,12 @@ type bindingKeyDef struct {
 	label string
 }
 
+type bindingMouseDef struct {
+	button ebiten.MouseButton
+	name   string
+	label  string
+}
+
 var supportedBindingKeys = [...]bindingKeyDef{
 	{ebiten.KeyA, "A", "A"}, {ebiten.KeyB, "B", "B"}, {ebiten.KeyC, "C", "C"}, {ebiten.KeyD, "D", "D"},
 	{ebiten.KeyE, "E", "E"}, {ebiten.KeyF, "F", "F"}, {ebiten.KeyG, "G", "G"}, {ebiten.KeyH, "H", "H"},
@@ -97,6 +103,14 @@ var supportedBindingKeys = [...]bindingKeyDef{
 	{ebiten.KeyF5, "F5", "F5"}, {ebiten.KeyF6, "F6", "F6"}, {ebiten.KeyF7, "F7", "F7"}, {ebiten.KeyF8, "F8", "F8"},
 	{ebiten.KeyF9, "F9", "F9"}, {ebiten.KeyF10, "F10", "F10"}, {ebiten.KeyF11, "F11", "F11"}, {ebiten.KeyF12, "F12", "F12"},
 	{ebiten.KeyBackspace, "BACKSPACE", "BKSP"},
+}
+
+var supportedBindingMouseButtons = [...]bindingMouseDef{
+	{ebiten.MouseButtonLeft, "MB1", "MB1"},
+	{ebiten.MouseButtonRight, "MB2", "MB2"},
+	{ebiten.MouseButtonMiddle, "MB3", "MB3"},
+	{ebiten.MouseButton3, "MB4", "MB4"},
+	{ebiten.MouseButton4, "MB5", "MB5"},
 }
 
 const keybindMenuVisibleRows = 8
@@ -236,6 +250,11 @@ func bindingSlotLabel(name string) string {
 			return def.label
 		}
 	}
+	for _, def := range supportedBindingMouseButtons {
+		if def.name == name {
+			return def.label
+		}
+	}
 	if name == "" {
 		return "-"
 	}
@@ -259,6 +278,16 @@ func bindingKeyFromName(name string) (ebiten.Key, bool) {
 		}
 	}
 	return ebiten.Key(0), false
+}
+
+func bindingMouseButtonFromName(name string) (ebiten.MouseButton, bool) {
+	name = strings.ToUpper(strings.TrimSpace(name))
+	for _, def := range supportedBindingMouseButtons {
+		if def.name == name {
+			return def.button, true
+		}
+	}
+	return ebiten.MouseButton(0), false
 }
 
 func bindingsContain(bindings runtimecfg.KeyBinding, key ebiten.Key) bool {
@@ -317,6 +346,37 @@ func bindingPressedCounts(pressed map[ebiten.Key]int, bindings runtimecfg.KeyBin
 	return false
 }
 
+func bindingMousePressed(pressed map[ebiten.MouseButton]struct{}, bindings runtimecfg.KeyBinding) bool {
+	if len(pressed) == 0 {
+		return false
+	}
+	for button := range pressed {
+		for _, name := range bindings {
+			if bound, ok := bindingMouseButtonFromName(name); ok && bound == button {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func bindingMousePressedCounts(pressed map[ebiten.MouseButton]int, bindings runtimecfg.KeyBinding) bool {
+	if len(pressed) == 0 {
+		return false
+	}
+	for button, n := range pressed {
+		if n <= 0 {
+			continue
+		}
+		for _, name := range bindings {
+			if bound, ok := bindingMouseButtonFromName(name); ok && bound == button {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func firstSupportedPressedKey(pressed map[ebiten.Key]struct{}) (ebiten.Key, bool) {
 	if len(pressed) == 0 {
 		return ebiten.Key(0), false
@@ -339,6 +399,70 @@ func firstSupportedSessionPressedKey(pressed map[ebiten.Key]int) (ebiten.Key, bo
 		}
 	}
 	return ebiten.Key(0), false
+}
+
+func firstSupportedPressedMouseButton(pressed map[ebiten.MouseButton]struct{}) (ebiten.MouseButton, bool) {
+	if len(pressed) == 0 {
+		return ebiten.MouseButton(0), false
+	}
+	for _, def := range supportedBindingMouseButtons {
+		if _, ok := pressed[def.button]; ok {
+			return def.button, true
+		}
+	}
+	return ebiten.MouseButton(0), false
+}
+
+func firstSupportedSessionPressedMouseButton(pressed map[ebiten.MouseButton]int) (ebiten.MouseButton, bool) {
+	if len(pressed) == 0 {
+		return ebiten.MouseButton(0), false
+	}
+	for _, def := range supportedBindingMouseButtons {
+		if pressed[def.button] > 0 {
+			return def.button, true
+		}
+	}
+	return ebiten.MouseButton(0), false
+}
+
+func bindingMouseButtonName(button ebiten.MouseButton) string {
+	for _, def := range supportedBindingMouseButtons {
+		if def.button == button {
+			return def.name
+		}
+	}
+	return ""
+}
+
+func bindingConflict(bindings runtimecfg.InputBindings, action bindingAction, slot int) (bindingAction, int, bool) {
+	name := strings.ToUpper(strings.TrimSpace(bindingSlotValue(bindings, action, slot)))
+	if name == "" {
+		return 0, 0, false
+	}
+	for other := bindingAction(0); other < bindingActionCount; other++ {
+		if other == action {
+			continue
+		}
+		value := bindingValue(bindings, other)
+		for otherSlot, candidate := range value {
+			if strings.EqualFold(strings.TrimSpace(candidate), name) {
+				return other, otherSlot, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
+func bindingConflictMessage(bindings runtimecfg.InputBindings, action bindingAction, slot int) string {
+	other, otherSlot, ok := bindingConflict(bindings, action, slot)
+	if !ok {
+		return ""
+	}
+	slotLabel := "PRIMARY"
+	if otherSlot == 1 {
+		slotLabel = "ALT"
+	}
+	return "CONFLICT: " + bindingActionLabel(other) + " " + slotLabel
 }
 
 func (sg *sessionGame) setFrontendBinding(action bindingAction, slot int, name string) {

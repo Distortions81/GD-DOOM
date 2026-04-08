@@ -861,15 +861,14 @@ type game struct {
 }
 
 type gameInputSnapshot struct {
-	pressedKeys            map[ebiten.Key]struct{}
-	justPressedKeys        map[ebiten.Key]struct{}
-	inputChars             []rune
-	mouseLeftHeld          bool
-	mouseWheel3JustPressed bool
-	mouseWheel4JustPressed bool
-	wheelY                 float64
-	cursorX                int
-	mouseTurnRawAccum      int64
+	pressedKeys             map[ebiten.Key]struct{}
+	justPressedKeys         map[ebiten.Key]struct{}
+	pressedMouseButtons     map[ebiten.MouseButton]struct{}
+	justPressedMouseButtons map[ebiten.MouseButton]struct{}
+	inputChars              []rune
+	wheelY                  float64
+	cursorX                 int
+	mouseTurnRawAccum       int64
 }
 
 type savedMapView struct {
@@ -2851,12 +2850,13 @@ func (g *game) updateWalkMode() {
 			usePressed = true
 			g.pendingUse = false
 		}
-		fireHeld = g.bindingHeld(bindingFire) || g.mouseHeld(ebiten.MouseButtonLeft)
+		fireHeld = g.bindingHeld(bindingFire)
 		if g.opts.MouseLook {
 			if g.mouseLookSuppressTicks > 0 {
 				g.mouseLookSuppressTicks--
 			}
 			cmd.turnRaw += g.input.mouseTurnRawAccum
+			g.input.mouseTurnRawAccum = 0
 		} else {
 			g.mouseLookSet = false
 		}
@@ -2898,13 +2898,18 @@ func (g *game) SampleInput() {
 	}
 	g.input.pressedKeys = addPressedKeys(g.input.pressedKeys, inpututil.AppendPressedKeys(nil))
 	g.input.justPressedKeys = addPressedKeys(g.input.justPressedKeys, inpututil.AppendJustPressedKeys(nil))
+	for _, def := range supportedBindingMouseButtons {
+		if ebiten.IsMouseButtonPressed(def.button) {
+			g.input.pressedMouseButtons = addPressedMouseButtons(g.input.pressedMouseButtons, []ebiten.MouseButton{def.button})
+		}
+		if inpututil.IsMouseButtonJustPressed(def.button) {
+			g.input.justPressedMouseButtons = addPressedMouseButtons(g.input.justPressedMouseButtons, []ebiten.MouseButton{def.button})
+		}
+	}
 	g.input.inputChars = ebiten.AppendInputChars(g.input.inputChars[:0])
 	if len(g.input.inputChars) > 0 && !g.chatComposeOpen {
 		g.consumeTypedCheatInput()
 	}
-	g.input.mouseLeftHeld = g.input.mouseLeftHeld || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
-	g.input.mouseWheel3JustPressed = g.input.mouseWheel3JustPressed || inpututil.IsMouseButtonJustPressed(ebiten.MouseButton3)
-	g.input.mouseWheel4JustPressed = g.input.mouseWheel4JustPressed || inpututil.IsMouseButtonJustPressed(ebiten.MouseButton4)
 
 	_, wheelY := ebiten.Wheel()
 	g.input.wheelY += wheelY
@@ -2960,6 +2965,9 @@ func (g *game) bindingHeld(action bindingAction) bool {
 		if key, ok := bindingKeyFromName(name); ok && g.keyHeld(key) {
 			return true
 		}
+		if button, ok := bindingMouseButtonFromName(name); ok && g.mouseHeld(button) {
+			return true
+		}
 	}
 	return false
 }
@@ -2968,33 +2976,24 @@ func (g *game) bindingJustPressed(action bindingAction) bool {
 	if g == nil {
 		return false
 	}
-	return bindingPressed(g.input.justPressedKeys, bindingValue(g.opts.InputBindings, action))
+	binds := bindingValue(g.opts.InputBindings, action)
+	return bindingPressed(g.input.justPressedKeys, binds) || bindingMousePressed(g.input.justPressedMouseButtons, binds)
 }
 
 func (g *game) mouseHeld(button ebiten.MouseButton) bool {
 	if g == nil {
 		return ebiten.IsMouseButtonPressed(button)
 	}
-	switch button {
-	case ebiten.MouseButtonLeft:
-		return g.input.mouseLeftHeld
-	default:
-		return ebiten.IsMouseButtonPressed(button)
-	}
+	_, ok := g.input.pressedMouseButtons[button]
+	return ok
 }
 
 func (g *game) mouseJustPressed(button ebiten.MouseButton) bool {
 	if g == nil {
 		return inpututil.IsMouseButtonJustPressed(button)
 	}
-	switch button {
-	case ebiten.MouseButton3:
-		return g.input.mouseWheel3JustPressed
-	case ebiten.MouseButton4:
-		return g.input.mouseWheel4JustPressed
-	default:
-		return inpututil.IsMouseButtonJustPressed(button)
-	}
+	_, ok := g.input.justPressedMouseButtons[button]
+	return ok
 }
 
 func addPressedKeys(dst map[ebiten.Key]struct{}, keys []ebiten.Key) map[ebiten.Key]struct{} {
@@ -3120,15 +3119,13 @@ func (g *game) updateWeaponHotkeys(allowCycleInput bool) {
 		return
 	}
 	ctrlHeld := g.keyHeld(ebiten.KeyControlLeft) || g.keyHeld(ebiten.KeyControlRight)
-	if g.bindingJustPressed(bindingWeaponNext) ||
-		g.mouseJustPressed(ebiten.MouseButton4) {
+	if g.bindingJustPressed(bindingWeaponNext) {
 		if ctrlHeld && bindingsContain(bindingValue(g.opts.InputBindings, bindingWeaponNext), ebiten.KeyBracketRight) && g.keyJustPressed(ebiten.KeyBracketRight) {
 			return
 		}
 		g.cycleWeapon(1)
 	}
-	if g.bindingJustPressed(bindingWeaponPrev) ||
-		g.mouseJustPressed(ebiten.MouseButton3) {
+	if g.bindingJustPressed(bindingWeaponPrev) {
 		if ctrlHeld && bindingsContain(bindingValue(g.opts.InputBindings, bindingWeaponPrev), ebiten.KeyBracketLeft) && g.keyJustPressed(ebiten.KeyBracketLeft) {
 			return
 		}

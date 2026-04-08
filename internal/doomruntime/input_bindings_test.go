@@ -38,3 +38,32 @@ func TestBindingHeldUsesConfiguredActionKeys(t *testing.T) {
 		t.Fatal("did not expect unrelated binding to register as held")
 	}
 }
+
+func TestBindingHeldUsesConfiguredMouseButtons(t *testing.T) {
+	g := &game{
+		opts: Options{
+			InputBindings: runtimecfg.NormalizeInputBindings(runtimecfg.InputBindings{
+				Fire: runtimecfg.KeyBinding{"MB1", ""},
+			}),
+		},
+		input: gameInputSnapshot{
+			pressedMouseButtons: map[ebiten.MouseButton]struct{}{
+				ebiten.MouseButtonLeft: {},
+			},
+		},
+	}
+	if !g.bindingHeld(bindingFire) {
+		t.Fatal("expected mouse fire binding to register as held")
+	}
+}
+
+func TestBindingConflictMessageReportsSelectedConflict(t *testing.T) {
+	binds := runtimecfg.NormalizeInputBindings(runtimecfg.InputBindings{
+		MoveForward: runtimecfg.KeyBinding{"W", ""},
+		Use:         runtimecfg.KeyBinding{"W", ""},
+	})
+	msg := bindingConflictMessage(binds, bindingUse, 0)
+	if msg != "CONFLICT: MOVE FORWARD PRIMARY" {
+		t.Fatalf("bindingConflictMessage()=%q", msg)
+	}
+}

@@ -5,6 +5,8 @@ import (
 	"math"
 	"strings"
 
+	"gddoom/internal/runtimecfg"
+
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 )
@@ -32,6 +34,13 @@ func (sg *sessionGame) tickFrontendKeybindMenu() error {
 		if key, ok := firstSupportedSessionPressedKey(sg.input.justPressedKeys); ok {
 			sg.setFrontendBinding(bindingAction(sg.frontendKeybindRow), sg.frontendKeybindSlot, bindingKeyName(key))
 			delete(sg.input.justPressedKeys, key)
+			sg.frontendKeybindCapture = false
+			sg.playMenuConfirmSound()
+			return nil
+		}
+		if button, ok := firstSupportedSessionPressedMouseButton(sg.input.justPressedMouseButtons); ok {
+			sg.setFrontendBinding(bindingAction(sg.frontendKeybindRow), sg.frontendKeybindSlot, bindingMouseButtonName(button))
+			delete(sg.input.justPressedMouseButtons, button)
 			sg.frontendKeybindCapture = false
 			sg.playMenuConfirmSound()
 		}
@@ -62,6 +71,17 @@ func (sg *sessionGame) tickFrontendKeybindMenu() error {
 	if sg.keyJustPressed(ebiten.KeyBackspace) {
 		sg.setFrontendBinding(bindingAction(sg.frontendKeybindRow), sg.frontendKeybindSlot, "")
 		sg.playMenuBackSound()
+	}
+	if sg.keyJustPressed(ebiten.KeyF5) {
+		sg.opts.InputBindings = runtimecfg.DefaultInputBindings()
+		if sg.g != nil {
+			sg.g.opts.InputBindings = sg.opts.InputBindings
+		}
+		if sg.opts.OnInputBindingsChanged != nil {
+			sg.opts.OnInputBindingsChanged(sg.opts.InputBindings)
+		}
+		sg.frontendStatus("DEFAULT BINDINGS RESTORED", doomTicsPerSecond*2)
+		sg.playMenuConfirmSound()
 	}
 	if sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) {
 		sg.frontendKeybindCapture = true
@@ -105,9 +125,12 @@ func (sg *sessionGame) drawFrontendKeybindMenu(screen *ebiten.Image, scale, ox, 
 			sg.rt.sessionDrawHUTextAt(screen, label, ox+float64(x)*scale, oy+float64(y)*scale, scale*1.0, scale*1.0)
 		}
 	}
-	footer := "ARROWS MOVE  ENTER REBIND  BKSP CLEAR"
+	footer := "ARROWS MOVE  ENTER REBIND  BKSP CLEAR  F5 DEFAULTS"
+	if msg := bindingConflictMessage(sg.opts.InputBindings, bindingAction(sg.frontendKeybindRow), sg.frontendKeybindSlot); msg != "" {
+		footer = msg
+	}
 	if sg.frontendKeybindCapture {
-		footer = "PRESS A KEY  ESC CANCEL"
+		footer = "PRESS KEY OR MOUSE  ESC CANCEL"
 		ebitenutil.DrawRect(screen, 0, 0, float64(screen.Bounds().Dx()), float64(screen.Bounds().Dy()), color.RGBA{A: 20})
 	}
 	sg.rt.sessionDrawHUTextAt(screen, footer, ox+float64(menuX)*scale, oy+float64(182)*scale, scale*0.9, scale*0.9)
@@ -125,6 +148,13 @@ func (g *game) tickPauseKeybindMenu() {
 		if key, ok := firstSupportedPressedKey(g.input.justPressedKeys); ok {
 			setBindingSlot(&g.opts.InputBindings, bindingAction(g.pauseMenuKeybindRow), g.pauseMenuKeybindSlot, bindingKeyName(key))
 			delete(g.input.justPressedKeys, key)
+			g.pauseMenuKeybindCapture = false
+			g.publishInputBindingsChanged()
+			return
+		}
+		if button, ok := firstSupportedPressedMouseButton(g.input.justPressedMouseButtons); ok {
+			setBindingSlot(&g.opts.InputBindings, bindingAction(g.pauseMenuKeybindRow), g.pauseMenuKeybindSlot, bindingMouseButtonName(button))
+			delete(g.input.justPressedMouseButtons, button)
 			g.pauseMenuKeybindCapture = false
 			g.publishInputBindingsChanged()
 		}
@@ -150,6 +180,12 @@ func (g *game) tickPauseKeybindMenu() {
 	if g.keyJustPressed(ebiten.KeyBackspace) {
 		setBindingSlot(&g.opts.InputBindings, bindingAction(g.pauseMenuKeybindRow), g.pauseMenuKeybindSlot, "")
 		g.publishInputBindingsChanged()
+	}
+	if g.keyJustPressed(ebiten.KeyF5) {
+		g.opts.InputBindings = runtimecfg.DefaultInputBindings()
+		g.publishInputBindingsChanged()
+		g.pauseMenuStatus = "DEFAULT BINDINGS RESTORED"
+		g.pauseMenuStatusTics = doomTicsPerSecond * 2
 	}
 	if g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter) {
 		g.pauseMenuKeybindCapture = true
@@ -190,9 +226,12 @@ func (g *game) drawPauseKeybindMenu(screen *ebiten.Image, drawText func(string, 
 			drawText(label, float64(x), float64(y), 1.0)
 		}
 	}
-	footer := "ARROWS MOVE  ENTER REBIND  BKSP CLEAR"
+	footer := "ARROWS MOVE  ENTER REBIND  BKSP CLEAR  F5 DEFAULTS"
+	if msg := bindingConflictMessage(g.opts.InputBindings, bindingAction(g.pauseMenuKeybindRow), g.pauseMenuKeybindSlot); msg != "" {
+		footer = msg
+	}
 	if g.pauseMenuKeybindCapture {
-		footer = "PRESS A KEY  ESC CANCEL"
+		footer = "PRESS KEY OR MOUSE  ESC CANCEL"
 	}
 	drawText(strings.ToUpper(footer), menuX, 182, 0.9)
 }
