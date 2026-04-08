@@ -14,6 +14,7 @@ type InputBindings struct {
 	StrafeModifier KeyBinding `toml:"strafe_modifier"`
 	RunModifier    KeyBinding `toml:"run_modifier"`
 	Fire           KeyBinding `toml:"fire"`
+	Chat           KeyBinding `toml:"chat"`
 	Use            KeyBinding `toml:"use"`
 	Automap        KeyBinding `toml:"automap"`
 	WeaponPrev     KeyBinding `toml:"weapon_prev"`
@@ -38,6 +39,7 @@ func DefaultInputBindings() InputBindings {
 	out.StrafeModifier = KeyBinding{"LALT", "RALT"}
 	out.RunModifier = KeyBinding{"LSHIFT", "RSHIFT"}
 	out.Fire = KeyBinding{"LCTRL", "MB1"}
+	out.Chat = KeyBinding{"T", ""}
 	out.Use = KeyBinding{"SPACE", "E"}
 	out.Automap = KeyBinding{"TAB", ""}
 	out.WeaponPrev = KeyBinding{"PAGEUP", "MB4"}
@@ -75,6 +77,7 @@ func NormalizeInputBindings(in InputBindings) InputBindings {
 	normalize(&out.StrafeModifier, def.StrafeModifier)
 	normalize(&out.RunModifier, def.RunModifier)
 	normalize(&out.Fire, def.Fire)
+	normalize(&out.Chat, def.Chat)
 	normalize(&out.Use, def.Use)
 	normalize(&out.Automap, def.Automap)
 	normalize(&out.WeaponPrev, def.WeaponPrev)

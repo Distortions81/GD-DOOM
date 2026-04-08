@@ -20,6 +20,7 @@ const (
 	bindingStrafeModifier
 	bindingRunModifier
 	bindingFire
+	bindingChat
 	bindingUse
 	bindingAutomap
 	bindingWeaponPrev
@@ -49,6 +50,7 @@ var bindingActionDefs = [...]bindingActionDef{
 	{bindingStrafeModifier, "STRAFE MODIFIER"},
 	{bindingRunModifier, "RUN MODIFIER"},
 	{bindingFire, "FIRE"},
+	{bindingChat, "CHAT"},
 	{bindingUse, "USE / OPEN"},
 	{bindingAutomap, "AUTOMAP"},
 	{bindingWeaponPrev, "WEAPON PREV"},
@@ -168,6 +170,8 @@ func bindingValue(bindings runtimecfg.InputBindings, action bindingAction) runti
 		return bindings.RunModifier
 	case bindingFire:
 		return bindings.Fire
+	case bindingChat:
+		return bindings.Chat
 	case bindingUse:
 		return bindings.Use
 	case bindingAutomap:
@@ -218,6 +222,8 @@ func setBindingValue(bindings *runtimecfg.InputBindings, action bindingAction, v
 		bindings.RunModifier = value
 	case bindingFire:
 		bindings.Fire = value
+	case bindingChat:
+		bindings.Chat = value
 	case bindingUse:
 		bindings.Use = value
 	case bindingAutomap:

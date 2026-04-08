@@ -68,6 +68,29 @@ func TestHandleChatComposeInputSendsAndEchoes(t *testing.T) {
 	}
 }
 
+func TestHandleChatInputUsesConfiguredBinding(t *testing.T) {
+	endpoint := &testChatEndpoint{}
+	g := &game{
+		opts: Options{
+			LiveTicSink: endpoint,
+			InputBindings: runtimecfg.NormalizeInputBindings(runtimecfg.InputBindings{
+				Chat: runtimecfg.KeyBinding{"Y", ""},
+			}),
+		},
+		input: gameInputSnapshot{
+			justPressedKeys: map[ebiten.Key]struct{}{
+				ebiten.KeyY: {},
+			},
+		},
+	}
+	if !g.handleChatInput() {
+		t.Fatal("handleChatInput() = false, want true for configured chat binding")
+	}
+	if !g.chatComposeOpen {
+		t.Fatal("expected chat compose to open")
+	}
+}
+
 func TestPollChatMessagesAppendsHistory(t *testing.T) {
 	endpoint := &testChatEndpoint{
 		queue: []runtimecfg.ChatMessage{

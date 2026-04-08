@@ -106,7 +106,7 @@ func (g *game) handleChatInput() bool {
 		g.handleChatComposeInput()
 		return true
 	}
-	if g.chatSendAvailable() && g.keyJustPressed(ebiten.KeyT) {
+	if g.chatSendAvailable() && g.bindingJustPressed(bindingChat) {
 		g.openChatCompose()
 		return true
 	}
