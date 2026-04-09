@@ -36,8 +36,8 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Extra demo tooling: beyond classic demo playback and recording, GD-DOOM can also write detailed tick-by-tick state logs for troubleshooting.
 - Live session features: one machine can broadcast a run while others watch in real time, chat, and optionally listen or talk over voice.
 - Detailed voice controls: microphone streaming includes codec choices, sample-rate control, automatic gain control, a noise gate, push-to-talk, and an in-game input meter.
-- Multiple music styles: you can choose a built-in FM-synth style soundtrack or a SoundFont-based MIDI path, with music controls and adjustable stereo width.
-- Detailed PC speaker emulation: `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
+- Modern music playback choices: on current platforms you can choose between a built-in FM-synth style soundtrack and a SoundFont-based MIDI path. In practice, this gives you the same kind of “pick the music hardware/synth character you want” choice that older Doom setups had, but through modern emulation and SoundFont playback.
+- Detailed PC speaker emulation: on current platforms, `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
 - Browser play: the same project also has a playable browser version with local WAD loading.
 
 ### Rendering
@@ -65,7 +65,7 @@ The game still runs on Doom-style simulation and classic map data. The extra wor
 If you just want the short version:
 
 - `impsynth` sounds more like classic FM-synth Doom.
-- `meltysynth` is the choice if you want SoundFont-based MIDI playback and more control over the music character.
+- `meltysynth` is the choice if you want a different MIDI playback character, similar in spirit to choosing a different MIDI device or synth, through SoundFont-based playback.
 
 `-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box.
 
