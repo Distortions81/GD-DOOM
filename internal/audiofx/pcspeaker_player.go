@@ -100,7 +100,7 @@ type pcSpeakerSource struct {
 
 	// playback position
 	samplePos int
-	phase     float64 // square-wave phase [0,1) within the current tone
+	pitPhase  float64 // PIT input clocks elapsed within the current divisor period
 	lastTone  byte
 
 	// mass-spring-damper state
@@ -231,25 +231,29 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 
 		// Reload the PIT whenever the programmed tone byte changes.
 		if tone.ToneValue != s.lastTone {
-			s.phase = 0
+			s.pitPhase = 0
 			s.lastTone = tone.ToneValue
 		}
 
-		// PIT square wave: single-polarity (1 = drive, 0 = off).
+		// PIT mode 3 square wave: high for ceil(divisor/2) clocks, low for
+		// floor(divisor/2) clocks. Model it in PIT input clocks so odd
+		// divisors and reload edges match hardware more closely than a
+		// generic 50% duty oscillator.
 		var pitOut float64
 		if tone.Active {
-			freq := tone.ToneFrequency()
-			if freq > 0 {
-				s.phase += freq / float64(s.rate)
-				if s.phase >= 1.0 {
-					s.phase -= math.Floor(s.phase)
-				}
-				if s.phase < 0.5 {
+			divisor := float64(tone.ToneDivisor())
+			if divisor > 0 {
+				highClocks := math.Ceil(divisor / 2.0)
+				if s.pitPhase < highClocks {
 					pitOut = 1.0
+				}
+				s.pitPhase += float64(sound.PCSpeakerPITHz()) / float64(s.rate)
+				if s.pitPhase >= divisor {
+					s.pitPhase -= divisor * math.Floor(s.pitPhase/divisor)
 				}
 			}
 		} else {
-			s.phase = 0
+			s.pitPhase = 0
 		}
 
 		// RC high-pass (33Ω + 0.01µF, f_c ≈ 482 Hz): filters the drive signal
@@ -314,7 +318,7 @@ func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 		abs = 0
 	}
 	s.samplePos = int(abs / 4)
-	s.phase = 0
+	s.pitPhase = 0
 	s.lastTone = 0
 	s.vel = 0
 	s.disp = 0
@@ -332,7 +336,7 @@ func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.seq = seq
 	s.rate = rate
 	s.samplePos = 0
-	s.phase = 0
+	s.pitPhase = 0
 	s.lastTone = 0
 	s.vel = 0
 	s.disp = 0

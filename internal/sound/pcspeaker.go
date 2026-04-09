@@ -38,6 +38,10 @@ var pcSpeakerDivisors = [...]uint16{
 	213, 207, 201, 195, 190, 184, 179,
 }
 
+func PCSpeakerPITHz() int {
+	return pcSpeakerPITHz
+}
+
 // PCSpeakerTone holds a single DMX-timer tick of PC speaker data.
 // Active is true when the PIT is driving the speaker; ToneValue is the
 // original lump byte (0 = silence, non-zero gives the PIT divisor).
@@ -51,14 +55,23 @@ func (t PCSpeakerTone) ToneFrequency() float64 {
 	if !t.Active || t.ToneValue == 0 {
 		return 0
 	}
-	if int(t.ToneValue) >= len(pcSpeakerDivisors) {
-		return 0
-	}
-	divisor := pcSpeakerDivisors[t.ToneValue]
+	divisor := t.ToneDivisor()
 	if divisor == 0 {
 		return 0
 	}
 	return float64(pcSpeakerPITHz) / float64(divisor)
+}
+
+// ToneDivisor returns the vanilla PIT divisor for this tone, or 0 if silent
+// or out of range.
+func (t PCSpeakerTone) ToneDivisor() uint16 {
+	if !t.Active || t.ToneValue == 0 {
+		return 0
+	}
+	if int(t.ToneValue) >= len(pcSpeakerDivisors) {
+		return 0
+	}
+	return pcSpeakerDivisors[t.ToneValue]
 }
 
 // BuildToneSequence converts the raw lump tone bytes into a []PCSpeakerTone
