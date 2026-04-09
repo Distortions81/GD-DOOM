@@ -14,7 +14,7 @@ This protocol currently covers relay-backed:
 - audio broadcast
 - audio watch/view
 
-It is not a multiplayer gameplay protocol.
+The currently implemented wire format is still the relay stream format used for broadcast/watch and voice. The multiplayer gameplay design below is the planning target for the next major protocol stage.
 
 ## Transport
 
@@ -38,7 +38,7 @@ Current roles:
 
 Current protocol version:
 
-- `1`
+- `2`
 
 ## Hello
 
@@ -57,7 +57,7 @@ Binary layout:
 Field details:
 
 - `magic`: ASCII `"GDSF"`
-- `version`: protocol version, currently `1`
+- `version`: protocol version, currently `2`
 - `role`: one of the role ids above
 - `flags`: role-specific feature flags
 - `session_id`:
@@ -87,6 +87,7 @@ The `hello.payload` format is:
 - `map_name[map_name_len]`
 - `game_mode_len[2]`
 - `game_mode[game_mode_len]`
+- `max_players[2]`
 - `player_slot[1]`
 - `skill_level[1]`
 - `cheat_level[1]`
@@ -107,6 +108,7 @@ Current `session_flags` bits:
 Notes:
 
 - Strings are raw bytes with `uint16` length prefixes.
+- `max_players = 0` means unlimited players.
 - Current session payload is reused for all roles, including audio roles.
 - Audio clients currently send an empty/default session payload.
 
@@ -407,3 +409,139 @@ If the wire format changes:
 - negotiate a new feature flag in `hello.flags`
 
 Do not silently change binary layouts for an existing version/flag combination.
+
+## Multiplayer Gameplay Plan
+
+This section describes the intended protocol direction for general DOOM multiplayer gameplay. It is a design target, not an implemented format.
+
+### Core Model
+
+- no gameplay host; all gameplay participants are peers
+- every peer runs the full deterministic simulation
+- network traffic carries player inputs, membership changes, chat/voice, and join/resume keyframes
+- gameplay advances in lockstep by tic for the current active player roster
+
+### Session Lifetime
+
+- sessions are independent of any one player
+- a session stays alive while at least one player remains
+- when the last player leaves, the session enters an empty grace window
+- if no player rejoins before the grace timeout expires, the session closes
+- while empty, simulation is paused and the last accepted gameplay keyframe is retained for resume
+
+Suggested session states:
+
+- `forming`
+- `active`
+- `paused_empty`
+- `closed`
+
+Suggested session metadata additions:
+
+- `session_mode`
+- `max_players`, where `0` means unlimited
+- `empty_timeout_ms`
+- membership epoch / roster version
+- reserved team fields for later deathmatch and team modes
+
+### Peer Roles
+
+Gameplay should move away from broadcaster/viewer semantics for multiplayer sessions.
+
+Suggested multiplayer roles:
+
+- `player_peer`
+- optional later `spectator_peer`
+
+A relay/coordinator may still exist for discovery, transport, and session persistence, but it is not the gameplay authority.
+
+### Lockstep Input Stream
+
+Each active player contributes one command per tic. The base packet should stay close to classic Doom demo tics:
+
+- `forward`
+- `side`
+- `angle_turn`
+- `buttons`
+
+Suggested packet shape:
+
+- `player_id`
+- `start_tic`
+- `count`
+- packed tic commands
+
+Gameplay tics should advance only when commands for that tic are available from all currently active players in the roster epoch.
+
+### Mid-Join
+
+Mid-join is required.
+
+The existing runtime keyframe approach can be reused for multiplayer join and resume:
+
+- active peers periodically retain joinable gameplay keyframes
+- a joining peer requests snapshot metadata from current players
+- peers advertise snapshot identity before any full blob transfer
+- once a canonical snapshot is chosen, one agreeing peer sends the full keyframe blob
+- the joining peer loads that keyframe, verifies it, then begins lockstep after a short startup buffer
+
+Suggested snapshot identity fields:
+
+- `membership_epoch`
+- `base_tic`
+- `world_hash`
+- `rng_hash` or RNG position hash
+- `roster_hash`
+- `blob_hash`
+
+### Keyframe Acceptance
+
+To decide whether a keyframe is good enough for mid-join or resume:
+
+- with `1` active player, that player's keyframe is canonical
+- with `2` active players, select a deterministic tie-break peer
+- with `3` or more active players, majority matching snapshot identity wins
+- if there is no majority, reject the join attempt and mark the session as desynced for recovery purposes
+
+The `2`-player tie-break must be deterministic across all peers. Candidate rules:
+
+- lowest `player_id`
+- earliest join sequence in the current session
+
+Peers should compare snapshot identity first and only transfer the full keyframe blob after selecting the canonical candidate.
+
+### Desync Handling
+
+Peer-symmetric gameplay requires routine consistency checks.
+
+Suggested mechanism:
+
+- peers send periodic compact checkpoint hashes
+- checkpoints include current tic, world hash, roster hash, and RNG hash
+- if hashes diverge, the session enters a desync state
+- desynced peers should not participate in keyframe-majority decisions until resynced
+
+### Session Events
+
+Beyond raw movement tics, the gameplay protocol will need deterministic session events tied to a tic:
+
+- player join accepted
+- player leave/drop
+- player death
+- player respawn
+- map exit accepted
+- map transition start/commit
+- pause/resume, if supported
+
+### Initial Implementation Scope
+
+Recommended first multiplayer milestone:
+
+- peer-symmetric co-op only
+- relay/coordinator allowed, but not gameplay-authoritative
+- lockstep tic exchange for the active roster
+- mid-join via retained runtime keyframes
+- majority-based snapshot acceptance
+- session persists through empty periods until grace timeout
+
+Later modes such as deathmatch and team play should layer on the same session and roster model rather than requiring a separate transport design.

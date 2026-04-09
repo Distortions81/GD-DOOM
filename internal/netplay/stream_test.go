@@ -1237,6 +1237,7 @@ func TestHelloRoundTripBinary(t *testing.T) {
 	want := SessionConfig{
 		WADHash:          "abc123",
 		MapName:          "E1M1",
+		MaxPlayers:       0,
 		PlayerSlot:       1,
 		SkillLevel:       3,
 		GameMode:         "single",
@@ -1275,6 +1276,16 @@ func TestReadHelloRejectsBadMagic(t *testing.T) {
 	buf.Write(make([]byte, 12))
 	if _, _, _, _, err := readHello(&buf); err == nil {
 		t.Fatal("readHello() error = nil want bad magic")
+	}
+}
+
+func TestReadHelloRejectsOldProtocolVersion(t *testing.T) {
+	var buf bytes.Buffer
+	buf.WriteString(protocolMagic)
+	buf.Write([]byte{1, helloRoleBroadcaster, 0, 0})
+	buf.Write(make([]byte, 12))
+	if _, _, _, _, err := readHello(&buf); err == nil {
+		t.Fatal("readHello() error = nil want unsupported protocol")
 	}
 }
 

@@ -2365,6 +2365,7 @@ func broadcastSessionConfig(mapName mapdata.MapName, opts doomsession.Options) n
 	return netplay.SessionConfig{
 		WADHash:          opts.WADHash,
 		MapName:          string(mapName),
+		MaxPlayers:       0,
 		PlayerSlot:       opts.PlayerSlot,
 		SkillLevel:       opts.SkillLevel,
 		GameMode:         opts.GameMode,

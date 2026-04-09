@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	protocolVersion byte = 1
+	protocolVersion byte = 2
 	protocolMagic        = "GDSF"
 
 	helloRoleBroadcaster      byte = 1
@@ -99,6 +99,7 @@ var (
 type SessionConfig struct {
 	WADHash          string
 	MapName          string
+	MaxPlayers       int
 	PlayerSlot       int
 	SkillLevel       int
 	GameMode         string
@@ -1552,6 +1553,11 @@ func marshalSessionConfig(session SessionConfig) ([]byte, error) {
 	if err := putString(strings.TrimSpace(session.GameMode)); err != nil {
 		return nil, err
 	}
+	var maxPlayers [2]byte
+	binary.LittleEndian.PutUint16(maxPlayers[:], uint16(clampUint16(session.MaxPlayers)))
+	if _, err := buf.Write(maxPlayers[:]); err != nil {
+		return nil, err
+	}
 	buf.WriteByte(byte(clampUint8(session.PlayerSlot)))
 	buf.WriteByte(byte(clampUint8(session.SkillLevel)))
 	buf.WriteByte(byte(clampUint8(session.CheatLevel)))
@@ -1615,9 +1621,11 @@ func unmarshalSessionConfig(payload []byte) (SessionConfig, error) {
 	if session.GameMode, err = readString(payload, &offset); err != nil {
 		return SessionConfig{}, err
 	}
-	if len(payload)-offset < 6 {
+	if len(payload)-offset < 8 {
 		return SessionConfig{}, fmt.Errorf("session payload truncated")
 	}
+	session.MaxPlayers = int(binary.LittleEndian.Uint16(payload[offset : offset+2]))
+	offset += 2
 	session.PlayerSlot = int(payload[offset])
 	session.SkillLevel = int(payload[offset+1])
 	session.CheatLevel = int(payload[offset+2])
@@ -1658,6 +1666,17 @@ func clampUint8(v int) int {
 		return 0
 	case v > 0xFF:
 		return 0xFF
+	default:
+		return v
+	}
+}
+
+func clampUint16(v int) int {
+	switch {
+	case v < 0:
+		return 0
+	case v > 0xFFFF:
+		return 0xFFFF
 	default:
 		return v
 	}
