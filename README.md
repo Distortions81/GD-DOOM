@@ -30,17 +30,14 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 
 - Two ways to play: `Faithful` mode aims for a more classic look and feel, while `Source Port` mode is smoother, cleaner, and more modern on a desktop monitor.
 - Smoother motion: movement, turning, and monster motion are smoothed between Doom tics, so the game does not look like it is stepping from frame to frame.
-- Richer visuals: floors and ceilings are textured, the picture is presented in full color, the HUD and automap scale more cleanly, and optional effects like CRT filtering and smoother animated transitions are available.
-- Better map reading: the automap adds follow mode, rotate mode, big-map mode, grid, and map marks.
-- Better controls: mouse look, adjustable mouse sensitivity, always-run defaults, auto weapon switching, and full rebinding with primary and alternate keys are built in.
-- Live settings menus: sound, voice, and key bindings can be changed from in-game menus instead of forcing you to restart with different launch options.
-- Persistent settings: native builds remember your settings in `config.toml`, including graphics/detail choices, mouse settings, audio settings, and bindings.
-- Save/load support: you can save and resume games directly in the runtime.
-- Demo tools: GD-DOOM can play back classic Doom demos, record new ones, and write detailed tick-by-tick state logs for troubleshooting.
+- Richer presentation: the picture is presented in full color, the HUD and automap scale more cleanly, and optional effects like CRT filtering and smoother animated transitions are available.
+- Better map reading: the automap presentation is cleaner on modern displays and adds rotate mode on top of the classic map features.
+- Better controls: mouse look is built in, bindings are more flexible, and there are separate in-game screens for voice and key setup.
+- Extra demo tooling: beyond classic demo playback and recording, GD-DOOM can also write detailed tick-by-tick state logs for troubleshooting.
 - Live session features: one machine can broadcast a run while others watch in real time, chat, and optionally listen or talk over voice.
 - Detailed voice controls: microphone streaming includes codec choices, sample-rate control, automatic gain control, a noise gate, push-to-talk, and an in-game input meter.
 - Multiple music styles: you can choose a built-in FM-synth style soundtrack or a SoundFont-based MIDI path, with music controls and adjustable stereo width.
-- PC speaker emulation: `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
+- Detailed PC speaker emulation: `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
 - Browser play: the same project also has a playable browser version with local WAD loading.
 
 ### Rendering
