@@ -46,7 +46,6 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Full-color rendering instead of the original palette-limited screen presentation.
 - Higher-resolution presentation for walls, sprites, HUD, and automap.
 - Smoothed camera movement, turning, and thing motion between Doom tics.
-- Textured and lit floors and ceilings, optional GPU sky rendering, and an optional CRT-style screen effect.
 - Smoother texture changes, weapon transitions, and broader multi-frame sprite animation.
 - Integrated automap with follow mode, rotate mode, big-map view, grid, and map marks.
 
