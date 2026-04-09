@@ -174,7 +174,7 @@ const (
 	spkK         = 0.00508   // stiffness: (2π·500/44100)²
 	spkD         = 0.0891    // damping: Q≈0.8, no enclosure
 	spkDrive     = 0.00176   // 97.6mA × Bl(0.5) / mass(0.002) normalised per-sample
-	spkGain      = 2000000.0 // velocity → int16 range; high gain compensates acoustic short-circuit HP attenuation
+	spkGain      = 4000000.0 // velocity → int16 range; high gain compensates acoustic short-circuit HP attenuation
 	spkReverbMix = 0.8       // wet mix for case reverb (0=dry, 1=full wet)
 
 	// RC high-pass: 33Ω + 0.01µF → f_c ≈ 482 Hz
