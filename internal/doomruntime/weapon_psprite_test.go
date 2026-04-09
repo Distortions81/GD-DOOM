@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"image"
 	"math"
 	"testing"
 
@@ -358,6 +359,26 @@ func TestQuantizeWeaponBlendAlpha(t *testing.T) {
 		if got := quantizeWeaponBlendAlpha(tc.in); got != tc.want {
 			t.Fatalf("quantizeWeaponBlendAlpha(%v)=%v want %v", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestWeaponOverlayScale_SourcePortGeometryAspectCorrectionUsesCorrectedViewport(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SourcePortMode: true,
+		},
+	}
+
+	scale, scaleY, offsetX := g.weaponOverlayScale(image.Rect(0, 0, 1280, 720))
+
+	if got, want := scale, 3.0; math.Abs(got-want) > 1e-9 {
+		t.Fatalf("scale=%v want %v", got, want)
+	}
+	if got, want := scaleY, 3.6; math.Abs(got-want) > 1e-9 {
+		t.Fatalf("scaleY=%v want %v", got, want)
+	}
+	if got, want := offsetX, 160.0; math.Abs(got-want) > 1e-9 {
+		t.Fatalf("offsetX=%v want %v", got, want)
 	}
 }
 

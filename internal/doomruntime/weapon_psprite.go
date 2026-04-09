@@ -933,13 +933,9 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 		}
 		target = sub
 	}
-	scale := float64(rect.Dx()) / doomLogicalW
-	scaleY := scale
-	if g.opts.SourcePortMode && !g.opts.DisableGeometryAspectCorrect {
-		scaleY = scale * doomPixelAspect
-	}
+	scale, scaleY, offsetX := g.weaponOverlayScale(rect)
 	bx, _ := g.weaponBob()
-	x := (1.0 + bx) * scale
+	x := offsetX + (1.0+bx)*scale
 	y := float64(rect.Dy()) - (doomLogicalH-logicalY)*scaleY
 	if !g.opts.SourcePortMode {
 		const doomBaseYCenter = 100.5
@@ -962,6 +958,24 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 	} else if prevComposite != "" {
 		_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scaleY)
 	}
+}
+
+func (g *game) weaponOverlayScale(rect image.Rectangle) (scale, scaleY, offsetX float64) {
+	scale = float64(max(rect.Dx(), 1)) / doomLogicalW
+	scaleY = scale
+	if g == nil || !g.opts.SourcePortMode || g.opts.DisableGeometryAspectCorrect {
+		return scale, scaleY, 0
+	}
+	scale = math.Min(float64(max(rect.Dx(), 1))/doomLogicalW, float64(max(rect.Dy(), 1))/(doomLogicalH*doomPixelAspect))
+	if scale <= 0 {
+		scale = 1
+	}
+	scaleY = scale * doomPixelAspect
+	offsetX = (float64(rect.Dx()) - doomLogicalW*scale) * 0.5
+	if offsetX < 0 {
+		offsetX = 0
+	}
+	return scale, scaleY, offsetX
 }
 
 func (g *game) precacheWeaponSpritePatches() {
