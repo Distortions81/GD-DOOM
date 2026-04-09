@@ -65,7 +65,7 @@ func TestSampleForEventSwitchSounds(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
-	s := newSoundSystem(SoundBank{}, 1, true, false)
+	s := newSoundSystem(SoundBank{}, nil, 1, true, false)
 	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}
@@ -86,7 +86,7 @@ func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_DoesNotAdvancePRandom(t *testing.T) {
-	s := newSoundSystem(SoundBank{}, 1, true, false)
+	s := newSoundSystem(SoundBank{}, nil, 1, true, false)
 	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}
@@ -643,10 +643,39 @@ func TestDoomAdjustSoundParams_CenteredNearSound(t *testing.T) {
 	}
 }
 
+func TestDoomAdjustSoundParams_UsesVanillaCloseDistance(t *testing.T) {
+	vol, _, ok := doomAdjustSoundParams(0, 0, 0, 180*fracUnit, 0, doomSoundMaxVolume, false)
+	if !ok {
+		t.Fatal("sound inside vanilla close distance should be audible")
+	}
+	if vol != doomSoundMaxVolume {
+		t.Fatalf("vol=%d want=%d", vol, doomSoundMaxVolume)
+	}
+}
+
 func TestDoomAdjustSoundParams_ClipsFarSound(t *testing.T) {
 	_, _, ok := doomAdjustSoundParams(0, 0, 0, (doomSoundClippingDist + fracUnit), 0, doomSoundMaxVolume, false)
 	if ok {
 		t.Fatal("far sound should be clipped")
+	}
+}
+
+func TestPCSpeakerSoundEnabled_MatchesVanillaDisabledSet(t *testing.T) {
+	cases := map[string]bool{
+		"DSPOSACT": false,
+		"DSBGACT":  false,
+		"DSDMACT":  false,
+		"DSDMPAIN": false,
+		"DSPOPAIN": false,
+		"DSSAWIDL": false,
+		"DSRIFLE":  false,
+		"DSSHOTGN": true,
+		"DSSWTCHN": true,
+	}
+	for dsName, want := range cases {
+		if got := pcSpeakerSoundEnabled(dsName); got != want {
+			t.Fatalf("pcSpeakerSoundEnabled(%q)=%v want=%v", dsName, got, want)
+		}
 	}
 }
 

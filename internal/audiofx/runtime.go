@@ -15,7 +15,7 @@ import (
 const (
 	doomSoundMaxVolume    = 127
 	doomSoundClippingDist = int64(1200 * fracUnit)
-	doomSoundCloseDist    = int64(160 * fracUnit)
+	doomSoundCloseDist    = int64(200 * fracUnit)
 	doomSoundStereoSwing  = int64(96 * fracUnit)
 	doomSoundAttenuator   = (doomSoundClippingDist - doomSoundCloseDist) / fracUnit
 	doomSoundNormalSep    = 128

@@ -101,6 +101,7 @@ type pcSpeakerSource struct {
 	// playback position
 	samplePos int
 	phase     float64 // square-wave phase [0,1) within the current tone
+	lastTone  byte
 
 	// mass-spring-damper state
 	vel  float64
@@ -170,9 +171,9 @@ const (
 	spkSpeedOfSound   = 343.0
 	spkAcousticCutoff = spkSpeedOfSound / (2 * math.Pi * spkRadiusMetres) // ≈ 1909 Hz
 
-	spkK     = 0.00508   // stiffness: (2π·500/44100)²
-	spkD     = 0.0891    // damping: Q≈0.8, no enclosure
-	spkDrive = 0.00176   // 97.6mA × Bl(0.5) / mass(0.002) normalised per-sample
+	spkK         = 0.00508   // stiffness: (2π·500/44100)²
+	spkD         = 0.0891    // damping: Q≈0.8, no enclosure
+	spkDrive     = 0.00176   // 97.6mA × Bl(0.5) / mass(0.002) normalised per-sample
 	spkGain      = 4000000.0 // velocity → int16 range; high gain compensates acoustic short-circuit HP attenuation
 	spkReverbMix = 0.8       // wet mix for case reverb (0=dry, 1=full wet)
 
@@ -186,7 +187,6 @@ const (
 // Also models the lack of enclosure/baffle: speaker operated in free air inside
 // a metal PC case, so bass cancels via front/back wave interference below ~1.9 kHz.
 var spkHPAlpha = math.Exp(-2 * math.Pi * spkAcousticCutoff / 44100)
-
 
 func (s *pcSpeakerSource) totalSamples() int {
 	if s.rate <= 0 || len(s.seq) == 0 {
@@ -228,6 +228,12 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 			tickIdx = len(s.seq) - 1
 		}
 		tone := s.seq[tickIdx]
+
+		// Reload the PIT whenever the programmed tone byte changes.
+		if tone.ToneValue != s.lastTone {
+			s.phase = 0
+			s.lastTone = tone.ToneValue
+		}
 
 		// PIT square wave: single-polarity (1 = drive, 0 = off).
 		var pitOut float64
@@ -309,6 +315,7 @@ func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 	}
 	s.samplePos = int(abs / 4)
 	s.phase = 0
+	s.lastTone = 0
 	s.vel = 0
 	s.disp = 0
 	s.rcPrev = 0
@@ -326,6 +333,7 @@ func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.rate = rate
 	s.samplePos = 0
 	s.phase = 0
+	s.lastTone = 0
 	s.vel = 0
 	s.disp = 0
 	s.rcPrev = 0

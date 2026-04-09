@@ -2,6 +2,7 @@ package sound
 
 import (
 	"encoding/binary"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -122,14 +123,28 @@ func TestBuildToneSequenceActive(t *testing.T) {
 }
 
 func TestBuildToneSequenceToneFrequency(t *testing.T) {
-	tone := PCSpeakerTone{Active: true, ToneValue: 60}
-	want := float64(pcSpeakerPITHz) / float64(60*60)
-	if got := tone.ToneFrequency(); got != want {
-		t.Fatalf("ToneFrequency()=%f want=%f", got, want)
+	cases := []struct {
+		tone byte
+		want float64
+	}{
+		{1, float64(pcSpeakerPITHz) / 6818.0},
+		{10, float64(pcSpeakerPITHz) / 5279.0},
+		{20, float64(pcSpeakerPITHz) / 3950.0},
+		{40, float64(pcSpeakerPITHz) / 2213.0},
+		{80, float64(pcSpeakerPITHz) / 697.0},
+		{126, float64(pcSpeakerPITHz) / 184.0},
 	}
-	silent := PCSpeakerTone{Active: false, ToneValue: 60}
-	if got := silent.ToneFrequency(); got != 0 {
+	for _, tc := range cases {
+		got := (PCSpeakerTone{Active: true, ToneValue: tc.tone}).ToneFrequency()
+		if math.Abs(got-tc.want) > 0.001 {
+			t.Fatalf("tone=%d freq=%f want=%f", tc.tone, got, tc.want)
+		}
+	}
+	if got := (PCSpeakerTone{Active: false, ToneValue: 60}).ToneFrequency(); got != 0 {
 		t.Fatalf("silent ToneFrequency()=%f want=0", got)
+	}
+	if got := (PCSpeakerTone{Active: true, ToneValue: 128}).ToneFrequency(); got != 0 {
+		t.Fatalf("out-of-range ToneFrequency()=%f want=0", got)
 	}
 }
 

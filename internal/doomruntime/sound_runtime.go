@@ -194,13 +194,14 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 	if s == nil {
 		return
 	}
-	// PC speaker mode: single channel, priority-based interruption.
+	// PC speaker mode: start any audible vanilla-compatible DP* sound.
 	if s.pcSpeaker != nil {
 		if dsName, ok := soundEventDSName(ev); ok {
+			if !pcSpeakerSoundEnabled(dsName) {
+				return
+			}
 			if seq, ok := s.pcSpeakerBank[dsName]; ok && len(seq) > 0 {
-				if pcSpeakerShouldInterrupt(ev, origin, s, listenerX, listenerY, listenerAngle, mapUsesFullClip) {
-					s.pcSpeaker.Play(seq)
-				}
+				s.pcSpeaker.Play(seq)
 			}
 		}
 		return
@@ -222,33 +223,13 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 	s.player.PlaySampleSpatialDelayed(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev))
 }
 
-// pcSpeakerShouldInterrupt returns true if ev has sufficient priority to
-// interrupt whatever is currently playing.  Player sounds always win;
-// world sounds must be within clipping distance.
-func pcSpeakerShouldInterrupt(ev soundEvent, origin queuedSoundOrigin, s *soundSystem, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
-	if isPlayerSound(ev) {
+func pcSpeakerSoundEnabled(dsName string) bool {
+	switch dsName {
+	case "DSPOSACT", "DSBGACT", "DSDMACT", "DSDMPAIN", "DSPOPAIN", "DSSAWIDL", "DSRIFLE":
+		return false
+	default:
 		return true
 	}
-	if !origin.positioned {
-		return true
-	}
-	_, _, ok := doomAdjustSoundParams(listenerX, listenerY, listenerAngle, origin.x, origin.y, s.vanillaVolume, mapUsesFullClip)
-	return ok
-}
-
-func isPlayerSound(ev soundEvent) bool {
-	switch ev {
-	case soundEventPain, soundEventOof, soundEventPlayerDeath,
-		soundEventShootPistol, soundEventShootShotgun, soundEventShootSuperShotgun,
-		soundEventShootPlasma, soundEventShootBFG, soundEventPunch,
-		soundEventShootRocket, soundEventSawUp, soundEventSawIdle,
-		soundEventSawFull, soundEventSawHit, soundEventShotgunOpen,
-		soundEventShotgunLoad, soundEventShotgunClose,
-		soundEventItemUp, soundEventWeaponUp, soundEventPowerUp,
-		soundEventNoWay, soundEventTeleport:
-		return true
-	}
-	return false
 }
 
 func (s *soundSystem) nextRandByte() int {
