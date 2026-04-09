@@ -36,7 +36,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Extra demo tooling: beyond classic demo playback and recording, GD-DOOM can also write detailed tick-by-tick state logs for troubleshooting.
 - Live session features: one machine can broadcast a run while others watch in real time, chat, and optionally listen or talk over voice.
 - Detailed voice controls: microphone streaming includes codec choices, sample-rate control, automatic gain control, a noise gate, push-to-talk, and an in-game input meter.
-- Modern music playback choices: on current platforms you can choose between a built-in FM-synth style soundtrack and a SoundFont-based MIDI path. In practice, this gives you the same kind of “pick the music hardware/synth character you want” choice that older Doom setups had, but through modern emulation and SoundFont playback.
+- Modern music playback choices: on current platforms you can choose between a built-in FM-synth style soundtrack and a SoundFont-based MIDI path.
 - Detailed PC speaker emulation: on current platforms, `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
 - Browser play: the same project also has a playable browser version with local WAD loading.
 
