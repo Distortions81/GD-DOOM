@@ -227,21 +227,21 @@ func drawPlaneSpanIndexedDOOMRowScalar(dst []uint32, dstI, count int, texIndexed
 	return stepper
 }
 
-func planeSpanDepth(y int, key plane3DKey, eyeZ, focal, cy float64) (float64, uint16, bool) {
+func planeSpanDepth(y int, key plane3DKey, eyeZ, focal, focalV, cy float64) (float64, uint16, bool) {
 	den := cy - (float64(y) + 0.5)
 	if math.Abs(den) < 1e-6 {
 		return 0, 0, false
 	}
 	planeZ := float64(key.height)
-	depth := ((planeZ - eyeZ) / den) * focal
+	depth := ((planeZ - eyeZ) / den) * focalV
 	if depth <= 0 {
 		return 0, 0, false
 	}
 	return depth, encodeDepthQ(depth), true
 }
 
-func (g *game) planeRowRenderState(y int, key plane3DKey, eyeZ, camX, camY, ca, sa, focal, cx, cy float64) (planeRowRenderState, bool) {
-	depth, depthQ, ok := planeSpanDepth(y, key, eyeZ, focal, cy)
+func (g *game) planeRowRenderState(y int, key plane3DKey, eyeZ, camX, camY, ca, sa, focal, focalV, cx, cy float64) (planeRowRenderState, bool) {
+	depth, depthQ, ok := planeSpanDepth(y, key, eyeZ, focal, focalV, cy)
 	if !ok {
 		return planeRowRenderState{}, false
 	}

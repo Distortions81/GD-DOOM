@@ -934,29 +934,33 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 		target = sub
 	}
 	scale := float64(rect.Dx()) / doomLogicalW
+	scaleY := scale
+	if g.opts.SourcePortMode && !g.opts.DisableGeometryAspectCorrect {
+		scaleY = scale * doomPixelAspect
+	}
 	bx, _ := g.weaponBob()
 	x := (1.0 + bx) * scale
-	y := float64(rect.Dy()) - (doomLogicalH-logicalY)*scale
+	y := float64(rect.Dy()) - (doomLogicalH-logicalY)*scaleY
 	if !g.opts.SourcePortMode {
 		const doomBaseYCenter = 100.5
-		y = float64(rect.Dy())/2 - (doomBaseYCenter-logicalY)*scale
+		y = float64(rect.Dy())/2 - (doomBaseYCenter-logicalY)*scaleY
 	}
 	if prevComposite != "" && currComposite != "" && alpha > 0 && alpha < 1 {
 		alpha = quantizeWeaponBlendAlpha(alpha)
 		if alpha <= 0 {
-			_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scale)
+			_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scaleY)
 			return
 		}
 		if alpha >= 1 {
-			_ = g.drawSpritePatch(target, currComposite, x, y, scale, scale)
+			_ = g.drawSpritePatch(target, currComposite, x, y, scale, scaleY)
 			return
 		}
 		blendName := fmt.Sprintf("%s>%s#%d/%d", prevComposite, currComposite, int(math.Round(alpha*weaponBlendSteps)), weaponBlendSteps)
-		_ = g.drawSpritePatch(target, blendName, x, y, scale, scale)
+		_ = g.drawSpritePatch(target, blendName, x, y, scale, scaleY)
 	} else if currComposite != "" {
-		_ = g.drawSpritePatch(target, currComposite, x, y, scale, scale)
+		_ = g.drawSpritePatch(target, currComposite, x, y, scale, scaleY)
 	} else if prevComposite != "" {
-		_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scale)
+		_ = g.drawSpritePatch(target, prevComposite, x, y, scale, scaleY)
 	}
 }
 

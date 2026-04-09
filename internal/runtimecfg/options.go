@@ -145,7 +145,8 @@ type Options struct {
 	NoVsync                    bool
 	NoFPS                      bool
 	ShowTPS                    bool
-	DisableAspectCorrection    bool
+	DisableAspectCorrection       bool
+	DisableGeometryAspectCorrect  bool
 	InputBindings              InputBindings
 	AllCheats                  bool
 	StartInMapMode             bool

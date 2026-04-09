@@ -108,7 +108,7 @@ func (g *game) appendBillboardOpaqueRectPlaneOccluders(rects []spriteOpaqueRect,
 		if flip {
 			rect = flipSpriteOpaqueRectX(rect, texW)
 		}
-		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, clipTop, clipBottom, g.viewW, g.viewH)
+		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, scale, clipTop, clipBottom, g.viewW, g.viewH)
 		if !ok {
 			continue
 		}

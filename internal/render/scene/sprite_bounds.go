@@ -95,13 +95,17 @@ func CircleScreenBounds(sx, sy, r float64, clipTop, clipBottom, viewW, viewH int
 }
 
 func OpaqueRectScreenBounds(minX, minY, maxX, maxY int, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) (int, int, int, int, bool) {
-	if scale <= 0 || viewW <= 0 || viewH <= 0 {
+	return OpaqueRectScreenBoundsXY(minX, minY, maxX, maxY, dstX, dstY, scale, scale, clipTop, clipBottom, viewW, viewH)
+}
+
+func OpaqueRectScreenBoundsXY(minX, minY, maxX, maxY int, dstX, dstY, scaleX, scaleY float64, clipTop, clipBottom, viewW, viewH int) (int, int, int, int, bool) {
+	if scaleX <= 0 || scaleY <= 0 || viewW <= 0 || viewH <= 0 {
 		return 0, -1, 0, -1, false
 	}
-	x0 := int(math.Floor(dstX + float64(minX)*scale))
-	y0 := int(math.Floor(dstY + float64(minY)*scale))
-	x1 := int(math.Ceil(dstX+float64(maxX+1)*scale)) - 1
-	y1 := int(math.Ceil(dstY+float64(maxY+1)*scale)) - 1
+	x0 := int(math.Floor(dstX + float64(minX)*scaleX))
+	y0 := int(math.Floor(dstY + float64(minY)*scaleY))
+	x1 := int(math.Ceil(dstX+float64(maxX+1)*scaleX)) - 1
+	y1 := int(math.Ceil(dstY+float64(maxY+1)*scaleY)) - 1
 	if x1 < 0 || y1 < 0 || x0 >= viewW || y0 >= viewH {
 		return 0, -1, 0, -1, false
 	}

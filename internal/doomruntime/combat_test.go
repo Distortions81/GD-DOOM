@@ -1548,7 +1548,7 @@ func TestDrawProjectedPuffItemWritesPixels(t *testing.T) {
 		hasSprite:  true,
 	}
 
-	g.drawProjectedPuffItem(item, 64, g.viewW, g.viewH)
+	g.drawProjectedPuffItem(item, 64, 64, g.viewW, g.viewH)
 
 	wrote := 0
 	for _, p := range g.wallPix32 {

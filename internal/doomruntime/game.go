@@ -259,6 +259,7 @@ type cutoutItem struct {
 	dstX            float64
 	dstY            float64
 	scale           float64
+	scaleY          float64 // vertical scale override (0 = use scale)
 	opaque          spriteOpaqueShape
 	hasOpaque       bool
 	opaqueRectStart int
@@ -4649,6 +4650,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	sa := math.Sin(camAng)
 	eyeZ := g.playerEyeZ()
 	focal := doomFocalLength(g.viewW)
+	focalV := g.verticalFocalLength(focal)
 	near := 2.0
 	g.beginSkyLayerFrame()
 
@@ -4804,7 +4806,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if solidWall && g.wallSliceOcclusionEnabled() {
 			allOcc := true
 			for _, vis := range visibleRanges {
-				visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.L, vis.R, worldTop, worldBottom, focal)
+				visOcc := g.wallSliceRangeTriFullyOccludedByWallsOnly(pp, vis.L, vis.R, worldTop, worldBottom, focalV)
 				if !visOcc {
 					allOcc = false
 					break
@@ -4824,7 +4826,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				}
 				texU += texUOffset
 
-				yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focal))
+				yl := int(math.Ceil(float64(g.viewH)/2 - (worldTop/f)*focalV))
 				if yl < ceilingClip[x]+1 {
 					yl = ceilingClip[x] + 1
 				}
@@ -4837,7 +4839,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					markPlane3DColumnRange(ceilPlane, x, top, bottom, ceilingClip, floorClip)
 				}
 
-				yh := int(math.Floor(float64(g.viewH)/2 - (worldBottom/f)*focal))
+				yh := int(math.Floor(float64(g.viewH)/2 - (worldBottom/f)*focalV))
 				if yh >= floorClip[x] {
 					yh = floorClip[x] - 1
 				}
@@ -4850,8 +4852,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					markPlane3DColumnRange(floorPlane, x, top, bottom, ceilingClip, floorClip)
 				}
 				if !solidWall {
-					openTop := int(math.Ceil(float64(g.viewH)/2 - (worldHigh/f)*focal))
-					openBottom := int(math.Floor(float64(g.viewH)/2 - (worldLow/f)*focal))
+					openTop := int(math.Ceil(float64(g.viewH)/2 - (worldHigh/f)*focalV))
+					openBottom := int(math.Floor(float64(g.viewH)/2 - (worldLow/f)*focalV))
 					if openTop < yl {
 						openTop = yl
 					}
@@ -4889,7 +4891,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 							panic("missing required solid wall texture: " + texName)
 						}
 					} else {
-						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, frontLight, wallLightBias, texU, texMid, focal, tex)
+						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, frontLight, wallLightBias, texU, texMid, focalV, tex)
 					}
 					g.setWallDepthColumnClosedQ(x, encodeDepthQ(f))
 					g.markSpriteClipColumnClosed(x, encodeDepthQ(f))
@@ -4898,7 +4900,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 					continue
 				}
 				if topWall {
-					mid := int(math.Floor(float64(g.viewH)/2 - (worldHigh/f)*focal))
+					mid := int(math.Floor(float64(g.viewH)/2 - (worldHigh/f)*focalV))
 					if mid >= floorClip[x] {
 						mid = floorClip[x] - 1
 					}
@@ -4912,7 +4914,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 								panic("missing required top wall texture: " + name)
 							}
 						} else {
-							g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, frontLight, wallLightBias, texU, topTexMid, focal, topTex)
+							g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, frontLight, wallLightBias, texU, topTexMid, focalV, topTex)
 						}
 						ceilingClip[x] = mid
 					} else {
@@ -4923,7 +4925,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				}
 
 				if bottomWall {
-					mid := int(math.Ceil(float64(g.viewH)/2 - (worldLow/f)*focal))
+					mid := int(math.Ceil(float64(g.viewH)/2 - (worldLow/f)*focalV))
 					if mid <= ceilingClip[x] {
 						mid = ceilingClip[x] + 1
 					}
@@ -4937,7 +4939,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 								panic("missing required bottom wall texture: " + name)
 							}
 						} else {
-							g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, frontLight, wallLightBias, texU, botTexMid, focal, botTex)
+							g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, frontLight, wallLightBias, texU, botTexMid, focalV, botTex)
 						}
 						floorClip[x] = mid
 					} else {
@@ -4964,8 +4966,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 				if !ok {
 					continue
 				}
-				occY0 := int(math.Ceil(float64(g.viewH)*0.5 - (maskedWorldHigh/centerDepth)*focal))
-				occY1 := int(math.Floor(float64(g.viewH)*0.5 - (maskedWorldLow/centerDepth)*focal))
+				occY0 := int(math.Ceil(float64(g.viewH)*0.5 - (maskedWorldHigh/centerDepth)*focalV))
+				occY1 := int(math.Floor(float64(g.viewH)*0.5 - (maskedWorldLow/centerDepth)*focalV))
 				if occY0 < 0 {
 					occY0 = 0
 				}
@@ -5008,18 +5010,18 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.finalizeMaskedClipColumns()
 	planePassReady := planesEnabled && hasMarkedPlane3DData(planeOrder)
 	if planePassReady {
-		g.collectCutoutItems(camX, camY, camAng, focal, near)
+		g.collectCutoutItems(camX, camY, camAng, focal, focalV, near)
 		g.buildBillboardPlaneOccludersFromQueue()
 	} else {
 		g.clearBillboardPlaneOccluderRows()
 	}
 	usedSkyLayer := false
 	if planePassReady {
-		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, ceilClr, floorClr, planeOrder)
+		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, focalV, ceilClr, floorClr, planeOrder)
 	}
 	if !planePassReady {
 		stageStart = time.Now()
-		g.collectCutoutItems(camX, camY, camAng, focal, near)
+		g.collectCutoutItems(camX, camY, camAng, focal, focalV, near)
 		g.addRenderStageDur(renderStageBillboards, time.Since(stageStart))
 	}
 	g.appendMaskedMidSegsToCutoutItems()
@@ -5033,21 +5035,21 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 		if it.debugOverlay {
 			continue
 		}
-		g.drawCutoutItem(it, focal)
+		g.drawCutoutItem(it, focal, focalV)
 	}
 	for _, it := range g.billboardQueueScratch {
 		if !it.shadow || it.debugOverlay {
 			continue
 		}
-		g.drawCutoutItem(it, focal)
+		g.drawCutoutItem(it, focal, focalV)
 	}
 	for _, it := range g.billboardQueueScratch {
 		if !it.debugOverlay {
 			continue
 		}
-		g.drawCutoutItem(it, focal)
+		g.drawCutoutItem(it, focal, focalV)
 	}
-	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near)
+	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, focalV, near)
 	g.addRenderStageDur(renderStageBillboards, time.Since(stageStart))
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
 	if g.lowDetailMode() {
@@ -5661,7 +5663,7 @@ func (g *game) spriteOpaqueRectsFullyCoveredByCutout(rects []spriteOpaqueRect, t
 		if flip {
 			rect = flipSpriteOpaqueRectX(rect, texW)
 		}
-		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, scale, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
@@ -5847,13 +5849,13 @@ func (g *game) spriteWallClipBBoxFullyOccluded(x0, x1, y0, y1 int, depthQ uint16
 	})
 }
 
-func (g *game) spriteOpaqueRectsFullyOccluded(rects []spriteOpaqueRect, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int, depthQ uint16) bool {
+func (g *game) spriteOpaqueRectsFullyOccluded(rects []spriteOpaqueRect, dstX, dstY, scaleX, scaleY float64, clipTop, clipBottom, viewW, viewH int, depthQ uint16) bool {
 	if len(rects) == 0 {
 		return false
 	}
 	anyVisibleRect := false
 	for _, rect := range rects {
-		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scaleX, scaleY, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
@@ -5877,8 +5879,8 @@ func (g *game) projectedOpaqueRectsFullyOccluded(rects []projectedOpaqueRect, de
 	return true
 }
 
-func (g *game) appendProjectedOpaqueRects(rects []spriteOpaqueRect, texW int, flip bool, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) (int, int) {
-	if g == nil || len(rects) == 0 || texW <= 0 || scale <= 0 {
+func (g *game) appendProjectedOpaqueRects(rects []spriteOpaqueRect, texW int, flip bool, dstX, dstY, scaleX, scaleY float64, clipTop, clipBottom, viewW, viewH int) (int, int) {
+	if g == nil || len(rects) == 0 || texW <= 0 || scaleX <= 0 {
 		return 0, 0
 	}
 	start := len(g.projectedOpaqueRectScratch)
@@ -5886,7 +5888,7 @@ func (g *game) appendProjectedOpaqueRects(rects []spriteOpaqueRect, texW int, fl
 		if flip {
 			rect = flipSpriteOpaqueRectX(rect, texW)
 		}
-		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		x0, x1, y0, y1, ok := spriteRectScreenBounds(rect, dstX, dstY, scaleX, scaleY, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
@@ -6074,8 +6076,8 @@ func floorSpriteTop(dstH, yb float64) float64 {
 	return scene.FloorSpriteTop(dstH, yb)
 }
 
-func spriteRectScreenBounds(rect spriteOpaqueRect, dstX, dstY, scale float64, clipTop, clipBottom, viewW, viewH int) (int, int, int, int, bool) {
-	return scene.OpaqueRectScreenBounds(rect.minX(), rect.minY(), rect.maxX(), rect.maxY(), dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+func spriteRectScreenBounds(rect spriteOpaqueRect, dstX, dstY, scaleX, scaleY float64, clipTop, clipBottom, viewW, viewH int) (int, int, int, int, bool) {
+	return scene.OpaqueRectScreenBoundsXY(rect.minX(), rect.minY(), rect.maxX(), rect.maxY(), dstX, dstY, scaleX, scaleY, clipTop, clipBottom, viewW, viewH)
 }
 
 func puffItemScreenBounds(it projectedPuffItem, focal float64, viewW, viewH int) (int, int, int, int, bool) {
@@ -8078,14 +8080,14 @@ func maskedMidTextureColumn(tex WallTexture, texU float64) int {
 	return wrapIndex(txi, tex.Width)
 }
 
-func (g *game) collectCutoutItems(camX, camY, camAng, focal, near float64) {
+func (g *game) collectCutoutItems(camX, camY, camAng, focal, focalV, near float64) {
 	g.billboardQueueCollect = true
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
 	g.projectedOpaqueRectScratch = g.projectedOpaqueRectScratch[:0]
-	g.appendProjectileCutoutItems(camX, camY, camAng, focal, near)
-	g.appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near)
-	g.appendMonsterCutoutItems(camX, camY, camAng, focal, near)
-	g.appendThingCutoutItems(camX, camY, camAng, focal, near)
+	g.appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, near)
+	g.appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, near)
+	g.appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near)
+	g.appendThingCutoutItems(camX, camY, camAng, focal, focalV, near)
 	g.billboardQueueCollect = false
 }
 
@@ -8143,7 +8145,7 @@ func (g *game) sortCutoutItemsFrontToBack() {
 	})
 }
 
-func (g *game) drawCutoutItem(it cutoutItem, focal float64) {
+func (g *game) drawCutoutItem(it cutoutItem, focal, focalV float64) {
 	switch it.kind {
 	case billboardQueueProjectiles:
 		g.drawSpriteCutoutItem(it)
@@ -8155,7 +8157,7 @@ func (g *game) drawCutoutItem(it cutoutItem, focal float64) {
 		g.drawSpriteCutoutItem(it)
 	case billboardQueueMaskedMids:
 		if it.idx >= 0 && it.idx < len(g.maskedMidSegsScratch) {
-			g.drawMaskedMidSegRange(g.maskedMidSegsScratch[it.idx], it.x0, it.x1, focal, it.shadeMul, it.doomRow)
+			g.drawMaskedMidSegRange(g.maskedMidSegsScratch[it.idx], it.x0, it.x1, focalV, it.shadeMul, it.doomRow)
 		}
 	}
 }
@@ -8224,9 +8226,13 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		txLUT[x-x0] = tx
 	}
 	txRunEndLUT := g.buildSpriteTXRunEnds(txLUT)
+	scaleYEff := scale
+	if it.scaleY > 0 {
+		scaleYEff = it.scaleY
+	}
 	tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
 	for y := y0; y <= y1; y++ {
-		ty := int((float64(y) + 0.5 - it.dstY) / scale)
+		ty := int((float64(y) + 0.5 - it.dstY) / scaleYEff)
 		if ty < 0 {
 			ty = 0
 		}
@@ -8374,7 +8380,11 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 			if it.flip {
 				rect = flipSpriteOpaqueRectX(rect, tw)
 			}
-			rx0, rx1, ry0, ry1, ok := spriteRectScreenBounds(rect, it.dstX, it.dstY, it.scale, it.clipTop, it.clipBottom, g.viewW, g.viewH)
+			scaleYEff := it.scale
+			if it.scaleY > 0 {
+				scaleYEff = it.scaleY
+			}
+			rx0, rx1, ry0, ry1, ok := spriteRectScreenBounds(rect, it.dstX, it.dstY, it.scale, scaleYEff, it.clipTop, it.clipBottom, g.viewW, g.viewH)
 			if !ok {
 				tx0 = tx1 + 1
 				continue
@@ -8833,7 +8843,7 @@ func floorFixed(v float64) int64 {
 	return i
 }
 
-func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, ca, sa, eyeZ, focal float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) bool {
+func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, ca, sa, eyeZ, focal, focalV float64, ceilFallback, floorFallback color.RGBA, planes []*plane3DVisplane) bool {
 	if len(planes) == 0 {
 		return false
 	}
@@ -8935,7 +8945,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			}
 			return planeClipScratch
 		}
-		rowState, ok := g.planeRowRenderState(sp.y, key, eyeZ, camX, camY, ca, sa, focal, cx, cy)
+		rowState, ok := g.planeRowRenderState(sp.y, key, eyeZ, camX, camY, ca, sa, focal, focalV, cx, cy)
 		if !ok {
 			return planeClipScratch
 		}
@@ -9660,7 +9670,7 @@ func shadeByDistance(c color.RGBA, dist float64) color.RGBA {
 	}
 }
 
-func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float64) {
+func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, near float64) {
 	viewW := g.viewW
 	viewH := g.viewH
 	if len(g.wallPix32) != viewW*viewH {
@@ -9690,21 +9700,22 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			clipRadius = 8 * fracUnit
 		}
 		var clipOK bool
-		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(rx, ry, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(rx, ry, clipRadius, viewH, eyeZ, f, focalV)
 		if !clipOK {
 			continue
 		}
 		scale := focal / f
+		scaleY := focalV / f
 		if scale <= 0 {
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		yb := float64(viewH)/2 - ((float64(rz)/fracUnit-eyeZ)/f)*focal
+		yb := float64(viewH)/2 - ((float64(rz)/fracUnit-eyeZ)/f)*focalV
 		ref, ok := g.projectileSpriteRef(p.kind, p.frame)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		h := float64(ref.tex.Height) * scale
+		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
 			continue
@@ -9719,14 +9730,13 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			lightMul = g.sectorLightMulCached(sec)
 		}
 		depthQ := encodeDepthQ(f)
-		scale = h / float64(ref.tex.Height)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
-		dstY := yb - float64(ref.tex.OffsetY)*scale
+		dstY := yb - float64(ref.tex.OffsetY)*scaleY
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 &&
 			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
@@ -9749,6 +9759,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			dstX:            dstX,
 			dstY:            dstY,
 			scale:           scale,
+			scaleY:          scaleY,
 			opaque:          ref.opaque,
 			hasOpaque:       ref.hasOpaque,
 			opaqueRectStart: opaqueRectStart,
@@ -9768,21 +9779,22 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		clipBottom := viewH - 1
 		clipRadius := int64(6 * fracUnit)
 		var clipOK bool
-		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(cube.x, cube.y, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(cube.x, cube.y, clipRadius, viewH, eyeZ, f, focalV)
 		if !clipOK {
 			continue
 		}
 		scale := focal / f
+		scaleY := focalV / f
 		if scale <= 0 {
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		yb := float64(viewH)/2 - ((float64(cube.z)/fracUnit-eyeZ)/f)*focal
+		yb := float64(viewH)/2 - ((float64(cube.z)/fracUnit-eyeZ)/f)*focalV
 		ref, ok := g.bossCubeSpriteRef(g.worldTic)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		h := float64(ref.tex.Height) * scale
+		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
 			continue
@@ -9793,14 +9805,13 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			continue
 		}
 		depthQ := encodeDepthQ(f)
-		scale = h / float64(ref.tex.Height)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
-		dstY := yb - float64(ref.tex.OffsetY)*scale
+		dstY := yb - float64(ref.tex.OffsetY)*scaleY
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 &&
 			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
@@ -9823,6 +9834,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			dstX:            dstX,
 			dstY:            dstY,
 			scale:           scale,
+			scaleY:          scaleY,
 			opaque:          ref.opaque,
 			hasOpaque:       ref.hasOpaque,
 			opaqueRectStart: opaqueRectStart,
@@ -9842,21 +9854,22 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		clipBottom := viewH - 1
 		clipRadius := int64(20 * fracUnit)
 		var clipOK bool
-		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(fire.x, fire.y, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(fire.x, fire.y, clipRadius, viewH, eyeZ, f, focalV)
 		if !clipOK {
 			continue
 		}
 		scale := focal / f
+		scaleY := focalV / f
 		if scale <= 0 {
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		yb := float64(viewH)/2 - ((float64(fire.z)/fracUnit-eyeZ)/f)*focal
+		yb := float64(viewH)/2 - ((float64(fire.z)/fracUnit-eyeZ)/f)*focalV
 		ref, ok := g.bossSpawnFireSpriteRef(32 - fire.tics)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		h := float64(ref.tex.Height) * scale
+		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
 			continue
@@ -9867,14 +9880,13 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			continue
 		}
 		depthQ := encodeDepthQ(f)
-		scale = h / float64(ref.tex.Height)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
-		dstY := yb - float64(ref.tex.OffsetY)*scale
+		dstY := yb - float64(ref.tex.OffsetY)*scaleY
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 &&
 			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
@@ -9897,6 +9909,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			dstX:            dstX,
 			dstY:            dstY,
 			scale:           scale,
+			scaleY:          scaleY,
 			opaque:          ref.opaque,
 			hasOpaque:       ref.hasOpaque,
 			opaqueRectStart: opaqueRectStart,
@@ -9917,21 +9930,22 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 		clipBottom := viewH - 1
 		clipRadius := int64(8 * fracUnit)
 		var clipOK bool
-		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(fx.x, fx.y, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(fx.x, fx.y, clipRadius, viewH, eyeZ, f, focalV)
 		if !clipOK {
 			continue
 		}
 		scale := focal / f
+		scaleY := focalV / f
 		if scale <= 0 {
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
-		yb := float64(viewH)/2 - ((float64(fx.z)/fracUnit-eyeZ)/f)*focal
+		yb := float64(viewH)/2 - ((float64(fx.z)/fracUnit-eyeZ)/f)*focalV
 		ref, ok := g.projectileImpactSpriteRef(fx.kind, fx.phase)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		h := float64(ref.tex.Height) * scale
+		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
 			continue
@@ -9946,14 +9960,13 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			lightMul = g.sectorLightMulCached(sec)
 		}
 		depthQ := encodeDepthQ(f)
-		scale = h / float64(ref.tex.Height)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
-		dstY := yb - float64(ref.tex.OffsetY)*scale
+		dstY := yb - float64(ref.tex.OffsetY)*scaleY
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 &&
 			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
@@ -9976,6 +9989,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 			dstX:            dstX,
 			dstY:            dstY,
 			scale:           scale,
+			scaleY:          scaleY,
 			opaque:          ref.opaque,
 			hasOpaque:       ref.hasOpaque,
 			opaqueRectStart: opaqueRectStart,
@@ -9985,7 +9999,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, near float
 	}
 }
 
-func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near float64) {
+func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, near float64) {
 	viewW := g.viewW
 	viewH := g.viewH
 	if len(g.wallPix32) != viewW*viewH || len(g.hitscanPuffs) == 0 {
@@ -10008,22 +10022,23 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near floa
 		clipTop := 0
 		clipBottom := viewH - 1
 		clipRadius := int64(8 * fracUnit)
-		clipTop, clipBottom, ok := g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, ok := g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focalV)
 		if !ok {
 			continue
 		}
 		scale := focal / f
+		scaleY := focalV / f
 		if scale <= 0 {
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		pz := float64(p.z) / fracUnit
-		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focal
+		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focalV
 		ref, ok := g.hitscanEffectSpriteRef(p)
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Width <= 0 || ref.tex.Height <= 0 {
 			continue
 		}
-		h := float64(ref.tex.Height) * scale
+		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
 			continue
@@ -10035,12 +10050,12 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near floa
 		}
 		depthQ := encodeDepthQ(f)
 		dstX := sx - float64(ref.tex.OffsetX)*scale
-		dstY := sy - float64(ref.tex.OffsetY)*scale
+		dstY := sy - float64(ref.tex.OffsetY)*scaleY
 		x0, x1, y0, y1, ok := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if !ok {
 			continue
 		}
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 &&
 			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
@@ -10063,6 +10078,7 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, near floa
 			dstX:            dstX,
 			dstY:            dstY,
 			scale:           scale,
+			scaleY:          scaleY,
 			opaque:          ref.opaque,
 			hasOpaque:       ref.hasOpaque,
 			opaqueRectStart: opaqueRectStart,
@@ -10524,7 +10540,7 @@ func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 	return p.tics > 0
 }
 
-func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64) {
+func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, focalV, near float64) {
 	wallPix := g.wallPix32
 	viewW := g.viewW
 	viewH := g.viewH
@@ -10549,13 +10565,13 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 		clipBottom := viewH - 1
 		clipRadius := int64(8 * fracUnit)
 		var clipOK bool
-		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK = g.spriteFootprintClipYBounds(p.x, p.y, clipRadius, viewH, eyeZ, f, focalV)
 		if !clipOK {
 			continue
 		}
 		sx := float64(viewW)/2 - (s/f)*focal
 		pz := float64(p.z) / fracUnit
-		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focal
+		sy := float64(viewH)/2 - ((pz-eyeZ)/f)*focalV
 		spriteTex, hasSprite := g.hitscanEffectSprite(p)
 		if !hasSprite || spriteTex == nil || spriteTex.Width <= 0 || spriteTex.Height <= 0 {
 			continue
@@ -10569,11 +10585,11 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, near float64)
 			spriteTex:  spriteTex,
 			hasSprite:  true,
 		}
-		g.drawProjectedPuffItem(it, focal, viewW, viewH)
+		g.drawProjectedPuffItem(it, focal, focalV, viewW, viewH)
 	}
 }
 
-func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal float64, viewW, viewH int) {
+func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal, focalV float64, viewW, viewH int) {
 	if !it.hasSprite || it.spriteTex == nil {
 		return
 	}
@@ -10588,13 +10604,14 @@ func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal float64, viewW,
 		return
 	}
 	scale := focal / it.dist
+	scaleY := focalV / it.dist
 	if scale <= 0 {
 		return
 	}
 	dstW := float64(tw) * scale
-	dstH := float64(th) * scale
+	dstH := float64(th) * scaleY
 	dstX := it.sx - float64(it.spriteTex.OffsetX)*scale
-	dstY := it.sy - float64(it.spriteTex.OffsetY)*scale
+	dstY := it.sy - float64(it.spriteTex.OffsetY)*scaleY
 	x0 := int(math.Floor(dstX))
 	y0 := int(math.Floor(dstY))
 	x1 := int(math.Ceil(dstX+dstW)) - 1
@@ -10636,7 +10653,7 @@ func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal float64, viewW,
 	}
 	tyLUT := g.ensureSpriteTYScratch(y1 - y0 + 1)
 	for y := y0; y <= y1; y++ {
-		ty := int((float64(y) + 0.5 - dstY) / scale)
+		ty := int((float64(y) + 0.5 - dstY) / scaleY)
 		if ty < 0 {
 			ty = 0
 		}
@@ -10665,7 +10682,7 @@ func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal float64, viewW,
 	}
 }
 
-func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64) {
+func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near float64) {
 	viewW := g.viewW
 	viewH := g.viewH
 	if len(g.wallPix32) != viewW*viewH {
@@ -10700,17 +10717,22 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			continue
 		}
 		clipRadius := monsterSpriteClipRadius(th.Type)
-		clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focalV)
 		if !clipOK {
 			continue
 		}
 		scale := focal / f
+		scaleY := focalV / f
 		if scale <= 0 {
 			continue
 		}
-		clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scale, viewH)
-		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focal
-		w, h, dstX, dstY, x0, x1, y0, y1, boundsOK := cacheOriginSpriteItemGeometry(sx, sy, scale, ref.tex, clipTop, clipBottom, viewW, viewH)
+		clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scaleY, viewH)
+		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focalV
+		w := float64(ref.tex.Width) * scale
+		h := float64(ref.tex.Height) * scaleY
+		dstX := sx - float64(ref.tex.OffsetX)*scale
+		dstY := sy - float64(ref.tex.OffsetY)*scaleY
+		x0, x1, y0, y1, boundsOK := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
 		if h <= 0 || w <= 0 {
 			continue
 		}
@@ -10729,7 +10751,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 		if !boundsOK {
 			continue
 		}
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 &&
 			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
@@ -10754,6 +10776,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, near float64)
 			dstX:            dstX,
 			dstY:            dstY,
 			scale:           scale,
+			scaleY:          scaleY,
 			opaque:          ref.opaque,
 			hasOpaque:       ref.hasOpaque,
 			opaqueRectStart: opaqueRectStart,
@@ -10797,7 +10820,7 @@ func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref 
 	if !boundsOK || h <= 0 || w <= 0 {
 		return
 	}
-	opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, clipTop, clipBottom, g.viewW, g.viewH)
+	opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, scale, clipTop, clipBottom, g.viewW, g.viewH)
 	g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
 		dist:            f,
 		depthQ:          encodeDepthQ(f),
@@ -10943,7 +10966,7 @@ func (g *game) drawShadowSpriteCutoutSourcePort(
 	}
 }
 
-func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, near float64) {
+func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, focalV, near float64) {
 	viewW := g.viewW
 	viewH := g.viewH
 	if len(g.wallPix32) != viewW*viewH {
@@ -10974,13 +10997,14 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, near float64) {
 			continue
 		}
 		scale := focal / f
+		scaleY := focalV / f
 		if scale <= 0 {
 			continue
 		}
 		floorZFixed := g.thingFloorZ(txFixed, tyFixed)
 		floorZ := float64(floorZFixed) / fracUnit
-		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focal
-		h := float64(ref.tex.Height) * scale
+		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focalV
+		h := float64(ref.tex.Height) * scaleY
 		if h <= 0 {
 			continue
 		}
@@ -10991,7 +11015,7 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, near float64) {
 			continue
 		}
 		clipRadius := worldThingSpriteClipRadius(th.Type)
-		clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focal)
+		clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, viewH, eyeZ, f, focalV)
 		if !clipOK {
 			continue
 		}
@@ -11000,12 +11024,15 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, near float64) {
 			lightMul = g.sectorLightMulCached(sec)
 		}
 		depthQ := encodeDepthQ(f)
-		scale, dstX, dstY, x0, x1, y0, y1, boundsOK := cacheFloorSpriteItemGeometry(sx, yb, h, ref.tex, clipTop, clipBottom, viewW, viewH)
+		dstW := float64(ref.tex.Width) * scale
+		dstX := sx - float64(ref.tex.OffsetX)*scale
+		dstY := floorSpriteTop(h, yb)
+		x0, x1, y0, y1, boundsOK := scene.ClampedSpriteBounds(dstX, dstY, dstW, h, clipTop, clipBottom, viewW, viewH)
 		shadeMul := g.cachedThingShadeMul(i, ref.fullBright, lightMul, f, near)
 		if !boundsOK {
 			continue
 		}
-		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, clipTop, clipBottom, viewW, viewH)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
 		if opaqueRectCount > 0 &&
 			g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
 			continue
@@ -11028,6 +11055,7 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, near float64) {
 			dstX:            dstX,
 			dstY:            dstY,
 			scale:           scale,
+			scaleY:          scaleY,
 			opaque:          ref.opaque,
 			hasOpaque:       ref.hasOpaque,
 			opaqueRectStart: opaqueRectStart,
@@ -14394,6 +14422,18 @@ func doomFocalLength(viewW int) float64 {
 		return 1
 	}
 	return float64(viewW) * 0.5
+}
+
+// doomPixelAspect is the classic Doom pixel aspect ratio.
+// Doom rendered at 320x200 but was displayed at 4:3 (320x240 effective),
+// so each pixel is 6/5 taller than wide when displayed correctly.
+const doomPixelAspect = 6.0 / 5.0
+
+func (g *game) verticalFocalLength(focal float64) float64 {
+	if g != nil && g.opts.SourcePortMode && !g.opts.DisableGeometryAspectCorrect {
+		return focal * doomPixelAspect
+	}
+	return focal
 }
 
 func shadeRGBByMul(r, g, b byte, mul uint32) (byte, byte, byte) {

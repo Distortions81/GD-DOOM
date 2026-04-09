@@ -89,19 +89,24 @@ func (g *game) drawStatusBarCacheImage(screen *ebiten.Image, state statusBarCach
 	if g == nil || g.statusBarCacheImg == nil {
 		return
 	}
+	aspectY := 1.0
+	if g.opts.SourcePortMode && !g.opts.DisableGeometryAspectCorrect {
+		aspectY = doomPixelAspect
+	}
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
 	switch state.mode {
 	case statusBarDisplayOverlay:
 		scale := math.Max(1.0, state.hudScale)
+		scaleY := scale * aspectY
 		x := (float64(g.viewW) - float64(g.statusBarCacheImg.Bounds().Dx())*scale) * 0.5
-		y := float64(g.viewH) - float64(g.statusBarCacheImg.Bounds().Dy())*scale
-		op.GeoM.Scale(scale, scale)
+		y := float64(g.viewH) - float64(g.statusBarCacheImg.Bounds().Dy())*scaleY
+		op.GeoM.Scale(scale, scaleY)
 		op.GeoM.Translate(x, y)
 	default:
 		sx, sy, ox, oy := hud.Transform(g.viewW, g.viewH, g.hudUsesLogicalLayout(), state.hudScale)
-		op.GeoM.Scale(sx, sy)
-		op.GeoM.Translate(ox, oy+statusBarLogicalY*sy)
+		op.GeoM.Scale(sx, sy*aspectY)
+		op.GeoM.Translate(ox, oy+statusBarLogicalY*sy*aspectY)
 	}
 	screen.DrawImage(g.statusBarCacheImg, op)
 }
