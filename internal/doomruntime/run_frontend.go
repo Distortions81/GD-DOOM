@@ -628,14 +628,20 @@ func (sg *sessionGame) tickFrontend() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
+	escape := sg.keyJustPressed(ebiten.KeyEscape)
+	up := sg.keyJustPressed(ebiten.KeyArrowUp)
+	down := sg.keyJustPressed(ebiten.KeyArrowDown)
+	left := sg.keyJustPressed(ebiten.KeyArrowLeft)
+	right := sg.keyJustPressed(ebiten.KeyArrowRight)
+	selectPressed := sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter)
 	input := sessionflow.FrontendInput{
-		Escape: sg.keyJustPressed(ebiten.KeyEscape),
-		Up:     sg.keyJustPressed(ebiten.KeyArrowUp),
-		Down:   sg.keyJustPressed(ebiten.KeyArrowDown),
-		Left:   sg.keyJustPressed(ebiten.KeyArrowLeft),
-		Right:  sg.keyJustPressed(ebiten.KeyArrowRight),
-		Select: sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter),
-		Skip:   sg.anyIntermissionSkipInput(),
+		Escape: escape,
+		Up:     up,
+		Down:   down,
+		Left:   left,
+		Right:  right,
+		Select: selectPressed,
+		Skip:   escape || up || down || left || right || selectPressed || sg.anyIntermissionSkipInput(),
 	}
 	result := sessionflow.StepFrontend(
 		sessionflow.Frontend(sg.frontend),

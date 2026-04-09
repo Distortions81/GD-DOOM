@@ -5,6 +5,8 @@ import (
 
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
+
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 func TestFrontendMenuItemDisabledForWatchMode(t *testing.T) {
@@ -68,5 +70,30 @@ func TestStartGameFromFrontendBroadcastsMandatoryKeyframe(t *testing.T) {
 	}
 	if got := sg.current; got != "E1M1" {
 		t.Fatalf("current=%q want E1M1", got)
+	}
+}
+
+func TestTickFrontendClosedTitleTreatsEnterAsSkip(t *testing.T) {
+	sg := &sessionGame{
+		frontend: frontendState{
+			Active:     true,
+			Mode:       frontendModeTitle,
+			ItemOn:     1,
+			Attract:    false,
+			InGame:     false,
+			MenuActive: false,
+		},
+		input: sessionInputSnapshot{
+			justPressedKeys: map[ebiten.Key]int{
+				ebiten.KeyEnter: 1,
+			},
+		},
+	}
+
+	if err := sg.tickFrontend(); err != nil {
+		t.Fatalf("tickFrontend() error = %v", err)
+	}
+	if !sg.frontend.MenuActive {
+		t.Fatal("expected enter to open the closed title menu")
 	}
 }
