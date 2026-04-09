@@ -2369,11 +2369,14 @@ func (g *game) cycleSourcePortDetailLevel() {
 		g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailLevelLabelFor(g.detailLevel)), 70)
 		return
 	}
-	next := (g.detailLevel + 1) % len(sourcePortDetailDivisors)
-	if next == 0 {
+	if g.detailLevel == 0 {
 		g.autoDetailEnabled = true
 		g.setHUDMessage("Detail: AUTO", 70)
 		return
+	}
+	next := g.detailLevel + 1
+	if next >= len(sourcePortDetailDivisors) {
+		next = 0
 	}
 	_ = g.setDetailLevel(next)
 	g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailHUDLabel()), 70)

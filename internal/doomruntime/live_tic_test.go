@@ -198,6 +198,7 @@ func TestUpdateWatchModeLowLatencySkipsStartupBuffer(t *testing.T) {
 func TestUpdateWatchModeAppliesLocalDetailAndGammaWithoutQueuedTics(t *testing.T) {
 	g := mustLoadE1M1GameForMapTextureTests(t)
 	startDetail := g.detailLevel
+	startAutoDetail := g.autoDetailEnabled
 	startGamma := g.gammaLevel
 	g.opts.LiveTicSource = &testLiveTicSource{}
 	g.input.justPressedKeys = map[ebiten.Key]struct{}{
@@ -208,8 +209,8 @@ func TestUpdateWatchModeAppliesLocalDetailAndGammaWithoutQueuedTics(t *testing.T
 	if err := g.Update(); err != nil {
 		t.Fatalf("Update() error = %v", err)
 	}
-	if g.detailLevel == startDetail {
-		t.Fatalf("detailLevel=%d want change from %d", g.detailLevel, startDetail)
+	if g.detailLevel == startDetail && g.autoDetailEnabled == startAutoDetail {
+		t.Fatalf("detail state unchanged: level=%d auto=%t", g.detailLevel, g.autoDetailEnabled)
 	}
 	if g.gammaLevel == startGamma {
 		t.Fatalf("gammaLevel=%d want change from %d", g.gammaLevel, startGamma)

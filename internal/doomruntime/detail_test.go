@@ -123,11 +123,21 @@ func TestCycleSourcePortDetailLevelIncludesAuto(t *testing.T) {
 		t.Fatalf("after 2 cycles useText=%q want Detail: 1/4x", g.useText)
 	}
 	g.cycleSourcePortDetailLevel()
+	if g.detailLevel != 0 {
+		t.Fatalf("after 3 cycles detail=%d want 0", g.detailLevel)
+	}
+	if g.autoDetailEnabled {
+		t.Fatal("third source-port cycle should stay manual at 1x")
+	}
+	if g.useText != "Detail: 1x" {
+		t.Fatalf("after 3 cycles useText=%q want Detail: 1x", g.useText)
+	}
+	g.cycleSourcePortDetailLevel()
 	if !g.autoDetailEnabled {
-		t.Fatal("third source-port cycle should return to auto detail")
+		t.Fatal("fourth source-port cycle should return to auto detail")
 	}
 	if g.useText != "Detail: AUTO" {
-		t.Fatalf("after 3 cycles useText=%q want Detail: AUTO", g.useText)
+		t.Fatalf("after 4 cycles useText=%q want Detail: AUTO", g.useText)
 	}
 }
 
