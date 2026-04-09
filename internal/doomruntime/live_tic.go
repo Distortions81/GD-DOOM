@@ -126,17 +126,6 @@ func (g *game) updateWatchMode() error {
 				g.setHUDMessage("Automap Closed", 35)
 			}
 		}
-		if g.keyJustPressed(ebiten.KeyTab) {
-			if g.mode == viewWalk {
-				g.mode = viewMap
-				g.setHUDMessage("Automap Opened", 35)
-			} else {
-				g.mode = viewWalk
-				g.mouseLookSet = false
-				g.mouseLookSuppressTicks = detailMouseSuppressTicks
-				g.setHUDMessage("Automap Closed", 35)
-			}
-		}
 		g.edgeInputPass = true
 		g.updateParityControls()
 		if g.keyJustPressed(ebiten.KeyF5) {

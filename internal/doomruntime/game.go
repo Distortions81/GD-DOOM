@@ -2547,18 +2547,6 @@ func (g *game) Update() error {
 				g.setHUDMessage("Automap Closed", 35)
 			}
 		}
-		if g.keyJustPressed(ebiten.KeyTab) {
-			if g.mode == viewWalk {
-				g.mode = viewMap
-				g.setHUDMessage("Automap Opened", 35)
-			} else {
-				g.mode = viewWalk
-				// Reset mouse baseline when entering walk mode to avoid turn spikes.
-				g.mouseLookSet = false
-				g.mouseLookSuppressTicks = detailMouseSuppressTicks
-				g.setHUDMessage("Automap Closed", 35)
-			}
-		}
 		if g.opts.SourcePortMode && g.keyJustPressed(ebiten.KeyR) {
 			g.rotateView = !g.rotateView
 			if g.rotateView {
