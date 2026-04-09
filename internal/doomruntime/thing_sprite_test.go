@@ -54,8 +54,15 @@ func TestWorldThingSpriteName_PickupAndDecor(t *testing.T) {
 				"FCANA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"FCANB0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 				"FCANC0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"PLAYW0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
 			},
 		},
+	}
+	if got := g.worldThingSpriteName(10, 0); got != "PLAYW0" {
+		t.Fatalf("gibbed marine sprite type10=%q want PLAYW0", got)
+	}
+	if got := g.worldThingSpriteName(12, 0); got != "PLAYW0" {
+		t.Fatalf("gibbed marine sprite type12=%q want PLAYW0", got)
 	}
 	if got := g.worldThingSpriteName(2011, 0); got != "STIMA0" {
 		t.Fatalf("stimpack sprite=%q want STIMA0", got)
@@ -107,6 +114,51 @@ func TestWorldThingSpriteName_PickupAndDecor(t *testing.T) {
 	}
 	if got := g.worldThingSpriteName(70, 4); got != "FCANB0" {
 		t.Fatalf("burning barrel sprite tic4=%q want FCANB0", got)
+	}
+}
+
+func TestE1M1ThingTypesHaveWorldSprites(t *testing.T) {
+	g := &game{
+		opts: Options{
+			SpritePatchBank: map[string]WallTexture{
+				"PLAYN0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"PLAYW0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"POSSL0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"POL5A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"CBRAA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"ELECA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"SHOTA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"MGUNA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"LAUNA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"CLIPA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"SHELA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"STIMA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"MEDIA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"BON1A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"BON2A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"ARM1A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"ARM2A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"COLUA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"BAR1A0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"BROKA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"AMMOA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"SBOXA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"TROOA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+				"POSSA0": {Width: 1, Height: 1, RGBA: []byte{255, 255, 255, 255}},
+			},
+		},
+	}
+	for _, typ := range []int16{
+		1, 2, 3, 4, 9, 10, 11, 12, 15, 24, 35, 48,
+		2001, 2002, 2003, 2007, 2008, 2011, 2012, 2014, 2015, 2018, 2019,
+		2028, 2035, 2046, 2048, 2049, 3001, 3004,
+	} {
+		if isPlayerStart(typ) || isDeathmatchStart(typ) || isMonster(typ) {
+			continue
+		}
+		if got := g.worldThingSpriteName(typ, 0); got == "" {
+			t.Fatalf("E1M1 thing type %d missing world sprite mapping", typ)
+		}
 	}
 }
 

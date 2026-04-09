@@ -11098,6 +11098,8 @@ func (g *game) worldThingSpriteNameScaled(typ int16, tickUnits, unitsPerTic int)
 	switch typ {
 	case 15:
 		return pick("PLAYN0")
+	case 10, 12:
+		return pick("PLAYW0")
 	case 18:
 		return pick("POSSL0")
 	case 19:
@@ -11640,6 +11642,8 @@ func (g *game) worldThingAnimRefs(typ int16) thingAnimRefState {
 	switch typ {
 	case 15:
 		anim = g.thingAnimRefsFromSeq("PLAYN0")
+	case 10, 12:
+		anim = g.thingAnimRefsFromSeq("PLAYW0")
 	case 18:
 		anim = g.thingAnimRefsFromSeq("POSSL0")
 	case 19:
