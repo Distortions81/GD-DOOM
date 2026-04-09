@@ -8,7 +8,7 @@
 <p align="center">
   <img src="e1m1.png" alt="E1M1 screenshot" width="900">
   <br>
-  Source Port mode shown above.
+  Source Port mode shown above, 3840x2160 [4k].
   <br>
   Browser build: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
 </p>
