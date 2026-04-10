@@ -163,8 +163,11 @@ type pcSpeakerSource struct {
 	resY2        float64
 	res2Y1       float64
 	res2Y2       float64
+	acY1         float64
+	acY2         float64
 	hpState      float64
 	driftPhase   float64
+	piezoPhase   float64
 	freqSmooth   float64
 	lastFreq     float64
 	lastPiezoIn  float64
@@ -235,12 +238,32 @@ const (
 // front/back wave interference. Applied twice (cascaded) for 12dB/oct dipole rolloff.
 var spkHPAlpha = 1.0 / (1.0 + 2*math.Pi*spkAcousticCutoff/44100)
 var cleanDCBlockAlpha = 1.0 / (1.0 + 2*math.Pi*20.0/44100)
-var piezoPreLPAlpha = math.Exp(-2 * math.Pi * 6000.0 / 44100)
-var piezoFreqSmoothAlpha = math.Exp(-2 * math.Pi * 55.0 / 44100)
-var piezoHPAlpha = math.Exp(-2 * math.Pi * 700.0 / 44100)
-var piezoEnvAttackAlpha = math.Exp(-1.0 / (0.002 * 44100.0))
-var piezoEnvReleaseAlpha = math.Exp(-1.0 / (0.020 * 44100.0))
-var piezoDriveAlpha = 0.012
+
+// Moving-iron buzzer model: Re/Le electrical roll-off feeding one dominant
+// diaphragm mode plus a weaker enclosure/vent mode.
+const (
+	piezoReOhms        = 4.5
+	piezoLeHenries     = 0.0053
+	piezoF0Hz          = 2400.0
+	piezoQ             = 7.0
+	piezoCabF0Hz       = 4100.0
+	piezoCabQ          = 4.8
+	piezoHoleF0Hz      = 2850.0
+	piezoHoleQ         = 6.8
+	piezoRadiationHPHz = 2400.0
+	piezoDriveGain     = 44.0
+	piezoPrimaryMix    = 0.18
+	piezoSecondaryMix  = 0.08
+	piezoHoleMix       = 3.8
+	piezoDriveAsymPos  = 1.15
+	piezoDriveAsymNeg  = 0.90
+	piezoDriftHz       = 0.55
+	piezoDriftRangeHz  = 10.0
+	piezoNoiseMix      = 0.0003
+)
+
+var piezoElectricalAlpha = math.Exp(-2 * math.Pi * (piezoReOhms / (2 * math.Pi * piezoLeHenries)) / 44100)
+var piezoHPAlpha = math.Exp(-2 * math.Pi * piezoRadiationHPHz / 44100)
 
 func modelForVariant(v PCSpeakerVariant) pcSpeakerModel {
 	switch v {
@@ -256,7 +279,7 @@ func modelForVariant(v PCSpeakerVariant) pcSpeakerModel {
 		}
 	case PCSpeakerVariantPiezo:
 		return pcSpeakerModel{
-			hpAlpha:       0,
+			hpAlpha:       1.0,
 			gain:          1.0,
 			reverbMix:     spkReverbMix,
 			restLength:    0,
@@ -369,16 +392,6 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 
 		var rawVel float64
 		if s.variant == PCSpeakerVariantPiezo {
-			targetFreq := 0.0
-			if tone.Active {
-				if divisor := float64(tone.ToneDivisor()); divisor > 0 {
-					targetFreq = float64(sound.PCSpeakerPITHz()) / divisor
-				}
-			}
-			s.freqSmooth = piezoFreqSmoothAlpha*s.freqSmooth + (1-piezoFreqSmoothAlpha)*targetFreq
-			modDelta := math.Abs(s.freqSmooth - s.lastFreq)
-			s.lastFreq = s.freqSmooth
-
 			signedIn := 0.0
 			if tone.Active {
 				if pitOut > 0 {
@@ -387,61 +400,69 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 					signedIn = -1.0
 				}
 			}
-			s.lpState = piezoPreLPAlpha*s.lpState + (1-piezoPreLPAlpha)*signedIn
-			if signedIn > 0 && s.lastPiezoIn <= 0 {
-				s.piezoTickAge = 10
-			}
+
+			// Coil current is limited by Re/Le before the armature can respond.
+			s.lpState = piezoElectricalAlpha*s.lpState + (1-piezoElectricalAlpha)*signedIn
+			coilCurrent := s.lpState
 			s.lastPiezoIn = signedIn
-			envIn := math.Abs(s.lpState)
-			if envIn > s.envState {
-				s.envState = piezoEnvAttackAlpha*s.envState + (1-piezoEnvAttackAlpha)*envIn
-			} else {
-				s.envState = piezoEnvReleaseAlpha*s.envState + (1-piezoEnvReleaseAlpha)*envIn
-			}
-			driveTarget := s.envState * signedIn
-			s.driveState += piezoDriveAlpha * (driveTarget - s.driveState)
-			drive := s.driveState
-			if s.piezoTickAge > 0 {
-				drive += 0.14 * float64(s.piezoTickAge) / 10.0
-				s.piezoTickAge--
-			}
 			s.noiseState = s.noiseState*1664525 + 1013904223
-			noise := (float64((s.noiseState>>16)&0xffff)/32767.5 - 1.0) * 0.01
-			drive += noise
-			s.driftPhase += 2 * math.Pi * 0.8 / float64(s.rate)
+			noise := (float64((s.noiseState>>16)&0xffff)/32767.5 - 1.0) * piezoNoiseMix
+			s.driftPhase += 2 * math.Pi * piezoDriftHz / float64(s.rate)
 			if s.driftPhase > 2*math.Pi {
 				s.driftPhase -= 2 * math.Pi
 			}
-			f0 := 2700.0*(1.0+0.01*math.Tanh(s.envState)) + 45.0*math.Sin(s.driftPhase)
-			modNorm := math.Min(1.0, modDelta/400.0)
-			q := 7.0 / (1.0 + 1.5*math.Abs(s.resY1) + 3.0*modNorm)
-			r := math.Exp(-math.Pi * f0 / (q * float64(s.rate)))
-			theta := 2 * math.Pi * f0 / float64(s.rate)
-			a1 := 2 * r * math.Cos(theta)
-			a2 := -r * r
-			drive *= 1.0 + 0.3*math.Abs(drive)
-			y := a1*s.resY1 + a2*s.resY2 + 0.28*drive
+
+			// Magnetic drive is slightly asymmetric near saturation.
+			drive := coilCurrent
+			if drive >= 0 {
+				drive = math.Tanh(drive * piezoDriveAsymPos)
+			} else {
+				drive = math.Tanh(drive * piezoDriveAsymNeg)
+			}
+			s.driveState = 0.995*s.driveState + 0.005*math.Abs(drive)
+
+			// Moving-iron diaphragm: one dominant armature/diaphragm mode and a
+			// weaker cavity mode from the tiny plastic enclosure and vent hole.
+			f0 := piezoF0Hz*(1.0+0.004*math.Tanh(s.driveState)) + piezoDriftRangeHz*math.Sin(s.driftPhase)
+			r1 := math.Exp(-math.Pi * f0 / (piezoQ * float64(s.rate)))
+			w1 := 2 * math.Pi * f0 / float64(s.rate)
+			y1 := 2*r1*math.Cos(w1)*s.resY1 - r1*r1*s.resY2 + (1-r1)*drive
 			s.resY2 = s.resY1
-			s.resY1 = y
-			f02 := 4700.0*(1.0+0.006*math.Tanh(math.Abs(drive))) + 25.0*math.Sin(s.driftPhase*0.71)
-			q2 := 4.5 / (1.0 + 1.0*math.Abs(y) + 1.5*modNorm)
-			r2 := math.Exp(-math.Pi * f02 / (q2 * float64(s.rate)))
-			theta2 := 2 * math.Pi * f02 / float64(s.rate)
-			b1 := 2 * r2 * math.Cos(theta2)
-			b2 := -r2 * r2
-			y2 := b1*s.res2Y1 + b2*s.res2Y2 + 0.10*drive
+			s.resY1 = y1
+
+			f1 := piezoCabF0Hz + 36.0*math.Sin(s.driftPhase*0.61+0.4)
+			r2 := math.Exp(-math.Pi * f1 / (piezoCabQ * float64(s.rate)))
+			w2 := 2 * math.Pi * f1 / float64(s.rate)
+			y2 := 2*r2*math.Cos(w2)*s.res2Y1 - r2*r2*s.res2Y2 + (1-r2)*drive
 			s.res2Y2 = s.res2Y1
 			s.res2Y1 = y2
-			rawVel = 0.92*y + 0.30*y2
-			rawVel = rawVel / (1.0 + 0.5*math.Abs(rawVel))
+
+			mainBand := y1 - s.resY2
+			upperBand := y2 - s.res2Y2
+
+			// Tiny plastic case + vent hole: cavity compliance and hole air mass
+			// form the second narrow acoustic band-pass that dominates the tone.
+			acF := piezoHoleF0Hz + 22.0*math.Sin(s.driftPhase*0.47+0.2)
+			acR := math.Exp(-math.Pi * acF / (piezoHoleQ * float64(s.rate)))
+			acW := 2 * math.Pi * acF / float64(s.rate)
+			acDrive := mainBand + upperBand*0.35
+			acY := 2*acR*math.Cos(acW)*s.acY1 - acR*acR*s.acY2 + (1-acR)*acDrive
+			s.acY2 = s.acY1
+			s.acY1 = acY
+			holeBand := acY - s.acY2
+
+			rawVel = mainBand*piezoPrimaryMix + holeBand*piezoHoleMix + upperBand*piezoSecondaryMix + noise
+
 			s.hpState = piezoHPAlpha*s.hpState + (1-piezoHPAlpha)*rawVel
 			rawVel -= s.hpState
+			s.freqSmooth = 0.52*s.freqSmooth + 0.48*rawVel
+			rawVel = s.freqSmooth
 			if rawVel >= 0 {
-				rawVel = rawVel / (1.0 + 0.30*rawVel)
+				rawVel = rawVel / (1.0 + 0.24*rawVel)
 			} else {
-				rawVel = rawVel / (1.0 + 0.55*math.Abs(rawVel))
+				rawVel = rawVel / (1.0 + 0.34*math.Abs(rawVel))
 			}
-			rawVel *= math.MaxInt16 * 0.35
+			rawVel *= math.MaxInt16 * (piezoDriveGain * 4.0)
 		} else {
 			// Keep the original paper-speaker path exactly on the committed constants.
 			force := pitOut * spkDrive
@@ -540,6 +561,8 @@ func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 	s.resY2 = 0
 	s.res2Y1 = 0
 	s.res2Y2 = 0
+	s.acY1 = 0
+	s.acY2 = 0
 	s.hpState = 0
 	s.driftPhase = 0
 	s.freqSmooth = 0
@@ -574,6 +597,8 @@ func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.resY2 = 0
 	s.res2Y1 = 0
 	s.res2Y2 = 0
+	s.acY1 = 0
+	s.acY2 = 0
 	s.hpState = 0
 	s.driftPhase = 0
 	s.freqSmooth = 0
