@@ -65,7 +65,7 @@ func TestSampleForEventSwitchSounds(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
-	s := newSoundSystem(SoundBank{}, nil, 1, true, false)
+	s := newSoundSystem(SoundBank{}, nil, 1, true, false, audiofx.PCSpeakerVariantSmallSpeaker)
 	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}
@@ -86,7 +86,7 @@ func TestMonsterVocalPreDelaySamples_RangeAndEventFilter(t *testing.T) {
 }
 
 func TestMonsterVocalPreDelaySamples_DoesNotAdvancePRandom(t *testing.T) {
-	s := newSoundSystem(SoundBank{}, nil, 1, true, false)
+	s := newSoundSystem(SoundBank{}, nil, 1, true, false, audiofx.PCSpeakerVariantSmallSpeaker)
 	if s == nil || s.player == nil {
 		t.Skip("audio context unavailable")
 	}

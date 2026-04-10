@@ -59,6 +59,7 @@ type fileConfig struct {
 	RecordDemo                 *string                   `toml:"record_demo"`
 	DemoStopAfterTics          *int                      `toml:"demo_stop_after_tics"`
 	PCSpeaker                  *bool                     `toml:"pc_speaker"`
+	PCSpeakerVariant           *string                   `toml:"pc_speaker_variant"`
 	NoVsync                    *bool                     `toml:"no_vsync"`
 	NoFPS                      *bool                     `toml:"no_fps"`
 	NoAspectCorrection         *bool                     `toml:"no_aspect_correction"`

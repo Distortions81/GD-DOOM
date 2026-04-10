@@ -139,7 +139,7 @@ func TestPickerDefaultsPreferSourcePortAndFirstNonSharewareIWAD(t *testing.T) {
 	game, err := newIWADPickerGame([]iwadChoice{
 		{Path: "/tmp/doom.wad", Label: "The Ultimate DOOM"},
 		{Path: "/tmp/doom2.wad", Label: "DOOM II: Hell on Earth"},
-	}, music.BackendImpSynth, nil)
+	}, music.BackendImpSynth, "paper-speaker", nil)
 	if err != nil {
 		t.Fatalf("newIWADPickerGame() error: %v", err)
 	}
@@ -184,7 +184,7 @@ func TestShouldOpenIWADPickerRequiresChoicesAndRender(t *testing.T) {
 func TestWASMPickerStartsAtIWADStageEvenWithSingleChoice(t *testing.T) {
 	game, err := newIWADPickerGame([]iwadChoice{
 		{Path: "/tmp/doom1.wad", Label: "DOOM Shareware"},
-	}, music.BackendImpSynth, nil)
+	}, music.BackendImpSynth, "paper-speaker", nil)
 	if err != nil {
 		t.Fatalf("newIWADPickerGame() error: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestWASMPickerStartsAtIWADStageEvenWithSingleChoice(t *testing.T) {
 func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
 	game, err := newIWADPickerGame([]iwadChoice{
 		{Path: "/tmp/doom1.wad", Label: "DOOM Shareware"},
-	}, music.BackendMeltySynth, nil)
+	}, music.BackendMeltySynth, "paper-speaker", nil)
 	if err != nil {
 		t.Fatalf("newIWADPickerGame() error: %v", err)
 	}

@@ -276,6 +276,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultStartInMap := false
 	defaultImportPCSpeaker := true
 	defaultPCSpeakerMode := false
+	defaultPCSpeakerVariant := "paper-speaker"
 	defaultImportTextures := true
 	defaultCPUProfile := ""
 	defaultMemProfile := ""
@@ -391,6 +392,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.PCSpeaker != nil {
 			defaultPCSpeakerMode = *cfg.PCSpeaker
 		}
+		if cfg.PCSpeakerVariant != nil {
+			defaultPCSpeakerVariant = *cfg.PCSpeakerVariant
+		}
 		if cfg.GPUSky != nil {
 			defaultGPUSky = *cfg.GPUSky
 		}
@@ -481,6 +485,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	soundFont := fs.String("soundfont", defaultSoundFontPath, "path to external SoundFont (.sf2) used by the meltysynth music backend")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
 	pcSpeaker := fs.Bool("pc-speaker", defaultPCSpeakerMode, "render DP* PC speaker lumps to PCM and use them in place of DS* digital sounds")
+	pcSpeakerVariant := fs.String("pc-speaker-variant", defaultPCSpeakerVariant, "pc speaker tone model (passthrough|paper-speaker|small-buzzer)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
@@ -798,6 +803,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			startInMap:                 defaultStartInMap,
 			importPCSpeaker:            defaultImportPCSpeaker,
 			pcSpeaker:                  *pcSpeaker,
+			pcSpeakerVariant:           *pcSpeakerVariant,
 			importTextures:             defaultImportTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
@@ -808,9 +814,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			pwadPaths:                  resolvedFilePaths,
 			configPath:                 configPath,
 		}
-		picker, perr := newIWADPickerGame(pickerChoices, resolvedMusicBackend, func(path string, profile pickerProfile, sfxIndex int, synthIndex int) (*renderBundle, error) {
+		picker, perr := newIWADPickerGame(pickerChoices, resolvedMusicBackend, buildCfg.pcSpeakerVariant, func(path string, profile pickerProfile, sfxIndex int, pcSpeakerVariantIndex int, synthIndex int) (*renderBundle, error) {
 			cfg := applyPickerProfile(buildCfg, profile)
 			cfg = applyPickerSFX(cfg, sfxIndex)
+			cfg = applyPickerPCSpeakerVariant(cfg, pcSpeakerVariantIndex)
 			cfg = applyPickerSynth(cfg, synthIndex)
 			return buildRenderBundle(resolveIWADAliasPath(path), cfg, stderr)
 		})
@@ -1103,6 +1110,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 			SFXVolume:                  *sfxVolume,
 			SFXPitchShift:              defaultSFXPitchShift,
+			PCSpeakerVariant:           audiofx.ParsePCSpeakerVariant(*pcSpeakerVariant),
 			FastMonsters:               defaultFastMonsters,
 			AlwaysRun:                  *alwaysRun,
 			AutoWeaponSwitch:           *autoWeaponSwitch,
@@ -1528,6 +1536,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			startInMap:                 explicitMapStartInMap(defaultStartInMap, mapExplicit),
 			importPCSpeaker:            defaultImportPCSpeaker,
 			pcSpeaker:                  *pcSpeaker,
+			pcSpeakerVariant:           *pcSpeakerVariant,
 			importTextures:             defaultImportTextures,
 			demoPath:                   resolvedDemoPath,
 			recordDemoPath:             resolvedRecordDemoPath,
@@ -2231,6 +2240,7 @@ type renderBuildConfig struct {
 	startInMap                 bool
 	importPCSpeaker            bool
 	pcSpeaker                  bool
+	pcSpeakerVariant           string
 	importTextures             bool
 	demoPath                   string
 	recordDemoPath             string
@@ -2287,12 +2297,25 @@ var pickerSFXOptions = [...]pickerSFXOption{
 	{label: "PC SPEAKER [BEEP]", description: "AUTHENTIC BEEPER SOUND EFFECTS", pcSpeaker: true},
 }
 
+type pickerPCSpeakerVariantOption struct {
+	label       string
+	description string
+	variant     audiofx.PCSpeakerVariant
+}
+
+var pickerPCSpeakerVariantOptions = [...]pickerPCSpeakerVariantOption{
+	{label: "PASSTHROUGH", description: "DIRECT BEEP PATH WITH DC BLOCK", variant: audiofx.PCSpeakerVariantClean},
+	{label: "PAPER-SPEAKER", description: "FULL PAPER CONE MODEL", variant: audiofx.PCSpeakerVariantSmallSpeaker},
+	{label: "SMALL-BUZZER", description: "NARROW RESONANT BUZZER MODEL", variant: audiofx.PCSpeakerVariantPiezo},
+}
+
 type pickerStage int
 
 const (
 	pickerStageIWAD pickerStage = iota
 	pickerStageProfile
 	pickerStageSFX
+	pickerStagePCSpeakerVariant
 	pickerStageSynth
 )
 
@@ -2524,6 +2547,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 		SFXVolume:                  cfg.sfxVolume,
 		SFXPitchShift:              cfg.sfxPitchShift,
+		PCSpeakerVariant:           audiofx.ParsePCSpeakerVariant(cfg.pcSpeakerVariant),
 		FastMonsters:               cfg.fastMonsters,
 		AlwaysRun:                  cfg.alwaysRun,
 		AutoWeaponSwitch:           cfg.autoWeaponSwitch,
@@ -2722,6 +2746,23 @@ func applyPickerSFX(cfg renderBuildConfig, sfxIndex int) renderBuildConfig {
 	return cfg
 }
 
+func applyPickerPCSpeakerVariant(cfg renderBuildConfig, variantIndex int) renderBuildConfig {
+	if variantIndex < 0 || variantIndex >= len(pickerPCSpeakerVariantOptions) {
+		variantIndex = 0
+	}
+	cfg.pcSpeakerVariant = pickerPCSpeakerVariantOptions[variantIndex].variant.String()
+	return cfg
+}
+
+func pickerPCSpeakerVariantIndexForVariant(v audiofx.PCSpeakerVariant) int {
+	for i, opt := range pickerPCSpeakerVariantOptions {
+		if opt.variant == v {
+			return i
+		}
+	}
+	return 0
+}
+
 func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
 	if synthIndex < 0 || synthIndex >= len(pickerSynths) {
 		synthIndex = 0
@@ -2745,31 +2786,37 @@ func applyPickerSynth(cfg renderBuildConfig, synthIndex int) renderBuildConfig {
 }
 
 type iwadPickerGame struct {
-	choices      []iwadChoice
-	selected     int
-	profile      pickerProfile
-	sfxIndex     int
-	synth        int
-	stage        pickerStage
-	confirmArmed bool
-	status       string
-	loadingPath  string
-	statusUntil  int
-	tic          int
-	bg           *ebiten.Image
-	logo         *ebiten.Image
-	menuImg      map[string]*ebiten.Image
-	fontBank     map[rune]media.WallTexture
-	fontImg      map[rune]*ebiten.Image
-	sfx          *audiofx.MenuPlayer
-	load         func(string, pickerProfile, int, int) (*renderBundle, error)
-	session      *doomsession.Session
-	sessionGame  *session.Game
-	err          error
+	choices               []iwadChoice
+	selected              int
+	profile               pickerProfile
+	sfxIndex              int
+	pcSpeakerVariantIndex int
+	synth                 int
+	stage                 pickerStage
+	confirmArmed          bool
+	status                string
+	loadingPath           string
+	statusUntil           int
+	tic                   int
+	bg                    *ebiten.Image
+	logo                  *ebiten.Image
+	menuImg               map[string]*ebiten.Image
+	fontBank              map[rune]media.WallTexture
+	fontImg               map[rune]*ebiten.Image
+	sfx                   *audiofx.MenuPlayer
+	load                  func(string, pickerProfile, int, int, int) (*renderBundle, error)
+	session               *doomsession.Session
+	sessionGame           *session.Game
+	err                   error
 }
 
-func newIWADPickerGame(choices []iwadChoice, initialBackend music.Backend, load func(string, pickerProfile, int, int) (*renderBundle, error)) (*iwadPickerGame, error) {
-	game := &iwadPickerGame{choices: choices, load: load, synth: pickerSynthIndexForBackend(initialBackend)}
+func newIWADPickerGame(choices []iwadChoice, initialBackend music.Backend, initialPCSpeakerVariant string, load func(string, pickerProfile, int, int, int) (*renderBundle, error)) (*iwadPickerGame, error) {
+	game := &iwadPickerGame{
+		choices:               choices,
+		load:                  load,
+		synth:                 pickerSynthIndexForBackend(initialBackend),
+		pcSpeakerVariantIndex: pickerPCSpeakerVariantIndexForVariant(audiofx.ParsePCSpeakerVariant(initialPCSpeakerVariant)),
+	}
 	if len(choices) <= 1 {
 		game.stage = pickerStageProfile
 	}
@@ -2862,7 +2909,7 @@ func (g *iwadPickerGame) Update() error {
 			g.err = fmt.Errorf("iwad loader unavailable")
 			return ebiten.Termination
 		}
-		bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.synth)
+		bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
 		if err != nil {
 			g.status = err.Error()
 			g.statusUntil = 0
@@ -2880,6 +2927,10 @@ func (g *iwadPickerGame) Update() error {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if g.stage == pickerStageSynth {
+			g.stage = pickerStageSFX
+			g.confirmArmed = false
+			g.playPickerBackSound()
+		} else if g.stage == pickerStagePCSpeakerVariant {
 			g.stage = pickerStageSFX
 			g.confirmArmed = false
 			g.playPickerBackSound()
@@ -2935,6 +2986,31 @@ func (g *iwadPickerGame) Update() error {
 		}
 		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
 			g.playPickerConfirmSound()
+			if pickerSFXOptions[g.sfxIndex].pcSpeaker {
+				g.stage = pickerStagePCSpeakerVariant
+			} else {
+				g.stage = pickerStageSynth
+			}
+			g.confirmArmed = false
+			return nil
+		}
+	case pickerStagePCSpeakerVariant:
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			prev := g.pcSpeakerVariantIndex
+			g.pcSpeakerVariantIndex = (g.pcSpeakerVariantIndex + len(pickerPCSpeakerVariantOptions) - 1) % len(pickerPCSpeakerVariantOptions)
+			if g.pcSpeakerVariantIndex != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			prev := g.pcSpeakerVariantIndex
+			g.pcSpeakerVariantIndex = (g.pcSpeakerVariantIndex + 1) % len(pickerPCSpeakerVariantOptions)
+			if g.pcSpeakerVariantIndex != prev {
+				g.playPickerMoveSound()
+			}
+		}
+		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+			g.playPickerConfirmSound()
 			g.stage = pickerStageSynth
 			g.confirmArmed = false
 			return nil
@@ -2965,7 +3041,7 @@ func (g *iwadPickerGame) Update() error {
 				g.status = pickerSoundFontDownloadStatus(soundFontPath)
 				return nil
 			}
-			bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.synth)
+			bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
 			if err != nil {
 				g.status = err.Error()
 				return nil
@@ -3060,6 +3136,28 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			g.drawPickerTextScaled(screen, sfx.label, titleX, rowY, 2)
 			if strings.TrimSpace(sfx.description) != "" {
 				g.drawPickerText(screen, sfx.description, titleX, rowY+22)
+			}
+		}
+	case pickerStagePCSpeakerVariant:
+		titleWidth := 0
+		descWidth := 0
+		for _, opt := range pickerPCSpeakerVariantOptions {
+			titleWidth = max(titleWidth, g.pickerTextWidthScaled(opt.label, 2))
+			if strings.TrimSpace(opt.description) != "" {
+				descWidth = max(descWidth, g.pickerTextWidth(opt.description))
+			}
+		}
+		contentWidth := max(titleWidth, descWidth)
+		titleX := sw/2 - contentWidth/2
+		variantY, rowStep := pickerOptionBlockLayout(sh, len(pickerPCSpeakerVariantOptions))
+		for i, opt := range pickerPCSpeakerVariantOptions {
+			rowY := variantY + i*rowStep
+			if i == g.pcSpeakerVariantIndex {
+				g.drawPickerSkull(screen, titleX, rowY+4)
+			}
+			g.drawPickerTextScaled(screen, opt.label, titleX, rowY, 2)
+			if strings.TrimSpace(opt.description) != "" {
+				g.drawPickerText(screen, opt.description, titleX, rowY+22)
 			}
 		}
 	case pickerStageSynth:

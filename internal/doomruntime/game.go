@@ -1415,7 +1415,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.playerViewZ = g.p.z + g.p.viewHeight
 	g.demoTrace = newDemoTraceWriter(opts, string(m.Name))
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SFXVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift)
+	g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SFXVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift, opts.PCSpeakerVariant)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)

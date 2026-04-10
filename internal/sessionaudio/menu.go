@@ -12,10 +12,10 @@ type MenuController struct {
 	pcBank    map[string][]sound.PCSpeakerTone
 }
 
-func NewMenuController(bank media.SoundBank, pcBank map[string][]sound.PCSpeakerTone, volume float64) *MenuController {
+func NewMenuController(bank media.SoundBank, pcBank map[string][]sound.PCSpeakerTone, volume float64, variant audiofx.PCSpeakerVariant) *MenuController {
 	c := &MenuController{}
 	if len(pcBank) > 0 {
-		c.pcSpeaker = audiofx.NewPCSpeakerPlayer(volume)
+		c.pcSpeaker = audiofx.NewPCSpeakerPlayer(volume, variant)
 		c.pcBank = pcBank
 	} else {
 		c.player = audiofx.NewMenuPlayer(bank, volume)

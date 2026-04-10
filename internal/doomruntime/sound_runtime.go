@@ -136,12 +136,12 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 	return audiofx.NewMenuPlayer(bank, volume)
 }
 
-func newSoundSystem(bank SoundBank, pcSpeakerBank map[string][]sound.PCSpeakerTone, sfxVolume float64, sourcePort bool, pitchShift bool) *soundSystem {
+func newSoundSystem(bank SoundBank, pcSpeakerBank map[string][]sound.PCSpeakerTone, sfxVolume float64, sourcePort bool, pitchShift bool, variant audiofx.PCSpeakerVariant) *soundSystem {
 	var player *audiofx.SpatialPlayer
 	var pcSpeaker *audiofx.PCSpeakerPlayer
 	if clampVolume(sfxVolume) > 0 {
 		if len(pcSpeakerBank) > 0 {
-			pcSpeaker = audiofx.NewPCSpeakerPlayer(sfxVolume)
+			pcSpeaker = audiofx.NewPCSpeakerPlayer(sfxVolume, variant)
 		} else {
 			player = audiofx.NewSpatialPlayer(sfxVolume, sourcePort)
 		}

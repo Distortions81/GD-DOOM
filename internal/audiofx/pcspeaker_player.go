@@ -3,6 +3,7 @@ package audiofx
 import (
 	"io"
 	"math"
+	"strings"
 	"sync"
 
 	"gddoom/internal/music"
@@ -16,6 +17,36 @@ type PCSpeakerPlayer struct {
 	player ebitenPlayer
 	src    *pcSpeakerSource
 	volume float64
+}
+
+type PCSpeakerVariant int
+
+const (
+	PCSpeakerVariantClean PCSpeakerVariant = iota
+	PCSpeakerVariantSmallSpeaker
+	PCSpeakerVariantPiezo
+)
+
+func (v PCSpeakerVariant) String() string {
+	switch v {
+	case PCSpeakerVariantClean:
+		return "passthrough"
+	case PCSpeakerVariantPiezo:
+		return "small-buzzer"
+	default:
+		return "paper-speaker"
+	}
+}
+
+func ParsePCSpeakerVariant(s string) PCSpeakerVariant {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "passthrough", "clean", "dry", "none":
+		return PCSpeakerVariantClean
+	case "small-buzzer", "piezo", "pizeo", "moving-iron", "movingiron", "tiny":
+		return PCSpeakerVariantPiezo
+	default:
+		return PCSpeakerVariantSmallSpeaker
+	}
 }
 
 // ebitenPlayer is the subset of *audio.Player we need, allowing test fakes.
@@ -94,9 +125,11 @@ func (r *caseReverb) reset() {
 // pcSpeakerSource is an io.ReadSeeker that streams stereo s16 LE PCM by
 // simulating the PC speaker physics from a compact []PCSpeakerTone sequence.
 type pcSpeakerSource struct {
-	mu   sync.Mutex
-	seq  []sound.PCSpeakerTone
-	rate int // output sample rate
+	mu      sync.Mutex
+	seq     []sound.PCSpeakerTone
+	rate    int // output sample rate
+	variant PCSpeakerVariant
+	model   pcSpeakerModel
 
 	// playback position
 	samplePos int
@@ -117,6 +150,36 @@ type pcSpeakerSource struct {
 
 	// Case reverb: Schroeder reverb tuned for a 5150-sized metal enclosure.
 	reverb caseReverb
+
+	// DC-blocking state for the clean passthrough preset.
+	dcPrevIn  float64
+	dcPrevOut float64
+
+	// Piezo resonator state.
+	lpState      float64
+	envState     float64
+	driveState   float64
+	resY1        float64
+	resY2        float64
+	res2Y1       float64
+	res2Y2       float64
+	hpState      float64
+	driftPhase   float64
+	freqSmooth   float64
+	lastFreq     float64
+	lastPiezoIn  float64
+	piezoTickAge int
+	noiseState   uint32
+}
+
+type pcSpeakerModel struct {
+	hpAlpha       float64
+	gain          float64
+	reverbMix     float64
+	restLength    float64
+	restStiffness float64
+	restDamping   float64
+	coneRadius    float64
 }
 
 // Physical speaker model constants — derived from real PC speaker hardware.
@@ -171,6 +234,48 @@ const (
 // Unbaffled speaker in free air inside a metal PC case — bass cancels via
 // front/back wave interference. Applied twice (cascaded) for 12dB/oct dipole rolloff.
 var spkHPAlpha = 1.0 / (1.0 + 2*math.Pi*spkAcousticCutoff/44100)
+var cleanDCBlockAlpha = 1.0 / (1.0 + 2*math.Pi*20.0/44100)
+var piezoPreLPAlpha = math.Exp(-2 * math.Pi * 6000.0 / 44100)
+var piezoFreqSmoothAlpha = math.Exp(-2 * math.Pi * 55.0 / 44100)
+var piezoHPAlpha = math.Exp(-2 * math.Pi * 700.0 / 44100)
+var piezoEnvAttackAlpha = math.Exp(-1.0 / (0.002 * 44100.0))
+var piezoEnvReleaseAlpha = math.Exp(-1.0 / (0.020 * 44100.0))
+var piezoDriveAlpha = 0.012
+
+func modelForVariant(v PCSpeakerVariant) pcSpeakerModel {
+	switch v {
+	case PCSpeakerVariantClean:
+		return pcSpeakerModel{
+			hpAlpha:       1.0,
+			gain:          math.MaxInt16 * 0.85,
+			reverbMix:     0,
+			restLength:    0,
+			restStiffness: 0,
+			restDamping:   0,
+			coneRadius:    0,
+		}
+	case PCSpeakerVariantPiezo:
+		return pcSpeakerModel{
+			hpAlpha:       0,
+			gain:          1.0,
+			reverbMix:     spkReverbMix,
+			restLength:    0,
+			restStiffness: 0,
+			restDamping:   0,
+			coneRadius:    0,
+		}
+	default:
+		return pcSpeakerModel{
+			hpAlpha:       spkHPAlpha,
+			gain:          spkGain,
+			reverbMix:     spkReverbMix,
+			restLength:    0.01300,
+			restStiffness: 0.02850,
+			restDamping:   0.0,
+			coneRadius:    spkRadiusMetres,
+		}
+	}
+}
 
 func (s *pcSpeakerSource) totalSamples() int {
 	if s.rate <= 0 || len(s.seq) == 0 {
@@ -240,32 +345,154 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 			s.pitPhase = 0
 		}
 
-		force := pitOut * spkDrive
 		s.samplePos++
 
-		// Mass-spring-damper Euler step.
-		accel := force - spkK*s.disp - spkD*s.vel
-		s.vel += accel
-		s.disp += s.vel
+		if s.variant == PCSpeakerVariantClean {
+			raw := pitOut * s.model.gain
+			in := raw
+			raw = cleanDCBlockAlpha * (s.dcPrevOut + in - s.dcPrevIn)
+			s.dcPrevIn = in
+			s.dcPrevOut = raw
+			if raw > math.MaxInt16 {
+				raw = math.MaxInt16
+			} else if raw < math.MinInt16 {
+				raw = math.MinInt16
+			}
+			v := int16(raw)
+			p[written] = byte(v)
+			p[written+1] = byte(v >> 8)
+			p[written+2] = byte(v)
+			p[written+3] = byte(v >> 8)
+			written += 4
+			continue
+		}
 
-		// Output cone velocity (∝ SPL), not displacement.
-		// Velocity naturally rolls off bass (v ∝ f·x), giving the thin/harsh
-		// character of a real PC speaker.
-		rawVel := s.vel * spkGain
+		var rawVel float64
+		if s.variant == PCSpeakerVariantPiezo {
+			targetFreq := 0.0
+			if tone.Active {
+				if divisor := float64(tone.ToneDivisor()); divisor > 0 {
+					targetFreq = float64(sound.PCSpeakerPITHz()) / divisor
+				}
+			}
+			s.freqSmooth = piezoFreqSmoothAlpha*s.freqSmooth + (1-piezoFreqSmoothAlpha)*targetFreq
+			modDelta := math.Abs(s.freqSmooth - s.lastFreq)
+			s.lastFreq = s.freqSmooth
 
-		// Acoustic short-circuit HP (~1909 Hz): two cascaded first-order stages
-		// model dipole radiation rolloff (12dB/oct below f_sc).
-		hp1 := spkHPAlpha * (s.hp1Out + rawVel - s.hp1Prev)
-		s.hp1Prev = rawVel
-		s.hp1Out = hp1
-		hp2 := spkHPAlpha * (s.hp2Out + hp1 - s.hp2Prev)
-		s.hp2Prev = hp1
-		s.hp2Out = hp2
-		hpOut := hp2
+			signedIn := 0.0
+			if tone.Active {
+				if pitOut > 0 {
+					signedIn = 1.0
+				} else {
+					signedIn = -1.0
+				}
+			}
+			s.lpState = piezoPreLPAlpha*s.lpState + (1-piezoPreLPAlpha)*signedIn
+			if signedIn > 0 && s.lastPiezoIn <= 0 {
+				s.piezoTickAge = 10
+			}
+			s.lastPiezoIn = signedIn
+			envIn := math.Abs(s.lpState)
+			if envIn > s.envState {
+				s.envState = piezoEnvAttackAlpha*s.envState + (1-piezoEnvAttackAlpha)*envIn
+			} else {
+				s.envState = piezoEnvReleaseAlpha*s.envState + (1-piezoEnvReleaseAlpha)*envIn
+			}
+			driveTarget := s.envState * signedIn
+			s.driveState += piezoDriveAlpha * (driveTarget - s.driveState)
+			drive := s.driveState
+			if s.piezoTickAge > 0 {
+				drive += 0.14 * float64(s.piezoTickAge) / 10.0
+				s.piezoTickAge--
+			}
+			s.noiseState = s.noiseState*1664525 + 1013904223
+			noise := (float64((s.noiseState>>16)&0xffff)/32767.5 - 1.0) * 0.01
+			drive += noise
+			s.driftPhase += 2 * math.Pi * 0.8 / float64(s.rate)
+			if s.driftPhase > 2*math.Pi {
+				s.driftPhase -= 2 * math.Pi
+			}
+			f0 := 2700.0*(1.0+0.01*math.Tanh(s.envState)) + 45.0*math.Sin(s.driftPhase)
+			modNorm := math.Min(1.0, modDelta/400.0)
+			q := 7.0 / (1.0 + 1.5*math.Abs(s.resY1) + 3.0*modNorm)
+			r := math.Exp(-math.Pi * f0 / (q * float64(s.rate)))
+			theta := 2 * math.Pi * f0 / float64(s.rate)
+			a1 := 2 * r * math.Cos(theta)
+			a2 := -r * r
+			drive *= 1.0 + 0.3*math.Abs(drive)
+			y := a1*s.resY1 + a2*s.resY2 + 0.28*drive
+			s.resY2 = s.resY1
+			s.resY1 = y
+			f02 := 4700.0*(1.0+0.006*math.Tanh(math.Abs(drive))) + 25.0*math.Sin(s.driftPhase*0.71)
+			q2 := 4.5 / (1.0 + 1.0*math.Abs(y) + 1.5*modNorm)
+			r2 := math.Exp(-math.Pi * f02 / (q2 * float64(s.rate)))
+			theta2 := 2 * math.Pi * f02 / float64(s.rate)
+			b1 := 2 * r2 * math.Cos(theta2)
+			b2 := -r2 * r2
+			y2 := b1*s.res2Y1 + b2*s.res2Y2 + 0.10*drive
+			s.res2Y2 = s.res2Y1
+			s.res2Y1 = y2
+			rawVel = 0.92*y + 0.30*y2
+			rawVel = rawVel / (1.0 + 0.5*math.Abs(rawVel))
+			s.hpState = piezoHPAlpha*s.hpState + (1-piezoHPAlpha)*rawVel
+			rawVel -= s.hpState
+			if rawVel >= 0 {
+				rawVel = rawVel / (1.0 + 0.30*rawVel)
+			} else {
+				rawVel = rawVel / (1.0 + 0.55*math.Abs(rawVel))
+			}
+			rawVel *= math.MaxInt16 * 0.35
+		} else {
+			// Keep the original paper-speaker path exactly on the committed constants.
+			force := pitOut * spkDrive
+			// Mass-spring-damper Euler step.
+			accel := force - spkK*s.disp - spkD*s.vel
+			s.vel += accel
+			s.disp += s.vel
+
+			// Output cone velocity (∝ SPL), not displacement.
+			// Velocity naturally rolls off bass (v ∝ f·x), giving the thin/harsh
+			// character of a real PC speaker.
+			rawVel = s.vel * spkGain
+		}
+
+		hpOut := rawVel
+		if s.variant == PCSpeakerVariantSmallSpeaker {
+			// Original paper-speaker dipole high-pass.
+			hp1 := spkHPAlpha * (s.hp1Out + rawVel - s.hp1Prev)
+			s.hp1Prev = rawVel
+			s.hp1Out = hp1
+			hp2 := spkHPAlpha * (s.hp2Out + hp1 - s.hp2Prev)
+			s.hp2Prev = hp1
+			s.hp2Out = hp2
+			hpOut = hp2
+		} else if s.model.hpAlpha < 1.0 {
+			// Acoustic short-circuit HP (~1909 Hz): two cascaded first-order stages
+			// model dipole radiation rolloff (12dB/oct below f_sc).
+			hp1 := s.model.hpAlpha * (s.hp1Out + rawVel - s.hp1Prev)
+			s.hp1Prev = rawVel
+			s.hp1Out = hp1
+			hp2 := s.model.hpAlpha * (s.hp2Out + hp1 - s.hp2Prev)
+			s.hp2Prev = hp1
+			s.hp2Out = hp2
+			hpOut = hp2
+		}
 
 		// Case reverb: mix dry + wet for small metal enclosure.
-		wet := s.reverb.process(hpOut)
-		raw := hpOut + wet*spkReverbMix
+		raw := hpOut
+		if s.variant == PCSpeakerVariantSmallSpeaker {
+			wet := s.reverb.process(hpOut)
+			raw = hpOut + wet*spkReverbMix
+		} else if s.model.reverbMix > 0 {
+			wet := s.reverb.process(hpOut)
+			raw = hpOut + wet*s.model.reverbMix
+		}
+		if s.model.coneRadius == 0 && s.variant != PCSpeakerVariantPiezo {
+			in := raw
+			raw = cleanDCBlockAlpha * (s.dcPrevOut + in - s.dcPrevIn)
+			s.dcPrevIn = in
+			s.dcPrevOut = raw
+		}
 		// Soft-clip via tanh: fills int16 range without hard clipping.
 		v := int16(math.Tanh(raw/math.MaxInt16) * math.MaxInt16)
 
@@ -304,6 +531,22 @@ func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 	s.hp1Out = 0
 	s.hp2Prev = 0
 	s.hp2Out = 0
+	s.dcPrevIn = 0
+	s.dcPrevOut = 0
+	s.lpState = 0
+	s.envState = 0
+	s.driveState = 0
+	s.resY1 = 0
+	s.resY2 = 0
+	s.res2Y1 = 0
+	s.res2Y2 = 0
+	s.hpState = 0
+	s.driftPhase = 0
+	s.freqSmooth = 0
+	s.lastFreq = 0
+	s.lastPiezoIn = 0
+	s.piezoTickAge = 0
+	s.noiseState = 1
 	s.reverb.reset()
 	return abs, nil
 }
@@ -322,16 +565,40 @@ func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.hp1Out = 0
 	s.hp2Prev = 0
 	s.hp2Out = 0
+	s.dcPrevIn = 0
+	s.dcPrevOut = 0
+	s.lpState = 0
+	s.envState = 0
+	s.driveState = 0
+	s.resY1 = 0
+	s.resY2 = 0
+	s.res2Y1 = 0
+	s.res2Y2 = 0
+	s.hpState = 0
+	s.driftPhase = 0
+	s.freqSmooth = 0
+	s.lastFreq = 0
+	s.lastPiezoIn = 0
+	s.piezoTickAge = 0
+	s.noiseState = 1
 	s.reverb.reset()
 }
 
+func (s *pcSpeakerSource) setVariant(v PCSpeakerVariant) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.variant = v
+	s.model = modelForVariant(v)
+}
+
 // NewPCSpeakerPlayer creates a player. Returns nil if the audio context is unavailable.
-func NewPCSpeakerPlayer(volume float64) *PCSpeakerPlayer {
+func NewPCSpeakerPlayer(volume float64, variant PCSpeakerVariant) *PCSpeakerPlayer {
 	ctx := sharedOrNewAudioContext(music.OutputSampleRate)
 	if ctx == nil {
 		return nil
 	}
 	src := &pcSpeakerSource{reverb: newCaseReverb()}
+	src.setVariant(variant)
 	ap, err := ctx.NewPlayer(src)
 	if err != nil {
 		return nil
