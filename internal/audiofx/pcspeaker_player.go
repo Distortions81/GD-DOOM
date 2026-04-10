@@ -50,7 +50,7 @@ type caseReverb struct {
 func newCaseReverb() caseReverb {
 	r := caseReverb{}
 	// Comb delays (samples at 44100 Hz) and feedback.
-	// RT60 ≈ -3·delay/(log10(fb)·rate) — targeting ~25ms.
+	// RT60 ≈ -3·delay/(log10(fb)·rate) — ranging ~80–110ms across the four combs.
 	r.combLen = [4]int{102, 90, 72, 59}
 	r.combFB = [4]float64{0.86, 0.84, 0.82, 0.80}
 	// Allpass delays and gain.
@@ -73,16 +73,16 @@ func (r *caseReverb) process(in float64) float64 {
 	}
 	out *= 0.25 // normalise comb sum
 
-	// Two series allpass filters.
+	// Two series allpass filters (Schroeder topology).
 	for i := 0; i < 2; i++ {
 		delayed := r.ap[i][r.apPos[i]]
-		v := out + delayed*(-r.apG[i])
-		r.ap[i][r.apPos[i]] = out + delayed*r.apG[i]
+		v := out - r.apG[i]*delayed
+		r.ap[i][r.apPos[i]] = v
 		r.apPos[i]++
 		if r.apPos[i] >= r.apLen[i] {
 			r.apPos[i] = 0
 		}
-		out = v + delayed*r.apG[i]
+		out = delayed + r.apG[i]*v
 	}
 	return out
 }
@@ -107,13 +107,13 @@ type pcSpeakerSource struct {
 	vel  float64
 	disp float64
 
-	// RC high-pass state (33Ω + 0.01µF, f_c ≈ 482 Hz)
-	rcPrev float64
-	rcOut  float64
-
-	// Acoustic short-circuit high-pass state (~1909 Hz, no enclosure)
-	hpPrev float64
-	hpOut  float64
+	// Acoustic short-circuit high-pass state (~1909 Hz, unbaffled dipole).
+	// Two cascaded first-order stages give 12dB/oct rolloff below f_sc,
+	// matching dipole radiation: SPL ∝ ω²·v below f_sc, ∝ v above.
+	hp1Prev float64
+	hp1Out  float64
+	hp2Prev float64
+	hp2Out  float64
 
 	// Case reverb: Schroeder reverb tuned for a 5150-sized metal enclosure.
 	reverb caseReverb
@@ -121,72 +121,56 @@ type pcSpeakerSource struct {
 
 // Physical speaker model constants — derived from real PC speaker hardware.
 //
-// Circuit: 8253 PIT → 75475 Darlington driver → 33Ω series resistor
+// Circuit: 8253 PIT → 75475 driver → 33Ω + 57mm/8Ω speaker (0.25W)
+// Drive: 5V - Vce_sat(1V) = 4V, I = 4V/41Ω = 97.6mA
+// Force = Bl(0.5) × I = 0.0488N, Accel = F/m(0.002kg) = 24.4 m/s²
 //
-//	(with 0.01µF cap to GND before resistor) → 57mm/8Ω speaker, 0.25W
+// Mechanical resonance: Fs ≈ 800 Hz, Q ≈ 4 (stiff, lightly damped paper cone)
 //
-// Speaker geometry:
+//	k = (2π·800/44100)² ≈ 0.01300
+//	d = √k / Q          ≈ 0.02850
 //
-//	Diameter = 2.25 inches = 57.15mm
-//	Radius   = 1.125 inches = 0.028575m  (effective piston radius)
+// Acoustic short-circuit (unbaffled, free air):
 //
-// 75475 open-collector output: Vce_sat ≈ 1V when sinking.
-// Drive voltage: 5V - 1V = 4V
-//
-// RC high-pass (0.01µF cap to GND before 33Ω resistor):
-//
-//	f_c = 1/(2π·R·C) = 1/(2π · 33 · 0.00000001) ≈ 482 Hz
-//
-// Current and power at high frequency (cap fully charged):
-//
-//	I      = 4V / (33Ω + 8Ω) = 97.6mA
-//	V_coil = 0.0976 × 8Ω    = 0.78V
-//	P_coil = 0.0976² × 8    = 0.076W  (within 0.25W rating)
-//	Force  = Bl × I ≈ 0.5 T·m × 0.0976 = 0.049N
-//	Accel  = F/m ≈ 0.049 / 0.002kg     = 24.4 m/s²
-//
-// Acoustic short-circuit (no enclosure/baffle — piston in free air):
-//
-//	f_sc = c / (2π·a) = 343 / (2π · 0.028575) ≈ 1909 Hz
-//	Bass below ~1.9 kHz is cancelled by front/back wave interference.
-//
-// 57mm cone mechanical resonance: Fs ≈ 500 Hz, Q ≈ 0.8
-//
-// Integration at sample rate; k and d are dimensionless-per-sample:
-//
-//	k = (2π·500/44100)² ≈ 0.00508
-//	d = √k / Q          ≈ 0.0891
+//	Effective cone diameter ≈ 40mm (frame is 57mm, cone is ~70% of frame)
+//	f_sc = c/(2π·a) = 343/(2π·0.020) ≈ 2729 Hz
 //
 // Signal chain:
 //
-//	PIT square wave → RC HP (482 Hz) → mechanical model → velocity output
-//	→ acoustic short-circuit HP (1909 Hz) → int16
+//	PIT square wave → mechanical model → velocity output
+//	→ acoustic short-circuit HP (2729 Hz, 12dB/oct dipole) → int16
 const (
 	// Speaker physical dimensions.
-	spkDiameterInches = 2.25
-	spkRadiusMetres   = spkDiameterInches * 0.0254 / 2 // 0.028575m
+	// Frame is 2.25" (57mm), effective cone piston ~40mm diameter.
+	spkConeDiameterMM = 40.0
+	spkRadiusMetres   = spkConeDiameterMM / 1000.0 / 2 // 0.020m effective piston radius
 
 	// Acoustic short-circuit cutoff: f_sc = c/(2π·a), c=343 m/s.
-	// Computed value: 343/(2π·0.028575) ≈ 1909 Hz
+	// Computed value: 343/(2π·0.020) ≈ 2729 Hz
 	spkSpeedOfSound   = 343.0
-	spkAcousticCutoff = spkSpeedOfSound / (2 * math.Pi * spkRadiusMetres) // ≈ 1909 Hz
+	spkAcousticCutoff = spkSpeedOfSound / (2 * math.Pi * spkRadiusMetres) // ≈ 2729 Hz
 
-	spkK         = 0.00508   // stiffness: (2π·500/44100)²
-	spkD         = 0.0891    // damping: Q≈0.8, no enclosure
-	spkDrive     = 0.00176   // 97.6mA × Bl(0.5) / mass(0.002) normalised per-sample
-	spkGain      = 4000000.0 // velocity → int16 range; high gain compensates acoustic short-circuit HP attenuation
-	spkReverbMix = 0.8       // wet mix for case reverb (0=dry, 1=full wet)
+	spkK = 0.01300 // stiffness: (2π·800/44100)²
+	spkD = 0.02850 // damping: √k / Q, Q≈4 (stiff paper cone)
 
-	// RC high-pass: 33Ω + 0.01µF → f_c ≈ 482 Hz
-	// alpha = exp(-2π·482/44100) ≈ 0.9336
-	spkRCAlpha = 0.9336
+	// Drive circuit (SI units)
+	spkBl     = 0.5   // voice coil force factor (T·m)
+	spkVdrive = 4.0   // drive voltage: 5V - Vce_sat(1V)
+	spkRtotal = 41.0  // total resistance: 33Ω series + 8Ω coil
+	spkMass   = 0.002 // cone + voice coil mass (kg)
+
+	// Per-sample² drive acceleration: Bl·V / (R·m·rate²)
+	spkDrive = spkBl * spkVdrive / (spkRtotal * spkMass * 44100 * 44100)
+
+	spkGain      = 0.00176 * 4_000_000.0 / spkDrive * 8 // velocity (SI, per-sample) → int16; ×8 compensates 2nd-order HP loss
+	spkReverbMix = 1.0                                  // wet mix for case reverb (0=dry, 1=full wet)
 )
 
 // spkHPAlpha is the first-order IIR coefficient for the acoustic short-circuit
-// high-pass at f_sc ≈ 1909 Hz: alpha = exp(-2π·f_sc/rate).
-// Also models the lack of enclosure/baffle: speaker operated in free air inside
-// a metal PC case, so bass cancels via front/back wave interference below ~1.9 kHz.
-var spkHPAlpha = math.Exp(-2 * math.Pi * spkAcousticCutoff / 44100)
+// high-pass at f_sc ≈ 2729 Hz: alpha = 1/(1 + 2π·f_sc/rate).
+// Unbaffled speaker in free air inside a metal PC case — bass cancels via
+// front/back wave interference. Applied twice (cascaded) for 12dB/oct dipole rolloff.
+var spkHPAlpha = 1.0 / (1.0 + 2*math.Pi*spkAcousticCutoff/44100)
 
 func (s *pcSpeakerSource) totalSamples() int {
 	if s.rate <= 0 || len(s.seq) == 0 {
@@ -249,20 +233,14 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 				}
 				s.pitPhase += float64(sound.PCSpeakerPITHz()) / float64(s.rate)
 				if s.pitPhase >= divisor {
-					s.pitPhase -= divisor * math.Floor(s.pitPhase/divisor)
+					s.pitPhase = math.Mod(s.pitPhase, divisor)
 				}
 			}
 		} else {
 			s.pitPhase = 0
 		}
 
-		// RC high-pass (33Ω + 0.01µF, f_c ≈ 482 Hz): filters the drive signal
-		// before it reaches the speaker coil.
-		rcOut := spkRCAlpha * (s.rcOut + pitOut - s.rcPrev)
-		s.rcPrev = pitOut
-		s.rcOut = rcOut
-
-		force := rcOut * spkDrive
+		force := pitOut * spkDrive
 		s.samplePos++
 
 		// Mass-spring-damper Euler step.
@@ -275,21 +253,21 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 		// character of a real PC speaker.
 		rawVel := s.vel * spkGain
 
-		// High-pass at 300 Hz: removes residual DC and low-end from
-		// single-polarity drive and mechanical low-frequency response.
-		hpOut := spkHPAlpha * (s.hpOut + rawVel - s.hpPrev)
-		s.hpPrev = rawVel
-		s.hpOut = hpOut
+		// Acoustic short-circuit HP (~1909 Hz): two cascaded first-order stages
+		// model dipole radiation rolloff (12dB/oct below f_sc).
+		hp1 := spkHPAlpha * (s.hp1Out + rawVel - s.hp1Prev)
+		s.hp1Prev = rawVel
+		s.hp1Out = hp1
+		hp2 := spkHPAlpha * (s.hp2Out + hp1 - s.hp2Prev)
+		s.hp2Prev = hp1
+		s.hp2Out = hp2
+		hpOut := hp2
 
 		// Case reverb: mix dry + wet for small metal enclosure.
 		wet := s.reverb.process(hpOut)
 		raw := hpOut + wet*spkReverbMix
-		if raw > math.MaxInt16 {
-			raw = math.MaxInt16
-		} else if raw < math.MinInt16 {
-			raw = math.MinInt16
-		}
-		v := int16(raw)
+		// Soft-clip via tanh: fills int16 range without hard clipping.
+		v := int16(math.Tanh(raw/math.MaxInt16) * math.MaxInt16)
 
 		// Stereo: same value left and right.
 		p[written] = byte(v)
@@ -322,10 +300,10 @@ func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 	s.lastTone = 0
 	s.vel = 0
 	s.disp = 0
-	s.rcPrev = 0
-	s.rcOut = 0
-	s.hpPrev = 0
-	s.hpOut = 0
+	s.hp1Prev = 0
+	s.hp1Out = 0
+	s.hp2Prev = 0
+	s.hp2Out = 0
 	s.reverb.reset()
 	return abs, nil
 }
@@ -340,10 +318,10 @@ func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.lastTone = 0
 	s.vel = 0
 	s.disp = 0
-	s.rcPrev = 0
-	s.rcOut = 0
-	s.hpPrev = 0
-	s.hpOut = 0
+	s.hp1Prev = 0
+	s.hp1Out = 0
+	s.hp2Prev = 0
+	s.hp2Out = 0
 	s.reverb.reset()
 }
 
