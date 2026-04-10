@@ -1,6 +1,51 @@
 package doomruntime
 
-import "gddoom/internal/mapdata"
+import (
+	"gddoom/internal/demo"
+	"gddoom/internal/mapdata"
+)
+
+// remotePlayer holds the simulated state for a peer co-op player.
+type remotePlayer struct {
+	slot int
+	p    player
+}
+
+// spawnRemotePlayer creates a player struct for a remote peer at their map start.
+func spawnRemotePlayer(m *mapdata.Map, slot int) player {
+	starts := collectPlayerStarts(m)
+	if s, ok := chooseSpawnStart(starts, slot); ok {
+		return player{
+			x: s.x, y: s.y, z: 0,
+			floorz: 0, ceilz: 128 * fracUnit,
+			subsector: -1, sector: -1,
+			angle:      s.angle,
+			viewHeight: playerViewHeight,
+		}
+	}
+	b := mapBounds(m)
+	return player{
+		x: int64(((b.minX + b.maxX) / 2) * fracUnit),
+		y: int64(((b.minY + b.maxY) / 2) * fracUnit),
+		ceilz: 128 * fracUnit, subsector: -1, sector: -1,
+		viewHeight: playerViewHeight,
+	}
+}
+
+// stepRemotePlayer advances a remote player one tic using a received demo tic.
+func (g *game) stepRemotePlayer(rp *remotePlayer, tc demo.Tic) {
+	saved := g.p
+	savedSlot := g.localSlot
+	g.p = rp.p
+	g.localSlot = rp.slot
+
+	cmd, usePressed, fireHeld := demoTicCommand(DemoTic(tc))
+	g.runGameplayTic(cmd, usePressed, fireHeld)
+
+	rp.p = g.p
+	g.p = saved
+	g.localSlot = savedSlot
+}
 
 type playerStart struct {
 	index int

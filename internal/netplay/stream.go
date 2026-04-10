@@ -27,6 +27,7 @@ const (
 	helloRoleServer           byte = 3
 	helloRoleAudioBroadcaster byte = 4
 	helloRoleAudioViewer      byte = 5
+	helloRolePlayerPeer       byte = 6
 
 	frameTypeKeyframe            byte = 1
 	frameTypeTicBatch            byte = 4
@@ -34,6 +35,10 @@ const (
 	frameTypeAudioConfig         byte = 16
 	frameTypeAudioChunk          byte = 17
 	frameTypeChat                byte = 32
+	frameTypePeerTicBatch        byte = 33
+	frameTypeRosterUpdate        byte = 34
+	frameTypeCheckpoint          byte = 35
+	frameTypeDesyncRequest       byte = 36
 )
 
 const (
@@ -53,9 +58,10 @@ const (
 )
 
 const (
-	frameHeaderSize  = 10
-	ticBatchOverhead = 2
-	ticBatchSize     = 4
+	frameHeaderSize      = 10
+	ticBatchOverhead     = 2
+	ticBatchSize         = 4
+	peerTicBatchOverhead = 3 // player_id[1] + count[2]
 )
 
 const (
@@ -151,9 +157,40 @@ type ChatMessage struct {
 }
 
 const (
-	chatMaxNameLen = 128
-	chatMaxTextLen = 512
+	chatMaxNameLen  = 128
+	chatMaxTextLen  = 512
+	maxPeerPlayerID = 4
 )
+
+// PeerTic is a tic command tagged with the originating player's slot.
+type PeerTic struct {
+	PlayerID byte
+	Tic      demo.Tic
+}
+
+// RosterUpdate describes a change to the active peer roster.
+type RosterUpdate struct {
+	// PlayerIDs is the full set of active player slot IDs after this update.
+	PlayerIDs []byte
+}
+
+// Checkpoint is a periodic hash broadcast by the server so peers can detect
+// simulation divergence. The hash covers key sim state at the given tic.
+type Checkpoint struct {
+	Tic  uint32
+	Hash uint32
+}
+
+// DesyncRequest is sent by a peer to the server when its local hash does not
+// match a received checkpoint. The server responds by pushing a mandatory
+// keyframe from a canonical peer.
+type DesyncRequest struct {
+	Tic       uint32
+	LocalHash uint32
+}
+
+const checkpointPayloadSize = 8  // tic[4] + hash[4]
+const desyncRequestPayloadSize = 8 // tic[4] + hash[4]
 
 type RelayBroadcaster struct {
 	conn      net.Conn
@@ -177,6 +214,30 @@ type AudioBroadcaster struct {
 	mu          sync.Mutex
 	closed      bool
 	audioFormat AudioFormat
+}
+
+// PlayerPeer is a bidirectional co-op gameplay connection. It sends this
+// player's tics upstream and receives tagged tics from all other peers.
+type PlayerPeer struct {
+	conn      net.Conn
+	sessionID uint64
+	session   SessionConfig
+	playerID  byte
+	meter     *bandwidthMeter
+
+	// inbound channels
+	peerTics    chan PeerTic
+	rosters     chan RosterUpdate
+	keyframes   chan Keyframe
+	chats       chan ChatMessage
+	checkpoints chan Checkpoint
+
+	mu           sync.Mutex
+	closed       bool
+	err          error
+	pendingTic   []demo.Tic
+	ticBatchSize int
+	wg           sync.WaitGroup
 }
 
 func DialRelayBroadcaster(addr string, sessionID uint64, session SessionConfig) (*RelayBroadcaster, error) {
@@ -306,6 +367,384 @@ func DialRelayAudioBroadcaster(addr string, sessionID uint64) (*AudioBroadcaster
 		sessionID: assignedID,
 		meter:     meter,
 	}, nil
+}
+
+func DialPlayerPeer(addr string, sessionID uint64, session SessionConfig) (*PlayerPeer, error) {
+	addr = strings.TrimSpace(addr)
+	if addr == "" {
+		return nil, fmt.Errorf("peer relay address is required")
+	}
+	rawConn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("dial peer relay %s: %w", addr, err)
+	}
+	if tcp, ok := rawConn.(*net.TCPConn); ok {
+		_ = tcp.SetNoDelay(true)
+	}
+	meter := newBandwidthMeter()
+	conn := &countingConn{Conn: rawConn, meter: meter}
+	if err := writeHello(conn, helloRolePlayerPeer, helloFlagGameplayCompactV1, sessionID, session); err != nil {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("write peer hello: %w", err)
+	}
+	role, flags, assignedID, serverSession, err := readHello(conn)
+	if err != nil {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("read peer hello ack: %w", err)
+	}
+	if role != helloRoleServer {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("unexpected peer hello ack role %d", role)
+	}
+	if flags&helloFlagGameplayCompactV1 == 0 {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("peer hello ack missing compact gameplay flag")
+	}
+	if sessionID != 0 && assignedID != sessionID {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("peer session mismatch: requested=%d got=%d", sessionID, assignedID)
+	}
+	if session.WADHash != "" && serverSession.WADHash != "" && serverSession.WADHash != session.WADHash {
+		_ = rawConn.Close()
+		return nil, fmt.Errorf("peer WAD hash mismatch: local=%s server=%s", session.WADHash, serverSession.WADHash)
+	}
+	p := &PlayerPeer{
+		conn:         conn,
+		sessionID:    assignedID,
+		session:      serverSession,
+		playerID:     byte(serverSession.PlayerSlot),
+		meter:        meter,
+		peerTics:     make(chan PeerTic, 512),
+		rosters:      make(chan RosterUpdate, 8),
+		keyframes:    make(chan Keyframe, 4),
+		checkpoints:  make(chan Checkpoint, 16),
+		chats:        make(chan ChatMessage, 32),
+		pendingTic:   make([]demo.Tic, 0, ticBatchSize),
+		ticBatchSize: ticBatchSize,
+	}
+	p.wg.Add(1)
+	go p.readLoop()
+	return p, nil
+}
+
+func (p *PlayerPeer) SessionID() uint64 {
+	if p == nil {
+		return 0
+	}
+	return p.sessionID
+}
+
+func (p *PlayerPeer) PlayerID() byte {
+	if p == nil {
+		return 0
+	}
+	return p.playerID
+}
+
+func (p *PlayerPeer) Session() SessionConfig {
+	if p == nil {
+		return SessionConfig{}
+	}
+	return p.session
+}
+
+func (p *PlayerPeer) BandwidthStats() (float64, float64) {
+	if p == nil || p.meter == nil {
+		return 0, 0
+	}
+	return p.meter.stats()
+}
+
+func (p *PlayerPeer) SendTic(tc demo.Tic) error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return net.ErrClosed
+	}
+	p.pendingTic = append(p.pendingTic, tc)
+	if len(p.pendingTic) < p.ticBatchSize {
+		return nil
+	}
+	return p.flushPendingTicsLocked()
+}
+
+// Flush immediately sends any buffered tics upstream. The game loop should
+// call this once per tic after SendTic so peers receive inputs without delay.
+func (p *PlayerPeer) Flush() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil
+	}
+	return p.flushPendingTicsLocked()
+}
+
+func (p *PlayerPeer) flushPendingTicsLocked() error {
+	if p == nil || len(p.pendingTic) == 0 {
+		return nil
+	}
+	payload := marshalPeerTicBatchPayload(p.playerID, p.pendingTic)
+	err := writeFrame(p.conn, frameHeader{
+		Type:   frameTypePeerTicBatch,
+		Length: uint32(len(payload)),
+	}, payload)
+	if err != nil {
+		return err
+	}
+	p.pendingTic = p.pendingTic[:0]
+	return nil
+}
+
+func (p *PlayerPeer) PollPeerTic() (PeerTic, bool, error) {
+	if p == nil {
+		return PeerTic{}, false, nil
+	}
+	select {
+	case pt, ok := <-p.peerTics:
+		if ok {
+			return pt, true, nil
+		}
+		return PeerTic{}, false, p.readErr()
+	default:
+		return PeerTic{}, false, p.readErr()
+	}
+}
+
+func (p *PlayerPeer) PollRoster() (RosterUpdate, bool, error) {
+	if p == nil {
+		return RosterUpdate{}, false, nil
+	}
+	select {
+	case r, ok := <-p.rosters:
+		if ok {
+			return r, true, nil
+		}
+		return RosterUpdate{}, false, p.readErr()
+	default:
+		return RosterUpdate{}, false, p.readErr()
+	}
+}
+
+func (p *PlayerPeer) PollKeyframe() (Keyframe, bool, error) {
+	if p == nil {
+		return Keyframe{}, false, nil
+	}
+	select {
+	case kf, ok := <-p.keyframes:
+		if ok {
+			return kf, true, nil
+		}
+		return Keyframe{}, false, p.readErr()
+	default:
+		return Keyframe{}, false, p.readErr()
+	}
+}
+
+func (p *PlayerPeer) SendChat(msg ChatMessage) error {
+	if p == nil {
+		return nil
+	}
+	payload := marshalChatPayload(msg)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return net.ErrClosed
+	}
+	if err := p.flushPendingTicsLocked(); err != nil {
+		return err
+	}
+	return writeFrame(p.conn, frameHeader{Type: frameTypeChat}, payload)
+}
+
+func (p *PlayerPeer) PollChat() (ChatMessage, bool, error) {
+	if p == nil {
+		return ChatMessage{}, false, nil
+	}
+	select {
+	case msg, ok := <-p.chats:
+		if ok {
+			return msg, true, nil
+		}
+		return ChatMessage{}, false, p.readErr()
+	default:
+		return ChatMessage{}, false, p.readErr()
+	}
+}
+
+func (p *PlayerPeer) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil
+	}
+	p.closed = true
+	_ = p.flushPendingTicsLocked()
+	p.mu.Unlock()
+	err := p.conn.Close()
+	p.wg.Wait()
+	return err
+}
+
+func (p *PlayerPeer) readLoop() {
+	defer p.wg.Done()
+	defer close(p.peerTics)
+	defer close(p.rosters)
+	defer close(p.keyframes)
+	defer close(p.chats)
+	defer close(p.checkpoints)
+	for {
+		header, payload, err := readFrame(p.conn)
+		if err != nil {
+			p.setErr(err)
+			return
+		}
+		switch header.Type {
+		case frameTypePeerTicBatch:
+			playerID, tics, err := unmarshalPeerTicBatchPayload(payload)
+			if err != nil {
+				p.setErr(err)
+				return
+			}
+			for _, tc := range tics {
+				select {
+				case p.peerTics <- PeerTic{PlayerID: playerID, Tic: tc}:
+				default:
+				}
+			}
+		case frameTypeRosterUpdate:
+			roster, err := unmarshalRosterUpdatePayload(payload)
+			if err != nil {
+				p.setErr(err)
+				return
+			}
+			select {
+			case p.rosters <- roster:
+			default:
+			}
+		case frameTypeKeyframe:
+			mandatory := header.Flags&keyframeFlagMandatoryApply != 0
+			if header.Flags&keyframeFlagZstdCompressed != 0 {
+				payload, err = decompressKeyframe(payload)
+				if err != nil {
+					p.setErr(fmt.Errorf("decompress keyframe: %w", err))
+					return
+				}
+			}
+			select {
+			case p.keyframes <- Keyframe{
+				Tic:            header.Tic,
+				Blob:           append([]byte(nil), payload...),
+				MandatoryApply: mandatory,
+			}:
+			default:
+			}
+		case frameTypeChat:
+			msg, err := readChatFrame(bytes.NewReader(payload))
+			if err != nil {
+				p.setErr(fmt.Errorf("read chat frame: %w", err))
+				return
+			}
+			select {
+			case p.chats <- msg:
+			default:
+			}
+		case frameTypeCheckpoint:
+			if len(payload) < checkpointPayloadSize {
+				p.setErr(fmt.Errorf("short checkpoint frame: %d bytes", len(payload)))
+				return
+			}
+			cp := Checkpoint{
+				Tic:  binary.LittleEndian.Uint32(payload[0:4]),
+				Hash: binary.LittleEndian.Uint32(payload[4:8]),
+			}
+			select {
+			case p.checkpoints <- cp:
+			default:
+			}
+		default:
+			p.setErr(fmt.Errorf("unexpected peer frame type %d", header.Type))
+			return
+		}
+	}
+}
+
+// PollCheckpoint returns the next checkpoint received from the server, if any.
+func (p *PlayerPeer) PollCheckpoint() (Checkpoint, bool, error) {
+	if p == nil {
+		return Checkpoint{}, false, nil
+	}
+	select {
+	case cp, ok := <-p.checkpoints:
+		if ok {
+			return cp, true, nil
+		}
+		return Checkpoint{}, false, p.readErr()
+	default:
+		return Checkpoint{}, false, p.readErr()
+	}
+}
+
+// SendCheckpoint sends this peer's simulation hash to the server for relay.
+// Only the canonical peer (slot 1) should call this.
+func (p *PlayerPeer) SendCheckpoint(tic uint32, hash uint32) error {
+	if p == nil {
+		return nil
+	}
+	payload := make([]byte, checkpointPayloadSize)
+	binary.LittleEndian.PutUint32(payload[0:4], tic)
+	binary.LittleEndian.PutUint32(payload[4:8], hash)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return net.ErrClosed
+	}
+	if err := p.flushPendingTicsLocked(); err != nil {
+		return err
+	}
+	return writeFrame(p.conn, frameHeader{Type: frameTypeCheckpoint, Tic: tic, Length: uint32(checkpointPayloadSize)}, payload)
+}
+
+// SendDesyncRequest informs the server that our local hash at the given tic
+// does not match the checkpoint. The server will push a mandatory keyframe.
+func (p *PlayerPeer) SendDesyncRequest(req DesyncRequest) error {
+	if p == nil {
+		return nil
+	}
+	payload := make([]byte, desyncRequestPayloadSize)
+	binary.LittleEndian.PutUint32(payload[0:4], req.Tic)
+	binary.LittleEndian.PutUint32(payload[4:8], req.LocalHash)
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return net.ErrClosed
+	}
+	if err := p.flushPendingTicsLocked(); err != nil {
+		return err
+	}
+	return writeFrame(p.conn, frameHeader{Type: frameTypeDesyncRequest, Tic: req.Tic}, payload)
+}
+
+func (p *PlayerPeer) readErr() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.err
+}
+
+func (p *PlayerPeer) setErr(err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.err == nil {
+		p.err = err
+	}
 }
 
 func (b *RelayBroadcaster) BroadcastTic(tc demo.Tic) error {
@@ -1420,6 +1859,30 @@ func writeFrame(w io.Writer, header frameHeader, payload []byte) error {
 		}
 		_, err := w.Write(payload)
 		return err
+	case frameTypePeerTicBatch:
+		// payload: player_id[1] + count[2 LE] + tics[count*4]
+		if len(payload) < peerTicBatchOverhead {
+			return fmt.Errorf("peer tic batch payload too short")
+		}
+		count := int(binary.LittleEndian.Uint16(payload[1:3]))
+		want := peerTicBatchOverhead + count*ticBatchSize
+		if len(payload) != want {
+			return fmt.Errorf("peer tic batch payload len=%d want=%d", len(payload), want)
+		}
+		if count <= 0 || count > gameplayRecordTicBatchMax {
+			return fmt.Errorf("peer tic batch count=%d want 1..%d", count, gameplayRecordTicBatchMax)
+		}
+		if _, err := w.Write([]byte{frameTypePeerTicBatch}); err != nil {
+			return err
+		}
+		_, err := w.Write(payload)
+		return err
+	case frameTypeRosterUpdate:
+		if _, err := w.Write([]byte{frameTypeRosterUpdate}); err != nil {
+			return err
+		}
+		_, err := w.Write(payload)
+		return err
 	default:
 		return fmt.Errorf("unsupported gameplay frame type %d", header.Type)
 	}
@@ -1482,6 +1945,39 @@ func readFrame(r io.Reader) (frameHeader, []byte, error) {
 			}
 		}
 		return frameHeader{Type: frameTypeChat}, body, nil
+	case kind[0] == frameTypePeerTicBatch:
+		// player_id[1] + count[2 LE] + tics[count*4]
+		var hdr [peerTicBatchOverhead]byte
+		if _, err := io.ReadFull(r, hdr[:]); err != nil {
+			return frameHeader{}, nil, err
+		}
+		playerID := hdr[0]
+		count := int(binary.LittleEndian.Uint16(hdr[1:3]))
+		if count <= 0 || count > gameplayRecordTicBatchMax {
+			return frameHeader{}, nil, fmt.Errorf("peer tic batch count=%d want 1..%d", count, gameplayRecordTicBatchMax)
+		}
+		payload := make([]byte, peerTicBatchOverhead+count*ticBatchSize)
+		payload[0] = playerID
+		binary.LittleEndian.PutUint16(payload[1:3], uint16(count))
+		if _, err := io.ReadFull(r, payload[peerTicBatchOverhead:]); err != nil {
+			return frameHeader{}, nil, err
+		}
+		return frameHeader{Type: frameTypePeerTicBatch}, payload, nil
+	case kind[0] == frameTypeRosterUpdate:
+		// count[1] + player_ids[count]
+		var lenBuf [1]byte
+		if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
+			return frameHeader{}, nil, err
+		}
+		n := int(lenBuf[0])
+		payload := make([]byte, 1+n)
+		payload[0] = lenBuf[0]
+		if n > 0 {
+			if _, err := io.ReadFull(r, payload[1:]); err != nil {
+				return frameHeader{}, nil, err
+			}
+		}
+		return frameHeader{Type: frameTypeRosterUpdate}, payload, nil
 	default:
 		return frameHeader{}, nil, fmt.Errorf("unexpected broadcast frame type %d", kind[0])
 	}
@@ -1528,6 +2024,57 @@ func readChatFrame(r io.Reader) (ChatMessage, error) {
 		Name: string(buf[:nameLen]),
 		Text: string(buf[nameLen:]),
 	}, nil
+}
+
+func marshalPeerTicBatchPayload(playerID byte, tics []demo.Tic) []byte {
+	payload := make([]byte, peerTicBatchOverhead+len(tics)*ticBatchSize)
+	payload[0] = playerID
+	binary.LittleEndian.PutUint16(payload[1:3], uint16(len(tics)))
+	for i, tc := range tics {
+		copy(payload[peerTicBatchOverhead+i*ticBatchSize:], packDemoTic(tc))
+	}
+	return payload
+}
+
+func unmarshalPeerTicBatchPayload(payload []byte) (playerID byte, tics []demo.Tic, err error) {
+	if len(payload) < peerTicBatchOverhead {
+		return 0, nil, fmt.Errorf("peer tic batch payload too short")
+	}
+	playerID = payload[0]
+	count := int(binary.LittleEndian.Uint16(payload[1:3]))
+	want := peerTicBatchOverhead + count*ticBatchSize
+	if len(payload) != want {
+		return 0, nil, fmt.Errorf("peer tic batch payload len=%d want=%d", len(payload), want)
+	}
+	tics = make([]demo.Tic, count)
+	for i := range tics {
+		tics[i] = unpackDemoTic(payload[peerTicBatchOverhead+i*ticBatchSize:])
+	}
+	return playerID, tics, nil
+}
+
+func marshalRosterUpdatePayload(roster RosterUpdate) []byte {
+	n := len(roster.PlayerIDs)
+	if n > 255 {
+		n = 255
+	}
+	payload := make([]byte, 1+n)
+	payload[0] = byte(n)
+	copy(payload[1:], roster.PlayerIDs[:n])
+	return payload
+}
+
+func unmarshalRosterUpdatePayload(payload []byte) (RosterUpdate, error) {
+	if len(payload) < 1 {
+		return RosterUpdate{}, fmt.Errorf("roster update payload too short")
+	}
+	n := int(payload[0])
+	if len(payload) != 1+n {
+		return RosterUpdate{}, fmt.Errorf("roster update payload len=%d want=%d", len(payload), 1+n)
+	}
+	ids := make([]byte, n)
+	copy(ids, payload[1:])
+	return RosterUpdate{PlayerIDs: ids}, nil
 }
 
 func marshalSessionConfig(session SessionConfig) ([]byte, error) {

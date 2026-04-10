@@ -408,3 +408,225 @@ func TestRelayServerClosesViewerWhenBroadcasterDisconnects(t *testing.T) {
 		t.Fatal("timed out waiting for viewer disconnect")
 	}
 }
+
+// dialPeer connects a PlayerPeer to the server and returns the raw conn plus
+// the assigned session/player info from the server ack hello.
+func dialPeer(t *testing.T, addr string, sessionID uint64, slot int) (net.Conn, uint64, byte) {
+	t.Helper()
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("dial peer: %v", err)
+	}
+	cfg := SessionConfig{WADHash: "abc", MapName: "E1M1", GameMode: "coop", PlayerSlot: slot}
+	if err := writeHello(conn, helloRolePlayerPeer, helloFlagGameplayCompactV1, sessionID, cfg); err != nil {
+		t.Fatalf("writeHello peer: %v", err)
+	}
+	role, _, assignedID, ack, err := readHello(conn)
+	if err != nil {
+		t.Fatalf("readHello peer ack: %v", err)
+	}
+	if role != helloRoleServer {
+		t.Fatalf("peer ack role=%d want=%d", role, helloRoleServer)
+	}
+	return conn, assignedID, byte(ack.PlayerSlot)
+}
+
+func readPeerFrame(t *testing.T, conn net.Conn) (frameHeader, []byte) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	_ = conn.SetReadDeadline(deadline)
+	h, p, err := readFrame(conn)
+	_ = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		t.Fatalf("readFrame: %v", err)
+	}
+	return h, p
+}
+
+func TestPlayerPeerTwoWayTicRouting(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer: %v", err)
+	}
+	defer srv.Close()
+
+	// First peer creates session (sessionID=0 → assigned).
+	conn1, sid, pid1 := dialPeer(t, srv.Addr(), 0, 1)
+	defer conn1.Close()
+	if sid == 0 {
+		t.Fatal("expected non-zero session ID")
+	}
+	if pid1 != 1 {
+		t.Fatalf("peer1 playerID=%d want=1", pid1)
+	}
+
+	// First peer receives its own roster update on join.
+	h, p := readPeerFrame(t, conn1)
+	if h.Type != frameTypeRosterUpdate {
+		t.Fatalf("peer1 expected roster frame, got type=%d", h.Type)
+	}
+	roster1, err := unmarshalRosterUpdatePayload(p)
+	if err != nil {
+		t.Fatalf("unmarshal roster: %v", err)
+	}
+	if len(roster1.PlayerIDs) != 1 || roster1.PlayerIDs[0] != 1 {
+		t.Fatalf("roster1 = %v want [1]", roster1.PlayerIDs)
+	}
+
+	// Second peer joins same session.
+	conn2, sid2, pid2 := dialPeer(t, srv.Addr(), sid, 2)
+	defer conn2.Close()
+	if sid2 != sid {
+		t.Fatalf("peer2 sessionID=%d want=%d", sid2, sid)
+	}
+	if pid2 != 2 {
+		t.Fatalf("peer2 playerID=%d want=2", pid2)
+	}
+
+	// peer2 gets roster update (has both players).
+	h, p = readPeerFrame(t, conn2)
+	if h.Type != frameTypeRosterUpdate {
+		t.Fatalf("peer2 expected roster frame, got type=%d", h.Type)
+	}
+	roster2, _ := unmarshalRosterUpdatePayload(p)
+	if len(roster2.PlayerIDs) != 2 {
+		t.Fatalf("roster2 len=%d want=2", len(roster2.PlayerIDs))
+	}
+
+	// peer1 also receives updated roster after peer2 joined.
+	h, p = readPeerFrame(t, conn1)
+	if h.Type != frameTypeRosterUpdate {
+		t.Fatalf("peer1 expected roster update after peer2 join, got type=%d", h.Type)
+	}
+	roster1b, _ := unmarshalRosterUpdatePayload(p)
+	if len(roster1b.PlayerIDs) != 2 {
+		t.Fatalf("roster1b len=%d want=2", len(roster1b.PlayerIDs))
+	}
+
+	// peer1 sends a tic batch; peer2 should receive it tagged with player_id=1.
+	tc := demo.Tic{Forward: 10, Side: -5, AngleTurn: 256, Buttons: 1}
+	payload1 := marshalPeerTicBatchPayload(pid1, []demo.Tic{tc})
+	if err := writeFrame(conn1, frameHeader{Type: frameTypePeerTicBatch}, payload1); err != nil {
+		t.Fatalf("peer1 write tic: %v", err)
+	}
+
+	h, p = readPeerFrame(t, conn2)
+	if h.Type != frameTypePeerTicBatch {
+		t.Fatalf("peer2 got frame type=%d want=%d", h.Type, frameTypePeerTicBatch)
+	}
+	gotPID, gotTics, err := unmarshalPeerTicBatchPayload(p)
+	if err != nil {
+		t.Fatalf("unmarshal peer tic batch: %v", err)
+	}
+	if gotPID != pid1 {
+		t.Fatalf("routed playerID=%d want=%d", gotPID, pid1)
+	}
+	if len(gotTics) != 1 {
+		t.Fatalf("tic count=%d want=1", len(gotTics))
+	}
+	if gotTics[0].Forward != tc.Forward || gotTics[0].Side != tc.Side {
+		t.Fatalf("tic mismatch got=%+v want=%+v", gotTics[0], tc)
+	}
+
+	// peer2 sends a tic; peer1 should receive it tagged with player_id=2.
+	tc2 := demo.Tic{Forward: -3, Side: 7, AngleTurn: -128, Buttons: 0}
+	payload2 := marshalPeerTicBatchPayload(pid2, []demo.Tic{tc2})
+	if err := writeFrame(conn2, frameHeader{Type: frameTypePeerTicBatch}, payload2); err != nil {
+		t.Fatalf("peer2 write tic: %v", err)
+	}
+
+	h, p = readPeerFrame(t, conn1)
+	if h.Type != frameTypePeerTicBatch {
+		t.Fatalf("peer1 got frame type=%d want=%d", h.Type, frameTypePeerTicBatch)
+	}
+	gotPID2, gotTics2, err := unmarshalPeerTicBatchPayload(p)
+	if err != nil {
+		t.Fatalf("unmarshal peer tic batch: %v", err)
+	}
+	if gotPID2 != pid2 {
+		t.Fatalf("routed playerID=%d want=%d", gotPID2, pid2)
+	}
+	if gotTics2[0].Forward != tc2.Forward {
+		t.Fatalf("tic2 mismatch got=%+v want=%+v", gotTics2[0], tc2)
+	}
+}
+
+func TestPlayerPeerSelfTicsNotEchoed(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer: %v", err)
+	}
+	defer srv.Close()
+
+	conn1, sid, _ := dialPeer(t, srv.Addr(), 0, 1)
+	defer conn1.Close()
+
+	// Drain roster frame.
+	readPeerFrame(t, conn1)
+
+	conn2, _, _ := dialPeer(t, srv.Addr(), sid, 2)
+	defer conn2.Close()
+	readPeerFrame(t, conn2) // peer2 roster
+	readPeerFrame(t, conn1) // peer1 updated roster
+
+	// peer1 sends tic.
+	payload := marshalPeerTicBatchPayload(1, []demo.Tic{{Forward: 1}})
+	if err := writeFrame(conn1, frameHeader{Type: frameTypePeerTicBatch}, payload); err != nil {
+		t.Fatalf("write tic: %v", err)
+	}
+
+	// peer2 should receive it.
+	h, _ := readPeerFrame(t, conn2)
+	if h.Type != frameTypePeerTicBatch {
+		t.Fatalf("peer2 got type=%d want peer tic batch", h.Type)
+	}
+
+	// peer1 must NOT receive its own tic back.
+	_ = conn1.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	var buf [1]byte
+	n, err := conn1.Read(buf[:])
+	_ = conn1.SetReadDeadline(time.Time{})
+	if n > 0 || (err != nil && !errors.Is(err, context.DeadlineExceeded) && !isTimeoutErr(err)) {
+		t.Fatalf("peer1 received unexpected data n=%d err=%v", n, err)
+	}
+}
+
+func isTimeoutErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if ne, ok := err.(net.Error); ok {
+		return ne.Timeout()
+	}
+	return false
+}
+
+func TestPlayerPeerRosterOnDisconnect(t *testing.T) {
+	srv, err := ListenServer("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("ListenServer: %v", err)
+	}
+	defer srv.Close()
+
+	conn1, sid, _ := dialPeer(t, srv.Addr(), 0, 1)
+	defer conn1.Close()
+	readPeerFrame(t, conn1) // initial roster
+
+	conn2, _, _ := dialPeer(t, srv.Addr(), sid, 2)
+	defer conn2.Close()
+	readPeerFrame(t, conn2) // peer2 roster (both players)
+	readPeerFrame(t, conn1) // peer1 roster update (both players)
+
+	// Disconnect peer2.
+	conn2.Close()
+
+	// peer1 should receive a roster update showing only player 1.
+	h, p := readPeerFrame(t, conn1)
+	if h.Type != frameTypeRosterUpdate {
+		t.Fatalf("peer1 got type=%d want roster update after peer2 disconnect", h.Type)
+	}
+	roster, _ := unmarshalRosterUpdatePayload(p)
+	if len(roster.PlayerIDs) != 1 || roster.PlayerIDs[0] != 1 {
+		t.Fatalf("roster after disconnect = %v want [1]", roster.PlayerIDs)
+	}
+}

@@ -203,7 +203,7 @@ func mustLoadE1M1GameForMapTextureTests(t *testing.T) *game {
 	return g
 }
 
-func findDOOM1WAD(t *testing.T) string {
+func findDOOM1WAD(t testing.TB) string {
 	t.Helper()
 
 	wd, err := os.Getwd()

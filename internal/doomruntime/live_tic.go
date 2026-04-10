@@ -12,6 +12,11 @@ import (
 )
 
 const (
+	coopMaxCatchUpTics   = 4
+	coopStartupBufferTics = 2
+)
+
+const (
 	watchTargetBufferedTics = 2
 	watchMaxCatchUpTics     = 4
 )
@@ -219,4 +224,284 @@ func (sg *sessionGame) applyMandatoryWatchKeyframes() error {
 		sg.g.clearPendingSoundState()
 	}
 	return nil
+}
+
+// updateCoopMode runs one game engine Update tick for peer-symmetric co-op.
+// It is called instead of the normal walk/map update when g.opts.CoopPeers is set.
+func (g *game) updateCoopMode() error {
+	if g == nil {
+		return nil
+	}
+	src := g.opts.CoopPeers
+	if src == nil {
+		return nil
+	}
+
+	// Apply roster changes: spawn or remove remote player structs.
+	if roster, ok := src.PollRosterUpdate(); ok {
+		g.applyCoopRoster(roster.PlayerIDs)
+	}
+
+	if err := g.pollChatMessages(); err != nil {
+		return fmt.Errorf("coop chat stream: %w", err)
+	}
+	if g.handleChatInput() {
+	} else {
+		if g.keyJustPressed(ebiten.KeyF4) {
+			g.soundMenuRequested = true
+			return nil
+		}
+		if g.keyJustPressed(ebiten.KeyF10) {
+			g.quitPromptRequested = true
+			return nil
+		}
+		if g.keyJustPressed(ebiten.KeyEscape) {
+			g.frontendMenuRequested = true
+			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+			return nil
+		}
+		if g.bindingJustPressed(bindingAutomap) {
+			if g.mode == viewWalk {
+				g.mode = viewMap
+				g.setHUDMessage("Automap Opened", 35)
+			} else {
+				g.mode = viewWalk
+				g.mouseLookSet = false
+				g.mouseLookSuppressTicks = detailMouseSuppressTicks
+				g.setHUDMessage("Automap Closed", 35)
+			}
+		}
+		g.edgeInputPass = true
+		g.updateParityControls()
+		if g.keyJustPressed(ebiten.KeyF5) {
+			if g.opts.SourcePortMode {
+				g.cycleSourcePortDetailLevel()
+			} else {
+				g.cycleDetailLevel()
+			}
+		}
+		if g.bindingJustPressed(bindingUse) {
+			g.pendingUse = true
+		}
+		if g.isDead && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter)) {
+			g.requestLevelRestart()
+		}
+		g.edgeInputPass = false
+	}
+
+	// Build the local tic from current input and send it upstream.
+	localTic := g.buildLocalCoopTic()
+	if err := src.SendLocalTic(localTic); err != nil {
+		return fmt.Errorf("coop send tic: %w", err)
+	}
+
+	// Advance only as many tics as all active peers have available.
+	now := time.Now()
+	ticDur := time.Second / doomTicsPerSecond
+	if g.watchTickStamp.IsZero() {
+		g.watchTickStamp = now
+	}
+	g.watchTickAccum += now.Sub(g.watchTickStamp)
+	g.watchTickStamp = now
+
+	budget := 0
+	for g.watchTickAccum >= ticDur {
+		g.watchTickAccum -= ticDur
+		budget++
+	}
+	// Gate on the lockstep: don't advance beyond what all peers have sent.
+	ready := src.ReadyTics()
+	if budget > ready {
+		budget = ready
+	}
+	if budget > coopMaxCatchUpTics {
+		budget = coopMaxCatchUpTics
+	}
+
+	for i := 0; i < budget; i++ {
+		g.edgeInputPass = i == 0
+		g.capturePrevState()
+
+		// Step local player. For catch-up tics beyond the first, send a
+		// neutral tic — input has already been consumed for this frame.
+		var tic demo.Tic
+		if i == 0 {
+			tic = localTic
+		} else {
+			// neutral: no movement, keep angle
+			tic = demo.Tic{}
+			if err := src.SendLocalTic(tic); err != nil {
+				return fmt.Errorf("coop send catch-up tic: %w", err)
+			}
+		}
+		cmd, usePressed, fireHeld := demoTicCommand(DemoTic(tic))
+		g.runGameplayTic(cmd, usePressed, fireHeld)
+
+		// Step each remote player with their received tic.
+		for _, rp := range g.remotePlayers {
+			tc, ok, err := src.PollPeerTic(byte(rp.slot))
+			if err != nil {
+				return fmt.Errorf("coop peer tic slot %d: %w", rp.slot, err)
+			}
+			if ok {
+				g.stepRemotePlayer(rp, tc)
+			}
+		}
+
+		g.syncPeerStartsFromRemotePlayers()
+		g.discoverLinesAroundPlayer()
+		g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
+		g.tickDelayedSounds()
+		g.flushSoundEvents()
+		g.tickStatusWidgets()
+		if g.useFlash > 0 {
+			g.useFlash--
+		}
+		g.tickChatHistory()
+		if g.damageFlashTic > 0 {
+			g.damageFlashTic--
+		}
+		if g.bonusFlashTic > 0 {
+			g.bonusFlashTic--
+		}
+		g.tickDelayedSwitchReverts()
+		g.markSimUpdate(time.Now())
+	}
+	g.edgeInputPass = false
+
+	// Checkpoint: canonical peer (slot 1) sends a hash every checkpointIntervalTics.
+	// All peers verify incoming checkpoints and request resync on mismatch.
+	g.tickCoopCheckpoint()
+
+	g.publishRuntimeSettingsIfChanged()
+	return nil
+}
+
+// tickCoopCheckpoint handles periodic desync detection.
+// The canonical peer (slot 1) emits a checkpoint every checkpointIntervalTics.
+// Non-canonical peers compare any received checkpoint against their local hash.
+func (g *game) tickCoopCheckpoint() {
+	src := g.opts.CoopPeers
+	if src == nil {
+		return
+	}
+
+	localID := src.LocalPlayerID()
+
+	// Canonical peer sends its hash to the server for relay.
+	if localID == 1 && g.worldTic > 0 && g.worldTic%checkpointIntervalTics == 0 {
+		_ = src.SendCheckpoint(uint32(g.worldTic), g.SimChecksum())
+	}
+
+	// All non-canonical peers check incoming checkpoints.
+	if localID != 1 {
+		for {
+			cp, ok := src.PollCheckpoint()
+			if !ok {
+				break
+			}
+			if cp.Tic > uint32(g.worldTic) {
+				// Haven't reached this tic yet — ignore for now.
+				break
+			}
+			// We can only verify the checkpoint at the exact tic it was taken.
+			// If we've already advanced past it, we trust the state is fine unless
+			// we had a prior mismatch. Only verify if we're at that exact tic.
+			if cp.Tic == uint32(g.worldTic) {
+				local := g.SimChecksum()
+				if local != cp.Hash {
+					_ = src.SendDesyncNotify(cp.Tic, local)
+				}
+			}
+		}
+	}
+}
+
+// buildLocalCoopTic constructs a demo.Tic from current walk-mode input.
+// It mirrors the input collection in updateWalkMode and quantizes to demo
+// precision so all peers see the same values.
+func (g *game) buildLocalCoopTic() demo.Tic {
+	cmd := moveCmd{}
+	usePressed := false
+	fireHeld := false
+	if !g.chatComposeOpen {
+		speed := g.currentRunSpeed()
+		strafeMod := g.bindingHeld(bindingStrafeModifier)
+		if g.bindingHeld(bindingMoveForward) {
+			cmd.forward += forwardMove[speed]
+		}
+		if g.bindingHeld(bindingMoveBackward) {
+			cmd.forward -= forwardMove[speed]
+		}
+		if g.bindingHeld(bindingStrafeLeft) {
+			cmd.side -= sideMove[speed]
+		}
+		if g.bindingHeld(bindingStrafeRight) {
+			cmd.side += sideMove[speed]
+		}
+		if g.bindingHeld(bindingTurnLeft) {
+			if strafeMod {
+				cmd.side -= sideMove[speed]
+			} else {
+				cmd.turn += 1
+			}
+		}
+		if g.bindingHeld(bindingTurnRight) {
+			if strafeMod {
+				cmd.side += sideMove[speed]
+			} else {
+				cmd.turn -= 1
+			}
+		}
+		if g.pendingUse {
+			usePressed = true
+			g.pendingUse = false
+		}
+		fireHeld = g.bindingHeld(bindingFire)
+		if g.opts.MouseLook {
+			cmd.turnRaw += g.input.mouseTurnRawAccum
+			g.input.mouseTurnRawAccum = 0
+		}
+		cmd.run = speed == 1
+	}
+	cmd = quantizeMoveCmdToDemo(cmd)
+	return g.buildOutgoingDemoTic(cmd, usePressed, fireHeld)
+}
+
+// applyCoopRoster syncs g.remotePlayers to the given set of remote peer IDs.
+func (g *game) applyCoopRoster(peerIDs []byte) {
+	if g.remotePlayers == nil {
+		g.remotePlayers = make(map[int]*remotePlayer)
+	}
+	// Add newly joined peers.
+	active := make(map[int]bool, len(peerIDs))
+	for _, id := range peerIDs {
+		slot := int(id)
+		active[slot] = true
+		if _, exists := g.remotePlayers[slot]; !exists {
+			p := spawnRemotePlayer(g.m, slot)
+			g.remotePlayers[slot] = &remotePlayer{slot: slot, p: p}
+		}
+	}
+	// Remove departed peers.
+	for slot := range g.remotePlayers {
+		if !active[slot] {
+			delete(g.remotePlayers, slot)
+		}
+	}
+	g.syncPeerStartsFromRemotePlayers()
+}
+
+// syncPeerStartsFromRemotePlayers updates peerStarts so the automap renders
+// remote players at their current simulated positions.
+func (g *game) syncPeerStartsFromRemotePlayers() {
+	g.peerStarts = g.peerStarts[:0]
+	for _, rp := range g.remotePlayers {
+		g.peerStarts = append(g.peerStarts, playerStart{
+			slot:  rp.slot,
+			x:     rp.p.x,
+			y:     rp.p.y,
+			angle: rp.p.angle,
+		})
+	}
 }

@@ -32,11 +32,23 @@ type relaySession struct {
 	audioSrc          net.Conn
 	viewers           map[*relayViewer]struct{}
 	audioViewers      map[*relayViewer]struct{}
+	peers             map[*relayPeer]struct{}
 	lastKeyframe      []byte
 	lastKeyframeFlags byte
 	lastKeyframeTic   uint32
 	backlog           []bufferedFrame
 	lastAudioFormat   []byte
+}
+
+type relayPeer struct {
+	conn     net.Conn
+	playerID byte
+	mu       sync.Mutex
+	chat     relayViewer // reuse chat throttle logic; conn field unused here
+}
+
+func (p *relayPeer) allowChatMessage(msg ChatMessage, now time.Time) bool {
+	return p.chat.allowChatMessage(msg, now)
 }
 
 type relayViewer struct {
@@ -160,6 +172,8 @@ func (s *Server) handleConn(conn net.Conn) {
 			return
 		}
 		s.handleAudioViewer(conn, sessionID, flags)
+	case helloRolePlayerPeer:
+		s.handlePlayerPeer(conn, sessionID, sessionCfg, flags)
 	default:
 		_ = conn.Close()
 	}
@@ -187,6 +201,7 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 		srcViewer:    &relayViewer{conn: conn},
 		viewers:      make(map[*relayViewer]struct{}),
 		audioViewers: make(map[*relayViewer]struct{}),
+		peers:        make(map[*relayPeer]struct{}),
 	}
 	s.sessions[sessionID] = sess
 	s.mu.Unlock()
@@ -209,6 +224,317 @@ func (s *Server) handleBroadcaster(conn net.Conn, sessionID uint64, cfg SessionC
 			s.forwardFrame(sess, header, payload)
 		}
 	}
+}
+
+func (s *Server) handlePlayerPeer(conn net.Conn, sessionID uint64, cfg SessionConfig, flags uint16) {
+	if flags&helloFlagGameplayCompactV1 == 0 {
+		_ = conn.Close()
+		return
+	}
+
+	s.mu.Lock()
+	// Create a new session if sessionID == 0, otherwise join existing.
+	var sess *relaySession
+	if sessionID == 0 {
+		sessionID = s.nextSessionIDLocked()
+		sess = &relaySession{
+			id:           sessionID,
+			cfg:          cfg,
+			server:       s,
+			viewers:      make(map[*relayViewer]struct{}),
+			audioViewers: make(map[*relayViewer]struct{}),
+			peers:        make(map[*relayPeer]struct{}),
+		}
+		s.sessions[sessionID] = sess
+	} else {
+		sess = s.sessions[sessionID]
+		if sess == nil {
+			s.mu.Unlock()
+			_ = conn.Close()
+			return
+		}
+	}
+
+	// Assign a player slot: use cfg.PlayerSlot if available, else pick the
+	// lowest free slot among 1-4.
+	playerID := byte(cfg.PlayerSlot)
+	if playerID < 1 || playerID > maxPeerPlayerID {
+		playerID = s.nextPeerSlotLocked(sess)
+	}
+	if playerID == 0 {
+		// No free slots.
+		s.mu.Unlock()
+		_ = conn.Close()
+		return
+	}
+
+	peer := &relayPeer{conn: conn, playerID: playerID}
+	sess.peers[peer] = struct{}{}
+	serverCfg := sess.cfg
+	serverCfg.PlayerSlot = int(playerID)
+
+	// Snapshot join state for the new peer.
+	var (
+		joinKeyframe      []byte
+		joinKeyframeFlags byte
+		joinKeyframeTic   uint32
+		joinBacklog       []bufferedFrame
+	)
+	if len(sess.lastKeyframe) > 0 {
+		joinKeyframe = append([]byte(nil), sess.lastKeyframe...)
+		joinKeyframeFlags = sess.lastKeyframeFlags
+		joinKeyframeTic = sess.lastKeyframeTic
+	}
+	if len(sess.backlog) > 0 {
+		joinBacklog = make([]bufferedFrame, len(sess.backlog))
+		for i, f := range sess.backlog {
+			joinBacklog[i] = bufferedFrame{
+				header:  f.header,
+				payload: append([]byte(nil), f.payload...),
+			}
+		}
+	}
+	roster := s.peerRosterLocked(sess)
+	s.mu.Unlock()
+
+	// Acknowledge with server hello; PlayerSlot carries the assigned ID.
+	if err := writeHello(conn, helloRoleServer, helloFlagGameplayCompactV1, sessionID, serverCfg); err != nil {
+		s.removeRelayPeer(sess, peer)
+		_ = conn.Close()
+		return
+	}
+
+	// Send the current keyframe + backlog so the joining peer can catch up.
+	peer.mu.Lock()
+	if len(joinKeyframe) > 0 {
+		if err := writeFrame(conn, frameHeader{
+			Type:   frameTypeKeyframe,
+			Flags:  joinKeyframeFlags,
+			Length: uint32(len(joinKeyframe)),
+			Tic:    joinKeyframeTic,
+		}, joinKeyframe); err != nil {
+			peer.mu.Unlock()
+			s.removeRelayPeer(sess, peer)
+			_ = conn.Close()
+			return
+		}
+	}
+	for _, f := range joinBacklog {
+		if err := writeFrame(conn, f.header, f.payload); err != nil {
+			peer.mu.Unlock()
+			s.removeRelayPeer(sess, peer)
+			_ = conn.Close()
+			return
+		}
+	}
+	// Send current roster to the joining peer.
+	if err := writePeerRosterFrame(conn, roster); err != nil {
+		peer.mu.Unlock()
+		s.removeRelayPeer(sess, peer)
+		_ = conn.Close()
+		return
+	}
+	peer.mu.Unlock()
+
+	// Broadcast updated roster to all other peers.
+	s.mu.Lock()
+	updatedRoster := s.peerRosterLocked(sess)
+	others := s.otherPeersLocked(sess, peer)
+	s.mu.Unlock()
+	for _, other := range others {
+		if err := other.writeRoster(updatedRoster); err != nil {
+			s.removeRelayPeer(sess, other)
+			_ = other.conn.Close()
+		}
+	}
+
+	// Read loop: fan out this peer's tics/chat to all other peers.
+	for {
+		header, payload, err := readFrame(conn)
+		if err != nil {
+			break
+		}
+		switch header.Type {
+		case frameTypePeerTicBatch:
+			s.forwardPeerTicBatch(sess, peer, payload)
+		case frameTypeChat:
+			s.forwardPeerChat(sess, peer, header, payload)
+		case frameTypeKeyframe:
+			// Peers may contribute keyframes for mid-join.
+			s.mu.Lock()
+			if header.Flags&keyframeFlagMandatoryApply == 0 {
+				sess.lastKeyframeTic = header.Tic
+				sess.lastKeyframeFlags = header.Flags
+				sess.lastKeyframe = append(sess.lastKeyframe[:0], payload...)
+				sess.backlog = sess.backlog[:0]
+			}
+			s.mu.Unlock()
+		case frameTypeCheckpoint:
+			// Relay the canonical peer's checkpoint to all other peers.
+			s.forwardCheckpoint(sess, peer, payload)
+		case frameTypeDesyncRequest:
+			// Push the latest keyframe as mandatory to the requesting peer.
+			s.sendKeyframeToPeer(sess, peer)
+		}
+	}
+
+	s.removeRelayPeer(sess, peer)
+	_ = conn.Close()
+
+	// Broadcast updated roster after departure.
+	s.mu.Lock()
+	departedRoster := s.peerRosterLocked(sess)
+	remaining := s.otherPeersLocked(sess, nil)
+	s.mu.Unlock()
+	for _, other := range remaining {
+		if err := other.writeRoster(departedRoster); err != nil {
+			s.removeRelayPeer(sess, other)
+			_ = other.conn.Close()
+		}
+	}
+}
+
+func (s *Server) nextPeerSlotLocked(sess *relaySession) byte {
+	used := [maxPeerPlayerID + 1]bool{}
+	for p := range sess.peers {
+		if p.playerID >= 1 && int(p.playerID) <= maxPeerPlayerID {
+			used[p.playerID] = true
+		}
+	}
+	for slot := byte(1); int(slot) <= maxPeerPlayerID; slot++ {
+		if !used[slot] {
+			return slot
+		}
+	}
+	return 0
+}
+
+func (s *Server) peerRosterLocked(sess *relaySession) RosterUpdate {
+	ids := make([]byte, 0, len(sess.peers))
+	for p := range sess.peers {
+		ids = append(ids, p.playerID)
+	}
+	return RosterUpdate{PlayerIDs: ids}
+}
+
+func (s *Server) otherPeersLocked(sess *relaySession, exclude *relayPeer) []*relayPeer {
+	out := make([]*relayPeer, 0, len(sess.peers))
+	for p := range sess.peers {
+		if p != exclude {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func (s *Server) forwardPeerTicBatch(sess *relaySession, sender *relayPeer, payload []byte) {
+	s.mu.Lock()
+	others := s.otherPeersLocked(sess, sender)
+	s.mu.Unlock()
+	for _, other := range others {
+		if err := other.writePeerTicBatch(payload); err != nil {
+			s.removeRelayPeer(sess, other)
+			_ = other.conn.Close()
+		}
+	}
+}
+
+func (s *Server) forwardPeerChat(sess *relaySession, sender *relayPeer, header frameHeader, payload []byte) {
+	if sender != nil {
+		msg, err := readChatFrame(bytes.NewReader(payload))
+		if err != nil {
+			return
+		}
+		if !sender.allowChatMessage(msg, time.Now()) {
+			return
+		}
+	}
+	s.mu.Lock()
+	all := s.otherPeersLocked(sess, nil)
+	s.mu.Unlock()
+	for _, p := range all {
+		if err := p.writeChat(header, payload); err != nil {
+			s.removeRelayPeer(sess, p)
+			_ = p.conn.Close()
+		}
+	}
+}
+
+// forwardCheckpoint relays a checkpoint frame from the sender to all other peers.
+func (s *Server) forwardCheckpoint(sess *relaySession, sender *relayPeer, payload []byte) {
+	s.mu.Lock()
+	others := s.otherPeersLocked(sess, sender)
+	s.mu.Unlock()
+	for _, other := range others {
+		other.mu.Lock()
+		_ = writeFrame(other.conn, frameHeader{Type: frameTypeCheckpoint, Length: uint32(len(payload))}, payload)
+		other.mu.Unlock()
+	}
+}
+
+// sendKeyframeToPeer pushes the session's latest keyframe to the given peer as
+// a mandatory apply, so the peer can resync after a detected desync.
+func (s *Server) sendKeyframeToPeer(sess *relaySession, peer *relayPeer) {
+	s.mu.Lock()
+	if len(sess.lastKeyframe) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	kf := append([]byte(nil), sess.lastKeyframe...)
+	kfTic := sess.lastKeyframeTic
+	s.mu.Unlock()
+
+	peer.mu.Lock()
+	_ = writeFrame(peer.conn, frameHeader{
+		Type:   frameTypeKeyframe,
+		Flags:  keyframeFlagMandatoryApply,
+		Length: uint32(len(kf)),
+		Tic:    kfTic,
+	}, kf)
+	peer.mu.Unlock()
+}
+
+func (s *Server) removeRelayPeer(sess *relaySession, peer *relayPeer) {
+	if s == nil || sess == nil || peer == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if cur := s.sessions[sess.id]; cur == sess {
+		delete(sess.peers, peer)
+	}
+}
+
+func writePeerRosterFrame(w io.Writer, roster RosterUpdate) error {
+	payload := marshalRosterUpdatePayload(roster)
+	return writeFrame(w, frameHeader{Type: frameTypeRosterUpdate}, payload)
+}
+
+func (p *relayPeer) writePeerTicBatch(payload []byte) error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return writeFrame(p.conn, frameHeader{Type: frameTypePeerTicBatch}, payload)
+}
+
+func (p *relayPeer) writeRoster(roster RosterUpdate) error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return writePeerRosterFrame(p.conn, roster)
+}
+
+func (p *relayPeer) writeChat(header frameHeader, payload []byte) error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return writeFrame(p.conn, header, payload)
 }
 
 func (s *Server) handleAudioBroadcaster(conn net.Conn, sessionID uint64, flags uint16) {

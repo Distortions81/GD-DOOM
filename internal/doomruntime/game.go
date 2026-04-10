@@ -453,6 +453,7 @@ type game struct {
 	localPlayerThingIndex     int
 	playerBlockOrder          int64
 	peerStarts                []playerStart
+	remotePlayers             map[int]*remotePlayer // slot → state
 
 	lines                   []physLine
 	mapVisibleLines         []mapview.Line
@@ -1313,6 +1314,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.gammaLevel = clampGamma(opts.InitialGammaLevel)
 	}
 	g.setGammaLevel(g.gammaLevel)
+	if opts.CoopPeers != nil {
+		g.remotePlayers = make(map[int]*remotePlayer)
+		g.applyCoopRoster(opts.CoopPeers.ActivePeerIDs())
+	}
 	g.initPlayerState()
 	g.bringUpWeapon()
 	g.initStatusFaceState()
@@ -2515,6 +2520,9 @@ func (g *game) Update() error {
 	}
 	if g.opts.LiveTicSource != nil {
 		return g.updateWatchMode()
+	}
+	if g.opts.CoopPeers != nil {
+		return g.updateCoopMode()
 	}
 	if err := g.pollChatMessages(); err != nil {
 		return fmt.Errorf("chat stream: %w", err)

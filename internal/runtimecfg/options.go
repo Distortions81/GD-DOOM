@@ -74,6 +74,59 @@ type NetBandwidthMeter interface {
 	BandwidthStats() (uploadBytesPerSec, downloadBytesPerSec float64)
 }
 
+// CoopPeerSource is the lockstep input source for a co-op multiplayer session.
+// The game loop calls SendLocalTic once per tic for the local player, then
+// calls ReadyTics to find how many tics are available across all active peers,
+// and finally calls PollPeerTic for each remote player slot to advance them.
+type CoopPeerSource interface {
+	// LocalPlayerID is this peer's assigned slot (1-4).
+	LocalPlayerID() byte
+
+	// ActivePeerIDs returns the current set of remote player IDs (excludes local).
+	ActivePeerIDs() []byte
+
+	// SendLocalTic submits the local player's tic for this game tic.
+	SendLocalTic(demo.Tic) error
+
+	// ReadyTics returns how many complete tics are available for all active peers.
+	// The game must not advance beyond this count.
+	ReadyTics() int
+
+	// PollPeerTic removes and returns the next buffered tic for the given remote
+	// player ID. Returns (tic, true, nil) if available, (_, false, nil) if not
+	// yet ready, or (_, false, err) on stream error.
+	PollPeerTic(playerID byte) (demo.Tic, bool, error)
+
+	// PollRosterUpdate returns a pending roster change, if any.
+	PollRosterUpdate() (RosterUpdate, bool)
+
+	// PollCheckpoint returns the next checkpoint received from the server, if any.
+	// Clients should compare the hash against their local SimChecksum() and call
+	// SendDesyncNotify on mismatch.
+	PollCheckpoint() (Checkpoint, bool)
+
+	// SendCheckpoint sends this peer's simulation hash at the given tic to the
+	// server for relay to other peers. Only the canonical peer (slot 1) calls this.
+	SendCheckpoint(tic uint32, hash uint32) error
+
+	// SendDesyncNotify informs the server that the local simulation hash at the
+	// given tic does not match the received checkpoint hash. The server will push
+	// a mandatory keyframe to resync the client.
+	SendDesyncNotify(tic uint32, localHash uint32) error
+}
+
+// RosterUpdate describes a change to the active peer roster.
+type RosterUpdate struct {
+	PlayerIDs []byte
+}
+
+// Checkpoint is a periodic hash broadcast by the canonical peer so all other
+// peers can verify their simulation has not diverged.
+type Checkpoint struct {
+	Tic  uint32
+	Hash uint32
+}
+
 type VoiceSyncMeter interface {
 	VoiceSyncOffsetMillis() (millis int, ok bool)
 }
@@ -185,6 +238,7 @@ type Options struct {
 	Episodes                   []int
 	LiveTicSource              LiveTicSource
 	LiveTicSink                LiveTicSink
+	CoopPeers                  CoopPeerSource
 	WatchStartupBufferTics     int
 	NetBandwidthMeter          NetBandwidthMeter
 	VoiceBandwidthMeter        NetBandwidthMeter

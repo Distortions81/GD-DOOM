@@ -35,6 +35,7 @@ Current roles:
 - `3`: `server`
 - `4`: `audio_broadcaster`
 - `5`: `audio_viewer`
+- `6`: `player_peer`
 
 Current protocol version:
 
@@ -124,6 +125,10 @@ Current gameplay frame types:
 - `4`: `tic_batch`
 - `8`: `intermission_advance`
 - `32`: `chat`
+- `33`: `peer_tic_batch` (multiplayer peer sessions only)
+- `34`: `roster_update` (multiplayer peer sessions only)
+- `35`: `checkpoint` (multiplayer peer sessions only)
+- `36`: `desync_request` (multiplayer peer sessions only)
 
 ### Keyframe
 
@@ -202,6 +207,93 @@ Current relay behavior:
 - gameplay viewers can send chat frames upstream to the relay
 - gameplay broadcasters can also send chat frames on the gameplay socket
 - the relay forwards chat to all other gameplay participants in the same session
+
+## Peer Gameplay Connection
+
+`player_peer` role uses `gameplay_compact_v1` flag and a bidirectional connection: the peer sends its own tics upstream and receives tagged tics from all other peers.
+
+### Session Join
+
+- `session_id = 0` in the hello creates a new session; the server assigns an ID.
+- `session_id != 0` joins an existing session.
+- The server ack hello uses `role = server`. `player_slot` in the ack payload is the assigned player ID (1–4).
+- If no slot is available, the connection is closed.
+
+On join the server sends:
+
+1. Server hello ack with assigned `player_slot`.
+2. Latest retained keyframe (if any).
+3. Tic backlog after that keyframe (if any).
+4. A `roster_update` frame listing all currently active player IDs.
+
+After all other peers join they also receive an updated `roster_update`.
+
+### Peer Tic Batch
+
+Binary layout:
+
+- `type[1] = 33`
+- `player_id[1]`
+- `count[2]`
+- `tics[count * 4]`
+
+Each packed tic is identical to the single-player `tic_batch` format.
+
+The relay server forwards each `peer_tic_batch` to all *other* peers in the session unchanged. The `player_id` field identifies the originating player. Peers do not receive their own tics back.
+
+### Roster Update
+
+Binary layout:
+
+- `type[1] = 34`
+- `count[1]`
+- `player_ids[count]`
+
+Sent by the server whenever a peer joins or leaves the session. `player_ids` is the full active roster after the change.
+
+### Checkpoint
+
+Binary layout:
+
+- `type[1] = 35`
+- `flags[1] = 0`
+- `length[4] = 8`
+- `tic[4]`
+- `payload[8]`:
+  - `tic[4]` — world tic the hash was computed at
+  - `hash[4]` — FNV-1a 32-bit hash of key simulation state
+
+The canonical peer (player slot 1) sends a `checkpoint` frame every 175 tics (~5 seconds). The server relays it to all other peers in the session.
+
+Non-canonical peers compare `hash` against their locally computed `SimChecksum()`. On mismatch they send a `desync_request`.
+
+The checkpoint hash covers: world tic, RNG state (both game and cosmetic indices), local and remote player positions/angles/health/armor/ammo/weapon, all sector floor and ceiling heights, and all active monsters (position, angle, HP, AI state).
+
+### Desync Request
+
+Binary layout:
+
+- `type[1] = 36`
+- `flags[1] = 0`
+- `length[4] = 8`
+- `tic[4]`
+- `payload[8]`:
+  - `tic[4]` — world tic where mismatch was detected
+  - `local_hash[4]` — this peer's locally computed hash
+
+Sent by a peer to the server when its local `SimChecksum()` does not match a received `checkpoint` hash. The server responds by pushing the most recent stored keyframe to the requesting peer with `mandatory_apply` set, causing an immediate resync.
+
+### Current API Surface (peer)
+
+- `DialPlayerPeer` — connect as a `player_peer`
+- `PlayerPeer.SendTic` / `PlayerPeer.Flush` — send local player's tic upstream
+- `PlayerPeer.PollPeerTic` — receive a tagged tic from another peer
+- `PlayerPeer.PollRoster` — receive a roster change notification
+- `PlayerPeer.PollKeyframe` — receive a mid-join or resync keyframe
+- `PlayerPeer.SendChat` / `PlayerPeer.PollChat` — chat
+- `PlayerPeer.SendCheckpoint` — emit periodic hash (canonical peer only)
+- `PlayerPeer.PollCheckpoint` — receive canonical peer's hash
+- `PlayerPeer.SendDesyncRequest` — notify server of detected desync
 
 ## Audio Connection
 
