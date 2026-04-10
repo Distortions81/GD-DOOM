@@ -180,6 +180,26 @@ func (c *LockstepCoordinator) PollRosterUpdate() (runtimecfg.RosterUpdate, bool)
 	return r, true
 }
 
+// SendKeyframe implements runtimecfg.CoopPeerSource.
+func (c *LockstepCoordinator) SendKeyframe(tic uint32, blob []byte) error {
+	if c == nil {
+		return nil
+	}
+	return c.peer.SendKeyframe(tic, blob)
+}
+
+// PollKeyframe implements runtimecfg.CoopPeerSource.
+func (c *LockstepCoordinator) PollKeyframe() ([]byte, bool, bool) {
+	if c == nil {
+		return nil, false, false
+	}
+	kf, ok, _ := c.peer.PollKeyframe()
+	if !ok {
+		return nil, false, false
+	}
+	return kf.Blob, kf.MandatoryApply, true
+}
+
 // SendCheckpoint implements runtimecfg.CoopPeerSource.
 func (c *LockstepCoordinator) SendCheckpoint(tic uint32, hash uint32) error {
 	if c == nil {

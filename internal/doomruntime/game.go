@@ -8086,6 +8086,7 @@ func (g *game) collectCutoutItems(camX, camY, camAng, focal, focalV, near float6
 	g.appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, near)
 	g.appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, near)
 	g.appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near)
+	g.appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, near)
 	g.appendThingCutoutItems(camX, camY, camAng, focal, focalV, near)
 	g.billboardQueueCollect = false
 }

@@ -242,6 +242,12 @@ func (g *game) updateCoopMode() error {
 		g.applyCoopRoster(roster.PlayerIDs)
 	}
 
+	// Apply any mandatory keyframes received from the server (desync recovery
+	// or late-join catch-up) before advancing the sim.
+	if err := g.applyCoopKeyframes(); err != nil {
+		return fmt.Errorf("coop keyframe: %w", err)
+	}
+
 	if err := g.pollChatMessages(); err != nil {
 		return fmt.Errorf("coop chat stream: %w", err)
 	}
@@ -373,6 +379,9 @@ func (g *game) updateCoopMode() error {
 	// All peers verify incoming checkpoints and request resync on mismatch.
 	g.tickCoopCheckpoint()
 
+	// Keyframe: canonical peer uploads a full snapshot periodically.
+	g.tickCoopKeyframe()
+
 	g.publishRuntimeSettingsIfChanged()
 	return nil
 }
@@ -466,6 +475,53 @@ func (g *game) buildLocalCoopTic() demo.Tic {
 	}
 	cmd = quantizeMoveCmdToDemo(cmd)
 	return g.buildOutgoingDemoTic(cmd, usePressed, fireHeld)
+}
+
+// applyCoopKeyframes drains any incoming keyframes from the server and applies
+// mandatory ones immediately (desync recovery / late-join catch-up).
+func (g *game) applyCoopKeyframes() error {
+	src := g.opts.CoopPeers
+	if src == nil || g.opts.LoadKeyframe == nil {
+		return nil
+	}
+	applied := false
+	for i := 0; i < 8; i++ {
+		blob, mandatory, ok := src.PollKeyframe()
+		if !ok {
+			break
+		}
+		if !mandatory {
+			continue
+		}
+		if err := g.opts.LoadKeyframe(blob); err != nil {
+			return fmt.Errorf("apply coop keyframe: %w", err)
+		}
+		applied = true
+	}
+	if applied {
+		g.clearPendingSoundState()
+	}
+	return nil
+}
+
+// tickCoopKeyframe uploads a full game state snapshot to the relay server
+// every keyframeIntervalTics. Only the canonical peer (slot 1) does this.
+func (g *game) tickCoopKeyframe() {
+	src := g.opts.CoopPeers
+	if src == nil || g.opts.CaptureKeyframe == nil {
+		return
+	}
+	if src.LocalPlayerID() != 1 {
+		return
+	}
+	if g.worldTic == 0 || g.worldTic%keyframeIntervalTics != 0 {
+		return
+	}
+	blob, err := g.opts.CaptureKeyframe()
+	if err != nil || len(blob) == 0 {
+		return
+	}
+	_ = src.SendKeyframe(uint32(g.worldTic), blob)
 }
 
 // applyCoopRoster syncs g.remotePlayers to the given set of remote peer IDs.

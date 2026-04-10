@@ -113,6 +113,15 @@ type CoopPeerSource interface {
 	// given tic does not match the received checkpoint hash. The server will push
 	// a mandatory keyframe to resync the client.
 	SendDesyncNotify(tic uint32, localHash uint32) error
+
+	// SendKeyframe uploads a full game state snapshot to the relay server.
+	// The server stores it for late-joiners and desync recovery. Only the
+	// canonical peer (slot 1) calls this periodically.
+	SendKeyframe(tic uint32, blob []byte) error
+
+	// PollKeyframe returns the next keyframe received from the server, if any.
+	// mandatory is true when the frame must be applied immediately (desync recovery).
+	PollKeyframe() (blob []byte, mandatory bool, ok bool)
 }
 
 // RosterUpdate describes a change to the active peer roster.
@@ -239,6 +248,8 @@ type Options struct {
 	LiveTicSource              LiveTicSource
 	LiveTicSink                LiveTicSink
 	CoopPeers                  CoopPeerSource
+	CaptureKeyframe            func() ([]byte, error)
+	LoadKeyframe               func([]byte) error
 	WatchStartupBufferTics     int
 	NetBandwidthMeter          NetBandwidthMeter
 	VoiceBandwidthMeter        NetBandwidthMeter

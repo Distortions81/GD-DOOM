@@ -8,6 +8,10 @@ import (
 // 175 tics = 5 seconds at 35 tics/sec.
 const checkpointIntervalTics = 175
 
+// keyframeIntervalTics is how often the canonical peer uploads a full keyframe
+// to the relay server. 35*30 = 1050 tics ≈ 30 seconds.
+const keyframeIntervalTics = 35 * 30
+
 // SimChecksum computes a lightweight hash of the key simulation state that
 // must be identical on all peers for a valid lockstep game. It covers:
 //   - world tic counter

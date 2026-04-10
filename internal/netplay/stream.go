@@ -693,6 +693,32 @@ func (p *PlayerPeer) PollCheckpoint() (Checkpoint, bool, error) {
 	}
 }
 
+// SendKeyframe uploads a full game state snapshot to the relay server.
+// The server stores it as the latest keyframe for late-joiners and desync recovery.
+func (p *PlayerPeer) SendKeyframe(tic uint32, blob []byte) error {
+	if p == nil {
+		return nil
+	}
+	compressed, err := compressKeyframe(blob)
+	if err != nil {
+		return fmt.Errorf("compress coop keyframe: %w", err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return net.ErrClosed
+	}
+	if err := p.flushPendingTicsLocked(); err != nil {
+		return err
+	}
+	return writeFrame(p.conn, frameHeader{
+		Type:   frameTypeKeyframe,
+		Flags:  keyframeFlagZstdCompressed,
+		Length: uint32(len(compressed)),
+		Tic:    tic,
+	}, compressed)
+}
+
 // SendCheckpoint sends this peer's simulation hash to the server for relay.
 // Only the canonical peer (slot 1) should call this.
 func (p *PlayerPeer) SendCheckpoint(tic uint32, hash uint32) error {

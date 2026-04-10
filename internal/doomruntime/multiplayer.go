@@ -1,8 +1,18 @@
 package doomruntime
 
 import (
+	"math"
+
 	"gddoom/internal/demo"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/render/scene"
+)
+
+const (
+	// playerSpriteRadius is the Doom player collision radius in world units.
+	playerSpriteRadius = 16 * fracUnit
+	// playerWalkFrameTics is how many tics each walk animation frame lasts.
+	playerWalkFrameTics = 8
 )
 
 // remotePlayer holds the simulated state for a peer co-op player.
@@ -105,6 +115,120 @@ func chooseSpawnStart(starts []playerStart, requestedSlot int) (playerStart, boo
 		return starts[0], true
 	}
 	return playerStart{}, false
+}
+
+// remotePlayerSpriteName returns the PLAY walk frame name for a remote player
+// given the current world tic and the rotation index (1-8) based on viewer angle.
+func remotePlayerSpriteName(worldTic int, rot int) string {
+	// Walk animation: frames A-D, 8 tics each.
+	frame := byte('A' + (worldTic/playerWalkFrameTics)%4)
+	// Prefer rotation-aware frame (e.g. PLAYA1), fall back to PLAYA0 (no rotation).
+	return spriteFrameName("PLAY", frame, byte('0'+rot))
+}
+
+// appendRemotePlayerCutoutItems projects all remote players as PLAY-sprite
+// billboards and appends them to the billboard queue.
+func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, near float64) {
+	if len(g.remotePlayers) == 0 {
+		return
+	}
+	viewW := g.viewW
+	viewH := g.viewH
+	if len(g.wallPix32) != viewW*viewH {
+		return
+	}
+	ca := math.Cos(camAng)
+	sa := math.Sin(camAng)
+	eyeZ := g.playerEyeZ()
+
+	for _, rp := range g.remotePlayers {
+		txFixed := rp.p.x
+		tyFixed := rp.p.y
+		tx := float64(txFixed)/fracUnit - camX
+		ty := float64(tyFixed)/fracUnit - camY
+		f := tx*ca + ty*sa
+		s := -tx*sa + ty*ca
+		if f <= near {
+			continue
+		}
+
+		rot := monsterSpriteRotationIndexAt(rp.p.angle, float64(txFixed)/fracUnit, float64(tyFixed)/fracUnit, camX, camY)
+		name := remotePlayerSpriteName(g.worldTic, rot)
+		ref, ok := g.spriteRenderRef(name)
+		if !ok {
+			// Try no-rotation fallback PLAYA0.
+			name = spriteFrameName("PLAY", byte('A'+(g.worldTic/playerWalkFrameTics)%4), '0')
+			ref, ok = g.spriteRenderRef(name)
+		}
+		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
+			continue
+		}
+
+		clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, playerSpriteRadius, viewH, eyeZ, f, focalV)
+		if !clipOK {
+			continue
+		}
+		scale := focal / f
+		scaleY := focalV / f
+		if scale <= 0 {
+			continue
+		}
+		clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scaleY, viewH)
+		sx := float64(viewW)/2 - (s/f)*focal
+		baseZ := float64(rp.p.z) / fracUnit
+		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focalV
+		w := float64(ref.tex.Width) * scale
+		h := float64(ref.tex.Height) * scaleY
+		dstX := sx - float64(ref.tex.OffsetX)*scale
+		dstY := sy - float64(ref.tex.OffsetY)*scaleY
+		x0, x1, y0, y1, boundsOK := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, viewW, viewH)
+		if !boundsOK || h <= 0 || w <= 0 {
+			continue
+		}
+		xPad := w/2 + 8
+		yPad := h + 4
+		if sx+xPad < 0 || sx-xPad > float64(viewW) || sy+yPad < 0 || sy-yPad > float64(viewH) {
+			continue
+		}
+		sec := g.sectorAt(txFixed, tyFixed)
+		lightMul := uint32(256)
+		if sec >= 0 && sec < len(g.m.Sectors) {
+			lightMul = g.sectorLightMulCached(sec)
+		}
+		depthQ := encodeDepthQ(f)
+		shadeMul := g.cachedThingShadeMul(-1, false, lightMul, f, near)
+		opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, false, dstX, dstY, scale, scaleY, clipTop, clipBottom, viewW, viewH)
+		if opaqueRectCount > 0 && g.projectedOpaqueRectsFullyOccluded(g.projectedOpaqueRectScratch[opaqueRectStart:opaqueRectStart+opaqueRectCount], depthQ) {
+			continue
+		}
+		if g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
+			continue
+		}
+		g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
+			dist:            f,
+			depthQ:          depthQ,
+			kind:            billboardQueueMonsters,
+			x0:              x0,
+			x1:              x1,
+			y0:              y0,
+			y1:              y1,
+			shadeMul:        shadeMul,
+			tex:             ref.tex,
+			flip:            false,
+			shadow:          false,
+			clipTop:         clipTop,
+			clipBottom:      clipBottom,
+			dstX:            dstX,
+			dstY:            dstY,
+			scale:           scale,
+			scaleY:          scaleY,
+			opaque:          ref.opaque,
+			hasOpaque:       ref.hasOpaque,
+			opaqueRectStart: opaqueRectStart,
+			opaqueRectCount: opaqueRectCount,
+			boundsOK:        true,
+		})
+	}
 }
 
 func nonLocalStarts(starts []playerStart, localSlot int) []playerStart {

@@ -443,6 +443,10 @@ func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
 	if sg == nil {
 		return nil
 	}
+	// Wire keyframe capture/load callbacks so the game loop can generate and
+	// apply keyframes in coop mode without depending on sessionGame directly.
+	opts.CaptureKeyframe = sg.marshalNetplayKeyframe
+	opts.LoadKeyframe = sg.unmarshalNetplayKeyframe
 	factory := sg.gameFactory
 	if factory == nil {
 		factory = newGame
