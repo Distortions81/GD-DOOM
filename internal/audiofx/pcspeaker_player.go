@@ -162,7 +162,7 @@ const (
 	// Per-sample² drive acceleration: Bl·V / (R·m·rate²)
 	spkDrive = spkBl * spkVdrive / (spkRtotal * spkMass * 44100 * 44100)
 
-	spkGain      = 0.00176 * 4_000_000.0 / spkDrive * 8 // velocity (SI, per-sample) → int16; ×8 compensates 2nd-order HP loss
+	spkGain      = 0.00176 * 4_000_000.0 / spkDrive * 2 // velocity (SI, per-sample) → int16; ×2 compensates 2nd-order HP loss
 	spkReverbMix = 1.0                                  // wet mix for case reverb (0=dry, 1=full wet)
 )
 
