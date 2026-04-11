@@ -2874,8 +2874,9 @@ func (g *game) updateWalkMode() {
 			cmd.forward = 0
 			cmd.side = 0
 			cmd.turn = 0
-			cmd.forward = int64(float64(forwardMove[speed]) * (-g.input.touchLeftY))
-			cmd.side = int64(float64(sideMove[speed]) * g.input.touchLeftX)
+			// Always use run speed for touch — no run key available.
+			cmd.forward = int64(float64(forwardMove[1]) * (-g.input.touchLeftY))
+			cmd.side = int64(float64(sideMove[1]) * g.input.touchLeftX)
 			// Smooth analog turn via turnRaw, same as mouse look.
 			cmd.turnRaw -= int64(float64(angleTurn[1]) * g.input.touchRightX)
 			if g.input.touchRightY < -0.65 {
