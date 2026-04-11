@@ -84,17 +84,19 @@ func TestPCSpeakerEffectsInterruptMusic(t *testing.T) {
 		t.Fatalf("expected effect tone path, got direct=%v drive=%v", direct, drive)
 	}
 	if !tone.Active || tone.ToneValue != 20 {
-		t.Fatalf("effect should interrupt music, got active=%v tone=%d", tone.Active, tone.ToneValue)
+		t.Fatalf("expected effect to take the first fan-cadence slot, got active=%v tone=%d", tone.Active, tone.ToneValue)
 	}
 
-	src.effectSeq = nil
-	src.effectSamplePos = 0
+	src.toneMixSample = uint64(pcSpeakerToneInterleaveHoldSamples(
+		sound.PCSpeakerTone{Active: true, ToneValue: 20},
+		sound.PCSpeakerTone{Active: true, ToneValue: 96},
+	))
 	tone, direct, drive = src.currentToneLocked()
 	if direct || drive != 0 {
 		t.Fatalf("expected music tone path, got direct=%v drive=%v", direct, drive)
 	}
 	if !tone.Active || tone.ToneValue != 96 {
-		t.Fatalf("music should resume after effect, got active=%v tone=%d", tone.Active, tone.ToneValue)
+		t.Fatalf("expected music to claim the next fan-cadence slot, got active=%v tone=%d", tone.Active, tone.ToneValue)
 	}
 }
 

@@ -11,9 +11,9 @@ const pcSpeakerMusicSubstepsPerTick = 8
 const pcSpeakerMusicTickRate = defaultTicRate * pcSpeakerMusicSubstepsPerTick
 const pcSpeakerMinNote = 48
 const pcSpeakerMaxNote = 84
-const pcSpeakerInterleaveTargetHz = 140.0
+const pcSpeakerInterleaveTargetHz = 60.0
 const pcSpeakerInterleaveMinCycles = 1.0
-const pcSpeakerInterleaveMaxHoldSubsteps = 12
+const pcSpeakerInterleaveMaxHoldSubsteps = 100
 
 type nullSynth struct{}
 

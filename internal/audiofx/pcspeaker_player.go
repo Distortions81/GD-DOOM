@@ -16,6 +16,8 @@ const pcSpeakerPCMUpdateRate = 11025
 
 const pcSpeakerPCMCompactThresholdBytes = 64 * 1024
 const pcSpeakerPlayerBuffer = 30 * time.Millisecond
+const pcSpeakerToneInterleaveTargetHz = 140.0
+const pcSpeakerToneInterleaveMinCycles = 1.0
 
 // PCSpeakerPlayer is a single-channel player that streams PC speaker audio.
 // Starting a new sound always interrupts the current one, matching real hardware.
@@ -165,6 +167,7 @@ type pcSpeakerSource struct {
 	musicPCMHPPrevOut float64
 	musicPCMLPState   float64
 	streamGain        float64
+	toneMixSample     uint64
 	pitPhase          float64 // PIT input clocks elapsed within the current divisor period
 	lastDivisor       uint16
 	lastActive        bool
@@ -603,6 +606,32 @@ func (s *pcSpeakerSource) currentToneLocked() (sound.PCSpeakerTone, bool, float6
 		}
 		return sound.PCSpeakerTone{}, true, 0
 	}
+	if len(s.effectSeq) > 0 && len(s.musicSeq) > 0 {
+		effectTone, effectOK, _ := s.nextEffectToneLocked()
+		musicTone, musicOK := s.nextMusicToneLocked()
+		if effectOK && musicOK {
+			if !effectTone.Active {
+				return musicTone, false, 0
+			}
+			if !musicTone.Active {
+				return effectTone, false, 0
+			}
+			choice := pcSpeakerToneMixPattern[int((s.toneMixSample/uint64(pcSpeakerToneInterleaveHoldSamples(effectTone, musicTone)))%uint64(len(pcSpeakerToneMixPattern)))]
+			s.toneMixSample++
+			if choice == 0 {
+				return effectTone, false, 0
+			}
+			return musicTone, false, 0
+		}
+		if effectOK {
+			return effectTone, false, 0
+		}
+		if musicOK {
+			return musicTone, false, 0
+		}
+		s.pitPhase = 0
+		return sound.PCSpeakerTone{}, false, 0
+	}
 	if tone, ok, _ := s.nextEffectToneLocked(); ok {
 		return tone, false, 0
 	}
@@ -927,6 +956,7 @@ func (s *pcSpeakerSource) setEffectMixed(seq []sound.PCSpeakerTone, rate int) {
 	s.rate = rate
 	s.effectTickRate = 140
 	s.effectSamplePos = 0
+	s.toneMixSample = 0
 	s.effectMixPhase = 0
 	s.effectMixDivisor = 0
 	s.effectMixActive = false
@@ -1147,6 +1177,7 @@ func (s *pcSpeakerSource) resetStateLocked() {
 	s.effectMixPhase = 0
 	s.effectMixDivisor = 0
 	s.effectMixActive = false
+	s.toneMixSample = 0
 	s.vel = 0
 	s.disp = 0
 	s.hp1Prev = 0
@@ -1172,6 +1203,34 @@ func (s *pcSpeakerSource) resetStateLocked() {
 	s.piezoTickAge = 0
 	s.noiseState = 1
 	s.reverb.reset()
+}
+
+var pcSpeakerToneMixPattern = []int{0, 1, 0}
+
+func pcSpeakerToneInterleaveHoldSamples(effectTone sound.PCSpeakerTone, musicTone sound.PCSpeakerTone) int {
+	holdSeconds := 1.0 / pcSpeakerToneInterleaveTargetHz
+	lowestHz := math.MaxFloat64
+	for _, tone := range [...]sound.PCSpeakerTone{effectTone, musicTone} {
+		divisor := tone.ToneDivisor()
+		if !tone.Active || divisor == 0 {
+			continue
+		}
+		hz := float64(sound.PCSpeakerPITHz()) / float64(divisor)
+		if hz > 0 && hz < lowestHz {
+			lowestHz = hz
+		}
+	}
+	if lowestHz != math.MaxFloat64 {
+		minSeconds := pcSpeakerToneInterleaveMinCycles / lowestHz
+		if minSeconds > holdSeconds {
+			holdSeconds = minSeconds
+		}
+	}
+	hold := int(math.Ceil(holdSeconds * music.OutputSampleRate))
+	if hold < 1 {
+		return 1
+	}
+	return hold
 }
 
 func (s *pcSpeakerSource) setVariant(v PCSpeakerVariant) {
