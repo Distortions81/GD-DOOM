@@ -1235,7 +1235,7 @@ func pcSpeakerToneInterleaveHoldSamples(effectTone sound.PCSpeakerTone, musicTon
 
 func pcSpeakerToneInterleaveHoldTicks(effectTone sound.PCSpeakerTone, musicTone sound.PCSpeakerTone, tickRate int) int {
 	if tickRate <= 0 {
-		tickRate = 280
+		tickRate = 560
 	}
 	holdSeconds := 1.0 / pcSpeakerToneInterleaveTargetHz
 	lowestHz := math.MaxFloat64
@@ -1264,8 +1264,8 @@ func pcSpeakerToneInterleaveHoldTicks(effectTone sound.PCSpeakerTone, musicTone 
 
 func normalizePCSpeakerInterleaveTickRate(a int, b int) int {
 	rate := max(normalizePCSpeakerTickRate(a), normalizePCSpeakerTickRate(b))
-	if rate < 280 {
-		rate = 280
+	if rate < 560 {
+		rate = 560
 	}
 	return rate
 }

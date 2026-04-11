@@ -201,7 +201,7 @@ func TestRunWAVWritesInterleavedWAV(t *testing.T) {
 	}
 }
 
-func TestRunInterleaveWritesCaptureAt280Hz(t *testing.T) {
+func TestRunInterleaveWritesCaptureAt560Hz(t *testing.T) {
 	oldOut := stdOut
 	oldErr := stdErr
 	stdOut = &bytes.Buffer{}
@@ -245,8 +245,8 @@ func TestRunInterleaveWritesCaptureAt280Hz(t *testing.T) {
 	if err != nil {
 		t.Fatalf("readCaptureFile() error: %v", err)
 	}
-	if got.TickRate != 280 {
-		t.Fatalf("TickRate=%d want=280", got.TickRate)
+	if got.TickRate != 560 {
+		t.Fatalf("TickRate=%d want=560", got.TickRate)
 	}
 	if len(got.Tones) == 0 {
 		t.Fatal("expected interleaved tones")

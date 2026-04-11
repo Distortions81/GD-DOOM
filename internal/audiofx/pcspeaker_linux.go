@@ -14,6 +14,7 @@ import (
 )
 
 const linuxKIOCSOUND = 0x4B2F
+const linuxPCSpeakerBaseTickRate = 280
 
 type LinuxPCSpeakerPlayer struct {
 	mu             sync.Mutex
@@ -84,8 +85,8 @@ func (p *LinuxPCSpeakerPlayer) Stop() {
 func (p *LinuxPCSpeakerPlayer) PlaySequence(seq []sound.PCSpeakerTone, tickRate int) error {
 	p.Stop()
 	p.SetMusic(seq, tickRate, false)
-	total := totalTicksAtRate(len(seq), tickRate, normalizePCSpeakerInterleaveTickRate(0, tickRate))
-	time.Sleep(time.Duration(total)*time.Second/time.Duration(normalizePCSpeakerInterleaveTickRate(0, tickRate)) + 50*time.Millisecond)
+	total := totalTicksAtRate(len(seq), tickRate, normalizeLinuxPCSpeakerTickRate(tickRate))
+	time.Sleep(time.Duration(total)*time.Second/time.Duration(normalizeLinuxPCSpeakerTickRate(tickRate)) + 50*time.Millisecond)
 	return nil
 }
 
@@ -131,6 +132,7 @@ func (p *LinuxPCSpeakerPlayer) ClearMusic() {
 func (p *LinuxPCSpeakerPlayer) SetVolume(v float64) {}
 
 func (p *LinuxPCSpeakerPlayer) loop() {
+	var nextTick time.Time
 	for {
 		p.mu.Lock()
 		if p.f == nil {
@@ -138,9 +140,10 @@ func (p *LinuxPCSpeakerPlayer) loop() {
 			return
 		}
 		active := len(p.effectSeq) > 0 || len(p.musicSeq) > 0
-		rate := normalizePCSpeakerInterleaveTickRate(p.effectTickRate, p.musicTickRate)
+		rate := normalizeLinuxPCSpeakerTickRate(max(p.effectTickRate, p.musicTickRate))
 		p.mu.Unlock()
 		if !active {
+			nextTick = time.Time{}
 			select {
 			case <-p.wakeCh:
 				continue
@@ -148,11 +151,22 @@ func (p *LinuxPCSpeakerPlayer) loop() {
 				return
 			}
 		}
+		tickDur := time.Second / time.Duration(rate)
+		now := time.Now()
+		if nextTick.IsZero() || now.After(nextTick.Add(4*tickDur)) {
+			nextTick = now
+		}
 		div := p.stepDivisor()
 		_ = p.setDivisor(div)
+		nextTick = nextTick.Add(tickDur)
+		wait := time.Until(nextTick)
+		if wait < 0 {
+			wait = 0
+		}
 		select {
-		case <-time.After(time.Second / time.Duration(rate)):
+		case <-time.After(wait):
 		case <-p.wakeCh:
+			nextTick = time.Time{}
 		case <-p.stopCh:
 			_ = p.setDivisor(0)
 			return
@@ -163,24 +177,20 @@ func (p *LinuxPCSpeakerPlayer) loop() {
 func (p *LinuxPCSpeakerPlayer) stepDivisor() uint16 {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	rate := normalizePCSpeakerInterleaveTickRate(p.effectTickRate, p.musicTickRate)
+	rate := normalizeLinuxPCSpeakerTickRate(max(p.effectTickRate, p.musicTickRate))
 	effectTone, effectOK := p.currentEffectToneLocked(rate)
 	musicTone, musicOK := p.currentMusicToneLocked(rate)
 	switch {
 	case effectOK && musicOK:
-		if !effectTone.Active {
+		// Raw Linux pcspkr hardware sounds torn up when we rapidly time-slice
+		// between two sources. Prefer strict priority: active SFX wins, else music.
+		if effectTone.Active {
+			return effectTone.ToneDivisor()
+		}
+		if musicTone.Active {
 			return musicTone.ToneDivisor()
 		}
-		if !musicTone.Active {
-			return effectTone.ToneDivisor()
-		}
-		hold := pcSpeakerToneInterleaveHoldTicks(effectTone, musicTone, rate)
-		choice := pcSpeakerToneMixPattern[int((p.mixTick/uint64(hold))%uint64(len(pcSpeakerToneMixPattern)))]
-		p.mixTick++
-		if choice == 0 {
-			return effectTone.ToneDivisor()
-		}
-		return musicTone.ToneDivisor()
+		return 0
 	case effectOK:
 		return effectTone.ToneDivisor()
 	case musicOK:
@@ -250,9 +260,9 @@ func (p *LinuxPCSpeakerPlayer) setDivisor(div uint16) error {
 	return nil
 }
 
-func normalizeLinuxTickRate(rate int) int {
-	if rate <= 0 {
-		return 140
+func normalizeLinuxPCSpeakerTickRate(rate int) int {
+	if rate <= 0 || rate > linuxPCSpeakerBaseTickRate {
+		return linuxPCSpeakerBaseTickRate
 	}
 	return rate
 }
