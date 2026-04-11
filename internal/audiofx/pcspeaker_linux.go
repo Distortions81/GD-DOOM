@@ -153,6 +153,7 @@ func (p *LinuxPCSpeakerPlayer) loop() {
 		rate := normalizeLinuxPCSpeakerTickRate(max(p.effectTickRate, p.musicTickRate))
 		p.mu.Unlock()
 		if !active {
+			_ = p.setDivisor(0)
 			nextTick = time.Time{}
 			select {
 			case <-p.wakeCh:
@@ -285,14 +286,38 @@ func (p *LinuxPCSpeakerPlayer) notify() {
 }
 
 func (p *LinuxPCSpeakerPlayer) setDivisor(div uint16) error {
-	if p == nil || p.f == nil {
+	if p == nil {
 		return fmt.Errorf("linux pc speaker player is closed")
 	}
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, p.f.Fd(), uintptr(linuxKIOCSOUND), uintptr(div))
+	p.mu.Lock()
+	f, changed, err := p.prepareDivisorChangeLocked(div)
+	p.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if !changed {
+		return nil
+	}
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), uintptr(linuxKIOCSOUND), uintptr(div))
 	if errno != 0 {
 		return errno
 	}
+	p.mu.Lock()
+	if p.f == f {
+		p.lastDivisor = div
+	}
+	p.mu.Unlock()
 	return nil
+}
+
+func (p *LinuxPCSpeakerPlayer) prepareDivisorChangeLocked(div uint16) (*os.File, bool, error) {
+	if p.f == nil {
+		return nil, false, fmt.Errorf("linux pc speaker player is closed")
+	}
+	if div == p.lastDivisor {
+		return nil, false, nil
+	}
+	return p.f, true, nil
 }
 
 func normalizeLinuxPCSpeakerTickRate(rate int) int {
