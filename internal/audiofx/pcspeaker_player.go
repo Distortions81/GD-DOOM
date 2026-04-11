@@ -1233,6 +1233,115 @@ func pcSpeakerToneInterleaveHoldSamples(effectTone sound.PCSpeakerTone, musicTon
 	return hold
 }
 
+func pcSpeakerToneInterleaveHoldTicks(effectTone sound.PCSpeakerTone, musicTone sound.PCSpeakerTone, tickRate int) int {
+	if tickRate <= 0 {
+		tickRate = 280
+	}
+	holdSeconds := 1.0 / pcSpeakerToneInterleaveTargetHz
+	lowestHz := math.MaxFloat64
+	for _, tone := range [...]sound.PCSpeakerTone{effectTone, musicTone} {
+		divisor := tone.ToneDivisor()
+		if !tone.Active || divisor == 0 {
+			continue
+		}
+		hz := float64(sound.PCSpeakerPITHz()) / float64(divisor)
+		if hz > 0 && hz < lowestHz {
+			lowestHz = hz
+		}
+	}
+	if lowestHz != math.MaxFloat64 {
+		minSeconds := pcSpeakerToneInterleaveMinCycles / lowestHz
+		if minSeconds > holdSeconds {
+			holdSeconds = minSeconds
+		}
+	}
+	hold := int(math.Ceil(holdSeconds * float64(tickRate)))
+	if hold < 1 {
+		return 1
+	}
+	return hold
+}
+
+func normalizePCSpeakerInterleaveTickRate(a int, b int) int {
+	rate := max(normalizePCSpeakerTickRate(a), normalizePCSpeakerTickRate(b))
+	if rate < 280 {
+		rate = 280
+	}
+	return rate
+}
+
+func normalizePCSpeakerTickRate(rate int) int {
+	if rate <= 0 {
+		return 140
+	}
+	return rate
+}
+
+func toneAtTick(seq []sound.PCSpeakerTone, seqTickRate int, outTickRate int, tick int) (sound.PCSpeakerTone, bool) {
+	if len(seq) == 0 || tick < 0 {
+		return sound.PCSpeakerTone{}, false
+	}
+	seqTickRate = normalizePCSpeakerTickRate(seqTickRate)
+	outTickRate = normalizePCSpeakerTickRate(outTickRate)
+	idx := int((int64(tick) * int64(seqTickRate)) / int64(outTickRate))
+	if idx < 0 || idx >= len(seq) {
+		return sound.PCSpeakerTone{}, false
+	}
+	return seq[idx], true
+}
+
+func totalTicksAtRate(seqLen int, seqTickRate int, outTickRate int) int {
+	if seqLen <= 0 {
+		return 0
+	}
+	seqTickRate = normalizePCSpeakerTickRate(seqTickRate)
+	outTickRate = normalizePCSpeakerTickRate(outTickRate)
+	return int(math.Ceil(float64(seqLen) * float64(outTickRate) / float64(seqTickRate)))
+}
+
+func InterleavePCSpeakerSequences(effectSeq []sound.PCSpeakerTone, effectTickRate int, musicSeq []sound.PCSpeakerTone, musicTickRate int) ([]sound.PCSpeakerTone, int) {
+	if len(effectSeq) == 0 {
+		return append([]sound.PCSpeakerTone(nil), musicSeq...), normalizePCSpeakerTickRate(musicTickRate)
+	}
+	if len(musicSeq) == 0 {
+		return append([]sound.PCSpeakerTone(nil), effectSeq...), normalizePCSpeakerTickRate(effectTickRate)
+	}
+	outTickRate := normalizePCSpeakerInterleaveTickRate(effectTickRate, musicTickRate)
+	total := max(totalTicksAtRate(len(effectSeq), effectTickRate, outTickRate), totalTicksAtRate(len(musicSeq), musicTickRate, outTickRate))
+	out := make([]sound.PCSpeakerTone, 0, total)
+	var mixTick uint64
+	for i := 0; i < total; i++ {
+		effectTone, effectOK := toneAtTick(effectSeq, effectTickRate, outTickRate, i)
+		musicTone, musicOK := toneAtTick(musicSeq, musicTickRate, outTickRate, i)
+		switch {
+		case effectOK && musicOK:
+			if !effectTone.Active {
+				out = append(out, musicTone)
+				continue
+			}
+			if !musicTone.Active {
+				out = append(out, effectTone)
+				continue
+			}
+			hold := pcSpeakerToneInterleaveHoldTicks(effectTone, musicTone, outTickRate)
+			choice := pcSpeakerToneMixPattern[int((mixTick/uint64(hold))%uint64(len(pcSpeakerToneMixPattern)))]
+			mixTick++
+			if choice == 0 {
+				out = append(out, effectTone)
+			} else {
+				out = append(out, musicTone)
+			}
+		case effectOK:
+			out = append(out, effectTone)
+		case musicOK:
+			out = append(out, musicTone)
+		default:
+			out = append(out, sound.PCSpeakerTone{})
+		}
+	}
+	return out, outTickRate
+}
+
 func (s *pcSpeakerSource) setVariant(v PCSpeakerVariant) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1399,6 +1508,18 @@ func RenderPCSpeakerSequenceToPCM(seq []sound.PCSpeakerTone, tickRate int, varia
 	if len(seq) == 0 {
 		return nil, nil
 	}
+	return renderPCSpeakerSourceToPCM(newPCSpeakerRenderSource(variant, nil, 0, seq, tickRate))
+}
+
+func RenderMixedPCSpeakerSequencesToPCM(effectSeq []sound.PCSpeakerTone, effectTickRate int, musicSeq []sound.PCSpeakerTone, musicTickRate int, variant PCSpeakerVariant) ([]int16, error) {
+	if len(effectSeq) == 0 && len(musicSeq) == 0 {
+		return nil, nil
+	}
+	seq, tickRate := InterleavePCSpeakerSequences(effectSeq, effectTickRate, musicSeq, musicTickRate)
+	return RenderPCSpeakerSequenceToPCM(seq, tickRate, variant)
+}
+
+func newPCSpeakerRenderSource(variant PCSpeakerVariant, effectSeq []sound.PCSpeakerTone, effectTickRate int, musicSeq []sound.PCSpeakerTone, musicTickRate int) *pcSpeakerSource {
 	src := &pcSpeakerSource{
 		rate:       music.OutputSampleRate,
 		variant:    variant,
@@ -1406,7 +1527,29 @@ func RenderPCSpeakerSequenceToPCM(seq []sound.PCSpeakerTone, tickRate int, varia
 		reverb:     newCaseReverb(),
 		streamGain: 1,
 	}
-	src.setMusic(seq, music.OutputSampleRate, tickRate, false)
+	if len(musicSeq) > 0 {
+		src.setMusic(musicSeq, music.OutputSampleRate, musicTickRate, false)
+	}
+	if len(effectSeq) > 0 {
+		if len(musicSeq) > 0 {
+			src.setEffectMixed(effectSeq, music.OutputSampleRate)
+			if effectTickRate > 0 {
+				src.effectTickRate = effectTickRate
+			}
+		} else {
+			src.load(effectSeq, music.OutputSampleRate)
+			if effectTickRate > 0 {
+				src.effectTickRate = effectTickRate
+			}
+		}
+	}
+	return src
+}
+
+func renderPCSpeakerSourceToPCM(src *pcSpeakerSource) ([]int16, error) {
+	if src == nil {
+		return nil, nil
+	}
 	totalFrames := src.totalSamples()
 	if totalFrames <= 0 {
 		return nil, nil
