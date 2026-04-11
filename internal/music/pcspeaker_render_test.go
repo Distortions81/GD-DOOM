@@ -61,43 +61,86 @@ func TestPCSpeakerRendererPrefersMusicalPriorityWhenManyVoicesActive(t *testing.
 
 func TestPCSpeakerRendererPercussionBecomesBurst(t *testing.T) {
 	r := newPCSpeakerRenderer(nil)
-	r.applyEvent(Event{Type: EventNoteOn, Channel: 9, A: 35, B: 100})
-	if !r.toneForSubTick(0).Active {
-		t.Fatal("expected percussion burst on first substep")
+	const (
+		note     = 35
+		velocity = 100
+	)
+	pattern := pcSpeakerPercussionPattern(note, velocity)
+	if len(pattern) == 0 {
+		t.Fatal("expected non-empty percussion pattern")
 	}
-	if !r.toneForSubTick(1).Active {
-		t.Fatal("expected kick burst to continue on second active substep")
-	}
-	if !r.toneForSubTick(2).Active {
-		t.Fatal("expected kick burst to include a third thump before the gap")
-	}
-	if r.toneForSubTick(3).Active {
-		t.Fatal("expected kick burst to include a gap")
-	}
-	if !r.toneForSubTick(4).Active {
-		t.Fatal("expected kick burst to resume after the gap")
+
+	r.applyEvent(Event{Type: EventNoteOn, Channel: 9, A: note, B: velocity})
+	for i, wantDivisor := range pattern {
+		tone := r.toneForSubTick(i % pcSpeakerMusicSubstepsPerTick)
+		if wantDivisor == 0 {
+			if tone.Active {
+				t.Fatalf("substep %d: expected percussion gap, got %+v", i, tone)
+			}
+			continue
+		}
+		if !tone.Active {
+			t.Fatalf("substep %d: expected active percussion hit", i)
+		}
+		if tone.Divisor != wantDivisor {
+			t.Fatalf("substep %d: divisor=%d want %d", i, tone.Divisor, wantDivisor)
+		}
 	}
 }
 
 func TestPCSpeakerRendererPercussionDoesNotHideMelody(t *testing.T) {
+	const (
+		melodyNote = 64
+		drumNote   = 38
+		velocity   = 100
+	)
 	r := newPCSpeakerRenderer(nil)
-	r.applyEvent(Event{Type: EventNoteOn, Channel: 0, A: 64, B: 100})
-	r.applyEvent(Event{Type: EventNoteOn, Channel: 9, A: 38, B: 100})
+	r.applyEvent(Event{Type: EventNoteOn, Channel: 0, A: melodyNote, B: velocity})
+	r.applyEvent(Event{Type: EventNoteOn, Channel: 9, A: drumNote, B: velocity})
 
-	first := r.toneForSubTick(0)
-	second := r.toneForSubTick(1)
-	third := r.toneForSubTick(2)
-	if !first.Active {
-		t.Fatal("expected percussion accent on first substep")
+	candidates := r.activeCandidates()
+	if len(candidates) != 1 {
+		t.Fatalf("candidate len=%d want 1", len(candidates))
 	}
-	if first.Divisor == second.Divisor {
-		t.Fatal("expected melody to resume immediately on percussion gap")
+	melodyDivisor := candidates[0].divisor
+	pattern := pcSpeakerPercussionPattern(drumNote, velocity)
+
+	firstGap := -1
+	nextHit := -1
+	for i, div := range pattern {
+		if div == 0 {
+			firstGap = i
+			break
+		}
 	}
-	if !second.Active {
-		t.Fatal("expected melody on percussion gap")
+	if firstGap < 0 {
+		t.Fatal("expected percussion pattern to include a gap for melody")
 	}
-	if !third.Active || third.Divisor == second.Divisor {
-		t.Fatal("expected the next percussion hit to interrupt melody again")
+	for i := firstGap + 1; i < len(pattern); i++ {
+		if pattern[i] != 0 {
+			nextHit = i
+			break
+		}
+	}
+	if nextHit < 0 {
+		t.Fatal("expected percussion pattern to resume after the gap")
+	}
+
+	for i := 0; i <= nextHit; i++ {
+		tone := r.toneForSubTick(i % pcSpeakerMusicSubstepsPerTick)
+		if !tone.Active {
+			t.Fatalf("substep %d: expected active output", i)
+		}
+		wantDivisor := pattern[i]
+		if wantDivisor == 0 {
+			if tone.Divisor != melodyDivisor {
+				t.Fatalf("substep %d: expected melody divisor %d, got %d", i, melodyDivisor, tone.Divisor)
+			}
+			continue
+		}
+		if tone.Divisor != wantDivisor {
+			t.Fatalf("substep %d: expected percussion divisor %d, got %d", i, wantDivisor, tone.Divisor)
+		}
 	}
 }
 

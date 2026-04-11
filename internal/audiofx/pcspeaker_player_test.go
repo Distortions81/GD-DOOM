@@ -201,6 +201,34 @@ func TestPCSpeakerPlayDoesNotInterruptMusicPCM(t *testing.T) {
 	}
 }
 
+func TestPCSpeakerPlayDoesNotInterruptToneSequenceMusic(t *testing.T) {
+	backend := &fakePCSpeakerBackend{playing: true}
+	src := &pcSpeakerSource{
+		musicSeq:      []sound.PCSpeakerTone{{Active: true, ToneValue: 96}},
+		musicTickRate: 140,
+	}
+	p := &PCSpeakerPlayer{
+		player: backend,
+		src:    src,
+		volume: 0.75,
+	}
+
+	p.Play([]sound.PCSpeakerTone{{Active: true, ToneValue: 20}})
+
+	if backend.paused != 0 {
+		t.Fatalf("paused=%d want 0", backend.paused)
+	}
+	if backend.rewound != 0 {
+		t.Fatalf("rewound=%d want 0", backend.rewound)
+	}
+	if len(src.effectSeq) != 1 {
+		t.Fatalf("effect seq len=%d want 1", len(src.effectSeq))
+	}
+	if len(src.musicSeq) != 1 {
+		t.Fatalf("music seq len=%d want 1", len(src.musicSeq))
+	}
+}
+
 func TestPCSpeakerEffectSurvivesMusicPCMUnderrun(t *testing.T) {
 	src := &pcSpeakerSource{
 		rate:           44100,

@@ -938,6 +938,12 @@ func (s *pcSpeakerSource) musicPCMIsActive() bool {
 	return s.musicPCMActive
 }
 
+func (s *pcSpeakerSource) musicIsActive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.musicPCMActive || len(s.musicSeq) > 0
+}
+
 func (s *pcSpeakerSource) setMusicPCM(pcm []byte, rate int, loop bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1203,7 +1209,7 @@ func (p *PCSpeakerPlayer) Play(seq []sound.PCSpeakerTone) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.src.musicPCMIsActive() {
+	if p.src.musicIsActive() {
 		p.src.setEffectMixed(seq, music.OutputSampleRate)
 		p.player.SetVolume(p.volume)
 		if !p.player.IsPlaying() {
