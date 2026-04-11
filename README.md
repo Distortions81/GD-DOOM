@@ -353,6 +353,12 @@ Run the test suite:
 go test ./...
 ```
 
+Run the slower export and real-asset integration checks explicitly:
+
+```bash
+scripts/test_integration.sh ./internal/app
+```
+
 If you are working on the engine itself, extra utilities are included under [`cmd/`](/home/dist/github/GD-DOOM/cmd):
 
 - [`cmd/gdsfrelay`](/home/dist/github/GD-DOOM/cmd/gdsfrelay) runs the live session relay used by `-broadcast` and `-watch`.

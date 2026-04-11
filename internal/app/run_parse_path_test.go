@@ -263,8 +263,9 @@ func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newIWADPickerGame() error: %v", err)
 	}
-	if game.synth != 2 {
-		t.Fatalf("default synth=%d want=2", game.synth)
+	want := pickerSynthIndexByLabel(t, "MIDI - GENERAL MIDI")
+	if game.synth != want {
+		t.Fatalf("default synth=%d want=%d", game.synth, want)
 	}
 }
 
@@ -284,14 +285,15 @@ func TestApplyPickerSynthSetsMeltySynthBackendAndPreservesVolume(t *testing.T) {
 	}
 }
 
-func TestApplyPickerSynthKeepsSoundFontWhenAlreadySet(t *testing.T) {
+func TestApplyPickerSynthSelectedOptionOverridesExistingSoundFont(t *testing.T) {
 	cfg := renderBuildConfig{
 		musicBackend:  music.BackendImpSynth,
 		musicVolume:   1.0,
 		soundFontPath: "soundfonts/SC55-HQ.sf2",
 	}
 
-	got := applyPickerSynth(cfg, 3)
+	wantPath := music.BrowserSGMHQSoundFontPath()
+	got := applyPickerSynth(cfg, pickerSynthIndexByLabel(t, "MIDI - SGM-ULTRA-HQ"))
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -299,8 +301,8 @@ func TestApplyPickerSynthKeepsSoundFontWhenAlreadySet(t *testing.T) {
 	if got.musicVolume != 1.0 {
 		t.Fatalf("musicVolume=%v want 1.0", got.musicVolume)
 	}
-	if got.soundFontPath != "soundfonts/SC55-HQ.sf2" {
-		t.Fatalf("soundFontPath=%q want %q", got.soundFontPath, "soundfonts/SC55-HQ.sf2")
+	if got.soundFontPath != wantPath {
+		t.Fatalf("soundFontPath=%q want %q", got.soundFontPath, wantPath)
 	}
 }
 
@@ -310,7 +312,7 @@ func TestApplyPickerSynthMeltySynthSetsHQSoundFontPath(t *testing.T) {
 		musicVolume:  1.0,
 	}
 
-	got := applyPickerSynth(cfg, 3)
+	got := applyPickerSynth(cfg, pickerSynthIndexByLabel(t, "MIDI - SC55-HQ"))
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -329,7 +331,7 @@ func TestApplyPickerSynthSGMHQSetsSoundFontPath(t *testing.T) {
 		musicVolume:  1.0,
 	}
 
-	got := applyPickerSynth(cfg, 4)
+	got := applyPickerSynth(cfg, pickerSynthIndexByLabel(t, "MIDI - SGM-ULTRA-HQ"))
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -348,7 +350,7 @@ func TestApplyPickerSynthGeneralMIDISetsSoundFontPath(t *testing.T) {
 		musicVolume:  1.0,
 	}
 
-	got := applyPickerSynth(cfg, 2)
+	got := applyPickerSynth(cfg, pickerSynthIndexByLabel(t, "MIDI - GENERAL MIDI"))
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -371,4 +373,15 @@ func TestSoundFontDefaultRankPrefersSC55(t *testing.T) {
 	if got := soundFontDefaultRank("soundfonts/general-midi.sf2"); got != 2 {
 		t.Fatalf("rank(general-midi)=%d want 2", got)
 	}
+}
+
+func pickerSynthIndexByLabel(t *testing.T, label string) int {
+	t.Helper()
+	for i, option := range pickerSynths {
+		if option.label == label {
+			return i
+		}
+	}
+	t.Fatalf("picker synth label %q not found", label)
+	return -1
 }

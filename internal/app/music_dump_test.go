@@ -3,15 +3,11 @@ package app
 import (
 	"bytes"
 	"encoding/binary"
-	"image/png"
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
-	"gddoom/internal/music"
+	"gddoom/internal/wad"
 )
 
 func TestDumpMusicRendererLabel(t *testing.T) {
@@ -23,46 +19,8 @@ func TestDumpMusicRendererLabel(t *testing.T) {
 	}
 }
 
-func TestDetectDumpMusicTargetsSkipsSharewareDuringAutoDetect(t *testing.T) {
-	td := t.TempDir()
-	prevWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(td); err != nil {
-		t.Fatalf("chdir tempdir: %v", err)
-	}
-	defer func() {
-		_ = os.Chdir(prevWD)
-	}()
-
-	for _, name := range []string{"doom1.wad", "doomu.wad", "doom2.wad"} {
-		if err := os.WriteFile(filepath.Join(td, name), []byte("wad"), 0o644); err != nil {
-			t.Fatalf("write %s: %v", name, err)
-		}
-	}
-
-	targets, err := detectDumpMusicTargets("", false, nil)
-	if err != nil {
-		t.Fatalf("detectDumpMusicTargets() error: %v", err)
-	}
-	if len(targets) != 2 {
-		t.Fatalf("len(targets)=%d want 2", len(targets))
-	}
-	if got := filepath.Base(targets[0].path); got != "doomu.wad" {
-		t.Fatalf("targets[0].path=%q want %q", got, "doomu.wad")
-	}
-	if got := filepath.Base(targets[1].path); got != "doom2.wad" {
-		t.Fatalf("targets[1].path=%q want %q", got, "doom2.wad")
-	}
-}
-
 func TestDetectDumpMusicTargetsKeepsExplicitSharewareWAD(t *testing.T) {
-	td := t.TempDir()
-	wadPath := filepath.Join(td, "doom1.wad")
-	if err := os.WriteFile(wadPath, []byte("wad"), 0o644); err != nil {
-		t.Fatalf("write wad: %v", err)
-	}
+	wadPath := "/tmp/doom1.wad"
 
 	targets, err := detectDumpMusicTargets(wadPath, true, nil)
 	if err != nil {
@@ -73,6 +31,15 @@ func TestDetectDumpMusicTargetsKeepsExplicitSharewareWAD(t *testing.T) {
 	}
 	if targets[0].path != wadPath {
 		t.Fatalf("target path=%q want %q", targets[0].path, wadPath)
+	}
+}
+
+func TestDumpMusicShouldSkipIWADChoiceSkipsSharewareOnly(t *testing.T) {
+	if !dumpMusicShouldSkipIWADChoice(iwadChoice{Label: "DOOM Shareware"}) {
+		t.Fatal("shareware choice should be skipped")
+	}
+	if dumpMusicShouldSkipIWADChoice(iwadChoice{Label: "The Ultimate DOOM"}) {
+		t.Fatal("non-shareware choice should not be skipped")
 	}
 }
 
@@ -95,16 +62,11 @@ func TestDumpTrackCoverLines(t *testing.T) {
 }
 
 func TestDumpMusicTracksForWADUsesMapAndOtherMusicNames(t *testing.T) {
-	td := t.TempDir()
-	path := filepath.Join(td, "music.wad")
 	lumps := append(appTestMapLumpSet("MAP01"),
 		appTestLump{name: "D_RUNNIN", data: buildAppTestMUS([]byte{0x1F, 35, 0x60})},
 		appTestLump{name: "D_DM2INT", data: buildAppTestMUS([]byte{0x1F, 35, 0x60})},
 	)
-	if err := os.WriteFile(path, buildAppTestWAD("IWAD", lumps), 0o644); err != nil {
-		t.Fatalf("write wad: %v", err)
-	}
-	wf, _, err := openWADStack(path, nil)
+	wf, err := wad.OpenData("music.wad", buildAppTestWAD("IWAD", lumps))
 	if err != nil {
 		t.Fatalf("open wad: %v", err)
 	}
@@ -170,252 +132,6 @@ func TestNormalizeDumpMusicPCMSilenceIsUnchanged(t *testing.T) {
 func TestDumpMusicPeakAbsSampleHandlesMinInt16(t *testing.T) {
 	if got := dumpMusicPeakAbsSample([]int16{-32768, 120, -10}); got != 32768 {
 		t.Fatalf("peak=%d want 32768", got)
-	}
-}
-
-func TestRunParseDumpMusicWritesOPLWav(t *testing.T) {
-	td := t.TempDir()
-	prevWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(td); err != nil {
-		t.Fatalf("chdir tempdir: %v", err)
-	}
-	defer func() {
-		_ = os.Chdir(prevWD)
-	}()
-
-	wadPath := filepath.Join(td, "music.wad")
-	outDir := filepath.Join(td, "out")
-	lumps := append(appTestMapLumpSet("MAP01"),
-		appTestLump{name: "TITLEPIC", data: make([]byte, 320*200)},
-		appTestLump{name: "D_RUNNIN", data: buildAppTestMUS([]byte{
-			0x90, 0xBC, 100,
-			0x0A,
-			0x00, 0x3C,
-			0x60,
-		})},
-	)
-	if err := os.WriteFile(wadPath, buildAppTestWAD("IWAD", lumps), 0o644); err != nil {
-		t.Fatalf("write wad: %v", err)
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	code := RunParse([]string{
-		"-wad", wadPath,
-		"-dump-music",
-		"-dump-music-dir", outDir,
-	}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, stderr.String())
-	}
-
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
-	if _, err := os.Stat(wavPath); err != nil {
-		t.Fatalf("stat wav: %v", err)
-	}
-	coverPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.png")
-	cf, err := os.Open(coverPath)
-	if err != nil {
-		t.Fatalf("open cover: %v", err)
-	}
-	defer cf.Close()
-	cover, err := png.Decode(cf)
-	if err != nil {
-		t.Fatalf("decode cover: %v", err)
-	}
-	if b := cover.Bounds(); b.Dx() != 1920 || b.Dy() != 1080 {
-		t.Fatalf("cover size=%dx%d want 1920x1080", b.Dx(), b.Dy())
-	}
-	splashPath := filepath.Join(outDir, "MUSIC", "splash.png")
-	f, err := os.Open(splashPath)
-	if err != nil {
-		t.Fatalf("open splash: %v", err)
-	}
-	defer f.Close()
-	img, err := png.Decode(f)
-	if err != nil {
-		t.Fatalf("decode splash: %v", err)
-	}
-	if b := img.Bounds(); b.Dx() != 1920 || b.Dy() != 1080 {
-		t.Fatalf("splash size=%dx%d want 1920x1080", b.Dx(), b.Dy())
-	}
-	tracksPath := filepath.Join(outDir, "MUSIC", "tracks.txt")
-	data, err := os.ReadFile(tracksPath)
-	if err != nil {
-		t.Fatalf("read tracks.txt: %v", err)
-	}
-	if got := strings.TrimSpace(string(data)); got != "MAP01 - Entryway | Running from Evil | D_RUNNIN" {
-		t.Fatalf("tracks.txt=%q", got)
-	}
-	if stdout.Len() == 0 {
-		t.Fatal("expected dump-music progress on stdout")
-	}
-}
-
-func TestRunParseDumpMusicSkipsExistingNonZeroWav(t *testing.T) {
-	td := t.TempDir()
-	prevWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(td); err != nil {
-		t.Fatalf("chdir tempdir: %v", err)
-	}
-	defer func() {
-		_ = os.Chdir(prevWD)
-	}()
-
-	wadPath := filepath.Join(td, "music.wad")
-	outDir := filepath.Join(td, "out")
-	lumps := append(appTestMapLumpSet("MAP01"),
-		appTestLump{name: "TITLEPIC", data: make([]byte, 320*200)},
-		appTestLump{name: "D_RUNNIN", data: buildAppTestMUS([]byte{0x1F, 35, 0x60})},
-	)
-	if err := os.WriteFile(wadPath, buildAppTestWAD("IWAD", lumps), 0o644); err != nil {
-		t.Fatalf("write wad: %v", err)
-	}
-
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
-	if err := os.MkdirAll(filepath.Dir(wavPath), 0o755); err != nil {
-		t.Fatalf("mkdir wav dir: %v", err)
-	}
-	want := []byte("keep-existing-wav")
-	if err := os.WriteFile(wavPath, want, 0o644); err != nil {
-		t.Fatalf("seed wav: %v", err)
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	code := RunParse([]string{
-		"-wad", wadPath,
-		"-dump-music",
-		"-dump-music-dir", outDir,
-	}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, stderr.String())
-	}
-
-	got, err := os.ReadFile(wavPath)
-	if err != nil {
-		t.Fatalf("read wav: %v", err)
-	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("wav was rewritten, got=%q want=%q", got, want)
-	}
-	if strings.Contains(stdout.String(), "renderer=OPL track=D_RUNNIN") {
-		t.Fatalf("stdout should not report skipped track, got %q", stdout.String())
-	}
-}
-
-func TestRunParseDumpMusicRewritesZeroByteWav(t *testing.T) {
-	td := t.TempDir()
-	prevWD, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(td); err != nil {
-		t.Fatalf("chdir tempdir: %v", err)
-	}
-	defer func() {
-		_ = os.Chdir(prevWD)
-	}()
-
-	wadPath := filepath.Join(td, "music.wad")
-	outDir := filepath.Join(td, "out")
-	lumps := append(appTestMapLumpSet("MAP01"),
-		appTestLump{name: "TITLEPIC", data: make([]byte, 320*200)},
-		appTestLump{name: "D_RUNNIN", data: buildAppTestMUS([]byte{
-			0x90, 0xBC, 100,
-			0x0A,
-			0x00, 0x3C,
-			0x60,
-		})},
-	)
-	if err := os.WriteFile(wadPath, buildAppTestWAD("IWAD", lumps), 0o644); err != nil {
-		t.Fatalf("write wad: %v", err)
-	}
-
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
-	if err := os.MkdirAll(filepath.Dir(wavPath), 0o755); err != nil {
-		t.Fatalf("mkdir wav dir: %v", err)
-	}
-	if err := os.WriteFile(wavPath, nil, 0o644); err != nil {
-		t.Fatalf("seed zero-byte wav: %v", err)
-	}
-
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	code := RunParse([]string{
-		"-wad", wadPath,
-		"-dump-music",
-		"-dump-music-dir", outDir,
-	}, &stdout, &stderr)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, stderr.String())
-	}
-
-	info, err := os.Stat(wavPath)
-	if err != nil {
-		t.Fatalf("stat wav: %v", err)
-	}
-	if info.Size() == 0 {
-		t.Fatal("expected zero-byte wav to be regenerated")
-	}
-	if !strings.Contains(stdout.String(), "renderer=OPL track=D_RUNNIN") {
-		t.Fatalf("stdout should report regenerated track, got %q", stdout.String())
-	}
-}
-
-func TestDumpMusicPCMConcurrentSafeRendersGeneralMIDIDoom2Intermission(t *testing.T) {
-	const (
-		lumpName = "D_DDTBLU"
-	)
-	wadPath := filepath.Join("..", "..", "DOOM2.WAD")
-	soundFontPath := filepath.Join("..", "..", "soundfonts", "general-midi.sf2")
-	if _, err := os.Stat(wadPath); err != nil {
-		t.Skipf("missing %s: %v", wadPath, err)
-	}
-	if _, err := os.Stat(soundFontPath); err != nil {
-		t.Skipf("missing %s: %v", soundFontPath, err)
-	}
-
-	wf, _, err := openWADStack(wadPath, nil)
-	if err != nil {
-		t.Fatalf("open wad: %v", err)
-	}
-	lump, ok := wf.LumpByName(lumpName)
-	if !ok {
-		t.Fatalf("missing lump %s", lumpName)
-	}
-	musData, err := wf.LumpDataView(lump)
-	if err != nil {
-		t.Fatalf("read lump %s: %v", lumpName, err)
-	}
-	patchBank, err := resolveMusicPatchBank(wf, "", nil)
-	if err != nil {
-		t.Fatalf("resolve patch bank: %v", err)
-	}
-	sf, err := music.ParseSoundFontFile(soundFontPath)
-	if err != nil {
-		t.Fatalf("parse soundfont: %v", err)
-	}
-
-	var meltySynthMu sync.Mutex
-	pcm, err := dumpMusicPCMConcurrentSafe(patchBank, dumpMusicRenderer{
-		label:       "MIDI-GENERAL-MIDI",
-		displayName: "General MIDI",
-		backend:     music.BackendMeltySynth,
-		fontPath:    soundFontPath,
-		soundFont:   sf,
-	}, musData, &meltySynthMu)
-	if err != nil {
-		t.Fatalf("render %s with general-midi: %v", lumpName, err)
-	}
-	if len(pcm) == 0 {
-		t.Fatalf("render %s produced no PCM", lumpName)
 	}
 }
 
