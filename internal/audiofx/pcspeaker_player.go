@@ -2,6 +2,7 @@ package audiofx
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
 	"strings"
@@ -1393,4 +1394,36 @@ func (p *PCSpeakerPlayer) SetVolume(v float64) {
 	if p.player != nil {
 		p.player.SetVolume(p.volume)
 	}
+}
+
+func RenderPCSpeakerSequenceToPCM(seq []sound.PCSpeakerTone, tickRate int, variant PCSpeakerVariant) ([]int16, error) {
+	if len(seq) == 0 {
+		return nil, nil
+	}
+	src := &pcSpeakerSource{
+		rate:       music.OutputSampleRate,
+		variant:    variant,
+		model:      modelForVariant(variant),
+		reverb:     newCaseReverb(),
+		streamGain: 1,
+	}
+	src.setMusic(seq, music.OutputSampleRate, tickRate, false)
+	totalFrames := src.totalSamples()
+	if totalFrames <= 0 {
+		return nil, nil
+	}
+	buf := make([]byte, totalFrames*4)
+	n, err := io.ReadFull(src, buf)
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return nil, fmt.Errorf("render pc speaker pcm: %w", err)
+	}
+	buf = buf[:n]
+	if len(buf)%2 != 0 {
+		buf = buf[:len(buf)-1]
+	}
+	out := make([]int16, len(buf)/2)
+	for i := 0; i+1 < len(buf); i += 2 {
+		out[i/2] = int16(binary.LittleEndian.Uint16(buf[i : i+2]))
+	}
+	return out, nil
 }

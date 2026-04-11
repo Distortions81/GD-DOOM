@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unsafe"
 
+	"gddoom/internal/audiofx"
 	"gddoom/internal/music"
 	"gddoom/internal/wad"
 )
@@ -25,7 +26,10 @@ type wadTarget struct {
 type exportMode string
 
 const (
-	exportModeImpSynth exportMode = "impsynth"
+	exportModeImpSynth          exportMode = "impsynth"
+	exportModePCSpeaker         exportMode = "pcspeaker"
+	exportModePCSpeakerClean    exportMode = "pcspeaker-clean"
+	exportModePCSpeakerPiezo    exportMode = "pcspeaker-piezo"
 )
 
 func main() {
@@ -39,7 +43,7 @@ func run(args []string) int {
 	doom1Path := fs.String("doom1", "doom.wad", "path to Doom 1 IWAD")
 	doom2Path := fs.String("doom2", "doom2.wad", "path to Doom 2 IWAD")
 	songFilter := fs.String("song", "", "exact music lump to export (default: all parseable D_* lumps)")
-	modeFlag := fs.String("mode", string(exportModeImpSynth), "export mode (impsynth)")
+	modeFlag := fs.String("mode", string(exportModeImpSynth), "export mode (impsynth|pcspeaker|pcspeaker-clean|pcspeaker-piezo)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -94,8 +98,14 @@ func parseExportMode(raw string) (exportMode, error) {
 	switch exportMode(strings.ToLower(strings.TrimSpace(raw))) {
 	case exportModeImpSynth:
 		return exportModeImpSynth, nil
+	case exportModePCSpeaker:
+		return exportModePCSpeaker, nil
+	case exportModePCSpeakerClean:
+		return exportModePCSpeakerClean, nil
+	case exportModePCSpeakerPiezo:
+		return exportModePCSpeakerPiezo, nil
 	default:
-		return "", fmt.Errorf("invalid -mode %q (want impsynth)", raw)
+		return "", fmt.Errorf("invalid -mode %q (want impsynth|pcspeaker|pcspeaker-clean|pcspeaker-piezo)", raw)
 	}
 }
 
@@ -199,9 +209,27 @@ func renderPCM(bank music.PatchBank, musData []byte, mode exportMode) ([]int16, 
 	switch mode {
 	case exportModeImpSynth:
 		return renderBackendPCM(bank, musData, music.BackendImpSynth, "impsynth")
+	case exportModePCSpeaker:
+		return renderPCSpeakerPCM(bank, musData, audiofx.PCSpeakerVariantSmallSpeaker)
+	case exportModePCSpeakerClean:
+		return renderPCSpeakerPCM(bank, musData, audiofx.PCSpeakerVariantClean)
+	case exportModePCSpeakerPiezo:
+		return renderPCSpeakerPCM(bank, musData, audiofx.PCSpeakerVariantPiezo)
 	default:
 		return nil, fmt.Errorf("unsupported export mode %q", mode)
 	}
+}
+
+func renderPCSpeakerPCM(bank music.PatchBank, musData []byte, variant audiofx.PCSpeakerVariant) ([]int16, error) {
+	seq, tickRate, err := music.RenderMUSToPCSpeaker(bank, musData)
+	if err != nil {
+		return nil, fmt.Errorf("render pc speaker sequence: %w", err)
+	}
+	pcm, err := audiofx.RenderPCSpeakerSequenceToPCM(seq, tickRate, variant)
+	if err != nil {
+		return nil, fmt.Errorf("render pc speaker pcm: %w", err)
+	}
+	return pcm, nil
 }
 
 func renderBackendPCM(bank music.PatchBank, musData []byte, backend music.Backend, label string) ([]int16, error) {

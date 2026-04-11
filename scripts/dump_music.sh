@@ -20,13 +20,15 @@ Options:
   --doom2 <path>   Path to Doom 2 IWAD. If omitted, auto-detects ./doom2.wad, ./DOOM2.WAD
   --out <dir>      Output directory (default: ./out/music-dump)
   --song <lump>    Export one exact music lump, e.g. D_E1M1 or D_RUNNIN
-  --mode <name>    Export mode passed through to musicwav (default: impsynth)
+  --mode <name>    Export mode passed through to musicwav
+                   (impsynth|pcspeaker|pcspeaker-clean|pcspeaker-piezo; default: impsynth)
   -h, --help       Show this help
 
 Examples:
   scripts/dump_music.sh
   scripts/dump_music.sh --doom1 ~/wads/DOOM.WAD --doom2 ~/wads/DOOM2.WAD
   scripts/dump_music.sh --song D_E1M1 --out ./tmp/music
+  scripts/dump_music.sh --song D_E1M1 --mode pcspeaker-clean --out ./tmp/music
 EOF
 }
 

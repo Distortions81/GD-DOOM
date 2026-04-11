@@ -145,6 +145,7 @@ Frequently used options:
 - `-mic-codec=silk|g726|pcm` selects the voice codec used for microphone streaming.
 - `-config=config.toml` reads and persists native runtime settings.
 - `-dump-music` saves the game's music tracks as WAV files.
+  Note: the main app dump path currently exports the built-in OPL/SoundFont renderers, while `cmd/musicwav` and `scripts/dump_music.sh` support direct PC speaker WAV export modes.
 
 There are more flags than the short list above. Use `go run . -help` for the full set if you want every tweak and debug option.
 
@@ -159,6 +160,7 @@ go run . -wad DOOM1.WAD -detail-level=2 -auto-detail
 go run . -wad DOOM2.WAD -map=MAP01 -record-demo=output.lmp
 go run . -wad DOOM1.WAD -demo=demos/DOOM1-DEMO1.lmp
 go run . -wad DOOM1.WAD -dump-music
+go run ./cmd/musicwav -doom2 DOOM2.WAD -song D_RUNNIN -mode pcspeaker-clean -out ./out/music-pcspeaker-clean
 go run . -wad DOOM1.WAD -broadcast
 go run . -wad DOOM1.WAD -broadcast -mic -mic-codec=silk
 go run . -wad DOOM1.WAD -watch -watch-session=1
@@ -325,7 +327,7 @@ If you are working on the engine itself, extra utilities are included under [`cm
 - [`cmd/gdsfrelay`](/home/dist/github/GD-DOOM/cmd/gdsfrelay) runs the live session relay used by `-broadcast` and `-watch`.
 - [`cmd/wasmserve`](/home/dist/github/GD-DOOM/cmd/wasmserve) serves the browser build locally.
 - [`cmd/demotracecmp`](/home/dist/github/GD-DOOM/cmd/demotracecmp) compares two demo state logs to help find mismatches or desyncs.
-- [`cmd/musicwav`](/home/dist/github/GD-DOOM/cmd/musicwav) exports in-game music tracks to WAV files.
+- [`cmd/musicwav`](/home/dist/github/GD-DOOM/cmd/musicwav) exports in-game music tracks to WAV files, including `impsynth`, `pcspeaker`, `pcspeaker-clean`, and `pcspeaker-piezo` modes with optional single-song selection via `-song`.
 - [`cmd/mapprobe`](/home/dist/github/GD-DOOM/cmd/mapprobe) inspects map data such as sectors, lines, tags, and things.
 - [`cmd/mapaudit`](/home/dist/github/GD-DOOM/cmd/mapaudit) generates a report about oddities in local Doom map data.
 - [`cmd/wadtool`](/home/dist/github/GD-DOOM/cmd/wadtool) extracts individual files from WADs.
