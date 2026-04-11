@@ -5,63 +5,66 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GD-DOOM WASM Player</title>
   <style>
-    :root { color-scheme: dark; }
     html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-    }
-    * {
-      box-sizing: border-box;
-    }
-    body {
       margin: 0;
-      background: #111;
+      height: 100%;
+      background: #000;
       color: #ddd;
       font: 16px/1.4 monospace;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
     }
-    main {
-      position: fixed;
-      inset: 0;
-      display: grid;
-      place-items: center;
+    html {
+      padding: 0;
+    }
+    body {
+      padding: 0;
       overflow: hidden;
     }
-    .notice {
-      position: fixed;
-      left: 50%;
-      bottom: 20px;
-      transform: translateX(-50%);
-      z-index: 3;
-      padding: 10px 14px;
-      border: 1px solid #663;
-      background: rgba(0, 0, 0, 0.88);
-      color: #f2d9a6;
-      font-size: 13px;
-      white-space: nowrap;
+    #loading {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 10px;
+      background: #111;
+      z-index: 10;
     }
-    .notice[hidden] {
-      display: none;
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 6px solid #444;
+      border-top-color: #bbb;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
     }
     canvas {
       display: block;
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
       image-rendering: pixelated;
-      border: 1px solid #444;
-      max-width: 100%;
-      max-height: 100%;
+      outline: none;
+      touch-action: none;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
 <body>
-  <main></main>
-  <div id="notice" class="notice" hidden></div>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Loading...</div>
+  </div>
   <script src="./wasm_exec.js"></script>
   <script>
     const go = new Go();
     go.argv = ["gddoom", "-music-backend=impsynth"];
-    const notice = document.getElementById("notice");
-    let boundCanvas = null;
-    let reloadScheduled = false;
 
     function copyLocalWADsFromParent() {
       if (!window.parent || window.parent === window) {
@@ -85,175 +88,46 @@
       });
     }
 
-    function showNotice(text) {
-      if (!notice) {
-        return;
-      }
-      notice.textContent = text;
-      notice.hidden = false;
-    }
-
-    function hideNotice() {
-      if (!notice) {
-        return;
-      }
-      notice.hidden = true;
-      notice.textContent = "";
-    }
-
-    function focusCanvas() {
-      const canvas = document.querySelector("canvas");
-      if (!canvas) {
-        return false;
-      }
-      canvas.setAttribute("aria-label", "GD-DOOM game canvas");
-      canvas.focus({ preventScroll: true });
-      requestAnimationFrame(() => {
-        canvas.focus({ preventScroll: true });
-      });
-      return true;
-    }
-
-    function scheduleReload() {
-      if (reloadScheduled) {
-        return;
-      }
-      reloadScheduled = true;
-      showNotice("Graphics context lost. Reloading...");
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "gddoom-webgl-context-lost" }, window.location.origin);
-      }
-      window.setTimeout(() => {
-        window.location.reload();
-      }, 750);
-    }
-
-    function bindCanvas(canvas) {
-      if (!canvas || canvas === boundCanvas) {
-        return;
-      }
-      boundCanvas = canvas;
-      canvas.addEventListener("webglcontextlost", (event) => {
-        event.preventDefault();
-        scheduleReload();
-      });
-      canvas.addEventListener("webglcontextrestored", () => {
-        reloadScheduled = false;
-        hideNotice();
-        if (window.parent && window.parent !== window) {
-          window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
-        }
-      });
-      if (window.parent && window.parent !== window) {
-        window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
-      }
-    }
-
     function hasWASMMagic(bytes) {
-      return bytes &&
-        bytes.length >= 4 &&
-        bytes[0] === 0x00 &&
-        bytes[1] === 0x61 &&
-        bytes[2] === 0x73 &&
-        bytes[3] === 0x6d;
-    }
-
-    async function readStreamBytes(stream) {
-      const response = new Response(stream);
-      return new Uint8Array(await response.arrayBuffer());
-    }
-
-    async function fetchWASMResponse(url) {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error(`fetch failed for ${url}: ${response.status}`);
-      }
-      return response;
-    }
-
-    async function instantiateWASMStreaming(url) {
-      if (typeof WebAssembly.instantiateStreaming !== "function") {
-        throw new Error("instantiateStreaming is not supported");
-      }
-      const response = await fetchWASMResponse(url);
-      return WebAssembly.instantiateStreaming(response, go.importObject);
-    }
-
-    async function instantiateWASMFromBytes(url) {
-      const response = await fetchWASMResponse(url);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (!hasWASMMagic(bytes)) {
-        throw new Error(`invalid wasm binary for ${url}`);
-      }
-      return WebAssembly.instantiate(bytes, go.importObject);
+      return bytes && bytes.length >= 4 &&
+        bytes[0] === 0x00 && bytes[1] === 0x61 &&
+        bytes[2] === 0x73 && bytes[3] === 0x6d;
     }
 
     async function fetchCompressedWASMBytes(url) {
       if (typeof DecompressionStream !== "function") {
-        throw new Error("gzip fallback unavailable: DecompressionStream is not supported");
+        throw new Error("DecompressionStream is not supported");
       }
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) {
         throw new Error(`fetch failed for ${url}: ${response.status}`);
       }
       const ds = new DecompressionStream("gzip");
-      return readStreamBytes(response.body.pipeThrough(ds));
+      const buf = await new Response(response.body.pipeThrough(ds)).arrayBuffer();
+      return new Uint8Array(buf);
     }
-
-    async function instantiateWASM() {
-      try {
-        return await instantiateWASMStreaming("./gddoom.wasm");
-      } catch (err) {
-      }
-      try {
-        return await instantiateWASMFromBytes("./gddoom.wasm");
-      } catch (err) {
-      }
-
-      const bytes = await fetchCompressedWASMBytes("./gddoom.wasm.gz");
-      if (!hasWASMMagic(bytes)) {
-        throw new Error("gzip fallback did not produce a valid wasm binary");
-      }
-      return WebAssembly.instantiate(bytes, go.importObject);
-    }
-
-    window.addEventListener("message", (event) => {
-      if (event.origin !== window.location.origin) {
-        return;
-      }
-      if (!event.data || event.data.type !== "gddoom-focus-canvas") {
-        return;
-      }
-      if (focusCanvas()) {
-        return;
-      }
-      const observer = new MutationObserver(() => {
-        if (!focusCanvas()) {
-          return;
-        }
-        observer.disconnect();
-      });
-      observer.observe(document.documentElement, { childList: true, subtree: true });
-    });
-
-    window.addEventListener("click", () => {
-      focusCanvas();
-    });
-
-    const canvasObserver = new MutationObserver(() => {
-      const canvas = document.querySelector("canvas");
-      if (canvas) {
-        bindCanvas(canvas);
-        canvasObserver.disconnect();
-      }
-    });
-    canvasObserver.observe(document.documentElement, { childList: true, subtree: true });
 
     copyLocalWADsFromParent();
-
-    instantiateWASM()
+    fetchCompressedWASMBytes("./gddoom.wasm.gz")
+      .then((bytes) => {
+        if (!hasWASMMagic(bytes)) {
+          throw new Error("gzip wasm did not produce a valid binary");
+        }
+        return WebAssembly.instantiate(bytes, go.importObject);
+      })
       .then((result) => {
-        go.run(result.instance);
+        document.getElementById("loading").remove();
+        if (window.parent && window.parent !== window) {
+          window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
+        }
+        return go.run(result.instance);
+      })
+      .catch((err) => {
+        console.error(err);
+        const loading = document.getElementById("loading");
+        if (loading) {
+          loading.textContent = String(err);
+        }
       });
   </script>
 </body>

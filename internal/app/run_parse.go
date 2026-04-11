@@ -41,6 +41,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
+	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 func flagProvided(args []string, name string) bool {
@@ -2876,6 +2877,29 @@ type iwadPickerGame struct {
 	session               *doomsession.Session
 	sessionGame           *session.Game
 	err                   error
+	touchSeen             bool
+	touchHeld             pickerTouchActionMask
+	touchJustPressed      pickerTouchActionMask
+	touchScreenW          int
+	touchScreenH          int
+}
+
+type pickerTouchActionMask uint32
+
+const (
+	pickerTouchPrev pickerTouchActionMask = 1 << iota
+	pickerTouchNext
+	pickerTouchConfirm
+	pickerTouchBack
+)
+
+type pickerTouchButton struct {
+	action pickerTouchActionMask
+	label  string
+	x      float64
+	y      float64
+	w      float64
+	h      float64
 }
 
 func newIWADPickerGame(choices []iwadChoice, initialBackend music.Backend, initialPCSpeakerVariant string, load func(string, pickerProfile, int, int, int) (*renderBundle, error)) (*iwadPickerGame, error) {
@@ -2929,6 +2953,161 @@ func pickerConfirmHeld() bool {
 	return ebiten.IsKeyPressed(ebiten.KeyEnter) || ebiten.IsKeyPressed(ebiten.KeyKPEnter)
 }
 
+func (g *iwadPickerGame) pickerTouchButtons(sw, sh int) []pickerTouchButton {
+	if sw <= 0 || sh <= 0 {
+		return nil
+	}
+	size := float64(min(sw, sh)) * 0.15
+	if size < 56 {
+		size = 56
+	}
+	if size > 96 {
+		size = 96
+	}
+	margin := size * 0.28
+	gap := size * 0.16
+	mainW := size * 1.18
+	mainH := size * 0.82
+	y := float64(sh) - margin - mainH
+	leftX := margin
+	rightX := float64(sw) - margin - mainW
+	centerGroupW := mainW*2 + gap
+	centerX := (float64(sw) - centerGroupW) * 0.5
+	return []pickerTouchButton{
+		{action: pickerTouchBack, label: "BACK", x: leftX, y: y, w: mainW, h: mainH},
+		{action: pickerTouchPrev, label: "UP", x: centerX, y: y, w: mainW, h: mainH},
+		{action: pickerTouchNext, label: "DOWN", x: centerX + mainW + gap, y: y, w: mainW, h: mainH},
+		{action: pickerTouchConfirm, label: "ENTER", x: rightX, y: y, w: mainW, h: mainH},
+	}
+}
+
+func pickerTouchButtonContains(button pickerTouchButton, x, y float64) bool {
+	return x >= button.x && x < button.x+button.w && y >= button.y && y < button.y+button.h
+}
+
+func (g *iwadPickerGame) sampleTouchControls() {
+	if g == nil {
+		return
+	}
+	logicalW, logicalH := 320, 200
+	justPressedIDs := inpututil.AppendJustPressedTouchIDs(nil)
+	ids := append([]ebiten.TouchID(nil), justPressedIDs...)
+	for _, id := range ebiten.AppendTouchIDs(nil) {
+		found := false
+		for _, existing := range ids {
+			if existing == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ids = append(ids, id)
+		}
+	}
+	if len(justPressedIDs) > 0 || len(ids) > 0 {
+		g.touchSeen = true
+	}
+	held := pickerTouchActionMask(0)
+	for _, id := range ids {
+		x, y := ebiten.TouchPosition(id)
+		for _, button := range g.pickerTouchButtons(logicalW, logicalH) {
+			if pickerTouchButtonContains(button, float64(x), float64(y)) {
+				held |= button.action
+				break
+			}
+		}
+	}
+	g.touchJustPressed = held &^ g.touchHeld
+	g.touchHeld = held
+}
+
+func (g *iwadPickerGame) pickerTouchJustPressed(action pickerTouchActionMask) bool {
+	return g != nil && g.touchJustPressed&action != 0
+}
+
+func (g *iwadPickerGame) pickerTouchActivated(action pickerTouchActionMask) bool {
+	return g != nil && g.touchHeld&action != 0 && g.touchJustPressed&action != 0
+}
+
+func (g *iwadPickerGame) shouldDrawPickerTouchControls() bool {
+	return g != nil && (g.touchSeen || platformcfg.IsWASMBuild())
+}
+
+func (g *iwadPickerGame) pickerBack() error {
+	switch g.stage {
+	case pickerStageSynth:
+		g.stage = pickerStageSFX
+	case pickerStagePCSpeakerVariant:
+		g.stage = pickerStageSFX
+	case pickerStageSFX:
+		g.stage = pickerStageProfile
+	case pickerStageProfile:
+		g.stage = pickerStageIWAD
+	default:
+		g.err = fmt.Errorf("iwad selection cancelled")
+		return ebiten.Termination
+	}
+	g.confirmArmed = false
+	g.playPickerBackSound()
+	return nil
+}
+
+func (g *iwadPickerGame) drawPickerTouchControls(screen *ebiten.Image) {
+	if screen == nil || !g.shouldDrawPickerTouchControls() {
+		return
+	}
+	for _, button := range g.pickerTouchButtons(max(screen.Bounds().Dx(), 1), max(screen.Bounds().Dy(), 1)) {
+		fill := color.RGBA{R: 20, G: 20, B: 20, A: 112}
+		border := color.RGBA{R: 96, G: 96, B: 96, A: 132}
+		if g.touchHeld&button.action != 0 {
+			fill = color.RGBA{R: 34, G: 34, B: 34, A: 148}
+			border = color.RGBA{R: 140, G: 140, B: 140, A: 172}
+		}
+		ebitenutil.DrawRect(screen, button.x, button.y, button.w, button.h, fill)
+		ebitenutil.DrawRect(screen, button.x, button.y, button.w, 2, border)
+		ebitenutil.DrawRect(screen, button.x, button.y+button.h-2, button.w, 2, border)
+		ebitenutil.DrawRect(screen, button.x, button.y, 2, button.h, border)
+		ebitenutil.DrawRect(screen, button.x+button.w-2, button.y, 2, button.h, border)
+		labelX := int(button.x + 10)
+		labelY := int(button.y + button.h*0.5 - 4)
+		ebitenutil.DebugPrintAt(screen, button.label, labelX, labelY)
+	}
+	drawPickerTouchSeenStatus(screen, g.touchSeen)
+	drawActivePickerTouchPoints(screen)
+}
+
+func drawPickerTouchSeenStatus(screen *ebiten.Image, seen bool) {
+	if screen == nil {
+		return
+	}
+	label := "TOUCH: none"
+	fill := color.RGBA{R: 24, G: 24, B: 24, A: 160}
+	border := color.RGBA{R: 88, G: 88, B: 88, A: 180}
+	if seen {
+		label = "TOUCH: seen"
+		fill = color.RGBA{R: 24, G: 40, B: 24, A: 170}
+		border = color.RGBA{R: 96, G: 160, B: 96, A: 190}
+	}
+	x, y, w, h := 8.0, 8.0, 120.0, 24.0
+	ebitenutil.DrawRect(screen, x, y, w, h, fill)
+	ebitenutil.DrawRect(screen, x, y, w, 2, border)
+	ebitenutil.DrawRect(screen, x, y+h-2, w, 2, border)
+	ebitenutil.DrawRect(screen, x, y, 2, h, border)
+	ebitenutil.DrawRect(screen, x+w-2, y, 2, h, border)
+	ebitenutil.DebugPrintAt(screen, label, int(x+8), int(y+6))
+}
+
+func drawActivePickerTouchPoints(screen *ebiten.Image) {
+	if screen == nil {
+		return
+	}
+	for _, id := range ebiten.AppendTouchIDs(nil) {
+		x, y := ebiten.TouchPosition(id)
+		vector.DrawFilledCircle(screen, float32(x), float32(y), 12, color.RGBA{R: 255, A: 220}, true)
+		vector.DrawFilledCircle(screen, float32(x), float32(y), 5, color.RGBA{R: 255, G: 255, B: 255, A: 220}, true)
+	}
+}
+
 func pickerAssetWADPath(choices []iwadChoice) string {
 	for _, want := range []string{"DOOM1.WAD", "DOOMU.WAD", "DOOM.WAD", "DOOM2.WAD", "TNT.WAD", "PLUTONIA.WAD"} {
 		for _, c := range choices {
@@ -2952,6 +3131,7 @@ func (g *iwadPickerGame) Update() error {
 	if g.sessionGame != nil {
 		return g.sessionGame.Update()
 	}
+	g.sampleTouchControls()
 	if len(g.choices) == 0 {
 		g.err = fmt.Errorf("no IWADs available")
 		return ebiten.Termination
@@ -2993,66 +3173,47 @@ func (g *iwadPickerGame) Update() error {
 	if !g.confirmArmed {
 		g.confirmArmed = !pickerConfirmHeld()
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		if g.stage == pickerStageSynth {
-			g.stage = pickerStageSFX
-			g.confirmArmed = false
-			g.playPickerBackSound()
-		} else if g.stage == pickerStagePCSpeakerVariant {
-			g.stage = pickerStageSFX
-			g.confirmArmed = false
-			g.playPickerBackSound()
-		} else if g.stage == pickerStageSFX {
-			g.stage = pickerStageProfile
-			g.confirmArmed = false
-			g.playPickerBackSound()
-		} else if g.stage == pickerStageProfile {
-			g.stage = pickerStageIWAD
-			g.confirmArmed = false
-			g.playPickerBackSound()
-		} else {
-			g.err = fmt.Errorf("iwad selection cancelled")
-			return ebiten.Termination
-		}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || g.pickerTouchActivated(pickerTouchBack) {
+		return g.pickerBack()
 	}
 	switch g.stage {
 	case pickerStageProfile:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || g.pickerTouchActivated(pickerTouchPrev) {
 			prev := g.profile
 			g.profile = (g.profile + pickerProfile(len(pickerProfiles)) - 1) % pickerProfile(len(pickerProfiles))
 			if g.profile != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || g.pickerTouchActivated(pickerTouchNext) {
 			prev := g.profile
 			g.profile = (g.profile + 1) % pickerProfile(len(pickerProfiles))
 			if g.profile != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+		if (g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter))) || g.pickerTouchActivated(pickerTouchConfirm) {
 			g.playPickerConfirmSound()
 			g.stage = pickerStageSFX
 			g.confirmArmed = false
 			return nil
 		}
 	case pickerStageSFX:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || g.pickerTouchActivated(pickerTouchPrev) {
 			prev := g.sfxIndex
 			g.sfxIndex = (g.sfxIndex + len(pickerSFXOptions) - 1) % len(pickerSFXOptions)
 			if g.sfxIndex != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || g.pickerTouchActivated(pickerTouchNext) {
 			prev := g.sfxIndex
 			g.sfxIndex = (g.sfxIndex + 1) % len(pickerSFXOptions)
 			if g.sfxIndex != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+		if (g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter))) || g.pickerTouchActivated(pickerTouchConfirm) {
 			g.playPickerConfirmSound()
 			if pickerSFXOptions[g.sfxIndex].pcSpeaker {
 				g.stage = pickerStagePCSpeakerVariant
@@ -3063,42 +3224,42 @@ func (g *iwadPickerGame) Update() error {
 			return nil
 		}
 	case pickerStagePCSpeakerVariant:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || g.pickerTouchActivated(pickerTouchPrev) {
 			prev := g.pcSpeakerVariantIndex
 			g.pcSpeakerVariantIndex = (g.pcSpeakerVariantIndex + len(pickerPCSpeakerVariantOptions) - 1) % len(pickerPCSpeakerVariantOptions)
 			if g.pcSpeakerVariantIndex != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || g.pickerTouchActivated(pickerTouchNext) {
 			prev := g.pcSpeakerVariantIndex
 			g.pcSpeakerVariantIndex = (g.pcSpeakerVariantIndex + 1) % len(pickerPCSpeakerVariantOptions)
 			if g.pcSpeakerVariantIndex != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+		if (g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter))) || g.pickerTouchActivated(pickerTouchConfirm) {
 			g.playPickerConfirmSound()
 			g.stage = pickerStageSynth
 			g.confirmArmed = false
 			return nil
 		}
 	case pickerStageSynth:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || g.pickerTouchActivated(pickerTouchPrev) {
 			prev := g.synth
 			g.synth = (g.synth + len(pickerSynths) - 1) % len(pickerSynths)
 			if g.synth != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || g.pickerTouchActivated(pickerTouchNext) {
 			prev := g.synth
 			g.synth = (g.synth + 1) % len(pickerSynths)
 			if g.synth != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+		if (g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter))) || g.pickerTouchActivated(pickerTouchConfirm) {
 			if g.load == nil {
 				g.err = fmt.Errorf("iwad loader unavailable")
 				return ebiten.Termination
@@ -3120,21 +3281,21 @@ func (g *iwadPickerGame) Update() error {
 			return nil
 		}
 	default:
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || g.pickerTouchActivated(pickerTouchPrev) {
 			prev := g.selected
 			g.selected = (g.selected + len(g.choices) - 1) % len(g.choices)
 			if g.selected != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || g.pickerTouchActivated(pickerTouchNext) {
 			prev := g.selected
 			g.selected = (g.selected + 1) % len(g.choices)
 			if g.selected != prev {
 				g.playPickerMoveSound()
 			}
 		}
-		if g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter)) {
+		if (g.confirmArmed && (inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeyKPEnter))) || g.pickerTouchActivated(pickerTouchConfirm) {
 			g.playPickerConfirmSound()
 			g.stage = pickerStageProfile
 			g.confirmArmed = false
@@ -3299,12 +3460,15 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			g.drawPickerTextCentered(screen, line, sw/2, startY+i*lineHeight)
 		}
 	}
+	g.drawPickerTouchControls(screen)
 }
 
 func (g *iwadPickerGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if g.sessionGame != nil {
 		return g.sessionGame.Layout(outsideWidth, outsideHeight)
 	}
+	g.touchScreenW = max(outsideWidth, 1)
+	g.touchScreenH = max(outsideHeight, 1)
 	return 320, 200
 }
 

@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	coopMaxCatchUpTics   = 4
+	coopMaxCatchUpTics    = 4
 	coopStartupBufferTics = 2
 )
 
@@ -289,7 +289,7 @@ func (g *game) updateCoopMode() error {
 		if g.bindingJustPressed(bindingUse) {
 			g.pendingUse = true
 		}
-		if g.isDead && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter)) {
+		if g.isDead && g.enterJustPressed() {
 			g.requestLevelRestart()
 		}
 		g.edgeInputPass = false

@@ -869,6 +869,9 @@ type gameInputSnapshot struct {
 	justPressedKeys         map[ebiten.Key]struct{}
 	pressedMouseButtons     map[ebiten.MouseButton]struct{}
 	justPressedMouseButtons map[ebiten.MouseButton]struct{}
+	touchHeldActions        touchActionMask
+	touchJustPressedActions touchActionMask
+	touchSeen               bool
 	inputChars              []rune
 	wheelY                  float64
 	cursorX                 int
@@ -2513,6 +2516,13 @@ func applyRuntimeCursorMode(captured bool) {
 	}
 }
 
+func (g *game) shouldCaptureCursor() bool {
+	if g == nil {
+		return false
+	}
+	return !g.input.touchSeen
+}
+
 func (g *game) Update() error {
 	defer g.clearSampledInput()
 	if g.levelExitRequested {
@@ -2599,7 +2609,7 @@ func (g *game) Update() error {
 				g.cycleDetailLevel()
 			}
 		}
-		if g.isDead && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter)) {
+		if g.isDead && g.enterJustPressed() {
 			g.requestLevelRestart()
 		}
 	}
@@ -2609,13 +2619,13 @@ func (g *game) Update() error {
 		g.capturePrevState()
 		if g.mode == viewMap {
 			if g.opts.SourcePortMode {
-				applyRuntimeCursorMode(true)
+				applyRuntimeCursorMode(g.shouldCaptureCursor())
 			} else {
 				applyRuntimeCursorMode(false)
 			}
 			g.updateMapMode()
 		} else {
-			applyRuntimeCursorMode(true)
+			applyRuntimeCursorMode(g.shouldCaptureCursor())
 			g.updateWalkMode()
 		}
 		g.tickStatusWidgets()
@@ -2968,6 +2978,9 @@ func (g *game) bindingHeld(action bindingAction) bool {
 	if g == nil {
 		return false
 	}
+	if g.touchActionHeld(action) {
+		return true
+	}
 	binds := bindingValue(g.opts.InputBindings, action)
 	for _, name := range binds {
 		if key, ok := bindingKeyFromName(name); ok && g.keyHeld(key) {
@@ -2984,8 +2997,29 @@ func (g *game) bindingJustPressed(action bindingAction) bool {
 	if g == nil {
 		return false
 	}
+	if g.touchActionJustPressed(action) {
+		return true
+	}
 	binds := bindingValue(g.opts.InputBindings, action)
 	return bindingPressed(g.input.justPressedKeys, binds) || bindingMousePressed(g.input.justPressedMouseButtons, binds)
+}
+
+func (g *game) touchActionHeld(action bindingAction) bool {
+	if g == nil {
+		return false
+	}
+	return g.input.touchHeldActions&touchActionForBinding(action) != 0
+}
+
+func (g *game) touchActionJustPressed(action bindingAction) bool {
+	if g == nil {
+		return false
+	}
+	return g.input.touchJustPressedActions&touchActionForBinding(action) != 0
+}
+
+func (g *game) enterJustPressed() bool {
+	return g != nil && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter) || g.input.touchJustPressedActions&touchActionUseEnter != 0)
 }
 
 func (g *game) mouseHeld(button ebiten.MouseButton) bool {
@@ -3791,7 +3825,7 @@ func (g *game) tickPauseMenu() {
 			g.pauseMenuItemOn = (g.pauseMenuItemOn + 1) % len(inGamePauseMenuNames)
 		}
 	}
-	if g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter) {
+	if g.enterJustPressed() {
 		g.activatePauseMenuItem()
 	}
 }

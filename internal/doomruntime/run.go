@@ -74,6 +74,7 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 				currentTemplate: cloneMapForRestart(m),
 				opts:            opts,
 				nextMap:         nextMap,
+				hostFramePhase:  3,
 			}
 		},
 		Config: []func(*sessionGame){
@@ -159,6 +160,7 @@ func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
 func (sg *sessionGame) Update() error {
 	sg.releaseStartupMusicIfReady()
 	sg.releaseTransitionMusicIfReady()
+	flushTouchLatch := sg.bumpHostFramePhase()
 	err := runtimehost.RunUpdate(runtimehost.Update{
 		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },
 		HandleQuitPrompt:    sg.handleQuitPromptInput,
@@ -336,6 +338,9 @@ func (sg *sessionGame) Update() error {
 			}
 		},
 	})
+	if flushTouchLatch {
+		sg.clearLatchedTouchActions()
+	}
 	if errors.Is(err, runtimehost.ErrTerminate) {
 		return ebiten.Termination
 	}
@@ -343,6 +348,10 @@ func (sg *sessionGame) Update() error {
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
+	if sg == nil {
+		screen.Fill(color.Black)
+		return
+	}
 	yieldWASMRenderTime()
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
@@ -378,23 +387,31 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		IntermissionActive: func() bool {
 			return sg.intermission.state.Active
 		},
-		DrawIntermission: sg.drawIntermissionPresented,
+		DrawIntermission: func(screen *ebiten.Image) {
+			sg.drawIntermissionPresented(screen)
+			sg.drawTouchControls(screen)
+		},
 		FrontendActive: func() bool {
 			return sg.frontend.Active
 		},
 		DrawFrontend: func(screen *ebiten.Image) {
 			sg.drawFrontendPresented(screen)
+			sg.drawTouchControls(screen)
 		},
 		FinaleActive: func() bool {
 			return sg.finale.Active
 		},
-		DrawFinale: sg.drawFinalePresented,
+		DrawFinale: func(screen *ebiten.Image) {
+			sg.drawFinalePresented(screen)
+			sg.drawTouchControls(screen)
+		},
 		DrawGameplay: func(screen *ebiten.Image) {
 			if sg.opts.SourcePortMode {
 				sg.drawGamePresented(screen, sg.g)
 				if sg.quitPrompt.Active {
 					sg.drawQuitPrompt(screen)
 				}
+				sg.drawTouchControls(screen)
 				return
 			}
 			present := sg.ensureFrontendSurface(sw, sh)
@@ -403,6 +420,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 			if sg.quitPrompt.Active {
 				sg.drawQuitPrompt(screen)
 			}
+			sg.drawTouchControls(screen)
 		},
 		QuitPromptActive: func() bool {
 			return sg.quitPrompt.Active
@@ -447,6 +465,7 @@ func (sg *sessionGame) SampleInput() {
 	} else {
 		sg.voiceTransmitHeld.Store(false)
 	}
+	sg.sampleTouchController()
 	if !sg.shouldSampleSessionInput() {
 		sg.clearSampledInput()
 		return
@@ -523,6 +542,9 @@ func (sg *sessionGame) consumeAnyKeyPress() bool {
 }
 
 func (sg *sessionGame) skipInputTriggered() bool {
+	if sg.touchJustPressed(touchActionUseEnter) {
+		return true
+	}
 	return sg.consumeAnyKeyPress() ||
 		sg.mouseJustPressed(ebiten.MouseButtonLeft) ||
 		sg.mouseJustPressed(ebiten.MouseButtonRight) ||
@@ -589,6 +611,21 @@ func (sg *sessionGame) consumeFrontendOpenInput() {
 		return
 	}
 	sg.input.justPressedKeys = nil
+}
+
+func (sg *sessionGame) bumpHostFramePhase() bool {
+	if sg == nil {
+		return false
+	}
+	sg.hostFramePhase = (sg.hostFramePhase + 1) % 4
+	return sg.hostFramePhase == 0
+}
+
+func (sg *sessionGame) clearLatchedTouchActions() {
+	if sg == nil {
+		return
+	}
+	sg.touch.latchedJustPressed = 0
 }
 
 func (sg *sessionGame) shouldSampleRuntimeInput() bool {
@@ -742,6 +779,8 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	if sg == nil || sg.g == nil {
 		return max(outsideWidth, 1), max(outsideHeight, 1)
 	}
+	sg.touch.screenW = max(outsideWidth, 1)
+	sg.touch.screenH = max(outsideHeight, 1)
 	aspectH := faithfulAspectLogicalH
 	if sg.opts.DisableAspectCorrection {
 		aspectH = doomLogicalH
@@ -769,12 +808,12 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 		}
 		return layoutW, layoutH
 	}
-	// Faithful mode renders game internals at 320x200 and presents at an
-	// fixed 640x400 logical buffer, with detail level selecting the internal
-	// game buffer size and final-screen presentation applying aspect correction.
+	// Faithful mode renders game internals at the preset buffer size and
+	// presents it scaled to the native window size, with final-screen
+	// presentation applying aspect correction.
 	rw, rh := faithfulDetailPresetSize(sg.g.detailLevel)
 	sg.g.mouseInputScaleX = float64(max(outsideWidth, 1)) / float64(faithfulBufferW)
 	sg.rt.Layout(rw, rh)
 	_ = aspectH
-	return faithfulBufferW, faithfulBufferH
+	return max(outsideWidth, 1), max(outsideHeight, 1)
 }

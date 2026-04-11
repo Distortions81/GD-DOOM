@@ -9,6 +9,23 @@ let splashDismissed = false;
 let pendingReload = false;
 let localWADStatusTimer = 0;
 
+function isIOSLike() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent) || (
+    navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1
+  );
+}
+
+function getPlayerURL() {
+  return new URL("./player.html", window.location.href).toString();
+}
+
+function startDirectPlayer() {
+  window.location.replace(getPlayerURL());
+}
+
 function isInteractiveTarget(target) {
   if (!(target instanceof Element)) {
     return false;
@@ -29,7 +46,6 @@ function focusPlayer() {
     return;
   }
   shell.focus({ preventScroll: true });
-  shell.contentWindow.postMessage({ type: "gddoom-focus-canvas" }, window.location.origin);
 }
 
 function setLocalWADStatus(text) {
@@ -110,7 +126,11 @@ function reloadPlayer() {
 
 function claimFocusAndStart() {
   focusPlayer();
-  hideSplash();
+}
+
+if (isIOSLike()) {
+  hideLocalWADUI();
+  startDirectPlayer();
 }
 
 if (splash) {
@@ -121,9 +141,16 @@ if (splash) {
     event.preventDefault();
     claimFocusAndStart();
   });
+  splash.addEventListener("touchstart", (event) => {
+    if (isInteractiveTarget(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    claimFocusAndStart();
+  }, { passive: false });
 }
 
-if (localWADButton && localWADInput) {
+if (localWADButton && localWADInput && !isIOSLike()) {
   localWADButton.addEventListener("click", () => {
     localWADInput.click();
   });
@@ -160,6 +187,7 @@ window.addEventListener("message", (event) => {
   switch (event.data.type) {
     case "gddoom-player-ready":
       pendingReload = false;
+      hideSplash();
       break;
     case "gddoom-session-started":
       hideLocalWADUI();

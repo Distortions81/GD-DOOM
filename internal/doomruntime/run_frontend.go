@@ -391,31 +391,31 @@ func (sg *sessionGame) tickFrontendMusicPlayer() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
-	if sg.keyJustPressed(ebiten.KeyEscape) {
+	if sg.keyJustPressed(ebiten.KeyEscape) || sg.touchJustPressed(touchActionBack) {
 		sg.frontendMusicPlayerClose()
 		sg.playMenuBackSound()
 		return nil
 	}
-	if sg.keyJustPressed(ebiten.KeyArrowUp) {
+	if sg.keyJustPressed(ebiten.KeyArrowUp) || sg.touchJustPressed(touchActionUp) {
 		if sg.frontendMusicPlayerMoveRow(-1) {
 			sg.playMenuMoveSound()
 		}
 	}
-	if sg.keyJustPressed(ebiten.KeyArrowDown) {
+	if sg.keyJustPressed(ebiten.KeyArrowDown) || sg.touchJustPressed(touchActionDown) {
 		if sg.frontendMusicPlayerMoveRow(1) {
 			sg.playMenuMoveSound()
 		}
 	}
 	dir := 0
-	if sg.keyJustPressed(ebiten.KeyArrowLeft) {
+	if sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.touchJustPressed(touchActionLeft) {
 		dir = -1
-	} else if sg.keyJustPressed(ebiten.KeyArrowRight) {
+	} else if sg.keyJustPressed(ebiten.KeyArrowRight) || sg.touchJustPressed(touchActionRight) {
 		dir = 1
 	}
 	if dir != 0 && sg.frontendMusicPlayerAdjust(dir) {
 		sg.playMenuMoveSound()
 	}
-	if sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) {
+	if sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) || sg.touchJustPressed(touchActionUseEnter) {
 		if sg.frontendMusicPlayerPlaySelected() {
 			sg.playMenuConfirmSound()
 		} else {
@@ -656,12 +656,12 @@ func (sg *sessionGame) tickFrontend() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
-	escape := sg.keyJustPressed(ebiten.KeyEscape)
-	up := sg.keyJustPressed(ebiten.KeyArrowUp)
-	down := sg.keyJustPressed(ebiten.KeyArrowDown)
-	left := sg.keyJustPressed(ebiten.KeyArrowLeft)
-	right := sg.keyJustPressed(ebiten.KeyArrowRight)
-	selectPressed := sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter)
+	escape := sg.keyJustPressed(ebiten.KeyEscape) || sg.touchJustPressed(touchActionBack)
+	up := sg.keyJustPressed(ebiten.KeyArrowUp) || sg.touchJustPressed(touchActionUp)
+	down := sg.keyJustPressed(ebiten.KeyArrowDown) || sg.touchJustPressed(touchActionDown)
+	left := sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.touchJustPressed(touchActionLeft)
+	right := sg.keyJustPressed(ebiten.KeyArrowRight) || sg.touchJustPressed(touchActionRight)
+	selectPressed := sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) || sg.touchJustPressed(touchActionUseEnter)
 	input := sessionflow.FrontendInput{
 		Escape: escape,
 		Up:     up,

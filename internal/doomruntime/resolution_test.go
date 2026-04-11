@@ -196,6 +196,55 @@ func TestSourcePortLayoutWASMOversizeDoesNotRepeatedlyInvokeRuntimeLayout(t *tes
 	}
 }
 
+func TestFaithfulLayoutUsesOutsideSizeForPresentationButKeepsInternalBuffer(t *testing.T) {
+	rt := &layoutCountRuntime{
+		viewW:      faithfulBufferW,
+		viewH:      faithfulBufferH,
+		skyOutputW: faithfulBufferW,
+		skyOutputH: faithfulBufferH,
+	}
+	g := &game{
+		opts:       Options{SourcePortMode: false},
+		viewW:      faithfulBufferW,
+		viewH:      faithfulBufferH,
+		skyOutputW: faithfulBufferW,
+		skyOutputH: faithfulBufferH,
+	}
+	sg := &sessionGame{
+		opts: Options{SourcePortMode: false},
+		g:    g,
+		rt:   rt,
+	}
+
+	layoutW, layoutH := sg.Layout(1170, 2532)
+	if layoutW != 1170 || layoutH != 2532 {
+		t.Fatalf("layout=%dx%d want 1170x2532", layoutW, layoutH)
+	}
+	if rt.layoutCalls != 1 {
+		t.Fatalf("runtime Layout() calls=%d want 1", rt.layoutCalls)
+	}
+	wantW, wantH := faithfulDetailPresetSize(0)
+	if rt.viewW != wantW || rt.viewH != wantH {
+		t.Fatalf("runtime buffer=%dx%d want %dx%d", rt.viewW, rt.viewH, wantW, wantH)
+	}
+}
+
+func TestFitRectCentersAspectPreservingImage(t *testing.T) {
+	rw, rh, ox, oy := fitRect(1170, 2532, 640, 400)
+	if rw != 1170 {
+		t.Fatalf("fit width=%d want 1170", rw)
+	}
+	if rh != 731 {
+		t.Fatalf("fit height=%d want 731", rh)
+	}
+	if ox != 0 {
+		t.Fatalf("fit offsetX=%d want 0", ox)
+	}
+	if oy != 900 {
+		t.Fatalf("fit offsetY=%d want 900", oy)
+	}
+}
+
 func TestCanDrawSourcePortDirect(t *testing.T) {
 	dst := ebiten.NewImage(640, 400)
 	g := &game{viewW: 640, viewH: 400}

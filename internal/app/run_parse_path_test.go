@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gddoom/internal/music"
+	"gddoom/internal/platformcfg"
 )
 
 func TestResolveIWADAliasPathResolvesRequestedPathCaseInsensitively(t *testing.T) {
@@ -196,6 +197,49 @@ func TestWASMPickerStartsAtIWADStageEvenWithSingleChoice(t *testing.T) {
 	game.stage = pickerStageIWAD
 	if got := game.stage; got != pickerStageIWAD {
 		t.Fatalf("forced single-choice stage=%v want iwad", got)
+	}
+}
+
+func TestPickerTouchControlsVisibleByDefaultInWASMMode(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	game := &iwadPickerGame{}
+	if !game.shouldDrawPickerTouchControls() {
+		t.Fatal("shouldDrawPickerTouchControls() = false, want true in wasm mode")
+	}
+}
+
+func TestPickerBackMovesToPreviousStage(t *testing.T) {
+	game := &iwadPickerGame{stage: pickerStageSynth, confirmArmed: true}
+
+	if err := game.pickerBack(); err != nil {
+		t.Fatalf("pickerBack() error = %v", err)
+	}
+	if game.stage != pickerStageSFX {
+		t.Fatalf("stage=%v want=%v", game.stage, pickerStageSFX)
+	}
+	if game.confirmArmed {
+		t.Fatal("confirmArmed=true want false")
+	}
+}
+
+func TestPickerTouchButtonsPlaceEnterOnBottomRight(t *testing.T) {
+	game := &iwadPickerGame{}
+	buttons := game.pickerTouchButtons(320, 200)
+	if len(buttons) != 4 {
+		t.Fatalf("buttons len=%d want=4", len(buttons))
+	}
+	enter := buttons[3]
+	if enter.label != "ENTER" {
+		t.Fatalf("enter label=%q want ENTER", enter.label)
+	}
+	if enter.x <= 200 {
+		t.Fatalf("enter.x=%v want > 200", enter.x)
+	}
+	if enter.y <= 120 {
+		t.Fatalf("enter.y=%v want > 120", enter.y)
 	}
 }
 

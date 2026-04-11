@@ -126,6 +126,8 @@ type sessionGame struct {
 	quitPrompt              quitPromptState
 	quitMessageSeq          int
 	input                   sessionInputSnapshot
+	touch                   touchControllerState
+	hostFramePhase          int
 	voiceTransmitHeld       atomic.Bool
 }
 

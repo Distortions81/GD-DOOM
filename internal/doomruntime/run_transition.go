@@ -155,7 +155,9 @@ func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
 	dst.Clear()
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
-	op.GeoM.Scale(float64(sw)/float64(vw), float64(sh)/float64(vh))
+	rw, rh, ox, oy := fitRect(sw, sh, vw, vh)
+	op.GeoM.Scale(float64(rw)/float64(vw), float64(rh)/float64(vh))
+	op.GeoM.Translate(float64(ox), float64(oy))
 	dst.DrawImage(src, op)
 }
 

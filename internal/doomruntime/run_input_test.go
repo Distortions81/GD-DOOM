@@ -5,6 +5,7 @@ import (
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/platformcfg"
 	"gddoom/internal/sessionflow"
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -177,5 +178,27 @@ func TestSkipInputTriggeredConsumesAnyKeyboardKey(t *testing.T) {
 	}
 	if len(sg.input.justPressedKeys) != 0 {
 		t.Fatal("expected arbitrary keyboard key skip to consume pending keypresses")
+	}
+}
+
+func TestSkipInputTriggeredUsesTouchEnter(t *testing.T) {
+	sg := &sessionGame{
+		touch: touchControllerState{
+			latchedJustPressed: touchActionUseEnter,
+		},
+	}
+	if !sg.skipInputTriggered() {
+		t.Fatal("skipInputTriggered() = false, want true for touch enter")
+	}
+}
+
+func TestShouldDrawTouchControlsVisibleByDefaultInWASMMode(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	sg := &sessionGame{}
+	if !sg.shouldDrawTouchControls() {
+		t.Fatal("shouldDrawTouchControls() = false, want true in wasm mode")
 	}
 }
