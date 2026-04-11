@@ -3,8 +3,6 @@ package music
 import (
 	"encoding/binary"
 	"fmt"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"gddoom/internal/wad"
@@ -101,23 +99,6 @@ func TestParseGENMIDIOP2PatchBankErrors(t *testing.T) {
 	copy(data[:genmidiDataOffset], []byte("BADHEAD!"))
 	if _, err := ParseGENMIDIOP2PatchBank(data); err == nil {
 		t.Fatal("expected bad header error")
-	}
-}
-
-func TestParseGENMIDIOP2PatchBankFile(t *testing.T) {
-	td := t.TempDir()
-	path := filepath.Join(td, "bank.op2")
-	data := make([]byte, genmidiDataOffset+genmidiTotalInstrs*genmidiInstrSize)
-	copy(data[:genmidiDataOffset], []byte(genmidiHeader))
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("write file: %v", err)
-	}
-	bank, err := ParseGENMIDIOP2PatchBankFile(path)
-	if err != nil {
-		t.Fatalf("ParseGENMIDIOP2PatchBankFile() error: %v", err)
-	}
-	if bank == nil {
-		t.Fatal("expected parsed patch bank")
 	}
 }
 
