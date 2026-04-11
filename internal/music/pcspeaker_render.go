@@ -16,8 +16,7 @@ const pcSpeakerInterleaveMinCycles = 1.0
 const pcSpeakerInterleaveMaxHoldSubsteps = 1000
 const pcSpeakerInterleaveThreeNoteBoost = 1.5
 const pcSpeakerInterleaveFourNoteBoost = 2.0
-const pcSpeakerShortNoteDurationSubsteps = 16
-const pcSpeakerShortNoteGraceSubsteps = 6
+const pcSpeakerShortNoteDurationMS = 140.0
 
 type nullSynth struct{}
 
@@ -319,14 +318,14 @@ func (r *pcSpeakerRenderer) selectCandidate(candidates []pcSpeakerCandidate, sub
 	if len(candidates) == 1 {
 		return candidates[0], true
 	}
-	pool := pcSpeakerPriorityPool(candidates)
 	if r != nil && r.forceFront > 0 {
 		r.forceFront--
 		return candidates[0], true
 	}
-	if urgent, ok := pcSpeakerUrgentShortCandidate(pool); ok {
-		return urgent, true
+	if short, ok := pcSpeakerUninterruptedShortCandidate(candidates); ok {
+		return short, true
 	}
+	pool := pcSpeakerPriorityPool(candidates)
 	slot := 0
 	pattern := pcSpeakerInterleavePattern(len(pool))
 	if r != nil {
@@ -418,17 +417,21 @@ func pcSpeakerInterleaveHoldSubsteps(candidates []pcSpeakerCandidate) int {
 	return hold
 }
 
-func pcSpeakerUrgentShortCandidate(candidates []pcSpeakerCandidate) (pcSpeakerCandidate, bool) {
+func pcSpeakerUninterruptedShortCandidate(candidates []pcSpeakerCandidate) (pcSpeakerCandidate, bool) {
 	bestIdx := -1
 	bestAge := ^uint64(0)
+	shortNoteDurationSubsteps := uint64(math.Ceil(pcSpeakerShortNoteDurationMS * float64(pcSpeakerMusicTickRate) / 1000.0))
+	if shortNoteDurationSubsteps < 1 {
+		shortNoteDurationSubsteps = 1
+	}
 	for i, c := range candidates {
 		if !c.audible || c.duration == 0 || c.duration == ^uint64(0) {
 			continue
 		}
-		if c.duration > pcSpeakerShortNoteDurationSubsteps {
+		if c.duration > shortNoteDurationSubsteps {
 			continue
 		}
-		if c.age >= pcSpeakerShortNoteGraceSubsteps || c.age >= c.duration {
+		if c.age >= c.duration {
 			continue
 		}
 		if c.age < bestAge {
