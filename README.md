@@ -359,6 +359,8 @@ Run the slower export and real-asset integration checks explicitly:
 scripts/test_integration.sh ./internal/app
 ```
 
+This integration lane also includes generator-style tests that write artifacts, such as the billboard bbox dump in `internal/doomruntime`.
+
 If you are working on the engine itself, extra utilities are included under [`cmd/`](/home/dist/github/GD-DOOM/cmd):
 
 - [`cmd/gdsfrelay`](/home/dist/github/GD-DOOM/cmd/gdsfrelay) runs the live session relay used by `-broadcast` and `-watch`.

@@ -12,6 +12,8 @@ import (
 	"gddoom/internal/demo"
 )
 
+const relayLocalTestTimeout = 500 * time.Millisecond
+
 func TestRelayServerForwardsBroadcastFramesToViewer(t *testing.T) {
 	srv, err := ListenServer("127.0.0.1:0")
 	if err != nil {
@@ -176,10 +178,10 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 	if _, _, _, _, err := readHello(vconn); err != nil {
 		t.Fatalf("readHello viewer response: %v", err)
 	}
-	if _, _, err := readFrameWithDeadline(vconn, 2*time.Second); err != nil {
+	if _, _, err := readFrameWithDeadline(vconn, relayLocalTestTimeout); err != nil {
 		t.Fatalf("read keyframe: %v", err)
 	}
-	header, gotPayload, err := readFrameWithDeadline(vconn, 2*time.Second)
+	header, gotPayload, err := readFrameWithDeadline(vconn, relayLocalTestTimeout)
 	if err != nil {
 		t.Fatalf("read replayed tic batch: %v", err)
 	}
@@ -259,7 +261,7 @@ func readFrameWithDeadline(conn net.Conn, d time.Duration) (frameHeader, []byte,
 
 func waitForBufferedRelayFrames(t *testing.T, srv *Server, sessionID uint64, want int) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(relayLocalTestTimeout)
 	for time.Now().Before(deadline) {
 		srv.mu.Lock()
 		sess := srv.sessions[sessionID]
