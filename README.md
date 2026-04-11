@@ -27,8 +27,9 @@ GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and der
 
 ## Compared With Vanilla Doom
 
+Note: Not all featutures are exposed in the UI, some are still experimental.
+
 GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the actual play experience is broader than vanilla DOS Doom. The biggest differences are:
-Not all featutures are exposed in the UI, some are still experimental.
 
 - Two ways to play: `Faithful` mode aims for a more classic look and feel, while `Source Port` mode is smoother, cleaner, and more modern on a desktop monitor.
 - Smoother motion: movement, turning, and monster motion are smoothed between Doom tics, so the game does not look like it is stepping from frame to frame.
