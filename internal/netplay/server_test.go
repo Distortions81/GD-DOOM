@@ -163,6 +163,7 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 	if err := writeFrame(bconn, frameHeader{Type: frameTypeTicBatch, Tic: 1}, payload); err != nil {
 		t.Fatalf("write tic batch: %v", err)
 	}
+	waitForBufferedRelayFrames(t, srv, 91, 1)
 
 	vconn, err := net.Dial("tcp", srv.Addr())
 	if err != nil {
@@ -175,10 +176,10 @@ func TestRelayServerReplaysBufferedTicsAfterKeyframe(t *testing.T) {
 	if _, _, _, _, err := readHello(vconn); err != nil {
 		t.Fatalf("readHello viewer response: %v", err)
 	}
-	if _, _, err := readFrame(vconn); err != nil {
+	if _, _, err := readFrameWithDeadline(vconn, 2*time.Second); err != nil {
 		t.Fatalf("read keyframe: %v", err)
 	}
-	header, gotPayload, err := readFrame(vconn)
+	header, gotPayload, err := readFrameWithDeadline(vconn, 2*time.Second)
 	if err != nil {
 		t.Fatalf("read replayed tic batch: %v", err)
 	}
@@ -248,6 +249,29 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 	if got := unpackDemoTic(gotPayload[ticBatchOverhead : ticBatchOverhead+4]); got != tc {
 		t.Fatalf("tic=%+v want %+v", got, tc)
 	}
+}
+
+func readFrameWithDeadline(conn net.Conn, d time.Duration) (frameHeader, []byte, error) {
+	_ = conn.SetReadDeadline(time.Now().Add(d))
+	defer conn.SetReadDeadline(time.Time{})
+	return readFrame(conn)
+}
+
+func waitForBufferedRelayFrames(t *testing.T, srv *Server, sessionID uint64, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		srv.mu.Lock()
+		sess := srv.sessions[sessionID]
+		srv.mu.Unlock()
+		if sess != nil {
+			if got := len(srv.backlogFrames(sess)); got >= want {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for session %d backlog >= %d", sessionID, want)
 }
 
 func TestRelayServerForwardsMandatoryKeyframesToActiveViewer(t *testing.T) {
