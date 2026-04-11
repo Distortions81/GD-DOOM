@@ -10,6 +10,7 @@ type Backend string
 const (
 	BackendAuto       Backend = "auto"
 	BackendImpSynth   Backend = "impsynth"
+	BackendPCSpeaker  Backend = "pcspeaker"
 	BackendMeltySynth Backend = "meltysynth"
 )
 
@@ -30,19 +31,21 @@ func ParseBackend(name string) (Backend, error) {
 		return BackendAuto, nil
 	case string(BackendImpSynth):
 		return BackendImpSynth, nil
+	case string(BackendPCSpeaker):
+		return BackendPCSpeaker, nil
 	case string(BackendMeltySynth):
 		return BackendMeltySynth, nil
 	default:
-		return "", fmt.Errorf("unknown backend %q (want auto|impsynth|meltysynth)", name)
+		return "", fmt.Errorf("unknown backend %q (want auto|impsynth|pcspeaker|meltysynth)", name)
 	}
 }
 
 func ValidateBackend(backend Backend) error {
 	switch backend {
-	case BackendAuto, BackendImpSynth, BackendMeltySynth:
+	case BackendAuto, BackendImpSynth, BackendPCSpeaker, BackendMeltySynth:
 		return nil
 	default:
-		return fmt.Errorf("unknown backend %q (want auto|impsynth|meltysynth)", backend)
+		return fmt.Errorf("unknown backend %q (want auto|impsynth|pcspeaker|meltysynth)", backend)
 	}
 }
 

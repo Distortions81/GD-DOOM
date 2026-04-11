@@ -247,6 +247,7 @@ func (sg *sessionGame) capturePersistentSettings() {
 		MusicVolume:      g.opts.MusicVolume,
 		OPLVolume:        g.opts.OPLVolume,
 		SFXVolume:        g.opts.SFXVolume,
+		PCSpeakerVolume:  g.opts.PCSpeakerVolume,
 		HUDMessages:      g.hudMessagesEnabled,
 		AlwaysRun:        g.alwaysRun,
 		AutoWeaponSwitch: g.autoWeaponSwitch,
@@ -289,8 +290,12 @@ func (sg *sessionGame) applyPersistentSettingsToGame(g *game) {
 	g.opts.MusicVolume = applied.MusicVolume
 	g.opts.OPLVolume = applied.OPLVolume
 	g.opts.SFXVolume = applied.SFXVolume
+	g.opts.PCSpeakerVolume = applied.PCSpeakerVolume
 	if g.snd != nil {
 		g.snd.setSFXVolume(g.opts.SFXVolume)
+	}
+	if g.opts.SharedPCSpeaker != nil {
+		g.opts.SharedPCSpeaker.SetVolume(g.opts.PCSpeakerVolume)
 	}
 	if sg.musicCtl != nil {
 		sg.musicCtl.SetVolume(g.opts.MusicVolume)
@@ -333,6 +338,7 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	sg.settings.MusicVolume = next.MusicVolume
 	sg.settings.OPLVolume = next.OPLVolume
 	sg.settings.SFXVolume = next.SFXVolume
+	sg.settings.PCSpeakerVolume = next.PCSpeakerVolume
 	sg.settings.HUDMessages = next.HUDMessages
 	sg.settings.AlwaysRun = next.AlwaysRun
 	sg.settings.AutoWeaponSwitch = next.AutoWeaponSwitch
@@ -342,12 +348,16 @@ func (sg *sessionGame) applyRuntimeSettings(s RuntimeSettings) {
 	sg.opts.MusicVolume = sg.settings.MusicVolume
 	sg.opts.OPLVolume = sg.settings.OPLVolume
 	sg.opts.SFXVolume = sg.settings.SFXVolume
+	sg.opts.PCSpeakerVolume = sg.settings.PCSpeakerVolume
 	if backend, err := music.ParseBackend(s.MusicBackend); err == nil {
 		sg.opts.MusicBackend = backend
 	}
 	sg.opts.MusicSoundFontPath = strings.TrimSpace(s.MusicSoundFontPath)
 	if sg.menuSfx != nil {
 		sg.menuSfx.SetVolume(sg.settings.SFXVolume)
+	}
+	if sg.opts.SharedPCSpeaker != nil {
+		sg.opts.SharedPCSpeaker.SetVolume(sg.settings.PCSpeakerVolume)
 	}
 	if sg.musicCtl != nil {
 		sg.musicCtl.SetOutputGain(sg.opts.OPLVolume)
@@ -387,6 +397,7 @@ func (sg *sessionGame) runtimeSettingsSnapshot() RuntimeSettings {
 		MusicBackend:       string(sg.opts.MusicBackend),
 		MusicSoundFontPath: sg.opts.MusicSoundFontPath,
 		SFXVolume:          sg.opts.SFXVolume,
+		PCSpeakerVolume:    sg.opts.PCSpeakerVolume,
 		HUDMessages:        sg.settings.HUDMessages,
 		MouseLook:          sg.opts.MouseLook,
 		MouseInvert:        sg.opts.MouseInvert,
@@ -589,6 +600,7 @@ func (sg *sessionGame) optionState() gameplay.OptionState {
 		MusicVolume:      sg.opts.MusicVolume,
 		OPLVolume:        sg.opts.OPLVolume,
 		SFXVolume:        sg.opts.SFXVolume,
+		PCSpeakerVolume:  sg.opts.PCSpeakerVolume,
 		AlwaysRun:        sg.opts.AlwaysRun,
 		AutoWeaponSwitch: sg.opts.AutoWeaponSwitch,
 		ThingRenderMode:  sg.opts.SourcePortThingRenderMode,
@@ -605,6 +617,7 @@ func applyOptionStateToOptions(opts *Options, state gameplay.OptionState) {
 	opts.MusicVolume = state.MusicVolume
 	opts.OPLVolume = state.OPLVolume
 	opts.SFXVolume = state.SFXVolume
+	opts.PCSpeakerVolume = state.PCSpeakerVolume
 	opts.AlwaysRun = state.AlwaysRun
 	opts.AutoWeaponSwitch = state.AutoWeaponSwitch
 	opts.SourcePortThingRenderMode = state.ThingRenderMode
@@ -652,17 +665,18 @@ func (sg *sessionGame) restartMapForRespawn() *mapdata.Map {
 }
 
 func (sg *sessionGame) initMusicPlayback() {
-	if sg == nil || clampVolume(sg.opts.MusicVolume) <= 0 || (sg.opts.MapMusicLoader == nil && sg.opts.TitleMusicLoader == nil) {
+	if sg == nil || effectiveMusicPlaybackVolume(sg.opts) <= 0 || (sg.opts.MapMusicLoader == nil && sg.opts.TitleMusicLoader == nil) {
 		return
 	}
 	ctl, err := sessionmusic.NewPlayback(
-		clampVolume(sg.opts.MusicVolume),
+		effectiveMusicPlaybackVolume(sg.opts),
 		sg.opts.MUSPanMax,
 		sg.opts.OPLVolume,
 		sg.opts.AudioPreEmphasis,
 		sg.opts.MusicBackend,
 		sg.opts.MusicPatchBank,
 		sg.opts.MusicSoundFont,
+		sg.opts.SharedPCSpeaker,
 		sg.opts.MapMusicLoader,
 		sg.opts.TitleMusicLoader,
 		sg.opts.IntermissionMusicLoader,
@@ -710,7 +724,7 @@ func (sg *sessionGame) playMusicForMap(name mapdata.MapName) {
 		}
 		return
 	}
-	sg.musicCtl.PlayMap(name, clampVolume(sg.opts.MusicVolume))
+	sg.musicCtl.PlayMap(name, effectiveMusicPlaybackVolume(sg.opts))
 	sg.currentMusicSource = musicPlaybackSource{
 		kind:    musicPlaybackSourceMap,
 		mapName: name,
@@ -742,7 +756,7 @@ func (sg *sessionGame) playIntermissionMusic(commercial bool) {
 		}
 		return
 	}
-	sg.musicCtl.PlayIntermission(commercial, clampVolume(sg.opts.MusicVolume))
+	sg.musicCtl.PlayIntermission(commercial, effectiveMusicPlaybackVolume(sg.opts))
 	sg.currentMusicSource = musicPlaybackSource{
 		kind:       musicPlaybackSourceIntermission,
 		commercial: commercial,

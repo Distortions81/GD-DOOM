@@ -17,6 +17,7 @@ import (
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/media"
+	"gddoom/internal/music"
 	"gddoom/internal/render/hud"
 	"gddoom/internal/render/mapview"
 	"gddoom/internal/render/mapview/linepolicy"
@@ -1236,6 +1237,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	opts.KeyboardTurnSpeed = normalizeKeyboardTurnSpeed(opts.KeyboardTurnSpeed)
 	opts.MusicVolume = clampVolume(opts.MusicVolume)
 	opts.SFXVolume = clampVolume(opts.SFXVolume)
+	opts.PCSpeakerVolume = clampVolume(opts.PCSpeakerVolume)
 	opts.OPLVolume = clampOPLVolume(opts.OPLVolume)
 	opts.InputBindings = runtimecfg.NormalizeInputBindings(opts.InputBindings)
 	opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(opts.SourcePortThingRenderMode, opts.SourcePortMode)
@@ -1415,7 +1417,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.playerViewZ = g.p.z + g.p.viewHeight
 	g.demoTrace = newDemoTraceWriter(opts, string(m.Name))
 	g.initSubSectorSectorCache()
-	g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SFXVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift, opts.PCSpeakerVariant)
+	g.snd = newSoundSystem(opts.SoundBank, opts.PCSpeakerBank, opts.SharedPCSpeaker, opts.SFXVolume, opts.PCSpeakerVolume, sourcePortAudioEnabled(opts), opts.SFXPitchShift, opts.PCSpeakerVariant)
 	g.soundQueue = make([]soundEvent, 0, 8)
 	g.soundQueueOrigin = make([]queuedSoundOrigin, 0, 8)
 	g.delayedSfx = make([]delayedSoundEvent, 0, 8)
@@ -2434,6 +2436,7 @@ func (g *game) runtimeSettingsSnapshot() RuntimeSettings {
 		MusicBackend:       string(g.opts.MusicBackend),
 		MusicSoundFontPath: g.opts.MusicSoundFontPath,
 		SFXVolume:          g.opts.SFXVolume,
+		PCSpeakerVolume:    g.opts.PCSpeakerVolume,
 		HUDMessages:        g.hudMessagesEnabled,
 		MouseLook:          g.opts.MouseLook,
 		MouseInvert:        g.opts.MouseInvert,
@@ -3996,6 +3999,17 @@ func (g *game) adjustPauseSound(dir int) {
 			g.publishRuntimeSettingsIfChanged()
 		}
 	default:
+		if music.ResolveBackend(g.opts.MusicBackend) == music.BackendPCSpeaker {
+			next := clampVolume(g.opts.PCSpeakerVolume + float64(dir)*0.1)
+			if next != g.opts.PCSpeakerVolume {
+				g.opts.PCSpeakerVolume = next
+				if g.opts.SharedPCSpeaker != nil {
+					g.opts.SharedPCSpeaker.SetVolume(next)
+				}
+				g.publishRuntimeSettingsIfChanged()
+			}
+			return
+		}
 		next := clampVolume(g.opts.MusicVolume + float64(dir)*0.1)
 		if next != g.opts.MusicVolume {
 			g.opts.MusicVolume = next
@@ -20370,8 +20384,12 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawPatch("M_SVOL", 60, 38)
 		drawPatch("M_SFXVOL", menuX, menuY)
 		drawPatch("M_MUSVOL", menuX, menuY+2*lineHeight)
+		musicVol := g.opts.MusicVolume
+		if music.ResolveBackend(g.opts.MusicBackend) == music.BackendPCSpeaker {
+			musicVol = g.opts.PCSpeakerVolume
+		}
 		drawText(formatInt(frontendVolumeDot(g.opts.SFXVolume)), 235, menuY+2, 1.2)
-		drawText(formatInt(frontendVolumeDot(g.opts.MusicVolume)), 235, menuY+2*lineHeight+2, 1.2)
+		drawText(formatInt(frontendVolumeDot(musicVol)), 235, menuY+2*lineHeight+2, 1.2)
 		skullY := menuY
 		if g.pauseMenuSoundOn != 0 {
 			skullY += 2 * lineHeight

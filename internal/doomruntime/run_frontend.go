@@ -168,7 +168,7 @@ func (sg *sessionGame) playTitleMusic() {
 		return
 	}
 	sg.currentMusicSource = musicPlaybackSource{kind: musicPlaybackSourceTitle}
-	sg.musicCtl.PlayTitle(clampVolume(sg.opts.MusicVolume))
+	sg.musicCtl.PlayTitle(effectiveMusicPlaybackVolume(sg.opts))
 	sg.setNowPlayingLevel("")
 	sg.setNowPlayingMusic("Title Screen")
 }
@@ -512,6 +512,20 @@ func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
 	if sg == nil || sg.rt == nil || dir == 0 {
 		return
 	}
+	if music.ResolveBackend(sg.opts.MusicBackend) == music.BackendPCSpeaker {
+		cur := clampVolume(sg.opts.PCSpeakerVolume)
+		next := clampVolume(cur + float64(dir)*0.1)
+		if next == cur {
+			return
+		}
+		sg.opts.PCSpeakerVolume = next
+		sg.settings.PCSpeakerVolume = next
+		if sg.opts.SharedPCSpeaker != nil {
+			sg.opts.SharedPCSpeaker.SetVolume(next)
+		}
+		sg.rt.sessionPublishRuntimeSettings()
+		return
+	}
 	cur := sg.rt.sessionMusicVolume()
 	prev := clampVolume(cur)
 	next := clampVolume(cur + float64(dir)*0.1)
@@ -538,6 +552,20 @@ func (sg *sessionGame) frontendChangeMusicVolume(dir int) {
 
 func (sg *sessionGame) frontendCycleMusicVolume() {
 	if sg == nil || sg.rt == nil {
+		return
+	}
+	if music.ResolveBackend(sg.opts.MusicBackend) == music.BackendPCSpeaker {
+		cur := clampVolume(sg.opts.PCSpeakerVolume)
+		next := clampVolume(cur + 0.1)
+		if next == cur {
+			next = 0
+		}
+		sg.opts.PCSpeakerVolume = next
+		sg.settings.PCSpeakerVolume = next
+		if sg.opts.SharedPCSpeaker != nil {
+			sg.opts.SharedPCSpeaker.SetVolume(next)
+		}
+		sg.rt.sessionPublishRuntimeSettings()
 		return
 	}
 	cur := sg.rt.sessionMusicVolume()
@@ -575,7 +603,7 @@ func (sg *sessionGame) frontendChangeSFXVolume(dir int) {
 	sg.rt.sessionSetSFXVolume(next)
 	sg.opts.SFXVolume = next
 	sg.settings.SFXVolume = next
-	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, sg.opts.PCSpeakerBank, next, sg.opts.PCSpeakerVariant)
+	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, sg.opts.PCSpeakerBank, sg.opts.SharedPCSpeaker, sg.opts.PCSpeakerVolume, sg.opts.PCSpeakerVariant)
 	sg.rt.sessionPublishRuntimeSettings()
 	sg.playMenuMoveSound()
 }
@@ -592,7 +620,7 @@ func (sg *sessionGame) frontendCycleSFXVolume() {
 	sg.rt.sessionSetSFXVolume(next)
 	sg.opts.SFXVolume = next
 	sg.settings.SFXVolume = next
-	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, sg.opts.PCSpeakerBank, next, sg.opts.PCSpeakerVariant)
+	sg.menuSfx = sessionaudio.NewMenuController(sg.opts.SoundBank, sg.opts.PCSpeakerBank, sg.opts.SharedPCSpeaker, sg.opts.PCSpeakerVolume, sg.opts.PCSpeakerVariant)
 	sg.rt.sessionPublishRuntimeSettings()
 	sg.playMenuMoveSound()
 }
@@ -1200,6 +1228,10 @@ func (sg *sessionGame) drawFrontendSoundMenu(screen *ebiten.Image, scale, ox, oy
 	}
 	if !sg.frontendMusicPlayerAvailable() {
 		values[frontendSoundMenuRowPlayer] = "N/A"
+	}
+	if music.ResolveBackend(sg.opts.MusicBackend) == music.BackendPCSpeaker {
+		labels[frontendSoundMenuRowMusic] = "PC SPEAKER"
+		values[frontendSoundMenuRowMusic] = formatInt(sessionflow.VolumeDot(sg.opts.PCSpeakerVolume))
 	}
 	disabledSoundFont := music.ResolveBackend(sg.opts.MusicBackend) != music.BackendMeltySynth
 	for i := 0; i < frontendSoundMenuRowCount; i++ {

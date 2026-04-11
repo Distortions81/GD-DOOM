@@ -136,12 +136,18 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 	return audiofx.NewMenuPlayer(bank, volume)
 }
 
-func newSoundSystem(bank SoundBank, pcSpeakerBank map[string][]sound.PCSpeakerTone, sfxVolume float64, sourcePort bool, pitchShift bool, variant audiofx.PCSpeakerVariant) *soundSystem {
+func newSoundSystem(bank SoundBank, pcSpeakerBank map[string][]sound.PCSpeakerTone, sharedPCSpeaker *audiofx.PCSpeakerPlayer, sfxVolume float64, pcSpeakerVolume float64, sourcePort bool, pitchShift bool, variant audiofx.PCSpeakerVariant) *soundSystem {
 	var player *audiofx.SpatialPlayer
 	var pcSpeaker *audiofx.PCSpeakerPlayer
 	if clampVolume(sfxVolume) > 0 {
 		if len(pcSpeakerBank) > 0 {
-			pcSpeaker = audiofx.NewPCSpeakerPlayer(sfxVolume, variant)
+			pcSpeaker = sharedPCSpeaker
+			if pcSpeaker == nil {
+				pcSpeaker = audiofx.NewPCSpeakerPlayer(pcSpeakerVolume, variant)
+			}
+			if pcSpeaker != nil {
+				pcSpeaker.SetVolume(pcSpeakerVolume)
+			}
 		} else {
 			player = audiofx.NewSpatialPlayer(sfxVolume, sourcePort)
 		}
@@ -177,9 +183,6 @@ func (s *soundSystem) setSFXVolume(v float64) {
 	s.vanillaVolume = vanillaSFXVolume(v)
 	if s.player != nil {
 		s.player.SetVolume(v)
-	}
-	if s.pcSpeaker != nil {
-		s.pcSpeaker.SetVolume(v)
 	}
 }
 

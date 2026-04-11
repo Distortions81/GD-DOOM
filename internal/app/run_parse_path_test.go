@@ -206,8 +206,8 @@ func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newIWADPickerGame() error: %v", err)
 	}
-	if game.synth != 1 {
-		t.Fatalf("default synth=%d want=1", game.synth)
+	if game.synth != 2 {
+		t.Fatalf("default synth=%d want=2", game.synth)
 	}
 }
 
@@ -217,7 +217,7 @@ func TestApplyPickerSynthSetsMeltySynthBackendAndPreservesVolume(t *testing.T) {
 		musicVolume:  1.0,
 	}
 
-	got := applyPickerSynth(cfg, 1)
+	got := applyPickerSynth(cfg, 2)
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -234,7 +234,7 @@ func TestApplyPickerSynthKeepsSoundFontWhenAlreadySet(t *testing.T) {
 		soundFontPath: "soundfonts/SC55-HQ.sf2",
 	}
 
-	got := applyPickerSynth(cfg, 2)
+	got := applyPickerSynth(cfg, 3)
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -253,7 +253,7 @@ func TestApplyPickerSynthMeltySynthSetsHQSoundFontPath(t *testing.T) {
 		musicVolume:  1.0,
 	}
 
-	got := applyPickerSynth(cfg, 2)
+	got := applyPickerSynth(cfg, 3)
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -272,7 +272,7 @@ func TestApplyPickerSynthSGMHQSetsSoundFontPath(t *testing.T) {
 		musicVolume:  1.0,
 	}
 
-	got := applyPickerSynth(cfg, 3)
+	got := applyPickerSynth(cfg, 4)
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)
@@ -291,7 +291,7 @@ func TestApplyPickerSynthGeneralMIDISetsSoundFontPath(t *testing.T) {
 		musicVolume:  1.0,
 	}
 
-	got := applyPickerSynth(cfg, 1)
+	got := applyPickerSynth(cfg, 2)
 
 	if got.musicBackend != music.BackendMeltySynth {
 		t.Fatalf("backend=%q want %q", got.musicBackend, music.BackendMeltySynth)

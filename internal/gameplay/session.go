@@ -12,6 +12,7 @@ type OptionState struct {
 	MusicVolume      float64
 	OPLVolume        float64
 	SFXVolume        float64
+	PCSpeakerVolume  float64
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
 	ThingRenderMode  string
@@ -24,6 +25,7 @@ func ApplyPersistentSettingsToOptions(cur OptionState, s PersistentSettings, max
 	cur.MusicVolume = ClampVolume(s.MusicVolume)
 	cur.OPLVolume = ClampOPLVolume(s.OPLVolume, maxOPLGain)
 	cur.SFXVolume = ClampVolume(s.SFXVolume)
+	cur.PCSpeakerVolume = ClampVolume(s.PCSpeakerVolume)
 	cur.AlwaysRun = s.AlwaysRun
 	cur.AutoWeaponSwitch = s.AutoWeaponSwitch
 	cur.ThingRenderMode = s.ThingRenderMode
@@ -92,6 +94,7 @@ type SessionSignals struct {
 	MouseLookSpeed   float64
 	MusicVolume      float64
 	SFXVolume        float64
+	PCSpeakerVolume  float64
 	PaletteLUT       bool
 	GammaLevel       int
 	CRTEnabled       bool

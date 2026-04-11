@@ -10,12 +10,19 @@ type MenuController struct {
 	player    *audiofx.MenuPlayer
 	pcSpeaker *audiofx.PCSpeakerPlayer
 	pcBank    map[string][]sound.PCSpeakerTone
+	ownsPC    bool
 }
 
-func NewMenuController(bank media.SoundBank, pcBank map[string][]sound.PCSpeakerTone, volume float64, variant audiofx.PCSpeakerVariant) *MenuController {
+func NewMenuController(bank media.SoundBank, pcBank map[string][]sound.PCSpeakerTone, sharedPCSpeaker *audiofx.PCSpeakerPlayer, volume float64, variant audiofx.PCSpeakerVariant) *MenuController {
 	c := &MenuController{}
 	if len(pcBank) > 0 {
-		c.pcSpeaker = audiofx.NewPCSpeakerPlayer(volume, variant)
+		c.pcSpeaker = sharedPCSpeaker
+		if c.pcSpeaker == nil {
+			c.pcSpeaker = audiofx.NewPCSpeakerPlayer(volume, variant)
+			c.ownsPC = true
+		} else {
+			c.pcSpeaker.SetVolume(volume)
+		}
 		c.pcBank = pcBank
 	} else {
 		c.player = audiofx.NewMenuPlayer(bank, volume)
@@ -43,7 +50,7 @@ func (c *MenuController) Close() {
 	if c.player != nil {
 		c.player.StopAll()
 	}
-	if c.pcSpeaker != nil {
+	if c.pcSpeaker != nil && c.ownsPC {
 		c.pcSpeaker.Stop()
 	}
 }
@@ -54,9 +61,6 @@ func (c *MenuController) SetVolume(v float64) {
 	}
 	if c.player != nil {
 		c.player.SetVolume(v)
-	}
-	if c.pcSpeaker != nil {
-		c.pcSpeaker.SetVolume(v)
 	}
 }
 

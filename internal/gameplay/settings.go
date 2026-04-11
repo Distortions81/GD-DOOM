@@ -10,6 +10,7 @@ type RuntimeSettings struct {
 	MusicBackend       string
 	MusicSoundFontPath string
 	SFXVolume          float64
+	PCSpeakerVolume    float64
 	HUDMessages        bool
 	MouseLook          bool
 	MouseInvert        bool
@@ -42,6 +43,7 @@ func ApplyRuntimeSettings(cur PersistentSettings, s RuntimeSettings, sourcePort 
 	next.MusicVolume = ClampVolume(s.MusicVolume)
 	next.OPLVolume = ClampOPLVolume(s.OPLVolume, maxOPLGain)
 	next.SFXVolume = ClampVolume(s.SFXVolume)
+	next.PCSpeakerVolume = ClampVolume(s.PCSpeakerVolume)
 	next.HUDMessages = s.HUDMessages
 	next.AlwaysRun = s.AlwaysRun
 	next.AutoWeaponSwitch = s.AutoWeaponSwitch

@@ -99,7 +99,7 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 			},
 			func(sg *sessionGame) {
 				if !sg.headlessDemoPlayback() {
-					sg.menuSfx = sessionaudio.NewMenuController(opts.SoundBank, opts.PCSpeakerBank, opts.SFXVolume, opts.PCSpeakerVariant)
+					sg.menuSfx = sessionaudio.NewMenuController(opts.SoundBank, opts.PCSpeakerBank, opts.SharedPCSpeaker, opts.PCSpeakerVolume, opts.PCSpeakerVariant)
 				}
 			},
 		},

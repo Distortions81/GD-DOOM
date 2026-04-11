@@ -179,8 +179,10 @@ type Options struct {
 	MusicBackend                 music.Backend
 	OpenMenuOnFrontendStart      bool
 	SFXVolume                    float64
+	PCSpeakerVolume              float64
 	SFXPitchShift                bool
 	PCSpeakerVariant             audiofx.PCSpeakerVariant
+	SharedPCSpeaker              *audiofx.PCSpeakerPlayer
 	FastMonsters                 bool
 	RespawnMonsters              bool
 	NoMonsters                   bool

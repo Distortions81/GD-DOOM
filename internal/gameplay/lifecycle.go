@@ -12,6 +12,7 @@ type PersistentSettings struct {
 	MusicVolume      float64
 	OPLVolume        float64
 	SFXVolume        float64
+	PCSpeakerVolume  float64
 	HUDMessages      bool
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
@@ -34,6 +35,7 @@ type AppliedPersistentSettings struct {
 	MusicVolume      float64
 	OPLVolume        float64
 	SFXVolume        float64
+	PCSpeakerVolume  float64
 	HUDMessages      bool
 	AlwaysRun        bool
 	AutoWeaponSwitch bool
@@ -57,6 +59,7 @@ func ApplyPersistentSettings(s PersistentSettings, sourcePort bool, faithfulLeve
 		MusicVolume:      ClampVolume(s.MusicVolume),
 		OPLVolume:        ClampOPLVolume(s.OPLVolume, maxOPLGain),
 		SFXVolume:        ClampVolume(s.SFXVolume),
+		PCSpeakerVolume:  ClampVolume(s.PCSpeakerVolume),
 		HUDMessages:      s.HUDMessages,
 		AlwaysRun:        s.AlwaysRun,
 		AutoWeaponSwitch: s.AutoWeaponSwitch,

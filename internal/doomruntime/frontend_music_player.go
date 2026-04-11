@@ -238,7 +238,7 @@ func (sg *sessionGame) resolveIDMUSSelection(currentMapName, code string) (mapda
 }
 
 func (sg *sessionGame) playCheatMusic(currentMapName string, code string) (bool, error) {
-	if sg == nil || sg.musicCtl == nil || clampVolume(sg.opts.MusicVolume) <= 0 {
+	if sg == nil || sg.musicCtl == nil || effectiveMusicPlaybackVolume(sg.opts) <= 0 {
 		return false, nil
 	}
 	targetMap, targetLump, ok := sg.resolveIDMUSSelection(currentMapName, code)
@@ -295,7 +295,7 @@ func (sg *sessionGame) playCheatMusic(currentMapName string, code string) (bool,
 	if len(data) == 0 {
 		return false, nil
 	}
-	sg.musicCtl.PlayData(data, clampVolume(sg.opts.MusicVolume))
+	sg.musicCtl.PlayData(data, effectiveMusicPlaybackVolume(sg.opts))
 	sg.currentMusicSource = musicPlaybackSource{
 		kind:       musicPlaybackSourcePlayer,
 		mapName:    targetMap,
@@ -389,7 +389,7 @@ func (sg *sessionGame) frontendMusicPlayerPlaySelected() bool {
 		sg.frontendStatus("SONG NOT FOUND", doomTicsPerSecond*2)
 		return false
 	}
-	sg.musicCtl.PlayData(data, clampVolume(sg.opts.MusicVolume))
+	sg.musicCtl.PlayData(data, effectiveMusicPlaybackVolume(sg.opts))
 	sg.currentMusicSource = musicPlaybackSource{
 		kind:       musicPlaybackSourcePlayer,
 		wadKey:     wad.Key,

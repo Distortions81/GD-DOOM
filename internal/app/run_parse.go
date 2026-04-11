@@ -248,6 +248,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		defaultSoundFontPath = music.DefaultEmbeddedSoundFontPath()
 	}
 	defaultSFXVolume := 0.5
+	defaultPCSpeakerVolume := 1.0
 	defaultSFXPitchShift := false
 	defaultFastMonsters := false
 	defaultAlwaysRun := true
@@ -371,6 +372,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.SFXVolume != nil {
 			defaultSFXVolume = *cfg.SFXVolume
 		}
+		if cfg.PCSpeakerVolume != nil {
+			defaultPCSpeakerVolume = *cfg.PCSpeakerVolume
+		}
 		if cfg.AlwaysRun != nil {
 			defaultAlwaysRun = *cfg.AlwaysRun
 		}
@@ -481,9 +485,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
 	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
-	musicBackend := fs.String("music-backend", defaultMusicBackend, "music synth backend (auto|impsynth|meltysynth)")
+	musicBackend := fs.String("music-backend", defaultMusicBackend, "music synth backend (auto|impsynth|pcspeaker|meltysynth)")
 	soundFont := fs.String("soundfont", defaultSoundFontPath, "path to external SoundFont (.sf2) used by the meltysynth music backend")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
+	pcSpeakerVolume := fs.Float64("pc-speaker-volume", defaultPCSpeakerVolume, "pc speaker output volume after emulation (0..1)")
 	pcSpeaker := fs.Bool("pc-speaker", defaultPCSpeakerMode, "render DP* PC speaker lumps to PCM and use them in place of DS* digital sounds")
 	pcSpeakerVariant := fs.String("pc-speaker-variant", defaultPCSpeakerVariant, "pc speaker tone model (passthrough|paper-speaker|small-buzzer)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
@@ -589,6 +594,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *sfxVolume < 0 || *sfxVolume > 1 {
 		fmt.Fprintf(stderr, "invalid -sfx-volume %.3f (must be between 0 and 1)\n", *sfxVolume)
+		return 2
+	}
+	if *pcSpeakerVolume < 0 || *pcSpeakerVolume > 1 {
+		fmt.Fprintf(stderr, "invalid -pc-speaker-volume %.3f (must be between 0 and 1)\n", *pcSpeakerVolume)
 		return 2
 	}
 	if *rendererWorkers < 0 {
@@ -774,6 +783,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			oplBankPath:                defaultOPLBankPath,
 			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  *sfxVolume,
+			pcSpeakerVolume:            *pcSpeakerVolume,
 			sfxPitchShift:              defaultSFXPitchShift,
 			fastMonsters:               defaultFastMonsters,
 			alwaysRun:                  *alwaysRun,
@@ -1109,8 +1119,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			MusicBackend:               resolvedMusicBackend,
 			OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 			SFXVolume:                  *sfxVolume,
+			PCSpeakerVolume:            *pcSpeakerVolume,
 			SFXPitchShift:              defaultSFXPitchShift,
 			PCSpeakerVariant:           audiofx.ParsePCSpeakerVariant(*pcSpeakerVariant),
+			SharedPCSpeaker:            buildSharedPCSpeakerPlayer(resolvedMusicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(*pcSpeakerVariant), *pcSpeakerVolume),
 			FastMonsters:               defaultFastMonsters,
 			AlwaysRun:                  *alwaysRun,
 			AutoWeaponSwitch:           *autoWeaponSwitch,
@@ -1506,6 +1518,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			oplBankPath:                defaultOPLBankPath,
 			soundFontPath:              strings.TrimSpace(*soundFont),
 			sfxVolume:                  0,
+			pcSpeakerVolume:            *pcSpeakerVolume,
 			sfxPitchShift:              defaultSFXPitchShift,
 			fastMonsters:               defaultFastMonsters,
 			alwaysRun:                  *alwaysRun,
@@ -2210,6 +2223,7 @@ type renderBuildConfig struct {
 	oplBankPath                string
 	soundFontPath              string
 	sfxVolume                  float64
+	pcSpeakerVolume            float64
 	sfxPitchShift              bool
 	fastMonsters               bool
 	alwaysRun                  bool
@@ -2280,6 +2294,7 @@ type pickerSynthOption struct {
 
 var pickerSynths = [...]pickerSynthOption{
 	{label: "OPL - ADLIB / SB16", backend: music.BackendImpSynth},
+	{label: "PC SPEAKER - SYNTH", description: "NOT IN DOOM; USED IN DOS GAMES", backend: music.BackendPCSpeaker},
 	{label: "MIDI - GENERAL MIDI", backend: music.BackendMeltySynth, soundFont: "soundfonts/general-midi.sf2"},
 	{label: "MIDI - SC55-HQ", backend: music.BackendMeltySynth, soundFont: "soundfonts/SC55-HQ.sf2"},
 	{label: "MIDI - SGM-HQ", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
@@ -2433,6 +2448,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	if cfg.pcSpeaker && len(dpr.Sounds) > 0 {
 		pcSpeakerBank = buildPCSpeakerBank(dpr)
 	}
+	sharedPCSpeaker := buildSharedPCSpeakerPlayer(cfg.musicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(cfg.pcSpeakerVariant), cfg.pcSpeakerVolume)
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
@@ -2546,8 +2562,10 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		MusicBackend:               cfg.musicBackend,
 		OpenMenuOnFrontendStart:    openMenuOnFrontendStart(),
 		SFXVolume:                  cfg.sfxVolume,
+		PCSpeakerVolume:            cfg.pcSpeakerVolume,
 		SFXPitchShift:              cfg.sfxPitchShift,
 		PCSpeakerVariant:           audiofx.ParsePCSpeakerVariant(cfg.pcSpeakerVariant),
+		SharedPCSpeaker:            sharedPCSpeaker,
 		FastMonsters:               cfg.fastMonsters,
 		AlwaysRun:                  cfg.alwaysRun,
 		AutoWeaponSwitch:           cfg.autoWeaponSwitch,
@@ -3758,6 +3776,13 @@ func buildPCSpeakerBank(dpr sound.PCSpeakerImportReport) map[string][]sound.PCSp
 		bank[dsName] = seq
 	}
 	return bank
+}
+
+func buildSharedPCSpeakerPlayer(backend music.Backend, pcSpeakerBank map[string][]sound.PCSpeakerTone, variant audiofx.PCSpeakerVariant, volume float64) *audiofx.PCSpeakerPlayer {
+	if music.ResolveBackend(backend) != music.BackendPCSpeaker && len(pcSpeakerBank) == 0 {
+		return nil
+	}
+	return audiofx.NewPCSpeakerPlayer(volume, variant)
 }
 
 func sourcePortAudioEnabled(sourcePortMode bool) bool {

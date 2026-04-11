@@ -1,14 +1,21 @@
 package audiofx
 
 import (
+	"encoding/binary"
 	"io"
 	"math"
 	"strings"
 	"sync"
+	"time"
 
 	"gddoom/internal/music"
 	"gddoom/internal/sound"
 )
+
+const pcSpeakerPCMUpdateRate = 11025
+
+const pcSpeakerPCMCompactThresholdBytes = 64 * 1024
+const pcSpeakerPlayerBuffer = 30 * time.Millisecond
 
 // PCSpeakerPlayer is a single-channel player that streams PC speaker audio.
 // Starting a new sound always interrupts the current one, matching real hardware.
@@ -54,6 +61,7 @@ type ebitenPlayer interface {
 	Play()
 	Pause()
 	Rewind() error
+	SetBufferSize(time.Duration)
 	SetVolume(float64)
 	IsPlaying() bool
 	Close() error
@@ -126,15 +134,41 @@ func (r *caseReverb) reset() {
 // simulating the PC speaker physics from a compact []PCSpeakerTone sequence.
 type pcSpeakerSource struct {
 	mu      sync.Mutex
-	seq     []sound.PCSpeakerTone
 	rate    int // output sample rate
 	variant PCSpeakerVariant
 	model   pcSpeakerModel
 
 	// playback position
-	samplePos int
-	pitPhase  float64 // PIT input clocks elapsed within the current divisor period
-	lastTone  byte
+	effectSeq         []sound.PCSpeakerTone
+	effectTickRate    int
+	effectSamplePos   int
+	effectMixPhase    float64
+	effectMixDivisor  uint16
+	effectMixActive   bool
+	musicSeq          []sound.PCSpeakerTone
+	musicTickRate     int
+	musicSamplePos    int
+	musicLoop         bool
+	musicPCM          []byte
+	musicPCMPos       int
+	musicPCMRate      int
+	musicPCMPhase     float64
+	musicPCMTarget    float64
+	musicPCMTargetOK  bool
+	musicPCMError     float64
+	musicPCMActive    bool
+	musicPCMClosed    bool
+	musicPCMLoop      bool
+	musicPCMEnv       float64
+	musicPCMAGain     float64
+	musicPCMHPPrevIn  float64
+	musicPCMHPPrevOut float64
+	musicPCMLPState   float64
+	streamGain        float64
+	pitPhase          float64 // PIT input clocks elapsed within the current divisor period
+	lastDivisor       uint16
+	lastActive        bool
+	lastDirect        bool
 
 	// mass-spring-damper state
 	vel  float64
@@ -260,6 +294,16 @@ const (
 	piezoDriftHz       = 0.55
 	piezoDriftRangeHz  = 10.0
 	piezoNoiseMix      = 0.0003
+
+	pcSpeakerAGCTarget     = 0.995
+	pcSpeakerAGCMinGain    = 1.0
+	pcSpeakerAGCMaxGain    = 192.0
+	pcSpeakerPCMHighPassHz = 180.0
+	pcSpeakerPCMLowPassHz  = 3200.0
+	pcSpeakerAGCAttackMS   = 0.75
+	pcSpeakerAGCReleaseMS  = 10.0
+	pcSpeakerAGCGainRiseMS = 0.50
+	pcSpeakerAGCGainFallMS = 6.0
 )
 
 var piezoElectricalAlpha = math.Exp(-2 * math.Pi * (piezoReOhms / (2 * math.Pi * piezoLeHenries)) / 44100)
@@ -301,10 +345,31 @@ func modelForVariant(v PCSpeakerVariant) pcSpeakerModel {
 }
 
 func (s *pcSpeakerSource) totalSamples() int {
-	if s.rate <= 0 || len(s.seq) == 0 {
+	if s.rate <= 0 {
 		return 0
 	}
-	return int(math.Round(float64(len(s.seq)) * float64(s.rate) / 140.0))
+	return max(s.effectTotalSamples(), max(s.musicTotalSamples(), s.musicPCMTotalSamples()))
+}
+
+func (s *pcSpeakerSource) effectTotalSamples() int {
+	if s.rate <= 0 || len(s.effectSeq) == 0 {
+		return 0
+	}
+	return totalSamplesForToneSeq(len(s.effectSeq), s.rate, s.effectTickRate)
+}
+
+func (s *pcSpeakerSource) musicTotalSamples() int {
+	if s.rate <= 0 || len(s.musicSeq) == 0 {
+		return 0
+	}
+	return totalSamplesForToneSeq(len(s.musicSeq), s.rate, s.musicTickRate)
+}
+
+func (s *pcSpeakerSource) musicPCMTotalSamples() int {
+	if s.rate <= 0 || len(s.musicPCM) == 0 {
+		return 0
+	}
+	return len(s.musicPCM) / 4
 }
 
 func (s *pcSpeakerSource) Read(p []byte) (int, error) {
@@ -316,59 +381,61 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 		return 0, nil
 	}
 
-	total := s.totalSamples()
-	if s.samplePos >= total {
-		clear(p)
-		return len(p), io.EOF
-	}
-
-	samplesPerTick := float64(s.rate) / 140.0
 	written := 0
 
 	for i := 0; i < frames; i++ {
-		if s.samplePos >= total {
-			// zero-fill remainder of the buffer
+		tone, direct, directDrive := s.currentToneLocked()
+		if !tone.Active && !direct && !s.hasPlaybackLocked() {
 			for j := written; j < len(p); j++ {
 				p[j] = 0
+			}
+			if written == 0 {
+				return 0, io.EOF
 			}
 			return len(p), io.EOF
 		}
 
-		// Which DMX tick does this sample belong to?
-		tickIdx := int(float64(s.samplePos) / samplesPerTick)
-		if tickIdx >= len(s.seq) {
-			tickIdx = len(s.seq) - 1
-		}
-		tone := s.seq[tickIdx]
-
-		// Reload the PIT whenever the programmed tone byte changes.
-		if tone.ToneValue != s.lastTone {
-			s.pitPhase = 0
-			s.lastTone = tone.ToneValue
-		}
-
-		// PIT mode 3 square wave: high for ceil(divisor/2) clocks, low for
-		// floor(divisor/2) clocks. Model it in PIT input clocks so odd
-		// divisors and reload edges match hardware more closely than a
-		// generic 50% duty oscillator.
 		var pitOut float64
-		if tone.Active {
-			divisor := float64(tone.ToneDivisor())
-			if divisor > 0 {
-				highClocks := math.Ceil(divisor / 2.0)
-				if s.pitPhase < highClocks {
-					pitOut = 1.0
-				}
-				s.pitPhase += float64(sound.PCSpeakerPITHz()) / float64(s.rate)
-				if s.pitPhase >= divisor {
-					s.pitPhase = math.Mod(s.pitPhase, divisor)
-				}
+		if direct {
+			if !s.lastDirect {
+				s.pitPhase = 0
+				s.lastDivisor = 0
+				s.lastActive = false
 			}
+			pitOut = directDrive
+			s.lastDirect = true
 		} else {
-			s.pitPhase = 0
-		}
+			divisorNow := tone.ToneDivisor()
 
-		s.samplePos++
+			// Reload the PIT whenever the programmed tone byte changes.
+			if tone.Active != s.lastActive || divisorNow != s.lastDivisor || s.lastDirect {
+				s.pitPhase = 0
+				s.lastDivisor = divisorNow
+				s.lastActive = tone.Active
+			}
+
+			// PIT mode 3 square wave: high for ceil(divisor/2) clocks, low for
+			// floor(divisor/2) clocks. Model it in PIT input clocks so odd
+			// divisors and reload edges match hardware more closely than a
+			// generic 50% duty oscillator.
+			if tone.Active {
+				divisor := float64(divisorNow)
+				if divisor > 0 {
+					highClocks := math.Ceil(divisor / 2.0)
+					if s.pitPhase < highClocks {
+						pitOut = 1.0
+					}
+					s.pitPhase += float64(sound.PCSpeakerPITHz()) / float64(s.rate)
+					if s.pitPhase >= divisor {
+						s.pitPhase = math.Mod(s.pitPhase, divisor)
+					}
+				}
+			} else {
+				s.pitPhase = 0
+			}
+			pitOut *= s.streamGain
+			s.lastDirect = false
+		}
 
 		if s.variant == PCSpeakerVariantClean {
 			raw := pitOut * s.model.gain
@@ -393,7 +460,9 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 		var rawVel float64
 		if s.variant == PCSpeakerVariantPiezo {
 			signedIn := 0.0
-			if tone.Active {
+			if direct {
+				signedIn = math.Max(-1, math.Min(1, directDrive))
+			} else if tone.Active {
 				if pitOut > 0 {
 					signedIn = 1.0
 				} else {
@@ -527,6 +596,294 @@ func (s *pcSpeakerSource) Read(p []byte) (int, error) {
 	return written, nil
 }
 
+func (s *pcSpeakerSource) currentToneLocked() (sound.PCSpeakerTone, bool, float64) {
+	if s.musicPCMActive {
+		if drive, ok := s.nextMusicPCMDriveLocked(); ok {
+			return sound.PCSpeakerTone{}, true, drive
+		}
+		return sound.PCSpeakerTone{}, true, 0
+	}
+	if tone, ok, _ := s.nextEffectToneLocked(); ok {
+		return tone, false, 0
+	}
+	if tone, ok := s.nextMusicToneLocked(); ok {
+		return tone, false, 0
+	}
+	s.pitPhase = 0
+	return sound.PCSpeakerTone{}, false, 0
+}
+
+func (s *pcSpeakerSource) nextEffectToneLocked() (sound.PCSpeakerTone, bool, bool) {
+	total := s.effectTotalSamples()
+	if total <= 0 || s.effectSamplePos >= total {
+		s.effectSeq = nil
+		s.effectSamplePos = 0
+		return sound.PCSpeakerTone{}, false, false
+	}
+	tone := toneAtSample(s.effectSeq, s.rate, s.effectTickRate, s.effectSamplePos)
+	s.effectSamplePos++
+	if s.effectSamplePos >= total {
+		s.effectSeq = nil
+		s.effectSamplePos = 0
+	}
+	return tone, true, false
+}
+
+func (s *pcSpeakerSource) nextMusicToneLocked() (sound.PCSpeakerTone, bool) {
+	total := s.musicTotalSamples()
+	if total <= 0 {
+		s.musicSeq = nil
+		s.musicSamplePos = 0
+		return sound.PCSpeakerTone{}, false
+	}
+	if s.musicSamplePos >= total {
+		if !s.musicLoop {
+			s.musicSeq = nil
+			s.musicSamplePos = 0
+			return sound.PCSpeakerTone{}, false
+		}
+		s.musicSamplePos = 0
+	}
+	tone := toneAtSample(s.musicSeq, s.rate, s.musicTickRate, s.musicSamplePos)
+	s.musicSamplePos++
+	if s.musicLoop && s.musicSamplePos >= total {
+		s.musicSamplePos = 0
+	}
+	return tone, true
+}
+
+func (s *pcSpeakerSource) nextMusicPCMDriveLocked() (float64, bool) {
+	target, ok := s.nextPreEncoderMixedTargetLocked()
+	if !ok {
+		return 0, false
+	}
+	target = s.filterMusicPCMTargetLocked(target)
+	absTarget := math.Abs(target)
+	attack := agcBlendForMs(s.musicPCMRate, pcSpeakerAGCAttackMS)
+	release := agcBlendForMs(s.musicPCMRate, pcSpeakerAGCReleaseMS)
+	if absTarget > s.musicPCMEnv {
+		s.musicPCMEnv += (absTarget - s.musicPCMEnv) * attack
+	} else {
+		s.musicPCMEnv += (absTarget - s.musicPCMEnv) * release
+	}
+	if s.musicPCMEnv < 1e-5 {
+		s.musicPCMEnv = 1e-5
+	}
+	desiredGain := pcSpeakerAGCTarget / s.musicPCMEnv
+	if desiredGain < pcSpeakerAGCMinGain {
+		desiredGain = pcSpeakerAGCMinGain
+	} else if desiredGain > pcSpeakerAGCMaxGain {
+		desiredGain = pcSpeakerAGCMaxGain
+	}
+	gainBlend := agcBlendForMs(s.musicPCMRate, pcSpeakerAGCGainFallMS)
+	if desiredGain > s.musicPCMAGain {
+		gainBlend = agcBlendForMs(s.musicPCMRate, pcSpeakerAGCGainRiseMS)
+	}
+	s.musicPCMAGain += (desiredGain - s.musicPCMAGain) * gainBlend
+	boosted := target * s.musicPCMAGain
+	if boosted > 1 {
+		boosted = 1
+	} else if boosted < -1 {
+		boosted = -1
+	}
+	if s.musicPCMError+boosted >= 0 {
+		s.musicPCMError += boosted - 1
+		return 1, true
+	}
+	s.musicPCMError += boosted + 1
+	return -1, true
+}
+
+func (s *pcSpeakerSource) nextPreEncoderMixedTargetLocked() (float64, bool) {
+	target := 0.0
+	haveTarget := false
+	if musicTarget, ok := s.nextMusicPCMTargetLocked(); ok {
+		target = musicTarget
+		haveTarget = true
+	}
+	if effectDrive, ok := s.nextEffectMixedDriveLocked(); ok {
+		if haveTarget {
+			target = mixPreEncoderSignals(target, effectDrive)
+		} else {
+			target = effectDrive
+		}
+		haveTarget = true
+	}
+	if !haveTarget {
+		return 0, false
+	}
+	if target > 1 {
+		target = 1
+	} else if target < -1 {
+		target = -1
+	}
+	return target, true
+}
+
+func (s *pcSpeakerSource) nextMusicPCMTargetLocked() (float64, bool) {
+	total := s.musicPCMTotalSamples()
+	if total <= 0 {
+		if s.musicPCMClosed {
+			s.musicPCMActive = false
+		}
+		return 0, false
+	}
+	if s.musicPCMRate <= 0 {
+		s.musicPCMRate = pcSpeakerPCMUpdateRate
+	}
+	if !s.musicPCMTargetOK {
+		if !s.loadNextMusicPCMTargetLocked() {
+			return 0, false
+		}
+	}
+	step := float64(s.musicPCMRate) / float64(s.rate)
+	if step <= 0 {
+		step = 1
+	}
+	s.musicPCMPhase += step
+	for s.musicPCMPhase >= 1 {
+		s.musicPCMPhase -= 1
+		if !s.advanceMusicPCMFrameLocked() {
+			break
+		}
+	}
+	target := s.musicPCMTarget
+	if target > 1 {
+		target = 1
+	} else if target < -1 {
+		target = -1
+	}
+	return target, true
+}
+
+func (s *pcSpeakerSource) nextEffectMixedDriveLocked() (float64, bool) {
+	total := s.effectTotalSamples()
+	if total <= 0 || s.effectSamplePos >= total {
+		s.effectSeq = nil
+		s.effectSamplePos = 0
+		s.effectMixPhase = 0
+		s.effectMixDivisor = 0
+		s.effectMixActive = false
+		return 0, false
+	}
+	tone := toneAtSample(s.effectSeq, s.rate, s.effectTickRate, s.effectSamplePos)
+	divisorNow := tone.ToneDivisor()
+	if tone.Active != s.effectMixActive || divisorNow != s.effectMixDivisor {
+		s.effectMixPhase = 0
+		s.effectMixDivisor = divisorNow
+		s.effectMixActive = tone.Active
+	}
+	drive := 0.0
+	if tone.Active && divisorNow > 0 {
+		divisor := float64(divisorNow)
+		highClocks := math.Ceil(divisor / 2.0)
+		drive = -1.0
+		if s.effectMixPhase < highClocks {
+			drive = 1.0
+		}
+		s.effectMixPhase += float64(sound.PCSpeakerPITHz()) / float64(s.rate)
+		if s.effectMixPhase >= divisor {
+			s.effectMixPhase = math.Mod(s.effectMixPhase, divisor)
+		}
+	}
+	s.effectSamplePos++
+	if s.effectSamplePos >= total {
+		s.effectSeq = nil
+		s.effectSamplePos = 0
+		s.effectMixPhase = 0
+		s.effectMixDivisor = 0
+		s.effectMixActive = false
+	}
+	return drive, true
+}
+
+func (s *pcSpeakerSource) hasPlaybackLocked() bool {
+	return len(s.effectSeq) > 0 || len(s.musicSeq) > 0 || len(s.musicPCM) > 0 || s.musicPCMActive
+}
+
+func (s *pcSpeakerSource) loadNextMusicPCMTargetLocked() bool {
+	total := s.musicPCMTotalSamples()
+	if total <= 0 || s.musicPCMPos >= total {
+		if !s.musicPCMLoop {
+			if s.musicPCMClosed {
+				s.musicPCMTargetOK = false
+				s.musicPCMActive = false
+				return false
+			}
+			// Streaming PCM ran out of buffered frames. Hold the last target
+			// until more bytes arrive instead of dropping to silence.
+			return s.musicPCMTargetOK
+		}
+		s.musicPCMPos = 0
+	}
+	base := s.musicPCMPos * 4
+	if base+3 >= len(s.musicPCM) {
+		return false
+	}
+	l := int16(binary.LittleEndian.Uint16(s.musicPCM[base : base+2]))
+	r := int16(binary.LittleEndian.Uint16(s.musicPCM[base+2 : base+4]))
+	s.musicPCMTarget = float64(int(l)+int(r)) / (2.0 * float64(math.MaxInt16))
+	s.musicPCMTargetOK = true
+	return true
+}
+
+func (s *pcSpeakerSource) advanceMusicPCMFrameLocked() bool {
+	total := s.musicPCMTotalSamples()
+	if total <= 0 {
+		if s.musicPCMClosed {
+			s.musicPCMTargetOK = false
+			s.musicPCMActive = false
+			return false
+		}
+		return s.musicPCMTargetOK
+	}
+	nextPos := s.musicPCMPos + 1
+	if nextPos < total {
+		s.musicPCMPos = nextPos
+		s.musicPCMTargetOK = false
+		return s.loadNextMusicPCMTargetLocked()
+	}
+	if s.musicPCMLoop {
+		s.musicPCMPos = 0
+		s.musicPCMTargetOK = false
+		return s.loadNextMusicPCMTargetLocked()
+	}
+	if s.musicPCMClosed {
+		s.musicPCMPos = nextPos
+		s.musicPCMTargetOK = false
+		s.musicPCMActive = false
+		return false
+	}
+	// Buffered PCM is temporarily exhausted. Keep driving the last sample
+	// until more stream data is appended.
+	return true
+}
+
+func toneAtSample(seq []sound.PCSpeakerTone, rate int, tickRate int, samplePos int) sound.PCSpeakerTone {
+	if len(seq) == 0 || rate <= 0 {
+		return sound.PCSpeakerTone{}
+	}
+	if tickRate <= 0 {
+		tickRate = 140
+	}
+	samplesPerTick := float64(rate) / float64(tickRate)
+	tickIdx := int(float64(samplePos) / samplesPerTick)
+	if tickIdx >= len(seq) {
+		tickIdx = len(seq) - 1
+	}
+	return seq[tickIdx]
+}
+
+func totalSamplesForToneSeq(seqLen int, sampleRate int, tickRate int) int {
+	if seqLen <= 0 || sampleRate <= 0 {
+		return 0
+	}
+	if tickRate <= 0 {
+		tickRate = 140
+	}
+	return int(math.Round(float64(seqLen) * float64(sampleRate) / float64(tickRate)))
+}
+
 func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -536,52 +893,239 @@ func (s *pcSpeakerSource) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekStart:
 		abs = offset
 	case io.SeekCurrent:
-		abs = int64(s.samplePos)*4 + offset
+		cur := s.effectSamplePos
+		if len(s.effectSeq) == 0 {
+			cur = s.musicSamplePos
+		}
+		abs = int64(cur)*4 + offset
 	case io.SeekEnd:
 		abs = total + offset
 	}
 	if abs < 0 {
 		abs = 0
 	}
-	s.samplePos = int(abs / 4)
-	s.pitPhase = 0
-	s.lastTone = 0
-	s.vel = 0
-	s.disp = 0
-	s.hp1Prev = 0
-	s.hp1Out = 0
-	s.hp2Prev = 0
-	s.hp2Out = 0
-	s.dcPrevIn = 0
-	s.dcPrevOut = 0
-	s.lpState = 0
-	s.envState = 0
-	s.driveState = 0
-	s.resY1 = 0
-	s.resY2 = 0
-	s.res2Y1 = 0
-	s.res2Y2 = 0
-	s.acY1 = 0
-	s.acY2 = 0
-	s.hpState = 0
-	s.driftPhase = 0
-	s.freqSmooth = 0
-	s.lastFreq = 0
-	s.lastPiezoIn = 0
-	s.piezoTickAge = 0
-	s.noiseState = 1
-	s.reverb.reset()
+	s.effectSamplePos = int(abs / 4)
+	s.musicSamplePos = int(abs / 4)
+	s.resetStateLocked()
 	return abs, nil
 }
 
 func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.seq = seq
+	s.effectSeq = seq
 	s.rate = rate
-	s.samplePos = 0
+	s.effectTickRate = 140
+	s.effectSamplePos = 0
+	s.resetStateLocked()
+}
+
+func (s *pcSpeakerSource) setEffectMixed(seq []sound.PCSpeakerTone, rate int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.effectSeq = seq
+	s.rate = rate
+	s.effectTickRate = 140
+	s.effectSamplePos = 0
+	s.effectMixPhase = 0
+	s.effectMixDivisor = 0
+	s.effectMixActive = false
+}
+
+func (s *pcSpeakerSource) musicPCMIsActive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.musicPCMActive
+}
+
+func (s *pcSpeakerSource) setMusicPCM(pcm []byte, rate int, loop bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.musicPCM = pcm
+	s.rate = rate
+	s.musicPCMRate = pcSpeakerPCMUpdateRate
+	s.musicPCMLoop = loop
+	s.musicPCMPos = 0
+	s.musicPCMPhase = 0
+	s.musicPCMTarget = 0
+	s.musicPCMTargetOK = false
+	s.musicPCMError = 0
+	s.musicPCMEnv = 0
+	s.musicPCMAGain = 1
+	s.musicPCMHPPrevIn = 0
+	s.musicPCMHPPrevOut = 0
+	s.musicPCMLPState = 0
+	s.musicPCMActive = true
+	s.musicPCMClosed = true
+}
+
+func (s *pcSpeakerSource) beginMusicPCM(rate int, loop bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.rate = rate
+	s.musicPCM = s.musicPCM[:0]
+	s.musicPCMPos = 0
+	s.musicPCMRate = pcSpeakerPCMUpdateRate
+	s.musicPCMPhase = 0
+	s.musicPCMTarget = 0
+	s.musicPCMTargetOK = false
+	s.musicPCMError = 0
+	s.musicPCMEnv = 0
+	s.musicPCMAGain = 1
+	s.musicPCMHPPrevIn = 0
+	s.musicPCMHPPrevOut = 0
+	s.musicPCMLPState = 0
+	s.musicPCMActive = true
+	s.musicPCMClosed = false
+	s.musicPCMLoop = loop
+}
+
+func (s *pcSpeakerSource) appendMusicPCM(pcm []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(pcm) == 0 {
+		return
+	}
+	s.compactMusicPCMLocked(false)
+	s.musicPCM = append(s.musicPCM, pcm...)
+	s.musicPCMActive = true
+}
+
+func (s *pcSpeakerSource) finishMusicPCM() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.musicPCMClosed = true
+}
+
+func (s *pcSpeakerSource) bufferedMusicPCMBytes() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.compactMusicPCMLocked(false)
+	if len(s.musicPCM) == 0 {
+		return 0
+	}
+	pos := s.musicPCMPos * 4
+	if pos >= len(s.musicPCM) {
+		return 0
+	}
+	return len(s.musicPCM) - pos
+}
+
+func (s *pcSpeakerSource) setMusic(seq []sound.PCSpeakerTone, rate int, tickRate int, loop bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.musicSeq = seq
+	s.rate = rate
+	s.musicTickRate = tickRate
+	s.musicLoop = loop
+	s.musicSamplePos = 0
+}
+
+func (s *pcSpeakerSource) clearMusic() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.musicSeq = nil
+	s.musicTickRate = 0
+	s.musicSamplePos = 0
+	s.musicLoop = false
+	s.musicPCM = nil
+	s.musicPCMPos = 0
+	s.musicPCMRate = 0
+	s.musicPCMPhase = 0
+	s.musicPCMTarget = 0
+	s.musicPCMTargetOK = false
+	s.musicPCMError = 0
+	s.musicPCMEnv = 0
+	s.musicPCMAGain = 1
+	s.musicPCMHPPrevIn = 0
+	s.musicPCMHPPrevOut = 0
+	s.musicPCMLPState = 0
+	s.musicPCMActive = false
+	s.musicPCMClosed = false
+	s.musicPCMLoop = false
+}
+
+func (s *pcSpeakerSource) compactMusicPCMLocked(force bool) {
+	if len(s.musicPCM) == 0 || s.musicPCMPos <= 0 {
+		return
+	}
+	consumedBytes := s.musicPCMPos * 4
+	if consumedBytes <= 0 {
+		return
+	}
+	if !force {
+		if consumedBytes < pcSpeakerPCMCompactThresholdBytes {
+			return
+		}
+		if consumedBytes*2 < len(s.musicPCM) {
+			return
+		}
+	}
+	if consumedBytes >= len(s.musicPCM) {
+		s.musicPCM = s.musicPCM[:0]
+		s.musicPCMPos = 0
+		return
+	}
+	remaining := len(s.musicPCM) - consumedBytes
+	copy(s.musicPCM[:remaining], s.musicPCM[consumedBytes:])
+	s.musicPCM = s.musicPCM[:remaining]
+	s.musicPCMPos = 0
+}
+
+func (s *pcSpeakerSource) filterMusicPCMTargetLocked(v float64) float64 {
+	if s.musicPCMRate <= 0 {
+		return v
+	}
+	hpAlpha := highPassAlphaForHz(float64(s.musicPCMRate), pcSpeakerPCMHighPassHz)
+	hpOut := hpAlpha * (s.musicPCMHPPrevOut + v - s.musicPCMHPPrevIn)
+	s.musicPCMHPPrevIn = v
+	s.musicPCMHPPrevOut = hpOut
+
+	lpAlpha := lowPassBlendForHz(float64(s.musicPCMRate), pcSpeakerPCMLowPassHz)
+	s.musicPCMLPState += (hpOut - s.musicPCMLPState) * lpAlpha
+	return s.musicPCMLPState
+}
+
+func agcBlendForMs(rate int, ms float64) float64 {
+	if rate <= 0 || ms <= 0 {
+		return 1
+	}
+	return 1 - math.Exp(-1000.0/(float64(rate)*ms))
+}
+
+func highPassAlphaForHz(rate float64, cutoffHz float64) float64 {
+	if rate <= 0 || cutoffHz <= 0 {
+		return 1
+	}
+	rc := 1.0 / (2 * math.Pi * cutoffHz)
+	dt := 1.0 / rate
+	return rc / (rc + dt)
+}
+
+func lowPassBlendForHz(rate float64, cutoffHz float64) float64 {
+	if rate <= 0 || cutoffHz <= 0 {
+		return 1
+	}
+	return 1 - math.Exp(-2*math.Pi*cutoffHz/rate)
+}
+
+func mixPreEncoderSignals(a float64, b float64) float64 {
+	return (a + b) * 0.5
+}
+
+func (s *pcSpeakerSource) setGain(v float64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.streamGain = clampVolume(v)
+}
+
+func (s *pcSpeakerSource) resetStateLocked() {
 	s.pitPhase = 0
-	s.lastTone = 0
+	s.lastDivisor = 0
+	s.lastActive = false
+	s.effectMixPhase = 0
+	s.effectMixDivisor = 0
+	s.effectMixActive = false
 	s.vel = 0
 	s.disp = 0
 	s.hp1Prev = 0
@@ -624,10 +1168,12 @@ func NewPCSpeakerPlayer(volume float64, variant PCSpeakerVariant) *PCSpeakerPlay
 	}
 	src := &pcSpeakerSource{reverb: newCaseReverb()}
 	src.setVariant(variant)
+	src.setGain(volume)
 	ap, err := ctx.NewPlayer(src)
 	if err != nil {
 		return nil
 	}
+	ap.SetBufferSize(pcSpeakerPlayerBuffer)
 	return &PCSpeakerPlayer{
 		player: ap,
 		src:    src,
@@ -642,6 +1188,14 @@ func (p *PCSpeakerPlayer) Play(seq []sound.PCSpeakerTone) {
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.src.musicPCMIsActive() {
+		p.src.setEffectMixed(seq, music.OutputSampleRate)
+		p.player.SetVolume(p.volume)
+		if !p.player.IsPlaying() {
+			p.player.Play()
+		}
+		return
+	}
 	p.player.Pause()
 	p.src.load(seq, music.OutputSampleRate)
 	if err := p.player.Rewind(); err != nil {
@@ -649,6 +1203,91 @@ func (p *PCSpeakerPlayer) Play(seq []sound.PCSpeakerTone) {
 	}
 	p.player.SetVolume(p.volume)
 	p.player.Play()
+}
+
+func (p *PCSpeakerPlayer) SetMusic(seq []sound.PCSpeakerTone, tickRate int, loop bool) {
+	if p == nil || p.player == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.src.setMusic(seq, music.OutputSampleRate, tickRate, loop)
+	p.player.SetVolume(p.volume)
+	if !p.player.IsPlaying() {
+		p.player.Play()
+	}
+}
+
+func (p *PCSpeakerPlayer) SetMusicPCM(pcm []byte, loop bool) {
+	if p == nil || p.player == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.src.setMusicPCM(pcm, music.OutputSampleRate, loop)
+	p.player.SetVolume(p.volume)
+	if !p.player.IsPlaying() {
+		p.player.Play()
+	}
+}
+
+func (p *PCSpeakerPlayer) BeginMusicPCM(loop bool) {
+	if p == nil || p.player == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.src.beginMusicPCM(music.OutputSampleRate, loop)
+	p.player.SetVolume(p.volume)
+	if !p.player.IsPlaying() {
+		p.player.Play()
+	}
+}
+
+func (p *PCSpeakerPlayer) AppendMusicPCM(pcm []byte) {
+	if p == nil || p.player == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.src.appendMusicPCM(pcm)
+	p.player.SetVolume(p.volume)
+	if !p.player.IsPlaying() {
+		p.player.Play()
+	}
+}
+
+func (p *PCSpeakerPlayer) FinishMusicPCM() {
+	if p == nil || p.player == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.src.finishMusicPCM()
+}
+
+func (p *PCSpeakerPlayer) BufferedMusicPCMBytes() int {
+	if p == nil || p.player == nil {
+		return 0
+	}
+	return p.src.bufferedMusicPCMBytes()
+}
+
+func (p *PCSpeakerPlayer) ClearMusic() {
+	if p == nil || p.player == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.src.clearMusic()
+}
+
+func (p *PCSpeakerPlayer) SetEffectVolume(v float64) {
+	p.SetVolume(v)
+}
+
+func (p *PCSpeakerPlayer) SetMusicVolume(v float64) {
+	p.SetVolume(v)
 }
 
 func (p *PCSpeakerPlayer) Stop() {
@@ -667,6 +1306,7 @@ func (p *PCSpeakerPlayer) SetVolume(v float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.volume = clampVolume(v)
+	p.src.setGain(p.volume)
 	if p.player != nil {
 		p.player.SetVolume(p.volume)
 	}

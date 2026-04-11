@@ -3,6 +3,7 @@ package sound
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 	"strings"
 
 	"gddoom/internal/wad"
@@ -42,12 +43,48 @@ func PCSpeakerPITHz() int {
 	return pcSpeakerPITHz
 }
 
+func ClosestPCSpeakerToneValue(freq float64) byte {
+	if !(freq > 0) {
+		return 0
+	}
+	best := byte(0)
+	bestErr := math.MaxFloat64
+	for i := 1; i < len(pcSpeakerDivisors); i++ {
+		divisor := pcSpeakerDivisors[i]
+		if divisor == 0 {
+			continue
+		}
+		toneFreq := float64(pcSpeakerPITHz) / float64(divisor)
+		err := math.Abs(toneFreq - freq)
+		if err < bestErr {
+			bestErr = err
+			best = byte(i)
+		}
+	}
+	return best
+}
+
+func PITDivisorForFrequency(freq float64) uint16 {
+	if !(freq > 0) {
+		return 0
+	}
+	divisor := int(math.Round(float64(pcSpeakerPITHz) / freq))
+	if divisor < 1 {
+		divisor = 1
+	}
+	if divisor > math.MaxUint16 {
+		divisor = math.MaxUint16
+	}
+	return uint16(divisor)
+}
+
 // PCSpeakerTone holds a single DMX-timer tick of PC speaker data.
 // Active is true when the PIT is driving the speaker; ToneValue is the
 // original lump byte (0 = silence, non-zero gives the PIT divisor).
 type PCSpeakerTone struct {
 	Active    bool
 	ToneValue byte
+	Divisor   uint16
 }
 
 // ToneFrequency returns the PIT output frequency for this tone, or 0 if silent.
@@ -65,7 +102,13 @@ func (t PCSpeakerTone) ToneFrequency() float64 {
 // ToneDivisor returns the vanilla PIT divisor for this tone, or 0 if silent
 // or out of range.
 func (t PCSpeakerTone) ToneDivisor() uint16 {
-	if !t.Active || t.ToneValue == 0 {
+	if !t.Active {
+		return 0
+	}
+	if t.Divisor != 0 {
+		return t.Divisor
+	}
+	if t.ToneValue == 0 {
 		return 0
 	}
 	if int(t.ToneValue) >= len(pcSpeakerDivisors) {

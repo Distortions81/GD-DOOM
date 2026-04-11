@@ -782,6 +782,7 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 		MusicBackend:       "meltysynth",
 		MusicSoundFontPath: "soundfonts/sc55.sf2",
 		SFXVolume:          0.25,
+		PCSpeakerVolume:    0.6,
 		MouseLook:          false,
 		MouseInvert:        true,
 		AlwaysRun:          true,
@@ -818,6 +819,9 @@ func TestSaveRuntimeSettingsWritesConfigValues(t *testing.T) {
 	}
 	if cfg.SFXVolume == nil || *cfg.SFXVolume != in.SFXVolume {
 		t.Fatalf("sfx_volume=%v want %v", cfg.SFXVolume, in.SFXVolume)
+	}
+	if cfg.PCSpeakerVolume == nil || *cfg.PCSpeakerVolume != in.PCSpeakerVolume {
+		t.Fatalf("pc_speaker_volume=%v want %v", cfg.PCSpeakerVolume, in.PCSpeakerVolume)
 	}
 	if cfg.MouseLook == nil || *cfg.MouseLook != in.MouseLook {
 		t.Fatalf("mouselook=%v want %v", cfg.MouseLook, in.MouseLook)

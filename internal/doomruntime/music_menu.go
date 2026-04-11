@@ -35,11 +35,20 @@ type musicPlaybackSource struct {
 
 func musicBackendLabel(backend music.Backend) string {
 	switch music.ResolveBackend(backend) {
+	case music.BackendPCSpeaker:
+		return "PC SPEAKER - SYNTH"
 	case music.BackendMeltySynth:
 		return "MIDI - MELTYSYNTH"
 	default:
 		return "OPL - IMPSYNTH"
 	}
+}
+
+func effectiveMusicPlaybackVolume(opts Options) float64 {
+	if music.ResolveBackend(opts.MusicBackend) == music.BackendPCSpeaker {
+		return clampVolume(opts.PCSpeakerVolume)
+	}
+	return clampVolume(opts.MusicVolume)
 }
 
 func musicSoundFontLabel(path string) string {
@@ -98,13 +107,14 @@ func (sg *sessionGame) rebuildMusicPlayback() error {
 		return nil
 	}
 	ctl, err := sessionmusic.NewPlayback(
-		clampVolume(sg.opts.MusicVolume),
+		effectiveMusicPlaybackVolume(sg.opts),
 		sg.opts.MUSPanMax,
 		sg.opts.OPLVolume,
 		sg.opts.AudioPreEmphasis,
 		sg.opts.MusicBackend,
 		sg.opts.MusicPatchBank,
 		sg.opts.MusicSoundFont,
+		sg.opts.SharedPCSpeaker,
 		sg.opts.MapMusicLoader,
 		sg.opts.TitleMusicLoader,
 		sg.opts.IntermissionMusicLoader,
@@ -117,22 +127,22 @@ func (sg *sessionGame) rebuildMusicPlayback() error {
 }
 
 func (sg *sessionGame) replayCurrentMusicSource() bool {
-	if sg == nil || sg.musicCtl == nil || clampVolume(sg.opts.MusicVolume) <= 0 {
+	if sg == nil || sg.musicCtl == nil || effectiveMusicPlaybackVolume(sg.opts) <= 0 {
 		return false
 	}
 	switch sg.currentMusicSource.kind {
 	case musicPlaybackSourceTitle:
-		sg.musicCtl.PlayTitle(clampVolume(sg.opts.MusicVolume))
+		sg.musicCtl.PlayTitle(effectiveMusicPlaybackVolume(sg.opts))
 		sg.setNowPlayingLevel("")
 		sg.setNowPlayingMusic("Title Screen")
 		return true
 	case musicPlaybackSourceMap:
-		sg.musicCtl.PlayMap(sg.currentMusicSource.mapName, clampVolume(sg.opts.MusicVolume))
+		sg.musicCtl.PlayMap(sg.currentMusicSource.mapName, effectiveMusicPlaybackVolume(sg.opts))
 		sg.setNowPlayingLevel(sg.currentMusicSource.levelLabel, string(sg.currentMusicSource.mapName))
 		sg.setNowPlayingMusic(sg.currentMusicSource.musicName, string(sg.currentMusicSource.mapName))
 		return true
 	case musicPlaybackSourceIntermission:
-		sg.musicCtl.PlayIntermission(sg.currentMusicSource.commercial, clampVolume(sg.opts.MusicVolume))
+		sg.musicCtl.PlayIntermission(sg.currentMusicSource.commercial, effectiveMusicPlaybackVolume(sg.opts))
 		sg.setNowPlayingLevel("")
 		if sg.currentMusicSource.musicName != "" {
 			sg.setNowPlayingMusic(sg.currentMusicSource.musicName)
@@ -146,7 +156,7 @@ func (sg *sessionGame) replayCurrentMusicSource() bool {
 		if err != nil || len(data) == 0 {
 			return false
 		}
-		sg.musicCtl.PlayData(data, clampVolume(sg.opts.MusicVolume))
+		sg.musicCtl.PlayData(data, effectiveMusicPlaybackVolume(sg.opts))
 		sg.setNowPlayingLevel(sg.currentMusicSource.levelLabel)
 		sg.setNowPlayingMusic(sg.currentMusicSource.musicName, sg.currentMusicSource.lumpName)
 		return true
@@ -156,7 +166,7 @@ func (sg *sessionGame) replayCurrentMusicSource() bool {
 }
 
 func (sg *sessionGame) restartCurrentMusicPlayback() {
-	if sg == nil || sg.musicCtl == nil || clampVolume(sg.opts.MusicVolume) <= 0 {
+	if sg == nil || sg.musicCtl == nil || effectiveMusicPlaybackVolume(sg.opts) <= 0 {
 		return
 	}
 	if sg.replayCurrentMusicSource() {
@@ -263,7 +273,10 @@ func (sg *sessionGame) frontendChangeMusicBackend(dir int) error {
 	}
 	cur := music.ResolveBackend(sg.opts.MusicBackend)
 	next := music.BackendImpSynth
-	if cur == music.BackendImpSynth {
+	switch cur {
+	case music.BackendImpSynth:
+		next = music.BackendPCSpeaker
+	case music.BackendPCSpeaker:
 		next = music.BackendMeltySynth
 	}
 	if next == music.BackendMeltySynth {

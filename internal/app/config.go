@@ -40,6 +40,7 @@ type fileConfig struct {
 	MusicBackend               *string                   `toml:"music_backend"`
 	SoundFont                  *string                   `toml:"soundfont"`
 	SFXVolume                  *float64                  `toml:"sfx_volume"`
+	PCSpeakerVolume            *float64                  `toml:"pc_speaker_volume"`
 	AlwaysRun                  *bool                     `toml:"always_run"`
 	AutoWeaponSwitch           *bool                     `toml:"auto_weapon_switch"`
 	CheatLevel                 *int                      `toml:"cheat_level"`
@@ -151,6 +152,7 @@ func saveRuntimeSettings(path string, s doomsession.RuntimeSettings, sourcePortM
 	cfg.MusicBackend = strPtr(strings.TrimSpace(s.MusicBackend))
 	cfg.SoundFont = strPtr(strings.TrimSpace(s.MusicSoundFontPath))
 	cfg.SFXVolume = floatPtr(s.SFXVolume)
+	cfg.PCSpeakerVolume = floatPtr(s.PCSpeakerVolume)
 	cfg.MouseLook = boolPtr(s.MouseLook)
 	cfg.MouseInvert = boolPtr(s.MouseInvert)
 	cfg.AlwaysRun = boolPtr(s.AlwaysRun)
