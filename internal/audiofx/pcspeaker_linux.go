@@ -27,10 +27,17 @@ type LinuxPCSpeakerPlayer struct {
 	musicTickPos   int
 	musicLoop      bool
 	mixTick        uint64
+	currentSource  int
 	wakeCh         chan struct{}
 	stopCh         chan struct{}
 	lastDivisor    uint16
 }
+
+const (
+	linuxPCSpeakerSourceNone = iota
+	linuxPCSpeakerSourceEffect
+	linuxPCSpeakerSourceMusic
+)
 
 func NewLinuxPCSpeakerPlayer() (*LinuxPCSpeakerPlayer, error) {
 	const path = "/dev/console"
@@ -77,6 +84,7 @@ func (p *LinuxPCSpeakerPlayer) Stop() {
 	p.musicTickPos = 0
 	p.musicLoop = false
 	p.mixTick = 0
+	p.currentSource = linuxPCSpeakerSourceNone
 	p.mu.Unlock()
 	p.notify()
 	_ = p.setDivisor(0)
@@ -112,6 +120,7 @@ func (p *LinuxPCSpeakerPlayer) SetMusic(seq []sound.PCSpeakerTone, tickRate int,
 	p.musicTickPos = 0
 	p.musicLoop = loop
 	p.mixTick = 0
+	p.currentSource = linuxPCSpeakerSourceNone
 	p.mu.Unlock()
 	p.notify()
 }
@@ -125,6 +134,7 @@ func (p *LinuxPCSpeakerPlayer) ClearMusic() {
 	p.musicTickPos = 0
 	p.musicLoop = false
 	p.mixTick = 0
+	p.currentSource = linuxPCSpeakerSourceNone
 	p.mu.Unlock()
 	p.notify()
 }
@@ -182,20 +192,45 @@ func (p *LinuxPCSpeakerPlayer) stepDivisor() uint16 {
 	musicTone, musicOK := p.currentMusicToneLocked(rate)
 	switch {
 	case effectOK && musicOK:
-		// Raw Linux pcspkr hardware sounds torn up when we rapidly time-slice
-		// between two sources. Prefer strict priority: active SFX wins, else music.
-		if effectTone.Active {
+		effectActive := effectTone.Active
+		musicActive := musicTone.Active
+		switch {
+		case effectActive && musicActive:
+			// Only switch ownership during true overlap windows.
+			if p.currentSource != linuxPCSpeakerSourceEffect && p.currentSource != linuxPCSpeakerSourceMusic {
+				p.currentSource = linuxPCSpeakerSourceEffect
+			} else {
+				hold := pcSpeakerToneInterleaveHoldTicks(effectTone, musicTone, rate)
+				next := pcSpeakerToneMixPattern[int((p.mixTick/uint64(hold))%uint64(len(pcSpeakerToneMixPattern)))]
+				p.mixTick++
+				if next == 0 {
+					p.currentSource = linuxPCSpeakerSourceEffect
+				} else {
+					p.currentSource = linuxPCSpeakerSourceMusic
+				}
+			}
+			if p.currentSource == linuxPCSpeakerSourceMusic {
+				return musicTone.ToneDivisor()
+			}
 			return effectTone.ToneDivisor()
-		}
-		if musicTone.Active {
+		case effectActive:
+			p.currentSource = linuxPCSpeakerSourceEffect
+			return effectTone.ToneDivisor()
+		case musicActive:
+			p.currentSource = linuxPCSpeakerSourceMusic
 			return musicTone.ToneDivisor()
+		default:
+			p.currentSource = linuxPCSpeakerSourceNone
+			return 0
 		}
-		return 0
 	case effectOK:
+		p.currentSource = linuxPCSpeakerSourceEffect
 		return effectTone.ToneDivisor()
 	case musicOK:
+		p.currentSource = linuxPCSpeakerSourceMusic
 		return musicTone.ToneDivisor()
 	default:
+		p.currentSource = linuxPCSpeakerSourceNone
 		return 0
 	}
 }
