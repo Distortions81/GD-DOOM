@@ -1,7 +1,7 @@
 package silkc
 
 /*
-#cgo CFLAGS: -Wno-shift-negative-value -Wno-constant-conversion
+#cgo CFLAGS: -Wno-shift-negative-value
 #include "SKP_Silk_SDK_API.h"
 #include <stdlib.h>
 */
@@ -239,6 +239,6 @@ func getDecoderSize() int32 {
 }
 
 func malloc(size int32) (unsafe.Pointer, func()) {
-	p := C.malloc(C.ulong(size))
+	p := C.malloc(C.size_t(size))
 	return p, func() { C.free(p) }
 }
