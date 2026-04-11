@@ -195,8 +195,11 @@ func TestPCSpeakerPlayDoesNotInterruptMusicPCM(t *testing.T) {
 	if backend.rewound != 0 {
 		t.Fatalf("rewound=%d want 0", backend.rewound)
 	}
-	if len(src.effectSeq) != 1 {
-		t.Fatalf("effect seq len=%d want 1", len(src.effectSeq))
+	if len(src.effectSeq) != 2 {
+		t.Fatalf("effect seq len=%d want 2", len(src.effectSeq))
+	}
+	if src.effectTickRate != pcSpeakerEmulatedMixTickRate {
+		t.Fatalf("effectTickRate=%d want %d", src.effectTickRate, pcSpeakerEmulatedMixTickRate)
 	}
 	if !src.musicPCMActive {
 		t.Fatal("music PCM should remain active")
@@ -223,8 +226,11 @@ func TestPCSpeakerPlayDoesNotInterruptToneSequenceMusic(t *testing.T) {
 	if backend.rewound != 0 {
 		t.Fatalf("rewound=%d want 0", backend.rewound)
 	}
-	if len(src.effectSeq) != 1 {
-		t.Fatalf("effect seq len=%d want 1", len(src.effectSeq))
+	if len(src.effectSeq) != 2 {
+		t.Fatalf("effect seq len=%d want 2", len(src.effectSeq))
+	}
+	if src.effectTickRate != pcSpeakerEmulatedMixTickRate {
+		t.Fatalf("effectTickRate=%d want %d", src.effectTickRate, pcSpeakerEmulatedMixTickRate)
 	}
 	if len(src.musicSeq) != 1 {
 		t.Fatalf("music seq len=%d want 1", len(src.musicSeq))

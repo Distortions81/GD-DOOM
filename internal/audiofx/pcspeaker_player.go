@@ -14,6 +14,7 @@ import (
 )
 
 const pcSpeakerPCMUpdateRate = 11025
+const pcSpeakerEmulatedMixTickRate = 280
 
 const pcSpeakerPCMCompactThresholdBytes = 64 * 1024
 const pcSpeakerToneInterleaveTargetHz = 140.0
@@ -949,12 +950,11 @@ func (s *pcSpeakerSource) load(seq []sound.PCSpeakerTone, rate int) {
 	s.resetStateLocked()
 }
 
-func (s *pcSpeakerSource) setEffectMixed(seq []sound.PCSpeakerTone, rate int) {
+func (s *pcSpeakerSource) setEffectMixed(seq []sound.PCSpeakerTone, rate int, tickRate int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.effectSeq = seq
+	s.effectSeq, s.effectTickRate = preparePCSpeakerEffectSeqForEmulatedMix(seq, tickRate)
 	s.rate = rate
-	s.effectTickRate = 140
 	s.effectSamplePos = 0
 	s.toneMixSample = 0
 	s.effectMixPhase = 0
@@ -1277,6 +1277,30 @@ func normalizePCSpeakerTickRate(rate int) int {
 	return rate
 }
 
+func preparePCSpeakerEffectSeqForEmulatedMix(seq []sound.PCSpeakerTone, tickRate int) ([]sound.PCSpeakerTone, int) {
+	tickRate = normalizePCSpeakerTickRate(tickRate)
+	if len(seq) == 0 {
+		return nil, tickRate
+	}
+	if tickRate >= pcSpeakerEmulatedMixTickRate {
+		return append([]sound.PCSpeakerTone(nil), seq...), tickRate
+	}
+	if pcSpeakerEmulatedMixTickRate%tickRate != 0 {
+		return append([]sound.PCSpeakerTone(nil), seq...), tickRate
+	}
+	repeat := pcSpeakerEmulatedMixTickRate / tickRate
+	if repeat <= 1 {
+		return append([]sound.PCSpeakerTone(nil), seq...), tickRate
+	}
+	out := make([]sound.PCSpeakerTone, 0, len(seq)*repeat)
+	for _, tone := range seq {
+		for i := 0; i < repeat; i++ {
+			out = append(out, tone)
+		}
+	}
+	return out, pcSpeakerEmulatedMixTickRate
+}
+
 func toneAtTick(seq []sound.PCSpeakerTone, seqTickRate int, outTickRate int, tick int) (sound.PCSpeakerTone, bool) {
 	if len(seq) == 0 || tick < 0 {
 		return sound.PCSpeakerTone{}, false
@@ -1378,7 +1402,7 @@ func (p *PCSpeakerPlayer) Play(seq []sound.PCSpeakerTone) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.src.musicIsActive() {
-		p.src.setEffectMixed(seq, music.OutputSampleRate)
+		p.src.setEffectMixed(seq, music.OutputSampleRate, 140)
 		p.player.SetVolume(p.volume)
 		if !p.player.IsPlaying() {
 			p.player.Play()
@@ -1532,10 +1556,8 @@ func newPCSpeakerRenderSource(variant PCSpeakerVariant, effectSeq []sound.PCSpea
 	}
 	if len(effectSeq) > 0 {
 		if len(musicSeq) > 0 {
-			src.setEffectMixed(effectSeq, music.OutputSampleRate)
-			if effectTickRate > 0 {
-				src.effectTickRate = effectTickRate
-			}
+			mixedSeq, mixedTickRate := preparePCSpeakerEffectSeqForEmulatedMix(effectSeq, effectTickRate)
+			src.setEffectMixed(mixedSeq, music.OutputSampleRate, mixedTickRate)
 		} else {
 			src.load(effectSeq, music.OutputSampleRate)
 			if effectTickRate > 0 {
