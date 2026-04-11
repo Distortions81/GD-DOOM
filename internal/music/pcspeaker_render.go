@@ -9,7 +9,7 @@ import (
 
 const pcSpeakerMusicSubstepsPerTick = 8
 const pcSpeakerMusicTickRate = defaultTicRate * pcSpeakerMusicSubstepsPerTick
-const pcSpeakerInterleaveHoldSubsteps = pcSpeakerMusicSubstepsPerTick * 6
+const pcSpeakerInterleaveHoldSubsteps = pcSpeakerMusicSubstepsPerTick * 10
 const pcSpeakerMinNote = 48
 const pcSpeakerMaxNote = 84
 
@@ -385,13 +385,13 @@ func pcSpeakerPercussionPattern(note, velocity uint8) []uint16 {
 	scale := 0
 	switch {
 	case velocity >= 112:
-		scale = -12
+		scale = -18
 	case velocity >= 80:
-		scale = -6
+		scale = -10
 	case velocity <= 32:
-		scale = 12
+		scale = 18
 	case velocity <= 56:
-		scale = 6
+		scale = 10
 	}
 	adjust := func(div uint16) uint16 {
 		v := int(div) + scale
@@ -400,27 +400,57 @@ func pcSpeakerPercussionPattern(note, velocity uint8) []uint16 {
 		}
 		return uint16(v)
 	}
+	double := func(seq []uint16) []uint16 {
+		out := make([]uint16, 0, len(seq)*2)
+		for _, v := range seq {
+			out = append(out, v, v)
+		}
+		return out
+	}
 	switch {
+	case note <= 36:
+		return double([]uint16{
+			adjust(3600), adjust(3000), adjust(2400), adjust(1900),
+			0, adjust(1500), adjust(1200), adjust(960),
+			0, adjust(760),
+		})
 	case note <= 40:
-		return []uint16{
-			adjust(3200), adjust(2400), adjust(1800), 0,
-			adjust(1400), adjust(1100), 0, adjust(900),
-		}
+		return double([]uint16{
+			adjust(2600), adjust(2100), adjust(1650), 0,
+			adjust(1280), adjust(980), 0, adjust(760),
+			0, adjust(620),
+		})
+	case note <= 45:
+		return double([]uint16{
+			adjust(150), 0, adjust(96), adjust(132),
+			0, adjust(84), 0, adjust(118),
+			adjust(74), 0, adjust(104), 0,
+		})
 	case note <= 50:
-		return []uint16{
-			adjust(180), adjust(120), 0, adjust(96),
-			adjust(144), 0, adjust(108), 0,
-		}
-	case note <= 60:
-		return []uint16{
-			adjust(92), 0, adjust(72), 0,
-			adjust(60), 0, adjust(84), 0,
-		}
+		return double([]uint16{
+			adjust(700), adjust(560), adjust(430), 0,
+			adjust(340), 0, adjust(300), adjust(250),
+			0, adjust(210),
+		})
+	case note <= 55:
+		return double([]uint16{
+			adjust(118), 0, adjust(86), 0,
+			adjust(62), 0, adjust(94), 0,
+			adjust(70), 0, adjust(54), 0,
+		})
+	case note <= 63:
+		return double([]uint16{
+			adjust(92), 0, adjust(64), 0,
+			adjust(48), 0, adjust(40), 0,
+			adjust(58), 0, adjust(44), 0,
+		})
 	default:
-		return []uint16{
-			adjust(56), 0, adjust(44), 0,
+		return double([]uint16{
+			adjust(54), 0, adjust(42), 0,
+			adjust(32), 0, adjust(26), 0,
 			adjust(36), 0, adjust(28), 0,
-		}
+			adjust(24), 0,
+		})
 	}
 }
 
