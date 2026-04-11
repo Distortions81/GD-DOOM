@@ -317,7 +317,7 @@ func modelForVariant(v PCSpeakerVariant) pcSpeakerModel {
 	case PCSpeakerVariantClean:
 		return pcSpeakerModel{
 			hpAlpha:       1.0,
-			gain:          math.MaxInt16 * 0.85,
+			gain:          math.MaxInt16 * 0.85 * 0.5011872336272722,
 			reverbMix:     0,
 			restLength:    0,
 			restStiffness: 0,
