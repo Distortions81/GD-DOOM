@@ -223,7 +223,16 @@ func (s *soundSystem) playEventSpatial(ev soundEvent, origin queuedSoundOrigin, 
 		return
 	}
 	sample = applyVanillaPitch(sample, pitch)
-	s.player.PlaySampleSpatialDelayed(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev))
+	s.player.PlaySampleSpatialDelayedGrouped(sample, audioOrigin, listenerX, listenerY, listenerAngle, mapUsesFullClip, s.monsterVocalPreDelaySamples(ev), singularSoundGroup(ev))
+}
+
+func singularSoundGroup(ev soundEvent) string {
+	switch ev {
+	case soundEventSawUp, soundEventSawIdle, soundEventSawFull, soundEventSawHit:
+		return "chainsaw"
+	default:
+		return ""
+	}
 }
 
 func pcSpeakerSoundEnabled(dsName string) bool {

@@ -3,6 +3,7 @@ package audiofx
 import (
 	"math"
 	"testing"
+	"time"
 
 	"gddoom/internal/platformcfg"
 )
@@ -296,4 +297,47 @@ func absInt(v int) int {
 		return -v
 	}
 	return v
+}
+
+type fakeSpatialBackend struct {
+	playing bool
+	paused  int
+	rewound int
+}
+
+func (f *fakeSpatialBackend) Play()                         { f.playing = true }
+func (f *fakeSpatialBackend) Pause()                        { f.playing = false; f.paused++ }
+func (f *fakeSpatialBackend) Rewind() error                 { f.rewound++; return nil }
+func (f *fakeSpatialBackend) SetBufferSize(_ time.Duration) {}
+func (f *fakeSpatialBackend) SetVolume(_ float64)           {}
+func (f *fakeSpatialBackend) IsPlaying() bool               { return f.playing }
+func (f *fakeSpatialBackend) Close() error                  { f.playing = false; return nil }
+
+func TestSpatialPlayerStopGroupStopsOnlyMatchingVoices(t *testing.T) {
+	chainsawBackend := &fakeSpatialBackend{playing: true}
+	otherBackend := &fakeSpatialBackend{playing: true}
+	p := &SpatialPlayer{
+		voices: []*spatialVoice{
+			{player: chainsawBackend, src: &pcmBufferSource{buf: []byte{1, 2, 3, 4}}, group: "chainsaw"},
+			{player: otherBackend, src: &pcmBufferSource{buf: []byte{5, 6, 7, 8}}, group: "other"},
+		},
+	}
+
+	p.stopGroup("chainsaw")
+
+	if chainsawBackend.paused != 1 || chainsawBackend.rewound != 1 {
+		t.Fatalf("chainsaw backend pause/rewind=%d/%d want 1/1", chainsawBackend.paused, chainsawBackend.rewound)
+	}
+	if otherBackend.paused != 0 || otherBackend.rewound != 0 {
+		t.Fatalf("other backend pause/rewind=%d/%d want 0/0", otherBackend.paused, otherBackend.rewound)
+	}
+	if p.voices[0].group != "" {
+		t.Fatalf("chainsaw group=%q want empty", p.voices[0].group)
+	}
+	if len(p.voices[0].src.buf) != 0 {
+		t.Fatalf("chainsaw src len=%d want 0", len(p.voices[0].src.buf))
+	}
+	if p.voices[1].group != "other" {
+		t.Fatalf("other group=%q want other", p.voices[1].group)
+	}
 }

@@ -57,15 +57,16 @@ type pcmBufferSource struct {
 }
 
 type spatialVoice struct {
-	player *audio.Player
+	player ebitenPlayer
 	src    *pcmBufferSource
 	monoA  []int16
 	monoB  []int16
 	monoC  []int16
+	group  string
 }
 
 type menuVoice struct {
-	player *audio.Player
+	player ebitenPlayer
 	src    *pcmBufferSource
 	monoA  []int16
 	monoB  []int16
@@ -200,11 +201,11 @@ func (p *SpatialPlayer) SetVolume(v float64) {
 }
 
 func (p *SpatialPlayer) PlaySample(sample media.PCMSample) {
-	p.PlaySampleSpatialDelayed(sample, SpatialOrigin{}, 0, 0, 0, false, 0)
+	p.PlaySampleSpatialDelayedGrouped(sample, SpatialOrigin{}, 0, 0, 0, false, 0, "")
 }
 
 func (p *SpatialPlayer) PlaySampleSpatial(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) {
-	p.PlaySampleSpatialDelayed(sample, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, 0)
+	p.PlaySampleSpatialDelayedGrouped(sample, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, 0, "")
 }
 
 func (p *SpatialPlayer) CanPlaySpatial(origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
@@ -216,6 +217,10 @@ func (p *SpatialPlayer) CanPlaySpatial(origin SpatialOrigin, listenerX, listener
 }
 
 func (p *SpatialPlayer) PlaySampleSpatialDelayed(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool, preDelaySamples float64) {
+	p.PlaySampleSpatialDelayedGrouped(sample, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip, preDelaySamples, "")
+}
+
+func (p *SpatialPlayer) PlaySampleSpatialDelayedGrouped(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool, preDelaySamples float64, group string) {
 	if p == nil || p.ctx == nil || p.volume <= 0 {
 		return
 	}
@@ -251,6 +256,9 @@ func (p *SpatialPlayer) PlaySampleSpatialDelayed(sample media.PCMSample, origin 
 	if len(mono) == 0 {
 		return
 	}
+	if group != "" {
+		p.stopGroup(group)
+	}
 	if preDelaySamples < 0 {
 		preDelaySamples = 0
 	}
@@ -268,6 +276,7 @@ func (p *SpatialPlayer) PlaySampleSpatialDelayed(sample media.PCMSample, origin 
 				_ = voice.player.Close()
 				return
 			}
+			voice.group = group
 			voice.player.SetVolume(1)
 			voice.player.Play()
 			return
@@ -283,6 +292,7 @@ func (p *SpatialPlayer) PlaySampleSpatialDelayed(sample media.PCMSample, origin 
 		_ = voice.player.Close()
 		return
 	}
+	voice.group = group
 	voice.player.SetVolume(1)
 	voice.player.Play()
 }
@@ -523,6 +533,22 @@ func (p *SpatialPlayer) Tick() {
 			continue
 		}
 		voice.src.Reset(voice.src.buf[:0])
+		voice.group = ""
+	}
+}
+
+func (p *SpatialPlayer) stopGroup(group string) {
+	if p == nil || group == "" {
+		return
+	}
+	for _, voice := range p.voices {
+		if voice == nil || voice.player == nil || voice.group != group {
+			continue
+		}
+		voice.player.Pause()
+		_ = voice.player.Rewind()
+		voice.src.Reset(voice.src.buf[:0])
+		voice.group = ""
 	}
 }
 
