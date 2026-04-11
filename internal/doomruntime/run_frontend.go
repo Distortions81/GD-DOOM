@@ -458,6 +458,7 @@ func (sg *sessionGame) frontendCycleHUDScale() {
 	}
 	if sg.g.hudScaleStep >= len(sourcePortHUDScaleSteps)-1 {
 		sg.g.hudScaleStep = 0
+		sg.g.hudScaleUserSet = true
 		sg.g.statusBarCacheValid = false
 		sg.g.setHUDMessage(fmt.Sprintf("HUD size %s", sg.g.hudScaleLabel()), 70)
 		return

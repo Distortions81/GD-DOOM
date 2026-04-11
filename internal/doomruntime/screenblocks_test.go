@@ -1,6 +1,7 @@
 package doomruntime
 
 import "testing"
+import "gddoom/internal/platformcfg"
 
 func TestDefaultScreenBlocks(t *testing.T) {
 	if got := defaultScreenBlocks(Options{}); got != doomScreenBlocksFull {
@@ -47,6 +48,25 @@ func TestDefaultHUDScaleStep(t *testing.T) {
 	}
 	if got := defaultHUDScaleStep(Options{StatusPatchBank: map[string]WallTexture{"STBAR": {}}, SourcePortMode: false}); got != 1 {
 		t.Fatalf("defaultHUDScaleStep faithful bottom bar = %d, want 1", got)
+	}
+}
+
+func TestDefaultHUDScaleStepWASMUsesSmallerSourcePortHUD(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	if got := defaultHUDScaleStep(Options{SourcePortMode: true}); got != 0 {
+		t.Fatalf("defaultHUDScaleStep wasm sourceport = %d, want 0", got)
+	}
+}
+
+func TestStatusBarOverlayScaleForWidthClampsToScreenWidth(t *testing.T) {
+	if got := statusBarOverlayScaleForWidth(360, 320, 2); got != 1.125 {
+		t.Fatalf("statusBarOverlayScaleForWidth narrow screen = %v want 1.125", got)
+	}
+	if got := statusBarOverlayScaleForWidth(1920, 320, 2); got != 2 {
+		t.Fatalf("statusBarOverlayScaleForWidth wide screen = %v want 2", got)
 	}
 }
 

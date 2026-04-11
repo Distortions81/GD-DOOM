@@ -410,6 +410,7 @@ type game struct {
 	viewH             int
 	screenBlocks      int
 	hudScaleStep      int
+	hudScaleUserSet   bool
 	hudLogicalLayout  bool
 	State             mapview.ViewState
 
@@ -3346,6 +3347,9 @@ func defaultHUDScaleStep(opts Options) int {
 	if opts.SourcePortMode {
 		targetScale = 4.0
 	}
+	if isWASMBuild() {
+		targetScale = 1.0
+	}
 	if !opts.SourcePortMode && defaultScreenBlocks(opts) == doomScreenBlocksOverlay {
 		targetScale = 1.0
 	}
@@ -3355,6 +3359,29 @@ func defaultHUDScaleStep(opts Options) int {
 		}
 	}
 	return len(sourcePortHUDScaleSteps) - 1
+}
+
+func defaultHUDScaleStepForViewport(opts Options, outsideW, outsideH int) int {
+	step := defaultHUDScaleStep(opts)
+	if !opts.SourcePortMode || !isWASMBuild() {
+		return step
+	}
+	if outsideW < sourcePortDefaultWindowW || outsideH < sourcePortDefaultWindowH {
+		return 0
+	}
+	return step
+}
+
+func (g *game) ensureDefaultHUDScaleForViewport(outsideW, outsideH int) {
+	if g == nil || g.hudScaleUserSet {
+		return
+	}
+	next := defaultHUDScaleStepForViewport(g.opts, outsideW, outsideH)
+	if next == g.hudScaleStep {
+		return
+	}
+	g.hudScaleStep = next
+	g.statusBarCacheValid = false
 }
 
 func (g *game) hudScaleValue() float64 {
@@ -3509,6 +3536,7 @@ func (g *game) adjustHUDScale(dir int) bool {
 		return false
 	}
 	g.hudScaleStep = next
+	g.hudScaleUserSet = true
 	g.statusBarCacheValid = false
 	g.setHUDMessage(fmt.Sprintf("HUD size %s", g.hudScaleLabel()), 70)
 	return true
@@ -3994,6 +4022,7 @@ func (g *game) cyclePauseOption() {
 		}
 		if g.hudScaleStep >= len(sourcePortHUDScaleSteps)-1 {
 			g.hudScaleStep = 0
+			g.hudScaleUserSet = true
 			g.statusBarCacheValid = false
 			g.setHUDMessage(fmt.Sprintf("HUD size %s", g.hudScaleLabel()), 70)
 			return

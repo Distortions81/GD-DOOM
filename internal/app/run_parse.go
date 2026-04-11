@@ -2989,7 +2989,6 @@ func (g *iwadPickerGame) sampleTouchControls() {
 	if g == nil {
 		return
 	}
-	logicalW, logicalH := 320, 200
 	justPressedIDs := inpututil.AppendJustPressedTouchIDs(nil)
 	ids := append([]ebiten.TouchID(nil), justPressedIDs...)
 	for _, id := range ebiten.AppendTouchIDs(nil) {
@@ -3007,11 +3006,12 @@ func (g *iwadPickerGame) sampleTouchControls() {
 	if len(justPressedIDs) > 0 || len(ids) > 0 {
 		g.touchSeen = true
 	}
+	buttons := g.pickerTouchButtons(320, 200)
 	held := pickerTouchActionMask(0)
 	for _, id := range ids {
-		x, y := ebiten.TouchPosition(id)
-		for _, button := range g.pickerTouchButtons(logicalW, logicalH) {
-			if pickerTouchButtonContains(button, float64(x), float64(y)) {
+		lx, ly := ebiten.TouchPosition(id)
+		for _, button := range buttons {
+			if pickerTouchButtonContains(button, float64(lx), float64(ly)) {
 				held |= button.action
 				break
 			}
@@ -3072,29 +3072,7 @@ func (g *iwadPickerGame) drawPickerTouchControls(screen *ebiten.Image) {
 		labelY := int(button.y + button.h*0.5 - 4)
 		ebitenutil.DebugPrintAt(screen, button.label, labelX, labelY)
 	}
-	drawPickerTouchSeenStatus(screen, g.touchSeen)
 	drawActivePickerTouchPoints(screen)
-}
-
-func drawPickerTouchSeenStatus(screen *ebiten.Image, seen bool) {
-	if screen == nil {
-		return
-	}
-	label := "TOUCH: none"
-	fill := color.RGBA{R: 24, G: 24, B: 24, A: 160}
-	border := color.RGBA{R: 88, G: 88, B: 88, A: 180}
-	if seen {
-		label = "TOUCH: seen"
-		fill = color.RGBA{R: 24, G: 40, B: 24, A: 170}
-		border = color.RGBA{R: 96, G: 160, B: 96, A: 190}
-	}
-	x, y, w, h := 8.0, 8.0, 120.0, 24.0
-	ebitenutil.DrawRect(screen, x, y, w, h, fill)
-	ebitenutil.DrawRect(screen, x, y, w, 2, border)
-	ebitenutil.DrawRect(screen, x, y+h-2, w, 2, border)
-	ebitenutil.DrawRect(screen, x, y, 2, h, border)
-	ebitenutil.DrawRect(screen, x+w-2, y, 2, h, border)
-	ebitenutil.DebugPrintAt(screen, label, int(x+8), int(y+6))
 }
 
 func drawActivePickerTouchPoints(screen *ebiten.Image) {

@@ -155,10 +155,18 @@ func (sg *sessionGame) drawFaithfulPresented(dst, src *ebiten.Image) {
 	dst.Clear()
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
-	rw, rh, ox, oy := fitRect(sw, sh, vw, vh)
+	rw, rh, ox, oy := faithfulPresentationRect(sw, sh, sg != nil && sg.opts.DisableAspectCorrection)
 	op.GeoM.Scale(float64(rw)/float64(vw), float64(rh)/float64(vh))
 	op.GeoM.Translate(float64(ox), float64(oy))
 	dst.DrawImage(src, op)
+}
+
+func faithfulPresentationRect(sw, sh int, disableAspectCorrection bool) (rw, rh, ox, oy int) {
+	aspectH := faithfulAspectLogicalH
+	if disableAspectCorrection {
+		aspectH = doomLogicalH
+	}
+	return fitRect(sw, sh, doomLogicalW, aspectH)
 }
 
 func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {
@@ -215,13 +223,7 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 	if sg.palettePostEnabled() {
 		src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
 	}
-	dw := max(dst.Bounds().Dx(), 1)
-	dh := max(dst.Bounds().Dy(), 1)
-	op := &ebiten.DrawImageOptions{}
-	op.Filter = ebiten.FilterNearest
-	op.GeoM.Scale(float64(dw)/float64(vw), float64(dh)/float64(vh))
-	dst.Fill(color.Black)
-	dst.DrawImage(src, op)
+	sg.drawFaithfulPresented(dst, src)
 }
 
 func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {

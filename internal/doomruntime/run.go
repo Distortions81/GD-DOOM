@@ -665,31 +665,11 @@ func (sg *sessionGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebi
 		screen.DrawImage(offscreen, &op)
 		return
 	}
-	if sg.opts.SourcePortMode {
-		op := &sg.finalScreenDrawOp
-		*op = ebiten.DrawImageOptions{}
-		op.GeoM = geoM
-		op.Filter = ebiten.FilterNearest
-		screen.DrawImage(offscreen, op)
-		return
-	}
-
-	aspectH := faithfulAspectLogicalH
-	if sg.opts.DisableAspectCorrection {
-		aspectH = doomLogicalH
-	}
-	sw := max(screen.Bounds().Dx(), 1)
-	sh := max(screen.Bounds().Dy(), 1)
-	rw, rh, ox, oy := fitRect(sw, sh, doomLogicalW, aspectH)
-
-	screen.Fill(color.Black)
-	ow := max(offscreen.Bounds().Dx(), 1)
-	oh := max(offscreen.Bounds().Dy(), 1)
 	op := &sg.finalScreenDrawOp
 	*op = ebiten.DrawImageOptions{}
+	screen.Fill(color.Black)
+	op.GeoM = geoM
 	op.Filter = ebiten.FilterNearest
-	op.GeoM.Scale(float64(rw)/float64(ow), float64(rh)/float64(oh))
-	op.GeoM.Translate(float64(ox), float64(oy))
 	screen.DrawImage(offscreen, op)
 }
 
@@ -781,6 +761,7 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	}
 	sg.touch.screenW = max(outsideWidth, 1)
 	sg.touch.screenH = max(outsideHeight, 1)
+	sg.g.ensureDefaultHUDScaleForViewport(outsideWidth, outsideHeight)
 	aspectH := faithfulAspectLogicalH
 	if sg.opts.DisableAspectCorrection {
 		aspectH = doomLogicalH

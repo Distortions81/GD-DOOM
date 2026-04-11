@@ -97,7 +97,7 @@ func (g *game) drawStatusBarCacheImage(screen *ebiten.Image, state statusBarCach
 	op.Filter = ebiten.FilterNearest
 	switch state.mode {
 	case statusBarDisplayOverlay:
-		scale := math.Max(1.0, state.hudScale)
+		scale := statusBarOverlayScaleForWidth(g.viewW, g.statusBarCacheImg.Bounds().Dx(), state.hudScale)
 		scaleY := scale * aspectY
 		x := (float64(g.viewW) - float64(g.statusBarCacheImg.Bounds().Dx())*scale) * 0.5
 		y := float64(g.viewH) - float64(g.statusBarCacheImg.Bounds().Dy())*scaleY
@@ -109,6 +109,17 @@ func (g *game) drawStatusBarCacheImage(screen *ebiten.Image, state statusBarCach
 		op.GeoM.Translate(ox, oy+statusBarLogicalY*sy*aspectY)
 	}
 	screen.DrawImage(g.statusBarCacheImg, op)
+}
+
+func statusBarOverlayScaleForWidth(viewW, barW int, hudScale float64) float64 {
+	if hudScale <= 0 {
+		hudScale = 1
+	}
+	maxScale := float64(max(viewW, 1)) / float64(max(barW, 1))
+	if maxScale > 0 && hudScale > maxScale {
+		return maxScale
+	}
+	return hudScale
 }
 
 func (g *game) drawStatusBarCached(screen *ebiten.Image, state statusBarCacheState) {

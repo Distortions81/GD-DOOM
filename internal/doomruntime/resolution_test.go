@@ -196,6 +196,86 @@ func TestSourcePortLayoutWASMOversizeDoesNotRepeatedlyInvokeRuntimeLayout(t *tes
 	}
 }
 
+func TestSourcePortLayoutWASMSmallScreenUses100PercentHUD(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	rt := &layoutCountRuntime{
+		viewW:      640,
+		viewH:      360,
+		skyOutputW: 640,
+		skyOutputH: 360,
+	}
+	g := &game{
+		opts:             Options{SourcePortMode: true},
+		viewW:            1,
+		viewH:            1,
+		skyOutputW:       1,
+		skyOutputH:       1,
+		hudScaleStep:     defaultHUDScaleStep(Options{SourcePortMode: true}),
+		hudLogicalLayout: false,
+	}
+	sg := &sessionGame{
+		opts: Options{SourcePortMode: true},
+		g:    g,
+		rt:   rt,
+	}
+
+	layoutW, layoutH := sg.Layout(640, 360)
+	if layoutW != 640 || layoutH != 360 {
+		t.Fatalf("layout=%dx%d want 640x360", layoutW, layoutH)
+	}
+	if got := sg.g.hudScaleStep; got != 0 {
+		t.Fatalf("hudScaleStep=%d want 0 for small screen", got)
+	}
+
+	sg.g.hudScaleStep = 3
+	sg.g.hudScaleUserSet = true
+	layoutW, layoutH = sg.Layout(640, 360)
+	if layoutW != 640 || layoutH != 360 {
+		t.Fatalf("layout after manual set=%dx%d want 640x360", layoutW, layoutH)
+	}
+	if got := sg.g.hudScaleStep; got != 3 {
+		t.Fatalf("hudScaleStep after manual set=%d want 3", got)
+	}
+}
+
+func TestSourcePortLayoutNativeSmallScreenKeepsDefaultHUD(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(false)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	rt := &layoutCountRuntime{
+		viewW:      640,
+		viewH:      360,
+		skyOutputW: 640,
+		skyOutputH: 360,
+	}
+	g := &game{
+		opts:             Options{SourcePortMode: true},
+		viewW:            1,
+		viewH:            1,
+		skyOutputW:       1,
+		skyOutputH:       1,
+		hudScaleStep:     defaultHUDScaleStep(Options{SourcePortMode: true}),
+		hudLogicalLayout: false,
+	}
+	sg := &sessionGame{
+		opts: Options{SourcePortMode: true},
+		g:    g,
+		rt:   rt,
+	}
+
+	layoutW, layoutH := sg.Layout(640, 360)
+	if layoutW != 640 || layoutH != 360 {
+		t.Fatalf("layout=%dx%d want 640x360", layoutW, layoutH)
+	}
+	if got := sg.g.hudScaleStep; got != defaultHUDScaleStep(Options{SourcePortMode: true}) {
+		t.Fatalf("hudScaleStep=%d want native default", got)
+	}
+}
+
 func TestFaithfulLayoutUsesOutsideSizeForPresentationButKeepsInternalBuffer(t *testing.T) {
 	rt := &layoutCountRuntime{
 		viewW:      faithfulBufferW,
@@ -242,6 +322,36 @@ func TestFitRectCentersAspectPreservingImage(t *testing.T) {
 	}
 	if oy != 900 {
 		t.Fatalf("fit offsetY=%d want 900", oy)
+	}
+}
+
+func TestFaithfulPresentationRectUsesAspectCorrectedTarget(t *testing.T) {
+	rw, rh, ox, oy := faithfulPresentationRect(1170, 2532, false)
+	if rw != 1170 {
+		t.Fatalf("faithful fit width=%d want 1170", rw)
+	}
+	if rh != 877 {
+		t.Fatalf("faithful fit height=%d want 877", rh)
+	}
+	if ox != 0 {
+		t.Fatalf("faithful fit offsetX=%d want 0", ox)
+	}
+	if oy != 827 {
+		t.Fatalf("faithful fit offsetY=%d want 827", oy)
+	}
+}
+
+func TestTouchLayoutTransformMapsThroughLetterboxedPillarBars(t *testing.T) {
+	tr := newTouchLayoutTransform(2532, 1170, 320, 200)
+	lx, ly, ok := tr.screenToLocal(1266, 585)
+	if !ok {
+		t.Fatal("expected center point to map into local content")
+	}
+	if lx < 159.5 || lx > 160.5 || ly < 99.5 || ly > 100.5 {
+		t.Fatalf("screen center mapped to %.2f,%.2f want approx 160,100", lx, ly)
+	}
+	if _, _, ok := tr.screenToLocal(100, 585); ok {
+		t.Fatal("expected pillar-bar point to be rejected")
 	}
 }
 

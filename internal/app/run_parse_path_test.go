@@ -243,6 +243,20 @@ func TestPickerTouchButtonsPlaceEnterOnBottomRight(t *testing.T) {
 	}
 }
 
+func TestPickerTouchButtonsUseLogicalPickerCoordinates(t *testing.T) {
+	game := &iwadPickerGame{}
+	buttons := game.pickerTouchButtons(320, 200)
+	if len(buttons) != 4 {
+		t.Fatalf("buttons len=%d want=4", len(buttons))
+	}
+	enter := buttons[3]
+	x := int(enter.x + enter.w/2)
+	y := int(enter.y + enter.h/2)
+	if !pickerTouchButtonContains(enter, float64(x), float64(y)) {
+		t.Fatalf("logical picker touch %d,%d should hit ENTER button", x, y)
+	}
+}
+
 func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
 	game, err := newIWADPickerGame([]iwadChoice{
 		{Path: "/tmp/doom1.wad", Label: "DOOM Shareware"},
