@@ -226,7 +226,7 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 	if _, _, _, _, err := readHello(vconn); err != nil {
 		t.Fatalf("readHello viewer response: %v", err)
 	}
-	if _, _, err := readFrame(vconn); err != nil {
+	if _, _, err := readFrameWithDeadline(vconn, relayLocalTestTimeout); err != nil {
 		t.Fatalf("read join keyframe: %v", err)
 	}
 
@@ -241,7 +241,7 @@ func TestRelayServerDoesNotForwardPeriodicKeyframesToActiveViewer(t *testing.T) 
 		t.Fatalf("write tic batch: %v", err)
 	}
 
-	header, gotPayload, err := readFrame(vconn)
+	header, gotPayload, err := readFrameWithDeadline(vconn, relayLocalTestTimeout)
 	if err != nil {
 		t.Fatalf("read forwarded frame: %v", err)
 	}
