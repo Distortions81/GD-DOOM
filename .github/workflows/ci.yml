@@ -34,8 +34,7 @@ jobs:
             libxi-dev \
             libxinerama-dev \
             libxrandr-dev \
-            libxxf86vm-dev \
-            xvfb
+            libxxf86vm-dev
 
       - name: Run test suite
-        run: xvfb-run -a go test ./...
+        run: go test ./...

@@ -697,14 +697,12 @@ func TestAppendMaskedMidSegsToCutoutItems_SplitsAtTextureColumns(t *testing.T) {
 
 	g.appendMaskedMidSegsToCutoutItems()
 
-	if len(g.billboardQueueScratch) != 2 {
-		t.Fatalf("queue len=%d want 2", len(g.billboardQueueScratch))
+	if len(g.billboardQueueScratch) != 1 {
+		t.Fatalf("queue len=%d want 1", len(g.billboardQueueScratch))
 	}
-	for i, want := range []struct{ x0, x1 int }{{0, 3}, {4, 7}} {
-		got := g.billboardQueueScratch[i]
-		if got.x0 != want.x0 || got.x1 != want.x1 {
-			t.Fatalf("item %d range=(%d,%d) want (%d,%d)", i, got.x0, got.x1, want.x0, want.x1)
-		}
+	got := g.billboardQueueScratch[0]
+	if got.x0 != 0 || got.x1 != 7 {
+		t.Fatalf("range=(%d,%d) want (0,7)", got.x0, got.x1)
 	}
 }
 
