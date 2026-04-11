@@ -16,6 +16,8 @@ const pcSpeakerInterleaveMinCycles = 1.0
 const pcSpeakerInterleaveMaxHoldSubsteps = 1000
 const pcSpeakerInterleaveThreeNoteBoost = 1.5
 const pcSpeakerInterleaveFourNoteBoost = 2.0
+const pcSpeakerShortNoteDurationSubsteps = 16
+const pcSpeakerShortNoteGraceSubsteps = 6
 
 type nullSynth struct{}
 
@@ -48,6 +50,7 @@ type pcSpeakerNoteState struct {
 type pcSpeakerCandidate struct {
 	start    uint64
 	age      uint64
+	duration uint64
 	remaining uint64
 	audible  bool
 	priority int
@@ -203,6 +206,7 @@ func (r *pcSpeakerRenderer) activeCandidates() []pcSpeakerCandidate {
 		candidates = append(candidates, pcSpeakerCandidate{
 			start:    start,
 			age:      age,
+			duration: maxAge,
 			remaining: remaining,
 			audible:  audible,
 			priority: pcSpeakerCandidatePriority(n, age, audible),
@@ -416,22 +420,19 @@ func pcSpeakerInterleaveHoldSubsteps(candidates []pcSpeakerCandidate) int {
 
 func pcSpeakerUrgentShortCandidate(candidates []pcSpeakerCandidate) (pcSpeakerCandidate, bool) {
 	bestIdx := -1
-	bestCycles := math.MaxFloat64
+	bestAge := ^uint64(0)
 	for i, c := range candidates {
-		if !c.audible || c.remaining == 0 || c.divisor == 0 {
+		if !c.audible || c.duration == 0 || c.duration == ^uint64(0) {
 			continue
 		}
-		hz := float64(sound.PCSpeakerPITHz()) / float64(c.divisor)
-		if hz <= 0 {
+		if c.duration > pcSpeakerShortNoteDurationSubsteps {
 			continue
 		}
-		remainingSeconds := float64(c.remaining) / float64(pcSpeakerMusicTickRate)
-		cyclesLeft := remainingSeconds * hz
-		if cyclesLeft > 2.0 {
+		if c.age >= pcSpeakerShortNoteGraceSubsteps || c.age >= c.duration {
 			continue
 		}
-		if cyclesLeft < bestCycles {
-			bestCycles = cyclesLeft
+		if c.age < bestAge {
+			bestAge = c.age
 			bestIdx = i
 		}
 	}
