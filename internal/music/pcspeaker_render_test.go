@@ -97,7 +97,7 @@ func TestPCSpeakerRendererPercussionDoesNotHideMelody(t *testing.T) {
 		t.Fatal("expected melody on percussion gap")
 	}
 	if !third.Active || third.Divisor == second.Divisor {
-		t.Fatal("expected later percussion hit to interrupt melody again")
+		t.Fatal("expected the next percussion hit to interrupt melody again")
 	}
 }
 
