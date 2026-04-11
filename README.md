@@ -39,6 +39,10 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Detailed voice controls: microphone streaming includes codec choices, sample-rate control, automatic gain control, a noise gate, push-to-talk, and an in-game input meter.
 - Modern music playback choices: on current platforms you can choose between a built-in FM-synth style soundtrack and a SoundFont-based MIDI path.
 - Detailed PC speaker emulation: on current platforms, `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
+- Linux hardware PC speaker output: on Linux, `-pc-speaker-hw` drives the real `/dev/input/by-path/…pcspkr` device directly — no audio card involved, just the actual buzzer on the motherboard.
+- Analog touch controls: the browser and mobile build includes a dual-pad touch layout with analog joystick input — left pad for movement and strafe, right pad for turning, with fire/use activation at the outer edges of each pad and a thumb indicator showing current deflection.
+- Episode finales: the Doom episode end sequences (text crawl + cast screen + bunny screen) play correctly after completing an episode.
+- Peer co-op multiplayer: lockstep co-op over the GDSF relay, with per-tic input sync, roster management, and automatic desync detection via periodic state checksums.
 - Browser play: the same project also has a playable browser version with local WAD loading.
 
 ### Rendering
@@ -57,6 +61,7 @@ The game still runs on Doom-style simulation and classic map data. The extra wor
 - `impsynth` for a built-in FM-synth style closer to classic Doom hardware.
 - `meltysynth` for SoundFont-based MIDI playback.
 - Optional PC speaker sound effects via `-pc-speaker`.
+- Linux hardware PC speaker output via `-pc-speaker-hw` using the real buzzer device.
 - Separate music and SFX volume controls.
 - Stereo music playback with adjustable width.
 - In-game music menu and browser music flow.
@@ -67,7 +72,7 @@ If you just want the short version:
 - `impsynth` sounds more like classic FM-synth Doom.
 - `meltysynth` is the choice if you want a different MIDI playback character, similar in spirit to choosing a different MIDI device or synth, through SoundFont-based playback.
 
-`-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box.
+`-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box. On Linux, `-pc-speaker-hw` goes a step further and routes output to the actual hardware buzzer (`/dev/input/by-path/…pcspkr`) — no audio card or sample mixing involved.
 
 ### Runtime
 
@@ -130,6 +135,7 @@ Frequently used options:
 
 - `-sourceport-mode` starts in the smoother, higher-fidelity Source Port profile.
 - `-pc-speaker` switches sound effects to the PC speaker emulation path.
+- `-pc-speaker-hw` (Linux only) routes PC speaker output to the real hardware buzzer device instead of the audio card.
 - `-music-backend=auto|impsynth|meltysynth` selects the music style/engine.
 - `-soundfont=PATH` selects an external `.sf2` file for `meltysynth`.
 - `-detail-level=N` sets starting image detail and `-auto-detail` tries to keep the game near 60 FPS automatically.
@@ -205,6 +211,24 @@ Notes:
 - The wire format is documented in [`netplay-protocol.md`](/home/dist/github/GD-DOOM/netplay-protocol.md).
 
 This is closer to live spectating than traditional network co-op. One machine plays, the others watch the run as it happens, and chat and voice ride alongside that live stream.
+
+## Co-op Multiplayer
+
+GD-DOOM also supports peer co-op play over the same GDSF relay used for watch sessions. Co-op runs the game in lockstep: every player sends their input tics to the relay each frame, and the sim only advances once all peers have checked in for that tic.
+
+Connect as a co-op peer:
+
+```bash
+go run . -wad DOOM.WAD -coop -watch-session=1
+```
+
+The canonical peer (slot 1 / the session host) emits a state checksum roughly every 5 seconds. All other peers verify the hash and automatically request a keyframe resync from the server if their local state has drifted. The checksum covers RNG state, all player positions and stats, moving sector heights, and active monster states, so most forms of desync are caught quickly.
+
+Notes:
+
+- All peers must use the same base WAD and mod files, same as watch sessions.
+- The co-op session uses the same relay server as `-broadcast`/`-watch` — run `go run ./cmd/gdsfrelay` first.
+- Session slot assignment follows the same scheme as watch sessions; the host is slot 1.
 
 ## Cheats
 
@@ -314,6 +338,8 @@ Browser builds can also download and cache SoundFonts for `meltysynth`, so the w
 
 The browser build is meant to be genuinely playable, not just a minimal demo. It shares most of the same runtime code, but a few features are still platform-specific, especially around local microphone capture.
 
+On touch devices the browser build shows a dual-pad on-screen layout: the left pad controls forward/back movement and strafing, the right pad handles turning. Both pads use analog joystick input — deflection scales continuously from zero to full speed rather than snapping to fixed speeds. Fire and use activate only when your thumb reaches the outer edge of the respective pad, which keeps accidental shots from killing accidental strafes. A small indicator follows your thumb to show current deflection.
+
 ## Development
 
 Run the test suite:
@@ -328,6 +354,7 @@ If you are working on the engine itself, extra utilities are included under [`cm
 - [`cmd/wasmserve`](/home/dist/github/GD-DOOM/cmd/wasmserve) serves the browser build locally.
 - [`cmd/demotracecmp`](/home/dist/github/GD-DOOM/cmd/demotracecmp) compares two demo state logs to help find mismatches or desyncs.
 - [`cmd/musicwav`](/home/dist/github/GD-DOOM/cmd/musicwav) exports in-game music tracks to WAV files, including `impsynth`, `pcspeaker`, `pcspeaker-clean`, and `pcspeaker-piezo` modes with optional single-song selection via `-song`.
+- [`cmd/pcspeaker`](/home/dist/github/GD-DOOM/cmd/pcspeaker) captures live PC speaker output, interleaves music and SFX streams, and can drive the Linux hardware buzzer directly for testing.
 - [`cmd/mapprobe`](/home/dist/github/GD-DOOM/cmd/mapprobe) inspects map data such as sectors, lines, tags, and things.
 - [`cmd/mapaudit`](/home/dist/github/GD-DOOM/cmd/mapaudit) generates a report about oddities in local Doom map data.
 - [`cmd/wadtool`](/home/dist/github/GD-DOOM/cmd/wadtool) extracts individual files from WADs.
