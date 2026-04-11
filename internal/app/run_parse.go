@@ -3030,7 +3030,7 @@ func (g *iwadPickerGame) pickerTouchActivated(action pickerTouchActionMask) bool
 }
 
 func (g *iwadPickerGame) shouldDrawPickerTouchControls() bool {
-	return g != nil && (g.touchSeen || platformcfg.IsWASMBuild())
+	return g != nil && g.touchSeen
 }
 
 func (g *iwadPickerGame) pickerBack() error {

@@ -5,7 +5,6 @@ import (
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
-	"gddoom/internal/platformcfg"
 	"gddoom/internal/sessionflow"
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -192,13 +191,13 @@ func TestSkipInputTriggeredUsesTouchEnter(t *testing.T) {
 	}
 }
 
-func TestShouldDrawTouchControlsVisibleByDefaultInWASMMode(t *testing.T) {
-	prev := platformcfg.ForcedWASMMode()
-	platformcfg.SetForcedWASMMode(true)
-	defer platformcfg.SetForcedWASMMode(prev)
-
+func TestShouldDrawTouchControlsOnlyAfterTouchSeen(t *testing.T) {
 	sg := &sessionGame{}
+	if sg.shouldDrawTouchControls() {
+		t.Fatal("shouldDrawTouchControls() = true, want false before touch is seen")
+	}
+	sg.touch.seen = true
 	if !sg.shouldDrawTouchControls() {
-		t.Fatal("shouldDrawTouchControls() = false, want true in wasm mode")
+		t.Fatal("shouldDrawTouchControls() = false, want true after touch is seen")
 	}
 }

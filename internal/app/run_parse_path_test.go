@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"gddoom/internal/music"
-	"gddoom/internal/platformcfg"
 )
 
 func TestResolveIWADAliasPathResolvesRequestedPathCaseInsensitively(t *testing.T) {
@@ -200,14 +199,14 @@ func TestWASMPickerStartsAtIWADStageEvenWithSingleChoice(t *testing.T) {
 	}
 }
 
-func TestPickerTouchControlsVisibleByDefaultInWASMMode(t *testing.T) {
-	prev := platformcfg.ForcedWASMMode()
-	platformcfg.SetForcedWASMMode(true)
-	defer platformcfg.SetForcedWASMMode(prev)
-
+func TestPickerTouchControlsOnlyAfterTouchSeen(t *testing.T) {
 	game := &iwadPickerGame{}
+	if game.shouldDrawPickerTouchControls() {
+		t.Fatal("shouldDrawPickerTouchControls() = true, want false before touch is seen")
+	}
+	game.touchSeen = true
 	if !game.shouldDrawPickerTouchControls() {
-		t.Fatal("shouldDrawPickerTouchControls() = false, want true in wasm mode")
+		t.Fatal("shouldDrawPickerTouchControls() = false, want true after touch is seen")
 	}
 }
 

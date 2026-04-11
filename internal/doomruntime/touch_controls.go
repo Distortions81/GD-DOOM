@@ -5,8 +5,6 @@ import (
 	"image/color"
 	"math"
 
-	"gddoom/internal/platformcfg"
-
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -20,6 +18,10 @@ const (
 	touchActionDown
 	touchActionLeft
 	touchActionRight
+	touchActionStrafeLeft
+	touchActionStrafeRight
+	touchActionTurnLeft
+	touchActionTurnRight
 	touchActionFire
 	touchActionUseEnter
 	touchActionBack
@@ -42,6 +44,14 @@ type touchControlButton struct {
 	w      float64
 	h      float64
 }
+
+type touchPad struct {
+	cx     float64
+	cy     float64
+	radius float64
+}
+
+const touchPadGraceRatio = 0.22
 
 type touchLayoutTransform struct {
 	screenW int
@@ -109,9 +119,13 @@ func touchActionForBinding(action bindingAction) touchActionMask {
 	case bindingMoveBackward:
 		return touchActionDown
 	case bindingTurnLeft:
-		return touchActionLeft
+		return touchActionTurnLeft
 	case bindingTurnRight:
-		return touchActionRight
+		return touchActionTurnRight
+	case bindingStrafeLeft:
+		return touchActionStrafeLeft
+	case bindingStrafeRight:
+		return touchActionStrafeRight
 	case bindingFire:
 		return touchActionFire
 	case bindingUse:
@@ -151,20 +165,30 @@ func (sg *sessionGame) sampleTouchController() {
 	if len(justPressedIDs) > 0 || len(ids) > 0 {
 		sg.touch.seen = true
 	}
-	buttons := sg.touchButtons(localW, localH)
 	held := touchActionMask(0)
-	for _, id := range ids {
-		x, y := ebiten.TouchPosition(id)
-		for _, button := range buttons {
-			screenRect := transform.localToScreenRect(image.Rect(
-				int(math.Floor(button.x)),
-				int(math.Floor(button.y)),
-				int(math.Ceil(button.x+button.w)),
-				int(math.Ceil(button.y+button.h)),
-			))
-			if pointInRect(screenRect, x, y) {
-				held |= button.action
-				break
+	if sg.gameplayTouchUsesPads() {
+		leftPad, rightPad := sg.gameplayTouchPads(localW, localH)
+		leftScreen := touchPadToScreen(transform, leftPad)
+		rightScreen := touchPadToScreen(transform, rightPad)
+		for _, id := range ids {
+			x, y := ebiten.TouchPosition(id)
+			held |= gameplayPadActions(leftScreen, rightScreen, float64(x), float64(y))
+		}
+	} else {
+		buttons := sg.touchButtons(localW, localH)
+		for _, id := range ids {
+			x, y := ebiten.TouchPosition(id)
+			for _, button := range buttons {
+				screenRect := transform.localToScreenRect(image.Rect(
+					int(math.Floor(button.x)),
+					int(math.Floor(button.y)),
+					int(math.Ceil(button.x+button.w)),
+					int(math.Ceil(button.y+button.h)),
+				))
+				if pointInRect(screenRect, x, y) {
+					held |= button.action
+					break
+				}
 			}
 		}
 	}
@@ -200,7 +224,17 @@ func (sg *sessionGame) touchJustPressed(action touchActionMask) bool {
 }
 
 func (sg *sessionGame) shouldDrawTouchControls() bool {
-	return sg != nil && (sg.touch.seen || platformcfg.IsWASMBuild())
+	return sg != nil && sg.touch.seen
+}
+
+func (sg *sessionGame) gameplayTouchUsesPads() bool {
+	return sg != nil &&
+		sg.g != nil &&
+		!sg.frontend.Active &&
+		!sg.intermission.state.Active &&
+		!sg.finale.Active &&
+		!sg.quitPrompt.Active &&
+		!sg.transitionActive()
 }
 
 func (sg *sessionGame) touchButtons(sw, sh int) []touchControlButton {
@@ -263,6 +297,76 @@ func (sg *sessionGame) touchButtons(sw, sh int) []touchControlButton {
 	}
 }
 
+func (sg *sessionGame) gameplayTouchPads(sw, sh int) (touchPad, touchPad) {
+	radius := float64(minInt(sw, sh)) * 0.15
+	if radius < 54 {
+		radius = 54
+	}
+	if radius > 96 {
+		radius = 96
+	}
+	margin := radius * 0.55
+	bottom := float64(sh) - margin - radius
+	left := touchPad{
+		cx:     margin + radius,
+		cy:     bottom,
+		radius: radius,
+	}
+	right := touchPad{
+		cx:     float64(sw) - margin - radius,
+		cy:     bottom,
+		radius: radius,
+	}
+	return left, right
+}
+
+func touchPadToScreen(transform touchLayoutTransform, pad touchPad) touchPad {
+	if transform.identity() {
+		return pad
+	}
+	sx := float64(transform.rw) / float64(transform.localW)
+	sy := float64(transform.rh) / float64(transform.localH)
+	return touchPad{
+		cx:     float64(transform.ox) + pad.cx*sx,
+		cy:     float64(transform.oy) + pad.cy*sy,
+		radius: pad.radius * minFloat(sx, sy),
+	}
+}
+
+func gameplayPadActions(leftPad, rightPad touchPad, x, y float64) touchActionMask {
+	if mask, ok := classifyPadTouch(leftPad, x, y, touchActionStrafeLeft, touchActionStrafeRight, touchActionUp, touchActionDown); ok {
+		return mask
+	}
+	if mask, ok := classifyPadTouch(rightPad, x, y, touchActionTurnLeft, touchActionTurnRight, touchActionFire, touchActionUseEnter); ok {
+		return mask
+	}
+	return 0
+}
+
+func classifyPadTouch(pad touchPad, x, y float64, leftAction, rightAction, upAction, downAction touchActionMask) (touchActionMask, bool) {
+	dx := x - pad.cx
+	dy := y - pad.cy
+	radius := maxFloat(pad.radius, 1)
+	hitRadius := radius * (1 + touchPadGraceRatio)
+	distSq := dx*dx + dy*dy
+	if distSq > hitRadius*hitRadius {
+		return 0, false
+	}
+	deadzone := radius * 0.24
+	mask := touchActionMask(0)
+	if dx <= -deadzone {
+		mask |= leftAction
+	} else if dx >= deadzone {
+		mask |= rightAction
+	}
+	if dy <= -deadzone {
+		mask |= upAction
+	} else if dy >= deadzone {
+		mask |= downAction
+	}
+	return mask, true
+}
+
 func touchButtonContains(button touchControlButton, x, y float64) bool {
 	return x >= button.x && x < button.x+button.w && y >= button.y && y < button.y+button.h
 }
@@ -279,6 +383,11 @@ func (sg *sessionGame) drawTouchControls(screen *ebiten.Image) {
 	sh := max(screen.Bounds().Dy(), 1)
 	localW, localH := sg.touchControlLayoutSize(sw, sh)
 	transform := newTouchLayoutTransform(sw, sh, localW, localH)
+	if sg.gameplayTouchUsesPads() {
+		sg.drawGameplayTouchPads(screen, transform, localW, localH)
+		drawActiveTouchPoints(screen)
+		return
+	}
 	buttons := sg.touchButtons(localW, localH)
 	for _, button := range buttons {
 		drawButton := transform.localToScreenRect(image.Rect(
@@ -310,6 +419,99 @@ func (sg *sessionGame) drawTouchControls(screen *ebiten.Image) {
 	drawActiveTouchPoints(screen)
 }
 
+func (sg *sessionGame) drawGameplayTouchPads(screen *ebiten.Image, transform touchLayoutTransform, localW, localH int) {
+	leftPad, rightPad := sg.gameplayTouchPads(localW, localH)
+	leftScreen := touchPadToScreen(transform, leftPad)
+	rightScreen := touchPadToScreen(transform, rightPad)
+	sg.drawMovementTouchPad(screen, leftScreen, sg.touch.held&(touchActionUp|touchActionDown|touchActionStrafeLeft|touchActionStrafeRight))
+	sg.drawActionTouchPad(screen, rightScreen, sg.touch.held&(touchActionFire|touchActionUseEnter|touchActionTurnLeft|touchActionTurnRight))
+}
+
+func (sg *sessionGame) drawMovementTouchPad(screen *ebiten.Image, pad touchPad, held touchActionMask) {
+	fill := color.RGBA{R: 20, G: 20, B: 20, A: 92}
+	border := color.RGBA{R: 96, G: 96, B: 96, A: 132}
+	if held != 0 {
+		fill = color.RGBA{R: 34, G: 34, B: 34, A: 132}
+		border = color.RGBA{R: 140, G: 140, B: 140, A: 172}
+	}
+	vector.DrawFilledCircle(screen, float32(pad.cx), float32(pad.cy), float32(pad.radius), fill, true)
+	vector.StrokeCircle(screen, float32(pad.cx), float32(pad.cy), float32(pad.radius), 2, border, true)
+	ebitenutil.DrawRect(screen, pad.cx-1, pad.cy-pad.radius, 2, pad.radius*2, border)
+	ebitenutil.DrawRect(screen, pad.cx-pad.radius, pad.cy-1, pad.radius*2, 2, border)
+	sg.drawPadChevron(screen, pad.cx, pad.cy-pad.radius*0.58, 0, border, held&touchActionUp != 0)
+	sg.drawPadChevron(screen, pad.cx, pad.cy+pad.radius*0.58, math.Pi, border, held&touchActionDown != 0)
+	sg.drawPadChevron(screen, pad.cx-pad.radius*0.58, pad.cy, -math.Pi/2, border, held&touchActionStrafeLeft != 0)
+	sg.drawPadChevron(screen, pad.cx+pad.radius*0.58, pad.cy, math.Pi/2, border, held&touchActionStrafeRight != 0)
+}
+
+func (sg *sessionGame) drawActionTouchPad(screen *ebiten.Image, pad touchPad, held touchActionMask) {
+	baseFill := color.RGBA{R: 20, G: 20, B: 20, A: 92}
+	border := color.RGBA{R: 96, G: 96, B: 96, A: 132}
+	if held != 0 {
+		baseFill = color.RGBA{R: 34, G: 34, B: 34, A: 132}
+		border = color.RGBA{R: 140, G: 140, B: 140, A: 172}
+	}
+	vector.DrawFilledCircle(screen, float32(pad.cx), float32(pad.cy), float32(pad.radius), baseFill, true)
+	sg.drawPadCap(screen, pad, true, color.RGBA{R: 150, G: 28, B: 28, A: 120}, held&touchActionFire != 0)
+	sg.drawPadCap(screen, pad, false, color.RGBA{R: 28, G: 130, B: 44, A: 120}, held&touchActionUseEnter != 0)
+	vector.StrokeCircle(screen, float32(pad.cx), float32(pad.cy), float32(pad.radius), 2, border, true)
+	ebitenutil.DrawRect(screen, pad.cx-1, pad.cy-pad.radius, 2, pad.radius*2, border)
+	ebitenutil.DrawRect(screen, pad.cx-pad.radius, pad.cy-1, pad.radius*2, 2, border)
+	sg.drawTouchPadLabel(screen, "FIRE", int(pad.cx), int(pad.cy-pad.radius*0.62), true)
+	sg.drawTouchPadLabel(screen, "USE", int(pad.cx), int(pad.cy+pad.radius*0.42), true)
+	sg.drawTouchPadLabel(screen, "TURN", int(pad.cx-pad.radius*0.62), int(pad.cy-4), true)
+	sg.drawTouchPadLabel(screen, "TURN", int(pad.cx+pad.radius*0.62), int(pad.cy-4), true)
+}
+
+func (sg *sessionGame) drawPadCap(screen *ebiten.Image, pad touchPad, top bool, base color.RGBA, active bool) {
+	fill := base
+	if active {
+		fill.A = 176
+	}
+	step := 3.0
+	deadzone := pad.radius * 0.24
+	startY := -pad.radius
+	endY := -deadzone
+	if !top {
+		startY = deadzone
+		endY = pad.radius
+	}
+	for dy := startY; dy < endY; dy += step {
+		y := pad.cy + dy
+		span := math.Sqrt(maxFloat(0, pad.radius*pad.radius-dy*dy))
+		ebitenutil.DrawRect(screen, pad.cx-span, y, span*2, step+1, fill)
+	}
+}
+
+func (sg *sessionGame) drawPadChevron(screen *ebiten.Image, cx, cy, angle float64, base color.RGBA, active bool) {
+	clr := base
+	if active {
+		clr = color.RGBA{R: 220, G: 220, B: 220, A: 220}
+	}
+	size := 10.0
+	x1, y1 := rotatePoint(-size, size*0.55, angle)
+	x2, y2 := rotatePoint(0, -size*0.55, angle)
+	x3, y3 := rotatePoint(size, size*0.55, angle)
+	vector.StrokeLine(screen, float32(cx+x1), float32(cy+y1), float32(cx+x2), float32(cy+y2), 3, clr, true)
+	vector.StrokeLine(screen, float32(cx+x2), float32(cy+y2), float32(cx+x3), float32(cy+y3), 3, clr, true)
+}
+
+func rotatePoint(x, y, angle float64) (float64, float64) {
+	s, c := math.Sin(angle), math.Cos(angle)
+	return x*c - y*s, x*s + y*c
+}
+
+func (sg *sessionGame) drawTouchPadLabel(screen *ebiten.Image, label string, x, y int, centered bool) {
+	if sg != nil && sg.g != nil {
+		sg.drawIntermissionText(screen, label, x, y, 1, 0, 0, centered)
+		return
+	}
+	if centered {
+		x -= len(label) * 4
+	}
+	ebitenutil.DebugPrintAt(screen, label, x, y)
+}
+
 func drawActiveTouchPoints(screen *ebiten.Image) {
 	if screen == nil {
 		return
@@ -323,6 +525,20 @@ func drawActiveTouchPoints(screen *ebiten.Image) {
 
 func minInt(a, b int) int {
 	if a < b {
+		return a
+	}
+	return b
+}
+
+func minFloat(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxFloat(a, b float64) float64 {
+	if a > b {
 		return a
 	}
 	return b
