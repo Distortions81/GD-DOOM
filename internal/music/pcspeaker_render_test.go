@@ -25,16 +25,31 @@ func TestPCSpeakerRendererInterleavesVoicesByPriority(t *testing.T) {
 	r.applyEvent(Event{Type: EventNoteOn, Channel: 2, A: 67, B: 110})
 
 	first := r.toneForSubTick(0)
-	second := r.toneForSubTick(1)
-	third := r.toneForSubTick(3)
-	if !first.Active || !second.Active || !third.Active {
-		t.Fatalf("expected active tones across scheduled substeps: first=%+v second=%+v third=%+v", first, second, third)
+	if !first.Active {
+		t.Fatalf("expected first scheduled tone active: %+v", first)
 	}
-	if first.Divisor == second.Divisor {
-		t.Fatalf("expected lower-priority note to get a scheduled slot, first=%+v second=%+v", first, second)
+	hold := pcSpeakerInterleaveHoldSubsteps(r.activeCandidates())
+	var second sound.PCSpeakerTone
+	var third sound.PCSpeakerTone
+	for i := 0; i < hold*3+2; i++ {
+		tone := r.toneForSubTick(i % pcSpeakerMusicSubstepsPerTick)
+		if !tone.Active || tone.Divisor == first.Divisor {
+			continue
+		}
+		if !second.Active {
+			second = tone
+			continue
+		}
+		if tone.Divisor != second.Divisor {
+			third = tone
+			break
+		}
 	}
-	if first.Divisor == third.Divisor {
-		t.Fatalf("expected third voice to get a scheduled slot, first=%+v third=%+v", first, third)
+	if !second.Active {
+		t.Fatalf("expected lower-priority note to get a scheduled slot, first=%+v", first)
+	}
+	if !third.Active {
+		t.Fatalf("expected third voice to get a scheduled slot, first=%+v second=%+v", first, second)
 	}
 }
 

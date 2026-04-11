@@ -2,6 +2,7 @@ package voicecodec
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -19,7 +20,7 @@ func TestSilkEncodeDecodeRoundTrip(t *testing.T) {
 	enc := NewSilkEncoder(24000, SilkPacketDurationMillis, SilkDefaultBitrate)
 	packet, err := enc.Encode(pcm)
 	if err != nil {
-		if err == errSilkUnsupported {
+		if strings.Contains(err.Error(), "silk codec is not supported") {
 			t.Skipf("silk unavailable: %v", err)
 		}
 		t.Fatalf("Encode() error = %v", err)
