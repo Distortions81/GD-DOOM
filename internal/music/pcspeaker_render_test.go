@@ -263,7 +263,7 @@ func TestPCSpeakerRendererAlternatesClosePriorityNotes(t *testing.T) {
 	if !first.Active {
 		t.Fatalf("expected first note active: %+v", first)
 	}
-	period := pcSpeakerMusicTickRate / pcSpeakerInterleaveRate
+	period := pcSpeakerInterleaveHoldSubsteps
 	var later sound.PCSpeakerTone
 	for i := 0; i < period+2; i++ {
 		later = r.toneForSubTick(i % pcSpeakerMusicSubstepsPerTick)

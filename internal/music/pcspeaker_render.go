@@ -9,7 +9,7 @@ import (
 
 const pcSpeakerMusicSubstepsPerTick = 8
 const pcSpeakerMusicTickRate = defaultTicRate * pcSpeakerMusicSubstepsPerTick
-const pcSpeakerInterleaveRate = 30
+const pcSpeakerInterleaveHoldSubsteps = pcSpeakerMusicSubstepsPerTick * 6
 const pcSpeakerMinNote = 48
 const pcSpeakerMaxNote = 84
 
@@ -354,11 +354,7 @@ func (r *pcSpeakerRenderer) interleavePhase() int {
 	if r == nil {
 		return 0
 	}
-	period := pcSpeakerMusicTickRate / pcSpeakerInterleaveRate
-	if period < 1 {
-		period = 1
-	}
-	return int(r.renderStep / uint64(period))
+	return int(r.renderStep / pcSpeakerInterleaveHoldSubsteps)
 }
 
 func pcSpeakerNoteFrequency(note uint8, bend int16) float64 {
