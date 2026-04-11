@@ -74,7 +74,7 @@ If you just want the short version:
 - `impsynth` sounds more like classic FM-synth Doom.
 - `meltysynth` is the choice if you want a different MIDI playback character, similar in spirit to choosing a different MIDI device or synth, through SoundFont-based playback.
 
-`-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box. On Linux, `-pc-speaker-hw` goes a step further and routes output to the actual hardware buzzer (`/dev/input/by-path/…pcspkr*-event-spkr`) through evdev — no audio card or sample mixing involved. The process needs write permission to that device node.
+`-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box. On Linux, `-pc-speaker-hw` goes a step further and routes output to the actual hardware buzzer (`/dev/input/by-path/…pcspkr*-event-spkr`) through evdev — no audio card involved. The process needs write permission to that device node.
 
 When a sound effect and music are both playing through the PC speaker, the two streams are interleaved: the speaker rapidly switches ownership between SFX and music so both are partially audible. The default switching rate is 140 Hz (one Doom tic). `-pc-speaker-interleave-hz=N` changes this rate — lower values give each stream more uninterrupted time per slot (coarser interleave), higher values switch more rapidly (finer interleave). The valid range is 10–1000 Hz.
 
