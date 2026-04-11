@@ -13,7 +13,7 @@ type Controller struct {
 	driver    musicEventDriver
 	backend   music.Backend
 	stop      chan struct{}
-	pcSpeaker *audiofx.PCSpeakerPlayer
+	pcSpeaker audiofx.PCSpeaker
 	patchBank music.PatchBank
 }
 
@@ -36,7 +36,7 @@ const (
 	pcSpeakerMusicRate = 11025
 )
 
-func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker *audiofx.PCSpeakerPlayer) (*Controller, error) {
+func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker) (*Controller, error) {
 	if music.ResolveBackend(backend) == music.BackendPCSpeaker {
 		if pcSpeaker == nil {
 			return nil, fmt.Errorf("pcspeaker backend requires a shared PC speaker player")

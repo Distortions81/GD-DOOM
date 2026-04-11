@@ -113,7 +113,7 @@ const (
 type soundSystem struct {
 	bank          SoundBank
 	player        *audiofx.SpatialPlayer
-	pcSpeaker     *audiofx.PCSpeakerPlayer
+	pcSpeaker     audiofx.PCSpeaker
 	pcSpeakerBank map[string][]sound.PCSpeakerTone
 	rand          uint32
 	vanillaVolume int
@@ -136,9 +136,9 @@ func NewMenuSoundPlayer(bank SoundBank, volume float64) *MenuSoundPlayer {
 	return audiofx.NewMenuPlayer(bank, volume)
 }
 
-func newSoundSystem(bank SoundBank, pcSpeakerBank map[string][]sound.PCSpeakerTone, sharedPCSpeaker *audiofx.PCSpeakerPlayer, sfxVolume float64, pcSpeakerVolume float64, sourcePort bool, pitchShift bool, variant audiofx.PCSpeakerVariant) *soundSystem {
+func newSoundSystem(bank SoundBank, pcSpeakerBank map[string][]sound.PCSpeakerTone, sharedPCSpeaker audiofx.PCSpeaker, sfxVolume float64, pcSpeakerVolume float64, sourcePort bool, pitchShift bool, variant audiofx.PCSpeakerVariant) *soundSystem {
 	var player *audiofx.SpatialPlayer
-	var pcSpeaker *audiofx.PCSpeakerPlayer
+	var pcSpeaker audiofx.PCSpeaker
 	if clampVolume(sfxVolume) > 0 {
 		if len(pcSpeakerBank) > 0 {
 			pcSpeaker = sharedPCSpeaker

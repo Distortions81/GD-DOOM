@@ -8,12 +8,12 @@ import (
 
 type MenuController struct {
 	player    *audiofx.MenuPlayer
-	pcSpeaker *audiofx.PCSpeakerPlayer
+	pcSpeaker audiofx.PCSpeaker
 	pcBank    map[string][]sound.PCSpeakerTone
 	ownsPC    bool
 }
 
-func NewMenuController(bank media.SoundBank, pcBank map[string][]sound.PCSpeakerTone, sharedPCSpeaker *audiofx.PCSpeakerPlayer, volume float64, variant audiofx.PCSpeakerVariant) *MenuController {
+func NewMenuController(bank media.SoundBank, pcBank map[string][]sound.PCSpeakerTone, sharedPCSpeaker audiofx.PCSpeaker, volume float64, variant audiofx.PCSpeakerVariant) *MenuController {
 	c := &MenuController{}
 	if len(pcBank) > 0 {
 		c.pcSpeaker = sharedPCSpeaker

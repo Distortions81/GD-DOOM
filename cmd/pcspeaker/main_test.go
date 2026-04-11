@@ -289,6 +289,25 @@ func TestRunDumpCSVWritesOneLinePerTone(t *testing.T) {
 	}
 }
 
+func TestRunPlayLinuxRequiresInput(t *testing.T) {
+	var stderr bytes.Buffer
+	oldOut := stdOut
+	oldErr := stdErr
+	stdOut = &bytes.Buffer{}
+	stdErr = &stderr
+	defer func() {
+		stdOut = oldOut
+		stdErr = oldErr
+	}()
+	code := run([]string{"play-linux"})
+	if code != 2 {
+		t.Fatalf("run() code=%d want=2", code)
+	}
+	if !strings.Contains(stderr.String(), "play-linux requires -in") {
+		t.Fatalf("stderr=%q want missing -in", stderr.String())
+	}
+}
+
 func TestRunUnknownSubcommand(t *testing.T) {
 	var stderr bytes.Buffer
 	oldOut := stdOut

@@ -182,7 +182,7 @@ type Options struct {
 	PCSpeakerVolume              float64
 	SFXPitchShift                bool
 	PCSpeakerVariant             audiofx.PCSpeakerVariant
-	SharedPCSpeaker              *audiofx.PCSpeakerPlayer
+	SharedPCSpeaker              audiofx.PCSpeaker
 	FastMonsters                 bool
 	RespawnMonsters              bool
 	NoMonsters                   bool

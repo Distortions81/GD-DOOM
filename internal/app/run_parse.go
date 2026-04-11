@@ -279,6 +279,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultImportPCSpeaker := true
 	defaultPCSpeakerMode := false
 	defaultPCSpeakerVariant := "paper-speaker"
+	defaultPCSpeakerOutput := "emulated"
 	defaultImportTextures := true
 	defaultCPUProfile := ""
 	defaultMemProfile := ""
@@ -492,6 +493,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	pcSpeakerVolume := fs.Float64("pc-speaker-volume", defaultPCSpeakerVolume, "pc speaker output volume after emulation (0..1)")
 	pcSpeaker := fs.Bool("pc-speaker", defaultPCSpeakerMode, "render DP* PC speaker lumps to PCM and use them in place of DS* digital sounds")
 	pcSpeakerVariant := fs.String("pc-speaker-variant", defaultPCSpeakerVariant, "pc speaker tone model (passthrough|paper-speaker|small-buzzer)")
+	pcSpeakerOutput := fs.String("pc-speaker-output", defaultPCSpeakerOutput, "pc speaker output backend (emulated|linux)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
@@ -1123,7 +1125,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			PCSpeakerVolume:            *pcSpeakerVolume,
 			SFXPitchShift:              defaultSFXPitchShift,
 			PCSpeakerVariant:           audiofx.ParsePCSpeakerVariant(*pcSpeakerVariant),
-			SharedPCSpeaker:            buildSharedPCSpeakerPlayer(resolvedMusicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(*pcSpeakerVariant), *pcSpeakerVolume),
+			SharedPCSpeaker:            buildSharedPCSpeakerPlayer(resolvedMusicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(*pcSpeakerVariant), audiofx.ParsePCSpeakerOutput(strings.TrimSpace(*pcSpeakerOutput)), *pcSpeakerVolume, stderr),
 			FastMonsters:               defaultFastMonsters,
 			AlwaysRun:                  *alwaysRun,
 			AutoWeaponSwitch:           *autoWeaponSwitch,
@@ -2478,7 +2480,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 	if cfg.pcSpeaker && len(dpr.Sounds) > 0 {
 		pcSpeakerBank = buildPCSpeakerBank(dpr)
 	}
-	sharedPCSpeaker := buildSharedPCSpeakerPlayer(cfg.musicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(cfg.pcSpeakerVariant), cfg.pcSpeakerVolume)
+	sharedPCSpeaker := buildSharedPCSpeakerPlayer(cfg.musicBackend, pcSpeakerBank, audiofx.ParsePCSpeakerVariant(cfg.pcSpeakerVariant), audiofx.ParsePCSpeakerOutput("emulated"), cfg.pcSpeakerVolume, stderr)
 	wallTexBank := map[string]media.WallTexture(nil)
 	bootSplash := media.WallTexture{}
 	doomPaletteRGBA := []byte(nil)
@@ -3970,9 +3972,20 @@ func buildPCSpeakerBank(dpr sound.PCSpeakerImportReport) map[string][]sound.PCSp
 	return bank
 }
 
-func buildSharedPCSpeakerPlayer(backend music.Backend, pcSpeakerBank map[string][]sound.PCSpeakerTone, variant audiofx.PCSpeakerVariant, volume float64) *audiofx.PCSpeakerPlayer {
+func buildSharedPCSpeakerPlayer(backend music.Backend, pcSpeakerBank map[string][]sound.PCSpeakerTone, variant audiofx.PCSpeakerVariant, output audiofx.PCSpeakerOutput, volume float64, stderr io.Writer) audiofx.PCSpeaker {
 	if music.ResolveBackend(backend) != music.BackendPCSpeaker && len(pcSpeakerBank) == 0 {
 		return nil
+	}
+	if output == audiofx.PCSpeakerOutputLinux {
+		p, err := audiofx.NewLinuxPCSpeakerPlayer()
+		if err != nil {
+			if stderr != nil {
+				fmt.Fprintf(stderr, "linux pc speaker unavailable, falling back to emulated output: %v\n", err)
+			}
+		} else {
+			p.SetVolume(volume)
+			return p
+		}
 	}
 	return audiofx.NewPCSpeakerPlayer(volume, variant)
 }

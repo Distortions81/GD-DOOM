@@ -23,6 +23,7 @@ const usageText = `usage:
   pcspeaker interleave -in <file.gdpc> -mix <file.gdpc> -out <file.gdpc>
   pcspeaker dump-csv -in <file.gdpc> [-out <file.csv>]
   pcspeaker play -in <file.gdpc> [-variant passthrough|paper-speaker|small-buzzer]
+  pcspeaker play-linux -in <file.gdpc>
   pcspeaker wav -in <file.gdpc> [-mix <file.gdpc>] -out <file.wav> [-variant passthrough|paper-speaker|small-buzzer]`
 
 var (
@@ -50,6 +51,8 @@ func run(args []string) int {
 		return runInterleave(args[1:])
 	case "dump-csv":
 		return runDumpCSV(args[1:])
+	case "play-linux":
+		return runPlayLinux(args[1:])
 	case "wav":
 		return runWAV(args[1:])
 	case "-h", "--help", "help":
@@ -219,6 +222,35 @@ func runDumpCSV(args []string) int {
 	}
 	if err := writeCaptureCSV(w, capture); err != nil {
 		fmt.Fprintf(stdErr, "write csv: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+func runPlayLinux(args []string) int {
+	fs := flag.NewFlagSet("play-linux", flag.ContinueOnError)
+	fs.SetOutput(stdErr)
+	inPath := fs.String("in", "", "input capture path")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*inPath) == "" {
+		fmt.Fprintln(stdErr, "play-linux requires -in")
+		return 2
+	}
+	capture, err := readCaptureFile(strings.TrimSpace(*inPath))
+	if err != nil {
+		fmt.Fprintf(stdErr, "read capture: %v\n", err)
+		return 1
+	}
+	player, err := audiofx.NewLinuxPCSpeakerPlayer()
+	if err != nil {
+		fmt.Fprintf(stdErr, "open linux pc speaker: %v\n", err)
+		return 1
+	}
+	defer player.Close()
+	if err := player.PlaySequence(capture.Tones, capture.TickRate); err != nil {
+		fmt.Fprintf(stdErr, "play linux pc speaker: %v\n", err)
 		return 1
 	}
 	return 0
