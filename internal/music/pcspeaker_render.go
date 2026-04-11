@@ -1,6 +1,7 @@
 package music
 
 import (
+	"math"
 	"slices"
 
 	"gddoom/internal/sound"
@@ -8,6 +9,11 @@ import (
 
 const pcSpeakerMusicSubstepsPerTick = 8
 const pcSpeakerMusicTickRate = defaultTicRate * pcSpeakerMusicSubstepsPerTick
+const pcSpeakerPercussionBurstSubsteps = 1
+const pcSpeakerPercussionDivisor = 96
+const pcSpeakerMinNote = 48
+const pcSpeakerMaxNote = 84
+const pcSpeakerGapHoldSubsteps = 6
 
 type nullSynth struct{}
 
@@ -17,13 +23,14 @@ func (nullSynth) GenerateStereoS16(int) []int16 { return nil }
 func (nullSynth) GenerateMonoU8(int) []byte     { return nil }
 
 type pcSpeakerRenderer struct {
-	driver  *Driver
-	arpStep int
+	driver          *Driver
+	percussionBurst int
 }
 
 type pcSpeakerCandidate struct {
 	velocity uint8
 	order    int
+	note     uint8
 	divisor  uint16
 }
 
@@ -88,28 +95,30 @@ func (r *pcSpeakerRenderer) applyEvent(ev Event) {
 	if r == nil || r.driver == nil {
 		return
 	}
+	if ev.Type == EventNoteOn && (ev.Channel&0x0f) == 9 && ev.B > 0 {
+		r.percussionBurst = pcSpeakerPercussionBurstSubsteps
+	}
 	r.driver.applyEvent(ev)
 }
 
 func (r *pcSpeakerRenderer) toneForSubTick(subTick int) sound.PCSpeakerTone {
-	candidates := r.interleaveCandidates()
-	if len(candidates) == 0 {
+	candidate, ok := r.topCandidate()
+	if r.percussionBurst > 0 {
+		r.percussionBurst--
+		if !ok {
+			return sound.PCSpeakerTone{Active: true, Divisor: pcSpeakerPercussionDivisor}
+		}
+	}
+	if !ok {
 		return sound.PCSpeakerTone{}
 	}
-	pattern := comboPattern(candidates)
-	if len(pattern) == 0 {
+	if candidate.divisor == 0 {
 		return sound.PCSpeakerTone{}
 	}
-	idx := pattern[r.arpStep%len(pattern)]
-	r.arpStep++
-	divisor := candidates[idx].divisor
-	if divisor == 0 {
-		return sound.PCSpeakerTone{}
-	}
-	return sound.PCSpeakerTone{Active: true, Divisor: divisor}
+	return sound.PCSpeakerTone{Active: true, Divisor: candidate.divisor}
 }
 
-func (r *pcSpeakerRenderer) interleaveCandidates() []pcSpeakerCandidate {
+func (r *pcSpeakerRenderer) activeCandidates() []pcSpeakerCandidate {
 	if r == nil || r.driver == nil || len(r.driver.allocList) == 0 {
 		return nil
 	}
@@ -119,30 +128,39 @@ func (r *pcSpeakerRenderer) interleaveCandidates() []pcSpeakerCandidate {
 		if !v.active || v.velocity == 0 {
 			continue
 		}
-		divisor := sound.PITDivisorForFrequency(oplFreqWordFrequency(v.freqWord))
-		if divisor == 0 {
+		if (v.ch & 0x0f) == 9 {
+			continue
+		}
+		note := normalizePCSpeakerNote(v.playNote)
+		bend := r.driver.ch[v.ch&0x0f].pitchBend + v.fineTune
+		divisor := sound.PITDivisorForFrequency(pcSpeakerNoteFrequency(note, bend))
+		if divisor == 0 || divisor <= 16 || divisor >= 32768 {
 			continue
 		}
 		candidates = append(candidates, pcSpeakerCandidate{
 			velocity: v.velocity,
 			order:    order,
+			note:     note,
 			divisor:  divisor,
 		})
 	}
-	if len(candidates) == 0 {
-		return nil
-	}
 	slices.SortFunc(candidates, func(a, b pcSpeakerCandidate) int {
-		if a.velocity != b.velocity {
-			if a.velocity > b.velocity {
+		if a.order != b.order {
+			if a.order > b.order {
 				return -1
 			}
 			return 1
 		}
-		if a.order > b.order {
-			return -1
+		if a.note != b.note {
+			if a.note > b.note {
+				return -1
+			}
+			return 1
 		}
-		if a.order < b.order {
+		if a.velocity != b.velocity {
+			if a.velocity > b.velocity {
+				return -1
+			}
 			return 1
 		}
 		if a.divisor < b.divisor {
@@ -153,63 +171,28 @@ func (r *pcSpeakerRenderer) interleaveCandidates() []pcSpeakerCandidate {
 		}
 		return 0
 	})
-	const maxInterleaveVoices = 4
-	if len(candidates) > maxInterleaveVoices {
-		candidates = candidates[:maxInterleaveVoices]
-	}
-	deduped := candidates[:0]
-	seen := map[uint16]struct{}{}
-	for _, c := range candidates {
-		if _, ok := seen[c.divisor]; ok {
-			continue
-		}
-		seen[c.divisor] = struct{}{}
-		deduped = append(deduped, c)
-	}
-	slices.SortFunc(deduped, func(a, b pcSpeakerCandidate) int {
-		if a.divisor != b.divisor {
-			if a.divisor > b.divisor {
-				return -1
-			}
-			return 1
-		}
-		if a.velocity != b.velocity {
-			if a.velocity > b.velocity {
-				return -1
-			}
-			return 1
-		}
-		if a.order > b.order {
-			return -1
-		}
-		if a.order < b.order {
-			return 1
-		}
-		return 0
-	})
-	return deduped
+	return candidates
 }
 
-func oplFreqWordFrequency(freqWord uint16) float64 {
-	fnum := float64(freqWord & 0x03ff)
-	if fnum <= 0 {
-		return 0
+func (r *pcSpeakerRenderer) topCandidate() (pcSpeakerCandidate, bool) {
+	candidates := r.activeCandidates()
+	if len(candidates) == 0 {
+		return pcSpeakerCandidate{}, false
 	}
-	block := int((freqWord >> 10) & 0x07)
-	return fnum * 49716.0 * float64(uint32(1)<<(block+2)) / float64(uint32(1)<<19)
+	return candidates[0], true
 }
 
-func comboPattern(candidates []pcSpeakerCandidate) []int {
-	switch len(candidates) {
-	case 0:
-		return nil
-	case 1:
-		return []int{0}
-	case 2:
-		return []int{0, 0, 1, 0, 0, 1}
-	case 3:
-		return []int{0, 0, 1, 0, 2, 1, 0, 0, 1}
-	default:
-		return []int{0, 0, 1, 0, 2, 1, 0, 3, 1, 0, 2, 1}
+func pcSpeakerNoteFrequency(note uint8, bend int16) float64 {
+	semitones := float64(note) + float64(bend)/32.0
+	return 440.0 * math.Pow(2, (semitones-69.0)/12.0)
+}
+
+func normalizePCSpeakerNote(note uint8) uint8 {
+	for note < pcSpeakerMinNote {
+		note += 12
 	}
+	for note > pcSpeakerMaxNote {
+		note -= 12
+	}
+	return note
 }

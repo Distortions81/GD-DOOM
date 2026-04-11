@@ -3,6 +3,7 @@ package audiofx
 import (
 	"encoding/binary"
 	"io"
+	"math"
 	"testing"
 	"time"
 
@@ -94,6 +95,32 @@ func TestPCSpeakerEffectsInterruptMusic(t *testing.T) {
 	}
 	if !tone.Active || tone.ToneValue != 96 {
 		t.Fatalf("music should resume after effect, got active=%v tone=%d", tone.Active, tone.ToneValue)
+	}
+}
+
+func TestPCSpeakerSilentEffectTailDoesNotBlockMusic(t *testing.T) {
+	src := &pcSpeakerSource{
+		rate:           44100,
+		effectSeq:      []sound.PCSpeakerTone{{Active: true, ToneValue: 20}, {}},
+		effectTickRate: 140,
+		musicSeq:       []sound.PCSpeakerTone{{Active: true, ToneValue: 96}},
+		musicTickRate:  140,
+	}
+
+	first, direct, drive := src.currentToneLocked()
+	if direct || drive != 0 || !first.Active || first.ToneValue != 20 {
+		t.Fatalf("expected first active effect tone, got tone=%+v direct=%v drive=%v", first, direct, drive)
+	}
+
+	samplesPerTick := int(math.Round(float64(src.rate) / float64(src.effectTickRate)))
+	src.effectSamplePos = samplesPerTick
+
+	next, direct, drive := src.currentToneLocked()
+	if direct || drive != 0 {
+		t.Fatalf("expected music fallback, got direct=%v drive=%v", direct, drive)
+	}
+	if !next.Active || next.ToneValue != 96 {
+		t.Fatalf("expected music after silent effect tail, got active=%v tone=%d", next.Active, next.ToneValue)
 	}
 }
 
@@ -189,5 +216,47 @@ func TestPCSpeakerEffectSurvivesMusicPCMUnderrun(t *testing.T) {
 	}
 	if drive == 0 {
 		t.Fatal("expected non-zero drive during music underrun")
+	}
+}
+
+func TestPCSpeakerSetMusicClearsStalePCMState(t *testing.T) {
+	src := &pcSpeakerSource{
+		rate:           44100,
+		musicPCMActive: true,
+		musicPCMRate:   11025,
+	}
+
+	src.setMusic([]sound.PCSpeakerTone{{Active: true, ToneValue: 96}}, 44100, 140, true)
+
+	if src.musicPCMActive {
+		t.Fatal("expected PCM mode cleared when setting tone-sequence music")
+	}
+	if len(src.musicPCM) != 0 {
+		t.Fatalf("musicPCM len=%d want 0", len(src.musicPCM))
+	}
+	tone, direct, drive := src.currentToneLocked()
+	if direct || drive != 0 {
+		t.Fatalf("expected tone-sequence music path, got direct=%v drive=%v", direct, drive)
+	}
+	if !tone.Active || tone.ToneValue != 96 {
+		t.Fatalf("expected tone-sequence music after clearing PCM, got active=%v tone=%d", tone.Active, tone.ToneValue)
+	}
+}
+
+func TestPCSpeakerSetMusicRewindsBackend(t *testing.T) {
+	backend := &fakePCSpeakerBackend{}
+	p := &PCSpeakerPlayer{
+		player: backend,
+		src:    &pcSpeakerSource{},
+		volume: 0.5,
+	}
+
+	p.SetMusic([]sound.PCSpeakerTone{{Active: true, ToneValue: 96}}, 140, true)
+
+	if backend.rewound != 1 {
+		t.Fatalf("rewound=%d want 1", backend.rewound)
+	}
+	if backend.played != 1 {
+		t.Fatalf("played=%d want 1", backend.played)
 	}
 }

@@ -32,10 +32,8 @@ type musicEventDriver interface {
 }
 
 const (
-	impSynthGainRatio     = 1.0
-	pcSpeakerMusicRate    = 11025
-	pcSpeakerChunkFrames  = 256
-	pcSpeakerTargetChunks = 8
+	impSynthGainRatio  = 1.0
+	pcSpeakerMusicRate = 11025
 )
 
 func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker *audiofx.PCSpeakerPlayer) (*Controller, error) {
@@ -138,34 +136,20 @@ func (c *Controller) PlayMUSOnce(data []byte) {
 
 func (c *Controller) playMUS(data []byte, loop bool) {
 	if c != nil && c.pcSpeaker != nil {
-		if c.driver == nil || len(data) == 0 {
+		if len(data) == 0 {
 			return
 		}
 		parsed, err := music.ParseMUSData(data)
 		if err != nil || parsed == nil {
 			return
 		}
-		factory := func() (*music.StreamRenderer, error) {
-			return music.NewParsedMUSStreamRenderer(c.driver, parsed)
-		}
+		seq, tickRate := music.RenderParsedMUSToPCSpeaker(c.patchBank, parsed)
 		c.StopAndClear()
-		// Let the controller own song looping; the player must not wrap the
-		// currently buffered PCM chunk or it will repeat short sections.
-		c.pcSpeaker.BeginMusicPCM(false)
-		chunkFrames := pcSpeakerChunkFrames
-		targetBytes := chunkFrames * 4 * pcSpeakerTargetChunks
-		var stream *music.StreamRenderer
-		buffered, err := prefillPCSpeakerStream(c.pcSpeaker, factory, &stream, loop, chunkFrames, targetBytes)
-		if err != nil {
-			return
-		}
-		if buffered == 0 && stream == nil {
+		if len(seq) == 0 {
 			c.pcSpeaker.ClearMusic()
 			return
 		}
-		stop := make(chan struct{})
-		c.stop = stop
-		go c.streamPCSpeaker(c.pcSpeaker, stop, factory, stream, loop, chunkFrames, targetBytes)
+		c.pcSpeaker.SetMusic(seq, tickRate, loop)
 		return
 	}
 	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
@@ -207,32 +191,20 @@ func (c *Controller) playMUS(data []byte, loop bool) {
 
 func (c *Controller) playMUSOnce(data []byte) {
 	if c != nil && c.pcSpeaker != nil {
-		if c.driver == nil || len(data) == 0 {
+		if len(data) == 0 {
 			return
 		}
 		parsed, err := music.ParseMUSData(data)
 		if err != nil || parsed == nil {
 			return
 		}
-		factory := func() (*music.StreamRenderer, error) {
-			return music.NewParsedMUSStreamRenderer(c.driver, parsed)
-		}
+		seq, tickRate := music.RenderParsedMUSToPCSpeaker(c.patchBank, parsed)
 		c.StopAndClear()
-		c.pcSpeaker.BeginMusicPCM(false)
-		chunkFrames := pcSpeakerChunkFrames
-		targetBytes := chunkFrames * 4 * pcSpeakerTargetChunks
-		var stream *music.StreamRenderer
-		buffered, err := prefillPCSpeakerStream(c.pcSpeaker, factory, &stream, false, chunkFrames, targetBytes)
-		if err != nil {
-			return
-		}
-		if buffered == 0 && stream == nil {
+		if len(seq) == 0 {
 			c.pcSpeaker.ClearMusic()
 			return
 		}
-		stop := make(chan struct{})
-		c.stop = stop
-		go c.streamPCSpeaker(c.pcSpeaker, stop, factory, stream, false, chunkFrames, targetBytes)
+		c.pcSpeaker.SetMusic(seq, tickRate, false)
 		return
 	}
 	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
@@ -262,92 +234,6 @@ func (c *Controller) stopStream() {
 	}
 	close(c.stop)
 	c.stop = nil
-}
-
-func prefillPCSpeakerStream(player *audiofx.PCSpeakerPlayer, factory musStreamFactory, stream **music.StreamRenderer, loop bool, chunkFrames int, targetBytes int) (int, error) {
-	if player == nil || factory == nil || stream == nil {
-		return 0, nil
-	}
-	if targetBytes < 0 {
-		targetBytes = 0
-	}
-	buffered := 0
-	for buffered < targetBytes {
-		chunk, err := nextChunk(factory, stream, loop, chunkFrames)
-		if err != nil {
-			return buffered, err
-		}
-		if len(chunk) > 0 {
-			player.AppendMusicPCM(chunk)
-			buffered += len(chunk)
-		}
-		if *stream == nil || len(chunk) == 0 {
-			break
-		}
-	}
-	if targetBytes == 0 && buffered == 0 {
-		chunk, err := nextChunk(factory, stream, loop, chunkFrames)
-		if err != nil {
-			return buffered, err
-		}
-		if len(chunk) > 0 {
-			player.AppendMusicPCM(chunk)
-			buffered += len(chunk)
-		}
-	}
-	return buffered, nil
-}
-
-func (c *Controller) streamPCSpeaker(player *audiofx.PCSpeakerPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer, loop bool, chunkFrames int, targetBytes int) {
-	if c == nil || player == nil || factory == nil {
-		return
-	}
-	ticker := time.NewTicker(1 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stop:
-			player.FinishMusicPCM()
-			return
-		default:
-		}
-		buffered := player.BufferedMusicPCMBytes()
-		if buffered < targetBytes {
-			for buffered < targetBytes {
-				chunk, err := nextChunk(factory, &stream, loop, chunkFrames)
-				if err != nil {
-					player.FinishMusicPCM()
-					return
-				}
-				if len(chunk) > 0 {
-					player.AppendMusicPCM(chunk)
-					buffered += len(chunk)
-				}
-				if stream == nil && !loop {
-					player.FinishMusicPCM()
-					return
-				}
-				if len(chunk) == 0 {
-					break
-				}
-			}
-			if buffered < targetBytes {
-				select {
-				case <-stop:
-					player.FinishMusicPCM()
-					return
-				case <-ticker.C:
-				}
-			}
-			continue
-		}
-		select {
-		case <-stop:
-			player.FinishMusicPCM()
-			return
-		case <-ticker.C:
-		}
-	}
 }
 
 func nextChunk(factory musStreamFactory, stream **music.StreamRenderer, loop bool, frames int) ([]byte, error) {

@@ -626,7 +626,7 @@ func (s *pcSpeakerSource) nextEffectToneLocked() (sound.PCSpeakerTone, bool, boo
 		s.effectSeq = nil
 		s.effectSamplePos = 0
 	}
-	return tone, true, false
+	return tone, tone.Active, false
 }
 
 func (s *pcSpeakerSource) nextMusicToneLocked() (sound.PCSpeakerTone, bool) {
@@ -1019,6 +1019,21 @@ func (s *pcSpeakerSource) setMusic(seq []sound.PCSpeakerTone, rate int, tickRate
 	s.musicTickRate = tickRate
 	s.musicLoop = loop
 	s.musicSamplePos = 0
+	s.musicPCM = nil
+	s.musicPCMPos = 0
+	s.musicPCMRate = 0
+	s.musicPCMPhase = 0
+	s.musicPCMTarget = 0
+	s.musicPCMTargetOK = false
+	s.musicPCMError = 0
+	s.musicPCMEnv = 0
+	s.musicPCMAGain = 1
+	s.musicPCMHPPrevIn = 0
+	s.musicPCMHPPrevOut = 0
+	s.musicPCMLPState = 0
+	s.musicPCMActive = false
+	s.musicPCMClosed = false
+	s.musicPCMLoop = false
 }
 
 func (s *pcSpeakerSource) clearMusic() {
@@ -1212,6 +1227,9 @@ func (p *PCSpeakerPlayer) SetMusic(seq []sound.PCSpeakerTone, tickRate int, loop
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.src.setMusic(seq, music.OutputSampleRate, tickRate, loop)
+	if err := p.player.Rewind(); err != nil {
+		return
+	}
 	p.player.SetVolume(p.volume)
 	if !p.player.IsPlaying() {
 		p.player.Play()
