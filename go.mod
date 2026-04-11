@@ -13,6 +13,7 @@ require (
 	github.com/sinshu/go-meltysynth v0.1.2
 	github.com/youthlin/silk v0.0.4
 	github.com/zeebo/blake3 v0.2.4
+	golang.org/x/sys v0.43.0
 )
 
 replace github.com/sinshu/go-meltysynth => github.com/Distortions81/go-meltysynth v0.1.2
@@ -25,5 +26,4 @@ require (
 	github.com/jezek/xgb v1.3.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
 )
