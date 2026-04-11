@@ -355,10 +355,6 @@ func (g *game) applySectorHazardDamage() {
 	if g.m == nil || len(g.m.Sectors) == 0 || g.stats.Health <= 0 {
 		return
 	}
-	// Doom applies periodic special-sector effects every 32 tics.
-	if (g.worldTic & 31) != 0 {
-		return
-	}
 	sec := g.playerSector()
 	if sec < 0 || sec >= len(g.m.Sectors) {
 		return
@@ -368,8 +364,16 @@ func (g *game) applySectorHazardDamage() {
 	if g.p.z != g.playerSectorFloor(sec) {
 		return
 	}
-	hasSuit := g.inventory.RadSuitTics > 0
 	special := g.m.Sectors[sec].Special
+	if special == 11 && g.stats.Health <= 10 {
+		g.requestLevelExit(false, "Level Complete")
+		return
+	}
+	// Doom applies damaging special-sector effects every 32 tics.
+	if (g.worldTic & 31) != 0 {
+		return
+	}
+	hasSuit := g.inventory.RadSuitTics > 0
 	damage := hazardDamage(special, hasSuit)
 	if damage <= 0 {
 		return

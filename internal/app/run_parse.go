@@ -1292,6 +1292,27 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return data, nil
 		}
+		opts.FinaleMusicLoader = func(mapName string, secret bool) ([]byte, error) {
+			if secret {
+				return nil, nil
+			}
+			lump := finaleMusicLumpName(mapdata.MapName(mapName))
+			if lump == "" {
+				return nil, nil
+			}
+			l, ok := wf.LumpByName(lump)
+			if !ok {
+				return nil, nil
+			}
+			data, err := wf.LumpDataView(l)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := music.ParseMUS(data); err != nil {
+				return nil, err
+			}
+			return data, nil
+		}
 		opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 			return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
@@ -1843,6 +1864,14 @@ func mapMusicLumpName(name mapdata.MapName) (string, bool) {
 	return "", false
 }
 
+func finaleMusicLumpName(name mapdata.MapName) string {
+	s := strings.ToUpper(strings.TrimSpace(string(name)))
+	if len(s) == 4 && s[0] == 'E' && s[2] == 'M' && s[3] == '8' {
+		return "D_VICTOR"
+	}
+	return ""
+}
+
 func buildMusicPlayerCatalog(currentWADPath string) ([]runtimecfg.MusicPlayerWAD, func(string, string) ([]byte, error)) {
 	currentWADPath = strings.TrimSpace(resolveIWADAliasPath(currentWADPath))
 	if currentWADPath == "" {
@@ -2294,10 +2323,10 @@ type pickerSynthOption struct {
 
 var pickerSynths = [...]pickerSynthOption{
 	{label: "OPL - ADLIB / SB16", backend: music.BackendImpSynth},
-	{label: "PC SPEAKER - SYNTH", description: "NOT IN DOOM; USED IN DOS GAMES", backend: music.BackendPCSpeaker},
 	{label: "MIDI - GENERAL MIDI", backend: music.BackendMeltySynth, soundFont: "soundfonts/general-midi.sf2"},
 	{label: "MIDI - SC55-HQ", backend: music.BackendMeltySynth, soundFont: "soundfonts/SC55-HQ.sf2"},
-	{label: "MIDI - SGM-HQ", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
+	{label: "MIDI - SGM-ULTRA-HQ", backend: music.BackendMeltySynth, soundFont: music.BrowserSGMHQSoundFontPath()},
+	{label: "PC SPEAKER MUSIC", description: "This was not an actual option in DOOM", backend: music.BackendPCSpeaker},
 	{label: "NO MUSIC", noMusic: true},
 }
 
@@ -2658,6 +2687,27 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		lump := "D_INTER"
 		if commercial {
 			lump = "D_DM2INT"
+		}
+		l, ok := wf.LumpByName(lump)
+		if !ok {
+			return nil, nil
+		}
+		data, err := wf.LumpDataView(l)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := music.ParseMUS(data); err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+	opts.FinaleMusicLoader = func(mapName string, secret bool) ([]byte, error) {
+		if secret {
+			return nil, nil
+		}
+		lump := finaleMusicLumpName(mapdata.MapName(mapName))
+		if lump == "" {
+			return nil, nil
 		}
 		l, ok := wf.LumpByName(lump)
 		if !ok {

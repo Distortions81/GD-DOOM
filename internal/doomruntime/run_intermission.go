@@ -428,6 +428,14 @@ func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) 
 		return false
 	}
 	sg.stopAndClearMusic()
+	if sg.musicCtl != nil && sg.opts.FinaleMusicLoader != nil {
+		if data, err := sg.opts.FinaleMusicLoader(string(current), secret); err == nil && len(data) > 0 {
+			sg.musicCtl.PlayData(data, effectiveMusicPlaybackVolume(sg.opts))
+			sg.currentMusicSource = musicPlaybackSource{kind: musicPlaybackSourceMap, mapName: current}
+			sg.setNowPlayingLevel("")
+			sg.setNowPlayingMusic("Victory")
+		}
+	}
 	sg.levelCarryover = nil
 	if sg.g != nil {
 		sg.g.clearPendingSoundState()
@@ -593,12 +601,17 @@ func (sg *sessionGame) drawFinale(screen *ebiten.Image) {
 	f := &sg.finale
 
 	screen.Fill(color.Black)
-	if strings.TrimSpace(f.Screen) != "" {
-		_ = sg.drawIntermissionPatch(screen, f.Screen, 0, 0, scale, ox, oy, false)
-	}
-	sg.drawIntermissionText(screen, fmt.Sprintf("EPISODE COMPLETE: %s", f.MapName), 160, 186, scale, ox, oy, true)
-	if (f.Tic/16)&1 == 0 {
-		sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO CONTINUE", 160, 174, scale, ox, oy, true)
+	switch f.Stage {
+	case sessionflow.FinaleStageText:
+		sg.drawFinaleFlatBackdrop(screen, f.Flat, scale, ox, oy)
+		sg.drawFinaleTextBlock(screen, sessionflow.FinaleVisibleText(f.Text, f.Tic), scale, ox, oy)
+	case sessionflow.FinaleStagePicture:
+		if strings.TrimSpace(f.Screen) != "" {
+			_ = sg.drawIntermissionPatch(screen, f.Screen, 0, 0, scale, ox, oy, false)
+		}
+		if (f.Tic/16)&1 == 0 {
+			sg.drawIntermissionText(screen, "PRESS ANY KEY OR CLICK TO CONTINUE", 160, 186, scale, ox, oy, true)
+		}
 	}
 }
 
@@ -637,6 +650,32 @@ func intermissionBackgroundName(state intermissionState) (string, bool) {
 		return "WIMAP2", true
 	default:
 		return "", false
+	}
+}
+
+func (sg *sessionGame) drawFinaleFlatBackdrop(screen *ebiten.Image, flat string, scale, ox, oy float64) {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	img, ok := sg.g.flatImage(flat)
+	if !ok || img == nil {
+		return
+	}
+	for y := 0; y < 200; y += 64 {
+		for x := 0; x < 320; x += 64 {
+			op := &ebiten.DrawImageOptions{}
+			op.GeoM.Scale(scale, scale)
+			op.GeoM.Translate(ox+float64(x)*scale, oy+float64(y)*scale)
+			screen.DrawImage(img, op)
+		}
+	}
+}
+
+func (sg *sessionGame) drawFinaleTextBlock(screen *ebiten.Image, text string, scale, ox, oy float64) {
+	lineHeight := sg.intermissionTextLineHeight()
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		sg.drawIntermissionText(screen, line, 10, 10+i*lineHeight, scale, ox, oy, false)
 	}
 }
 

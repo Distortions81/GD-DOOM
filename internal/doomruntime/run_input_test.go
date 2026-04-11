@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"gddoom/internal/gameplay"
+	"gddoom/internal/mapdata"
+	"gddoom/internal/sessionflow"
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
@@ -135,6 +137,30 @@ func TestFrontendShouldUpdateRuntimeForDemo(t *testing.T) {
 func TestFrontendShouldNotUpdateRuntimeForPlainGameplayMenu(t *testing.T) {
 	if frontendShouldUpdateRuntime(gameplay.SessionSignals{}) {
 		t.Fatal("frontendShouldUpdateRuntime() = true, want false for plain gameplay menu")
+	}
+}
+
+func TestUpdateFinaleCompletionReturnsToFrontendInsteadOfTerminating(t *testing.T) {
+	sg := &sessionGame{
+		bootMap: &mapdata.Map{Name: "E1M1"},
+		finale: sessionFinale{
+			Active:  true,
+			Stage:   sessionflow.FinaleStagePicture,
+			WaitTic: 0,
+		},
+	}
+
+	if err := sg.Update(); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if sg.finale.Active {
+		t.Fatal("expected finale to complete")
+	}
+	if !sg.frontend.Active {
+		t.Fatal("expected frontend to become active after finale completion")
+	}
+	if sg.frontend.InGame {
+		t.Fatal("expected title frontend, not in-game frontend, after finale completion")
 	}
 }
 

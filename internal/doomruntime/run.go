@@ -174,7 +174,13 @@ func (sg *sessionGame) Update() error {
 		FinaleActive: func() bool {
 			return sg.finale.Active
 		},
-		TickFinale: sg.tickFinale,
+		TickFinale: func() bool {
+			if !sg.tickFinale() {
+				return false
+			}
+			sg.startFrontend()
+			return false
+		},
 		FrontendActive: func() bool {
 			return sg.frontend.Active
 		},
