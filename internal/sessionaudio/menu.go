@@ -51,7 +51,7 @@ func (c *MenuController) Close() {
 		c.player.StopAll()
 	}
 	if c.pcSpeaker != nil && c.ownsPC {
-		c.pcSpeaker.Stop()
+		_ = c.pcSpeaker.Close()
 	}
 }
 

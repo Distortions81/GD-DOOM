@@ -8,6 +8,7 @@ type PCSpeaker interface {
 	ClearMusic()
 	Stop()
 	SetVolume(v float64)
+	Close() error
 }
 
 type PCSpeakerOutput string

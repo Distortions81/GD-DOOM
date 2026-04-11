@@ -1532,6 +1532,22 @@ func (p *PCSpeakerPlayer) Stop() {
 	p.player.Pause()
 }
 
+func (p *PCSpeakerPlayer) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.player == nil {
+		return nil
+	}
+	p.player.Pause()
+	err := p.player.Close()
+	p.player = nil
+	p.src = nil
+	return err
+}
+
 func (p *PCSpeakerPlayer) SetVolume(v float64) {
 	if p == nil {
 		return

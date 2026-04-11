@@ -3,8 +3,10 @@
 package audiofx
 
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -13,8 +15,28 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const linuxKIOCSOUND = 0x4B2F
 const linuxPCSpeakerBaseTickRate = 280
+const linuxPCSpeakerClockHz = 1193182
+
+const (
+	linuxInputEventTypeSound = 0x12
+	linuxInputSoundTone      = 0x02
+	linuxInputEventTypeSync  = 0x00
+	linuxInputSyncReport     = 0x00
+)
+
+var linuxPCSpeakerDevicePatterns = []string{
+	"/dev/input/by-path/*pcspkr*-event-spkr",
+	"/dev/input/by-path/*-event-spkr",
+	"/dev/input/by-id/*pcspkr*",
+}
+
+type linuxInputEvent struct {
+	Time  unix.Timeval
+	Type  uint16
+	Code  uint16
+	Value int32
+}
 
 type LinuxPCSpeakerPlayer struct {
 	mu             sync.Mutex
@@ -31,6 +53,7 @@ type LinuxPCSpeakerPlayer struct {
 	wakeCh         chan struct{}
 	stopCh         chan struct{}
 	lastDivisor    uint16
+	usedSpeaker    bool
 }
 
 const (
@@ -40,7 +63,10 @@ const (
 )
 
 func NewLinuxPCSpeakerPlayer() (*LinuxPCSpeakerPlayer, error) {
-	const path = "/dev/console"
+	path, err := findLinuxPCSpeakerDevice()
+	if err != nil {
+		return nil, err
+	}
 	f, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open linux pc speaker device %s: %w", path, err)
@@ -65,12 +91,19 @@ func (p *LinuxPCSpeakerPlayer) Close() error {
 	}
 	close(p.stopCh)
 	f := p.f
+	usedSpeaker := p.shouldSilenceOnCloseLocked()
 	p.f = nil
 	p.mu.Unlock()
-	_, _, _ = unix.Syscall(unix.SYS_IOCTL, f.Fd(), uintptr(linuxKIOCSOUND), 0)
+	if usedSpeaker {
+		_ = writeLinuxPCSpeakerTone(f, 0)
+	}
 	err := f.Close()
 	p.f = nil
 	return err
+}
+
+func (p *LinuxPCSpeakerPlayer) shouldSilenceOnCloseLocked() bool {
+	return p.usedSpeaker
 }
 
 func (p *LinuxPCSpeakerPlayer) Stop() {
@@ -298,13 +331,15 @@ func (p *LinuxPCSpeakerPlayer) setDivisor(div uint16) error {
 	if !changed {
 		return nil
 	}
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), uintptr(linuxKIOCSOUND), uintptr(div))
-	if errno != 0 {
-		return errno
+	if err := writeLinuxPCSpeakerTone(f, div); err != nil {
+		return err
 	}
 	p.mu.Lock()
 	if p.f == f {
 		p.lastDivisor = div
+		if div != 0 {
+			p.usedSpeaker = true
+		}
 	}
 	p.mu.Unlock()
 	return nil
@@ -325,4 +360,52 @@ func normalizeLinuxPCSpeakerTickRate(rate int) int {
 		return linuxPCSpeakerBaseTickRate
 	}
 	return rate
+}
+
+func findLinuxPCSpeakerDevice() (string, error) {
+	return findLinuxPCSpeakerDeviceFromPatterns(linuxPCSpeakerDevicePatterns)
+}
+
+func findLinuxPCSpeakerDeviceFromPatterns(patterns []string) (string, error) {
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			return "", fmt.Errorf("glob pc speaker devices %q: %w", pattern, err)
+		}
+		for _, path := range matches {
+			info, err := os.Stat(path)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("pc speaker device not found under /dev/input; require write access to /dev/input/by-path/*pcspkr*-event-spkr")
+}
+
+func writeLinuxPCSpeakerTone(f *os.File, div uint16) error {
+	if f == nil {
+		return fmt.Errorf("linux pc speaker player is closed")
+	}
+	value := int32(0)
+	if div != 0 {
+		value = int32(linuxPCSpeakerClockHz / int(div))
+		if value <= 0 {
+			value = 1
+		}
+	}
+	if err := binary.Write(f, binary.LittleEndian, linuxInputEvent{
+		Type:  linuxInputEventTypeSound,
+		Code:  linuxInputSoundTone,
+		Value: value,
+	}); err != nil {
+		return err
+	}
+	if err := binary.Write(f, binary.LittleEndian, linuxInputEvent{
+		Type: linuxInputEventTypeSync,
+		Code: linuxInputSyncReport,
+	}); err != nil {
+		return err
+	}
+	return nil
 }

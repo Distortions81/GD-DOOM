@@ -41,7 +41,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Detailed voice controls: microphone streaming includes codec choices, sample-rate control, automatic gain control, a noise gate, push-to-talk, and an in-game input meter.
 - Modern music playback choices: on current platforms you can choose between a built-in FM-synth style soundtrack and a SoundFont-based MIDI path.
 - Detailed PC speaker emulation: on current platforms, `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
-- Linux hardware PC speaker output: on Linux, `-pc-speaker-hw` drives the real `/dev/input/by-path/…pcspkr` device directly — no audio card involved, just the actual buzzer on the motherboard.
+- Linux hardware PC speaker output: on Linux, `-pc-speaker-hw` drives the real `/dev/input/by-path/…pcspkr*-event-spkr` device directly via evdev — no audio card involved, just the actual buzzer on the motherboard.
 - Analog touch controls: the browser and mobile build includes a dual-pad touch layout with analog joystick input — left pad for movement and strafe, right pad for turning, with fire/use activation at the outer edges of each pad and a thumb indicator showing current deflection.
 - Episode finales: the Doom episode end sequences (text crawl + cast screen + bunny screen) play correctly after completing an episode.
 - Peer co-op multiplayer: lockstep co-op over the GDSF relay, with per-tic input sync, roster management, and automatic desync detection via periodic state checksums.
@@ -63,7 +63,7 @@ The game still runs on Doom-style simulation and classic map data. The extra wor
 - `impsynth` for a built-in FM-synth style closer to classic Doom hardware.
 - `meltysynth` for SoundFont-based MIDI playback.
 - Optional PC speaker sound effects via `-pc-speaker`.
-- Linux hardware PC speaker output via `-pc-speaker-hw` using the real buzzer device.
+- Linux hardware PC speaker output via `-pc-speaker-hw` using the real buzzer device, with write permission required on the `pcspkr` input node.
 - Separate music and SFX volume controls.
 - Stereo music playback with adjustable width.
 - In-game music menu and browser music flow.
@@ -74,7 +74,7 @@ If you just want the short version:
 - `impsynth` sounds more like classic FM-synth Doom.
 - `meltysynth` is the choice if you want a different MIDI playback character, similar in spirit to choosing a different MIDI device or synth, through SoundFont-based playback.
 
-`-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box. On Linux, `-pc-speaker-hw` goes a step further and routes output to the actual hardware buzzer (`/dev/input/by-path/…pcspkr`) — no audio card or sample mixing involved.
+`-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box. On Linux, `-pc-speaker-hw` goes a step further and routes output to the actual hardware buzzer (`/dev/input/by-path/…pcspkr*-event-spkr`) through evdev — no audio card or sample mixing involved. The process needs write permission to that device node.
 
 When a sound effect and music are both playing through the PC speaker, the two streams are interleaved: the speaker rapidly switches ownership between SFX and music so both are partially audible. The default switching rate is 140 Hz (one Doom tic). `-pc-speaker-interleave-hz=N` changes this rate — lower values give each stream more uninterrupted time per slot (coarser interleave), higher values switch more rapidly (finer interleave). The valid range is 10–1000 Hz.
 
@@ -139,7 +139,7 @@ Frequently used options:
 
 - `-sourceport-mode` starts in the smoother, higher-fidelity Source Port profile.
 - `-pc-speaker` switches sound effects to the PC speaker emulation path.
-- `-pc-speaker-hw` (Linux only) routes PC speaker output to the real hardware buzzer device instead of the audio card.
+- `-pc-speaker-hw` (Linux only) routes PC speaker output to the real hardware buzzer device instead of the audio card. This uses the `pcspkr` evdev node and requires write permission to it.
 - `-pc-speaker-interleave-hz=N` sets the rate (in Hz) at which the speaker switches between SFX and music when both are active (default 140, which matches one Doom tic; range 10–1000).
 - `-music-backend=auto|impsynth|meltysynth` selects the music style/engine.
 - `-soundfont=PATH` selects an external `.sf2` file for `meltysynth`.

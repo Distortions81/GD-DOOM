@@ -114,6 +114,10 @@ func NewRuntime(m *mapdata.Map, opts Options, nextMap runtimehost.NextMapFunc) (
 				sg.menuSfx.Close()
 			}
 			sg.closeMusicPlayback()
+			if sg.opts.SharedPCSpeaker != nil {
+				_ = sg.opts.SharedPCSpeaker.Close()
+				sg.opts.SharedPCSpeaker = nil
+			}
 		},
 		Err: func() error {
 			return sg.err
