@@ -16,7 +16,8 @@ const pcSpeakerInterleaveMinCycles = 1.0
 const pcSpeakerInterleaveMaxHoldSubsteps = 1000
 const pcSpeakerInterleaveThreeNoteBoost = 1.5
 const pcSpeakerInterleaveFourNoteBoost = 2.0
-const pcSpeakerShortNoteDurationMS = 140.0
+const pcSpeakerShortNoteDurationMS = 140.0 / 2
+const pcSpeakerShortNotePriorityBoost = 900
 
 type nullSynth struct{}
 
@@ -47,18 +48,18 @@ type pcSpeakerNoteState struct {
 }
 
 type pcSpeakerCandidate struct {
-	start    uint64
-	age      uint64
-	duration uint64
+	start     uint64
+	age       uint64
+	duration  uint64
 	remaining uint64
-	audible  bool
-	priority int
-	velocity uint8
-	order    int
-	ch       uint8
-	instr    uint8
-	note     uint8
-	divisor  uint16
+	audible   bool
+	priority  int
+	velocity  uint8
+	order     int
+	ch        uint8
+	instr     uint8
+	note      uint8
+	divisor   uint16
 }
 
 func RenderMUSToPCSpeaker(bank PatchBank, musData []byte) ([]sound.PCSpeakerTone, int, error) {
@@ -203,18 +204,18 @@ func (r *pcSpeakerRenderer) activeCandidates() []pcSpeakerCandidate {
 			continue
 		}
 		candidates = append(candidates, pcSpeakerCandidate{
-			start:    start,
-			age:      age,
-			duration: maxAge,
+			start:     start,
+			age:       age,
+			duration:  maxAge,
 			remaining: remaining,
-			audible:  audible,
-			priority: pcSpeakerCandidatePriority(n, age, audible),
-			velocity: n.velocity,
-			order:    0,
-			ch:       n.channel & 0x0f,
-			instr:    0,
-			note:     normalizePCSpeakerNote(n.playNote),
-			divisor:  divisor,
+			audible:   audible,
+			priority:  pcSpeakerCandidatePriority(n, age, audible),
+			velocity:  n.velocity,
+			order:     0,
+			ch:        n.channel & 0x0f,
+			instr:     0,
+			note:      normalizePCSpeakerNote(n.playNote),
+			divisor:   divisor,
 		})
 	}
 	slices.SortFunc(candidates, func(a, b pcSpeakerCandidate) int {
@@ -561,6 +562,11 @@ func pcSpeakerCandidatePriority(n pcSpeakerNoteState, age uint64, audible bool) 
 	score := 0
 	if audible {
 		score += 4000
+	}
+	maxAge := pcSpeakerAudibleSubsteps(n.patch, n.velocity)
+	shortNoteDurationSubsteps := uint64(math.Ceil(pcSpeakerShortNoteDurationMS * float64(pcSpeakerMusicTickRate) / 1000.0))
+	if maxAge > 0 && maxAge != ^uint64(0) && maxAge <= shortNoteDurationSubsteps {
+		score += pcSpeakerShortNotePriorityBoost
 	}
 
 	score += pcSpeakerChannelPriority(n.channel)
