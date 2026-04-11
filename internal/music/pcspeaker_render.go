@@ -9,9 +9,11 @@ import (
 
 const pcSpeakerMusicSubstepsPerTick = 8
 const pcSpeakerMusicTickRate = defaultTicRate * pcSpeakerMusicSubstepsPerTick
-const pcSpeakerInterleaveHoldSubsteps = pcSpeakerMusicSubstepsPerTick * 8
 const pcSpeakerMinNote = 48
 const pcSpeakerMaxNote = 84
+const pcSpeakerInterleaveTargetHz = 140.0
+const pcSpeakerInterleaveMinCycles = 1.0
+const pcSpeakerInterleaveMaxHoldSubsteps = 12
 
 type nullSynth struct{}
 
@@ -310,7 +312,7 @@ func (r *pcSpeakerRenderer) selectCandidate(candidates []pcSpeakerCandidate, sub
 	slot := 0
 	pattern := pcSpeakerInterleavePattern(len(pool))
 	if r != nil {
-		slot = pattern[r.interleavePhase()%len(pattern)]
+		slot = pattern[r.interleavePhase(pool)%len(pattern)]
 	} else {
 		slot = pattern[subTick%len(pattern)]
 	}
@@ -350,11 +352,45 @@ func pcSpeakerInterleavePattern(n int) []int {
 	}
 }
 
-func (r *pcSpeakerRenderer) interleavePhase() int {
+func (r *pcSpeakerRenderer) interleavePhase(pool []pcSpeakerCandidate) int {
 	if r == nil {
 		return 0
 	}
-	return int(r.renderStep / pcSpeakerInterleaveHoldSubsteps)
+	hold := pcSpeakerInterleaveHoldSubsteps(pool)
+	if hold <= 0 {
+		hold = 1
+	}
+	return int(r.renderStep / uint64(hold))
+}
+
+func pcSpeakerInterleaveHoldSubsteps(candidates []pcSpeakerCandidate) int {
+	if len(candidates) == 0 {
+		return 1
+	}
+	lowestHz := math.MaxFloat64
+	for _, c := range candidates {
+		if c.divisor == 0 {
+			continue
+		}
+		hz := float64(sound.PCSpeakerPITHz()) / float64(c.divisor)
+		if hz > 0 && hz < lowestHz {
+			lowestHz = hz
+		}
+	}
+	holdSeconds := 1.0 / pcSpeakerInterleaveTargetHz
+	if lowestHz != math.MaxFloat64 {
+		minSeconds := pcSpeakerInterleaveMinCycles / lowestHz
+		if minSeconds > holdSeconds {
+			holdSeconds = minSeconds
+		}
+	}
+	hold := int(math.Ceil(holdSeconds * pcSpeakerMusicTickRate))
+	if hold < 1 {
+		hold = 1
+	} else if hold > pcSpeakerInterleaveMaxHoldSubsteps {
+		hold = pcSpeakerInterleaveMaxHoldSubsteps
+	}
+	return hold
 }
 
 func pcSpeakerNoteFrequency(note uint8, bend int16) float64 {
