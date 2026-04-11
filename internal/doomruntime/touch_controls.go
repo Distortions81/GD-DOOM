@@ -390,6 +390,14 @@ func gameplayPadActionsAnalog(leftPad, rightPad touchPad, x, y float64) (touchAc
 	return 0, 0, 0, 0, 0
 }
 
+func gameplayPadActions(leftPad, rightPad touchPad, x, y float64) touchActionMask {
+	if mask, ok := classifyPadTouch(leftPad, x, y, touchActionStrafeLeft, touchActionStrafeRight, touchActionUp, touchActionDown); ok {
+		return mask
+	}
+	mask, _ := classifyPadTouch(rightPad, x, y, touchActionTurnLeft, touchActionTurnRight, touchActionFire, touchActionUseEnter)
+	return mask
+}
+
 // analogPadSample returns normalized [-1,1] axes for a pad touch, with deadzone.
 func analogPadSample(pad touchPad, x, y float64) (float64, float64, bool) {
 	dx := x - pad.cx

@@ -1,24 +1,19 @@
-//go:build (!js || !wasm) && cgo
+//go:build (!js || !wasm) && !cgo
 
 package voicecodec
 
-import (
-	"encoding/binary"
-	"fmt"
+import "fmt"
 
-	"gddoom/internal/voicecodec/silkc"
-)
+var errSilkUnsupported = fmt.Errorf("silk codec is not supported without cgo")
 
 type SilkEncoder struct {
 	sampleRate           int
 	packetDurationMillis int
 	bitrate              int
-	state                *silkc.Encoder
 }
 
 type SilkDecoder struct {
 	sampleRate int
-	state      *silkc.Decoder
 }
 
 func NewSilkEncoder(sampleRate, packetDurationMillis, bitrate int) *SilkEncoder {
@@ -31,15 +26,10 @@ func NewSilkEncoder(sampleRate, packetDurationMillis, bitrate int) *SilkEncoder 
 	if bitrate <= 0 {
 		bitrate = SilkDefaultBitrate
 	}
-	state, err := silkc.NewEncoder(sampleRate, bitrate)
-	if err != nil {
-		state = nil
-	}
 	return &SilkEncoder{
 		sampleRate:           sampleRate,
 		packetDurationMillis: packetDurationMillis,
 		bitrate:              bitrate,
-		state:                state,
 	}
 }
 
@@ -47,11 +37,7 @@ func NewSilkDecoder(sampleRate int) *SilkDecoder {
 	if sampleRate <= 0 {
 		sampleRate = SampleRate
 	}
-	state, err := silkc.NewDecoder(sampleRate)
-	if err != nil {
-		state = nil
-	}
-	return &SilkDecoder{sampleRate: sampleRate, state: state}
+	return &SilkDecoder{sampleRate: sampleRate}
 }
 
 func (e *SilkEncoder) SetSampleRate(sampleRate int) {
@@ -59,9 +45,6 @@ func (e *SilkEncoder) SetSampleRate(sampleRate int) {
 		return
 	}
 	e.sampleRate = sampleRate
-	if e.state != nil {
-		_ = e.state.SetSampleRate(sampleRate)
-	}
 }
 
 func (e *SilkEncoder) SetPacketDurationMillis(packetDurationMillis int) {
@@ -76,9 +59,6 @@ func (e *SilkEncoder) SetBitrate(bitrate int) {
 		return
 	}
 	e.bitrate = bitrate
-	if e.state != nil {
-		e.state.SetBitrate(bitrate)
-	}
 }
 
 func (d *SilkDecoder) SetSampleRate(sampleRate int) {
@@ -86,62 +66,32 @@ func (d *SilkDecoder) SetSampleRate(sampleRate int) {
 		return
 	}
 	d.sampleRate = sampleRate
-	if d.state != nil {
-		_ = d.state.SetSampleRate(sampleRate)
-	}
 }
 
 func (e *SilkEncoder) Reset() error {
-	if e == nil || e.state == nil {
+	if e == nil {
 		return fmt.Errorf("silk encoder is nil")
 	}
-	return e.state.Reset()
+	return errSilkUnsupported
 }
 
 func (d *SilkDecoder) Reset() error {
-	if d == nil || d.state == nil {
+	if d == nil {
 		return fmt.Errorf("silk decoder is nil")
 	}
-	return d.state.Reset()
+	return errSilkUnsupported
 }
 
 func (e *SilkEncoder) Encode(pcm []int16) ([]byte, error) {
-	if e == nil || e.state == nil {
+	if e == nil {
 		return nil, fmt.Errorf("silk encoder is nil")
 	}
-	packetSamples, err := PacketSamplesFor(e.sampleRate, e.packetDurationMillis)
-	if err != nil {
-		return nil, err
-	}
-	if len(pcm) < packetSamples*Channels {
-		return nil, fmt.Errorf("pcm samples=%d want at least %d", len(pcm), packetSamples*Channels)
-	}
-
-	raw := make([]byte, packetSamples*Channels*2)
-	for i, sample := range pcm[:packetSamples*Channels] {
-		binary.LittleEndian.PutUint16(raw[i*2:i*2+2], uint16(sample))
-	}
-	encoded, err := e.state.EncodePCM16LE(raw)
-	if err != nil {
-		return nil, err
-	}
-	return encoded, nil
+	return nil, errSilkUnsupported
 }
 
 func (d *SilkDecoder) Decode(packet []byte) ([]int16, error) {
-	if d == nil || d.state == nil {
+	if d == nil {
 		return nil, fmt.Errorf("silk decoder is nil")
 	}
-	decoded, err := d.state.DecodePCM16LE(packet)
-	if err != nil {
-		return nil, err
-	}
-	if len(decoded)%2 != 0 {
-		return nil, fmt.Errorf("silk decoded pcm len=%d must be even", len(decoded))
-	}
-	out := make([]int16, len(decoded)/2)
-	for i := range out {
-		out[i] = int16(binary.LittleEndian.Uint16(decoded[i*2 : i*2+2]))
-	}
-	return out, nil
+	return nil, errSilkUnsupported
 }
