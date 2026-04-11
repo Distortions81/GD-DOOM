@@ -2869,24 +2869,15 @@ func (g *game) updateWalkMode() {
 				cmd.turn -= 1
 			}
 		}
-		// Analog touch joystick: override digital touch contributions with scaled values.
-		// Uses the same cmd.forward/side/turn fields as keyboard so demo recording stays in sync.
+		// Analog touch joystick — same approach as mouse look.
 		if g.input.touchLeftX != 0 || g.input.touchLeftY != 0 || g.input.touchRightX != 0 || g.input.touchRightY != 0 {
-			// Zero out cmd.forward/side so digital touch bits don't double-count.
 			cmd.forward = 0
 			cmd.side = 0
 			cmd.turn = 0
-			// Scale by analog axis; forwardMove/sideMove are the max per-tic values.
 			cmd.forward = int64(float64(forwardMove[speed]) * (-g.input.touchLeftY))
 			cmd.side = int64(float64(sideMove[speed]) * g.input.touchLeftX)
-			// Turn: map rightX magnitude to run/walk turn so demo quantization is identical to keyboard.
-			// Full deflection (|rightX| >= 0.5) = run turn speed, partial = walk.
-			if g.input.touchRightX < -0.1 {
-				cmd.turn = 1
-			} else if g.input.touchRightX > 0.1 {
-				cmd.turn = -1
-			}
-			// Fire/Use from right pad Y axis — only the outer cap region.
+			// Smooth analog turn via turnRaw, same as mouse look.
+			cmd.turnRaw -= int64(float64(angleTurn[1]) * g.input.touchRightX)
 			if g.input.touchRightY < -0.65 {
 				fireHeld = true
 			}
