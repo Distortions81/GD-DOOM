@@ -14,6 +14,8 @@ const pcSpeakerMaxNote = 84
 const pcSpeakerInterleaveTargetHz = 65.41 // Note C2
 const pcSpeakerInterleaveMinCycles = 1.0
 const pcSpeakerInterleaveMaxHoldSubsteps = 1000
+const pcSpeakerInterleaveThreeNoteBoost = 1.5
+const pcSpeakerInterleaveFourNoteBoost = 2.0
 
 type nullSynth struct{}
 
@@ -46,6 +48,7 @@ type pcSpeakerNoteState struct {
 type pcSpeakerCandidate struct {
 	start    uint64
 	age      uint64
+	remaining uint64
 	audible  bool
 	priority int
 	velocity uint8
@@ -183,7 +186,14 @@ func (r *pcSpeakerRenderer) activeCandidates() []pcSpeakerCandidate {
 		if r.renderStep > start {
 			age = r.renderStep - start
 		}
+		maxAge := pcSpeakerAudibleSubsteps(n.patch, n.velocity)
 		audible := pcSpeakerNoteAudible(n, age)
+		remaining := uint64(0)
+		if maxAge > age {
+			remaining = maxAge - age
+		} else if audible {
+			remaining = 1
+		}
 		bend := r.driver.ch[n.channel&0x0f].pitchBend + n.fineTune
 		freqWord := dmxFrequencyWord(int(n.playNote), bend)
 		divisor := sound.PITDivisorForFrequency(dmxFrequencyWordToHz(freqWord))
@@ -193,6 +203,7 @@ func (r *pcSpeakerRenderer) activeCandidates() []pcSpeakerCandidate {
 		candidates = append(candidates, pcSpeakerCandidate{
 			start:    start,
 			age:      age,
+			remaining: remaining,
 			audible:  audible,
 			priority: pcSpeakerCandidatePriority(n, age, audible),
 			velocity: n.velocity,
@@ -309,6 +320,9 @@ func (r *pcSpeakerRenderer) selectCandidate(candidates []pcSpeakerCandidate, sub
 		r.forceFront--
 		return candidates[0], true
 	}
+	if urgent, ok := pcSpeakerUrgentShortCandidate(pool); ok {
+		return urgent, true
+	}
 	slot := 0
 	pattern := pcSpeakerInterleavePattern(len(pool))
 	if r != nil {
@@ -348,7 +362,7 @@ func pcSpeakerInterleavePattern(n int) []int {
 	case 2:
 		return []int{0, 1, 0, 1, 0, 1, 0, 1}
 	default:
-		return []int{0, 1, 0, 2, 0, 1, 0, 2}
+		return []int{0, 1, 2}
 	}
 }
 
@@ -367,6 +381,13 @@ func pcSpeakerInterleaveHoldSubsteps(candidates []pcSpeakerCandidate) int {
 	if len(candidates) == 0 {
 		return 1
 	}
+	targetHz := pcSpeakerInterleaveTargetHz
+	switch {
+	case len(candidates) >= 4:
+		targetHz *= pcSpeakerInterleaveFourNoteBoost
+	case len(candidates) >= 3:
+		targetHz *= pcSpeakerInterleaveThreeNoteBoost
+	}
 	lowestHz := math.MaxFloat64
 	for _, c := range candidates {
 		if c.divisor == 0 {
@@ -377,7 +398,7 @@ func pcSpeakerInterleaveHoldSubsteps(candidates []pcSpeakerCandidate) int {
 			lowestHz = hz
 		}
 	}
-	holdSeconds := 1.0 / pcSpeakerInterleaveTargetHz
+	holdSeconds := 1.0 / targetHz
 	if lowestHz != math.MaxFloat64 {
 		minSeconds := pcSpeakerInterleaveMinCycles / lowestHz
 		if minSeconds > holdSeconds {
@@ -391,6 +412,33 @@ func pcSpeakerInterleaveHoldSubsteps(candidates []pcSpeakerCandidate) int {
 		hold = pcSpeakerInterleaveMaxHoldSubsteps
 	}
 	return hold
+}
+
+func pcSpeakerUrgentShortCandidate(candidates []pcSpeakerCandidate) (pcSpeakerCandidate, bool) {
+	bestIdx := -1
+	bestCycles := math.MaxFloat64
+	for i, c := range candidates {
+		if !c.audible || c.remaining == 0 || c.divisor == 0 {
+			continue
+		}
+		hz := float64(sound.PCSpeakerPITHz()) / float64(c.divisor)
+		if hz <= 0 {
+			continue
+		}
+		remainingSeconds := float64(c.remaining) / float64(pcSpeakerMusicTickRate)
+		cyclesLeft := remainingSeconds * hz
+		if cyclesLeft > 2.0 {
+			continue
+		}
+		if cyclesLeft < bestCycles {
+			bestCycles = cyclesLeft
+			bestIdx = i
+		}
+	}
+	if bestIdx < 0 {
+		return pcSpeakerCandidate{}, false
+	}
+	return candidates[bestIdx], true
 }
 
 func pcSpeakerNoteFrequency(note uint8, bend int16) float64 {
