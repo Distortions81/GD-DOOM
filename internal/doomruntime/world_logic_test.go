@@ -132,6 +132,45 @@ func TestHazardDamageSpecial16WithoutSuit(t *testing.T) {
 	}
 }
 
+func TestHazardDamageSpecial11RequestsExitAtTenHealthOrLess(t *testing.T) {
+	g := &game{
+		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 11}}},
+		sectorFloor: []int64{0},
+		p:           player{x: 0, y: 0, z: 0, floorz: 0},
+		stats:       playerStats{Health: 30},
+	}
+	g.applySectorHazardDamage()
+	if g.stats.Health != 10 {
+		t.Fatalf("health=%d want=10", g.stats.Health)
+	}
+	if !g.levelExitRequested {
+		t.Fatal("special 11 should request a level exit once health reaches 10")
+	}
+	if g.secretLevelExit {
+		t.Fatal("special 11 should request a normal exit")
+	}
+}
+
+func TestHazardDamageSpecial11RequestsExitEvenOnFatalTick(t *testing.T) {
+	g := &game{
+		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 11}}},
+		sectorFloor: []int64{0},
+		p:           player{x: 0, y: 0, z: 0, floorz: 0},
+		stats:       playerStats{Health: 15},
+		soundQueue:  make([]soundEvent, 0, 2),
+	}
+	g.applySectorHazardDamage()
+	if g.stats.Health != 0 {
+		t.Fatalf("health=%d want=0", g.stats.Health)
+	}
+	if !g.isDead {
+		t.Fatal("special 11 fatal tick should still kill the player")
+	}
+	if !g.levelExitRequested {
+		t.Fatal("special 11 fatal tick should still request the level exit")
+	}
+}
+
 func TestTrackSecrets_RequiresPlayerOnFloorAndClearsSectorSpecial(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: 9}}},

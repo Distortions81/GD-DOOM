@@ -290,3 +290,9 @@ func TestPCSpeakerSetMusicRewindsBackend(t *testing.T) {
 		t.Fatalf("played=%d want 1", backend.played)
 	}
 }
+
+func TestPCSpeakerPlayerBufferDuration(t *testing.T) {
+	if got := pcSpeakerPlayerBufferDuration(); got != 30*time.Millisecond {
+		t.Fatalf("pcSpeakerPlayerBufferDuration()=%v want %v", got, 30*time.Millisecond)
+	}
+}

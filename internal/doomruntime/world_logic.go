@@ -369,11 +369,15 @@ func (g *game) applySectorHazardDamage() {
 		return
 	}
 	hasSuit := g.inventory.RadSuitTics > 0
-	damage := hazardDamage(g.m.Sectors[sec].Special, hasSuit)
+	special := g.m.Sectors[sec].Special
+	damage := hazardDamage(special, hasSuit)
 	if damage <= 0 {
 		return
 	}
 	g.damagePlayer(damage, "Ouch! damaging floor")
+	if special == 11 && g.stats.Health <= 10 {
+		g.requestLevelExit(false, "Level Complete")
+	}
 }
 
 func hazardDamage(special int16, hasSuit bool) int {
@@ -391,6 +395,8 @@ func hazardDamage(special int16, hasSuit bool) int {
 		if !hasSuit || doomrand.PRandom() < 5 {
 			return 20
 		}
+	case 11:
+		return 20
 	}
 	return 0
 }

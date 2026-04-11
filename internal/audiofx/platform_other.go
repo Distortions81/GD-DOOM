@@ -2,7 +2,11 @@
 
 package audiofx
 
-import "gddoom/internal/platformcfg"
+import (
+	"time"
+
+	"gddoom/internal/platformcfg"
+)
 
 func maxSpatialVoices() int {
 	if platformcfg.IsWASMBuild() {
@@ -16,4 +20,11 @@ func maxMenuVoices() int {
 		return 8
 	}
 	return 8
+}
+
+func pcSpeakerPlayerBufferDuration() time.Duration {
+	if platformcfg.IsWASMBuild() {
+		return 60 * time.Millisecond
+	}
+	return 30 * time.Millisecond
 }

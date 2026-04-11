@@ -16,7 +16,6 @@ import (
 const pcSpeakerPCMUpdateRate = 11025
 
 const pcSpeakerPCMCompactThresholdBytes = 64 * 1024
-const pcSpeakerPlayerBuffer = 30 * time.Millisecond
 const pcSpeakerToneInterleaveTargetHz = 140.0
 const pcSpeakerToneInterleaveMinCycles = 1.0
 
@@ -1254,7 +1253,7 @@ func NewPCSpeakerPlayer(volume float64, variant PCSpeakerVariant) *PCSpeakerPlay
 	if err != nil {
 		return nil
 	}
-	ap.SetBufferSize(pcSpeakerPlayerBuffer)
+	ap.SetBufferSize(pcSpeakerPlayerBufferDuration())
 	return &PCSpeakerPlayer{
 		player: ap,
 		src:    src,
