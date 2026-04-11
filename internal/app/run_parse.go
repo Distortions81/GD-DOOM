@@ -494,6 +494,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	pcSpeaker := fs.Bool("pc-speaker", defaultPCSpeakerMode, "render DP* PC speaker lumps to PCM and use them in place of DS* digital sounds")
 	pcSpeakerVariant := fs.String("pc-speaker-variant", defaultPCSpeakerVariant, "pc speaker tone model (passthrough|paper-speaker|small-buzzer)")
 	pcSpeakerOutput := fs.String("pc-speaker-output", defaultPCSpeakerOutput, "pc speaker output backend (emulated|linux)")
+	pcSpeakerInterleaveHz := fs.Float64("pc-speaker-interleave-hz", 280.0, "PC speaker SFX/music interleave rate in Hz when both streams are active (10..1000; default 140 matches one Doom tic)")
 	alwaysRun := fs.Bool("always-run", defaultAlwaysRun, "start with always-run enabled (Shift inverts while held)")
 	autoWeaponSwitch := fs.Bool("auto-weapon-switch", defaultAutoWeaponSwitch, "auto-switch to newly picked weapons")
 	cheatLevel := fs.Int("cheat-level", defaultCheatLevel, "startup cheats (0=off, 1=automap, 2=idfa-like, 3=idkfa+invuln)")
@@ -1088,6 +1089,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		cfg := watchSession.Session()
 		selected = mapdata.MapName(strings.ToUpper(strings.TrimSpace(cfg.MapName)))
 	}
+
+	audiofx.SetPCSpeakerInterleaveHz(*pcSpeakerInterleaveHz)
 
 	if *render {
 		var voiceSync *voiceSyncMeter

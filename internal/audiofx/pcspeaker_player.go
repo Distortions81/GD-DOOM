@@ -17,8 +17,25 @@ const pcSpeakerPCMUpdateRate = 11025
 const pcSpeakerEmulatedMixTickRate = 280
 
 const pcSpeakerPCMCompactThresholdBytes = 64 * 1024
-const pcSpeakerToneInterleaveTargetHz = 140.0
 const pcSpeakerToneInterleaveMinCycles = 1.0
+
+// pcSpeakerToneInterleaveTargetHz controls how quickly the emulated speaker
+// switches ownership between the SFX and music streams when both are active.
+// 140 Hz (one Doom tic) is the original hardware timing; lower values give
+// each stream more uninterrupted time, higher values switch more rapidly.
+var pcSpeakerToneInterleaveTargetHz = 140.0
+
+// SetPCSpeakerInterleaveHz overrides the interleave rate used when mixing
+// simultaneous SFX and music through the PC speaker emulation path.
+// Values outside the range [10, 1000] are clamped silently.
+func SetPCSpeakerInterleaveHz(hz float64) {
+	if hz < 10 {
+		hz = 10
+	} else if hz > 1000 {
+		hz = 1000
+	}
+	pcSpeakerToneInterleaveTargetHz = hz
+}
 
 // PCSpeakerPlayer is a single-channel player that streams PC speaker audio.
 // Starting a new sound always interrupts the current one, matching real hardware.

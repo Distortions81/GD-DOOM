@@ -76,6 +76,8 @@ If you just want the short version:
 
 `-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box. On Linux, `-pc-speaker-hw` goes a step further and routes output to the actual hardware buzzer (`/dev/input/by-path/…pcspkr`) — no audio card or sample mixing involved.
 
+When a sound effect and music are both playing through the PC speaker, the two streams are interleaved: the speaker rapidly switches ownership between SFX and music so both are partially audible. The default switching rate is 140 Hz (one Doom tic). `-pc-speaker-interleave-hz=N` changes this rate — lower values give each stream more uninterrupted time per slot (coarser interleave), higher values switch more rapidly (finer interleave). The valid range is 10–1000 Hz.
+
 ### Runtime
 
 - Direct loading of base game WADs and add-on/mod WADs.
@@ -138,6 +140,7 @@ Frequently used options:
 - `-sourceport-mode` starts in the smoother, higher-fidelity Source Port profile.
 - `-pc-speaker` switches sound effects to the PC speaker emulation path.
 - `-pc-speaker-hw` (Linux only) routes PC speaker output to the real hardware buzzer device instead of the audio card.
+- `-pc-speaker-interleave-hz=N` sets the rate (in Hz) at which the speaker switches between SFX and music when both are active (default 140, which matches one Doom tic; range 10–1000).
 - `-music-backend=auto|impsynth|meltysynth` selects the music style/engine.
 - `-soundfont=PATH` selects an external `.sf2` file for `meltysynth`.
 - `-detail-level=N` sets starting image detail and `-auto-detail` tries to keep the game near 60 FPS automatically.
