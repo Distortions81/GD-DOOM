@@ -289,7 +289,7 @@ func (g *game) updateCoopMode() error {
 		if g.bindingJustPressed(bindingUse) {
 			g.pendingUse = true
 		}
-		if g.isDead && g.enterJustPressed() {
+		if g.isDead && g.deathRestartJustPressed() {
 			g.requestLevelRestart()
 		}
 		g.edgeInputPass = false

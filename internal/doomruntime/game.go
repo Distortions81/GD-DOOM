@@ -2663,7 +2663,7 @@ func (g *game) Update() error {
 				g.cycleDetailLevel()
 			}
 		}
-		if g.isDead && g.enterJustPressed() {
+		if g.isDead && g.deathRestartJustPressed() {
 			g.requestLevelRestart()
 		}
 	}
@@ -3092,6 +3092,10 @@ func (g *game) touchActionJustPressed(action bindingAction) bool {
 
 func (g *game) enterJustPressed() bool {
 	return g != nil && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter) || g.input.touchJustPressedActions&touchActionUseEnter != 0)
+}
+
+func (g *game) deathRestartJustPressed() bool {
+	return g != nil && (g.keyJustPressed(ebiten.KeyEnter) || g.keyJustPressed(ebiten.KeyKPEnter) || g.input.touchJustPressedActions&(touchActionFire|touchActionUseEnter) != 0)
 }
 
 func (g *game) mouseHeld(button ebiten.MouseButton) bool {
@@ -13452,8 +13456,9 @@ func buttonHighlightEligible(special uint16) bool {
 
 func (g *game) drawDeathOverlay(screen *ebiten.Image) {
 	hud.DrawDeathOverlay(screen, hud.DeathOverlayInputs{
-		ViewW: g.viewW,
-		ViewH: g.viewH,
+		ViewW:         g.viewW,
+		ViewH:         g.viewH,
+		TouchControls: g.input.touchSeen,
 	}, g.huTextWidth, g.drawHUTextAt)
 }
 

@@ -155,8 +155,9 @@ func DrawHUDMessage(screen *ebiten.Image, in MessageInputs, drawText TextDrawer)
 }
 
 type DeathOverlayInputs struct {
-	ViewW int
-	ViewH int
+	ViewW         int
+	ViewH         int
+	TouchControls bool
 }
 
 func DrawDeathOverlay(screen *ebiten.Image, in DeathOverlayInputs, textWidth TextWidthFunc, drawText TextDrawer) {
@@ -166,6 +167,9 @@ func DrawDeathOverlay(screen *ebiten.Image, in DeathOverlayInputs, textWidth Tex
 	ebitenutil.DrawRect(screen, 0, 0, float64(in.ViewW), float64(in.ViewH), color.RGBA{R: 25, G: 0, B: 0, A: 130})
 	msg1 := "YOU DIED"
 	msg2 := "PRESS ENTER TO RESTART"
+	if in.TouchControls {
+		msg2 = "PRESS FIRE TO RESTART"
+	}
 	sx := 2.0
 	sy := 2.0
 	w1 := float64(textWidth(msg1)) * sx

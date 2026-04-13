@@ -97,3 +97,66 @@ func TestTickFrontendClosedTitleTreatsEnterAsSkip(t *testing.T) {
 		t.Fatal("expected enter to open the closed title menu")
 	}
 }
+
+func TestFrontendStartPromptUsesTouchCopyAfterTouchSeen(t *testing.T) {
+	sg := &sessionGame{}
+	if got := sg.frontendStartPrompt(); got != "PRESS ANY KEY TO START" {
+		t.Fatalf("prompt=%q want keyboard prompt", got)
+	}
+	sg.touch.seen = true
+	if got := sg.frontendStartPrompt(); got != "TOUCH SCREEN TO START" {
+		t.Fatalf("prompt=%q want touch prompt", got)
+	}
+}
+
+func TestTickFrontendTouchBackClosesMenuAndSuppressesUntilRelease(t *testing.T) {
+	sg := &sessionGame{
+		frontend: frontendState{
+			Active:     true,
+			Mode:       frontendModeTitle,
+			Attract:    true,
+			MenuActive: true,
+		},
+		touch: touchControllerState{
+			seen:               true,
+			latchedJustPressed: touchActionBack,
+		},
+	}
+
+	if err := sg.tickFrontend(); err != nil {
+		t.Fatalf("tickFrontend() error = %v", err)
+	}
+	if sg.frontend.MenuActive {
+		t.Fatal("expected touch back to close the attract menu")
+	}
+	if !sg.touch.suppressUntilClear {
+		t.Fatal("expected touch close to suppress touch until release")
+	}
+}
+
+func TestTickFrontendMusicPlayerTouchBackSuppressesUntilRelease(t *testing.T) {
+	sg := &sessionGame{
+		frontend: frontendState{
+			Active:     true,
+			Mode:       frontendModeMusicPlayer,
+			MenuActive: true,
+		},
+		touch: touchControllerState{
+			seen:               true,
+			latchedJustPressed: touchActionBack,
+		},
+	}
+
+	if err := sg.tickFrontendMusicPlayer(); err != nil {
+		t.Fatalf("tickFrontendMusicPlayer() error = %v", err)
+	}
+	if sg.frontend.Mode != frontendModeSound {
+		t.Fatalf("mode=%d want sound mode after close", sg.frontend.Mode)
+	}
+	if !sg.frontend.MenuActive {
+		t.Fatal("expected touch back to return to the active sound submenu")
+	}
+	if !sg.touch.suppressUntilClear {
+		t.Fatal("expected touch close to suppress touch until release")
+	}
+}

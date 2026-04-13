@@ -21,6 +21,13 @@ const frontendMainMenuTitle = "GD-DOOM [ALPHA]"
 
 var frontendWatchMenuSelectableRows = []int{1, 4, 5}
 
+func (sg *sessionGame) frontendStartPrompt() string {
+	if sg != nil && sg.touch.seen {
+		return "TOUCH SCREEN TO START"
+	}
+	return "PRESS ANY KEY TO START"
+}
+
 func (sg *sessionGame) shouldStartInFrontend() bool {
 	if sg == nil {
 		return false
@@ -397,8 +404,12 @@ func (sg *sessionGame) tickFrontendMusicPlayer() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
-	if sg.keyJustPressed(ebiten.KeyEscape) || sg.touchJustPressed(touchActionBack) {
+	touchBack := sg.touchJustPressed(touchActionBack)
+	if sg.keyJustPressed(ebiten.KeyEscape) || touchBack {
 		sg.frontendMusicPlayerClose()
+		if touchBack {
+			sg.suppressTouchUntilRelease()
+		}
 		sg.playMenuBackSound()
 		return nil
 	}
@@ -676,7 +687,8 @@ func (sg *sessionGame) tickFrontend() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
-	escape := sg.keyJustPressed(ebiten.KeyEscape) || sg.touchJustPressed(touchActionBack)
+	touchEscape := sg.touchJustPressed(touchActionBack)
+	escape := sg.keyJustPressed(ebiten.KeyEscape) || touchEscape
 	up := sg.keyJustPressed(ebiten.KeyArrowUp) || sg.touchJustPressed(touchActionUp)
 	down := sg.keyJustPressed(ebiten.KeyArrowDown) || sg.touchJustPressed(touchActionDown)
 	left := sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.touchJustPressed(touchActionLeft)
@@ -708,6 +720,9 @@ func (sg *sessionGame) tickFrontend() error {
 		},
 	)
 	sg.frontend = frontendState(result.State)
+	if touchEscape && !sg.frontend.MenuActive {
+		sg.suppressTouchUntilRelease()
+	}
 	switch result.Sound {
 	case sessionflow.FrontendSoundMove:
 		sg.playMenuMoveSound()
@@ -1085,7 +1100,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			sg.drawIntermissionText(screen, msg, 160, 178, scale, ox, oy, true)
 		}
 		if sessionflow.ShowAttractBeginPrompt(sg.frontend) {
-			const prompt = "PRESS ANY KEY TO START"
+			prompt := sg.frontendStartPrompt()
 			textScale := scale * 1
 			promptW := float64(sg.g.huTextWidth(prompt)) * textScale
 			promptH := 9.0 * textScale

@@ -90,7 +90,7 @@ func (sg *sessionGame) frontendMusicPlayerOpen() bool {
 	sg.musicPlayer = frontendMusicPlayerState{Row: frontendMusicPlayerRowTrack}
 	sg.frontendMusicPlayerSyncToCurrentSource()
 	sg.frontend.Mode = frontendModeMusicPlayer
-	sg.frontend.MenuActive = false
+	sg.frontend.MenuActive = true
 	sg.frontendMusicPlayerClamp()
 	return true
 }
@@ -135,7 +135,7 @@ func (sg *sessionGame) frontendMusicPlayerClose() {
 	}
 	sg.frontend.Mode = frontendModeSound
 	sg.frontend.SoundOn = frontendSoundMenuRowPlayer
-	sg.frontend.MenuActive = false
+	sg.frontend.MenuActive = true
 }
 
 func (sg *sessionGame) frontendMusicPlayerWAD() *runtimecfg.MusicPlayerWAD {

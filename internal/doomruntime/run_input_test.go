@@ -234,6 +234,16 @@ func TestShouldDrawTouchControlsHidesFrontendAttractOverlayWhenMenuClosed(t *tes
 	}
 }
 
+func TestShouldDrawTouchControlsShowsFrontendSubmenusWhenMenuActive(t *testing.T) {
+	sg := &sessionGame{
+		touch:    touchControllerState{seen: true},
+		frontend: frontendState{Active: true, Mode: frontendModeMusicPlayer, MenuActive: true},
+	}
+	if !sg.shouldDrawTouchControls() {
+		t.Fatal("shouldDrawTouchControls() = false, want true for active frontend submenu")
+	}
+}
+
 func TestTouchButtonsUseWholeScreenEnterForClosedFrontend(t *testing.T) {
 	sg := &sessionGame{
 		frontend: frontendState{Active: true, MenuActive: false},
@@ -247,5 +257,82 @@ func TestTouchButtonsUseWholeScreenEnterForClosedFrontend(t *testing.T) {
 	}
 	if buttons[0].x != 0 || buttons[0].y != 0 || buttons[0].w != 320 || buttons[0].h != 200 {
 		t.Fatalf("button rect=(%.0f,%.0f,%.0f,%.0f) want (0,0,320,200)", buttons[0].x, buttons[0].y, buttons[0].w, buttons[0].h)
+	}
+}
+
+func TestFrontendTouchButtonsAnchorToBottomEdge(t *testing.T) {
+	sg := &sessionGame{
+		frontend: frontendState{Active: true, MenuActive: true},
+	}
+	buttons := sg.touchButtons(320, 200)
+	if len(buttons) != 6 {
+		t.Fatalf("buttons len=%d want 6", len(buttons))
+	}
+	for _, button := range buttons {
+		switch button.label {
+		case "LEFT", "DOWN", "RIGHT", "BACK":
+			if button.y+button.h >= 192 {
+				continue
+			}
+			t.Fatalf("%s button bottom=%0.1f want near screen bottom", button.label, button.y+button.h)
+		}
+	}
+}
+
+func TestGameplayTouchButtonsPlaceEscOnTopRight(t *testing.T) {
+	sg := &sessionGame{g: &game{}}
+	buttons := sg.gameplayTouchButtons(320, 200)
+	if len(buttons) != 1 {
+		t.Fatalf("buttons len=%d want 1", len(buttons))
+	}
+	if buttons[0].action != touchActionBack {
+		t.Fatalf("button action=%v want touchActionBack", buttons[0].action)
+	}
+	if buttons[0].label != "ESC" {
+		t.Fatalf("button label=%q want ESC", buttons[0].label)
+	}
+	if buttons[0].x+buttons[0].w < 300 || buttons[0].y > 30 {
+		t.Fatalf("button rect=(%.1f,%.1f,%.1f,%.1f) want top-right placement", buttons[0].x, buttons[0].y, buttons[0].w, buttons[0].h)
+	}
+}
+
+func TestHandleGameplayTouchShortcutsOpensFrontendMenu(t *testing.T) {
+	sg := &sessionGame{
+		g: &game{},
+		touch: touchControllerState{
+			latchedJustPressed: touchActionBack,
+		},
+	}
+
+	sg.handleGameplayTouchShortcuts()
+
+	if !sg.g.frontendMenuRequested {
+		t.Fatal("expected gameplay touch ESC to request frontend menu")
+	}
+	if !sg.touch.suppressUntilClear {
+		t.Fatal("expected gameplay touch ESC to suppress touch until release")
+	}
+}
+
+func TestSuppressTouchUntilReleaseClearsLatchedAndHeldState(t *testing.T) {
+	sg := &sessionGame{
+		g: &game{},
+		touch: touchControllerState{
+			held:               touchActionBack,
+			justPressed:        touchActionBack,
+			latchedJustPressed: touchActionBack | touchActionUseEnter,
+		},
+	}
+
+	sg.suppressTouchUntilRelease()
+
+	if !sg.touch.suppressUntilClear {
+		t.Fatal("expected touch suppression to be enabled")
+	}
+	if sg.touch.held != 0 || sg.touch.justPressed != 0 || sg.touch.latchedJustPressed != 0 {
+		t.Fatalf("touch state=(held=%v just=%v latched=%v) want all cleared", sg.touch.held, sg.touch.justPressed, sg.touch.latchedJustPressed)
+	}
+	if sg.g.input.touchHeldActions != 0 || sg.g.input.touchJustPressedActions != 0 {
+		t.Fatalf("game touch state=(held=%v just=%v) want cleared", sg.g.input.touchHeldActions, sg.g.input.touchJustPressedActions)
 	}
 }

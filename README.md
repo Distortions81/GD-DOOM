@@ -43,7 +43,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Modern music playback choices: on current platforms you can choose between a built-in FM-synth style soundtrack and a SoundFont-based MIDI path.
 - Detailed PC speaker emulation: on current platforms, `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
 - Linux hardware PC speaker output: on Linux, `-pc-speaker-hw` drives the real `/dev/input/by-path/…pcspkr*-event-spkr` device directly via evdev — no audio card involved, just the actual buzzer on the motherboard.
-- Analog touch controls: the browser and mobile build includes a dual-pad touch layout with analog joystick input — left pad for movement and strafe, right pad for turning, with fire/use activation at the outer edges of each pad and a thumb indicator showing current deflection.
+- Analog touch controls: the browser and mobile build includes a dual-pad touch layout with analog joystick input — left pad for movement and strafe, right pad for turning with a softer non-linear stick response, fire/use activation at the outer edges of the right pad, an in-game top-right `ESC` button, touch-aware restart prompts, and a thumb indicator showing current deflection.
 - Browser save/load uses `localStorage` for saves and includes save-slot preview thumbnails in the save/load menu.
 - Save/load now persists in browser storage and shows slot metadata/thumbnails while returning to saved games from main menu and map transitions.
 - Episode finales: the Doom episode end sequences (text crawl + cast screen + bunny screen) play correctly after completing an episode.
@@ -295,6 +295,7 @@ The frontend and pause menus expose most of the settings people actually want to
 - Sound options for SFX/music volume.
 - Voice options for codec, sample rate, automatic gain control, gate strength, device selection, and push-to-talk.
 - Key binding menus with primary/alternate bindings and reset-to-default support.
+- Browser/touch-friendly frontend flow, including touch prompts on the title screen, touch controls in frontend submenus such as the music player, and touch-safe menu-close debounce.
 - Persisted native settings through `config.toml`, including runtime options and the `keybinds` table.
 
 `config.toml` is the desktop settings file. GD-DOOM reads it at startup, uses it as the default configuration, and writes new values back when you change settings or bindings in-game. You can ignore it and use the menus, or edit it by hand if you prefer.
@@ -355,7 +356,7 @@ On browsers with strict autoplay policies, clicking once is required to start au
 
 WASM sessions end with a web-appropriate quit hint (`close the page to quit`) instead of a desktop session message.
 
-On touch devices the browser build shows a dual-pad on-screen layout: the left pad controls forward/back movement and strafing, the right pad handles turning. Both pads use analog joystick input — deflection scales continuously from zero to full speed rather than snapping to fixed speeds. Fire and use activate only when your thumb reaches the outer edge of the respective pad, which keeps accidental shots from killing accidental strafes. A small indicator follows your thumb to show current deflection.
+On touch devices the browser build shows a dual-pad on-screen layout: the left pad controls forward/back movement and strafing, the right pad handles turning with a more typical non-linear stick curve. Fire and use activate only when your thumb reaches the outer edge of the right pad, which keeps accidental shots from killing accidental strafes. A small indicator follows your thumb to show current deflection. When touch controls are active, the title screen prompt changes to `TOUCH SCREEN TO START`, the death overlay prompts `PRESS FIRE TO RESTART`, frontend submenus continue to show touch buttons, and gameplay adds a semi-transparent top-right `ESC` button for opening the menu.
 
 ## Development
 

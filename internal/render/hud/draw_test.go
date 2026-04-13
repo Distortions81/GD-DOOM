@@ -2,6 +2,7 @@ package hud
 
 import (
 	"image/color"
+	"strings"
 	"testing"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -77,5 +78,39 @@ func TestFlashOverlayStateMatchesDoomPalettePriority(t *testing.T) {
 	stage, clr = flashOverlayState(0, 0, 0, 8)
 	if stage != 1 || clr != (color.RGBA{R: 48, G: 160, B: 48}) {
 		t.Fatalf("radiation blink flash=%d %#v want 1 green", stage, clr)
+	}
+}
+
+func TestDrawDeathOverlayShowsFireRestartPromptForTouchControls(t *testing.T) {
+	screen := ebiten.NewImage(doomLogicalW, doomLogicalH)
+	var lines []string
+	DrawDeathOverlay(screen, DeathOverlayInputs{ViewW: doomLogicalW, ViewH: doomLogicalH, TouchControls: true},
+		func(text string) int { return len(text) * 4 },
+		func(_ *ebiten.Image, text string, _, _, _, _ float64) {
+			lines = append(lines, text)
+		},
+	)
+	if len(lines) != 2 {
+		t.Fatalf("drawn lines=%d want=2", len(lines))
+	}
+	if !strings.Contains(lines[1], "PRESS FIRE TO RESTART") {
+		t.Fatalf("restart prompt=%q want fire prompt", lines[1])
+	}
+}
+
+func TestDrawDeathOverlayShowsEnterRestartPromptWithoutTouchControls(t *testing.T) {
+	screen := ebiten.NewImage(doomLogicalW, doomLogicalH)
+	var lines []string
+	DrawDeathOverlay(screen, DeathOverlayInputs{ViewW: doomLogicalW, ViewH: doomLogicalH},
+		func(text string) int { return len(text) * 4 },
+		func(_ *ebiten.Image, text string, _, _, _, _ float64) {
+			lines = append(lines, text)
+		},
+	)
+	if len(lines) != 2 {
+		t.Fatalf("drawn lines=%d want=2", len(lines))
+	}
+	if !strings.Contains(lines[1], "PRESS ENTER TO RESTART") {
+		t.Fatalf("restart prompt=%q want enter prompt", lines[1])
 	}
 }

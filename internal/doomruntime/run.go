@@ -481,6 +481,7 @@ func (sg *sessionGame) SampleInput() {
 		sg.voiceTransmitHeld.Store(false)
 	}
 	sg.sampleTouchController()
+	sg.handleGameplayTouchShortcuts()
 	if !sg.shouldSampleSessionInput() {
 		sg.clearSampledInput()
 		return
@@ -512,6 +513,17 @@ func (sg *sessionGame) bindingJustPressed(action bindingAction) bool {
 	}
 	binds := bindingValue(sg.opts.InputBindings, action)
 	return bindingPressedCounts(sg.input.justPressedKeys, binds) || bindingMousePressedCounts(sg.input.justPressedMouseButtons, binds)
+}
+
+func (sg *sessionGame) handleGameplayTouchShortcuts() {
+	if sg == nil || sg.g == nil || !sg.shouldSampleRuntimeInput() || sg.shouldSampleSessionInput() {
+		return
+	}
+	if !sg.touchJustPressed(touchActionBack) {
+		return
+	}
+	sg.g.frontendMenuRequested = true
+	sg.suppressTouchUntilRelease()
 }
 
 func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {

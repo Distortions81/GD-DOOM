@@ -132,6 +132,9 @@ func TestFrontendMusicPlayerOpenStartsAtCurrentSong(t *testing.T) {
 	if sg.musicPlayer.Row != frontendMusicPlayerRowTrack {
 		t.Fatalf("row=%d want track row", sg.musicPlayer.Row)
 	}
+	if !sg.frontend.MenuActive {
+		t.Fatal("music player should keep frontend menu active for touch controls")
+	}
 }
 
 func TestFrontendMusicPlayerPlaySelectedLoadsTrack(t *testing.T) {
@@ -325,9 +328,10 @@ func TestPlayCheatMusic_EpisodeRejectsZeroDigits(t *testing.T) {
 func TestFrontendMusicPlayerCloseReturnsToMusicSubmenuWhenOpenedInGame(t *testing.T) {
 	sg := &sessionGame{
 		frontend: frontendState{
-			Active: true,
-			InGame: true,
-			Mode:   frontendModeMusicPlayer,
+			Active:     true,
+			InGame:     true,
+			Mode:       frontendModeMusicPlayer,
+			MenuActive: true,
 		},
 	}
 
@@ -341,6 +345,9 @@ func TestFrontendMusicPlayerCloseReturnsToMusicSubmenuWhenOpenedInGame(t *testin
 	}
 	if sg.frontend.SoundOn != frontendSoundMenuRowPlayer {
 		t.Fatalf("soundOn=%d want player row", sg.frontend.SoundOn)
+	}
+	if !sg.frontend.MenuActive {
+		t.Fatal("music submenu should remain active after closing player")
 	}
 }
 

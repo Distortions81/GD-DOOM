@@ -122,6 +122,28 @@ func TestGameplayPadActionsUsesGraceAreaOutsideVisibleCircle(t *testing.T) {
 	}
 }
 
+func TestGameplayPadActionsAnalogAppliesNonLinearTurnCurve(t *testing.T) {
+	left := touchPad{cx: 100, cy: 100, radius: 50}
+	right := touchPad{cx: 300, cy: 100, radius: 50}
+
+	mask, _, _, rx, _ := gameplayPadActionsAnalog(left, right, 325, 100)
+	if mask&touchActionTurnRight == 0 {
+		t.Fatal("expected right pad to trigger turn right")
+	}
+	if rx <= 0 {
+		t.Fatalf("right axis=%f want positive", rx)
+	}
+	if rx >= 0.5 {
+		t.Fatalf("right axis=%f want softened value below linear sample", rx)
+	}
+	if got := touchTurnCurve(1); got != 1 {
+		t.Fatalf("touchTurnCurve(1)=%f want 1", got)
+	}
+	if got := touchTurnCurve(-1); got != -1 {
+		t.Fatalf("touchTurnCurve(-1)=%f want -1", got)
+	}
+}
+
 func TestBindingJustPressedUsesTouchActions(t *testing.T) {
 	g := &game{
 		input: gameInputSnapshot{
@@ -133,6 +155,24 @@ func TestBindingJustPressedUsesTouchActions(t *testing.T) {
 	}
 	if !g.enterJustPressed() {
 		t.Fatal("expected touch use action to count as enter just pressed")
+	}
+}
+
+func TestDeathRestartJustPressedAllowsTouchFireOrUse(t *testing.T) {
+	g := &game{
+		input: gameInputSnapshot{
+			touchJustPressedActions: touchActionFire,
+		},
+	}
+	if !g.deathRestartJustPressed() {
+		t.Fatal("expected touch fire action to trigger death restart")
+	}
+	if g.enterJustPressed() {
+		t.Fatal("did not expect touch fire action to count as enter just pressed")
+	}
+	g.input.touchJustPressedActions = touchActionUseEnter
+	if !g.deathRestartJustPressed() {
+		t.Fatal("expected touch use action to trigger death restart")
 	}
 }
 

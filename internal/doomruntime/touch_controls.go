@@ -32,6 +32,7 @@ type touchControllerState struct {
 	held               touchActionMask
 	justPressed        touchActionMask
 	latchedJustPressed touchActionMask
+	suppressUntilClear bool
 	screenW            int
 	screenH            int
 	// Analog joystick axes in [-1, 1]; left pad = move, right pad = look/action
@@ -170,15 +171,49 @@ func (sg *sessionGame) sampleTouchController() {
 	if len(justPressedIDs) > 0 || len(ids) > 0 {
 		sg.touch.seen = true
 	}
+	if sg.touch.suppressUntilClear {
+		if len(ids) == 0 {
+			sg.touch.suppressUntilClear = false
+		}
+		sg.touch.justPressed = 0
+		sg.touch.held = 0
+		sg.touch.leftX = 0
+		sg.touch.leftY = 0
+		sg.touch.rightX = 0
+		sg.touch.rightY = 0
+		if sg.g != nil {
+			sg.g.input.touchHeldActions = 0
+			sg.g.input.touchJustPressedActions = sg.touch.latchedJustPressed
+			sg.g.input.touchSeen = sg.touch.seen
+			sg.g.input.touchLeftX = 0
+			sg.g.input.touchLeftY = 0
+			sg.g.input.touchRightX = 0
+			sg.g.input.touchRightY = 0
+		}
+		return
+	}
 	held := touchActionMask(0)
 	var leftX, leftY, rightX, rightY float64
 	if sg.gameplayTouchUsesPads() {
 		leftPad, rightPad := sg.gameplayTouchPads(localW, localH)
 		leftScreen := touchPadToScreen(transform, leftPad)
 		rightScreen := touchPadToScreen(transform, rightPad)
+		buttons := sg.gameplayTouchButtons(localW, localH)
 		for _, id := range ids {
 			x, y := ebiten.TouchPosition(id)
 			mask, lx, ly, rx, ry := gameplayPadActionsAnalog(leftScreen, rightScreen, float64(x), float64(y))
+			for _, button := range buttons {
+				screenRect := transform.localToScreenRect(image.Rect(
+					int(math.Floor(button.x)),
+					int(math.Floor(button.y)),
+					int(math.Ceil(button.x+button.w)),
+					int(math.Ceil(button.y+button.h)),
+				))
+				if pointInRect(screenRect, x, y) {
+					mask |= button.action
+					break
+				}
+			}
 			held |= mask
 			leftX += lx
 			leftY += ly
@@ -246,6 +281,24 @@ func (sg *sessionGame) touchJustPressed(action touchActionMask) bool {
 	return true
 }
 
+func (sg *sessionGame) suppressTouchUntilRelease() {
+	if sg == nil {
+		return
+	}
+	sg.touch.suppressUntilClear = true
+	sg.touch.held = 0
+	sg.touch.justPressed = 0
+	sg.touch.latchedJustPressed = 0
+	if sg.g != nil {
+		sg.g.input.touchHeldActions = 0
+		sg.g.input.touchJustPressedActions = 0
+		sg.g.input.touchLeftX = 0
+		sg.g.input.touchLeftY = 0
+		sg.g.input.touchRightX = 0
+		sg.g.input.touchRightY = 0
+	}
+}
+
 func (sg *sessionGame) shouldDrawTouchControls() bool {
 	if sg == nil || !sg.touch.seen {
 		return false
@@ -305,10 +358,11 @@ func (sg *sessionGame) touchButtons(sw, sh int) []touchControlButton {
 	}
 	if sg.frontend.Active {
 		leftX := margin
-		baseY := float64(sh) - margin - size
+		bottomMargin := maxFloat(8, size*0.08)
+		baseY := float64(sh) - bottomMargin - size
 		centerX := leftX + size + gap
 		rightX := float64(sw) - margin - fireW
-		backY := float64(sh) - margin - fireH
+		backY := float64(sh) - bottomMargin - fireH
 		enterY := backY - fireH - gap
 		return []touchControlButton{
 			{action: touchActionUp, label: "UP", x: centerX, y: baseY - size - gap, w: size, h: size},
@@ -336,6 +390,28 @@ func (sg *sessionGame) touchButtons(sw, sh int) []touchControlButton {
 		{action: touchActionFire, label: "FIRE", x: rightX, y: fireY, w: fireW, h: fireH},
 		{action: touchActionUseEnter, label: "USE/ENTER", x: rightX, y: useY, w: fireW, h: fireH},
 	}
+}
+
+func (sg *sessionGame) gameplayTouchButtons(sw, sh int) []touchControlButton {
+	if sg == nil || !sg.gameplayTouchUsesPads() {
+		return nil
+	}
+	size := float64(minInt(sw, sh)) * 0.11
+	if size < 44 {
+		size = 44
+	}
+	if size > 72 {
+		size = 72
+	}
+	margin := size * 0.35
+	return []touchControlButton{{
+		action: touchActionBack,
+		label:  "ESC",
+		x:      float64(sw) - margin - size,
+		y:      margin,
+		w:      size,
+		h:      size * 0.8,
+	}}
 }
 
 func (sg *sessionGame) gameplayTouchPads(sw, sh int) (touchPad, touchPad) {
@@ -403,7 +479,7 @@ func gameplayPadActionsAnalog(leftPad, rightPad touchPad, x, y float64) (touchAc
 		} else if ny > 0.65 {
 			mask |= touchActionUseEnter
 		}
-		return mask, 0, 0, nx, ny
+		return mask, 0, 0, touchTurnCurve(nx), ny
 	}
 	return 0, 0, 0, 0, 0
 }
@@ -448,6 +524,12 @@ func analogPadSample(pad touchPad, x, y float64) (float64, float64, bool) {
 		return scaled
 	}
 	return applyDeadzone(nx), applyDeadzone(ny), true
+}
+
+func touchTurnCurve(v float64) float64 {
+	const cubicWeight = 0.6
+	linearWeight := 1 - cubicWeight
+	return clampFloat(linearWeight*v+cubicWeight*v*v*v, -1, 1)
 }
 
 func clampFloat(v, lo, hi float64) float64 {
@@ -502,10 +584,15 @@ func (sg *sessionGame) drawTouchControls(screen *ebiten.Image) {
 	transform := newTouchLayoutTransform(sw, sh, localW, localH)
 	if sg.gameplayTouchUsesPads() {
 		sg.drawGameplayTouchPads(screen, transform, localW, localH)
+		sg.drawTouchButtons(screen, transform, sg.gameplayTouchButtons(localW, localH))
 		drawActiveTouchPoints(screen)
 		return
 	}
-	buttons := sg.touchButtons(localW, localH)
+	sg.drawTouchButtons(screen, transform, sg.touchButtons(localW, localH))
+	drawActiveTouchPoints(screen)
+}
+
+func (sg *sessionGame) drawTouchButtons(screen *ebiten.Image, transform touchLayoutTransform, buttons []touchControlButton) {
 	for _, button := range buttons {
 		drawButton := transform.localToScreenRect(image.Rect(
 			int(math.Floor(button.x)),
@@ -533,7 +620,6 @@ func (sg *sessionGame) drawTouchControls(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, button.label, int(float64(drawButton.Min.X)+8), int(float64(drawButton.Min.Y)+float64(drawButton.Dy())*0.5-4))
 		}
 	}
-	drawActiveTouchPoints(screen)
 }
 
 func (sg *sessionGame) drawGameplayTouchPads(screen *ebiten.Image, transform touchLayoutTransform, localW, localH int) {
