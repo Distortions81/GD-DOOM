@@ -964,7 +964,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		}
 		_ = sg.drawMenuPatch(screen, title, 72, 28, scale, ox, oy, false)
 		labels := sg.saveSlotDescriptions(7)
-		const menuX = 80
+		const menuX = 56
 		const menuY = 54
 		const lineHeight = 16
 		for i, label := range labels {
@@ -981,9 +981,9 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			}
 		}
 		if detail := sg.saveSlotDetailLines(sg.frontend.SaveLoadOn); len(detail) > 0 {
-			const detailX = 12
-			const detailY = 162
-			const detailMaxWidth = 296
+			const detailX = 16
+			const detailY = 172
+			const detailMaxWidth = 160
 			for i, line := range detail {
 				line = sg.ellipsizeIntermissionText(line, detailMaxWidth)
 				sg.drawIntermissionText(screen, line, detailX, detailY+i*10, scale, ox, oy, false)
@@ -991,8 +991,8 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		}
 		if sg.opts.SourcePortMode {
 			const (
-				thumbX = 184
-				thumbY = 48
+				thumbX = 222
+				thumbY = 18
 			)
 			thumbW := saveThumbnailFallbackW
 			thumbH := saveThumbnailFallbackH
@@ -1018,7 +1018,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 			sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
 		}
-		sg.drawMenuSkull(screen, 48, 49+sg.frontend.SaveLoadOn*lineHeight, scale, ox, oy)
+		sg.drawMenuSkull(screen, 20, 49+sg.frontend.SaveLoadOn*lineHeight, scale, ox, oy)
 		return
 	default:
 		sg.drawFrontendBackdrop(screen, true)

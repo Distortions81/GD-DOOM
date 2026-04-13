@@ -439,7 +439,11 @@ func SourcePortDetailLabel(detail int) string {
 }
 
 func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) FrontendResult {
-	result := FrontendResult{State: state}
+	result := FrontendResult{
+		State:        state,
+		LoadGameSlot: -1,
+		SaveGameSlot: -1,
+	}
 	switch state.Mode {
 	case FrontendModeReadThis:
 		if input.Escape {

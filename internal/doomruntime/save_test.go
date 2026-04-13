@@ -962,20 +962,20 @@ func TestCompareSaveWADSourcesReportsMissingAndChecksumMismatch(t *testing.T) {
 }
 
 func TestSaveSlotMetadataFormatters(t *testing.T) {
-	if got, want := formatSaveLevelLabel(mapdata.MapName("E1M3")), "3 (E1M3)"; got != want {
+	if got, want := formatSaveLevelLabel(mapdata.MapName("E1M3")), "E1M3"; got != want {
 		t.Fatalf("formatSaveLevelLabel(E1M3)=%q want %q", got, want)
 	}
-	if got, want := formatSaveLevelLabel(mapdata.MapName("MAP07")), "7 (MAP07)"; got != want {
+	if got, want := formatSaveLevelLabel(mapdata.MapName("MAP07")), "MAP07"; got != want {
 		t.Fatalf("formatSaveLevelLabel(MAP07)=%q want %q", got, want)
 	}
 	if got, want := formatSavePlaytime(35*65+17), "1:05"; got != want {
 		t.Fatalf("formatSavePlaytime()=%q want %q", got, want)
 	}
 	wantTime := time.Date(2026, time.April, 12, 14, 3, 0, 0, time.Local)
-	if got, want := formatSaveModTime(wantTime), "2026-04-12 14:03"; got != want {
+	if got, want := formatSaveModTime(wantTime), "4-12-26"; got != want {
 		t.Fatalf("formatSaveModTime()=%q want %q", got, want)
 	}
-	if got, want := formatSaveWADNames([]saveWADSource{{Name: "DOOM.WAD"}, {Name: "PATCH.WAD"}}), "DOOM.WAD, PATCH.WAD"; got != want {
+	if got, want := formatSaveWADNames([]saveWADSource{{Name: "DOOMU.WAD"}, {Name: "ADDON.WAD"}}), "doomu, addon"; got != want {
 		t.Fatalf("formatSaveWADNames()=%q want %q", got, want)
 	}
 	if got, want := formatSaveHealthLabel(87), "87"; got != want {
@@ -983,6 +983,20 @@ func TestSaveSlotMetadataFormatters(t *testing.T) {
 	}
 	if got, want := formatSaveHealthLabel(0), "0"; got != want {
 		t.Fatalf("formatSaveHealthLabel(0)=%q want %q", got, want)
+	}
+	info := saveSlotInfo{
+		Slot:     1,
+		Current:  mapdata.MapName("E1M1"),
+		Health:   100,
+		WorldTic: 35 * 92,
+		ModTime:  wantTime,
+	}
+	if got, want := formatSaveSummaryLabel(info), "E1M1 HP 100 1:32 4-12-26"; got != want {
+		t.Fatalf("formatSaveSummaryLabel()=%q want %q", got, want)
+	}
+	info.Slot = 0
+	if got, want := formatSaveSummaryLabel(info), "Q: E1M1 HP 100 1:32 4-12-26"; got != want {
+		t.Fatalf("formatSaveSummaryLabel(quicksave)=%q want %q", got, want)
 	}
 }
 

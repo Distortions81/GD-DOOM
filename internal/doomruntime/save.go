@@ -429,16 +429,8 @@ func (sg *sessionGame) saveSlotDescriptions(slotCount int) []string {
 	out := make([]string, slotCount)
 	for i := 0; i < slotCount; i++ {
 		slot := i
-		if slot == 0 {
-			if desc, ok := sg.readSaveGameDescription(slot); ok {
-				out[i] = strings.ToUpper(strings.TrimSpace(desc))
-			} else {
-				out[i] = strings.ToUpper(saveGameQuickPrefix)
-			}
-			continue
-		}
-		if desc, ok := sg.readSaveGameDescription(slot); ok {
-			out[i] = desc
+		if info, ok := sg.readSaveSlotInfo(slot); ok {
+			out[i] = formatSaveSummaryLabel(info)
 		} else {
 			out[i] = "EMPTY SLOT"
 		}
@@ -513,16 +505,7 @@ func (sg *sessionGame) saveSlotDetailLines(slot int) []string {
 	if !ok {
 		return []string{"EMPTY SLOT"}
 	}
-	level := formatSaveLevelLabel(info.Current)
-	health := formatSaveHealthLabel(info.Health)
-	playtime := formatSavePlaytime(info.WorldTic)
-	modTime := formatSaveModTime(info.ModTime)
-	wads := formatSaveWADNames(info.WADSources)
-	lines := []string{
-		fmt.Sprintf("LEVEL %s  HP %s  PLAY %s  DATE %s", level, health, playtime, modTime),
-		"WADS " + wads,
-	}
-	return lines
+	return []string{"WADS: " + formatSaveWADNames(info.WADSources)}
 }
 
 func (sg *sessionGame) renderSaveThumbnailSourceImage(g *game) *ebiten.Image {
@@ -644,6 +627,14 @@ func saveThumbnailDimensions(srcW, srcH int) (int, int) {
 }
 
 func formatSaveLevelLabel(name mapdata.MapName) string {
+	s := strings.ToUpper(strings.TrimSpace(string(name)))
+	if s == "" {
+		return "UNKNOWN"
+	}
+	return s
+}
+
+func formatSaveLevelLegacyLabel(name mapdata.MapName) string {
 	if episode, slot, ok := episodeMapSlot(name); ok {
 		return fmt.Sprintf("%d (%s)", slot, fmt.Sprintf("E%dM%d", episode, slot))
 	}
@@ -677,7 +668,7 @@ func formatSaveModTime(t time.Time) string {
 	if t.IsZero() {
 		return "UNKNOWN"
 	}
-	return t.Local().Format("2006-01-02 15:04")
+	return t.Local().Format("1-2-06")
 }
 
 func formatSaveWADNames(src []saveWADSource) string {
@@ -689,6 +680,12 @@ func formatSaveWADNames(src []saveWADSource) string {
 		name := strings.TrimSpace(wadSource.Name)
 		if name == "" {
 			name = "UNKNOWN"
+		} else {
+			name = strings.TrimSuffix(name, filepath.Ext(name))
+			name = strings.ToLower(strings.TrimSpace(name))
+			if name == "" {
+				name = "unknown"
+			}
 		}
 		names = append(names, name)
 	}
@@ -700,6 +697,20 @@ func formatSaveHealthLabel(health int) string {
 		return "0"
 	}
 	return fmt.Sprintf("%d", health)
+}
+
+func formatSaveSummaryLabel(info saveSlotInfo) string {
+	label := fmt.Sprintf(
+		"%s HP %s %s %s",
+		formatSaveLevelLabel(info.Current),
+		formatSaveHealthLabel(info.Health),
+		formatSavePlaytime(info.WorldTic),
+		formatSaveModTime(info.ModTime),
+	)
+	if info.Slot <= 0 {
+		return "Q: " + label
+	}
+	return label
 }
 
 func (sg *sessionGame) ellipsizeIntermissionText(text string, maxWidth int) string {
