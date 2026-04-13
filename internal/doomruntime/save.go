@@ -21,10 +21,11 @@ import (
 )
 
 const (
-	saveGameVersion = 19
-	saveGamePrefix  = "dsg"
-	keyframeVersion = 6
-	saveGameDirName = "saves"
+	saveGameVersion     = 19
+	saveGamePrefix      = "dsg"
+	saveGameQuickPrefix = "quicksave"
+	keyframeVersion     = 6
+	saveGameDirName     = "saves"
 )
 
 var (
@@ -386,13 +387,20 @@ type delayedSwitchTextureSaveState struct {
 }
 
 func saveGamePath(slot int) string {
-	name := fmt.Sprintf("%s%d.%s", saveGamePrefix, slot, saveGamePrefix)
+	name := saveGameBaseName(slot) + ".dsg"
 	return filepath.Join(saveGameDirName, name)
 }
 
 func saveGameThumbnailPath(slot int) string {
-	name := fmt.Sprintf("%s%d.png", saveGamePrefix, slot)
+	name := saveGameBaseName(slot) + ".png"
 	return filepath.Join(saveGameDirName, name)
+}
+
+func saveGameBaseName(slot int) string {
+	if slot <= 0 {
+		return saveGameQuickPrefix
+	}
+	return fmt.Sprintf("%s%d", saveGamePrefix, slot)
 }
 
 func (sg *sessionGame) readSaveGameDescription(slot int) (string, bool) {
@@ -420,7 +428,16 @@ func (sg *sessionGame) saveSlotDescriptions(slotCount int) []string {
 	}
 	out := make([]string, slotCount)
 	for i := 0; i < slotCount; i++ {
-		if desc, ok := sg.readSaveGameDescription(i + 1); ok {
+		slot := i
+		if slot == 0 {
+			if desc, ok := sg.readSaveGameDescription(slot); ok {
+				out[i] = strings.ToUpper(strings.TrimSpace(desc))
+			} else {
+				out[i] = strings.ToUpper(saveGameQuickPrefix)
+			}
+			continue
+		}
+		if desc, ok := sg.readSaveGameDescription(slot); ok {
 			out[i] = desc
 		} else {
 			out[i] = "EMPTY SLOT"
@@ -786,7 +803,11 @@ func (sg *sessionGame) SaveGameToSlot(slot int) error {
 	if sg.frontend.Active && !sg.frontend.InGame {
 		return errSaveGameUnavailable
 	}
-	data, err := sg.marshalSaveGame(fmt.Sprintf("Slot %d", slot))
+	description := fmt.Sprintf("Slot %d", slot)
+	if slot <= 0 {
+		description = "Quicksave"
+	}
+	data, err := sg.marshalSaveGame(description)
 	if err != nil {
 		return err
 	}

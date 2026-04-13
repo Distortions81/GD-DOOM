@@ -824,12 +824,12 @@ func (sg *sessionGame) tickFrontend() error {
 	if result.StartGameSkill > 0 {
 		sg.startGameFromFrontend(result.StartGameSkill)
 	}
-	if result.LoadGameSlot > 0 {
+	if result.LoadGameSlot >= 0 {
 		if err := sg.LoadGameFromSlot(result.LoadGameSlot); err != nil {
 			sg.frontendStatus("LOAD FAILED", doomTicsPerSecond*2)
 		}
 	}
-	if result.SaveGameSlot > 0 {
+	if result.SaveGameSlot >= 0 {
 		if err := sg.SaveGameToSlot(result.SaveGameSlot); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
 		} else {
@@ -963,7 +963,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			title = "M_LOADG"
 		}
 		_ = sg.drawMenuPatch(screen, title, 72, 28, scale, ox, oy, false)
-		labels := sg.saveSlotDescriptions(6)
+		labels := sg.saveSlotDescriptions(7)
 		const menuX = 80
 		const menuY = 54
 		const lineHeight = 16
@@ -974,11 +974,15 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 				_ = sg.drawMenuPatch(screen, "M_LSCNTR", menuX+8*j, y+7, scale, ox, oy, false)
 			}
 			_ = sg.drawMenuPatch(screen, "M_LSRGHT", menuX+8*24, y+7, scale, ox, oy, false)
-			sg.drawIntermissionText(screen, fmt.Sprintf("%d. %s", i+1, label), menuX, y, scale, ox, oy, false)
+			if i == 0 {
+				sg.drawIntermissionText(screen, label, menuX, y, scale, ox, oy, false)
+			} else {
+				sg.drawIntermissionText(screen, fmt.Sprintf("%d. %s", i, label), menuX, y, scale, ox, oy, false)
+			}
 		}
-		if detail := sg.saveSlotDetailLines(sg.frontend.SaveLoadOn + 1); len(detail) > 0 {
+		if detail := sg.saveSlotDetailLines(sg.frontend.SaveLoadOn); len(detail) > 0 {
 			const detailX = 12
-			const detailY = 146
+			const detailY = 162
 			const detailMaxWidth = 296
 			for i, line := range detail {
 				line = sg.ellipsizeIntermissionText(line, detailMaxWidth)
@@ -995,7 +999,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			var thumbImg *ebiten.Image
 			thumbScreenX := ox + float64(thumbX)*scale
 			thumbScreenY := oy + float64(thumbY)*scale
-			if img, ok := sg.saveSlotThumbnailImage(sg.frontend.SaveLoadOn + 1); ok && img != nil {
+			if img, ok := sg.saveSlotThumbnailImage(sg.frontend.SaveLoadOn); ok && img != nil {
 				thumbImg = img
 				thumbW = img.Bounds().Dx()
 				thumbH = img.Bounds().Dy()

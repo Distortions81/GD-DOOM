@@ -195,11 +195,17 @@ func normalizeOwnedWeapons(src map[int16]bool) map[int16]bool {
 }
 
 func TestSaveGamePathUsesNumberedSlotFiles(t *testing.T) {
+	if got, want := saveGamePath(0), "saves/quicksave.dsg"; got != want {
+		t.Fatalf("saveGamePath(0)=%q want %q", got, want)
+	}
 	if got, want := saveGamePath(1), "saves/dsg1.dsg"; got != want {
 		t.Fatalf("saveGamePath(1)=%q want %q", got, want)
 	}
 	if got, want := saveGamePath(6), "saves/dsg6.dsg"; got != want {
 		t.Fatalf("saveGamePath(6)=%q want %q", got, want)
+	}
+	if got, want := saveGameThumbnailPath(0), "saves/quicksave.png"; got != want {
+		t.Fatalf("saveGameThumbnailPath(0)=%q want %q", got, want)
 	}
 	if got, want := saveGameThumbnailPath(1), "saves/dsg1.png"; got != want {
 		t.Fatalf("saveGameThumbnailPath(1)=%q want %q", got, want)

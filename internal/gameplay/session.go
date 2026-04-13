@@ -76,6 +76,8 @@ type SessionSignals struct {
 	SoundMenu        bool
 	SaveGame         bool
 	LoadGame         bool
+	QuickSave        bool
+	QuickLoad        bool
 	NewGameMap       *mapdata.Map
 	NewGameSkill     int
 	QuitPrompt       bool

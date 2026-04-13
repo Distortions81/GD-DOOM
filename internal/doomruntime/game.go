@@ -443,6 +443,8 @@ type game struct {
 	frontendActive            bool
 	saveGameRequested         bool
 	loadGameRequested         bool
+	quickSaveRequested        bool
+	quickLoadRequested        bool
 	quitPromptRequested       bool
 	readThisRequested         bool
 	quitPromptActive          bool
@@ -3251,6 +3253,14 @@ func (g *game) updateParityControls() {
 		}
 		if g.keyJustPressed(ebiten.KeyF11) {
 			g.cycleGammaLevel()
+		}
+	}
+	if g.opts.LiveTicSource == nil && g.opts.DemoScript == nil {
+		if g.keyJustPressed(ebiten.KeyF6) {
+			g.quickSaveRequested = true
+		}
+		if g.keyJustPressed(ebiten.KeyF9) {
+			g.quickLoadRequested = true
 		}
 	}
 	if g.opts.SourcePortMode {

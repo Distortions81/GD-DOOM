@@ -37,6 +37,8 @@ func (r *layoutCountRuntime) setSkyOutputSize(w, h int) {
 }
 func (r *layoutCountRuntime) sessionAcknowledgeSaveGame()       {}
 func (r *layoutCountRuntime) sessionAcknowledgeLoadGame()       {}
+func (r *layoutCountRuntime) sessionAcknowledgeQuickSave()      {}
+func (r *layoutCountRuntime) sessionAcknowledgeQuickLoad()      {}
 func (r *layoutCountRuntime) sessionSetQuitPromptActive(bool)   {}
 func (r *layoutCountRuntime) sessionSetFrontendActive(bool)     {}
 func (r *layoutCountRuntime) sessionAcknowledgeNewGameRequest() {}

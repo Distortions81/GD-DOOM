@@ -17,6 +17,8 @@ func (g *game) sessionSignals() gameplay.SessionSignals {
 		SoundMenu:        g.soundMenuRequested,
 		SaveGame:         g.saveGameRequested,
 		LoadGame:         g.loadGameRequested,
+		QuickSave:        g.quickSaveRequested,
+		QuickLoad:        g.quickLoadRequested,
 		NewGameMap:       g.newGameRequestedMap,
 		NewGameSkill:     g.newGameRequestedSkill,
 		QuitPrompt:       g.quitPromptRequested,
@@ -58,6 +60,20 @@ func (g *game) sessionAcknowledgeLoadGame() {
 		return
 	}
 	g.loadGameRequested = false
+}
+
+func (g *game) sessionAcknowledgeQuickSave() {
+	if g == nil {
+		return
+	}
+	g.quickSaveRequested = false
+}
+
+func (g *game) sessionAcknowledgeQuickLoad() {
+	if g == nil {
+		return
+	}
+	g.quickLoadRequested = false
 }
 
 func (g *game) sessionSetQuitPromptActive(active bool) {

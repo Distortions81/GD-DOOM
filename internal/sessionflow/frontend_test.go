@@ -46,8 +46,8 @@ func TestStepFrontendSaveLoadMenuSelectsNumberedSlot(t *testing.T) {
 		FrontendInput{Select: true},
 		FrontendConfig{},
 	)
-	if got := load.LoadGameSlot; got != 3 {
-		t.Fatalf("LoadGameSlot=%d want 3", got)
+	if got := load.LoadGameSlot; got != 2 {
+		t.Fatalf("LoadGameSlot=%d want 2", got)
 	}
 
 	save := StepFrontend(
@@ -55,8 +55,28 @@ func TestStepFrontendSaveLoadMenuSelectsNumberedSlot(t *testing.T) {
 		FrontendInput{Select: true},
 		FrontendConfig{},
 	)
-	if got := save.SaveGameSlot; got != 5 {
-		t.Fatalf("SaveGameSlot=%d want 5", got)
+	if got := save.SaveGameSlot; got != 4 {
+		t.Fatalf("SaveGameSlot=%d want 4", got)
+	}
+}
+
+func TestStepFrontendSaveLoadMenuSelectsQuicksaveSlotZero(t *testing.T) {
+	load := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeSaveLoad, SaveLoadOn: 0},
+		FrontendInput{Select: true},
+		FrontendConfig{},
+	)
+	if got := load.LoadGameSlot; got != 0 {
+		t.Fatalf("LoadGameSlot=%d want 0", got)
+	}
+
+	save := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeSaveLoad, SaveLoadSaving: true, SaveLoadOn: 0},
+		FrontendInput{Select: true},
+		FrontendConfig{},
+	)
+	if got := save.SaveGameSlot; got != 0 {
+		t.Fatalf("SaveGameSlot=%d want 0", got)
 	}
 }
 

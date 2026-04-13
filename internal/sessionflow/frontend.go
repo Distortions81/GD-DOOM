@@ -755,15 +755,15 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			return result
 		}
 		if input.Up {
-			result.State.SaveLoadOn = (state.SaveLoadOn + 5) % 6
+			result.State.SaveLoadOn = (state.SaveLoadOn + 6) % 7
 			result.Sound = FrontendSoundMove
 		}
 		if input.Down {
-			result.State.SaveLoadOn = (state.SaveLoadOn + 1) % 6
+			result.State.SaveLoadOn = (state.SaveLoadOn + 1) % 7
 			result.Sound = FrontendSoundMove
 		}
 		if input.Select {
-			slot := state.SaveLoadOn + 1
+			slot := state.SaveLoadOn
 			if state.SaveLoadSaving {
 				result.SaveGameSlot = slot
 			} else {

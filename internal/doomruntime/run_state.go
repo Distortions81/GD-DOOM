@@ -156,6 +156,8 @@ type sessionRuntime interface {
 	setSkyOutputSize(int, int)
 	sessionAcknowledgeSaveGame()
 	sessionAcknowledgeLoadGame()
+	sessionAcknowledgeQuickSave()
+	sessionAcknowledgeQuickLoad()
 	sessionSetQuitPromptActive(bool)
 	sessionSetFrontendActive(bool)
 	sessionAcknowledgeNewGameRequest()

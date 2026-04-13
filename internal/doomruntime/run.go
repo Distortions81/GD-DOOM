@@ -221,6 +221,24 @@ func (sg *sessionGame) Update() error {
 		},
 		HandleRuntimeProgress: func() (bool, error) {
 			sig := sg.rt.sessionSignals()
+			if sig.QuickSave {
+				sg.rt.sessionAcknowledgeQuickSave()
+				if err := sg.SaveGameToSlot(0); err != nil {
+					sg.g.setHUDMessage("QUICKSAVE FAILED", doomTicsPerSecond)
+				} else {
+					sg.g.setHUDMessage("QUICKSAVED", doomTicsPerSecond)
+				}
+				return true, nil
+			}
+			if sig.QuickLoad {
+				sg.rt.sessionAcknowledgeQuickLoad()
+				if err := sg.LoadGameFromSlot(0); err != nil {
+					sg.g.setHUDMessage("QUICKLOAD FAILED", doomTicsPerSecond)
+				} else {
+					sg.g.setHUDMessage("QUICKLOADED", doomTicsPerSecond)
+				}
+				return true, nil
+			}
 			if sig.SaveGame {
 				sg.rt.sessionAcknowledgeSaveGame()
 				sg.openFrontendSaveLoadMenuFromSignal(sig, true)
