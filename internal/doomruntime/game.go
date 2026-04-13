@@ -6393,10 +6393,6 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 	pow2H := base.Height > 0 && (base.Height&(base.Height-1)) == 0
 	hmask := base.Height - 1
 	colBase := tx * base.Height
-	if tex.alpha != 0 && tex.to != nil && tex.to.Width == base.Width && tex.to.Height == base.Height && len(tex.to.Indexed) == len(texIndexed) {
-		g.drawBasicWallColumnTexturedBlended(x, y0, y1, texU, texMid, depth, focal, base, tex.to, tex.alpha, shadeMul, doomRow)
-		return
-	}
 	// Dominant hot path: little-endian packed output + pretransposed column-major texture + pow2 height.
 	if pixelLittleEndian && pow2H && len(texIndexedCol) == base.Width*base.Height {
 		col := texIndexedCol[colBase : colBase+base.Height]
@@ -6443,35 +6439,6 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		} else {
 			pix32[pixI] = shadePaletteIndexPacked(texIndexed[ti], uint32(shadeMul))
 		}
-		pixI += rowStridePix
-		texVFixed += texVStepFixed
-	}
-}
-
-func (g *game) drawBasicWallColumnTexturedBlended(x, y0, y1 int, texU, texMid, depth, focal float64, from, to *WallTexture, alpha uint8, shadeMul, doomRow int) {
-	if from == nil || to == nil || from.Width <= 0 || from.Height <= 0 || to.Width != from.Width || to.Height != from.Height {
-		return
-	}
-	rowStridePix := g.viewW
-	pixI := y0*rowStridePix + x
-	txi := int(floorFixed(texU) >> fracBits)
-	tx := wrapIndex(txi, from.Width)
-	rowScale := depth / focal
-	cy := float64(g.viewH) * 0.5
-	texVFixed := floorFixed(texMid - ((cy - (float64(y0) + 0.5)) * rowScale))
-	texVStepFixed := floorFixed(rowScale)
-	for y := y0; y <= y1; y++ {
-		ty := wrapIndex(int(texVFixed>>fracBits), from.Height)
-		ti := ty*from.Width + tx
-		var p0, p1 uint32
-		if doomRow >= doomNumColorMaps || doomColormapEnabled {
-			p0 = shadePaletteIndexDOOMRow(from.Indexed[ti], doomRow)
-			p1 = shadePaletteIndexDOOMRow(to.Indexed[ti], doomRow)
-		} else {
-			p0 = shadePaletteIndexPacked(from.Indexed[ti], uint32(shadeMul))
-			p1 = shadePaletteIndexPacked(to.Indexed[ti], uint32(shadeMul))
-		}
-		g.wallPix32[pixI] = blendPackedRGBA(p0, p1, alpha)
 		pixI += rowStridePix
 		texVFixed += texVStepFixed
 	}
