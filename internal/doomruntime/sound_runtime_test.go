@@ -295,8 +295,67 @@ func TestFlushSoundEvents_WASMLimitsMonsterVocalBurstWork(t *testing.T) {
 	}
 	g.flushSoundEvents()
 	rnd, prnd := doomrand.State()
-	if rnd != 6 || prnd != 0 {
-		t.Fatalf("rng state after wasm monster vocal burst=(%d,%d) want=(6,0)", rnd, prnd)
+	if rnd != 1 || prnd != 0 {
+		t.Fatalf("rng state after wasm monster vocal burst=(%d,%d) want=(1,0)", rnd, prnd)
+	}
+}
+
+func TestFlushSoundEvents_WASMPrioritizesNonVocalSoundsAheadOfMonsterVocals(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	queue := []soundEvent{
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeePosit3,
+		soundEventMonsterSeePosit3,
+		soundEventShootPistol,
+	}
+	origins := make([]queuedSoundOrigin, len(queue))
+
+	doomrand.Clear()
+	g := &game{
+		soundQueue:       queue,
+		soundQueueOrigin: origins,
+		m:                &mapdata.Map{Name: "E1M5"},
+		snd:              &soundSystem{vanillaVolume: 15, pitchShift: true},
+	}
+	g.flushSoundEvents()
+	rnd, prnd := doomrand.State()
+	if rnd != 2 || prnd != 0 {
+		t.Fatalf("rng state after wasm prioritized flush=(%d,%d) want=(2,0)", rnd, prnd)
+	}
+}
+
+func TestCollectWASMSoundEvents_KeepsLoudestOriginPerSound(t *testing.T) {
+	g := &game{
+		soundQueue: []soundEvent{
+			soundEventShootPistol,
+			soundEventShootPistol,
+			soundEventSwitchOn,
+		},
+		soundQueueOrigin: []queuedSoundOrigin{
+			{positioned: true, x: doomSoundClippingDist * 2, y: 0},
+			{positioned: false},
+			{positioned: false},
+		},
+		snd: &soundSystem{vanillaVolume: 15},
+		m:   &mapdata.Map{Name: "E1M5"},
+	}
+	queue, origins := g.collectWASMSoundEvents()
+	if len(queue) != 2 || len(origins) != 2 {
+		t.Fatalf("collected lens=(%d,%d) want=(2,2)", len(queue), len(origins))
+	}
+	if queue[0] != soundEventShootPistol || queue[1] != soundEventSwitchOn {
+		t.Fatalf("queue=%v want pistol,switch", queue)
+	}
+	if origins[0].positioned {
+		t.Fatalf("pistol origin should keep louder unpositioned event, got positioned=%t", origins[0].positioned)
 	}
 }
 

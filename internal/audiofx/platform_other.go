@@ -10,7 +10,7 @@ import (
 
 func maxSpatialVoices() int {
 	if platformcfg.IsWASMBuild() {
-		return 8
+		return 10
 	}
 	return 8
 }

@@ -259,11 +259,29 @@ func TestForcedWASMVoiceCaps(t *testing.T) {
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
 
-	if got := maxSpatialVoices(); got != 8 {
-		t.Fatalf("maxSpatialVoices()=%d want 8 in forced wasm mode", got)
+	if got := maxSpatialVoices(); got != 10 {
+		t.Fatalf("maxSpatialVoices()=%d want 10 in forced wasm mode", got)
 	}
 	if got := maxMenuVoices(); got != 8 {
 		t.Fatalf("maxMenuVoices()=%d want 8 in forced wasm mode", got)
+	}
+}
+
+func TestSpatialPlayerTick_PinnedVoicePreservesCachedBuffer(t *testing.T) {
+	backend := &fakeSpatialBackend{}
+	voice := &spatialVoice{
+		player: backend,
+		src:    &pcmBufferSource{buf: []byte{1, 2, 3, 4}},
+		group:  "cached",
+		pinned: true,
+	}
+	p := &SpatialPlayer{voices: []*spatialVoice{voice}}
+	p.Tick()
+	if len(voice.src.buf) != 4 {
+		t.Fatalf("cached buffer len=%d want 4", len(voice.src.buf))
+	}
+	if voice.group != "" {
+		t.Fatalf("group=%q want cleared", voice.group)
 	}
 }
 

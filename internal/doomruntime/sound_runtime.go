@@ -269,15 +269,25 @@ func (s *soundSystem) monsterVocalPreDelaySamples(ev soundEvent) float64 {
 }
 
 func vanillaSoundWouldStart(s *soundSystem, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) bool {
+	return vanillaSoundStrength(s, origin, listenerX, listenerY, listenerAngle, mapUsesFullClip) > 0
+}
+
+func vanillaSoundStrength(s *soundSystem, origin queuedSoundOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) int {
 	if !origin.positioned {
-		return true
+		if s != nil && s.vanillaVolume > 0 {
+			return s.vanillaVolume
+		}
+		return 15
 	}
 	baseVol := 15
 	if s != nil {
 		baseVol = s.vanillaVolume
 	}
-	_, _, ok := doomAdjustSoundParams(listenerX, listenerY, listenerAngle, origin.x, origin.y, baseVol, mapUsesFullClip)
-	return ok
+	vol, _, ok := doomAdjustSoundParams(listenerX, listenerY, listenerAngle, origin.x, origin.y, baseVol, mapUsesFullClip)
+	if !ok {
+		return 0
+	}
+	return vol
 }
 
 type vanillaPitchMode int

@@ -63,6 +63,9 @@ type spatialVoice struct {
 	monoB  []int16
 	monoC  []int16
 	group  string
+	pinned bool
+	key    wasmSampleKey
+	stamp  uint64
 }
 
 type menuVoice struct {
@@ -76,6 +79,12 @@ var (
 	sharedAudioCtx  *audio.Context
 	sharedAudioRate int
 )
+
+type wasmSampleKey struct {
+	ptr  uintptr
+	len  int
+	rate int
+}
 
 func EnsureSharedAudioContext() *audio.Context {
 	rate := music.OutputSampleRate
@@ -225,6 +234,9 @@ func (p *SpatialPlayer) PlaySampleSpatialDelayedGrouped(sample media.PCMSample, 
 		return
 	}
 	if sample.SampleRate <= 0 || len(sample.Data) == 0 {
+		return
+	}
+	if p.playWASMSoundEffect(sample, origin, listenerX, listenerY, mapUsesFullClip, group) {
 		return
 	}
 	leftGain, rightGain, leftDelay, rightDelay, ok := p.eventStereoMix(origin, listenerX, listenerY, listenerAngle, mapUsesFullClip)
@@ -532,7 +544,9 @@ func (p *SpatialPlayer) Tick() {
 		if voice == nil || voice.player == nil || voice.player.IsPlaying() {
 			continue
 		}
-		voice.src.Reset(voice.src.buf[:0])
+		if !voice.pinned {
+			voice.src.Reset(voice.src.buf[:0])
+		}
 		voice.group = ""
 	}
 }
@@ -547,7 +561,9 @@ func (p *SpatialPlayer) stopGroup(group string) {
 		}
 		voice.player.Pause()
 		_ = voice.player.Rewind()
-		voice.src.Reset(voice.src.buf[:0])
+		if !voice.pinned {
+			voice.src.Reset(voice.src.buf[:0])
+		}
 		voice.group = ""
 	}
 }
@@ -888,7 +904,7 @@ func sharedOrNewAudioContext(rate int) *audio.Context {
 
 func (p *SpatialPlayer) acquireVoice(size int) *spatialVoice {
 	for _, voice := range p.voices {
-		if voice != nil && voice.player != nil && !voice.player.IsPlaying() {
+		if voice != nil && !voice.pinned && voice.player != nil && !voice.player.IsPlaying() {
 			voice.src.buf = resizePCMBuffer(voice.src.buf[:0], size)
 			return voice
 		}

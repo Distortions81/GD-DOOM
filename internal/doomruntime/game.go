@@ -4398,6 +4398,13 @@ func maxMonsterVocalSoundsPerFlush() int {
 	return 6
 }
 
+func maxSoundEventsPerFlush() int {
+	if !isWASMBuild() {
+		return 0
+	}
+	return 8
+}
+
 func (g *game) clearPendingSoundState() {
 	if g == nil {
 		return
@@ -4485,18 +4492,19 @@ func (g *game) applyThingSpawnFiltering() {
 }
 
 func (g *game) flushSoundEvents() {
+	queue := g.soundQueue
+	origins := g.soundQueueOrigin
+	if isWASMBuild() {
+		queue, origins = g.collectWASMSoundEvents()
+	}
+	totalBudget := maxSoundEventsPerFlush()
 	monsterVocalBudget := maxMonsterVocalSoundsPerFlush()
+	totalCount := 0
 	monsterVocalCount := 0
-	for idx, ev := range g.soundQueue {
-		if monsterVocalBudget > 0 && isMonsterVocalSound(ev) {
-			if monsterVocalCount >= monsterVocalBudget {
-				continue
-			}
-			monsterVocalCount++
-		}
+	playQueued := func(idx int, ev soundEvent) {
 		origin := queuedSoundOrigin{}
-		if idx >= 0 && idx < len(g.soundQueueOrigin) {
-			origin = g.soundQueueOrigin[idx]
+		if idx >= 0 && idx < len(origins) {
+			origin = origins[idx]
 		}
 		if want := runtimeDebugEnv("GD_DEBUG_SOUND_TIC"); want != "" {
 			var wantTic int
@@ -4512,12 +4520,81 @@ func (g *game) flushSoundEvents() {
 		} else {
 			((*soundSystem)(nil)).playEventSpatial(ev, origin, g.p.x, g.p.y, g.p.angle, soundMapUsesFullClip(g.m.Name))
 		}
+		totalCount++
+	}
+	for pass := 0; pass < 2; pass++ {
+		for idx, ev := range queue {
+			vocal := isMonsterVocalSound(ev)
+			if pass == 0 && vocal {
+				continue
+			}
+			if pass == 1 && !vocal {
+				continue
+			}
+			if totalBudget > 0 && totalCount >= totalBudget {
+				break
+			}
+			if vocal && monsterVocalBudget > 0 {
+				if monsterVocalCount >= monsterVocalBudget {
+					continue
+				}
+				monsterVocalCount++
+			}
+			playQueued(idx, ev)
+		}
+		if totalBudget > 0 && totalCount >= totalBudget {
+			break
+		}
 	}
 	if g.snd != nil {
 		g.snd.tick()
 	}
 	g.soundQueue = g.soundQueue[:0]
 	g.soundQueueOrigin = g.soundQueueOrigin[:0]
+}
+
+func (g *game) collectWASMSoundEvents() ([]soundEvent, []queuedSoundOrigin) {
+	if g == nil || len(g.soundQueue) == 0 {
+		return g.soundQueue, g.soundQueueOrigin
+	}
+	order := make([]soundEvent, 0, len(g.soundQueue))
+	bestIdxByEvent := make(map[soundEvent]int, len(g.soundQueue))
+	bestStrengthByEvent := make(map[soundEvent]int, len(g.soundQueue))
+	mapUsesFullClip := false
+	if g.m != nil {
+		mapUsesFullClip = soundMapUsesFullClip(g.m.Name)
+	}
+	for idx, ev := range g.soundQueue {
+		origin := queuedSoundOrigin{}
+		if idx < len(g.soundQueueOrigin) {
+			origin = g.soundQueueOrigin[idx]
+		}
+		strength := vanillaSoundStrength(g.snd, origin, g.p.x, g.p.y, g.p.angle, mapUsesFullClip)
+		if prevIdx, ok := bestIdxByEvent[ev]; ok {
+			if strength > bestStrengthByEvent[ev] {
+				bestIdxByEvent[ev] = idx
+				bestStrengthByEvent[ev] = strength
+			} else {
+				_ = prevIdx
+			}
+			continue
+		}
+		bestIdxByEvent[ev] = idx
+		bestStrengthByEvent[ev] = strength
+		order = append(order, ev)
+	}
+	queue := make([]soundEvent, 0, len(order))
+	origins := make([]queuedSoundOrigin, 0, len(order))
+	for _, ev := range order {
+		idx := bestIdxByEvent[ev]
+		queue = append(queue, ev)
+		if idx >= 0 && idx < len(g.soundQueueOrigin) {
+			origins = append(origins, g.soundQueueOrigin[idx])
+		} else {
+			origins = append(origins, queuedSoundOrigin{})
+		}
+	}
+	return queue, origins
 }
 
 func (g *game) mapVectorAntiAlias() bool {
