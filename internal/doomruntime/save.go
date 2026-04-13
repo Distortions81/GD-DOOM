@@ -406,10 +406,10 @@ func saveGameBaseName(slot int) string {
 }
 
 func (sg *sessionGame) readSaveGameDescription(slot int) (string, bool) {
-	if isWASMBuild() || sg == nil {
+	if sg == nil {
 		return "", false
 	}
-	data, err := os.ReadFile(saveGamePath(slot))
+	data, err := readSavedSlotData(slot)
 	if err != nil {
 		return "", false
 	}
@@ -445,25 +445,18 @@ func saveGameSlotFromFileName(name string) (int, bool) {
 
 func (sg *sessionGame) availableSaveSlots(includeNew bool) []int {
 	slots := []int{0}
-	if isWASMBuild() || sg == nil {
+	if sg == nil {
 		if includeNew {
 			return append(slots, 1)
 		}
 		return slots
 	}
-	entries, err := os.ReadDir(saveGameDirName)
+	entries, err := listSavedSlots()
 	if err == nil {
 		seen := map[int]struct{}{0: {}}
 		maxSlot := 0
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			slot, ok := saveGameSlotFromFileName(entry.Name())
-			if !ok {
-				continue
-			}
-			if _, exists := seen[slot]; exists {
+		for _, slot := range entries {
+			if _, ok := seen[slot]; ok {
 				continue
 			}
 			seen[slot] = struct{}{}
@@ -484,6 +477,30 @@ func (sg *sessionGame) availableSaveSlots(includeNew bool) []int {
 		slots = append(slots, 1)
 	}
 	return slots
+}
+
+func (sg *sessionGame) readSaveSlotInfo(slot int) (saveSlotInfo, bool) {
+	if sg == nil {
+		return saveSlotInfo{}, false
+	}
+	data, modTime, err := readSavedSlotDataWithModTime(slot)
+	if err != nil {
+		return saveSlotInfo{}, false
+	}
+	file, err := decodeSnapshot(data, saveGameMagic)
+	if err != nil {
+		return saveSlotInfo{}, false
+	}
+	return saveSlotInfo{
+		Slot:        slot,
+		Description: strings.TrimSpace(file.Description),
+		Current:     file.Current,
+		WADSources:  append([]saveWADSource(nil), file.WADSources...),
+		Health:      file.Game.Stats.Health,
+		WorldTic:    file.Game.WorldTic,
+		ModTime:     modTime,
+		Present:     true,
+	}, true
 }
 
 func saveSlotAtIndex(slots []int, idx int) (int, bool) {
@@ -553,35 +570,6 @@ func (sg *sessionGame) saveSlotThumbnailImage(slot int) (*ebiten.Image, bool) {
 		Image:   eimg,
 	}
 	return eimg, true
-}
-
-func (sg *sessionGame) readSaveSlotInfo(slot int) (saveSlotInfo, bool) {
-	if isWASMBuild() || sg == nil {
-		return saveSlotInfo{}, false
-	}
-	path := saveGamePath(slot)
-	stat, err := os.Stat(path)
-	if err != nil {
-		return saveSlotInfo{}, false
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return saveSlotInfo{}, false
-	}
-	file, err := decodeSnapshot(data, saveGameMagic)
-	if err != nil {
-		return saveSlotInfo{}, false
-	}
-	return saveSlotInfo{
-		Slot:        slot,
-		Description: strings.TrimSpace(file.Description),
-		Current:     file.Current,
-		WADSources:  append([]saveWADSource(nil), file.WADSources...),
-		Health:      file.Game.Stats.Health,
-		WorldTic:    file.Game.WorldTic,
-		ModTime:     stat.ModTime(),
-		Present:     true,
-	}, true
 }
 
 func (sg *sessionGame) renderSaveThumbnailSourceImage(g *game) *ebiten.Image {
@@ -654,7 +642,7 @@ func (sg *sessionGame) saveThumbnailImage() (*image.RGBA, error) {
 
 func (sg *sessionGame) writeSaveThumbnail(slot int) error {
 	if isWASMBuild() {
-		return errSaveGameWebOnly
+		return nil
 	}
 	if sg == nil || sg.g == nil {
 		return errSaveGameUnavailable
@@ -881,9 +869,6 @@ func compareSaveWADSources(expected, actual []saveWADSource) string {
 }
 
 func (sg *sessionGame) SaveGameToSlot(slot int) error {
-	if isWASMBuild() {
-		return errSaveGameWebOnly
-	}
 	if sg == nil || sg.g == nil {
 		return errSaveGameUnavailable
 	}
@@ -898,23 +883,17 @@ func (sg *sessionGame) SaveGameToSlot(slot int) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(saveGameDirName, 0o755); err != nil {
-		return fmt.Errorf("create save dir: %w", err)
-	}
-	if err := os.WriteFile(saveGamePath(slot), data, 0o644); err != nil {
+	if err := writeSavedSlotData(slot, data); err != nil {
 		return err
 	}
 	return sg.writeSaveThumbnail(slot)
 }
 
 func (sg *sessionGame) LoadGameFromSlot(slot int) error {
-	if isWASMBuild() {
-		return errSaveGameWebOnly
-	}
 	if sg == nil {
 		return errNoSavedGame
 	}
-	data, err := os.ReadFile(saveGamePath(slot))
+	data, err := readSavedSlotData(slot)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return errNoSavedGame
