@@ -188,7 +188,7 @@ func faithfulPresentationRect(sw, sh int, disableAspectCorrection bool) (rw, rh,
 	return fitRect(sw, sh, doomLogicalW, aspectH)
 }
 
-func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {
+func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image, capture bool) {
 	if dst == nil {
 		return
 	}
@@ -202,6 +202,16 @@ func (sg *sessionGame) drawBootSplashPresented(dst *ebiten.Image) {
 		return
 	}
 	if !sg.opts.SourcePortMode {
+		if capture {
+			dst.Fill(color.Black)
+			bw := max(sg.bootSplashImage.Bounds().Dx(), 1)
+			bh := max(sg.bootSplashImage.Bounds().Dy(), 1)
+			op := &ebiten.DrawImageOptions{}
+			op.Filter = ebiten.FilterNearest
+			op.GeoM.Scale(float64(max(dst.Bounds().Dx(), 1))/float64(bw), float64(max(dst.Bounds().Dy(), 1))/float64(bh))
+			dst.DrawImage(sg.bootSplashImage, op)
+			return
+		}
 		sg.drawFaithfulPresented(dst, sg.bootSplashImage)
 		return
 	}

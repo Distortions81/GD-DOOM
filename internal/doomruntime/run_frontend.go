@@ -1083,7 +1083,7 @@ func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
 	dh := max(dst.Bounds().Dy(), 1)
 	present := sg.ensureFrontendSurface(dw, dh)
 	present.Clear()
-	sg.drawFrontend(present)
+	sg.drawFrontendWithCapture(present, true)
 	dst.Fill(color.Black)
 	dst.DrawImage(present, nil)
 }
@@ -1110,7 +1110,7 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 	case frontendModeReadThis:
 		sg.drawFrontendAttractBackground(screen, capture)
 		name := sg.readThisPageName(sg.frontend.ReadThisPage)
-		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC") {
+		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC", false) {
 			screen.Fill(color.Black)
 		}
 		if (sg.frontend.Tic/16)&1 == 0 {
@@ -1394,19 +1394,19 @@ func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image, captu
 		}
 		return
 	}
-	if sg.drawFrontendPage(screen, sg.frontend.AttractPage) {
+	if sg.drawFrontendPage(screen, sg.frontend.AttractPage, capture) {
 		return
 	}
 	screen.Fill(color.Black)
 }
 
-func (sg *sessionGame) drawFrontendPage(screen *ebiten.Image, name string) bool {
+func (sg *sessionGame) drawFrontendPage(screen *ebiten.Image, name string, capture bool) bool {
 	if sg == nil || screen == nil {
 		return false
 	}
 	switch strings.ToUpper(strings.TrimSpace(name)) {
 	case "TITLEPIC":
-		sg.drawBootSplashPresented(screen)
+		sg.drawBootSplashPresented(screen, capture)
 		return true
 	case "CREDIT", "HELP1", "HELP2":
 		sw := max(screen.Bounds().Dx(), 1)
