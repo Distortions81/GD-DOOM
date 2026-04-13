@@ -455,6 +455,9 @@ func (sg *sessionGame) rebuildGameWithPersistentSettings(next *mapdata.Map) {
 	sg.opts = result.Options
 	sg.g = result.Runtime
 	sg.rt = result.Runtime
+	if sg.g != nil {
+		sg.g.prewarmMapStartSounds()
+	}
 }
 
 func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
@@ -838,6 +841,9 @@ func (sg *sessionGame) initSession() {
 		BuildRuntime: func() {
 			sg.g = sg.buildGame(sg.bootMap, sg.opts)
 			sg.rt = sg.g
+			if sg.g != nil && !sg.shouldStartInFrontend() {
+				sg.g.prewarmMapStartSounds()
+			}
 			if !sg.headlessDemoPlayback() {
 				sg.g.initSkyLayerShader()
 			}

@@ -1098,6 +1098,9 @@ func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error 
 	sg.frontendMenuPending = false
 	sg.g = g
 	sg.rt = g
+	if sg.g != nil {
+		sg.g.prewarmMapStartSounds()
+	}
 	sg.current = file.Current
 	if sg.current == "" && g.m != nil {
 		sg.current = g.m.Name

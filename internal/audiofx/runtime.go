@@ -57,16 +57,16 @@ type pcmBufferSource struct {
 }
 
 type spatialVoice struct {
-	player ebitenPlayer
-	src    *pcmBufferSource
-	monoA  []int16
-	monoB  []int16
-	monoC  []int16
-	group  string
-	pinned bool
-	key    wasmSampleKey
-	stamp  uint64
-	bucket uint8
+	player         ebitenPlayer
+	src            *pcmBufferSource
+	monoA          []int16
+	monoB          []int16
+	monoC          []int16
+	group          string
+	pinned         bool
+	key            wasmSampleKey
+	stamp          uint64
+	bucket         uint8
 	wasmBucketGain float64
 	wasmAppliedVol float64
 }
@@ -215,6 +215,23 @@ func (p *SpatialPlayer) SetVolume(v float64) {
 
 func (p *SpatialPlayer) PlaySample(sample media.PCMSample) {
 	p.PlaySampleSpatialDelayedGrouped(sample, SpatialOrigin{}, 0, 0, 0, false, 0, "")
+}
+
+func (p *SpatialPlayer) PrewarmSample(sample media.PCMSample) bool {
+	if p == nil || p.ctx == nil || p.volume <= 0 {
+		return false
+	}
+	if sample.SampleRate <= 0 || len(sample.Data) == 0 {
+		return false
+	}
+	return p.prewarmWASMSample(sample)
+}
+
+func (p *SpatialPlayer) PrewarmRemaining() int {
+	if p == nil || p.ctx == nil || p.volume <= 0 {
+		return 0
+	}
+	return p.prewarmWASMRemaining()
 }
 
 func (p *SpatialPlayer) PlaySampleSpatial(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, listenerAngle uint32, mapUsesFullClip bool) {

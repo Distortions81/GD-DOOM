@@ -64,6 +64,40 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	return true
 }
 
+func (p *SpatialPlayer) prewarmWASMSample(sample media.PCMSample) bool {
+	if p == nil || p.ctx == nil || p.sourcePort || sample.SampleRate <= 0 || len(sample.Data) == 0 {
+		return false
+	}
+	key := wasmSampleKey{
+		ptr:  uintptr(unsafe.Pointer(unsafe.SliceData(sample.Data))),
+		len:  len(sample.Data),
+		rate: sample.SampleRate,
+	}
+	for _, voice := range p.voices {
+		if voice == nil || voice.player == nil {
+			continue
+		}
+		if voice.pinned && voice.key == key {
+			return true
+		}
+	}
+	if len(p.voices) >= maxSpatialVoices() {
+		return false
+	}
+	return p.acquireWASMCachedVoice(sample, key) != nil
+}
+
+func (p *SpatialPlayer) prewarmWASMRemaining() int {
+	if p == nil || p.ctx == nil || p.sourcePort {
+		return 0
+	}
+	remaining := maxSpatialVoices() - len(p.voices)
+	if remaining < 0 {
+		return 0
+	}
+	return remaining
+}
+
 func wasmMonoAttenuation(origin SpatialOrigin, listenerX, listenerY int64, mapUsesFullClip bool) (float64, bool) {
 	baseVol := doomSoundMaxVolume
 	if !origin.Positioned {
