@@ -364,7 +364,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		screen.Fill(color.Black)
 		return
 	}
-	yieldWASMRenderTime()
+	defer yieldWASMRenderTime()
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	tw, th := sg.transitionSurfaceSize(sw, sh)
