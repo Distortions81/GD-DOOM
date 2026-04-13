@@ -27,7 +27,7 @@ GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and der
 
 ## Compared With Vanilla Doom
 
-Note: Not all featutures are exposed in the UI, some are still experimental.
+Note: Not all features are exposed in the UI, some are still experimental.
 
 GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the actual play experience is broader than vanilla DOS Doom. The biggest differences are:
 
@@ -43,6 +43,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Detailed PC speaker emulation: on current platforms, `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
 - Linux hardware PC speaker output: on Linux, `-pc-speaker-hw` drives the real `/dev/input/by-path/…pcspkr*-event-spkr` device directly via evdev — no audio card involved, just the actual buzzer on the motherboard.
 - Analog touch controls: the browser and mobile build includes a dual-pad touch layout with analog joystick input — left pad for movement and strafe, right pad for turning, with fire/use activation at the outer edges of each pad and a thumb indicator showing current deflection.
+- Browser save/load uses `localStorage` for saves and includes save-slot preview thumbnails in the save/load menu.
 - Episode finales: the Doom episode end sequences (text crawl + cast screen + bunny screen) play correctly after completing an episode.
 - Peer co-op multiplayer: lockstep co-op over the GDSF relay, with per-tic input sync, roster management, and automatic desync detection via periodic state checksums.
 - Browser play: the same project also has a playable browser version with local WAD loading.
@@ -55,6 +56,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Smoothed camera movement, turning, and thing motion between Doom tics.
 - Smoother texture changes, weapon transitions, and broader multi-frame sprite animation.
 - Integrated automap with follow mode, rotate mode, big-map view, grid, and map marks.
+- Stable faithful transitions: transition capture and presentation now use the consistent game render buffer so menu/game resolution changes during transitions are avoided.
 
 The game still runs on Doom-style simulation and classic map data. The extra work here is mostly presentation work: cleaner output, smoother motion, more readable UI, and optional visual polish that makes the game feel better on modern screens.
 
@@ -84,6 +86,7 @@ When a sound effect and music are both playing through the PC speaker, the two s
 - Automatic game selection when one known base WAD is present.
 - In-game WAD picker when multiple supported base games are available.
 - Save/load support integrated into normal play.
+- Browser save/load persistence with `localStorage` and quick save/load slots.
 - Demo playback, demo recording, and optional tick-by-tick state export.
 - Live broadcast/watch sessions with text chat and optional microphone voice streaming.
 - In-game sound, voice, and key binding menus plus persisted native config through `config.toml`.
@@ -343,15 +346,11 @@ Browser builds can also download and cache SoundFonts for `meltysynth`, so the w
 
 The browser build is meant to be genuinely playable, not just a minimal demo. It shares most of the same runtime code, but a few features are still platform-specific, especially around local microphone capture.
 
+On browsers with strict autoplay policies, clicking once is required to start audio playback in the game.
+
+WASM sessions end with a web-appropriate quit hint (`close the page to quit`) instead of a desktop session message.
+
 On touch devices the browser build shows a dual-pad on-screen layout: the left pad controls forward/back movement and strafing, the right pad handles turning. Both pads use analog joystick input — deflection scales continuously from zero to full speed rather than snapping to fixed speeds. Fire and use activate only when your thumb reaches the outer edge of the respective pad, which keeps accidental shots from killing accidental strafes. A small indicator follows your thumb to show current deflection.
-
-## Recent Updates (April 11-13, 2026)
-
-- Save/load works natively in WebAssembly using `localStorage`, including save slots, load metadata, and save thumbnails for the source-port save/load menu.
-- The save thumbnail cache now persists and reloads in browser builds so saved slots keep their preview image when returning to the menu.
-- Web startup flow was updated to support reliable click-to-play behavior and improved menu input behavior for mouse/touch users.
-- Transition rendering in faithful mode was stabilized so transitions now capture and present at the game render size consistently, which avoids unintended aspect/size shifts between menu and game capture stages.
-- WASM quit flow text now uses a web-appropriate instruction (`close the page to quit`) rather than in-engine session messaging.
 
 ## Development
 
