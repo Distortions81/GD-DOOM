@@ -256,6 +256,35 @@ func TestPickerTouchButtonsUseLogicalPickerCoordinates(t *testing.T) {
 	}
 }
 
+func TestPickerLayoutUsesOutsideSize(t *testing.T) {
+	game := &iwadPickerGame{}
+
+	w, h := game.Layout(1366, 768)
+
+	if w != 1366 || h != 768 {
+		t.Fatalf("Layout() = %dx%d want 1366x768", w, h)
+	}
+	if game.touchScreenW != 1366 || game.touchScreenH != 768 {
+		t.Fatalf("touch screen = %dx%d want 1366x768", game.touchScreenW, game.touchScreenH)
+	}
+}
+
+func TestQueuePickerLaunchSetsLoadingStatus(t *testing.T) {
+	game := &iwadPickerGame{tic: 41}
+
+	game.queuePickerLaunch()
+
+	if game.status != pickerLaunchStatus {
+		t.Fatalf("status=%q want %q", game.status, pickerLaunchStatus)
+	}
+	if !game.launchQueued {
+		t.Fatal("launchQueued=false want true")
+	}
+	if game.launchDrawn {
+		t.Fatal("launchDrawn=true want false before draw")
+	}
+}
+
 func TestPickerDefaultsSynthFromInitialBackend(t *testing.T) {
 	game, err := newIWADPickerGame([]iwadChoice{
 		{Path: "/tmp/doom1.wad", Label: "DOOM Shareware"},

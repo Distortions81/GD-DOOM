@@ -198,7 +198,7 @@ func TestSourcePortLayoutWASMOversizeDoesNotRepeatedlyInvokeRuntimeLayout(t *tes
 	}
 }
 
-func TestSourcePortLayoutWASMSmallScreenUses400PercentHUD(t *testing.T) {
+func TestSourcePortLayoutWASMSmallScreenUses100PercentHUD(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
@@ -228,18 +228,18 @@ func TestSourcePortLayoutWASMSmallScreenUses400PercentHUD(t *testing.T) {
 	if layoutW != 640 || layoutH != 360 {
 		t.Fatalf("layout=%dx%d want 640x360", layoutW, layoutH)
 	}
-	if got := sg.g.hudScaleStep; got != 3 {
-		t.Fatalf("hudScaleStep=%d want 3 for 400%% HUD", got)
+	if got := sg.g.hudScaleStep; got != 0 {
+		t.Fatalf("hudScaleStep=%d want 0 for 100%% HUD", got)
 	}
 
-	sg.g.hudScaleStep = 3
+	sg.g.hudScaleStep = 0
 	sg.g.hudScaleUserSet = true
 	layoutW, layoutH = sg.Layout(640, 360)
 	if layoutW != 640 || layoutH != 360 {
 		t.Fatalf("layout after manual set=%dx%d want 640x360", layoutW, layoutH)
 	}
-	if got := sg.g.hudScaleStep; got != 3 {
-		t.Fatalf("hudScaleStep after manual set=%d want 3", got)
+	if got := sg.g.hudScaleStep; got != 0 {
+		t.Fatalf("hudScaleStep after manual set=%d want 0", got)
 	}
 }
 

@@ -247,7 +247,13 @@ func (sg *sessionGame) touchJustPressed(action touchActionMask) bool {
 }
 
 func (sg *sessionGame) shouldDrawTouchControls() bool {
-	return sg != nil && sg.touch.seen
+	if sg == nil || !sg.touch.seen {
+		return false
+	}
+	if sg.frontend.Active && !sg.frontend.MenuActive {
+		return false
+	}
+	return true
 }
 
 func (sg *sessionGame) gameplayTouchUsesPads() bool {
@@ -282,6 +288,18 @@ func (sg *sessionGame) touchButtons(sw, sh int) []touchControlButton {
 				y:      float64(sh) - margin - fireH,
 				w:      fireW,
 				h:      fireH,
+			},
+		}
+	}
+	if sg.frontend.Active && !sg.frontend.MenuActive {
+		return []touchControlButton{
+			{
+				action: touchActionUseEnter,
+				label:  "ENTER",
+				x:      0,
+				y:      0,
+				w:      float64(sw),
+				h:      float64(sh),
 			},
 		}
 	}

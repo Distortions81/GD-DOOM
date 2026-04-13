@@ -218,3 +218,34 @@ func TestShouldDrawTouchControlsOnlyAfterTouchSeen(t *testing.T) {
 		t.Fatal("shouldDrawTouchControls() = false, want true after touch is seen")
 	}
 }
+
+func TestShouldDrawTouchControlsHidesFrontendAttractOverlayWhenMenuClosed(t *testing.T) {
+	sg := &sessionGame{
+		touch:    touchControllerState{seen: true},
+		frontend: frontendState{Active: true, MenuActive: false},
+	}
+	if sg.shouldDrawTouchControls() {
+		t.Fatal("shouldDrawTouchControls() = true, want false during attract when menu is closed")
+	}
+
+	sg.frontend.MenuActive = true
+	if !sg.shouldDrawTouchControls() {
+		t.Fatal("shouldDrawTouchControls() = false, want true when frontend menu is open")
+	}
+}
+
+func TestTouchButtonsUseWholeScreenEnterForClosedFrontend(t *testing.T) {
+	sg := &sessionGame{
+		frontend: frontendState{Active: true, MenuActive: false},
+	}
+	buttons := sg.touchButtons(320, 200)
+	if len(buttons) != 1 {
+		t.Fatalf("buttons len=%d want 1", len(buttons))
+	}
+	if buttons[0].action != touchActionUseEnter {
+		t.Fatalf("button action=%v want touchActionUseEnter", buttons[0].action)
+	}
+	if buttons[0].x != 0 || buttons[0].y != 0 || buttons[0].w != 320 || buttons[0].h != 200 {
+		t.Fatalf("button rect=(%.0f,%.0f,%.0f,%.0f) want (0,0,320,200)", buttons[0].x, buttons[0].y, buttons[0].w, buttons[0].h)
+	}
+}

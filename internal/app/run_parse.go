@@ -2919,8 +2919,9 @@ type iwadPickerGame struct {
 	confirmArmed          bool
 	status                string
 	loadingPath           string
-	statusUntil           int
 	tic                   int
+	launchQueued          bool
+	launchDrawn           bool
 	bg                    *ebiten.Image
 	logo                  *ebiten.Image
 	menuImg               map[string]*ebiten.Image
@@ -2955,6 +2956,8 @@ type pickerTouchButton struct {
 	w      float64
 	h      float64
 }
+
+const pickerLaunchStatus = "LOADING"
 
 func newIWADPickerGame(choices []iwadChoice, initialBackend music.Backend, initialPCSpeakerVariant string, load func(string, pickerProfile, int, int, int) (*renderBundle, error)) (*iwadPickerGame, error) {
 	game := &iwadPickerGame{
@@ -2997,8 +3000,6 @@ func newIWADPickerGame(choices []iwadChoice, initialBackend music.Backend, initi
 		}
 	}
 	ebiten.SetWindowTitle("GD-DOOM - Select Game")
-	ebiten.SetWindowSize(960, 600)
-	ebiten.SetWindowResizingMode(ebiten.WindowResizingModeEnabled)
 	ebiten.SetScreenClearedEveryFrame(true)
 	return game, nil
 }
@@ -3060,7 +3061,7 @@ func (g *iwadPickerGame) sampleTouchControls() {
 	if len(justPressedIDs) > 0 || len(ids) > 0 {
 		g.touchSeen = true
 	}
-	buttons := g.pickerTouchButtons(320, 200)
+	buttons := g.pickerTouchButtons(max(g.touchScreenW, 1), max(g.touchScreenH, 1))
 	held := pickerTouchActionMask(0)
 	for _, id := range ids {
 		lx, ly := ebiten.TouchPosition(id)
@@ -3081,6 +3082,15 @@ func (g *iwadPickerGame) pickerTouchJustPressed(action pickerTouchActionMask) bo
 
 func (g *iwadPickerGame) pickerTouchActivated(action pickerTouchActionMask) bool {
 	return g != nil && g.touchHeld&action != 0 && g.touchJustPressed&action != 0
+}
+
+func (g *iwadPickerGame) queuePickerLaunch() {
+	if g == nil {
+		return
+	}
+	g.status = pickerLaunchStatus
+	g.launchQueued = true
+	g.launchDrawn = false
 }
 
 func (g *iwadPickerGame) shouldDrawPickerTouchControls() bool {
@@ -3179,12 +3189,11 @@ func (g *iwadPickerGame) Update() error {
 			g.status = err.Error()
 			return nil
 		}
-		g.status = "DONE, STARTING."
-		g.statusUntil = g.tic + 1
+		g.queuePickerLaunch()
 		return nil
 	}
 	g.tic++
-	if strings.TrimSpace(g.status) == "DONE, STARTING." && g.statusUntil > 0 && g.tic >= g.statusUntil {
+	if g.launchQueued && g.launchDrawn {
 		if g.load == nil {
 			g.err = fmt.Errorf("iwad loader unavailable")
 			return ebiten.Termination
@@ -3192,11 +3201,13 @@ func (g *iwadPickerGame) Update() error {
 		bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
 		if err != nil {
 			g.status = err.Error()
-			g.statusUntil = 0
+			g.launchQueued = false
+			g.launchDrawn = false
 			return nil
 		}
 		g.status = ""
-		g.statusUntil = 0
+		g.launchQueued = false
+		g.launchDrawn = false
 		g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
 		g.sessionGame = session.New(g.session)
 		notifyBrowserSessionStarted()
@@ -3302,14 +3313,7 @@ func (g *iwadPickerGame) Update() error {
 				g.status = pickerSoundFontDownloadStatus(soundFontPath)
 				return nil
 			}
-			bundle, err := g.load(g.choices[g.selected].Path, g.profile, g.sfxIndex, g.pcSpeakerVariantIndex, g.synth)
-			if err != nil {
-				g.status = err.Error()
-				return nil
-			}
-			g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
-			g.sessionGame = session.New(g.session)
-			notifyBrowserSessionStarted()
+			g.queuePickerLaunch()
 			return nil
 		}
 	default:
@@ -3355,7 +3359,10 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		g.drawPickerTextCentered(screen, "SELECT GAME", sw/2, 20)
 	}
 	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
-	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || (strings.TrimSpace(g.status) == "DONE, STARTING." && g.statusUntil > 0)
+	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || g.launchQueued
+	if g.launchQueued {
+		g.launchDrawn = true
+	}
 	switch g.stage {
 	case pickerStageProfile:
 		if !loadingSoundFont {
@@ -3424,25 +3431,17 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	case pickerStageSynth:
 		if !loadingSoundFont {
 			titleWidth := 0
-			descWidth := 0
 			for _, synth := range pickerSynths {
 				titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, 2))
-				if strings.TrimSpace(synth.description) != "" {
-					descWidth = max(descWidth, g.pickerTextWidth(synth.description))
-				}
 			}
-			contentWidth := max(titleWidth, descWidth)
-			titleX := sw/2 - contentWidth/2
-			synthY, rowStep := pickerOptionBlockLayout(sh, len(pickerSynths))
+			titleX := sw/2 - titleWidth/2
+			synthY, rowStep := pickerCompactOptionBlockLayout(sh, len(pickerSynths))
 			for i, synth := range pickerSynths {
 				rowY := synthY + i*rowStep
 				if i == g.synth {
 					g.drawPickerSkull(screen, titleX, rowY+4)
 				}
 				g.drawPickerTextScaled(screen, synth.label, titleX, rowY, 2)
-				if strings.TrimSpace(synth.description) != "" {
-					g.drawPickerText(screen, synth.description, titleX, rowY+22)
-				}
 			}
 		}
 	default:
@@ -3474,7 +3473,8 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 	if strings.TrimSpace(g.status) != "" {
 		lines := strings.Split(strings.ToUpper(g.status), "\n")
 		lineHeight := 14
-		startY := sh - 52 - ((len(lines) - 1) * lineHeight / 2)
+		textHeight := max(len(lines)*lineHeight, lineHeight)
+		startY := sh/2 - textHeight/2
 		if loadingSoundFont {
 			maxWidth := 0
 			for _, line := range lines {
@@ -3483,9 +3483,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			panelW := maxWidth + 36
 			panelH := len(lines)*lineHeight + 24
 			panelX := (sw - panelW) / 2
-			textTop := startY
-			textBottom := startY + (len(lines)-1)*lineHeight
-			panelY := (textTop+textBottom)/2 - panelH/2
+			panelY := sh/2 - panelH/2
 			ebitenutil.DrawRect(screen, float64(panelX), float64(panelY), float64(panelW), float64(panelH), color.RGBA{A: 192})
 		}
 		for i, line := range lines {
@@ -3501,7 +3499,7 @@ func (g *iwadPickerGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	}
 	g.touchScreenW = max(outsideWidth, 1)
 	g.touchScreenH = max(outsideHeight, 1)
-	return 320, 200
+	return g.touchScreenW, g.touchScreenH
 }
 
 func (g *iwadPickerGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *ebiten.Image, geoM ebiten.GeoM) {
@@ -3512,22 +3510,10 @@ func (g *iwadPickerGame) DrawFinalScreen(screen ebiten.FinalScreen, offscreen *e
 	if screen == nil || offscreen == nil {
 		return
 	}
-	sw := max(screen.Bounds().Dx(), 1)
-	sh := max(screen.Bounds().Dy(), 1)
-	ow := max(offscreen.Bounds().Dx(), 1)
-	oh := max(offscreen.Bounds().Dy(), 1)
-	scale := min(sw/ow, sh/oh)
-	if scale < 1 {
-		scale = 1
-	}
-	rw := ow * scale
-	rh := oh * scale
-	ox := (sw - rw) / 2
-	oy := (sh - rh) / 2
 	op := &ebiten.DrawImageOptions{}
+	screen.Fill(color.Black)
+	op.GeoM = geoM
 	op.Filter = ebiten.FilterNearest
-	op.GeoM.Scale(float64(scale), float64(scale))
-	op.GeoM.Translate(float64(ox), float64(oy))
 	screen.DrawImage(offscreen, op)
 }
 
@@ -3697,6 +3683,33 @@ func pickerOptionBlockLayout(screenH int, rows int) (startY int, rowStep int) {
 		preferredStep  = 52
 		minCompactStep = 38
 		verticalPad    = 52
+	)
+	rowStep = preferredStep
+	if rows > 1 {
+		maxTotalH := screenH - verticalPad
+		totalH := entryH + (rows-1)*rowStep
+		if totalH > maxTotalH {
+			fitStep := (maxTotalH - entryH) / (rows - 1)
+			rowStep = max(minCompactStep, fitStep)
+		}
+	}
+	totalH := entryH + (rows-1)*rowStep
+	startY = (screenH-totalH)/2 + 8
+	if startY < 24 {
+		startY = 24
+	}
+	return startY, rowStep
+}
+
+func pickerCompactOptionBlockLayout(screenH int, rows int) (startY int, rowStep int) {
+	if rows < 1 {
+		rows = 1
+	}
+	const (
+		entryH         = 16
+		preferredStep  = 28
+		minCompactStep = 24
+		verticalPad    = 44
 	)
 	rowStep = preferredStep
 	if rows > 1 {

@@ -3380,7 +3380,7 @@ func defaultHUDScaleStep(opts Options) int {
 		targetScale = 4.0
 	}
 	if isWASMBuild() {
-		targetScale = 4.0
+		targetScale = 1.0
 	}
 	if !opts.SourcePortMode && defaultScreenBlocks(opts) == doomScreenBlocksOverlay {
 		targetScale = 1.0

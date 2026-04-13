@@ -51,13 +51,13 @@ func TestDefaultHUDScaleStep(t *testing.T) {
 	}
 }
 
-func TestDefaultHUDScaleStepWASMUses400PercentSourcePortHUD(t *testing.T) {
+func TestDefaultHUDScaleStepWASMUses100PercentHUD(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
 
-	if got := defaultHUDScaleStep(Options{SourcePortMode: true}); got != 3 {
-		t.Fatalf("defaultHUDScaleStep wasm sourceport = %d, want 3", got)
+	if got := defaultHUDScaleStep(Options{SourcePortMode: true}); got != 0 {
+		t.Fatalf("defaultHUDScaleStep wasm sourceport = %d, want 0", got)
 	}
 }
 
