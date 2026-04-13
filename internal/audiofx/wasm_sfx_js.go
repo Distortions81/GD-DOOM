@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	maxConcurrentWASMSounds = 4
+	maxConcurrentWASMSounds = 6
 	wasmVolumeBuckets       = 3
 	wasmVolumeBucketUnset   = ^uint8(0)
 )

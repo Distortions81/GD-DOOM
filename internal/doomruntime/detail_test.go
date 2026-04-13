@@ -154,8 +154,13 @@ func TestApplyAutoDetailSampleDropsDetailAfterSustainedLowFPS(t *testing.T) {
 		t.Fatalf("detail after first low sample=%d want 1", g.detailLevel)
 	}
 	g.applyAutoDetailSample(54, 17.5)
+	g.applyAutoDetailSample(54, 17.5)
+	if g.detailLevel != 1 {
+		t.Fatalf("detail before fourth low sample=%d want 1", g.detailLevel)
+	}
+	g.applyAutoDetailSample(54, 17.5)
 	if g.detailLevel != 2 {
-		t.Fatalf("detail after second low sample=%d want 2", g.detailLevel)
+		t.Fatalf("detail after fourth low sample=%d want 2", g.detailLevel)
 	}
 	if g.autoDetailCooldown == 0 {
 		t.Fatal("expected auto detail cooldown after change")

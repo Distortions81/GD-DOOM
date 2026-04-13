@@ -2303,7 +2303,7 @@ func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 		veryLowFPS           = targetFPS - 10.0
 		highRenderMS         = 1000.0 / targetFPS
 		raiseRenderTargetMS  = 14.0
-		lowSamplesToDrop     = 2
+		lowSamplesToDrop     = 4
 		highSamplesToRecover = 4
 		cooldownSamples      = 3
 	)
