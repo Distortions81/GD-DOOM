@@ -3362,6 +3362,7 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		g.drawPickerTextCentered(screen, "SELECT GAME", sw/2, 20)
 	}
 	ebitenutil.DrawRect(screen, 0, 0, float64(sw), float64(sh), color.RGBA{R: 8, G: 8, B: 8, A: 128})
+	textScale := pickerTextScaleForScreen(sw, sh)
 	loadingSoundFont := strings.TrimSpace(g.loadingPath) != "" || g.launchQueued
 	if g.launchQueued {
 		g.launchDrawn = true
@@ -3372,79 +3373,79 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 			titleWidth := 0
 			descWidth := 0
 			for _, profile := range pickerProfiles {
-				titleWidth = max(titleWidth, g.pickerTextWidthScaled(profile.label, 2))
-				descWidth = max(descWidth, g.pickerTextWidth(profile.description))
+				titleWidth = max(titleWidth, g.pickerTextWidthScaled(profile.label, textScale))
+				descWidth = max(descWidth, g.pickerTextWidthScaled(profile.description, textScale))
 			}
 			contentWidth := max(titleWidth, descWidth)
 			titleX := sw/2 - contentWidth/2
-			profileY, rowStep := pickerOptionBlockLayout(sh, len(pickerProfiles))
+			profileY, rowStep := pickerOptionBlockLayout(sh, len(pickerProfiles), textScale)
 			for i, profile := range pickerProfiles {
 				rowY := profileY + i*rowStep
 				if i == int(g.profile) {
-					g.drawPickerSkull(screen, titleX, rowY+4)
+					g.drawPickerSkull(screen, titleX, rowY+textScale*2)
 				}
-				g.drawPickerTextScaled(screen, profile.label, titleX, rowY, 2)
-				g.drawPickerText(screen, profile.description, titleX, rowY+22)
+				g.drawPickerTextScaled(screen, profile.label, titleX, rowY, textScale)
+				g.drawPickerTextScaled(screen, profile.description, titleX, rowY+11*textScale, textScale)
 			}
 		}
 	case pickerStageSFX:
 		titleWidth := 0
 		descWidth := 0
 		for _, sfx := range pickerSFXOptions {
-			titleWidth = max(titleWidth, g.pickerTextWidthScaled(sfx.label, 2))
+			titleWidth = max(titleWidth, g.pickerTextWidthScaled(sfx.label, textScale))
 			if strings.TrimSpace(sfx.description) != "" {
-				descWidth = max(descWidth, g.pickerTextWidth(sfx.description))
+				descWidth = max(descWidth, g.pickerTextWidthScaled(sfx.description, textScale))
 			}
 		}
 		contentWidth := max(titleWidth, descWidth)
 		titleX := sw/2 - contentWidth/2
-		sfxY, rowStep := pickerOptionBlockLayout(sh, len(pickerSFXOptions))
+		sfxY, rowStep := pickerOptionBlockLayout(sh, len(pickerSFXOptions), textScale)
 		for i, sfx := range pickerSFXOptions {
 			rowY := sfxY + i*rowStep
 			if i == g.sfxIndex {
-				g.drawPickerSkull(screen, titleX, rowY+4)
+				g.drawPickerSkull(screen, titleX, rowY+textScale*2)
 			}
-			g.drawPickerTextScaled(screen, sfx.label, titleX, rowY, 2)
+			g.drawPickerTextScaled(screen, sfx.label, titleX, rowY, textScale)
 			if strings.TrimSpace(sfx.description) != "" {
-				g.drawPickerText(screen, sfx.description, titleX, rowY+22)
+				g.drawPickerTextScaled(screen, sfx.description, titleX, rowY+11*textScale, textScale)
 			}
 		}
 	case pickerStagePCSpeakerVariant:
 		titleWidth := 0
 		descWidth := 0
 		for _, opt := range pickerPCSpeakerVariantOptions {
-			titleWidth = max(titleWidth, g.pickerTextWidthScaled(opt.label, 2))
+			titleWidth = max(titleWidth, g.pickerTextWidthScaled(opt.label, textScale))
 			if strings.TrimSpace(opt.description) != "" {
-				descWidth = max(descWidth, g.pickerTextWidth(opt.description))
+				descWidth = max(descWidth, g.pickerTextWidthScaled(opt.description, textScale))
 			}
 		}
 		contentWidth := max(titleWidth, descWidth)
 		titleX := sw/2 - contentWidth/2
-		variantY, rowStep := pickerOptionBlockLayout(sh, len(pickerPCSpeakerVariantOptions))
+		variantY, rowStep := pickerOptionBlockLayout(sh, len(pickerPCSpeakerVariantOptions), textScale)
 		for i, opt := range pickerPCSpeakerVariantOptions {
 			rowY := variantY + i*rowStep
 			if i == g.pcSpeakerVariantIndex {
-				g.drawPickerSkull(screen, titleX, rowY+4)
+				g.drawPickerSkull(screen, titleX, rowY+textScale*2)
 			}
-			g.drawPickerTextScaled(screen, opt.label, titleX, rowY, 2)
+			g.drawPickerTextScaled(screen, opt.label, titleX, rowY, textScale)
 			if strings.TrimSpace(opt.description) != "" {
-				g.drawPickerText(screen, opt.description, titleX, rowY+22)
+				g.drawPickerTextScaled(screen, opt.description, titleX, rowY+11*textScale, textScale)
 			}
 		}
 	case pickerStageSynth:
 		if !loadingSoundFont {
 			titleWidth := 0
 			for _, synth := range pickerSynths {
-				titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, 2))
+				titleWidth = max(titleWidth, g.pickerTextWidthScaled(synth.label, textScale))
 			}
 			titleX := sw/2 - titleWidth/2
-			synthY, rowStep := pickerCompactOptionBlockLayout(sh, len(pickerSynths))
+			synthY, rowStep := pickerCompactOptionBlockLayout(sh, len(pickerSynths), textScale)
 			for i, synth := range pickerSynths {
 				rowY := synthY + i*rowStep
 				if i == g.synth {
-					g.drawPickerSkull(screen, titleX, rowY+4)
+					g.drawPickerSkull(screen, titleX, rowY+textScale*2)
 				}
-				g.drawPickerTextScaled(screen, synth.label, titleX, rowY, 2)
+				g.drawPickerTextScaled(screen, synth.label, titleX, rowY, textScale)
 			}
 		}
 	default:
@@ -3455,42 +3456,42 @@ func (g *iwadPickerGame) Draw(screen *ebiten.Image) {
 		for i, choice := range g.choices {
 			labelTexts[i] = strings.ToUpper(choice.Label)
 			fileTexts[i] = strings.ToUpper(filepath.Base(choice.Path))
-			labelWidth = max(labelWidth, g.pickerTextWidth("> "+labelTexts[i]))
-			fileWidth = max(fileWidth, g.pickerTextWidth(fileTexts[i]))
+			labelWidth = max(labelWidth, g.pickerTextWidthScaled("> "+labelTexts[i], textScale))
+			fileWidth = max(fileWidth, g.pickerTextWidthScaled(fileTexts[i], textScale))
 		}
-		gap := 16
+		gap := 8 * textScale
 		blockWidth := labelWidth + gap + fileWidth
 		labelX := sw/2 - blockWidth/2
 		fileX := labelX + labelWidth + gap
-		rowHeight := 18
+		rowHeight := 10 * textScale
 		blockHeight := max(len(g.choices)*rowHeight, rowHeight)
 		y := sh/2 - blockHeight/2
 		for i := range g.choices {
 			if i == g.selected {
 				g.drawPickerSkull(screen, labelX, y+i*rowHeight)
 			}
-			g.drawPickerText(screen, labelTexts[i], labelX, y+i*rowHeight)
-			g.drawPickerText(screen, fileTexts[i], fileX, y+i*rowHeight)
+			g.drawPickerTextScaled(screen, labelTexts[i], labelX, y+i*rowHeight, textScale)
+			g.drawPickerTextScaled(screen, fileTexts[i], fileX, y+i*rowHeight, textScale)
 		}
 	}
 	if strings.TrimSpace(g.status) != "" {
 		lines := strings.Split(strings.ToUpper(g.status), "\n")
-		lineHeight := 14
+		lineHeight := 8 * textScale
 		textHeight := max(len(lines)*lineHeight, lineHeight)
 		startY := sh/2 - textHeight/2
 		if loadingSoundFont {
 			maxWidth := 0
 			for _, line := range lines {
-				maxWidth = max(maxWidth, g.pickerTextWidth(line))
+				maxWidth = max(maxWidth, g.pickerTextWidthScaled(line, textScale))
 			}
-			panelW := maxWidth + 36
-			panelH := len(lines)*lineHeight + 24
+			panelW := maxWidth + 18*textScale
+			panelH := len(lines)*lineHeight + 12*textScale
 			panelX := (sw - panelW) / 2
 			panelY := sh/2 - panelH/2
 			ebitenutil.DrawRect(screen, float64(panelX), float64(panelY), float64(panelW), float64(panelH), color.RGBA{A: 192})
 		}
 		for i, line := range lines {
-			g.drawPickerTextCentered(screen, line, sw/2, startY+i*lineHeight)
+			g.drawPickerTextCenteredScaled(screen, line, sw/2, startY+i*lineHeight, textScale)
 		}
 	}
 	g.drawPickerTouchControls(screen)
@@ -3677,16 +3678,37 @@ func humanDownloadSize(n int64) string {
 	return fmt.Sprintf("%.1f %s", value, suffix)
 }
 
-func pickerOptionBlockLayout(screenH int, rows int) (startY int, rowStep int) {
+func pickerTextScaleForScreen(screenW, screenH int) int {
+	minDim := min(screenW, screenH)
+	switch {
+	case minDim >= 1200:
+		return 4
+	case minDim >= 720:
+		return 3
+	case minDim >= 420:
+		return 2
+	default:
+		return 1
+	}
+}
+
+func pickerOptionBlockLayout(screenH int, rows int, scale int) (startY int, rowStep int) {
 	if rows < 1 {
 		rows = 1
 	}
+	if scale < 1 {
+		scale = 1
+	}
 	const (
-		entryH         = 34
-		preferredStep  = 52
-		minCompactStep = 38
-		verticalPad    = 52
+		entryHBase         = 17
+		preferredStepBase  = 26
+		minCompactStepBase = 19
+		verticalPadBase    = 26
 	)
+	entryH := entryHBase * scale
+	preferredStep := preferredStepBase * scale
+	minCompactStep := minCompactStepBase * scale
+	verticalPad := verticalPadBase * scale
 	rowStep = preferredStep
 	if rows > 1 {
 		maxTotalH := screenH - verticalPad
@@ -3704,16 +3726,23 @@ func pickerOptionBlockLayout(screenH int, rows int) (startY int, rowStep int) {
 	return startY, rowStep
 }
 
-func pickerCompactOptionBlockLayout(screenH int, rows int) (startY int, rowStep int) {
+func pickerCompactOptionBlockLayout(screenH int, rows int, scale int) (startY int, rowStep int) {
 	if rows < 1 {
 		rows = 1
 	}
+	if scale < 1 {
+		scale = 1
+	}
 	const (
-		entryH         = 16
-		preferredStep  = 28
-		minCompactStep = 24
-		verticalPad    = 44
+		entryHBase         = 8
+		preferredStepBase  = 14
+		minCompactStepBase = 12
+		verticalPadBase    = 22
 	)
+	entryH := entryHBase * scale
+	preferredStep := preferredStepBase * scale
+	minCompactStep := minCompactStepBase * scale
+	verticalPad := verticalPadBase * scale
 	rowStep = preferredStep
 	if rows > 1 {
 		maxTotalH := screenH - verticalPad

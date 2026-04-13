@@ -46,13 +46,14 @@ func hasAppFiles(dir string) bool {
 
 func newHandler(dir string) http.Handler {
 	files := map[string]string{
-		"/":             "index.html",
-		"/index.html":   "index.html",
-		"/player.html":  "player.html",
-		"/favicon.ico":  "",
-		"/launch.js":    "launch.js",
-		"/wasm_exec.js": "wasm_exec.js",
-		"/gddoom.wasm":  "gddoom.wasm",
+		"/":               "index.html",
+		"/index.html":     "index.html",
+		"/player.html":    "player.html",
+		"/favicon.ico":    "",
+		"/launch.js":      "launch.js",
+		"/build-id.js":    "build-id.js",
+		"/wasm_exec.js":   "wasm_exec.js",
+		"/gddoom.wasm":    "gddoom.wasm",
 		"/gddoom.wasm.gz": "gddoom.wasm.gz",
 	}
 
@@ -112,7 +113,7 @@ func newHandler(dir string) http.Handler {
 			w.Header().Set("Content-Type", "application/gzip")
 		}
 		switch name {
-		case "index.html", "player.html", "launch.js", "wasm_exec.js", "gddoom.wasm", "gddoom.wasm.gz":
+		case "index.html", "player.html", "launch.js", "build-id.js", "wasm_exec.js", "gddoom.wasm", "gddoom.wasm.gz":
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")

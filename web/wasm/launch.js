@@ -9,6 +9,10 @@ let splashDismissed = false;
 let pendingReload = false;
 let localWADStatusTimer = 0;
 
+function getBuildID() {
+  return typeof window.__gddoomBuildID === "string" ? window.__gddoomBuildID : "";
+}
+
 function isIOSLike() {
   if (typeof navigator === "undefined") {
     return false;
@@ -19,7 +23,12 @@ function isIOSLike() {
 }
 
 function getPlayerURL() {
-  return new URL("./player.html", window.location.href).toString();
+  const url = new URL("./player.html", window.location.href);
+  const buildID = getBuildID();
+  if (buildID) {
+    url.searchParams.set("v", buildID);
+  }
+  return url.toString();
 }
 
 function startDirectPlayer() {
@@ -119,9 +128,19 @@ function reloadPlayer() {
     return;
   }
   pendingReload = true;
-  const url = new URL(shell.src, window.location.href);
+  const url = new URL(getPlayerURL());
   url.searchParams.set("reload", String(Date.now()));
   shell.src = url.toString();
+}
+
+function initializePlayerFrame() {
+  if (!shell) {
+    return;
+  }
+  const target = getPlayerURL();
+  if (shell.src !== target) {
+    shell.src = target;
+  }
 }
 
 function claimFocusAndStart() {
@@ -133,6 +152,8 @@ if (isIOSLike()) {
   hideLocalWADUI();
   startDirectPlayer();
 }
+
+initializePlayerFrame();
 
 if (splash) {
   splash.addEventListener("click", (event) => {

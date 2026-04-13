@@ -18,13 +18,13 @@ func TestNewHandlerOnlyServesKnownFiles(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"index.html", "player.html", "launch.js", "wasm_exec.js", "gddoom.wasm"} {
+	for _, name := range []string{"index.html", "player.html", "launch.js", "build-id.js", "wasm_exec.js", "gddoom.wasm"} {
 		writeFile(name)
 	}
 
 	handler := newHandler(dir)
 
-	for _, path := range []string{"/", "/index.html", "/player.html", "/launch.js", "/wasm_exec.js", "/gddoom.wasm"} {
+	for _, path := range []string{"/", "/index.html", "/player.html", "/launch.js", "/build-id.js", "/wasm_exec.js", "/gddoom.wasm"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
@@ -147,7 +147,7 @@ func TestPreferredWASMEncoding(t *testing.T) {
 
 func TestHasAppFiles(t *testing.T) {
 	dir := t.TempDir()
-	for _, name := range []string{"index.html", "player.html", "launch.js", "wasm_exec.js", "gddoom.wasm"} {
+	for _, name := range []string{"index.html", "player.html", "launch.js", "build-id.js", "wasm_exec.js", "gddoom.wasm"} {
 		path := filepath.Join(dir, name)
 		if err := os.WriteFile(path, []byte(name), 0o644); err != nil {
 			t.Fatalf("write %s: %v", name, err)

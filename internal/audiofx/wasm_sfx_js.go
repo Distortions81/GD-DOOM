@@ -9,7 +9,11 @@ import (
 	"gddoom/internal/media"
 )
 
-const maxConcurrentWASMSounds = 4
+const (
+	maxConcurrentWASMSounds = 4
+	wasmVolumeBuckets       = 3
+	wasmVolumeBucketUnset   = ^uint8(0)
+)
 
 func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, mapUsesFullClip bool, group string) bool {
 	if p == nil || p.ctx == nil || p.sourcePort || sample.SampleRate <= 0 || len(sample.Data) == 0 {
@@ -39,11 +43,15 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	}
 	voice.group = group
 	wasPlaying := voice.player.IsPlaying()
+	bucket, quantizedGain := quantizeWASMVolume(gain)
 	if err := voice.player.Rewind(); err != nil {
 		_ = voice.player.Close()
 		return true
 	}
-	voice.player.SetVolume(gain)
+	if voice.bucket != bucket {
+		voice.player.SetVolume(quantizedGain)
+		voice.bucket = bucket
+	}
 	if !wasPlaying {
 		voice.player.Play()
 	}
@@ -115,7 +123,7 @@ func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample, key wasmS
 		if err != nil {
 			return nil
 		}
-		candidate = &spatialVoice{player: player, src: src, pinned: true}
+		candidate = &spatialVoice{player: player, src: src, pinned: true, bucket: wasmVolumeBucketUnset}
 		p.voices = append(p.voices, candidate)
 	} else {
 		candidate = lru
@@ -131,6 +139,7 @@ func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample, key wasmS
 	candidate.stamp++
 	candidate.group = ""
 	candidate.pinned = true
+	candidate.bucket = wasmVolumeBucketUnset
 	return candidate
 }
 
@@ -196,4 +205,19 @@ func PCMMonoU8ToStereoS16LEMonoResampledInto(dst []byte, src []byte, srcRate, ds
 		pos += step
 	}
 	return out
+}
+
+func quantizeWASMVolume(gain float64) (uint8, float64) {
+	if gain <= 0 {
+		return 0, 0
+	}
+	if gain >= 1 {
+		return wasmVolumeBuckets - 1, 1
+	}
+	step := 1.0 / float64(wasmVolumeBuckets-1)
+	bucket := uint8(math.Round(gain / step))
+	if bucket >= wasmVolumeBuckets {
+		bucket = wasmVolumeBuckets - 1
+	}
+	return bucket, float64(bucket) * step
 }

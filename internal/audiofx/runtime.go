@@ -66,6 +66,7 @@ type spatialVoice struct {
 	pinned bool
 	key    wasmSampleKey
 	stamp  uint64
+	bucket uint8
 }
 
 type menuVoice struct {

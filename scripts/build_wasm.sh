@@ -8,6 +8,7 @@ WASM_EXEC_JS="${GOROOT_PATH}/lib/wasm/wasm_exec.js"
 WASM_OPT_MODE="${WASM_OPT:-true}"
 WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O3}"
 WASM_OPT_FEATURES="${WASM_OPT_FEATURES:---all-features}"
+BUILD_ID="${BUILD_ID:-$(git -C "${ROOT_DIR}" rev-parse --short=12 HEAD 2>/dev/null || date +%s)}"
 
 if [[ ! -f "${ROOT_DIR}/DOOM1.WAD" ]]; then
   echo "missing ${ROOT_DIR}/DOOM1.WAD" >&2
@@ -43,6 +44,7 @@ chmod -f u+w \
   "${OUT_DIR}/gddoom.wasm" \
   "${OUT_DIR}/gddoom.wasm.gz" \
   "${OUT_DIR}/wasm_exec.js" \
+  "${OUT_DIR}/build-id.js" \
   "${OUT_DIR}/index.html" \
   "${OUT_DIR}/player.html" \
   "${OUT_DIR}/launch.js" \
@@ -51,6 +53,7 @@ rm -f \
   "${OUT_DIR}/gddoom.wasm" \
   "${OUT_DIR}/gddoom.wasm.gz" \
   "${OUT_DIR}/wasm_exec.js" \
+  "${OUT_DIR}/build-id.js" \
   "${OUT_DIR}/index.html" \
   "${OUT_DIR}/player.html" \
   "${OUT_DIR}/launch.js" \
@@ -71,6 +74,7 @@ else
 fi
 
 cp "${WASM_EXEC_JS}" "${OUT_DIR}/wasm_exec.js"
+printf 'window.__gddoomBuildID = %q;\n' "${BUILD_ID}" > "${OUT_DIR}/build-id.js"
 cp "${ROOT_DIR}/web/wasm/index.html" "${OUT_DIR}/index.html"
 cp "${ROOT_DIR}/web/wasm/player.html" "${OUT_DIR}/player.html"
 cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"

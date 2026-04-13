@@ -48,6 +48,7 @@ func TestPlayWASMSoundEffect_ReusesCachedVoiceWithoutRebuildingPCM(t *testing.T)
 		pinned: true,
 		key:    key,
 		stamp:  41,
+		bucket: wasmVolumeBucketUnset,
 	}
 	p := &SpatialPlayer{
 		ctx:    &audio.Context{},
@@ -98,6 +99,7 @@ func TestPlayWASMSoundEffect_ActiveCachedVoiceRewindsWithoutReplayCall(t *testin
 		src:    &pcmBufferSource{buf: []byte{9, 8, 7, 6}},
 		pinned: true,
 		key:    key,
+		bucket: wasmVolumeBuckets - 1,
 	}
 	p := &SpatialPlayer{
 		ctx:    &audio.Context{},
@@ -117,7 +119,42 @@ func TestPlayWASMSoundEffect_ActiveCachedVoiceRewindsWithoutReplayCall(t *testin
 	if backend.plays != 0 {
 		t.Fatalf("backend plays=%d want 0", backend.plays)
 	}
-	if backend.setVolumes != 1 || backend.lastVolume != 1 {
-		t.Fatalf("backend volume=%f setCount=%d want 1/1", backend.lastVolume, backend.setVolumes)
+	if backend.setVolumes != 0 {
+		t.Fatalf("backend setVolumes=%d want 0 when quantized bucket is unchanged", backend.setVolumes)
+	}
+}
+
+func TestPlayWASMSoundEffect_QuantizedVolumeSkipsRedundantSetVolume(t *testing.T) {
+	sample := media.PCMSample{
+		SampleRate: 11025,
+		Data:       []byte{1, 2, 3, 4},
+	}
+	key := wasmSampleKey{
+		ptr:  uintptr(unsafe.Pointer(unsafe.SliceData(sample.Data))),
+		len:  len(sample.Data),
+		rate: sample.SampleRate,
+	}
+	backend := &fakeWASMBackend{}
+	voice := &spatialVoice{
+		player: backend,
+		src:    &pcmBufferSource{buf: []byte{9, 8, 7, 6}},
+		pinned: true,
+		key:    key,
+		bucket: wasmVolumeBuckets - 1,
+	}
+	p := &SpatialPlayer{
+		ctx:    &audio.Context{},
+		volume: 1,
+		voices: []*spatialVoice{voice},
+	}
+
+	if ok := p.playWASMSoundEffect(sample, SpatialOrigin{}, 0, 0, false, "test"); !ok {
+		t.Fatal("playWASMSoundEffect()=false want true")
+	}
+	if backend.setVolumes != 0 {
+		t.Fatalf("backend setVolumes=%d want 0", backend.setVolumes)
+	}
+	if backend.plays != 1 {
+		t.Fatalf("backend plays=%d want 1", backend.plays)
 	}
 }
