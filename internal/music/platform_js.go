@@ -4,7 +4,7 @@ package music
 
 const (
 	wasmStreamChunkFrames   = 256
-	wasmStreamEnqueueFrames = wasmStreamChunkFrames * 8
+	wasmStreamEnqueueFrames = wasmStreamChunkFrames * 16
 	wasmStreamLookaheadMult = 48
 )
 
