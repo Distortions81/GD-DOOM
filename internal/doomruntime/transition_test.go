@@ -14,6 +14,10 @@ func TestTransitionSurfaceSizeFaithfulUsesLogicalRenderSize(t *testing.T) {
 			Width:          doomLogicalW,
 			Height:         doomLogicalH,
 		},
+		g: &game{
+			viewW: 640,
+			viewH: 400,
+		},
 	}
 	w, h := sg.transitionSurfaceSize(1280, 800)
 	if w != doomLogicalW || h != doomLogicalH {

@@ -333,13 +333,6 @@ func (sg *sessionGame) transitionSurfaceSize(screenW, screenH int) (int, int) {
 	if sg.opts.SourcePortMode {
 		return max(screenW, 1), max(screenH, 1)
 	}
-	if sg.g != nil {
-		w := max(sg.g.viewW, 1)
-		h := max(sg.g.viewH, 1)
-		if w > 0 && h > 0 {
-			return w, h
-		}
-	}
 	w := sg.opts.Width
 	h := sg.opts.Height
 	if w <= 0 {
