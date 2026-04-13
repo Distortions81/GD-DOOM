@@ -2299,13 +2299,13 @@ func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 	const (
 		targetFPS            = 60.0
 		lowFPS               = targetFPS - 3.0
-		raiseMinFPS          = 50.0
+		raiseMinFPS          = 55.0
 		veryLowFPS           = targetFPS - 10.0
 		highRenderMS         = 1000.0 / targetFPS
-		raiseRenderTargetMS  = 14.0
+		raiseRenderTargetMS  = 12
 		lowSamplesToDrop     = 4
 		highSamplesToRecover = 4
-		cooldownSamples      = 3
+		cooldownSamples      = 8
 	)
 	nextHigherDetail := clampDetailLevelForMode(g.detailLevel-1, g.opts.SourcePortMode)
 	projectedHigherRenderMS := g.estimatedRenderMSForDetailLevel(nextHigherDetail, renderMS)
