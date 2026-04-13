@@ -247,7 +247,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 1.0
 	defaultMUSPanMax := 0.8
-	defaultOPLVolume := 2.25
+	defaultOPLVolume := 2.5
 	defaultAudioPreEmphasis := false
 	defaultMusicBackend := music.DefaultBackend().String()
 	defaultOPLBankPath := ""
