@@ -6717,33 +6717,6 @@ func drawMaskedColumnProjectedTexelSpans(g *game, x, baseY, drawY0, drawY1 int, 
 		dst := packedRow[txVal]
 		pixI := spanY0*rowStridePix + x
 		endPixI := spanY1*rowStridePix + x
-		if wordI, wordStep, coverageMask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, spanY1-spanY0+1); ok {
-			coverageBits := g.cutoutCoverageBits
-			for pixI <= endPixI {
-				if coverageBits[wordI]&coverageMask != 0 || g.spriteWallClipOccludedAtIndexDepth(pixI, depthQ) {
-					pixI += rowStridePix
-					wordI += wordStep
-					continue
-				}
-				runLen := 1
-				nextPixI := pixI + rowStridePix
-				nextWordI := wordI + wordStep
-				for nextPixI <= endPixI && coverageBits[nextWordI]&coverageMask == 0 && !g.spriteWallClipOccludedAtIndexDepth(nextPixI, depthQ) {
-					runLen++
-					nextPixI += rowStridePix
-					nextWordI += wordStep
-				}
-				if runLen > 1 {
-					g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
-				} else {
-					g.wallPix32[pixI] = dst
-					coverageBits[wordI] |= coverageMask
-				}
-				pixI = nextPixI
-				wordI = nextWordI
-			}
-			continue
-		}
 		for pixI <= endPixI {
 			if g.cutoutCoveredAtIndex(pixI) || g.spriteWallClipOccludedAtIndexDepth(pixI, depthQ) {
 				pixI += rowStridePix
