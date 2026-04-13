@@ -5894,24 +5894,6 @@ func (g *game) cutoutColumnSpanFullyCovered(pixI, rowStridePix, count int) bool 
 	if g == nil || count <= 0 {
 		return false
 	}
-	if wordI, wordStep, mask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, count); ok {
-		bits := g.cutoutCoverageBits
-		for count >= 4 {
-			if (bits[wordI]&bits[wordI+wordStep]&bits[wordI+2*wordStep]&bits[wordI+3*wordStep])&mask == 0 {
-				return false
-			}
-			wordI += 4 * wordStep
-			count -= 4
-		}
-		for count > 0 {
-			if bits[wordI]&mask == 0 {
-				return false
-			}
-			wordI += wordStep
-			count--
-		}
-		return true
-	}
 	for i := 0; i < count; i++ {
 		if !g.cutoutCoveredAtIndex(pixI) {
 			return false
@@ -8284,37 +8266,6 @@ func (g *game) fillCutoutRowSpan(row, x0, x1 int, value uint32) {
 
 func (g *game) fillCutoutColumnSpan(pixI, rowStridePix, count int, value uint32) {
 	if g == nil || count <= 0 {
-		return
-	}
-	if wordI, wordStep, mask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, count); ok {
-		bits := g.cutoutCoverageBits
-		pix32 := g.wallPix32
-		for count >= 4 {
-			pix32[pixI] = value
-			bits[wordI] |= mask
-			pixI += rowStridePix
-			wordI += wordStep
-			pix32[pixI] = value
-			bits[wordI] |= mask
-			pixI += rowStridePix
-			wordI += wordStep
-			pix32[pixI] = value
-			bits[wordI] |= mask
-			pixI += rowStridePix
-			wordI += wordStep
-			pix32[pixI] = value
-			bits[wordI] |= mask
-			pixI += rowStridePix
-			wordI += wordStep
-			count -= 4
-		}
-		for count > 0 {
-			pix32[pixI] = value
-			bits[wordI] |= mask
-			pixI += rowStridePix
-			wordI += wordStep
-			count--
-		}
 		return
 	}
 	for i := 0; i < count; i++ {
