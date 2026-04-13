@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${1:-${ROOT_DIR}/build/wasm}"
 GOROOT_PATH="$(go env GOROOT)"
 WASM_EXEC_JS="${GOROOT_PATH}/lib/wasm/wasm_exec.js"
-WASM_OPT_MODE="${WASM_OPT:-false}"
-WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O2}"
+WASM_OPT_MODE="${WASM_OPT:-true}"
+WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O3}"
 WASM_OPT_FEATURES="${WASM_OPT_FEATURES:---all-features}"
 
 if [[ ! -f "${ROOT_DIR}/DOOM1.WAD" ]]; then
@@ -22,6 +22,7 @@ fi
 use_wasm_opt=true
 case "${WASM_OPT_MODE}" in
   0|false|off|disable|disabled)
+    use_wasm_opt=false
     ;;
   1|true|on|enable|enabled)
     if ! command -v wasm-opt >/dev/null 2>&1; then
