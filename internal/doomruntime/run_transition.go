@@ -418,5 +418,5 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 		sg.drawSourcePortPresented(screen, work, sw, sh)
 		return
 	}
-	sg.drawSourcePortPresented(screen, work, sw, sh)
+	sg.drawFaithfulPresented(screen, work)
 }
