@@ -13,6 +13,7 @@ type eventRenderer interface {
 	SampleRate() int
 	TicRate() int
 	SetMUSPanMax(float64)
+	SetMUSVolumeCompression(float64)
 	SetOutputGain(float64)
 	SetPreEmphasis(bool)
 	RenderMUSS16LE(musData []byte) ([]byte, error)
@@ -22,6 +23,7 @@ type MeltySynthDriver struct {
 	soundFont  *SoundFontBank
 	sampleRate int
 	ticRate    int
+	musVolumeCompression float64
 	outputGain float64
 	synth      *meltysynth.Synthesizer
 	left       []float32
@@ -40,6 +42,7 @@ func NewMeltySynthDriver(sampleRate int, soundFont *SoundFontBank) (*MeltySynthD
 		soundFont:  soundFont,
 		sampleRate: sampleRate,
 		ticRate:    defaultTicRate,
+		musVolumeCompression: DefaultMUSVolumeCompression,
 		outputGain: DefaultOutputGain,
 	}
 	d.Reset()
@@ -72,11 +75,15 @@ func (d *MeltySynthDriver) ApplyEvent(ev Event) {
 	case EventProgramChange:
 		d.synth.ProcessMidiMessage(channel, 0xC0, int32(ev.A), 0)
 	case EventControlChange:
-		d.synth.ProcessMidiMessage(channel, 0xB0, int32(ev.A), int32(ev.B))
+		value := ev.B
+		if ev.A == controllerVol || ev.A == controllerExpr {
+			value = compressMUSLevel(ev.B, d.musVolumeCompression)
+		}
+		d.synth.ProcessMidiMessage(channel, 0xB0, int32(ev.A), int32(value))
 	case EventPitchBend:
 		d.synth.ProcessMidiMessage(channel, 0xE0, int32(ev.A), int32(ev.B))
 	case EventNoteOn:
-		d.synth.ProcessMidiMessage(channel, 0x90, int32(ev.A), int32(ev.B))
+		d.synth.ProcessMidiMessage(channel, 0x90, int32(ev.A), int32(compressMUSLevel(ev.B, d.musVolumeCompression)))
 	case EventNoteOff:
 		d.synth.ProcessMidiMessage(channel, 0x80, int32(ev.A), 0)
 	}
@@ -123,6 +130,13 @@ func (d *MeltySynthDriver) TicRate() int {
 }
 
 func (d *MeltySynthDriver) SetMUSPanMax(float64) {}
+
+func (d *MeltySynthDriver) SetMUSVolumeCompression(ratio float64) {
+	if d == nil {
+		return
+	}
+	d.musVolumeCompression = clampMUSVolumeCompression(ratio)
+}
 
 func (d *MeltySynthDriver) SetOutputGain(gain float64) {
 	if d == nil {

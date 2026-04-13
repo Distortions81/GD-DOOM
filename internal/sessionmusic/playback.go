@@ -13,8 +13,8 @@ type Playback struct {
 	intermissionLoader func(commercial bool) ([]byte, error)
 }
 
-func NewPlayback(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker, mapLoader func(string) ([]byte, error), titleLoader func() ([]byte, error), intermissionLoader func(bool) ([]byte, error)) (*Playback, error) {
-	ctl, err := New(volume, musPanMax, oplVolume, preEmphasis, backend, bank, soundFont, pcSpeaker)
+func NewPlayback(volume float64, musPanMax float64, musVolumeCompression float64, oplVolume float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker, mapLoader func(string) ([]byte, error), titleLoader func() ([]byte, error), intermissionLoader func(bool) ([]byte, error)) (*Playback, error) {
+	ctl, err := New(volume, musPanMax, musVolumeCompression, oplVolume, preEmphasis, backend, bank, soundFont, pcSpeaker)
 	if err != nil {
 		return nil, err
 	}

@@ -25,6 +25,7 @@ type musicEventDriver interface {
 	SampleRate() int
 	TicRate() int
 	SetMUSPanMax(float64)
+	SetMUSVolumeCompression(float64)
 	SetOutputGain(float64)
 	SetPreEmphasis(bool)
 	RenderMUSS16LE([]byte) ([]byte, error)
@@ -36,7 +37,7 @@ const (
 	pcSpeakerMusicRate = 11025
 )
 
-func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker) (*Controller, error) {
+func New(volume float64, musPanMax float64, musVolumeCompression float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker) (*Controller, error) {
 	if music.ResolveBackend(backend) == music.BackendPCSpeaker {
 		if pcSpeaker == nil {
 			return nil, fmt.Errorf("pcspeaker backend requires a shared PC speaker player")
@@ -46,6 +47,7 @@ func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool,
 			return nil, err
 		}
 		driver.SetMUSPanMax(musPanMax)
+		driver.SetMUSVolumeCompression(musVolumeCompression)
 		driver.SetOutputGain(effectiveSynthGain(backend, synthGain))
 		driver.SetPreEmphasis(preEmphasis)
 		return &Controller{
@@ -66,6 +68,7 @@ func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool,
 		return nil, err
 	}
 	driver.SetMUSPanMax(musPanMax)
+	driver.SetMUSVolumeCompression(musVolumeCompression)
 	driver.SetOutputGain(effectiveSynthGain(backend, synthGain))
 	driver.SetPreEmphasis(preEmphasis)
 	return &Controller{

@@ -180,6 +180,7 @@ type Options struct {
 	KeyboardTurnSpeed            float64
 	MusicVolume                  float64
 	MUSPanMax                    float64
+	MUSVolumeCompression         float64
 	OPLVolume                    float64
 	AudioPreEmphasis             bool
 	MusicBackend                 music.Backend

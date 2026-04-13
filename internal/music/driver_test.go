@@ -244,6 +244,24 @@ func TestClampMIDI7(t *testing.T) {
 	}
 }
 
+func TestCompressMUSLevel(t *testing.T) {
+	if got := compressMUSLevel(0, 2); got != 0 {
+		t.Fatalf("compressMUSLevel(0,2)=%d want 0", got)
+	}
+	if got := compressMUSLevel(127, 2); got != 127 {
+		t.Fatalf("compressMUSLevel(127,2)=%d want 127", got)
+	}
+	if got := compressMUSLevel(32, 1); got != 32 {
+		t.Fatalf("compressMUSLevel(32,1)=%d want 32", got)
+	}
+	if got := compressMUSLevel(32, 2); got <= 32 {
+		t.Fatalf("compressMUSLevel(32,2)=%d want > 32", got)
+	}
+	if got2, got3 := compressMUSLevel(32, 2), compressMUSLevel(32, 3); got3 <= got2 {
+		t.Fatalf("compressMUSLevel stronger ratio=%d want > %d", got3, got2)
+	}
+}
+
 type synthRegWrite struct {
 	addr uint16
 	val  uint8

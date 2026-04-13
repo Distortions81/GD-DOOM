@@ -74,6 +74,44 @@ func TestRenderEpisode1MusicPeaksWithinLimitAtDefaultGain(t *testing.T) {
 	}
 }
 
+func TestAnalyzeE1M5MUSVolumeCompression(t *testing.T) {
+	wadPath := findDOOM1WADForMusicTests(t)
+	wf, err := wad.Open(wadPath)
+	if err != nil {
+		t.Fatalf("open wad %s: %v", wadPath, err)
+	}
+
+	musLump, ok := wf.LumpByName("D_E1M5")
+	if !ok {
+		t.Fatal("missing D_E1M5 lump")
+	}
+	musData, err := wf.LumpData(musLump)
+	if err != nil {
+		t.Fatalf("read D_E1M5: %v", err)
+	}
+	parsed, err := ParseMUSData(musData)
+	if err != nil {
+		t.Fatalf("ParseMUSData(D_E1M5) error: %v", err)
+	}
+
+	stats := AnalyzeMUSVolumeCompression(parsed, DefaultMUSVolumeCompression)
+	if stats.NoteOnCount <= 0 {
+		t.Fatal("expected note-on events in D_E1M5")
+	}
+	if stats.AvgNoteVelocityAfter <= stats.AvgNoteVelocityBefore {
+		t.Fatalf("avg note velocity did not increase: before=%.2f after=%.2f", stats.AvgNoteVelocityBefore, stats.AvgNoteVelocityAfter)
+	}
+	t.Logf("D_E1M5 ratio=%.2f notes=%d avg_note_velocity %.2f -> %.2f volume_events=%d %.2f -> %.2f expression_events=%d %.2f -> %.2f",
+		stats.Ratio,
+		stats.NoteOnCount,
+		stats.AvgNoteVelocityBefore, stats.AvgNoteVelocityAfter,
+		stats.ControllerVolumeCount,
+		stats.AvgControllerVolumeBefore, stats.AvgControllerVolumeAfter,
+		stats.ControllerExpressionCount,
+		stats.AvgControllerExpressionBefore, stats.AvgControllerExpressionAfter,
+	)
+}
+
 func findDOOM1WADForMusicTests(t *testing.T) string {
 	t.Helper()
 

@@ -247,6 +247,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultKeyboardTurnSpeed := 1.0
 	defaultMusicVolume := 1.0
 	defaultMUSPanMax := 0.8
+	defaultMUSVolumeCompression := music.DefaultMUSVolumeCompression
 	defaultOPLVolume := 2.5
 	defaultAudioPreEmphasis := false
 	defaultMusicBackend := music.DefaultBackend().String()
@@ -494,6 +495,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	keyboardTurnSpeed := fs.Float64("keyboard-turn-speed", defaultKeyboardTurnSpeed, "keyboard turn speed multiplier (>0)")
 	musicVolume := fs.Float64("music-volume", defaultMusicVolume, "music output volume (0..1)")
 	musPanMax := fs.Float64("mus-pan-max", defaultMUSPanMax, "maximum MUS pan amount (0..1; 0 centers all pan, 1 keeps full range)")
+	musVolumeCompression := fs.Float64("mus-volume-compression", defaultMUSVolumeCompression, "compress MUS note/controller volume toward max (1 = off, 2 = moderate, 3 = stronger)")
 	musicBackend := fs.String("music-backend", defaultMusicBackend, "music synth backend (auto|impsynth|pcspeaker|meltysynth)")
 	soundFont := fs.String("soundfont", defaultSoundFontPath, "path to external SoundFont (.sf2) used by the meltysynth music backend")
 	sfxVolume := fs.Float64("sfx-volume", defaultSFXVolume, "sound-effect output volume (0..1)")
@@ -788,6 +790,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                *musicVolume,
 			musPanMax:                  *musPanMax,
+			musVolumeCompression:       *musVolumeCompression,
 			oplVolume:                  defaultOPLVolume,
 			audioPreEmphasis:           defaultAudioPreEmphasis,
 			musicBackend:               resolvedMusicBackend,
@@ -1128,6 +1131,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			KeyboardTurnSpeed:          *keyboardTurnSpeed,
 			MusicVolume:                *musicVolume,
 			MUSPanMax:                  *musPanMax,
+			MUSVolumeCompression:       *musVolumeCompression,
 			OPLVolume:                  defaultOPLVolume,
 			AudioPreEmphasis:           defaultAudioPreEmphasis,
 			MusicBackend:               resolvedMusicBackend,
@@ -1547,6 +1551,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			keyboardTurnSpeed:          *keyboardTurnSpeed,
 			musicVolume:                0,
 			musPanMax:                  *musPanMax,
+			musVolumeCompression:       *musVolumeCompression,
 			oplVolume:                  defaultOPLVolume,
 			audioPreEmphasis:           defaultAudioPreEmphasis,
 			musicBackend:               resolvedMusicBackend,
@@ -2307,6 +2312,7 @@ type renderBuildConfig struct {
 	keyboardTurnSpeed          float64
 	musicVolume                float64
 	musPanMax                  float64
+	musVolumeCompression       float64
 	oplVolume                  float64
 	audioPreEmphasis           bool
 	musicBackend               music.Backend
@@ -2648,6 +2654,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		KeyboardTurnSpeed:          cfg.keyboardTurnSpeed,
 		MusicVolume:                cfg.musicVolume,
 		MUSPanMax:                  cfg.musPanMax,
+		MUSVolumeCompression:       cfg.musVolumeCompression,
 		OPLVolume:                  cfg.oplVolume,
 		AudioPreEmphasis:           cfg.audioPreEmphasis,
 		MusicBackend:               cfg.musicBackend,

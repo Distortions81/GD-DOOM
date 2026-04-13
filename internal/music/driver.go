@@ -10,6 +10,7 @@ import (
 const (
 	OutputSampleRate = 44100
 	defaultTicRate   = 140
+	DefaultMUSVolumeCompression = 2.0
 	// The music path uses 18 simultaneous 2-op voices.
 	defaultVoices          = 18
 	DefaultOutputGain      = 1.0
@@ -115,6 +116,7 @@ type Driver struct {
 	sampleRate   int
 	ticRate      int
 	musPanMax    float64
+	musVolumeCompression float64
 	outputGain   float64
 	preEmphasis  bool
 	preEmphPrev  [2]float64
@@ -178,6 +180,7 @@ func NewDriverWithBackend(sampleRate int, bank PatchBank, backend Backend) (*Dri
 		sampleRate:   sampleRate,
 		ticRate:      defaultTicRate,
 		musPanMax:    defaultMUSPanMax,
+		musVolumeCompression: DefaultMUSVolumeCompression,
 		outputGain:   DefaultOutputGain,
 		bank:         bank,
 		voices:       make([]voiceState, defaultVoices),
@@ -218,6 +221,13 @@ func (d *Driver) SetMUSPanMax(max float64) {
 		return
 	}
 	d.musPanMax = clampUnit(max)
+}
+
+func (d *Driver) SetMUSVolumeCompression(ratio float64) {
+	if d == nil {
+		return
+	}
+	d.musVolumeCompression = clampMUSVolumeCompression(ratio)
 }
 
 // SetOutputGain sets final PCM output gain.
@@ -391,10 +401,11 @@ func (d *Driver) applyEvent(ev Event) {
 	case EventControlChange:
 		switch ev.A {
 		case controllerVol:
-			d.ch[ch].volume = ev.B
+			d.ch[ch].volume = compressMUSLevel(ev.B, d.musVolumeCompression)
 			d.refreshChannelVolume(uint8(ch))
 		case controllerExpr:
-			d.ch[ch].expression = ev.B
+			d.ch[ch].expression = compressMUSLevel(ev.B, d.musVolumeCompression)
+			d.refreshChannelVolume(uint8(ch))
 		case controllerPan:
 			d.ch[ch].pan = ev.B
 			d.refreshChannelPan(uint8(ch))
@@ -418,7 +429,7 @@ func (d *Driver) applyEvent(ev Event) {
 			d.noteOff(ev.Channel, ev.A)
 			return
 		}
-		d.noteOn(ev.Channel, ev.A, ev.B)
+		d.noteOn(ev.Channel, ev.A, compressMUSLevel(ev.B, d.musVolumeCompression))
 	case EventNoteOff:
 		d.noteOff(ev.Channel, ev.A)
 	}
@@ -641,9 +652,10 @@ func (d *Driver) writeVolume(synthCh int, ch, velocity uint8, patch Patch) {
 	base, ci := synthAddrBase(synthCh)
 	modSlot, carSlot := oplSlots(ci)
 	cv := clampMIDI7(int(d.ch[ch&0x0F].volume))
+	ce := clampMIDI7(int(d.ch[ch&0x0F].expression))
 	vel := clampMIDI7(int(velocity))
 	midiVolume := 2 * (volumeMappingTable[cv] + 1)
-	fullVolume := (volumeMappingTable[vel] * midiVolume) >> 9
+	fullVolume := (volumeMappingTable[vel] * midiVolume * (volumeMappingTable[ce] + 1)) >> 16
 	carTL := 0x3f - fullVolume
 	if carTL < 0 {
 		carTL = 0
@@ -730,6 +742,32 @@ func clampUnit(v float64) float64 {
 		return 1
 	}
 	return v
+}
+
+func clampMUSVolumeCompression(v float64) float64 {
+	if math.IsNaN(v) || v < 1 {
+		return 1
+	}
+	if v > 8 {
+		return 8
+	}
+	return v
+}
+
+func compressMUSLevel(v uint8, ratio float64) uint8 {
+	ratio = clampMUSVolumeCompression(ratio)
+	if ratio <= 1 {
+		return v
+	}
+	x := float64(clampMIDI7(int(v))) / 127.0
+	if x <= 0 {
+		return 0
+	}
+	if x >= 1 {
+		return 127
+	}
+	y := math.Pow(x, 1.0/ratio)
+	return uint8(clampMIDI7(int(math.Round(y * 127.0))))
 }
 
 func scaleMUSPan(pan uint8, max float64) uint8 {
