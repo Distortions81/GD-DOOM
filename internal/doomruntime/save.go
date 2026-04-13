@@ -560,6 +560,11 @@ func (sg *sessionGame) saveSlotThumbnailImage(slot int) (*ebiten.Image, bool) {
 			delete(sg.saveThumbnailCache, slot)
 			return nil, false
 		}
+		if isBlankThumbnailImage(img) {
+			delete(sg.saveThumbnailCache, slot)
+			_ = deleteSavedSlotThumbnailData(slot)
+			return nil, false
+		}
 		eimg := ebiten.NewImageFromImage(img)
 		sg.saveThumbnailCache[slot] = saveThumbnailCacheEntry{
 			ModTime: modTime,
@@ -583,6 +588,11 @@ func (sg *sessionGame) saveSlotThumbnailImage(slot int) (*ebiten.Image, bool) {
 	defer f.Close()
 	img, err := png.Decode(f)
 	if err != nil {
+		return nil, false
+	}
+	if isBlankThumbnailImage(img) {
+		delete(sg.saveThumbnailCache, slot)
+		_ = os.Remove(path)
 		return nil, false
 	}
 	eimg := ebiten.NewImageFromImage(img)
@@ -696,6 +706,29 @@ func (sg *sessionGame) writeSaveThumbnail(slot int) error {
 		delete(sg.saveThumbnailCache, slot)
 	}
 	return nil
+}
+
+func isBlankThumbnailImage(img image.Image) bool {
+	if img == nil {
+		return true
+	}
+	b := img.Bounds()
+	if b.Empty() {
+		return true
+	}
+	w := b.Dx()
+	h := b.Dy()
+	xStep := max(1, w/12)
+	yStep := max(1, h/12)
+	for y := b.Min.Y; y < b.Max.Y; y += yStep {
+		for x := b.Min.X; x < b.Max.X; x += xStep {
+			r, g, b2, a := img.At(x, y).RGBA()
+			if a != 0 && (r != 0 || g != 0 || b2 != 0) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func saveThumbnailDimensions(srcW, srcH int) (int, int) {
