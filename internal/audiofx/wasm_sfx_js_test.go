@@ -3,6 +3,7 @@
 package audiofx
 
 import (
+	"math"
 	"testing"
 	"time"
 	"unsafe"
@@ -191,6 +192,30 @@ func TestPlayWASMSoundEffect_AppliesExactGameVolumeAtMaxBucket(t *testing.T) {
 	}
 	if backend.lastVolume != 0.4 {
 		t.Fatalf("backend lastVolume=%f want 0.4", backend.lastVolume)
+	}
+}
+
+func TestPlayWASMSoundEffect_SkipsBelowFirstAudibleBucket(t *testing.T) {
+	sample := media.PCMSample{
+		SampleRate: 11025,
+		Data:       []byte{1, 2, 3, 4},
+	}
+	threshold := math.Pow(1.0/float64(wasmVolumeBuckets-1)/2, 2)
+	origin := SpatialOrigin{
+		Positioned: true,
+		X:          int64(math.Round((1-threshold)*float64(doomSoundAttenuator)*float64(fracUnit))) + 1,
+		Y:          0,
+	}
+	p := &SpatialPlayer{
+		ctx:    &audio.Context{},
+		volume: 1,
+	}
+
+	if ok := p.playWASMSoundEffect(sample, origin, 0, 0, false, "test"); !ok {
+		t.Fatal("playWASMSoundEffect()=false want true")
+	}
+	if len(p.voices) != 0 {
+		t.Fatalf("voices=%d want 0", len(p.voices))
 	}
 }
 

@@ -23,6 +23,10 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	if !ok || attenuation <= 0 {
 		return true
 	}
+	bucket, quantizedAttenuation := quantizeWASMVolume(attenuation)
+	if quantizedAttenuation <= 0 {
+		return true
+	}
 	if group != "" {
 		p.stopGroup(group)
 	}
@@ -43,7 +47,6 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	}
 	voice.group = group
 	wasPlaying := voice.player.IsPlaying()
-	bucket, quantizedAttenuation := quantizeWASMVolume(attenuation)
 	finalGain := clampVolume(p.volume) * quantizedAttenuation
 	if err := voice.player.Rewind(); err != nil {
 		_ = voice.player.Close()
@@ -221,6 +224,9 @@ func quantizeWASMVolume(gain float64) (uint8, float64) {
 	bucket := uint8(math.Round(perceptual / step))
 	if bucket >= wasmVolumeBuckets {
 		bucket = wasmVolumeBuckets - 1
+	}
+	if bucket == 0 {
+		return 0, 0
 	}
 	q := float64(bucket) * step
 	return bucket, q * q
