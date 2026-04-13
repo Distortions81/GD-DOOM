@@ -33,6 +33,124 @@
       background: #111;
       z-index: 10;
     }
+    #click-gate {
+      position: absolute;
+      inset: 0;
+      z-index: 9;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background:
+        linear-gradient(rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.68)),
+        repeating-linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.03) 0,
+          rgba(255, 255, 255, 0.03) 2px,
+          transparent 2px,
+          transparent 4px
+        );
+    }
+    #click-gate.ready {
+      display: flex;
+    }
+    .gate-card {
+      width: min(560px, 100%);
+      padding: 28px 24px 22px;
+      border: 3px solid #6e1b1b;
+      background: rgba(10, 10, 10, 0.88);
+      box-shadow: 0 0 0 2px #1a1a1a, 0 18px 60px rgba(0, 0, 0, 0.45);
+      text-align: center;
+    }
+    .gate-logo {
+      margin: 0 0 14px;
+      color: #ff533d;
+      font-size: clamp(36px, 10vw, 72px);
+      line-height: 0.92;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-shadow: 0 2px 0 #7f1105, 0 4px 0 #4a0902, 0 0 22px rgba(255, 73, 31, 0.28);
+    }
+    .gate-subtitle {
+      margin: 0 0 18px;
+      color: #f0d5a6;
+      font-size: 14px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+    .gate-prompt {
+      margin: 0;
+      color: #fff3cf;
+      font-size: 18px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      animation: pulse 1s steps(2, end) infinite;
+    }
+    .gate-hint {
+      margin: 14px 0 0;
+      color: #b7a7a7;
+      font-size: 13px;
+    }
+    .gate-controls {
+      position: relative;
+      margin: 24px 0 0;
+      padding: 28px 18px 16px;
+      border: 3px solid #ffc24b;
+      background:
+        linear-gradient(180deg, rgba(94, 22, 5, 0.95), rgba(25, 8, 4, 0.96));
+      box-shadow:
+        inset 0 0 0 2px rgba(255, 240, 188, 0.16),
+        0 0 0 2px rgba(107, 24, 5, 0.95),
+        0 0 28px rgba(255, 164, 53, 0.24),
+        0 16px 34px rgba(0, 0, 0, 0.38);
+      color: #ffe4b9;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.7;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-align: left;
+    }
+    .gate-controls-title {
+      position: absolute;
+      top: -14px;
+      left: 14px;
+      padding: 3px 10px 4px;
+      border: 2px solid #ffe49b;
+      background: linear-gradient(180deg, #ffd871, #d36d18);
+      color: #2a1002;
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-shadow: none;
+      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+    }
+    .gate-controls strong {
+      display: inline-block;
+      min-width: 86px;
+      margin-right: 10px;
+      color: #fff8dc;
+      font-weight: 800;
+    }
+    .gate-controls kbd {
+      display: inline-block;
+      margin: 0 4px 0 0;
+      padding: 2px 8px 3px;
+      border: 1px solid #f2b45d;
+      border-bottom-width: 2px;
+      background: linear-gradient(180deg, #ffe0ad, #c97b32);
+      color: #2b1204;
+      font: inherit;
+      font-weight: 800;
+      line-height: 1.2;
+      text-shadow: none;
+      vertical-align: baseline;
+    }
+    .gate-controls .sep {
+      display: inline-block;
+      margin: 0 6px;
+      color: #ffd9a0;
+    }
     .spinner {
       width: 48px;
       height: 48px;
@@ -61,10 +179,25 @@
     <div class="spinner"></div>
     <div>Loading...</div>
   </div>
+  <div id="click-gate" aria-label="Click to play">
+    <section class="gate-card">
+      <h1 class="gate-logo">GD-DOOM</h1>
+      <p class="gate-subtitle">WASM Alpha</p>
+      <p class="gate-prompt">Click To Play</p>
+      <p class="gate-hint">Click here to focus the game.</p>
+      <p class="gate-hint">Use Load IWAD File on the outer page to add a browser-selected IWAD file to the picker.</p>
+      <p class="gate-controls">
+        <span class="gate-controls-title">Controls</span>
+        <strong>Menus:</strong> <kbd>Arrow Keys</kbd><span class="sep">+</span><kbd>Enter</kbd><br>
+        <strong>Game:</strong> <kbd>WASD</kbd><span class="sep">+</span><kbd>Mouse</kbd>
+      </p>
+    </section>
+  </div>
   <script src="./wasm_exec.js"></script>
   <script>
     const go = new Go();
     go.argv = ["gddoom", "-music-backend=impsynth"];
+    const clickGate = document.getElementById("click-gate");
 
     function copyLocalWADsFromParent() {
       if (!window.parent || window.parent === window) {
@@ -107,16 +240,85 @@
       return new Uint8Array(buf);
     }
 
-    copyLocalWADsFromParent();
-    fetchCompressedWASMBytes("./gddoom.wasm.gz")
-      .then((bytes) => {
+    async function fetchWASMBytes(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`fetch failed for ${url}: ${response.status}`);
+      }
+      return new Uint8Array(await response.arrayBuffer());
+    }
+
+    async function loadWASMBytes() {
+      try {
+        const bytes = await fetchCompressedWASMBytes("./gddoom.wasm.gz");
         if (!hasWASMMagic(bytes)) {
           throw new Error("gzip wasm did not produce a valid binary");
         }
+        return bytes;
+      } catch (gzipErr) {
+        const bytes = await fetchWASMBytes("./gddoom.wasm");
+        if (!hasWASMMagic(bytes)) {
+          throw new Error(`wasm bootstrap failed: ${gzipErr instanceof Error ? gzipErr.message : String(gzipErr)}`);
+        }
+        return bytes;
+      }
+    }
+
+    function canvasElement() {
+      return document.querySelector("canvas");
+    }
+
+    function focusGameCanvas() {
+      const canvas = canvasElement();
+      if (canvas) {
+        if (!canvas.hasAttribute("tabindex")) {
+          canvas.setAttribute("tabindex", "0");
+        }
+        canvas.focus({ preventScroll: true });
+      }
+      window.focus();
+    }
+
+    function hideClickGate() {
+      if (!clickGate) {
+        return;
+      }
+      clickGate.classList.remove("ready");
+      clickGate.hidden = true;
+    }
+
+    function showClickGate() {
+      if (!clickGate) {
+        return;
+      }
+      clickGate.hidden = false;
+      clickGate.classList.add("ready");
+    }
+
+    function startFromGate(event) {
+      if (event) {
+        event.preventDefault();
+      }
+      hideClickGate();
+      focusGameCanvas();
+      window.requestAnimationFrame(() => {
+        focusGameCanvas();
+      });
+    }
+
+    if (clickGate) {
+      clickGate.addEventListener("click", startFromGate);
+      clickGate.addEventListener("touchstart", startFromGate, { passive: false });
+    }
+
+    copyLocalWADsFromParent();
+    loadWASMBytes()
+      .then((bytes) => {
         return WebAssembly.instantiate(bytes, go.importObject);
       })
       .then((result) => {
         document.getElementById("loading").remove();
+        showClickGate();
         if (window.parent && window.parent !== window) {
           window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
         }

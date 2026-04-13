@@ -31,6 +31,9 @@ func TestNewHandlerOnlyServesKnownFiles(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("GET %s: status=%d want=%d", path, rec.Code, http.StatusOK)
 		}
+		if got := rec.Header().Get("Cache-Control"); got != "no-cache, no-store, must-revalidate" {
+			t.Fatalf("GET %s Cache-Control=%q want no-cache, no-store, must-revalidate", path, got)
+		}
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/server.go", nil)
@@ -39,12 +42,18 @@ func TestNewHandlerOnlyServesKnownFiles(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("GET /server.go: status=%d want=%d", rec.Code, http.StatusNotFound)
 	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache, no-store, must-revalidate" {
+		t.Fatalf("GET /server.go Cache-Control=%q want no-cache, no-store, must-revalidate", got)
+	}
 
 	req = httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
 	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("GET /favicon.ico: status=%d want=%d", rec.Code, http.StatusNoContent)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-cache, no-store, must-revalidate" {
+		t.Fatalf("GET /favicon.ico Cache-Control=%q want no-cache, no-store, must-revalidate", got)
 	}
 }
 

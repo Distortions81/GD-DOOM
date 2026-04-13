@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"fmt"
+	"image"
 	"image/color"
 	"math"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const frontendMainMenuTitle = "GD-DOOM [ALPHA]"
@@ -425,6 +427,201 @@ func (sg *sessionGame) tickFrontendMusicPlayer() error {
 	return nil
 }
 
+func frontendPointInRect(x, y float64, r image.Rectangle) bool {
+	return x >= float64(r.Min.X) && x < float64(r.Max.X) && y >= float64(r.Min.Y) && y < float64(r.Max.Y)
+}
+
+func frontendRowRect(x, y, w, h int) image.Rectangle {
+	return image.Rect(x, y, x+w, y+h)
+}
+
+func frontendRowThirdInput(x float64, rect image.Rectangle) sessionflow.FrontendInput {
+	width := max(rect.Dx(), 1)
+	leftEdge := float64(rect.Min.X) + float64(width)/3.0
+	rightEdge := float64(rect.Max.X) - float64(width)/3.0
+	switch {
+	case x < leftEdge:
+		return sessionflow.FrontendInput{Left: true, Skip: true}
+	case x >= rightEdge:
+		return sessionflow.FrontendInput{Right: true, Skip: true}
+	default:
+		return sessionflow.FrontendInput{Select: true, Skip: true}
+	}
+}
+
+func (sg *sessionGame) frontendBackRect(textScale float64, y int) image.Rectangle {
+	backLabel := "BACK: ESC"
+	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*textScale))
+	height := max(int(math.Ceil(10*textScale)), 12)
+	return image.Rect(backX-4, y-4, 320-4, y+height)
+}
+
+func (sg *sessionGame) frontendPointerInputAt(localX, localY float64) (sessionflow.FrontendInput, bool) {
+	if sg == nil || !sg.frontend.Active {
+		return sessionflow.FrontendInput{}, false
+	}
+	if sg.frontend.Mode == frontendModeReadThis {
+		return sessionflow.FrontendInput{Select: true, Skip: true}, true
+	}
+	if sg.frontend.Mode == frontendModeTitle && !sg.frontend.MenuActive {
+		return sessionflow.FrontendInput{Select: true, Skip: true}, true
+	}
+
+	switch sg.frontend.Mode {
+	case frontendModeOptions:
+		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 17)) {
+			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
+		}
+		const menuX = 36
+		const menuY = 37
+		const lineHeight = 16
+		for _, row := range frontendOptionsSelectableRows {
+			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			sg.frontend.OptionsOn = row
+			return frontendRowThirdInput(localX, rect), true
+		}
+	case frontendModeSound:
+		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 18)) {
+			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
+		}
+		const menuX = 24
+		const menuY = 44
+		const lineHeight = 16
+		for row := 0; row < frontendSoundMenuRowCount; row++ {
+			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			sg.frontend.SoundOn = row
+			return frontendRowThirdInput(localX, rect), true
+		}
+	case frontendModeVoice:
+		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 18)) {
+			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
+		}
+		const menuX = 24
+		const menuY = 44
+		const lineHeight = 16
+		for row := 0; row < frontendVoiceMenuRowCount; row++ {
+			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			sg.frontend.VoiceOn = row
+			return frontendRowThirdInput(localX, rect), true
+		}
+	case frontendModeMusicPlayer:
+		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 18)) {
+			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
+		}
+		const menuX = 24
+		const menuY = 42
+		const lineHeight = 16
+		for row := 0; row < frontendMusicPlayerRowCount; row++ {
+			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			sg.musicPlayer.Row = row
+			return frontendRowThirdInput(localX, rect), true
+		}
+	case frontendModeEpisode:
+		const menuX = 48
+		const menuY = 63
+		const lineHeight = 16
+		episodes := sg.availableFrontendEpisodeChoices()
+		for row := range episodes {
+			rect := frontendRowRect(menuX-8, menuY+row*lineHeight-2, 224, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			sg.frontend.EpisodeOn = row
+			return sessionflow.FrontendInput{Select: true, Skip: true}, true
+		}
+	case frontendModeSkill:
+		const menuX = 48
+		const menuY = 63
+		const lineHeight = 16
+		for row := range frontendSkillMenuNames {
+			rect := frontendRowRect(menuX-8, menuY+row*lineHeight-2, 224, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			sg.frontend.SkillOn = row
+			return sessionflow.FrontendInput{Select: true, Skip: true}, true
+		}
+	case frontendModeSaveLoad:
+		const menuX = 56
+		const menuY = 54
+		const lineHeight = 16
+		slots := sg.availableSaveSlots(sg.frontend.SaveLoadSaving)
+		if len(slots) == 0 {
+			slots = []int{0}
+		}
+		selected := min(max(sg.frontend.SaveLoadOn, 0), len(slots)-1)
+		start, end := saveLoadVisibleWindow(len(slots), selected, 7)
+		for row, i := 0, start; i < end; i, row = i+1, row+1 {
+			rect := frontendRowRect(menuX-12, menuY+row*lineHeight-2, 220, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			sg.frontend.SaveLoadOn = i
+			return sessionflow.FrontendInput{Select: true, Skip: true}, true
+		}
+	case frontendModeTitle:
+		if !sg.frontend.MenuActive {
+			return sessionflow.FrontendInput{Select: true, Skip: true}, true
+		}
+		const menuX = 97
+		const menuY = 64
+		const lineHeight = 16
+		for row := range frontendMainMenuNames {
+			rect := frontendRowRect(menuX-8, menuY+row*lineHeight-2, 176, lineHeight)
+			if !frontendPointInRect(localX, localY, rect) {
+				continue
+			}
+			if sg.frontend.InGame && sg.frontendMenuItemDisabled(row) {
+				return sessionflow.FrontendInput{}, false
+			}
+			sg.frontend.ItemOn = row
+			return sessionflow.FrontendInput{Select: true, Skip: true}, true
+		}
+	}
+	return sessionflow.FrontendInput{}, false
+}
+
+func (sg *sessionGame) consumeFrontendPointerInput() (sessionflow.FrontendInput, bool) {
+	if sg == nil || !sg.frontend.Active {
+		return sessionflow.FrontendInput{}, false
+	}
+	sw := max(sg.touch.screenW, 1)
+	sh := max(sg.touch.screenH, 1)
+	transform := newTouchLayoutTransform(sw, sh, 320, 200)
+	tryPoint := func(screenX, screenY int) (sessionflow.FrontendInput, bool) {
+		localX, localY, ok := transform.screenToLocal(screenX, screenY)
+		if !ok {
+			return sessionflow.FrontendInput{}, false
+		}
+		return sg.frontendPointerInputAt(localX, localY)
+	}
+	if sg.mouseJustPressed(ebiten.MouseButtonLeft) {
+		x, y := ebiten.CursorPosition()
+		if input, ok := tryPoint(x, y); ok {
+			return input, true
+		}
+	}
+	for _, id := range inpututil.AppendJustPressedTouchIDs(nil) {
+		x, y := ebiten.TouchPosition(id)
+		if input, ok := tryPoint(x, y); ok {
+			return input, true
+		}
+	}
+	return sessionflow.FrontendInput{}, false
+}
+
 func (sg *sessionGame) frontendChangeScreenSize(dir int) {
 	if sg == nil || sg.g == nil || dir == 0 {
 		return
@@ -670,12 +867,19 @@ func (sg *sessionGame) tickFrontend() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
+	pointerInput, _ := sg.consumeFrontendPointerInput()
 	escape := sg.keyJustPressed(ebiten.KeyEscape) || sg.touchJustPressed(touchActionBack)
 	up := sg.keyJustPressed(ebiten.KeyArrowUp) || sg.touchJustPressed(touchActionUp)
 	down := sg.keyJustPressed(ebiten.KeyArrowDown) || sg.touchJustPressed(touchActionDown)
 	left := sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.touchJustPressed(touchActionLeft)
 	right := sg.keyJustPressed(ebiten.KeyArrowRight) || sg.touchJustPressed(touchActionRight)
 	selectPressed := sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) || sg.touchJustPressed(touchActionUseEnter)
+	escape = escape || pointerInput.Escape
+	up = up || pointerInput.Up
+	down = down || pointerInput.Down
+	left = left || pointerInput.Left
+	right = right || pointerInput.Right
+	selectPressed = selectPressed || pointerInput.Select
 	input := sessionflow.FrontendInput{
 		Escape: escape,
 		Up:     up,
@@ -683,7 +887,7 @@ func (sg *sessionGame) tickFrontend() error {
 		Left:   left,
 		Right:  right,
 		Select: selectPressed,
-		Skip:   escape || up || down || left || right || selectPressed || sg.anyIntermissionSkipInput(),
+		Skip:   escape || up || down || left || right || selectPressed || pointerInput.Skip || sg.anyIntermissionSkipInput(),
 	}
 	result := sessionflow.StepFrontend(
 		sessionflow.Frontend(sg.frontend),

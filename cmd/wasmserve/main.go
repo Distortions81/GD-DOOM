@@ -56,6 +56,7 @@ func newHandler(dir string) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setNoCacheHeaders(w.Header())
 		name, ok := files[r.URL.Path]
 		if !ok {
 			http.NotFound(w, r)
@@ -107,14 +108,14 @@ func newHandler(dir string) http.Handler {
 				w.Header().Set("Content-Type", ctype)
 			}
 		}
-		if name == "gddoom.wasm" {
-			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-			w.Header().Set("Pragma", "no-cache")
-			w.Header().Set("Expires", "0")
-		}
-
 		http.ServeContent(w, r, name, info.ModTime(), f)
 	})
+}
+
+func setNoCacheHeaders(h http.Header) {
+	h.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	h.Set("Pragma", "no-cache")
+	h.Set("Expires", "0")
 }
 
 func acceptsGzip(value string) bool {
