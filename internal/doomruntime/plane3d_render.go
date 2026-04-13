@@ -81,7 +81,18 @@ func fillPackedRun(dst []uint32, dstI, count int, packed uint32) {
 	if count <= 0 {
 		return
 	}
-	if count < 8 {
+	if count < 32 {
+		for ; count >= 8; count -= 8 {
+			dst[dstI] = packed
+			dst[dstI+1] = packed
+			dst[dstI+2] = packed
+			dst[dstI+3] = packed
+			dst[dstI+4] = packed
+			dst[dstI+5] = packed
+			dst[dstI+6] = packed
+			dst[dstI+7] = packed
+			dstI += 8
+		}
 		for ; count >= 4; count -= 4 {
 			dst[dstI] = packed
 			dst[dstI+1] = packed
