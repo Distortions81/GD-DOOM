@@ -116,7 +116,6 @@ type Driver struct {
 	sampleRate   int
 	ticRate      int
 	musPanMax    float64
-	musVolumeCompression float64
 	outputGain   float64
 	preEmphasis  bool
 	preEmphPrev  [2]float64
@@ -179,9 +178,8 @@ func NewDriverWithBackend(sampleRate int, bank PatchBank, backend Backend) (*Dri
 		synth:        synth,
 		sampleRate:   sampleRate,
 		ticRate:      defaultTicRate,
-		musPanMax:    defaultMUSPanMax,
-		musVolumeCompression: DefaultMUSVolumeCompression,
-		outputGain:   DefaultOutputGain,
+			musPanMax:    defaultMUSPanMax,
+			outputGain:   DefaultOutputGain,
 		bank:         bank,
 		voices:       make([]voiceState, defaultVoices),
 		freeList:     make([]int, 0, defaultVoices),
@@ -221,13 +219,6 @@ func (d *Driver) SetMUSPanMax(max float64) {
 		return
 	}
 	d.musPanMax = clampUnit(max)
-}
-
-func (d *Driver) SetMUSVolumeCompression(ratio float64) {
-	if d == nil {
-		return
-	}
-	d.musVolumeCompression = clampMUSVolumeCompression(ratio)
 }
 
 // SetOutputGain sets final PCM output gain.
@@ -401,10 +392,10 @@ func (d *Driver) applyEvent(ev Event) {
 	case EventControlChange:
 		switch ev.A {
 		case controllerVol:
-			d.ch[ch].volume = compressMUSLevel(ev.B, d.musVolumeCompression)
+			d.ch[ch].volume = ev.B
 			d.refreshChannelVolume(uint8(ch))
 		case controllerExpr:
-			d.ch[ch].expression = compressMUSLevel(ev.B, d.musVolumeCompression)
+			d.ch[ch].expression = ev.B
 			d.refreshChannelVolume(uint8(ch))
 		case controllerPan:
 			d.ch[ch].pan = ev.B
@@ -429,7 +420,7 @@ func (d *Driver) applyEvent(ev Event) {
 			d.noteOff(ev.Channel, ev.A)
 			return
 		}
-		d.noteOn(ev.Channel, ev.A, compressMUSLevel(ev.B, d.musVolumeCompression))
+		d.noteOn(ev.Channel, ev.A, ev.B)
 	case EventNoteOff:
 		d.noteOff(ev.Channel, ev.A)
 	}

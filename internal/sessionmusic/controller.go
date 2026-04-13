@@ -25,7 +25,6 @@ type musicEventDriver interface {
 	SampleRate() int
 	TicRate() int
 	SetMUSPanMax(float64)
-	SetMUSVolumeCompression(float64)
 	SetOutputGain(float64)
 	SetPreEmphasis(bool)
 	RenderMUSS16LE([]byte) ([]byte, error)
@@ -38,6 +37,7 @@ const (
 )
 
 func New(volume float64, musPanMax float64, musVolumeCompression float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker) (*Controller, error) {
+	_ = musVolumeCompression
 	if music.ResolveBackend(backend) == music.BackendPCSpeaker {
 		if pcSpeaker == nil {
 			return nil, fmt.Errorf("pcspeaker backend requires a shared PC speaker player")
@@ -47,7 +47,6 @@ func New(volume float64, musPanMax float64, musVolumeCompression float64, synthG
 			return nil, err
 		}
 		driver.SetMUSPanMax(musPanMax)
-		driver.SetMUSVolumeCompression(musVolumeCompression)
 		driver.SetOutputGain(effectiveSynthGain(backend, synthGain))
 		driver.SetPreEmphasis(preEmphasis)
 		return &Controller{
@@ -68,7 +67,6 @@ func New(volume float64, musPanMax float64, musVolumeCompression float64, synthG
 		return nil, err
 	}
 	driver.SetMUSPanMax(musPanMax)
-	driver.SetMUSVolumeCompression(musVolumeCompression)
 	driver.SetOutputGain(effectiveSynthGain(backend, synthGain))
 	driver.SetPreEmphasis(preEmphasis)
 	return &Controller{
@@ -133,17 +131,21 @@ func (c *Controller) PlayMUS(data []byte) {
 	c.playMUS(data, true)
 }
 
+func (c *Controller) PlayParsed(parsed *music.ParsedMUS) {
+	c.playParsed(parsed, true)
+}
+
 func (c *Controller) PlayMUSOnce(data []byte) {
 	c.playMUSOnce(data)
 }
 
-func (c *Controller) playMUS(data []byte, loop bool) {
+func (c *Controller) PlayParsedOnce(parsed *music.ParsedMUS) {
+	c.playParsed(parsed, false)
+}
+
+func (c *Controller) playParsed(parsed *music.ParsedMUS, loop bool) {
 	if c != nil && c.pcSpeaker != nil {
-		if len(data) == 0 {
-			return
-		}
-		parsed, err := music.ParseMUSData(data)
-		if err != nil || parsed == nil {
+		if parsed == nil {
 			return
 		}
 		seq, tickRate := music.RenderParsedMUSToPCSpeaker(c.patchBank, parsed)
@@ -155,11 +157,7 @@ func (c *Controller) playMUS(data []byte, loop bool) {
 		c.pcSpeaker.SetMusic(seq, tickRate, loop)
 		return
 	}
-	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
-		return
-	}
-	parsed, err := music.ParseMUSData(data)
-	if err != nil || parsed == nil {
+	if c == nil || c.player == nil || c.driver == nil || parsed == nil {
 		return
 	}
 	const bytesPerFrame = 4
@@ -192,13 +190,31 @@ func (c *Controller) playMUS(data []byte, loop bool) {
 	go c.stream(player, stop, factory, stream, loop, buffered, started)
 }
 
+func (c *Controller) playMUS(data []byte, loop bool) {
+	if len(data) == 0 {
+		return
+	}
+	parsed, err := music.ParseMUSData(data)
+	if err != nil || parsed == nil {
+		return
+	}
+	c.playParsed(parsed, loop)
+}
+
 func (c *Controller) playMUSOnce(data []byte) {
+	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
+		return
+	}
+	parsed, err := music.ParseMUSData(data)
+	if err != nil || parsed == nil {
+		return
+	}
+	c.playParsedOnce(parsed)
+}
+
+func (c *Controller) playParsedOnce(parsed *music.ParsedMUS) {
 	if c != nil && c.pcSpeaker != nil {
-		if len(data) == 0 {
-			return
-		}
-		parsed, err := music.ParseMUSData(data)
-		if err != nil || parsed == nil {
+		if parsed == nil {
 			return
 		}
 		seq, tickRate := music.RenderParsedMUSToPCSpeaker(c.patchBank, parsed)
@@ -210,11 +226,7 @@ func (c *Controller) playMUSOnce(data []byte) {
 		c.pcSpeaker.SetMusic(seq, tickRate, false)
 		return
 	}
-	if c == nil || c.player == nil || c.driver == nil || len(data) == 0 {
-		return
-	}
-	parsed, err := music.ParseMUSData(data)
-	if err != nil || parsed == nil {
+	if c == nil || c.player == nil || c.driver == nil || parsed == nil {
 		return
 	}
 	player := c.player

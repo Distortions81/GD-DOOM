@@ -246,11 +246,11 @@ type Options struct {
 	DemoStopAfterTics            int
 	RecordDemoPath               string
 	DemoTracePath                string
-	TitleMusicLoader             func() ([]byte, error)
-	MapMusicLoader               func(mapName string) ([]byte, error)
+	TitleMusicLoader             func() (*music.ParsedMUS, error)
+	MapMusicLoader               func(mapName string) (*music.ParsedMUS, error)
 	MapMusicInfo                 func(mapName string) (levelLabel string, musicName string)
-	IntermissionMusicLoader      func(commercial bool) ([]byte, error)
-	FinaleMusicLoader            func(mapName string, secret bool) ([]byte, error)
+	IntermissionMusicLoader      func(commercial bool) (*music.ParsedMUS, error)
+	FinaleMusicLoader            func(mapName string, secret bool) (*music.ParsedMUS, error)
 	PlayCheatMusic               func(currentMapName string, code string) (bool, error)
 	MusicPlayerCatalog           []MusicPlayerWAD
 	MusicPlayerTrackLoader       func(wadKey string, lumpName string) ([]byte, error)

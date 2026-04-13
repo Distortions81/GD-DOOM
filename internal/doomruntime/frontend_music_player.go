@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gddoom/internal/mapdata"
+	"gddoom/internal/music"
 	"gddoom/internal/runtimecfg"
 )
 
@@ -251,6 +252,7 @@ func (sg *sessionGame) playCheatMusic(currentMapName string, code string) (bool,
 	}
 	var (
 		data       []byte
+		parsed     *music.ParsedMUS
 		err        error
 		levelLabel string
 		musicName  string
@@ -268,11 +270,11 @@ func (sg *sessionGame) playCheatMusic(currentMapName string, code string) (bool,
 			levelLabel = track.Label
 			musicName = track.MusicName
 		} else if sg.opts.MapMusicLoader != nil {
-			data, err = sg.opts.MapMusicLoader(string(targetMap))
+			parsed, err = sg.opts.MapMusicLoader(string(targetMap))
 			if err != nil {
 				return false, err
 			}
-			if len(data) == 0 {
+			if parsed == nil {
 				return false, nil
 			}
 			if sg.opts.MapMusicInfo != nil {
@@ -292,10 +294,14 @@ func (sg *sessionGame) playCheatMusic(currentMapName string, code string) (bool,
 			musicName = track.MusicName
 		}
 	}
-	if len(data) == 0 {
+	if len(data) == 0 && parsed == nil {
 		return false, nil
 	}
-	sg.musicCtl.PlayData(data, effectiveMusicPlaybackVolume(sg.opts))
+	if parsed != nil {
+		sg.musicCtl.PlayParsed(parsed, effectiveMusicPlaybackVolume(sg.opts))
+	} else {
+		sg.musicCtl.PlayData(data, effectiveMusicPlaybackVolume(sg.opts))
+	}
 	sg.currentMusicSource = musicPlaybackSource{
 		kind:       musicPlaybackSourcePlayer,
 		mapName:    targetMap,

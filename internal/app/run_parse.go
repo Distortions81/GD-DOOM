@@ -210,6 +210,30 @@ func awaitWatchKeyframe(v *netplay.Viewer, timeout time.Duration) (netplay.Keyfr
 	}
 }
 
+func cachedParsedMUSLoader(load func() ([]byte, error), ratio float64) func() (*music.ParsedMUS, error) {
+	var (
+		once   sync.Once
+		parsed *music.ParsedMUS
+		err    error
+	)
+	return func() (*music.ParsedMUS, error) {
+		once.Do(func() {
+			data, derr := load()
+			if derr != nil || len(data) == 0 {
+				err = derr
+				return
+			}
+			base, perr := music.ParseMUSData(data)
+			if perr != nil {
+				err = perr
+				return
+			}
+			parsed = music.ApplyMUSVolumeCompression(base, ratio)
+		})
+		return parsed, err
+	}
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	const maxCLIAppOPLVolume = 4.0
 	normalizedArgs := normalizeNetplayShorthandArgs(args)
@@ -1255,62 +1279,72 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return voiceStreamer.InputGateActive()
 		}
-		opts.TitleMusicLoader = func() ([]byte, error) {
-			for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
+		titleMusicLoaders := make([]func() (*music.ParsedMUS, error), 0, 2)
+		for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
+			lump := lump
+			titleMusicLoaders = append(titleMusicLoaders, cachedParsedMUSLoader(func() ([]byte, error) {
 				l, ok := wf.LumpByName(lump)
 				if !ok {
-					continue
+					return nil, nil
 				}
-				data, err := wf.LumpDataView(l)
+				return wf.LumpDataView(l)
+			}, *musVolumeCompression))
+		}
+		opts.TitleMusicLoader = func() (*music.ParsedMUS, error) {
+			for _, load := range titleMusicLoaders {
+				parsed, err := load()
 				if err != nil {
 					return nil, err
 				}
-				if _, err := music.ParseMUS(data); err != nil {
-					return nil, err
+				if parsed != nil {
+					return parsed, nil
 				}
-				return data, nil
 			}
 			return nil, nil
 		}
-		opts.MapMusicLoader = func(mapName string) ([]byte, error) {
+		mapMusicCache := map[string]func() (*music.ParsedMUS, error){}
+		opts.MapMusicLoader = func(mapName string) (*music.ParsedMUS, error) {
 			lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
 			if !ok {
 				return nil, nil
 			}
-			l, ok := wf.LumpByName(lump)
+			load, ok := mapMusicCache[lump]
 			if !ok {
-				return nil, nil
+				lumpName := lump
+				load = cachedParsedMUSLoader(func() ([]byte, error) {
+					l, ok := wf.LumpByName(lumpName)
+					if !ok {
+						return nil, nil
+					}
+					return wf.LumpDataView(l)
+				}, *musVolumeCompression)
+				mapMusicCache[lump] = load
 			}
-			data, err := wf.LumpDataView(l)
-			if err != nil {
-				return nil, err
-			}
-			// Validate once at load time so runtime playback can assume decodable MUS.
-			if _, err := music.ParseMUS(data); err != nil {
-				return nil, err
-			}
-			return data, nil
+			return load()
 		}
 		opts.MapMusicInfo = mapMusicInfo
-		opts.IntermissionMusicLoader = func(commercial bool) ([]byte, error) {
+		intermissionMusicCache := map[string]func() (*music.ParsedMUS, error){}
+		opts.IntermissionMusicLoader = func(commercial bool) (*music.ParsedMUS, error) {
 			lump := "D_INTER"
 			if commercial {
 				lump = "D_DM2INT"
 			}
-			l, ok := wf.LumpByName(lump)
+			load, ok := intermissionMusicCache[lump]
 			if !ok {
-				return nil, nil
+				lumpName := lump
+				load = cachedParsedMUSLoader(func() ([]byte, error) {
+					l, ok := wf.LumpByName(lumpName)
+					if !ok {
+						return nil, nil
+					}
+					return wf.LumpDataView(l)
+				}, *musVolumeCompression)
+				intermissionMusicCache[lump] = load
 			}
-			data, err := wf.LumpDataView(l)
-			if err != nil {
-				return nil, err
-			}
-			if _, err := music.ParseMUS(data); err != nil {
-				return nil, err
-			}
-			return data, nil
+			return load()
 		}
-		opts.FinaleMusicLoader = func(mapName string, secret bool) ([]byte, error) {
+		finaleMusicCache := map[string]func() (*music.ParsedMUS, error){}
+		opts.FinaleMusicLoader = func(mapName string, secret bool) (*music.ParsedMUS, error) {
 			if secret {
 				return nil, nil
 			}
@@ -1318,18 +1352,19 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			if lump == "" {
 				return nil, nil
 			}
-			l, ok := wf.LumpByName(lump)
+			load, ok := finaleMusicCache[lump]
 			if !ok {
-				return nil, nil
+				lumpName := lump
+				load = cachedParsedMUSLoader(func() ([]byte, error) {
+					l, ok := wf.LumpByName(lumpName)
+					if !ok {
+						return nil, nil
+					}
+					return wf.LumpDataView(l)
+				}, *musVolumeCompression)
+				finaleMusicCache[lump] = load
 			}
-			data, err := wf.LumpDataView(l)
-			if err != nil {
-				return nil, err
-			}
-			if _, err := music.ParseMUS(data); err != nil {
-				return nil, err
-			}
-			return data, nil
+			return load()
 		}
 		opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
@@ -2718,59 +2753,72 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		DemoTracePath:              cfg.demoTracePath,
 		AttractDemos:               builtInAttractDemos(wf),
 	}
-	opts.TitleMusicLoader = func() ([]byte, error) {
-		for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
-			if l, ok := wf.LumpByName(lump); ok {
-				data, err := wf.LumpDataView(l)
-				if err != nil {
-					return nil, err
-				}
-				if _, err := music.ParseMUS(data); err != nil {
-					return nil, err
-				}
-				return data, nil
+	titleMusicLoaders := make([]func() (*music.ParsedMUS, error), 0, 2)
+	for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
+		lump := lump
+		titleMusicLoaders = append(titleMusicLoaders, cachedParsedMUSLoader(func() ([]byte, error) {
+			l, ok := wf.LumpByName(lump)
+			if !ok {
+				return nil, nil
+			}
+			return wf.LumpDataView(l)
+		}, cfg.musVolumeCompression))
+	}
+	opts.TitleMusicLoader = func() (*music.ParsedMUS, error) {
+		for _, load := range titleMusicLoaders {
+			parsed, err := load()
+			if err != nil {
+				return nil, err
+			}
+			if parsed != nil {
+				return parsed, nil
 			}
 		}
 		return nil, nil
 	}
-	opts.MapMusicLoader = func(mapName string) ([]byte, error) {
+	mapMusicCache := map[string]func() (*music.ParsedMUS, error){}
+	opts.MapMusicLoader = func(mapName string) (*music.ParsedMUS, error) {
 		lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
 		if !ok {
 			return nil, nil
 		}
-		l, ok := wf.LumpByName(lump)
+		load, ok := mapMusicCache[lump]
 		if !ok {
-			return nil, nil
+			lumpName := lump
+			load = cachedParsedMUSLoader(func() ([]byte, error) {
+				l, ok := wf.LumpByName(lumpName)
+				if !ok {
+					return nil, nil
+				}
+				return wf.LumpDataView(l)
+			}, cfg.musVolumeCompression)
+			mapMusicCache[lump] = load
 		}
-		data, err := wf.LumpDataView(l)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := music.ParseMUS(data); err != nil {
-			return nil, err
-		}
-		return data, nil
+		return load()
 	}
 	opts.MapMusicInfo = mapMusicInfo
-	opts.IntermissionMusicLoader = func(commercial bool) ([]byte, error) {
+	intermissionMusicCache := map[string]func() (*music.ParsedMUS, error){}
+	opts.IntermissionMusicLoader = func(commercial bool) (*music.ParsedMUS, error) {
 		lump := "D_INTER"
 		if commercial {
 			lump = "D_DM2INT"
 		}
-		l, ok := wf.LumpByName(lump)
+		load, ok := intermissionMusicCache[lump]
 		if !ok {
-			return nil, nil
+			lumpName := lump
+			load = cachedParsedMUSLoader(func() ([]byte, error) {
+				l, ok := wf.LumpByName(lumpName)
+				if !ok {
+					return nil, nil
+				}
+				return wf.LumpDataView(l)
+			}, cfg.musVolumeCompression)
+			intermissionMusicCache[lump] = load
 		}
-		data, err := wf.LumpDataView(l)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := music.ParseMUS(data); err != nil {
-			return nil, err
-		}
-		return data, nil
+		return load()
 	}
-	opts.FinaleMusicLoader = func(mapName string, secret bool) ([]byte, error) {
+	finaleMusicCache := map[string]func() (*music.ParsedMUS, error){}
+	opts.FinaleMusicLoader = func(mapName string, secret bool) (*music.ParsedMUS, error) {
 		if secret {
 			return nil, nil
 		}
@@ -2778,18 +2826,19 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		if lump == "" {
 			return nil, nil
 		}
-		l, ok := wf.LumpByName(lump)
+		load, ok := finaleMusicCache[lump]
 		if !ok {
-			return nil, nil
+			lumpName := lump
+			load = cachedParsedMUSLoader(func() ([]byte, error) {
+				l, ok := wf.LumpByName(lumpName)
+				if !ok {
+					return nil, nil
+				}
+				return wf.LumpDataView(l)
+			}, cfg.musVolumeCompression)
+			finaleMusicCache[lump] = load
 		}
-		data, err := wf.LumpDataView(l)
-		if err != nil {
-			return nil, err
-		}
-		if _, err := music.ParseMUS(data); err != nil {
-			return nil, err
-		}
-		return data, nil
+		return load()
 	}
 	opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 	opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {

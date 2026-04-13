@@ -16,6 +16,34 @@ type MUSVolumeCompressionStats struct {
 	AvgControllerExpressionAfter  float64
 }
 
+func ApplyMUSVolumeCompression(parsed *ParsedMUS, ratio float64) *ParsedMUS {
+	if parsed == nil {
+		return nil
+	}
+	ratio = clampMUSVolumeCompression(ratio)
+	if ratio <= 1 {
+		return parsed
+	}
+	out := make([]Event, len(parsed.events))
+	copy(out, parsed.events)
+	for i := range out {
+		switch out[i].Type {
+		case EventNoteOn:
+			if out[i].B != 0 {
+				out[i].B = compressMUSLevel(out[i].B, ratio)
+			}
+		case EventControlChange:
+			if out[i].A == controllerVol || out[i].A == controllerExpr {
+				out[i].B = compressMUSLevel(out[i].B, ratio)
+			}
+		}
+	}
+	return &ParsedMUS{
+		events:            out,
+		estimatedPCMBytes: parsed.estimatedPCMBytes,
+	}
+}
+
 func AnalyzeMUSVolumeCompression(parsed *ParsedMUS, ratio float64) MUSVolumeCompressionStats {
 	stats := MUSVolumeCompressionStats{Ratio: clampMUSVolumeCompression(ratio)}
 	if parsed == nil {

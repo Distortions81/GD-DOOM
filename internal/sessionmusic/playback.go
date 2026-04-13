@@ -8,12 +8,12 @@ import (
 
 type Playback struct {
 	ctl                *Controller
-	mapLoader          func(string) ([]byte, error)
-	titleLoader        func() ([]byte, error)
-	intermissionLoader func(commercial bool) ([]byte, error)
+	mapLoader          func(string) (*music.ParsedMUS, error)
+	titleLoader        func() (*music.ParsedMUS, error)
+	intermissionLoader func(commercial bool) (*music.ParsedMUS, error)
 }
 
-func NewPlayback(volume float64, musPanMax float64, musVolumeCompression float64, oplVolume float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker, mapLoader func(string) ([]byte, error), titleLoader func() ([]byte, error), intermissionLoader func(bool) ([]byte, error)) (*Playback, error) {
+func NewPlayback(volume float64, musPanMax float64, musVolumeCompression float64, oplVolume float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker, mapLoader func(string) (*music.ParsedMUS, error), titleLoader func() (*music.ParsedMUS, error), intermissionLoader func(bool) (*music.ParsedMUS, error)) (*Playback, error) {
 	ctl, err := New(volume, musPanMax, musVolumeCompression, oplVolume, preEmphasis, backend, bank, soundFont, pcSpeaker)
 	if err != nil {
 		return nil, err
@@ -60,11 +60,11 @@ func (p *Playback) PlayTitle(volume float64) {
 		return
 	}
 	p.StopAndClear()
-	data, err := p.titleLoader()
-	if err != nil || len(data) == 0 {
+	parsed, err := p.titleLoader()
+	if err != nil || parsed == nil {
 		return
 	}
-	p.ctl.PlayMUSOnce(data)
+	p.ctl.PlayParsedOnce(parsed)
 }
 
 func (p *Playback) PlayMap(name mapdata.MapName, volume float64) {
@@ -72,11 +72,11 @@ func (p *Playback) PlayMap(name mapdata.MapName, volume float64) {
 		return
 	}
 	p.StopAndClear()
-	data, err := p.mapLoader(string(name))
-	if err != nil || len(data) == 0 {
+	parsed, err := p.mapLoader(string(name))
+	if err != nil || parsed == nil {
 		return
 	}
-	p.ctl.PlayMUS(data)
+	p.ctl.PlayParsed(parsed)
 }
 
 func (p *Playback) PlayData(data []byte, volume float64) {
@@ -87,14 +87,22 @@ func (p *Playback) PlayData(data []byte, volume float64) {
 	p.ctl.PlayMUS(data)
 }
 
+func (p *Playback) PlayParsed(parsed *music.ParsedMUS, volume float64) {
+	if p == nil || p.ctl == nil || volume <= 0 || parsed == nil {
+		return
+	}
+	p.StopAndClear()
+	p.ctl.PlayParsed(parsed)
+}
+
 func (p *Playback) PlayIntermission(commercial bool, volume float64) {
 	if p == nil || p.ctl == nil || p.intermissionLoader == nil || volume <= 0 {
 		return
 	}
 	p.StopAndClear()
-	data, err := p.intermissionLoader(commercial)
-	if err != nil || len(data) == 0 {
+	parsed, err := p.intermissionLoader(commercial)
+	if err != nil || parsed == nil {
 		return
 	}
-	p.ctl.PlayMUS(data)
+	p.ctl.PlayParsed(parsed)
 }

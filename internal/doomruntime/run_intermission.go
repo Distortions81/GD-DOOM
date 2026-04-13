@@ -429,8 +429,8 @@ func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) 
 	}
 	sg.stopAndClearMusic()
 	if sg.musicCtl != nil && sg.opts.FinaleMusicLoader != nil {
-		if data, err := sg.opts.FinaleMusicLoader(string(current), secret); err == nil && len(data) > 0 {
-			sg.musicCtl.PlayData(data, effectiveMusicPlaybackVolume(sg.opts))
+		if parsed, err := sg.opts.FinaleMusicLoader(string(current), secret); err == nil && parsed != nil {
+			sg.musicCtl.PlayParsed(parsed, effectiveMusicPlaybackVolume(sg.opts))
 			sg.currentMusicSource = musicPlaybackSource{kind: musicPlaybackSourceMap, mapName: current}
 			sg.setNowPlayingLevel("")
 			sg.setNowPlayingMusic("Victory")
