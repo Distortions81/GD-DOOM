@@ -37,6 +37,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Better map reading: the automap presentation is cleaner on modern displays and adds rotate mode on top of the classic map features.
 - Better controls: mouse look is built in, bindings are more flexible, and there are separate in-game screens for voice and key setup.
 - Extra demo tooling: beyond classic demo playback and recording, GD-DOOM can also write detailed tick-by-tick state logs for troubleshooting.
+- Save flow upgrades: regular save/load slots, quicksave, and now unlimited slot usage.
 - Live session features: one machine can broadcast a run while others watch in real time, chat, and optionally listen or talk over voice.
 - Detailed voice controls: microphone streaming includes codec choices, sample-rate control, automatic gain control, a noise gate, push-to-talk, and an in-game input meter.
 - Modern music playback choices: on current platforms you can choose between a built-in FM-synth style soundtrack and a SoundFont-based MIDI path.
@@ -44,6 +45,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Linux hardware PC speaker output: on Linux, `-pc-speaker-hw` drives the real `/dev/input/by-path/…pcspkr*-event-spkr` device directly via evdev — no audio card involved, just the actual buzzer on the motherboard.
 - Analog touch controls: the browser and mobile build includes a dual-pad touch layout with analog joystick input — left pad for movement and strafe, right pad for turning, with fire/use activation at the outer edges of each pad and a thumb indicator showing current deflection.
 - Browser save/load uses `localStorage` for saves and includes save-slot preview thumbnails in the save/load menu.
+- Save/load now persists in browser storage and shows slot metadata/thumbnails while returning to saved games from main menu and map transitions.
 - Episode finales: the Doom episode end sequences (text crawl + cast screen + bunny screen) play correctly after completing an episode.
 - Peer co-op multiplayer: lockstep co-op over the GDSF relay, with per-tic input sync, roster management, and automatic desync detection via periodic state checksums.
 - Browser play: the same project also has a playable browser version with local WAD loading.
@@ -57,6 +59,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Smoother texture changes, weapon transitions, and broader multi-frame sprite animation.
 - Integrated automap with follow mode, rotate mode, big-map view, grid, and map marks.
 - Stable faithful transitions: transition capture and presentation now use the consistent game render buffer so menu/game resolution changes during transitions are avoided.
+- Startup/input polish: startup screens can be dismissed immediately, and web builds support explicit click-to-play when autoplay is blocked.
 
 The game still runs on Doom-style simulation and classic map data. The extra work here is mostly presentation work: cleaner output, smoother motion, more readable UI, and optional visual polish that makes the game feel better on modern screens.
 
@@ -68,6 +71,7 @@ The game still runs on Doom-style simulation and classic map data. The extra wor
 - Linux hardware PC speaker output via `-pc-speaker-hw` using the real buzzer device, with write permission required on the `pcspkr` input node.
 - Separate music and SFX volume controls.
 - Stereo music playback with adjustable width.
+- Tunable PC speaker behavior: `-pc-speaker-interleave-hz` controls music/SFX switching while `-pc-speaker-hw` and `-pc-speaker` use hardware-aware timing.
 - In-game music menu and browser music flow.
 - Live voice capture with selectable codec, automatic gain control, noise gate, and push-to-talk support.
 
@@ -87,6 +91,7 @@ When a sound effect and music are both playing through the PC speaker, the two s
 - In-game WAD picker when multiple supported base games are available.
 - Save/load support integrated into normal play.
 - Browser save/load persistence with `localStorage` and quick save/load slots.
+- Unbounded save storage behavior for save files, so normal play and source-port save/load are not hard-limited to a small fixed slot count.
 - Demo playback, demo recording, and optional tick-by-tick state export.
 - Live broadcast/watch sessions with text chat and optional microphone voice streaming.
 - In-game sound, voice, and key binding menus plus persisted native config through `config.toml`.
