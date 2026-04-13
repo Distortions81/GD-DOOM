@@ -1,6 +1,9 @@
 package doomruntime
 
-import "math"
+import (
+	"math"
+	"unsafe"
+)
 
 const planeTexelChangeSentinel = int(^uint(0) >> 1)
 
@@ -81,34 +84,33 @@ func fillPackedRun(dst []uint32, dstI, count int, packed uint32) {
 	if count <= 0 {
 		return
 	}
+	pair := (uint64(packed) << 32) | uint64(packed)
 	if count < 32 {
+		ptr := unsafe.Pointer(&dst[dstI])
 		for ; count >= 8; count -= 8 {
-			dst[dstI] = packed
-			dst[dstI+1] = packed
-			dst[dstI+2] = packed
-			dst[dstI+3] = packed
-			dst[dstI+4] = packed
-			dst[dstI+5] = packed
-			dst[dstI+6] = packed
-			dst[dstI+7] = packed
-			dstI += 8
+			*(*uint64)(ptr) = pair
+			*(*uint64)(unsafe.Add(ptr, 8)) = pair
+			*(*uint64)(unsafe.Add(ptr, 16)) = pair
+			*(*uint64)(unsafe.Add(ptr, 24)) = pair
+			ptr = unsafe.Add(ptr, 32)
 		}
-		for ; count >= 4; count -= 4 {
-			dst[dstI] = packed
-			dst[dstI+1] = packed
-			dst[dstI+2] = packed
-			dst[dstI+3] = packed
-			dstI += 4
+		for ; count >= 2; count -= 2 {
+			*(*uint64)(ptr) = pair
+			ptr = unsafe.Add(ptr, 8)
 		}
-		for ; count > 0; count-- {
-			dst[dstI] = packed
-			dstI++
+		if count > 0 {
+			*(*uint32)(ptr) = packed
 		}
 		return
 	}
 	run := dst[dstI : dstI+count]
-	run[0] = packed
 	filled := 1
+	if len(run) >= 2 {
+		*(*uint64)(unsafe.Pointer(&run[0])) = pair
+		filled = 2
+	} else {
+		run[0] = packed
+	}
 	for filled < len(run) {
 		n := filled
 		if remaining := len(run) - filled; n > remaining {
