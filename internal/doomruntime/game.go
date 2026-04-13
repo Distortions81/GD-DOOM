@@ -6039,14 +6039,27 @@ func (g *game) spriteWallClipOccludedAtXYDepth(x, y int, depthQ uint16) bool {
 	if x >= len(g.wallDepthQCol) {
 		return false
 	}
-	var masked []scene.MaskedClipSpan
-	if x >= 0 && x < len(g.maskedClipCols) {
-		masked = g.maskedClipCols[x]
-	}
-	if scene.WallDepthColumnOccludesPoint(g.wallDepthColumnAt(x), y, depthQ) {
+	if x < len(g.wallDepthTopCol) && x < len(g.wallDepthBottomCol) && x < len(g.wallDepthClosedCol) {
+		if depthQ > g.wallDepthQCol[x] {
+			if g.wallDepthClosedCol[x] {
+				return true
+			}
+			top := g.wallDepthTopCol[x]
+			if top <= y && y <= g.wallDepthBottomCol[x] {
+				return true
+			}
+		}
+	} else if scene.WallDepthColumnOccludesPoint(g.wallDepthColumnAt(x), y, depthQ) {
 		return true
 	}
-	return maskedClipColumnOccludesPointSorted(masked, y, depthQ)
+	if x >= len(g.maskedClipFirstDepthQ) {
+		return false
+	}
+	firstDepthQ := g.maskedClipFirstDepthQ[x]
+	if firstDepthQ == 0 || depthQ <= firstDepthQ || x >= len(g.maskedClipCols) {
+		return false
+	}
+	return maskedClipColumnOccludesPointSorted(g.maskedClipCols[x], y, depthQ)
 }
 
 func (g *game) spriteWallClipColumnOccludedBBox(x, y0, y1 int, depthQ uint16) bool {
