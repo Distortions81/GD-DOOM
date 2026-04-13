@@ -234,6 +234,77 @@ func cachedParsedMUSLoader(load func() ([]byte, error), ratio float64) func() (*
 	}
 }
 
+func cachedParsedMUSLumpLoader(loadLump func(string) ([]byte, error), lump string, ratio float64) func() (*music.ParsedMUS, error) {
+	return cachedParsedMUSLoader(func() ([]byte, error) {
+		return loadLump(lump)
+	}, ratio)
+}
+
+func configureParsedMUSLoaders(opts *runtimecfg.Options, ratio float64, loadLump func(string) ([]byte, error)) {
+	titleMusicLoaders := make([]func() (*music.ParsedMUS, error), 0, 2)
+	for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
+		titleMusicLoaders = append(titleMusicLoaders, cachedParsedMUSLumpLoader(loadLump, lump, ratio))
+	}
+	opts.TitleMusicLoader = func() (*music.ParsedMUS, error) {
+		for _, load := range titleMusicLoaders {
+			parsed, err := load()
+			if err != nil {
+				return nil, err
+			}
+			if parsed != nil {
+				return parsed, nil
+			}
+		}
+		return nil, nil
+	}
+
+	mapMusicCache := map[string]func() (*music.ParsedMUS, error){}
+	opts.MapMusicLoader = func(mapName string) (*music.ParsedMUS, error) {
+		lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
+		if !ok {
+			return nil, nil
+		}
+		load, ok := mapMusicCache[lump]
+		if !ok {
+			load = cachedParsedMUSLumpLoader(loadLump, lump, ratio)
+			mapMusicCache[lump] = load
+		}
+		return load()
+	}
+	opts.MapMusicInfo = mapMusicInfo
+
+	intermissionMusicCache := map[string]func() (*music.ParsedMUS, error){}
+	opts.IntermissionMusicLoader = func(commercial bool) (*music.ParsedMUS, error) {
+		lump := "D_INTER"
+		if commercial {
+			lump = "D_DM2INT"
+		}
+		load, ok := intermissionMusicCache[lump]
+		if !ok {
+			load = cachedParsedMUSLumpLoader(loadLump, lump, ratio)
+			intermissionMusicCache[lump] = load
+		}
+		return load()
+	}
+
+	finaleMusicCache := map[string]func() (*music.ParsedMUS, error){}
+	opts.FinaleMusicLoader = func(mapName string, secret bool) (*music.ParsedMUS, error) {
+		if secret {
+			return nil, nil
+		}
+		lump := finaleMusicLumpName(mapdata.MapName(mapName))
+		if lump == "" {
+			return nil, nil
+		}
+		load, ok := finaleMusicCache[lump]
+		if !ok {
+			load = cachedParsedMUSLumpLoader(loadLump, lump, ratio)
+			finaleMusicCache[lump] = load
+		}
+		return load()
+	}
+}
+
 func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	const maxCLIAppOPLVolume = 4.0
 	normalizedArgs := normalizeNetplayShorthandArgs(args)
@@ -1279,93 +1350,13 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			}
 			return voiceStreamer.InputGateActive()
 		}
-		titleMusicLoaders := make([]func() (*music.ParsedMUS, error), 0, 2)
-		for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
-			lump := lump
-			titleMusicLoaders = append(titleMusicLoaders, cachedParsedMUSLoader(func() ([]byte, error) {
-				l, ok := wf.LumpByName(lump)
-				if !ok {
-					return nil, nil
-				}
-				return wf.LumpDataView(l)
-			}, *musVolumeCompression))
-		}
-		opts.TitleMusicLoader = func() (*music.ParsedMUS, error) {
-			for _, load := range titleMusicLoaders {
-				parsed, err := load()
-				if err != nil {
-					return nil, err
-				}
-				if parsed != nil {
-					return parsed, nil
-				}
-			}
-			return nil, nil
-		}
-		mapMusicCache := map[string]func() (*music.ParsedMUS, error){}
-		opts.MapMusicLoader = func(mapName string) (*music.ParsedMUS, error) {
-			lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
+		configureParsedMUSLoaders(&opts, *musVolumeCompression, func(lump string) ([]byte, error) {
+			l, ok := wf.LumpByName(lump)
 			if !ok {
 				return nil, nil
 			}
-			load, ok := mapMusicCache[lump]
-			if !ok {
-				lumpName := lump
-				load = cachedParsedMUSLoader(func() ([]byte, error) {
-					l, ok := wf.LumpByName(lumpName)
-					if !ok {
-						return nil, nil
-					}
-					return wf.LumpDataView(l)
-				}, *musVolumeCompression)
-				mapMusicCache[lump] = load
-			}
-			return load()
-		}
-		opts.MapMusicInfo = mapMusicInfo
-		intermissionMusicCache := map[string]func() (*music.ParsedMUS, error){}
-		opts.IntermissionMusicLoader = func(commercial bool) (*music.ParsedMUS, error) {
-			lump := "D_INTER"
-			if commercial {
-				lump = "D_DM2INT"
-			}
-			load, ok := intermissionMusicCache[lump]
-			if !ok {
-				lumpName := lump
-				load = cachedParsedMUSLoader(func() ([]byte, error) {
-					l, ok := wf.LumpByName(lumpName)
-					if !ok {
-						return nil, nil
-					}
-					return wf.LumpDataView(l)
-				}, *musVolumeCompression)
-				intermissionMusicCache[lump] = load
-			}
-			return load()
-		}
-		finaleMusicCache := map[string]func() (*music.ParsedMUS, error){}
-		opts.FinaleMusicLoader = func(mapName string, secret bool) (*music.ParsedMUS, error) {
-			if secret {
-				return nil, nil
-			}
-			lump := finaleMusicLumpName(mapdata.MapName(mapName))
-			if lump == "" {
-				return nil, nil
-			}
-			load, ok := finaleMusicCache[lump]
-			if !ok {
-				lumpName := lump
-				load = cachedParsedMUSLoader(func() ([]byte, error) {
-					l, ok := wf.LumpByName(lumpName)
-					if !ok {
-						return nil, nil
-					}
-					return wf.LumpDataView(l)
-				}, *musVolumeCompression)
-				finaleMusicCache[lump] = load
-			}
-			return load()
-		}
+			return wf.LumpDataView(l)
+		})
 		opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 		opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 			return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))
@@ -2753,93 +2744,13 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		DemoTracePath:              cfg.demoTracePath,
 		AttractDemos:               builtInAttractDemos(wf),
 	}
-	titleMusicLoaders := make([]func() (*music.ParsedMUS, error), 0, 2)
-	for _, lump := range []string{"D_DM2TTL", "D_INTRO"} {
-		lump := lump
-		titleMusicLoaders = append(titleMusicLoaders, cachedParsedMUSLoader(func() ([]byte, error) {
-			l, ok := wf.LumpByName(lump)
-			if !ok {
-				return nil, nil
-			}
-			return wf.LumpDataView(l)
-		}, cfg.musVolumeCompression))
-	}
-	opts.TitleMusicLoader = func() (*music.ParsedMUS, error) {
-		for _, load := range titleMusicLoaders {
-			parsed, err := load()
-			if err != nil {
-				return nil, err
-			}
-			if parsed != nil {
-				return parsed, nil
-			}
-		}
-		return nil, nil
-	}
-	mapMusicCache := map[string]func() (*music.ParsedMUS, error){}
-	opts.MapMusicLoader = func(mapName string) (*music.ParsedMUS, error) {
-		lump, ok := mapMusicLumpName(mapdata.MapName(mapName))
+	configureParsedMUSLoaders(&opts, cfg.musVolumeCompression, func(lump string) ([]byte, error) {
+		l, ok := wf.LumpByName(lump)
 		if !ok {
 			return nil, nil
 		}
-		load, ok := mapMusicCache[lump]
-		if !ok {
-			lumpName := lump
-			load = cachedParsedMUSLoader(func() ([]byte, error) {
-				l, ok := wf.LumpByName(lumpName)
-				if !ok {
-					return nil, nil
-				}
-				return wf.LumpDataView(l)
-			}, cfg.musVolumeCompression)
-			mapMusicCache[lump] = load
-		}
-		return load()
-	}
-	opts.MapMusicInfo = mapMusicInfo
-	intermissionMusicCache := map[string]func() (*music.ParsedMUS, error){}
-	opts.IntermissionMusicLoader = func(commercial bool) (*music.ParsedMUS, error) {
-		lump := "D_INTER"
-		if commercial {
-			lump = "D_DM2INT"
-		}
-		load, ok := intermissionMusicCache[lump]
-		if !ok {
-			lumpName := lump
-			load = cachedParsedMUSLoader(func() ([]byte, error) {
-				l, ok := wf.LumpByName(lumpName)
-				if !ok {
-					return nil, nil
-				}
-				return wf.LumpDataView(l)
-			}, cfg.musVolumeCompression)
-			intermissionMusicCache[lump] = load
-		}
-		return load()
-	}
-	finaleMusicCache := map[string]func() (*music.ParsedMUS, error){}
-	opts.FinaleMusicLoader = func(mapName string, secret bool) (*music.ParsedMUS, error) {
-		if secret {
-			return nil, nil
-		}
-		lump := finaleMusicLumpName(mapdata.MapName(mapName))
-		if lump == "" {
-			return nil, nil
-		}
-		load, ok := finaleMusicCache[lump]
-		if !ok {
-			lumpName := lump
-			load = cachedParsedMUSLoader(func() ([]byte, error) {
-				l, ok := wf.LumpByName(lumpName)
-				if !ok {
-					return nil, nil
-				}
-				return wf.LumpDataView(l)
-			}, cfg.musVolumeCompression)
-			finaleMusicCache[lump] = load
-		}
-		return load()
-	}
+		return wf.LumpDataView(l)
+	})
 	opts.MusicPlayerCatalog, opts.MusicPlayerTrackLoader = buildMusicPlayerCatalog(resolvedWADPath)
 	opts.NewGameLoader = func(mapName string) (*mapdata.Map, error) {
 		return mapdata.LoadMap(wf, mapdata.MapName(strings.ToUpper(strings.TrimSpace(mapName))))

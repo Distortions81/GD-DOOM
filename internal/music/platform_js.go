@@ -4,6 +4,7 @@ package music
 
 const (
 	wasmStreamChunkFrames   = 256
+	wasmStreamEnqueueFrames = wasmStreamChunkFrames * 8
 	wasmStreamLookaheadMult = 48
 )
 
@@ -17,6 +18,14 @@ func streamLookaheadFrames() int {
 
 func streamChunkFramesForBackend(backend Backend) int {
 	return streamChunkFrames()
+}
+
+func streamEnqueueFrames() int {
+	return wasmStreamEnqueueFrames
+}
+
+func streamEnqueueFramesForBackend(backend Backend) int {
+	return streamEnqueueFrames()
 }
 
 func streamLookaheadFramesForBackend(backend Backend) int {

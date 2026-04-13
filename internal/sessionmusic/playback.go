@@ -13,8 +13,8 @@ type Playback struct {
 	intermissionLoader func(commercial bool) (*music.ParsedMUS, error)
 }
 
-func NewPlayback(volume float64, musPanMax float64, musVolumeCompression float64, oplVolume float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker, mapLoader func(string) (*music.ParsedMUS, error), titleLoader func() (*music.ParsedMUS, error), intermissionLoader func(bool) (*music.ParsedMUS, error)) (*Playback, error) {
-	ctl, err := New(volume, musPanMax, musVolumeCompression, oplVolume, preEmphasis, backend, bank, soundFont, pcSpeaker)
+func NewPlayback(volume float64, musPanMax float64, oplVolume float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker, mapLoader func(string) (*music.ParsedMUS, error), titleLoader func() (*music.ParsedMUS, error), intermissionLoader func(bool) (*music.ParsedMUS, error)) (*Playback, error) {
+	ctl, err := New(volume, musPanMax, oplVolume, preEmphasis, backend, bank, soundFont, pcSpeaker)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +53,13 @@ func (p *Playback) SetOutputGain(v float64) {
 		return
 	}
 	p.ctl.SetOutputGain(v)
+}
+
+func (p *Playback) Tick() {
+	if p == nil || p.ctl == nil {
+		return
+	}
+	p.ctl.Tick()
 }
 
 func (p *Playback) PlayTitle(volume float64) {

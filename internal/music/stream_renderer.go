@@ -23,6 +23,14 @@ func DefaultStreamLookaheadForBackend(backend Backend) int {
 	return streamLookaheadFramesForBackend(ResolveBackend(backend))
 }
 
+func DefaultStreamEnqueueFrames() int {
+	return streamEnqueueFrames()
+}
+
+func DefaultStreamEnqueueFramesForBackend(backend Backend) int {
+	return streamEnqueueFramesForBackend(ResolveBackend(backend))
+}
+
 // StreamRenderer incrementally renders parsed events into fixed-size PCM chunks.
 type StreamRenderer struct {
 	driver  eventRenderer

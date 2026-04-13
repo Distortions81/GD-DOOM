@@ -109,7 +109,6 @@ func (sg *sessionGame) rebuildMusicPlayback() error {
 	ctl, err := sessionmusic.NewPlayback(
 		effectiveMusicPlaybackVolume(sg.opts),
 		sg.opts.MUSPanMax,
-		sg.opts.MUSVolumeCompression,
 		sg.opts.OPLVolume,
 		sg.opts.AudioPreEmphasis,
 		sg.opts.MusicBackend,

@@ -2,7 +2,6 @@ package sessionmusic
 
 import (
 	"fmt"
-	"time"
 
 	"gddoom/internal/audiofx"
 	"gddoom/internal/music"
@@ -12,7 +11,6 @@ type Controller struct {
 	player    *music.ChunkPlayer
 	driver    musicEventDriver
 	backend   music.Backend
-	stop      chan struct{}
 	pcSpeaker audiofx.PCSpeaker
 	patchBank music.PatchBank
 }
@@ -36,8 +34,7 @@ const (
 	pcSpeakerMusicRate = 11025
 )
 
-func New(volume float64, musPanMax float64, musVolumeCompression float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker) (*Controller, error) {
-	_ = musVolumeCompression
+func New(volume float64, musPanMax float64, synthGain float64, preEmphasis bool, backend music.Backend, bank music.PatchBank, soundFont *music.SoundFontBank, pcSpeaker audiofx.PCSpeaker) (*Controller, error) {
 	if music.ResolveBackend(backend) == music.BackendPCSpeaker {
 		if pcSpeaker == nil {
 			return nil, fmt.Errorf("pcspeaker backend requires a shared PC speaker player")
@@ -143,6 +140,13 @@ func (c *Controller) PlayParsedOnce(parsed *music.ParsedMUS) {
 	c.playParsed(parsed, false)
 }
 
+func (c *Controller) Tick() {
+	if c == nil || c.player == nil {
+		return
+	}
+	_ = c.player.Tick()
+}
+
 func (c *Controller) playParsed(parsed *music.ParsedMUS, loop bool) {
 	if c != nil && c.pcSpeaker != nil {
 		if parsed == nil {
@@ -160,34 +164,15 @@ func (c *Controller) playParsed(parsed *music.ParsedMUS, loop bool) {
 	if c == nil || c.player == nil || c.driver == nil || parsed == nil {
 		return
 	}
-	const bytesPerFrame = 4
 	chunkFrames := music.DefaultStreamChunkFramesForBackend(c.backend)
-	lookaheadFrames := music.DefaultStreamLookaheadForBackend(c.backend)
-	targetBytes := startupPrefillBytes(lookaheadFrames * bytesPerFrame)
+	enqueueFrames := music.DefaultStreamEnqueueFramesForBackend(c.backend)
 	player := c.player
 	c.StopAndClear()
-	player.SetBlockingPrefill(targetBytes)
 	factory := func() (*music.StreamRenderer, error) {
 		return music.NewParsedMUSStreamRenderer(c.driver, parsed)
 	}
-	var stream *music.StreamRenderer
-	buffered, err := prefillStream(player, factory, &stream, loop, chunkFrames, targetBytes)
-	if err != nil {
-		return
-	}
-	if err := player.Sync(); err != nil {
-		return
-	}
-	if buffered == 0 {
-		return
-	}
-	started := buffered >= targetBytes
-	if started {
-		_ = player.Start()
-	}
-	stop := make(chan struct{})
-	c.stop = stop
-	go c.stream(player, stop, factory, stream, loop, buffered, started)
+	lookaheadFrames := music.DefaultStreamLookaheadForBackend(c.backend)
+	_ = player.PlayStream(factory, loop, chunkFrames, enqueueFrames, lookaheadFrames)
 }
 
 func (c *Controller) playMUS(data []byte, loop bool) {
@@ -244,11 +229,10 @@ func (c *Controller) playParsedOnce(parsed *music.ParsedMUS) {
 }
 
 func (c *Controller) stopStream() {
-	if c == nil || c.stop == nil {
+	if c == nil || c.player == nil {
 		return
 	}
-	close(c.stop)
-	c.stop = nil
+	_ = c.player.StopStream()
 }
 
 func nextChunk(factory musStreamFactory, stream **music.StreamRenderer, loop bool, frames int) ([]byte, error) {
@@ -279,134 +263,6 @@ func nextChunkFrames(factory musStreamFactory, stream **music.StreamRenderer, lo
 			continue
 		}
 		return chunk, nil
-	}
-}
-
-func prefillStream(player *music.ChunkPlayer, factory musStreamFactory, stream **music.StreamRenderer, loop bool, chunkFrames int, targetBytes int) (int, error) {
-	if player == nil || factory == nil || stream == nil {
-		return 0, nil
-	}
-	if targetBytes < 0 {
-		targetBytes = 0
-	}
-	buffered := 0
-	for buffered < targetBytes {
-		chunk, err := nextChunk(factory, stream, loop, chunkFrames)
-		if err != nil {
-			return buffered, err
-		}
-		if len(chunk) > 0 {
-			_ = player.EnqueueBytesS16LE(chunk)
-			buffered += len(chunk)
-		}
-		if *stream == nil {
-			break
-		}
-		if len(chunk) == 0 {
-			break
-		}
-	}
-	if targetBytes == 0 && buffered == 0 {
-		chunk, err := nextChunk(factory, stream, loop, chunkFrames)
-		if err != nil {
-			return buffered, err
-		}
-		if len(chunk) > 0 {
-			_ = player.EnqueueBytesS16LE(chunk)
-			buffered += len(chunk)
-		}
-	}
-	return buffered, nil
-}
-
-func startupPrefillBytes(lookaheadBytes int) int {
-	if lookaheadBytes <= 0 {
-		return 0
-	}
-	return lookaheadBytes
-}
-
-func (c *Controller) stream(player *music.ChunkPlayer, stop <-chan struct{}, factory musStreamFactory, stream *music.StreamRenderer, loop bool, buffered int, started bool) {
-	if c == nil || player == nil || factory == nil {
-		return
-	}
-	const bytesPerFrame = 4
-	const checkPeriod = 12 * time.Millisecond
-	chunkFrames := music.DefaultStreamChunkFramesForBackend(c.backend)
-	lookaheadBytes := music.DefaultStreamLookaheadForBackend(c.backend) * bytesPerFrame
-	targetBytes := startupPrefillBytes(lookaheadBytes)
-	ticker := time.NewTicker(checkPeriod)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		default:
-		}
-		if !started {
-			if buffered < targetBytes {
-				chunk, err := nextChunk(factory, &stream, loop, chunkFrames)
-				if err != nil {
-					return
-				}
-				if stream == nil && len(chunk) == 0 {
-					if buffered == 0 {
-						return
-					}
-				}
-				if len(chunk) > 0 {
-					_ = player.EnqueueBytesS16LE(chunk)
-					buffered += len(chunk)
-				}
-				if buffered < targetBytes {
-					select {
-					case <-stop:
-						return
-					case <-ticker.C:
-					}
-					continue
-				}
-			}
-			if err := player.Sync(); err != nil {
-				return
-			}
-			if buffered == 0 {
-				return
-			}
-			_ = player.Start()
-			started = true
-			continue
-		}
-		buffered = player.BufferedBytes()
-		if buffered == 0 {
-			_ = player.Stop()
-			if err := player.Sync(); err != nil {
-				return
-			}
-			started = false
-			continue
-		}
-		for player.BufferedBytes() >= lookaheadBytes {
-			select {
-			case <-stop:
-				return
-			case <-ticker.C:
-			}
-		}
-		chunk, err := nextChunk(factory, &stream, loop, chunkFrames)
-		if err != nil {
-			return
-		}
-		if stream == nil && len(chunk) == 0 {
-			return
-		}
-		if len(chunk) > 0 {
-			_ = player.EnqueueBytesS16LE(chunk)
-			buffered += len(chunk)
-		}
-		if stream == nil && !loop {
-			return
-		}
 	}
 }
 

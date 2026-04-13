@@ -364,6 +364,9 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 		screen.Fill(color.Black)
 		return
 	}
+	if sg.musicCtl != nil && isWASMBuild() {
+		sg.musicCtl.Tick()
+	}
 	defer yieldWASMRenderTime()
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)

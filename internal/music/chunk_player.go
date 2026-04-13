@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"sync"
+	"time"
 
+	"gddoom/internal/platformcfg"
 	"github.com/hajimehoshi/ebiten/v2/audio"
 )
 
@@ -19,14 +21,24 @@ const (
 	cmdEnqueue
 	cmdSetVolume
 	cmdSync
+	cmdPlayStream
+	cmdStopStream
 	cmdClose
 )
 
+type StreamFactory func() (*StreamRenderer, error)
+
 type playerCmd struct {
-	typ  playerCmdType
-	data []byte
-	vol  float64
-	done chan struct{}
+	typ            playerCmdType
+	data           []byte
+	vol            float64
+	done           chan struct{}
+	streamFactory  StreamFactory
+	loop           bool
+	chunkFrames    int
+	enqueueBytes   int
+	lookaheadBytes int
+	targetBytes    int
 }
 
 // ChunkPlayer plays queued output-rate s16 stereo chunks on a dedicated goroutine.
@@ -39,6 +51,23 @@ type ChunkPlayer struct {
 	cmds chan playerCmd
 	done chan struct{}
 	once sync.Once
+	mu   sync.Mutex
+
+	inline bool
+	closed bool
+	stream *playerStream
+}
+
+type playerStream struct {
+	factory        StreamFactory
+	renderer       *StreamRenderer
+	loop           bool
+	chunkFrames    int
+	enqueueBytes   int
+	lookaheadBytes int
+	targetBytes    int
+	started        bool
+	ended          bool
 }
 
 func NewChunkPlayer() (*ChunkPlayer, error) {
@@ -58,8 +87,11 @@ func NewChunkPlayer() (*ChunkPlayer, error) {
 		volume: 1,
 		cmds:   make(chan playerCmd, chunkPlayerCommandQueueCap()),
 		done:   make(chan struct{}),
+		inline: platformcfg.IsWASMBuild(),
 	}
-	go cp.run()
+	if !cp.inline {
+		go cp.run()
+	}
 	return cp, nil
 }
 
@@ -101,6 +133,50 @@ func (cp *ChunkPlayer) SetVolume(v float64) error {
 
 func (cp *ChunkPlayer) Sync() error {
 	return cp.sendAndWait(playerCmd{typ: cmdSync, done: make(chan struct{})})
+}
+
+func (cp *ChunkPlayer) PlayStream(factory StreamFactory, loop bool, chunkFrames int, enqueueFrames int, lookaheadFrames int) error {
+	if chunkFrames <= 0 {
+		chunkFrames = DefaultStreamChunkFrames()
+	}
+	if enqueueFrames <= 0 {
+		enqueueFrames = DefaultStreamEnqueueFrames()
+	}
+	if enqueueFrames < chunkFrames {
+		enqueueFrames = chunkFrames
+	}
+	if lookaheadFrames <= 0 {
+		lookaheadFrames = DefaultStreamLookahead()
+	}
+	const bytesPerFrame = 4
+	lookaheadBytes := lookaheadFrames * bytesPerFrame
+	targetBytes := startupPrefillBytes(lookaheadBytes)
+	return cp.send(playerCmd{
+		typ:            cmdPlayStream,
+		streamFactory:  factory,
+		loop:           loop,
+		chunkFrames:    chunkFrames,
+		enqueueBytes:   enqueueFrames * bytesPerFrame,
+		lookaheadBytes: lookaheadBytes,
+		targetBytes:    targetBytes,
+	})
+}
+
+func (cp *ChunkPlayer) StopStream() error {
+	return cp.send(playerCmd{typ: cmdStopStream})
+}
+
+func (cp *ChunkPlayer) Tick() error {
+	if cp == nil || !cp.inline {
+		return nil
+	}
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	if cp.closed {
+		return io.ErrClosedPipe
+	}
+	cp.serviceStreamLocked(true)
+	return nil
 }
 
 func (cp *ChunkPlayer) SetBlockingPrefill(targetBytes int) {
@@ -164,6 +240,25 @@ func (cp *ChunkPlayer) send(cmd playerCmd) error {
 	if cp == nil {
 		return errors.New("music: nil chunk player")
 	}
+	if cp.inline {
+		cp.mu.Lock()
+		defer cp.mu.Unlock()
+		if cp.closed {
+			return io.ErrClosedPipe
+		}
+		if !cp.executeCommand(cmd) {
+			cp.closed = true
+			close(cp.done)
+			if cmd.typ == cmdClose {
+				return nil
+			}
+			return io.ErrClosedPipe
+		}
+		if cmd.done != nil {
+			close(cmd.done)
+		}
+		return nil
+	}
 	select {
 	case <-cp.done:
 		return io.ErrClosedPipe
@@ -188,13 +283,33 @@ func (cp *ChunkPlayer) sendAndWait(cmd playerCmd) error {
 }
 
 func (cp *ChunkPlayer) run() {
+	ticker := time.NewTicker(12 * time.Millisecond)
+	defer ticker.Stop()
 	defer close(cp.done)
 	for cmd := range cp.cmds {
 		if !cp.executeCommand(cmd) {
+			cp.closed = true
 			return
 		}
 		if cmd.done != nil {
 			close(cmd.done)
+		}
+		for cp.stream != nil {
+			select {
+			case cmd = <-cp.cmds:
+				if !cp.executeCommand(cmd) {
+					cp.closed = true
+					return
+				}
+				if cmd.done != nil {
+					close(cmd.done)
+				}
+			case <-ticker.C:
+				cp.serviceStreamLocked(false)
+				if cp.closed {
+					return
+				}
+			}
 		}
 	}
 }
@@ -204,10 +319,13 @@ func (cp *ChunkPlayer) executeCommand(cmd playerCmd) bool {
 	case cmdStart:
 		cp.player.Play()
 	case cmdStop:
+		cp.clearStreamLocked()
 		cp.player.Pause()
 	case cmdClear:
+		cp.clearStreamLocked()
 		cp.src.Clear()
 	case cmdReset:
+		cp.clearStreamLocked()
 		cp.src.Clear()
 		cp.player.Pause()
 		_ = cp.player.Close()
@@ -223,13 +341,206 @@ func (cp *ChunkPlayer) executeCommand(cmd playerCmd) bool {
 		cp.volume = cmd.vol
 		cp.player.SetVolume(cmd.vol)
 	case cmdSync:
+	case cmdPlayStream:
+		cp.startStreamLocked(cmd.streamFactory, cmd.loop, cmd.chunkFrames, cmd.enqueueBytes, cmd.lookaheadBytes, cmd.targetBytes)
+	case cmdStopStream:
+		cp.clearStreamLocked()
 	case cmdClose:
+		cp.clearStreamLocked()
 		cp.player.Pause()
 		cp.src.Close()
 		_ = cp.player.Close()
 		return false
 	}
 	return true
+}
+
+func (cp *ChunkPlayer) startStreamLocked(factory StreamFactory, loop bool, chunkFrames int, enqueueBytes int, lookaheadBytes int, targetBytes int) {
+	cp.clearStreamLocked()
+	if factory == nil {
+		return
+	}
+	if chunkFrames <= 0 {
+		chunkFrames = DefaultStreamChunkFrames()
+	}
+	if lookaheadBytes < 0 {
+		lookaheadBytes = 0
+	}
+	if targetBytes < 0 {
+		targetBytes = 0
+	}
+	cp.stream = &playerStream{
+		factory:        factory,
+		loop:           loop,
+		chunkFrames:    chunkFrames,
+		enqueueBytes:   enqueueBytes,
+		lookaheadBytes: lookaheadBytes,
+		targetBytes:    targetBytes,
+	}
+	cp.src.SetBlockingPrefill(targetBytes)
+	cp.serviceStreamLocked(true)
+}
+
+func (cp *ChunkPlayer) clearStreamLocked() {
+	cp.stream = nil
+	cp.src.DisableBlockingPrefill()
+}
+
+func (cp *ChunkPlayer) serviceStreamLocked(fillFully bool) {
+	for cp.stream != nil {
+		sp := cp.stream
+		buffered := cp.src.BufferedBytes()
+		if !sp.started {
+			for buffered < sp.targetBytes {
+				chunk, alive := cp.nextStreamBatchLocked(sp, sp.targetBytes-buffered)
+				if len(chunk) > 0 {
+					cp.enqueueChunkLocked(chunk)
+					buffered = cp.src.BufferedBytes()
+				}
+				if !alive || len(chunk) == 0 {
+					break
+				}
+			}
+			buffered = cp.src.BufferedBytes()
+			if buffered == 0 && cp.stream == nil {
+				return
+			}
+			if buffered >= sp.targetBytes || cp.stream == nil {
+				cp.player.Play()
+				sp.started = buffered > 0
+			}
+			if !fillFully {
+				return
+			}
+			if cp.stream == nil {
+				return
+			}
+		}
+		buffered = cp.src.BufferedBytes()
+		if buffered == 0 {
+			cp.player.Pause()
+			if cp.stream == nil {
+				return
+			}
+			if cp.stream.renderer == nil && cp.stream.ended {
+				cp.clearStreamLocked()
+				return
+			}
+			cp.stream.started = false
+			cp.src.SetBlockingPrefill(cp.stream.targetBytes)
+			if !fillFully {
+				return
+			}
+			continue
+		}
+		if buffered >= sp.lookaheadBytes && !fillFully {
+			return
+		}
+		progress := false
+		for buffered < sp.lookaheadBytes {
+			chunk, alive := cp.nextStreamBatchLocked(sp, sp.lookaheadBytes-buffered)
+			if len(chunk) > 0 {
+				cp.enqueueChunkLocked(chunk)
+				buffered = cp.src.BufferedBytes()
+				progress = true
+			}
+			if !alive || len(chunk) == 0 {
+				break
+			}
+			if !fillFully {
+				return
+			}
+		}
+		if !progress {
+			return
+		}
+		if !fillFully {
+			return
+		}
+	}
+}
+
+func (cp *ChunkPlayer) nextStreamBatchLocked(sp *playerStream, wantBytes int) ([]byte, bool) {
+	if cp == nil || sp == nil {
+		return nil, false
+	}
+	targetBytes := sp.enqueueBytes
+	if targetBytes <= 0 {
+		targetBytes = sp.chunkFrames * 4
+	}
+	if wantBytes > 0 && wantBytes < targetBytes {
+		targetBytes = wantBytes
+	}
+	if targetBytes <= 0 {
+		targetBytes = sp.chunkFrames * 4
+	}
+	var batch []byte
+	alive := false
+	for len(batch) < targetBytes {
+		chunk, nextAlive := cp.nextStreamChunkLocked(sp)
+		if len(chunk) > 0 {
+			batch = append(batch, chunk...)
+		}
+		if nextAlive {
+			alive = true
+		}
+		if !nextAlive || len(chunk) == 0 {
+			break
+		}
+	}
+	return batch, alive
+}
+
+func (cp *ChunkPlayer) nextStreamChunkLocked(sp *playerStream) ([]byte, bool) {
+	if cp == nil || sp == nil || sp.factory == nil {
+		return nil, false
+	}
+	if sp.ended {
+		return nil, false
+	}
+	for {
+		if sp.renderer == nil {
+			next, err := sp.factory()
+			if err != nil || next == nil {
+				cp.clearStreamLocked()
+				return nil, false
+			}
+			sp.renderer = next
+		}
+		chunk, done, err := sp.renderer.NextChunkS16LE(sp.chunkFrames)
+		if err != nil {
+			cp.clearStreamLocked()
+			return nil, false
+		}
+		if done {
+			sp.renderer = nil
+			if !sp.loop {
+				sp.ended = true
+				return chunk, len(chunk) > 0
+			}
+			if len(chunk) > 0 {
+				return chunk, true
+			}
+			continue
+		}
+		return chunk, true
+	}
+}
+
+func (cp *ChunkPlayer) enqueueChunkLocked(chunk []byte) {
+	if cp == nil || cp.src == nil || len(chunk) == 0 {
+		return
+	}
+	b := cp.src.acquireChunk(len(chunk))
+	copy(b, chunk)
+	cp.src.Enqueue(b)
+}
+
+func startupPrefillBytes(lookaheadBytes int) int {
+	if lookaheadBytes <= 0 {
+		return 0
+	}
+	return lookaheadBytes
 }
 
 type pcmChunkBuffer struct {
