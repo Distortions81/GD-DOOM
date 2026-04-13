@@ -9,7 +9,7 @@ import (
 	"gddoom/internal/media"
 )
 
-const maxConcurrentWASMSounds = 8
+const maxConcurrentWASMSounds = 4
 
 func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, mapUsesFullClip bool, group string) bool {
 	if p == nil || p.ctx == nil || p.sourcePort || sample.SampleRate <= 0 || len(sample.Data) == 0 {
@@ -106,8 +106,8 @@ func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample, key wasmS
 			lru = voice
 		}
 	}
+	size := wasmCachedPCMSize(sample, p.ctx.SampleRate())
 	if len(p.voices) < maxSpatialVoices() {
-		size := resampledMonoLen(len(sample.Data), sample.SampleRate, p.ctx.SampleRate()) * 4
 		src := &pcmBufferSource{buf: make([]byte, size)}
 		player, err := p.ctx.NewPlayer(src)
 		if err != nil {
@@ -123,7 +123,7 @@ func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample, key wasmS
 	}
 	candidate.player.Pause()
 	_ = candidate.player.Rewind()
-	candidate.src.buf = PCMMonoU8ToStereoS16LEMonoResampledInto(candidate.src.buf[:0], sample.Data, sample.SampleRate, p.ctx.SampleRate())
+	candidate.src.buf = buildWASMCachedPCMInto(candidate.src.buf[:0], sample, p.ctx.SampleRate())
 	candidate.src.Reset(candidate.src.buf)
 	candidate.key = key
 	candidate.stamp++
@@ -140,6 +140,20 @@ func (p *SpatialPlayer) wasmActiveVoiceCount() int {
 		}
 	}
 	return count
+}
+
+func wasmCachedPCMSize(sample media.PCMSample, dstRate int) int {
+	if sample.FaithfulPreparedRate == dstRate && len(sample.FaithfulPreparedMono) > 0 {
+		return len(sample.FaithfulPreparedMono) * 4
+	}
+	return resampledMonoLen(len(sample.Data), sample.SampleRate, dstRate) * 4
+}
+
+func buildWASMCachedPCMInto(dst []byte, sample media.PCMSample, dstRate int) []byte {
+	if sample.FaithfulPreparedRate == dstRate && len(sample.FaithfulPreparedMono) > 0 {
+		return PCMMonoS16ToStereoS16LESpatialInto(dst, sample.FaithfulPreparedMono, 1, 1)
+	}
+	return PCMMonoU8ToStereoS16LEMonoResampledInto(dst, sample.Data, sample.SampleRate, dstRate)
 }
 
 func PCMMonoU8ToStereoS16LEMonoResampledInto(dst []byte, src []byte, srcRate, dstRate int) []byte {
