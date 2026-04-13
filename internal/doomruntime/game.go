@@ -19918,6 +19918,13 @@ func appendSpriteRowVisibleSpansDepthQFast(out []solidSpan, y, l, r int, depthQ 
 	}
 	runStart := -1
 	for x := inL; x <= inR; x++ {
+		firstDepthQ := maskedClipFirstDepthQ[x]
+		if depthQ <= wallDepthQCol[x] && (firstDepthQ == 0 || depthQ <= firstDepthQ) {
+			if runStart < 0 {
+				runStart = x
+			}
+			continue
+		}
 		occluded := false
 		if depthQ > wallDepthQCol[x] {
 			if wallDepthClosedCol[x] {
@@ -19929,11 +19936,8 @@ func appendSpriteRowVisibleSpansDepthQFast(out []solidSpan, y, l, r int, depthQ 
 				}
 			}
 		}
-		if !occluded {
-			firstDepthQ := maskedClipFirstDepthQ[x]
-			if firstDepthQ != 0 && depthQ > firstDepthQ {
-				occluded = maskedClipColumnOccludesPointSorted(maskedClipCols[x], y, depthQ)
-			}
+		if !occluded && firstDepthQ != 0 && depthQ > firstDepthQ {
+			occluded = maskedClipColumnOccludesPointSorted(maskedClipCols[x], y, depthQ)
 		}
 		if occluded {
 			if runStart >= 0 {
