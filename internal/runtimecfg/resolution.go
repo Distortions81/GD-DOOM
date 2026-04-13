@@ -12,6 +12,9 @@ const (
 	faithfulDefaultWindowW = 1280
 	faithfulDefaultWindowH = 960
 	faithfulAspectLogicalH = 240
+
+	sourcePortMaxWindowW = 1920
+	sourcePortMaxWindowH = 1080
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.
@@ -40,8 +43,31 @@ func ensurePositiveRenderSize(opts *Options) {
 }
 
 func clampSourcePortWindowSizeForPlatform(w, h int, wasm bool) (int, int) {
-	_ = wasm
-	return w, h
+	if !wasm {
+		return w, h
+	}
+	if w <= sourcePortMaxWindowW && h <= sourcePortMaxWindowH {
+		return w, h
+	}
+	if w <= 0 {
+		w = sourcePortMaxWindowW
+	}
+	if h <= 0 {
+		h = sourcePortMaxWindowH
+	}
+	// Keep aspect ratio while fitting into the 1920x1080 ceiling.
+	if w*sourcePortMaxWindowH >= h*sourcePortMaxWindowW {
+		clampedH := (h * sourcePortMaxWindowW) / w
+		if clampedH < 1 {
+			clampedH = 1
+		}
+		return sourcePortMaxWindowW, clampedH
+	}
+	clampedW := (w * sourcePortMaxWindowH) / h
+	if clampedW < 1 {
+		clampedW = 1
+	}
+	return clampedW, sourcePortMaxWindowH
 }
 
 // NormalizeRunDimensions centralizes render/window sizing policy for runtime.

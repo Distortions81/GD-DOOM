@@ -8,6 +8,9 @@ const (
 	sourcePortDefaultWindowW = 1280
 	sourcePortDefaultWindowH = 800
 
+	sourcePortMaxWindowW = 1920
+	sourcePortMaxWindowH = 1080
+
 	faithfulDefaultWindowW = 1280
 	faithfulDefaultWindowH = 960
 	faithfulBufferW        = doomLogicalW * 2
@@ -43,6 +46,28 @@ func normalizeRunDimensions(opts Options) (Options, int, int) {
 }
 
 func clampSourcePortGameSizeForPlatform(w, h int, wasm bool) (int, int) {
-	_ = wasm
-	return w, h
+	if !wasm {
+		return w, h
+	}
+	if w <= sourcePortMaxWindowW && h <= sourcePortMaxWindowH {
+		return w, h
+	}
+	if w <= 0 {
+		w = sourcePortMaxWindowW
+	}
+	if h <= 0 {
+		h = sourcePortMaxWindowH
+	}
+	if w*sourcePortMaxWindowH >= h*sourcePortMaxWindowW {
+		clampedH := (h * sourcePortMaxWindowW) / w
+		if clampedH < 1 {
+			clampedH = 1
+		}
+		return sourcePortMaxWindowW, clampedH
+	}
+	clampedW := (w * sourcePortMaxWindowH) / h
+	if clampedW < 1 {
+		clampedW = 1
+	}
+	return clampedW, sourcePortMaxWindowH
 }

@@ -121,10 +121,10 @@ func TestEnsurePositiveRenderSize(t *testing.T) {
 	}
 }
 
-func TestClampSourcePortGameSizeForWASMLeavesSizeUnchanged(t *testing.T) {
+func TestClampSourcePortGameSizeForWASMLimitsToMax(t *testing.T) {
 	w, h := clampSourcePortGameSizeForPlatform(2560, 1440, true)
-	if w != 2560 || h != 1440 {
-		t.Fatalf("game=%dx%d want 2560x1440", w, h)
+	if w != 1920 || h != 1080 {
+		t.Fatalf("game=%dx%d want 1920x1080", w, h)
 	}
 }
 
@@ -135,7 +135,7 @@ func TestClampSourcePortGameSizeForNativeLeavesSizeUnchanged(t *testing.T) {
 	}
 }
 
-func TestSourcePortLayoutWASMDoesNotClampLogicalSizeOrRenderView(t *testing.T) {
+func TestSourcePortLayoutWASMClampsRenderViewToMax(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
@@ -157,8 +157,8 @@ func TestSourcePortLayoutWASMDoesNotClampLogicalSizeOrRenderView(t *testing.T) {
 	if layoutW != 2560 || layoutH != 1440 {
 		t.Fatalf("layout=%dx%d want 2560x1440", layoutW, layoutH)
 	}
-	if sg.g.viewW != 2560 || sg.g.viewH != 1440 {
-		t.Fatalf("render view=%dx%d want 2560x1440", sg.g.viewW, sg.g.viewH)
+	if sg.g.viewW != 1920 || sg.g.viewH != 1080 {
+		t.Fatalf("render view=%dx%d want 1920x1080", sg.g.viewW, sg.g.viewH)
 	}
 	if sg.g.skyOutputW != 2560 || sg.g.skyOutputH != 1440 {
 		t.Fatalf("sky output=%dx%d want 2560x1440", sg.g.skyOutputW, sg.g.skyOutputH)
@@ -171,15 +171,15 @@ func TestSourcePortLayoutWASMOversizeDoesNotRepeatedlyInvokeRuntimeLayout(t *tes
 	defer platformcfg.SetForcedWASMMode(prev)
 
 	rt := &layoutCountRuntime{
-		viewW:      2560,
-		viewH:      1440,
+		viewW:      1920,
+		viewH:      1080,
 		skyOutputW: 2560,
 		skyOutputH: 1440,
 	}
 	g := &game{
 		opts:       Options{SourcePortMode: true},
-		viewW:      2560,
-		viewH:      1440,
+		viewW:      1920,
+		viewH:      1080,
 		skyOutputW: 2560,
 		skyOutputH: 1440,
 	}
@@ -192,6 +192,10 @@ func TestSourcePortLayoutWASMOversizeDoesNotRepeatedlyInvokeRuntimeLayout(t *tes
 	layoutW, layoutH := sg.Layout(2560, 1440)
 	if layoutW != 2560 || layoutH != 1440 {
 		t.Fatalf("layout=%dx%d want 2560x1440", layoutW, layoutH)
+	}
+	layoutW, layoutH = sg.Layout(2560, 1440)
+	if layoutW != 2560 || layoutH != 1440 {
+		t.Fatalf("repeat layout=%dx%d want 2560x1440", layoutW, layoutH)
 	}
 	if rt.layoutCalls != 0 {
 		t.Fatalf("runtime Layout() calls=%d want 0", rt.layoutCalls)
