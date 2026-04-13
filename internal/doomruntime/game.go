@@ -19918,19 +19918,11 @@ func appendSpriteRowVisibleSpansDepthQFast(out []solidSpan, y, l, r int, depthQ 
 		out = append(out, solidSpan{L: l, R: inL - 1})
 	}
 	runStart := -1
-	for x := inL; x <= inR; {
+	for x := inL; x <= inR; x++ {
 		firstDepthQ := maskedClipFirstDepthQ[x]
 		if depthQ <= wallDepthQCol[x] && (firstDepthQ == 0 || depthQ <= firstDepthQ) {
 			if runStart < 0 {
 				runStart = x
-			}
-			x++
-			for x <= inR {
-				firstDepthQ = maskedClipFirstDepthQ[x]
-				if depthQ > wallDepthQCol[x] || (firstDepthQ != 0 && depthQ > firstDepthQ) {
-					break
-				}
-				x++
 			}
 			continue
 		}
@@ -19953,13 +19945,11 @@ func appendSpriteRowVisibleSpansDepthQFast(out []solidSpan, y, l, r int, depthQ 
 				out = append(out, solidSpan{L: runStart, R: x - 1})
 				runStart = -1
 			}
-			x++
 			continue
 		}
 		if runStart < 0 {
 			runStart = x
 		}
-		x++
 	}
 	if runStart >= 0 {
 		out = append(out, solidSpan{L: runStart, R: inR})
