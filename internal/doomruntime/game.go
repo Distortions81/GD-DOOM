@@ -6598,8 +6598,8 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 		return false
 	}
 	colBase := tx * tex.Height
-	useIndexedCol := len(texIndexedCol) == tex.Width*tex.Height
 	repeatTexelRows := texVStepFixed*2 <= fracUnit
+	useIndexedCol := len(texIndexedCol) == tex.Width*tex.Height
 	for i := runStart; i < runEnd; i++ {
 		runTop, runBot := media.UnpackOpaqueRun(tex.OpaqueRuns[i])
 		srcTop := cycleBase + runTop
@@ -6649,51 +6649,31 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 					continue
 				}
 				ty := wrapIndex(int(runTexVFixed>>fracBits), tex.Height)
+				txVal := texIndexed[ty*tex.Width+tx]
 				if useIndexedCol {
-					dst := packedRow[texIndexedCol[colBase+ty]]
-					if repeatTexelRows {
-						runLen := 1
-						nextTexVFixed := runTexVFixed + texVStepFixed
-						for y+runLen <= drawY1 && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
-							nextPixI := pixI + runLen*rowStridePix
-							if g.cutoutCoveredAtIndex(nextPixI) {
-								break
-							}
-							runLen++
-							nextTexVFixed += texVStepFixed
-						}
-						if runLen > 1 {
-							g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
-							pixI += runLen * rowStridePix
-							runTexVFixed += int64(runLen) * texVStepFixed
-							y += runLen - 1
-							continue
-						}
-					}
-					g.wallPix32[pixI] = dst
-				} else {
-					dst := packedRow[texIndexed[ty*tex.Width+tx]]
-					if repeatTexelRows {
-						runLen := 1
-						nextTexVFixed := runTexVFixed + texVStepFixed
-						for y+runLen <= drawY1 && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
-							nextPixI := pixI + runLen*rowStridePix
-							if g.cutoutCoveredAtIndex(nextPixI) {
-								break
-							}
-							runLen++
-							nextTexVFixed += texVStepFixed
-						}
-						if runLen > 1 {
-							g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
-							pixI += runLen * rowStridePix
-							runTexVFixed += int64(runLen) * texVStepFixed
-							y += runLen - 1
-							continue
-						}
-					}
-					g.wallPix32[pixI] = dst
+					txVal = texIndexedCol[colBase+ty]
 				}
+				dst := packedRow[txVal]
+				if repeatTexelRows {
+					runLen := 1
+					nextTexVFixed := runTexVFixed + texVStepFixed
+					for y+runLen <= drawY1 && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
+						nextPixI := pixI + runLen*rowStridePix
+						if g.cutoutCoveredAtIndex(nextPixI) {
+							break
+						}
+						runLen++
+						nextTexVFixed += texVStepFixed
+					}
+					if runLen > 1 {
+						g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
+						pixI += runLen * rowStridePix
+						runTexVFixed += int64(runLen) * texVStepFixed
+						y += runLen - 1
+						continue
+					}
+				}
+				g.wallPix32[pixI] = dst
 				g.markCutoutCoveredAtIndex(pixI)
 				pixI += rowStridePix
 				runTexVFixed += texVStepFixed
@@ -6730,12 +6710,11 @@ func drawMaskedColumnProjectedTexelSpans(g *game, x, baseY, drawY0, drawY1 int, 
 		if spanY0 > spanY1 {
 			continue
 		}
-		dst := uint32(0)
+		txVal := texIndexed[ty*texW+tx]
 		if useIndexedCol {
-			dst = packedRow[texIndexedCol[colBase+ty]]
-		} else {
-			dst = packedRow[texIndexed[ty*texW+tx]]
+			txVal = texIndexedCol[colBase+ty]
 		}
+		dst := packedRow[txVal]
 		pixI := spanY0*rowStridePix + x
 		endPixI := spanY1*rowStridePix + x
 		for pixI <= endPixI {
@@ -8203,17 +8182,7 @@ func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, sh
 }
 
 func fillUint32Span(dst []uint32, value uint32) {
-	if len(dst) == 0 {
-		return
-	}
-	dst[0] = value
-	for filled := 1; filled < len(dst); filled *= 2 {
-		copyLen := filled
-		if copyLen > len(dst)-filled {
-			copyLen = len(dst) - filled
-		}
-		copy(dst[filled:filled+copyLen], dst[:copyLen])
-	}
+	fillPackedRun(dst, 0, len(dst), value)
 }
 
 func (g *game) fillCutoutRowSpan(row, x0, x1 int, value uint32) {
@@ -8597,6 +8566,7 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 	used := false
 	mask := it.tex.OpaqueMask
 	viewW := g.viewW
+	useIndexed := len(srcIndexed) == tw*it.tex.Height
 	for ty := 0; ty < it.tex.Height; ty++ {
 		rowMask := mask[ty*tw : (ty+1)*tw]
 		for tx0 := 0; tx0 < tw; {

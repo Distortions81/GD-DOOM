@@ -220,6 +220,16 @@ func drawPlaneSpanIndexedPacked(dst []uint32, dstI, count int, texIndexed []byte
 	return drawPlaneSpanIndexedPackedScalar(dst, dstI, count, texIndexed, packedRow, stepper)
 }
 
+func drawPlaneSpanIndexedPackedUnchecked(dst []uint32, dstI, count int, texIndexed []byte, packedRow []uint32, stepper planeTexStepper) planeTexStepper {
+	if count <= 0 {
+		return stepper
+	}
+	if stepper.repeatEligible() {
+		return drawPlaneSpanIndexedPackedFast(dst, dstI, count, texIndexed, packedRow, stepper)
+	}
+	return drawPlaneSpanIndexedPackedScalar(dst, dstI, count, texIndexed, packedRow, stepper)
+}
+
 func drawPlaneSpanIndexedDOOMRowScalar(dst []uint32, dstI, count int, texIndexed []byte, row int, stepper planeTexStepper) planeTexStepper {
 	for ; count >= 4; count -= 4 {
 		dst[dstI] = shadePaletteIndexDOOMRow(texIndexed[stepper.texelIndex()], row)
@@ -306,25 +316,19 @@ func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, 
 	}
 	texIndexed := sample.fromIndexed
 	if state.defaultRow >= doomNumColorMaps || doomColormapEnabled {
-		if len(texIndexed) == 64*64 {
-			if packedRow := doomColormapPackedRow(state.defaultRow); len(packedRow) == 256 {
-				drawPlaneSpanIndexedPacked(pix32, pixI, count, texIndexed, packedRow, stepper)
-			} else {
-				drawPlaneSpanIndexedDOOMRowScalar(pix32, pixI, count, texIndexed, state.defaultRow, stepper)
-			}
+		if packedRow := doomColormapPackedRow(state.defaultRow); len(packedRow) == 256 {
+			drawPlaneSpanIndexedPackedUnchecked(pix32, pixI, count, texIndexed, packedRow, stepper)
+		} else {
+			drawPlaneSpanIndexedDOOMRowScalar(pix32, pixI, count, texIndexed, state.defaultRow, stepper)
 		}
 		return
 	}
 	if fullbrightNoLighting {
-		if len(texIndexed) == 64*64 && wallShadePackedOK {
-			drawPlaneSpanIndexedPacked(pix32, pixI, count, texIndexed, wallShadePackedLUT[256][:], stepper)
-		}
+		drawPlaneSpanIndexedPackedUnchecked(pix32, pixI, count, texIndexed, wallShadePackedLUT[256][:], stepper)
 		return
 	}
-	if len(texIndexed) == 64*64 && wallShadePackedOK {
-		if state.defaultShade > 256 {
-			state.defaultShade = 256
-		}
-		drawPlaneSpanIndexedPacked(pix32, pixI, count, texIndexed, wallShadePackedLUT[state.defaultShade][:], stepper)
+	if state.defaultShade > 256 {
+		state.defaultShade = 256
 	}
+	drawPlaneSpanIndexedPackedUnchecked(pix32, pixI, count, texIndexed, wallShadePackedLUT[state.defaultShade][:], stepper)
 }
