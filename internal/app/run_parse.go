@@ -62,7 +62,13 @@ func explicitMapStartInMap(startInMap bool, mapExplicit bool) bool {
 }
 
 func shouldOpenIWADPicker(render, noExplicitWAD, forceWASMPicker bool, pickerChoiceCount int) bool {
-	return render && pickerChoiceCount > 0 && (noExplicitWAD || forceWASMPicker)
+	if !render || pickerChoiceCount <= 0 {
+		return false
+	}
+	if noExplicitWAD {
+		return true
+	}
+	return forceWASMPicker
 }
 
 func resolveForceWASMMode(args []string) bool {
@@ -748,7 +754,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	defer stopCPUProfile()
 	noExplicitWAD := !wadFlagSet && (cfg == nil || cfg.Wad == nil || strings.TrimSpace(*cfg.Wad) == "")
-	forceWASMPicker := isWASMBuild() && *render
+	forceWASMPicker := isWASMBuild() && *render && !wadFlagSet
 	choices := detectAvailableIWADChoices(".")
 	pickerChoices := choices
 	if len(pickerChoices) == 0 && isWASMBuild() {

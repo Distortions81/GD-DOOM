@@ -38,13 +38,15 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 		return true
 	}
 	voice.group = group
-	voice.player.Pause()
+	wasPlaying := voice.player.IsPlaying()
 	if err := voice.player.Rewind(); err != nil {
 		_ = voice.player.Close()
 		return true
 	}
 	voice.player.SetVolume(gain)
-	voice.player.Play()
+	if !wasPlaying {
+		voice.player.Play()
+	}
 	return true
 }
 

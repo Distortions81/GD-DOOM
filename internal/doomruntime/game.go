@@ -20958,7 +20958,6 @@ func (g *game) recordDemoBenchFrame(renderDur time.Duration) {
 		ns = 0
 	}
 	g.demoBenchFrameNS = append(g.demoBenchFrameNS, ns)
-	fmt.Printf("demo-frame tick=%d draw=%d ns=%d ms=%.3f\n", g.worldTic, g.demoBenchDraws, ns, float64(ns)/float64(time.Millisecond))
 }
 
 func demoBenchLowFrameNS(frameNS []int64, quantile float64) int64 {

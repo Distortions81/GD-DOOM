@@ -172,6 +172,13 @@ func TestShouldOpenIWADPickerForWASMEvenWithExplicitWAD(t *testing.T) {
 	}
 }
 
+func TestShouldOpenIWADPickerSkipsForcedWASMWhenExplicitWADProvided(t *testing.T) {
+	forceWASMPicker := false
+	if shouldOpenIWADPicker(true, false, forceWASMPicker, 1) {
+		t.Fatal("picker should stay closed for explicit WAD launches in forced WASM mode")
+	}
+}
+
 func TestShouldOpenIWADPickerRequiresChoicesAndRender(t *testing.T) {
 	if shouldOpenIWADPicker(false, true, true, 1) {
 		t.Fatal("picker should stay closed when render is disabled")
