@@ -79,6 +79,7 @@ type FrontendConfig struct {
 	MainMenuCount     int
 	MainMenuRows      []int
 	SkillMenuCount    int
+	SaveLoadCount     int
 	StatusTics        int
 }
 
@@ -758,12 +759,13 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			result.Sound = FrontendSoundBack
 			return result
 		}
+		saveLoadCount := max(cfg.SaveLoadCount, 1)
 		if input.Up {
-			result.State.SaveLoadOn = (state.SaveLoadOn + 6) % 7
+			result.State.SaveLoadOn = (state.SaveLoadOn + saveLoadCount - 1) % saveLoadCount
 			result.Sound = FrontendSoundMove
 		}
 		if input.Down {
-			result.State.SaveLoadOn = (state.SaveLoadOn + 1) % 7
+			result.State.SaveLoadOn = (state.SaveLoadOn + 1) % saveLoadCount
 			result.Sound = FrontendSoundMove
 		}
 		if input.Select {

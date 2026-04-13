@@ -80,6 +80,26 @@ func TestStepFrontendSaveLoadMenuSelectsQuicksaveSlotZero(t *testing.T) {
 	}
 }
 
+func TestStepFrontendSaveLoadMenuWrapsUsingConfiguredCount(t *testing.T) {
+	up := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeSaveLoad, SaveLoadOn: 0},
+		FrontendInput{Up: true},
+		FrontendConfig{SaveLoadCount: 10},
+	)
+	if got := up.State.SaveLoadOn; got != 9 {
+		t.Fatalf("up SaveLoadOn=%d want 9", got)
+	}
+
+	down := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeSaveLoad, SaveLoadOn: 9},
+		FrontendInput{Down: true},
+		FrontendConfig{SaveLoadCount: 10},
+	)
+	if got := down.State.SaveLoadOn; got != 0 {
+		t.Fatalf("down SaveLoadOn=%d want 0", got)
+	}
+}
+
 func TestStepFrontendMainMenuSelectableRowsSkipsDisabledItems(t *testing.T) {
 	cfg := FrontendConfig{
 		MainMenuCount: 6,

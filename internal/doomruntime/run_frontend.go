@@ -652,6 +652,19 @@ func (sg *sessionGame) tickFrontend() error {
 	if sg.frontend.Mode == frontendModeKeybinds {
 		return sg.tickFrontendKeybindMenu()
 	}
+	saveSlots := []int(nil)
+	if sg.frontend.Mode == frontendModeSaveLoad {
+		saveSlots = sg.availableSaveSlots(sg.frontend.SaveLoadSaving)
+		if len(saveSlots) == 0 {
+			saveSlots = []int{0}
+		}
+		if sg.frontend.SaveLoadOn >= len(saveSlots) {
+			sg.frontend.SaveLoadOn = len(saveSlots) - 1
+		}
+		if sg.frontend.SaveLoadOn < 0 {
+			sg.frontend.SaveLoadOn = 0
+		}
+	}
 	var advanceAttract bool
 	sg.frontend, advanceAttract = sessionflow.AdvanceFrontendFrame(sessionflow.Frontend(sg.frontend), menuSkullBlinkTics)
 	if advanceAttract {
@@ -684,6 +697,7 @@ func (sg *sessionGame) tickFrontend() error {
 			MainMenuCount:     len(frontendMainMenuNames),
 			MainMenuRows:      sg.frontendMainMenuSelectableRows(),
 			SkillMenuCount:    len(frontendSkillMenuNames),
+			SaveLoadCount:     len(saveSlots),
 			StatusTics:        doomTicsPerSecond,
 		},
 	)
@@ -825,12 +839,20 @@ func (sg *sessionGame) tickFrontend() error {
 		sg.startGameFromFrontend(result.StartGameSkill)
 	}
 	if result.LoadGameSlot >= 0 {
-		if err := sg.LoadGameFromSlot(result.LoadGameSlot); err != nil {
+		slot, ok := saveSlotAtIndex(saveSlots, result.LoadGameSlot)
+		if !ok {
+			slot = 0
+		}
+		if err := sg.LoadGameFromSlot(slot); err != nil {
 			sg.frontendStatus("LOAD FAILED", doomTicsPerSecond*2)
 		}
 	}
 	if result.SaveGameSlot >= 0 {
-		if err := sg.SaveGameToSlot(result.SaveGameSlot); err != nil {
+		slot, ok := saveSlotAtIndex(saveSlots, result.SaveGameSlot)
+		if !ok {
+			slot = 0
+		}
+		if err := sg.SaveGameToSlot(slot); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
 		} else {
 			sg.frontendStatus("GAME SAVED", doomTicsPerSecond*2)
@@ -963,24 +985,34 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			title = "M_LOADG"
 		}
 		_ = sg.drawMenuPatch(screen, title, 72, 28, scale, ox, oy, false)
-		labels := sg.saveSlotDescriptions(7)
+		slots := sg.availableSaveSlots(sg.frontend.SaveLoadSaving)
+		if len(slots) == 0 {
+			slots = []int{0}
+		}
+		selected := sg.frontend.SaveLoadOn
+		if selected < 0 {
+			selected = 0
+		}
+		if selected >= len(slots) {
+			selected = len(slots) - 1
+		}
+		labels := sg.saveSlotDescriptions(slots)
 		const menuX = 56
 		const menuY = 54
 		const lineHeight = 16
-		for i, label := range labels {
-			y := menuY + i*lineHeight
+		start, end := saveLoadVisibleWindow(len(labels), selected, 7)
+		for row, i := 0, start; i < end; i, row = i+1, row+1 {
+			label := labels[i]
+			y := menuY + row*lineHeight
 			_ = sg.drawMenuPatch(screen, "M_LSLEFT", menuX-8, y+7, scale, ox, oy, false)
 			for j := 0; j < 24; j++ {
 				_ = sg.drawMenuPatch(screen, "M_LSCNTR", menuX+8*j, y+7, scale, ox, oy, false)
 			}
 			_ = sg.drawMenuPatch(screen, "M_LSRGHT", menuX+8*24, y+7, scale, ox, oy, false)
-			if i == 0 {
-				sg.drawIntermissionText(screen, label, menuX, y, scale, ox, oy, false)
-			} else {
-				sg.drawIntermissionText(screen, fmt.Sprintf("%d. %s", i, label), menuX, y, scale, ox, oy, false)
-			}
+			sg.drawIntermissionText(screen, label, menuX, y, scale, ox, oy, false)
 		}
-		if detail := sg.saveSlotDetailLines(sg.frontend.SaveLoadOn); len(detail) > 0 {
+		selectedSlot, _ := saveSlotAtIndex(slots, selected)
+		if detail := sg.saveSlotDetailLines(selectedSlot); len(detail) > 0 {
 			const detailX = 16
 			const detailY = 172
 			const detailMaxWidth = 160
@@ -999,7 +1031,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			var thumbImg *ebiten.Image
 			thumbScreenX := ox + float64(thumbX)*scale
 			thumbScreenY := oy + float64(thumbY)*scale
-			if img, ok := sg.saveSlotThumbnailImage(sg.frontend.SaveLoadOn); ok && img != nil {
+			if img, ok := sg.saveSlotThumbnailImage(selectedSlot); ok && img != nil {
 				thumbImg = img
 				thumbW = img.Bounds().Dx()
 				thumbH = img.Bounds().Dy()
@@ -1018,7 +1050,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
 			sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
 		}
-		sg.drawMenuSkull(screen, 20, 49+sg.frontend.SaveLoadOn*lineHeight, scale, ox, oy)
+		sg.drawMenuSkull(screen, 20, 49+(selected-start)*lineHeight, scale, ox, oy)
 		return
 	default:
 		sg.drawFrontendBackdrop(screen, true)
@@ -1100,6 +1132,34 @@ func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool)
 	if showLogo && sg.frontend.Mode == frontendModeTitle && sg.frontend.MenuActive {
 		return
 	}
+}
+
+func saveLoadVisibleWindow(total, selected, maxRows int) (start, end int) {
+	if total <= 0 {
+		return 0, 0
+	}
+	if maxRows <= 0 || total <= maxRows {
+		return 0, total
+	}
+	if selected < 0 {
+		selected = 0
+	}
+	if selected >= total {
+		selected = total - 1
+	}
+	start = selected - maxRows/2
+	if start < 0 {
+		start = 0
+	}
+	end = start + maxRows
+	if end > total {
+		end = total
+		start = end - maxRows
+	}
+	if start < 0 {
+		start = 0
+	}
+	return start, end
 }
 
 func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image) {

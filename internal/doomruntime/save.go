@@ -8,6 +8,8 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -422,20 +424,102 @@ func (sg *sessionGame) readSaveGameDescription(slot int) (string, bool) {
 	return desc, true
 }
 
-func (sg *sessionGame) saveSlotDescriptions(slotCount int) []string {
-	if slotCount <= 0 {
+func saveGameSlotFromFileName(name string) (int, bool) {
+	base := strings.TrimSpace(filepath.Base(name))
+	if !strings.HasSuffix(strings.ToLower(base), ".dsg") {
+		return 0, false
+	}
+	base = strings.TrimSuffix(base, filepath.Ext(base))
+	if strings.EqualFold(base, saveGameQuickPrefix) {
+		return 0, true
+	}
+	if !strings.HasPrefix(strings.ToLower(base), saveGamePrefix) {
+		return 0, false
+	}
+	n, err := strconv.Atoi(base[len(saveGamePrefix):])
+	if err != nil || n <= 0 {
+		return 0, false
+	}
+	return n, true
+}
+
+func (sg *sessionGame) availableSaveSlots(includeNew bool) []int {
+	slots := []int{0}
+	if isWASMBuild() || sg == nil {
+		if includeNew {
+			return append(slots, 1)
+		}
+		return slots
+	}
+	entries, err := os.ReadDir(saveGameDirName)
+	if err == nil {
+		seen := map[int]struct{}{0: {}}
+		maxSlot := 0
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			slot, ok := saveGameSlotFromFileName(entry.Name())
+			if !ok {
+				continue
+			}
+			if _, exists := seen[slot]; exists {
+				continue
+			}
+			seen[slot] = struct{}{}
+			if slot > 0 {
+				slots = append(slots, slot)
+				if slot > maxSlot {
+					maxSlot = slot
+				}
+			}
+		}
+		sort.Ints(slots[1:])
+		if includeNew {
+			slots = append(slots, max(maxSlot, 0)+1)
+		}
+		return slots
+	}
+	if includeNew {
+		slots = append(slots, 1)
+	}
+	return slots
+}
+
+func saveSlotAtIndex(slots []int, idx int) (int, bool) {
+	if idx < 0 || idx >= len(slots) {
+		return 0, false
+	}
+	return slots[idx], true
+}
+
+func (sg *sessionGame) saveSlotDescriptions(slots []int) []string {
+	if len(slots) <= 0 {
 		return nil
 	}
-	out := make([]string, slotCount)
-	for i := 0; i < slotCount; i++ {
-		slot := i
+	out := make([]string, len(slots))
+	for i, slot := range slots {
 		if info, ok := sg.readSaveSlotInfo(slot); ok {
 			out[i] = formatSaveSummaryLabel(info)
+		} else if slot <= 0 {
+			out[i] = "Q: EMPTY SLOT"
 		} else {
-			out[i] = "EMPTY SLOT"
+			out[i] = fmt.Sprintf("%d: EMPTY SLOT", slot)
 		}
 	}
 	return out
+}
+
+func (sg *sessionGame) saveSlotDetailLines(slot int) []string {
+	info, ok := sg.readSaveSlotInfo(slot)
+	if !ok {
+		if slot <= 0 {
+			return []string{"WADS: NONE"}
+		} else {
+			return []string{fmt.Sprintf("WADS: NEW SLOT %d", slot)}
+		}
+	}
+	return []string{"WADS: " + formatSaveWADNames(info.WADSources)}
 }
 
 func (sg *sessionGame) saveSlotThumbnailImage(slot int) (*ebiten.Image, bool) {
@@ -498,14 +582,6 @@ func (sg *sessionGame) readSaveSlotInfo(slot int) (saveSlotInfo, bool) {
 		ModTime:     stat.ModTime(),
 		Present:     true,
 	}, true
-}
-
-func (sg *sessionGame) saveSlotDetailLines(slot int) []string {
-	info, ok := sg.readSaveSlotInfo(slot)
-	if !ok {
-		return []string{"EMPTY SLOT"}
-	}
-	return []string{"WADS: " + formatSaveWADNames(info.WADSources)}
 }
 
 func (sg *sessionGame) renderSaveThumbnailSourceImage(g *game) *ebiten.Image {
