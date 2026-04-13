@@ -8,9 +8,9 @@ import (
 )
 
 const (
-	OutputSampleRate = 44100
-	defaultTicRate   = 140
-	DefaultMUSVolumeCompression = 2.0
+	OutputSampleRate            = 44100
+	defaultTicRate              = 140
+	DefaultMUSVolumeCompression = 3.0
 	// The music path uses 18 simultaneous 2-op voices.
 	defaultVoices          = 18
 	DefaultOutputGain      = 1.0
@@ -178,8 +178,8 @@ func NewDriverWithBackend(sampleRate int, bank PatchBank, backend Backend) (*Dri
 		synth:        synth,
 		sampleRate:   sampleRate,
 		ticRate:      defaultTicRate,
-			musPanMax:    defaultMUSPanMax,
-			outputGain:   DefaultOutputGain,
+		musPanMax:    defaultMUSPanMax,
+		outputGain:   DefaultOutputGain,
 		bank:         bank,
 		voices:       make([]voiceState, defaultVoices),
 		freeList:     make([]int, 0, defaultVoices),
