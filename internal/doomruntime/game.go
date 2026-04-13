@@ -6642,50 +6642,6 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 			}
 			pixI := drawY0*rowStridePix + x
 			runTexVFixed := texVFixed + int64(drawY0-y0)*texVStepFixed
-			if wordI, wordStep, coverageMask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, drawY1-drawY0+1); ok {
-				coverageBits := g.cutoutCoverageBits
-				for y := drawY0; y <= drawY1; y++ {
-					if coverageBits[wordI]&coverageMask != 0 {
-						pixI += rowStridePix
-						wordI += wordStep
-						runTexVFixed += texVStepFixed
-						continue
-					}
-					ty := wrapIndex(int(runTexVFixed>>fracBits), tex.Height)
-					txVal := texIndexed[ty*tex.Width+tx]
-					if useIndexedCol {
-						txVal = texIndexedCol[colBase+ty]
-					}
-					dst := packedRow[txVal]
-					if repeatTexelRows {
-						runLen := 1
-						nextTexVFixed := runTexVFixed + texVStepFixed
-						nextWordI := wordI + wordStep
-						for y+runLen <= drawY1 && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
-							if coverageBits[nextWordI]&coverageMask != 0 {
-								break
-							}
-							runLen++
-							nextTexVFixed += texVStepFixed
-							nextWordI += wordStep
-						}
-						if runLen > 1 {
-							g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
-							pixI += runLen * rowStridePix
-							wordI += runLen * wordStep
-							runTexVFixed += int64(runLen) * texVStepFixed
-							y += runLen - 1
-							continue
-						}
-					}
-					g.wallPix32[pixI] = dst
-					coverageBits[wordI] |= coverageMask
-					pixI += rowStridePix
-					wordI += wordStep
-					runTexVFixed += texVStepFixed
-				}
-				continue
-			}
 			for y := drawY0; y <= drawY1; y++ {
 				if g.cutoutCoveredAtIndex(pixI) {
 					pixI += rowStridePix
