@@ -113,6 +113,50 @@
       });
     }
 
+    function focusPlayerSurface() {
+      try {
+        window.focus();
+      } catch (_err) {
+      }
+      if (document.body && document.activeElement !== document.body) {
+        if (!document.body.hasAttribute("tabindex")) {
+          document.body.tabIndex = -1;
+        }
+        try {
+          document.body.focus({ preventScroll: true });
+        } catch (_err) {
+        }
+      }
+      const canvas = document.querySelector("canvas");
+      if (!canvas) {
+        return false;
+      }
+      if (!canvas.hasAttribute("tabindex")) {
+        canvas.tabIndex = 0;
+      }
+      try {
+        canvas.focus({ preventScroll: true });
+      } catch (_err) {
+        canvas.focus();
+      }
+      return document.activeElement === canvas;
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.origin !== window.location.origin || !event.data) {
+        return;
+      }
+      if (event.data.type !== "gddoom-claim-focus") {
+        return;
+      }
+      if (focusPlayerSurface()) {
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        focusPlayerSurface();
+      });
+    });
+
     function hasWASMMagic(bytes) {
       return bytes && bytes.length >= 4 &&
         bytes[0] === 0x00 && bytes[1] === 0x61 &&
@@ -149,6 +193,9 @@
             if (window.parent && window.parent !== window) {
               window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
             }
+            window.requestAnimationFrame(() => {
+              focusPlayerSurface();
+            });
             return go.run(result.instance);
           });
       })

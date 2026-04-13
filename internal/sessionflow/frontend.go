@@ -790,6 +790,7 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 				result.Sound = FrontendSoundMove
 			} else {
 				result.Sound = FrontendSoundBack
+				return result
 			}
 		}
 		if !result.State.MenuActive {

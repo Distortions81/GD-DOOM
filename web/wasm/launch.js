@@ -51,10 +51,19 @@ function hideSplash() {
 }
 
 function focusPlayer() {
-  if (!shell || !shell.contentWindow) {
+  if (!shell) {
     return;
   }
   shell.focus({ preventScroll: true });
+  if (!shell.contentWindow) {
+    return;
+  }
+  try {
+    shell.contentWindow.focus();
+    shell.contentWindow.postMessage({ type: "gddoom-claim-focus" }, window.location.origin);
+  } catch (_err) {
+    // Some browsers may reject cross-context focus sequencing during navigation.
+  }
 }
 
 function setLocalWADStatus(text) {
@@ -209,6 +218,9 @@ window.addEventListener("message", (event) => {
   switch (event.data.type) {
     case "gddoom-player-ready":
       pendingReload = false;
+      if (splashDismissed) {
+        focusPlayer();
+      }
       break;
     case "gddoom-session-started":
       hideLocalWADUI();

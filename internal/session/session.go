@@ -127,6 +127,6 @@ func runGame(game ebiten.Game) error {
 		return ebiten.RunGame(game)
 	}
 	return ebiten.RunGameWithOptions(game, &ebiten.RunGameOptions{
-		DisableHiDPI: true,
+		DisableHiDPI: false,
 	})
 }

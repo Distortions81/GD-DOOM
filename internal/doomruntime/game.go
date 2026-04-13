@@ -3400,9 +3400,26 @@ func defaultHUDScaleStep(opts Options) int {
 }
 
 func defaultHUDScaleStepForViewport(opts Options, outsideW, outsideH int) int {
-	_ = outsideW
-	_ = outsideH
+	if opts.SourcePortMode && isWASMBuild() {
+		targetScale := defaultWASMHUDScaleForViewport(outsideW, outsideH)
+		for i, v := range sourcePortHUDScaleSteps {
+			if v >= targetScale {
+				return i
+			}
+		}
+		return len(sourcePortHUDScaleSteps) - 1
+	}
 	return defaultHUDScaleStep(opts)
+}
+
+func defaultWASMHUDScaleForViewport(outsideW, outsideH int) float64 {
+	minDim := min(max(outsideW, 1), max(outsideH, 1))
+	switch {
+	case minDim >= 640:
+		return 2.0
+	default:
+		return 1.0
+	}
 }
 
 func (g *game) ensureDefaultHUDScaleForViewport(outsideW, outsideH int) {

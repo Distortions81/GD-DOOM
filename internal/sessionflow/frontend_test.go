@@ -243,6 +243,20 @@ func TestStepFrontendOptionsEscapeClosesAttractMenu(t *testing.T) {
 	}
 }
 
+func TestStepFrontendTitleEscapeClosesAttractMenu(t *testing.T) {
+	got := StepFrontend(
+		Frontend{Active: true, Attract: true, Mode: FrontendModeTitle, MenuActive: true},
+		FrontendInput{Escape: true, Skip: true},
+		FrontendConfig{},
+	)
+	if got.State.Mode != FrontendModeTitle {
+		t.Fatalf("mode=%v want title", got.State.Mode)
+	}
+	if got.State.MenuActive {
+		t.Fatal("expected title attract menu to close on escape")
+	}
+}
+
 func TestShowAttractBeginPrompt(t *testing.T) {
 	if !ShowAttractBeginPrompt(Frontend{Active: true, Mode: FrontendModeTitle}) {
 		t.Fatal("expected prompt during frontend attract when menu is closed")

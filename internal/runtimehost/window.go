@@ -22,6 +22,7 @@ func ConfigureInitialHost(opts runtimecfg.Options, windowW, windowH int, name ma
 	vsyncEnabled := !opts.NoVsync
 	ebiten.SetVsyncEnabled(vsyncEnabled)
 	ebiten.SetTPS(hostTPS)
+	ebiten.SetWindowDecorated(true)
 
 	if opts.SourcePortMode {
 		ebiten.SetWindowSize(opts.Width, opts.Height)

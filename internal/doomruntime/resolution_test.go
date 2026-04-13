@@ -243,6 +243,41 @@ func TestSourcePortLayoutWASMSmallScreenUses100PercentHUD(t *testing.T) {
 	}
 }
 
+func TestSourcePortLayoutWASMLargeScreenAutoScalesHUD(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	platformcfg.SetForcedWASMMode(true)
+	defer platformcfg.SetForcedWASMMode(prev)
+
+	rt := &layoutCountRuntime{
+		viewW:      1920,
+		viewH:      1080,
+		skyOutputW: 1920,
+		skyOutputH: 1080,
+	}
+	g := &game{
+		opts:             Options{SourcePortMode: true},
+		viewW:            1,
+		viewH:            1,
+		skyOutputW:       1,
+		skyOutputH:       1,
+		hudScaleStep:     defaultHUDScaleStep(Options{SourcePortMode: true}),
+		hudLogicalLayout: false,
+	}
+	sg := &sessionGame{
+		opts: Options{SourcePortMode: true},
+		g:    g,
+		rt:   rt,
+	}
+
+	layoutW, layoutH := sg.Layout(1920, 1080)
+	if layoutW != 1920 || layoutH != 1080 {
+		t.Fatalf("layout=%dx%d want 1920x1080", layoutW, layoutH)
+	}
+	if got := sg.g.hudScaleStep; got != 1 {
+		t.Fatalf("hudScaleStep=%d want 1 for 200%% HUD", got)
+	}
+}
+
 func TestSourcePortLayoutNativeSmallScreenKeepsDefaultHUD(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(false)
