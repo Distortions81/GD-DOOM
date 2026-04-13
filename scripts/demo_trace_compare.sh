@@ -15,6 +15,7 @@ KEEP_GOING=0
 GDDOOM_FLAGS=()
 USE_XVFB=auto
 STOP_AFTER_TICS=0
+DEMO_EXIT_ON_DEATH=0
 
 trim_trace_on_player_death() {
   local trace_path="$1"
@@ -60,6 +61,7 @@ Options:
   --keep-going        Keep artifacts even when the compare fails
   --stop-after-tics <n>
                       Stop GD-DOOM after <n> processed demo tics (default: 0, disabled)
+  --demo-exit-on-death Exit GD-DOOM immediately on player death during demo playback
   -h, --help          Show this help
 
 Examples:
@@ -132,6 +134,10 @@ while [[ $# -gt 0 ]]; do
     --stop-after-tics)
       STOP_AFTER_TICS="$2"
       shift 2
+      ;;
+    --demo-exit-on-death)
+      DEMO_EXIT_ON_DEATH=1
+      shift
       ;;
     --)
       shift
@@ -246,6 +252,9 @@ trim_trace_on_player_death "${REF_TRACE}"
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"
 if [[ "${STOP_AFTER_TICS}" != "0" ]]; then
   GDDOOM_FLAGS+=(-demo-stop-after-tics "${STOP_AFTER_TICS}")
+fi
+if [[ "${DEMO_EXIT_ON_DEATH}" == "1" ]]; then
+  GDDOOM_FLAGS+=(-demo-exit-on-death)
 fi
 if [[ "${USE_XVFB}" == "yes" ]]; then
   if ! command -v xvfb-run >/dev/null 2>&1; then

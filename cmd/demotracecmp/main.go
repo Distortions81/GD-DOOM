@@ -91,9 +91,6 @@ func normalizeTraceObject(v any, cfg compareConfig) any {
 	if !ok {
 		return v
 	}
-	if cfg.maxPlayerDistance <= 0 && !cfg.ignoreTransientFX {
-		return v
-	}
 	mobjs, ok := root["mobjs"].([]any)
 	if !ok {
 		return v
@@ -111,9 +108,64 @@ func normalizeTraceObject(v any, cfg compareConfig) any {
 		}
 		filtered = append(filtered, item)
 	}
+	filtered = sortMobjTraceList(filtered)
 	root["mobjs"] = filtered
 	root["mobj_count"] = float64(len(filtered))
 	return root
+}
+
+func sortMobjTraceList(mobjs []any) []any {
+	type indexedMobj struct {
+		idx  int
+		key  string
+		data any
+	}
+	if len(mobjs) == 0 {
+		return mobjs
+	}
+	out := make([]indexedMobj, 0, len(mobjs))
+	for i, mobj := range mobjs {
+		out = append(out, indexedMobj{
+			idx:  i,
+			key:  mobjTraceSortKey(mobj),
+			data: mobj,
+		})
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].key != out[j].key {
+			return out[i].key < out[j].key
+		}
+		return out[i].idx < out[j].idx
+	})
+	outMobjs := make([]any, 0, len(out))
+	for _, item := range out {
+		outMobjs = append(outMobjs, item.data)
+	}
+	return outMobjs
+}
+
+func mobjTraceSortKey(v any) string {
+	mobj, ok := v.(map[string]any)
+	if !ok {
+		return ""
+	}
+	return fmt.Sprintf(
+		"%011.0f|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d|%d",
+		numValue(mobj["type"]),
+		int64(numValue(mobj["player"])),
+		int64(numValue(mobj["x"])),
+		int64(numValue(mobj["y"])),
+		int64(numValue(mobj["z"])),
+		int64(numValue(mobj["angle"])),
+		int64(numValue(mobj["momx"])),
+		int64(numValue(mobj["momy"])),
+		int64(numValue(mobj["momz"])),
+		int64(numValue(mobj["sector"])),
+		int64(numValue(mobj["target"])),
+		int64(numValue(mobj["target_type"])),
+		int64(numValue(mobj["tracer"])),
+		int64(numValue(mobj["tracer_type"])),
+	)
 }
 
 func playerPosForTrace(mobjs []any) (float64, float64, bool) {
@@ -351,6 +403,14 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 		if lok && rok && lt == rt && (lt == 37 || lt == 38) {
 			switch key {
 			case "x", "y", "z", "momz":
+				return true
+			}
+		}
+		llplayer, lLok := left["player"].(float64)
+		rlplayer, rLok := right["player"].(float64)
+		if (lLok && llplayer == 1) || (rLok && rlplayer == 1) {
+			switch key {
+			case "target", "threshold", "target_type", "tracer", "tracer_type":
 				return true
 			}
 		}
