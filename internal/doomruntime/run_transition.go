@@ -248,8 +248,15 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 	if sg.palettePostEnabled() {
 		src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
 	}
+	dw := max(dst.Bounds().Dx(), 1)
+	dh := max(dst.Bounds().Dy(), 1)
+	sw := max(src.Bounds().Dx(), 1)
+	sh := max(src.Bounds().Dy(), 1)
 	dst.Clear()
-	dst.DrawImage(src, nil)
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(dw)/float64(sw), float64(dh)/float64(sh))
+	dst.DrawImage(src, op)
 }
 
 func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
@@ -408,5 +415,5 @@ func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
 		sg.drawSourcePortPresented(screen, work, sw, sh)
 		return
 	}
-	sg.drawFaithfulPresented(screen, work)
+	sg.drawSourcePortPresented(screen, work, sw, sh)
 }
