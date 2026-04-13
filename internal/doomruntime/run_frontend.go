@@ -205,7 +205,11 @@ func (sg *sessionGame) requestQuitPrompt() {
 	if sg == nil {
 		return
 	}
-	sg.quitPrompt, sg.quitMessageSeq = sessionflow.StartQuitPrompt(sg.quitMessageSeq, doomQuitMessages)
+	messages := doomQuitMessages
+	if isWASMBuild() {
+		messages = nil
+	}
+	sg.quitPrompt, sg.quitMessageSeq = sessionflow.StartQuitPrompt(sg.quitMessageSeq, messages)
 }
 
 func (sg *sessionGame) clearQuitPrompt() {
@@ -250,7 +254,9 @@ func (sg *sessionGame) nextQuitPromptLines() []string {
 	}
 	sg.quitMessageSeq++
 	msg := "are you sure you want to\nquit this great game?"
-	if len(doomQuitMessages) > 0 {
+	if isWASMBuild() {
+		msg = "close the page to quit"
+	} else if len(doomQuitMessages) > 0 {
 		msg = doomQuitMessages[(sg.quitMessageSeq-1)%len(doomQuitMessages)]
 	}
 	lines := strings.Split(strings.ToUpper(msg), "\n")
@@ -259,6 +265,9 @@ func (sg *sessionGame) nextQuitPromptLines() []string {
 }
 
 func defaultQuitPromptLines() []string {
+	if isWASMBuild() {
+		return []string{"CLOSE THE PAGE TO QUIT"}
+	}
 	return sessionflow.DefaultQuitPromptLines()
 }
 
