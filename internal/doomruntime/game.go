@@ -19953,6 +19953,7 @@ func appendSpriteRowVisibleSpansDepthQFast(out []solidSpan, y, l, r int, depthQ 
 				out = append(out, solidSpan{L: runStart, R: x - 1})
 				runStart = -1
 			}
+			x++
 			continue
 		}
 		if runStart < 0 {
