@@ -9,6 +9,38 @@ import (
 	"time"
 )
 
+func readSavedSlotThumbnailData(slot int) ([]byte, error) {
+	return os.ReadFile(saveGameThumbnailPath(slot))
+}
+
+func readSavedSlotThumbnailDataWithModTime(slot int) ([]byte, time.Time, error) {
+	path := saveGameThumbnailPath(slot)
+	stat, err := os.Stat(path)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return data, stat.ModTime(), nil
+}
+
+func writeSavedSlotThumbnailData(slot int, data []byte) error {
+	if err := os.MkdirAll(saveGameDirName, 0o755); err != nil {
+		return fmt.Errorf("create save dir: %w", err)
+	}
+	return os.WriteFile(saveGameThumbnailPath(slot), data, 0o644)
+}
+
+func deleteSavedSlotThumbnailData(slot int) error {
+	err := os.Remove(saveGameThumbnailPath(slot))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	return err
+}
+
 func readSavedSlotData(slot int) ([]byte, error) {
 	return os.ReadFile(saveGamePath(slot))
 }

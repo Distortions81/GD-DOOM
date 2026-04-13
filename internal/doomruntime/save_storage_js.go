@@ -15,8 +15,14 @@ import (
 )
 
 const browserSaveSlotKeyPrefix = "gddoom-save:"
+const browserSaveSlotThumbnailKeyPrefix = "gddoom-save-thumb:"
 
 type browserSaveSlotEnvelope struct {
+	Data    string `json:"d"`
+	ModTime int64  `json:"t"`
+}
+
+type browserSaveSlotThumbnailEnvelope struct {
 	Data    string `json:"d"`
 	ModTime int64  `json:"t"`
 }
@@ -74,6 +80,63 @@ func writeSavedSlotData(slot int, data []byte) error {
 	return browserSetItem(browserSaveSlotKey(slot), string(payload))
 }
 
+func readSavedSlotThumbnailData(slot int) ([]byte, error) {
+	data, _, err := readSavedSlotThumbnailDataWithModTime(slot)
+	return data, err
+}
+
+func readSavedSlotThumbnailDataWithModTime(slot int) ([]byte, time.Time, error) {
+	raw, ok, err := browserGetItem(browserSaveSlotThumbnailKey(slot))
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if !ok {
+		return nil, time.Time{}, os.ErrNotExist
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, time.Time{}, os.ErrNotExist
+	}
+	if strings.HasPrefix(raw, "{") {
+		var env browserSaveSlotThumbnailEnvelope
+		if err := json.Unmarshal([]byte(raw), &env); err == nil {
+			decoded, err := decodeBrowserSaveData(env.Data)
+			if err != nil {
+				return nil, time.Time{}, err
+			}
+			modTime := time.Time{}
+			if env.ModTime > 0 {
+				modTime = time.Unix(0, env.ModTime)
+			}
+			return decoded, modTime, nil
+		}
+	}
+	decoded, err := decodeBrowserSaveData(raw)
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	return decoded, time.Time{}, nil
+}
+
+func writeSavedSlotThumbnailData(slot int, data []byte) error {
+	if len(data) == 0 {
+		return errors.New("empty thumbnail data")
+	}
+	env := browserSaveSlotThumbnailEnvelope{
+		Data:    encodeBrowserSaveData(data),
+		ModTime: time.Now().UTC().UnixNano(),
+	}
+	payload, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	return browserSetItem(browserSaveSlotThumbnailKey(slot), string(payload))
+}
+
+func deleteSavedSlotThumbnailData(slot int) error {
+	return browserRemoveItem(browserSaveSlotThumbnailKey(slot))
+}
+
 func listSavedSlots() ([]int, error) {
 	store := browserSaveStorage()
 	if store.IsUndefined() || store.IsNull() {
@@ -106,6 +169,10 @@ func listSavedSlots() ([]int, error) {
 
 func browserSaveSlotKey(slot int) string {
 	return browserSaveSlotKeyPrefix + saveGameBaseName(slot) + ".dsg"
+}
+
+func browserSaveSlotThumbnailKey(slot int) string {
+	return browserSaveSlotThumbnailKeyPrefix + saveGameBaseName(slot) + ".png"
 }
 
 func browserSaveStorage() js.Value {
@@ -177,6 +244,25 @@ func browserSetItem(key, value string) error {
 		}
 	}()
 	store.Call("setItem", key, value)
+	return err
+}
+
+func browserRemoveItem(key string) error {
+	store := browserSaveStorage()
+	if store.IsUndefined() || store.IsNull() {
+		return errors.New("localStorage unavailable")
+	}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return errors.New("invalid save slot key")
+	}
+	var err error
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("localStorage removeItem failed: %v", r)
+		}
+	}()
+	store.Call("removeItem", key)
 	return err
 }
 

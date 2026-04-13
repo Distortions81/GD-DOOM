@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"image"
@@ -33,7 +34,6 @@ const (
 var (
 	errSaveGameUnavailable = errors.New("save game unavailable")
 	errNoSavedGame         = errors.New("no saved game")
-	errSaveGameWebOnly     = errors.New("not available")
 	errBadSaveMagic        = errors.New("invalid save format")
 	errBadSaveChecksum     = errors.New("invalid save checksum")
 )
@@ -540,11 +540,32 @@ func (sg *sessionGame) saveSlotDetailLines(slot int) []string {
 }
 
 func (sg *sessionGame) saveSlotThumbnailImage(slot int) (*ebiten.Image, bool) {
-	if isWASMBuild() || sg == nil {
+	if sg == nil {
 		return nil, false
 	}
 	if sg.saveThumbnailCache == nil {
 		sg.saveThumbnailCache = make(map[int]saveThumbnailCacheEntry)
+	}
+	if isWASMBuild() {
+		data, modTime, err := readSavedSlotThumbnailDataWithModTime(slot)
+		if err != nil {
+			delete(sg.saveThumbnailCache, slot)
+			return nil, false
+		}
+		if entry, ok := sg.saveThumbnailCache[slot]; ok && entry.Image != nil && entry.ModTime.Equal(modTime) {
+			return entry.Image, true
+		}
+		img, err := png.Decode(bytes.NewReader(data))
+		if err != nil {
+			delete(sg.saveThumbnailCache, slot)
+			return nil, false
+		}
+		eimg := ebiten.NewImageFromImage(img)
+		sg.saveThumbnailCache[slot] = saveThumbnailCacheEntry{
+			ModTime: modTime,
+			Image:   eimg,
+		}
+		return eimg, true
 	}
 	path := saveGameThumbnailPath(slot)
 	stat, err := os.Stat(path)
@@ -612,9 +633,6 @@ func (sg *sessionGame) renderSaveThumbnailSourceImage(g *game) *ebiten.Image {
 }
 
 func (sg *sessionGame) saveThumbnailImage() (*image.RGBA, error) {
-	if isWASMBuild() {
-		return nil, errSaveGameWebOnly
-	}
 	if sg == nil || sg.g == nil {
 		return nil, errSaveGameUnavailable
 	}
@@ -641,9 +659,6 @@ func (sg *sessionGame) saveThumbnailImage() (*image.RGBA, error) {
 }
 
 func (sg *sessionGame) writeSaveThumbnail(slot int) error {
-	if isWASMBuild() {
-		return nil
-	}
 	if sg == nil || sg.g == nil {
 		return errSaveGameUnavailable
 	}
@@ -657,21 +672,24 @@ func (sg *sessionGame) writeSaveThumbnail(slot int) error {
 		return sg.saveThumbnailImage()
 	}()
 	if err != nil || img == nil {
-		_ = os.Remove(saveGameThumbnailPath(slot))
+		_ = deleteSavedSlotThumbnailData(slot)
 		if sg.saveThumbnailCache != nil {
 			delete(sg.saveThumbnailCache, slot)
 		}
 		return nil
 	}
-	if err := os.MkdirAll(saveGameDirName, 0o755); err != nil {
-		return fmt.Errorf("create save dir: %w", err)
-	}
-	f, err := os.Create(saveGameThumbnailPath(slot))
-	if err != nil {
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
 		return err
 	}
-	defer f.Close()
-	if err := png.Encode(f, img); err != nil {
+	if err := writeSavedSlotThumbnailData(slot, buf.Bytes()); err != nil {
+		_ = deleteSavedSlotThumbnailData(slot)
+		if sg.saveThumbnailCache != nil {
+			delete(sg.saveThumbnailCache, slot)
+		}
+		if isWASMBuild() {
+			return nil
+		}
 		return err
 	}
 	if sg.saveThumbnailCache != nil {
