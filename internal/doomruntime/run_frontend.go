@@ -1046,6 +1046,11 @@ func (sg *sessionGame) tickFrontend() error {
 		}
 	}
 	if result.RequestQuit {
+		if isWASMBuild() {
+			ebiten.SetFullscreen(!ebiten.IsFullscreen())
+			sg.frontend = frontendState{}
+			return nil
+		}
 		sg.requestQuitPrompt()
 	}
 	if result.StartGameSkill > 0 {
@@ -1282,11 +1287,27 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 					if sg.frontendMenuItemDisabled(i) {
 						alpha = 0.4
 					}
+					if isWASMBuild() && i == len(inGamePauseMenuNames)-1 {
+						label := "FULLSCREEN"
+						if ebiten.IsFullscreen() {
+							label = "EXIT FULLSCREEN"
+						}
+						sg.drawIntermissionText(screen, label, 97, 64+i*16, scale, ox, oy, false)
+						continue
+					}
 					_ = sg.drawMenuPatchAlpha(screen, name, 97, 64+i*16, scale, ox, oy, false, alpha)
 				}
 			} else {
 				sg.drawFrontendMainMenuTitle(screen, scale, ox, oy)
 				for i, name := range frontendMainMenuNames {
+					if isWASMBuild() && i == len(frontendMainMenuNames)-1 {
+						label := "FULLSCREEN"
+						if ebiten.IsFullscreen() {
+							label = "EXIT FULLSCREEN"
+						}
+						sg.drawIntermissionText(screen, label, 97, 64+i*16, scale, ox, oy, false)
+						continue
+					}
 					_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
 				}
 			}
