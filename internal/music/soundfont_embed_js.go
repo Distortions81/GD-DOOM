@@ -56,6 +56,7 @@ type browserSoundFontLoad struct {
 }
 
 var browserSoundFontLoads = map[string]*browserSoundFontLoad{}
+var browserSoundFontBytesCache = map[string][]byte{}
 
 func DefaultEmbeddedSoundFontPath() string {
 	if choices := soundfonts.EmbeddedChoices(); len(choices) > 0 {
@@ -201,6 +202,10 @@ func browserSoundFontStore() js.Value {
 }
 
 func browserCachedSoundFontBytes(base string) ([]byte, bool) {
+	base = strings.ToLower(strings.TrimSpace(base))
+	if data, ok := browserSoundFontBytesCache[base]; ok {
+		return data, true
+	}
 	entry := browserSoundFontStore().Get(base)
 	if entry.IsUndefined() || entry.IsNull() {
 		return nil, false
@@ -211,6 +216,7 @@ func browserCachedSoundFontBytes(base string) ([]byte, bool) {
 	}
 	data := make([]byte, n)
 	js.CopyBytesToGo(data, entry)
+	browserSoundFontBytesCache[base] = data
 	return data, true
 }
 

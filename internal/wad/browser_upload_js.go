@@ -11,6 +11,8 @@ import (
 
 const browserLocalWADPrefix = "browser-upload/"
 
+var browserLocalWADBytesCache = map[string][]byte{}
+
 func BrowserLocalWADPaths() []string {
 	store := browserLocalWADStore()
 	if store.IsUndefined() || store.IsNull() {
@@ -46,7 +48,14 @@ func browserLocalWADDataForPath(path string) ([]byte, bool) {
 	if path == "" {
 		return nil, false
 	}
+	cacheKey := strings.ToUpper(path)
+	if data, ok := browserLocalWADBytesCache[cacheKey]; ok {
+		return data, true
+	}
 	base := strings.ToUpper(filepath.Base(path))
+	if data, ok := browserLocalWADBytesCache[base]; ok {
+		return data, true
+	}
 	store := browserLocalWADStore()
 	if store.IsUndefined() || store.IsNull() {
 		return nil, false
@@ -73,6 +82,12 @@ func browserLocalWADDataForPath(path string) ([]byte, bool) {
 		}
 		data := make([]byte, n)
 		js.CopyBytesToGo(data, bytesVal)
+		browserLocalWADBytesCache[cacheKey] = data
+		browserLocalWADBytesCache[base] = data
+		entryCacheKey := strings.ToUpper(entryPath)
+		if entryCacheKey != "" && entryCacheKey != cacheKey {
+			browserLocalWADBytesCache[entryCacheKey] = data
+		}
 		return data, true
 	}
 	return nil, false
