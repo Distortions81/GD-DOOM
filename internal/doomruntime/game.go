@@ -5894,6 +5894,24 @@ func (g *game) cutoutColumnSpanFullyCovered(pixI, rowStridePix, count int) bool 
 	if g == nil || count <= 0 {
 		return false
 	}
+	if wordI, wordStep, mask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, count); ok {
+		bits := g.cutoutCoverageBits
+		for count >= 4 {
+			if (bits[wordI]&bits[wordI+wordStep]&bits[wordI+2*wordStep]&bits[wordI+3*wordStep])&mask == 0 {
+				return false
+			}
+			wordI += 4 * wordStep
+			count -= 4
+		}
+		for count > 0 {
+			if bits[wordI]&mask == 0 {
+				return false
+			}
+			wordI += wordStep
+			count--
+		}
+		return true
+	}
 	for i := 0; i < count; i++ {
 		if !g.cutoutCoveredAtIndex(pixI) {
 			return false
@@ -6642,6 +6660,50 @@ func drawMaskedColumnOpaqueRuns(g *game, x, y0, y1 int, texVFixed, texVStepFixed
 			}
 			pixI := drawY0*rowStridePix + x
 			runTexVFixed := texVFixed + int64(drawY0-y0)*texVStepFixed
+			if wordI, wordStep, coverageMask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, drawY1-drawY0+1); ok {
+				coverageBits := g.cutoutCoverageBits
+				for y := drawY0; y <= drawY1; y++ {
+					if coverageBits[wordI]&coverageMask != 0 {
+						pixI += rowStridePix
+						wordI += wordStep
+						runTexVFixed += texVStepFixed
+						continue
+					}
+					ty := wrapIndex(int(runTexVFixed>>fracBits), tex.Height)
+					txVal := texIndexed[ty*tex.Width+tx]
+					if useIndexedCol {
+						txVal = texIndexedCol[colBase+ty]
+					}
+					dst := packedRow[txVal]
+					if repeatTexelRows {
+						runLen := 1
+						nextTexVFixed := runTexVFixed + texVStepFixed
+						nextWordI := wordI + wordStep
+						for y+runLen <= drawY1 && wrapIndex(int(nextTexVFixed>>fracBits), tex.Height) == ty {
+							if coverageBits[nextWordI]&coverageMask != 0 {
+								break
+							}
+							runLen++
+							nextTexVFixed += texVStepFixed
+							nextWordI += wordStep
+						}
+						if runLen > 1 {
+							g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
+							pixI += runLen * rowStridePix
+							wordI += runLen * wordStep
+							runTexVFixed += int64(runLen) * texVStepFixed
+							y += runLen - 1
+							continue
+						}
+					}
+					g.wallPix32[pixI] = dst
+					coverageBits[wordI] |= coverageMask
+					pixI += rowStridePix
+					wordI += wordStep
+					runTexVFixed += texVStepFixed
+				}
+				continue
+			}
 			for y := drawY0; y <= drawY1; y++ {
 				if g.cutoutCoveredAtIndex(pixI) {
 					pixI += rowStridePix
@@ -6717,6 +6779,33 @@ func drawMaskedColumnProjectedTexelSpans(g *game, x, baseY, drawY0, drawY1 int, 
 		dst := packedRow[txVal]
 		pixI := spanY0*rowStridePix + x
 		endPixI := spanY1*rowStridePix + x
+		if wordI, wordStep, coverageMask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, spanY1-spanY0+1); ok {
+			coverageBits := g.cutoutCoverageBits
+			for pixI <= endPixI {
+				if coverageBits[wordI]&coverageMask != 0 || g.spriteWallClipOccludedAtIndexDepth(pixI, depthQ) {
+					pixI += rowStridePix
+					wordI += wordStep
+					continue
+				}
+				runLen := 1
+				nextPixI := pixI + rowStridePix
+				nextWordI := wordI + wordStep
+				for nextPixI <= endPixI && coverageBits[nextWordI]&coverageMask == 0 && !g.spriteWallClipOccludedAtIndexDepth(nextPixI, depthQ) {
+					runLen++
+					nextPixI += rowStridePix
+					nextWordI += wordStep
+				}
+				if runLen > 1 {
+					g.fillCutoutColumnSpan(pixI, rowStridePix, runLen, dst)
+				} else {
+					g.wallPix32[pixI] = dst
+					coverageBits[wordI] |= coverageMask
+				}
+				pixI = nextPixI
+				wordI = nextWordI
+			}
+			continue
+		}
 		for pixI <= endPixI {
 			if g.cutoutCoveredAtIndex(pixI) || g.spriteWallClipOccludedAtIndexDepth(pixI, depthQ) {
 				pixI += rowStridePix
@@ -8197,6 +8286,37 @@ func (g *game) fillCutoutColumnSpan(pixI, rowStridePix, count int, value uint32)
 	if g == nil || count <= 0 {
 		return
 	}
+	if wordI, wordStep, mask, ok := cutoutColumnCoverageWordMask(g.cutoutCoverageBits, pixI, rowStridePix, count); ok {
+		bits := g.cutoutCoverageBits
+		pix32 := g.wallPix32
+		for count >= 4 {
+			pix32[pixI] = value
+			bits[wordI] |= mask
+			pixI += rowStridePix
+			wordI += wordStep
+			pix32[pixI] = value
+			bits[wordI] |= mask
+			pixI += rowStridePix
+			wordI += wordStep
+			pix32[pixI] = value
+			bits[wordI] |= mask
+			pixI += rowStridePix
+			wordI += wordStep
+			pix32[pixI] = value
+			bits[wordI] |= mask
+			pixI += rowStridePix
+			wordI += wordStep
+			count -= 4
+		}
+		for count > 0 {
+			pix32[pixI] = value
+			bits[wordI] |= mask
+			pixI += rowStridePix
+			wordI += wordStep
+			count--
+		}
+		return
+	}
 	for i := 0; i < count; i++ {
 		g.wallPix32[pixI] = value
 		g.markCutoutCoveredAtIndex(pixI)
@@ -8566,7 +8686,6 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 	used := false
 	mask := it.tex.OpaqueMask
 	viewW := g.viewW
-	useIndexed := len(srcIndexed) == tw*it.tex.Height
 	for ty := 0; ty < it.tex.Height; ty++ {
 		rowMask := mask[ty*tw : (ty+1)*tw]
 		for tx0 := 0; tx0 < tw; {
