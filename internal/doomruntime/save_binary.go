@@ -22,15 +22,15 @@ func encodeSnapshot(magic []byte, file saveFile) ([]byte, error) {
 	if err := w.saveFile(file); err != nil {
 		return nil, err
 	}
-	sum := blake3.Sum256(body.Bytes())
-	out := bytes.NewBuffer(make([]byte, 0, len(magic)+snapshotChecksumSize+body.Len()))
+	sum := blake3.Sum256(append(append(make([]byte, 0, len(magic)+body.Len()), magic...), body.Bytes()...))
+	out := bytes.NewBuffer(make([]byte, 0, len(magic)+body.Len()+snapshotChecksumSize))
 	if _, err := out.Write(magic); err != nil {
 		return nil, err
 	}
-	if _, err := out.Write(sum[:]); err != nil {
+	if _, err := out.Write(body.Bytes()); err != nil {
 		return nil, err
 	}
-	if _, err := out.Write(body.Bytes()); err != nil {
+	if _, err := out.Write(sum[:]); err != nil {
 		return nil, err
 	}
 	return out.Bytes(), nil
@@ -40,14 +40,13 @@ func decodeSnapshot(data []byte, magic []byte) (saveFile, error) {
 	if len(data) < len(magic)+snapshotChecksumSize || !bytes.Equal(data[:len(magic)], magic) {
 		return saveFile{}, errBadSaveMagic
 	}
-	checksumStart := len(magic)
-	bodyStart := checksumStart + snapshotChecksumSize
-	want := data[checksumStart:bodyStart]
-	got := blake3.Sum256(data[bodyStart:])
+	checksumStart := len(data) - snapshotChecksumSize
+	want := data[checksumStart:]
+	got := blake3.Sum256(data[:checksumStart])
 	if !bytes.Equal(got[:], want) {
 		return saveFile{}, errBadSaveChecksum
 	}
-	r := saveBinaryReader{r: bytes.NewReader(data[bodyStart:])}
+	r := saveBinaryReader{r: bytes.NewReader(data[len(magic):checksumStart])}
 	file, err := r.saveFile()
 	if err != nil {
 		return saveFile{}, err
@@ -107,6 +106,25 @@ func (w saveBinaryWriter) bytesWithLen(v []byte) error {
 }
 
 func (w saveBinaryWriter) mapName(v mapdata.MapName) error { return w.str(string(v)) }
+
+func (w saveBinaryWriter) wadSource(v saveWADSource) error {
+	if err := w.str(v.Name); err != nil {
+		return err
+	}
+	return w.str(v.Hash)
+}
+
+func (w saveBinaryWriter) wadSourceSlice(v []saveWADSource) error {
+	if err := w.u32(uint32(len(v))); err != nil {
+		return err
+	}
+	for _, item := range v {
+		if err := w.wadSource(item); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func (w saveBinaryWriter) viewState(v mapview.ViewState) error {
 	values := []float64{
@@ -692,6 +710,9 @@ func (w saveBinaryWriter) saveFile(v saveFile) error {
 	if err := w.mapName(v.Current); err != nil {
 		return err
 	}
+	if err := w.wadSourceSlice(v.WADSources); err != nil {
+		return err
+	}
 	if err := w.int(v.RNG.MenuIndex); err != nil {
 		return err
 	}
@@ -1145,6 +1166,34 @@ func (r saveBinaryReader) mapName() (mapdata.MapName, error) {
 	return mapdata.MapName(s), err
 }
 
+func (r saveBinaryReader) wadSource() (saveWADSource, error) {
+	var v saveWADSource
+	var err error
+	if v.Name, err = r.str(); err != nil {
+		return v, err
+	}
+	if v.Hash, err = r.str(); err != nil {
+		return v, err
+	}
+	return v, nil
+}
+
+func (r saveBinaryReader) wadSourceSlice() ([]saveWADSource, error) {
+	n, err := r.u32()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]saveWADSource, 0, n)
+	for i := uint32(0); i < n; i++ {
+		item, err := r.wadSource()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
 func (r saveBinaryReader) viewState() (mapview.ViewState, error) {
 	var v mapview.ViewState
 	var err error
@@ -1484,6 +1533,9 @@ func (r saveBinaryReader) saveFile() (saveFile, error) {
 		return v, err
 	}
 	if v.Current, err = r.mapName(); err != nil {
+		return v, err
+	}
+	if v.WADSources, err = r.wadSourceSlice(); err != nil {
 		return v, err
 	}
 	if v.RNG.MenuIndex, err = r.int(); err != nil {

@@ -28,6 +28,11 @@ type MusicPlayerWAD struct {
 	Episodes []MusicPlayerEpisode
 }
 
+type WADSource struct {
+	Name string
+	Hash string
+}
+
 type LiveTicSource interface {
 	PollTic() (demo.Tic, bool, error)
 }
@@ -160,6 +165,7 @@ type Options struct {
 	AutoDetail                   bool
 	InitialGammaLevel            int
 	WADHash                      string
+	WADSources                   []WADSource
 	Debug                        bool
 	DebugEvents                  bool
 	PlayerSlot                   int

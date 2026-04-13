@@ -20,8 +20,11 @@ func TestStepFrontendMainMenuLoadSaveBindings(t *testing.T) {
 		FrontendInput{Select: true},
 		cfg,
 	)
-	if !load.RequestLoadGame || load.RequestSaveGame {
+	if !load.OpenLoadGameMenu || load.OpenSaveGameMenu {
 		t.Fatalf("load request mismatch: %+v", load)
+	}
+	if load.State.Mode != FrontendModeSaveLoad || load.State.SaveLoadSaving {
+		t.Fatalf("load state mismatch: %+v", load.State)
 	}
 
 	save := StepFrontend(
@@ -29,8 +32,31 @@ func TestStepFrontendMainMenuLoadSaveBindings(t *testing.T) {
 		FrontendInput{Select: true},
 		cfg,
 	)
-	if !save.RequestSaveGame || save.RequestLoadGame {
+	if !save.OpenSaveGameMenu || save.OpenLoadGameMenu {
 		t.Fatalf("save request mismatch: %+v", save)
+	}
+	if save.State.Mode != FrontendModeSaveLoad || !save.State.SaveLoadSaving {
+		t.Fatalf("save state mismatch: %+v", save.State)
+	}
+}
+
+func TestStepFrontendSaveLoadMenuSelectsNumberedSlot(t *testing.T) {
+	load := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeSaveLoad, SaveLoadOn: 2},
+		FrontendInput{Select: true},
+		FrontendConfig{},
+	)
+	if got := load.LoadGameSlot; got != 3 {
+		t.Fatalf("LoadGameSlot=%d want 3", got)
+	}
+
+	save := StepFrontend(
+		Frontend{Active: true, Mode: FrontendModeSaveLoad, SaveLoadSaving: true, SaveLoadOn: 4},
+		FrontendInput{Select: true},
+		FrontendConfig{},
+	)
+	if got := save.SaveGameSlot; got != 5 {
+		t.Fatalf("SaveGameSlot=%d want 5", got)
 	}
 }
 

@@ -55,6 +55,7 @@ const (
 	frontendModeVoice                    = sessionflow.FrontendModeVoice
 	frontendModeEpisode                  = sessionflow.FrontendModeEpisode
 	frontendModeSkill                    = sessionflow.FrontendModeSkill
+	frontendModeSaveLoad                 = sessionflow.FrontendModeSaveLoad
 	frontendModeMusicPlayer frontendMode = 100
 	frontendModeKeybinds    frontendMode = 101
 )
@@ -97,6 +98,7 @@ type sessionGame struct {
 	crtUniforms             map[string]any
 	gameplaySurface         *ebiten.Image
 	frontendSurface         *ebiten.Image
+	saveThumbnailCache      map[int]saveThumbnailCacheEntry
 	bootSplashImage         *ebiten.Image
 	menuPatchImages         map[string]*ebiten.Image
 	intermissionImages      map[string]*ebiten.Image

@@ -5,11 +5,14 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
 	"gddoom/internal/demo"
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
+	"gddoom/internal/runtimecfg"
 	"gddoom/internal/wad"
 )
 
@@ -189,6 +192,80 @@ func normalizeOwnedWeapons(src map[int16]bool) map[int16]bool {
 		return nil
 	}
 	return owned
+}
+
+func TestSaveGamePathUsesNumberedSlotFiles(t *testing.T) {
+	if got, want := saveGamePath(1), "saves/dsg1.dsg"; got != want {
+		t.Fatalf("saveGamePath(1)=%q want %q", got, want)
+	}
+	if got, want := saveGamePath(6), "saves/dsg6.dsg"; got != want {
+		t.Fatalf("saveGamePath(6)=%q want %q", got, want)
+	}
+	if got, want := saveGameThumbnailPath(1), "saves/dsg1.png"; got != want {
+		t.Fatalf("saveGameThumbnailPath(1)=%q want %q", got, want)
+	}
+}
+
+func TestSaveSnapshotIncludesWADSourcesAndChecksumFooter(t *testing.T) {
+	slot := 90
+	path := saveGamePath(slot)
+	_ = os.Remove(path)
+	defer os.Remove(path)
+
+	base := &mapdata.Map{
+		Name: "MAP01",
+		Things: []mapdata.Thing{
+			{Type: 1, X: 0, Y: 0, Angle: 90},
+		},
+		Sectors: []mapdata.Sector{
+			{FloorHeight: 0, CeilingHeight: 128},
+		},
+	}
+
+	sg := &sessionGame{
+		current:         base.Name,
+		currentTemplate: cloneMapForRestart(base),
+		opts: Options{
+			Width:      doomLogicalW,
+			Height:     doomLogicalH,
+			PlayerSlot: 1,
+			WADSources: []runtimecfg.WADSource{{Name: "DOOM2.WAD", Hash: "abc123"}, {Name: "PATCH.WAD", Hash: "def456"}},
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				if mapdata.MapName(mapName) != base.Name {
+					t.Fatalf("unexpected map load %q want %q", mapName, base.Name)
+				}
+				return cloneMapForRestart(base), nil
+			},
+		},
+	}
+	sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+	sg.rt = sg.g
+
+	if err := sg.SaveGameToSlot(slot); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read save failed: %v", err)
+	}
+	file, err := decodeSnapshot(raw, saveGameMagic)
+	if err != nil {
+		t.Fatalf("decodeSnapshot() error = %v", err)
+	}
+	if got, want := len(file.WADSources), 2; got != want {
+		t.Fatalf("WADSources len=%d want %d", got, want)
+	}
+	if got, want := file.WADSources[0].Name, "DOOM2.WAD"; got != want {
+		t.Fatalf("WADSources[0].Name=%q want %q", got, want)
+	}
+	if got, want := file.WADSources[0].Hash, "abc123"; got != want {
+		t.Fatalf("WADSources[0].Hash=%q want %q", got, want)
+	}
+	corrupted := append([]byte(nil), raw...)
+	corrupted[len(corrupted)-1] ^= 0x01
+	if _, err := decodeSnapshot(corrupted, saveGameMagic); !errors.Is(err, errBadSaveChecksum) {
+		t.Fatalf("decodeSnapshot(corrupted) error = %v want errBadSaveChecksum", err)
+	}
 }
 
 func TestSaveLoadRoundTrip(t *testing.T) {
@@ -856,6 +933,59 @@ func TestLoadGameRejectsBadChecksum(t *testing.T) {
 	err = loaded.unmarshalSaveGame(data)
 	if !errors.Is(err, errBadSaveChecksum) {
 		t.Fatalf("err=%v want=%v", err, errBadSaveChecksum)
+	}
+}
+
+func TestCompareSaveWADSourcesReportsMissingAndChecksumMismatch(t *testing.T) {
+	expected := []saveWADSource{
+		{Name: "DOOM.WAD", Hash: "aaa"},
+		{Name: "PATCH.WAD", Hash: "bbb"},
+	}
+	actual := []saveWADSource{
+		{Name: "DOOM.WAD", Hash: "aaa"},
+		{Name: "PATCH.WAD", Hash: "ccc"},
+	}
+	if got := compareSaveWADSources(expected, actual); !strings.Contains(got, "checksum mismatch WAD 2: PATCH.WAD") {
+		t.Fatalf("checksum warning=%q", got)
+	}
+
+	actual = []saveWADSource{{Name: "DOOM.WAD", Hash: "aaa"}}
+	if got := compareSaveWADSources(expected, actual); !strings.Contains(got, "missing WAD 2: PATCH.WAD") {
+		t.Fatalf("missing warning=%q", got)
+	}
+}
+
+func TestSaveSlotMetadataFormatters(t *testing.T) {
+	if got, want := formatSaveLevelLabel(mapdata.MapName("E1M3")), "3 (E1M3)"; got != want {
+		t.Fatalf("formatSaveLevelLabel(E1M3)=%q want %q", got, want)
+	}
+	if got, want := formatSaveLevelLabel(mapdata.MapName("MAP07")), "7 (MAP07)"; got != want {
+		t.Fatalf("formatSaveLevelLabel(MAP07)=%q want %q", got, want)
+	}
+	if got, want := formatSavePlaytime(35*65+17), "1:05"; got != want {
+		t.Fatalf("formatSavePlaytime()=%q want %q", got, want)
+	}
+	wantTime := time.Date(2026, time.April, 12, 14, 3, 0, 0, time.Local)
+	if got, want := formatSaveModTime(wantTime), "2026-04-12 14:03"; got != want {
+		t.Fatalf("formatSaveModTime()=%q want %q", got, want)
+	}
+	if got, want := formatSaveWADNames([]saveWADSource{{Name: "DOOM.WAD"}, {Name: "PATCH.WAD"}}), "DOOM.WAD, PATCH.WAD"; got != want {
+		t.Fatalf("formatSaveWADNames()=%q want %q", got, want)
+	}
+	if got, want := formatSaveHealthLabel(87), "87"; got != want {
+		t.Fatalf("formatSaveHealthLabel()=%q want %q", got, want)
+	}
+	if got, want := formatSaveHealthLabel(0), "0"; got != want {
+		t.Fatalf("formatSaveHealthLabel(0)=%q want %q", got, want)
+	}
+}
+
+func TestSaveThumbnailDimensionsDoNotUpscale(t *testing.T) {
+	if gotW, gotH := saveThumbnailDimensions(160, 100); gotW != 160 || gotH != 100 {
+		t.Fatalf("saveThumbnailDimensions(160,100)=%dx%d want 160x100", gotW, gotH)
+	}
+	if gotW, gotH := saveThumbnailDimensions(640, 400); gotW != 320 || gotH != 200 {
+		t.Fatalf("saveThumbnailDimensions(640,400)=%dx%d want 320x200", gotW, gotH)
 	}
 }
 

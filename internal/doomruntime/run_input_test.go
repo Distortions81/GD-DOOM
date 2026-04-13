@@ -100,6 +100,23 @@ func TestOpenFrontendSoundMenuFromSignalStartsAtSoundSubmenu(t *testing.T) {
 	}
 }
 
+func TestOpenFrontendSaveLoadMenuFromSignalStartsAtSlotMenu(t *testing.T) {
+	sg := &sessionGame{}
+	sg.openFrontendSaveLoadMenuFromSignal(gameplay.SessionSignals{DemoActive: false}, true)
+	if !sg.frontend.Active || !sg.frontend.MenuActive {
+		t.Fatal("expected frontend save/load menu to open")
+	}
+	if sg.frontend.Mode != frontendModeSaveLoad {
+		t.Fatalf("mode=%d want=%d", sg.frontend.Mode, frontendModeSaveLoad)
+	}
+	if !sg.frontend.SaveLoadSaving {
+		t.Fatal("expected save mode")
+	}
+	if sg.frontend.SaveLoadOn != 0 {
+		t.Fatalf("saveLoadOn=%d want 0", sg.frontend.SaveLoadOn)
+	}
+}
+
 func TestWatchModeDisablesSaveLoadHotkeys(t *testing.T) {
 	g := &game{
 		opts: Options{LiveTicSource: &testLiveTicSource{}},

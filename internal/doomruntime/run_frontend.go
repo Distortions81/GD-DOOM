@@ -824,15 +824,13 @@ func (sg *sessionGame) tickFrontend() error {
 	if result.StartGameSkill > 0 {
 		sg.startGameFromFrontend(result.StartGameSkill)
 	}
-	if result.RequestLoadGame {
-		if err := sg.LoadGameFromSlot(1); err != nil {
+	if result.LoadGameSlot > 0 {
+		if err := sg.LoadGameFromSlot(result.LoadGameSlot); err != nil {
 			sg.frontendStatus("LOAD FAILED", doomTicsPerSecond*2)
-		} else {
-			sg.frontendStatus("GAME LOADED", doomTicsPerSecond*2)
 		}
 	}
-	if result.RequestSaveGame {
-		if err := sg.SaveGameToSlot(1); err != nil {
+	if result.SaveGameSlot > 0 {
+		if err := sg.SaveGameToSlot(result.SaveGameSlot); err != nil {
 			sg.frontendStatus(strings.ToUpper(err.Error()), doomTicsPerSecond*2)
 		} else {
 			sg.frontendStatus("GAME SAVED", doomTicsPerSecond*2)
@@ -954,6 +952,69 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 			_ = sg.drawMenuPatch(screen, name, 48, 63+i*16, scale, ox, oy, false)
 		}
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.SkillOn*16, scale, ox, oy)
+		return
+	case frontendModeSaveLoad:
+		sg.drawFrontendBackdrop(screen, true)
+		if sg.quitPrompt.Active {
+			return
+		}
+		title := "M_SAVEG"
+		if !sg.frontend.SaveLoadSaving {
+			title = "M_LOADG"
+		}
+		_ = sg.drawMenuPatch(screen, title, 72, 28, scale, ox, oy, false)
+		labels := sg.saveSlotDescriptions(6)
+		const menuX = 80
+		const menuY = 54
+		const lineHeight = 16
+		for i, label := range labels {
+			y := menuY + i*lineHeight
+			_ = sg.drawMenuPatch(screen, "M_LSLEFT", menuX-8, y+7, scale, ox, oy, false)
+			for j := 0; j < 24; j++ {
+				_ = sg.drawMenuPatch(screen, "M_LSCNTR", menuX+8*j, y+7, scale, ox, oy, false)
+			}
+			_ = sg.drawMenuPatch(screen, "M_LSRGHT", menuX+8*24, y+7, scale, ox, oy, false)
+			sg.drawIntermissionText(screen, fmt.Sprintf("%d. %s", i+1, label), menuX, y, scale, ox, oy, false)
+		}
+		if detail := sg.saveSlotDetailLines(sg.frontend.SaveLoadOn + 1); len(detail) > 0 {
+			const detailX = 12
+			const detailY = 146
+			const detailMaxWidth = 296
+			for i, line := range detail {
+				line = sg.ellipsizeIntermissionText(line, detailMaxWidth)
+				sg.drawIntermissionText(screen, line, detailX, detailY+i*10, scale, ox, oy, false)
+			}
+		}
+		if sg.opts.SourcePortMode {
+			const (
+				thumbX = 184
+				thumbY = 48
+			)
+			thumbW := saveThumbnailFallbackW
+			thumbH := saveThumbnailFallbackH
+			var thumbImg *ebiten.Image
+			thumbScreenX := ox + float64(thumbX)*scale
+			thumbScreenY := oy + float64(thumbY)*scale
+			if img, ok := sg.saveSlotThumbnailImage(sg.frontend.SaveLoadOn + 1); ok && img != nil {
+				thumbImg = img
+				thumbW = img.Bounds().Dx()
+				thumbH = img.Bounds().Dy()
+			}
+			ebitenutil.DrawRect(screen, thumbScreenX-float64(2), thumbScreenY-float64(2), float64(thumbW+4), float64(thumbH+4), color.RGBA{A: 224})
+			ebitenutil.DrawRect(screen, thumbScreenX, thumbScreenY, float64(thumbW), float64(thumbH), color.RGBA{R: 8, G: 8, B: 8, A: 255})
+			if thumbImg != nil {
+				op := &ebiten.DrawImageOptions{}
+				op.Filter = ebiten.FilterNearest
+				op.GeoM.Translate(thumbScreenX, thumbScreenY)
+				screen.DrawImage(thumbImg, op)
+			} else {
+				sg.drawIntermissionText(screen, "NO THUMBNAIL", thumbX+thumbW/2, thumbY+thumbH/2, scale, ox, oy, true)
+			}
+		}
+		if msg := strings.TrimSpace(sg.frontend.Status); msg != "" {
+			sg.drawIntermissionText(screen, msg, 160, 182, scale, ox, oy, true)
+		}
+		sg.drawMenuSkull(screen, 48, 49+sg.frontend.SaveLoadOn*lineHeight, scale, ox, oy)
 		return
 	default:
 		sg.drawFrontendBackdrop(screen, true)

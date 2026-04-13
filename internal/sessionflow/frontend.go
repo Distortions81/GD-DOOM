@@ -20,6 +20,7 @@ const (
 	FrontendModeVoice
 	FrontendModeEpisode
 	FrontendModeSkill
+	FrontendModeSaveLoad
 )
 
 type Frontend struct {
@@ -35,6 +36,8 @@ type Frontend struct {
 	EpisodeOn        int
 	SelectedEpisode  int
 	SkillOn          int
+	SaveLoadOn       int
+	SaveLoadSaving   bool
 	ReadThisPage     int
 	ReadThisFromGame bool
 	SkullAnimCounter int
@@ -101,8 +104,10 @@ type FrontendResult struct {
 	ChangeVoicePushToTalk    bool
 	OpenMusicPlayer          bool
 	StartGameSkill           int
-	RequestLoadGame          bool
-	RequestSaveGame          bool
+	OpenLoadGameMenu         bool
+	OpenSaveGameMenu         bool
+	LoadGameSlot             int
+	SaveGameSlot             int
 	RequestQuit              bool
 	StatusMessage            string
 	StatusMessageTic         int
@@ -736,6 +741,37 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 			result.StartGameSkill = state.SkillOn + 1
 		}
 		return result
+	case FrontendModeSaveLoad:
+		if input.Escape {
+			if state.Attract {
+				result.State.Mode = FrontendModeTitle
+				result.State.MenuActive = false
+				result.Sound = FrontendSoundBack
+				return result
+			}
+			result.State.Mode = FrontendModeTitle
+			result.State.MenuActive = true
+			result.Sound = FrontendSoundBack
+			return result
+		}
+		if input.Up {
+			result.State.SaveLoadOn = (state.SaveLoadOn + 5) % 6
+			result.Sound = FrontendSoundMove
+		}
+		if input.Down {
+			result.State.SaveLoadOn = (state.SaveLoadOn + 1) % 6
+			result.Sound = FrontendSoundMove
+		}
+		if input.Select {
+			slot := state.SaveLoadOn + 1
+			if state.SaveLoadSaving {
+				result.SaveGameSlot = slot
+			} else {
+				result.LoadGameSlot = slot
+			}
+			result.Sound = FrontendSoundConfirm
+		}
+		return result
 	default:
 		if input.Escape {
 			if state.InGame {
@@ -790,9 +826,15 @@ func StepFrontend(state Frontend, input FrontendInput, cfg FrontendConfig) Front
 					result.State.OptionsOn = cfg.OptionRows[0]
 				}
 			case 2:
-				result.RequestLoadGame = true
+				result.State.Mode = FrontendModeSaveLoad
+				result.State.SaveLoadOn = 0
+				result.State.SaveLoadSaving = false
+				result.OpenLoadGameMenu = true
 			case 3:
-				result.RequestSaveGame = true
+				result.State.Mode = FrontendModeSaveLoad
+				result.State.SaveLoadOn = 0
+				result.State.SaveLoadSaving = true
+				result.OpenSaveGameMenu = true
 			case 4:
 				result.State = OpenReadThis(state, state.InGame)
 			case 5:

@@ -3922,8 +3922,16 @@ func (g *game) activatePauseMenuItem() {
 	case 1:
 		g.pauseMenuMode = pauseMenuModeOptions
 	case 2, 3:
-		g.pauseMenuStatus = "MENU ITEM NOT WIRED YET"
-		g.pauseMenuStatusTics = doomTicsPerSecond * 2
+		g.pauseMenuActive = false
+		g.paused = false
+		g.pauseMenuMode = pauseMenuModeRoot
+		g.pauseMenuStatus = ""
+		g.pauseMenuStatusTics = 0
+		if g.pauseMenuItemOn == 2 {
+			g.saveGameRequested = true
+		} else {
+			g.loadGameRequested = true
+		}
 	case 4:
 		g.pauseMenuActive = false
 		g.paused = false

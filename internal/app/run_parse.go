@@ -42,6 +42,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/vector"
+	"github.com/zeebo/blake3"
 )
 
 func flagProvided(args []string, name string) bool {
@@ -1106,6 +1107,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			AutoDetail:                 *autoDetail,
 			InitialGammaLevel:          *gammaLevel,
 			WADHash:                    wadHash,
+			WADSources:                 buildWADSources(wadPaths),
 			Debug:                      *debug,
 			DebugEvents:                *debugEvents,
 			PlayerSlot:                 *playerSlot,
@@ -1770,6 +1772,52 @@ func hashWADStackSHA1(paths []string) string {
 		}
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+func buildWADSources(paths []string) []runtimecfg.WADSource {
+	if len(paths) == 0 {
+		return nil
+	}
+	out := make([]runtimecfg.WADSource, 0, len(paths))
+	for _, path := range paths {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			continue
+		}
+		out = append(out, runtimecfg.WADSource{
+			Name: filepath.Base(path),
+			Hash: hashWADPathBlake3(path),
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func hashWADPathBlake3(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	if data, ok := wad.EmbeddedDataForPath(path); ok {
+		sum := blake3.Sum256(data)
+		return fmt.Sprintf("%x", sum[:])
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		_ = f.Close()
+		return ""
+	}
+	if err := f.Close(); err != nil {
+		return ""
+	}
+	sum := blake3.Sum256(data)
+	return fmt.Sprintf("%x", sum[:])
 }
 
 func mapMusicLumpName(name mapdata.MapName) (string, bool) {
@@ -2579,6 +2627,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		AutoDetail:                 cfg.autoDetail,
 		InitialGammaLevel:          cfg.gammaLevel,
 		WADHash:                    wadHash,
+		WADSources:                 buildWADSources(wadPaths),
 		Debug:                      cfg.debug,
 		DebugEvents:                cfg.debugEvents,
 		PlayerSlot:                 cfg.playerSlot,

@@ -223,22 +223,12 @@ func (sg *sessionGame) Update() error {
 			sig := sg.rt.sessionSignals()
 			if sig.SaveGame {
 				sg.rt.sessionAcknowledgeSaveGame()
-				if err := sg.SaveGameToSlot(1); err != nil {
-					if sg.g != nil {
-						sg.g.setHUDMessage(strings.ToUpper(err.Error()), 70)
-					}
-				} else if sg.g != nil {
-					sg.g.setHUDMessage("GAME SAVED", 70)
-				}
+				sg.openFrontendSaveLoadMenuFromSignal(sig, true)
 				return true, nil
 			}
 			if sig.LoadGame {
 				sg.rt.sessionAcknowledgeLoadGame()
-				if err := sg.LoadGameFromSlot(1); err != nil {
-					if sg.g != nil {
-						sg.g.setHUDMessage(strings.ToUpper(err.Error()), 70)
-					}
-				}
+				sg.openFrontendSaveLoadMenuFromSignal(sig, false)
 				return true, nil
 			}
 			if sig.FrontendMenu {
@@ -519,6 +509,22 @@ func (sg *sessionGame) openFrontendMenuFromSignal(sig gameplay.SessionSignals) {
 		Mode:       frontendModeTitle,
 		MenuActive: true,
 		ItemOn:     itemOn,
+	}
+}
+
+func (sg *sessionGame) openFrontendSaveLoadMenuFromSignal(sig gameplay.SessionSignals, saving bool) {
+	if sg == nil {
+		return
+	}
+	inGame := !sig.DemoActive
+	sg.frontend = frontendState{
+		Active:         true,
+		InGame:         inGame,
+		Attract:        sig.DemoActive,
+		Mode:           frontendModeSaveLoad,
+		MenuActive:     true,
+		SaveLoadOn:     0,
+		SaveLoadSaving: saving,
 	}
 }
 

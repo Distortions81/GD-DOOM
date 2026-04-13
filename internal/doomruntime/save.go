@@ -3,22 +3,27 @@ package doomruntime
 import (
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/mapview"
+	"gddoom/internal/runtimecfg"
 	"gddoom/internal/runtimehost"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 const (
-	saveGameVersion = 18
+	saveGameVersion = 19
 	saveGamePrefix  = "dsg"
-	keyframeVersion = 5
+	keyframeVersion = 6
 	saveGameDirName = "saves"
 )
 
@@ -34,6 +39,12 @@ var saveGameMagic = []byte("GDDOOMSAVE\x00")
 var keyframeMagic = []byte("GDDOOMKEY\x00")
 
 const saveMandatoryApplyKeyframeFlag byte = 1
+const (
+	saveThumbnailMaxWidth  = 320
+	saveThumbnailMaxHeight = 320
+	saveThumbnailFallbackW = 320
+	saveThumbnailFallbackH = 200
+)
 
 type saveKeyframeSink interface {
 	BroadcastKeyframe(tic uint32, blob []byte) error
@@ -47,6 +58,7 @@ type saveFile struct {
 	Version     int
 	Description string
 	Current     mapdata.MapName
+	WADSources  []saveWADSource
 	RNG         saveRNGState
 	Game        gameSaveState
 }
@@ -54,6 +66,27 @@ type saveFile struct {
 type saveRNGState struct {
 	MenuIndex int
 	PlayIndex int
+}
+
+type saveWADSource struct {
+	Name string
+	Hash string
+}
+
+type saveThumbnailCacheEntry struct {
+	ModTime time.Time
+	Image   *ebiten.Image
+}
+
+type saveSlotInfo struct {
+	Slot        int
+	Description string
+	Current     mapdata.MapName
+	WADSources  []saveWADSource
+	Health      int
+	WorldTic    int
+	ModTime     time.Time
+	Present     bool
 }
 
 type gameSaveState struct {
@@ -354,10 +387,393 @@ type delayedSwitchTextureSaveState struct {
 
 func saveGamePath(slot int) string {
 	name := fmt.Sprintf("%s%d.%s", saveGamePrefix, slot, saveGamePrefix)
-	if slot == 1 {
-		name = "quicksave.dsg"
-	}
 	return filepath.Join(saveGameDirName, name)
+}
+
+func saveGameThumbnailPath(slot int) string {
+	name := fmt.Sprintf("%s%d.png", saveGamePrefix, slot)
+	return filepath.Join(saveGameDirName, name)
+}
+
+func (sg *sessionGame) readSaveGameDescription(slot int) (string, bool) {
+	if isWASMBuild() || sg == nil {
+		return "", false
+	}
+	data, err := os.ReadFile(saveGamePath(slot))
+	if err != nil {
+		return "", false
+	}
+	file, err := decodeSnapshot(data, saveGameMagic)
+	if err != nil {
+		return "", false
+	}
+	desc := strings.TrimSpace(file.Description)
+	if desc == "" {
+		return "", false
+	}
+	return desc, true
+}
+
+func (sg *sessionGame) saveSlotDescriptions(slotCount int) []string {
+	if slotCount <= 0 {
+		return nil
+	}
+	out := make([]string, slotCount)
+	for i := 0; i < slotCount; i++ {
+		if desc, ok := sg.readSaveGameDescription(i + 1); ok {
+			out[i] = desc
+		} else {
+			out[i] = "EMPTY SLOT"
+		}
+	}
+	return out
+}
+
+func (sg *sessionGame) saveSlotThumbnailImage(slot int) (*ebiten.Image, bool) {
+	if isWASMBuild() || sg == nil {
+		return nil, false
+	}
+	if sg.saveThumbnailCache == nil {
+		sg.saveThumbnailCache = make(map[int]saveThumbnailCacheEntry)
+	}
+	path := saveGameThumbnailPath(slot)
+	stat, err := os.Stat(path)
+	if err != nil {
+		delete(sg.saveThumbnailCache, slot)
+		return nil, false
+	}
+	if entry, ok := sg.saveThumbnailCache[slot]; ok && entry.Image != nil && entry.ModTime.Equal(stat.ModTime()) {
+		return entry.Image, true
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	img, err := png.Decode(f)
+	if err != nil {
+		return nil, false
+	}
+	eimg := ebiten.NewImageFromImage(img)
+	sg.saveThumbnailCache[slot] = saveThumbnailCacheEntry{
+		ModTime: stat.ModTime(),
+		Image:   eimg,
+	}
+	return eimg, true
+}
+
+func (sg *sessionGame) readSaveSlotInfo(slot int) (saveSlotInfo, bool) {
+	if isWASMBuild() || sg == nil {
+		return saveSlotInfo{}, false
+	}
+	path := saveGamePath(slot)
+	stat, err := os.Stat(path)
+	if err != nil {
+		return saveSlotInfo{}, false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return saveSlotInfo{}, false
+	}
+	file, err := decodeSnapshot(data, saveGameMagic)
+	if err != nil {
+		return saveSlotInfo{}, false
+	}
+	return saveSlotInfo{
+		Slot:        slot,
+		Description: strings.TrimSpace(file.Description),
+		Current:     file.Current,
+		WADSources:  append([]saveWADSource(nil), file.WADSources...),
+		Health:      file.Game.Stats.Health,
+		WorldTic:    file.Game.WorldTic,
+		ModTime:     stat.ModTime(),
+		Present:     true,
+	}, true
+}
+
+func (sg *sessionGame) saveSlotDetailLines(slot int) []string {
+	info, ok := sg.readSaveSlotInfo(slot)
+	if !ok {
+		return []string{"EMPTY SLOT"}
+	}
+	level := formatSaveLevelLabel(info.Current)
+	health := formatSaveHealthLabel(info.Health)
+	playtime := formatSavePlaytime(info.WorldTic)
+	modTime := formatSaveModTime(info.ModTime)
+	wads := formatSaveWADNames(info.WADSources)
+	lines := []string{
+		fmt.Sprintf("LEVEL %s  HP %s  PLAY %s  DATE %s", level, health, playtime, modTime),
+		"WADS " + wads,
+	}
+	return lines
+}
+
+func (sg *sessionGame) renderSaveThumbnailSourceImage(g *game) *ebiten.Image {
+	if sg == nil || g == nil {
+		return nil
+	}
+	if !sg.opts.SourcePortMode {
+		vw := max(g.viewW, 1)
+		vh := max(g.viewH, 1)
+		if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
+			sg.faithfulSurface = newUnmanagedImage(vw, vh)
+		}
+		sg.faithfulSurface.Fill(color.Black)
+		if g.mode != viewMap {
+			g.drawWalk3D(sg.faithfulSurface)
+			g.drawWalkOverlays(sg.faithfulSurface)
+		} else {
+			g.Draw(sg.faithfulSurface)
+		}
+		src := sg.faithfulSurface
+		if sg.palettePostEnabled() {
+			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
+		}
+		return src
+	}
+	w := max(g.viewW, 1)
+	h := max(g.viewH, 1)
+	if sg.gameplaySurface == nil || sg.gameplaySurface.Bounds().Dx() != w || sg.gameplaySurface.Bounds().Dy() != h {
+		sg.gameplaySurface = newUnmanagedImage(w, h)
+	}
+	src := sg.gameplaySurface
+	src.Fill(color.Black)
+	if g.mode != viewMap {
+		g.drawWalk3D(src)
+		g.drawWalkOverlays(src)
+	} else {
+		g.Draw(src)
+	}
+	return src
+}
+
+func (sg *sessionGame) saveThumbnailImage() (*image.RGBA, error) {
+	if isWASMBuild() {
+		return nil, errSaveGameWebOnly
+	}
+	if sg == nil || sg.g == nil {
+		return nil, errSaveGameUnavailable
+	}
+	src := sg.renderSaveThumbnailSourceImage(sg.g)
+	if src == nil {
+		return nil, errSaveGameUnavailable
+	}
+	thumbW, thumbH := saveThumbnailDimensions(src.Bounds().Dx(), src.Bounds().Dy())
+	thumb := newUnmanagedImage(thumbW, thumbH)
+	thumb.Fill(color.Black)
+	sw := max(src.Bounds().Dx(), 1)
+	sh := max(src.Bounds().Dy(), 1)
+	rw, rh, ox, oy := fitRect(thumbW, thumbH, sw, sh)
+	op := &ebiten.DrawImageOptions{}
+	op.Filter = ebiten.FilterNearest
+	op.GeoM.Scale(float64(rw)/float64(sw), float64(rh)/float64(sh))
+	op.GeoM.Translate(float64(ox), float64(oy))
+	thumb.DrawImage(src, op)
+	pix := make([]byte, thumbW*thumbH*4)
+	thumb.ReadPixels(pix)
+	out := image.NewRGBA(image.Rect(0, 0, thumbW, thumbH))
+	copy(out.Pix, pix)
+	return out, nil
+}
+
+func (sg *sessionGame) writeSaveThumbnail(slot int) error {
+	if isWASMBuild() {
+		return errSaveGameWebOnly
+	}
+	if sg == nil || sg.g == nil {
+		return errSaveGameUnavailable
+	}
+	img, err := func() (*image.RGBA, error) {
+		defer func() {
+			if recover() != nil {
+				// Ebiten pixel reads can panic before the game loop is running.
+				// In that case, skip the thumbnail instead of writing a blank PNG.
+			}
+		}()
+		return sg.saveThumbnailImage()
+	}()
+	if err != nil || img == nil {
+		_ = os.Remove(saveGameThumbnailPath(slot))
+		if sg.saveThumbnailCache != nil {
+			delete(sg.saveThumbnailCache, slot)
+		}
+		return nil
+	}
+	if err := os.MkdirAll(saveGameDirName, 0o755); err != nil {
+		return fmt.Errorf("create save dir: %w", err)
+	}
+	f, err := os.Create(saveGameThumbnailPath(slot))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		return err
+	}
+	if sg.saveThumbnailCache != nil {
+		delete(sg.saveThumbnailCache, slot)
+	}
+	return nil
+}
+
+func saveThumbnailDimensions(srcW, srcH int) (int, int) {
+	srcW = max(srcW, 1)
+	srcH = max(srcH, 1)
+	if srcW <= saveThumbnailMaxWidth && srcH <= saveThumbnailMaxHeight {
+		return srcW, srcH
+	}
+	rw, rh, _, _ := fitRect(saveThumbnailMaxWidth, saveThumbnailMaxHeight, srcW, srcH)
+	return rw, rh
+}
+
+func formatSaveLevelLabel(name mapdata.MapName) string {
+	if episode, slot, ok := episodeMapSlot(name); ok {
+		return fmt.Sprintf("%d (%s)", slot, fmt.Sprintf("E%dM%d", episode, slot))
+	}
+	s := strings.ToUpper(strings.TrimSpace(string(name)))
+	if strings.HasPrefix(s, "MAP") && len(s) == 5 {
+		if s[3] >= '0' && s[3] <= '9' && s[4] >= '0' && s[4] <= '9' {
+			return fmt.Sprintf("%d (%s)", (int(s[3]-'0')*10)+(int(s[4]-'0')), s)
+		}
+	}
+	if s == "" {
+		return "UNKNOWN"
+	}
+	return s
+}
+
+func formatSavePlaytime(worldTic int) string {
+	if worldTic < 0 {
+		worldTic = 0
+	}
+	totalSec := worldTic / doomTicsPerSecond
+	h := totalSec / 3600
+	m := (totalSec % 3600) / 60
+	s := totalSec % 60
+	if h > 0 {
+		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
+	}
+	return fmt.Sprintf("%d:%02d", m, s)
+}
+
+func formatSaveModTime(t time.Time) string {
+	if t.IsZero() {
+		return "UNKNOWN"
+	}
+	return t.Local().Format("2006-01-02 15:04")
+}
+
+func formatSaveWADNames(src []saveWADSource) string {
+	if len(src) == 0 {
+		return "NONE"
+	}
+	names := make([]string, 0, len(src))
+	for _, wadSource := range src {
+		name := strings.TrimSpace(wadSource.Name)
+		if name == "" {
+			name = "UNKNOWN"
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, ", ")
+}
+
+func formatSaveHealthLabel(health int) string {
+	if health <= 0 {
+		return "0"
+	}
+	return fmt.Sprintf("%d", health)
+}
+
+func (sg *sessionGame) ellipsizeIntermissionText(text string, maxWidth int) string {
+	text = strings.TrimSpace(text)
+	if text == "" || maxWidth <= 0 {
+		return text
+	}
+	if sg.intermissionTextWidth(text) <= maxWidth {
+		return text
+	}
+	const ellipsis = "..."
+	if sg.intermissionTextWidth(ellipsis) > maxWidth {
+		return ""
+	}
+	runes := []rune(text)
+	for len(runes) > 0 {
+		runes = runes[:len(runes)-1]
+		candidate := strings.TrimSpace(string(runes)) + ellipsis
+		if sg.intermissionTextWidth(candidate) <= maxWidth {
+			return candidate
+		}
+	}
+	return ellipsis
+}
+
+func captureSaveWADSources(src []runtimecfg.WADSource) []saveWADSource {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make([]saveWADSource, 0, len(src))
+	for _, wadSource := range src {
+		name := strings.TrimSpace(wadSource.Name)
+		hash := strings.TrimSpace(wadSource.Hash)
+		if name == "" && hash == "" {
+			continue
+		}
+		out = append(out, saveWADSource{Name: name, Hash: hash})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func compareSaveWADSources(expected, actual []saveWADSource) string {
+	if len(expected) == 0 {
+		return ""
+	}
+	issues := make([]string, 0, 4)
+	max := len(expected)
+	if len(actual) > max {
+		max = len(actual)
+	}
+	for i := 0; i < max; i++ {
+		switch {
+		case i >= len(expected):
+			name := strings.TrimSpace(actual[i].Name)
+			if name == "" {
+				name = "UNKNOWN"
+			}
+			issues = append(issues, fmt.Sprintf("extra WAD %d: %s", i+1, name))
+		case i >= len(actual):
+			name := strings.TrimSpace(expected[i].Name)
+			if name == "" {
+				name = "UNKNOWN"
+			}
+			issues = append(issues, fmt.Sprintf("missing WAD %d: %s", i+1, name))
+		case strings.TrimSpace(actual[i].Hash) == "":
+			name := strings.TrimSpace(expected[i].Name)
+			if name == "" {
+				name = strings.TrimSpace(actual[i].Name)
+			}
+			if name == "" {
+				name = "UNKNOWN"
+			}
+			issues = append(issues, fmt.Sprintf("missing WAD %d: %s", i+1, name))
+		case !strings.EqualFold(strings.TrimSpace(expected[i].Hash), strings.TrimSpace(actual[i].Hash)):
+			name := strings.TrimSpace(expected[i].Name)
+			if name == "" {
+				name = strings.TrimSpace(actual[i].Name)
+			}
+			if name == "" {
+				name = "UNKNOWN"
+			}
+			issues = append(issues, fmt.Sprintf("checksum mismatch WAD %d: %s", i+1, name))
+		}
+		if len(issues) >= 3 {
+			break
+		}
+	}
+	return strings.Join(issues, "; ")
 }
 
 func (sg *sessionGame) SaveGameToSlot(slot int) error {
@@ -377,7 +793,10 @@ func (sg *sessionGame) SaveGameToSlot(slot int) error {
 	if err := os.MkdirAll(saveGameDirName, 0o755); err != nil {
 		return fmt.Errorf("create save dir: %w", err)
 	}
-	return os.WriteFile(saveGamePath(slot), data, 0o644)
+	if err := os.WriteFile(saveGamePath(slot), data, 0o644); err != nil {
+		return err
+	}
+	return sg.writeSaveThumbnail(slot)
 }
 
 func (sg *sessionGame) LoadGameFromSlot(slot int) error {
@@ -394,7 +813,12 @@ func (sg *sessionGame) LoadGameFromSlot(slot int) error {
 		}
 		return err
 	}
-	if err := sg.unmarshalSaveGame(data); err != nil {
+	file, err := sg.loadSnapshot(data, saveGameMagic, saveGameVersion)
+	if err != nil {
+		return err
+	}
+	warning := compareSaveWADSources(file.WADSources, captureSaveWADSources(sg.opts.WADSources))
+	if err := sg.applyLoadedSnapshot(file, warning); err != nil {
 		return err
 	}
 	if err := sg.broadcastMandatoryRuntimeKeyframe(); err != nil {
@@ -416,6 +840,7 @@ func (sg *sessionGame) marshalSaveGame(description string) ([]byte, error) {
 		Version:     saveGameVersion,
 		Description: description,
 		Current:     sg.current,
+		WADSources:  captureSaveWADSources(sg.opts.WADSources),
 		RNG: saveRNGState{
 			MenuIndex: rndIndex,
 			PlayIndex: prndIndex,
@@ -438,6 +863,7 @@ func (sg *sessionGame) marshalNetplayKeyframe() ([]byte, error) {
 		Version:     keyframeVersion,
 		Description: "Netplay Keyframe",
 		Current:     sg.current,
+		WADSources:  captureSaveWADSources(sg.opts.WADSources),
 		RNG: saveRNGState{
 			MenuIndex: rndIndex,
 			PlayIndex: prndIndex,
@@ -485,16 +911,23 @@ func (sg *sessionGame) broadcastMandatoryRuntimeKeyframe() error {
 	return nil
 }
 
-func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int) error {
+func (sg *sessionGame) loadSnapshot(data []byte, magic []byte, version int) (saveFile, error) {
 	if sg == nil {
-		return errNoSavedGame
+		return saveFile{}, errNoSavedGame
 	}
 	file, err := decodeSnapshot(data, magic)
 	if err != nil {
-		return err
+		return saveFile{}, err
 	}
 	if file.Version != version {
-		return fmt.Errorf("incompatible save version: %d", file.Version)
+		return saveFile{}, fmt.Errorf("incompatible save version: %d", file.Version)
+	}
+	return file, nil
+}
+
+func (sg *sessionGame) applyLoadedSnapshot(file saveFile, warning string) error {
+	if sg == nil {
+		return errNoSavedGame
 	}
 	if sg.opts.NewGameLoader == nil {
 		return fmt.Errorf("save load requires NewGameLoader")
@@ -537,8 +970,21 @@ func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int)
 	sg.playMusicForMap(sg.current)
 	sg.announceMapMusic(sg.current)
 	ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
-	g.setHUDMessage("GAME LOADED", 70)
+	msg := "GAME LOADED"
+	if strings.TrimSpace(warning) != "" {
+		msg = "WAD WARNING: " + strings.TrimSpace(warning)
+		fmt.Println(msg)
+	}
+	g.setHUDMessage(msg, 70)
 	return nil
+}
+
+func (sg *sessionGame) unmarshalSnapshot(data []byte, magic []byte, version int) error {
+	file, err := sg.loadSnapshot(data, magic, version)
+	if err != nil {
+		return err
+	}
+	return sg.applyLoadedSnapshot(file, "")
 }
 
 func applySavedSessionOptions(dst *Options, s sessionSaveState) {
