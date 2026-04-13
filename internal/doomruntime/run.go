@@ -363,11 +363,11 @@ func (sg *sessionGame) Update() error {
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
+	defer yieldWASMRenderTime()
 	if sg == nil {
 		screen.Fill(color.Black)
 		return
 	}
-	defer yieldWASMRenderTime()
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	tw, th := sg.transitionSurfaceSize(sw, sh)
