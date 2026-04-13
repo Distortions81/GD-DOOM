@@ -8,8 +8,8 @@ const (
 	sourcePortDefaultWindowW = 1280
 	sourcePortDefaultWindowH = 800
 
-	sourcePortMaxWindowW = 1920
-	sourcePortMaxWindowH = 1080
+	sourcePortMaxWindowW = 1280
+	sourcePortMaxWindowH = 720
 
 	faithfulDefaultWindowW = 1280
 	faithfulDefaultWindowH = 960

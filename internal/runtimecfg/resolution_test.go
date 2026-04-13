@@ -4,8 +4,8 @@ import "testing"
 
 func TestClampSourcePortWindowSizeForWASMLimitsToMax(t *testing.T) {
 	w, h := clampSourcePortWindowSizeForPlatform(2560, 1440, true)
-	if w != 1920 || h != 1080 {
-		t.Fatalf("window=%dx%d want 1920x1080", w, h)
+	if w != 1280 || h != 720 {
+		t.Fatalf("window=%dx%d want 1280x720", w, h)
 	}
 }
 

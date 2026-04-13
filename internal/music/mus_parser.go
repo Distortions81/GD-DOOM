@@ -30,7 +30,7 @@ func walkMUS(data []byte, emit func(Event) error) error {
 	}
 	var h musHeader
 	copy(h.sig[:], data[:4])
-	if string(h.sig[:]) != musSig {
+	if h.sig != [4]byte{'M', 'U', 'S', 0x1A} {
 		return fmt.Errorf("mus: bad signature %q", string(h.sig[:]))
 	}
 	h.scoreLen = binary.LittleEndian.Uint16(data[4:6])
@@ -206,7 +206,7 @@ func musEventCapacity(data []byte) int {
 	if len(data) < 16 {
 		return 0
 	}
-	if string(data[:4]) != musSig {
+	if data[0] != 'M' || data[1] != 'U' || data[2] != 'S' || data[3] != 0x1A {
 		return 0
 	}
 	scoreLen := int(binary.LittleEndian.Uint16(data[4:6]))

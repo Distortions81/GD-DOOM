@@ -13,8 +13,8 @@ const (
 	faithfulDefaultWindowH = 960
 	faithfulAspectLogicalH = 240
 
-	sourcePortMaxWindowW = 1920
-	sourcePortMaxWindowH = 1080
+	sourcePortMaxWindowW = 1280
+	sourcePortMaxWindowH = 720
 )
 
 // DefaultCLIWindowSize returns the CLI/config default window size.
@@ -55,7 +55,7 @@ func clampSourcePortWindowSizeForPlatform(w, h int, wasm bool) (int, int) {
 	if h <= 0 {
 		h = sourcePortMaxWindowH
 	}
-	// Keep aspect ratio while fitting into the 1920x1080 ceiling.
+	// Keep aspect ratio while fitting into the 1280x720 ceiling.
 	if w*sourcePortMaxWindowH >= h*sourcePortMaxWindowW {
 		clampedH := (h * sourcePortMaxWindowW) / w
 		if clampedH < 1 {
