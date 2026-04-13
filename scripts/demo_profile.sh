@@ -8,6 +8,7 @@ DEMO_PATH="${ROOT_DIR}/demos/DOOM1-DEMO1.lmp"
 MAP_NAME="E1M5"
 OUT_DIR="${ROOT_DIR}/profiles"
 WITH_MEM=0
+RENDER=1
 
 usage() {
   cat <<'EOF'
@@ -23,6 +24,8 @@ Options:
   --out <dir>        Output directory for profiles/logs (default: ./profiles)
   --bin <path>       Override built binary path (default: ./.tmp/gddoom-profile)
   --mem              Also capture heap profile and runtime memstats
+  --no-render        Run demo without Ebiten renderer (headless)
+  --render           Force render path (default)
   -h, --help         Show this help
 
 Examples:
@@ -54,6 +57,14 @@ while [[ $# -gt 0 ]]; do
     --bin)
       BIN_PATH="$2"
       shift 2
+      ;;
+    --no-render)
+      RENDER=0
+      shift
+      ;;
+    --render)
+      RENDER=1
+      shift
       ;;
     --mem)
       WITH_MEM=1
@@ -115,6 +126,9 @@ CMD=(
   -demo "${DEMO_PATH}"
   -cpuprofile "${CPU_PROFILE}"
 )
+if [[ ${RENDER} -eq 1 ]]; then
+  CMD+=(-render)
+fi
 if [[ ${WITH_MEM} -eq 1 ]]; then
   CMD+=(-memprofile "${MEM_PROFILE}" -memstats)
 fi

@@ -19905,6 +19905,120 @@ func maskedClipColumnOccludesPointSorted(spans []scene.MaskedClipSpan, y int, de
 	return scene.MaskedClipColumnOccludesPointSorted(spans, y, depthQ)
 }
 
+func appendSpriteRowVisibleSpansDepthQGeneric(out []solidSpan, viewH, y, l, r int, depthQ uint16, wallDepthQCol []uint16, wallDepthTopCol, wallDepthBottomCol []int, wallDepthClosedCol []bool, maskedClipCols [][]scene.MaskedClipSpan, maskedClipFirstDepthQ []uint16) []solidSpan {
+	if l > r {
+		return out
+	}
+	wallDepthLen := len(wallDepthQCol)
+	wallDepthTopLen := len(wallDepthTopCol)
+	wallDepthBottomLen := len(wallDepthBottomCol)
+	wallDepthClosedLen := len(wallDepthClosedCol)
+	maskedClipLen := len(maskedClipCols)
+	maskedClipFirstLen := len(maskedClipFirstDepthQ)
+	runStart := -1
+	for x := l; x <= r; x++ {
+		occluded := false
+		if x >= 0 && x < wallDepthLen && depthQ > wallDepthQCol[x] {
+			if x < wallDepthClosedLen && wallDepthClosedCol[x] {
+				occluded = true
+			} else {
+				top := viewH
+				bottom := -1
+				if x < wallDepthTopLen {
+					top = wallDepthTopCol[x]
+				}
+				if x < wallDepthBottomLen {
+					bottom = wallDepthBottomCol[x]
+				}
+				if top <= y && y <= bottom {
+					occluded = true
+				}
+			}
+		}
+		if !occluded && x >= 0 && x < maskedClipLen && x < maskedClipFirstLen {
+			firstDepthQ := maskedClipFirstDepthQ[x]
+			if firstDepthQ != 0 && depthQ > firstDepthQ {
+				occluded = maskedClipColumnOccludesPointSorted(maskedClipCols[x], y, depthQ)
+			}
+		}
+		if occluded {
+			if runStart >= 0 {
+				out = append(out, solidSpan{L: runStart, R: x - 1})
+				runStart = -1
+			}
+			continue
+		}
+		if runStart < 0 {
+			runStart = x
+		}
+	}
+	if runStart >= 0 {
+		out = append(out, solidSpan{L: runStart, R: r})
+	}
+	return out
+}
+
+func appendSpriteRowVisibleSpansDepthQFast(out []solidSpan, y, l, r int, depthQ uint16, wallDepthQCol []uint16, wallDepthTopCol, wallDepthBottomCol []int, wallDepthClosedCol []bool, maskedClipCols [][]scene.MaskedClipSpan, maskedClipFirstDepthQ []uint16) []solidSpan {
+	if l > r {
+		return out
+	}
+	width := len(wallDepthQCol)
+	if width == 0 {
+		return append(out, solidSpan{L: l, R: r})
+	}
+	inL := l
+	if inL < 0 {
+		inL = 0
+	}
+	inR := r
+	if inR >= width {
+		inR = width - 1
+	}
+	if inL > inR {
+		return append(out, solidSpan{L: l, R: r})
+	}
+	if l < inL {
+		out = append(out, solidSpan{L: l, R: inL - 1})
+	}
+	runStart := -1
+	for x := inL; x <= inR; x++ {
+		occluded := false
+		if depthQ > wallDepthQCol[x] {
+			if wallDepthClosedCol[x] {
+				occluded = true
+			} else {
+				top := wallDepthTopCol[x]
+				if top <= y && y <= wallDepthBottomCol[x] {
+					occluded = true
+				}
+			}
+		}
+		if !occluded {
+			firstDepthQ := maskedClipFirstDepthQ[x]
+			if firstDepthQ != 0 && depthQ > firstDepthQ {
+				occluded = maskedClipColumnOccludesPointSorted(maskedClipCols[x], y, depthQ)
+			}
+		}
+		if occluded {
+			if runStart >= 0 {
+				out = append(out, solidSpan{L: runStart, R: x - 1})
+				runStart = -1
+			}
+			continue
+		}
+		if runStart < 0 {
+			runStart = x
+		}
+	}
+	if runStart >= 0 {
+		out = append(out, solidSpan{L: runStart, R: inR})
+	}
+	if inR < r {
+		out = append(out, solidSpan{L: inR + 1, R: r})
+	}
+	return out
+}
+
 func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpans, out []solidSpan) []solidSpan {
 	out = out[:0]
 	if x1 < x0 || g == nil || y < 0 || y >= g.viewH {
@@ -19919,57 +20033,22 @@ func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpa
 		}
 		return out
 	}
-
-	appendVisible := func(l, r int) {
-		if l > r {
-			return
-		}
-		runStart := -1
-		for x := l; x <= r; x++ {
-			occluded := false
-			if x >= 0 && x < len(g.wallDepthQCol) && depthQ > g.wallDepthQCol[x] {
-				if x < len(g.wallDepthClosedCol) && g.wallDepthClosedCol[x] {
-					occluded = true
-				} else {
-					top := g.viewH
-					bottom := -1
-					if x < len(g.wallDepthTopCol) {
-						top = g.wallDepthTopCol[x]
-					}
-					if x < len(g.wallDepthBottomCol) {
-						bottom = g.wallDepthBottomCol[x]
-					}
-					if top <= bottom && y >= top && y <= bottom {
-						occluded = true
-					}
-				}
-			}
-			if !occluded {
-				if x >= 0 && x < len(g.maskedClipCols) {
-					if x < len(g.maskedClipFirstDepthQ) && g.maskedClipFirstDepthQ[x] != 0 && depthQ > g.maskedClipFirstDepthQ[x] {
-						occluded = maskedClipColumnOccludesPointSorted(g.maskedClipCols[x], y, depthQ)
-					}
-				}
-			}
-			if occluded {
-				if runStart >= 0 {
-					out = append(out, solidSpan{L: runStart, R: x - 1})
-					runStart = -1
-				}
-				continue
-			}
-			if runStart < 0 {
-				runStart = x
-			}
-		}
-		if runStart >= 0 {
-			out = append(out, solidSpan{L: runStart, R: r})
-		}
-	}
-
+	wallDepthQCol := g.wallDepthQCol
+	wallDepthTopCol := g.wallDepthTopCol
+	wallDepthBottomCol := g.wallDepthBottomCol
+	wallDepthClosedCol := g.wallDepthClosedCol
+	maskedClipCols := g.maskedClipCols
+	maskedClipFirstDepthQ := g.maskedClipFirstDepthQ
+	fastPath := len(wallDepthTopCol) == len(wallDepthQCol) &&
+		len(wallDepthBottomCol) == len(wallDepthQCol) &&
+		len(wallDepthClosedCol) == len(wallDepthQCol) &&
+		len(maskedClipCols) == len(wallDepthQCol) &&
+		len(maskedClipFirstDepthQ) == len(wallDepthQCol)
 	if len(clipSpans) == 0 {
-		appendVisible(x0, x1)
-		return out
+		if fastPath {
+			return appendSpriteRowVisibleSpansDepthQFast(out, y, x0, x1, depthQ, wallDepthQCol, wallDepthTopCol, wallDepthBottomCol, wallDepthClosedCol, maskedClipCols, maskedClipFirstDepthQ)
+		}
+		return appendSpriteRowVisibleSpansDepthQGeneric(out, g.viewH, y, x0, x1, depthQ, wallDepthQCol, wallDepthTopCol, wallDepthBottomCol, wallDepthClosedCol, maskedClipCols, maskedClipFirstDepthQ)
 	}
 	for _, sp := range clipSpans {
 		l := sp.L
@@ -19980,7 +20059,11 @@ func (g *game) spriteRowVisibleSpansDepthQ(y, x0, x1 int, depthQ uint16, clipSpa
 		if r > x1 {
 			r = x1
 		}
-		appendVisible(l, r)
+		if fastPath {
+			out = appendSpriteRowVisibleSpansDepthQFast(out, y, l, r, depthQ, wallDepthQCol, wallDepthTopCol, wallDepthBottomCol, wallDepthClosedCol, maskedClipCols, maskedClipFirstDepthQ)
+			continue
+		}
+		out = appendSpriteRowVisibleSpansDepthQGeneric(out, g.viewH, y, l, r, depthQ, wallDepthQCol, wallDepthTopCol, wallDepthBottomCol, wallDepthClosedCol, maskedClipCols, maskedClipFirstDepthQ)
 	}
 	return out
 }

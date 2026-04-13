@@ -7,6 +7,7 @@ WAD_PATH="${ROOT_DIR}/DOOM1.WAD"
 DEMO_PATH="${ROOT_DIR}/demos/DOOM1-DEMO1.lmp"
 OUT_PATH="${ROOT_DIR}/default.pgo"
 STOP_AFTER_TICS=1050
+RENDER=1
 
 usage() {
   cat <<'EOF'
@@ -20,6 +21,8 @@ Options:
   --demo <path>      Doom .lmp demo path (default: ./demos/DOOM1-DEMO1.lmp)
   --out <path>       Output profile path (default: ./default.pgo)
   --bin <path>       Override built binary path (default: ./.tmp/gddoom-pgo-profile)
+  --no-render        Run demo without Ebiten renderer (headless)
+  --render           Force render path (default)
   -h, --help         Show this help
 
 Examples:
@@ -46,6 +49,14 @@ while [[ $# -gt 0 ]]; do
     --bin)
       BIN_PATH="$2"
       shift 2
+      ;;
+    --no-render)
+      RENDER=0
+      shift
+      ;;
+    --render)
+      RENDER=1
+      shift
       ;;
     --)
       shift
@@ -93,6 +104,9 @@ CMD=(
   -demo-stop-after-tics "${STOP_AFTER_TICS}"
   -cpuprofile "${OUT_PATH}"
 )
+if [[ ${RENDER} -eq 1 ]]; then
+  CMD+=(-render)
+fi
 if [[ ${#EXTRA_FLAGS[@]} -gt 0 ]]; then
   CMD+=("${EXTRA_FLAGS[@]}")
 fi

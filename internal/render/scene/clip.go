@@ -1,7 +1,5 @@
 package scene
 
-import "sort"
-
 type MaskedClipSpan struct {
 	Y0      int16
 	Y1      int16
@@ -40,9 +38,16 @@ func MaskedClipColumnOccludesPointSorted(spans []MaskedClipSpan, y int, depthQ u
 	if depthQ <= spans[0].DepthQ {
 		return false
 	}
-	limit := sort.Search(len(spans), func(i int) bool {
-		return spans[i].DepthQ >= depthQ
-	})
+	lo, hi := 0, len(spans)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if spans[mid].DepthQ < depthQ {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	limit := lo
 	for i := limit - 1; i >= 0; i-- {
 		sp := spans[i]
 		if sp.Closed {
