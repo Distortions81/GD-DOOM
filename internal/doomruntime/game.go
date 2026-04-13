@@ -2143,7 +2143,7 @@ func (g *game) initSkyLayerShader() {
 func defaultDetailLevelForMode(viewW, viewH int, sourcePort bool) int {
 	if sourcePort {
 		if isWASMBuild() && len(sourcePortDetailDivisors) > 2 {
-			return 2
+			return 1
 		}
 		if len(sourcePortDetailDivisors) > 1 {
 			return 1
@@ -2299,9 +2299,10 @@ func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 	const (
 		targetFPS            = 60.0
 		lowFPS               = targetFPS - 3.0
+		raiseMinFPS          = 50.0
 		veryLowFPS           = targetFPS - 10.0
 		highRenderMS         = 1000.0 / targetFPS
-		raiseRenderTargetMS  = 8.0
+		raiseRenderTargetMS  = 14.0
 		lowSamplesToDrop     = 2
 		highSamplesToRecover = 4
 		cooldownSamples      = 3
@@ -2311,7 +2312,7 @@ func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 	if fps < veryLowFPS || renderMS > highRenderMS {
 		g.autoDetailLowSamples++
 		g.autoDetailHighSamples = 0
-	} else if nextHigherDetail != g.detailLevel && fps >= lowFPS && renderMS < raiseRenderTargetMS && projectedHigherRenderMS < raiseRenderTargetMS {
+	} else if nextHigherDetail != g.detailLevel && fps >= raiseMinFPS && renderMS < raiseRenderTargetMS && projectedHigherRenderMS < raiseRenderTargetMS {
 		g.autoDetailHighSamples++
 		g.autoDetailLowSamples = 0
 	} else if fps < lowFPS {

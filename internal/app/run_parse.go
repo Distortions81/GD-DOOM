@@ -3546,17 +3546,18 @@ func drawPickerCenteredIntegerScaledLogo(screen, img *ebiten.Image) {
 	sh := max(screen.Bounds().Dy(), 1)
 	lw := max(img.Bounds().Dx(), 1)
 	lh := max(img.Bounds().Dy(), 1)
-	scaleW := int(0.7 * float64(sw) / float64(lw))
-	scaleH := int(0.38 * float64(sh) / float64(lh))
-	scale := min(max(scaleW, 1), max(scaleH, 1))
-	if scale < 1 {
-		scale = 1
+	scale := 1.0
+	scaleW := 0.7 * float64(sw) / float64(lw)
+	scaleH := 0.38 * float64(sh) / float64(lh)
+	maxScale := min(scaleW, scaleH)
+	if maxScale < 1.0 {
+		scale = maxScale
 	}
-	dw := lw * scale
-	dh := lh * scale
+	dw := int(float64(lw) * scale)
+	dh := int(float64(lh) * scale)
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
-	op.GeoM.Scale(float64(scale), float64(scale))
+	op.GeoM.Scale(scale, scale)
 	op.GeoM.Translate(float64((sw-dw)/2), float64(max((sh/10)-(dh/6), 8)))
 	screen.DrawImage(img, op)
 }

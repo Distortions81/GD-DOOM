@@ -22,11 +22,11 @@ func TestDefaultDetailLevelForModeSourcePortHalfDetail(t *testing.T) {
 	}
 }
 
-func TestDefaultDetailLevelForModeWASMSourcePortStartsAtThirdDetail(t *testing.T) {
+func TestDefaultDetailLevelForModeWASMSourcePortStartsAtHalfDetail(t *testing.T) {
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(false)
-	if got := defaultDetailLevelForMode(1280, 800, true); got != 2 {
-		t.Fatalf("defaultDetailLevelForMode(wasm sourceport)=%d want=2", got)
+	if got := defaultDetailLevelForMode(1280, 800, true); got != 1 {
+		t.Fatalf("defaultDetailLevelForMode(wasm sourceport)=%d want=1", got)
 	}
 }
 
@@ -203,6 +203,44 @@ func TestApplyAutoDetailSampleRaisesDetailAtVsyncCappedFPS(t *testing.T) {
 	}
 }
 
+func TestApplyAutoDetailSampleRaisesDetailWithLowRenderMSAt50FPS(t *testing.T) {
+	g := &game{
+		opts:               Options{SourcePortMode: true},
+		mode:               viewWalk,
+		detailLevel:        2,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	for i := 0; i < 4; i++ {
+		g.applyAutoDetailSample(50.0, 2.6)
+	}
+	if g.detailLevel != 1 {
+		t.Fatalf("detail after 50 FPS high-headroom samples=%d want 1", g.detailLevel)
+	}
+	if g.useText != "Detail: AUTO UP -> 1/2x" {
+		t.Fatalf("useText=%q want auto up message", g.useText)
+	}
+}
+
+func TestApplyAutoDetailSampleRaisesToFullDetailWithinRaisedBudget(t *testing.T) {
+	g := &game{
+		opts:               Options{SourcePortMode: true},
+		mode:               viewWalk,
+		detailLevel:        1,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	for i := 0; i < 4; i++ {
+		g.applyAutoDetailSample(50.0, 2.6)
+	}
+	if g.detailLevel != 0 {
+		t.Fatalf("detail after full-detail headroom samples=%d want 0", g.detailLevel)
+	}
+	if g.useText != "Detail: AUTO UP -> 1x" {
+		t.Fatalf("useText=%q want full-detail auto up message", g.useText)
+	}
+}
+
 func TestApplyAutoDetailSampleDoesNotRaiseWhenProjectedRenderExceedsBudget(t *testing.T) {
 	g := &game{
 		opts:               Options{SourcePortMode: true},
@@ -212,7 +250,7 @@ func TestApplyAutoDetailSampleDoesNotRaiseWhenProjectedRenderExceedsBudget(t *te
 		hudMessagesEnabled: true,
 	}
 	for i := 0; i < 4; i++ {
-		g.applyAutoDetailSample(60.0, 4.0)
+		g.applyAutoDetailSample(60.0, 6.5)
 	}
 	if g.detailLevel != 2 {
 		t.Fatalf("detail after over-budget projected samples=%d want 2", g.detailLevel)
