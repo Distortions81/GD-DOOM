@@ -2,7 +2,6 @@ package doomruntime
 
 import (
 	"fmt"
-	"image"
 	"image/color"
 	"math"
 	"strings"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 const frontendMainMenuTitle = "GD-DOOM [ALPHA]"
@@ -205,11 +203,7 @@ func (sg *sessionGame) requestQuitPrompt() {
 	if sg == nil {
 		return
 	}
-	messages := doomQuitMessages
-	if isWASMBuild() {
-		messages = nil
-	}
-	sg.quitPrompt, sg.quitMessageSeq = sessionflow.StartQuitPrompt(sg.quitMessageSeq, messages)
+	sg.quitPrompt, sg.quitMessageSeq = sessionflow.StartQuitPrompt(sg.quitMessageSeq, doomQuitMessages)
 }
 
 func (sg *sessionGame) clearQuitPrompt() {
@@ -254,9 +248,7 @@ func (sg *sessionGame) nextQuitPromptLines() []string {
 	}
 	sg.quitMessageSeq++
 	msg := "are you sure you want to\nquit this great game?"
-	if isWASMBuild() {
-		msg = "close the page to quit"
-	} else if len(doomQuitMessages) > 0 {
+	if len(doomQuitMessages) > 0 {
 		msg = doomQuitMessages[(sg.quitMessageSeq-1)%len(doomQuitMessages)]
 	}
 	lines := strings.Split(strings.ToUpper(msg), "\n")
@@ -265,9 +257,6 @@ func (sg *sessionGame) nextQuitPromptLines() []string {
 }
 
 func defaultQuitPromptLines() []string {
-	if isWASMBuild() {
-		return []string{"CLOSE THE PAGE TO QUIT"}
-	}
 	return sessionflow.DefaultQuitPromptLines()
 }
 
@@ -434,201 +423,6 @@ func (sg *sessionGame) tickFrontendMusicPlayer() error {
 		}
 	}
 	return nil
-}
-
-func frontendPointInRect(x, y float64, r image.Rectangle) bool {
-	return x >= float64(r.Min.X) && x < float64(r.Max.X) && y >= float64(r.Min.Y) && y < float64(r.Max.Y)
-}
-
-func frontendRowRect(x, y, w, h int) image.Rectangle {
-	return image.Rect(x, y, x+w, y+h)
-}
-
-func frontendRowThirdInput(x float64, rect image.Rectangle) sessionflow.FrontendInput {
-	width := max(rect.Dx(), 1)
-	leftEdge := float64(rect.Min.X) + float64(width)/3.0
-	rightEdge := float64(rect.Max.X) - float64(width)/3.0
-	switch {
-	case x < leftEdge:
-		return sessionflow.FrontendInput{Left: true, Skip: true}
-	case x >= rightEdge:
-		return sessionflow.FrontendInput{Right: true, Skip: true}
-	default:
-		return sessionflow.FrontendInput{Select: true, Skip: true}
-	}
-}
-
-func (sg *sessionGame) frontendBackRect(textScale float64, y int) image.Rectangle {
-	backLabel := "BACK: ESC"
-	backX := 320 - 8 - int(math.Ceil(float64(sg.intermissionTextWidth(backLabel))*textScale))
-	height := max(int(math.Ceil(10*textScale)), 12)
-	return image.Rect(backX-4, y-4, 320-4, y+height)
-}
-
-func (sg *sessionGame) frontendPointerInputAt(localX, localY float64) (sessionflow.FrontendInput, bool) {
-	if sg == nil || !sg.frontend.Active {
-		return sessionflow.FrontendInput{}, false
-	}
-	if sg.frontend.Mode == frontendModeReadThis {
-		return sessionflow.FrontendInput{Select: true, Skip: true}, true
-	}
-	if sg.frontend.Mode == frontendModeTitle && !sg.frontend.MenuActive {
-		return sessionflow.FrontendInput{Select: true, Skip: true}, true
-	}
-
-	switch sg.frontend.Mode {
-	case frontendModeOptions:
-		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 17)) {
-			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
-		}
-		const menuX = 36
-		const menuY = 37
-		const lineHeight = 16
-		for _, row := range frontendOptionsSelectableRows {
-			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			sg.frontend.OptionsOn = row
-			return frontendRowThirdInput(localX, rect), true
-		}
-	case frontendModeSound:
-		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 18)) {
-			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
-		}
-		const menuX = 24
-		const menuY = 44
-		const lineHeight = 16
-		for row := 0; row < frontendSoundMenuRowCount; row++ {
-			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			sg.frontend.SoundOn = row
-			return frontendRowThirdInput(localX, rect), true
-		}
-	case frontendModeVoice:
-		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 18)) {
-			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
-		}
-		const menuX = 24
-		const menuY = 44
-		const lineHeight = 16
-		for row := 0; row < frontendVoiceMenuRowCount; row++ {
-			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			sg.frontend.VoiceOn = row
-			return frontendRowThirdInput(localX, rect), true
-		}
-	case frontendModeMusicPlayer:
-		if frontendPointInRect(localX, localY, sg.frontendBackRect(1.2, 18)) {
-			return sessionflow.FrontendInput{Escape: true, Skip: true}, true
-		}
-		const menuX = 24
-		const menuY = 42
-		const lineHeight = 16
-		for row := 0; row < frontendMusicPlayerRowCount; row++ {
-			rect := frontendRowRect(menuX-6, menuY+row*lineHeight-2, 320-menuX-8, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			sg.musicPlayer.Row = row
-			return frontendRowThirdInput(localX, rect), true
-		}
-	case frontendModeEpisode:
-		const menuX = 48
-		const menuY = 63
-		const lineHeight = 16
-		episodes := sg.availableFrontendEpisodeChoices()
-		for row := range episodes {
-			rect := frontendRowRect(menuX-8, menuY+row*lineHeight-2, 224, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			sg.frontend.EpisodeOn = row
-			return sessionflow.FrontendInput{Select: true, Skip: true}, true
-		}
-	case frontendModeSkill:
-		const menuX = 48
-		const menuY = 63
-		const lineHeight = 16
-		for row := range frontendSkillMenuNames {
-			rect := frontendRowRect(menuX-8, menuY+row*lineHeight-2, 224, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			sg.frontend.SkillOn = row
-			return sessionflow.FrontendInput{Select: true, Skip: true}, true
-		}
-	case frontendModeSaveLoad:
-		const menuX = 56
-		const menuY = 54
-		const lineHeight = 16
-		slots := sg.availableSaveSlots(sg.frontend.SaveLoadSaving)
-		if len(slots) == 0 {
-			slots = []int{0}
-		}
-		selected := min(max(sg.frontend.SaveLoadOn, 0), len(slots)-1)
-		start, end := saveLoadVisibleWindow(len(slots), selected, 7)
-		for row, i := 0, start; i < end; i, row = i+1, row+1 {
-			rect := frontendRowRect(menuX-12, menuY+row*lineHeight-2, 220, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			sg.frontend.SaveLoadOn = i
-			return sessionflow.FrontendInput{Select: true, Skip: true}, true
-		}
-	case frontendModeTitle:
-		if !sg.frontend.MenuActive {
-			return sessionflow.FrontendInput{Select: true, Skip: true}, true
-		}
-		const menuX = 97
-		const menuY = 64
-		const lineHeight = 16
-		for row := range frontendMainMenuNames {
-			rect := frontendRowRect(menuX-8, menuY+row*lineHeight-2, 176, lineHeight)
-			if !frontendPointInRect(localX, localY, rect) {
-				continue
-			}
-			if sg.frontend.InGame && sg.frontendMenuItemDisabled(row) {
-				return sessionflow.FrontendInput{}, false
-			}
-			sg.frontend.ItemOn = row
-			return sessionflow.FrontendInput{Select: true, Skip: true}, true
-		}
-	}
-	return sessionflow.FrontendInput{}, false
-}
-
-func (sg *sessionGame) consumeFrontendPointerInput() (sessionflow.FrontendInput, bool) {
-	if sg == nil || !sg.frontend.Active {
-		return sessionflow.FrontendInput{}, false
-	}
-	sw := max(sg.touch.screenW, 1)
-	sh := max(sg.touch.screenH, 1)
-	transform := newTouchLayoutTransform(sw, sh, 320, 200)
-	tryPoint := func(screenX, screenY int) (sessionflow.FrontendInput, bool) {
-		localX, localY, ok := transform.screenToLocal(screenX, screenY)
-		if !ok {
-			return sessionflow.FrontendInput{}, false
-		}
-		return sg.frontendPointerInputAt(localX, localY)
-	}
-	if sg.mouseJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
-		if input, ok := tryPoint(x, y); ok {
-			return input, true
-		}
-	}
-	for _, id := range inpututil.AppendJustPressedTouchIDs(nil) {
-		x, y := ebiten.TouchPosition(id)
-		if input, ok := tryPoint(x, y); ok {
-			return input, true
-		}
-	}
-	return sessionflow.FrontendInput{}, false
 }
 
 func (sg *sessionGame) frontendChangeScreenSize(dir int) {
@@ -876,19 +670,12 @@ func (sg *sessionGame) tickFrontend() error {
 	if advanceAttract {
 		_ = sg.advanceFrontendAttract()
 	}
-	pointerInput, _ := sg.consumeFrontendPointerInput()
 	escape := sg.keyJustPressed(ebiten.KeyEscape) || sg.touchJustPressed(touchActionBack)
 	up := sg.keyJustPressed(ebiten.KeyArrowUp) || sg.touchJustPressed(touchActionUp)
 	down := sg.keyJustPressed(ebiten.KeyArrowDown) || sg.touchJustPressed(touchActionDown)
 	left := sg.keyJustPressed(ebiten.KeyArrowLeft) || sg.touchJustPressed(touchActionLeft)
 	right := sg.keyJustPressed(ebiten.KeyArrowRight) || sg.touchJustPressed(touchActionRight)
 	selectPressed := sg.keyJustPressed(ebiten.KeyEnter) || sg.keyJustPressed(ebiten.KeyKPEnter) || sg.touchJustPressed(touchActionUseEnter)
-	escape = escape || pointerInput.Escape
-	up = up || pointerInput.Up
-	down = down || pointerInput.Down
-	left = left || pointerInput.Left
-	right = right || pointerInput.Right
-	selectPressed = selectPressed || pointerInput.Select
 	input := sessionflow.FrontendInput{
 		Escape: escape,
 		Up:     up,
@@ -896,7 +683,7 @@ func (sg *sessionGame) tickFrontend() error {
 		Left:   left,
 		Right:  right,
 		Select: selectPressed,
-		Skip:   escape || up || down || left || right || selectPressed || pointerInput.Skip || sg.anyIntermissionSkipInput(),
+		Skip:   escape || up || down || left || right || selectPressed || sg.anyIntermissionSkipInput(),
 	}
 	result := sessionflow.StepFrontend(
 		sessionflow.Frontend(sg.frontend),
@@ -1046,11 +833,6 @@ func (sg *sessionGame) tickFrontend() error {
 		}
 	}
 	if result.RequestQuit {
-		if isWASMBuild() {
-			ebiten.SetFullscreen(!ebiten.IsFullscreen())
-			sg.frontend = frontendState{}
-			return nil
-		}
 		sg.requestQuitPrompt()
 	}
 	if result.StartGameSkill > 0 {
@@ -1097,16 +879,12 @@ func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
 	dh := max(dst.Bounds().Dy(), 1)
 	present := sg.ensureFrontendSurface(dw, dh)
 	present.Clear()
-	sg.drawFrontendWithCapture(present, true)
+	sg.drawFrontend(present)
 	dst.Fill(color.Black)
 	dst.DrawImage(present, nil)
 }
 
 func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
-	sg.drawFrontendWithCapture(screen, false)
-}
-
-func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture bool) {
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	scale := float64(sw) / 320.0
@@ -1122,9 +900,9 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 
 	switch sg.frontend.Mode {
 	case frontendModeReadThis:
-		sg.drawFrontendAttractBackground(screen, capture)
+		sg.drawFrontendAttractBackground(screen)
 		name := sg.readThisPageName(sg.frontend.ReadThisPage)
-		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC", false) {
+		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC") {
 			screen.Fill(color.Black)
 		}
 		if (sg.frontend.Tic/16)&1 == 0 {
@@ -1136,42 +914,42 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 		}
 		return
 	case frontendModeSound:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendSoundMenu(screen, scale, ox, oy)
 		return
 	case frontendModeVoice:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendVoiceMenu(screen, scale, ox, oy)
 		return
 	case frontendModeOptions:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendOptionsMenu(screen, scale, ox, oy)
 		return
 	case frontendModeMusicPlayer:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendMusicPlayerMenu(screen, scale, ox, oy)
 		return
 	case frontendModeKeybinds:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendKeybindMenu(screen, scale, ox, oy)
 		return
 	case frontendModeEpisode:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1186,7 +964,7 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.EpisodeOn*16, scale, ox, oy)
 		return
 	case frontendModeSkill:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1198,7 +976,7 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.SkillOn*16, scale, ox, oy)
 		return
 	case frontendModeSaveLoad:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1275,7 +1053,7 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 		sg.drawMenuSkull(screen, 20, 49+(selected-start)*lineHeight, scale, ox, oy)
 		return
 	default:
-		sg.drawFrontendBackdrop(screen, true, capture)
+		sg.drawFrontendBackdrop(screen, true)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1287,27 +1065,11 @@ func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture boo
 					if sg.frontendMenuItemDisabled(i) {
 						alpha = 0.4
 					}
-					if isWASMBuild() && i == len(inGamePauseMenuNames)-1 {
-						label := "FULLSCREEN"
-						if ebiten.IsFullscreen() {
-							label = "EXIT FULLSCREEN"
-						}
-						sg.drawIntermissionText(screen, label, 97, 64+i*16, scale, ox, oy, false)
-						continue
-					}
 					_ = sg.drawMenuPatchAlpha(screen, name, 97, 64+i*16, scale, ox, oy, false, alpha)
 				}
 			} else {
 				sg.drawFrontendMainMenuTitle(screen, scale, ox, oy)
 				for i, name := range frontendMainMenuNames {
-					if isWASMBuild() && i == len(frontendMainMenuNames)-1 {
-						label := "FULLSCREEN"
-						if ebiten.IsFullscreen() {
-							label = "EXIT FULLSCREEN"
-						}
-						sg.drawIntermissionText(screen, label, 97, 64+i*16, scale, ox, oy, false)
-						continue
-					}
 					_ = sg.drawMenuPatch(screen, name, 97, 64+i*16, scale, ox, oy, false)
 				}
 			}
@@ -1349,11 +1111,7 @@ func (sg *sessionGame) drawFrontendPresented(screen *ebiten.Image) {
 	sg.drawFrontend(present)
 	screen.Fill(color.Black)
 	screen.DrawImage(present, nil)
-	cw, ch := sg.transitionSurfaceSize(dw, dh)
-	capture := sg.ensureTransitionCaptureSurface(cw, ch)
-	capture.Clear()
-	sg.drawFrontendWithCapture(capture, true)
-	sg.transition.SetLastFrame(capture)
+	sg.transition.SetLastFrame(present)
 }
 
 func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox, oy float64) {
@@ -1363,11 +1121,11 @@ func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox
 	_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
 }
 
-func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool, capture bool) {
+func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool) {
 	if sg == nil || screen == nil {
 		return
 	}
-	sg.drawFrontendAttractBackground(screen, capture)
+	sg.drawFrontendAttractBackground(screen)
 	if sg.frontend.MenuActive || sg.frontend.InGame {
 		ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), color.RGBA{A: 128})
 	}
@@ -1404,39 +1162,31 @@ func saveLoadVisibleWindow(total, selected, maxRows int) (start, end int) {
 	return start, end
 }
 
-func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image, capture bool) {
+func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image) {
 	if sg == nil || screen == nil {
 		return
 	}
 	if sg.frontend.InGame && sg.g != nil {
-		if capture {
-			sg.drawGameTransitionSurface(screen, sg.g)
-		} else {
-			sg.drawGamePresented(screen, sg.g)
-		}
+		sg.drawGamePresented(screen, sg.g)
 		return
 	}
 	if sg.g != nil && sg.g.sessionSignals().DemoActive {
-		if capture {
-			sg.drawGameTransitionSurface(screen, sg.g)
-		} else {
-			sg.drawGamePresented(screen, sg.g)
-		}
+		sg.drawGamePresented(screen, sg.g)
 		return
 	}
-	if sg.drawFrontendPage(screen, sg.frontend.AttractPage, capture) {
+	if sg.drawFrontendPage(screen, sg.frontend.AttractPage) {
 		return
 	}
 	screen.Fill(color.Black)
 }
 
-func (sg *sessionGame) drawFrontendPage(screen *ebiten.Image, name string, capture bool) bool {
+func (sg *sessionGame) drawFrontendPage(screen *ebiten.Image, name string) bool {
 	if sg == nil || screen == nil {
 		return false
 	}
 	switch strings.ToUpper(strings.TrimSpace(name)) {
 	case "TITLEPIC":
-		sg.drawBootSplashPresented(screen, capture)
+		sg.drawBootSplashPresented(screen, false)
 		return true
 	case "CREDIT", "HELP1", "HELP2":
 		sw := max(screen.Bounds().Dx(), 1)

@@ -3945,15 +3945,6 @@ func (g *game) activatePauseMenuItem() {
 		g.pauseMenuStatusTics = 0
 		g.readThisRequested = true
 	case 5:
-		if isWASMBuild() {
-			ebiten.SetFullscreen(!ebiten.IsFullscreen())
-			g.pauseMenuActive = false
-			g.paused = false
-			g.pauseMenuMode = pauseMenuModeRoot
-			g.pauseMenuStatus = ""
-			g.pauseMenuStatusTics = 0
-			return
-		}
 		g.quitPromptRequested = true
 	}
 }
@@ -20588,14 +20579,6 @@ func (g *game) drawPauseOverlay(screen *ebiten.Image) {
 		drawPatch("M_PAUSE", 126, 4)
 		drawPatch("M_DOOM", 94, 2)
 		for i, name := range inGamePauseMenuNames {
-			if isWASMBuild() && i == len(inGamePauseMenuNames)-1 {
-				label := "FULLSCREEN"
-				if ebiten.IsFullscreen() {
-					label = "EXIT FULLSCREEN"
-				}
-				drawText(label, 97, float64(64+i*16), 1.0)
-				continue
-			}
 			drawPatch(name, 97, float64(64+i*16))
 		}
 		drawSkull(65, 64+g.pauseMenuItemOn*16)

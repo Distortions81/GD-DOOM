@@ -9,7 +9,6 @@ import (
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 func (sg *sessionGame) openFrontendKeybindMenu() {
@@ -24,9 +23,6 @@ func (sg *sessionGame) openFrontendKeybindMenu() {
 
 func (sg *sessionGame) tickFrontendKeybindMenu() error {
 	if sg == nil {
-		return nil
-	}
-	if sg.handleFrontendKeybindPointerPress() {
 		return nil
 	}
 	if sg.frontendKeybindCapture {
@@ -92,75 +88,6 @@ func (sg *sessionGame) tickFrontendKeybindMenu() error {
 		sg.playMenuConfirmSound()
 	}
 	return nil
-}
-
-func (sg *sessionGame) handleFrontendKeybindPointerPress() bool {
-	if sg == nil || !sg.frontend.Active || sg.frontend.Mode != frontendModeKeybinds {
-		return false
-	}
-	sw := max(sg.touch.screenW, 1)
-	sh := max(sg.touch.screenH, 1)
-	transform := newTouchLayoutTransform(sw, sh, 320, 200)
-	handlePoint := func(screenX, screenY int) bool {
-		localX, localY, ok := transform.screenToLocal(screenX, screenY)
-		if !ok {
-			return false
-		}
-		backRect := sg.frontendBackRect(1.0, 18)
-		if frontendPointInRect(localX, localY, backRect) {
-			if sg.frontendKeybindCapture {
-				sg.frontendKeybindCapture = false
-			} else {
-				sg.frontend.Mode = frontendModeOptions
-				sg.frontend.OptionsOn = frontendOptionsRowKeybinds
-			}
-			sg.playMenuBackSound()
-			return true
-		}
-		const menuY = 40
-		const lineHeight = 16
-		start := keybindMenuStartRow(sg.frontendKeybindRow)
-		for i := 0; i < keybindMenuVisibleRows; i++ {
-			row := start + i
-			if row >= int(bindingActionCount) {
-				break
-			}
-			y := menuY + i*lineHeight - 2
-			for slot := 0; slot < 2; slot++ {
-				x := 184
-				if slot == 1 {
-					x = 254
-				}
-				rect := frontendRowRect(x, y, 54, lineHeight)
-				if !frontendPointInRect(localX, localY, rect) {
-					continue
-				}
-				if sg.frontendKeybindRow == row && sg.frontendKeybindSlot == slot {
-					sg.frontendKeybindCapture = true
-					sg.playMenuConfirmSound()
-				} else {
-					sg.frontendKeybindRow = row
-					sg.frontendKeybindSlot = slot
-					sg.playMenuMoveSound()
-				}
-				return true
-			}
-		}
-		return false
-	}
-	if sg.mouseJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
-		if handlePoint(x, y) {
-			return true
-		}
-	}
-	for _, id := range inpututil.AppendJustPressedTouchIDs(nil) {
-		x, y := ebiten.TouchPosition(id)
-		if handlePoint(x, y) {
-			return true
-		}
-	}
-	return false
 }
 
 func (sg *sessionGame) drawFrontendKeybindMenu(screen *ebiten.Image, scale, ox, oy float64) {

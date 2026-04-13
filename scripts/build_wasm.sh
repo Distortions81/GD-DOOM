@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${1:-${ROOT_DIR}/build/wasm}"
 GOROOT_PATH="$(go env GOROOT)"
 WASM_EXEC_JS="${GOROOT_PATH}/lib/wasm/wasm_exec.js"
-WASM_OPT_MODE="${WASM_OPT:-auto}"
+WASM_OPT_MODE="${WASM_OPT:-false}"
 WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O2}"
 WASM_OPT_FEATURES="${WASM_OPT_FEATURES:---all-features}"
 
@@ -19,13 +19,8 @@ if [[ ! -f "${WASM_EXEC_JS}" ]]; then
   exit 1
 fi
 
-use_wasm_opt=true
+use_wasm_opt=false
 case "${WASM_OPT_MODE}" in
-  auto)
-    if command -v wasm-opt >/dev/null 2>&1; then
-      use_wasm_opt=true
-    fi
-    ;;
   0|false|off|disable|disabled)
     ;;
   1|true|on|enable|enabled)
@@ -36,7 +31,7 @@ case "${WASM_OPT_MODE}" in
     use_wasm_opt=true
     ;;
   *)
-    echo "invalid WASM_OPT value: ${WASM_OPT_MODE} (expected auto, 0, or 1)" >&2
+    echo "invalid WASM_OPT value: ${WASM_OPT_MODE} (expected false/0 or true/1)" >&2
     exit 1
     ;;
 esac
@@ -71,7 +66,7 @@ if [[ "${use_wasm_opt}" == "true" ]]; then
   after_bytes="$(wc -c < "${OUT_DIR}/gddoom.wasm" | tr -d ' ')"
   echo "Applied wasm-opt ${WASM_OPT_LEVEL} ${WASM_OPT_FEATURES}: ${before_bytes} -> ${after_bytes} bytes"
 else
-  echo "Skipping wasm-opt (set WASM_OPT=1 to require it, or install wasm-opt for auto mode)"
+  echo "Skipping wasm-opt (set WASM_OPT=1 to enable it)"
 fi
 
 cp "${WASM_EXEC_JS}" "${OUT_DIR}/wasm_exec.js"
@@ -80,7 +75,7 @@ cp "${ROOT_DIR}/web/wasm/player.html" "${OUT_DIR}/player.html"
 cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"
 cp "${ROOT_DIR}/cmd/wasmserve/main.go" "${OUT_DIR}/server.go"
 
-gzip -c "${OUT_DIR}/gddoom.wasm" > "${OUT_DIR}/gddoom.wasm.gz"
+gzip -n -f -c "${OUT_DIR}/gddoom.wasm" > "${OUT_DIR}/gddoom.wasm.gz"
 # if command -v brotli >/dev/null 2>&1; then
 #   brotli -f -q 11 -o "${OUT_DIR}/gddoom.wasm.br" "${OUT_DIR}/gddoom.wasm"
 # else

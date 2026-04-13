@@ -820,9 +820,11 @@ func (sg *sessionGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 	// Faithful mode renders game internals at the preset buffer size and
 	// presents it scaled to the native window size, with final-screen
 	// presentation applying aspect correction.
+	layoutW := max(outsideWidth, 1)
+	layoutH := max(outsideHeight, 1)
 	rw, rh := faithfulDetailPresetSize(sg.g.detailLevel)
-	sg.g.mouseInputScaleX = float64(max(outsideWidth, 1)) / float64(faithfulBufferW)
+	sg.g.mouseInputScaleX = float64(layoutW) / float64(faithfulBufferW)
 	sg.rt.Layout(rw, rh)
 	_ = aspectH
-	return max(outsideWidth, 1), max(outsideHeight, 1)
+	return layoutW, layoutH
 }

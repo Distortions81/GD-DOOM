@@ -4,6 +4,7 @@ const utilityBar = document.querySelector(".utilitybar");
 const localWADButton = document.getElementById("local-wad-button");
 const localWADInput = document.getElementById("local-wad-input");
 const localWADStatus = document.getElementById("local-wad-status");
+
 let splashDismissed = false;
 let pendingReload = false;
 let localWADStatusTimer = 0;
@@ -126,14 +127,28 @@ function reloadPlayer() {
 function claimFocusAndStart() {
   hideSplash();
   focusPlayer();
-  window.setTimeout(() => {
-    focusPlayer();
-  }, 0);
 }
 
 if (isIOSLike()) {
   hideLocalWADUI();
   startDirectPlayer();
+}
+
+if (splash) {
+  splash.addEventListener("click", (event) => {
+    if (isInteractiveTarget(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    claimFocusAndStart();
+  });
+  splash.addEventListener("touchstart", (event) => {
+    if (isInteractiveTarget(event.target)) {
+      return;
+    }
+    event.preventDefault();
+    claimFocusAndStart();
+  }, { passive: false });
 }
 
 if (localWADButton && localWADInput && !isIOSLike()) {
@@ -173,7 +188,6 @@ window.addEventListener("message", (event) => {
   switch (event.data.type) {
     case "gddoom-player-ready":
       pendingReload = false;
-      hideSplash();
       break;
     case "gddoom-session-started":
       hideLocalWADUI();

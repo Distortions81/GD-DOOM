@@ -2,10 +2,10 @@ package runtimecfg
 
 import "testing"
 
-func TestClampSourcePortWindowSizeForWASMLimitsToMax(t *testing.T) {
+func TestClampSourcePortWindowSizeForWASMLeavesSizeUnchanged(t *testing.T) {
 	w, h := clampSourcePortWindowSizeForPlatform(2560, 1440, true)
-	if w != 1280 || h != 720 {
-		t.Fatalf("window=%dx%d want 1280x720", w, h)
+	if w != 2560 || h != 1440 {
+		t.Fatalf("window=%dx%d want 2560x1440", w, h)
 	}
 }
 

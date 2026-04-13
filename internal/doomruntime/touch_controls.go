@@ -286,7 +286,20 @@ func (sg *sessionGame) touchButtons(sw, sh int) []touchControlButton {
 		}
 	}
 	if sg.frontend.Active {
-		return nil
+		leftX := margin
+		baseY := float64(sh) - margin - size
+		centerX := leftX + size + gap
+		rightX := float64(sw) - margin - fireW
+		backY := float64(sh) - margin - fireH
+		enterY := backY - fireH - gap
+		return []touchControlButton{
+			{action: touchActionUp, label: "UP", x: centerX, y: baseY - size - gap, w: size, h: size},
+			{action: touchActionLeft, label: "LEFT", x: leftX, y: baseY, w: size, h: size},
+			{action: touchActionDown, label: "DOWN", x: centerX, y: baseY, w: size, h: size},
+			{action: touchActionRight, label: "RIGHT", x: centerX + size + gap, y: baseY, w: size, h: size},
+			{action: touchActionUseEnter, label: "ENTER", x: rightX, y: enterY, w: fireW, h: fireH},
+			{action: touchActionBack, label: "BACK", x: rightX, y: backY, w: fireW, h: fireH},
+		}
 	}
 
 	leftX := margin
