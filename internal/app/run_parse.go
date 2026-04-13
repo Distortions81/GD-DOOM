@@ -1694,6 +1694,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func runGameWithPlatformOptions(game ebiten.Game) error {
+	ebiten.SetVsyncEnabled(true)
 	if !platformcfg.IsWASMBuild() {
 		return ebiten.RunGame(game)
 	}
@@ -3211,6 +3212,7 @@ func (g *iwadPickerGame) Update() error {
 		g.status = ""
 		g.launchQueued = false
 		g.launchDrawn = false
+		ebiten.SetVsyncEnabled(true)
 		g.session = doomsession.New(bundle.m, bundle.opts, bundle.nextMap)
 		g.sessionGame = session.New(g.session)
 		notifyBrowserSessionStarted()

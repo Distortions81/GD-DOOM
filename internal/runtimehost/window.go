@@ -19,7 +19,8 @@ func WindowTitle(name mapdata.MapName) string {
 }
 
 func ConfigureInitialHost(opts runtimecfg.Options, windowW, windowH int, name mapdata.MapName) {
-	ebiten.SetVsyncEnabled(!opts.NoVsync)
+	vsyncEnabled := !opts.NoVsync
+	ebiten.SetVsyncEnabled(vsyncEnabled)
 	ebiten.SetTPS(hostTPS)
 
 	if opts.SourcePortMode {
