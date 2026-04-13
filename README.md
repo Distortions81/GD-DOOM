@@ -345,6 +345,14 @@ The browser build is meant to be genuinely playable, not just a minimal demo. It
 
 On touch devices the browser build shows a dual-pad on-screen layout: the left pad controls forward/back movement and strafing, the right pad handles turning. Both pads use analog joystick input — deflection scales continuously from zero to full speed rather than snapping to fixed speeds. Fire and use activate only when your thumb reaches the outer edge of the respective pad, which keeps accidental shots from killing accidental strafes. A small indicator follows your thumb to show current deflection.
 
+## Recent Updates (April 11-13, 2026)
+
+- Save/load works natively in WebAssembly using `localStorage`, including save slots, load metadata, and save thumbnails for the source-port save/load menu.
+- The save thumbnail cache now persists and reloads in browser builds so saved slots keep their preview image when returning to the menu.
+- Web startup flow was updated to support reliable click-to-play behavior and improved menu input behavior for mouse/touch users.
+- Transition rendering in faithful mode was stabilized so transitions now capture and present at the game render size consistently, which avoids unintended aspect/size shifts between menu and game capture stages.
+- WASM quit flow text now uses a web-appropriate instruction (`close the page to quit`) rather than in-engine session messaging.
+
 ## Development
 
 Run the test suite:
