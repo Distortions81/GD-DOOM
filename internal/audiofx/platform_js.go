@@ -5,7 +5,7 @@ package audiofx
 import "time"
 
 func maxSpatialVoices() int {
-	return 10
+	return 32
 }
 
 func maxMenuVoices() int {

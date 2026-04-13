@@ -9,6 +9,8 @@ import (
 	"gddoom/internal/media"
 )
 
+const maxConcurrentWASMSounds = 8
+
 func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin SpatialOrigin, listenerX, listenerY int64, mapUsesFullClip bool, group string) bool {
 	if p == nil || p.ctx == nil || p.sourcePort || sample.SampleRate <= 0 || len(sample.Data) == 0 {
 		return false
@@ -20,7 +22,18 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	if group != "" {
 		p.stopGroup(group)
 	}
-	voice := p.acquireWASMCachedVoice(sample)
+	key := wasmSampleKey{
+		ptr:  uintptr(unsafe.Pointer(unsafe.SliceData(sample.Data))),
+		len:  len(sample.Data),
+		rate: sample.SampleRate,
+	}
+	voice := p.findWASMCachedVoice(key)
+	if voice == nil && p.wasmActiveVoiceCount() >= maxConcurrentWASMSounds {
+		return true
+	}
+	if voice == nil {
+		voice = p.acquireWASMCachedVoice(sample, key)
+	}
 	if voice == nil || voice.player == nil {
 		return true
 	}
@@ -69,14 +82,7 @@ func (p *SpatialPlayer) wasmMonoGain(origin SpatialOrigin, listenerX, listenerY 
 	return float64(vol) / doomSoundMaxVolume, true
 }
 
-func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample) *spatialVoice {
-	key := wasmSampleKey{
-		ptr:  uintptr(unsafe.Pointer(unsafe.SliceData(sample.Data))),
-		len:  len(sample.Data),
-		rate: sample.SampleRate,
-	}
-	var candidate *spatialVoice
-	var lru *spatialVoice
+func (p *SpatialPlayer) findWASMCachedVoice(key wasmSampleKey) *spatialVoice {
 	for _, voice := range p.voices {
 		if voice == nil || voice.player == nil {
 			continue
@@ -85,7 +91,18 @@ func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample) *spatialV
 			voice.stamp++
 			return voice
 		}
-		if voice.pinned && (lru == nil || voice.stamp < lru.stamp) {
+	}
+	return nil
+}
+
+func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample, key wasmSampleKey) *spatialVoice {
+	var candidate *spatialVoice
+	var lru *spatialVoice
+	for _, voice := range p.voices {
+		if voice == nil || voice.player == nil || !voice.pinned {
+			continue
+		}
+		if lru == nil || voice.stamp < lru.stamp {
 			lru = voice
 		}
 	}
@@ -113,6 +130,16 @@ func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample) *spatialV
 	candidate.group = ""
 	candidate.pinned = true
 	return candidate
+}
+
+func (p *SpatialPlayer) wasmActiveVoiceCount() int {
+	count := 0
+	for _, voice := range p.voices {
+		if voice != nil && voice.pinned && voice.player != nil && voice.player.IsPlaying() {
+			count++
+		}
+	}
+	return count
 }
 
 func PCMMonoU8ToStereoS16LEMonoResampledInto(dst []byte, src []byte, srcRate, dstRate int) []byte {

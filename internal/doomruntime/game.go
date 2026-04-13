@@ -506,6 +506,11 @@ type game struct {
 	snd                     *soundSystem
 	soundQueue              []soundEvent
 	soundQueueOrigin        []queuedSoundOrigin
+	wasmSoundSeen           [soundEventIntermissionDone + 1]bool
+	wasmSoundBestIdx        [soundEventIntermissionDone + 1]int
+	wasmSoundBestStrength   [soundEventIntermissionDone + 1]int
+	wasmSoundOrder          [soundEventIntermissionDone + 1]soundEvent
+	wasmSoundOrderCount     int
 	delayedSfx              []delayedSoundEvent
 	delayedSwitchReverts    []delayedSwitchTexture
 	switchTextureBlends     []switchTextureBlend
@@ -4557,9 +4562,11 @@ func (g *game) collectWASMSoundEvents() ([]soundEvent, []queuedSoundOrigin) {
 	if g == nil || len(g.soundQueue) == 0 {
 		return g.soundQueue, g.soundQueueOrigin
 	}
-	order := make([]soundEvent, 0, len(g.soundQueue))
-	bestIdxByEvent := make(map[soundEvent]int, len(g.soundQueue))
-	bestStrengthByEvent := make(map[soundEvent]int, len(g.soundQueue))
+	for i := 0; i < g.wasmSoundOrderCount; i++ {
+		ev := g.wasmSoundOrder[i]
+		g.wasmSoundSeen[ev] = false
+	}
+	g.wasmSoundOrderCount = 0
 	mapUsesFullClip := false
 	if g.m != nil {
 		mapUsesFullClip = soundMapUsesFullClip(g.m.Name)
@@ -4570,30 +4577,35 @@ func (g *game) collectWASMSoundEvents() ([]soundEvent, []queuedSoundOrigin) {
 			origin = g.soundQueueOrigin[idx]
 		}
 		strength := vanillaSoundStrength(g.snd, origin, g.p.x, g.p.y, g.p.angle, mapUsesFullClip)
-		if prevIdx, ok := bestIdxByEvent[ev]; ok {
-			if strength > bestStrengthByEvent[ev] {
-				bestIdxByEvent[ev] = idx
-				bestStrengthByEvent[ev] = strength
-			} else {
-				_ = prevIdx
+		if g.wasmSoundSeen[ev] {
+			if strength > g.wasmSoundBestStrength[ev] {
+				g.wasmSoundBestIdx[ev] = idx
+				g.wasmSoundBestStrength[ev] = strength
 			}
 			continue
 		}
-		bestIdxByEvent[ev] = idx
-		bestStrengthByEvent[ev] = strength
-		order = append(order, ev)
+		g.wasmSoundSeen[ev] = true
+		g.wasmSoundBestIdx[ev] = idx
+		g.wasmSoundBestStrength[ev] = strength
+		g.wasmSoundOrder[g.wasmSoundOrderCount] = ev
+		g.wasmSoundOrderCount++
 	}
-	queue := make([]soundEvent, 0, len(order))
-	origins := make([]queuedSoundOrigin, 0, len(order))
-	for _, ev := range order {
-		idx := bestIdxByEvent[ev]
+	queue := g.soundQueue[:0]
+	origins := g.soundQueueOrigin[:0]
+	for i := 0; i < g.wasmSoundOrderCount; i++ {
+		ev := g.wasmSoundOrder[i]
+		idx := g.wasmSoundBestIdx[ev]
 		queue = append(queue, ev)
 		if idx >= 0 && idx < len(g.soundQueueOrigin) {
 			origins = append(origins, g.soundQueueOrigin[idx])
 		} else {
 			origins = append(origins, queuedSoundOrigin{})
 		}
+		g.wasmSoundSeen[ev] = false
+		g.wasmSoundBestIdx[ev] = 0
+		g.wasmSoundBestStrength[ev] = 0
 	}
+	g.wasmSoundOrderCount = 0
 	return queue, origins
 }
 

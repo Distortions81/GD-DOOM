@@ -259,8 +259,8 @@ func TestForcedWASMVoiceCaps(t *testing.T) {
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
 
-	if got := maxSpatialVoices(); got != 10 {
-		t.Fatalf("maxSpatialVoices()=%d want 10 in forced wasm mode", got)
+	if got := maxSpatialVoices(); got != 32 {
+		t.Fatalf("maxSpatialVoices()=%d want 32 in forced wasm mode", got)
 	}
 	if got := maxMenuVoices(); got != 8 {
 		t.Fatalf("maxMenuVoices()=%d want 8 in forced wasm mode", got)
