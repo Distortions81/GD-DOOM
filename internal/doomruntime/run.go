@@ -164,6 +164,9 @@ func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
 func (sg *sessionGame) Update() error {
 	sg.releaseStartupMusicIfReady()
 	sg.releaseTransitionMusicIfReady()
+	if sg.musicCtl != nil && isWASMBuild() {
+		sg.musicCtl.Tick()
+	}
 	flushTouchLatch := sg.bumpHostFramePhase()
 	err := runtimehost.RunUpdate(runtimehost.Update{
 		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },
@@ -363,9 +366,6 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 	if sg == nil {
 		screen.Fill(color.Black)
 		return
-	}
-	if sg.musicCtl != nil && isWASMBuild() {
-		sg.musicCtl.Tick()
 	}
 	defer yieldWASMRenderTime()
 	sw := max(screen.Bounds().Dx(), 1)
