@@ -159,8 +159,71 @@ func drawPlaneSpanIndexedPackedFast(dst []uint32, dstI, count int, texIndexed []
 	vFrac := int(stepper.vFixed & fracMask)
 	uTex := int(stepper.uFixed>>fracBits) & 63
 	vTex := int(stepper.vFixed>>fracBits) & 63
+	uTexDelta := 0
+	if uStep > 0 {
+		uTexDelta = 1
+	} else if uStep < 0 {
+		uTexDelta = -1
+	}
+	vTexDelta := 0
+	if vStep > 0 {
+		vTexDelta = 1
+	} else if vStep < 0 {
+		vTexDelta = -1
+	}
 	uRun := stepsUntilTexelChangeFrac(uFrac, uStep)
 	vRun := stepsUntilTexelChangeFrac(vFrac, vStep)
+	fillRun := func(run int, packed uint32) {
+		switch run {
+		case 1:
+			dst[dstI] = packed
+		case 2:
+			*(*uint64)(unsafe.Pointer(&dst[dstI])) = (uint64(packed) << 32) | uint64(packed)
+		case 3:
+			*(*uint64)(unsafe.Pointer(&dst[dstI])) = (uint64(packed) << 32) | uint64(packed)
+			dst[dstI+2] = packed
+		default:
+			fillPackedRun(dst, dstI, run, packed)
+		}
+	}
+	if uStep == 0 {
+		for remaining := count; remaining > 0; {
+			run := vRun
+			if run > remaining {
+				run = remaining
+			}
+			fillRun(run, packedRow[texIndexed[(vTex<<6)+uTex]])
+			dstI += run
+			remaining -= run
+			vFrac = (vFrac + run*vStep) & fracMask
+			if remaining <= 0 {
+				break
+			}
+			vTex = (vTex + vTexDelta) & 63
+			vRun = stepsUntilTexelChangeFrac(vFrac, vStep)
+		}
+		stepper.advance(total)
+		return stepper
+	}
+	if vStep == 0 {
+		for remaining := count; remaining > 0; {
+			run := uRun
+			if run > remaining {
+				run = remaining
+			}
+			fillRun(run, packedRow[texIndexed[(vTex<<6)+uTex]])
+			dstI += run
+			remaining -= run
+			uFrac = (uFrac + run*uStep) & fracMask
+			if remaining <= 0 {
+				break
+			}
+			uTex = (uTex + uTexDelta) & 63
+			uRun = stepsUntilTexelChangeFrac(uFrac, uStep)
+		}
+		stepper.advance(total)
+		return stepper
+	}
 	for remaining := count; remaining > 0; {
 		run := uRun
 		if vRun < run {
@@ -169,7 +232,7 @@ func drawPlaneSpanIndexedPackedFast(dst []uint32, dstI, count int, texIndexed []
 		if run > remaining {
 			run = remaining
 		}
-		fillPackedRun(dst, dstI, run, packedRow[texIndexed[(vTex<<6)+uTex]])
+		fillRun(run, packedRow[texIndexed[(vTex<<6)+uTex]])
 		dstI += run
 		remaining -= run
 		uFrac = (uFrac + run*uStep) & fracMask
@@ -178,21 +241,13 @@ func drawPlaneSpanIndexedPackedFast(dst []uint32, dstI, count int, texIndexed []
 			break
 		}
 		if uRun == run {
-			if uStep > 0 {
-				uTex = (uTex + 1) & 63
-			} else if uStep < 0 {
-				uTex = (uTex - 1) & 63
-			}
+			uTex = (uTex + uTexDelta) & 63
 			uRun = stepsUntilTexelChangeFrac(uFrac, uStep)
 		} else {
 			uRun -= run
 		}
 		if vRun == run {
-			if vStep > 0 {
-				vTex = (vTex + 1) & 63
-			} else if vStep < 0 {
-				vTex = (vTex - 1) & 63
-			}
+			vTex = (vTex + vTexDelta) & 63
 			vRun = stepsUntilTexelChangeFrac(vFrac, vStep)
 		} else {
 			vRun -= run
