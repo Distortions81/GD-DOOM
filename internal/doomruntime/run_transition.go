@@ -59,6 +59,9 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	dw := max(dst.Bounds().Dx(), 1)
 	dh := max(dst.Bounds().Dy(), 1)
 	captureLast := func() {
+		if !sg.transitionActive() {
+			return
+		}
 		cw, ch := sg.transitionSurfaceSize(dw, dh)
 		capture := sg.ensureTransitionCaptureSurface(cw, ch)
 		capture.Clear()

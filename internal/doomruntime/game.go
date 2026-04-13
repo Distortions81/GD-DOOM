@@ -3635,15 +3635,18 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 }
 
 func (g *game) Draw(screen *ebiten.Image) {
-	drawStart := time.Now()
-	g.renderStamp = drawStart
-	if g.opts.DemoScript != nil {
-		g.demoBenchDraws++
+	outerPerfScope := !g.perfInDraw
+	if outerPerfScope {
+		drawStart := time.Now()
+		g.renderStamp = drawStart
+		if g.opts.DemoScript != nil {
+			g.demoBenchDraws++
+		}
+		g.frameUpload = 0
+		g.perfInDraw = true
+		defer func() { g.perfInDraw = false }()
+		defer g.finishPerfCounter(drawStart)
 	}
-	g.frameUpload = 0
-	g.perfInDraw = true
-	defer func() { g.perfInDraw = false }()
-	defer g.finishPerfCounter(drawStart)
 	if g.mode != viewMap {
 		debugPos := fmt.Sprintf(
 			"pos=(%.2f, %.2f) ang=%.1f",

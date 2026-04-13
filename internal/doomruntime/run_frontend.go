@@ -1111,7 +1111,9 @@ func (sg *sessionGame) drawFrontendPresented(screen *ebiten.Image) {
 	sg.drawFrontend(present)
 	screen.Fill(color.Black)
 	screen.DrawImage(present, nil)
-	sg.transition.SetLastFrame(present)
+	if sg.transitionActive() {
+		sg.transition.SetLastFrame(present)
+	}
 }
 
 func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox, oy float64) {

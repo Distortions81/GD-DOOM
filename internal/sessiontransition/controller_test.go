@@ -43,3 +43,45 @@ func TestReleaseWorkingSetKeepsLastFrame(t *testing.T) {
 		t.Fatal("working buffers should be released")
 	}
 }
+
+func TestTickClearsActiveStateWhenTransitionCompletes(t *testing.T) {
+	c := &Controller{
+		kind:        KindLevel,
+		initialized: true,
+		width:       1,
+		height:      1,
+		y:           []int{1},
+		fromPix:     make([]byte, 4),
+		toPix:       []byte{255, 255, 255, 255},
+		workPix:     make([]byte, 4),
+		to:          ebiten.NewImage(1, 1),
+		work:        ebiten.NewImage(1, 1),
+	}
+
+	if !c.Active() {
+		t.Fatal("transition should start active")
+	}
+	if !c.Initialized() {
+		t.Fatal("transition should start initialized")
+	}
+
+	for i := 0; i < 32 && c.Active(); i++ {
+		c.Tick(false, 1, 1)
+	}
+
+	if c.Active() {
+		t.Fatal("transition stayed active after completion")
+	}
+	if c.Kind() != KindNone {
+		t.Fatalf("kind=%v want=%v", c.Kind(), KindNone)
+	}
+	if c.Initialized() {
+		t.Fatal("transition should not stay initialized after completion")
+	}
+	if c.pending {
+		t.Fatal("transition should not stay pending after completion")
+	}
+	if c.lastFrame == nil {
+		t.Fatal("lastFrame should be captured on completion")
+	}
+}
