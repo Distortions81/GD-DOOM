@@ -11,7 +11,7 @@ import (
 
 const (
 	maxConcurrentWASMSounds = 6
-	wasmVolumeBuckets       = 3
+	wasmVolumeBuckets       = 4
 	wasmVolumeBucketUnset   = ^uint8(0)
 )
 
@@ -19,8 +19,8 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	if p == nil || p.ctx == nil || p.sourcePort || sample.SampleRate <= 0 || len(sample.Data) == 0 {
 		return false
 	}
-	gain, ok := p.wasmMonoGain(origin, listenerX, listenerY, mapUsesFullClip)
-	if !ok || gain <= 0 {
+	attenuation, ok := wasmMonoAttenuation(origin, listenerX, listenerY, mapUsesFullClip)
+	if !ok || attenuation <= 0 {
 		return true
 	}
 	if group != "" {
@@ -43,14 +43,17 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	}
 	voice.group = group
 	wasPlaying := voice.player.IsPlaying()
-	bucket, quantizedGain := quantizeWASMVolume(gain)
+	bucket, quantizedAttenuation := quantizeWASMVolume(attenuation)
+	finalGain := clampVolume(p.volume) * quantizedAttenuation
 	if err := voice.player.Rewind(); err != nil {
 		_ = voice.player.Close()
 		return true
 	}
-	if voice.bucket != bucket {
-		voice.player.SetVolume(quantizedGain)
+	if voice.bucket != bucket || voice.wasmAppliedVol != finalGain {
+		voice.player.SetVolume(finalGain)
 		voice.bucket = bucket
+		voice.wasmBucketGain = quantizedAttenuation
+		voice.wasmAppliedVol = finalGain
 	}
 	if !wasPlaying {
 		voice.player.Play()
@@ -58,11 +61,8 @@ func (p *SpatialPlayer) playWASMSoundEffect(sample media.PCMSample, origin Spati
 	return true
 }
 
-func (p *SpatialPlayer) wasmMonoGain(origin SpatialOrigin, listenerX, listenerY int64, mapUsesFullClip bool) (float64, bool) {
-	baseVol := int(math.Round(clampVolume(p.volume) * doomSoundMaxVolume))
-	if baseVol <= 0 {
-		return 0, false
-	}
+func wasmMonoAttenuation(origin SpatialOrigin, listenerX, listenerY int64, mapUsesFullClip bool) (float64, bool) {
+	baseVol := doomSoundMaxVolume
 	if !origin.Positioned {
 		return float64(baseVol) / doomSoundMaxVolume, true
 	}
@@ -140,6 +140,8 @@ func (p *SpatialPlayer) acquireWASMCachedVoice(sample media.PCMSample, key wasmS
 	candidate.group = ""
 	candidate.pinned = true
 	candidate.bucket = wasmVolumeBucketUnset
+	candidate.wasmBucketGain = 0
+	candidate.wasmAppliedVol = -1
 	return candidate
 }
 
@@ -215,9 +217,11 @@ func quantizeWASMVolume(gain float64) (uint8, float64) {
 		return wasmVolumeBuckets - 1, 1
 	}
 	step := 1.0 / float64(wasmVolumeBuckets-1)
-	bucket := uint8(math.Round(gain / step))
+	perceptual := math.Sqrt(gain)
+	bucket := uint8(math.Round(perceptual / step))
 	if bucket >= wasmVolumeBuckets {
 		bucket = wasmVolumeBuckets - 1
 	}
-	return bucket, float64(bucket) * step
+	q := float64(bucket) * step
+	return bucket, q * q
 }

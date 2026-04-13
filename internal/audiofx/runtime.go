@@ -67,6 +67,8 @@ type spatialVoice struct {
 	key    wasmSampleKey
 	stamp  uint64
 	bucket uint8
+	wasmBucketGain float64
+	wasmAppliedVol float64
 }
 
 type menuVoice struct {
@@ -208,6 +210,7 @@ func (p *SpatialPlayer) SetVolume(v float64) {
 		return
 	}
 	p.volume = clampVolume(v)
+	p.refreshPlatformVolumes()
 }
 
 func (p *SpatialPlayer) PlaySample(sample media.PCMSample) {

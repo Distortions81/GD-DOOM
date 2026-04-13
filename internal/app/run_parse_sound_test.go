@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"gddoom/internal/music"
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/sound"
 )
@@ -83,11 +84,11 @@ func TestBuildAutomapSoundBank_WASMSourcePortAlsoPreparesSourcePortAudio(t *test
 		}},
 	}
 	bank := buildAutomapSoundBank(report, true)
-	if bank.ShootPistol.FaithfulPreparedRate != 44100 {
-		t.Fatalf("faithful prepared rate=%d want=44100", bank.ShootPistol.FaithfulPreparedRate)
+	if bank.ShootPistol.FaithfulPreparedRate != music.OutputSampleRate {
+		t.Fatalf("faithful prepared rate=%d want=%d", bank.ShootPistol.FaithfulPreparedRate, music.OutputSampleRate)
 	}
-	if bank.ShootPistol.PreparedRate != 44100 {
-		t.Fatalf("source-port prepared rate=%d want=44100", bank.ShootPistol.PreparedRate)
+	if bank.ShootPistol.PreparedRate != music.OutputSampleRate {
+		t.Fatalf("source-port prepared rate=%d want=%d", bank.ShootPistol.PreparedRate, music.OutputSampleRate)
 	}
 	if len(bank.ShootPistol.Data) != 512 {
 		t.Fatalf("sample len=%d want=512", len(bank.ShootPistol.Data))

@@ -158,3 +158,65 @@ func TestPlayWASMSoundEffect_QuantizedVolumeSkipsRedundantSetVolume(t *testing.T
 		t.Fatalf("backend plays=%d want 1", backend.plays)
 	}
 }
+
+func TestPlayWASMSoundEffect_AppliesExactGameVolumeAtMaxBucket(t *testing.T) {
+	sample := media.PCMSample{
+		SampleRate: 11025,
+		Data:       []byte{1, 2, 3, 4},
+	}
+	key := wasmSampleKey{
+		ptr:  uintptr(unsafe.Pointer(unsafe.SliceData(sample.Data))),
+		len:  len(sample.Data),
+		rate: sample.SampleRate,
+	}
+	backend := &fakeWASMBackend{}
+	voice := &spatialVoice{
+		player: backend,
+		src:    &pcmBufferSource{buf: []byte{9, 8, 7, 6}},
+		pinned: true,
+		key:    key,
+		bucket: wasmVolumeBucketUnset,
+	}
+	p := &SpatialPlayer{
+		ctx:    &audio.Context{},
+		volume: 0.4,
+		voices: []*spatialVoice{voice},
+	}
+
+	if ok := p.playWASMSoundEffect(sample, SpatialOrigin{}, 0, 0, false, "test"); !ok {
+		t.Fatal("playWASMSoundEffect()=false want true")
+	}
+	if backend.setVolumes != 1 {
+		t.Fatalf("backend setVolumes=%d want 1", backend.setVolumes)
+	}
+	if backend.lastVolume != 0.4 {
+		t.Fatalf("backend lastVolume=%f want 0.4", backend.lastVolume)
+	}
+}
+
+func TestSpatialPlayerSetVolume_RescalesPinnedWASMVoice(t *testing.T) {
+	backend := &fakeWASMBackend{}
+	voice := &spatialVoice{
+		player:         backend,
+		pinned:         true,
+		bucket:         1,
+		wasmBucketGain: 0.25,
+		wasmAppliedVol: 0.25,
+	}
+	p := &SpatialPlayer{
+		volume: 1,
+		voices: []*spatialVoice{voice},
+	}
+
+	p.SetVolume(0.4)
+
+	if backend.setVolumes != 1 {
+		t.Fatalf("backend setVolumes=%d want 1", backend.setVolumes)
+	}
+	if backend.lastVolume != 0.1 {
+		t.Fatalf("backend lastVolume=%f want 0.1", backend.lastVolume)
+	}
+	if voice.wasmAppliedVol != 0.1 {
+		t.Fatalf("voice.wasmAppliedVol=%f want 0.1", voice.wasmAppliedVol)
+	}
+}

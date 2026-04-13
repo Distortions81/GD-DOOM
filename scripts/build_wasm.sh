@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${1:-${ROOT_DIR}/build/wasm}"
 GOROOT_PATH="$(go env GOROOT)"
 WASM_EXEC_JS="${GOROOT_PATH}/lib/wasm/wasm_exec.js"
-WASM_OPT_MODE="${WASM_OPT:-true}"
-WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O3}"
+WASM_OPT_MODE="${WASM_OPT:-auto}"
+WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O2}"
 WASM_OPT_FEATURES="${WASM_OPT_FEATURES:---all-features}"
 BUILD_ID="${BUILD_ID:-$(git -C "${ROOT_DIR}" rev-parse --short=12 HEAD 2>/dev/null || date +%s)}"
 
@@ -20,10 +20,14 @@ if [[ ! -f "${WASM_EXEC_JS}" ]]; then
   exit 1
 fi
 
-use_wasm_opt=true
+use_wasm_opt=false
 case "${WASM_OPT_MODE}" in
+  auto)
+    if command -v wasm-opt >/dev/null 2>&1; then
+      use_wasm_opt=true
+    fi
+    ;;
   0|false|off|disable|disabled)
-    use_wasm_opt=false
     ;;
   1|true|on|enable|enabled)
     if ! command -v wasm-opt >/dev/null 2>&1; then
@@ -33,7 +37,7 @@ case "${WASM_OPT_MODE}" in
     use_wasm_opt=true
     ;;
   *)
-    echo "invalid WASM_OPT value: ${WASM_OPT_MODE} (expected false/0 or true/1)" >&2
+    echo "invalid WASM_OPT value: ${WASM_OPT_MODE} (expected auto, 0, or 1)" >&2
     exit 1
     ;;
 esac
@@ -70,7 +74,7 @@ if [[ "${use_wasm_opt}" == "true" ]]; then
   after_bytes="$(wc -c < "${OUT_DIR}/gddoom.wasm" | tr -d ' ')"
   echo "Applied wasm-opt ${WASM_OPT_LEVEL} ${WASM_OPT_FEATURES}: ${before_bytes} -> ${after_bytes} bytes"
 else
-  echo "Skipping wasm-opt (set WASM_OPT=1 to enable it)"
+  echo "Skipping wasm-opt (set WASM_OPT=1 to require it, or install wasm-opt for auto mode)"
 fi
 
 cp "${WASM_EXEC_JS}" "${OUT_DIR}/wasm_exec.js"

@@ -29,7 +29,7 @@ type playerCmd struct {
 	done chan struct{}
 }
 
-// ChunkPlayer plays queued 44.1kHz s16 stereo chunks on a dedicated goroutine.
+// ChunkPlayer plays queued output-rate s16 stereo chunks on a dedicated goroutine.
 type ChunkPlayer struct {
 	ctx    *audio.Context
 	player *audio.Player
@@ -47,7 +47,7 @@ func NewChunkPlayer() (*ChunkPlayer, error) {
 		ctx = audio.NewContext(OutputSampleRate)
 	}
 	src := newPCMChunkBuffer()
-	p, err := audio.NewPlayer(ctx, src)
+	p, err := ctx.NewPlayer(src)
 	if err != nil {
 		return nil, err
 	}
@@ -189,49 +189,47 @@ func (cp *ChunkPlayer) sendAndWait(cmd playerCmd) error {
 
 func (cp *ChunkPlayer) run() {
 	defer close(cp.done)
-	playing := false
 	for cmd := range cp.cmds {
-		switch cmd.typ {
-		case cmdStart:
-			if !playing {
-				cp.player.Play()
-				playing = true
-			}
-		case cmdStop:
-			cp.player.Pause()
-			playing = false
-		case cmdClear:
-			cp.src.Clear()
-		case cmdReset:
-			cp.src.Clear()
-			cp.player.Pause()
-			_ = cp.player.Close()
-			p, err := audio.NewPlayer(cp.ctx, cp.src)
-			if err != nil {
-				return
-			}
-			cp.player = p
-			cp.player.SetVolume(cp.volume)
-			playing = false
-		case cmdEnqueue:
-			cp.src.Enqueue(cmd.data)
-		case cmdSetVolume:
-			cp.volume = cmd.vol
-			cp.player.SetVolume(cmd.vol)
-		case cmdSync:
-		case cmdClose:
-			cp.player.Pause()
-			cp.src.Close()
-			_ = cp.player.Close()
-			if cmd.done != nil {
-				close(cmd.done)
-			}
+		if !cp.executeCommand(cmd) {
 			return
 		}
 		if cmd.done != nil {
 			close(cmd.done)
 		}
 	}
+}
+
+func (cp *ChunkPlayer) executeCommand(cmd playerCmd) bool {
+	switch cmd.typ {
+	case cmdStart:
+		cp.player.Play()
+	case cmdStop:
+		cp.player.Pause()
+	case cmdClear:
+		cp.src.Clear()
+	case cmdReset:
+		cp.src.Clear()
+		cp.player.Pause()
+		_ = cp.player.Close()
+		p, err := cp.ctx.NewPlayer(cp.src)
+		if err != nil {
+			return false
+		}
+		cp.player = p
+		cp.player.SetVolume(cp.volume)
+	case cmdEnqueue:
+		cp.src.Enqueue(cmd.data)
+	case cmdSetVolume:
+		cp.volume = cmd.vol
+		cp.player.SetVolume(cmd.vol)
+	case cmdSync:
+	case cmdClose:
+		cp.player.Pause()
+		cp.src.Close()
+		_ = cp.player.Close()
+		return false
+	}
+	return true
 }
 
 type pcmChunkBuffer struct {
