@@ -527,7 +527,11 @@ func (sg *sessionGame) drawIntermissionPresented(screen *ebiten.Image) {
 	sg.drawIntermission(present)
 	screen.Fill(color.Black)
 	screen.DrawImage(present, nil)
-	sg.transition.SetLastFrame(present)
+	cw, ch := sg.transitionSurfaceSize(dw, dh)
+	capture := sg.ensureTransitionCaptureSurface(cw, ch)
+	capture.Clear()
+	sg.drawIntermission(capture)
+	sg.transition.SetLastFrame(capture)
 }
 
 func (sg *sessionGame) drawIntermissionStatsScreen(screen *ebiten.Image, scale, ox, oy float64, im *sessionIntermission) {
@@ -626,7 +630,11 @@ func (sg *sessionGame) drawFinalePresented(screen *ebiten.Image) {
 	sg.drawFinale(present)
 	screen.Fill(color.Black)
 	screen.DrawImage(present, nil)
-	sg.transition.SetLastFrame(present)
+	cw, ch := sg.transitionSurfaceSize(dw, dh)
+	capture := sg.ensureTransitionCaptureSurface(cw, ch)
+	capture.Clear()
+	sg.drawFinale(capture)
+	sg.transition.SetLastFrame(capture)
 }
 
 func (sg *sessionGame) drawIntermissionBackdrop(screen *ebiten.Image, scale, ox, oy float64, state intermissionState) {

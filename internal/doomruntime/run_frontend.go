@@ -1089,6 +1089,10 @@ func (sg *sessionGame) drawFrontendTransitionSurface(dst *ebiten.Image) {
 }
 
 func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
+	sg.drawFrontendWithCapture(screen, false)
+}
+
+func (sg *sessionGame) drawFrontendWithCapture(screen *ebiten.Image, capture bool) {
 	sw := max(screen.Bounds().Dx(), 1)
 	sh := max(screen.Bounds().Dy(), 1)
 	scale := float64(sw) / 320.0
@@ -1104,7 +1108,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 
 	switch sg.frontend.Mode {
 	case frontendModeReadThis:
-		sg.drawFrontendAttractBackground(screen)
+		sg.drawFrontendAttractBackground(screen, capture)
 		name := sg.readThisPageName(sg.frontend.ReadThisPage)
 		if !sg.drawIntermissionPatch(screen, name, 0, 0, scale, ox, oy, false) && !sg.drawFrontendPage(screen, "TITLEPIC") {
 			screen.Fill(color.Black)
@@ -1118,42 +1122,42 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		}
 		return
 	case frontendModeSound:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendSoundMenu(screen, scale, ox, oy)
 		return
 	case frontendModeVoice:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendVoiceMenu(screen, scale, ox, oy)
 		return
 	case frontendModeOptions:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendOptionsMenu(screen, scale, ox, oy)
 		return
 	case frontendModeMusicPlayer:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendMusicPlayerMenu(screen, scale, ox, oy)
 		return
 	case frontendModeKeybinds:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
 		sg.drawFrontendKeybindMenu(screen, scale, ox, oy)
 		return
 	case frontendModeEpisode:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1168,7 +1172,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.EpisodeOn*16, scale, ox, oy)
 		return
 	case frontendModeSkill:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1180,7 +1184,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		sg.drawMenuSkull(screen, 16, 63+sg.frontend.SkillOn*16, scale, ox, oy)
 		return
 	case frontendModeSaveLoad:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1257,7 +1261,7 @@ func (sg *sessionGame) drawFrontend(screen *ebiten.Image) {
 		sg.drawMenuSkull(screen, 20, 49+(selected-start)*lineHeight, scale, ox, oy)
 		return
 	default:
-		sg.drawFrontendBackdrop(screen, true)
+		sg.drawFrontendBackdrop(screen, true, capture)
 		if sg.quitPrompt.Active {
 			return
 		}
@@ -1315,7 +1319,11 @@ func (sg *sessionGame) drawFrontendPresented(screen *ebiten.Image) {
 	sg.drawFrontend(present)
 	screen.Fill(color.Black)
 	screen.DrawImage(present, nil)
-	sg.transition.SetLastFrame(present)
+	cw, ch := sg.transitionSurfaceSize(dw, dh)
+	capture := sg.ensureTransitionCaptureSurface(cw, ch)
+	capture.Clear()
+	sg.drawFrontendWithCapture(capture, true)
+	sg.transition.SetLastFrame(capture)
 }
 
 func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox, oy float64) {
@@ -1325,11 +1333,11 @@ func (sg *sessionGame) drawFrontendMainMenuTitle(screen *ebiten.Image, scale, ox
 	_ = sg.drawMenuPatch(screen, "M_DOOM", 94, 2, scale, ox, oy, false)
 }
 
-func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool) {
+func (sg *sessionGame) drawFrontendBackdrop(screen *ebiten.Image, showLogo bool, capture bool) {
 	if sg == nil || screen == nil {
 		return
 	}
-	sg.drawFrontendAttractBackground(screen)
+	sg.drawFrontendAttractBackground(screen, capture)
 	if sg.frontend.MenuActive || sg.frontend.InGame {
 		ebitenutil.DrawRect(screen, 0, 0, float64(max(screen.Bounds().Dx(), 1)), float64(max(screen.Bounds().Dy(), 1)), color.RGBA{A: 128})
 	}
@@ -1366,16 +1374,24 @@ func saveLoadVisibleWindow(total, selected, maxRows int) (start, end int) {
 	return start, end
 }
 
-func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image) {
+func (sg *sessionGame) drawFrontendAttractBackground(screen *ebiten.Image, capture bool) {
 	if sg == nil || screen == nil {
 		return
 	}
 	if sg.frontend.InGame && sg.g != nil {
-		sg.drawGamePresented(screen, sg.g)
+		if capture {
+			sg.drawGameTransitionSurface(screen, sg.g)
+		} else {
+			sg.drawGamePresented(screen, sg.g)
+		}
 		return
 	}
 	if sg.g != nil && sg.g.sessionSignals().DemoActive {
-		sg.drawGamePresented(screen, sg.g)
+		if capture {
+			sg.drawGameTransitionSurface(screen, sg.g)
+		} else {
+			sg.drawGamePresented(screen, sg.g)
+		}
 		return
 	}
 	if sg.drawFrontendPage(screen, sg.frontend.AttractPage) {

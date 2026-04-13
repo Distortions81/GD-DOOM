@@ -132,6 +132,13 @@ func (c *Controller) LastFrame() *ebiten.Image {
 	return c.lastFrame
 }
 
+func (c *Controller) WorkFrame() *ebiten.Image {
+	if c == nil {
+		return nil
+	}
+	return c.work
+}
+
 func (c *Controller) CaptureLastFrame(src *ebiten.Image) {
 	if c == nil || src == nil {
 		return

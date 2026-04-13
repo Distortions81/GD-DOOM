@@ -3380,7 +3380,7 @@ func defaultHUDScaleStep(opts Options) int {
 		targetScale = 4.0
 	}
 	if isWASMBuild() {
-		targetScale = 1.0
+		targetScale = 4.0
 	}
 	if !opts.SourcePortMode && defaultScreenBlocks(opts) == doomScreenBlocksOverlay {
 		targetScale = 1.0
@@ -3394,14 +3394,9 @@ func defaultHUDScaleStep(opts Options) int {
 }
 
 func defaultHUDScaleStepForViewport(opts Options, outsideW, outsideH int) int {
-	step := defaultHUDScaleStep(opts)
-	if !opts.SourcePortMode || !isWASMBuild() {
-		return step
-	}
-	if outsideW < sourcePortDefaultWindowW || outsideH < sourcePortDefaultWindowH {
-		return 0
-	}
-	return step
+	_ = outsideW
+	_ = outsideH
+	return defaultHUDScaleStep(opts)
 }
 
 func (g *game) ensureDefaultHUDScaleForViewport(outsideW, outsideH int) {

@@ -385,7 +385,7 @@ func (sg *sessionGame) Draw(screen *ebiten.Image) {
 			return sg.transitionActive()
 		},
 		TransitionNeedsResize: func() bool {
-			return sg.opts.SourcePortMode && sg.transition.NeedsResize(tw, th)
+			return sg.transition.NeedsResize(tw, th)
 		},
 		InvalidateTransition: sg.transition.Invalidate,
 		EnsureTransitionReady: func() {

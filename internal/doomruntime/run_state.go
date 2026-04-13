@@ -74,63 +74,64 @@ const (
 )
 
 type sessionGame struct {
-	g                       *game
-	rt                      sessionRuntime
-	gameFactory             gameplay.RuntimeFactory[Options, *game]
-	bootMap                 *mapdata.Map
-	current                 mapdata.MapName
-	currentTemplate         *mapdata.Map
-	opts                    Options
-	demoRecord              []DemoTic
-	frozenDemoPath          string          // set by freezeDemoRecord; cleared opts.RecordDemoPath stops new tics
-	demoRecordingMap        mapdata.MapName // map name when recording started (for demo header)
-	demoFlushTics           int             // tic count at last flush to disk
-	settings                gameplay.PersistentSettings
-	nextMap                 NextMapFunc
-	err                     error
-	musicCtl                *sessionmusic.Playback
-	secretVisited           bool
-	levelCarryover          *playerLevelCarryover
-	faithfulSurface         *ebiten.Image
-	faithfulNearest         *ebiten.Image
-	crtShader               *ebiten.Shader
-	crtPost                 *ebiten.Image
-	crtUniforms             map[string]any
-	gameplaySurface         *ebiten.Image
-	frontendSurface         *ebiten.Image
-	saveThumbnailCache      map[int]saveThumbnailCacheEntry
-	bootSplashImage         *ebiten.Image
-	menuPatchImages         map[string]*ebiten.Image
-	intermissionImages      map[string]*ebiten.Image
-	statusPatchImages       map[string]*ebiten.Image
-	spritePatchImages       map[string]*ebiten.Image
-	messageFontImages       map[rune]*ebiten.Image
-	flatImages              map[string]*ebiten.Image
-	menuSfx                 *sessionaudio.MenuController
-	finalScreenDrawOp       ebiten.DrawImageOptions
-	transition              sessiontransition.Controller
-	intermission            sessionIntermission
-	finale                  sessionFinale
-	frontend                frontendState
-	frontendMenuPending     bool
-	frontendMusicConfig     frontendMusicConfigPending
-	frontendKeybindRow      int
-	frontendKeybindSlot     int
-	frontendKeybindCapture  bool
-	startupMusicLocked      bool
-	startupMusicVisualReady bool
-	startupMusicPending     musicPlaybackSource
-	transitionMusicPending  musicPlaybackSource
-	musicPlayer             frontendMusicPlayerState
-	currentMusicSource      musicPlaybackSource
-	nowPlayingLevel         string
-	nowPlayingMusic         string
-	quitPrompt              quitPromptState
-	quitMessageSeq          int
-	input                   sessionInputSnapshot
-	touch                   touchControllerState
-	hostFramePhase          int
-	voiceTransmitHeld       atomic.Bool
+	g                        *game
+	rt                       sessionRuntime
+	gameFactory              gameplay.RuntimeFactory[Options, *game]
+	bootMap                  *mapdata.Map
+	current                  mapdata.MapName
+	currentTemplate          *mapdata.Map
+	opts                     Options
+	demoRecord               []DemoTic
+	frozenDemoPath           string          // set by freezeDemoRecord; cleared opts.RecordDemoPath stops new tics
+	demoRecordingMap         mapdata.MapName // map name when recording started (for demo header)
+	demoFlushTics            int             // tic count at last flush to disk
+	settings                 gameplay.PersistentSettings
+	nextMap                  NextMapFunc
+	err                      error
+	musicCtl                 *sessionmusic.Playback
+	secretVisited            bool
+	levelCarryover           *playerLevelCarryover
+	faithfulSurface          *ebiten.Image
+	faithfulNearest          *ebiten.Image
+	crtShader                *ebiten.Shader
+	crtPost                  *ebiten.Image
+	crtUniforms              map[string]any
+	gameplaySurface          *ebiten.Image
+	frontendSurface          *ebiten.Image
+	transitionCaptureSurface *ebiten.Image
+	saveThumbnailCache       map[int]saveThumbnailCacheEntry
+	bootSplashImage          *ebiten.Image
+	menuPatchImages          map[string]*ebiten.Image
+	intermissionImages       map[string]*ebiten.Image
+	statusPatchImages        map[string]*ebiten.Image
+	spritePatchImages        map[string]*ebiten.Image
+	messageFontImages        map[rune]*ebiten.Image
+	flatImages               map[string]*ebiten.Image
+	menuSfx                  *sessionaudio.MenuController
+	finalScreenDrawOp        ebiten.DrawImageOptions
+	transition               sessiontransition.Controller
+	intermission             sessionIntermission
+	finale                   sessionFinale
+	frontend                 frontendState
+	frontendMenuPending      bool
+	frontendMusicConfig      frontendMusicConfigPending
+	frontendKeybindRow       int
+	frontendKeybindSlot      int
+	frontendKeybindCapture   bool
+	startupMusicLocked       bool
+	startupMusicVisualReady  bool
+	startupMusicPending      musicPlaybackSource
+	transitionMusicPending   musicPlaybackSource
+	musicPlayer              frontendMusicPlayerState
+	currentMusicSource       musicPlaybackSource
+	nowPlayingLevel          string
+	nowPlayingMusic          string
+	quitPrompt               quitPromptState
+	quitMessageSeq           int
+	input                    sessionInputSnapshot
+	touch                    touchControllerState
+	hostFramePhase           int
+	voiceTransmitHeld        atomic.Bool
 }
 
 type frontendMusicConfigPending struct {

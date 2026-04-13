@@ -40,9 +40,30 @@ func (sg *sessionGame) ensureFrontendSurface(width, height int) *ebiten.Image {
 	return sg.frontendSurface
 }
 
+func (sg *sessionGame) ensureTransitionCaptureSurface(width, height int) *ebiten.Image {
+	if sg == nil {
+		return nil
+	}
+	width = max(width, 1)
+	height = max(height, 1)
+	if sg.transitionCaptureSurface == nil || sg.transitionCaptureSurface.Bounds().Dx() != width || sg.transitionCaptureSurface.Bounds().Dy() != height {
+		sg.transitionCaptureSurface = newUnmanagedImage(width, height)
+	}
+	return sg.transitionCaptureSurface
+}
+
 func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	if dst == nil || g == nil {
 		return
+	}
+	dw := max(dst.Bounds().Dx(), 1)
+	dh := max(dst.Bounds().Dy(), 1)
+	captureLast := func() {
+		cw, ch := sg.transitionSurfaceSize(dw, dh)
+		capture := sg.ensureTransitionCaptureSurface(cw, ch)
+		capture.Clear()
+		sg.drawGameTransitionSurface(capture, g)
+		sg.transition.SetLastFrame(capture)
 	}
 	var drawStart time.Time
 	if g.mode != viewMap {
@@ -74,7 +95,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
 		}
 		sg.drawFaithfulPresented(dst, src)
-		sg.transition.SetLastFrame(src)
+		captureLast()
 		return
 	}
 	if sg.canDrawSourcePortDirect(dst, g) {
@@ -87,7 +108,7 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		if g.mode != viewMap {
 			g.drawWalkOverlays(dst)
 		}
-		sg.transition.SetLastFrame(dst)
+		captureLast()
 		return
 	}
 	present := sg.ensureGameplaySurface(g.viewW, g.viewH)
@@ -101,18 +122,16 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	if sg.palettePostEnabled() {
 		src = sg.applyFaithfulPalettePost(present)
 	}
-	ow := max(dst.Bounds().Dx(), 1)
-	oh := max(dst.Bounds().Dy(), 1)
-	sg.drawSourcePortPresented(dst, src, ow, oh)
+	sg.drawSourcePortPresented(dst, src, dw, dh)
 	if g.mode != viewMap {
 		prevW, prevH := g.viewW, g.viewH
-		g.viewW = ow
-		g.viewH = oh
+		g.viewW = dw
+		g.viewH = dh
 		g.drawWalkOverlays(dst)
 		g.viewW = prevW
 		g.viewH = prevH
 	}
-	sg.transition.SetLastFrame(src)
+	captureLast()
 }
 
 func (sg *sessionGame) canDrawSourcePortDirect(dst *ebiten.Image, g *game) bool {
@@ -218,12 +237,19 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 	if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
 		sg.faithfulSurface = newUnmanagedImage(vw, vh)
 	}
-	g.Draw(sg.faithfulSurface)
+	sg.faithfulSurface.Fill(color.Black)
+	if g.mode != viewMap {
+		g.drawWalk3D(sg.faithfulSurface)
+		g.drawWalkOverlays(sg.faithfulSurface)
+	} else {
+		g.Draw(sg.faithfulSurface)
+	}
 	src := sg.faithfulSurface
 	if sg.palettePostEnabled() {
 		src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
 	}
-	sg.drawFaithfulPresented(dst, src)
+	dst.Clear()
+	dst.DrawImage(src, nil)
 }
 
 func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
@@ -237,6 +263,16 @@ func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
 	}
 	if sg.bootSplashImage == nil {
 		dst.Fill(color.Black)
+		return
+	}
+	if !sg.opts.SourcePortMode {
+		dst.Fill(color.Black)
+		bw := max(sg.bootSplashImage.Bounds().Dx(), 1)
+		bh := max(sg.bootSplashImage.Bounds().Dy(), 1)
+		op := &ebiten.DrawImageOptions{}
+		op.Filter = ebiten.FilterNearest
+		op.GeoM.Scale(float64(max(dst.Bounds().Dx(), 1))/float64(bw), float64(max(dst.Bounds().Dy(), 1))/float64(bh))
+		dst.DrawImage(sg.bootSplashImage, op)
 		return
 	}
 	dw := max(dst.Bounds().Dx(), 1)
@@ -289,6 +325,13 @@ func (sg *sessionGame) transitionActive() bool {
 func (sg *sessionGame) transitionSurfaceSize(screenW, screenH int) (int, int) {
 	if sg.opts.SourcePortMode {
 		return max(screenW, 1), max(screenH, 1)
+	}
+	if sg.g != nil {
+		w := max(sg.g.viewW, 1)
+		h := max(sg.g.viewH, 1)
+		if w > 0 && h > 0 {
+			return w, h
+		}
 	}
 	w := sg.opts.Width
 	h := sg.opts.Height
@@ -348,5 +391,22 @@ func sourcePortMeltMoveColumns() int {
 }
 
 func (sg *sessionGame) drawTransitionFrame(screen *ebiten.Image, sw, sh int) {
-	sg.transition.DrawFrame(screen, sw, sh)
+	if screen == nil {
+		return
+	}
+	if sg == nil {
+		sg.transition.DrawFrame(screen, sw, sh)
+		return
+	}
+	work := sg.transition.WorkFrame()
+	if work == nil {
+		sg.transition.DrawFrame(screen, sw, sh)
+		return
+	}
+	screen.Fill(color.Black)
+	if sg.opts.SourcePortMode {
+		sg.drawSourcePortPresented(screen, work, sw, sh)
+		return
+	}
+	sg.drawFaithfulPresented(screen, work)
 }
