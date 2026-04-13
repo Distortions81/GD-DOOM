@@ -152,14 +152,16 @@ func doomColormapPackedRow(row int) []uint32 {
 
 func drawPlaneSpanIndexedPackedFast(dst []uint32, dstI, count int, texIndexed []byte, packedRow []uint32, stepper planeTexStepper) planeTexStepper {
 	const fracMask = fracUnit - 1
+	total := count
 	uStep := int(stepper.stepUFixed)
 	vStep := int(stepper.stepVFixed)
 	uFrac := int(stepper.uFixed & fracMask)
 	vFrac := int(stepper.vFixed & fracMask)
+	uTex := int(stepper.uFixed>>fracBits) & 63
+	vTex := int(stepper.vFixed>>fracBits) & 63
 	uRun := stepsUntilTexelChangeFrac(uFrac, uStep)
 	vRun := stepsUntilTexelChangeFrac(vFrac, vStep)
 	for remaining := count; remaining > 0; {
-		texIdx := stepper.texelIndex()
 		run := uRun
 		if vRun < run {
 			run = vRun
@@ -167,26 +169,36 @@ func drawPlaneSpanIndexedPackedFast(dst []uint32, dstI, count int, texIndexed []
 		if run > remaining {
 			run = remaining
 		}
-		fillPackedRun(dst, dstI, run, packedRow[texIndexed[texIdx]])
+		fillPackedRun(dst, dstI, run, packedRow[texIndexed[(vTex<<6)+uTex]])
 		dstI += run
 		remaining -= run
-		stepper.advance(run)
 		uFrac = (uFrac + run*uStep) & fracMask
 		vFrac = (vFrac + run*vStep) & fracMask
 		if remaining <= 0 {
 			break
 		}
 		if uRun == run {
+			if uStep > 0 {
+				uTex = (uTex + 1) & 63
+			} else if uStep < 0 {
+				uTex = (uTex - 1) & 63
+			}
 			uRun = stepsUntilTexelChangeFrac(uFrac, uStep)
 		} else {
 			uRun -= run
 		}
 		if vRun == run {
+			if vStep > 0 {
+				vTex = (vTex + 1) & 63
+			} else if vStep < 0 {
+				vTex = (vTex - 1) & 63
+			}
 			vRun = stepsUntilTexelChangeFrac(vFrac, vStep)
 		} else {
 			vRun -= run
 		}
 	}
+	stepper.advance(total)
 	return stepper
 }
 
