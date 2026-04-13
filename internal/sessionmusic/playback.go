@@ -71,7 +71,7 @@ func (p *Playback) PlayTitle(volume float64) {
 	if err != nil || parsed == nil {
 		return
 	}
-	p.ctl.PlayParsedOnce(parsed)
+	p.ctl.PlayParsed(parsed)
 }
 
 func (p *Playback) PlayMap(name mapdata.MapName, volume float64) {

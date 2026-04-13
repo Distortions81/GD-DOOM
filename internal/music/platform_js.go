@@ -3,9 +3,9 @@
 package music
 
 const (
-	wasmStreamChunkFrames   = 512
-	wasmStreamEnqueueFrames = wasmStreamChunkFrames * 4
-	wasmStreamLookaheadMult = wasmStreamEnqueueFrames * 3
+	wasmStreamChunkFrames   = 256
+	wasmStreamEnqueueFrames = wasmStreamChunkFrames * 8
+	wasmStreamLookaheadMult = 16
 )
 
 func streamChunkFrames() int {
