@@ -329,7 +329,7 @@ The script writes output to `build/wasm`, copies the web assets, and produces `g
 
 - `DOOM1.WAD` at the repository root
 - `wasm_exec.js` from your local Go toolchain
-- optional `wasm-opt` on `PATH` for automatic optimization
+- optional `wasm-opt` on `PATH` for automatic optimization (`-O4` by default, override with `WASM_OPT_LEVEL`)
 
 Serve the generated app:
 

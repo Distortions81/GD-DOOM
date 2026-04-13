@@ -686,190 +686,194 @@ type game struct {
 	orphanSubSector       []bool
 	orphanRepairQueue     []orphanRepairCandidate
 
-	mapFloorLayer                *ebiten.Image
-	mapFloorPix                  []byte
-	mapFloorW                    int
-	mapFloorH                    int
-	skyLayerShader               *ebiten.Shader
-	skyLayerTex                  *ebiten.Image
-	skyLayerTexKey               string
-	skyLayerTexW                 int
-	skyLayerTexH                 int
-	skyLayerFrameActive          bool
-	skyLayerFrameCamAng          float64
-	skyLayerFrameFocal           float64
-	skyLayerFrameTexH            float64
-	skyLayerVerts                [4]ebiten.Vertex
-	skyLayerIdx                  [6]uint16
-	skyLayerShaderOp             ebiten.DrawTrianglesShaderOptions
-	skyLayerUniforms             map[string]any
-	skyLayerProjDrawW            int
-	skyLayerProjDrawH            int
-	skyLayerProjSampleW          int
-	skyLayerProjSampleH          int
-	skyOutputW                   int
-	skyOutputH                   int
-	mapFloorWorldLayer           *ebiten.Image
-	mapFloorWorldInit            bool
-	mapFloorWorldMinX            float64
-	mapFloorWorldMaxY            float64
-	mapFloorWorldStep            float64
-	mapFloorWorldStats           floorFrameStats
-	mapFloorWorldState           string
-	mapFloorWorldAnim            int
-	mapFloorLoopSets             []sectorLoopSet
-	mapFloorLoopInit             bool
-	spriteOpaqueShapeCache       map[string]spriteOpaqueShape
-	spriteRenderRefCache         map[string]*spriteRenderRef
-	monsterFrameRenderCache      map[monsterFrameRenderKey]monsterFrameRenderEntry
-	thingSpriteExpandCache       map[string][]string
-	worldThingAnimRefCache       map[int16]thingAnimRefState
-	spritePatchStore             []WallTexture
-	spritePatchPtrs              map[string]*WallTexture
-	spritePatchResolvedCache     map[string]WallTexture
-	wallTexStore                 []WallTexture
-	wallTexPtrs                  map[string]*WallTexture
-	wallTextureAnimRefs          map[string]textureAnimRef
-	flatTextureAnimRefs          map[string]textureAnimRef
-	flatNameToID                 map[string]uint16
-	flatIDToName                 []string
-	planeFlatCache32Scratch      [][]uint32
-	planeFlatCacheIndexedScratch [][]byte
-	planeFBPackedScratch         []uint32
-	planeFlatTex32Scratch        [][]uint32
-	planeFlatTexIndexedScratch   [][]byte
-	planeFlatReadyScratch        []bool
-	puffItemsScratch             []projectedPuffItem
-	billboardQueueScratch        []cutoutItem
-	projectedOpaqueRectScratch   []projectedOpaqueRect
-	billboardPlaneOccluderRows   [][]billboardPlaneOccluderSpan
-	billboardQueueCollect        bool
-	maskedMidSegsScratch         []maskedMidSeg
-	spriteTXScratch              []int
-	spriteTXRunEndScratch        []int
-	spriteTYScratch              []int
-	wallLayer                    *ebiten.Image
-	wallPix                      []byte
-	wallPix32                    []uint32
-	frameSkyLayerEnabled         bool
-	frameSkyTex32                []uint32
-	frameSkyTexW                 int
-	frameSkyColU                 []int
-	frameSkyRowV                 []int
-	cutoutCoverageBits           []uint64
-	wallW                        int
-	wallH                        int
-	wallDepthQCol                []uint16
-	wallDepthTopCol              []int
-	wallDepthBottomCol           []int
-	wallDepthClosedCol           []bool
-	maskedClipCols               [][]scene.MaskedClipSpan
-	maskedClipFirstDepthQ        []uint16
-	maskedClipLastDepthQ         []uint16
-	maskedSpanScratchA           []solidSpan
-	maskedSpanScratchB           []solidSpan
-	maskedSpanScratchC           []solidSpan
-	cutoutSpanScratch            []solidSpan
-	maskedMidShadeTick           [256]int
-	maskedMidShadeKey            [256]uint16
-	maskedMidShadeMulCache       [256]uint32
-	maskedMidDoomRowCache        [256]int
-	wallTop3D                    []int
-	wallBottom3D                 []int
-	ceilingClip3D                []int
-	floorClip3D                  []int
-	buffers3DW                   int
-	buffers3DH                   int
-	flatImgCache                 map[string]*ebiten.Image
-	statusBarCacheImg            *ebiten.Image
-	statusBarCacheState          statusBarCacheState
-	statusBarCacheValid          bool
-	statusPatchImg               map[string]*ebiten.Image
-	menuPatchImg                 map[string]*ebiten.Image
-	pauseEpisodeNamesScratch     []string
-	spritePatchImg               map[string]*ebiten.Image
-	messageFontImg               map[rune]*ebiten.Image
-	whitePixel                   *ebiten.Image
-	cullLogBudget                int
-	floorDbgMode                 floorDebugMode
-	floorVisDiag                 floorVisDiagMode
-	floorFrame                   floorFrameStats
-	floorClip                    []int16
-	ceilingClip                  []int16
-	floorPlanes                  map[floorPlaneKey][]*floorVisplane
-	floorPlaneOrd                []*floorVisplane
-	floorSpans                   []floorSpan
-	detailLevel                  int
-	autoDetailEnabled            bool
-	autoDetailCooldown           int
-	autoDetailLowSamples         int
-	autoDetailHighSamples        int
-	runtimeSettingsSeen          bool
-	runtimeSettingsLast          RuntimeSettings
-	subSectorPolySrc             []uint8
-	subSectorDiagCode            []uint8
-	mapTexDiagStats              mapTexDiagStats
-	skyAngleOff                  []float64
-	skyAngleViewW                int
-	skyAngleFocal                float64
-	skyColUCache                 []int
-	skyColViewW                  int
-	skyRowVCache                 []int
-	skyRowViewH                  int
-	skyRowTexH                   int
-	skyRowIScale                 float64
-	skyRowDrawCache              []int
-	skyRowDrawH                  int
-	plane3DVisBuckets            map[plane3DKey]plane3DVisBucket
-	plane3DVisGen                uint64
-	plane3DOrder                 []*plane3DVisplane
-	plane3DSpanScratch           [][]plane3DSpan
-	plane3DSpanStartScratch      [][]int
-	plane3DSpanWorkScratch       [][]planeSpanWorkItem
-	plane3DPool                  []*plane3DVisplane
-	plane3DPoolUsed              int
-	plane3DPoolViewW             int
-	wallSegStaticCache           []wallSegStatic
-	wallPrepassBuf               []wallSegPrepass
-	solid3DBuf                   []solidSpan
-	solidClipScratch             []solidSpan
-	losInterceptScratch          []intercept
-	automapMappedScratch         []bool
-	automapVisitedScratch        []bool
-	automapQueueScratch          []automapQueueNode
-	debugPlayerProbeEnabled      bool
-	debugPlayerProbeTic          int
-	platTickedThisTic            bool
-	demoTick                     int
-	demoDoneReported             bool
-	demoBenchStarted             bool
-	demoTraceInitialWritten      bool
-	statusFaceIndex              int
-	statusFaceCount              int
-	statusFacePriority           int
-	statusOldHealth              int
-	statusRandom                 int
-	statusLastAttack             int
-	statusAttackDown             bool
-	statusAttackerX              int64
-	statusAttackerY              int64
-	statusAttackerThing          int
-	statusHasAttacker            bool
-	statusOldWeapons             [9]bool
-	statusDamageCount            int
-	statusBonusCount             int
-	playerMobjState              int
-	playerMobjTics               int
-	demoBenchStart               time.Time
-	demoBenchDraws               int
-	demoBenchFrameNS             []int64
-	demoStartRnd                 int
-	demoStartPRnd                int
-	demoRNGCaptured              bool
-	demoTrace                    *demoTraceWriter
-	demoRecord                   []DemoTic
-	demoWeaponSlot               int // weapon slot key pressed this tic (1-based, 0 = none); consumed by recordDemoTic
-	typedCheatBuffer             string
+	mapFloorLayer                 *ebiten.Image
+	mapFloorPix                   []byte
+	mapFloorW                     int
+	mapFloorH                     int
+	skyLayerShader                *ebiten.Shader
+	skyLayerTex                   *ebiten.Image
+	skyLayerTexKey                string
+	skyLayerTexW                  int
+	skyLayerTexH                  int
+	skyLayerFrameActive           bool
+	skyLayerFrameCamAng           float64
+	skyLayerFrameFocal            float64
+	skyLayerFrameTexH             float64
+	skyLayerVerts                 [4]ebiten.Vertex
+	skyLayerIdx                   [6]uint16
+	skyLayerShaderOp              ebiten.DrawTrianglesShaderOptions
+	skyLayerUniforms              map[string]any
+	skyLayerProjDrawW             int
+	skyLayerProjDrawH             int
+	skyLayerProjSampleW           int
+	skyLayerProjSampleH           int
+	skyOutputW                    int
+	skyOutputH                    int
+	mapFloorWorldLayer            *ebiten.Image
+	mapFloorWorldInit             bool
+	mapFloorWorldMinX             float64
+	mapFloorWorldMaxY             float64
+	mapFloorWorldStep             float64
+	mapFloorWorldStats            floorFrameStats
+	mapFloorWorldState            string
+	mapFloorWorldAnim             int
+	mapFloorLoopSets              []sectorLoopSet
+	mapFloorLoopInit              bool
+	spriteOpaqueShapeCache        map[string]spriteOpaqueShape
+	spriteRenderRefCache          map[string]*spriteRenderRef
+	monsterFrameRenderCache       map[monsterFrameRenderKey]monsterFrameRenderEntry
+	thingSpriteExpandCache        map[string][]string
+	worldThingAnimRefCache        map[int16]thingAnimRefState
+	spritePatchStore              []WallTexture
+	spritePatchPtrs               map[string]*WallTexture
+	spritePatchResolvedCache      map[string]WallTexture
+	wallTexStore                  []WallTexture
+	wallTexPtrs                   map[string]*WallTexture
+	wallTextureAnimRefs           map[string]textureAnimRef
+	flatTextureAnimRefs           map[string]textureAnimRef
+	flatNameToID                  map[string]uint16
+	flatIDToName                  []string
+	planeFlatCache32Scratch       [][]uint32
+	planeFlatCacheIndexedScratch  [][]byte
+	planeFBPackedScratch          []uint32
+	planeFlatTex32Scratch         [][]uint32
+	planeFlatTexIndexedScratch    [][]byte
+	planeFlatReadyScratch         []bool
+	puffItemsScratch              []projectedPuffItem
+	billboardQueueScratch         []cutoutItem
+	projectedOpaqueRectScratch    []projectedOpaqueRect
+	billboardPlaneOccluderRows    [][]billboardPlaneOccluderSpan
+	billboardQueueCollect         bool
+	maskedMidSegsScratch          []maskedMidSeg
+	spriteTXScratch               []int
+	spriteTXRunEndScratch         []int
+	spriteTYScratch               []int
+	wallLayer                     *ebiten.Image
+	wallPix                       []byte
+	wallPix32                     []uint32
+	frameSkyLayerEnabled          bool
+	frameSkyTex32                 []uint32
+	frameSkyTexW                  int
+	frameSkyColU                  []int
+	frameSkyRowV                  []int
+	cutoutCoverageBits            []uint64
+	wallW                         int
+	wallH                         int
+	wallDepthQCol                 []uint16
+	wallDepthTopCol               []int
+	wallDepthBottomCol            []int
+	wallDepthClosedCol            []bool
+	maskedClipCols                [][]scene.MaskedClipSpan
+	maskedClipFirstDepthQ         []uint16
+	maskedClipLastDepthQ          []uint16
+	maskedSpanScratchA            []solidSpan
+	maskedSpanScratchB            []solidSpan
+	maskedSpanScratchC            []solidSpan
+	cutoutSpanScratch             []solidSpan
+	maskedMidShadeTick            [256]int
+	maskedMidShadeKey             [256]uint16
+	maskedMidShadeMulCache        [256]uint32
+	maskedMidDoomRowCache         [256]int
+	wallTop3D                     []int
+	wallBottom3D                  []int
+	ceilingClip3D                 []int
+	floorClip3D                   []int
+	buffers3DW                    int
+	buffers3DH                    int
+	flatImgCache                  map[string]*ebiten.Image
+	statusBarCacheImg             *ebiten.Image
+	statusBarCacheState           statusBarCacheState
+	statusBarCacheValid           bool
+	statusPatchImg                map[string]*ebiten.Image
+	menuPatchImg                  map[string]*ebiten.Image
+	pauseEpisodeNamesScratch      []string
+	spritePatchImg                map[string]*ebiten.Image
+	messageFontImg                map[rune]*ebiten.Image
+	whitePixel                    *ebiten.Image
+	cullLogBudget                 int
+	floorDbgMode                  floorDebugMode
+	floorVisDiag                  floorVisDiagMode
+	floorFrame                    floorFrameStats
+	floorClip                     []int16
+	ceilingClip                   []int16
+	floorPlanes                   map[floorPlaneKey][]*floorVisplane
+	floorPlaneOrd                 []*floorVisplane
+	floorSpans                    []floorSpan
+	detailLevel                   int
+	autoDetailEnabled             bool
+	autoDetailCooldown            int
+	autoDetailLowSamples          int
+	autoDetailHighSamples         int
+	autoDetailPeriodStart         time.Time
+	autoDetailPeriodWorstFPS      float64
+	autoDetailPeriodWorstRenderMS float64
+	autoDetailPeriodSeen          bool
+	runtimeSettingsSeen           bool
+	runtimeSettingsLast           RuntimeSettings
+	subSectorPolySrc              []uint8
+	subSectorDiagCode             []uint8
+	mapTexDiagStats               mapTexDiagStats
+	skyAngleOff                   []float64
+	skyAngleViewW                 int
+	skyAngleFocal                 float64
+	skyColUCache                  []int
+	skyColViewW                   int
+	skyRowVCache                  []int
+	skyRowViewH                   int
+	skyRowTexH                    int
+	skyRowIScale                  float64
+	skyRowDrawCache               []int
+	skyRowDrawH                   int
+	plane3DVisBuckets             map[plane3DKey]plane3DVisBucket
+	plane3DVisGen                 uint64
+	plane3DOrder                  []*plane3DVisplane
+	plane3DSpanScratch            [][]plane3DSpan
+	plane3DSpanStartScratch       [][]int
+	plane3DSpanWorkScratch        [][]planeSpanWorkItem
+	plane3DPool                   []*plane3DVisplane
+	plane3DPoolUsed               int
+	plane3DPoolViewW              int
+	wallSegStaticCache            []wallSegStatic
+	wallPrepassBuf                []wallSegPrepass
+	solid3DBuf                    []solidSpan
+	solidClipScratch              []solidSpan
+	losInterceptScratch           []intercept
+	automapMappedScratch          []bool
+	automapVisitedScratch         []bool
+	automapQueueScratch           []automapQueueNode
+	debugPlayerProbeEnabled       bool
+	debugPlayerProbeTic           int
+	platTickedThisTic             bool
+	demoTick                      int
+	demoDoneReported              bool
+	demoBenchStarted              bool
+	demoTraceInitialWritten       bool
+	statusFaceIndex               int
+	statusFaceCount               int
+	statusFacePriority            int
+	statusOldHealth               int
+	statusRandom                  int
+	statusLastAttack              int
+	statusAttackDown              bool
+	statusAttackerX               int64
+	statusAttackerY               int64
+	statusAttackerThing           int
+	statusHasAttacker             bool
+	statusOldWeapons              [9]bool
+	statusDamageCount             int
+	statusBonusCount              int
+	playerMobjState               int
+	playerMobjTics                int
+	demoBenchStart                time.Time
+	demoBenchDraws                int
+	demoBenchFrameNS              []int64
+	demoStartRnd                  int
+	demoStartPRnd                 int
+	demoRNGCaptured               bool
+	demoTrace                     *demoTraceWriter
+	demoRecord                    []DemoTic
+	demoWeaponSlot                int // weapon slot key pressed this tic (1-based, 0 = none); consumed by recordDemoTic
+	typedCheatBuffer              string
 }
 
 type gameInputSnapshot struct {
@@ -2302,7 +2306,7 @@ func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 		raiseMinFPS          = 55.0
 		veryLowFPS           = targetFPS - 10.0
 		highRenderMS         = 1000.0 / targetFPS
-		raiseRenderTargetMS  = 10
+		raiseRenderTargetMS  = 9
 		lowSamplesToDrop     = 4
 		highSamplesToRecover = 4
 		cooldownSamples      = 8
@@ -2343,6 +2347,35 @@ func (g *game) applyAutoDetailSample(fps, renderMS float64) {
 	}
 }
 
+func (g *game) recordAutoDetailPerfSample(now time.Time, fps, renderMS float64) {
+	if g == nil || !g.autoDetailEnabled {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	if !g.autoDetailPeriodSeen {
+		g.autoDetailPeriodStart = now
+		g.autoDetailPeriodWorstFPS = fps
+		g.autoDetailPeriodWorstRenderMS = renderMS
+		g.autoDetailPeriodSeen = true
+		return
+	}
+	if fps < g.autoDetailPeriodWorstFPS {
+		g.autoDetailPeriodWorstFPS = fps
+	}
+	if renderMS > g.autoDetailPeriodWorstRenderMS {
+		g.autoDetailPeriodWorstRenderMS = renderMS
+	}
+	if now.Sub(g.autoDetailPeriodStart) < 5*time.Second {
+		return
+	}
+	g.applyAutoDetailSample(g.autoDetailPeriodWorstFPS, g.autoDetailPeriodWorstRenderMS)
+	g.autoDetailPeriodStart = now
+	g.autoDetailPeriodWorstFPS = fps
+	g.autoDetailPeriodWorstRenderMS = renderMS
+}
+
 func (g *game) cycleDetailLevel() {
 	if len(detailPresets) == 0 {
 		return
@@ -2350,6 +2383,10 @@ func (g *game) cycleDetailLevel() {
 	g.autoDetailCooldown = 0
 	g.autoDetailLowSamples = 0
 	g.autoDetailHighSamples = 0
+	g.autoDetailPeriodStart = time.Time{}
+	g.autoDetailPeriodWorstFPS = 0
+	g.autoDetailPeriodWorstRenderMS = 0
+	g.autoDetailPeriodSeen = false
 	if g.autoDetailEnabled {
 		g.autoDetailEnabled = false
 	}
@@ -2387,6 +2424,10 @@ func (g *game) cycleSourcePortDetailLevel() {
 	g.autoDetailCooldown = 0
 	g.autoDetailLowSamples = 0
 	g.autoDetailHighSamples = 0
+	g.autoDetailPeriodStart = time.Time{}
+	g.autoDetailPeriodWorstFPS = 0
+	g.autoDetailPeriodWorstRenderMS = 0
+	g.autoDetailPeriodSeen = false
 	if g.autoDetailEnabled {
 		g.autoDetailEnabled = false
 		g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailLevelLabelFor(g.detailLevel)), 70)
@@ -20796,7 +20837,7 @@ func (g *game) finishPerfCounter(drawStart time.Time) {
 		g.fpsDisplayText = formatFPSDisplay(g.fpsDisplay, g.renderMSAvg)
 		g.ticDisplayText = formatTicDisplay(g.worldTic, g.ticRateDisplay)
 		g.renderStageText = formatRenderStageDisplay(g.renderStageMS)
-		g.applyAutoDetailSample(g.fpsDisplay, g.renderMSAvg)
+		g.recordAutoDetailPerfSample(now, g.fpsDisplay, g.renderMSAvg)
 		g.fpsFrames = 0
 		g.renderAccum = 0
 		g.fpsStamp = now

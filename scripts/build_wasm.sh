@@ -6,7 +6,7 @@ OUT_DIR="${1:-${ROOT_DIR}/build/wasm}"
 GOROOT_PATH="$(go env GOROOT)"
 WASM_EXEC_JS="${GOROOT_PATH}/lib/wasm/wasm_exec.js"
 WASM_OPT_MODE="${WASM_OPT:-auto}"
-WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O2}"
+WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O4}"
 WASM_OPT_FEATURES="${WASM_OPT_FEATURES:---all-features}"
 BUILD_ID="${BUILD_ID:-$(git -C "${ROOT_DIR}" rev-parse --short=12 HEAD 2>/dev/null || date +%s)}"
 

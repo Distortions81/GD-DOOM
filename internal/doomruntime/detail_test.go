@@ -2,6 +2,7 @@ package doomruntime
 
 import (
 	"testing"
+	"time"
 
 	"gddoom/internal/platformcfg"
 	"gddoom/internal/render/mapview"
@@ -280,5 +281,51 @@ func TestApplyAutoDetailSampleIgnoresMapView(t *testing.T) {
 	}
 	if g.useText != "" {
 		t.Fatalf("useText=%q want empty in map view", g.useText)
+	}
+}
+
+func TestRecordAutoDetailPerfSampleWaitsForFiveSecondWindow(t *testing.T) {
+	g := &game{
+		opts:               Options{SourcePortMode: true},
+		mode:               viewWalk,
+		detailLevel:        1,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	start := time.Unix(0, 0)
+	for i := 0; i < 5; i++ {
+		g.recordAutoDetailPerfSample(start.Add(time.Duration(i)*time.Second), 54, 17.5)
+	}
+	if g.detailLevel != 1 {
+		t.Fatalf("detail before five-second window elapsed=%d want 1", g.detailLevel)
+	}
+	if g.autoDetailLowSamples != 0 {
+		t.Fatalf("autoDetailLowSamples before window=%d want 0", g.autoDetailLowSamples)
+	}
+}
+
+func TestRecordAutoDetailPerfSampleUsesWorstValuesPerFiveSecondWindow(t *testing.T) {
+	g := &game{
+		opts:               Options{SourcePortMode: true},
+		mode:               viewWalk,
+		detailLevel:        1,
+		autoDetailEnabled:  true,
+		hudMessagesEnabled: true,
+	}
+	start := time.Unix(0, 0)
+	for window := 0; window < 4; window++ {
+		base := start.Add(time.Duration(window*6) * time.Second)
+		g.recordAutoDetailPerfSample(base, 60, 8.0)
+		g.recordAutoDetailPerfSample(base.Add(1*time.Second), 59, 8.5)
+		g.recordAutoDetailPerfSample(base.Add(2*time.Second), 54, 17.5)
+		g.recordAutoDetailPerfSample(base.Add(3*time.Second), 60, 8.0)
+		g.recordAutoDetailPerfSample(base.Add(4*time.Second), 60, 8.0)
+		g.recordAutoDetailPerfSample(base.Add(5*time.Second), 60, 8.0)
+	}
+	if g.detailLevel != 2 {
+		t.Fatalf("detail after four five-second worst-case windows=%d want 2", g.detailLevel)
+	}
+	if g.useText != "Detail: AUTO DOWN -> 1/3x" {
+		t.Fatalf("useText=%q want auto down message", g.useText)
 	}
 }
