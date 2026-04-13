@@ -87,6 +87,9 @@ func (sg *sessionGame) startAttractDemoByName(name string) bool {
 		}
 		sg.g = ng
 		sg.rt = ng
+		if sg.g != nil {
+			sg.g.prewarmMapStartSounds()
+		}
 		sg.stopAndClearMusic()
 		sg.playMusicForMap(m.Name)
 		return true
@@ -295,6 +298,9 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.g = sg.buildGame(cloneMapForRestart(sg.bootMap), gameOpts)
 	sg.applyPersistentSettingsToGame(sg.g)
 	sg.rt = sg.g
+	if sg.g != nil {
+		sg.g.prewarmMapStartSounds()
+	}
 	sg.current = sg.g.sessionSignals().MapName
 	sg.currentTemplate = cloneMapForRestart(sg.g.m)
 	if err := sg.broadcastMandatoryRuntimeKeyframe(); err != nil {

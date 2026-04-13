@@ -10,6 +10,15 @@ WASM_OPT_LEVEL="${WASM_OPT_LEVEL:--O4}"
 WASM_OPT_FEATURES="${WASM_OPT_FEATURES:---all-features}"
 BUILD_ID="${BUILD_ID:-$(git -C "${ROOT_DIR}" rev-parse --short=12 HEAD 2>/dev/null || date +%s)}"
 
+js_string_literal() {
+  local s="${1//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  s="${s//$'\n'/\\n}"
+  s="${s//$'\r'/\\r}"
+  s="${s//$'\t'/\\t}"
+  printf '"%s"' "${s}"
+}
+
 if [[ ! -f "${ROOT_DIR}/DOOM1.WAD" ]]; then
   echo "missing ${ROOT_DIR}/DOOM1.WAD" >&2
   exit 1
@@ -78,7 +87,7 @@ else
 fi
 
 cp "${WASM_EXEC_JS}" "${OUT_DIR}/wasm_exec.js"
-printf 'window.__gddoomBuildID = %q;\n' "${BUILD_ID}" > "${OUT_DIR}/build-id.js"
+printf 'window.__gddoomBuildID = %s;\n' "$(js_string_literal "${BUILD_ID}")" > "${OUT_DIR}/build-id.js"
 cp "${ROOT_DIR}/web/wasm/index.html" "${OUT_DIR}/index.html"
 cp "${ROOT_DIR}/web/wasm/player.html" "${OUT_DIR}/player.html"
 cp "${ROOT_DIR}/web/wasm/launch.js" "${OUT_DIR}/launch.js"
