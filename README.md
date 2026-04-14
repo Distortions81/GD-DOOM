@@ -224,24 +224,6 @@ Notes:
 
 This is closer to live spectating than traditional network co-op. One machine plays, the others watch the run as it happens, and chat and voice ride alongside that live stream.
 
-## Co-op Multiplayer
-
-GD-DOOM also supports peer co-op play over the same GDSF relay used for watch sessions. Co-op runs the game in lockstep: every player sends their input tics to the relay each frame, and the sim only advances once all peers have checked in for that tic.
-
-Connect as a co-op peer:
-
-```bash
-go run . -wad DOOM.WAD -coop -watch-session=1
-```
-
-The canonical peer (slot 1 / the session host) emits a state checksum roughly every 5 seconds. All other peers verify the hash and automatically request a keyframe resync from the server if their local state has drifted. The checksum covers RNG state, all player positions and stats, moving sector heights, and active monster states, so most forms of desync are caught quickly.
-
-Notes:
-
-- All peers must use the same base WAD and mod files, same as watch sessions.
-- The co-op session uses the same relay server as `-broadcast`/`-watch` — run `go run ./cmd/gdsfrelay` first.
-- Session slot assignment follows the same scheme as watch sessions; the host is slot 1.
-
 ## Cheats
 
 Startup cheats:
