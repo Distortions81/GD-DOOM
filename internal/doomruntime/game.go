@@ -1302,8 +1302,8 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		alwaysRun:             opts.AlwaysRun,
 		autoWeaponSwitch:      opts.AutoWeaponSwitch,
 		simTickScale:          1.0,
-		renderSleepNanos:      1 * int(time.Millisecond),
-		renderSleepSaved:      1 * int(time.Millisecond),
+		renderSleepNanos:      10 * int(time.Millisecond),
+		renderSleepSaved:      10 * int(time.Millisecond),
 	}
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
@@ -3652,12 +3652,12 @@ func (g *game) adjustRenderSleepNanosFromInput() {
 	if g == nil {
 		return
 	}
-	const renderSleepStepDownNanos = 1 * int(time.Millisecond)
-	const renderSleepStepUpNanos = 1 * int(time.Millisecond)
+	const renderSleepStepDownNanos = 5 * int(time.Millisecond)
+	const renderSleepStepUpNanos = 5 * int(time.Millisecond)
 	if g.renderSleepSaved <= 0 {
-		g.renderSleepSaved = 1 * int(time.Millisecond)
+		g.renderSleepSaved = 10 * int(time.Millisecond)
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) {
+	if g.keyJustPressed(ebiten.KeyBackquote) {
 		if g.renderSleepNanos > 0 {
 			g.renderSleepSaved = g.renderSleepNanos
 			g.renderSleepNanos = 0
@@ -3666,7 +3666,7 @@ func (g *game) adjustRenderSleepNanosFromInput() {
 		}
 		fmt.Printf("render row/col sleep: %dus\n", g.renderSleepNanos/int(time.Microsecond))
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyLeftBracket) && g.renderSleepSaved > 0 {
+	if g.keyJustPressed(ebiten.KeyLeftBracket) && g.renderSleepSaved > 0 {
 		g.renderSleepSaved -= renderSleepStepDownNanos
 		if g.renderSleepSaved < 0 {
 			g.renderSleepSaved = 0
@@ -3676,7 +3676,7 @@ func (g *game) adjustRenderSleepNanosFromInput() {
 		}
 		fmt.Printf("render row/col sleep: %dus\n", g.renderSleepSaved/int(time.Microsecond))
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyRightBracket) {
+	if g.keyJustPressed(ebiten.KeyRightBracket) {
 		g.renderSleepSaved += renderSleepStepUpNanos
 		if g.renderSleepNanos > 0 {
 			g.renderSleepNanos = g.renderSleepSaved

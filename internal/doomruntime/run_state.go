@@ -903,6 +903,9 @@ func (sg *sessionGame) asyncGameplayRenderLoop() {
 		g.updateWalkMode()
 		g.renderStamp = time.Now()
 		g.drawWalk3D(nil)
+		if g.renderSleepNanos <= 0 {
+			time.Sleep(15 * time.Millisecond)
+		}
 		runtime.Gosched()
 	}
 }
