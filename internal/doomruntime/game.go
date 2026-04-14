@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -543,9 +544,10 @@ type game struct {
 	renderPreviewStage      int
 	renderPreviewScreen     *ebiten.Image
 	renderPreviewDone       bool
+	renderPreviewNeedDraw   bool
 	renderPreviewStepCursor int
 	renderPreviewStepTarget int
-	renderPreviewNextStep   time.Time
+	renderPreviewStepBase   []byte
 	renderPreviewLastPX     int64
 	renderPreviewLastPY     int64
 	renderPreviewLastAng    uint32
@@ -1214,8 +1216,6 @@ const (
 	renderPreviewStageCount
 )
 
-const renderPreviewStepDelay = 0 * time.Millisecond
-
 var renderPreviewStageLabels = [...]string{"walls", "planes", "sky", "billboards"}
 var renderPreviewStopSignal = &struct{}{}
 
@@ -1330,6 +1330,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		autoWeaponSwitch:      opts.AutoWeaponSwitch,
 		simTickScale:          1.0,
 		renderPreviewOn:       opts.Debug,
+		renderPreviewNeedDraw: true,
 	}
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
@@ -2683,6 +2684,26 @@ func (g *game) Update() error {
 		if g.keyJustPressed(ebiten.KeySlash) {
 			g.setSimTickScale(1.0)
 		}
+		if g.keyJustPressed(ebiten.KeyBackquote) {
+			if g.opts.Debug {
+				g.toggleRenderPreview()
+				if g.renderPreviewOn {
+					g.setHUDMessage("frame draw preview ON", 70)
+				} else {
+					g.setHUDMessage("frame draw preview OFF", 70)
+				}
+			}
+		}
+		if g.keyJustPressed(ebiten.KeyQuote) {
+			if g.opts.Debug {
+				g.renderPreviewNeedDraw = !g.renderPreviewNeedDraw
+				if g.renderPreviewNeedDraw {
+					g.setHUDMessage("preview stop: changed pixels", 70)
+				} else {
+					g.setHUDMessage("preview stop: every step", 70)
+				}
+			}
+		}
 		if g.bindingJustPressed(bindingUse) {
 			g.pendingUse = true
 		}
@@ -3726,6 +3747,21 @@ func (g *game) renderPreviewEnabled() bool {
 	return g != nil && g.opts.Debug && g.renderPreviewOn
 }
 
+func (g *game) toggleRenderPreview() {
+	if g == nil {
+		return
+	}
+	g.renderPreviewOn = !g.renderPreviewOn
+	g.renderPreviewDone = false
+	g.renderPreviewStepTarget = 0
+	g.renderPreviewStepCursor = 0
+	g.renderPreviewText = ""
+	g.renderPreviewStepBase = g.renderPreviewStepBase[:0]
+	if g.renderPreviewOn && len(g.wallPix) > 0 {
+		clear(g.wallPix)
+	}
+}
+
 func (g *game) renderPreviewStepping() bool {
 	return g.renderPreviewEnabled() && g.renderPreviewActive && !g.renderPreviewDone
 }
@@ -3738,6 +3774,9 @@ func (g *game) prepareRenderPreviewFrame() {
 	planesEnabled := len(g.opts.FlatBank) > 0
 	needsReset := false
 	if !g.renderPreviewInitialized() {
+		needsReset = true
+	}
+	if g.renderPreviewDone {
 		needsReset = true
 	}
 	if g.renderPreviewLastPX != g.p.x || g.renderPreviewLastPY != g.p.y || g.renderPreviewLastAng != g.p.angle {
@@ -3753,11 +3792,10 @@ func (g *game) prepareRenderPreviewFrame() {
 		g.renderPreviewDone = false
 		g.renderPreviewStepTarget = 0
 		g.renderPreviewStepCursor = 0
-		g.renderPreviewNextStep = time.Time{}
+		g.ensureWallLayer()
 		if len(g.wallPix) >= g.viewW*g.viewH*4 {
 			clear(g.wallPix)
 		}
-		g.ensureWallLayer()
 		g.clearCutoutCoverage()
 		g.renderPreviewText = "preview step mode"
 		g.renderPreviewStage = renderPreviewStageWalls
@@ -3769,7 +3807,6 @@ func (g *game) prepareRenderPreviewFrame() {
 	g.renderPreviewLastW = g.viewW
 	g.renderPreviewLastH = g.viewH
 	g.renderPreviewLastPlanes = planesEnabled
-	g.renderPreviewStepCursor = 0
 }
 
 func (g *game) renderPreviewInitialized() bool {
@@ -3799,17 +3836,16 @@ func (g *game) renderPreviewStepDone(fullRender bool) {
 	}
 }
 
-func (g *game) doRenderPreviewStep(stage int, x, y int) bool {
+func (g *game) shouldRenderPreviewStep(stage int, x, y int) (bool, bool) {
 	if !g.renderPreviewStepping() || stage < 0 || stage >= renderPreviewStageCount {
-		return false
+		return true, false
+	}
+	if g.renderPreviewStepCursor > g.renderPreviewStepTarget {
+		g.renderPreviewStepCursor = g.renderPreviewStepTarget
 	}
 	if g.renderPreviewStepCursor < g.renderPreviewStepTarget {
 		g.renderPreviewStepCursor++
-		return false
-	}
-	now := time.Now()
-	if renderPreviewStepDelay > 0 && !g.renderPreviewNextStep.IsZero() && now.Before(g.renderPreviewNextStep) {
-		return true
+		return false, false
 	}
 	g.renderPreviewStage = stage
 	g.renderPreviewAt = x
@@ -3818,18 +3854,26 @@ func (g *game) doRenderPreviewStep(stage int, x, y int) bool {
 	} else {
 		g.renderPreviewText = fmt.Sprintf("preview=%s x=%d", renderPreviewStageLabels[stage], x)
 	}
+	if g.renderPreviewNeedDraw && len(g.wallPix) == g.viewW*g.viewH*4 {
+		if len(g.renderPreviewStepBase) != len(g.wallPix) {
+			g.renderPreviewStepBase = make([]byte, len(g.wallPix))
+		}
+		copy(g.renderPreviewStepBase, g.wallPix)
+	}
 	if g.renderPreviewScreen != nil && g.wallLayer != nil && len(g.wallPix) == g.viewW*g.viewH*4 {
 		g.writePixelsTimed(g.wallLayer, g.wallPix)
 		g.renderPreviewScreen.DrawImage(g.wallLayer, nil)
 	}
 	g.renderPreviewStepCursor++
 	g.renderPreviewStepTarget++
-	g.renderPreviewNextStep = now.Add(renderPreviewStepDelay)
-	return true
+	return true, true
 }
 
 func (g *game) stopRenderPreviewFrame() {
 	if g == nil || !g.renderPreviewStepping() {
+		return
+	}
+	if g.renderPreviewNeedDraw && len(g.renderPreviewStepBase) == len(g.wallPix) && bytes.Equal(g.renderPreviewStepBase, g.wallPix) {
 		return
 	}
 	panic(renderPreviewStopSignal)
@@ -3839,8 +3883,10 @@ func (g *game) drawWalkOverlays(screen *ebiten.Image) {
 	if g == nil {
 		return
 	}
-	g.drawWeaponOverlay(screen)
-	g.drawDoomStatusBar(screen)
+	if !g.renderPreviewEnabled() {
+		g.drawWeaponOverlay(screen)
+		g.drawDoomStatusBar(screen)
+	}
 	if g.isDead {
 		g.drawDeathOverlay(screen)
 	}
@@ -3887,10 +3933,10 @@ func (g *game) Draw(screen *ebiten.Image) {
 			ebitenutil.DebugPrintAt(screen, fmt.Sprintf("profile=%s", g.profileLabel()), 12, 28)
 			if g.opts.SourcePortMode {
 				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | TAB automap", 12, 12)
-				ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | F1 help", 12, 44)
+				ebitenutil.DebugPrintAt(screen, "TAB automap | J planes | ` preview | ' stop mode | F1 help", 12, 44)
 			} else {
 				ebitenutil.DebugPrintAt(screen, "renderer=doom-basic | TAB automap", 12, 12)
-				ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | F1 help", 12, 44)
+				ebitenutil.DebugPrintAt(screen, "TAB automap | F5 detail | ` preview | ' stop mode | F1 help", 12, 44)
 			}
 			planes3DOn := len(g.opts.FlatBank) > 0
 			rect := g.walkRenderViewportRect()
@@ -3900,11 +3946,20 @@ func (g *game) Draw(screen *ebiten.Image) {
 			if g.renderStageText != "" {
 				ebitenutil.DebugPrintAt(screen, g.renderStageText, 12, 108)
 			}
-			if g.renderPreviewText != "" {
-				ebitenutil.DebugPrintAt(screen, g.renderPreviewText, 12, 124)
-			}
 		}
 		g.drawWalkOverlays(screen)
+		if g.opts.Debug && g.renderPreviewEnabled() {
+			label := g.renderPreviewText
+			if label == "" {
+				label = "preview pending"
+			}
+			if g.renderPreviewNeedDraw {
+				label += " | changed"
+			} else {
+				label += " | every-step"
+			}
+			ebitenutil.DebugPrintAt(screen, label, 12, 124)
+		}
 		return
 	}
 	presenter.Draw(screen, presenter.Inputs{
@@ -5310,7 +5365,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) (fullRender bool) {
 					}
 					g.appendSpritePortalColumnGap(x, openTop, openBottom, encodeDepthQ(f))
 				}
-
+				renderWallStep, stopWallStep := g.shouldRenderPreviewStep(renderPreviewStageWalls, x, -1)
 				if solidWall {
 					tex := midTex
 					texMid := midTexMid
@@ -5338,13 +5393,16 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) (fullRender bool) {
 						if texName != "" && texName != "-" {
 							panic("missing required solid wall texture: " + texName)
 						}
-					} else {
+					} else if renderWallStep {
 						g.drawBasicWallColumn(wallTop, wallBottom, x, yl, yh, f, frontLight, wallLightBias, texU, texMid, focalV, tex)
 					}
 					g.setWallDepthColumnClosedQ(x, encodeDepthQ(f))
 					g.markSpriteClipColumnClosed(x, encodeDepthQ(f))
 					ceilingClip[x] = g.viewH
 					floorClip[x] = -1
+					if renderWallStep && stopWallStep {
+						g.stopRenderPreviewFrame()
+					}
 					continue
 				}
 				if topWall {
@@ -5362,7 +5420,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) (fullRender bool) {
 								panic("missing required top wall texture: " + name)
 							}
 						} else {
-							g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, frontLight, wallLightBias, texU, topTexMid, focalV, topTex)
+							if renderWallStep {
+								g.drawBasicWallColumn(wallTop, wallBottom, x, yl, mid, f, frontLight, wallLightBias, texU, topTexMid, focalV, topTex)
+							}
 						}
 						ceilingClip[x] = mid
 					} else {
@@ -5387,7 +5447,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) (fullRender bool) {
 								panic("missing required bottom wall texture: " + name)
 							}
 						} else {
-							g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, frontLight, wallLightBias, texU, botTexMid, focalV, botTex)
+							if renderWallStep {
+								g.drawBasicWallColumn(wallTop, wallBottom, x, mid, yh, f, frontLight, wallLightBias, texU, botTexMid, focalV, botTex)
+							}
 						}
 						floorClip[x] = mid
 					} else {
@@ -5396,7 +5458,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) (fullRender bool) {
 				} else if markFloor {
 					floorClip[x] = yh + 1
 				}
-				if g.doRenderPreviewStep(renderPreviewStageWalls, x, -1) {
+				if renderWallStep && stopWallStep {
 					g.stopRenderPreviewFrame()
 				}
 			}
@@ -8051,8 +8113,12 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT, txRunEndLUT []i
 		if useIndexed {
 			if g.renderPreviewStepping() {
 				for x := sp.L; x <= sp.R; x++ {
+					renderBillboardStep, stopBillboardStep := g.shouldRenderPreviewStep(renderPreviewStageBillboards, x, row)
 					lutIdx := x - x0
 					s0 := base + txLUT[lutIdx]
+					if !renderBillboardStep {
+						continue
+					}
 					if srcMask[s0] == 0 {
 						continue
 					}
@@ -8067,7 +8133,7 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT, txRunEndLUT []i
 					i := row + x
 					g.writeWallPixel(i, dst)
 					g.markCutoutCoveredAtIndex(i)
-					if g.doRenderPreviewStep(renderPreviewStageBillboards, x, row) {
+					if stopBillboardStep {
 						g.stopRenderPreviewFrame()
 					}
 				}
@@ -8103,8 +8169,12 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT, txRunEndLUT []i
 		}
 		if g.renderPreviewStepping() {
 			for x := sp.L; x <= sp.R; x++ {
+				renderBillboardStep, stopBillboardStep := g.shouldRenderPreviewStep(renderPreviewStageBillboards, x, row)
 				lutIdx := x - x0
 				p0 := src32[base+txLUT[lutIdx]]
+				if !renderBillboardStep {
+					continue
+				}
 				if ((p0 >> pixelAShift) & 0xFF) == 0 {
 					continue
 				}
@@ -8119,7 +8189,7 @@ func (g *game) drawBillboardRowSpans(row, ty, tw, x0 int, txLUT, txRunEndLUT []i
 				i := row + x
 				g.writeWallPixel(i, dst)
 				g.markCutoutCoveredAtIndex(i)
-				if g.doRenderPreviewStep(renderPreviewStageBillboards, x, row) {
+				if stopBillboardStep {
 					g.stopRenderPreviewFrame()
 				}
 			}
@@ -8424,8 +8494,12 @@ func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, sh
 		if y0 > y1 {
 			continue
 		}
+		renderBillboardStep, stopBillboardStep := g.shouldRenderPreviewStep(renderPreviewStageBillboards, x, y0)
+		if !renderBillboardStep {
+			continue
+		}
 		g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
-		if g.doRenderPreviewStep(renderPreviewStageBillboards, x, y0) {
+		if stopBillboardStep {
 			g.stopRenderPreviewFrame()
 		}
 	}
@@ -8717,13 +8791,17 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 			g.solidClipScratch = rowSpans
 			for _, sp := range rowSpans {
 				for x := sp.L; x <= sp.R; x++ {
+					renderBillboardStep, stopBillboardStep := g.shouldRenderPreviewStep(renderPreviewStageBillboards, x, y)
 					i := row + x
 					p := src32[tyLUT[y-y0]*tw+txLUT[x-x0]]
+					if !renderBillboardStep {
+						continue
+					}
 					if ((p >> pixelAShift) & 0xFF) == 0 {
 						continue
 					}
 					g.writeFuzzPixel(x, y, i)
-					if g.doRenderPreviewStep(renderPreviewStageBillboards, x, y) {
+					if stopBillboardStep {
 						g.stopRenderPreviewFrame()
 					}
 				}
@@ -8784,8 +8862,15 @@ func (g *game) drawBillboardRowSpansDebugRed(row, ty, tw, x0 int, txLUT, txRunEn
 	for _, sp := range spans {
 		if g.renderPreviewStepping() {
 			for x := sp.L; x <= sp.R; x++ {
+				renderBillboardStep, stopBillboardStep := g.shouldRenderPreviewStep(renderPreviewStageBillboards, x, row)
 				lutIdx := x - x0
 				srcIdx := base + txLUT[lutIdx]
+				if !renderBillboardStep {
+					continue
+				}
+				if stopBillboardStep {
+					g.stopRenderPreviewFrame()
+				}
 				opaque := false
 				if useIndexed {
 					opaque = len(mask) == tw*tex.Height && mask[srcIdx] != 0
@@ -8795,9 +8880,6 @@ func (g *game) drawBillboardRowSpansDebugRed(row, ty, tw, x0 int, txLUT, txRunEn
 				if opaque {
 					g.writeWallPixel(row+x, red)
 					g.markCutoutCoveredAtIndex(row + x)
-					if g.doRenderPreviewStep(renderPreviewStageBillboards, x, row) {
-						g.stopRenderPreviewFrame()
-					}
 				}
 			}
 			continue
@@ -9393,19 +9475,22 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 				planeClipScratch = append(planeClipScratch[:0], solidSpan{L: x1, R: x2})
 			}
 			if g.renderPreviewStepping() {
-				for _, vis := range planeClipScratch {
-					for x := vis.L; x <= vis.R; x++ {
-						if skyLayerEnabled {
-							pix32[rowPix+x] = 0
-						} else if skyTexReady {
-							v := g.frameSkyRowV[sp.y]
-							u := g.frameSkyColU[x]
-							ti := v*g.frameSkyTexW + u
-							pix32[rowPix+x] = g.frameSkyTex32[ti]
+				renderSkyStep, stopSkyStep := g.shouldRenderPreviewStep(renderPreviewStageSky, 0, sp.y)
+				if renderSkyStep {
+					for _, vis := range planeClipScratch {
+						for x := vis.L; x <= vis.R; x++ {
+							if skyLayerEnabled {
+								pix32[rowPix+x] = 0
+							} else if skyTexReady {
+								v := g.frameSkyRowV[sp.y]
+								u := g.frameSkyColU[x]
+								ti := v*g.frameSkyTexW + u
+								pix32[rowPix+x] = g.frameSkyTex32[ti]
+							}
 						}
-						if g.doRenderPreviewStep(renderPreviewStageSky, x, sp.y) {
-							g.stopRenderPreviewFrame()
-						}
+					}
+					if stopSkyStep {
+						g.stopRenderPreviewFrame()
 					}
 				}
 				return planeClipScratch
@@ -9451,30 +9536,26 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			if len(planeClipScratch) == 0 {
 				return planeClipScratch
 			}
-			for _, vis := range planeClipScratch {
-				if g.renderPreviewStepping() {
-					for x := vis.L; x <= vis.R; x++ {
-						g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x, x, key, sample, rowState)
-						if g.doRenderPreviewStep(renderPreviewStagePlanes, x, sp.y) {
-							g.stopRenderPreviewFrame()
-						}
-					}
-					continue
-				}
-				g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, sample, rowState)
-			}
-			return planeClipScratch
 		}
-		if g.renderPreviewStepping() {
-			for x := x1; x <= x2; x++ {
-				g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x, x, key, sample, rowState)
-				if g.doRenderPreviewStep(renderPreviewStagePlanes, x, sp.y) {
+		if len(rowOccluders) == 0 {
+			g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, sample, rowState)
+			if g.renderPreviewStepping() {
+				renderPlaneStep, stopPlaneStep := g.shouldRenderPreviewStep(renderPreviewStagePlanes, x1, sp.y)
+				if renderPlaneStep && stopPlaneStep {
 					g.stopRenderPreviewFrame()
 				}
 			}
 			return planeClipScratch
 		}
-		g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, x1, x2, key, sample, rowState)
+		for _, vis := range planeClipScratch {
+			g.drawPlaneTexturedSpanAtDepth(pix32, rowPix, vis.L, vis.R, key, sample, rowState)
+		}
+		if g.renderPreviewStepping() {
+			renderPlaneStep, stopPlaneStep := g.shouldRenderPreviewStep(renderPreviewStagePlanes, planeClipScratch[0].L, sp.y)
+			if renderPlaneStep && stopPlaneStep {
+				g.stopRenderPreviewFrame()
+			}
+		}
 		return planeClipScratch
 	}
 	stageStart = time.Now()
@@ -11180,6 +11261,27 @@ func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal, focalV float64
 		if x1-x0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(depthQ, row, x0, x1) {
 			continue
 		}
+		if g.renderPreviewStepping() {
+			for x := x0; x <= x1; x++ {
+				renderBillboardStep, stopBillboardStep := g.shouldRenderPreviewStep(renderPreviewStageBillboards, x, y)
+				i := row + x
+				if !renderBillboardStep {
+					continue
+				}
+				if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
+					continue
+				}
+				pix := src32[ty*tw+txLUT[x-x0]]
+				if ((pix >> pixelAShift) & 0xFF) == 0 {
+					continue
+				}
+				g.writeWallPixel(i, pix)
+				if stopBillboardStep {
+					g.stopRenderPreviewFrame()
+				}
+			}
+			continue
+		}
 		for x := x0; x <= x1; x++ {
 			i := row + x
 			if g.spriteWallClipOccludedAtIndexDepth(i, depthQ) {
@@ -11423,6 +11525,10 @@ func (g *game) drawShadowSpriteCutoutSourcePort(
 			if repY > y1 {
 				repY = y1
 			}
+			renderBillboardStep, stopBillboardStep := g.shouldRenderPreviewStep(renderPreviewStageBillboards, repX, repY)
+			if !renderBillboardStep {
+				continue
+			}
 			ty := tyLUT[repY-y0]
 			p := src32[ty*tw+tx]
 			if ((p >> pixelAShift) & 0xFF) == 0 {
@@ -11473,6 +11579,9 @@ func (g *game) drawShadowSpriteCutoutSourcePort(
 					}
 					g.writeWallPixel(i, fuzzPix)
 				}
+			}
+			if stopBillboardStep {
+				g.stopRenderPreviewFrame()
 			}
 		}
 	}
