@@ -3652,8 +3652,8 @@ func (g *game) adjustRenderSleepNanosFromInput() {
 	if g == nil {
 		return
 	}
-	const renderSleepStepDownNanos = 5 * int(time.Millisecond)
-	const renderSleepStepUpNanos = 5 * int(time.Millisecond)
+	const renderSleepStepDownNanos = 1 * int(time.Millisecond)
+	const renderSleepStepUpNanos = 1 * int(time.Millisecond)
 	if g.renderSleepSaved <= 0 {
 		g.renderSleepSaved = 10 * int(time.Millisecond)
 	}
@@ -3690,6 +3690,11 @@ func (g *game) sleepRenderStep() {
 		return
 	}
 	time.Sleep(time.Duration(g.renderSleepNanos))
+}
+
+func (g *game) sleepBillboardStep() {
+	g.sleepRenderStep()
+	g.sleepRenderStep()
 }
 
 func (g *game) syncRenderStep() {
@@ -8207,6 +8212,8 @@ func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, sh
 			continue
 		}
 		g.drawBasicWallColumnTexturedMasked(x, y0, y1, f, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
+		g.syncRenderStep()
+		g.sleepRenderStep()
 	}
 }
 
@@ -8505,7 +8512,7 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 				}
 			}
 			g.syncRenderStep()
-			g.sleepRenderStep()
+			g.sleepBillboardStep()
 		}
 		return
 	}
@@ -8545,7 +8552,7 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		}
 		g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, txRunEndLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
 		g.syncRenderStep()
-		g.sleepRenderStep()
+		g.sleepBillboardStep()
 	}
 }
 
@@ -8672,7 +8679,7 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 				used = true
 				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, txRunEndLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
 				g.syncRenderStep()
-				g.sleepRenderStep()
+				g.sleepBillboardStep()
 			}
 			tx0 = tx1 + 1
 		}
@@ -11211,7 +11218,7 @@ func (g *game) drawShadowSpriteCutoutSourcePort(
 				}
 			}
 			g.syncRenderStep()
-			g.sleepRenderStep()
+			g.sleepBillboardStep()
 		}
 	}
 }
