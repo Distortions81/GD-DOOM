@@ -73,6 +73,49 @@ func TestStartGameFromFrontendBroadcastsMandatoryKeyframe(t *testing.T) {
 	}
 }
 
+func TestStartGameFromFrontendCapturesFrontendForTransition(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	sg := &sessionGame{
+		gameFactory: newGame,
+		bootMap:     cloneMapForRestart(base.m),
+		current:     base.m.Name,
+		opts: Options{
+			Width:          640,
+			Height:         400,
+			SourcePortMode: true,
+			StartInMapMode: true,
+			Episodes:       []int{1},
+			FlatBank:       base.opts.FlatBank,
+			WallTexBank:    base.opts.WallTexBank,
+			NewGameLoader: func(mapName string) (*mapdata.Map, error) {
+				return cloneMapForRestart(base.m), nil
+			},
+		},
+		g: base,
+		frontend: frontendState{
+			Active:     true,
+			Mode:       frontendModeTitle,
+			MenuActive: true,
+			ItemOn:     0,
+		},
+	}
+	sg.touch.screenW = 1280
+	sg.touch.screenH = 720
+	present := sg.ensureFrontendSurface(1280, 720)
+	present.Clear()
+	sg.drawFrontend(present)
+
+	sg.startGameFromFrontend(3)
+
+	last := sg.transition.LastFrame()
+	if last == nil {
+		t.Fatal("transition last frame = nil, want captured frontend frame")
+	}
+	if gotW, gotH := last.Bounds().Dx(), last.Bounds().Dy(); gotW != 1280 || gotH != 720 {
+		t.Fatalf("transition last frame size=%dx%d want 1280x720", gotW, gotH)
+	}
+}
+
 func TestTickFrontendClosedTitleTreatsEnterAsSkip(t *testing.T) {
 	sg := &sessionGame{
 		frontend: frontendState{

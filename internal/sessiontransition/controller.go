@@ -40,6 +40,14 @@ type Controller struct {
 	lastFrame   *ebiten.Image
 }
 
+func imageMatchesSize(img *ebiten.Image, w, h int) bool {
+	if img == nil {
+		return false
+	}
+	b := img.Bounds()
+	return b.Dx() == w && b.Dy() == h
+}
+
 func (c *Controller) Queue(kind Kind, holdTics int) {
 	if kind == KindNone {
 		c.Clear()
@@ -163,26 +171,41 @@ func (c *Controller) SetLastFrame(src *ebiten.Image) {
 }
 
 func (c *Controller) EnsureReady(width, height int, sourcePort bool, initCols, moveCols int, drawFrom func(*ebiten.Image), drawTo func(*ebiten.Image)) {
+	c.EnsureReadyWithFrames(width, height, sourcePort, initCols, moveCols, nil, nil, drawFrom, drawTo)
+}
+
+func (c *Controller) EnsureReadyWithFrames(width, height int, sourcePort bool, initCols, moveCols int, fromSrc, toSrc *ebiten.Image, drawFrom func(*ebiten.Image), drawTo func(*ebiten.Image)) {
 	if c == nil || c.kind == KindNone || c.initialized || !c.pending {
 		return
 	}
 	if width <= 0 || height <= 0 {
 		return
 	}
-	if c.from == nil || c.from.Bounds().Dx() != width || c.from.Bounds().Dy() != height {
-		c.from = newUnmanagedImage(width, height)
+	var fromImg *ebiten.Image
+	if imageMatchesSize(fromSrc, width, height) {
+		fromImg = fromSrc
+	} else if drawFrom != nil {
+		if c.from == nil || c.from.Bounds().Dx() != width || c.from.Bounds().Dy() != height {
+			c.from = newUnmanagedImage(width, height)
+		}
+		drawFrom(c.from)
+		fromImg = c.from
 	}
-	if c.to == nil || c.to.Bounds().Dx() != width || c.to.Bounds().Dy() != height {
-		c.to = newUnmanagedImage(width, height)
+	var toImg *ebiten.Image
+	if imageMatchesSize(toSrc, width, height) {
+		toImg = toSrc
+	} else if drawTo != nil {
+		if c.to == nil || c.to.Bounds().Dx() != width || c.to.Bounds().Dy() != height {
+			c.to = newUnmanagedImage(width, height)
+		}
+		drawTo(c.to)
+		toImg = c.to
+	}
+	if fromImg == nil || toImg == nil {
+		return
 	}
 	if c.work == nil || c.work.Bounds().Dx() != width || c.work.Bounds().Dy() != height {
 		c.work = newUnmanagedImage(width, height)
-	}
-	if drawFrom != nil {
-		drawFrom(c.from)
-	}
-	if drawTo != nil {
-		drawTo(c.to)
 	}
 	need := width * height * 4
 	if len(c.fromPix) != need {
@@ -194,8 +217,8 @@ func (c *Controller) EnsureReady(width, height int, sourcePort bool, initCols, m
 	if len(c.workPix) != need {
 		c.workPix = make([]byte, need)
 	}
-	c.from.ReadPixels(c.fromPix)
-	c.to.ReadPixels(c.toPix)
+	fromImg.ReadPixels(c.fromPix)
+	toImg.ReadPixels(c.toPix)
 	copy(c.workPix, c.fromPix)
 	c.work.WritePixels(c.workPix)
 	c.width = width
@@ -241,7 +264,7 @@ func (c *Controller) Tick(sourcePort bool, initCols, moveCols int) {
 	}
 	if done {
 		c.work.WritePixels(c.toPix)
-		c.CaptureLastFrame(c.to)
+		c.CaptureLastFrame(c.work)
 		c.Clear()
 		return
 	}

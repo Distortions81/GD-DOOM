@@ -58,16 +58,6 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	}
 	dw := max(dst.Bounds().Dx(), 1)
 	dh := max(dst.Bounds().Dy(), 1)
-	captureLast := func() {
-		if !sg.transitionActive() {
-			return
-		}
-		cw, ch := sg.transitionSurfaceSize(dw, dh)
-		capture := sg.ensureTransitionCaptureSurface(cw, ch)
-		capture.Clear()
-		sg.drawGameTransitionSurface(capture, g)
-		sg.transition.SetLastFrame(capture)
-	}
 	var drawStart time.Time
 	if g.mode != viewMap {
 		drawStart = time.Now()
@@ -98,7 +88,9 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
 		}
 		sg.drawFaithfulPresented(dst, src)
-		captureLast()
+		if sg.transitionActive() {
+			sg.transition.CaptureLastFrame(src)
+		}
 		return
 	}
 	if sg.canDrawSourcePortDirect(dst, g) {
@@ -108,10 +100,12 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		} else {
 			g.Draw(dst)
 		}
+		if sg.transitionActive() {
+			sg.transition.CaptureLastFrame(dst)
+		}
 		if g.mode != viewMap {
 			g.drawWalkOverlays(dst)
 		}
-		captureLast()
 		return
 	}
 	present := sg.ensureGameplaySurface(g.viewW, g.viewH)
@@ -126,6 +120,12 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		src = sg.applyFaithfulPalettePost(present)
 	}
 	sg.drawSourcePortPresented(dst, src, dw, dh)
+	if sg.transitionActive() {
+		capture := sg.ensureTransitionCaptureSurface(dw, dh)
+		capture.Clear()
+		sg.drawSourcePortPresented(capture, src, dw, dh)
+		sg.transition.SetLastFrame(capture)
+	}
 	if g.mode != viewMap {
 		prevW, prevH := g.viewW, g.viewH
 		g.viewW = dw
@@ -134,7 +134,6 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		g.viewW = prevW
 		g.viewH = prevH
 	}
-	captureLast()
 }
 
 func (sg *sessionGame) canDrawSourcePortDirect(dst *ebiten.Image, g *game) bool {
@@ -371,8 +370,13 @@ func (sg *sessionGame) ensureTransitionReady(width, height int) {
 			}
 		})
 	case sessiontransition.KindLevel:
-		t.EnsureReady(width, height, sg.opts.SourcePortMode, sourcePortMeltInitColumns(), sourcePortMeltMoveColumns(), func(dst *ebiten.Image) {
-			if last := t.LastFrame(); last != nil {
+		last := t.LastFrame()
+		var fromSrc *ebiten.Image
+		if last != nil && last.Bounds().Dx() == width && last.Bounds().Dy() == height {
+			fromSrc = last
+		}
+		t.EnsureReadyWithFrames(width, height, sg.opts.SourcePortMode, sourcePortMeltInitColumns(), sourcePortMeltMoveColumns(), fromSrc, nil, func(dst *ebiten.Image) {
+			if last != nil {
 				dst.Clear()
 				op := &ebiten.DrawImageOptions{}
 				lw := max(last.Bounds().Dx(), 1)

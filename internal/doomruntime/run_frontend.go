@@ -282,6 +282,7 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 		return
 	}
 	sg.capturePersistentSettings()
+	sg.captureFrontendFrameForTransition()
 	startMap := sessionflow.NewGameStartMap(
 		sg.bootMap.Name,
 		sg.availableFrontendEpisodeChoices(),
@@ -318,6 +319,22 @@ func (sg *sessionGame) startGameFromFrontend(skill int) {
 	sg.playMusicForMap(sg.current)
 	sg.announceMapMusic(sg.current)
 	ebiten.SetWindowTitle(runtimehost.WindowTitle(sg.current))
+}
+
+func (sg *sessionGame) captureFrontendFrameForTransition() {
+	if sg == nil || !sg.frontend.Active {
+		return
+	}
+	sw := max(sg.touch.screenW, max(sg.opts.Width, 1))
+	sh := max(sg.touch.screenH, max(sg.opts.Height, 1))
+	cw, ch := sg.transitionSurfaceSize(sw, sh)
+	if sg.frontendSurface == nil || sg.frontendSurface.Bounds().Dx() != cw || sg.frontendSurface.Bounds().Dy() != ch {
+		return
+	}
+	capture := sg.ensureTransitionCaptureSurface(cw, ch)
+	capture.Clear()
+	capture.DrawImage(sg.frontendSurface, nil)
+	sg.transition.SetLastFrame(capture)
 }
 
 func (sg *sessionGame) availableFrontendEpisodeChoices() []int {
