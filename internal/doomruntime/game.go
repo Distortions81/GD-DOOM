@@ -301,6 +301,8 @@ const (
 )
 
 const maskedMidSortBucket = 8.0
+const maskedMidSortMaxRunPixels = 48
+const maskedMidSortMaxDepthRatio = 0.04
 
 const spriteMagnifyMinScale = 2.0
 
@@ -8631,11 +8633,10 @@ func (g *game) appendMaskedMidSegToCutoutItems(idx int, ms maskedMidSeg) {
 	if g == nil || ms.tex.from == nil || ms.X0 > ms.X1 {
 		return
 	}
-	const maskedMidSortTexelGroup = 16
 	shadeMul, doomRow := g.maskedMidShade(ms.light)
 	stepper := scene.NewWallProjectionStepper(ms.Projection, ms.X0)
 	runX0 := -1
-	runTX := 0
+	runDepth := 0.0
 	flush := func(x0, x1 int) {
 		if x0 > x1 {
 			return
@@ -8656,7 +8657,7 @@ func (g *game) appendMaskedMidSegToCutoutItems(idx int, ms maskedMidSeg) {
 		})
 	}
 	for x := ms.X0; x <= ms.X1; x++ {
-		_, texU, ok := stepper.Sample()
+		depth, _, ok := stepper.Sample()
 		stepper.Next()
 		if !ok {
 			if runX0 >= 0 {
@@ -8665,24 +8666,41 @@ func (g *game) appendMaskedMidSegToCutoutItems(idx int, ms maskedMidSeg) {
 			}
 			continue
 		}
-		tx := maskedMidTextureColumn(*ms.tex.from, texU+ms.TexUOff)
-		if maskedMidSortTexelGroup > 1 {
-			tx /= maskedMidSortTexelGroup
+		if depth <= 0 || !isFinite(depth) {
+			if runX0 >= 0 {
+				flush(runX0, x-1)
+				runX0 = -1
+			}
+			continue
 		}
 		if runX0 < 0 {
 			runX0 = x
-			runTX = tx
+			runDepth = depth
 			continue
 		}
-		if tx != runTX {
+		if x-runX0 >= maskedMidSortMaxRunPixels || maskedMidSortDepthSplitExceeded(runDepth, depth) {
 			flush(runX0, x-1)
 			runX0 = x
-			runTX = tx
+			runDepth = depth
 		}
 	}
 	if runX0 >= 0 {
 		flush(runX0, ms.X1)
 	}
+}
+
+func maskedMidSortDepthSplitExceeded(baseDepth, nextDepth float64) bool {
+	if baseDepth <= 0 || nextDepth <= 0 || !isFinite(baseDepth) || !isFinite(nextDepth) {
+		return true
+	}
+	maxDepth := baseDepth
+	if nextDepth > maxDepth {
+		maxDepth = nextDepth
+	}
+	if maxDepth <= 0 {
+		return true
+	}
+	return math.Abs(nextDepth-baseDepth)/maxDepth > maskedMidSortMaxDepthRatio
 }
 
 func quantizeMaskedMidSortDist(dist float64) float64 {
