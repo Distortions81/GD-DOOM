@@ -81,13 +81,12 @@ func TestBuildSkyLookupParallel_SourcePortUsesOutputProjectionScale(t *testing.T
 	}
 }
 
-func TestSetSkyOutputSize_InvalidatesGPUSkyProjectionStateOnResize(t *testing.T) {
+func TestSetSkyOutputSize_InvalidatesSkyProjectionStateOnResize(t *testing.T) {
 	colCache := make([]int, 3, 8)
 	rowCache := make([]int, 3, 9)
 	g := &game{
 		opts: Options{
 			SourcePortMode: true,
-			GPUSky:         true,
 		},
 		skyOutputW:          640,
 		skyOutputH:          400,
@@ -118,24 +117,6 @@ func TestSetSkyOutputSize_InvalidatesGPUSkyProjectionStateOnResize(t *testing.T)
 	}
 	if cap(g.skyColUCache) != cap(colCache) || cap(g.skyRowVCache) != cap(rowCache) {
 		t.Fatal("sky lookup caches should retain backing capacity on resize")
-	}
-}
-
-func TestNormalizeSkyUpscaleMode(t *testing.T) {
-	if got := normalizeSkyUpscaleMode("", true); got != "sharp" {
-		t.Fatalf("normalizeSkyUpscaleMode('', true)=%q want sharp", got)
-	}
-	if got := normalizeSkyUpscaleMode("sharp", true); got != "sharp" {
-		t.Fatalf("normalizeSkyUpscaleMode('sharp', true)=%q want sharp", got)
-	}
-	if got := normalizeSkyUpscaleMode("bicubic", true); got != "sharp" {
-		t.Fatalf("normalizeSkyUpscaleMode('bicubic', true)=%q want sharp", got)
-	}
-	if got := normalizeSkyUpscaleMode("bogus", true); got != "sharp" {
-		t.Fatalf("normalizeSkyUpscaleMode('bogus', true)=%q want sharp", got)
-	}
-	if got := normalizeSkyUpscaleMode("sharp", false); got != "nearest" {
-		t.Fatalf("normalizeSkyUpscaleMode('sharp', false)=%q want nearest", got)
 	}
 }
 

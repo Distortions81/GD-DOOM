@@ -1011,22 +1011,6 @@ func normalizeSourcePortThingRenderMode(v string, sourcePort bool) string {
 	}
 }
 
-func normalizeSkyUpscaleMode(v string, sourcePort bool) string {
-	if !sourcePort {
-		return "nearest"
-	}
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "":
-		return "sharp"
-	case "nearest":
-		return "nearest"
-	case "sharp", "bicubic":
-		return "sharp"
-	default:
-		return "sharp"
-	}
-}
-
 func cycleSourcePortThingRenderMode(v string) string {
 	switch sourcePortThingRenderMode(normalizeSourcePortThingRenderMode(v, true)) {
 	case sourcePortThingRenderGlyphs:
@@ -1260,7 +1244,6 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	opts.OPLVolume = clampOPLVolume(opts.OPLVolume)
 	opts.InputBindings = runtimecfg.NormalizeInputBindings(opts.InputBindings)
 	opts.SourcePortThingRenderMode = normalizeSourcePortThingRenderMode(opts.SourcePortThingRenderMode, opts.SourcePortMode)
-	opts.SkyUpscaleMode = normalizeSkyUpscaleMode(opts.SkyUpscaleMode, opts.SourcePortMode)
 	if opts.PlayerSlot < 1 || opts.PlayerSlot > 4 {
 		opts.PlayerSlot = 1
 	}
@@ -2137,7 +2120,7 @@ func (g *game) initSkyLayerShader() {
 	if g == nil || g.skyLayerShader != nil {
 		return
 	}
-	if g.opts.GPUSky && g.opts.SourcePortMode {
+	if g.opts.SourcePortMode {
 		if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
 			g.skyLayerShader = sh
 		}
@@ -5281,9 +5264,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	} else {
 		g.clearBillboardPlaneOccluderRows()
 	}
-	usedSkyLayer := false
 	if planePassReady {
-		usedSkyLayer = g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, focalV, ceilClr, floorClr, planeOrder)
+		g.drawDoomBasicTexturedPlanesVisplanePass(g.wallPix, camX, camY, ca, sa, eyeZ, focal, focalV, ceilClr, floorClr, planeOrder)
 	}
 	if !planePassReady {
 		stageStart = time.Now()
@@ -5320,9 +5302,6 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
-	}
-	if usedSkyLayer {
-		g.drawSkyLayerFrame(screen)
 	}
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
@@ -5662,7 +5641,7 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 	if g.viewW <= 0 || g.viewH <= 0 {
 		return
 	}
-	skyTexKey, skyTex, skyOK := g.runtimeSkyTextureEntryForMap(g.m.Name)
+	_, skyTex, skyOK := g.runtimeSkyTextureEntryForMap(g.m.Name)
 	if !skyOK {
 		return
 	}
@@ -5682,7 +5661,7 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 	g.frameSkyTexW = skyTex.Width
 	g.frameSkyColU = skyColU
 	g.frameSkyRowV = skyRowV
-	g.frameSkyLayerEnabled = g.enableSkyLayerFrame(camAng, focal, skyTexKey, skyTex, skyTexH)
+	g.frameSkyLayerEnabled = false
 }
 
 func (g *game) cutoutCoveredAtIndex(i int) bool {
@@ -13435,7 +13414,7 @@ func (g *game) setSkyOutputSize(w, h int) {
 	}
 	g.skyOutputW = w
 	g.skyOutputH = h
-	if g.opts.GPUSky && g.opts.SourcePortMode {
+	if g.opts.SourcePortMode {
 		g.resetSkyLayerPipeline(false)
 	}
 }
@@ -13481,15 +13460,11 @@ func (g *game) screenToWorld(sx, sy float64) (float64, float64) {
 }
 
 func (g *game) ensureMapFloorLayer() {
-	need := g.viewW * g.viewH * 4
-	if g.mapFloorLayer == nil || g.mapFloorW != g.viewW || g.mapFloorH != g.viewH || len(g.mapFloorPix) != need {
-		g.mapFloorLayer = newDebugImageWithOptions("framebuffer:map-floor", image.Rect(0, 0, g.viewW, g.viewH), &ebiten.NewImageOptions{
-			Unmanaged: true,
-		})
-		g.mapFloorPix = make([]byte, need)
-		g.mapFloorW = g.viewW
-		g.mapFloorH = g.viewH
-	}
+	g.ensureWallLayer()
+	g.mapFloorLayer = g.wallLayer
+	g.mapFloorPix = g.wallPix
+	g.mapFloorW = g.wallW
+	g.mapFloorH = g.wallH
 }
 
 func (g *game) ensureWallLayer() {
@@ -13865,7 +13840,7 @@ func (g *game) resetSkyLayerPipeline(rebuildShader bool) {
 	g.skyLayerProjSampleH = 0
 	g.skyLayerUniforms = nil
 
-	if rebuildShader && g.opts.GPUSky && g.opts.SourcePortMode && g.skyLayerShader == nil {
+	if rebuildShader && g.opts.SourcePortMode && g.skyLayerShader == nil {
 		if sh, err := ebiten.NewShader(skyBackdropShaderSrc); err == nil {
 			g.skyLayerShader = sh
 		}
@@ -13908,8 +13883,8 @@ func (g *game) enableSkyLayerFrame(camAng, focal float64, texKey string, tex *Wa
 	return true
 }
 
-func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
-	if !g.skyLayerFrameActive || g.skyLayerShader == nil || g.skyLayerTex == nil || screen == nil {
+func (g *game) drawSkyLayerFrame(dst *ebiten.Image) bool {
+	if !g.skyLayerFrameActive || g.skyLayerShader == nil || g.skyLayerTex == nil || dst == nil {
 		return false
 	}
 	w := g.viewW
@@ -13942,13 +13917,9 @@ func (g *game) drawSkyLayerFrame(screen *ebiten.Image) bool {
 	g.skyLayerUniforms["SampleH"] = float64(sampleH)
 	g.skyLayerUniforms["SkyTexW"] = float64(texW)
 	g.skyLayerUniforms["SkyTexH"] = g.skyLayerFrameTexH
-	if g.opts.SkyUpscaleMode == "sharp" {
-		g.skyLayerUniforms["SharpUpscale"] = float64(1)
-	} else {
-		g.skyLayerUniforms["SharpUpscale"] = float64(0)
-	}
+	g.skyLayerUniforms["SharpUpscale"] = float64(1)
 	op.Uniforms = g.skyLayerUniforms
-	screen.DrawTrianglesShader(g.skyLayerVerts[:], g.skyLayerIdx[:], g.skyLayerShader, op)
+	dst.DrawTrianglesShader(g.skyLayerVerts[:], g.skyLayerIdx[:], g.skyLayerShader, op)
 	return true
 }
 

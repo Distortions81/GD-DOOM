@@ -409,57 +409,6 @@ func TestRunParseLoadsNoVsyncFromConfig(t *testing.T) {
 	}
 }
 
-func TestRunParseLoadsGPUSkyFromConfig(t *testing.T) {
-	td := t.TempDir()
-	cfgPath := filepath.Join(td, "cfg.toml")
-	cfg := []byte("map = \"E1M2\"\nrender = false\ngpu_sky = true\n")
-	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	var out bytes.Buffer
-	var errb bytes.Buffer
-	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
-	code := RunParse([]string{"-wad", wadPath, "-config", cfgPath}, &out, &errb)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
-	}
-	if !strings.Contains(out.String(), "map=E1M2 ") {
-		t.Fatalf("stdout %q does not contain map=E1M2", out.String())
-	}
-}
-
-func TestRunParseSourcePortDefaultsDisableGPUSky(t *testing.T) {
-	var out bytes.Buffer
-	var errb bytes.Buffer
-	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
-	code := RunParse([]string{"-wad", wadPath, "-render=false", "-sourceport-mode"}, &out, &errb)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
-	}
-	if !strings.Contains(out.String(), "map=") {
-		t.Fatalf("stdout %q missing map output", out.String())
-	}
-}
-
-func TestRunParseSourcePortDefaultsPreserveExplicitNearestSkyUpscale(t *testing.T) {
-	var out bytes.Buffer
-	var errb bytes.Buffer
-	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
-	code := RunParse([]string{
-		"-wad", wadPath,
-		"-render=false",
-		"-sourceport-mode",
-		"-gpu-sky=false",
-		"-sky-upscale", "nearest",
-	}, &out, &errb)
-	if code != 0 {
-		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
-	}
-	if !strings.Contains(out.String(), "map=") {
-		t.Fatalf("stdout %q missing map output", out.String())
-	}
-}
-
 func TestSourcePortAudioEnabledDisablesSourcePortAudioOnWASM(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(true)
@@ -487,22 +436,6 @@ func TestRunParseDefaultsDisableVsyncOnWASM(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "map=") {
 		t.Fatalf("stdout %q missing map output", out.String())
-	}
-}
-
-func TestLoadConfigParsesSkyUpscaleMode(t *testing.T) {
-	td := t.TempDir()
-	cfgPath := filepath.Join(td, "cfg.toml")
-	cfg := []byte("sourceport_mode = true\nsky_upscale = \"sharp\"\n")
-	if err := os.WriteFile(cfgPath, cfg, 0o644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	loaded, err := loadConfig(cfgPath, true)
-	if err != nil {
-		t.Fatalf("loadConfig() error: %v", err)
-	}
-	if loaded.SkyUpscaleMode == nil || *loaded.SkyUpscaleMode != "sharp" {
-		t.Fatalf("sky_upscale=%v want sharp", loaded.SkyUpscaleMode)
 	}
 }
 

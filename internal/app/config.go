@@ -46,8 +46,6 @@ type fileConfig struct {
 	CheatLevel                 *int                      `toml:"cheat_level"`
 	Invulnerable               *bool                     `toml:"invulnerable"`
 	SourcePortMode             *bool                     `toml:"sourceport_mode"`
-	GPUSky                     *bool                     `toml:"gpu_sky"`
-	SkyUpscaleMode             *string                   `toml:"sky_upscale"`
 	CRTEffect                  *bool                     `toml:"crt_effect"`
 	RendererWorkers            *int                      `toml:"renderer_workers"`
 	TextureAnimCrossfadeFrames *int                      `toml:"texture_anim_crossfade_frames"`

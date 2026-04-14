@@ -64,7 +64,6 @@ Why this is concrete:
 Concrete examples already in code:
 - `-trace-demo-state`
 - `-dump-music`
-- `-gpu-sky`
 - `-texture-anim-crossfade-frames`
 - `-mic-device`
 - `-pc-speaker-variant`

@@ -205,8 +205,6 @@ type Options struct {
 	SourcePortSectorLighting     bool
 	DisableDoomLighting          bool
 	KageShader                   bool
-	GPUSky                       bool
-	SkyUpscaleMode               string
 	CRTEffect                    bool
 	DisableWallOcclusion         bool
 	DisableWallSpanReject        bool

@@ -367,8 +367,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultSourcePortSectorLighting := true
 	defaultDoomLighting := true
 	defaultKageShader := false
-	defaultGPUSky := false
-	defaultSkyUpscaleMode := "sharp"
 	defaultCRTEffect := false
 	defaultWallOcclusion := false
 	defaultWallSpanReject := true
@@ -504,12 +502,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		if cfg.PCSpeakerVariant != nil {
 			defaultPCSpeakerVariant = *cfg.PCSpeakerVariant
 		}
-		if cfg.GPUSky != nil {
-			defaultGPUSky = *cfg.GPUSky
-		}
-		if cfg.SkyUpscaleMode != nil {
-			defaultSkyUpscaleMode = *cfg.SkyUpscaleMode
-		}
 		if cfg.CRTEffect != nil {
 			defaultCRTEffect = *cfg.CRTEffect
 		}
@@ -554,15 +546,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			defaultAutoDetail = *cfg.AutoDetail
 		}
 	}
-	if defaultSourcePortMode {
-		if cfg == nil || cfg.GPUSky == nil {
-			defaultGPUSky = false
-		}
-		if cfg == nil || cfg.SkyUpscaleMode == nil {
-			defaultSkyUpscaleMode = "sharp"
-		}
-	}
-
 	fs := flag.NewFlagSet("gddoom", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
@@ -605,8 +588,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	invuln := fs.Bool("invuln", defaultInvuln, "start with invulnerability (iddqd-like)")
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
-	gpuSky := fs.Bool("gpu-sky", defaultGPUSky, "enable experimental GPU sky path in sourceport mode (default off)")
-	skyUpscale := fs.String("sky-upscale", defaultSkyUpscaleMode, "GPU sky upscale mode (nearest|sharp)")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	rendererWorkers := fs.Int("renderer-workers", defaultRendererWorkers, "renderer worker count (0 uses built-in default policy)")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
@@ -647,15 +628,9 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		return 2
 	}
 	mapExplicit := flagProvided(normalizedArgs, "map") && strings.TrimSpace(*mapName) != ""
-	skyUpscaleFlagSet := flagProvided(normalizedArgs, "sky-upscale")
 	wadFlagSet := flagProvided(normalizedArgs, "wad")
 	broadcastFlagSet := flagProvided(normalizedArgs, "broadcast")
 	watchFlagSet := flagProvided(normalizedArgs, "watch")
-	if *sourcePortMode {
-		if !skyUpscaleFlagSet && (cfg == nil || cfg.SkyUpscaleMode == nil) {
-			*skyUpscale = "sharp"
-		}
-	}
 	_ = configFlag
 	platformcfg.SetForcedWASMMode(*forceWASMMode)
 	allCheatsSet := false
@@ -905,8 +880,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			sourcePortSectorLighting:   defaultSourcePortSectorLighting,
 			doomLighting:               defaultDoomLighting,
 			kageShader:                 defaultKageShader,
-			gpuSky:                     *gpuSky,
-			skyUpscaleMode:             *skyUpscale,
 			crtEffect:                  *crtEffect,
 			wallOcclusion:              defaultWallOcclusion,
 			wallSpanReject:             defaultWallSpanReject,
@@ -1249,8 +1222,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			SourcePortSectorLighting:   defaultSourcePortSectorLighting,
 			DisableDoomLighting:        !defaultDoomLighting,
 			KageShader:                 defaultKageShader,
-			GPUSky:                     *gpuSky,
-			SkyUpscaleMode:             *skyUpscale,
 			CRTEffect:                  *crtEffect,
 			DisableWallOcclusion:       !defaultWallOcclusion,
 			DisableWallSpanReject:      !defaultWallSpanReject,
@@ -1597,8 +1568,6 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			sourcePortSectorLighting:   defaultSourcePortSectorLighting,
 			doomLighting:               defaultDoomLighting,
 			kageShader:                 defaultKageShader,
-			gpuSky:                     *gpuSky,
-			skyUpscaleMode:             *skyUpscale,
 			crtEffect:                  *crtEffect,
 			wallOcclusion:              defaultWallOcclusion,
 			wallSpanReject:             defaultWallSpanReject,
@@ -2358,8 +2327,6 @@ type renderBuildConfig struct {
 	sourcePortSectorLighting   bool
 	doomLighting               bool
 	kageShader                 bool
-	gpuSky                     bool
-	skyUpscaleMode             string
 	crtEffect                  bool
 	wallOcclusion              bool
 	wallSpanReject             bool
@@ -2701,8 +2668,6 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		SourcePortSectorLighting:   cfg.sourcePortSectorLighting,
 		DisableDoomLighting:        !cfg.doomLighting,
 		KageShader:                 cfg.kageShader,
-		GPUSky:                     cfg.gpuSky,
-		SkyUpscaleMode:             cfg.skyUpscaleMode,
 		CRTEffect:                  cfg.crtEffect,
 		DisableWallOcclusion:       !cfg.wallOcclusion,
 		DisableWallSpanReject:      !cfg.wallSpanReject,
