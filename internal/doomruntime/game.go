@@ -4928,7 +4928,9 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.beginSkyLayerFrame()
 
 	ceilClr, floorClr := g.basicPlaneColors()
-	clear(g.wallPix)
+	for i := range g.wallPix32 {
+		g.wallPix32[i] = pixelOpaqueA
+	}
 	g.prepareFrameSkyState(camAng, focal)
 
 	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
@@ -8669,9 +8671,9 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 				}
 				used = true
 				g.drawBillboardRowSpans(row, ty, tw, x0, txLUT, txRunEndLUT, rowSpans, it.tex, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow)
+				g.syncRenderStep()
+				g.sleepRenderStep()
 			}
-			g.syncRenderStep()
-			g.sleepRenderStep()
 			tx0 = tx1 + 1
 		}
 	}
