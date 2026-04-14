@@ -31,7 +31,7 @@ Note: Not all features are exposed in the UI, some are still experimental.
 
 GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the actual play experience is broader than vanilla DOS Doom. The biggest differences are:
 
-- Two ways to play: `Faithful` mode aims for a more classic look and feel, while `Source Port` mode is smoother, cleaner, and more modern on a desktop monitor.
+- Two ways to play: `Faithful` mode aims for a more classic look and feel, while `Source Port` mode is smoother, cleaner, and more modern on a desktop monitor, with textured maps, animated details, and light shading.
 - Smoother motion: movement, turning, and monster motion are smoothed between Doom tics, so the game does not look like it is stepping from frame to frame.
 - Richer presentation: the picture is presented in full color, the HUD and automap scale more cleanly, and optional effects like CRT filtering and smoother animated transitions are available.
 - Better map reading: the automap presentation is cleaner on modern displays and adds rotate mode on top of the classic map features.
@@ -47,7 +47,6 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Browser save/load uses `localStorage` for saves and includes save-slot preview thumbnails in the save/load menu.
 - Save/load now persists in browser storage and shows slot metadata/thumbnails while returning to saved games from main menu and map transitions.
 - Episode finales: the Doom episode end sequences (text crawl + cast screen + bunny screen) play correctly after completing an episode.
-- Peer co-op multiplayer: lockstep co-op over the GDSF relay, with per-tic input sync, roster management, and automatic desync detection via periodic state checksums.
 - Browser play: the same project also has a playable browser version with local WAD loading.
 
 ### Rendering
