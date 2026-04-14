@@ -167,6 +167,9 @@ func (sg *sessionGame) Update() error {
 	if sg.musicCtl != nil && isWASMBuild() {
 		sg.musicCtl.Tick()
 	}
+	if sg.g != nil {
+		sg.g.adjustRenderSleepNanosFromInput()
+	}
 	flushTouchLatch := sg.bumpHostFramePhase()
 	err := runtimehost.RunUpdate(runtimehost.Update{
 		QuitPromptActive:    func() bool { return sg.quitPrompt.Active },

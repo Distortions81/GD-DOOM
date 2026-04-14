@@ -2,8 +2,10 @@ package doomruntime
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"gddoom/internal/gameplay"
 	"gddoom/internal/mapdata"
@@ -132,6 +134,7 @@ type sessionGame struct {
 	touch                    touchControllerState
 	hostFramePhase           int
 	voiceTransmitHeld        atomic.Bool
+	renderLoopStarted        atomic.Bool
 }
 
 type frontendMusicConfigPending struct {
@@ -862,4 +865,44 @@ func (sg *sessionGame) initSession() {
 		},
 		InitPost: sg.initFaithfulPalettePost,
 	})
+	sg.startAsyncGameplayRenderLoop()
+}
+
+func (sg *sessionGame) startAsyncGameplayRenderLoop() {
+	if sg == nil || sg.g == nil {
+		return
+	}
+	if !sg.renderLoopStarted.CompareAndSwap(false, true) {
+		return
+	}
+	go sg.asyncGameplayRenderLoop()
+}
+
+func (sg *sessionGame) asyncGameplayRenderLoop() {
+	defer sg.renderLoopStarted.Store(false)
+	for {
+		if sg == nil {
+			return
+		}
+		g := sg.g
+		if g == nil {
+			runtime.Gosched()
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		if g.viewW <= 0 || g.viewH <= 0 {
+			runtime.Gosched()
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		if g.mode == viewMap {
+			runtime.Gosched()
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		g.updateWalkMode()
+		g.renderStamp = time.Now()
+		g.drawWalk3D(nil)
+		runtime.Gosched()
+	}
 }

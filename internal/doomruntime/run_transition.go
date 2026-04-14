@@ -3,7 +3,6 @@ package doomruntime
 import (
 	"image"
 	"image/color"
-	"time"
 
 	"gddoom/internal/sessiontransition"
 
@@ -58,6 +57,9 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 	}
 	dw := max(dst.Bounds().Dx(), 1)
 	dh := max(dst.Bounds().Dy(), 1)
+	if g.wallLayer != nil && len(g.wallPix) != 0 {
+		g.writePixelsTimed(g.wallLayer, g.wallPix)
+	}
 	captureLast := func() {
 		if !sg.transitionActive() {
 			return
@@ -68,71 +70,19 @@ func (sg *sessionGame) drawGamePresented(dst *ebiten.Image, g *game) {
 		sg.drawGameTransitionSurface(capture, g)
 		sg.transition.SetLastFrame(capture)
 	}
-	var drawStart time.Time
-	if g.mode != viewMap {
-		drawStart = time.Now()
-		g.renderStamp = drawStart
-		if g.opts.DemoScript != nil {
-			g.demoBenchDraws++
-		}
-		g.frameUpload = 0
-		g.perfInDraw = true
-		defer func() { g.perfInDraw = false }()
-		defer g.finishPerfCounter(drawStart)
-	}
-	if !sg.opts.SourcePortMode {
-		vw := max(g.viewW, 1)
-		vh := max(g.viewH, 1)
-		if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
-			sg.faithfulSurface = newUnmanagedImage(vw, vh)
-		}
-		sg.faithfulSurface.Fill(color.Black)
-		if g.mode != viewMap {
-			g.drawWalk3D(sg.faithfulSurface)
-			g.drawWalkOverlays(sg.faithfulSurface)
-		} else {
-			g.Draw(sg.faithfulSurface)
-		}
-		src := sg.faithfulSurface
-		if sg.palettePostEnabled() {
-			src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
-		}
-		sg.drawFaithfulPresented(dst, src)
-		captureLast()
-		return
-	}
-	if sg.canDrawSourcePortDirect(dst, g) {
+	src := g.wallLayer
+	if src == nil {
 		dst.Fill(color.Black)
-		if g.mode != viewMap {
-			g.drawWalk3D(dst)
-		} else {
-			g.Draw(dst)
-		}
-		if g.mode != viewMap {
-			g.drawWalkOverlays(dst)
-		}
 		captureLast()
 		return
 	}
-	present := sg.ensureGameplaySurface(g.viewW, g.viewH)
-	present.Fill(color.Black)
-	if g.mode != viewMap {
-		g.drawWalk3D(present)
-	} else {
-		g.Draw(present)
-	}
-	src := present
 	if sg.palettePostEnabled() {
-		src = sg.applyFaithfulPalettePost(present)
+		src = sg.applyFaithfulPalettePost(src)
 	}
-	sg.drawSourcePortPresented(dst, src, dw, dh)
-	if g.mode != viewMap {
-		prevW, prevH := g.viewW, g.viewH
-		g.viewW = dw
-		g.viewH = dh
-		g.drawWalkOverlays(dst)
-		g.viewW = prevW
-		g.viewH = prevH
+	if sg.opts.SourcePortMode {
+		sg.drawSourcePortPresented(dst, src, dw, dh)
+	} else {
+		sg.drawFaithfulPresented(dst, src)
 	}
 	captureLast()
 }
@@ -232,44 +182,19 @@ func (sg *sessionGame) drawGameTransitionSurface(dst *ebiten.Image, g *game) {
 	if dst == nil || g == nil {
 		return
 	}
-	if sg.opts.SourcePortMode {
-		present := sg.ensureGameplaySurface(g.viewW, g.viewH)
-		g.Draw(present)
-		src := present
-		if sg.palettePostEnabled() {
-			src = sg.applyFaithfulPalettePost(present)
-		}
-		dw := max(dst.Bounds().Dx(), 1)
-		dh := max(dst.Bounds().Dy(), 1)
+	src := g.wallLayer
+	if src == nil {
 		dst.Fill(color.Black)
-		sg.drawSourcePortPresented(dst, src, dw, dh)
 		return
 	}
-	vw := max(g.viewW, 1)
-	vh := max(g.viewH, 1)
-	if sg.faithfulSurface == nil || sg.faithfulSurface.Bounds().Dx() != vw || sg.faithfulSurface.Bounds().Dy() != vh {
-		sg.faithfulSurface = newUnmanagedImage(vw, vh)
-	}
-	sg.faithfulSurface.Fill(color.Black)
-	if g.mode != viewMap {
-		g.drawWalk3D(sg.faithfulSurface)
-		g.drawWalkOverlays(sg.faithfulSurface)
-	} else {
-		g.Draw(sg.faithfulSurface)
-	}
-	src := sg.faithfulSurface
 	if sg.palettePostEnabled() {
-		src = sg.applyFaithfulPalettePost(sg.faithfulSurface)
+		src = sg.applyFaithfulPalettePost(src)
 	}
-	dw := max(dst.Bounds().Dx(), 1)
-	dh := max(dst.Bounds().Dy(), 1)
-	sw := max(src.Bounds().Dx(), 1)
-	sh := max(src.Bounds().Dy(), 1)
-	dst.Clear()
-	op := &ebiten.DrawImageOptions{}
-	op.Filter = ebiten.FilterNearest
-	op.GeoM.Scale(float64(dw)/float64(sw), float64(dh)/float64(sh))
-	dst.DrawImage(src, op)
+	if sg.opts.SourcePortMode {
+		sg.drawSourcePortPresented(dst, src, max(dst.Bounds().Dx(), 1), max(dst.Bounds().Dy(), 1))
+		return
+	}
+	sg.drawFaithfulPresented(dst, src)
 }
 
 func (sg *sessionGame) drawBootSplashTransitionSurface(dst *ebiten.Image) {
