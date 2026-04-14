@@ -538,6 +538,7 @@ type game struct {
 	renderStageMS    [renderStageCount]float64
 	renderStageText  string
 	renderSleepNanos int
+	renderSleepSaved int
 	ticRateDisplay   float64
 	ticDisplayText   string
 	benchLow1MS      float64
@@ -1302,6 +1303,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		autoWeaponSwitch:      opts.AutoWeaponSwitch,
 		simTickScale:          1.0,
 		renderSleepNanos:      1 * int(time.Millisecond),
+		renderSleepSaved:      1 * int(time.Millisecond),
 	}
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
@@ -3652,16 +3654,34 @@ func (g *game) adjustRenderSleepNanosFromInput() {
 	}
 	const renderSleepStepDownNanos = 1 * int(time.Millisecond)
 	const renderSleepStepUpNanos = 1 * int(time.Millisecond)
-	if inpututil.IsKeyJustPressed(ebiten.KeyLeftBracket) && g.renderSleepNanos > 0 {
-		g.renderSleepNanos -= renderSleepStepDownNanos
-		if g.renderSleepNanos < 0 {
+	if g.renderSleepSaved <= 0 {
+		g.renderSleepSaved = 1 * int(time.Millisecond)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyBackquote) {
+		if g.renderSleepNanos > 0 {
+			g.renderSleepSaved = g.renderSleepNanos
 			g.renderSleepNanos = 0
+		} else {
+			g.renderSleepNanos = g.renderSleepSaved
 		}
 		fmt.Printf("render row/col sleep: %dus\n", g.renderSleepNanos/int(time.Microsecond))
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyLeftBracket) && g.renderSleepSaved > 0 {
+		g.renderSleepSaved -= renderSleepStepDownNanos
+		if g.renderSleepSaved < 0 {
+			g.renderSleepSaved = 0
+		}
+		if g.renderSleepNanos > 0 {
+			g.renderSleepNanos = g.renderSleepSaved
+		}
+		fmt.Printf("render row/col sleep: %dus\n", g.renderSleepSaved/int(time.Microsecond))
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyRightBracket) {
-		g.renderSleepNanos += renderSleepStepUpNanos
-		fmt.Printf("render row/col sleep: %dus\n", g.renderSleepNanos/int(time.Microsecond))
+		g.renderSleepSaved += renderSleepStepUpNanos
+		if g.renderSleepNanos > 0 {
+			g.renderSleepNanos = g.renderSleepSaved
+		}
+		fmt.Printf("render row/col sleep: %dus\n", g.renderSleepSaved/int(time.Microsecond))
 	}
 }
 
