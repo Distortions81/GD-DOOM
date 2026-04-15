@@ -66,7 +66,7 @@
   <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">Watch on YouTube</a><br>
   PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio.
   <br>Including music, which original Doom did not support!
-  <br>Fully simulates the open air 2.25" 8-ohm paper speaker, driven with ~4v through 33-ohm resistor with steel pc case reverb.
+  <br>Fully simulates the open air 2.25" 8-ohm paper speaker, driven with ~4v DC through 33-ohm resistor with steel pc case reverb.
   <br>
 </p>
 
