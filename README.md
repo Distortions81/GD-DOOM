@@ -28,7 +28,37 @@
   </a>
   <br>
   <a href="https://youtu.be/ID52vj9WQ8A">Watch on YouTube</a><br>
-  See GD-DOOM in motion: high-res, 32-bit color, motion interpolation and more detailed lighting.
+  E1M5 built-in demo: high-res, 32-bit color, motion interpolation and more detailed lighting.
+  <br>
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=tkc6Z8xcjzs">
+    <img src="https://img.youtube.com/vi/tkc6Z8xcjzs/maxresdefault.jpg" alt="Watch the GD-DOOM 4K gameplay demo on YouTube" width="900">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=tkc6Z8xcjzs">Watch on YouTube</a><br>
+  E1M1: normal 4K play at full speed with the same clean software-rendered presentation.
+  <br>
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=aINCe9459-U">
+    <img src="https://img.youtube.com/vi/aINCe9459-U/maxresdefault.jpg" alt="Watch the GD-DOOM software rendering slow-motion video on YouTube" width="900">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=aINCe9459-U">Watch on YouTube</a><br>
+  Slow-motion look at how GD-DOOM renders in software, in the spirit of the original DOOM renderer.
+  <br>
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">
+    <img src="https://img.youtube.com/vi/vT9SldgjbeA/maxresdefault.jpg" alt="Watch the GD-DOOM PC-speaker emulation demo on YouTube" width="900">
+  </a>
+  <br>
+  <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">Watch on YouTube</a><br>
+  PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio.
   <br>
 </p>
 
