@@ -307,7 +307,7 @@ GD-DOOM also has a browser version. To build it locally:
 ./scripts/build_wasm.sh
 ```
 
-The script writes output to `build/wasm`, copies the web assets, and produces `gddoom.wasm.gz`. It requires:
+The script runs a clean pre-build (`go clean -cache` for the WASM target), removes any previous `build/wasm` output, then writes fresh assets including `gddoom.wasm.gz`. It requires:
 
 - `DOOM1.WAD` at the repository root
 - `wasm_exec.js` from your local Go toolchain

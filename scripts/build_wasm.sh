@@ -51,26 +51,12 @@ case "${WASM_OPT_MODE}" in
     ;;
 esac
 
+echo "Cleaning Go build cache for WASM build..."
+GOOS=js GOARCH=wasm go clean -cache
+
+echo "Removing previous WASM output at ${OUT_DIR}..."
+rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}"
-# Brotli artifact intentionally disabled for now.
-chmod -f u+w \
-  "${OUT_DIR}/gddoom.wasm" \
-  "${OUT_DIR}/gddoom.wasm.gz" \
-  "${OUT_DIR}/wasm_exec.js" \
-  "${OUT_DIR}/build-id.js" \
-  "${OUT_DIR}/index.html" \
-  "${OUT_DIR}/player.html" \
-  "${OUT_DIR}/launch.js" \
-  "${OUT_DIR}/server.go" 2>/dev/null || true
-rm -f \
-  "${OUT_DIR}/gddoom.wasm" \
-  "${OUT_DIR}/gddoom.wasm.gz" \
-  "${OUT_DIR}/wasm_exec.js" \
-  "${OUT_DIR}/build-id.js" \
-  "${OUT_DIR}/index.html" \
-  "${OUT_DIR}/player.html" \
-  "${OUT_DIR}/launch.js" \
-  "${OUT_DIR}/server.go"
 
 GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o "${OUT_DIR}/gddoom.wasm" "${ROOT_DIR}"
 
