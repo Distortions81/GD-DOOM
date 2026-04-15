@@ -90,6 +90,19 @@ func TestRunParseCLIOverridesConfig(t *testing.T) {
 	}
 }
 
+func TestRunParseAcceptsNoMonstersFlag(t *testing.T) {
+	var out bytes.Buffer
+	var errb bytes.Buffer
+	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
+	code := RunParse([]string{"-wad", wadPath, "-render=false", "-no-monsters"}, &out, &errb)
+	if code != 0 {
+		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "map=") {
+		t.Fatalf("stdout %q does not contain map summary", out.String())
+	}
+}
+
 func TestExplicitMapStartInMap(t *testing.T) {
 	if !explicitMapStartInMap(false, true) {
 		t.Fatal("explicit CLI map should force start-in-map")

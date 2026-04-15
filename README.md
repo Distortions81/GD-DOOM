@@ -157,6 +157,7 @@ Frequently used options:
 - `-music-backend=auto|impsynth|meltysynth` selects the music style/engine.
 - `-soundfont=PATH` selects an external `.sf2` file for `meltysynth`.
 - `-detail-level=N` sets starting image detail and `-auto-detail` tries to keep the game near 60 FPS automatically.
+- `-no-monsters` disables monster spawns.
 - `-crt-effect` and `-texture-anim-crossfade-frames=N` enable extra visual polish in Source Port mode.
 - `-map=E1M1` or `-map=MAP01` starts on a specific map.
 - `-record-demo=out.lmp` records a Doom v1.10 demo from live play.

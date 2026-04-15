@@ -355,6 +355,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	defaultPCSpeakerVolume := 1.0
 	defaultSFXPitchShift := false
 	defaultFastMonsters := false
+	defaultNoMonsters := false
 	defaultAlwaysRun := true
 	defaultAutoWeaponSwitch := true
 	defaultCheatLevel := 0
@@ -566,6 +567,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	skillLevel := fs.Int("skill", defaultSkill, "doom skill level (1-5)")
 	showNoSkillItems := fs.Bool("show-no-skill-items", defaultShowNoSkillItems, "show pickup items that have no skill bits set")
 	showAllItems := fs.Bool("show-all-items", defaultShowAllItems, "show pickup items regardless of skill/game-mode spawn filters")
+	noMonsters := fs.Bool("no-monsters", defaultNoMonsters, "disable monster spawns")
 	mouseLook := fs.Bool("mouselook", defaultMouseLook, "enable mouse-based turning in walk mode")
 	mouseInvert := fs.Bool("mouse-invert", defaultMouseInvert, "invert mouse movement")
 	smoothCameraYaw := fs.Bool("smooth-camera-yaw", defaultSmoothCameraYaw, "smooth interpolated player camera yaw between sim ticks")
@@ -855,6 +857,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			gameMode:                   resolvedGameMode,
 			showNoSkillItems:           *showNoSkillItems,
 			showAllItems:               *showAllItems,
+			noMonsters:                 *noMonsters,
 			mouseLook:                  *mouseLook,
 			mouseInvert:                *mouseInvert,
 			mouseLookSpeed:             *mouseLookSpeed,
@@ -1010,6 +1013,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 		*showNoSkillItems = cfg.ShowNoSkillItems
 		*showAllItems = cfg.ShowAllItems
 		defaultFastMonsters = cfg.FastMonsters
+		*noMonsters = cfg.NoMonsters
 		*autoWeaponSwitch = cfg.AutoWeaponSwitch
 		resolvedCheatLevel = cfg.CheatLevel
 		resolvedInvuln = cfg.Invulnerable
@@ -1193,6 +1197,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			GameMode:                   resolvedGameMode,
 			ShowNoSkillItems:           *showNoSkillItems,
 			ShowAllItems:               *showAllItems,
+			NoMonsters:                 *noMonsters,
 			MouseLook:                  *mouseLook,
 			MouseInvert:                *mouseInvert,
 			SmoothCameraYaw:            *smoothCameraYaw,
@@ -1544,6 +1549,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			gameMode:                   resolvedGameMode,
 			showNoSkillItems:           *showNoSkillItems,
 			showAllItems:               *showAllItems,
+			noMonsters:                 *noMonsters,
 			mouseLook:                  *mouseLook,
 			mouseInvert:                *mouseInvert,
 			mouseLookSpeed:             *mouseLookSpeed,
@@ -2303,6 +2309,7 @@ type renderBuildConfig struct {
 	gameMode                   string
 	showNoSkillItems           bool
 	showAllItems               bool
+	noMonsters                 bool
 	mouseLook                  bool
 	mouseInvert                bool
 	mouseLookSpeed             float64
@@ -2643,6 +2650,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		GameMode:                   cfg.gameMode,
 		ShowNoSkillItems:           cfg.showNoSkillItems,
 		ShowAllItems:               cfg.showAllItems,
+		NoMonsters:                 cfg.noMonsters,
 		MouseLook:                  cfg.mouseLook,
 		MouseInvert:                cfg.mouseInvert,
 		MouseLookSpeed:             cfg.mouseLookSpeed,
