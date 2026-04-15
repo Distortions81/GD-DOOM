@@ -328,12 +328,16 @@ func (sg *sessionGame) captureFrontendFrameForTransition() {
 	sw := max(sg.touch.screenW, max(sg.opts.Width, 1))
 	sh := max(sg.touch.screenH, max(sg.opts.Height, 1))
 	cw, ch := sg.transitionSurfaceSize(sw, sh)
-	if sg.frontendSurface == nil || sg.frontendSurface.Bounds().Dx() != cw || sg.frontendSurface.Bounds().Dy() != ch {
+	if sg.frontendSurface == nil {
 		return
 	}
 	capture := sg.ensureTransitionCaptureSurface(cw, ch)
 	capture.Clear()
-	capture.DrawImage(sg.frontendSurface, nil)
+	if sg.frontendSurface.Bounds().Dx() == cw && sg.frontendSurface.Bounds().Dy() == ch {
+		capture.DrawImage(sg.frontendSurface, nil)
+	} else {
+		sg.drawFrontendTransitionSurface(capture)
+	}
 	sg.transition.SetLastFrame(capture)
 }
 
