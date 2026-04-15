@@ -167,6 +167,9 @@ Frequently used options:
 
 There are more flags than the short list above. Use `go run . -help` for the full set if you want every tweak and debug option.
 
+Aspect correction note:
+In faithful mode, GD-DOOM applies Doom's classic 4:3 correction as a whole-screen stretch after rendering. In Source Port mode, it applies that correction during rendering by stretching level geometry and most sprites vertically. A small set of deliberately round-looking sprites such as pickups and fireballs are exempted from that runtime sprite stretch so they stay circular, which looks better even though it is not fully consistent with vanilla Doom's presentation.
+
 Examples:
 
 ```bash
