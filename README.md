@@ -34,7 +34,7 @@
   </a>
   <br>
   <a href="https://youtu.be/ID52vj9WQ8A">Watch on YouTube</a><br>
-  E1M5 built-in demo
+  E1M5: Doom's default first demo playback at game menu
   <br>
 </p>
 
