@@ -28,7 +28,7 @@
   </a>
   <br>
   <a href="https://youtu.be/ID52vj9WQ8A">Watch on YouTube</a><br>
-  E1M5 built-in demo: high-res, 32-bit color, motion interpolation and more detailed lighting.
+  E1M5 built-in doom demo
   <br>
 </p>
 
@@ -38,7 +38,7 @@
   </a>
   <br>
   <a href="https://www.youtube.com/watch?v=tkc6Z8xcjzs">Watch on YouTube</a><br>
-  E1M1: normal 4K play at full speed with the same clean software-rendered presentation.
+  E1M1
   <br>
 </p>
 
@@ -58,7 +58,7 @@
   </a>
   <br>
   <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">Watch on YouTube</a><br>
-  PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio.
+  PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio<br>...including music (doom didn't support this!)
   <br>
 </p>
 
