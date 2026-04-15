@@ -382,6 +382,9 @@ func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, 
 		return
 	}
 	texIndexed := sample.fromIndexed
+	if len(texIndexed) != 64*64 {
+		return
+	}
 	if state.defaultRow >= doomNumColorMaps || doomColormapEnabled {
 		if packedRow := doomColormapPackedRow(state.defaultRow); len(packedRow) == 256 {
 			drawPlaneSpanIndexedPackedUnchecked(pix32, pixI, count, texIndexed, packedRow, stepper)

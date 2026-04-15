@@ -143,6 +143,12 @@ func TestCycleSourcePortDetailLevelIncludesAuto(t *testing.T) {
 }
 
 func TestApplyAutoDetailSampleDropsDetailAfterSustainedLowFPS(t *testing.T) {
+	const (
+		samples  = 4
+		lowFPS   = 54.0
+		renderMS = 17.5
+		wantNext = 2
+	)
 	g := &game{
 		opts:               Options{SourcePortMode: true},
 		mode:               viewWalk,
@@ -150,28 +156,35 @@ func TestApplyAutoDetailSampleDropsDetailAfterSustainedLowFPS(t *testing.T) {
 		autoDetailEnabled:  true,
 		hudMessagesEnabled: true,
 	}
-	g.applyAutoDetailSample(54, 17.5)
+	g.applyAutoDetailSample(lowFPS, renderMS)
 	if g.detailLevel != 1 {
 		t.Fatalf("detail after first low sample=%d want 1", g.detailLevel)
 	}
-	g.applyAutoDetailSample(54, 17.5)
-	g.applyAutoDetailSample(54, 17.5)
+	g.applyAutoDetailSample(lowFPS, renderMS)
+	g.applyAutoDetailSample(lowFPS, renderMS)
 	if g.detailLevel != 1 {
 		t.Fatalf("detail before fourth low sample=%d want 1", g.detailLevel)
 	}
-	g.applyAutoDetailSample(54, 17.5)
-	if g.detailLevel != 2 {
-		t.Fatalf("detail after fourth low sample=%d want 2", g.detailLevel)
+	g.applyAutoDetailSample(lowFPS, renderMS)
+	if g.detailLevel != wantNext {
+		t.Fatalf("detail after %dth low sample=%d want %d", samples, g.detailLevel, wantNext)
 	}
 	if g.autoDetailCooldown == 0 {
 		t.Fatal("expected auto detail cooldown after change")
 	}
-	if g.useText != "Detail: AUTO DOWN -> 1/3x" {
-		t.Fatalf("useText=%q want auto down message", g.useText)
+	wantText := "Detail: AUTO DOWN -> " + g.detailLevelLabelFor(wantNext)
+	if g.useText != wantText {
+		t.Fatalf("useText=%q want %q", g.useText, wantText)
 	}
 }
 
 func TestApplyAutoDetailSampleRaisesDetailAfterHeadroom(t *testing.T) {
+	const (
+		samples     = 4
+		headroomFPS = 70.0
+		renderMS    = 3.0
+		wantNext    = 1
+	)
 	g := &game{
 		opts:               Options{SourcePortMode: true},
 		mode:               viewWalk,
@@ -180,17 +193,24 @@ func TestApplyAutoDetailSampleRaisesDetailAfterHeadroom(t *testing.T) {
 		hudMessagesEnabled: true,
 	}
 	for i := 0; i < 4; i++ {
-		g.applyAutoDetailSample(70, 3.0)
+		g.applyAutoDetailSample(headroomFPS, renderMS)
 	}
-	if g.detailLevel != 1 {
-		t.Fatalf("detail after high-FPS samples=%d want 1", g.detailLevel)
+	if g.detailLevel != wantNext {
+		t.Fatalf("detail after %d high-FPS samples=%d want %d", samples, g.detailLevel, wantNext)
 	}
-	if g.useText != "Detail: AUTO UP -> 1/2x" {
-		t.Fatalf("useText=%q want auto up message", g.useText)
+	wantText := "Detail: AUTO UP -> " + g.detailLevelLabelFor(wantNext)
+	if g.useText != wantText {
+		t.Fatalf("useText=%q want %q", g.useText, wantText)
 	}
 }
 
 func TestApplyAutoDetailSampleRaisesDetailAtVsyncCappedFPS(t *testing.T) {
+	const (
+		samples  = 4
+		vsyncFPS = 60.0
+		renderMS = 3.0
+		wantNext = 1
+	)
 	g := &game{
 		opts:               Options{SourcePortMode: true},
 		mode:               viewWalk,
@@ -199,17 +219,24 @@ func TestApplyAutoDetailSampleRaisesDetailAtVsyncCappedFPS(t *testing.T) {
 		hudMessagesEnabled: true,
 	}
 	for i := 0; i < 4; i++ {
-		g.applyAutoDetailSample(60.0, 3.0)
+		g.applyAutoDetailSample(vsyncFPS, renderMS)
 	}
-	if g.detailLevel != 1 {
-		t.Fatalf("detail after vsync-capped samples=%d want 1", g.detailLevel)
+	if g.detailLevel != wantNext {
+		t.Fatalf("detail after %d vsync-capped samples=%d want %d", samples, g.detailLevel, wantNext)
 	}
-	if g.useText != "Detail: AUTO UP -> 1/2x" {
-		t.Fatalf("useText=%q want auto up message", g.useText)
+	wantText := "Detail: AUTO UP -> " + g.detailLevelLabelFor(wantNext)
+	if g.useText != wantText {
+		t.Fatalf("useText=%q want %q", g.useText, wantText)
 	}
 }
 
-func TestApplyAutoDetailSampleRaisesDetailWithLowRenderMSAt50FPS(t *testing.T) {
+func TestApplyAutoDetailSampleDropsDetailAt50FPSEvenWithLowRenderMS(t *testing.T) {
+	const (
+		samples  = 4
+		fps      = 50.0
+		renderMS = 2.6
+		wantNext = 3
+	)
 	g := &game{
 		opts:               Options{SourcePortMode: true},
 		mode:               viewWalk,
@@ -218,17 +245,24 @@ func TestApplyAutoDetailSampleRaisesDetailWithLowRenderMSAt50FPS(t *testing.T) {
 		hudMessagesEnabled: true,
 	}
 	for i := 0; i < 4; i++ {
-		g.applyAutoDetailSample(50.0, 2.6)
+		g.applyAutoDetailSample(fps, renderMS)
 	}
-	if g.detailLevel != 1 {
-		t.Fatalf("detail after 50 FPS high-headroom samples=%d want 1", g.detailLevel)
+	if g.detailLevel != wantNext {
+		t.Fatalf("detail after %d low-FPS samples=%d want %d", samples, g.detailLevel, wantNext)
 	}
-	if g.useText != "Detail: AUTO UP -> 1/2x" {
-		t.Fatalf("useText=%q want auto up message", g.useText)
+	wantText := "Detail: AUTO DOWN -> " + g.detailLevelLabelFor(wantNext)
+	if g.useText != wantText {
+		t.Fatalf("useText=%q want %q", g.useText, wantText)
 	}
 }
 
-func TestApplyAutoDetailSampleRaisesToFullDetailWithinRaisedBudget(t *testing.T) {
+func TestApplyAutoDetailSampleDropsFromHalfDetailAt50FPS(t *testing.T) {
+	const (
+		samples  = 4
+		fps      = 50.0
+		renderMS = 2.6
+		wantNext = 2
+	)
 	g := &game{
 		opts:               Options{SourcePortMode: true},
 		mode:               viewWalk,
@@ -237,17 +271,23 @@ func TestApplyAutoDetailSampleRaisesToFullDetailWithinRaisedBudget(t *testing.T)
 		hudMessagesEnabled: true,
 	}
 	for i := 0; i < 4; i++ {
-		g.applyAutoDetailSample(50.0, 2.6)
+		g.applyAutoDetailSample(fps, renderMS)
 	}
-	if g.detailLevel != 0 {
-		t.Fatalf("detail after full-detail headroom samples=%d want 0", g.detailLevel)
+	if g.detailLevel != wantNext {
+		t.Fatalf("detail after %d low-FPS samples=%d want %d", samples, g.detailLevel, wantNext)
 	}
-	if g.useText != "Detail: AUTO UP -> 1x" {
-		t.Fatalf("useText=%q want full-detail auto up message", g.useText)
+	wantText := "Detail: AUTO DOWN -> " + g.detailLevelLabelFor(wantNext)
+	if g.useText != wantText {
+		t.Fatalf("useText=%q want %q", g.useText, wantText)
 	}
 }
 
 func TestApplyAutoDetailSampleDoesNotRaiseWhenProjectedRenderExceedsBudget(t *testing.T) {
+	const (
+		samples  = 4
+		fps      = 60.0
+		renderMS = 6.5
+	)
 	g := &game{
 		opts:               Options{SourcePortMode: true},
 		mode:               viewWalk,
@@ -256,10 +296,10 @@ func TestApplyAutoDetailSampleDoesNotRaiseWhenProjectedRenderExceedsBudget(t *te
 		hudMessagesEnabled: true,
 	}
 	for i := 0; i < 4; i++ {
-		g.applyAutoDetailSample(60.0, 6.5)
+		g.applyAutoDetailSample(fps, renderMS)
 	}
 	if g.detailLevel != 2 {
-		t.Fatalf("detail after over-budget projected samples=%d want 2", g.detailLevel)
+		t.Fatalf("detail after %d over-budget samples=%d want 2", samples, g.detailLevel)
 	}
 	if g.useText != "" {
 		t.Fatalf("useText=%q want empty when no raise occurs", g.useText)

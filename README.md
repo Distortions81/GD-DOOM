@@ -44,8 +44,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Detailed PC speaker emulation: on current platforms, `-pc-speaker` recreates the harsh, buzzy PC speaker sound of old DOS machines through a dedicated emulation path that pays attention to timing, pitch behavior, speaker response, and the metallic ring of a small PC case.
 - Linux hardware PC speaker output: on Linux, `-pc-speaker-hw` drives the real `/dev/input/by-path/…pcspkr*-event-spkr` device directly via evdev — no audio card involved, just the actual buzzer on the motherboard.
 - Analog touch controls: the browser and mobile build includes a dual-pad touch layout with analog joystick input — left pad for movement and strafe, right pad for turning with a softer non-linear stick response, fire/use activation at the outer edges of the right pad, an in-game top-right `ESC` button, touch-aware restart prompts, and a thumb indicator showing current deflection.
-- Browser save/load uses `localStorage` for saves and includes save-slot preview thumbnails in the save/load menu.
-- Save/load now persists in browser storage and shows slot metadata/thumbnails while returning to saved games from main menu and map transitions.
+- Browser save/load uses `localStorage` and includes slot metadata plus preview thumbnails in the save/load flow.
 - Episode finales: the Doom episode end sequences (text crawl + cast screen + bunny screen) play correctly after completing an episode.
 - Browser play: the same project also has a playable browser version with local WAD loading.
 
@@ -56,6 +55,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but the act
 - Higher-resolution presentation for walls, sprites, HUD, and automap.
 - Smoothed camera movement, turning, and thing motion between Doom tics.
 - Smoother texture changes, weapon transitions, and broader multi-frame sprite animation.
+- Vanilla-style special effects at modern resolutions: the screen-melt transition and invisibility/fuzz effect are rendered to preserve the DOS/vanilla look even when the game is presented at much higher resolutions.
 - Integrated automap with follow mode, rotate mode, big-map view, grid, and map marks.
 - Stable faithful transitions: transition capture and presentation now use the consistent game render buffer so menu/game resolution changes during transitions are avoided.
 - Startup/input polish: startup screens can be dismissed immediately, and web builds support explicit click-to-play when autoplay is blocked.
@@ -73,11 +73,6 @@ The game still runs on Doom-style simulation and classic map data. The extra wor
 - Tunable PC speaker behavior: `-pc-speaker-interleave-hz` controls music/SFX switching while `-pc-speaker-hw` and `-pc-speaker` use hardware-aware timing.
 - In-game music menu and browser music flow.
 - Live voice capture with selectable codec, automatic gain control, noise gate, and push-to-talk support.
-
-If you just want the short version:
-
-- `impsynth` sounds more like classic FM-synth Doom.
-- `meltysynth` is the choice if you want a different MIDI playback character, similar in spirit to choosing a different MIDI device or synth, through SoundFont-based playback.
 
 `-pc-speaker` is also more than a novelty toggle. It is meant to sound like the real old PC speaker path: brittle attack, buzzy tone, timer-driven pitch behavior, and the cramped metallic character of sound coming from a tiny speaker inside a beige box. On Linux, `-pc-speaker-hw` goes a step further and routes output to the actual hardware buzzer (`/dev/input/by-path/…pcspkr*-event-spkr`) through evdev — no audio card involved. The process needs write permission to that device node.
 
@@ -99,10 +94,21 @@ Startup options mainly decide what kind of session you want to run: what game da
 
 ## Requirements
 
-- Go `1.26.1` or newer
+- Go `1.26.1` or newer from [golang.org](https://go.dev/dl/)
 - A Doom game WAD such as `DOOM.WAD`, `DOOM1.WAD`, `DOOM2.WAD`, `TNT.WAD`, or `PLUTONIA.WAD`
 
 On Linux, native builds also need the usual Ebiten desktop dependencies for X11, OpenGL, and audio.
+
+On Debian/Ubuntu, a typical setup is:
+
+```bash
+sudo apt update
+sudo apt install -y \
+  build-essential pkg-config \
+  libasound2-dev libpulse-dev \
+  libx11-dev libxcursor-dev libxinerama-dev libxrandr-dev libxi-dev \
+  libgl1-mesa-dev libxxf86vm-dev
+```
 
 ## Quick Start
 
@@ -336,11 +342,9 @@ Browser builds can also download and cache SoundFonts for `meltysynth`, so the w
 
 The browser build is meant to be genuinely playable, not just a minimal demo. It shares most of the same runtime code, but a few features are still platform-specific, especially around local microphone capture.
 
-On browsers with strict autoplay policies, clicking once is required to start audio playback in the game.
+On browsers with strict autoplay policies, clicking once is required to start audio playback in the game. WASM sessions end with a web-appropriate quit hint (`close the page to quit`) instead of a desktop session message.
 
-WASM sessions end with a web-appropriate quit hint (`close the page to quit`) instead of a desktop session message.
-
-On touch devices the browser build shows a dual-pad on-screen layout: the left pad controls forward/back movement and strafing, the right pad handles turning with a more typical non-linear stick curve. Fire and use activate only when your thumb reaches the outer edge of the right pad, which keeps accidental shots from killing accidental strafes. A small indicator follows your thumb to show current deflection. When touch controls are active, the title screen prompt changes to `TOUCH SCREEN TO START`, the death overlay prompts `PRESS FIRE TO RESTART`, frontend submenus continue to show touch buttons, and gameplay adds a semi-transparent top-right `ESC` button for opening the menu.
+On touch devices the browser build shows the dual-pad layout described above: the left pad controls movement and strafing, the right pad handles turning, fire/use trigger at the outer edge of the right pad, and gameplay adds a top-right `ESC` button while touch-aware prompts remain visible through title, restart, and submenu flows.
 
 ## Development
 
