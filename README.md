@@ -36,6 +36,9 @@
   <a href="https://youtu.be/ID52vj9WQ8A">Watch on YouTube</a><br>
   E1M5: Doom's default first demo playback at game menu - HQ MIDI music
   <br>
+  Full SGM (HQ MIDI) music renders playlist:
+  <a href="https://www.youtube.com/playlist?list=PLMxxYNFZPBOgQWuzTKGScjD2tF3SUfeFD">YouTube playlist</a>
+  <br>
 </p>
 
 <p align="center">
@@ -45,6 +48,9 @@
   <br>
   <a href="https://www.youtube.com/watch?v=tkc6Z8xcjzs">Watch on YouTube</a><br>
   E1M1 - OPL/AdLib FM music
+  <br>
+  Full OPL/AdLib FM-Synth music renders playlist:
+  <a href="https://www.youtube.com/playlist?list=PLMxxYNFZPBOh-2qK8iihIQkbcgwXgBegD">YouTube playlist</a>
   <br>
 </p>
 
