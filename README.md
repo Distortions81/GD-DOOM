@@ -9,26 +9,32 @@
 <p align="center">
   <img src="screenshots/e1m1.png" alt="E1M1 screenshot" width="900">
   <br>
-  Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color and a sharper modern presentation without losing Doom's original feel.<br>Still software rendered, not smeary GPU rendering.
-  <br><br>
+  Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color, and a sharper modern presentation without losing Doom's original feel.
+  <br>
+  Still software rendered, not smeary GPU rendering.
+</p>
+
+<p align="center">
   <img src="screenshots/faithful.png" alt="Faithful mode screenshot" width="900">
   <br>
   Faithful mode: the classic Doom look, preserved when you want the old-school presentation.
-  <br><br>
+</p>
+
+<p align="center">
   <img src="screenshots/e1m1-map.png" alt="E1M1 map view" width="900">
   <br>
-  Automap view: Better suited for modern displays, with a cleaner presentation that makes navigation and route planning faster.
-  <br><br>
+  Automap view: better suited for modern displays, with a cleaner presentation that makes navigation and route planning faster.
+  <br>
   Play in browser now: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
 </p>
 
 <p align="center">
   <a href="https://youtu.be/ID52vj9WQ8A">
-    <img src="screenshots/level.png" alt="Watch the GD-DOOM gameplay video on YouTube" width="900">
+    <img src="https://img.youtube.com/vi/ID52vj9WQ8A/maxresdefault.jpg" alt="Watch the GD-DOOM E1M5 built-in demo on YouTube" width="900">
   </a>
   <br>
   <a href="https://youtu.be/ID52vj9WQ8A">Watch on YouTube</a><br>
-  E1M5 built-in doom demo
+  E1M5 built-in demo
   <br>
 </p>
 
@@ -58,7 +64,9 @@
   </a>
   <br>
   <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">Watch on YouTube</a><br>
-  PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio<br>...including music (doom didn't support this!)
+  PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio.
+  <br>
+  Including music, which original Doom did not support through PC speaker output.
   <br>
 </p>
 
