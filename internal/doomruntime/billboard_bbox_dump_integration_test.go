@@ -62,7 +62,10 @@ type billboardBBoxEntry struct {
 }
 
 func TestGenerateAlphaPatchBoundingBoxes(t *testing.T) {
-	wadPath := findDOOM1WAD(t)
+	wadPath := strings.TrimSpace(os.Getenv("GD_DUMP_BILLBOARD_WAD"))
+	if wadPath == "" {
+		wadPath = findDOOM1WAD(t)
+	}
 	wf, err := wad.Open(wadPath)
 	if err != nil {
 		t.Fatalf("open wad %s: %v", wadPath, err)
@@ -77,7 +80,10 @@ func TestGenerateAlphaPatchBoundingBoxes(t *testing.T) {
 		t.Fatal("alpha patch bank is empty")
 	}
 
-	outDir := filepath.Join("testdata", "alpha_patch_bbox_dump")
+	outDir := strings.TrimSpace(os.Getenv("GD_DUMP_BILLBOARD_OUT_DIR"))
+	if outDir == "" {
+		outDir = filepath.Join("testdata", "alpha_patch_bbox_dump")
+	}
 	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", outDir, err)
 	}
@@ -476,6 +482,14 @@ func buildBillboardSpritePatchBankForTest(t *testing.T, ts *doomtex.Set) map[str
 		add(fmt.Sprintf("FIRE%c0", fr))
 		add(fmt.Sprintf("FIRE%c1", fr))
 	}
+	for _, pfx := range []string{"APBX", "APLS", "IFOG", "PINS", "PINV", "SOUL"} {
+		for fr := byte('A'); fr <= byte('E'); fr++ {
+			add(fmt.Sprintf("%s%c0", pfx, fr))
+		}
+	}
+	for _, name := range []string{"PLSSA0", "PLSSB0", "BFS1A0", "BFS1B0"} {
+		add(name)
+	}
 
 	for _, name := range []string{
 		"PLAYN0", "POSSL0", "SPOSL0", "TROOL0", "SARGN0", "HEADL0", "SKULF0", "BBRNA0", "BBRNB0",
@@ -487,6 +501,7 @@ func buildBillboardSpritePatchBankForTest(t *testing.T, ts *doomtex.Set) map[str
 		"BKEYA0", "YKEYA0", "RKEYA0", "BSKUA0", "YSKUA0", "RSKUA0",
 		"STIMA0", "MEDIA0", "SOULA0", "BON1A0", "BON2A0",
 		"ARM1A0", "ARM2A0", "PINVA0", "PSTRA0", "PINSA0", "SUITA0", "PMAPA0", "PVISA0", "MEGAA0",
+		"APBXA0", "APLSA0", "IFOGA0", "PLSSA0", "PLSEA0", "BFS1A0",
 		"CLIPA0", "AMMOA0", "SHELA0", "SBOXA0", "ROCKA0", "BROKA0", "CELLA0", "CELPA0", "BPAKA0",
 		"SHOTA0", "MGUNA0", "LAUNA0", "PLASA0", "CSAWA0", "BFUGA0",
 		"BAR1A0", "BEXPA0",

@@ -35,8 +35,8 @@ func spawnRemotePlayer(m *mapdata.Map, slot int) player {
 	}
 	b := mapBounds(m)
 	return player{
-		x: int64(((b.minX + b.maxX) / 2) * fracUnit),
-		y: int64(((b.minY + b.maxY) / 2) * fracUnit),
+		x:     int64(((b.minX + b.maxX) / 2) * fracUnit),
+		y:     int64(((b.minY + b.maxY) / 2) * fracUnit),
 		ceilz: 128 * fracUnit, subsector: -1, sector: -1,
 		viewHeight: playerViewHeight,
 	}
@@ -178,6 +178,7 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 		baseZ := float64(rp.p.z) / fracUnit
 		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focalV
 		w := float64(ref.tex.Width) * scale
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := sy - float64(ref.tex.OffsetY)*scaleY

@@ -9791,6 +9791,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -9870,6 +9871,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -9945,6 +9947,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -10021,6 +10024,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -10114,6 +10118,7 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, n
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Width <= 0 || ref.tex.Height <= 0 {
 			continue
 		}
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -10805,6 +10810,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near 
 		clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scaleY, viewH)
 		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focalV
 		w := float64(ref.tex.Width) * scale
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := sy - float64(ref.tex.OffsetY)*scaleY
@@ -11080,6 +11086,7 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, focalV, near fl
 		floorZFixed := g.thingFloorZ(txFixed, tyFixed)
 		floorZ := float64(floorZFixed) / fracUnit
 		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focalV
+		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		if h <= 0 {
 			continue
@@ -14497,6 +14504,22 @@ func doomFocalLength(viewW int) float64 {
 	return float64(viewW) * 0.5
 }
 
+var nonAspectCorrectedSpritePatchPrefixes = map[string]struct{}{
+	"APBX": {},
+	"APLS": {},
+	"BAL1": {},
+	"BAL2": {},
+	"BFS1": {},
+	"IFOG": {},
+	"MEGA": {},
+	"PINS": {},
+	"PINV": {},
+	"PLSE": {},
+	"PLSS": {},
+	"SOUL": {},
+	"TFOG": {},
+}
+
 // doomPixelAspect is the classic Doom pixel aspect ratio.
 // Doom rendered at 320x200 but was displayed at 4:3 (320x240 effective),
 // so each pixel is 6/5 taller than wide when displayed correctly.
@@ -14507,6 +14530,23 @@ func (g *game) verticalFocalLength(focal float64) float64 {
 		return focal * doomPixelAspect
 	}
 	return focal
+}
+
+func (g *game) spriteScaleYForAspect(key string, scale, scaleY float64) float64 {
+	if scaleY <= 0 {
+		return scaleY
+	}
+	if g == nil || !g.opts.SourcePortMode || g.opts.DisableGeometryAspectCorrect {
+		return scaleY
+	}
+	key = strings.ToUpper(strings.TrimSpace(key))
+	if len(key) < 4 {
+		return scaleY
+	}
+	if _, ok := nonAspectCorrectedSpritePatchPrefixes[key[:4]]; ok {
+		return scale
+	}
+	return scaleY
 }
 
 func shadeRGBByMul(r, g, b byte, mul uint32) (byte, byte, byte) {
