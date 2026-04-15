@@ -17,6 +17,7 @@ type WallTexture struct {
 	Height          int
 	OffsetX         int
 	OffsetY         int
+	MaskedMidClass  uint8
 }
 
 func PackOpaqueRun(start, end int) uint32 {

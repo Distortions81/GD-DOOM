@@ -590,6 +590,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	rendererWorkers := fs.Int("renderer-workers", defaultRendererWorkers, "renderer worker count (0 uses built-in default policy)")
+	legacyMaskedMids := fs.Bool("legacy-masked-mids", false, "disable masked-mid fast paths and force the legacy renderer")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
 	allCheats := fs.Bool("all-cheats", defaultAllCheats, "legacy alias for startup full cheats (equivalent to -cheat-level=3 -invuln=true)")
 	cpuProfile := fs.String("cpuprofile", defaultCPUProfile, "write Go CPU profile to file")
@@ -1228,6 +1229,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DisableWallSpanClip:        !defaultWallSpanClip,
 			DisableWallSliceOcclusion:  !defaultWallSliceOcclusion,
 			DisableBillboardClipping:   !defaultBillboardClipping,
+			DisableMaskedMidFastPaths:  *legacyMaskedMids,
 			RendererWorkers:            *rendererWorkers,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
@@ -2674,6 +2676,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		DisableWallSpanClip:        !cfg.wallSpanClip,
 		DisableWallSliceOcclusion:  !cfg.wallSliceOcclusion,
 		DisableBillboardClipping:   !cfg.billboardClipping,
+		DisableMaskedMidFastPaths:  false,
 		RendererWorkers:            cfg.rendererWorkers,
 		TextureAnimCrossfadeFrames: cfg.textureAnimCrossfadeFrames,
 		NoVsync:                    cfg.noVsync,

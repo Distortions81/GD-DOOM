@@ -323,6 +323,27 @@ type maskedMidSeg struct {
 	hasOcclusionBBox bool
 }
 
+type maskedMidTextureClass uint8
+
+const (
+	maskedMidTextureUnknown maskedMidTextureClass = iota
+	maskedMidTextureFallback
+	maskedMidTextureLargeOpaque
+	maskedMidTextureSparseFence
+)
+
+var maskedMidTextureClassOverrides = map[string]maskedMidTextureClass{
+	"MIDSPACE": maskedMidTextureSparseFence,
+	"MIDGRATE": maskedMidTextureSparseFence,
+	"MIDBARS1": maskedMidTextureSparseFence,
+	"MIDBARS3": maskedMidTextureSparseFence,
+	"MIDBRN1":  maskedMidTextureLargeOpaque,
+	"MIDBRONZ": maskedMidTextureLargeOpaque,
+	"BRNBIGL":  maskedMidTextureLargeOpaque,
+	"BRNBIGC":  maskedMidTextureLargeOpaque,
+	"BRNBIGR":  maskedMidTextureLargeOpaque,
+}
+
 func wallSegPrepassProjection(pp wallSegPrepass) scene.WallProjection {
 	return pp.prepass.Projection
 }
@@ -337,6 +358,7 @@ func buildTexturePointerCache(bank map[string]WallTexture) ([]WallTexture, map[s
 		if tex.Width > 0 && tex.Height > 0 && len(tex.RGBA) == tex.Width*tex.Height*4 {
 			tex.EnsureOpaqueColumnBounds()
 		}
+		tex.MaskedMidClass = uint8(classifyMaskedMidTextureForLoad(key, &tex))
 		store = append(store, tex)
 		ptrs[key] = &store[len(store)-1]
 	}
@@ -7993,6 +8015,20 @@ func (g *game) drawMaskedMidSegRange(ms maskedMidSeg, x0, x1 int, focal float64,
 	if g.maskedMidSegFullyOccluded(ms, focal, halfH) {
 		return
 	}
+	if g.opts.DisableMaskedMidFastPaths {
+		g.drawMaskedMidSegColumns(ms, focal, halfH, int(shadeMul), doomRow)
+		return
+	}
+	switch classifyMaskedMidTexture(ms.tex) {
+	case maskedMidTextureLargeOpaque:
+		if g.drawMaskedMidSegLargeOpaque(ms, focal, halfH, int(shadeMul), doomRow) {
+			return
+		}
+	case maskedMidTextureSparseFence:
+		if g.drawMaskedMidSegSparseFence(ms, focal, halfH, int(shadeMul), doomRow) {
+			return
+		}
+	}
 	g.drawMaskedMidSegColumns(ms, focal, halfH, int(shadeMul), doomRow)
 }
 
@@ -8129,6 +8165,153 @@ func (s *maskedMidEnvelopeStepper) Next() {
 	s.t += s.tStep
 }
 
+func (g *game) drawMaskedMidSegLargeOpaque(ms maskedMidSeg, focal, halfH float64, shadeMul, doomRow int) bool {
+	base := ms.tex.from
+	if g == nil || base == nil || base.Width <= 0 || base.Height <= 0 || ms.tex.alpha != 0 {
+		return false
+	}
+	if len(base.Indexed) != base.Width*base.Height || len(base.IndexedColMajor) != base.Width*base.Height {
+		return false
+	}
+	if len(maskedWallShadePackedRow(shadeMul, doomRow)) != 256 {
+		return false
+	}
+	if len(base.OpaqueRunOffs) != base.Width+1 || len(base.OpaqueRuns) < int(base.OpaqueRunOffs[base.Width]) {
+		if !base.EnsureOpaqueColumnBounds() {
+			return false
+		}
+	}
+	if len(base.OpaqueColumnTop) != base.Width || len(base.OpaqueColumnBot) != base.Width {
+		return false
+	}
+	stepper := scene.NewWallProjectionStepper(ms.Projection, ms.X0)
+	envelope := newMaskedMidEnvelopeStepper(ms.Projection, ms.X0, ms.WorldHigh, ms.WorldLow, focal, halfH)
+	used := false
+	for x := ms.X0; x <= ms.X1; x++ {
+		depth, texU, ok := stepper.Sample()
+		y0, y1, envOK := envelope.Sample()
+		stepper.Next()
+		envelope.Next()
+		if !ok || !envOK || depth <= 0 || !isFinite(depth) || y0 > y1 {
+			continue
+		}
+		if y0 < 0 {
+			y0 = 0
+		}
+		if y1 >= g.viewH {
+			y1 = g.viewH - 1
+		}
+		if y0 > y1 {
+			continue
+		}
+		texU += ms.TexUOff
+		if x == ms.X0 || x == ms.X1 {
+			g.drawBasicWallColumnTexturedMasked(x, y0, y1, depth, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
+			used = true
+			continue
+		}
+		tx := maskedMidTextureColumn(*base, texU)
+		if tx < 0 || tx >= base.Width {
+			continue
+		}
+		rowScale := depth / focal
+		texV := ms.TexMid - ((halfH - (float64(y0) + 0.5)) * rowScale)
+		texVFixed := floorFixed(texV)
+		texVStepFixed := floorFixed(rowScale)
+		if texVStepFixed <= 0 {
+			continue
+		}
+		var trimOK bool
+		y0, y1, texVFixed, trimOK = trimMaskedColumnToOpaqueBounds(y0, y1, texVFixed, texVStepFixed, base.Height, int(base.OpaqueColumnTop[tx]), int(base.OpaqueColumnBot[tx]))
+		if !trimOK {
+			continue
+		}
+		depthQ := encodeDepthQ(depth)
+		visible := g.maskedColumnVisibleSpans(x, y0, y1, depthQ)
+		if len(visible) == 0 || g.cutoutColumnVisibleSpansFullyCovered(x, g.viewW, visible) {
+			continue
+		}
+		if drawMaskedColumnOpaqueRuns(g, x, y0, y1, texVFixed, texVStepFixed, base, tx, nil, depthQ, shadeMul, doomRow, visible) {
+			used = true
+			continue
+		}
+		g.drawBasicWallColumnTexturedMasked(x, y0, y1, depth, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
+		used = true
+	}
+	return used
+}
+
+func (g *game) drawMaskedMidSegSparseFence(ms maskedMidSeg, focal, halfH float64, shadeMul, doomRow int) bool {
+	base := ms.tex.from
+	if g == nil || base == nil || base.Width <= 0 || base.Height <= 0 || ms.tex.alpha != 0 {
+		return false
+	}
+	if len(base.Indexed) != base.Width*base.Height || len(base.IndexedColMajor) != base.Width*base.Height {
+		return false
+	}
+	if len(maskedWallShadePackedRow(shadeMul, doomRow)) != 256 {
+		return false
+	}
+	if len(base.OpaqueRunOffs) != base.Width+1 || len(base.OpaqueRuns) < int(base.OpaqueRunOffs[base.Width]) {
+		if !base.EnsureOpaqueColumnBounds() {
+			return false
+		}
+	}
+	if len(base.OpaqueColumnTop) != base.Width || len(base.OpaqueColumnBot) != base.Width {
+		return false
+	}
+	stepper := scene.NewWallProjectionStepper(ms.Projection, ms.X0)
+	envelope := newMaskedMidEnvelopeStepper(ms.Projection, ms.X0, ms.WorldHigh, ms.WorldLow, focal, halfH)
+	used := false
+	for x := ms.X0; x <= ms.X1; x++ {
+		depth, texU, ok := stepper.Sample()
+		y0, y1, envOK := envelope.Sample()
+		stepper.Next()
+		envelope.Next()
+		if !ok || !envOK || depth <= 0 || !isFinite(depth) || y0 > y1 {
+			continue
+		}
+		if y0 < 0 {
+			y0 = 0
+		}
+		if y1 >= g.viewH {
+			y1 = g.viewH - 1
+		}
+		if y0 > y1 {
+			continue
+		}
+		texU += ms.TexUOff
+		tx := maskedMidTextureColumn(*base, texU)
+		if tx < 0 || tx >= base.Width {
+			continue
+		}
+		rowScale := depth / focal
+		texV := ms.TexMid - ((halfH - (float64(y0) + 0.5)) * rowScale)
+		texVFixed := floorFixed(texV)
+		texVStepFixed := floorFixed(rowScale)
+		if texVStepFixed <= 0 {
+			continue
+		}
+		var trimOK bool
+		y0, y1, texVFixed, trimOK = trimMaskedColumnToOpaqueBounds(y0, y1, texVFixed, texVStepFixed, base.Height, int(base.OpaqueColumnTop[tx]), int(base.OpaqueColumnBot[tx]))
+		if !trimOK {
+			continue
+		}
+		depthQ := encodeDepthQ(depth)
+		visible := g.maskedColumnVisibleSpans(x, y0, y1, depthQ)
+		if len(visible) == 0 || g.cutoutColumnVisibleSpansFullyCovered(x, g.viewW, visible) {
+			continue
+		}
+		if drawMaskedColumnOpaqueRuns(g, x, y0, y1, texVFixed, texVStepFixed, base, tx, nil, depthQ, shadeMul, doomRow, visible) {
+			used = true
+			continue
+		}
+		g.drawBasicWallColumnTexturedMasked(x, y0, y1, depth, texU, ms.TexMid, focal, ms.tex, shadeMul, doomRow)
+		used = true
+	}
+	return used
+}
+
 func (g *game) drawMaskedMidSegColumns(ms maskedMidSeg, focal, halfH float64, shadeMul, doomRow int) {
 	stepper := scene.NewWallProjectionStepper(ms.Projection, ms.X0)
 	envelope := newMaskedMidEnvelopeStepper(ms.Projection, ms.X0, ms.WorldHigh, ms.WorldLow, focal, halfH)
@@ -8253,6 +8436,90 @@ func maskedMidTextureColumn(tex WallTexture, texU float64) int {
 		return txi & (tex.Width - 1)
 	}
 	return wrapIndex(txi, tex.Width)
+}
+
+func classifyMaskedMidTexture(sample wallTextureBlendSample) maskedMidTextureClass {
+	if sample.from == nil {
+		return maskedMidTextureFallback
+	}
+	if sample.from.MaskedMidClass != 0 {
+		return maskedMidTextureClass(sample.from.MaskedMidClass)
+	}
+	class := classifyMaskedMidTextureForLoad("", sample.from)
+	sample.from.MaskedMidClass = uint8(class)
+	return class
+}
+
+func classifyMaskedMidTextureForLoad(key string, tex *WallTexture) maskedMidTextureClass {
+	if tex == nil {
+		return maskedMidTextureFallback
+	}
+	if key != "" {
+		if override, ok := maskedMidTextureClassOverrides[normalizeFlatName(key)]; ok {
+			return override
+		}
+	}
+	return classifyMaskedMidTextureHeuristic(tex)
+}
+
+func classifyMaskedMidTextureHeuristic(tex *WallTexture) maskedMidTextureClass {
+	if tex == nil {
+		return maskedMidTextureFallback
+	}
+	if tex.Width <= 0 || tex.Height <= 0 {
+		return maskedMidTextureFallback
+	}
+	if len(tex.OpaqueRunOffs) != tex.Width+1 || len(tex.OpaqueRuns) < int(tex.OpaqueRunOffs[tex.Width]) {
+		if !tex.EnsureOpaqueColumnBounds() {
+			return maskedMidTextureFallback
+		}
+	}
+	totalPixels := tex.Width * tex.Height
+	if totalPixels <= 0 {
+		return maskedMidTextureFallback
+	}
+	opaquePixels := 0
+	nonEmptyCols := 0
+	totalRuns := 0
+	maxRunsInCol := 0
+	for tx := 0; tx < tex.Width; tx++ {
+		runStart := int(tex.OpaqueRunOffs[tx])
+		runEnd := int(tex.OpaqueRunOffs[tx+1])
+		if runEnd < runStart || runEnd > len(tex.OpaqueRuns) {
+			return maskedMidTextureFallback
+		}
+		runCount := runEnd - runStart
+		if runCount == 0 {
+			continue
+		}
+		nonEmptyCols++
+		totalRuns += runCount
+		if runCount > maxRunsInCol {
+			maxRunsInCol = runCount
+		}
+		for i := runStart; i < runEnd; i++ {
+			runTop, runBot := media.UnpackOpaqueRun(tex.OpaqueRuns[i])
+			if runBot < runTop {
+				continue
+			}
+			opaquePixels += runBot - runTop + 1
+		}
+	}
+	if opaquePixels <= 0 || nonEmptyCols <= 0 {
+		return maskedMidTextureFallback
+	}
+	coverage := float64(opaquePixels) / float64(totalPixels)
+	avgRunsPerCol := float64(totalRuns) / float64(nonEmptyCols)
+	switch {
+	case coverage >= 0.55 && avgRunsPerCol <= 2.25 && maxRunsInCol <= 4:
+		return maskedMidTextureLargeOpaque
+	case (coverage <= 0.55 && avgRunsPerCol >= 2.0) ||
+		(coverage <= 0.50 && avgRunsPerCol >= 1.5) ||
+		maxRunsInCol >= 6:
+		return maskedMidTextureSparseFence
+	default:
+		return maskedMidTextureFallback
+	}
 }
 
 func (g *game) collectCutoutItems(camX, camY, camAng, focal, focalV, near float64) {

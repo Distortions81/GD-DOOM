@@ -279,6 +279,156 @@ func TestDrawMaskedColumnOpaqueRuns_UsesIndexedShadeRow(t *testing.T) {
 	}
 }
 
+func TestClassifyMaskedMidTexture_LargeOpaque(t *testing.T) {
+	tex := WallTexture{
+		Width:           2,
+		Height:          4,
+		Indexed:         []byte{1, 2, 3, 4, 5, 6, 7, 8},
+		IndexedColMajor: []byte{1, 3, 5, 7, 2, 4, 6, 8},
+		OpaqueMask: []byte{
+			1, 1,
+			1, 0,
+			1, 1,
+			1, 1,
+		},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque metadata")
+	}
+	got := classifyMaskedMidTexture(wallTextureBlendSample{from: &tex})
+	if got != maskedMidTextureLargeOpaque {
+		t.Fatalf("class=%v want large opaque", got)
+	}
+}
+
+func TestClassifyMaskedMidTexture_SparseFence(t *testing.T) {
+	tex := WallTexture{
+		Width:           2,
+		Height:          8,
+		Indexed:         []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+		IndexedColMajor: []byte{1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16},
+		OpaqueMask: []byte{
+			1, 0,
+			0, 0,
+			1, 1,
+			0, 0,
+			1, 0,
+			0, 0,
+			0, 1,
+			0, 0,
+		},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque metadata")
+	}
+	got := classifyMaskedMidTexture(wallTextureBlendSample{from: &tex})
+	if got != maskedMidTextureSparseFence {
+		t.Fatalf("class=%v want sparse fence", got)
+	}
+}
+
+func TestDrawMaskedMidSegLargeOpaque_PreservesTransparentHole(t *testing.T) {
+	row := installTestWallShadeRow(t)
+	g := &game{
+		viewW:              1,
+		viewH:              8,
+		wallPix32:          make([]uint32, 8),
+		cutoutCoverageBits: make([]uint64, 1),
+		maskedClipCols:     make([][]scene.MaskedClipSpan, 1),
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          4,
+		Indexed:         []byte{10, 0, 20, 30},
+		IndexedColMajor: []byte{10, 0, 20, 30},
+		OpaqueMask:      []byte{1, 0, 1, 1},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque metadata")
+	}
+	ms := maskedMidSeg{
+		MaskedMidSeg: scene.MaskedMidSeg{
+			X0: 0,
+			X1: 0,
+			Projection: scene.WallProjection{
+				SX1:         0,
+				SX2:         1,
+				MinX:        0,
+				MaxX:        0,
+				InvDepth1:   1.0 / 64.0,
+				InvDepth2:   1.0 / 64.0,
+				UOverDepth1: 0,
+				UOverDepth2: 0,
+			},
+			WorldHigh: 2,
+			WorldLow:  -1,
+			TexMid:    2,
+		},
+		tex: wallTextureBlendSample{from: &tex},
+	}
+
+	if !g.drawMaskedMidSegLargeOpaque(ms, 64, 4, 256, 0) {
+		t.Fatal("expected large opaque fast path")
+	}
+	if g.wallPix32[3] != 0 {
+		t.Fatalf("transparent hole was drawn: %v", g.wallPix32)
+	}
+	if g.wallPix32[2] != row[10] || g.wallPix32[4] != row[20] || g.wallPix32[5] != row[30] {
+		t.Fatalf("opaque pixels missing: %v", g.wallPix32)
+	}
+}
+
+func TestDrawMaskedMidSegSparseFence_SkipsTransparentGaps(t *testing.T) {
+	row := installTestWallShadeRow(t)
+	g := &game{
+		viewW:              1,
+		viewH:              8,
+		wallPix32:          make([]uint32, 8),
+		cutoutCoverageBits: make([]uint64, 1),
+		maskedClipCols:     make([][]scene.MaskedClipSpan, 1),
+	}
+	tex := WallTexture{
+		Width:           1,
+		Height:          4,
+		Indexed:         []byte{11, 0, 22, 0},
+		IndexedColMajor: []byte{11, 0, 22, 0},
+		OpaqueMask:      []byte{1, 0, 1, 0},
+	}
+	if !tex.EnsureOpaqueColumnBounds() {
+		t.Fatal("expected opaque metadata")
+	}
+	ms := maskedMidSeg{
+		MaskedMidSeg: scene.MaskedMidSeg{
+			X0: 0,
+			X1: 0,
+			Projection: scene.WallProjection{
+				SX1:         0,
+				SX2:         1,
+				MinX:        0,
+				MaxX:        0,
+				InvDepth1:   1.0 / 64.0,
+				InvDepth2:   1.0 / 64.0,
+				UOverDepth1: 0,
+				UOverDepth2: 0,
+			},
+			WorldHigh: 2,
+			WorldLow:  -1,
+			TexMid:    2,
+		},
+		tex: wallTextureBlendSample{from: &tex},
+	}
+
+	if !g.drawMaskedMidSegSparseFence(ms, 64, 4, 256, 0) {
+		t.Fatal("expected sparse fence fast path")
+	}
+	if g.wallPix32[2] != row[11] || g.wallPix32[4] != row[22] {
+		t.Fatalf("opaque slats missing: %v", g.wallPix32)
+	}
+	if g.wallPix32[3] != 0 || g.wallPix32[5] != 0 {
+		t.Fatalf("transparent gaps were drawn: %v", g.wallPix32)
+	}
+}
+
 func TestDrawBasicWallColumnTexturedMasked_FallbackUsesVisibleSpans(t *testing.T) {
 	row := installTestWallShadeRow(t)
 	g := &game{
@@ -523,6 +673,32 @@ func TestBuildTexturePointerCache_PrecomputesOpaqueRuns(t *testing.T) {
 	}
 	if len(tex.OpaqueRuns) == 0 {
 		t.Fatal("expected precomputed opaque runs")
+	}
+	if got := maskedMidTextureClass(tex.MaskedMidClass); got != maskedMidTextureFallback {
+		t.Fatalf("masked mid class=%v want fallback", got)
+	}
+}
+
+func TestBuildTexturePointerCache_CachesMaskedMidClassOverride(t *testing.T) {
+	store, ptrs := buildTexturePointerCache(map[string]WallTexture{
+		"MIDGRATE": {
+			Width:  1,
+			Height: 2,
+			RGBA: []byte{
+				1, 1, 1, 255,
+				0, 0, 0, 0,
+			},
+		},
+	})
+	if len(store) != 1 || len(ptrs) != 1 {
+		t.Fatalf("store=%d ptrs=%d want 1,1", len(store), len(ptrs))
+	}
+	tex := ptrs["MIDGRATE"]
+	if tex == nil {
+		t.Fatal("expected cached texture pointer")
+	}
+	if got := maskedMidTextureClass(tex.MaskedMidClass); got != maskedMidTextureSparseFence {
+		t.Fatalf("masked mid class=%v want sparse fence override", got)
 	}
 }
 
