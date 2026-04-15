@@ -34,7 +34,7 @@
   </a>
   <br>
   <a href="https://youtu.be/ID52vj9WQ8A">Watch on YouTube</a><br>
-  E1M5: Doom's default first demo playback at game menu
+  E1M5: Doom's default first demo playback at game menu - HQ MIDI music
   <br>
 </p>
 
@@ -44,7 +44,7 @@
   </a>
   <br>
   <a href="https://www.youtube.com/watch?v=tkc6Z8xcjzs">Watch on YouTube</a><br>
-  E1M1
+  E1M1 - OPL/AdLib FM music
   <br>
 </p>
 
