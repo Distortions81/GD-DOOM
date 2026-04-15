@@ -9,7 +9,7 @@
 <p align="center">
   <img src="screenshots/e1m1.png" alt="E1M1 screenshot" width="900">
   <br>
-  Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color, and a sharper modern presentation without losing Doom's original feel.
+  Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color, interpolated lighting animations and a sharper modern presentation without losing Doom's original feel.
   <br>
   Still software rendered, not smeary GPU rendering.
 </p>
