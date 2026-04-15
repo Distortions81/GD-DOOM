@@ -144,6 +144,7 @@ for src in "${WAV_FILES[@]}"; do
 
   dst_rel="${rel%.*}.mp4"
   dst="${OUT_DIR}/${dst_rel}"
+  title="$(basename "${dst_rel%.*}")"
   mkdir -p "$(dirname "${dst}")"
 
   echo "mp4 ${rel} -> ${dst}"
@@ -154,6 +155,7 @@ for src in "${WAV_FILES[@]}"; do
     -c:v "${VIDEO_CODEC}" -preset "${PRESET}" -tune "${VIDEO_TUNE}" -crf "${CRF}" \
     -x264-params "keyint=${KEYINT}:min-keyint=${KEYINT}:scenecut=0" \
     -c:a "${AUDIO_CODEC}" -b:a "${AUDIO_BITRATE}" \
+    -metadata "title=${title}" \
     -r "${OUTPUT_FPS}" \
     -shortest \
     -movflags +faststart \

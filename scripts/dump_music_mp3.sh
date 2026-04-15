@@ -78,9 +78,13 @@ for src in "${WAV_FILES[@]}"; do
   fi
   dst_rel="${rel%.*}.mp3"
   dst="${OUT_DIR}/${dst_rel}"
+  title="$(basename "${dst_rel%.*}")"
   mkdir -p "$(dirname "${dst}")"
   echo "mp3 ${rel} -> ${dst}"
-  ffmpeg -v error -y -i "${src}" -codec:a libmp3lame -b:a 256k "${dst}"
+  ffmpeg -v error -y -i "${src}" \
+    -metadata "title=${title}" \
+    -codec:a libmp3lame -b:a 256k \
+    "${dst}"
 done
 
 echo "Converted ${#WAV_FILES[@]} file(s) to MP3 under ${OUT_DIR}"

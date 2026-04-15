@@ -53,11 +53,11 @@ func TestRunParseDumpMusicWritesOPLWav(t *testing.T) {
 		t.Fatalf("RunParse() code=%d stderr=%q", code, stderr.String())
 	}
 
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
+	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "MUSIC - OPL MAP01 Running from Evil.wav")
 	if _, err := os.Stat(wavPath); err != nil {
 		t.Fatalf("stat wav: %v", err)
 	}
-	coverPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.png")
+	coverPath := filepath.Join(outDir, "MUSIC", "OPL", "MUSIC - OPL MAP01 Running from Evil.png")
 	cf, err := os.Open(coverPath)
 	if err != nil {
 		t.Fatalf("open cover: %v", err)
@@ -119,7 +119,7 @@ func TestRunParseDumpMusicSkipsExistingNonZeroWav(t *testing.T) {
 		t.Fatalf("write wad: %v", err)
 	}
 
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
+	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "MUSIC - OPL MAP01 Running from Evil.wav")
 	if err := os.MkdirAll(filepath.Dir(wavPath), 0o755); err != nil {
 		t.Fatalf("mkdir wav dir: %v", err)
 	}
@@ -179,7 +179,7 @@ func TestRunParseDumpMusicRewritesZeroByteWav(t *testing.T) {
 		t.Fatalf("write wad: %v", err)
 	}
 
-	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "OPL-MAP01-Running from Evil.wav")
+	wavPath := filepath.Join(outDir, "MUSIC", "OPL", "MUSIC - OPL MAP01 Running from Evil.wav")
 	if err := os.MkdirAll(filepath.Dir(wavPath), 0o755); err != nil {
 		t.Fatalf("mkdir wav dir: %v", err)
 	}

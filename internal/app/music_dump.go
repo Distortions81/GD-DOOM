@@ -149,7 +149,7 @@ func dumpMusicWAVs(outDir string, resolvedWADPath string, wadExplicit bool, pwad
 				return fmt.Errorf("create renderer output directory: %w", err)
 			}
 			for _, track := range tracks {
-				outPath := filepath.Join(renderOut, dumpMusicOutputBase(renderer, track)+".wav")
+				outPath := filepath.Join(renderOut, dumpMusicOutputBase(target, renderer, track)+".wav")
 				exists, err := dumpMusicOutputExists(outPath)
 				if err != nil {
 					return fmt.Errorf("stat %s: %w", outPath, err)
@@ -407,18 +407,72 @@ func dumpMusicTrackBase(track runtimecfg.MusicPlayerTrack) string {
 	return strings.Join(parts, "-")
 }
 
-func dumpMusicOutputBase(renderer dumpMusicRenderer, track dumpMusicTrack) string {
-	parts := make([]string, 0, 2)
-	if rendererLabel := strings.TrimSpace(renderer.label); rendererLabel != "" {
-		parts = append(parts, rendererLabel)
+func dumpMusicOutputBase(target dumpMusicTarget, renderer dumpMusicRenderer, track dumpMusicTrack) string {
+	prefix := make([]string, 0, 2)
+	if gameTitle := dumpMusicFilenameGameTitle(target); gameTitle != "" {
+		prefix = append(prefix, gameTitle)
 	}
-	if trackBase := strings.TrimSpace(track.fileBase); trackBase != "" {
-		parts = append(parts, trackBase)
+	if synthTitle := dumpMusicFilenameSynthTitle(renderer); synthTitle != "" {
+		prefix = append(prefix, synthTitle)
 	}
-	if len(parts) == 0 {
+	trackTitle := dumpMusicFilenameTrackTitle(track)
+	switch {
+	case len(prefix) == 0 && trackTitle == "":
 		return "track"
+	case len(prefix) == 0:
+		return trackTitle
+	case trackTitle == "":
+		return strings.Join(prefix, " - ")
+	default:
+		return strings.Join(prefix, " - ") + " " + trackTitle
 	}
-	return strings.Join(parts, "-")
+}
+
+func dumpMusicFilenameGameTitle(target dumpMusicTarget) string {
+	switch strings.ToUpper(strings.TrimSpace(target.label)) {
+	case "DOOM", "DOOM1", "DOOMU":
+		return "DOOM 1993"
+	case "DOOM2":
+		return "DOOM II"
+	case "TNT":
+		return "Final Doom TNT"
+	case "PLUTONIA":
+		return "Final Doom Plutonia"
+	}
+	if name := musicDumpFilenamePart(target.displayName); name != "" {
+		return name
+	}
+	return musicDumpFilenamePart(target.label)
+}
+
+func dumpMusicFilenameSynthTitle(renderer dumpMusicRenderer) string {
+	label := strings.ToUpper(strings.TrimSpace(renderer.label))
+	switch label {
+	case "OPL":
+		return "OPL"
+	case "MIDI-SGM-ULTRA-HQ":
+		return "MIDI SGM HQ"
+	}
+	if name := musicDumpFilenamePart(renderer.displayName); name != "" {
+		if strings.HasPrefix(label, "MIDI-") {
+			return "MIDI " + name
+		}
+		return name
+	}
+	return musicDumpFilenamePart(renderer.label)
+}
+
+func dumpMusicFilenameTrackTitle(track dumpMusicTrack) string {
+	base := strings.TrimSpace(track.fileBase)
+	if base == "" {
+		base = track.label
+	}
+	base = strings.ReplaceAll(base, "-", " ")
+	if title := musicDumpFilenamePart(base); title != "" {
+		return title
+	}
+	lump := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(track.lumpName)), "D_")
+	return musicDumpFilenamePart(lump)
 }
 
 func dumpMusicTrackLabel(track runtimecfg.MusicPlayerTrack) string {

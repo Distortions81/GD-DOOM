@@ -92,6 +92,18 @@ func TestDumpMusicTracksForWADUsesMapAndOtherMusicNames(t *testing.T) {
 	}
 }
 
+func TestDumpMusicOutputBaseUsesTitleStyleNames(t *testing.T) {
+	got := dumpMusicOutputBase(
+		dumpMusicTarget{label: "DOOMU", displayName: "The Ultimate DOOM"},
+		dumpMusicRenderer{label: "MIDI-SGM-ULTRA-HQ", displayName: "SGM-Ultra-HQ"},
+		dumpMusicTrack{fileBase: "E1M1-At Dooms Gate", lumpName: "D_E1M1"},
+	)
+	want := "DOOM 1993 - MIDI SGM HQ E1M1 At Dooms Gate"
+	if got != want {
+		t.Fatalf("dumpMusicOutputBase()=%q want %q", got, want)
+	}
+}
+
 func TestMusicDumpFilenamePartKeepsReadableTitles(t *testing.T) {
 	if got := musicDumpFilenamePart("At Doom's Gate"); got != "At Dooms Gate" {
 		t.Fatalf("musicDumpFilenamePart=%q want %q", got, "At Dooms Gate")
