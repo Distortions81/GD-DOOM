@@ -66,7 +66,7 @@
   <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">Watch on YouTube</a><br>
   PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio.
   <br>
-  Including music, which original Doom did not support through PC speaker output.
+  Including music, which original Doom did not support!
   <br>
 </p>
 
