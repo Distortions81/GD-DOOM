@@ -527,9 +527,6 @@ func (sg *sessionGame) drawIntermissionPresented(screen *ebiten.Image) {
 	sg.drawIntermission(present)
 	screen.Fill(color.Black)
 	screen.DrawImage(present, nil)
-	if !sg.transitionActive() {
-		return
-	}
 	cw, ch := sg.transitionSurfaceSize(dw, dh)
 	capture := sg.ensureTransitionCaptureSurface(cw, ch)
 	capture.Clear()

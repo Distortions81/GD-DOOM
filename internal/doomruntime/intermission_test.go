@@ -282,6 +282,49 @@ func TestFinishIntermissionTransitionsAfterStateClears(t *testing.T) {
 	}
 }
 
+func TestDrawIntermissionPresentedSeedsTransitionLastFrame(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	sg := &sessionGame{
+		gameFactory: newGame,
+		g:           base,
+		rt:          base,
+		current:     base.m.Name,
+		opts: Options{
+			Width:          640,
+			Height:         400,
+			SourcePortMode: true,
+			StartInMapMode: true,
+			FlatBank:       base.opts.FlatBank,
+			WallTexBank:    base.opts.WallTexBank,
+		},
+		intermission: sessionIntermission{
+			state: intermissionState{
+				Active:     true,
+				Screen:     intermissionScreenShowNextLoc,
+				Episode:    1,
+				Last:       0,
+				Next:       1,
+				PointerOn:  true,
+				Show:       intermissionStats{MapName: "E1M1", NextMapName: "E1M2"},
+				Target:     intermissionStats{MapName: "E1M1", NextMapName: "E1M2"},
+				StartMusic: false,
+			},
+			nextMap: cloneMapForRestart(base.m),
+		},
+	}
+	screen := ebiten.NewImage(1280, 720)
+
+	sg.drawIntermissionPresented(screen)
+
+	last := sg.transition.LastFrame()
+	if last == nil {
+		t.Fatal("transition last frame = nil, want captured intermission frame")
+	}
+	if gotW, gotH := last.Bounds().Dx(), last.Bounds().Dy(); gotW != 1280 || gotH != 720 {
+		t.Fatalf("transition last frame size=%dx%d want 1280x720", gotW, gotH)
+	}
+}
+
 func TestCollectIntermissionStats_UsesInitialSecretTotalAfterDiscovery(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
