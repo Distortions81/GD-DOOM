@@ -9,7 +9,7 @@
 <p align="center">
   <img src="screenshots/e1m1.png" alt="E1M1 screenshot" width="900">
   <br>
-  Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color, interpolated lighting animations and a sharper modern presentation without losing Doom's original feel.
+  Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color, smoothed lighting animations, monster movement and a sharper modern presentation without losing Doom's original feel.
   <br>
   Still software rendered, not smeary GPU rendering.
 </p>
@@ -17,13 +17,13 @@
 <p align="center">
   <img src="screenshots/faithful.png" alt="Faithful mode screenshot" width="900">
   <br>
-  Faithful mode: the classic Doom look, preserved when you want the old-school presentation.
+  Faithful mode: the classic Doom look, preserved.
 </p>
 
 <p align="center">
   <img src="screenshots/e1m1-map.png" alt="E1M1 map view" width="900">
   <br>
-  Automap view: better suited for modern displays, with a cleaner presentation that makes navigation and route planning faster.
+  Automap view: better suited for modern displays, with a cleaner presentation.
   <br>
   Play in browser now: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
 </p>
