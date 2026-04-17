@@ -23,3 +23,17 @@ scripts/demo_trace_compare.sh \
 ```
 
 Use an 8-character-or-shorter `--demo-lump` name because the original Linux DOOM runtime rejects longer lump bases. The compare harness stages the selected `--demo` for the reference runtime as `<demo-lump>.lmp`, so external DSDA demos work without any extra manual setup.
+
+Batch sweep:
+
+```bash
+scripts/demo_trace_compare_batch.sh \
+  --wad ./wads/DOOM2.WAD \
+  --out-root /tmp/doom2-uvmax-late
+```
+
+Current note:
+
+- `DOOM2-MAP21-UVMAX.lmp` had an early `MT_FATSHOT` impact-position desync at `gametic=120`.
+- That issue was fixed on `2026-04-16` by matching Doom's signed projectile half-step rule for large negative momentum.
+- After that fix, `MAP21`'s next first mismatch moved to `gametic=176` on a monster `movecount` field.

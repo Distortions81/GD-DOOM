@@ -55,21 +55,35 @@ func main() {
 	for i := 0; i < limit; i++ {
 		var l any
 		var r any
+		var lraw any
+		var rraw any
 		if err := json.Unmarshal(left[i], &l); err != nil {
 			fmt.Fprintf(os.Stderr, "parse left line %d: %v\n", i+1, err)
 			os.Exit(1)
 		}
+		lraw = l
 		if err := json.Unmarshal(right[i], &r); err != nil {
 			fmt.Fprintf(os.Stderr, "parse right line %d: %v\n", i+1, err)
 			os.Exit(1)
 		}
-		l = normalizeTraceObject(l, cfg)
-		r = normalizeTraceObject(r, cfg)
-		if path, lv, rv, ok := firstDiff("root", l, r); ok {
+		rraw = r
+		lnorm := normalizeTraceObject(l, cfg)
+		rnorm := normalizeTraceObject(r, cfg)
+		if path, lv, rv, ok := firstDiff("root", lnorm, rnorm); ok {
 			fmt.Printf("mismatch line=%d path=%s\n", i+1, path)
+			if lg, ok := ticGametic(lnorm); ok {
+				fmt.Printf("left_gametic=%d\n", lg)
+			}
+			if rg, ok := ticGametic(rnorm); ok {
+				fmt.Printf("right_gametic=%d\n", rg)
+			}
 			fmt.Printf("left=%s\n", marshalCompact(lv))
 			fmt.Printf("right=%s\n", marshalCompact(rv))
-			if lm, rm, idx, ok := mobjForPath(path, l, r); ok {
+			if lm, rm, idx, ok := mobjForPath(path, lnorm, rnorm); ok {
+				fmt.Printf("left_mobj_norm[%d]=%s\n", idx, marshalCompact(lm))
+				fmt.Printf("right_mobj_norm[%d]=%s\n", idx, marshalCompact(rm))
+			}
+			if lm, rm, idx, ok := mobjForPath(path, lraw, rraw); ok {
 				fmt.Printf("left_mobj[%d] type=%d x=%d y=%d z=%d\n", idx,
 					int(numValue(lm["type"])), int(numValue(lm["x"])), int(numValue(lm["y"])), int(numValue(lm["z"])))
 				fmt.Printf("right_mobj[%d] type=%d x=%d y=%d z=%d\n", idx,
@@ -495,4 +509,16 @@ func marshalCompact(v any) string {
 		return fmt.Sprintf("%v", v)
 	}
 	return string(data)
+}
+
+func ticGametic(v any) (int, bool) {
+	root, ok := v.(map[string]any)
+	if !ok {
+		return 0, false
+	}
+	gametic, ok := root["gametic"].(float64)
+	if !ok {
+		return 0, false
+	}
+	return int(gametic), true
 }

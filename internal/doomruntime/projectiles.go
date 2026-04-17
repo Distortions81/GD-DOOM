@@ -349,7 +349,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	}
 	for xmove != 0 || ymove != 0 {
 		var nx, ny int64
-		if abs(xmove) > doomMaxMove/2 || abs(ymove) > doomMaxMove/2 {
+		if doomProjectileShouldSplitMove(xmove, ymove) {
 			nx = p.x + xmove/2
 			ny = p.y + ymove/2
 			xmove >>= 1
@@ -364,7 +364,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		blocked, _, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(p, p.x, p.y, p.z, nx, ny, p.z)
 		if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 			var tic int
-			if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) && p.kind == projectileFireball {
+			if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 				fmt.Printf("projectile-debug tic=%d world=%d phase=xy from=(%d,%d,%d) to=(%d,%d,%d) hitThing=%t hitIdx=%d blocked=%t floor=%d ceil=%d\n",
 					g.demoTick-1, g.worldTic, p.x, p.y, p.z, nx, ny, p.z, hitThing, thingHit.idx, blocked, tmfloorz, tmceilingz)
 			}
@@ -1095,7 +1095,7 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
-		if g == nil || runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+		if g == nil || runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC") == "" {
 			// no-op
 		} else {
 			var tic int
@@ -1176,7 +1176,7 @@ func (g *game) lineLowFloor(ld physLine) (int64, bool) {
 }
 
 func (g *game) debugProjectileBlock(p projectile, ox, oy, oz, nx, ny, nz int64, reason string, frac float64, hx, hy, hz int64) {
-	if g == nil || runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC") == "" || p.kind != projectileFireball {
+	if g == nil || runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC") == "" {
 		return
 	}
 	var tic int
@@ -1201,6 +1201,12 @@ type projectileThingHit struct {
 }
 
 const doomMaxMove = 30 * fracUnit
+
+func doomProjectileShouldSplitMove(xmove, ymove int64) bool {
+	// Vanilla P_XYMovement uses signed comparisons here rather than abs(),
+	// so large negative momentum does not get split into half-steps.
+	return xmove > doomMaxMove/2 || ymove > doomMaxMove/2
+}
 
 func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (projectileThingHit, bool) {
 	if g == nil {

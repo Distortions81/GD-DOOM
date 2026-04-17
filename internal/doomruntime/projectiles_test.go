@@ -7,6 +7,21 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestDoomProjectileShouldSplitMove_MatchesVanillaSignedComparison(t *testing.T) {
+	if !doomProjectileShouldSplitMove(doomMaxMove/2+1, 0) {
+		t.Fatal("positive x move above half max should split")
+	}
+	if !doomProjectileShouldSplitMove(0, doomMaxMove/2+1) {
+		t.Fatal("positive y move above half max should split")
+	}
+	if doomProjectileShouldSplitMove(0, -(doomMaxMove/2 + 1)) {
+		t.Fatal("large negative y move should not split in vanilla")
+	}
+	if doomProjectileShouldSplitMove(-(doomMaxMove/2+1), 0) {
+		t.Fatal("large negative x move should not split in vanilla")
+	}
+}
+
 func TestImpAttackSpawnsProjectile(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

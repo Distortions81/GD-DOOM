@@ -37,6 +37,33 @@ trim_trace_on_player_death() {
   mv "${tmp_path}" "${trace_path}"
 }
 
+trim_trace_after_tics() {
+  local trace_path="$1"
+  local max_tics="$2"
+  local tmp_path
+
+  if [[ ! -f "${trace_path}" || "${max_tics}" -le 0 ]]; then
+    return
+  fi
+
+  tmp_path="$(mktemp "${trace_path}.trimtics.XXXXXX")"
+  awk -v max_tics="${max_tics}" '
+    BEGIN {
+      tic_count = 0
+    }
+    {
+      if ($0 ~ /"kind":"tic"/) {
+        tic_count++
+        if (tic_count > max_tics) {
+          exit
+        }
+      }
+      print
+    }
+  ' "${trace_path}" >"${tmp_path}"
+  mv "${tmp_path}" "${trace_path}"
+}
+
 usage() {
   cat <<'EOF'
 Run the original DOOM source and GD-DOOM against the same demo, then compare traces.
@@ -303,7 +330,13 @@ else
     "${GDDOOM_FLAGS[@]}" \
     >"${GD_LOG}" 2>&1
 fi
-trim_trace_on_player_death "${GD_TRACE}"
+if [[ "${DEMO_EXIT_ON_DEATH}" == "1" ]]; then
+  trim_trace_on_player_death "${GD_TRACE}"
+fi
+if [[ "${STOP_AFTER_TICS}" != "0" ]]; then
+  trim_trace_after_tics "${REF_TRACE}" "${STOP_AFTER_TICS}"
+  trim_trace_after_tics "${GD_TRACE}" "${STOP_AFTER_TICS}"
+fi
 
 echo "Comparing traces"
 set +e
