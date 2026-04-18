@@ -364,9 +364,9 @@ func TestQuantizeWeaponBlendAlpha(t *testing.T) {
 
 func TestWeaponOverlayScale_SourcePortGeometryAspectCorrectionUsesCorrectedViewport(t *testing.T) {
 	g := &game{
-		opts: Options{
-			SourcePortMode: true,
-		},
+		opts:                 Options{SourcePortMode: true},
+		geometryAspectActive: true,
+		geometryAspectY:      doomPixelAspect,
 	}
 
 	scale, scaleY, offsetX := g.weaponOverlayScale(image.Rect(0, 0, 1280, 720))

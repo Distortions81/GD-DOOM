@@ -90,8 +90,8 @@ func (g *game) drawStatusBarCacheImage(screen *ebiten.Image, state statusBarCach
 		return
 	}
 	aspectY := 1.0
-	if g.opts.SourcePortMode && !g.opts.DisableGeometryAspectCorrect {
-		aspectY = doomPixelAspect
+	if g.geometryAspectActive {
+		aspectY = g.geometryAspectY
 	}
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest

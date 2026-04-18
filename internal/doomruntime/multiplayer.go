@@ -178,7 +178,7 @@ func (g *game) appendRemotePlayerCutoutItems(camX, camY, camAng, focal, focalV, 
 		baseZ := float64(rp.p.z) / fracUnit
 		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focalV
 		w := float64(ref.tex.Width) * scale
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := sy - float64(ref.tex.OffsetY)*scaleY

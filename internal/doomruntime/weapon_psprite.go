@@ -963,14 +963,15 @@ func (g *game) drawWeaponOverlay(screen *ebiten.Image) {
 func (g *game) weaponOverlayScale(rect image.Rectangle) (scale, scaleY, offsetX float64) {
 	scale = float64(max(rect.Dx(), 1)) / doomLogicalW
 	scaleY = scale
-	if g == nil || !g.opts.SourcePortMode || g.opts.DisableGeometryAspectCorrect {
+	if g == nil || !g.geometryAspectActive {
 		return scale, scaleY, 0
 	}
-	scale = math.Min(float64(max(rect.Dx(), 1))/doomLogicalW, float64(max(rect.Dy(), 1))/(doomLogicalH*doomPixelAspect))
+	aspectY := g.geometryAspectY
+	scale = math.Min(float64(max(rect.Dx(), 1))/doomLogicalW, float64(max(rect.Dy(), 1))/(doomLogicalH*aspectY))
 	if scale <= 0 {
 		scale = 1
 	}
-	scaleY = scale * doomPixelAspect
+	scaleY = scale * aspectY
 	offsetX = (float64(rect.Dx()) - doomLogicalW*scale) * 0.5
 	if offsetX < 0 {
 		offsetX = 0

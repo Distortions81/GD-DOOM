@@ -205,11 +205,12 @@ type spriteOpaqueShape struct {
 }
 
 type spriteRenderRef struct {
-	key        string
-	tex        *WallTexture
-	opaque     spriteOpaqueShape
-	hasOpaque  bool
-	fullBright bool
+	key          string
+	tex          *WallTexture
+	opaque       spriteOpaqueShape
+	hasOpaque    bool
+	fullBright   bool
+	aspectExempt bool
 }
 
 type thingAnimRefState struct {
@@ -544,12 +545,14 @@ type game struct {
 	prevPrevAngle uint32
 	prevAngle     uint32
 
-	renderPX    float64
-	renderPY    float64
-	renderAngle uint32
-	renderAlpha float64
-	renderStamp time.Time
-	debugAimSS  int
+	renderPX             float64
+	renderPY             float64
+	renderAngle          uint32
+	renderAlpha          float64
+	renderStamp          time.Time
+	debugAimSS           int
+	geometryAspectActive bool
+	geometryAspectY      float64
 
 	lastUpdate       time.Time
 	fpsFrames        int
@@ -1286,6 +1289,11 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		alwaysRun:             opts.AlwaysRun,
 		autoWeaponSwitch:      opts.AutoWeaponSwitch,
 		simTickScale:          1.0,
+		geometryAspectActive:  opts.SourcePortMode && !opts.DisableGeometryAspectCorrect,
+		geometryAspectY:       1,
+	}
+	if g.geometryAspectActive {
+		g.geometryAspectY = doomPixelAspect
 	}
 	// Sourceport mode keeps Doom distance-light math without colormap remap.
 	// Sector-light contribution can be toggled separately for sourceport mode.
@@ -9791,7 +9799,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -9871,7 +9879,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -9947,7 +9955,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -10024,7 +10032,7 @@ func (g *game) appendProjectileCutoutItems(camX, camY, camAng, focal, focalV, ne
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 			continue
 		}
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -10118,7 +10126,7 @@ func (g *game) appendHitscanPuffCutoutItems(camX, camY, camAng, focal, focalV, n
 		if !ok || ref == nil || ref.tex == nil || ref.tex.Width <= 0 || ref.tex.Height <= 0 {
 			continue
 		}
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		w := float64(ref.tex.Width) * scale
 		if h <= 0 || w <= 0 {
@@ -10810,7 +10818,7 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near 
 		clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scaleY, viewH)
 		sy := float64(viewH)/2 - ((baseZ-eyeZ)/f)*focalV
 		w := float64(ref.tex.Width) * scale
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		dstX := sx - float64(ref.tex.OffsetX)*scale
 		dstY := sy - float64(ref.tex.OffsetY)*scaleY
@@ -10867,12 +10875,12 @@ func (g *game) appendMonsterCutoutItems(camX, camY, camAng, focal, focalV, near 
 		}
 		g.billboardQueueScratch = append(g.billboardQueueScratch, item)
 		if g.opts.DebugMonsterThinkerBlend {
-			g.appendMonsterThinkerDebugCutoutItem(i, th, ref, flip, camX, camY, ca, sa, eyeZ, focal, near)
+			g.appendMonsterThinkerDebugCutoutItem(i, th, ref, flip, camX, camY, ca, sa, eyeZ, focal, focalV, near)
 		}
 	}
 }
 
-func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref *spriteRenderRef, flip bool, camX, camY, ca, sa, eyeZ, focal, near float64) {
+func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref *spriteRenderRef, flip bool, camX, camY, ca, sa, eyeZ, focal, focalV, near float64) {
 	if g == nil || ref == nil || ref.tex == nil || ref.tex.Height <= 0 || ref.tex.Width <= 0 {
 		return
 	}
@@ -10886,7 +10894,7 @@ func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref 
 		return
 	}
 	clipRadius := monsterSpriteClipRadius(th.Type)
-	clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, g.viewH, eyeZ, f, focal)
+	clipTop, clipBottom, clipOK := g.spriteFootprintClipYBounds(txFixed, tyFixed, clipRadius, g.viewH, eyeZ, f, focalV)
 	if !clipOK {
 		return
 	}
@@ -10894,15 +10902,21 @@ func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref 
 	if scale <= 0 {
 		return
 	}
-	clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scale, g.viewH)
+	scaleY := focalV / f
+	clipBottom = spriteClipBottomWithPatchOverhang(clipBottom, ref.tex, scaleY, g.viewH)
 	sx := float64(g.viewW)/2 - (s/f)*focal
 	baseZ := float64(baseZFixed) / fracUnit
-	sy := float64(g.viewH)/2 - ((baseZ-eyeZ)/f)*focal
-	w, h, dstX, dstY, x0, x1, y0, y1, boundsOK := cacheOriginSpriteItemGeometry(sx, sy, scale, ref.tex, clipTop, clipBottom, g.viewW, g.viewH)
+	sy := float64(g.viewH)/2 - ((baseZ-eyeZ)/f)*focalV
+	scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
+	w := float64(ref.tex.Width) * scale
+	h := float64(ref.tex.Height) * scaleY
+	dstX := sx - float64(ref.tex.OffsetX)*scale
+	dstY := sy - float64(ref.tex.OffsetY)*scaleY
+	x0, x1, y0, y1, boundsOK := scene.ClampedSpriteBounds(dstX, dstY, w, h, clipTop, clipBottom, g.viewW, g.viewH)
 	if !boundsOK || h <= 0 || w <= 0 {
 		return
 	}
-	opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, scale, clipTop, clipBottom, g.viewW, g.viewH)
+	opaqueRectStart, opaqueRectCount := g.appendProjectedOpaqueRects(ref.opaque.rects, ref.tex.Width, flip, dstX, dstY, scale, scaleY, clipTop, clipBottom, g.viewW, g.viewH)
 	g.billboardQueueScratch = append(g.billboardQueueScratch, cutoutItem{
 		dist:            f,
 		depthQ:          encodeDepthQ(f),
@@ -10919,6 +10933,7 @@ func (g *game) appendMonsterThinkerDebugCutoutItem(i int, th mapdata.Thing, ref 
 		dstX:            dstX,
 		dstY:            dstY,
 		scale:           scale,
+		scaleY:          scaleY,
 		opaque:          ref.opaque,
 		hasOpaque:       ref.hasOpaque,
 		opaqueRectStart: opaqueRectStart,
@@ -11086,7 +11101,7 @@ func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, focalV, near fl
 		floorZFixed := g.thingFloorZ(txFixed, tyFixed)
 		floorZ := float64(floorZFixed) / fracUnit
 		yb := float64(viewH)/2 - ((floorZ-eyeZ)/f)*focalV
-		scaleY = g.spriteScaleYForAspect(ref.key, scale, scaleY)
+		scaleY = g.spriteScaleYForAspect(ref, scale, scaleY)
 		h := float64(ref.tex.Height) * scaleY
 		if h <= 0 {
 			continue
@@ -11583,11 +11598,12 @@ func (g *game) spriteRenderRef(name string) (*spriteRenderRef, bool) {
 	}
 	opaque, hasOpaque := g.spriteOpaqueShapeForKey(name, tex)
 	ref := &spriteRenderRef{
-		key:        name,
-		tex:        tex,
-		opaque:     opaque,
-		hasOpaque:  hasOpaque,
-		fullBright: doomSourceSpriteFullBright(name),
+		key:          name,
+		tex:          tex,
+		opaque:       opaque,
+		hasOpaque:    hasOpaque,
+		fullBright:   doomSourceSpriteFullBright(name),
+		aspectExempt: spritePatchExemptFromAspect(name),
 	}
 	g.spriteRenderRefCache[name] = ref
 	return ref, true
@@ -14526,27 +14542,45 @@ var nonAspectCorrectedSpritePatchPrefixes = map[string]struct{}{
 const doomPixelAspect = 6.0 / 5.0
 
 func (g *game) verticalFocalLength(focal float64) float64 {
-	if g != nil && g.opts.SourcePortMode && !g.opts.DisableGeometryAspectCorrect {
-		return focal * doomPixelAspect
+	if g != nil {
+		return focal * g.geometryAspectY
 	}
 	return focal
 }
 
-func (g *game) spriteScaleYForAspect(key string, scale, scaleY float64) float64 {
+func (g *game) spriteScaleYForAspect(ref *spriteRenderRef, scale, scaleY float64) float64 {
 	if scaleY <= 0 {
 		return scaleY
 	}
-	if g == nil || !g.opts.SourcePortMode || g.opts.DisableGeometryAspectCorrect {
+	if g == nil || !g.geometryAspectActive {
 		return scaleY
 	}
-	key = strings.ToUpper(strings.TrimSpace(key))
-	if len(key) < 4 {
-		return scaleY
-	}
-	if _, ok := nonAspectCorrectedSpritePatchPrefixes[key[:4]]; ok {
+	if ref != nil && ref.aspectExempt {
 		return scale
 	}
 	return scaleY
+}
+
+func spritePatchExemptFromAspect(key string) bool {
+	var prefix [4]byte
+	n := 0
+	for i := 0; i < len(key) && n < len(prefix); i++ {
+		c := key[i]
+		switch c {
+		case ' ', '\t', '\n', '\r':
+			continue
+		}
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
+		prefix[n] = c
+		n++
+	}
+	if n < len(prefix) {
+		return false
+	}
+	_, ok := nonAspectCorrectedSpritePatchPrefixes[string(prefix[:])]
+	return ok
 }
 
 func shadeRGBByMul(r, g, b byte, mul uint32) (byte, byte, byte) {
@@ -19280,6 +19314,11 @@ func (g *game) syncRenderState() {
 	g.renderAngle = g.p.angle
 	g.renderAlpha = 1
 	g.debugAimSS = debugFixedSubsector
+	g.geometryAspectActive = g.opts.SourcePortMode && !g.opts.DisableGeometryAspectCorrect
+	g.geometryAspectY = 1
+	if g.geometryAspectActive {
+		g.geometryAspectY = doomPixelAspect
+	}
 	g.markSimUpdate(time.Now())
 }
 
