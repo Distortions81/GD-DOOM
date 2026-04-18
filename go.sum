@@ -6,6 +6,8 @@ github.com/Distortions81/go-meltysynth v0.1.2 h1:SvAgWvJdHZr6YBygDx4/lIpkkCRroFg
 github.com/Distortions81/go-meltysynth v0.1.2/go.mod h1:Afi/YpLztHvWSbiLFi6RgtxLLwmIiRmd/q7f3Ymed2g=
 github.com/Distortions81/impsynth v0.1.2 h1:IuRoWA6A/r4cjGjx3EfynciTnugfOrdWrZWFTNjxxH4=
 github.com/Distortions81/impsynth v0.1.2/go.mod h1:uW5/kKRN/PAFs+7rZHWipIGZP7rYqtdtW8gEKjCDixI=
+github.com/Distortions81/impsynth v0.1.3 h1:rF0Oet67+kyTUug8XnOWSDpa4t6T6si8nVisgq9/mWE=
+github.com/Distortions81/impsynth v0.1.3/go.mod h1:HtsmS7N6vxvpdexMR178BgePErFGYzfY4+orCQeV1AA=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/ebitengine/gomobile v0.0.0-20260211053922-3d992dae95d1 h1:U8WldvN7/4cgo65U2fr2urv43/yhqYOK5FegFPPfI4M=
