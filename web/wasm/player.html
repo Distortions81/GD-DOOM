@@ -3,44 +3,80 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GD-DOOM WASM Player</title>
+  <title>GD-DOOM Player</title>
   <style>
+    :root {
+      color-scheme: dark;
+    }
+
     html, body {
       margin: 0;
       height: 100%;
       background: #000;
       color: #ddd;
-      font: 16px/1.4 monospace;
+      font: 16px/1.4 "Trebuchet MS", Verdana, sans-serif;
       touch-action: none;
       -webkit-touch-callout: none;
       -webkit-user-select: none;
     }
-    html {
-      padding: 0;
-    }
+
     body {
-      padding: 0;
       overflow: hidden;
     }
+
     #loading {
       position: absolute;
       inset: 0;
       display: flex;
       align-items: center;
       justify-content: center;
-      flex-direction: column;
-      gap: 10px;
-      background: #111;
+      background:
+        radial-gradient(circle at top, rgba(255, 183, 79, 0.14), transparent 36%),
+        linear-gradient(180deg, #181111, #090808);
       z-index: 10;
     }
+
+    .loading-card {
+      width: min(420px, calc(100vw - 28px));
+      padding: 20px 18px 18px;
+      border: 2px solid rgba(255, 183, 79, 0.42);
+      background: rgba(15, 10, 10, 0.92);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+      text-align: center;
+    }
+
+    .loading-title {
+      margin: 0;
+      color: #ffd492;
+      font: 900 32px/0.95 Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .loading-copy {
+      margin: 12px 0 0;
+      color: #ded2c5;
+      font-size: 14px;
+    }
+
+    .loading-status {
+      margin: 12px 0 0;
+      color: #ffbc77;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
     .spinner {
-      width: 48px;
-      height: 48px;
-      border: 6px solid #444;
-      border-top-color: #bbb;
+      width: 44px;
+      height: 44px;
+      margin: 18px auto 0;
+      border: 4px solid rgba(255, 255, 255, 0.16);
+      border-top-color: #ffd492;
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
+
     canvas {
       display: block;
       width: 100%;
@@ -51,6 +87,7 @@
       outline: none;
       touch-action: none;
     }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
@@ -58,11 +95,28 @@
 </head>
 <body>
   <div id="loading">
-    <div class="spinner"></div>
-    <div>Loading...</div>
+    <div class="loading-card">
+      <h1 class="loading-title">GD-DOOM</h1>
+      <div id="loading-copy" class="loading-copy">Preparing browser runtime.</div>
+      <div id="loading-status" class="loading-status">Booting</div>
+      <div class="spinner" aria-hidden="true"></div>
+    </div>
   </div>
   <script src="./build-id.js"></script>
   <script>
+    const loading = document.getElementById("loading");
+    const loadingCopy = document.getElementById("loading-copy");
+    const loadingStatus = document.getElementById("loading-status");
+
+    function setLoading(status, copy) {
+      if (loadingStatus && status) {
+        loadingStatus.textContent = status;
+      }
+      if (loadingCopy && copy) {
+        loadingCopy.textContent = copy;
+      }
+    }
+
     function getBuildID() {
       const params = new URLSearchParams(window.location.search);
       const fromQuery = params.get("v");
@@ -142,21 +196,6 @@
       return document.activeElement === canvas;
     }
 
-    window.addEventListener("message", (event) => {
-      if (event.origin !== window.location.origin || !event.data) {
-        return;
-      }
-      if (event.data.type !== "gddoom-claim-focus") {
-        return;
-      }
-      if (focusPlayerSurface()) {
-        return;
-      }
-      window.requestAnimationFrame(() => {
-        focusPlayerSurface();
-      });
-    });
-
     function hasWASMMagic(bytes) {
       return bytes && bytes.length >= 4 &&
         bytes[0] === 0x00 && bytes[1] === 0x61 &&
@@ -176,35 +215,74 @@
       return new Uint8Array(buf);
     }
 
+    async function instantiateGame(go) {
+      if (typeof DecompressionStream === "function") {
+        try {
+          setLoading("Loading Wasm", "Fetching compressed browser bundle.");
+          const bytes = await fetchCompressedWASMBytes(assetURL("./gddoom.wasm.gz"));
+          if (!hasWASMMagic(bytes)) {
+            throw new Error("gzip wasm did not produce a valid binary");
+          }
+          return await WebAssembly.instantiate(bytes, go.importObject);
+        } catch (_err) {
+          setLoading("Retrying", "Compressed load unavailable. Falling back to standard fetch.");
+        }
+      }
+
+      setLoading("Loading Wasm", "Fetching browser bundle.");
+      const response = await fetch(assetURL("./gddoom.wasm"), { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error(`fetch failed for gddoom.wasm: ${response.status}`);
+      }
+      if (WebAssembly.instantiateStreaming) {
+        try {
+          return await WebAssembly.instantiateStreaming(response, go.importObject);
+        } catch (_err) {
+        }
+      }
+      const bytes = await response.arrayBuffer();
+      return WebAssembly.instantiate(bytes, go.importObject);
+    }
+
+    window.addEventListener("message", (event) => {
+      if (event.origin !== window.location.origin || !event.data) {
+        return;
+      }
+      if (event.data.type !== "gddoom-claim-focus") {
+        return;
+      }
+      if (focusPlayerSurface()) {
+        return;
+      }
+      window.requestAnimationFrame(() => {
+        focusPlayerSurface();
+      });
+    });
+
     copyLocalWADsFromParent();
+    setLoading("Loading Runtime", "Fetching wasm_exec.js.");
     loadScript(assetURL("./wasm_exec.js"))
       .then(() => {
+        setLoading("Starting", "Creating Go runtime.");
         const go = new Go();
         go.argv = ["gddoom", "-music-backend=impsynth"];
-        return fetchCompressedWASMBytes(assetURL("./gddoom.wasm.gz"))
-          .then((bytes) => {
-            if (!hasWASMMagic(bytes)) {
-              throw new Error("gzip wasm did not produce a valid binary");
-            }
-            return WebAssembly.instantiate(bytes, go.importObject);
-          })
-          .then((result) => {
-            document.getElementById("loading").remove();
-            if (window.parent && window.parent !== window) {
-              window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
-            }
-            window.requestAnimationFrame(() => {
-              focusPlayerSurface();
-            });
-            return go.run(result.instance);
+        return instantiateGame(go).then((result) => {
+          setLoading("Launching", "Handing control to GD-DOOM.");
+          if (loading) {
+            loading.remove();
+          }
+          if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: "gddoom-player-ready" }, window.location.origin);
+          }
+          window.requestAnimationFrame(() => {
+            focusPlayerSurface();
           });
+          return go.run(result.instance);
+        });
       })
       .catch((err) => {
         console.error(err);
-        const loading = document.getElementById("loading");
-        if (loading) {
-          loading.textContent = String(err);
-        }
+        setLoading("Launch Failed", String(err));
       });
   </script>
 </body>
