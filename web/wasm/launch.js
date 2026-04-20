@@ -1,23 +1,30 @@
 const splash = document.getElementById("splash");
 const shell = document.getElementById("game-shell");
-const utilityBar = document.querySelector(".utilitybar");
+const startButton = document.getElementById("start-button");
+const fullscreenButton = document.getElementById("fullscreen-button");
 const localWADButton = document.getElementById("local-wad-button");
 const localWADInput = document.getElementById("local-wad-input");
-const localWADStatus = document.getElementById("local-wad-status");
+const buildPill = document.getElementById("build-pill");
+const statusAnnouncer = document.getElementById("status-announcer");
 
 let splashDismissed = false;
 let pendingReload = false;
-let localWADStatusTimer = 0;
+
+function setStatus(text) {
+  if (statusAnnouncer) {
+    statusAnnouncer.textContent = text || "";
+  }
+}
 
 function getBuildID() {
   return typeof window.__gddoomBuildID === "string" ? window.__gddoomBuildID : "";
 }
 
-function isIOSLike() {
+function isMobileLike() {
   if (typeof navigator === "undefined") {
     return false;
   }
-  return /iPad|iPhone|iPod/i.test(navigator.userAgent) || (
+  return /Android|iPad|iPhone|iPod/i.test(navigator.userAgent) || (
     navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1
   );
 }
@@ -54,7 +61,10 @@ function focusPlayer() {
   if (!shell) {
     return;
   }
-  shell.focus({ preventScroll: true });
+  try {
+    shell.focus({ preventScroll: true });
+  } catch (_err) {
+  }
   if (!shell.contentWindow) {
     return;
   }
@@ -62,30 +72,23 @@ function focusPlayer() {
     shell.contentWindow.focus();
     shell.contentWindow.postMessage({ type: "gddoom-claim-focus" }, window.location.origin);
   } catch (_err) {
-    // Some browsers may reject cross-context focus sequencing during navigation.
   }
 }
 
-function setLocalWADStatus(text) {
-  if (!localWADStatus) {
+async function requestFullscreen() {
+  if (!shell) {
     return;
   }
-  localWADStatus.textContent = text || "";
-}
-
-function flashLocalWADStatus(text, durationMs = 2600) {
-  if (localWADStatusTimer) {
-    window.clearTimeout(localWADStatusTimer);
-    localWADStatusTimer = 0;
-  }
-  setLocalWADStatus(text);
-  if (!text || durationMs <= 0) {
+  const target = shell;
+  const request = target.requestFullscreen || target.webkitRequestFullscreen;
+  if (typeof request !== "function") {
     return;
   }
-  localWADStatusTimer = window.setTimeout(() => {
-    localWADStatusTimer = 0;
-    setLocalWADStatus("");
-  }, durationMs);
+  try {
+    await request.call(target);
+    focusPlayer();
+  } catch (_err) {
+  }
 }
 
 function getLocalWADStore() {
@@ -95,20 +98,22 @@ function getLocalWADStore() {
   return window.__gddoomLocalWADs;
 }
 
-function updateLocalWADStatus() {
-  flashLocalWADStatus("", 0);
+function hasLocalWADs() {
+  return getLocalWADStore().length > 0;
 }
 
-function hideLocalWADUI() {
-  if (utilityBar) {
-    utilityBar.hidden = true;
+function hideLocalWADControls() {
+  if (localWADButton) {
+    localWADButton.hidden = true;
+  }
+  if (localWADInput) {
+    localWADInput.hidden = true;
   }
 }
 
 async function loadLocalWADFiles(fileList) {
   const files = Array.from(fileList || []).filter((file) => /\.wad$/i.test(file.name));
   if (!files.length) {
-    setLocalWADStatus("No .wad files selected.");
     return;
   }
 
@@ -128,7 +133,7 @@ async function loadLocalWADFiles(fileList) {
   }
 
   const noun = loadedNames.length === 1 ? "IWAD file" : "IWAD files";
-  flashLocalWADStatus(`Loaded ${noun}. Reloading picker...`);
+  setStatus(`Loaded ${noun}. Reloading picker.`);
   reloadPlayer();
 }
 
@@ -157,12 +162,21 @@ function claimFocusAndStart() {
   focusPlayer();
 }
 
-if (isIOSLike()) {
-  hideLocalWADUI();
-  startDirectPlayer();
+function updateBuildPill() {
+  if (!buildPill) {
+    return;
+  }
+  const buildID = getBuildID();
+  buildPill.textContent = buildID ? `Build: ${buildID}` : "Build: local";
 }
 
+updateBuildPill();
 initializePlayerFrame();
+
+if (isMobileLike()) {
+  hideLocalWADControls();
+  startDirectPlayer();
+}
 
 if (splash) {
   splash.addEventListener("click", (event) => {
@@ -181,7 +195,19 @@ if (splash) {
   }, { passive: false });
 }
 
-if (localWADButton && localWADInput && !isIOSLike()) {
+if (startButton) {
+  startButton.addEventListener("click", () => {
+    claimFocusAndStart();
+  });
+}
+
+if (fullscreenButton) {
+  fullscreenButton.addEventListener("click", () => {
+    requestFullscreen();
+  });
+}
+
+if (localWADButton && localWADInput && !isMobileLike()) {
   localWADButton.addEventListener("click", () => {
     localWADInput.click();
   });
@@ -189,12 +215,11 @@ if (localWADButton && localWADInput && !isIOSLike()) {
     try {
       await loadLocalWADFiles(localWADInput.files);
     } catch (err) {
-      flashLocalWADStatus(`Load failed: ${err instanceof Error ? err.message : String(err)}`, 4200);
+      setStatus(`Load failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       localWADInput.value = "";
     }
   });
-  updateLocalWADStatus();
 }
 
 window.addEventListener("keydown", (event) => {
@@ -218,18 +243,28 @@ window.addEventListener("message", (event) => {
   switch (event.data.type) {
     case "gddoom-player-ready":
       pendingReload = false;
+      if (hasLocalWADs()) {
+        hideLocalWADControls();
+        setStatus("");
+      }
       if (splashDismissed) {
         focusPlayer();
       }
       break;
     case "gddoom-session-started":
-      hideLocalWADUI();
-      flashLocalWADStatus("", 0);
+      hideLocalWADControls();
+      setStatus("");
       break;
     case "gddoom-webgl-context-lost":
       reloadPlayer();
       break;
     default:
       break;
+  }
+});
+
+document.addEventListener("fullscreenchange", () => {
+  if (!document.fullscreenElement && splashDismissed) {
+    focusPlayer();
   }
 });

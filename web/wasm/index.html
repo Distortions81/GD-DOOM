@@ -3,266 +3,421 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>GD-DOOM WASM ALPHA</title>
+  <title>GD-DOOM Browser Build</title>
   <script>
     (function () {
       if (typeof navigator === "undefined") {
         return;
       }
-      const iOSLike = /iPad|iPhone|iPod/i.test(navigator.userAgent) || (
+      const mobileLike = /Android|iPad|iPhone|iPod/i.test(navigator.userAgent) || (
         navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1
       );
-      if (iOSLike) {
-        document.documentElement.classList.add("ios-webkit");
+      if (mobileLike) {
+        document.documentElement.classList.add("mobile-like");
       }
     })();
   </script>
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      --bg-1: #2f0e0a;
+      --bg-2: #0b0808;
+      --panel: rgba(17, 10, 10, 0.9);
+      --panel-2: rgba(44, 16, 12, 0.94);
+      --line: #943924;
+      --line-bright: #f1ba59;
+      --text: #f1e2c7;
+      --muted: #ccb599;
+      --accent: #ffb74f;
+      --accent-2: #ff6a4d;
+      --shadow: rgba(0, 0, 0, 0.46);
+    }
+
     html, body {
       width: 100%;
       height: 100%;
       overflow: hidden;
     }
+
     * {
       box-sizing: border-box;
     }
+
     body {
       margin: 0;
+      color: var(--text);
+      font: 16px/1.45 "Trebuchet MS", Verdana, sans-serif;
       background:
-        radial-gradient(circle at top, #3a0d0d 0%, #170707 38%, #050505 100%);
-      color: #ddd;
-      font: 16px/1.4 monospace;
+        radial-gradient(circle at top, rgba(255, 111, 78, 0.18), transparent 34%),
+        linear-gradient(180deg, rgba(62, 18, 14, 0.97), rgba(9, 8, 8, 0.99)),
+        repeating-linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.018) 0,
+          rgba(255, 255, 255, 0.018) 1px,
+          transparent 1px,
+          transparent 7px
+        );
     }
+
     .shell {
       position: fixed;
       inset: 0;
-      border: 0;
       width: 100%;
       height: 100%;
+      border: 0;
       display: block;
       background: #000;
       touch-action: none;
     }
+
     .overlay {
       position: fixed;
       inset: 0;
-      z-index: 2;
+      z-index: 3;
       display: grid;
       place-items: center;
-      padding: 24px;
+      padding: 22px;
       background:
-        linear-gradient(rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.72)),
+        linear-gradient(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.76)),
         repeating-linear-gradient(
           180deg,
-          rgba(255, 255, 255, 0.035) 0,
-          rgba(255, 255, 255, 0.035) 2px,
+          rgba(255, 255, 255, 0.03) 0,
+          rgba(255, 255, 255, 0.03) 2px,
           transparent 2px,
-          transparent 4px
+          transparent 5px
         );
+      backdrop-filter: blur(2px);
     }
+
     .overlay[hidden] {
       display: none;
     }
+
+    .frame {
+      width: min(980px, 100%);
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+      gap: 18px;
+    }
+
+    .hero,
+    .sidebar {
+      position: relative;
+      border: 2px solid var(--line);
+      background:
+        linear-gradient(180deg, rgba(29, 13, 11, 0.96), rgba(10, 8, 8, 0.97));
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 244, 225, 0.05),
+        0 18px 46px var(--shadow);
+    }
+
+    .hero {
+      padding: 28px 28px 26px;
+      overflow: hidden;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(120deg, rgba(255, 183, 79, 0.1), transparent 34%),
+        linear-gradient(180deg, transparent 58%, rgba(255, 84, 56, 0.16));
+      pointer-events: none;
+    }
+
+    .sidebar {
+      padding: 20px 18px 18px;
+    }
+
+    .eyebrow,
+    .panel-title {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+    }
+
+    .logo {
+      margin: 0;
+      color: #ffd48e;
+      font: 900 clamp(40px, 8vw, 74px)/0.9 Impact, Haettenschweiler, "Arial Narrow Bold", sans-serif;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      text-shadow:
+        0 2px 0 #9e3716,
+        0 4px 0 #67210d,
+        0 10px 26px rgba(0, 0, 0, 0.35);
+    }
+
+    .tagline {
+      margin: 18px 0 0;
+      max-width: 34rem;
+      color: var(--text);
+      font-size: clamp(18px, 2vw, 22px);
+      line-height: 1.35;
+    }
+
+    .subcopy {
+      margin: 14px 0 0;
+      max-width: 36rem;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 18px 0 0;
+    }
+
+    .meta-pill {
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 183, 79, 0.4);
+      background: rgba(14, 9, 9, 0.74);
+      color: #fff1d3;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin: 24px 0 0;
+    }
+
+    .cta,
+    .secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 46px;
+      padding: 0 16px;
+      border: 2px solid transparent;
+      text-decoration: none;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+    }
+
+    .cta {
+      border-color: #ffc96e;
+      background: linear-gradient(180deg, #ffb95a, #c96523);
+      color: #1c1007;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+    }
+
+    .secondary {
+      border-color: rgba(255, 114, 89, 0.62);
+      background: rgba(23, 10, 10, 0.9);
+      color: #ffdcb7;
+    }
+
+    .cta:hover,
+    .cta:focus-visible,
+    .secondary:hover,
+    .secondary:focus-visible {
+      transform: translateY(-1px);
+      outline: none;
+    }
+
+    .panel-title {
+      margin-bottom: 14px;
+    }
+
+    .controls {
+      display: grid;
+      gap: 10px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .controls li {
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 57, 36, 0.36);
+      background: rgba(8, 6, 6, 0.48);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .controls strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--text);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
+    .kbd-row kbd {
+      display: inline-block;
+      margin: 0 5px 5px 0;
+      padding: 2px 8px 3px;
+      border: 1px solid rgba(255, 183, 79, 0.62);
+      background: linear-gradient(180deg, #ffe1a7, #cf7a35);
+      color: #24150a;
+      font: 800 12px/1.2 inherit;
+      text-transform: uppercase;
+    }
+
     .utilitybar {
       position: fixed;
       top: 16px;
       right: 16px;
       z-index: 4;
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 10px;
+      align-items: center;
+      max-width: min(92vw, 780px);
     }
-    .ios-webkit .utilitybar {
-      display: none;
-    }
-    .utilitybar[hidden] {
-      display: none;
-    }
+
+    .utility-button,
     .wad-button {
-      padding: 10px 14px;
-      border: 2px solid #ffc24b;
-      background: rgba(24, 8, 8, 0.92);
-      color: #fff0c9;
-      font: 700 13px/1 monospace;
+      min-height: 38px;
+      padding: 0 12px;
+      border: 1px solid rgba(148, 57, 36, 0.48);
+      background: rgba(10, 8, 8, 0.84);
+      color: #f6ddbc;
+      font: 700 12px/1 inherit "Trebuchet MS", Verdana, sans-serif;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      cursor: pointer;
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
     }
+
+    .utility-button,
+    .wad-button {
+      cursor: pointer;
+    }
+
+    .utility-button:hover,
+    .utility-button:focus-visible,
     .wad-button:hover,
     .wad-button:focus-visible {
-      background: rgba(52, 14, 10, 0.96);
-      border-color: #ffe49b;
+      border-color: rgba(255, 186, 92, 0.88);
+      color: #fff3dd;
       outline: none;
     }
-    .wad-status {
-      max-width: min(320px, calc(100vw - 32px));
-      padding: 8px 10px;
-      border: 1px solid rgba(255, 194, 75, 0.65);
-      background: rgba(0, 0, 0, 0.82);
-      color: #f0d5a6;
-      font-size: 12px;
-      line-height: 1.35;
-      text-align: right;
-    }
-    .wad-status:empty {
+
+    .mobile-like .utilitybar {
       display: none;
     }
-    .card {
-      width: min(560px, 100%);
-      padding: 28px 24px 22px;
-      border: 3px solid #6e1b1b;
-      background: rgba(10, 10, 10, 0.88);
-      box-shadow: 0 0 0 2px #1a1a1a, 0 18px 60px rgba(0, 0, 0, 0.45);
-      text-align: center;
-    }
-    .logo {
-      margin: 0 0 14px;
-      color: #ff533d;
-      font-size: clamp(36px, 10vw, 72px);
-      line-height: 0.92;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      text-shadow: 0 2px 0 #7f1105, 0 4px 0 #4a0902, 0 0 22px rgba(255, 73, 31, 0.28);
-    }
-    .subtitle {
-      margin: 0 0 18px;
-      color: #f0d5a6;
-      font-size: 14px;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-    }
-    .prompt {
-      margin: 0;
-      color: #fff3cf;
-      font-size: 18px;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      animation: pulse 1s steps(2, end) infinite;
-    }
-    .hint {
-      margin: 14px 0 0;
-      color: #b7a7a7;
-      font-size: 13px;
-    }
-    .repo-link {
-      display: inline-block;
-      margin: 16px 0 0;
-      padding: 7px 12px 8px;
-      border: 1px solid #a43a22;
-      background: rgba(34, 10, 10, 0.82);
-      color: #ffd9a0;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-decoration: none;
-      text-transform: uppercase;
-    }
-    .repo-link:hover,
-    .repo-link:focus-visible {
-      border-color: #ffc24b;
-      color: #fff3cf;
-      background: rgba(64, 18, 10, 0.92);
-      outline: none;
-    }
-    .controls {
-      position: relative;
-      margin: 24px 0 0;
-      padding: 28px 18px 16px;
-      border: 3px solid #ffc24b;
-      background:
-        linear-gradient(180deg, rgba(94, 22, 5, 0.95), rgba(25, 8, 4, 0.96));
-      box-shadow:
-        inset 0 0 0 2px rgba(255, 240, 188, 0.16),
-        0 0 0 2px rgba(107, 24, 5, 0.95),
-        0 0 28px rgba(255, 164, 53, 0.24),
-        0 16px 34px rgba(0, 0, 0, 0.38);
-      color: #ffe4b9;
-      font-size: 16px;
-      font-weight: 700;
-      line-height: 1.7;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      text-align: left;
-    }
-    .controls-title {
+
+    .screenreader {
       position: absolute;
-      top: -14px;
-      left: 14px;
-      padding: 3px 10px 4px;
-      border: 2px solid #ffe49b;
-      background: linear-gradient(180deg, #ffd871, #d36d18);
-      color: #2a1002;
-      font-size: 14px;
-      font-weight: 900;
-      letter-spacing: 0.16em;
-      text-shadow: none;
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
     }
-    .controls strong {
-      display: inline-block;
-      min-width: 86px;
-      margin-right: 10px;
-      color: #fff8dc;
-      font-weight: 800;
+
+    @media (max-width: 940px) {
+      .frame {
+        grid-template-columns: 1fr;
+      }
     }
-    .controls kbd {
-      display: inline-block;
-      margin: 0 4px 0 0;
-      padding: 2px 8px 3px;
-      border: 1px solid #f2b45d;
-      border-bottom-width: 2px;
-      background: linear-gradient(180deg, #ffe0ad, #c97b32);
-      color: #2b1204;
-      font: inherit;
-      font-weight: 800;
-      line-height: 1.2;
-      text-shadow: none;
-      vertical-align: baseline;
-    }
-    .controls .sep {
-      display: inline-block;
-      margin: 0 6px;
-      color: #ffd9a0;
-    }
-    @keyframes pulse {
-      50% {
-        opacity: 0.45;
+
+    @media (max-width: 640px) {
+      .overlay {
+        padding: 14px;
+      }
+
+      .hero,
+      .sidebar {
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .actions {
+        flex-direction: column;
+      }
+
+      .cta,
+      .secondary {
+        width: 100%;
       }
     }
   </style>
 </head>
 <body>
-  <div class="utilitybar" aria-label="Browser WAD controls">
+  <div class="utilitybar" aria-label="Browser controls">
+    <button id="fullscreen-button" class="utility-button" type="button">Fullscreen</button>
     <button id="local-wad-button" class="wad-button" type="button">Load IWAD File</button>
     <input id="local-wad-input" type="file" accept=".wad,.WAD" multiple hidden>
-    <div id="local-wad-status" class="wad-status" aria-live="polite"></div>
   </div>
-  <iframe
-    id="game-shell"
-    class="shell"
-    title="GD-DOOM WASM"
-    allow="autoplay; fullscreen"
-    tabindex="0"
-    src="about:blank"
-  ></iframe>
+
+  <iframe id="game-shell" class="shell" title="GD-DOOM player" allow="autoplay; fullscreen"></iframe>
+
   <div id="splash" class="overlay">
-    <section class="card" aria-label="Click to play">
-      <h1 class="logo">GD-DOOM</h1>
-      <p class="subtitle">WASM Alpha</p>
-      <p class="prompt">Click To Play</p>
-      <p class="hint">The click page stays here until the game frame is focused.</p>
-      <p class="hint">Use Load IWAD File to add a browser-selected IWAD file to the picker.</p>
-      <a class="repo-link" href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View GitHub Repo</a>
-      <p class="controls">
-        <span class="controls-title">Controls</span>
-        <strong>Menus:</strong> <kbd>Arrow Keys</kbd><span class="sep">+</span><kbd>Enter</kbd><br>
-        <strong>Game:</strong> <kbd>WASD</kbd><span class="sep">+</span><kbd>Mouse</kbd>
-      </p>
-    </section>
+    <div class="frame">
+      <section class="hero" aria-labelledby="gddoom-title">
+        <p class="eyebrow">Browser Build</p>
+        <h1 id="gddoom-title" class="logo">GD-DOOM</h1>
+        <p class="tagline">Fast local browser build with IWAD upload support, save persistence, and the same runtime-first focus as the native build.</p>
+        <p class="subcopy">Use Load IWAD File to inject browser-selected WADs into the picker, then enter the game frame and keep focus there for keyboard and mouse input.</p>
+        <div class="meta-row">
+          <div class="meta-pill">Browser IWAD Picker</div>
+          <div class="meta-pill">Persistent Saves</div>
+          <div id="build-pill" class="meta-pill">Build: local</div>
+        </div>
+        <div class="actions">
+          <button id="start-button" class="cta" type="button">GO TO HELL</button>
+          <a class="secondary" href="https://github.com/Distortions81/GD-DOOM" target="_blank" rel="noreferrer">View Repository</a>
+        </div>
+      </section>
+
+      <aside class="sidebar" aria-labelledby="controls-title">
+        <h2 id="controls-title" class="panel-title">Controls</h2>
+        <ul class="controls">
+          <li>
+            <strong>Move Forward / Back</strong>
+            <span class="kbd-row"><kbd>W</kbd><kbd>S</kbd><kbd>Up</kbd><kbd>Down</kbd></span>
+          </li>
+          <li>
+            <strong>Turn / Strafe</strong>
+            <span class="kbd-row"><kbd>Left</kbd><kbd>Right</kbd><kbd>A</kbd><kbd>D</kbd></span>
+          </li>
+          <li>
+            <strong>Fire</strong>
+            <span class="kbd-row"><kbd>Ctrl</kbd><kbd>Mouse 1</kbd></span>
+          </li>
+          <li>
+            <strong>Use / Open</strong>
+            <span class="kbd-row"><kbd>Space</kbd><kbd>E</kbd></span>
+          </li>
+          <li>
+            <strong>Run / Strafe Modifier</strong>
+            <span class="kbd-row"><kbd>Shift</kbd><kbd>Alt</kbd></span>
+          </li>
+          <li>
+            <strong>Automap / Weapons</strong>
+            <span class="kbd-row"><kbd>Tab</kbd><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd><kbd>6</kbd><kbd>7</kbd><kbd>PgUp</kbd><kbd>PgDn</kbd></span>
+          </li>
+          <li>
+            <strong>Menu</strong>
+            <span class="kbd-row"><kbd>Esc</kbd></span>
+          </li>
+        </ul>
+      </aside>
+    </div>
   </div>
+
+  <div id="status-announcer" class="screenreader" aria-live="polite"></div>
+
   <script src="./build-id.js"></script>
   <script src="./launch.js"></script>
 </body>
