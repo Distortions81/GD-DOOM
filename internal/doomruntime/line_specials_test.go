@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"testing"
 
+	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 )
 
@@ -766,6 +767,137 @@ func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	}
 }
 
+func TestCheckWalkSpecialLines_TriggersTeleportWhenDestinationFailsNormalMoveCheck(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{X: 128, Y: 64, Angle: 90, Type: 14},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 7},
+				{},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial: []uint16{97, 0},
+		lines: []physLine{
+			{
+				idx:   0,
+				x1:    0,
+				y1:    64,
+				x2:    0,
+				y2:    -64,
+				dx:    0,
+				dy:    -128,
+				slope: slopeVertical,
+			},
+			{
+				idx:      1,
+				x1:       143 * fracUnit,
+				y1:       128 * fracUnit,
+				x2:       143 * fracUnit,
+				y2:       0,
+				dx:       0,
+				dy:       -128 * fracUnit,
+				slope:    slopeVertical,
+				sideNum1: -1,
+				bbox:     [4]int64{128 * fracUnit, 0, 143 * fracUnit, 143 * fracUnit},
+			},
+		},
+		sectorFloor: []int64{0},
+		sectorCeil:  []int64{128 * fracUnit},
+		p: player{
+			x:      -32 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+	if _, _, _, ok := g.checkPositionFor(128*fracUnit, 64*fracUnit, false); ok {
+		t.Fatal("normal move check should fail at the teleport destination")
+	}
+
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+
+	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit {
+		t.Fatalf("player teleported to (%d,%d), want (%d,%d)", g.p.x, g.p.y, 128*fracUnit, 64*fracUnit)
+	}
+}
+
+func TestCheckWalkSpecialLines_PlayerTeleportTelefragsShootableThingLikeDoom(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		m: &mapdata.Map{
+			Name: "MAP21",
+			Things: []mapdata.Thing{
+				{X: 128, Y: 64, Angle: 90, Type: teleportThingType},
+				{X: 128, Y: 64, Type: 66},
+			},
+			Linedefs: []mapdata.Linedef{
+				{Special: 97, Tag: 7},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
+			},
+		},
+		lineSpecial:         []uint16{97},
+		sectorFloor:         []int64{0},
+		sectorCeil:          []int64{128 * fracUnit},
+		lines:               []physLine{{idx: 0, x1: 0, y1: 64, x2: 0, y2: -64, dx: 0, dy: -128, slope: slopeVertical}},
+		thingCollected:      []bool{false, false},
+		thingHP:             []int{0, 300},
+		thingMomX:           []int64{0, 0},
+		thingMomY:           []int64{0, 0},
+		thingMomZ:           []int64{0, 0},
+		thingDead:           []bool{false, false},
+		thingXDeath:         []bool{false, false},
+		thingAggro:          []bool{false, false},
+		thingInFloat:        []bool{false, false},
+		thingDeathTics:      []int{0, 0},
+		thingPainTics:       []int{0, 0},
+		thingAttackTics:     []int{0, 0},
+		thingAttackFireTics: []int{-1, -1},
+		thingState:          []monsterThinkState{monsterStateSpawn, monsterStateSee},
+		thingStateTics:      []int{0, 1},
+		thingStatePhase:     []int{0, 0},
+		thingDoomState:      []int{noDoomMonsterState, 332},
+		p: player{
+			x:      -32 * fracUnit,
+			y:      0,
+			z:      0,
+			floorz: 0,
+			ceilz:  128 * fracUnit,
+		},
+	}
+
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+
+	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit {
+		t.Fatalf("player teleported to (%d,%d), want (%d,%d)", g.p.x, g.p.y, 128*fracUnit, 64*fracUnit)
+	}
+	if !g.thingDead[1] {
+		t.Fatal("teleport destination monster should be telefragged")
+	}
+	if got := g.thingHP[1]; got != -9700 {
+		t.Fatalf("telefragged health=%d want=-9700", got)
+	}
+	if got := g.thingState[1]; got != monsterStateDeath {
+		t.Fatalf("telefragged state=%d want death", got)
+	}
+	if gotX, gotY := g.thingMomX[1], g.thingMomY[1]; gotX != 0 || gotY != 0 {
+		t.Fatalf("telefragged momentum=(%d,%d) want=(0,0)", gotX, gotY)
+	}
+	if got := g.thingStateTics[1]; got <= 0 {
+		t.Fatalf("telefragged first-frame tics=%d want > 0", got)
+	}
+	if _, prnd := doomrand.State(); prnd != 3 {
+		t.Fatalf("telefrag teleport prnd=%d want=3", prnd)
+	}
+}
+
 func TestCheckWalkSpecialLines_DoesNotTriggerRemoteTeleport(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -831,7 +963,7 @@ func TestCheckWalkSpecialLines_PlayerTeleportSuppressesSameTicPickupSweep(t *tes
 				{FloorHeight: 0, CeilingHeight: 128, Tag: 7},
 			},
 		},
-		lineSpecial:    []uint16{97},
+		lineSpecial: []uint16{97},
 		lines: []physLine{
 			{
 				idx:   0,

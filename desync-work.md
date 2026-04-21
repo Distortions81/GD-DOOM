@@ -57,22 +57,51 @@ All three demos: **clean** (traces match, no mismatch).
 
 ## DOOM2 UV Max Late
 
-### MAP21 — first projectile collision issue fixed
+### MAP21 — current status
 
-- Previous first mismatch: `gametic=120`, exploding `MT_FATSHOT` impact position
-- Root cause: projectile movement in GD-DOOM split large negative momentum into half-steps using `abs(...)`
-- Doom quirk: `P_XYMovement` only splits when signed `momx > MAXMOVE/2 || momy > MAXMOVE/2`, so large negative momentum stays in a single substep
-- Fix: `advanceProjectile` now matches Doom's signed half-step rule
-- Harness/tooling updates made while diagnosing it:
-  - `demotracecmp` now reports normalized mismatch mobjs and matching gametics
-  - `demo_trace_compare.sh --stop-after-tics` now trims both traces before compare
-  - `demo_trace_compare.sh` only trims on player death when `--demo-exit-on-death` is actually requested
-  - `scripts/demo_trace_compare_batch.sh` sweeps the late UV Max set
+The old early MAP21 desyncs are fixed. The first mismatch frontier moved through:
 
-### MAP21 — current next issue
+- `gametic=120`: exploding `MT_FATSHOT` impact position
+- `gametic=176`: monster chase / `movecount` drift
+- `gametic=356`: teleport-fog / source-height mismatch
+- `gametic=476`: revenant attack-state timing
+- `gametic=490`: player teleport + telefrag parity and downstream RNG drift
 
-- New first mismatch after the fatshot fix: `mismatch line=177 path=root.mobjs[29].movecount`
-- `gametic=176`
-- Reference: `type=10 movecount=13 x=223494976 y=294252736 z=4194304`
-- GD-DOOM: `type=10 movecount=15 x=223494976 y=294252736 z=4194304`
-- This is no longer a projectile issue; the next failure is a monster chase/countdown mismatch
+Current result:
+
+- Trace now matches cleanly through at least tic `520`
+- Full-demo first mismatch is now at `gametic=527`
+- Current first mismatch:
+  - `mismatch line=528 path=root.specials[1].crush`
+  - Reference special:
+    - `kind=floor sector=51 type=187022936 crush=332673568 direction=1 floordestheight=1048576 speed=262144`
+  - GD-DOOM special:
+    - `kind=floor sector=51 type=3 crush=0 direction=1 floordestheight=1048576 speed=262144`
+- This is no longer a monster/player parity issue. The next blocker is special-thinker trace/state parity for the floor mover on sector `51`.
+
+### MAP21 — fixes landed during this pass
+
+- Exact-Doom shotgun-guy state numbers were corrected to Doom's real values:
+  - spawn `207-208`
+  - see `209-216`
+  - missile `217-219`
+  - pain `220-221`
+- Player teleports now telefrag overlapping shootables at the destination, matching Doom's `P_TeleportMove` stomp behavior
+- Telefragged victims now stay pinned on the teleport tic instead of carrying same-tic corpse momentum
+- The tic-490 missing `P_Random` was traced to Doom's telefrag kill path, not teleport fog RNG
+- Revenant death-state trace base was corrected to Doom's `S_SKEL_DIE1=345`
+
+### MAP21 — useful verification points
+
+- Full 520-tic checkpoint after the telefrag fixes:
+  ```bash
+  xvfb-run -a ./.tmp/gddoom-demotrace -wad ./wads/DOOM2.WAD -demo ./demos/doom2-uvmax-late/DOOM2-MAP21-UVMAX.lmp -demo-stop-after-tics 520 -trace-demo-state /tmp/map21-gd-520h.jsonl
+  ./.tmp/demotracecmp -left /tmp/map21-reference-full.jsonl -right /tmp/map21-gd-520h.jsonl -ignore-transient-fx
+  ```
+- Expected result there: no content mismatch before the intentional length mismatch from stopping at tic `520`
+- Current full-trace compare:
+  ```text
+  mismatch line=528 path=root.specials[1].crush
+  left_gametic=527
+  right_gametic=527
+  ```

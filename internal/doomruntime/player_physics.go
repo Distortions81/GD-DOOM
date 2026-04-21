@@ -619,9 +619,6 @@ func (g *game) tryMove(x, y int64) bool {
 }
 
 func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
-	if probePickup && !g.isDead {
-		g.processDroppedThingPickupsAt(x, y, g.p.z, playerRadius, playerHeight)
-	}
 	prevX := g.p.x
 	prevY := g.p.y
 	if g != nil && g.noClip {

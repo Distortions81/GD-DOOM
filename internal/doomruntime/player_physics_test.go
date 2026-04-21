@@ -136,3 +136,38 @@ func TestTryMoveWithPickupProbe_NoClipCrossesBlockingLine(t *testing.T) {
 		t.Fatalf("player sector=%d want %d", got, want)
 	}
 }
+
+func TestTryMoveWithPickupProbe_BlockedMoveDoesNotCollectDroppedPickup(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 2001, X: 32, Y: 0},
+				{Type: 3002, X: 32, Y: 0, Flags: skillMediumBits},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected: []bool{false, false},
+		thingDropped:   []bool{true, false},
+		thingHP:        []int{0, 150},
+		thingDead:      []bool{false, false},
+		p: player{
+			x:          -32 * fracUnit,
+			y:          0,
+			z:          0,
+			floorz:     0,
+			ceilz:      128 * fracUnit,
+			viewHeight: playerViewHeight,
+		},
+	}
+	g.initPlayerState()
+	g.initPhysics()
+
+	if g.tryMoveWithPickupProbe(16*fracUnit, 0, true) {
+		t.Fatal("blocked move should fail")
+	}
+	if g.thingCollected[0] {
+		t.Fatal("dropped pickup should remain when the speculative move is blocked")
+	}
+}

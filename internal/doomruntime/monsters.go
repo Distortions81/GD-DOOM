@@ -122,7 +122,7 @@ func monsterInitialDoomState(typ int16) int {
 	case 3004:
 		return 174
 	case 9:
-		return 208
+		return 207
 	case 65:
 		return 406
 	case 3005:
@@ -139,7 +139,7 @@ func monsterDoomSeeState(typ int16) int {
 	case 3004:
 		return 176
 	case 9:
-		return 210
+		return 209
 	case 65:
 		return 408
 	case 3005:
@@ -156,7 +156,7 @@ func monsterDoomPainState(typ int16) int {
 	case 3004:
 		return 187
 	case 9:
-		return 221
+		return 220
 	case 65:
 		return 420
 	case 3005:
@@ -173,7 +173,7 @@ func monsterDoomMissileState(typ int16) int {
 	case 3004:
 		return 184
 	case 9:
-		return 218
+		return 217
 	case 65:
 		return 416
 	case 3005:
@@ -217,10 +217,12 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 		return doomMonsterStateDef{tics: 3, next: 188, action: doomMonsterActionNone}, true
 	case 188:
 		return doomMonsterStateDef{tics: 3, next: 176, action: doomMonsterActionPain}, true
-	case 208:
-		return doomMonsterStateDef{tics: 10, next: 209, action: doomMonsterActionLook}, true
-	case 209:
+	case 207:
 		return doomMonsterStateDef{tics: 10, next: 208, action: doomMonsterActionLook}, true
+	case 208:
+		return doomMonsterStateDef{tics: 10, next: 207, action: doomMonsterActionLook}, true
+	case 209:
+		return doomMonsterStateDef{tics: 3, next: 210, action: doomMonsterActionChase}, true
 	case 210:
 		return doomMonsterStateDef{tics: 3, next: 211, action: doomMonsterActionChase}, true
 	case 211:
@@ -234,19 +236,17 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 	case 215:
 		return doomMonsterStateDef{tics: 3, next: 216, action: doomMonsterActionChase}, true
 	case 216:
-		return doomMonsterStateDef{tics: 3, next: 217, action: doomMonsterActionChase}, true
+		return doomMonsterStateDef{tics: 3, next: 209, action: doomMonsterActionChase}, true
 	case 217:
-		return doomMonsterStateDef{tics: 3, next: 210, action: doomMonsterActionChase}, true
+		return doomMonsterStateDef{tics: 10, next: 218, action: doomMonsterActionFaceTarget}, true
 	case 218:
-		return doomMonsterStateDef{tics: 10, next: 219, action: doomMonsterActionFaceTarget}, true
+		return doomMonsterStateDef{tics: 10, next: 219, action: doomMonsterActionSPosAttack}, true
 	case 219:
-		return doomMonsterStateDef{tics: 10, next: 220, action: doomMonsterActionSPosAttack}, true
+		return doomMonsterStateDef{tics: 10, next: 209, action: doomMonsterActionNone}, true
 	case 220:
-		return doomMonsterStateDef{tics: 10, next: 210, action: doomMonsterActionNone}, true
+		return doomMonsterStateDef{tics: 3, next: 221, action: doomMonsterActionNone}, true
 	case 221:
-		return doomMonsterStateDef{tics: 3, next: 222, action: doomMonsterActionNone}, true
-	case 222:
-		return doomMonsterStateDef{tics: 3, next: 210, action: doomMonsterActionPain}, true
+		return doomMonsterStateDef{tics: 3, next: 209, action: doomMonsterActionPain}, true
 	case 406:
 		return doomMonsterStateDef{tics: 10, next: 407, action: doomMonsterActionLook}, true
 	case 407:
@@ -322,7 +322,7 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 
 func monsterDoomStateFrameLetter(state int) (byte, bool) {
 	switch state {
-	case 174, 176, 177, 208, 210, 211, 406, 408, 409, 502, 503, 585, 587:
+	case 174, 176, 177, 207, 209, 210, 406, 408, 409, 502, 503, 585, 587:
 		return 'A', true
 	case 504:
 		return 'B', true
@@ -334,7 +334,7 @@ func monsterDoomStateFrameLetter(state int) (byte, bool) {
 		return 'E', true
 	case 509:
 		return 'F', true
-	case 175, 209, 407, 586, 588:
+	case 175, 208, 211, 212, 407, 586, 588:
 		return 'B', true
 	case 589, 591:
 		return 'C', true
@@ -342,17 +342,17 @@ func monsterDoomStateFrameLetter(state int) (byte, bool) {
 		return 'D', true
 	case 593, 594:
 		return 'E', true
-	case 178, 179, 212, 213, 410, 411:
-		return 'B', true
-	case 180, 181, 214, 215, 412, 413:
+	case 178, 179, 213, 214, 410, 411:
 		return 'C', true
-	case 182, 183, 216, 217, 414, 415:
+	case 180, 181, 215, 216, 412, 413:
 		return 'D', true
-	case 184, 186, 218, 220, 416:
+	case 182, 183, 414, 415:
+		return 'D', true
+	case 184, 186, 217, 219, 416:
 		return 'E', true
-	case 185, 219, 417:
+	case 185, 218, 417:
 		return 'F', true
-	case 187, 188, 221, 222, 420, 421:
+	case 187, 188, 220, 221, 420, 421:
 		return 'G', true
 	case 418:
 		return 'E', true
@@ -378,14 +378,14 @@ func monsterDoomCompatState(typ int16, state int) (monsterThinkState, int, int) 
 		}
 	case 9:
 		switch {
-		case state >= 208 && state <= 209:
-			return monsterStateSpawn, state - 208, 0
-		case state >= 210 && state <= 217:
-			return monsterStateSee, state - 210, 0
-		case state >= 218 && state <= 220:
-			return monsterStateAttack, 0, state - 218
-		case state >= 221 && state <= 222:
-			return monsterStatePain, state - 221, 0
+		case state >= 207 && state <= 208:
+			return monsterStateSpawn, state - 207, 0
+		case state >= 209 && state <= 216:
+			return monsterStateSee, state - 209, 0
+		case state >= 217 && state <= 219:
+			return monsterStateAttack, 0, state - 217
+		case state >= 220 && state <= 221:
+			return monsterStatePain, state - 220, 0
 		}
 	case 65:
 		switch {
@@ -432,11 +432,11 @@ func monsterDoomAttackRemainingTics(state int) int {
 		return 16
 	case 186:
 		return 8
-	case 218:
+	case 217:
 		return 30
-	case 219:
+	case 218:
 		return 20
-	case 220:
+	case 219:
 		return 10
 	case 416:
 		return 19
@@ -471,9 +471,9 @@ func monsterDoomPainRemainingTics(state int) int {
 		return 6
 	case 188:
 		return 3
-	case 221:
+	case 220:
 		return 6
-	case 222:
+	case 221:
 		return 3
 	case 420:
 		return 6
@@ -516,13 +516,13 @@ func monsterCompatToDoomState(typ int16, state monsterThinkState, phase, attackP
 	case 9:
 		switch state {
 		case monsterStateSpawn:
-			return 208 + min(phase, 1)
+			return 207 + min(phase, 1)
 		case monsterStateSee:
-			return 210 + min(phase, 7)
+			return 209 + min(phase, 7)
 		case monsterStateAttack:
-			return 218 + min(attackPhase, 2)
+			return 217 + min(attackPhase, 2)
 		case monsterStatePain:
-			return 221 + min(phase, 1)
+			return 220 + min(phase, 1)
 		}
 	case 65:
 		switch state {
@@ -583,7 +583,12 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		return
 	}
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-		g.tickMonsterMomentum(i, th)
+		skipMomentum := i < len(g.thingTelefragTick) && g.thingTelefragTick[i] == g.worldTic
+		if skipMomentum {
+			g.setThingMomentum(i, 0, 0, 0)
+		} else {
+			g.tickMonsterMomentum(i, th)
+		}
 		if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 			g.thingDeathTics[i]--
 		}
@@ -749,11 +754,11 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		if !reacquired {
 			return
 		}
-		if resumedFromAttack && !hadJustAtk {
-			return
-		}
 		if !continueChase {
-			return
+			if !resumedFromAttack {
+				return
+			}
+			continueChase = true
 		}
 		g.monsterTurnTowardMoveDir(i)
 		targetX, targetY, dist = 0, 0, 0
@@ -1267,6 +1272,9 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 	switch g.thingState[i] {
 	case monsterStateSpawn:
 		if g.monsterRunLookState(i, typ, tx, ty) {
+			if i < len(g.thingState) && g.thingState[i] == monsterStateSee {
+				return g.runMonsterIdleOrChaseEntryAction(i, typ, tx, ty, false)
+			}
 			return true, false
 		}
 		return true, false
@@ -1288,7 +1296,13 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 				if allowJustAttackedReacquire && reacquired && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
 					continue
 				}
-				if !reacquired || !continueChase {
+				if !reacquired {
+					return true, false
+				}
+				if !continueChase {
+					if allowJustAttackedReacquire {
+						return false, false
+					}
 					return true, false
 				}
 				continue
@@ -1548,6 +1562,14 @@ func (g *game) ensureMonsterAIState() {
 		old := g.thingDead
 		g.thingDead = make([]bool, n)
 		copy(g.thingDead, old)
+	}
+	if len(g.thingTelefragTick) != n {
+		old := g.thingTelefragTick
+		g.thingTelefragTick = make([]int, n)
+		copy(g.thingTelefragTick, old)
+		for i := len(old); i < n; i++ {
+			g.thingTelefragTick[i] = -1
+		}
 	}
 	if len(g.thingDropped) != n {
 		old := g.thingDropped
@@ -2417,13 +2439,74 @@ func monsterPainActionPhase(typ int16) int {
 }
 
 func (g *game) startMonsterAttackAnim(i int, typ int16) {
+	g.startMonsterAttackAnimWithMode(i, typ, false)
+}
+
+func revenantAttackStartPhase(missile bool) int {
+	if missile {
+		return 3
+	}
+	return 0
+}
+
+func monsterAttackStartPhase(typ int16, missile bool) int {
+	switch typ {
+	case 66:
+		return revenantAttackStartPhase(missile)
+	default:
+		return 0
+	}
+}
+
+func monsterAttackPhaseLimit(typ int16, phase int) int {
+	switch typ {
+	case 66:
+		if phase >= 3 {
+			return 6
+		}
+		return 3
+	default:
+		return len(monsterAttackFrameTics(typ))
+	}
+}
+
+func monsterAttackPhaseDurationForState(typ int16, phase int) int {
+	switch typ {
+	case 66:
+		switch {
+		case phase >= 0 && phase <= 2:
+			return 6
+		case phase >= 3 && phase <= 5:
+			return 10
+		default:
+			return 0
+		}
+	default:
+		return monsterAttackFrameDuration(typ, phase)
+	}
+}
+
+func monsterAttackStateTotalTicsForMode(typ int16, missile bool) int {
+	switch typ {
+	case 66:
+		if missile {
+			return 30
+		}
+		return 18
+	default:
+		total := monsterAttackStateTotalTics(typ)
+		if total <= 0 {
+			return monsterAttackAnimTotalTics(typ)
+		}
+		return total
+	}
+}
+
+func (g *game) startMonsterAttackAnimWithMode(i int, typ int16, missile bool) {
 	if i < 0 || i >= len(g.thingAttackTics) {
 		return
 	}
-	total := monsterAttackStateTotalTics(typ)
-	if total <= 0 {
-		total = monsterAttackAnimTotalTics(typ)
-	}
+	total := monsterAttackStateTotalTicsForMode(typ, missile)
 	if total <= 0 {
 		g.thingAttackTics[i] = 0
 		if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
@@ -2432,13 +2515,14 @@ func (g *game) startMonsterAttackAnim(i int, typ int16) {
 		return
 	}
 	g.thingAttackTics[i] = total
+	startPhase := monsterAttackStartPhase(typ, missile)
 	if i >= 0 && i < len(g.thingAttackPhase) {
-		g.thingAttackPhase[i] = 0
+		g.thingAttackPhase[i] = startPhase
 	}
 	if i >= 0 && i < len(g.thingState) && i < len(g.thingStateTics) {
 		g.thingState[i] = monsterStateAttack
 		if monsterUsesExplicitAttackFrames(typ) {
-			g.thingStateTics[i] = monsterAttackFrameDuration(typ, 0)
+			g.thingStateTics[i] = monsterAttackPhaseDurationForState(typ, startPhase)
 		} else {
 			g.thingStateTics[i] = total
 		}
@@ -2455,7 +2539,7 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 			g.emitSoundEventAt(ev, tx, ty)
 		}
 	}
-	g.startMonsterAttackAnim(i, typ)
+	g.startMonsterAttackAnimWithMode(i, typ, missile)
 	if monsterUsesExplicitAttackFrames(typ) {
 		if i >= 0 && i < len(g.thingAttackFireTics) {
 			g.thingAttackFireTics[i] = -1
@@ -2661,11 +2745,15 @@ func (g *game) runMonsterAttackPhaseEntry(i int, typ int16, phase int, tx, ty, p
 		case 9:
 			_ = g.monsterAttack(i, typ, dist)
 		}
-	case 66: // revenant missile
+	case 66: // revenant
 		switch phase {
-		case 0, 1, 3:
+		case 0, 1, 2, 3, 5:
 			g.faceMonsterToward(i, tx, ty, faceX, faceY)
-		case 2:
+			if phase != 2 {
+				break
+			}
+			_ = g.monsterAttack(i, typ, dist)
+		case 4:
 			_ = g.monsterAttack(i, typ, dist)
 		}
 	case 67: // mancubus
@@ -2791,12 +2879,12 @@ func (g *game) advanceMonsterAttackPhase(i int, typ int16, tx, ty, px, py, dist 
 		phase = g.thingAttackPhase[i]
 	}
 	nextPhase := phase + 1
-	if nextPhase >= len(monsterAttackFrameTics(typ)) {
+	if nextPhase >= monsterAttackPhaseLimit(typ, phase) {
 		if loopPhase, loop := g.nextMonsterAttackLoopPhase(i, typ, tx, ty); loop {
 			nextPhase = loopPhase
 		}
 	}
-	if nextPhase >= len(monsterAttackFrameTics(typ)) {
+	if nextPhase >= monsterAttackPhaseLimit(typ, phase) {
 		if typ == 3006 {
 			g.resetLostSoulCharge(i, typ)
 			return false
@@ -2812,7 +2900,7 @@ func (g *game) advanceMonsterAttackPhase(i int, typ int16, tx, ty, px, py, dist 
 		g.thingAttackPhase[i] = nextPhase
 	}
 	if i >= 0 && i < len(g.thingStateTics) {
-		g.thingStateTics[i] = monsterAttackFrameDuration(typ, nextPhase)
+		g.thingStateTics[i] = monsterAttackPhaseDurationForState(typ, nextPhase)
 	}
 	g.runMonsterAttackPhaseEntry(i, typ, nextPhase, tx, ty, px, py, dist)
 	if i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack {
@@ -2891,7 +2979,7 @@ func demoTraceMonsterAttackState(typ int16, phase int) (int, bool) {
 		}
 	case 9:
 		if phase >= 0 && phase <= 2 {
-			return 218 + phase, true
+			return 217 + phase, true
 		}
 	case 65:
 		if phase >= 0 && phase <= 3 {
@@ -3417,13 +3505,11 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 	prevX, prevY := x, y
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])
 	g.setThingPosFixed(i, nx, ny)
+	g.setThingSupportState(i, z, tmfloor, tmceil)
 	if monsterCanFloat(typ) {
-		g.setThingSupportState(i, z, tmfloor, tmceil)
 		if i >= 0 && i < len(g.thingInFloat) {
 			g.thingInFloat[i] = false
 		}
-	} else {
-		g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
 	}
 	if g.opts.ZombiemanThinkerBlend && i >= 0 && i < len(g.thingDoomState) {
 		if totalTics, ok := thingThinkerBlendProfileExact(typ, g.thingDoomState[i]); ok {
@@ -3436,6 +3522,13 @@ func (g *game) monsterMoveInDir(i int, typ int16, dir monsterMoveDir) bool {
 		}
 	}
 	g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, nx, ny, i, false, probeLines)
+	if !monsterCanFloat(typ) {
+		tx, ty := g.thingPosFixed(i, g.m.Things[i])
+		if tx == nx && ty == ny {
+			_, floorZ, ceilZ := g.thingSupportState(i, g.m.Things[i])
+			g.setThingSupportState(i, floorZ, floorZ, ceilZ)
+		}
+	}
 	if debugMove {
 		g.debugMonsterMove(i, fmt.Sprintf("move success dir=%d", dir))
 	}
@@ -3501,6 +3594,26 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	}
 	if monsterAttackCallsFaceTarget(typ) {
 		g.faceMonsterToward(i, sx, sy, targetX, targetY)
+	}
+	if typ == 66 {
+		phase := 0
+		if i >= 0 && i < len(g.thingAttackPhase) {
+			phase = g.thingAttackPhase[i]
+		}
+		if phase >= 0 && phase <= 2 {
+			if !g.monsterCanMeleeTarget(i, typ, dist, sx, sy, targetX, targetY) {
+				return false
+			}
+			damage := monsterMeleeDamage(typ)
+			if damage <= 0 {
+				return false
+			}
+			if ev := monsterMeleeAttackSoundEvent(typ); ev >= 0 {
+				g.emitSoundEventAt(ev, sx, sy)
+			}
+			g.damageMonsterTarget(i, damage, "Monster hit you", sx, sy)
+			return true
+		}
 	}
 	if g.monsterCanMeleeTarget(i, typ, dist, sx, sy, targetX, targetY) {
 		damage := monsterMeleeDamage(typ)
@@ -4599,38 +4712,47 @@ func (g *game) moveMonsterToward(i int, typ int16, x, y, tx, ty, step int64) {
 	ny := y + dy
 	if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, nx, ny); ok {
 		prevX, prevY := x, y
+		z, _, _ := g.thingSupportState(i, g.m.Things[i])
 		g.setThingPosFixed(i, nx, ny)
-		if monsterCanFloat(typ) {
-			z, _, _ := g.thingSupportState(i, g.m.Things[i])
-			g.setThingSupportState(i, z, tmfloor, tmceil)
-		} else {
-			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
-		}
+		g.setThingSupportState(i, z, tmfloor, tmceil)
 		g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, nx, ny, i, false, probeLines)
+		if !monsterCanFloat(typ) {
+			tx, ty := g.thingPosFixed(i, g.m.Things[i])
+			if tx == nx && ty == ny {
+				_, floorZ, ceilZ := g.thingSupportState(i, g.m.Things[i])
+				g.setThingSupportState(i, floorZ, floorZ, ceilZ)
+			}
+		}
 		return
 	}
 	if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, x+dx, y); ok {
 		prevX, prevY := x, y
+		z, _, _ := g.thingSupportState(i, g.m.Things[i])
 		g.setThingPosFixed(i, x+dx, y)
-		if monsterCanFloat(typ) {
-			z, _, _ := g.thingSupportState(i, g.m.Things[i])
-			g.setThingSupportState(i, z, tmfloor, tmceil)
-		} else {
-			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
-		}
+		g.setThingSupportState(i, z, tmfloor, tmceil)
 		g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, x+dx, y, i, false, probeLines)
+		if !monsterCanFloat(typ) {
+			tx, ty := g.thingPosFixed(i, g.m.Things[i])
+			if tx == x+dx && ty == y {
+				_, floorZ, ceilZ := g.thingSupportState(i, g.m.Things[i])
+				g.setThingSupportState(i, floorZ, floorZ, ceilZ)
+			}
+		}
 		return
 	}
 	if tmfloor, tmceil, probeLines, ok := g.tryMoveProbeMonster(i, typ, x, y+dy); ok {
 		prevX, prevY := x, y
+		z, _, _ := g.thingSupportState(i, g.m.Things[i])
 		g.setThingPosFixed(i, x, y+dy)
-		if monsterCanFloat(typ) {
-			z, _, _ := g.thingSupportState(i, g.m.Things[i])
-			g.setThingSupportState(i, z, tmfloor, tmceil)
-		} else {
-			g.setThingSupportState(i, tmfloor, tmfloor, tmceil)
-		}
+		g.setThingSupportState(i, z, tmfloor, tmceil)
 		g.checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, x, y+dy, i, false, probeLines)
+		if !monsterCanFloat(typ) {
+			tx, ty := g.thingPosFixed(i, g.m.Things[i])
+			if tx == x && ty == y+dy {
+				_, floorZ, ceilZ := g.thingSupportState(i, g.m.Things[i])
+				g.setThingSupportState(i, floorZ, floorZ, ceilZ)
+			}
+		}
 	}
 }
 

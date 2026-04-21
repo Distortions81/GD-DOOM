@@ -363,6 +363,27 @@ func TestDamageMonsterFromPlayerAppliesDoomThrustMomentum(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterFromPlayerWithChainsawSkipsDoomThrustMomentum(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 3004, X: 64, Y: 32}},
+		},
+		thingCollected: []bool{false},
+		thingHP:        []int{20},
+		thingMomX:      []int64{0},
+		thingMomY:      []int64{0},
+		thingMomZ:      []int64{0},
+		p:              player{x: 0, y: 0},
+		inventory:      playerInventory{ReadyWeapon: weaponChainsaw},
+	}
+
+	g.damageMonsterFrom(0, 5, true, -1, 0, 0, false)
+
+	if g.thingMomX[0] != 0 || g.thingMomY[0] != 0 {
+		t.Fatalf("monster momentum=(%d,%d) want zero with chainsaw equipped", g.thingMomX[0], g.thingMomY[0])
+	}
+}
+
 func TestDamageMonsterDeathPreservesNegativeHealthLikeDoom(t *testing.T) {
 	g := &game{
 		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 9}}},

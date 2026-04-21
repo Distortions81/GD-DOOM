@@ -629,6 +629,7 @@ type game struct {
 	thingDead             []bool
 	thingGibbed           []bool
 	thingGibTick          []int
+	thingTelefragTick     []int
 	thingXDeath           []bool
 	thingDeathTics        []int
 	thingAttackTics       []int
@@ -1375,6 +1376,10 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	g.thingGibTick = make([]int, len(m.Things))
 	for i := range g.thingGibTick {
 		g.thingGibTick[i] = -1
+	}
+	g.thingTelefragTick = make([]int, len(m.Things))
+	for i := range g.thingTelefragTick {
+		g.thingTelefragTick[i] = -1
 	}
 	g.thingXDeath = make([]bool, len(m.Things))
 	g.thingDeathTics = make([]int, len(m.Things))
@@ -20032,7 +20037,7 @@ func thingThinkerBlendProfileExact(typ int16, state int) (int, bool) {
 			return 4, true
 		}
 	case 9:
-		if state >= 210 && state <= 217 {
+		if state >= 209 && state <= 216 {
 			return 3, true
 		}
 	case 65:

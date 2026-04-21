@@ -1552,6 +1552,11 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
+	// Doom suppresses damage thrust for player-caused hits while the chainsaw
+	// is equipped, even when the inflictor exists (for example telefrags).
+	if sourcePlayer && g.inventory.ReadyWeapon == weaponChainsaw {
+		return
+	}
 	ix, iy, iz, ok := g.damageInflictorPos(sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	if !ok {
 		return

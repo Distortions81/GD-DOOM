@@ -885,11 +885,100 @@ func TestStartMonsterAttackState_RevenantSkipsZeroTicStartupFrameLikeDoom(t *tes
 	if !g.startMonsterAttackState(0, 66, true) {
 		t.Fatal("expected revenant attack state to start")
 	}
-	if got := g.thingAttackPhase[0]; got != 1 {
-		t.Fatalf("attack phase=%d want 1 after zero-tic startup frame", got)
+	if got := g.thingAttackPhase[0]; got != 3 {
+		t.Fatalf("attack phase=%d want 3 after zero-tic missile startup frame", got)
 	}
 	if got := g.thingStateTics[0]; got != 10 {
 		t.Fatalf("state tics=%d want 10 for revenant missile windup", got)
+	}
+}
+
+func TestStartMonsterAttackState_RevenantMeleeStartsOnVisibleSixTicFrame(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 66, X: 64, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{300},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackTics:   []int{0},
+		thingAttackPhase:  []int{0},
+		thingState:        []monsterThinkState{monsterStateSee},
+		thingStateTics:    []int{0},
+		thingAngleState:   []uint32{0},
+		thingX:            []int64{64 * fracUnit},
+		thingY:            []int64{0},
+		p:                 player{x: 0, y: 0, z: 0},
+	}
+
+	if !g.startMonsterAttackState(0, 66, false) {
+		t.Fatal("expected revenant melee attack state to start")
+	}
+	if got := g.thingAttackPhase[0]; got != 0 {
+		t.Fatalf("attack phase=%d want 0 for visible melee windup frame", got)
+	}
+	if got := g.thingStateTics[0]; got != 6 {
+		t.Fatalf("state tics=%d want 6 for revenant melee windup", got)
+	}
+	if got := g.thingAttackTics[0]; got != 18 {
+		t.Fatalf("attack tics=%d want 18 for revenant melee sequence", got)
+	}
+}
+
+func TestMonsterAttack_RevenantMeleeFrameDoesNotFallBackToMissile(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 66, X: 0, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{300},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackPhase:  []int{2},
+		thingAngleState:   []uint32{0},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		p:                 player{x: 256 * fracUnit, y: 0, z: 0},
+	}
+
+	if g.monsterAttack(0, 66, 256*fracUnit) {
+		t.Fatal("revenant melee phase should not spawn a missile when the target is out of range")
+	}
+	if got := len(g.projectiles); got != 0 {
+		t.Fatalf("projectiles=%d want=0", got)
+	}
+}
+
+func TestRunMonsterAttackPhaseEntry_RevenantMeleeHitFrameFacesTarget(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{{Type: 66, X: 0, Y: 0}},
+		},
+		thingCollected:    []bool{false},
+		thingHP:           []int{300},
+		thingAggro:        []bool{true},
+		thingTargetPlayer: []bool{true},
+		thingTargetIdx:    []int{-1},
+		thingAttackPhase:  []int{2},
+		thingAngleState:   []uint32{degToAngle(45)},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingZState:       []int64{0},
+		thingFloorState:   []int64{0},
+		thingCeilState:    []int64{128 * fracUnit},
+		thingSupportValid: []bool{true},
+		stats:             playerStats{Health: 100},
+		p:                 player{x: -128 * fracUnit, y: 0, z: 0},
+	}
+
+	g.runMonsterAttackPhaseEntry(0, 66, 2, 0, 0, g.p.x, g.p.y, 64*fracUnit)
+
+	want := doomPointToAngle2(0, 0, g.p.x, g.p.y)
+	if got := g.thingAngleState[0]; got != want {
+		t.Fatalf("angle=%d want %d", got, want)
 	}
 }
 
@@ -1634,7 +1723,7 @@ func TestDemoTraceMonsterAttackStateMatchesDoomStateNumbers(t *testing.T) {
 		len  int
 	}{
 		{3004, 184, 3},
-		{9, 218, 3},
+		{9, 217, 3},
 		{65, 416, 4},
 		{3001, 452, 3},
 		{3002, 485, 3},
@@ -1672,7 +1761,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		len  int
 	}{
 		{3004, 174, 2},
-		{9, 208, 2},
+		{9, 207, 2},
 		{65, 406, 2},
 		{3001, 442, 2},
 		{3002, 475, 2},
@@ -1708,7 +1797,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		len  int
 	}{
 		{3004, 176, 8},
-		{9, 210, 8},
+		{9, 209, 8},
 		{65, 408, 8},
 		{3001, 444, 8},
 		{3002, 477, 8},
@@ -1799,8 +1888,8 @@ func TestDemoTraceMonsterPainStateMatchesDoomStateNumbers(t *testing.T) {
 	}{
 		{3004, 6, 187},
 		{3004, 3, 188},
-		{9, 4, 221},
-		{9, 2, 222},
+		{9, 4, 220},
+		{9, 2, 221},
 		{65, 6, 420},
 		{65, 3, 421},
 		{3001, 4, 455},
@@ -3431,6 +3520,65 @@ func TestTickMonstersAttackExpiryLostTargetReacquireStopsBeforeJustAttackedChase
 	}
 }
 
+func TestTickMonstersAttackExpiryLostTargetReacquireWithoutJustAttackedContinuesChase(t *testing.T) {
+	doomrand.SetState(0, 0)
+
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 69, X: 0, Y: 0},
+				{Type: 69, X: 64, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingCollected:      []bool{false, false},
+		thingHP:             []int{500, -30},
+		thingAggro:          []bool{true, false},
+		thingTargetPlayer:   []bool{false, false},
+		thingTargetIdx:      []int{1, -1},
+		thingPainTics:       []int{0, 0},
+		thingAttackTics:     []int{1, 0},
+		thingAttackFireTics: []int{-1, -1},
+		thingAttackPhase:    []int{2, 0},
+		thingReactionTics:   []int{0, 0},
+		thingMoveDir:        []monsterMoveDir{monsterDirWest, monsterDirNoDir},
+		thingMoveCount:      []int{1, 0},
+		thingJustAtk:        []bool{false, false},
+		thingThreshold:      []int{monsterBaseThreshold, 0},
+		thingAngleState:     []uint32{2068071311, 0},
+		thingState:          []monsterThinkState{monsterStateAttack, monsterStateDeath},
+		thingStateTics:      []int{1, 1},
+		thingStatePhase:     []int{2, 0},
+		thingDead:           []bool{false, true},
+		thingZState:         []int64{0, 0},
+		thingFloorState:     []int64{0, 0},
+		thingCeilState:      []int64{128 * fracUnit, 128 * fracUnit},
+		thingSupportValid:   []bool{true, true},
+		thingLastLook:       []int{0, 0},
+		thingCooldown:       []int{0, 0},
+		sectorSoundTarget:   []bool{true},
+		p:                   player{x: 256 * fracUnit, y: 0, z: 0, floorz: 0, ceilz: 128 * fracUnit},
+	}
+
+	g.initPhysics()
+	g.tickMonsters()
+
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target should switch to the player after same-tic reacquire: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+	if got := g.thingState[0]; got != monsterStateSee {
+		t.Fatalf("state=%d want see after same-tic chase resume", got)
+	}
+	if got := g.thingMoveCount[0]; got != 0 {
+		t.Fatalf("movecount=%d want 0 after same-tic chase countdown continues", got)
+	}
+	if _, prnd := doomrand.State(); prnd != 1 {
+		t.Fatalf("prnd=%d want=1 after the resumed chase consumes its active-sound roll", prnd)
+	}
+}
+
 func TestRunMonsterIdleOrChaseEntryAction_PainResumeLostTargetStopsAfterReacquire(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -3474,6 +3622,56 @@ func TestRunMonsterIdleOrChaseEntryAction_PainResumeLostTargetStopsAfterReacquir
 	}
 	if got := g.thingMoveCount[0]; got != 0 {
 		t.Fatalf("movecount=%d want 0 when no same-tic chase step occurs", got)
+	}
+}
+
+func TestRunMonsterIdleOrChaseEntryAction_SpawnWakeContinuesIntoChase(t *testing.T) {
+	doomrand.SetState(0, 0)
+
+	g := &game{
+		m: &mapdata.Map{
+			Things: []mapdata.Thing{
+				{Type: 3002, X: 0, Y: 0},
+			},
+			Sectors: []mapdata.Sector{
+				{FloorHeight: 0, CeilingHeight: 128},
+			},
+		},
+		thingX:            []int64{0},
+		thingY:            []int64{0},
+		thingSectorCache:  []int{0},
+		thingHP:           []int{150},
+		thingCollected:    []bool{false},
+		thingDead:         []bool{false},
+		thingState:        []monsterThinkState{monsterStateSpawn},
+		thingStateTics:    []int{10},
+		thingStatePhase:   []int{0},
+		thingMoveDir:      []monsterMoveDir{monsterDirNoDir},
+		thingMoveCount:    []int{0},
+		thingThreshold:    []int{0},
+		thingTargetIdx:    []int{-1},
+		thingTargetPlayer: []bool{false},
+		thingAggro:        []bool{false},
+		thingLastLook:     []int{0},
+		sectorSoundTarget: []bool{true},
+		sectorFloor:       []int64{0},
+		sectorCeil:        []int64{128 * fracUnit},
+		p:                 player{x: 128 * fracUnit, y: 0, z: 0},
+	}
+
+	stop, ranChase := g.runMonsterIdleOrChaseEntryAction(0, 3002, 0, 0, false)
+	if stop || !ranChase {
+		t.Fatalf("stop=%v ranChase=%v want stop=false ranChase=true", stop, ranChase)
+	}
+
+	if got := g.thingState[0]; got != monsterStateSee {
+		t.Fatalf("state=%v want=%v", got, monsterStateSee)
+	}
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 {
+		t.Fatalf("target should switch to player: targetPlayer=%v targetIdx=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+	if _, prnd := doomrand.State(); prnd != 0 {
+		t.Fatalf("prnd=%d want=0 before the caller finishes the chase tick", prnd)
 	}
 }
 

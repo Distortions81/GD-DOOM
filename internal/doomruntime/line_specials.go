@@ -1197,11 +1197,22 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			continue
 		}
 		tx, ty := g.thingPosFixed(i, th)
-		tmfloor, tmceil, _, ok := g.checkPositionForActor(tx, ty, actorRadius, blockMonsterLines, actorIdx, moverIsMonster)
+		if debugLineTriggerEnabled(lineIdx) {
+			fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-dest thing=%d sec=%d pos=(%d,%d) player=%t\n",
+				g.demoTick-1, g.worldTic, i, sec, tx, ty, isPlayer)
+		}
+		tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty, actorRadius, actorIdx, blockMonsterLines, moverIsMonster)
 		if !ok {
+			if debugLineTriggerEnabled(lineIdx) {
+				fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-blocked line=%d dest_thing=%d pos=(%d,%d) player=%t\n",
+					g.demoTick-1, g.worldTic, lineIdx, i, tx, ty, isPlayer)
+			}
 			return false
 		}
 		if tmceil-tmfloor < actorHeight {
+			return false
+		}
+		if !g.teleportStompDestinationThings(tx, ty, actorRadius, actorIdx, isPlayer, actorX, actorY) {
 			return false
 		}
 		destSec := g.sectorAt(tx, ty)
@@ -1281,6 +1292,63 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		return true
 	}
 	return false
+}
+
+func (g *game) teleportDestinationHeights(x, y, radius int64, actorIdx int, blockMonsterLines bool, moverIsMonster bool) (int64, int64, bool) {
+	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, blockMonsterLines, actorIdx, moverIsMonster)
+	if ok {
+		return tmfloor, tmceil, true
+	}
+	sec := g.sectorAt(x, y)
+	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return 0, 0, false
+	}
+	return g.sectorFloor[sec], g.sectorCeil[sec], true
+}
+
+func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, isPlayer bool, inflictorX, inflictorY int64) bool {
+	if g == nil || g.m == nil {
+		return false
+	}
+	allowStomp := isPlayer || g.currentMapName() == "MAP30"
+	for i, th := range g.m.Things {
+		if i == actorIdx {
+			continue
+		}
+		if i < len(g.thingCollected) && g.thingCollected[i] {
+			continue
+		}
+		if !thingTypeIsShootable(th.Type) {
+			continue
+		}
+		if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
+			continue
+		}
+		tx, ty := g.thingPosFixed(i, th)
+		if !actorsOverlapXY(x, y, radius, tx, ty, g.thingCurrentRadius(i, th)) {
+			continue
+		}
+		if !allowStomp {
+			return false
+		}
+		switch {
+		case isMonster(th.Type):
+			g.damageMonsterFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true)
+			if i < len(g.thingTelefragTick) {
+				g.thingTelefragTick[i] = g.worldTic
+			}
+			g.setThingMomentum(i, 0, 0, 0)
+		case isBarrelThingType(th.Type):
+			g.damageBarrelFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true)
+			if i < len(g.thingTelefragTick) {
+				g.thingTelefragTick[i] = g.worldTic
+			}
+			g.setThingMomentum(i, 0, 0, 0)
+		case playerSlotFromThingType(th.Type) != 0:
+			g.damagePlayerFrom(10000, "Telefragged", inflictorX, inflictorY, true, actorIdx)
+		}
+	}
+	return true
 }
 
 func (g *game) teleportTriggerDebugPos(lineIdx int) (x1, y1, x2, y2, cx, cy int64) {
