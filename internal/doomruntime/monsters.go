@@ -2533,6 +2533,7 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 	if i < 0 || g.m == nil || i >= len(g.m.Things) {
 		return false
 	}
+	g.ensureMonsterAIState()
 	if !missile {
 		if ev := monsterAttackStateEntrySoundEvent(typ); ev >= 0 {
 			tx, ty := g.thingPosFixed(i, g.m.Things[i])
@@ -2546,7 +2547,11 @@ func (g *game) startMonsterAttackState(i int, typ int16, missile bool) bool {
 		}
 		tx, ty := g.thingPosFixed(i, g.m.Things[i])
 		dist := doomApproxDistance(g.p.x-tx, g.p.y-ty)
-		g.runMonsterAttackPhaseEntry(i, typ, 0, tx, ty, g.p.x, g.p.y, dist)
+		phase := 0
+		if i >= 0 && i < len(g.thingAttackPhase) {
+			phase = g.thingAttackPhase[i]
+		}
+		g.runMonsterAttackPhaseEntry(i, typ, phase, tx, ty, g.p.x, g.p.y, dist)
 		if !g.advanceZeroTicMonsterAttackFrames(i, typ, tx, ty, g.p.x, g.p.y, dist) {
 			return false
 		}
@@ -3614,6 +3619,7 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 			g.damageMonsterTarget(i, damage, "Monster hit you", sx, sy)
 			return true
 		}
+		return g.spawnMonsterProjectile(i, typ)
 	}
 	if g.monsterCanMeleeTarget(i, typ, dist, sx, sy, targetX, targetY) {
 		damage := monsterMeleeDamage(typ)
