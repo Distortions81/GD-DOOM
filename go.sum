@@ -1,7 +1,7 @@
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
-github.com/Distortions81/GoBeep86 v0.0.0-20260420223120-df72e0464d66 h1:lev7xRX/QMx6s6pXRHAr6Gd+h0H9Gf9JRxAvT4QYsT4=
-github.com/Distortions81/GoBeep86 v0.0.0-20260420223120-df72e0464d66/go.mod h1:+BgEWBYdjCLCsl6AxNvd1614Di9OU/HP5lVMOz1uzfc=
+github.com/Distortions81/GoBeep86 v0.0.1 h1:rSQTiTdoJxcTLYjOLEXVKE9mA+wL9H4g9eBfzmLyPak=
+github.com/Distortions81/GoBeep86 v0.0.1/go.mod h1:+BgEWBYdjCLCsl6AxNvd1614Di9OU/HP5lVMOz1uzfc=
 github.com/Distortions81/g726 v0.0.8 h1:VWLxEuvXkocaZllq/2OYIqf2adqfC63wwwryTQrw3yY=
 github.com/Distortions81/g726 v0.0.8/go.mod h1:SeN9q4LT+BWjyk7Ob1VtatcNBEALGdE6vth+a+7zDpo=
 github.com/Distortions81/go-meltysynth v0.1.2 h1:SvAgWvJdHZr6YBygDx4/lIpkkCRroFgnYUBhVpGsO9E=
