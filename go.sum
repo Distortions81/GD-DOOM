@@ -1,11 +1,11 @@
 github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk=
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
+github.com/Distortions81/GoBeep86 v0.0.0-20260420223120-df72e0464d66 h1:lev7xRX/QMx6s6pXRHAr6Gd+h0H9Gf9JRxAvT4QYsT4=
+github.com/Distortions81/GoBeep86 v0.0.0-20260420223120-df72e0464d66/go.mod h1:+BgEWBYdjCLCsl6AxNvd1614Di9OU/HP5lVMOz1uzfc=
 github.com/Distortions81/g726 v0.0.8 h1:VWLxEuvXkocaZllq/2OYIqf2adqfC63wwwryTQrw3yY=
 github.com/Distortions81/g726 v0.0.8/go.mod h1:SeN9q4LT+BWjyk7Ob1VtatcNBEALGdE6vth+a+7zDpo=
 github.com/Distortions81/go-meltysynth v0.1.2 h1:SvAgWvJdHZr6YBygDx4/lIpkkCRroFgnYUBhVpGsO9E=
 github.com/Distortions81/go-meltysynth v0.1.2/go.mod h1:Afi/YpLztHvWSbiLFi6RgtxLLwmIiRmd/q7f3Ymed2g=
-github.com/Distortions81/impsynth v0.1.2 h1:IuRoWA6A/r4cjGjx3EfynciTnugfOrdWrZWFTNjxxH4=
-github.com/Distortions81/impsynth v0.1.2/go.mod h1:uW5/kKRN/PAFs+7rZHWipIGZP7rYqtdtW8gEKjCDixI=
 github.com/Distortions81/impsynth v0.1.3 h1:rF0Oet67+kyTUug8XnOWSDpa4t6T6si8nVisgq9/mWE=
 github.com/Distortions81/impsynth v0.1.3/go.mod h1:HtsmS7N6vxvpdexMR178BgePErFGYzfY4+orCQeV1AA=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
@@ -20,12 +20,8 @@ github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/
 github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/hajimehoshi/ebiten/v2 v2.9.9 h1:JdDag6Ndj12iD4lxQGG8kbsrh7ssj4Sbzth6r929H/M=
 github.com/hajimehoshi/ebiten/v2 v2.9.9/go.mod h1:DAt4tnkYYpCvu3x9i1X/nK/vOruNXIlYq/tBXxnhrXM=
-github.com/jezek/xgb v1.3.0 h1:Wa1pn4GVtcmNVAVB6/pnQVJ7xPFZVZ/W1Tc27msDhgI=
-github.com/jezek/xgb v1.3.0/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
 github.com/jezek/xgb v1.3.1 h1:NQCAEfQyzN+3RjWUSHBuVIxQcy2YfG3/mNvKfs/0rEg=
 github.com/jezek/xgb v1.3.1/go.mod h1:nrhwO0FX/enq75I7Y7G8iN1ubpSGZEiA3v9e9GyRFlk=
-github.com/klauspost/compress v1.18.5 h1:/h1gH5Ce+VWNLSWqPzOVn6XBO+vJbCNGvjoaGBFW2IE=
-github.com/klauspost/compress v1.18.5/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/klauspost/compress v1.18.6 h1:2jupLlAwFm95+YDR+NwD2MEfFO9d4z4Prjl1XXDjuao=
 github.com/klauspost/compress v1.18.6/go.mod h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=
 github.com/klauspost/cpuid/v2 v2.3.0 h1:S4CRMLnYUhGeDFDqkGriYKdfoFlDnMtqTiI/sFzhA9Y=
