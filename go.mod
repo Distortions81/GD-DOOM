@@ -8,7 +8,7 @@ require (
 	github.com/Distortions81/impsynth v0.1.3
 	github.com/dustin/go-humanize v1.0.1
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
-	github.com/klauspost/compress v1.18.5
+	github.com/klauspost/compress v1.18.6
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/sinshu/go-meltysynth v0.1.2
 	github.com/youthlin/silk v0.0.4
@@ -24,7 +24,7 @@ require (
 	github.com/ebitengine/hideconsole v1.0.0 // indirect
 	github.com/ebitengine/oto/v3 v3.4.0 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
-	github.com/jezek/xgb v1.3.0 // indirect
+	github.com/jezek/xgb v1.3.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 )
