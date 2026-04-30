@@ -6,7 +6,7 @@
 [![GitHub Release](https://img.shields.io/github/v/release/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/releases/latest)
 [![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/blob/main/LICENSE)
 
-PLAY IN BROWSER: <a href="https://m45sci.xyz/u/dist/GD-DOOM">https://m45sci.xyz/u/dist/GD-DOOM</a>
+[PLAY IN BROWSER NOW](https://m45sci.xyz/u/dist/GD-DOOM)
 
 <p align="center">
   <img src="screenshots/e1m1-map.png" alt="E1M1 map view" width="900">
