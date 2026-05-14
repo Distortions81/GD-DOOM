@@ -114,7 +114,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but it is b
 
 ## Requirements
 
-- Go `1.26.1` or newer from [golang.org](https://go.dev/dl/)
+- Go `1.26.3` or newer from [golang.org](https://go.dev/dl/)
 - A Doom game WAD such as `DOOM.WAD`, `DOOM1.WAD`, `DOOM2.WAD`, `TNT.WAD`, or `PLUTONIA.WAD`
 
 On Linux, native builds also need the usual Ebiten desktop dependencies for X11, OpenGL, and audio.
