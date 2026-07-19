@@ -241,7 +241,14 @@ func (tw *demoTraceWriter) Close() {
 }
 
 func (g *game) writeDemoTraceTic(gametic int) {
-	if g == nil || g.demoTrace == nil {
+	if g == nil {
+		return
+	}
+	if os.Getenv("GD_DOOM_VECTOR_CAMERA_STREAM") != "" {
+		fmt.Printf("VECTOR_CAMERA %d %d %d %d %d\n",
+			gametic, g.p.x, g.p.y, g.p.z, g.p.angle)
+	}
+	if g.demoTrace == nil {
 		return
 	}
 
