@@ -388,6 +388,10 @@ If you are working on the engine itself, extra utilities are included under [`cm
 
 These tools are for development, testing, and troubleshooting rather than normal play.
 
+The lessons learned while adapting Doom's BSP, wall clipping, and visplanes to
+an external vector-display renderer are documented in
+[`docs/vector-rendering-visibility.md`](docs/vector-rendering-visibility.md).
+
 ## Advanced Diagnostics
 
 These optional environment variables are mainly useful when troubleshooting voice or live-session behavior. Any non-empty value enables the feature.
