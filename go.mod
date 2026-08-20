@@ -13,7 +13,7 @@ require (
 	github.com/sinshu/go-meltysynth v0.1.2
 	github.com/youthlin/silk v0.0.4
 	github.com/zeebo/blake3 v0.2.4
-	golang.org/x/sys v0.43.0
+	golang.org/x/sys v0.47.0
 )
 
 replace github.com/sinshu/go-meltysynth => github.com/Distortions81/go-meltysynth v0.1.2
