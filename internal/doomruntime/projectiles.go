@@ -68,6 +68,7 @@ type projectileImpact struct {
 	phase        int
 	phaseTics    int
 	angle        uint32
+	skipBatchTic int
 	sprayDone    bool
 }
 
@@ -301,6 +302,12 @@ func (g *game) tickProjectiles() {
 	}
 	kept := g.projectiles[:0]
 	for _, p := range g.projectiles {
+		if p.order > 0 && !p.deferredTick {
+			// Live missiles run from the source-order thinker list. Deferred
+			// missiles retain their special same-tic spawn path below.
+			kept = append(kept, p)
+			continue
+		}
 		if p.deferredTick {
 			kept = append(kept, p)
 			continue
@@ -342,12 +349,13 @@ func (g *game) tickDeferredProjectiles() {
 		}
 		p.deferredTick = false
 		next, keep := g.advanceProjectile(p)
-		// A newly spawned missile runs later in Doom's thinker list during the
-		// same tic. If it explodes in that first thinker call, the replacement
-		// death state is decremented by that call too. Deferred missiles are
-		// advanced after the regular impact pass here, so advance only their
-		// newly created impact once to preserve that state timing.
-		g.tickProjectileImpactByOrder(p.order)
+		// The deferred rocket path uses a separate impact constructor so its
+		// creation-tic state decrement must be supplied here. Other deferred
+		// missiles use spawnProjectileImpactFrom, which already performs that
+		// decrement; applying it again shortens their explosion by one tic.
+		if p.kind == projectileRocket {
+			g.tickProjectileImpactByOrder(p.order)
+		}
 		if keep {
 			kept = append(kept, next)
 		}
@@ -386,7 +394,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 			ymove = 0
 		}
 		thingHit, hitThing := g.projectileThingHitAtPosition(p, nx, ny, p.z)
-		blocked, _, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(p, p.x, p.y, p.z, nx, ny, p.z)
+		blocked, _, tmfloorz, tmceilingz, _, skyBlocked := g.projectileBlockedAt(p, p.x, p.y, p.z, nx, ny, p.z)
 		if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 			var tic int
 			if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
@@ -408,12 +416,21 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 			return projectile{}, false
 		}
 		if blocked {
+			// P_XYMovement removes missiles that hit a line whose back ceiling is
+			// sky, instead of calling P_ExplodeMissile. This old vanilla special
+			// case is observable in demo sync because it avoids the death-state
+			// thinker and its associated random stream.
+			if skyBlocked {
+				return projectile{}, false
+			}
 			g.explodeProjectileAt(p, p.x, p.y, p.z)
 			return projectile{}, false
 		}
+		prevX, prevY := p.x, p.y
 		p.x = nx
 		p.y = ny
 		p.floorz, p.ceilz = tmfloorz, tmceilingz
+		g.checkProjectileWalkSpecialLines(prevX, prevY, nx, ny, p)
 	}
 	// P_MobjThinker calls P_ZMovement only when the missile is off its floor
 	// or has vertical momentum. A level missile resting on a moving floor must
@@ -444,6 +461,29 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		return projectile{}, false
 	}
 	return p, true
+}
+
+// checkProjectileWalkSpecialLines mirrors the P_XYMovement call to
+// P_CrossSpecialLine after a missile's successful P_TryMove. Vanilla permits
+// only the missile classes absent from this exclusion list to trigger walk
+// specials; notably MT_ARACHPLAZ may retrigger a platform.
+func (g *game) checkProjectileWalkSpecialLines(prevX, prevY, curX, curY int64, p projectile) {
+	if g == nil || !projectileCanTriggerWalkSpecial(p) {
+		return
+	}
+	g.checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY, curX, curY, -1, false, nil, p.radius)
+}
+
+func projectileCanTriggerWalkSpecial(p projectile) bool {
+	switch p.kind {
+	case projectileRocket, projectilePlayerPlasma, projectileBFGBall, projectileFireball, projectileBaronBall:
+		return false
+	case projectilePlasmaBall:
+		// MT_HEADSHOT is excluded; MT_ARACHPLAZ is not.
+		return p.sourceType == 68
+	default:
+		return true
+	}
 }
 
 func sameMonsterSpecies(a, b int16) bool {
@@ -669,8 +709,8 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 		setInitialRenderPrev(ox, oy, oz)
 		return true
 	}
-	thingHit, hitThing := g.projectileThingHitAtPosition(*p, nx, ny, oz)
-	blocked, _, tmfloorz, tmceilingz, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, oz)
+	thingHit, hitThing := g.projectileThingHitAtPosition(*p, nx, ny, nz)
+	blocked, _, tmfloorz, tmceilingz, _, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
 	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
@@ -682,18 +722,18 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	if hitThing {
 		if thingHit.isPlayer {
 			if dmg := projectileDamage(*p); dmg > 0 {
-				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), ox, oy, true, p.sourceThing)
+				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), nx, ny, true, p.sourceThing)
 			}
 		} else if thingHit.damage {
 			if dmg := projectileDamage(*p); dmg > 0 {
-				g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true, oz, true)
+				g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, nx, ny, true, nz, true)
 			}
 		}
-		g.explodeProjectileAt(*p, ox, oy, oz)
+		g.explodeProjectileAt(*p, nx, ny, nz)
 		return false
 	}
 	if blocked {
-		g.explodeProjectileAt(*p, ox, oy, oz)
+		g.explodeProjectileAt(*p, nx, ny, nz)
 		return false
 	}
 	p.floorz, p.ceilz = tmfloorz, tmceilingz
@@ -727,20 +767,25 @@ func (g *game) applyBFGSpray(center uint32) {
 		// subdivision shifts some rays by a few angle units and can select a
 		// different target at a line-of-sight boundary.
 		ang := center - doomAng90/2 + doomAng90/40*uint32(i)
-		slope, ok := g.aimLineAttack(g.playerLineAttackActor(), ang, 1024*fracUnit)
+		_, target, ok := g.aimLineAttackTarget(g.playerLineAttackActor(), ang, 1024*fracUnit)
 		if !ok {
 			continue
 		}
-		outcome := g.lineAttackTrace(g.playerLineAttackActor(), ang, 1024*fracUnit, slope, false)
-		if outcome.target.kind != lineAttackTargetThing {
+		if target.kind != lineAttackTargetThing {
 			continue
 		}
+		tx, ty, tz, height, _, _, _, targetOK := g.lineAttackTargetState(target)
+		if !targetOK {
+			continue
+		}
+		// A_BFGSpray creates MT_EXTRABFG at the selected target's quarter
+		// height, then damages that same linetarget.
+		g.spawnBFGExtra(tx, ty, tz+height/4)
 		damage := 0
 		for j := 0; j < 15; j++ {
 			damage += (doomrand.PRandom() & 7) + 1
 		}
-		g.spawnHitscanPuff(outcome.impactX, outcome.impactY, outcome.impactZ)
-		g.damageShootableThingFrom(outcome.target.idx, damage, true, -1, g.p.x, g.p.y, true)
+		g.damageShootableThingFrom(target.idx, damage, true, -1, g.p.x, g.p.y, true)
 	}
 }
 
@@ -750,6 +795,10 @@ func (g *game) tickProjectileImpacts() {
 	}
 	keep := g.projectileImpacts[:0]
 	for _, fx := range g.projectileImpacts {
+		if fx.skipBatchTic == g.worldTic {
+			keep = append(keep, fx)
+			continue
+		}
 		if !g.advanceProjectileImpactTic(&fx) {
 			continue
 		}
@@ -811,7 +860,7 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 		}
 		tics += next
 	}
-	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind))
+	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind, 0))
 	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
 		x:         x,
 		y:         y,
@@ -852,7 +901,7 @@ func (g *game) spawnProjectileImpactDeferredRandom(kind projectileKind, x, y, z 
 		}
 		tics += next
 	}
-	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind))
+	floorz, ceilz := g.projectileSupportStateAt(x, y, demoTraceProjectileImpactRadius(kind, 0))
 	g.projectileImpacts = append(g.projectileImpacts, projectileImpact{
 		x:         x,
 		y:         y,
@@ -886,6 +935,23 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
 	fx.lastLook = p.lastLook
+	if p.kind == projectilePlasmaBall && p.sourceType == 68 {
+		// MT_ARACHPLAZ uses S_ARACH_PLEX through S_ARACH_PLEX5: five
+		// five-tic explosion states rather than the regular plasma's three.
+		// The generic impact was created before its source type was attached,
+		// so extend its remaining lifetime for the two additional states.
+		fx.tics += 8
+		fx.totalTics += 8
+	}
+	// The deferred-impact batch can run later in this same thinker pass.  The
+	// direct tick below is P_MobjThinker's state decrement after
+	// P_ExplodeMissile, so only suppress a second decrement on this tic.  Doom
+	// decrements the death state again on the following tic.
+	fx.skipBatchTic = g.worldTic
+	// P_ExplodeMissile changes the state of the existing missile mobj. Its
+	// P_MobjThinker call then reaches the normal state decrement in this same
+	// tic, so the first death frame loses one tic immediately.
+	g.tickProjectileImpactByOrder(fx.order)
 }
 
 func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int64) int {
@@ -911,7 +977,7 @@ func (g *game) finalizeDeferredProjectileImpact(idx int) {
 		return
 	}
 	fx := &g.projectileImpacts[idx]
-	base := projectileImpactPhaseTics(fx.kind, fx.phase)
+	base := projectileImpactPhaseTicsForSource(fx.kind, fx.sourceType, fx.phase)
 	if base <= 0 {
 		return
 	}
@@ -949,7 +1015,7 @@ func (g *game) advanceProjectileImpactTic(fx *projectileImpact) bool {
 	fx.phaseTics--
 	if fx.phaseTics <= 0 {
 		fx.phase++
-		next := projectileImpactPhaseTics(fx.kind, fx.phase)
+		next := projectileImpactPhaseTicsForSource(fx.kind, fx.sourceType, fx.phase)
 		if next <= 0 {
 			return false
 		}
@@ -1002,6 +1068,16 @@ func projectileImpactPhaseTics(kind projectileKind, phase int) int {
 		}
 	}
 	return 0
+}
+
+func projectileImpactPhaseTicsForSource(kind projectileKind, sourceType int16, phase int) int {
+	if kind == projectilePlasmaBall && sourceType == 68 {
+		if phase >= 0 && phase <= 4 {
+			return 5
+		}
+		return 0
+	}
+	return projectileImpactPhaseTics(kind, phase)
 }
 
 func randomizedStateTics(base int) int {
@@ -1058,35 +1134,14 @@ func (g *game) projectileSupportStateAt(x, y, radius int64) (int64, int64) {
 	return g.sectorFloor[sec], g.sectorCeil[sec]
 }
 
-func (g *game) refreshProjectileSupportInSector(sec int) {
-	if g == nil || sec < 0 {
-		return
-	}
-	for i := range g.projectiles {
-		p := &g.projectiles[i]
-		if !g.actorTouchesSector(sec, p.x, p.y, p.radius) {
-			continue
-		}
-		p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
-	}
-	for i := range g.projectileImpacts {
-		fx := &g.projectileImpacts[i]
-		radius := demoTraceProjectileImpactRadius(fx.kind)
-		if !g.actorTouchesSector(sec, fx.x, fx.y, radius) {
-			continue
-		}
-		fx.floorz, fx.ceilz = g.projectileSupportStateAt(fx.x, fx.y, radius)
-	}
-}
-
-func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64) {
+func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (bool, float64, int64, int64, int64, bool) {
 	if g.m == nil {
-		return false, 1, 0, 0, nz
+		return false, 1, 0, 0, nz, false
 	}
 	sec := g.sectorAt(nx, ny)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
 		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "bad-sector", 1, nx, ny, nz)
-		return true, 1, 0, 0, nz
+		return true, 1, 0, 0, nz, false
 	}
 	tmfloorz := g.sectorFloor[sec]
 	tmceilingz := g.sectorCeil[sec]
@@ -1099,6 +1154,7 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 	}
 	bestFrac := 2.0
 	bestX, bestY, bestZ := nx, ny, nz
+	skyBlocked := false
 	processLine := func(physIdx int) bool {
 		if physIdx < 0 || physIdx >= len(g.lines) {
 			return true
@@ -1127,6 +1183,7 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 		if ld.sideNum1 < 0 {
 			g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "onesided", frac, hx, hy, hz)
 			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
+			skyBlocked = false
 			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
@@ -1141,6 +1198,8 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 		}
 		if opentop < tmceilingz {
 			tmceilingz = opentop
+			_, back := g.physLineSectors(ld)
+			skyBlocked = back >= 0 && back < len(g.m.Sectors) && isSkyFlatName(g.m.Sectors[back].CeilingPic)
 		}
 		if openbottom > tmfloorz {
 			tmfloorz = openbottom
@@ -1165,31 +1224,31 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 		for bx := xl; bx <= xh; bx++ {
 			for by := yl; by <= yh; by++ {
 				if !g.blockLinesIterator(bx, by, iter) {
-					return true, bestFrac, bestX, bestY, bestZ
+					return true, bestFrac, bestX, bestY, bestZ, skyBlocked
 				}
 			}
 		}
 	} else {
 		for i := range g.lines {
 			if !processLine(i) {
-				return true, bestFrac, bestX, bestY, bestZ
+				return true, bestFrac, bestX, bestY, bestZ, skyBlocked
 			}
 		}
 	}
 	if tmceilingz-tmfloorz < p.height {
 		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "fit", 1, nx, ny, oz)
-		return true, 1, tmfloorz, tmceilingz, oz
+		return true, 1, tmfloorz, tmceilingz, oz, skyBlocked
 	}
 	if tmceilingz-oz < p.height {
 		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "ceil", 1, nx, ny, oz)
-		return true, 1, tmfloorz, tmceilingz, oz
+		return true, 1, tmfloorz, tmceilingz, oz, skyBlocked
 	}
 	if tmfloorz-oz > 24*fracUnit {
 		g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "step", 1, nx, ny, oz)
-		return true, 1, tmfloorz, tmceilingz, oz
+		return true, 1, tmfloorz, tmceilingz, oz, skyBlocked
 	}
 	_ = tmdropoffz
-	return false, 1, tmfloorz, tmceilingz, nz
+	return false, 1, tmfloorz, tmceilingz, nz, false
 }
 
 func (g *game) lineLowFloor(ld physLine) (int64, bool) {
@@ -1260,14 +1319,29 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 		return dx < blockdist && dy < blockdist
 	}
 	if g.m != nil {
-		for i, th := range g.m.Things {
+		// P_SetThingPosition links each map thing at the head of its blockmap
+		// chain. P_CheckPosition therefore sees overlapping things in reverse
+		// spawn order; that order decides which of two colliding targets takes a
+		// missile's direct hit.
+		for i := len(g.m.Things) - 1; i >= 0; i-- {
+			th := g.m.Things[i]
 			if i == p.sourceThing {
 				continue
 			}
 			if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
 				continue
 			}
-			if !thingTypeIsShootable(th.Type) || i >= len(g.thingHP) || g.thingHP[i] <= 0 {
+			shootable := thingTypeIsShootable(th.Type) && i < len(g.thingHP) && g.thingHP[i] > 0
+			corpseSolid := false
+			if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
+				phase := 0
+				if i < len(g.thingStatePhase) {
+					phase = g.thingStatePhase[i]
+				}
+				corpseSolid = monsterCorpseBlocksMovement(th.Type, phase)
+			}
+			solid := g.thingBlocksInSession(i) && (!isMonster(th.Type) && thingTypeBlocksActorMovement(th.Type, true))
+			if !shootable && !corpseSolid && !solid {
 				continue
 			}
 			tx, ty := g.thingPosFixed(i, th)
@@ -1286,7 +1360,9 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 				x:        nx,
 				y:        ny,
 				z:        z,
-				damage:   g.projectileCanDamageThing(p, i),
+				// A solid corpse (or a non-shootable decoration) blocks the
+				// missile in PIT_CheckThing but cannot receive direct damage.
+				damage: shootable && g.projectileCanDamageThing(p, i),
 			}
 			return hit, true
 		}

@@ -633,3 +633,21 @@ func TestProcessThingPickups_CollectsVanillaPowerupItems(t *testing.T) {
 		}
 	}
 }
+
+func TestBerserkPickupQueuesFistWhenAnotherWeaponIsReady(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{ReadyWeapon: weaponRocketLauncher},
+		stats:     playerStats{Health: 100},
+	}
+
+	_, _, ok := g.applyPickup(2023, false)
+	if !ok {
+		t.Fatal("berserk pickup was not applied")
+	}
+	if !g.inventory.Strength || g.inventory.StrengthCount != 1 {
+		t.Fatalf("strength=%v/%d want true/1", g.inventory.Strength, g.inventory.StrengthCount)
+	}
+	if g.inventory.PendingWeapon != weaponFist {
+		t.Fatalf("pending weapon=%v want fist", g.inventory.PendingWeapon)
+	}
+}

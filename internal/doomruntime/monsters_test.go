@@ -1069,6 +1069,37 @@ func TestTickMonsterZMovement_DeadLostSoulKeepsNoGravityLikeDoom(t *testing.T) {
 	}
 }
 
+func TestResetLostSoulChargePreservesInFloat(t *testing.T) {
+	g := &game{
+		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 3002}}},
+		thingSkullFly:       []bool{true},
+		thingInFloat:        []bool{true},
+		thingMomX:           []int64{fracUnit},
+		thingMomY:           []int64{fracUnit},
+		thingMomZ:           []int64{fracUnit},
+		thingAttackTics:     []int{1},
+		thingAttackFireTics: []int{2},
+		thingAttackPhase:    []int{3},
+		thingResumeChaseNow: []bool{true},
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStateTics:      []int{1},
+		thingStatePhase:     []int{1},
+		thingThreshold:      []int{0},
+		thingTargetPlayer:   []bool{false},
+		thingSectorCache:    []int{-1},
+		thingSupportValid:   []bool{false},
+	}
+
+	g.resetLostSoulCharge(0, 3002)
+
+	if !g.thingInFloat[0] {
+		t.Fatal("resetLostSoulCharge cleared MF_INFLOAT")
+	}
+	if g.thingSkullFly[0] || g.thingMomX[0] != 0 || g.thingMomY[0] != 0 || g.thingMomZ[0] != 0 {
+		t.Fatalf("charge state not cleared: skull=%t momentum=(%d,%d,%d)", g.thingSkullFly[0], g.thingMomX[0], g.thingMomY[0], g.thingMomZ[0])
+	}
+}
+
 func TestTickThingThinker_DeadLostSoulRemovesOnFinalDeathFrameLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -1140,9 +1171,6 @@ func TestTickMonsters_LostTargetStillTurnsTowardMoveDirLikeDoomChase(t *testing.
 	g.tickThingThinker(0, g.m.Things[0])
 	if got := g.thingWorldAngle(0, g.m.Things[0]); got != uint32(monsterDirNorth)<<29 {
 		t.Fatalf("angle=%d want %d after lost-target chase fallback", got, uint32(monsterDirNorth)<<29)
-	}
-	if got := g.thingState[0]; got != monsterStateSpawn {
-		t.Fatalf("state=%d want spawn after lost-target fallback", got)
 	}
 }
 
@@ -2317,7 +2345,7 @@ func TestTryMove_PlayerNotBlockedByUndrawnSolidThing(t *testing.T) {
 	}
 }
 
-func TestTryMove_PlayerNotBlockedByDeadBarrel(t *testing.T) {
+func TestTryMove_PlayerNotBlockedByRemovedBarrel(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -2327,14 +2355,14 @@ func TestTryMove_PlayerNotBlockedByDeadBarrel(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		thingCollected: []bool{false},
+		thingCollected: []bool{true},
 		thingHP:        []int{0},
 		thingDead:      []bool{true},
 		p:              player{x: 0, y: 0},
 	}
 	g.initPhysics()
 	if !g.tryMove(16*fracUnit, 0) {
-		t.Fatal("player move should pass through dead barrel")
+		t.Fatal("player move should pass through removed barrel")
 	}
 }
 

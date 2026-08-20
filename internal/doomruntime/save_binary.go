@@ -905,6 +905,9 @@ func (w saveBinaryWriter) sectorLightEffectSlice(v []sectorLightEffectSaveState)
 		return err
 	}
 	for _, it := range v {
+		if err := w.i64(it.Order); err != nil {
+			return err
+		}
 		if err := w.u8(it.Kind); err != nil {
 			return err
 		}
@@ -1983,6 +1986,9 @@ func (r saveBinaryReader) hitscanPuff() (hitscanPuffSaveState, error) {
 func (r saveBinaryReader) sectorLightEffect() (sectorLightEffectSaveState, error) {
 	var v sectorLightEffectSaveState
 	var err error
+	if v.Order, err = r.i64(); err != nil {
+		return v, err
+	}
 	if v.Kind, err = r.u8(); err != nil {
 		return v, err
 	}

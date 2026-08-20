@@ -87,6 +87,14 @@ func RunUpdate(u Update) error {
 		return nil
 	}
 	if u.IntermissionActive != nil && u.IntermissionActive() {
+		// Doom continues to consume demo tics while WI_Ticker owns the game
+		// state.  Let the runtime advance those tics before the intermission
+		// ticker, just as we do while an attract-mode demo is in the frontend.
+		if u.DemoActive != nil && u.DemoActive() && u.UpdateRuntimeForDemo != nil {
+			if err := u.UpdateRuntimeForDemo(); err != nil {
+				return err
+			}
+		}
 		if u.TickIntermission != nil && u.TickIntermission() {
 			if u.FinishIntermission != nil {
 				u.FinishIntermission()

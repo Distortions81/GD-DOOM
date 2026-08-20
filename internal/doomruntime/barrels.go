@@ -223,15 +223,15 @@ func (g *game) damageShootableThingFromWithInflictorZ(thingIdx int, damage int, 
 	case isMonster(typ):
 		g.damageMonsterFromWithInflictorZ(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
 	case isBarrelThingType(typ):
-		g.damageBarrelFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
+		g.damageBarrelFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
 	}
 }
 
 func (g *game) damageBarrel(thingIdx int, damage int) {
-	g.damageBarrelFrom(thingIdx, damage, true, -1, 0, 0, false)
+	g.damageBarrelFrom(thingIdx, damage, true, -1, 0, 0, false, 0, false)
 }
 
-func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
+func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, inflictorZ int64, hasInflictorZ bool) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -241,7 +241,7 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 	if g.thingDead[thingIdx] || g.thingHP[thingIdx] <= 0 {
 		return
 	}
-	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, 0, false, g.thingHP[thingIdx])
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if g.thingHP[thingIdx] > 0 {
 		_ = doomrand.PRandom()
@@ -300,21 +300,22 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 	}
 	debugRadius := g.debugRadiusAttackEnabled(sx, sy)
 	debugVisit := 0
-	dist := int64(damage)*fracUnit + doomMaxThingRadius
-	var seen []bool
-	if g.m != nil {
-		seen = make([]bool, len(g.m.Things))
+	if debugRadius {
+		fmt.Printf("gd-radius-debug tic=%d world=%d origin=(%d,%d,%d) ignore=%d source_player=%t source_thing=%d\n",
+			g.demoTick-1, g.worldTic, sx, sy, sz, ignoreThing, sourcePlayer, sourceThing)
 	}
-	playerSeen := false
+	// P_RadiusAttack computes `(damage + MAXRADIUS) << FRACBITS` in a
+	// 32-bit fixed_t. MAXRADIUS is already fixed-point, so the shift wraps;
+	// preserving that bug determines which blockmap columns are visited.
+	dist := int64(int32((int32(damage) + int32(doomMaxThingRadius)) << fracBits))
 	playerCell := -1
 	if !g.isDead && playerHeight > 0 {
 		playerCell = g.thingBlockmapCellFor(g.p.x, g.p.y)
 	}
 	visitPlayer := func() {
-		if playerSeen || g.isDead || playerHeight <= 0 || g.stats.Health <= 0 {
+		if g.isDead || playerHeight <= 0 || g.stats.Health <= 0 {
 			return
 		}
-		playerSeen = true
 		dx := abs(g.p.x - sx)
 		dy := abs(g.p.y - sy)
 		playerDist := dx
@@ -343,7 +344,17 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		if damageToPlayer <= 0 {
 			return
 		}
+		// P_DamageMobj applies thrust from the exploding mobj (the inflictor),
+		// but P_KillMobj retains the explosion owner as player->attacker for
+		// P_DeathThink. Keep those two Doom concepts distinct.
 		g.damagePlayerFrom(damageToPlayer, msg, sx, sy, true, -1)
+		if g.statusHasAttacker && sourceThing >= 0 && g.m != nil && sourceThing < len(g.m.Things) {
+			g.statusAttackerX, g.statusAttackerY = g.thingPosFixed(sourceThing, g.m.Things[sourceThing])
+			g.statusAttackerThing = sourceThing
+		} else if g.statusHasAttacker && sourcePlayer {
+			g.statusAttackerX, g.statusAttackerY = g.p.x, g.p.y
+			g.statusAttackerThing = -1
+		}
 		if debugRadius {
 			rndAfter, prndAfter := doomrand.State()
 			fmt.Printf("gd-radius-debug tic=%d world=%d player health_after=%d armor_after=%d prnd_after=%d rnd_after=%d\n",
@@ -351,10 +362,9 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		}
 	}
 	visitThing := func(i int) {
-		if i < 0 || i >= len(g.m.Things) || seen[i] || i == ignoreThing {
+		if i < 0 || i >= len(g.m.Things) || i == ignoreThing {
 			return
 		}
-		seen[i] = true
 		if i < len(g.thingCollected) && g.thingCollected[i] {
 			return
 		}
@@ -407,7 +417,7 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 			return
 		}
 		rndBefore, prndBefore := doomrand.State()
-		g.damageShootableThingFrom(i, damage-int(tdist), sourcePlayer, sourceThing, sx, sy, true)
+		g.damageShootableThingFromWithInflictorZ(i, damage-int(tdist), sourcePlayer, sourceThing, sx, sy, true, sz, true)
 		if debugRadius {
 			rndAfter, prndAfter := doomrand.State()
 			fmt.Printf("gd-radius-debug tic=%d world=%d idx=%d hp_after=%d dead=%t prnd_after=%d rnd_after=%d\n",
@@ -423,7 +433,6 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 	}
 
 	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
-		seen := make(map[int]struct{})
 		left := int((sx - dist - g.bmapOriginX) >> (fracBits + 7))
 		right := int((sx + dist - g.bmapOriginX) >> (fracBits + 7))
 		bottom := int((sy - dist - g.bmapOriginY) >> (fracBits + 7))
@@ -442,10 +451,6 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 				}
 				cellThings := append([]int(nil), g.thingBlockCells[cell]...)
 				for _, i := range cellThings {
-					if _, ok := seen[i]; ok {
-						continue
-					}
-					seen[i] = struct{}{}
 					visitThing(i)
 				}
 			}

@@ -71,6 +71,15 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 	}
 }
 
+func TestDemoTracePlayerPlasmaImpactUsesAllDoomFrames(t *testing.T) {
+	want := []int{109, 110, 111, 112, 113}
+	for phase, state := range want {
+		if got := demoTraceProjectileImpactState(projectilePlayerPlasma, 0, phase); got != state {
+			t.Fatalf("phase %d state=%d want=%d", phase, got, state)
+		}
+	}
+}
+
 func TestDemoTraceContinuesWhenPlayerDies(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	tracePath := t.TempDir() + "/demo-trace.jsonl"

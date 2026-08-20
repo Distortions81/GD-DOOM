@@ -117,10 +117,8 @@ func (g *game) tickGameplayWorld() {
 func (g *game) tickThinkers() {
 	g.tickPlayerBody()
 	g.runOrderedWorldThinkers()
-	g.tickSectorLightEffects()
 	g.tickBossBrainSpecials()
 	g.tickProjectiles()
-	g.tickProjectileImpacts()
 	g.tickDeferredProjectiles()
 	g.tickHitscanPuffs()
 }
@@ -134,6 +132,9 @@ const (
 	worldThinkerPlat
 	worldThinkerCeiling
 	worldThinkerDoor
+	worldThinkerProjectile
+	worldThinkerProjectileImpact
+	worldThinkerSectorLight
 )
 
 type worldThinkerRef struct {
@@ -213,6 +214,22 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 		// sector number. Their order remains the source thinker-list order.
 		consider(worldThinkerDoor, -1-i, d.order)
 	}
+	for i := range g.projectiles {
+		if g.projectiles[i].deferredTick {
+			continue
+		}
+		consider(worldThinkerProjectile, i, g.projectiles[i].order)
+	}
+	for i := range g.projectileImpacts {
+		if g.projectileImpacts[i].order > 0 {
+			consider(worldThinkerProjectileImpact, i, g.projectileImpacts[i].order)
+		}
+	}
+	for sec, fx := range g.sectorLightFx {
+		if fx.kind != sectorLightEffectNone && fx.order > 0 {
+			consider(worldThinkerSectorLight, sec, fx.order)
+		}
+	}
 	return best, found
 }
 
@@ -239,6 +256,10 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 		}
 	case worldThinkerPlat:
 		if pt := g.plats[ref.key]; pt != nil && pt.order == ref.order {
+			if pt.skipOrderedTic {
+				pt.skipOrderedTic = false
+				return
+			}
 			g.platTickedThisTic = true
 			g.tickPlat(ref.key, pt)
 		}
@@ -258,6 +279,14 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 		}
 		if d := g.doors[ref.key]; d != nil && d.order == ref.order {
 			g.tickDoor(ref.key, d)
+		}
+	case worldThinkerProjectile:
+		g.tickProjectileByOrder(ref.order)
+	case worldThinkerProjectileImpact:
+		g.tickProjectileImpactByOrder(ref.order)
+	case worldThinkerSectorLight:
+		if ref.key >= 0 && ref.key < len(g.sectorLightFx) && g.sectorLightFx[ref.key].order == ref.order {
+			g.tickSectorLightEffect(ref.key)
 		}
 	}
 }
@@ -790,8 +819,14 @@ func (g *game) checkPositionForActorWithPickupTouch(x, y, radius int64, blockMon
 		if moverThingIdx >= len(g.thingProbeSpecialLines) {
 			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
 		}
+		if g.thingProbeSpecialLines[moverThingIdx] == nil {
+			g.thingProbeSpecialLines[moverThingIdx] = make([]int, 0)
+		}
 		g.thingProbeSpecialLines[moverThingIdx] = g.thingProbeSpecialLines[moverThingIdx][:0]
 	} else {
+		if g.playerProbeSpecialLines == nil {
+			g.playerProbeSpecialLines = make([]int, 0)
+		}
 		g.playerProbeSpecialLines = g.playerProbeSpecialLines[:0]
 	}
 	tmboxTop := y + radius
@@ -975,14 +1010,14 @@ func (g *game) checkPositionForActorWithPickupTouch(x, y, radius int64, blockMon
 }
 
 func (g *game) probeSpecialLinesForMover(idx int) []int {
-	if g == nil || idx < 0 || idx >= len(g.thingProbeSpecialLines) || len(g.thingProbeSpecialLines[idx]) == 0 {
+	if g == nil || idx < 0 || idx >= len(g.thingProbeSpecialLines) {
 		return nil
 	}
 	return g.thingProbeSpecialLines[idx]
 }
 
 func (g *game) probeSpecialLinesForPlayer() []int {
-	if g == nil || len(g.playerProbeSpecialLines) == 0 {
+	if g == nil {
 		return nil
 	}
 	return g.playerProbeSpecialLines

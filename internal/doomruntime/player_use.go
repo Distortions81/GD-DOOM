@@ -432,14 +432,23 @@ func (g *game) checkWalkSpecialLinesWithCandidates(prevX, prevY, curX, curY int6
 }
 
 func (g *game) checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, curX, curY int64, actorIdx int, isPlayer bool, candidateLineIdxs []int) {
+	g.checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY, curX, curY, actorIdx, isPlayer, candidateLineIdxs, -1)
+}
+
+// checkWalkSpecialLinesForActorWithCandidatesAndRadius mirrors the special
+// line collection performed by P_TryMove. radiusOverride is used by missile
+// thinkers, which are not map Things but still supply a collision radius.
+func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY, curX, curY int64, actorIdx int, isPlayer bool, candidateLineIdxs []int, radiusOverride int64) {
 	if prevX == curX && prevY == curY {
 		return
 	}
-	radius := int64(0)
-	if isPlayer {
+	radius := radiusOverride
+	if radius < 0 && isPlayer {
 		radius = playerRadius
-	} else if g != nil && g.m != nil && actorIdx >= 0 && actorIdx < len(g.m.Things) {
+	} else if radius < 0 && g != nil && g.m != nil && actorIdx >= 0 && actorIdx < len(g.m.Things) {
 		radius = monsterRadius(g.m.Things[actorIdx].Type)
+	} else if radius < 0 {
+		radius = 0
 	}
 	prevSS := -1
 	curSS := -1
@@ -464,6 +473,14 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, curX, c
 			return false
 		}
 		if maxX < ld.bbox[3] || minX > ld.bbox[2] || maxY < ld.bbox[1] || minY > ld.bbox[0] {
+			return false
+		}
+		// P_TryMove only appends a special line when P_CheckPosition finds the
+		// mover's destination bbox straddling it.  A swept origin path can cross
+		// a line while the body never touches it, which must not activate W1/WR
+		// specials.
+		destBox := [4]int64{curY + radius, curY - radius, curX + radius, curX - radius}
+		if g.boxOnLineSide(destBox, ld) != -1 {
 			return false
 		}
 		special := g.lineSpecial[ld.idx]
@@ -548,10 +565,10 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidates(prevX, prevY, curX, c
 		for _, candidate := range candidateLineIdxs {
 			physIdx := -1
 			switch {
+			case candidate >= 0 && candidate < len(g.physForLine) && g.physForLine[candidate] >= 0:
+				physIdx = g.physForLine[candidate]
 			case candidate >= 0 && candidate < len(g.lines):
 				physIdx = candidate
-			case candidate >= 0 && candidate < len(g.physForLine):
-				physIdx = g.physForLine[candidate]
 			}
 			if physIdx < 0 || physIdx >= len(g.lines) {
 				continue

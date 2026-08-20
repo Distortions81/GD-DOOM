@@ -64,6 +64,8 @@ const (
 	doomMonsterActionPain
 	doomMonsterActionSkullAttack
 	doomMonsterActionHeadAttack
+	doomMonsterActionBspiAttack
+	doomMonsterActionBspiRefire
 )
 
 const noDoomMonsterState = -1
@@ -110,7 +112,7 @@ var (
 
 func monsterUsesExactDoomStateMachine(typ int16) bool {
 	switch typ {
-	case 3004, 9, 65, 3005, 3006:
+	case 3004, 9, 65, 68, 3005, 3006:
 		return true
 	default:
 		return false
@@ -125,6 +127,8 @@ func monsterInitialDoomState(typ int16) int {
 		return 207
 	case 65:
 		return 406
+	case 68:
+		return 632
 	case 3005:
 		return 502
 	case 3006:
@@ -142,6 +146,8 @@ func monsterDoomSeeState(typ int16) int {
 		return 209
 	case 65:
 		return 408
+	case 68:
+		return 634
 	case 3005:
 		return 503
 	case 3006:
@@ -159,6 +165,8 @@ func monsterDoomPainState(typ int16) int {
 		return 220
 	case 65:
 		return 420
+	case 68:
+		return 651
 	case 3005:
 		return 507
 	case 3006:
@@ -176,6 +184,8 @@ func monsterDoomMissileState(typ int16) int {
 		return 217
 	case 65:
 		return 416
+	case 68:
+		return 647
 	case 3005:
 		return 504
 	case 3006:
@@ -279,6 +289,48 @@ func monsterDoomStateDef(state int) (doomMonsterStateDef, bool) {
 		return doomMonsterStateDef{tics: 3, next: 421, action: doomMonsterActionNone}, true
 	case 421:
 		return doomMonsterStateDef{tics: 3, next: 408, action: doomMonsterActionPain}, true
+	case 632:
+		return doomMonsterStateDef{tics: 10, next: 633, action: doomMonsterActionLook}, true
+	case 633:
+		return doomMonsterStateDef{tics: 10, next: 632, action: doomMonsterActionLook}, true
+	case 634:
+		return doomMonsterStateDef{tics: 20, next: 635, action: doomMonsterActionNone}, true
+	case 635:
+		return doomMonsterStateDef{tics: 3, next: 636, action: doomMonsterActionChase}, true
+	case 636:
+		return doomMonsterStateDef{tics: 3, next: 637, action: doomMonsterActionChase}, true
+	case 637:
+		return doomMonsterStateDef{tics: 3, next: 638, action: doomMonsterActionChase}, true
+	case 638:
+		return doomMonsterStateDef{tics: 3, next: 639, action: doomMonsterActionChase}, true
+	case 639:
+		return doomMonsterStateDef{tics: 3, next: 640, action: doomMonsterActionChase}, true
+	case 640:
+		return doomMonsterStateDef{tics: 3, next: 641, action: doomMonsterActionChase}, true
+	case 641:
+		return doomMonsterStateDef{tics: 3, next: 642, action: doomMonsterActionChase}, true
+	case 642:
+		return doomMonsterStateDef{tics: 3, next: 643, action: doomMonsterActionChase}, true
+	case 643:
+		return doomMonsterStateDef{tics: 3, next: 644, action: doomMonsterActionChase}, true
+	case 644:
+		return doomMonsterStateDef{tics: 3, next: 645, action: doomMonsterActionChase}, true
+	case 645:
+		return doomMonsterStateDef{tics: 3, next: 646, action: doomMonsterActionChase}, true
+	case 646:
+		return doomMonsterStateDef{tics: 3, next: 635, action: doomMonsterActionChase}, true
+	case 647:
+		return doomMonsterStateDef{tics: 20, next: 648, action: doomMonsterActionFaceTarget}, true
+	case 648:
+		return doomMonsterStateDef{tics: 4, next: 649, action: doomMonsterActionBspiAttack}, true
+	case 649:
+		return doomMonsterStateDef{tics: 4, next: 650, action: doomMonsterActionNone}, true
+	case 650:
+		return doomMonsterStateDef{tics: 1, next: 648, action: doomMonsterActionBspiRefire}, true
+	case 651:
+		return doomMonsterStateDef{tics: 3, next: 652, action: doomMonsterActionNone}, true
+	case 652:
+		return doomMonsterStateDef{tics: 3, next: 635, action: doomMonsterActionPain}, true
 	case 502:
 		return doomMonsterStateDef{tics: 10, next: 502, action: doomMonsterActionLook}, true
 	case 503:
@@ -398,6 +450,19 @@ func monsterDoomCompatState(typ int16, state int) (monsterThinkState, int, int) 
 		case state >= 420 && state <= 421:
 			return monsterStatePain, state - 420, 0
 		}
+	case 68:
+		switch {
+		case state >= 632 && state <= 633:
+			return monsterStateSpawn, state - 632, 0
+		case state == 634:
+			return monsterStateSee, -1, 0
+		case state >= 635 && state <= 646:
+			return monsterStateSee, state - 635, 0
+		case state >= 647 && state <= 650:
+			return monsterStateAttack, 0, state - 647
+		case state >= 651 && state <= 652:
+			return monsterStatePain, state - 651, 0
+		}
 	case 3005:
 		switch {
 		case state == 502:
@@ -446,6 +511,14 @@ func monsterDoomAttackRemainingTics(state int) int {
 		return 5
 	case 419:
 		return 1
+	case 647:
+		return 29
+	case 648:
+		return 9
+	case 649:
+		return 5
+	case 650:
+		return 1
 	case 504:
 		return 15
 	case 505:
@@ -478,6 +551,10 @@ func monsterDoomPainRemainingTics(state int) int {
 	case 420:
 		return 6
 	case 421:
+		return 3
+	case 651:
+		return 6
+	case 652:
 		return 3
 	case 507:
 		return 12
@@ -535,6 +612,20 @@ func monsterCompatToDoomState(typ int16, state monsterThinkState, phase, attackP
 		case monsterStatePain:
 			return 420 + min(phase, 1)
 		}
+	case 68:
+		switch state {
+		case monsterStateSpawn:
+			return 632 + min(phase, 1)
+		case monsterStateSee:
+			if phase < 0 {
+				return 634
+			}
+			return 635 + min(phase, 11)
+		case monsterStateAttack:
+			return 647 + min(attackPhase, 3)
+		case monsterStatePain:
+			return 651 + min(phase, 1)
+		}
 	case 3005:
 		switch state {
 		case monsterStateSpawn:
@@ -583,12 +674,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		return
 	}
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-		skipMomentum := i < len(g.thingTelefragTick) && g.thingTelefragTick[i] == g.worldTic
-		if skipMomentum {
-			g.setThingMomentum(i, 0, 0, 0)
-		} else {
-			g.tickMonsterMomentum(i, th)
-		}
+		g.tickMonsterMomentum(i, th)
 		if i < len(g.thingDeathTics) && g.thingDeathTics[i] > 0 {
 			g.thingDeathTics[i]--
 		}
@@ -635,7 +721,6 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 						_ = g.spawnPainLostSoul(i, baseAngle+degToAngle(270))
 					}
 				} else if !monsterLeavesCorpse(th.Type) || th.Type == 71 {
-					g.clearMonsterTargetsForRemovedThing(i)
 					g.thingDeathTics[i] = 0
 					g.thingCollected[i] = true
 					g.debugThingState(i, th, "dead-removed")
@@ -650,6 +735,12 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		return
 	}
 	if !g.monsterTargetAlive() && !g.monsterHasExplicitTarget(i) {
+		// P_MobjThinker still executes P_XY/P_ZMovement for an exact-state
+		// monster whose player target has died. In particular, a floating
+		// cacodemon continues its vertical adjustment toward the corpse.
+		if monsterUsesExactDoomStateMachine(th.Type) {
+			g.tickMonsterMomentum(i, th)
+		}
 		g.clearMonsterTargetState(i)
 		return
 	}
@@ -684,7 +775,13 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
 			return
 		}
-		resumedFromAttack = i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack
+		// Stateful Doom attacks transition into their run state and execute its
+		// entry action in the same thinker call. The approximate controller used
+		// by the remaining roster must do likewise when its final frame expires.
+		if i < len(g.thingState) && g.thingState[i] == monsterStateAttack {
+			g.resetMonsterIdleOrChaseState(i, th.Type)
+		}
+		resumedFromAttack = true
 	}
 	resumedFromPain := false
 	resumeRevenantAfterDeadTarget := false
@@ -740,8 +837,19 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		}
 	}
 
-	if !resumedFromPain && !resumedFromAttack && !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
-		return
+	if !resumedFromPain && !resumedFromAttack {
+		hadDeadExplicitThingTarget := i < len(g.thingTargetPlayer) && !g.thingTargetPlayer[i] &&
+			i < len(g.thingTargetIdx) && g.thingTargetIdx[i] >= 0 &&
+			g.thingTargetIdx[i] < len(g.thingHP) && g.thingHP[g.thingTargetIdx[i]] <= 0
+		if !g.monsterAdvanceThinkState(i, th.Type, tx, ty, targetX, targetY, dist) {
+			return
+		}
+		// Entering a see frame runs Doom's A_Chase. If it replaced a dead
+		// target via P_LookForPlayers, A_Chase returns immediately; it must
+		// not also take the ordinary chase move below this tic.
+		if hadDeadExplicitThingTarget && i < len(g.thingTargetDirectReacquire) && g.thingTargetDirectReacquire[i] {
+			return
+		}
 	}
 	targetX, targetY = 0, 0
 	dist = 0
@@ -764,7 +872,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		g.monsterTurnTowardMoveDir(i)
 	}
 
-	if !ranStateEntryAction && !g.monsterHasTarget(i) {
+	if !ranStateEntryAction && !g.monsterHasSimulationTarget(i) {
 		hadJustAtk := i >= 0 && i < len(g.thingJustAtk) && g.thingJustAtk[i]
 		reacquired, continueChase := g.monsterRunLostTargetChaseState(i, th.Type, tx, ty)
 		if !reacquired {
@@ -956,12 +1064,33 @@ func (g *game) monsterAdvanceThinkState(i int, typ int16, tx, ty, px, py, dist i
 			g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
 		}
 		if g.monsterRunLookState(i, typ, tx, ty) {
-			return true
+			// Cacodemons first enter S_HEAD_SIGHT (20 tics) after A_Look. Its
+			// A_Chase does not run until the following thinker call; the other
+			// generic monsters enter a run frame whose entry action chases now.
+			return typ != 68
 		}
 		g.setMonsterThinkState(i, typ, monsterStateSpawn, g.monsterSpawnStateTicsForPhase(i, typ))
 		return false
 	case monsterStateSee:
 		if !g.monsterHasTarget(i) {
+			// P_SetMobjState installs the next see frame (including its full
+			// tics) before running A_Chase. This Hell Knight has an explicit
+			// corpse target: A_Chase then reacquires the player and returns.
+			// Preserve the newly-entered frame rather than leaving the expired
+			// frame at zero tics and running another A_Chase next tic.
+			deadKnightTarget := i < len(g.thingTargetPlayer) && !g.thingTargetPlayer[i] &&
+				i < len(g.thingTargetIdx) && g.thingTargetIdx[i] >= 0 &&
+				g.thingTargetIdx[i] < len(g.thingHP) && g.thingHP[g.thingTargetIdx[i]] <= 0
+			if deadKnightTarget {
+				if i < len(g.thingStatePhase) {
+					count := len(monsterSeeFrameTics(typ, g.fastMonstersActive()))
+					if count < 1 {
+						count = 1
+					}
+					g.thingStatePhase[i] = (g.thingStatePhase[i] + 1) % count
+					g.thingStateTics[i] = g.monsterSeeStateTicsForPhase(i, typ)
+				}
+			}
 			if i >= 0 && i < len(g.thingReactionTics) && g.thingReactionTics[i] > 0 {
 				g.thingReactionTics[i]--
 			}
@@ -999,6 +1128,9 @@ func (g *game) monsterRunLookState(i int, typ int16, tx, ty int64) bool {
 	if i < 0 {
 		return false
 	}
+	// This is A_Look, which always clears threshold before considering a new
+	// target. P_DamageMobj's immediate spawn-state wake bypasses this helper,
+	// so its BASETHRESHOLD remains available for the first A_Chase instead.
 	if i >= 0 && i < len(g.thingThreshold) {
 		g.thingThreshold[i] = 0
 	}
@@ -1020,10 +1152,16 @@ func (g *game) monsterRunLostTargetChaseState(i int, typ int16, tx, ty int64) (r
 	if i < 0 {
 		return false, false
 	}
+	if i < len(g.thingTargetDirectReacquire) {
+		g.thingTargetDirectReacquire[i] = false
+	}
 	if i >= 0 && i < len(g.thingThreshold) {
 		g.thingThreshold[i] = 0
 	}
 	if g.monsterLookForPlayer(i, true, tx, ty) {
+		if i < len(g.thingTargetDirectReacquire) {
+			g.thingTargetDirectReacquire[i] = true
+		}
 		if i >= 0 && i < len(g.thingAggro) {
 			g.thingAggro[i] = true
 		}
@@ -1161,6 +1299,19 @@ func (g *game) monsterHasTarget(i int) bool {
 	return false
 }
 
+// monsterHasSimulationTarget mirrors Doom's actor->target pointer check. A
+// killed player remains MF_SHOOTABLE, so an already-targeted corpse can still
+// be seen and attacked; only fresh target acquisition requires a live player.
+func (g *game) monsterHasSimulationTarget(i int) bool {
+	if g == nil || i < 0 {
+		return false
+	}
+	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+		return true
+	}
+	return g.monsterHasTarget(i)
+}
+
 func (g *game) monsterHasExplicitTarget(i int) bool {
 	if g == nil || i < 0 {
 		return false
@@ -1182,9 +1333,6 @@ func (g *game) monsterTargetPos(i int) (x, y, z, height, radius int64, ok bool) 
 		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
-		if !g.monsterTargetAlive() {
-			return 0, 0, 0, 0, 0, false
-		}
 		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
 	}
 	targetIdx, ok := g.monsterTargetThingIdx(i)
@@ -1315,9 +1463,17 @@ func (g *game) runMonsterIdleOrChaseEntryActionWithContinuation(i int, typ int16
 				}
 			}
 			g.monsterTurnTowardMoveDir(i)
+			// A_Chase uses MF_SHOOTABLE for its target check. A dead player mobj
+			// can still be retained for attack attribution, but it must enter the
+			// lost-target/reacquisition branch rather than continue normal chase
+			// movement.
 			if !g.monsterHasTarget(i) {
+				hadDeadExplicitTarget := i < len(g.thingTargetPlayer) && !g.thingTargetPlayer[i] &&
+					i < len(g.thingTargetIdx) && g.thingTargetIdx[i] >= 0 &&
+					g.thingTargetIdx[i] < len(g.thingHP) && g.thingHP[g.thingTargetIdx[i]] <= 0
 				reacquired, continueChase := g.monsterRunLostTargetChaseState(i, typ, tx, ty)
-				if allowJustAttackedReacquire && reacquired && i < len(g.thingJustAtk) && g.thingJustAtk[i] {
+				if allowJustAttackedReacquire && reacquired && !(typ == 66 && hadDeadExplicitTarget) &&
+					i < len(g.thingJustAtk) && g.thingJustAtk[i] {
 					continue
 				}
 				if !reacquired {
@@ -1326,6 +1482,12 @@ func (g *game) runMonsterIdleOrChaseEntryActionWithContinuation(i int, typ int16
 				if !continueChase {
 					if continueAfterReacquire && i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
 						return false, false
+					}
+					if allowJustAttackedReacquire && typ == 66 && hadDeadExplicitTarget {
+						// P_LookForPlayers was reached from the run-state action at
+						// attack expiry. A_Chase returns immediately after reacquiring
+						// a target; the ordinary chase code must wait until next tic.
+						return true, false
 					}
 					if allowJustAttackedReacquire {
 						return false, false
@@ -1544,6 +1706,11 @@ func (g *game) ensureMonsterAIState() {
 			g.thingTargetIdx[i] = -1
 		}
 		copy(g.thingTargetIdx, old)
+	}
+	if len(g.thingTargetDirectReacquire) != n {
+		old := g.thingTargetDirectReacquire
+		g.thingTargetDirectReacquire = make([]bool, n)
+		copy(g.thingTargetDirectReacquire, old)
 	}
 	if len(g.thingThreshold) != n {
 		old := g.thingThreshold
@@ -1819,7 +1986,12 @@ func (g *game) runExactDoomMonsterAction(i int, typ int16, state int, action doo
 	case doomMonsterActionCPosAttack:
 		_ = g.monsterAttack(i, typ, dist)
 	case doomMonsterActionCPosRefire:
-		g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		// A_CPosRefire calls A_FaceTarget before deciding whether to continue.
+		// The player's corpse remains the actor's target mobj, even though it is
+		// no longer a live chase target.
+		if ax, ay, _, _, _, ok := g.monsterAttackTargetPos(i); ok {
+			g.faceMonsterToward(i, tx, ty, ax, ay)
+		}
 		if !g.chaingunnerRefireKeepsAttack(i, typ, tx, ty) {
 			g.setExactDoomMonsterStateDepth(i, typ, monsterDoomSeeState(typ), depth+1)
 		}
@@ -1831,7 +2003,19 @@ func (g *game) runExactDoomMonsterAction(i int, typ int16, state int, action doo
 		if targetX != 0 || targetY != 0 || g.monsterHasTarget(i) {
 			g.faceMonsterToward(i, tx, ty, targetX, targetY)
 		}
+		_ = g.monsterHeadAttack(i, tx, ty)
+	case doomMonsterActionBspiAttack:
+		if targetX != 0 || targetY != 0 || g.monsterHasTarget(i) {
+			g.faceMonsterToward(i, tx, ty, targetX, targetY)
+		}
 		_ = g.monsterAttack(i, typ, dist)
+	case doomMonsterActionBspiRefire:
+		if ax, ay, _, _, _, ok := g.monsterAttackTargetPos(i); ok {
+			g.faceMonsterToward(i, tx, ty, ax, ay)
+		}
+		if !g.spiderRefireKeepsAttack(i, typ, tx, ty) {
+			g.setExactDoomMonsterStateDepth(i, typ, monsterDoomSeeState(typ), depth+1)
+		}
 	}
 }
 
@@ -1985,8 +2169,11 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	for xmove != 0 || ymove != 0 {
 		nx, ny := tx, ty
 		if xmove > maxMove/2 || ymove > maxMove/2 {
-			nx += xmove >> 1
-			ny += ymove >> 1
+			// Doom computes the trial point with C division, which truncates
+			// negative odd values toward zero; it only uses >> for the
+			// remaining momentum afterwards.
+			nx += xmove / 2
+			ny += ymove / 2
 			xmove >>= 1
 			ymove >>= 1
 		} else {
@@ -2072,7 +2259,10 @@ func (g *game) tickMonsterZMovement(i int, th mapdata.Thing, z, floorZ, ceilZ, m
 	}
 	z += momz
 	height := g.thingCurrentHeight(i, th)
-	if canFloat && g.monsterHasTarget(i) {
+	// P_ZMovement checks actor->target, not whether that target is still a
+	// live player. A targeted player corpse therefore continues to guide a
+	// floating monster's vertical adjustment.
+	if canFloat && g.monsterHasSimulationTarget(i) {
 		inFloat := i >= 0 && i < len(g.thingInFloat) && g.thingInFloat[i]
 		if !inFloat {
 			targetX, targetY, targetZ, _, _, ok := g.monsterTargetPos(i)
@@ -2119,7 +2309,7 @@ func (g *game) corpseShouldSkipFriction(i int, th mapdata.Thing, momx, momy int6
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return false
 	}
-	if i >= len(g.thingDead) || !g.thingDead[i] || !monsterLeavesCorpse(th.Type) {
+	if i >= len(g.thingDead) || !g.thingDead[i] || (!monsterLeavesCorpse(th.Type) && th.Type != 3006) {
 		return false
 	}
 	if momx <= fracUnit/4 && momx >= -fracUnit/4 && momy <= fracUnit/4 && momy >= -fracUnit/4 {
@@ -2168,9 +2358,6 @@ func (g *game) resetLostSoulCharge(i int, typ int16) {
 	}
 	if i < len(g.thingMomZ) {
 		g.thingMomZ[i] = 0
-	}
-	if i < len(g.thingInFloat) {
-		g.thingInFloat[i] = false
 	}
 	if i < len(g.thingAttackTics) {
 		g.thingAttackTics[i] = 0
@@ -2226,7 +2413,12 @@ func (g *game) lostSoulChargeTargetAt(i int, th mapdata.Thing, x, y, z int64) (l
 		if other == i || other < 0 || other >= len(g.m.Things) {
 			return lineAttackTarget{}, false
 		}
-		if !g.thingActiveInSession(other) {
+		// A rejected A_PainShootSkull remains linked as a corpse for the rest
+		// of this tic, and P_CheckThing lets an MF_SKULLFLY mobj hit it before
+		// ordinary solidity filtering. Older runtime corpses are not retained
+		// in the blockmap, so include only this same-tic special case.
+		rejectedThisTic := g.skullRejectedAt != nil && g.skullRejectedAt[other] == g.worldTic
+		if !g.thingActiveInSession(other) && !rejectedThisTic {
 			return lineAttackTarget{}, false
 		}
 		oth := g.m.Things[other]
@@ -2287,7 +2479,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 	if want := runtimeDebugEnv("GD_DEBUG_SKULL_FLY"); want != "" {
 		var wantTic, wantIdx int
 		if _, err := fmt.Sscanf(want, "%d:%d", &wantTic, &wantIdx); err == nil {
-			debugSkull = wantIdx == i && (g.demoTick-1 == wantTic || g.worldTic == wantTic)
+			debugSkull = (wantIdx < 0 || wantIdx == i) && (g.demoTick-1 == wantTic || g.worldTic == wantTic)
 		}
 	}
 	if momx == 0 && momy == 0 {
@@ -2387,11 +2579,10 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 		}
 		tx, ty = g.thingPosFixed(i, th)
 		z, _, _ = g.thingSupportState(i, th)
-		if tx != nx || ty != ny || g.thingMomX[i] != momx || g.thingMomY[i] != momy {
+		if g.thingMomX[i] != momx || g.thingMomY[i] != momy || g.thingMomZ[i] != momz {
 			momx = g.thingMomX[i]
 			momy = g.thingMomY[i]
-			xmove = 0
-			ymove = 0
+			momz = g.thingMomZ[i]
 		}
 	}
 
@@ -3200,7 +3391,7 @@ func (g *game) monsterCanMelee(typ int16, dist, tx, ty, px, py int64) bool {
 }
 
 func (g *game) monsterCanMeleeTarget(i int, typ int16, dist, tx, ty, px, py int64) bool {
-	if !g.monsterHasTarget(i) {
+	if !g.monsterHasSimulationTarget(i) {
 		return false
 	}
 	if !monsterHasMeleeAttack(typ) {
@@ -3217,7 +3408,7 @@ func (g *game) monsterCanMeleeTarget(i int, typ int16, dist, tx, ty, px, py int6
 }
 
 func (g *game) monsterCheckMissileRange(i int, typ int16, dist, tx, ty, px, py int64) bool {
-	if !g.monsterHasTarget(i) {
+	if !g.monsterHasSimulationTarget(i) {
 		return false
 	}
 	if isMeleeOnlyMonster(typ) {
@@ -3797,6 +3988,25 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 	return true
 }
 
+// monsterHeadAttack is Doom's A_HeadAttack: unlike the common projectile
+// monsters, a cacodemon chooses a close-range 1..6 x 10 melee hit before
+// spawning MT_HEADSHOT.
+func (g *game) monsterHeadAttack(i int, sx, sy int64) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	tx, ty, _, _, radius, ok := g.monsterAttackTargetPos(i)
+	if !ok {
+		return false
+	}
+	if g.monsterHasLOSTarget(i, 3005, sx, sy) && doomApproxDistance(tx-sx, ty-sy) < monsterMeleeRange-20*fracUnit+radius {
+		damage := 10 * (1 + doomPRandomN(6))
+		g.damageMonsterTarget(i, damage, "Monster hit you", sx, sy)
+		return true
+	}
+	return g.spawnMonsterProjectile(i, 3005)
+}
+
 func (g *game) monsterAimAngleToTarget(i int, sx, sy int64) uint32 {
 	tx, ty, _, _, _, ok := g.monsterAttackTargetPos(i)
 	if !ok {
@@ -3875,6 +4085,10 @@ func (g *game) spawnPainLostSoul(sourceIdx int, angle uint32) bool {
 	// A_PainShootSkull immediately calls P_TryMove after P_SpawnMobj. If the
 	// spawn point is blocked, vanilla kills the new skull in place.
 	if _, _, _, ok := g.checkPositionForActor(x, y, monsterRadius(3006), true, idx, true); !ok {
+		if g.skullRejectedAt == nil {
+			g.skullRejectedAt = make(map[int]int)
+		}
+		g.skullRejectedAt[idx] = g.worldTic
 		g.damageMonsterFrom(idx, 10000, false, sourceIdx, sx, sy, true)
 		return false
 	}
@@ -4220,6 +4434,17 @@ func (g *game) actorHasLOS(ax, ay, az, aheight, bx, by, bz, bheight int64) bool 
 	if g == nil {
 		return false
 	}
+	// P_CheckSight always performs the REJECT-matrix fast rejection before
+	// tracing BSP lines. Radius attacks call this shared path directly, so
+	// skipping it lets explosions damage actors Doom knows cannot see the
+	// blast from their sectors.
+	if g.m != nil && g.m.RejectMatrix != nil {
+		fromSector := g.sectorAt(ax, ay)
+		toSector := g.sectorAt(bx, by)
+		if g.sightRejected(fromSector, toSector) {
+			return false
+		}
+	}
 	if g.m == nil || len(g.m.Nodes) == 0 || len(g.m.SubSectors) == 0 || len(g.m.Segs) == 0 {
 		return g.actorHasLOSByInterceptScan(ax, ay, az, aheight, bx, by, bz, bheight)
 	}
@@ -4479,9 +4704,6 @@ func (g *game) crossSubsectorLOS(ss int, sight *losTrace) bool {
 			return false
 		}
 		frac := interceptVector(sight.trace, lineDL)
-		if frac <= 0 {
-			continue
-		}
 		if g.sectorFloor[front] != g.sectorFloor[back] {
 			if slope := fixedDiv(openBottom-sight.sightZStart, frac); slope > sight.bottomSlope {
 				sight.bottomSlope = slope
@@ -4986,7 +5208,9 @@ func (g *game) probeSkullFlyMove(i int, typ int16, x, y int64) skullFlyProbeResu
 		if other == i || other < 0 || other >= len(g.m.Things) {
 			return lineAttackTarget{}, false
 		}
-		if !g.thingActiveInSession(other) {
+		// See lostSoulChargeTargetAt: retain only a same-tic rejected skull.
+		rejectedThisTic := g.skullRejectedAt != nil && g.skullRejectedAt[other] == g.worldTic
+		if !g.thingActiveInSession(other) && !rejectedThisTic {
 			return lineAttackTarget{}, false
 		}
 		oth := g.m.Things[other]

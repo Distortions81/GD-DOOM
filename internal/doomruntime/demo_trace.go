@@ -161,6 +161,8 @@ func doomPlatType(t platType) int {
 		return 0
 	case platTypeDownWaitUpStay:
 		return 1
+	case platTypeRaiseAndChange:
+		return 2
 	case platTypeRaiseToNearestAndChange:
 		return 3
 	case platTypeBlazeDownWaitUpStay:
@@ -260,7 +262,12 @@ func (g *game) writeDemoTraceTic(gametic int) {
 		pendingWeapon = demoTraceWeaponID(pendingWeaponID)
 	}
 	player := demoTracePlayer{
-		PlayerState:   boolToInt(g.isDead),
+		PlayerState: func() int {
+			if g.playerReborn {
+				return 2
+			}
+			return boolToInt(g.isDead)
+		}(),
 		Health:        g.stats.Health,
 		ArmorPoints:   g.stats.Armor,
 		ArmorType:     g.stats.ArmorType,
@@ -279,15 +286,27 @@ func (g *game) writeDemoTraceTic(gametic int) {
 
 	mobjs := g.demoTraceMobjs()
 	specials := g.demoTraceSpecials()
+	gamestate := 0
+	gamestateName := "GS_LEVEL"
+	gameaction := 0
+	gameactionName := "ga_nothing"
+	if g.levelExitRequested && !g.demoIntermissionActive {
+		gameaction = 6
+		gameactionName = "ga_completed"
+	}
+	if g.demoIntermissionActive {
+		gamestate = 1
+		gamestateName = "GS_INTERMISSION"
+	}
 	g.demoTrace.write(map[string]any{
 		"kind":            "tic",
 		"gametic":         gametic,
 		"rndindex":        rndIndex,
 		"prndindex":       prndIndex,
-		"gamestate":       0,
-		"gamestate_name":  "GS_LEVEL",
-		"gameaction":      0,
-		"gameaction_name": "ga_nothing",
+		"gamestate":       gamestate,
+		"gamestate_name":  gamestateName,
+		"gameaction":      gameaction,
+		"gameaction_name": gameactionName,
 		"leveltime":       g.worldTic,
 		"consoleplayer":   max(g.localSlot-1, 0),
 		"displayplayer":   max(g.localSlot-1, 0),
@@ -505,7 +524,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			order: fx.order,
 			idx:   -1,
 			mobj: demoTraceMobj{
-				Type:         demoTraceProjectileImpactType(fx.kind),
+				Type:         demoTraceProjectileImpactType(fx.kind, fx.sourceType),
 				X:            fx.x,
 				Y:            fx.y,
 				Z:            fx.z,
@@ -515,10 +534,10 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				MomZ:         0,
 				FloorZ:       fx.floorz,
 				CeilingZ:     fx.ceilz,
-				Radius:       demoTraceProjectileImpactRadius(fx.kind),
+				Radius:       demoTraceProjectileImpactRadius(fx.kind, fx.sourceType),
 				Height:       8 * fracUnit,
 				Tics:         fx.phaseTics,
-				State:        demoTraceProjectileImpactState(fx.kind, fx.phase),
+				State:        demoTraceProjectileImpactState(fx.kind, fx.sourceType, fx.phase),
 				Flags:        1552,
 				Health:       1000,
 				Movedir:      0,
@@ -572,6 +591,10 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			} else {
 				tics = 6
 			}
+		} else if p.kind == hitscanFxBFGExtra {
+			mobjType = 42
+			state = p.state
+			tics = p.tics
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: p.order,
@@ -717,11 +740,14 @@ func demoTraceProjectileFlags(_ projectile) int {
 	return 67088
 }
 
-func demoTraceProjectileImpactType(kind projectileKind) int {
+func demoTraceProjectileImpactType(kind projectileKind, sourceType int16) int {
 	switch kind {
 	case projectileFireball:
 		return 31
 	case projectilePlasmaBall:
+		if sourceType == 68 {
+			return 36 // MT_ARACHPLAZ
+		}
 		return 32
 	case projectileBaronBall:
 		return 16
@@ -740,11 +766,14 @@ func demoTraceProjectileImpactType(kind projectileKind) int {
 	}
 }
 
-func demoTraceProjectileImpactState(kind projectileKind, phase int) int {
+func demoTraceProjectileImpactState(kind projectileKind, sourceType int16, phase int) int {
 	switch kind {
 	case projectileFireball:
 		return []int{99, 100, 101}[clampDemoPhase(phase, 3)]
 	case projectilePlasmaBall:
+		if sourceType == 68 {
+			return []int{669, 670, 671, 672, 673}[clampDemoPhase(phase, 5)]
+		}
 		return []int{104, 105, 106}[clampDemoPhase(phase, 3)]
 	case projectileBaronBall:
 		return []int{524, 525, 526}[clampDemoPhase(phase, 3)]
@@ -755,7 +784,9 @@ func demoTraceProjectileImpactState(kind projectileKind, phase int) int {
 	case projectileRocket:
 		return []int{127, 128, 129}[clampDemoPhase(phase, 3)]
 	case projectilePlayerPlasma:
-		return []int{109, 110, 111}[clampDemoPhase(phase, 3)]
+		// S_PLASEXP through S_PLASEXP5: unlike the three-frame monster balls,
+		// the player plasma impact has five distinct Doom states.
+		return []int{109, 110, 111, 112, 113}[clampDemoPhase(phase, 5)]
 	case projectileBFGBall:
 		return []int{117, 118, 119, 120, 121, 122}[clampDemoPhase(phase, 6)]
 	default:
@@ -763,8 +794,13 @@ func demoTraceProjectileImpactState(kind projectileKind, phase int) int {
 	}
 }
 
-func demoTraceProjectileImpactRadius(kind projectileKind) int64 {
+func demoTraceProjectileImpactRadius(kind projectileKind, sourceType int16) int64 {
 	switch kind {
+	case projectilePlasmaBall:
+		if sourceType == 68 {
+			return 13 * fracUnit
+		}
+		return 6 * fracUnit
 	case projectileRocket, projectileTracer:
 		return 11 * fracUnit
 	case projectilePlayerPlasma:

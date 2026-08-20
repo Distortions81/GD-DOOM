@@ -45,21 +45,21 @@ const (
 )
 
 type player struct {
-	x               int64
-	y               int64
-	z               int64
-	floorz          int64
-	ceilz           int64
-	subsector       int
-	sector          int
-	angle           uint32
-	momx            int64
-	momy            int64
-	momz            int64
-	reactionTime    int
+	x                 int64
+	y                 int64
+	z                 int64
+	floorz            int64
+	ceilz             int64
+	subsector         int
+	sector            int
+	angle             uint32
+	momx              int64
+	momy              int64
+	momz              int64
+	reactionTime      int
 	teleportedThisTic bool
-	viewHeight      int64
-	deltaViewHeight int64
+	viewHeight        int64
+	deltaViewHeight   int64
 }
 
 type moveCmd struct {
@@ -116,16 +116,16 @@ const (
 )
 
 type doorThinker struct {
-	order        int64
-	sector       int
-	typ          doorType
-	direction    int
-	topHeight    int64
-	topWait      int
-	topCountdown int
-	speed        int64
+	order             int64
+	sector            int
+	typ               doorType
+	direction         int
+	topHeight         int64
+	topWait           int
+	topCountdown      int
+	speed             int64
 	traceTopCountdown int
-	pendingRemove bool
+	pendingRemove     bool
 }
 
 func spawnPlayer(m *mapdata.Map, requestedSlot int) (player, int, []playerStart, int) {
@@ -167,6 +167,46 @@ func (g *game) initPhysics() {
 	}
 	if g.p.viewHeight == 0 {
 		g.p.viewHeight = playerViewHeight
+	}
+}
+
+// initTimedDoorSpecials mirrors the sector cases in P_SpawnSpecials that add
+// vertical-door thinkers without a linedef activation. They must exist from
+// the first gameplay tic so their countdowns and thinker ordering match Doom.
+func (g *game) initTimedDoorSpecials() {
+	if g == nil || g.m == nil {
+		return
+	}
+	if g.doors == nil {
+		g.doors = make(map[int]*doorThinker)
+	}
+	for sec := range g.m.Sectors {
+		if g.doors[sec] != nil {
+			continue
+		}
+		switch g.m.Sectors[sec].Special {
+		case 10: // Door closes after 30 seconds.
+			d := g.allocDoorThinker(sec)
+			d.typ = doorNormal
+			d.direction = 0
+			d.speed = vDoorSpeed
+			d.topCountdown = 30 * doomTicsPerSecond
+			g.doors[sec] = d
+			g.m.Sectors[sec].Special = 0
+		case 14: // Door raises after five minutes.
+			d := g.allocDoorThinker(sec)
+			d.typ = doorRaiseIn5Mins
+			d.direction = 2
+			d.speed = vDoorSpeed
+			d.topHeight = g.lowestSurroundingCeiling(sec) - 4*fracUnit
+			if d.topHeight < g.sectorFloor[sec] {
+				d.topHeight = g.sectorFloor[sec]
+			}
+			d.topWait = vDoorWaitTic
+			d.topCountdown = 5 * 60 * doomTicsPerSecond
+			g.doors[sec] = d
+			g.m.Sectors[sec].Special = 0
+		}
 	}
 }
 

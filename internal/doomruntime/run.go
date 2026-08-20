@@ -202,6 +202,9 @@ func (sg *sessionGame) Update() error {
 			case err == nil:
 				return nil
 			case errors.Is(err, ebiten.Termination):
+				if sg.headlessDemoPlayback() {
+					return err
+				}
 				_ = sg.advanceFrontendAttract()
 				return nil
 			default:

@@ -19,6 +19,7 @@ const (
 )
 
 type sectorLightEffect struct {
+	order      int64
 	kind       sectorLightEffectKind
 	minLight   int16
 	maxLight   int16
@@ -95,6 +96,7 @@ func (g *game) spawnSectorFireFlicker(sec int) {
 		minLight = maxLight
 	}
 	g.sectorLightFx[sec] = sectorLightEffect{
+		order:    g.allocThinkerOrder(),
 		kind:     sectorLightEffectFireFlicker,
 		minLight: minLight,
 		maxLight: maxLight,
@@ -108,6 +110,7 @@ func (g *game) spawnSectorLightFlash(sec int) {
 	}
 	maxLight := g.m.Sectors[sec].Light
 	g.sectorLightFx[sec] = sectorLightEffect{
+		order:    g.allocThinkerOrder(),
 		kind:     sectorLightEffectLightFlash,
 		minLight: g.findMinSurroundingSectorLight(sec, maxLight),
 		maxLight: maxLight,
@@ -131,6 +134,7 @@ func (g *game) spawnSectorStrobeFlash(sec int, darkTime int, inSync bool) {
 		count = (doomrand.PRandom() & 7) + 1
 	}
 	g.sectorLightFx[sec] = sectorLightEffect{
+		order:      g.allocThinkerOrder(),
 		kind:       sectorLightEffectStrobe,
 		minLight:   minLight,
 		maxLight:   maxLight,
@@ -146,6 +150,7 @@ func (g *game) spawnSectorGlow(sec int) {
 	}
 	maxLight := g.m.Sectors[sec].Light
 	g.sectorLightFx[sec] = sectorLightEffect{
+		order:     g.allocThinkerOrder(),
 		kind:      sectorLightEffectGlow,
 		minLight:  g.findMinSurroundingSectorLight(sec, maxLight),
 		maxLight:  maxLight,
@@ -158,91 +163,98 @@ func (g *game) tickSectorLightEffects() {
 		return
 	}
 	for sec := range g.sectorLightFx {
-		fx := &g.sectorLightFx[sec]
-		switch fx.kind {
-		case sectorLightEffectFireFlicker:
-			fx.count--
-			if fx.count != 0 {
-				continue
+		g.tickSectorLightEffect(sec)
+	}
+}
+
+func (g *game) tickSectorLightEffect(sec int) {
+	if g == nil || g.m == nil || sec < 0 || sec >= len(g.m.Sectors) || sec >= len(g.sectorLightFx) {
+		return
+	}
+	fx := &g.sectorLightFx[sec]
+	switch fx.kind {
+	case sectorLightEffectFireFlicker:
+		fx.count--
+		if fx.count != 0 {
+			return
+		}
+		roll := doomrand.PRandom()
+		if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+			var wantTic int
+			if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+				if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+					rnd, prnd := doomrand.State()
+					fmt.Printf("world-rng-debug tic=%d world=%d kind=fireflicker sec=%d roll=%d rnd=%d prnd=%d\n",
+						g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
+				}
 			}
+		}
+		amount := (roll & 3) * 16
+		if int(g.m.Sectors[sec].Light)-amount < int(fx.minLight) {
+			g.m.Sectors[sec].Light = fx.minLight
+		} else {
+			g.m.Sectors[sec].Light = fx.maxLight - int16(amount)
+		}
+		fx.count = 4
+	case sectorLightEffectLightFlash:
+		fx.count--
+		if fx.count != 0 {
+			return
+		}
+		if g.m.Sectors[sec].Light == fx.maxLight {
+			g.m.Sectors[sec].Light = fx.minLight
 			roll := doomrand.PRandom()
 			if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
 				var wantTic int
 				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
 					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
 						rnd, prnd := doomrand.State()
-						fmt.Printf("world-rng-debug tic=%d world=%d kind=fireflicker sec=%d roll=%d rnd=%d prnd=%d\n",
+						fmt.Printf("world-rng-debug tic=%d world=%d kind=lightflash-dark sec=%d roll=%d rnd=%d prnd=%d\n",
 							g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
 					}
 				}
 			}
-			amount := (roll & 3) * 16
-			if int(g.m.Sectors[sec].Light)-amount < int(fx.minLight) {
-				g.m.Sectors[sec].Light = fx.minLight
-			} else {
-				g.m.Sectors[sec].Light = fx.maxLight - int16(amount)
-			}
-			fx.count = 4
-		case sectorLightEffectLightFlash:
-			fx.count--
-			if fx.count != 0 {
-				continue
-			}
-			if g.m.Sectors[sec].Light == fx.maxLight {
-				g.m.Sectors[sec].Light = fx.minLight
-				roll := doomrand.PRandom()
-				if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
-					var wantTic int
-					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
-						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
-							rnd, prnd := doomrand.State()
-							fmt.Printf("world-rng-debug tic=%d world=%d kind=lightflash-dark sec=%d roll=%d rnd=%d prnd=%d\n",
-								g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
-						}
+			fx.count = (roll & fx.minTime) + 1
+		} else {
+			g.m.Sectors[sec].Light = fx.maxLight
+			roll := doomrand.PRandom()
+			if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
+				var wantTic int
+				if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
+					if g.demoTick-1 == wantTic || g.worldTic == wantTic {
+						rnd, prnd := doomrand.State()
+						fmt.Printf("world-rng-debug tic=%d world=%d kind=lightflash-bright sec=%d roll=%d rnd=%d prnd=%d\n",
+							g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
 					}
 				}
-				fx.count = (roll & fx.minTime) + 1
-			} else {
-				g.m.Sectors[sec].Light = fx.maxLight
-				roll := doomrand.PRandom()
-				if want := runtimeDebugEnv("GD_DEBUG_WORLD_RNG_TIC"); want != "" {
-					var wantTic int
-					if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
-						if g.demoTick-1 == wantTic || g.worldTic == wantTic {
-							rnd, prnd := doomrand.State()
-							fmt.Printf("world-rng-debug tic=%d world=%d kind=lightflash-bright sec=%d roll=%d rnd=%d prnd=%d\n",
-								g.demoTick-1, g.worldTic, sec, roll, rnd, prnd)
-						}
-					}
-				}
-				fx.count = (roll & fx.maxTime) + 1
 			}
-		case sectorLightEffectStrobe:
-			fx.count--
-			if fx.count != 0 {
-				continue
-			}
-			if g.m.Sectors[sec].Light == fx.minLight {
-				g.m.Sectors[sec].Light = fx.maxLight
-				fx.count = fx.brightTime
-			} else {
-				g.m.Sectors[sec].Light = fx.minLight
-				fx.count = fx.darkTime
-			}
-		case sectorLightEffectGlow:
-			switch fx.direction {
-			case -1:
-				g.m.Sectors[sec].Light -= sectorLightGlowSpeed
-				if g.m.Sectors[sec].Light <= fx.minLight {
-					g.m.Sectors[sec].Light += sectorLightGlowSpeed
-					fx.direction = 1
-				}
-			case 1:
+			fx.count = (roll & fx.maxTime) + 1
+		}
+	case sectorLightEffectStrobe:
+		fx.count--
+		if fx.count != 0 {
+			return
+		}
+		if g.m.Sectors[sec].Light == fx.minLight {
+			g.m.Sectors[sec].Light = fx.maxLight
+			fx.count = fx.brightTime
+		} else {
+			g.m.Sectors[sec].Light = fx.minLight
+			fx.count = fx.darkTime
+		}
+	case sectorLightEffectGlow:
+		switch fx.direction {
+		case -1:
+			g.m.Sectors[sec].Light -= sectorLightGlowSpeed
+			if g.m.Sectors[sec].Light <= fx.minLight {
 				g.m.Sectors[sec].Light += sectorLightGlowSpeed
-				if g.m.Sectors[sec].Light >= fx.maxLight {
-					g.m.Sectors[sec].Light -= sectorLightGlowSpeed
-					fx.direction = -1
-				}
+				fx.direction = 1
+			}
+		case 1:
+			g.m.Sectors[sec].Light += sectorLightGlowSpeed
+			if g.m.Sectors[sec].Light >= fx.maxLight {
+				g.m.Sectors[sec].Light -= sectorLightGlowSpeed
+				fx.direction = -1
 			}
 		}
 	}

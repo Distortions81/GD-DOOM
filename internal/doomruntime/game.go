@@ -299,6 +299,7 @@ const (
 	hitscanFxBlood
 	hitscanFxSmoke
 	hitscanFxTeleport
+	hitscanFxBFGExtra
 )
 
 const maskedMidSortBucket = 8.0
@@ -426,6 +427,7 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 
 type game struct {
 	m                 *mapdata.Map
+	restartTemplate   *mapdata.Map
 	opts              Options
 	bounds            bounds
 	paletteLUTEnabled bool
@@ -588,132 +590,135 @@ type game struct {
 	secretLevelExit       bool
 	levelRestartRequested bool
 
-	thingCollected        []bool
-	thingDropped          []bool
-	thingThinkerOrder     []int64
-	prevThingX            []int64
-	prevThingY            []int64
-	prevThingZ            []int64
-	thingRenderBlendFromX []int64
-	thingRenderBlendFromY []int64
-	thingRenderBlendTics  []int
-	thingX                []int64
-	thingY                []int64
-	thingMomX             []int64
-	thingMomY             []int64
-	thingMomZ             []int64
-	thingAngleState       []uint32
-	thingZState           []int64
-	thingFloorState       []int64
-	thingCeilState        []int64
-	thingSupportValid     []bool
-	thingSkullFly         []bool
-	thingResumeChaseNow   []bool
-	thingBlockOrder       []int64
-	thingBlockCell        []int
-	thingBlockCells       [][]int
-	thingHP               []int
-	thingAggro            []bool
-	thingAmbush           []bool
-	thingTargetPlayer     []bool
-	thingTargetIdx        []int
-	thingThreshold        []int
-	thingCooldown         []int
-	thingMoveDir          []monsterMoveDir
-	thingMoveCount        []int
-	thingJustAtk          []bool
-	thingInFloat          []bool
-	thingJustHit          []bool
-	thingReactionTics     []int
-	thingWakeTics         []int
-	thingLastLook         []int
-	thingDead             []bool
-	thingGibbed           []bool
-	thingGibTick          []int
-	thingTelefragTick     []int
-	thingXDeath           []bool
-	thingDeathTics        []int
-	thingAttackTics       []int
-	thingAttackPhase      []int
-	thingAttackFireTics   []int
-	thingPainTics         []int
-	thingThinkWait        []int
-	thingDoomState        []int
-	thingState            []monsterThinkState
-	thingStateTics        []int
-	thingStatePhase       []int
-	thingWorldAnimRef     []thingAnimRefState
-	thingShadeTick        []int
-	thingShadeMul         []uint32
-	bossSpawnCubes        []bossSpawnCube
-	bossSpawnFires        []bossSpawnFire
-	bossBrainTargetOrder  int
-	bossBrainEasyToggle   bool
-	projectiles           []projectile
-	projectileImpacts     []projectileImpact
-	projectileShadeTick   []int
-	projectileShadeMul    []uint32
-	impactShadeTick       []int
-	impactShadeMul        []uint32
-	hitscanPuffs          []hitscanPuff
-	nextThinkerOrder      int64
-	nextBlockmapOrder     int64
-	platFree              []*platThinker
-	cheatLevel            int
-	invulnerable          bool
-	noClip                bool
-	inventory             playerInventory
-	alwaysRun             bool
-	autoWeaponSwitch      bool
-	weaponRefire          bool
-	weaponAttackDown      bool
-	useButtonDown         bool
-	prevWeaponState       weaponPspriteState
-	prevWeaponFlashState  weaponPspriteState
-	prevWeaponPSpriteY    int
-	weaponState           weaponPspriteState
-	weaponStateTics       int
-	weaponFlashState      weaponPspriteState
-	weaponFlashTics       int
-	weaponPSpriteY        int
-	stats                 playerStats
-	worldTic              int
-	worldTicSample        int
-	spectreFuzzPos        int
-	spectreFuzzCoarseX    int
-	spectreFuzzCoarseY    int
-	spectreFuzzCoarseSet  bool
-	spectreFuzzSamplePix  []uint32
-	spectreFuzzSampleTic  int
-	spectreFuzzSampleInit bool
-	playerViewZ           int64
-	secretFound           []bool
-	secretsFound          int
-	secretsTotal          int
-	sectorSoundTarget     []bool
-	isDead                bool
-	playerMobjHealth      int
-	damageFlashTic        int
-	bonusFlashTic         int
-	sectorLightFx         []sectorLightEffect
-	subSectorSec          []int
-	sectorBBox            []worldBBox
-	subSectorLoopVerts    [][]uint16
-	subSectorLoopDiag     []loopBuildDiag
-	subSectorPoly         [][]worldPt
-	subSectorTris         [][][3]int
-	subSectorBBox         []worldBBox
-	dynamicSectorMask     []bool
-	staticSubSectorMask   []bool
-	subSectorPlaneID      []int
-	sectorSubSectors      [][]int
-	holeFillPolys         []holeFillPoly
-	sectorPlaneTris       [][]worldTri
-	sectorPlaneCache      []sectorPlaneCacheEntry
-	sectorLightCacheTick  int
-	sectorLightCacheValid bool
-	orphanSubSector       []bool
-	orphanRepairQueue     []orphanRepairCandidate
+	thingCollected             []bool
+	thingDropped               []bool
+	thingThinkerOrder          []int64
+	prevThingX                 []int64
+	prevThingY                 []int64
+	prevThingZ                 []int64
+	thingRenderBlendFromX      []int64
+	thingRenderBlendFromY      []int64
+	thingRenderBlendTics       []int
+	thingX                     []int64
+	thingY                     []int64
+	thingMomX                  []int64
+	thingMomY                  []int64
+	thingMomZ                  []int64
+	thingAngleState            []uint32
+	thingZState                []int64
+	thingFloorState            []int64
+	thingCeilState             []int64
+	thingSupportValid          []bool
+	thingSkullFly              []bool
+	skullRejectedAt            map[int]int
+	thingResumeChaseNow        []bool
+	thingBlockOrder            []int64
+	thingBlockCell             []int
+	thingBlockCells            [][]int
+	thingHP                    []int
+	thingAggro                 []bool
+	thingAmbush                []bool
+	thingTargetPlayer          []bool
+	thingTargetIdx             []int
+	thingTargetDirectReacquire []bool
+	thingThreshold             []int
+	thingCooldown              []int
+	thingMoveDir               []monsterMoveDir
+	thingMoveCount             []int
+	thingJustAtk               []bool
+	thingInFloat               []bool
+	thingJustHit               []bool
+	thingReactionTics          []int
+	thingWakeTics              []int
+	thingLastLook              []int
+	thingDead                  []bool
+	thingGibbed                []bool
+	thingGibTick               []int
+	thingTelefragTick          []int
+	thingXDeath                []bool
+	thingDeathTics             []int
+	thingAttackTics            []int
+	thingAttackPhase           []int
+	thingAttackFireTics        []int
+	thingPainTics              []int
+	thingThinkWait             []int
+	thingDoomState             []int
+	thingState                 []monsterThinkState
+	thingStateTics             []int
+	thingStatePhase            []int
+	thingWorldAnimRef          []thingAnimRefState
+	thingShadeTick             []int
+	thingShadeMul              []uint32
+	bossSpawnCubes             []bossSpawnCube
+	bossSpawnFires             []bossSpawnFire
+	bossBrainTargetOrder       int
+	bossBrainEasyToggle        bool
+	projectiles                []projectile
+	projectileImpacts          []projectileImpact
+	projectileShadeTick        []int
+	projectileShadeMul         []uint32
+	impactShadeTick            []int
+	impactShadeMul             []uint32
+	hitscanPuffs               []hitscanPuff
+	nextThinkerOrder           int64
+	nextBlockmapOrder          int64
+	platFree                   []*platThinker
+	cheatLevel                 int
+	invulnerable               bool
+	noClip                     bool
+	inventory                  playerInventory
+	alwaysRun                  bool
+	autoWeaponSwitch           bool
+	weaponRefire               bool
+	weaponAttackDown           bool
+	useButtonDown              bool
+	prevWeaponState            weaponPspriteState
+	prevWeaponFlashState       weaponPspriteState
+	prevWeaponPSpriteY         int
+	weaponState                weaponPspriteState
+	weaponStateTics            int
+	weaponFlashState           weaponPspriteState
+	weaponFlashTics            int
+	weaponPSpriteY             int
+	stats                      playerStats
+	worldTic                   int
+	worldTicSample             int
+	spectreFuzzPos             int
+	spectreFuzzCoarseX         int
+	spectreFuzzCoarseY         int
+	spectreFuzzCoarseSet       bool
+	spectreFuzzSamplePix       []uint32
+	spectreFuzzSampleTic       int
+	spectreFuzzSampleInit      bool
+	playerViewZ                int64
+	secretFound                []bool
+	secretsFound               int
+	secretsTotal               int
+	sectorSoundTarget          []bool
+	isDead                     bool
+	playerReborn               bool
+	playerMobjHealth           int
+	damageFlashTic             int
+	bonusFlashTic              int
+	sectorLightFx              []sectorLightEffect
+	subSectorSec               []int
+	sectorBBox                 []worldBBox
+	subSectorLoopVerts         [][]uint16
+	subSectorLoopDiag          []loopBuildDiag
+	subSectorPoly              [][]worldPt
+	subSectorTris              [][][3]int
+	subSectorBBox              []worldBBox
+	dynamicSectorMask          []bool
+	staticSubSectorMask        []bool
+	subSectorPlaneID           []int
+	sectorSubSectors           [][]int
+	holeFillPolys              []holeFillPoly
+	sectorPlaneTris            [][]worldTri
+	sectorPlaneCache           []sectorPlaneCacheEntry
+	sectorLightCacheTick       int
+	sectorLightCacheValid      bool
+	orphanSubSector            []bool
+	orphanRepairQueue          []orphanRepairCandidate
 
 	mapFloorLayer                 *ebiten.Image
 	mapFloorPix                   []byte
@@ -872,6 +877,7 @@ type game struct {
 	debugPlayerProbeTic           int
 	platTickedThisTic             bool
 	demoTick                      int
+	demoIntermissionActive        bool
 	demoDoneReported              bool
 	demoBenchStarted              bool
 	demoTraceInitialWritten       bool
@@ -1233,12 +1239,20 @@ const (
 )
 
 func newGame(m *mapdata.Map, opts Options) *game {
+	return newGameWithRNG(m, opts, true)
+}
+
+// newGameWithRNG builds a fresh level. A single-player rebirth reloads the
+// level without M_ClearRandom, unlike a brand-new game or demo session.
+func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	// Doom clears both random streams in G_InitNew before setting up a fresh
 	// level, including demo playback. Without this, hidden bootstrap/frontend
 	// builds leak prior RNG state into attract demos and other new sessions.
 	loadRuntimeDebugEnvFromOS()
 	doomrand.LoadDebugEnvFromOS()
-	doomrand.Clear()
+	if clearRNG {
+		doomrand.Clear()
+	}
 	if opts.DemoScript != nil {
 		opts = runtimecfg.PrepareDemoPlaybackOptions(opts, opts.DemoScript)
 	}
@@ -1260,6 +1274,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 	p, localSlot, starts, localPlayerThingIndex := spawnPlayer(m, opts.PlayerSlot)
 	g := &game{
 		m:                 m,
+		restartTemplate:   cloneMapForRestart(m),
 		opts:              opts,
 		bounds:            mapBounds(m),
 		paletteLUTEnabled: !opts.SourcePortMode,
@@ -1430,6 +1445,7 @@ func newGame(m *mapdata.Map, opts Options) *game {
 		g.demoRecord = make([]DemoTic, 0, 4096)
 	}
 	g.initPhysics()
+	g.initTimedDoorSpecials()
 	// Initialize eye height after physics snaps player Z/floor/ceiling.
 	// This avoids one-frame low-camera artifacts (e.g. during level melt)
 	// before the first tickWorldLogic() view-height update runs.
@@ -2579,7 +2595,7 @@ func (g *game) shouldCaptureCursor() bool {
 
 func (g *game) Update() error {
 	defer g.clearSampledInput()
-	if g.levelExitRequested {
+	if g.levelExitRequested && !g.demoIntermissionActive {
 		return ebiten.Termination
 	}
 	if g.opts.DemoScript != nil {
@@ -2776,6 +2792,9 @@ func (g *game) updateDemoMode() error {
 		g.demoTraceInitialWritten = true
 		return nil
 	}
+	if g.demoIntermissionActive {
+		return g.updateDemoIntermission(script)
+	}
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
 		return ebiten.Termination
@@ -2804,6 +2823,23 @@ func (g *game) updateDemoMode() error {
 		g.reportDemoBench(script)
 		return ebiten.Termination
 	}
+	return nil
+}
+
+// updateDemoIntermission consumes recorded demo tics while the session runs
+// the intermission ticker. The original game reads the demo stream every tic,
+// but does not advance the completed level's thinkers in GS_INTERMISSION.
+func (g *game) updateDemoIntermission(script *DemoScript) error {
+	if g.demoTick >= len(script.Tics) {
+		if g.demoTrace != nil {
+			g.demoTrace.Close()
+			g.demoTrace = nil
+		}
+		g.reportDemoBench(script)
+		return ebiten.Termination
+	}
+	g.demoTick++
+	g.writeDemoTraceTic(g.demoTick - 1)
 	return nil
 }
 
@@ -10349,6 +10385,32 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 	})
 }
 
+// spawnBFGExtra mirrors P_SpawnMobj(MT_EXTRABFG) in A_BFGSpray. Unlike a
+// regular puff it has no Z jitter and only consumes P_Random for lastlook.
+func (g *game) spawnBFGExtra(x, y, z int64) {
+	lastLook := doomrand.PRandom() & 3
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
+	if !ok && g != nil && g.m != nil {
+		floorz = g.thingFloorZ(x, y)
+		if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
+	}
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
+		x:        x,
+		y:        y,
+		z:        z,
+		floorz:   floorz,
+		ceilz:    ceilz,
+		lastLook: lastLook,
+		tics:     8,
+		totalTic: 32,
+		state:    123,
+		kind:     hitscanFxBFGExtra,
+		order:    g.allocThinkerOrder(),
+	})
+}
+
 func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 	const maxPuffs = 64
 	if len(g.hitscanPuffs) >= maxPuffs {
@@ -10643,6 +10705,11 @@ func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 		if p.state >= 130 && p.state < 141 {
 			p.state++
 			p.tics = 6
+		}
+	} else if p.kind == hitscanFxBFGExtra && p.tics <= 0 {
+		if p.state >= 123 && p.state < 126 {
+			p.state++
+			p.tics = 8
 		}
 	}
 	return p.tics > 0

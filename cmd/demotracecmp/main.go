@@ -368,7 +368,33 @@ func shouldIgnorePath(path string) bool {
 }
 
 func shouldIgnoreMapKey(path string, key string, left, right map[string]any) bool {
+	// For raise-and-change platforms vanilla leaves low uninitialized.  Check
+	// the record kind directly: recursive comparison reaches this map at
+	// varying paths after trace normalization.
+	if key == "low" && isPlatSpecial(left) && isPlatSpecial(right) {
+		ltyp := int(numValue(left["type"]))
+		rtyp := int(numValue(right["type"]))
+		if (ltyp == 2 || ltyp == 3) && ltyp == rtyp {
+			return true
+		}
+	}
 	if len(path) >= len("root.specials[") && path[:len("root.specials[")] == "root.specials[" {
+		if isDoorSpecial(left) && isDoorSpecial(right) {
+			// P_SpawnDoorCloseIn30 initializes only the countdown, direction,
+			// type, and speed. Vanilla's trace therefore exposes allocator
+			// residue for the unused topheight/topwait fields while the door is
+			// inactive and waiting to close.
+			ldir := int(numValue(left["direction"]))
+			rdir := int(numValue(right["direction"]))
+			ltyp := int(numValue(left["type"]))
+			rtyp := int(numValue(right["type"]))
+			if ldir <= 0 && rdir <= 0 && ltyp == 0 && rtyp == 0 {
+				switch key {
+				case "topheight", "topwait":
+					return true
+				}
+			}
+		}
 		if key == "topcountdown" {
 			if isDoorSpecial(left) && isDoorSpecial(right) {
 				ldir, lok := left["direction"].(float64)
@@ -379,24 +405,17 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 			}
 		}
 		if isPlatSpecial(left) && isPlatSpecial(right) {
-			if key == "low" {
-				ltyp, lok := left["type"].(float64)
-				rtyp, rok := right["type"].(float64)
-				if lok && rok && (int(ltyp) == 2 || int(ltyp) == 3) && int(ltyp) == int(rtyp) {
-					return true
-				}
-			}
 			if key == "count" {
-				lstatus, lok := left["status"].(float64)
-				rstatus, rok := right["status"].(float64)
-				if lok && rok && int(lstatus) != 2 && int(rstatus) != 2 {
+				lstatus := int(numValue(left["status"]))
+				rstatus := int(numValue(right["status"]))
+				if lstatus != 2 && rstatus != 2 {
 					return true
 				}
 			}
 			if key == "oldstatus" {
-				lstatus, lok := left["status"].(float64)
-				rstatus, rok := right["status"].(float64)
-				if lok && rok && int(lstatus) != 16 && int(rstatus) != 16 {
+				lstatus := int(numValue(left["status"]))
+				rstatus := int(numValue(right["status"]))
+				if lstatus != 16 && rstatus != 16 {
 					return true
 				}
 			}

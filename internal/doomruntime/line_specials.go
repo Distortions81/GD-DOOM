@@ -53,23 +53,25 @@ type platType uint8
 const (
 	platTypeDownWaitUpStay platType = iota
 	platTypeRaiseToNearestAndChange
+	platTypeRaiseAndChange
 	platTypePerpetualRaise
 	platTypeBlazeDownWaitUpStay
 )
 
 type platThinker struct {
-	order         int64
-	sector        int
-	typ           platType
-	status        platStatus
-	oldStatus     platStatus
-	speed         int64
-	low           int64
-	high          int64
-	wait          int
-	count         int
-	finishFlat    string
-	finishSpecial int16
+	order          int64
+	skipOrderedTic bool
+	sector         int
+	typ            platType
+	status         platStatus
+	oldStatus      platStatus
+	speed          int64
+	low            int64
+	high           int64
+	wait           int
+	count          int
+	finishFlat     string
+	finishSpecial  int16
 }
 
 type ceilingThinker struct {
@@ -390,7 +392,6 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 	} else {
 		g.heightClipThingsInSector(sec)
 	}
-	g.refreshProjectileSupportInSector(sec)
 	// After all z-states are updated (heightClipPlayer + heightClipThing), run
 	// pickup detection. Doom's P_ChangeSector -> P_ThingHeightClip(player) ->
 	// P_CheckPosition(player) triggers PIT_CheckThing -> P_TouchSpecialThing
@@ -911,7 +912,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			}
 			g.m.Sectors[sec].Special = 0
 		case mapdata.PlatRaiseAndChange24:
-			pt.typ = platTypeRaiseToNearestAndChange
+			pt.typ = platTypeRaiseAndChange
 			pt.status = platStatusUp
 			pt.oldStatus = platStatusInStasis
 			pt.speed = platMoveSpeed / 2
@@ -922,7 +923,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 				pt.finishSpecial = 0
 			}
 		case mapdata.PlatRaiseAndChange32:
-			pt.typ = platTypeRaiseToNearestAndChange
+			pt.typ = platTypeRaiseAndChange
 			pt.status = platStatusUp
 			pt.oldStatus = platStatusInStasis
 			pt.speed = platMoveSpeed / 2
@@ -993,6 +994,9 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		}
 		if g.platTickedThisTic {
 			g.tickPlat(sec, pt)
+			// The ordered thinker loop will discover this newly appended thinker
+			// later in the same tic.  P_RunThinkers services it once, not twice.
+			pt.skipOrderedTic = true
 		}
 		activated = true
 	}
@@ -1218,7 +1222,9 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		if destSec < 0 || destSec >= len(g.sectorFloor) || destSec >= len(g.sectorCeil) {
 			return false
 		}
-		destAngle := thingDegToWorldAngle(th.Angle)
+		// P_SpawnMapThing quantizes every map Thing angle to a 45-degree
+		// increment before EV_Teleport copies the destination mobj's angle.
+		destAngle := thingSpawnAngle(th.Angle)
 		destFogX := tx + fixedMul(20*fracUnit, doomFineCosine(destAngle))
 		destFogY := ty + fixedMul(20*fracUnit, doomFineSineAtAngle(destAngle))
 		if isPlayer {
@@ -1309,6 +1315,17 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 		return false
 	}
 	allowStomp := isPlayer || g.currentMapName() == "MAP30"
+	// The player mobj is not represented by a map Thing.  P_TeleportMove still
+	// visits it through the blockmap, so a regular monster teleport must fail
+	// when its destination overlaps the player (only the player and MAP30
+	// monster teleports may telefrag).
+	if !isPlayer && g.stats.Health > 0 && !g.isDead &&
+		actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
+		if !allowStomp {
+			return false
+		}
+		g.damagePlayerFrom(10000, "Telefragged", inflictorX, inflictorY, true, actorIdx)
+	}
 	for i, th := range g.m.Things {
 		if i == actorIdx {
 			continue
@@ -1332,12 +1349,8 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 		switch {
 		case isMonster(th.Type):
 			g.damageMonsterFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true)
-			if i < len(g.thingTelefragTick) {
-				g.thingTelefragTick[i] = g.worldTic
-			}
-			g.setThingMomentum(i, 0, 0, 0)
 		case isBarrelThingType(th.Type):
-			g.damageBarrelFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true)
+			g.damageBarrelFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true, 0, false)
 			if i < len(g.thingTelefragTick) {
 				g.thingTelefragTick[i] = g.worldTic
 			}
@@ -1626,7 +1639,7 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 		if next > pt.high {
 			next = pt.high
 			g.setSectorFloorHeight(sec, next)
-			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeDownWaitUpStay || pt.typ == platTypeBlazeDownWaitUpStay {
+			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeRaiseAndChange || pt.typ == platTypeDownWaitUpStay || pt.typ == platTypeBlazeDownWaitUpStay {
 				if pt.finishFlat != "" {
 					g.m.Sectors[sec].FloorPic = pt.finishFlat
 				}

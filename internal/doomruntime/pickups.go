@@ -295,6 +295,12 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		}
 		g.inventory.Strength = true
 		g.inventory.StrengthCount = 1
+		// P_TouchSpecialThing forces the Berserk fist switch immediately. It is
+		// not merely a convenience selection: the pending-weapon transition is
+		// part of vanilla demo state.
+		if g.inventory.ReadyWeapon != weaponFist {
+			g.inventory.PendingWeapon = weaponFist
+		}
 		return "Berserk!", soundEventPowerUp, true
 	case 2015:
 		return g.gainBonusArmor(1, 200, "Picked up an armor bonus")

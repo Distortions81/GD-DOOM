@@ -368,6 +368,7 @@ type hitscanPuffSaveState struct {
 }
 
 type sectorLightEffectSaveState struct {
+	Order      int64
 	Kind       uint8
 	MinLight   int16
 	MaxLight   int16
@@ -1956,6 +1957,7 @@ func captureSectorLightEffects(src []sectorLightEffect) []sectorLightEffectSaveS
 	dst := make([]sectorLightEffectSaveState, len(src))
 	for i, fx := range src {
 		dst[i] = sectorLightEffectSaveState{
+			Order:      fx.order,
 			Kind:       uint8(fx.kind),
 			MinLight:   fx.minLight,
 			MaxLight:   fx.maxLight,
@@ -1977,6 +1979,7 @@ func restoreSectorLightEffects(src []sectorLightEffectSaveState) []sectorLightEf
 	dst := make([]sectorLightEffect, len(src))
 	for i, fx := range src {
 		dst[i] = sectorLightEffect{
+			order:      fx.Order,
 			kind:       sectorLightEffectKind(fx.Kind),
 			minLight:   fx.MinLight,
 			maxLight:   fx.MaxLight,

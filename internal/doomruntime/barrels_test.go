@@ -227,6 +227,20 @@ func TestThingBlockmapRebuildPreservesNewestFirstOrder(t *testing.T) {
 	}
 }
 
+func TestDeadBarrelRemainsSolidUntilRemoved(t *testing.T) {
+	g := &game{
+		m:         &mapdata.Map{Things: []mapdata.Thing{{Type: barrelThingType, Flags: 7}}},
+		thingDead: []bool{true},
+	}
+	if !g.thingBlocksInSession(0) {
+		t.Fatal("dead barrel must remain solid during its BEXP states")
+	}
+	g.thingCollected = []bool{true}
+	if g.thingBlocksInSession(0) {
+		t.Fatal("removed barrel must no longer block")
+	}
+}
+
 func TestThingBlockmapMovePreservesNewestFirstOrderAcrossCells(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -350,7 +364,7 @@ func TestBarrelExplosionLongChain(t *testing.T) {
 func TestProjectileHitsBarrel(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
-			Things: []mapdata.Thing{{Type: barrelThingType, X: 0, Y: 0}},
+			Things:  []mapdata.Thing{{Type: barrelThingType, X: 0, Y: 0}},
 			Sectors: []mapdata.Sector{{FloorHeight: 0, CeilingHeight: 128}},
 		},
 		thingCollected:  []bool{false},
