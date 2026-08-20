@@ -95,6 +95,18 @@ func TestDamagePlayerFrom_ClampsPlayerHealthButNotMobjHealth(t *testing.T) {
 	}
 }
 
+func TestDamagePlayerFrom_ClearsTeleportReactionTime(t *testing.T) {
+	g := &game{
+		stats:            playerStats{Health: 100},
+		playerMobjHealth: 100,
+		p:                player{reactionTime: 1},
+	}
+	g.damagePlayerFrom(1, "ouch", 0, 0, false, -1)
+	if got := g.p.reactionTime; got != 0 {
+		t.Fatalf("reactiontime=%d want=0 after damage", got)
+	}
+}
+
 func TestDamagePlayerFrom_FatalHitConsumesDoomDeathTicRandom(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

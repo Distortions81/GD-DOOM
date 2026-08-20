@@ -402,12 +402,14 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 			}
 		}
 		if isFloorSpecial(left) && isFloorSpecial(right) {
-			if key == "newspecial" {
-				ltyp, lok := left["type"].(float64)
-				rtyp, rok := right["type"].(float64)
-				if lok && rok && int(ltyp) == int(rtyp) && int(ltyp) != 6 && int(ltyp) != 11 {
-					return true
-				}
+			// EV_BuildStairs allocates floormove_t and initializes only the
+			// fields used by T_MoveFloor. Vanilla consequently exposes
+			// allocator residue for this metadata in d_trace.c. Keep comparing
+			// the movement-defining fields (sector, direction, destination and
+			// speed), but do not treat those uninitialized bytes as a desync.
+			switch key {
+			case "type", "crush", "newspecial", "texture":
+				return true
 			}
 		}
 	}

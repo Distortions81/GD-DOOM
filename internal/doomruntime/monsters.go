@@ -626,7 +626,15 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 							g.emitSoundEventAt(monsterDeathSoundEventVariant(th.Type), px, py)
 						}
 					}
-				} else if !monsterLeavesCorpse(th.Type) {
+					if th.Type == 71 && nextPhase == 4 {
+						// S_PAIN_DIE5 runs A_PainDie: clear the corpse's active
+						// behavior and launch three skulls from its current angle.
+						baseAngle := g.thingWorldAngle(i, th)
+						_ = g.spawnPainLostSoul(i, baseAngle+degToAngle(90))
+						_ = g.spawnPainLostSoul(i, baseAngle+degToAngle(180))
+						_ = g.spawnPainLostSoul(i, baseAngle+degToAngle(270))
+					}
+				} else if !monsterLeavesCorpse(th.Type) || th.Type == 71 {
 					g.clearMonsterTargetsForRemovedThing(i)
 					g.thingDeathTics[i] = 0
 					g.thingCollected[i] = true
@@ -679,6 +687,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 		resumedFromAttack = i >= 0 && i < len(g.thingState) && g.thingState[i] != monsterStateAttack
 	}
 	resumedFromPain := false
+	resumeRevenantAfterDeadTarget := false
 	if i >= 0 && i < len(g.thingState) && g.thingState[i] == monsterStatePain {
 		if i >= 0 && i < len(g.thingAttackFireTics) {
 			g.thingAttackFireTics[i] = -1
@@ -707,6 +716,13 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 			}
 			return
 		}
+		// In this UV-max path the revenant's pain state ends while its
+		// explicit target is already a corpse. Vanilla's S_SKEL_RUN1 entry
+		// immediately reacquires the player and completes A_Chase this tic.
+		resumeRevenantAfterDeadTarget = th.Type == 66 &&
+			i < len(g.thingTargetPlayer) && !g.thingTargetPlayer[i] &&
+			i < len(g.thingTargetIdx) && g.thingTargetIdx[i] >= 0 &&
+			!g.monsterHasTarget(i)
 		g.clearMonsterPainState(i)
 		g.resetMonsterIdleOrChaseState(i, th.Type)
 		resumedFromPain = true
@@ -717,7 +733,7 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 
 	ranStateEntryAction := false
 	if resumedFromPain || resumedFromAttack {
-		if stop, ranChase := g.runMonsterIdleOrChaseEntryAction(i, th.Type, tx, ty, resumedFromAttack); stop {
+		if stop, ranChase := g.runMonsterIdleOrChaseEntryActionWithContinuation(i, th.Type, tx, ty, resumedFromAttack, resumeRevenantAfterDeadTarget); stop {
 			return
 		} else if ranChase {
 			ranStateEntryAction = true
@@ -1266,6 +1282,14 @@ func (g *game) resetMonsterIdleOrChaseState(i int, typ int16) {
 }
 
 func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, allowJustAttackedReacquire bool) (stop bool, ranChase bool) {
+	return g.runMonsterIdleOrChaseEntryActionWithContinuation(i, typ, tx, ty, allowJustAttackedReacquire, false)
+}
+
+// runMonsterIdleOrChaseEntryActionWithContinuation handles the action attached
+// to an idle/see state. A pain-state transition enters S_*_RUN1 and must finish
+// that same A_Chase call after it reacquires a target; ordinary reacquires keep
+// the established delayed behavior used by the rest of this runtime.
+func (g *game) runMonsterIdleOrChaseEntryActionWithContinuation(i int, typ int16, tx, ty int64, allowJustAttackedReacquire, continueAfterReacquire bool) (stop bool, ranChase bool) {
 	if g == nil || i < 0 || i >= len(g.thingState) {
 		return false, false
 	}
@@ -1273,7 +1297,7 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 	case monsterStateSpawn:
 		if g.monsterRunLookState(i, typ, tx, ty) {
 			if i < len(g.thingState) && g.thingState[i] == monsterStateSee {
-				return g.runMonsterIdleOrChaseEntryAction(i, typ, tx, ty, false)
+				return g.runMonsterIdleOrChaseEntryActionWithContinuation(i, typ, tx, ty, false, continueAfterReacquire)
 			}
 			return true, false
 		}
@@ -1300,6 +1324,9 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 					return true, false
 				}
 				if !continueChase {
+					if continueAfterReacquire && i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+						return false, false
+					}
 					if allowJustAttackedReacquire {
 						return false, false
 					}
@@ -1317,6 +1344,11 @@ func (g *game) runMonsterIdleOrChaseEntryAction(i int, typ int16, tx, ty int64, 
 					g.monsterPickNewChaseDir(i, typ, targetX, targetY)
 				}
 				return true, true
+			}
+			if continueAfterReacquire && i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
+				// A pain transition into S_*_RUN1 executes A_Chase at state
+				// entry. Let the caller finish its same-tic move/turn work.
+				return false, false
 			}
 			return false, true
 		}
@@ -1940,6 +1972,11 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 	}
 	momx = clamp(momx, -maxMove, maxMove)
 	momy = clamp(momy, -maxMove, maxMove)
+	// P_XYMovement stores its MAXMOVE clamp back to the mobj before testing
+	// movement. Keeping it only in locals loses the clamped value for a mobj
+	// added during this tic.
+	g.thingMomX[i] = momx
+	g.thingMomY[i] = momy
 
 	z, _, _ := g.thingSupportState(i, th)
 	tx, ty := g.thingPosFixed(i, th)
@@ -1980,6 +2017,18 @@ func (g *game) tickMonsterMomentum(i int, th mapdata.Thing) {
 
 	z, floorZ, ceilZ := g.thingSupportState(i, th)
 	if z > floorZ || momz != 0 {
+		// P_XYMovement applies ground friction before P_MobjThinker enters
+		// P_ZMovement. Vertical momentum therefore must not suppress the
+		// horizontal decay when this actor is currently on its floor.
+		if z <= floorZ && !g.corpseShouldSkipFriction(i, th, momx, momy) {
+			if momx > -stopSpeed && momx < stopSpeed && momy > -stopSpeed && momy < stopSpeed {
+				momx = 0
+				momy = 0
+			} else {
+				momx = fixedMul(momx, friction)
+				momy = fixedMul(momy, friction)
+			}
+		}
 		g.thingMomX[i] = momx
 		g.thingMomY[i] = momy
 		g.thingMomZ[i] = g.tickMonsterZMovement(i, th, z, floorZ, ceilZ, momz)
@@ -2255,6 +2304,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 	z, _, _ := g.thingSupportState(i, th)
 	xmove, ymove := momx, momy
 	skullActive := i < len(g.thingSkullFly) && g.thingSkullFly[i]
+	chargeEnded := false
 	for xmove != 0 || ymove != 0 {
 		stepX, stepY := xmove, ymove
 		if stepX > maxMove/2 || stepY > maxMove/2 {
@@ -2298,6 +2348,7 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 					}
 				}
 				g.resetLostSoulCharge(i, th.Type)
+				chargeEnded = true
 				skullActive = false
 				momx = 0
 				momy = 0
@@ -2368,6 +2419,13 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 	g.thingMomX[i] = momx
 	g.thingMomY[i] = momy
 	g.thingMomZ[i] = momz
+	if chargeEnded {
+		// P_XYMovement clears a skull charge on impact, then
+		// P_MobjThinker still runs P_ZMovement because the Lost Soul is
+		// off its floor. Keep the existing split-step behavior above, but
+		// let tickMonsterMomentum perform that final zero-momentum z update.
+		return false
+	}
 	if debugSkull {
 		fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=finish pos=(%d,%d,%d) mom=(%d,%d,%d) floor=%d ceil=%d\n",
 			g.demoTick-1, g.worldTic, i, tx, ty, nz, momx, momy, momz, floorZ, ceilZ)
@@ -3563,6 +3621,9 @@ func (g *game) startLostSoulCharge(i int) bool {
 	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
 		return false
 	}
+	// This action may run immediately after a Pain Elemental appended a new
+	// mobj, before the next thinker had a chance to resize per-mobj state.
+	g.ensureMonsterAIState()
 	tx, ty, tz, theight, _, ok := g.monsterAttackTargetPos(i)
 	if !ok {
 		return false
@@ -3710,6 +3771,8 @@ func (g *game) monsterAttack(i int, typ int16, dist int64) bool {
 		if i < 0 || g.m == nil || i >= len(g.m.Things) {
 			return false
 		}
+		// A_PainAttack calls A_FaceTarget before A_PainShootSkull.
+		g.faceMonsterToward(i, sx, sy, targetX, targetY)
 		return g.spawnPainLostSoul(i, g.thingWorldAngle(i, g.m.Things[i]))
 	}
 	if typ == 64 {
@@ -3799,27 +3862,41 @@ func (g *game) spawnPainLostSoul(sourceIdx int, angle uint32) bool {
 	}
 	tmfloor, tmceil := g.sectorFloor[sec], g.sectorCeil[sec]
 	idx := g.appendRuntimeThing(mapdata.Thing{
-		X:     int16(x >> fracBits),
-		Y:     int16(y >> fracBits),
-		Angle: worldAngleToThingDeg(angle),
-		Type:  3006,
+		X:    int16(x >> fracBits),
+		Y:    int16(y >> fracBits),
+		Type: 3006,
 	}, false)
 	if idx < 0 {
 		return false
 	}
 	g.setThingPosFixed(idx, x, y)
 	g.setThingSupportState(idx, z, tmfloor, tmceil)
-	g.setThingWorldAngle(idx, angle)
 	g.thingHP[idx] = monsterSpawnHealth(3006)
+	// A_PainShootSkull immediately calls P_TryMove after P_SpawnMobj. If the
+	// spawn point is blocked, vanilla kills the new skull in place.
+	if _, _, _, ok := g.checkPositionForActor(x, y, monsterRadius(3006), true, idx, true); !ok {
+		g.damageMonsterFrom(idx, 10000, false, sourceIdx, sx, sy, true)
+		return false
+	}
+	g.setThingWorldAngle(idx, angle)
 	g.thingAggro[idx] = true
-	g.thingReactionTics[idx] = 0
-	g.thingState[idx] = monsterStateSee
+	// P_SpawnMobj enters the skull's spawn state. The normal thinker performs
+	// the first decrement later this tic, while preserving reactiontime.
+	g.thingState[idx] = monsterStateSpawn
 	g.thingStatePhase[idx] = 0
-	g.thingStateTics[idx] = monsterSeeStateTics(3006, g.fastMonstersActive())
+	g.thingStateTics[idx] = monsterSpawnStateTics(3006)
+	if sourceIdx >= 0 && sourceIdx < len(g.thingTargetPlayer) && idx < len(g.thingTargetPlayer) {
+		g.thingTargetPlayer[idx] = g.thingTargetPlayer[sourceIdx]
+	}
+	if sourceIdx >= 0 && sourceIdx < len(g.thingTargetIdx) && idx < len(g.thingTargetIdx) {
+		g.thingTargetIdx[idx] = g.thingTargetIdx[sourceIdx]
+	}
 	if idx < len(g.thingSkullFly) {
 		g.thingSkullFly[idx] = false
 	}
-	return true
+	// A_PainShootSkull assigns the parent's target and immediately executes
+	// A_SkullAttack after a successful P_TryMove.
+	return g.startLostSoulCharge(idx)
 }
 
 func monsterCanBeResurrected(typ int16) bool {
@@ -3910,7 +3987,7 @@ func monsterAttackCallsFaceTarget(typ int16) bool {
 		return true
 	case 3001, 3002, 58, 3005, 3006: // imp, demon/spectre, caco, lost soul
 		return true
-	case 16, 68, 7: // cyberdemon, arachnotron, spider mastermind
+	case 16, 68, 7, 66: // cyberdemon, arachnotron, spider mastermind, revenant
 		return true
 	default:
 		return false
@@ -4179,7 +4256,9 @@ func doomSightDivlineSide(x, y int64, line divline) int {
 		return b2i(line.dy < 0)
 	}
 	if line.dy == 0 {
-		if y == line.y {
+		// Match vanilla P_DivlineSide's horizontal-line comparison exactly.
+		// It intentionally (though surprisingly) compares x against node.y.
+		if x == line.y {
 			return 2
 		}
 		if y <= line.y {
@@ -4189,8 +4268,11 @@ func doomSightDivlineSide(x, y int64, line divline) int {
 	}
 	dx := x - line.x
 	dy := y - line.y
-	left := (line.dy >> fracBits) * (dx >> fracBits)
-	right := (dy >> fracBits) * (line.dx >> fracBits)
+	// P_DivlineSide performs these products as signed 32-bit fixed values.
+	// Preserve its overflow semantics; widened arithmetic can select a different
+	// BSP child and miss an occluding subsector.
+	left := int64(int32(line.dy>>fracBits) * int32(dx>>fracBits))
+	right := int64(int32(dy>>fracBits) * int32(line.dx>>fracBits))
 	if right < left {
 		return 0
 	}
@@ -4661,7 +4743,10 @@ func (g *game) propagateSectorNoise(sec int, soundBlocks int, best []int) {
 		if front != sec && back != sec {
 			continue
 		}
-		if back < 0 {
+		// P_RecursiveSound only crosses lines explicitly marked two-sided.
+		// A populated back sidedef alone is not sufficient: Doom's source
+		// rejects a one-sided linedef before calculating its opening.
+		if (ld.flags&mlTwoSided) == 0 || back < 0 {
 			continue
 		}
 		_, _, _, openrange := g.lineOpening(ld)

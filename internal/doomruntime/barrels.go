@@ -54,13 +54,13 @@ func (g *game) thingCurrentHeight(i int, th mapdata.Thing) int64 {
 		if isBarrelThingType(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 			return info.height >> 2
 		}
-		if isMonster(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] && monsterLeavesCorpse(th.Type) {
+		if isMonster(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] && (monsterLeavesCorpse(th.Type) || th.Type == 3006) {
 			return info.height >> 2
 		}
 		return info.height
 	}
 	if isMonster(th.Type) {
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && monsterLeavesCorpse(th.Type) {
+		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] && (monsterLeavesCorpse(th.Type) || th.Type == 3006) {
 			return monsterHeight(th.Type) >> 2
 		}
 		return monsterHeight(th.Type)
@@ -204,6 +204,10 @@ func (g *game) damageShootableThing(thingIdx int, damage int) {
 }
 
 func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
+	g.damageShootableThingFromWithInflictorZ(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, 0, false)
+}
+
+func (g *game) damageShootableThingFromWithInflictorZ(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, inflictorZ int64, hasInflictorZ bool) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -217,7 +221,7 @@ func (g *game) damageShootableThingFrom(thingIdx int, damage int, sourcePlayer b
 	typ := g.m.Things[thingIdx].Type
 	switch {
 	case isMonster(typ):
-		g.damageMonsterFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
+		g.damageMonsterFromWithInflictorZ(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
 	case isBarrelThingType(typ):
 		g.damageBarrelFrom(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor)
 	}
@@ -237,7 +241,7 @@ func (g *game) damageBarrelFrom(thingIdx int, damage int, sourcePlayer bool, sou
 	if g.thingDead[thingIdx] || g.thingHP[thingIdx] <= 0 {
 		return
 	}
-	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, g.thingHP[thingIdx])
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, 0, false, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if g.thingHP[thingIdx] > 0 {
 		_ = doomrand.PRandom()

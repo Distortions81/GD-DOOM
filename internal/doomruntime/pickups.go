@@ -178,35 +178,36 @@ func (g *game) processThingPickupsAtFiltered(px, py, pz, pradius, pheight int64,
 		return
 	}
 	for i, th := range g.m.Things {
-		if !g.thingActiveInSession(i) {
-			continue
-		}
-		if !isPickupType(th.Type) {
-			continue
-		}
-		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
-		if droppedOnly && !dropped {
-			continue
-		}
-		tx, ty := g.thingPosFixed(i, th)
-		tz, _, _ := g.thingSupportState(i, th)
-		radius := g.thingCurrentRadius(i, th)
-		if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, radius) {
-			continue
-		}
-		msg, ev, picked := g.applyPickup(th.Type, dropped)
-		if !picked {
-			continue
-		}
-		g.thingCollected[i] = true
-		g.setHUDMessage(msg, 45)
-		g.emitSoundEvent(ev)
-		g.bonusFlashTic = max(g.bonusFlashTic, 6)
-		g.statusBonusCount += 6
-		if g.statusBonusCount > 100 {
-			g.statusBonusCount = 100
-		}
+		g.processThingPickupAtIndex(i, th, px, py, pz, pradius, pheight, droppedOnly)
 	}
+}
+
+// processThingPickupAtIndex mirrors P_TouchSpecialThing for an individual
+// special encountered during a position check. It returns true only when the
+// item was consumed.
+func (g *game) processThingPickupAtIndex(i int, th mapdata.Thing, px, py, pz, pradius, pheight int64, droppedOnly bool) bool {
+	if g == nil || g.m == nil || !g.thingActiveInSession(i) || !isPickupType(th.Type) {
+		return false
+	}
+	dropped := i < len(g.thingDropped) && g.thingDropped[i]
+	if droppedOnly && !dropped {
+		return false
+	}
+	tx, ty := g.thingPosFixed(i, th)
+	tz, _, _ := g.thingSupportState(i, th)
+	if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, g.thingCurrentRadius(i, th)) {
+		return false
+	}
+	msg, ev, picked := g.applyPickup(th.Type, dropped)
+	if !picked {
+		return false
+	}
+	g.thingCollected[i] = true
+	g.setHUDMessage(msg, 45)
+	g.emitSoundEvent(ev)
+	g.bonusFlashTic = max(g.bonusFlashTic, 6)
+	g.statusBonusCount = min(100, g.statusBonusCount+6)
+	return true
 }
 
 func (g *game) thingFloorZ(x, y int64) int64 {
@@ -290,6 +291,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	case 2023:
 		if g.stats.Health < 100 {
 			g.stats.Health = 100
+			g.syncPlayerMobjHealth()
 		}
 		g.inventory.Strength = true
 		g.inventory.StrengthCount = 1
@@ -345,6 +347,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		if !changed {
 			return "", 0, false
 		}
+		g.syncPlayerMobjHealth()
 		return "Megasphere!", soundEventPowerUp, true
 	case 2007:
 		amount := 10

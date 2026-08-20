@@ -428,12 +428,17 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		target := 0
 		targetType := 0
+		tracer := 0
+		tracerType := 0
 		if p.sourcePlayer {
 			target = 1
 			targetType = 0
 		} else if p.sourceThing >= 0 && g.m != nil && p.sourceThing < len(g.m.Things) {
 			target = 1
 			targetType = demoTraceThingType(g.m.Things[p.sourceThing].Type)
+		}
+		if p.kind == projectileTracer && p.tracerPlayer {
+			tracer = 1
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: p.order,
@@ -465,7 +470,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Player:       0,
 				Target:       target,
 				TargetType:   targetType,
-				Tracer:       0,
+				Tracer:       tracer,
+				TracerType:   tracerType,
 				Kind:         "projectile",
 			}})
 	}
@@ -483,12 +489,17 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		}
 		target := 0
 		targetType := 0
+		tracer := 0
+		tracerType := 0
 		if fx.sourcePlayer {
 			target = 1
 			targetType = 0
 		} else if fx.sourceThing >= 0 && g.m != nil && fx.sourceThing < len(g.m.Things) {
 			target = 1
 			targetType = demoTraceThingType(g.m.Things[fx.sourceThing].Type)
+		}
+		if fx.kind == projectileTracer {
+			tracer = 1
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: fx.order,
@@ -520,7 +531,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Player:       0,
 				Target:       target,
 				TargetType:   targetType,
-				Tracer:       0,
+				Tracer:       tracer,
+				TracerType:   tracerType,
 			},
 		})
 	}
@@ -545,6 +557,9 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if p.kind == hitscanFxBlood {
 			mobjType = 38
 			flags = 16
+		} else if p.kind == hitscanFxSmoke {
+			mobjType = 7
+			state = 311 + p.state
 		} else if p.kind == hitscanFxTeleport {
 			mobjType = 39
 			if p.state >= 130 {
@@ -785,7 +800,10 @@ func (g *game) demoTracePlayerMobjState() (state int, tics int) {
 }
 
 func (g *game) demoTracePlayerMobjFlags() int {
-	flags := demoTraceFlagSolid | demoTraceFlagShootable
+	// MT_PLAYER: MF_SOLID|MF_SHOOTABLE|MF_DROPOFF|MF_PICKUP|MF_NOTDMATCH.
+	// MF_PICKUP is a zero-valued source compatibility flag, while the other
+	// bits are observable in the reference trace.
+	flags := demoTraceFlagSolid | demoTraceFlagShootable | demoTraceFlagDropoff | demoTraceFlagNotDeathmatch
 	flags |= demoTraceFlagPlayer
 	if g != nil && g.isDead {
 		flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
@@ -818,7 +836,21 @@ func (g *game) demoTraceSpecials() []map[string]any {
 		order int64
 		item  map[string]any
 	}
-	ordered := make([]orderedSpecial, 0, len(g.doors)+len(g.floors)+len(g.plats)+len(g.ceilings))
+	ordered := make([]orderedSpecial, 0, len(g.doors)+len(g.extraDoors)+len(g.floors)+len(g.plats)+len(g.ceilings))
+	for _, d := range g.extraDoors {
+		if d == nil || d.pendingRemove {
+			continue
+		}
+		topCountdown := d.topCountdown
+		if topCountdown == 0 && d.direction == 1 && d.traceTopCountdown > 0 {
+			topCountdown = d.traceTopCountdown
+		}
+		ordered = append(ordered, orderedSpecial{order: d.order, item: map[string]any{
+			"kind": "door", "sector": d.sector, "type": doomDoorType(d.typ),
+			"topheight": d.topHeight, "speed": d.speed, "direction": d.direction,
+			"topwait": d.topWait, "topcountdown": topCountdown,
+		}})
+	}
 
 	doorKeys := sortedIntKeys(g.doors)
 	for _, sec := range doorKeys {
@@ -934,18 +966,19 @@ func demoTraceThingBounds(typ int16) (int64, int64) {
 const demoTraceStateGibs = 895
 
 const (
-	demoTraceFlagSpecial   = 0x00000001
-	demoTraceFlagSolid     = 0x00000002
-	demoTraceFlagShootable = 0x00000004
-	demoTraceFlagAmbush    = 0x00000020
-	demoTraceFlagJustHit   = 0x00000040
-	demoTraceFlagJustAtk   = 0x00000080
-	demoTraceFlagNoGravity = 0x00000200
-	demoTraceFlagDropoff   = 0x00000400
-	demoTraceFlagFloat     = 0x00004000
-	demoTraceFlagDropped   = 0x00020000
-	demoTraceFlagCorpse    = 0x00100000
-	demoTraceFlagCountKill = 0x00400000
+	demoTraceFlagSpecial       = 0x00000001
+	demoTraceFlagSolid         = 0x00000002
+	demoTraceFlagShootable     = 0x00000004
+	demoTraceFlagAmbush        = 0x00000020
+	demoTraceFlagJustHit       = 0x00000040
+	demoTraceFlagJustAtk       = 0x00000080
+	demoTraceFlagNoGravity     = 0x00000200
+	demoTraceFlagDropoff       = 0x00000400
+	demoTraceFlagNotDeathmatch = 0x00000800
+	demoTraceFlagFloat         = 0x00004000
+	demoTraceFlagDropped       = 0x00020000
+	demoTraceFlagCorpse        = 0x00100000
+	demoTraceFlagCountKill     = 0x00400000
 )
 
 func demoTraceThingHealth(g *game, i int, typ int16) int {
@@ -1085,6 +1118,8 @@ func demoTraceMonsterDeathState(typ int16, phase int, xdeath bool) (int, bool) {
 	count := 0
 	if xdeath {
 		switch typ {
+		case 3001:
+			base, count = 462, 8
 		case 3004:
 			base, count = 194, 9
 		case 9:
@@ -1214,7 +1249,7 @@ func demoTraceMonsterSeeState(typ int16, phase int) (int, bool) {
 	case 64:
 		base, count = 244, 12
 	case 66:
-		base, count = 324, 12
+		base, count = 323, 12
 	case 67:
 		base, count = 365, 12
 	case 68:

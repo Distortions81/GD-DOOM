@@ -17,7 +17,7 @@ func TestDoomProjectileShouldSplitMove_MatchesVanillaSignedComparison(t *testing
 	if doomProjectileShouldSplitMove(0, -(doomMaxMove/2 + 1)) {
 		t.Fatal("large negative y move should not split in vanilla")
 	}
-	if doomProjectileShouldSplitMove(-(doomMaxMove/2+1), 0) {
+	if doomProjectileShouldSplitMove(-(doomMaxMove/2 + 1), 0) {
 		t.Fatal("large negative x move should not split in vanilla")
 	}
 }
@@ -121,6 +121,15 @@ func TestBaronProjectileSpeedMatchesDoomSourceFastMode(t *testing.T) {
 	}
 	if got := monsterProjectileSpeed(69, true); got != 20*fracUnit {
 		t.Fatalf("knight fast speed=%d want=%d", got, 20*fracUnit)
+	}
+}
+
+func TestRevenantTracerSpeedMatchesDoomSource(t *testing.T) {
+	if got := monsterProjectileSpeed(66, false); got != 10*fracUnit {
+		t.Fatalf("normal tracer speed=%d want=%d", got, 10*fracUnit)
+	}
+	if got := monsterProjectileSpeed(66, true); got != 20*fracUnit {
+		t.Fatalf("fast tracer speed=%d want=%d", got, 20*fracUnit)
 	}
 }
 
@@ -430,7 +439,7 @@ func TestRevenantAttackSpawnsTracerProjectile(t *testing.T) {
 func TestRevenantTracerHomesTowardPlayer(t *testing.T) {
 	g := &game{
 		p:        player{x: 128 * fracUnit, y: 128 * fracUnit, z: 0},
-		worldTic: 4,
+		demoTick: 5, // A_Tracer runs on gametic 4.
 	}
 	p := projectile{
 		x:            0,
@@ -504,8 +513,8 @@ func TestMancubusAttackPhaseFacesTargetOnVolleyFrames(t *testing.T) {
 		thingAngleState: []uint32{
 			degToAngle(180),
 		},
-		thingX: []int64{128 * fracUnit},
-		thingY: []int64{0},
+		thingX:      []int64{128 * fracUnit},
+		thingY:      []int64{0},
 		projectiles: make([]projectile, 0, 2),
 		soundQueue:  make([]soundEvent, 0, 2),
 		stats:       playerStats{Health: 100},

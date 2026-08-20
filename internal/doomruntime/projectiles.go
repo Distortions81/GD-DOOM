@@ -105,7 +105,13 @@ func monsterProjectileSpeed(typ int16, fast bool) int64 {
 			return 20 * fracUnit
 		}
 		return 15 * fracUnit
-	case 66, 67, 16:
+	case 66:
+		scale := int64(1)
+		if fast {
+			scale = 2
+		}
+		return 10 * fracUnit * scale
+	case 67, 16:
 		scale := int64(1)
 		if fast {
 			scale = 2
@@ -204,6 +210,13 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	sx, sy := g.thingPosFixed(thingIdx, th)
 	sourceZ, _, _ := g.thingSupportState(thingIdx, th)
 	sz := sourceZ + 32*fracUnit
+	aimSourceZ := sourceZ
+	if typ == 66 {
+		// A_SkelMissile temporarily raises the Revenant by 16 units before
+		// P_SpawnMissile adds its normal 32-unit muzzle height.
+		sz += 16 * fracUnit
+		aimSourceZ += 16 * fracUnit
+	}
 	tx, ty, tz, height, _, ok := g.monsterTargetPos(thingIdx)
 	if !ok {
 		return false
@@ -222,7 +235,7 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	if dist < 1 {
 		dist = 1
 	}
-	vz := (tz - sourceZ) / dist
+	vz := (tz - aimSourceZ) / dist
 	if vx == 0 && vy == 0 {
 		return false
 	}
@@ -255,6 +268,12 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
 	if !g.finishProjectileSpawn(&p, true) {
 		return false
+	}
+	if typ == 66 {
+		// A_SkelMissile applies one additional full horizontal step after
+		// P_SpawnMissile's half-step check, before the new missile thinker runs.
+		p.x += p.vx
+		p.y += p.vy
 	}
 	g.projectiles = append(g.projectiles, p)
 	g.emitSoundEventAt(projectileLaunchSoundEvent(typ), sx, sy)
@@ -323,6 +342,12 @@ func (g *game) tickDeferredProjectiles() {
 		}
 		p.deferredTick = false
 		next, keep := g.advanceProjectile(p)
+		// A newly spawned missile runs later in Doom's thinker list during the
+		// same tic. If it explodes in that first thinker call, the replacement
+		// death state is decremented by that call too. Deferred missiles are
+		// advanced after the regular impact pass here, so advance only their
+		// newly created impact once to preserve that state timing.
+		g.tickProjectileImpactByOrder(p.order)
 		if keep {
 			kept = append(kept, next)
 		}
@@ -376,7 +401,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 				}
 			} else if thingHit.damage {
 				if dmg := projectileDamage(p); dmg > 0 {
-					g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, p.x, p.y, true)
+					g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, p.x, p.y, true, p.z, true)
 				}
 			}
 			g.explodeProjectileAt(p, p.x, p.y, p.z)
@@ -390,23 +415,29 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		p.y = ny
 		p.floorz, p.ceilz = tmfloorz, tmceilingz
 	}
-	p.z += p.vz
-	p.prevX = ox
-	p.prevY = oy
-	p.prevZ = oz
-	p.spawnPrev = false
-	if p.z <= p.floorz {
-		p.z = p.floorz
-		g.explodeProjectileAt(p, p.x, p.y, p.z)
-		return projectile{}, false
+	// P_MobjThinker calls P_ZMovement only when the missile is off its floor
+	// or has vertical momentum. A level missile resting on a moving floor must
+	// not explode merely because its cached floor height equals z.
+	if p.z != p.floorz || p.vz != 0 {
+		p.z += p.vz
+		p.prevX = ox
+		p.prevY = oy
+		p.prevZ = oz
+		p.spawnPrev = false
+		if p.z <= p.floorz {
+			p.z = p.floorz
+			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			return projectile{}, false
+		}
+		if p.z+p.height > p.ceilz {
+			p.z = p.ceilz - p.height
+			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			return projectile{}, false
+		}
 	}
-	if p.z+p.height > p.ceilz {
-		p.z = p.ceilz - p.height
-		g.explodeProjectileAt(p, p.x, p.y, p.z)
-		return projectile{}, false
+	if g.tickProjectileAnim(&p) {
+		g.tickProjectileSpecial(&p)
 	}
-	g.tickProjectileSpecial(&p)
-	g.tickProjectileAnim(&p)
 	p.ttl--
 	if p.ttl <= 0 {
 		g.explodeProjectileAt(p, p.x, p.y, p.z)
@@ -655,7 +686,7 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 			}
 		} else if thingHit.damage {
 			if dmg := projectileDamage(*p); dmg > 0 {
-				g.damageShootableThingFrom(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true)
+				g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, ox, oy, true, oz, true)
 			}
 		}
 		g.explodeProjectileAt(*p, ox, oy, oz)
@@ -692,7 +723,10 @@ func (g *game) applyBFGSpray(center uint32) {
 		return
 	}
 	for i := 0; i < 40; i++ {
-		ang := center - degToAngle(45) + uint32((float64(degToAngle(90))/40.0)*float64(i))
+		// A_BFGSpray uses integer angle steps: ANG90/40*i. Floating-point
+		// subdivision shifts some rays by a few angle units and can select a
+		// different target at a line-of-sight boundary.
+		ang := center - doomAng90/2 + doomAng90/40*uint32(i)
 		slope, ok := g.aimLineAttack(g.playerLineAttackActor(), ang, 1024*fracUnit)
 		if !ok {
 			continue
@@ -992,13 +1026,13 @@ func randomizedMissileSpawnTics(base int) int {
 	return tics
 }
 
-func (g *game) tickProjectileAnim(p *projectile) {
+func (g *game) tickProjectileAnim(p *projectile) bool {
 	if p == nil {
-		return
+		return false
 	}
 	p.frameTics--
 	if p.frameTics > 0 {
-		return
+		return false
 	}
 	switch p.kind {
 	case projectileRocket:
@@ -1007,6 +1041,7 @@ func (g *game) tickProjectileAnim(p *projectile) {
 		p.frame ^= 1
 	}
 	p.frameTics = projectileSpawnStateTics(p.kind)
+	return true
 }
 
 func (g *game) projectileSupportStateAt(x, y, radius int64) (int64, int64) {
@@ -1344,24 +1379,40 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 	if p.kind != projectileTracer || !p.tracerPlayer {
 		return
 	}
-	if g.worldTic&3 != 0 {
+	// A_Tracer tests Doom's gametic. worldTic is incremented before thinker
+	// execution, while demoTick-1 is the gametic represented by this trace tic.
+	if (g.demoTick-1)&3 != 0 {
 		return
 	}
 	g.spawnTracerSmokeTrail(p.x, p.y, p.z, p.vx, p.vy)
 	dx := g.p.x - p.x
 	dy := g.p.y - p.y
-	dxy := hypotFixed(dx, dy)
-	if dxy <= 0 {
-		return
+	exact := doomPointToAngle2(p.x, p.y, g.p.x, g.p.y)
+	const tracerTurnAngle = uint32(0x0c000000)
+	if exact != p.angle {
+		if exact-p.angle > 0x80000000 {
+			p.angle -= tracerTurnAngle
+			if exact-p.angle < 0x80000000 {
+				p.angle = exact
+			}
+		} else {
+			p.angle += tracerTurnAngle
+			if exact-p.angle > 0x80000000 {
+				p.angle = exact
+			}
+		}
 	}
 	speed := monsterProjectileSpeed(66, g.fastMonstersActive())
-	targetVX := int64((float64(dx) / float64(dxy)) * float64(speed))
-	targetVY := int64((float64(dy) / float64(dxy)) * float64(speed))
-	targetVZ := int64((float64((g.p.z+(playerHeight/2))-p.z) / float64(dxy)) * float64(speed))
-	p.vx += (targetVX - p.vx) / 2
-	p.vy += (targetVY - p.vy) / 2
-	p.vz += (targetVZ - p.vz) / 2
-	if p.vx != 0 || p.vy != 0 {
-		p.angle = angleToThing(p.x, p.y, p.x+p.vx, p.y+p.vy)
+	p.vx = fixedMul(speed, doomFineCosine(p.angle))
+	p.vy = fixedMul(speed, doomFineSineAtAngle(p.angle))
+	dist := doomApproxDistance(dx, dy) / speed
+	if dist < 1 {
+		dist = 1
+	}
+	slope := (g.p.z + 40*fracUnit - p.z) / dist
+	if slope < p.vz {
+		p.vz -= fracUnit / 8
+	} else {
+		p.vz += fracUnit / 8
 	}
 }

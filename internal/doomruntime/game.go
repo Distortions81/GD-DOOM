@@ -515,6 +515,7 @@ type game struct {
 	sectorCeil              []int64
 	lineSpecial             []uint16
 	doors                   map[int]*doorThinker
+	extraDoors              []*doorThinker
 	recycledDoors           map[int]*doorThinker
 	floors                  map[int]*floorThinker
 	plats                   map[int]*platThinker
@@ -10402,8 +10403,10 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 }
 
 func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
-	jitterZ := z + int64((doomrand.PRandom()-doomrand.PRandom())<<10)
-	g.spawnHitscanPuff(x, y, jitterZ)
+	// P_SpawnPuff owns its Z jitter.  A_Tracer passes the missile's current
+	// position directly, so doing it here as well would consume two extra
+	// P_Random values and desynchronize later thinkers.
+	g.spawnHitscanPuff(x, y, z)
 	const maxPuffs = 64
 	if len(g.hitscanPuffs) >= maxPuffs {
 		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
@@ -10414,11 +10417,22 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 	if tics < 1 {
 		tics = 1
 	}
+	smokeX := x - momx
+	smokeY := y - momy
+	floorz, ceilz, ok := g.subsectorFloorCeilAt(smokeX, smokeY)
+	if !ok && g != nil && g.m != nil {
+		floorz = g.thingFloorZ(smokeX, smokeY)
+		if sec := g.sectorAt(smokeX, smokeY); sec >= 0 && sec < len(g.sectorCeil) {
+			ceilz = g.sectorCeil[sec]
+		}
+	}
 	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
-		x:        x - momx,
-		y:        y - momy,
+		x:        smokeX,
+		y:        smokeY,
 		z:        z,
 		momz:     fracUnit,
+		floorz:   floorz,
+		ceilz:    ceilz,
 		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics + 16,
@@ -12452,6 +12466,7 @@ var (
 	monsterDeathTics5x7        = []int{5, 5, 5, 5, 5, 5, -1}
 	monsterDeathTics5x9        = []int{5, 5, 5, 5, 5, 5, 5, 5, -1}
 	monsterDeathTicsImp        = []int{8, 8, 6, 6, 6}
+	monsterXDeathTicsImp       = []int{5, 5, 5, 5, 5, 5, 5, -1}
 	monsterDeathTicsDemon      = []int{8, 8, 4, 4, 4, 4}
 	monsterDeathTicsLostSoul   = []int{6, 6, 6, 6, 6, 6}
 	monsterDeathTics8x6        = []int{8, 8, 8, 8, 8, 8}
@@ -12696,6 +12711,7 @@ var (
 	monsterDeathFramesPain   = []byte{'H', 'I', 'J', 'K', 'L', 'M'}
 	monsterXDeathFrames5x9   = []byte{'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
 	monsterXDeathFrames5x6   = []byte{'O', 'P', 'Q', 'R', 'S', 'T'}
+	monsterXDeathFramesImp   = []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U'}
 	monsterXDeathFramesWolf  = []byte{'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V'}
 )
 
@@ -12740,6 +12756,8 @@ func monsterDeathFrameSeq(typ int16) []byte {
 
 func monsterXDeathFrameSeq(typ int16) []byte {
 	switch typ {
+	case 3001:
+		return monsterXDeathFramesImp
 	case 3004, 9:
 		return monsterXDeathFrames5x9
 	case 65:
@@ -12792,6 +12810,8 @@ func monsterDeathFrameTics(typ int16) []int {
 
 func monsterXDeathFrameTics(typ int16) []int {
 	switch typ {
+	case 3001:
+		return monsterXDeathTicsImp
 	case 3004, 9, 84:
 		return monsterDeathTics5x9
 	case 65:

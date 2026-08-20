@@ -166,7 +166,7 @@ func TestDemoTracePlayerMobjUsesIdleStateFallbackAndFlags(t *testing.T) {
 	if got, want := mobjs[0].Tics, 1; got != want {
 		t.Fatalf("player mobj tics=%d want=%d", got, want)
 	}
-	if got, want := mobjs[0].Flags, 0x02000006; got != want {
+	if got, want := mobjs[0].Flags, 0x02000c06; got != want {
 		t.Fatalf("player mobj flags=%#x want %#x", got, want)
 	}
 }

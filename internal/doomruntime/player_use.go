@@ -658,6 +658,9 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 			g.debugDoorActivate("line=%d sec=%d special=%d retoggle dir=%d typ=%d player=%t", lineIdx, sec, ld.Special, d.direction, d.typ, isPlayer)
 			return true
 		}
+		// Manual open-door specials replace sector->specialdata but leave the
+		// prior door linked as an active thinker in the original runtime.
+		g.extraDoors = append(g.extraDoors, d)
 	}
 
 	d := g.allocDoorThinker(sec)

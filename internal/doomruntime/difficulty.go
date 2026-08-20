@@ -126,6 +126,12 @@ func (g *game) thingActiveInSession(i int) bool {
 	if i < len(g.thingDropped) && g.thingDropped[i] {
 		return true
 	}
+	// A_PainShootSkull creates an MT_SKULL directly at runtime, without a map
+	// spawn flag word. It is live immediately rather than being filtered out as
+	// a no-skill map Thing.
+	if g.m.Things[i].Type == 3006 && g.m.Things[i].Flags == 0 {
+		return true
+	}
 	return thingSpawnsInSession(g.m.Things[i], g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters)
 }
 
@@ -143,6 +149,9 @@ func (g *game) thingBlocksInSession(i int) bool {
 		return true
 	}
 	th := g.m.Things[i]
+	if th.Type == 3006 && th.Flags == 0 {
+		return true
+	}
 	if _, ok := doomSolidMapThingTypes[th.Type]; ok && (int(th.Flags)&skillMask) == 0 {
 		return thingSpawnsForGameMode(th, g.opts.GameMode)
 	}

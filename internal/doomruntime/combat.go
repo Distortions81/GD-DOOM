@@ -1350,6 +1350,10 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 }
 
 func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
+	g.damageMonsterFromWithInflictorZ(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, 0, false)
+}
+
+func (g *game) damageMonsterFromWithInflictorZ(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, inflictorZ int64, hasInflictorZ bool) {
 	if thingIdx < 0 || thingIdx >= len(g.thingHP) || damage <= 0 {
 		return
 	}
@@ -1384,7 +1388,7 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			g.thingMomZ[thingIdx] = 0
 		}
 	}
-	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, g.thingHP[thingIdx])
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
@@ -1407,21 +1411,18 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			if len(frameTics) > 0 {
 				firstFrameTics = frameTics[0]
 			}
-			if deathTics > 0 {
+			g.thingDeathTics[thingIdx] = deathTics
+			if thingIdx >= 0 && thingIdx < len(g.thingStateTics) && firstFrameTics > 0 {
 				shorten := doomrand.PRandom() & 3
 				deathTics -= shorten
+				firstFrameTics -= shorten
 				if deathTics < 1 {
 					deathTics = 1
 				}
-				if firstFrameTics > 0 {
-					firstFrameTics -= shorten
-					if firstFrameTics < 1 {
-						firstFrameTics = 1
-					}
+				if firstFrameTics < 1 {
+					firstFrameTics = 1
 				}
-			}
-			g.thingDeathTics[thingIdx] = deathTics
-			if thingIdx >= 0 && thingIdx < len(g.thingStateTics) && firstFrameTics > 0 {
+				g.thingDeathTics[thingIdx] = deathTics
 				g.thingStateTics[thingIdx] = firstFrameTics
 			}
 		}
@@ -1456,15 +1457,6 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
 		g.spawnMonsterDrop(thingIdx, thingType)
-		if thingType == 71 {
-			baseAngle := uint32(0)
-			if thingIdx >= 0 && thingIdx < len(g.thingAngleState) {
-				baseAngle = g.thingAngleState[thingIdx]
-			}
-			_ = g.spawnPainLostSoul(thingIdx, baseAngle+degToAngle(90))
-			_ = g.spawnPainLostSoul(thingIdx, baseAngle+degToAngle(180))
-			_ = g.spawnPainLostSoul(thingIdx, baseAngle+degToAngle(270))
-		}
 		g.handleBossDeath(thingIdx, thingType)
 	} else {
 		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
@@ -1548,7 +1540,7 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	}
 }
 
-func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, hpBefore int) {
+func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, inflictorZ int64, hasInflictorZ bool, hpBefore int) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -1561,6 +1553,9 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	if !ok {
 		return
 	}
+	if hasInflictorZ {
+		iz = inflictorZ
+	}
 	tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
 	tz, _, _ := g.thingSupportState(thingIdx, g.m.Things[thingIdx])
 	mass := thingTypeMass(g.m.Things[thingIdx].Type)
@@ -1568,7 +1563,11 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 		return
 	}
 	angle := doomPointToAngle2(ix, iy, tx, ty)
-	thrust := int64(damage) * (fracUnit >> 3) * 100 / int64(mass)
+	// p_inter.c calculates this entirely as a C int. Preserve its signed
+	// 32-bit wraparound before division; Pain Elemental's 10000-damage rejected
+	// skull path depends on the overflowed (negative) value.
+	thrustNumerator := int32(damage) * int32(fracUnit>>3) * 100
+	thrust := int64(thrustNumerator / int32(mass))
 	if damage < 40 && damage > hpBefore && tz-iz > 64*fracUnit && doomrand.PRandom()&1 != 0 {
 		angle += degToAngle(180)
 		thrust *= 4
@@ -1908,7 +1907,7 @@ func monsterDeathSoundActionPhase(typ int16) int {
 
 func monsterXDeathSoundActionPhase(typ int16) int {
 	switch typ {
-	case 3004, 9, 65, 84:
+	case 3001, 3004, 9, 65, 84:
 		return 1
 	default:
 		return -1

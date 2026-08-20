@@ -1507,7 +1507,7 @@ func TestPainElementalAttackSpawnsLostSoul(t *testing.T) {
 		sectorFloor:         []int64{0},
 		sectorCeil:          []int64{128 * fracUnit},
 		stats:               playerStats{Health: 100},
-		p:                   player{x: 0, y: 0, z: 0},
+		p:                   player{x: -128 * fracUnit, y: 0, z: 0},
 	}
 	if !g.monsterAttack(0, 71, 256*fracUnit) {
 		t.Fatal("pain elemental attack should spawn a lost soul")
@@ -1613,9 +1613,12 @@ func TestPainElementalDeathSpawnsThreeLostSouls(t *testing.T) {
 		sectorFloor:         []int64{0},
 		sectorCeil:          []int64{128 * fracUnit},
 		stats:               playerStats{Health: 100},
-		p:                   player{x: 0, y: 0, z: 0},
+		p:                   player{x: -256 * fracUnit, y: 0, z: 0},
 	}
 	g.damageMonster(0, 20)
+	for step := 0; step < 64 && len(g.m.Things) < 4; step++ {
+		g.tickThingThinker(0, g.m.Things[0])
+	}
 	if got := len(g.m.Things); got != 4 {
 		t.Fatalf("thing count=%d want=4 after pain elemental death", got)
 	}
@@ -1807,7 +1810,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{69, 559, 8},
 		{3006, 587, 2},
 		{64, 244, 12},
-		{66, 324, 12},
+		{66, 323, 12},
 		{67, 365, 12},
 		{68, 637, 12},
 		{71, 703, 1},
@@ -2922,7 +2925,10 @@ func TestActorHasLOS_BlockedByHighWindow(t *testing.T) {
 		sectorFloor: []int64{0, 96 * fracUnit},
 		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
 	}
-	if g.actorHasLOS(-64*fracUnit, 0, 0, 56*fracUnit, 64*fracUnit, 0, 0, 56*fracUnit) {
+	// Keep the trace off y=0: vanilla P_DivlineSide has a horizontal-line
+	// x-versus-y quirk that would otherwise make this synthetic line appear
+	// coincident rather than crossed.
+	if g.actorHasLOS(-64*fracUnit, fracUnit, 0, 56*fracUnit, 64*fracUnit, fracUnit, 0, 56*fracUnit) {
 		t.Fatal("LOS should be blocked when only a high window is open above both actors")
 	}
 }

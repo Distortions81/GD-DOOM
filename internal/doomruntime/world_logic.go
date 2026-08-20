@@ -456,6 +456,10 @@ func (g *game) damagePlayerFrom(amount int, msg string, attackerX, attackerY int
 	}
 	g.stats.Health -= amount
 	g.playerMobjHealth -= amount
+	// P_DamageMobj wakes every surviving target, including a player held in
+	// the post-teleport reaction delay.  Leaving this nonzero skips the next
+	// player think and changes demo movement.
+	g.p.reactionTime = 0
 	g.damageFlashTic = max(g.damageFlashTic, 8)
 	g.statusDamageCount += amount
 	if g.statusDamageCount > 100 {

@@ -205,6 +205,14 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 		}
 		consider(worldThinkerDoor, sec, d.order)
 	}
+	for i, d := range g.extraDoors {
+		if d == nil || d.pendingRemove {
+			continue
+		}
+		// Negative keys address superseded doors without colliding with a
+		// sector number. Their order remains the source thinker-list order.
+		consider(worldThinkerDoor, -1-i, d.order)
+	}
 	return best, found
 }
 
@@ -239,6 +247,15 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 			g.tickCeiling(ref.key, ct)
 		}
 	case worldThinkerDoor:
+		if ref.key < 0 {
+			i := -1 - ref.key
+			if i >= 0 && i < len(g.extraDoors) {
+				if d := g.extraDoors[i]; d != nil && !d.pendingRemove && d.order == ref.order {
+					g.tickDoor(d.sector, d)
+				}
+			}
+			return
+		}
 		if d := g.doors[ref.key]; d != nil && d.order == ref.order {
 			g.tickDoor(ref.key, d)
 		}
@@ -431,7 +448,10 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 		}
 	case -1:
 		next := g.sectorCeil[sec] - d.speed
-		if g.doorWouldCrushPlayer(sec, next) {
+		// P_ChangeSector reports any blocked mobj, not only the player. A door
+		// must reverse (or keep retrying for close-only types) when a monster
+		// occupies its closing space too.
+		if g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], next) {
 			switch d.typ {
 			case doorBlazeClose, doorClose:
 				// Vanilla close-only doors keep trying to close, but do not
@@ -446,9 +466,9 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			g.setDoorCeiling(sec, g.sectorFloor[sec])
 			switch d.typ {
 			case doorBlazeRaise, doorBlazeClose:
-				g.removeDoorThinker(sec)
+				g.removeDoorThinkerInstance(sec, d)
 			case doorNormal, doorClose:
-				g.retireDoorThinker(sec)
+				g.retireDoorThinkerInstance(sec, d)
 			case doorClose30ThenOpen:
 				d.direction = 0
 				d.topCountdown = 35 * 30
@@ -465,7 +485,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 				d.direction = 0
 				d.topCountdown = d.topWait
 			case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
-				g.removeDoorThinker(sec)
+				g.removeDoorThinkerInstance(sec, d)
 			}
 		} else {
 			g.setDoorCeiling(sec, next)
@@ -523,13 +543,49 @@ func (g *game) prunePendingDoors() {
 			delete(g.doors, sec)
 		}
 	}
+	if len(g.extraDoors) > 0 {
+		kept := g.extraDoors[:0]
+		for _, d := range g.extraDoors {
+			if d != nil && !d.pendingRemove {
+				kept = append(kept, d)
+			}
+		}
+		g.extraDoors = kept
+	}
 }
 
 func (g *game) tickDoors() {
 	g.prunePendingDoors()
+	for _, d := range g.extraDoors {
+		if d != nil && !d.pendingRemove {
+			g.tickDoor(d.sector, d)
+		}
+	}
 	for sec, d := range g.doors {
 		g.tickDoor(sec, d)
 	}
+}
+
+func (g *game) removeDoorThinkerInstance(sec int, want *doorThinker) {
+	if want == nil {
+		return
+	}
+	if g.doors[sec] == want {
+		g.removeDoorThinker(sec)
+		return
+	}
+	want.pendingRemove = true
+}
+
+func (g *game) retireDoorThinkerInstance(sec int, want *doorThinker) {
+	if want == nil {
+		return
+	}
+	if g.doors[sec] == want {
+		g.retireDoorThinker(sec)
+		return
+	}
+	want.pendingRemove = true
 }
 
 func (g *game) allocDoorThinker(sec int) *doorThinker {
@@ -637,7 +693,7 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 		g.checkWalkSpecialLines(prevX, prevY, x, y)
 		return true
 	}
-	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionForWithPickupTouch(x, y, false, probePickup)
 	if !ok {
 		g.debugPlayerMove("tryMove blocked", x, y)
 		return false
@@ -711,14 +767,25 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 }
 
 func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int64, int64, bool) {
-	return g.checkPositionForActor(x, y, playerRadius, blockMonsterLines, -1, false)
+	return g.checkPositionForWithPickupTouch(x, y, blockMonsterLines, false)
+}
+
+// checkPositionForWithPickupTouch is the player P_CheckPosition equivalent.
+// Vanilla calls P_TouchSpecialThing while P_TryMove walks the thing blockmap;
+// generic position probes (such as moving-sector clipping) must not do so.
+func (g *game) checkPositionForWithPickupTouch(x, y int64, blockMonsterLines bool, touchPickups bool) (int64, int64, int64, bool) {
+	return g.checkPositionForActorWithPickupTouch(x, y, playerRadius, blockMonsterLines, -1, false, false, touchPickups)
 }
 
 func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool) (int64, int64, int64, bool) {
-	return g.checkPositionForActorWithThingPolicy(x, y, radius, blockMonsterLines, moverThingIdx, moverIsMonster, false)
+	return g.checkPositionForActorWithPickupTouch(x, y, radius, blockMonsterLines, moverThingIdx, moverIsMonster, false, false)
 }
 
 func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool, skipThingBlock bool) (int64, int64, int64, bool) {
+	return g.checkPositionForActorWithPickupTouch(x, y, radius, blockMonsterLines, moverThingIdx, moverIsMonster, skipThingBlock, false)
+}
+
+func (g *game) checkPositionForActorWithPickupTouch(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool, skipThingBlock, touchPickups bool) (int64, int64, int64, bool) {
 	if moverThingIdx >= 0 {
 		if moverThingIdx >= len(g.thingProbeSpecialLines) {
 			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
@@ -771,7 +838,7 @@ func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMon
 		debugProbef("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 	}
 
-	if !skipThingBlock && g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
+	if !skipThingBlock && g.actorBlockedByThingsWithPickupTouch(x, y, radius, moverThingIdx, moverIsMonster, touchPickups) {
 		debugProbef("blocked by thing")
 		return tmfloor, tmceil, tmdrop, false
 	}
@@ -942,6 +1009,10 @@ func actorsOverlapXY(ax, ay, aradius, bx, by, bradius int64) bool {
 }
 
 func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, moverIsMonster bool) bool {
+	return g.actorBlockedByThingsWithPickupTouch(x, y, radius, moverThingIdx, moverIsMonster, false)
+}
+
+func (g *game) actorBlockedByThingsWithPickupTouch(x, y, radius int64, moverThingIdx int, moverIsMonster, touchPickups bool) bool {
 	if g == nil || g.m == nil {
 		return false
 	}
@@ -963,6 +1034,14 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		if i < len(g.thingCollected) && g.thingCollected[i] {
 			return false
+		}
+		// Doom's PIT_CheckThing touches MF_SPECIAL items during the thing
+		// blockmap walk, before a later solid/corpse can reject the move.
+		if touchPickups && moverThingIdx < 0 && !moverIsMonster && !g.isDead {
+			g.processThingPickupAtIndex(i, th, x, y, g.p.z, playerRadius, playerHeight, false)
+			if i < len(g.thingCollected) && g.thingCollected[i] {
+				return false
+			}
 		}
 		if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
 			phase := 0
@@ -1036,8 +1115,8 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		if top >= g.bmapHeight {
 			top = g.bmapHeight - 1
 		}
-		for by := bottom; by <= top; by++ {
-			for bx := left; bx <= right; bx++ {
+		for bx := left; bx <= right; bx++ {
+			for by := bottom; by <= top; by++ {
 				if !g.blockThingsIterator(bx, by, func(i int) bool {
 					return !visitThing(i)
 				}) {

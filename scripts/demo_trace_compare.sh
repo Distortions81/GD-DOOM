@@ -83,8 +83,8 @@ Options:
                       (default: ./tmp/demo-trace-compare)
   --ref-bin <path>    Override the original DOOM binary path
   --gd-bin <path>     Reuse an existing GD-DOOM binary instead of rebuilding
-  --headless          Force xvfb-run for GD-DOOM
-  --no-headless       Do not use xvfb-run; require an existing desktop display
+  --headless          Deprecated compatibility option; trace runs are always headless
+  --no-headless       Deprecated compatibility option; trace runs are always headless
   --keep-going        Keep artifacts even when the compare fails
   --stop-after-tics <n>
                       Stop GD-DOOM after <n> processed demo tics (default: 0, disabled)
@@ -94,7 +94,7 @@ Options:
 Examples:
   scripts/demo_trace_compare.sh
   scripts/demo_trace_compare.sh --demo-lump demo2 --demo ./demos/DOOM1-DEMO2.lmp
-  scripts/demo_trace_compare.sh --out ./tmp/compare-demo1 -- -no-vsync -width 640 -height 400
+  scripts/demo_trace_compare.sh --out ./tmp/compare-demo1
 EOF
 }
 
@@ -283,56 +283,17 @@ fi
 if [[ "${DEMO_EXIT_ON_DEATH}" == "1" ]]; then
   GDDOOM_FLAGS+=(-demo-exit-on-death)
 fi
-if [[ "${USE_XVFB}" == "yes" ]]; then
-  if ! command -v xvfb-run >/dev/null 2>&1; then
-    echo "xvfb-run is required for --headless." >&2
-    exit 1
-  fi
-  xvfb-run -a \
-    "${GDDOOM_BIN}" \
-    -wad "${WAD_PATH}" \
-    -demo "${DEMO_PATH}" \
-    -trace-demo-state "${GD_TRACE}" \
-    -no-vsync \
-    "${GDDOOM_FLAGS[@]}" \
-    >"${GD_LOG}" 2>&1
-elif [[ "${USE_XVFB}" == "no" ]]; then
-  if [[ -z "${DISPLAY:-}" ]]; then
-    echo "--no-headless requires DISPLAY to be set." >&2
-    exit 1
-  fi
-  "${GDDOOM_BIN}" \
-    -wad "${WAD_PATH}" \
-    -demo "${DEMO_PATH}" \
-    -trace-demo-state "${GD_TRACE}" \
-    -no-vsync \
-    "${GDDOOM_FLAGS[@]}" \
-    >"${GD_LOG}" 2>&1
-elif [[ -n "${DISPLAY:-}" ]]; then
-  "${GDDOOM_BIN}" \
-    -wad "${WAD_PATH}" \
-    -demo "${DEMO_PATH}" \
-    -trace-demo-state "${GD_TRACE}" \
-    -no-vsync \
-    "${GDDOOM_FLAGS[@]}" \
-    >"${GD_LOG}" 2>&1
-else
-  if ! command -v xvfb-run >/dev/null 2>&1; then
-    echo "No DISPLAY found. Install xvfb-run or rerun from a desktop session." >&2
-    exit 1
-  fi
-  xvfb-run -a \
-    "${GDDOOM_BIN}" \
-    -wad "${WAD_PATH}" \
-    -demo "${DEMO_PATH}" \
-    -trace-demo-state "${GD_TRACE}" \
-    -no-vsync \
-    "${GDDOOM_FLAGS[@]}" \
-    >"${GD_LOG}" 2>&1
-fi
-if [[ "${DEMO_EXIT_ON_DEATH}" == "1" ]]; then
-  trim_trace_on_player_death "${GD_TRACE}"
-fi
+"${GDDOOM_BIN}" \
+  -wad "${WAD_PATH}" \
+  -render=false \
+  -demo "${DEMO_PATH}" \
+  -trace-demo-state "${GD_TRACE}" \
+  "${GDDOOM_FLAGS[@]}" \
+  >"${GD_LOG}" 2>&1
+# The reference runtime ends a built-in replay when its player dies. Limit the
+# GD trace at the matching terminal tic as well, so a clean shared prefix is
+# not reported as a synthetic length mismatch.
+trim_trace_on_player_death "${GD_TRACE}"
 if [[ "${STOP_AFTER_TICS}" != "0" ]]; then
   trim_trace_after_tics "${REF_TRACE}" "${STOP_AFTER_TICS}"
   trim_trace_after_tics "${GD_TRACE}" "${STOP_AFTER_TICS}"

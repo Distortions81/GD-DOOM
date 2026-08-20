@@ -251,20 +251,22 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	}
 	old := g.sectorFloor[sec]
 	oldPlayerFloor := g.p.floorz
-	if old == z {
-		return
-	}
 	if want := runtimeDebugEnv("GD_DEBUG_FLOOR_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 			fmt.Printf("floor-move-debug tic=%d world=%d sec=%d old=%d new=%d\n", g.demoTick-1, g.worldTic, sec, old, z)
 		}
 	}
-	g.sectorFloor[sec] = z
-	g.markDynamicSectorPlaneCacheDirty(sec)
-	if sec < len(g.m.Sectors) {
-		g.m.Sectors[sec].FloorHeight = int16(z >> fracBits)
+	if old != z {
+		g.sectorFloor[sec] = z
+		g.markDynamicSectorPlaneCacheDirty(sec)
+		if sec < len(g.m.Sectors) {
+			g.m.Sectors[sec].FloorHeight = int16(z >> fracBits)
+		}
 	}
+	// T_MovePlane calls P_ChangeSector even when a mover has reached its
+	// destination exactly. That refresh is observable for corpses in nearby
+	// blockmap cells, so it must not be skipped when the height is unchanged.
 	g.heightClipAroundSector(sec, oldPlayerFloor)
 }
 
@@ -325,14 +327,15 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 		return
 	}
 	oldPlayerFloor := g.p.floorz
-	if g.sectorCeil[sec] == z {
-		return
+	if g.sectorCeil[sec] != z {
+		g.sectorCeil[sec] = z
+		g.markDynamicSectorPlaneCacheDirty(sec)
+		if sec < len(g.m.Sectors) {
+			g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
+		}
 	}
-	g.sectorCeil[sec] = z
-	g.markDynamicSectorPlaneCacheDirty(sec)
-	if sec < len(g.m.Sectors) {
-		g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
-	}
+	// Like floor movers, a rejected ceiling move restores the old height and
+	// still invokes P_ChangeSector to refresh thing support.
 	g.heightClipAroundSector(sec, oldPlayerFloor)
 }
 
@@ -1165,8 +1168,6 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 	actorAngle := g.p.angle
 	actorRadius := int64(playerRadius)
 	actorHeight := int64(playerHeight)
-	blockMonsterLines := false
-	moverIsMonster := false
 	if !isPlayer {
 		actor := g.m.Things[actorIdx]
 		actorLabel = "thing"
@@ -1176,8 +1177,6 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		actorAngle = g.thingWorldAngle(actorIdx, actor)
 		actorRadius = thingTypeRadius(actor.Type)
 		actorHeight = g.thingCurrentHeight(actorIdx, actor)
-		blockMonsterLines = true
-		moverIsMonster = true
 	}
 	for i, th := range g.m.Things {
 		if th.Type != teleportThingType {
@@ -1201,7 +1200,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-dest thing=%d sec=%d pos=(%d,%d) player=%t\n",
 				g.demoTick-1, g.worldTic, i, sec, tx, ty, isPlayer)
 		}
-		tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty, actorRadius, actorIdx, blockMonsterLines, moverIsMonster)
+		tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty)
 		if !ok {
 			if debugLineTriggerEnabled(lineIdx) {
 				fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-blocked line=%d dest_thing=%d pos=(%d,%d) player=%t\n",
@@ -1294,11 +1293,10 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 	return false
 }
 
-func (g *game) teleportDestinationHeights(x, y, radius int64, actorIdx int, blockMonsterLines bool, moverIsMonster bool) (int64, int64, bool) {
-	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, blockMonsterLines, actorIdx, moverIsMonster)
-	if ok {
-		return tmfloor, tmceil, true
-	}
+func (g *game) teleportDestinationHeights(x, y int64) (int64, int64, bool) {
+	// P_TeleportMove does not run P_CheckPosition's line pass. It takes the
+	// floor and ceiling directly from the destination subsector, then handles
+	// overlapping things separately through PIT_StompThing.
 	sec := g.sectorAt(x, y)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
 		return 0, 0, false
@@ -1682,6 +1680,12 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 	switch ct.direction {
 	case -1:
 		next := cur - ct.speed
+		if !ct.crush && g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], next) {
+			// T_MovePlane restores lastpos and calls P_ChangeSector again when a
+			// non-crushing ceiling would clip an actor.
+			g.setSectorCeilingHeight(sec, cur)
+			return
+		}
 		if next <= ct.bottomHeight {
 			next = ct.bottomHeight
 			g.setSectorCeilingHeight(sec, next)

@@ -609,6 +609,9 @@ func TestProcessThingPickups_CollectsVanillaPowerupItems(t *testing.T) {
 	if g.stats.Health != 200 {
 		t.Fatalf("health=%d want=200 after soulsphere+megasphere", g.stats.Health)
 	}
+	if g.playerMobjHealth != 200 {
+		t.Fatalf("player mobj health=%d want=200 after soulsphere+megasphere", g.playerMobjHealth)
+	}
 	if g.stats.Armor != 200 || g.stats.ArmorType != 2 {
 		t.Fatalf("armor=%d type=%d want 200/2", g.stats.Armor, g.stats.ArmorType)
 	}

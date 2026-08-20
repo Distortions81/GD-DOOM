@@ -18,7 +18,7 @@ This repo now has a repeatable demo-desync harness for comparing GD-DOOM against
 1. Cleans and rebuilds a local GD-DOOM trace binary.
 2. Cleans and rebuilds `cmd/demotracecmp`.
 3. Runs the original DOOM executable with `-tracedemo <demo lump> -tracefile <path>` against an isolated temp dir containing the selected IWAD.
-4. Runs GD-DOOM with `-demo <file> -trace-demo-state <path>`.
+4. Runs GD-DOOM with `-render=false -demo <file> -trace-demo-state <path>`, using its direct, uncapped simulation loop.
 5. Compares the resulting JSONL tic traces and stops at the first mismatch.
 
 The comparator already ignores a small set of known non-parity fields, so the reported mismatch is usually actionable.
@@ -29,20 +29,16 @@ For external demo sets, `scripts/demo_trace_compare_batch.sh` runs the same loop
 
 - `../doom-source` must exist and contain a built `linuxxdoom`.
 - `DOOM1.WAD` must be available in the GD-DOOM repo root unless overridden.
-- A normal desktop display is preferred.
-- `xvfb-run` is only needed when running headless or when no `DISPLAY` is available.
+- No desktop display or `xvfb-run` is required: GD-DOOM trace playback is headless and uncapped.
 
 Notes:
 
 - The reference runtime already includes trace support via `-tracedemo` and `-tracefile`.
 - By default the harness symlinks the selected `--wad` into an isolated temp dir before launching the reference runtime, so extra IWADs in the repo root do not change which game data gets loaded.
-- GD-DOOM does not emit per-tic demo traces under `-render=false`.
-- The harness intentionally does not pass `-demo-exit-on-death`; for parity compares it traces the full demo rather than stopping on the first death tic.
-- `--demo-exit-on-death` now only trims the GD-DOOM trace when explicitly requested.
+- `-render=false` preserves per-tic demo traces and bypasses Ebiten entirely; it is the required fast path for harness runs.
+- The harness does not pass `-demo-exit-on-death`, but trims both traces at the first player-death tic. This matches the reference runtime's terminal replay behavior while preserving a fast, uncapped GD-DOOM run.
 - `--stop-after-tics <n>` now trims both the reference and GD-DOOM traces before compare, so short-window debugging does not degrade into a length mismatch.
-- The harness prefers a normal desktop run when `DISPLAY` is set.
-- If no display is available, the harness falls back to `xvfb-run`.
-- Use `--headless` to force `xvfb-run`, or `--no-headless` to require a desktop display.
+- The harness always uses the headless `-render=false` fast path. `--headless` and `--no-headless` remain accepted as no-op compatibility options.
 - `demotracecmp` mismatch reports now include the normalized failing mobj entry and the matched `gametic` from both sides, which matters because the compare pass sorts mobjs before diffing.
 
 ## Default Inputs
