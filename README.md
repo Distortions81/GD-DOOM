@@ -6,6 +6,8 @@
 [![GitHub Release](https://img.shields.io/github/v/release/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/releases/latest)
 [![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/blob/main/LICENSE)
 
+Latest desktop releases: [macOS Intel](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-macos-intel.zip) · [macOS Apple Silicon](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-macos-apple-silicon.zip) · [Windows x86_64](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-windows-x86_64.zip) · [Linux x86_64](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-linux-x86_64.zip)
+
 [PLAY IN BROWSER NOW](https://m45sci.xyz/u/dist/GD-DOOM)
 
 <p align="center">
@@ -114,7 +116,7 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but it is b
 
 ## Requirements
 
-- Go `1.26.3` or newer from [golang.org](https://go.dev/dl/)
+- Go `1.26.6` or newer from [golang.org](https://go.dev/dl/)
 - A Doom game WAD such as `DOOM.WAD`, `DOOM1.WAD`, `DOOM2.WAD`, `TNT.WAD`, or `PLUTONIA.WAD`
 
 On Linux, native builds also need the usual Ebiten desktop dependencies for X11, OpenGL, and audio.
