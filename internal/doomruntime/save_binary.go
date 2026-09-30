@@ -838,7 +838,7 @@ func (w saveBinaryWriter) projectileSlice(v []projectileSaveState) error {
 				return err
 			}
 		}
-		for _, n := range []int{it.LastLook, it.Frame, it.FrameTics, it.TTL, it.SourceThing, it.Kind} {
+		for _, n := range []int{it.Subsector, it.LastLook, it.Frame, it.FrameTics, it.TTL, it.SourceThing, it.Kind} {
 			if err := w.int(n); err != nil {
 				return err
 			}
@@ -875,7 +875,7 @@ func (w saveBinaryWriter) projectileImpactSlice(v []projectileImpactSaveState) e
 		if err := w.i64(it.Order); err != nil {
 			return err
 		}
-		for _, n := range []int{it.Phase, it.PhaseTics, it.FireTargetThing} {
+		for _, n := range []int{it.Subsector, it.Phase, it.PhaseTics, it.FireTargetThing} {
 			if err := w.int(n); err != nil {
 				return err
 			}
@@ -1957,7 +1957,7 @@ func (r saveBinaryReader) projectile() (projectileSaveState, error) {
 			return v, err
 		}
 	}
-	for _, dst := range []*int{&v.LastLook, &v.Frame, &v.FrameTics, &v.TTL, &v.SourceThing, &v.Kind} {
+	for _, dst := range []*int{&v.Subsector, &v.LastLook, &v.Frame, &v.FrameTics, &v.TTL, &v.SourceThing, &v.Kind} {
 		if *dst, err = r.int(); err != nil {
 			return v, err
 		}
@@ -1991,7 +1991,7 @@ func (r saveBinaryReader) projectileImpact() (projectileImpactSaveState, error) 
 	if v.Order, err = r.i64(); err != nil {
 		return v, err
 	}
-	for _, dst := range []*int{&v.Phase, &v.PhaseTics, &v.FireTargetThing} {
+	for _, dst := range []*int{&v.Subsector, &v.Phase, &v.PhaseTics, &v.FireTargetThing} {
 		if *dst, err = r.int(); err != nil {
 			return v, err
 		}

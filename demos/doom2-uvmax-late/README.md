@@ -4,13 +4,16 @@ Files:
 - `DOOM2-MAP21-UVMAX.lmp`: Map 21, Looper, 1:58.26, 2020-10-02, `lv21-158.zip`
 - `DOOM2-MAP22-UVMAX.lmp`: Map 22, Kinetic, 1:02.20, 2024-03-01, `lv22m102.zip`
 - `DOOM2-MAP24-UVMAX.lmp`: Map 24, Kinetic, 4:05.34, 2024-03-01, `lv24m405.zip`
-- `DOOM2-MAP26-UVMAX.lmp`: Map 26, Looper, 2:37.89, 2020-11-13, `lv26-237.zip`
+- `DOOM2-MAP26-UVMAX.lmp`: Map 26, Looper, the included 2:39 recording (`lv26-239.lmp`), 2020-11-13, `lv26-237.zip`
+- `DOOM2-MAP26-UVMAX-237.lmp`: Map 26, Looper, 2:37.89 (`lv26-237.lmp`), 2020-11-13, `lv26-237.zip`
 - `DOOM2-MAP27-UVMAX.lmp`: Map 27, Looper, 2:57.37, 2020-11-06, `lv27-257.zip`
 - `DOOM2-MAP28-UVMAX.lmp`: Map 28, Vile, 2:19.40, 2026-02-28, `lv28m219.zip`
 - `DOOM2-MAP29-UVMAX.lmp`: Map 29, Kinetic, 3:51.66, 2024-02-26, `lv29m351.zip`
 - `DOOM2-MAP30-UVMAX.lmp`: Map 30, Looper, 0:29.86, 2019-01-08, `lv30-029.zip`
 
-Source ZIPs are preserved under `.zips/`.
+Source ZIPs are preserved under `.zips/`. The MAP26 ZIP contains two distinct
+recordings; both are now extracted and included in the complete comparison
+suite. The complete runner rejects archived LMPs that have no extracted copy.
 
 Example compare run once `DOOM2.WAD` is available in the repo root:
 
@@ -32,7 +35,7 @@ scripts/demo_trace_compare_batch.sh \
   --out-root /tmp/doom2-uvmax-late
 ```
 
-Current note:
+Historical note (superseded by the checkpoint in `../../desync-work.md`):
 
 - `DOOM2-MAP21-UVMAX.lmp` had an early `MT_FATSHOT` impact-position desync at `gametic=120`.
 - That issue was fixed on `2026-04-16` by matching Doom's signed projectile half-step rule for large negative momentum.

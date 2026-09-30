@@ -461,7 +461,10 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		ss := -1
 		sec := -1
 		if g.m != nil && len(g.m.SubSectors) > 0 {
-			ss = g.subSectorAtFixed(p.x, p.y)
+			ss = p.subsector - 1
+			if ss < 0 {
+				ss = g.subSectorAtFixed(p.x, p.y)
+			}
 			if ss >= 0 {
 				sec = g.sectorForSubSector(ss)
 			}
@@ -527,7 +530,10 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		ss := -1
 		sec := -1
 		if g.m != nil && len(g.m.SubSectors) > 0 {
-			ss = g.subSectorAtFixed(fx.x, fx.y)
+			ss = fx.subsector - 1
+			if ss < 0 {
+				ss = g.subSectorAtFixed(fx.x, fx.y)
+			}
 			if ss >= 0 {
 				sec = g.sectorForSubSector(ss)
 			}

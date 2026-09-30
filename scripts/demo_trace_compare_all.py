@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 RNG = re.compile(rb'"prndindex":(\d+)')
@@ -48,6 +49,17 @@ def sha256(path):
         return hashlib.file_digest(file, "sha256").hexdigest()
 
 
+def uncovered_archive_demos(demo_dir):
+    extracted = {sha256(path) for path in demo_dir.rglob("*.lmp")}
+    missing = []
+    for path in sorted(demo_dir.rglob("*.zip")):
+        with zipfile.ZipFile(path) as archive:
+            for member in archive.namelist():
+                if member.lower().endswith(".lmp") and hashlib.sha256(archive.read(member)).hexdigest() not in extracted:
+                    missing.append(f"{path.relative_to(demo_dir)}:{member}")
+    return missing
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-root", type=Path, default=ROOT / "tmp/demo-trace-all")
@@ -59,6 +71,9 @@ def main():
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    missing = uncovered_archive_demos(ROOT / "demos")
+    if missing:
+        parser.error("Extract these archived demos into demos/ before running the suite: " + ", ".join(missing))
     demos = sorted((ROOT / "demos").rglob("*.lmp"))
     if args.demo:
         unknown = set(args.demo) - {demo.stem for demo in demos}

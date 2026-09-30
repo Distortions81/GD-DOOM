@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 20
+	saveGameVersion     = 21
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 7
+	keyframeVersion     = 8
 	saveGameDirName     = "saves"
 )
 
@@ -328,6 +328,7 @@ type bossSpawnFireSaveState struct {
 }
 
 type projectileSaveState struct {
+	Subsector         int
 	Order             int64
 	PrevX             int64
 	PrevY             int64
@@ -360,6 +361,7 @@ type projectileSaveState struct {
 }
 
 type projectileImpactSaveState struct {
+	Subsector        int
 	Order            int64
 	Phase            int
 	PhaseTics        int
@@ -1834,7 +1836,8 @@ func captureProjectiles(src []projectile) []projectileSaveState {
 	dst := make([]projectileSaveState, len(src))
 	for i, p := range src {
 		dst[i] = projectileSaveState{
-			Order: p.order, PrevX: p.prevX, PrevY: p.prevY, PrevZ: p.prevZ,
+			Subsector: p.subsector,
+			Order:     p.order, PrevX: p.prevX, PrevY: p.prevY, PrevZ: p.prevZ,
 			LastLook: p.lastLook, Frame: p.frame, FrameTics: p.frameTics,
 			DeferredTick: p.deferredTick, SpawnPrev: p.spawnPrev,
 			X:                 p.x,
@@ -1869,7 +1872,8 @@ func restoreProjectiles(src []projectileSaveState) []projectile {
 	dst := make([]projectile, len(src))
 	for i, p := range src {
 		dst[i] = projectile{
-			order: p.Order, prevX: p.PrevX, prevY: p.PrevY, prevZ: p.PrevZ,
+			subsector: p.Subsector,
+			order:     p.Order, prevX: p.PrevX, prevY: p.PrevY, prevZ: p.PrevZ,
 			lastLook: p.LastLook, frame: p.Frame, frameTics: p.FrameTics,
 			deferredTick: p.DeferredTick, spawnPrev: p.SpawnPrev,
 			x:                 p.X,
@@ -1904,6 +1908,7 @@ func captureProjectileImpacts(src []projectileImpact) []projectileImpactSaveStat
 	dst := make([]projectileImpactSaveState, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpactSaveState{
+			Subsector:        p.subsector,
 			Order:            p.order,
 			Phase:            p.phase,
 			PhaseTics:        p.phaseTics,
@@ -1935,6 +1940,7 @@ func restoreProjectileImpacts(src []projectileImpactSaveState) []projectileImpac
 	dst := make([]projectileImpact, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpact{
+			subsector:        p.Subsector,
 			order:            p.Order,
 			phase:            p.Phase,
 			phaseTics:        p.PhaseTics,

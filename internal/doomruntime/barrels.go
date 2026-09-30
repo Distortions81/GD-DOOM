@@ -349,7 +349,7 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 		// P_DamageMobj applies thrust from the exploding mobj (the inflictor),
 		// but P_KillMobj retains the explosion owner as player->attacker for
 		// P_DeathThink. Keep those two Doom concepts distinct.
-		g.damagePlayerFrom(damageToPlayer, msg, sx, sy, true, -1)
+		g.damagePlayerFromWithInflictorZ(damageToPlayer, msg, sx, sy, true, -1, sz)
 		if g.statusHasAttacker && sourceThing >= 0 && g.m != nil && sourceThing < len(g.m.Things) {
 			g.statusAttackerX, g.statusAttackerY = g.thingPosFixed(sourceThing, g.m.Things[sourceThing])
 			g.statusAttackerThing = sourceThing

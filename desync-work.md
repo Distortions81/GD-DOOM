@@ -9,9 +9,18 @@ unique rendering commits. The eight Dependabot branches contain single
 dependency updates. The security-automation branch is already merged.
 The complete replay suite and Go test suite pass on the merged main checkout.
 
-The full suite inventories all **19 repository demos**, selects each matching
+The expanded follow-up work is on `codex/desync-extra-demos`. The corpus now
+includes **25 distinct recordings**: the original 19, the additional
+`lv26-237.lmp` speedrun from the MAP26 ZIP, and five recordings recovered from
+branch history. Every unique LMP blob in available branch history and every
+archived LMP has a byte-identical extracted representative. The eight original
+UV-Max runs were already tested; the previous MAP26 input was the ZIP's
+`lv26-239.lmp`, not its `lv26-237.lmp` recording.
+
+The full suite inventories all **25 repository demos**, selects each matching
 IWAD, builds the port and comparator, generates fresh original-game traces,
-and checks gameplay RNG independently of the normalized state comparator:
+and checks gameplay RNG independently of the normalized state comparator.
+It also rejects ZIP archives containing unextracted recordings:
 
 ```bash
 GOCACHE=/tmp/gddoom-go-cache python3 scripts/demo_trace_compare_all.py \
@@ -27,22 +36,35 @@ Comparator passes ignore documented trace-only differences, including several
 state/flag fields. Gameplay `prndindex` must also match at every compared tic.
 Reports contain input hashes, individual logs, `summary.json`, and `summary.tsv`.
 
-The completed final sweep passes **19/19 demos**, totaling **63,444 compared
+The completed expanded sweep passes **25/25 demos**, totaling **69,398 compared
 tics**. Every normalized state comparison passes, and gameplay `prndindex`
 matches at every compared tic. There are no known remaining divergences in
 these repository replay windows. This is evidence for this demo corpus;
 it does not prove universal compatibility for other demos or ignored fields.
 
-The latest report is `tmp/desync-merged-main/summary.json`, with a compact
-`summary.tsv` alongside it. This fresh sweep uses the merged main build,
-including the final snapshot serialization adjustment. Generated traces and
-reports are not checked in.
+The latest report is `tmp/desync-expanded-final/summary.json`, with a compact
+`summary.tsv` alongside it. This fresh sweep includes all six recovered demos
+and the additional fixes below. Generated traces and reports are not checked in.
 The full Go test suite passes under Xvfb. Focused regression tests cover
 arch-vile fire, projectile timing, pickup behavior, boss-brain spawn buckets,
-plane clipping, player thinker order, delayed boss exit, and snapshot state.
+plane clipping, player thinker order, delayed boss exit, missile subsector
+links, lethal player thrust/RNG, and binary snapshot state.
+
+The added MAP26 recording initially exposed two separate issues:
+
+- At tic 2003, a blocked plasma spawn crossed a BSP partition with its directly
+  advanced coordinates. Doom retains its original subsector link when
+  `P_TryMove` fails. Missiles and their impact states now retain that link;
+  successful moves update it, and snapshots preserve it.
+- At tic 2971, the lethal hitscan came from more than 64 units below the player.
+  `P_DamageMobj` consumes a random draw and may reverse and quadruple thrust
+  before armor/death processing. The player path now matches this behavior,
+  with explicit inflictor heights for projectile and radius damage.
+
+The existing comparator's normalization was not loosened for either issue.
 
 Integration was first verified in a temporary checkout, reported at
-`tmp/desync-main-integration/summary.json`. The actual merge into local main
+`tmp/desync-main-integration/summary.json`. The earlier merge into local main
 also applied cleanly. Its source matches the validated integration checkout,
 and its complete Go test suite and fresh replay sweep both pass. No remote
 push has been made.
@@ -60,9 +82,9 @@ MAP30 now models the original brain
 wake timing, ordered cubes and teleport fire, immediate spawned-monster chase,
 runtime actor queries, brain damage/pain, and death explosion/exit states.
 Projectile order/countdowns, tracer targets, fire, and cubes are persisted.
-These changes update save format version 19 to 20 and keyframe format version
-6 to 7; older snapshots are not compatible. The snapshot regression and the
-merged checkout's full test suite pass with the final serialization adjustment.
+The expanded fixes update save format version 20 to 21 and keyframe format
+version 7 to 8 to preserve linked subsectors; older snapshots are not compatible.
+The snapshot regressions and the complete Go test suite pass.
 
 ## Historical notes
 
