@@ -28,6 +28,7 @@ func TestWeaponReadySpriteName(t *testing.T) {
 
 func TestBringUpWeaponStartsOffscreenAndReachesReady(t *testing.T) {
 	g := &game{
+		stats: playerStats{Bullets: 1},
 		inventory: playerInventory{
 			ReadyWeapon: weaponPistol,
 			Weapons:     map[int16]bool{},
@@ -73,6 +74,7 @@ func TestWeaponSpriteName_PrefersFireAnimationThenReady(t *testing.T) {
 		worldTic: 0,
 		stats: playerStats{
 			Bullets: 10,
+			Shells:  1,
 		},
 		inventory: playerInventory{
 			ReadyWeapon: weaponPistol,
@@ -103,7 +105,7 @@ func TestWeaponSpriteName_PrefersFireAnimationThenReady(t *testing.T) {
 	if got := g.weaponFlashSpriteName(); got != "PISFA0" {
 		t.Fatalf("flash sprite after fire action=%q want PISFA0", got)
 	}
-	for i := 0; i < 32; i++ {
+	for i := 0; i < 64; i++ {
 		g.tickWeaponOverlay()
 	}
 	if got := g.weaponSpriteName(); got != "PISGA0" {
@@ -119,6 +121,7 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 		statusAttackDown: false,
 		stats: playerStats{
 			Bullets: 10,
+			Shells:  1,
 		},
 		inventory: playerInventory{
 			ReadyWeapon: weaponPistol,
@@ -162,7 +165,7 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	if g.weaponState != weaponStateShotgunUp && g.weaponState != weaponStateShotgunReady {
 		t.Fatalf("weapon state=%v want shotgun raise or ready", g.weaponState)
 	}
-	for i := 0; i < 32; i++ {
+	for i := 0; i < 64; i++ {
 		g.tickWeaponOverlay()
 	}
 	if g.inventory.PendingWeapon != 0 {
@@ -170,6 +173,28 @@ func TestTickWeaponFireStartsOverlayAndClearsOnSwitch(t *testing.T) {
 	}
 	if g.inventory.ReadyWeapon != weaponShotgun || g.weaponState != weaponStateShotgunReady || g.weaponFlashState != weaponStateNone {
 		t.Fatalf("weapon switch not applied after raise: ready=%v state=%v flash=%v", g.inventory.ReadyWeapon, g.weaponState, g.weaponFlashState)
+	}
+}
+
+func TestWeaponReadyReleasePreservesRefireUntilRefireState(t *testing.T) {
+	g := &game{
+		statusAttackDown: false,
+		weaponRefire:     true,
+		weaponAttackDown: true,
+		stats:            playerStats{Bullets: 1},
+		inventory: playerInventory{
+			ReadyWeapon: weaponPistol,
+			Weapons:     map[int16]bool{},
+		},
+	}
+
+	g.weaponActionReady(weaponStatePistolReady)
+
+	if g.weaponAttackDown {
+		t.Fatal("attackdown remained set after trigger release")
+	}
+	if !g.weaponRefire {
+		t.Fatal("refire was cleared by WeaponReady; Doom only clears it in A_ReFire")
 	}
 }
 

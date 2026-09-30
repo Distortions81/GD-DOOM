@@ -141,6 +141,7 @@ func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.Map
 	sg.freezeDemoRecord()
 	sg.stopAndClearMusic()
 	if sg.g != nil {
+		sg.g.demoIntermissionActive = sg.g.opts.DemoScript != nil
 		carry := sg.g.captureLevelCarryover()
 		carry.Inventory.PendingWeapon = 0
 		carry.Inventory.ReadyWeapon = sg.g.inventory.ReadyWeapon

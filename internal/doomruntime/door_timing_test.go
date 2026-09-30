@@ -149,6 +149,24 @@ func TestTickDoors_Close30ThenOpenWaitsThirtySecondsAtBottom(t *testing.T) {
 	}
 }
 
+func TestInitTimedDoorSpecialsSpawnsCloseInThirtySeconds(t *testing.T) {
+	g := newDoorTimingGame(1)
+	g.m.Sectors[1].Special = 10
+
+	g.initTimedDoorSpecials()
+
+	d := g.doors[1]
+	if d == nil {
+		t.Fatal("special 10 did not spawn a door thinker")
+	}
+	if d.typ != doorNormal || d.direction != 0 || d.speed != vDoorSpeed || d.topCountdown != 30*doomTicsPerSecond {
+		t.Fatalf("door=%+v want normal inactive 30-second door", *d)
+	}
+	if got := g.m.Sectors[1].Special; got != 0 {
+		t.Fatalf("sector special=%d want cleared", got)
+	}
+}
+
 func TestTickDoors_BlazeRaiseUsesFourTimesSpeed(t *testing.T) {
 	g := newDoorTimingGame(1)
 	g.sectorCeil[1] = 0
@@ -210,7 +228,7 @@ func TestTickDoors_NormalDoorReopensWhenPlayerOverlapsDoorwayFromAdjacentSector(
 	}
 }
 
-func TestSetSectorCeilingHeight_RefreshesProjectileSupportCaches(t *testing.T) {
+func TestSetSectorCeilingHeight_LeavesNoBlockmapProjectileCachesUnchanged(t *testing.T) {
 	g := newDoorTimingGame(1)
 	g.sectorCeil[1] = 64 * fracUnit
 
@@ -242,10 +260,10 @@ func TestSetSectorCeilingHeight_RefreshesProjectileSupportCaches(t *testing.T) {
 
 	g.setSectorCeilingHeight(1, 96*fracUnit)
 
-	if got := g.projectiles[0].ceilz; got != 96*fracUnit {
-		t.Fatalf("projectile ceilz=%d want=%d", got, 96*fracUnit)
+	if got := g.projectiles[0].ceilz; got != 64*fracUnit {
+		t.Fatalf("projectile ceilz=%d want cached value 64", got)
 	}
-	if got := g.projectileImpacts[0].ceilz; got != 96*fracUnit {
-		t.Fatalf("impact ceilz=%d want=%d", got, 96*fracUnit)
+	if got := g.projectileImpacts[0].ceilz; got != 64*fracUnit {
+		t.Fatalf("impact ceilz=%d want cached value 64", got)
 	}
 }

@@ -53,23 +53,25 @@ type platType uint8
 const (
 	platTypeDownWaitUpStay platType = iota
 	platTypeRaiseToNearestAndChange
+	platTypeRaiseAndChange
 	platTypePerpetualRaise
 	platTypeBlazeDownWaitUpStay
 )
 
 type platThinker struct {
-	order         int64
-	sector        int
-	typ           platType
-	status        platStatus
-	oldStatus     platStatus
-	speed         int64
-	low           int64
-	high          int64
-	wait          int
-	count         int
-	finishFlat    string
-	finishSpecial int16
+	order          int64
+	skipOrderedTic bool
+	sector         int
+	typ            platType
+	status         platStatus
+	oldStatus      platStatus
+	speed          int64
+	low            int64
+	high           int64
+	wait           int
+	count          int
+	finishFlat     string
+	finishSpecial  int16
 }
 
 type ceilingThinker struct {
@@ -251,20 +253,22 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	}
 	old := g.sectorFloor[sec]
 	oldPlayerFloor := g.p.floorz
-	if old == z {
-		return
-	}
 	if want := runtimeDebugEnv("GD_DEBUG_FLOOR_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
 			fmt.Printf("floor-move-debug tic=%d world=%d sec=%d old=%d new=%d\n", g.demoTick-1, g.worldTic, sec, old, z)
 		}
 	}
-	g.sectorFloor[sec] = z
-	g.markDynamicSectorPlaneCacheDirty(sec)
-	if sec < len(g.m.Sectors) {
-		g.m.Sectors[sec].FloorHeight = int16(z >> fracBits)
+	if old != z {
+		g.sectorFloor[sec] = z
+		g.markDynamicSectorPlaneCacheDirty(sec)
+		if sec < len(g.m.Sectors) {
+			g.m.Sectors[sec].FloorHeight = int16(z >> fracBits)
+		}
 	}
+	// T_MovePlane calls P_ChangeSector even when a mover has reached its
+	// destination exactly. That refresh is observable for corpses in nearby
+	// blockmap cells, so it must not be skipped when the height is unchanged.
 	g.heightClipAroundSector(sec, oldPlayerFloor)
 }
 
@@ -325,14 +329,15 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 		return
 	}
 	oldPlayerFloor := g.p.floorz
-	if g.sectorCeil[sec] == z {
-		return
+	if g.sectorCeil[sec] != z {
+		g.sectorCeil[sec] = z
+		g.markDynamicSectorPlaneCacheDirty(sec)
+		if sec < len(g.m.Sectors) {
+			g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
+		}
 	}
-	g.sectorCeil[sec] = z
-	g.markDynamicSectorPlaneCacheDirty(sec)
-	if sec < len(g.m.Sectors) {
-		g.m.Sectors[sec].CeilingHeight = int16(z >> fracBits)
-	}
+	// Like floor movers, a rejected ceiling move restores the old height and
+	// still invokes P_ChangeSector to refresh thing support.
 	g.heightClipAroundSector(sec, oldPlayerFloor)
 }
 
@@ -387,7 +392,6 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 	} else {
 		g.heightClipThingsInSector(sec)
 	}
-	g.refreshProjectileSupportInSector(sec)
 	// After all z-states are updated (heightClipPlayer + heightClipThing), run
 	// pickup detection. Doom's P_ChangeSector -> P_ThingHeightClip(player) ->
 	// P_CheckPosition(player) triggers PIT_CheckThing -> P_TouchSpecialThing
@@ -451,7 +455,7 @@ func (g *game) heightClipPlayer(oldFloorz int64) bool {
 		return false
 	}
 	onFloor := g.p.z == oldFloorz
-	tmfloor, tmceil, _, ok := g.checkPositionFor(g.p.x, g.p.y, false)
+	tmfloor, tmceil, _, ok := g.checkPositionForWithPickupTouch(g.p.x, g.p.y, false, true)
 	if !ok {
 		return false
 	}
@@ -908,7 +912,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			}
 			g.m.Sectors[sec].Special = 0
 		case mapdata.PlatRaiseAndChange24:
-			pt.typ = platTypeRaiseToNearestAndChange
+			pt.typ = platTypeRaiseAndChange
 			pt.status = platStatusUp
 			pt.oldStatus = platStatusInStasis
 			pt.speed = platMoveSpeed / 2
@@ -919,7 +923,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 				pt.finishSpecial = 0
 			}
 		case mapdata.PlatRaiseAndChange32:
-			pt.typ = platTypeRaiseToNearestAndChange
+			pt.typ = platTypeRaiseAndChange
 			pt.status = platStatusUp
 			pt.oldStatus = platStatusInStasis
 			pt.speed = platMoveSpeed / 2
@@ -990,6 +994,9 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 		}
 		if g.platTickedThisTic {
 			g.tickPlat(sec, pt)
+			// The ordered thinker loop will discover this newly appended thinker
+			// later in the same tic.  P_RunThinkers services it once, not twice.
+			pt.skipOrderedTic = true
 		}
 		activated = true
 	}
@@ -1165,8 +1172,6 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 	actorAngle := g.p.angle
 	actorRadius := int64(playerRadius)
 	actorHeight := int64(playerHeight)
-	blockMonsterLines := false
-	moverIsMonster := false
 	if !isPlayer {
 		actor := g.m.Things[actorIdx]
 		actorLabel = "thing"
@@ -1176,8 +1181,6 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		actorAngle = g.thingWorldAngle(actorIdx, actor)
 		actorRadius = thingTypeRadius(actor.Type)
 		actorHeight = g.thingCurrentHeight(actorIdx, actor)
-		blockMonsterLines = true
-		moverIsMonster = true
 	}
 	for i, th := range g.m.Things {
 		if th.Type != teleportThingType {
@@ -1201,7 +1204,7 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-dest thing=%d sec=%d pos=(%d,%d) player=%t\n",
 				g.demoTick-1, g.worldTic, i, sec, tx, ty, isPlayer)
 		}
-		tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty, actorRadius, actorIdx, blockMonsterLines, moverIsMonster)
+		tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty)
 		if !ok {
 			if debugLineTriggerEnabled(lineIdx) {
 				fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-blocked line=%d dest_thing=%d pos=(%d,%d) player=%t\n",
@@ -1219,7 +1222,9 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		if destSec < 0 || destSec >= len(g.sectorFloor) || destSec >= len(g.sectorCeil) {
 			return false
 		}
-		destAngle := thingDegToWorldAngle(th.Angle)
+		// P_SpawnMapThing quantizes every map Thing angle to a 45-degree
+		// increment before EV_Teleport copies the destination mobj's angle.
+		destAngle := thingSpawnAngle(th.Angle)
 		destFogX := tx + fixedMul(20*fracUnit, doomFineCosine(destAngle))
 		destFogY := ty + fixedMul(20*fracUnit, doomFineSineAtAngle(destAngle))
 		if isPlayer {
@@ -1294,11 +1299,10 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 	return false
 }
 
-func (g *game) teleportDestinationHeights(x, y, radius int64, actorIdx int, blockMonsterLines bool, moverIsMonster bool) (int64, int64, bool) {
-	tmfloor, tmceil, _, ok := g.checkPositionForActor(x, y, radius, blockMonsterLines, actorIdx, moverIsMonster)
-	if ok {
-		return tmfloor, tmceil, true
-	}
+func (g *game) teleportDestinationHeights(x, y int64) (int64, int64, bool) {
+	// P_TeleportMove does not run P_CheckPosition's line pass. It takes the
+	// floor and ceiling directly from the destination subsector, then handles
+	// overlapping things separately through PIT_StompThing.
 	sec := g.sectorAt(x, y)
 	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
 		return 0, 0, false
@@ -1311,6 +1315,17 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 		return false
 	}
 	allowStomp := isPlayer || g.currentMapName() == "MAP30"
+	// The player mobj is not represented by a map Thing.  P_TeleportMove still
+	// visits it through the blockmap, so a regular monster teleport must fail
+	// when its destination overlaps the player (only the player and MAP30
+	// monster teleports may telefrag).
+	if !isPlayer && g.stats.Health > 0 && !g.isDead &&
+		actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
+		if !allowStomp {
+			return false
+		}
+		g.damagePlayerFrom(10000, "Telefragged", inflictorX, inflictorY, true, actorIdx)
+	}
 	for i, th := range g.m.Things {
 		if i == actorIdx {
 			continue
@@ -1334,12 +1349,8 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 		switch {
 		case isMonster(th.Type):
 			g.damageMonsterFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true)
-			if i < len(g.thingTelefragTick) {
-				g.thingTelefragTick[i] = g.worldTic
-			}
-			g.setThingMomentum(i, 0, 0, 0)
 		case isBarrelThingType(th.Type):
-			g.damageBarrelFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true)
+			g.damageBarrelFrom(i, 10000, isPlayer, actorIdx, inflictorX, inflictorY, true, 0, false)
 			if i < len(g.thingTelefragTick) {
 				g.thingTelefragTick[i] = g.worldTic
 			}
@@ -1628,7 +1639,7 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 		if next > pt.high {
 			next = pt.high
 			g.setSectorFloorHeight(sec, next)
-			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeDownWaitUpStay || pt.typ == platTypeBlazeDownWaitUpStay {
+			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeRaiseAndChange || pt.typ == platTypeDownWaitUpStay || pt.typ == platTypeBlazeDownWaitUpStay {
 				if pt.finishFlat != "" {
 					g.m.Sectors[sec].FloorPic = pt.finishFlat
 				}
@@ -1682,10 +1693,19 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 	switch ct.direction {
 	case -1:
 		next := cur - ct.speed
-		if next <= ct.bottomHeight {
+		if !ct.crush && g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], next) {
+			// T_MovePlane restores lastpos and calls P_ChangeSector again when a
+			// non-crushing ceiling would clip an actor.
+			g.setSectorCeilingHeight(sec, cur)
+			return
+		}
+		if next < ct.bottomHeight {
 			next = ct.bottomHeight
 			g.setSectorCeilingHeight(sec, next)
 			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
+				if ct.action != mapdata.CeilingFastCrushRaise {
+					ct.speed = ceilingMoveSpeed
+				}
 				ct.direction = 1
 			} else {
 				delete(g.ceilings, sec)
@@ -1695,10 +1715,14 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 		g.setSectorCeilingHeight(sec, next)
 	case 1:
 		next := cur + ct.speed
-		if next >= ct.topHeight {
+		if next > ct.topHeight {
 			next = ct.topHeight
 			g.setSectorCeilingHeight(sec, next)
-			delete(g.ceilings, sec)
+			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
+				ct.direction = -1
+			} else {
+				delete(g.ceilings, sec)
+			}
 			return
 		}
 		g.setSectorCeilingHeight(sec, next)

@@ -708,7 +708,7 @@ func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
-				{X: 128, Y: 64, Angle: 90, Type: 14},
+				{X: 128, Y: 64, Angle: 250, Type: 14},
 			},
 			Linedefs: []mapdata.Linedef{
 				{Special: 97, Tag: 7},
@@ -740,12 +740,12 @@ func TestCheckWalkSpecialLines_TriggersTeleport(t *testing.T) {
 			ceilz:  128 * fracUnit,
 		},
 	}
-	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 8*fracUnit, 0)
 	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit {
 		t.Fatalf("player teleported to (%d,%d), want (%d,%d)", g.p.x, g.p.y, 128*fracUnit, 64*fracUnit)
 	}
-	if g.p.angle != thingDegToWorldAngle(90) {
-		t.Fatalf("player angle=%d want %d", g.p.angle, thingDegToWorldAngle(90))
+	if g.p.angle != thingSpawnAngle(250) {
+		t.Fatalf("player angle=%d want %d", g.p.angle, thingSpawnAngle(250))
 	}
 	if g.p.reactionTime != 18 {
 		t.Fatalf("player reactionTime=%d want 18", g.p.reactionTime)
@@ -820,7 +820,7 @@ func TestCheckWalkSpecialLines_TriggersTeleportWhenDestinationFailsNormalMoveChe
 		t.Fatal("normal move check should fail at the teleport destination")
 	}
 
-	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 8*fracUnit, 0)
 
 	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit {
 		t.Fatalf("player teleported to (%d,%d), want (%d,%d)", g.p.x, g.p.y, 128*fracUnit, 64*fracUnit)
@@ -873,7 +873,7 @@ func TestCheckWalkSpecialLines_PlayerTeleportTelefragsShootableThingLikeDoom(t *
 		},
 	}
 
-	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 8*fracUnit, 0)
 
 	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit {
 		t.Fatalf("player teleported to (%d,%d), want (%d,%d)", g.p.x, g.p.y, 128*fracUnit, 64*fracUnit)
@@ -887,8 +887,8 @@ func TestCheckWalkSpecialLines_PlayerTeleportTelefragsShootableThingLikeDoom(t *
 	if got := g.thingState[1]; got != monsterStateDeath {
 		t.Fatalf("telefragged state=%d want death", got)
 	}
-	if gotX, gotY := g.thingMomX[1], g.thingMomY[1]; gotX != 0 || gotY != 0 {
-		t.Fatalf("telefragged momentum=(%d,%d) want=(0,0)", gotX, gotY)
+	if gotX, gotY := g.thingMomX[1], g.thingMomY[1]; gotX == 0 && gotY == 0 {
+		t.Fatal("telefragged monster should retain P_DamageMobj thrust")
 	}
 	if got := g.thingStateTics[1]; got <= 0 {
 		t.Fatalf("telefragged first-frame tics=%d want > 0", got)
@@ -988,7 +988,7 @@ func TestCheckWalkSpecialLines_PlayerTeleportSuppressesSameTicPickupSweep(t *tes
 		},
 	}
 
-	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 8*fracUnit, 0)
 
 	if g.p.x != 128*fracUnit || g.p.y != 64*fracUnit {
 		t.Fatalf("player teleported to (%d,%d), want (%d,%d)", g.p.x, g.p.y, 128*fracUnit, 64*fracUnit)
@@ -1098,7 +1098,7 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 		},
 	}
 
-	g.checkWalkSpecialLinesForActor(-32*fracUnit, 0, 32*fracUnit, 0, 0, false)
+	g.checkWalkSpecialLinesForActor(-32*fracUnit, 0, 8*fracUnit, 0, 0, false)
 
 	if g.p.x != 320*fracUnit || g.p.y != 320*fracUnit {
 		t.Fatalf("player unexpectedly teleported to (%d,%d)", g.p.x, g.p.y)
@@ -1123,6 +1123,24 @@ func TestCheckWalkSpecialLinesForActor_NonPlayerTeleportDoesNotMovePlayer(t *tes
 	}
 	if got := len(g.soundQueue); got != 2 {
 		t.Fatalf("teleport sound count=%d want=2", got)
+	}
+}
+
+func TestTeleportStompDestinationThings_NonMap30MonsterBlockedByPlayer(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{Things: []mapdata.Thing{{Type: 3004}}},
+		p: player{
+			x: 128 * fracUnit,
+			y: 64 * fracUnit,
+		},
+		stats: playerStats{Health: 100},
+	}
+
+	if g.teleportStompDestinationThings(128*fracUnit, 64*fracUnit, thingTypeRadius(3004), 0, false, 0, 0) {
+		t.Fatal("non-MAP30 monster teleport into the player succeeded")
+	}
+	if got := g.stats.Health; got != 100 {
+		t.Fatalf("blocked teleport changed player health to %d", got)
 	}
 }
 
@@ -1311,7 +1329,7 @@ func TestTeleportSourceFogUsesActorZ(t *testing.T) {
 		},
 	}
 
-	g.checkWalkSpecialLinesForActor(-32*fracUnit, 0, 32*fracUnit, 0, 0, true)
+	g.checkWalkSpecialLinesForActor(-32*fracUnit, 0, 8*fracUnit, 0, 0, true)
 
 	if got, want := len(g.hitscanPuffs), 2; got != want {
 		t.Fatalf("teleport fog count=%d want=%d", got, want)
@@ -1417,7 +1435,7 @@ func TestCheckWalkSpecialLines_DoesNotTriggerTeleportOutsidePlayerSubsectors(t *
 		},
 	}
 
-	g.checkWalkSpecialLines(-32*fracUnit, 0, 32*fracUnit, 0)
+	g.checkWalkSpecialLines(-32*fracUnit, 0, 8*fracUnit, 0)
 
 	if g.p.x != -32*fracUnit || g.p.y != 0 {
 		t.Fatalf("player unexpectedly teleported to (%d,%d)", g.p.x, g.p.y)

@@ -76,7 +76,15 @@ func (g *game) recordGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
 
 func (g *game) stepGameplayFromDemoTic(tc DemoTic) {
 	cmd, usePressed, fireHeld := demoTicCommand(tc)
+	if g.playerReborn {
+		g.respawnDemoPlayer()
+	}
 	g.runGameplayTic(cmd, usePressed, fireHeld)
+	if g.isDead && usePressed {
+		// P_DeathThink turns BT_USE into PST_REBORN. G_Ticker performs the
+		// actual G_DoReborn on the following tic without restarting the map.
+		g.playerReborn = true
+	}
 	g.discoverLinesAroundPlayer()
 	g.State.SetCamera(float64(g.p.x)/fracUnit, float64(g.p.y)/fracUnit)
 	g.tickDelayedSounds()
@@ -94,6 +102,39 @@ func (g *game) stepGameplayFromDemoTic(tc DemoTic) {
 	}
 	g.tickDelayedSwitchReverts()
 	g.markSimUpdate(time.Now())
+}
+
+func (g *game) respawnDemoPlayer() {
+	if g == nil || g.m == nil {
+		return
+	}
+	// G_DoReborn queues ga_loadlevel in a single-player game. Rebuild the
+	// level in place so demo playback continues with the next tic, retaining
+	// the random streams just as P_SetupLevel does in the original engine.
+	old := *g
+	reloadOpts := g.opts
+	// The existing writer remains responsible for the continuous trace. Do not
+	// let the constructor truncate its file while rebuilding the level.
+	reloadOpts.DemoTracePath = ""
+	template := g.restartTemplate
+	if template == nil {
+		template = g.m
+	}
+	reloaded := newGameWithRNG(cloneMapForRestart(template), reloadOpts, false)
+	reloaded.opts.DemoTracePath = old.opts.DemoTracePath
+
+	reloaded.demoTick = old.demoTick
+	reloaded.demoTrace = old.demoTrace
+	reloaded.demoTraceInitialWritten = old.demoTraceInitialWritten
+	reloaded.demoBenchStarted = old.demoBenchStarted
+	reloaded.demoBenchStart = old.demoBenchStart
+	reloaded.demoBenchFrameNS = old.demoBenchFrameNS
+	reloaded.demoBenchDraws = old.demoBenchDraws
+	reloaded.demoDoneReported = old.demoDoneReported
+	reloaded.demoRNGCaptured = old.demoRNGCaptured
+	reloaded.demoStartRnd = old.demoStartRnd
+	reloaded.demoStartPRnd = old.demoStartPRnd
+	*g = *reloaded
 }
 
 func (g *game) updateWatchMode() error {
