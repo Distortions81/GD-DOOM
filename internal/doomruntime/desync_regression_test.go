@@ -7,6 +7,100 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestMissileSpawnLinksSubsectorOnlyAfterSuccessfulMove(t *testing.T) {
+	for _, blocked := range []bool{false, true} {
+		g := &game{
+			m: &mapdata.Map{
+				Sectors:    []mapdata.Sector{{CeilingHeight: 128}, {CeilingHeight: 128}},
+				SubSectors: []mapdata.SubSector{{}, {}},
+				Nodes:      []mapdata.Node{{DY: 128, ChildID: [2]uint16{0x8001, 0x8000}}},
+			},
+			subSectorSec: []int{0, 1}, sectorFloor: []int64{0, 0},
+			sectorCeil: []int64{128 * fracUnit, 128 * fracUnit},
+			p:          player{x: 1000 * fracUnit}, stats: playerStats{Health: 100},
+		}
+		if blocked {
+			g.lines = []physLine{{idx: 0, x1: 0, y1: -64 * fracUnit, x2: 0, y2: 64 * fracUnit,
+				dy: 128 * fracUnit, slope: slopeVertical, sideNum1: -1,
+				bbox: [4]int64{64 * fracUnit, -64 * fracUnit, 0, 0}}}
+		}
+		p := projectile{x: -fracUnit, z: 32 * fracUnit, vx: 4 * fracUnit,
+			radius: 2 * fracUnit, height: 8 * fracUnit, floorz: 0, ceilz: 128 * fracUnit,
+			kind: projectilePlayerPlasma, sourcePlayer: true, sourceThing: -1}
+		if got := g.finishProjectileSpawn(&p, true); got == blocked {
+			t.Fatalf("blocked=%t spawn success=%t", blocked, got)
+		}
+		if blocked {
+			fx := g.projectileImpacts[0]
+			if fx.x != fracUnit || fx.subsector != 1 {
+				t.Fatalf("failed spawn position/link=(%d,%d), want=(%d,1)", fx.x, fx.subsector, fracUnit)
+			}
+			if trace := g.demoTraceMobjs(); trace[len(trace)-1].Sector != 0 {
+				t.Fatal("failed spawn trace recomputed its sector from the advanced coordinates")
+			}
+			file := saveFile{Version: saveGameVersion, Game: gameSaveState{ProjectileImpacts: captureProjectileImpacts(g.projectileImpacts)}}
+			data, err := encodeSnapshot(saveGameMagic, file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := decodeSnapshot(data, saveGameMagic)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if restored := restoreProjectileImpacts(decoded.Game.ProjectileImpacts)[0]; restored.subsector != fx.subsector {
+				t.Fatal("snapshot lost the failed-spawn subsector link")
+			}
+		} else {
+			if p.x != fracUnit || p.subsector != 2 {
+				t.Fatalf("successful spawn position/link=(%d,%d), want=(%d,2)", p.x, p.subsector, fracUnit)
+			}
+			g.projectiles = []projectile{p}
+			if trace := g.demoTraceMobjs(); trace[len(trace)-1].Sector != 1 {
+				t.Fatal("successful spawn trace did not enter the destination sector")
+			}
+			file := saveFile{Version: saveGameVersion, Game: gameSaveState{Projectiles: captureProjectiles(g.projectiles)}}
+			data, err := encodeSnapshot(saveGameMagic, file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := decodeSnapshot(data, saveGameMagic)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if restored := restoreProjectiles(decoded.Game.Projectiles)[0]; restored.subsector != p.subsector {
+				t.Fatal("snapshot lost the live missile's subsector link")
+			}
+		}
+	}
+}
+
+func TestLethalPlayerHitFromBelowConsumesForwardFallRandom(t *testing.T) {
+	for _, height := range []int64{64 * fracUnit, 65 * fracUnit} {
+		doomrand.Clear()
+		g := &game{p: player{x: 64 * fracUnit, z: height}, stats: playerStats{Health: 6}, playerMobjHealth: 6}
+		g.damagePlayerFromWithInflictorZ(9, "hit", 0, 0, true, -1, 0)
+		wantDraws := 1 // Death state shortening.
+		wantMomX := fixedMul(9*(fracUnit>>3), doomFineCosine(0))
+		if height > 64*fracUnit {
+			// The first random value is even, so this draw does not reverse thrust.
+			wantDraws++
+		}
+		if _, got := doomrand.State(); got != wantDraws {
+			t.Fatalf("height=%d RNG=%d want=%d", height, got, wantDraws)
+		}
+		if g.p.momx != wantMomX {
+			t.Fatalf("height=%d momx=%d want=%d", height, g.p.momx, wantMomX)
+		}
+	}
+	doomrand.Clear()
+	_ = doomrand.PRandom() // Next draw is odd and reverses/quadruples thrust.
+	g := &game{p: player{x: 64 * fracUnit, z: 65 * fracUnit}, stats: playerStats{Health: 6}, playerMobjHealth: 6}
+	g.damagePlayerFromWithInflictorZ(9, "hit", 0, 0, true, -1, 0)
+	if want := fixedMul(4*9*(fracUnit>>3), doomFineCosine(doomAng180)); g.p.momx != want {
+		t.Fatalf("forward-fall momx=%d want=%d", g.p.momx, want)
+	}
+}
+
 func TestFaceTargetInvisiblePlayerUsesOneDoomShadowJitter(t *testing.T) {
 	doomrand.Clear()
 	g := &game{

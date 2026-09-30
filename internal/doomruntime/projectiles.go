@@ -34,6 +34,7 @@ type projectile struct {
 	vz                int64
 	floorz            int64
 	ceilz             int64
+	subsector         int // One-based linked subsector; zero means not cached.
 	radius            int64
 	height            int64
 	ttl               int
@@ -60,6 +61,7 @@ type projectileImpact struct {
 	z                int64
 	floorz           int64
 	ceilz            int64
+	subsector        int // Retained when a spawn-check move fails.
 	kind             projectileKind
 	order            int64
 	sourceThing      int
@@ -408,7 +410,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		if hitThing {
 			if thingHit.isPlayer {
 				if dmg := projectileDamage(p); dmg > 0 {
-					g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), p.x, p.y, true, p.sourceThing)
+					g.damagePlayerFromWithInflictorZ(dmg, projectileHitMessage(p.kind), p.x, p.y, true, p.sourceThing, p.z)
 				}
 			} else if thingHit.damage {
 				if dmg := projectileDamage(p); dmg > 0 {
@@ -432,6 +434,9 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		prevX, prevY := p.x, p.y
 		p.x = nx
 		p.y = ny
+		if g.m != nil {
+			p.subsector = g.subSectorAtFixed(nx, ny) + 1
+		}
 		p.floorz, p.ceilz = tmfloorz, tmceilingz
 		g.checkProjectileWalkSpecialLines(prevX, prevY, nx, ny, p)
 	}
@@ -722,6 +727,9 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 		p.spawnPrev = false
 	}
 	ox, oy, oz := p.x, p.y, p.z
+	if g.m != nil {
+		p.subsector = g.subSectorAtFixed(ox, oy) + 1
+	}
 	nx := ox + (p.vx >> 1)
 	ny := oy + (p.vy >> 1)
 	nz := oz + (p.vz >> 1)
@@ -747,7 +755,7 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	if hitThing {
 		if thingHit.isPlayer {
 			if dmg := projectileDamage(*p); dmg > 0 {
-				g.damagePlayerFrom(dmg, projectileHitMessage(p.kind), nx, ny, true, p.sourceThing)
+				g.damagePlayerFromWithInflictorZ(dmg, projectileHitMessage(p.kind), nx, ny, true, p.sourceThing, nz)
 			}
 		} else if thingHit.damage {
 			if dmg := projectileDamage(*p); dmg > 0 {
@@ -762,6 +770,9 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 		return false
 	}
 	p.floorz, p.ceilz = tmfloorz, tmceilingz
+	if g.m != nil {
+		p.subsector = g.subSectorAtFixed(nx, ny) + 1
+	}
 	if advance {
 		p.x = nx
 		p.y = ny
@@ -956,6 +967,7 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 	}
 	fx.floorz = p.floorz
 	fx.ceilz = p.ceilz
+	fx.subsector = p.subsector
 	fx.sourceThing = p.sourceThing
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
@@ -983,6 +995,7 @@ func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int
 	}
 	fx.floorz = p.floorz
 	fx.ceilz = p.ceilz
+	fx.subsector = p.subsector
 	fx.sourceThing = p.sourceThing
 	fx.sourceType = p.sourceType
 	fx.sourcePlayer = p.sourcePlayer
