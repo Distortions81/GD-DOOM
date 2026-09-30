@@ -115,9 +115,10 @@ func (g *game) tickGameplayWorld() {
 }
 
 func (g *game) tickThinkers() {
-	g.tickPlayerBody()
+	if g.playerThinkerOrder() == 0 {
+		g.tickPlayerBody()
+	}
 	g.runOrderedWorldThinkers()
-	g.tickBossBrainSpecials()
 	g.tickProjectiles()
 	g.tickDeferredProjectiles()
 	g.tickHitscanPuffs()
@@ -135,7 +136,17 @@ const (
 	worldThinkerProjectile
 	worldThinkerProjectileImpact
 	worldThinkerSectorLight
+	worldThinkerBossCube
+	worldThinkerBossFire
+	worldThinkerPlayer
 )
+
+func (g *game) playerThinkerOrder() int64 {
+	if g == nil || g.m == nil || g.localPlayerThingIndex < 0 || g.localPlayerThingIndex >= len(g.m.Things) || !isPlayerStart(g.m.Things[g.localPlayerThingIndex].Type) {
+		return 0
+	}
+	return int64(g.localPlayerThingIndex + 1)
+}
 
 type worldThinkerRef struct {
 	kind  worldThinkerKind
@@ -171,6 +182,9 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 	}
 
 	if g != nil && g.m != nil {
+		// P_PlayerThink applies input before the thinker list, but the player's
+		// mobj moves at its map-spawn position within that list.
+		consider(worldThinkerPlayer, 0, g.playerThinkerOrder())
 		for i, th := range g.m.Things {
 			if !g.thingHasWorldThinker(i, th) {
 				continue
@@ -225,6 +239,12 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 			consider(worldThinkerProjectileImpact, i, g.projectileImpacts[i].order)
 		}
 	}
+	for i, cube := range g.bossSpawnCubes {
+		consider(worldThinkerBossCube, i, cube.order)
+	}
+	for i, fire := range g.bossSpawnFires {
+		consider(worldThinkerBossFire, i, fire.order)
+	}
 	for sec, fx := range g.sectorLightFx {
 		if fx.kind != sectorLightEffectNone && fx.order > 0 {
 			consider(worldThinkerSectorLight, sec, fx.order)
@@ -240,11 +260,13 @@ func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
 	if i < len(g.thingCollected) && g.thingCollected[i] {
 		return false
 	}
-	return isBarrelThingType(th.Type) || isMonster(th.Type)
+	return isBarrelThingType(th.Type) || isMonster(th.Type) || th.Type == 88 || th.Type == 89
 }
 
 func (g *game) tickWorldThinker(ref worldThinkerRef) {
 	switch ref.kind {
+	case worldThinkerPlayer:
+		g.tickPlayerBody()
 	case worldThinkerThing:
 		if g == nil || g.m == nil || ref.key < 0 || ref.key >= len(g.m.Things) {
 			return
@@ -284,6 +306,10 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 		g.tickProjectileByOrder(ref.order)
 	case worldThinkerProjectileImpact:
 		g.tickProjectileImpactByOrder(ref.order)
+	case worldThinkerBossCube:
+		g.tickBossSpawnCubeByOrder(ref.order)
+	case worldThinkerBossFire:
+		g.tickBossSpawnFireByOrder(ref.order)
 	case worldThinkerSectorLight:
 		if ref.key >= 0 && ref.key < len(g.sectorLightFx) && g.sectorLightFx[ref.key].order == ref.order {
 			g.tickSectorLightEffect(ref.key)
@@ -700,7 +726,7 @@ func (g *game) xyMovement() {
 }
 
 func (g *game) tryMove(x, y int64) bool {
-	return g.tryMoveWithPickupProbe(x, y, false)
+	return g.tryMoveWithPickupProbe(x, y, true)
 }
 
 func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
@@ -800,8 +826,8 @@ func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int6
 }
 
 // checkPositionForWithPickupTouch is the player P_CheckPosition equivalent.
-// Vanilla calls P_TouchSpecialThing while P_TryMove walks the thing blockmap;
-// generic position probes (such as moving-sector clipping) must not do so.
+// Vanilla calls P_TouchSpecialThing while P_CheckPosition walks the thing
+// blockmap, including slide moves and moving-sector clipping.
 func (g *game) checkPositionForWithPickupTouch(x, y int64, blockMonsterLines bool, touchPickups bool) (int64, int64, int64, bool) {
 	return g.checkPositionForActorWithPickupTouch(x, y, playerRadius, blockMonsterLines, -1, false, false, touchPickups)
 }

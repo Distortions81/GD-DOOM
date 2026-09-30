@@ -1377,6 +1377,10 @@ func (g *game) damageMonsterFromWithInflictorZ(thingIdx int, damage int, sourceP
 	if g.m == nil || thingIdx >= len(g.m.Things) {
 		return
 	}
+	if g.m.Things[thingIdx].Type == 88 {
+		g.damageBossBrain(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
+		return
+	}
 	g.ensureMonsterAIState()
 	if g.thingHP[thingIdx] <= 0 {
 		return
@@ -1414,6 +1418,10 @@ func (g *game) damageMonsterFromWithInflictorZ(thingIdx int, damage int, sourceP
 	}
 	if g.thingHP[thingIdx] <= 0 {
 		xdeath := g.thingHP[thingIdx] < -monsterSpawnHealth(thingType) && monsterHasXDeath(thingType)
+		// P_KillMobj clears MF_SKULLFLY along with MF_FLOAT.
+		if thingIdx < len(g.thingSkullFly) {
+			g.thingSkullFly[thingIdx] = false
+		}
 		if thingIdx >= 0 && thingIdx < len(g.thingDead) {
 			g.thingDead[thingIdx] = true
 		}
@@ -1677,6 +1685,8 @@ func (g *game) damageInflictorPos(sourcePlayer bool, sourceThing int, inflictorX
 
 func thingTypeMass(typ int16) int {
 	switch typ {
+	case 88:
+		return 10000000
 	case 3004, 9, 3001, 65, 84:
 		return 100
 	case 3002, 58:
@@ -1746,7 +1756,7 @@ func (g *game) wakeDormantMonsterFromDamage(i int, typ int16) {
 	// struck by another charging skull before its first thinker tick. Doom's
 	// P_DamageMobj retargets it and immediately enters S_SKULL_RUN1; that
 	// state's A_Chase action can in turn enter S_SKULL_ATK1 in the same tic.
-	if g != nil && typ == 3006 && monsterUsesExactDoomStateMachine(typ) && i >= 0 &&
+	if g != nil && monsterUsesExactDoomStateMachine(typ) && i >= 0 &&
 		i < len(g.thingDoomState) &&
 		(g.thingDoomState[i] == monsterInitialDoomState(typ) ||
 			(g.thingDoomState[i] == noDoomMonsterState && i < len(g.thingState) && g.thingState[i] == monsterStateSpawn)) {
@@ -1755,8 +1765,9 @@ func (g *game) wakeDormantMonsterFromDamage(i int, typ int16) {
 	}
 	// The shared fallback state machine still has different wake timing for
 	// several monster families. Source traces establish this exact
-	// P_DamageMobj/P_SetMobjState sequence for Barons, Imps, Demons, and Spectres.
-	if g == nil || (typ != 3003 && typ != 3001 && typ != 3002 && typ != 58) || monsterUsesExactDoomStateMachine(typ) || i < 0 || i >= len(g.thingState) || g.thingState[i] != monsterStateSpawn ||
+	// P_DamageMobj/P_SetMobjState sequence for Barons, Imps, Demons, Spectres,
+	// and Pain Elementals.
+	if g == nil || (typ != 3003 && typ != 3001 && typ != 3002 && typ != 58 && typ != 71) || monsterUsesExactDoomStateMachine(typ) || i < 0 || i >= len(g.thingState) || g.thingState[i] != monsterStateSpawn ||
 		(i < len(g.thingStatePhase) && g.thingStatePhase[i] != 0) {
 		return
 	}
@@ -1769,6 +1780,13 @@ func (g *game) wakeDormantMonsterFromDamage(i int, typ int16) {
 	}
 	tx, ty := g.thingPosFixed(i, g.m.Things[i])
 	g.monsterTurnTowardMoveDir(i)
+	if typ == 71 && g.monsterCanTryMissileNow(i) {
+		px, py, _, _, _, ok := g.monsterTargetPos(i)
+		if ok && g.monsterCheckMissileRange(i, typ, doomApproxDistance(px-tx, py-ty), tx, ty, px, py) {
+			g.startMonsterAttackState(i, typ, true)
+			return
+		}
+	}
 	if i < len(g.thingMoveCount) {
 		g.thingMoveCount[i]--
 		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, typ, g.thingMoveDir[i]) {
@@ -2247,10 +2265,6 @@ func (g *game) handleBossDeath(thingIdx int, thingType int16) {
 	}
 	name := strings.ToUpper(strings.TrimSpace(string(g.m.Name)))
 	if name == "" {
-		return
-	}
-	if thingType == 88 {
-		g.requestLevelExit(false, "Boss brain destroyed")
 		return
 	}
 	for i, th := range g.m.Things {

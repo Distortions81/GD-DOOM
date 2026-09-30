@@ -455,7 +455,7 @@ func (g *game) heightClipPlayer(oldFloorz int64) bool {
 		return false
 	}
 	onFloor := g.p.z == oldFloorz
-	tmfloor, tmceil, _, ok := g.checkPositionFor(g.p.x, g.p.y, false)
+	tmfloor, tmceil, _, ok := g.checkPositionForWithPickupTouch(g.p.x, g.p.y, false, true)
 	if !ok {
 		return false
 	}
@@ -1699,10 +1699,13 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 			g.setSectorCeilingHeight(sec, cur)
 			return
 		}
-		if next <= ct.bottomHeight {
+		if next < ct.bottomHeight {
 			next = ct.bottomHeight
 			g.setSectorCeilingHeight(sec, next)
 			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
+				if ct.action != mapdata.CeilingFastCrushRaise {
+					ct.speed = ceilingMoveSpeed
+				}
 				ct.direction = 1
 			} else {
 				delete(g.ceilings, sec)
@@ -1712,10 +1715,14 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 		g.setSectorCeilingHeight(sec, next)
 	case 1:
 		next := cur + ct.speed
-		if next >= ct.topHeight {
+		if next > ct.topHeight {
 			next = ct.topHeight
 			g.setSectorCeilingHeight(sec, next)
-			delete(g.ceilings, sec)
+			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
+				ct.direction = -1
+			} else {
+				delete(g.ceilings, sec)
+			}
 			return
 		}
 		g.setSectorCeilingHeight(sec, next)

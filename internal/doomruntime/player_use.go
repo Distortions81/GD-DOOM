@@ -541,21 +541,24 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 			if isPlayer && !info.Door.CanActivate(g.inventory.keys()) {
 				return false
 			}
-			if g.activateDoorLine(ld.idx, info, isPlayer) {
-				if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
-					g.lineSpecial[ld.idx] = 0
-				}
+			activated := g.activateDoorLine(ld.idx, info, isPlayer)
+			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
+				g.lineSpecial[ld.idx] = 0
+			}
+			if activated {
 				return true
 			}
 			return false
 		}
-		if g.activateNonDoorLineSpecial(ld.idx, startSide, info, actorIdx, isPlayer) {
+		activated := g.activateNonDoorLineSpecial(ld.idx, startSide, info, actorIdx, isPlayer)
+		// Vanilla consumes W1 crossings even when a tagged sector is busy.
+		if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
+			g.lineSpecial[ld.idx] = 0
+		}
+		if activated {
 			if debugLineTriggerEnabled(ld.idx) {
 				fmt.Printf("line-trigger-debug tic=%d world=%d phase=walk-activate line=%d player=%t special=%d repeat=%t\n",
 					g.demoTick-1, g.worldTic, ld.idx, isPlayer, special, info.Repeat)
-			}
-			if !info.Repeat && ld.idx >= 0 && ld.idx < len(g.lineSpecial) {
-				g.lineSpecial[ld.idx] = 0
 			}
 			return true
 		}

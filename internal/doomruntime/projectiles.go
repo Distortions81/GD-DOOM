@@ -18,58 +18,63 @@ const (
 	projectileRocket
 	projectilePlayerPlasma
 	projectileBFGBall
+	projectileArchVileFire
+	projectileBrainExplosion
 )
 
 type projectile struct {
-	x            int64
-	y            int64
-	z            int64
-	prevX        int64
-	prevY        int64
-	prevZ        int64
-	vx           int64
-	vy           int64
-	vz           int64
-	floorz       int64
-	ceilz        int64
-	radius       int64
-	height       int64
-	ttl          int
-	sourceX      int64
-	sourceY      int64
-	sourceThing  int
-	sourceType   int16
-	sourcePlayer bool
-	tracerPlayer bool
-	lastLook     int
-	frame        int
-	frameTics    int
-	angle        uint32
-	kind         projectileKind
-	order        int64
-	deferredTick bool
-	spawnPrev    bool
+	x                 int64
+	y                 int64
+	z                 int64
+	prevX             int64
+	prevY             int64
+	prevZ             int64
+	vx                int64
+	vy                int64
+	vz                int64
+	floorz            int64
+	ceilz             int64
+	radius            int64
+	height            int64
+	ttl               int
+	sourceX           int64
+	sourceY           int64
+	sourceThing       int
+	sourceType        int16
+	sourcePlayer      bool
+	tracerPlayer      bool
+	tracerThingTarget int // One-based thing index; zero means no thing tracer.
+	lastLook          int
+	frame             int
+	frameTics         int
+	angle             uint32
+	kind              projectileKind
+	order             int64
+	deferredTick      bool
+	spawnPrev         bool
 }
 
 type projectileImpact struct {
-	x            int64
-	y            int64
-	z            int64
-	floorz       int64
-	ceilz        int64
-	kind         projectileKind
-	order        int64
-	sourceThing  int
-	sourceType   int16
-	sourcePlayer bool
-	lastLook     int
-	tics         int
-	totalTics    int
-	phase        int
-	phaseTics    int
-	angle        uint32
-	skipBatchTic int
-	sprayDone    bool
+	x                int64
+	y                int64
+	z                int64
+	floorz           int64
+	ceilz            int64
+	kind             projectileKind
+	order            int64
+	sourceThing      int
+	sourceType       int16
+	sourcePlayer     bool
+	fireTargetThing  int // One-based thing index; zero means no thing target.
+	fireTargetPlayer bool
+	lastLook         int
+	tics             int
+	totalTics        int
+	phase            int
+	phaseTics        int
+	angle            uint32
+	skipBatchTic     int
+	sprayDone        bool
 }
 
 func usesMonsterProjectile(typ int16) bool {
@@ -266,7 +271,12 @@ func (g *game) spawnMonsterProjectile(thingIdx int, typ int16) bool {
 		order:        g.allocThinkerOrder(),
 		deferredTick: true,
 	}
-	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	if typ == 66 && thingIdx < len(g.thingTargetPlayer) && !g.thingTargetPlayer[thingIdx] &&
+		thingIdx < len(g.thingTargetIdx) && g.thingTargetIdx[thingIdx] >= 0 {
+		p.tracerPlayer = false
+		p.tracerThingTarget = g.thingTargetIdx[thingIdx] + 1
+	}
+	p.floorz, p.ceilz = g.projectileSpawnSupportStateAt(p.x, p.y)
 	if !g.finishProjectileSpawn(&p, true) {
 		return false
 	}
@@ -349,13 +359,6 @@ func (g *game) tickDeferredProjectiles() {
 		}
 		p.deferredTick = false
 		next, keep := g.advanceProjectile(p)
-		// The deferred rocket path uses a separate impact constructor so its
-		// creation-tic state decrement must be supplied here. Other deferred
-		// missiles use spawnProjectileImpactFrom, which already performs that
-		// decrement; applying it again shortens their explosion by one tic.
-		if p.kind == projectileRocket {
-			g.tickProjectileImpactByOrder(p.order)
-		}
 		if keep {
 			kept = append(kept, next)
 		}
@@ -412,7 +415,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 					g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, p.x, p.y, true, p.z, true)
 				}
 			}
-			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			g.explodeProjectileInThinker(p, p.x, p.y, p.z)
 			return projectile{}, false
 		}
 		if blocked {
@@ -423,7 +426,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 			if skyBlocked {
 				return projectile{}, false
 			}
-			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			g.explodeProjectileInThinker(p, p.x, p.y, p.z)
 			return projectile{}, false
 		}
 		prevX, prevY := p.x, p.y
@@ -443,21 +446,33 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		p.spawnPrev = false
 		if p.z <= p.floorz {
 			p.z = p.floorz
-			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			g.explodeProjectileInThinker(p, p.x, p.y, p.z)
 			return projectile{}, false
 		}
 		if p.z+p.height > p.ceilz {
 			p.z = p.ceilz - p.height
-			g.explodeProjectileAt(p, p.x, p.y, p.z)
+			g.explodeProjectileInThinker(p, p.x, p.y, p.z)
 			return projectile{}, false
 		}
 	}
-	if g.tickProjectileAnim(&p) {
+	if p.kind == projectileBrainExplosion {
+		p.frameTics--
+		if p.frameTics == 0 {
+			p.frame++
+			if p.frame == 3 {
+				return projectile{}, false
+			}
+			p.frameTics = 10
+			if p.frame == 2 {
+				g.spawnBossBrainExplosion(p.x, p.y, true)
+			}
+		}
+	} else if g.tickProjectileAnim(&p) {
 		g.tickProjectileSpecial(&p)
 	}
 	p.ttl--
 	if p.ttl <= 0 {
-		g.explodeProjectileAt(p, p.x, p.y, p.z)
+		g.explodeProjectileInThinker(p, p.x, p.y, p.z)
 		return projectile{}, false
 	}
 	return p, true
@@ -532,9 +547,19 @@ func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
 	g.radiusAttackAt(x, y, z, p.height, -1, damage, projectileHitMessage(p.kind), p.sourcePlayer, p.sourceThing)
 }
 
+// A missile that explodes during P_MobjThinker reaches its state decrement
+// in the same call. A spawn-check explosion instead waits for its first thinker.
+func (g *game) explodeProjectileInThinker(p projectile, x, y, z int64) {
+	g.explodeProjectileAt(p, x, y, z)
+	g.tickProjectileImpactByOrder(p.order)
+}
+
 func (g *game) explodeProjectileAt(p projectile, x, y, z int64) {
 	if g == nil {
 		return
+	}
+	if p.kind == projectileBrainExplosion {
+		p.kind = projectileRocket
 	}
 	if p.kind == projectileRocket {
 		idx := g.spawnProjectileImpactFromDeferredRandom(p, x, y, z)
@@ -593,7 +618,7 @@ func (g *game) spawnPlayerRocket() bool {
 		angle:        angle,
 		order:        g.allocThinkerOrder(),
 	}
-	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	p.floorz, p.ceilz = g.projectileSpawnSupportStateAt(p.x, p.y)
 	if !g.finishProjectileSpawn(&p, true) {
 		return false
 	}
@@ -669,7 +694,7 @@ func (g *game) spawnPlayerMissile(kind projectileKind, speed, radius, height int
 		angle:        angle,
 		order:        g.allocThinkerOrder(),
 	}
-	p.floorz, p.ceilz = g.projectileSupportStateAt(p.x, p.y, p.radius)
+	p.floorz, p.ceilz = g.projectileSpawnSupportStateAt(p.x, p.y)
 	if !g.finishProjectileSpawn(&p, true) {
 		return false
 	}
@@ -940,18 +965,11 @@ func (g *game) spawnProjectileImpactFrom(p projectile, x, y, z int64) {
 		// five-tic explosion states rather than the regular plasma's three.
 		// The generic impact was created before its source type was attached,
 		// so extend its remaining lifetime for the two additional states.
-		fx.tics += 8
-		fx.totalTics += 8
+		fx.phaseTics--
+		fx.tics += 7
+		fx.totalTics += 7
 	}
-	// The deferred-impact batch can run later in this same thinker pass.  The
-	// direct tick below is P_MobjThinker's state decrement after
-	// P_ExplodeMissile, so only suppress a second decrement on this tic.  Doom
-	// decrements the death state again on the following tic.
-	fx.skipBatchTic = g.worldTic
-	// P_ExplodeMissile changes the state of the existing missile mobj. Its
-	// P_MobjThinker call then reaches the normal state decrement in this same
-	// tic, so the first death frame loses one tic immediately.
-	g.tickProjectileImpactByOrder(fx.order)
+
 }
 
 func (g *game) spawnProjectileImpactFromDeferredRandom(p projectile, x, y, z int64) int {
@@ -1011,6 +1029,18 @@ func (g *game) advanceProjectileImpactTic(fx *projectileImpact) bool {
 	if fx == nil {
 		return false
 	}
+	// P_XYMovement can enter the death state below the updated support floor.
+	// P_MobjThinker still runs P_ZMovement before decrementing that state.
+	if fx.z < fx.floorz {
+		fx.z = fx.floorz
+	}
+	height := monsterProjectileHeight(fx.sourceType)
+	if fx.kind == projectileArchVileFire {
+		height = 16 * fracUnit
+	}
+	if fx.z+height > fx.ceilz {
+		fx.z = fx.ceilz - height
+	}
 	fx.tics--
 	fx.phaseTics--
 	if fx.phaseTics <= 0 {
@@ -1020,6 +1050,9 @@ func (g *game) advanceProjectileImpactTic(fx *projectileImpact) bool {
 			return false
 		}
 		fx.phaseTics = next
+		if fx.kind == projectileArchVileFire {
+			g.followArchVileFire(fx)
+		}
 		if fx.kind == projectileBFGBall && !fx.sprayDone && fx.phase == 2 {
 			fx.sprayDone = true
 			g.applyBFGSpray(fx.angle)
@@ -1045,6 +1078,10 @@ func projectileSpawnStateTics(kind projectileKind) int {
 
 func projectileImpactPhaseTics(kind projectileKind, phase int) int {
 	switch kind {
+	case projectileArchVileFire:
+		if phase >= 0 && phase < 30 {
+			return 2
+		}
 	case projectileBFGBall:
 		if phase >= 0 && phase <= 5 {
 			return 8
@@ -1118,6 +1155,19 @@ func (g *game) tickProjectileAnim(p *projectile) bool {
 	}
 	p.frameTics = projectileSpawnStateTics(p.kind)
 	return true
+}
+
+// P_SpawnMobj reads support heights from the center subsector. A failed
+// P_CheckMissileSpawn keeps this cache even when the radius crosses a step.
+func (g *game) projectileSpawnSupportStateAt(x, y int64) (int64, int64) {
+	if g == nil || g.m == nil {
+		return 0, 0
+	}
+	sec := g.sectorAt(x, y)
+	if sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
+		return 0, 0
+	}
+	return g.sectorFloor[sec], g.sectorCeil[sec]
 }
 
 func (g *game) projectileSupportStateAt(x, y, radius int64) (int64, int64) {
@@ -1319,17 +1369,14 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 		return dx < blockdist && dy < blockdist
 	}
 	if g.m != nil {
-		// P_SetThingPosition links each map thing at the head of its blockmap
-		// chain. P_CheckPosition therefore sees overlapping things in reverse
-		// spawn order; that order decides which of two colliding targets takes a
-		// missile's direct hit.
-		for i := len(g.m.Things) - 1; i >= 0; i-- {
+		var result projectileThingHit
+		visit := func(i int) bool {
 			th := g.m.Things[i]
 			if i == p.sourceThing {
-				continue
+				return false
 			}
 			if i < 0 || i >= len(g.thingCollected) || g.thingCollected[i] {
-				continue
+				return false
 			}
 			shootable := thingTypeIsShootable(th.Type) && i < len(g.thingHP) && g.thingHP[i] > 0
 			corpseSolid := false
@@ -1342,16 +1389,16 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 			}
 			solid := g.thingBlocksInSession(i) && (!isMonster(th.Type) && thingTypeBlocksActorMovement(th.Type, true))
 			if !shootable && !corpseSolid && !solid {
-				continue
+				return false
 			}
 			tx, ty := g.thingPosFixed(i, th)
 			if !overlapsSquare(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
-				continue
+				return false
 			}
 			tz, _, _ := g.thingSupportState(i, th)
 			height := g.thingCurrentHeight(i, th)
 			if z > tz+height || z+p.height < tz {
-				continue
+				return false
 			}
 			hit := projectileThingHit{
 				idx:      i,
@@ -1364,7 +1411,30 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 				// missile in PIT_CheckThing but cannot receive direct damage.
 				damage: shootable && g.projectileCanDamageThing(p, i),
 			}
-			return hit, true
+			result = hit
+			return true
+		}
+		if g.bmapWidth > 0 && g.bmapHeight > 0 {
+			// P_CheckPosition scans origin-linked cells with vanilla MAXRADIUS,
+			// even for actors larger than that radius.
+			const maxRadius = 32 * fracUnit
+			left := int((nx - p.radius - maxRadius - g.bmapOriginX) >> (fracBits + 7))
+			right := int((nx + p.radius + maxRadius - g.bmapOriginX) >> (fracBits + 7))
+			bottom := int((ny - p.radius - maxRadius - g.bmapOriginY) >> (fracBits + 7))
+			top := int((ny + p.radius + maxRadius - g.bmapOriginY) >> (fracBits + 7))
+			for bx := left; bx <= right; bx++ {
+				for by := bottom; by <= top; by++ {
+					if !g.blockThingsIterator(bx, by, func(i int) bool { return !visit(i) }) {
+						return result, true
+					}
+				}
+			}
+		} else {
+			for i := len(g.m.Things) - 1; i >= 0; i-- {
+				if visit(i) {
+					return result, true
+				}
+			}
 		}
 	}
 	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && overlapsSquare(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
@@ -1452,7 +1522,7 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 	if g == nil || p == nil {
 		return
 	}
-	if p.kind != projectileTracer || !p.tracerPlayer {
+	if p.kind != projectileTracer {
 		return
 	}
 	// A_Tracer tests Doom's gametic. worldTic is incremented before thinker
@@ -1461,9 +1531,21 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 		return
 	}
 	g.spawnTracerSmokeTrail(p.x, p.y, p.z, p.vx, p.vy)
-	dx := g.p.x - p.x
-	dy := g.p.y - p.y
-	exact := doomPointToAngle2(p.x, p.y, g.p.x, g.p.y)
+	tx, ty, tz := g.p.x, g.p.y, g.p.z
+	if p.tracerThingTarget > 0 {
+		idx := p.tracerThingTarget - 1
+		if g.m == nil || idx >= len(g.m.Things) || idx >= len(g.thingHP) || g.thingHP[idx] <= 0 {
+			return
+		}
+		th := g.m.Things[idx]
+		tx, ty = g.thingPosFixed(idx, th)
+		tz, _, _ = g.thingSupportState(idx, th)
+	} else if !p.tracerPlayer || g.isDead {
+		return
+	}
+	dx := tx - p.x
+	dy := ty - p.y
+	exact := doomPointToAngle2(p.x, p.y, tx, ty)
 	const tracerTurnAngle = uint32(0x0c000000)
 	if exact != p.angle {
 		if exact-p.angle > 0x80000000 {
@@ -1485,7 +1567,7 @@ func (g *game) tickProjectileSpecial(p *projectile) {
 	if dist < 1 {
 		dist = 1
 	}
-	slope := (g.p.z + 40*fracUnit - p.z) / dist
+	slope := (tz + 40*fracUnit - p.z) / dist
 	if slope < p.vz {
 		p.vz -= fracUnit / 8
 	} else {

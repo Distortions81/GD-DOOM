@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 19
+	saveGameVersion     = 20
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 6
+	keyframeVersion     = 7
 	saveGameDirName     = "saves"
 )
 
@@ -129,6 +129,7 @@ type gameSaveState struct {
 	ThingAggro           []bool
 	ThingTargetPlayer    []bool
 	ThingTargetIdx       []int
+	ThingTracerFireOrder []int64
 	ThingThreshold       []int
 	ThingCooldown        []int
 	ThingMoveDir         []uint8
@@ -298,6 +299,11 @@ type ceilingThinkerSaveState struct {
 }
 
 type bossSpawnCubeSaveState struct {
+	Order     int64
+	FloorZ    int64
+	CeilZ     int64
+	Angle     uint32
+	LastLook  int
 	X         int64
 	Y         int64
 	Z         int64
@@ -311,49 +317,68 @@ type bossSpawnCubeSaveState struct {
 }
 
 type bossSpawnFireSaveState struct {
-	X    int64
-	Y    int64
-	Z    int64
-	Tics int
+	Order    int64
+	FloorZ   int64
+	CeilZ    int64
+	LastLook int
+	X        int64
+	Y        int64
+	Z        int64
+	Tics     int
 }
 
 type projectileSaveState struct {
-	X            int64
-	Y            int64
-	Z            int64
-	VX           int64
-	VY           int64
-	VZ           int64
-	FloorZ       int64
-	CeilZ        int64
-	Radius       int64
-	Height       int64
-	TTL          int
-	SourceX      int64
-	SourceY      int64
-	SourceThing  int
-	SourceType   int16
-	SourcePlayer bool
-	TracerPlayer bool
-	Angle        uint32
-	Kind         int
+	Order             int64
+	PrevX             int64
+	PrevY             int64
+	PrevZ             int64
+	LastLook          int
+	Frame             int
+	FrameTics         int
+	DeferredTick      bool
+	SpawnPrev         bool
+	X                 int64
+	Y                 int64
+	Z                 int64
+	VX                int64
+	VY                int64
+	VZ                int64
+	FloorZ            int64
+	CeilZ             int64
+	Radius            int64
+	Height            int64
+	TTL               int
+	SourceX           int64
+	SourceY           int64
+	SourceThing       int
+	SourceType        int16
+	SourcePlayer      bool
+	TracerPlayer      bool
+	TracerThingTarget int
+	Angle             uint32
+	Kind              int
 }
 
 type projectileImpactSaveState struct {
-	X            int64
-	Y            int64
-	Z            int64
-	FloorZ       int64
-	CeilZ        int64
-	Kind         int
-	SourceThing  int
-	SourceType   int16
-	SourcePlayer bool
-	LastLook     int
-	Tics         int
-	TotalTics    int
-	Angle        uint32
-	SprayDone    bool
+	Order            int64
+	Phase            int
+	PhaseTics        int
+	X                int64
+	Y                int64
+	Z                int64
+	FloorZ           int64
+	CeilZ            int64
+	Kind             int
+	SourceThing      int
+	SourceType       int16
+	SourcePlayer     bool
+	FireTargetThing  int
+	FireTargetPlayer bool
+	LastLook         int
+	Tics             int
+	TotalTics        int
+	Angle            uint32
+	SprayDone        bool
 }
 
 type hitscanPuffSaveState struct {
@@ -1199,6 +1224,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingAggro:           append([]bool(nil), g.thingAggro...),
 		ThingTargetPlayer:    append([]bool(nil), g.thingTargetPlayer...),
 		ThingTargetIdx:       append([]int(nil), g.thingTargetIdx...),
+		ThingTracerFireOrder: append([]int64(nil), g.thingTracerFireOrder...),
 		ThingThreshold:       append([]int(nil), g.thingThreshold...),
 		ThingCooldown:        append([]int(nil), g.thingCooldown...),
 		ThingMoveDir:         cloneMonsterMoveDirSlice(g.thingMoveDir),
@@ -1316,6 +1342,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingAggro = append([]bool(nil), s.ThingAggro...)
 	g.thingTargetPlayer = append([]bool(nil), s.ThingTargetPlayer...)
 	g.thingTargetIdx = append([]int(nil), s.ThingTargetIdx...)
+	g.thingTracerFireOrder = append([]int64(nil), s.ThingTracerFireOrder...)
 	g.thingThreshold = append([]int(nil), s.ThingThreshold...)
 	g.thingCooldown = append([]int(nil), s.ThingCooldown...)
 	g.thingMoveDir = restoreMonsterMoveDirSlice(s.ThingMoveDir)
@@ -1727,6 +1754,7 @@ func captureBossSpawnCubes(src []bossSpawnCube) []bossSpawnCubeSaveState {
 	dst := make([]bossSpawnCubeSaveState, len(src))
 	for i, cube := range src {
 		dst[i] = bossSpawnCubeSaveState{
+			Order: cube.order, FloorZ: cube.floorz, CeilZ: cube.ceilz, Angle: cube.angle, LastLook: cube.lastLook,
 			X:         cube.x,
 			Y:         cube.y,
 			Z:         cube.z,
@@ -1749,6 +1777,7 @@ func restoreBossSpawnCubes(src []bossSpawnCubeSaveState) []bossSpawnCube {
 	dst := make([]bossSpawnCube, len(src))
 	for i, cube := range src {
 		dst[i] = bossSpawnCube{
+			order: cube.Order, floorz: cube.FloorZ, ceilz: cube.CeilZ, angle: cube.Angle, lastLook: cube.LastLook,
 			x:         cube.X,
 			y:         cube.Y,
 			z:         cube.Z,
@@ -1771,6 +1800,7 @@ func captureBossSpawnFires(src []bossSpawnFire) []bossSpawnFireSaveState {
 	dst := make([]bossSpawnFireSaveState, len(src))
 	for i, fire := range src {
 		dst[i] = bossSpawnFireSaveState{
+			Order: fire.order, FloorZ: fire.floorz, CeilZ: fire.ceilz, LastLook: fire.lastLook,
 			X:    fire.x,
 			Y:    fire.y,
 			Z:    fire.z,
@@ -1787,6 +1817,7 @@ func restoreBossSpawnFires(src []bossSpawnFireSaveState) []bossSpawnFire {
 	dst := make([]bossSpawnFire, len(src))
 	for i, fire := range src {
 		dst[i] = bossSpawnFire{
+			order: fire.Order, floorz: fire.FloorZ, ceilz: fire.CeilZ, lastLook: fire.LastLook,
 			x:    fire.X,
 			y:    fire.Y,
 			z:    fire.Z,
@@ -1803,25 +1834,29 @@ func captureProjectiles(src []projectile) []projectileSaveState {
 	dst := make([]projectileSaveState, len(src))
 	for i, p := range src {
 		dst[i] = projectileSaveState{
-			X:            p.x,
-			Y:            p.y,
-			Z:            p.z,
-			VX:           p.vx,
-			VY:           p.vy,
-			VZ:           p.vz,
-			FloorZ:       p.floorz,
-			CeilZ:        p.ceilz,
-			Radius:       p.radius,
-			Height:       p.height,
-			TTL:          p.ttl,
-			SourceX:      p.sourceX,
-			SourceY:      p.sourceY,
-			SourceThing:  p.sourceThing,
-			SourceType:   p.sourceType,
-			SourcePlayer: p.sourcePlayer,
-			TracerPlayer: p.tracerPlayer,
-			Angle:        p.angle,
-			Kind:         int(p.kind),
+			Order: p.order, PrevX: p.prevX, PrevY: p.prevY, PrevZ: p.prevZ,
+			LastLook: p.lastLook, Frame: p.frame, FrameTics: p.frameTics,
+			DeferredTick: p.deferredTick, SpawnPrev: p.spawnPrev,
+			X:                 p.x,
+			Y:                 p.y,
+			Z:                 p.z,
+			VX:                p.vx,
+			VY:                p.vy,
+			VZ:                p.vz,
+			FloorZ:            p.floorz,
+			CeilZ:             p.ceilz,
+			Radius:            p.radius,
+			Height:            p.height,
+			TTL:               p.ttl,
+			SourceX:           p.sourceX,
+			SourceY:           p.sourceY,
+			SourceThing:       p.sourceThing,
+			SourceType:        p.sourceType,
+			SourcePlayer:      p.sourcePlayer,
+			TracerPlayer:      p.tracerPlayer,
+			TracerThingTarget: p.tracerThingTarget,
+			Angle:             p.angle,
+			Kind:              int(p.kind),
 		}
 	}
 	return dst
@@ -1834,25 +1869,29 @@ func restoreProjectiles(src []projectileSaveState) []projectile {
 	dst := make([]projectile, len(src))
 	for i, p := range src {
 		dst[i] = projectile{
-			x:            p.X,
-			y:            p.Y,
-			z:            p.Z,
-			vx:           p.VX,
-			vy:           p.VY,
-			vz:           p.VZ,
-			floorz:       p.FloorZ,
-			ceilz:        p.CeilZ,
-			radius:       p.Radius,
-			height:       p.Height,
-			ttl:          p.TTL,
-			sourceX:      p.SourceX,
-			sourceY:      p.SourceY,
-			sourceThing:  p.SourceThing,
-			sourceType:   p.SourceType,
-			sourcePlayer: p.SourcePlayer,
-			tracerPlayer: p.TracerPlayer,
-			angle:        p.Angle,
-			kind:         projectileKind(p.Kind),
+			order: p.Order, prevX: p.PrevX, prevY: p.PrevY, prevZ: p.PrevZ,
+			lastLook: p.LastLook, frame: p.Frame, frameTics: p.FrameTics,
+			deferredTick: p.DeferredTick, spawnPrev: p.SpawnPrev,
+			x:                 p.X,
+			y:                 p.Y,
+			z:                 p.Z,
+			vx:                p.VX,
+			vy:                p.VY,
+			vz:                p.VZ,
+			floorz:            p.FloorZ,
+			ceilz:             p.CeilZ,
+			radius:            p.Radius,
+			height:            p.Height,
+			ttl:               p.TTL,
+			sourceX:           p.SourceX,
+			sourceY:           p.SourceY,
+			sourceThing:       p.SourceThing,
+			sourceType:        p.SourceType,
+			sourcePlayer:      p.SourcePlayer,
+			tracerPlayer:      p.TracerPlayer,
+			tracerThingTarget: p.TracerThingTarget,
+			angle:             p.Angle,
+			kind:              projectileKind(p.Kind),
 		}
 	}
 	return dst
@@ -1865,20 +1904,25 @@ func captureProjectileImpacts(src []projectileImpact) []projectileImpactSaveStat
 	dst := make([]projectileImpactSaveState, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpactSaveState{
-			X:            p.x,
-			Y:            p.y,
-			Z:            p.z,
-			FloorZ:       p.floorz,
-			CeilZ:        p.ceilz,
-			Kind:         int(p.kind),
-			SourceThing:  p.sourceThing,
-			SourceType:   p.sourceType,
-			SourcePlayer: p.sourcePlayer,
-			LastLook:     p.lastLook,
-			Tics:         p.tics,
-			TotalTics:    p.totalTics,
-			Angle:        p.angle,
-			SprayDone:    p.sprayDone,
+			Order:            p.order,
+			Phase:            p.phase,
+			PhaseTics:        p.phaseTics,
+			X:                p.x,
+			Y:                p.y,
+			Z:                p.z,
+			FloorZ:           p.floorz,
+			CeilZ:            p.ceilz,
+			Kind:             int(p.kind),
+			SourceThing:      p.sourceThing,
+			SourceType:       p.sourceType,
+			SourcePlayer:     p.sourcePlayer,
+			FireTargetThing:  p.fireTargetThing,
+			FireTargetPlayer: p.fireTargetPlayer,
+			LastLook:         p.lastLook,
+			Tics:             p.tics,
+			TotalTics:        p.totalTics,
+			Angle:            p.angle,
+			SprayDone:        p.sprayDone,
 		}
 	}
 	return dst
@@ -1891,20 +1935,25 @@ func restoreProjectileImpacts(src []projectileImpactSaveState) []projectileImpac
 	dst := make([]projectileImpact, len(src))
 	for i, p := range src {
 		dst[i] = projectileImpact{
-			x:            p.X,
-			y:            p.Y,
-			z:            p.Z,
-			floorz:       p.FloorZ,
-			ceilz:        p.CeilZ,
-			kind:         projectileKind(p.Kind),
-			sourceThing:  p.SourceThing,
-			sourceType:   p.SourceType,
-			sourcePlayer: p.SourcePlayer,
-			lastLook:     p.LastLook,
-			tics:         p.Tics,
-			totalTics:    p.TotalTics,
-			angle:        p.Angle,
-			sprayDone:    p.SprayDone,
+			order:            p.Order,
+			phase:            p.Phase,
+			phaseTics:        p.PhaseTics,
+			x:                p.X,
+			y:                p.Y,
+			z:                p.Z,
+			floorz:           p.FloorZ,
+			ceilz:            p.CeilZ,
+			kind:             projectileKind(p.Kind),
+			sourceThing:      p.SourceThing,
+			sourceType:       p.SourceType,
+			sourcePlayer:     p.SourcePlayer,
+			fireTargetThing:  p.FireTargetThing,
+			fireTargetPlayer: p.FireTargetPlayer,
+			lastLook:         p.LastLook,
+			tics:             p.Tics,
+			totalTics:        p.TotalTics,
+			angle:            p.Angle,
+			sprayDone:        p.SprayDone,
 		}
 	}
 	return dst

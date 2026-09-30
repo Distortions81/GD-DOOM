@@ -379,6 +379,12 @@ func shouldIgnoreMapKey(path string, key string, left, right map[string]any) boo
 		}
 	}
 	if len(path) >= len("root.specials[") && path[:len("root.specials[")] == "root.specials[" {
+		if key == "olddirection" && left["kind"] == "ceiling" && right["kind"] == "ceiling" &&
+			numValue(left["direction"]) != 0 && numValue(right["direction"]) != 0 {
+			// EV_DoCeiling leaves olddirection uninitialized. It is only read
+			// after EV_CeilingCrushStop stores it and sets direction to zero.
+			return true
+		}
 		if isDoorSpecial(left) && isDoorSpecial(right) {
 			// P_SpawnDoorCloseIn30 initializes only the countdown, direction,
 			// type, and speed. Vanilla's trace therefore exposes allocator

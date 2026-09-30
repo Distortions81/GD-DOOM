@@ -54,7 +54,7 @@ func (g *game) thingCurrentHeight(i int, th mapdata.Thing) int64 {
 		if isBarrelThingType(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 			return info.height >> 2
 		}
-		if isMonster(th.Type) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] && (monsterLeavesCorpse(th.Type) || th.Type == 3006) {
+		if (isMonster(th.Type) || th.Type == 88) && i >= 0 && i < len(g.thingDead) && g.thingDead[i] && (monsterLeavesCorpse(th.Type) || th.Type == 3006 || th.Type == 88) {
 			return info.height >> 2
 		}
 		return info.height
@@ -220,6 +220,8 @@ func (g *game) damageShootableThingFromWithInflictorZ(thingIdx int, damage int, 
 	}
 	typ := g.m.Things[thingIdx].Type
 	switch {
+	case typ == 88:
+		g.damageBossBrain(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
 	case isMonster(typ):
 		g.damageMonsterFromWithInflictorZ(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
 	case isBarrelThingType(typ):

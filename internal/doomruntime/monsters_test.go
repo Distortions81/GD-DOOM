@@ -3554,7 +3554,7 @@ func TestTickMonstersAttackExpiryLostTargetReacquireStopsBeforeJustAttackedChase
 	}
 }
 
-func TestTickMonstersAttackExpiryLostTargetReacquireWithoutJustAttackedContinuesChase(t *testing.T) {
+func TestTickMonstersAttackExpiryDeadTargetReacquireReturnsBeforeChase(t *testing.T) {
 	doomrand.SetState(0, 0)
 
 	g := &game{
@@ -3605,11 +3605,11 @@ func TestTickMonstersAttackExpiryLostTargetReacquireWithoutJustAttackedContinues
 	if got := g.thingState[0]; got != monsterStateSee {
 		t.Fatalf("state=%d want see after same-tic chase resume", got)
 	}
-	if got := g.thingMoveCount[0]; got != 0 {
-		t.Fatalf("movecount=%d want 0 after same-tic chase countdown continues", got)
+	if got := g.thingMoveCount[0]; got != 1 {
+		t.Fatalf("movecount=%d want 1 after A_Chase returns from reacquisition", got)
 	}
-	if _, prnd := doomrand.State(); prnd != 1 {
-		t.Fatalf("prnd=%d want=1 after the resumed chase consumes its active-sound roll", prnd)
+	if _, prnd := doomrand.State(); prnd != 0 {
+		t.Fatalf("prnd=%d want=0 after A_Chase returns before its active-sound roll", prnd)
 	}
 }
 

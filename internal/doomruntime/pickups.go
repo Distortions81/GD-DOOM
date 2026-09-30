@@ -281,10 +281,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		}
 		return g.gainHealth(25, 100, msg)
 	case 2013:
-		msg, _, ok := g.gainHealth(100, 200, "Picked up a soulsphere")
-		if !ok {
-			return "", 0, false
-		}
+		msg, _, _ := g.gainBonusHealth(100, 200, "Picked up a soulsphere")
 		return msg, soundEventPowerUp, true
 	case 2014:
 		return g.gainBonusHealth(1, 200, "Picked up a health bonus")
@@ -340,18 +337,10 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.inventory.LightAmpTics = 120 * doomTicsPerSecond
 		return "Light Amplification Visor", soundEventPowerUp, true
 	case 83:
-		changed := false
-		if g.stats.Health != 200 {
-			g.stats.Health = 200
-			changed = true
-		}
-		if g.stats.Armor != 200 || g.stats.ArmorType != 2 {
+		g.stats.Health = 200
+		if g.stats.Armor < 200 {
 			g.stats.Armor = 200
 			g.stats.ArmorType = 2
-			changed = true
-		}
-		if !changed {
-			return "", 0, false
 		}
 		g.syncPlayerMobjHealth()
 		return "Megasphere!", soundEventPowerUp, true
@@ -376,9 +365,6 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	case 17:
 		return g.gainAmmo("cells", 100, "Picked up an energy cell pack")
 	case 8:
-		if g.inventory.Backpack {
-			return g.gainAmmo("bullets", 10, "Picked up ammo from backpack")
-		}
 		g.inventory.Backpack = true
 		g.gainAmmoNoMsg("bullets", 10)
 		g.gainAmmoNoMsg("shells", 4)
@@ -411,7 +397,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			case 2003:
 				return g.gainAmmo("rockets", 2, "Picked up rockets")
 			case 2004:
-				return g.gainAmmo("cells", 20, "Picked up cells")
+				return g.gainAmmo("cells", 40, "Picked up cells")
 			case 2006:
 				return g.gainAmmo("cells", 40, "Picked up cells")
 			case 82:

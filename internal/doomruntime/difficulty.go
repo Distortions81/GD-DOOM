@@ -146,7 +146,7 @@ func (g *game) thingBlocksInSession(i int) bool {
 		// P_KillMobj leaves a barrel's MF_SOLID flag set throughout its BEXP
 		// death sequence. It is unlinked only after BEXP5 reaches S_NULL, at
 		// which point thingCollected is set above.
-		return isBarrelThingType(g.m.Things[i].Type)
+		return isBarrelThingType(g.m.Things[i].Type) || g.m.Things[i].Type == 88
 	}
 	if i < len(g.thingDropped) && g.thingDropped[i] {
 		return true

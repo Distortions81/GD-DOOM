@@ -604,6 +604,7 @@ type game struct {
 	thingMomX                  []int64
 	thingMomY                  []int64
 	thingMomZ                  []int64
+	thingTracerFireOrder       []int64
 	thingAngleState            []uint32
 	thingZState                []int64
 	thingFloorState            []int64
@@ -1374,6 +1375,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.thingAggro = make([]bool, len(m.Things))
 	g.thingAmbush = make([]bool, len(m.Things))
 	g.thingTargetPlayer = make([]bool, len(m.Things))
+	g.thingTracerFireOrder = make([]int64, len(m.Things))
 	g.thingTargetIdx = make([]int, len(m.Things))
 	for i := range g.thingTargetIdx {
 		g.thingTargetIdx[i] = -1
@@ -2057,7 +2059,7 @@ func (g *game) precacheProjectileSpriteRefs() {
 	if g == nil {
 		return
 	}
-	for kind := projectileFireball; kind <= projectileBFGBall; kind++ {
+	for kind := projectileFireball; kind <= projectileBrainExplosion; kind++ {
 		for frame := 0; frame < 2; frame++ {
 			g.projectileSpriteRef(kind, frame)
 		}
@@ -10242,6 +10244,10 @@ func (g *game) projectileImpactSpriteNameForPhase(kind projectileKind, phase int
 	prefix := "BAL1"
 	frame := byte('C')
 	switch kind {
+	case projectileArchVileFire:
+		prefix = "FIRE"
+		frames := "ABABCBCBCDCDCDEDEDEFEFEFGHGHGH"
+		frame = frames[min(phase, len(frames)-1)]
 	case projectileBFGBall:
 		prefix = "BFE1"
 		frame = byte('A' + min(phase, 5))
@@ -10298,6 +10304,8 @@ func (g *game) projectileSpriteNameForFrame(kind projectileKind, frame int) stri
 	}
 	frame2 := frame & 1
 	switch kind {
+	case projectileBrainExplosion:
+		return pickPrefixFrame("MISL", []byte{'B', 'C', 'D'}, min(frame, 2))
 	case projectileBFGBall:
 		return pickPrefixFrame("BFS1", []byte{'A', 'B'}, frame2)
 	case projectileRocket:
@@ -12543,6 +12551,7 @@ var (
 	monsterDeathTics6x10       = []int{6, 6, 6, 6, 6, 6, 6, 6, 6, -1}
 	monsterDeathTicsCyber      = []int{10, 10, 10, 10, 10, 10, 10, 10, 30}
 	monsterDeathTicsSpider     = []int{20, 10, 10, 10, 10, 10, 10, 10, 10, 30}
+	monsterDeathTicsArachn     = []int{20, 7, 7, 7, 7, 7, -1}
 )
 
 func monsterSpawnFrameTics(typ int16) []int {
@@ -12865,7 +12874,7 @@ func monsterDeathFrameTics(typ int16) []int {
 	case 7:
 		return monsterDeathTicsSpider
 	case 68:
-		return monsterDeathTics7x6
+		return monsterDeathTicsArachn
 	case 71:
 		return monsterDeathTics8x6
 	case 84:
@@ -20397,8 +20406,8 @@ func (g *game) insertThingIntoBlockCell(cell, thingIdx int) bool {
 
 func thingTypeUsesBlockmap(typ int16) bool {
 	switch typ {
-	case teleportThingType:
-		// doom-source marks MT_TELEPORTMAN MF_NOBLOCKMAP, so it never enters
+	case teleportThingType, 87, 89:
+		// Teleport markers and boss-brain markers have MF_NOBLOCKMAP, so they never enter
 		// blocklinks and is skipped by sector height clipping.
 		return false
 	default:

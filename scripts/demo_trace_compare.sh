@@ -265,11 +265,13 @@ CMP_LOG="${OUT_DIR}/compare.log"
 rm -f "${REF_TRACE}" "${REF_LOG}" "${GD_TRACE}" "${GD_LOG}" "${CMP_LOG}"
 
 echo "Tracing reference runtime: lump=${DEMO_LUMP}"
+# -timedemo stages external .lmp files without entering -playdemo's paced
+# branch. -tracedemo then selects the uncapped, headless trace loop.
 (
   cd "${REF_RUN_DIR}"
   env DOOMWADDIR="${REF_WAD_DIR}" \
     "${REFERENCE_BIN}" \
-    -playdemo "${DEMO_LUMP}" \
+    -timedemo "${DEMO_LUMP}" \
     -tracedemo "${DEMO_LUMP}" \
     -tracefile "${REF_TRACE}" \
     >"${REF_LOG}" 2>&1
@@ -277,6 +279,11 @@ echo "Tracing reference runtime: lump=${DEMO_LUMP}"
 trim_trace_on_player_death "${REF_TRACE}"
 
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"
+# An explicit config path must exist. Isolate defaults and subsequent writes
+# per run so simultaneous comparisons cannot race on the user's config.toml.
+if [[ ! -f "${OUT_DIR}/config.toml" ]]; then
+  : >"${OUT_DIR}/config.toml"
+fi
 if [[ "${STOP_AFTER_TICS}" != "0" ]]; then
   GDDOOM_FLAGS+=(-demo-stop-after-tics "${STOP_AFTER_TICS}")
 fi
@@ -284,6 +291,7 @@ if [[ "${DEMO_EXIT_ON_DEATH}" == "1" ]]; then
   GDDOOM_FLAGS+=(-demo-exit-on-death)
 fi
 "${GDDOOM_BIN}" \
+  -config "${OUT_DIR}/config.toml" \
   -wad "${WAD_PATH}" \
   -render=false \
   -demo "${DEMO_PATH}" \

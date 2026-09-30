@@ -394,6 +394,10 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			height = g.thingCurrentHeight(i, th)
 		}
 		target, targetType := demoTraceThingTarget(g, i)
+		tracer, tracerType := 0, 0
+		if th.Type == 64 && i < len(g.thingTracerFireOrder) && g.thingTracerFireOrder[i] != 0 {
+			tracer, tracerType = 1, 4
+		}
 		order := int64(i + 1)
 		if i >= 0 && i < len(g.thingThinkerOrder) && g.thingThinkerOrder[i] > 0 {
 			order = g.thingThinkerOrder[i]
@@ -428,10 +432,30 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Player:       0,
 				Target:       target,
 				TargetType:   targetType,
-				Tracer:       0,
+				Tracer:       tracer,
+				TracerType:   tracerType,
 				Kind:         demoTraceThingKind(th.Type),
 				Dropped:      boolToInt(i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]),
 			}})
+	}
+	for _, cube := range g.bossSpawnCubes {
+		sec := g.sectorAt(cube.x, cube.y)
+		ordered = append(ordered, orderedDemoTraceMobj{order: cube.order, idx: -1, mobj: demoTraceMobj{
+			Type: 28, X: cube.x, Y: cube.y, Z: cube.z, Angle: cube.angle,
+			MomX: cube.vx, MomY: cube.vy, MomZ: cube.vz, FloorZ: cube.floorz, CeilingZ: cube.ceilz,
+			Radius: 6 * fracUnit, Height: 32 * fracUnit, Tics: cube.stateTics, State: 787 + cube.stateStep,
+			Flags: 71184, Health: 1000, ReactionTime: cube.reaction, LastLook: cube.lastLook,
+			Subsector: boolToInt(sec >= 0), Sector: sec, Target: 1, TargetType: 27,
+		}})
+	}
+	for _, fire := range g.bossSpawnFires {
+		sec := g.sectorAt(fire.x, fire.y)
+		ordered = append(ordered, orderedDemoTraceMobj{order: fire.order, idx: -1, mobj: demoTraceMobj{
+			Type: 29, X: fire.x, Y: fire.y, Z: fire.z, FloorZ: fire.floorz, CeilingZ: fire.ceilz,
+			Radius: 20 * fracUnit, Height: 16 * fracUnit, Tics: (fire.tics-1)%4 + 1, State: 791 + (32-fire.tics)/4,
+			Flags: 528, Health: 1000, ReactionTime: 8, LastLook: fire.lastLook,
+			Subsector: boolToInt(sec >= 0), Sector: sec,
+		}})
 	}
 	for _, p := range g.projectiles {
 		ss := -1
@@ -456,8 +480,13 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			target = 1
 			targetType = demoTraceThingType(g.m.Things[p.sourceThing].Type)
 		}
-		if p.kind == projectileTracer && p.tracerPlayer {
-			tracer = 1
+		if p.kind == projectileTracer {
+			if p.tracerPlayer {
+				tracer = 1
+			} else if idx := p.tracerThingTarget - 1; idx >= 0 && g.m != nil && idx < len(g.m.Things) {
+				tracer = 1
+				tracerType = demoTraceThingType(g.m.Things[idx].Type)
+			}
 		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: p.order,
@@ -520,6 +549,16 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		if fx.kind == projectileTracer {
 			tracer = 1
 		}
+		height, flags := int64(8*fracUnit), 1552
+		if fx.kind == projectileArchVileFire {
+			height, flags = 16*fracUnit, 528
+			if fx.fireTargetPlayer {
+				tracer = 1
+			} else if idx := fx.fireTargetThing - 1; idx >= 0 && idx < len(g.m.Things) {
+				tracer = 1
+				tracerType = demoTraceThingType(g.m.Things[idx].Type)
+			}
+		}
 		ordered = append(ordered, orderedDemoTraceMobj{
 			order: fx.order,
 			idx:   -1,
@@ -535,10 +574,10 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				FloorZ:       fx.floorz,
 				CeilingZ:     fx.ceilz,
 				Radius:       demoTraceProjectileImpactRadius(fx.kind, fx.sourceType),
-				Height:       8 * fracUnit,
+				Height:       height,
 				Tics:         fx.phaseTics,
 				State:        demoTraceProjectileImpactState(fx.kind, fx.sourceType, fx.phase),
-				Flags:        1552,
+				Flags:        flags,
 				Health:       1000,
 				Movedir:      0,
 				Movecount:    0,
@@ -669,7 +708,7 @@ func demoTraceProjectileType(p projectile) int {
 		return 6 // MT_TRACER
 	case projectileFatShot:
 		return 9 // MT_FATSHOT
-	case projectileRocket:
+	case projectileRocket, projectileBrainExplosion:
 		return 33 // MT_ROCKET
 	case projectilePlayerPlasma:
 		return 34 // MT_PLASMA
@@ -682,6 +721,8 @@ func demoTraceProjectileType(p projectile) int {
 
 func demoTraceProjectileState(p projectile) int {
 	switch p.kind {
+	case projectileBrainExplosion:
+		return 799 + p.frame
 	case projectileFireball:
 		if p.sourceType == 3003 || p.sourceType == 69 {
 			if p.frame&1 != 0 {
@@ -742,6 +783,8 @@ func demoTraceProjectileFlags(_ projectile) int {
 
 func demoTraceProjectileImpactType(kind projectileKind, sourceType int16) int {
 	switch kind {
+	case projectileArchVileFire:
+		return 4
 	case projectileFireball:
 		return 31
 	case projectilePlasmaBall:
@@ -768,6 +811,8 @@ func demoTraceProjectileImpactType(kind projectileKind, sourceType int16) int {
 
 func demoTraceProjectileImpactState(kind projectileKind, sourceType int16, phase int) int {
 	switch kind {
+	case projectileArchVileFire:
+		return 281 + clampDemoPhase(phase, 30)
 	case projectileFireball:
 		return []int{99, 100, 101}[clampDemoPhase(phase, 3)]
 	case projectilePlasmaBall:
@@ -796,6 +841,8 @@ func demoTraceProjectileImpactState(kind projectileKind, sourceType int16, phase
 
 func demoTraceProjectileImpactRadius(kind projectileKind, sourceType int16) int64 {
 	switch kind {
+	case projectileArchVileFire:
+		return 20 * fracUnit
 	case projectilePlasmaBall:
 		if sourceType == 68 {
 			return 13 * fracUnit
@@ -862,6 +909,23 @@ func demoTraceThingTarget(g *game, i int) (target int, targetType int) {
 		}
 	}
 	return 0, 0
+}
+
+func demoTraceCeilingType(action mapdata.CeilingAction) int {
+	switch action {
+	case mapdata.CeilingRaiseToHighest:
+		return 1
+	case mapdata.CeilingLowerAndCrush:
+		return 2
+	case mapdata.CeilingCrushRaise:
+		return 3
+	case mapdata.CeilingFastCrushRaise:
+		return 4
+	case mapdata.CeilingSilentCrushRaise:
+		return 5
+	default:
+		return 0
+	}
 }
 
 func (g *game) demoTraceSpecials() []map[string]any {
@@ -967,6 +1031,8 @@ func (g *game) demoTraceSpecials() []map[string]any {
 			"bottomheight": c.bottomHeight,
 			"crush":        boolToInt(c.crush),
 			"olddirection": c.oldDirection,
+			"tag":          g.m.Sectors[sec].Tag,
+			"type":         demoTraceCeilingType(c.action),
 		}})
 	}
 	sort.SliceStable(ordered, func(i, j int) bool {
@@ -1031,6 +1097,12 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 	if i < 0 {
 		return 0
 	}
+	if typ == 88 && i < len(g.thingStateTics) {
+		if g.thingStatePhase[i] == 0 || g.thingStatePhase[i] == 5 {
+			return -1
+		}
+		return g.thingStateTics[i]
+	}
 	if i < len(g.thingGibbed) && g.thingGibbed[i] {
 		return -1
 	}
@@ -1061,6 +1133,12 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 }
 
 func demoTraceThingState(g *game, i int, typ int16) int {
+	if typ == 88 && i >= 0 && i < len(g.thingStatePhase) {
+		return 778 + g.thingStatePhase[i]
+	}
+	if typ == 89 && i >= 0 && i < len(g.thingStatePhase) {
+		return 784 + g.thingStatePhase[i]
+	}
 	if i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
 		return demoTraceStateGibs
 	}
@@ -1441,6 +1519,20 @@ func demoTraceThingMomZ(g *game, i int) int64 {
 }
 
 func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
+	if th.Type == 89 {
+		return 24
+	}
+	if th.Type == 88 {
+		flags := demoTraceFlagSolid
+		if g.thingDead[i] {
+			return flags | demoTraceFlagDropoff | demoTraceFlagCorpse
+		}
+		flags |= demoTraceFlagShootable
+		if g.thingJustHit[i] {
+			flags |= demoTraceFlagJustHit
+		}
+		return flags
+	}
 	flags := 0
 	if int(th.Flags)&thingFlagAmbush != 0 {
 		flags |= demoTraceFlagAmbush

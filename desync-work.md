@@ -1,3 +1,74 @@
+# Current verification checkpoint — 2026-09-30
+
+The dedicated branch is `desync-work`, with the earlier commits `eb4b4e6` and
+`735568c` and the follow-up corrections described below. Current
+`origin/main` is `8bb7bec` and includes
+Dependabot configuration, Go 1.26.6, wall sampling changes, and the experimental
+GPU renderer. Its GPU work is already merged; `render-visualize` still has seven
+unique rendering commits. The eight Dependabot branches contain single
+dependency updates. The security-automation branch is already merged.
+The complete replay suite is clean, and integration with current main has been
+validated in a separate checkout.
+
+The full suite inventories all **19 repository demos**, selects each matching
+IWAD, builds the port and comparator, generates fresh original-game traces,
+and checks gameplay RNG independently of the normalized state comparator:
+
+```bash
+GOCACHE=/tmp/gddoom-go-cache python3 scripts/demo_trace_compare_all.py \
+  --jobs 2 --out-root tmp/demo-trace-all
+```
+
+The original binary defaults to
+`../doom-source/linuxdoom-1.10/linux/linuxxdoom`; override it with `--ref-bin`.
+The runtime requires a display at initialization, even with rendering disabled.
+The harness handles Xvfb. Traces end at the original replay termination or first
+player death; a pass does not claim comparison of recorded tics after death.
+Comparator passes ignore documented trace-only differences, including several
+state/flag fields. Gameplay `prndindex` must also match at every compared tic.
+Reports contain input hashes, individual logs, `summary.json`, and `summary.tsv`.
+
+The completed final sweep passes **19/19 demos**, totaling **63,444 compared
+tics**. Every normalized state comparison passes, and gameplay `prndindex`
+matches at every compared tic. There are no known remaining divergences in
+these repository replay windows. This is evidence for this demo corpus;
+it does not prove universal compatibility for other demos or ignored fields.
+
+The report is `tmp/desync-final-checkpoint/summary.json`, with a compact
+`summary.tsv` alongside it. Generated traces and reports are not checked in.
+The full Go test suite passes under Xvfb. Focused regression tests cover
+arch-vile fire, projectile timing, pickup behavior, boss-brain spawn buckets,
+plane clipping, player thinker order, delayed boss exit, and snapshot state.
+
+A temporary checkout combines current main, both desync commits, and these
+follow-up fixes. The merge and three-way application are clean, and the
+combined checkout's complete Go test suite passes. Its complete replay sweep
+also passes 19/19 with exact gameplay RNG, reported
+at `tmp/desync-main-integration/summary.json`. No remote push has been made.
+
+Corrections verified so far include projectile explosion thinker timing,
+arachnotron impact frames, invisible-target RNG, revenant tracer targets,
+repeating crusher timing, same-tic target reacquisition, slide-move pickups,
+one-use triggers consumed while sectors are busy, projectile blockmap traversal,
+lost-soul death flags and corpse collisions, duplicate backpack ammo, duplicate
+plasma ammo, arachnotron death frame durations, arch-vile fire and blast thrust,
+lost-soul spawn-fit checks, damaged cacodemon wake actions, and saturated
+soulsphere/megasphere consumption. Player movement now follows its map-spawn
+position in the ordered thinker list. Brain markers do not enter the blockmap.
+MAP30 now models the original brain
+wake timing, ordered cubes and teleport fire, immediate spawned-monster chase,
+runtime actor queries, brain damage/pain, and death explosion/exit states.
+Projectile order/countdowns, tracer targets, fire, and cubes are persisted.
+These changes update save format version 19 to 20 and keyframe format version
+6 to 7; older snapshots are not compatible. The replay reports above predate
+the final serialization-only adjustment; its snapshot regression and the
+combined checkout's full test suite pass after that adjustment.
+
+## Historical notes
+
+The following notes predate this checkpoint; their old mismatch frontiers and
+"clean" labels are superseded by the full-suite results above.
+
 # Info: see desync-harness.md
 
 ## Quick Run Commands
