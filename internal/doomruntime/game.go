@@ -425,6 +425,8 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	gpu               *gpuRenderer
+	gpuFrame          *gpuRenderer
 	m                 *mapdata.Map
 	opts              Options
 	bounds            bounds
@@ -4921,6 +4923,8 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 
 	ceilClr, floorClr := g.basicPlaneColors()
 	g.ensureWallLayer()
+	g.beginGPUFrame()
+	defer func() { g.gpuFrame = nil }()
 	g.prepareFrameSkyState(camAng, focal)
 
 	wallTop, wallBottom, ceilingClip, floorClip := g.ensure3DFrameBuffers()
@@ -5318,6 +5322,10 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
 	if g.lowDetailMode() {
 		g.duplicateLowDetailColumns()
+	}
+	if g.gpuFrame != nil {
+		g.finishGPUFrame(screen, camAng, focal)
+		return
 	}
 	g.writePixelsTimed(g.wallLayer, g.wallPix)
 	screen.DrawImage(g.wallLayer, nil)
@@ -6370,6 +6378,14 @@ func (g *game) drawBasicWallColumnTextured(x, y0, y1 int, depth, texU, texMid, f
 		return
 	}
 	base := tex.from
+	if g.gpuFrame != nil {
+		if !doomColormapEnabled && shadeMul <= 0 {
+			g.gpuFrame.solid(&g.gpuFrame.baseCommands, x, y0, x, y1, pixelOpaqueA)
+		} else {
+			g.gpuWallColumn(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul, doomRow, false)
+		}
+		return
+	}
 	rowStridePix := g.viewW
 	pixI := y0*rowStridePix + x
 	pix32 := g.wallPix32
@@ -6467,6 +6483,10 @@ func (g *game) drawBasicWallColumnTexturedMasked(x, y0, y1 int, depth, texU, tex
 		y1 = g.viewH - 1
 	}
 	if y0 > y1 || base.Width <= 0 || base.Height <= 0 {
+		return
+	}
+	if g.gpuFrame != nil {
+		g.gpuWallColumn(x, y0, y1, depth, texU, texMid, focal, tex, shadeMul, doomRow, true)
 		return
 	}
 	rowStridePix := g.viewW
@@ -8028,7 +8048,7 @@ func (g *game) drawMaskedMidSegRange(ms maskedMidSeg, x0, x1 int, focal float64,
 	if g.maskedMidSegFullyOccluded(ms, focal, halfH) {
 		return
 	}
-	if g.opts.DisableMaskedMidFastPaths {
+	if g.opts.DisableMaskedMidFastPaths || g.gpuFrame != nil {
 		g.drawMaskedMidSegColumns(ms, focal, halfH, int(shadeMul), doomRow)
 		return
 	}
@@ -8619,6 +8639,17 @@ func (g *game) drawCutoutItem(it cutoutItem, focal, focalV float64) {
 }
 
 func (g *game) drawSpriteCutoutItem(it cutoutItem) {
+	if g.gpuFrame != nil {
+		commands := &g.gpuFrame.cutoutCommands
+		if it.shadow {
+			commands = &g.gpuFrame.fuzzCommands
+		}
+		if it.debugOverlay {
+			commands = &g.gpuFrame.overlayCommands
+		}
+		g.gpuSprite(it, commands, false)
+		return
+	}
 	if g == nil || !it.boundsOK || it.tex == nil {
 		return
 	}
@@ -9397,6 +9428,14 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			} else {
 				planeClipScratch = append(planeClipScratch[:0], solidSpan{L: x1, R: x2})
 			}
+			if g.gpuFrame != nil {
+				if skyTexReady {
+					for _, vis := range planeClipScratch {
+						g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuTexture{}, gpuTexture{}, 7, 0, 0, 0, 0, 0, 0)
+					}
+				}
+				return planeClipScratch
+			}
 			if skyLayerEnabled {
 				for _, vis := range planeClipScratch {
 					clear(pix32[rowPix+vis.L : rowPix+vis.R+1])
@@ -9447,7 +9486,7 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		return planeClipScratch
 	}
 	stageStart = time.Now()
-	if workers, chunk, parallel := g.parallelWorkChunks(h); parallel && h >= 32 {
+	if workers, chunk, parallel := g.parallelWorkChunks(h); parallel && h >= 32 && g.gpuFrame == nil {
 		workByBand := g.ensurePlaneSpanWorkScratch(workers)
 		for planeIdx, spans := range spansByPlane {
 			for _, sp := range spans {
@@ -10693,6 +10732,10 @@ func (g *game) drawHitscanPuffsToBuffer(camX, camY, camAng, focal, focalV, near 
 }
 
 func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal, focalV float64, viewW, viewH int) {
+	if g.gpuFrame != nil {
+		g.gpuTeleportPuff(it, focal, focalV)
+		return
+	}
 	if !it.hasSprite || it.spriteTex == nil {
 		return
 	}
@@ -13836,6 +13879,9 @@ func (g *game) drawSkyLayerFrame(dst *ebiten.Image) bool {
 	g.skyLayerUniforms["SkyTexW"] = float64(texW)
 	g.skyLayerUniforms["SkyTexH"] = g.skyLayerFrameTexH
 	g.skyLayerUniforms["SharpUpscale"] = float64(1)
+	if g.gpuFrame != nil {
+		g.skyLayerUniforms["SharpUpscale"] = float64(0)
+	}
 	op.Uniforms = g.skyLayerUniforms
 	dst.DrawTrianglesShader(g.skyLayerVerts[:], g.skyLayerIdx[:], g.skyLayerShader, op)
 	return true

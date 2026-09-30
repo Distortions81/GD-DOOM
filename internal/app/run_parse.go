@@ -591,6 +591,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
+	gpuRenderer := fs.Bool("gpu-renderer", false, "experimental GPU world renderer (requires -sourceport-mode)")
 	rendererWorkers := fs.Int("renderer-workers", defaultRendererWorkers, "renderer worker count (0 uses built-in default policy)")
 	legacyMaskedMids := fs.Bool("legacy-masked-mids", false, "disable masked-mid fast paths and force the legacy renderer")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
@@ -668,6 +669,10 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *mouseLookSpeed <= 0 {
 		fmt.Fprintf(stderr, "invalid -mouselook-speed %.3f (must be > 0)\n", *mouseLookSpeed)
+		return 2
+	}
+	if *gpuRenderer && !*sourcePortMode {
+		fmt.Fprintln(stderr, "-gpu-renderer requires -sourceport-mode")
 		return 2
 	}
 	if *musicVolume < 0 || *musicVolume > 1 {
@@ -890,6 +895,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			wallSpanClip:               defaultWallSpanClip,
 			wallSliceOcclusion:         defaultWallSliceOcclusion,
 			billboardClipping:          defaultBillboardClipping,
+			gpuRenderer:                *gpuRenderer,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
@@ -1235,6 +1241,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DisableWallSliceOcclusion:  !defaultWallSliceOcclusion,
 			DisableBillboardClipping:   !defaultBillboardClipping,
 			DisableMaskedMidFastPaths:  *legacyMaskedMids,
+			GPURenderer:                *gpuRenderer,
 			RendererWorkers:            *rendererWorkers,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
@@ -1582,6 +1589,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			wallSpanClip:               defaultWallSpanClip,
 			wallSliceOcclusion:         defaultWallSliceOcclusion,
 			billboardClipping:          defaultBillboardClipping,
+			gpuRenderer:                *gpuRenderer,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
@@ -2342,6 +2350,7 @@ type renderBuildConfig struct {
 	wallSpanClip               bool
 	wallSliceOcclusion         bool
 	billboardClipping          bool
+	gpuRenderer                bool
 	rendererWorkers            int
 	textureAnimCrossfadeFrames int
 	noVsync                    bool
@@ -2685,6 +2694,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		DisableWallSliceOcclusion:  !cfg.wallSliceOcclusion,
 		DisableBillboardClipping:   !cfg.billboardClipping,
 		DisableMaskedMidFastPaths:  false,
+		GPURenderer:                cfg.gpuRenderer,
 		RendererWorkers:            cfg.rendererWorkers,
 		TextureAnimCrossfadeFrames: cfg.textureAnimCrossfadeFrames,
 		NoVsync:                    cfg.noVsync,

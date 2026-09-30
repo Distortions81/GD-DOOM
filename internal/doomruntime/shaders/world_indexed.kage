@@ -1,0 +1,107 @@
+//kage:unit pixels
+package main
+
+// Source images: indexed atlas, packed lighting rows, texture metadata,
+// and either the second animation atlas or the spectre background snapshot.
+var ViewSize vec2
+var FuzzPhase float
+var FuzzShade float
+var FuzzOffsets [50]float
+
+func metadata(id int) vec4 {
+	var values vec4
+	for n := 0; n < 4; n++ {
+		i := id*4 + n
+		p := imageSrc2UnsafeAt(imageSrc0Origin() + vec2(float(i%256)+0.5, float(i/256)+0.5))
+		values[n] = floor(p.r*255.0+0.5) + floor(p.g*255.0+0.5)*256.0
+	}
+	return values
+}
+
+func fixedTexel(base, step float, delta int, size float) float {
+	// Split integer and fractional terms so the multiplication does not lose
+	// 16.16 precision on long spans. Coordinates are wrapped before upload.
+	whole := int(floor(base/65536.0))
+	fraction := int(base-float(whole)*65536.0)
+	stepWhole := int(floor(step/65536.0))
+	stepFraction := int(step-float(stepWhole)*65536.0)
+	whole += delta*stepWhole + (fraction+delta*stepFraction)/65536
+	return mod(float(whole), size)
+}
+
+func shade(index, row float) vec4 {
+	return imageSrc1UnsafeAt(imageSrc0Origin() + vec2(index+0.5, row+0.5))
+}
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
+	mode := int(floor(color.g/16384.0))
+	id := int(color.g)-mode*16384
+	if mode == 7 {
+		return imageSrc3At(imageSrc0Origin()+dstPos.xy)
+	}
+	if mode == 6 {
+		return vec4(custom.xyz, 1.0)
+	}
+	meta := metadata(id)
+	anchor := srcPos-imageSrc0Origin()
+	delta := ivec2(floor(dstPos.xy)-anchor)
+	var uv vec2
+	if mode == 0 {
+		uv = vec2(fixedTexel(custom.x, custom.z, delta.x, meta.z), fixedTexel(custom.y, custom.w, delta.x, meta.w))
+	} else if mode == 1 {
+		uv = vec2(custom.x, fixedTexel(custom.y, custom.w, delta.y, meta.w))
+	} else {
+		uv = floor(custom.xy + vec2(delta)*custom.zw)
+		uv = clamp(uv, vec2(0.0), meta.zw-vec2(1.0))
+		if mode == 3 || mode == 5 || mode == 9 {
+			uv.x = meta.z-1.0-uv.x
+		}
+	}
+	p := imageSrc0UnsafeAt(imageSrc0Origin()+meta.xy+uv+vec2(0.5))
+	if mode == 4 || mode == 5 {
+		if p.g < 0.5 {
+			discard()
+		}
+		// Keep the logical 320x200 fuzz blocks and tic-driven phase. A stable
+		// background snapshot avoids framebuffer feedback and GPU readback.
+		coarse := floor(dstPos.xy*vec2(320.0,200.0)/ViewSize)
+		direction := FuzzOffsets[int(mod(coarse.x*200.0+coarse.y+FuzzPhase, 50.0))]
+		coarse.y = clamp(coarse.y+direction, 1.0, 198.0)
+		pos := floor((coarse+vec2(0.5))*ViewSize/vec2(320.0,200.0))
+		background := imageSrc3At(imageSrc0Origin()+pos+vec2(0.5))
+		if color.r >= 257.0 {
+			quantized := ivec3(floor(background.rgb*255.0/8.0))
+			i := quantized.r*1024 + quantized.g*32 + quantized.b
+			lookup := imageSrc2UnsafeAt(imageSrc0Origin()+vec2(float(i%256)+0.5, float(i/256)+0.5))
+			return shade(floor(lookup.b*255.0+0.5), color.r)
+		}
+		return vec4(floor(background.rgb*255.0*FuzzShade)/255.0, 1.0)
+	}
+	var second vec4
+	if color.a > 0.0 {
+		other := metadata(int(color.b))
+		second = imageSrc3UnsafeAt(imageSrc0Origin()+other.xy+uv+vec2(0.5))
+	}
+	if mode != 0 && mode != 1 && p.g < 0.5 && (color.a == 0.0 || second.g < 0.5) {
+		discard()
+	}
+	if mode == 8 || mode == 9 {
+		return vec4(1.0, 0.0, 0.0, 1.0)
+	}
+	// Masked wall columns share mode 1. Their mask is selected by a negative
+	// light row; opaque columns retain every texel, including index zero.
+	row := color.r
+	if row < 0.0 {
+		row = -row-1.0
+		if p.g < 0.5 && (color.a == 0.0 || second.g < 0.5) {
+			discard()
+		}
+	}
+	index := floor(p.r*255.0+0.5)
+	result := shade(index, row)
+	if color.a > 0.0 {
+		otherColor := shade(floor(second.r*255.0+0.5), row)
+		result = vec4(floor(mix(result.rgb, otherColor.rgb, color.a)*255.0+0.5)/255.0, 1.0)
+	}
+	return result
+}
