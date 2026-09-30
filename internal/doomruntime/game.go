@@ -9003,6 +9003,15 @@ func wallSpecialScrollXOffset(special uint16, worldTic int) float64 {
 }
 
 func drawWallColumnTexturedIndexedLEColPow2Row(pix32 []uint32, pixI, rowStridePix int, col []byte, texVFixed, texVStepFixed int64, hmask, count int, row []uint32) {
+	// Short repeated-texel runs cost more to divide and group than to sample directly.
+	if texVStepFixed >= fracUnit/8 && texVStepFixed < fracUnit {
+		for ; count > 0; count-- {
+			pix32[pixI] = row[col[int(texVFixed>>fracBits)&hmask]]
+			pixI += rowStridePix
+			texVFixed += texVStepFixed
+		}
+		return
+	}
 	const fracMask = fracUnit - 1
 	ty := int(texVFixed >> fracBits)
 	frac := int(texVFixed & fracMask)

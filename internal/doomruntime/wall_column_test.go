@@ -39,6 +39,12 @@ func TestDrawWallColumnTexturedIndexedLEColPow2RowMatchesReference(t *testing.T)
 		{name: "step one texel", texVFixed: 3 << fracBits, texVStepFixed: 1 << fracBits, count: 21, rowStridePix: 1},
 		{name: "step two texels", texVFixed: 5 << fracBits, texVStepFixed: 2 << fracBits, count: 18, rowStridePix: 1},
 		{name: "fractional small", texVFixed: 7 << fracBits, texVStepFixed: fracUnit / 3, count: 29, rowStridePix: 1},
+		{name: "below direct sampling threshold", texVFixed: -fracUnit / 5, texVStepFixed: fracUnit/8 - 1, count: 257, rowStridePix: 17},
+		{name: "at direct sampling threshold", texVFixed: -fracUnit / 5, texVStepFixed: fracUnit / 8, count: 257, rowStridePix: 17},
+		{name: "above direct sampling threshold", texVFixed: -fracUnit / 5, texVStepFixed: fracUnit/8 + 1, count: 257, rowStridePix: 17},
+		{name: "direct sampling texture wrap", texVFixed: (63 << fracBits) + fracUnit/2, texVStepFixed: fracUnit / 3, count: 257, rowStridePix: 17},
+		{name: "just below one texel", texVFixed: -fracUnit / 5, texVStepFixed: fracUnit - 1, count: 257, rowStridePix: 17},
+		{name: "direct sampling empty column", texVFixed: 0, texVStepFixed: fracUnit / 3, count: 0, rowStridePix: 1},
 		{name: "fractional mixed", texVFixed: (9 << fracBits) + fracUnit/2, texVStepFixed: fracUnit + fracUnit/4, count: 31, rowStridePix: 2},
 		{name: "negative step", texVFixed: 20 << fracBits, texVStepFixed: -fracUnit / 2, count: 25, rowStridePix: 3},
 	}
