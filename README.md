@@ -21,7 +21,7 @@ Latest desktop releases: [macOS Intel](https://github.com/Distortions81/GD-DOOM/
   <br>
   Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color, smoothed lighting animations, monster movement and a sharper modern presentation without losing Doom's original feel.
   <br>
-  Still software rendered, not smeary GPU rendering.
+  GPU world rendering is the default in Source Port mode; Faithful mode retains software rendering.
 </p>
 
 <p align="center">
@@ -172,6 +172,7 @@ go run . -help
 
 Frequently used options:
 
+- `-gpu-renderer=false` selects CPU world rendering in Source Port mode. GPU world rendering is enabled by default for Source Port mode: indexed walls, floors, ceilings, sprites, masked textures, and sky retain the CPU renderer's visibility and lighting decisions. Spectre fuzz uses a GPU background snapshot and has an approximate appearance. Unsupported texture banks fall back to CPU rendering. Faithful mode uses CPU rendering. This flag is not saved to config; GPU performance needs measurement on real hardware.
 - `-sourceport-mode` starts in the smoother, higher-fidelity Source Port profile.
 - `-pc-speaker` switches sound effects to the PC speaker emulation path.
 - `-pc-speaker-hw` (Linux only) routes PC speaker output to the real hardware buzzer device instead of the audio card. This uses the `pcspkr` evdev node and requires write permission to it.

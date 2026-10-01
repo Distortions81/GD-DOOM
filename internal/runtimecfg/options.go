@@ -212,6 +212,7 @@ type Options struct {
 	DisableWallSliceOcclusion    bool
 	DisableBillboardClipping     bool
 	DisableMaskedMidFastPaths    bool
+	GPURenderer                  bool
 	RendererWorkers              int
 	TextureAnimCrossfadeFrames   int
 	NoVsync                      bool

@@ -609,6 +609,9 @@ func TestProcessThingPickups_CollectsVanillaPowerupItems(t *testing.T) {
 	if g.stats.Health != 200 {
 		t.Fatalf("health=%d want=200 after soulsphere+megasphere", g.stats.Health)
 	}
+	if g.playerMobjHealth != 200 {
+		t.Fatalf("player mobj health=%d want=200 after soulsphere+megasphere", g.playerMobjHealth)
+	}
 	if g.stats.Armor != 200 || g.stats.ArmorType != 2 {
 		t.Fatalf("armor=%d type=%d want 200/2", g.stats.Armor, g.stats.ArmorType)
 	}
@@ -628,5 +631,23 @@ func TestProcessThingPickups_CollectsVanillaPowerupItems(t *testing.T) {
 		if !got {
 			t.Fatalf("pickup %d was not collected", i)
 		}
+	}
+}
+
+func TestBerserkPickupQueuesFistWhenAnotherWeaponIsReady(t *testing.T) {
+	g := &game{
+		inventory: playerInventory{ReadyWeapon: weaponRocketLauncher},
+		stats:     playerStats{Health: 100},
+	}
+
+	_, _, ok := g.applyPickup(2023, false)
+	if !ok {
+		t.Fatal("berserk pickup was not applied")
+	}
+	if !g.inventory.Strength || g.inventory.StrengthCount != 1 {
+		t.Fatalf("strength=%v/%d want true/1", g.inventory.Strength, g.inventory.StrengthCount)
+	}
+	if g.inventory.PendingWeapon != weaponFist {
+		t.Fatalf("pending weapon=%v want fist", g.inventory.PendingWeapon)
 	}
 }

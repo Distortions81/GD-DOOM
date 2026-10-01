@@ -121,6 +121,11 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	// depending on source texture interpolation semantics.
 	x := custom.x + 0.5
 	y := custom.y + 0.5
+	if SharpUpscale < 0.5 {
+		// Fragment varyings already lie at pixel centers.
+		x = custom.x
+		y = custom.y
+	}
 	// Quantize through the same internal sample grid used by the CPU sky lookup,
 	// so detail-level and presentation-size changes stay bit-consistent.
 	sampleXi := floor(x * (SampleW / DrawW))

@@ -368,6 +368,10 @@ func (g *game) planeRowRenderState(y int, key plane3DKey, eyeZ, camX, camY, ca, 
 }
 
 func (g *game) drawPlaneTexturedSpanAtDepth(pix32 []uint32, rowPix, x1, x2 int, key plane3DKey, sample flatTextureBlendSample, state planeRowRenderState) {
+	if g.gpuFrame != nil {
+		g.gpuPlaneSpan(rowPix, x1, x2, sample, state)
+		return
+	}
 	xOff := int64(x1)
 	stepper := planeTexStepper{
 		uFixed:     state.rowBaseWXFixed + xOff*state.stepWXFixed,

@@ -3,6 +3,9 @@ package doomruntime
 import _ "embed"
 
 var (
+	//go:embed shaders/world_indexed.kage
+	worldIndexedShaderSrc []byte
+
 	//go:embed shaders/crt_post.kage
 	crtPostShaderSrc []byte
 

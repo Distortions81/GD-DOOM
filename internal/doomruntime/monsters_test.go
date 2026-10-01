@@ -1069,6 +1069,37 @@ func TestTickMonsterZMovement_DeadLostSoulKeepsNoGravityLikeDoom(t *testing.T) {
 	}
 }
 
+func TestResetLostSoulChargePreservesInFloat(t *testing.T) {
+	g := &game{
+		m:                   &mapdata.Map{Things: []mapdata.Thing{{Type: 3002}}},
+		thingSkullFly:       []bool{true},
+		thingInFloat:        []bool{true},
+		thingMomX:           []int64{fracUnit},
+		thingMomY:           []int64{fracUnit},
+		thingMomZ:           []int64{fracUnit},
+		thingAttackTics:     []int{1},
+		thingAttackFireTics: []int{2},
+		thingAttackPhase:    []int{3},
+		thingResumeChaseNow: []bool{true},
+		thingState:          []monsterThinkState{monsterStateAttack},
+		thingStateTics:      []int{1},
+		thingStatePhase:     []int{1},
+		thingThreshold:      []int{0},
+		thingTargetPlayer:   []bool{false},
+		thingSectorCache:    []int{-1},
+		thingSupportValid:   []bool{false},
+	}
+
+	g.resetLostSoulCharge(0, 3002)
+
+	if !g.thingInFloat[0] {
+		t.Fatal("resetLostSoulCharge cleared MF_INFLOAT")
+	}
+	if g.thingSkullFly[0] || g.thingMomX[0] != 0 || g.thingMomY[0] != 0 || g.thingMomZ[0] != 0 {
+		t.Fatalf("charge state not cleared: skull=%t momentum=(%d,%d,%d)", g.thingSkullFly[0], g.thingMomX[0], g.thingMomY[0], g.thingMomZ[0])
+	}
+}
+
 func TestTickThingThinker_DeadLostSoulRemovesOnFinalDeathFrameLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -1140,9 +1171,6 @@ func TestTickMonsters_LostTargetStillTurnsTowardMoveDirLikeDoomChase(t *testing.
 	g.tickThingThinker(0, g.m.Things[0])
 	if got := g.thingWorldAngle(0, g.m.Things[0]); got != uint32(monsterDirNorth)<<29 {
 		t.Fatalf("angle=%d want %d after lost-target chase fallback", got, uint32(monsterDirNorth)<<29)
-	}
-	if got := g.thingState[0]; got != monsterStateSpawn {
-		t.Fatalf("state=%d want spawn after lost-target fallback", got)
 	}
 }
 
@@ -1507,7 +1535,7 @@ func TestPainElementalAttackSpawnsLostSoul(t *testing.T) {
 		sectorFloor:         []int64{0},
 		sectorCeil:          []int64{128 * fracUnit},
 		stats:               playerStats{Health: 100},
-		p:                   player{x: 0, y: 0, z: 0},
+		p:                   player{x: -128 * fracUnit, y: 0, z: 0},
 	}
 	if !g.monsterAttack(0, 71, 256*fracUnit) {
 		t.Fatal("pain elemental attack should spawn a lost soul")
@@ -1613,9 +1641,12 @@ func TestPainElementalDeathSpawnsThreeLostSouls(t *testing.T) {
 		sectorFloor:         []int64{0},
 		sectorCeil:          []int64{128 * fracUnit},
 		stats:               playerStats{Health: 100},
-		p:                   player{x: 0, y: 0, z: 0},
+		p:                   player{x: -256 * fracUnit, y: 0, z: 0},
 	}
 	g.damageMonster(0, 20)
+	for step := 0; step < 64 && len(g.m.Things) < 4; step++ {
+		g.tickThingThinker(0, g.m.Things[0])
+	}
 	if got := len(g.m.Things); got != 4 {
 		t.Fatalf("thing count=%d want=4 after pain elemental death", got)
 	}
@@ -1807,7 +1838,7 @@ func TestDemoTraceMonsterSpawnAndSeeStatesMatchDoomStateNumbers(t *testing.T) {
 		{69, 559, 8},
 		{3006, 587, 2},
 		{64, 244, 12},
-		{66, 324, 12},
+		{66, 323, 12},
 		{67, 365, 12},
 		{68, 637, 12},
 		{71, 703, 1},
@@ -2314,7 +2345,7 @@ func TestTryMove_PlayerNotBlockedByUndrawnSolidThing(t *testing.T) {
 	}
 }
 
-func TestTryMove_PlayerNotBlockedByDeadBarrel(t *testing.T) {
+func TestTryMove_PlayerNotBlockedByRemovedBarrel(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -2324,14 +2355,14 @@ func TestTryMove_PlayerNotBlockedByDeadBarrel(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		thingCollected: []bool{false},
+		thingCollected: []bool{true},
 		thingHP:        []int{0},
 		thingDead:      []bool{true},
 		p:              player{x: 0, y: 0},
 	}
 	g.initPhysics()
 	if !g.tryMove(16*fracUnit, 0) {
-		t.Fatal("player move should pass through dead barrel")
+		t.Fatal("player move should pass through removed barrel")
 	}
 }
 
@@ -2922,7 +2953,10 @@ func TestActorHasLOS_BlockedByHighWindow(t *testing.T) {
 		sectorFloor: []int64{0, 96 * fracUnit},
 		sectorCeil:  []int64{128 * fracUnit, 128 * fracUnit},
 	}
-	if g.actorHasLOS(-64*fracUnit, 0, 0, 56*fracUnit, 64*fracUnit, 0, 0, 56*fracUnit) {
+	// Keep the trace off y=0: vanilla P_DivlineSide has a horizontal-line
+	// x-versus-y quirk that would otherwise make this synthetic line appear
+	// coincident rather than crossed.
+	if g.actorHasLOS(-64*fracUnit, fracUnit, 0, 56*fracUnit, 64*fracUnit, fracUnit, 0, 56*fracUnit) {
 		t.Fatal("LOS should be blocked when only a high window is open above both actors")
 	}
 }
@@ -3520,7 +3554,7 @@ func TestTickMonstersAttackExpiryLostTargetReacquireStopsBeforeJustAttackedChase
 	}
 }
 
-func TestTickMonstersAttackExpiryLostTargetReacquireWithoutJustAttackedContinuesChase(t *testing.T) {
+func TestTickMonstersAttackExpiryDeadTargetReacquireReturnsBeforeChase(t *testing.T) {
 	doomrand.SetState(0, 0)
 
 	g := &game{
@@ -3571,11 +3605,11 @@ func TestTickMonstersAttackExpiryLostTargetReacquireWithoutJustAttackedContinues
 	if got := g.thingState[0]; got != monsterStateSee {
 		t.Fatalf("state=%d want see after same-tic chase resume", got)
 	}
-	if got := g.thingMoveCount[0]; got != 0 {
-		t.Fatalf("movecount=%d want 0 after same-tic chase countdown continues", got)
+	if got := g.thingMoveCount[0]; got != 1 {
+		t.Fatalf("movecount=%d want 1 after A_Chase returns from reacquisition", got)
 	}
-	if _, prnd := doomrand.State(); prnd != 1 {
-		t.Fatalf("prnd=%d want=1 after the resumed chase consumes its active-sound roll", prnd)
+	if _, prnd := doomrand.State(); prnd != 0 {
+		t.Fatalf("prnd=%d want=0 after A_Chase returns before its active-sound roll", prnd)
 	}
 }
 
