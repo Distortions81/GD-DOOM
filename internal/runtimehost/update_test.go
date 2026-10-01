@@ -2,6 +2,7 @@ package runtimehost
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -90,5 +91,21 @@ func TestRunUpdateHandlesRuntimeProgressDuringFrontendDemo(t *testing.T) {
 	}
 	if tickFrontendCalled {
 		t.Fatal("expected handled frontend-demo progress to short-circuit before TickFrontend")
+	}
+}
+
+func TestRunUpdateAdvancesDemoBeforeIntermission(t *testing.T) {
+	var calls []string
+	err := RunUpdate(Update{
+		IntermissionActive:   func() bool { return true },
+		DemoActive:           func() bool { return true },
+		UpdateRuntimeForDemo: func() error { calls = append(calls, "demo"); return nil },
+		TickIntermission:     func() bool { calls = append(calls, "intermission"); return false },
+	})
+	if err != nil {
+		t.Fatalf("RunUpdate() error = %v", err)
+	}
+	if got, want := strings.Join(calls, ","), "demo,intermission"; got != want {
+		t.Fatalf("call order=%q want %q", got, want)
 	}
 }

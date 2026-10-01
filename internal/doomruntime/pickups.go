@@ -178,35 +178,36 @@ func (g *game) processThingPickupsAtFiltered(px, py, pz, pradius, pheight int64,
 		return
 	}
 	for i, th := range g.m.Things {
-		if !g.thingActiveInSession(i) {
-			continue
-		}
-		if !isPickupType(th.Type) {
-			continue
-		}
-		dropped := i >= 0 && i < len(g.thingDropped) && g.thingDropped[i]
-		if droppedOnly && !dropped {
-			continue
-		}
-		tx, ty := g.thingPosFixed(i, th)
-		tz, _, _ := g.thingSupportState(i, th)
-		radius := g.thingCurrentRadius(i, th)
-		if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, radius) {
-			continue
-		}
-		msg, ev, picked := g.applyPickup(th.Type, dropped)
-		if !picked {
-			continue
-		}
-		g.thingCollected[i] = true
-		g.setHUDMessage(msg, 45)
-		g.emitSoundEvent(ev)
-		g.bonusFlashTic = max(g.bonusFlashTic, 6)
-		g.statusBonusCount += 6
-		if g.statusBonusCount > 100 {
-			g.statusBonusCount = 100
-		}
+		g.processThingPickupAtIndex(i, th, px, py, pz, pradius, pheight, droppedOnly)
 	}
+}
+
+// processThingPickupAtIndex mirrors P_TouchSpecialThing for an individual
+// special encountered during a position check. It returns true only when the
+// item was consumed.
+func (g *game) processThingPickupAtIndex(i int, th mapdata.Thing, px, py, pz, pradius, pheight int64, droppedOnly bool) bool {
+	if g == nil || g.m == nil || !g.thingActiveInSession(i) || !isPickupType(th.Type) {
+		return false
+	}
+	dropped := i < len(g.thingDropped) && g.thingDropped[i]
+	if droppedOnly && !dropped {
+		return false
+	}
+	tx, ty := g.thingPosFixed(i, th)
+	tz, _, _ := g.thingSupportState(i, th)
+	if !canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, g.thingCurrentRadius(i, th)) {
+		return false
+	}
+	msg, ev, picked := g.applyPickup(th.Type, dropped)
+	if !picked {
+		return false
+	}
+	g.thingCollected[i] = true
+	g.setHUDMessage(msg, 45)
+	g.emitSoundEvent(ev)
+	g.bonusFlashTic = max(g.bonusFlashTic, 6)
+	g.statusBonusCount = min(100, g.statusBonusCount+6)
+	return true
 }
 
 func (g *game) thingFloorZ(x, y int64) int64 {
@@ -280,19 +281,23 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		}
 		return g.gainHealth(25, 100, msg)
 	case 2013:
-		msg, _, ok := g.gainHealth(100, 200, "Picked up a soulsphere")
-		if !ok {
-			return "", 0, false
-		}
+		msg, _, _ := g.gainBonusHealth(100, 200, "Picked up a soulsphere")
 		return msg, soundEventPowerUp, true
 	case 2014:
 		return g.gainBonusHealth(1, 200, "Picked up a health bonus")
 	case 2023:
 		if g.stats.Health < 100 {
 			g.stats.Health = 100
+			g.syncPlayerMobjHealth()
 		}
 		g.inventory.Strength = true
 		g.inventory.StrengthCount = 1
+		// P_TouchSpecialThing forces the Berserk fist switch immediately. It is
+		// not merely a convenience selection: the pending-weapon transition is
+		// part of vanilla demo state.
+		if g.inventory.ReadyWeapon != weaponFist {
+			g.inventory.PendingWeapon = weaponFist
+		}
 		return "Berserk!", soundEventPowerUp, true
 	case 2015:
 		return g.gainBonusArmor(1, 200, "Picked up an armor bonus")
@@ -332,19 +337,12 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 		g.inventory.LightAmpTics = 120 * doomTicsPerSecond
 		return "Light Amplification Visor", soundEventPowerUp, true
 	case 83:
-		changed := false
-		if g.stats.Health != 200 {
-			g.stats.Health = 200
-			changed = true
-		}
-		if g.stats.Armor != 200 || g.stats.ArmorType != 2 {
+		g.stats.Health = 200
+		if g.stats.Armor < 200 {
 			g.stats.Armor = 200
 			g.stats.ArmorType = 2
-			changed = true
 		}
-		if !changed {
-			return "", 0, false
-		}
+		g.syncPlayerMobjHealth()
 		return "Megasphere!", soundEventPowerUp, true
 	case 2007:
 		amount := 10
@@ -367,9 +365,6 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 	case 17:
 		return g.gainAmmo("cells", 100, "Picked up an energy cell pack")
 	case 8:
-		if g.inventory.Backpack {
-			return g.gainAmmo("bullets", 10, "Picked up ammo from backpack")
-		}
 		g.inventory.Backpack = true
 		g.gainAmmoNoMsg("bullets", 10)
 		g.gainAmmoNoMsg("shells", 4)
@@ -402,7 +397,7 @@ func (g *game) applyPickup(typ int16, dropped bool) (string, soundEvent, bool) {
 			case 2003:
 				return g.gainAmmo("rockets", 2, "Picked up rockets")
 			case 2004:
-				return g.gainAmmo("cells", 20, "Picked up cells")
+				return g.gainAmmo("cells", 40, "Picked up cells")
 			case 2006:
 				return g.gainAmmo("cells", 40, "Picked up cells")
 			case 82:

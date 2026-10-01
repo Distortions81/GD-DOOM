@@ -137,7 +137,7 @@ func TestTryMoveWithPickupProbe_NoClipCrossesBlockingLine(t *testing.T) {
 	}
 }
 
-func TestTryMoveWithPickupProbe_BlockedMoveDoesNotCollectDroppedPickup(t *testing.T) {
+func TestTryMoveWithPickupProbe_BlockedMoveCollectsEarlierDroppedPickup(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
 			Things: []mapdata.Thing{
@@ -167,7 +167,7 @@ func TestTryMoveWithPickupProbe_BlockedMoveDoesNotCollectDroppedPickup(t *testin
 	if g.tryMoveWithPickupProbe(16*fracUnit, 0, true) {
 		t.Fatal("blocked move should fail")
 	}
-	if g.thingCollected[0] {
-		t.Fatal("dropped pickup should remain when the speculative move is blocked")
+	if !g.thingCollected[0] {
+		t.Fatal("pickup encountered before the blocking thing should be collected")
 	}
 }

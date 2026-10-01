@@ -264,7 +264,17 @@ func (g *game) weaponActionReady(state weaponPspriteState) {
 		}
 	} else {
 		g.weaponAttackDown = false
-		g.weaponRefire = false
+		// A_WeaponReady only clears attackdown.  refire is reset by A_ReFire
+		// when an attack sequence ends without another shot.  Keeping it here
+		// preserves Doom's inaccurate resumed fire after a brief release while
+		// the weapon is returning to ready.
+		// A_WeaponReady calls P_CheckAmmo when the trigger is released. This is
+		// observable even without a new fire attempt: an empty ready weapon must
+		// immediately begin lowering toward Doom's preferred fallback weapon.
+		g.ensureWeaponHasAmmo()
+		if g.inventory.PendingWeapon != 0 {
+			return
+		}
 	}
 	_, bobY := g.weaponBobDoom()
 	if want := strings.TrimSpace(runtimeDebugEnv("GD_DEBUG_WEAPON_TIC")); want != "" {
@@ -966,6 +976,13 @@ func (g *game) collectLineAttackIntercepts(actor lineAttackActor, angle uint32, 
 }
 
 func (g *game) aimLineAttack(actor lineAttackActor, angle uint32, distance int64) (int64, bool) {
+	slope, _, ok := g.aimLineAttackTarget(actor, angle, distance)
+	return slope, ok
+}
+
+// aimLineAttackTarget is P_AimLineAttack with the selected linetarget kept
+// for callers such as A_BFGSpray, which damage that exact target directly.
+func (g *game) aimLineAttackTarget(actor lineAttackActor, angle uint32, distance int64) (int64, lineAttackTarget, bool) {
 	intercepts := g.collectLineAttackIntercepts(actor, angle, distance)
 	topSlope := int64(doomAimTopSlope)
 	bottomSlope := int64(doomAimBottomSlope)
@@ -976,11 +993,11 @@ func (g *game) aimLineAttack(actor lineAttackActor, angle uint32, distance int64
 		if in.isLine {
 			ld := g.lines[in.line]
 			if (ld.flags & mlTwoSided) == 0 {
-				return 0, false
+				return 0, lineAttackTarget{}, false
 			}
 			opentop, openbottom, _, _ := g.lineOpening(ld)
 			if openbottom >= opentop {
-				return 0, false
+				return 0, lineAttackTarget{}, false
 			}
 			dist := fixedMul(distance, in.frac)
 			if dist <= 0 {
@@ -1000,7 +1017,7 @@ func (g *game) aimLineAttack(actor lineAttackActor, angle uint32, distance int64
 				}
 			}
 			if topSlope <= bottomSlope {
-				return 0, false
+				return 0, lineAttackTarget{}, false
 			}
 			continue
 		}
@@ -1032,9 +1049,9 @@ func (g *game) aimLineAttack(actor lineAttackActor, angle uint32, distance int64
 		if thingBottom < bottomSlope {
 			thingBottom = bottomSlope
 		}
-		return (thingTop + thingBottom) / 2, true
+		return (thingTop + thingBottom) / 2, in.target, true
 	}
-	return 0, false
+	return 0, lineAttackTarget{}, false
 }
 
 func (g *game) shootSpecialLine(lineIdx int, shooterIsPlayer bool) {
@@ -1350,10 +1367,18 @@ func (g *game) damageMonster(thingIdx int, damage int) {
 }
 
 func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool) {
+	g.damageMonsterFromWithInflictorZ(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, 0, false)
+}
+
+func (g *game) damageMonsterFromWithInflictorZ(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, inflictorZ int64, hasInflictorZ bool) {
 	if thingIdx < 0 || thingIdx >= len(g.thingHP) || damage <= 0 {
 		return
 	}
 	if g.m == nil || thingIdx >= len(g.m.Things) {
+		return
+	}
+	if g.m.Things[thingIdx].Type == 88 {
+		g.damageBossBrain(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ)
 		return
 	}
 	g.ensureMonsterAIState()
@@ -1373,7 +1398,9 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	}
 	thingType := g.m.Things[thingIdx].Type
 	if thingIdx < len(g.thingSkullFly) && g.thingSkullFly[thingIdx] {
-		g.thingSkullFly[thingIdx] = false
+		// P_DamageMobj clears a charging skull's momentum, but retains
+		// MF_SKULLFLY.  The flag suppresses float adjustment until its normal
+		// XY movement cleanup runs on a later tic.
 		if thingIdx < len(g.thingMomX) {
 			g.thingMomX[thingIdx] = 0
 		}
@@ -1384,13 +1411,17 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			g.thingMomZ[thingIdx] = 0
 		}
 	}
-	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, g.thingHP[thingIdx])
+	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if thingIdx >= 0 && thingIdx < len(g.thingAggro) {
 		g.thingAggro[thingIdx] = true
 	}
 	if g.thingHP[thingIdx] <= 0 {
 		xdeath := g.thingHP[thingIdx] < -monsterSpawnHealth(thingType) && monsterHasXDeath(thingType)
+		// P_KillMobj clears MF_SKULLFLY along with MF_FLOAT.
+		if thingIdx < len(g.thingSkullFly) {
+			g.thingSkullFly[thingIdx] = false
+		}
 		if thingIdx >= 0 && thingIdx < len(g.thingDead) {
 			g.thingDead[thingIdx] = true
 		}
@@ -1407,21 +1438,18 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 			if len(frameTics) > 0 {
 				firstFrameTics = frameTics[0]
 			}
-			if deathTics > 0 {
+			g.thingDeathTics[thingIdx] = deathTics
+			if thingIdx >= 0 && thingIdx < len(g.thingStateTics) && firstFrameTics > 0 {
 				shorten := doomrand.PRandom() & 3
 				deathTics -= shorten
+				firstFrameTics -= shorten
 				if deathTics < 1 {
 					deathTics = 1
 				}
-				if firstFrameTics > 0 {
-					firstFrameTics -= shorten
-					if firstFrameTics < 1 {
-						firstFrameTics = 1
-					}
+				if firstFrameTics < 1 {
+					firstFrameTics = 1
 				}
-			}
-			g.thingDeathTics[thingIdx] = deathTics
-			if thingIdx >= 0 && thingIdx < len(g.thingStateTics) && firstFrameTics > 0 {
+				g.thingDeathTics[thingIdx] = deathTics
 				g.thingStateTics[thingIdx] = firstFrameTics
 			}
 		}
@@ -1456,25 +1484,20 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 		}
 		g.bonusFlashTic = max(g.bonusFlashTic, 4)
 		g.spawnMonsterDrop(thingIdx, thingType)
-		if thingType == 71 {
-			baseAngle := uint32(0)
-			if thingIdx >= 0 && thingIdx < len(g.thingAngleState) {
-				baseAngle = g.thingAngleState[thingIdx]
-			}
-			_ = g.spawnPainLostSoul(thingIdx, baseAngle+degToAngle(90))
-			_ = g.spawnPainLostSoul(thingIdx, baseAngle+degToAngle(180))
-			_ = g.spawnPainLostSoul(thingIdx, baseAngle+degToAngle(270))
-		}
 		g.handleBossDeath(thingIdx, thingType)
 	} else {
 		if thingIdx >= 0 && thingIdx < len(g.thingReactionTics) {
 			g.thingReactionTics[thingIdx] = 0
 		}
-		if thingIdx >= 0 && thingIdx < len(g.thingPainTics) {
+		if isMonster(thingType) {
 			chance := monsterPainChance(thingType)
 			if chance > 0 {
 				roll := doomrand.PRandom()
-				if chance >= 256 || roll < chance {
+				// Doom evaluates P_Random before testing MF_SKULLFLY, so a
+				// charging Lost Soul consumes the pain roll but cannot enter
+				// its pain state.
+				if (chance >= 256 || roll < chance) &&
+					!(thingIdx < len(g.thingSkullFly) && g.thingSkullFly[thingIdx]) {
 					if thingIdx >= 0 && thingIdx < len(g.thingJustHit) {
 						// Doom only marks JUSTHIT when the pain state triggers.
 						g.thingJustHit[thingIdx] = true
@@ -1548,7 +1571,7 @@ func (g *game) damageMonsterFrom(thingIdx int, damage int, sourcePlayer bool, so
 	}
 }
 
-func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, hpBefore int) {
+func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer bool, sourceThing int, inflictorX, inflictorY int64, hasInflictor bool, inflictorZ int64, hasInflictorZ bool, hpBefore int) {
 	if g == nil || g.m == nil || thingIdx < 0 || thingIdx >= len(g.m.Things) || damage <= 0 {
 		return
 	}
@@ -1561,6 +1584,9 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 	if !ok {
 		return
 	}
+	if hasInflictorZ {
+		iz = inflictorZ
+	}
 	tx, ty := g.thingPosFixed(thingIdx, g.m.Things[thingIdx])
 	tz, _, _ := g.thingSupportState(thingIdx, g.m.Things[thingIdx])
 	mass := thingTypeMass(g.m.Things[thingIdx].Type)
@@ -1568,7 +1594,11 @@ func (g *game) applyMonsterDamageThrust(thingIdx int, damage int, sourcePlayer b
 		return
 	}
 	angle := doomPointToAngle2(ix, iy, tx, ty)
-	thrust := int64(damage) * (fracUnit >> 3) * 100 / int64(mass)
+	// p_inter.c calculates this entirely as a C int. Preserve its signed
+	// 32-bit wraparound before division; Pain Elemental's 10000-damage rejected
+	// skull path depends on the overflowed (negative) value.
+	thrustNumerator := int32(damage) * int32(fracUnit>>3) * 100
+	thrust := int64(thrustNumerator / int32(mass))
 	if damage < 40 && damage > hpBefore && tz-iz > 64*fracUnit && doomrand.PRandom()&1 != 0 {
 		angle += degToAngle(180)
 		thrust *= 4
@@ -1655,6 +1685,8 @@ func (g *game) damageInflictorPos(sourcePlayer bool, sourceThing int, inflictorX
 
 func thingTypeMass(typ int16) int {
 	switch typ {
+	case 88:
+		return 10000000
 	case 3004, 9, 3001, 65, 84:
 		return 100
 	case 3002, 58:
@@ -1694,22 +1726,87 @@ func (g *game) maybeRetargetMonsterAfterDamage(thingIdx int, thingType int16, so
 	if thingType != 64 && g.thingThreshold[thingIdx] > 0 {
 		return
 	}
+	retargeted := false
 	if sourcePlayer {
 		g.setMonsterTargetPlayer(thingIdx)
 		g.thingThreshold[thingIdx] = monsterBaseThreshold
+		retargeted = true
+	} else {
+		if sourceThing < 0 || sourceThing == thingIdx || sourceThing >= len(g.m.Things) {
+			return
+		}
+		if g.m.Things[sourceThing].Type == 64 {
+			return
+		}
+		g.setMonsterTargetThing(thingIdx, sourceThing)
+		g.thingThreshold[thingIdx] = monsterBaseThreshold
+		retargeted = true
+	}
+	if retargeted {
+		g.wakeDormantMonsterFromDamage(thingIdx, thingType)
+	}
+}
+
+// wakeDormantMonsterFromDamage mirrors the tail of P_DamageMobj: when damage
+// assigns a target to an idle actor, it calls P_SetMobjState(seestate) before
+// that mobj's thinker gets its normal same-tic state decrement. The generic
+// state machine otherwise reaches its see frame one thinker call too late.
+func (g *game) wakeDormantMonsterFromDamage(i int, typ int16) {
+	// A_PainShootSkull can create a Lost Soul in its spawn state and have it
+	// struck by another charging skull before its first thinker tick. Doom's
+	// P_DamageMobj retargets it and immediately enters S_SKULL_RUN1; that
+	// state's A_Chase action can in turn enter S_SKULL_ATK1 in the same tic.
+	if g != nil && monsterUsesExactDoomStateMachine(typ) && i >= 0 &&
+		i < len(g.thingDoomState) &&
+		(g.thingDoomState[i] == monsterInitialDoomState(typ) ||
+			(g.thingDoomState[i] == noDoomMonsterState && i < len(g.thingState) && g.thingState[i] == monsterStateSpawn)) {
+		g.setExactDoomMonsterState(i, typ, monsterDoomSeeState(typ))
 		return
 	}
-	if sourceThing < 0 || sourceThing == thingIdx || sourceThing >= len(g.m.Things) {
+	// The shared fallback state machine still has different wake timing for
+	// several monster families. Source traces establish this exact
+	// P_DamageMobj/P_SetMobjState sequence for Barons, Imps, Demons, Spectres,
+	// and Pain Elementals.
+	if g == nil || (typ != 3003 && typ != 3001 && typ != 3002 && typ != 58 && typ != 71) || monsterUsesExactDoomStateMachine(typ) || i < 0 || i >= len(g.thingState) || g.thingState[i] != monsterStateSpawn ||
+		(i < len(g.thingStatePhase) && g.thingStatePhase[i] != 0) {
 		return
 	}
-	if g.m.Things[sourceThing].Type == 64 {
-		return
+	if i < len(g.thingStatePhase) {
+		g.thingStatePhase[i] = monsterSeeStartPhase(typ)
 	}
-	if sourceThing >= len(g.thingHP) || g.thingHP[sourceThing] <= 0 {
-		return
+	g.setMonsterThinkState(i, typ, monsterStateSee, g.monsterSeeStateTicsForPhase(i, typ))
+	if i < len(g.thingThreshold) && g.thingThreshold[i] > 0 {
+		g.thingThreshold[i]--
 	}
-	g.setMonsterTargetThing(thingIdx, sourceThing)
-	g.thingThreshold[thingIdx] = monsterBaseThreshold
+	tx, ty := g.thingPosFixed(i, g.m.Things[i])
+	g.monsterTurnTowardMoveDir(i)
+	if typ == 71 && g.monsterCanTryMissileNow(i) {
+		px, py, _, _, _, ok := g.monsterTargetPos(i)
+		if ok && g.monsterCheckMissileRange(i, typ, doomApproxDistance(px-tx, py-ty), tx, ty, px, py) {
+			g.startMonsterAttackState(i, typ, true)
+			return
+		}
+	}
+	if i < len(g.thingMoveCount) {
+		g.thingMoveCount[i]--
+		if g.thingMoveCount[i] < 0 || !g.monsterMoveInDir(i, typ, g.thingMoveDir[i]) {
+			targetX, targetY := g.p.x, g.p.y
+			if px, py, _, _, _, ok := g.monsterTargetPos(i); ok {
+				targetX, targetY = px, py
+			}
+			dist := doomApproxDistance(targetX-tx, targetY-ty)
+			if g.monsterCheckMissileRange(i, typ, dist, tx, ty, targetX, targetY) {
+				g.faceMonsterToward(i, tx, ty, targetX, targetY)
+				_ = g.startMonsterAttackState(i, typ, true)
+				return
+			}
+			g.monsterPickNewChaseDir(i, typ, targetX, targetY)
+		}
+	}
+	if ax, ay := g.thingPosFixed(i, g.m.Things[i]); ax != tx || ay != ty {
+		tx, ty = ax, ay
+	}
+	g.emitMonsterActiveSound(i, typ, tx, ty)
 }
 
 func monsterDropPickupType(typ int16) (int16, bool) {
@@ -1908,7 +2005,7 @@ func monsterDeathSoundActionPhase(typ int16) int {
 
 func monsterXDeathSoundActionPhase(typ int16) int {
 	switch typ {
-	case 3004, 9, 65, 84:
+	case 3001, 3004, 9, 65, 84:
 		return 1
 	default:
 		return -1
@@ -2168,10 +2265,6 @@ func (g *game) handleBossDeath(thingIdx int, thingType int16) {
 	}
 	name := strings.ToUpper(strings.TrimSpace(string(g.m.Name)))
 	if name == "" {
-		return
-	}
-	if thingType == 88 {
-		g.requestLevelExit(false, "Boss brain destroyed")
 		return
 	}
 	for i, th := range g.m.Things {

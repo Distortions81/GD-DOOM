@@ -1024,6 +1024,25 @@ func TestDamageMonsterFromArchvileSourceDoesNotRetarget(t *testing.T) {
 	}
 }
 
+func TestDamageMonsterFromDeadSourceRetargets(t *testing.T) {
+	g := &game{
+		m:                 &mapdata.Map{Things: []mapdata.Thing{{Type: 3001}, {Type: 3005}}},
+		thingHP:           []int{60, 0},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{true, false},
+		thingTargetIdx:    []int{-1, 0},
+		thingThreshold:    []int{0, 0},
+		thingJustHit:      []bool{false, false},
+		thingPainTics:     []int{0, 0},
+	}
+
+	g.damageMonsterFrom(0, 5, false, 1, 0, 0, false)
+
+	if g.thingTargetPlayer[0] || g.thingTargetIdx[0] != 1 {
+		t.Fatalf("target=(player:%v idx:%d) want dead source idx 1", g.thingTargetPlayer[0], g.thingTargetIdx[0])
+	}
+}
+
 func TestDamageMonsterFromSelfDoesNotRetarget(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

@@ -489,6 +489,9 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	if err := w.intSlice(v.ThingTargetIdx); err != nil {
 		return err
 	}
+	if err := w.i64Slice(v.ThingTracerFireOrder); err != nil {
+		return err
+	}
 	if err := w.intSlice(v.ThingThreshold); err != nil {
 		return err
 	}
@@ -790,15 +793,18 @@ func (w saveBinaryWriter) bossSpawnCubeSlice(v []bossSpawnCubeSaveState) error {
 		return err
 	}
 	for _, it := range v {
-		for _, n := range []int64{it.X, it.Y, it.Z, it.VX, it.VY, it.VZ} {
+		for _, n := range []int64{it.X, it.Y, it.Z, it.VX, it.VY, it.VZ, it.Order, it.FloorZ, it.CeilZ} {
 			if err := w.i64(n); err != nil {
 				return err
 			}
 		}
-		for _, n := range []int{it.TargetIdx, it.StateTics, it.StateStep, it.Reaction} {
+		for _, n := range []int{it.TargetIdx, it.StateTics, it.StateStep, it.Reaction, it.LastLook} {
 			if err := w.int(n); err != nil {
 				return err
 			}
+		}
+		if err := w.u32(it.Angle); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -808,10 +814,13 @@ func (w saveBinaryWriter) bossSpawnFireSlice(v []bossSpawnFireSaveState) error {
 		return err
 	}
 	for _, it := range v {
-		for _, n := range []int64{it.X, it.Y, it.Z} {
+		for _, n := range []int64{it.X, it.Y, it.Z, it.Order, it.FloorZ, it.CeilZ} {
 			if err := w.i64(n); err != nil {
 				return err
 			}
+		}
+		if err := w.int(it.LastLook); err != nil {
+			return err
 		}
 		if err := w.int(it.Tics); err != nil {
 			return err
@@ -824,12 +833,12 @@ func (w saveBinaryWriter) projectileSlice(v []projectileSaveState) error {
 		return err
 	}
 	for _, it := range v {
-		for _, n := range []int64{it.X, it.Y, it.Z, it.VX, it.VY, it.VZ, it.FloorZ, it.CeilZ, it.Radius, it.Height, it.SourceX, it.SourceY} {
+		for _, n := range []int64{it.Order, it.PrevX, it.PrevY, it.PrevZ, it.X, it.Y, it.Z, it.VX, it.VY, it.VZ, it.FloorZ, it.CeilZ, it.Radius, it.Height, it.SourceX, it.SourceY} {
 			if err := w.i64(n); err != nil {
 				return err
 			}
 		}
-		for _, n := range []int{it.TTL, it.SourceThing, it.Kind} {
+		for _, n := range []int{it.Subsector, it.LastLook, it.Frame, it.FrameTics, it.TTL, it.SourceThing, it.Kind} {
 			if err := w.int(n); err != nil {
 				return err
 			}
@@ -843,6 +852,15 @@ func (w saveBinaryWriter) projectileSlice(v []projectileSaveState) error {
 		if err := w.bool(it.TracerPlayer); err != nil {
 			return err
 		}
+		if err := w.bool(it.DeferredTick); err != nil {
+			return err
+		}
+		if err := w.bool(it.SpawnPrev); err != nil {
+			return err
+		}
+		if err := w.int(it.TracerThingTarget); err != nil {
+			return err
+		}
 		if err := w.u32(it.Angle); err != nil {
 			return err
 		}
@@ -854,6 +872,17 @@ func (w saveBinaryWriter) projectileImpactSlice(v []projectileImpactSaveState) e
 		return err
 	}
 	for _, it := range v {
+		if err := w.i64(it.Order); err != nil {
+			return err
+		}
+		for _, n := range []int{it.Subsector, it.Phase, it.PhaseTics, it.FireTargetThing} {
+			if err := w.int(n); err != nil {
+				return err
+			}
+		}
+		if err := w.bool(it.FireTargetPlayer); err != nil {
+			return err
+		}
 		for _, n := range []int64{it.X, it.Y, it.Z, it.FloorZ, it.CeilZ} {
 			if err := w.i64(n); err != nil {
 				return err
@@ -905,6 +934,9 @@ func (w saveBinaryWriter) sectorLightEffectSlice(v []sectorLightEffectSaveState)
 		return err
 	}
 	for _, it := range v {
+		if err := w.i64(it.Order); err != nil {
+			return err
+		}
 		if err := w.u8(it.Kind); err != nil {
 			return err
 		}
@@ -1645,6 +1677,9 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	if v.ThingTargetIdx, err = readIntSlice(r); err != nil {
 		return v, err
 	}
+	if v.ThingTracerFireOrder, err = readI64Slice(r); err != nil {
+		return v, err
+	}
 	if v.ThingThreshold, err = readIntSlice(r); err != nil {
 		return v, err
 	}
@@ -1883,25 +1918,31 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 func (r saveBinaryReader) bossSpawnCube() (bossSpawnCubeSaveState, error) {
 	var v bossSpawnCubeSaveState
 	var err error
-	for _, dst := range []*int64{&v.X, &v.Y, &v.Z, &v.VX, &v.VY, &v.VZ} {
+	for _, dst := range []*int64{&v.X, &v.Y, &v.Z, &v.VX, &v.VY, &v.VZ, &v.Order, &v.FloorZ, &v.CeilZ} {
 		if *dst, err = r.i64(); err != nil {
 			return v, err
 		}
 	}
-	for _, dst := range []*int{&v.TargetIdx, &v.StateTics, &v.StateStep, &v.Reaction} {
+	for _, dst := range []*int{&v.TargetIdx, &v.StateTics, &v.StateStep, &v.Reaction, &v.LastLook} {
 		if *dst, err = r.int(); err != nil {
 			return v, err
 		}
+	}
+	if v.Angle, err = r.u32(); err != nil {
+		return v, err
 	}
 	return v, nil
 }
 func (r saveBinaryReader) bossSpawnFire() (bossSpawnFireSaveState, error) {
 	var v bossSpawnFireSaveState
 	var err error
-	for _, dst := range []*int64{&v.X, &v.Y, &v.Z} {
+	for _, dst := range []*int64{&v.X, &v.Y, &v.Z, &v.Order, &v.FloorZ, &v.CeilZ} {
 		if *dst, err = r.i64(); err != nil {
 			return v, err
 		}
+	}
+	if v.LastLook, err = r.int(); err != nil {
+		return v, err
 	}
 	if v.Tics, err = r.int(); err != nil {
 		return v, err
@@ -1911,12 +1952,12 @@ func (r saveBinaryReader) bossSpawnFire() (bossSpawnFireSaveState, error) {
 func (r saveBinaryReader) projectile() (projectileSaveState, error) {
 	var v projectileSaveState
 	var err error
-	for _, dst := range []*int64{&v.X, &v.Y, &v.Z, &v.VX, &v.VY, &v.VZ, &v.FloorZ, &v.CeilZ, &v.Radius, &v.Height, &v.SourceX, &v.SourceY} {
+	for _, dst := range []*int64{&v.Order, &v.PrevX, &v.PrevY, &v.PrevZ, &v.X, &v.Y, &v.Z, &v.VX, &v.VY, &v.VZ, &v.FloorZ, &v.CeilZ, &v.Radius, &v.Height, &v.SourceX, &v.SourceY} {
 		if *dst, err = r.i64(); err != nil {
 			return v, err
 		}
 	}
-	for _, dst := range []*int{&v.TTL, &v.SourceThing, &v.Kind} {
+	for _, dst := range []*int{&v.Subsector, &v.LastLook, &v.Frame, &v.FrameTics, &v.TTL, &v.SourceThing, &v.Kind} {
 		if *dst, err = r.int(); err != nil {
 			return v, err
 		}
@@ -1930,6 +1971,15 @@ func (r saveBinaryReader) projectile() (projectileSaveState, error) {
 	if v.TracerPlayer, err = r.bool(); err != nil {
 		return v, err
 	}
+	if v.DeferredTick, err = r.bool(); err != nil {
+		return v, err
+	}
+	if v.SpawnPrev, err = r.bool(); err != nil {
+		return v, err
+	}
+	if v.TracerThingTarget, err = r.int(); err != nil {
+		return v, err
+	}
 	if v.Angle, err = r.u32(); err != nil {
 		return v, err
 	}
@@ -1938,6 +1988,17 @@ func (r saveBinaryReader) projectile() (projectileSaveState, error) {
 func (r saveBinaryReader) projectileImpact() (projectileImpactSaveState, error) {
 	var v projectileImpactSaveState
 	var err error
+	if v.Order, err = r.i64(); err != nil {
+		return v, err
+	}
+	for _, dst := range []*int{&v.Subsector, &v.Phase, &v.PhaseTics, &v.FireTargetThing} {
+		if *dst, err = r.int(); err != nil {
+			return v, err
+		}
+	}
+	if v.FireTargetPlayer, err = r.bool(); err != nil {
+		return v, err
+	}
 	for _, dst := range []*int64{&v.X, &v.Y, &v.Z, &v.FloorZ, &v.CeilZ} {
 		if *dst, err = r.i64(); err != nil {
 			return v, err
@@ -1983,6 +2044,9 @@ func (r saveBinaryReader) hitscanPuff() (hitscanPuffSaveState, error) {
 func (r saveBinaryReader) sectorLightEffect() (sectorLightEffectSaveState, error) {
 	var v sectorLightEffectSaveState
 	var err error
+	if v.Order, err = r.i64(); err != nil {
+		return v, err
+	}
 	if v.Kind, err = r.u8(); err != nil {
 		return v, err
 	}

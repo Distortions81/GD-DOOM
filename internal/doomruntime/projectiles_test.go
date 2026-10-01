@@ -17,7 +17,7 @@ func TestDoomProjectileShouldSplitMove_MatchesVanillaSignedComparison(t *testing
 	if doomProjectileShouldSplitMove(0, -(doomMaxMove/2 + 1)) {
 		t.Fatal("large negative y move should not split in vanilla")
 	}
-	if doomProjectileShouldSplitMove(-(doomMaxMove/2+1), 0) {
+	if doomProjectileShouldSplitMove(-(doomMaxMove/2 + 1), 0) {
 		t.Fatal("large negative x move should not split in vanilla")
 	}
 }
@@ -121,6 +121,15 @@ func TestBaronProjectileSpeedMatchesDoomSourceFastMode(t *testing.T) {
 	}
 	if got := monsterProjectileSpeed(69, true); got != 20*fracUnit {
 		t.Fatalf("knight fast speed=%d want=%d", got, 20*fracUnit)
+	}
+}
+
+func TestRevenantTracerSpeedMatchesDoomSource(t *testing.T) {
+	if got := monsterProjectileSpeed(66, false); got != 10*fracUnit {
+		t.Fatalf("normal tracer speed=%d want=%d", got, 10*fracUnit)
+	}
+	if got := monsterProjectileSpeed(66, true); got != 20*fracUnit {
+		t.Fatalf("fast tracer speed=%d want=%d", got, 20*fracUnit)
 	}
 }
 
@@ -430,7 +439,7 @@ func TestRevenantAttackSpawnsTracerProjectile(t *testing.T) {
 func TestRevenantTracerHomesTowardPlayer(t *testing.T) {
 	g := &game{
 		p:        player{x: 128 * fracUnit, y: 128 * fracUnit, z: 0},
-		worldTic: 4,
+		demoTick: 5, // A_Tracer runs on gametic 4.
 	}
 	p := projectile{
 		x:            0,
@@ -504,8 +513,8 @@ func TestMancubusAttackPhaseFacesTargetOnVolleyFrames(t *testing.T) {
 		thingAngleState: []uint32{
 			degToAngle(180),
 		},
-		thingX: []int64{128 * fracUnit},
-		thingY: []int64{0},
+		thingX:      []int64{128 * fracUnit},
+		thingY:      []int64{0},
 		projectiles: make([]projectile, 0, 2),
 		soundQueue:  make([]soundEvent, 0, 2),
 		stats:       playerStats{Health: 100},
@@ -769,6 +778,52 @@ func TestSpawnProjectileImpactFrom_RocketKeepsFirstImpactTic(t *testing.T) {
 	}
 }
 
+func TestRocketExplosionExpiresAfterDoomThinkerLifetime(t *testing.T) {
+	doomrand.Clear()
+	g := &game{worldTic: 1}
+	p := projectile{kind: projectileRocket, order: 7, sourceThing: -1}
+	g.explodeProjectileInThinker(p, 10, 20, 30)
+	// The first P_Random is 8, so the death frames last 8+6+4 tics.
+	// The collision's own P_MobjThinker consumes the first of those 18.
+	if fx := g.projectileImpacts[0]; fx.phaseTics != 7 || fx.tics != 17 {
+		t.Fatalf("collision impact=(%d,%d) want=(7,17)", fx.phaseTics, fx.tics)
+	}
+	for i := 0; i < 16; i++ {
+		g.tickProjectileImpactByOrder(p.order)
+	}
+	if len(g.projectileImpacts) != 1 {
+		t.Fatal("rocket disappeared before its final death-state tic")
+	}
+	g.tickProjectileImpactByOrder(p.order)
+	if len(g.projectileImpacts) != 0 {
+		t.Fatal("rocket survived its final death-state tic")
+	}
+}
+
+func TestSpawnCheckPlasmaExplosionWaitsForFirstThinker(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+	p := projectile{kind: projectilePlayerPlasma, order: 7}
+	g.spawnProjectileImpactFrom(p, 10, 20, 30)
+	if fx := g.projectileImpacts[0]; fx.phaseTics != 4 || fx.tics != 20 {
+		t.Fatalf("spawn impact=(%d,%d) want=(4,20)", fx.phaseTics, fx.tics)
+	}
+	g.runOrderedWorldThinkers()
+	if fx := g.projectileImpacts[0]; fx.phaseTics != 3 || fx.tics != 19 {
+		t.Fatalf("first thinker impact=(%d,%d) want=(3,19)", fx.phaseTics, fx.tics)
+	}
+}
+
+func TestArachnotronExplosionUsesFiveFiveTicStates(t *testing.T) {
+	doomrand.Clear()
+	g := &game{}
+	p := projectile{kind: projectilePlasmaBall, sourceType: 68, order: 7}
+	g.spawnProjectileImpactFrom(p, 10, 20, 30)
+	if fx := g.projectileImpacts[0]; fx.phaseTics != 5 || fx.tics != 25 {
+		t.Fatalf("arachnotron impact=(%d,%d) want=(5,25)", fx.phaseTics, fx.tics)
+	}
+}
+
 func TestProjectilePassesThroughTwoSidedWindow(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -801,7 +856,7 @@ func TestProjectilePassesThroughTwoSidedWindow(t *testing.T) {
 		vz:     0,
 		height: 8 * fracUnit,
 	}
-	blocked, _, _, _, _ := g.projectileBlockedAt(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
+	blocked, _, _, _, _, _ := g.projectileBlockedAt(p, p.x, p.y, p.z, p.x+p.vx, p.y+p.vy, p.z+p.vz)
 	if blocked {
 		t.Fatal("projectile should pass through open two-sided line/window")
 	}

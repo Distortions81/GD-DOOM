@@ -115,12 +115,11 @@ func (g *game) tickGameplayWorld() {
 }
 
 func (g *game) tickThinkers() {
-	g.tickPlayerBody()
+	if g.playerThinkerOrder() == 0 {
+		g.tickPlayerBody()
+	}
 	g.runOrderedWorldThinkers()
-	g.tickSectorLightEffects()
-	g.tickBossBrainSpecials()
 	g.tickProjectiles()
-	g.tickProjectileImpacts()
 	g.tickDeferredProjectiles()
 	g.tickHitscanPuffs()
 }
@@ -134,7 +133,20 @@ const (
 	worldThinkerPlat
 	worldThinkerCeiling
 	worldThinkerDoor
+	worldThinkerProjectile
+	worldThinkerProjectileImpact
+	worldThinkerSectorLight
+	worldThinkerBossCube
+	worldThinkerBossFire
+	worldThinkerPlayer
 )
+
+func (g *game) playerThinkerOrder() int64 {
+	if g == nil || g.m == nil || g.localPlayerThingIndex < 0 || g.localPlayerThingIndex >= len(g.m.Things) || !isPlayerStart(g.m.Things[g.localPlayerThingIndex].Type) {
+		return 0
+	}
+	return int64(g.localPlayerThingIndex + 1)
+}
 
 type worldThinkerRef struct {
 	kind  worldThinkerKind
@@ -170,6 +182,9 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 	}
 
 	if g != nil && g.m != nil {
+		// P_PlayerThink applies input before the thinker list, but the player's
+		// mobj moves at its map-spawn position within that list.
+		consider(worldThinkerPlayer, 0, g.playerThinkerOrder())
 		for i, th := range g.m.Things {
 			if !g.thingHasWorldThinker(i, th) {
 				continue
@@ -205,6 +220,36 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 		}
 		consider(worldThinkerDoor, sec, d.order)
 	}
+	for i, d := range g.extraDoors {
+		if d == nil || d.pendingRemove {
+			continue
+		}
+		// Negative keys address superseded doors without colliding with a
+		// sector number. Their order remains the source thinker-list order.
+		consider(worldThinkerDoor, -1-i, d.order)
+	}
+	for i := range g.projectiles {
+		if g.projectiles[i].deferredTick {
+			continue
+		}
+		consider(worldThinkerProjectile, i, g.projectiles[i].order)
+	}
+	for i := range g.projectileImpacts {
+		if g.projectileImpacts[i].order > 0 {
+			consider(worldThinkerProjectileImpact, i, g.projectileImpacts[i].order)
+		}
+	}
+	for i, cube := range g.bossSpawnCubes {
+		consider(worldThinkerBossCube, i, cube.order)
+	}
+	for i, fire := range g.bossSpawnFires {
+		consider(worldThinkerBossFire, i, fire.order)
+	}
+	for sec, fx := range g.sectorLightFx {
+		if fx.kind != sectorLightEffectNone && fx.order > 0 {
+			consider(worldThinkerSectorLight, sec, fx.order)
+		}
+	}
 	return best, found
 }
 
@@ -215,11 +260,13 @@ func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
 	if i < len(g.thingCollected) && g.thingCollected[i] {
 		return false
 	}
-	return isBarrelThingType(th.Type) || isMonster(th.Type)
+	return isBarrelThingType(th.Type) || isMonster(th.Type) || th.Type == 88 || th.Type == 89
 }
 
 func (g *game) tickWorldThinker(ref worldThinkerRef) {
 	switch ref.kind {
+	case worldThinkerPlayer:
+		g.tickPlayerBody()
 	case worldThinkerThing:
 		if g == nil || g.m == nil || ref.key < 0 || ref.key >= len(g.m.Things) {
 			return
@@ -231,6 +278,10 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 		}
 	case worldThinkerPlat:
 		if pt := g.plats[ref.key]; pt != nil && pt.order == ref.order {
+			if pt.skipOrderedTic {
+				pt.skipOrderedTic = false
+				return
+			}
 			g.platTickedThisTic = true
 			g.tickPlat(ref.key, pt)
 		}
@@ -239,8 +290,29 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 			g.tickCeiling(ref.key, ct)
 		}
 	case worldThinkerDoor:
+		if ref.key < 0 {
+			i := -1 - ref.key
+			if i >= 0 && i < len(g.extraDoors) {
+				if d := g.extraDoors[i]; d != nil && !d.pendingRemove && d.order == ref.order {
+					g.tickDoor(d.sector, d)
+				}
+			}
+			return
+		}
 		if d := g.doors[ref.key]; d != nil && d.order == ref.order {
 			g.tickDoor(ref.key, d)
+		}
+	case worldThinkerProjectile:
+		g.tickProjectileByOrder(ref.order)
+	case worldThinkerProjectileImpact:
+		g.tickProjectileImpactByOrder(ref.order)
+	case worldThinkerBossCube:
+		g.tickBossSpawnCubeByOrder(ref.order)
+	case worldThinkerBossFire:
+		g.tickBossSpawnFireByOrder(ref.order)
+	case worldThinkerSectorLight:
+		if ref.key >= 0 && ref.key < len(g.sectorLightFx) && g.sectorLightFx[ref.key].order == ref.order {
+			g.tickSectorLightEffect(ref.key)
 		}
 	}
 }
@@ -431,7 +503,10 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 		}
 	case -1:
 		next := g.sectorCeil[sec] - d.speed
-		if g.doorWouldCrushPlayer(sec, next) {
+		// P_ChangeSector reports any blocked mobj, not only the player. A door
+		// must reverse (or keep retrying for close-only types) when a monster
+		// occupies its closing space too.
+		if g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], next) {
 			switch d.typ {
 			case doorBlazeClose, doorClose:
 				// Vanilla close-only doors keep trying to close, but do not
@@ -446,9 +521,9 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			g.setDoorCeiling(sec, g.sectorFloor[sec])
 			switch d.typ {
 			case doorBlazeRaise, doorBlazeClose:
-				g.removeDoorThinker(sec)
+				g.removeDoorThinkerInstance(sec, d)
 			case doorNormal, doorClose:
-				g.retireDoorThinker(sec)
+				g.retireDoorThinkerInstance(sec, d)
 			case doorClose30ThenOpen:
 				d.direction = 0
 				d.topCountdown = 35 * 30
@@ -465,7 +540,7 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 				d.direction = 0
 				d.topCountdown = d.topWait
 			case doorClose30ThenOpen, doorBlazeOpen, doorOpen:
-				g.removeDoorThinker(sec)
+				g.removeDoorThinkerInstance(sec, d)
 			}
 		} else {
 			g.setDoorCeiling(sec, next)
@@ -523,13 +598,49 @@ func (g *game) prunePendingDoors() {
 			delete(g.doors, sec)
 		}
 	}
+	if len(g.extraDoors) > 0 {
+		kept := g.extraDoors[:0]
+		for _, d := range g.extraDoors {
+			if d != nil && !d.pendingRemove {
+				kept = append(kept, d)
+			}
+		}
+		g.extraDoors = kept
+	}
 }
 
 func (g *game) tickDoors() {
 	g.prunePendingDoors()
+	for _, d := range g.extraDoors {
+		if d != nil && !d.pendingRemove {
+			g.tickDoor(d.sector, d)
+		}
+	}
 	for sec, d := range g.doors {
 		g.tickDoor(sec, d)
 	}
+}
+
+func (g *game) removeDoorThinkerInstance(sec int, want *doorThinker) {
+	if want == nil {
+		return
+	}
+	if g.doors[sec] == want {
+		g.removeDoorThinker(sec)
+		return
+	}
+	want.pendingRemove = true
+}
+
+func (g *game) retireDoorThinkerInstance(sec int, want *doorThinker) {
+	if want == nil {
+		return
+	}
+	if g.doors[sec] == want {
+		g.retireDoorThinker(sec)
+		return
+	}
+	want.pendingRemove = true
 }
 
 func (g *game) allocDoorThinker(sec int) *doorThinker {
@@ -615,7 +726,7 @@ func (g *game) xyMovement() {
 }
 
 func (g *game) tryMove(x, y int64) bool {
-	return g.tryMoveWithPickupProbe(x, y, false)
+	return g.tryMoveWithPickupProbe(x, y, true)
 }
 
 func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
@@ -637,7 +748,7 @@ func (g *game) tryMoveWithPickupProbe(x, y int64, probePickup bool) bool {
 		g.checkWalkSpecialLines(prevX, prevY, x, y)
 		return true
 	}
-	tmfloor, tmceil, tmdrop, ok := g.checkPositionFor(x, y, false)
+	tmfloor, tmceil, tmdrop, ok := g.checkPositionForWithPickupTouch(x, y, false, probePickup)
 	if !ok {
 		g.debugPlayerMove("tryMove blocked", x, y)
 		return false
@@ -711,20 +822,37 @@ func (g *game) checkPosition(x, y int64) (int64, int64, int64, bool) {
 }
 
 func (g *game) checkPositionFor(x, y int64, blockMonsterLines bool) (int64, int64, int64, bool) {
-	return g.checkPositionForActor(x, y, playerRadius, blockMonsterLines, -1, false)
+	return g.checkPositionForWithPickupTouch(x, y, blockMonsterLines, false)
+}
+
+// checkPositionForWithPickupTouch is the player P_CheckPosition equivalent.
+// Vanilla calls P_TouchSpecialThing while P_CheckPosition walks the thing
+// blockmap, including slide moves and moving-sector clipping.
+func (g *game) checkPositionForWithPickupTouch(x, y int64, blockMonsterLines bool, touchPickups bool) (int64, int64, int64, bool) {
+	return g.checkPositionForActorWithPickupTouch(x, y, playerRadius, blockMonsterLines, -1, false, false, touchPickups)
 }
 
 func (g *game) checkPositionForActor(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool) (int64, int64, int64, bool) {
-	return g.checkPositionForActorWithThingPolicy(x, y, radius, blockMonsterLines, moverThingIdx, moverIsMonster, false)
+	return g.checkPositionForActorWithPickupTouch(x, y, radius, blockMonsterLines, moverThingIdx, moverIsMonster, false, false)
 }
 
 func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool, skipThingBlock bool) (int64, int64, int64, bool) {
+	return g.checkPositionForActorWithPickupTouch(x, y, radius, blockMonsterLines, moverThingIdx, moverIsMonster, skipThingBlock, false)
+}
+
+func (g *game) checkPositionForActorWithPickupTouch(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool, skipThingBlock, touchPickups bool) (int64, int64, int64, bool) {
 	if moverThingIdx >= 0 {
 		if moverThingIdx >= len(g.thingProbeSpecialLines) {
 			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
 		}
+		if g.thingProbeSpecialLines[moverThingIdx] == nil {
+			g.thingProbeSpecialLines[moverThingIdx] = make([]int, 0)
+		}
 		g.thingProbeSpecialLines[moverThingIdx] = g.thingProbeSpecialLines[moverThingIdx][:0]
 	} else {
+		if g.playerProbeSpecialLines == nil {
+			g.playerProbeSpecialLines = make([]int, 0)
+		}
 		g.playerProbeSpecialLines = g.playerProbeSpecialLines[:0]
 	}
 	tmboxTop := y + radius
@@ -771,7 +899,7 @@ func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMon
 		debugProbef("start sec=%d floor=%d ceil=%d bbox=[t=%d b=%d r=%d l=%d]", sec, tmfloor, tmceil, tmboxTop, tmboxBottom, tmboxRight, tmboxLeft)
 	}
 
-	if !skipThingBlock && g.actorBlockedByThings(x, y, radius, moverThingIdx, moverIsMonster) {
+	if !skipThingBlock && g.actorBlockedByThingsWithPickupTouch(x, y, radius, moverThingIdx, moverIsMonster, touchPickups) {
 		debugProbef("blocked by thing")
 		return tmfloor, tmceil, tmdrop, false
 	}
@@ -908,14 +1036,14 @@ func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMon
 }
 
 func (g *game) probeSpecialLinesForMover(idx int) []int {
-	if g == nil || idx < 0 || idx >= len(g.thingProbeSpecialLines) || len(g.thingProbeSpecialLines[idx]) == 0 {
+	if g == nil || idx < 0 || idx >= len(g.thingProbeSpecialLines) {
 		return nil
 	}
 	return g.thingProbeSpecialLines[idx]
 }
 
 func (g *game) probeSpecialLinesForPlayer() []int {
-	if g == nil || len(g.playerProbeSpecialLines) == 0 {
+	if g == nil {
 		return nil
 	}
 	return g.playerProbeSpecialLines
@@ -942,6 +1070,10 @@ func actorsOverlapXY(ax, ay, aradius, bx, by, bradius int64) bool {
 }
 
 func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, moverIsMonster bool) bool {
+	return g.actorBlockedByThingsWithPickupTouch(x, y, radius, moverThingIdx, moverIsMonster, false)
+}
+
+func (g *game) actorBlockedByThingsWithPickupTouch(x, y, radius int64, moverThingIdx int, moverIsMonster, touchPickups bool) bool {
 	if g == nil || g.m == nil {
 		return false
 	}
@@ -963,6 +1095,14 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		}
 		if i < len(g.thingCollected) && g.thingCollected[i] {
 			return false
+		}
+		// Doom's PIT_CheckThing touches MF_SPECIAL items during the thing
+		// blockmap walk, before a later solid/corpse can reject the move.
+		if touchPickups && moverThingIdx < 0 && !moverIsMonster && !g.isDead {
+			g.processThingPickupAtIndex(i, th, x, y, g.p.z, playerRadius, playerHeight, false)
+			if i < len(g.thingCollected) && g.thingCollected[i] {
+				return false
+			}
 		}
 		if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
 			phase := 0
@@ -1036,8 +1176,8 @@ func (g *game) actorBlockedByThings(x, y, radius int64, moverThingIdx int, mover
 		if top >= g.bmapHeight {
 			top = g.bmapHeight - 1
 		}
-		for by := bottom; by <= top; by++ {
-			for bx := left; bx <= right; bx++ {
+		for bx := left; bx <= right; bx++ {
+			for by := bottom; by <= top; by++ {
 				if !g.blockThingsIterator(bx, by, func(i int) bool {
 					return !visitThing(i)
 				}) {
