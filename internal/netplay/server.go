@@ -603,15 +603,17 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64, flags uint16) {
 	viewer := &relayViewer{conn: conn}
 	cfg := sess.cfg
 	var (
-		keyframe []byte
-		tic      uint32
-		ok       bool
-		backlog  []bufferedFrame
+		keyframe      []byte
+		keyframeFlags byte
+		tic           uint32
+		ok            bool
+		backlog       []bufferedFrame
 	)
 	viewer.mu.Lock()
 	sess.viewers[viewer] = struct{}{}
 	if len(sess.lastKeyframe) > 0 {
 		keyframe = append([]byte(nil), sess.lastKeyframe...)
+		keyframeFlags = sess.lastKeyframeFlags
 		tic = sess.lastKeyframeTic
 		ok = true
 	}
@@ -635,7 +637,7 @@ func (s *Server) handleViewer(conn net.Conn, sessionID uint64, flags uint16) {
 	if ok {
 		if err := writeFrame(conn, frameHeader{
 			Type:   frameTypeKeyframe,
-			Flags:  sess.lastKeyframeFlags,
+			Flags:  keyframeFlags,
 			Length: uint32(len(keyframe)),
 			Tic:    tic,
 		}, keyframe); err != nil {
@@ -723,11 +725,12 @@ func (s *Server) handleAudioViewer(conn net.Conn, sessionID uint64, flags uint16
 func (s *Server) forwardFrame(sess *relaySession, header frameHeader, payload []byte) {
 	s.mu.Lock()
 	if header.Type == frameTypeKeyframe {
+		initial := len(sess.lastKeyframe) == 0
 		sess.lastKeyframeTic = header.Tic
 		sess.lastKeyframeFlags = header.Flags
 		sess.lastKeyframe = append(sess.lastKeyframe[:0], payload...)
 		sess.backlog = sess.backlog[:0]
-		if header.Flags&keyframeFlagMandatoryApply == 0 {
+		if !initial && header.Flags&keyframeFlagMandatoryApply == 0 {
 			s.mu.Unlock()
 			return
 		}

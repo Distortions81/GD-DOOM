@@ -67,6 +67,19 @@ func TestRelayServerForwardsBroadcastFramesToViewer(t *testing.T) {
 		t.Fatalf("MapName=%q want=E1M1", session.MapName)
 	}
 
+	// The viewer joined before the broadcaster had sent any keyframe. It
+	// still needs the first ordinary keyframe to bootstrap its stream.
+	if err := writeFrame(bconn, frameHeader{Type: frameTypeKeyframe, Tic: 0}, []byte{1}); err != nil {
+		t.Fatalf("write initial keyframe: %v", err)
+	}
+	initial, initialPayload, err := readFrameWithDeadline(vconn, relayLocalTestTimeout)
+	if err != nil {
+		t.Fatalf("read initial keyframe for early viewer: %v", err)
+	}
+	if initial.Type != frameTypeKeyframe || initial.Tic != 0 || string(initialPayload) != string([]byte{1}) {
+		t.Fatalf("initial frame=%+v payload=%v", initial, initialPayload)
+	}
+
 	tc := demo.Tic{Forward: 25, Side: -5, AngleTurn: 512, Buttons: demo.ButtonUse}
 	payload := make([]byte, ticBatchOverhead+4)
 	binary.LittleEndian.PutUint16(payload[0:2], 1)
@@ -309,7 +322,7 @@ func TestRelayServerForwardsMandatoryKeyframesToActiveViewer(t *testing.T) {
 	if _, _, _, _, err := readHello(vconn); err != nil {
 		t.Fatalf("readHello viewer response: %v", err)
 	}
-	if _, _, err := readFrame(vconn); err != nil {
+	if _, _, err := readFrameWithDeadline(vconn, relayLocalTestTimeout); err != nil {
 		t.Fatalf("read join keyframe: %v", err)
 	}
 
@@ -318,7 +331,7 @@ func TestRelayServerForwardsMandatoryKeyframesToActiveViewer(t *testing.T) {
 		t.Fatalf("write mandatory keyframe: %v", err)
 	}
 
-	header, payload, err := readFrame(vconn)
+	header, payload, err := readFrameWithDeadline(vconn, relayLocalTestTimeout)
 	if err != nil {
 		t.Fatalf("read forwarded keyframe: %v", err)
 	}
@@ -401,6 +414,10 @@ func TestRelayServerClosesViewerWhenBroadcasterDisconnects(t *testing.T) {
 	}
 	if err := writeHello(bconn, helloRoleBroadcaster, helloFlagGameplayCompactV1, 77, SessionConfig{}); err != nil {
 		t.Fatalf("writeHello broadcaster: %v", err)
+	}
+	defer bconn.Close()
+	if _, _, _, _, err := readHello(bconn); err != nil {
+		t.Fatalf("readHello broadcaster ack: %v", err)
 	}
 
 	vconn, err := net.Dial("tcp", srv.Addr())
