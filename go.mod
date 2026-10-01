@@ -6,7 +6,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Distortions81/g726 v0.0.8
 	github.com/Distortions81/impsynth v0.1.3
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/hajimehoshi/ebiten/v2 v2.9.9
 	github.com/klauspost/compress v1.18.6
 	github.com/remeh/sizedwaitgroup v1.0.0
