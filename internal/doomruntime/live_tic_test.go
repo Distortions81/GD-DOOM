@@ -75,6 +75,29 @@ func (s *testLiveTicSource) PollRuntimeKeyframe() (runtimecfg.RuntimeKeyframe, b
 	return kf, true, nil
 }
 
+func TestDemoUseOnLethalTicWaitsForDeathThinkBeforeRebirth(t *testing.T) {
+	g := mustLoadE1M1GameForMapTextureTests(t)
+	g.opts.SourcePortMode = false
+	g.stats.Health = 5
+	sec := g.playerSector()
+	g.m.Sectors[sec].Special = 5
+	g.p.z = g.playerSectorFloor(sec)
+	g.worldTic = 0 // Damaging sectors pulse every 32 tics.
+	use := DemoTic{Buttons: demoButtonUse}
+
+	g.stepGameplayFromDemoTic(use)
+	if !g.isDead || g.stats.Health != 0 {
+		t.Fatalf("damaging floor did not kill player: dead=%t health=%d", g.isDead, g.stats.Health)
+	}
+	if g.playerReborn {
+		t.Fatal("use on the lethal tic bypassed PST_DEAD")
+	}
+	g.stepGameplayFromDemoTic(use)
+	if !g.playerReborn {
+		t.Fatal("held use did not request rebirth on the first death-think tic")
+	}
+}
+
 func TestUpdateBroadcastModeAdvancesWorldAndEmitsTic(t *testing.T) {
 	g := mustLoadE1M1GameForMapTextureTests(t)
 	sink := &testLiveTicSink{}

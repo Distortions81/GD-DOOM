@@ -14,17 +14,19 @@ type FinaleStage uint8
 const (
 	FinaleStageText FinaleStage = iota
 	FinaleStagePicture
+	FinaleStageCast
 )
 
 type Finale struct {
-	Active  bool
-	Tic     int
-	MapName mapdata.MapName
-	Stage   FinaleStage
-	Flat    string
-	Text    string
-	Screen  string
-	WaitTic int
+	Active     bool
+	Commercial bool
+	Tic        int
+	MapName    mapdata.MapName
+	Stage      FinaleStage
+	Flat       string
+	Text       string
+	Screen     string
+	WaitTic    int
 }
 
 func StartFinale(current mapdata.MapName, secret bool) (Finale, bool) {
@@ -43,8 +45,51 @@ func StartFinale(current mapdata.MapName, secret bool) (Finale, bool) {
 	}, true
 }
 
+// StartCommercialFinale is called by G_WorldDone after the intermission,
+// retaining the pending next level through the Doom II story screen.
+func StartCommercialFinale(current mapdata.MapName, secret bool) (Finale, bool) {
+	var flat, text string
+	switch current {
+	case "MAP06":
+		flat, text = "SLIME16", c1Text
+	case "MAP11":
+		flat, text = "RROCK14", c2Text
+	case "MAP20":
+		flat, text = "RROCK07", c3Text
+	case "MAP30":
+		flat, text = "RROCK17", c4Text
+	case "MAP15":
+		if secret {
+			flat, text = "RROCK13", c5Text
+		}
+	case "MAP31":
+		if secret {
+			flat, text = "RROCK19", c6Text
+		}
+	}
+	if flat == "" {
+		return Finale{}, false
+	}
+	return Finale{Active: true, Commercial: true, MapName: current,
+		Stage: FinaleStageText, Flat: flat, Text: text, Screen: "BOSSBACK"}, true
+}
+
 func TickFinale(state Finale, skipPressed bool) (Finale, bool) {
 	if !state.Active {
+		return state, false
+	}
+	if state.Commercial {
+		// F_Ticker checks the previous finalecount and any held command
+		// button before incrementing it. Commercial text never times out.
+		if state.Tic > 50 && skipPressed {
+			if state.MapName == "MAP30" {
+				state.Stage = FinaleStageCast
+			} else {
+				state.Tic++
+				return state, true
+			}
+		}
+		state.Tic++
 		return state, false
 	}
 	state.Tic++
@@ -208,3 +253,15 @@ const e4Text = "the spider mastermind must have sent forth\n" +
 	"of demons run amok among our cities.\n" +
 	"\n" +
 	"next stop, hell on earth!"
+
+const c1Text = "YOU HAVE ENTERED DEEPLY INTO THE INFESTED\nSTARPORT. BUT SOMETHING IS WRONG. THE\nMONSTERS HAVE BROUGHT THEIR OWN REALITY\nWITH THEM, AND THE STARPORT'S TECHNOLOGY\nIS BEING SUBVERTED BY THEIR PRESENCE.\n\nAHEAD, YOU SEE AN OUTPOST OF HELL, A\nFORTIFIED ZONE. IF YOU CAN GET PAST IT,\nYOU CAN PENETRATE INTO THE HAUNTED HEART\nOF THE STARBASE AND FIND THE CONTROLLING\nSWITCH WHICH HOLDS EARTH'S POPULATION\nHOSTAGE."
+
+const c2Text = "YOU HAVE WON! YOUR VICTORY HAS ENABLED\nHUMANKIND TO EVACUATE EARTH AND ESCAPE\nTHE NIGHTMARE.  NOW YOU ARE THE ONLY\nHUMAN LEFT ON THE FACE OF THE PLANET.\nCANNIBAL MUTATIONS, CARNIVOROUS ALIENS,\nAND EVIL SPIRITS ARE YOUR ONLY NEIGHBORS.\nYOU SIT BACK AND WAIT FOR DEATH, CONTENT\nTHAT YOU HAVE SAVED YOUR SPECIES.\n\nBUT THEN, EARTH CONTROL BEAMS DOWN A\nMESSAGE FROM SPACE: \"SENSORS HAVE LOCATED\nTHE SOURCE OF THE ALIEN INVASION. IF YOU\nGO THERE, YOU MAY BE ABLE TO BLOCK THEIR\nENTRY.  THE ALIEN BASE IS IN THE HEART OF\nYOUR OWN HOME CITY, NOT FAR FROM THE\nSTARPORT.\" SLOWLY AND PAINFULLY YOU GET\nUP AND RETURN TO THE FRAY."
+
+const c3Text = "YOU ARE AT THE CORRUPT HEART OF THE CITY,\nSURROUNDED BY THE CORPSES OF YOUR ENEMIES.\nYOU SEE NO WAY TO DESTROY THE CREATURES'\nENTRYWAY ON THIS SIDE, SO YOU CLENCH YOUR\nTEETH AND PLUNGE THROUGH IT.\n\nTHERE MUST BE A WAY TO CLOSE IT ON THE\nOTHER SIDE. WHAT DO YOU CARE IF YOU'VE\nGOT TO GO THROUGH HELL TO GET TO IT?"
+
+const c4Text = "THE HORRENDOUS VISAGE OF THE BIGGEST\nDEMON YOU'VE EVER SEEN CRUMBLES BEFORE\nYOU, AFTER YOU PUMP YOUR ROCKETS INTO\nHIS EXPOSED BRAIN. THE MONSTER SHRIVELS\nUP AND DIES, ITS THRASHING LIMBS\nDEVASTATING UNTOLD MILES OF HELL'S\nSURFACE.\n\nYOU'VE DONE IT. THE INVASION IS OVER.\nEARTH IS SAVED. HELL IS A WRECK. YOU\nWONDER WHERE BAD FOLKS WILL GO WHEN THEY\nDIE, NOW. WIPING THE SWEAT FROM YOUR\nFOREHEAD YOU BEGIN THE LONG TREK BACK\nHOME. REBUILDING EARTH OUGHT TO BE A\nLOT MORE FUN THAN RUINING IT WAS.\n"
+
+const c5Text = "CONGRATULATIONS, YOU'VE FOUND THE SECRET\nLEVEL! LOOKS LIKE IT'S BEEN BUILT BY\nHUMANS, RATHER THAN DEMONS. YOU WONDER\nWHO THE INMATES OF THIS CORNER OF HELL\nWILL BE."
+
+const c6Text = "CONGRATULATIONS, YOU'VE FOUND THE\nSUPER SECRET LEVEL!  YOU'D BETTER\nBLAZE THROUGH THIS ONE!\n"

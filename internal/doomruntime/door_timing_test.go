@@ -139,6 +139,42 @@ func TestOpeningDoorPastDestinationRestoresBlockedSnapAndCompletes(t *testing.T)
 	}
 }
 
+func TestClosingDoorRetainsActorHeightClipsAfterBlockedRollback(t *testing.T) {
+	for _, pastdest := range []bool{false, true} {
+		for _, typ := range []doorType{doorNormal, doorClose} {
+			g := &game{m: &mapdata.Map{
+				Sectors: []mapdata.Sector{{FloorHeight: 8, CeilingHeight: 68}},
+				Things:  []mapdata.Thing{{Type: 3006, X: 100}, {Type: 3006, X: -100}},
+			}, thingHP: []int{78, 100}, thingCollected: make([]bool, 2)}
+			g.initPhysics()
+			g.ensureMonsterAIState()
+			g.p.x = 1000 * fracUnit
+			for i := range g.m.Things {
+				g.setThingSupportState(i, 12*fracUnit, 8*fracUnit, 68*fracUnit)
+			}
+			speed, wantZ := int64(8*fracUnit), int64(4*fracUnit)
+			if pastdest {
+				speed, wantZ = 64*fracUnit, -48*fracUnit
+			}
+			d := &doorThinker{sector: 0, typ: typ, direction: -1, speed: speed}
+			g.doors = map[int]*doorThinker{0: d}
+			g.tickDoor(0, d)
+			if g.sectorCeil[0] != 68*fracUnit {
+				t.Fatal("blocked door failed to restore its ceiling")
+			}
+			for i, th := range g.m.Things {
+				z, floor, ceil := g.thingSupportState(i, th)
+				if z != wantZ || floor != 8*fracUnit || ceil != 68*fracUnit {
+					t.Fatalf("pastdest=%v type=%d actor=%d z/floor/ceiling=%d/%d/%d want %d/8/68 units", pastdest, typ, i, z, floor, ceil, wantZ)
+				}
+			}
+			if !pastdest && ((typ == doorNormal && d.direction != 1) || (typ == doorClose && d.direction != -1)) {
+				t.Fatal("blocked door entered the wrong direction")
+			}
+		}
+	}
+}
+
 func TestTickDoors_NormalDoorOpensWaitsThenCloses(t *testing.T) {
 	g := newDoorTimingGame(1)
 	g.sectorCeil[1] = 64 * fracUnit
@@ -278,6 +314,7 @@ func TestTickDoors_BlazeRaiseUsesFourTimesSpeed(t *testing.T) {
 
 func TestTickDoors_NormalDoorReopensWhenPlayerOverlapsDoorwayFromAdjacentSector(t *testing.T) {
 	g := newDoorTimingGame(1)
+	g.initPlayerState()
 	g.p.x = -8 * fracUnit
 	g.p.y = 0
 	g.p.z = 0

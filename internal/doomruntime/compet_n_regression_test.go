@@ -9,6 +9,308 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestLostSoulChargeAimsAtPlayerCorpseHeight(t *testing.T) {
+	for _, dead := range []bool{false, true} {
+		t.Run(fmt.Sprint(dead), func(t *testing.T) {
+			g := &game{m: &mapdata.Map{Things: []mapdata.Thing{{Type: 3006}}},
+				thingHP: []int{9}, thingCollected: []bool{false}, thingDead: []bool{false},
+				thingTargetPlayer: []bool{true}, thingTargetIdx: []int{-1}, isDead: dead,
+				p: player{x: 166110, y: 80708577, z: 8388608}}
+			g.ensureMonsterAIState()
+			g.thingX[0], g.thingY[0] = -4198292, 2196010
+			g.setThingSupportState(0, 11655138, 8388608, 16515072)
+			if !g.startLostSoulCharge(0) {
+				t.Fatal("retained player target must allow the pending charge")
+			}
+			want := int64(-23467)
+			if dead {
+				want = -46029
+			}
+			if g.thingMomZ[0] != want {
+				t.Fatalf("charge momz=%d want=%d (dead=%v)", g.thingMomZ[0], want, dead)
+			}
+		})
+	}
+}
+
+func TestLethalCrusherBloodUsesPlayerCorpseHeight(t *testing.T) {
+	g := &game{m: &mapdata.Map{Sectors: []mapdata.Sector{{FloorHeight: 16, CeilingHeight: 128}}}}
+	g.initPhysics()
+	g.initPlayerState()
+	g.stats.Health, g.playerMobjHealth = 10, 10
+	g.worldTic = 1
+	g.p.z, g.p.floorz = 16*fracUnit, 16*fracUnit
+	g.setSectorCeilingHeightWithCrush(0, 65*fracUnit+3*fracUnit/4, true)
+	if !g.isDead || len(g.hitscanPuffs) != 1 {
+		t.Fatalf("lethal crusher did not spawn blood: dead=%t effects=%d", g.isDead, len(g.hitscanPuffs))
+	}
+	if got, want := g.hitscanPuffs[0].z, g.p.z+7*fracUnit; got != want {
+		t.Fatalf("blood z=%d want corpse center=%d", got, want)
+	}
+}
+
+func TestRuntimeMonstersRemainSolidWithNoMonstersEnabled(t *testing.T) {
+	t.Cleanup(doomrand.Clear)
+	g := newGame(&mapdata.Map{Name: "MAP30",
+		Things:  []mapdata.Thing{{Type: 3005, X: 100, Flags: 7}, {Type: 1}},
+		Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+	}, Options{Width: doomLogicalW, Height: doomLogicalH, SkillLevel: 4, NoMonsters: true})
+	g.p.x = -1000 * fracUnit
+	// A_SpawnFly uses P_SpawnMobj, bypassing the map's -nomonsters filter.
+	other := g.appendRuntimeThing(mapdata.Thing{Type: 3005, X: 65, Flags: 7}, false)
+	g.thingHP[other] = 400
+	mover := g.appendRuntimeThing(mapdata.Thing{Type: 3002, Flags: 7}, false)
+	g.thingHP[mover] = 150
+	if !g.thingActiveInSession(other) || !g.thingBlocksInSession(other) {
+		t.Fatal("brain-spawned monster was filtered from active collision actors")
+	}
+	if g.probeMonsterMove(mover, 3002, 5*fracUnit, 0).ok {
+		t.Fatal("demon moved through a brain-spawned cacodemon")
+	}
+	if g.thingActiveInSession(0) || g.thingBlocksInSession(0) {
+		t.Fatal("original map monster escaped the -nomonsters filter")
+	}
+}
+
+func TestRaisedImpReacquiresTargetWithoutChasingOnRaiseExit(t *testing.T) {
+	t.Cleanup(doomrand.Clear)
+	g := newGame(&mapdata.Map{Name: "MAP20",
+		Things:  []mapdata.Thing{{Type: 3001, X: 100, Flags: 7}, {Type: 1}},
+		Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+	}, Options{Width: doomLogicalW, Height: doomLogicalH, SkillLevel: 4})
+	g.ensureMonsterAIState()
+	g.p.x = -1000 * fracUnit
+	g.thingState[0], g.thingStatePhase[0], g.thingStateTics[0] = monsterStateRaise, 4, 1
+	g.thingAggro[0], g.thingTargetPlayer[0], g.thingTargetIdx[0] = false, false, -1
+	g.thingMoveCount[0], g.thingMoveDir[0], g.thingThreshold[0] = 9, monsterDirSouthWest, 96
+	g.thingLastLook[0] = 0
+	x, y := g.thingPosFixed(0, g.m.Things[0])
+	doomrand.SetState(0, 61)
+	g.tickMonsterRaiseOrHeal(0, g.m.Things[0])
+	if !g.thingTargetPlayer[0] || g.thingThreshold[0] != 0 {
+		t.Fatal("raise-exit A_Chase must reacquire the player and clear its old threshold")
+	}
+	if g.thingMoveCount[0] != 9 || g.thingMoveDir[0] != monsterDirSouthWest {
+		t.Fatalf("raise exit also chased: count=%d dir=%d", g.thingMoveCount[0], g.thingMoveDir[0])
+	}
+	if ax, ay := g.thingPosFixed(0, g.m.Things[0]); ax != x || ay != y {
+		t.Fatal("raise exit moved after reacquiring the player")
+	}
+	if _, prnd := doomrand.State(); prnd != 61 {
+		t.Fatalf("raise-exit direct reacquisition consumed gameplay RNG: %d", prnd)
+	}
+	if g.thingState[0] != monsterStateSee || g.thingStatePhase[0] != 0 || g.thingStateTics[0] != 3 {
+		t.Fatal("raise exit did not preserve the full newly entered RUN1 frame")
+	}
+}
+
+func TestRaisedArachnotronEntersRunBeforeReacquiringTarget(t *testing.T) {
+	for _, visible := range []bool{false, true} {
+		t.Run(fmt.Sprint(visible), func(t *testing.T) {
+			t.Cleanup(doomrand.Clear)
+			g := newGame(&mapdata.Map{Name: "MAP23",
+				Things:  []mapdata.Thing{{Type: 68, X: 100, Flags: 7}, {Type: 1}},
+				Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+			}, Options{Width: doomLogicalW, Height: doomLogicalH, SkillLevel: 4})
+			g.ensureMonsterAIState()
+			g.p.x = -1000 * fracUnit
+			if !visible {
+				g.m.RejectMatrix = &mapdata.RejectMatrix{SectorCount: 1, Data: []byte{1}}
+			}
+			g.sectorSoundTarget = []bool{true}
+			g.thingState[0], g.thingStatePhase[0], g.thingStateTics[0] = monsterStateRaise, 6, 1
+			g.thingDoomState[0] = 666
+			g.thingAggro[0], g.thingTargetPlayer[0], g.thingTargetIdx[0] = false, false, -1
+			g.thingMoveCount[0], g.thingMoveDir[0], g.thingThreshold[0] = 915, monsterDirNoDir, 20
+			doomrand.SetState(0, 61)
+			g.tickMonsterRaiseOrHeal(0, g.m.Things[0])
+			wantState, wantTics := 634, 20
+			if visible {
+				wantState, wantTics = 635, 3
+			}
+			if !g.thingTargetPlayer[0] || g.thingThreshold[0] != 0 || g.thingDoomState[0] != wantState || g.thingStateTics[0] != wantTics {
+				t.Fatalf("raise exit target/threshold/state/tics=%t/%d/%d/%d want player/0/%d/%d", g.thingTargetPlayer[0], g.thingThreshold[0], g.thingDoomState[0], g.thingStateTics[0], wantState, wantTics)
+			}
+			if g.thingMoveCount[0] != 915 || g.thingMoveDir[0] != monsterDirNoDir || g.thingX[0] != 100*fracUnit {
+				t.Fatal("raise exit moved after direct target reacquisition")
+			}
+			if _, prnd := doomrand.State(); prnd != 61 {
+				t.Fatal("raise exit consumed gameplay RNG")
+			}
+		})
+	}
+}
+
+func TestPlayerCorpsePreservesSlidingMomentumAcrossStep(t *testing.T) {
+	for _, dead := range []bool{false, true} {
+		for _, momentum := range []int64{fracUnit, fracUnit / 4} {
+			g := newDoorTimingGame(1)
+			g.initPhysics()
+			g.sectorFloor[1] = 64 * fracUnit
+			g.p.x, g.p.y = -8*fracUnit, 0
+			g.p.z, g.p.floorz, g.p.ceilz = 64*fracUnit, 64*fracUnit, 128*fracUnit
+			g.p.momx, g.p.momy, g.isDead = momentum, -momentum, dead
+			g.xyMovement()
+			want := fixedMul(momentum, friction)
+			if dead && momentum > fracUnit/4 {
+				want = momentum
+			}
+			if g.p.momx != want || g.p.momy != -want {
+				t.Fatalf("dead=%v momentum=%d got=%d,%d want=%d,%d", dead, momentum, g.p.momx, g.p.momy, want, -want)
+			}
+		}
+	}
+}
+
+func TestArchVileSelfDamageDoesNotTickNewPainStateTwice(t *testing.T) {
+	g := &game{m: &mapdata.Map{
+		Things:  []mapdata.Thing{{Type: 64, X: 64}},
+		Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+	}, opts: Options{SkillLevel: 4}, thingHP: []int{700}, thingCollected: []bool{false},
+		thingDead: []bool{false}, thingAggro: []bool{true},
+		sectorFloor: []int64{0}, sectorCeil: []int64{128 * fracUnit},
+		p: player{ceilz: 128 * fracUnit}, stats: playerStats{Health: 1000}, playerMobjHealth: 1000,
+		invulnerable: true}
+	g.initPhysics()
+	g.ensureMonsterAIState()
+	g.thingTargetPlayer[0] = true
+	g.thingTargetIdx[0] = -1
+	g.thingState[0] = monsterStateAttack
+	g.thingStateTics[0] = 1
+	g.thingAttackTics[0] = 94
+	g.thingAttackPhase[0] = 8
+	g.spawnArchVileFire(0)
+	// The same pain roll as MAP14 pa14-043's self-inflicted blast.
+	doomrand.SetState(0, 95)
+	defer doomrand.Clear()
+	g.tickGenericMonsterState(0, g.m.Things[0])
+	if g.thingHP[0] >= 700 || g.thingState[0] != monsterStatePain {
+		t.Fatalf("blast must damage the vile and enter pain: hp=%d state=%d", g.thingHP[0], g.thingState[0])
+	}
+	if g.thingStateTics[0] != 5 || g.thingPainTics[0] != 10 || g.thingStatePhase[0] != 0 {
+		t.Fatalf("new pain state advanced on its entry tic: frame tics=%d remaining=%d phase=%d", g.thingStateTics[0], g.thingPainTics[0], g.thingStatePhase[0])
+	}
+	g.tickGenericMonsterState(0, g.m.Things[0])
+	if g.thingStateTics[0] != 4 || g.thingPainTics[0] != 9 {
+		t.Fatalf("next thinker must advance pain once: frame tics=%d remaining=%d", g.thingStateTics[0], g.thingPainTics[0])
+	}
+}
+
+func TestSkullCollisionResetRunsDemonLookChaseBeforeNormalThinker(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		skill, wantTics, wantSteps int
+	}{
+		{"normal", 4, 1, 1},
+		{"nightmare", 5, 1, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{m: &mapdata.Map{
+				Things:  []mapdata.Thing{{Type: 3002, Angle: 0}},
+				Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+			}, opts: Options{SkillLevel: tc.skill}, thingHP: []int{150},
+				thingCollected: []bool{false}, thingDead: []bool{false}, thingAggro: []bool{true},
+				stats: playerStats{Health: 100}, playerMobjHealth: 100}
+			g.initPhysics()
+			g.ensureMonsterAIState()
+			g.p = player{x: 256 * fracUnit, ceilz: 128 * fracUnit}
+			g.thingTargetPlayer[0] = true
+			g.thingTargetIdx[0] = -1
+			g.thingMoveDir[0] = monsterDirEast
+			g.thingMoveCount[0] = 10
+			g.thingState[0] = monsterStateSee
+			doomrand.Clear()
+			defer doomrand.Clear()
+			// PIT_CheckThing can reset the damaged demon through shared tmthing.
+			// P_SetMobjState(spawnstate) runs A_Look and its nested A_Chase now.
+			g.resetLostSoulCharge(0, 3002)
+			x, _ := g.thingPosFixed(0, g.m.Things[0])
+			if x != 10*fracUnit || g.thingMoveCount[0] != 9 || g.thingStatePhase[0] != 0 {
+				t.Fatalf("reset must run initial chase immediately: x=%d count=%d phase=%d", x, g.thingMoveCount[0], g.thingStatePhase[0])
+			}
+			// A later thinker decrements the installed frame. Nightmare's one-tic
+			// run state enters RUN2 and chases again; normal mode keeps RUN1.
+			g.tickThingThinker(0, g.m.Things[0])
+			x, _ = g.thingPosFixed(0, g.m.Things[0])
+			if x != int64(tc.wantSteps)*10*fracUnit || g.thingMoveCount[0] != 10-tc.wantSteps ||
+				g.thingStatePhase[0] != tc.wantSteps-1 || g.thingStateTics[0] != tc.wantTics {
+				t.Fatalf("normal thinker: x=%d count=%d phase=%d tics=%d", x, g.thingMoveCount[0], g.thingStatePhase[0], g.thingStateTics[0])
+			}
+		})
+	}
+}
+
+func TestEffectSpawningPreservesLiveThinkersBeyond64(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		spawn    func(*game, int64)
+		impacts  bool
+		perSpawn int
+	}{
+		{"puff", func(g *game, x int64) { g.spawnHitscanPuff(x, 0, 32*fracUnit) }, false, 1},
+		{"blood", func(g *game, x int64) { g.spawnHitscanBlood(x, 0, 32*fracUnit, 20) }, false, 1},
+		{"tracer", func(g *game, x int64) { g.spawnTracerSmokeTrail(x, 0, 32*fracUnit, 0, 0) }, false, 2},
+		{"teleport", func(g *game, x int64) { g.spawnTeleportFog(x, 0, 0) }, false, 1},
+		{"impact", func(g *game, x int64) { g.spawnProjectileImpact(projectileRocket, x, 0, 32*fracUnit, 0) }, true, 1},
+		{"deferred-impact", func(g *game, x int64) { g.spawnProjectileImpactDeferredRandom(projectileRocket, x, 0, 32*fracUnit, 0) }, true, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{m: &mapdata.Map{Sectors: []mapdata.Sector{{CeilingHeight: 128}}},
+				sectorFloor: []int64{0}, sectorCeil: []int64{128 * fracUnit}}
+			doomrand.Clear()
+			defer doomrand.Clear()
+			for i := 0; i < 65; i++ {
+				tc.spawn(g, int64(i)*fracUnit)
+			}
+			want := 65 * tc.perSpawn
+			if tc.impacts {
+				if len(g.projectileImpacts) != want || g.projectileImpacts[0].x != 0 || g.projectileImpacts[0].order != 1 {
+					t.Fatalf("live impacts evicted: count=%d want=%d first=%+v", len(g.projectileImpacts), want, g.projectileImpacts[0])
+				}
+			} else if len(g.hitscanPuffs) != want || g.hitscanPuffs[0].x != 0 || g.hitscanPuffs[0].order != 1 {
+				t.Fatalf("live effects evicted: count=%d want=%d first=%+v", len(g.hitscanPuffs), want, g.hitscanPuffs[0])
+			}
+		})
+	}
+}
+
+func TestNewMissileRunsAtItsThinkerOrderBeforeLaterFloor(t *testing.T) {
+	for _, tc := range []struct {
+		name                     string
+		missileOrder, floorOrder int64
+		wantFloor                int64
+	}{
+		{"missile-before-floor", 1, 2, 136 * fracUnit},
+		{"floor-before-missile", 2, 1, 135 * fracUnit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{
+				m:           &mapdata.Map{Sectors: []mapdata.Sector{{FloorHeight: 136, CeilingHeight: 232}}},
+				sectorFloor: []int64{136 * fracUnit}, sectorCeil: []int64{232 * fracUnit},
+				p: player{x: -1024 * fracUnit},
+				floors: map[int]*floorThinker{0: {order: tc.floorOrder, sector: 0,
+					direction: -1, speed: fracUnit, destHeight: 0}},
+				projectiles: []projectile{{order: tc.missileOrder, deferredTick: true,
+					x: 128 * fracUnit, y: 128 * fracUnit, z: 168 * fracUnit,
+					floorz: 136 * fracUnit, ceilz: 232 * fracUnit,
+					vx: fracUnit, radius: 6 * fracUnit, height: 8 * fracUnit,
+					kind: projectileFireball, frameTics: 3, sourceThing: -1}},
+			}
+			g.tickThinkers()
+			if len(g.projectiles) != 1 {
+				t.Fatalf("projectile count=%d want=1", len(g.projectiles))
+			}
+			p := g.projectiles[0]
+			if p.floorz != tc.wantFloor || g.sectorFloor[0] != 135*fracUnit {
+				t.Fatalf("missile floor=%d want=%d; sector floor=%d", p.floorz, tc.wantFloor, g.sectorFloor[0])
+			}
+			if p.x != 129*fracUnit || p.frameTics != 2 || p.deferredTick {
+				t.Fatalf("missile must advance exactly once: x=%d tics=%d deferred=%v", p.x, p.frameTics, p.deferredTick)
+			}
+		})
+	}
+}
+
 func TestSkullCollisionVisitsPlayerInBlockmapOrder(t *testing.T) {
 	for _, tc := range []struct {
 		name                      string
@@ -198,6 +500,48 @@ func TestChargingSkullSlamsDuringSectorHeightClip(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestHeightClipRetainsNestedSkullChaseOpeningAndFloatHeight(t *testing.T) {
+	for _, highFloor := range []int64{65, 80} {
+		t.Run(fmt.Sprint(highFloor), func(t *testing.T) {
+			g := &game{m: &mapdata.Map{
+				Sectors:  []mapdata.Sector{{FloorHeight: 24, CeilingHeight: 200}, {FloorHeight: int16(highFloor), CeilingHeight: 200}},
+				Sidedefs: []mapdata.Sidedef{{Sector: 0}, {Sector: 1}},
+				Things: []mapdata.Thing{{Type: 3006, X: 64, Y: 32, Flags: skillMask},
+					{Type: 30, X: 40, Y: 32, Flags: skillMask}},
+			}, opts: Options{SkillLevel: 3}, stats: playerStats{Health: 100}, playerMobjHealth: 100,
+				thingHP: []int{100, 1000}, thingCollected: []bool{false, false},
+				thingDead: []bool{false, false}, thingAggro: []bool{true, false}}
+			g.initPhysics()
+			g.ensureMonsterAIState()
+			g.p = player{x: 256 * fracUnit, y: 32 * fracUnit, z: 24 * fracUnit, floorz: 24 * fracUnit, ceilz: 200 * fracUnit}
+			g.lines = []physLine{{idx: 0, x1: 80 * fracUnit, y1: 64 * fracUnit,
+				x2: 80 * fracUnit, y2: -64 * fracUnit, dy: -128 * fracUnit,
+				slope: slopeVertical, sideNum0: 0, sideNum1: 1, flags: mlTwoSided,
+				bbox: [4]int64{64 * fracUnit, -64 * fracUnit, 80 * fracUnit, 80 * fracUnit}}}
+			g.sectorSoundTarget = []bool{true, true}
+			g.thingTargetPlayer[0] = true
+			g.thingDoomState[0], g.thingState[0], g.thingStateTics[0] = 590, monsterStateAttack, 4
+			g.thingSkullFly[0] = true
+			g.thingMoveDir[0], g.thingMoveCount[0] = monsterDirEast, 2
+			g.setThingSupportState(0, 48*fracUnit, 24*fracUnit, 200*fracUnit)
+			g.setThingSupportState(1, 24*fracUnit, 24*fracUnit, 200*fracUnit)
+			doomrand.Clear()
+			defer doomrand.Clear()
+			if !g.heightClipThing(0, g.m.Things[0]) {
+				t.Fatal("skull should fit the nested chase opening")
+			}
+			wantX, wantZ := int64(72*fracUnit), int64(48*fracUnit)
+			if highFloor == 80 {
+				wantX, wantZ = 64*fracUnit, 52*fracUnit
+			}
+			z, floor, _ := g.thingSupportState(0, g.m.Things[0])
+			if g.thingX[0] != wantX || z != wantZ || floor != highFloor*fracUnit {
+				t.Fatalf("nested clip x/z/floor=%d/%d/%d want=%d/%d/%d", g.thingX[0], z, floor, wantX, wantZ, highFloor*fracUnit)
+			}
+		})
 	}
 }
 
@@ -1042,6 +1386,37 @@ func TestWalkCrossesAllSpecialsInReverseCollectionOrder(t *testing.T) {
 	}
 	if g.floors[1].order >= g.floors[0].order {
 		t.Fatal("crossed triggers were not activated in reverse collection order")
+	}
+}
+
+func TestProjectileWalkSpecialRequiresDestinationBoxToOverlapLineBounds(t *testing.T) {
+	for _, nearEndpoint := range []bool{false, true} {
+		t.Run(fmt.Sprint(nearEndpoint), func(t *testing.T) {
+			g := &game{
+				m: &mapdata.Map{
+					Linedefs: []mapdata.Linedef{{Special: 88, Tag: 18}},
+					Sectors:  []mapdata.Sector{{Tag: 18, FloorHeight: 128, CeilingHeight: 192}},
+				},
+				lineSpecial: []uint16{88}, sectorFloor: []int64{128 * fracUnit},
+				sectorCeil: []int64{192 * fracUnit}, physForLine: []int{0},
+				lines: []physLine{{idx: 0, x1: 816 * fracUnit, y1: -1056 * fracUnit,
+					x2: 864 * fracUnit, y2: -1104 * fracUnit, dx: 48 * fracUnit,
+					dy: -48 * fracUnit, slope: slopeNegative,
+					bbox: [4]int64{-1056 * fracUnit, -1104 * fracUnit, 864 * fracUnit, 816 * fracUnit}}},
+			}
+			prevX, prevY, curX, curY := int64(58514652), int64(-73089083), int64(56926452), int64(-73491433)
+			if nearEndpoint {
+				prevX -= 24 * fracUnit
+				curX -= 24 * fracUnit
+				prevY += 24 * fracUnit
+				curY += 24 * fracUnit
+			}
+			g.checkProjectileWalkSpecialLines(prevX, prevY, curX, curY,
+				projectile{kind: projectileFatShot, radius: 13 * fracUnit})
+			if got := len(g.plats) != 0; got != nearEndpoint {
+				t.Fatalf("platform activated=%t want=%t", got, nearEndpoint)
+			}
+		})
 	}
 }
 
@@ -1928,5 +2303,44 @@ func TestFloorRaise24AndChangeCopiesSpecialImmediately(t *testing.T) {
 	}
 	if len(g.floors) != 0 || g.m.Sectors[0].Special != 0 {
 		t.Fatal("floor completion restored an already discovered secret")
+	}
+}
+
+func TestDemoCommercialFinaleRetainsPendingMapAndCarryover(t *testing.T) {
+	g := &game{demoIntermissionActive: true, demoTick: 1, weaponAttackDown: true, useButtonDown: true}
+	g.opts.DemoScript = &DemoScript{Tics: make([]DemoTic, 53)}
+	for i := range g.opts.DemoScript.Tics {
+		// WI/F_Ticker receives raw commands. Weapon-change buttons alone
+		// advance commercial text even though they are neither attack nor use.
+		g.opts.DemoScript.Tics[i].Buttons = demoButtonChange
+	}
+	next := &mapdata.Map{Name: "MAP07"}
+	carry := &playerLevelCarryover{}
+	sg := &sessionGame{g: g, current: "MAP06", levelCarryover: carry,
+		intermission: sessionIntermission{nextMap: next, state: intermissionState{
+			Active: true, Commercial: true, Screen: intermissionScreenNoState, Cnt: 1,
+		}}}
+	sg.tickIntermission()
+	if g.demoWorldDone || !g.demoFinaleActive || !g.demoFinaleCommercial || g.demoIntermissionActive ||
+		!sg.finale.Active || sg.finale.Tic != 0 || sg.intermission.state.Active {
+		t.Fatal("G_WorldDone did not start commercial finale on the intermission's last tic")
+	}
+	if sg.intermission.nextMap != next || sg.levelCarryover != carry {
+		t.Fatal("finale discarded pending level or carryover")
+	}
+	for i := 0; i < 52; i++ {
+		if err := g.updateDemoIntermission(g.opts.DemoScript); err != nil {
+			t.Fatal(err)
+		}
+		sg.tickFinale()
+		if g.demoWorldDone != (i == 51) {
+			t.Fatalf("worlddone=%t on finale command %d", g.demoWorldDone, i+1)
+		}
+	}
+	if !g.weaponAttackDown || !g.useButtonDown {
+		t.Fatal("F_Ticker must not update the player button latches")
+	}
+	if sg.intermission.nextMap != next || sg.levelCarryover != carry {
+		t.Fatal("finale completion discarded pending level or carryover")
 	}
 }

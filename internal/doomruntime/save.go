@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 25
+	saveGameVersion     = 26
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 12
+	keyframeVersion     = 13
 	saveGameDirName     = "saves"
 )
 
@@ -181,6 +181,10 @@ type gameSaveState struct {
 	WeaponPSpriteY       int
 	Stats                playerStats
 	WorldTic             int
+	LevelKillsTotal      int
+	LevelItemsTotal      int
+	PlayerKillCount      int
+	PlayerItemCount      int
 	PlayerBlockOrder     int64
 	NextThinkerOrder     int64
 	NextBlockmapOrder    int64
@@ -1288,6 +1292,10 @@ func captureGameSaveState(g *game) gameSaveState {
 		WeaponPSpriteY:       g.weaponPSpriteY,
 		Stats:                g.stats,
 		WorldTic:             g.worldTic,
+		LevelKillsTotal:      g.levelKillsTotal,
+		LevelItemsTotal:      g.levelItemsTotal,
+		PlayerKillCount:      g.playerKillCount,
+		PlayerItemCount:      g.playerItemCount,
 		PlayerBlockOrder:     g.playerBlockOrder,
 		NextThinkerOrder:     g.nextThinkerOrder,
 		NextBlockmapOrder:    g.nextBlockmapOrder,
@@ -1408,6 +1416,10 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.weaponPSpriteY = s.WeaponPSpriteY
 	g.stats = s.Stats
 	g.worldTic = s.WorldTic
+	g.levelKillsTotal = s.LevelKillsTotal
+	g.levelItemsTotal = s.LevelItemsTotal
+	g.playerKillCount = s.PlayerKillCount
+	g.playerItemCount = s.PlayerItemCount
 	g.playerBlockOrder = s.PlayerBlockOrder
 	g.nextThinkerOrder = s.NextThinkerOrder
 	g.nextBlockmapOrder = s.NextBlockmapOrder

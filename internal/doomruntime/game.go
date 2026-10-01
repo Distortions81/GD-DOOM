@@ -691,6 +691,10 @@ type game struct {
 	weaponPSpriteY             int
 	stats                      playerStats
 	worldTic                   int
+	levelKillsTotal            int
+	levelItemsTotal            int
+	playerKillCount            int
+	playerItemCount            int
 	worldTicSample             int
 	spectreFuzzPos             int
 	spectreFuzzCoarseX         int
@@ -890,6 +894,7 @@ type game struct {
 	demoIntermissionSkip          bool
 	demoWorldDone                 bool
 	demoFinaleActive              bool
+	demoFinaleCommercial          bool
 	teleportMoveSerial            uint64
 	demoDoneReported              bool
 	demoBenchStarted              bool
@@ -1070,6 +1075,15 @@ func cycleSourcePortThingRenderMode(v string) string {
 
 func (g *game) playerInvulnerable() bool {
 	return g != nil && (g.invulnerable || g.inventory.InvulnTics > 0)
+}
+
+func (g *game) playerMobjHeight() int64 {
+	if g.isDead {
+		// P_KillMobj quarters the target mobj's height immediately, including
+		// on a tic when a later monster still executes its pending attack.
+		return playerHeight >> 2
+	}
+	return playerHeight
 }
 
 func (g *game) playerPowerupInvulnerabilityVisualActive() bool {
@@ -1444,6 +1458,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 		}
 	}
 	g.applyThingSpawnFiltering()
+	g.initLevelStats()
 	g.initThingCombatState()
 	g.initThingRenderState()
 	g.initSectorLightEffects()
@@ -2865,7 +2880,7 @@ func (g *game) updateDemoIntermission(script *DemoScript) error {
 		_, useHeld, attackHeld := demoTicCommand(tc)
 		g.demoIntermissionSkip = (attackHeld && !g.weaponAttackDown) || (useHeld && !g.useButtonDown)
 		g.weaponAttackDown, g.useButtonDown = attackHeld, useHeld
-	} else {
+	} else if !g.demoFinaleCommercial {
 		g.writeDemoTraceTic(g.demoTick - 1)
 	}
 	return nil
@@ -10420,12 +10435,9 @@ func (g *game) projectileSpriteName(kind projectileKind, tic int) string {
 	return g.projectileSpriteNameForFrame(kind, (tic/4)&1)
 }
 
+// Effects remain linked until their state sequence reaches S_NULL, just like
+// original mobj thinkers. Busy fights must not evict older live effects.
 func (g *game) spawnHitscanPuff(x, y, z int64) {
-	const maxPuffs = 64
-	if len(g.hitscanPuffs) >= maxPuffs {
-		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
-		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
-	}
 	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
 	tics := 4 - (doomrand.PRandom() & 3)
@@ -10498,11 +10510,6 @@ func (g *game) spawnBFGExtra(x, y, z int64) {
 }
 
 func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
-	const maxPuffs = 64
-	if len(g.hitscanPuffs) >= maxPuffs {
-		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
-		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
-	}
 	state := 90
 	z += int64((doomrand.PRandom() - doomrand.PRandom()) << 10)
 	lastLook := doomrand.PRandom() & 3
@@ -10567,11 +10574,6 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 	// position directly, so doing it here as well would consume two extra
 	// P_Random values and desynchronize later thinkers.
 	g.spawnHitscanPuff(x, y, z)
-	const maxPuffs = 64
-	if len(g.hitscanPuffs) >= maxPuffs {
-		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
-		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
-	}
 	lastLook := doomrand.PRandom() & 3
 	tics := 4 - (doomrand.PRandom() & 3)
 	if tics < 1 {
@@ -10603,12 +10605,7 @@ func (g *game) spawnTracerSmokeTrail(x, y, z, momx, momy int64) {
 }
 
 func (g *game) spawnTeleportFog(x, y, z int64) {
-	const maxPuffs = 64
 	const teleportFogFrameTics = 6
-	if len(g.hitscanPuffs) >= maxPuffs {
-		copy(g.hitscanPuffs, g.hitscanPuffs[1:])
-		g.hitscanPuffs = g.hitscanPuffs[:maxPuffs-1]
-	}
 	lastLook := doomrand.PRandom() & 3
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
 	if !ok && g != nil && g.m != nil {
@@ -10770,25 +10767,29 @@ func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 			}
 		}
 	}
-	p.z += p.momz
-	if p.z <= p.floorz {
-		if p.momz < 0 {
-			p.momz = 0
+	// P_MobjThinker skips Z movement for stationary effects on their floor,
+	// even when a closed sector leaves less room than their height.
+	if p.z != p.floorz || p.momz != 0 {
+		p.z += p.momz
+		if p.z <= p.floorz {
+			if p.momz < 0 {
+				p.momz = 0
+			}
+			p.z = p.floorz
+		} else if p.kind == hitscanFxBlood {
+			if p.momz == 0 {
+				p.momz = -2 * fracUnit
+			} else {
+				p.momz -= fracUnit
+			}
 		}
-		p.z = p.floorz
-	} else if p.kind == hitscanFxBlood {
-		if p.momz == 0 {
-			p.momz = -2 * fracUnit
-		} else {
-			p.momz -= fracUnit
+		const hitscanEffectHeight = 16 * fracUnit
+		if p.z+hitscanEffectHeight > p.ceilz {
+			if p.momz > 0 {
+				p.momz = 0
+			}
+			p.z = p.ceilz - hitscanEffectHeight
 		}
-	}
-	const hitscanEffectHeight = 16 * fracUnit
-	if p.z+hitscanEffectHeight > p.ceilz {
-		if p.momz > 0 {
-			p.momz = 0
-		}
-		p.z = p.ceilz - hitscanEffectHeight
 	}
 	p.tics--
 	if p.kind == hitscanFxPuff && p.tics <= 0 {

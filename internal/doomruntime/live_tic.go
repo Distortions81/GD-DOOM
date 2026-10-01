@@ -79,9 +79,11 @@ func (g *game) stepGameplayFromDemoTic(tc DemoTic) {
 	if g.playerReborn {
 		g.respawnDemoPlayer()
 	}
+	wasDead := g.isDead
 	g.runGameplayTic(cmd, usePressed, fireHeld)
-	if g.isDead && usePressed {
-		// P_DeathThink turns BT_USE into PST_REBORN. G_Ticker performs the
+	if wasDead && g.isDead && usePressed {
+		// P_DeathThink runs only when already dead at the start of player think.
+		// It turns BT_USE into PST_REBORN. G_Ticker performs the
 		// actual G_DoReborn on the following tic without restarting the map.
 		g.playerReborn = true
 	}

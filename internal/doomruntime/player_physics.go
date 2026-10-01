@@ -222,9 +222,8 @@ func (g *game) nextWorldThinkerAfter(lastOrder int64) (worldThinkerRef, bool) {
 		consider(worldThinkerDoor, -1-i, d.order)
 	}
 	for i := range g.projectiles {
-		if g.projectiles[i].deferredTick {
-			continue
-		}
+		// P_RunThinkers also visits missiles appended during this tic, at
+		// their spawn order relative to newly created sector movers.
 		consider(worldThinkerProjectile, i, g.projectiles[i].order)
 	}
 	for i := range g.projectileImpacts {
@@ -501,14 +500,13 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			g.emitDoorSectorSound(sec, doorMoveEvent(d.typ, d.direction))
 		}
 	case -1:
+		oldCeil := g.sectorCeil[sec]
 		next := g.sectorCeil[sec] - d.speed
 		if next < g.sectorFloor[sec] {
 			// T_MovePlane reaches pastdest only after stepping past the floor.
 			// A blocked final step still completes the door's state transition.
-			if g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], g.sectorFloor[sec]) {
-				g.setDoorCeiling(sec, g.sectorCeil[sec])
-			} else {
-				g.setDoorCeiling(sec, g.sectorFloor[sec])
+			if g.setSectorCeilingHeightWithCrush(sec, g.sectorFloor[sec], false) {
+				g.setDoorCeiling(sec, oldCeil)
 			}
 			switch d.typ {
 			case doorBlazeRaise, doorBlazeClose:
@@ -524,8 +522,10 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 		// P_ChangeSector reports any blocked mobj, not only the player. A door
 		// must reverse (or keep retrying for close-only types) when a monster
 		// occupies its closing space too.
-		if g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], next) {
-			g.setDoorCeiling(sec, g.sectorCeil[sec])
+		// T_MovePlane clips every affected actor before restoring a blocked
+		// ceiling. Restoring the plane preserves those actor height changes.
+		if g.setSectorCeilingHeightWithCrush(sec, next, false) {
+			g.setDoorCeiling(sec, oldCeil)
 			switch d.typ {
 			case doorBlazeClose, doorClose:
 				// Vanilla close-only doors keep trying to close, but do not
@@ -536,7 +536,6 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			}
 			return
 		}
-		g.setDoorCeiling(sec, next)
 	case 1:
 		next := g.sectorCeil[sec] + d.speed
 		if next > d.topHeight {
@@ -721,6 +720,14 @@ func (g *game) xyMovement() {
 
 	if g.p.z > g.p.floorz {
 		return
+	}
+	// P_XYMovement keeps a corpse sliding while its cached support floor
+	// differs from its own subsector floor, including the player's death tic.
+	if g.isDead && (abs(g.p.momx) > fracUnit/4 || abs(g.p.momy) > fracUnit/4) {
+		sec := g.sectorAt(g.p.x, g.p.y)
+		if sec >= 0 && sec < len(g.sectorFloor) && g.p.floorz != g.sectorFloor[sec] {
+			return
+		}
 	}
 
 	if g.p.momx > -stopSpeed && g.p.momx < stopSpeed &&

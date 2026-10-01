@@ -288,8 +288,8 @@ func (g *game) resolveBossCube(cube bossSpawnCube) {
 		X:    int16(tx >> fracBits),
 		Y:    int16(ty >> fracBits),
 		Type: typ,
-		// This direct P_SpawnMobj result is already active. Give its synthetic
-		// map record every skill bit so session queries retain it.
+		// Keep synthetic map flags separate from the zero spawnpoint that
+		// identifies this direct P_SpawnMobj creation for session queries.
 		Flags: skillMask,
 	}, false)
 	if idx < 0 {

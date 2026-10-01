@@ -807,6 +807,10 @@ func (g *game) tickThingThinker(i int, th mapdata.Thing) {
 // State-entry actions can run outside P_MobjThinker, without movement or a
 // second countdown decrement (for example A_SpawnFly's initial A_Chase).
 func (g *game) tickGenericMonsterState(i int, th mapdata.Thing) {
+	g.tickGenericMonsterStateWithAttackReacquire(i, th, true)
+}
+
+func (g *game) tickGenericMonsterStateWithAttackReacquire(i int, th mapdata.Thing, allowAttackReacquire bool) {
 	tx, ty := g.thingPosFixed(i, th)
 	targetX, targetY := int64(0), int64(0)
 	dist := int64(0)
@@ -822,6 +826,13 @@ func (g *game) tickGenericMonsterState(i int, th mapdata.Thing) {
 	}
 	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 		if g.tickMonsterAttackState(i, th.Type, tx, ty, targetX, targetY, dist) {
+			return
+		}
+		// An attack action can damage its own actor and replace the attack
+		// with pain or death (A_VileAttack's radius damage does this). The
+		// nested P_SetMobjState has already installed the new state; its
+		// countdown must wait until the next thinker call.
+		if g.thingState[i] != monsterStateAttack && g.thingState[i] != monsterStateSee && g.thingState[i] != monsterStateSpawn {
 			return
 		}
 		// Stateful Doom attacks transition into their run state and execute its
@@ -875,7 +886,7 @@ func (g *game) tickGenericMonsterState(i int, th mapdata.Thing) {
 
 	ranStateEntryAction := false
 	if resumedFromPain || resumedFromAttack {
-		if stop, ranChase := g.runMonsterIdleOrChaseEntryAction(i, th.Type, tx, ty, resumedFromAttack); stop {
+		if stop, ranChase := g.runMonsterIdleOrChaseEntryAction(i, th.Type, tx, ty, resumedFromAttack && allowAttackReacquire); stop {
 			return
 		} else if ranChase {
 			ranStateEntryAction = true
@@ -1379,10 +1390,10 @@ func (g *game) monsterTargetPos(i int) (x, y, z, height, radius int64, ok bool) 
 		if !g.monsterTargetAlive() {
 			return 0, 0, 0, 0, 0, false
 		}
-		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
-		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	targetIdx, ok := g.monsterTargetThingIdx(i)
 	if !ok {
@@ -1404,10 +1415,10 @@ func (g *game) monsterAttackTargetPos(i int) (x, y, z, height, radius int64, ok 
 		if !g.monsterTargetAlive() {
 			return 0, 0, 0, 0, 0, false
 		}
-		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	if i < len(g.thingTargetPlayer) && g.thingTargetPlayer[i] {
-		return g.p.x, g.p.y, g.p.z, playerHeight, playerRadius, true
+		return g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), playerRadius, true
 	}
 	return g.monsterTargetPos(i)
 }
@@ -2478,16 +2489,15 @@ func (g *game) resetLostSoulCharge(i int, typ int16) {
 		tx, ty = g.thingPosFixed(i, g.m.Things[i])
 	}
 	if g.monsterRunLookState(i, typ, tx, ty) {
-		if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
-			g.thingStateTics[i]--
-		}
+		// P_SetMobjState(spawnstate) executes A_Look, whose nested see-state
+		// entry executes A_Chase immediately. The newly installed countdown
+		// is decremented later by the actor's ordinary P_MobjThinker, which
+		// can enter another chase frame in this same tic in fast mode.
 		if i < len(g.thingResumeChaseNow) {
 			g.thingResumeChaseNow[i] = true
 		}
+		g.tickGenericMonsterState(i, g.m.Things[i])
 		return
-	}
-	if i < len(g.thingStateTics) && g.thingStateTics[i] > 0 {
-		g.thingStateTics[i]--
 	}
 }
 
@@ -5255,7 +5265,9 @@ func (g *game) probeMonsterMove(i int, typ int16, x, y int64) (result monsterMov
 		g.debugMonsterMove(i, fmt.Sprintf("probe to=(%d,%d) checkpos=%v floor=%d ceil=%d drop=%d", x, y, checkPosOK, tmfloor, tmceil, tmdrop))
 	}
 	if !checkPosOK {
-		return monsterMoveProbeResult{probeLines: probeLines}
+		// A rejected P_CheckPosition still leaves its partial opening in
+		// the shared globals used by an enclosing height clip or skull slam.
+		return monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmdrop, probeLines: probeLines}
 	}
 	height := g.thingCurrentHeight(i, g.m.Things[i])
 	z, _, _ := g.thingSupportState(i, g.m.Things[i])

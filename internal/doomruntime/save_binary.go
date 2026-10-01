@@ -607,7 +607,7 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	if err := w.hitscanPuffSlice(v.HitscanPuffs); err != nil {
 		return err
 	}
-	for _, n := range []int{v.CheatLevel, v.WeaponState, v.WeaponStateTics, v.WeaponFlashState, v.WeaponFlashTics, v.WeaponPSpriteY, v.WorldTic, v.SecretsFound, v.SecretsTotal, v.PlayerMobjHealth, v.DamageFlashTic, v.BonusFlashTic} {
+	for _, n := range []int{v.CheatLevel, v.WeaponState, v.WeaponStateTics, v.WeaponFlashState, v.WeaponFlashTics, v.WeaponPSpriteY, v.WorldTic, v.LevelKillsTotal, v.LevelItemsTotal, v.PlayerKillCount, v.PlayerItemCount, v.SecretsFound, v.SecretsTotal, v.PlayerMobjHealth, v.DamageFlashTic, v.BonusFlashTic} {
 		if err := w.int(n); err != nil {
 			return err
 		}
@@ -1815,7 +1815,7 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	if v.HitscanPuffs, err = readSlice(r, r.hitscanPuff); err != nil {
 		return v, err
 	}
-	for _, dst := range []*int{&v.CheatLevel, &v.WeaponState, &v.WeaponStateTics, &v.WeaponFlashState, &v.WeaponFlashTics, &v.WeaponPSpriteY, &v.WorldTic, &v.SecretsFound, &v.SecretsTotal, &v.PlayerMobjHealth, &v.DamageFlashTic, &v.BonusFlashTic} {
+	for _, dst := range []*int{&v.CheatLevel, &v.WeaponState, &v.WeaponStateTics, &v.WeaponFlashState, &v.WeaponFlashTics, &v.WeaponPSpriteY, &v.WorldTic, &v.LevelKillsTotal, &v.LevelItemsTotal, &v.PlayerKillCount, &v.PlayerItemCount, &v.SecretsFound, &v.SecretsTotal, &v.PlayerMobjHealth, &v.DamageFlashTic, &v.BonusFlashTic} {
 		if *dst, err = r.int(); err != nil {
 			return v, err
 		}

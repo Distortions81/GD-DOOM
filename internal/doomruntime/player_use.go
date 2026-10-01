@@ -486,6 +486,12 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 		// a line while the body never touches it, which must not activate W1/WR
 		// specials.
 		destBox := [4]int64{curY + radius, curY - radius, curX + radius, curX - radius}
+		// PIT_CheckLine rejects a destination box beyond either endpoint
+		// before testing which side it spans. A swept box can touch a line
+		// whose infinite extension is crossed after the actor passes its end.
+		if destBox[2] <= ld.bbox[3] || destBox[3] >= ld.bbox[2] || destBox[0] <= ld.bbox[1] || destBox[1] >= ld.bbox[0] {
+			return false
+		}
 		if g.boxOnLineSide(destBox, ld) != -1 {
 			return false
 		}

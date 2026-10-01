@@ -205,6 +205,9 @@ func (sg *sessionGame) tickIntermission() bool {
 			sg.intermission.state.Accelerate = true
 		}
 		finished := sg.tickIntermissionAdvance(false)
+		if finished && sg.startCommercialFinale() {
+			finished = false
+		}
 		sg.g.demoWorldDone = finished
 		sg.g.writeDemoTraceTic(sg.g.demoTick - 1)
 		return false
@@ -460,7 +463,34 @@ func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) 
 	return true
 }
 
+func (sg *sessionGame) startCommercialFinale() bool {
+	state, ok := sessionflow.StartCommercialFinale(sg.current, sg.g != nil && sg.g.secretLevelExit)
+	if !ok {
+		return false
+	}
+	// Carryover and the intermission's nextMap are still needed when the
+	// commercial finale queues G_DoWorldDone on a later command tic.
+	sg.intermission.state.Active = false
+	sg.finale = state
+	if sg.g != nil {
+		sg.g.demoFinaleActive = sg.g.opts.DemoScript != nil
+		sg.g.demoFinaleCommercial = sg.g.demoFinaleActive
+		sg.g.demoIntermissionActive = false
+	}
+	return true
+}
+
 func (sg *sessionGame) tickFinale() bool {
+	if sg.g != nil && sg.g.demoFinaleCommercial {
+		g := sg.g
+		buttons := byte(0)
+		if script := g.opts.DemoScript; script != nil && g.demoTick > 0 && g.demoTick <= len(script.Tics) {
+			buttons = script.Tics[g.demoTick-1].Buttons
+		}
+		g.demoWorldDone = sg.tickFinaleAdvance(buttons != 0)
+		g.writeDemoTraceTic(g.demoTick - 1)
+		return false
+	}
 	return sg.tickFinaleAdvance(sg.anyIntermissionSkipInput())
 }
 
@@ -511,6 +541,7 @@ func (sg *sessionGame) finishIntermission() {
 	sg.announceMapMusic(im.nextMap.Name)
 	ebiten.SetWindowTitle(runtimehost.WindowTitle(im.nextMap.Name))
 	sg.intermission = sessionIntermission{}
+	sg.finale = sessionFinale{}
 }
 
 func (sg *sessionGame) drawIntermission(screen *ebiten.Image) {
@@ -1030,32 +1061,15 @@ func collectIntermissionStats(g *game, mapName, nextName mapdata.MapName) interm
 	if g == nil || g.m == nil {
 		return out
 	}
-	for i, th := range g.m.Things {
-		if !thingSpawnsInSession(th, g.opts.SkillLevel, g.opts.GameMode, g.opts.ShowNoSkillItems, g.opts.ShowAllItems, g.opts.NoMonsters) {
-			continue
-		}
-		if isMonster(th.Type) {
-			out.KillsTotal++
-			if i >= 0 && i < len(g.thingHP) && g.thingHP[i] <= 0 {
-				out.KillsFound++
-			}
-			continue
-		}
-		if isPickupType(th.Type) {
-			out.ItemsTotal++
-			if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
-				out.ItemsFound++
-			}
-		}
-	}
+	out.KillsTotal = g.levelKillsTotal
+	out.ItemsTotal = g.levelItemsTotal
+	out.KillsFound = g.playerKillCount
+	out.ItemsFound = g.playerItemCount
 	out.SecretsTotal = g.secretsTotal
 	if out.SecretsTotal <= 0 {
 		out.SecretsTotal = 1
 	}
 	out.SecretsFound = g.secretsFound
-	if out.SecretsFound > out.SecretsTotal {
-		out.SecretsFound = out.SecretsTotal
-	}
 	out.KillsPct = intermissionPercent(out.KillsFound, max(out.KillsTotal, 1))
 	out.ItemsPct = intermissionPercent(out.ItemsFound, max(out.ItemsTotal, 1))
 	out.SecretsPct = intermissionPercent(out.SecretsFound, out.SecretsTotal)
@@ -1066,9 +1080,6 @@ func collectIntermissionStats(g *game, mapName, nextName mapdata.MapName) interm
 func intermissionPercent(n, d int) int {
 	if d <= 0 || n <= 0 {
 		return 0
-	}
-	if n >= d {
-		return 100
 	}
 	return (n * 100) / d
 }

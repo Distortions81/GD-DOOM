@@ -145,11 +145,19 @@ func (g *game) tickMonsterRaiseOrHeal(i int, th mapdata.Thing) {
 		return
 	}
 	if monsterUsesExactDoomStateMachine(th.Type) {
-		g.setExactDoomMonsterState(i, th.Type, monsterDoomSeeState(th.Type))
+		state := monsterDoomSeeState(th.Type)
+		if th.Type == 68 {
+			// S_BSPI_RAISE7 enters RUN1, whose A_BabyMetal calls A_Chase.
+			// The sight delay belongs to A_Look after target reacquisition.
+			state = 635
+		}
+		g.setExactDoomMonsterState(i, th.Type, state)
 		return
 	}
 	g.thingState[i], g.thingStatePhase[i] = monsterStateSee, 0
 	g.thingStateTics[i] = g.monsterSeeStateTicsForPhase(i, th.Type)
 	g.thingResumeChaseNow[i] = true
-	g.tickGenericMonsterState(i, th)
+	// A raise frame enters RUN1 with its target cleared. A_Chase's direct
+	// P_LookForPlayers reacquisition returns without an attack/chase retry.
+	g.tickGenericMonsterStateWithAttackReacquire(i, th, false)
 }

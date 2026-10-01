@@ -5,11 +5,14 @@ import gzip
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 import demo_trace_compare_all as runner
+import demo_trace_trim as trimmer
 import fetch_compet_n as corpus
 
 
@@ -26,6 +29,76 @@ def demo_zip(member, data):
 
 
 class CorpusTests(unittest.TestCase):
+    def test_batch_schedules_manifest_priority_and_filters_without_resorting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wad = root / "DOOM2.WAD"
+            wad.write_bytes(b"test wad")
+            tools = [root / name for name in ["harness", "comparator", "trimmer"]]
+            for tool in tools:
+                tool.write_bytes(b"test tool")
+            entries = []
+            for name in ["z-priority", "a-later", "m-last"]:
+                demo = root / (name + ".lmp")
+                demo.write_bytes(demo_bytes())
+                entries.append({"path": demo.name, "wad": wad.name,
+                                "sha256": runner.sha256(demo)})
+            manifest = root / "manifest.json"
+            manifest.write_text(json.dumps({"demos": entries}))
+            for filters, expected in [([], ["z-priority", "a-later", "m-last"]),
+                                      (["--demo", "m-last", "--demo", "z-priority"],
+                                       ["z-priority", "m-last"])]:
+                scheduled = []
+                with self.subTest(filters=filters), \
+                        mock.patch.object(runner, "ROOT", root), \
+                        mock.patch.object(runner.subprocess, "run"), \
+                        mock.patch.object(runner, "pinned_replay_tools", return_value=tools), \
+                        mock.patch.object(runner, "ThreadPoolExecutor") as executor, \
+                        mock.patch.object(runner.sys, "argv", ["runner", "--manifest", str(manifest),
+                            "--gd-bin", str(tools[0]), "--ref-bin", str(tools[0]),
+                            "--out-root", str(root / "out"), *filters]):
+                    def capture_queue(compare, demos):
+                        scheduled.extend(demo.stem for demo in demos)
+                        return []
+                    executor.return_value.__enter__.return_value.map.side_effect = capture_queue
+                    self.assertEqual(runner.main(), 0)
+                self.assertEqual(scheduled, expected)
+
+    def test_in_place_trim_preserves_legacy_comparison_prefix(self):
+        meta = b'{"kind":"meta"}\n'
+        alive = b'{"kind":"tic","player":{"playerstate":0}}\n'
+        other = b'{"kind":"tic","player":{"playerstate":10}}\n'
+        dead = b'{"kind":"tic","player":{"playerstate":1,"health":0}}\n'
+        for contents in [meta + alive * 4, meta + alive + dead + alive * 10000 + dead,
+                         meta + other + dead, meta + b'{"kind":"meta","player":{"playerstate":1}}\n' + alive]:
+            for max_tics in [0, 1, 3, 10001]:
+                with self.subTest(size=len(contents), max_tics=max_tics), tempfile.TemporaryDirectory() as directory:
+                    trace = Path(directory) / "trace.jsonl"
+                    trace.write_bytes(contents)
+                    inode = trace.stat().st_ino
+                    if max_tics:
+                        program = f'{{ if ($0 ~ /"kind":"tic"/ && ++n > {max_tics}) exit; print }}'
+                    else:
+                        program = r'{ print; if ($0 ~ /"kind":"tic"/ && $0 ~ /"player":\{"playerstate":1([,}])/) exit }'
+                    expected = subprocess.run(["awk", program], input=contents,
+                                              stdout=subprocess.PIPE, check=True).stdout
+                    trimmer.trim(trace, max_tics)
+                    self.assertEqual(trace.read_bytes(), expected)
+                    self.assertEqual(trace.stat().st_ino, inode)
+                    trimmer.trim(trace, max_tics)
+                    self.assertEqual(trace.read_bytes(), expected)
+
+    def test_batch_pins_in_place_trimmer_and_valid_shell(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory) / ".tmp"
+            tools.mkdir()
+            (tools / "demotracecmp").write_bytes(b"test comparator")
+            harness, comparator, trim = runner.pinned_replay_tools(tools)
+            self.assertIn(trim.name, harness.read_text())
+            self.assertIn(comparator.name, harness.read_text())
+            self.assertEqual(trim.read_bytes(), (runner.ROOT / "scripts/demo_trace_trim.py").read_bytes())
+            subprocess.run(["bash", "-n", str(harness)], check=True)
+
     def test_batch_tool_snapshot_survives_source_edits(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

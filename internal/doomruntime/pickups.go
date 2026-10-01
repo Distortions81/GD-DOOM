@@ -206,6 +206,9 @@ func (g *game) processThingPickupAtIndex(i int, th mapdata.Thing, px, py, pz, pr
 		return false
 	}
 	g.thingCollected[i] = true
+	if thingCountsItem(th.Type) {
+		g.playerItemCount++
+	}
 	g.setHUDMessage(msg, 45)
 	g.emitSoundEvent(ev)
 	g.bonusFlashTic = max(g.bonusFlashTic, 6)

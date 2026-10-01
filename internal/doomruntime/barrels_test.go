@@ -82,6 +82,38 @@ func TestInitThingCombatStateInitializesBarrelHealthAndState(t *testing.T) {
 	}
 }
 
+func TestCrushedExplodingBarrelKeepsTerminalGibsState(t *testing.T) {
+	t.Cleanup(doomrand.Clear)
+	g := &game{
+		m: &mapdata.Map{
+			Things:  []mapdata.Thing{{Type: barrelThingType}},
+			Sectors: []mapdata.Sector{{CeilingHeight: 8}},
+		},
+		thingCollected: []bool{false},
+		thingDead:      []bool{false},
+		thingHP:        []int{20},
+		thingGibbed:    []bool{false},
+	}
+	g.initPhysics()
+	g.ensureMonsterAIState()
+	g.thingDead[0], g.thingHP[0] = true, -55
+	g.thingState[0], g.thingStatePhase[0], g.thingStateTics[0] = monsterStateDeath, 3, 1
+	g.setThingSupportState(0, 0, 0, 8*fracUnit)
+	if !g.heightClipThing(0, g.m.Things[0]) || !g.thingGibbed[0] {
+		t.Fatal("crusher did not replace the barrel explosion with gibs")
+	}
+	doomrand.Clear()
+	for tic := 0; tic < 30; tic++ {
+		g.tickBarrel(0, g.m.Things[0])
+	}
+	if g.thingCollected[0] || g.thingState[0] != monsterStateGibs || g.thingStateTics[0] != -1 {
+		t.Fatalf("crushed barrel collected=%t state=%v tics=%d; want persistent terminal gibs", g.thingCollected[0], g.thingState[0], g.thingStateTics[0])
+	}
+	if _, prnd := doomrand.State(); prnd != 0 {
+		t.Fatalf("crushed barrel resumed its explosion, RNG=%d", prnd)
+	}
+}
+
 func TestLineAttackTargetsBarrelAsShootableThing(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{

@@ -168,6 +168,11 @@ func (g *game) tickBarrelDeathState(i int, th mapdata.Thing) {
 	if i >= len(g.thingStatePhase) || i >= len(g.thingStateTics) {
 		return
 	}
+	// A crusher replaces the explosion with S_GIBS. P_MobjThinker
+	// leaves any state with tics=-1 in place instead of advancing it.
+	if g.thingStateTics[i] == -1 {
+		return
+	}
 	if g.thingStateTics[i] > 0 {
 		g.thingStateTics[i]--
 	}

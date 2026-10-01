@@ -305,58 +305,6 @@ func (g *game) setSectorFloorHeightWithCrush(sec int, z int64, crush bool) bool 
 	return g.heightClipAroundSectorWithCrush(sec, oldPlayerFloor, crush)
 }
 
-func (g *game) sectorMoveWouldBlockLiveActor(sec int, newFloor, newCeil int64) bool {
-	if g == nil || g.m == nil || sec < 0 || sec >= len(g.sectorFloor) || sec >= len(g.sectorCeil) {
-		return false
-	}
-	oldFloor := g.sectorFloor[sec]
-	oldCeil := g.sectorCeil[sec]
-	oldPlayerZ := g.p.z
-	oldPlayerFloor := g.p.floorz
-	oldPlayerCeil := g.p.ceilz
-	g.sectorFloor[sec] = newFloor
-	g.sectorCeil[sec] = newCeil
-	defer func() {
-		g.sectorFloor[sec] = oldFloor
-		g.sectorCeil[sec] = oldCeil
-		g.p.z = oldPlayerZ
-		g.p.floorz = oldPlayerFloor
-		g.p.ceilz = oldPlayerCeil
-	}()
-
-	if g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius) && !g.heightClipPlayer(oldPlayerFloor) {
-		return true
-	}
-	for i, th := range g.m.Things {
-		if i >= 0 && i < len(g.thingCollected) && g.thingCollected[i] {
-			continue
-		}
-		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
-			continue
-		}
-		if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
-			continue
-		}
-		if !thingTypeIsShootable(th.Type) || !g.thingTouchesSector(sec, i, th) {
-			continue
-		}
-		oldZ, oldThingFloor, oldThingCeil := g.thingSupportState(i, th)
-		oldValid := i >= 0 && i < len(g.thingSupportValid) && g.thingSupportValid[i]
-		if !g.heightClipThing(i, th) {
-			g.setThingSupportState(i, oldZ, oldThingFloor, oldThingCeil)
-			if i >= 0 && i < len(g.thingSupportValid) {
-				g.thingSupportValid[i] = oldValid
-			}
-			return true
-		}
-		g.setThingSupportState(i, oldZ, oldThingFloor, oldThingCeil)
-		if i >= 0 && i < len(g.thingSupportValid) {
-			g.thingSupportValid[i] = oldValid
-		}
-	}
-	return false
-}
-
 func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	g.setSectorCeilingHeightWithCrush(sec, z, false)
 }
@@ -429,7 +377,9 @@ func (g *game) heightClipAroundSectorWithCrush(sec int, oldPlayerFloor int64, cr
 			nofit = true
 			if damagePulse {
 				g.damagePlayer(10, "Crushed")
-				g.spawnCrusherBlood(g.p.x, g.p.y, g.p.z+playerHeight/2)
+				// PIT_ChangeSector reads height after P_DamageMobj, which
+				// quarters the player mobj immediately on a lethal hit.
+				g.spawnCrusherBlood(g.p.x, g.p.y, g.p.z+g.playerMobjHeight()/2)
 			}
 		}
 	}
@@ -656,7 +606,12 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 			if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorFloor) && sec < len(g.sectorCeil) {
 				tmfloor, tmceil = g.sectorFloor[sec], g.sectorCeil[sec]
 			}
+			// A slam may synchronously enter A_Look/A_Chase and move this
+			// actor. P_ThingHeightClip then uses the opening left by that
+			// nested P_TryMove, even when the nested move only floats upward.
+			g.monsterMoveProbeScratch = monsterMoveProbeResult{tmfloor: tmfloor, tmceil: tmceil, tmdrop: tmfloor}
 			g.hitSkullFlyTarget(i, th.Type, probe.target)
+			tmfloor, tmceil = g.monsterMoveProbeScratch.tmfloor, g.monsterMoveProbeScratch.tmceil
 			slammed = true
 		}
 	}
@@ -664,7 +619,10 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 		tmfloor, tmceil, _, _ = g.checkPositionForActor(x, y, radius, true, i, true)
 	}
 	z := oldZ
-	if z == oldFloorZ {
+	if slammed {
+		z, _, _ = g.thingSupportState(i, th)
+	}
+	if oldZ == oldFloorZ {
 		z = tmfloor
 	} else {
 		height := g.thingCurrentHeight(i, th)

@@ -1,5 +1,7 @@
 # Large original-game demo corpus
 
+See the [documented exclusions](COMPET-N-exclusions.md) for confirmed original-engine glitches and crashes outside the fix scope.
+
 The [COMPET-N public archive](https://compet-n.gamers.org/public/compet-n/)
 provides a complete [2019-01-21 snapshot ZIP](https://compet-n.gamers.org/public/compet-n/compet-n_2019-01-21.zip).
 Downloaded and inspected on 2026-09-30, it is 165,741,921 bytes (158 MiB).
@@ -81,10 +83,10 @@ Corpus tooling checks:
 python3 -B scripts/test_demo_corpus.py
 ```
 
-## Verification — 2026-09-30
+## Verification — 2026-10-01
 
 The initial quick sweep found 31 matches, 35 state mismatches, and two replay
-errors. The latest complete quick sweep is `tmp/compet-n-continue-smoke-v60/summary.json`.
+errors. The latest complete quick sweep is `tmp/compet-n-continue-smoke-v96/summary.json`.
 Together with the newer targeted replays recorded in
 [COMPET-N-results.json](COMPET-N-results.json), the quick selection now has
 **68 strict matches and 0 state mismatches**, with no replay errors.
@@ -100,19 +102,19 @@ These are results for particular recordings, not a count of independent bugs.
 The complete 4,634-recording manifest has not been swept. The two selections
 cover 136 distinct recordings, plus a separately retained reference crash.
 Coverage also includes completed recordings from the new UV and Nightmare batches:
-**1223 recordings have completed attempts**, with
-**3,411 without completed attempts**. The most recent completed combat phase
+**3502 recordings have completed attempts**, with
+**1,132 without completed attempts**. The most recent completed combat phase
 plus targeted follow-ups has **67 strict matches and 1 state mismatch**. Across the latest
 quick results and that combat phase, **135 pass and 1 fail**.
 Binary hashes and per-recording follow-up provenance distinguish the phases;
 the combat phase can precede later quick-set fixes.
 
 The original repository suite passes **25/25**, totaling **69,398 compared tics**,
-in `tmp/compet-n-continue-repository-v75/summary.json`. This completed v75 replay uses the updated dependencies.
+in `tmp/compet-n-continue-repository-v96/summary.json`. This completed replay uses the updated dependencies.
 The complete Go suite passes after the
 latest source corrections and the dependency updates integrated from `d5ca1ac`;
-all five Python corpus checks pass. This checkpoint adds tagged-door, teleport-order and slide-origin corrections
-on top of `3d6bb39`.
+all eight Python corpus checks pass. This checkpoint follows pushed base `4a8909d` and includes grounded-effect movement,
+lethal-tic use ordering, commercial finales and newborn missile ordering.
 The complete archive sweep remains in progress.
 
 The reference trace now streams through a host pipe to avoid the original
@@ -131,6 +133,159 @@ nudged block-boundary origin for intercepts; all three early MAP03 movement
 failures now match their complete comparison windows and gameplay RNG.
 E4M6's full 6,622-tic replay also matches state and RNG after the same slide
 correction, bringing the fourth breadth batch to 272/272 verified matches.
+
+Stationary effects resting on the floor now skip Z movement as in
+P_MobjThinker. Three respawn recordings match in full: MAP02 RE02-120
+(2,914 tics), MAP02 RE02-147 (4,407 tics) and MAP05 RE05-315 (7,703 tics),
+including gameplay RNG. A use command on a lethal tic now waits until
+P_DeathThink on the following tic before requesting rebirth; MAP05 LV05-027
+matches its 915-tic first-death comparison window and RNG (1,847 input tics).
+Commercial finales now preserve the pending next map and carryover, freeze
+level thinkers, and use the original held-button gate after finalecount 50.
+Both long recordings now match state and gameplay RNG through their original
+first-death boundaries: 2939fa01 (36,513 compared tics; 64,962 input tics) and
+5355UV01 (57,967 compared tics; 133,445 input tics). The fresh v81 repository
+replay also passes all 25 recordings. Seven of the nine short MAP06 follow-ups
+passed on v81; the two remaining projectile floor-height failures are fixed
+by running newborn missiles at their original thinker-list position before
+later-created floor movers. NS06-113 and NS06-118 now match their complete
+2,652- and 2,863-tic comparison windows and gameplay RNG on v83. The ordering
+regression fails before the correction and passes afterward; the full Go suite
+passes on v83. Five older MAP07 failures also pass their complete comparison
+windows and gameplay RNG on v83; earlier corrections may contribute to those
+passes. The latest complete quick refresh passes all 68 recordings, including state and gameplay
+RNG. The fresh 25-recording repository replay also passes state and gameplay
+RNG in the latest complete phase. The 15 previously failing gameplay frontiers
+all pass on v83, including the 96,025-tic TY064534 comparison.
+
+Three new ordinary gameplay frontiers now pass on v86: MAP14 pa14-043
+(1,804 tics), E2M5 N2M5-040 (1,701 tics), and MAP16 NM16-041 (1,888 tics),
+each with an independent gameplay RNG match. Arch-vile self-damage now preserves
+the full new pain frame instead of decrementing it again during the attack
+thinker. Resetting a demon after a skull collision executes the spawn state's
+nested A_Look/A_Chase immediately, then allows its later normal thinker to
+advance the newly installed frame, including Nightmare's one-tic run states.
+Live blood, puffs, smoke, teleport fog and projectile impacts now expire through
+their state sequences; the port's artificial limit of 64 no longer evicts
+older active thinkers. Reproducing regressions fail before each correction
+and pass afterward; the full Go suite passes on v86.
+
+
+The v89 fixes make pending monster attacks aim at the player's corpse height,
+track original MF_COUNTKILL/MF_COUNTITEM totals and cumulative player counts,
+preserve actor height clips when a closing door rolls back, and retain collision
+actors spawned directly by the Icon of Sin under `-nomonsters`. All 11 targeted
+ordinary failures pass complete comparison windows and independent gameplay RNG.
+An additional NS11-135 recording also passes. Regression tests reproduce the
+corpse-height, blocked-door and runtime-collision failures; item/kill counting and
+nonzero save/keyframe round trips are verified. The full Go suite passes on v89.
+Saves/keyframes advance to formats 26/13 for the four persistent count fields.
+MAP20 LV20-115 also matches all 2,881 compared tics and gameplay RNG on v90:
+a raised imp's RUN1 action returns after directly reacquiring the player,
+without another chase probe. The v91 player physics correction applies the
+original corpse friction exception while cached support differs from its own
+subsector floor, including the death tic. The source-backed regression fails
+before the correction and passes afterward; the full Go suite passes on v91.
+All 14 ordinary gameplay frontiers in the v91 targeted batch pass complete
+comparison windows and independent gameplay RNG; its remaining error is the
+accepted original-reference E4M1 crash. The v91 controls are recorded as they
+complete. The superseded v89 sweep retains 197 completed comparisons: 194
+matches, two ordinary mismatches (now fixed), and one accepted original crash.
+The v92 walk-trigger correction rejects a destination bounding box beyond a
+line endpoint before testing side changes. MAP27 NS27-145's Mancubus fireball
+previously crossed only the line extension and incorrectly activated two lifts.
+The reproducing regression fails before the correction and passes afterward;
+all 3,137 compared demo tics and gameplay RNG now match. The full Go suite passes
+on v92. The v91 sweep was superseded with 169 completed results: 167 matches
+and two ordinary mismatches. MAP27 is fixed. E3M1 N3M1TRY's reported blood ceiling height difference
+at tic 4452 is caused by ordering otherwise identical blood effects at different
+Z heights. The raw collections and original GDB show the new blood spawns at
+23 units after the crusher quarters the player's height on a lethal hit; Go
+used the living center at 44 units. The v93 correction reads the post-damage
+player height. Its regression reproduces the old wrong height, and all 4,453
+compared tics through first death now match state and gameplay RNG. The full Go
+suite passes on v93. Both new target recordings match on v93.
+
+The v94 correction preserves the shared floor/ceiling opening and float Z
+adjustment left by a nested Lost Soul chase during a moving-sector height clip.
+Original GDB confirms the nested P_TryMove call; regressions cover both a
+successful step and a rejected step that still permits floating. E3M6 R3M6-214
+now matches all 4,777 compared tics and gameplay RNG on v95.
+The v95 correction makes a raised Arachnotron enter RUN1 before its initial
+sight delay, executing A_Chase and reacquiring the target as original Doom does.
+Regressions cover visible and sound-only reacquisition; original GDB records
+RUN1 -> spawn -> sight at the failure tic. MAP23 RE23-207 now matches all 4,958
+compared tics and gameplay RNG. Both regressions reproduce the old failures,
+and the complete Go suite passes on v95.
+
+The superseded v95 execution manifest freezes 4,602 queued recordings, 17 explicitly
+verified current-runtime passes, and 15 accepted limitations, accounting for
+all 4,634 eligible inputs. Later control passes overlap this frozen queue.
+There were 1,706 never-tested inputs when the queue was selected.
+The superseded v93 sweep retains 212 completed comparisons: 204 matches, six
+strict mismatches, and two original-reference errors. Two ordinary mismatches
+are fixed by the v94/v95 corrections above. Four E3M7 recordings were confirmed
+as excluded platform-to-door structure corruption: manual line 352 (special 1)
+treats sector 23's active T_PlatRaise as a door and writes direction=-1 into
+platform.wait. GDB watchpoints, strict state failures and later RNG differences
+are retained for each recording. Two additional E4M1 inputs crash the original
+reference before GD-DOOM playback; their precise causes remain unclassified.
+Those six accepted limitations were classified after the immutable v93 queue
+was selected, so it still preserves its original 4,611 queued, 14 covered and
+nine accepted partition. None of these excluded results is counted as a match.
+The superseded v95 sweep retains 552 completed results: 539 matches, eight
+strict mismatches, and five original-reference crashes. The two ordinary
+mismatches are fixed on v96: direct chainsaw commands now select wp_chainsaw,
+and a crushed barrel keeps its permanent S_GIBS timer rather than resuming its
+old explosion. MAP28 RE28-243 matches all 5,873 tics and gameplay RNG;
+MAP23 LV23-257 matches 2,012 compared tics through the original first death
+(6,417 input tics) and gameplay RNG. Both reproducing regressions and the
+complete Go suite pass on v96. Four additional E3M7 platform-to-door
+corruptions, five original E4M1 crashes, and two E3M5 unused uninitialized
+ceiling-field differences were verified separately. The current policy lists
+26 exclusions; their raw mismatches/errors remain recorded. See
+[the exclusion ledger](COMPET-N-exclusions.md) for recording names and evidence.
+
+The current v96 execution manifest freezes 4,594 queued recordings, 14 explicitly
+verified current-runtime passes, and 26 accepted limitations, accounting for
+all 4,634 eligible inputs. Later control passes overlap this frozen queue.
+There were 1,154 never-tested inputs when the queue was selected.
+The superseded v92 sweep preserves 30 completed state/RNG matches and its
+4,610 queued, 15 explicitly covered, and nine accepted frozen partition.
+The superseded v91 manifest preserved its 4,563 queued, 62 explicitly covered,
+and nine accepted partition; its execution manifest was not edited.
+
+A third E4M1 recording, r4m1-137, crashes the original reference during tracing
+before GD-DOOM playback. That error is retained as an accepted limitation.
+
+The old v86 sweep was superseded with 509 completed comparisons: 496 matches
+and 13 strict mismatches. Its raw results and terminal receipt are retained.
+The superseded v89 queue froze 4,585 recordings plus 42 verified current-runtime matches
+and seven accepted limitations, accounting for all 4,634 eligible inputs.
+Later control passes overlap the frozen queue. E1M4-111 was subsequently
+classified as the same excluded platform-to-door structure corruption: GDB
+shows manual line 564 overwriting platform.wait at tic 2157. Its retained
+strict mismatch and matching gameplay RNG are not a passing comparison.
+
+The obsolete v58 corpus batch was stopped with 452 completed comparisons;
+its terminal receipt distinguishes it from a completed sweep. The v82 sweep
+was also superseded after 257 completed comparisons (256 matches and one
+original-reference error). The v84 sweep was superseded with 542 completed
+comparisons: 535 matches, five mismatches and two original-reference crashes.
+The superseded v86 queue contained 4,571 recordings, with 57 verified current-runtime matches
+and six accepted limitations explicitly listed at selection time; together
+they account for the original 4,634 eligible recordings. Later quick-set passes
+can overlap this frozen queue. Four workers run the current v96 streaming comparisons.
+Never-tested
+recordings are first, followed by previous failures and older passes, including
+recorded original-engine errors. New batches pin the in-place trace trimmer
+as well as the harness and comparator; eight Python checks verify equivalent
+comparison windows and immutable tool snapshots. In-place truncation avoids
+copying multi-gigabyte trace prefixes, and GD-DOOM exits after writing the
+original first-death tic. The runner now preserves manifest order through
+filtering and executor submission; the scheduling regression fails before this
+correction and passes afterward. The briefly started alphabetical v83 batch was
+superseded with its three completed comparisons preserved.
 
 The source-aligned corrections cover:
 
@@ -349,13 +504,17 @@ The source-aligned corrections cover:
 Comparator normalization has not been loosened. The comparator reads large
 traces one tic at a time; gameplay `prndindex` is audited independently over
 the complete comparison window. Matches may discard traces after that audit.
-Compressed failures preserve complete original evidence, rather than truncating
-at the first mismatch.
+Compressed failures preserve the complete comparison window. On 2026-10-01,
+disk cleanup removed 2,219 superseded or matching captures (303.9 GiB), while
+preserving completed result records, logs, inputs, active replay directories,
+and the latest unresolved captures. Historical `retained_trace_files` entries
+describe what existed when a run completed; consult
+`tmp/cleanup-receipt-2026-10-01.json` for the exact later removals.
 
 Blood effects preserve movement, support, lookup state, visibility, and thinker
 order through binary snapshots. Monsters also persist their original spawn
-points for respawning. Save format is now **25** and netplay keyframe format
-**12**; earlier formats 21/8, 22/9, 23/10, and 24/11 are
+points for respawning. Save format is now **26** and netplay keyframe format
+**13**; earlier formats 21/8, 22/9, 23/10, 24/11, and 25/12 are
 incompatible. Binary round-trip regressions pass.
 
 ## Remaining quick-set frontiers
@@ -396,9 +555,24 @@ are retained in `breadth_batch_progress` in [COMPET-N-results.json](COMPET-N-res
 The remaining-corpus MAP02 recording `DOOM2-MAP02-LV02-___-2e0d04c2fe92`
 crashes the original Linux Doom reference at tic 2,251. GDB reproduces SIGSEGV
 in `PIT_AddThingIntercepts` (`p_maputl.c:686`) during `A_FireShotgun2`.
-It remains an unresolved eligible recording; no complete comparison or
-full gameplay RNG audit is available. The backtrace is retained in
+It remains in the eligible inventory as an accepted original-engine limitation;
+no complete comparison or full gameplay RNG audit is available. The backtrace is retained in
 `tmp/compet-n-continue-map02-reference-crash/reference-gdb.log`.
+
+On 2026-10-01 the user excluded NoClip emulation and other extreme original-engine
+glitches or crashes from the fix scope. Work continues on ordinary gameplay
+state and RNG differences. The machine-readable `evaluation_policy` lists each
+accepted limitation and its evidence: the MAP02 and E4M8 bonus glitches, the
+E4M1 original-reference SIGSEGVs, E1M4/E3M7 manual doors writing into active
+platform structure, and E3M5's unused uninitialized ceiling field. E4M1's exact
+crash causes are still unclassified. MAP27 LV27-045 also reopens a timed door
+whose original constructor left `topheight` and `topwait` uninitialized;
+allocator residue becomes a live door destination. It is an accepted original
+memory glitch. The second E4M1 crash was classified after the v86 manifest was
+saved, so that immutable selection still queues it. These recordings remain in the inventory
+with their original strict mismatch/error statuses; none is counted as a match.
+The comparator remains unchanged. New unexplained gameplay failures and
+GD-DOOM or harness crashes still require investigation.
 
 The phase-v42 Nightmare sweep predates the effect reaction metadata correction;
 its later reruns record effect metadata, difficulty ammo, projectile speeds and
@@ -409,6 +583,10 @@ skills and categories eligible. These samples extend coverage of the complete
 
 | Selection / binary | Completed | State and RNG match | Mismatch | Status |
 | --- | ---: | ---: | ---: | --- |
+| current_remainder_v96 / v96 | 22/4594 | 22 | 0 | running |
+| current_remainder_v95 / v95 | 552/4602 | 539 | 8 | superseded |
+| current_remainder_v93 / v93 | 212/4611 | 204 | 6 | superseded |
+| current_remainder_v92 / v92 | 30/4610 | 30 | 0 | superseded |
 | uv / v40 | 68/68 | 66 | 2 | complete |
 | nightmare_baseline / v42 | 68/68 | 1 | 67 | complete |
 | nightmare_effects / v43 | 68/68 | 18 | 50 | complete |
@@ -417,7 +595,13 @@ skills and categories eligible. These samples extend coverage of the complete
 | nightmare_current / v60 | 68/68 | 66 | 2 | complete |
 | nightmare_split_death / v53 | 68/68 | 62 | 6 | complete |
 | nightmare_latest / v47 | 68/68 | 56 | 12 | complete |
-| remaining / v58 | 406/3817 | 337 | 66 | running |
+| remaining / v58 | 452/3817 | 373 | 76 | superseded |
+| current_remainder_v82 / v82 | 257/4619 | 256 | 0 | superseded |
+| current_remainder_v91 / v91 | 169/4563 | 167 | 2 | superseded |
+| current_remainder_v89 / v89 | 197/4585 | 194 | 2 | superseded |
+| current_remainder_v86 / v86 | 509/4571 | 496 | 13 | superseded |
+| current_remainder_v84 / v84 | 542/4561 | 535 | 5 | superseded |
+| current_remainder_v83 / v83 | 3/4585 | 3 | 0 | superseded |
 | breadth_four / v50 | 272/272 | 241 | 31 | complete |
 | breadth_three / v46 | 272/272 | 238 | 34 | complete |
 
@@ -430,7 +614,7 @@ The full remaining-corpus job continues independently.
 ## UV-Max sweep and reference limitations
 
 The latest completed 68-map combat phase, with newer targeted results, is `tmp/compet-n-continue-combat-v34/summary.json`.
-Its remaining failure matches gameplay RNG. Later fixes can improve
+0 remaining failures diverge in gameplay RNG. Later fixes can improve
 these results, so reruns must use their recorded binary hash.
 
 | Game | Combat match | State mismatch |
@@ -449,8 +633,9 @@ next-shortest E4M8 UV-Max recording,
 The E3M5 combat recording matches gameplay RNG throughout, while the default
 comparator flags `ceiling.topheight`: `EV_DoCeiling` neither initializes nor
 uses that field for lowerAndCrush. A diagnostic replacing only that unused
-reference field with zero matches all **7,004** tics. The original traces and
-default mismatch status are preserved. The comparator's normalization is
+reference field with zero matches all **7,004** tics. This reference artifact
+is now an accepted limitation under the user-directed scope above. The latest
+captures, diagnostic report, and default mismatch status are preserved. The comparator's normalization is
 unchanged. The diagnostic is retained at
 `tmp/compet-n-lowercrush-followup/DOOMU-E3M5-e3m5-308-d38186ff56de/unused-field-diagnostic.json`.
 

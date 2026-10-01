@@ -1224,6 +1224,50 @@ func TestLoadGameRoundTrip_MatchesLiveMapState(t *testing.T) {
 	}
 }
 
+func TestSnapshotRoundTripPreservesCumulativeIntermissionCounts(t *testing.T) {
+	base := &mapdata.Map{Name: "MAP01", Things: []mapdata.Thing{{Type: 1}},
+		Sectors: []mapdata.Sector{{CeilingHeight: 128}}}
+	for _, keyframe := range []bool{false, true} {
+		name := "save"
+		if keyframe {
+			name = "keyframe"
+		}
+		t.Run(name, func(t *testing.T) {
+			sg := &sessionGame{current: base.Name, currentTemplate: cloneMapForRestart(base),
+				opts: Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1}}
+			sg.g = sg.buildGame(cloneMapForRestart(base), sg.opts)
+			sg.rt = sg.g
+			sg.g.levelKillsTotal, sg.g.playerKillCount = 33, 35
+			sg.g.levelItemsTotal, sg.g.playerItemCount = 3, 2
+			var data []byte
+			var err error
+			if keyframe {
+				data, err = sg.marshalNetplayKeyframe()
+			} else {
+				data, err = sg.marshalSaveGame("intermission counts")
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			loaded := &sessionGame{opts: Options{Width: doomLogicalW, Height: doomLogicalH, PlayerSlot: 1,
+				NewGameLoader: func(string) (*mapdata.Map, error) { return cloneMapForRestart(base), nil }}}
+			if keyframe {
+				err = loaded.unmarshalNetplayKeyframe(data)
+			} else {
+				err = loaded.unmarshalSaveGame(data)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			stats := collectIntermissionStats(loaded.g, "MAP01", "MAP02")
+			if stats.KillsTotal != 33 || stats.KillsFound != 35 || stats.KillsPct != 106 ||
+				stats.ItemsTotal != 3 || stats.ItemsFound != 2 || stats.ItemsPct != 66 {
+				t.Fatalf("restored intermission counts=%+v", stats)
+			}
+		})
+	}
+}
+
 func TestNetplayKeyframeRoundTrip(t *testing.T) {
 	base := &mapdata.Map{
 		Name: "MAP01",

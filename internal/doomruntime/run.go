@@ -190,6 +190,9 @@ func (sg *sessionGame) Update() error {
 			// Explicit demo playback owns its lifetime until the end marker.
 			// Keep consuming its commands instead of starting an attract demo
 			// that would reopen and overwrite the requested replay's trace.
+			if sg.g != nil && sg.g.demoFinaleCommercial {
+				return sg.tickFinale()
+			}
 			if sg.headlessDemoPlayback() {
 				return false
 			}

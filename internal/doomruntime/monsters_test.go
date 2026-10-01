@@ -559,8 +559,8 @@ func TestMonsterAttackTargetPos_PreservesDeadPlayerCorpseAim(t *testing.T) {
 	if x != g.p.x || y != g.p.y || z != g.p.z {
 		t.Fatalf("attack target pos=(%d,%d,%d) want player corpse (%d,%d,%d)", x, y, z, g.p.x, g.p.y, g.p.z)
 	}
-	if height != playerHeight || radius != playerRadius {
-		t.Fatalf("attack target size=(%d,%d) want (%d,%d)", height, radius, playerHeight, playerRadius)
+	if height != playerHeight>>2 || radius != playerRadius {
+		t.Fatalf("attack target size=(%d,%d) want (%d,%d)", height, radius, playerHeight>>2, playerRadius)
 	}
 }
 
@@ -1161,6 +1161,7 @@ func TestResetLostSoulChargePreservesInFloat(t *testing.T) {
 		thingSupportValid:   []bool{false},
 	}
 
+	g.ensureMonsterAIState()
 	g.resetLostSoulCharge(0, 3002)
 
 	if !g.thingInFloat[0] {

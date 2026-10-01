@@ -328,10 +328,11 @@ func (g *game) tickProjectileByOrder(order int64) {
 		return
 	}
 	for i := range g.projectiles {
-		if g.projectiles[i].order != order || g.projectiles[i].deferredTick {
+		if g.projectiles[i].order != order {
 			continue
 		}
 		p := g.projectiles[i]
+		p.deferredTick = false
 		if next, keep := g.advanceProjectile(p); keep {
 			g.projectiles[i] = next
 		} else {
@@ -878,11 +879,6 @@ func (g *game) tickProjectileImpactByOrder(order int64) {
 }
 
 func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle uint32) {
-	const maxImpacts = 64
-	if len(g.projectileImpacts) >= maxImpacts {
-		copy(g.projectileImpacts, g.projectileImpacts[1:])
-		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
-	}
 	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {
@@ -929,11 +925,6 @@ func (g *game) spawnProjectileImpact(kind projectileKind, x, y, z int64, angle u
 }
 
 func (g *game) spawnProjectileImpactDeferredRandom(kind projectileKind, x, y, z int64, angle uint32) int {
-	const maxImpacts = 64
-	if len(g.projectileImpacts) >= maxImpacts {
-		copy(g.projectileImpacts, g.projectileImpacts[1:])
-		g.projectileImpacts = g.projectileImpacts[:maxImpacts-1]
-	}
 	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var wantTic int
 		if _, err := fmt.Sscanf(want, "%d", &wantTic); err == nil {

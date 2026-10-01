@@ -307,6 +307,10 @@ func (g *game) writeDemoTraceTic(gametic int) {
 		gamestateName = "GS_FINALE"
 		gameaction = 0
 		gameactionName = "ga_nothing"
+		if g.demoWorldDone {
+			gameaction = 8
+			gameactionName = "ga_worlddone"
+		}
 	}
 	g.demoTrace.write(map[string]any{
 		"kind":            "tic",
@@ -366,7 +370,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 			FloorZ:       g.p.floorz,
 			CeilingZ:     g.p.ceilz,
 			Radius:       playerRadius,
-			Height:       playerHeight,
+			Height:       g.playerMobjHeight(),
 			Tics:         playerTics,
 			State:        playerState,
 			Flags:        g.demoTracePlayerMobjFlags(),
@@ -1118,6 +1122,7 @@ const (
 	demoTraceFlagDropped       = 0x00020000
 	demoTraceFlagCorpse        = 0x00100000
 	demoTraceFlagCountKill     = 0x00400000
+	demoTraceFlagCountItem     = 0x00800000
 )
 
 func demoTraceThingHealth(g *game, i int, typ int16) int {
@@ -1603,7 +1608,10 @@ func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
 	}
 	switch {
 	case isMonster(th.Type):
-		flags |= demoTraceFlagSolid | demoTraceFlagCountKill
+		flags |= demoTraceFlagSolid
+		if thingCountsKill(th.Type) {
+			flags |= demoTraceFlagCountKill
+		}
 		if i >= 0 && i < len(g.thingJustHit) && g.thingJustHit[i] {
 			flags |= demoTraceFlagJustHit
 		}
@@ -1623,6 +1631,9 @@ func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
 		}
 	case isPickupType(th.Type):
 		flags |= demoTraceFlagSpecial
+		if thingCountsItem(th.Type) {
+			flags |= demoTraceFlagCountItem
+		}
 		if i >= 0 && i < len(g.thingDropped) && g.thingDropped[i] {
 			flags |= demoTraceFlagDropped
 		}

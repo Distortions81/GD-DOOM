@@ -1452,6 +1452,11 @@ func (g *game) damageMonsterFromWithInflictorZ(thingIdx int, damage int, sourceP
 	g.applyMonsterDamageThrust(thingIdx, damage, sourcePlayer, sourceThing, inflictorX, inflictorY, hasInflictor, inflictorZ, hasInflictorZ, g.thingHP[thingIdx])
 	g.thingHP[thingIdx] -= damage
 	if g.thingHP[thingIdx] <= 0 {
+		// P_KillMobj credits every counted death in single-player, including
+		// infighting and another death after resurrection or respawn.
+		if thingCountsKill(thingType) && (sourcePlayer || normalizeGameMode(g.opts.GameMode) == gameModeSingle) {
+			g.playerKillCount++
+		}
 		xdeath := g.thingHP[thingIdx] < -monsterSpawnHealth(thingType) && monsterHasXDeath(thingType)
 		// P_KillMobj clears MF_SKULLFLY along with MF_FLOAT.
 		if thingIdx < len(g.thingSkullFly) {
@@ -2230,6 +2235,10 @@ func (g *game) selectWeaponSlot(slot int) {
 		if g.weaponOwned(weaponBFG) {
 			next = weaponBFG
 		}
+	case 8:
+		// Demo commands can encode wp_chainsaw directly, bypassing the
+		// fist-slot toggle even while berserk is active (P_PlayerThink).
+		next = weaponChainsaw
 	}
 	g.queueWeaponSwitch(next)
 }

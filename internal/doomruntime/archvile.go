@@ -39,7 +39,7 @@ func (g *game) followArchVileFire(fx *projectileImpact) {
 	if fx == nil || g.m == nil || fx.sourceThing < 0 || fx.sourceThing >= len(g.m.Things) {
 		return
 	}
-	x, y, z, height, angle := g.p.x, g.p.y, g.p.z, int64(playerHeight), g.p.angle
+	x, y, z, height, angle := g.p.x, g.p.y, g.p.z, g.playerMobjHeight(), g.p.angle
 	if !fx.fireTargetPlayer {
 		i := fx.fireTargetThing - 1
 		if i < 0 || i >= len(g.m.Things) {

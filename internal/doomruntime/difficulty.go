@@ -126,6 +126,11 @@ func (g *game) thingActiveInSession(i int) bool {
 	if i < len(g.thingDropped) && g.thingDropped[i] {
 		return true
 	}
+	if isMonster(g.m.Things[i].Type) && i < len(g.thingSpawnPoint) && g.thingSpawnPoint[i].Type == 0 {
+		// Direct P_SpawnMobj creations (notably A_SpawnFly) bypass map
+		// spawn filtering, including -nomonsters.
+		return true
+	}
 	// A_PainShootSkull creates an MT_SKULL directly at runtime, without a map
 	// spawn flag word. It is live immediately rather than being filtered out as
 	// a no-skill map Thing.
@@ -152,6 +157,9 @@ func (g *game) thingBlocksInSession(i int) bool {
 		return true
 	}
 	th := g.m.Things[i]
+	if isMonster(th.Type) && i < len(g.thingSpawnPoint) && g.thingSpawnPoint[i].Type == 0 {
+		return true
+	}
 	if th.Type == 3006 && th.Flags == 0 {
 		return true
 	}

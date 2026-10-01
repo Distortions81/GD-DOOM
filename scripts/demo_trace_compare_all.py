@@ -74,7 +74,26 @@ def immutable_snapshot(contents, directory, prefix, mode=0o755):
 def pinned_replay_tools(directory):
     comparator = immutable_snapshot((directory / "demotracecmp").read_bytes(),
                                     directory, "demotracecmp")
+    trimmer = immutable_snapshot((ROOT / "scripts/demo_trace_trim.py").read_bytes(),
+                                 directory, "demo-trace-trim")
     harness = (ROOT / "scripts/demo_trace_compare.sh").read_text()
+    # Leave the legacy harness untouched while older jobs still use it. New
+    # immutable copies trim in place, retaining exactly the same trace prefix.
+    trim_start = harness.index('trim_trace_on_player_death() {')
+    trim_end = harness.index('usage() {', trim_start)
+    harness = harness[:trim_start] + f'''TRACE_TRIM_BIN="${{ROOT_DIR}}/.tmp/{trimmer.name}"
+
+trim_trace_on_player_death() {{
+  python3 "${{TRACE_TRIM_BIN}}" "$1"
+}}
+
+trim_trace_after_tics() {{
+  if [[ "$2" -gt 0 ]]; then
+    python3 "${{TRACE_TRIM_BIN}}" "$1" --max-tics "$2"
+  fi
+}}
+
+''' + harness[trim_end:]
     assignment = 'TRACECMP_BIN="${ROOT_DIR}/.tmp/demotracecmp"'
     rebuild_start = harness.index('if go_sources_newer_than_bin "${TRACECMP_BIN}"')
     rebuild_end = harness.index('\nREF_TRACE=', rebuild_start)
@@ -83,7 +102,7 @@ def pinned_replay_tools(directory):
         raise ValueError("Replay harness comparator assignment changed")
     harness = harness.replace(assignment, f'TRACECMP_BIN="${{ROOT_DIR}}/.tmp/{comparator.name}"')
     replay = immutable_snapshot(harness.encode(), directory, "demo-trace-compare")
-    return replay, comparator
+    return replay, comparator, trimmer
 
 
 def display_path(path):
@@ -167,7 +186,9 @@ def main():
         if missing:
             parser.error("Extract these archived demos into demos/ before running the suite: " + ", ".join(missing))
         wads = {demo: wad_for(demo) for demo in sorted((ROOT / "demos").rglob("*.lmp"))}
-    demos = sorted(wads)
+    # External manifests can prioritize new or unresolved recordings. Preserve
+    # that order when submitting jobs; repository discovery remains sorted.
+    demos = list(wads) if args.manifest else sorted(wads)
     if args.demo:
         unknown = set(args.demo) - {demo.stem for demo in demos}
         if unknown:
@@ -184,8 +205,8 @@ def main():
         subprocess.run(["go", "build", "-o", str(gd_bin), "."], cwd=ROOT, check=True)
     subprocess.run(["go", "build", "-o", str(ROOT / ".tmp/demotracecmp"), "./cmd/demotracecmp"],
                    cwd=ROOT, check=True)
-    harness, comparator = pinned_replay_tools(ROOT / ".tmp")
-    hashes = {str(path): sha256(path) for path in {args.ref_bin, gd_bin, harness, comparator, *wads.values()}}
+    harness, comparator, trimmer = pinned_replay_tools(ROOT / ".tmp")
+    hashes = {str(path): sha256(path) for path in {args.ref_bin, gd_bin, harness, comparator, trimmer, *wads.values()}}
     args.out_root.mkdir(parents=True, exist_ok=True)
 
     def compare(demo):
@@ -193,7 +214,8 @@ def main():
         out.mkdir(parents=True, exist_ok=True)
         command = [str(harness), "--gd-bin", str(gd_bin),
                    "--ref-bin", str(args.ref_bin), "--wad", str(wads[demo]),
-                   "--demo-lump", "check", "--demo", str(demo), "--out", str(out)]
+                   "--demo-lump", "check", "--demo", str(demo), "--out", str(out),
+                   "--demo-exit-on-death"]
         with (out / "harness.log").open("w") as log:
             proc = subprocess.run(command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT)
         report_file = out / "compare.log"
@@ -215,7 +237,8 @@ def main():
                   "gameplay_rng_mismatch": rng_diff, "gameplay_rng_audited": status not in ("error", "replay-error"),
                   "replay_map_error": map_error, "demo_sha256": sha256(demo),
                   "replay_harness": display_path(harness), "replay_harness_sha256": hashes[str(harness)],
-                  "trace_comparator": display_path(comparator), "trace_comparator_sha256": hashes[str(comparator)]}
+                  "trace_comparator": display_path(comparator), "trace_comparator_sha256": hashes[str(comparator)],
+                  "trace_trimmer": display_path(trimmer), "trace_trimmer_sha256": hashes[str(trimmer)]}
         if args.discard_matching_traces and status == "match":
             (out / "reference-check.jsonl").unlink()
             (out / f"gddoom-{demo.name}.jsonl").unlink()

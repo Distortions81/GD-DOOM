@@ -796,6 +796,27 @@ func TestSelectWeaponSlot1SwitchesFromChainsawToFistWithBerserk(t *testing.T) {
 	}
 }
 
+func TestDemoDirectChainsawCommandWithBerserk(t *testing.T) {
+	for _, owned := range []bool{true, false} {
+		g := &game{inventory: playerInventory{
+			ReadyWeapon:   weaponSuperShotgun,
+			PendingWeapon: weaponPlasma,
+			Weapons:       map[int16]bool{2005: owned, 82: true, 2004: true},
+			Strength:      true,
+		}}
+		// MAP28 RE28-243 encodes wp_chainsaw directly (button byte 60).
+		cmd, _, _ := demoTicCommand(DemoTic{Buttons: 60})
+		g.selectWeaponSlot(cmd.weaponSlot)
+		want := weaponPlasma
+		if owned {
+			want = weaponChainsaw
+		}
+		if g.inventory.PendingWeapon != want {
+			t.Fatalf("owned=%t pending=%v want=%v", owned, g.inventory.PendingWeapon, want)
+		}
+	}
+}
+
 func TestSelectWeaponSlot3PrefersSuperShotgunWhenBothOwned(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{Name: "MAP01"},
@@ -1643,6 +1664,29 @@ func TestHitscanBloodClipsToFloorLikeDoom(t *testing.T) {
 	}
 	if got := g.hitscanPuffs[0].momz; got != 0 {
 		t.Fatalf("blood momz after floor clip=%d want=0", got)
+	}
+}
+
+func TestTeleportFogRunsZMovementOnlyWhenOffFloorOrMoving(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		z, momz, wantZ int64
+	}{
+		{"grounded", 40 * fracUnit, 0, 40 * fracUnit},
+		{"airborne", 41 * fracUnit, 0, 24 * fracUnit},
+		{"moving", 40 * fracUnit, fracUnit, 24 * fracUnit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{}
+			p := hitscanPuff{kind: hitscanFxTeleport, state: 130, tics: 1,
+				z: tc.z, momz: tc.momz, floorz: 40 * fracUnit, ceilz: 40 * fracUnit}
+			if !g.tickHitscanPuff(&p) || p.z != tc.wantZ || p.momz != 0 {
+				t.Fatalf("fog after think=%+v; want z=%d, zero momentum and retained effect", p, tc.wantZ)
+			}
+			if p.state != 131 || p.tics != 6 {
+				t.Fatalf("fog animation did not advance: state=%d tics=%d", p.state, p.tics)
+			}
+		})
 	}
 }
 
