@@ -6,14 +6,14 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/Distortions81/g726 v0.0.8
 	github.com/Distortions81/impsynth v0.1.3
-	github.com/dustin/go-humanize v1.0.1
+	github.com/dustin/go-humanize v1.1.0
 	github.com/hajimehoshi/ebiten/v2 v2.10.4
-	github.com/klauspost/compress v1.18.6
+	github.com/klauspost/compress v1.20.1
 	github.com/remeh/sizedwaitgroup v1.0.0
 	github.com/sinshu/go-meltysynth v0.1.2
 	github.com/youthlin/silk v0.0.4
 	github.com/zeebo/blake3 v0.2.4
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.48.0
 )
 
 require github.com/jfreymuth/pulse v0.1.3 // indirect
