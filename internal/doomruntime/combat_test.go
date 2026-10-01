@@ -7,6 +7,95 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestDamageWakeHandlesDeadProjectileShooterBeforeChasing(t *testing.T) {
+	t.Cleanup(doomrand.Clear)
+	for _, playerDead := range []bool{true, false} {
+		g := &game{
+			m: &mapdata.Map{
+				Things:  []mapdata.Thing{{Type: 3003}, {Type: 3001, X: -128}},
+				Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+			},
+			thingHP:          []int{844, -36},
+			thingDead:        []bool{false, true},
+			thingCollected:   make([]bool, 2),
+			p:                player{x: 64 * fracUnit},
+			stats:            playerStats{Health: 100},
+			playerMobjHealth: 100,
+			isDead:           playerDead,
+		}
+		g.initPhysics()
+		g.ensureMonsterAIState()
+		g.thingState[0] = monsterStateSpawn
+		g.thingStatePhase[0] = 0
+		g.thingStateTics[0] = 4
+		g.thingMoveCount[0] = 5
+		g.thingMoveDir[0] = monsterDirEast
+		doomrand.SetState(0, 140) // The E2M4 pain roll does not enter pain state.
+		g.damageMonsterFrom(0, 24, false, 1, 0, 0, false)
+		if g.thingHP[0] != 820 || g.thingThreshold[0] != 0 || g.thingMoveCount[0] != 5 {
+			t.Fatalf("dead player=%t health=%d threshold=%d movecount=%d, want 820/0/5", playerDead, g.thingHP[0], g.thingThreshold[0], g.thingMoveCount[0])
+		}
+		if x, y := g.thingPosFixed(0, g.m.Things[0]); x != 0 || y != 0 {
+			t.Fatalf("dead player=%t wake moved Baron to (%d,%d)", playerDead, x, y)
+		}
+		wantState := monsterStateSpawn
+		if !playerDead {
+			wantState = monsterStateSee
+		}
+		if g.thingState[0] != wantState || g.thingTargetPlayer[0] != !playerDead {
+			t.Fatalf("dead player=%t state=%d targetPlayer=%t", playerDead, g.thingState[0], g.thingTargetPlayer[0])
+		}
+		if playerDead && g.thingStateTics[0] != 10 {
+			t.Fatalf("idle Baron tics=%d, want 10", g.thingStateTics[0])
+		}
+		if _, prnd := doomrand.State(); prnd != 141 {
+			t.Fatalf("dead player=%t RNG=%d, want only the pain roll (141)", playerDead, prnd)
+		}
+	}
+}
+
+func TestChaingunSecondFrameWithLastBulletSkipsShot(t *testing.T) {
+	doomrand.Clear()
+	t.Cleanup(doomrand.Clear)
+	g := &game{
+		m:            &mapdata.Map{},
+		p:            player{ceilz: 128 * fracUnit},
+		stats:        playerStats{Health: 100, Bullets: 1},
+		inventory:    playerInventory{ReadyWeapon: weaponChaingun},
+		weaponRefire: true,
+	}
+	g.setWeaponPSpriteState(weaponStateChaingunAtk1, false)
+	// P_MovePsprites visits the newly started flash later in this same tic.
+	g.tickWeaponPSprite(true)
+	if g.stats.Bullets != 0 {
+		t.Fatalf("first firing frame left %d bullets, want 0", g.stats.Bullets)
+	}
+	rnd, prnd := doomrand.State()
+	g.soundQueue = nil
+	g.setPlayerMobjState(doomStatePlayerPain1, 3)
+	for tic := 0; tic < 4; tic++ {
+		g.tickWeaponOverlay()
+	}
+	if g.weaponState != weaponStateChaingunAtk2 || g.weaponStateTics != 4 {
+		t.Fatalf("second firing frame state/tics=%d/%d", g.weaponState, g.weaponStateTics)
+	}
+	if g.stats.Bullets != 0 {
+		t.Fatalf("empty second frame changed bullets to %d", g.stats.Bullets)
+	}
+	if gotRnd, gotPrnd := doomrand.State(); gotRnd != rnd || gotPrnd != prnd {
+		t.Fatalf("empty second frame advanced RNG: %d/%d -> %d/%d", rnd, prnd, gotRnd, gotPrnd)
+	}
+	if g.playerMobjState != doomStatePlayerPain1 || g.playerMobjTics != 3 {
+		t.Fatalf("empty second frame changed player state/tics=%d/%d", g.playerMobjState, g.playerMobjTics)
+	}
+	if g.weaponFlashState != weaponStateNone {
+		t.Fatalf("empty second frame restarted muzzle flash: %d", g.weaponFlashState)
+	}
+	if !hasSoundEvent(g.soundQueue, soundEventShootPistol) {
+		t.Fatal("empty second frame omitted Doom's firing sound")
+	}
+}
+
 func TestInitThingCombatStateRandomizesMonsterSpawnTicsLikeDoom(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
@@ -737,6 +826,24 @@ func TestSelectWeaponSlot3PrefersSuperShotgunFromNonShotgunReadyWeaponOnCommerci
 	}
 }
 
+func advanceBossDeathToFinalState(t *testing.T, g *game, idx int) {
+	t.Helper()
+	if g.levelExitRequested || len(g.floors) != 0 || len(g.doors) != 0 {
+		t.Fatal("boss action ran before the final death state")
+	}
+	frames := monsterDeathFrameTicsForMode(g.m.Things[idx].Type, false)
+	for tic := 0; g.thingStatePhase[idx] < len(frames)-1; tic++ {
+		if tic > 200 {
+			t.Fatal("boss did not reach final death state")
+		}
+		g.tickThingThinker(idx, g.m.Things[idx])
+		if g.thingStatePhase[idx] < len(frames)-1 &&
+			(g.levelExitRequested || len(g.floors) != 0 || len(g.doors) != 0) {
+			t.Fatal("boss action ran during the death animation")
+		}
+	}
+}
+
 func TestBossDeath_MAP07MancubusLowersTag666Floor(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -764,6 +871,7 @@ func TestBossDeath_MAP07MancubusLowersTag666Floor(t *testing.T) {
 		p:                   player{x: 0, y: 0},
 	}
 	g.damageMonster(0, 10)
+	advanceBossDeathToFinalState(t, g, 0)
 	if g.floors == nil || g.floors[0] == nil {
 		t.Fatal("MAP07 mancubus death should activate tag 666 floor")
 	}
@@ -799,6 +907,7 @@ func TestBossDeath_MAP07ArachnotronRaisesTag667Floor(t *testing.T) {
 		p:                   player{x: 0, y: 0},
 	}
 	g.damageMonster(0, 10)
+	advanceBossDeathToFinalState(t, g, 0)
 	if g.floors == nil || g.floors[0] == nil {
 		t.Fatal("MAP07 arachnotron death should activate tag 667 floor")
 	}
@@ -829,6 +938,7 @@ func TestBossDeath_E2M8CyberdemonRequestsExit(t *testing.T) {
 		p:                   player{x: 0, y: 0},
 	}
 	g.damageMonster(0, 10)
+	advanceBossDeathToFinalState(t, g, 0)
 	if !g.levelExitRequested {
 		t.Fatal("E2M8 cyberdemon death should request a level exit")
 	}
@@ -862,11 +972,13 @@ func TestBossDeath_E1M8BaronsLowerTag666Floor(t *testing.T) {
 	}
 
 	g.damageMonster(0, 10)
+	advanceBossDeathToFinalState(t, g, 0)
 	if g.floors != nil && len(g.floors) > 0 && g.floors[0] != nil {
 		t.Fatal("E1M8 should wait until the final baron dies")
 	}
 
 	g.damageMonster(1, 2000)
+	advanceBossDeathToFinalState(t, g, 1)
 	if g.floors == nil || g.floors[0] == nil {
 		t.Fatal("E1M8 final baron death should activate tag 666 floor")
 	}
@@ -906,6 +1018,7 @@ func TestBossDeath_E1M8StillTriggersWhenDeadMonsterTargetWouldBlockIt(t *testing
 	}
 
 	g.damageMonster(0, 10)
+	advanceBossDeathToFinalState(t, g, 0)
 	if g.floors == nil || g.floors[0] == nil {
 		t.Fatal("E1M8 baron death should still activate tag 666 when a player is alive")
 	}
@@ -938,6 +1051,7 @@ func TestBossDeath_E4M6CyberdemonOpensTag666Door(t *testing.T) {
 		p:                   player{x: 0, y: 0},
 	}
 	g.damageMonster(0, 10)
+	advanceBossDeathToFinalState(t, g, 0)
 	if g.doors == nil || g.doors[0] == nil {
 		t.Fatal("E4M6 cyberdemon death should open tag 666 door")
 	}

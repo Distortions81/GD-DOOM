@@ -162,6 +162,9 @@ func frontendShouldUpdateRuntime(sig gameplay.SessionSignals) bool {
 }
 
 func (sg *sessionGame) Update() error {
+	if sg.g != nil && sg.g.demoWorldDone {
+		sg.finishIntermission()
+	}
 	sg.releaseStartupMusicIfReady()
 	sg.releaseTransitionMusicIfReady()
 	if sg.musicCtl != nil && isWASMBuild() {
@@ -184,6 +187,12 @@ func (sg *sessionGame) Update() error {
 			return sg.finale.Active
 		},
 		TickFinale: func() bool {
+			// Explicit demo playback owns its lifetime until the end marker.
+			// Keep consuming its commands instead of starting an attract demo
+			// that would reopen and overwrite the requested replay's trace.
+			if sg.headlessDemoPlayback() {
+				return false
+			}
 			if !sg.tickFinale() {
 				return false
 			}

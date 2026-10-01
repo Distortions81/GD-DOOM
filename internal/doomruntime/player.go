@@ -57,6 +57,7 @@ type player struct {
 	momy              int64
 	momz              int64
 	reactionTime      int
+	justAttacked      bool
 	teleportedThisTic bool
 	viewHeight        int64
 	deltaViewHeight   int64

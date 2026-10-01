@@ -472,9 +472,30 @@ func (sg *sessionGame) buildGame(m *mapdata.Map, opts Options) *game {
 	if factory == nil {
 		factory = newGame
 	}
+	old := sg.g
+	continuingDemo := old != nil && old.demoWorldDone && old.opts.DemoScript != nil
+	tracePath := opts.DemoTracePath
+	if continuingDemo {
+		// P_SetupLevel preserves both random streams between levels. Keep
+		// the existing replay writer and cursor instead of reopening its file.
+		opts.DemoTracePath = ""
+		factory = func(m *mapdata.Map, opts Options) *game {
+			return newGameWithRNG(m, opts, false)
+		}
+	}
 	g := gameplay.BuildRuntime(factory, m, opts)
 	if g == nil {
 		return nil
+	}
+	if old != nil {
+		// attackrange is a process-global value in Doom and P_SetupLevel
+		// does not clear it before the next level's tracer thinkers.
+		g.lastAttackRange = old.lastAttackRange
+	}
+	if continuingDemo {
+		g.opts.DemoTracePath = tracePath
+		g.inheritDemoPlayback(old)
+		g.weaponAttackDown, g.useButtonDown = old.weaponAttackDown, old.useButtonDown
 	}
 	if sg.headlessDemoPlayback() {
 		return g

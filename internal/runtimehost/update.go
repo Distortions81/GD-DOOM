@@ -59,6 +59,11 @@ func RunUpdate(u Update) error {
 		return nil
 	}
 	if u.FinaleActive != nil && u.FinaleActive() {
+		if u.DemoActive != nil && u.DemoActive() && u.UpdateRuntimeForDemo != nil {
+			if err := u.UpdateRuntimeForDemo(); err != nil {
+				return err
+			}
+		}
 		if u.TickFinale != nil && u.TickFinale() {
 			return ErrTerminate
 		}

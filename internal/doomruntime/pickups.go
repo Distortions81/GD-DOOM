@@ -40,6 +40,9 @@ type playerLevelCarryover struct {
 }
 
 func (g *game) initPlayerState() {
+	// G_PlayerReborn suppresses use until the initial held button is released.
+	g.useButtonDown = true
+	g.weaponAttackDown = true
 	g.inventory = playerInventory{
 		ReadyWeapon: weaponPistol,
 		Weapons: map[int16]bool{
@@ -229,7 +232,7 @@ func (g *game) thingFloorZCached(i int, th mapdata.Thing) int64 {
 
 func canTouchPickup(px, py, pz, pradius, pheight, tx, ty, tz, tradius int64) bool {
 	blockdist := pradius + tradius
-	if abs(px-tx) > blockdist || abs(py-ty) > blockdist {
+	if abs(px-tx) >= blockdist || abs(py-ty) >= blockdist {
 		return false
 	}
 	delta := tz - pz
@@ -522,6 +525,11 @@ func (g *game) gainAmmo(kind string, amount int, msg string) (string, soundEvent
 }
 
 func (g *game) gainAmmoNoMsg(kind string, amount int) bool {
+	// P_GiveAmmo doubles every clip load, including dropped weapons and
+	// backpack supplies, on I'm Too Young To Die and Nightmare.
+	if g.opts.SkillLevel == 1 || g.opts.SkillLevel == 5 {
+		amount *= 2
+	}
 	maxBullets, maxShells, maxRockets, maxCells := ammoCaps(g.inventory.Backpack)
 	switch kind {
 	case "bullets":

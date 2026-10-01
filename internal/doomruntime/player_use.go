@@ -198,6 +198,9 @@ func (g *game) collectUseLineIntercepts(x1, y1, x2, y2 int64) []useLineIntercept
 		if ((sy - g.bmapOriginY) & ((1 << mapBlockShift) - 1)) == 0 {
 			sy += fracUnit
 		}
+		// P_PathTraverse changes the actual ray origin as well as the block
+		// traversal origin when it lies exactly on a block boundary.
+		trace = divline{x: sx, y: sy, dx: ex - sx, dy: ey - sy}
 
 		rx1 := sx - g.bmapOriginX
 		ry1 := sy - g.bmapOriginY
@@ -378,11 +381,13 @@ func (g *game) useSpecialLineForActor(lineIdx int, side int, isPlayer bool) bool
 		}
 	} else {
 		activated = g.activateNonDoorLineSpecial(lineIdx, side, info, -1, true)
-		if activated && !info.Repeat && lineIdx >= 0 && lineIdx < len(g.lineSpecial) {
-			g.lineSpecial[lineIdx] = 0
-		}
 	}
 	if activated {
+		// P_ChangeSwitchTexture clears a successful one-shot use trigger,
+		// including tagged doors. Manual doors handle their own lifetime.
+		if info.Trigger == mapdata.TriggerUse && !info.Repeat {
+			g.lineSpecial[lineIdx] = 0
+		}
 		if debugLineTriggerEnabled(lineIdx) {
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=use-activate line=%d side=%d player=%t special=%d repeat=%t\n",
 				g.demoTick-1, g.worldTic, lineIdx, side, isPlayer, special, info.Repeat)
@@ -442,6 +447,7 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 	if prevX == curX && prevY == curY {
 		return
 	}
+	teleportMoveSerial := g.teleportMoveSerial
 	radius := radiusOverride
 	if radius < 0 && isPlayer {
 		radius = playerRadius
@@ -499,6 +505,11 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 		}
 		info := mapdata.LookupLineSpecial(special)
 		if info.Trigger != mapdata.TriggerWalk {
+			return false
+		}
+		if isPlayer && info.Teleport != nil && info.Teleport.MonsterOnly {
+			// P_CrossSpecialLine leaves monster-only W1 teleport triggers
+			// intact when crossed by a player, before any activation attempt.
 			return false
 		}
 		if !lineSpecialSupported(info) {
@@ -565,7 +576,10 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 		return false
 	}
 	if candidateLineIdxs != nil {
-		for _, candidate := range candidateLineIdxs {
+		// P_TryMove drains spechit in reverse insertion order and processes
+		// every crossed special, even when an earlier one starts a mover.
+		for i := len(candidateLineIdxs) - 1; i >= 0; i-- {
+			candidate := candidateLineIdxs[i]
 			physIdx := -1
 			switch {
 			case candidate >= 0 && candidate < len(g.physForLine) && g.physForLine[candidate] >= 0:
@@ -576,14 +590,16 @@ func (g *game) checkWalkSpecialLinesForActorWithCandidatesAndRadius(prevX, prevY
 			if physIdx < 0 || physIdx >= len(g.lines) {
 				continue
 			}
-			if visit(g.lines[physIdx]) {
+			visit(g.lines[physIdx])
+			if g.teleportMoveSerial != teleportMoveSerial {
 				return
 			}
 		}
 		return
 	}
-	for _, ld := range g.lines {
-		if visit(ld) {
+	for i := len(g.lines) - 1; i >= 0; i-- {
+		visit(g.lines[i])
+		if g.teleportMoveSerial != teleportMoveSerial {
 			return
 		}
 	}
@@ -761,6 +777,7 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 		case mapdata.DoorClose30ThenOpen:
 			d.typ = doorClose30ThenOpen
 			d.direction = -1
+			d.topHeight = g.sectorCeil[sec]
 		case mapdata.DoorBlazeOpen:
 			d.typ = doorBlazeOpen
 			d.direction = 1

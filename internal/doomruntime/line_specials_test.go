@@ -7,6 +7,75 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestTeleportStompAssignsDeathTimersInMutableBlockOrder(t *testing.T) {
+	t.Cleanup(doomrand.Clear)
+	g := &game{
+		m: &mapdata.Map{
+			Things:   []mapdata.Thing{{Type: 9, X: 32, Y: 32}, {Type: 9, X: 40, Y: 32}},
+			Sectors:  []mapdata.Sector{{CeilingHeight: 128}},
+			BlockMap: &mapdata.BlockMap{Width: 1, Height: 1},
+		},
+		p:                 player{x: -128 * fracUnit, ceilz: 128 * fracUnit},
+		thingHP:           []int{30, 30},
+		thingCollected:    []bool{false, false},
+		thingBlockOrder:   []int64{1, 2},
+		thingDropped:      make([]bool, 2),
+		thingZState:       make([]int64, 2),
+		thingFloorState:   make([]int64, 2),
+		thingCeilState:    make([]int64, 2),
+		thingSupportValid: make([]bool, 2),
+	}
+	g.initPhysics()
+	g.ensureMonsterAIState()
+	g.rebuildThingBlockmap()
+	// The original E4M1 teleport visits the newer blocklink first. Each kill
+	// creates a shotgun drop that changes the list during the traversal.
+	doomrand.SetState(0, 182)
+	if !g.teleportStompDestinationThings(36*fracUnit, 32*fracUnit, playerRadius, -1, true, g.p.x, g.p.y) {
+		t.Fatal("player teleport was rejected")
+	}
+	if !g.thingDead[0] || !g.thingDead[1] {
+		t.Fatal("both overlapping shotgun guys should die")
+	}
+	if g.thingStateTics[0] != 3 || g.thingStateTics[1] != 5 {
+		t.Fatalf("death timers=%v, want original block order [3 5]", g.thingStateTics[:2])
+	}
+	if _, prnd := doomrand.State(); prnd != 186 {
+		t.Fatalf("gameplay RNG=%d, want 186", prnd)
+	}
+}
+
+func TestHeightClipBlockLinksExcludePlayerStartMarkers(t *testing.T) {
+	g := &game{
+		m: &mapdata.Map{
+			Things:  []mapdata.Thing{{Type: 1}, {Type: 2}, {Type: 3}, {Type: 4}, {Type: 11}},
+			Sectors: []mapdata.Sector{{FloorHeight: -136, CeilingHeight: 56}},
+		},
+		bmapOriginX:      -64 * fracUnit,
+		bmapOriginY:      -64 * fracUnit,
+		bmapWidth:        1,
+		bmapHeight:       1,
+		playerBlockOrder: 1,
+		thingBlockOrder:  []int64{1, 2, 3, 4, 5},
+	}
+	g.initPhysics()
+	g.rebuildThingBlockmap()
+	// The player shares the start marker's original spawn order. Linking the
+	// marker as a second mobj makes traversal skip the real player's height
+	// clip, leaving it one step behind E3M9's rising floor.
+	g.sectorFloor[0] = -135 * fracUnit
+	playerVisits := 0
+	g.walkActorBlockCell(0, func(i int) {
+		t.Fatalf("player start type %d must have no physical blockmap link", g.m.Things[i].Type)
+	}, func() {
+		playerVisits++
+		g.heightClipPlayer(-136 * fracUnit)
+	})
+	if playerVisits != 1 || g.p.floorz != -135*fracUnit || g.p.z != g.p.floorz {
+		t.Fatalf("player visits=%d floor=%d z=%d, want one visit at floor -135", playerVisits, g.p.floorz, g.p.z)
+	}
+}
+
 func TestUseSpecialLine_ActivatesFloorSpecialAndConsumesOneShot(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -418,6 +487,12 @@ func TestRunGameplayTic_UseIsEdgeTriggeredLikeDoom(t *testing.T) {
 		},
 	}
 	d := g.doors[1]
+	g.initPlayerState()
+	g.runGameplayTic(moveCmd{}, true, false)
+	if d.direction != 1 {
+		t.Fatal("initially held Use activated the door before being released")
+	}
+	g.runGameplayTic(moveCmd{}, false, false)
 
 	g.runGameplayTic(moveCmd{}, true, false)
 	if d.direction != -1 {
@@ -687,6 +762,7 @@ func TestTickPlat_UpwardBlockedByPlayerReversesLikeDoom(t *testing.T) {
 			ceilz:  60 * fracUnit,
 		},
 	}
+	g.stats.Health = 100
 
 	g.tickPlat(0, g.plats[0])
 
@@ -995,6 +1071,35 @@ func TestCheckWalkSpecialLines_PlayerTeleportSuppressesSameTicPickupSweep(t *tes
 	}
 	if !g.p.teleportedThisTic {
 		t.Fatal("player teleport should suppress same-tic post-move pickup sweep")
+	}
+}
+
+func TestCheckWalkSpecialLines_PlayerPreservesMonsterOnlyTeleport(t *testing.T) {
+	for _, special := range []uint16{125, 126} {
+		g := &game{
+			m: &mapdata.Map{
+				Things:   []mapdata.Thing{{Type: 3003, X: 8}},
+				Vertexes: []mapdata.Vertex{{X: 0, Y: 64}, {X: 0, Y: -64}},
+				Linedefs: []mapdata.Linedef{{V1: 0, V2: 1, Special: special, Tag: 7, Flags: mlTwoSided, SideNum: [2]int16{0, 0}}},
+				Sidedefs: []mapdata.Sidedef{{Sector: 0}},
+				Sectors:  []mapdata.Sector{{CeilingHeight: 128, Tag: 7}},
+			},
+			p: player{x: 8 * fracUnit},
+		}
+		g.initPhysics()
+		g.checkWalkSpecialLines(-32*fracUnit, 0, 8*fracUnit, 0)
+		if g.lineSpecial[0] != special {
+			t.Fatalf("player consumed monster-only special %d", special)
+		}
+		// A monster crossing still consumes W1 even when no destination exists.
+		g.checkWalkSpecialLinesForActor(-32*fracUnit, 0, 8*fracUnit, 0, 0, false)
+		want := special
+		if special == 125 {
+			want = 0
+		}
+		if g.lineSpecial[0] != want {
+			t.Fatalf("monster crossing special %d left %d, want %d", special, g.lineSpecial[0], want)
+		}
 	}
 }
 

@@ -430,6 +430,75 @@ func TestTickSkullFlyMomentum_CeilingClipClearsReflectedMomZLikeDoom(t *testing.
 	}
 }
 
+func TestTickMonsterMomentum_TeleportPreservesSplitMoveRemainder(t *testing.T) {
+	g := &game{
+		isDead: true,
+		m: &mapdata.Map{
+			Things:   []mapdata.Thing{{Type: 3001}, {Type: 14, X: 100, Y: 100, Angle: 315}},
+			Vertexes: []mapdata.Vertex{{X: -128, Y: 4}, {X: 128, Y: 4}},
+			Linedefs: []mapdata.Linedef{{V1: 0, V2: 1, Flags: mlTwoSided, Special: 97, Tag: 7, SideNum: [2]int16{0, 0}}},
+			Sidedefs: []mapdata.Sidedef{{Sector: 0}},
+			Sectors:  []mapdata.Sector{{CeilingHeight: 216, Tag: 7}},
+		},
+		thingHP: []int{-66, 0}, thingDead: []bool{true, false}, thingCollected: []bool{false, false},
+	}
+	g.initPhysics()
+	g.ensureMonsterAIState()
+	g.thingState[0], g.thingStatePhase[0] = monsterStateDeath, 5
+	g.setThingMomentum(0, 180746, 1016236, 0)
+	g.tickMonsterMomentum(0, g.m.Things[0])
+	x, y := g.thingPosFixed(0, g.m.Things[0])
+	if x != 100*fracUnit+90373 || y != 100*fracUnit+508118 {
+		t.Fatalf("teleported corpse position=(%d,%d), want destination plus (90373,508118)", x, y)
+	}
+	if g.thingMomX[0] != 0 || g.thingMomY[0] != 0 || g.thingMomZ[0] != 0 {
+		t.Fatalf("teleported corpse retained momentum=(%d,%d,%d)", g.thingMomX[0], g.thingMomY[0], g.thingMomZ[0])
+	}
+	if got := g.thingWorldAngle(0, g.m.Things[0]); got != degToAngle(315) {
+		t.Fatalf("teleport angle=%d, want 315 degrees", got)
+	}
+}
+
+func TestTickSkullFlyMomentum_SplitNegativeOddComponentLikeDoom(t *testing.T) {
+	t.Cleanup(doomrand.Clear)
+	for _, tc := range []struct {
+		name string
+		x, y int64
+	}{
+		{"negative y", 1280932, -696715},
+		{"negative x", -696715, 1280932},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{
+				isDead: true,
+				m: &mapdata.Map{
+					Things:  []mapdata.Thing{{Type: 3006, X: 300, Y: 300}},
+					Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+				},
+				thingCollected: []bool{false}, thingDead: []bool{false},
+				thingHP: []int{100}, thingSkullFly: []bool{true},
+				thingMomX: []int64{tc.x}, thingMomY: []int64{tc.y}, thingMomZ: []int64{0},
+				thingFloorState: []int64{0}, thingCeilState: []int64{128 * fracUnit},
+				thingSupportValid: []bool{true},
+			}
+			g.initPhysics()
+			startX, startY := g.thingPosFixed(0, g.m.Things[0])
+			doomrand.Clear()
+			g.tickSkullFlyMomentum(0, g.m.Things[0])
+			x, y := g.thingPosFixed(0, g.m.Things[0])
+			if x != startX+tc.x || y != startY+tc.y {
+				t.Fatalf("split move=(%d,%d), want (%d,%d)", x-startX, y-startY, tc.x, tc.y)
+			}
+			if !g.thingSkullFly[0] {
+				t.Fatal("unobstructed split move ended the skull charge")
+			}
+			if _, prnd := doomrand.State(); prnd != 0 {
+				t.Fatalf("unobstructed split move consumed RNG: %d", prnd)
+			}
+		})
+	}
+}
+
 func TestTickSkullFlyMomentum_DoesNotSplitLargeNegativeMomentumLikeDoom(t *testing.T) {
 	g := &game{
 		isDead: true,
@@ -681,8 +750,10 @@ func TestMonsterMoveStepMatchesDoomSpeedTable(t *testing.T) {
 		{65, 8 * fracUnit},
 	}
 	for _, tt := range tests {
-		if got := monsterMoveStep(tt.typ, false); got != tt.want {
-			t.Fatalf("type %d speed=%d want=%d", tt.typ, got, tt.want)
+		for _, fast := range []bool{false, true} {
+			if got := monsterMoveStep(tt.typ, fast); got != tt.want {
+				t.Fatalf("type %d fast=%t speed=%d want=%d", tt.typ, fast, got, tt.want)
+			}
 		}
 	}
 }
@@ -1100,6 +1171,148 @@ func TestResetLostSoulChargePreservesInFloat(t *testing.T) {
 	}
 }
 
+func TestLostSoulChargeHitsExplodingBarrelUntilRemoved(t *testing.T) {
+	doomrand.Clear()
+	g := &game{
+		isDead: true,
+		m: &mapdata.Map{
+			Things:  []mapdata.Thing{{Type: 3006, X: 0, Y: 0}, {Type: barrelThingType, X: 32, Y: 0, Flags: 7}},
+			Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+		},
+		thingDead:      []bool{false, true},
+		thingHP:        []int{100, -57},
+		thingCollected: []bool{false, false},
+		thingSkullFly:  []bool{true, false},
+		thingMomX:      []int64{20 * fracUnit, 0},
+		thingMomY:      []int64{0, 0},
+		thingMomZ:      []int64{fracUnit, 0},
+	}
+	g.initPhysics()
+	// Skull collision ignores height, including a barrel reduced to a quarter
+	// height by P_KillMobj. P_DamageMobj ignores the dead barrel, but the slam
+	// still rolls damage and clears the charge.
+	x := int64(20 * fracUnit)
+	for _, probe := range []struct {
+		name string
+		run  func() (lineAttackTarget, bool)
+	}{
+		{"target", func() (lineAttackTarget, bool) { return g.lostSoulChargeTargetAt(0, g.m.Things[0], x, 0, 96*fracUnit) }},
+		{"move", func() (lineAttackTarget, bool) { p := g.probeSkullFlyMove(0, 3006, x, 0); return p.target, p.hitTarget }},
+	} {
+		target, hit := probe.run()
+		if !hit || target.kind != lineAttackTargetThing || target.idx != 1 {
+			t.Fatalf("%s: target=%+v hit=%t, want exploding barrel", probe.name, target, hit)
+		}
+	}
+	g.hitSkullFlyTarget(0, 3006, lineAttackTarget{kind: lineAttackTargetThing, idx: 1})
+	_, rng := doomrand.State()
+	if rng != 1 || g.thingHP[1] != -57 || g.thingSkullFly[0] || g.thingMomX[0] != 0 || g.thingMomZ[0] != 0 {
+		t.Fatalf("slam: rng=%d barrelHP=%d charging=%t momentum=(%d,%d)", rng, g.thingHP[1], g.thingSkullFly[0], g.thingMomX[0], g.thingMomZ[0])
+	}
+	g.thingCollected[1] = true
+	if _, hit := g.lostSoulChargeTargetAt(0, g.m.Things[0], x, 0, 0); hit {
+		t.Fatal("removed barrel must no longer stop a charging skull")
+	}
+	if p := g.probeSkullFlyMove(0, 3006, x, 0); p.hitTarget {
+		t.Fatal("removed barrel must no longer stop a skull move")
+	}
+}
+
+func TestLostSoulChaseSlamUsesNestedMoveFloatState(t *testing.T) {
+	doomrand.SetState(0, 140)
+	g := &game{
+		m: &mapdata.Map{
+			Things:  []mapdata.Thing{{Type: 3006, Flags: 7}, {Type: 3006, Flags: 7}},
+			Sectors: []mapdata.Sector{{FloorHeight: 544, CeilingHeight: 808}},
+		},
+		p:                 player{x: 55574423, y: 257849849},
+		stats:             playerStats{Health: 100},
+		playerMobjHealth:  100,
+		thingX:            []int64{62526953, 60392719},
+		thingY:            []int64{261190761, 260726419},
+		thingHP:           []int{100, 100},
+		thingCollected:    []bool{false, false},
+		thingAggro:        []bool{true, true},
+		thingTargetPlayer: []bool{true, true},
+		thingMoveDir:      []monsterMoveDir{monsterDirEast, monsterDirSouth},
+		thingMoveCount:    []int{-1, 0},
+		thingSkullFly:     []bool{true, false},
+		thingAngleState:   []uint32{2684354560, 0},
+		thingZState:       []int64{39414112, 40534009},
+		thingFloorState:   []int64{544 * fracUnit, 544 * fracUnit},
+		thingCeilState:    []int64{808 * fracUnit, 808 * fracUnit},
+		thingSupportValid: []bool{true, true},
+	}
+	g.initPhysics()
+	g.ensureMonsterAIState()
+	// MAP29 tic 1951: the first southwest chase probe slams another skull.
+	// Resetting the charge runs a nested A_Chase, which moves south and leaves
+	// floatok true. The failed outer P_Move therefore lowers z by FLOATSPEED
+	// and succeeds without taking a second chase step.
+	g.monsterPickNewChaseDir(0, 3006, g.p.x, g.p.y)
+	x, y := g.thingPosFixed(0, g.m.Things[0])
+	z, _, _ := g.thingSupportState(0, g.m.Things[0])
+	_, rng := doomrand.State()
+	if x != 62526953 || y != 260666473 || z != 39151968 || rng != 146 {
+		t.Fatalf("chase result=(%d,%d,%d) rng=%d, want=(62526953,260666473,39151968) rng=146", x, y, z, rng)
+	}
+	if g.thingHP[1] != 91 || g.thingSkullFly[0] || !g.thingInFloat[0] || g.thingMoveCount[0] != 0 {
+		t.Fatalf("slam: targetHP=%d charging=%t floating=%t count=%d", g.thingHP[1], g.thingSkullFly[0], g.thingInFloat[0], g.thingMoveCount[0])
+	}
+}
+
+func TestLostSoulSlamResetsVictimAfterDamageWakeChangesMover(t *testing.T) {
+	for _, movement := range []bool{false, true} {
+		doomrand.SetState(0, 176)
+		g := &game{
+			isDead: true,
+			m: &mapdata.Map{
+				Things:  []mapdata.Thing{{Type: 3006, Flags: 7}, {Type: 3002, Flags: 7}},
+				Sectors: []mapdata.Sector{{CeilingHeight: 72}},
+			},
+			thingX:            []int64{-44416192, -44040192},
+			thingY:            []int64{-27638976, -31457280},
+			thingHP:           []int{100, 150},
+			thingCollected:    []bool{false, false},
+			thingState:        []monsterThinkState{monsterStateAttack, monsterStateSpawn},
+			thingStateTics:    []int{4, 7},
+			thingStatePhase:   []int{0, 0},
+			thingSkullFly:     []bool{true, false},
+			thingMoveDir:      []monsterMoveDir{monsterDirSouthWest, monsterDirEast},
+			thingMoveCount:    []int{5, 0},
+			thingAngleState:   []uint32{3014902271, 536870912},
+			thingMomX:         []int64{-389600, 0},
+			thingMomY:         []int64{-1251460, 0},
+			thingMomZ:         []int64{131072, 0},
+			thingZState:       []int64{0, 0},
+			thingFloorState:   []int64{0, 0},
+			thingCeilState:    []int64{72 * fracUnit, 72 * fracUnit},
+			thingSupportValid: []bool{true, true},
+		}
+		g.initPhysics()
+		g.ensureMonsterAIState()
+		// E2M6 tic 1995: waking the Demon performs P_TryMove during the damage
+		// callback. PIT_CheckThing then resets that Demon through the overwritten
+		// tmthing, leaving the initiating skull's charge flag intact.
+		if movement {
+			g.tickSkullFlyMomentum(0, g.m.Things[0])
+		} else {
+			g.hitSkullFlyTarget(0, 3006, lineAttackTarget{kind: lineAttackTargetThing, idx: 1})
+		}
+		x, y := g.thingPosFixed(1, g.m.Things[1])
+		_, rng := doomrand.State()
+		if x != -44040192 || y != -30801920 || g.thingHP[1] != 138 || rng != 181 {
+			t.Fatalf("victim=(%d,%d) hp=%d rng=%d, want=(-44040192,-30801920) hp=138 rng=181", x, y, g.thingHP[1], rng)
+		}
+		if !g.thingSkullFly[0] || g.thingState[1] != monsterStateSpawn || g.thingThreshold[1] != 0 || g.thingMomX[1] != 0 || g.thingMomY[1] != 0 {
+			t.Fatalf("reset: skull charging=%t victim state=%d threshold=%d momentum=(%d,%d)", g.thingSkullFly[0], g.thingState[1], g.thingThreshold[1], g.thingMomX[1], g.thingMomY[1])
+		}
+		if movement && (g.thingZState[0] != 131072 || g.thingMomX[0] != 0 || g.thingMomY[0] != 0 || g.thingMomZ[0] != 131072) {
+			t.Fatalf("initiating skull: z=%d momentum=(%d,%d,%d), want z=131072 momentum=(0,0,131072)", g.thingZState[0], g.thingMomX[0], g.thingMomY[0], g.thingMomZ[0])
+		}
+	}
+}
+
 func TestTickThingThinker_DeadLostSoulRemovesOnFinalDeathFrameLikeDoom(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -1384,13 +1597,15 @@ func TestMonsterSpawnAndSeeFrameTablesMatchDoomStateTables(t *testing.T) {
 		wantTics []int
 	}{
 		{3004, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{4, 4, 4, 4, 4, 4, 4, 4}},
-		{3004, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{3004, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{4, 4, 4, 4, 4, 4, 4, 4}},
 		{9, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
-		{9, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{9, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
 		{65, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
-		{65, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{65, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
 		{3001, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
 		{3002, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
+		{3002, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{1, 1, 1, 1, 1, 1, 1, 1}},
+		{58, true, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{1, 1, 1, 1, 1, 1, 1, 1}},
 		{58, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{2, 2, 2, 2, 2, 2, 2, 2}},
 		{3005, false, []byte{'A'}, []int{3}},
 		{3003, false, []byte{'A', 'A', 'B', 'B', 'C', 'C', 'D', 'D'}, []int{3, 3, 3, 3, 3, 3, 3, 3}},
@@ -1679,9 +1894,10 @@ func TestArchvileAttackDamagesAndLaunchesPlayer(t *testing.T) {
 func TestArchvileRaisesNearbyCorpse(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
+			Sectors: []mapdata.Sector{{CeilingHeight: 128}},
 			Things: []mapdata.Thing{
 				{Type: 64, X: 0, Y: 0},
-				{Type: 3004, X: 32, Y: 0},
+				{Type: 3004, X: 48, Y: 0},
 			},
 		},
 		thingCollected:      []bool{false, false},
@@ -1697,9 +1913,11 @@ func TestArchvileRaisesNearbyCorpse(t *testing.T) {
 		thingJustAtk:        []bool{false, true},
 		thingJustHit:        []bool{false, true},
 		thingState:          []monsterThinkState{monsterStateSee, monsterStateDeath},
-		thingStateTics:      []int{0, 12},
-		thingStatePhase:     []int{0, 0},
+		thingStateTics:      []int{0, -1},
+		thingStatePhase:     []int{0, 4},
 	}
+	g.initPhysics()
+	g.p.x = 1000 * fracUnit
 	if !g.archvileTryRaiseCorpse(0) {
 		t.Fatal("arch-vile should raise a nearby corpse")
 	}
@@ -1709,8 +1927,11 @@ func TestArchvileRaisesNearbyCorpse(t *testing.T) {
 	if g.thingHP[1] != monsterSpawnHealth(3004) {
 		t.Fatalf("revived hp=%d want=%d", g.thingHP[1], monsterSpawnHealth(3004))
 	}
-	if g.thingState[1] != monsterStateSee {
-		t.Fatalf("state=%d want see", g.thingState[1])
+	if g.thingState[1] != monsterStateRaise || g.thingStateTics[1] != 5 {
+		t.Fatalf("state=%d tics=%d want first raise frame", g.thingState[1], g.thingStateTics[1])
+	}
+	if g.thingState[0] != monsterStateHeal || g.thingStateTics[0] != 10 || g.thingReactionTics[1] != 4 {
+		t.Fatal("vile did not enter heal state or reset the corpse's retained reaction timer")
 	}
 	if g.thingDeathTics[1] != 0 || g.thingPainTics[1] != 0 || g.thingAttackTics[1] != 0 || g.thingAttackFireTics[1] != -1 {
 		t.Fatalf("revived state not cleared: death=%d pain=%d attack=%d fire=%d", g.thingDeathTics[1], g.thingPainTics[1], g.thingAttackTics[1], g.thingAttackFireTics[1])
@@ -1723,9 +1944,10 @@ func TestArchvileDoesNotRaiseLostSoulOrBossCorpse(t *testing.T) {
 		t.Run(fmt.Sprintf("corpse_%d", corpseType), func(t *testing.T) {
 			g := &game{
 				m: &mapdata.Map{
+					Sectors: []mapdata.Sector{{CeilingHeight: 128}},
 					Things: []mapdata.Thing{
 						{Type: 64, X: 0, Y: 0},
-						{Type: corpseType, X: 32, Y: 0},
+						{Type: corpseType, X: 48, Y: 0},
 					},
 				},
 				thingCollected:      []bool{false, false},
@@ -1734,9 +1956,11 @@ func TestArchvileDoesNotRaiseLostSoulOrBossCorpse(t *testing.T) {
 				thingDeathTics:      []int{0, 10},
 				thingAttackFireTics: []int{-1, -1},
 				thingState:          []monsterThinkState{monsterStateSee, monsterStateDeath},
-				thingStateTics:      []int{0, 10},
+				thingStateTics:      []int{0, -1},
 				thingStatePhase:     []int{0, 0},
 			}
+			g.initPhysics()
+			g.p.x = 1000 * fracUnit
 			if g.archvileTryRaiseCorpse(0) {
 				t.Fatalf("arch-vile should not raise corpse type %d", corpseType)
 			}
@@ -1764,7 +1988,6 @@ func TestDemoTraceMonsterAttackStateMatchesDoomStateNumbers(t *testing.T) {
 		{69, 567, 3},
 		{3006, 589, 4},
 		{64, 256, 11},
-		{66, 336, 6},
 		{67, 377, 10},
 		{68, 648, 4},
 		{71, 709, 4},
@@ -1781,6 +2004,14 @@ func TestDemoTraceMonsterAttackStateMatchesDoomStateNumbers(t *testing.T) {
 			if want := tt.base + phase; got != want {
 				t.Fatalf("type %d phase %d state=%d want=%d", tt.typ, phase, got, want)
 			}
+		}
+	}
+	// Revenant attacks omit the zero-tic FIST1 and MISS1 states from the
+	// stored phase, leaving a gap between the two visible attack sequences.
+	for phase, want := range []int{336, 337, 338, 340, 341, 342} {
+		got, ok := demoTraceMonsterAttackState(66, phase)
+		if !ok || got != want {
+			t.Fatalf("Revenant phase %d state=%d ok=%t want=%d", phase, got, ok, want)
 		}
 	}
 }
@@ -2339,6 +2570,7 @@ func TestTryMove_PlayerNotBlockedByUndrawnSolidThing(t *testing.T) {
 		thingDead:      []bool{false},
 		p:              player{x: 0, y: 0},
 	}
+	g.applyThingSpawnFiltering()
 	g.initPhysics()
 	if !g.tryMove(16*fracUnit, 0) {
 		t.Fatal("player move should ignore solid thing that is not drawable")
@@ -3656,6 +3888,48 @@ func TestRunMonsterIdleOrChaseEntryAction_PainResumeLostTargetStopsAfterReacquir
 	}
 	if got := g.thingMoveCount[0]; got != 0 {
 		t.Fatalf("movecount=%d want 0 when no same-tic chase step occurs", got)
+	}
+}
+
+func TestRevenantPainExpiryReturnsAfterReacquiringPlayer(t *testing.T) {
+	doomrand.SetState(0, 240)
+	g := &game{
+		m: &mapdata.Map{
+			Things:  []mapdata.Thing{{Type: 66, Flags: 7}, {Type: 3001, Flags: 7}},
+			Sectors: []mapdata.Sector{{FloorHeight: 56, CeilingHeight: 144}},
+		},
+		p:                 player{x: 32556849, y: 101192244},
+		stats:             playerStats{Health: 100},
+		playerMobjHealth:  100,
+		thingX:            []int64{45358923, 0},
+		thingY:            []int64{102061029, 0},
+		thingHP:           []int{40, -20},
+		thingDead:         []bool{false, true},
+		thingCollected:    []bool{false, false},
+		thingAggro:        []bool{true, false},
+		thingTargetPlayer: []bool{false, false},
+		thingTargetIdx:    []int{1, -1},
+		thingState:        []monsterThinkState{monsterStatePain, monsterStateDeath},
+		thingStatePhase:   []int{1, 0},
+		thingStateTics:    []int{1, -1},
+		thingMoveDir:      []monsterMoveDir{monsterDirSouth, monsterDirNoDir},
+		thingMoveCount:    []int{9, 0},
+		thingAngleState:   []uint32{1610612736, 0},
+		thingThreshold:    []int{23, 0},
+	}
+	g.initPhysics()
+	g.ensureMonsterAIState()
+	// MAP06 tic 2893 enters RUN1 from the final pain frame while its Imp
+	// target is dead. A_Chase turns once, reacquires the player, and returns
+	// before movement or the active-sound RNG roll.
+	g.tickGenericMonsterState(0, g.m.Things[0])
+	x, y := g.thingPosFixed(0, g.m.Things[0])
+	_, rng := doomrand.State()
+	if x != 45358923 || y != 102061029 || g.thingAngleState[0] != 2147483648 || g.thingMoveCount[0] != 9 || rng != 240 {
+		t.Fatalf("pain expiry: pos=(%d,%d) angle=%d count=%d rng=%d", x, y, g.thingAngleState[0], g.thingMoveCount[0], rng)
+	}
+	if !g.thingTargetPlayer[0] || g.thingTargetIdx[0] != -1 || g.thingThreshold[0] != 0 || g.thingState[0] != monsterStateSee || g.thingStateTics[0] != 2 {
+		t.Fatalf("reacquire: player=%t target=%d threshold=%d state=%d tics=%d", g.thingTargetPlayer[0], g.thingTargetIdx[0], g.thingThreshold[0], g.thingState[0], g.thingStateTics[0])
 	}
 }
 

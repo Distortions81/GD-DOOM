@@ -275,6 +275,9 @@ type SoundBank struct {
 	DeathRevenantRaw    PCMSample
 	DeathPainElemRaw    PCMSample
 	DeathWolfSSRaw      PCMSample
+	KeenPain            PCMSample
+	KeenDeath           PCMSample
+	MonsterRaise        PCMSample
 	DeathArchvileRaw    PCMSample
 	DeathZombie         PCMSample
 	DeathShotgunGuy     PCMSample

@@ -282,6 +282,8 @@ type hitscanPuff struct {
 	x        int64
 	y        int64
 	z        int64
+	momx     int64
+	momy     int64
 	momz     int64
 	floorz   int64
 	ceilz    int64
@@ -482,6 +484,7 @@ type game struct {
 	marks                     mapview.MarksState
 	p                         player
 	currentMoveCmd            moveCmd
+	lastAttackRange           int64 // Original p_map.c attackrange, also read by tracer puffs.
 	localSlot                 int
 	localPlayerThingIndex     int
 	playerBlockOrder          int64
@@ -494,6 +497,8 @@ type game struct {
 	validCount              int
 	playerProbeSpecialLines []int
 	thingProbeSpecialLines  [][]int
+	monsterMoveProbeScratch monsterMoveProbeResult
+	movementProbeThing      int
 	bmapOriginX             int64
 	bmapOriginY             int64
 	bmapWidth               int
@@ -595,6 +600,7 @@ type game struct {
 	thingCollected             []bool
 	thingDropped               []bool
 	thingThinkerOrder          []int64
+	thingSpawnPoint            []mapdata.Thing
 	prevThingX                 []int64
 	prevThingY                 []int64
 	prevThingZ                 []int64
@@ -881,6 +887,10 @@ type game struct {
 	platTickedThisTic             bool
 	demoTick                      int
 	demoIntermissionActive        bool
+	demoIntermissionSkip          bool
+	demoWorldDone                 bool
+	demoFinaleActive              bool
+	teleportMoveSerial            uint64
 	demoDoneReported              bool
 	demoBenchStarted              bool
 	demoTraceInitialWritten       bool
@@ -1359,6 +1369,7 @@ func newGameWithRNG(m *mapdata.Map, opts Options, clearRNG bool) *game {
 	g.thingCollected = make([]bool, len(m.Things))
 	g.thingDropped = make([]bool, len(m.Things))
 	g.thingThinkerOrder = make([]int64, len(m.Things))
+	g.thingSpawnPoint = append([]mapdata.Thing(nil), m.Things...)
 	g.thingX = make([]int64, len(m.Things))
 	g.thingY = make([]int64, len(m.Things))
 	g.thingMomX = make([]int64, len(m.Things))
@@ -1982,7 +1993,7 @@ func (g *game) precacheMonsterSpriteRefsForType(typ int16) {
 	}
 	frames := monsterFrameLettersForPrecache(typ)
 	for _, frame := range frames {
-		if frame < 'A' || frame > 'Z' {
+		if frame < 'A' || frame > ']' {
 			continue
 		}
 		g.monsterFrameRenderRef(prefix, frame, 0)
@@ -2000,7 +2011,7 @@ func monsterFrameLettersForPrecache(typ int16) []byte {
 	out := make([]byte, 0, 32)
 	appendFrames := func(seq []byte) {
 		for _, frame := range seq {
-			if frame < 'A' || frame > 'Z' {
+			if frame < 'A' || frame > ']' {
 				continue
 			}
 			if _, ok := seen[frame]; ok {
@@ -2016,6 +2027,10 @@ func monsterFrameLettersForPrecache(typ int16) []byte {
 	appendFrames(monsterPainFrameSeq(typ))
 	appendFrames(monsterDeathFrameSeq(typ))
 	appendFrames(monsterXDeathFrameSeq(typ))
+	appendFrames([]byte(monsterRaiseFrames(typ).frames))
+	if typ == 64 {
+		appendFrames([]byte("[\\]")) // VILE frames 26, 27, and 28.
+	}
 	return out
 }
 
@@ -2599,7 +2614,7 @@ func (g *game) shouldCaptureCursor() bool {
 
 func (g *game) Update() error {
 	defer g.clearSampledInput()
-	if g.levelExitRequested && !g.demoIntermissionActive {
+	if g.levelExitRequested && !g.demoIntermissionActive && !g.demoFinaleActive {
 		return ebiten.Termination
 	}
 	if g.opts.DemoScript != nil {
@@ -2796,7 +2811,7 @@ func (g *game) updateDemoMode() error {
 		g.demoTraceInitialWritten = true
 		return nil
 	}
-	if g.demoIntermissionActive {
+	if g.demoIntermissionActive || g.demoFinaleActive {
 		return g.updateDemoIntermission(script)
 	}
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
@@ -2842,8 +2857,17 @@ func (g *game) updateDemoIntermission(script *DemoScript) error {
 		g.reportDemoBench(script)
 		return ebiten.Termination
 	}
+	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	g.writeDemoTraceTic(g.demoTick - 1)
+	if g.demoIntermissionActive {
+		// WI_checkForAccelerate uses attack/use edges and updates the same
+		// latches that the player thinker used in the completed level.
+		_, useHeld, attackHeld := demoTicCommand(tc)
+		g.demoIntermissionSkip = (attackHeld && !g.weaponAttackDown) || (useHeld && !g.useButtonDown)
+		g.weaponAttackDown, g.useButtonDown = attackHeld, useHeld
+	} else {
+		g.writeDemoTraceTic(g.demoTick - 1)
+	}
 	return nil
 }
 
@@ -10418,6 +10442,12 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 	if tics < 1 {
 		tics = 1
 	}
+	state := 93
+	if g.lastAttackRange == 64*fracUnit {
+		// P_SpawnPuff also reads attackrange when called by A_Tracer, so
+		// a preceding punch changes Revenant trail puffs to S_PUFF3.
+		state, tics = 95, 4
+	}
 	floorz, ceilz, ok := g.subsectorFloorCeilAt(x, y)
 	if !ok && g != nil && g.m != nil {
 		floorz = g.thingFloorZ(x, y)
@@ -10435,7 +10465,7 @@ func (g *game) spawnHitscanPuff(x, y, z int64) {
 		lastLook: lastLook,
 		tics:     tics,
 		totalTic: tics,
-		state:    93,
+		state:    state,
 		kind:     hitscanFxPuff,
 		order:    g.allocThinkerOrder(),
 	})
@@ -10517,6 +10547,18 @@ func (g *game) spawnHitscanBlood(x, y, z int64, damage int) {
 		state:    state,
 		kind:     hitscanFxBlood,
 		order:    g.allocThinkerOrder(),
+	})
+}
+
+func (g *game) spawnCrusherBlood(x, y, z int64) {
+	floor, ceil, _ := g.subsectorFloorCeilAt(x, y)
+	lastLook := doomrand.PRandom() & 3
+	momx := int64(doomrand.PRandom()-doomrand.PRandom()) << 12
+	momy := int64(doomrand.PRandom()-doomrand.PRandom()) << 12
+	g.hitscanPuffs = append(g.hitscanPuffs, hitscanPuff{
+		x: x, y: y, z: z, momx: momx, momy: momy,
+		floorz: floor, ceilz: ceil, lastLook: lastLook,
+		tics: 8, totalTic: 8, state: 90, kind: hitscanFxBlood, order: g.allocThinkerOrder(),
 	})
 }
 
@@ -10708,6 +10750,25 @@ func (g *game) tickHitscanPuffByOrder(order int64) {
 func (g *game) tickHitscanPuff(p *hitscanPuff) bool {
 	if p == nil {
 		return false
+	}
+	if p.momx != 0 || p.momy != 0 {
+		x, y := p.x+p.momx, p.y+p.momy
+		// MF_NOBLOCKMAP excludes blood from blocklinks but does not bypass
+		// P_TryMove's collision walk. Like other non-player movers, it must
+		// also test the player's solid body, without touching pickups.
+		floor, ceil, drop, ok := g.checkPositionForActorWithThingPolicy(x, y, 20*fracUnit, true, -1, true, false)
+		if ok && ceil-floor >= 16*fracUnit && ceil-p.z >= 16*fracUnit && floor-p.z <= stepHeight && floor-drop <= stepHeight {
+			p.x, p.y, p.floorz, p.ceilz = x, y, floor, ceil
+		} else {
+			p.momx, p.momy = 0, 0
+		}
+		if p.z <= p.floorz {
+			if abs(p.momx) < stopSpeed && abs(p.momy) < stopSpeed {
+				p.momx, p.momy = 0, 0
+			} else {
+				p.momx, p.momy = fixedMul(p.momx, friction), fixedMul(p.momy, friction)
+			}
+		}
 	}
 	p.z += p.momz
 	if p.z <= p.floorz {
@@ -12510,6 +12571,8 @@ func monsterAttackFrameSeq(typ int16) []byte {
 
 func monsterSpawnFrameSeq(typ int16) []byte {
 	switch typ {
+	case 72:
+		return monsterSpawnSeqA
 	case 3004, 9, 65, 3001, 3002, 58, 3003, 69, 3006:
 		return monsterSpawnSeqAB
 	case 3005:
@@ -12561,6 +12624,7 @@ var (
 	monsterAttackTicsPain      = []int{5, 5, 5, 0}
 	monsterAttackTicsWolfSS    = []int{10, 10, 4, 6, 4, 1}
 	monsterSeeTics4            = []int{4, 4, 4, 4, 4, 4, 4, 4}
+	monsterSeeTics1            = []int{1, 1, 1, 1, 1, 1, 1, 1}
 	monsterSeeTics2            = []int{2, 2, 2, 2, 2, 2, 2, 2}
 	monsterSeeTics3            = []int{3, 3, 3, 3, 3, 3, 3, 3}
 	monsterSeeTics12x2         = []int{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}
@@ -12583,26 +12647,28 @@ var (
 	monsterPainSeqG            = []byte{'G'}
 	monsterPainSeqII           = []byte{'I', 'I'}
 	monsterPainTics33          = []int{3, 3}
+	monsterPainTics11          = []int{1, 1}
 	monsterPainTics22          = []int{2, 2}
 	monsterPainTics336         = []int{3, 3, 6}
 	monsterPainTics10          = []int{10}
 	monsterPainTics55          = []int{5, 5}
 	monsterPainTics66          = []int{6, 6}
-	monsterDeathTics5x5        = []int{5, 5, 5, 5, 5}
+	monsterDeathTics5x5        = []int{5, 5, 5, 5, -1}
 	monsterDeathTics5x6        = []int{5, 5, 5, 5, 5, -1}
 	monsterDeathTics5x7        = []int{5, 5, 5, 5, 5, 5, -1}
 	monsterDeathTics5x9        = []int{5, 5, 5, 5, 5, 5, 5, 5, -1}
-	monsterDeathTicsImp        = []int{8, 8, 6, 6, 6}
+	monsterDeathTicsImp        = []int{8, 8, 6, 6, -1}
 	monsterXDeathTicsImp       = []int{5, 5, 5, 5, 5, 5, 5, -1}
-	monsterDeathTicsDemon      = []int{8, 8, 4, 4, 4, 4}
+	monsterDeathTicsDemon      = []int{8, 8, 4, 4, 4, -1}
 	monsterDeathTicsLostSoul   = []int{6, 6, 6, 6, 6, 6}
 	monsterDeathTics8x6        = []int{8, 8, 8, 8, 8, 8}
-	monsterDeathTics8x7        = []int{8, 8, 8, 8, 8, 8, 8}
+	monsterDeathTicsCaco       = []int{8, 8, 8, 8, 8, -1}
+	monsterDeathTics8x7        = []int{8, 8, 8, 8, 8, 8, -1}
 	monsterDeathTicsArch       = []int{7, 7, 7, 7, 7, 7, 7, 5, 5, -1}
-	monsterDeathTics7x6        = []int{7, 7, 7, 7, 7, 7}
+	monsterDeathTics7x6        = []int{7, 7, 7, 7, 7, -1}
 	monsterDeathTics6x10       = []int{6, 6, 6, 6, 6, 6, 6, 6, 6, -1}
-	monsterDeathTicsCyber      = []int{10, 10, 10, 10, 10, 10, 10, 10, 30}
-	monsterDeathTicsSpider     = []int{20, 10, 10, 10, 10, 10, 10, 10, 10, 30}
+	monsterDeathTicsCyber      = []int{10, 10, 10, 10, 10, 10, 10, 10, 30, -1}
+	monsterDeathTicsSpider     = []int{20, 10, 10, 10, 10, 10, 10, 10, 10, 30, -1}
 	monsterDeathTicsArachn     = []int{20, 7, 7, 7, 7, 7, -1}
 )
 
@@ -12690,20 +12756,15 @@ func monsterAttackFrameTics(typ int16) []int {
 func monsterSeeFrameTics(typ int16, fast bool) []int {
 	switch typ {
 	case 3004:
-		tics := monsterSeeTics4
-		if fast {
-			tics = monsterSeeTics2
-		}
-		return tics
+		return monsterSeeTics4
 	case 9, 65:
-		tics := monsterSeeTics3
-		if fast {
-			tics = monsterSeeTics2
-		}
-		return tics
+		return monsterSeeTics3
 	case 3001, 3003, 69:
 		return monsterSeeTics3
 	case 3002, 58:
+		if fast {
+			return monsterSeeTics1
+		}
 		return monsterSeeTics2
 	case 3006:
 		return monsterSeeTicsLostSoul
@@ -12739,6 +12800,8 @@ func monsterAttackAnimTotalTics(typ int16) int {
 
 func monsterPainFrameSeq(typ int16) []byte {
 	switch typ {
+	case 72:
+		return keenPainFrames
 	case 3004:
 		return monsterPainSeqGG
 	case 9, 65:
@@ -12776,6 +12839,8 @@ func monsterPainFrameSeq(typ int16) []byte {
 
 func monsterPainFrameTics(typ int16) []int {
 	switch typ {
+	case 72:
+		return keenPainTics
 	case 3004:
 		return monsterPainTics33
 	case 9, 65:
@@ -12845,6 +12910,8 @@ var (
 
 func monsterDeathFrameSeq(typ int16) []byte {
 	switch typ {
+	case 72:
+		return keenDeathFrames
 	case 3004:
 		return monsterDeathFrames5x5
 	case 9:
@@ -12899,6 +12966,8 @@ func monsterXDeathFrameSeq(typ int16) []byte {
 
 func monsterDeathFrameTics(typ int16) []int {
 	switch typ {
+	case 72:
+		return keenDeathTics
 	case 3004:
 		return monsterDeathTics5x5
 	case 9:
@@ -12912,7 +12981,7 @@ func monsterDeathFrameTics(typ int16) []int {
 	case 3006:
 		return monsterDeathTicsLostSoul
 	case 3005:
-		return monsterDeathTics8x6
+		return monsterDeathTicsCaco
 	case 3003, 69:
 		return monsterDeathTics8x7
 	case 64:
@@ -13012,6 +13081,18 @@ func monsterDeathAnimTotalTicsForMode(typ int16, xdeath bool) int {
 }
 
 func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
+	if i >= 0 && i < len(g.thingState) && i < len(g.thingStatePhase) {
+		phase := g.thingStatePhase[i]
+		if g.thingState[i] == monsterStateHeal && phase >= 0 && phase < 3 {
+			return byte('A' + 26 + phase)
+		}
+		if g.thingState[i] == monsterStateRaise {
+			frames := monsterRaiseFrames(th.Type).frames
+			if phase >= 0 && phase < len(frames) {
+				return frames[phase]
+			}
+		}
+	}
 	if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
 		xdeath := i >= 0 && i < len(g.thingXDeath) && g.thingXDeath[i]
 		seq := monsterDeathFrameSeqForMode(th.Type, xdeath)
@@ -13045,9 +13126,9 @@ func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 	}
 	if i >= 0 && i < len(g.thingPainTics) && g.thingPainTics[i] > 0 {
 		seq := monsterPainFrameSeq(th.Type)
-		frameTics := monsterPainFrameTics(th.Type)
+		frameTics := g.monsterPainFrameTics(th.Type)
 		if len(seq) > 0 && len(seq) == len(frameTics) {
-			total := monsterPainAnimTotalTics(th.Type)
+			total := g.fastMonsterStateTics(th.Type, monsterPainAnimTotalTics(th.Type))
 			elapsed := total - g.thingPainTics[i]
 			if elapsed < 0 {
 				elapsed = 0
@@ -13067,9 +13148,9 @@ func (g *game) monsterFrameLetter(i int, th mapdata.Thing, tic int) byte {
 	}
 	if i >= 0 && i < len(g.thingAttackTics) && g.thingAttackTics[i] > 0 {
 		seq := monsterAttackFrameSeq(th.Type)
-		frameTics := monsterAttackFrameTics(th.Type)
+		frameTics := g.monsterAttackFrameTics(th.Type)
 		if len(seq) > 0 && len(seq) == len(frameTics) {
-			total := monsterAttackAnimTotalTics(th.Type)
+			total := g.fastMonsterStateTics(th.Type, monsterAttackAnimTotalTics(th.Type))
 			elapsed := total - g.thingAttackTics[i]
 			if elapsed < 0 {
 				elapsed = 0
@@ -13192,6 +13273,8 @@ func monsterUsesShadow(typ int16) bool {
 
 func monsterSpritePrefix(typ int16) (string, bool) {
 	switch typ {
+	case 72:
+		return "KEEN", true
 	case 3004:
 		return "POSS", true
 	case 9:
@@ -17739,7 +17822,7 @@ func (g *game) subSectorAtFixed(x, y int64) int {
 			dx: int64(n.DX) << fracBits,
 			dy: int64(n.DY) << fracBits,
 		}
-		side := doomPointOnDivlineSide(x, y, dl)
+		side := doomPointOnNodeSide(x, y, dl)
 		child = n.ChildID[side]
 	}
 }
@@ -20461,9 +20544,13 @@ func (g *game) insertThingIntoBlockCell(cell, thingIdx int) bool {
 
 func thingTypeUsesBlockmap(typ int16) bool {
 	switch typ {
-	case teleportThingType, 87, 89:
-		// Teleport markers and boss-brain markers have MF_NOBLOCKMAP, so they never enter
-		// blocklinks and is skipped by sector height clipping.
+	case 1, 2, 3, 4, 11:
+		// P_SpawnMapThing handles player/deathmatch starts without creating
+		// a map mobj. The live player has its own blockmap link and order.
+		return false
+	case teleportThingType, 87, 89, 79, 80, 81:
+		// Markers and blood/brain pools have MF_NOBLOCKMAP, so moving-sector
+		// height clipping must not visit them through blocklinks.
 		return false
 	default:
 		return true

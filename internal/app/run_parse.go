@@ -146,6 +146,36 @@ func watchStartupBufferTics(lowLatency bool) int {
 	return 3
 }
 
+// Sector movement needs texture dimensions even when texture rendering is off.
+func wallTextureHeights(wf *wad.File, ts *doomtex.Set) map[string]int {
+	if ts == nil {
+		var err error
+		ts, err = doomtex.LoadFromWAD(wf)
+		if err != nil {
+			return nil
+		}
+	}
+	names := ts.TextureNames()
+	heights := make(map[string]int, len(names)+1)
+	for i, name := range names {
+		if tex, ok := ts.Texture(name); ok {
+			heights[name] = tex.Height
+			if i == 0 {
+				// R_TextureNumForName("-") resolves to texture index zero.
+				heights["-"] = tex.Height
+			}
+		}
+	}
+	return heights
+}
+
+func wadIsShareware(wf *wad.File) bool {
+	_, episodeOne := wf.LumpByName("E1M1")
+	_, episodeTwo := wf.LumpByName("E2M1")
+	_, commercial := wf.LumpByName("MAP01")
+	return episodeOne && !episodeTwo && !commercial
+}
+
 func normalizeNetplayShorthandArgs(args []string) []string {
 	if len(args) == 0 {
 		return nil
@@ -1250,6 +1280,8 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			FlatBank:                   flatBank,
 			FlatBankIndexed:            flatBankIndexed,
 			WallTexBank:                wallTexBank,
+			WallTextureHeights:         wallTextureHeights(wf, texSet),
+			Shareware:                  wadIsShareware(wf),
 			WallTextureAnimSequences:   wallTextureAnimSequences,
 			FlatTextureAnimSequences:   flatTextureAnimSequences,
 			BootSplash:                 bootSplash,
@@ -2703,6 +2735,8 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		FlatBank:                   flatBank,
 		FlatBankIndexed:            flatBankIndexed,
 		WallTexBank:                wallTexBank,
+		WallTextureHeights:         wallTextureHeights(wf, texSet),
+		Shareware:                  wadIsShareware(wf),
 		WallTextureAnimSequences:   wallTextureAnimSequences,
 		FlatTextureAnimSequences:   flatTextureAnimSequences,
 		BootSplash:                 bootSplash,
@@ -4122,6 +4156,9 @@ func buildAutomapSoundBank(r sound.DigitalImportReport, sourcePortMode bool) med
 		DeathRevenantRaw:    sample("DSSKEDTH"),
 		DeathPainElemRaw:    sample("DSPEDTH"),
 		DeathWolfSSRaw:      sample("DSSDTH"),
+		KeenPain:            sample("DSKEENPN"),
+		KeenDeath:           sample("DSKEENDT"),
+		MonsterRaise:        sample("DSSLOP"),
 		DeathArchvileRaw:    sample("DSVILDTH"),
 		DeathZombie:         firstSample(sample("DSPODTH1"), sample("DSBGDTH1")),
 		DeathShotgunGuy:     firstSample(sample("DSPODTH2"), sample("DSPODTH1")),

@@ -348,6 +348,64 @@ func TestBackpackDoublesAmmoCap(t *testing.T) {
 	}
 }
 
+func TestAmmoPickupsUseOriginalDifficultyAmounts(t *testing.T) {
+	for _, skill := range []struct {
+		name       string
+		level      int
+		multiplier int
+	}{
+		{"baby", 1, 2}, {"easy", 2, 1}, {"medium", 3, 1},
+		{"ultraviolence", 4, 1}, {"nightmare", 5, 2},
+	} {
+		t.Run(skill.name, func(t *testing.T) {
+			for _, tc := range []struct {
+				name    string
+				typ     int16
+				dropped bool
+				owned   bool
+				ammo    [4]int // bullets, shells, rockets, cells
+			}{
+				{"shells", 2008, false, false, [4]int{0, 4, 0, 0}},
+				{"dropped_clip", 2007, true, false, [4]int{5, 0, 0, 0}},
+				{"placed_shotgun", 2001, false, false, [4]int{0, 8, 0, 0}},
+				{"dropped_shotgun", 2001, true, false, [4]int{0, 4, 0, 0}},
+				{"duplicate_shotgun", 2001, true, true, [4]int{0, 4, 0, 0}},
+				{"backpack", 8, false, false, [4]int{10, 4, 1, 20}},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					g := &game{opts: Options{SkillLevel: skill.level}}
+					g.initPlayerState()
+					g.stats.Bullets = 0
+					g.inventory.Weapons[tc.typ] = tc.owned
+					if _, _, picked := g.applyPickup(tc.typ, tc.dropped); !picked {
+						t.Fatal("pickup should supply ammo")
+					}
+					got := [4]int{g.stats.Bullets, g.stats.Shells, g.stats.Rockets, g.stats.Cells}
+					want := tc.ammo
+					for i := range want {
+						want[i] *= skill.multiplier
+					}
+					if got != want {
+						t.Fatalf("ammo=%v want original P_GiveAmmo amounts %v", got, want)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestNightmareAmmoPickupClampsBeforeCheckingFullCapacity(t *testing.T) {
+	g := &game{opts: Options{SkillLevel: 5}}
+	g.initPlayerState()
+	g.stats.Shells = 49
+	if _, _, picked := g.applyPickup(2008, false); !picked || g.stats.Shells != 50 {
+		t.Fatalf("near-cap pickup: picked=%v shells=%d want true/50", picked, g.stats.Shells)
+	}
+	if _, _, picked := g.applyPickup(2008, false); picked || g.stats.Shells != 50 {
+		t.Fatalf("full-cap pickup: picked=%v shells=%d want false/50", picked, g.stats.Shells)
+	}
+}
+
 func TestDeadPlayerDoesNotPickup(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
@@ -394,6 +452,10 @@ func TestCanTouchPickup_DoomStyleBounds(t *testing.T) {
 	tx = 37 * fracUnit
 	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit) {
 		t.Fatal("expected no touch beyond blockdist")
+	}
+	tx = 36 * fracUnit
+	if canTouchPickup(px, py, pz, playerRadius, playerHeight, tx, ty, tz, 20*fracUnit) {
+		t.Fatal("PIT_CheckThing excludes the exact blockdist boundary")
 	}
 }
 
@@ -540,7 +602,7 @@ func TestProcessThingPickupsAt_UsesProbePositionLikeDoomMoveChecks(t *testing.T)
 	g.p.y = 40 * fracUnit
 	g.p.z = 0
 
-	g.processThingPickupsAt(0, 36*fracUnit, g.p.z, playerRadius, playerHeight)
+	g.processThingPickupsAt(0, 35*fracUnit, g.p.z, playerRadius, playerHeight)
 
 	if !g.thingCollected[0] {
 		t.Fatal("pickup should be collected at the probed move position")

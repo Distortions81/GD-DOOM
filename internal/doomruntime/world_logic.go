@@ -92,9 +92,6 @@ func (g *game) spawnSectorFireFlicker(sec int) {
 	}
 	maxLight := g.m.Sectors[sec].Light
 	minLight := g.findMinSurroundingSectorLight(sec, maxLight) + 16
-	if minLight > maxLight {
-		minLight = maxLight
-	}
 	g.sectorLightFx[sec] = sectorLightEffect{
 		order:    g.allocThinkerOrder(),
 		kind:     sectorLightEffectFireFlicker,
@@ -265,7 +262,6 @@ func (g *game) findMinSurroundingSectorLight(sec int, maxLight int16) int16 {
 		return maxLight
 	}
 	minLight := maxLight
-	found := false
 	for _, ld := range g.m.Linedefs {
 		s0, s1 := int(ld.SideNum[0]), int(ld.SideNum[1])
 		if s0 < 0 || s0 >= len(g.m.Sidedefs) {
@@ -279,20 +275,15 @@ func (g *game) findMinSurroundingSectorLight(sec int, maxLight int16) int16 {
 		switch {
 		case sec0 == sec && sec1 >= 0 && sec1 < len(g.m.Sectors):
 			other := g.m.Sectors[sec1].Light
-			if !found || other < minLight {
+			if other < minLight {
 				minLight = other
 			}
-			found = true
 		case sec1 == sec && sec0 >= 0 && sec0 < len(g.m.Sectors):
 			other := g.m.Sectors[sec0].Light
-			if !found || other < minLight {
+			if other < minLight {
 				minLight = other
 			}
-			found = true
 		}
-	}
-	if !found {
-		return maxLight
 	}
 	return minLight
 }
@@ -377,16 +368,17 @@ func (g *game) applySectorHazardDamage() {
 		return
 	}
 	special := g.m.Sectors[sec].Special
-	if special == 11 && g.stats.Health <= 10 {
-		g.requestLevelExit(false, "Level Complete")
-		return
-	}
-	// Doom applies damaging special-sector effects every 32 tics.
-	if (g.worldTic & 31) != 0 {
-		return
-	}
+	// P_PlayerInSpecialSector tests radiation-suit leakage before its
+	// 32-tic damage gate. Protected 20-damage floors consume RNG every tic.
 	hasSuit := g.inventory.RadSuitTics > 0
 	damage := hazardDamage(special, hasSuit)
+	// Doom applies damaging special-sector effects every 32 tics.
+	if (g.worldTic & 31) != 0 {
+		if special == 11 && g.stats.Health <= 10 {
+			g.requestLevelExit(false, "Level Complete")
+		}
+		return
+	}
 	if damage <= 0 {
 		return
 	}
@@ -456,6 +448,20 @@ func (g *game) damagePlayerFromWithInflictorZ(amount int, msg string, attackerX,
 	}
 	if hasAttacker {
 		g.applyPlayerDamageThrust(amount, attackerX, attackerY, inflictorZ)
+	}
+	// Doom's episode-ending hell sector cannot kill the player, including
+	// damage from monsters received while standing in that sector.
+	if g.m != nil {
+		sec := g.playerSector()
+		if sec >= 0 && sec < len(g.m.Sectors) && g.m.Sectors[sec].Special == 11 {
+			health := g.playerMobjHealth
+			if health <= 0 {
+				health = g.stats.Health
+			}
+			if amount >= health {
+				amount = health - 1
+			}
+		}
 	}
 	if g.playerInvulnerable() {
 		return

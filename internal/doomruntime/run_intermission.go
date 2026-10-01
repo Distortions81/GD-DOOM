@@ -196,6 +196,19 @@ func (sg *sessionGame) startIntermission(next *mapdata.Map, nextName mapdata.Map
 }
 
 func (sg *sessionGame) tickIntermission() bool {
+	if sg.g != nil && sg.g.demoIntermissionActive {
+		// Record after WI_Ticker so ga_worlddone is visible on its queued
+		// tic. G_DoWorldDone loads the next level at the start of the next tic.
+		skip := sg.g.demoIntermissionSkip
+		sg.g.demoIntermissionSkip = false
+		if skip {
+			sg.intermission.state.Accelerate = true
+		}
+		finished := sg.tickIntermissionAdvance(false)
+		sg.g.demoWorldDone = finished
+		sg.g.writeDemoTraceTic(sg.g.demoTick - 1)
+		return false
+	}
 	return sg.tickIntermissionAdvance(sg.anyIntermissionSkipInput())
 }
 
@@ -439,6 +452,8 @@ func (sg *sessionGame) startEpisodeFinale(current mapdata.MapName, secret bool) 
 	}
 	sg.levelCarryover = nil
 	if sg.g != nil {
+		sg.g.demoFinaleActive = sg.g.opts.DemoScript != nil
+		sg.g.demoIntermissionActive = false
 		sg.g.clearPendingSoundState()
 	}
 	sg.finale = state
@@ -486,6 +501,10 @@ func (sg *sessionGame) finishIntermission() {
 	if sg.levelCarryover != nil && sg.g != nil {
 		sg.g.applyLevelCarryover(*sg.levelCarryover)
 		sg.levelCarryover = nil
+		if sg.g.opts.DemoScript != nil {
+			// P_SpawnPlayer raises the carried weapon using P_SetupPsprites.
+			sg.g.bringUpWeapon()
+		}
 	}
 	sg.queueTransition(transitionLevel, 0)
 	sg.playMusicForMap(im.nextMap.Name)

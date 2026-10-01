@@ -226,6 +226,8 @@ type Options struct {
 	FlatBank                     map[string][]byte
 	FlatBankIndexed              map[string][]byte
 	WallTexBank                  map[string]media.WallTexture
+	WallTextureHeights           map[string]int
+	Shareware                    bool
 	WallTextureAnimSequences     map[string][]string
 	FlatTextureAnimSequences     map[string][]string
 	BootSplash                   media.WallTexture

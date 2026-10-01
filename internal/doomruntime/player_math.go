@@ -79,6 +79,23 @@ func doomPointOnDivlineSide(x, y int64, line divline) int {
 	return 1
 }
 
+// BSP nodes use R_PointOnSide's integer node deltas, rather than the
+// differently rounded P_PointOnDivlineSide used by path traversal.
+func doomPointOnNodeSide(x, y int64, line divline) int {
+	if line.dx == 0 || line.dy == 0 {
+		return doomPointOnDivlineSide(x, y, line)
+	}
+	// R_PointOnSide stores coordinate differences in signed fixed_t. A
+	// projectile outside the map can cross that range even when x/y fit it.
+	dx, dy := int64(int32(x-line.x)), int64(int32(y-line.y))
+	if (line.dy^line.dx^dx^dy)&0x80000000 != 0 {
+		return b2i((line.dy^dx)&0x80000000 != 0)
+	}
+	left := fixedMul(line.dy>>fracBits, dx)
+	right := fixedMul(dy, line.dx>>fracBits)
+	return b2i(right >= left)
+}
+
 func pointOnDivlineSide(x, y int64, line divline) int {
 	if line.dx == 0 {
 		if x <= line.x {
@@ -180,11 +197,18 @@ func fixedDiv(a, b int64) int64 {
 }
 
 func interceptVector(v2, v1 divline) int64 {
-	den := fixedMul(v1.dy>>8, v2.dx) - fixedMul(v1.dx>>8, v2.dy)
+	// Both P_InterceptVector and P_InterceptVector2 store their products,
+	// sums and coordinate differences in signed 32-bit fixed_t values.
+	// Long rays can overflow even when every coordinate fits in fixed_t.
+	v1dx, v1dy := int64(int32(v1.dx)), int64(int32(v1.dy))
+	v2dx, v2dy := int64(int32(v2.dx)), int64(int32(v2.dy))
+	den := int64(int32(fixedMul(v1dy>>8, v2dx) - fixedMul(v1dx>>8, v2dy)))
 	if den == 0 {
 		return 0
 	}
-	num := fixedMul((v1.x-v2.x)>>8, v1.dy) + fixedMul((v2.y-v1.y)>>8, v1.dx)
+	dx := int64(int32(v1.x) - int32(v2.x))
+	dy := int64(int32(v2.y) - int32(v1.y))
+	num := int64(int32(fixedMul(dx>>8, v1dy) + fixedMul(dy>>8, v1dx)))
 	return fixedDiv(num, den)
 }
 

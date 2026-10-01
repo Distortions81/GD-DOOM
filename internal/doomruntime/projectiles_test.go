@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"fmt"
 	"testing"
 
 	"gddoom/internal/doomrand"
@@ -19,6 +20,78 @@ func TestDoomProjectileShouldSplitMove_MatchesVanillaSignedComparison(t *testing
 	}
 	if doomProjectileShouldSplitMove(-(doomMaxMove/2 + 1), 0) {
 		t.Fatal("large negative x move should not split in vanilla")
+	}
+}
+
+func TestSplitMissileDeathContinuesRemainingStepWithOrdinaryCollisions(t *testing.T) {
+	for _, health := range []int{1, 100} {
+		t.Run(fmt.Sprint(health), func(t *testing.T) {
+			g := &game{m: &mapdata.Map{Sectors: []mapdata.Sector{{CeilingHeight: 128}}},
+				p: player{x: 16 * fracUnit, ceilz: 128 * fracUnit}, stats: playerStats{Health: health}, playerMobjHealth: health,
+				sectorFloor: []int64{0}, sectorCeil: []int64{128 * fracUnit}}
+			p := projectile{z: 32 * fracUnit, vx: 20 * fracUnit,
+				radius: 6 * fracUnit, height: 8 * fracUnit, kind: projectileFatShot,
+				sourceType: 67, sourceThing: -1, order: 42, frameTics: 4, ceilz: 128 * fracUnit}
+			doomrand.Clear()
+			defer doomrand.Clear()
+			if _, keep := g.advanceProjectile(p); keep || len(g.projectileImpacts) != 1 {
+				t.Fatal("missile should explode on the first split-step collision")
+			}
+			wantX := int64(0)
+			if health == 1 {
+				wantX = 10 * fracUnit
+				if !g.isDead {
+					t.Fatal("fixture missile should kill the player and clear player solidity")
+				}
+			}
+			fx := g.projectileImpacts[0]
+			if fx.x != wantX || fx.y != 0 || fx.z != 32*fracUnit {
+				t.Fatalf("impact=(%d,%d,%d), want (%d,0,32 units)", fx.x, fx.y, fx.z, wantX)
+			}
+		})
+	}
+}
+
+func TestMissileSpawnChecksHalfStepHeightAndDefersFloorImpact(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		z, vz     int64
+		wantSpawn bool
+	}{
+		{"below-floor", fracUnit, -4 * fracUnit, true},
+		{"at-floor", fracUnit, -2 * fracUnit, true},
+		{"ceiling-after-half-step", 120 * fracUnit, 4 * fracUnit, false},
+		{"ceiling-cleared-by-half-step", 122 * fracUnit, -4 * fracUnit, true},
+		{"step-too-high-after-half-step", -23 * fracUnit, -4 * fracUnit, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{m: &mapdata.Map{Sectors: []mapdata.Sector{{CeilingHeight: 128}}},
+				p:           player{x: 256 * fracUnit, y: 256 * fracUnit},
+				sectorFloor: []int64{0}, sectorCeil: []int64{128 * fracUnit}}
+			p := projectile{x: 32 * fracUnit, y: 32 * fracUnit, z: tc.z,
+				vx: 8 * fracUnit, vz: tc.vz, radius: 6 * fracUnit, height: 8 * fracUnit,
+				kind: projectileFireball, sourceType: 3001, sourceThing: -1, frameTics: 4}
+			doomrand.Clear()
+			defer doomrand.Clear()
+			if got := g.finishProjectileSpawn(&p, true); got != tc.wantSpawn {
+				t.Fatalf("spawn=%v, want %v", got, tc.wantSpawn)
+			}
+			if tc.wantSpawn {
+				_, rng := doomrand.State()
+				if p.z != tc.z+(tc.vz>>1) || len(g.projectileImpacts) != 0 || rng != 0 {
+					t.Fatalf("spawn changed height or exploded early: z=%d impacts=%d rng=%d", p.z, len(g.projectileImpacts), rng)
+				}
+				if tc.name == "below-floor" || tc.name == "at-floor" {
+					if _, keep := g.advanceProjectile(p); keep || len(g.projectileImpacts) != 1 {
+						t.Fatal("normal missile thinker should move horizontally, then explode at the floor")
+					}
+					fx := g.projectileImpacts[0]
+					if fx.x != 44*fracUnit || fx.z != 0 {
+						t.Fatalf("impact=(%d,%d), want (44 units, floor)", fx.x, fx.z)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -128,8 +201,31 @@ func TestRevenantTracerSpeedMatchesDoomSource(t *testing.T) {
 	if got := monsterProjectileSpeed(66, false); got != 10*fracUnit {
 		t.Fatalf("normal tracer speed=%d want=%d", got, 10*fracUnit)
 	}
-	if got := monsterProjectileSpeed(66, true); got != 20*fracUnit {
-		t.Fatalf("fast tracer speed=%d want=%d", got, 20*fracUnit)
+	if got := monsterProjectileSpeed(66, true); got != 10*fracUnit {
+		t.Fatalf("fast tracer speed=%d want=%d", got, 10*fracUnit)
+	}
+}
+
+func TestFastProjectileSpeedsChangeOnlyOriginalThreeTypes(t *testing.T) {
+	for _, tc := range []struct {
+		typ          int16
+		normal, fast int64
+	}{
+		{3001, 10, 20}, // Imp: MT_TROOPSHOT
+		{3005, 10, 20}, // Cacodemon: MT_HEADSHOT
+		{3003, 15, 20}, // Baron: MT_BRUISERSHOT
+		{69, 15, 20},   // Hell Knight: MT_BRUISERSHOT
+		{66, 10, 10},   // Revenant: MT_TRACER
+		{67, 20, 20},   // Mancubus: MT_FATSHOT
+		{16, 20, 20},   // Cyberdemon: MT_ROCKET
+		{68, 25, 25},   // Arachnotron: MT_ARACHPLAZ
+	} {
+		if got := monsterProjectileSpeed(tc.typ, false); got != tc.normal*fracUnit {
+			t.Fatalf("type=%d normal speed=%d want=%d", tc.typ, got, tc.normal*fracUnit)
+		}
+		if got := monsterProjectileSpeed(tc.typ, true); got != tc.fast*fracUnit {
+			t.Fatalf("type=%d fast speed=%d want=%d", tc.typ, got, tc.fast*fracUnit)
+		}
 	}
 }
 
@@ -1209,9 +1305,10 @@ func TestSameSpeciesMissileExplosionDoesNotConsumeDamageRandom(t *testing.T) {
 				{FloorHeight: 0, CeilingHeight: 128},
 			},
 		},
-		sectorFloor: []int64{0},
-		sectorCeil:  []int64{128 * fracUnit},
-		thingHP:     []int{60, 60},
+		sectorFloor:    []int64{0},
+		sectorCeil:     []int64{128 * fracUnit},
+		thingHP:        []int{60, 60},
+		thingCollected: []bool{false, false},
 	}
 	g.initPhysics()
 	g.setThingSupportState(0, 0, 0, 128*fracUnit)
@@ -1238,6 +1335,9 @@ func TestSameSpeciesMissileExplosionDoesNotConsumeDamageRandom(t *testing.T) {
 	_, keep := g.advanceProjectile(p)
 	if keep {
 		t.Fatal("projectile should explode on same-species contact")
+	}
+	if g.thingHP[1] != 60 {
+		t.Fatal("same-species contact must not inflict missile damage")
 	}
 	if got := doomrand.PRandom(); got != wantNext {
 		t.Fatalf("same-species explosion consumed wrong number of PRandom calls: got next=%d want=%d (after exactly one in-impact random, not two)", got, wantNext)
@@ -1307,7 +1407,7 @@ func TestPlayerRocketSplashCanDamagePlayer(t *testing.T) {
 				z:            20 * fracUnit,
 				vx:           0,
 				vy:           0,
-				vz:           0,
+				vz:           -32 * fracUnit,
 				radius:       11 * fracUnit,
 				height:       8 * fracUnit,
 				ttl:          1,

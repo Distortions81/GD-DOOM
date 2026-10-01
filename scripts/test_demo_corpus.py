@@ -1,0 +1,116 @@
+"""Corpus safety and routing checks; run with python3 -B scripts/test_demo_corpus.py."""
+
+import hashlib
+import gzip
+import io
+import json
+from pathlib import Path
+import tempfile
+import unittest
+import zipfile
+
+import demo_trace_compare_all as runner
+import fetch_compet_n as corpus
+
+
+def demo_bytes(episode=1, map_number=1):
+    return bytes([109, 3, episode, map_number, 0, 9, 7, 0, 0, 1, 0, 0, 0,
+                  50, 0, 0, 0, 128])
+
+
+def demo_zip(member, data):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(member, data)
+    return buffer.getvalue()
+
+
+class CorpusTests(unittest.TestCase):
+    def test_batch_tool_snapshot_survives_source_edits(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "live.sh"
+            source.write_bytes(b"#!/bin/sh\nprintf original\\n\n")
+            first = runner.immutable_snapshot(source.read_bytes(), root, "harness")
+            original = first.read_bytes()
+            source.write_bytes(b"#!/bin/sh\nprintf changed\\n\n")
+            second = runner.immutable_snapshot(source.read_bytes(), root, "harness")
+            self.assertNotEqual(first, second)
+            self.assertEqual(first.read_bytes(), original)
+            self.assertEqual(second.read_bytes(), source.read_bytes())
+            self.assertEqual(runner.immutable_snapshot(source.read_bytes(), root, "harness"), second)
+            self.assertTrue(first.stat().st_mode & 0o111)
+
+    def test_compress_retained_traces_preserves_complete_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contents = b'{"kind":"meta"}\n' + b'{"kind":"tic","gametic":3}\n' * 1000
+            trace = root / "reference-check.jsonl"
+            trace.write_bytes(contents)
+            log = root / "compare.log"
+            log.write_text("mismatch line=4 path=root.health\n")
+            self.assertEqual(runner.compress_retained_traces(root), ["reference-check.jsonl.gz"])
+            self.assertFalse(trace.exists())
+            with gzip.open(root / "reference-check.jsonl.gz", "rb") as file:
+                self.assertEqual(file.read(), contents)
+            self.assertEqual(log.read_text(), "mismatch line=4 path=root.health\n")
+            self.assertEqual(runner.compress_retained_traces(root), [])
+
+    def test_filter_deduplicate_and_route_untrusted_archive_members(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "snapshot.zip"
+            single = demo_bytes(4, 9)
+            multiplayer = bytearray(single)
+            multiplayer[10] = 1
+            modern = bytearray(single)
+            modern[0] = 110
+            with zipfile.ZipFile(archive, "w") as outer:
+                outer.writestr("compet-n/doom/speed/a.zip", demo_zip("../../escape.LMP", single))
+                outer.writestr("compet-n/doom/max/b.zip", demo_zip("alias.lmp", single))
+                outer.writestr("compet-n/doom2/max/c.zip", demo_zip("map32.lmp", demo_bytes(1, 32)))
+                outer.writestr("compet-n/doom/max/coop.zip", demo_zip("coop.lmp", multiplayer))
+                outer.writestr("compet-n/doom/max/modern.zip", demo_zip("modern.lmp", modern))
+                outer.writestr("compet-n/doom/max/broken.zip", b"broken ZIP")
+                outer.writestr("compet-n/pwads/av/max/d.zip", demo_zip("custom.lmp", single))
+                outer.writestr("compet-n/doom/movie/movie.zip", demo_zip("movie.lmp", single))
+            stats = corpus.prepare(archive, root / "out")
+            self.assertEqual(stats["unique_demos"], 2)
+            self.assertEqual(stats["skipped"], 3)
+            manifest_path = root / "out/manifest.json"
+            manifest = json.loads(manifest_path.read_text())
+            ultimate = next(d for d in manifest["demos"] if d["game"] == "doom")
+            self.assertEqual(ultimate["map"], "E4M9")
+            self.assertTrue(ultimate["respawn"] and ultimate["fast"])
+            self.assertEqual(len(ultimate["sources"]), 2)
+            self.assertFalse((root / "escape.LMP").exists())
+            routed = runner.manifest_inputs(manifest_path)
+            self.assertEqual(set(routed.values()), {corpus.ROOT / wad for wad in corpus.WADS.values()})
+            path = root / "out" / ultimate["path"]
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), ultimate["sha256"])
+            path.write_bytes(b"changed")
+            with self.assertRaisesRegex(ValueError, "hash differs"):
+                runner.manifest_inputs(manifest_path)
+
+    def test_reject_invalid_maps_and_incomplete_command_streams(self):
+        with self.assertRaisesRegex(ValueError, "invalid-skill-or-map"):
+            corpus.header(demo_bytes(5, 1), "doom")
+        with self.assertRaisesRegex(ValueError, "invalid-skill-or-map"):
+            corpus.header(demo_bytes(1, 33), "doom2")
+        with self.assertRaisesRegex(ValueError, "missing-marker"):
+            corpus.header(demo_bytes()[:-1] + b"\x00", "doom")
+
+    def test_detect_finale_replay_replacing_requested_map(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            demo = root / "boss.lmp"
+            demo.write_bytes(demo_bytes(1, 8))
+            trace = root / "trace.jsonl"
+            trace.write_text('{"kind":"meta","map":"E1M5"}\n')
+            self.assertIn("expected E1M8", runner.replay_map_error(demo, Path("DOOMU.WAD"), trace))
+            trace.write_text('{"kind":"meta","map":"E1M8"}\n')
+            self.assertIsNone(runner.replay_map_error(demo, Path("DOOMU.WAD"), trace))
+
+
+if __name__ == "__main__":
+    unittest.main()

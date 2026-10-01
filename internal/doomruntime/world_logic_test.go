@@ -46,6 +46,46 @@ func TestHazardDamageBlockedByRadSuit(t *testing.T) {
 	}
 }
 
+func TestHighDamageFloorRollsSuitLeakBeforeDamagePulse(t *testing.T) {
+	for _, special := range []int16{4, 16} {
+		for _, protected := range []bool{false, true} {
+			g := &game{m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: special}}},
+				sectorFloor: []int64{0}, stats: playerStats{Health: 100}, playerMobjHealth: 100}
+			if protected {
+				g.inventory.RadSuitTics = 100
+			}
+			doomrand.SetState(0, 0)
+			for tic := 1; tic < 32; tic++ {
+				g.worldTic = tic
+				g.applySectorHazardDamage()
+			}
+			_, rng := doomrand.State()
+			wantRNG := 0
+			if protected {
+				wantRNG = 31
+			}
+			if rng != wantRNG || g.stats.Health != 100 {
+				t.Fatalf("special=%d protected=%v off-pulse rng=%d health=%d, want rng=%d health=100", special, protected, rng, g.stats.Health, wantRNG)
+			}
+		}
+		g := &game{m: &mapdata.Map{Sectors: []mapdata.Sector{{Special: special}}},
+			sectorFloor: []int64{0}, stats: playerStats{Health: 100}, playerMobjHealth: 100,
+			inventory: playerInventory{RadSuitTics: 1}, worldTic: 32}
+		doomrand.SetState(0, 255) // Next roll is zero: suit leaks on the damage pulse.
+		g.applySectorHazardDamage()
+		_, rng := doomrand.State()
+		if g.stats.Health != 80 || rng != 1 {
+			t.Fatalf("special=%d leak pulse health=%d rng=%d, want health=80 rng=1 after leak and pain rolls", special, g.stats.Health, rng)
+		}
+		g.p.z = fracUnit
+		doomrand.SetState(0, 0)
+		g.applySectorHazardDamage()
+		if _, rng := doomrand.State(); rng != 0 {
+			t.Fatal("player above the sector floor consumed a suit-leak roll")
+		}
+	}
+}
+
 func TestHazardDamage_LastRadSuitTicStillProtects(t *testing.T) {
 	g := &game{
 		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 5}}},
@@ -177,7 +217,7 @@ func TestHazardDamageSpecial11RequestsExitBetweenDamagePulses(t *testing.T) {
 	}
 }
 
-func TestHazardDamageSpecial11RequestsExitEvenOnFatalTick(t *testing.T) {
+func TestHazardDamageSpecial11PreservesOneHealthAndRequestsExit(t *testing.T) {
 	g := &game{
 		m:           &mapdata.Map{Sectors: []mapdata.Sector{{Special: 11}}},
 		sectorFloor: []int64{0},
@@ -186,14 +226,14 @@ func TestHazardDamageSpecial11RequestsExitEvenOnFatalTick(t *testing.T) {
 		soundQueue:  make([]soundEvent, 0, 2),
 	}
 	g.applySectorHazardDamage()
-	if g.stats.Health != 0 {
-		t.Fatalf("health=%d want=0", g.stats.Health)
+	if g.stats.Health != 1 {
+		t.Fatalf("health=%d want=1", g.stats.Health)
 	}
-	if !g.isDead {
-		t.Fatal("special 11 fatal tick should still kill the player")
+	if g.isDead {
+		t.Fatal("special 11 killed the player before the finale")
 	}
 	if !g.levelExitRequested {
-		t.Fatal("special 11 fatal tick should still request the level exit")
+		t.Fatal("special 11 should request the level exit")
 	}
 }
 

@@ -297,6 +297,16 @@ func (g *game) writeDemoTraceTic(gametic int) {
 	if g.demoIntermissionActive {
 		gamestate = 1
 		gamestateName = "GS_INTERMISSION"
+		if g.demoWorldDone {
+			gameaction = 8
+			gameactionName = "ga_worlddone"
+		}
+	}
+	if g.demoFinaleActive {
+		gamestate = 2
+		gamestateName = "GS_FINALE"
+		gameaction = 0
+		gameactionName = "ga_nothing"
 	}
 	g.demoTrace.write(map[string]any{
 		"kind":            "tic",
@@ -319,6 +329,15 @@ func (g *game) writeDemoTraceTic(gametic int) {
 		"mobj_count":    len(mobjs),
 		"special_count": len(specials),
 	})
+}
+
+func (g *game) spawnedEffectReactionTime() int {
+	// P_SpawnMobj leaves the zero-initialized field untouched on Nightmare.
+	// Effects and missiles never subsequently change their reaction delay.
+	if g.opts.SkillLevel == 5 {
+		return 0
+	}
+	return 8
 }
 
 func (g *game) demoTraceMobjs() []demoTraceMobj {
@@ -453,7 +472,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 		ordered = append(ordered, orderedDemoTraceMobj{order: fire.order, idx: -1, mobj: demoTraceMobj{
 			Type: 29, X: fire.x, Y: fire.y, Z: fire.z, FloorZ: fire.floorz, CeilingZ: fire.ceilz,
 			Radius: 20 * fracUnit, Height: 16 * fracUnit, Tics: (fire.tics-1)%4 + 1, State: 791 + (32-fire.tics)/4,
-			Flags: 528, Health: 1000, ReactionTime: 8, LastLook: fire.lastLook,
+			Flags: 528, Health: 1000, ReactionTime: g.spawnedEffectReactionTime(), LastLook: fire.lastLook,
 			Subsector: boolToInt(sec >= 0), Sector: sec,
 		}})
 	}
@@ -513,7 +532,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Health:       1000,
 				Movedir:      0,
 				Movecount:    0,
-				ReactionTime: 8,
+				ReactionTime: g.spawnedEffectReactionTime(),
 				Threshold:    0,
 				LastLook:     p.lastLook,
 				Subsector:    boolToInt(ss >= 0),
@@ -587,7 +606,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Health:       1000,
 				Movedir:      0,
 				Movecount:    0,
-				ReactionTime: 8,
+				ReactionTime: g.spawnedEffectReactionTime(),
 				Threshold:    0,
 				LastLook:     fx.lastLook,
 				Subsector:    boolToInt(ss >= 0),
@@ -650,8 +669,8 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Y:            p.y,
 				Z:            p.z,
 				Angle:        0,
-				MomX:         0,
-				MomY:         0,
+				MomX:         p.momx,
+				MomY:         p.momy,
 				MomZ:         p.momz,
 				FloorZ:       floorZ,
 				CeilingZ:     ceilZ,
@@ -663,7 +682,7 @@ func (g *game) demoTraceMobjs() []demoTraceMobj {
 				Health:       1000,
 				Movedir:      0,
 				Movecount:    0,
-				ReactionTime: 8,
+				ReactionTime: g.spawnedEffectReactionTime(),
 				Threshold:    0,
 				LastLook:     p.lastLook,
 				Subsector:    boolToInt(ss >= 0),
@@ -894,6 +913,9 @@ func (g *game) demoTracePlayerMobjFlags() int {
 	// bits are observable in the reference trace.
 	flags := demoTraceFlagSolid | demoTraceFlagShootable | demoTraceFlagDropoff | demoTraceFlagNotDeathmatch
 	flags |= demoTraceFlagPlayer
+	if g != nil && g.p.justAttacked {
+		flags |= demoTraceFlagJustAtk
+	}
 	if g != nil && g.isDead {
 		flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
 		flags &^= demoTraceFlagShootable
@@ -961,6 +983,9 @@ func (g *game) demoTraceSpecials() []map[string]any {
 	doorKeys := sortedIntKeys(g.doors)
 	for _, sec := range doorKeys {
 		d := g.doors[sec]
+		if d.pendingRemove {
+			continue
+		}
 		topCountdown := d.topCountdown
 		if topCountdown == 0 && d.direction == 1 && d.traceTopCountdown > 0 {
 			topCountdown = d.traceTopCountdown
@@ -998,6 +1023,9 @@ func (g *game) demoTraceSpecials() []map[string]any {
 	platKeys := sortedIntKeys(g.plats)
 	for _, sec := range platKeys {
 		p := g.plats[sec]
+		if p.status == platStatusInStasis {
+			continue
+		}
 		tag := 0
 		if g.m != nil && sec >= 0 && sec < len(g.m.Sectors) {
 			tag = int(g.m.Sectors[sec].Tag)
@@ -1027,6 +1055,9 @@ func (g *game) demoTraceSpecials() []map[string]any {
 	ceilingKeys := sortedIntKeys(g.ceilings)
 	for _, sec := range ceilingKeys {
 		c := g.ceilings[sec]
+		if c.direction == 0 {
+			continue
+		}
 		ordered = append(ordered, orderedSpecial{order: c.order, item: map[string]any{
 			"kind":         "ceiling",
 			"sector":       sec,
@@ -1103,13 +1134,16 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 	if i < 0 {
 		return 0
 	}
+	if typ == 72 && i < len(g.thingStateTics) {
+		return g.thingStateTics[i]
+	}
 	if typ == 88 && i < len(g.thingStateTics) {
 		if g.thingStatePhase[i] == 0 || g.thingStatePhase[i] == 5 {
 			return -1
 		}
 		return g.thingStateTics[i]
 	}
-	if i < len(g.thingGibbed) && g.thingGibbed[i] {
+	if i < len(g.thingState) && g.thingState[i] == monsterStateGibs {
 		return -1
 	}
 	if monsterUsesExactDoomStateMachine(typ) && i < len(g.thingDead) && !g.thingDead[i] &&
@@ -1139,14 +1173,31 @@ func demoTraceThingTics(g *game, i int, typ int16) int {
 }
 
 func demoTraceThingState(g *game, i int, typ int16) int {
+	if i >= 0 && i < len(g.thingState) {
+		switch g.thingState[i] {
+		case monsterStateGibs:
+			return demoTraceStateGibs
+		case monsterStateRaise:
+			return monsterRaiseFrames(typ).state + g.thingStatePhase[i]
+		case monsterStateHeal:
+			return 266 + g.thingStatePhase[i]
+		}
+	}
+	if typ == 72 && i >= 0 && i < len(g.thingState) {
+		switch g.thingState[i] {
+		case monsterStateDeath:
+			return 764 + g.thingStatePhase[i]
+		case monsterStatePain:
+			return 776 + g.thingStatePhase[i]
+		default:
+			return 763
+		}
+	}
 	if typ == 88 && i >= 0 && i < len(g.thingStatePhase) {
 		return 778 + g.thingStatePhase[i]
 	}
 	if typ == 89 && i >= 0 && i < len(g.thingStatePhase) {
 		return 784 + g.thingStatePhase[i]
-	}
-	if i >= 0 && i < len(g.thingGibbed) && g.thingGibbed[i] {
-		return demoTraceStateGibs
 	}
 	if isBarrelThingType(typ) {
 		if i >= 0 && i < len(g.thingDead) && g.thingDead[i] {
@@ -1184,7 +1235,7 @@ func demoTraceThingState(g *game, i int, typ int16) int {
 			return 3
 		case monsterStatePain:
 			if i >= 0 && i < len(g.thingPainTics) {
-				if state, ok := demoTraceMonsterPainState(typ, g.thingPainTics[i]); ok {
+				if state, ok := demoTraceMonsterPainStateWithFrames(typ, g.thingPainTics[i], g.monsterPainFrameTics(typ)); ok {
 					return state
 				}
 			}
@@ -1282,9 +1333,9 @@ func demoTraceMonsterDeathState(typ int16, phase int, xdeath bool) (int, bool) {
 		case 71:
 			base, count = 715, 6
 		case 7:
-			base, count = 622, 11
+			base, count = 621, 11
 		case 16:
-			base, count = 692, 9
+			base, count = 691, 10
 		case 84:
 			base, count = 745, 5
 		default:
@@ -1395,6 +1446,10 @@ func demoTraceMonsterSeeState(typ int16, phase int) (int, bool) {
 }
 
 func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
+	return demoTraceMonsterPainStateWithFrames(typ, remaining, monsterPainFrameTics(typ))
+}
+
+func demoTraceMonsterPainStateWithFrames(typ int16, remaining int, frameTics []int) (int, bool) {
 	base := 0
 	switch typ {
 	case 3004:
@@ -1434,7 +1489,6 @@ func demoTraceMonsterPainState(typ int16, remaining int) (int, bool) {
 	default:
 		return 0, false
 	}
-	frameTics := monsterPainFrameTics(typ)
 	if len(frameTics) == 0 || remaining <= 0 {
 		return 0, false
 	}
@@ -1540,7 +1594,11 @@ func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
 		return flags
 	}
 	flags := 0
-	if int(th.Flags)&thingFlagAmbush != 0 {
+	ambush := int(th.Flags)&thingFlagAmbush != 0
+	if isMonster(th.Type) && i >= 0 && i < len(g.thingAmbush) {
+		ambush = g.thingAmbush[i]
+	}
+	if ambush {
 		flags |= demoTraceFlagAmbush
 	}
 	switch {
@@ -1556,6 +1614,9 @@ func demoTraceThingFlags(g *game, i int, th mapdata.Thing) int {
 			flags |= demoTraceFlagDropoff | demoTraceFlagCorpse
 		} else {
 			flags |= demoTraceFlagShootable
+			if th.Type == 72 {
+				flags |= demoTraceFlagNoGravity | 0x100 // MF_SPAWNCEILING
+			}
 			if monsterCanFloat(th.Type) {
 				flags |= demoTraceFlagFloat | demoTraceFlagNoGravity
 			}

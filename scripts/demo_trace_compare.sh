@@ -267,15 +267,18 @@ rm -f "${REF_TRACE}" "${REF_LOG}" "${GD_TRACE}" "${GD_LOG}" "${CMP_LOG}"
 echo "Tracing reference runtime: lump=${DEMO_LUMP}"
 # -timedemo stages external .lmp files without entering -playdemo's paced
 # branch. -tracedemo then selects the uncapped, headless trace loop.
+# The 32-bit reference's fopen cannot write regular files beyond 2 GiB.
+# Give it a pipe and let the host's cat write the trace, without changing
+# reference gameplay or dropping tics. pipefail preserves reference failures.
 (
   cd "${REF_RUN_DIR}"
   env DOOMWADDIR="${REF_WAD_DIR}" \
     "${REFERENCE_BIN}" \
     -timedemo "${DEMO_LUMP}" \
     -tracedemo "${DEMO_LUMP}" \
-    -tracefile "${REF_TRACE}" \
-    >"${REF_LOG}" 2>&1
-)
+    -tracefile /dev/fd/3 \
+    3>&1 >"${REF_LOG}" 2>&1
+) | cat >"${REF_TRACE}"
 trim_trace_on_player_death "${REF_TRACE}"
 
 echo "Tracing GD-DOOM: demo=${DEMO_PATH}"

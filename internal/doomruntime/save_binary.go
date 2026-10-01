@@ -165,7 +165,10 @@ func (w saveBinaryWriter) playerSaveState(v playerSaveState) error {
 			return err
 		}
 	}
-	return w.u32(v.Angle)
+	if err := w.u32(v.Angle); err != nil {
+		return err
+	}
+	return w.bool(v.JustAttacked)
 }
 
 func (w saveBinaryWriter) playerInventorySaveState(v playerInventorySaveState) error {
@@ -447,6 +450,16 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 	if err := w.i64Slice(v.ThingThinkerOrder); err != nil {
 		return err
 	}
+	if err := w.u32(uint32(len(v.ThingSpawnPoint))); err != nil {
+		return err
+	}
+	for _, it := range v.ThingSpawnPoint {
+		for _, n := range []int16{it.X, it.Y, it.Angle, it.Type, it.Flags} {
+			if err := w.i16(n); err != nil {
+				return err
+			}
+		}
+	}
 	if err := w.i64Slice(v.ThingX); err != nil {
 		return err
 	}
@@ -605,6 +618,9 @@ func (w saveBinaryWriter) gameSaveState(v gameSaveState) error {
 		}
 	}
 	if err := w.playerInventorySaveState(v.Inventory); err != nil {
+		return err
+	}
+	if err := w.i64(v.LastAttackRange); err != nil {
 		return err
 	}
 	if err := w.playerStats(v.Stats); err != nil {
@@ -913,17 +929,20 @@ func (w saveBinaryWriter) hitscanPuffSlice(v []hitscanPuffSaveState) error {
 		return err
 	}
 	for _, it := range v {
-		for _, n := range []int64{it.X, it.Y, it.Z, it.MomZ} {
+		for _, n := range []int64{it.X, it.Y, it.Z, it.MomX, it.MomY, it.MomZ, it.FloorZ, it.CeilZ, it.Order} {
 			if err := w.i64(n); err != nil {
 				return err
 			}
 		}
-		for _, n := range []int{it.Tics, it.State, it.TotalTic} {
+		for _, n := range []int{it.Tics, it.State, it.TotalTic, it.LastLook} {
 			if err := w.int(n); err != nil {
 				return err
 			}
 		}
 		if err := w.u8(it.Kind); err != nil {
+			return err
+		}
+		if err := w.bool(it.Hidden); err != nil {
 			return err
 		}
 	}
@@ -1273,6 +1292,9 @@ func (r saveBinaryReader) playerSaveState() (playerSaveState, error) {
 		}
 	}
 	if v.Angle, err = r.u32(); err != nil {
+		return v, err
+	}
+	if v.JustAttacked, err = r.bool(); err != nil {
 		return v, err
 	}
 	return v, nil
@@ -1635,6 +1657,17 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 	if v.ThingThinkerOrder, err = readI64Slice(r); err != nil {
 		return v, err
 	}
+	if v.ThingSpawnPoint, err = readSlice(r, func() (mapdata.Thing, error) {
+		var it mapdata.Thing
+		for _, dst := range []*int16{&it.X, &it.Y, &it.Angle, &it.Type, &it.Flags} {
+			if *dst, err = r.i16(); err != nil {
+				return it, err
+			}
+		}
+		return it, nil
+	}); err != nil {
+		return v, err
+	}
 	if v.ThingX, err = readI64Slice(r); err != nil {
 		return v, err
 	}
@@ -1793,6 +1826,9 @@ func (r saveBinaryReader) gameSaveState() (gameSaveState, error) {
 		}
 	}
 	if v.Inventory, err = r.playerInventorySaveState(); err != nil {
+		return v, err
+	}
+	if v.LastAttackRange, err = r.i64(); err != nil {
 		return v, err
 	}
 	if v.Stats, err = r.playerStats(); err != nil {
@@ -2026,17 +2062,20 @@ func (r saveBinaryReader) projectileImpact() (projectileImpactSaveState, error) 
 func (r saveBinaryReader) hitscanPuff() (hitscanPuffSaveState, error) {
 	var v hitscanPuffSaveState
 	var err error
-	for _, dst := range []*int64{&v.X, &v.Y, &v.Z, &v.MomZ} {
+	for _, dst := range []*int64{&v.X, &v.Y, &v.Z, &v.MomX, &v.MomY, &v.MomZ, &v.FloorZ, &v.CeilZ, &v.Order} {
 		if *dst, err = r.i64(); err != nil {
 			return v, err
 		}
 	}
-	for _, dst := range []*int{&v.Tics, &v.State, &v.TotalTic} {
+	for _, dst := range []*int{&v.Tics, &v.State, &v.TotalTic, &v.LastLook} {
 		if *dst, err = r.int(); err != nil {
 			return v, err
 		}
 	}
 	if v.Kind, err = r.u8(); err != nil {
+		return v, err
+	}
+	if v.Hidden, err = r.bool(); err != nil {
 		return v, err
 	}
 	return v, nil

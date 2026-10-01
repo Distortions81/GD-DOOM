@@ -37,7 +37,7 @@ type projectile struct {
 	subsector         int // One-based linked subsector; zero means not cached.
 	radius            int64
 	height            int64
-	ttl               int
+	ttl               int // Legacy snapshot field; missiles do not expire in flight.
 	sourceX           int64
 	sourceY           int64
 	sourceThing       int
@@ -114,29 +114,21 @@ func monsterProjectileSpeed(typ int16, fast bool) int64 {
 		}
 		return 15 * fracUnit
 	case 66:
-		scale := int64(1)
-		if fast {
-			scale = 2
-		}
-		return 10 * fracUnit * scale
+		return 10 * fracUnit
 	case 67, 16:
-		scale := int64(1)
-		if fast {
-			scale = 2
-		}
-		return 20 * fracUnit * scale
+		return 20 * fracUnit
 	case 68:
-		scale := int64(1)
+		return 25 * fracUnit
+	case 3001, 3005:
+		// G_InitNew changes only TROOPSHOT, HEADSHOT and BRUISERSHOT.
+		// Revenant, Mancubus, Cyberdemon and Arachnotron shots keep their
+		// original speeds even on Nightmare.
 		if fast {
-			scale = 2
+			return 20 * fracUnit
 		}
-		return 25 * fracUnit * scale
+		return 10 * fracUnit
 	default:
-		scale := int64(1)
-		if fast {
-			scale = 2
-		}
-		return 10 * fracUnit * scale
+		return 10 * fracUnit
 	}
 }
 
@@ -369,9 +361,9 @@ func (g *game) tickDeferredProjectiles() {
 }
 
 func (g *game) advanceProjectile(p projectile) (projectile, bool) {
-	if p.ttl <= 0 {
-		return projectile{}, false
-	}
+	// P_MobjThinker cycles missile flight states until a collision removes
+	// or explodes them. A missed shot can keep flying outside the blockmap;
+	// an artificial timeout would spawn an explosion and consume extra RNG.
 	ox, oy, oz := p.x, p.y, p.z
 	xmove := p.vx
 	ymove := p.vy
@@ -388,13 +380,15 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	for xmove != 0 || ymove != 0 {
 		var nx, ny int64
 		if doomProjectileShouldSplitMove(xmove, ymove) {
-			nx = p.x + xmove/2
-			ny = p.y + ymove/2
+			nx = int64(int32(p.x + xmove/2))
+			ny = int64(int32(p.y + ymove/2))
 			xmove >>= 1
 			ymove >>= 1
 		} else {
-			nx = p.x + xmove
-			ny = p.y + ymove
+			// Doom stores fixed coordinates in signed 32-bit fields. Wrap
+			// before collision and BSP lookup, including flights off the map.
+			nx = int64(int32(p.x + xmove))
+			ny = int64(int32(p.y + ymove))
 			xmove = 0
 			ymove = 0
 		}
@@ -417,7 +411,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 					g.damageShootableThingFromWithInflictorZ(thingHit.idx, dmg, p.sourcePlayer, p.sourceThing, p.x, p.y, true, p.z, true)
 				}
 			}
-			g.explodeProjectileInThinker(p, p.x, p.y, p.z)
+			g.explodeProjectileDuringXY(p, xmove, ymove)
 			return projectile{}, false
 		}
 		if blocked {
@@ -428,7 +422,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 			if skyBlocked {
 				return projectile{}, false
 			}
-			g.explodeProjectileInThinker(p, p.x, p.y, p.z)
+			g.explodeProjectileDuringXY(p, xmove, ymove)
 			return projectile{}, false
 		}
 		prevX, prevY := p.x, p.y
@@ -444,7 +438,7 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 	// or has vertical momentum. A level missile resting on a moving floor must
 	// not explode merely because its cached floor height equals z.
 	if p.z != p.floorz || p.vz != 0 {
-		p.z += p.vz
+		p.z = int64(int32(p.z + p.vz))
 		p.prevX = ox
 		p.prevY = oy
 		p.prevZ = oz
@@ -474,11 +468,6 @@ func (g *game) advanceProjectile(p projectile) (projectile, bool) {
 		}
 	} else if g.tickProjectileAnim(&p) {
 		g.tickProjectileSpecial(&p)
-	}
-	p.ttl--
-	if p.ttl <= 0 {
-		g.explodeProjectileInThinker(p, p.x, p.y, p.z)
-		return projectile{}, false
 	}
 	return p, true
 }
@@ -556,6 +545,39 @@ func (g *game) projectileSplashDamage(p projectile, x, y, z int64) {
 // in the same call. A spawn-check explosion instead waits for its first thinker.
 func (g *game) explodeProjectileInThinker(p projectile, x, y, z int64) {
 	g.explodeProjectileAt(p, x, y, z)
+	g.tickProjectileImpactByOrder(p.order)
+}
+
+// P_XYMovement retains its local split-step remainder when P_ExplodeMissile
+// clears the missile's momentum and MF_MISSILE. The death-state object still
+// attempts that remainder with ordinary collision rules before Z/state ticking.
+func (g *game) explodeProjectileDuringXY(p projectile, xmove, ymove int64) {
+	g.explodeProjectileAt(p, p.x, p.y, p.z)
+	for i := len(g.projectileImpacts) - 1; i >= 0; i-- {
+		if g.projectileImpacts[i].order != p.order {
+			continue
+		}
+		fx := &g.projectileImpacts[i]
+		for xmove != 0 || ymove != 0 {
+			var nx, ny int64
+			if doomProjectileShouldSplitMove(xmove, ymove) {
+				nx, ny = int64(int32(fx.x+xmove/2)), int64(int32(fx.y+ymove/2))
+				xmove, ymove = xmove>>1, ymove>>1
+			} else {
+				nx, ny = int64(int32(fx.x+xmove)), int64(int32(fx.y+ymove))
+				xmove, ymove = 0, 0
+			}
+			floor, ceil, _, ok := g.checkPositionForActor(nx, ny, p.radius, true, -1, true)
+			if !ok || ceil-floor < p.height || ceil-fx.z < p.height || floor-fx.z > 24*fracUnit {
+				continue
+			}
+			prevX, prevY := fx.x, fx.y
+			fx.x, fx.y, fx.floorz, fx.ceilz = nx, ny, floor, ceil
+			fx.subsector = g.subSectorAtFixed(nx, ny) + 1
+			g.checkProjectileWalkSpecialLines(prevX, prevY, nx, ny, p)
+		}
+		break
+	}
 	g.tickProjectileImpactByOrder(p.order)
 }
 
@@ -730,9 +752,9 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	if g.m != nil {
 		p.subsector = g.subSectorAtFixed(ox, oy) + 1
 	}
-	nx := ox + (p.vx >> 1)
-	ny := oy + (p.vy >> 1)
-	nz := oz + (p.vz >> 1)
+	nx := int64(int32(ox + (p.vx >> 1)))
+	ny := int64(int32(oy + (p.vy >> 1)))
+	nz := int64(int32(oz + (p.vz >> 1)))
 	if len(g.sectorFloor) == 0 || len(g.sectorCeil) == 0 {
 		if advance {
 			p.x = nx
@@ -743,7 +765,9 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 		return true
 	}
 	thingHit, hitThing := g.projectileThingHitAtPosition(*p, nx, ny, nz)
-	blocked, _, tmfloorz, tmceilingz, _, _ := g.projectileBlockedAt(*p, ox, oy, oz, nx, ny, nz)
+	// P_CheckMissileSpawn advances all three coordinates before P_TryMove.
+	// Use the half-step height for its ceiling and 24-unit step checks.
+	blocked, _, tmfloorz, tmceilingz, _, _ := g.projectileBlockedAt(*p, ox, oy, nz, nx, ny, nz)
 	if want := runtimeDebugEnv("GD_DEBUG_PROJECTILE_TIC"); want != "" {
 		var tic int
 		if _, err := fmt.Sscanf(want, "%d", &tic); err == nil && (g.demoTick-1 == tic || g.worldTic == tic) {
@@ -781,16 +805,8 @@ func (g *game) finishProjectileSpawn(p *projectile, advance bool) bool {
 	// Use a render-only muzzle point for the first interpolated frame so
 	// monster fireballs visibly leave the hand/mouth rather than the center.
 	setInitialRenderPrev(ox, oy, oz)
-	if p.z <= p.floorz {
-		p.z = p.floorz
-		g.explodeProjectileAt(*p, p.x, p.y, p.z)
-		return false
-	}
-	if p.z+p.height > p.ceilz {
-		p.z = p.ceilz - p.height
-		g.explodeProjectileAt(*p, p.x, p.y, p.z)
-		return false
-	}
+	// P_TryMove permits missiles at or slightly below the floor. Their
+	// normal thinker performs Z movement and the floor impact afterward.
 	return true
 }
 
@@ -1246,7 +1262,8 @@ func (g *game) projectileBlockedAt(p projectile, ox, oy, oz, nx, ny, nz int64) (
 		if ld.sideNum1 < 0 {
 			g.debugProjectileBlock(p, ox, oy, oz, nx, ny, nz, "onesided", frac, hx, hy, hz)
 			bestFrac, bestX, bestY, bestZ = frac, hx, hy, hz
-			skyBlocked = false
+			// PIT_CheckLine returns without clearing a ceilingline found
+			// earlier in the same position check. Its sky hack still applies.
 			return false
 		}
 		opentop, openbottom, _, openrange := g.lineOpening(ld)
@@ -1381,8 +1398,16 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 		}
 		return dx < blockdist && dy < blockdist
 	}
+	var result projectileThingHit
+	visitPlayer := func() bool {
+		if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && overlapsSquare(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) &&
+			z <= g.p.z+playerHeight && z+p.height >= g.p.z {
+			result = projectileThingHit{idx: -1, isPlayer: true, frac: 1, x: nx, y: ny, z: z, damage: true}
+			return true
+		}
+		return false
+	}
 	if g.m != nil {
-		var result projectileThingHit
 		visit := func(i int) bool {
 			th := g.m.Things[i]
 			if i == p.sourceThing {
@@ -1394,18 +1419,14 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 			shootable := thingTypeIsShootable(th.Type) && i < len(g.thingHP) && g.thingHP[i] > 0
 			corpseSolid := false
 			if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
-				phase := 0
-				if i < len(g.thingStatePhase) {
-					phase = g.thingStatePhase[i]
-				}
-				corpseSolid = monsterCorpseBlocksMovement(th.Type, phase)
+				corpseSolid = g.monsterCorpseBlocksMovement(i)
 			}
 			solid := g.thingBlocksInSession(i) && (!isMonster(th.Type) && thingTypeBlocksActorMovement(th.Type, true))
 			if !shootable && !corpseSolid && !solid {
 				return false
 			}
 			tx, ty := g.thingPosFixed(i, th)
-			if !overlapsSquare(nx, ny, p.radius, tx, ty, thingTypeRadius(th.Type)) {
+			if !overlapsSquare(nx, ny, p.radius, tx, ty, g.thingCurrentRadius(i, th)) {
 				return false
 			}
 			tz, _, _ := g.thingSupportState(i, th)
@@ -1435,9 +1456,25 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 			right := int((nx + p.radius + maxRadius - g.bmapOriginX) >> (fracBits + 7))
 			bottom := int((ny - p.radius - maxRadius - g.bmapOriginY) >> (fracBits + 7))
 			top := int((ny + p.radius + maxRadius - g.bmapOriginY) >> (fracBits + 7))
+			playerCell := g.thingBlockmapCellFor(g.p.x, g.p.y)
 			for bx := left; bx <= right; bx++ {
 				for by := bottom; by <= top; by++ {
-					if !g.blockThingsIterator(bx, by, func(i int) bool { return !visit(i) }) {
+					playerPending := playerCell >= 0 && bx == playerCell%g.bmapWidth && by == playerCell/g.bmapWidth
+					if !g.blockThingsIterator(bx, by, func(i int) bool {
+						// The player shares Doom's newest-first blocklinks with
+						// corpses and other actors. A corpse visited first can
+						// stop the missile before it reaches the player.
+						if playerPending && g.playerBlockOrder > g.thingBlockOrder[i] {
+							playerPending = false
+							if visitPlayer() {
+								return false
+							}
+						}
+						return !visit(i)
+					}) {
+						return result, true
+					}
+					if playerPending && visitPlayer() {
 						return result, true
 					}
 				}
@@ -1450,18 +1487,8 @@ func (g *game) projectileThingHitAtPosition(p projectile, nx, ny, z int64) (proj
 			}
 		}
 	}
-	if !p.sourcePlayer && !g.isDead && g.stats.Health > 0 && overlapsSquare(nx, ny, p.radius, g.p.x, g.p.y, playerRadius) {
-		if z <= g.p.z+playerHeight && z+p.height >= g.p.z {
-			return projectileThingHit{
-				idx:      -1,
-				isPlayer: true,
-				frac:     1,
-				x:        nx,
-				y:        ny,
-				z:        z,
-				damage:   true,
-			}, true
-		}
+	if visitPlayer() {
+		return result, true
 	}
 	return projectileThingHit{}, false
 }

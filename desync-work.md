@@ -1,13 +1,130 @@
-# Current verification checkpoint — 2026-09-30
+# Current verification checkpoint — 2026-10-01
 
-The dedicated branch is `desync-work`, with the earlier commits `eb4b4e6` and
-`735568c` and follow-up fix commit `fc7ad21`. All three commits are merged into
-local `main`. The remote `origin/main` remains `8bb7bec` and includes
-Dependabot configuration, Go 1.26.6, wall sampling changes, and the experimental
-GPU renderer. Its GPU work is already merged; `render-visualize` still has seven
-unique rendering commits. The eight Dependabot branches contain single
-dependency updates. The security-automation branch is already merged.
-The complete replay suite and Go test suite pass on the merged main checkout.
+The dedicated `desync-work` branch and expanded recovered-demo work are merged
+into `main`, pushed at `18c31ad`. The earlier merged checkpoint passes all
+25 repository recordings (69,398 compared tics) and the Go test suite.
+
+**Broader external corpus:** the COMPET-N snapshot supplies 4,634 unique
+single-player Doom I/II recordings across all 68 maps. Its initial quick
+selection found 31 matches, 35 state mismatches, and two finale replay errors.
+The latest complete quick phase plus targeted follow-ups now verifies
+**68/68**, with strict gameplay RNG matching for every pass and no replay
+errors. **0 recordings still fail**. See
+[demos/COMPET-N.md](demos/COMPET-N.md) for preparation, fixes, and exact frontiers;
+[demos/COMPET-N-results.json](demos/COMPET-N-results.json) records per-phase input
+hashes and results.
+
+The latest complete quick report is `tmp/compet-n-continue-smoke-v60/summary.json`.
+The latest completed UV-Max phase is `tmp/compet-n-continue-combat-v34/summary.json`:
+**66 matches and 2 state mismatches** including targeted
+follow-ups. The quick and combat selections
+cover 136 distinct recordings, with **134 latest verified passes and
+2 state mismatches** across their recorded phases. The original E4M8
+reference crash is retained separately; the active combat manifest substitutes
+another E4M8 recording. A default E3M5 mismatch concerns an unused,
+uninitialized reference ceiling field; its diagnostic matches all 7,004 tics
+without changing comparator normalization.
+
+The latest completed repository replay is **25/25**, with strict RNG matching,
+at `tmp/compet-n-continue-repository-v74/summary.json` plus the two harness follow-ups in
+`tmp/compet-n-continue-repository-harness-followups-v74/summary.json`.
+A further complete replay rebuilt with the updated dependencies is running at
+`tmp/compet-n-continue-repository-v75/`. The complete Go suite passes
+after the latest corrections and the dependency updates from `d5ca1ac`, and
+five Python corpus checks pass. This commit checkpoints the corpus fixes and
+tooling. **1,189** eligible recordings have completed
+attempts; **3,445** have no completed attempt yet.
+The full manifest remains unswept, and these passes do not establish universal
+demo compatibility.
+
+Recent targeted fixes preserve monster-only teleport triggers on player
+crossings, reject dead projectile shooters before immediate damage-wake chase,
+and wrap BSP coordinate differences like the original fixed-point arithmetic.
+MAP08 Nightmare, E2M4 Nightmare and E4M8 Nightmare now match their complete
+comparison windows and gameplay RNG. Teleport blocklinks traversal also clears
+MAP24 UV-Max in full (9,312 compared tics and gameplay RNG).
+
+Reference capture now streams through a pipe to bypass its 2 GiB file limit;
+a long recording produced all 133,445 tics and 9,325,412,691 valid JSON bytes.
+This is a capture check, not a passing port comparison. New batches use immutable
+replay harnesses and comparators with recorded hashes. Two v74 repository checks
+interrupted by a live harness edit were rerun successfully.
+
+Continuation fixes include intermission command/transition continuity,
+platform stop/reactivation, pickup and sector blockmap ordering, exact floor
+texture/special inheritance timing, infinite death states and respawn provenance,
+held-fire weapon switching, retained dead melee targets, damage-wake chase
+ordering, targetless environmental damage, melee impact specials and punch puff
+lifetime, SS wake/refire behavior, Commander Keen behavior, raised-floor
+vertical movement, missile player/corpse ordering and sky-wall handling, pillar
+autoaim identity, original arch-vile resurrection, and Cyberdemon damage-wake
+chasing, original chainsaw lunge/reach and melee aiming, and blocked opening
+door destination restoration, diagonal slide rounding, and unlimited missile
+flight lifetime, original coordinate wraparound, and shared attack-range
+state for Revenant puffs, zero-tic Revenant attack actions, and mutable
+blockmap iteration during radius damage. MAP13 UV-Max now matches all
+11,319 compared tics and gameplay RNG; preserving pending weapon switches
+when the held weapon is selected also passes MAP08's full 5,163-tic comparison.
+Crushed corpse collisions now respect S_GIBS immediately rather than the
+previous death-animation phase, retaining raised ghost collision behavior.
+MAP17 UV-Max now matches all 9,178 compared tics and gameplay RNG.
+Crusher blood also tests actor collisions despite its MF_NOBLOCKMAP flag,
+passing E3M4 and E4M7 UV-Max (9,285 and 5,752 tics). Revenant fist impacts
+face once, passing MAP28 UV-Max (2,094 tics). Each replay matches gameplay RNG.
+Charging skull collisions also follow original blockmap cell and link order
+between monsters and the player, passing E4M5 and E3M2 UV-Max
+(4,502 and 4,281 compared tics, including gameplay RNG).
+Shared skull slams during A_Chase movement also pass MAP10 UV-Max
+(10,048 compared tics and gameplay RNG). Non-player objects now respect
+ML_BLOCKMONSTERS during pickup height clipping and blood movement.
+Newly crushed bodies are re-clipped by later moving planes within the same tic.
+Fast mode retains original walking steps and halves demon/spectre run,
+attack, and pain states. Nightmare effects and missiles also report their
+original zero spawn reaction delay, without changing comparator normalization.
+Ammo pickups also double on the easiest difficulty and Nightmare, including
+weapon supplies, dropped clips, and backpacks. Fast demon pain traces now
+select the frame using the halved durations. Only the original three monster
+projectile types accelerate in fast modes, and the generic post-attack chase
+gate skips direction selection and movement in those modes. Both new UV-Fast
+recordings now pass their complete traces and gameplay RNG. Repeated crusher
+stop crossings also preserve the saved direction for the next restart.
+Charging Lost Souls also slam during moving-sector height clips, clearing
+the MAP11 Nightmare and new MAP06 speedrun recordings in full. The latest
+Nightmare sweep and follow-ups have 68 of 68 matching recordings.
+Missile floor impacts wait for the normal thinker after the spawn half-step,
+and Arch-vile blasts preserve the fire's last linked subsector until A_Fire.
+Floating height tracking also uses retained monster corpses, clearing MAP28
+pacifist and E2M5 Nightmare in full. Missile death retains the local XY
+split-step remainder, clearing MAP23 Nightmare; hitscan boundary nudges also
+update the intersecting ray and impacts, clearing MAP25 Nightmare. Runtime
+spawns now initialize crusher bookkeeping too, clearing E1M7 Nightmare and
+two new E1M5/E4M8 recordings in full. Spider Mastermind damage wake executes
+the immediate chase action, clearing MAP28 Nightmare in full. Intercept
+arithmetic preserves fixed_t overflow too, clearing five MAP32 Nightmare
+recordings without changing comparison normalization. Moving-sector height
+checks follow relinked skulls through their new blocklinks, advancing MAP17
+Nightmare's first state difference from tic 2,547 to 3,782. Generic monster
+damage wake applies to all walking families with a see state, including the
+Arch-vile's corpse search before ordinary chase bookkeeping. MAP17 Nightmare
+now matches all 3,897 compared tics and gameplay RNG. Radiation-suit leakage
+rolls every tic on 20-damage floors before the damage pulse check, advancing
+MAP29 Nightmare from tic 1,761 to 1,951 and clearing MAP12 UV-Max in full
+(8,275 compared tics and gameplay RNG). Nested skull reset/chase moves
+preserve original shared probe state, clearing MAP29 Nightmare in full
+(2,711 compared tics and gameplay RNG). The v63 Nightmare refresh is complete; newer follow-ups verify all 68 recordings. The completed v60 refresh
+caught an E3M9 moving-floor regression: player-start markers had duplicate
+physical links sharing the live player's order. Start markers now have no
+map-mobj links, matching P_SpawnMapThing; its floor-step regression passes
+and its full v65 replay matches all 2,411 compared tics and gameplay RNG. E2M6 diagnostics also verify that skull collision
+cleanup re-reads Doom's shared current mover after a damage wake, resetting
+the Demon victim while preserving the initiating skull's charge and vertical
+momentum. E2M6 Nightmare now matches all 2,659 compared tics and gameplay RNG.
+MAP23 UV-Max also passes in full (3,602 compared tics and gameplay RNG).
+Charging skulls also collide with dead
+barrels throughout their solid explosion animation, clearing E3M4 Nightmare
+in full (1,922 compared tics and gameplay RNG).
+Save format is **25** and netplay keyframe format **12**; earlier formats are
+incompatible. Source and snapshot regressions pass.
 
 The expanded follow-up work from `codex/desync-extra-demos` is also integrated
 into local main, including fix commit `8831c48`. The corpus now
@@ -24,7 +141,7 @@ and checks gameplay RNG independently of the normalized state comparator.
 It also rejects ZIP archives containing unextracted recordings:
 
 ```bash
-GOCACHE=/tmp/gddoom-go-cache python3 scripts/demo_trace_compare_all.py \
+xvfb-run -a env GOCACHE=/tmp/gddoom-go-cache python3 scripts/demo_trace_compare_all.py \
   --jobs 2 --out-root tmp/demo-trace-all
 ```
 
@@ -67,8 +184,8 @@ The existing comparator's normalization was not loosened for either issue.
 Integration was first verified in a temporary checkout, reported at
 `tmp/desync-main-integration/summary.json`. The earlier merge into local main
 also applied cleanly. Its source matches the validated integration checkout,
-and its complete Go test suite and fresh replay sweep both pass. No remote
-push has been made.
+and its complete Go test suite and fresh repository replay sweep both pass.
+The integrated fixes were committed and pushed before the external corpus work.
 
 Corrections verified so far include projectile explosion thinker timing,
 arachnotron impact frames, invisible-target RNG, revenant tracer targets,

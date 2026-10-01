@@ -24,10 +24,10 @@ import (
 )
 
 const (
-	saveGameVersion     = 21
+	saveGameVersion     = 25
 	saveGamePrefix      = "dsg"
 	saveGameQuickPrefix = "quicksave"
-	keyframeVersion     = 8
+	keyframeVersion     = 12
 	saveGameDirName     = "saves"
 )
 
@@ -115,6 +115,7 @@ type gameSaveState struct {
 	ThingCollected       []bool
 	ThingDropped         []bool
 	ThingThinkerOrder    []int64
+	ThingSpawnPoint      []mapdata.Thing
 	ThingX               []int64
 	ThingY               []int64
 	ThingMomX            []int64
@@ -168,6 +169,7 @@ type gameSaveState struct {
 	Invulnerable         bool
 	NoClip               bool
 	Inventory            playerInventorySaveState
+	LastAttackRange      int64
 	AlwaysRun            bool
 	AutoWeaponSwitch     bool
 	WeaponRefire         bool
@@ -228,6 +230,7 @@ type playerSaveState struct {
 	MomY            int64
 	MomZ            int64
 	ReactionTime    int
+	JustAttacked    bool
 	ViewHeight      int64
 	DeltaViewHeight int64
 }
@@ -387,11 +390,18 @@ type hitscanPuffSaveState struct {
 	X        int64
 	Y        int64
 	Z        int64
+	MomX     int64
+	MomY     int64
 	MomZ     int64
+	FloorZ   int64
+	CeilZ    int64
+	LastLook int
 	Tics     int
 	State    int
 	TotalTic int
 	Kind     uint8
+	Hidden   bool
+	Order    int64
 }
 
 type sectorLightEffectSaveState struct {
@@ -1212,6 +1222,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		ThingCollected:       append([]bool(nil), g.thingCollected...),
 		ThingDropped:         append([]bool(nil), g.thingDropped...),
 		ThingThinkerOrder:    append([]int64(nil), g.thingThinkerOrder...),
+		ThingSpawnPoint:      append([]mapdata.Thing(nil), g.thingSpawnPoint...),
 		ThingX:               append([]int64(nil), g.thingX...),
 		ThingY:               append([]int64(nil), g.thingY...),
 		ThingMomX:            append([]int64(nil), g.thingMomX...),
@@ -1265,6 +1276,7 @@ func captureGameSaveState(g *game) gameSaveState {
 		Invulnerable:         g.invulnerable,
 		NoClip:               g.noClip,
 		Inventory:            capturePlayerInventorySaveState(g.inventory),
+		LastAttackRange:      g.lastAttackRange,
 		AlwaysRun:            g.alwaysRun,
 		AutoWeaponSwitch:     g.autoWeaponSwitch,
 		WeaponRefire:         g.weaponRefire,
@@ -1330,6 +1342,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.thingCollected = append([]bool(nil), s.ThingCollected...)
 	g.thingDropped = append([]bool(nil), s.ThingDropped...)
 	g.thingThinkerOrder = append([]int64(nil), s.ThingThinkerOrder...)
+	g.thingSpawnPoint = append([]mapdata.Thing(nil), s.ThingSpawnPoint...)
 	g.thingX = append([]int64(nil), s.ThingX...)
 	g.thingY = append([]int64(nil), s.ThingY...)
 	g.thingMomX = append([]int64(nil), s.ThingMomX...)
@@ -1383,6 +1396,7 @@ func restoreGameSaveState(g *game, s gameSaveState) {
 	g.invulnerable = s.Invulnerable
 	g.noClip = s.NoClip
 	g.inventory = restorePlayerInventorySaveState(s.Inventory)
+	g.lastAttackRange = s.LastAttackRange
 	g.alwaysRun = s.AlwaysRun
 	g.autoWeaponSwitch = s.AutoWeaponSwitch
 	g.weaponRefire = s.WeaponRefire
@@ -1461,6 +1475,7 @@ func capturePlayerSaveState(p player) playerSaveState {
 		MomY:            p.momy,
 		MomZ:            p.momz,
 		ReactionTime:    p.reactionTime,
+		JustAttacked:    p.justAttacked,
 		ViewHeight:      p.viewHeight,
 		DeltaViewHeight: p.deltaViewHeight,
 	}
@@ -1480,6 +1495,7 @@ func restorePlayerSaveState(s playerSaveState) player {
 		momy:            s.MomY,
 		momz:            s.MomZ,
 		reactionTime:    s.ReactionTime,
+		justAttacked:    s.JustAttacked,
 		viewHeight:      s.ViewHeight,
 		deltaViewHeight: s.DeltaViewHeight,
 	}
@@ -1975,11 +1991,18 @@ func captureHitscanPuffs(src []hitscanPuff) []hitscanPuffSaveState {
 			X:        puff.x,
 			Y:        puff.y,
 			Z:        puff.z,
+			MomX:     puff.momx,
+			MomY:     puff.momy,
 			MomZ:     puff.momz,
+			FloorZ:   puff.floorz,
+			CeilZ:    puff.ceilz,
+			LastLook: puff.lastLook,
 			Tics:     puff.tics,
 			State:    puff.state,
 			TotalTic: puff.totalTic,
 			Kind:     puff.kind,
+			Hidden:   puff.hidden,
+			Order:    puff.order,
 		}
 	}
 	return dst
@@ -1995,11 +2018,18 @@ func restoreHitscanPuffs(src []hitscanPuffSaveState) []hitscanPuff {
 			x:        puff.X,
 			y:        puff.Y,
 			z:        puff.Z,
+			momx:     puff.MomX,
+			momy:     puff.MomY,
 			momz:     puff.MomZ,
+			floorz:   puff.FloorZ,
+			ceilz:    puff.CeilZ,
+			lastLook: puff.LastLook,
 			tics:     puff.Tics,
 			state:    puff.State,
 			totalTic: puff.TotalTic,
 			kind:     puff.Kind,
+			hidden:   puff.Hidden,
+			order:    puff.Order,
 		}
 	}
 	return dst

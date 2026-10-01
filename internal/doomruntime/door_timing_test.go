@@ -64,6 +64,43 @@ func newDoorTimingGame(doorSec int) *game {
 	}
 }
 
+func TestOpeningDoorPastDestinationRestoresBlockedSnapAndCompletes(t *testing.T) {
+	for _, typ := range []doorType{doorOpen, doorNormal} {
+		for _, blocked := range []bool{false, true} {
+			g := &game{m: &mapdata.Map{
+				Sectors: []mapdata.Sector{{CeilingHeight: 128}},
+				Things:  []mapdata.Thing{{Type: 9, X: 100}},
+			}, thingHP: []int{30}, thingCollected: []bool{false}, isDead: true}
+			g.initPhysics()
+			g.ensureMonsterAIState()
+			g.p.x = 1000 * fracUnit
+			dest := int64(80 * fracUnit)
+			if blocked {
+				dest = 32 * fracUnit
+			}
+			d := &doorThinker{sector: 0, typ: typ, direction: 1, speed: 2 * fracUnit,
+				topHeight: dest, topWait: 150}
+			g.doors = map[int]*doorThinker{0: d}
+			g.tickDoor(0, d)
+			want := dest
+			if blocked {
+				want = 128 * fracUnit
+			}
+			_, _, thingCeil := g.thingSupportState(0, g.m.Things[0])
+			if g.sectorCeil[0] != want || thingCeil != want {
+				t.Fatalf("blocked=%t: ceiling=%d actor ceiling=%d want=%d", blocked, g.sectorCeil[0], thingCeil, want)
+			}
+			if typ == doorNormal {
+				if d.direction != 0 || d.topCountdown != 150 {
+					t.Fatal("blocked pastdest must still enter the normal door wait")
+				}
+			} else if g.activeDoorThinker(0) != nil {
+				t.Fatal("blocked pastdest must still remove an open-only door")
+			}
+		}
+	}
+}
+
 func TestTickDoors_NormalDoorOpensWaitsThenCloses(t *testing.T) {
 	g := newDoorTimingGame(1)
 	g.sectorCeil[1] = 64 * fracUnit
@@ -134,6 +171,10 @@ func TestTickDoors_Close30ThenOpenWaitsThirtySecondsAtBottom(t *testing.T) {
 	if got := g.sectorCeil[1]; got != 0 {
 		t.Fatalf("at bottom ceil=%d want=0", got)
 	}
+	if d.direction != -1 {
+		t.Fatal("door stopped on the floor before stepping past its destination")
+	}
+	g.tickDoors()
 	if d.direction != 0 || d.topCountdown != 35*30 {
 		t.Fatalf("bottom wait direction/countdown=%d/%d want 0/%d", d.direction, d.topCountdown, 35*30)
 	}

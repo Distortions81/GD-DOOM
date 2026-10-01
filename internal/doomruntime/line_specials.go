@@ -3,6 +3,7 @@ package doomruntime
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
@@ -155,6 +156,34 @@ func (g *game) taggedSectorsForTag(tag uint16) []int {
 	return out
 }
 
+func (g *game) raiseToTextureHeight(sec int) int64 {
+	minHeight := int64(math.MaxInt32)
+	for _, line := range g.m.Linedefs {
+		if line.Flags&mlTwoSided == 0 {
+			continue
+		}
+		front, frontOK := g.sectorIndexFromSidedef(line.SideNum[0])
+		back, backOK := g.sectorIndexFromSidedef(line.SideNum[1])
+		if !frontOK || !backOK || (front != sec && back != sec) {
+			continue
+		}
+		for _, side := range line.SideNum {
+			name := strings.ToUpper(g.m.Sidedefs[side].Bottom)
+			height, found := g.opts.WallTextureHeights[name]
+			if !found {
+				if tex, ok := g.opts.WallTexBank[name]; ok {
+					height, found = tex.Height, true
+				}
+			}
+			if found && int64(height)*fracUnit < minHeight {
+				minHeight = int64(height) * fracUnit
+			}
+		}
+	}
+	// Doom stores both the height and its sum in signed 32-bit fixed point.
+	return int64(int32(g.sectorFloor[sec] + minHeight))
+}
+
 func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool {
 	targets := g.taggedSectorsForTag(tag)
 	if len(targets) == 0 {
@@ -174,7 +203,7 @@ func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool 
 			ft.typ = 5
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
-			ft.destHeight = g.sectorFloor[sec] + 24*fracUnit
+			ft.destHeight = g.raiseToTextureHeight(sec)
 		case mapdata.FloorLowerToLowest:
 			ft.typ = 1
 			ft.direction = -1
@@ -183,7 +212,7 @@ func (g *game) activateTaggedFloor(tag uint16, action mapdata.FloorAction) bool 
 		default:
 			continue
 		}
-		if ft.direction > 0 && ft.destHeight > g.sectorCeil[sec] {
+		if action != mapdata.FloorRaiseToTexture && ft.direction > 0 && ft.destHeight > g.sectorCeil[sec] {
 			ft.destHeight = g.sectorCeil[sec]
 		}
 		g.floors[sec] = ft
@@ -248,8 +277,12 @@ func (g *game) playerTouchesSector(sec int) bool {
 }
 
 func (g *game) setSectorFloorHeight(sec int, z int64) {
+	g.setSectorFloorHeightWithCrush(sec, z, false)
+}
+
+func (g *game) setSectorFloorHeightWithCrush(sec int, z int64, crush bool) bool {
 	if g == nil || sec < 0 || sec >= len(g.sectorFloor) {
-		return
+		return false
 	}
 	old := g.sectorFloor[sec]
 	oldPlayerFloor := g.p.floorz
@@ -269,7 +302,7 @@ func (g *game) setSectorFloorHeight(sec int, z int64) {
 	// T_MovePlane calls P_ChangeSector even when a mover has reached its
 	// destination exactly. That refresh is observable for corpses in nearby
 	// blockmap cells, so it must not be skipped when the height is unchanged.
-	g.heightClipAroundSector(sec, oldPlayerFloor)
+	return g.heightClipAroundSectorWithCrush(sec, oldPlayerFloor, crush)
 }
 
 func (g *game) sectorMoveWouldBlockLiveActor(sec int, newFloor, newCeil int64) bool {
@@ -325,8 +358,12 @@ func (g *game) sectorMoveWouldBlockLiveActor(sec int, newFloor, newCeil int64) b
 }
 
 func (g *game) setSectorCeilingHeight(sec int, z int64) {
+	g.setSectorCeilingHeightWithCrush(sec, z, false)
+}
+
+func (g *game) setSectorCeilingHeightWithCrush(sec int, z int64, crush bool) bool {
 	if g == nil || sec < 0 || sec >= len(g.sectorCeil) {
-		return
+		return false
 	}
 	oldPlayerFloor := g.p.floorz
 	if g.sectorCeil[sec] != z {
@@ -338,12 +375,36 @@ func (g *game) setSectorCeilingHeight(sec int, z int64) {
 	}
 	// Like floor movers, a rejected ceiling move restores the old height and
 	// still invokes P_ChangeSector to refresh thing support.
-	g.heightClipAroundSector(sec, oldPlayerFloor)
+	return g.heightClipAroundSectorWithCrush(sec, oldPlayerFloor, crush)
 }
 
 func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
+	g.heightClipAroundSectorWithCrush(sec, oldPlayerFloor, false)
+}
+
+func (g *game) heightClipAroundSectorWithCrush(sec int, oldPlayerFloor int64, crush bool) bool {
 	if g == nil || g.m == nil || sec < 0 {
-		return
+		return false
+	}
+	nofit := false
+	damagePulse := crush && (max(g.worldTic-1, 0)&3) == 0
+	clipThing := func(i int) {
+		th := g.m.Things[i]
+		if g.heightClipThing(i, th) {
+			return
+		}
+		nofit = true
+		if !damagePulse {
+			return
+		}
+		x, y := g.thingPosFixed(i, th)
+		if isBarrelThingType(th.Type) {
+			g.damageBarrelFrom(i, 10, false, -1, 0, 0, false, 0, false)
+		} else {
+			g.damageMonsterFrom(i, 10, false, -1, 0, 0, false)
+		}
+		z, _, _ := g.thingSupportState(i, th)
+		g.spawnCrusherBlood(x, y, z+g.thingCurrentHeight(i, th)/2)
 	}
 	left, right, bottom, top, ok := g.sectorBlockBox(sec)
 	if want := runtimeDebugEnv("GD_DEBUG_HEIGHTCLIP_SECTOR"); want != "" {
@@ -363,43 +424,89 @@ func (g *game) heightClipAroundSector(sec int, oldPlayerFloor int64) {
 	} else {
 		playerTouches = g.actorTouchesSector(sec, g.p.x, g.p.y, playerRadius)
 	}
-	if playerTouches {
-		g.heightClipPlayer(oldPlayerFloor)
+	clipPlayer := func() {
+		if !g.heightClipPlayer(oldPlayerFloor) && g.stats.Health > 0 {
+			nofit = true
+			if damagePulse {
+				g.damagePlayer(10, "Crushed")
+				g.spawnCrusherBlood(g.p.x, g.p.y, g.p.z+playerHeight/2)
+			}
+		}
 	}
 	if ok && g.bmapWidth > 0 && g.bmapHeight > 0 && len(g.thingBlockCells) == g.bmapWidth*g.bmapHeight {
-		seen := make(map[int]struct{})
 		for bx := left; bx <= right; bx++ {
 			for by := bottom; by <= top; by++ {
-				cell := by*g.bmapWidth + bx
-				if cell < 0 || cell >= len(g.thingBlockCells) {
-					continue
-				}
-				for _, i := range g.thingBlockCells[cell] {
-					if _, dup := seen[i]; dup {
-						continue
-					}
-					seen[i] = struct{}{}
-					if i < 0 || i >= len(g.m.Things) {
-						continue
-					}
-					if i < len(g.thingCollected) && g.thingCollected[i] {
-						continue
-					}
-					g.heightClipThing(i, g.m.Things[i])
-				}
+				g.walkActorBlockCell(by*g.bmapWidth+bx, clipThing, clipPlayer)
 			}
 		}
 	} else {
-		g.heightClipThingsInSector(sec)
+		if playerTouches {
+			clipPlayer()
+		}
+		for i, th := range g.m.Things {
+			if thingTypeUsesBlockmap(th.Type) && !(i < len(g.thingCollected) && g.thingCollected[i]) && g.thingTouchesSector(sec, i, th) {
+				clipThing(i)
+			}
+		}
 	}
-	// After all z-states are updated (heightClipPlayer + heightClipThing), run
-	// pickup detection. Doom's P_ChangeSector -> P_ThingHeightClip(player) ->
-	// P_CheckPosition(player) triggers PIT_CheckThing -> P_TouchSpecialThing
-	// for nearby items using the just-updated player z. Items' z values are also
-	// updated by P_ThingHeightClip before PIT_CheckThing fires.
-	if playerTouches && !g.isDead {
-		g.processThingPickups()
+	// Pickup touches belong to the player's P_CheckPosition above. A second
+	// pass here would use item heights changed later in P_ChangeSector and can
+	// consume an item one tic before Doom does.
+	return nofit
+}
+
+// P_BlockThingsIterator reads the current mobj's bnext after its callback.
+// Height clipping can end a skull charge and run A_Chase, relinking the skull
+// into another cell. Continue through that new list, even outside the box.
+// walkActorBlockCell follows Doom's mutable blocklinks, including the player.
+func (g *game) walkActorBlockCell(cell int, visitThing func(int), visitPlayer func()) {
+	for i := g.actorBlockLink(cell, -2); i != -2; {
+		next := g.actorBlockLink(cell, i)
+		if i == -1 {
+			visitPlayer()
+			cell = g.thingBlockmapCellFor(g.p.x, g.p.y)
+			next = g.actorBlockLink(cell, i)
+		} else {
+			visitThing(i)
+			// Removed mobjs retain bnext; relinked mobjs acquire the next
+			// link in their new cell. A removed pickup keeps the old next.
+			if i < len(g.thingBlockCell) && !(i < len(g.thingCollected) && g.thingCollected[i]) {
+				cell = g.thingBlockCell[i]
+				next = g.actorBlockLink(cell, i)
+			}
+		}
+		i = next
 	}
+}
+
+// -2 denotes the list head/end, -1 denotes the player, other values are things.
+func (g *game) actorBlockLink(cell, after int) int {
+	if cell < 0 || cell >= len(g.thingBlockCells) {
+		return -2
+	}
+	afterOrder := int64(0)
+	if after == -1 {
+		afterOrder = g.playerBlockOrder
+	} else if after >= 0 && after < len(g.thingBlockOrder) {
+		afterOrder = g.thingBlockOrder[after]
+	}
+	next := -2
+	for _, i := range g.thingBlockCells[cell] {
+		if i < 0 || i >= len(g.m.Things) || i >= len(g.thingBlockOrder) ||
+			(i < len(g.thingCollected) && g.thingCollected[i]) {
+			continue
+		}
+		if after == -2 || g.thingBlockOrder[i] < afterOrder {
+			next = i
+			break
+		}
+	}
+	if g.thingBlockmapCellFor(g.p.x, g.p.y) == cell &&
+		(after == -2 || g.playerBlockOrder < afterOrder) &&
+		(next == -2 || g.playerBlockOrder > g.thingBlockOrder[next]) {
+		return -1
+	}
+	return next
 }
 
 func (g *game) sectorBlockBox(sec int) (left, right, bottom, top int, ok bool) {
@@ -455,10 +562,9 @@ func (g *game) heightClipPlayer(oldFloorz int64) bool {
 		return false
 	}
 	onFloor := g.p.z == oldFloorz
-	tmfloor, tmceil, _, ok := g.checkPositionForWithPickupTouch(g.p.x, g.p.y, false, true)
-	if !ok {
-		return false
-	}
+	// P_ThingHeightClip keeps the partial opening computed by P_CheckPosition
+	// even when the position check stops at a blocking actor or line.
+	tmfloor, tmceil, _, _ := g.checkPositionForWithPickupTouch(g.p.x, g.p.y, false, true)
 	g.p.floorz = tmfloor
 	g.p.ceilz = tmceil
 	if onFloor {
@@ -535,40 +641,27 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 	if !thingTypeUsesBlockmap(th.Type) {
 		return true
 	}
-	if i < len(g.thingGibbed) && g.thingGibbed[i] && i < len(g.thingGibTick) && g.thingGibTick[i] == g.worldTic {
-		return true
-	}
 	x, y := g.thingPosFixed(i, th)
 	radius := g.thingCurrentRadius(i, th)
-	oldZ, oldFloorZ, oldCeilZ := g.thingSupportState(i, th)
-	// In Doom, P_ThingHeightClip calls P_CheckPosition which seeds tmfloorz
-	// from the subsector floor. If anything solid (including the player) overlaps
-	// the thing's XY bbox, PIT_CheckThing returns false and P_CheckPosition returns
-	// false before the line loop runs, leaving tmfloorz at the subsector floor.
-	// Mirror that: if the player overlaps this non-monster thing's XY, skip
-	// checkPositionForActor and use subsectorFloorCeilAt directly.
+	oldZ, oldFloorZ, _ := g.thingSupportState(i, th)
+	// P_ThingHeightClip checks the current position of every non-player
+	// object. Even pickups and corpses collide with the player's solid body
+	// and ML_BLOCKMONSTERS lines; an early rejection leaves subsector support.
 	var tmfloor, tmceil int64
-	playerOverlaps := !isMonster(th.Type) && actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius)
-	if playerOverlaps {
-		if floorZ, ceilZ, found := g.subsectorFloorCeilAt(x, y); found {
-			tmfloor = floorZ
-			tmceil = ceilZ
-		} else {
-			tmfloor = oldFloorZ
-			tmceil = oldCeilZ
-		}
-	} else {
-		var ok bool
-		tmfloor, tmceil, _, ok = g.checkPositionForActor(x, y, radius, isMonster(th.Type), i, isMonster(th.Type))
-		if !ok {
-			if floorZ, ceilZ, found := g.subsectorFloorCeilAt(x, y); found {
-				tmfloor = floorZ
-				tmceil = ceilZ
-			} else {
-				tmfloor = oldFloorZ
-				tmceil = oldCeilZ
+	slammed := false
+	if i < len(g.thingSkullFly) && g.thingSkullFly[i] {
+		if probe := g.probeSkullFlyMove(i, th.Type, x, y); probe.hitTarget {
+			// P_CheckPosition slams a charging skull before checking lines,
+			// even during a height clip with no horizontal movement.
+			if sec := g.sectorAt(x, y); sec >= 0 && sec < len(g.sectorFloor) && sec < len(g.sectorCeil) {
+				tmfloor, tmceil = g.sectorFloor[sec], g.sectorCeil[sec]
 			}
+			g.hitSkullFlyTarget(i, th.Type, probe.target)
+			slammed = true
 		}
+	}
+	if !slammed {
+		tmfloor, tmceil, _, _ = g.checkPositionForActor(x, y, radius, true, i, true)
 	}
 	z := oldZ
 	if z == oldFloorZ {
@@ -593,6 +686,9 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 		if i < len(g.thingGibbed) {
 			g.thingGibbed[i] = true
 		}
+		if i < len(g.thingState) && i < len(g.thingStateTics) {
+			g.thingState[i], g.thingStateTics[i] = monsterStateGibs, -1
+		}
 		if i < len(g.thingGibTick) {
 			g.thingGibTick[i] = g.worldTic
 		}
@@ -614,21 +710,18 @@ func (g *game) heightClipThing(i int, th mapdata.Thing) bool {
 
 func (g *game) findLowestFloorSurrounding(sec int) int64 {
 	lowest := g.sectorFloor[sec]
-	found := false
 	for _, ld := range g.m.Linedefs {
 		s0, ok0 := g.sectorIndexFromSidedef(ld.SideNum[0])
 		s1, ok1 := g.sectorIndexFromSidedef(ld.SideNum[1])
 		switch {
 		case ok0 && ok1 && s0 == sec:
-			if !found || g.sectorFloor[s1] < lowest {
+			if g.sectorFloor[s1] < lowest {
 				lowest = g.sectorFloor[s1]
 			}
-			found = true
 		case ok0 && ok1 && s1 == sec:
-			if !found || g.sectorFloor[s0] < lowest {
+			if g.sectorFloor[s0] < lowest {
 				lowest = g.sectorFloor[s0]
 			}
-			found = true
 		}
 	}
 	return lowest
@@ -814,6 +907,30 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 			ft.direction = -1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.findLowestFloorSurrounding(sec)
+			ft.finish = floorFinishSetTexture
+			ft.finishFlat = g.m.Sectors[sec].FloorPic
+			ft.finishSpecial = g.m.Sectors[sec].Special
+			// EV_DoFloor takes the first adjoining sector at the target
+			// height as the model; T_MoveFloor applies it on completion.
+			for _, line := range g.m.Linedefs {
+				if line.Flags&mlTwoSided == 0 {
+					continue
+				}
+				front, frontOK := g.sectorIndexFromSidedef(line.SideNum[0])
+				back, backOK := g.sectorIndexFromSidedef(line.SideNum[1])
+				if !frontOK || !backOK || (front != sec && back != sec) {
+					continue
+				}
+				model := front
+				if front == sec {
+					model = back
+				}
+				if g.sectorFloor[model] == ft.destHeight {
+					ft.finishFlat = g.m.Sectors[model].FloorPic
+					ft.finishSpecial = g.m.Sectors[model].Special
+					break
+				}
+			}
 		case mapdata.FloorRaiseCrush:
 			ft.typ = 9
 			ft.crush = true
@@ -830,16 +947,16 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
 			ft.destHeight = g.sectorFloor[sec] + 24*fracUnit
-			ft.finish = floorFinishSetTexture
 			if frontSec >= 0 {
-				ft.finishFlat = g.m.Sectors[frontSec].FloorPic
-				ft.finishSpecial = g.m.Sectors[frontSec].Special
+				g.m.Sectors[sec].FloorPic = g.m.Sectors[frontSec].FloorPic
+				g.m.Sectors[sec].Special = g.m.Sectors[frontSec].Special
+				g.markDynamicSectorPlaneCacheDirty(sec)
 			}
 		case mapdata.FloorRaiseToTexture:
 			ft.typ = 5
 			ft.direction = 1
 			ft.speed = floorMoveSpeed
-			ft.destHeight = g.sectorFloor[sec] + 24*fracUnit
+			ft.destHeight = g.raiseToTextureHeight(sec)
 		case mapdata.FloorLowerToLowest:
 			ft.typ = 1
 			ft.direction = -1
@@ -866,7 +983,7 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 		default:
 			continue
 		}
-		if ft.direction > 0 && ft.destHeight > g.sectorCeil[sec] {
+		if info.Action != mapdata.FloorRaiseToTexture && ft.direction > 0 && ft.destHeight > g.sectorCeil[sec] {
 			ft.destHeight = g.sectorCeil[sec]
 		}
 		g.floors[sec] = ft
@@ -883,15 +1000,23 @@ func (g *game) activateFloorLine(lineIdx int, info mapdata.FloorInfo) bool {
 }
 
 func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
+	// Stop/reactivate existing thinkers before testing sector specialdata.
+	// These actions specifically operate on sectors that already own a mover.
+	if info.Action == mapdata.PlatStop {
+		return g.stopTaggedPlats(g.m.Linedefs[lineIdx].Tag)
+	}
+	activated := false
+	if info.Action == mapdata.PlatPerpetualRaise {
+		activated = g.activateInStasisPlats(g.m.Linedefs[lineIdx].Tag)
+	}
 	targets := g.taggedSectorsForLine(lineIdx)
 	if len(targets) == 0 {
-		return false
+		return activated
 	}
 	if g.plats == nil {
 		g.plats = make(map[int]*platThinker)
 	}
 	frontSec, _ := g.frontSectorForLine(lineIdx)
-	activated := false
 	for _, sec := range targets {
 		if g.sectorHasActiveMover(sec) {
 			continue
@@ -909,6 +1034,7 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			if frontSec >= 0 {
 				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
 				pt.finishSpecial = 0
+				g.m.Sectors[sec].FloorPic = pt.finishFlat
 			}
 			g.m.Sectors[sec].Special = 0
 		case mapdata.PlatRaiseAndChange24:
@@ -918,9 +1044,10 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			pt.speed = platMoveSpeed / 2
 			pt.low = g.sectorFloor[sec]
 			pt.high = g.sectorFloor[sec] + 24*fracUnit
+			pt.wait = 0
 			if frontSec >= 0 {
 				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
-				pt.finishSpecial = 0
+				g.m.Sectors[sec].FloorPic = pt.finishFlat
 			}
 		case mapdata.PlatRaiseAndChange32:
 			pt.typ = platTypeRaiseAndChange
@@ -929,9 +1056,10 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			pt.speed = platMoveSpeed / 2
 			pt.low = g.sectorFloor[sec]
 			pt.high = g.sectorFloor[sec] + 32*fracUnit
+			pt.wait = 0
 			if frontSec >= 0 {
 				pt.finishFlat = g.m.Sectors[frontSec].FloorPic
-				pt.finishSpecial = 0
+				g.m.Sectors[sec].FloorPic = pt.finishFlat
 			}
 		case mapdata.PlatDownWaitUpStay:
 			pt.typ = platTypeDownWaitUpStay
@@ -956,10 +1084,6 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			pt.high = g.sectorFloor[sec]
 			pt.wait = platWaitTics
 		case mapdata.PlatPerpetualRaise:
-			if g.activateInStasisPlats(g.m.Linedefs[lineIdx].Tag) {
-				activated = true
-				continue
-			}
 			pt.typ = platTypePerpetualRaise
 			pt.speed = platMoveSpeed
 			pt.low = g.findLowestFloorSurrounding(sec)
@@ -976,11 +1100,6 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 			} else {
 				pt.status = platStatusDown
 			}
-		case mapdata.PlatStop:
-			if g.stopTaggedPlats(g.m.Linedefs[lineIdx].Tag) {
-				activated = true
-			}
-			continue
 		default:
 			continue
 		}
@@ -1204,6 +1323,9 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 			fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-dest thing=%d sec=%d pos=(%d,%d) player=%t\n",
 				g.demoTick-1, g.worldTic, i, sec, tx, ty, isPlayer)
 		}
+		// P_TeleportMove clears numspechit before checking the destination,
+		// including attempts that fail because another actor occupies it.
+		g.teleportMoveSerial++
 		tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty)
 		if !ok {
 			if debugLineTriggerEnabled(lineIdx) {
@@ -1315,36 +1437,42 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 		return false
 	}
 	allowStomp := isPlayer || g.currentMapName() == "MAP30"
-	// The player mobj is not represented by a map Thing.  P_TeleportMove still
-	// visits it through the blockmap, so a regular monster teleport must fail
-	// when its destination overlaps the player (only the player and MAP30
-	// monster teleports may telefrag).
-	if !isPlayer && g.stats.Health > 0 && !g.isDead &&
-		actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
+	blocked := false
+	visitPlayer := func() {
+		if blocked || isPlayer || g.stats.Health <= 0 || g.isDead ||
+			!actorsOverlapXY(x, y, radius, g.p.x, g.p.y, playerRadius) {
+			return
+		}
 		if !allowStomp {
-			return false
+			blocked = true
+			return
 		}
 		g.damagePlayerFrom(10000, "Telefragged", inflictorX, inflictorY, true, actorIdx)
 	}
-	for i, th := range g.m.Things {
+	visitThing := func(i int) {
+		if blocked {
+			return
+		}
+		th := g.m.Things[i]
 		if i == actorIdx {
-			continue
+			return
 		}
 		if i < len(g.thingCollected) && g.thingCollected[i] {
-			continue
+			return
 		}
 		if !thingTypeIsShootable(th.Type) {
-			continue
+			return
 		}
 		if isMonster(th.Type) && i < len(g.thingHP) && g.thingHP[i] <= 0 {
-			continue
+			return
 		}
 		tx, ty := g.thingPosFixed(i, th)
 		if !actorsOverlapXY(x, y, radius, tx, ty, g.thingCurrentRadius(i, th)) {
-			continue
+			return
 		}
 		if !allowStomp {
-			return false
+			blocked = true
+			return
 		}
 		switch {
 		case isMonster(th.Type):
@@ -1359,7 +1487,31 @@ func (g *game) teleportStompDestinationThings(x, y, radius int64, actorIdx int, 
 			g.damagePlayerFrom(10000, "Telefragged", inflictorX, inflictorY, true, actorIdx)
 		}
 	}
-	return true
+	if g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		if len(g.thingBlockCells) != g.bmapWidth*g.bmapHeight {
+			g.rebuildThingBlockmap()
+		}
+		left := int((x - radius - g.bmapOriginX - doomMaxThingRadius) >> (fracBits + 7))
+		right := int((x + radius - g.bmapOriginX + doomMaxThingRadius) >> (fracBits + 7))
+		bottom := int((y - radius - g.bmapOriginY - doomMaxThingRadius) >> (fracBits + 7))
+		top := int((y + radius - g.bmapOriginY + doomMaxThingRadius) >> (fracBits + 7))
+		// P_TeleportMove visits columns first and follows mutable blocklinks.
+		// That order assigns each victim its randomized first death frame.
+		for bx := max(left, 0); bx <= min(right, g.bmapWidth-1); bx++ {
+			for by := max(bottom, 0); by <= min(top, g.bmapHeight-1); by++ {
+				g.walkActorBlockCell(by*g.bmapWidth+bx, visitThing, visitPlayer)
+				if blocked {
+					return false
+				}
+			}
+		}
+	} else {
+		visitPlayer()
+		for i := range g.m.Things {
+			visitThing(i)
+		}
+	}
+	return !blocked
 }
 
 func (g *game) teleportTriggerDebugPos(lineIdx int) (x1, y1, x2, y2, cx, cy int64) {
@@ -1396,9 +1548,13 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 					activated = true
 				}
 			case mapdata.CeilingCrushStop:
-				existing.oldDirection = existing.direction
-				existing.direction = 0
-				activated = true
+				// EV_CeilingCrushStop skips ceilings already in stasis. A
+				// repeated crossing must preserve the direction for restart.
+				if existing.direction != 0 {
+					existing.oldDirection = existing.direction
+					existing.direction = 0
+					activated = true
+				}
 			}
 			continue
 		}
@@ -1417,7 +1573,8 @@ func (g *game) activateCeilingLine(lineIdx int, info mapdata.CeilingInfo) bool {
 			ct.bottomHeight = g.sectorFloor[sec] + 8*fracUnit
 		case mapdata.CeilingLowerAndCrush:
 			ct.direction = -1
-			ct.crush = true
+			// EV_DoCeiling leaves crush=false for lowerAndCrush. A blocked
+			// move rolls back and slows, without dealing crusher damage.
 			ct.bottomHeight = g.sectorFloor[sec] + 8*fracUnit
 		case mapdata.CeilingFastCrushRaise:
 			ct.direction = -1
@@ -1598,7 +1755,10 @@ func (g *game) tickFloor(sec int, ft *floorThinker) {
 			done = true
 		}
 	}
-	g.setSectorFloorHeight(sec, next)
+	blocked := g.setSectorFloorHeightWithCrush(sec, next, ft.crush)
+	if blocked && (done || ft.direction < 0 || !ft.crush) {
+		g.setSectorFloorHeightWithCrush(sec, cur, ft.crush)
+	}
 	if !done {
 		return
 	}
@@ -1630,20 +1790,16 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 	}
 	switch pt.status {
 	case platStatusUp:
-		next := g.sectorFloor[sec] + pt.speed
-		if next <= pt.high && g.sectorMoveWouldBlockLiveActor(sec, next, g.sectorCeil[sec]) {
-			pt.count = pt.wait
-			pt.status = platStatusDown
-			return
-		}
+		cur := g.sectorFloor[sec]
+		next := cur + pt.speed
 		if next > pt.high {
 			next = pt.high
-			g.setSectorFloorHeight(sec, next)
+			if g.setSectorFloorHeightWithCrush(sec, next, false) {
+				g.setSectorFloorHeight(sec, cur)
+			}
 			if pt.typ == platTypeRaiseToNearestAndChange || pt.typ == platTypeRaiseAndChange || pt.typ == platTypeDownWaitUpStay || pt.typ == platTypeBlazeDownWaitUpStay {
-				if pt.finishFlat != "" {
-					g.m.Sectors[sec].FloorPic = pt.finishFlat
-				}
-				g.m.Sectors[sec].Special = pt.finishSpecial
+				// T_PlatRaise only removes the thinker here. Texture changes
+				// happen in EV_DoPlat, and lifts retain their sector special.
 				g.markDynamicSectorPlaneCacheDirty(sec)
 				delete(g.plats, sec)
 				g.freePlatThinker(pt)
@@ -1653,17 +1809,26 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 			}
 			return
 		}
-		g.setSectorFloorHeight(sec, next)
+		if g.setSectorFloorHeightWithCrush(sec, next, false) {
+			g.setSectorFloorHeight(sec, cur)
+			pt.count = pt.wait
+			pt.status = platStatusDown
+		}
 	case platStatusDown:
-		next := g.sectorFloor[sec] - pt.speed
+		cur := g.sectorFloor[sec]
+		next := cur - pt.speed
 		if next < pt.low {
 			next = pt.low
-			g.setSectorFloorHeight(sec, next)
+			if g.setSectorFloorHeightWithCrush(sec, next, false) {
+				g.setSectorFloorHeight(sec, cur)
+			}
 			pt.status = platStatusWaiting
 			pt.count = pt.wait
 			return
 		}
-		g.setSectorFloorHeight(sec, next)
+		if g.setSectorFloorHeightWithCrush(sec, next, false) {
+			g.setSectorFloorHeight(sec, cur)
+		}
 	case platStatusWaiting:
 		pt.count--
 		if pt.count > 0 {
@@ -1693,15 +1858,11 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 	switch ct.direction {
 	case -1:
 		next := cur - ct.speed
-		if !ct.crush && g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], next) {
-			// T_MovePlane restores lastpos and calls P_ChangeSector again when a
-			// non-crushing ceiling would clip an actor.
-			g.setSectorCeilingHeight(sec, cur)
-			return
-		}
 		if next < ct.bottomHeight {
 			next = ct.bottomHeight
-			g.setSectorCeilingHeight(sec, next)
+			if g.setSectorCeilingHeightWithCrush(sec, next, ct.crush) {
+				g.setSectorCeilingHeightWithCrush(sec, cur, ct.crush)
+			}
 			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
 				if ct.action != mapdata.CeilingFastCrushRaise {
 					ct.speed = ceilingMoveSpeed
@@ -1712,12 +1873,23 @@ func (g *game) tickCeiling(sec int, ct *ceilingThinker) {
 			}
 			return
 		}
-		g.setSectorCeilingHeight(sec, next)
+		blocked := g.setSectorCeilingHeightWithCrush(sec, next, ct.crush)
+		if blocked {
+			if !ct.crush {
+				g.setSectorCeilingHeight(sec, cur)
+			}
+			switch ct.action {
+			case mapdata.CeilingCrushRaise, mapdata.CeilingSilentCrushRaise, mapdata.CeilingLowerAndCrush:
+				ct.speed = ceilingMoveSpeed / 8
+			}
+		}
 	case 1:
 		next := cur + ct.speed
 		if next > ct.topHeight {
 			next = ct.topHeight
-			g.setSectorCeilingHeight(sec, next)
+			if g.setSectorCeilingHeightWithCrush(sec, next, ct.crush) {
+				g.setSectorCeilingHeightWithCrush(sec, cur, ct.crush)
+			}
 			if ct.action == mapdata.CeilingCrushRaise || ct.action == mapdata.CeilingFastCrushRaise || ct.action == mapdata.CeilingSilentCrushRaise {
 				ct.direction = -1
 			} else {

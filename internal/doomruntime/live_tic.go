@@ -123,18 +123,23 @@ func (g *game) respawnDemoPlayer() {
 	reloaded := newGameWithRNG(cloneMapForRestart(template), reloadOpts, false)
 	reloaded.opts.DemoTracePath = old.opts.DemoTracePath
 
-	reloaded.demoTick = old.demoTick
-	reloaded.demoTrace = old.demoTrace
-	reloaded.demoTraceInitialWritten = old.demoTraceInitialWritten
-	reloaded.demoBenchStarted = old.demoBenchStarted
-	reloaded.demoBenchStart = old.demoBenchStart
-	reloaded.demoBenchFrameNS = old.demoBenchFrameNS
-	reloaded.demoBenchDraws = old.demoBenchDraws
-	reloaded.demoDoneReported = old.demoDoneReported
-	reloaded.demoRNGCaptured = old.demoRNGCaptured
-	reloaded.demoStartRnd = old.demoStartRnd
-	reloaded.demoStartPRnd = old.demoStartPRnd
+	reloaded.inheritDemoPlayback(&old)
 	*g = *reloaded
+}
+
+func (g *game) inheritDemoPlayback(old *game) {
+	g.lastAttackRange = old.lastAttackRange
+	g.demoTick = old.demoTick
+	g.demoTrace = old.demoTrace
+	g.demoTraceInitialWritten = old.demoTraceInitialWritten
+	g.demoBenchStarted = old.demoBenchStarted
+	g.demoBenchStart = old.demoBenchStart
+	g.demoBenchFrameNS = old.demoBenchFrameNS
+	g.demoBenchDraws = old.demoBenchDraws
+	g.demoDoneReported = old.demoDoneReported
+	g.demoRNGCaptured = old.demoRNGCaptured
+	g.demoStartRnd = old.demoStartRnd
+	g.demoStartPRnd = old.demoStartPRnd
 }
 
 func (g *game) updateWatchMode() error {

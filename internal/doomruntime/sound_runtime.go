@@ -108,6 +108,9 @@ const (
 	soundEventPlayerDeath
 	soundEventIntermissionTick
 	soundEventIntermissionDone
+	soundEventKeenPain
+	soundEventKeenDeath
+	soundEventMonsterRaise
 )
 
 type soundSystem struct {
@@ -455,6 +458,9 @@ func isMonsterVocalSound(ev soundEvent) bool {
 		soundEventDeathRevenant,
 		soundEventDeathPainElemental,
 		soundEventDeathWolfSS,
+		soundEventKeenPain,
+		soundEventKeenDeath,
+		soundEventMonsterRaise,
 		soundEventDeathArchvile,
 		soundEventMonsterDeath:
 		return true
@@ -591,6 +597,12 @@ func soundEventDSName(ev soundEvent) (string, bool) {
 		return "DSSKEACT", true
 	case soundEventMonsterPainHumanoid:
 		return "DSPOPAIN", true
+	case soundEventKeenPain:
+		return "DSKEENPN", true
+	case soundEventKeenDeath:
+		return "DSKEENDT", true
+	case soundEventMonsterRaise:
+		return "DSSLOP", true
 	case soundEventMonsterPainDemon:
 		return "DSDMPAIN", true
 	case soundEventDeathPodth1:
@@ -1149,6 +1161,12 @@ func (s *soundSystem) sampleForEvent(ev soundEvent) (PCMSample, bool) {
 			return s.bank.DeathWolfSS, true
 		}
 		return s.sampleForEvent(soundEventDeathZombie)
+	case soundEventKeenPain:
+		return s.bank.KeenPain, len(s.bank.KeenPain.Data) > 0
+	case soundEventKeenDeath:
+		return s.bank.KeenDeath, len(s.bank.KeenDeath.Data) > 0
+	case soundEventMonsterRaise:
+		return s.bank.MonsterRaise, len(s.bank.MonsterRaise.Data) > 0
 	case soundEventDeathArchvile:
 		if len(s.bank.DeathArchvileRaw.Data) > 0 {
 			return s.bank.DeathArchvileRaw, true

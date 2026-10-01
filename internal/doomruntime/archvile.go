@@ -13,6 +13,7 @@ func (g *game) spawnArchVileFire(source int) {
 		sourceThing: source, sourceType: 64,
 		lastLook: doomPRandomN(4), tics: 60, totalTics: 60, phaseTics: 2,
 	}
+	fx.subsector = g.subSectorAtFixed(fx.x, fx.y) + 1
 	sec := g.sectorAt(fx.x, fx.y)
 	if sec >= 0 && sec < len(g.sectorFloor) && sec < len(g.sectorCeil) {
 		fx.floorz, fx.ceilz = g.sectorFloor[sec], g.sectorCeil[sec]
@@ -58,6 +59,9 @@ func (g *game) followArchVileFire(fx *projectileImpact) {
 	fx.x = x + fixedMul(24*fracUnit, doomFineCosine(angle))
 	fx.y = y + fixedMul(24*fracUnit, doomFineSineAtAngle(angle))
 	fx.z = z
+	// A_Fire calls P_SetThingPosition after moving the fire. A_VileAttack
+	// later changes XY directly and must retain this last linked subsector.
+	fx.subsector = g.subSectorAtFixed(fx.x, fx.y) + 1
 }
 
 func (g *game) archVileFireForSource(source int) *projectileImpact {

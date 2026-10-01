@@ -25,7 +25,9 @@ var (
 )
 
 func isBarrelThingType(typ int16) bool {
-	return typ == barrelThingType || typ == 30
+	// Runtime things retain editor numbers. The internal MT_BARREL enum (30)
+	// is a different namespace; editor number 30 is a tall green pillar.
+	return typ == barrelThingType
 }
 
 func thingTypeIsShootable(typ int16) bool {
@@ -310,10 +312,6 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 	// 32-bit fixed_t. MAXRADIUS is already fixed-point, so the shift wraps;
 	// preserving that bug determines which blockmap columns are visited.
 	dist := int64(int32((int32(damage) + int32(doomMaxThingRadius)) << fracBits))
-	playerCell := -1
-	if !g.isDead && playerHeight > 0 {
-		playerCell = g.thingBlockmapCellFor(g.p.x, g.p.y)
-	}
 	visitPlayer := func() {
 		if g.isDead || playerHeight <= 0 || g.stats.Health <= 0 {
 			return
@@ -448,13 +446,10 @@ func (g *game) radiusAttackAt(sx, sy, sz, sheight int64, ignoreThing int, damage
 					continue
 				}
 				cell := by*g.bmapWidth + bx
-				if cell == playerCell {
-					visitPlayer()
-				}
-				cellThings := append([]int(nil), g.thingBlockCells[cell]...)
-				for _, i := range cellThings {
-					visitThing(i)
-				}
+				// The player shares the original blocklink list with monsters.
+				// Their interleaved visit order determines damage RNG, including
+				// randomized corpse lifetimes when an explosion kills a skull.
+				g.walkActorBlockCell(cell, visitThing, visitPlayer)
 			}
 		}
 		return

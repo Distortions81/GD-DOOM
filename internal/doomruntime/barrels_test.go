@@ -7,6 +7,52 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestRadiusAttackInterleavesPlayerAndLostSoulDeathRNG(t *testing.T) {
+	t.Cleanup(doomrand.Clear)
+	for _, tc := range []struct {
+		name                   string
+		playerOrder, soulOrder int64
+		wantDeathTics          int
+	}{
+		{"soul before player", 1, 2, 6},
+		{"player before soul", 2, 1, 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			g := &game{
+				m: &mapdata.Map{
+					Things:   []mapdata.Thing{{Type: 3006, X: 32}},
+					Sectors:  []mapdata.Sector{{CeilingHeight: 128}},
+					BlockMap: &mapdata.BlockMap{Width: 1, Height: 1},
+				},
+				p:                player{x: 64 * fracUnit, ceilz: 128 * fracUnit},
+				stats:            playerStats{Health: 200},
+				playerMobjHealth: 200,
+				thingHP:          []int{1},
+				thingCollected:   []bool{false},
+				thingBlockOrder:  []int64{tc.soulOrder},
+				bmapWidth:        1, bmapHeight: 1,
+			}
+			g.initPhysics()
+			g.ensureMonsterAIState()
+			g.thingHP[0] = 1
+			g.playerBlockOrder = tc.playerOrder
+			g.thingBlockOrder[0] = tc.soulOrder
+			g.rebuildThingBlockmap()
+			doomrand.Clear()
+			g.radiusAttackAt(0, 0, 0, 8*fracUnit, -1, 128, "Explosion", true, -1)
+			if !g.thingDead[0] || g.thingStateTics[0] != tc.wantDeathTics {
+				t.Fatalf("skull dead=%t first death-frame tics=%d, want true/%d", g.thingDead[0], g.thingStateTics[0], tc.wantDeathTics)
+			}
+			if g.stats.Health != 120 {
+				t.Fatalf("player health=%d, want 120", g.stats.Health)
+			}
+			if _, prnd := doomrand.State(); prnd != 2 {
+				t.Fatalf("RNG=%d, want two damage rolls", prnd)
+			}
+		})
+	}
+}
+
 func TestInitThingCombatStateInitializesBarrelHealthAndState(t *testing.T) {
 	doomrand.Clear()
 	g := &game{
@@ -154,19 +200,27 @@ func TestDamageBarrelPreservesNegativeHealthLikeDoom(t *testing.T) {
 	}
 }
 
-func TestIsBarrelThingTypeAcceptsMapAndMobjForms(t *testing.T) {
-	if !isBarrelThingType(barrelThingType) {
-		t.Fatal("expected editor barrel type to be recognized")
+func TestTallGreenPillarDoesNotAttractAutoaimOrTakeDamage(t *testing.T) {
+	g := &game{
+		m:              &mapdata.Map{Things: []mapdata.Thing{{Type: 30, X: 64}, {Type: 3004, X: 128}}},
+		thingCollected: []bool{false, false}, thingHP: []int{1000, 20}, thingDead: []bool{false, false},
 	}
-	if !isBarrelThingType(30) {
-		t.Fatal("expected Doom mobj barrel type to be recognized")
+	_, target, ok := g.aimLineAttackTarget(g.playerLineAttackActor(), 0, doomBulletSlopeRange)
+	if !ok || target.kind != lineAttackTargetThing || target.idx != 1 {
+		t.Fatalf("autoaim target=%+v found=%t want monster behind pillar", target, ok)
+	}
+	doomrand.Clear()
+	g.damageShootableThingFrom(0, 2000, true, -1, 0, 0, false)
+	_, rng := doomrand.State()
+	if g.thingHP[0] != 1000 || g.thingDead[0] || rng != 0 {
+		t.Fatal("solid pillar took damage or consumed barrel death RNG")
 	}
 }
 
-func TestDamageShootableThingFrom_PreservesNegativeHealthForMobjBarrelType(t *testing.T) {
+func TestDamageShootableThingFrom_PreservesNegativeBarrelHealth(t *testing.T) {
 	g := &game{
 		m: &mapdata.Map{
-			Things: []mapdata.Thing{{Type: 30, X: 0, Y: 0}},
+			Things: []mapdata.Thing{{Type: barrelThingType, X: 0, Y: 0}},
 		},
 		thingCollected:  []bool{false},
 		thingHP:         []int{20},

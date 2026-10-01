@@ -12,6 +12,31 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
+func TestNightmareEffectTracesPreserveZeroSpawnReactionDelay(t *testing.T) {
+	for _, skill := range []int{4, 5} {
+		g := &game{m: &mapdata.Map{Sectors: []mapdata.Sector{{CeilingHeight: 128}}},
+			opts:              Options{SkillLevel: skill, FastMonsters: true},
+			bossSpawnFires:    []bossSpawnFire{{order: 1}},
+			projectiles:       []projectile{{kind: projectileRocket, frameTics: 4, order: 2, sourcePlayer: true}},
+			projectileImpacts: []projectileImpact{{kind: projectileRocket, phaseTics: 4, order: 3, sourcePlayer: true}},
+			hitscanPuffs: []hitscanPuff{{kind: hitscanFxPuff, state: 93, tics: 4, order: 4},
+				{kind: hitscanFxBlood, state: 90, tics: 8, order: 5}}}
+		mobjs := g.demoTraceMobjs()
+		if len(mobjs) != 6 {
+			t.Fatalf("skill=%d trace object count=%d, want player and five spawned effects", skill, len(mobjs))
+		}
+		want := 8
+		if skill == 5 {
+			want = 0
+		}
+		for _, mobj := range mobjs[1:] {
+			if mobj.ReactionTime != want {
+				t.Fatalf("skill=%d type=%d reaction=%d, want %d", skill, mobj.Type, mobj.ReactionTime, want)
+			}
+		}
+	}
+}
+
 func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 	base := mustLoadE1M1GameForMapTextureTests(t)
 	tracePath := t.TempDir() + "/demo-trace.jsonl"

@@ -58,6 +58,20 @@ func TestRunUpdateFinaleRequestsTermination(t *testing.T) {
 	}
 }
 
+func TestRunUpdateFinaleConsumesDemoAndPreservesEndMarker(t *testing.T) {
+	var calls []string
+	end := errors.New("demo end marker")
+	err := RunUpdate(Update{
+		FinaleActive:         func() bool { return true },
+		DemoActive:           func() bool { return true },
+		UpdateRuntimeForDemo: func() error { calls = append(calls, "demo"); return end },
+		TickFinale:           func() bool { calls = append(calls, "finale"); return false },
+	})
+	if err != end || strings.Join(calls, ",") != "demo" {
+		t.Fatalf("finale swallowed demo completion: calls=%v error=%v", calls, err)
+	}
+}
+
 func TestRunUpdateHandlesRuntimeProgressDuringFrontendDemo(t *testing.T) {
 	updateCalled := false
 	progressCalled := false

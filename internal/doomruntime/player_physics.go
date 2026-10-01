@@ -88,10 +88,6 @@ func (g *game) updatePlayer(cmd moveCmd) {
 }
 
 func (g *game) tickPlayerBody() {
-	prevX := g.p.x
-	prevY := g.p.y
-	prevMomX := g.p.momx
-	prevMomY := g.p.momy
 	g.p.teleportedThisTic = false
 	if g.isDead {
 		g.xyMovement()
@@ -99,11 +95,8 @@ func (g *game) tickPlayerBody() {
 		return
 	}
 	g.xyMovement()
-	movedThisTic := g.p.x != prevX || g.p.y != prevY
-	hadMomentum := prevMomX != 0 || prevMomY != 0
-	if !g.isDead && !g.p.teleportedThisTic && (movedThisTic || hadMomentum) {
-		g.processThingPickups()
-	}
+	// P_TryMove already touches specials during P_CheckPosition, before
+	// changing position or crossing lines that may move floors or teleport.
 	g.zMovement()
 }
 
@@ -260,7 +253,7 @@ func (g *game) thingHasWorldThinker(i int, th mapdata.Thing) bool {
 	if i < len(g.thingCollected) && g.thingCollected[i] {
 		return false
 	}
-	return isBarrelThingType(th.Type) || isMonster(th.Type) || th.Type == 88 || th.Type == 89
+	return isBarrelThingType(th.Type) || isMonster(th.Type) || th.Type == 23 || th.Type == 88 || th.Type == 89
 }
 
 func (g *game) tickWorldThinker(ref worldThinkerRef) {
@@ -318,6 +311,12 @@ func (g *game) tickWorldThinker(ref worldThinkerRef) {
 }
 
 func (g *game) runGameplayTic(cmd moveCmd, usePressed, fireHeld bool) {
+	// P_PlayerThink consumes A_Saw's MF_JUSTATTACKED before checking death
+	// or teleport reactiontime. The forced command also reaches friction.
+	if g.p.justAttacked {
+		cmd.forward, cmd.side, cmd.turn, cmd.turnRaw = 0xc800/512, 0, 0, 0
+		g.p.justAttacked = false
+	}
 	// Plat same-tic activation only applies once the current world's plat phase
 	// has actually run; clear any stale latch from the previous tic first.
 	g.platTickedThisTic = false
@@ -503,10 +502,30 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 		}
 	case -1:
 		next := g.sectorCeil[sec] - d.speed
+		if next < g.sectorFloor[sec] {
+			// T_MovePlane reaches pastdest only after stepping past the floor.
+			// A blocked final step still completes the door's state transition.
+			if g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], g.sectorFloor[sec]) {
+				g.setDoorCeiling(sec, g.sectorCeil[sec])
+			} else {
+				g.setDoorCeiling(sec, g.sectorFloor[sec])
+			}
+			switch d.typ {
+			case doorBlazeRaise, doorBlazeClose:
+				g.removeDoorThinkerInstance(sec, d)
+			case doorNormal, doorClose:
+				g.retireDoorThinkerInstance(sec, d)
+			case doorClose30ThenOpen:
+				d.direction = 0
+				d.topCountdown = 35 * 30
+			}
+			return
+		}
 		// P_ChangeSector reports any blocked mobj, not only the player. A door
 		// must reverse (or keep retrying for close-only types) when a monster
 		// occupies its closing space too.
 		if g.sectorMoveWouldBlockLiveActor(sec, g.sectorFloor[sec], next) {
+			g.setDoorCeiling(sec, g.sectorCeil[sec])
 			switch d.typ {
 			case doorBlazeClose, doorClose:
 				// Vanilla close-only doors keep trying to close, but do not
@@ -517,24 +536,17 @@ func (g *game) tickDoor(sec int, d *doorThinker) {
 			}
 			return
 		}
-		if next <= g.sectorFloor[sec] {
-			g.setDoorCeiling(sec, g.sectorFloor[sec])
-			switch d.typ {
-			case doorBlazeRaise, doorBlazeClose:
-				g.removeDoorThinkerInstance(sec, d)
-			case doorNormal, doorClose:
-				g.retireDoorThinkerInstance(sec, d)
-			case doorClose30ThenOpen:
-				d.direction = 0
-				d.topCountdown = 35 * 30
-			}
-		} else {
-			g.setDoorCeiling(sec, next)
-		}
+		g.setDoorCeiling(sec, next)
 	case 1:
 		next := g.sectorCeil[sec] + d.speed
 		if next > d.topHeight {
-			g.setDoorCeiling(sec, d.topHeight)
+			// T_MovePlane can snap an "up" mover downward when its destination
+			// is already below this ceiling. A blocked final snap restores the
+			// old plane and reclips actors, but still reports pastdest.
+			oldCeil := g.sectorCeil[sec]
+			if g.setSectorCeilingHeightWithCrush(sec, d.topHeight, false) {
+				g.setDoorCeiling(sec, oldCeil)
+			}
 			switch d.typ {
 			case doorBlazeRaise, doorNormal:
 				d.direction = 0
@@ -841,6 +853,7 @@ func (g *game) checkPositionForActorWithThingPolicy(x, y, radius int64, blockMon
 }
 
 func (g *game) checkPositionForActorWithPickupTouch(x, y, radius int64, blockMonsterLines bool, moverThingIdx int, moverIsMonster bool, skipThingBlock, touchPickups bool) (int64, int64, int64, bool) {
+	g.movementProbeThing = moverThingIdx
 	if moverThingIdx >= 0 {
 		if moverThingIdx >= len(g.thingProbeSpecialLines) {
 			g.thingProbeSpecialLines = append(g.thingProbeSpecialLines, make([][]int, moverThingIdx-len(g.thingProbeSpecialLines)+1)...)
@@ -1109,7 +1122,7 @@ func (g *game) actorBlockedByThingsWithPickupTouch(x, y, radius int64, moverThin
 			if i < len(g.thingStatePhase) {
 				phase = g.thingStatePhase[i]
 			}
-			if monsterCorpseBlocksMovement(th.Type, phase) {
+			if g.monsterCorpseBlocksMovement(i) {
 				tx, ty := g.thingPosFixed(i, th)
 				r := g.thingCurrentRadius(i, th)
 				if actorsOverlapXY(x, y, radius, tx, ty, r) {
@@ -1210,6 +1223,7 @@ var doomSolidMapThingTypes = map[int16]struct{}{
 	37:   {},
 	41:   {},
 	42:   {},
+	43:   {},
 	44:   {},
 	45:   {},
 	46:   {},
@@ -1225,6 +1239,7 @@ var doomSolidMapThingTypes = map[int16]struct{}{
 	56:   {},
 	57:   {},
 	70:   {},
+	72:   {},
 	73:   {},
 	74:   {},
 	75:   {},
@@ -1263,8 +1278,27 @@ func monsterCorpseBlocksMovement(typ int16, phase int) bool {
 		clearSolidPhase = 1
 	case 68:
 		clearSolidPhase = 1
+	case 72:
+		clearSolidPhase = 10
 	}
 	return clearSolidPhase >= 0 && phase < clearSolidPhase
+}
+
+func (g *game) monsterCorpseBlocksMovement(i int) bool {
+	if g == nil || g.m == nil || i < 0 || i >= len(g.m.Things) {
+		return false
+	}
+	// PIT_ChangeSector clears MF_SOLID when it enters S_GIBS, even if the
+	// corpse had not reached A_Fall in its death animation. A raised ghost
+	// retains zero bounds but regains solidity, so test the current state.
+	if i < len(g.thingState) && g.thingState[i] == monsterStateGibs {
+		return false
+	}
+	phase := 0
+	if i < len(g.thingStatePhase) {
+		phase = g.thingStatePhase[i]
+	}
+	return monsterCorpseBlocksMovement(g.m.Things[i].Type, phase)
 }
 
 func thingTypeRadius(typ int16) int64 {
@@ -1285,12 +1319,48 @@ func (g *game) blockThingsIterator(x, y int, fn func(int) bool) bool {
 		return true
 	}
 	cell := y*g.bmapWidth + x
-	for _, thingIdx := range g.thingBlockCells[cell] {
+	if len(g.thingBlockCells[cell]) == 0 {
+		return true
+	}
+	for thingIdx := g.thingBlockCells[cell][0]; thingIdx >= 0; {
+		next, _ := g.nextBlockThing(thingIdx)
+		order := g.thingBlockOrder[thingIdx]
 		if !fn(thingIdx) {
 			return false
 		}
+		// P_BlockThingsIterator reads mobj->bnext after the callback. Damage
+		// can wake and relink this actor at a cell's head, so its successor
+		// can be an actor already visited, even in a different cell.
+		if successor, linked := g.nextBlockThing(thingIdx); linked {
+			next = successor
+		} else if g.thingBlockOrder[thingIdx] != order {
+			// P_SetThingPosition clears bnext when a move leaves the map.
+			next = -1
+		}
+		// P_UnsetThingPosition alone retains the removed actor's bnext.
+		thingIdx = next
 	}
 	return true
+}
+
+func (g *game) nextBlockThing(i int) (int, bool) {
+	if i < 0 || i >= len(g.thingBlockCell) {
+		return -1, false
+	}
+	cell := g.thingBlockCell[i]
+	if cell < 0 || cell >= len(g.thingBlockCells) {
+		return -1, false
+	}
+	items := g.thingBlockCells[cell]
+	for pos, idx := range items {
+		if idx == i {
+			if pos+1 < len(items) {
+				return items[pos+1], true
+			}
+			return -1, true
+		}
+	}
+	return -1, false
 }
 
 func (g *game) blockLinesIterator(x, y int, fn func(int) bool) bool {
@@ -1604,7 +1674,7 @@ func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 	for _, it := range intercepts {
 		ld := g.lines[it.line]
 		if (ld.flags&mlTwoSided) == 0 || ld.sideNum1 < 0 {
-			if doomPointOnDivlineSide(g.p.x, g.p.y, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}) == 1 {
+			if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
 				continue
 			}
 			return it.frac, it.line, true
@@ -1634,7 +1704,9 @@ func (g *game) hitSlideLine(ld physLine, tmxmove, tmymove int64) (int64, int64) 
 		return 0, 0
 	}
 	lineAngle := vectorToAngle(ld.dx, ld.dy)
-	if doomPointOnDivlineSide(g.p.x, g.p.y, divline{x: ld.x1, y: ld.y1, dx: ld.dx, dy: ld.dy}) == 1 {
+	// P_HitSlideLine uses P_PointOnLineSide's integer line deltas. The
+	// path-traversal divline test rounds differently near diagonal walls.
+	if g.pointOnLineSide(g.p.x, g.p.y, ld) == 1 {
 		lineAngle += statusAng180
 	}
 	moveAngle := vectorToAngle(tmxmove, tmymove)
@@ -1700,7 +1772,7 @@ func (g *game) sectorAt(x, y int64) int {
 			dx: int64(n.DX) << fracBits,
 			dy: int64(n.DY) << fracBits,
 		}
-		side := pointOnDivlineSide(x, y, dl)
+		side := doomPointOnNodeSide(x, y, dl)
 		child = n.ChildID[side]
 	}
 }

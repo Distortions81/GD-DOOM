@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"reflect"
@@ -34,35 +35,52 @@ func main() {
 		ignoreTransientFX: *ignoreTransientFX,
 	}
 
-	left, err := readJSONL(*leftPath)
+	leftFile, err := os.Open(*leftPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "read left: %v\n", err)
 		os.Exit(1)
 	}
-	right, err := readJSONL(*rightPath)
+	defer leftFile.Close()
+	rightFile, err := os.Open(*rightPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "read right: %v\n", err)
 		os.Exit(1)
 	}
 
-	left = filterKind(left, "tic")
-	right = filterKind(right, "tic")
-
-	limit := len(left)
-	if len(right) < limit {
-		limit = len(right)
-	}
-	for i := 0; i < limit; i++ {
+	defer rightFile.Close()
+	left, right := newTicReader(leftFile), newTicReader(rightFile)
+	for i := 0; ; i++ {
+		leftLine, leftErr := left.next()
+		rightLine, rightErr := right.next()
+		if leftErr != nil && leftErr != io.EOF {
+			fmt.Fprintf(os.Stderr, "read left: %v\n", leftErr)
+			os.Exit(1)
+		}
+		if rightErr != nil && rightErr != io.EOF {
+			fmt.Fprintf(os.Stderr, "read right: %v\n", rightErr)
+			os.Exit(1)
+		}
+		if leftErr == io.EOF || rightErr == io.EOF {
+			if err := left.drain(); err != nil {
+				fmt.Fprintf(os.Stderr, "read left: %v\n", err)
+				os.Exit(1)
+			}
+			if err := right.drain(); err != nil {
+				fmt.Fprintf(os.Stderr, "read right: %v\n", err)
+				os.Exit(1)
+			}
+			break
+		}
 		var l any
 		var r any
 		var lraw any
 		var rraw any
-		if err := json.Unmarshal(left[i], &l); err != nil {
+		if err := json.Unmarshal(leftLine, &l); err != nil {
 			fmt.Fprintf(os.Stderr, "parse left line %d: %v\n", i+1, err)
 			os.Exit(1)
 		}
 		lraw = l
-		if err := json.Unmarshal(right[i], &r); err != nil {
+		if err := json.Unmarshal(rightLine, &r); err != nil {
 			fmt.Fprintf(os.Stderr, "parse right line %d: %v\n", i+1, err)
 			os.Exit(1)
 		}
@@ -93,11 +111,54 @@ func main() {
 		}
 	}
 
-	if len(left) != len(right) {
-		fmt.Printf("length mismatch left=%d right=%d\n", len(left), len(right))
+	if left.count != right.count {
+		fmt.Printf("length mismatch left=%d right=%d\n", left.count, right.count)
 		os.Exit(1)
 	}
-	fmt.Printf("traces match lines=%d\n", len(left))
+	fmt.Printf("traces match lines=%d\n", left.count)
+}
+
+// Retain only one tic from each trace: UV-Max recordings can produce multiple
+// gigabytes of JSONL. Only kind=tic records participate in comparisons.
+type ticReader struct {
+	scanner *bufio.Scanner
+	count   int
+}
+
+func newTicReader(reader io.Reader) *ticReader {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 16*1024*1024)
+	return &ticReader{scanner: scanner}
+}
+
+func (reader *ticReader) next() ([]byte, error) {
+	for reader.scanner.Scan() {
+		line := reader.scanner.Bytes()
+		var obj struct {
+			Kind string `json:"kind"`
+		}
+		if json.Unmarshal(line, &obj) != nil || obj.Kind != "tic" {
+			continue
+		}
+		reader.count++
+		return line, nil
+	}
+	if err := reader.scanner.Err(); err != nil {
+		return nil, err
+	}
+	return nil, io.EOF
+}
+
+func (reader *ticReader) drain() error {
+	for {
+		_, err := reader.next()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
 }
 
 func normalizeTraceObject(v any, cfg compareConfig) any {
@@ -226,40 +287,6 @@ func isTransientFXType(typ int) bool {
 	default:
 		return false
 	}
-}
-
-func readJSONL(path string) ([][]byte, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	lines := make([][]byte, 0, 1024)
-	s := bufio.NewScanner(f)
-	s.Buffer(make([]byte, 0, 1024*1024), 16*1024*1024)
-	for s.Scan() {
-		line := append([]byte(nil), s.Bytes()...)
-		lines = append(lines, line)
-	}
-	if err := s.Err(); err != nil {
-		return nil, err
-	}
-	return lines, nil
-}
-
-func filterKind(lines [][]byte, want string) [][]byte {
-	out := make([][]byte, 0, len(lines))
-	for _, line := range lines {
-		var obj map[string]any
-		if err := json.Unmarshal(line, &obj); err != nil {
-			continue
-		}
-		if kind, _ := obj["kind"].(string); kind == want {
-			out = append(out, line)
-		}
-	}
-	return out
 }
 
 func firstDiff(path string, left, right any) (string, any, any, bool) {
