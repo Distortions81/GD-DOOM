@@ -798,6 +798,27 @@ func TestBSPUsesNodeRoundingAtPartitionBoundary(t *testing.T) {
 	}
 }
 
+func TestSlideRayUsesNudgedOriginAtBlockBoundary(t *testing.T) {
+	// E4M6 tic 4992: the trailing corner starts on line 1305 at y=-64,
+	// a block boundary. P_PathTraverse moves it to y=-63 before collecting
+	// intercepts, so this northward ray never hits that horizontal wall.
+	cells := make([][]int16, 35*23)
+	cells[6*35+23] = []int16{1305}
+	g := &game{
+		m:           &mapdata.Map{BlockMap: &mapdata.BlockMap{Cells: cells}},
+		bmapOriginX: -1072 * fracUnit, bmapOriginY: -832 * fracUnit,
+		bmapWidth: 35, bmapHeight: 23,
+		lines: []physLine{{idx: 1305, x1: 1920 * fracUnit, y1: -64 * fracUnit,
+			x2: 1760 * fracUnit, y2: -64 * fracUnit, dx: -160 * fracUnit,
+			slope: slopeHorizontal, sideNum0: 1882, sideNum1: -1}},
+		physForLine: make([]int, 1306),
+		p:           player{x: 123731968, y: -3145728},
+	}
+	if frac, line, hit := g.firstBlockingIntercept(122683392, -4194304, 122583001, -4109936); hit {
+		t.Fatalf("slide ray hit line=%d frac=%d; original finds no blocking line", line, frac)
+	}
+}
+
 func TestDiagonalSlideUsesOriginalLineSideRounding(t *testing.T) {
 	// MAP13 line 455: the original P_HitSlideLine points southwest here.
 	// The divline test instead reports the opposite side and points northeast.

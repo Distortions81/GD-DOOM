@@ -753,7 +753,10 @@ func (g *game) activateDoorSectors(targets []int, action mapdata.DoorAction) boo
 		if sec < 0 || sec >= len(g.sectorCeil) {
 			continue
 		}
-		if g.activeDoorThinker(sec) != nil {
+		// EV_DoDoor checks sector->specialdata, including floors, platforms
+		// and ceilings. Starting a door on an active lift changes its ceiling
+		// and height-clips corpses that the original leaves untouched.
+		if g.sectorHasActiveMover(sec) {
 			g.debugDoorActivate("tagged sec=%d action=%v already-active", sec, action)
 			continue
 		}

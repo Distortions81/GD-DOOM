@@ -16,24 +16,23 @@ hashes and results.
 
 The latest complete quick report is `tmp/compet-n-continue-smoke-v60/summary.json`.
 The latest completed UV-Max phase is `tmp/compet-n-continue-combat-v34/summary.json`:
-**66 matches and 2 state mismatches** including targeted
+**67 matches and 1 state mismatch** including targeted
 follow-ups. The quick and combat selections
-cover 136 distinct recordings, with **134 latest verified passes and
-2 state mismatches** across their recorded phases. The original E4M8
+cover 136 distinct recordings, with **135 latest verified passes and
+1 state mismatch** across their recorded phases. The original E4M8
 reference crash is retained separately; the active combat manifest substitutes
 another E4M8 recording. A default E3M5 mismatch concerns an unused,
 uninitialized reference ceiling field; its diagnostic matches all 7,004 tics
 without changing comparator normalization.
 
 The latest completed repository replay is **25/25**, with strict RNG matching,
-at `tmp/compet-n-continue-repository-v74/summary.json` plus the two harness follow-ups in
-`tmp/compet-n-continue-repository-harness-followups-v74/summary.json`.
-A further complete replay rebuilt with the updated dependencies is running at
-`tmp/compet-n-continue-repository-v75/`. The complete Go suite passes
+at `tmp/compet-n-continue-repository-v75/summary.json`; this v75 replay includes the dependency updates.
+The complete Go suite passes
 after the latest corrections and the dependency updates from `d5ca1ac`, and
-five Python corpus checks pass. This commit checkpoints the corpus fixes and
-tooling. **1,189** eligible recordings have completed
-attempts; **3,445** have no completed attempt yet.
+five Python corpus checks pass. This checkpoint adds tagged-door, teleport-order and slide-origin corrections
+on top of `3d6bb39`.
+**1,223** eligible recordings have completed
+attempts; **3,411** have no completed attempt yet.
 The full manifest remains unswept, and these passes do not establish universal
 demo compatibility.
 
@@ -43,6 +42,14 @@ and wrap BSP coordinate differences like the original fixed-point arithmetic.
 MAP08 Nightmare, E2M4 Nightmare and E4M8 Nightmare now match their complete
 comparison windows and gameplay RNG. Teleport blocklinks traversal also clears
 MAP24 UV-Max in full (9,312 compared tics and gameplay RNG).
+
+Tagged doors now reject sectors with other active or stopped movers, clearing
+MAP15 UV-Max in full (12,146 tics and RNG). Sector-first teleport destination
+selection clears the fourth breadth batch's MAP06 Nightmare run (2,400 tics
+and RNG). Using the nudged slide ray origin also clears all three early MAP03
+movement failures in full.
+E4M6's complete 6,622-tic replay also matches state and RNG; the fourth breadth
+batch now has 272/272 verified matches.
 
 Reference capture now streams through a pipe to bypass its 2 GiB file limit;
 a long recording produced all 133,445 tics and 9,325,412,691 valid JSON bytes.

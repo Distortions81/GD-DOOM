@@ -6,6 +6,44 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestTaggedDoorSkipsSectorsWithOtherMovers(t *testing.T) {
+	for _, mover := range []string{"floor", "platform", "stopped-platform", "ceiling", "stopped-ceiling"} {
+		t.Run(mover, func(t *testing.T) {
+			g := newDoorTimingGame(0)
+			switch mover {
+			case "floor":
+				g.floors = map[int]*floorThinker{0: {direction: 1}}
+			case "platform", "stopped-platform":
+				status := platStatusWaiting
+				if mover == "stopped-platform" {
+					status = platStatusInStasis
+				}
+				g.plats = map[int]*platThinker{0: {status: status}}
+			case "ceiling", "stopped-ceiling":
+				direction := 1
+				if mover == "stopped-ceiling" {
+					direction = 0
+				}
+				g.ceilings = map[int]*ceilingThinker{0: {direction: direction}}
+			}
+			if g.activateDoorSectors([]int{0}, mapdata.DoorBlazeRaise) {
+				t.Fatal("tagged door activated on a sector with another mover")
+			}
+			if !g.activateDoorSectors([]int{0, 1}, mapdata.DoorBlazeRaise) {
+				t.Fatal("busy sector prevented activation of the idle tagged sector")
+			}
+			if g.doors[0] != nil || g.doors[1] == nil {
+				t.Fatalf("doors=%v; want only the idle sector to have a door", g.doors)
+			}
+			oldCeil := g.sectorCeil[0]
+			g.tickDoors()
+			if g.sectorCeil[0] != oldCeil {
+				t.Fatal("tagged door changed the busy sector's ceiling")
+			}
+		})
+	}
+}
+
 func newDoorTimingGame(doorSec int) *game {
 	return &game{
 		m: &mapdata.Map{

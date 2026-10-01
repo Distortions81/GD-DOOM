@@ -1537,6 +1537,19 @@ func (g *game) debugPlayerMoveEnabled() bool {
 
 func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 	intercepts := make([]slideIntercept, 0, 16)
+	if g.m != nil && g.m.BlockMap != nil && g.bmapWidth > 0 && g.bmapHeight > 0 {
+		// P_PathTraverse nudges its trace origin off block boundaries before
+		// collecting intercepts, retaining the endpoint computed by the caller.
+		// Using the old origin can create a zero-fraction wall hit while the
+		// original falls back to stairstepping and preserves both momenta.
+		const blockMask = (1 << (fracBits + 7)) - 1
+		if (x1-g.bmapOriginX)&blockMask == 0 {
+			x1 += fracUnit
+		}
+		if (y1-g.bmapOriginY)&blockMask == 0 {
+			y1 += fracUnit
+		}
+	}
 	trace := divline{x: x1, y: y1, dx: x2 - x1, dy: y2 - y1}
 	debug := runtimeDebugEnv("GD_DEBUG_SLIDE_CANDIDATES_TIC")
 	debugOn := debug == fmt.Sprint(g.demoTick-1) || debug == fmt.Sprint(g.worldTic)
@@ -1580,12 +1593,6 @@ func (g *game) firstBlockingIntercept(x1, y1, x2, y2 int64) (int64, int, bool) {
 			mapBToFrac    = 7
 		)
 		sx, sy, ex, ey := x1, y1, x2, y2
-		if ((sx - g.bmapOriginX) & ((1 << mapBlockShift) - 1)) == 0 {
-			sx += fracUnit
-		}
-		if ((sy - g.bmapOriginY) & ((1 << mapBlockShift) - 1)) == 0 {
-			sy += fracUnit
-		}
 		rx1 := sx - g.bmapOriginX
 		ry1 := sy - g.bmapOriginY
 		rx2 := ex - g.bmapOriginX

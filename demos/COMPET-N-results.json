@@ -1456,17 +1456,18 @@
       "manifest_sha256": "2944f0505fb0c34138c52dde88df8526d557f512ae94a9c4a5122cc87339ae66"
     },
     "repository": {
-      "summary_path": "tmp/compet-n-continue-repository-v74/summary.json",
+      "summary_path": "tmp/compet-n-continue-repository-v75/summary.json",
       "status_counts": {
-        "match": 23,
-        "error": 2
+        "match": 25
       },
       "input_sha256_by_filename": {
-        "DOOM1.WAD": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
-        "gddoom-desync-continue-v74": "b929a7886a71d5239fba239743073e81eec2ea732a08c78e89ed662190608d8e",
+        "demotracecmp-d1f70d4e7d23e9162f8f50dafabf33e826b2670c4630f6fcdc3f2e0e58749e3e": "d1f70d4e7d23e9162f8f50dafabf33e826b2670c4630f6fcdc3f2e0e58749e3e",
         "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
-        "DOOMU.WAD": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f",
-        "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255"
+        "demo-trace-compare-ed765adb91f5d1453cbc75ffd43e62bd1b353a36735f08b38827b321fad73835": "ed765adb91f5d1453cbc75ffd43e62bd1b353a36735f08b38827b321fad73835",
+        "DOOM1.WAD": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
+        "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255",
+        "gddoom-desync-continue-v75": "c563204591b909b190c6b2f92d774f7b0702a47f84298abcb0a3065e735191ad",
+        "DOOMU.WAD": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f"
       },
       "records": [
         {
@@ -1571,25 +1572,20 @@
         {
           "demo": "DOOM2-MAP24-UVMAX.lmp",
           "sha256": "80ff02e9630e0fc9be7cb330f6f7d4bf1d98e6b720a983dca8b2266acea96807",
-          "status": "error",
-          "first_report": "",
-          "gameplay_rng_audited": false,
+          "status": "match",
+          "first_report": "traces match lines=8607",
+          "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "retained_trace_files": [
-            "reference-check.jsonl.gz"
-          ]
+          "compared_tics": 8607
         },
         {
           "demo": "DOOM2-MAP26-UVMAX-237.lmp",
           "sha256": "2bd26fc8d753057890168702ede13ad098729b52e905732c91a2deaf7472d06a",
-          "status": "error",
-          "first_report": "",
-          "gameplay_rng_audited": false,
+          "status": "match",
+          "first_report": "traces match lines=2972",
+          "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "retained_trace_files": [
-            "gddoom-DOOM2-MAP26-UVMAX-237.lmp.jsonl.gz",
-            "reference-check.jsonl.gz"
-          ]
+          "compared_tics": 2972
         },
         {
           "demo": "DOOM2-MAP26-UVMAX.lmp",
@@ -36627,13 +36623,13 @@
     "remaining_failure_followups_v73": {
       "summary_path": "tmp/compet-n-continue-remaining-failure-followups-v73/summary.json",
       "status_counts": {
-        "mismatch": 8,
+        "mismatch": 9,
         "match": 34,
         "error": 1
       },
       "input_sha256_by_filename": {
-        "gddoom-desync-continue-v73": "1c89b35e7c72e98f7493240ac4d9330b4beded5e887f0d09bea26f6af0f0b640",
         "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
+        "gddoom-desync-continue-v73": "1c89b35e7c72e98f7493240ac4d9330b4beded5e887f0d09bea26f6af0f0b640",
         "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255"
       },
       "records": [
@@ -36649,7 +36645,6 @@
             "gddoom": 244
           },
           "first_state_gametic": 26892,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP01-2939fa01-c323078b1352/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP01-2939fa01-c323078b1352.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36662,7 +36657,6 @@
           "first_report": "length mismatch left=37998 right=41316",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP01-5355UV01-e97658345ce5/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP01-5355UV01-e97658345ce5.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36675,8 +36669,7 @@
           "first_report": "traces match lines=3652",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3652,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP01-LV02-103-240bf8f81fd8/result.json"
+          "compared_tics": 3652
         },
         {
           "demo": "DOOM2-MAP01-NM01S226-c3f31faa0599.lmp",
@@ -36686,7 +36679,6 @@
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
           "first_state_gametic": 2520,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP01-NM01S226-c3f31faa0599/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP01-NM01S226-c3f31faa0599.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36700,7 +36692,6 @@
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
           "first_state_gametic": 2176,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP02-RE02-120-bc662e8d5e63/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP02-RE02-120-bc662e8d5e63.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36713,7 +36704,6 @@
           "first_report": "",
           "gameplay_rng_audited": false,
           "first_gameplay_rng_mismatch": null,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP02-RE02-147-67e4d11f8309/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP02-RE02-147-67e4d11f8309.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36731,7 +36721,6 @@
             "gddoom": 26
           },
           "first_state_gametic": 19,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-FA03-134-a956873b3acd/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP03-FA03-134-a956873b3acd.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36744,8 +36733,7 @@
           "first_report": "traces match lines=4503",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4503,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-FA03-139-cf9f4db1b79f/result.json"
+          "compared_tics": 4503
         },
         {
           "demo": "DOOM2-MAP03-FA03-246-89dc8ba40d33.lmp",
@@ -36754,8 +36742,7 @@
           "first_report": "traces match lines=6678",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 6678,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-FA03-246-89dc8ba40d33/result.json"
+          "compared_tics": 6678
         },
         {
           "demo": "DOOM2-MAP03-LV03-035-4f8fc01ed4a3.lmp",
@@ -36769,7 +36756,6 @@
             "gddoom": 46
           },
           "first_state_gametic": 36,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-035-4f8fc01ed4a3/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP03-LV03-035-4f8fc01ed4a3.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36782,8 +36768,7 @@
           "first_report": "traces match lines=2188",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 2188,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-038-75773d5f9daf/result.json"
+          "compared_tics": 2188
         },
         {
           "demo": "DOOM2-MAP03-LV03-142-941582598af6.lmp",
@@ -36792,8 +36777,7 @@
           "first_report": "traces match lines=4414",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4414,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-142-941582598af6/result.json"
+          "compared_tics": 4414
         },
         {
           "demo": "DOOM2-MAP03-LV03-144-81e42f26b89e.lmp",
@@ -36802,8 +36786,7 @@
           "first_report": "traces match lines=4658",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4658,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-144-81e42f26b89e/result.json"
+          "compared_tics": 4658
         },
         {
           "demo": "DOOM2-MAP03-LV03-148-178327c2bb97.lmp",
@@ -36812,8 +36795,7 @@
           "first_report": "traces match lines=4801",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4801,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-148-178327c2bb97/result.json"
+          "compared_tics": 4801
         },
         {
           "demo": "DOOM2-MAP03-LV03-154-41b00f41b284.lmp",
@@ -36822,8 +36804,7 @@
           "first_report": "traces match lines=4841",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4841,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-154-41b00f41b284/result.json"
+          "compared_tics": 4841
         },
         {
           "demo": "DOOM2-MAP03-LV03-156-36bce199724c.lmp",
@@ -36832,8 +36813,7 @@
           "first_report": "traces match lines=5106",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 5106,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-156-36bce199724c/result.json"
+          "compared_tics": 5106
         },
         {
           "demo": "DOOM2-MAP03-LV03-217-fe329d1c208e.lmp",
@@ -36842,8 +36822,7 @@
           "first_report": "traces match lines=5647",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 5647,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-LV03-217-fe329d1c208e/result.json"
+          "compared_tics": 5647
         },
         {
           "demo": "DOOM2-MAP03-RE03-117-7264d5a69991.lmp",
@@ -36852,8 +36831,7 @@
           "first_report": "traces match lines=3166",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3166,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-RE03-117-7264d5a69991/result.json"
+          "compared_tics": 3166
         },
         {
           "demo": "DOOM2-MAP03-RE03-129-4b5e833ff04f.lmp",
@@ -36862,8 +36840,7 @@
           "first_report": "traces match lines=3369",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3369,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-RE03-129-4b5e833ff04f/result.json"
+          "compared_tics": 3369
         },
         {
           "demo": "DOOM2-MAP03-RE03-137-d02ca9c73d18.lmp",
@@ -36877,7 +36854,6 @@
             "gddoom": 161
           },
           "first_state_gametic": 22,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-RE03-137-d02ca9c73d18/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP03-RE03-137-d02ca9c73d18.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -36890,8 +36866,7 @@
           "first_report": "traces match lines=3651",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3651,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-RE03-140-845558fb8ae7/result.json"
+          "compared_tics": 3651
         },
         {
           "demo": "DOOM2-MAP03-RE03-144-5a4a83482cc5.lmp",
@@ -36900,8 +36875,7 @@
           "first_report": "traces match lines=4417",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4417,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-RE03-144-5a4a83482cc5/result.json"
+          "compared_tics": 4417
         },
         {
           "demo": "DOOM2-MAP03-RE03-157-81c134c5a645.lmp",
@@ -36910,8 +36884,7 @@
           "first_report": "traces match lines=4283",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4283,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-RE03-157-81c134c5a645/result.json"
+          "compared_tics": 4283
         },
         {
           "demo": "DOOM2-MAP03-WHOWASIT-18eb268f35be.lmp",
@@ -36920,8 +36893,7 @@
           "first_report": "traces match lines=881",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 881,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-WHOWASIT-18eb268f35be/result.json"
+          "compared_tics": 881
         },
         {
           "demo": "DOOM2-MAP03-lv03-124-f5a24bfaed16.lmp",
@@ -36930,8 +36902,7 @@
           "first_report": "traces match lines=3604",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3604,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-lv03-124-f5a24bfaed16/result.json"
+          "compared_tics": 3604
         },
         {
           "demo": "DOOM2-MAP03-lv03-133-86915b2edf23.lmp",
@@ -36940,8 +36911,7 @@
           "first_report": "traces match lines=3693",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3693,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP03-lv03-133-86915b2edf23/result.json"
+          "compared_tics": 3693
         },
         {
           "demo": "DOOM2-MAP04-001-RE04-1b0c8a997a0a.lmp",
@@ -36950,8 +36920,7 @@
           "first_report": "traces match lines=6789",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 6789,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-001-RE04-1b0c8a997a0a/result.json"
+          "compared_tics": 6789
         },
         {
           "demo": "DOOM2-MAP04-FA04-229-910ca467e07a.lmp",
@@ -36960,8 +36929,7 @@
           "first_report": "traces match lines=6065",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 6065,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-FA04-229-910ca467e07a/result.json"
+          "compared_tics": 6065
         },
         {
           "demo": "DOOM2-MAP04-LV04-043-c3c2094a6e36.lmp",
@@ -36970,8 +36938,7 @@
           "first_report": "traces match lines=2351",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 2351,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-LV04-043-c3c2094a6e36/result.json"
+          "compared_tics": 2351
         },
         {
           "demo": "DOOM2-MAP04-LV04-107-a4a15a15419c.lmp",
@@ -36980,8 +36947,7 @@
           "first_report": "traces match lines=2605",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 2605,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-LV04-107-a4a15a15419c/result.json"
+          "compared_tics": 2605
         },
         {
           "demo": "DOOM2-MAP04-LV04-109-eefe281d7242.lmp",
@@ -36990,8 +36956,7 @@
           "first_report": "traces match lines=3004",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3004,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-LV04-109-eefe281d7242/result.json"
+          "compared_tics": 3004
         },
         {
           "demo": "DOOM2-MAP04-LV04-112-e16e703f41b8.lmp",
@@ -37000,8 +36965,7 @@
           "first_report": "traces match lines=3394",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3394,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-LV04-112-e16e703f41b8/result.json"
+          "compared_tics": 3394
         },
         {
           "demo": "DOOM2-MAP04-LV04-126-4c784cffe6a2.lmp",
@@ -37010,8 +36974,7 @@
           "first_report": "traces match lines=3883",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3883,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-LV04-126-4c784cffe6a2/result.json"
+          "compared_tics": 3883
         },
         {
           "demo": "DOOM2-MAP04-LV04-133-4220c1187c32.lmp",
@@ -37020,8 +36983,7 @@
           "first_report": "traces match lines=4110",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 4110,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-LV04-133-4220c1187c32/result.json"
+          "compared_tics": 4110
         },
         {
           "demo": "DOOM2-MAP04-RE04-112-1759584bfccb.lmp",
@@ -37030,8 +36992,7 @@
           "first_report": "traces match lines=2630",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 2630,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-RE04-112-1759584bfccb/result.json"
+          "compared_tics": 2630
         },
         {
           "demo": "DOOM2-MAP04-RE04-233-4049f96f186f.lmp",
@@ -37040,8 +37001,7 @@
           "first_report": "traces match lines=6226",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 6226,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-RE04-233-4049f96f186f/result.json"
+          "compared_tics": 6226
         },
         {
           "demo": "DOOM2-MAP04-RE04-243-b83384924ad8.lmp",
@@ -37050,8 +37010,7 @@
           "first_report": "traces match lines=6658",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 6658,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-RE04-243-b83384924ad8/result.json"
+          "compared_tics": 6658
         },
         {
           "demo": "DOOM2-MAP04-fa04-109-b5deebe1947c.lmp",
@@ -37060,8 +37019,7 @@
           "first_report": "traces match lines=2604",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 2604,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP04-fa04-109-b5deebe1947c/result.json"
+          "compared_tics": 2604
         },
         {
           "demo": "DOOM2-MAP05-FA05-258-43034293a5f0.lmp",
@@ -37070,8 +37028,7 @@
           "first_report": "traces match lines=7263",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 7263,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP05-FA05-258-43034293a5f0/result.json"
+          "compared_tics": 7263
         },
         {
           "demo": "DOOM2-MAP05-FA05-308-6bbd1c3e7d10.lmp",
@@ -37080,8 +37037,7 @@
           "first_report": "traces match lines=7601",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 7601,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP05-FA05-308-6bbd1c3e7d10/result.json"
+          "compared_tics": 7601
         },
         {
           "demo": "DOOM2-MAP05-FA05-439-ba1f66a57a6b.lmp",
@@ -37090,8 +37046,7 @@
           "first_report": "traces match lines=10792",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 10792,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP05-FA05-439-ba1f66a57a6b/result.json"
+          "compared_tics": 10792
         },
         {
           "demo": "DOOM2-MAP05-LV05-027-2c16ddd5ad3b.lmp",
@@ -37101,7 +37056,6 @@
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
           "first_state_gametic": 914,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP05-LV05-027-2c16ddd5ad3b/result.json",
           "retained_trace_files": [
             "gddoom-DOOM2-MAP05-LV05-027-2c16ddd5ad3b.lmp.jsonl.gz",
             "reference-check.jsonl.gz"
@@ -37114,13 +37068,24 @@
           "first_report": "traces match lines=3985",
           "gameplay_rng_audited": true,
           "first_gameplay_rng_mismatch": null,
-          "compared_tics": 3985,
-          "source_result": "tmp/compet-n-continue-remaining-failure-followups-v73/DOOM2-MAP05-LV05-232-c188686045c1/result.json"
+          "compared_tics": 3985
+        },
+        {
+          "demo": "DOOM2-MAP05-RE05-315-1e2b5a7744d4.lmp",
+          "sha256": "1e2b5a7744d43f9dec57ae61d7dfda0ec3e874e0649f171cd289feadc9dfbf4c",
+          "status": "mismatch",
+          "first_report": "mismatch line=3777 path=root.mobjs[122].z",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "first_state_gametic": 3776,
+          "retained_trace_files": [
+            "gddoom-DOOM2-MAP05-RE05-315-1e2b5a7744d4.lmp.jsonl.gz",
+            "reference-check.jsonl.gz"
+          ]
         }
       ],
       "manifest": "tmp/compet-n/remaining-failure-followups-v73.json",
-      "assembly_note": "Partial targeted phase: only completed individual comparisons are included; the overall refresh is still running.",
-      "status": "partial"
+      "manifest_sha256": "5479d9895b21d9914a52890d58940d8d3439cf26a00966fadcd2f4b40629360a"
     },
     "repository_harness_followups_v74": {
       "summary_path": "tmp/compet-n-continue-repository-harness-followups-v74/summary.json",
@@ -37154,13 +37119,443 @@
           "compared_tics": 2972
         }
       ]
+    },
+    "tagged_door_v76": {
+      "summary_path": "tmp/compet-n-continue-tagged-door-v76/summary.json",
+      "status_counts": {
+        "mismatch": 2,
+        "match": 1
+      },
+      "input_sha256_by_filename": {
+        "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255",
+        "gddoom-desync-continue-v76": "b2216f491607f959571dde5f1cedaf52b0bfa5022fad4f321e23d116ef2833f6",
+        "demotracecmp-40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b": "40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b",
+        "DOOMU.WAD": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f",
+        "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
+        "demo-trace-compare-70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2": "70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2"
+      },
+      "records": [
+        {
+          "demo": "DOOM2-MAP06-NM06-058-743088534dca.lmp",
+          "sha256": "743088534dca45b59c2645058c10dd8da73cb7e205dd4bd9690e527da8abb11b",
+          "status": "mismatch",
+          "first_report": "mismatch line=2031 path=root.mobjs[9].angle",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": {
+            "gametic": 2033,
+            "reference": 65,
+            "gddoom": 64
+          },
+          "first_state_gametic": 2030,
+          "retained_trace_files": [
+            "gddoom-DOOM2-MAP06-NM06-058-743088534dca.lmp.jsonl.gz",
+            "reference-check.jsonl.gz"
+          ]
+        },
+        {
+          "demo": "DOOM2-MAP15-LV15-542-fd760b536d91.lmp",
+          "sha256": "fd760b536d91673375fe47cd80b7f4698efcbf1a5b3c62a030784e573f08b0e7",
+          "status": "match",
+          "first_report": "traces match lines=12146",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 12146
+        },
+        {
+          "demo": "DOOMU-E4M6-U4M6-249-cdf4f3328ca0.lmp",
+          "sha256": "cdf4f3328ca0c29aa385f9b1ae62f874b033445b53f0f7ce7f0d7b098ab7b4ad",
+          "status": "mismatch",
+          "first_report": "mismatch line=4993 path=root.mobjs[0].momy",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": {
+            "gametic": 5024,
+            "reference": 60,
+            "gddoom": 61
+          },
+          "first_state_gametic": 4992,
+          "retained_trace_files": [
+            "gddoom-DOOMU-E4M6-U4M6-249-cdf4f3328ca0.lmp.jsonl.gz",
+            "reference-check.jsonl.gz"
+          ]
+        }
+      ],
+      "manifest": "tmp/compet-n/manifest.json",
+      "manifest_sha256": "89e0f32b6b0cee34714a9d40643b24a1e415e98bc0ba84e0b60888c242e0e602"
+    },
+    "teleport_sector_order_v77": {
+      "summary_path": "tmp/compet-n-continue-teleport-sector-order-v77/summary.json",
+      "status_counts": {
+        "match": 1
+      },
+      "input_sha256_by_filename": {
+        "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255",
+        "gddoom-desync-continue-v77": "783369e6ac60151e3f95bce37361a15f94d50c9fe13163ff8b55bafef9952039",
+        "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
+        "demo-trace-compare-70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2": "70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2",
+        "demotracecmp-40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b": "40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b"
+      },
+      "records": [
+        {
+          "demo": "DOOM2-MAP06-NM06-058-743088534dca.lmp",
+          "sha256": "743088534dca45b59c2645058c10dd8da73cb7e205dd4bd9690e527da8abb11b",
+          "status": "match",
+          "first_report": "traces match lines=2400",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 2400
+        }
+      ],
+      "manifest": "tmp/compet-n/manifest.json",
+      "manifest_sha256": "89e0f32b6b0cee34714a9d40643b24a1e415e98bc0ba84e0b60888c242e0e602"
+    },
+    "harness_error_followups_v75": {
+      "summary_path": "tmp/compet-n-continue-harness-error-followups-v75/summary.json",
+      "status_counts": {
+        "mismatch": 1
+      },
+      "input_sha256_by_filename": {
+        "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255",
+        "demo-trace-compare-ecbe5a5e4fdc197a98b09e65c361c1bedb5f1df3cdbfd38ae9dddc73fbed9afc": "ecbe5a5e4fdc197a98b09e65c361c1bedb5f1df3cdbfd38ae9dddc73fbed9afc",
+        "gddoom-desync-continue-v75": "c563204591b909b190c6b2f92d774f7b0702a47f84298abcb0a3065e735191ad",
+        "demotracecmp-3404ef2ca89b21591e03db1697eba96ed3189cf9a5e6d64bcd4a7f2c40646cfb": "3404ef2ca89b21591e03db1697eba96ed3189cf9a5e6d64bcd4a7f2c40646cfb",
+        "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b"
+      },
+      "records": [
+        {
+          "demo": "DOOM2-MAP02-RE02-147-67e4d11f8309.lmp",
+          "sha256": "67e4d11f83095fccbe2ea0673c7cb72d14e6dbff02d7beb1957423f31f051201",
+          "status": "mismatch",
+          "first_report": "mismatch line=2721 path=root.mobjs[106].z",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "first_state_gametic": 2720,
+          "retained_trace_files": [
+            "gddoom-DOOM2-MAP02-RE02-147-67e4d11f8309.lmp.jsonl.gz",
+            "reference-check.jsonl.gz"
+          ]
+        }
+      ],
+      "manifest": "tmp/compet-n/manifest.json",
+      "manifest_sha256": "89e0f32b6b0cee34714a9d40643b24a1e415e98bc0ba84e0b60888c242e0e602"
+    },
+    "continuation_repository_v75": {
+      "summary_path": "tmp/compet-n-continue-repository-v75/summary.json",
+      "status_counts": {
+        "match": 25
+      },
+      "input_sha256_by_filename": {
+        "demotracecmp-d1f70d4e7d23e9162f8f50dafabf33e826b2670c4630f6fcdc3f2e0e58749e3e": "d1f70d4e7d23e9162f8f50dafabf33e826b2670c4630f6fcdc3f2e0e58749e3e",
+        "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
+        "demo-trace-compare-ed765adb91f5d1453cbc75ffd43e62bd1b353a36735f08b38827b321fad73835": "ed765adb91f5d1453cbc75ffd43e62bd1b353a36735f08b38827b321fad73835",
+        "DOOM1.WAD": "1d7d43be501e67d927e415e0b8f3e29c3bf33075e859721816f652a526cac771",
+        "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255",
+        "gddoom-desync-continue-v75": "c563204591b909b190c6b2f92d774f7b0702a47f84298abcb0a3065e735191ad",
+        "DOOMU.WAD": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f"
+      },
+      "records": [
+        {
+          "demo": "DOOM1-DEMO1.lmp",
+          "sha256": "7f32ed06308fc14d7fbe87baf9e318f3500516d724ce69a32b339d588ba1fe1b",
+          "status": "match",
+          "first_report": "traces match lines=4973",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 4973
+        },
+        {
+          "demo": "DOOM1-DEMO2.lmp",
+          "sha256": "74ee530c2c35046469bafd92d0cd49ab0a5dee76872c1a91e682aef9bc4410e9",
+          "status": "match",
+          "first_report": "traces match lines=3778",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 3778
+        },
+        {
+          "demo": "DOOM1-DEMO3.lmp",
+          "sha256": "61850b2201e283fa0a946cf091101a321e7a6219800a4f66448c949bc6144bce",
+          "status": "match",
+          "first_report": "traces match lines=2079",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 2079
+        },
+        {
+          "demo": "DOOM2-DEMO1.lmp",
+          "sha256": "0e7188178012482c7a56cc11e702f70ea71830bdfb6a43a63a3108f117bba6e5",
+          "status": "match",
+          "first_report": "traces match lines=1063",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 1063
+        },
+        {
+          "demo": "DOOM2-DEMO2.lmp",
+          "sha256": "2efc786b8200297e5660f25f5ab51643ceaa0875213d7a17e5c18b924ded49cd",
+          "status": "match",
+          "first_report": "traces match lines=1949",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 1949
+        },
+        {
+          "demo": "DOOM2-DEMO3.lmp",
+          "sha256": "448d2f2bf825839aeee0d6100ca154758b6efe75bf0cb4e3bb419c5e423a590b",
+          "status": "match",
+          "first_report": "traces match lines=4359",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 4359
+        },
+        {
+          "demo": "DOOMU-DEMO1.lmp",
+          "sha256": "7c3817081eb5cf32a118195492dd8b134e7617f142ecd1eed028cdfa60927679",
+          "status": "match",
+          "first_report": "traces match lines=1632",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 1632
+        },
+        {
+          "demo": "DOOMU-DEMO2.lmp",
+          "sha256": "a2f526018429f399c490acb2100ac5dbf474ae056398b490e81a6fed2bf45c3d",
+          "status": "match",
+          "first_report": "traces match lines=2270",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 2270
+        },
+        {
+          "demo": "DOOMU-DEMO3.lmp",
+          "sha256": "e8f765a3a2005ddbb851433329f942d1ecdc02c38bc4c6986f71a54a590f3c76",
+          "status": "match",
+          "first_report": "traces match lines=3633",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 3633
+        },
+        {
+          "demo": "DOOM2-MAP21-UVMAX.lmp",
+          "sha256": "583c5e479c884a1f8c1064f56aad63415c7bf0c53717bec72511f50d0b06a759",
+          "status": "match",
+          "first_report": "traces match lines=4591",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 4591
+        },
+        {
+          "demo": "DOOM2-MAP22-UVMAX.lmp",
+          "sha256": "db4b5df80711aaaa9d0316691a08459ae678bba5b37307fac3e98e39c6209e14",
+          "status": "match",
+          "first_report": "traces match lines=2199",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 2199
+        },
+        {
+          "demo": "DOOM2-MAP24-UVMAX.lmp",
+          "sha256": "80ff02e9630e0fc9be7cb330f6f7d4bf1d98e6b720a983dca8b2266acea96807",
+          "status": "match",
+          "first_report": "traces match lines=8607",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 8607
+        },
+        {
+          "demo": "DOOM2-MAP26-UVMAX-237.lmp",
+          "sha256": "2bd26fc8d753057890168702ede13ad098729b52e905732c91a2deaf7472d06a",
+          "status": "match",
+          "first_report": "traces match lines=2972",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 2972
+        },
+        {
+          "demo": "DOOM2-MAP26-UVMAX.lmp",
+          "sha256": "3f13caa3f2978de3f632c010555e6f601a3a66908dc026fd9690dd81ed8bcec7",
+          "status": "match",
+          "first_report": "traces match lines=3244",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 3244
+        },
+        {
+          "demo": "DOOM2-MAP27-UVMAX.lmp",
+          "sha256": "10f316d7165d5741ef76277c6b2a02188b1465785799ed0d4bf8135d662f77bd",
+          "status": "match",
+          "first_report": "traces match lines=1820",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 1820
+        },
+        {
+          "demo": "DOOM2-MAP28-UVMAX.lmp",
+          "sha256": "5f11be8312e42119fb21a8f36e28514b00c14359ae54951c5fd4614f346b391e",
+          "status": "match",
+          "first_report": "traces match lines=5109",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 5109
+        },
+        {
+          "demo": "DOOM2-MAP29-UVMAX.lmp",
+          "sha256": "f17768a6e2c57e76376fee4a2de23518890e9a98421a6712efad243c3d994488",
+          "status": "match",
+          "first_report": "traces match lines=8124",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 8124
+        },
+        {
+          "demo": "DOOM2-MAP30-UVMAX.lmp",
+          "sha256": "5e2f395fbda6e2d48700c3da1374ef0fc73f1ccf11a96355370ccdf7a35a9dda",
+          "status": "match",
+          "first_report": "traces match lines=1264",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 1264
+        },
+        {
+          "demo": "grate.lmp",
+          "sha256": "5acf3d54f15a1b94bf4b052f449e8e3b399fee495c6d682576cab7422163b489",
+          "status": "match",
+          "first_report": "traces match lines=1800",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 1800
+        },
+        {
+          "demo": "DOOM1-E1M1-OUTPUT-1966.lmp",
+          "sha256": "bf07a4a09eb3a5d6d0e4bc50b4bfc45565953ac2b33512bd97f67c4d5d4c1863",
+          "status": "match",
+          "first_report": "traces match lines=488",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 488
+        },
+        {
+          "demo": "DOOM1-E1M1-OUTPUT-2110.lmp",
+          "sha256": "46123db3c838dd91a0eb8e36a7fcb09b3fd8e45206791aa4a324189857e4e632",
+          "status": "match",
+          "first_report": "traces match lines=524",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 524
+        },
+        {
+          "demo": "DOOM1-E1M1-OUTPUT-2198.lmp",
+          "sha256": "51e109c25afb48530f02e4ce62cf3bc4484c9816bf3692f8738a1df3bff7382f",
+          "status": "match",
+          "first_report": "traces match lines=546",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 546
+        },
+        {
+          "demo": "DOOM1-E1M1-SKY-TEST.lmp",
+          "sha256": "bc4ad2e036fe32d35853ebfa740b17c45a07ace8aa5449f3051c46429485c40e",
+          "status": "match",
+          "first_report": "traces match lines=647",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 647
+        },
+        {
+          "demo": "DOOM2-MAP04-GRATE-OLD.lmp",
+          "sha256": "695aad9ded3342429530c9ed42ed5979aa1801587d221dfdd9258ef8d958b1d3",
+          "status": "match",
+          "first_report": "traces match lines=777",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 777
+        },
+        {
+          "demo": "masked.lmp",
+          "sha256": "12c68074c9f125e05e885c732b4985635e1abf5a53b82c00d12142feea949e93",
+          "status": "match",
+          "first_report": "traces match lines=950",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 950
+        }
+      ]
+    },
+    "slide_followups_v78": {
+      "summary_path": "tmp/compet-n-continue-slide-followups-v78/summary.json",
+      "status_counts": {
+        "match": 3
+      },
+      "input_sha256_by_filename": {
+        "demo-trace-compare-70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2": "70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2",
+        "gddoom-desync-continue-v78": "5bed95e3cde2ea61f5f2ecf1072878c7d9cd02c67f6bb6206773bbc89a3c0a1b",
+        "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
+        "demotracecmp-40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b": "40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b",
+        "DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255"
+      },
+      "records": [
+        {
+          "demo": "DOOM2-MAP03-FA03-134-a956873b3acd.lmp",
+          "sha256": "a956873b3acd30dc3adf00aa413e221ed4f0865cbbbbf213117ae6870d1f6680",
+          "status": "match",
+          "first_report": "traces match lines=3408",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 3408
+        },
+        {
+          "demo": "DOOM2-MAP03-LV03-035-4f8fc01ed4a3.lmp",
+          "sha256": "4f8fc01ed4a31ec0908e9fec1d680f8548da23687791325611abaece1d739297",
+          "status": "match",
+          "first_report": "traces match lines=2084",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 2084
+        },
+        {
+          "demo": "DOOM2-MAP03-RE03-137-d02ca9c73d18.lmp",
+          "sha256": "d02ca9c73d182e74785a75f0ce791608412576a119e20c47dc9ece66d69bfc40",
+          "status": "match",
+          "first_report": "traces match lines=3698",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 3698
+        }
+      ],
+      "manifest": "tmp/compet-n/manifest.json",
+      "manifest_sha256": "89e0f32b6b0cee34714a9d40643b24a1e415e98bc0ba84e0b60888c242e0e602"
+    },
+    "slide_origin_v78": {
+      "summary_path": "tmp/compet-n-continue-slide-origin-v78/summary.json",
+      "status_counts": {
+        "match": 1
+      },
+      "input_sha256_by_filename": {
+        "DOOMU.WAD": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f",
+        "demotracecmp-40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b": "40fce3c24d102582ce6522c9fc374d5b4cf0aa8018f939131265fdc5c80d587b",
+        "linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
+        "demo-trace-compare-70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2": "70be638002b0322b85e5f6b8308e49908a705f4d284124406d1193e1cb53a8d2",
+        "gddoom-desync-continue-v78": "5bed95e3cde2ea61f5f2ecf1072878c7d9cd02c67f6bb6206773bbc89a3c0a1b"
+      },
+      "records": [
+        {
+          "demo": "DOOMU-E4M6-U4M6-249-cdf4f3328ca0.lmp",
+          "sha256": "cdf4f3328ca0c29aa385f9b1ae62f874b033445b53f0f7ce7f0d7b098ab7b4ad",
+          "status": "match",
+          "first_report": "traces match lines=6622",
+          "gameplay_rng_audited": true,
+          "first_gameplay_rng_mismatch": null,
+          "compared_tics": 6622
+        }
+      ],
+      "manifest": "tmp/compet-n/manifest.json",
+      "manifest_sha256": "89e0f32b6b0cee34714a9d40643b24a1e415e98bc0ba84e0b60888c242e0e602"
     }
   },
   "combat_with_followups": {
     "summary_path": "tmp/compet-n-continue-combat-v34/summary.json",
     "status_counts": {
-      "match": 66,
-      "mismatch": 2
+      "match": 67,
+      "mismatch": 1
     },
     "input_sha256_by_filename": {
       "DOOMU.WAD": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f",
@@ -37312,20 +37707,12 @@
       {
         "demo": "DOOM2-MAP15-LV15-542-fd760b536d91.lmp",
         "sha256": "fd760b536d91673375fe47cd80b7f4698efcbf1a5b3c62a030784e573f08b0e7",
-        "status": "mismatch",
-        "first_report": "mismatch line=10584 path=root.mobjs[67].ceilingz",
+        "status": "match",
+        "first_report": "traces match lines=12146",
         "gameplay_rng_audited": true,
-        "first_gameplay_rng_mismatch": {
-          "gametic": 11035,
-          "reference": 126,
-          "gddoom": 124
-        },
-        "first_state_gametic": 10583,
-        "retained_trace_files": [
-          "gddoom-DOOM2-MAP15-LV15-542-fd760b536d91.lmp.jsonl.gz",
-          "reference-check.jsonl.gz"
-        ],
-        "source_summary": "tmp/compet-n-continue-four-followups-v73/summary.json"
+        "first_gameplay_rng_mismatch": null,
+        "compared_tics": 12146,
+        "source_summary": "tmp/compet-n-continue-tagged-door-v76/summary.json"
       },
       {
         "demo": "DOOM2-MAP16-lv16-246-5abcfc9a215f.lmp",
@@ -37875,7 +38262,7 @@
     "report": "traces match lines=7004\n",
     "strict_gameplay_rng_mismatch": null
   },
-  "working_tree_base_commit": "d5ca1ac",
+  "working_tree_base_commit": "3d6bb39",
   "fixes_committed": true,
   "historical_sweeps": {
     "quick": {
@@ -41135,13 +41522,13 @@
     "note": "Latest complete quick sweep plus newer targeted replays; binaries differ by phase. All passing replays independently match gameplay RNG."
   },
   "historical_quick_sweep_precedes_save_update_and_lowercrush_fix": true,
-  "attempted_unique_external_recordings": 1189,
-  "unattempted_external_recordings": 3445,
+  "attempted_unique_external_recordings": 1223,
+  "unattempted_external_recordings": 3411,
   "test_checks": {
     "go_suite": {
       "status": "pass",
-      "binary_phase": "v75",
-      "log": "/tmp/gddoom-commit-checkpoint-all.log"
+      "binary_phase": "v78",
+      "log": "/tmp/gddoom-continue-all-v78.log"
     },
     "python_corpus_checks": {
       "status": "pass",
@@ -41811,11 +42198,11 @@
       "binary_phase": "v58",
       "selection": "All eligible untested recordings excluding the active breadth-four batch; full remaining corpus queued",
       "planned": 3817,
-      "completed": 372,
+      "completed": 406,
       "status": "running",
       "status_counts": {
-        "match": 314,
-        "mismatch": 55,
+        "match": 337,
+        "mismatch": 66,
         "error": 3
       },
       "completed_result_paths": [
@@ -42190,7 +42577,41 @@
         "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-129-8f57f467a4f6/result.json",
         "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-131-107c135227c8/result.json",
         "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-142-5f4ae3e6ed07/result.json",
-        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-148-e82687082079/result.json"
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-148-e82687082079/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-210-0668c96d7584/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-253-fc23f4bba471/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-301-78e81e75c84b/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-320-e058c7b163b1/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-403-30de59a8a98f/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-412-541bd7bdd200/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-425-d414e4b2a9e4/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-LV06-431-7124035983e3/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NM06-105-3f8d9cb7ae64/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NM06-115-40a4da1e6dd2/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NM06-134-16d1aadb9a32/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NM06-148-51920e8260eb/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NM06-221-74524292bb34/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NM06-253-8a61257c9313/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-109-168922e847ae/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-110-4785cd30a497/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-111-433e1ce0058f/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-113-f95ede1e65a7/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-118-3a327b86e9c6/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-127-c7ebee2142f8/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-134-ec5ee406397b/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-NS06-142-f39a7aaa2884/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-PA06-257-1263a4412c4b/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-RE06-226-d5fb0a9bf9bd/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-RE06-227-41bb3e5aacb7/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-RE06-231-ae048eb05254/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-RE06-241-1f2da14d8674/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-RE06-246-ce82dbca33a5/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-RE06-305-ae861b953d2c/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-RE06-611-1c998d5d26d1/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-TY061907-385d9c4e2471/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-TY061921-47538472a2b0/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-fa06-242-044e794e13a9/result.json",
+        "tmp/compet-n-continue-remaining-v58/DOOM2-MAP06-lv06-240-05da9d4d2461/result.json"
       ]
     },
     "breadth_four": {
@@ -43452,7 +43873,7 @@
         "source_summary": "tmp/compet-n-continue-breadth-002-v63/summary.json"
       }
     ],
-    "note": "Latest complete Nightmare sweep plus newer follow-ups through phase-v74. Passing replays independently match gameplay RNG."
+    "note": "Latest complete Nightmare sweep plus newer follow-ups through phase-v78. Passing replays independently match gameplay RNG."
   },
   "latest_breadth_three_with_followups": {
     "status_counts": {
@@ -46180,7 +46601,7 @@
         "source_summary": "tmp/compet-n-continue-breadth-003-v46/summary.json"
       }
     ],
-    "note": "Complete phase-v46 batch plus newer replays through phase-v74; binaries differ by phase."
+    "note": "Complete phase-v46 batch plus newer replays through phase-v78; binaries differ by phase."
   },
   "reference_failure_diagnostics": [
     {
@@ -46197,8 +46618,7 @@
   ],
   "latest_breadth_four_with_followups": {
     "status_counts": {
-      "match": 270,
-      "mismatch": 2
+      "match": 272
     },
     "records": [
       {
@@ -46404,20 +46824,12 @@
       {
         "demo": "DOOM2-MAP06-NM06-058-743088534dca.lmp",
         "sha256": "743088534dca45b59c2645058c10dd8da73cb7e205dd4bd9690e527da8abb11b",
-        "status": "mismatch",
-        "first_report": "mismatch line=2031 path=root.mobjs[9].angle",
+        "status": "match",
+        "first_report": "traces match lines=2400",
         "gameplay_rng_audited": true,
-        "first_gameplay_rng_mismatch": {
-          "gametic": 2033,
-          "reference": 65,
-          "gddoom": 64
-        },
-        "first_state_gametic": 2030,
-        "retained_trace_files": [
-          "gddoom-DOOM2-MAP06-NM06-058-743088534dca.lmp.jsonl.gz",
-          "reference-check.jsonl.gz"
-        ],
-        "source_summary": "tmp/compet-n-continue-four-followups-v73/summary.json"
+        "first_gameplay_rng_mismatch": null,
+        "compared_tics": 2400,
+        "source_summary": "tmp/compet-n-continue-teleport-sector-order-v77/summary.json"
       },
       {
         "demo": "DOOM2-MAP06-NM06-102-41b4565cf3af.lmp",
@@ -48772,20 +49184,12 @@
       {
         "demo": "DOOMU-E4M6-U4M6-249-cdf4f3328ca0.lmp",
         "sha256": "cdf4f3328ca0c29aa385f9b1ae62f874b033445b53f0f7ce7f0d7b098ab7b4ad",
-        "status": "mismatch",
-        "first_report": "mismatch line=4993 path=root.mobjs[0].momy",
+        "status": "match",
+        "first_report": "traces match lines=6622",
         "gameplay_rng_audited": true,
-        "first_gameplay_rng_mismatch": {
-          "gametic": 5024,
-          "reference": 60,
-          "gddoom": 61
-        },
-        "first_state_gametic": 4992,
-        "retained_trace_files": [
-          "gddoom-DOOMU-E4M6-U4M6-249-cdf4f3328ca0.lmp.jsonl.gz",
-          "reference-check.jsonl.gz"
-        ],
-        "source_summary": "tmp/compet-n-continue-four-followups-v73/summary.json"
+        "first_gameplay_rng_mismatch": null,
+        "compared_tics": 6622,
+        "source_summary": "tmp/compet-n-continue-slide-origin-v78/summary.json"
       },
       {
         "demo": "DOOMU-E4M6-n4m6-251-d80f098b455a.lmp",
@@ -48953,7 +49357,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 4973,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM1-DEMO2.lmp",
@@ -48963,7 +49367,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 3778,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM1-DEMO3.lmp",
@@ -48973,7 +49377,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 2079,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM1-E1M1-OUTPUT-1966.lmp",
@@ -48983,7 +49387,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 488,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM1-E1M1-OUTPUT-2110.lmp",
@@ -48993,7 +49397,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 524,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM1-E1M1-OUTPUT-2198.lmp",
@@ -49003,7 +49407,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 546,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM1-E1M1-SKY-TEST.lmp",
@@ -49013,7 +49417,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 647,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-DEMO1.lmp",
@@ -49023,7 +49427,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 1063,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-DEMO2.lmp",
@@ -49033,7 +49437,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 1949,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-DEMO3.lmp",
@@ -49043,7 +49447,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 4359,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP04-GRATE-OLD.lmp",
@@ -49053,7 +49457,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 777,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP21-UVMAX.lmp",
@@ -49063,7 +49467,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 4591,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP22-UVMAX.lmp",
@@ -49073,7 +49477,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 2199,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP24-UVMAX.lmp",
@@ -49083,7 +49487,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 8607,
-        "source_summary": "tmp/compet-n-continue-repository-harness-followups-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP26-UVMAX-237.lmp",
@@ -49093,7 +49497,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 2972,
-        "source_summary": "tmp/compet-n-continue-repository-harness-followups-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP26-UVMAX.lmp",
@@ -49103,7 +49507,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 3244,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP27-UVMAX.lmp",
@@ -49113,7 +49517,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 1820,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP28-UVMAX.lmp",
@@ -49123,7 +49527,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 5109,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP29-UVMAX.lmp",
@@ -49133,7 +49537,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 8124,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOM2-MAP30-UVMAX.lmp",
@@ -49143,7 +49547,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 1264,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOMU-DEMO1.lmp",
@@ -49153,7 +49557,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 1632,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOMU-DEMO2.lmp",
@@ -49163,7 +49567,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 2270,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "DOOMU-DEMO3.lmp",
@@ -49173,7 +49577,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 3633,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "grate.lmp",
@@ -49183,7 +49587,7 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 1800,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       },
       {
         "demo": "masked.lmp",
@@ -49193,12 +49597,12 @@
         "gameplay_rng_audited": true,
         "first_gameplay_rng_mismatch": null,
         "compared_tics": 950,
-        "source_summary": "tmp/compet-n-continue-repository-v74/summary.json"
+        "source_summary": "tmp/compet-n-continue-repository-v75/summary.json"
       }
     ],
     "note": "Latest full repository sweep plus reruns of the two checks interrupted by a live harness edit; raw interrupted results are preserved."
   },
-  "checkpoint_note": "Desync checkpoint integrates origin/main through d5ca1ac; v75 rebuilds the v74 gameplay fixes with the updated dependencies.",
+  "checkpoint_note": "This checkpoint adds tagged-door, teleport-sector ordering and slide-origin corrections on top of 3d6bb39, which integrates origin/main through d5ca1ac.",
   "reference_large_trace_capture": {
     "raw_bytes": 9325412691,
     "lines": 133447,
@@ -49211,5 +49615,6 @@
     "report": "tmp/reference-large-stream-check/capture-result.json",
     "note": "Reference capture validation only; this is not a passing GD-DOOM comparison."
   },
-  "checkpoint_date": "2026-10-01"
+  "checkpoint_date": "2026-10-01",
+  "last_pushed_checkpoint": "3d6bb39"
 }

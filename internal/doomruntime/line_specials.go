@@ -1301,122 +1301,126 @@ func (g *game) activateTeleportLine(lineIdx int, side int, info mapdata.Teleport
 		actorRadius = thingTypeRadius(actor.Type)
 		actorHeight = g.thingCurrentHeight(actorIdx, actor)
 	}
-	for i, th := range g.m.Things {
-		if th.Type != teleportThingType {
+	// EV_Teleport scans tagged sectors first, then the thinker list within
+	// each sector. Map Things retain that spawn order; a destination in an
+	// earlier sector wins even when its Thing appears later in the map.
+	for sec, sector := range g.m.Sectors {
+		if sector.Tag < 0 || uint16(sector.Tag) != line.Tag {
 			continue
 		}
-		// Check if this is a missile (skip missiles for teleport)
-		// In Doom, missiles are typically things with specific types or flags
-		// Missiles should not be teleported according to original Doom behavior
-		if int(th.Flags)&0x10000 != 0 { // MF_MISSILE flag check (0x10000 = 65536)
-			continue
-		}
-		sec := g.thingSectorCached(i, th)
-		if sec < 0 || sec >= len(g.m.Sectors) {
-			continue
-		}
-		if g.m.Sectors[sec].Tag < 0 || uint16(g.m.Sectors[sec].Tag) != line.Tag {
-			continue
-		}
-		tx, ty := g.thingPosFixed(i, th)
-		if debugLineTriggerEnabled(lineIdx) {
-			fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-dest thing=%d sec=%d pos=(%d,%d) player=%t\n",
-				g.demoTick-1, g.worldTic, i, sec, tx, ty, isPlayer)
-		}
-		// P_TeleportMove clears numspechit before checking the destination,
-		// including attempts that fail because another actor occupies it.
-		g.teleportMoveSerial++
-		tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty)
-		if !ok {
-			if debugLineTriggerEnabled(lineIdx) {
-				fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-blocked line=%d dest_thing=%d pos=(%d,%d) player=%t\n",
-					g.demoTick-1, g.worldTic, lineIdx, i, tx, ty, isPlayer)
+		for i, th := range g.m.Things {
+			if th.Type != teleportThingType {
+				continue
 			}
-			return false
+			// Check if this is a missile (skip missiles for teleport)
+			// In Doom, missiles are typically things with specific types or flags
+			// Missiles should not be teleported according to original Doom behavior
+			if int(th.Flags)&0x10000 != 0 { // MF_MISSILE flag check (0x10000 = 65536)
+				continue
+			}
+			if g.thingSectorCached(i, th) != sec {
+				continue
+			}
+			tx, ty := g.thingPosFixed(i, th)
+			if debugLineTriggerEnabled(lineIdx) {
+				fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-dest thing=%d sec=%d pos=(%d,%d) player=%t\n",
+					g.demoTick-1, g.worldTic, i, sec, tx, ty, isPlayer)
+			}
+			// P_TeleportMove clears numspechit before checking the destination,
+			// including attempts that fail because another actor occupies it.
+			g.teleportMoveSerial++
+			tmfloor, tmceil, ok := g.teleportDestinationHeights(tx, ty)
+			if !ok {
+				if debugLineTriggerEnabled(lineIdx) {
+					fmt.Printf("line-trigger-debug tic=%d world=%d phase=teleport-blocked line=%d dest_thing=%d pos=(%d,%d) player=%t\n",
+						g.demoTick-1, g.worldTic, lineIdx, i, tx, ty, isPlayer)
+				}
+				return false
+			}
+			if tmceil-tmfloor < actorHeight {
+				return false
+			}
+			if !g.teleportStompDestinationThings(tx, ty, actorRadius, actorIdx, isPlayer, actorX, actorY) {
+				return false
+			}
+			destSec := g.sectorAt(tx, ty)
+			if destSec < 0 || destSec >= len(g.sectorFloor) || destSec >= len(g.sectorCeil) {
+				return false
+			}
+			// P_SpawnMapThing quantizes every map Thing angle to a 45-degree
+			// increment before EV_Teleport copies the destination mobj's angle.
+			destAngle := thingSpawnAngle(th.Angle)
+			destFogX := tx + fixedMul(20*fracUnit, doomFineCosine(destAngle))
+			destFogY := ty + fixedMul(20*fracUnit, doomFineSineAtAngle(destAngle))
+			if isPlayer {
+				g.setPlayerPosFixed(tx, ty)
+				g.p.floorz = tmfloor
+				g.p.ceilz = tmceil
+				g.p.z = tmfloor
+				g.p.momz = 0
+				g.p.viewHeight = playerViewHeight
+				g.p.deltaViewHeight = 0
+				g.playerViewZ = g.p.z + g.p.viewHeight
+				g.p.momx = 0
+				g.p.momy = 0
+				g.p.reactionTime = 18
+				g.p.teleportedThisTic = true
+				g.p.angle = destAngle
+			} else {
+				g.setThingPosFixed(actorIdx, tx, ty)
+				g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
+				g.setThingWorldAngle(actorIdx, destAngle)
+				g.setThingMomentum(actorIdx, 0, 0, 0)
+				g.snapThingRenderState(actorIdx)
+			}
+			g.spawnTeleportFog(actorX, actorY, actorZ)
+			g.spawnTeleportFog(destFogX, destFogY, tmfloor)
+			g.emitSoundEventAt(soundEventTeleport, actorX, actorY)
+			g.emitSoundEventAt(soundEventTeleport, destFogX, destFogY)
+			if g.opts.DebugEvents {
+				triggerX1, triggerY1, triggerX2, triggerY2, triggerCX, triggerCY := g.teleportTriggerDebugPos(lineIdx)
+				fmt.Printf(
+					"teleport tic=%d activator=%s actor_idx=%d actor_type=%d entity_pos=(%.2f,%.2f,%.2f) entity_floor=%.2f entity_ceil=%.2f entity_angle_from=%d entity_angle_to=%d line=%d special=%d tag=%d side=%d trigger_line=(%.2f,%.2f)->(%.2f,%.2f) trigger_pos=(%.2f,%.2f) source_pos=(%.2f,%.2f,%.2f) dest_pos=(%.2f,%.2f,%.2f) dest_floor=%.2f dest_ceil=%.2f dest_sector=%d dest_thing_idx=%d dest_thing_type=%d dest_thing_angle=%d dest_fog_pos=(%.2f,%.2f,%.2f)\n",
+					g.worldTic,
+					actorLabel,
+					actorIdx,
+					actorType,
+					fixedToDebugFloat(actorX),
+					fixedToDebugFloat(actorY),
+					fixedToDebugFloat(actorZ),
+					fixedToDebugFloat(actorFloorZ),
+					fixedToDebugFloat(actorCeilZ),
+					worldAngleToThingDeg(actorAngle),
+					worldAngleToThingDeg(destAngle),
+					lineIdx,
+					line.Special,
+					line.Tag,
+					side,
+					fixedToDebugFloat(triggerX1),
+					fixedToDebugFloat(triggerY1),
+					fixedToDebugFloat(triggerX2),
+					fixedToDebugFloat(triggerY2),
+					fixedToDebugFloat(triggerCX),
+					fixedToDebugFloat(triggerCY),
+					fixedToDebugFloat(actorX),
+					fixedToDebugFloat(actorY),
+					fixedToDebugFloat(actorZ),
+					fixedToDebugFloat(tx),
+					fixedToDebugFloat(ty),
+					fixedToDebugFloat(tmfloor),
+					fixedToDebugFloat(tmfloor),
+					fixedToDebugFloat(tmceil),
+					destSec,
+					i,
+					th.Type,
+					th.Angle,
+					fixedToDebugFloat(destFogX),
+					fixedToDebugFloat(destFogY),
+					fixedToDebugFloat(tmfloor),
+				)
+			}
+			return true
 		}
-		if tmceil-tmfloor < actorHeight {
-			return false
-		}
-		if !g.teleportStompDestinationThings(tx, ty, actorRadius, actorIdx, isPlayer, actorX, actorY) {
-			return false
-		}
-		destSec := g.sectorAt(tx, ty)
-		if destSec < 0 || destSec >= len(g.sectorFloor) || destSec >= len(g.sectorCeil) {
-			return false
-		}
-		// P_SpawnMapThing quantizes every map Thing angle to a 45-degree
-		// increment before EV_Teleport copies the destination mobj's angle.
-		destAngle := thingSpawnAngle(th.Angle)
-		destFogX := tx + fixedMul(20*fracUnit, doomFineCosine(destAngle))
-		destFogY := ty + fixedMul(20*fracUnit, doomFineSineAtAngle(destAngle))
-		if isPlayer {
-			g.setPlayerPosFixed(tx, ty)
-			g.p.floorz = tmfloor
-			g.p.ceilz = tmceil
-			g.p.z = tmfloor
-			g.p.momz = 0
-			g.p.viewHeight = playerViewHeight
-			g.p.deltaViewHeight = 0
-			g.playerViewZ = g.p.z + g.p.viewHeight
-			g.p.momx = 0
-			g.p.momy = 0
-			g.p.reactionTime = 18
-			g.p.teleportedThisTic = true
-			g.p.angle = destAngle
-		} else {
-			g.setThingPosFixed(actorIdx, tx, ty)
-			g.setThingSupportState(actorIdx, tmfloor, tmfloor, tmceil)
-			g.setThingWorldAngle(actorIdx, destAngle)
-			g.setThingMomentum(actorIdx, 0, 0, 0)
-			g.snapThingRenderState(actorIdx)
-		}
-		g.spawnTeleportFog(actorX, actorY, actorZ)
-		g.spawnTeleportFog(destFogX, destFogY, tmfloor)
-		g.emitSoundEventAt(soundEventTeleport, actorX, actorY)
-		g.emitSoundEventAt(soundEventTeleport, destFogX, destFogY)
-		if g.opts.DebugEvents {
-			triggerX1, triggerY1, triggerX2, triggerY2, triggerCX, triggerCY := g.teleportTriggerDebugPos(lineIdx)
-			fmt.Printf(
-				"teleport tic=%d activator=%s actor_idx=%d actor_type=%d entity_pos=(%.2f,%.2f,%.2f) entity_floor=%.2f entity_ceil=%.2f entity_angle_from=%d entity_angle_to=%d line=%d special=%d tag=%d side=%d trigger_line=(%.2f,%.2f)->(%.2f,%.2f) trigger_pos=(%.2f,%.2f) source_pos=(%.2f,%.2f,%.2f) dest_pos=(%.2f,%.2f,%.2f) dest_floor=%.2f dest_ceil=%.2f dest_sector=%d dest_thing_idx=%d dest_thing_type=%d dest_thing_angle=%d dest_fog_pos=(%.2f,%.2f,%.2f)\n",
-				g.worldTic,
-				actorLabel,
-				actorIdx,
-				actorType,
-				fixedToDebugFloat(actorX),
-				fixedToDebugFloat(actorY),
-				fixedToDebugFloat(actorZ),
-				fixedToDebugFloat(actorFloorZ),
-				fixedToDebugFloat(actorCeilZ),
-				worldAngleToThingDeg(actorAngle),
-				worldAngleToThingDeg(destAngle),
-				lineIdx,
-				line.Special,
-				line.Tag,
-				side,
-				fixedToDebugFloat(triggerX1),
-				fixedToDebugFloat(triggerY1),
-				fixedToDebugFloat(triggerX2),
-				fixedToDebugFloat(triggerY2),
-				fixedToDebugFloat(triggerCX),
-				fixedToDebugFloat(triggerCY),
-				fixedToDebugFloat(actorX),
-				fixedToDebugFloat(actorY),
-				fixedToDebugFloat(actorZ),
-				fixedToDebugFloat(tx),
-				fixedToDebugFloat(ty),
-				fixedToDebugFloat(tmfloor),
-				fixedToDebugFloat(tmfloor),
-				fixedToDebugFloat(tmceil),
-				destSec,
-				i,
-				th.Type,
-				th.Angle,
-				fixedToDebugFloat(destFogX),
-				fixedToDebugFloat(destFogY),
-				fixedToDebugFloat(tmfloor),
-			)
-		}
-		return true
 	}
 	return false
 }

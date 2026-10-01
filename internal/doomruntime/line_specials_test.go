@@ -1,6 +1,7 @@
 package doomruntime
 
 import (
+	"fmt"
 	"testing"
 
 	"gddoom/internal/doomrand"
@@ -777,6 +778,40 @@ func TestTickPlat_UpwardBlockedByPlayerReversesLikeDoom(t *testing.T) {
 	}
 	if got, want := g.plats[0].count, platWaitTics; got != want {
 		t.Fatalf("plat count=%d want %d", got, want)
+	}
+}
+
+func TestTeleportChoosesSectorBeforeThingOrderAndStopsOnBlockedDestination(t *testing.T) {
+	for _, blocked := range []bool{false, true} {
+		t.Run(fmt.Sprintf("blocked=%t", blocked), func(t *testing.T) {
+			g := newDoorTimingGame(0)
+			g.m.Linedefs[0].Special, g.m.Linedefs[0].Tag = 97, 7
+			g.m.Sectors[0].Tag, g.m.Sectors[1].Tag = 7, 7
+			g.m.Things = []mapdata.Thing{
+				{X: 128, Angle: 45, Type: 14},   // First Thing, later sector.
+				{X: -128, Angle: 135, Type: 14}, // First Thing in the earlier sector.
+				{X: -192, Angle: 225, Type: 14},
+				{X: 256, Y: 128, Type: 3004},
+			}
+			g.stats.Health = 100
+			g.p.x, g.p.y = 1000*fracUnit, 1000*fracUnit
+			if blocked {
+				g.p.x, g.p.y = -128*fracUnit, 0
+			}
+			info := mapdata.LookupLineSpecial(97)
+			got := g.activateTeleportLine(0, 0, *info.Teleport, 3, false)
+			if got == blocked {
+				t.Fatalf("teleport success=%t; blocked first destination=%t", got, blocked)
+			}
+			x, y := g.thingPosFixed(3, g.m.Things[3])
+			if blocked {
+				if x != 256*fracUnit || y != 128*fracUnit || len(g.hitscanPuffs) != 0 {
+					t.Fatal("blocked first destination moved the actor or spawned fog")
+				}
+			} else if x != -128*fracUnit || y != 0 || g.thingWorldAngle(3, g.m.Things[3]) != thingSpawnAngle(135) {
+				t.Fatalf("teleported to (%d,%d), want the first Thing in sector 0", x, y)
+			}
+		})
 	}
 }
 

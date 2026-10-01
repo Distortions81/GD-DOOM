@@ -100,21 +100,20 @@ These are results for particular recordings, not a count of independent bugs.
 The complete 4,634-recording manifest has not been swept. The two selections
 cover 136 distinct recordings, plus a separately retained reference crash.
 Coverage also includes completed recordings from the new UV and Nightmare batches:
-**1189 recordings have completed attempts**, with
-**3,445 without completed attempts**. The most recent completed combat phase
-plus targeted follow-ups has **66 strict matches and 2 state mismatches**. Across the latest
-quick results and that combat phase, **134 pass and 2 fail**.
+**1223 recordings have completed attempts**, with
+**3,411 without completed attempts**. The most recent completed combat phase
+plus targeted follow-ups has **67 strict matches and 1 state mismatch**. Across the latest
+quick results and that combat phase, **135 pass and 1 fail**.
 Binary hashes and per-recording follow-up provenance distinguish the phases;
 the combat phase can precede later quick-set fixes.
 
 The original repository suite passes **25/25**, totaling **69,398 compared tics**,
-in `tmp/compet-n-continue-repository-v74/summary.json` plus the harness follow-ups recorded in
-`tmp/compet-n-continue-repository-harness-followups-v74/summary.json`.
-The full repository replay rebuilt with updated dependencies is also running
-in `tmp/compet-n-continue-repository-v75/`. The complete Go suite passes after the
+in `tmp/compet-n-continue-repository-v75/summary.json`. This completed v75 replay uses the updated dependencies.
+The complete Go suite passes after the
 latest source corrections and the dependency updates integrated from `d5ca1ac`;
-all five Python corpus checks pass. This commit checkpoints the fixes and corpus
-tooling. The complete archive sweep remains in progress.
+all five Python corpus checks pass. This checkpoint adds tagged-door, teleport-order and slide-origin corrections
+on top of `3d6bb39`.
+The complete archive sweep remains in progress.
 
 The reference trace now streams through a host pipe to avoid the original
 32-bit executable's 2 GiB regular-file limit. A separate capture verified all
@@ -123,6 +122,15 @@ This verifies reference capture only. Each new batch pins immutable copies of
 its replay harness and comparator and records their hashes, so source edits
 cannot change queued comparisons. Two interrupted v74 repository checks were
 rerun successfully with the pinned harness.
+
+Recent follow-ups reject tagged doors while another sector mover is active,
+clearing MAP15 UV-Max in full (12,146 tics and RNG). Teleport destinations are
+selected by sector index before Thing order, clearing the fourth breadth batch's
+MAP06 Nightmare recording in full (2,400 tics and RNG). Slide rays also use the
+nudged block-boundary origin for intercepts; all three early MAP03 movement
+failures now match their complete comparison windows and gameplay RNG.
+E4M6's full 6,622-tic replay also matches state and RNG after the same slide
+correction, bringing the fourth breadth batch to 272/272 verified matches.
 
 The source-aligned corrections cover:
 
@@ -347,7 +355,7 @@ at the first mismatch.
 Blood effects preserve movement, support, lookup state, visibility, and thinker
 order through binary snapshots. Monsters also persist their original spawn
 points for respawning. Save format is now **25** and netplay keyframe format
-**12**; formats 21/8 from the pushed checkpoint and intermediate 22/9, 23/10, and 24/11 are
+**12**; earlier formats 21/8, 22/9, 23/10, and 24/11 are
 incompatible. Binary round-trip regressions pass.
 
 ## Remaining quick-set frontiers
@@ -409,27 +417,27 @@ skills and categories eligible. These samples extend coverage of the complete
 | nightmare_current / v60 | 68/68 | 66 | 2 | complete |
 | nightmare_split_death / v53 | 68/68 | 62 | 6 | complete |
 | nightmare_latest / v47 | 68/68 | 56 | 12 | complete |
-| remaining / v58 | 372/3817 | 314 | 55 | running |
+| remaining / v58 | 406/3817 | 337 | 66 | running |
 | breadth_four / v50 | 272/272 | 241 | 31 | complete |
 | breadth_three / v46 | 272/272 | 238 | 34 | complete |
 
 The third breadth selection, with its recorded newer follow-ups, has
 **272/272 strict matches**.
 The fourth breadth selection, with completed targeted follow-ups, has
-**270/272 strict matches**.
+**272/272 strict matches**.
 The full remaining-corpus job continues independently.
 
 ## UV-Max sweep and reference limitations
 
 The latest completed 68-map combat phase, with newer targeted results, is `tmp/compet-n-continue-combat-v34/summary.json`.
-1 of its failures also diverge in gameplay RNG. Later fixes can improve
+Its remaining failure matches gameplay RNG. Later fixes can improve
 these results, so reruns must use their recorded binary hash.
 
 | Game | Combat match | State mismatch |
 | --- | ---: | ---: |
 | Ultimate Doom | 35 | 1 |
-| Doom II | 31 | 1 |
-| Total | **66** | **2** |
+| Doom II | 32 | 0 |
+| Total | **67** | **1** |
 
 `DOOMU-E4M8-U48GLICH-bdc56641f6c7.lmp` crashes the original reference binary
 before GD-DOOM is invoked. It remains eligible in the full manifest and is
@@ -448,5 +456,4 @@ unchanged. The diagnostic is retained at
 
 | Map | First state tic | Field | First RNG tic |
 | --- | ---: | --- | ---: |
-| MAP15 | 10583 | `root.mobjs[67].ceilingz` | 11035 |
 | E3M5 | 2343 | `root.specials[5].topheight` | matches |
