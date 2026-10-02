@@ -116,24 +116,27 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but it is b
 
 ## Original Doom Demo Compatibility
 
-The completed COMPET-N verification on October 1, 2026 covers **4,646 eligible
-single-player recordings** from the 2019-01-21 archive: 2,411 Ultimate Doom and
-2,235 Doom II demos across all 68 starting maps, including speedruns, Nightmare,
-Tyson, Pacifist, UV Max, UV Fast, UV Respawn, and No Monsters recordings.
+The COMPET-N inventory contains **4,646 eligible single-player recordings**:
+2,411 Ultimate Doom and 2,235 Doom II demos across all 68 starting maps,
+including speedruns, Nightmare, Tyson, Pacifist, UV Max, UV Fast, UV Respawn,
+and No Monsters recordings.
 
-- **4,602 recordings pass** strict per-tic gameplay state comparison against the
-  original Linux Doom reference, with independently matching gameplay RNG.
-- **44 documented exclusions** retain their raw mismatches or reference errors:
-  17 original-reference crashes, 13 door/platform structure corruption cases,
-  13 unused uninitialized ceiling-field cases, and one timed door that uses
-  uninitialized memory. Exclusions do not count as passes.
-- **Zero pending recordings or unexplained ordinary desyncs** remain in this corpus.
+The latest v102 follow-up fixes all **13 door/platform recordings**, which now
+strictly match the original game and independently audited gameplay RNG.
+All **13 unused-ceiling recordings** also pass: six strictly and seven with an
+opt-in semantic comparison of the unused `topheight` field on a downward
+`lowerAndCrush` ceiling. Raw strict mismatches remain separate. All **101 normal validation
+fixtures**, the full Go suite, and fourteen Python corpus tests pass.
+
+**18 exclusions remain**: seventeen original-reference crashes and one timed
+door that uses uninitialized memory. The full v102 corpus recheck is running.
+The completed v101 baseline was **4,602 strict passes and 44 exclusions**;
+those historical passes are not fresh v102 coverage.
 
 Comparisons run until the original replay ends or the first player death,
-including the death tic. All 101 normal validation fixtures also pass state and
-RNG checks; the full Go suite and twelve Python corpus tests pass. These results
-apply to the verified corpus and comparison windows, rather than every possible
-demo, mod, or original-engine glitch.
+including the death tic. Strict comparison remains the default; the corpus
+runner's `--semantic-unused-ceiling-fields` option enables the limited semantic
+policy and still requires matching gameplay RNG.
 
 See the [corpus and verification details](demos/COMPET-N.md),
 [per-recording results](demos/COMPET-N-results.json),

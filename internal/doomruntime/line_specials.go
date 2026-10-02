@@ -1795,8 +1795,10 @@ func (g *game) tickPlat(sec int, pt *platThinker) {
 			g.setSectorFloorHeight(sec, cur)
 		}
 	case platStatusWaiting:
-		pt.count--
-		if pt.count > 0 {
+		pt.count = int(int32(pt.count) - 1)
+		// T_PlatRaise uses !--count: a negative wait produced by a manual
+		// door's platform cast keeps counting down instead of restarting.
+		if pt.count != 0 {
 			return
 		}
 		if g.sectorFloor[sec] == pt.low {

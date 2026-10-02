@@ -1,6 +1,42 @@
-# Large original-game demo corpus
+# Current exclusion follow-ups — v102, 2026-10-01
 
-Current eligible corpus: **4,646 recordings**. Verification is complete on the
+Both requested follow-ups are implemented and verified. All **13 door/platform
+recordings strictly match state and independently audited gameplay RNG** through
+the full comparison window. Manual raise doors now update the platform's wait
+field as the original does, and waiting platforms resume only when their 32-bit
+countdown reaches exactly zero. No invalid structure access is needed.
+
+All **13 unused-ceiling recordings** also match state and RNG: six strictly and
+seven with the new opt-in semantic comparison. The comparator ignores only
+`topheight` when both records are downward `lowerAndCrush` ceilings (kind
+`ceiling`, type 2, direction -1). Strict comparison remains the default. Raw
+strict mismatches remain recorded separately. All thirteen preserved captures
+with nonzero allocator residue also pass the new semantic comparator while
+retaining their historical strict mismatches.
+
+All **101 ordinary validation fixtures** pass strictly on v102, and the full Go
+suite and fourteen Python corpus checks pass. Save/keyframe versions remain
+26/13. **18 recordings remain excluded**: seventeen original-reference crashes
+and the MAP27 timed door that uses uninitialized memory.
+
+The v102 full-corpus recheck is running with twelve workers, nice 19, idle I/O,
+no write cap, and traces on `/media/dist/Comedy-SSD/Scratch/GD-DOOM`. Its frozen
+partition has 102 current-runtime verified recordings (95 strict and seven
+semantic-only), eighteen exclusions, and 4,526 queued recordings. The prior
+4,602 strict passes are a completed **v101 baseline**, not fresh v102 coverage.
+Evidence and exact per-input accounting are in `current_runtime_verification`
+of [COMPET-N-results.json](COMPET-N-results.json). The old complete result is
+preserved in `v101_baseline_verification`.
+
+To enable the semantic policy in a corpus run, add
+`--semantic-unused-ceiling-fields` to `scripts/demo_trace_compare_all.py`.
+The lower-level comparator flag is `-ignore-unused-ceiling-topheight`.
+Semantic success reports separately; producer failures, live-field differences,
+length differences, and gameplay RNG mismatches still fail.
+
+# Completed v101 baseline — 2026-10-01
+
+The completed v101 verification covers **4,646 recordings** on the
 exact v101 runtime under the [documented exclusions](COMPET-N-exclusions.md): **4,602 strict
 state and independently audited gameplay RNG matches**, **44 exclusions**, and
 **zero pending or unexplained ordinary desyncs**. Exclusions retain raw
@@ -22,7 +58,7 @@ the separately proven original-reference crash remains a raw error. The full
 Go suite and all twelve Python corpus tests pass. Save/keyframe versions remain
 26/13. Published runtime fixes: `21cc3ce`; archive recovery: `7ee0d56`.
 
-The current machine-readable evidence is `current_runtime_verification` in
+The v101 machine-readable evidence is `v101_baseline_verification` in
 [COMPET-N-results.json](COMPET-N-results.json). Historical phase counts below retain their original
 inventory, queue, runtime, and exclusion accounting.
 Evidence: `tmp/compet-n/archive-recovery-v101.json`; follow-up selection:

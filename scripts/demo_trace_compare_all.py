@@ -47,6 +47,32 @@ def audit_rng(left, right):
     return None
 
 
+def semantic_ceiling_comparison(comparator, left, right, log_path, rng_audited, rng_diff):
+    """Keep the strict result; run one explicitly limited semantic comparison."""
+    command = [str(comparator), "-left", str(left), "-right", str(right),
+               "-ignore-unused-ceiling-topheight"]
+    with log_path.open("w") as log:
+        proc = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT)
+    report = log_path.read_text()
+    state_match = proc.returncode == 0 and re.fullmatch(r"semantic traces match lines=\d+\s*", report) is not None
+    status = "match" if state_match and rng_audited and rng_diff is None else (
+        "rng-mismatch" if state_match and rng_diff is not None else (
+            "mismatch" if report.startswith(("mismatch ", "length mismatch ")) else "error"))
+    return {"mode": "unused-ceiling-topheight", "status": status,
+            "exit_code": proc.returncode, "report": report,
+            "gameplay_rng_audited": rng_audited, "gameplay_rng_mismatch": rng_diff,
+            "allowed_difference": {"kind": "ceiling", "type": 2, "direction": -1, "field": "topheight"},
+            "log": display_path(log_path)}
+
+
+def comparison_passes(result):
+    """Strict and semantic matches remain distinct in the recorded results."""
+    semantic = result.get("semantic_comparison", {})
+    return result["status"] == "match" or (result["status"] == "mismatch" and
+        semantic.get("status") == "match" and semantic.get("gameplay_rng_audited") is True and
+        semantic.get("gameplay_rng_mismatch") is None)
+
+
 def sha256(path):
     with path.open("rb") as file:
         return hashlib.file_digest(file, "sha256").hexdigest()
@@ -176,6 +202,8 @@ def main():
                         help="Delete large matching traces after RNG audit; keep logs and mismatches")
     parser.add_argument("--compress-retained-traces", action="store_true",
                         help="Gzip complete retained traces after comparison and RNG audit")
+    parser.add_argument("--semantic-unused-ceiling-fields", action="store_true",
+                        help="Also compare strict mismatches ignoring only unused downward lowerAndCrush topheight; retain raw strict outcomes and report semantic matches separately")
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
@@ -245,6 +273,10 @@ def main():
             result.update(reference_config=display_path(reference_config),
                           reference_config_sha256=sha256(reference_config),
                           reference_zone_mib=int(zone[1]) if zone else None)
+        if args.semantic_unused_ceiling_fields and status == "mismatch":
+            result["semantic_comparison"] = semantic_ceiling_comparison(
+                comparator, out / "reference-check.jsonl", out / f"gddoom-{demo.name}.jsonl",
+                out / "semantic-compare.log", result["gameplay_rng_audited"], rng_diff)
         if args.discard_matching_traces and status == "match":
             (out / "reference-check.jsonl").unlink()
             (out / f"gddoom-{demo.name}.jsonl").unlink()
@@ -254,22 +286,27 @@ def main():
         (out / "result.json").write_text(json.dumps(result, indent=2) + "\n")
         first = map_error or (report.splitlines()[0] if report else "see harness.log")
         rng_report = (rng_diff or "match") if result["gameplay_rng_audited"] else "not audited"
-        print(f"{demo.stem}: {status}: {first}; RNG={rng_report}", flush=True)
+        semantic_report = ("; semantic=" + result["semantic_comparison"]["status"]) if "semantic_comparison" in result else ""
+        print(f"{demo.stem}: {status}: {first}; RNG={rng_report}{semantic_report}", flush=True)
         return result
 
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(compare, demos))
     summary = {"input_sha256": hashes, "results": results}
+    if args.semantic_unused_ceiling_fields:
+        summary["comparison_policy"] = {"strict_results_preserved": True,
+                                        "semantic_mode": "unused-ceiling-topheight"}
     if args.manifest:
         summary["manifest"] = display_path(args.manifest.resolve())
         summary["manifest_sha256"] = sha256(args.manifest)
     (args.out_root / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     with (args.out_root / "summary.tsv").open("w") as file:
-        file.write("demo\tstatus\tfirst_report\tfirst_rng_mismatch\n")
+        file.write("demo\tstatus\tfirst_report\tfirst_rng_mismatch" + ("\tsemantic_status" if args.semantic_unused_ceiling_fields else "") + "\n")
         for item in results:
             first = item["replay_map_error"] or (item["report"].splitlines()[0] if item["report"] else "")
-            file.write(f"{item['demo']}\t{item['status']}\t{first}\t{item['gameplay_rng_mismatch']}\n")
-    return 0 if all(item["status"] == "match" for item in results) else 1
+            semantic_column = ("\t" + item.get("semantic_comparison", {}).get("status", "")) if args.semantic_unused_ceiling_fields else ""
+            file.write(f"{item['demo']}\t{item['status']}\t{first}\t{item['gameplay_rng_mismatch']}{semantic_column}\n")
+    return 0 if all(comparison_passes(item) for item in results) else 1
 
 
 if __name__ == "__main__":

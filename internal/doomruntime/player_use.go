@@ -703,6 +703,20 @@ func (g *game) evVerticalDoor(lineIdx int, isPlayer bool) bool {
 		// Manual open-door specials replace sector->specialdata but leave the
 		// prior door linked as an active thinker in the original runtime.
 		g.extraDoors = append(g.extraDoors, d)
+	} else if pt := g.plats[sec]; pt != nil {
+		switch ld.Special {
+		case 1, 26, 27, 28, 117:
+			// Vanilla casts sector->specialdata to vldoor_t even when it
+			// belongs to a platform. door.direction aliases plat.wait in
+			// the original layout. Reproduce the field transition without
+			// an invalid pointer access or a new door thinker/sound.
+			if pt.wait == -1 {
+				pt.wait = 1
+			} else if isPlayer {
+				pt.wait = -1
+			}
+			return true
+		}
 	}
 
 	d := g.allocDoorThinker(sec)

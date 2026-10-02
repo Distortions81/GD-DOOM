@@ -30,6 +30,44 @@ def demo_zip(member, data):
 
 
 class CorpusTests(unittest.TestCase):
+    def test_semantic_ceiling_results_preserve_strict_failure_and_require_rng(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "semantic-compare.log"
+            def compare(command, stdout, stderr):
+                self.assertEqual(command[-1], "-ignore-unused-ceiling-topheight")
+                stdout.write("semantic traces match lines=27\n")
+                return subprocess.CompletedProcess(command, 0)
+            with mock.patch.object(runner.subprocess, "run", side_effect=compare):
+                for audited, rng_diff, expected in [
+                        (True, None, "match"), (False, None, "error"),
+                        (True, {"gametic": 22, "reference": 12, "gddoom": 13}, "rng-mismatch")]:
+                    with self.subTest(audited=audited, rng_diff=rng_diff):
+                        semantic = runner.semantic_ceiling_comparison(
+                            root / "comparator", root / "left", root / "right", log, audited, rng_diff)
+                        self.assertEqual(semantic["status"], expected)
+                        raw = {"status": "mismatch", "report": "mismatch topheight", "semantic_comparison": semantic}
+                        self.assertEqual(runner.comparison_passes(raw), expected == "match")
+                        self.assertEqual(raw["status"], "mismatch")
+                        self.assertEqual(raw["report"], "mismatch topheight")
+                        raw["status"] = "error"
+                        self.assertFalse(runner.comparison_passes(raw))
+
+    def test_semantic_ceiling_mismatch_and_process_error_are_not_passes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            log = root / "semantic-compare.log"
+            for text, code, status in [("mismatch line=28 path=root.specials[0].speed\n", 1, "mismatch"),
+                                       ("read left: incomplete trace\n", 1, "error"),
+                                       ("semantic traces match lines=27\n", 1, "error")]:
+                def compare(command, stdout, stderr):
+                    stdout.write(text)
+                    return subprocess.CompletedProcess(command, code)
+                with self.subTest(text=text), mock.patch.object(runner.subprocess, "run", side_effect=compare):
+                    result = runner.semantic_ceiling_comparison(root / "cmp", root / "l", root / "r", log, True, None)
+                    self.assertEqual(result["status"], status)
+                    self.assertFalse(runner.comparison_passes({"status": "mismatch", "semantic_comparison": result}))
+
     @unittest.skipUnless(shutil.which("7z") or shutil.which("7zz"), "7-Zip unavailable")
     def test_import_legacy_implode_and_arj_snapshot_entries(self):
         fixtures = Path(__file__).parent / "testdata/compet-n-legacy"

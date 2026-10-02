@@ -2,7 +2,7 @@
   "date": "2026-09-30",
   "archive_url": "https://compet-n.gamers.org/public/compet-n/compet-n_2019-01-21.zip",
   "eligible_recordings": 4646,
-  "full_manifest_swept": true,
+  "full_manifest_swept": false,
   "comparison_window": "Original termination or first player death",
   "normalization_changed": false,
   "strict_gameplay_rng_audit": true,
@@ -153216,14 +153216,22 @@
   "test_checks": {
     "go_suite": {
       "status": "pass",
-      "binary_phase": "v101",
-      "log": "/tmp/gddoom-continue-all-v101.log"
+      "binary_phase": "v102",
+      "log": "/tmp/gddoom-all-v102.log"
     },
     "python_corpus_checks": {
-      "tests": 12,
+      "tests": 14,
       "status": "pass",
-      "log": "/tmp/gddoom-python-checks-archive-recovery-v101.log",
+      "log": "/tmp/gddoom-python-exclusion-v102.log",
       "command": "python3 -B scripts/test_demo_corpus.py"
+    },
+    "platform_regression_against_v101": {
+      "status": "expected_fail",
+      "log": "/tmp/gddoom-exclusion-regression-red-v101.log"
+    },
+    "targeted_go_checks": {
+      "status": "pass",
+      "log": "/tmp/gddoom-exclusion-targeted-v102.log"
     }
   },
   "breadth_batch_progress": {
@@ -166437,7 +166445,7 @@
     ],
     "note": "Latest full repository sweep plus reruns of the two checks interrupted by a live harness edit; raw interrupted results are preserved."
   },
-  "checkpoint_note": "The expanded 4646-recording COMPET-N corpus is complete on the exact v101 runtime under the documented exclusions: 4602 strict state and independently audited gameplay RNG matches, 44 retained original-engine limitations, zero pending or unexplained ordinary failures. All 101 normal validation fixtures pass; the separate original-reference crash remains a raw error. Full Go suite and all twelve Python corpus tests pass. Runtime fixes and archive recovery are published on main. Save/keyframe schemas remain 26/13. The twelve recovered recordings were rerun using the exact baseline comparator after an earlier attempt rebuilt it with different VCS metadata; that earlier attempt contributes zero accepted pinned matches.",
+  "checkpoint_note": "The two requested exclusion follow-ups are verified on v102. Current v102 corpus evidence covers 102 inputs (95 strict state/RNG matches, 7 semantic-only state/RNG matches). Eighteen accepted exclusions and 4526 queued current-runtime comparisons complete the 4646-input partition. Historical v101 passes are not reused as v102 passes.",
   "reference_large_trace_capture": {
     "raw_bytes": 9325412691,
     "lines": 133447,
@@ -166469,58 +166477,10 @@
         "note": "After resolving the gametic-0 2 MiB startup allocation limit with the supported isolated 16 MiB reference config, the unchanged original in retail E4M1 mode crashes at tic 91667 in PIT_CheckLine while a Demon chases. GDB shows spechit capacity 8 and corrupted index -150406339. Raw error (139), incomplete trace and absent complete RNG audit retained; never a passing comparison. Frozen v101 queue remains unchanged."
       },
       {
-        "demo": "DOOMU-E1M1-EP1-2220-73499049af7e.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-ep1-platform-cast-debug-v100/diagnostic-result.json",
-        "note": "At tic 20013 in E1M4, manual line 564 (special 27) casts sector 41 active T_PlatRaise to a door and overwrites plat.wait from 105 to -1. GDB watchpoint proves the invalid structure write. Raw strict mismatch and matching gameplay RNG retained; never a passing comparison. Classified after immutable v100 queue selection."
-      },
-      {
-        "demo": "DOOMU-E3M5-t3m51230-5f13e6939c65.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-t3m51230-5f13e6939c65/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 27215 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged."
-      },
-      {
-        "demo": "DOOMU-E3M5-t3m5-827-3b8ef8f20705.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-t3m5-827-3b8ef8f20705/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 18715 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged."
-      },
-      {
-        "demo": "DOOMU-E3M5-T3M5-736-f6996424dd26.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-T3M5-736-f6996424dd26/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 17113 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged."
-      },
-      {
-        "demo": "DOOMU-E3M7-T3M7-800-18e3e502d35c.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-t800-debug-v100/diagnostic-result.json",
-        "note": "At tic 1580 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB watchpoint proves the invalid structure access. Strict mismatch and matching gameplay RNG remain recorded; never a passing comparison. Classified after immutable v100 queue selection."
-      },
-      {
-        "demo": "DOOMU-E3M5-E3M5-528-25f3fea7e995.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-E3M5-528-25f3fea7e995/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 13616 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged."
-      },
-      {
-        "demo": "DOOMU-E3M5-F3m5-617-a6011667ab09.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-F3m5-617-a6011667ab09/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 14693 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged."
-      },
-      {
         "demo": "DOOMU-E4M1-R4M1-525-a6d57dc4666a.lmp",
         "category": "original reference crash",
         "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E4M1-R4M1-525-a6d57dc4666a/harness.log",
         "note": "The original reference exits with SIGSEGV (139) before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable v98 Scratch queue was selected; raw error retained and never a passing comparison."
-      },
-      {
-        "demo": "DOOMU-E3M5-E3m5-520-0f3d02dc5b80.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-E3m5-520-0f3d02dc5b80/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 11762 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged."
       },
       {
         "demo": "DOOMU-E4M1-F4M1-426-569d92cffbed.lmp",
@@ -166535,76 +166495,10 @@
         "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; raw error retained, never a passing comparison."
       },
       {
-        "demo": "DOOMU-E3M5-R3M5-417-a3b5b72e5e82.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-R3M5-417-a3b5b72e5e82/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 9757 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged."
-      },
-      {
-        "demo": "DOOMU-E3M5-t3m5-427-dd086626a5ca.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-t3m5-427-dd086626a5ca/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 9932 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged."
-      },
-      {
-        "demo": "DOOMU-E3M5-E3M5-423-32b6c2d9672e.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-E3M5-423-32b6c2d9672e/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 10322 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged."
-      },
-      {
         "demo": "DOOMU-E4M1-R4M1-344-f647cedb3719.lmp",
         "category": "original reference crash",
         "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E4M1-R4M1-344-f647cedb3719/harness.log",
         "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; the raw error is retained and is not a passing comparison."
-      },
-      {
-        "demo": "DOOMU-E3M5-t3m5-352-8d74e86f0b0e.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-t3m5-352-8d74e86f0b0e/unused-field-diagnostic.json",
-        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 8283 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; the immutable execution manifest is unchanged."
-      },
-      {
-        "demo": "DOOMU-E1M4-R1M4-314-966f0636af13.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e1m4-platform-cast-r314-debug-v96/diagnostic-result.json",
-        "note": "At tic 6304 manual line 564 (special 27) casts sector 41 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Raw strict mismatch and later gameplay RNG mismatch at tic 6450 remain recorded; not a passing comparison. Classified after immutable eight-worker v96 queue selection."
-      },
-      {
-        "demo": "DOOMU-E3M5-E3M5-316-7cde201b0e6e.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E3M5-E3M5-316-7cde201b0e6e/unused-field-diagnostic.json",
-        "note": "The strict mismatch concerns ceiling.topheight, unused and uninitialized by lowerAndCrush. A diagnostic replacing only this unused field matches all 7056 compared tics; gameplay RNG matches. Raw strict mismatch stays recorded. Classified after immutable v95 queue selection; not a strict passing comparison."
-      },
-      {
-        "demo": "DOOMU-E3M5-r3m5-244-7ac2652e0f78.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E3M5-r3m5-244-7ac2652e0f78/unused-field-diagnostic.json",
-        "note": "The strict mismatch concerns ceiling.topheight, unused and uninitialized by lowerAndCrush. A diagnostic replacing only that unused field matches all 6035 compared tics; gameplay RNG matches. Raw strict mismatch remains recorded. Classified after immutable v95 queue selection; not a strict passing comparison."
-      },
-      {
-        "demo": "DOOMU-E3M7-F3M7-231-ea9f2bda9899.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast231-debug-v95/diagnostic-result.json",
-        "note": "At tic 3318 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
-      },
-      {
-        "demo": "DOOMU-E3M7-e3m7-221-9a58cc073080.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-221-debug-v95/diagnostic-result.json",
-        "note": "At tic 3704 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
-      },
-      {
-        "demo": "DOOMU-E3M7-F3M7-243-6127dad8cc65.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast243-debug-v95/diagnostic-result.json",
-        "note": "At tic 4538 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
-      },
-      {
-        "demo": "DOOMU-E3M7-f3m7-225-69af3a73a317.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast225-debug-v95/diagnostic-result.json",
-        "note": "At tic 3191 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
       },
       {
         "demo": "DOOMU-E4M1-E4M1-216-b60348996d54.lmp",
@@ -166637,24 +166531,6 @@
         "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison."
       },
       {
-        "demo": "DOOMU-E3M7-E3M7-223-38fa61282ccf.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-223-debug-v93/diagnostic-result.json",
-        "note": "At tic 3528 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms this excluded structure corruption. Strict state and RNG mismatches remain recorded; not a passing comparison."
-      },
-      {
-        "demo": "DOOMU-E3M7-e3m7-209-64e5951c47a3.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-209-debug-v93/diagnostic-result.json",
-        "note": "At tic 3470 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Retained strict mismatch and later RNG mismatch at 3566 remain recorded; not a passing comparison. Classified after immutable v93 queue selection."
-      },
-      {
-        "demo": "DOOMU-E3M7-e3m7-219-66c4dc4fe127.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-219-debug-v93/diagnostic-result.json",
-        "note": "At tic 3651 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Retained strict mismatch and later RNG mismatch at 3756 remain recorded; not a passing comparison. Classified after immutable v93 queue selection."
-      },
-      {
         "demo": "DOOMU-E4M1-R4M1-152-bb8176145739.lmp",
         "category": "original reference crash",
         "evidence": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-R4M1-152-bb8176145739/harness.log",
@@ -166665,12 +166541,6 @@
         "category": "original reference crash",
         "evidence": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-f4m1-223-43133ef22cd1/harness.log",
         "note": "The original reference exits with SIGSEGV during reference tracing before GD-DOOM playback. Exact cause is unclassified. Classified after immutable v93 queue selection; this is not a passing comparison."
-      },
-      {
-        "demo": "DOOMU-E3M7-R3M7-210-18da98ebe969.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-debug-v93/diagnostic-result.json",
-        "note": "At tic 2906 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Classified after immutable v93 queue selection. The retained strict state mismatch and RNG mismatch at 2977 remain recorded; this is not a passing comparison."
       },
       {
         "demo": "DOOM2-MAP02-LV02-___-2e0d04c2fe92.lmp",
@@ -166697,28 +166567,10 @@
         "note": "Original reference SIGSEGV before GD-DOOM playback. Discovered near the v84 sweep stop; exact cause is unclassified. The v86 selection was already saved before this additional accepted limitation was classified."
       },
       {
-        "demo": "DOOMU-E1M4-E1M4-024-c54d049c73b9.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E1M4-E1M4-024-c54d049c73b9/result.json",
-        "note": "At tic 689 EV_VerticalDoor casts an active platform to a door and writes direction=-1 into platform.wait. Emulating this invalid structure access is outside the requested work."
-      },
-      {
         "demo": "DOOMU-E4M1-r4m1-137-56623bb117d6.lmp",
         "category": "original reference crash",
         "evidence": "tmp/compet-n-continue-current-remainder-v89/DOOMU-E4M1-r4m1-137-56623bb117d6/harness.log",
         "note": "The original Linux reference exits with SIGSEGV (139) during reference tracing before any GD-DOOM playback. Classified after the v89 queue was frozen; exact crash cause is unclassified and this is not a passing comparison."
-      },
-      {
-        "demo": "DOOMU-E1M4-E1M4-111-af18a5d8e72a.lmp",
-        "category": "original engine mover structure corruption",
-        "evidence": "tmp/compet-n-continue-e1m4-platform-cast-debug-v89/diagnostic-result.json",
-        "note": "At tic 2157 manual line 564 (special 27) casts sector 41 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid cast. Classified after the v89 execution manifest was saved; retained strict mismatch and matching RNG remain recorded."
-      },
-      {
-        "demo": "DOOMU-E3M5-e3m5-308-d38186ff56de.lmp",
-        "category": "unused uninitialized original reference field",
-        "evidence": "tmp/compet-n-lowercrush-followup/DOOMU-E3M5-e3m5-308-d38186ff56de/unused-field-diagnostic.json",
-        "note": "The retained strict mismatch concerns ceiling.topheight, unused by lowerAndCrush; all 7004 gameplay RNG indices match. No comparator relaxation or strict pass is claimed."
       },
       {
         "demo": "DOOM2-MAP27-LV27-045-39985710cb55.lmp",
@@ -166727,7 +166579,219 @@
         "note": "P_SpawnDoorCloseIn30 leaves topheight/topwait uninitialized. Manual reopening at tic 1082 reads allocator residue (1330266433 / 16908801). Gameplay RNG matches the retained comparison; emulating allocator contents is outside the requested scope."
       }
     ],
-    "accounting": "Preserve all eligible recordings, raw strict statuses, hashes, and evidence. Accepted limitations are separate from passing comparisons. Do not exempt ordinary unexplained mismatches or GD-DOOM/harness crashes under this policy."
+    "accounting": "Keep strict matches, semantic-only state/RNG matches, exclusions, and pending current-runtime checks separate. A semantic result never changes the raw strict status or counts as a strict pass. Original v101 results and policy remain historical evidence.",
+    "resolved_limitations": [
+      {
+        "demo": "DOOMU-E1M1-EP1-2220-73499049af7e.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-ep1-platform-cast-debug-v100/diagnostic-result.json",
+        "note": "At tic 20013 in E1M4, manual line 564 (special 27) casts sector 41 active T_PlatRaise to a door and overwrites plat.wait from 105 to -1. GDB watchpoint proves the invalid structure write. Raw strict mismatch and matching gameplay RNG retained; never a passing comparison. Classified after immutable v100 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M1-EP1-2220-73499049af7e/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-T3M7-800-18e3e502d35c.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-t800-debug-v100/diagnostic-result.json",
+        "note": "At tic 1580 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB watchpoint proves the invalid structure access. Strict mismatch and matching gameplay RNG remain recorded; never a passing comparison. Classified after immutable v100 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-T3M7-800-18e3e502d35c/result.json"
+      },
+      {
+        "demo": "DOOMU-E1M4-R1M4-314-966f0636af13.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e1m4-platform-cast-r314-debug-v96/diagnostic-result.json",
+        "note": "At tic 6304 manual line 564 (special 27) casts sector 41 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Raw strict mismatch and later gameplay RNG mismatch at tic 6450 remain recorded; not a passing comparison. Classified after immutable eight-worker v96 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M4-R1M4-314-966f0636af13/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-F3M7-231-ea9f2bda9899.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast231-debug-v95/diagnostic-result.json",
+        "note": "At tic 3318 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-F3M7-231-ea9f2bda9899/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-e3m7-221-9a58cc073080.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-221-debug-v95/diagnostic-result.json",
+        "note": "At tic 3704 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-e3m7-221-9a58cc073080/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-F3M7-243-6127dad8cc65.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast243-debug-v95/diagnostic-result.json",
+        "note": "At tic 4538 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-F3M7-243-6127dad8cc65/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-f3m7-225-69af3a73a317.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast225-debug-v95/diagnostic-result.json",
+        "note": "At tic 3191 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-f3m7-225-69af3a73a317/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-E3M7-223-38fa61282ccf.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-223-debug-v93/diagnostic-result.json",
+        "note": "At tic 3528 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms this excluded structure corruption. Strict state and RNG mismatches remain recorded; not a passing comparison.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-E3M7-223-38fa61282ccf/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-e3m7-209-64e5951c47a3.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-209-debug-v93/diagnostic-result.json",
+        "note": "At tic 3470 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Retained strict mismatch and later RNG mismatch at 3566 remain recorded; not a passing comparison. Classified after immutable v93 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-e3m7-209-64e5951c47a3/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-e3m7-219-66c4dc4fe127.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-219-debug-v93/diagnostic-result.json",
+        "note": "At tic 3651 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Retained strict mismatch and later RNG mismatch at 3756 remain recorded; not a passing comparison. Classified after immutable v93 queue selection.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-e3m7-219-66c4dc4fe127/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M7-R3M7-210-18da98ebe969.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e3m7-platform-cast-debug-v93/diagnostic-result.json",
+        "note": "At tic 2906 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Classified after immutable v93 queue selection. The retained strict state mismatch and RNG mismatch at 2977 remain recorded; this is not a passing comparison.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-R3M7-210-18da98ebe969/result.json"
+      },
+      {
+        "demo": "DOOMU-E1M4-E1M4-024-c54d049c73b9.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E1M4-E1M4-024-c54d049c73b9/result.json",
+        "note": "At tic 689 EV_VerticalDoor casts an active platform to a door and writes direction=-1 into platform.wait. Emulating this invalid structure access is outside the requested work.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M4-E1M4-024-c54d049c73b9/result.json"
+      },
+      {
+        "demo": "DOOMU-E1M4-E1M4-111-af18a5d8e72a.lmp",
+        "category": "original engine mover structure corruption",
+        "evidence": "tmp/compet-n-continue-e1m4-platform-cast-debug-v89/diagnostic-result.json",
+        "note": "At tic 2157 manual line 564 (special 27) casts sector 41 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid cast. Classified after the v89 execution manifest was saved; retained strict mismatch and matching RNG remain recorded.",
+        "resolution": "Bounded platform wait/direction emulation and exact-zero countdown; all 13 full v102 state/RNG comparisons strictly match.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M4-E1M4-111-af18a5d8e72a/result.json"
+      }
+    ],
+    "semantic_comparison_cases": [
+      {
+        "demo": "DOOMU-E3M5-t3m51230-5f13e6939c65.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-t3m51230-5f13e6939c65/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 27215 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m51230-5f13e6939c65/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-t3m5-827-3b8ef8f20705.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-t3m5-827-3b8ef8f20705/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 18715 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-827-3b8ef8f20705/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-T3M5-736-f6996424dd26.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-T3M5-736-f6996424dd26/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 17113 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-T3M5-736-f6996424dd26/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-E3M5-528-25f3fea7e995.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-E3M5-528-25f3fea7e995/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 13616 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3M5-528-25f3fea7e995/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-F3m5-617-a6011667ab09.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-F3m5-617-a6011667ab09/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 14693 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-F3m5-617-a6011667ab09/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-E3m5-520-0f3d02dc5b80.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-E3m5-520-0f3d02dc5b80/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 11762 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3m5-520-0f3d02dc5b80/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-R3M5-417-a3b5b72e5e82.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-R3M5-417-a3b5b72e5e82/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 9757 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-R3M5-417-a3b5b72e5e82/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-t3m5-427-dd086626a5ca.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-t3m5-427-dd086626a5ca/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 9932 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-427-dd086626a5ca/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-E3M5-423-32b6c2d9672e.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-E3M5-423-32b6c2d9672e/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 10322 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3M5-423-32b6c2d9672e/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-t3m5-352-8d74e86f0b0e.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-t3m5-352-8d74e86f0b0e/unused-field-diagnostic.json",
+        "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 8283 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; the immutable execution manifest is unchanged.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-352-8d74e86f0b0e/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-E3M5-316-7cde201b0e6e.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E3M5-E3M5-316-7cde201b0e6e/unused-field-diagnostic.json",
+        "note": "The strict mismatch concerns ceiling.topheight, unused and uninitialized by lowerAndCrush. A diagnostic replacing only this unused field matches all 7056 compared tics; gameplay RNG matches. Raw strict mismatch stays recorded. Classified after immutable v95 queue selection; not a strict passing comparison.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3M5-316-7cde201b0e6e/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-r3m5-244-7ac2652e0f78.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E3M5-r3m5-244-7ac2652e0f78/unused-field-diagnostic.json",
+        "note": "The strict mismatch concerns ceiling.topheight, unused and uninitialized by lowerAndCrush. A diagnostic replacing only that unused field matches all 6035 compared tics; gameplay RNG matches. Raw strict mismatch remains recorded. Classified after immutable v95 queue selection; not a strict passing comparison.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-r3m5-244-7ac2652e0f78/result.json"
+      },
+      {
+        "demo": "DOOMU-E3M5-e3m5-308-d38186ff56de.lmp",
+        "category": "unused uninitialized original reference field",
+        "evidence": "tmp/compet-n-lowercrush-followup/DOOMU-E3M5-e3m5-308-d38186ff56de/unused-field-diagnostic.json",
+        "note": "The retained strict mismatch concerns ceiling.topheight, unused by lowerAndCrush; all 7004 gameplay RNG indices match. No comparator relaxation or strict pass is claimed.",
+        "resolution": "Opt-in comparison of unused downward lowerAndCrush topheight; raw strict results retained. All 13 current v102 windows match state/RNG under this policy; all 13 preserved nonzero-residue captures also pass semantic comparison.",
+        "current_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-e3m5-308-d38186ff56de/result.json"
+      }
+    ]
   },
   "pending_new_frontiers": [],
   "next_sweep_resources": {
@@ -166735,13 +166799,13 @@
     "user_instruction": "sounds good, lets do it for next round",
     "next_round_workers": 12,
     "current_round_workers": 12,
-    "current_round_runtime": "v101",
+    "current_round_runtime": "v102",
     "nice": 19,
     "ioschedulingclass": "idle",
     "read_bytes_per_second": null,
     "write_bytes_per_second": null,
     "output_parent": "/media/dist/Comedy-SSD/Scratch/GD-DOOM",
-    "timing": "Applied to the v101 validation and full sweep following the MAP30 targetless Pain Elemental fix; maintain 12 workers for future rounds unless user changes the preference.",
+    "timing": "Applied to v102 remainder revalidation after the two exclusion follow-ups; maintain twelve low-priority uncapped workers on the scratch SSD.",
     "validation": "Measure completed comparisons per minute and UI responsiveness; retain drive guard."
   },
   "reference_crash_boundary_audit": {
@@ -166752,45 +166816,33 @@
     "note": "All 16 audited captures fail before any complete first-death line; no excluded input is being dropped despite an available complete required prefix. The explicitly excluded MAP02 NoClip case is separate."
   },
   "current_tree_runtime_audit": {
-    "observed_at": "2026-10-02T00:28:13.716209+00:00",
-    "status": "fresh current-tree build exactly matches immutable sweep runtime",
-    "runtime": ".tmp/gddoom-desync-continue-v101",
-    "runtime_sha256": "6eb18684d39b169341fa553ec50df5e215fa22cfde975c54941a740d6d316ce0",
-    "fresh_build_sha256": "6eb18684d39b169341fa553ec50df5e215fa22cfde975c54941a740d6d316ce0",
-    "source_sha256": "569a6776aa74efccf47fbb672f8c3acb235f7a12b94d56a6d2bb014a5594860c",
-    "source_fingerprint_note": "Tracked application Go files and module manifests, excluding test sources. Exact rebuilt binary equality verifies the compiled application and dependencies.",
-    "head": "d42bce7edc81cb050c6851434bdde481439694fd",
-    "go_version": "go version go1.26.6 linux/amd64",
-    "build_command": "GOCACHE=/tmp/gddoom-go-cache GOMAXPROCS=4 nice -n 19 go build -p 2 -o /tmp/gddoom-current-tree-audit-v101 .",
-    "evidence": "tmp/compet-n/current-tree-runtime-audit-v101.json"
+    "status": "fresh rebuild exactly matches immutable v102 runtime",
+    "runtime": ".tmp/gddoom-desync-continue-v102",
+    "runtime_sha256": "62396cd3126f301e104361c7e59d53f3179f21e8da4e833d264bf683c038cfde",
+    "fresh_build_sha256": "62396cd3126f301e104361c7e59d53f3179f21e8da4e833d264bf683c038cfde",
+    "evidence": "tmp/compet-n/exclusion-fixes-audit-v102.json"
   },
   "current_runtime_partition_audit": {
-    "observed_at": "2026-10-02T04:36:38.029001+00:00",
-    "eligible": 4634,
-    "queued_at_selection": 3861,
-    "covered_at_selection": 729,
-    "accepted_exclusions": 44,
-    "current_policy_exclusions": 44,
-    "completed_current_queue": 3861,
-    "status_counts": {
-      "match": 3861
-    },
-    "verified_current_runtime_matches": 4590,
-    "remaining_queue": 0,
-    "full_partition_verified": true,
-    "completed_result_provenance_verified": true,
-    "runtime_sha256": "6eb18684d39b169341fa553ec50df5e215fa22cfde975c54941a740d6d316ce0",
-    "reference_and_wad_hashes_verified": {
-      "/home/dist/github/doom-source/linuxdoom-1.10/linux/linuxxdoom": "44c76e71a442cab22b42bff99c499c097ef4e4b06a5d034d9458f8d9ff2b1a7b",
-      "/home/dist/github/GD-DOOM/wads/DOOM2.WAD": "10d67824b11025ddd9198e8cfc87ca335ee6e2d3e63af4180fa9b8a471893255",
-      "/home/dist/github/GD-DOOM/wads/DOOMU.WAD": "6fdf361847b46228cfebd9f3af09cd844282ac75f3edbb61ca4cb27103ce2e7f"
-    },
-    "pinned_tool_hashes_verified": 4,
-    "isolated_reference_configs_verified": 3937,
-    "evidence": "tmp/compet-n/comedy-twelve-heap-partition-audit-v101.json"
+    "runtime": "v102",
+    "covered": 102,
+    "excluded": 18,
+    "queued": 4526,
+    "eligible": 4646,
+    "source": "tmp/compet-n/current-runtime-remainder-v102.json"
   },
   "fixes_included_in_checkpoint": true,
   "runtime_fix_checkpoint": {
+    "binary_phase": "v102",
+    "previous_verified_binary_phase": "v101",
+    "new_finding": "Manual raise doors acting on active platforms alias door.direction to plat.wait; emulate the field transition safely. Platform waiting resumes only at exactly zero after a 32-bit decrement.",
+    "new_regression_red": "/tmp/gddoom-exclusion-regression-red-v101.log",
+    "new_regression_green": "/tmp/gddoom-exclusion-targeted-v102.log",
+    "new_targeted_manifest": "tmp/compet-n/exclusion-followups-v102.json",
+    "new_targeted_full_replays_complete": true,
+    "full_corpus_verified": false,
+    "semantic_comparator_change": "Opt-in downward lowerAndCrush topheight comparison; strict remains default."
+  },
+  "previous_runtime_fix_checkpoint": {
     "binary_phase": "v101",
     "previous_verified_binary_phase": "v100",
     "new_finding": "A_PainDie can spawn three Lost Souls with a null inherited target after a MAP30 brain-spawn telefrag. They keep P_SpawnMobj angle zero and wait; only a retained explicit target enables aggression and immediate A_SkullAttack. This prevents the legacy player fallback from launching targetless skulls.",
@@ -166800,22 +166852,6 @@
     "new_targeted_manifest": "tmp/compet-n/pain-targetless-validation-v101.json",
     "new_targeted_full_replays_complete": true,
     "full_corpus_verified": true
-  },
-  "previous_runtime_fix_checkpoint": {
-    "binary_phase": "v100",
-    "previous_verified_binary_phase": "v98",
-    "previous_finding_summary": "tmp/compet-n-continue-save-skull-lift-frontiers-v98/summary.json",
-    "previous_targeted_matches": 3,
-    "new_finding": "Recorded BTS_PAUSE toggles before P_Ticker; paused tics consume replay input and ST_Ticker advances, while world thinkers, gameplay RNG and player count decay remain frozen. New maps reset playback pause. The v100 follow-up consumes pending player rebirth before the special command can pause the reloaded level.",
-    "new_finding_evidence": "tmp/compet-n-continue-pause-prefix-debug-v98/compare.log",
-    "new_regression_red": "tmp/recorded-pause-regression-red-v98.log",
-    "new_regression_green": "tmp/recorded-pause-regression-green-v99.log",
-    "new_targeted_manifest": "tmp/compet-n/recorded-pause-frontiers-v100.json",
-    "preliminary_pause_replay_phase": "v99",
-    "pending_rebirth_regression_red": "tmp/recorded-pause-reborn-regression-red-v99.log",
-    "pending_rebirth_regression_green": "tmp/recorded-pause-reborn-regression-green-v100.log",
-    "new_targeted_full_replays_complete": true,
-    "full_corpus_verified": false
   },
   "harness_fix_checkpoint": {
     "finding": "Large external demo cannot load into the original reference 2 MiB zone at gametic 0. An isolated per-run reference.cfg uses the supported mb_used=16 setting, avoiding the startup allocation limit and user-config races without changing reference binary or gameplay.",
@@ -167426,16 +167462,18 @@
     "base_eligible": 4634,
     "recovered_eligible": 12,
     "total_eligible": 4646,
-    "full_corpus_verified": true,
-    "strict_matches": 4602,
-    "accepted_exclusions": 44,
-    "remaining": 0,
+    "runtime": "v102",
+    "full_corpus_verified": false,
+    "strict_matches": 95,
+    "semantic_only_matches": 7,
+    "accepted_exclusions": 18,
+    "remaining": 4526,
     "unresolved_ordinary_desyncs": 0,
-    "verification_definition": "Complete under the documented evaluation policy: 4602 current-runtime strict state and independent gameplay RNG matches plus 44 explicit exclusions account for all 4646 eligible recordings. Exclusions retain raw mismatches/errors and do not count as passes."
+    "verification_definition": "The two requested exclusion follow-ups are verified on v102. Current v102 corpus evidence covers 102 inputs (95 strict state/RNG matches, 7 semantic-only state/RNG matches). Eighteen accepted exclusions and 4526 queued current-runtime comparisons complete the 4646-input partition. Historical v101 passes are not reused as v102 passes."
   },
   "original_eligible_recordings": 4634,
-  "full_manifest_swept_definition": "Complete under the documented evaluation policy: 4602 current-runtime strict state and independent gameplay RNG matches plus 44 explicit exclusions account for all 4646 eligible recordings. Exclusions retain raw mismatches/errors and do not count as passes.",
-  "current_runtime_verification": {
+  "full_manifest_swept_definition": "False for current v102: the two fixes and 101 normal fixtures are verified, while the remaining 4526-input sweep is running. The complete v101 4646-input baseline remains in v101_baseline_verification.",
+  "v101_baseline_verification": {
     "verified_at": "2026-10-02T04:36:47.378704+00:00",
     "status": "complete_under_documented_exclusions",
     "verification_definition": "Complete under the documented evaluation policy: 4602 current-runtime strict state and independent gameplay RNG matches plus 44 explicit exclusions account for all 4646 eligible recordings. Exclusions retain raw mismatches/errors and do not count as passes.",
@@ -219090,5 +219128,2151 @@
       }
     ],
     "evidence_location_note": "Raw captures and local audit receipts are ignored workspace files; this committed report retains per-recording identities, results, hashes, and exclusion explanations."
+  },
+  "current_runtime_verification": {
+    "verified_at": "2026-10-02T05:39:51.723084+00:00",
+    "status": "revalidation_in_progress",
+    "verification_definition": "The two requested exclusion follow-ups are verified on v102. Current v102 corpus evidence covers 102 inputs (95 strict state/RNG matches, 7 semantic-only state/RNG matches). Eighteen accepted exclusions and 4526 queued current-runtime comparisons complete the 4646-input partition. Historical v101 passes are not reused as v102 passes.",
+    "runtime": "v102",
+    "runtime_sha256": "62396cd3126f301e104361c7e59d53f3179f21e8da4e833d264bf683c038cfde",
+    "application_source_audit": "tmp/compet-n/exclusion-fixes-audit-v102.json",
+    "application_source_audit_sha256": "b33d7eda367e805b4a71efd032d9b3beb0c72534957d37ad8c433c142ef3d918",
+    "eligible": 4646,
+    "strict_state_and_rng_matches": 95,
+    "semantic_only_state_and_rng_matches": 7,
+    "accepted_exclusions": 18,
+    "remaining": 4526,
+    "unresolved_ordinary_desyncs": 0,
+    "full_corpus_verified": false,
+    "comparison_window": "Original termination or first player death",
+    "first_death_tic_included": true,
+    "comparison_normalization_changed": false,
+    "semantic_comparison_opt_in": {
+      "mode": "unused-ceiling-topheight",
+      "field": "topheight",
+      "required_kind": "ceiling",
+      "required_type": 2,
+      "required_direction": -1,
+      "both_records_must_match_conditions": true,
+      "strict_results_preserved": true,
+      "requires_independent_rng_match": true
+    },
+    "original_inventory": "tmp/compet-n/manifest.json",
+    "original_inventory_sha256": "89e0f32b6b0cee34714a9d40643b24a1e415e98bc0ba84e0b60888c242e0e602",
+    "expanded_inventory": "tmp/compet-n-archive-recovered-v101/manifest.json",
+    "expanded_inventory_sha256": "32017024df3ad492df83d2457742ed7a1ff3511654a150c6d2060309c6d35192",
+    "normal_validation_state_and_rng_matches": 101,
+    "targeted_recordings_verified": 26,
+    "targeted_strict_state_and_rng_matches": 19,
+    "targeted_semantic_only_state_and_rng_matches": 7,
+    "targeted_phase_evidence": {
+      "exclusion-followups": {
+        "unit": "gddoom-demo-sweep-v102-exclusion-followups.service",
+        "terminal_service": {
+          "MainPID": "0",
+          "Result": "success",
+          "ExecMainStatus": "0",
+          "SubState": "exited",
+          "InvocationID": "347e1371613f4da19fac3c67e9a717cd"
+        },
+        "summary": "tmp/compet-n-exclusion-followups-v102/summary.json",
+        "summary_sha256": "6cb604ed4d146f18055a6f4bcb0bd27df1af5c8b20f3d6d84efd4c9dfe28918f",
+        "runtime_pin": "tmp/compet-n-exclusion-followups-v102/runtime-pin.json",
+        "runtime_pin_sha256": "2265b00fb80c6f2b0c3fe0c114a379bbb3b279c3962a777db973f35bbb089414",
+        "results": 26,
+        "strict_state_and_rng_matches": 19,
+        "semantic_only_state_and_rng_matches": 7
+      },
+      "ordinary-validation": {
+        "unit": "gddoom-demo-sweep-v102-ordinary-validation.service",
+        "terminal_service": {
+          "MainPID": "0",
+          "Result": "success",
+          "ExecMainStatus": "0",
+          "SubState": "exited",
+          "InvocationID": "c18f620beb264e559aff8bc8ef94f0bf"
+        },
+        "summary": "tmp/compet-n-ordinary-validation-v102/summary.json",
+        "summary_sha256": "f8526f15b68c801e45f10c6ba2dca0dd80eb28d5b8f46534bd4a6ec242309f16",
+        "runtime_pin": "tmp/compet-n-ordinary-validation-v102/runtime-pin.json",
+        "runtime_pin_sha256": "f8503a01efa9e22b7451e89b2f16b7ff330e11bbe9d7e99f3509dc46f5f9316b",
+        "results": 101,
+        "strict_state_and_rng_matches": 101,
+        "semantic_only_state_and_rng_matches": 0
+      }
+    },
+    "retained_nonzero_ceiling_semantic_audit": {
+      "recordings": 13,
+      "strict_mismatches_preserved": 13,
+      "semantic_state_and_rng_matches": 13,
+      "current_runtime_corpus_passes_added": 0,
+      "summary": "tmp/compet-n-retained-ceiling-semantic-v102/summary.json",
+      "summary_sha256": "cd2cbecd4e937ea32cd6503d85ec6fa7be5a49e91ad6319af6ef1fca978f1a9d"
+    },
+    "records": [
+      {
+        "demo": "DOOMU-E1M1-EP1-2220-73499049af7e.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "73499049af7e5821e31814f12741943df1663456805cab9014a130a8e2af7b89",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=60320\n",
+        "compared_tics": 60320,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M1-EP1-2220-73499049af7e/result.json",
+        "source_result_sha256": "35413e1cbe27c846116b9743f66b3c46417bd6207ebf3d4d86f30c9e2dfb4cf0"
+      },
+      {
+        "demo": "DOOMU-E3M5-t3m51230-5f13e6939c65.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "5f13e6939c65763c31dc203799d119134f7cd67282c98346bf882f21cd7073ed",
+        "status": "mismatch",
+        "strict_exit_code": 1,
+        "strict_report": "mismatch line=19906 path=root.specials[3].topheight\nleft_gametic=19905\nright_gametic=19905\nleft=26\nright=0\n",
+        "compared_tics": 27215,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m51230-5f13e6939c65/result.json",
+        "source_result_sha256": "0fbce599b707da6104d459f5c7b04feaba09206b1c9f89c8f952e9a3b7d5103d",
+        "semantic_comparison": {
+          "mode": "unused-ceiling-topheight",
+          "status": "match",
+          "exit_code": 0,
+          "report": "semantic traces match lines=27215\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "allowed_difference": {
+            "kind": "ceiling",
+            "type": 2,
+            "direction": -1,
+            "field": "topheight"
+          },
+          "log": "/media/dist/Comedy-SSD/Scratch/GD-DOOM/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m51230-5f13e6939c65/semantic-compare.log"
+        }
+      },
+      {
+        "demo": "DOOMU-E3M5-t3m5-827-3b8ef8f20705.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "3b8ef8f207055ae0b25875609a1d9dbfc824289bd71672d1f01ba0195d736d35",
+        "status": "mismatch",
+        "strict_exit_code": 1,
+        "strict_report": "mismatch line=14138 path=root.specials[3].topheight\nleft_gametic=14137\nright_gametic=14137\nleft=26\nright=0\n",
+        "compared_tics": 18715,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-827-3b8ef8f20705/result.json",
+        "source_result_sha256": "96a29c5ae45ba4363383fb661e13727908cc1c31381619c5fe61b93ec1328b42",
+        "semantic_comparison": {
+          "mode": "unused-ceiling-topheight",
+          "status": "match",
+          "exit_code": 0,
+          "report": "semantic traces match lines=18715\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "allowed_difference": {
+            "kind": "ceiling",
+            "type": 2,
+            "direction": -1,
+            "field": "topheight"
+          },
+          "log": "/media/dist/Comedy-SSD/Scratch/GD-DOOM/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-827-3b8ef8f20705/semantic-compare.log"
+        }
+      },
+      {
+        "demo": "DOOMU-E3M5-T3M5-736-f6996424dd26.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "f6996424dd26034036638195fdc391bdd49cc34bc2c8b85bd6e181a3076b7fd0",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=17113\n",
+        "compared_tics": 17113,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-T3M5-736-f6996424dd26/result.json",
+        "source_result_sha256": "eee80f24116568ed9beaec66c1094aed210435bb6df9bcfaf5c08f7744843653"
+      },
+      {
+        "demo": "DOOMU-E3M7-T3M7-800-18e3e502d35c.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "18e3e502d35cec3bb165fdf3260948e3b33f5fb85eb690d2dee48952c5b06f80",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=17040\n",
+        "compared_tics": 17040,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-T3M7-800-18e3e502d35c/result.json",
+        "source_result_sha256": "2cd9a47e0d2aa7807833599e75ba462ff181caa825ccf792e4b05f7b24c809dd"
+      },
+      {
+        "demo": "DOOMU-E3M5-E3M5-528-25f3fea7e995.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "25f3fea7e995436e9d60f9862042cb5555aba953c5466820eeece8b01c506712",
+        "status": "mismatch",
+        "strict_exit_code": 1,
+        "strict_report": "mismatch line=4131 path=root.specials[3].topheight\nleft_gametic=4130\nright_gametic=4130\nleft=17\nright=0\n",
+        "compared_tics": 13616,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3M5-528-25f3fea7e995/result.json",
+        "source_result_sha256": "1688dc93786b12208c33d7127a813cad285a0a03d2b4dc7565c3988493b69852",
+        "semantic_comparison": {
+          "mode": "unused-ceiling-topheight",
+          "status": "match",
+          "exit_code": 0,
+          "report": "semantic traces match lines=13616\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "allowed_difference": {
+            "kind": "ceiling",
+            "type": 2,
+            "direction": -1,
+            "field": "topheight"
+          },
+          "log": "/media/dist/Comedy-SSD/Scratch/GD-DOOM/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3M5-528-25f3fea7e995/semantic-compare.log"
+        }
+      },
+      {
+        "demo": "DOOMU-E3M5-F3m5-617-a6011667ab09.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "a6011667ab09cea49423b0a08eaea1504b3d726366b0449e4236cd9f5e273562",
+        "status": "mismatch",
+        "strict_exit_code": 1,
+        "strict_report": "mismatch line=6161 path=root.specials[3].topheight\nleft_gametic=6160\nright_gametic=6160\nleft=26\nright=0\n",
+        "compared_tics": 14693,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-F3m5-617-a6011667ab09/result.json",
+        "source_result_sha256": "5191554b853cf5205a737e11d8f1564ab756b9fb34640201e512d750a171d546",
+        "semantic_comparison": {
+          "mode": "unused-ceiling-topheight",
+          "status": "match",
+          "exit_code": 0,
+          "report": "semantic traces match lines=14693\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "allowed_difference": {
+            "kind": "ceiling",
+            "type": 2,
+            "direction": -1,
+            "field": "topheight"
+          },
+          "log": "/media/dist/Comedy-SSD/Scratch/GD-DOOM/compet-n-exclusion-followups-v102/DOOMU-E3M5-F3m5-617-a6011667ab09/semantic-compare.log"
+        }
+      },
+      {
+        "demo": "DOOMU-E3M5-E3m5-520-0f3d02dc5b80.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "0f3d02dc5b803a2f3139f19bcf8baad80bcf45432d434dcf18b541da43b3cad7",
+        "status": "mismatch",
+        "strict_exit_code": 1,
+        "strict_report": "mismatch line=4048 path=root.specials[3].topheight\nleft_gametic=4047\nright_gametic=4047\nleft=16\nright=0\n",
+        "compared_tics": 11762,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3m5-520-0f3d02dc5b80/result.json",
+        "source_result_sha256": "75003b7fc78287e76623296c7f9316ebd41dbfd3419c2074a1376bf10366878d",
+        "semantic_comparison": {
+          "mode": "unused-ceiling-topheight",
+          "status": "match",
+          "exit_code": 0,
+          "report": "semantic traces match lines=11762\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "allowed_difference": {
+            "kind": "ceiling",
+            "type": 2,
+            "direction": -1,
+            "field": "topheight"
+          },
+          "log": "/media/dist/Comedy-SSD/Scratch/GD-DOOM/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3m5-520-0f3d02dc5b80/semantic-compare.log"
+        }
+      },
+      {
+        "demo": "DOOMU-E3M5-R3M5-417-a3b5b72e5e82.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "a3b5b72e5e82fcc0bbbdb264665f7379cb1ea307d16b88ec1591204f3d3e0a1e",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=9757\n",
+        "compared_tics": 9757,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-R3M5-417-a3b5b72e5e82/result.json",
+        "source_result_sha256": "164f997094edb8fcf3cd4be79b3a00a432051beec0e431e12ef6c1c987eb1d9a"
+      },
+      {
+        "demo": "DOOMU-E3M5-t3m5-427-dd086626a5ca.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "dd086626a5ca2d3dc57fbd0f9b2ce6549d195850f8e5993175716b09d3b320fe",
+        "status": "mismatch",
+        "strict_exit_code": 1,
+        "strict_report": "mismatch line=7272 path=root.specials[4].topheight\nleft_gametic=7271\nright_gametic=7271\nleft=18\nright=0\n",
+        "compared_tics": 9932,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-427-dd086626a5ca/result.json",
+        "source_result_sha256": "587b13fd66aad6116c135199ee43f87d3a06d0db00546ecc2e7d584ef1ddf114",
+        "semantic_comparison": {
+          "mode": "unused-ceiling-topheight",
+          "status": "match",
+          "exit_code": 0,
+          "report": "semantic traces match lines=9932\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "allowed_difference": {
+            "kind": "ceiling",
+            "type": 2,
+            "direction": -1,
+            "field": "topheight"
+          },
+          "log": "/media/dist/Comedy-SSD/Scratch/GD-DOOM/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-427-dd086626a5ca/semantic-compare.log"
+        }
+      },
+      {
+        "demo": "DOOMU-E3M5-E3M5-423-32b6c2d9672e.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "32b6c2d9672e7c7f7752f6a123562060ce8e0f40b7abf525120b1c585b0ec1f3",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=10322\n",
+        "compared_tics": 10322,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3M5-423-32b6c2d9672e/result.json",
+        "source_result_sha256": "35dbab45b91f4fe7c7adf4fc0ea45be6e6b3703a05fb87acfb1b2fa8bde711d6"
+      },
+      {
+        "demo": "DOOMU-E3M5-t3m5-352-8d74e86f0b0e.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "8d74e86f0b0eca6ba0ec8c2b1fe519f8ac07aba81df1ee50b48d8ca768dd13ad",
+        "status": "mismatch",
+        "strict_exit_code": 1,
+        "strict_report": "mismatch line=6295 path=root.specials[3].topheight\nleft_gametic=6294\nright_gametic=6294\nleft=16\nright=0\n",
+        "compared_tics": 8283,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-352-8d74e86f0b0e/result.json",
+        "source_result_sha256": "b1ba95debf3aaef02e5a78ab9c44394db7ccd852fd392998078e28ff0a8f07bd",
+        "semantic_comparison": {
+          "mode": "unused-ceiling-topheight",
+          "status": "match",
+          "exit_code": 0,
+          "report": "semantic traces match lines=8283\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "allowed_difference": {
+            "kind": "ceiling",
+            "type": 2,
+            "direction": -1,
+            "field": "topheight"
+          },
+          "log": "/media/dist/Comedy-SSD/Scratch/GD-DOOM/compet-n-exclusion-followups-v102/DOOMU-E3M5-t3m5-352-8d74e86f0b0e/semantic-compare.log"
+        }
+      },
+      {
+        "demo": "DOOMU-E1M4-R1M4-314-966f0636af13.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "966f0636af133af7b0e022d17cd4f133a070ea15326b55f9a673b0c2ba9b2ed7",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=7647\n",
+        "compared_tics": 7647,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M4-R1M4-314-966f0636af13/result.json",
+        "source_result_sha256": "6ba34488c58e6942a58d6113afbaa0263012902191253452d22d7e5da9985470"
+      },
+      {
+        "demo": "DOOMU-E3M5-E3M5-316-7cde201b0e6e.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "7cde201b0e6ec5de30942b9b6ad2144ac67ba58038b31e45febf08a135f551e7",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=7056\n",
+        "compared_tics": 7056,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-E3M5-316-7cde201b0e6e/result.json",
+        "source_result_sha256": "9d46e1f7932b2c7fb2821f929a4ed27e6d15343d71def772d5b8bc31f0bc0d4d"
+      },
+      {
+        "demo": "DOOMU-E3M5-r3m5-244-7ac2652e0f78.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "7ac2652e0f784541214c4f8028e9cc870921c5788f93c29049bf34ba7aceeb9a",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=6035\n",
+        "compared_tics": 6035,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-r3m5-244-7ac2652e0f78/result.json",
+        "source_result_sha256": "cdbc0ebdc4a9348290e1537ec02c8f53430428b6cdac796688643939f584142f"
+      },
+      {
+        "demo": "DOOMU-E3M7-F3M7-231-ea9f2bda9899.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "ea9f2bda98999fdd5d164cbceba98376e5a09f5cfb3e045a98d8f6389ddd9f69",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=5392\n",
+        "compared_tics": 5392,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-F3M7-231-ea9f2bda9899/result.json",
+        "source_result_sha256": "0f973256f0902915758b48fe5a2ad9ddbedc587b19f3e0c69bbb10540f073d29"
+      },
+      {
+        "demo": "DOOMU-E3M7-e3m7-221-9a58cc073080.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "9a58cc0730800150f7f6607ac52da61367a8d53d3cabe1005ea62959b2556e6e",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=5318\n",
+        "compared_tics": 5318,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-e3m7-221-9a58cc073080/result.json",
+        "source_result_sha256": "71050813dbe7c0bd2ffdbdede8d88d3f5b3edff1336df23966c717c01b92ea75"
+      },
+      {
+        "demo": "DOOMU-E3M7-F3M7-243-6127dad8cc65.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "6127dad8cc65e371d9ff1d000d79e29a0f0e316c7ebaf7a6e5b12ea319a87b68",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=5862\n",
+        "compared_tics": 5862,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-F3M7-243-6127dad8cc65/result.json",
+        "source_result_sha256": "5784767d33cd60a22e13f616546bb42d152c6b2044e24f0e60d9656acdc68ce5"
+      },
+      {
+        "demo": "DOOMU-E3M7-f3m7-225-69af3a73a317.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "69af3a73a317a86232e75b48991160b53a17e3b9f7b60391552127df148b76c1",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=5312\n",
+        "compared_tics": 5312,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-f3m7-225-69af3a73a317/result.json",
+        "source_result_sha256": "b5d5d8d345e26ccbeb941ba46d018e91735d98ee019a45ce25842f1323448d87"
+      },
+      {
+        "demo": "DOOMU-E3M7-E3M7-223-38fa61282ccf.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "38fa61282ccf46fe82099c87b317ceba111e883c361273a41300e576d6dc1f22",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=5237\n",
+        "compared_tics": 5237,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-E3M7-223-38fa61282ccf/result.json",
+        "source_result_sha256": "7ea8c01991311a755149a637d6c83051437d73ea312ffdb9351030ac054811bc"
+      },
+      {
+        "demo": "DOOMU-E3M7-e3m7-209-64e5951c47a3.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "64e5951c47a39a9424c2dda34e32a11420f98bd7887a02f1938172ca12d47a37",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=5006\n",
+        "compared_tics": 5006,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-e3m7-209-64e5951c47a3/result.json",
+        "source_result_sha256": "fadf07511c6922724a36edf1a587a070c7acf1f9f38040c660f0f7c0fae2e74d"
+      },
+      {
+        "demo": "DOOMU-E3M7-e3m7-219-66c4dc4fe127.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "66c4dc4fe12713eba29e46436a31949f57ab8b31abe8ea1f8667ddaf88367066",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=5151\n",
+        "compared_tics": 5151,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-e3m7-219-66c4dc4fe127/result.json",
+        "source_result_sha256": "ae843b0b26c82b4c987be0f5ccbefa02ed87ab14c89b328c333a0d03ded0b89c"
+      },
+      {
+        "demo": "DOOMU-E3M7-R3M7-210-18da98ebe969.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "18da98ebe9697a656b9d0e6f30bd95e27a2a6b66558c1353ed5e7692e939bb09",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=4697\n",
+        "compared_tics": 4697,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M7-R3M7-210-18da98ebe969/result.json",
+        "source_result_sha256": "f30f35c4a36f8cef54db967c848cf862a9f59fb527892c3e72e14f2ee0a93dc9"
+      },
+      {
+        "demo": "DOOMU-E1M4-E1M4-024-c54d049c73b9.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "c54d049c73b98fee8a995b28a3ab2b697f7c33c7234047c78f21523660773f58",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1530\n",
+        "compared_tics": 1530,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M4-E1M4-024-c54d049c73b9/result.json",
+        "source_result_sha256": "dbc1a191cf40c4f256c6f7e91fc4795795a1d0def8a3b41d70ef3ad0fa93cd24"
+      },
+      {
+        "demo": "DOOMU-E1M4-E1M4-111-af18a5d8e72a.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "af18a5d8e72ab16177da6a253e2dbcdd8dea5727d08d3b83a64a09580b6e3c28",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=3421\n",
+        "compared_tics": 3421,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E1M4-E1M4-111-af18a5d8e72a/result.json",
+        "source_result_sha256": "20b56628416692819b9bea8569cfdb285d9df4a991a9cce4a545e47fce8ac1c7"
+      },
+      {
+        "demo": "DOOMU-E3M5-e3m5-308-d38186ff56de.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "d38186ff56dee13d464dba7ef58075bf1c82b889b7cff228ae0b343b4bf72fc3",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=7004\n",
+        "compared_tics": 7004,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-exclusion-followups-v102/DOOMU-E3M5-e3m5-308-d38186ff56de/result.json",
+        "source_result_sha256": "6185d7580e5a0f6539de7099853eb98c2ab395f38137b029dc2f69dffb1bd3ec"
+      },
+      {
+        "demo": "DOOM2-MAP30-L30-1840-7f12e85cdfbf.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "7f12e85cdfbf71d66bd3fe7f66031642811c624c257b18b3406dbf8eae913081",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=34071\n",
+        "compared_tics": 34071,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP30-L30-1840-7f12e85cdfbf/result.json",
+        "source_result_sha256": "f49bb533ab1a015ed23da678de8ec46066a08c20123c3380f476fbc2852f58c4"
+      },
+      {
+        "demo": "DOOM2-MAP29-LV29-632-70482c9ebbd7.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "70482c9ebbd7f2e693e68cf44a0bee400f42b245654a2470bdb6d70adc2db440",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=14407\n",
+        "compared_tics": 14407,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP29-LV29-632-70482c9ebbd7/result.json",
+        "source_result_sha256": "f553886cc7ee513c3c0ba4b5b1111ac81b5e36201f2a7216cbb4c47284b06949"
+      },
+      {
+        "demo": "DOOMU-E2M5-E2M5-655-fccc0a63c1f9.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "fccc0a63c1f9897ee812053154fcd92428a74523115f1f374ba2ac2e9ba89012",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=15027\n",
+        "compared_tics": 15027,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M5-E2M5-655-fccc0a63c1f9/result.json",
+        "source_result_sha256": "ac42dbf28a67db123b6b582b0c9cb49a6d9c888dd4eb042e1a9e7fac8fa8352c"
+      },
+      {
+        "demo": "DOOMU-E4M1-090-R4M1-efee2f57ca93.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "efee2f57ca937975c335461ec64cdf228a0fd4aee024ab70a3ea19ce3d81214a",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=23533\n",
+        "compared_tics": 23533,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M1-090-R4M1-efee2f57ca93/result.json",
+        "source_result_sha256": "c25aec55f732d347626c5708a012002df2494a7f999425caa5d56ef9715edb9e"
+      },
+      {
+        "demo": "DOOMU-E3M1-EP3-5532-cf10b08fd366.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "cf10b08fd3669bf211d3a68848cfbb448113185268c0c024c2192d867a7fb0c4",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=123548\n",
+        "compared_tics": 123548,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M1-EP3-5532-cf10b08fd366/result.json",
+        "source_result_sha256": "bdaddc998e50d5c8e666ebbbac1b0c730343e9ba74c29b17ecf416eccffed8ee"
+      },
+      {
+        "demo": "DOOMU-E1M1-E1M1-009-e4d98f59b809.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "e4d98f59b80964e058e3b0b6c7ae55ae97e74eae7273ef66c9129cef2c59cbff",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=526\n",
+        "compared_tics": 526,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M1-E1M1-009-e4d98f59b809/result.json",
+        "source_result_sha256": "859b78a7c84afde1a52f30520b0c2e63be6b88df7801b1a38fb8b729435f62b0"
+      },
+      {
+        "demo": "DOOMU-E1M2-e1m2-022-c8d0aea3fb6b.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "c8d0aea3fb6b6fd9bd2702afc62d37a4a42cde9b91682a04dfc5d08ffa45e512",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=863\n",
+        "compared_tics": 863,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M2-e1m2-022-c8d0aea3fb6b/result.json",
+        "source_result_sha256": "787e760ef4befb141593462c8f57575b3d2b8da8bf6e9d323e0fc5d2b3a71562"
+      },
+      {
+        "demo": "DOOMU-E1M3-e1m3-040-845559972ba7.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "845559972ba7969a1eec775a62f573a379f3009106d5748fde20830f7cd1dfe8",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1639\n",
+        "compared_tics": 1639,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M3-e1m3-040-845559972ba7/result.json",
+        "source_result_sha256": "ee3c699197094073db8379d4a37be6f04fd83dfe8a234d4e27aea94f3991b37c"
+      },
+      {
+        "demo": "DOOMU-E1M4-E1M4-013-4c92b897bd01.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "4c92b897bd010813c7a36b1877e66438e55b133a181e5593aeee317690d12dc0",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=567\n",
+        "compared_tics": 567,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M4-E1M4-013-4c92b897bd01/result.json",
+        "source_result_sha256": "55b5be001216a693784679600ec090e2302695807a8aeed89ff504d9b31b2c88"
+      },
+      {
+        "demo": "DOOMU-E1M5-E1M5-055-055e4f0f5e82.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "055e4f0f5e82e01c5b1689d81d3ec46d67523f6c87a56b025a7217b0a4492076",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=2174\n",
+        "compared_tics": 2174,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M5-E1M5-055-055e4f0f5e82/result.json",
+        "source_result_sha256": "84e7699a787304c9f9b910ca1f89367e4b351fcb32b3cec9d54b51ad9e1481b2"
+      },
+      {
+        "demo": "DOOMU-E1M6-e1m6-056-cf53c6a73499.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "cf53c6a7349977ca4cde8be249fd5c83973a552cebaf00195564b009f6137c3d",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=2172\n",
+        "compared_tics": 2172,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M6-e1m6-056-cf53c6a73499/result.json",
+        "source_result_sha256": "dd8995febefd1da399e057d5d9c018417205eb2e902009add7b18acb642ee93c"
+      },
+      {
+        "demo": "DOOMU-E1M7-e1m7-115-835a3309c0e1.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "835a3309c0e1d780418eb10bd3f6b0238d5797bd7e88bbdc768269faeafaf3dd",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=2712\n",
+        "compared_tics": 2712,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M7-e1m7-115-835a3309c0e1/result.json",
+        "source_result_sha256": "e6ac94018016c8467668ff80f36eb31b305136d9257545a23688fbedb9abb45f"
+      },
+      {
+        "demo": "DOOMU-E1M8-e1m8-023-89263fa1e0fd.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "89263fa1e0fd36ca20b471986cf9130813fcde162bb1ee7123089f1bfa477130",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=905\n",
+        "compared_tics": 905,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M8-e1m8-023-89263fa1e0fd/result.json",
+        "source_result_sha256": "1d01ef933d6f49119fb322e64c85afecd18dbf91ea9b0f74dcae2f7b36f74957"
+      },
+      {
+        "demo": "DOOMU-E1M9-E1M9-030-79867cd24c8f.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "79867cd24c8f59c87e854964ca82fd9a9cce8ccda5a4978d5e464c724bf78e29",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1371\n",
+        "compared_tics": 1371,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E1M9-E1M9-030-79867cd24c8f/result.json",
+        "source_result_sha256": "755c16a19e76329128a7a2f8de06fa209d7b59e84f2775e7abef4dd48e9d7fdc"
+      },
+      {
+        "demo": "DOOMU-E2M1-E2M1-039-536151c943bf.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "536151c943bfc8246730ad034082cf85c1bdb828af4a7a5bef58d5768d3a843b",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1595\n",
+        "compared_tics": 1595,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M1-E2M1-039-536151c943bf/result.json",
+        "source_result_sha256": "5c41de5c07a6c624071ea8d6ade6107c2ec828dcdbd839db82f27973c7125567"
+      },
+      {
+        "demo": "DOOMU-E2M2-E2M2-015-80096004af34.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "80096004af34b363a5ed1544d7fb0746733568cbc0af21ddd1e29cfa0fa43604",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=839\n",
+        "compared_tics": 839,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M2-E2M2-015-80096004af34/result.json",
+        "source_result_sha256": "503cdbfda86aece74c6a8187c92d8b9ce0e4cc816c7abf1b9e5c75a3d3493464"
+      },
+      {
+        "demo": "DOOMU-E2M3-E2M3-026-02115a9ad721.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "02115a9ad72121dc31380ed4b457f9dec6e0bc597df5210fa9bac8057727b2e0",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=988\n",
+        "compared_tics": 988,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M3-E2M3-026-02115a9ad721/result.json",
+        "source_result_sha256": "6ec083e66d734064d98522ad581454318276b989a578d414e774edd75e62e46a"
+      },
+      {
+        "demo": "DOOMU-E2M4-e2m4-039-7217b9fd1173.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "7217b9fd1173b273138dd73919cc2ffecdbcde62f68aa1301c8e0d790dc019b0",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1592\n",
+        "compared_tics": 1592,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M4-e2m4-039-7217b9fd1173/result.json",
+        "source_result_sha256": "67aa13faf36af5e9581b343305d57e51b17b4d8fff11c58678b5053bda31e215"
+      },
+      {
+        "demo": "DOOMU-E2M5-e2m5-027-5e7ab9de0f34.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "5e7ab9de0f3493c941a3abb082a2756045950409ee23365e2a8da71844b756df",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1213\n",
+        "compared_tics": 1213,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M5-e2m5-027-5e7ab9de0f34/result.json",
+        "source_result_sha256": "eaf33b7224368a05ecc96d7e0f6872834e05970b9aec760c3f2cd93e22b778a9"
+      },
+      {
+        "demo": "DOOMU-E2M6-p2m6-028-e482d3e4fd32.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "e482d3e4fd32c68a19c24e24237bed799bdd37976a5e4f6a4baeb9b1c3e3421b",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1110\n",
+        "compared_tics": 1110,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M6-p2m6-028-e482d3e4fd32/result.json",
+        "source_result_sha256": "82b612f393d5b42d487f9a94e7ae1dccfcb537e361170e4cec7ddd3acae3f3e8"
+      },
+      {
+        "demo": "DOOMU-E2M7-e2m7-015-514a3ce54637.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "514a3ce54637e814507513430edcd8631040022e8c3fb42b3de0e3209c81eba9",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=676\n",
+        "compared_tics": 676,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M7-e2m7-015-514a3ce54637/result.json",
+        "source_result_sha256": "e6523afa02612e343e1364c3ca12975c204499502b9d5612f78892469e8c639e"
+      },
+      {
+        "demo": "DOOMU-E2M8-EP2MI8-Z-56ebf2ef355d.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "56ebf2ef355d89db73146667bf1b408a79b5725b2dda7bbde9df48776260f5ef",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=2086\n",
+        "compared_tics": 2086,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M8-EP2MI8-Z-56ebf2ef355d/result.json",
+        "source_result_sha256": "c60e7c19532820d14ac4808809682289a87311fd865a2dcc18d67ac5e2b7f3a5"
+      },
+      {
+        "demo": "DOOMU-E2M9-E2M9-006-9980a6b11264.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "9980a6b1126434f700b0420baa27a46527e2b8a0a50f602e370f35d0f102d57b",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=853\n",
+        "compared_tics": 853,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E2M9-E2M9-006-9980a6b11264/result.json",
+        "source_result_sha256": "1f13a804a6eed286e4fed710b3d16a9718e1cd7a6f0c608d9d7d403aee107d84"
+      },
+      {
+        "demo": "DOOMU-E3M1-DAMNIT2-eaa21245c2f4.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "eaa21245c2f43143dbd8c6c24ce3cacedfa8fbc9611e3101cbc77b9cb702326d",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1086\n",
+        "compared_tics": 1086,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M1-DAMNIT2-eaa21245c2f4/result.json",
+        "source_result_sha256": "333ee955275110c63c343cd6ea534f0be628707c64b689f57ec2ef66c3757880"
+      },
+      {
+        "demo": "DOOMU-E3M2-e3m2-012-9126f6f9503a.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "9126f6f9503accd532fd2e4f0c17578069cf59c0e7f170cd772c109906bdaa37",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=477\n",
+        "compared_tics": 477,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M2-e3m2-012-9126f6f9503a/result.json",
+        "source_result_sha256": "e2578668c60451a19f6b5400c2fb62d66b0780aace69a48329ebbe7c85c91c6b"
+      },
+      {
+        "demo": "DOOMU-E3M3-e3m3-022-4cbfb895ec39.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "4cbfb895ec39c9031840571df5189ab46e3a369befb9fdfee5ce547694c22638",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=904\n",
+        "compared_tics": 904,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M3-e3m3-022-4cbfb895ec39/result.json",
+        "source_result_sha256": "dbc8f4e43e3652a27de851795651c8f17319623d1dfdb8d81041c130dc7cafb0"
+      },
+      {
+        "demo": "DOOMU-E3M4-e3m4-038-f3896c472509.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "f3896c472509411c11682060d29c3fd0af3be7da123fd2d245d9d1d553565f04",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1599\n",
+        "compared_tics": 1599,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M4-e3m4-038-f3896c472509/result.json",
+        "source_result_sha256": "f0c75d7be270e9f4f5cd965c4f7ba24c0d0fe0a7886580f21a4270d19a91fcf7"
+      },
+      {
+        "demo": "DOOMU-E3M5-E3M5-023-29fa077e4ee3.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "29fa077e4ee3e4307ebbc64446947af3e08f01ec4476dbbd570b312d32b2b100",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=951\n",
+        "compared_tics": 951,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M5-E3M5-023-29fa077e4ee3/result.json",
+        "source_result_sha256": "3f0e5fc9402504b65f928d108ccd9458811ec4a8fe9d12f62f43467f1b418b66"
+      },
+      {
+        "demo": "DOOMU-E3M6-E3M6-006-43c10694a3ce.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "43c10694a3ce4ad2442b63834b948535cd568b8527b046cbd685ae3d333259ee",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=395\n",
+        "compared_tics": 395,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M6-E3M6-006-43c10694a3ce/result.json",
+        "source_result_sha256": "acfa425423fa0614e09e70bda1732e6608640100734a5a998281f3929e0258e3"
+      },
+      {
+        "demo": "DOOMU-E3M7-e3m7-055-3a4683d8db1e.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "3a4683d8db1e96e8370a352f3e9870072ac0ec0b49c3777eccafac866c99a88f",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1978\n",
+        "compared_tics": 1978,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M7-e3m7-055-3a4683d8db1e/result.json",
+        "source_result_sha256": "fbfe4a3ea926b996ab3c8746d03984eff5bdc11bb736e0f4684d9358e3d4ac4a"
+      },
+      {
+        "demo": "DOOMU-E3M8-e3m8-030-b7f5def688b2.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "b7f5def688b2127779830f7f0bac520a678577cb4b3471469ae176df231e15bc",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1164\n",
+        "compared_tics": 1164,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M8-e3m8-030-b7f5def688b2/result.json",
+        "source_result_sha256": "68f0bea34a0e01c8e84bbab8e0bf11b29346aa09e4f02334d21b74fcf0fd202f"
+      },
+      {
+        "demo": "DOOMU-E3M9-e3m9-104-e5fa0953b358.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "e5fa0953b3588097b3493148c627aa4994899627fac9810f69a2b393982bd522",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=2328\n",
+        "compared_tics": 2328,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M9-e3m9-104-e5fa0953b358/result.json",
+        "source_result_sha256": "72a2c91b4b37c0041024d67a190762e875455b40c1af3388cb8d7fac591b5749"
+      },
+      {
+        "demo": "DOOMU-E4M1-U4M1-025-3b9c4bafea67.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "3b9c4bafea6784770bc4c49c9aa8802d2ead401f7d4f6ab03e5eb349432a346f",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1107\n",
+        "compared_tics": 1107,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M1-U4M1-025-3b9c4bafea67/result.json",
+        "source_result_sha256": "62ee75a6f336fb1cbf5d7963f6cb2ca340c019f779ec434ba07e0c69c50df002"
+      },
+      {
+        "demo": "DOOMU-E4M2-U4M2-016-e7a2c3d42ec4.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "e7a2c3d42ec4bac34d8b41206008f376910c87f9835264d369c1a3c87a55e911",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=668\n",
+        "compared_tics": 668,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M2-U4M2-016-e7a2c3d42ec4/result.json",
+        "source_result_sha256": "3dee84d75027a7978ca6983029633f5b7a04291394ca20ac3942543da89a8b2e"
+      },
+      {
+        "demo": "DOOMU-E4M3-p4m3-010-c8b682076c0f.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "c8b682076c0ff1a22262fbc034e3e722e5aa86ed58e01a7128061ad673e13018",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=596\n",
+        "compared_tics": 596,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M3-p4m3-010-c8b682076c0f/result.json",
+        "source_result_sha256": "62c9396105b13d3bf137087b59d0ff0fc789362177830d3ce281dfacdf1c247a"
+      },
+      {
+        "demo": "DOOMU-E4M4-U4M4N035-cae77b055032.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "cae77b0550325ae938254ffccf27a93d18a1f0cb7e798c808dd6adfd2d42146f",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1413\n",
+        "compared_tics": 1413,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M4-U4M4N035-cae77b055032/result.json",
+        "source_result_sha256": "50fd13f225aac1095393f8611476b37c44f166c87348aba2dfb750bf9be6278e"
+      },
+      {
+        "demo": "DOOMU-E4M5-U4M5-027-d199b1cfedaa.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "d199b1cfedaadda09a0b118a48712aa6d9c8c8f55e76c36682612f207ff4ba4a",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1175\n",
+        "compared_tics": 1175,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M5-U4M5-027-d199b1cfedaa/result.json",
+        "source_result_sha256": "5f998c0d0a52b895dfbe15e603287215e071666028b5c622fb706936e45e7262"
+      },
+      {
+        "demo": "DOOMU-E4M6-u4m6-114-aa05085fff03.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "aa05085fff038d3a548868d292c74ce4bcde17660040f00bff42e2dc0303c030",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=3310\n",
+        "compared_tics": 3310,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M6-u4m6-114-aa05085fff03/result.json",
+        "source_result_sha256": "3ac4c007792b953620321a2e7c221ec2dcf2747747e71acdc1dc9c2106546db2"
+      },
+      {
+        "demo": "DOOMU-E4M7-u4m7-009-5d65cc9e43c0.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "5d65cc9e43c0dc8e5c24519f6df1505820abff4b25f9ad4e0c008642defdf99c",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=473\n",
+        "compared_tics": 473,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M7-u4m7-009-5d65cc9e43c0/result.json",
+        "source_result_sha256": "9d0aaf13c7d079d505e380bbc6430acbc8e250fe56b47f6cf0ab7edb453e263a"
+      },
+      {
+        "demo": "DOOMU-E4M8-U4M8-049-f5e7f91672af.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "f5e7f91672af21ac0095f17980d5e5aedc4f65a180a8a6360b4ff68b8f975649",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=2001\n",
+        "compared_tics": 2001,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M8-U4M8-049-f5e7f91672af/result.json",
+        "source_result_sha256": "5f0a2da0b68f73694aed91ddeec0a166e5ded6d837e30becdac8e5ed43c9d776"
+      },
+      {
+        "demo": "DOOMU-E4M9-u4m9-008-9a7a77a7610e.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "9a7a77a7610e1b25abe67265005410d2088aa9a54b08da13ff06b1f529c753cd",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=400\n",
+        "compared_tics": 400,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E4M9-u4m9-008-9a7a77a7610e/result.json",
+        "source_result_sha256": "5a42c5948519655ccc590f7a056779180e9f7ae268618e6ade8440ac5fc74cde"
+      },
+      {
+        "demo": "DOOM2-MAP01-LV01-B07-c65756cb7e75.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "c65756cb7e754cdec72ceda9b96304fe7029b7b9686369e71491c9f2554f4e1b",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=497\n",
+        "compared_tics": 497,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP01-LV01-B07-c65756cb7e75/result.json",
+        "source_result_sha256": "708328599f642e5f68e438b09399944425c2e354319d2a963f816f94114ad910"
+      },
+      {
+        "demo": "DOOM2-MAP02-lv02-041-8cbeab62ee08.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "8cbeab62ee086210f09a3a354746eb65bfff107a4f3baf03ac2b914b2ce8a2ca",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1527\n",
+        "compared_tics": 1527,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP02-lv02-041-8cbeab62ee08/result.json",
+        "source_result_sha256": "e076e0fb51dc88a57b618ec77d1b281d43b1a77be6367d076415b0f7f74485d6"
+      },
+      {
+        "demo": "DOOM2-MAP03-lv03-019-8117d7a8f52d.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "8117d7a8f52d788c4137b1d7b342142326ddbfd0000321a428a935759a6dd0eb",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=706\n",
+        "compared_tics": 706,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP03-lv03-019-8117d7a8f52d/result.json",
+        "source_result_sha256": "18b6f2d2af905c19d6db3098c55f68dd96c88e0360e81b4b54e571148130fd85"
+      },
+      {
+        "demo": "DOOM2-MAP04-lv04-028-59dc53eff23d.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "59dc53eff23d8eb491ea3c9d8037c75a3b06970494ae128206add783323a287a",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1143\n",
+        "compared_tics": 1143,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP04-lv04-028-59dc53eff23d/result.json",
+        "source_result_sha256": "25f642d7362db647a7daae5d9326ed5697f03d5b5b16871558961007647c07d6"
+      },
+      {
+        "demo": "DOOM2-MAP05-lv05-023-0527d7d12383.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "0527d7d1238363e26de9cec4bc3865ea77de036091a02a3e3980c0f66e17ab34",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=940\n",
+        "compared_tics": 940,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP05-lv05-023-0527d7d12383/result.json",
+        "source_result_sha256": "c0b1955e6c4dbc328df5e031d192640bc2e71c335357ada5078e7f6067a7226d"
+      },
+      {
+        "demo": "DOOM2-MAP06-LV06-054-ee63d63d8dce.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "ee63d63d8dce26d4206504e5cfae8dc3afdd540883ef606e76ed0aae51a51b0e",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1990\n",
+        "compared_tics": 1990,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP06-LV06-054-ee63d63d8dce/result.json",
+        "source_result_sha256": "c59343097b98c1192046a1a5ef2e334e6f69abd87a58eec082191856a37f740f"
+      },
+      {
+        "demo": "DOOM2-MAP07-lv07-008-8c777253d4fa.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "8c777253d4fa319a6e3fae2d97096fd17e8ad4ccb79c666d2ddadbffedf3e269",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=535\n",
+        "compared_tics": 535,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP07-lv07-008-8c777253d4fa/result.json",
+        "source_result_sha256": "8b3ee923c67973445eb5502e5093d2ee6d5b74936ebf1d5ca14254b9741a51f7"
+      },
+      {
+        "demo": "DOOM2-MAP08-Lv08-023-a88bd87fa514.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "a88bd87fa514ce0586601b9ad6f44c6fde2c0a1e6a10bcea6e89bde4f963d3fb",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1036\n",
+        "compared_tics": 1036,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP08-Lv08-023-a88bd87fa514/result.json",
+        "source_result_sha256": "d9edcf16f99df87d416d88eca56176a23ac16f3813ab54e19c73c1bbd41884ec"
+      },
+      {
+        "demo": "DOOM2-MAP09-lv09-101-f7593a864af8.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "f7593a864af8a782e939ee219c5971b666da78dc1d9401d2ae6a30501cc6fc55",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1640\n",
+        "compared_tics": 1640,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP09-lv09-101-f7593a864af8/result.json",
+        "source_result_sha256": "69d837195e49f9a4f19f4e9abf1a3d955f3fd766e7787a72fb28ef092c0795b6"
+      },
+      {
+        "demo": "DOOM2-MAP10-LV10-025-06350d3dc155.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "06350d3dc155ab8f195dd10d701a5c35ced7a9471bfdbeb5935f7d77f6373d28",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=967\n",
+        "compared_tics": 967,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP10-LV10-025-06350d3dc155/result.json",
+        "source_result_sha256": "41c78a4eca9a5c94638ef158961fe0d900d1ccb8036d805db31595671d1b2d44"
+      },
+      {
+        "demo": "DOOM2-MAP11-LV11-036-39e8ef82e096.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "39e8ef82e096d83d66705d4724c5eb761ea6ea435904234cfe63eb6041ca5ebc",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1367\n",
+        "compared_tics": 1367,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP11-LV11-036-39e8ef82e096/result.json",
+        "source_result_sha256": "b5fe24921c1f4371723064d9b5f2cebeb4654ba40f40fe2e06dd5de57f849f58"
+      },
+      {
+        "demo": "DOOM2-MAP12-LV12-042-f029737d6693.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "f029737d66934819f3eea826011e0de97be9df9abfb80b9d82cff1d9b412fbe4",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1598\n",
+        "compared_tics": 1598,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP12-LV12-042-f029737d6693/result.json",
+        "source_result_sha256": "c84e06cdb1193fa739faae46dea1093382f61f8f0809610b56f4ea86b3bea27f"
+      },
+      {
+        "demo": "DOOM2-MAP13-lv13-103-08afcc64ac1a.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "08afcc64ac1a8029eafba6e1eedca37fb88e0344c265c913c3e6c6162c4f28ae",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=2288\n",
+        "compared_tics": 2288,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP13-lv13-103-08afcc64ac1a/result.json",
+        "source_result_sha256": "67a0867f082f1258487387e716cc8aa865d3e9ad9112ba44a4fa093031172023"
+      },
+      {
+        "demo": "DOOM2-MAP14-lv14-020-9b81dbf334a5.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "9b81dbf334a50c9df6b43a1a890be3cdc5395879c20c07d352ce6d37784d027d",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=864\n",
+        "compared_tics": 864,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP14-lv14-020-9b81dbf334a5/result.json",
+        "source_result_sha256": "3e474e19d3c0b10e8d8363b1c140102ebef44a2d4fa39755a399b5161d6a48ad"
+      },
+      {
+        "demo": "DOOM2-MAP15-lv15s030-acec5b2d8b74.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "acec5b2d8b743306b71082d654fc049b57c5cd99fbb47fed58f248fec6714bb2",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1175\n",
+        "compared_tics": 1175,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP15-lv15s030-acec5b2d8b74/result.json",
+        "source_result_sha256": "31a3cf881b8f5eb4b2b686a6f4858860b9f0c856d78f7d235367f6226571f5fd"
+      },
+      {
+        "demo": "DOOM2-MAP16-lv16-011-8fa40ed4b1dd.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "8fa40ed4b1dd1ce93bd62cdfc587c7b521ce24164e2a11e029b8ed827d00d87f",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=582\n",
+        "compared_tics": 582,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP16-lv16-011-8fa40ed4b1dd/result.json",
+        "source_result_sha256": "d476ee40a0f0da931668c82841cbe250a2bba57655d9d0e05bf1aa4017711ba4"
+      },
+      {
+        "demo": "DOOM2-MAP17-lv17-201-5f0b51e3b4a1.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "5f0b51e3b4a100f3010ed091948d32df47e19fe2839e4cf317380fa81ca4cb0d",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=4475\n",
+        "compared_tics": 4475,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP17-lv17-201-5f0b51e3b4a1/result.json",
+        "source_result_sha256": "fdace60168e847e8939f775cddb770a6cf8385967e79e2b88f80334dd6ca1b3f"
+      },
+      {
+        "demo": "DOOM2-MAP18-LV18-022-2dc7c2cd2e1b.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "2dc7c2cd2e1b6d1156e2110b224bbde648fd89181470ee3a1487ed3da88c927f",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=831\n",
+        "compared_tics": 831,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP18-LV18-022-2dc7c2cd2e1b/result.json",
+        "source_result_sha256": "bdf1b8e18e3e4f07cc6d6b270fb1f82ed41466cba2efd2f7bb1aa012bb1801d9"
+      },
+      {
+        "demo": "DOOM2-MAP19-lv19-036-6521960e513f.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "6521960e513fc1fd1bd7a3999e589fd48e17e3d985c363a2fed3188cb6068839",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1449\n",
+        "compared_tics": 1449,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP19-lv19-036-6521960e513f/result.json",
+        "source_result_sha256": "502ed59cebae76e73ba646803fb95cf619f938ca59167c9e7f8ba7af3e453101"
+      },
+      {
+        "demo": "DOOM2-MAP20-lv20-034-2812e85d19f3.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "2812e85d19f3adfd5802d66535491ab5efe3c71632295e7dd1dd51e0b3d05108",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1421\n",
+        "compared_tics": 1421,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP20-lv20-034-2812e85d19f3/result.json",
+        "source_result_sha256": "fbe92d07ff7a83402c533a6fa830b8dc7ad1c4b91723d8f3ad36615de7c9eeb5"
+      },
+      {
+        "demo": "DOOM2-MAP21-lv21-017-0510c4e959bc.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "0510c4e959bceb3b484b2de75c89888f8d4116182a7914c895bf891e2d80b049",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1044\n",
+        "compared_tics": 1044,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP21-lv21-017-0510c4e959bc/result.json",
+        "source_result_sha256": "2607e6da83cc11e57eb7f92228460d5f4eae2895ad0a0476def0b527d8499c5c"
+      },
+      {
+        "demo": "DOOM2-MAP22-lv22-037-52b9a7ee6d60.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "52b9a7ee6d608396c6ebdb808ce7e6cd1cc9e8f98aaf1098b1cc00610e89897b",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1481\n",
+        "compared_tics": 1481,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP22-lv22-037-52b9a7ee6d60/result.json",
+        "source_result_sha256": "4f44ff7544569605cbaaff67b514c2011b7b027161a1805554b72f3f150be209"
+      },
+      {
+        "demo": "DOOM2-MAP23-LV23-045-16788a3c55e5.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "16788a3c55e5bc45e80f574b6195744e608953e72a0b33dbe0c02aeea49f3e53",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1329\n",
+        "compared_tics": 1329,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP23-LV23-045-16788a3c55e5/result.json",
+        "source_result_sha256": "8fa458f48c94e33e690db330cc7e0d307343e1634ca6b9a8c7a291e38693c6ec"
+      },
+      {
+        "demo": "DOOM2-MAP24-lv24-034-24cd903da0c6.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "24cd903da0c69dec8806cf93c2e56036701f2436fabe3231fcdbdd821ec15520",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1347\n",
+        "compared_tics": 1347,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP24-lv24-034-24cd903da0c6/result.json",
+        "source_result_sha256": "5f85bcece94b8a1571d8863a5c4ac9fd234d310a205ec5ead71e698916c892f6"
+      },
+      {
+        "demo": "DOOM2-MAP25-lv25-043-3677c89f893d.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "3677c89f893d0f39abd92705ec6ab84467d061a4eaf35737fdd3ecec5e6f9335",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1707\n",
+        "compared_tics": 1707,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP25-lv25-043-3677c89f893d/result.json",
+        "source_result_sha256": "c903fd68efd1947c2bc6e30a43439fedd21988fa50f97025e3c9075e99ea63a5"
+      },
+      {
+        "demo": "DOOM2-MAP26-LV26-042-99143d7684e5.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "99143d7684e5a9e21f74128da5237bdfa277ded495c2cd8a2fa89d081792d6e9",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1717\n",
+        "compared_tics": 1717,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP26-LV26-042-99143d7684e5/result.json",
+        "source_result_sha256": "3c4fbb1fe9ee79ecbc427f1fbf1b4d781a4dd3f594e5200ce7d320a1c7b13aaf"
+      },
+      {
+        "demo": "DOOM2-MAP27-LV27-012-79ac2fd81998.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "79ac2fd8199878232d029ceacf43de08600bbc4cfd2bb8bfe71f433db1ec4206",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=645\n",
+        "compared_tics": 645,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP27-LV27-012-79ac2fd81998/result.json",
+        "source_result_sha256": "81bc34bb37144d4a617f5787e50c4aa4f58dbfb2fe9c7632bffd5731e0b4ccb6"
+      },
+      {
+        "demo": "DOOM2-MAP28-LV28-042-46a37db974ec.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "46a37db974ec50c7dba95dff52666baab8c2498004b8d50ffd83b4dad4f3de98",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1617\n",
+        "compared_tics": 1617,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP28-LV28-042-46a37db974ec/result.json",
+        "source_result_sha256": "bfcecd5ab3680ac607d96d5cc7cf0023230f3802f74d6184cfa28bab9d97c47f"
+      },
+      {
+        "demo": "DOOM2-MAP29-lv29-138-c9e66576798d.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "c9e66576798d176df0098f3495f926ba73f709ac97eecba7d55fb9eddae6ad1a",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=3578\n",
+        "compared_tics": 3578,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP29-lv29-138-c9e66576798d/result.json",
+        "source_result_sha256": "747440350a48aa1a735c16311565be4219367dc29134e8af7da470aa07e8f719"
+      },
+      {
+        "demo": "DOOM2-MAP30-re30-030-b72564f61b6e.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "b72564f61b6e4565149552368f8ebbd2cf7b2c0ebaa8e61ad31c56d883d6acb4",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1288\n",
+        "compared_tics": 1288,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP30-re30-030-b72564f61b6e/result.json",
+        "source_result_sha256": "7b67ff6fb5caf5d3c4c29231955333c0d6d8d524e268c46690cc7b825f1edb22"
+      },
+      {
+        "demo": "DOOM2-MAP31-LV31-029-376622f73c60.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "376622f73c60b887e8cec5cbb7ff0c519ab2afff674ed800be6abe9f186759b9",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=1322\n",
+        "compared_tics": 1322,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP31-LV31-029-376622f73c60/result.json",
+        "source_result_sha256": "66569430d7fc60ca4b50289257d39e152af2b25c2397b510b96257f0fd5c1890"
+      },
+      {
+        "demo": "DOOM2-MAP32-lv32-011-1a09640196b2.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "1a09640196b2687d8b4c467f50ac3ca58b850335f9acb8fa23d14a9169617157",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=609\n",
+        "compared_tics": 609,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP32-lv32-011-1a09640196b2/result.json",
+        "source_result_sha256": "a7a086a82c3c02026d9db2ee3aa42d28fbce322e667c51b7a80d2e59971bcc4c"
+      },
+      {
+        "demo": "DOOM2-MAP09-NM09-356-36af161bc6a5.lmp",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "36af161bc6a58477c0ecd39d5ee0b82058a283ad58a7311bbe7ba2e6d78d57cb",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=8567\n",
+        "compared_tics": 8567,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOM2-MAP09-NM09-356-36af161bc6a5/result.json",
+        "source_result_sha256": "c037bcbbda06c8459827a65c549e2c4f6a4928d41d84d3b5646b125135003f45"
+      },
+      {
+        "demo": "DOOMU-E3M2-E3M2-339-ac3685d65286.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "ac3685d65286287aa004dd2532697f930f77865ed7584e2a96c0b62a6abe5811",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=8506\n",
+        "compared_tics": 8506,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M2-E3M2-339-ac3685d65286/result.json",
+        "source_result_sha256": "277c8add7d376658a26aeea49a50ff056ca99bdd1d6bc9ba61b93512a573644a"
+      },
+      {
+        "demo": "DOOMU-E3M3-E3M3-330-7cd5d07f7290.lmp",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "7cd5d07f7290a4e716cd4c4cebb335aee7ae49ed91017671f44404c53fc1edab",
+        "status": "match",
+        "strict_exit_code": 0,
+        "strict_report": "traces match lines=8223\n",
+        "compared_tics": 8223,
+        "gameplay_rng_audited": true,
+        "first_gameplay_rng_mismatch": null,
+        "source_result": "tmp/compet-n-ordinary-validation-v102/DOOMU-E3M3-E3M3-330-7cd5d07f7290/result.json",
+        "source_result_sha256": "cf990e2ccaf67151531908931df90c25bd9b9725dd48ee32eafc84de41a21042"
+      }
+    ],
+    "excluded_records": [
+      {
+        "demo": "DOOMU-E4M1-t4m1long-0b8ede500426.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-t4m1long-reference-retail-crash-debug-v101/diagnostic-result.json",
+        "note": "After resolving the gametic-0 2 MiB startup allocation limit with the supported isolated 16 MiB reference config, the unchanged original in retail E4M1 mode crashes at tic 91667 in PIT_CheckLine while a Demon chases. GDB shows spechit capacity 8 and corrupted index -150406339. Raw error (139), incomplete trace and absent complete RNG audit retained; never a passing comparison. Frozen v101 queue remains unchanged.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "0b8ede50042685206b61af2859743b274f902dd8135e50af0bc70085cd285fe1",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-reference-heap-validation-v101/DOOMU-E4M1-t4m1long-0b8ede500426/result.json",
+          "source_result_sha256": "16bb35326860fc290a0cfcf3602ddfba251db01ede66914b20bc8141ce467c01"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-R4M1-525-a6d57dc4666a.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E4M1-R4M1-525-a6d57dc4666a/harness.log",
+        "note": "The original reference exits with SIGSEGV (139) before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable v98 Scratch queue was selected; raw error retained and never a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "a6d57dc4666a44d0edaee9a5b62e850e999f214c55aee743348288c1ae7b09bd",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E4M1-R4M1-525-a6d57dc4666a/result.json",
+          "source_result_sha256": "b6dd6d709fef7ee056eec5c46bd4084cb7b519b3226bbbdb4b6a2a99c171903b"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-F4M1-426-569d92cffbed.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E4M1-F4M1-426-569d92cffbed/harness.log",
+        "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; raw error retained, never a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "569d92cffbedce84a149afecc9d1153e0266d82afc2bfae9c7c69afde29d575f",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E4M1-F4M1-426-569d92cffbed/result.json",
+          "source_result_sha256": "dd3791cf723bf7f9ed94e82c37106d26e93d96cc65520118705391c901409906"
+        }
+      },
+      {
+        "demo": "DOOMU-E1M5-P1M5-422-663073c68528.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E1M5-P1M5-422-663073c68528/harness.log",
+        "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; raw error retained, never a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "663073c68528586885017038947379064477c355531f2f64ba9966130a58f7f8",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E1M5-P1M5-422-663073c68528/result.json",
+          "source_result_sha256": "113f87974920705549880805962239e927d6c8d4bae5c8ff51e9ce14f2b36bf7"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-R4M1-344-f647cedb3719.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E4M1-R4M1-344-f647cedb3719/harness.log",
+        "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; the raw error is retained and is not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "f647cedb37195146e6335a33b88e7b9d18535c708ca816733e76335af6a21162",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E4M1-R4M1-344-f647cedb3719/result.json",
+          "source_result_sha256": "2d8148f46741be7208b872860e19230e71da7297944bca9842b992eb5707f1ac"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-E4M1-216-b60348996d54.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-E4M1-216-b60348996d54/harness.log",
+        "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "b60348996d543e6cff9c58eacf1b3ca7e49e6deb16f0b07124b3e3dee99913cb",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-E4M1-216-b60348996d54/result.json",
+          "source_result_sha256": "bfa2214eee1e7e49982ecd079dd49f9de3ec72336fd115dfdbbd6f89c6ad520b"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-U4M1-232-3cd3abf3a131.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-U4M1-232-3cd3abf3a131/harness.log",
+        "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "3cd3abf3a131ff8898c9f96e219fd1a55aad2bab855135d4000772b23c2f143b",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-U4M1-232-3cd3abf3a131/result.json",
+          "source_result_sha256": "7410b80f53fc4be2ee0b051da6a3d6aa104dc42ba1e9e152c5071f9849226265"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-F4M1-243-2b049b0988fa.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-F4M1-243-2b049b0988fa/harness.log",
+        "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "2b049b0988fab3c3c4c7e82168f875f1dec261cd53859a76440aa42c509fd9d2",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-F4M1-243-2b049b0988fa/result.json",
+          "source_result_sha256": "e4c95e9652439d39522516a88d79c3969c2110a1255ded5c691b9ef29458241c"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-U4M1-228-164073eb719a.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-U4M1-228-164073eb719a/harness.log",
+        "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "164073eb719a22f161903eaabcfd1b12394500308dbd309cf843b5376dac47fb",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-U4M1-228-164073eb719a/result.json",
+          "source_result_sha256": "714db74636a8ad14c7f5658af0a2d5ee42b157438ec0b5f734ef0090282cc7e1"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-F4M1-256-43eeb8830de3.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-F4M1-256-43eeb8830de3/harness.log",
+        "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "43eeb8830de31fec99ed3205c3925d8b4495fbf4b50358a753ff9b695308c72f",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-F4M1-256-43eeb8830de3/result.json",
+          "source_result_sha256": "fc67c40528e9e43717bf685c1bd2ad2c8fc0342f665cf8d6da4e29ca803415cd"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-R4M1-152-bb8176145739.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-R4M1-152-bb8176145739/harness.log",
+        "note": "The original reference exits with SIGSEGV during reference tracing before GD-DOOM playback. Exact cause is unclassified. Classified after immutable v93 queue selection; this is not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "bb8176145739bc9d2337a480d1c0e075c8fa8ef5c158d87a297f688e16952dbd",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-R4M1-152-bb8176145739/result.json",
+          "source_result_sha256": "79de3a3a88b8be3439b9a745ac6feb1bc1f5ce7a966a31aa5611192dacc8b35a"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-f4m1-223-43133ef22cd1.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-f4m1-223-43133ef22cd1/harness.log",
+        "note": "The original reference exits with SIGSEGV during reference tracing before GD-DOOM playback. Exact cause is unclassified. Classified after immutable v93 queue selection; this is not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "43133ef22cd15f8d77d10108fcdb3ecef59bd78fe41b0441b014063caaf822a6",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-f4m1-223-43133ef22cd1/result.json",
+          "source_result_sha256": "5cfde54cda82648cec3e69b2b21ca00c1e33ab24c2e10ed2bdac8253928e5cf1"
+        }
+      },
+      {
+        "demo": "DOOM2-MAP02-LV02-___-2e0d04c2fe92.lmp",
+        "category": "original engine overflow / NoClip glitch",
+        "evidence": "tmp/compet-n-original-overflow-diagnostics/diagnostic-result.json",
+        "note": "Bonus LV02-!!! recording; original Linux reference crashes at tic 2251. DOS overflow emulation is outside the requested work.",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "2e0d04c2fe9236cabb98563dbc17bd45e9c9f77b3f214dfcb43a96a76f58e08f",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v82/DOOM2-MAP02-LV02-___-2e0d04c2fe92/result.json",
+          "source_result_sha256": "03ee8cabf7d2008a8ffa6e37cf1c6962196498d09be613a48daeb934a246f32c"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M8-U48GLICH-bdc56641f6c7.lmp",
+        "category": "original reference crash in bonus glitch recording",
+        "evidence": "tmp/compet-n-original-overflow-diagnostics/diagnostic-result.json",
+        "note": "Original-reference error remains recorded; auxiliary overflow playback is diagnostic only.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "bdc56641f6c7745387492f9551c82bc49856d71a5326197da708ab2b709f569b",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-combat-final/DOOMU-E4M8-U48GLICH-bdc56641f6c7/result.json",
+          "source_result_sha256": "36ac6c90c844438f63a1eb49ff24be5940786864fd3acf36e065a34b54a18004"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-n4s1-037-2e9eeef6819b.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E4M1-n4s1-037-2e9eeef6819b/harness.log",
+        "note": "Original reference SIGSEGV before GD-DOOM playback. The precise crash cause is unclassified.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "2e9eeef6819b2578414d3c43f2f585e262124fb35bf197cb3c2854369f077e20",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E4M1-n4s1-037-2e9eeef6819b/result.json",
+          "source_result_sha256": "228943bef1d85cf5a91414151fb9ce7c5cc6fba3a84e264859daab5a951c6dd1"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-N4S1-058-e28ef8f766e5.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E4M1-N4S1-058-e28ef8f766e5/harness.log",
+        "note": "Original reference SIGSEGV before GD-DOOM playback. Discovered near the v84 sweep stop; exact cause is unclassified. The v86 selection was already saved before this additional accepted limitation was classified.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "e28ef8f766e5572f3d3fa9a7a9cf7e4b9bd40051b555586551b3f661c6a84a75",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E4M1-N4S1-058-e28ef8f766e5/result.json",
+          "source_result_sha256": "4effbe57a900a58b130359ba969331729b8082136fdecffb65cbfa5def33033f"
+        }
+      },
+      {
+        "demo": "DOOMU-E4M1-r4m1-137-56623bb117d6.lmp",
+        "category": "original reference crash",
+        "evidence": "tmp/compet-n-continue-current-remainder-v89/DOOMU-E4M1-r4m1-137-56623bb117d6/harness.log",
+        "note": "The original Linux reference exits with SIGSEGV (139) during reference tracing before any GD-DOOM playback. Classified after the v89 queue was frozen; exact crash cause is unclassified and this is not a passing comparison.",
+        "wad": "wads/DOOMU.WAD",
+        "sha256": "56623bb117d6b3b88fc119844443c0f0e644f2970548d0f2b5adf95b8b816ac0",
+        "raw_result": {
+          "status": "error",
+          "exit_code": 139,
+          "report": "",
+          "gameplay_rng_audited": false,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-raise-corpse-frontiers-v91/DOOMU-E4M1-r4m1-137-56623bb117d6/result.json",
+          "source_result_sha256": "da49d85808ae6d1faf74306ec3ac2471512e4e8e7125db478d18b573b9834650"
+        }
+      },
+      {
+        "demo": "DOOM2-MAP27-LV27-045-39985710cb55.lmp",
+        "category": "original engine uses uninitialized timed-door memory",
+        "evidence": "tmp/compet-n-original-overflow-diagnostics/map27-timed-door-uninitialized.json",
+        "note": "P_SpawnDoorCloseIn30 leaves topheight/topwait uninitialized. Manual reopening at tic 1082 reads allocator residue (1330266433 / 16908801). Gameplay RNG matches the retained comparison; emulating allocator contents is outside the requested scope.",
+        "wad": "wads/DOOM2.WAD",
+        "sha256": "39985710cb5572ab6fefc605c440bc289ac3861db81327be0e91045d984972fc",
+        "raw_result": {
+          "status": "mismatch",
+          "exit_code": 1,
+          "report": "mismatch line=1083 path=root.specials[0].topheight\nleft_gametic=1082\nright_gametic=1082\nleft=1330266433\nright=0\n",
+          "gameplay_rng_audited": true,
+          "gameplay_rng_mismatch": null,
+          "source_result": "tmp/compet-n-continue-current-remainder-v84/DOOM2-MAP27-LV27-045-39985710cb55/result.json",
+          "source_result_sha256": "8a4b0a9a0eaee1c16651c0208aad1312698c0516af4afa70a7a75e8013cd5255"
+        }
+      }
+    ],
+    "remainder_sweep": {
+      "manifest": "tmp/compet-n/current-runtime-remainder-v102.json",
+      "manifest_sha256": "2abc8274f7e82f28f332c1e27a564adceee0261f45433936ba9354bfee2f3d9c",
+      "queued": 4526,
+      "unit": "gddoom-demo-sweep-v102-current-runtime-remainder.service",
+      "invocation_id": "d85881186754437994e111281efac1b1",
+      "runtime_pin": "tmp/compet-n-current-runtime-remainder-v102/runtime-pin.json",
+      "runtime_pin_sha256": "599a0d5c83431d15d641433819717d54be4b707a9da27baf49cdc10548385f60",
+      "resources": {
+        "workers": 12,
+        "nice": 19,
+        "io_class": "idle",
+        "write_cap": null,
+        "scratch": "/media/dist/Comedy-SSD/Scratch/GD-DOOM"
+      },
+      "ssd_guard": "tmp/compet-n-current-runtime-remainder-v102/guard-status.json"
+    },
+    "evidence_location_note": "Local traces and audit receipts are ignored; committed records preserve exact input/result identities. This is a start-of-sweep checkpoint, not a live count.",
+    "test_checks": {
+      "go_suite": {
+        "status": "pass",
+        "binary_phase": "v102",
+        "log": "/tmp/gddoom-all-v102.log"
+      },
+      "python_corpus_checks": {
+        "tests": 14,
+        "status": "pass",
+        "log": "/tmp/gddoom-python-exclusion-v102.log",
+        "command": "python3 -B scripts/test_demo_corpus.py"
+      },
+      "platform_regression_against_v101": {
+        "status": "expected_fail",
+        "log": "/tmp/gddoom-exclusion-regression-red-v101.log"
+      },
+      "targeted_go_checks": {
+        "status": "pass",
+        "log": "/tmp/gddoom-exclusion-targeted-v102.log"
+      }
+    }
+  },
+  "historical_evaluation_policies": {
+    "v101": {
+      "updated": "2026-10-01",
+      "user_instruction": "im okay with not trying to replicate the noclip glitch; i'd also ignore other crazy glitches or crashes",
+      "focus": "Fix ordinary gameplay state and gameplay RNG desynchronization.",
+      "accepted_limitations": [
+        {
+          "demo": "DOOMU-E4M1-t4m1long-0b8ede500426.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-t4m1long-reference-retail-crash-debug-v101/diagnostic-result.json",
+          "note": "After resolving the gametic-0 2 MiB startup allocation limit with the supported isolated 16 MiB reference config, the unchanged original in retail E4M1 mode crashes at tic 91667 in PIT_CheckLine while a Demon chases. GDB shows spechit capacity 8 and corrupted index -150406339. Raw error (139), incomplete trace and absent complete RNG audit retained; never a passing comparison. Frozen v101 queue remains unchanged."
+        },
+        {
+          "demo": "DOOMU-E1M1-EP1-2220-73499049af7e.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-ep1-platform-cast-debug-v100/diagnostic-result.json",
+          "note": "At tic 20013 in E1M4, manual line 564 (special 27) casts sector 41 active T_PlatRaise to a door and overwrites plat.wait from 105 to -1. GDB watchpoint proves the invalid structure write. Raw strict mismatch and matching gameplay RNG retained; never a passing comparison. Classified after immutable v100 queue selection."
+        },
+        {
+          "demo": "DOOMU-E3M5-t3m51230-5f13e6939c65.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-t3m51230-5f13e6939c65/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 27215 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E3M5-t3m5-827-3b8ef8f20705.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-t3m5-827-3b8ef8f20705/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 18715 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E3M5-T3M5-736-f6996424dd26.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v100/DOOMU-E3M5-T3M5-736-f6996424dd26/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 17113 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v100 execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E3M7-T3M7-800-18e3e502d35c.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-t800-debug-v100/diagnostic-result.json",
+          "note": "At tic 1580 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB watchpoint proves the invalid structure access. Strict mismatch and matching gameplay RNG remain recorded; never a passing comparison. Classified after immutable v100 queue selection."
+        },
+        {
+          "demo": "DOOMU-E3M5-E3M5-528-25f3fea7e995.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-E3M5-528-25f3fea7e995/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 13616 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E3M5-F3m5-617-a6011667ab09.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-F3m5-617-a6011667ab09/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 14693 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E4M1-R4M1-525-a6d57dc4666a.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E4M1-R4M1-525-a6d57dc4666a/harness.log",
+          "note": "The original reference exits with SIGSEGV (139) before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable v98 Scratch queue was selected; raw error retained and never a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M5-E3m5-520-0f3d02dc5b80.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E3M5-E3m5-520-0f3d02dc5b80/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 11762 compared tics and independently audited gameplay RNG matches. Raw strict mismatch retained; immutable v98 execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E4M1-F4M1-426-569d92cffbed.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E4M1-F4M1-426-569d92cffbed/harness.log",
+          "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; raw error retained, never a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E1M5-P1M5-422-663073c68528.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E1M5-P1M5-422-663073c68528/harness.log",
+          "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; raw error retained, never a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M5-R3M5-417-a3b5b72e5e82.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-R3M5-417-a3b5b72e5e82/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 9757 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E3M5-t3m5-427-dd086626a5ca.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-t3m5-427-dd086626a5ca/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 9932 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E3M5-E3M5-423-32b6c2d9672e.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-E3M5-423-32b6c2d9672e/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 10322 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; immutable execution manifest unchanged."
+        },
+        {
+          "demo": "DOOMU-E4M1-R4M1-344-f647cedb3719.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E4M1-R4M1-344-f647cedb3719/harness.log",
+          "note": "The original reference exits with SIGSEGV (139) during reference tracing before GD-DOOM playback. Exact crash cause is unclassified. Classified after the immutable Comedy-SSD v96 queue was selected; the raw error is retained and is not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M5-t3m5-352-8d74e86f0b0e.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E3M5-t3m5-352-8d74e86f0b0e/unused-field-diagnostic.json",
+          "note": "Original lowerAndCrush leaves sector 83 ceiling.topheight uninitialized and never uses it. A separate diagnostic normalizing only this field matches all 8283 tics and the independent strict gameplay RNG audit matches. The raw strict mismatch remains recorded; the immutable execution manifest is unchanged."
+        },
+        {
+          "demo": "DOOMU-E1M4-R1M4-314-966f0636af13.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e1m4-platform-cast-r314-debug-v96/diagnostic-result.json",
+          "note": "At tic 6304 manual line 564 (special 27) casts sector 41 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Raw strict mismatch and later gameplay RNG mismatch at tic 6450 remain recorded; not a passing comparison. Classified after immutable eight-worker v96 queue selection."
+        },
+        {
+          "demo": "DOOMU-E3M5-E3M5-316-7cde201b0e6e.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E3M5-E3M5-316-7cde201b0e6e/unused-field-diagnostic.json",
+          "note": "The strict mismatch concerns ceiling.topheight, unused and uninitialized by lowerAndCrush. A diagnostic replacing only this unused field matches all 7056 compared tics; gameplay RNG matches. Raw strict mismatch stays recorded. Classified after immutable v95 queue selection; not a strict passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M5-r3m5-244-7ac2652e0f78.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E3M5-r3m5-244-7ac2652e0f78/unused-field-diagnostic.json",
+          "note": "The strict mismatch concerns ceiling.topheight, unused and uninitialized by lowerAndCrush. A diagnostic replacing only that unused field matches all 6035 compared tics; gameplay RNG matches. Raw strict mismatch remains recorded. Classified after immutable v95 queue selection; not a strict passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M7-F3M7-231-ea9f2bda9899.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast231-debug-v95/diagnostic-result.json",
+          "note": "At tic 3318 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
+        },
+        {
+          "demo": "DOOMU-E3M7-e3m7-221-9a58cc073080.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-221-debug-v95/diagnostic-result.json",
+          "note": "At tic 3704 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
+        },
+        {
+          "demo": "DOOMU-E3M7-F3M7-243-6127dad8cc65.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast243-debug-v95/diagnostic-result.json",
+          "note": "At tic 4538 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
+        },
+        {
+          "demo": "DOOMU-E3M7-f3m7-225-69af3a73a317.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-fast225-debug-v95/diagnostic-result.json",
+          "note": "At tic 3191 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms the excluded invalid structure access. Raw strict state/RNG statuses remain recorded; not a passing comparison. Classified after immutable v95 queue selection."
+        },
+        {
+          "demo": "DOOMU-E4M1-E4M1-216-b60348996d54.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-E4M1-216-b60348996d54/harness.log",
+          "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E4M1-U4M1-232-3cd3abf3a131.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-U4M1-232-3cd3abf3a131/harness.log",
+          "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E4M1-F4M1-243-2b049b0988fa.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-F4M1-243-2b049b0988fa/harness.log",
+          "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E4M1-U4M1-228-164073eb719a.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-U4M1-228-164073eb719a/harness.log",
+          "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E4M1-F4M1-256-43eeb8830de3.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v95/DOOMU-E4M1-F4M1-256-43eeb8830de3/harness.log",
+          "note": "Original reference exits with SIGSEGV while capturing its trace before GD-DOOM playback. Exact cause remains unclassified. Classified after immutable v95 queue selection; not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M7-E3M7-223-38fa61282ccf.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-223-debug-v93/diagnostic-result.json",
+          "note": "At tic 3528 manual line 352 (special 1) casts sector 23 active T_PlatRaise to a door and overwrites platform.wait from 105 to -1. GDB confirms this excluded structure corruption. Strict state and RNG mismatches remain recorded; not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M7-e3m7-209-64e5951c47a3.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-209-debug-v93/diagnostic-result.json",
+          "note": "At tic 3470 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Retained strict mismatch and later RNG mismatch at 3566 remain recorded; not a passing comparison. Classified after immutable v93 queue selection."
+        },
+        {
+          "demo": "DOOMU-E3M7-e3m7-219-66c4dc4fe127.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-219-debug-v93/diagnostic-result.json",
+          "note": "At tic 3651 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Retained strict mismatch and later RNG mismatch at 3756 remain recorded; not a passing comparison. Classified after immutable v93 queue selection."
+        },
+        {
+          "demo": "DOOMU-E4M1-R4M1-152-bb8176145739.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-R4M1-152-bb8176145739/harness.log",
+          "note": "The original reference exits with SIGSEGV during reference tracing before GD-DOOM playback. Exact cause is unclassified. Classified after immutable v93 queue selection; this is not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E4M1-f4m1-223-43133ef22cd1.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v93/DOOMU-E4M1-f4m1-223-43133ef22cd1/harness.log",
+          "note": "The original reference exits with SIGSEGV during reference tracing before GD-DOOM playback. Exact cause is unclassified. Classified after immutable v93 queue selection; this is not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E3M7-R3M7-210-18da98ebe969.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e3m7-platform-cast-debug-v93/diagnostic-result.json",
+          "note": "At tic 2906 manual line 352 (special 1) casts sector 23 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid structure access. Classified after immutable v93 queue selection. The retained strict state mismatch and RNG mismatch at 2977 remain recorded; this is not a passing comparison."
+        },
+        {
+          "demo": "DOOM2-MAP02-LV02-___-2e0d04c2fe92.lmp",
+          "category": "original engine overflow / NoClip glitch",
+          "evidence": "tmp/compet-n-original-overflow-diagnostics/diagnostic-result.json",
+          "note": "Bonus LV02-!!! recording; original Linux reference crashes at tic 2251. DOS overflow emulation is outside the requested work."
+        },
+        {
+          "demo": "DOOMU-E4M8-U48GLICH-bdc56641f6c7.lmp",
+          "category": "original reference crash in bonus glitch recording",
+          "evidence": "tmp/compet-n-original-overflow-diagnostics/diagnostic-result.json",
+          "note": "Original-reference error remains recorded; auxiliary overflow playback is diagnostic only."
+        },
+        {
+          "demo": "DOOMU-E4M1-n4s1-037-2e9eeef6819b.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E4M1-n4s1-037-2e9eeef6819b/harness.log",
+          "note": "Original reference SIGSEGV before GD-DOOM playback. The precise crash cause is unclassified."
+        },
+        {
+          "demo": "DOOMU-E4M1-N4S1-058-e28ef8f766e5.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E4M1-N4S1-058-e28ef8f766e5/harness.log",
+          "note": "Original reference SIGSEGV before GD-DOOM playback. Discovered near the v84 sweep stop; exact cause is unclassified. The v86 selection was already saved before this additional accepted limitation was classified."
+        },
+        {
+          "demo": "DOOMU-E1M4-E1M4-024-c54d049c73b9.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-current-remainder-v84/DOOMU-E1M4-E1M4-024-c54d049c73b9/result.json",
+          "note": "At tic 689 EV_VerticalDoor casts an active platform to a door and writes direction=-1 into platform.wait. Emulating this invalid structure access is outside the requested work."
+        },
+        {
+          "demo": "DOOMU-E4M1-r4m1-137-56623bb117d6.lmp",
+          "category": "original reference crash",
+          "evidence": "tmp/compet-n-continue-current-remainder-v89/DOOMU-E4M1-r4m1-137-56623bb117d6/harness.log",
+          "note": "The original Linux reference exits with SIGSEGV (139) during reference tracing before any GD-DOOM playback. Classified after the v89 queue was frozen; exact crash cause is unclassified and this is not a passing comparison."
+        },
+        {
+          "demo": "DOOMU-E1M4-E1M4-111-af18a5d8e72a.lmp",
+          "category": "original engine mover structure corruption",
+          "evidence": "tmp/compet-n-continue-e1m4-platform-cast-debug-v89/diagnostic-result.json",
+          "note": "At tic 2157 manual line 564 (special 27) casts sector 41 active T_PlatRaise platform to vldoor_t and overwrites platform.wait from 105 to -1. GDB confirms the invalid cast. Classified after the v89 execution manifest was saved; retained strict mismatch and matching RNG remain recorded."
+        },
+        {
+          "demo": "DOOMU-E3M5-e3m5-308-d38186ff56de.lmp",
+          "category": "unused uninitialized original reference field",
+          "evidence": "tmp/compet-n-lowercrush-followup/DOOMU-E3M5-e3m5-308-d38186ff56de/unused-field-diagnostic.json",
+          "note": "The retained strict mismatch concerns ceiling.topheight, unused by lowerAndCrush; all 7004 gameplay RNG indices match. No comparator relaxation or strict pass is claimed."
+        },
+        {
+          "demo": "DOOM2-MAP27-LV27-045-39985710cb55.lmp",
+          "category": "original engine uses uninitialized timed-door memory",
+          "evidence": "tmp/compet-n-original-overflow-diagnostics/map27-timed-door-uninitialized.json",
+          "note": "P_SpawnDoorCloseIn30 leaves topheight/topwait uninitialized. Manual reopening at tic 1082 reads allocator residue (1330266433 / 16908801). Gameplay RNG matches the retained comparison; emulating allocator contents is outside the requested scope."
+        }
+      ],
+      "accounting": "Preserve all eligible recordings, raw strict statuses, hashes, and evidence. Accepted limitations are separate from passing comparisons. Do not exempt ordinary unexplained mismatches or GD-DOOM/harness crashes under this policy."
+    }
+  },
+  "previous_expanded_corpus_scope": {
+    "base_eligible": 4634,
+    "recovered_eligible": 12,
+    "total_eligible": 4646,
+    "full_corpus_verified": true,
+    "strict_matches": 4602,
+    "accepted_exclusions": 44,
+    "remaining": 0,
+    "unresolved_ordinary_desyncs": 0,
+    "verification_definition": "Complete under the documented evaluation policy: 4602 current-runtime strict state and independent gameplay RNG matches plus 44 explicit exclusions account for all 4646 eligible recordings. Exclusions retain raw mismatches/errors and do not count as passes."
   }
 }

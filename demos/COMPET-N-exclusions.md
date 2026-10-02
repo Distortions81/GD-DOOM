@@ -2,9 +2,25 @@
 
 Updated 2026-10-01. The user excluded NoClip emulation and other extreme original-engine glitches or crashes from the desync fix scope.
 
-**44 recordings are currently excluded from fixes.** They remain in the expanded 4,646-recording inventory with their raw strict mismatch/error results. The original 4,634 inputs are unchanged; twelve valid demos were recovered from legacy compression and mislabeled ARJ archives. All twelve recovered demos now strictly match state and independently audited gameplay RNG on v101; they add no exclusions. The expanded corpus has 4,602 strict passes, these 44 exclusions, and zero unresolved ordinary desyncs. An exclusion is never a passing comparison. Any future unexplained state/RNG difference or failure in GD-DOOM or the replay harness requires investigation.
+**18 recordings remain excluded from fixes**: seventeen original-reference
+crashes and one timed door that uses uninitialized memory. The v102 follow-up
+strictly fixes all thirteen door/platform recordings. The thirteen unused
+ceiling-field recordings now have an opt-in semantic comparison; their raw
+strict results remain separate and semantic matches never count as strict
+passes. All 26 affected recordings and all 101 normal validation fixtures have
+completed state and independently audited gameplay RNG checks on v102.
 
-The authoritative per-recording policy is `evaluation_policy.accepted_limitations` in [COMPET-N-results.json](COMPET-N-results.json). Names below include the imported input hash suffix. That report and its phase records retain full input hashes, strict results, and gameplay RNG outcomes. Evidence links refer to preserved local captures under `tmp/`; those captures are not committed to Git. The findings are summarized here so the exclusions remain understandable without the local captures.
+The complete v101 baseline remains **4,602 strict passes plus 44 exclusions**.
+A full v102 recheck is in progress; historical passes are not reused as current
+runtime evidence. The authoritative current policy and per-input results are
+in [COMPET-N-results.json](COMPET-N-results.json). Original policy and results
+are preserved in `historical_evaluation_policies.v101` and
+`v101_baseline_verification`.
+
+Local evidence links point to ignored captures under `tmp/`. Historical tables
+below retain the original trigger tics and raw evidence. New follow-up evidence
+is [the 26-demo v102 replay](../tmp/compet-n-exclusion-followups-v102/summary.json)
+and [the preserved nonzero ceiling captures](../tmp/compet-n-retained-ceiling-semantic-v102/summary.json).
 
 ## Original reference crashes — 17 recordings
 
@@ -30,9 +46,16 @@ These inputs crash the original Linux Doom reference during trace capture, befor
 | `DOOMU-E1M5-P1M5-422-663073c68528.lmp` | [Evidence](../tmp/compet-n-continue-current-comedy-eight-remainder-v96/DOOMU-E1M5-P1M5-422-663073c68528/harness.log) |
 | `DOOMU-E4M1-R4M1-525-a6d57dc4666a.lmp` | [Evidence](../tmp/compet-n-continue-current-comedy-eight-remainder-v98/DOOMU-E4M1-R4M1-525-a6d57dc4666a/harness.log) |
 
-## Door/platform structure corruption — 13 recordings
+## Fixed: door/platform structure corruption — 13 recordings
 
-Original `EV_VerticalDoor` treats a sector's active `T_PlatRaise` as `vldoor_t`. Writing `direction = -1` overwrites `plat_t.wait` (105 becomes -1), changing the platform's completion. Replicating that invalid structure access is excluded. Each recording retains its **strict mismatch**, including any later RNG divergence; matching RNG alone does not make it a pass.
+Original `EV_VerticalDoor` treats an active `T_PlatRaise` as `vldoor_t`;
+`door.direction` aliases `plat.wait`. v102 safely applies the same -1/1 field
+transition for manual raise doors, without creating a door thinker or touching
+invalid memory. It also decrements the platform countdown with 32-bit wrapping
+and resumes only at exactly zero, as `!--plat->count` does in the original.
+All thirteen recordings now **strictly match the complete state/RNG window**.
+They are removed from the current exclusion list. Historical mismatches and
+trigger diagnostics remain preserved below.
 
 | Recording | Overwrite tic | Trigger | Local evidence |
 | --- | ---: | --- | --- |
@@ -50,9 +73,22 @@ Original `EV_VerticalDoor` treats a sector's active `T_PlatRaise` as `vldoor_t`.
 | `DOOMU-E3M7-f3m7-225-69af3a73a317.lmp` | 3191 | Line 352, special 1, sector 23 | [Evidence](../tmp/compet-n-continue-e3m7-platform-cast-fast225-debug-v95/diagnostic-result.json) |
 | `DOOMU-E3M7-T3M7-800-18e3e502d35c.lmp` | 1580 | Line 352, special 1, sector 23 | [Evidence](../tmp/compet-n-continue-e3m7-platform-cast-t800-debug-v100/diagnostic-result.json) |
 
-## Unused uninitialized ceiling field — 13 recordings
+## Semantic comparison: unused ceiling field — 13 recordings
 
-The original `EV_DoCeiling` constructor leaves `ceiling.topheight` uninitialized for `lowerAndCrush` (type 2), and its downward action never uses that field. The strict comparator exposes allocator residue. A separate diagnostic replacing only this unused reference field with zero matches each complete comparison window, with independently matching gameplay RNG. The comparator itself remains unchanged, and the raw result remains **strict mismatch**.
+Original `EV_DoCeiling` leaves `ceiling.topheight` uninitialized for
+`lowerAndCrush` (type 2); its downward action never reads that field.
+`-ignore-unused-ceiling-topheight` enables a separate comparison that ignores
+only this key on paired `kind: ceiling`, `type: 2`, `direction: -1` records.
+All other fields and complete-window gameplay RNG still have to match. The
+corpus runner exposes this as `--semantic-unused-ceiling-fields` and preserves
+the raw strict status, report, and exit code.
+
+The fresh v102 replay has **six strict matches and seven semantic-only
+state/RNG matches** across these thirteen recordings. Allocator residue can
+happen to be zero, so strict counts can vary across reference runs. All thirteen
+preserved captures containing nonzero residue also pass the new semantic
+comparator and remain historical strict mismatches. These cases are tracked as
+semantic comparison cases, separate from the eighteen remaining exclusions.
 
 | Recording | Diagnostic compared tics | Local evidence |
 | --- | ---: | --- |

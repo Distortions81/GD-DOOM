@@ -13,8 +13,9 @@ import (
 )
 
 type compareConfig struct {
-	maxPlayerDistance float64
-	ignoreTransientFX bool
+	maxPlayerDistance            float64
+	ignoreTransientFX            bool
+	ignoreUnusedCeilingTopheight bool
 }
 
 func main() {
@@ -23,16 +24,18 @@ func main() {
 	rightPath := fs.String("right", "", "right trace JSONL")
 	maxPlayerDistance := fs.Float64("max-player-distance", 0, "compare only mobjs within this many map units of the player (0 disables)")
 	ignoreTransientFX := fs.Bool("ignore-transient-fx", false, "ignore transient FX/projectile mobjs during compare")
+	ignoreUnusedCeilingTopheight := fs.Bool("ignore-unused-ceiling-topheight", false, "semantic comparison: ignore only topheight on paired downward lowerAndCrush ceilings; strict comparison remains the default")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		os.Exit(2)
 	}
 	if *leftPath == "" || *rightPath == "" {
-		fmt.Fprintln(os.Stderr, "usage: demotracecmp -left <trace.jsonl> -right <trace.jsonl> [-max-player-distance n] [-ignore-transient-fx]")
+		fmt.Fprintln(os.Stderr, "usage: demotracecmp -left <trace.jsonl> -right <trace.jsonl> [-max-player-distance n] [-ignore-transient-fx] [-ignore-unused-ceiling-topheight]")
 		os.Exit(2)
 	}
 	cfg := compareConfig{
-		maxPlayerDistance: *maxPlayerDistance,
-		ignoreTransientFX: *ignoreTransientFX,
+		maxPlayerDistance:            *maxPlayerDistance,
+		ignoreTransientFX:            *ignoreTransientFX,
+		ignoreUnusedCeilingTopheight: *ignoreUnusedCeilingTopheight,
 	}
 
 	leftFile, err := os.Open(*leftPath)
@@ -87,7 +90,7 @@ func main() {
 		rraw = r
 		lnorm := normalizeTraceObject(l, cfg)
 		rnorm := normalizeTraceObject(r, cfg)
-		if path, lv, rv, ok := firstDiff("root", lnorm, rnorm); ok {
+		if path, lv, rv, ok := firstDiffWithConfig("root", lnorm, rnorm, cfg); ok {
 			fmt.Printf("mismatch line=%d path=%s\n", i+1, path)
 			if lg, ok := ticGametic(lnorm); ok {
 				fmt.Printf("left_gametic=%d\n", lg)
@@ -115,7 +118,11 @@ func main() {
 		fmt.Printf("length mismatch left=%d right=%d\n", left.count, right.count)
 		os.Exit(1)
 	}
-	fmt.Printf("traces match lines=%d\n", left.count)
+	if cfg.ignoreUnusedCeilingTopheight {
+		fmt.Printf("semantic traces match lines=%d\n", left.count)
+	} else {
+		fmt.Printf("traces match lines=%d\n", left.count)
+	}
 }
 
 // Retain only one tic from each trace: UV-Max recordings can produce multiple
@@ -290,6 +297,10 @@ func isTransientFXType(typ int) bool {
 }
 
 func firstDiff(path string, left, right any) (string, any, any, bool) {
+	return firstDiffWithConfig(path, left, right, compareConfig{})
+}
+
+func firstDiffWithConfig(path string, left, right any, cfg compareConfig) (string, any, any, bool) {
 	if shouldIgnorePath(path) {
 		return "", nil, nil, false
 	}
@@ -301,7 +312,7 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 		}
 		keys := unionKeys(l, r)
 		for _, k := range keys {
-			if shouldIgnoreMapKey(path, k, l, r) {
+			if shouldIgnoreMapKey(path, k, l, r) || (cfg.ignoreUnusedCeilingTopheight && shouldIgnoreUnusedCeilingTopheight(path, k, l, r)) {
 				continue
 			}
 			lp, lok := l[k]
@@ -313,7 +324,7 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 				}
 				return childPath, lp, rp, true
 			}
-			if p, lv, rv, ok := firstDiff(path+"."+k, lp, rp); ok {
+			if p, lv, rv, ok := firstDiffWithConfig(path+"."+k, lp, rp, cfg); ok {
 				return p, lv, rv, true
 			}
 		}
@@ -327,7 +338,7 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 			return path + ".len", len(l), len(r), true
 		}
 		for i := range l {
-			if p, lv, rv, ok := firstDiff(fmt.Sprintf("%s[%d]", path, i), l[i], r[i]); ok {
+			if p, lv, rv, ok := firstDiffWithConfig(fmt.Sprintf("%s[%d]", path, i), l[i], r[i], cfg); ok {
 				return p, lv, rv, true
 			}
 		}
@@ -361,6 +372,24 @@ func firstDiff(path string, left, right any) (string, any, any, bool) {
 		}
 		return "", nil, nil, false
 	}
+}
+
+func shouldIgnoreUnusedCeilingTopheight(path, key string, left, right map[string]any) bool {
+	// EV_DoCeiling leaves this field uninitialized; T_MoveCeiling never
+	// reads it for a downward lowerAndCrush. Require matching kinds, types,
+	// and directions on both sides so a different mover cannot be hidden.
+	const prefix = "root.specials["
+	if key != "topheight" || len(path) < len(prefix)+2 || path[:len(prefix)] != prefix || path[len(path)-1] != ']' {
+		return false
+	}
+	for _, digit := range path[len(prefix) : len(path)-1] {
+		if digit < '0' || digit > '9' {
+			return false
+		}
+	}
+	return left["kind"] == "ceiling" && right["kind"] == "ceiling" &&
+		left["type"] == float64(2) && right["type"] == float64(2) &&
+		left["direction"] == float64(-1) && right["direction"] == float64(-1)
 }
 
 func shouldIgnorePath(path string) bool {
