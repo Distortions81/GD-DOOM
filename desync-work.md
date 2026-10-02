@@ -1,20 +1,30 @@
 # Current verification checkpoint — 2026-10-01
 
-Current eligible corpus: **4,646 recordings**. The original **4,634-input**
-inventory and frozen execution queues remain unchanged. A full re-import of the
-checksum-verified snapshot recovers **12 additional valid single-player demos**:
-ten ZIP Implode entries and two ARJ archives named `.zip`. All original records
-are identical and the expanded import has zero skipped entries. The importer
-uses optional `7z`/`7zz` only for legacy formats, streams literal members to stdout,
-and checks decoded size and CRC. All twelve Python corpus tests pass.
+Current eligible corpus: **4,646 recordings**. Verification is complete on the
+exact v101 runtime under the [documented exclusions](demos/COMPET-N-exclusions.md): **4,602 strict
+state and independently audited gameplay RNG matches**, **44 exclusions**, and
+**zero pending or unexplained ordinary desyncs**. Exclusions retain raw
+mismatches/errors and never count as passes. Comparisons cover original
+termination or the first player death, including the death tic.
 
-The recovered recordings have a separate follow-up manifest, prepared for the
-same v101 runtime, 16 MiB isolated reference config, and 12 uncapped nice-19
-workers on Comedy-SSD/Scratch after the current base sweep terminates.
-Recovered replay progress: **0/12 completed, 0 strict state/RNG matches**.
-They are pending comparisons until verified, and are never preclassified as
-exclusions. Current accepted exclusions remain **44**. Full expanded-corpus
-verification remains unfinished.
+The original 4,634-input inventory is unchanged: 729 previously completed
+exact-v101 matches plus all 3,861 queued comparisons give 4,590 strict passes.
+All **12 recovered demos** also pass using the same runtime and exact baseline
+comparison tools. An earlier twelve-demo attempt rebuilt the comparator with
+different Go VCS metadata; it is preserved and contributes zero pinned-baseline
+passes. The accepted rerun reuses and hash-checks the original comparator.
+
+The full re-import has zero skipped entries: ten ZIP Implode entries and two
+ARJ archives named `.zip` add three Ultimate Doom and nine Doom II recordings.
+Expanded totals are **2,411 Ultimate Doom** and **2,235 Doom II** demos across
+all 68 starting maps. All 101 normal validation fixtures match state and RNG;
+the separately proven original-reference crash remains a raw error. The full
+Go suite and all twelve Python corpus tests pass. Save/keyframe versions remain
+26/13. Published runtime fixes: `21cc3ce`; archive recovery: `7ee0d56`.
+
+The current machine-readable evidence is `current_runtime_verification` in
+[demos/COMPET-N-results.json](demos/COMPET-N-results.json). Historical phase counts below retain their original
+inventory, queue, runtime, and exclusion accounting.
 Evidence: `tmp/compet-n/archive-recovery-v101.json`; follow-up selection:
 `tmp/compet-n-archive-recovered-v101/followup-v101.json`.
 
@@ -50,12 +60,12 @@ The latest completed repository replay is **25/25**, with strict RNG matching,
 at `tmp/compet-n-continue-heap-repository-v101/summary.json`; this replay includes the dependency updates.
 The complete Go suite passes
 after the latest corrections and the dependency updates from `d5ca1ac`, and
-eight Python corpus checks pass. This checkpoint follows pushed base `4a8909d` and includes grounded-effect movement,
+all twelve Python corpus checks pass. The earlier checkpoint followed pushed base `4a8909d` and included grounded-effect movement,
 lethal-tic use ordering, commercial finales and newborn missile ordering.
-**4,634** eligible recordings have completed
+**4,646** eligible recordings have completed
 attempts; **0** have no completed attempt yet.
-The full manifest remains unswept, and these passes do not establish universal
-demo compatibility.
+The expanded manifest is now fully accounted for under the documented exclusions.
+Coverage is limited to this snapshot and the stated comparison windows.
 
 Recent targeted fixes preserve monster-only teleport triggers on player
 crossings, reject dead projectile shooters before immediate damage-wake chase,
@@ -283,7 +293,7 @@ same unused-field diagnostic. E3M5 t3m51230 likewise matches all 27,215
 compared tics and gameplay RNG after normalizing only the unused field.
 All raw strict mismatches remain recorded.
 The frozen v100 queue retains its original 38-exclusion partition.
-Full current-runtime corpus verification remains unfinished.
+At this historical v100 checkpoint, full current-runtime corpus verification was unfinished.
 The v100 eight-worker service was stopped with all completed results and partial
 captures retained after finding an ordinary MAP30 mismatch at tic 10,355.
 The telefragged Pain Elemental had no target; original A_PainDie spawned three
@@ -302,7 +312,7 @@ were **15** recordings without completed attempts at selection. Its exact user
 service is `gddoom-demo-sweep-v101-comedy-twelve.service`; resource and drive
 guard receipts are retained with the sweep. Current runtime and
 full-corpus progress are recorded in [demos/COMPET-N-results.json](demos/COMPET-N-results.json).
-The complete current-runtime corpus remains unfinished.
+At this superseded v101 checkpoint, full current-runtime corpus verification was unfinished.
 
 The 305,330-input-tic E4M1 `t4m1long` demo initially fails before gameplay
 because the original reference inherits a 2 MiB zone. The harness now writes an
@@ -331,7 +341,7 @@ The v101 sweep stopped with 653 new strict matches, one startup error and all
 partial captures preserved while the new reference config is verified. Those
 completed current-runtime matches remain covered by the successor queue.
 
-The resumed 12-worker heap-config sweep queues **3,861** recordings, retains **729** explicit current-runtime passes and **44** exclusions, totaling all **4,634** eligible inputs. Its unit is `gddoom-demo-sweep-v101-comedy-twelve-heap.service`. All 101 normal validation inputs match state and independently audited gameplay RNG under the isolated 16 MiB reference config; the separately proven E4M1 crash stays a raw error.
+The completed 12-worker heap-config sweep strictly matches all **3,861** queued recordings. Together with **729** prior exact-v101 passes and **44** exclusions, it accounts for all **4,634** original eligible inputs; the twelve recovered demos pass separately. Its unit is `gddoom-demo-sweep-v101-comedy-twelve-heap.service`. All 101 normal validation inputs match state and independently audited gameplay RNG under the isolated 16 MiB reference config; the separately proven E4M1 crash stays a raw error.
 The superseded v92 sweep preserves 30 completed state/RNG matches and its
 4,610 queued, 15 explicitly covered, and nine accepted frozen partition.
 The superseded v91 manifest preserved its 4,563 queued, 62 explicitly covered,
