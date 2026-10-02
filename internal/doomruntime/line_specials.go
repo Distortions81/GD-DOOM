@@ -1069,7 +1069,10 @@ func (g *game) activatePlatLine(lineIdx int, info mapdata.PlatInfo) bool {
 					g.demoTick-1, g.worldTic, sec, lineIdx, info.Action, g.m.Linedefs[lineIdx].Tag, pt.status, pt.speed, pt.low, pt.high, pt.typ)
 			}
 		}
-		if g.platTickedThisTic {
+		// P_AddThinker appends a retriggered lift behind every existing missile.
+		// During the ordered walk, let that tail thinker perform its own step.
+		// Only the legacy separate plat phase needs an immediate catch-up step.
+		if g.platTickedThisTic && !g.orderedWorldThinkersActive {
 			g.tickPlat(sec, pt)
 			// The ordered thinker loop will discover this newly appended thinker
 			// later in the same tic.  P_RunThinkers services it once, not twice.

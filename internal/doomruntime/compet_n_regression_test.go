@@ -9,6 +9,41 @@ import (
 	"gddoom/internal/mapdata"
 )
 
+func TestPainElementalDeathWithoutTargetLeavesSkullsWaiting(t *testing.T) {
+	doomrand.Clear()
+	t.Cleanup(doomrand.Clear)
+	g := newGame(&mapdata.Map{Name: "MAP30",
+		Things:  []mapdata.Thing{{Type: 71, X: 128, Flags: skillMask}, {Type: 1}},
+		Sectors: []mapdata.Sector{{FloorHeight: 256, CeilingHeight: 640}},
+	}, Options{Width: doomLogicalW, Height: doomLogicalH, SkillLevel: 4})
+	g.ensureMonsterAIState()
+	g.p.x, g.p.y = -1024*fracUnit, -1024*fracUnit
+	g.thingTargetPlayer[0], g.thingTargetIdx[0], g.thingAggro[0] = false, -1, false
+	// MAP30 L30-1840 tic 10355: a brain-spawned Pain Elemental was
+	// telefragged before acquiring a target and now enters A_PainDie.
+	g.thingHP[0], g.thingDead[0] = -9600, true
+	g.thingState[0], g.thingStatePhase[0], g.thingStateTics[0] = monsterStateDeath, 3, 1
+	before := len(g.m.Things)
+	g.tickThingThinker(0, g.m.Things[0])
+	if len(g.m.Things) != before+3 {
+		t.Fatalf("death spawned %d skulls, want 3", len(g.m.Things)-before)
+	}
+	for i := before; i < len(g.m.Things); i++ {
+		x, y := g.thingPosFixed(i, g.m.Things[i])
+		g.tickThingThinker(i, g.m.Things[i])
+		z, _, _ := g.thingSupportState(i, g.m.Things[i])
+		if g.thingSkullFly[i] || g.thingMomX[i] != 0 || g.thingMomY[i] != 0 || g.thingMomZ[i] != 0 {
+			t.Fatalf("targetless skull %d charged: fly=%v momentum=(%d,%d,%d)", i, g.thingSkullFly[i], g.thingMomX[i], g.thingMomY[i], g.thingMomZ[i])
+		}
+		if nx, ny := g.thingPosFixed(i, g.m.Things[i]); nx != x || ny != y || z != 264*fracUnit || g.thingWorldAngle(i, g.m.Things[i]) != 0 {
+			t.Fatalf("targetless skull moved or turned: xy=(%d,%d), want=(%d,%d), z=%d angle=%d", nx, ny, x, y, z, g.thingWorldAngle(i, g.m.Things[i]))
+		}
+		if g.monsterHasExplicitTarget(i) || g.thingStateTics[i] != 9 {
+			t.Fatal("targetless skull must retain its idle spawn state")
+		}
+	}
+}
+
 func TestLostSoulChargeAimsAtPlayerCorpseHeight(t *testing.T) {
 	for _, dead := range []bool{false, true} {
 		t.Run(fmt.Sprint(dead), func(t *testing.T) {
@@ -30,6 +65,40 @@ func TestLostSoulChargeAimsAtPlayerCorpseHeight(t *testing.T) {
 				t.Fatalf("charge momz=%d want=%d (dead=%v)", g.thingMomZ[0], want, dead)
 			}
 		})
+	}
+}
+
+func TestLostSoulSlamFloatsBeforeClippingRaisedFloor(t *testing.T) {
+	doomrand.Clear()
+	t.Cleanup(doomrand.Clear)
+	g := &game{m: &mapdata.Map{
+		Sectors: []mapdata.Sector{{FloorHeight: -8, CeilingHeight: 88}},
+		Things: []mapdata.Thing{{Type: 3006, X: 40, Flags: skillMask},
+			{Type: barrelThingType, X: 64, Flags: skillMask}},
+	}, opts: Options{SkillLevel: 4}, stats: playerStats{Health: 100}, playerMobjHealth: 100,
+		thingHP: []int{100, 1000}, thingCollected: []bool{false, false},
+		thingDead: []bool{false, false}, thingAggro: []bool{true, false}}
+	g.initPhysics()
+	g.ensureMonsterAIState()
+	g.p = player{x: 40 * fracUnit, y: 40 * fracUnit, z: -8 * fracUnit,
+		floorz: -8 * fracUnit, ceilz: 88 * fracUnit}
+	g.sectorSoundTarget = []bool{true}
+	g.thingTargetPlayer[0] = true
+	g.thingDoomState[0], g.thingState[0], g.thingStateTics[0] = 590, monsterStateAttack, 3
+	g.thingSkullFly[0] = true
+	g.thingMoveDir[0], g.thingMoveCount[0] = monsterDirNorth, 2
+	// E3M3 tic 5206: a slam's nested chase raises floorz above the skull's
+	// current z. P_ZMovement floats toward the player before floor clipping.
+	g.setThingSupportState(0, -611670, -24*fracUnit, 88*fracUnit)
+	g.setThingSupportState(1, -8*fracUnit, -8*fracUnit, 88*fracUnit)
+	g.setThingMomentum(0, 20*fracUnit, 0, 961194)
+	g.tickMonsterMomentum(0, g.m.Things[0])
+	z, floor, _ := g.thingSupportState(0, g.m.Things[0])
+	if g.thingSkullFly[0] || g.thingMomZ[0] != 0 || floor != -8*fracUnit {
+		t.Fatalf("slam charging=%v momz=%d floor=%d", g.thingSkullFly[0], g.thingMomZ[0], floor)
+	}
+	if z != -349526 {
+		t.Fatalf("post-slam z=%d, want -349526 after floating before floor clipping", z)
 	}
 }
 
@@ -1653,6 +1722,52 @@ func TestDeadLostSoulMapThingExpiresAtSpawnCountdown(t *testing.T) {
 	g.runOrderedWorldThinkers()
 	if !g.thingCollected[0] {
 		t.Fatal("S_SKULL_DIE6 did not remove the corpse on entering S_NULL")
+	}
+}
+
+func TestRetriggeredLiftRunsAfterExistingMissileThinkers(t *testing.T) {
+	g := newDoorTimingGame(1)
+	g.p.x = -1000 * fracUnit
+	g.sectorFloor[0], g.sectorFloor[1] = -64*fracUnit, 64*fracUnit
+	g.m.Sectors[1].Tag = 7
+	g.m.Linedefs[0].Tag = 7
+	g.m.Linedefs[0].Special = 88
+	g.lineSpecial = []uint16{88}
+	g.plats = map[int]*platThinker{1: {
+		order: 1, sector: 1, typ: platTypeDownWaitUpStay, status: platStatusUp,
+		speed: 4 * fracUnit, low: -64 * fracUnit, high: 64 * fracUnit,
+	}}
+	g.nextThinkerOrder = 4
+	g.projectiles = []projectile{
+		{order: 2, kind: projectilePlasmaBall, sourceType: 68, sourceThing: -1,
+			x: -8 * fracUnit, y: -32 * fracUnit, z: 96 * fracUnit, vx: 10 * fracUnit,
+			radius: 6 * fracUnit, height: 8 * fracUnit, floorz: -64 * fracUnit, ceilz: 128 * fracUnit},
+		{order: 3, kind: projectileFireball, sourceThing: -1,
+			x: 32 * fracUnit, y: 32 * fracUnit, z: 96 * fracUnit, vx: fracUnit,
+			radius: 6 * fracUnit, height: 8 * fracUnit, floorz: 64 * fracUnit, ceilz: 128 * fracUnit},
+	}
+
+	// The old lift finishes first. Arachnotron plasma then crosses its trigger
+	// and appends a new lift, behind the imp shot already in the thinker list.
+	g.runOrderedWorldThinkers()
+	if len(g.projectiles) != 2 {
+		t.Fatalf("surviving missiles=%d want 2", len(g.projectiles))
+	}
+	if got := g.projectiles[1].floorz; got != 64*fracUnit {
+		t.Fatalf("imp shot support=%d want old floor %d", got, 64*fracUnit)
+	}
+	if got := g.sectorFloor[1]; got != 60*fracUnit {
+		t.Fatalf("retriggered lift floor=%d want %d after one same-tic step", got, 60*fracUnit)
+	}
+
+	// Missiles have MF_NOBLOCKMAP, so the later lift step leaves cached support
+	// alone until the next missile XY move probes the lowered floor.
+	g.runOrderedWorldThinkers()
+	if got := g.projectiles[1].floorz; got != 60*fracUnit {
+		t.Fatalf("next-tic shot support=%d want %d", got, 60*fracUnit)
+	}
+	if got := g.sectorFloor[1]; got != 56*fracUnit {
+		t.Fatalf("next-tic lift floor=%d want %d", got, 56*fracUnit)
 	}
 }
 

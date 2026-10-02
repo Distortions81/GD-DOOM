@@ -261,10 +261,17 @@ REF_LOG="${OUT_DIR}/reference-${DEMO_LUMP}.log"
 GD_TRACE="${OUT_DIR}/gddoom-$(basename "${DEMO_PATH}").jsonl"
 GD_LOG="${OUT_DIR}/gddoom-$(basename "${DEMO_PATH}").log"
 CMP_LOG="${OUT_DIR}/compare.log"
+REF_CONFIG="${OUT_DIR}/reference.cfg"
+
+# Large external demos can exhaust Linux Doom's 2 MiB default zone before
+# playback starts. Use its supported memory setting in an isolated config,
+# without inheriting or rewriting the user's ~/.doomrc.
+printf 'mb_used 16\n' >"${REF_CONFIG}"
 
 rm -f "${REF_TRACE}" "${REF_LOG}" "${GD_TRACE}" "${GD_LOG}" "${CMP_LOG}"
 
 echo "Tracing reference runtime: lump=${DEMO_LUMP}"
+echo "Reference config: ${REF_CONFIG} (16 MiB zone)"
 # -timedemo stages external .lmp files without entering -playdemo's paced
 # branch. -tracedemo then selects the uncapped, headless trace loop.
 # The 32-bit reference's fopen cannot write regular files beyond 2 GiB.
@@ -274,6 +281,7 @@ echo "Tracing reference runtime: lump=${DEMO_LUMP}"
   cd "${REF_RUN_DIR}"
   env DOOMWADDIR="${REF_WAD_DIR}" \
     "${REFERENCE_BIN}" \
+    -config "${REF_CONFIG}" \
     -timedemo "${DEMO_LUMP}" \
     -tracedemo "${DEMO_LUMP}" \
     -tracefile /dev/fd/3 \

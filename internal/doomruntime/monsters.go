@@ -2712,6 +2712,12 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 		}
 	}
 
+	if chargeEnded {
+		// A slam's nested chase can raise floorz above the current z.
+		// P_MobjThinker applies floating movement before floor clipping;
+		// leave both operations to tickMonsterMomentum after the XY steps.
+		return false
+	}
 	_, floorZ, ceilZ := g.thingSupportState(i, th)
 	nz := z + momz
 	height := g.thingCurrentHeight(i, th)
@@ -2736,13 +2742,6 @@ func (g *game) tickSkullFlyMomentum(i int, th mapdata.Thing) bool {
 	g.thingMomX[i] = momx
 	g.thingMomY[i] = momy
 	g.thingMomZ[i] = momz
-	if chargeEnded {
-		// P_XYMovement clears a skull charge on impact, then
-		// P_MobjThinker still runs P_ZMovement because the Lost Soul is
-		// off its floor. Keep the existing split-step behavior above, but
-		// let tickMonsterMomentum perform that final zero-momentum z update.
-		return false
-	}
 	if debugSkull {
 		fmt.Printf("skull-fly-debug tic=%d world=%d idx=%d event=finish pos=(%d,%d,%d) mom=(%d,%d,%d) floor=%d ceil=%d\n",
 			g.demoTick-1, g.worldTic, i, tx, ty, nz, momx, momy, momz, floorZ, ceilZ)
@@ -4247,8 +4246,11 @@ func (g *game) spawnPainLostSoul(sourceIdx int, angle uint32) bool {
 		return false
 	}
 	g.setThingSupportState(idx, z, probe.tmfloor, probe.tmceil)
-	g.setThingWorldAngle(idx, angle)
-	g.thingAggro[idx] = true
+	// P_SpawnMobj leaves angle zero. The launch angle selects only the
+	// spawn position; A_SkullAttack faces the inherited target, if any.
+	// A_PainDie can run before the parent ever acquires a target (for
+	// example, a MAP30 brain spawn telefrag), leaving the skull idle.
+	g.thingAggro[idx] = g.monsterHasExplicitTarget(sourceIdx)
 	// P_SpawnMobj enters the skull's spawn state. The normal thinker performs
 	// the first decrement later this tic, while preserving reactiontime.
 	g.thingState[idx] = monsterStateSpawn

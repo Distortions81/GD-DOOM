@@ -889,7 +889,9 @@ type game struct {
 	debugPlayerProbeEnabled       bool
 	debugPlayerProbeTic           int
 	platTickedThisTic             bool
+	orderedWorldThinkersActive    bool
 	demoTick                      int
+	demoPaused                    bool
 	demoIntermissionActive        bool
 	demoIntermissionSkip          bool
 	demoWorldDone                 bool
@@ -2815,6 +2817,16 @@ func (g *game) updateDemoMode() error {
 		}
 		tc := script.Tics[g.demoTick]
 		g.demoTick++
+		if g.playerReborn {
+			g.respawnDemoPlayer()
+		}
+		g.applyRecordedDemoPause(tc)
+		if g.demoPaused {
+			g.tickPausedDemoStatusWidgets()
+			g.writeDemoTraceTic(0)
+			g.demoTraceInitialWritten = true
+			return nil
+		}
 		cmd, usePressed, fireHeld := demoTicCommand(tc)
 		g.runGameplayTic(cmd, usePressed, fireHeld)
 		g.discoverLinesAroundPlayer()
@@ -2851,7 +2863,17 @@ func (g *game) updateDemoMode() error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
-	g.stepGameplayFromDemoTic(tc)
+	// G_Ticker handles pending rebirth before reading special buttons;
+	// loading a new level resets paused before this command can toggle it.
+	if g.playerReborn {
+		g.respawnDemoPlayer()
+	}
+	g.applyRecordedDemoPause(tc)
+	if g.demoPaused {
+		g.tickPausedDemoStatusWidgets()
+	} else {
+		g.stepGameplayFromDemoTic(tc)
+	}
 	g.writeDemoTraceTic(g.demoTick - 1)
 	if g.isDead && g.opts.DemoQuitOnComplete && g.opts.DemoExitOnDeath {
 		g.reportDemoBench(script)
@@ -2874,6 +2896,7 @@ func (g *game) updateDemoIntermission(script *DemoScript) error {
 	}
 	tc := script.Tics[g.demoTick]
 	g.demoTick++
+	g.applyRecordedDemoPause(tc)
 	if g.demoIntermissionActive {
 		// WI_checkForAccelerate uses attack/use edges and updates the same
 		// latches that the player thinker used in the completed level.

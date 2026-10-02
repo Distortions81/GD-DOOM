@@ -148,7 +148,13 @@ type worldThinkerRef struct {
 }
 
 func (g *game) runOrderedWorldThinkers() {
-	if g != nil && g.m != nil {
+	if g == nil {
+		return
+	}
+	wasActive := g.orderedWorldThinkersActive
+	g.orderedWorldThinkersActive = true
+	defer func() { g.orderedWorldThinkersActive = wasActive }()
+	if g.m != nil {
 		g.ensureMonsterAIState()
 	}
 	for lastOrder := int64(0); ; {

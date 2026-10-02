@@ -290,7 +290,17 @@ func (g *game) writeDemoTraceTic(gametic int) {
 	gamestateName := "GS_LEVEL"
 	gameaction := 0
 	gameactionName := "ga_nothing"
-	if g.levelExitRequested && !g.demoIntermissionActive {
+	// G_Ticker queues a recorded save before the level thinker and consumes
+	// it before reading the next command. The replay stream retains the
+	// executed command, so this one-tic pending action needs no saved field.
+	if script := g.opts.DemoScript; script != nil && gametic >= 0 && gametic < len(script.Tics) {
+		buttons := script.Tics[gametic].Buttons
+		if buttons&demoButtonSpecial != 0 && buttons&3 == 2 {
+			gameaction = 4
+			gameactionName = "ga_savegame"
+		}
+	}
+	if g.levelExitRequested && !g.demoIntermissionActive && !g.demoFinaleActive {
 		gameaction = 6
 		gameactionName = "ga_completed"
 	}
@@ -305,8 +315,6 @@ func (g *game) writeDemoTraceTic(gametic int) {
 	if g.demoFinaleActive {
 		gamestate = 2
 		gamestateName = "GS_FINALE"
-		gameaction = 0
-		gameactionName = "ga_nothing"
 		if g.demoWorldDone {
 			gameaction = 8
 			gameactionName = "ga_worlddone"

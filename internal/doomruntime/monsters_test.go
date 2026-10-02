@@ -1720,6 +1720,8 @@ func TestPainElementalAttackSpawnsLostSoul(t *testing.T) {
 		thingDropped:        []bool{false},
 		thingHP:             []int{400},
 		thingAggro:          []bool{true},
+		thingTargetPlayer:   []bool{true},
+		thingTargetIdx:      []int{-1},
 		thingCooldown:       []int{0},
 		thingMoveDir:        []monsterMoveDir{monsterDirNoDir},
 		thingMoveCount:      []int{0},
@@ -1764,6 +1766,9 @@ func TestPainElementalAttackSpawnsLostSoul(t *testing.T) {
 	}
 	if !g.thingAggro[1] {
 		t.Fatal("spawned lost soul should be active")
+	}
+	if !g.thingTargetPlayer[1] || !g.thingSkullFly[1] || (g.thingMomX[1] == 0 && g.thingMomY[1] == 0) {
+		t.Fatal("spawned lost soul should immediately charge its inherited player target")
 	}
 }
 

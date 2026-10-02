@@ -3,10 +3,12 @@ package doomruntime
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 
+	"gddoom/internal/doomrand"
 	"gddoom/internal/mapdata"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -93,6 +95,114 @@ func TestDemoTraceWritesMetaDemoAndTics(t *testing.T) {
 	}
 	if got := int(tic["rndindex"].(float64)); got != 2 {
 		t.Fatalf("rndindex=%d want=2", got)
+	}
+}
+
+func TestDemoTraceRecordedSaveActionLastsOneTic(t *testing.T) {
+	for _, buttons := range []byte{130, 142, 158, 2, 131} {
+		t.Run(fmt.Sprintf("buttons=%d", buttons), func(t *testing.T) {
+			base := mustLoadE1M1GameForMapTextureTests(t)
+			path := t.TempDir() + "/save-action.jsonl"
+			g := newGame(base.m, Options{Width: 320, Height: 200,
+				DemoScript: &DemoScript{Header: DemoHeader{Version: demoVersion109,
+					Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+					Tics: []DemoTic{{Buttons: buttons}, {}}}, DemoTracePath: path})
+			for i := 0; i < 2; i++ {
+				if err := g.Update(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			g.demoTrace.Close()
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tics := []map[string]any{}
+			for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+				var record map[string]any
+				if err := json.Unmarshal([]byte(line), &record); err != nil {
+					t.Fatal(err)
+				}
+				if record["kind"] == "tic" {
+					tics = append(tics, record)
+				}
+			}
+			if len(tics) != 2 {
+				t.Fatalf("tic count=%d, want 2", len(tics))
+			}
+			want := 0
+			if buttons == 130 || buttons == 142 || buttons == 158 {
+				want = 4
+			}
+			if int(tics[0]["gameaction"].(float64)) != want || int(tics[1]["gameaction"].(float64)) != 0 {
+				t.Fatalf("queued/next actions=%v/%v, want %d/0", tics[0]["gameaction"], tics[1]["gameaction"], want)
+			}
+		})
+	}
+}
+
+func TestRecordedPauseFreezesWorldButConsumesCommands(t *testing.T) {
+	for _, trace := range []bool{false, true} {
+		t.Run(fmt.Sprintf("trace=%t", trace), func(t *testing.T) {
+			base := mustLoadE1M1GameForMapTextureTests(t)
+			opts := Options{Width: 320, Height: 200,
+				DemoScript: &DemoScript{Header: DemoHeader{Version: demoVersion109,
+					Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+					Tics: []DemoTic{{Forward: 20, Buttons: 129}, {Forward: 20}, {Forward: 20, Buttons: 129}}}}
+			if trace {
+				opts.DemoTracePath = t.TempDir() + "/pause.jsonl"
+			}
+			g := newGame(base.m, opts)
+			g.statusDamageCount, g.statusBonusCount = 1, 4
+			startX, startY, startTic := g.p.x, g.p.y, g.worldTic
+			_, startRNG := doomrand.State()
+			for i := 0; i < 2; i++ {
+				if err := g.Update(); err != nil {
+					t.Fatal(err)
+				}
+				_, rng := doomrand.State()
+				if g.worldTic != startTic || g.p.x != startX || g.p.y != startY || rng != startRNG {
+					t.Fatalf("paused command %d advanced world, player or gameplay RNG", i)
+				}
+				if g.demoTick != i+1 || g.statusDamageCount != 1 || g.statusBonusCount != 4 {
+					t.Fatalf("paused command %d: stream=%d damage=%d bonus=%d", i, g.demoTick, g.statusDamageCount, g.statusBonusCount)
+				}
+			}
+			if err := g.Update(); err != nil {
+				t.Fatal(err)
+			}
+			if g.worldTic != startTic+1 || g.statusDamageCount != 0 || g.statusBonusCount != 3 {
+				t.Fatal("resume command did not advance the world exactly once")
+			}
+			if g.demoTrace != nil {
+				g.demoTrace.Close()
+			}
+		})
+	}
+}
+
+func TestRecordedPauseAppliesAfterPendingPlayerReborn(t *testing.T) {
+	base := mustLoadE1M1GameForMapTextureTests(t)
+	g := newGame(base.m, Options{Width: 320, Height: 200,
+		DemoScript: &DemoScript{Header: DemoHeader{Version: demoVersion109,
+			Skill: 2, Episode: 1, Map: 1, PlayerInGame: [4]bool{true}},
+			Tics: []DemoTic{{Buttons: 129}, {Buttons: 129}}}})
+	g.playerReborn, g.isDead = true, true
+	g.stats.Health = 0
+	if err := g.Update(); err != nil {
+		t.Fatal(err)
+	}
+	// G_Ticker performs G_DoReborn before reading the pause command. The
+	// newly loaded player's thinker must then remain frozen for that tic.
+	if g.playerReborn || g.isDead || g.stats.Health != 100 || g.worldTic != 0 || !g.demoPaused || g.demoTick != 1 {
+		t.Fatalf("pause after reborn: pending=%t dead=%t health=%d world=%d paused=%t stream=%d",
+			g.playerReborn, g.isDead, g.stats.Health, g.worldTic, g.demoPaused, g.demoTick)
+	}
+	if err := g.Update(); err != nil {
+		t.Fatal(err)
+	}
+	if g.demoPaused || g.worldTic != 1 {
+		t.Fatal("resuming the reloaded level did not advance its first tic")
 	}
 }
 

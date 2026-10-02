@@ -86,7 +86,7 @@ python3 -B scripts/test_demo_corpus.py
 ## Verification — 2026-10-01
 
 The initial quick sweep found 31 matches, 35 state mismatches, and two replay
-errors. The latest complete quick sweep is `tmp/compet-n-continue-smoke-v96/summary.json`.
+errors. The latest complete quick sweep is `tmp/compet-n-continue-heap-smoke-v101/summary.json`.
 Together with the newer targeted replays recorded in
 [COMPET-N-results.json](COMPET-N-results.json), the quick selection now has
 **68 strict matches and 0 state mismatches**, with no replay errors.
@@ -102,15 +102,15 @@ These are results for particular recordings, not a count of independent bugs.
 The complete 4,634-recording manifest has not been swept. The two selections
 cover 136 distinct recordings, plus a separately retained reference crash.
 Coverage also includes completed recordings from the new UV and Nightmare batches:
-**3502 recordings have completed attempts**, with
-**1,132 without completed attempts**. The most recent completed combat phase
+**4634 recordings have completed attempts**, with
+**0 without completed attempts**. The most recent completed combat phase
 plus targeted follow-ups has **67 strict matches and 1 state mismatch**. Across the latest
 quick results and that combat phase, **135 pass and 1 fail**.
 Binary hashes and per-recording follow-up provenance distinguish the phases;
 the combat phase can precede later quick-set fixes.
 
 The original repository suite passes **25/25**, totaling **69,398 compared tics**,
-in `tmp/compet-n-continue-repository-v96/summary.json`. This completed replay uses the updated dependencies.
+in `tmp/compet-n-continue-heap-repository-v101/summary.json`. This completed replay uses the updated dependencies.
 The complete Go suite passes after the
 latest source corrections and the dependency updates integrated from `d5ca1ac`;
 all eight Python corpus checks pass. This checkpoint follows pushed base `4a8909d` and includes grounded-effect movement,
@@ -243,13 +243,161 @@ MAP23 LV23-257 matches 2,012 compared tics through the original first death
 complete Go suite pass on v96. Four additional E3M7 platform-to-door
 corruptions, five original E4M1 crashes, and two E3M5 unused uninitialized
 ceiling-field differences were verified separately. The current policy lists
-26 exclusions; their raw mismatches/errors remain recorded. See
+27 exclusions; their raw mismatches/errors remain recorded. See
 [the exclusion ledger](COMPET-N-exclusions.md) for recording names and evidence.
 
-The current v96 execution manifest freezes 4,594 queued recordings, 14 explicitly
+The superseded four-worker v96 execution manifest freezes 4,594 queued recordings, 14 explicitly
 verified current-runtime passes, and 26 accepted limitations, accounting for
 all 4,634 eligible inputs. Later control passes overlap this frozen queue.
 There were 1,154 never-tested inputs when the queue was selected.
+The four-worker run was superseded with 46/46 completed state/RNG matches.
+The eight-worker continuation uses the same immutable runtime and comparison
+behavior. Its comparator was rebuilt after commit d42bce7, changing embedded
+VCS metadata; its separately pinned harness differs only in that comparator
+filename. Comparator source and the trimmer are unchanged. Its new frozen manifest queues 4,492
+recordings, lists 116 explicitly completed current-v96 passes, and retains the
+26 accepted exclusions: all 4,634 eligible recordings are accounted for.
+There were 1,108 never-tested inputs at selection. Later results overlap neither
+the initial covered set nor the exclusions; the old manifest and results remain
+retained. The original 26-exclusion ledger and runtime fixes are published in `d42bce7`.
+E1M4 R1M4-314 was subsequently verified as excluded structure corruption at
+tic 6304: manual line 564 (special 27) treats sector 41's active platform
+as a door and overwrites platform.wait from 105 to -1. Its strict mismatch
+and later RNG divergence at tic 6450 remain recorded. The current policy now
+lists 36 exclusions after later E3M5 unused-field and E4M1 crash diagnostics;
+the frozen execution manifest retains its original 26.
+That eight-worker process stopped after 59 completed results: 58 state/RNG
+matches and the E1M4 exclusion. Its immutable queue and completed results are
+retained. The user requested resumption at the lowest CPU priority; the new
+nice-19 manifest queues 4,433 recordings, covers 174 verified current-v96
+passes, and lists 27 exclusions, totaling all 4,634 eligible recordings.
+It had 1,049 never-tested recordings at selection.
+The nice-19 eight-worker run retained seven further state/RNG passes but was
+suspended after UI stalls caused by disk I/O, then superseded with exit 143.
+The user requested fewer workers. The superseded one-worker low-I/O manifest
+queues 4,426 recordings, covers 181 explicit current-v96 passes, and lists
+27 exclusions, preserving the full 4,634-input scope. It had 1,042 never-tested
+recordings at selection. Its transient system service runs as dist with
+verified kernel read/write limits; no global sysctl changes were applied.
+An eight-worker continuation used a shared write cap of 59.7 MiB/s, selected
+as 80% of the slower direct-write sample (74.6 and 75.1 MiB/s). It retained
+one further state/RNG match, but UI freezes returned and kernel logs showed
+NVMe WRITE timeouts. The user moved the SSD to another slot and rebooted;
+prior replay services are now absent. Health and bounded post-move checks
+showed no media errors or new write timeouts, with 35/40 C sensor readings,
+but sustained concurrent stability remains unproven.
+The superseded post-slot manifest queued 4,425 recordings, covered 182
+explicit current-v96 matches, and retained 27 exclusions, totaling all 4,634
+eligible inputs. It had 1,041 never-tested recordings at selection. The
+one-worker run completed 27 further state/RNG matches before being stopped
+at the user's request to move trace writes to another SSD.
+The superseded v96 Comedy-SSD manifest queued 4,398 recordings, covered 209 explicit
+current-v96 matches, and retains 27 exclusions, preserving the full 4,634
+input scope. It had 1,014 never-tested recordings at selection. Eight workers
+at Linux nice 19 write captures, results and logs under
+`/media/dist/Comedy-SSD/Scratch/GD-DOOM/` without read or write bandwidth caps.
+The SSD error guard monitors both drives and suspends only this replay group
+if new drive errors appear. Runtime and strict comparison behavior are unchanged.
+The v97 correction fixes E3M3 E3M3-330: a Lost Soul's slam raises
+its floor support, but original P_ZMovement floats before floor clipping.
+The old Go path clipped first. A reproducing regression fails on the old
+path; the corrected regression and full Go suite pass. The original input
+matches all 8,223 tics with independent gameplay RNG on v97. Its GDB proof
+is retained in `tmp/compet-n-continue-e3m3-skull-floor-debug-v96/diagnostic-result.json`.
+Uncommitted v98 also handles a recorded E3M2 save command: original G_Ticker
+queues ga_savegame for one tic, and the trace now exposes that pending action.
+MAP09 arachnotron plasma retriggers a completed lift; its new thinker must run
+behind existing missiles instead of lowering the floor immediately. A synthetic
+regression reproduces the old imp-shot floor support mismatch. The three inputs
+match all 8,506, 8,223, and 8,567 compared tics respectively on v98, with independent
+gameplay RNG matching. Reproducing regressions and the full Go suite pass.
+Proof is retained in `tmp/compet-n-continue-save-skull-lift-frontiers-v98/summary.json`
+and `tmp/compet-n-continue-map09-projectile-floor-debug-v97/reference-gdb.log`.
+The superseded v96 Scratch sweep retains 444 completed results: 434 matches,
+seven strict mismatches and three original reference crashes, plus incomplete
+captures. The superseded v98 sweep retains 254 completed results: 248 matches,
+five strict mismatches and one original reference crash. Its frozen partition
+remains 4,529 queued, 71 current-v98 passes and 34 exclusions; all captures survive.
+A scan of all 4,634 eligible command streams found one recorded save action and
+ten pause toggles across four recordings. A v98 prefix comparison exposes the
+first recorded-pause error in MAP29 LV29-632 at tic 1,531: original leveltime
+stays 1,531 while Go advances to 1,532. The new replay control consumes pause
+commands before ticking the world, continues the status face ticker while paused,
+and freezes gameplay RNG and player damage/bonus decay. Pending player rebirth
+runs before the pause command, matching the original reload order.
+All four affected recordings pass on v100: MAP29 LV29-632 (14,407 compared tics),
+E2M5 E2M5-655 (15,027), E4M1 090-R4M1 (23,533, stopping at first death), and the
+complete E3M1 EP3-5532 episode (123,548). All independently audited gameplay RNG
+matches. Reproducing regressions and the full Go suite pass. All 68 quick-selection
+and 25 repository recordings also pass on v100, for 97 verified validation inputs.
+The superseded v100 Scratch sweep queues 4,524 recordings, covers 72 explicit
+current-build COMPET-N passes, and lists 38 exclusions, accounting for all 4,634.
+There were 342 recordings without completed attempts at selection. Its user
+service ran eight workers at nice 19 without bandwidth caps and guards both SSDs
+against new drive errors. Crash-core storage is disabled to avoid extra writes.
+The exclusion ledger now includes thirteen separately proven unused ceiling-field
+cases, 17 original reference crashes, 13 invalid mover casts and one timed door
+using uninitialized memory. Exclusions retain strict mismatch/error evidence and
+never count as passes. The current policy has 44 exclusions after GDB proves
+E3M7 T3M7-800 corrupts an active platform through a door cast at tic 1,580.
+EP1-2220 likewise corrupts E1M4 sector 41 at tic 20,013, independently proven
+with a GDB watchpoint; its raw strict mismatch and matching RNG remain recorded.
+E3M5 T3M5-736 has a separately proven unused ceiling-field mismatch;
+normalizing only that field matches all 17,113 tics and gameplay RNG.
+E3M5 t3m5-827 independently matches 18,715 tics and gameplay RNG after the
+same unused-field diagnostic. E3M5 t3m51230 likewise matches all 27,215
+compared tics and gameplay RNG after normalizing only the unused field.
+All raw strict mismatches remain recorded.
+The frozen v100 queue retains its original 38-exclusion partition.
+Full current-runtime corpus verification remains unfinished.
+The v100 eight-worker service was stopped with all completed results and partial
+captures retained after finding an ordinary MAP30 mismatch at tic 10,355.
+The telefragged Pain Elemental had no target; original A_PainDie spawned three
+stationary, angle-zero Lost Souls, while GD-DOOM's legacy player fallback
+incorrectly launched them. v101 preserves their null target and idle spawn
+state. The regression fails on v100 and passes on v101, and the full Go suite
+passes. The v101 101-input validation includes the new MAP30 recording, three
+save/skull/lift fixtures, four pause recordings, 68 quick fixtures and 25
+repository demos. Validation: **101/101 complete state and independently audited RNG matches**.
+
+The superseded v101 sweep used **12 workers**, nice 19, idle I/O scheduling,
+no bandwidth caps, and all captures on Comedy-SSD/Scratch. Its frozen partition
+queues **4,515** recordings, retains **76** current-runtime state/RNG passes
+and lists **43** exclusions, totaling all **4,634** eligible recordings. There
+were **15** recordings without completed attempts at selection. Its exact user
+service is `gddoom-demo-sweep-v101-comedy-twelve.service`; resource and drive
+guard receipts are retained with the sweep. Current runtime and
+full-corpus progress are recorded in [COMPET-N-results.json](COMPET-N-results.json).
+The complete current-runtime corpus remains unfinished.
+
+The 305,330-input-tic E4M1 `t4m1long` demo initially fails before gameplay
+because the original reference inherits a 2 MiB zone. The harness now writes an
+isolated `reference.cfg` with the supported `mb_used 16` setting, records its
+hash and zone size, and avoids reading or rewriting the user's `.doomrc`.
+The runtime binary, original executable, comparator and trimmer are unchanged.
+The eight Python corpus checks and shell syntax check pass. Full validation
+requires 101 strict state/RNG matches plus the separately accepted reference
+crash in the 102-input selection; completion is recorded in the machine report.
+With the startup limit corrected, GDB in retail E4M1 reproduces the original
+crash at tic 91,667 in `PIT_CheckLine`: a Demon chase indexes the eight-entry
+special-line list using corrupted `numspechit=-150406339`. This is an accepted
+original-engine crash with a raw error, and never a passing comparison.
+A read-only boundary audit of 16 retained original-crash traces found no complete
+first-death line before failure. There is no available complete comparison prefix
+to recover from those captures; the explicit NoClip exclusion remains separate.
+Evidence: `tmp/compet-n/reference-crash-boundary-audit-v101.json`.
+A fresh build of the current application source exactly matches the immutable
+v101 runtime used by the sweep. The source hashes and build receipt are retained
+in `tmp/compet-n/current-tree-runtime-audit-v101.json`.
+The frozen-partition audit checks each completed result against the input hash,
+immutable tools and runtime, and independently audited gameplay RNG. Results
+from the new harness also verify their saved isolated 16 MiB reference config.
+Evidence: `tmp/compet-n/comedy-twelve-heap-partition-audit-v101.json`.
+The v101 sweep stopped with 653 new strict matches, one startup error and all
+partial captures preserved while the new reference config is verified. Those
+completed current-runtime matches remain covered by the successor queue.
+
+The resumed 12-worker heap-config sweep queues **3,861** recordings, retains **729** explicit current-runtime passes and **44** exclusions, totaling all **4,634** eligible inputs. Its unit is `gddoom-demo-sweep-v101-comedy-twelve-heap.service`. All 101 normal validation inputs match state and independently audited gameplay RNG under the isolated 16 MiB reference config; the separately proven E4M1 crash stays a raw error.
 The superseded v92 sweep preserves 30 completed state/RNG matches and its
 4,610 queued, 15 explicitly covered, and nine accepted frozen partition.
 The superseded v91 manifest preserved its 4,563 queued, 62 explicitly covered,
@@ -275,7 +423,8 @@ comparisons: 535 matches, five mismatches and two original-reference crashes.
 The superseded v86 queue contained 4,571 recordings, with 57 verified current-runtime matches
 and six accepted limitations explicitly listed at selection time; together
 they account for the original 4,634 eligible recordings. Later quick-set passes
-can overlap this frozen queue. Four workers run the current v96 streaming comparisons.
+can overlap this frozen queue. Eight workers run the current v96 streaming comparisons at Linux nice 19,
+with captures and results on Comedy-SSD/Scratch and no I/O bandwidth caps.
 Never-tested
 recordings are first, followed by previous failures and older passes, including
 recorded original-engine errors. New batches pin the in-place trace trimmer
@@ -583,7 +732,15 @@ skills and categories eligible. These samples extend coverage of the complete
 
 | Selection / binary | Completed | State and RNG match | Mismatch | Status |
 | --- | ---: | ---: | ---: | --- |
-| current_remainder_v96 / v96 | 22/4594 | 22 | 0 | running |
+| current_comedy_eight_remainder_v100 / v100 | 327/4524 | 321 | 6 | interrupted |
+| current_comedy_eight_remainder_v98 / v98 | 254/4529 | 248 | 5 | interrupted |
+| current_comedy_eight_remainder_v96 / v96 | 444/4398 | 434 | 7 | interrupted |
+| current_postslot_remainder_v96 / v96 | 27/4425 | 27 | 0 | interrupted |
+| current_eightio_remainder_v96 / v96 | 1/4426 | 1 | 0 | interrupted |
+| current_lowio_remainder_v96 / v96 | 0/4426 | 0 | 0 | interrupted |
+| current_nice_remainder_v96 / v96 | 7/4433 | 7 | 0 | superseded |
+| current_parallel_remainder_v96 / v96 | 59/4492 | 58 | 1 | interrupted |
+| current_remainder_v96 / v96 | 46/4594 | 46 | 0 | superseded |
 | current_remainder_v95 / v95 | 552/4602 | 539 | 8 | superseded |
 | current_remainder_v93 / v93 | 212/4611 | 204 | 6 | superseded |
 | current_remainder_v92 / v92 | 30/4610 | 30 | 0 | superseded |

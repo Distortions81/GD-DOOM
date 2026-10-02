@@ -239,6 +239,12 @@ def main():
                   "replay_harness": display_path(harness), "replay_harness_sha256": hashes[str(harness)],
                   "trace_comparator": display_path(comparator), "trace_comparator_sha256": hashes[str(comparator)],
                   "trace_trimmer": display_path(trimmer), "trace_trimmer_sha256": hashes[str(trimmer)]}
+        reference_config = out / "reference.cfg"
+        if reference_config.exists():
+            zone = re.search(r"^mb_used\s+(\d+)\s*$", reference_config.read_text(), re.MULTILINE)
+            result.update(reference_config=display_path(reference_config),
+                          reference_config_sha256=sha256(reference_config),
+                          reference_zone_mib=int(zone[1]) if zone else None)
         if args.discard_matching_traces and status == "match":
             (out / "reference-check.jsonl").unlink()
             (out / f"gddoom-{demo.name}.jsonl").unlink()

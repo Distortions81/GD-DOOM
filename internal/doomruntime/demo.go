@@ -25,6 +25,24 @@ func demoButtonWeaponSlot(buttons byte) int {
 	return int((buttons&demoButtonWeaponMask)>>demoButtonWeaponShift) + 1
 }
 
+func (g *game) applyRecordedDemoPause(tc DemoTic) {
+	// G_Ticker consumes the next command and toggles BTS_PAUSE before
+	// P_Ticker checks paused. WI_Ticker and F_Ticker continue while paused.
+	if tc.Buttons&demoButtonSpecial != 0 && tc.Buttons&3 == 1 {
+		g.demoPaused = !g.demoPaused
+	}
+}
+
+func (g *game) tickPausedDemoStatusWidgets() {
+	// ST_Ticker still advances face state and M_Random while P_PlayerThink
+	// is paused. Damage/bonus decay belongs to the skipped player thinker.
+	damage, bonus := g.statusDamageCount, g.statusBonusCount
+	attacker, hasAttacker := g.statusAttackerThing, g.statusHasAttacker
+	g.tickStatusWidgets()
+	g.statusDamageCount, g.statusBonusCount = damage, bonus
+	g.statusAttackerThing, g.statusHasAttacker = attacker, hasAttacker
+}
+
 func LoadDemoScript(path string) (*DemoScript, error) {
 	return demo.Load(path)
 }
