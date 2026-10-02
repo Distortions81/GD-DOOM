@@ -114,6 +114,32 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but it is b
 - Live watch features: one player can broadcast while others watch, chat, and listen or talk over voice in real time.
 - Browser play: the same project also runs in the browser with local WAD loading and persistent web saves.
 
+## Original Doom Demo Compatibility
+
+The completed COMPET-N verification on October 1, 2026 covers **4,646 eligible
+single-player recordings** from the 2019-01-21 archive: 2,411 Ultimate Doom and
+2,235 Doom II demos across all 68 starting maps, including speedruns, Nightmare,
+Tyson, Pacifist, UV Max, UV Fast, UV Respawn, and No Monsters recordings.
+
+- **4,602 recordings pass** strict per-tic gameplay state comparison against the
+  original Linux Doom reference, with independently matching gameplay RNG.
+- **44 documented exclusions** retain their raw mismatches or reference errors:
+  17 original-reference crashes, 13 door/platform structure corruption cases,
+  13 unused uninitialized ceiling-field cases, and one timed door that uses
+  uninitialized memory. Exclusions do not count as passes.
+- **Zero pending recordings or unexplained ordinary desyncs** remain in this corpus.
+
+Comparisons run until the original replay ends or the first player death,
+including the death tic. All 101 normal validation fixtures also pass state and
+RNG checks; the full Go suite and twelve Python corpus tests pass. These results
+apply to the verified corpus and comparison windows, rather than every possible
+demo, mod, or original-engine glitch.
+
+See the [corpus and verification details](demos/COMPET-N.md),
+[per-recording results](demos/COMPET-N-results.json),
+[exclusion ledger](demos/COMPET-N-exclusions.md), and
+[desync investigation notes](desync-work.md).
+
 ## Requirements
 
 - Go `1.26.6` or newer from [golang.org](https://go.dev/dl/)
@@ -421,4 +447,6 @@ That file is for recognition and compatibility lookup. It is not a promise that 
 
 ## Status
 
-GD-DOOM is still alpha. It is already playable and feature-rich, but vanilla parity work and edge-case cleanup are still in progress.
+GD-DOOM is still alpha. The COMPET-N corpus verification is complete under the
+documented exclusions above; broader compatibility work and edge-case cleanup
+continue.
