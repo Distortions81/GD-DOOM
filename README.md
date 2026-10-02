@@ -1,460 +1,200 @@
 # GD-DOOM
-(go doom)
 
 [![Go CI](https://github.com/Distortions81/GD-DOOM/actions/workflows/ci.yml/badge.svg)](https://github.com/Distortions81/GD-DOOM/actions/workflows/ci.yml)
 [![Go Vulncheck](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml/badge.svg)](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml)
 [![GitHub Release](https://img.shields.io/github/v/release/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/releases/latest)
-[![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/blob/main/LICENSE)
+[![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](LICENSE)
 
-Latest desktop releases: [macOS Intel](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-macos-intel.zip) · [macOS Apple Silicon](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-macos-apple-silicon.zip) · [Windows x86_64](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-windows-x86_64.zip) · [Linux x86_64](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-linux-x86_64.zip)
+A Doom engine and source port written in Go, for desktop and browser. Play with
+classic presentation or smooth modern rendering, choose FM, SoundFont, or
+PC speaker audio, and share live sessions with spectators.
 
-[PLAY IN BROWSER NOW](https://m45sci.xyz/u/dist/GD-DOOM)
+**[Play in your browser](https://m45sci.xyz/u/dist/GD-DOOM)** ·
+**[Desktop releases](https://github.com/Distortions81/GD-DOOM/releases/latest)**:
+[Linux](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-linux-x86_64.zip) ·
+[Windows](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-windows-x86_64.zip) ·
+[macOS Intel](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-macos-intel.zip) ·
+[macOS Apple Silicon](https://github.com/Distortions81/GD-DOOM/releases/latest/download/GD-DOOM-macos-apple-silicon.zip)
 
-<p align="center">
-  <img src="screenshots/e1m1-map.png" alt="E1M1 map view" width="900">
-  <br>
-  Automap view: better suited for modern displays, with a cleaner presentation.
-</p>
+## Gallery
 
-<p align="center">
-  <img src="screenshots/e1m1.png" alt="E1M1 screenshot" width="900">
-  <br>
-  Source Port mode at 3840x2160 [4k]: smoother camera motion, cleaner high-resolution rendering, 32-bit color, smoothed lighting animations, monster movement and a sharper modern presentation without losing Doom's original feel.
-  <br>
-  GPU world rendering is the default in Source Port mode; Faithful mode retains software rendering.
-</p>
+Click a screenshot to open the full-size image.
 
-<p align="center">
-  <img src="screenshots/faithful.png" alt="Faithful mode screenshot" width="900">
-  <br>
-  Faithful mode: the classic Doom look, preserved.
-</p>
+<table>
+  <tr>
+    <td width="33%" align="center" valign="top"><a href="screenshots/e1m1.png?raw=true"><img src="screenshots/e1m1.png" alt="Source Port mode in E1M1" width="260"></a><br>Source Port mode</td>
+    <td width="33%" align="center" valign="top"><a href="screenshots/faithful.png?raw=true"><img src="screenshots/faithful.png" alt="Faithful mode with classic Doom presentation" width="260"></a><br>Faithful mode</td>
+    <td width="33%" align="center" valign="top"><a href="screenshots/e1m1-map.png?raw=true"><img src="screenshots/e1m1-map.png" alt="High-resolution E1M1 automap" width="260"></a><br>Automap</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="screenshots/level2.png?raw=true"><img src="screenshots/level2.png" alt="Doom combat in a dark courtyard" width="260"></a><br>Combat</td>
+    <td align="center" valign="top"><a href="screenshots/level3.png?raw=true"><img src="screenshots/level3.png" alt="Colored Doom torches and monster sprites" width="260"></a><br>Lighting</td>
+    <td align="center" valign="top"><a href="screenshots/level4.png?raw=true"><img src="screenshots/level4.png" alt="Doom hallway with wooden beams and barrels" width="260"></a><br>Interiors</td>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><a href="screenshots/melt-hq.png?raw=true"><img src="screenshots/melt-hq.png" alt="Classic screen melt transition at high resolution" width="260"></a><br>Melt transition</td>
+    <td align="center" valign="top"><a href="screenshots/invis.png?raw=true"><img src="screenshots/invis.png" alt="Doom invisibility fuzz effect" width="260"></a><br>Invisibility fuzz</td>
+    <td align="center" valign="top"><a href="screenshots/level.png?raw=true"><img src="screenshots/level.png" alt="Doom courtyard with classic palette and HUD" width="260"></a><br>Classic palette</td>
+  </tr>
+</table>
 
+Videos: [SoundFont demo](https://youtu.be/ID52vj9WQ8A) ·
+[OPL/AdLib gameplay](https://youtu.be/tkc6Z8xcjzs) ·
+[Software renderer in slow motion](https://youtu.be/aINCe9459-U) ·
+[PC speaker simulation](https://youtu.be/vT9SldgjbeA).
+Music playlists: [SGM MIDI](https://www.youtube.com/playlist?list=PLMxxYNFZPBOgQWuzTKGScjD2tF3SUfeFD) ·
+[OPL/AdLib FM](https://www.youtube.com/playlist?list=PLMxxYNFZPBOh-2qK8iihIQkbcgwXgBegD).
 
-<p align="center">
-  <a href="https://youtu.be/ID52vj9WQ8A">
-    <img src="https://img.youtube.com/vi/ID52vj9WQ8A/maxresdefault.jpg" alt="Watch the GD-DOOM E1M5 built-in demo on YouTube" width="900">
-  </a>
-  <br>
-  <a href="https://youtu.be/ID52vj9WQ8A">Watch on YouTube</a><br>
-  E1M5: Doom's default first demo playback at game menu - HQ MIDI music
-  <br>
-  Full SGM (HQ MIDI) music renders playlist:
-  <a href="https://www.youtube.com/playlist?list=PLMxxYNFZPBOgQWuzTKGScjD2tF3SUfeFD">YouTube playlist</a>
-  <br>
-</p>
+## Rendering and features
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=tkc6Z8xcjzs">
-    <img src="https://img.youtube.com/vi/tkc6Z8xcjzs/maxresdefault.jpg" alt="Watch the GD-DOOM 4K gameplay demo on YouTube" width="900">
-  </a>
-  <br>
-  <a href="https://www.youtube.com/watch?v=tkc6Z8xcjzs">Watch on YouTube</a><br>
-  E1M1 - OPL/AdLib FM music
-  <br>
-  Full OPL/AdLib FM-Synth music renders playlist:
-  <a href="https://www.youtube.com/playlist?list=PLMxxYNFZPBOh-2qK8iihIQkbcgwXgBegD">YouTube playlist</a>
-  <br>
-</p>
+**Faithful** mode keeps the classic Doom presentation and CPU software renderer.
+**Source Port** mode adds high-resolution output, interpolated camera, monster
+and weapon motion, full-color rendering, and optional CRT effects.
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=aINCe9459-U">
-    <img src="https://img.youtube.com/vi/aINCe9459-U/maxresdefault.jpg" alt="Watch the GD-DOOM software rendering slow-motion video on YouTube" width="900">
-  </a>
-  <br>
-  <a href="https://www.youtube.com/watch?v=aINCe9459-U">Watch on YouTube</a><br>
-  Slow-motion look at how GD-DOOM renders in software, in the spirit of the original DOOM renderer.
-  <br>
-</p>
+To speed up pixel drawing, Source Port mode uses **GPU shaders** for Doom's
+column-and-span rendering. The CPU still decides visibility, clipping, and
+lighting; shaders sample indexed texture atlases and apply palette/lighting
+lookups to draw walls, floors, ceilings, sprites, and sky. GPU drawing is on by
+default in Source Port mode, with CPU fallback for unsupported texture banks.
+Use `-gpu-renderer=false` to select CPU drawing. GPU spectre fuzz approximates
+the original effect using a background snapshot.
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">
-    <img src="https://img.youtube.com/vi/vT9SldgjbeA/maxresdefault.jpg" alt="Watch the GD-DOOM PC-speaker emulation demo on YouTube" width="900">
-  </a>
-  <br>
-  <a href="https://www.youtube.com/watch?v=vT9SldgjbeA">Watch on YouTube</a><br>
-  PC-speaker emulation demo: GD-DOOM running with classic PC-speaker style audio.
-  <br>Including music, which original Doom did not support!
-  <br>Fully simulates the open air 2.25" 8-ohm paper speaker, driven with ~4v DC through 33-ohm resistor with steel pc case reverb.
-  <br>
-</p>
+- Mouse look, configurable bindings, improved automap, and browser touch controls.
+- Saves, quicksave, classic demo playback/recording, and per-tic trace export.
+- Base game WADs and layered add-ons; local WAD loading and browser saves.
+- Live broadcast/watch sessions, spectator chat, and optional voice.
 
-<p align="center">
-  <img src="screenshots/melt-hq.png" alt="Melt transition at high resolution" width="440">
-  <img src="screenshots/invis.png" alt="Invisibility fuzz effect at high resolution" width="440">
-  <br>
-  Classic Doom effects kept intact at higher resolutions, including the screen melt transition and the signature invisibility fuzz effect.
-</p>
+## Music and sound
 
-<p align="center">
-  <img src="screenshots/level2.png" alt="Gameplay screenshot 2" width="290">
-  <img src="screenshots/level3.png" alt="Gameplay screenshot 3" width="290">
-  <img src="screenshots/level4.png" alt="Gameplay screenshot 4" width="290">
-  <br>
-  Gameplay screenshots from different areas. Correct DOS gamma, colors and aspect ratio.
-</p>
+Choose music and sound effects separately in the frontend, or use launch flags.
 
-GD-DOOM is a Doom engine and source port for original Doom data. It runs on desktop and in the browser, loads base game WADs plus add-ons, plays and records classic Doom demos, and adds live watch, chat, and voice features on top.
+| Music choice | Sound and selection |
+| --- | --- |
+| **OPL / AdLib FM** | Default classic AdLib/Sound Blaster-era music, using an OPL2-style synth and the WAD's `GENMIDI` instruments. `-music-backend=impsynth` |
+| **General MIDI** | Sample-based music through MeltySynth; `general-midi.sf2` is included in desktop releases and embedded in the browser build. |
+| **SC55-HQ** | Alternative SoundFont for an SC-55-style MIDI presentation; available on demand from the frontend. |
+| **SGM Ultra HQ** | Richer SoundFont option, shown as `SGM-ULTRA-HQ` in the frontend and downloaded on demand as `SGM-HQ.sf2`. |
+| **PC speaker music** | An extra beeper arrangement of Doom's music, beyond the original game's sound-effects-only PC speaker option. `-music-backend=pcspeaker` |
 
-GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and derivative of id Software's DOOM source release. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+For SoundFont music, use `-music-backend=meltysynth -soundfont=PATH.sf2`.
+You can also supply your own compatible `.sf2` file; browser SoundFonts are
+cached after loading.
 
-## Compared With Vanilla Doom
+**Sound effects:** choose the original digital Sound Blaster-style effects or
+`-pc-speaker` for Doom's PC speaker effects. The default `paper-speaker` model
+uses a **physical speaker simulation**: original PIT tone timing drives a
+model of cone motion, mass, spring response, damping, acoustic filtering, and
+steel-case resonance/reverberation for a faithful old-PC sound. A resonant
+`small-buzzer` model and direct `passthrough` beeps are also available.
+PC speaker music and effects can share the same simulated speaker through
+time interleaving.
 
-Note: Not all features are exposed in the UI, some are still experimental.
+```bash
+# PC speaker effects and music through the physical paper-speaker model.
+go run . -wad DOOM1.WAD -pc-speaker -music-backend=pcspeaker \
+  -pc-speaker-variant=paper-speaker
 
-GD-DOOM still uses original Doom WAD data and Doom-style game logic, but it is built to feel better on modern hardware. The biggest differences are:
+# SoundFont music with the usual digital effects.
+go run . -wad DOOM1.WAD -music-backend=meltysynth \
+  -soundfont=soundfonts/general-midi.sf2
+```
 
-- Two presentation styles: play in `Faithful` mode for a more classic look, or `Source Port` mode for smoother motion and a cleaner modern image.
-- Smoother gameplay: movement, turning, weapon animation, and monster motion are interpolated so the game does not feel locked to visible tic steps.
-- Cleaner rendering: full-color output, better HUD scaling, and modern-display-friendly automap presentation.
-- Classic effects preserved: the melt transition and invisibility fuzz effect are kept recognizable even at high resolutions.
-- Better controls: mouse look, flexible bindings, in-game key setup, and browser touch controls are built in.
-- Better save and demo support: normal saves, quicksave, unlimited save slots, classic demo playback/recording, and optional tick-by-tick trace export.
-- More audio options: FM-style adlib/sb16 music, SoundFont MIDI playback, PC speaker emulation, and Linux hardware PC speaker output.
-- Live watch features: one player can broadcast while others watch, chat, and listen or talk over voice in real time.
-- Browser play: the same project also runs in the browser with local WAD loading and persistent web saves.
+On Linux, `-pc-speaker-output=linux` can drive a real PC speaker through the
+`pcspkr` evdev device, with write permission to that device. Music and effects
+have separate volume controls. Use `-dump-music` for FM/SoundFont WAV exports
+or [cmd/musicwav](cmd/musicwav) for FM/PC speaker renders; see the
+[usage guide](docs/usage.md).
 
-## Original Doom Demo Compatibility
+## Original Doom demo compatibility
 
-The completed COMPET-N sweep covers **4,646 eligible single-player recordings**:
-2,411 Ultimate Doom and 2,235 Doom II demos across all 68 starting maps,
-including speedruns, Nightmare, Tyson, Pacifist, UV Max, UV Fast, UV Respawn,
-and No Monsters recordings. Verified on **2026-10-02** against the gameplay
-source shipped in **v0.1.1**:
+The completed COMPET-N sweep covers **4,646 single-player Ultimate Doom and
+Doom II recordings** across all 68 starting maps. Verified **2026-10-02**
+against the gameplay source shipped in **v0.1.1**:
 
 | Outcome | Recordings |
 | --- | ---: |
-| Strict state and independently audited gameplay RNG matches | 4,621 |
-| Semantic state and gameplay RNG matches only | 7 |
+| Strict state and gameplay RNG match | 4,621 |
+| Semantic state and gameplay RNG match only | 7 |
 | Documented exclusions | 18 |
 | Pending or unexplained failures | 0 |
 
-**4,628 of 4,646 recordings (99.61%) pass** under the documented comparison
-policy; **99.46% match strictly**. The eighteen exclusions remain in the
-denominator: seventeen original-reference crashes and one timed door that
-uses uninitialized memory. All thirteen door/platform follow-ups now match
-strictly. All 101 ordinary validation fixtures, the full Go suite, and
-fourteen Python corpus checks also pass.
+**99.61% pass; 99.46% match strictly.** Every pass includes an independent
+per-tic gameplay RNG audit through original termination or first player death,
+including the death tic. The opt-in semantic policy ignores only an unused
+field on downward `lowerAndCrush` ceilings and retains raw strict mismatches.
+The eighteen exclusions count in the denominator and comprise seventeen
+original-reference crashes and one door using uninitialized memory.
 
-Comparisons run until the original replay ends or the first player death,
-including the death tic. Strict comparison remains the default. The optional
-`--semantic-unused-ceiling-fields` policy ignores only an unused `topheight`
-field on paired downward `lowerAndCrush` ceilings and still requires matching
-state everywhere else and independently audited gameplay RNG. Its seven
-semantic-only matches retain their raw strict mismatches.
+[Compatibility guide](demos/COMPET-N.md) ·
+[Per-recording results](demos/COMPET-N-results.json) ·
+[Exclusions](demos/COMPET-N-exclusions.md) ·
+[Desync investigation](desync-work.md)
 
-See the [public compatibility guide](demos/COMPET-N.md),
-[per-recording results](demos/COMPET-N-results.json),
-[exclusion guide](demos/COMPET-N-exclusions.md), and
-[desync investigation guide](desync-work.md).
+## Quick start
 
-## Requirements
-
-- Go `1.26.6` or newer from [golang.org](https://go.dev/dl/)
-- A Doom game WAD such as `DOOM.WAD`, `DOOM1.WAD`, `DOOM2.WAD`, `TNT.WAD`, or `PLUTONIA.WAD`
-
-On Linux, native builds also need the usual Ebiten desktop dependencies for X11, OpenGL, and audio.
-
-On Debian/Ubuntu, a typical setup is:
+Desktop releases include the shareware `DOOM1.WAD` and a General MIDI SoundFont.
+Supply your own commercial WAD for the full games. From a source checkout:
 
 ```bash
-sudo apt update
-sudo apt install -y \
-  build-essential pkg-config \
-  libasound2-dev libpulse-dev \
+go run . -wad DOOM1.WAD
+go run . -wad DOOM2.WAD -sourceport-mode
+go run . -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
+```
+
+The WAD can also be the first positional argument. Without `-wad`, one known
+WAD in the working directory is selected automatically; multiple supported
+WADs can open the frontend picker. For demos and live sessions, use matching
+base WADs and add-ons on every instance.
+
+Source builds require **Go 1.26.6 or newer** and a Doom WAD. Linux also needs
+the usual X11, OpenGL, and audio development dependencies. On Debian/Ubuntu:
+
+```bash
+sudo apt install -y build-essential pkg-config libasound2-dev libpulse-dev \
   libx11-dev libxcursor-dev libxinerama-dev libxrandr-dev libxi-dev \
   libgl1-mesa-dev libxxf86vm-dev
 ```
 
-## Quick Start
+Use `go run . -help` for every flag. Common options include `-map=MAP01`,
+`-demo=FILE.lmp`, `-record-demo=FILE.lmp`, `-config=config.toml`, and
+`-gpu-renderer=false`. Settings and key bindings can be changed in the menus
+and saved to `config.toml`.
 
-Run from the repository root:
+## Controls and live sessions
 
-```bash
-go run . -wad DOOM1.WAD
-```
+Move with **WASD** or arrows, turn with the mouse, fire with **Ctrl** or left
+mouse, use with **E/Space**, run with **Shift**, and open the automap with **Tab**.
+Use **Esc** for menus, **T** for chat, and **Caps Lock** for push to talk.
+Bindings are configurable.
 
-The dedicated desktop entrypoint is equivalent:
+Run `go run ./cmd/gdsfrelay`, then start a game with `-broadcast`. Join from
+another instance with `-watch -watch-session=N`, using the session ID printed
+by the broadcaster. Native Linux microphone capture is available with `-mic`.
+See the [relay, voice, controls, and cheats reference](docs/usage.md).
 
-```bash
-go run ./cmd/gddoom -wad DOOM1.WAD
-```
+## Browser and development
 
-You can also pass the base game WAD as the first positional argument:
-
-```bash
-go run . DOOM1.WAD
-```
-
-Add-on/mod WADs are comma-separated:
-
-```bash
-go run . -wad DOOM2.WAD -file mods/nerve.wad,mods/examplepatch.wad
-```
-
-If `-wad` is omitted and the working directory contains one known game WAD, GD-DOOM uses it automatically. If multiple supported game WADs are present, the runtime can open an in-game picker.
-
-`-file` add-ons are layered on top of the chosen base game. If you want demo playback, watching, or live sessions to match correctly, every machine should use the same base game and the same mod files.
-
-## Common Options
-
-Print all flags:
-
-```bash
-go run . -help
-```
-
-Frequently used options:
-
-- `-gpu-renderer=false` selects CPU world rendering in Source Port mode. GPU world rendering is enabled by default for Source Port mode: indexed walls, floors, ceilings, sprites, masked textures, and sky retain the CPU renderer's visibility and lighting decisions. Spectre fuzz uses a GPU background snapshot and has an approximate appearance. Unsupported texture banks fall back to CPU rendering. Faithful mode uses CPU rendering. This flag is not saved to config; GPU performance needs measurement on real hardware.
-- `-sourceport-mode` starts in the smoother, higher-fidelity Source Port profile.
-- `-pc-speaker` switches sound effects to the PC speaker emulation path.
-- `-pc-speaker-hw` (Linux only) routes PC speaker output to the real hardware buzzer device instead of the audio card. This uses the `pcspkr` evdev node and requires write permission to it.
-- `-pc-speaker-interleave-hz=N` sets the rate (in Hz) at which the speaker switches between SFX and music when both are active (default 140, which matches one Doom tic; range 10–1000).
-- `-music-backend=auto|impsynth|meltysynth` selects the music style/engine.
-- `-soundfont=PATH` selects an external `.sf2` file for `meltysynth`.
-- `-detail-level=N` sets starting image detail and `-auto-detail` tries to keep the game near 60 FPS automatically.
-- `-no-monsters` disables monster spawns.
-- `-crt-effect` and `-texture-anim-crossfade-frames=N` enable extra visual polish in Source Port mode.
-- `-map=E1M1` or `-map=MAP01` starts on a specific map.
-- `-record-demo=out.lmp` records a Doom v1.10 demo from live play.
-- `-demo=path/to/demo.lmp` plays back a Doom v1.10 demo and exits when playback ends.
-- `-trace-demo-state=path.jsonl` writes a detailed tick-by-tick state log during demo playback.
-- `-broadcast[=ADDR]` starts a live session for watchers, defaulting to `127.0.0.1:6670`.
-- `-watch[=ADDR] -watch-session=N` joins a relay session as a viewer.
-- `-low-latency` trades some efficiency for faster live delivery.
-- `-mic` sends microphone audio while broadcasting.
-- `-mic-codec=silk|g726|pcm` selects the voice codec used for microphone streaming.
-- `-config=config.toml` reads and persists native runtime settings.
-- `-dump-music` saves the game's music tracks as WAV files.
-  Note: the main app dump path currently exports the built-in OPL/SoundFont renderers, while `cmd/musicwav` and `scripts/dump_music.sh` support direct PC speaker WAV export modes.
-
-There are more flags than the short list above. Use `go run . -help` for the full set if you want every tweak and debug option.
-
-Aspect correction note:
-In faithful mode, GD-DOOM applies Doom's classic 4:3 correction as a whole-screen stretch after rendering. In Source Port mode, it applies that correction during rendering. A small set of sprites that are meant to read as circular, such as pickups and fireballs, are kept round instead of being stretched.
-
-Examples:
-
-```bash
-go run . -wad DOOM1.WAD -sourceport-mode
-go run . -wad DOOM1.WAD -pc-speaker
-go run . -wad DOOM1.WAD -music-backend=impsynth
-go run . -wad DOOM1.WAD -music-backend=meltysynth -soundfont=./soundfonts/general-midi.sf2
-go run . -wad DOOM1.WAD -detail-level=2 -auto-detail
-go run . -wad DOOM2.WAD -map=MAP01 -record-demo=output.lmp
-go run . -wad DOOM1.WAD -demo=demos/DOOM1-DEMO1.lmp
-go run . -wad DOOM1.WAD -dump-music
-go run ./cmd/musicwav -doom2 DOOM2.WAD -song D_RUNNIN -mode pcspeaker-clean -out ./out/music-pcspeaker-clean
-go run . -wad DOOM1.WAD -broadcast
-go run . -wad DOOM1.WAD -broadcast -mic -mic-codec=silk
-go run . -wad DOOM1.WAD -watch -watch-session=1
-go run . -wad DOOM1.WAD -cheat-level=3
-go run . -wad DOOM1.WAD -all-cheats
-```
-
-## Relay Watch / Voice
-
-Run the relay server:
-
-```bash
-go run ./cmd/gdsfrelay
-```
-
-Broadcast a session to the default local relay:
-
-```bash
-go run . -wad DOOM1.WAD -broadcast
-```
-
-The broadcaster prints the assigned session id on startup. View from another instance using the same base game and mod files:
-
-```bash
-go run . -wad DOOM1.WAD -watch -watch-session=1
-```
-
-Optional voice broadcast is available on native Linux builds through PulseAudio capture:
-
-```bash
-go run . -wad DOOM1.WAD -broadcast -mic
-go run . -wad DOOM1.WAD -broadcast -mic -mic-codec=silk
-```
-
-Notes:
-
-- `-broadcast` and `-watch` are mutually exclusive.
-- `-watch` also connects to the paired relay audio stream automatically.
-- Watchers can also participate in session chat.
-- `-low-latency` favors quicker delivery over more batching.
-- Current microphone codecs are `silk`, `g726`, and `pcm`.
-- The wire format is documented in [`netplay-protocol.md`](netplay-protocol.md).
-
-This is live spectating, not traditional co-op. One machine plays, the others watch the run as it happens, with chat and optional voice alongside the stream.
-
-## Cheats
-
-Startup cheats:
-
-- `-cheat-level=1` enables full automap reveal with `IDDT 2`.
-- `-cheat-level=2` applies the above plus `IDFA`.
-- `-cheat-level=3` applies the above plus `IDKFA` and invulnerability.
-- `-invuln` starts with invulnerability enabled.
-- `-all-cheats` is the alias for full startup cheats.
-
-Typed in-game cheats:
-
-- `iddqd` toggles invulnerability.
-- `idfa` grants weapons, ammo, and armor.
-- `idkfa` grants weapons, ammo, armor, and keys.
-- `iddt` cycles automap reveal and thing display states.
-- `idclip` toggles no-clip.
-- `idspispopd` also toggles no-clip.
-- `idmypos` prints the current player angle and coordinates.
-- `idchoppers` grants chainsaw + invulnerability tick behavior matching classic Doom.
-- `idclev##` warps to a map such as `idclev11` or `idclev23`.
-- `idmus##` changes music when the current WAD supports that track selection.
-- `idbehold` shows the power-up cheat prompt.
-- `idbeholdv`, `idbeholds`, `idbeholdi`, `idbeholdr`, `idbeholda`, and `idbeholdl` toggle the matching power-up effect.
-
-## Controls
-
-Default desktop controls are:
-
-- Menus: `Arrow Keys` + `Enter`, `Esc` to go back.
-- Game: `WASD` or arrow keys to move, mouse to turn.
-- Fire: `Ctrl` or left mouse button.
-- Use / open: `E` or `Space`.
-- Run modifier: `Shift`.
-- Strafe modifier: `Alt`.
-- Automap: `Tab`.
-- Chat: `T`.
-- Push to talk: `Caps Lock`.
-- Weapon next / previous: `Page Down` / `Page Up` or mouse buttons `MB5` / `MB4`.
-- Help: `F1`.
-
-Bindings can be changed in the frontend and pause-menu keybind screens and saved in `config.toml`. There are also extra runtime shortcuts for detail level, gamma, screenshots, and automap behavior.
-
-## Menus And Config
-
-The frontend and pause menus expose most settings people actually want to change while playing:
-
-- Sound options for SFX/music volume.
-- Voice options for codec, sample rate, automatic gain control, gate strength, device selection, and push-to-talk.
-- Key binding menus with primary/alternate bindings and reset-to-default support.
-- Browser/touch-friendly frontend flow, including touch prompts on the title screen, touch controls in frontend submenus such as the music player, and touch-safe menu-close debounce.
-- Persisted native settings through `config.toml`, including runtime options and the `keybinds` table.
-
-`config.toml` is the desktop settings file. GD-DOOM reads it at startup and writes changes back when you update settings or bindings in-game. You can ignore it and use the menus, or edit it by hand.
-
-A representative config can include entries such as:
-
-```toml
-detail_level_faithful = 0
-detail_level_sourceport = 0
-auto_detail = false
-gamma_level = 2
-mouselook = true
-music_backend = "meltysynth"
-soundfont = "soundfonts/general-midi.sf2"
-
-[keybinds]
-move_forward = ["W", "UP"]
-chat = ["T", ""]
-voice = ["CAPSLOCK", ""]
-use = ["SPACE", "E"]
-```
-
-## Browser Build
-
-GD-DOOM also has a browser version. To build it locally:
+Build and serve the browser version from the repository root:
 
 ```bash
 ./scripts/build_wasm.sh
-```
-
-The script writes fresh browser assets, including `gddoom.wasm.gz`. It requires:
-
-- `DOOM1.WAD` at the repository root
-- `wasm_exec.js` from your local Go toolchain
-- optional `wasm-opt` on `PATH` for automatic optimization (`-O4` by default, override with `WASM_OPT_LEVEL`)
-
-Serve the generated app:
-
-```bash
 go run ./cmd/wasmserve
 ```
 
-By default `cmd/wasmserve` serves the current directory if it already contains the built app; otherwise it falls back to `build/wasm` and listens on `:8000`.
-
-You can also serve a specific output directory:
-
-```bash
-go run ./cmd/wasmserve -dir build/wasm -addr :8000
-```
-
-The browser UI can load WAD files locally from your machine, cache SoundFonts for `meltysynth`, and keep saves in browser storage. It shares most of the same runtime code as desktop builds, though some features remain platform-specific, especially microphone capture.
-
-On browsers with strict autoplay policies, a click is required before audio starts. On touch devices, the browser build uses a dual-pad layout for movement, turning, fire, use, and menu access.
-
-## Development
-
-Run the test suite:
+The build uses `DOOM1.WAD` and your Go toolchain's `wasm_exec.js`; optional
+`wasm-opt` optimizes the output. The browser supports local WAD loading,
+SoundFont caching, touch controls, and persistent saves. Click or tap once to
+start audio where browser autoplay policies require it.
 
 ```bash
 go test ./...
-```
-
-Run the slower export and real-asset integration checks explicitly:
-
-```bash
 scripts/test_integration.sh ./internal/app
 ```
 
-This integration lane also includes generator-style tests that write artifacts, such as the billboard bbox dump in `internal/doomruntime`.
+More options, configuration examples, export tools, and diagnostics are in
+[Usage and development](docs/usage.md). See [commercial WAD fingerprints](commercial-wads.md),
+[netplay protocol](netplay-protocol.md), and [vector-rendering visibility notes](docs/vector-rendering-visibility.md)
+for technical references.
 
-If you are working on the engine itself, extra utilities are included under [`cmd/`](cmd):
-
-- [`cmd/gdsfrelay`](cmd/gdsfrelay) runs the live session relay used by `-broadcast` and `-watch`.
-- [`cmd/wasmserve`](cmd/wasmserve) serves the browser build locally.
-- [`cmd/demotracecmp`](cmd/demotracecmp) compares two demo state logs to help find mismatches or desyncs.
-- [`cmd/musicwav`](cmd/musicwav) exports in-game music tracks to WAV files, including `impsynth`, `pcspeaker`, `pcspeaker-clean`, and `pcspeaker-piezo` modes with optional single-song selection via `-song`.
-- [`cmd/pcspeaker`](cmd/pcspeaker) captures live PC speaker output, interleaves music and SFX streams, and can drive the Linux hardware buzzer directly for testing.
-- [`cmd/mapprobe`](cmd/mapprobe) inspects map data such as sectors, lines, tags, and things.
-- [`cmd/mapaudit`](cmd/mapaudit) generates a report about oddities in local Doom map data.
-- [`cmd/wadtool`](cmd/wadtool) extracts individual files from WADs.
-
-These tools are for development, testing, and troubleshooting rather than normal play.
-
-The lessons learned while adapting Doom's BSP, wall clipping, and visplanes to
-an external vector-display renderer are documented in
-[`docs/vector-rendering-visibility.md`](docs/vector-rendering-visibility.md).
-
-## Advanced Diagnostics
-
-These optional environment variables are mainly useful when troubleshooting voice or live-session behavior. Any non-empty value enables the feature.
-
-- `GD_DOOM_NET_BANDWIDTH_OVERLAY` shows the in-game network bandwidth overlay.
-- `GD_DOOM_VOICE_SYNC_OVERLAY` adds the voice sync offset to the bandwidth overlay when voice sync data is available.
-- `GD_DOOM_VOICE_AGC_LOG` prints occasional automatic gain control diagnostics while broadcasting voice.
-
-Examples:
-
-```bash
-GD_DOOM_NET_BANDWIDTH_OVERLAY=1 go run . -wad DOOM1.WAD
-GD_DOOM_NET_BANDWIDTH_OVERLAY=1 GD_DOOM_VOICE_SYNC_OVERLAY=1 go run . -wad DOOM1.WAD
-GD_DOOM_VOICE_AGC_LOG=1 go run . -wad DOOM1.WAD
-```
-
-Voice runtime notes:
-
-- If the viewer has to skip ahead to catch live audio back up, you will see `voice-skip ...` messages in the console.
-
-Supported commercial Doom-family game/add-on fingerprints tracked by the runtime are documented in [`commercial-wads.md`](commercial-wads.md).
-
-That file is for recognition and compatibility lookup. It is not a promise that GD-DOOM fully supports every non-Doom title listed there.
-
-## Status
-
-GD-DOOM is still alpha. The COMPET-N corpus verification is complete under the
-documented exclusions above; broader compatibility work and edge-case cleanup
-continue.
+GD-DOOM is still alpha. It is derived from id Software's Doom source release
+and distributed under **GNU GPL v2**; see [LICENSE](LICENSE) and [NOTICE](NOTICE).
