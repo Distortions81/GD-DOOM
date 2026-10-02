@@ -102,43 +102,47 @@ func TestCycleDetailLevelFaithfulTogglesHighLow(t *testing.T) {
 	}
 }
 
-func TestCycleSourcePortDetailLevelIncludesAuto(t *testing.T) {
-	g := &game{
-		opts:               Options{SourcePortMode: true},
-		detailLevel:        2,
-		autoDetailEnabled:  true,
-		hudMessagesEnabled: true,
-	}
-	g.cycleSourcePortDetailLevel()
-	if g.autoDetailEnabled {
-		t.Fatal("first source-port cycle should disable auto detail")
-	}
-	if g.useText != "Detail: 1/3x" {
-		t.Fatalf("after 1 cycle useText=%q want Detail: 1/3x", g.useText)
-	}
-	g.cycleSourcePortDetailLevel()
-	if g.detailLevel != 3 {
-		t.Fatalf("after 2 cycles detail=%d want 3", g.detailLevel)
-	}
-	if g.useText != "Detail: 1/4x" {
-		t.Fatalf("after 2 cycles useText=%q want Detail: 1/4x", g.useText)
-	}
-	g.cycleSourcePortDetailLevel()
-	if g.detailLevel != 0 {
-		t.Fatalf("after 3 cycles detail=%d want 0", g.detailLevel)
-	}
-	if g.autoDetailEnabled {
-		t.Fatal("third source-port cycle should stay manual at 1x")
-	}
-	if g.useText != "Detail: 1x" {
-		t.Fatalf("after 3 cycles useText=%q want Detail: 1x", g.useText)
-	}
-	g.cycleSourcePortDetailLevel()
-	if !g.autoDetailEnabled {
-		t.Fatal("fourth source-port cycle should return to auto detail")
-	}
-	if g.useText != "Detail: AUTO" {
-		t.Fatalf("after 4 cycles useText=%q want Detail: AUTO", g.useText)
+func TestCycleSourcePortDetailLevelRepeatsAllResolutions(t *testing.T) {
+	prev := platformcfg.ForcedWASMMode()
+	defer platformcfg.SetForcedWASMMode(prev)
+	for _, wasm := range []bool{false, true} {
+		name := "native"
+		if wasm {
+			name = "wasm"
+		}
+		t.Run(name, func(t *testing.T) {
+			platformcfg.SetForcedWASMMode(wasm)
+			for _, initialLevel := range []int{0, 1, 2, 3} {
+				g := &game{
+					opts:               Options{SourcePortMode: true},
+					detailLevel:        initialLevel,
+					autoDetailEnabled:  true,
+					hudMessagesEnabled: true,
+					viewW:              1920,
+					viewH:              1080,
+				}
+				sg := &sessionGame{opts: g.opts, g: g, rt: g}
+				for cycle := 0; cycle < 3; cycle++ {
+					for _, want := range []struct {
+						label string
+						div   int
+						auto  bool
+					}{{"1x", 1, false}, {"1/2x", 2, false}, {"1/3x", 3, false}, {"1/4x", 4, false}, {"AUTO", 4, true}} {
+						g.sessionCycleDetail()
+						if g.autoDetailEnabled != want.auto || g.sourcePortDetailDivisor() != want.div || g.useText != "Detail: "+want.label {
+							t.Fatalf("initial level=%d cycle=%d step=%s: auto=%t divisor=%d message=%q", initialLevel, cycle, want.label, g.autoDetailEnabled, g.sourcePortDetailDivisor(), g.useText)
+						}
+						// Exercise session layout as the browser/window does after F5.
+						w, h := sg.Layout(1920, 1080)
+						if w != 1920 || h != 1080 || g.viewW != 1920/want.div || g.viewH != 1080/want.div {
+							t.Fatalf("step=%s presentation=%dx%d render=%dx%d", want.label, w, h, g.viewW, g.viewH)
+						}
+					}
+					// AUTO may change its render level between key presses.
+					g.setDetailLevel(initialLevel)
+				}
+			}
+		})
 	}
 }
 

@@ -20,23 +20,26 @@ audio, and share live sessions with spectators.
 
 ## Gallery
 
-Click a screenshot to open the full-size image.
+Captured with the current GPU renderer. The matching E1M1 views compare
+**Faithful** mode's classic 320×200 rendering, 256-color palette, and 4:3
+presentation with **Modern (Source Port)** mode's full-color lighting and crisp
+texture detail at 1920×1080. Click a screenshot to open the full-size image.
 
 <table>
   <tr>
-    <td width="33%" align="center" valign="top"><a href="screenshots/e1m1.png?raw=true"><img src="screenshots/e1m1.png" alt="Source Port mode in E1M1" width="260"></a><br>Source Port mode</td>
-    <td width="33%" align="center" valign="top"><a href="screenshots/faithful.png?raw=true"><img src="screenshots/faithful.png" alt="Faithful mode with classic Doom presentation" width="260"></a><br>Faithful mode</td>
-    <td width="33%" align="center" valign="top"><a href="screenshots/e1m1-map.png?raw=true"><img src="screenshots/e1m1-map.png" alt="High-resolution E1M1 automap" width="260"></a><br>Automap</td>
+    <td width="33%" align="center" valign="top"><a href="screenshots/faithful.png?raw=true"><img src="screenshots/faithful.png" alt="Faithful E1M1 with the classic 320 by 200 framebuffer, Doom palette, and 4:3 status bar" width="260"></a><br>Faithful · classic presentation</td>
+    <td width="33%" align="center" valign="top"><a href="screenshots/e1m1.png?raw=true"><img src="screenshots/e1m1.png" alt="The same E1M1 view in Modern Source Port mode at 1920 by 1080" width="260"></a><br>Modern · 1080p detail</td>
+    <td width="33%" align="center" valign="top"><a href="screenshots/e1m1-map.png?raw=true"><img src="screenshots/e1m1-map.png" alt="Modern E1M1 automap with textured floors and the full level revealed" width="260"></a><br>Modern · textured automap</td>
   </tr>
   <tr>
-    <td align="center" valign="top"><a href="screenshots/level2.png?raw=true"><img src="screenshots/level2.png" alt="Doom combat in a dark courtyard" width="260"></a><br>Combat</td>
-    <td align="center" valign="top"><a href="screenshots/level3.png?raw=true"><img src="screenshots/level3.png" alt="Colored Doom torches and monster sprites" width="260"></a><br>Lighting</td>
-    <td align="center" valign="top"><a href="screenshots/level4.png?raw=true"><img src="screenshots/level4.png" alt="Doom hallway with wooden beams and barrels" width="260"></a><br>Interiors</td>
+    <td align="center" valign="top"><a href="screenshots/level2.png?raw=true"><img src="screenshots/level2.png" alt="Modern E1M1 encounter with zombiemen, blue wall panels, and detailed stair edges" width="260"></a><br>Modern · combat</td>
+    <td align="center" valign="top"><a href="screenshots/level3.png?raw=true"><img src="screenshots/level3.png" alt="Modern E1M8 marble hall with red torches, bright ceiling lights, and dark alcoves" width="260"></a><br>Modern · sector lighting</td>
+    <td align="center" valign="top"><a href="screenshots/level4.png?raw=true"><img src="screenshots/level4.png" alt="Modern E2M2 storage room with detailed wall textures, ceiling panels, and stacked crates" width="260"></a><br>Modern · interior textures</td>
   </tr>
   <tr>
-    <td align="center" valign="top"><a href="screenshots/melt-hq.png?raw=true"><img src="screenshots/melt-hq.png" alt="Classic screen melt transition at high resolution" width="260"></a><br>Melt transition</td>
-    <td align="center" valign="top"><a href="screenshots/invis.png?raw=true"><img src="screenshots/invis.png" alt="Doom invisibility fuzz effect" width="260"></a><br>Invisibility fuzz</td>
-    <td align="center" valign="top"><a href="screenshots/level.png?raw=true"><img src="screenshots/level.png" alt="Doom courtyard with classic palette and HUD" width="260"></a><br>Classic palette</td>
+    <td align="center" valign="top"><a href="screenshots/melt-hq.png?raw=true"><img src="screenshots/melt-hq.png" alt="Doom 1 title screen melting away to reveal E1M1 when starting a new game in Modern mode" width="260"></a><br>Modern · New Game melt</td>
+    <td align="center" valign="top"><a href="screenshots/invis.png?raw=true"><img src="screenshots/invis.png" alt="Modern E1M5 close-up with a fuzzy spectre beside a sharp zombieman sprite" width="260"></a><br>Modern · spectre fuzz</td>
+    <td align="center" valign="top"><a href="screenshots/level.png?raw=true"><img src="screenshots/level.png" alt="Modern E1M1 courtyard with crisp metal walls, a slime pool, and mountain sky" width="260"></a><br>Modern · outdoor detail</td>
   </tr>
 </table>
 

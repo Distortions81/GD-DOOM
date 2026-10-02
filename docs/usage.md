@@ -188,6 +188,10 @@ Default desktop controls are:
 
 Bindings can be changed in the frontend and pause-menu keybind screens and saved in `config.toml`. There are also extra runtime shortcuts for detail level, gamma, screenshots, and automap behavior.
 
+In Source Port mode, **F5** cycles through **AUTO → full → half → third →
+quarter → AUTO** resolution. Leaving AUTO always selects full resolution,
+regardless of the ratio AUTO was using. Faithful mode's F5 toggles high/low detail.
+
 ## Menus And Config
 
 The frontend and pause menus expose most settings people actually want to change while playing:

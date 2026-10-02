@@ -2484,17 +2484,16 @@ func (g *game) cycleSourcePortDetailLevel() {
 	g.autoDetailPeriodSeen = false
 	if g.autoDetailEnabled {
 		g.autoDetailEnabled = false
-		g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailLevelLabelFor(g.detailLevel)), 70)
-		return
-	}
-	if g.detailLevel == 0 {
-		g.autoDetailEnabled = true
-		g.setHUDMessage("Detail: AUTO", 70)
+		// Start a predictable manual cycle regardless of AUTO's current ratio.
+		_ = g.setDetailLevel(0)
+		g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailHUDLabel()), 70)
 		return
 	}
 	next := g.detailLevel + 1
 	if next >= len(sourcePortDetailDivisors) {
-		next = 0
+		g.autoDetailEnabled = true
+		g.setHUDMessage("Detail: AUTO", 70)
+		return
 	}
 	_ = g.setDetailLevel(next)
 	g.setHUDMessage(fmt.Sprintf("Detail: %s", g.detailHUDLabel()), 70)
