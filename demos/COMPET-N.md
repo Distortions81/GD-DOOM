@@ -1,5 +1,24 @@
 # Large original-game demo corpus
 
+Current eligible corpus: **4,646 recordings**. The original **4,634-input**
+inventory and frozen execution queues remain unchanged. A full re-import of the
+checksum-verified snapshot recovers **12 additional valid single-player demos**:
+ten ZIP Implode entries and two ARJ archives named `.zip`. All original records
+are identical and the expanded import has zero skipped entries. The importer
+uses optional `7z`/`7zz` only for legacy formats, streams literal members to stdout,
+and checks decoded size and CRC. All twelve Python corpus tests pass.
+
+The recovered recordings have a separate follow-up manifest, prepared for the
+same v101 runtime, 16 MiB isolated reference config, and 12 uncapped nice-19
+workers on Comedy-SSD/Scratch after the current base sweep terminates.
+Recovered replay progress: **0/12 completed, 0 strict state/RNG matches**.
+They are pending comparisons until verified, and are never preclassified as
+exclusions. Current accepted exclusions remain **44**. Full expanded-corpus
+verification remains unfinished.
+Evidence: `tmp/compet-n/archive-recovery-v101.json`; follow-up selection:
+`tmp/compet-n-archive-recovered-v101/followup-v101.json`.
+
+
 See the [documented exclusions](COMPET-N-exclusions.md) for confirmed original-engine glitches and crashes outside the fix scope.
 
 The [COMPET-N public archive](https://compet-n.gamers.org/public/compet-n/)

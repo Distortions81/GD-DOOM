@@ -5,6 +5,7 @@ import gzip
 import io
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -29,6 +30,55 @@ def demo_zip(member, data):
 
 
 class CorpusTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("7z") or shutil.which("7zz"), "7-Zip unavailable")
+    def test_import_legacy_implode_and_arj_snapshot_entries(self):
+        fixtures = Path(__file__).parent / "testdata/compet-n-legacy"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = root / "snapshot.zip"
+            with zipfile.ZipFile(archive, "w") as outer:
+                outer.writestr("compet-n/doom2/respawn/200-re08.zip",
+                               (fixtures / "zip-implode.zip").read_bytes())
+                outer.writestr("compet-n/doom2/nmare/nm23-058.zip",
+                               (fixtures / "arj-disguised-as-zip.zip").read_bytes())
+            stats = corpus.prepare(archive, root / "out")
+            self.assertEqual((stats["unique_demos"], stats["skipped"]), (2, 0))
+            demos = json.loads((root / "out/manifest.json").read_text())["demos"]
+            self.assertEqual({d["sha256"] for d in demos}, {
+                "25a57397f5a94d5f5e7cb1fac8821a5672ba259931ce39c5ac034d5be6a6137c",
+                "4bcfb817e536fea455f8fb838dc6649ef09cab83ab044b6c3e71459d51b4da51"})
+            self.assertEqual({d["map"] for d in demos}, {"MAP08", "MAP23"})
+            self.assertTrue(next(d for d in demos if d["map"] == "MAP08")["respawn"])
+            for demo in demos:
+                self.assertEqual(hashlib.sha256((root / "out" / demo["path"]).read_bytes()).hexdigest(),
+                                 demo["sha256"])
+
+    def test_legacy_decode_uses_literal_members_and_stdout(self):
+        member = "-o/tmp/unwanted*[member].lmp"
+        result = subprocess.CompletedProcess([], 0, stdout=b"demo", stderr=b"")
+        with mock.patch.object(corpus.shutil, "which", return_value="/usr/bin/7z"), \
+                mock.patch.object(corpus.subprocess, "run", return_value=result) as run:
+            self.assertEqual(corpus.legacy_decode(b"archive", "zip", "e", member), b"demo")
+        args, kwargs = run.call_args
+        command = args[0]
+        self.assertIn("-so", command)
+        self.assertIn("-spd", command)
+        self.assertEqual(command[-3], "--")
+        self.assertEqual(command[-1], member)
+        self.assertEqual(kwargs["stdin"], subprocess.DEVNULL)
+
+    def test_legacy_decode_rejects_crc_or_size_mismatch(self):
+        data = (Path(__file__).parent / "testdata/compet-n-legacy/zip-implode.zip").read_bytes()
+        member = corpus.archive_members(data)[0]
+        with mock.patch.object(corpus, "legacy_decode", return_value=b"incorrect"):
+            with self.assertRaisesRegex(zipfile.BadZipFile, "size or CRC differs"):
+                corpus.archive_read(data, member)
+
+    def test_legacy_decode_reports_missing_optional_decoder(self):
+        with mock.patch.object(corpus.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(NotImplementedError, "requires 7z or 7zz"):
+                corpus.legacy_decode(b"archive", "zip", "e", "demo.lmp")
+
     def test_batch_schedules_manifest_priority_and_filters_without_resorting(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -8,14 +8,75 @@ import io
 import json
 from pathlib import Path, PurePosixPath
 import re
+import shutil
+import subprocess
+import tempfile
 import urllib.request
 import zipfile
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 URL = "https://compet-n.gamers.org/public/compet-n/compet-n_2019-01-21.zip"
 ARCHIVE_SHA256 = "cb79b0a1bdc9233c2351d89fa229e00a5e461ae7d791ad535aea715673470fb1"
 CATEGORIES = {"speed", "max", "nmare", "nm100s", "tyson", "pacifist", "fast", "respawn", "nomo"}
 WADS = {"doom": "wads/DOOMU.WAD", "doom2": "wads/DOOM2.WAD"}
+
+
+def legacy_decode(data, kind, command, member=None):
+    decoder = shutil.which("7z") or shutil.which("7zz")
+    if not decoder:
+        raise NotImplementedError("Legacy ZIP/ARJ decoding requires 7z or 7zz")
+    with tempfile.TemporaryDirectory(prefix="compet-n-archive-") as directory:
+        archive = Path(directory) / "input.archive"
+        archive.write_bytes(data)
+        args = [decoder, command, f"-t{kind}", "-spd"]
+        args += ["-slt"] if command == "l" else ["-so"]
+        args += ["--", str(archive)]
+        if member is not None:
+            args.append(member)
+        try:
+            result = subprocess.run(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, timeout=30)
+        except subprocess.TimeoutExpired as error:
+            raise zipfile.BadZipFile(f"Legacy {kind} decoder timed out") from error
+        if result.returncode:
+            raise zipfile.BadZipFile(f"Legacy {kind} decoder failed: {result.stderr.decode(errors='replace').strip()}")
+        return result.stdout
+
+
+def archive_members(data):
+    if data.startswith(b"\x60\xea"):
+        # Two snapshot files named .zip are actually ARJ archives.
+        listing = legacy_decode(data, "Arj", "l").decode("utf-8", errors="replace")
+        members = []
+        for block in listing.split("\n\n"):
+            fields = dict(line.split(" = ", 1) for line in block.splitlines() if " = " in line)
+            name = fields.get("Path", "")
+            if not name.lower().endswith(".lmp") or fields.get("Folder") != "-":
+                continue
+            try:
+                members.append({"name": name, "size": int(fields["Size"]),
+                                "crc": int(fields["CRC"], 16), "format": "Arj"})
+            except (KeyError, ValueError) as error:
+                raise zipfile.BadZipFile("ARJ member lacks a valid size or CRC") from error
+        return members
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        return [{"name": member.filename, "size": member.file_size, "crc": member.CRC,
+                 "format": "zip", "zip_info": member} for member in archive.infolist()
+                if member.filename.lower().endswith(".lmp")]
+
+
+def archive_read(data, member):
+    if member["format"] == "zip":
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                return archive.read(member["zip_info"])
+        except NotImplementedError:
+            pass
+    decoded = legacy_decode(data, member["format"], "e", member["name"])
+    if len(decoded) != member["size"] or zlib.crc32(decoded) != member["crc"]:
+        raise zipfile.BadZipFile("Legacy decoded member size or CRC differs")
+    return decoded
 
 
 def header(data, game):
@@ -50,30 +111,28 @@ def prepare(archive, out):
             if not item.filename.lower().endswith(".zip"):
                 continue
             try:
-                with zipfile.ZipFile(io.BytesIO(outer.read(item))) as inner:
-                    for member in inner.infolist():
-                        if not member.filename.lower().endswith(".lmp"):
-                            continue
-                        source = {"archive_member": item.filename, "demo_member": member.filename,
-                                  "category": category}
-                        try:
-                            data = inner.read(member)
-                            info = header(data, game)
-                        except (ValueError, NotImplementedError, zipfile.BadZipFile) as error:
-                            skipped.append({**source, "reason": str(error)})
-                            continue
-                        digest = hashlib.sha256(data).hexdigest()
-                        key = (game, digest)
-                        if key in demos:
-                            demos[key]["sources"].append(source)
-                            continue
-                        # Archive names are metadata, never extraction paths.
-                        name = re.sub(r"[^A-Za-z0-9_-]", "_", PurePosixPath(member.filename).stem)
-                        prefix = "DOOMU" if game == "doom" else "DOOM2"
-                        path = f"demos/{prefix}-{info['map']}-{name}-{digest[:12]}.lmp"
-                        (out / path).write_bytes(data)
-                        demos[key] = {"path": path, "wad": WADS[game], "game": game,
-                                      "sha256": digest, **info, "sources": [source]}
+                archive_data = outer.read(item)
+                for member in archive_members(archive_data):
+                    source = {"archive_member": item.filename, "demo_member": member["name"],
+                              "category": category}
+                    try:
+                        data = archive_read(archive_data, member)
+                        info = header(data, game)
+                    except (ValueError, NotImplementedError, zipfile.BadZipFile) as error:
+                        skipped.append({**source, "reason": str(error)})
+                        continue
+                    digest = hashlib.sha256(data).hexdigest()
+                    key = (game, digest)
+                    if key in demos:
+                        demos[key]["sources"].append(source)
+                        continue
+                    # Archive names are metadata, never extraction paths.
+                    name = re.sub(r"[^A-Za-z0-9_-]", "_", PurePosixPath(member["name"]).stem)
+                    prefix = "DOOMU" if game == "doom" else "DOOM2"
+                    path = f"demos/{prefix}-{info['map']}-{name}-{digest[:12]}.lmp"
+                    (out / path).write_bytes(data)
+                    demos[key] = {"path": path, "wad": WADS[game], "game": game,
+                                  "sha256": digest, **info, "sources": [source]}
             except (zipfile.BadZipFile, NotImplementedError) as error:
                 skipped.append({"archive_member": item.filename, "reason": str(error)})
     entries = sorted(demos.values(), key=lambda demo: demo["path"])

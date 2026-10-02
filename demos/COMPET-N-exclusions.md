@@ -2,7 +2,7 @@
 
 Updated 2026-10-01. The user excluded NoClip emulation and other extreme original-engine glitches or crashes from the desync fix scope.
 
-**44 recordings are currently excluded from fixes.** They remain in the 4,634-recording inventory with their raw strict mismatch/error results. An exclusion is never a passing comparison. Ordinary unexplained state/RNG differences and failures in GD-DOOM or the replay harness remain under investigation.
+**44 recordings are currently excluded from fixes.** They remain in the expanded 4,646-recording inventory with their raw strict mismatch/error results. The original 4,634 inputs are unchanged; twelve valid demos were recovered from legacy compression and mislabeled ARJ archives. Those twelve are pending comparisons, not new exclusions. An exclusion is never a passing comparison. Ordinary unexplained state/RNG differences and failures in GD-DOOM or the replay harness remain under investigation.
 
 The authoritative per-recording policy is `evaluation_policy.accepted_limitations` in [COMPET-N-results.json](COMPET-N-results.json). Names below include the imported input hash suffix. That report and its phase records retain full input hashes, strict results, and gameplay RNG outcomes. Evidence links refer to preserved local captures under `tmp/`; those captures are not committed to Git. The findings are summarized here so the exclusions remain understandable without the local captures.
 
@@ -76,6 +76,6 @@ The original `EV_DoCeiling` constructor leaves `ceiling.topheight` uninitialized
 
 ## Accounting and future exclusions
 
-Execution manifests are immutable: a failure classified after a queue was frozen remains in that historical queue. New queues list current verified passes, explicit exclusions, and remaining work as separate partitions totaling all 4,634 eligible inputs. An accepted limitation never increases the strict match count.
+Execution manifests are immutable: a failure classified after a queue was frozen remains in that historical queue. The original queues retain their 4,634-input accounting. Expanded coverage adds a separate twelve-recording follow-up for all 4,646 eligible inputs. Current verified passes, explicit exclusions, and remaining work stay separate. An accepted limitation never increases the strict match count.
 
 Add a recording only after evidence identifies an original reference crash or an excluded original-engine glitch. Record its exact input, reason, raw outcome, and evidence in the machine-readable policy and this ledger. A similar map name or mismatch field alone is insufficient. Retain traces and logs for unexplained cases until classification or a verified ordinary fix is available.
