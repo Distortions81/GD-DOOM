@@ -4,12 +4,12 @@ This repo now has a repeatable demo-desync harness for comparing GD-DOOM against
 
 ## Paths
 
-- GD-DOOM repo: `/home/dist/github/GD-DOOM`
-- Original DOOM source tree: `/home/dist/github/doom-source`
-- Reference binary: `/home/dist/github/doom-source/linuxdoom-1.10/linux/linuxxdoom`
-- Harness script: `/home/dist/github/GD-DOOM/scripts/demo_trace_compare.sh`
-- Batch harness: `/home/dist/github/GD-DOOM/scripts/demo_trace_compare_batch.sh`
-- Comparator: `/home/dist/github/GD-DOOM/cmd/demotracecmp`
+- GD-DOOM repo: the repository root
+- Original DOOM source tree: `../doom-source`
+- Reference binary: `../doom-source/linuxdoom-1.10/linux/linuxxdoom`
+- Harness script: `scripts/demo_trace_compare.sh`
+- Batch harness: `scripts/demo_trace_compare_batch.sh`
+- Comparator: `cmd/demotracecmp`
 
 ## What The Harness Does
 
@@ -29,7 +29,7 @@ For external demo sets, `scripts/demo_trace_compare_batch.sh` runs the same loop
 
 - `../doom-source` must exist and contain a built `linuxxdoom`.
 - `DOOM1.WAD` must be available in the GD-DOOM repo root unless overridden.
-- No desktop display or `xvfb-run` is required: GD-DOOM trace playback is headless and uncapped.
+- Use an available desktop display or `xvfb-run` for runtime initialization. Trace playback uses the uncapped simulation loop with rendering disabled.
 
 Notes:
 
@@ -44,14 +44,14 @@ Notes:
 ## Default Inputs
 
 - Reference demo lump: `demo1`
-- GD-DOOM demo file: `/home/dist/github/GD-DOOM/demos/DOOM1-DEMO1.lmp`
-- Output directory: `/home/dist/github/GD-DOOM/tmp/demo-trace-compare`
+- GD-DOOM demo file: `demos/DOOM1-DEMO1.lmp`
+- Output directory: `tmp/demo-trace-compare`
 
 These defaults are set up to compare the built-in `DEMO1` lump from the original runtime against the extracted `.lmp` file in this repo.
 
 ## Basic Usage
 
-From `/home/dist/github/GD-DOOM`:
+From the repository root:
 
 ```bash
 scripts/demo_trace_compare.sh

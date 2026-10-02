@@ -96,7 +96,7 @@ Latest desktop releases: [macOS Intel](https://github.com/Distortions81/GD-DOOM/
 
 GD-DOOM is a Doom engine and source port for original Doom data. It runs on desktop and in the browser, loads base game WADs plus add-ons, plays and records classic Doom demos, and adds live watch, chat, and voice features on top.
 
-GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and derivative of id Software's DOOM source release. See [LICENSE](/home/dist/github/GD-DOOM/LICENSE) and [NOTICE](/home/dist/github/GD-DOOM/NOTICE).
+GD-DOOM is distributed under GNU GPL v2. It is inspired by, ported from, and derivative of id Software's DOOM source release. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
 ## Compared With Vanilla Doom
 
@@ -116,32 +116,37 @@ GD-DOOM still uses original Doom WAD data and Doom-style game logic, but it is b
 
 ## Original Doom Demo Compatibility
 
-The COMPET-N inventory contains **4,646 eligible single-player recordings**:
+The completed COMPET-N sweep covers **4,646 eligible single-player recordings**:
 2,411 Ultimate Doom and 2,235 Doom II demos across all 68 starting maps,
 including speedruns, Nightmare, Tyson, Pacifist, UV Max, UV Fast, UV Respawn,
-and No Monsters recordings.
+and No Monsters recordings. Verified on **2026-10-02** against the gameplay
+source shipped in **v0.1.1**:
 
-The latest v102 follow-up fixes all **13 door/platform recordings**, which now
-strictly match the original game and independently audited gameplay RNG.
-All **13 unused-ceiling recordings** also pass: six strictly and seven with an
-opt-in semantic comparison of the unused `topheight` field on a downward
-`lowerAndCrush` ceiling. Raw strict mismatches remain separate. All **101 normal validation
-fixtures**, the full Go suite, and fourteen Python corpus tests pass.
+| Outcome | Recordings |
+| --- | ---: |
+| Strict state and independently audited gameplay RNG matches | 4,621 |
+| Semantic state and gameplay RNG matches only | 7 |
+| Documented exclusions | 18 |
+| Pending or unexplained failures | 0 |
 
-**18 exclusions remain**: seventeen original-reference crashes and one timed
-door that uses uninitialized memory. The full v102 corpus recheck is running.
-The completed v101 baseline was **4,602 strict passes and 44 exclusions**;
-those historical passes are not fresh v102 coverage.
+**4,628 of 4,646 recordings (99.61%) pass** under the documented comparison
+policy; **99.46% match strictly**. The eighteen exclusions remain in the
+denominator: seventeen original-reference crashes and one timed door that
+uses uninitialized memory. All thirteen door/platform follow-ups now match
+strictly. All 101 ordinary validation fixtures, the full Go suite, and
+fourteen Python corpus checks also pass.
 
 Comparisons run until the original replay ends or the first player death,
-including the death tic. Strict comparison remains the default; the corpus
-runner's `--semantic-unused-ceiling-fields` option enables the limited semantic
-policy and still requires matching gameplay RNG.
+including the death tic. Strict comparison remains the default. The optional
+`--semantic-unused-ceiling-fields` policy ignores only an unused `topheight`
+field on paired downward `lowerAndCrush` ceilings and still requires matching
+state everywhere else and independently audited gameplay RNG. Its seven
+semantic-only matches retain their raw strict mismatches.
 
-See the [corpus and verification details](demos/COMPET-N.md),
+See the [public compatibility guide](demos/COMPET-N.md),
 [per-recording results](demos/COMPET-N-results.json),
-[exclusion ledger](demos/COMPET-N-exclusions.md), and
-[desync investigation notes](desync-work.md).
+[exclusion guide](demos/COMPET-N-exclusions.md), and
+[desync investigation guide](desync-work.md).
 
 ## Requirements
 
@@ -282,7 +287,7 @@ Notes:
 - Watchers can also participate in session chat.
 - `-low-latency` favors quicker delivery over more batching.
 - Current microphone codecs are `silk`, `g726`, and `pcm`.
-- The wire format is documented in [`netplay-protocol.md`](/home/dist/github/GD-DOOM/netplay-protocol.md).
+- The wire format is documented in [`netplay-protocol.md`](netplay-protocol.md).
 
 This is live spectating, not traditional co-op. One machine plays, the others watch the run as it happens, with chat and optional voice alongside the stream.
 
@@ -407,16 +412,16 @@ scripts/test_integration.sh ./internal/app
 
 This integration lane also includes generator-style tests that write artifacts, such as the billboard bbox dump in `internal/doomruntime`.
 
-If you are working on the engine itself, extra utilities are included under [`cmd/`](/home/dist/github/GD-DOOM/cmd):
+If you are working on the engine itself, extra utilities are included under [`cmd/`](cmd):
 
-- [`cmd/gdsfrelay`](/home/dist/github/GD-DOOM/cmd/gdsfrelay) runs the live session relay used by `-broadcast` and `-watch`.
-- [`cmd/wasmserve`](/home/dist/github/GD-DOOM/cmd/wasmserve) serves the browser build locally.
-- [`cmd/demotracecmp`](/home/dist/github/GD-DOOM/cmd/demotracecmp) compares two demo state logs to help find mismatches or desyncs.
-- [`cmd/musicwav`](/home/dist/github/GD-DOOM/cmd/musicwav) exports in-game music tracks to WAV files, including `impsynth`, `pcspeaker`, `pcspeaker-clean`, and `pcspeaker-piezo` modes with optional single-song selection via `-song`.
-- [`cmd/pcspeaker`](/home/dist/github/GD-DOOM/cmd/pcspeaker) captures live PC speaker output, interleaves music and SFX streams, and can drive the Linux hardware buzzer directly for testing.
-- [`cmd/mapprobe`](/home/dist/github/GD-DOOM/cmd/mapprobe) inspects map data such as sectors, lines, tags, and things.
-- [`cmd/mapaudit`](/home/dist/github/GD-DOOM/cmd/mapaudit) generates a report about oddities in local Doom map data.
-- [`cmd/wadtool`](/home/dist/github/GD-DOOM/cmd/wadtool) extracts individual files from WADs.
+- [`cmd/gdsfrelay`](cmd/gdsfrelay) runs the live session relay used by `-broadcast` and `-watch`.
+- [`cmd/wasmserve`](cmd/wasmserve) serves the browser build locally.
+- [`cmd/demotracecmp`](cmd/demotracecmp) compares two demo state logs to help find mismatches or desyncs.
+- [`cmd/musicwav`](cmd/musicwav) exports in-game music tracks to WAV files, including `impsynth`, `pcspeaker`, `pcspeaker-clean`, and `pcspeaker-piezo` modes with optional single-song selection via `-song`.
+- [`cmd/pcspeaker`](cmd/pcspeaker) captures live PC speaker output, interleaves music and SFX streams, and can drive the Linux hardware buzzer directly for testing.
+- [`cmd/mapprobe`](cmd/mapprobe) inspects map data such as sectors, lines, tags, and things.
+- [`cmd/mapaudit`](cmd/mapaudit) generates a report about oddities in local Doom map data.
+- [`cmd/wadtool`](cmd/wadtool) extracts individual files from WADs.
 
 These tools are for development, testing, and troubleshooting rather than normal play.
 
@@ -444,7 +449,7 @@ Voice runtime notes:
 
 - If the viewer has to skip ahead to catch live audio back up, you will see `voice-skip ...` messages in the console.
 
-Supported commercial Doom-family game/add-on fingerprints tracked by the runtime are documented in [`commercial-wads.md`](/home/dist/github/GD-DOOM/commercial-wads.md).
+Supported commercial Doom-family game/add-on fingerprints tracked by the runtime are documented in [`commercial-wads.md`](commercial-wads.md).
 
 That file is for recognition and compatibility lookup. It is not a promise that GD-DOOM fully supports every non-Doom title listed there.
 
