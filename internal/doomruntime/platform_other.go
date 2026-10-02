@@ -9,5 +9,3 @@ import (
 func isWASMBuild() bool {
 	return platformcfg.IsWASMBuild()
 }
-
-func yieldWASMRenderTime() {}

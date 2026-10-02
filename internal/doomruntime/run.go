@@ -378,7 +378,6 @@ func (sg *sessionGame) Update() error {
 }
 
 func (sg *sessionGame) Draw(screen *ebiten.Image) {
-	defer yieldWASMRenderTime()
 	if sg == nil {
 		screen.Fill(color.Black)
 		return

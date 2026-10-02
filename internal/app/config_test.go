@@ -435,20 +435,25 @@ func TestSourcePortAudioEnabledDisablesSourcePortAudioOnWASM(t *testing.T) {
 	}
 }
 
-func TestRunParseDefaultsDisableVsyncOnWASM(t *testing.T) {
+func TestRunParseDefaultsEnableVsyncOnWASM(t *testing.T) {
 	prev := platformcfg.ForcedWASMMode()
 	platformcfg.SetForcedWASMMode(true)
 	defer platformcfg.SetForcedWASMMode(prev)
 
 	var out bytes.Buffer
 	var errb bytes.Buffer
-	wadPath := filepath.Join("..", "..", "DOOM1.WAD")
-	code := RunParse([]string{"-wad", wadPath, "-render=false"}, &out, &errb)
+	code := RunParse([]string{"-help"}, &out, &errb)
 	if code != 0 {
 		t.Fatalf("RunParse() code=%d stderr=%q", code, errb.String())
 	}
-	if !strings.Contains(out.String(), "map=") {
-		t.Fatalf("stdout %q missing map output", out.String())
+	help := out.String() + errb.String()
+	start := strings.Index(help, "-no-vsync")
+	if start < 0 {
+		t.Fatal("WASM help is missing the VSync option")
+	}
+	option := strings.SplitN(help[start:], "\n  -", 2)[0]
+	if strings.Contains(option, "default true") {
+		t.Fatalf("WASM should default to VSync enabled: %s", option)
 	}
 }
 

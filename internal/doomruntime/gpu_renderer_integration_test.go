@@ -48,6 +48,8 @@ func TestGPUFramebufferComparison(t *testing.T) {
 	driver.run = func() {
 		gpuCompareSynthetic(t)
 		gpuCompareFaithfulPalette(t)
+		gpuCompareSpectreFuzz(t)
+		gpuCompareFuzzDrawOrder(t)
 		if path := os.Getenv("GD_GPU_WAD"); path != "" {
 			gpuCompareMaps(t, path)
 		}
@@ -290,36 +292,6 @@ func gpuCompareSynthetic(t *testing.T) {
 		t.Error("RGBA-only sprite color or mask changed")
 	}
 	gpuCompareSpriteRuns(t, g, &WallTexture{Width: 64, Height: 64, Indexed: indexed, OpaqueMask: mask})
-	r.fuzzCommands.reset()
-	r.rect(&r.fuzzCommands, 0, 0, 63, 63, front, front, 4, 192, 0, 0, 0, 1, 1)
-	r.snapshot.Fill(color.Black)
-	r.cutouts.Clear()
-	r.drawCommands(r.cutouts, &r.fuzzCommands, ebiten.BlendSourceOver, r.snapshot, 0)
-	r.cutouts.ReadPixels(out)
-	if out[3] != 0 || out[7] != 255 || out[4] != 0 || out[5] != 0 || out[6] != 0 {
-		t.Error("fuzz failed to preserve sprite mask or sample background")
-	}
-	// Exercise the separate palette lookup region with nonzero RGB and an
-	// actual colormap row. A black snapshot bypasses most lookup addressing.
-	colormap := make([]byte, 256)
-	for i := range colormap {
-		colormap[i] = byte(255 - i)
-	}
-	initDoomColormapShading(palette, colormap, 1, true)
-	r.lightGamma = -1
-	r.updateLights(palette)
-	r.metadata.WritePixels(r.metadataPixels)
-	r.fuzzCommands.reset()
-	r.rect(&r.fuzzCommands, 0, 0, 63, 63, front, front, 4, 257, 0, 0, 0, 1, 1)
-	r.snapshot.Fill(color.RGBA{R: 83, G: 171, B: 249, A: 255})
-	r.cutouts.Clear()
-	r.drawCommands(r.cutouts, &r.fuzzCommands, ebiten.BlendSourceOver, r.snapshot, 0)
-	r.cutouts.ReadPixels(out)
-	index := doomPalIndexLUT32[(83/8)*1024+(171/8)*32+249/8]
-	wantFuzz := doomColormapPackedRow(0)[index]
-	if out[3] != 0 || out[7] != 255 || out[4] != byte(wantFuzz>>pixelRShift) || out[5] != byte(wantFuzz>>pixelGShift) || out[6] != byte(wantFuzz>>pixelBShift) {
-		t.Error("fuzz palette lookup or colormap row changed")
-	}
 	// Check metadata row boundaries and the final texture ID on the GPU.
 	// Reuse an uploaded texel at a known atlas origin for each aliased ID.
 	r.overlayCommands.reset()
@@ -392,7 +364,7 @@ func gpuCompareSpriteRuns(t *testing.T, g *game, tex *WallTexture) {
 	}
 	actual, expected := make([]byte, g.viewW*g.viewH*4), make([]byte, g.viewW*g.viewH*4)
 	for _, scale := range []float64{0.7, 1, 1.5, 2, 2.1, 3, 8} {
-		for _, mode := range []int{2, 3, 4, 5, 8, 9} {
+		for _, mode := range []int{2, 3, 8, 9} {
 			it := cutoutItem{boundsOK: true, tex: tex, scale: scale, dstX: 0.2, dstY: -0.25, x0: 5, x1: 150, y0: 3, y1: 183, depthQ: 100, shadeMul: 192, flip: mode%2 != 0, shadow: mode == 4 || mode == 5, debugOverlay: mode >= 8}
 			r.overlayCommands.reset()
 			g.gpuSprite(it, &r.overlayCommands, false)
@@ -524,7 +496,9 @@ func gpuCompareMaps(t *testing.T, path string) {
 			seen := map[string]bool{}
 			for i, th := range m.Things {
 				kind := ""
-				if isMonster(th.Type) && g.thingHP[i] > 0 {
+				if th.Type == 58 && g.thingHP[i] > 0 {
+					kind = "spectre"
+				} else if isMonster(th.Type) && g.thingHP[i] > 0 {
 					kind = "monster"
 				} else if isBarrelThingType(th.Type) {
 					kind = "barrel"
@@ -554,10 +528,12 @@ func gpuCompareMaps(t *testing.T, path string) {
 				cpu.Fill(color.Black)
 				gpu.Fill(color.Black)
 				g.opts.GPURenderer = false
+				fuzzPhase := g.spectreFuzzPos
 				g.drawDoomBasic3D(cpu)
 				cpuPixels := make([]byte, w*h*4)
 				cpu.ReadPixels(cpuPixels)
 				g.opts.GPURenderer = true
+				g.spectreFuzzPos = fuzzPhase
 				g.drawDoomBasic3D(gpu)
 				if g.gpu == nil || g.gpu.failed {
 					t.Fatal("GPU backend unexpectedly fell back")

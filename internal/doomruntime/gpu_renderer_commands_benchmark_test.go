@@ -82,6 +82,34 @@ func BenchmarkGPUCloseSprite(b *testing.B) {
 	}
 }
 
+func BenchmarkGPUSpectreFuzzCommands(b *testing.B) {
+	for _, size := range [][2]int{{320, 200}, {1920, 1080}, {3840, 2160}} {
+		b.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(b *testing.B) {
+			g, tex := gpuSpriteTestGame(size[0], size[1])
+			it := cutoutItem{boundsOK: true, shadow: true, tex: tex, scale: float64(size[0]) / 64, scaleY: float64(size[1]) / 64, x1: size[0] - 1, y1: size[1] - 1}
+			commands := &g.gpuFrame.fuzzCommands
+			g.gpuSprite(it, commands, false)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				commands.reset()
+				g.gpuFrame.fuzzLogicalCommands.reset()
+				g.spectreFuzzPos = 0
+				g.gpuSprite(it, commands, false)
+			}
+			quads := 0
+			for _, batch := range commands.batches[:commands.used] {
+				quads += len(batch.vertices) / 4
+			}
+			for _, batch := range g.gpuFrame.fuzzLogicalCommands.batches[:g.gpuFrame.fuzzLogicalCommands.used] {
+				quads += len(batch.vertices) / 4
+			}
+			b.ReportMetric(float64(quads), "quads/op")
+			b.ReportMetric(float64(quads*204), "command-B/op")
+		})
+	}
+}
+
 func BenchmarkGPUCloseSpritePlaneOccluders(b *testing.B) {
 	for _, bands := range []bool{false, true} {
 		name := "rows"

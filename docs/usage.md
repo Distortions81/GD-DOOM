@@ -57,8 +57,18 @@ high-resolution output, and full-color lighting with the same GPU draw path.
 
 GPU drawing is on by default. Unsupported texture banks automatically use the
 CPU renderer; `-gpu-renderer=false` also selects it explicitly. The renderer flag
-is not saved to config. Minor texel-boundary rounding differences are possible,
-and GPU spectre fuzz approximates the original effect from a background snapshot.
+is not saved to config. Minor texel-boundary rounding differences are possible.
+Spectre fuzz uses a 320×200 logical mask and grain at every resolution, classic
+column sequencing, and the WAD's COLORMAP row six in both modes. The GPU resolves
+short neighbor-feedback chains on that logical grid, then scales the result up
+with full-resolution wall clipping. Sprites, spectres, and masked textures draw
+in depth order when fuzz is present. Each spectre snapshots the scene behind it,
+including farther spectres; nearer enemies draw afterward and stay sharp.
+Feedback interrupted by wall clipping still approximates the software framebuffer.
+
+VSync is enabled by default on desktop and WASM. Browser rendering follows the
+display refresh without the former 75 FPS sleep throttle; `-no-vsync` remains an
+explicit override. Doom simulation continues at 35 tics per second.
 
 ```bash
 # Faithful look with GPU drawing.

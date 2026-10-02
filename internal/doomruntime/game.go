@@ -805,6 +805,7 @@ type game struct {
 	frameSkyColU                  []int
 	frameSkyRowV                  []int
 	cutoutCoverageBits            []uint64
+	cutoutPainterOrder            bool
 	wallW                         int
 	wallH                         int
 	wallDepthQCol                 []uint16
@@ -5398,27 +5399,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.sortCutoutItemsFrontToBack()
 	g.clearCutoutCoverage()
 	stageStart = time.Now()
-	for _, it := range g.billboardQueueScratch {
-		if it.shadow {
-			continue
-		}
-		if it.debugOverlay {
-			continue
-		}
-		g.drawCutoutItem(it, focal, focalV)
-	}
-	for _, it := range g.billboardQueueScratch {
-		if !it.shadow || it.debugOverlay {
-			continue
-		}
-		g.drawCutoutItem(it, focal, focalV)
-	}
-	for _, it := range g.billboardQueueScratch {
-		if !it.debugOverlay {
-			continue
-		}
-		g.drawCutoutItem(it, focal, focalV)
-	}
+	g.drawSceneCutouts(focal, focalV)
 	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, focalV, near)
 	g.addRenderStageDur(renderStageBillboards, time.Since(stageStart))
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
@@ -5805,7 +5786,7 @@ func (g *game) frameSkyPixel(i int) uint32 {
 }
 
 func (g *game) cutoutCoveredAtIndex(i int) bool {
-	if g == nil || i < 0 {
+	if g == nil || g.cutoutPainterOrder || i < 0 {
 		return false
 	}
 	word := i >> 6
@@ -5816,7 +5797,7 @@ func (g *game) cutoutCoveredAtIndex(i int) bool {
 }
 
 func (g *game) markCutoutCoveredAtIndex(i int) {
-	if g == nil || i < 0 {
+	if g == nil || g.cutoutPainterOrder || i < 0 {
 		return
 	}
 	word := i >> 6
@@ -5838,6 +5819,9 @@ func (g *game) appendUncoveredCutoutSpans(row, x0, x1 int, out []solidSpan) []so
 	}
 	if x0 > x1 {
 		return out
+	}
+	if g.cutoutPainterOrder {
+		return append(out, solidSpan{L: x0, R: x1})
 	}
 	rowBase := row
 	i0 := rowBase + x0
@@ -5904,7 +5888,7 @@ func (g *game) appendUncoveredCutoutSpans(row, x0, x1 int, out []solidSpan) []so
 }
 
 func (g *game) markCutoutRowSpanCovered(row, x0, x1 int) {
-	if g == nil || x0 > x1 || row < 0 || len(g.cutoutCoverageBits) == 0 {
+	if g == nil || g.cutoutPainterOrder || x0 > x1 || row < 0 || len(g.cutoutCoverageBits) == 0 {
 		return
 	}
 	i0 := row + x0
@@ -5936,7 +5920,7 @@ func (g *game) cutoutVisibleSpansForRow(row int, spans []solidSpan) []solidSpan 
 	if len(spans) == 0 {
 		return nil
 	}
-	if g == nil || len(g.cutoutCoverageBits) == 0 || g.viewW <= 0 {
+	if g == nil || g.cutoutPainterOrder || len(g.cutoutCoverageBits) == 0 || g.viewW <= 0 {
 		return spans
 	}
 	out := g.cutoutSpanScratch[:0]
@@ -5951,7 +5935,7 @@ func (g *game) cutoutVisibleSpansForRow(row int, spans []solidSpan) []solidSpan 
 }
 
 func (g *game) cutoutMaskRectFullyCovered(x0, x1, y0, y1 int) bool {
-	if g == nil || g.viewW <= 0 || len(g.cutoutCoverageBits) == 0 || x0 > x1 || y0 > y1 {
+	if g == nil || g.cutoutPainterOrder || g.viewW <= 0 || len(g.cutoutCoverageBits) == 0 || x0 > x1 || y0 > y1 {
 		return false
 	}
 	if x0 < 0 {
@@ -7228,13 +7212,10 @@ func shadePackedDOOMRowOrLUT(src uint32, row int) uint32 {
 
 func (g *game) shadePackedSpectreFuzz(src uint32) uint32 {
 	if row, ok := g.playerFixedColormapRow(); ok {
-		return shadePackedDOOMColormapRow(src, row)
+		return shadePackedSpectreColormapRow(src, row)
 	}
-	if g == nil || !g.opts.SourcePortMode {
-		return shadePackedDOOMRowOrLUT(src, 6)
-	}
-	if doomColormapEnabled {
-		return shadePackedDOOMColormapRow(src, 6)
+	if doomColormapEnabled || (doomLightingEnabled && g != nil && g.opts.DoomColorMapRows > 6) {
+		return shadePackedSpectreColormapRow(src, 6)
 	}
 	if !doomLightingEnabled {
 		return src | pixelOpaqueA
@@ -7243,7 +7224,26 @@ func (g *game) shadePackedSpectreFuzz(src uint32) uint32 {
 	if mul > 256 {
 		mul = 256
 	}
-	return shadePackedRGBA(src, uint32(mul))
+	return packRGBA(
+		uint8(((src>>pixelRShift)&255)*uint32(mul)/256),
+		uint8(((src>>pixelGShift)&255)*uint32(mul)/256),
+		uint8(((src>>pixelBShift)&255)*uint32(mul)/256),
+	)
+}
+
+func shadePackedSpectreColormapRow(src uint32, row int) uint32 {
+	rows := doomColormapRowCount()
+	if rows <= 0 {
+		return src | pixelOpaqueA
+	}
+	index, ok := spectrePaletteIndexByPacked[src|pixelOpaqueA]
+	if !ok {
+		index, ok = packedColorPaletteIndex(src)
+	}
+	if !ok {
+		return src | pixelOpaqueA
+	}
+	return doomColormapRGBA[min(max(row, 0), rows-1)*256+int(index)]
 }
 
 func (g *game) writeFuzzPixel(x, y, i int) {
@@ -8752,12 +8752,13 @@ func (g *game) drawCutoutItem(it cutoutItem, focal, focalV float64) {
 
 func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 	if g.gpuFrame != nil {
-		commands := &g.gpuFrame.cutoutCommands
-		if it.shadow {
-			commands = &g.gpuFrame.fuzzCommands
-		}
+		var commands *gpuCommands
 		if it.debugOverlay {
 			commands = &g.gpuFrame.overlayCommands
+		} else if it.shadow {
+			commands = g.gpuFrame.startFuzzCutout()
+		} else {
+			commands = g.gpuFrame.opaqueCutoutCommands()
 		}
 		g.gpuSprite(it, commands, false)
 		return
@@ -8777,9 +8778,6 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 	if !ok32 && !useIndexed {
 		return
 	}
-	if it.shadow && !ok32 {
-		return
-	}
 	scale := it.scale
 	if scale <= 0 {
 		return
@@ -8794,6 +8792,10 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 	}
 	if (!it.debugOverlay && len(projectedOpaque) > 0 && g.projectedOpaqueRectsFullyOccluded(projectedOpaque, it.depthQ)) ||
 		g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, it.depthQ) {
+		return
+	}
+	if it.shadow && !it.debugOverlay {
+		g.drawShadowSpriteCutout(it)
 		return
 	}
 	shadeMul := it.shadeMul
@@ -8856,28 +8858,6 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		if g.drawSpriteCutoutMagnifiedMask(it, tw, x0, x1, y0, y1, txLUT, tyLUT, src32, srcIndexed, shadeMul, shadeRow, fixedDOOMRow) {
 			return
 		}
-	}
-	if it.shadow && g.opts.SourcePortMode {
-		g.drawShadowSpriteCutoutSourcePort(it, src32, tw, txLUT, tyLUT, x0, x1, y0, y1)
-		return
-	}
-	if it.shadow {
-		for y := y0; y <= y1; y++ {
-			row := y * viewW
-			rowSpans := g.spriteRowVisibleSpansDepthQ(y, x0, x1, it.depthQ, it.clipSpans, g.solidClipScratch[:0])
-			g.solidClipScratch = rowSpans
-			for _, sp := range rowSpans {
-				for x := sp.L; x <= sp.R; x++ {
-					i := row + x
-					p := src32[tyLUT[y-y0]*tw+txLUT[x-x0]]
-					if ((p >> pixelAShift) & 0xFF) == 0 {
-						continue
-					}
-					g.writeFuzzPixel(x, y, i)
-				}
-			}
-		}
-		return
 	}
 	for y := y0; y <= y1; y++ {
 		ty := tyLUT[y-y0]
@@ -9396,6 +9376,10 @@ func applyActiveGammaLUTs() {
 	activeGammaLevel = level
 	wallShadePackedLUT = wallShadePackedBanks[level]
 	doomColormapRGBA = doomColormapBanks[level]
+	spectrePaletteIndexByPacked = make(map[uint32]uint8, 256)
+	for index, color := range wallShadePackedLUT[256] {
+		spectrePaletteIndexByPacked[color] = uint8(index)
+	}
 }
 
 func buildDoomRowShadeMulLUT(paletteRGBA, colorMap []byte, rows int) []uint16 {
@@ -11220,118 +11204,6 @@ func (g *game) monsterRenderBaseZ(i int, th mapdata.Thing, x, y int64) int64 {
 		return z
 	}
 	return g.thingFloorZ(x, y)
-}
-
-func (g *game) drawShadowSpriteCutoutSourcePort(
-	it cutoutItem,
-	src32 []uint32,
-	tw int,
-	txLUT, tyLUT []int,
-	x0, x1, y0, y1 int,
-) {
-	if g == nil || g.viewW <= 0 || g.viewH <= 0 || x0 > x1 || y0 > y1 {
-		return
-	}
-	coarseW := max(1, doomLogicalW)
-	coarseH := max(1, doomLogicalH)
-	cx0 := x0 * coarseW / g.viewW
-	cx1 := x1 * coarseW / g.viewW
-	cy0 := y0 * coarseH / g.viewH
-	cy1 := y1 * coarseH / g.viewH
-	for cx := cx0; cx <= cx1; cx++ {
-		hx0 := cx * g.viewW / coarseW
-		hx1 := ((cx+1)*g.viewW + coarseW - 1) / coarseW
-		hx1--
-		if hx0 < x0 {
-			hx0 = x0
-		}
-		if hx1 > x1 {
-			hx1 = x1
-		}
-		if hx0 > hx1 {
-			continue
-		}
-		repX := (hx0 + hx1) / 2
-		if repX < x0 {
-			repX = x0
-		}
-		if repX > x1 {
-			repX = x1
-		}
-		tx := txLUT[repX-x0]
-		for cy := cy0; cy <= cy1; cy++ {
-			hy0 := cy * g.viewH / coarseH
-			hy1 := ((cy+1)*g.viewH + coarseH - 1) / coarseH
-			hy1--
-			if hy0 < y0 {
-				hy0 = y0
-			}
-			if hy1 > y1 {
-				hy1 = y1
-			}
-			if hy0 > hy1 {
-				continue
-			}
-			repY := (hy0 + hy1) / 2
-			if repY < y0 {
-				repY = y0
-			}
-			if repY > y1 {
-				repY = y1
-			}
-			ty := tyLUT[repY-y0]
-			p := src32[ty*tw+tx]
-			if ((p >> pixelAShift) & 0xFF) == 0 {
-				continue
-			}
-
-			delta := g.nextSourcePortFuzzOffset()
-			srcCY := cy + delta
-			if srcCY < 1 {
-				srcCY = 1
-			}
-			if srcCY >= coarseH-1 {
-				srcCY = coarseH - 2
-			}
-			srcHX := (cx*g.viewW + g.viewW/2) / coarseW
-			srcHY := (srcCY*g.viewH + g.viewH/2) / coarseH
-			if srcHX < 0 {
-				srcHX = 0
-			}
-			if srcHX >= g.viewW {
-				srcHX = g.viewW - 1
-			}
-			if srcHY < 0 {
-				srcHY = 0
-			}
-			if srcHY >= g.viewH {
-				srcHY = g.viewH - 1
-			}
-			srcI := srcHY*g.viewW + srcHX
-			if srcI < 0 || srcI >= len(g.wallPix32) {
-				srcI = repY*g.viewW + repX
-			}
-			fuzzPix := g.wallPix32[srcI]
-			if fuzzPix == 0 {
-				fuzzPix = packRGBA(0, 0, 0)
-			}
-			fuzzPix = g.shadePackedSpectreFuzz(fuzzPix)
-
-			for y := hy0; y <= hy1; y++ {
-				row := y * g.viewW
-				for x := hx0; x <= hx1; x++ {
-					if !xInSolidSpans(x, it.clipSpans) {
-						continue
-					}
-					i := row + x
-					if g.spriteWallClipOccludedAtIndexDepth(i, it.depthQ) {
-						continue
-					}
-					g.writeWallPixel(i, fuzzPix)
-				}
-			}
-		}
-	}
 }
 
 func (g *game) appendThingCutoutItems(camX, camY, camAng, focal, focalV, near float64) {

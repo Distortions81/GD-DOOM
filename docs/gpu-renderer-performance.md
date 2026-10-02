@@ -7,15 +7,17 @@ masked textures, and sprites resolve texture indices through the WAD's 256-entry
 COLORMAP rows and active gamma palette. Fullbright sky sampling uses the same
 CPU column/row coordinates, uploaded as a small lookup image. Low detail copies
 each even framebuffer column into the next column in a GPU presentation pass.
-`-gpu-renderer=false` retains the software renderer; GPU spectre fuzz remains an
-approximation based on a background snapshot.
+`-gpu-renderer=false` retains the software renderer. GPU spectre fuzz uses the
+classic logical grid and row-six COLORMAP. Sprites, masked textures, and spectres
+interleave by depth; feedback interrupted by wall clipping remains approximate.
 
 Faithful software sprites now respect COLORMAP rows instead of the RGB shade
 table, and indexed sky sampling respects the active gamma palette. Integration
 checks verify every world pixel belongs to that palette, all 256 indices across
 33 deliberately non-linear COLORMAP rows at three gamma settings, and low-detail
 column equality. Doom/Doom II high- and low-detail comparisons remain within the
-existing 1% pixel difference budget (maximum observed Faithful difference 0.300%).
+existing 1% pixel difference budget, including nearby spectres (maximum observed
+Faithful difference 0.300%).
 
 ## Geometry runs
 
@@ -23,7 +25,42 @@ Sprite commands carry a visible rectangle, starting texture coordinates, and
 texture steps. Consecutive rows with identical visible spans share a rectangle
 when shader stepping selects the same texels as the original row commands.
 Clipping changes and float rounding boundaries start a new run. This applies to
-ordinary sprites, flipped sprites, spectres, debug overlays, and teleport puffs.
+ordinary sprites, flipped sprites, debug overlays, and teleport puffs.
+
+Spectres use opaque vertical posts on a fixed 320×200 grid. Each post carries
+its logical column, starting row, and starting position in Doom's 50-entry fuzz
+table. The shader reconstructs neighbor offsets and the short chains of repeated
+darkening from the original downward, in-place draw loop. It uses the WAD's
+COLORMAP row six in both modes when available. An exact active-palette hash
+recognizes palette colors across gamma changes; Modern RGB backgrounds fall
+back to the existing nearest-palette lookup.
+
+Fuzz shading runs on a 320×200 GPU layer, then a cheap nearest-neighbor pass
+scales it to the framebuffer while retaining native wall/portal clipping. The
+mask, grain, sequence, and expensive shader work therefore remain independent
+of output resolution. No framebuffer readback or per-pixel phase upload is used.
+The original reference is [id Software's R_DrawFuzzColumn](https://github.com/id-Software/DOOM/blob/master/linuxdoom-1.10/r_draw.c).
+
+Pixel checks compare the logical effect with the software path at 320×200,
+640×400, and 1920×1080, including flipped masks, transparent gaps, phase wrap,
+four-offset feedback chains, and multiple gamma settings. They also assert
+that the larger outputs reproduce the same logical 320×200 pixels.
+
+Frames containing spectres paint the sorted cutout queue from back to front.
+The GPU groups consecutive ordinary cutouts into a pass and takes a fresh
+background snapshot for each intervening spectre. This prevents a spectre behind
+an enemy from blurring that enemy, and lets overlapping spectres sample one
+another in the correct order. Software drawing disables front-to-back coverage
+rejection for these frames. Frames without fuzz retain that optimization.
+Regression checks cover enemies in front of and behind a spectre, alpha holes,
+multiple overlapping spectres, and both modes at two resolutions.
+
+A synthetic screen-filling opaque spectre uses 320 logical post quads plus one
+presentation quad (65,484 vertex/index bytes) at all three tested sizes. CPU
+preparation measured 0.330 ms at 320×200, 0.352 ms at 1920×1080, and 0.361 ms at
+3840×2160, with zero allocations after warmup. Clipping and mask holes can add
+posts; these measurements are isolated preparation costs, not whole-game FPS
+or the cost of multiple ordered spectre snapshots.
 
 Adjacent wall columns share geometry when their texture column, vertical
 sampling, lighting, animation, and bounds match. Solid fills and sky copies

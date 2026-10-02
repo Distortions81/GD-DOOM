@@ -35,6 +35,11 @@ type gpuCommands struct {
 	used    int
 }
 
+type gpuCutoutPass struct {
+	color, logical gpuCommands
+	fuzz           bool
+}
+
 // gpuRenderer retains all CPU visibility decisions, but records raster work as
 // rectangles for the fragment shader. No rendered image is read back by this path.
 type gpuRenderer struct {
@@ -50,13 +55,19 @@ type gpuRenderer struct {
 	lights                                                                   *ebiten.Image
 	lightGamma, lightRows                                                    int
 	lightPixels                                                              []byte
+	fuzzPaletteProbes                                                        int
 	frame, cutouts, snapshot                                                 *ebiten.Image
+	fuzzLayer                                                                *ebiten.Image
 	skyLookup                                                                *ebiten.Image
 	skyLookupPixels                                                          []byte
 	width, height                                                            int
 	spriteSpans                                                              []solidSpan
 	clipChanges                                                              []bool
 	baseCommands, skyCommands, cutoutCommands, fuzzCommands, overlayCommands gpuCommands
+	fuzzLogicalCommands                                                      gpuCommands
+	orderedCutouts                                                           bool
+	cutoutPasses                                                             []gpuCutoutPass
+	cutoutPassesUsed                                                         int
 }
 
 // Reject unsupported texture banks before recording any draws, so the CPU
@@ -123,7 +134,7 @@ func (g *game) beginGPUFrame() {
 		r.metadata = newUnmanagedImage(256, 256)
 	}
 	if r.width != g.viewW || r.height != g.viewH {
-		for _, img := range []*ebiten.Image{r.frame, r.cutouts, r.snapshot} {
+		for _, img := range []*ebiten.Image{r.frame, r.cutouts, r.snapshot, r.fuzzLayer} {
 			if img != nil {
 				img.Deallocate()
 			}
@@ -132,13 +143,17 @@ func (g *game) beginGPUFrame() {
 		r.frame = newUnmanagedImage(r.width, r.height)
 		r.cutouts = newUnmanagedImage(r.width, r.height)
 		r.snapshot = newUnmanagedImage(r.width, r.height)
+		r.fuzzLayer = newUnmanagedImage(min(r.width, doomLogicalW), min(r.height, doomLogicalH))
 	}
 	r.baseCommands.reset()
 	r.skyCommands.reset()
 	r.cutoutCommands.reset()
 	r.fuzzCommands.reset()
+	r.fuzzLogicalCommands.reset()
+	r.orderedCutouts = false
+	r.cutoutPassesUsed = 0
 	r.overlayCommands.reset()
-	r.updateLights(g.opts.DoomPaletteRGBA)
+	r.updateLights(g.opts.DoomPaletteRGBA, g.opts.DoomColorMap)
 	g.gpuFrame = r
 }
 
@@ -150,12 +165,14 @@ func (c *gpuCommands) reset() {
 	}
 }
 
-func (r *gpuRenderer) updateLights(palette []byte) {
+func (r *gpuRenderer) updateLights(palette, colormap []byte) {
 	rows := doomColormapRowCount()
 	if r.lights != nil && r.lightGamma == activeGammaLevel && r.lightRows == rows {
 		return
 	}
-	h := 257 + max(rows, 1) + 1
+	// Keep the original unshaded row, then append the indexed COLORMAP so
+	// fuzz feedback can apply repeated remaps without recovering RGB again.
+	h := 258 + max(rows, 1) + rows
 	if r.lights == nil || r.lightRows != rows {
 		if r.lights != nil {
 			r.lights.Deallocate()
@@ -175,16 +192,59 @@ func (r *gpuRenderer) updateLights(palette []byte) {
 	}
 	// Teleport overlays use the original unshaded RGBA palette on the CPU.
 	if len(palette) >= 256*4 {
-		copy(r.lightPixels[(h-1)*256*4:], palette[:256*4])
+		copy(r.lightPixels[(257+max(rows, 1))*256*4:], palette[:256*4])
 	}
 	// Two RGB texels per texture leave the lower half of the metadata image
 	// for the RGB 5-bit palette lookup used by the spectre's background snapshot.
 	for i, index := range doomPalIndexLUT32 {
 		r.metadataPixels[(gpuPaletteLookupOffset+i)*4+2] = index
+		r.metadataPixels[(gpuPaletteLookupOffset+i)*4+3] = 255
+	}
+	// The lookup region's R/G channels hold a small exact active-palette hash.
+	// This matters at higher gamma: quantizing RGB can select a different WAD
+	// index and change the spectre's classic row-six COLORMAP shading.
+	r.fuzzPaletteProbes = putGPUFuzzPalette(r.metadataPixels, wallShadePackedLUT[256][:])
+	for row := 0; row < rows; row++ {
+		for index := 0; index < 256; index++ {
+			i := row*256 + index
+			mapped := index
+			if i < len(colormap) {
+				mapped = int(colormap[i])
+			}
+			p := ((258+max(rows, 1)+row)*256 + index) * 4
+			r.lightPixels[p], r.lightPixels[p+3] = byte(mapped), 255
+		}
 	}
 	r.metadataDirty = true
 	r.lights.WritePixels(r.lightPixels)
 	r.lightGamma, r.lightRows = activeGammaLevel, rows
+}
+
+const gpuFuzzPaletteBuckets = 1024
+
+func fuzzPaletteHash(p uint32) int {
+	return (int(byte(p>>pixelRShift))*3 + int(byte(p>>pixelGShift))*5 + int(byte(p>>pixelBShift))*7) % gpuFuzzPaletteBuckets
+}
+
+func putGPUFuzzPalette(pixels []byte, palette []uint32) int {
+	for bucket := 0; bucket < gpuFuzzPaletteBuckets; bucket++ {
+		i := (gpuPaletteLookupOffset + bucket) * 4
+		pixels[i], pixels[i+1], pixels[i+3] = 0, 0, 255
+	}
+	probes := 1
+	for index, color := range palette {
+		bucket := fuzzPaletteHash(color)
+		for probe := 1; probe <= gpuFuzzPaletteBuckets; probe++ {
+			i := (gpuPaletteLookupOffset + bucket) * 4
+			if pixels[i+1] == 0 || palette[int(pixels[i])] == color {
+				pixels[i], pixels[i+1] = byte(index), 255
+				probes = max(probes, probe)
+				break
+			}
+			bucket = (bucket + 1) % gpuFuzzPaletteBuckets
+		}
+	}
+	return probes
 }
 
 func putGPUPackedPixel(dst []byte, i int, p uint32) {
@@ -314,7 +374,7 @@ func (r *gpuRenderer) rect(commands *gpuCommands, x0, y0, x1, y1 int, tex, other
 	// Wall sampling depends only on Y within a column. Adjacent columns with
 	// the same texel, light and Y mapping can share a rectangle. Solid colors
 	// and sky copies likewise need only the outer bounds of an adjacent run.
-	positionIndependent := mode == 6 || mode == 7 || mode == 10
+	positionIndependent := mode == 6 || mode == 7 || mode == 10 || mode == 11 || mode == 12
 	if b != nil && b.page == tex.page && b.otherPage == other.page && len(b.vertices) >= 4 && (mode == 1 || positionIndependent) {
 		last := b.vertices[len(b.vertices)-4:]
 		previous := last[0]
@@ -378,7 +438,7 @@ func (g *game) gpuWallColumn(x, y0, y1 int, depth, texU, texMid, focal float64, 
 		light = -light - 1
 		for _, span := range g.maskedColumnVisibleSpans(x, y0, y1, encodeDepthQ(depth)) {
 			v := start + int64(span.L-y0)*step
-			r.rect(&r.cutoutCommands, x, span.L, x, span.R, tex, other, 1, light, alpha, float32(tx), gpuWrapFixed(v, tex.height), 0, gpuWrapFixed(step, tex.height))
+			r.rect(r.opaqueCutoutCommands(), x, span.L, x, span.R, tex, other, 1, light, alpha, float32(tx), gpuWrapFixed(v, tex.height), 0, gpuWrapFixed(step, tex.height))
 		}
 	} else {
 		r.rect(&r.baseCommands, x, y0, x, y1, tex, other, 1, light, 0, float32(tx), gpuWrapFixed(start, tex.height), 0, gpuWrapFixed(step, tex.height))
@@ -407,6 +467,10 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 		return
 	}
 	r := g.gpuFrame
+	if it.shadow && !it.debugOverlay {
+		g.gpuSpectreFuzz(it, commands)
+		return
+	}
 	tex, ok := r.wallTexture(it.tex)
 	if !ok {
 		return
@@ -434,9 +498,6 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 	mode := 2
 	if it.flip {
 		mode = 3
-	}
-	if it.shadow {
-		mode += 2
 	}
 	if it.debugOverlay {
 		mode = 8
@@ -474,6 +535,27 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 	}
 	emit(it.y1)
 	r.spriteSpans = previous
+}
+
+func (g *game) gpuSpectreFuzz(it cutoutItem, commands *gpuCommands) {
+	r := g.gpuFrame
+	light := gpuLightRow(doomShadeMulFromRow(6), 6)
+	if doomLightingEnabled && g.opts.DoomColorMapRows > 6 {
+		light = 257 + 6
+	}
+	if row, ok := g.playerFixedColormapRow(); ok {
+		light = 257 + row
+	}
+	g.walkSpectreFuzzSpans(it, func(span spectreFuzzSpan) {
+		logicalH := min(g.viewH, doomLogicalH)
+		r.rect(r.logicalFuzzCommands(), span.cx, span.cy, span.cx, span.y1*logicalH/g.viewH,
+			gpuTexture{}, gpuTexture{}, 11, light, 0, float32(span.cx), float32(span.cy), float32(span.phase), 0)
+		g.clipSpectreFuzzSpan(it, span, func(x, y0, y1 int) {
+			// Presentation keeps native clipping and merges adjacent columns;
+			// expensive sampling and palette work happen only on the small layer.
+			r.rect(commands, x, y0, x, y1, gpuTexture{}, gpuTexture{}, 12, 0, 0, 0, 0, 0, 0)
+		})
+	})
 }
 
 // Horizontal visibility spans can change only at a nearer wall's top/bottom
@@ -551,6 +633,10 @@ func (g *game) gpuTeleportPuff(it projectedPuffItem, focal, focalV float64) {
 }
 
 func (r *gpuRenderer) drawCommands(dst *ebiten.Image, commands *gpuCommands, blend ebiten.Blend, background *ebiten.Image, tic int) {
+	r.drawCommandsSized(dst, commands, blend, background, r.width, r.height)
+}
+
+func (r *gpuRenderer) drawCommandsSized(dst *ebiten.Image, commands *gpuCommands, blend ebiten.Blend, background *ebiten.Image, width, height int) {
 	fuzzShade := float32(1)
 	if doomLightingEnabled {
 		fuzzShade = float32(doomShadeMulFromRow(6)) / 256
@@ -565,7 +651,7 @@ func (r *gpuRenderer) drawCommands(dst *ebiten.Image, commands *gpuCommands, ble
 		if background != nil {
 			other = background
 		}
-		options := ebiten.DrawTrianglesShaderOptions{Blend: blend, Images: [4]*ebiten.Image{atlas, r.lights, r.metadata, other}, Uniforms: map[string]any{"ViewSize": []float32{float32(r.width), float32(r.height)}, "FuzzPhase": float32(tic), "FuzzShade": fuzzShade, "FuzzOffsets": gpuFuzzOffsets[:]}}
+		options := ebiten.DrawTrianglesShaderOptions{Blend: blend, Images: [4]*ebiten.Image{atlas, r.lights, r.metadata, other}, Uniforms: map[string]any{"ViewSize": []float32{float32(width), float32(height)}, "FuzzSourceSize": []float32{float32(r.width), float32(r.height)}, "FuzzShade": fuzzShade, "FuzzOffsets": gpuFuzzOffsets[:], "FuzzPaletteProbes": float32(r.fuzzPaletteProbes), "FuzzColormapOffset": float32(258 + max(r.lightRows, 1))}}
 		dst.DrawTrianglesShader(b.vertices, b.indices, r.shader, &options)
 	}
 }
@@ -599,19 +685,90 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 	}
 	r.drawCommands(r.frame, &r.skyCommands, ebiten.BlendSourceOver, skyBackground, g.worldTic)
 	r.drawCommands(r.frame, &r.baseCommands, ebiten.BlendSourceOver, nil, g.worldTic)
-	r.cutouts.Clear()
-	r.drawCommands(r.cutouts, &r.cutoutCommands, ebiten.BlendDestinationOver, nil, g.worldTic)
-	r.frame.DrawImage(r.cutouts, nil)
-	if r.fuzzCommands.used > 0 {
-		r.snapshot.Clear()
-		r.snapshot.DrawImage(r.frame, nil)
-		r.drawCommands(r.frame, &r.fuzzCommands, ebiten.BlendSourceOver, r.snapshot, g.worldTic)
-	}
+	r.drawSceneCutoutPasses()
 	r.drawCommands(r.frame, &r.overlayCommands, ebiten.BlendSourceOver, nil, g.worldTic)
 	if g.lowDetailMode() {
 		dst.DrawRectShader(r.width, r.height, r.lowDetailShader, &ebiten.DrawRectShaderOptions{Images: [4]*ebiten.Image{r.frame}})
 	} else {
 		dst.DrawImage(r.frame, nil)
+	}
+}
+
+func (r *gpuRenderer) drawSpectreFuzz(dst *ebiten.Image) {
+	r.drawFuzzCommands(dst, &r.fuzzLogicalCommands, &r.fuzzCommands)
+}
+
+func (r *gpuRenderer) drawFuzzCommands(dst *ebiten.Image, logical, color *gpuCommands) {
+	r.fuzzLayer.Clear()
+	r.drawCommandsSized(r.fuzzLayer, logical, ebiten.BlendSourceOver, r.snapshot,
+		r.fuzzLayer.Bounds().Dx(), r.fuzzLayer.Bounds().Dy())
+	r.drawCommands(dst, color, ebiten.BlendSourceOver, r.fuzzLayer, 0)
+}
+
+func (r *gpuRenderer) nextCutoutPass(fuzz bool) *gpuCutoutPass {
+	if r.cutoutPassesUsed == len(r.cutoutPasses) {
+		r.cutoutPasses = append(r.cutoutPasses, gpuCutoutPass{})
+	}
+	p := &r.cutoutPasses[r.cutoutPassesUsed]
+	r.cutoutPassesUsed++
+	p.color.reset()
+	p.logical.reset()
+	p.fuzz = fuzz
+	return p
+}
+
+func (r *gpuRenderer) opaqueCutoutCommands() *gpuCommands {
+	if !r.orderedCutouts {
+		return &r.cutoutCommands
+	}
+	if r.cutoutPassesUsed > 0 {
+		p := &r.cutoutPasses[r.cutoutPassesUsed-1]
+		if !p.fuzz {
+			return &p.color
+		}
+	}
+	return &r.nextCutoutPass(false).color
+}
+
+func (r *gpuRenderer) startFuzzCutout() *gpuCommands {
+	if !r.orderedCutouts {
+		return &r.fuzzCommands
+	}
+	// Each spectre has its own snapshot, including any farther spectres.
+	return &r.nextCutoutPass(true).color
+}
+
+func (r *gpuRenderer) logicalFuzzCommands() *gpuCommands {
+	if r.orderedCutouts && r.cutoutPassesUsed > 0 {
+		return &r.cutoutPasses[r.cutoutPassesUsed-1].logical
+	}
+	return &r.fuzzLogicalCommands
+}
+
+func (r *gpuRenderer) drawSceneCutoutPasses() {
+	if r.orderedCutouts {
+		for i := 0; i < r.cutoutPassesUsed; i++ {
+			p := &r.cutoutPasses[i]
+			if !p.fuzz {
+				r.drawCommands(r.frame, &p.color, ebiten.BlendSourceOver, nil, 0)
+				continue
+			}
+			if p.color.used == 0 {
+				continue
+			}
+			r.snapshot.Clear()
+			r.snapshot.DrawImage(r.frame, nil)
+			r.drawFuzzCommands(r.frame, &p.logical, &p.color)
+		}
+		return
+	}
+	r.cutouts.Clear()
+	r.drawCommands(r.cutouts, &r.cutoutCommands, ebiten.BlendDestinationOver, nil, 0)
+	r.frame.DrawImage(r.cutouts, nil)
+	if r.fuzzCommands.used > 0 {
+		r.snapshot.Clear()
+		r.snapshot.DrawImage(r.frame, nil)
+		r.drawSpectreFuzz(r.frame)
 	}
 }
 

@@ -71,8 +71,11 @@ GPU drawing is **enabled by default in both modes**, with automatic CPU fallback
 for unsupported texture banks. Use `-gpu-renderer=false` to select the software
 renderer. Framebuffer comparisons cover Doom and Doom II, close-up sprites,
 gamma, invulnerability, and faithful high/low detail. Small texture-boundary
-rounding differences remain, and GPU spectre fuzz approximates the original
-effect using a background snapshot. See the [visual checks and measured
+rounding differences remain. Spectre fuzz keeps its 320×200 grain at every
+resolution, using classic column order, neighbor feedback, and COLORMAP row six.
+Spectres draw between sprites and masked textures in depth order, so nearer
+enemies stay sharp. Feedback interrupted by clipping remains approximate.
+See the [visual checks and measured
 performance](docs/gpu-renderer-performance.md) for results and reproduction.
 
 ```bash
@@ -211,6 +214,7 @@ The build uses `DOOM1.WAD` and your Go toolchain's `wasm_exec.js`; optional
 `wasm-opt` optimizes the output. The browser supports local WAD loading,
 SoundFont caching, touch controls, and persistent saves. Click or tap once to
 start audio where browser autoplay policies require it.
+Browser rendering uses VSync by default, with no separate WASM frame throttle.
 
 ```bash
 go test ./...
