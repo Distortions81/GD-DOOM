@@ -1,7 +1,7 @@
 # GD-DOOM
 
 [![Go CI](https://github.com/Distortions81/GD-DOOM/actions/workflows/ci.yml/badge.svg)](https://github.com/Distortions81/GD-DOOM/actions/workflows/ci.yml)
-[![Go Vulncheck](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml/badge.svg)](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml)
+[![Go Vulncheck (main)](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml/badge.svg?branch=main&event=push)](https://github.com/Distortions81/GD-DOOM/actions/workflows/govulncheck.yml?query=branch%3Amain+event%3Apush)
 [![GitHub Release](https://img.shields.io/github/v/release/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/releases/latest)
 [![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](LICENSE)
 
