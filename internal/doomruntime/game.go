@@ -800,6 +800,7 @@ type game struct {
 	wallPix32                     []uint32
 	frameSkyLayerEnabled          bool
 	frameSkyTex32                 []uint32
+	frameSkyIndexed               []byte
 	frameSkyTexW                  int
 	frameSkyColU                  []int
 	frameSkyRowV                  []int
@@ -5421,7 +5422,7 @@ func (g *game) drawDoomBasic3D(screen *ebiten.Image) {
 	g.drawHitscanPuffsToBuffer(camX, camY, camAng, focal, focalV, near)
 	g.addRenderStageDur(renderStageBillboards, time.Since(stageStart))
 	g.billboardQueueScratch = g.billboardQueueScratch[:0]
-	if g.lowDetailMode() {
+	if g.lowDetailMode() && g.gpuFrame == nil {
 		g.duplicateLowDetailColumns()
 	}
 	if g.gpuFrame != nil {
@@ -5760,6 +5761,7 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 	}
 	g.frameSkyLayerEnabled = false
 	g.frameSkyTex32 = nil
+	g.frameSkyIndexed = nil
 	g.frameSkyTexW = 0
 	g.frameSkyColU = nil
 	g.frameSkyRowV = nil
@@ -5783,10 +5785,23 @@ func (g *game) prepareFrameSkyState(camAng, focal float64) {
 		skyTex32 = unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(skyTex.RGBA))), len(skyTex.RGBA)/4)
 	}
 	g.frameSkyTex32 = skyTex32
+	g.frameSkyIndexed = skyTex.Indexed
 	g.frameSkyTexW = skyTex.Width
 	g.frameSkyColU = skyColU
 	g.frameSkyRowV = skyRowV
 	g.frameSkyLayerEnabled = false
+}
+
+func (g *game) frameSkyPixel(i int) uint32 {
+	if !g.opts.SourcePortMode {
+		if len(g.frameSkyIndexed) == len(g.frameSkyTex32) {
+			return shadePaletteIndexPacked(g.frameSkyIndexed[i], 256)
+		}
+		if index, ok := packedColorPaletteIndex(g.frameSkyTex32[i]); ok {
+			return shadePaletteIndexPacked(index, 256)
+		}
+	}
+	return g.frameSkyTex32[i]
 }
 
 func (g *game) cutoutCoveredAtIndex(i int) bool {
@@ -7359,15 +7374,11 @@ func shadePackedDOOMColormap(src, mul uint32) uint32 {
 	if rows <= 0 || len(doomColormapRGBA) < rows*256 || len(doomPalIndexLUT32) != 32*32*32 {
 		return src | pixelOpaqueA
 	}
-	m := int(mul)
-	if m < 0 {
-		m = 0
-	}
-	if m > 256 {
-		m = 256
-	}
-	row := ((256 - m) * (rows - 1)) / 256
-	return shadePackedDOOMColormapRow(src, row)
+	return shadePackedDOOMColormapRow(src, doomColormapRowForShade(mul))
+}
+
+func doomColormapRowForShade(mul uint32) int {
+	return ((256 - int(min(mul, 256))) * max(doomShadeRows()-1, 0)) / 256
 }
 
 func doomShadeMulFromRow(row int) int {
@@ -8793,6 +8804,11 @@ func (g *game) drawSpriteCutoutItem(it cutoutItem) {
 		if useIndexed {
 			shadeRow = doomColormapPackedRow(row)
 		}
+	} else if doomColormapEnabled {
+		fixedDOOMRow = doomColormapRowForShade(shadeMul)
+		if useIndexed {
+			shadeRow = doomColormapPackedRow(fixedDOOMRow)
+		}
 	} else if useIndexed && wallShadePackedOK {
 		if shadeMul > 256 {
 			shadeMul = 256
@@ -8998,6 +9014,12 @@ func (g *game) drawSpriteCutoutMagnifiedMask(it cutoutItem, tw, x0, x1, y0, y1 i
 				continue
 			}
 			for yy := ry0; yy <= ry1; yy++ {
+				// Projected texel rectangles can overlap at fractional scales.
+				// Draw the row selected by the pixel-center lookup, not the first
+				// rectangle that happens to cover it.
+				if tyLUT[yy-y0] != ty {
+					continue
+				}
 				row := yy * viewW
 				if len(it.clipSpans) == 0 && rx1-rx0 >= spriteRowOcclusionMinSpan && g.rowFullyOccludedDepthQ(it.depthQ, row, rx0, rx1) {
 					continue
@@ -9481,6 +9503,13 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 		len(g.frameSkyTex32) != 0 &&
 		g.frameSkyTexW > 0
 	skyLayerEnabled := skyTexReady && g.frameSkyLayerEnabled
+	var gpuSky gpuTexture
+	if g.gpuFrame != nil && !g.opts.SourcePortMode && skyTexReady {
+		_, skyTex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name)
+		if ok {
+			gpuSky, skyTexReady = g.gpuFrame.wallTexture(skyTex)
+		}
+	}
 	for planeIdx, pl := range planes {
 		key := pl.key
 		if key.sky {
@@ -9532,7 +9561,11 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 			if g.gpuFrame != nil {
 				if skyTexReady {
 					for _, vis := range planeClipScratch {
-						g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuTexture{}, gpuTexture{}, 7, 0, 0, 0, 0, 0, 0)
+						if g.opts.SourcePortMode {
+							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuTexture{}, gpuTexture{}, 7, 0, 0, 0, 0, 0, 0)
+						} else {
+							g.gpuFrame.rect(&g.gpuFrame.skyCommands, vis.L, sp.y, vis.R, sp.y, gpuSky, gpuSky, 10, 256, 0, 0, 0, 0, 0)
+						}
 					}
 				}
 				return planeClipScratch
@@ -9553,14 +9586,14 @@ func (g *game) drawDoomBasicTexturedPlanesVisplanePass(pix []byte, camX, camY, c
 						u1 := g.frameSkyColU[x+1]
 						ti0 := v*g.frameSkyTexW + u0
 						ti1 := v*g.frameSkyTexW + u1
-						pix32[pixI] = g.frameSkyTex32[ti0]
-						pix32[pixI+1] = g.frameSkyTex32[ti1]
+						pix32[pixI] = g.frameSkyPixel(ti0)
+						pix32[pixI+1] = g.frameSkyPixel(ti1)
 						pixI += 2
 					}
 					if x <= vis.R {
 						u := g.frameSkyColU[x]
 						ti := v*g.frameSkyTexW + u
-						pix32[pixI] = g.frameSkyTex32[ti]
+						pix32[pixI] = g.frameSkyPixel(ti)
 					}
 				}
 			}
@@ -10996,6 +11029,13 @@ func (g *game) drawProjectedPuffItem(it projectedPuffItem, focal, focalV float64
 			pix := src32[ty*tw+txLUT[x-x0]]
 			if ((pix >> pixelAShift) & 0xFF) == 0 {
 				continue
+			}
+			if !g.opts.SourcePortMode {
+				if len(it.spriteTex.Indexed) == tw*th {
+					pix = shadePaletteIndexPacked(it.spriteTex.Indexed[ty*tw+txLUT[x-x0]], 256)
+				} else if index, ok := packedColorPaletteIndex(pix); ok {
+					pix = shadePaletteIndexPacked(index, 256)
+				}
 			}
 			g.writeWallPixel(i, pix)
 		}

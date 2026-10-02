@@ -1,0 +1,9 @@
+//kage:unit pixels
+package main
+
+func Fragment(dstPos vec4, srcPos vec2, color vec4) vec4 {
+	// Doom's low detail duplicates each even framebuffer column.
+	local := srcPos-imageSrc0Origin()
+	pos := vec2(floor(local.x/2.0)*2.0+0.5, floor(local.y)+0.5)
+	return imageSrc0UnsafeAt(imageSrc0Origin()+pos)
+}

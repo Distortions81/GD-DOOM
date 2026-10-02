@@ -5,9 +5,11 @@
 [![GitHub Release](https://img.shields.io/github/v/release/Distortions81/GD-DOOM)](https://github.com/Distortions81/GD-DOOM/releases/latest)
 [![License](https://img.shields.io/github/license/Distortions81/GD-DOOM)](LICENSE)
 
-A Doom engine and source port written in Go, for desktop and browser. Play with
-classic presentation or smooth modern rendering, choose FM, SoundFont, or
-PC speaker audio, and share live sessions with spectators.
+A Doom engine and source port written in Go, for desktop and browser.
+**GPU shaders preserve Doom's software-rendered appearance** while accelerating
+pixel drawing in both Faithful and Source Port modes. Play with classic
+presentation or smooth modern rendering, choose FM, SoundFont, or PC speaker
+audio, and share live sessions with spectators.
 
 **[Play in your browser](https://m45sci.xyz/u/dist/GD-DOOM)** ·
 **[Desktop releases](https://github.com/Distortions81/GD-DOOM/releases/latest)**:
@@ -45,19 +47,43 @@ Videos: [SoundFont demo](https://youtu.be/ID52vj9WQ8A) ·
 Music playlists: [SGM MIDI](https://www.youtube.com/playlist?list=PLMxxYNFZPBOgQWuzTKGScjD2tF3SUfeFD) ·
 [OPL/AdLib FM](https://www.youtube.com/playlist?list=PLMxxYNFZPBOh-2qK8iihIQkbcgwXgBegD).
 
-## Rendering and features
+## Software-rendered appearance, GPU drawing
 
-**Faithful** mode keeps the classic Doom presentation and CPU software renderer.
+GD-DOOM's shaders keep Doom's crisp texture pixels, column-and-span geometry,
+sprite cutouts, clipping, and lighting. The CPU makes the same visibility and
+projection decisions as the software renderer; the GPU draws the resulting
+columns, spans, and sprite rectangles from indexed texture atlases. This keeps
+the familiar software-rendered appearance on desktop and in the browser.
+
+**Faithful** mode keeps the classic Doom presentation and 256-color palette,
+using the WAD's **COLORMAP lookup tables** for lighting and the selected gamma
+palette for color. Sky coordinates match the CPU renderer, and classic low
+detail still doubles each framebuffer column.
 **Source Port** mode adds high-resolution output, interpolated camera, monster
 and weapon motion, full-color rendering, and optional CRT effects.
 
-To speed up pixel drawing, Source Port mode uses **GPU shaders** for Doom's
-column-and-span rendering. The CPU still decides visibility, clipping, and
-lighting; shaders sample indexed texture atlases and apply palette/lighting
-lookups to draw walls, floors, ceilings, sprites, and sky. GPU drawing is on by
-default in Source Port mode, with CPU fallback for unsupported texture banks.
-Use `-gpu-renderer=false` to select CPU drawing. GPU spectre fuzz approximates
-the original effect using a background snapshot.
+Repeated columns and sprite rows share compact draw commands, and nearby
+sprites reuse horizontal visibility spans until clipping changes. These reduce
+CPU raster preparation and the geometry sent to the GPU, including the work
+that previously caused stalls when standing close to enemies.
+
+GPU drawing is **enabled by default in both modes**, with automatic CPU fallback
+for unsupported texture banks. Use `-gpu-renderer=false` to select the software
+renderer. Framebuffer comparisons cover Doom and Doom II, close-up sprites,
+gamma, invulnerability, and faithful high/low detail. Small texture-boundary
+rounding differences remain, and GPU spectre fuzz approximates the original
+effect using a background snapshot. See the [visual checks and measured
+performance](docs/gpu-renderer-performance.md) for results and reproduction.
+
+```bash
+# Faithful palette and classic presentation, drawn by GPU shaders.
+go run . -wad DOOM1.WAD -sourceport-mode=false
+
+# Compare the same scene with the CPU software renderer.
+go run . -wad DOOM1.WAD -sourceport-mode=false -gpu-renderer=false
+```
+
+## Gameplay and features
 
 - Mouse look, configurable bindings, improved automap, and browser touch controls.
 - Saves, quicksave, classic demo playback/recording, and per-tic trace export.

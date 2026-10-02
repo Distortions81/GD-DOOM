@@ -14,7 +14,7 @@ go run . -help
 
 Frequently used options:
 
-- `-gpu-renderer=false` selects CPU world rendering in Source Port mode. GPU world rendering is enabled by default for Source Port mode: indexed walls, floors, ceilings, sprites, masked textures, and sky retain the CPU renderer's visibility and lighting decisions. Spectre fuzz uses a GPU background snapshot and has an approximate appearance. Unsupported texture banks fall back to CPU rendering. Faithful mode uses CPU rendering. This flag is not saved to config; GPU performance needs measurement on real hardware.
+- `-gpu-renderer=false` selects the CPU software renderer. GPU shaders are enabled by default in both Faithful and Source Port modes; see [Rendering](#rendering).
 - `-sourceport-mode` starts in the smoother, higher-fidelity Source Port profile.
 - `-pc-speaker` switches sound effects to the PC speaker emulation path.
 - `-pc-speaker-output=linux` (Linux only) routes PC speaker output to a real hardware buzzer. This uses the `pcspkr` evdev node and requires write permission to it.
@@ -39,6 +39,41 @@ Frequently used options:
   Note: the main app dump path currently exports the built-in OPL/SoundFont renderers, while `cmd/musicwav` and `scripts/dump_music.sh` support direct PC speaker WAV export modes.
 
 There are more flags than the short list above. Use `go run . -help` for the full set if you want every tweak and debug option.
+
+## Rendering
+
+**GPU shaders keep Doom's software-rendered appearance** on desktop and in the
+browser. The CPU retains the software renderer's visibility, projection,
+clipping, and lighting decisions. Shaders sample indexed textures to draw the
+same walls, floors, ceilings, masked textures, sprites, and sky with crisp texel
+sampling. Repeated columns and rows use compact commands, and horizontal sprite
+visibility spans are reused between clipping boundaries to reduce close-up work.
+
+Faithful mode resolves texture indices through the WAD's 256-entry COLORMAP rows
+and selected gamma palette. Its sky uses the exact CPU column/row coordinate
+lookups, fullbright effects use the active palette, and low detail duplicates
+even framebuffer columns. Source Port mode keeps its smoother motion,
+high-resolution output, and full-color lighting with the same GPU draw path.
+
+GPU drawing is on by default. Unsupported texture banks automatically use the
+CPU renderer; `-gpu-renderer=false` also selects it explicitly. The renderer flag
+is not saved to config. Minor texel-boundary rounding differences are possible,
+and GPU spectre fuzz approximates the original effect from a background snapshot.
+
+```bash
+# Faithful look with GPU drawing.
+go run . -wad DOOM1.WAD -sourceport-mode=false
+
+# Faithful look with software drawing, for comparison.
+go run . -wad DOOM1.WAD -sourceport-mode=false -gpu-renderer=false
+
+# Uncapped rendering for performance comparisons.
+go run . -wad DOOM1.WAD -sourceport-mode -no-vsync
+```
+
+See [GPU renderer checks and benchmarks](gpu-renderer-performance.md) for visual
+comparisons, palette checks, and measured CPU preparation costs. Those synthetic
+timings are not whole-game FPS; hardware and browser performance varies.
 
 Aspect correction note:
 In faithful mode, GD-DOOM applies Doom's classic 4:3 correction as a whole-screen stretch after rendering. In Source Port mode, it applies that correction during rendering. A small set of sprites that are meant to read as circular, such as pickups and fireballs, are kept round instead of being stretched.

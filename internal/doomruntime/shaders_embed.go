@@ -6,6 +6,9 @@ var (
 	//go:embed shaders/world_indexed.kage
 	worldIndexedShaderSrc []byte
 
+	//go:embed shaders/low_detail.kage
+	lowDetailShaderSrc []byte
+
 	//go:embed shaders/crt_post.kage
 	crtPostShaderSrc []byte
 

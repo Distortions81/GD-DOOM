@@ -9,13 +9,14 @@ var FuzzShade float
 var FuzzOffsets [50]float
 
 func metadata(id int) vec4 {
-	var values vec4
-	for n := 0; n < 4; n++ {
-		i := id*4 + n
-		p := imageSrc2UnsafeAt(imageSrc0Origin() + vec2(float(i%256)+0.5, float(i/256)+0.5))
-		values[n] = floor(p.r*255.0+0.5) + floor(p.g*255.0+0.5)*256.0
+	var packed vec2
+	for n := 0; n < 2; n++ {
+		i := id*2 + n
+		p := floor(imageSrc2UnsafeAt(imageSrc0Origin() + vec2(float(i%256)+0.5, float(i/256)+0.5)).rgb*255.0+vec3(0.5))
+		packed[n] = p.r + p.g*256.0 + p.b*65536.0
 	}
-	return values
+	// Each 22-bit pair remains exactly representable in a shader float.
+	return vec4(mod(packed, vec2(2048.0)), floor(packed/2048.0)+vec2(1.0))
 }
 
 func fixedTexel(base, step float, delta int, size float) float {
@@ -46,7 +47,12 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 	anchor := srcPos-imageSrc0Origin()
 	delta := ivec2(floor(dstPos.xy)-anchor)
 	var uv vec2
-	if mode == 0 {
+	if mode == 10 {
+		// Faithful sky uses the CPU's exact per-column and per-row coordinates.
+		x := floor(imageSrc3UnsafeAt(imageSrc0Origin()+vec2(floor(dstPos.x)+0.5, 0.5)).rg*255.0+vec2(0.5))
+		y := floor(imageSrc3UnsafeAt(imageSrc0Origin()+vec2(floor(dstPos.y)+0.5, 1.5)).rg*255.0+vec2(0.5))
+		uv = vec2(x.r+x.g*256.0, y.r+y.g*256.0)
+	} else if mode == 0 {
 		uv = vec2(fixedTexel(custom.x, custom.z, delta.x, meta.z), fixedTexel(custom.y, custom.w, delta.x, meta.w))
 	} else if mode == 1 {
 		uv = vec2(custom.x, fixedTexel(custom.y, custom.w, delta.y, meta.w))
@@ -71,7 +77,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 		background := imageSrc3At(imageSrc0Origin()+pos+vec2(0.5))
 		if color.r >= 257.0 {
 			quantized := ivec3(floor(background.rgb*255.0/8.0))
-			i := quantized.r*1024 + quantized.g*32 + quantized.b
+			i := 32768 + quantized.r*1024 + quantized.g*32 + quantized.b
 			lookup := imageSrc2UnsafeAt(imageSrc0Origin()+vec2(float(i%256)+0.5, float(i/256)+0.5))
 			return shade(floor(lookup.b*255.0+0.5), color.r)
 		}
@@ -82,7 +88,7 @@ func Fragment(dstPos vec4, srcPos vec2, color vec4, custom vec4) vec4 {
 		other := metadata(int(color.b))
 		second = imageSrc3UnsafeAt(imageSrc0Origin()+other.xy+uv+vec2(0.5))
 	}
-	if mode != 0 && mode != 1 && p.g < 0.5 && (color.a == 0.0 || second.g < 0.5) {
+	if mode != 0 && mode != 1 && mode != 10 && p.g < 0.5 && (color.a == 0.0 || second.g < 0.5) {
 		discard()
 	}
 	if mode == 8 || mode == 9 {

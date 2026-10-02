@@ -5,12 +5,14 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
 const gpuAtlasSize = 2048
 const gpuModeStride = 16384
+const gpuPaletteLookupOffset = gpuModeStride * 2
 
 type gpuTextureKey struct {
 	indexed       *byte
@@ -37,6 +39,7 @@ type gpuCommands struct {
 // rectangles for the fragment shader. No rendered image is read back by this path.
 type gpuRenderer struct {
 	shader                                                                   *ebiten.Shader
+	lowDetailShader                                                          *ebiten.Shader
 	failed                                                                   bool
 	textures                                                                 map[gpuTextureKey]gpuTexture
 	converted                                                                map[gpuTextureKey]gpuTexture
@@ -48,7 +51,11 @@ type gpuRenderer struct {
 	lightGamma, lightRows                                                    int
 	lightPixels                                                              []byte
 	frame, cutouts, snapshot                                                 *ebiten.Image
+	skyLookup                                                                *ebiten.Image
+	skyLookupPixels                                                          []byte
 	width, height                                                            int
+	spriteSpans                                                              []solidSpan
+	clipChanges                                                              []bool
 	baseCommands, skyCommands, cutoutCommands, fuzzCommands, overlayCommands gpuCommands
 }
 
@@ -80,7 +87,7 @@ var gpuFuzzOffsets = func() [50]float32 {
 }()
 
 func (g *game) beginGPUFrame() {
-	if !g.opts.GPURenderer || !g.opts.SourcePortMode {
+	if !g.opts.GPURenderer {
 		return
 	}
 	if g.gpu == nil {
@@ -103,6 +110,13 @@ func (g *game) beginGPUFrame() {
 			return
 		}
 		r.shader = shader
+		lowDetail, err := ebiten.NewShader(lowDetailShaderSrc)
+		if err != nil {
+			fmt.Printf("GPU renderer unavailable, using CPU: %v\n", err)
+			r.failed = true
+			return
+		}
+		r.lowDetailShader = lowDetail
 		r.textures = make(map[gpuTextureKey]gpuTexture)
 		r.converted = make(map[gpuTextureKey]gpuTexture)
 		r.metadataPixels = make([]byte, 256*256*4)
@@ -163,10 +177,10 @@ func (r *gpuRenderer) updateLights(palette []byte) {
 	if len(palette) >= 256*4 {
 		copy(r.lightPixels[(h-1)*256*4:], palette[:256*4])
 	}
-	// The unused blue metadata channel holds the RGB 5-bit palette lookup
-	// for shading the spectre's background snapshot without a GPU readback.
+	// Two RGB texels per texture leave the lower half of the metadata image
+	// for the RGB 5-bit palette lookup used by the spectre's background snapshot.
 	for i, index := range doomPalIndexLUT32 {
-		r.metadataPixels[i*4+2] = index
+		r.metadataPixels[(gpuPaletteLookupOffset+i)*4+2] = index
 	}
 	r.metadataDirty = true
 	r.lights.WritePixels(r.lightPixels)
@@ -242,15 +256,19 @@ func (r *gpuRenderer) texture(indexed, mask []byte, width, height int) (gpuTextu
 	p.image.SubImage(image.Rect(p.x, p.y, p.x+width, p.y+height)).(*ebiten.Image).WritePixels(pixels)
 	p.x += width
 	p.rowHeight = max(p.rowHeight, height)
-	for n, v := range []int{tex.x, tex.y, width, height} {
-		i := (tex.id*4 + n) * 4
-		r.metadataPixels[i] = byte(v)
-		r.metadataPixels[i+1] = byte(v >> 8)
-		r.metadataPixels[i+3] = 255
-	}
+	putGPUTextureMetadata(r.metadataPixels, tex)
 	r.metadataDirty = true
 	r.textures[key] = tex
 	return tex, true
+}
+
+func putGPUTextureMetadata(pixels []byte, tex gpuTexture) {
+	// Atlas origins and dimensions minus one each fit in 11 bits. Store one
+	// origin/dimension pair per RGB texel, with opaque alpha as in the atlas.
+	for n, packed := range [2]int{tex.x | (tex.width-1)<<11, tex.y | (tex.height-1)<<11} {
+		i := (tex.id*2 + n) * 4
+		pixels[i], pixels[i+1], pixels[i+2], pixels[i+3] = byte(packed), byte(packed>>8), byte(packed>>16), 255
+	}
 }
 
 func (r *gpuRenderer) wallTexture(tex *WallTexture) (gpuTexture, bool) {
@@ -292,6 +310,30 @@ func (r *gpuRenderer) rect(commands *gpuCommands, x0, y0, x1, y1 int, tex, other
 	if commands.used > 0 {
 		b = &commands.batches[commands.used-1]
 	}
+	vertex := ebiten.Vertex{SrcX: float32(x0), SrcY: float32(y0), ColorR: float32(light), ColorG: float32(tex.id + mode*gpuModeStride), ColorB: float32(other.id), ColorA: float32(alpha) / 255, Custom0: u, Custom1: v, Custom2: du, Custom3: dv}
+	// Wall sampling depends only on Y within a column. Adjacent columns with
+	// the same texel, light and Y mapping can share a rectangle. Solid colors
+	// and sky copies likewise need only the outer bounds of an adjacent run.
+	positionIndependent := mode == 6 || mode == 7 || mode == 10
+	if b != nil && b.page == tex.page && b.otherPage == other.page && len(b.vertices) >= 4 && (mode == 1 || positionIndependent) {
+		last := b.vertices[len(b.vertices)-4:]
+		previous := last[0]
+		previous.DstX, previous.DstY = 0, 0
+		previous.SrcX = vertex.SrcX
+		if positionIndependent {
+			previous.SrcY = vertex.SrcY
+		}
+		if previous == vertex {
+			if last[1].DstX == float32(x0) && last[0].DstY == float32(y0) && last[2].DstY == float32(y1+1) {
+				last[1].DstX, last[3].DstX = float32(x1+1), float32(x1+1)
+				return
+			}
+			if positionIndependent && last[2].DstY == float32(y0) && last[0].DstX == float32(x0) && last[1].DstX == float32(x1+1) {
+				last[2].DstY, last[3].DstY = float32(y1+1), float32(y1+1)
+				return
+			}
+		}
+	}
 	if b == nil || b.page != tex.page || b.otherPage != other.page || len(b.vertices)+4 > 65532 {
 		if commands.used == len(commands.batches) {
 			commands.batches = append(commands.batches, gpuBatch{})
@@ -302,7 +344,6 @@ func (r *gpuRenderer) rect(commands *gpuCommands, x0, y0, x1, y1 int, tex, other
 		b.otherPage = other.page
 	}
 	offset := uint16(len(b.vertices))
-	vertex := ebiten.Vertex{SrcX: float32(x0), SrcY: float32(y0), ColorR: float32(light), ColorG: float32(tex.id + mode*gpuModeStride), ColorB: float32(other.id), ColorA: float32(alpha) / 255, Custom0: u, Custom1: v, Custom2: du, Custom3: dv}
 	for _, p := range [4][2]int{{x0, y0}, {x1 + 1, y0}, {x0, y1 + 1}, {x1 + 1, y1 + 1}} {
 		vertex.DstX = float32(p[0])
 		vertex.DstY = float32(p[1])
@@ -375,6 +416,9 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 		scaleY = it.scaleY
 	}
 	light := min(int(it.shadeMul), 256)
+	if doomColormapEnabled {
+		light = gpuLightRow(light, doomColormapRowForShade(it.shadeMul))
+	}
 	if it.shadow {
 		light = gpuLightRow(doomShadeMulFromRow(6), 6)
 	}
@@ -383,6 +427,9 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 	}
 	if unshaded {
 		light = 257 + max(r.lightRows, 1)
+		if !g.opts.SourcePortMode {
+			light = 256
+		}
 	}
 	mode := 2
 	if it.flip {
@@ -397,15 +444,95 @@ func (g *game) gpuSprite(it cutoutItem, commands *gpuCommands, unshaded bool) {
 			mode = 9
 		}
 	}
-	for y := it.y0; y <= it.y1; y++ {
-		spans := g.spriteRowVisibleSpansDepthQ(y, it.x0, it.x1, it.depthQ, it.clipSpans, g.solidClipScratch[:0])
-		g.solidClipScratch = spans
-		for _, span := range spans {
+	du, dv := float32(1/it.scale), float32(1/scaleY)
+	runY := it.y0
+	runV := float32((float64(runY) + 0.5 - it.dstY) / scaleY)
+	previous := r.spriteSpans[:0]
+	clipChanges := r.spriteClipChanges(g, it.x0, it.x1, it.y0, it.y1, it.depthQ)
+	var spans []solidSpan
+	emit := func(y1 int) {
+		for _, span := range previous {
 			u := float32((float64(span.L) + 0.5 - it.dstX) / it.scale)
-			v := float32((float64(y) + 0.5 - it.dstY) / scaleY)
-			r.rect(commands, span.L, y, span.R, y, tex, tex, mode, light, 0, u, v, float32(1/it.scale), float32(1/scaleY))
+			r.rect(commands, span.L, runY, span.R, y1, tex, tex, mode, light, 0, u, runV, du, dv)
 		}
 	}
+	for y := it.y0; y <= it.y1; y++ {
+		if clipChanges[y] {
+			spans = g.spriteRowVisibleSpansDepthQ(y, it.x0, it.x1, it.depthQ, it.clipSpans, g.solidClipScratch[:0])
+			g.solidClipScratch = spans
+		}
+		v := float32((float64(y) + 0.5 - it.dstY) / scaleY)
+		// Keep the row-by-row path's rounded texel selection. Most affine runs
+		// fit in one quad; split at visibility changes or rounding boundaries.
+		if y == it.y0 || !slices.Equal(spans, previous) || gpuSpriteTexel(runV+float32(y-runY)*dv, tex.height) != gpuSpriteTexel(v, tex.height) {
+			if y != it.y0 {
+				emit(y - 1)
+			}
+			runY, runV = y, v
+			previous = append(previous[:0], spans...)
+		}
+	}
+	emit(it.y1)
+	r.spriteSpans = previous
+}
+
+// Horizontal visibility spans can change only at a nearer wall's top/bottom
+// or a portal's opening bounds. Scan columns once, then reuse each row's spans
+// until one of those boundaries is crossed. Occlusion buffers are immutable
+// while drawing a sprite or building its plane occluders.
+func (r *gpuRenderer) spriteClipChanges(g *game, x0, x1, y0, y1 int, depthQ uint16) []bool {
+	if len(r.clipChanges) != g.viewH {
+		r.clipChanges = make([]bool, g.viewH)
+	}
+	changes := r.clipChanges
+	clear(changes[y0 : y1+1])
+	changes[y0] = true
+	if !g.billboardClippingEnabled() {
+		return changes
+	}
+	width := len(g.wallDepthQCol)
+	if len(g.wallDepthTopCol) != width || len(g.wallDepthBottomCol) != width || len(g.wallDepthClosedCol) != width || len(g.maskedClipCols) != width || len(g.maskedClipFirstDepthQ) != width {
+		// Retain the generic row path's behavior for incomplete buffers.
+		for y := y0 + 1; y <= y1; y++ {
+			changes[y] = true
+		}
+		return changes
+	}
+	mark := func(y int) {
+		if y > y0 && y <= y1 {
+			changes[y] = true
+		}
+	}
+	for x := max(x0, 0); x <= min(x1, width-1); x++ {
+		if depthQ > g.wallDepthQCol[x] && !g.wallDepthClosedCol[x] {
+			mark(g.wallDepthTopCol[x])
+			mark(g.wallDepthBottomCol[x] + 1)
+		}
+		first := g.maskedClipFirstDepthQ[x]
+		if first == 0 || depthQ <= first {
+			continue
+		}
+		for _, span := range g.maskedClipCols[x] {
+			if depthQ <= span.DepthQ {
+				break
+			}
+			if span.Closed {
+				continue
+			}
+			if span.HasOpen {
+				mark(int(span.OpenY0))
+				mark(int(span.OpenY1) + 1)
+			} else {
+				mark(int(span.Y0))
+				mark(int(span.Y1) + 1)
+			}
+		}
+	}
+	return changes
+}
+
+func gpuSpriteTexel(v float32, size int) int {
+	return min(max(int(math.Floor(float64(v))), 0), size-1)
 }
 
 func (g *game) gpuTeleportPuff(it projectedPuffItem, focal, focalV float64) {
@@ -445,11 +572,21 @@ func (r *gpuRenderer) drawCommands(dst *ebiten.Image, commands *gpuCommands, ble
 
 func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 	r := g.gpuFrame
+	var skyBackground *ebiten.Image
+	if !g.opts.SourcePortMode {
+		r.updateSkyLookup(g.frameSkyColU, g.frameSkyRowV)
+		skyBackground = r.skyLookup
+	}
 	if r.metadataDirty {
 		r.metadata.WritePixels(r.metadataPixels)
 		r.metadataDirty = false
 	}
-	r.frame.Fill(color.Black)
+	background := color.RGBA{A: 255}
+	if !g.opts.SourcePortMode && wallShadePackedOK {
+		p := wallShadePackedLUT[256][0]
+		background.R, background.G, background.B = byte(p>>pixelRShift), byte(p>>pixelGShift), byte(p>>pixelBShift)
+	}
+	r.frame.Fill(background)
 	r.snapshot.Clear()
 	if key, tex, ok := g.runtimeSkyTextureEntryForMap(g.m.Name); ok {
 		g.initSkyLayerShader()
@@ -457,7 +594,10 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 			g.drawSkyLayerFrame(r.snapshot)
 		}
 	}
-	r.drawCommands(r.frame, &r.skyCommands, ebiten.BlendSourceOver, r.snapshot, g.worldTic)
+	if g.opts.SourcePortMode {
+		skyBackground = r.snapshot
+	}
+	r.drawCommands(r.frame, &r.skyCommands, ebiten.BlendSourceOver, skyBackground, g.worldTic)
 	r.drawCommands(r.frame, &r.baseCommands, ebiten.BlendSourceOver, nil, g.worldTic)
 	r.cutouts.Clear()
 	r.drawCommands(r.cutouts, &r.cutoutCommands, ebiten.BlendDestinationOver, nil, g.worldTic)
@@ -468,5 +608,32 @@ func (g *game) finishGPUFrame(dst *ebiten.Image, camAng, focal float64) {
 		r.drawCommands(r.frame, &r.fuzzCommands, ebiten.BlendSourceOver, r.snapshot, g.worldTic)
 	}
 	r.drawCommands(r.frame, &r.overlayCommands, ebiten.BlendSourceOver, nil, g.worldTic)
-	dst.DrawImage(r.frame, nil)
+	if g.lowDetailMode() {
+		dst.DrawRectShader(r.width, r.height, r.lowDetailShader, &ebiten.DrawRectShaderOptions{Images: [4]*ebiten.Image{r.frame}})
+	} else {
+		dst.DrawImage(r.frame, nil)
+	}
+}
+
+// Keep Faithful sky sampling identical to the CPU's column/row lookups.
+// Only the lookup coordinates are uploaded; the sky texture stays in its atlas.
+func (r *gpuRenderer) updateSkyLookup(columns, rows []int) {
+	w := max(len(columns), len(rows))
+	if w == 0 {
+		return
+	}
+	if r.skyLookup == nil || r.skyLookup.Bounds().Dx() != w {
+		if r.skyLookup != nil {
+			r.skyLookup.Deallocate()
+		}
+		r.skyLookup = newUnmanagedImage(w, 2)
+		r.skyLookupPixels = make([]byte, w*2*4)
+	}
+	for y, coords := range [][]int{columns, rows} {
+		for x, coord := range coords {
+			i := (y*w + x) * 4
+			r.skyLookupPixels[i], r.skyLookupPixels[i+1], r.skyLookupPixels[i+3] = byte(coord), byte(coord>>8), 255
+		}
+	}
+	r.skyLookup.WritePixels(r.skyLookupPixels)
 }

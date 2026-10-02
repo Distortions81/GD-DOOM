@@ -1,8 +1,41 @@
 package doomruntime
 
 import (
+	"slices"
 	"testing"
+
+	"gddoom/internal/render/scene"
 )
+
+func TestGPUPlaneOccluderBandsMatchRowPath(t *testing.T) {
+	g := &game{viewW: 64, viewH: 40, wallDepthQCol: make([]uint16, 64), wallDepthTopCol: make([]int, 64), wallDepthBottomCol: make([]int, 64), wallDepthClosedCol: make([]bool, 64), maskedClipCols: make([][]scene.MaskedClipSpan, 64), maskedClipFirstDepthQ: make([]uint16, 64)}
+	for x := 0; x < 64; x++ {
+		g.wallDepthQCol[x] = 500
+		if x >= 12 && x <= 25 {
+			g.wallDepthQCol[x], g.wallDepthTopCol[x], g.wallDepthBottomCol[x] = 10, 9, 15
+		}
+		if x >= 34 && x <= 45 {
+			g.maskedClipFirstDepthQ[x] = 20
+			g.maskedClipCols[x] = []scene.MaskedClipSpan{{HasOpen: true, OpenY0: 5, OpenY1: 30, DepthQ: 20}}
+		}
+	}
+	rects := []projectedOpaqueRect{packProjectedOpaqueRect(3, 60, 2, 37), packProjectedOpaqueRect(8, 28, 4, 24)}
+	clip := []solidSpan{{L: 4, R: 26}, {L: 32, R: 61}}
+	g.ensureBillboardPlaneOccluderRows()
+	g.appendProjectedOpaqueRectPlaneOccluders(rects, 100, clip)
+	want := make([][]billboardPlaneOccluderSpan, g.viewH)
+	for y, row := range g.billboardPlaneOccluderRows {
+		want[y] = slices.Clone(row)
+	}
+	g.gpuFrame = &gpuRenderer{}
+	g.ensureBillboardPlaneOccluderRows()
+	g.appendProjectedOpaqueRectPlaneOccluders(rects, 100, clip)
+	for y, row := range g.billboardPlaneOccluderRows {
+		if !slices.Equal(row, want[y]) {
+			t.Fatalf("row=%d got=%v want=%v", y, row, want[y])
+		}
+	}
+}
 
 func TestClipRangeAgainstBillboardPlaneOccludersDepthAware(t *testing.T) {
 	occluders := []billboardPlaneOccluderSpan{

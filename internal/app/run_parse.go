@@ -621,7 +621,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	sourcePortMode := fs.Bool("sourceport-mode", defaultSourcePortMode, "enable source-port style heading-follow rotation defaults")
 	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
-	gpuRenderer := fs.Bool("gpu-renderer", true, "use GPU world rendering in Source Port mode (set false for CPU rendering)")
+	gpuRenderer := fs.Bool("gpu-renderer", true, "use GPU world rendering in Faithful and Source Port modes (set false for CPU rendering)")
 	rendererWorkers := fs.Int("renderer-workers", defaultRendererWorkers, "renderer worker count (0 uses built-in default policy)")
 	legacyMaskedMids := fs.Bool("legacy-masked-mids", false, "disable masked-mid fast paths and force the legacy renderer")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")

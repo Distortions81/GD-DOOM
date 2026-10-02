@@ -115,6 +115,10 @@ func (g *game) appendBillboardOpaqueRectPlaneOccluders(rects []spriteOpaqueRect,
 		if g.billboardClippingEnabled() && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
+		if g.gpuFrame != nil {
+			g.appendGPUPlaneOccluderRows(x0, x1, y0, y1, depthQ, clipSpans)
+			continue
+		}
 		if !g.billboardClippingEnabled() {
 			if len(clipSpans) == 0 {
 				for y := y0; y <= y1; y++ {
@@ -160,6 +164,10 @@ func (g *game) appendProjectedOpaqueRectPlaneOccluders(rects []projectedOpaqueRe
 		if g.billboardClippingEnabled() && g.spriteWallClipQuadFullyOccluded(x0, x1, y0, y1, depthQ) {
 			continue
 		}
+		if g.gpuFrame != nil {
+			g.appendGPUPlaneOccluderRows(x0, x1, y0, y1, depthQ, clipSpans)
+			continue
+		}
 		if !g.billboardClippingEnabled() {
 			if len(clipSpans) == 0 {
 				for y := y0; y <= y1; y++ {
@@ -192,6 +200,20 @@ func (g *game) appendProjectedOpaqueRectPlaneOccluders(rects []projectedOpaqueRe
 			for _, sp := range rowSpans {
 				g.appendBillboardPlaneOccluderRow(y, sp.L, sp.R, depthQ)
 			}
+		}
+	}
+}
+
+func (g *game) appendGPUPlaneOccluderRows(x0, x1, y0, y1 int, depthQ uint16, clipSpans []solidSpan) {
+	changes := g.gpuFrame.spriteClipChanges(g, x0, x1, y0, y1, depthQ)
+	var spans []solidSpan
+	for y := y0; y <= y1; y++ {
+		if changes[y] {
+			spans = g.spriteRowVisibleSpansDepthQ(y, x0, x1, depthQ, clipSpans, g.solidClipScratch[:0])
+			g.solidClipScratch = spans
+		}
+		for _, span := range spans {
+			g.appendBillboardPlaneOccluderRow(y, span.L, span.R, depthQ)
 		}
 	}
 }

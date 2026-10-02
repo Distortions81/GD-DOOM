@@ -13,6 +13,7 @@ import (
 
 	"gddoom/internal/mapdata"
 	"gddoom/internal/render/doomtex"
+	"gddoom/internal/render/scene"
 	"gddoom/internal/wad"
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -46,6 +47,7 @@ func TestGPUFramebufferComparison(t *testing.T) {
 	driver := &gpuComparisonDriver{t: t}
 	driver.run = func() {
 		gpuCompareSynthetic(t)
+		gpuCompareFaithfulPalette(t)
 		if path := os.Getenv("GD_GPU_WAD"); path != "" {
 			gpuCompareMaps(t, path)
 		}
@@ -53,6 +55,91 @@ func TestGPUFramebufferComparison(t *testing.T) {
 	ebiten.SetVsyncEnabled(false)
 	if err := ebiten.RunGame(driver); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// Use a deliberately non-linear colormap: multiplying RGB or choosing a
+// nearby palette color cannot accidentally match the required indexed lookup.
+func gpuCompareFaithfulPalette(t *testing.T) {
+	palette := make([]byte, 256*4)
+	indexed := make([]byte, 256)
+	mask := make([]byte, 256)
+	colormap := make([]byte, 33*256)
+	for i := range indexed {
+		indexed[i], mask[i] = byte(i), 1
+		palette[i*4], palette[i*4+1], palette[i*4+2], palette[i*4+3] = byte(i), byte(i*53), byte(255-i), 255
+	}
+	for row := 0; row < 33; row++ {
+		for i := 0; i < 256; i++ {
+			colormap[row*256+i] = byte(i*73 + row*19)
+		}
+	}
+	g := newGame(&mapdata.Map{Name: "E1M1"}, Options{Width: 256, Height: 40, GPURenderer: true, DisableBillboardClipping: true, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: 33})
+	g.ensureWallLayer()
+	g.ensure3DFrameBuffers()
+	tex := &WallTexture{Width: 256, Height: 1, Indexed: indexed, OpaqueMask: mask, RGBA: append([]byte(nil), palette...)}
+	actual := make([]byte, 256*40*4)
+	for _, gamma := range []int{0, 2, doomGammaLevels - 1} {
+		g.setGammaLevel(gamma)
+		g.clearCutoutCoverage()
+		g.beginGPUFrame()
+		if g.gpuFrame == nil {
+			t.Fatal("Faithful mode did not initialize GPU rendering")
+		}
+		r := g.gpuFrame
+		atlas, _ := r.wallTexture(tex)
+		for row := 0; row < 33; row++ {
+			r.rect(&r.baseCommands, 0, row, 255, row, atlas, atlas, 0, gpuLightRow(192, row), 0, 0, 0, fracUnit, 0)
+		}
+		shades := []uint32{64, 192, 256}
+		for i, shade := range shades {
+			y := 33 + i
+			it := cutoutItem{boundsOK: true, tex: tex, scale: 1, dstY: float64(y), x0: 0, x1: 255, y0: y, y1: y, shadeMul: shade}
+			g.gpuSprite(it, &r.cutoutCommands, false)
+			g.gpuFrame = nil
+			g.drawSpriteCutoutItem(it)
+			g.gpuFrame = r
+		}
+		g.frameSkyColU = make([]int, 256)
+		g.frameSkyRowV = make([]int, 40)
+		for x := range g.frameSkyColU {
+			g.frameSkyColU[x] = 255 - x
+		}
+		r.rect(&r.skyCommands, 0, 36, 255, 36, atlas, atlas, 10, 256, 0, 0, 0, 0, 0)
+		puff := projectedPuffItem{dist: 128, sx: 0, sy: 37, hasSprite: true, spriteTex: tex, clipBottom: 39}
+		g.gpuTeleportPuff(puff, 128, 128)
+		g.gpuFrame = nil
+		g.drawProjectedPuffItem(puff, 128, 128, 256, 40)
+		g.gpuFrame = r
+		g.finishGPUFrame(ebiten.NewImage(256, 40), 0, 128)
+		r.frame.ReadPixels(actual)
+		gpuCheckPalette(t, actual)
+		for y := 0; y <= 37; y++ {
+			for x := 0; x < 256; x++ {
+				var want uint32
+				if y < 33 {
+					pi := int(colormap[y*256+x]) * 4
+					want = packRGBA(doomGammaTables[gamma][palette[pi]], doomGammaTables[gamma][palette[pi+1]], doomGammaTables[gamma][palette[pi+2]])
+				} else if y < 36 {
+					row := ((256 - int(shades[y-33])) * 31) / 256
+					want = doomColormapPackedRow(row)[x]
+					if g.wallPix32[y*256+x] != want {
+						t.Fatalf("CPU Faithful sprite gamma=%d shade=%d index=%d bypassed COLORMAP", gamma, shades[y-33], x)
+					}
+				} else if y == 36 {
+					want = wallShadePackedLUT[256][255-x]
+				} else {
+					want = wallShadePackedLUT[256][x]
+					if g.wallPix32[y*256+x] != want {
+						t.Fatalf("CPU Faithful teleport gamma=%d index=%d bypassed the active palette", gamma, x)
+					}
+				}
+				i := (y*256 + x) * 4
+				if actual[i] != byte(want>>pixelRShift) || actual[i+1] != byte(want>>pixelGShift) || actual[i+2] != byte(want>>pixelBShift) || actual[i+3] != 255 {
+					t.Fatalf("Faithful gamma=%d row=%d index=%d differs from indexed palette lookup", gamma, y, x)
+				}
+			}
+		}
 	}
 }
 
@@ -202,6 +289,7 @@ func gpuCompareSynthetic(t *testing.T) {
 	if out[3] != 0 || out[7] != 255 || out[4] != byte(wantRGBA>>pixelRShift) || out[5] != byte(wantRGBA>>pixelGShift) || out[6] != byte(wantRGBA>>pixelBShift) {
 		t.Error("RGBA-only sprite color or mask changed")
 	}
+	gpuCompareSpriteRuns(t, g, &WallTexture{Width: 64, Height: 64, Indexed: indexed, OpaqueMask: mask})
 	r.fuzzCommands.reset()
 	r.rect(&r.fuzzCommands, 0, 0, 63, 63, front, front, 4, 192, 0, 0, 0, 1, 1)
 	r.snapshot.Fill(color.Black)
@@ -211,12 +299,127 @@ func gpuCompareSynthetic(t *testing.T) {
 	if out[3] != 0 || out[7] != 255 || out[4] != 0 || out[5] != 0 || out[6] != 0 {
 		t.Error("fuzz failed to preserve sprite mask or sample background")
 	}
+	// Exercise the separate palette lookup region with nonzero RGB and an
+	// actual colormap row. A black snapshot bypasses most lookup addressing.
+	colormap := make([]byte, 256)
+	for i := range colormap {
+		colormap[i] = byte(255 - i)
+	}
+	initDoomColormapShading(palette, colormap, 1, true)
+	r.lightGamma = -1
+	r.updateLights(palette)
+	r.metadata.WritePixels(r.metadataPixels)
+	r.fuzzCommands.reset()
+	r.rect(&r.fuzzCommands, 0, 0, 63, 63, front, front, 4, 257, 0, 0, 0, 1, 1)
+	r.snapshot.Fill(color.RGBA{R: 83, G: 171, B: 249, A: 255})
+	r.cutouts.Clear()
+	r.drawCommands(r.cutouts, &r.fuzzCommands, ebiten.BlendSourceOver, r.snapshot, 0)
+	r.cutouts.ReadPixels(out)
+	index := doomPalIndexLUT32[(83/8)*1024+(171/8)*32+249/8]
+	wantFuzz := doomColormapPackedRow(0)[index]
+	if out[3] != 0 || out[7] != 255 || out[4] != byte(wantFuzz>>pixelRShift) || out[5] != byte(wantFuzz>>pixelGShift) || out[6] != byte(wantFuzz>>pixelBShift) {
+		t.Error("fuzz palette lookup or colormap row changed")
+	}
+	// Check metadata row boundaries and the final texture ID on the GPU.
+	// Reuse an uploaded texel at a known atlas origin for each aliased ID.
+	r.overlayCommands.reset()
+	for x, id := range []int{127, 128, gpuModeStride - 1} {
+		alias := back
+		alias.id = id
+		putGPUTextureMetadata(r.metadataPixels, alias)
+		r.rect(&r.overlayCommands, x, 0, x, 0, alias, alias, 2, 256, 0, 0, 0, 0, 0)
+	}
+	r.metadata.WritePixels(r.metadataPixels)
+	r.cutouts.Clear()
+	r.drawCommands(r.cutouts, &r.overlayCommands, ebiten.BlendSourceOver, nil, 0)
+	r.cutouts.ReadPixels(out)
+	for x := 0; x < 3; x++ {
+		i := x * 4
+		want := wallShadePackedLUT[256][200]
+		if out[i] != byte(want>>pixelRShift) || out[i+1] != byte(want>>pixelGShift) || out[i+2] != byte(want>>pixelBShift) || out[i+3] != 255 {
+			t.Errorf("metadata boundary pixel %d differs", x)
+		}
+	}
+	// Dimensions of 2048 and atlas coordinates of 2047 use every packed bit.
+	widePixels := make([]byte, gpuAtlasSize)
+	widePixels[gpuAtlasSize-1] = 200
+	wide, _ := r.texture(widePixels, nil, gpuAtlasSize, 1)
+	tall, _ := r.texture(widePixels, nil, 1, gpuAtlasSize)
+	r.texture(make([]byte, gpuAtlasSize-2), nil, gpuAtlasSize-2, 1)
+	edge, _ := r.texture([]byte{200}, nil, 1, 1)
+	if edge.x != gpuAtlasSize-1 {
+		t.Fatalf("edge texture x=%d", edge.x)
+	}
+	r.overlayCommands.reset()
+	r.rect(&r.overlayCommands, 0, 0, 0, 0, wide, wide, 2, 256, 0, gpuAtlasSize-1, 0, 0, 0)
+	r.rect(&r.overlayCommands, 1, 0, 1, 0, tall, tall, 2, 256, 0, 0, gpuAtlasSize-1, 0, 0)
+	r.rect(&r.overlayCommands, 2, 0, 2, 0, edge, edge, 2, 256, 0, 0, 0, 0, 0)
+	r.metadata.WritePixels(r.metadataPixels)
+	r.cutouts.Clear()
+	r.drawCommands(r.cutouts, &r.overlayCommands, ebiten.BlendSourceOver, nil, 0)
+	r.cutouts.ReadPixels(out)
+	for x := 0; x < 3; x++ {
+		i := x * 4
+		want := wallShadePackedLUT[256][200]
+		if out[i] != byte(want>>pixelRShift) || out[i+1] != byte(want>>pixelGShift) || out[i+2] != byte(want>>pixelBShift) || out[i+3] != 255 {
+			t.Errorf("metadata atlas limit pixel %d differs", x)
+		}
+	}
 	g.viewW, g.viewH = 400, 240
 	g.beginGPUFrame()
 	if got := g.gpu.frame.Bounds().Size(); got.X != 400 || got.Y != 240 {
 		t.Errorf("GPU resize=%v", got)
 	}
 
+}
+
+func gpuCompareSpriteRuns(t *testing.T, g *game, tex *WallTexture) {
+	r := g.gpuFrame
+	atlas, _ := r.wallTexture(tex)
+	r.metadata.WritePixels(r.metadataPixels)
+	g.wallDepthQCol = make([]uint16, g.viewW)
+	g.wallDepthTopCol = make([]int, g.viewW)
+	g.wallDepthBottomCol = make([]int, g.viewW)
+	g.wallDepthClosedCol = make([]bool, g.viewW)
+	g.maskedClipCols = make([][]scene.MaskedClipSpan, g.viewW)
+	g.maskedClipFirstDepthQ = make([]uint16, g.viewW)
+	for x := 30; x <= 60; x++ {
+		g.wallDepthTopCol[x], g.wallDepthBottomCol[x] = 40, 130
+	}
+	for x := 100; x <= 110; x++ {
+		g.maskedClipFirstDepthQ[x] = 20
+		g.maskedClipCols[x] = []scene.MaskedClipSpan{{HasOpen: true, OpenY0: 40, OpenY1: 140, DepthQ: 20}}
+	}
+	actual, expected := make([]byte, g.viewW*g.viewH*4), make([]byte, g.viewW*g.viewH*4)
+	for _, scale := range []float64{0.7, 1, 1.5, 2, 2.1, 3, 8} {
+		for _, mode := range []int{2, 3, 4, 5, 8, 9} {
+			it := cutoutItem{boundsOK: true, tex: tex, scale: scale, dstX: 0.2, dstY: -0.25, x0: 5, x1: 150, y0: 3, y1: 183, depthQ: 100, shadeMul: 192, flip: mode%2 != 0, shadow: mode == 4 || mode == 5, debugOverlay: mode >= 8}
+			r.overlayCommands.reset()
+			g.gpuSprite(it, &r.overlayCommands, false)
+			rowCommands := &gpuCommands{}
+			light := 192
+			if it.shadow {
+				light = gpuLightRow(doomShadeMulFromRow(6), 6)
+			}
+			for y := it.y0; y <= it.y1; y++ {
+				for _, span := range g.spriteRowVisibleSpansDepthQ(y, it.x0, it.x1, it.depthQ, nil, nil) {
+					u := float32((float64(span.L) + 0.5 - it.dstX) / scale)
+					v := float32((float64(y) + 0.5 - it.dstY) / scale)
+					r.rect(rowCommands, span.L, y, span.R, y, atlas, atlas, mode, light, 0, u, v, float32(1/scale), float32(1/scale))
+				}
+			}
+			r.snapshot.Fill(color.RGBA{R: 83, G: 171, B: 249, A: 255})
+			r.cutouts.Clear()
+			r.drawCommands(r.cutouts, rowCommands, ebiten.BlendSourceOver, r.snapshot, 0)
+			r.cutouts.ReadPixels(expected)
+			r.cutouts.Clear()
+			r.drawCommands(r.cutouts, &r.overlayCommands, ebiten.BlendSourceOver, r.snapshot, 0)
+			r.cutouts.ReadPixels(actual)
+			if differences := gpuPixelDifferences(actual, expected, 0); differences != 0 {
+				t.Errorf("sprite run scale=%v mode=%d: %d pixels differ from row commands", scale, mode, differences)
+			}
+		}
+	}
 }
 
 func gpuCompareMaps(t *testing.T, path string) {
@@ -297,45 +500,106 @@ func gpuCompareMaps(t *testing.T, path string) {
 		if err != nil {
 			continue
 		}
-		g := newGame(m, Options{Width: 640, Height: 400, SourcePortMode: true, SourcePortSectorLighting: true, PlayerSlot: 1, SkillLevel: 4, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: flatIndexed, SpritePatchBank: sprites})
-		g.syncRenderState()
-		g.prepareRenderState()
-		g.viewW = 640
-		g.viewH = 400
-		cpu := ebiten.NewImage(640, 400)
-		gpu := ebiten.NewImage(640, 400)
-		for angle := 0; angle < 4; angle++ {
-			g.renderAngle = g.p.angle + uint32(angle)*0x40000000
-			g.setGammaLevel([]int{2, 1, doomGammaLevels - 1, 2}[angle])
-			g.inventory.InvulnTics = 0
-			if angle == 2 {
-				g.inventory.InvulnTics = 1000
+		for _, mode := range []struct {
+			name                  string
+			sourcePort            bool
+			width, height, detail int
+		}{{"source-port", true, 640, 400, 0}, {"faithful", false, 320, 200, 0}, {"faithful-low", false, 320, 200, 1}} {
+			w, h := mode.width, mode.height
+			g := newGame(m, Options{Width: w, Height: h, SourcePortMode: mode.sourcePort, InitialDetailLevel: mode.detail, SourcePortSectorLighting: true, PlayerSlot: 1, SkillLevel: 4, DoomPaletteRGBA: palette, DoomColorMap: colormap, DoomColorMapRows: len(colormap) / 256, WallTexBank: walls, FlatBank: flats, FlatBankIndexed: flatIndexed, SpritePatchBank: sprites})
+			g.syncRenderState()
+			g.prepareRenderState()
+			g.viewW, g.viewH = w, h
+			cpu := ebiten.NewImage(w, h)
+			gpu := ebiten.NewImage(w, h)
+			type comparisonView struct {
+				x, y, eyeZ float64
+				angle      uint32
+				label      string
 			}
-			// Each orientation starts with a fresh CPU framebuffer. Unwritten
-			// portal gaps must not contain pixels retained from the prior angle.
-			g.ensureWallLayer()
-			clear(g.wallPix)
-			cpu.Fill(color.Black)
-			gpu.Fill(color.Black)
-			g.opts.GPURenderer = false
-			g.drawDoomBasic3D(cpu)
-			cpuPixels := make([]byte, 640*400*4)
-			cpu.ReadPixels(cpuPixels)
-			g.opts.GPURenderer = true
-			g.drawDoomBasic3D(gpu)
-			if g.gpu == nil || g.gpu.failed {
-				t.Fatal("GPU backend unexpectedly fell back")
+			views := make([]comparisonView, 0, 8)
+			for angle := 0; angle < 4; angle++ {
+				views = append(views, comparisonView{g.renderPX, g.renderPY, g.playerEyeZ(), g.p.angle + uint32(angle)*0x40000000, fmt.Sprintf("angle-%d", angle)})
 			}
-			gpuPixels := make([]byte, len(cpuPixels))
-			gpu.ReadPixels(gpuPixels)
-			differences := gpuPixelDifferences(cpuPixels, gpuPixels, 2)
-			t.Logf("%s angle=%d: %.3f%% of pixels differ by more than 2 levels", name, angle, float64(differences)*100/(640*400))
-			// Perspective texel boundaries and sky transcendental rounding can differ.
-			// Reject structural errors, missing surfaces and clipping regressions.
-			if differences > len(cpuPixels)/4/100 {
-				t.Errorf("%s angle=%d exceeds 1%% pixel difference budget", name, angle)
+			seen := map[string]bool{}
+			for i, th := range m.Things {
+				kind := ""
+				if isMonster(th.Type) && g.thingHP[i] > 0 {
+					kind = "monster"
+				} else if isBarrelThingType(th.Type) {
+					kind = "barrel"
+				}
+				if kind == "" || seen[kind] {
+					continue
+				}
+				seen[kind] = true
+				x, y := g.thingPosFixed(i, th)
+				z, _, _ := g.thingSupportState(i, th)
+				for _, distance := range []float64{32, 48} {
+					views = append(views, comparisonView{float64(x)/fracUnit - distance, float64(y) / fracUnit, float64(z)/fracUnit + 41, 0, fmt.Sprintf("melee-%s-%g", kind, distance)})
+				}
 			}
-			gpuCapture(t, fmt.Sprintf("%s-%d", name, angle), cpuPixels, gpuPixels, 640, 400)
+			for index, view := range views {
+				g.renderPX, g.renderPY, g.renderAngle = view.x, view.y, view.angle
+				g.playerViewZ = int64(view.eyeZ * fracUnit)
+				g.setGammaLevel([]int{2, 1, doomGammaLevels - 1, 2}[index%4])
+				g.inventory.InvulnTics = 0
+				if index == 2 {
+					g.inventory.InvulnTics = 1000
+				}
+				// Each orientation starts with a fresh CPU framebuffer. Unwritten
+				// portal gaps must not contain pixels retained from the prior angle.
+				g.ensureWallLayer()
+				clear(g.wallPix)
+				cpu.Fill(color.Black)
+				gpu.Fill(color.Black)
+				g.opts.GPURenderer = false
+				g.drawDoomBasic3D(cpu)
+				cpuPixels := make([]byte, w*h*4)
+				cpu.ReadPixels(cpuPixels)
+				g.opts.GPURenderer = true
+				g.drawDoomBasic3D(gpu)
+				if g.gpu == nil || g.gpu.failed {
+					t.Fatal("GPU backend unexpectedly fell back")
+				}
+				gpuPixels := make([]byte, len(cpuPixels))
+				gpu.ReadPixels(gpuPixels)
+				differences := gpuPixelDifferences(cpuPixels, gpuPixels, 2)
+				t.Logf("%s %s %s: %.3f%% of pixels differ by more than 2 levels", name, mode.name, view.label, float64(differences)*100/float64(w*h))
+				// Perspective texel boundaries and sky transcendental rounding can differ.
+				// Reject structural errors, missing surfaces and clipping regressions.
+				if differences > len(cpuPixels)/4/100 {
+					t.Errorf("%s %s %s exceeds 1%% pixel difference budget", name, mode.name, view.label)
+				}
+				gpuCapture(t, fmt.Sprintf("%s-%s-%s", name, mode.name, view.label), cpuPixels, gpuPixels, w, h)
+				if !mode.sourcePort {
+					gpuCheckPalette(t, gpuPixels)
+					if mode.detail == 1 {
+						for y := 0; y < h; y++ {
+							for x := 1; x < w; x += 2 {
+								i := (y*w + x) * 4
+								if string(gpuPixels[i:i+4]) != string(gpuPixels[i-4:i]) {
+									t.Fatalf("%s low-detail column pair differs at (%d,%d)", name, x, y)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func gpuCheckPalette(t *testing.T, pixels []byte) {
+	t.Helper()
+	allowed := make(map[uint32]bool, 256)
+	for _, p := range wallShadePackedLUT[256] {
+		allowed[p] = true
+	}
+	for i := 0; i < len(pixels); i += 4 {
+		p := packRGBA(pixels[i], pixels[i+1], pixels[i+2])
+		if !allowed[p] || pixels[i+3] != 255 {
+			t.Fatalf("Faithful pixel %d color=%08x is outside the active 256-color palette", i/4, p)
 		}
 	}
 }
