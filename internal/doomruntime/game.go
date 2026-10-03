@@ -767,6 +767,8 @@ type game struct {
 	mapFloorWorldAnim             int
 	mapFloorLoopSets              []sectorLoopSet
 	mapFloorLoopInit              bool
+	mapFloorBoundarySets          []mapview.FloorLoopSet
+	mapFloorBoundaryInit          bool
 	spriteOpaqueShapeCache        map[string]spriteOpaqueShape
 	spriteRenderRefCache          map[string]*spriteRenderRef
 	monsterFrameRenderCache       map[monsterFrameRenderKey]monsterFrameRenderEntry
@@ -14779,32 +14781,13 @@ func (g *game) ensureMapFloorLoopSetsBuilt() {
 	g.mapFloorLoopInit = true
 }
 
-func (g *game) mapFloorLoopSetsForView() []mapview.FloorLoopSet {
-	out := make([]mapview.FloorLoopSet, len(g.mapFloorLoopSets))
-	for sec, set := range g.mapFloorLoopSets {
+func (g *game) mapFloorBoundarySetsForView() []mapview.FloorLoopSet {
+	out := make([]mapview.FloorLoopSet, len(g.mapFloorBoundarySets))
+	for sec, set := range g.mapFloorBoundarySets {
 		if !g.automapSectorRevealed(sec) {
 			continue
 		}
-		rings := make([][]mapview.WorldPt, 0, len(set.rings))
-		for _, ring := range set.rings {
-			if len(ring) == 0 {
-				continue
-			}
-			pts := make([]mapview.WorldPt, 0, len(ring))
-			for _, p := range ring {
-				pts = append(pts, mapview.WorldPt{X: p.x, Y: p.y})
-			}
-			rings = append(rings, pts)
-		}
-		out[sec] = mapview.FloorLoopSet{
-			Rings: rings,
-			BBox: mapview.WorldBBox{
-				MinX: set.bbox.minX,
-				MinY: set.bbox.minY,
-				MaxX: set.bbox.maxX,
-				MaxY: set.bbox.maxY,
-			},
-		}
+		out[sec] = set
 	}
 	return out
 }
@@ -14873,8 +14856,8 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 	}
 	g.ensureSectorPlaneLevelCacheFresh()
 	g.refreshSectorPlaneCacheTextureRefs()
-	g.ensureMapFloorLoopSetsBuilt()
-	if len(g.mapFloorLoopSets) == 0 {
+	g.ensureMapFloorBoundarySetsBuilt()
+	if len(g.mapFloorBoundarySets) == 0 {
 		g.floorFrame.rejectedSpan++
 		g.floorFrame.rejectNoPoly++
 		return
@@ -14889,7 +14872,7 @@ func (g *game) drawMapFloorTextures2DRasterized(screen *ebiten.Image) {
 		ViewW:         w,
 		ViewH:         h,
 		ViewBBox:      mapview.WorldBBox{MinX: viewWB.minX, MinY: viewWB.minY, MaxX: viewWB.maxX, MaxY: viewWB.maxY},
-		LoopSets:      g.mapFloorLoopSetsForView(),
+		LoopSets:      g.mapFloorBoundarySetsForView(),
 		ShadeMuls:     g.mapFloorShadeMuls(),
 		Textures:      g.mapFloorTextures(),
 		FallbackRGB:   [3]byte{wallFloorChange.R, wallFloorChange.G, wallFloorChange.B},

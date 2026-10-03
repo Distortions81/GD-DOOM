@@ -2,7 +2,7 @@ package mapview
 
 import (
 	"math"
-	"sort"
+	"slices"
 )
 
 type FloorFrameStats struct {
@@ -27,9 +27,17 @@ type WorldPt struct {
 	Y float64
 }
 
+type WorldEdge struct {
+	A, B WorldPt
+}
+
 type FloorLoopSet struct {
 	Rings [][]WorldPt
 	BBox  WorldBBox
+	// Edges are directed sector sides, which need not form closed rings.
+	// When present, their nonzero winding defines the fill; Rings retain the
+	// even-odd fill used by callers that already have polygon boundaries.
+	Edges []WorldEdge
 }
 
 type ScreenPt struct {
@@ -62,7 +70,7 @@ func RasterizeFloor2D(pix []byte, in FloorRasterInput) FloorFrameStats {
 
 	for sec := range in.LoopSets {
 		set := in.LoopSets[sec]
-		if len(set.Rings) == 0 {
+		if len(set.Rings) == 0 && len(set.Edges) == 0 {
 			continue
 		}
 		if set.BBox.MaxX < in.ViewBBox.MinX || set.BBox.MinX > in.ViewBBox.MaxX || set.BBox.MaxY < in.ViewBBox.MinY || set.BBox.MinY > in.ViewBBox.MaxY {
@@ -79,34 +87,44 @@ func RasterizeFloor2D(pix []byte, in FloorRasterInput) FloorFrameStats {
 			shadeMul = in.ShadeMuls[sec]
 		}
 
-		screenRings := make([][]ScreenPt, 0, len(set.Rings))
+		type screenEdge struct{ a, b ScreenPt }
+		screenEdges := make([]screenEdge, 0, len(set.Edges))
 		minSX := math.Inf(1)
 		minSY := math.Inf(1)
 		maxSX := math.Inf(-1)
 		maxSY := math.Inf(-1)
-		for _, ring := range set.Rings {
-			sring := make([]ScreenPt, 0, len(ring))
-			for _, p := range ring {
-				sx, sy := in.WorldToScreen(p.X, p.Y)
-				sring = append(sring, ScreenPt{X: sx, Y: sy})
-				if sx < minSX {
-					minSX = sx
-				}
-				if sy < minSY {
-					minSY = sy
-				}
-				if sx > maxSX {
-					maxSX = sx
-				}
-				if sy > maxSY {
-					maxSY = sy
-				}
+		toScreen := func(p WorldPt) ScreenPt {
+			sx, sy := in.WorldToScreen(p.X, p.Y)
+			if sx < minSX {
+				minSX = sx
 			}
-			if len(sring) >= 3 {
-				screenRings = append(screenRings, sring)
+			if sy < minSY {
+				minSY = sy
+			}
+			if sx > maxSX {
+				maxSX = sx
+			}
+			if sy > maxSY {
+				maxSY = sy
+			}
+			return ScreenPt{X: sx, Y: sy}
+		}
+		if len(set.Edges) > 0 {
+			for _, e := range set.Edges {
+				screenEdges = append(screenEdges, screenEdge{toScreen(e.A), toScreen(e.B)})
+			}
+		} else {
+			for _, ring := range set.Rings {
+				if len(ring) < 3 {
+					continue
+				}
+				for i, a := range ring {
+					b := ring[(i+1)%len(ring)]
+					screenEdges = append(screenEdges, screenEdge{toScreen(a), toScreen(b)})
+				}
 			}
 		}
-		if len(screenRings) == 0 || !isFinite(minSX) || !isFinite(minSY) || !isFinite(maxSX) || !isFinite(maxSY) {
+		if len(screenEdges) == 0 || !isFinite(minSX) || !isFinite(minSY) || !isFinite(maxSX) || !isFinite(maxSY) {
 			continue
 		}
 
@@ -118,33 +136,55 @@ func RasterizeFloor2D(pix []byte, in FloorRasterInput) FloorFrameStats {
 			continue
 		}
 
-		xHits := make([]float64, 0, 64)
+		type crossing struct {
+			x     float64
+			delta int
+		}
+		xHits := make([]crossing, 0, 64)
 		for py := y0; py <= y1; py++ {
 			xHits = xHits[:0]
 			row := py * w * 4
 			fy := float64(py) + 0.5
-			for _, ring := range screenRings {
-				for i, j := 0, len(ring)-1; i < len(ring); j, i = i, i+1 {
-					a := ring[j]
-					b := ring[i]
-					if (a.Y > fy) == (b.Y > fy) {
-						continue
-					}
-					x := a.X + (fy-a.Y)*(b.X-a.X)/(b.Y-a.Y)
-					xHits = append(xHits, x)
+			for _, e := range screenEdges {
+				a, b := e.a, e.b
+				if (a.Y > fy) == (b.Y > fy) {
+					continue
 				}
+				x := a.X + (fy-a.Y)*(b.X-a.X)/(b.Y-a.Y)
+				delta := 1
+				if b.Y < a.Y {
+					delta = -1
+				}
+				xHits = append(xHits, crossing{x, delta})
 			}
 			if len(xHits) < 2 {
 				continue
 			}
-			sort.Float64s(xHits)
+			slices.SortFunc(xHits, func(a, b crossing) int {
+				if a.x < b.x {
+					return -1
+				}
+				if a.x > b.x {
+					return 1
+				}
+				return 0
+			})
 			rowWX0, rowWY0 := in.ScreenToWorld(0.5, fy)
 			rowWX1, rowWY1 := in.ScreenToWorld(1.5, fy)
 			stepWX := rowWX1 - rowWX0
 			stepWY := rowWY1 - rowWY0
-			for i := 0; i+1 < len(xHits); i += 2 {
-				start := int(math.Ceil(xHits[i] - 0.5))
-				end := int(math.Ceil(xHits[i+1]-0.5) - 1)
+			winding := 0
+			for i := 0; i+1 < len(xHits); i++ {
+				if len(set.Edges) > 0 {
+					winding += xHits[i].delta
+				} else {
+					winding ^= 1
+				}
+				if winding == 0 {
+					continue
+				}
+				start := int(math.Ceil(xHits[i].x - 0.5))
+				end := int(math.Ceil(xHits[i+1].x-0.5) - 1)
 				if start < x0 {
 					start = x0
 				}
