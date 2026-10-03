@@ -428,6 +428,7 @@ func (g *game) wallDepthColumnAt(x int) scene.WallDepthColumn {
 }
 
 type game struct {
+	meshExperiment    *experimentalMeshRenderer
 	gpu               *gpuRenderer
 	gpuFrame          *gpuRenderer
 	m                 *mapdata.Map
@@ -2632,6 +2633,7 @@ func (g *game) shouldCaptureCursor() bool {
 
 func (g *game) Update() error {
 	defer g.clearSampledInput()
+	g.updateMeshExperiment()
 	if g.levelExitRequested && !g.demoIntermissionActive && !g.demoFinaleActive {
 		return ebiten.Termination
 	}
@@ -3760,7 +3762,7 @@ func (g *game) drawWalk3D(screen *ebiten.Image) {
 	rect := g.walkRenderViewportRect()
 	if rect.Dx() >= g.viewW && rect.Dy() >= g.viewH && rect.Min.X == 0 && rect.Min.Y == 0 {
 		g.prepareRenderStateAt(now)
-		g.drawDoomBasic3D(screen)
+		g.drawWorld3D(screen)
 		return
 	}
 	fullW := g.viewW
@@ -3769,7 +3771,7 @@ func (g *game) drawWalk3D(screen *ebiten.Image) {
 	g.viewW = rect.Dx()
 	g.viewH = rect.Dy()
 	g.prepareRenderStateAt(now)
-	g.drawDoomBasic3D(sub)
+	g.drawWorld3D(sub)
 	g.viewW = fullW
 	g.viewH = fullH
 }

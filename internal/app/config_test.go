@@ -17,6 +17,20 @@ import (
 	"gddoom/internal/wad"
 )
 
+func TestRunParseMeshRendererModes(t *testing.T) {
+	for _, mode := range []string{"textured", "sectors", "wireframe", "invalid"} {
+		var out, errb bytes.Buffer
+		code := RunParse([]string{"-wad", filepath.Join("..", "..", "DOOM1.WAD"), "-render=false", "-mesh-renderer", mode}, &out, &errb)
+		if mode == "invalid" {
+			if code != 2 || !strings.Contains(errb.String(), "invalid -mesh-renderer") {
+				t.Fatalf("invalid mode: code=%d stderr=%s", code, errb.String())
+			}
+		} else if code != 0 {
+			t.Fatalf("mode %s: code=%d stderr=%s", mode, code, errb.String())
+		}
+	}
+}
+
 func TestRunParseLoadsConfigDefaults(t *testing.T) {
 	td := t.TempDir()
 	cfgPath := filepath.Join(td, "cfg.toml")

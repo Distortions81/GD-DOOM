@@ -619,6 +619,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	debugMonsterThinkerBlend := fs.Bool("debug-monster-thinker-blend", defaultDebugMonsterThinkerBlend, "overlay raw thinker-position monster sprites in bright red")
 	crtEffect := fs.Bool("crt-effect", defaultCRTEffect, "enable CRT postprocess effect")
 	gpuRenderer := fs.Bool("gpu-renderer", true, "use GPU world rendering in Faithful and Source Port modes (set false for CPU rendering)")
+	meshRenderer := fs.String("mesh-renderer", "", "experimental in-game triangle renderer: textured, sectors, or wireframe (F7 cycles views)")
 	rendererWorkers := fs.Int("renderer-workers", defaultRendererWorkers, "renderer worker count (0 uses built-in default policy)")
 	legacyMaskedMids := fs.Bool("legacy-masked-mids", false, "disable masked-mid fast paths and force the legacy renderer")
 	textureAnimCrossfadeFrames := fs.Int("texture-anim-crossfade-frames", defaultTextureAnimCrossfadeFrames, "sourceport texture animation crossfade frames (0 disables)")
@@ -712,6 +713,11 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 	}
 	if *pcSpeakerVolume < 0 || *pcSpeakerVolume > 1 {
 		fmt.Fprintf(stderr, "invalid -pc-speaker-volume %.3f (must be between 0 and 1)\n", *pcSpeakerVolume)
+		return 2
+	}
+	*meshRenderer = strings.ToLower(strings.TrimSpace(*meshRenderer))
+	if *meshRenderer != "" && *meshRenderer != "textured" && *meshRenderer != "sectors" && *meshRenderer != "wireframe" {
+		fmt.Fprintf(stderr, "invalid -mesh-renderer %q (use textured, sectors, or wireframe)\n", *meshRenderer)
 		return 2
 	}
 	if *rendererWorkers < 0 {
@@ -919,6 +925,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			wallSliceOcclusion:         defaultWallSliceOcclusion,
 			billboardClipping:          defaultBillboardClipping,
 			gpuRenderer:                *gpuRenderer,
+			meshRenderer:               *meshRenderer,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
@@ -1265,6 +1272,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			DisableBillboardClipping:   !defaultBillboardClipping,
 			DisableMaskedMidFastPaths:  *legacyMaskedMids,
 			GPURenderer:                *gpuRenderer,
+			MeshRenderer:               *meshRenderer,
 			RendererWorkers:            *rendererWorkers,
 			TextureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			NoVsync:                    *noVsync,
@@ -1615,6 +1623,7 @@ func RunParse(args []string, stdout io.Writer, stderr io.Writer) int {
 			wallSliceOcclusion:         defaultWallSliceOcclusion,
 			billboardClipping:          defaultBillboardClipping,
 			gpuRenderer:                *gpuRenderer,
+			meshRenderer:               *meshRenderer,
 			rendererWorkers:            *rendererWorkers,
 			textureAnimCrossfadeFrames: *textureAnimCrossfadeFrames,
 			noVsync:                    *noVsync,
@@ -2376,6 +2385,7 @@ type renderBuildConfig struct {
 	wallSliceOcclusion         bool
 	billboardClipping          bool
 	gpuRenderer                bool
+	meshRenderer               string
 	rendererWorkers            int
 	textureAnimCrossfadeFrames int
 	noVsync                    bool
@@ -2720,6 +2730,7 @@ func buildRenderBundle(resolvedWADPath string, cfg renderBuildConfig, stderr io.
 		DisableBillboardClipping:   !cfg.billboardClipping,
 		DisableMaskedMidFastPaths:  false,
 		GPURenderer:                cfg.gpuRenderer,
+		MeshRenderer:               cfg.meshRenderer,
 		RendererWorkers:            cfg.rendererWorkers,
 		TextureAnimCrossfadeFrames: cfg.textureAnimCrossfadeFrames,
 		NoVsync:                    cfg.noVsync,

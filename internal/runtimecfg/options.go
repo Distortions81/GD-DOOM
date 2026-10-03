@@ -213,6 +213,7 @@ type Options struct {
 	DisableBillboardClipping     bool
 	DisableMaskedMidFastPaths    bool
 	GPURenderer                  bool
+	MeshRenderer                 string // Empty disables the experimental triangle renderer.
 	RendererWorkers              int
 	TextureAnimCrossfadeFrames   int
 	NoVsync                      bool

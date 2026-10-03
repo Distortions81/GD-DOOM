@@ -1,6 +1,8 @@
 # Rendering experiments
 
-An idea board for the `experiments` branch. These are proposed effects, not
+An idea board for the `experiments` branch. The [in-game 3D mesh prototype](mesh-renderer-experiment.md)
+is available with `-mesh-renderer textured` and F7 view switching.
+The effects below are proposed, not
 implemented features. Effort is relative: **small** uses the existing frame or
 shader inputs; **medium** adds masks, history, or draw metadata; **large** needs
 a new geometry or visibility output.
