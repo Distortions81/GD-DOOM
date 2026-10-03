@@ -18470,6 +18470,9 @@ func (g *game) clipSubSectorPolyBySegBounds(ss int, poly []worldPt) []worldPt {
 	if ss < 0 || ss >= len(g.m.SubSectors) || len(poly) < 3 {
 		return nil
 	}
+	if g.m.SubSectors[ss].SegCount < 3 {
+		return g.clipSubSectorPolyByLinedefBounds(ss, poly)
+	}
 	seed, ok := g.subSectorSeedPoint(ss, poly)
 	if !ok {
 		return poly
@@ -18887,6 +18890,12 @@ func (g *game) recoverMissingSubsectorPolyFromBSP(ss, sec int) bool {
 	if !ok || len(poly) < 3 {
 		return false
 	}
+	if g.m.SubSectors[ss].SegCount < 3 {
+		poly = g.clipSubSectorPolyByLinedefBounds(ss, poly)
+		if len(poly) < 3 {
+			return false
+		}
+	}
 	if sec >= 0 && sec < len(g.sectorBBox) {
 		sb := g.sectorBBox[sec]
 		if isFinite(sb.minX) && isFinite(sb.minY) && isFinite(sb.maxX) && isFinite(sb.maxY) {
@@ -19086,6 +19095,16 @@ func (g *game) constrainAmbiguousNodePolysToSectorBounds() {
 		poly := g.subSectorPoly[ss]
 		if len(poly) < 3 {
 			continue
+		}
+		// Bound short leaves by their walls before comparing overlap. Their raw
+		// BSP cells can extend far beyond those walls and look mostly exterior.
+		if sub.SegCount < 3 {
+			poly = g.clipSubSectorPolyByLinedefBounds(ss, poly)
+			if len(poly) < 3 {
+				g.subSectorPoly[ss] = nil
+				g.subSectorPolySrc[ss] = subPolySrcNone
+				continue
+			}
 		}
 		sec := -1
 		if ss < len(g.subSectorSec) {
